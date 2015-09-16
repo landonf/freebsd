@@ -3486,6 +3486,18 @@ WmiTraceMessage(uint64_t loghandle, uint32_t messageflags,
 }
 
 static uint32_t
+IoWMIOpenBlock(void *guid, u_long access, void *object)
+{
+	return (STATUS_WMI_GUID_NOT_FOUND);
+}
+
+static uint32_t
+IoWMIQueryAllData(void *object, u_long *buflen, void *buf)
+{
+	return (STATUS_WMI_GUID_NOT_FOUND);
+}
+
+static uint32_t
 IoWMIRegistrationControl(dobj, action)
 	device_object		*dobj;
 	uint32_t		action;
@@ -4432,6 +4444,8 @@ image_patch_table ntoskrnl_functbl[] = {
 	IMPORT_SFUNC(ZwClose, 1),
 	IMPORT_SFUNC(PsCreateSystemThread, 7),
 	IMPORT_SFUNC(PsTerminateSystemThread, 1),
+	IMPORT_SFUNC(IoWMIOpenBlock, 3),
+	IMPORT_SFUNC(IoWMIQueryAllData, 2),
 	IMPORT_SFUNC(IoWMIRegistrationControl, 2),
 	IMPORT_SFUNC(WmiQueryTraceInformation, 5),
 	IMPORT_CFUNC(WmiTraceMessage, 0),

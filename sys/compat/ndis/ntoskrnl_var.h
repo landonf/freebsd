@@ -1296,6 +1296,7 @@ typedef struct driver_object driver_object;
 #define	STATUS_CANCELLED		0xC0000120
 #define	STATUS_NOT_FOUND		0xC0000225
 #define	STATUS_DEVICE_REMOVED		0xC00002B6
+#define	STATUS_WMI_GUID_NOT_FOUND	0xC0000295
 
 #define	STATUS_WAIT_0			0x00000000
 
