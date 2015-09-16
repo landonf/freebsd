@@ -298,7 +298,7 @@ ndis_attach_pci(dev)
 			BUS_SPACE_MAXSIZE_32BIT, /* maxsize */
 			NDIS_NSEG_NEW,		/* nsegments */
 			BUS_SPACE_MAXSIZE_32BIT,/* maxsegsize */
-			BUS_DMA_ALLOCNOW,       /* flags */
+			0,			/* flags */
 			NULL, NULL,		/* lockfunc, lockarg */
 			&sc->ndis_parent_tag);
 
