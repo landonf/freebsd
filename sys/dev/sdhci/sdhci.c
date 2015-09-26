@@ -90,6 +90,19 @@ static void sdhci_card_task(void *, int);
 #define	SDHCI_200_MAX_DIVIDER	256
 #define	SDHCI_300_MAX_DIVIDER	2046
 
+/*
+ * Broadcom BCM577xx Controller Constants
+ */
+#define BCM577XX_DEFAULT_MAX_DIVIDER	256		/* Maximum divider supported by the default clock source. */
+#define BCM577XX_ALT_CLOCK_BASE		63000000	/* Alternative clock's base frequency. */
+
+#define BCM577XX_HOST_CONTROL		0x198
+#define BCM577XX_CTRL_CLKSEL_MASK	0xFFFFCFFF
+#define BCM577XX_CTRL_CLKSEL_SHIFT	12
+#define BCM577XX_CTRL_CLKSEL_DEFAULT	0x0
+#define BCM577XX_CTRL_CLKSEL_64MHZ	0x3
+
+
 static void
 sdhci_getaddr(void *arg, bus_dma_segment_t *segs, int nsegs, int error)
 {
@@ -229,6 +242,8 @@ sdhci_init(struct sdhci_slot *slot)
 static void
 sdhci_set_clock(struct sdhci_slot *slot, uint32_t clock)
 {
+	uint32_t clk_base;
+	uint32_t clk_sel;
 	uint32_t res;
 	uint16_t clk;
 	uint16_t div;
@@ -244,6 +259,22 @@ sdhci_set_clock(struct sdhci_slot *slot, uint32_t clock)
 	/* If no clock requested - left it so. */
 	if (clock == 0)
 		return;
+	
+	/* Determine the clock base frequency */
+	clk_base = slot->max_clk;
+	if (slot->quirks & SDHCI_QUIRK_BCM577XX_400KHZ_CLKSRC) {
+		clk_sel = RD2(slot, BCM577XX_HOST_CONTROL) & BCM577XX_CTRL_CLKSEL_MASK;
+
+		/* Select clock source appropriate for the requested frequency. */
+		if ((clk_base / BCM577XX_DEFAULT_MAX_DIVIDER) > clock) {
+			clk_base = BCM577XX_ALT_CLOCK_BASE;
+			clk_sel |= (BCM577XX_CTRL_CLKSEL_64MHZ << BCM577XX_CTRL_CLKSEL_SHIFT);
+		} else {
+			clk_sel |= (BCM577XX_CTRL_CLKSEL_DEFAULT << BCM577XX_CTRL_CLKSEL_SHIFT);
+		}
+		
+		WR2(slot, BCM577XX_HOST_CONTROL, clk_sel);
+	}
 
 	/* Recalculate timeout clock frequency based on the new sd clock. */
 	if (slot->quirks & SDHCI_QUIRK_DATA_TIMEOUT_USES_SDCLK)
@@ -251,7 +282,7 @@ sdhci_set_clock(struct sdhci_slot *slot, uint32_t clock)
 
 	if (slot->version < SDHCI_SPEC_300) {
 		/* Looking for highest freq <= clock. */
-		res = slot->max_clk;
+		res = clk_base;
 		for (div = 1; div < SDHCI_200_MAX_DIVIDER; div <<= 1) {
 			if (res <= clock)
 				break;
@@ -262,11 +293,11 @@ sdhci_set_clock(struct sdhci_slot *slot, uint32_t clock)
 	}
 	else {
 		/* Version 3.0 divisors are multiples of two up to 1023*2 */
-		if (clock >= slot->max_clk)
+		if (clock >= clk_base)
 			div = 0;
 		else {
 			for (div = 2; div < SDHCI_300_MAX_DIVIDER; div += 2) { 
-				if ((slot->max_clk / div) <= clock) 
+				if ((clk_base / div) <= clock) 
 					break;
 			}
 		}
@@ -274,8 +305,8 @@ sdhci_set_clock(struct sdhci_slot *slot, uint32_t clock)
 	}
 
 	if (bootverbose || sdhci_debug)
-		slot_printf(slot, "Divider %d for freq %d (max %d)\n", 
-			div, clock, slot->max_clk);
+		slot_printf(slot, "Divider %d for freq %d (base %d)\n", 
+			div, clock, clk_base);
 
 	/* Now we have got divider, set it. */
 	clk = (div & SDHCI_DIVIDER_MASK) << SDHCI_DIVIDER_SHIFT;
