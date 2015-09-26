@@ -65,6 +65,7 @@ session_open(bthid_server_p srv, hid_device_p const d)
 	memcpy(&s->bdaddr, &d->bdaddr, sizeof(s->bdaddr));
 	s->ctrl = -1;
 	s->intr = -1;
+	s->ctx = NULL;
 
 	if (d->keyboard) {
 		/* Open /dev/vkbdctl */
@@ -175,6 +176,7 @@ session_close(bthid_session_p s)
 			s->srv->maxfd --;
 	}
 
+	free(s->ctx);
 	free(s->keys1);
 	free(s->keys2);
 
