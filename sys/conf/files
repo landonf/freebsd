@@ -1068,6 +1068,9 @@ dev/ath/ath_dfs/null/dfs_null.c	optional ath \
 dev/bce/if_bce.c		optional bce
 dev/bfe/if_bfe.c		optional bfe
 dev/bge/if_bge.c		optional bge
+dev/bhnd/bhnd.c			optional bhnd
+dev/bhnd/bhnd_if.m		standard
+dev/bhnd/cores/bhnd-chipcommon.c	optional bhnd
 dev/bktr/bktr_audio.c		optional bktr pci
 dev/bktr/bktr_card.c		optional bktr pci
 dev/bktr/bktr_core.c		optional bktr pci
@@ -1075,7 +1078,6 @@ dev/bktr/bktr_i2c.c		optional bktr pci smbus
 dev/bktr/bktr_os.c		optional bktr pci
 dev/bktr/bktr_tuner.c		optional bktr pci
 dev/bktr/msp34xx.c		optional bktr pci
-dev/broadcom/chipcommon/bcm_chipcommon.c	optional bcm_chipcommon
 dev/buslogic/bt.c		optional bt
 dev/buslogic/bt_eisa.c		optional bt eisa
 dev/buslogic/bt_isa.c		optional bt isa
