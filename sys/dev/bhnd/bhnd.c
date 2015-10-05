@@ -53,48 +53,48 @@ __FBSDID("$FreeBSD$");
 #include <sys/module.h>
 
 static int
-bhnd_cc_probe(device_t dev)
+bhnd_probe(device_t dev)
 {
 	return (ENXIO);
 }
 
 static int
-bhnd_cc_attach(device_t dev)
+bhnd_attach(device_t dev)
 {
 	return (ENXIO);
 }
 
 static int
-bhnd_cc_detach(device_t dev)
+bhnd_detach(device_t dev)
 {
 	return (ENXIO);
 }
 
 static int
-bhnd_cc_suspend(device_t dev)
+bhnd_suspend(device_t dev)
 {
 	return (ENXIO);
 }
 
 static int
-bhnd_cc_resume(device_t dev)
+bhnd_resume(device_t dev)
 {
 	return (ENXIO);
 }
 
 static device_method_t bhnd_cc_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_probe,		bhnd_cc_probe),
-	DEVMETHOD(device_attach,	bhnd_cc_attach),
-	DEVMETHOD(device_detach,	bhnd_cc_detach),
-	DEVMETHOD(device_suspend,	bhnd_cc_suspend),
-	DEVMETHOD(device_resume,	bhnd_cc_resume),
+	DEVMETHOD(device_probe,		bhnd_probe),
+	DEVMETHOD(device_attach,	bhnd_attach),
+	DEVMETHOD(device_detach,	bhnd_detach),
+	DEVMETHOD(device_suspend,	bhnd_suspend),
+	DEVMETHOD(device_resume,	bhnd_resume),
 	DEVMETHOD_END
 };
 static driver_t bhnd_cc_driver = {
-	"bhnd_chipcommon",
-	bhnd_cc_methods,
-	sizeof(struct bhnd_chipcommon_softc)
+	"bhnd",
+	bhnd_methods,
+	sizeof(struct bhnd_softc)
 };
 static devclass_t bhnd_cc_devclass;
 DRIVER_MODULE(bhnd_chipcommon, bhnd, bhnd_cc_driver, bhnd_cc_devclass, 0, 0);

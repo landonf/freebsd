@@ -27,5 +27,12 @@
  * THE POSSIBILITY OF SUCH DAMAGES.
  */
 
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
+
+/*
+ * Broadcom Home Networking Division (HND) data structure definitions.
+ */
+
 struct bhnd_softc {
 };
