@@ -31,20 +31,7 @@
 __FBSDID("$FreeBSD$");
 
 /*
- * Broadcom Home Networking Division (HND) Bus Driver.
- * 
- * The Broadcom HND family of devices consists of both SoCs and host-connected
- * networking chipsets containing a common family of Broadcom IP cores, including
- * an integrated MIPS and/or ARM processors.
- * 
- * HND devices expose a nearly identical interface whether accessible over a native
- * SoC interconnect, or when connected via a host interface such as PCIe. As a result,
- * the majority of hardware support code should be re-usable across host drivers for HND
- * networking chipsets, as well as FreeBSD support for Broadcom MIPS/ARM HND SoCs.
- * 
- * Earlier HND models used the siba(4) on-chip interconnect, while later models
- * use baxi(4); the programming model is almost entirely independent
- * of the actual underlying interconect.
+ * Common BHND PCI Support
  */
 
 #include <sys/param.h>
@@ -52,51 +39,86 @@ __FBSDID("$FreeBSD$");
 #include <sys/bus.h>
 #include <sys/module.h>
 
-#include "bhndvar.h"
+// TODO
+struct bhnd_pci_softc {};
 
 static int
-bhnd_probe(device_t dev)
+bhnd_pci_probe(device_t dev)
 {
 	return (ENXIO);
 }
 
 static int
-bhnd_attach(device_t dev)
+bhnd_pci_attach(device_t dev)
 {
 	return (ENXIO);
 }
 
 static int
-bhnd_detach(device_t dev)
+bhnd_pci_detach(device_t dev)
 {
 	return (ENXIO);
 }
 
 static int
-bhnd_suspend(device_t dev)
+bhnd_pci_suspend(device_t dev)
 {
 	return (ENXIO);
 }
 
 static int
-bhnd_resume(device_t dev)
+bhnd_pci_resume(device_t dev)
 {
 	return (ENXIO);
 }
 
-static device_method_t bhnd_methods[] = {
+static int
+bhnd_pci_print_child(device_t dev, device_t child)
+{
+	return (ENOENT);
+}
+
+static void
+bhnd_pci_probe_nomatch(device_t dev, device_t child)
+{
+}
+
+static int
+bhnd_pci_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
+{
+	return (ENOENT);
+}
+
+static int
+bhnd_pci_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
+{
+	return (ENOENT);
+}
+
+
+static device_method_t bhnd_pci_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_probe,		bhnd_probe),
-	DEVMETHOD(device_attach,	bhnd_attach),
-	DEVMETHOD(device_detach,	bhnd_detach),
-	DEVMETHOD(device_suspend,	bhnd_suspend),
-	DEVMETHOD(device_resume,	bhnd_resume),
+	DEVMETHOD(device_probe,		bhnd_pci_probe),
+	DEVMETHOD(device_attach,	bhnd_pci_attach),
+	DEVMETHOD(device_detach,	bhnd_pci_detach),
+	DEVMETHOD(device_shutdown,	bus_generic_shutdown),
+	DEVMETHOD(device_suspend,	bhnd_pci_suspend),
+	DEVMETHOD(device_resume,	bhnd_pci_resume),
+	
+	/* Bus interface */
+	DEVMETHOD(bus_print_child,	bhnd_pci_print_child),
+	DEVMETHOD(bus_probe_nomatch,	bhnd_pci_probe_nomatch),
+	DEVMETHOD(bus_read_ivar,	bhnd_pci_read_ivar),
+	DEVMETHOD(bus_write_ivar,	bhnd_pci_write_ivar),
+	
+	// TODO: Additional bus_* methods required.
+	
 	DEVMETHOD_END
 };
-static driver_t bhnd_driver = {
-	"bhnd",
-	bhnd_methods,
-	sizeof(struct bhnd_softc)
+static driver_t bhnd_pci_driver = {
+	"bhnd_pci",
+	bhnd_pci_methods,
+	sizeof(struct bhnd_pci_softc)
 };
-static devclass_t bhnd_devclass;
-DRIVER_MODULE(bhnd, bhnd, bhnd_driver, bhnd_devclass, 0, 0);
+static devclass_t bhnd_pci_devclass;
+DRIVER_MODULE(bhnd_pci, bhnd, bhnd_pci_driver, bhnd_pci_devclass, 0, 0);
