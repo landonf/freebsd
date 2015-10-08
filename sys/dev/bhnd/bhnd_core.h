@@ -1,5 +1,5 @@
 /*
- * Broadcom device-specific manifest constants.
+ * Broadcom SOC Interconnect Constants.
  *
  * This file was derived from the hndsoc.h header provided with
  * Broadcom's initial brcm80211 Linux driver release, as
