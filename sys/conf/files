@@ -1068,10 +1068,8 @@ dev/ath/ath_dfs/null/dfs_null.c	optional ath \
 dev/bce/if_bce.c		optional bce
 dev/bfe/if_bfe.c		optional bfe
 dev/bge/if_bge.c		optional bge
-dev/bhnd/bhnd.c			optional bhnd
-# TODO: bhnd_pci.c is jammed in under 'bhnd' here, but
-# instead should have its own configuration option.
-dev/bhnd/bhnd_pci.c			optional bhnd
+dev/bhnd/bhnd.c			optional bhnd | bhnd_pci
+dev/bhnd/bhnd_pci.c			optional bhnd_pci pci
 dev/bhnd/bhnd_if.m		standard
 dev/bhnd/cores/bhnd-chipcommon.c	optional bhnd
 dev/bktr/bktr_audio.c		optional bktr pci

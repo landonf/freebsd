@@ -39,19 +39,48 @@ __FBSDID("$FreeBSD$");
 #include <sys/bus.h>
 #include <sys/module.h>
 
+#include <dev/pci/pcireg.h>
+#include <dev/pci/pcivar.h>
+
+#include <dev/bhnd/bhndvar.h>
+
 // TODO
 struct bhnd_pci_softc {};
+
+#define	PCI_VENDOR_BROADCOM		0x14e4
+
+static const struct bhnd_pci_device {
+	uint16_t	vendor;
+	uint16_t	device;
+	const char	*desc;
+} bhnd_pci_devices[] = {
+	{ PCI_VENDOR_BROADCOM,	0x4331,	"Broadcom BCM4331 802.11a/b/g/n Wireless" },
+	{ 0, 0, NULL }
+};
 
 static int
 bhnd_pci_probe(device_t dev)
 {
+	const struct bhnd_pci_device *ident;
+		
+	for (ident = bhnd_pci_devices; ident->vendor != 0; ident++) {
+		if (pci_get_vendor(dev) == ident->vendor && pci_get_device(dev) == ident->device) {
+			device_set_desc(dev, ident->desc);
+			return (BUS_PROBE_DEFAULT);
+		}
+	}
+
 	return (ENXIO);
 }
 
 static int
 bhnd_pci_attach(device_t dev)
 {
-	return (ENXIO);
+	// struct bhnd_pci_softc *sc = device_get_softc(dev);
+	
+	// TODO
+	
+	return (0);
 }
 
 static int
@@ -116,9 +145,10 @@ static device_method_t bhnd_pci_methods[] = {
 	DEVMETHOD_END
 };
 static driver_t bhnd_pci_driver = {
-	"bhnd_pci",
+	"bhnd",
 	bhnd_pci_methods,
 	sizeof(struct bhnd_pci_softc)
 };
-static devclass_t bhnd_pci_devclass;
-DRIVER_MODULE(bhnd_pci, bhnd, bhnd_pci_driver, bhnd_pci_devclass, 0, 0);
+static devclass_t bhnd_devclass;
+DRIVER_MODULE(bhnd_pci, pci, bhnd_pci_driver, bhnd_devclass, 0, 0);
+MODULE_DEPEND(bhnd_pci, pci, 1, 1, 1);
