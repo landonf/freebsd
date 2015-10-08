@@ -26,21 +26,21 @@
 #define	_BHND_BHND_DEVICE_IDS_H_
 
 /* PCI vendor IDs */
-#define	VENDOR_EPIGRAM		0xfeda
-#define	VENDOR_BROADCOM		0x14e4
-#define	VENDOR_3COM		0x10b7
-#define	VENDOR_NETGEAR		0x1385
-#define	VENDOR_DIAMOND		0x1092
-#define	VENDOR_INTEL		0x8086
-#define	VENDOR_DELL		0x1028
-#define	VENDOR_HP		0x103c
-#define	VENDOR_HP_COMPAQ	0x0e11
-#define	VENDOR_APPLE		0x106b
-#define VENDOR_SI_IMAGE		0x1095		/* Silicon Image, used by Arasan SDIO Host */
-#define VENDOR_BUFFALO		0x1154		/* Buffalo vendor id */
-#define VENDOR_TI		0x104c		/* Texas Instruments */
-#define VENDOR_RICOH		0x1180		/* Ricoh */
-#define VENDOR_JMICRON		0x197b
+#define	PCI_VENDOR_EPIGRAM	0xfeda
+#define	PCI_VENDOR_BROADCOM	0x14e4
+#define	PCI_VENDOR_3COM		0x10b7
+#define	PCI_VENDOR_NETGEAR	0x1385
+#define	PCI_VENDOR_DIAMOND	0x1092
+#define	PCI_VENDOR_INTEL	0x8086
+#define	PCI_VENDOR_DELL		0x1028
+#define	PCI_VENDOR_HP		0x103c
+#define	PCI_VENDOR_HP_COMPAQ	0x0e11
+#define	PCI_VENDOR_APPLE	0x106b
+#define	PCI_VENDOR_SI_IMAGE	0x1095		/* Silicon Image, used by Arasan SDIO Host */
+#define	PCI_VENDOR_BUFFALO	0x1154		/* Buffalo vendor id */
+#define	PCI_VENDOR_TI		0x104c		/* Texas Instruments */
+#define	PCI_VENDOR_RICOH	0x1180		/* Ricoh */
+#define	PCI_VENDOR_JMICRON	0x197b
 
 
 /* PCMCIA vendor IDs */
@@ -75,102 +75,102 @@
 #define BCM_HWUSB_PID_43239     43239
 
 /* PCI Device IDs */
-#define	BCM4210_DEVICE_ID	0x1072		/* never used */
-#define	BCM4230_DEVICE_ID	0x1086		/* never used */
-#define	BCM4401_ENET_ID		0x170c		/* 4401b0 production enet cards */
-#define	BCM3352_DEVICE_ID	0x3352		/* bcm3352 device id */
-#define	BCM3360_DEVICE_ID	0x3360		/* bcm3360 device id */
-#define	BCM4211_DEVICE_ID	0x4211
-#define	BCM4231_DEVICE_ID	0x4231
-#define	BCM4303_D11B_ID		0x4303		/* 4303 802.11b */
-#define	BCM4311_D11G_ID		0x4311		/* 4311 802.11b/g id */
-#define	BCM4311_D11DUAL_ID	0x4312		/* 4311 802.11a/b/g id */
-#define	BCM4311_D11A_ID		0x4313		/* 4311 802.11a id */
-#define	BCM4328_D11DUAL_ID	0x4314		/* 4328/4312 802.11a/g id */
-#define	BCM4328_D11G_ID		0x4315		/* 4328/4312 802.11g id */
-#define	BCM4328_D11A_ID		0x4316		/* 4328/4312 802.11a id */
-#define	BCM4318_D11G_ID		0x4318		/* 4318 802.11b/g id */
-#define	BCM4318_D11DUAL_ID	0x4319		/* 4318 802.11a/b/g id */
-#define	BCM4318_D11A_ID		0x431a		/* 4318 802.11a id */
-#define	BCM4325_D11DUAL_ID	0x431b		/* 4325 802.11a/g id */
-#define	BCM4325_D11G_ID		0x431c		/* 4325 802.11g id */
-#define	BCM4325_D11A_ID		0x431d		/* 4325 802.11a id */
-#define	BCM4306_D11G_ID		0x4320		/* 4306 802.11g */
-#define	BCM4306_D11A_ID		0x4321		/* 4306 802.11a */
-#define	BCM4306_UART_ID		0x4322		/* 4306 uart */
-#define	BCM4306_V90_ID		0x4323		/* 4306 v90 codec */
-#define	BCM4306_D11DUAL_ID	0x4324		/* 4306 dual A+B */
-#define	BCM4306_D11G_ID2	0x4325		/* BCM4306_D11G_ID; INF w/loose binding war */
-#define	BCM4321_D11N_ID		0x4328		/* 4321 802.11n dualband id */
-#define	BCM4321_D11N2G_ID	0x4329		/* 4321 802.11n 2.4Ghz band id */
-#define	BCM4321_D11N5G_ID	0x432a		/* 4321 802.11n 5Ghz band id */
-#define BCM4322_D11N_ID		0x432b		/* 4322 802.11n dualband device */
-#define BCM4322_D11N2G_ID	0x432c		/* 4322 802.11n 2.4GHz device */
-#define BCM4322_D11N5G_ID	0x432d		/* 4322 802.11n 5GHz device */
-#define BCM4329_D11N_ID		0x432e		/* 4329 802.11n dualband device */
-#define BCM4329_D11N2G_ID	0x432f		/* 4329 802.11n 2.4G device */
-#define BCM4329_D11N5G_ID	0x4330		/* 4329 802.11n 5G device */
-#define	BCM4315_D11DUAL_ID	0x4334		/* 4315 802.11a/g id */
-#define	BCM4315_D11G_ID		0x4335		/* 4315 802.11g id */
-#define	BCM4315_D11A_ID		0x4336		/* 4315 802.11a id */
-#define BCM4319_D11N_ID		0x4337		/* 4319 802.11n dualband device */
-#define BCM4319_D11N2G_ID	0x4338		/* 4319 802.11n 2.4G device */
-#define BCM4319_D11N5G_ID	0x4339		/* 4319 802.11n 5G device */
-#define BCM43231_D11N2G_ID	0x4340		/* 43231 802.11n 2.4GHz device */
-#define BCM43221_D11N2G_ID	0x4341		/* 43221 802.11n 2.4GHz device */
-#define BCM43222_D11N_ID	0x4350		/* 43222 802.11n dualband device */
-#define BCM43222_D11N2G_ID	0x4351		/* 43222 802.11n 2.4GHz device */
-#define BCM43222_D11N5G_ID	0x4352		/* 43222 802.11n 5GHz device */
-#define BCM43224_D11N_ID	0x4353		/* 43224 802.11n dualband device */
-#define BCM43224_D11N_ID_VEN1	0x0576		/* Vendor specific 43224 802.11n db device */
-#define BCM43226_D11N_ID	0x4354		/* 43226 802.11n dualband device */
-#define BCM43236_D11N_ID	0x4346		/* 43236 802.11n dualband device */
-#define BCM43236_D11N2G_ID	0x4347		/* 43236 802.11n 2.4GHz device */
-#define BCM43236_D11N5G_ID	0x4348		/* 43236 802.11n 5GHz device */
-#define BCM43225_D11N2G_ID	0x4357		/* 43225 802.11n 2.4GHz device */
-#define BCM43421_D11N_ID	0xA99D		/* 43421 802.11n dualband device */
-#define BCM4313_D11N2G_ID	0x4727		/* 4313 802.11n 2.4G device */
-#define BCM4330_D11N_ID         0x4360          /* 4330 802.11n dualband device */
-#define BCM4330_D11N2G_ID       0x4361          /* 4330 802.11n 2.4G device */
-#define BCM4330_D11N5G_ID       0x4362          /* 4330 802.11n 5G device */
-#define BCM4336_D11N_ID		0x4343		/* 4336 802.11n 2.4GHz device */
-#define BCM6362_D11N_ID		0x435f		/* 6362 802.11n dualband device */
-#define BCM6362_D11N2G_ID	0x433f		/* 6362 802.11n 2.4Ghz band id */
-#define BCM6362_D11N5G_ID	0x434f		/* 6362 802.11n 5Ghz band id */
-#define BCM4331_D11N_ID		0x4331		/* 4331 802.11n dualband id */
-#define BCM4331_D11N2G_ID	0x4332		/* 4331 802.11n 2.4Ghz band id */
-#define BCM4331_D11N5G_ID	0x4333		/* 4331 802.11n 5Ghz band id */
-#define BCM43237_D11N_ID	0x4355		/* 43237 802.11n dualband device */
-#define BCM43237_D11N5G_ID	0x4356		/* 43237 802.11n 5GHz device */
-#define BCM43227_D11N2G_ID	0x4358		/* 43228 802.11n 2.4GHz device */
-#define BCM43228_D11N_ID	0x4359		/* 43228 802.11n DualBand device */
-#define BCM43228_D11N5G_ID	0x435a		/* 43228 802.11n 5GHz device */
-#define BCM43362_D11N_ID	0x4363		/* 43362 802.11n 2.4GHz device */
-#define BCM43239_D11N_ID	0x4370		/* 43239 802.11n dualband device */
-#define BCM4324_D11N_ID		0x4374		/* 4324 802.11n dualband device */
-#define BCM43217_D11N2G_ID	0x43a9		/* 43217 802.11n 2.4GHz device */
-#define BCM43131_D11N2G_ID	0x43aa		/* 43131 802.11n 2.4GHz device */
-#define BCM4314_D11N2G_ID	0x4364		/* 4314 802.11n 2.4G device */
-#define BCM43142_D11N2G_ID	0x4365		/* 43142 802.11n 2.4G device */
-#define BCM43143_D11N2G_ID	0x4366		/* 43143 802.11n 2.4G device */
-#define BCM4334_D11N_ID		0x4380		/* 4334 802.11n dualband device */
-#define BCM4334_D11N2G_ID	0x4381		/* 4334 802.11n 2.4G device */
-#define BCM4334_D11N5G_ID	0x4382		/* 4334 802.11n 5G device */
-#define BCM43342_D11N_ID	0x4383		/* 43342 802.11n dualband device */
-#define BCM43342_D11N2G_ID	0x4384		/* 43342 802.11n 2.4G device */
-#define BCM43342_D11N5G_ID	0x4385		/* 43342 802.11n 5G device */
-#define BCM43341_D11N_ID	0x4386		/* 43341 802.11n dualband device */
-#define BCM43341_D11N2G_ID	0x4387		/* 43341 802.11n 2.4G device */
-#define BCM43341_D11N5G_ID	0x4388		/* 43341 802.11n 5G device */
-#define BCM4360_D11AC_ID	0x43a0
-#define BCM4360_D11AC2G_ID	0x43a1
-#define BCM4360_D11AC5G_ID	0x43a2
-#define BCM4335_D11AC_ID	0x43ae
-#define BCM4335_D11AC2G_ID	0x43af
-#define BCM4335_D11AC5G_ID	0x43b0
-#define BCM4352_D11AC_ID	0x43b1		/* 4352 802.11ac dualband device */
-#define BCM4352_D11AC2G_ID	0x43b2		/* 4352 802.11ac 2.4G device */
-#define BCM4352_D11AC5G_ID	0x43b3		/* 4352 802.11ac 5G device */
+#define	PCI_BCM4210_DEVICE_ID	0x1072		/* never used */
+#define	PCI_BCM4230_DEVICE_ID	0x1086		/* never used */
+#define	PCI_BCM4401_ENET_ID	0x170c		/* 4401b0 production enet cards */
+#define	PCI_BCM3352_DEVICE_ID	0x3352		/* bcm3352 device id */
+#define	PCI_BCM3360_DEVICE_ID	0x3360		/* bcm3360 device id */
+#define	PCI_BCM4211_DEVICE_ID	0x4211
+#define	PCI_BCM4231_DEVICE_ID	0x4231
+#define	PCI_BCM4303_D11B_ID	0x4303		/* 4303 802.11b */
+#define	PCI_BCM4311_D11G_ID	0x4311		/* 4311 802.11b/g id */
+#define	PCI_BCM4311_D11DUAL_ID	0x4312		/* 4311 802.11a/b/g id */
+#define	PCI_BCM4311_D11A_ID	0x4313		/* 4311 802.11a id */
+#define	PCI_BCM4328_D11DUAL_ID	0x4314		/* 4328/4312 802.11a/g id */
+#define	PCI_BCM4328_D11G_ID	0x4315		/* 4328/4312 802.11g id */
+#define	PCI_BCM4328_D11A_ID	0x4316		/* 4328/4312 802.11a id */
+#define	PCI_BCM4318_D11G_ID	0x4318		/* 4318 802.11b/g id */
+#define	PCI_BCM4318_D11DUAL_ID	0x4319		/* 4318 802.11a/b/g id */
+#define	PCI_BCM4318_D11A_ID	0x431a		/* 4318 802.11a id */
+#define	PCI_BCM4325_D11DUAL_ID	0x431b		/* 4325 802.11a/g id */
+#define	PCI_BCM4325_D11G_ID	0x431c		/* 4325 802.11g id */
+#define	PCI_BCM4325_D11A_ID	0x431d		/* 4325 802.11a id */
+#define	PCI_BCM4306_D11G_ID	0x4320		/* 4306 802.11g */
+#define	PCI_BCM4306_D11A_ID	0x4321		/* 4306 802.11a */
+#define	PCI_BCM4306_UART_ID	0x4322		/* 4306 uart */
+#define	PCI_BCM4306_V90_ID	0x4323		/* 4306 v90 codec */
+#define	PCI_BCM4306_D11DUAL_ID	0x4324		/* 4306 dual A+B */
+#define	PCI_BCM4306_D11G_ID2	0x4325		/* BCM4306_D11G_ID; INF w/loose binding war */
+#define	PCI_BCM4321_D11N_ID	0x4328		/* 4321 802.11n dualband id */
+#define	PCI_BCM4321_D11N2G_ID	0x4329		/* 4321 802.11n 2.4Ghz band id */
+#define	PCI_BCM4321_D11N5G_ID	0x432a		/* 4321 802.11n 5Ghz band id */
+#define PCI_BCM4322_D11N_ID	0x432b		/* 4322 802.11n dualband device */
+#define PCI_BCM4322_D11N2G_ID	0x432c		/* 4322 802.11n 2.4GHz device */
+#define PCI_BCM4322_D11N5G_ID	0x432d		/* 4322 802.11n 5GHz device */
+#define PCI_BCM4329_D11N_ID	0x432e		/* 4329 802.11n dualband device */
+#define PCI_BCM4329_D11N2G_ID	0x432f		/* 4329 802.11n 2.4G device */
+#define PCI_BCM4329_D11N5G_ID	0x4330		/* 4329 802.11n 5G device */
+#define	PCI_BCM4315_D11DUAL_ID	0x4334		/* 4315 802.11a/g id */
+#define	PCI_BCM4315_D11G_ID	0x4335		/* 4315 802.11g id */
+#define	PCI_BCM4315_D11A_ID	0x4336		/* 4315 802.11a id */
+#define PCI_BCM4319_D11N_ID	0x4337		/* 4319 802.11n dualband device */
+#define PCI_BCM4319_D11N2G_ID	0x4338		/* 4319 802.11n 2.4G device */
+#define PCI_BCM4319_D11N5G_ID	0x4339		/* 4319 802.11n 5G device */
+#define PCI_BCM43231_D11N2G_ID	0x4340		/* 43231 802.11n 2.4GHz device */
+#define PCI_BCM43221_D11N2G_ID	0x4341		/* 43221 802.11n 2.4GHz device */
+#define PCI_BCM43222_D11N_ID	0x4350		/* 43222 802.11n dualband device */
+#define PCI_BCM43222_D11N2G_ID	0x4351		/* 43222 802.11n 2.4GHz device */
+#define PCI_BCM43222_D11N5G_ID	0x4352		/* 43222 802.11n 5GHz device */
+#define PCI_BCM43224_D11N_ID	0x4353		/* 43224 802.11n dualband device */
+#define PCI_BCM43224_D11N_ID_VEN1	0x0576	/* Vendor specific 43224 802.11n db device */
+#define PCI_BCM43226_D11N_ID	0x4354		/* 43226 802.11n dualband device */
+#define PCI_BCM43236_D11N_ID	0x4346		/* 43236 802.11n dualband device */
+#define PCI_BCM43236_D11N2G_ID	0x4347		/* 43236 802.11n 2.4GHz device */
+#define PCI_BCM43236_D11N5G_ID	0x4348		/* 43236 802.11n 5GHz device */
+#define PCI_BCM43225_D11N2G_ID	0x4357		/* 43225 802.11n 2.4GHz device */
+#define PCI_BCM43421_D11N_ID	0xA99D		/* 43421 802.11n dualband device */
+#define PCI_BCM4313_D11N2G_ID	0x4727		/* 4313 802.11n 2.4G device */
+#define PCI_BCM4330_D11N_ID	0x4360          /* 4330 802.11n dualband device */
+#define PCI_BCM4330_D11N2G_ID	0x4361          /* 4330 802.11n 2.4G device */
+#define PCI_BCM4330_D11N5G_ID	0x4362          /* 4330 802.11n 5G device */
+#define PCI_BCM4336_D11N_ID	0x4343		/* 4336 802.11n 2.4GHz device */
+#define PCI_BCM6362_D11N_ID	0x435f		/* 6362 802.11n dualband device */
+#define PCI_BCM6362_D11N2G_ID	0x433f		/* 6362 802.11n 2.4Ghz band id */
+#define PCI_BCM6362_D11N5G_ID	0x434f		/* 6362 802.11n 5Ghz band id */
+#define PCI_BCM4331_D11N_ID	0x4331		/* 4331 802.11n dualband id */
+#define PCI_BCM4331_D11N2G_ID	0x4332		/* 4331 802.11n 2.4Ghz band id */
+#define PCI_BCM4331_D11N5G_ID	0x4333		/* 4331 802.11n 5Ghz band id */
+#define PCI_BCM43237_D11N_ID	0x4355		/* 43237 802.11n dualband device */
+#define PCI_BCM43237_D11N5G_ID	0x4356		/* 43237 802.11n 5GHz device */
+#define PCI_BCM43227_D11N2G_ID	0x4358		/* 43228 802.11n 2.4GHz device */
+#define PCI_BCM43228_D11N_ID	0x4359		/* 43228 802.11n DualBand device */
+#define PCI_BCM43228_D11N5G_ID	0x435a		/* 43228 802.11n 5GHz device */
+#define PCI_BCM43362_D11N_ID	0x4363		/* 43362 802.11n 2.4GHz device */
+#define PCI_BCM43239_D11N_ID	0x4370		/* 43239 802.11n dualband device */
+#define PCI_BCM4324_D11N_ID	0x4374		/* 4324 802.11n dualband device */
+#define PCI_BCM43217_D11N2G_ID	0x43a9		/* 43217 802.11n 2.4GHz device */
+#define PCI_BCM43131_D11N2G_ID	0x43aa		/* 43131 802.11n 2.4GHz device */
+#define PCI_BCM4314_D11N2G_ID	0x4364		/* 4314 802.11n 2.4G device */
+#define PCI_BCM43142_D11N2G_ID	0x4365		/* 43142 802.11n 2.4G device */
+#define PCI_BCM43143_D11N2G_ID	0x4366		/* 43143 802.11n 2.4G device */
+#define PCI_BCM4334_D11N_ID	0x4380		/* 4334 802.11n dualband device */
+#define PCI_BCM4334_D11N2G_ID	0x4381		/* 4334 802.11n 2.4G device */
+#define PCI_BCM4334_D11N5G_ID	0x4382		/* 4334 802.11n 5G device */
+#define PCI_BCM43342_D11N_ID	0x4383		/* 43342 802.11n dualband device */
+#define PCI_BCM43342_D11N2G_ID	0x4384		/* 43342 802.11n 2.4G device */
+#define PCI_BCM43342_D11N5G_ID	0x4385		/* 43342 802.11n 5G device */
+#define PCI_BCM43341_D11N_ID	0x4386		/* 43341 802.11n dualband device */
+#define PCI_BCM43341_D11N2G_ID	0x4387		/* 43341 802.11n 2.4G device */
+#define PCI_BCM43341_D11N5G_ID	0x4388		/* 43341 802.11n 5G device */
+#define PCI_BCM4360_D11AC_ID	0x43a0
+#define PCI_BCM4360_D11AC2G_ID	0x43a1
+#define PCI_BCM4360_D11AC5G_ID	0x43a2
+#define PCI_BCM4335_D11AC_ID	0x43ae
+#define PCI_BCM4335_D11AC2G_ID	0x43af
+#define PCI_BCM4335_D11AC5G_ID	0x43b0
+#define PCI_BCM4352_D11AC_ID	0x43b1		/* 4352 802.11ac dualband device */
+#define PCI_BCM4352_D11AC2G_ID	0x43b2		/* 4352 802.11ac 2.4G device */
+#define PCI_BCM4352_D11AC5G_ID	0x43b3		/* 4352 802.11ac 5G device */
 
 /* PCI Subsystem ID */
 #define BCM943228HMB_SSID_VEN1	0x0607

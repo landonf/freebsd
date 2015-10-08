@@ -32,7 +32,4 @@
 #ifndef _BHND_BHNDREG_H_
 #define _BHND_BHNDREG_H_
 
-/* PCI IDs */
-#define	PCI_VENDOR_BROADCOM		0x14e4
-
 #endif /* _BHND_BHNDREG_H_ */
