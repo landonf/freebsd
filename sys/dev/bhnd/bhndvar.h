@@ -25,10 +25,12 @@
  * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGES.
+ * 
+ * $FreeBSD$
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
+#ifndef _BHND_BHNDVAR_H_
+#define _BHND_BHNDVAR_H_
 
 /*
  * Broadcom Home Networking Division (HND) data structure definitions.
@@ -36,3 +38,5 @@ __FBSDID("$FreeBSD$");
 
 struct bhnd_softc {
 };
+
+#endif /* _BHND_BHNDVAR_H_ */

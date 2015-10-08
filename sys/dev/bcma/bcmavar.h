@@ -29,10 +29,14 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_BHNDREG_H_
-#define _BHND_BHNDREG_H_
+#ifndef _BCMA_BCMAVAR_H_
+#define _BCMA_BCMAVAR_H_
 
-/* PCI IDs */
-#define	PCI_VENDOR_BROADCOM		0x14e4
+/*
+ * Broadcom AMBA backplane data structure definitions.
+ */
 
-#endif /* _BHND_BHNDREG_H_ */
+struct bcma_softc {
+};
+
+#endif /* _BCMA_BCMAVAR_H_ */

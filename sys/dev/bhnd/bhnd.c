@@ -43,7 +43,7 @@ __FBSDID("$FreeBSD$");
  * networking chipsets, as well as FreeBSD support for Broadcom MIPS/ARM HND SoCs.
  * 
  * Earlier HND models used the siba(4) on-chip interconnect, while later models
- * use baxi(4); the programming model is almost entirely independent
+ * use bcma(4); the programming model is almost entirely independent
  * of the actual underlying interconect.
  */
 
