@@ -37,7 +37,7 @@
 #define BHND_PCI_BACKPLANE_ADDR		0xa0	/* address an arbitrary location on the system backplane */
 #define BHND_PCI_BACKPLANE_DATA		0xa4	/* data at the location specified by above address */
 #define	BHND_PCI_CLK_CTL_ST		0xa8	/* pci config space clock control/status (>=rev14) */
-#define	BHND_PCI_BAR0_WIN2		0xac	/* backplane addres space accessed by second 4KB of BAR0 */
+#define	BHND_PCI_BAR0_WIN2		0xac	/* backplane address space accessed by second 4KB of BAR0 */
 #define	BHND_PCI_GPIO_IN		0xb0	/* pci config space gpio input (>=rev3) */
 #define	BHND_PCI_GPIO_OUT		0xb4	/* pci config space gpio output (>=rev3) */
 #define	BHND_PCI_GPIO_OUTEN		0xb8	/* pci config space gpio output enable (>=rev3) */
