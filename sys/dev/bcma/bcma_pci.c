@@ -39,13 +39,17 @@ __FBSDID("$FreeBSD$");
 #include <sys/bus.h>
 #include <sys/module.h>
 
+#include <machine/bus.h>
+#include <sys/rman.h>
+#include <machine/resource.h>
+
 #include <dev/pci/pcireg.h>
 #include <dev/pci/pcivar.h>
 
 #include <dev/bhnd/bhnd_core.h>
 #include <dev/bhnd/bhnd_device_ids.h>
 
-#include "bcmavar.h"
+#include "bcma_pcivar.h"
 
 static const struct bcma_pci_device {
 	uint16_t	vendor;
@@ -56,6 +60,12 @@ static const struct bcma_pci_device {
 	{ PCI_VENDOR_BROADCOM,	PCI_BCM4331_D11N2G_ID,	"Broadcom BCM4331 802.11b/g/n (2GHz) Wireless" },
 	{ PCI_VENDOR_BROADCOM,	PCI_BCM4331_D11N5G_ID,	"Broadcom BCM4331 802.11a/b/g/n (5GHz) Wireless" },
 	{ 0, 0, NULL }
+};
+
+static struct resource_spec bcma_pci_bmem_spec[] = {
+	{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
+	{ SYS_RES_MEMORY,	PCIR_BAR(1),	RF_ACTIVE },
+	{ -1,			0,		0 }
 };
 
 static int
@@ -76,9 +86,21 @@ bcma_pci_probe(device_t dev)
 static int
 bcma_pci_attach(device_t dev)
 {
-	// struct bcma_softc *sc = device_get_softc(dev);
+	struct bcma_pci_softc *sc = device_get_softc(dev);
 	
-	// TODO
+	sc->bcma_dev = dev;
+	
+	pci_enable_busmaster(dev);
+	
+	/*
+	 * Map control/status registers.
+	 */
+		
+	/* Backplane address space */
+	if (bus_alloc_resources(dev, bcma_pci_bmem_spec, sc->bmem_res)) {
+		device_printf(dev, "could not allocate resources\n");
+		return (ENXIO);
+	}
 	
 	return (0);
 }
@@ -86,7 +108,11 @@ bcma_pci_attach(device_t dev)
 static int
 bcma_pci_detach(device_t dev)
 {
-	return (ENXIO);
+	struct bcma_pci_softc *sc = device_get_softc(dev);
+
+	bus_release_resources(dev, bcma_pci_bmem_spec, sc->bmem_res);
+
+	return (0);
 }
 
 static int
@@ -147,7 +173,7 @@ static device_method_t bcma_pci_methods[] = {
 static driver_t bcma_pci_driver = {
 	"bcma",
 	bcma_pci_methods,
-	sizeof(struct bcma_softc)
+	sizeof(struct bcma_pci_softc)
 };
 static devclass_t bhnd_devclass;
 DRIVER_MODULE(bcma_pci, pci, bcma_pci_driver, bhnd_devclass, 0, 0);
