@@ -50,8 +50,10 @@ SUBDIR=	\
 	${_autofs} \
 	${_auxio} \
 	${_bce} \
+	bcma \
 	bfe \
 	bge \
+	bhnd \
 	${_bxe} \
 	${_bios} \
 	${_bktr} \
