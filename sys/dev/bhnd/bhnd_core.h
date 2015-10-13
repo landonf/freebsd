@@ -27,20 +27,20 @@
  * SOC Interconnect Address Map.
  * All regions may not exist on all chips.
  */
-#define SI_SDRAM_BASE		0x00000000	/* Physical SDRAM */
-#define SI_PCI_MEM		0x08000000	/* Host Mode sb2pcitranslation0 (64 MB) */
-#define SI_PCI_MEM_SZ		(64 * 1024 * 1024)
-#define SI_PCI_CFG		0x0c000000	/* Host Mode sb2pcitranslation1 (64 MB) */
-#define	SI_SDRAM_SWAPPED	0x10000000	/* Byteswapped Physical SDRAM */
-#define SI_SDRAM_R2		0x80000000	/* Region 2 for sdram (512 MB) */
+#define BHND_SDRAM_BASE		0x00000000	/* Physical SDRAM */
+#define BHND_PCI_MEM		0x08000000	/* Host Mode sb2pcitranslation0 (64 MB) */
+#define BHND_PCI_MEM_SZ		(64 * 1024 * 1024)
+#define BHND_PCI_CFG		0x0c000000	/* Host Mode sb2pcitranslation1 (64 MB) */
+#define	BHND_SDRAM_SWAPPED	0x10000000	/* Byteswapped Physical SDRAM */
+#define BHND_SDRAM_R2		0x80000000	/* Region 2 for sdram (512 MB) */
 
-#define SI_CORE_BASE	    	0x18000000	/* Per-core register blocks */
-#define SI_WRAP_BASE    	0x18100000	/* AXI wrapper register blocks (only
+#define BHND_CORE_BASE	    	0x18000000	/* Per-core register blocks */
+#define BHND_WRAP_BASE    	0x18100000	/* AXI wrapper register blocks (only
 						 * available on bcma(4) devices) */
 
-#define SI_CORE_SIZE    	0x1000		/* each core gets 4Kbytes for registers */
+#define BHND_CORE_SIZE    	0x1000		/* each core gets 4Kbytes for registers */
 
-#define SI_MAX_CORES		((SI_WRAP_BASE-SI_CORE_BASE)/SI_CORE_SIZE)	/* Maximum number of cores */
+#define BHND_MAX_CORES		((SI_WRAP_BASE-SI_CORE_BASE)/SI_CORE_SIZE)	/* Maximum number of cores */
 
 #define	SI_FASTRAM		0x19000000	/* On-chip RAM on chips that also have DDR */
 #define	SI_FASTRAM_SWAPPED	0x19800000
@@ -123,7 +123,10 @@
 #define	I2S_CORE_ID		0x834	/* I2S core */
 #define	DMEMS_CORE_ID		0x835	/* SDR/DDR1 memory controller core */
 #define	DEF_SHIM_COMP		0x837	/* SHIM component in ubus/6362 */
-#define OOB_ROUTER_CORE_ID	0x367	/* OOB router core ID */
+#define	APB_BRIDGE_CORE_ID	0x135	/* AMBA AXI-APB bridge */
+#define	AXI_CORE_ID		0x301	/* AMBA AXI GPV */
+#define	EROM_CORE_ID		0x366	/* Enumeration ROM */
+#define	OOB_ROUTER_CORE_ID	0x367	/* OOB router core ID */
 #define	DEF_AI_COMP		0xfff	/* Default component, in ai chips it maps all
 					 * unused address ranges
 					 */

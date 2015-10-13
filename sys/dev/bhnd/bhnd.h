@@ -29,14 +29,10 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_BHNDREG_H_
-#define _BHND_BHNDREG_H_
+#ifndef _BHND_BHND_H_
+#define _BHND_BHND_H_
 
-/*
- * JEDEC JEP-106 Manufacturer IDs
- */
-#define	JEDEC_MFGID_ARM		0x43b
-#define	JEDEC_MFGID_BCM		0x4bf
-#define	JEDEC_MFGID_MIPS	0x4a7
+extern const char *bhnd_core_name (uint16_t mfg_id, uint16_t core_id);
 
-#endif /* _BHND_BHNDREG_H_ */
+#endif /* _BHND_BHNDVAR_H_ */
+
