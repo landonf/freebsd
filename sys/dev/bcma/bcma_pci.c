@@ -48,7 +48,9 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/bhnd_core.h>
 #include <dev/bhnd/bhnd_device_ids.h>
+#include <dev/bhnd/bhnd_pcireg.h>
 
+#include "bcma.h"
 #include "bcma_pcivar.h"
 
 static const struct bcma_pci_device {
@@ -68,6 +70,9 @@ static struct resource_spec bcma_pci_bmem_spec[] = {
 	{ -1,			0,		0 }
 };
 
+#define BMEM_BAR0		0	/* bar0 bmem_res index */
+#define BMEM_BAR1		1	/* bar1 bmem_res index */
+
 static int
 bcma_pci_probe(device_t dev)
 {
@@ -86,21 +91,37 @@ bcma_pci_probe(device_t dev)
 static int
 bcma_pci_attach(device_t dev)
 {
-	struct bcma_pci_softc *sc = device_get_softc(dev);
+	struct bcma_pci_softc	*sc = device_get_softc(dev);
+	uint32_t		eromaddr;
 	
 	sc->bcma_dev = dev;
 	
 	pci_enable_busmaster(dev);
+
 	
 	/*
 	 * Map control/status registers.
 	 */
 		
-	/* Backplane address space */
+	/* BAR0/BAR1 are configurable maps into backplane address space */
 	if (bus_alloc_resources(dev, bcma_pci_bmem_spec, sc->bmem_res)) {
 		device_printf(dev, "could not allocate resources\n");
 		return (ENXIO);
 	}
+	
+	/* Look up address to the device enumeration table; this is found within the ChipCommon core
+	 * register shadow */
+	eromaddr = bus_read_4(sc->bmem_res[BMEM_BAR0], BHND_PCI_16KB0_CCREGS_OFFSET + 0xfc);
+	device_printf(dev, "Found ROM table at 0x%x\n", eromaddr);
+
+	/* Map the enumeration rom table into bar0's second window. */
+	pci_write_config(dev, BHND_PCI_BAR0_WIN2, eromaddr, 4);
+
+
+	/*
+	 * Scan the bus' enumeration ROM and register all child devices.
+	 */
+	bcma_scan_erom(dev, sc->bmem_res[BMEM_BAR0], BHND_PCI_16KB0_WIN2_OFFSET, BHND_PCI_16KB0_WIN2SZ);	
 	
 	return (0);
 }

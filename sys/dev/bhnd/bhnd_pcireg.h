@@ -37,7 +37,7 @@
 #define BHND_PCI_BACKPLANE_ADDR		0xa0	/* address an arbitrary location on the system backplane */
 #define BHND_PCI_BACKPLANE_DATA		0xa4	/* data at the location specified by above address */
 #define	BHND_PCI_CLK_CTL_ST		0xa8	/* pci config space clock control/status (>=rev14) */
-#define	BHND_PCI_BAR0_WIN2		0xac	/* backplane address space accessed by second 4KB of BAR0 */
+#define	BHND_PCI_BAR0_WIN2		0xac	/* backplane address space accessed by second 4KB of BAR0 (if AXI) */
 #define	BHND_PCI_GPIO_IN		0xb0	/* pci config space gpio input (>=rev3) */
 #define	BHND_PCI_GPIO_OUT		0xb4	/* pci config space gpio output (>=rev3) */
 #define	BHND_PCI_GPIO_OUTEN		0xb8	/* pci config space gpio output enable (>=rev3) */
@@ -49,15 +49,17 @@
 							 * 8KB window, so their address is the "regular"
 							 * address plus 4K
 							 */
-#define BHND_PCI_BAR0_WINSZ		(16 * 1024)	/* bar0 window size Match with corerev 13 */
+
+#define BHND_PCI_BAR0_WINSZ		(4 * 1024)	/* bar0 window size (corerev < 13) */
 
 /* On pci corerev >= 13 and all pcie, the bar0 is now 16KB and it maps: */
 #define	BHND_PCI_16KB0_PCIREGS_OFFSET	(8 * 1024)	/* bar0 + 8K accesses pci/pcie core registers */
 #define	BHND_PCI_16KB0_CCREGS_OFFSET	(12 * 1024)	/* bar0 + 12K accesses chipc core registers */
 #define BHND_PCI_16KBB0_WINSZ		(16 * 1024)	/* bar0 window size */
 
-/* On AI chips we have a second window to map DMP regs are mapped: */
+/* On AXI chips we have a second configurable window within bar0 */
 #define	BHND_PCI_16KB0_WIN2_OFFSET	(4 * 1024)	/* bar0 + 4K is "Window 2" */
+#define	BHND_PCI_16KB0_WIN2SZ		(4 * 1024)	/* bar0 "Window 2" size */
 
 /* PCI_INT_STATUS */
 #define	BHND_PCI_SBIM_STATUS_SERR	0x4	/* backplane SBErr interrupt status */
