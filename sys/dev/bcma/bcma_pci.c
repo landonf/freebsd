@@ -58,9 +58,9 @@ static const struct bcma_pci_device {
 	uint16_t	device;
 	const char	*desc;
 } bcma_pci_devices[] = {
-	{ PCI_VENDOR_BROADCOM,	PCI_BCM4331_D11N_ID,	"Broadcom BCM4331 802.11a/b/g/n Wireless" },
-	{ PCI_VENDOR_BROADCOM,	PCI_BCM4331_D11N2G_ID,	"Broadcom BCM4331 802.11b/g/n (2GHz) Wireless" },
-	{ PCI_VENDOR_BROADCOM,	PCI_BCM4331_D11N5G_ID,	"Broadcom BCM4331 802.11a/b/g/n (5GHz) Wireless" },
+	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4331_D11N,		"Broadcom BCM4331 802.11a/b/g/n Wireless" },
+	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4331_D11N2G,	"Broadcom BCM4331 802.11b/g/n (2GHz) Wireless" },
+	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4331_D11N5G,	"Broadcom BCM4331 802.11a/b/g/n (5GHz) Wireless" },
 	{ 0, 0, NULL }
 };
 
