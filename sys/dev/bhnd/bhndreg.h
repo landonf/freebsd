@@ -32,11 +32,4 @@
 #ifndef _BHND_BHNDREG_H_
 #define _BHND_BHNDREG_H_
 
-/*
- * JEDEC JEP-106 Manufacturer IDs
- */
-#define	JEDEC_MFGID_ARM		0x43b
-#define	JEDEC_MFGID_BCM		0x4bf
-#define	JEDEC_MFGID_MIPS	0x4a7
-
 #endif /* _BHND_BHNDREG_H_ */

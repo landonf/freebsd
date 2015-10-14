@@ -32,7 +32,7 @@
 #ifndef _BHND_BHND_H_
 #define _BHND_BHND_H_
 
-extern const char *bhnd_core_name (uint16_t mfg_id, uint16_t core_id);
+extern const char *bhnd_core_name (uint16_t mfgid, uint16_t coreid);
 
 #endif /* _BHND_BHNDVAR_H_ */
 

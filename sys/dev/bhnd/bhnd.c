@@ -53,7 +53,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/module.h>
 
 #include "bhnd.h"
-#include "bhnd_core.h"
+#include "bhnd_device_ids.h"
 #include "bhndreg.h"
 #include "bhndvar.h"
 
@@ -61,86 +61,86 @@ __FBSDID("$FreeBSD$");
 
 /* BHND core device description table. */
 static const struct bhnd_core_desc {
-	uint16_t designer;
-	uint16_t part_num;
+	uint16_t mfgid;
+	uint16_t coreid;
 	const char *desc;
 } bhnd_core_descs[] = {
-	{ JEDEC_MFGID_BCM,	CC_CORE_ID,		"ChipCommon" },
-	{ JEDEC_MFGID_BCM,	ILINE20_CORE_ID,	"iLine20 HPNA" },
-	{ JEDEC_MFGID_BCM,	SRAM_CORE_ID,		"SRAM" },
-	{ JEDEC_MFGID_BCM,	SDRAM_CORE_ID,		"SDRAM" },
-	{ JEDEC_MFGID_BCM,	PCI_CORE_ID,		"PCI Bridge" },
-	{ JEDEC_MFGID_BCM,	MIPS_CORE_ID,		"MIPS Core" },
-	{ JEDEC_MFGID_BCM,	ENET_CORE_ID,		"Fast Ethernet MAC" },
-	{ JEDEC_MFGID_BCM,	CODEC_CORE_ID,		"V.90 Modem Codec" },
-	{ JEDEC_MFGID_BCM,	USB_CORE_ID,		"USB 1.1 Device/Host Controller" },
-	{ JEDEC_MFGID_BCM,	ADSL_CORE_ID,		"ADSL Core" },
-	{ JEDEC_MFGID_BCM,	ILINE100_CORE_ID,	"iLine100 HPNA" },
-	{ JEDEC_MFGID_BCM,	IPSEC_CORE_ID,		"IPsec Accelerator" },
-	{ JEDEC_MFGID_BCM,	UTOPIA_CORE_ID,		"UTOPIA ATM Core" },
-	{ JEDEC_MFGID_BCM,	PCMCIA_CORE_ID,		"PCMCIA Bridge" },
-	{ JEDEC_MFGID_BCM,	SOCRAM_CORE_ID,		"Internal Memory" },
-	{ JEDEC_MFGID_BCM,	MEMC_CORE_ID,		"MEMC SDRAM Controller" },
-	{ JEDEC_MFGID_BCM,	OFDM_CORE_ID,		"OFDM PHY" },
-	{ JEDEC_MFGID_BCM,	EXTIF_CORE_ID,		"External Interface" },
-	{ JEDEC_MFGID_BCM,	D11_CORE_ID,		"802.11 MAC" },
-	{ JEDEC_MFGID_BCM,	APHY_CORE_ID,		"802.11a PHY" },
-	{ JEDEC_MFGID_BCM,	BPHY_CORE_ID,		"802.11b PHY" },
-	{ JEDEC_MFGID_BCM,	GPHY_CORE_ID,		"802.11g PHY" },
-	{ JEDEC_MFGID_BCM,	MIPS33_CORE_ID,		"MIPS 3302 Core" },
-	{ JEDEC_MFGID_BCM,	USB11H_CORE_ID,		"USB 1.1 Host Controller" },
-	{ JEDEC_MFGID_BCM,	USB11D_CORE_ID,		"USB 1.1 Device Core" },
-	{ JEDEC_MFGID_BCM,	USB20H_CORE_ID,		"USB 2.0 Host Controller" },
-	{ JEDEC_MFGID_BCM,	USB20D_CORE_ID,		"USB 2.0 Device Core" },
-	{ JEDEC_MFGID_BCM,	SDIOH_CORE_ID,		"SDIO Host Controller" },
-	{ JEDEC_MFGID_BCM,	ROBO_CORE_ID,		"RoboSwitch" },
-	{ JEDEC_MFGID_BCM,	ATA100_CORE_ID,		"Parallel ATA Controller" },
-	{ JEDEC_MFGID_BCM,	SATAXOR_CORE_ID,	"SATA DMA/XOR Controller" },
-	{ JEDEC_MFGID_BCM,	GIGETH_CORE_ID,		"Gigabit Ethernet MAC" },
-	{ JEDEC_MFGID_BCM,	PCIE_CORE_ID,		"PCIe Bridge" },
-	{ JEDEC_MFGID_BCM,	NPHY_CORE_ID,		"802.11n 2x2 PHY" },
-	{ JEDEC_MFGID_BCM,	SRAMC_CORE_ID,		"SRAM Controller" },
-	{ JEDEC_MFGID_BCM,	MINIMAC_CORE_ID,	"MINI MAC/PHY" },
-	{ JEDEC_MFGID_BCM,	ARM11_CORE_ID,		"ARM1176 Core" },
-	{ JEDEC_MFGID_BCM,	ARM7S_CORE_ID,		"ARM7TDMI-S Core" },
-	{ JEDEC_MFGID_BCM,	LPPHY_CORE_ID,		"802.11a/b/g PHY" },
-	{ JEDEC_MFGID_BCM,	PMU_CORE_ID,		"PMU" },
-	{ JEDEC_MFGID_BCM,	SSNPHY_CORE_ID,		"802.11n Single-Stream PHY" },
-	{ JEDEC_MFGID_BCM,	SDIOD_CORE_ID,		"SDIO Device Core" },
-	{ JEDEC_MFGID_BCM,	ARMCM3_CORE_ID,		"ARM Cortex-M3 Core" },
-	{ JEDEC_MFGID_BCM,	HTPHY_CORE_ID,		"802.11n 4x4 PHY" },
-	{ JEDEC_MFGID_BCM,	MIPS74K_CORE_ID,	"MIPS74k Core" },
-	{ JEDEC_MFGID_BCM,	GMAC_CORE_ID,		"Gigabit MAC core" },
-	{ JEDEC_MFGID_BCM,	DMEMC_CORE_ID,		"DDR1/2 Memory Controller" },
-	{ JEDEC_MFGID_BCM,	PCIERC_CORE_ID,		"PCIe Root Complex" },
-	{ JEDEC_MFGID_BCM,	OCP_CORE_ID,		"OCP2OCP Bridge" },
-	{ JEDEC_MFGID_BCM,	SC_CORE_ID,		"Shared Common Core" },
-	{ JEDEC_MFGID_BCM,	AHB_CORE_ID,		"OCP2AHB Bridge" },
-	{ JEDEC_MFGID_BCM,	SPIH_CORE_ID,		"SPI Host Controller" },
-	{ JEDEC_MFGID_BCM,	I2S_CORE_ID,		"I2S Digital Audio Interface" },
-	{ JEDEC_MFGID_BCM,	DMEMS_CORE_ID,		"SDR/DDR1 Memory Controller" },
-	{ JEDEC_MFGID_BCM,	DEF_SHIM_COMP,		"BCM6362/UBUS WLAN SHIM" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_CC,			"ChipCommon" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_ILINE20,		"iLine20 HPNA" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_SRAM,		"SRAM" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_SDRAM,		"SDRAM" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_PCI,		"PCI Bridge" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_MIPS,		"MIPS Core" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_ENET,		"Fast Ethernet MAC" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_CODEC,		"V.90 Modem Codec" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_USB,		"USB 1.1 Device/Host Controller" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_ADSL,		"ADSL Core" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_ILINE100,		"iLine100 HPNA" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_IPSEC,		"IPsec Accelerator" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_UTOPIA,		"UTOPIA ATM Core" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_PCMCIA,		"PCMCIA Bridge" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_SOCRAM,		"Internal Memory" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_MEMC,		"MEMC SDRAM Controller" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_OFDM,		"OFDM PHY" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_EXTIF,		"External Interface" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_D11,		"802.11 MAC" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_APHY,		"802.11a PHY" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_BPHY,		"802.11b PHY" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_GPHY,		"802.11g PHY" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_MIPS33,		"MIPS 3302 Core" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_USB11H,		"USB 1.1 Host Controller" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_USB11D,		"USB 1.1 Device Core" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_USB20H,		"USB 2.0 Host Controller" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_USB20D,		"USB 2.0 Device Core" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_SDIOH,		"SDIO Host Controller" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_ROBO,		"RoboSwitch" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_ATA100,		"Parallel ATA Controller" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_SATAXOR,		"SATA DMA/XOR Controller" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_GIGETH,		"Gigabit Ethernet MAC" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_PCIE,		"PCIe Bridge" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_NPHY,		"802.11n 2x2 PHY" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_SRAMC,		"SRAM Controller" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_MINIMAC,		"MINI MAC/PHY" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_ARM11,		"ARM1176 Core" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_ARM7S,		"ARM7TDMI-S Core" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_LPPHY,		"802.11a/b/g PHY" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_PMU,		"PMU" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_SSNPHY,		"802.11n Single-Stream PHY" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_SDIOD,		"SDIO Device Core" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_ARMCM3,		"ARM Cortex-M3 Core" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_HTPHY,		"802.11n 4x4 PHY" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_MIPS74K,		"MIPS74k Core" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_GMAC,		"Gigabit MAC core" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_DMEMC,		"DDR1/2 Memory Controller" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_PCIERC,		"PCIe Root Complex" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_OCP,		"OCP2OCP Bridge" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_SC,			"Shared Common Core" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_AHB,		"OCP2AHB Bridge" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_SPIH,		"SPI Host Controller" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_I2S,		"I2S Digital Audio Interface" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_DMEMS,		"SDR/DDR1 Memory Controller" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_DEF_SHIM_COMP,	"BCM6362/UBUS WLAN SHIM" },
 	
-	{ JEDEC_MFGID_ARM,	APB_BRIDGE_CORE_ID,	"AXI-to-APB Bridge (BP135)" },
-	{ JEDEC_MFGID_ARM,	AXI_CORE_ID,		"PL-301 GPV" },
-	{ JEDEC_MFGID_ARM,	EROM_CORE_ID,		"Enumeration ROM" },
-	{ JEDEC_MFGID_ARM,	OOB_ROUTER_CORE_ID,	"OOB Interrupt Router" },
-	{ JEDEC_MFGID_ARM,	DEF_AI_COMP,		"Default Core (Unused Address Ranges)" },
+	{ JEDEC_MFGID_ARM,	BHND_COREID_APB_BRIDGE,		"AXI-to-APB Bridge (BP135)" },
+	{ JEDEC_MFGID_ARM,	BHND_COREID_AXI,		"PL-301 GPV" },
+	{ JEDEC_MFGID_ARM,	BHND_COREID_EROM,		"Enumeration ROM" },
+	{ JEDEC_MFGID_ARM,	BHND_COREID_OOB_ROUTER,		"OOB Interrupt Router" },
+	{ JEDEC_MFGID_ARM,	BHND_COREID_DEF_AI_COMP,	"Default Core (Unused Address Ranges)" },
 	{ 0,			0,			NULL }
 };
 
 /**
  * Return a human-readable name for a BHND core.
  * 
- * @param designer The core designer's JEDEC-106 Manufacturer ID
- * @param part_num The core's part number.
+ * @param mfgid The core designer's JEDEC-106 Manufacturer ID
+ * @param coreid The Broadcom core identifier.
  */
-const char *bhnd_core_name (uint16_t designer, uint16_t part_num) {
+const char *bhnd_core_name (uint16_t mfgid, uint16_t coreid) {
 	for (u_int i = 0; bhnd_core_descs[i].desc != NULL; i++) {
-		if (bhnd_core_descs[i].designer != designer)
+		if (bhnd_core_descs[i].mfgid != mfgid)
 			continue;
 		
-		if (bhnd_core_descs[i].part_num != part_num)
+		if (bhnd_core_descs[i].coreid != coreid)
 			continue;
 		
 		return bhnd_core_descs[i].desc;

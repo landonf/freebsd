@@ -1,9 +1,10 @@
 /*
  * Broadcom device-specific manifest constants.
  *
- * This file was derived from the bcmdevs.h header released by
- * Broadcom as part of Android's platform/hardware/broadcom/wlan
- * bcmdhd driver module.
+ * This file was derived from the bcmdevs.h header released by Broadcom
+ * as part of Android's platform/hardware/broadcom/wlan bcmdhd driver module,
+ * as well as the the hndsoc.h header provided with Broadcom's initial brcm80211
+ * Linux driver release, as contributed to the Linux staging repository. 
  *
  * Copyright (C) 1999-2013, Broadcom Corporation
  * 
@@ -24,6 +25,14 @@
 
 #ifndef	_BHND_BHND_DEVICE_IDS_H_
 #define	_BHND_BHND_DEVICE_IDS_H_
+
+/*
+ * JEDEC JEP-106 Manufacturer IDs
+ */
+#define	JEDEC_MFGID_ARM		0x43b
+#define	JEDEC_MFGID_BCM		0x4bf
+#define	JEDEC_MFGID_MIPS	0x4a7
+
 
 /* PCI vendor IDs */
 #define	PCI_VENDOR_EPIGRAM	0xfeda
@@ -46,8 +55,10 @@
 /* PCMCIA vendor IDs */
 #define	PCMCIA_VENDOR_BROADCOM	0x02d0
 
+
 /* SDIO vendor IDs */
 #define	SDIO_VENDOR_BROADCOM	0x00BF
+
 
 /* USB dongle VID/PIDs */
 #define	USB_VID_BROADCOM	0x0a5c
@@ -71,8 +82,10 @@
 #define	USB_PID_BCM_DNGL_BDC	0x0bdc		/* BDC USB device controller IP? */
 #define	USB_PID_BCM_DNGL_JTAG	0x4a44
 
+
 /* HW USB BLOCK [CPULESS USB] PIDs */
 #define	USB_PID_CCM_HWUSB_43239	43239
+
 
 /* PCI Device IDs */
 #define	PCI_DEVID_BCM4210		0x1072		/* never used */
@@ -175,11 +188,13 @@
 #define	PCI_DEVID_PCIXX21_FLASHMEDIA0	0x8033		/* TI PCI xx21 Standard Host Controller */
 #define	PCI_DEVID_PCIXX21_SDIOH0	0x8034		/* TI PCI xx21 Standard Host Controller */
 
+
 /* PCI Subsystem Vendor IDs */
 #define	PCI_SUBVENDOR_BCM943228HMB	0x0607
 #define	PCI_SUBVENDOR_BCM94313HMGBL	0x0608
 #define	PCI_SUBVENDOR_BCM94313HMG	0x0609
 #define	PCI_SUBVENDOR_BCM943142HM	0x0611
+
 
 /* PCI Subsystem Device IDs */
 #define	PCI_SUBDEVID_BCM43143_D11N2G		0x4366		/* 43143 802.11n 2.4G device */
@@ -322,6 +337,7 @@
 #define	BHND_CHIPID_BCM5357		0x5357		/* 5357 chipcommon chipid */
 #define	BHND_CHIPID_BCM53572		53572		/* 53572 chipcommon chipid */
 
+
 /* Broadcom ChipCommon Package IDs */
 #define	BHND_PKGID_BCM4303		2		/* 4303 package id */
 #define	BHND_PKGID_BCM4309		1		/* 4309 package id */
@@ -378,6 +394,72 @@
 #define	BHND_PKGID_BCM4335_FCBGAD_PKG_ID	(0x3)	/* FCBGA Debug Debug/Dev All if's. */
 #define	BHND_PKGID_BCM4335_PKG_MASK	(0x3)
 
+
+/* Broadcom Core IDs */
+#define	BHND_COREID_NODEV		0x700	/* Invalid coreid */
+#define	BHND_COREID_CC			0x800	/* chipcommon core */
+#define	BHND_COREID_ILINE20		0x801	/* iline20 core */
+#define	BHND_COREID_SRAM		0x802	/* sram core */
+#define	BHND_COREID_SDRAM		0x803	/* sdram core */
+#define	BHND_COREID_PCI			0x804	/* pci core */
+#define	BHND_COREID_MIPS		0x805	/* mips core */
+#define	BHND_COREID_ENET		0x806	/* enet mac core */
+#define	BHND_COREID_CODEC		0x807	/* v90 codec core */
+#define	BHND_COREID_USB			0x808	/* usb 1.1 host/device core */
+#define	BHND_COREID_ADSL		0x809	/* ADSL core */
+#define	BHND_COREID_ILINE100		0x80a	/* iline100 core */
+#define	BHND_COREID_IPSEC		0x80b	/* ipsec core */
+#define	BHND_COREID_UTOPIA		0x80c	/* utopia core */
+#define	BHND_COREID_PCMCIA		0x80d	/* pcmcia core */
+#define	BHND_COREID_SOCRAM		0x80e	/* internal memory core */
+#define	BHND_COREID_MEMC		0x80f	/* memc sdram core */
+#define	BHND_COREID_OFDM		0x810	/* OFDM phy core */
+#define	BHND_COREID_EXTIF		0x811	/* external interface core */
+#define	BHND_COREID_D11			0x812	/* 802.11 MAC core */
+#define	BHND_COREID_APHY		0x813	/* 802.11a phy core */
+#define	BHND_COREID_BPHY		0x814	/* 802.11b phy core */
+#define	BHND_COREID_GPHY		0x815	/* 802.11g phy core */
+#define	BHND_COREID_MIPS33		0x816	/* mips3302 core */
+#define	BHND_COREID_USB11H		0x817	/* usb 1.1 host core */
+#define	BHND_COREID_USB11D		0x818	/* usb 1.1 device core */
+#define	BHND_COREID_USB20H		0x819	/* usb 2.0 host core */
+#define	BHND_COREID_USB20D		0x81a	/* usb 2.0 device core */
+#define	BHND_COREID_SDIOH		0x81b	/* sdio host core */
+#define	BHND_COREID_ROBO		0x81c	/* roboswitch core */
+#define	BHND_COREID_ATA100		0x81d	/* parallel ATA core */
+#define	BHND_COREID_SATAXOR		0x81e	/* serial ATA & XOR DMA core */
+#define	BHND_COREID_GIGETH		0x81f	/* gigabit ethernet core */
+#define	BHND_COREID_PCIE		0x820	/* pci express core */
+#define	BHND_COREID_NPHY		0x821	/* 802.11n 2x2 phy core */
+#define	BHND_COREID_SRAMC		0x822	/* SRAM controller core */
+#define	BHND_COREID_MINIMAC		0x823	/* MINI MAC/phy core */
+#define	BHND_COREID_ARM11		0x824	/* ARM 1176 core */
+#define	BHND_COREID_ARM7S		0x825	/* ARM7tdmi-s core */
+#define	BHND_COREID_LPPHY		0x826	/* 802.11a/b/g phy core */
+#define	BHND_COREID_PMU			0x827	/* PMU core */
+#define	BHND_COREID_SSNPHY		0x828	/* 802.11n single-stream phy core */
+#define	BHND_COREID_SDIOD		0x829	/* SDIO device core */
+#define	BHND_COREID_ARMCM3		0x82a	/* ARM Cortex M3 core */
+#define	BHND_COREID_HTPHY		0x82b	/* 802.11n 4x4 phy core */
+#define	BHND_COREID_MIPS74K		0x82c	/* mips 74k core */
+#define	BHND_COREID_GMAC		0x82d	/* Gigabit MAC core */
+#define	BHND_COREID_DMEMC		0x82e	/* DDR1/2 memory controller core */
+#define	BHND_COREID_PCIERC		0x82f	/* PCIE Root Complex core */
+#define	BHND_COREID_OCP			0x830	/* OCP2OCP bridge core */
+#define	BHND_COREID_SC			0x831	/* shared common core */
+#define	BHND_COREID_AHB			0x832	/* OCP2AHB bridge core */
+#define	BHND_COREID_SPIH		0x833	/* SPI host core */
+#define	BHND_COREID_I2S			0x834	/* I2S core */
+#define	BHND_COREID_DMEMS		0x835	/* SDR/DDR1 memory controller core */
+#define	BHND_COREID_DEF_SHIM_COMP	0x837	/* SHIM component in ubus/6362 */
+#define	BHND_COREID_APB_BRIDGE		0x135	/* AMBA AXI-APB bridge */
+#define	BHND_COREID_AXI			0x301	/* AMBA AXI GPV */
+#define	BHND_COREID_EROM		0x366	/* Enumeration ROM */
+#define	BHND_COREID_OOB_ROUTER		0x367	/* OOB router core ID */
+#define	BHND_COREID_DEF_AI_COMP		0xfff	/* Default component, in ai chips it maps all
+					 * unused address ranges
+					 */
+
 /* Boardflags */
 #define	BHND_BFL_BTC2WIRE		0x00000001  /* old 2wire Bluetooth coexistence, OBSOLETE */
 #define	BHND_BFL_BTCOEX			0x00000001      /* Board supports BTCOEX */
@@ -420,6 +502,7 @@
 					     * when this flag is set
 					     */
 #define	BHND_BFL_EXTLNA_TX		0x20000000	/* Temp boardflag to indicate to */
+
 
 /* Boardflags2 */
 #define	BHND_BFL2_RXBB_INT_REG_DIS	0x00000001  /* Board has an external rxbb regulator */
@@ -469,6 +552,7 @@
 #define	BHND_BFL2_LNA1BYPFORTR2G  	0x40000000  /* acphy, enable lna1 bypass for clip gain, 2g */
 #define	BHND_BFL2_LNA1BYPFORTR5G  	0x80000000  /* acphy, enable lna1 bypass for clip gain, 5g */
 
+
 /* SROM 11 - 11ac boardflag definitions */
 #define	BHND_BFL_SROM11_BTCOEX  0x00000001  /* Board supports BTCOEX */
 #define	BHND_BFL_SROM11_WLAN_BT_SH_XTL  0x00000002  /* bluetooth and wlan share same crystal */
@@ -478,6 +562,7 @@
 #define	BHND_BFL2_SROM11_APLL_WAR	0x00000002  /* Flag to implement alternative A-band PLL settings */
 #define	BHND_BFL2_SROM11_ANAPACTRL_2G  0x00100000  /* 2G ext PAs are ctrl-ed by analog PA ctrl lines */
 #define	BHND_BFL2_SROM11_ANAPACTRL_5G  0x00200000  /* 5G ext PAs are ctrl-ed by analog PA ctrl lines */
+
 
 /* Boardflags3 */
 #define	BHND_BFL3_FEMCTRL_SUB	0x00000007  /* acphy, subrevs of femctrl on top of srom_femctrl */
@@ -504,6 +589,7 @@
 #define	BHND_BFL3_BT_SHARE_BM_BIT1 0x40000000 /* bit 1 of WLAN/BT shared core bitmap */
 #define	BHND_BFL3_EN_NONBRCM_TXBF      0x10000000  /* acphy, enable non-brcm TXBF */
 #define	BHND_BFL3_EN_P2PLINK_TXBF      0x20000000  /* acphy, enable TXBF in p2p links */
+
 
 /* board specific GPIO assignment, gpio 0-3 are also customer-configurable led */
 #define	BHND_BOARD_GPIO_BTC3W_IN	0x850	/* bit 4 is RF_ACTIVE, bit 6 is STATUS, bit 11 is PRI */
