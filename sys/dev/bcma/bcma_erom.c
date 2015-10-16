@@ -61,10 +61,13 @@ static const char *erom_designer_name(uint16_t mfgid);
 static const char *erom_region_type_name(uint8_t region_type);
 static const char *erom_entry_type_name (uint8_t entry);
 
-static int bcma_scan_erom_port_regions(device_t bus,
+static int erom_read32(device_t bus, struct resource *erom_res, bus_size_t erom_end, bus_size_t offset, uint32_t *entry);
+
+static int erom_scan_port_regions(device_t bus,
 	uint8_t port,
 	uint8_t port_type,
 	struct resource *erom_res,
+	bus_size_t erom_end,
 	bus_size_t *offset);
 
 /* Extract entry attribute by applying _MASK and _SHIFT defines. */
@@ -124,20 +127,42 @@ static const char *erom_region_type_name (uint8_t region_type) {
 }
 
 /**
+ * Read a 32-bit entry value from the EROM table.
+ * 
+ * @param bus The BCMA bus.
+ * @param erom_res The EROM resource.
+ * @param erom_end The maximum permitted EROM offset.
+ * @param offset The offset at which to perform the read.
+ * @param entry Will contain the read result on success.
+ * @return If successful, returns 0. If unsuccessful, returns non-zero error.
+ */
+static int erom_read32(device_t bus, struct resource *erom_res, bus_size_t erom_end, bus_size_t offset, uint32_t *entry) {
+	if (offset >= erom_end) {
+		device_printf(bus, "EROM table missing terminating EOF\n");
+		return (EINVAL);
+	}
+	
+	*entry = bus_read_4(erom_res, offset);
+	return (0);
+}
+
+/**
  * Scan all Region Descriptors for the given interconnect port.
  * 
  * @param bus The BCMA bus.
  * @param port A port index for which regions will be parsed.
  * @param port_type The port region type to be parsed.
  * @param erom_res The EROM resource.
+ * @param erom_end The maximum permitted EROM offset.
  * @param offset The offset at which to perform parsing. This will be updated to point
  * past the last valid parsed region on exit.
  */
-static int bcma_scan_erom_port_regions(
+static int erom_scan_port_regions(
 	device_t bus,
 	uint8_t port,
 	uint8_t port_type,
 	struct resource *erom_res,
+	bus_size_t erom_end,
 	bus_size_t *offset)
 {
 	/* Read all address regions defined for this port */
@@ -149,11 +174,12 @@ static int bcma_scan_erom_port_regions(
 		uint32_t size_high, size_low;
 		uint8_t	 size_type;
 
-		entry = bus_read_4(erom_res, *offset);
+		/* Fetch the next entry */
+		if (erom_read32(bus, erom_res, erom_end, *offset, &entry))
+			return (EINVAL);
 		
-		if (!EROM_ENTRY_IS(entry, REGION)) {
+		if (!EROM_ENTRY_IS(entry, REGION))
 			return (0);
-		}
 		
 		/* Parse the region attributes */
 		addr_low = EROM_GET_ATTR(entry, REGION_BASE);
@@ -171,7 +197,8 @@ static int bcma_scan_erom_port_regions(
 		/* Parse the high bits of the base address */
 		if (EROM_GET_ATTR(entry, REGION_64BIT)) {
 			*offset += 4;
-			addr_high = bus_read_4(erom_res, *offset);
+			if (erom_read32(bus, erom_res, erom_end, *offset, &addr_high))
+				return (EINVAL);
 		} else {
 			addr_high = 0;
 		}
@@ -180,11 +207,14 @@ static int bcma_scan_erom_port_regions(
 		/* Parse the region size */
 		if (size_type == BCMA_EROM_REGION_SIZE_OTHER) {
 			*offset += 4;
-			entry = bus_read_4(erom_res, *offset);
+			if (erom_read32(bus, erom_res, erom_end, *offset, &entry))
+				return (EINVAL);
+			
 			size_low = EROM_GET_ATTR(entry, RSIZE_VAL);
 			if (EROM_GET_ATTR(entry, RSIZE_64BIT)) {
 				*offset += 4;
-				size_high = bus_read_4(erom_res, *offset);
+				if (erom_read32(bus, erom_res, erom_end, *offset, &size_high))
+					return (EINVAL);
 			} else {
 				size_high = 0;
 			}
@@ -226,19 +256,17 @@ int bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base
 		uint8_t		core_revision;
 		uint16_t	core_partnum;
 		uint32_t	entry;
-		bus_size_t	entry_start;
 		uint8_t		first_port_type;
 		uint8_t		num_mport, num_sport, num_mwrap, num_swrap;
 		uint8_t		swrap_port_base;
 
 		/* Fetch the next entry */
-		entry = bus_read_4(erom_res, offset);
-		entry_start = offset;
+		if (erom_read32(bus, erom_res, erom_end, offset, &entry))
+			return (EINVAL);
 
 		if (entry == BCMA_EROM_TABLE_EOF)
 			break;
-		
-		
+				
 		/* Must be the start of the next core description */
 		if (!EROM_ENTRY_IS(entry, CORE)) {
 			device_printf(bus, "Unexpected EROM %s entry 0x%x at ROM offset 0x%lx\n", erom_entry_type_name(entry), entry, offset-erom_start);
@@ -253,7 +281,9 @@ int bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base
 
 		/* Parse CoreDescB */
 		offset += 4;
-		entry = bus_read_4(erom_res, offset);
+		if (erom_read32(bus, erom_res, erom_end, offset, &entry))
+			return (EINVAL);
+
 		if (!EROM_ENTRY_IS(entry, CORE)) {
 			device_printf(bus, "Invalid EROM CoreDescB value 0x%x at ROM offset 0x%lx\n", entry, (offset-erom_start));
 			return (EINVAL);
@@ -274,7 +304,8 @@ int bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base
 		for (uint8_t i = 0; i < num_mport; i++) {
 			uint8_t port_num;
 			
-			entry = bus_read_4(erom_res, offset);
+			if (erom_read32(bus, erom_res, erom_end, offset, &entry))
+				return (EINVAL);
 			
 			if (!EROM_ENTRY_IS(entry, MPORT)) {
 				device_printf(bus, "Invalid EROM MPD value 0x%x at ROM offset 0x%lx\n", entry, (offset-erom_start));
@@ -297,7 +328,9 @@ int bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base
 		 * should detect/handle bridge devices, but this approach matches
 		 * that of (some of) Broadcom's published drivers.
 		 */
-		entry = bus_read_4(erom_res, offset);
+		if (erom_read32(bus, erom_res, erom_end, offset, &entry))
+			return (EINVAL);
+		
 		if (EROM_ENTRY_IS(entry, REGION) && 
 			EROM_GET_ATTR(entry, REGION_TYPE) == BCMA_EROM_REGION_TYPE_BRIDGE)
 		{
@@ -307,14 +340,14 @@ int bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base
 		}
 
 		/* Slave/Bridge Region Descriptors */
-		for (uint8_t i = 0; i < num_sport; i++) {
-			if (bcma_scan_erom_port_regions(bus, i, first_port_type, erom_res, &offset))
+		for (uint8_t port = 0; port < num_sport; port++) {
+			if (erom_scan_port_regions(bus, port, first_port_type, erom_res, erom_end, &offset))
 				return (EINVAL);
 		}
 		
 		/* Master (Wrapper) Region Descriptors */
-		for (uint8_t i = 0; i < num_mwrap; i++) {
-			if (bcma_scan_erom_port_regions(bus, i, BCMA_EROM_REGION_TYPE_MWRAP, erom_res, &offset))
+		for (uint8_t port = 0; port < num_mwrap; port++) {
+			if (erom_scan_port_regions(bus, port, BCMA_EROM_REGION_TYPE_MWRAP, erom_res, erom_end, &offset))
 				return (EINVAL);
 		}
 		
@@ -324,7 +357,8 @@ int bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base
 			swrap_port_base = 0;
 		
 		for (uint8_t i = 0; i < num_swrap; i++) {
-			if (bcma_scan_erom_port_regions(bus, i + swrap_port_base, BCMA_EROM_REGION_TYPE_SWRAP, erom_res, &offset))
+			uint8_t port = i + swrap_port_base;
+			if (erom_scan_port_regions(bus, port, BCMA_EROM_REGION_TYPE_SWRAP, erom_res, erom_end, &offset))
 				return (EINVAL);
 		}
 	}
