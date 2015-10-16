@@ -51,6 +51,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhnd_pcireg.h>
 
 #include "bcma.h"
+#include "bcmareg.h"
 #include "bcma_pcivar.h"
 
 static const struct bcma_pci_device {
@@ -111,7 +112,7 @@ bcma_pci_attach(device_t dev)
 	
 	/* Look up address to the device enumeration table; this is found within the ChipCommon core
 	 * register shadow */
-	eromaddr = bus_read_4(sc->bmem_res[BMEM_BAR0], BHND_PCI_16KB0_CCREGS_OFFSET + 0xfc);
+	eromaddr = bus_read_4(sc->bmem_res[BMEM_BAR0], BHND_PCI_16KB0_CCREGS_OFFSET + BCMA_CC_EROM_ADDR);
 	device_printf(dev, "Found ROM table at 0x%x\n", eromaddr);
 
 	/* Map the enumeration rom table into bar0's second window. */

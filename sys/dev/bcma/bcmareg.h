@@ -32,4 +32,6 @@
 #ifndef _BCMA_BCMAREG_H_
 #define _BCMA_BCMAREG_H_
 
+#define BCMA_CC_EROM_ADDR	0xFC	/* Offset of the EROM address within the ChipCommon Core */
+
 #endif /* _BCMA_BCMAREG_H_ */
