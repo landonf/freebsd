@@ -29,7 +29,12 @@
  * $FreeBSD$
  */
 
-#ifndef _BCMA_BCMA_H_
-#define _BCMA_BCMA_H_
+#ifndef _BCMA_BCMA_EROM_H_
+#define _BCMA_BCMA_EROM_H_
 
-#endif /* _BCMA_BCMA_H_ */
+#include <sys/types.h>
+#include <sys/rman.h>
+
+int bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base);
+
+#endif /* _BCMA_BCMA_EROM_H_ */

@@ -52,6 +52,7 @@ __FBSDID("$FreeBSD$");
 
 #include "bcma.h"
 #include "bcmareg.h"
+#include "bcma_erom.h"
 #include "bcma_pcivar.h"
 
 static const struct bcma_pci_device {
@@ -122,7 +123,7 @@ bcma_pci_attach(device_t dev)
 	/*
 	 * Scan the bus' enumeration ROM and register all child devices.
 	 */
-	bcma_scan_erom(dev, sc->bmem_res[BMEM_BAR0], BHND_PCI_16KB0_WIN2_OFFSET, BHND_PCI_16KB0_WIN2SZ);	
+	bcma_scan_erom(dev, sc->bmem_res[BMEM_BAR0], BHND_PCI_16KB0_WIN2_OFFSET);	
 	
 	return (0);
 }

@@ -1,10 +1,11 @@
 /*
  * Broadcom HND "Device Management Plugin" Register Constants
  * 
- * This file was derived from the aidmp.h header provided with
- * Broadcom's initial brcm80211 Linux driver release, as
+ * Portions of this file were derived from the aidmp.h header
+ * provided with Broadcom's initial brcm80211 Linux driver release, as
  * contributed to the Linux staging repository. 
  * 
+ * Copyright (c) 2015 Landon Fuller <landon@landonf.org>
  * Copyright (c) 2010 Broadcom Corporation
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -23,13 +24,97 @@
 #ifndef	_BCMA_BCMA_DMP_H_
 #define	_BCMA_BCMA_DMP_H_
 
+/*
+ * PL-368 Device Management Plugin (DMP) Registers & Constants
+ * 
+ * The "DMP" core used in Broadcom HND devices has been described
+ * by Broadcom engineers (and in published header files) as being
+ * ARM's PL-368 "Device Management Plugin" system IP, included with
+ * the CoreLink AMBA Designer tooling.
+ * 
+ * Documentation for the PL-368 is not publicly available, however,
+ * and the only public reference by ARM to its existence appears to be
+ * in the proprietary "NIC-301 Interconnect Device Management (PL368)"
+ * errata publication, available to licensees as part of ARM's
+ * CoreLink Controllers and Peripherals Engineering Errata.
+ */
+
 /* Enumeration ROM registers */
-#define	ER_EROMENTRY		0x000
-#define	ER_REMAPCONTROL		0xe00
-#define	ER_REMAPSELECT		0xe04
-#define	ER_MASTERSELECT		0xe10
-#define	ER_ITCR			0xf00
-#define	ER_ITIP			0xf04
+#define	BCMA_EROM_TABLE			0x000	/* device enumeration table offset */
+#define	BCMA_EROM_REMAPCONTROL		0xe00
+#define	BCMA_EROM_REMAPSELECT		0xe04
+#define	BCMA_EROM_MASTERSELECT		0xe10
+#define	BCMA_EROM_ITCR			0xf00
+#define	BCMA_EROM_ITIP			0xf04
+#define	BCMA_EROM_TABLE_END		BCMA_EROM_REMAPCONTROL
+#define	BCMA_EROM_TABLE_SIZE		BMCA_EROM_TABLE_END - BCMA_EROM_TABLE
+
+/*
+ * Enumeration ROM Constants
+ */
+#define	BCMA_EROM_TABLE_EOF		0xF		/* end of EROM table */
+
+#define	BCMA_EROM_ENTRY_ISVALID_MASK	0x1		/* is entry valid? */
+#define	BCMA_EROM_ENTRY_ISVALID_SHIFT	0
+
+/* EROM Entry Types */
+#define	BCMA_EROM_ENTRY_TYPE_MASK	0x6		/* entry type mask */
+#define	BCMA_EROM_ENTRY_TYPE_SHIFT	0
+#  define BCMA_EROM_ENTRY_TYPE_CORE	0x0		/* core descriptor */
+#  define BCMA_EROM_ENTRY_TYPE_MPORT	0x2		/* master port descriptor */
+#  define BCMA_EROM_ENTRY_TYPE_REGION	0x4		/* address region descriptor */
+
+/* EROM Core DescriptorA (31:0) */
+#define	BCMA_EROM_COREA_DESIGNER_MASK	0xFFF00000	/* core designer (JEP-106 mfg id) */
+#define	BCMA_EROM_COREA_DESIGNER_SHIFT	20
+#define	BCMA_EROM_COREA_ID_MASK		0x000FFF00	/* broadcom-assigned core id */
+#define	BCMA_EROM_COREA_ID_SHIFT	8
+#define	BCMA_EROM_COREA_CLASS_MASK	0x000000F0	/* core class */
+#define	BCMA_EROM_COREA_CLASS_SHIFT	4
+
+/* EROM Core DescriptorB (63:32) */
+#define	BCMA_EROM_COREB_NUM_MP_MASK	0x0000001F	/* master port count */
+#define	BCMA_EROM_COREB_NUM_MP_SHIFT	4
+#define	BCMA_EROM_COREB_NUM_SP_MASK	0x00003E00	/* slave port count */
+#define	BCMA_EROM_COREB_NUM_SP_SHIFT	9
+#define	BCMA_EROM_COREB_NUM_WMP_MASK	0x0007C000	/* master wrapper port count */
+#define	BCMA_EROM_COREB_NUM_WMP_SHIFT	14
+#define	BCMA_EROM_COREB_NUM_WSP_MASK	0x00F80000	/* slave wrapper port count */
+#define	BCMA_EROM_COREB_NUM_WSP_SHIFT	19
+#define	BCMA_EROM_COREB_REV_MASK	0xFF000000	/* broadcom-assigned core revision */
+#define	BCMA_EROM_COREB_REV_SHIFT	24
+
+/* EROM Master Port Descriptor */
+#define	BCMA_EROM_MPORT_NUM_MASK	0x0000FF00	/* port number */
+#define	BCMA_EROM_MPORT_NUM_SHIFT	8
+
+/* EROM Region Descriptor */
+#define	BCMA_EROM_REGION_BASE_MASK	0xFFFFF000	/* region base address */
+#define	BCMA_EROM_REGION_BASE_SHIFT	0
+#define	BCMA_EROM_REGION_64BIT_MASK	0x00000008	/* base address spans two 32-bit entries */
+#define	BCMA_EROM_REGION_64BIT_SHIFT	0
+#define	BCMA_EROM_REGION_PORT_MASK	0x00000F00	/* region's associated port */
+#define	BCMA_EROM_REGION_PORT_SHIFT	8
+#define	BCMA_EROM_REGION_TYPE_MASK	0x000000C0	/* region type */
+#define	BCMA_EROM_REGION_TYPE_SHIFT	6
+#define	  BCMA_EROM_REGION_TYPE_SLAVE	0		/* slave */
+#define	  BCMA_EROM_REGION_TYPE_BRIDGE	1		/* bridge */
+#define	  BCMA_EROM_REGION_TYPE_SWRAP	2		/* slave wrapper */
+#define	  BCMA_EROM_REGION_TYPE_MWRAP	3		/* master wrapper */
+
+#define	BCMA_EROM_REGION_SIZE_MASK	0x00000030	/* region size encoding */
+#define	BCMA_EROM_REGION_SIZE_SHIFT	4
+#define	  BCMA_EROM_REGION_SIZE_4K	0		/* 4K region */
+#define	  BCMA_EROM_REGION_SIZE_8K	1		/* 8K region */
+#define	  BCMA_EROM_REGION_SIZE_16K	2		/* 16K region */
+#define	  BCMA_EROM_REGION_SIZE_OTHER	3		/* defined by an additional size descriptor entry. */
+#define	BCMA_EROM_REGION_SIZE_BASE	0x1000
+
+/* Region Size Descriptor */
+#define	BCMA_EROM_RSIZE_VAL_MASK	0xFFFFF000	/* region size */
+#define	BCMA_EROM_RSIZE_VAL_SHIFT	0
+#define	BCMA_EROM_RSIZE_64BIT_MASK	0x00000008	/* size spans two 32-bit entries */
+#define	BCMA_EROM_RSIZE_64BIT_SHIFT	0
 
 /* Out-of-band Router registers */
 #define	BCMA_OOB_BUSCONFIG	0x020
