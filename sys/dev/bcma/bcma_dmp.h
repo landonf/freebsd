@@ -23,20 +23,6 @@
 #ifndef	_BCMA_BCMA_DMP_H_
 #define	_BCMA_BCMA_DMP_H_
 
-/* Manufacturer Ids */
-#define	MFGID_ARM		0x43b
-#define	MFGID_BRCM		0x4bf
-#define	MFGID_MIPS		0x4a7
-
-/* Component Classes */
-#define	CC_SIM			0
-#define	CC_EROM			1
-#define	CC_CORESIGHT		9
-#define	CC_VERIF		0xb
-#define	CC_OPTIMO		0xd
-#define	CC_GEN			0xe
-#define	CC_PRIMECELL		0xf
-
 /* Enumeration ROM registers */
 #define	ER_EROMENTRY		0x000
 #define	ER_REMAPCONTROL		0xe00
@@ -44,67 +30,6 @@
 #define	ER_MASTERSELECT		0xe10
 #define	ER_ITCR			0xf00
 #define	ER_ITIP			0xf04
-
-/* Erom entries */
-#define	ER_TAG			0xe
-#define	ER_TAG1			0x6
-#define	ER_VALID		1
-#define	ER_CI			0
-#define	ER_MP			2
-#define	ER_ADD			4
-#define	ER_END			0xe
-#define	ER_BAD			0xffffffff
-
-/* EROM CompIdentA */
-#define	CIA_MFG_MASK		0xfff00000
-#define	CIA_MFG_SHIFT		20
-#define	CIA_CID_MASK		0x000fff00
-#define	CIA_CID_SHIFT		8
-#define	CIA_CCL_MASK		0x000000f0
-#define	CIA_CCL_SHIFT		4
-
-/* EROM CompIdentB */
-#define	CIB_REV_MASK		0xff000000
-#define	CIB_REV_SHIFT		24
-#define	CIB_NSW_MASK		0x00f80000
-#define	CIB_NSW_SHIFT		19
-#define	CIB_NMW_MASK		0x0007c000
-#define	CIB_NMW_SHIFT		14
-#define	CIB_NSP_MASK		0x00003e00
-#define	CIB_NSP_SHIFT		9
-#define	CIB_NMP_MASK		0x000001f0
-#define	CIB_NMP_SHIFT		4
-
-/* EROM MasterPortDesc */
-#define	MPD_MUI_MASK		0x0000ff00
-#define	MPD_MUI_SHIFT		8
-#define	MPD_MP_MASK		0x000000f0
-#define	MPD_MP_SHIFT		4
-
-/* EROM AddrDesc */
-#define	AD_ADDR_MASK		0xfffff000
-#define	AD_SP_MASK		0x00000f00
-#define	AD_SP_SHIFT		8
-#define	AD_ST_MASK		0x000000c0
-#define	AD_ST_SHIFT		6
-#define	AD_ST_SLAVE		0x00000000
-#define	AD_ST_BRIDGE		0x00000040
-#define	AD_ST_SWRAP		0x00000080
-#define	AD_ST_MWRAP		0x000000c0
-#define	AD_SZ_MASK		0x00000030
-#define	AD_SZ_SHIFT		4
-#define	AD_SZ_4K		0x00000000
-#define	AD_SZ_8K		0x00000010
-#define	AD_SZ_16K		0x00000020
-#define	AD_SZ_SZD		0x00000030
-#define	AD_AG32			0x00000008
-#define	AD_ADDR_ALIGN		0x00000fff
-#define	AD_SZ_BASE		0x00001000	/* 4KB */
-
-/* EROM SizeDesc */
-#define	SD_SZ_MASK		0xfffff000
-#define	SD_SG32			0x00000008
-#define	SD_SZ_ALIGN		0x00000fff
 
 #ifndef _LANGUAGE_ASSEMBLY
 
