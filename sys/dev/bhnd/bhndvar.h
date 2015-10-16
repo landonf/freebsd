@@ -33,10 +33,32 @@
 #define _BHND_BHNDVAR_H_
 
 /*
- * Broadcom Home Networking Division (HND) data structure definitions.
+ * Broadcom Home Networking Division (HND) Bus
+ * Data Structures and Constants
  */
 
 struct bhnd_softc {
 };
+
+enum bhnd_device_vars {
+	/** Core designer's JEP-106 manufacturer ID. */ 
+	BHND_IVAR_DESIGNER,
+	
+	/** Core identifier. */
+	BHND_IVAR_CORE_ID,
+	
+	/** Core revision. */
+	BHND_IVAR_CORE_REVISION
+};
+
+/*
+ * Simplified accessors for bhnd device ivars
+ */
+#define	BHND_ACCESSOR(var, ivar, type) \
+	__BUS_ACCESSOR(bhnd, var, BHND, ivar, type)
+
+BHND_ACCESSOR(designer,		DESIGNER,	uint16_t);
+BHND_ACCESSOR(core_id,		CORE_ID,	uint16_t);
+BHND_ACCESSOR(core_revision,	CORE_REVISION,	uint8_t);
 
 #endif /* _BHND_BHNDVAR_H_ */
