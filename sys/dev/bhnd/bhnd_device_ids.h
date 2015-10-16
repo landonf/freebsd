@@ -452,7 +452,7 @@
 #define	BHND_COREID_I2S			0x834	/* I2S core */
 #define	BHND_COREID_DMEMS		0x835	/* SDR/DDR1 memory controller core */
 #define	BHND_COREID_DEF_SHIM_COMP	0x837	/* SHIM component in ubus/6362 */
-#define	BHND_COREID_APB_BRIDGE		0x135	/* AMBA AXI-APB bridge */
+#define	BHND_COREID_APB_BRIDGE		0x135	/* BP135 AMBA AXI-APB bridge */
 #define	BHND_COREID_AXI			0x301	/* AMBA AXI GPV */
 #define	BHND_COREID_EROM		0x366	/* Enumeration ROM */
 #define	BHND_COREID_OOB_ROUTER		0x367	/* OOB router core ID */
