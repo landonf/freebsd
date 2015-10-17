@@ -97,9 +97,7 @@ bcma_pci_attach(device_t dev)
 	uint32_t		eromaddr;
 	
 	sc->bcma_dev = dev;
-	
 	pci_enable_busmaster(dev);
-
 	
 	/*
 	 * Map control/status registers.
@@ -110,20 +108,18 @@ bcma_pci_attach(device_t dev)
 		device_printf(dev, "could not allocate resources\n");
 		return (ENXIO);
 	}
-	
-	/* Look up address to the device enumeration table; this is found within the ChipCommon core
-	 * register shadow */
-	eromaddr = bus_read_4(sc->bmem_res[BMEM_BAR0], BHND_PCI_16KB0_CCREGS_OFFSET + BCMA_CC_EROM_ADDR);
-	device_printf(dev, "Found ROM table at 0x%x\n", eromaddr);
-
-	/* Map the enumeration rom table into bar0's second window. */
-	pci_write_config(dev, BHND_PCI_BAR0_WIN2, eromaddr, 4);
-
 
 	/*
-	 * Scan the bus' enumeration ROM and register all child devices.
+	 * Scan the bus' enumeration ROM.
 	 */
-	bcma_scan_erom(dev, sc->bmem_res[BMEM_BAR0], BHND_PCI_16KB0_WIN2_OFFSET);	
+	
+	/* Enumeration table address is found within the ChipCommon core register shadow */
+	eromaddr = bus_read_4(sc->bmem_res[BMEM_BAR0], BHND_PCI_16KB0_CCREGS_OFFSET + BCMA_CC_EROM_ADDR);
+
+	/* Scan EROM and register child devices. */
+	pci_write_config(dev, BHND_PCI_BAR0_WIN2, eromaddr, 4);
+	if (bcma_scan_erom(dev, sc->bmem_res[BMEM_BAR0], BHND_PCI_16KB0_WIN2_OFFSET))
+		return (ENXIO);
 	
 	return (0);
 }
