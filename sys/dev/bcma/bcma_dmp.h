@@ -84,9 +84,17 @@
 #define	BCMA_EROM_COREB_REV_MASK	0xFF000000	/* broadcom-assigned core revision */
 #define	BCMA_EROM_COREB_REV_SHIFT	24
 
-/* EROM Master Port Descriptor */
-#define	BCMA_EROM_MPORT_NUM_MASK	0x0000FF00	/* port number */
+/* EROM Master Port Descriptor 
+ * 
+ * The attribute descriptions are derived from background information
+ * on the AXI bus and PL301 interconnect, but are undocumented
+ * by Broadcom and may be incorrect.
+ */
+#define	BCMA_EROM_MPORT_NUM_MASK	0x0000FF00	/* AXI master number (unique per interconnect) */
 #define	BCMA_EROM_MPORT_NUM_SHIFT	8
+#define	BCMA_EROM_MPORT_ID_MASK		0x000000F0	/* AXI master ID (unique per master). */
+#define	BCMA_EROM_MPORT_ID_SHIFT	4
+
 
 /* EROM Region Descriptor */
 #define	BCMA_EROM_REGION_BASE_MASK	0xFFFFF000	/* region base address */

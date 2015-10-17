@@ -302,6 +302,7 @@ int bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base
 
 		/* Parse Master Port Descriptors */
 		for (uint8_t i = 0; i < num_mport; i++) {
+			uint8_t master_id;
 			uint8_t port_num;
 			
 			if (erom_read32(bus, erom_res, erom_end, offset, &entry))
@@ -312,9 +313,10 @@ int bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base
 				return (EINVAL);
 			}
 			
+			master_id = EROM_GET_ATTR(entry, MPORT_ID);
 			port_num = EROM_GET_ATTR(entry, MPORT_NUM);
 			
-			device_printf(bus, "mport%hhu\n", port_num);
+			device_printf(bus, "mport%hhu-%hhu\n", port_num, master_id);
 
 			offset += 4;
 		}
