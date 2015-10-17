@@ -34,9 +34,10 @@ __FBSDID("$FreeBSD$");
  * Broadcom ChipCommon driver.
  * 
  * With the exception of some very early chipsets, the ChipCommon core
- * has been included in all HND SoCs and chipsets based on the siba(4) and bcma(4)
- * interconnects, providing a common interface to chipset identification,
- * bus enumeration, UARTs, clocks, watchdog interrupts, GPIO, flash, etc.
+ * has been included in all HND SoCs and chipsets based on the siba(4) 
+ * and bcma(4) interconnects, providing a common interface to chipset 
+ * identification, bus enumeration, UARTs, clocks, watchdog interrupts, GPIO, 
+ * flash, etc.
  */
 
 #include <sys/param.h>

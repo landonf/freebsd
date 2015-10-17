@@ -1,12 +1,10 @@
-/*
- * Broadcom HND "Device Management Plugin" Register Constants
- * 
- * Portions of this file were derived from the aidmp.h header
- * provided with Broadcom's initial brcm80211 Linux driver release, as
- * contributed to the Linux staging repository. 
- * 
+/*-
  * Copyright (c) 2015 Landon Fuller <landon@landonf.org>
  * Copyright (c) 2010 Broadcom Corporation
+ * 
+ * Portions of this file were derived from the aidmp.h header
+ * distributed with Broadcom's initial brcm80211 Linux driver release, as
+ * contributed to the Linux staging repository.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -19,6 +17,8 @@
  * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION
  * OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
  * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ * 
+ * $FreeBSD$
  */
 
 #ifndef	_BCMA_BCMA_DMP_H_

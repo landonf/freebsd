@@ -27,6 +27,9 @@
  * THE POSSIBILITY OF SUCH DAMAGES.
  */
 
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
+
 #include <sys/param.h>
 #include <sys/kernel.h>
 #include <sys/bus.h>
@@ -61,14 +64,12 @@ static const char *erom_designer_name(uint16_t mfgid);
 static const char *erom_region_type_name(uint8_t region_type);
 static const char *erom_entry_type_name (uint8_t entry);
 
-static int erom_read32(device_t bus, struct resource *erom_res, bus_size_t erom_end, bus_size_t offset, uint32_t *entry);
+static int erom_read32(device_t bus, struct resource *erom_res,
+		       bus_size_t erom_end, bus_size_t offset, uint32_t *entry);
 
-static int erom_scan_port_regions(device_t bus,
-	uint8_t port,
-	uint8_t port_type,
-	struct resource *erom_res,
-	bus_size_t erom_end,
-	bus_size_t *offset);
+static int erom_scan_port_regions(device_t bus, uint8_t port,
+				  uint8_t port_type, struct resource *erom_res,
+				  bus_size_t erom_end, bus_size_t *offset);
 
 /* Extract entry attribute by applying _MASK and _SHIFT defines. */
 #define EROM_GET_ATTR(_entry, _attr)	\
@@ -136,7 +137,10 @@ static const char *erom_region_type_name (uint8_t region_type) {
  * @param entry Will contain the read result on success.
  * @return If successful, returns 0. If unsuccessful, returns non-zero error.
  */
-static int erom_read32(device_t bus, struct resource *erom_res, bus_size_t erom_end, bus_size_t offset, uint32_t *entry) {
+static int
+erom_read32(device_t bus, struct resource *erom_res, bus_size_t 
+    erom_end, bus_size_t offset, uint32_t *entry)
+{
 	if (offset >= erom_end) {
 		device_printf(bus, "EROM table missing terminating EOF\n");
 		return (EINVAL);
@@ -154,25 +158,21 @@ static int erom_read32(device_t bus, struct resource *erom_res, bus_size_t erom_
  * @param port_type The port region type to be parsed.
  * @param erom_res The EROM resource.
  * @param erom_end The maximum permitted EROM offset.
- * @param offset The offset at which to perform parsing. This will be updated to point
- * past the last valid parsed region on exit.
+ * @param offset The offset at which to perform parsing. This will be updated
+ * to point past the last valid parsed region on exit.
  */
-static int erom_scan_port_regions(
-	device_t bus,
-	uint8_t port,
-	uint8_t port_type,
-	struct resource *erom_res,
-	bus_size_t erom_end,
-	bus_size_t *offset)
+static int 
+erom_scan_port_regions(device_t bus, uint8_t port, uint8_t port_type,
+    struct resource *erom_res, bus_size_t erom_end, bus_size_t *offset)
 {
 	/* Read all address regions defined for this port */
 	for (int i = 0; ; i++) {	
-		uint32_t addr_high, addr_low;
-		uint32_t entry;
-		uint8_t	 region_type;
-		uint8_t region_port;
-		uint32_t size_high, size_low;
-		uint8_t	 size_type;
+		uint32_t 	addr_high, addr_low;
+		uint32_t	entry;
+		uint32_t	size_high, size_low;
+		uint8_t		region_type;
+		uint8_t		region_port;
+		uint8_t		size_type;
 
 		/* Fetch the next entry */
 		if (erom_read32(bus, erom_res, erom_end, *offset, &entry))
@@ -188,7 +188,7 @@ static int erom_scan_port_regions(
 		region_port = EROM_GET_ATTR(entry, REGION_PORT);
 
 
-		/* Terminate if we've read past the end of our region definitions. */
+		/* Terminate when we hit the next port's region descriptor. */
 		if (region_port != port || region_type != port_type) {
 			return (0);
 		}
@@ -241,7 +241,8 @@ static int erom_scan_port_regions(
  * @param erom_res The enumeration ROM resource.
  * @param erom_base Base address of the EROM register mapping.
  */
-int bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base)
+int
+bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base)
 {
 	bus_size_t erom_end;
 	bus_size_t erom_start;
@@ -252,10 +253,10 @@ int bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base
 	erom_start = offset;
 	
 	while (offset != erom_end) {
-		uint16_t	core_designer;
-		uint8_t		core_revision;
-		uint16_t	core_partnum;
 		uint32_t	entry;
+		uint16_t	core_designer;
+		uint16_t	core_partnum;
+		uint8_t		core_revision;
 		uint8_t		first_port_type;
 		uint8_t		num_mport, num_sport, num_mwrap, num_swrap;
 		uint8_t		swrap_port_base;

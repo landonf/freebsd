@@ -1,11 +1,9 @@
-/*
- * Broadcom SOC Interconnect Constants.
- *
- * This file was derived from the hndsoc.h header provided with
- * Broadcom's initial brcm80211 Linux driver release, as
- * contributed to the Linux staging repository. 
- * 
+/*-
  * Copyright (c) 2010 Broadcom Corporation
+ *
+ * This file is derived from the hndsoc.h header distributed with
+ * Broadcom's initial brcm80211 Linux driver release, as
+ * contributed to the Linux staging repository.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -18,6 +16,8 @@
  * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION
  * OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
  * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ * 
+ * $FreeBSD$
  */
 
 #ifndef	_BHND_BHND_CORE_IDS_H_
@@ -40,7 +40,7 @@
 
 #define BHND_CORE_SIZE    	0x1000		/* each core gets 4Kbytes for registers */
 
-#define BHND_MAX_CORES		((SI_WRAP_BASE-SI_CORE_BASE)/SI_CORE_SIZE)	/* Maximum number of cores */
+#define BHND_MAX_CORES		((SI_WRAP_BASE-SI_CORE_BASE)/SI_CORE_SIZE) /* Maximum number of cores */
 
 #define	SI_FASTRAM		0x19000000	/* On-chip RAM on chips that also have DDR */
 #define	SI_FASTRAM_SWAPPED	0x19800000
