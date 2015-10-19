@@ -69,7 +69,12 @@ static int erom_read32(device_t bus, struct resource *erom_res,
 
 static int erom_scan_port_regions(device_t bus, uint8_t port,
 				  uint8_t port_type, struct resource *erom_res,
-				  bus_size_t erom_end, bus_size_t *offset);
+				  bus_size_t erom_end,
+				  bus_size_t * const offset);
+
+static int erom_scan_core(device_t bus, u_int core_idx,
+    struct resource *erom_res, bus_size_t erom_start, bus_size_t erom_end,
+    bus_size_t * const offset);
 
 /* Extract entry attribute by applying _MASK and _SHIFT defines. */
 #define EROM_GET_ATTR(_entry, _attr)	\
@@ -169,7 +174,7 @@ erom_read32(device_t bus, struct resource *erom_res, bus_size_t
  */
 static int 
 erom_scan_port_regions(device_t bus, uint8_t port, uint8_t port_type,
-    struct resource *erom_res, bus_size_t erom_end, bus_size_t *offset)
+    struct resource *erom_res, bus_size_t erom_end, bus_size_t * const offset)
 {
 	/* Read all address regions defined for this port */
 	for (int i = 0; ; i++) {	
@@ -239,7 +244,147 @@ erom_scan_port_regions(device_t bus, uint8_t port, uint8_t port_type,
 	
 	return (0);
 }
-					
+
+/**
+ * Parse a core entry from the EROM table.
+ * 
+ * @param bus The BCMA bus.
+ * @param port The index of the core being parsed.
+ * @param erom_res The EROM resource.
+ * @param erom_end The maximum permitted EROM offset.
+ * @param offset The offset at which to perform parsing. This will be updated
+ * to point past the last valid parsed region on exit.
+ * 
+ * @return If successful, returns 0. If the end of the EROM table is hit,
+ * ENOENT will be returned. On error, returns a non-zero error value.
+ */
+static int
+erom_scan_core(device_t bus, u_int core_idx, struct resource *erom_res,
+    bus_size_t erom_start, bus_size_t erom_end, bus_size_t * const offset)
+{
+	uint32_t	entry;
+	uint16_t	core_designer;
+	uint16_t	core_partnum;
+	uint8_t		core_revision;
+	uint8_t		first_port_type;
+	uint8_t		num_mport, num_sport, num_mwrap, num_swrap;
+	uint8_t		swrap_port_base;
+
+	/* Fetch the next entry */
+	if (erom_read32(bus, erom_res, erom_end, *offset, &entry))
+		return (EINVAL);
+
+	/* Signal EOF */
+	if (entry == BCMA_EROM_TABLE_EOF)
+		return (ENOENT);
+			
+	/* Must be the start of the next core description */
+	if (!EROM_ENTRY_IS(entry, CORE)) {
+		device_printf(bus, "Unexpected EROM %s entry 0x%x at ROM offset 0x%lx\n", erom_entry_type_name(entry), entry, *offset-erom_start);
+		return (EINVAL);
+	}
+	
+	
+	/* Parse CoreDescA */
+	core_designer = EROM_GET_ATTR(entry, COREA_DESIGNER);
+	core_partnum = EROM_GET_ATTR(entry, COREA_ID);
+	
+
+	/* Parse CoreDescB */
+	*offset += 4;
+	if (erom_read32(bus, erom_res, erom_end, *offset, &entry))
+		return (EINVAL);
+
+	if (!EROM_ENTRY_IS(entry, CORE)) {
+		device_printf(bus, "Invalid EROM CoreDescB value 0x%x at ROM offset 0x%lx\n", entry, (*offset-erom_start));
+		return (EINVAL);
+	}
+	
+	core_revision = EROM_GET_ATTR(entry, COREB_REV);
+	num_mport = EROM_GET_ATTR(entry, COREB_NUM_MP);
+	num_sport = EROM_GET_ATTR(entry, COREB_NUM_SP);
+	num_mwrap = EROM_GET_ATTR(entry, COREB_NUM_WMP);
+	num_swrap = EROM_GET_ATTR(entry, COREB_NUM_WSP);
+
+		
+	device_printf(bus, "core%u: designer=%s \"%s\" "
+		"(entry=%x cid=%hx, rev=%hhx, nmp=%hhx, nsp=%hhx, "
+		"nwmp=%hhx, nwsp=%hhx)\n", 
+		core_idx,
+		erom_designer_name(core_designer),
+		bhnd_core_name(core_designer, core_partnum), 
+		entry, core_partnum, core_revision,
+		num_mport, num_sport, num_mwrap, num_swrap);
+	*offset += 4;
+
+	/* Parse Master Port Descriptors */
+	for (uint8_t i = 0; i < num_mport; i++) {
+		uint8_t master_id;
+		uint8_t port_num;
+		
+		if (erom_read32(bus, erom_res, erom_end, *offset, &entry))
+			return (EINVAL);
+		
+		if (!EROM_ENTRY_IS(entry, MPORT)) {
+			device_printf(bus, "Invalid EROM MPD value 0x%x at ROM offset 0x%lx\n", entry, (*offset-erom_start));
+			return (EINVAL);
+		}
+		
+		master_id = EROM_GET_ATTR(entry, MPORT_ID);
+		port_num = EROM_GET_ATTR(entry, MPORT_NUM);
+		
+		device_printf(bus, "mport%hhu-%hhu\n", port_num, master_id);
+
+		*offset += 4;
+	}
+	
+
+	/*
+	 * Determine whether this is a bridge device; if so, we can
+	 * expect the first sequence of address region descriptors to
+	 * be of EROM_REGION_TYPE_BRIDGE instead of EROM_REGION_TYPE_SLAVE.
+	 * 
+	 * It's unclear whether this is the correct mechanism by which we
+	 * should detect/handle bridge devices, but this approach matches
+	 * that of (some of) Broadcom's published drivers.
+	 */
+	if (erom_read32(bus, erom_res, erom_end, *offset, &entry))
+		return (EINVAL);
+	
+	if (EROM_ENTRY_IS(entry, REGION) && 
+		EROM_GET_ATTR(entry, REGION_TYPE) == BCMA_EROM_REGION_TYPE_BRIDGE)
+	{
+		first_port_type = BCMA_EROM_REGION_TYPE_BRIDGE;
+	} else {
+		first_port_type = BCMA_EROM_REGION_TYPE_SLAVE;
+	}
+
+	/* Slave/Bridge Region Descriptors */
+	for (uint8_t port = 0; port < num_sport; port++) {
+		if (erom_scan_port_regions(bus, port, first_port_type, erom_res, erom_end, offset))
+			return (EINVAL);
+	}
+	
+	/* Master (Wrapper) Region Descriptors */
+	for (uint8_t port = 0; port < num_mwrap; port++) {
+		if (erom_scan_port_regions(bus, port, BCMA_EROM_REGION_TYPE_MWRAP, erom_res, erom_end, offset))
+			return (EINVAL);
+	}
+	
+	/* Slave (Wrapper) Region Descriptors. */
+	swrap_port_base = 1; /* hardware bug? */
+	if (num_sport == 1)
+		swrap_port_base = 0;
+	
+	for (uint8_t i = 0; i < num_swrap; i++) {
+		uint8_t port = i + swrap_port_base;
+		if (erom_scan_port_regions(bus, port, BCMA_EROM_REGION_TYPE_SWRAP, erom_res, erom_end, offset))
+			return (EINVAL);
+	}
+
+	return (0);
+}
+
 /**
  * Scan a device enumeration ROM table, adding all discovered cores to the bus.
  * 
@@ -250,126 +395,23 @@ erom_scan_port_regions(device_t bus, uint8_t port, uint8_t port_type,
 int
 bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base)
 {
-	bus_size_t erom_end;
-	bus_size_t erom_start;
-	bus_size_t offset;
+	bus_size_t	erom_end;
+	bus_size_t	erom_start;
+	bus_size_t	offset;
+	int		error;
 	
 	offset = erom_base + BCMA_EROM_TABLE;
 	erom_end = erom_base + BCMA_EROM_TABLE_END;
 	erom_start = offset;
 	
-	while (offset != erom_end) {
-		uint32_t	entry;
-		uint16_t	core_designer;
-		uint16_t	core_partnum;
-		uint8_t		core_revision;
-		uint8_t		first_port_type;
-		uint8_t		num_mport, num_sport, num_mwrap, num_swrap;
-		uint8_t		swrap_port_base;
-
-		/* Fetch the next entry */
-		if (erom_read32(bus, erom_res, erom_end, offset, &entry))
-			return (EINVAL);
-
-		if (entry == BCMA_EROM_TABLE_EOF)
+	for (u_int core_idx = 0; offset < erom_end; core_idx++) {
+		error = erom_scan_core(bus, core_idx, erom_res, erom_start,
+		    erom_end, &offset);
+		
+		if (error == ENOENT)
 			break;
-				
-		/* Must be the start of the next core description */
-		if (!EROM_ENTRY_IS(entry, CORE)) {
-			device_printf(bus, "Unexpected EROM %s entry 0x%x at ROM offset 0x%lx\n", erom_entry_type_name(entry), entry, offset-erom_start);
-			return (EINVAL);
-		}
-		
-		
-		/* Parse CoreDescA */
-		core_designer = EROM_GET_ATTR(entry, COREA_DESIGNER);
-		core_partnum = EROM_GET_ATTR(entry, COREA_ID);
-		
-
-		/* Parse CoreDescB */
-		offset += 4;
-		if (erom_read32(bus, erom_res, erom_end, offset, &entry))
-			return (EINVAL);
-
-		if (!EROM_ENTRY_IS(entry, CORE)) {
-			device_printf(bus, "Invalid EROM CoreDescB value 0x%x at ROM offset 0x%lx\n", entry, (offset-erom_start));
-			return (EINVAL);
-		}
-		
-		core_revision = EROM_GET_ATTR(entry, COREB_REV);
-		num_mport = EROM_GET_ATTR(entry, COREB_NUM_MP);
-		num_sport = EROM_GET_ATTR(entry, COREB_NUM_SP);
-		num_mwrap = EROM_GET_ATTR(entry, COREB_NUM_WMP);
-		num_swrap = EROM_GET_ATTR(entry, COREB_NUM_WSP);
-
-			
-		device_printf(bus, "erom[%lx] = 0x%x (designer=%s, core=\"%s\" cid=%hx, rev=%hhx)\n", (offset-erom_start)/4, entry, erom_designer_name(core_designer), bhnd_core_name(core_designer, core_partnum), core_partnum, core_revision);
-		device_printf(bus, "erom[%lx] nmp=%hhx\tnsp=%hhx\tnwmp=%hhx\tnwsp=%hhx\n", (offset-erom_start)/4, num_mport, num_sport, num_mwrap, num_swrap);
-		offset += 4;
-
-		/* Parse Master Port Descriptors */
-		for (uint8_t i = 0; i < num_mport; i++) {
-			uint8_t master_id;
-			uint8_t port_num;
-			
-			if (erom_read32(bus, erom_res, erom_end, offset, &entry))
-				return (EINVAL);
-			
-			if (!EROM_ENTRY_IS(entry, MPORT)) {
-				device_printf(bus, "Invalid EROM MPD value 0x%x at ROM offset 0x%lx\n", entry, (offset-erom_start));
-				return (EINVAL);
-			}
-			
-			master_id = EROM_GET_ATTR(entry, MPORT_ID);
-			port_num = EROM_GET_ATTR(entry, MPORT_NUM);
-			
-			device_printf(bus, "mport%hhu-%hhu\n", port_num, master_id);
-
-			offset += 4;
-		}
-		
-		/*
-		 * Determine whether this is a bridge device; if so, we can
-		 * expect the first sequence of address region descriptors to
-		 * be of EROM_REGION_TYPE_BRIDGE instead of EROM_REGION_TYPE_SLAVE.
-		 * 
-		 * It's unclear whether this is the correct mechanism by which we
-		 * should detect/handle bridge devices, but this approach matches
-		 * that of (some of) Broadcom's published drivers.
-		 */
-		if (erom_read32(bus, erom_res, erom_end, offset, &entry))
-			return (EINVAL);
-		
-		if (EROM_ENTRY_IS(entry, REGION) && 
-			EROM_GET_ATTR(entry, REGION_TYPE) == BCMA_EROM_REGION_TYPE_BRIDGE)
-		{
-			first_port_type = BCMA_EROM_REGION_TYPE_BRIDGE;
-		} else {
-			first_port_type = BCMA_EROM_REGION_TYPE_SLAVE;
-		}
-
-		/* Slave/Bridge Region Descriptors */
-		for (uint8_t port = 0; port < num_sport; port++) {
-			if (erom_scan_port_regions(bus, port, first_port_type, erom_res, erom_end, &offset))
-				return (EINVAL);
-		}
-		
-		/* Master (Wrapper) Region Descriptors */
-		for (uint8_t port = 0; port < num_mwrap; port++) {
-			if (erom_scan_port_regions(bus, port, BCMA_EROM_REGION_TYPE_MWRAP, erom_res, erom_end, &offset))
-				return (EINVAL);
-		}
-		
-		/* Slave (Wrapper) Region Descriptors. */
-		swrap_port_base = 1; /* hardware bug? */
-		if (num_sport == 1)
-			swrap_port_base = 0;
-		
-		for (uint8_t i = 0; i < num_swrap; i++) {
-			uint8_t port = i + swrap_port_base;
-			if (erom_scan_port_regions(bus, port, BCMA_EROM_REGION_TYPE_SWRAP, erom_res, erom_end, &offset))
-				return (EINVAL);
-		}
+		else if (error)
+			return (error);
 	}
 	
 	return (0);
