@@ -72,8 +72,8 @@ static struct resource_spec bcma_pci_bmem_spec[] = {
 	{ -1,			0,		0 }
 };
 
-#define BMEM_BAR0		0	/* bar0 bmem_res index */
-#define BMEM_BAR1		1	/* bar1 bmem_res index */
+#define BMEM_RES_BAR0		0	/* bar0 bmem_res index */
+#define BMEM_RES_BAR1		1	/* bar1 bmem_res index */
 
 static int
 bcma_pci_probe(device_t dev)
@@ -114,11 +114,11 @@ bcma_pci_attach(device_t dev)
 	 */
 	
 	/* Enumeration table address is found within the ChipCommon core register shadow */
-	eromaddr = bus_read_4(sc->bmem_res[BMEM_BAR0], BHND_PCI_16KB0_CCREGS_OFFSET + BCMA_CC_EROM_ADDR);
+	eromaddr = bus_read_4(sc->bmem_res[BMEM_RES_BAR0], BHND_PCI_V2_CCREGS_OFFSET + BCMA_CC_EROM_ADDR);
 
 	/* Scan EROM and register child devices. */
-	pci_write_config(dev, BHND_PCI_BAR0_WIN2, eromaddr, 4);
-	if (bcma_scan_erom(dev, sc->bmem_res[BMEM_BAR0], BHND_PCI_16KB0_WIN2_OFFSET))
+	pci_write_config(dev, BHND_PCI_BAR0_WIN1, eromaddr, 4);
+	if (bcma_scan_erom(dev, sc->bmem_res[BMEM_RES_BAR0], BHND_PCI_V2_BAR0_WIN1_OFFSET))
 		return (ENXIO);
 	
 	return (0);
