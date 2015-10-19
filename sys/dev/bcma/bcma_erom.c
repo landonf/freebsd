@@ -82,7 +82,9 @@ static int erom_scan_port_regions(device_t bus, uint8_t port,
 	 EROM_GET_ATTR(_entry, ENTRY_TYPE) == BCMA_EROM_ENTRY_TYPE_ ## _type)
 
 /** Return the name associated with a given JEP-106 manufacturer ID. */
-static const char *erom_designer_name (uint16_t mfgid) {
+static const char *
+erom_designer_name (uint16_t mfgid)
+{
 	switch (mfgid) {
 		case JEDEC_MFGID_ARM:
 			return "ARM";
@@ -98,7 +100,9 @@ static const char *erom_designer_name (uint16_t mfgid) {
 }
 
 /** Return the type name for an EROM entry */
-static const char *erom_entry_type_name (uint8_t entry) {
+static const char *
+erom_entry_type_name (uint8_t entry)
+{
 	switch (EROM_GET_ATTR(entry, ENTRY_TYPE)) {
 		case BCMA_EROM_ENTRY_TYPE_CORE:
 			return "core";
@@ -112,7 +116,9 @@ static const char *erom_entry_type_name (uint8_t entry) {
 }
 
 /** Return the name for an EROM region type */
-static const char *erom_region_type_name (uint8_t region_type) {
+static const char *
+erom_region_type_name (uint8_t region_type)
+{
 	switch (region_type) {
 		case BCMA_EROM_REGION_TYPE_SLAVE:
 			return "slave";

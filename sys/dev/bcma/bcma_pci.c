@@ -75,6 +75,14 @@ static struct resource_spec bcma_pci_bmem_spec[] = {
 #define BMEM_RES_BAR0		0	/* bar0 bmem_res index */
 #define BMEM_RES_BAR1		1	/* bar1 bmem_res index */
 
+#define BMEM_RES_CHIPC(sc)	(sc->bmem_res[BMEM_RES_BAR0])
+
+#define bcma_bar_read(res, base, offset, size) \
+	bus_read_ ## size (res, (base) + (offset))
+
+#define bcma_read_chipc(sc, offset, size) \
+	bcma_bar_read(BMEM_RES_CHIPC(sc), BHND_PCI_V2_CCREGS_OFFSET, offset, size)
+
 static int
 bcma_pci_probe(device_t dev)
 {
@@ -109,19 +117,18 @@ bcma_pci_attach(device_t dev)
 		return (ENXIO);
 	}
 
-	/*
-	 * Scan the bus' enumeration ROM.
-	 */
-	
-	/* Enumeration table address is found within the ChipCommon core register shadow */
-	eromaddr = bus_read_4(sc->bmem_res[BMEM_RES_BAR0], BHND_PCI_V2_CCREGS_OFFSET + BCMA_CC_EROM_ADDR);
-
-	/* Scan EROM and register child devices. */
+	/* Locate and map the enumeration table into WIN1. A pointer to the
+	 * table can be found within the ChipCommon register map. */
+	eromaddr = bcma_read_chipc(sc, BCMA_CC_EROM_ADDR, 4);
 	pci_write_config(dev, BHND_PCI_BAR0_WIN1, eromaddr, 4);
-	if (bcma_scan_erom(dev, sc->bmem_res[BMEM_RES_BAR0], BHND_PCI_V2_BAR0_WIN1_OFFSET))
+
+	/* Scan EROM, registering all child devices. */
+	if (bcma_scan_erom(dev, BMEM_RES_CHIPC(sc), BHND_PCI_V2_BAR0_WIN1_OFFSET))
 		return (ENXIO);
 	
-	return (0);
+	/* Let the generic implementation probe all added children. After this
+	 * point, child cores will depend directly on the BAR0 memory windows. */
+	return (bus_generic_attach(dev));
 }
 
 static int
