@@ -35,19 +35,84 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/bus.h>
 
+#include <dev/bhnd/bhnd.h>
+
 #include "bcmavar.h"
 
 MALLOC_DEFINE(M_BCMA, "bcma", "BCMA bus data structures");
+
+int
+bcma_print_child(device_t dev, device_t child)
+{
+	// TODO
+	return bus_generic_print_child(dev, child);
+}
+
+void
+bcma_probe_nomatch(device_t dev, device_t child)
+{
+	// TODO
+}
+
+int
+bcma_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
+{
+	const struct bcma_devinfo *dinfo;
+	const struct bcma_corecfg *cfg;
+	
+	dinfo = device_get_ivars(child);
+	cfg = &dinfo->cfg;
+	
+	switch (index) {
+		case BHND_IVAR_DESIGNER:
+			*result = cfg->designer;
+			return (0);
+		case BHND_IVAR_CORE_ID:
+			*result = cfg->core_id;
+			return (0);
+		case BHND_IVAR_CORE_REVISION:
+			*result = cfg->revision;
+			return (0);
+		case BHND_IVAR_CORE_NAME:
+			*result = (uintptr_t) bhnd_core_name(cfg->designer, cfg->core_id);
+			return (0);
+;
+		default:
+			return (ENOENT);
+	}
+}
+
+int
+bcma_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
+{
+	switch (index) {
+		case BHND_IVAR_DESIGNER:
+		case BHND_IVAR_CORE_ID:
+		case BHND_IVAR_CORE_REVISION:
+		case BHND_IVAR_CORE_NAME:
+			return (EINVAL);
+		default:
+			return (ENOENT);
+	}
+}
+
+void
+bcma_child_deleted(device_t dev, device_t child)
+{
+	struct bcma_devinfo *dinfo = device_get_ivars(child);
+	if (dinfo != NULL)
+		bcma_free_dinfo(dinfo);
+}
 
 /**
  * Allocate and initialize new device info descriptor.
  * 
  * @param designer Core designer.
- * @param partnum Core part number.
+ * @param core_id Core identifier / part number.
  * @param revision Hardware revision.
  */
 struct bcma_devinfo *
-bcma_alloc_dinfo(uint8_t designer, uint8_t partnum, uint8_t revision)
+bcma_alloc_dinfo(uint16_t designer, uint16_t core_id, uint8_t revision)
 {
 	struct bcma_devinfo *dinfo;
 	
@@ -56,7 +121,7 @@ bcma_alloc_dinfo(uint8_t designer, uint8_t partnum, uint8_t revision)
 		return NULL;
 	
 	dinfo->cfg.designer = designer;
-	dinfo->cfg.partnum = partnum;
+	dinfo->cfg.core_id = core_id;
 	dinfo->cfg.revision = revision;
 	
 	STAILQ_INIT(&dinfo->cfg.mports);

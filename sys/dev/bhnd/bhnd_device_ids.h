@@ -461,6 +461,9 @@
 #define	BHND_COREID_DEFAULT		0xfff		/* Default component, in AI chips it maps all
 							 * unused address ranges
 							 */
+							 
+/* Core HW Revision Numbers */
+#define	BHND_HWREV_ANY			0xFF		/* Matches any revision ID */
 
 /* Boardflags */
 #define	BHND_BFL_BTC2WIRE		0x00000001	/* old 2wire Bluetooth coexistence, OBSOLETE */

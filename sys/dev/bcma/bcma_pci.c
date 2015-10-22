@@ -50,9 +50,9 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhnd_device_ids.h>
 #include <dev/bhnd/bhnd_pcireg.h>
 
-#include "bcma.h"
+#include "bcmavar.h"
 #include "bcmareg.h"
-#include "bcma_erom.h"
+
 #include "bcma_pcivar.h"
 
 static const struct bcma_pci_device {
@@ -153,29 +153,6 @@ bcma_pci_resume(device_t dev)
 	return (ENXIO);
 }
 
-static int
-bcma_pci_print_child(device_t dev, device_t child)
-{
-	return (ENOENT);
-}
-
-static void
-bcma_pci_probe_nomatch(device_t dev, device_t child)
-{
-}
-
-static int
-bcma_pci_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
-{
-	return (ENOENT);
-}
-
-static int
-bcma_pci_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
-{
-	return (ENOENT);
-}
-
 
 static device_method_t bcma_pci_methods[] = {
 	/* Device interface */
@@ -187,21 +164,20 @@ static device_method_t bcma_pci_methods[] = {
 	DEVMETHOD(device_resume,	bcma_pci_resume),
 	
 	/* Bus interface */
-	DEVMETHOD(bus_print_child,	bcma_pci_print_child),
-	DEVMETHOD(bus_probe_nomatch,	bcma_pci_probe_nomatch),
-	DEVMETHOD(bus_read_ivar,	bcma_pci_read_ivar),
-	DEVMETHOD(bus_write_ivar,	bcma_pci_write_ivar),
+	DEVMETHOD(bus_print_child,	bcma_print_child),
+	DEVMETHOD(bus_probe_nomatch,	bcma_probe_nomatch),
+	DEVMETHOD(bus_read_ivar,	bcma_read_ivar),
+	DEVMETHOD(bus_write_ivar,	bcma_write_ivar),
+	DEVMETHOD(bus_child_deleted,	bcma_child_deleted),
 	
 	// TODO: Additional bus_* methods required.
 	
 	DEVMETHOD_END
 };
-static driver_t bcma_pci_driver = {
-	"bcma",
-	bcma_pci_methods,
-	sizeof(struct bcma_pci_softc)
-};
-static devclass_t bhnd_devclass;
-DRIVER_MODULE(bcma_pci, pci, bcma_pci_driver, bhnd_devclass, 0, 0);
+
+static devclass_t bcma_devclass;
+
+DEFINE_CLASS_0(bcma, bcma_pci_driver, bcma_pci_methods, sizeof(struct bcma_pci_softc));
+DRIVER_MODULE(bcma_pci, pci, bcma_pci_driver, bcma_devclass, 0, 0);
 MODULE_DEPEND(bcma_pci, pci, 1, 1, 1);
 MODULE_DEPEND(bcma_pci, bhnd, 1, 1, 1);

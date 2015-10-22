@@ -45,51 +45,84 @@ __FBSDID("$FreeBSD$");
 #include <sys/bus.h>
 #include <sys/module.h>
 
-struct bhnd_chipcommon_softc {};
+#include <dev/bhnd/bhnd_device_ids.h>
+#include <dev/bhnd/bhnd.h>
+
+struct bhnd_chipc_softc {};
+
+static const struct chipc_bhnd_device {
+	uint16_t	 designer;
+	uint16_t	 core_id;
+	uint8_t		 revision;
+	const char	*desc;
+} chipc_bhnd_devices[] = {
+	{ JEDEC_MFGID_BCM,	BHND_COREID_CC,		BHND_HWREV_ANY,	NULL },
+	{ 0,			BHND_COREID_NODEV,	BHND_HWREV_ANY,	NULL }
+};
 
 static int
-bhnd_cc_probe(device_t dev)
+bhnd_chipc_probe(device_t dev)
+{
+	const struct chipc_bhnd_device	*id;
+	const char 			*desc;
+
+	for (id = chipc_bhnd_devices; id->core_id != BHND_COREID_NODEV; id++)
+	{
+		if (bhnd_get_designer(dev) == id->designer &&
+		    bhnd_get_core_id(dev) == id->core_id &&
+		    (id->revision == BHND_HWREV_ANY ||
+			bhnd_get_core_revision(dev) != id->revision))
+		{
+			if (id->desc == NULL)
+				desc = bhnd_get_core_name(dev);
+			else
+				desc = id->desc;
+		
+			device_set_desc(dev, desc);
+			return (BUS_PROBE_DEFAULT);
+		}
+	}
+
+	return (ENXIO);
+}
+
+static int
+bhnd_chipc_attach(device_t dev)
+{
+	// TODO
+	return (0);
+}
+
+static int
+bhnd_chipc_detach(device_t dev)
 {
 	return (ENXIO);
 }
 
 static int
-bhnd_cc_attach(device_t dev)
+bhnd_chipc_suspend(device_t dev)
 {
 	return (ENXIO);
 }
 
 static int
-bhnd_cc_detach(device_t dev)
+bhnd_chipc_resume(device_t dev)
 {
 	return (ENXIO);
 }
 
-static int
-bhnd_cc_suspend(device_t dev)
-{
-	return (ENXIO);
-}
-
-static int
-bhnd_cc_resume(device_t dev)
-{
-	return (ENXIO);
-}
-
-static device_method_t bhnd_cc_methods[] = {
+static device_method_t bhnd_chipc_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_probe,		bhnd_cc_probe),
-	DEVMETHOD(device_attach,	bhnd_cc_attach),
-	DEVMETHOD(device_detach,	bhnd_cc_detach),
-	DEVMETHOD(device_suspend,	bhnd_cc_suspend),
-	DEVMETHOD(device_resume,	bhnd_cc_resume),
+	DEVMETHOD(device_probe,		bhnd_chipc_probe),
+	DEVMETHOD(device_attach,	bhnd_chipc_attach),
+	DEVMETHOD(device_detach,	bhnd_chipc_detach),
+	DEVMETHOD(device_suspend,	bhnd_chipc_suspend),
+	DEVMETHOD(device_resume,	bhnd_chipc_resume),
 	DEVMETHOD_END
 };
-static driver_t bhnd_cc_driver = {
-	"bhnd_chipcommon",
-	bhnd_cc_methods,
-	sizeof(struct bhnd_chipcommon_softc)
-};
-static devclass_t bhnd_cc_devclass;
-DRIVER_MODULE(bhnd_chipcommon, bhnd, bhnd_cc_driver, bhnd_cc_devclass, 0, 0);
+
+static devclass_t bhnd_chipc_devclass;
+
+DEFINE_CLASS_0(bhnd_chipc, bhnd_chipc_driver, bhnd_chipc_methods, sizeof(struct bhnd_chipc_softc));
+DRIVER_MODULE(bhnd_chipc, bcma, bhnd_chipc_driver, bhnd_chipc_devclass, 0, 0);
+DRIVER_MODULE(bhnd_chipc, siba, bhnd_chipc_driver, bhnd_chipc_devclass, 0, 0);

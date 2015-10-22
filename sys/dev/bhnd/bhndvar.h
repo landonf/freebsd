@@ -48,7 +48,10 @@ enum bhnd_device_vars {
 	BHND_IVAR_CORE_ID,
 	
 	/** Core revision. */
-	BHND_IVAR_CORE_REVISION
+	BHND_IVAR_CORE_REVISION,
+	
+	/** Core name. */
+	BHND_IVAR_CORE_NAME
 };
 
 /*
@@ -60,5 +63,8 @@ enum bhnd_device_vars {
 BHND_ACCESSOR(designer,		DESIGNER,	uint16_t);
 BHND_ACCESSOR(core_id,		CORE_ID,	uint16_t);
 BHND_ACCESSOR(core_revision,	CORE_REVISION,	uint8_t);
+BHND_ACCESSOR(core_name,	CORE_NAME,	const char *);
+
+#undef BHND_ACCESSOR
 
 #endif /* _BHND_BHNDVAR_H_ */

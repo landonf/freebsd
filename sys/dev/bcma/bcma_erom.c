@@ -33,9 +33,9 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/kernel.h>
 #include <sys/bus.h>
+#include <sys/systm.h>
 
 #include <machine/bus.h>
-#include <sys/rman.h>
 #include <machine/resource.h>
 
 #include <dev/bhnd/bhnd.h>
@@ -46,7 +46,7 @@ __FBSDID("$FreeBSD$");
 #include "bcmavar.h"
 
 #include "bcma_dmp.h"
-#include "bcma_erom.h"
+#include "bcmavar.h"
 
 /*
  * BCMA Enumeration ROM (EROM) Table
@@ -63,7 +63,6 @@ __FBSDID("$FreeBSD$");
  */
 
 static const char *erom_designer_name(uint16_t mfgid);
-static const char *erom_region_type_name(uint8_t region_type);
 static const char *erom_entry_type_name (uint8_t entry);
 
 static int erom_read32(device_t bus, struct resource *erom_res,
@@ -75,7 +74,7 @@ static int erom_scan_port_regions(device_t bus, struct bcma_sport_list *ports,
 
 static int erom_scan_core(device_t bus, u_int core_idx,
     struct resource *erom_res, bus_size_t erom_start, bus_size_t erom_end,
-    bus_size_t * const offset);
+    bus_size_t * const offset, struct bcma_devinfo **result);
 
 /* Extract entry attribute by applying _MASK and _SHIFT defines. */
 #define EROM_GET_ATTR(_entry, _attr)	\
@@ -116,24 +115,6 @@ erom_entry_type_name (uint8_t entry)
 			return "mport";
 		case BCMA_EROM_ENTRY_TYPE_REGION:
 			return "region";
-		default:
-			return "unknown";
-	}
-}
-
-/** Return the name for an EROM region type */
-static const char *
-erom_region_type_name (uint8_t region_type)
-{
-	switch (region_type) {
-		case BCMA_EROM_REGION_TYPE_DEVICE:
-			return "core";
-		case BCMA_EROM_REGION_TYPE_BRIDGE:
-			return "bridge";
-		case BCMA_EROM_REGION_TYPE_MWRAP:
-			return "mwrap";
-		case BCMA_EROM_REGION_TYPE_SWRAP:
-			return "swrap";
 		default:
 			return "unknown";
 	}
@@ -277,8 +258,6 @@ erom_scan_port_regions(device_t bus, struct bcma_sport_list *ports,
 		map->m_base = addr_low | ((uint64_t)addr_high << 32);
 		map->m_size = size_low | ((uint64_t)size_high << 32);
 		STAILQ_INSERT_TAIL(&sport->sp_maps, map, m_link);
-		
-		device_printf(bus, "%s%hhu.%d at 0x%08lx-0x%08lx\n", erom_region_type_name(region_type), port_num, i, map->m_base, map->m_base+map->m_size-1);
 		*offset += 4;
 	}
 		
@@ -299,24 +278,28 @@ done:
  * Parse a core entry from the EROM table.
  * 
  * @param bus The BCMA bus.
- * @param port The index of the core being parsed.
+ * @param core_idx The index of the core being parsed.
  * @param erom_res The EROM resource.
  * @param erom_end The maximum permitted EROM offset.
  * @param offset The offset at which to perform parsing. This will be updated
  * to point past the last valid parsed region on exit.
+ * @param result On success, the core's device info. The caller inherits ownership
+ * of this allocation.
  * 
  * @return If successful, returns 0. If the end of the EROM table is hit,
  * ENOENT will be returned. On error, returns a non-zero error value.
  */
 static int
 erom_scan_core(device_t bus, u_int core_idx, struct resource *erom_res,
-    bus_size_t erom_start, bus_size_t erom_end, bus_size_t * const offset)
+    bus_size_t erom_start, bus_size_t erom_end, bus_size_t * const offset,
+    struct bcma_devinfo **result
+)
 {
 	struct bcma_devinfo	*dinfo;
 	bcma_sport_type		 first_port_type;
 	uint32_t		 entry;
 	uint16_t		 core_designer;
-	uint16_t		 core_partnum;
+	uint16_t		 core_id;
 	uint8_t			 core_revision;
 	uint8_t			 num_mport, num_sport, num_mwrap, num_swrap;
 	uint8_t			 swrap_port_base;
@@ -341,7 +324,7 @@ erom_scan_core(device_t bus, u_int core_idx, struct resource *erom_res,
 	
 	/* Parse CoreDescA */
 	core_designer = EROM_GET_ATTR(entry, COREA_DESIGNER);
-	core_partnum = EROM_GET_ATTR(entry, COREA_ID);
+	core_id = EROM_GET_ATTR(entry, COREA_ID);
 	
 
 	/* Parse CoreDescB */
@@ -361,18 +344,18 @@ erom_scan_core(device_t bus, u_int core_idx, struct resource *erom_res,
 	num_swrap = EROM_GET_ATTR(entry, COREB_NUM_WSP);
 
 	/* Allocate our device info */
-	dinfo = bcma_alloc_dinfo(core_designer, core_partnum, core_revision);
+	dinfo = bcma_alloc_dinfo(core_designer, core_id, core_revision);
 	if (dinfo == NULL)
 		return (ENOMEM);
 	
-	device_printf(bus, "core%u: designer=%s \"%s\" "
-		"(entry=%x cid=%hx, rev=%hhx, nmp=%hhx, nsp=%hhx, "
-		"nwmp=%hhx, nwsp=%hhx)\n", 
-		core_idx,
-		erom_designer_name(core_designer),
-		bhnd_core_name(core_designer, core_partnum), 
-		entry, core_partnum, core_revision,
-		num_mport, num_sport, num_mwrap, num_swrap);
+	if (bootverbose) {
+		device_printf(bus, 
+			    "core%u: %s %s (cid=%hx, rev=%hhu)\n",
+			    core_idx,
+			    erom_designer_name(dinfo->cfg.designer),
+			    bhnd_core_name(dinfo->cfg.designer, dinfo->cfg.core_id), 
+			    dinfo->cfg.core_id, dinfo->cfg.revision);
+	}
 	*offset += 4;
 
 	/* Parse Master Port Descriptors */
@@ -385,7 +368,7 @@ erom_scan_core(device_t bus, u_int core_idx, struct resource *erom_res,
 		error = erom_read32(bus, erom_res, erom_end, *offset, &entry);
 		if (error)
 			goto cleanup;
-		
+
 		if (!EROM_ENTRY_IS(entry, MPORT)) {
 			device_printf(bus, "Invalid EROM MPD value 0x%x at ROM offset 0x%lx\n", entry, (*offset-erom_start));
 			error = EINVAL;
@@ -408,7 +391,6 @@ erom_scan_core(device_t bus, u_int core_idx, struct resource *erom_res,
 
 		/* Update dinfo */
 		STAILQ_INSERT_TAIL(&dinfo->cfg.mports, mport, mp_link);
-		device_printf(bus, "mport%hhu-%hhu\n", mp_num, mp_vid);
 
 		*offset += 4;
 	}
@@ -468,9 +450,8 @@ erom_scan_core(device_t bus, u_int core_idx, struct resource *erom_res,
 		if (error)
 			goto cleanup;
 	}
-	
-	// TODO: Add child device for the new dinfo record.
 
+	*result = dinfo;
 	return (0);
 	
 cleanup:
@@ -490,10 +471,12 @@ cleanup:
 int
 bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base)
 {
-	bus_size_t	erom_end;
-	bus_size_t	erom_start;
-	bus_size_t	offset;
-	int		error;
+	struct bcma_devinfo	*dinfo;
+	device_t		 child;
+	bus_size_t		 erom_end;
+	bus_size_t		 erom_start;
+	bus_size_t		 offset;
+	int			 error;
 	
 	offset = erom_base + BCMA_EROM_TABLE;
 	erom_end = erom_base + BCMA_EROM_TABLE_END;
@@ -501,12 +484,21 @@ bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base)
 	
 	for (u_int core_idx = 0; offset < erom_end; core_idx++) {
 		error = erom_scan_core(bus, core_idx, erom_res, erom_start,
-		    erom_end, &offset);
+		    erom_end, &offset, &dinfo);
 		
+		/* Handle EOF or error */
 		if (error == ENOENT)
 			break;
 		else if (error)
 			return (error);
+		
+		/* Add the child device */
+		// TODO: Ordering and other configuration
+		child = device_add_child(bus, NULL, -1);
+		if (child == NULL)
+			return ENXIO;
+
+		device_set_ivars(child, dinfo);
 	}
 	
 	return (0);

@@ -32,7 +32,12 @@
 #ifndef _BCMA_BCMAVAR_H_
 #define _BCMA_BCMAVAR_H_
 
+#include <sys/types.h>
+#include <sys/malloc.h>
 #include <sys/queue.h>
+#include <sys/rman.h>
+
+MALLOC_DECLARE(M_BCMA);
 
 /*
  * Broadcom AMBA backplane types and data structures.
@@ -56,12 +61,23 @@ typedef enum {
 } bcma_sport_type;
 
 
-struct bcma_devinfo	*bcma_alloc_dinfo(uint8_t designer, uint8_t partnum,
-    uint8_t revision);
+int			 bcma_scan_erom(device_t bus, struct resource *erom_res,
+			     bus_size_t erom_base);
+
+int			 bcma_print_child(device_t dev, device_t child);
+void			 bcma_probe_nomatch(device_t dev, device_t child);
+int			 bcma_read_ivar(device_t dev, device_t child, int index,
+			     uintptr_t *result);
+int			 bcma_write_ivar(device_t dev, device_t child,
+			     int index, uintptr_t value);
+void			 bcma_child_deleted(device_t dev, device_t child);
+
+struct bcma_devinfo	*bcma_alloc_dinfo(uint16_t designer, uint16_t core_id,
+			     uint8_t revision);
 void			 bcma_free_dinfo(struct bcma_devinfo *dinfo);
 
 struct bcma_sport	*bcma_alloc_sport(uint8_t port_num,
-    bcma_sport_type port_type);
+			     bcma_sport_type port_type);
 void			 bcma_free_sport(struct bcma_sport *sport);
 
 
@@ -92,8 +108,8 @@ STAILQ_HEAD(bcma_sport_list, bcma_sport);
 
 /** BCMA IP core/block configuration */
 struct bcma_corecfg {
-	uint8_t		designer;	/**< IP designer's JEP-106 mfgid */
-	uint8_t		partnum;	/**< IP core part number */
+	uint16_t	designer;	/**< IP designer's JEP-106 mfgid */
+	uint16_t	core_id;	/**< IP core ID/part number */
 	uint8_t		revision;	/**< IP core hardware revision */
 
 	struct bcma_mport_list	mports;	/**< master port descriptors */

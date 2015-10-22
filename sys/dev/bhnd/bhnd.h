@@ -32,6 +32,8 @@
 #ifndef _BHND_BHND_H_
 #define _BHND_BHND_H_
 
+#include "bhndvar.h"
+
 extern const char *bhnd_core_name (uint16_t mfgid, uint16_t coreid);
 
 #endif /* _BHND_BHNDVAR_H_ */

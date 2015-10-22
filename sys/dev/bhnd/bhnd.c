@@ -123,7 +123,7 @@ static const struct bhnd_core_desc {
 	{ JEDEC_MFGID_BCM,	BHND_COREID_UBUS_SHIM,	"BCM6362/UBUS WLAN SHIM" },
 
 	{ JEDEC_MFGID_ARM,	BHND_COREID_APB_BRIDGE,	"AXI to APB Bridge" },
-	{ JEDEC_MFGID_ARM,	BHND_COREID_AXI,	"AMBA AXI GPV" },
+	{ JEDEC_MFGID_ARM,	BHND_COREID_AXI,	"AMBA Interconnect" },
 	{ JEDEC_MFGID_ARM,	BHND_COREID_EROM,	"Enumeration ROM" },
 	{ JEDEC_MFGID_ARM,	BHND_COREID_OOB_ROUTER,	"OOB Interrupt Router" },
 	{ JEDEC_MFGID_ARM,	BHND_COREID_DEFAULT,	"Default Core (Unused Address Ranges)" },
@@ -149,50 +149,3 @@ const char *bhnd_core_name (uint16_t mfgid, uint16_t coreid) {
 	
 	return "unknown";
 }
-
-static int
-bhnd_probe(device_t dev)
-{
-	return (ENXIO);
-}
-
-static int
-bhnd_attach(device_t dev)
-{
-	return (ENXIO);
-}
-
-static int
-bhnd_detach(device_t dev)
-{
-	return (ENXIO);
-}
-
-static int
-bhnd_suspend(device_t dev)
-{
-	return (ENXIO);
-}
-
-static int
-bhnd_resume(device_t dev)
-{
-	return (ENXIO);
-}
-
-static device_method_t bhnd_methods[] = {
-	/* Device interface */
-	DEVMETHOD(device_probe,		bhnd_probe),
-	DEVMETHOD(device_attach,	bhnd_attach),
-	DEVMETHOD(device_detach,	bhnd_detach),
-	DEVMETHOD(device_suspend,	bhnd_suspend),
-	DEVMETHOD(device_resume,	bhnd_resume),
-	DEVMETHOD_END
-};
-static driver_t bhnd_driver = {
-	"bhnd",
-	bhnd_methods,
-	sizeof(struct bhnd_softc)
-};
-static devclass_t bhnd_devclass;
-DRIVER_MODULE(bhnd, bhnd, bhnd_driver, bhnd_devclass, 0, 0);

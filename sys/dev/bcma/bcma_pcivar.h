@@ -29,8 +29,8 @@
  * $FreeBSD$
  */
 
-#ifndef _BCMA_BCMAVAR_H_
-#define _BCMA_BCMAVAR_H_
+#ifndef _BCMA_BCMA_PCIVAR_H_
+#define _BCMA_BCMA_PCIVAR_H_
 
 /*
  * Broadcom PCI-bridged AMBA backplane data structure definitions.
@@ -43,4 +43,4 @@ struct bcma_pci_softc {
 	struct resource		*bmem_res[2];	/* BARn-accessible backplace address space */
 };
 
-#endif /* _BCMA_BCMAVAR_H_ */
+#endif /* _BCMA_BCMA_PCIVAR_H_ */
