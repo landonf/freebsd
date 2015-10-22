@@ -96,7 +96,7 @@
 #define	BCMA_EROM_MPORT_ID_SHIFT	4
 
 
-/* EROM Region Descriptor */
+/* EROM Slave Port MMIO Region Descriptor */
 #define	BCMA_EROM_REGION_BASE_MASK	0xFFFFF000	/* region base address */
 #define	BCMA_EROM_REGION_BASE_SHIFT	0
 #define	BCMA_EROM_REGION_64BIT_MASK	0x00000008	/* base address spans two 32-bit entries */
@@ -105,10 +105,10 @@
 #define	BCMA_EROM_REGION_PORT_SHIFT	8
 #define	BCMA_EROM_REGION_TYPE_MASK	0x000000C0	/* region type */
 #define	BCMA_EROM_REGION_TYPE_SHIFT	6
-#define	  BCMA_EROM_REGION_TYPE_SLAVE	0		/* slave */
-#define	  BCMA_EROM_REGION_TYPE_BRIDGE	1		/* bridge */
-#define	  BCMA_EROM_REGION_TYPE_SWRAP	2		/* slave wrapper */
-#define	  BCMA_EROM_REGION_TYPE_MWRAP	3		/* master wrapper */
+#define	  BCMA_EROM_REGION_TYPE_DEVICE	0		/* region maps to a device */
+#define	  BCMA_EROM_REGION_TYPE_BRIDGE	1		/* region maps to a bridge (e.g. AXI2APB) */
+#define	  BCMA_EROM_REGION_TYPE_SWRAP	2		/* region maps to a slave port's DMP agent/wrapper */
+#define	  BCMA_EROM_REGION_TYPE_MWRAP	3		/* region maps to a master port's DMP agent/wrapper */
 
 #define	BCMA_EROM_REGION_SIZE_MASK	0x00000030	/* region size encoding */
 #define	BCMA_EROM_REGION_SIZE_SHIFT	4

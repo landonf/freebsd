@@ -32,4 +32,9 @@
 #ifndef _BCMA_BCMA_H_
 #define _BCMA_BCMA_H_
 
+#include <sys/types.h>
+#include <sys/malloc.h>
+
+MALLOC_DECLARE(M_BCMA);
+
 #endif /* _BCMA_BCMA_H_ */
