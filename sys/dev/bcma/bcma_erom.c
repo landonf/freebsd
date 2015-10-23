@@ -91,16 +91,16 @@ static const char *
 erom_designer_name (uint16_t mfgid)
 {
 	switch (mfgid) {
-		case JEDEC_MFGID_ARM:
-			return "ARM";
-			break;
-		case JEDEC_MFGID_BCM:
-			return "Broadcom";
-			break;
-		case JEDEC_MFGID_MIPS:
-			return "MIPS";
-		default:
-			return "unknown";
+	case JEDEC_MFGID_ARM:
+		return "ARM";
+		break;
+	case JEDEC_MFGID_BCM:
+		return "Broadcom";
+		break;
+	case JEDEC_MFGID_MIPS:
+		return "MIPS";
+	default:
+		return "unknown";
 	}
 }
 
@@ -109,14 +109,14 @@ static const char *
 erom_entry_type_name (uint8_t entry)
 {
 	switch (EROM_GET_ATTR(entry, ENTRY_TYPE)) {
-		case BCMA_EROM_ENTRY_TYPE_CORE:
-			return "core";
-		case BCMA_EROM_ENTRY_TYPE_MPORT:
-			return "mport";
-		case BCMA_EROM_ENTRY_TYPE_REGION:
-			return "region";
-		default:
-			return "unknown";
+	case BCMA_EROM_ENTRY_TYPE_CORE:
+		return "core";
+	case BCMA_EROM_ENTRY_TYPE_MPORT:
+		return "mport";
+	case BCMA_EROM_ENTRY_TYPE_REGION:
+		return "region";
+	default:
+		return "unknown";
 	}
 }
 
@@ -173,18 +173,18 @@ erom_scan_port_regions(device_t bus, struct bcma_sport_list *ports,
 	
 	/* Determine the required region type for our region descriptors */
 	switch (port_type) {
-		case BCMA_SPORT_TYPE_DEVICE:
-			req_region_type = BCMA_EROM_REGION_TYPE_DEVICE;
-			break;
-		case BCMA_SPORT_TYPE_BRIDGE:
-			req_region_type = BCMA_EROM_REGION_TYPE_BRIDGE;
-			break;
-		case BCMA_SPORT_TYPE_SWRAP:
-			req_region_type = BCMA_EROM_REGION_TYPE_SWRAP;
-			break;
-		case BCMA_SPORT_TYPE_MWRAP:
-			req_region_type = BCMA_EROM_REGION_TYPE_MWRAP;
-			break;
+	case BCMA_SPORT_TYPE_DEVICE:
+		req_region_type = BCMA_EROM_REGION_TYPE_DEVICE;
+		break;
+	case BCMA_SPORT_TYPE_BRIDGE:
+		req_region_type = BCMA_EROM_REGION_TYPE_BRIDGE;
+		break;
+	case BCMA_SPORT_TYPE_SWRAP:
+		req_region_type = BCMA_EROM_REGION_TYPE_SWRAP;
+		break;
+	case BCMA_SPORT_TYPE_MWRAP:
+		req_region_type = BCMA_EROM_REGION_TYPE_MWRAP;
+		break;
 	}
 
 	/* Read all address regions defined for this port */

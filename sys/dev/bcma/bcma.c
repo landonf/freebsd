@@ -64,21 +64,21 @@ bcma_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 	cfg = &dinfo->cfg;
 	
 	switch (index) {
-		case BHND_IVAR_DESIGNER:
-			*result = cfg->designer;
-			return (0);
-		case BHND_IVAR_CORE_ID:
-			*result = cfg->core_id;
-			return (0);
-		case BHND_IVAR_CORE_REVISION:
-			*result = cfg->revision;
-			return (0);
-		case BHND_IVAR_CORE_NAME:
-			*result = (uintptr_t) bhnd_core_name(cfg->designer, cfg->core_id);
-			return (0);
+	case BHND_IVAR_DESIGNER:
+		*result = cfg->designer;
+		return (0);
+	case BHND_IVAR_CORE_ID:
+		*result = cfg->core_id;
+		return (0);
+	case BHND_IVAR_CORE_REVISION:
+		*result = cfg->revision;
+		return (0);
+	case BHND_IVAR_CORE_NAME:
+		*result = (uintptr_t) bhnd_core_name(cfg->designer, cfg->core_id);
+		return (0);
 ;
-		default:
-			return (ENOENT);
+	default:
+		return (ENOENT);
 	}
 }
 
@@ -86,13 +86,13 @@ int
 bcma_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
 {
 	switch (index) {
-		case BHND_IVAR_DESIGNER:
-		case BHND_IVAR_CORE_ID:
-		case BHND_IVAR_CORE_REVISION:
-		case BHND_IVAR_CORE_NAME:
-			return (EINVAL);
-		default:
-			return (ENOENT);
+	case BHND_IVAR_DESIGNER:
+	case BHND_IVAR_CORE_ID:
+	case BHND_IVAR_CORE_REVISION:
+	case BHND_IVAR_CORE_NAME:
+		return (EINVAL);
+	default:
+		return (ENOENT);
 	}
 }
 
