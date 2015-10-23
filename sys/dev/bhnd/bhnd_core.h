@@ -20,27 +20,27 @@
  * $FreeBSD$
  */
 
-#ifndef	_BHND_BHND_CORE_IDS_H_
-#define	_BHND_BHND_CORE_IDS_H_
+#ifndef _BHND_BHND_CORE_IDS_H_
+#define _BHND_BHND_CORE_IDS_H_
 
 /*
  * SOC Interconnect Address Map.
  * All regions may not exist on all chips.
  */
-#define BHND_SDRAM_BASE		0x00000000	/* Physical SDRAM */
-#define BHND_PCI_MEM		0x08000000	/* Host Mode sb2pcitranslation0 (64 MB) */
-#define BHND_PCI_MEM_SZ		(64 * 1024 * 1024)
-#define BHND_PCI_CFG		0x0c000000	/* Host Mode sb2pcitranslation1 (64 MB) */
+#define	BHND_SDRAM_BASE		0x00000000	/* Physical SDRAM */
+#define	BHND_PCI_MEM		0x08000000	/* Host Mode sb2pcitranslation0 (64 MB) */
+#define	BHND_PCI_MEM_SZ		(64 * 1024 * 1024)
+#define	BHND_PCI_CFG		0x0c000000	/* Host Mode sb2pcitranslation1 (64 MB) */
 #define	BHND_SDRAM_SWAPPED	0x10000000	/* Byteswapped Physical SDRAM */
-#define BHND_SDRAM_R2		0x80000000	/* Region 2 for sdram (512 MB) */
+#define	BHND_SDRAM_R2		0x80000000	/* Region 2 for sdram (512 MB) */
 
-#define BHND_CORE_BASE	    	0x18000000	/* Per-core register blocks */
-#define BHND_WRAP_BASE    	0x18100000	/* AXI wrapper register blocks (only
+#define	BHND_CORE_BASE	    	0x18000000	/* Per-core register blocks */
+#define	BHND_WRAP_BASE    	0x18100000	/* AXI wrapper register blocks (only
 						 * available on bcma(4) devices) */
 
-#define BHND_CORE_SIZE    	0x1000		/* each core gets 4Kbytes for registers */
+#define	BHND_CORE_SIZE    	0x1000		/* each core gets 4Kbytes for registers */
 
-#define BHND_MAX_CORES		((SI_WRAP_BASE-SI_CORE_BASE)/SI_CORE_SIZE) /* Maximum number of cores */
+#define	BHND_MAX_CORES		((SI_WRAP_BASE-SI_CORE_BASE)/SI_CORE_SIZE) /* Maximum number of cores */
 
 #define	SI_FASTRAM		0x19000000	/* On-chip RAM on chips that also have DDR */
 #define	SI_FASTRAM_SWAPPED	0x19800000
@@ -56,10 +56,10 @@
 #define	SI_ARM_FLASH1		0xffff0000	/* ARM Flash Region 1 */
 #define	SI_ARM_FLASH1_SZ	0x00010000	/* ARM Size of Flash Region 1 */
 
-#define SI_PCI_DMA		0x40000000	/* Client Mode sb2pcitranslation2 (1 GB) */
-#define SI_PCI_DMA2		0x80000000	/* Client Mode sb2pcitranslation2 (1 GB) */
-#define SI_PCI_DMA_SZ		0x40000000	/* Client Mode sb2pcitranslation2 size in bytes */
-#define SI_PCIE_DMA_L32		0x00000000	/* PCIE Client Mode sb2pcitranslation2
+#define	SI_PCI_DMA		0x40000000	/* Client Mode sb2pcitranslation2 (1 GB) */
+#define	SI_PCI_DMA2		0x80000000	/* Client Mode sb2pcitranslation2 (1 GB) */
+#define	SI_PCI_DMA_SZ		0x40000000	/* Client Mode sb2pcitranslation2 size in bytes */
+#define	SI_PCIE_DMA_L32		0x00000000	/* PCIE Client Mode sb2pcitranslation2
 						 * (2 ZettaBytes), low 32 bits
 						 */
 #define SI_PCIE_DMA_H32		0x80000000	/* PCIE Client Mode sb2pcitranslation2
@@ -100,14 +100,14 @@
 #define	CCS_ALPAREQ		0x00000008	/* ALP Avail Request */
 #define	CCS_HTAREQ		0x00000010	/* HT Avail Request */
 #define	CCS_FORCEHWREQOFF	0x00000020	/* Force HW Clock Request Off */
-#define CCS_ERSRC_REQ_MASK	0x00000700	/* external resource requests */
-#define CCS_ERSRC_REQ_SHIFT	8
+#define	CCS_ERSRC_REQ_MASK	0x00000700	/* external resource requests */
+#define	CCS_ERSRC_REQ_SHIFT	8
 #define	CCS_ALPAVAIL		0x00010000	/* ALP is available */
 #define	CCS_HTAVAIL		0x00020000	/* HT is available */
-#define CCS_BP_ON_APL		0x00040000	/* RO: Backplane is running on ALP clock */
-#define CCS_BP_ON_HT		0x00080000	/* RO: Backplane is running on HT clock */
-#define CCS_ERSRC_STS_MASK	0x07000000	/* external resource status */
-#define CCS_ERSRC_STS_SHIFT	24
+#define	CCS_BP_ON_APL		0x00040000	/* RO: Backplane is running on ALP clock */
+#define	CCS_BP_ON_HT		0x00080000	/* RO: Backplane is running on HT clock */
+#define	CCS_ERSRC_STS_MASK	0x07000000	/* external resource status */
+#define	CCS_ERSRC_STS_SHIFT	24
 
 #define	CCS0_HTAVAIL		0x00010000	/* HT avail in chipc and pcmcia on 4328a0 */
 #define	CCS0_ALPAVAIL		0x00020000	/* ALP avail in chipc and pcmcia on 4328a0 */
@@ -117,7 +117,7 @@
  */
 
 /* Minumum amount of flash we support */
-#define FLASH_MIN		0x00020000	/* Minimum flash size */
+#define	FLASH_MIN		0x00020000	/* Minimum flash size */
 
 /* A boot/binary may have an embedded block that describes its size  */
 #define	BISZ_OFFSET		0x3e0	/* At this offset into the binary */
@@ -129,6 +129,6 @@
 #define	BISZ_DATAEND_IDX	4	/*      4: data end */
 #define	BISZ_BSSST_IDX		5	/*      5: bss start */
 #define	BISZ_BSSEND_IDX		6	/*      6: bss end */
-#define BISZ_SIZE		7	/* descriptor size in 32-bit integers */
+#define	BISZ_SIZE		7	/* descriptor size in 32-bit integers */
 
 #endif /* _BHND_BHND_CORE_IDS_H_ */

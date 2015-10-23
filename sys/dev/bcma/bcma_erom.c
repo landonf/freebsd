@@ -77,13 +77,13 @@ static int erom_scan_core(device_t bus, u_int core_idx,
     bus_size_t * const offset, struct bcma_devinfo **result);
 
 /* Extract entry attribute by applying _MASK and _SHIFT defines. */
-#define EROM_GET_ATTR(_entry, _attr)	\
-	((_entry & BCMA_EROM_ ## _attr ## _MASK) \
-	 >> BCMA_EROM_ ## _attr ## _SHIFT)
+#define	EROM_GET_ATTR(_entry, _attr)			\
+	((_entry & BCMA_EROM_ ## _attr ## _MASK)	\
+	>> BCMA_EROM_ ## _attr ## _SHIFT)
 
 /* Test an entry's type */
-#define EROM_ENTRY_IS(_entry, _type)	\
-	(EROM_GET_ATTR(_entry, ENTRY_ISVALID) && \
+#define	EROM_ENTRY_IS(_entry, _type)					\
+	(EROM_GET_ATTR(_entry, ENTRY_ISVALID) &&			\
 	 EROM_GET_ATTR(_entry, ENTRY_TYPE) == BCMA_EROM_ENTRY_TYPE_ ## _type)
 
 /** Return the name associated with a given JEP-106 manufacturer ID. */

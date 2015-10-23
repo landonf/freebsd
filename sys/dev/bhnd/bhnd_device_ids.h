@@ -23,8 +23,8 @@
  * $FreeBSD$
  */
 
-#ifndef	_BHND_BHND_DEVICE_IDS_H_
-#define	_BHND_BHND_DEVICE_IDS_H_
+#ifndef _BHND_BHND_DEVICE_IDS_H_
+#define _BHND_BHND_DEVICE_IDS_H_
 
 /*
  * JEDEC JEP-106 Manufacturer IDs

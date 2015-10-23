@@ -65,6 +65,6 @@ BHND_ACCESSOR(core_id,		CORE_ID,	uint16_t);
 BHND_ACCESSOR(core_revision,	CORE_REVISION,	uint8_t);
 BHND_ACCESSOR(core_name,	CORE_NAME,	const char *);
 
-#undef BHND_ACCESSOR
+#undef	BHND_ACCESSOR
 
 #endif /* _BHND_BHNDVAR_H_ */

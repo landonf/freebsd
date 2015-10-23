@@ -21,8 +21,8 @@
  * $FreeBSD$
  */
 
-#ifndef	_BHND_BHND_PCIREG_H_
-#define	_BHND_BHND_PCIREG_H_
+#ifndef _BHND_BHND_PCIREG_H_
+#define _BHND_BHND_PCIREG_H_
 
 /*
  * PCI/PCIE Bridge Configuration Registers.
@@ -107,22 +107,22 @@
 /* PCI BAR Address Map */
 #define	BHND_PCI_V0_BAR0_SIZE		0x2000	/* 8KB BAR0 */
 #define	BHND_PCI_V0_BAR0_WIN0_OFFSET	0x0	/* bar0 + 0x0 accesses configurable 4K region of backplane address space */
-#define BHND_PCI_V0_BAR0_WIN0_SIZE	0x1000	/* bar0 window size */
+#define	BHND_PCI_V0_BAR0_WIN0_SIZE	0x1000	/* bar0 window size */
 #define	BHND_PCI_V0_BAR0_SHADOW_OFFSET	0x0800	/* bar0 + 2K accesses sprom shadow (in pci core) */
 #define	BHND_PCI_V0_BAR0_SPROM_OFFSET	0x1000	/* bar0 + 4K accesses external sprom */
 #define	BHND_PCI_V0_BAR0_PCIREGS_OFFSET	0x1800	/* bar0 + 6K accesses pci core registers */
 
 #define	BHND_PCI_V1_BAR0_SIZE		BHND_PCI_V0_BAR0_SIZE
 #define	BHND_PCI_V1_BAR0_WIN0_OFFSET	BHND_PCI_V0_BAR0_WIN0_OFFSET
-#define BHND_PCI_V1_BAR0_WIN0_SIZE	BHND_PCI_V0_BAR0_WIN0_SIZE
+#define	BHND_PCI_V1_BAR0_WIN0_SIZE	BHND_PCI_V0_BAR0_WIN0_SIZE
 #define	BHND_PCI_V1_BAR0_SPROM_OFFSET	0x1000	/* bar0 + 4K accesses sprom shadow (in pci core) */
 #define	BHND_PCI_V1_BAR0_PCIREGS_OFFSET	0x1800	/* bar0 + 6K accesses pci core registers */
 
 #define	BHND_PCI_V2_BAR0_SIZE		0x4000	/* 16KB BAR0 */
 #define	BHND_PCI_V2_BAR0_WIN0_OFFSET	BHND_PCI_V0_BAR0_WIN0_OFFSET
-#define BHND_PCI_V2_BAR0_WIN0_SIZE	BHND_PCI_V0_BAR0_WIN0_SIZE
+#define	BHND_PCI_V2_BAR0_WIN0_SIZE	BHND_PCI_V0_BAR0_WIN0_SIZE
 #define	BHND_PCI_V2_BAR0_WIN1_OFFSET	0x1000	/* bar0 + 4KB accesses an additional 4K window */
-#define BHND_PCI_V2_BAR0_WIN1_SIZE	0x1000	/* bar0 "window 1" size */
+#define	BHND_PCI_V2_BAR0_WIN1_SIZE	0x1000	/* bar0 "window 1" size */
 #define	BHND_PCI_V2_PCIREGS_OFFSET	0x2000	/* bar0 + 8K accesses pci/pcie core registers */
 #define	BHND_PCI_V2_CCREGS_OFFSET	0x3000	/* bar0 + 12K accesses chipc core registers */
 
@@ -135,21 +135,21 @@
 #define	BHND_PCI_SBIM_MASK_SERR	0x4	/* backplane SBErr interrupt mask */
 
 /* PCI_SPROM_CONTROL */
-#define BHND_PCI_SPROM_SZ_MSK		0x02	/* SPROM Size Mask */
-#define BHND_PCI_SPROM_LOCKED		0x08	/* SPROM Locked */
+#define	BHND_PCI_SPROM_SZ_MSK		0x02	/* SPROM Size Mask */
+#define	BHND_PCI_SPROM_LOCKED		0x08	/* SPROM Locked */
 #define	BHND_PCI_SPROM_BLANK		0x04	/* indicating a blank SPROM */
-#define BHND_PCI_SPROM_WRITEEN		0x10	/* SPROM write enable */
-#define BHND_PCI_SPROM_BOOTROM_WE	0x20	/* external bootrom write enable */
-#define BHND_PCI_SPROM_BACKPLANE_EN	0x40	/* Enable indirect backplane access */
-#define BHND_PCI_SPROM_OTPIN_USE	0x80	/* device OTP In use */
+#define	BHND_PCI_SPROM_WRITEEN		0x10	/* SPROM write enable */
+#define	BHND_PCI_SPROM_BOOTROM_WE	0x20	/* external bootrom write enable */
+#define	BHND_PCI_SPROM_BACKPLANE_EN	0x40	/* Enable indirect backplane access */
+#define	BHND_PCI_SPROM_OTPIN_USE	0x80	/* device OTP In use */
 
 /* Bits in PCI command and status regs */
-#define BHND_PCI_CMD_IO		0x00000001	/* I/O enable */
-#define BHND_PCI_CMD_MEMORY	0x00000002	/* Memory enable */
-#define BHND_PCI_CMD_MASTER	0x00000004	/* Master enable */
-#define BHND_PCI_CMD_SPECIAL	0x00000008	/* Special cycles enable */
-#define BHND_PCI_CMD_INVALIDATE	0x00000010	/* Invalidate? */
-#define BHND_PCI_CMD_VGA_PAL	0x00000040	/* VGA Palate */
-#define BHND_PCI_STAT_TA	0x08000000	/* target abort status */
+#define	BHND_PCI_CMD_IO		0x00000001	/* I/O enable */
+#define	BHND_PCI_CMD_MEMORY	0x00000002	/* Memory enable */
+#define	BHND_PCI_CMD_MASTER	0x00000004	/* Master enable */
+#define	BHND_PCI_CMD_SPECIAL	0x00000008	/* Special cycles enable */
+#define	BHND_PCI_CMD_INVALIDATE	0x00000010	/* Invalidate? */
+#define	BHND_PCI_CMD_VGA_PAL	0x00000040	/* VGA Palate */
+#define	BHND_PCI_STAT_TA	0x08000000	/* target abort status */
 
 #endif /* _BHND_BHND_PCIREG_H_ */
