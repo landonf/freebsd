@@ -529,10 +529,11 @@ bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base)
 					periph |= (bus_read_4(erom_res, BHND_PCI_V2_BAR0_WIN0_OFFSET + 0xFE0 + (4 * i)) & 0xFF) << (i * 8);
 				
 				uint16_t part = periph & 0x7FF;
-				uint16_t designer = (periph & 0xFF800) >> 12;
+				uint8_t use_jedec = (periph & 0x80000) >> 19;
+				uint16_t designer = (periph & 0x7F800) >> 12;
 				uint16_t rev = (periph & 0x700000) >> 20;
 				uint16_t cfg = (periph & 0xFF800000) >> 24;
-				device_printf(bus, "  designer=%hx part=%hx rev=%hx cfg=%hx (PID=%x)\n", designer, part, rev, cfg, periph);
+				device_printf(bus, "  designer=%hx (jedec=%s) part=%hx rev=%hx cfg=%hx (PID=%x)\n", designer, use_jedec ? "yes" : "no", part, rev, cfg, periph);
 			}
 		};
 		
