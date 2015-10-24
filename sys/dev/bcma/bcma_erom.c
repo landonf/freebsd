@@ -48,6 +48,11 @@ __FBSDID("$FreeBSD$");
 #include "bcma_dmp.h"
 #include "bcmavar.h"
 
+// XXX for temporary PrimeCell PeripherialID code
+#include <dev/pci/pcireg.h>
+#include <dev/pci/pcivar.h>
+#include <dev/bhnd/bhnd_pcireg.h>
+
 /*
  * BCMA Enumeration ROM (EROM) Table
  * 
@@ -491,6 +496,45 @@ bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base)
 			break;
 		else if (error)
 			return (error);
+		
+		// XXX Debugging code to read PrimeCell/Peripherial IDs from
+		// all core's defined wrapper ports.
+		struct bcma_sport *sp;
+		if (!STAILQ_EMPTY(&dinfo->cfg.wports))
+			device_printf(bus, "core%u (%s) wrappers:\n", core_idx, bhnd_core_name(dinfo->cfg.designer, dinfo->cfg.core_id));
+		STAILQ_FOREACH(sp, &dinfo->cfg.wports, sp_link) {
+			struct bcma_map *map;
+			STAILQ_FOREACH(map, &sp->sp_maps, m_link) {
+				uint32_t pcell_id, periph;
+				
+				if (map->m_size != 4096) {
+					device_printf(bus, "Skipping non-4K wrapper region\n");
+					continue;
+				}
+				
+				// XXX: Assumes PCI
+				pci_write_config(bus, BHND_PCI_BAR0_WIN0, map->m_base, 4);
+				
+				pcell_id = 0;
+				for (int i = 0; i < 4; i++)
+					pcell_id |= (bus_read_4(erom_res, BHND_PCI_V2_BAR0_WIN0_OFFSET + 0xFF0 + (4 * i)) & 0xFF) << (i * 8);
+				
+				if (pcell_id != 0xB105F00D) {
+					device_printf(bus, "Skipping core without a valid PrimeCell ID\n");
+					continue;
+				}
+
+				periph = 0;
+				for (int i = 0; i < 4; i++)
+					periph |= (bus_read_4(erom_res, BHND_PCI_V2_BAR0_WIN0_OFFSET + 0xFE0 + (4 * i)) & 0xFF) << (i * 8);
+				
+				uint16_t part = periph & 0x7FF;
+				uint16_t designer = (periph & 0xFF800) >> 12;
+				uint16_t rev = (periph & 0x700000) >> 20;
+				uint16_t cfg = (periph & 0xFF800000) >> 24;
+				device_printf(bus, "  designer=%hx part=%hx rev=%hx cfg=%hx (PID=%x)\n", designer, part, rev, cfg, periph);
+			}
+		};
 		
 		/* Add the child device */
 		// TODO: Ordering and other configuration
