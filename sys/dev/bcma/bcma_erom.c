@@ -505,7 +505,7 @@ bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base)
 		STAILQ_FOREACH(sp, &dinfo->cfg.wports, sp_link) {
 			struct bcma_map *map;
 			STAILQ_FOREACH(map, &sp->sp_maps, m_link) {
-				uint32_t pcell_id, periph;
+				uint32_t pcell_id, pid0, pid1;
 				
 				if (map->m_size != 4096) {
 					device_printf(bus, "Skipping non-4K wrapper region\n");
@@ -524,16 +524,35 @@ bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base)
 					continue;
 				}
 
-				periph = 0;
-				for (int i = 0; i < 4; i++)
-					periph |= (bus_read_4(erom_res, BHND_PCI_V2_BAR0_WIN0_OFFSET + 0xFE0 + (4 * i)) & 0xFF) << (i * 8);
+				/* Read Peripheral ID0-ID3 */
+				pid0 = 0;
+				for (int i = 0; i < 4; i++) {
+					pid0 |= (bus_read_4(erom_res, BHND_PCI_V2_BAR0_WIN0_OFFSET + 0xFE0 + (4 * i)) & 0xFF) << (i * 8);
+				}
 				
-				uint16_t part = periph & 0x7FF;
-				uint8_t use_jedec = (periph & 0x80000) >> 19;
-				uint16_t designer = (periph & 0x7F800) >> 12;
-				uint16_t rev = (periph & 0x700000) >> 20;
-				uint16_t cfg = (periph & 0xFF800000) >> 24;
-				device_printf(bus, "  designer=%hx (jedec=%s) part=%hx rev=%hx cfg=%hx (PID=%x)\n", designer, use_jedec ? "yes" : "no", part, rev, cfg, periph);
+				uint16_t part = pid0 & 0xFFF;
+				uint8_t use_jedec = (pid0 & 0x80000) >> 19;
+				uint16_t designer = (pid0 & 0x3F000) >> 12;
+				uint8_t rev = (pid0 & 0xF00000) >> 20;
+				uint8_t cust_mod = (pid0 & 0xF000000) >> 24;
+				uint8_t rev_and = (pid0 & 0xF0000000) >> 28;
+				
+				/* Read Peripheral ID4-ID7 */
+				pid1 = 0;
+				for (int i = 0; i < 4; i++) {
+					pid1 |= (bus_read_4(erom_res, BHND_PCI_V2_BAR0_WIN0_OFFSET + 0xFD0 + (4 * i)) & 0xFF) << (i * 8);
+				}
+				
+				uint8_t jedec_c_cont = pid1 & 0xF;
+				uint32_t region_size = 0x1000 << ((pid1 & 0xF0) >> 4);
+
+				if (use_jedec)
+					designer |= (jedec_c_cont << 8);
+				
+				device_printf(bus, "  designer=%s (id=0x%hx, jedec=%s) part=0x%hx rev=%hhu+%hhu cmod=%hhu size=%u (PID0=0x%08x, PID1=0x%08x)\n",
+					      use_jedec ? erom_designer_name(designer) : "unknown", designer,
+					      use_jedec ? "yes" : "no",
+					      part, rev, rev_and, cust_mod, region_size, pid0, pid1);
 			}
 		};
 		
