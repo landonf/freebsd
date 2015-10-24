@@ -28,6 +28,15 @@
 
 /*
  * JEDEC JEP-106 Manufacturer IDs
+ * 
+ * These include ARM's non-standard 4-bit continuation code field:
+ * [11:8     ][7:0   ]
+ * [cont code][mfg id]
+ *
+ * The continuation code field encodes the number of JEP-106 continuation codes
+ * that prefix the manufacturer's ID code. In the case of ARM's JEP106 ID of
+ * `0x7F 0x7F 0x7F 0x7F 0x3B`, the four 0x7F continuations are encoded
+ * as '4' in the 4-bit continuation code field (i.e. 0x43B).
  */
 #define	JEDEC_MFGID_ARM		0x43b
 #define	JEDEC_MFGID_BCM		0x4bf
