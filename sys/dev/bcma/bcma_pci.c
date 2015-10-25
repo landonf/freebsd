@@ -153,22 +153,70 @@ bcma_pci_resume(device_t dev)
 	return (ENXIO);
 }
 
+static void
+bcma_pci_delete_resource(device_t dev, device_t child, int type, int rid)
+{
+	// TODO
+}
+
+static struct resource *
+bcma_pci_alloc_resource(device_t dev, device_t child, int type, int *rid,
+    u_long start, u_long end, u_long count, u_int flags)
+{
+	// TODO
+	return (NULL);
+}
+
+static int
+bcma_pci_release_resource(device_t dev, device_t child, int type, int rid,
+    struct resource *r)
+{
+	// TODO
+	return (0);
+}
+
+static int
+bcma_pci_activate_resource(device_t dev, device_t child, int type, int rid,
+    struct resource *r)
+{
+	// TODO
+	return (0);
+}
+
+static int
+bcma_pci_deactivate_resource(device_t dev, device_t child, int type,
+    int rid, struct resource *r)
+{
+	// TODO
+	return (0);
+}
 
 static device_method_t bcma_pci_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_probe,		bcma_pci_probe),
-	DEVMETHOD(device_attach,	bcma_pci_attach),
-	DEVMETHOD(device_detach,	bcma_pci_detach),
-	DEVMETHOD(device_shutdown,	bus_generic_shutdown),
-	DEVMETHOD(device_suspend,	bcma_pci_suspend),
-	DEVMETHOD(device_resume,	bcma_pci_resume),
+	DEVMETHOD(device_probe,			bcma_pci_probe),
+	DEVMETHOD(device_attach,		bcma_pci_attach),
+	DEVMETHOD(device_detach,		bcma_pci_detach),
+	DEVMETHOD(device_shutdown,		bus_generic_shutdown),
+	DEVMETHOD(device_suspend,		bcma_pci_suspend),
+	DEVMETHOD(device_resume,		bcma_pci_resume),
 	
 	/* Bus interface */
-	DEVMETHOD(bus_print_child,	bcma_print_child),
-	DEVMETHOD(bus_probe_nomatch,	bcma_probe_nomatch),
-	DEVMETHOD(bus_read_ivar,	bcma_read_ivar),
-	DEVMETHOD(bus_write_ivar,	bcma_write_ivar),
-	DEVMETHOD(bus_child_deleted,	bcma_child_deleted),
+	DEVMETHOD(bus_print_child,		bcma_generic_print_child),
+	DEVMETHOD(bus_probe_nomatch,		bcma_generic_probe_nomatch),
+	DEVMETHOD(bus_read_ivar,		bcma_generic_read_ivar),
+	DEVMETHOD(bus_write_ivar,		bcma_generic_write_ivar),
+	DEVMETHOD(bus_child_deleted,		bcma_generic_child_deleted),
+	
+	DEVMETHOD(bus_get_resource_list,	bcma_generic_get_resource_list),
+	DEVMETHOD(bus_set_resource,		bus_generic_rl_set_resource),
+	DEVMETHOD(bus_get_resource,		bus_generic_rl_get_resource),
+	DEVMETHOD(bus_delete_resource,		bcma_pci_delete_resource),
+	DEVMETHOD(bus_alloc_resource,		bcma_pci_alloc_resource),
+	DEVMETHOD(bus_adjust_resource,		bus_generic_adjust_resource),
+	DEVMETHOD(bus_release_resource,		bcma_pci_release_resource),
+	DEVMETHOD(bus_activate_resource,	bcma_pci_activate_resource),
+	DEVMETHOD(bus_deactivate_resource,	bcma_pci_deactivate_resource),
+
 	
 	// TODO: Additional bus_* methods required.
 	

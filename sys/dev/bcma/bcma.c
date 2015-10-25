@@ -42,20 +42,20 @@ __FBSDID("$FreeBSD$");
 MALLOC_DEFINE(M_BCMA, "bcma", "BCMA bus data structures");
 
 int
-bcma_print_child(device_t dev, device_t child)
+bcma_generic_print_child(device_t dev, device_t child)
 {
 	// TODO
 	return bus_generic_print_child(dev, child);
 }
 
 void
-bcma_probe_nomatch(device_t dev, device_t child)
+bcma_generic_probe_nomatch(device_t dev, device_t child)
 {
 	// TODO
 }
 
 int
-bcma_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
+bcma_generic_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 {
 	const struct bcma_devinfo *dinfo;
 	const struct bcma_corecfg *cfg;
@@ -83,7 +83,7 @@ bcma_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 }
 
 int
-bcma_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
+bcma_generic_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
 {
 	switch (index) {
 	case BHND_IVAR_DESIGNER:
@@ -97,15 +97,22 @@ bcma_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
 }
 
 void
-bcma_child_deleted(device_t dev, device_t child)
+bcma_generic_child_deleted(device_t dev, device_t child)
 {
 	struct bcma_devinfo *dinfo = device_get_ivars(child);
 	if (dinfo != NULL)
 		bcma_free_dinfo(dinfo);
 }
 
+struct resource_list *
+bcma_generic_get_resource_list(device_t dev, device_t child)
+{
+	struct bcma_devinfo *dinfo = device_get_ivars(child);
+	return (&dinfo->resources);
+}
+
 /**
- * Allocate and initialize new device info descriptor.
+ * Allocate and initialize new device info structure.
  * 
  * @param designer Core designer.
  * @param core_id Core identifier / part number.
@@ -119,11 +126,13 @@ bcma_alloc_dinfo(uint16_t designer, uint16_t core_id, uint8_t revision)
 	dinfo = malloc(sizeof(struct bcma_devinfo), M_BCMA, M_WAITOK);
 	if (dinfo == NULL)
 		return NULL;
-	
+		
 	dinfo->cfg.designer = designer;
 	dinfo->cfg.core_id = core_id;
 	dinfo->cfg.revision = revision;
 	
+	resource_list_init(&dinfo->resources);
+
 	STAILQ_INIT(&dinfo->cfg.mports);
 	STAILQ_INIT(&dinfo->cfg.dports);
 	STAILQ_INIT(&dinfo->cfg.wports);

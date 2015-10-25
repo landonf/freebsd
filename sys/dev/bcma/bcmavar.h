@@ -33,6 +33,7 @@
 #define _BCMA_BCMAVAR_H_
 
 #include <sys/types.h>
+#include <sys/bus.h>
 #include <sys/malloc.h>
 #include <sys/queue.h>
 #include <sys/rman.h>
@@ -61,23 +62,19 @@ typedef enum {
 } bcma_sport_type;
 
 
-int			 bcma_scan_erom(device_t bus, struct resource *erom_res,
-			     bus_size_t erom_base);
+int			 bcma_generic_print_child(device_t dev, device_t child);
+void			 bcma_generic_probe_nomatch(device_t dev, device_t child);
+int			 bcma_generic_read_ivar(device_t dev, device_t child, int index, uintptr_t *result);
+int			 bcma_generic_write_ivar(device_t dev, device_t child, int index, uintptr_t value);
+void			 bcma_generic_child_deleted(device_t dev, device_t child);
+struct resource_list	*bcma_generic_get_resource_list(device_t dev, device_t child);
 
-int			 bcma_print_child(device_t dev, device_t child);
-void			 bcma_probe_nomatch(device_t dev, device_t child);
-int			 bcma_read_ivar(device_t dev, device_t child, int index,
-			     uintptr_t *result);
-int			 bcma_write_ivar(device_t dev, device_t child,
-			     int index, uintptr_t value);
-void			 bcma_child_deleted(device_t dev, device_t child);
+int			 bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base);
 
-struct bcma_devinfo	*bcma_alloc_dinfo(uint16_t designer, uint16_t core_id,
-			     uint8_t revision);
+struct bcma_devinfo	*bcma_alloc_dinfo(uint16_t designer, uint16_t core_id, uint8_t revision);
 void			 bcma_free_dinfo(struct bcma_devinfo *dinfo);
 
-struct bcma_sport	*bcma_alloc_sport(uint8_t port_num,
-			     bcma_sport_type port_type);
+struct bcma_sport	*bcma_alloc_sport(uint8_t port_num, bcma_sport_type port_type);
 void			 bcma_free_sport(struct bcma_sport *sport);
 
 
@@ -128,7 +125,8 @@ struct bcma_corecfg {
  * BCMA per-device info
  */
 struct bcma_devinfo {
-	struct bcma_corecfg	cfg;	/**< IP core/block config */
+	struct resource_list	resources;	/**< Slave port memory regions. */
+	struct bcma_corecfg	cfg;		/**< IP core/block config */
 };
 
 #endif /* _BCMA_BCMAVAR_H_ */
