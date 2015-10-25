@@ -122,11 +122,20 @@ static const struct bhnd_core_desc {
 	{ JEDEC_MFGID_BCM,	BHND_COREID_DMEMS,	"SDR/DDR1 Memory Controller" },
 	{ JEDEC_MFGID_BCM,	BHND_COREID_UBUS_SHIM,	"BCM6362/UBUS WLAN SHIM" },
 
-	{ JEDEC_MFGID_ARM,	BHND_COREID_APB_BRIDGE,	"AXI to APB Bridge" },
-	{ JEDEC_MFGID_ARM,	BHND_COREID_AXI,	"AMBA Interconnect" },
-	{ JEDEC_MFGID_ARM,	BHND_COREID_EROM,	"Enumeration ROM" },
-	{ JEDEC_MFGID_ARM,	BHND_COREID_OOB_ROUTER,	"OOB Interrupt Router" },
-	{ JEDEC_MFGID_ARM,	BHND_COREID_DEFAULT,	"Default Core (Unused Address Ranges)" },
+	{ JEDEC_MFGID_ARM,	BHND_COREID_APB_BRIDGE,	"BP135 AXI to APB Bridge" },
+	{ JEDEC_MFGID_ARM,	BHND_COREID_PL301,	"PL301 AMBA Interconnect" },
+	{ JEDEC_MFGID_ARM,	BHND_COREID_EROM,	"PL366 Device Enumeration ROM" },
+	{ JEDEC_MFGID_ARM,	BHND_COREID_OOB_ROUTER,	"PL367 OOB Interrupt Router" },
+	{ JEDEC_MFGID_ARM,	BHND_COREID_AXI_UNMAPPED,
+		"AMBA/AXI Unmapped Address Ranges" },
+	
+	/* Derived from inspection of the BCM4331 cores that provide PrimeCell
+	 * IDs. Due to lack of documentation, the surmised device name/purpose
+	 * provided here may be incorrect. */
+	{ JEDEC_MFGID_ARM,	BHND_PRIMEID_EROM,	"PL364 Device Enumeration ROM" },
+	{ JEDEC_MFGID_ARM,	BHND_PRIMEID_SWRAP,	"PL368 Device Management Interface" },
+	{ JEDEC_MFGID_ARM,	BHND_PRIMEID_MWRAP,	"PL369 Device Management Interface" },
+	
 	{ 0,			0,			NULL }
 };
 

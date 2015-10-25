@@ -464,13 +464,19 @@
 #define	BHND_COREID_DMEMS		0x835		/* SDR/DDR1 memory controller core */
 #define	BHND_COREID_UBUS_SHIM		0x837		/* SHIM component in ubus/6362 */
 #define	BHND_COREID_APB_BRIDGE		0x135		/* BP135 AMBA AXI-APB bridge */
-#define	BHND_COREID_AXI			0x301		/* AMBA AXI GPV */
+#define	BHND_COREID_PL301		0x301		/* PL301 AMBA AXI Interconnect */
 #define	BHND_COREID_EROM		0x366		/* Enumeration ROM */
 #define	BHND_COREID_OOB_ROUTER		0x367		/* OOB router core ID */
-#define	BHND_COREID_DEFAULT		0xfff		/* Default component, in AI chips it maps all
-							 * unused address ranges
-							 */
-							 
+#define	BHND_COREID_AXI_UNMAPPED	0xfff		/* AXI "Default Slave"; maps all unused address
+							 * ranges, returning DECERR on read or write. */
+
+/* ARM PrimeCell Peripherial IDs. These were derived from inspection of the
+ * PrimeCell-compatible BCM4331 cores, but due to lack of documentation, the
+ * surmised core name/description may be incorrect. */
+#define	BHND_PRIMEID_EROM		0x364		/* Enumeration ROM's primecell ID */
+#define	BHND_PRIMEID_SWRAP		0x368		/* PL368 Device Management Interface (Slave) */
+#define	BHND_PRIMEID_MWRAP		0x369		/* PL369 Device Management Interface (Master) */
+
 /* Core HW Revision Numbers */
 #define	BHND_HWREV_ANY			0xFF		/* Matches any revision ID */
 
