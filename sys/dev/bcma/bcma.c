@@ -125,7 +125,7 @@ bcma_alloc_dinfo(uint16_t designer, uint16_t core_id, uint8_t revision)
 	dinfo->cfg.revision = revision;
 	
 	STAILQ_INIT(&dinfo->cfg.mports);
-	STAILQ_INIT(&dinfo->cfg.sports);
+	STAILQ_INIT(&dinfo->cfg.dports);
 	STAILQ_INIT(&dinfo->cfg.wports);
 
 	return dinfo;
@@ -146,7 +146,7 @@ bcma_free_dinfo(struct bcma_devinfo *dinfo)
 		free(mport, M_BCMA);
 	}
 	
-	STAILQ_FOREACH_SAFE(sport, &dinfo->cfg.sports, sp_link, snext) {
+	STAILQ_FOREACH_SAFE(sport, &dinfo->cfg.dports, sp_link, snext) {
 		bcma_free_sport(sport);
 	}
 	
@@ -175,6 +175,7 @@ bcma_alloc_sport(uint8_t port_num, bcma_sport_type port_type)
 	
 	sport->sp_num = port_num;
 	sport->sp_type = port_type;
+	sport->sp_num_maps = 0;
 	STAILQ_INIT(&sport->sp_maps);
 
 	return sport;

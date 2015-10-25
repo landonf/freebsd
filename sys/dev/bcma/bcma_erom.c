@@ -42,7 +42,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhndreg.h>
 #include <dev/bhnd/bhnd_device_ids.h>
 
-#include "bcma.h"
 #include "bcmavar.h"
 
 #include "bcma_dmp.h"
@@ -262,7 +261,10 @@ erom_scan_port_regions(device_t bus, struct bcma_sport_list *ports,
 		}
 		map->m_base = addr_low | ((uint64_t)addr_high << 32);
 		map->m_size = size_low | ((uint64_t)size_high << 32);
+
 		STAILQ_INSERT_TAIL(&sport->sp_maps, map, m_link);
+		sport->sp_num_maps++;
+
 		*offset += 4;
 	}
 		
@@ -306,7 +308,7 @@ erom_scan_core(device_t bus, u_int core_idx, struct resource *erom_res,
 	uint16_t		 core_designer;
 	uint16_t		 core_id;
 	uint8_t			 core_revision;
-	uint8_t			 num_mport, num_sport, num_mwrap, num_swrap;
+	uint8_t			 num_mport, num_dport, num_mwrap, num_swrap;
 	uint8_t			 swrap_port_base;
 	int			 error;
 
@@ -344,7 +346,7 @@ erom_scan_core(device_t bus, u_int core_idx, struct resource *erom_res,
 	
 	core_revision = EROM_GET_ATTR(entry, COREB_REV);
 	num_mport = EROM_GET_ATTR(entry, COREB_NUM_MP);
-	num_sport = EROM_GET_ATTR(entry, COREB_NUM_SP);
+	num_dport = EROM_GET_ATTR(entry, COREB_NUM_DP);
 	num_mwrap = EROM_GET_ATTR(entry, COREB_NUM_WMP);
 	num_swrap = EROM_GET_ATTR(entry, COREB_NUM_WSP);
 
@@ -352,7 +354,11 @@ erom_scan_core(device_t bus, u_int core_idx, struct resource *erom_res,
 	dinfo = bcma_alloc_dinfo(core_designer, core_id, core_revision);
 	if (dinfo == NULL)
 		return (ENOMEM);
-	
+
+	dinfo->cfg.num_dports = num_dport;
+	dinfo->cfg.num_mports = num_mport;
+	dinfo->cfg.num_wports = num_mwrap + num_swrap;
+
 	if (bootverbose) {
 		device_printf(bus, 
 			    "core%u: %s %s (cid=%hx, rev=%hhu)\n",
@@ -424,16 +430,16 @@ erom_scan_core(device_t bus, u_int core_idx, struct resource *erom_res,
 		first_port_type = BCMA_SPORT_TYPE_DEVICE;
 	}
 
-	/* Slave/Bridge Region Descriptors */
-	for (uint8_t sp_num = 0; sp_num < num_sport; sp_num++) {
-		error = erom_scan_port_regions(bus, &dinfo->cfg.sports, sp_num,
+	/* Device/bridge region descriptors */
+	for (uint8_t sp_num = 0; sp_num < num_dport; sp_num++) {
+		error = erom_scan_port_regions(bus, &dinfo->cfg.dports, sp_num,
 		    first_port_type, erom_res, erom_end, offset);
 
 		if (error)
 			goto cleanup;
 	}
 	
-	/* Agent/Wrapper (Master) Region Descriptors */
+	/* Agent (aka wrapper) region descriptors (for master ports) */
 	for (uint8_t sp_num = 0; sp_num < num_mwrap; sp_num++) {
 		error = erom_scan_port_regions(bus, &dinfo->cfg.wports, sp_num,
 		    BCMA_SPORT_TYPE_MWRAP, erom_res, erom_end, offset);
@@ -442,9 +448,9 @@ erom_scan_core(device_t bus, u_int core_idx, struct resource *erom_res,
 			goto cleanup;
 	}
 	
-	/* Agent/Wrapper (Slave) Region Descriptors. */
+	/* Agent (aka wrapper) region descriptors (for slave ports) */
 	swrap_port_base = 1; /* hardware bug? */
-	if (num_sport == 1)
+	if (num_dport == 1)
 		swrap_port_base = 0;
 	
 	for (uint8_t i = 0; i < num_swrap; i++) {
@@ -578,7 +584,7 @@ bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base)
 				}
 			}
 		} else if (dinfo->cfg.designer == JEDEC_MFGID_ARM) {
-			STAILQ_FOREACH(sp, &dinfo->cfg.sports, sp_link) {
+			STAILQ_FOREACH(sp, &dinfo->cfg.dports, sp_link) {
 				struct bcma_map *map;
 				STAILQ_FOREACH(map, &sp->sp_maps, m_link) {
 					read_primecell_id(bus, erom_res, map);

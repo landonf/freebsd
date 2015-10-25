@@ -99,6 +99,8 @@ struct bcma_map {
 struct bcma_sport {
 	uint8_t		sp_num;		/**< slave port number (core-unique) */
 	bcma_sport_type	sp_type;	/**< port type */
+	uint16_t	sp_num_maps;	/**< number of regions mapped to this port. */
+
 	STAILQ_HEAD(, bcma_map) sp_maps;
 	STAILQ_ENTRY(bcma_sport) sp_link;
 };
@@ -112,8 +114,13 @@ struct bcma_corecfg {
 	uint16_t	core_id;	/**< IP core ID/part number */
 	uint8_t		revision;	/**< IP core hardware revision */
 
+	uint16_t	num_mports;	/**< number of master port descriptors. */
 	struct bcma_mport_list	mports;	/**< master port descriptors */
-	struct bcma_sport_list	sports;	/**< device port descriptors */
+
+	uint16_t	num_dports;	/**< number of device slave port descriptors. */
+	struct bcma_sport_list	dports;	/**< device port descriptors */
+	
+	uint16_t	num_wports;	/**< number of wrapper slave port descriptors. */	
 	struct bcma_sport_list	wports;	/**< wrapper port descriptors */	
 };
 

@@ -75,8 +75,8 @@
 /* EROM Core DescriptorB (63:32) */
 #define	BCMA_EROM_COREB_NUM_MP_MASK	0x0000001F	/* master port count */
 #define	BCMA_EROM_COREB_NUM_MP_SHIFT	4
-#define	BCMA_EROM_COREB_NUM_SP_MASK	0x00003E00	/* slave port count */
-#define	BCMA_EROM_COREB_NUM_SP_SHIFT	9
+#define	BCMA_EROM_COREB_NUM_DP_MASK	0x00003E00	/* device/bridge port count */
+#define	BCMA_EROM_COREB_NUM_DP_SHIFT	9
 #define	BCMA_EROM_COREB_NUM_WMP_MASK	0x0007C000	/* master wrapper port count */
 #define	BCMA_EROM_COREB_NUM_WMP_SHIFT	14
 #define	BCMA_EROM_COREB_NUM_WSP_MASK	0x00F80000	/* slave wrapper port count */
