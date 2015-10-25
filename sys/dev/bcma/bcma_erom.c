@@ -570,7 +570,6 @@ bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base)
 		
 		// XXX Debugging code to read PrimeCell/Peripherial IDs
 		struct bcma_sport *sp;
-		device_printf(bus, "core%u:\n", core_idx);
 		if (!STAILQ_EMPTY(&dinfo->cfg.wports)) {
 			STAILQ_FOREACH(sp, &dinfo->cfg.wports, sp_link) {
 				struct bcma_map *map;
