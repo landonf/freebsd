@@ -309,7 +309,6 @@ erom_scan_core(device_t bus, u_int core_idx, struct resource *erom_res,
 	uint16_t		 core_id;
 	uint8_t			 core_revision;
 	uint8_t			 num_mport, num_dport, num_mwrap, num_swrap;
-	uint8_t			 swrap_port_base;
 	int			 error;
 
 	dinfo = NULL;
@@ -429,8 +428,8 @@ erom_scan_core(device_t bus, u_int core_idx, struct resource *erom_res,
 	} else {
 		first_port_type = BCMA_SPORT_TYPE_DEVICE;
 	}
-
-	/* Device/bridge region descriptors */
+	
+	/* Device/bridge port descriptors */
 	for (uint8_t sp_num = 0; sp_num < num_dport; sp_num++) {
 		error = erom_scan_port_regions(bus, &dinfo->cfg.dports, sp_num,
 		    first_port_type, erom_res, erom_end, offset);
@@ -439,7 +438,7 @@ erom_scan_core(device_t bus, u_int core_idx, struct resource *erom_res,
 			goto cleanup;
 	}
 	
-	/* Agent (aka wrapper) region descriptors (for master ports) */
+	/* Wrapper (aka device management) descriptors (for master ports). */
 	for (uint8_t sp_num = 0; sp_num < num_mwrap; sp_num++) {
 		error = erom_scan_port_regions(bus, &dinfo->cfg.wports, sp_num,
 		    BCMA_SPORT_TYPE_MWRAP, erom_res, erom_end, offset);
@@ -448,13 +447,11 @@ erom_scan_core(device_t bus, u_int core_idx, struct resource *erom_res,
 			goto cleanup;
 	}
 	
-	/* Agent (aka wrapper) region descriptors (for slave ports) */
-	swrap_port_base = 1; /* hardware bug? */
-	if (num_dport == 1)
-		swrap_port_base = 0;
-	
+	/* Wrapper (aka device management) descriptors (for slave ports). */	
 	for (uint8_t i = 0; i < num_swrap; i++) {
-		uint8_t sp_num = i + swrap_port_base;
+		/* Slave wrapper ports are not numbered distinctly from master
+		 * wrapper ports. */
+		uint8_t sp_num = num_mwrap + i;
 		error = erom_scan_port_regions(bus, &dinfo->cfg.wports, sp_num,
 		    BCMA_SPORT_TYPE_SWRAP, erom_res, erom_end, offset);
 
