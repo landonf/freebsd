@@ -31,9 +31,10 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
-#include <sys/malloc.h>
-#include <sys/kernel.h>
 #include <sys/bus.h>
+#include <sys/kernel.h>
+#include <sys/malloc.h>
+#include <sys/systm.h>
 
 #include <dev/bhnd/bhnd.h>
 
@@ -44,8 +45,22 @@ MALLOC_DEFINE(M_BCMA, "bcma", "BCMA bus data structures");
 int
 bcma_generic_print_child(device_t dev, device_t child)
 {
-	// TODO
-	return bus_generic_print_child(dev, child);
+	struct bcma_devinfo	*dinfo;
+	struct resource_list	*rl;
+	int			retval = 0;
+
+	dinfo = device_get_ivars(child);
+	rl = &dinfo->resources;
+
+	retval += bus_print_child_header(dev, child);
+
+	retval += resource_list_print_type(rl, "mem", SYS_RES_MEMORY, "%#lx");
+	retval += printf(" at core %hhu", dinfo->cfg.core_num);
+
+	retval += bus_print_child_domain(dev, child);
+	retval += bus_print_child_footer(dev, child);
+
+	return (retval);
 }
 
 void
@@ -111,22 +126,43 @@ bcma_generic_get_resource_list(device_t dev, device_t child)
 	return (&dinfo->resources);
 }
 
+
+/**
+ * Return the name of a slave port type.
+ */
+const char *
+bcma_port_type_name (bcma_sport_type port_type)
+{
+	switch (port_type) {
+	case BCMA_SPORT_TYPE_DEVICE:
+		return "device";
+	case BCMA_SPORT_TYPE_BRIDGE:
+		return "bridge";
+	case BCMA_SPORT_TYPE_SWRAP:
+		return "swrap";
+	case BCMA_SPORT_TYPE_MWRAP:
+		return "mwrap";
+	}
+}
+
 /**
  * Allocate and initialize new device info structure.
  * 
+ * @param core_num Core number.
  * @param designer Core designer.
- * @param core_id Core identifier / part number.
+ * @param core_id Part number.
  * @param revision Hardware revision.
  */
 struct bcma_devinfo *
-bcma_alloc_dinfo(uint16_t designer, uint16_t core_id, uint8_t revision)
+bcma_alloc_dinfo(uint8_t core_num, uint16_t designer, uint16_t core_id, uint8_t revision)
 {
 	struct bcma_devinfo *dinfo;
 	
 	dinfo = malloc(sizeof(struct bcma_devinfo), M_BCMA, M_WAITOK);
 	if (dinfo == NULL)
 		return NULL;
-		
+
+	dinfo->cfg.core_num = core_num;
 	dinfo->cfg.designer = designer;
 	dinfo->cfg.core_id = core_id;
 	dinfo->cfg.revision = revision;
@@ -150,6 +186,8 @@ bcma_free_dinfo(struct bcma_devinfo *dinfo)
 {
 	struct bcma_mport *mport, *mnext;
 	struct bcma_sport *sport, *snext;
+
+	resource_list_free(&dinfo->resources);
 
 	STAILQ_FOREACH_SAFE(mport, &dinfo->cfg.mports, mp_link, mnext) {
 		free(mport, M_BCMA);

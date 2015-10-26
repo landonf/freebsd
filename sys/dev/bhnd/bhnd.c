@@ -140,12 +140,36 @@ static const struct bhnd_core_desc {
 };
 
 /**
+ * Return the name for a given JEP106 manufacturer ID.
+ * 
+ * @param mfgid A JEP106 Manufacturer ID, including the non-standard ARM 4-bit
+ * JEP106 continuation code.
+ */
+const char *
+bhnd_mfg_name(uint16_t mfgid)
+{
+	switch (mfgid) {
+	case JEDEC_MFGID_ARM:
+		return "ARM";
+		break;
+	case JEDEC_MFGID_BCM:
+		return "Broadcom";
+		break;
+	case JEDEC_MFGID_MIPS:
+		return "MIPS";
+	default:
+		return "unknown";
+	}
+}
+
+/**
  * Return a human-readable name for a BHND core.
  * 
  * @param mfgid The core designer's JEDEC-106 Manufacturer ID
  * @param coreid The Broadcom core identifier.
  */
-const char *bhnd_core_name (uint16_t mfgid, uint16_t coreid) {
+const char *
+bhnd_core_name(uint16_t mfgid, uint16_t coreid) {
 	for (u_int i = 0; bhnd_core_descs[i].desc != NULL; i++) {
 		if (bhnd_core_descs[i].mfgid != mfgid)
 			continue;

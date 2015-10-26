@@ -31,8 +31,9 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
-#include <sys/kernel.h>
 #include <sys/bus.h>
+#include <sys/kernel.h>
+#include <sys/limits.h>
 #include <sys/systm.h>
 
 #include <machine/bus.h>
@@ -52,6 +53,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/pci/pcivar.h>
 #include <dev/bhnd/bhnd_pcireg.h>
 
+
 /*
  * BCMA Enumeration ROM (EROM) Table
  * 
@@ -66,17 +68,16 @@ __FBSDID("$FreeBSD$");
  * marker.
  */
 
-static const char *erom_designer_name(uint16_t mfgid);
-static const char *erom_entry_type_name (uint8_t entry);
+static const char *erom_entry_type_name(uint8_t entry);
 
 static int erom_read32(device_t bus, struct resource *erom_res,
     bus_size_t erom_end, bus_size_t offset, uint32_t *entry);
 
-static int erom_scan_port_regions(device_t bus, struct bcma_sport_list *ports,
-    uint8_t port_num, bcma_sport_type port_type, struct resource *erom_res,
-    bus_size_t erom_end, bus_size_t * const offset);
+static int  erom_scan_port_regions(device_t bus, struct bcma_sport_list *ports,
+    bcma_pid_t core_num, bcma_pid_t port_num, bcma_sport_type port_type,
+    struct resource *erom_res, bus_size_t erom_end, bus_size_t * const offset);
 
-static int erom_scan_core(device_t bus, u_int core_idx,
+static int erom_scan_core(device_t bus, u_int core_num,
     struct resource *erom_res, bus_size_t erom_start, bus_size_t erom_end,
     bus_size_t * const offset, struct bcma_devinfo **result);
 
@@ -89,24 +90,6 @@ static int erom_scan_core(device_t bus, u_int core_idx,
 #define	EROM_ENTRY_IS(_entry, _type)					\
 	(EROM_GET_ATTR(_entry, ENTRY_ISVALID) &&			\
 	 EROM_GET_ATTR(_entry, ENTRY_TYPE) == BCMA_EROM_ENTRY_TYPE_ ## _type)
-
-/** Return the name associated with a given JEP-106 manufacturer ID. */
-static const char *
-erom_designer_name (uint16_t mfgid)
-{
-	switch (mfgid) {
-	case JEDEC_MFGID_ARM:
-		return "ARM";
-		break;
-	case JEDEC_MFGID_BCM:
-		return "Broadcom";
-		break;
-	case JEDEC_MFGID_MIPS:
-		return "MIPS";
-	default:
-		return "unknown";
-	}
-}
 
 /** Return the type name for an EROM entry */
 static const char *
@@ -151,6 +134,7 @@ erom_read32(device_t bus, struct resource *erom_res, bus_size_t
  * Register all MMIO region descriptors for the given slave port.
  * 
  * @param bus The BCMA bus.
+ * @param core_num Core index for the port being parsed.
  * @param ports The port registration list to be updated.
  * @param port_num Port index for which regions will be parsed.
  * @param port_type The port region type to be parsed.
@@ -161,8 +145,8 @@ erom_read32(device_t bus, struct resource *erom_res, bus_size_t
  */
 static int 
 erom_scan_port_regions(device_t bus, struct bcma_sport_list *ports,
-    uint8_t port_num, bcma_sport_type port_type, struct resource *erom_res,
-    bus_size_t erom_end, bus_size_t * const offset)
+    bcma_pid_t core_num, bcma_pid_t port_num, bcma_sport_type port_type,
+    struct resource *erom_res, bus_size_t erom_end, bus_size_t * const offset)
 {
 	struct bcma_sport	*sport;
 	int			 error;
@@ -192,7 +176,7 @@ erom_scan_port_regions(device_t bus, struct bcma_sport_list *ports,
 	}
 
 	/* Read all address regions defined for this port */
-	for (int i = 0; ; i++) {
+	for (bcma_rmid_t region_num = 0; region_num < BCMA_RMID_MAX; region_num++) {
 		struct bcma_map	*map;
 		uint32_t 	 addr_high, addr_low;
 		uint32_t	 entry;
@@ -259,15 +243,35 @@ erom_scan_port_regions(device_t bus, struct bcma_sport_list *ports,
 			error = ENOMEM;
 			goto done;
 		}
+		
+		map->m_region_num = region_num;
 		map->m_base = addr_low | ((uint64_t)addr_high << 32);
 		map->m_size = size_low | ((uint64_t)size_high << 32);
+
+		/* Sanity check for address+size overflow */
+		if (map->m_size != 0 && 
+		    BCMA_ADDR_MAX - (map->m_size - 1) < map->m_base)
+		{
+			device_printf(bus,
+			    "core%hhu %s%hhu.%hu: invalid address map %lx:%lx\n",
+			     core_num, bcma_port_type_name(port_type), port_num,
+			     region_num, map->m_base, map->m_size);
+		
+			error = EINVAL;
+			goto done;
+		}
 
 		STAILQ_INSERT_TAIL(&sport->sp_maps, map, m_link);
 		sport->sp_num_maps++;
 
 		*offset += 4;
 	}
-		
+
+	/* If we escape the while loop, we've hit BCMA_RMID_MAX. */
+	device_printf(bus,
+	    "core%hhu %s%hhu: parsed BCMA_RMID_MAX region descriptors; ignoring additional descriptors\n",
+	     core_num, bcma_port_type_name(port_type), port_num);
+
 done:
 	/* Append the new port descriptor on success, or deallocate the
 	 * partially parsed descriptor on failure. */
@@ -280,12 +284,89 @@ done:
 	return error;
 }
 
+static int
+erom_register_port_region(device_t bus, struct bcma_devinfo *dinfo,
+    struct bcma_sport *sp, struct bcma_map *map)
+{
+	struct resource_list	*rl;
+	bus_addr_t		 start;
+	bus_addr_t		 end;
+	int			 rid;
+
+	rl = &dinfo->resources;
+
+	/* 
+	 * The kernel resource APIs use u_long to represent addresses; on
+	 * 32-bit systems, this limits our resources to 32-bit addressing
+	 * despite the device interconnect supporting >32-bit addresses.
+	 * 
+	 * This shouldn't be a problem with the currently known
+	 * hardware: when running FreeBSD on a bcma(4) SoC, devices will fall
+	 * within whatever address range is supported by the host processor.
+	 * When accessed over PCI, Broadcom's PCI core only supports 32-bit
+	 * addressing of the interconnect's address space.
+	 * 
+	 * If this situation changes in new hardware, however, we'll have
+	 * to address the broader issue of converting kernel resource APIs
+	 * away from u_long.
+	 */
+	
+	start = map->m_base;
+	end = map->m_base + map->m_size;
+
+	if (start > ULONG_MAX) {
+		device_printf(bus, "Port address region starts beyond supported addressable range\n");
+		return (ERANGE);
+	}
+
+	if (end > ULONG_MAX) {
+		/*
+		 * Since this core represents unmapped memory, it's the only
+		 * time we can safely truncate a region, and for the same
+		 * reason, it's unlikely to ever be useful to anyone.
+		 */
+		if (dinfo->cfg.designer == JEDEC_MFGID_ARM &&
+		    dinfo->cfg.core_id == BHND_COREID_AXI_UNMAPPED)
+		{
+			end = ULONG_MAX;
+		} else {
+			device_printf(bus, "Port address region ends beyond supported addressable range\n");
+			return (ERANGE);
+		}
+	}
+	
+	/* Register the new resource */
+	rid = BCMA_RID(sp->sp_type, sp->sp_num, map->m_region_num);	
+	resource_list_add(rl, SYS_RES_MEMORY, rid, start, end, map->m_size);
+
+	return (0);
+}
+
+static int
+erom_register_port_regions(device_t bus, struct bcma_devinfo *dinfo,
+    struct bcma_sport_list *ports)
+{
+	struct bcma_map		*map;
+	struct bcma_sport	*sp;
+	int			 error;
+
+	STAILQ_FOREACH(sp, ports, sp_link) {
+		STAILQ_FOREACH(map, &sp->sp_maps, m_link) {
+			error = erom_register_port_region(bus, dinfo, sp, map);
+			if (error)
+				return (error);
+		}
+	}
+
+	return (0);
+}
+
 
 /**
  * Parse a core entry from the EROM table.
  * 
  * @param bus The BCMA bus.
- * @param core_idx The index of the core being parsed.
+ * @param core_num The index of the core being parsed.
  * @param erom_res The EROM resource.
  * @param erom_end The maximum permitted EROM offset.
  * @param offset The offset at which to perform parsing. This will be updated
@@ -297,7 +378,7 @@ done:
  * ENOENT will be returned. On error, returns a non-zero error value.
  */
 static int
-erom_scan_core(device_t bus, u_int core_idx, struct resource *erom_res,
+erom_scan_core(device_t bus, u_int core_num, struct resource *erom_res,
     bus_size_t erom_start, bus_size_t erom_end, bus_size_t * const offset,
     struct bcma_devinfo **result
 )
@@ -308,7 +389,7 @@ erom_scan_core(device_t bus, u_int core_idx, struct resource *erom_res,
 	uint16_t		 core_designer;
 	uint16_t		 core_id;
 	uint8_t			 core_revision;
-	uint8_t			 num_mport, num_dport, num_mwrap, num_swrap;
+	u_long			 num_mport, num_dport, num_mwrap, num_swrap;
 	int			 error;
 
 	dinfo = NULL;
@@ -350,19 +431,19 @@ erom_scan_core(device_t bus, u_int core_idx, struct resource *erom_res,
 	num_swrap = EROM_GET_ATTR(entry, COREB_NUM_WSP);
 
 	/* Allocate our device info */
-	dinfo = bcma_alloc_dinfo(core_designer, core_id, core_revision);
+	dinfo = bcma_alloc_dinfo(core_num, core_designer, core_id, core_revision);
 	if (dinfo == NULL)
 		return (ENOMEM);
 
 	dinfo->cfg.num_dports = num_dport;
 	dinfo->cfg.num_mports = num_mport;
 	dinfo->cfg.num_wports = num_mwrap + num_swrap;
-
+	
 	if (bootverbose) {
 		device_printf(bus, 
 			    "core%u: %s %s (cid=%hx, rev=%hhu)\n",
-			    core_idx,
-			    erom_designer_name(dinfo->cfg.designer),
+			    core_num,
+			    bhnd_mfg_name(dinfo->cfg.designer),
 			    bhnd_core_name(dinfo->cfg.designer, dinfo->cfg.core_id), 
 			    dinfo->cfg.core_id, dinfo->cfg.revision);
 	}
@@ -377,12 +458,12 @@ erom_scan_core(device_t bus, u_int core_idx, struct resource *erom_res,
 		/* Parse the master port descriptor */
 		error = erom_read32(bus, erom_res, erom_end, *offset, &entry);
 		if (error)
-			goto cleanup;
+			goto failed;
 
 		if (!EROM_ENTRY_IS(entry, MPORT)) {
 			device_printf(bus, "Invalid EROM MPD value 0x%x at ROM offset 0x%lx\n", entry, (*offset-erom_start));
 			error = EINVAL;
-			goto cleanup;
+			goto failed;
 		}
 		
 		mp_vid = EROM_GET_ATTR(entry, MPORT_ID);
@@ -393,7 +474,7 @@ erom_scan_core(device_t bus, u_int core_idx, struct resource *erom_res,
 		mport = malloc(sizeof(struct bcma_mport), M_BCMA, M_WAITOK);
 		if (mport == NULL) {
 			error = ENOMEM;
-			goto cleanup;
+			goto failed;
 		}
 		
 		mport->mp_vid = mp_vid;
@@ -418,7 +499,7 @@ erom_scan_core(device_t bus, u_int core_idx, struct resource *erom_res,
 	 */
 	if (erom_read32(bus, erom_res, erom_end, *offset, &entry)) {
 		error = EINVAL;
-		goto cleanup;
+		goto failed;
 	}
 	
 	if (EROM_ENTRY_IS(entry, REGION) && 
@@ -431,38 +512,46 @@ erom_scan_core(device_t bus, u_int core_idx, struct resource *erom_res,
 	
 	/* Device/bridge port descriptors */
 	for (uint8_t sp_num = 0; sp_num < num_dport; sp_num++) {
-		error = erom_scan_port_regions(bus, &dinfo->cfg.dports, sp_num,
-		    first_port_type, erom_res, erom_end, offset);
+		error = erom_scan_port_regions(bus, &dinfo->cfg.dports,
+		    core_num, sp_num, first_port_type, erom_res, erom_end, offset);
 
 		if (error)
-			goto cleanup;
+			goto failed;
 	}
-	
+
 	/* Wrapper (aka device management) descriptors (for master ports). */
 	for (uint8_t sp_num = 0; sp_num < num_mwrap; sp_num++) {
-		error = erom_scan_port_regions(bus, &dinfo->cfg.wports, sp_num,
-		    BCMA_SPORT_TYPE_MWRAP, erom_res, erom_end, offset);
+		error = erom_scan_port_regions(bus, &dinfo->cfg.wports,
+		    core_num, sp_num, BCMA_SPORT_TYPE_MWRAP, erom_res, erom_end, offset);
 
 		if (error)
-			goto cleanup;
+			goto failed;
 	}
+
 	
 	/* Wrapper (aka device management) descriptors (for slave ports). */	
 	for (uint8_t i = 0; i < num_swrap; i++) {
 		/* Slave wrapper ports are not numbered distinctly from master
 		 * wrapper ports. */
 		uint8_t sp_num = num_mwrap + i;
-		error = erom_scan_port_regions(bus, &dinfo->cfg.wports, sp_num,
-		    BCMA_SPORT_TYPE_SWRAP, erom_res, erom_end, offset);
+		error = erom_scan_port_regions(bus, &dinfo->cfg.wports,
+		    core_num, sp_num, BCMA_SPORT_TYPE_SWRAP, erom_res, erom_end, offset);
 
 		if (error)
-			goto cleanup;
+			goto failed;
 	}
+
+	/* Register resources the slave port memory regions */
+	if ((error = erom_register_port_regions(bus, dinfo, &dinfo->cfg.dports)))
+		goto failed;
+
+	if ((error = erom_register_port_regions(bus, dinfo, &dinfo->cfg.wports)))
+		goto failed;
 
 	*result = dinfo;
 	return (0);
 	
-cleanup:
+failed:
 	if (dinfo != NULL)
 		bcma_free_dinfo(dinfo);
 
@@ -480,6 +569,7 @@ read_primecell_id(device_t bus, struct resource *res, struct bcma_map *map) {
 	/* Find the last 4KB block */
 	if (map->m_size < 0x1000)
 		return;
+
 	offset = (map->m_size-1) & ~(0x1000-1);
 				
 	// XXX: Assumes PCI
@@ -516,14 +606,14 @@ read_primecell_id(device_t bus, struct resource *res, struct bcma_map *map) {
 
 	if (use_jedec) {
 		designer |= (jedec_c_cont << 8);
-		designer_name = erom_designer_name(designer);
+		designer_name = bhnd_mfg_name(designer);
 		part_name = bhnd_core_name(designer, part);
 	} else {
 		switch (designer) {
 		case 0x3b:	/* Some devices use the JEDEC ID without specifying the
 				 * 4-bit continuation code */
 		case 0x41:
-			designer_name = erom_designer_name(JEDEC_MFGID_ARM);
+			designer_name = bhnd_mfg_name(JEDEC_MFGID_ARM);
 			part_name = bhnd_core_name(JEDEC_MFGID_ARM, part);
 			break;
 		default:
@@ -539,6 +629,7 @@ read_primecell_id(device_t bus, struct resource *res, struct bcma_map *map) {
 	    use_jedec ? "yes" : "no",
 	    part, rev, rev_and, cust_mod, region_size, pid0, pid1);
 }
+
 
 /**
  * Scan a device enumeration ROM table, adding all discovered cores to the bus.
@@ -562,8 +653,8 @@ bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base)
 	erom_start = offset;
 	dinfo = NULL;
 	
-	for (u_int core_idx = 0; offset < erom_end; core_idx++) {
-		error = erom_scan_core(bus, core_idx, erom_res, erom_start,
+	for (u_int core_num = 0; offset < erom_end; core_num++) {
+		error = erom_scan_core(bus, core_num, erom_res, erom_start,
 		    erom_end, &offset, &dinfo);
 		
 		/* Handle EOF or error */
@@ -571,7 +662,7 @@ bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base)
 			break;
 		else if (error)
 			return (error);
-		
+
 		/* Add the child device */
 		// TODO: Ordering and other configuration
 		child = device_add_child(bus, NULL, -1);
@@ -583,8 +674,9 @@ bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base)
 		/* The child device now owns the dinfo pointer */
 		device_set_ivars(child, dinfo);
 		
+		
 		// XXX Debugging code to read PrimeCell/Peripherial IDs
-		struct bcma_sport *sp;
+		struct bcma_sport	*sp;
 		STAILQ_FOREACH(sp, &dinfo->cfg.wports, sp_link) {
 			struct bcma_map *map;
 			STAILQ_FOREACH(map, &sp->sp_maps, m_link) {

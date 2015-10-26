@@ -34,7 +34,8 @@
 
 #include "bhndvar.h"
 
-extern const char *bhnd_core_name (uint16_t mfgid, uint16_t coreid);
+extern const char *bhnd_mfg_name(uint16_t mfgid);
+extern const char *bhnd_core_name(uint16_t mfgid, uint16_t coreid);
 
 #endif /* _BHND_BHNDVAR_H_ */
 

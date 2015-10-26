@@ -44,8 +44,17 @@ MALLOC_DECLARE(M_BCMA);
  * Broadcom AMBA backplane types and data structures.
  */
 
-/** BCMA bus address type. The backing bus supports 64-bit addressing. */
-typedef uint64_t bcma_addr_t;
+/** BCMA bus address. The backing bus supports 64-bit addressing. */
+typedef uint64_t	bcma_addr_t;
+#define	BCMA_ADDR_MAX	UINT64_MAX	/**< Maximum bcma_addr_t value */
+
+/** BCMA port identifier. */
+typedef uint8_t		bcma_pid_t;
+#define BCMA_PID_MAX	UINT8_MAX	/**< Maximum bcma_pid_t value */
+
+/** BCMA per-port region map identifier. */
+typedef uint16_t	bcma_rmid_t;
+#define	BCMA_RMID_MAX	UINT16_MAX	/**< Maximum bcma_rmid_t value */
 
 struct bcma_mport;
 struct bcma_sport;
@@ -71,33 +80,68 @@ struct resource_list	*bcma_generic_get_resource_list(device_t dev, device_t chil
 
 int			 bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base);
 
-struct bcma_devinfo	*bcma_alloc_dinfo(uint16_t designer, uint16_t core_id, uint8_t revision);
+const char		*bcma_port_type_name (bcma_sport_type port_type);
+
+struct bcma_devinfo	*bcma_alloc_dinfo(uint8_t core_num, uint16_t designer, uint16_t core_id, uint8_t revision);
 void			 bcma_free_dinfo(struct bcma_devinfo *dinfo);
 
-struct bcma_sport	*bcma_alloc_sport(uint8_t port_num, bcma_sport_type port_type);
+struct bcma_sport	*bcma_alloc_sport(bcma_pid_t port_num, bcma_sport_type port_type);
 void			 bcma_free_sport(struct bcma_sport *sport);
 
+/**
+ * Encode a RID for a per-core port region.
+ * 
+ * @param ptype One of BCMA_SPORT_TYPE_DEVICE, BCMA_SPORT_TYPE_BRIDGE,
+ * BCMA_SPORT_TYPE_SWRAP, or BCMA_SPORT_TYPE_MWRAP.
+ * @param port 8-bit port identifier.
+ * @param region 8-bit region identifier.
+ */
+#define	BCMA_RID(ptype, port, region) (						\
+    (((ptype) << BCMA_RID_PORT_TYPE_SHIFT) & BCMA_RID_PORT_TYPE_MASK) |		\
+    (((region) << BCMA_RID_REGION_NUM_SHIFT) & BCMA_RID_REGION_NUM_MASK) |	\
+    (((port) << BCMA_RID_PORT_NUM_SHIFT) & BCMA_RID_PORT_NUM_MASK)		\
+)
+
+/** Extract the port type from a BCMA RID */
+#define	BCMA_RID_PORT_TYPE(rid) \
+	(((rid) & BCMA_RID_PORT_TYPE_MASK) >> BCMA_RID_PORT_TYPE_SHIFT)
+
+/** Extract the region identifier from a BCMA RID */
+#define	BCMA_RID_REGION_NUM(rid) \
+	(((rid) & BCMA_RID_REGION_NUM_MASK) >> BCMA_RID_REGION_NUM_SHIFT)
+
+/** Extract the port identifier from a BCMA RID */
+#define	BCMA_RID_PORT_NUM(rid) \
+	(((rid) & BCMA_RID_PORT_NUM_MASK) >> BCMA_RID_PORT_NUM_SHIFT)
+
+#define	BCMA_RID_PORT_TYPE_MASK		0xFF000000
+#define	BCMA_RID_PORT_TYPE_SHIFT	24
+#define	BCMA_RID_REGION_NUM_MASK	0x0000FFFF
+#define	BCMA_RID_REGION_NUM_SHIFT	0
+#define	BCMA_RID_PORT_NUM_MASK		0x00FF0000
+#define	BCMA_RID_PORT_NUM_SHIFT		16
 
 /** BCMA master port descriptor */
 struct bcma_mport {
-	uint8_t		mp_num;		/**< AXI port identifier (bus-unique) */
-	uint8_t		mp_vid;		/**< AXI master virtual ID (core-unique) */
+	bcma_pid_t	mp_num;		/**< AXI port identifier (bus-unique) */
+	bcma_pid_t	mp_vid;		/**< AXI master virtual ID (core-unique) */
 	STAILQ_ENTRY(bcma_mport) mp_link;
 };
 
 /** BCMA memory region descriptor */
 struct bcma_map {
-	bcma_addr_t	m_base;	/**< base address */
-	bcma_addr_t	m_size;	/**< size */
+	bcma_rmid_t	m_region_num;	/**< region identifier (port-unique). */
+	bcma_addr_t	m_base;		/**< base address */
+	bcma_addr_t	m_size;		/**< size */
 	STAILQ_ENTRY(bcma_map) m_link;
 };
 
 /** BCMA slave port descriptor */
 struct bcma_sport {
-	uint8_t		sp_num;		/**< slave port number (core-unique) */
+	bcma_pid_t	sp_num;		/**< slave port number (core-unique) */
 	bcma_sport_type	sp_type;	/**< port type */
-	uint16_t	sp_num_maps;	/**< number of regions mapped to this port. */
 
+	u_long		sp_num_maps;	/**< number of regions mapped to this port */
 	STAILQ_HEAD(, bcma_map) sp_maps;
 	STAILQ_ENTRY(bcma_sport) sp_link;
 };
@@ -107,17 +151,18 @@ STAILQ_HEAD(bcma_sport_list, bcma_sport);
 
 /** BCMA IP core/block configuration */
 struct bcma_corecfg {
-	uint16_t	designer;	/**< IP designer's JEP-106 mfgid */
 	uint16_t	core_id;	/**< IP core ID/part number */
+	uint16_t	designer;	/**< IP designer's JEP-106 mfgid */
+	uint8_t		core_num;	/**< core number (bus-unique) */
 	uint8_t		revision;	/**< IP core hardware revision */
 
-	uint16_t	num_mports;	/**< number of master port descriptors. */
+	u_long		num_mports;	/**< number of master port descriptors. */
 	struct bcma_mport_list	mports;	/**< master port descriptors */
 
-	uint16_t	num_dports;	/**< number of device slave port descriptors. */
+	u_long		num_dports;	/**< number of device slave port descriptors. */
 	struct bcma_sport_list	dports;	/**< device port descriptors */
 	
-	uint16_t	num_wports;	/**< number of wrapper slave port descriptors. */	
+	u_long		num_wports;	/**< number of wrapper slave port descriptors. */	
 	struct bcma_sport_list	wports;	/**< wrapper port descriptors */	
 };
 
