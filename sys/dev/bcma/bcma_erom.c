@@ -573,16 +573,23 @@ bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base)
 		
 		// XXX Debugging code to read PrimeCell/Peripherial IDs
 		struct bcma_sport *sp;
-		if (!STAILQ_EMPTY(&dinfo->cfg.wports)) {
-			STAILQ_FOREACH(sp, &dinfo->cfg.wports, sp_link) {
-				struct bcma_map *map;
-				STAILQ_FOREACH(map, &sp->sp_maps, m_link) {
-					read_primecell_id(bus, erom_res, map);
-				}
+		STAILQ_FOREACH(sp, &dinfo->cfg.wports, sp_link) {
+			struct bcma_map *map;
+			STAILQ_FOREACH(map, &sp->sp_maps, m_link) {
+				read_primecell_id(bus, erom_res, map);
 			}
-		} else if (dinfo->cfg.designer == JEDEC_MFGID_ARM) {
+		}
+		if (dinfo->cfg.designer == JEDEC_MFGID_ARM &&
+		    dinfo->cfg.core_id != BHND_COREID_AXI_UNMAPPED)
+		{
 			STAILQ_FOREACH(sp, &dinfo->cfg.dports, sp_link) {
 				struct bcma_map *map;
+				
+				/* Probing bridge memory regions would simply
+				 * re-discover some the bridged devices */
+				if (sp->sp_type == BCMA_SPORT_TYPE_BRIDGE)
+					continue;
+				
 				STAILQ_FOREACH(map, &sp->sp_maps, m_link) {
 					read_primecell_id(bus, erom_res, map);
 				}
