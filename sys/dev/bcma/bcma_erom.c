@@ -560,6 +560,7 @@ bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base)
 	offset = erom_base + BCMA_EROM_TABLE;
 	erom_end = erom_base + BCMA_EROM_TABLE_END;
 	erom_start = offset;
+	dinfo = NULL;
 	
 	for (u_int core_idx = 0; offset < erom_end; core_idx++) {
 		error = erom_scan_core(bus, core_idx, erom_res, erom_start,
@@ -570,6 +571,17 @@ bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base)
 			break;
 		else if (error)
 			return (error);
+		
+		/* Add the child device */
+		// TODO: Ordering and other configuration
+		child = device_add_child(bus, NULL, -1);
+		if (child == NULL) {
+			bcma_free_dinfo(dinfo);
+			return (ENXIO);
+		}
+		
+		/* The child device now owns the dinfo pointer */
+		device_set_ivars(child, dinfo);
 		
 		// XXX Debugging code to read PrimeCell/Peripherial IDs
 		struct bcma_sport *sp;
@@ -595,15 +607,8 @@ bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base)
 				}
 			}
 		}
-		
-		/* Add the child device */
-		// TODO: Ordering and other configuration
-		child = device_add_child(bus, NULL, -1);
-		if (child == NULL)
-			return ENXIO;
-
-		device_set_ivars(child, dinfo);
 	}
 	
 	return (0);
+
 }
