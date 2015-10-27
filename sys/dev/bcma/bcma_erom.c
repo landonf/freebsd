@@ -68,18 +68,33 @@ __FBSDID("$FreeBSD$");
  * marker.
  */
 
-static const char *erom_entry_type_name(uint8_t entry);
+static const char	*erom_entry_type_name(uint8_t entry);
 
-static int erom_read32(device_t bus, struct resource *erom_res,
-    bus_size_t erom_end, bus_size_t offset, uint32_t *entry);
+static int		 erom_read32(device_t bus, struct resource *erom_res,
+			     bus_size_t erom_end, bus_size_t offset,
+			     uint32_t *entry);
 
-static int  erom_scan_port_regions(device_t bus, struct bcma_sport_list *ports,
-    bcma_pid_t core_num, bcma_pid_t port_num, bcma_sport_type port_type,
-    struct resource *erom_res, bus_size_t erom_end, bus_size_t * const offset);
+static int		 erom_scan_port_regions(device_t bus,
+			     struct bcma_sport_list *ports, bcma_pid_t core_num,
+			     bcma_pid_t port_num, bcma_sport_type port_type,
+			     struct resource *erom_res, bus_size_t erom_end,
+			     bus_size_t * const offset);
 
-static int erom_scan_core(device_t bus, u_int core_num,
-    struct resource *erom_res, bus_size_t erom_start, bus_size_t erom_end,
-    bus_size_t * const offset, struct bcma_devinfo **result);
+static int		 erom_register_port_region(device_t bus,
+			     struct bcma_devinfo *dinfo, struct bcma_sport *sp,
+			     struct bcma_map *map);
+
+static int		 erom_register_port_regions(device_t bus,
+			     struct bcma_devinfo *dinfo,
+			     struct bcma_sport_list *ports);
+
+static int		 erom_scan_core(device_t bus, u_int core_num,
+			     struct resource *erom_res, bus_size_t erom_start,
+			     bus_size_t erom_end, bus_size_t * const offset,
+			     struct bcma_devinfo **result);
+
+static void		 erom_print_primecell_id(device_t bus,
+			     struct resource *res, struct bcma_map *map);
 
 /* Extract entry attribute by applying _MASK and _SHIFT defines. */
 #define	EROM_GET_ATTR(_entry, _attr)			\
@@ -558,9 +573,27 @@ failed:
 	return error;
 }
 
-// XXX Debugging code to read PrimeCell/Peripherial IDs
+/**
+ * Read and print the ARM PrimeCell identifier from the given device address
+ * region.
+ * 
+ * @param bus The bus containing the PrimeCell-compatible device.
+ * @param res The resource containing the target device address region.
+ * @param map The device address region.
+ * 
+ * @warning Not all devices on Broadcom's hardware vend PrimeCell-compatible
+ * identifiers, the identifier format may vary between devices and in ways
+ * that aren't handled by this implementation, and in some cases, attempting to
+ * read the PrimeCell ID registers from non-ARM/Broadcom cores may lock up
+ * the device and/or the host system.
+ * 
+ * @todo This code currently assumes a backing bcma_pci bus. This should be
+ * fixed once we've implemented generic bhnd_read*() APIs.
+ */
 static void
-read_primecell_id(device_t bus, struct resource *res, struct bcma_map *map) {
+erom_print_primecell_id(device_t bus, struct resource *res, 
+    struct bcma_map *map)
+{
 	uint32_t pcell_id, pid0, pid1;
 	bus_addr_t offset;
 	const char *designer_name;
@@ -578,7 +611,7 @@ read_primecell_id(device_t bus, struct resource *res, struct bcma_map *map) {
 	pcell_id = 0;
 	for (int i = 0; i < 4; i++)
 		pcell_id |= (bus_read_4(res, BHND_PCI_V2_BAR0_WIN0_OFFSET + 0xFF0 + (4 * i)) & 0xFF) << (i * 8);
-				
+
 	if (pcell_id != 0xB105F00D) {
 		device_printf(bus, "Skipping non-PrimeCell device\n");
 		return;
@@ -623,11 +656,13 @@ read_primecell_id(device_t bus, struct resource *res, struct bcma_map *map) {
 		}
 	}
 
-	device_printf(bus, "  %s %s (designer=0x%hx, jedec=%s, part=0x%hx, rev=%hhu+%hhu, cust_mod=%hhu, size=%u, PID0=0x%08x, PID1=0x%08x)\n",
-	    designer_name, part_name,
-	    designer,
-	    use_jedec ? "yes" : "no",
-	    part, rev, rev_and, cust_mod, region_size, pid0, pid1);
+	device_printf(bus, 
+	"  %s %s (designer=0x%hx, jedec=%s, part=0x%hx, rev=%hhu+%hhu, "
+	"cust_mod=%hhu, size=%u, PID0=0x%08x, PID1=0x%08x)\n",
+	designer_name, part_name,
+	designer,
+	use_jedec ? "yes" : "no",
+	part, rev, rev_and, cust_mod, region_size, pid0, pid1);
 }
 
 
@@ -675,15 +710,18 @@ bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base)
 		device_set_ivars(child, dinfo);
 		
 		
-		// XXX Debugging code to read PrimeCell/Peripherial IDs
+		// XXX Debugging code to print PrimeCell/Peripherial IDs
 		struct bcma_sport	*sp;
-		STAILQ_FOREACH(sp, &dinfo->cfg.wports, sp_link) {
-			struct bcma_map *map;
-			STAILQ_FOREACH(map, &sp->sp_maps, m_link) {
-				read_primecell_id(bus, erom_res, map);
+		if (bootverbose) {
+			STAILQ_FOREACH(sp, &dinfo->cfg.wports, sp_link) {
+				struct bcma_map *map;
+				STAILQ_FOREACH(map, &sp->sp_maps, m_link) {
+					erom_print_primecell_id(bus, erom_res, map);
+				}
 			}
 		}
-		if (dinfo->cfg.vendor == JEDEC_MFGID_ARM &&
+
+		if (bootverbose && dinfo->cfg.vendor == JEDEC_MFGID_ARM &&
 		    dinfo->cfg.device != BHND_COREID_AXI_UNMAPPED)
 		{
 			STAILQ_FOREACH(sp, &dinfo->cfg.dports, sp_link) {
@@ -695,7 +733,7 @@ bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base)
 					continue;
 				
 				STAILQ_FOREACH(map, &sp->sp_maps, m_link) {
-					read_primecell_id(bus, erom_res, map);
+					erom_print_primecell_id(bus, erom_res, map);
 				}
 			}
 		}
