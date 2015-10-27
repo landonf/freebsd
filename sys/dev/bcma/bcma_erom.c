@@ -39,7 +39,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/bus.h>
 #include <machine/resource.h>
 
-#include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/bhndvar.h>
 #include <dev/bhnd/bhndreg.h>
 #include <dev/bhnd/bhnd_device_ids.h>
 

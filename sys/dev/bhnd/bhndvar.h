@@ -37,8 +37,8 @@
  * Data Structures and Constants
  */
 
-struct bhnd_softc {
-};
+const char *bhnd_vendor_name(uint16_t vendor);
+const char *bhnd_core_name(uint16_t vendor, uint16_t device);
 
 enum bhnd_device_vars {
 	/** Core designer's JEP-106 manufacturer ID. */ 

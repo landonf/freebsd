@@ -53,11 +53,9 @@ __FBSDID("$FreeBSD$");
 #include <sys/bus.h>
 #include <sys/module.h>
 
-#include "bhnd.h"
 #include "bhnd_device_ids.h"
 #include "bhndreg.h"
 #include "bhndvar.h"
-
 
 
 /* BHND core device description table. */

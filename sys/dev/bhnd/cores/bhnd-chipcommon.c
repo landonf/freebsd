@@ -46,7 +46,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/module.h>
 
 #include <dev/bhnd/bhnd_device_ids.h>
-#include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/bhndvar.h>
 
 struct bhnd_chipc_softc {};
 
