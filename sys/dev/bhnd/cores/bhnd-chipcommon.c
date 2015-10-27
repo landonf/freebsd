@@ -71,7 +71,7 @@ bhnd_chipc_probe(device_t dev)
 		if (bhnd_get_vendor(dev) == id->vendor &&
 		    bhnd_get_device(dev) == id->device &&
 		    (id->revision == BHND_HWREV_ANY ||
-			bhnd_get_revision(dev) != id->revision))
+			bhnd_get_revid(dev) != id->revision))
 		{
 			if (id->desc == NULL)
 				desc = bhnd_get_device_name(dev);

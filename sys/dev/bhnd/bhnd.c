@@ -62,8 +62,8 @@ __FBSDID("$FreeBSD$");
 
 /* BHND core device description table. */
 static const struct bhnd_core_desc {
-	uint16_t mfgid;
-	uint16_t coreid;
+	uint16_t vendor;
+	uint16_t device;
 	const char *desc;
 } bhnd_core_descs[] = {
 	{ JEDEC_MFGID_BCM,	BHND_COREID_CC,		"ChipCommon" },
@@ -122,12 +122,12 @@ static const struct bhnd_core_desc {
 	{ JEDEC_MFGID_BCM,	BHND_COREID_DMEMS,	"SDR/DDR1 Memory Controller" },
 	{ JEDEC_MFGID_BCM,	BHND_COREID_UBUS_SHIM,	"BCM6362/UBUS WLAN SHIM" },
 
-	{ JEDEC_MFGID_ARM,	BHND_COREID_APB_BRIDGE,	"BP135 AXI to APB Bridge" },
-	{ JEDEC_MFGID_ARM,	BHND_COREID_PL301,	"PL301 AMBA Interconnect" },
+	{ JEDEC_MFGID_ARM,	BHND_COREID_APB_BRIDGE,	"BP135 AMBA3 AXI to APB Bridge" },
+	{ JEDEC_MFGID_ARM,	BHND_COREID_PL301,	"PL301 AMBA3 Interconnect" },
 	{ JEDEC_MFGID_ARM,	BHND_COREID_EROM,	"PL366 Device Enumeration ROM" },
 	{ JEDEC_MFGID_ARM,	BHND_COREID_OOB_ROUTER,	"PL367 OOB Interrupt Router" },
 	{ JEDEC_MFGID_ARM,	BHND_COREID_AXI_UNMAPPED,
-		"AMBA/AXI Unmapped Address Ranges" },
+		"Unmapped Address Ranges" },
 	
 	/* Derived from inspection of the BCM4331 cores that provide PrimeCell
 	 * IDs. Due to lack of documentation, the surmised device name/purpose
@@ -142,13 +142,13 @@ static const struct bhnd_core_desc {
 /**
  * Return the name for a given JEP106 manufacturer ID.
  * 
- * @param mfgid A JEP106 Manufacturer ID, including the non-standard ARM 4-bit
+ * @param vendor A JEP106 Manufacturer ID, including the non-standard ARM 4-bit
  * JEP106 continuation code.
  */
 const char *
-bhnd_mfg_name(uint16_t mfgid)
+bhnd_vendor_name(uint16_t vendor)
 {
-	switch (mfgid) {
+	switch (vendor) {
 	case JEDEC_MFGID_ARM:
 		return "ARM";
 		break;
@@ -165,16 +165,16 @@ bhnd_mfg_name(uint16_t mfgid)
 /**
  * Return a human-readable name for a BHND core.
  * 
- * @param mfgid The core designer's JEDEC-106 Manufacturer ID
- * @param coreid The Broadcom core identifier.
+ * @param vendor The core designer's JEDEC-106 Manufacturer ID
+ * @param device The core identifier.
  */
 const char *
-bhnd_core_name(uint16_t mfgid, uint16_t coreid) {
+bhnd_core_name(uint16_t vendor, uint16_t device) {
 	for (u_int i = 0; bhnd_core_descs[i].desc != NULL; i++) {
-		if (bhnd_core_descs[i].mfgid != mfgid)
+		if (bhnd_core_descs[i].vendor != vendor)
 			continue;
 		
-		if (bhnd_core_descs[i].coreid != coreid)
+		if (bhnd_core_descs[i].device != device)
 			continue;
 		
 		return bhnd_core_descs[i].desc;

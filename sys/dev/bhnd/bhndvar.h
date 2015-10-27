@@ -47,8 +47,8 @@ enum bhnd_device_vars {
 	/** Core part number (aka core ID). */
 	BHND_IVAR_DEVICE,
 	
-	/** Core revision. */
-	BHND_IVAR_REVISION,
+	/** Core revision identifier. */
+	BHND_IVAR_REVID,
 	
 	/** Vendor name. */
 	BHND_IVAR_VENDOR_NAME,
@@ -57,7 +57,7 @@ enum bhnd_device_vars {
 	BHND_IVAR_DEVICE_NAME,
 
 	/** Core number */
-	BHND_IVAR_CORE_NUM
+	BHND_IVAR_CORE_INDEX
 };
 
 /*
@@ -68,10 +68,10 @@ enum bhnd_device_vars {
 
 BHND_ACCESSOR(vendor,		VENDOR,		uint16_t);
 BHND_ACCESSOR(device,		DEVICE,		uint16_t);
-BHND_ACCESSOR(revision,		REVISION,	uint8_t);
+BHND_ACCESSOR(revid,		REVID,		uint8_t);
 BHND_ACCESSOR(vendor_name,	VENDOR_NAME,	const char *);
 BHND_ACCESSOR(device_name,	DEVICE_NAME,	const char *);
-BHND_ACCESSOR(core_num,		CORE_NUM,	uint8_t);
+BHND_ACCESSOR(core_index,	CORE_INDEX,	uint8_t);
 
 #undef	BHND_ACCESSOR
 

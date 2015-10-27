@@ -64,7 +64,7 @@ bcma_generic_print_child(device_t dev, device_t child)
 	retval += bus_print_child_header(dev, child);
 
 	retval += resource_list_print_type(rl, "mem", SYS_RES_MEMORY, "%#lx");
-	retval += printf(" at core %hhu", bhnd_get_core_num(child));
+	retval += printf(" at core %hhu", bhnd_get_core_index(child));
 
 	retval += bus_print_child_domain(dev, child);
 	retval += bus_print_child_footer(dev, child);
@@ -99,7 +99,8 @@ bcma_generic_probe_nomatch(device_t dev, device_t child)
 		    bhnd_get_device_name(child));
 
 		resource_list_print_type(rl, "mem", SYS_RES_MEMORY, "%#lx");
-		printf(" at core %hhu (no driver attached)\n", bhnd_get_core_num(child));
+		printf(" at core %hhu (no driver attached)\n",
+		    bhnd_get_core_index(child));
 	}
 }
 
@@ -119,17 +120,17 @@ bcma_generic_read_ivar(device_t dev, device_t child, int index, uintptr_t *resul
 	case BHND_IVAR_DEVICE:
 		*result = cfg->device;
 		return (0);
-	case BHND_IVAR_REVISION:
-		*result = cfg->revision;
+	case BHND_IVAR_REVID:
+		*result = cfg->revid;
 		return (0);
 	case BHND_IVAR_VENDOR_NAME:
-		*result = (uintptr_t) bhnd_mfg_name(cfg->vendor);
+		*result = (uintptr_t) bhnd_vendor_name(cfg->vendor);
 		return (0);
 	case BHND_IVAR_DEVICE_NAME:
 		*result = (uintptr_t) bhnd_core_name(cfg->vendor, cfg->device);
 		return (0);
-	case BHND_IVAR_CORE_NUM:
-		*result = cfg->core_num;
+	case BHND_IVAR_CORE_INDEX:
+		*result = cfg->core_index;
 		return (0);
 	default:
 		return (ENOENT);
@@ -142,10 +143,10 @@ bcma_generic_write_ivar(device_t dev, device_t child, int index, uintptr_t value
 	switch (index) {
 	case BHND_IVAR_VENDOR:
 	case BHND_IVAR_DEVICE:
-	case BHND_IVAR_REVISION:
+	case BHND_IVAR_REVID:
 	case BHND_IVAR_VENDOR_NAME:
 	case BHND_IVAR_DEVICE_NAME:
-	case BHND_IVAR_CORE_NUM:
+	case BHND_IVAR_CORE_INDEX:
 		return (EINVAL);
 	default:
 		return (ENOENT);
@@ -189,13 +190,13 @@ bcma_port_type_name (bcma_sport_type port_type)
 /**
  * Allocate and initialize new device info structure.
  * 
- * @param core_num Core number.
+ * @param core_index Core index on the bus.
  * @param vendor Core designer.
- * @param device Part number.
- * @param revision Hardware revision.
+ * @param device Core identifier (e.g. part number).
+ * @param revision Core revision identifier.
  */
 struct bcma_devinfo *
-bcma_alloc_dinfo(uint8_t core_num, uint16_t vendor, uint16_t device, uint8_t revision)
+bcma_alloc_dinfo(uint8_t core_index, uint16_t vendor, uint16_t device, uint8_t revid)
 {
 	struct bcma_devinfo *dinfo;
 	
@@ -205,8 +206,8 @@ bcma_alloc_dinfo(uint8_t core_num, uint16_t vendor, uint16_t device, uint8_t rev
 
 	dinfo->cfg.vendor = vendor;
 	dinfo->cfg.device = device;
-	dinfo->cfg.revision = revision;
-	dinfo->cfg.core_num = core_num;
+	dinfo->cfg.revid = revid;
+	dinfo->cfg.core_index = core_index;
 
 	resource_list_init(&dinfo->resources);
 

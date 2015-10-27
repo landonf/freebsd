@@ -75,7 +75,7 @@ static int		 erom_read32(device_t bus, struct resource *erom_res,
 			     uint32_t *entry);
 
 static int		 erom_scan_port_regions(device_t bus,
-			     struct bcma_sport_list *ports, bcma_pid_t core_num,
+			     struct bcma_sport_list *ports, u_int core_index,
 			     bcma_pid_t port_num, bcma_sport_type port_type,
 			     struct resource *erom_res, bus_size_t erom_end,
 			     bus_size_t * const offset);
@@ -88,7 +88,7 @@ static int		 erom_register_port_regions(device_t bus,
 			     struct bcma_devinfo *dinfo,
 			     struct bcma_sport_list *ports);
 
-static int		 erom_scan_core(device_t bus, u_int core_num,
+static int		 erom_scan_core(device_t bus, u_int core_index,
 			     struct resource *erom_res, bus_size_t erom_start,
 			     bus_size_t erom_end, bus_size_t * const offset,
 			     struct bcma_devinfo **result);
@@ -149,7 +149,7 @@ erom_read32(device_t bus, struct resource *erom_res, bus_size_t
  * Register all MMIO region descriptors for the given slave port.
  * 
  * @param bus The BCMA bus.
- * @param core_num Core index for the port being parsed.
+ * @param core_index Core index for the port being parsed.
  * @param ports The port registration list to be updated.
  * @param port_num Port index for which regions will be parsed.
  * @param port_type The port region type to be parsed.
@@ -160,7 +160,7 @@ erom_read32(device_t bus, struct resource *erom_res, bus_size_t
  */
 static int 
 erom_scan_port_regions(device_t bus, struct bcma_sport_list *ports,
-    bcma_pid_t core_num, bcma_pid_t port_num, bcma_sport_type port_type,
+    u_int core_index, bcma_pid_t port_num, bcma_sport_type port_type,
     struct resource *erom_res, bus_size_t erom_end, bus_size_t * const offset)
 {
 	struct bcma_sport	*sport;
@@ -268,9 +268,9 @@ erom_scan_port_regions(device_t bus, struct bcma_sport_list *ports,
 		    BCMA_ADDR_MAX - (map->m_size - 1) < map->m_base)
 		{
 			device_printf(bus,
-			    "core%hhu %s%hhu.%hu: invalid address map %lx:%lx\n",
-			     core_num, bcma_port_type_name(port_type), port_num,
-			     region_num, map->m_base, map->m_size);
+			    "core%u %s%hhu.%hu: invalid address map %lx:%lx\n",
+			     core_index, bcma_port_type_name(port_type),
+			     port_num, region_num, map->m_base, map->m_size);
 		
 			error = EINVAL;
 			goto done;
@@ -284,8 +284,9 @@ erom_scan_port_regions(device_t bus, struct bcma_sport_list *ports,
 
 	/* If we escape the while loop, we've hit BCMA_RMID_MAX. */
 	device_printf(bus,
-	    "core%hhu %s%hhu: parsed BCMA_RMID_MAX region descriptors; ignoring additional descriptors\n",
-	     core_num, bcma_port_type_name(port_type), port_num);
+	    "core%u %s%u: parsed BCMA_RMID_MAX region descriptors; "
+		"ignoring additional descriptors\n",
+	    core_index, bcma_port_type_name(port_type), port_num);
 
 done:
 	/* Append the new port descriptor on success, or deallocate the
@@ -330,7 +331,8 @@ erom_register_port_region(device_t bus, struct bcma_devinfo *dinfo,
 	end = map->m_base + map->m_size;
 
 	if (start > ULONG_MAX) {
-		device_printf(bus, "Port address region starts beyond supported addressable range\n");
+		device_printf(bus, "Port address region starts beyond "
+			"supported addressable range\n");
 		return (ERANGE);
 	}
 
@@ -345,7 +347,8 @@ erom_register_port_region(device_t bus, struct bcma_devinfo *dinfo,
 		{
 			end = ULONG_MAX;
 		} else {
-			device_printf(bus, "Port address region ends beyond supported addressable range\n");
+			device_printf(bus, "Port address region ends beyond "
+				"supported addressable range\n");
 			return (ERANGE);
 		}
 	}
@@ -381,7 +384,7 @@ erom_register_port_regions(device_t bus, struct bcma_devinfo *dinfo,
  * Parse a core entry from the EROM table.
  * 
  * @param bus The BCMA bus.
- * @param core_num The index of the core being parsed.
+ * @param core_index The index of the core being parsed.
  * @param erom_res The EROM resource.
  * @param erom_end The maximum permitted EROM offset.
  * @param offset The offset at which to perform parsing. This will be updated
@@ -393,7 +396,7 @@ erom_register_port_regions(device_t bus, struct bcma_devinfo *dinfo,
  * ENOENT will be returned. On error, returns a non-zero error value.
  */
 static int
-erom_scan_core(device_t bus, u_int core_num, struct resource *erom_res,
+erom_scan_core(device_t bus, u_int core_index, struct resource *erom_res,
     bus_size_t erom_start, bus_size_t erom_end, bus_size_t * const offset,
     struct bcma_devinfo **result
 )
@@ -403,7 +406,7 @@ erom_scan_core(device_t bus, u_int core_num, struct resource *erom_res,
 	uint32_t		 entry;
 	uint16_t		 core_designer;
 	uint16_t		 core_part;
-	uint8_t			 core_revision;
+	uint8_t			 core_revid;
 	u_long			 num_mport, num_dport, num_mwrap, num_swrap;
 	int			 error;
 
@@ -439,14 +442,14 @@ erom_scan_core(device_t bus, u_int core_num, struct resource *erom_res,
 		return (EINVAL);
 	}
 	
-	core_revision = EROM_GET_ATTR(entry, COREB_REV);
+	core_revid = EROM_GET_ATTR(entry, COREB_REV);
 	num_mport = EROM_GET_ATTR(entry, COREB_NUM_MP);
 	num_dport = EROM_GET_ATTR(entry, COREB_NUM_DP);
 	num_mwrap = EROM_GET_ATTR(entry, COREB_NUM_WMP);
 	num_swrap = EROM_GET_ATTR(entry, COREB_NUM_WSP);
 
 	/* Allocate our device info */
-	dinfo = bcma_alloc_dinfo(core_num, core_designer, core_part, core_revision);
+	dinfo = bcma_alloc_dinfo(core_index, core_designer, core_part, core_revid);
 	if (dinfo == NULL)
 		return (ENOMEM);
 
@@ -457,10 +460,10 @@ erom_scan_core(device_t bus, u_int core_num, struct resource *erom_res,
 	if (bootverbose) {
 		device_printf(bus, 
 			    "core%u: %s %s (cid=%hx, rev=%hhu)\n",
-			    core_num,
-			    bhnd_mfg_name(dinfo->cfg.vendor),
+			    core_index,
+			    bhnd_vendor_name(dinfo->cfg.vendor),
 			    bhnd_core_name(dinfo->cfg.vendor, dinfo->cfg.device), 
-			    dinfo->cfg.device, dinfo->cfg.revision);
+			    dinfo->cfg.device, dinfo->cfg.revid);
 	}
 	*offset += 4;
 
@@ -528,7 +531,7 @@ erom_scan_core(device_t bus, u_int core_num, struct resource *erom_res,
 	/* Device/bridge port descriptors */
 	for (uint8_t sp_num = 0; sp_num < num_dport; sp_num++) {
 		error = erom_scan_port_regions(bus, &dinfo->cfg.dports,
-		    core_num, sp_num, first_port_type, erom_res, erom_end, offset);
+		    core_index, sp_num, first_port_type, erom_res, erom_end, offset);
 
 		if (error)
 			goto failed;
@@ -537,7 +540,7 @@ erom_scan_core(device_t bus, u_int core_num, struct resource *erom_res,
 	/* Wrapper (aka device management) descriptors (for master ports). */
 	for (uint8_t sp_num = 0; sp_num < num_mwrap; sp_num++) {
 		error = erom_scan_port_regions(bus, &dinfo->cfg.wports,
-		    core_num, sp_num, BCMA_SPORT_TYPE_MWRAP, erom_res, erom_end, offset);
+		    core_index, sp_num, BCMA_SPORT_TYPE_MWRAP, erom_res, erom_end, offset);
 
 		if (error)
 			goto failed;
@@ -550,7 +553,7 @@ erom_scan_core(device_t bus, u_int core_num, struct resource *erom_res,
 		 * wrapper ports. */
 		uint8_t sp_num = num_mwrap + i;
 		error = erom_scan_port_regions(bus, &dinfo->cfg.wports,
-		    core_num, sp_num, BCMA_SPORT_TYPE_SWRAP, erom_res, erom_end, offset);
+		    core_index, sp_num, BCMA_SPORT_TYPE_SWRAP, erom_res, erom_end, offset);
 
 		if (error)
 			goto failed;
@@ -639,14 +642,14 @@ erom_print_primecell_id(device_t bus, struct resource *res,
 
 	if (use_jedec) {
 		designer |= (jedec_c_cont << 8);
-		designer_name = bhnd_mfg_name(designer);
+		designer_name = bhnd_vendor_name(designer);
 		part_name = bhnd_core_name(designer, part);
 	} else {
 		switch (designer) {
 		case 0x3b:	/* Some devices use the JEDEC ID without specifying the
 				 * 4-bit continuation code */
 		case 0x41:
-			designer_name = bhnd_mfg_name(JEDEC_MFGID_ARM);
+			designer_name = bhnd_vendor_name(JEDEC_MFGID_ARM);
 			part_name = bhnd_core_name(JEDEC_MFGID_ARM, part);
 			break;
 		default:
@@ -688,8 +691,8 @@ bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base)
 	erom_start = offset;
 	dinfo = NULL;
 	
-	for (u_int core_num = 0; offset < erom_end; core_num++) {
-		error = erom_scan_core(bus, core_num, erom_res, erom_start,
+	for (u_int core_index = 0; offset < erom_end; core_index++) {
+		error = erom_scan_core(bus, core_index, erom_res, erom_start,
 		    erom_end, &offset, &dinfo);
 		
 		/* Handle EOF or error */
