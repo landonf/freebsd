@@ -32,13 +32,32 @@
 #ifndef _BHND_BHNDVAR_H_
 #define _BHND_BHNDVAR_H_
 
-/*
- * Broadcom Home Networking Division (HND) Bus
- * Data Structures and Constants
+/**
+ * A bus device probe configuration record.
  */
+struct bhnd_probecfg {
+	uint16_t	 vendor;		/**< JEP106 device vendor to match on. */
+	uint16_t	 device;		/**< device identifier to match on. */
 
-const char *bhnd_vendor_name(uint16_t vendor);
-const char *bhnd_core_name(uint16_t vendor, uint16_t device);
+	int		 probe_order;	/**< device probe order for this core. */
+	const char	*probe_name;	/**< device name for probe, or NULL. */
+};
+extern struct bhnd_probecfg bhnd_generic_probecfg_table[];
+
+
+const char		*bhnd_vendor_name(uint16_t vendor);
+const char 		*bhnd_core_name(uint16_t vendor, uint16_t device);
+struct bhnd_probecfg	*bhnd_find_probecfg(struct bhnd_probecfg table[],
+			    uint16_t vendor, uint16_t device);
+
+/** Represents EOF in a bhnd_probecfg table. */
+#define	BHND_PROBECFG_TABLE_END	{ 0, BHND_COREID_NODEV, 0, NULL }
+
+/* Standard device probe ordering. */
+#define	BHND_PROBE_ORDER_FIRST		 0
+#define	BHND_PROBE_ORDER_EARLY		 10
+#define	BHND_PROBE_ORDER_DEFAULT	 20
+#define	BHND_PROBE_ORDER_LAST		 30
 
 enum bhnd_device_vars {
 	/** Core designer's JEP-106 manufacturer ID. */ 

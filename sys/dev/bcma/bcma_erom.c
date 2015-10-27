@@ -673,18 +673,24 @@ erom_print_primecell_id(device_t bus, struct resource *res,
  * Scan a device enumeration ROM table, adding all discovered cores to the bus.
  * 
  * @param bus The bus to enumerate.
+ * @param pcfg_table Core probe configuration.
  * @param erom_res The enumeration ROM resource.
  * @param erom_base Base address of the EROM register mapping.
  */
 int
-bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base)
+bcma_scan_erom(device_t bus, struct bhnd_probecfg pcfg_table[],
+    struct resource *erom_res, bus_size_t erom_base)
 {
 	struct bcma_devinfo	*dinfo;
+	struct bcma_corecfg	*cfg;
+	struct bhnd_probecfg	*pcfg;
 	device_t		 child;
 	bus_size_t		 erom_end;
 	bus_size_t		 erom_start;
 	bus_size_t		 offset;
 	int			 error;
+	int			 probe_order;
+	const char *		 probe_name;
 	
 	offset = erom_base + BCMA_EROM_TABLE;
 	erom_end = erom_base + BCMA_EROM_TABLE_END;
@@ -701,9 +707,20 @@ bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base)
 		else if (error)
 			return (error);
 
+		cfg = &dinfo->cfg;
+
+		/* Fetch the device probe configuration */
+		probe_order = BHND_PROBE_ORDER_DEFAULT;
+		probe_name = NULL;
+
+		pcfg = bhnd_find_probecfg(pcfg_table, cfg->vendor, cfg->device);
+		if (pcfg != NULL) {
+			probe_name = pcfg->probe_name;
+			probe_order = pcfg->probe_order;
+		}
+
 		/* Add the child device */
-		// TODO: Ordering and other configuration
-		child = device_add_child(bus, NULL, -1);
+		child = device_add_child_ordered(bus, probe_order, probe_name, -1);
 		if (child == NULL) {
 			bcma_free_dinfo(dinfo);
 			return (ENXIO);
@@ -711,12 +728,13 @@ bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base)
 		
 		/* The child device now owns the dinfo pointer */
 		device_set_ivars(child, dinfo);
-		
-		
+
+
+
 		// XXX Debugging code to print PrimeCell/Peripherial IDs
-		struct bcma_sport	*sp;
+		struct bcma_sport *sp;
 		if (bootverbose) {
-			STAILQ_FOREACH(sp, &dinfo->cfg.wports, sp_link) {
+			STAILQ_FOREACH(sp, &cfg->wports, sp_link) {
 				struct bcma_map *map;
 				STAILQ_FOREACH(map, &sp->sp_maps, m_link) {
 					erom_print_primecell_id(bus, erom_res, map);
@@ -724,10 +742,10 @@ bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base)
 			}
 		}
 
-		if (bootverbose && dinfo->cfg.vendor == JEDEC_MFGID_ARM &&
-		    dinfo->cfg.device != BHND_COREID_AXI_UNMAPPED)
+		if (bootverbose && cfg->vendor == JEDEC_MFGID_ARM &&
+		    cfg->device != BHND_COREID_AXI_UNMAPPED)
 		{
-			STAILQ_FOREACH(sp, &dinfo->cfg.dports, sp_link) {
+			STAILQ_FOREACH(sp, &cfg->dports, sp_link) {
 				struct bcma_map *map;
 				
 				/* Probing bridge memory regions would simply

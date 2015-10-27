@@ -38,6 +38,8 @@
 #include <sys/queue.h>
 #include <sys/rman.h>
 
+#include <dev/bhnd/bhndvar.h>
+
 MALLOC_DECLARE(M_BCMA);
 
 /*
@@ -78,7 +80,9 @@ int			 bcma_generic_write_ivar(device_t dev, device_t child, int index, uintptr_
 void			 bcma_generic_child_deleted(device_t dev, device_t child);
 struct resource_list	*bcma_generic_get_resource_list(device_t dev, device_t child);
 
-int			 bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base);
+int			 bcma_scan_erom(device_t bus,
+			     struct bhnd_probecfg pcfg_table[],
+			     struct resource *erom_res, bus_size_t erom_base);
 
 const char		*bcma_port_type_name (bcma_sport_type port_type);
 

@@ -122,10 +122,13 @@ bcma_pci_attach(device_t dev)
 	eromaddr = bcma_read_chipc(sc, BCMA_CC_EROM_ADDR, 4);
 	pci_write_config(dev, BHND_PCI_BAR0_WIN1, eromaddr, 4);
 
-	/* Scan EROM, registering all child devices. */
-	if (bcma_scan_erom(dev, BMEM_RES_CHIPC(sc), BHND_PCI_V2_BAR0_WIN1_OFFSET))
+	/* Enumerate and register all bus devices. */
+	if (bcma_scan_erom(dev, bhnd_generic_probecfg_table,
+	    BMEM_RES_CHIPC(sc), BHND_PCI_V2_BAR0_WIN1_OFFSET))
+	{
 		return (ENXIO);
-	
+	}
+
 	/* Let the generic implementation probe all added children. After this
 	 * point, child cores will depend directly on the BAR0 memory windows. */
 	return (bus_generic_attach(dev));
