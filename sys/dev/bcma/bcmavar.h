@@ -82,7 +82,7 @@ int			 bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_b
 
 const char		*bcma_port_type_name (bcma_sport_type port_type);
 
-struct bcma_devinfo	*bcma_alloc_dinfo(uint8_t core_num, uint16_t designer, uint16_t core_id, uint8_t revision);
+struct bcma_devinfo	*bcma_alloc_dinfo(uint8_t core_num, uint16_t vendor, uint16_t device, uint8_t revision);
 void			 bcma_free_dinfo(struct bcma_devinfo *dinfo);
 
 struct bcma_sport	*bcma_alloc_sport(bcma_pid_t port_num, bcma_sport_type port_type);
@@ -151,10 +151,10 @@ STAILQ_HEAD(bcma_sport_list, bcma_sport);
 
 /** BCMA IP core/block configuration */
 struct bcma_corecfg {
-	uint16_t	core_id;	/**< IP core ID/part number */
-	uint16_t	designer;	/**< IP designer's JEP-106 mfgid */
-	uint8_t		core_num;	/**< core number (bus-unique) */
+	uint16_t	vendor;		/**< IP designer's JEP-106 mfgid */
+	uint16_t	device;		/**< IP core ID/part number */
 	uint8_t		revision;	/**< IP core hardware revision */
+	uint8_t		core_num;	/**< core number (bus-unique) */
 
 	u_long		num_mports;	/**< number of master port descriptors. */
 	struct bcma_mport_list	mports;	/**< master port descriptors */

@@ -325,8 +325,8 @@ erom_register_port_region(device_t bus, struct bcma_devinfo *dinfo,
 		 * time we can safely truncate a region, and for the same
 		 * reason, it's unlikely to ever be useful to anyone.
 		 */
-		if (dinfo->cfg.designer == JEDEC_MFGID_ARM &&
-		    dinfo->cfg.core_id == BHND_COREID_AXI_UNMAPPED)
+		if (dinfo->cfg.vendor == JEDEC_MFGID_ARM &&
+		    dinfo->cfg.device == BHND_COREID_AXI_UNMAPPED)
 		{
 			end = ULONG_MAX;
 		} else {
@@ -387,7 +387,7 @@ erom_scan_core(device_t bus, u_int core_num, struct resource *erom_res,
 	bcma_sport_type		 first_port_type;
 	uint32_t		 entry;
 	uint16_t		 core_designer;
-	uint16_t		 core_id;
+	uint16_t		 core_part;
 	uint8_t			 core_revision;
 	u_long			 num_mport, num_dport, num_mwrap, num_swrap;
 	int			 error;
@@ -411,7 +411,7 @@ erom_scan_core(device_t bus, u_int core_num, struct resource *erom_res,
 	
 	/* Parse CoreDescA */
 	core_designer = EROM_GET_ATTR(entry, COREA_DESIGNER);
-	core_id = EROM_GET_ATTR(entry, COREA_ID);
+	core_part = EROM_GET_ATTR(entry, COREA_ID);
 	
 
 	/* Parse CoreDescB */
@@ -431,7 +431,7 @@ erom_scan_core(device_t bus, u_int core_num, struct resource *erom_res,
 	num_swrap = EROM_GET_ATTR(entry, COREB_NUM_WSP);
 
 	/* Allocate our device info */
-	dinfo = bcma_alloc_dinfo(core_num, core_designer, core_id, core_revision);
+	dinfo = bcma_alloc_dinfo(core_num, core_designer, core_part, core_revision);
 	if (dinfo == NULL)
 		return (ENOMEM);
 
@@ -443,9 +443,9 @@ erom_scan_core(device_t bus, u_int core_num, struct resource *erom_res,
 		device_printf(bus, 
 			    "core%u: %s %s (cid=%hx, rev=%hhu)\n",
 			    core_num,
-			    bhnd_mfg_name(dinfo->cfg.designer),
-			    bhnd_core_name(dinfo->cfg.designer, dinfo->cfg.core_id), 
-			    dinfo->cfg.core_id, dinfo->cfg.revision);
+			    bhnd_mfg_name(dinfo->cfg.vendor),
+			    bhnd_core_name(dinfo->cfg.vendor, dinfo->cfg.device), 
+			    dinfo->cfg.device, dinfo->cfg.revision);
 	}
 	*offset += 4;
 
@@ -683,8 +683,8 @@ bcma_scan_erom(device_t bus, struct resource *erom_res, bus_size_t erom_base)
 				read_primecell_id(bus, erom_res, map);
 			}
 		}
-		if (dinfo->cfg.designer == JEDEC_MFGID_ARM &&
-		    dinfo->cfg.core_id != BHND_COREID_AXI_UNMAPPED)
+		if (dinfo->cfg.vendor == JEDEC_MFGID_ARM &&
+		    dinfo->cfg.device != BHND_COREID_AXI_UNMAPPED)
 		{
 			STAILQ_FOREACH(sp, &dinfo->cfg.dports, sp_link) {
 				struct bcma_map *map;

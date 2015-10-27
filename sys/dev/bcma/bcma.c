@@ -36,26 +36,35 @@ __FBSDID("$FreeBSD$");
 #include <sys/malloc.h>
 #include <sys/systm.h>
 
+#include <machine/bus.h>
+
 #include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/bhnd_device_ids.h>
 
 #include "bcmavar.h"
 
 MALLOC_DEFINE(M_BCMA, "bcma", "BCMA bus data structures");
 
+static const struct bcma_nomatch {
+	uint16_t	vendor;		/**< core designer */
+	uint16_t	device;		/**< core id */
+	bool		report;		/**< always/only bootverbose */
+} bcma_nomatch_table[] = {
+	{ 0,			BHND_COREID_NODEV,		false }
+};
+
 int
 bcma_generic_print_child(device_t dev, device_t child)
 {
-	struct bcma_devinfo	*dinfo;
 	struct resource_list	*rl;
 	int			retval = 0;
 
-	dinfo = device_get_ivars(child);
-	rl = &dinfo->resources;
+	rl = BUS_GET_RESOURCE_LIST(dev, child);
 
 	retval += bus_print_child_header(dev, child);
 
 	retval += resource_list_print_type(rl, "mem", SYS_RES_MEMORY, "%#lx");
-	retval += printf(" at core %hhu", dinfo->cfg.core_num);
+	retval += printf(" at core %hhu", bhnd_get_core_num(child));
 
 	retval += bus_print_child_domain(dev, child);
 	retval += bus_print_child_footer(dev, child);
@@ -66,7 +75,32 @@ bcma_generic_print_child(device_t dev, device_t child)
 void
 bcma_generic_probe_nomatch(device_t dev, device_t child)
 {
-	// TODO
+	struct bcma_corecfg		*cfg;
+	struct bcma_devinfo		*dinfo;
+	const struct bcma_nomatch	*nm;
+	struct resource_list		*rl;
+	bool				report;
+
+	dinfo = device_get_ivars(child);
+	cfg = &dinfo->cfg;
+	rl = &dinfo->resources;
+	report = true;
+
+	for (nm = bcma_nomatch_table; nm->device != BHND_COREID_NODEV; nm++) {
+		if (nm->vendor == bhnd_get_vendor(child) &&
+		    nm->device == bhnd_get_device(child))
+		{
+			report = nm->report;
+		}
+	}
+	
+	if (report || bootverbose) {
+		device_printf(dev, "<%s %s>", bhnd_get_vendor_name(child),
+		    bhnd_get_device_name(child));
+
+		resource_list_print_type(rl, "mem", SYS_RES_MEMORY, "%#lx");
+		printf(" at core %hhu (no driver attached)\n", bhnd_get_core_num(child));
+	}
 }
 
 int
@@ -79,19 +113,24 @@ bcma_generic_read_ivar(device_t dev, device_t child, int index, uintptr_t *resul
 	cfg = &dinfo->cfg;
 	
 	switch (index) {
-	case BHND_IVAR_DESIGNER:
-		*result = cfg->designer;
+	case BHND_IVAR_VENDOR:
+		*result = cfg->vendor;
 		return (0);
-	case BHND_IVAR_CORE_ID:
-		*result = cfg->core_id;
+	case BHND_IVAR_DEVICE:
+		*result = cfg->device;
 		return (0);
-	case BHND_IVAR_CORE_REVISION:
+	case BHND_IVAR_REVISION:
 		*result = cfg->revision;
 		return (0);
-	case BHND_IVAR_CORE_NAME:
-		*result = (uintptr_t) bhnd_core_name(cfg->designer, cfg->core_id);
+	case BHND_IVAR_VENDOR_NAME:
+		*result = (uintptr_t) bhnd_mfg_name(cfg->vendor);
 		return (0);
-;
+	case BHND_IVAR_DEVICE_NAME:
+		*result = (uintptr_t) bhnd_core_name(cfg->vendor, cfg->device);
+		return (0);
+	case BHND_IVAR_CORE_NUM:
+		*result = cfg->core_num;
+		return (0);
 	default:
 		return (ENOENT);
 	}
@@ -101,10 +140,12 @@ int
 bcma_generic_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
 {
 	switch (index) {
-	case BHND_IVAR_DESIGNER:
-	case BHND_IVAR_CORE_ID:
-	case BHND_IVAR_CORE_REVISION:
-	case BHND_IVAR_CORE_NAME:
+	case BHND_IVAR_VENDOR:
+	case BHND_IVAR_DEVICE:
+	case BHND_IVAR_REVISION:
+	case BHND_IVAR_VENDOR_NAME:
+	case BHND_IVAR_DEVICE_NAME:
+	case BHND_IVAR_CORE_NUM:
 		return (EINVAL);
 	default:
 		return (ENOENT);
@@ -149,12 +190,12 @@ bcma_port_type_name (bcma_sport_type port_type)
  * Allocate and initialize new device info structure.
  * 
  * @param core_num Core number.
- * @param designer Core designer.
- * @param core_id Part number.
+ * @param vendor Core designer.
+ * @param device Part number.
  * @param revision Hardware revision.
  */
 struct bcma_devinfo *
-bcma_alloc_dinfo(uint8_t core_num, uint16_t designer, uint16_t core_id, uint8_t revision)
+bcma_alloc_dinfo(uint8_t core_num, uint16_t vendor, uint16_t device, uint8_t revision)
 {
 	struct bcma_devinfo *dinfo;
 	
@@ -162,11 +203,11 @@ bcma_alloc_dinfo(uint8_t core_num, uint16_t designer, uint16_t core_id, uint8_t 
 	if (dinfo == NULL)
 		return NULL;
 
-	dinfo->cfg.core_num = core_num;
-	dinfo->cfg.designer = designer;
-	dinfo->cfg.core_id = core_id;
+	dinfo->cfg.vendor = vendor;
+	dinfo->cfg.device = device;
 	dinfo->cfg.revision = revision;
-	
+	dinfo->cfg.core_num = core_num;
+
 	resource_list_init(&dinfo->resources);
 
 	STAILQ_INIT(&dinfo->cfg.mports);

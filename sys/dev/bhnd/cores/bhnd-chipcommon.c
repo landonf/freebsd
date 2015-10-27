@@ -51,8 +51,8 @@ __FBSDID("$FreeBSD$");
 struct bhnd_chipc_softc {};
 
 static const struct chipc_bhnd_device {
-	uint16_t	 designer;
-	uint16_t	 core_id;
+	uint16_t	 vendor;
+	uint16_t	 device;
 	uint8_t		 revision;
 	const char	*desc;
 } chipc_bhnd_devices[] = {
@@ -66,15 +66,15 @@ bhnd_chipc_probe(device_t dev)
 	const struct chipc_bhnd_device	*id;
 	const char 			*desc;
 
-	for (id = chipc_bhnd_devices; id->core_id != BHND_COREID_NODEV; id++)
+	for (id = chipc_bhnd_devices; id->device != BHND_COREID_NODEV; id++)
 	{
-		if (bhnd_get_designer(dev) == id->designer &&
-		    bhnd_get_core_id(dev) == id->core_id &&
+		if (bhnd_get_vendor(dev) == id->vendor &&
+		    bhnd_get_device(dev) == id->device &&
 		    (id->revision == BHND_HWREV_ANY ||
-			bhnd_get_core_revision(dev) != id->revision))
+			bhnd_get_revision(dev) != id->revision))
 		{
 			if (id->desc == NULL)
-				desc = bhnd_get_core_name(dev);
+				desc = bhnd_get_device_name(dev);
 			else
 				desc = id->desc;
 		
