@@ -72,7 +72,7 @@ static const struct bhnd_core_desc {
 	uint16_t device;
 	const char *desc;
 } bhnd_core_descs[] = {
-	{ JEDEC_MFGID_BCM,	BHND_COREID_CC,		"ChipCommon" },
+	{ JEDEC_MFGID_BCM,	BHND_COREID_CC,		"ChipCommon I/O Controller" },
 	{ JEDEC_MFGID_BCM,	BHND_COREID_ILINE20,	"iLine20 HPNA" },
 	{ JEDEC_MFGID_BCM,	BHND_COREID_SRAM,	"SRAM" },
 	{ JEDEC_MFGID_BCM,	BHND_COREID_SDRAM,	"SDRAM" },
