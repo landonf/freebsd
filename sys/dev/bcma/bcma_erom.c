@@ -771,7 +771,6 @@ bcma_scan_erom(device_t bus, struct bhnd_probecfg pcfg_table[],
 			}
 		}
 	}
-	
-	return (0);
 
+	return (0);
 }
