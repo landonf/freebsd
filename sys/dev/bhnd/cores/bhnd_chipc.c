@@ -48,6 +48,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhnd_device_ids.h>
 #include <dev/bhnd/bhndvar.h>
 
+#include "bhnd_chipc.h"
+
 struct bhnd_chipc_softc {};
 
 static const struct chipc_bhnd_device {
@@ -121,8 +123,13 @@ static device_method_t bhnd_chipc_methods[] = {
 	DEVMETHOD_END
 };
 
+static driver_t bhnd_chipc_driver = {
+	BHND_CHIPC_DEVNAME,
+	bhnd_chipc_methods,
+	sizeof(struct bhnd_chipc_softc)
+};
+
 static devclass_t bhnd_chipc_devclass;
 
-DEFINE_CLASS_0(bhnd_chipc, bhnd_chipc_driver, bhnd_chipc_methods, sizeof(struct bhnd_chipc_softc));
 DRIVER_MODULE(bhnd_chipc, bcma, bhnd_chipc_driver, bhnd_chipc_devclass, 0, 0);
 DRIVER_MODULE(bhnd_chipc, siba, bhnd_chipc_driver, bhnd_chipc_devclass, 0, 0);
