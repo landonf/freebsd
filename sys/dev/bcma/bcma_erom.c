@@ -268,9 +268,11 @@ erom_scan_port_regions(device_t bus, struct bcma_sport_list *ports,
 		    BCMA_ADDR_MAX - (map->m_size - 1) < map->m_base)
 		{
 			device_printf(bus,
-			    "core%u %s%hhu.%hu: invalid address map %lx:%lx\n",
+			    "core%u %s%hhu.%hu: invalid address map %llx:%llx\n",
 			     core_index, bcma_port_type_name(port_type),
-			     port_num, region_num, map->m_base, map->m_size);
+			     port_num, region_num,
+			     (unsigned long long) map->m_base,
+			     (unsigned long long) map->m_size);
 		
 			error = EINVAL;
 			goto done;
@@ -386,6 +388,7 @@ erom_register_port_regions(device_t bus, struct bcma_devinfo *dinfo,
  * @param bus The BCMA bus.
  * @param core_index The index of the core being parsed.
  * @param erom_res The EROM resource.
+ * @param erom_start The initial offset of the EROM table.
  * @param erom_end The maximum permitted EROM offset.
  * @param offset The offset at which to perform parsing. This will be updated
  * to point past the last valid parsed region on exit.
@@ -422,7 +425,10 @@ erom_scan_core(device_t bus, u_int core_index, struct resource *erom_res,
 			
 	/* Must be the start of the next core description */
 	if (!EROM_ENTRY_IS(entry, CORE)) {
-		device_printf(bus, "Unexpected EROM %s entry 0x%x at ROM offset 0x%lx\n", erom_entry_type_name(entry), entry, *offset-erom_start);
+		device_printf(bus,
+		    "Unexpected EROM %s entry 0x%x at offset 0x%llx\n",
+		    erom_entry_type_name(entry), entry,
+		    (unsigned long long) *offset-erom_start);
 		return (EINVAL);
 	}
 	
@@ -438,7 +444,10 @@ erom_scan_core(device_t bus, u_int core_index, struct resource *erom_res,
 		return (EINVAL);
 
 	if (!EROM_ENTRY_IS(entry, CORE)) {
-		device_printf(bus, "Invalid EROM CoreDescB value 0x%x at ROM offset 0x%lx\n", entry, (*offset-erom_start));
+		device_printf(bus,
+		    "Invalid EROM CoreDescB value 0x%x at offset 0x%llx\n", 
+		    entry, (unsigned long long) (*offset-erom_start));
+
 		return (EINVAL);
 	}
 	
@@ -479,7 +488,10 @@ erom_scan_core(device_t bus, u_int core_index, struct resource *erom_res,
 			goto failed;
 
 		if (!EROM_ENTRY_IS(entry, MPORT)) {
-			device_printf(bus, "Invalid EROM MPD value 0x%x at ROM offset 0x%lx\n", entry, (*offset-erom_start));
+			device_printf(bus,
+			    "Invalid EROM MPD value 0x%x at ROM "
+			        "offset 0x%llx\n", 
+			    entry, (unsigned long long) (*offset-erom_start));
 			error = EINVAL;
 			goto failed;
 		}
@@ -598,7 +610,7 @@ erom_print_primecell_id(device_t bus, struct resource *res,
     struct bcma_map *map)
 {
 	uint32_t pcell_id, pid0, pid1;
-	bus_addr_t offset;
+	bus_size_t offset;
 	const char *designer_name;
 	const char *part_name;
 
@@ -675,11 +687,11 @@ erom_print_primecell_id(device_t bus, struct resource *res,
  * @param bus The bus to enumerate.
  * @param pcfg_table Core probe configuration.
  * @param erom_res The enumeration ROM resource.
- * @param erom_base Base address of the EROM register mapping.
+ * @param erom_offset Base offset of the EROM register mapping.
  */
 int
 bcma_scan_erom(device_t bus, struct bhnd_probecfg pcfg_table[],
-    struct resource *erom_res, bus_size_t erom_base)
+    struct resource *erom_res, bus_size_t erom_offset)
 {
 	struct bcma_devinfo	*dinfo;
 	struct bcma_corecfg	*cfg;
@@ -692,8 +704,8 @@ bcma_scan_erom(device_t bus, struct bhnd_probecfg pcfg_table[],
 	int			 probe_order;
 	const char *		 probe_name;
 	
-	offset = erom_base + BCMA_EROM_TABLE;
-	erom_end = erom_base + BCMA_EROM_TABLE_END;
+	offset = erom_offset + BCMA_EROM_TABLE;
+	erom_end = erom_offset + BCMA_EROM_TABLE_END;
 	erom_start = offset;
 	dinfo = NULL;
 	
