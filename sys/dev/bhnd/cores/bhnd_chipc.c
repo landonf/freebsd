@@ -45,6 +45,10 @@ __FBSDID("$FreeBSD$");
 #include <sys/bus.h>
 #include <sys/module.h>
 
+#include <machine/bus.h>
+#include <sys/rman.h>
+#include <machine/resource.h>
+
 #include <dev/bhnd/bhnd_device_ids.h>
 #include <dev/bhnd/bhndvar.h>
 
@@ -91,6 +95,10 @@ bhnd_chipc_probe(device_t dev)
 static int
 bhnd_chipc_attach(device_t dev)
 {
+	int rid = bhnd_get_port_rid(dev, 0, 0);
+	struct bhnd_resource *res = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY, &rid, RF_ACTIVE | RF_SHAREABLE);
+	device_printf(dev, "got rid=%d res=%p\n", rid, res);
+	
 	// TODO
 	return (0);
 }

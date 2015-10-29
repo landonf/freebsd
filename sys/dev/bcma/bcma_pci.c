@@ -171,6 +171,30 @@ bcma_pci_alloc_resource(device_t dev, device_t child, int type, int *rid,
 	return (NULL);
 }
 
+static struct bhnd_resource *
+bcma_pci_alloc_bhnd_resource (device_t dev, device_t child, int type,
+    int *rid, u_long start, u_long end, u_long count, u_int flags)
+{
+	// TODO
+	return (NULL);
+}
+
+static int
+bcma_pci_activate_bhnd_resource (device_t dev, device_t child, int type,
+    int rid, struct bhnd_resource *r)
+{
+	// TODO
+	return (ENXIO);
+};
+
+static int
+bcma_pci_deactivate_bhnd_resource (device_t dev, device_t child, int type,
+    int rid, struct bhnd_resource *r)
+{
+	// TODO
+	return (ENXIO);
+};
+
 static int
 bcma_pci_release_resource(device_t dev, device_t child, int type, int rid,
     struct resource *r)
@@ -224,6 +248,9 @@ static device_method_t bcma_pci_methods[] = {
 	// TODO: Additional bus_* methods?
 
 	/* BHND interface */
+	DEVMETHOD(bhnd_alloc_resource,		bcma_pci_alloc_bhnd_resource),
+	DEVMETHOD(bhnd_activate_resource,	bcma_pci_activate_bhnd_resource),
+	DEVMETHOD(bhnd_deactivate_resource,	bcma_pci_deactivate_bhnd_resource),
 	DEVMETHOD(bhnd_get_port_rid,		bcma_generic_get_port_rid),
 
 	DEVMETHOD_END

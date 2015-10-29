@@ -57,6 +57,8 @@ __FBSDID("$FreeBSD$");
 #include "bhndreg.h"
 #include "bhndvar.h"
 
+MALLOC_DEFINE(M_BHND, "bhnd", "BHND-compliant bus data structures");
+
 /**
  * Generic probe configuration.
  */

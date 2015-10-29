@@ -25,19 +25,63 @@
  * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGES.
- * 
- * $FreeBSD$
  */
 
-#ifndef _BHND_CORES_CHIPC_H_
-#define _BHND_CORES_CHIPC_H_
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
 
-#define	BHND_CHIPC_DEVNAME	"bhnd_chipc"
+#include <sys/types.h>
+#include <sys/param.h>
+#include <sys/malloc.h>
+#include <sys/bus.h>
 
-/** BHND ChipCommon per-instance state */
-struct bcma_pci_softc {
-	device_t		 cc_dev;	/* device */
-	struct resource		*mem_res;	/* chipcommon registers */
+#include <machine/bus.h>
+#include <sys/rman.h>
+#include <machine/resource.h>
+
+#include "bus_if.h"
+#include "bhndvar.h"
+#include "bhnd_direct.h"
+
+/*
+ * BHND SoC/Host Bus Support
+ */
+
+struct bhnd_resource *
+bhnd_direct_alloc_bhnd_resource (device_t dev, device_t child, int type,
+	int *rid, u_long start, u_long end, u_long count, u_int flags)
+{
+	struct bhnd_resource *r;
+	
+	/* Allocate an empty wrapper for the real bus-allocated resource */
+	r = malloc(sizeof(struct bhnd_resource), M_BHND, M_WAITOK);
+	if (r == NULL)
+		return NULL;
+	
+	/* Allocate the bus resource, marking it as 'direct' (not requiring
+	 * any bus window remapping to perform I/O) */
+	r->_direct = true;
+	r->_res = BUS_ALLOC_RESOURCE(dev, child, type, rid, start, end,
+		count, flags);
+
+	if (r->_res == NULL) {
+		free(r, M_BHND);
+		return NULL;
+	}
+
+	return r;
+}
+
+int
+bhnd_direct_activate_bhnd_resource (device_t dev, device_t child, int type,
+	int rid, struct bhnd_resource *r)
+{
+	return BUS_ACTIVATE_RESOURCE(dev, child, type, rid, r->_res);
 };
 
-#endif /* _BHND_CORES_CHIPC_H_ */
+int
+bhnd_direct_deactivate_bhnd_resource (device_t dev, device_t child, int type,
+	int rid, struct bhnd_resource *r)
+{
+	return BUS_DEACTIVATE_RESOURCE(dev, child, type, rid, r->_res);
+};

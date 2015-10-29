@@ -32,7 +32,14 @@
 #ifndef _BHND_BHNDVAR_H_
 #define _BHND_BHNDVAR_H_
 
+#include <sys/types.h>
+#include <sys/malloc.h>
+
+struct bhnd_resource;
+
 #include "bhnd_if.h"
+
+MALLOC_DECLARE(M_BHND);
 
 /**
  * A bus device probe configuration record.
@@ -44,15 +51,67 @@ struct bhnd_probecfg {
 	int		 probe_order;	/**< device probe order for this core. */
 	const char	*probe_name;	/**< device name for probe, or NULL. */
 };
-extern struct bhnd_probecfg bhnd_generic_probecfg_table[];
 
+extern struct bhnd_probecfg bhnd_generic_probecfg_table[];
 
 const char		*bhnd_vendor_name(uint16_t vendor);
 const char 		*bhnd_core_name(uint16_t vendor, uint16_t device);
 struct bhnd_probecfg	*bhnd_find_probecfg(struct bhnd_probecfg table[],
 			    uint16_t vendor, uint16_t device);
 
-/** Represents EOF in a bhnd_probecfg table. */
+/**
+* A bhnd(4) bus resource.
+* 
+* This provides an abstract interface to per-core resources that may require
+* bus-level remapping of address windows prior to access.
+*/
+struct bhnd_resource {
+	struct resource	*_res;		/**< the system resource. */
+	bool		 _direct;	/**< true if the resource requires
+					*   bus window remapping before it
+					*   is MMIO accessible. */
+};
+
+/* BHND_ALLOC_RESOURCE */
+static inline struct bhnd_resource *
+bhnd_alloc_resource (device_t dev, int type, int *rid, u_long start,
+    u_long end, u_long count, u_int flags)
+{
+	return BHND_ALLOC_RESOURCE(device_get_parent(dev), dev, type, rid,
+	    start, end, count, flags);
+};
+
+/* BHND_ALLOC_RESOURCE (any) */
+static inline struct bhnd_resource *
+bhnd_alloc_resource_any (device_t dev, int type, int *rid, u_int flags)
+{
+	return bhnd_alloc_resource(dev, type, rid, 0ULL, ~0ULL, 1, flags);
+};
+
+/* BHND_ACTIVATE_RESOURCE */
+static inline int
+bhnd_activate_resource (device_t dev, device_t child, int type, int rid,
+   struct bhnd_resource *r)
+{
+	return BHND_ACTIVATE_RESOURCE(device_get_parent(dev), dev, type, rid, r);
+};
+
+/* BHND_DEACTIVATE_RESOURCE */
+static inline int
+bhnd_deactivate_resource (device_t dev, device_t child, int type, int rid,
+   struct bhnd_resource *r)
+{
+	return BHND_DEACTIVATE_RESOURCE(device_get_parent(dev), dev, type, rid, r);
+};
+
+/* BHND_GET_PORT_RID */
+static inline uint32_t
+bhnd_get_port_rid(device_t dev, u_int port, u_int region)
+{
+    return BHND_GET_PORT_RID(device_get_parent(dev), dev, port, region);
+}
+
+/** bhnd_probecfg terminating table entry. */
 #define	BHND_PROBECFG_TABLE_END	{ 0, BHND_COREID_NODEV, 0, NULL }
 
 /* Standard device probe ordering. */
@@ -95,12 +154,5 @@ BHND_ACCESSOR(device_name,	DEVICE_NAME,	const char *);
 BHND_ACCESSOR(core_index,	CORE_INDEX,	u_int);
 
 #undef	BHND_ACCESSOR
-
-static __inline uint32_t
-bhnd_get_port_rid(device_t dev, u_int port, u_int region)
-{
-    return BHND_GET_PORT_RID(device_get_parent(dev), dev, port, region);
-}
-
 
 #endif /* _BHND_BHNDVAR_H_ */

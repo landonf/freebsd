@@ -26,12 +26,59 @@
 
 #include <sys/bus.h>
 
+#include <dev/bhnd/bhnd_direct.h>
+
 INTERFACE bhnd;
 
 /**
- * Return the rid for a port / region pair
+ * Allocate a bhnd resource.
  *
- * @param dev The parent bus.
+ * This methods' semantics are functionally identical to the bus API of the same
+ * name; refer to BUS_ALLOC_RESOURCE for complete documentation.
+ */
+METHOD struct bhnd_resource * alloc_resource {
+	device_t dev;
+	device_t child;
+	int type;
+	int *rid;
+	u_long start;
+	u_long end;
+	u_long count;
+	u_int flags;
+} DEFAULT bhnd_direct_alloc_bhnd_resource;
+
+/**
+ * Activate a bhnd resource.
+ *
+ * This methods' semantics are functionally identical to the bus API of the same
+ * name; refer to BUS_ACTIVATE_RESOURCE for complete documentation.
+ */
+METHOD int activate_resource {
+	device_t dev;
+        device_t child;
+	int type;
+        int rid;
+        struct bhnd_resource *r;
+} DEFAULT bhnd_direct_activate_bhnd_resource;
+
+/**
+ * Deactivate a bhnd resource.
+ *
+ * This methods' semantics are functionally identical to the bus API of the same
+ * name; refer to BUS_DEACTIVATE_RESOURCE for complete documentation.
+ */
+METHOD int deactivate_resource {
+        device_t dev;
+        device_t child;
+        int type;
+	int rid;
+        struct bhnd_resource *r;
+} DEFAULT bhnd_direct_deactivate_bhnd_resource;
+
+/**
+ * Return the resource-ID for a port / region pair
+ *
+ * @param dev The parent device of @p child.
  * @param child The child being queried.
  * @param port_num The index of the child interconnect port.
  * @param region_num The index of the port-mapped address region.
