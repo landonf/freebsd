@@ -36,8 +36,8 @@
  * A bus device probe configuration record.
  */
 struct bhnd_probecfg {
-	uint16_t	 vendor;		/**< JEP106 device vendor to match on. */
-	uint16_t	 device;		/**< device identifier to match on. */
+	uint16_t	 vendor;	/**< JEP106 device vendor to match on. */
+	uint16_t	 device;	/**< device identifier to match on. */
 
 	int		 probe_order;	/**< device probe order for this core. */
 	const char	*probe_name;	/**< device name for probe, or NULL. */
@@ -90,7 +90,7 @@ BHND_ACCESSOR(device,		DEVICE,		uint16_t);
 BHND_ACCESSOR(revid,		REVID,		uint8_t);
 BHND_ACCESSOR(vendor_name,	VENDOR_NAME,	const char *);
 BHND_ACCESSOR(device_name,	DEVICE_NAME,	const char *);
-BHND_ACCESSOR(core_index,	CORE_INDEX,	uint8_t);
+BHND_ACCESSOR(core_index,	CORE_INDEX,	u_int);
 
 #undef	BHND_ACCESSOR
 

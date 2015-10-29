@@ -73,7 +73,7 @@
 #define	BCMA_EROM_COREA_CLASS_SHIFT	4
 
 /* EROM Core DescriptorB (63:32) */
-#define	BCMA_EROM_COREB_NUM_MP_MASK	0x0000001F	/* master port count */
+#define	BCMA_EROM_COREB_NUM_MP_MASK	0x000001F0	/* master port count */
 #define	BCMA_EROM_COREB_NUM_MP_SHIFT	4
 #define	BCMA_EROM_COREB_NUM_DP_MASK	0x00003E00	/* device/bridge port count */
 #define	BCMA_EROM_COREB_NUM_DP_SHIFT	9

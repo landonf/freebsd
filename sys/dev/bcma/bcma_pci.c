@@ -129,8 +129,7 @@ bcma_pci_attach(device_t dev)
 		return (ENXIO);
 	}
 
-	/* Let the generic implementation probe all added children. After this
-	 * point, child cores will depend directly on the BAR0 memory windows. */
+	/* Let the generic implementation probe all added children. */
 	return (bus_generic_attach(dev));
 }
 
@@ -147,12 +146,14 @@ bcma_pci_detach(device_t dev)
 static int
 bcma_pci_suspend(device_t dev)
 {
+	// TODO
 	return (ENXIO);
 }
 
 static int
 bcma_pci_resume(device_t dev)
 {
+	// TODO
 	return (ENXIO);
 }
 

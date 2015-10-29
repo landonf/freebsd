@@ -50,13 +50,17 @@ MALLOC_DECLARE(M_BCMA);
 typedef uint64_t	bcma_addr_t;
 #define	BCMA_ADDR_MAX	UINT64_MAX	/**< Maximum bcma_addr_t value */
 
+/** BCMA bus size. */
+typedef uint64_t	bcma_size_t;
+#define	BCMA_SIZE_MAX	UINT64_MAX	/**< Maximum bcma_size_t value */
+
 /** BCMA port identifier. */
-typedef uint8_t		bcma_pid_t;
-#define BCMA_PID_MAX	UINT8_MAX	/**< Maximum bcma_pid_t value */
+typedef u_int		bcma_pid_t;
+#define BCMA_PID_MAX	UINT_MAX	/**< Maximum bcma_pid_t value */
 
 /** BCMA per-port region map identifier. */
-typedef uint16_t	bcma_rmid_t;
-#define	BCMA_RMID_MAX	UINT16_MAX	/**< Maximum bcma_rmid_t value */
+typedef u_int		bcma_rmid_t;
+#define	BCMA_RMID_MAX	UINT_MAX	/**< Maximum bcma_rmid_t value */
 
 struct bcma_mport;
 struct bcma_sport;
@@ -86,44 +90,12 @@ int			 bcma_scan_erom(device_t bus,
 
 const char		*bcma_port_type_name (bcma_sport_type port_type);
 
-struct bcma_devinfo	*bcma_alloc_dinfo(uint8_t core_index, uint16_t vendor, uint16_t device, uint8_t revid);
+struct bcma_devinfo	*bcma_alloc_dinfo(u_int core_index, uint16_t vendor, uint16_t device, uint8_t revid);
 void			 bcma_free_dinfo(struct bcma_devinfo *dinfo);
 
 struct bcma_sport	*bcma_alloc_sport(bcma_pid_t port_num, bcma_sport_type port_type);
 void			 bcma_free_sport(struct bcma_sport *sport);
 
-/**
- * Encode a RID for a per-core port region.
- * 
- * @param ptype One of BCMA_SPORT_TYPE_DEVICE, BCMA_SPORT_TYPE_BRIDGE,
- * BCMA_SPORT_TYPE_SWRAP, or BCMA_SPORT_TYPE_MWRAP.
- * @param port 8-bit port identifier.
- * @param region 8-bit region identifier.
- */
-#define	BCMA_RID(ptype, port, region) (						\
-    (((ptype) << BCMA_RID_PORT_TYPE_SHIFT) & BCMA_RID_PORT_TYPE_MASK) |		\
-    (((region) << BCMA_RID_REGION_NUM_SHIFT) & BCMA_RID_REGION_NUM_MASK) |	\
-    (((port) << BCMA_RID_PORT_NUM_SHIFT) & BCMA_RID_PORT_NUM_MASK)		\
-)
-
-/** Extract the port type from a BCMA RID */
-#define	BCMA_RID_PORT_TYPE(rid) \
-	(((rid) & BCMA_RID_PORT_TYPE_MASK) >> BCMA_RID_PORT_TYPE_SHIFT)
-
-/** Extract the region identifier from a BCMA RID */
-#define	BCMA_RID_REGION_NUM(rid) \
-	(((rid) & BCMA_RID_REGION_NUM_MASK) >> BCMA_RID_REGION_NUM_SHIFT)
-
-/** Extract the port identifier from a BCMA RID */
-#define	BCMA_RID_PORT_NUM(rid) \
-	(((rid) & BCMA_RID_PORT_NUM_MASK) >> BCMA_RID_PORT_NUM_SHIFT)
-
-#define	BCMA_RID_PORT_TYPE_MASK		0xFF000000
-#define	BCMA_RID_PORT_TYPE_SHIFT	24
-#define	BCMA_RID_REGION_NUM_MASK	0x0000FFFF
-#define	BCMA_RID_REGION_NUM_SHIFT	0
-#define	BCMA_RID_PORT_NUM_MASK		0x00FF0000
-#define	BCMA_RID_PORT_NUM_SHIFT		16
 
 /** BCMA master port descriptor */
 struct bcma_mport {
@@ -136,7 +108,9 @@ struct bcma_mport {
 struct bcma_map {
 	bcma_rmid_t	m_region_num;	/**< region identifier (port-unique). */
 	bcma_addr_t	m_base;		/**< base address */
-	bcma_addr_t	m_size;		/**< size */
+	bcma_size_t	m_size;		/**< size */
+	int		m_rid;		/**< bus resource id, or -1. */
+
 	STAILQ_ENTRY(bcma_map) m_link;
 };
 
@@ -158,7 +132,7 @@ struct bcma_corecfg {
 	uint16_t	vendor;		/**< IP designer's JEP-106 mfgid */
 	uint16_t	device;		/**< IP core ID/part number */
 	uint8_t		revid;		/**< IP core revision identifier */
-	uint8_t		core_index;	/**< core index (bus-unique) */
+	u_int		core_index;	/**< core index (bus-unique) */
 
 	u_long		num_mports;	/**< number of master port descriptors. */
 	struct bcma_mport_list	mports;	/**< master port descriptors */

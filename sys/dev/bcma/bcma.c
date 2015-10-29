@@ -64,7 +64,7 @@ bcma_generic_print_child(device_t dev, device_t child)
 	retval += bus_print_child_header(dev, child);
 
 	retval += resource_list_print_type(rl, "mem", SYS_RES_MEMORY, "%#lx");
-	retval += printf(" at core %hhu", bhnd_get_core_index(child));
+	retval += printf(" at core %u", bhnd_get_core_index(child));
 
 	retval += bus_print_child_domain(dev, child);
 	retval += bus_print_child_footer(dev, child);
@@ -99,7 +99,7 @@ bcma_generic_probe_nomatch(device_t dev, device_t child)
 		    bhnd_get_device_name(child));
 
 		resource_list_print_type(rl, "mem", SYS_RES_MEMORY, "%#lx");
-		printf(" at core %hhu (no driver attached)\n",
+		printf(" at core %u (no driver attached)\n",
 		    bhnd_get_core_index(child));
 	}
 }
@@ -196,7 +196,7 @@ bcma_port_type_name (bcma_sport_type port_type)
  * @param revision Core revision identifier.
  */
 struct bcma_devinfo *
-bcma_alloc_dinfo(uint8_t core_index, uint16_t vendor, uint16_t device, uint8_t revid)
+bcma_alloc_dinfo(u_int core_index, uint16_t vendor, uint16_t device, uint8_t revid)
 {
 	struct bcma_devinfo *dinfo;
 	
@@ -254,7 +254,7 @@ bcma_free_dinfo(struct bcma_devinfo *dinfo)
  * @param port_type Port type.
  */
 struct bcma_sport *
-bcma_alloc_sport(uint8_t port_num, bcma_sport_type port_type)
+bcma_alloc_sport(bcma_pid_t port_num, bcma_sport_type port_type)
 {
 	struct bcma_sport *sport;
 	
