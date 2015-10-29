@@ -32,6 +32,8 @@
 #ifndef _BHND_BHNDVAR_H_
 #define _BHND_BHNDVAR_H_
 
+#include "bhnd_if.h"
+
 /**
  * A bus device probe configuration record.
  */
@@ -93,5 +95,12 @@ BHND_ACCESSOR(device_name,	DEVICE_NAME,	const char *);
 BHND_ACCESSOR(core_index,	CORE_INDEX,	u_int);
 
 #undef	BHND_ACCESSOR
+
+static __inline uint32_t
+bhnd_get_port_rid(device_t dev, u_int port, u_int region)
+{
+    return BHND_GET_PORT_RID(device_get_parent(dev), dev, port, region);
+}
+
 
 #endif /* _BHND_BHNDVAR_H_ */

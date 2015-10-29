@@ -221,9 +221,11 @@ static device_method_t bcma_pci_methods[] = {
 	DEVMETHOD(bus_activate_resource,	bcma_pci_activate_resource),
 	DEVMETHOD(bus_deactivate_resource,	bcma_pci_deactivate_resource),
 
-	
-	// TODO: Additional bus_* methods required.
-	
+	// TODO: Additional bus_* methods?
+
+	/* BHND interface */
+	DEVMETHOD(bhnd_get_port_rid,		bcma_generic_get_port_rid),
+
 	DEVMETHOD_END
 };
 

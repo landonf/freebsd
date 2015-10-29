@@ -28,3 +28,19 @@
 
 INTERFACE bhnd;
 
+/**
+ * Return the rid for a port / region pair
+ *
+ * @param dev The parent bus.
+ * @param child The child being queried.
+ * @param port_num The index of the child interconnect port.
+ * @param region_num The index of the port-mapped address region.
+ *
+ * @retval -1 No such port/region found.
+ */
+METHOD int get_port_rid {
+	device_t dev;
+	device_t child;
+	u_int port_num;
+	u_int region_num;
+};

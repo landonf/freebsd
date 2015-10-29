@@ -84,6 +84,9 @@ int			 bcma_generic_write_ivar(device_t dev, device_t child, int index, uintptr_
 void			 bcma_generic_child_deleted(device_t dev, device_t child);
 struct resource_list	*bcma_generic_get_resource_list(device_t dev, device_t child);
 
+int			 bcma_generic_get_port_rid(device_t dev, device_t child,
+			     u_int port_num, u_int region_num);
+
 int			 bcma_scan_erom(device_t bus,
 			     struct bhnd_probecfg pcfg_table[],
 			     struct resource *erom_res, bus_size_t erom_offset);

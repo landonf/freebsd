@@ -168,6 +168,32 @@ bcma_generic_get_resource_list(device_t dev, device_t child)
 	return (&dinfo->resources);
 }
 
+int
+bcma_generic_get_port_rid(device_t dev, device_t child, u_int port_num, u_int
+    region_num)
+{
+	struct bcma_devinfo	*dinfo;
+	struct bcma_map		*map;
+	struct bcma_sport	*port;
+	
+	dinfo = device_get_ivars(child);
+	
+	if (port_num > dinfo->cfg.num_dports)
+		return -1;
+
+	STAILQ_FOREACH(port, &dinfo->cfg.dports, sp_link) {
+		if (port->sp_num != port_num)
+			continue;
+		
+		STAILQ_FOREACH(map, &port->sp_maps, m_link) {
+			if (map->m_region_num == region_num) {
+				return map->m_rid;
+			}
+		}
+	}
+
+	return -1;
+}
 
 /**
  * Return the name of a slave port type.
