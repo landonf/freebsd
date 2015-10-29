@@ -38,9 +38,9 @@
 
 /** BCMA-PCI per-instance state */
 struct bcma_pci_softc {
-	device_t		bcma_dev;	/* Device ID */
-
-	struct resource		*bmem_res[2];	/* BARn-accessible backplace address space */
+	device_t		 bcma_dev;	/* Device ID */
+	struct resource		*bmem_res[2];	/* BARn-accessible backplace
+						 * address space */
 };
 
 #endif /* _BCMA_BCMA_PCIVAR_H_ */
