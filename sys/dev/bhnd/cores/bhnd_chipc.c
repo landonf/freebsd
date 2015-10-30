@@ -96,10 +96,11 @@ static int
 bhnd_chipc_attach(device_t dev)
 {
 	int rid = bhnd_get_port_rid(dev, 0, 0);
-	struct bhnd_resource *res = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY, &rid, RF_ACTIVE | RF_SHAREABLE);
-	device_printf(dev, "got rid=%d res=%p\n", rid, res);
-	
+	struct bhnd_resource *res = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY, &rid, 0 /* RF_ACTIVE | RF_SHAREABLE */);
+
 	// TODO
+	device_printf(dev, "got rid=%d res=%p\n", rid, res);
+
 	return (0);
 }
 

@@ -3,9 +3,7 @@
 .PATH: ${.CURDIR}/../../dev/bhnd
 
 KMOD=	bhnd
-SRCS=	bhnd.c bhnd_direct.c \
-	bhndreg.h bhndvar.h bhnd_if.h \
-	bhnd_direct.h \
+SRCS=	bhnd.c bhndreg.h bhndvar.h bhnd_if.h \
 	bhnd_device_ids.h bhnd_core.h bhnd_pcireg.h
 SRCS+=	device_if.h bus_if.h
 

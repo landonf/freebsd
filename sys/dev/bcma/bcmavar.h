@@ -62,9 +62,10 @@ typedef u_int		bcma_pid_t;
 typedef u_int		bcma_rmid_t;
 #define	BCMA_RMID_MAX	UINT_MAX	/**< Maximum bcma_rmid_t value */
 
+struct bcma_devinfo;
+struct bcma_map;
 struct bcma_mport;
 struct bcma_sport;
-struct bcma_devinfo;
 
 /**
  * Slave port types.

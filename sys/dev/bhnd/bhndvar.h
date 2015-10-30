@@ -59,6 +59,23 @@ const char 		*bhnd_core_name(uint16_t vendor, uint16_t device);
 struct bhnd_probecfg	*bhnd_find_probecfg(struct bhnd_probecfg table[],
 			    uint16_t vendor, uint16_t device);
 
+
+struct bhnd_resource	*bhnd_generic_alloc_bhnd_resource (device_t dev,
+			     device_t child, int type, int *rid, u_long start,
+			     u_long end, u_long count, u_int flags);
+
+int			 bhnd_generic_release_bhnd_resource (device_t dev,
+			     device_t child, int type, int rid,
+			     struct bhnd_resource *r);
+
+int			 bhnd_generic_activate_bhnd_resource (device_t dev,
+			     device_t child, int type, int rid,
+			     struct bhnd_resource *r);
+
+int			 bhnd_generic_deactivate_bhnd_resource (device_t dev,
+			     device_t child, int type, int rid,
+			     struct bhnd_resource *r);
+
 /**
 * A bhnd(4) bus resource.
 * 
