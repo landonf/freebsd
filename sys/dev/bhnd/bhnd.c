@@ -64,7 +64,7 @@ MALLOC_DEFINE(M_BHND, "bhnd", "BHND-compliant bus data structures");
  */
 struct bhnd_probecfg bhnd_generic_probecfg_table[] = {
 	/* ChipCommon devices should always be probed before any other cores. */
-	{ JEDEC_MFGID_BCM,	BHND_COREID_CC,	BHND_PROBE_ORDER_FIRST,	NULL },
+	{ BHND_DEVCLASS_CC,	BHND_PROBE_ORDER_FIRST,	NULL },
 	BHND_PROBECFG_TABLE_END
 };
 
@@ -241,10 +241,13 @@ struct bhnd_probecfg *
 bhnd_find_probecfg(struct bhnd_probecfg table[], uint16_t vendor,
     uint16_t device)
 {
-	struct bhnd_probecfg *cfg;
+	struct bhnd_probecfg	*cfg;
+	bhnd_devclass_t		 cls;
+	
+	cls = bhnd_core_class(vendor, device);
 
-	for (cfg = table; cfg->device != BHND_COREID_NODEV; cfg++) {
-		if (vendor == cfg->vendor && device == cfg->device)
+	for (cfg = table; cfg->devclass != BHND_DEVCLASS_INVALID; cfg++) {
+		if (cls == cfg->devclass)
 			return cfg;
 	}
 	

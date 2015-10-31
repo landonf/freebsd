@@ -47,9 +47,7 @@ MALLOC_DECLARE(M_BHND);
  * Device Identification
  */
 
-/**
- * BHND Device Classes.
- */
+/** BHND Device Classes. */
 typedef enum {
 	BHND_DEVCLASS_CC,	/**< chipcommon i/o controller */
 	BHND_DEVCLASS_PCI,	/**< pci/pcie host/device bridge */
@@ -65,6 +63,8 @@ typedef enum {
 	BHND_DEVCLASS_SOCI,	/**< interconnect */
 	BHND_DEVCLASS_SOCB,	/**< interconnect bridge/socket */
 	BHND_DEVCLASS_OTHER,	/**< other / unknown */
+
+	BHND_DEVCLASS_INVALID	/**< no/invalid class */
 } bhnd_devclass_t;
 
 const char		*bhnd_vendor_name(uint16_t vendor);
@@ -224,9 +224,7 @@ bhnd_get_port_rid(device_t dev, u_int port, u_int region)
  * A bus device probe configuration record.
  */
 struct bhnd_probecfg {
-	uint16_t	 vendor;	/**< JEP106 device vendor to match on. */
-	uint16_t	 device;	/**< device identifier to match on. */
-
+	bhnd_devclass_t	 devclass;	/**< core device class to match. */
 	int		 probe_order;	/**< device probe order for this core. */
 	const char	*probe_name;	/**< device name for probe, or NULL. */
 };
@@ -240,7 +238,7 @@ extern struct bhnd_probecfg		bhnd_generic_probecfg_table[];
 /**
  * Entry designating EOF in a bhnd_probecfg table.
  */
-#define	BHND_PROBECFG_TABLE_END		{ 0, BHND_COREID_NODEV, 0, NULL }
+#define	BHND_PROBECFG_TABLE_END		{ BHND_DEVCLASS_INVALID, 0, NULL }
 
 /**
  * bhnd device probe priority.
