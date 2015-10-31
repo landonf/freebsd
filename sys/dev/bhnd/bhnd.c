@@ -70,81 +70,89 @@ struct bhnd_probecfg bhnd_generic_probecfg_table[] = {
 
 /* BHND core device description table. */
 static const struct bhnd_core_desc {
-	uint16_t vendor;
-	uint16_t device;
-	const char *desc;
+	uint16_t	 vendor;
+	uint16_t	 device;
+	bhnd_devclass_t	 class;
+	const char	*desc;
 } bhnd_core_descs[] = {
-	{ JEDEC_MFGID_BCM,	BHND_COREID_CC,		"ChipCommon I/O Controller" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_ILINE20,	"iLine20 HPNA" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_SRAM,	"SRAM" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_SDRAM,	"SDRAM" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_PCI,	"PCI Bridge" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_MIPS,	"MIPS Core" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_ENET,	"Fast Ethernet MAC" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_CODEC,	"V.90 Modem Codec" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_USB,	"USB 1.1 Device/Host Controller" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_ADSL,	"ADSL Core" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_ILINE100,	"iLine100 HPNA" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_IPSEC,	"IPsec Accelerator" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_UTOPIA,	"UTOPIA ATM Core" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_PCMCIA,	"PCMCIA Bridge" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_SOCRAM,	"Internal Memory" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_MEMC,	"MEMC SDRAM Controller" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_OFDM,	"OFDM PHY" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_EXTIF,	"External Interface" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_D11,	"802.11 MAC" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_APHY,	"802.11a PHY" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_BPHY,	"802.11b PHY" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_GPHY,	"802.11g PHY" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_MIPS33,	"MIPS 3302 Core" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_USB11H,	"USB 1.1 Host Controller" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_USB11D,	"USB 1.1 Device Core" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_USB20H,	"USB 2.0 Host Controller" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_USB20D,	"USB 2.0 Device Core" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_SDIOH,	"SDIO Host Controller" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_ROBO,	"RoboSwitch" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_ATA100,	"Parallel ATA Controller" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_SATAXOR,	"SATA DMA/XOR Controller" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_GIGETH,	"Gigabit Ethernet MAC" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_PCIE,	"PCIe Bridge" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_NPHY,	"802.11n 2x2 PHY" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_SRAMC,	"SRAM Controller" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_MINIMAC,	"MINI MAC/PHY" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_ARM11,	"ARM1176 Core" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_ARM7S,	"ARM7TDMI-S Core" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_LPPHY,	"802.11a/b/g PHY" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_PMU,	"PMU" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_SSNPHY,	"802.11n Single-Stream PHY" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_SDIOD,	"SDIO Device Core" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_ARMCM3,	"ARM Cortex-M3 Core" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_HTPHY,	"802.11n 4x4 PHY" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_MIPS74K,	"MIPS74k Core" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_GMAC,	"Gigabit MAC core" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_DMEMC,	"DDR1/2 Memory Controller" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_PCIERC,	"PCIe Root Complex" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_OCP,	"OCP to OCP Bridge" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_SC,		"Shared Common Core" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_AHB,	"OCP to AHB Bridge" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_SPIH,	"SPI Host Controller" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_I2S,	"I2S Digital Audio Interface" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_DMEMS,	"SDR/DDR1 Memory Controller" },
-	{ JEDEC_MFGID_BCM,	BHND_COREID_UBUS_SHIM,	"BCM6362/UBUS WLAN SHIM" },
+	#define	BHND_CDESC(_mfg, _cid, _cls, _desc)		\
+	    { JEDEC_MFGID_ ## _mfg, BHND_COREID_ ## _cid,	\
+		BHND_DEVCLASS_ ## _cls, _desc }
 
-	{ JEDEC_MFGID_ARM,	BHND_COREID_APB_BRIDGE,	"BP135 AMBA3 AXI to APB Bridge" },
-	{ JEDEC_MFGID_ARM,	BHND_COREID_PL301,	"PL301 AMBA3 Interconnect" },
-	{ JEDEC_MFGID_ARM,	BHND_COREID_EROM,	"PL366 Device Enumeration ROM" },
-	{ JEDEC_MFGID_ARM,	BHND_COREID_OOB_ROUTER,	"PL367 OOB Interrupt Router" },
-	{ JEDEC_MFGID_ARM,	BHND_COREID_AXI_UNMAPPED,
-		"Unmapped Address Ranges" },
-	
+	BHND_CDESC(BCM, CC,		CC,	"ChipCommon I/O Controller"),
+	BHND_CDESC(BCM, ILINE20,	OTHER,	"iLine20 HPNA"),
+	BHND_CDESC(BCM, SRAM,		MEM,	"SRAM"),
+	BHND_CDESC(BCM, SDRAM,		MEM,	"SDRAM"),
+	BHND_CDESC(BCM, PCI,		PCI,	"PCI Bridge"),
+	BHND_CDESC(BCM, MIPS,		CPU,	"MIPS Core"),
+	BHND_CDESC(BCM, ENET,		MAC,	"Fast Ethernet MAC"),
+	BHND_CDESC(BCM, CODEC,		OTHER,	"V.90 Modem Codec"),
+	BHND_CDESC(BCM, USB,		OTHER,	"USB 1.1 Device/Host Controller"),
+	BHND_CDESC(BCM, ADSL,		OTHER,	"ADSL Core"),
+	BHND_CDESC(BCM, ILINE100,	OTHER,	"iLine100 HPNA"),
+	BHND_CDESC(BCM, IPSEC,		OTHER,	"IPsec Accelerator"),
+	BHND_CDESC(BCM, UTOPIA,		OTHER,	"UTOPIA ATM Core"),
+	BHND_CDESC(BCM, PCMCIA,		PCI,	"PCMCIA Bridge"),
+	BHND_CDESC(BCM, SOCRAM,		MEM,	"Internal Memory"),
+	BHND_CDESC(BCM, MEMC,		MEMC,	"MEMC SDRAM Controller"),
+	BHND_CDESC(BCM, OFDM,		OTHER,	"OFDM PHY"),
+	BHND_CDESC(BCM, EXTIF,		OTHER,	"External Interface"),
+	BHND_CDESC(BCM, D11,		MAC_W,	"802.11 MAC"),
+	BHND_CDESC(BCM, APHY,		PHY_W,	"802.11a PHY"),
+	BHND_CDESC(BCM, BPHY,		PHY_W,	"802.11b PHY"),
+	BHND_CDESC(BCM, GPHY,		PHY_W,	"802.11g PHY"),
+	BHND_CDESC(BCM, MIPS33,		CPU,	"MIPS 3302 Core"),
+	BHND_CDESC(BCM, USB11H,		OTHER,	"USB 1.1 Host Controller"),
+	BHND_CDESC(BCM, USB11D,		OTHER,	"USB 1.1 Device Core"),
+	BHND_CDESC(BCM, USB20H,		OTHER,	"USB 2.0 Host Controller"),
+	BHND_CDESC(BCM, USB20D,		OTHER,	"USB 2.0 Device Core"),
+	BHND_CDESC(BCM, SDIOH,		OTHER,	"SDIO Host Controller"),
+	BHND_CDESC(BCM, ROBO,		OTHER,	"RoboSwitch"),
+	BHND_CDESC(BCM, ATA100,		OTHER,	"Parallel ATA Controller"),
+	BHND_CDESC(BCM, SATAXOR,	OTHER,	"SATA DMA/XOR Controller"),
+	BHND_CDESC(BCM, GIGETH,		MAC,	"Gigabit Ethernet MAC"),
+	BHND_CDESC(BCM, PCIE,		PCI,	"PCIe Bridge"),
+	BHND_CDESC(BCM, NPHY,		PHY_W,	"802.11n 2x2 PHY"),
+	BHND_CDESC(BCM, SRAMC,		MEMC,	"SRAM Controller"),
+	BHND_CDESC(BCM, MINIMAC,	MPHY_W,	"MINI MAC/PHY"),
+	BHND_CDESC(BCM, ARM11,		CPU,	"ARM1176 Core"),
+	BHND_CDESC(BCM, ARM7S,		CPU,	"ARM7TDMI-S Core"),
+	BHND_CDESC(BCM, LPPHY,		PHY_W,	"802.11a/b/g PHY"),
+	BHND_CDESC(BCM, PMU,		OTHER,	"PMU"),
+	BHND_CDESC(BCM, SSNPHY,		PHY_W,	"802.11n Single-Stream PHY"),
+	BHND_CDESC(BCM, SDIOD,		OTHER,	"SDIO Device Core"),
+	BHND_CDESC(BCM, ARMCM3,		CPU,	"ARM Cortex-M3 Core"),
+	BHND_CDESC(BCM, HTPHY,		PHY_W,	"802.11n 4x4 PHY"),
+	BHND_CDESC(BCM, MIPS74K,	CPU,	"MIPS74k Core"),
+	BHND_CDESC(BCM, GMAC,		MAC,	"Gigabit MAC core"),
+	BHND_CDESC(BCM, DMEMC,		MEMC,	"DDR1/2 Memory Controller"),
+	BHND_CDESC(BCM, PCIERC,		OTHER,	"PCIe Root Complex"),
+	BHND_CDESC(BCM, OCP,		SOCB,	"OCP to OCP Bridge"),
+	BHND_CDESC(BCM, SC,		OTHER,	"Shared Common Core"),
+	BHND_CDESC(BCM, AHB,		SOCB,	"OCP to AHB Bridge"),
+	BHND_CDESC(BCM, SPIH,		OTHER,	"SPI Host Controller"),
+	BHND_CDESC(BCM, I2S,		OTHER,	"I2S Digital Audio Interface"),
+	BHND_CDESC(BCM, DMEMS,		MEMC,	"SDR/DDR1 Memory Controller"),
+	BHND_CDESC(BCM, UBUS_SHIM,	OTHER,	"BCM6362/UBUS WLAN SHIM"),
+
+	BHND_CDESC(ARM, APB_BRIDGE,	SOCB,	"BP135 AMBA3 AXI to APB Bridge"),
+	BHND_CDESC(ARM, PL301,		SOCI,	"PL301 AMBA3 Interconnect"),
+	BHND_CDESC(ARM, EROM,		OTHER,	"PL366 Device Enumeration ROM"),
+	BHND_CDESC(ARM, OOB_ROUTER,	OTHER,	"PL367 OOB Interrupt Router"),
+	BHND_CDESC(ARM, AXI_UNMAPPED,	OTHER,	"Unmapped Address Ranges"),
+#undef	BHND_CDESC
+
 	/* Derived from inspection of the BCM4331 cores that provide PrimeCell
 	 * IDs. Due to lack of documentation, the surmised device name/purpose
 	 * provided here may be incorrect. */
-	{ JEDEC_MFGID_ARM,	BHND_PRIMEID_EROM,	"PL364 Device Enumeration ROM" },
-	{ JEDEC_MFGID_ARM,	BHND_PRIMEID_SWRAP,	"PL368 Device Management Interface" },
-	{ JEDEC_MFGID_ARM,	BHND_PRIMEID_MWRAP,	"PL369 Device Management Interface" },
-	
-	{ 0,			0,			NULL }
+	{ JEDEC_MFGID_ARM,	BHND_PRIMEID_EROM,	BHND_DEVCLASS_OTHER,
+	    "PL364 Device Enumeration ROM" },
+	{ JEDEC_MFGID_ARM,	BHND_PRIMEID_SWRAP,	BHND_DEVCLASS_OTHER,
+	    "PL368 Device Management Interface" },
+	{ JEDEC_MFGID_ARM,	BHND_PRIMEID_MWRAP,	BHND_DEVCLASS_OTHER,
+	    "PL369 Device Management Interface" },
+
+	{ 0, 0, 0, NULL }
 };
 
 /**
@@ -170,14 +178,9 @@ bhnd_vendor_name(uint16_t vendor)
 	}
 }
 
-/**
- * Return a human-readable name for a BHND core.
- * 
- * @param vendor The core designer's JEDEC-106 Manufacturer ID
- * @param device The core identifier.
- */
-const char *
-bhnd_core_name(uint16_t vendor, uint16_t device) {
+static const struct bhnd_core_desc *
+bhnd_find_core_desc(uint16_t vendor, uint16_t device)
+{
 	for (u_int i = 0; bhnd_core_descs[i].desc != NULL; i++) {
 		if (bhnd_core_descs[i].vendor != vendor)
 			continue;
@@ -185,10 +188,44 @@ bhnd_core_name(uint16_t vendor, uint16_t device) {
 		if (bhnd_core_descs[i].device != device)
 			continue;
 		
-		return bhnd_core_descs[i].desc;
+		return (&bhnd_core_descs[i]);
 	}
 	
-	return "unknown";
+	return (NULL);
+}
+
+/**
+ * Return a human-readable name for a BHND core.
+ * 
+ * @param vendor The core designer's JEDEC-106 Manufacturer ID
+ * @param device The core identifier.
+ */
+const char *
+bhnd_core_name(uint16_t vendor, uint16_t device)
+{
+	const struct bhnd_core_desc *desc;
+	
+	if ((desc = bhnd_find_core_desc(vendor, device)) == NULL)
+		return ("unknown");
+
+	return desc->desc;
+}
+
+/**
+ * Return the device class for a BHND core.
+ * 
+ * @param vendor The core designer's JEDEC-106 Manufacturer ID
+ * @param device The core identifier.
+ */
+bhnd_devclass_t
+bhnd_core_class(uint16_t vendor, uint16_t device)
+{
+	const struct bhnd_core_desc *desc;
+	
+	if ((desc = bhnd_find_core_desc(vendor, device)) == NULL)
+		return (BHND_DEVCLASS_OTHER);
+
+	return desc->class;
 }
 
 /**

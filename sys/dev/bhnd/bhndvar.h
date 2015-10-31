@@ -46,9 +46,30 @@ MALLOC_DECLARE(M_BHND);
 /*
  * Device Identification
  */
+
+/**
+ * BHND Device Classes.
+ */
+typedef enum {
+	BHND_DEVCLASS_CC,	/**< chipcommon i/o controller */
+	BHND_DEVCLASS_PCI,	/**< pci/pcie host/device bridge */
+	BHND_DEVCLASS_MEM,	/**< internal RAM/SRAM */
+	BHND_DEVCLASS_MEMC,	/**< memory controller */
+	BHND_DEVCLASS_MAC,	/**< 802.3 MAC */
+	BHND_DEVCLASS_PHY,	/**< 802.3 PHY */
+	BHND_DEVCLASS_MPHY,	/**< 802.3 MAC/PHY */
+	BHND_DEVCLASS_MAC_W,	/**< 802.11 MAC */
+	BHND_DEVCLASS_PHY_W,	/**< 802.11 PHY */
+	BHND_DEVCLASS_MPHY_W,	/**< 802.11 mac/phy */
+	BHND_DEVCLASS_CPU,	/**< cpu core */
+	BHND_DEVCLASS_SOCI,	/**< interconnect */
+	BHND_DEVCLASS_SOCB,	/**< interconnect bridge/socket */
+	BHND_DEVCLASS_OTHER,	/**< other / unknown */
+} bhnd_devclass_t;
+
 const char		*bhnd_vendor_name(uint16_t vendor);
 const char 		*bhnd_core_name(uint16_t vendor, uint16_t device);
-
+bhnd_devclass_t		 bhnd_core_class(uint16_t vendor, uint16_t device);
 
 /*
  * Generic Bus Methods.
