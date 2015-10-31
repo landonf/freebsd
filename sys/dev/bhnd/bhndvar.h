@@ -76,20 +76,33 @@ bhnd_devclass_t		 bhnd_core_class(uint16_t vendor, uint16_t device);
  * Device Matching
  */
 
-/** A bhnd device match descriptor. */
-struct bhnd_matchdesc {
-	uint16_t	md_vendor;	/**< required JEP106 device vendor or JEDEC_MFGID_INVALID. */
-	uint16_t	md_device;	/**< required core ID or BHND_COREID_INVALID */
-	uint16_t	md_revid;	/**< required revision or BHND_HWREV_INVALID */
-	bhnd_devclass_t	md_class;	/**< required class or BHND_DEVCLASS_INVALID */
+/**
+ * A hardware revision match descriptor.
+ */
+struct bhnd_hwrev_match {
+	uint16_t	start;	/**< first revision, or BHND_HWREV_INVALID
+					     to match on any revision. */
+	uint16_t	end;	/**< last revision, or BHND_HWREV_INVALID
+					     to match on any revision. */
+};
+
+/** A core match descriptor. */
+struct bhnd_core_match {
+	uint16_t		vendor;	/**< required JEP106 device vendor or JEDEC_MFGID_INVALID. */
+	uint16_t		device;	/**< required core ID or BHND_COREID_INVALID */
+	struct bhnd_hwrev_match	hwrev;	/**< matching revisions. */
+	bhnd_devclass_t		class;	/**< required class or BHND_DEVCLASS_INVALID */
 };
 
 bool			bhnd_device_matches(device_t dev,
-			    struct bhnd_matchdesc *desc);
+			    struct bhnd_core_match *desc);
+
+device_t		bhnd_match_child(device_t dev,
+			    struct bhnd_core_match *desc);
+
 device_t		bhnd_find_child(device_t dev,
 			    bhnd_devclass_t class);
-device_t		bhnd_match_child(device_t dev,
-			    struct bhnd_matchdesc *desc);
+
 
 
 /*
