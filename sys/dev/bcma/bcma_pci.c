@@ -68,14 +68,96 @@ static const struct bcma_pci_device {
 	{ 0, 0, NULL }
 };
 
-static struct resource_spec bcma_pci_res_spec[] = {
+static struct resource_spec bcma_pci_res_spec[BCMA_PCI_MAX_RES+1] = {
 	{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
 	{ SYS_RES_MEMORY,	PCIR_BAR(1),	RF_ACTIVE },
 	{ -1,			0,		0 }
 };
 
+
 #define BPCI_RES_BAR0	0	/* bar0 pci_res index */
 #define BPCI_RES_BAR1	1	/* bar1 pci_res index */
+
+#if 0
+static const struct bcma_pci_regwin bcma_pci_v0_regwin[] = {
+	{
+		.pci_res	= BPCI_RES_BAR0,
+		.win_type	= BCMA_PCI_WINTYPE_DYN,
+		.cfg_offset	= BHND_PCI_BAR0_WIN0,
+		.win_offset	= BHND_PCI_V0_BAR0_WIN0_OFFSET,
+		.win_size	= BHND_PCI_V0_BAR0_WIN0_SIZE
+	},
+	{
+		.bhnd_class	= BHND_DEVCLASS_PCI,
+		.win_type	= BCMA_PCI_WINTYPE_FIXED,
+		.port_num	= 0,
+		.region_num	= 0,
+		.pci_res	= BPCI_RES_BAR0,
+		.win_offset	= BHND_PCI_V0_BAR0_PCIREGS_OFFSET,
+		.win_size	= BHND_PCI_V0_BAR0_PCIREGS_SIZE
+	}
+};
+#define	BCMA_PCI_V0_REGWIN_NUM \
+    (sizeof(bcma_pci_v0_regwin) / sizeof(bcma_pci_v0_regwin[0])
+
+static const struct bcma_pci_regwin bcma_pci_v1_windows[] = {
+	{
+		.pci_res	= BPCI_RES_BAR0,
+		.win_type	= BCMA_PCI_WINTYPE_DYN,
+		.cfg_offset	= BHND_PCI_BAR0_WIN0,
+		.win_offset	= BHND_PCI_V1_BAR0_WIN0_OFFSET,
+		.win_size	= BHND_PCI_V1_BAR0_WIN0_SIZE
+	},
+	{
+		.bhnd_class	= BHND_DEVCLASS_PCI,
+		.win_type	= BCMA_PCI_WINTYPE_FIXED,
+		.port_num	= 0,
+		.region_num	= 0,
+		.pci_res	= BPCI_RES_BAR0,
+		.win_offset	= BHND_PCI_V1_BAR0_PCIREGS_OFFSET,
+		.win_size	= BHND_PCI_V1_BAR0_PCIREGS_SIZE
+	}
+};
+#define	BCMA_PCI_V1_REGWIN_NUM \
+    (sizeof(bcma_pci_v1_regwin) / sizeof(bcma_pci_v1_regwin[0])
+
+static const struct bcma_pci_regwin bcma_pci_v2_windows[] = {
+	{
+		.pci_res	= BPCI_RES_BAR0,
+		.win_type	= BCMA_PCI_WINTYPE_DYN,
+		.cfg_offset	= BHND_PCI_BAR0_WIN0,
+		.win_offset	= BHND_PCI_V2_BAR0_WIN0_OFFSET,
+		.win_size	= BHND_PCI_V2_BAR0_WIN0_SIZE
+	},
+	{
+		.pci_res	= BPCI_RES_BAR0,
+		.win_type	= BCMA_PCI_WINTYPE_DYN,
+		.cfg_offset	= BHND_PCI_BAR0_WIN1,
+		.win_offset	= BHND_PCI_V2_BAR0_WIN1_OFFSET,
+		.win_size	= BHND_PCI_V2_BAR0_WIN1_SIZE
+	},
+	{
+		.bhnd_class	= BHND_DEVCLASS_PCI,
+		.win_type	= BCMA_PCI_WINTYPE_FIXED,
+		.port_num	= 0,
+		.region_num	= 0,
+		.pci_res	= BPCI_RES_BAR0,
+		.win_offset	= BHND_PCI_V2_BAR0_PCIREGS_OFFSET,
+		.win_size	= BHND_PCI_V2_BAR0_PCIREGS_SIZE
+	},
+	{
+		.bhnd_class	= BHND_DEVCLASS_CC,
+		.win_type	= BCMA_PCI_WINTYPE_FIXED,
+		.port_num	= 0,
+		.region_num	= 0,
+		.pci_res	= BPCI_RES_BAR0,
+		.win_offset	= BHND_PCI_V2_BAR0_CCREGS_OFFSET,
+		.win_size	= BHND_PCI_V2_BAR0_CCREGS_SIZE
+	}
+};
+#define	BCMA_PCI_V2_REGWIN_NUM \
+    (sizeof(bcma_pci_v2_regwin) / sizeof(bcma_pci_v2_regwin[0])
+#endif
 
 #define BMEM_RES_CHIPC	BPCI_RES_BAR0
 
@@ -83,7 +165,7 @@ static struct resource_spec bcma_pci_res_spec[] = {
 	bus_read_ ## size (res, (base) + (offset))
 
 #define bcma_read_chipc(sc, offset, size) \
-	bcma_bar_read(sc->pci_res[BPCI_RES_BAR0], BHND_PCI_V2_CCREGS_OFFSET, offset, size)
+	bcma_bar_read(sc->pci_res[BPCI_RES_BAR0], BHND_PCI_V2_BAR0_CCREGS_OFFSET, offset, size)
 
 static int
 bcma_pci_probe(device_t dev)
@@ -103,16 +185,17 @@ bcma_pci_probe(device_t dev)
 static int
 bcma_pci_attach(device_t dev)
 {
-	struct bcma_pci_softc	*sc = device_get_softc(dev);
+	struct bcma_pci_softc	*sc;
+	device_t		 pci_core;
 	uint32_t		 erom_table;
 	int			 error;
 	bool			 free_mem_rman = false;
 	bool			 free_pci_res = false;
 
+	sc = device_get_softc(dev);
 	sc->bcma_dev = dev;
 	pci_enable_busmaster(dev);
 	
-		
 	/* Set up a resource manager for the device's address space. */
 	sc->mem_rman.rm_start = 0;
 	sc->mem_rman.rm_end = BUS_SPACE_MAXADDR_32BIT;
@@ -149,6 +232,15 @@ bcma_pci_attach(device_t dev)
 	    sc->pci_res[BMEM_RES_CHIPC], BHND_PCI_V2_BAR0_WIN1_OFFSET);
 	if (error)
 		goto failed;
+	
+
+	// TODO - determine PCI core configuration
+	pci_core = bhnd_find_child(dev, BHND_DEVCLASS_PCI);
+	if (pci_core == NULL) {
+		device_printf(dev, "could not find a PCI core\n");
+		return (ENXIO);
+	}
+	device_printf(pci_core, "PCI revision: %hhu\n", bhnd_get_revid(pci_core));
 
 	/* Let the generic implementation probe all added children. */
 	return (bus_generic_attach(dev));

@@ -111,20 +111,24 @@
 #define	BHND_PCI_V0_BAR0_SHADOW_OFFSET	0x0800	/* bar0 + 2K accesses sprom shadow (in pci core) */
 #define	BHND_PCI_V0_BAR0_SPROM_OFFSET	0x1000	/* bar0 + 4K accesses external sprom */
 #define	BHND_PCI_V0_BAR0_PCIREGS_OFFSET	0x1800	/* bar0 + 6K accesses pci core registers */
+#define	BHND_PCI_V0_BAR0_PCIREGS_SIZE	0x0800
 
 #define	BHND_PCI_V1_BAR0_SIZE		BHND_PCI_V0_BAR0_SIZE
 #define	BHND_PCI_V1_BAR0_WIN0_OFFSET	BHND_PCI_V0_BAR0_WIN0_OFFSET
 #define	BHND_PCI_V1_BAR0_WIN0_SIZE	BHND_PCI_V0_BAR0_WIN0_SIZE
 #define	BHND_PCI_V1_BAR0_SPROM_OFFSET	0x1000	/* bar0 + 4K accesses sprom shadow (in pci core) */
 #define	BHND_PCI_V1_BAR0_PCIREGS_OFFSET	0x1800	/* bar0 + 6K accesses pci core registers */
+#define	BHND_PCI_V1_BAR0_PCIREGS_SIZE	0x0800
 
 #define	BHND_PCI_V2_BAR0_SIZE		0x4000	/* 16KB BAR0 */
 #define	BHND_PCI_V2_BAR0_WIN0_OFFSET	BHND_PCI_V0_BAR0_WIN0_OFFSET
 #define	BHND_PCI_V2_BAR0_WIN0_SIZE	BHND_PCI_V0_BAR0_WIN0_SIZE
 #define	BHND_PCI_V2_BAR0_WIN1_OFFSET	0x1000	/* bar0 + 4KB accesses an additional 4K window */
 #define	BHND_PCI_V2_BAR0_WIN1_SIZE	0x1000	/* bar0 "window 1" size */
-#define	BHND_PCI_V2_PCIREGS_OFFSET	0x2000	/* bar0 + 8K accesses pci/pcie core registers */
-#define	BHND_PCI_V2_CCREGS_OFFSET	0x3000	/* bar0 + 12K accesses chipc core registers */
+#define	BHND_PCI_V2_BAR0_PCIREGS_OFFSET	0x2000	/* bar0 + 8K accesses pci/pcie core registers */
+#define	BHND_PCI_V2_BAR0_PCIREGS_SIZE	0x1000
+#define	BHND_PCI_V2_BAR0_CCREGS_OFFSET	0x3000	/* bar0 + 12K accesses chipc core registers */
+#define	BHND_PCI_V2_BAR0_CCREGS_SIZE	0x1000
 
 /* PCI_INT_STATUS */
 #define	BHND_PCI_SBIM_STATUS_SERR	0x4	/* backplane SBErr interrupt status */

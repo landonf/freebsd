@@ -32,15 +32,59 @@
 #ifndef _BCMA_BCMA_PCIVAR_H_
 #define _BCMA_BCMA_PCIVAR_H_
 
+struct bcma_pci_regwin;
+
 /*
  * Broadcom PCI-bridged AMBA backplane data structure definitions.
  */
 
+#define	BCMA_PCI_MAX_RES	2	/**< maximum number of bmca PCI device
+					  *  resources. */
+
 /** BCMA-PCI per-instance state */
 struct bcma_pci_softc {
-	device_t		 bcma_dev;	/**< device */
-	struct resource		*pci_res[2];	/**< device resources */
-	struct rman		 mem_rman;	/**< bus memory resource manager */
+	device_t		 bcma_dev;			/**< device */
+	struct resource		*pci_res[BCMA_PCI_MAX_RES];	/**< device resources */
+	struct rman		 mem_rman;			/**< bus memory resource manager */
+};
+
+/**
+ * Register window types.
+ */
+typedef enum {
+	BCMA_PCI_WINTYPE_FIXED,	/**< A fixed window that maps a specific core
+				 *   type */
+	BCMA_PCI_WINTYPE_DYN	/**< A dynamically configurable window */
+} bcma_pci_wintype_t;
+
+/**
+ * Defines a register window within a BCMA PCI BAR resource that can be
+ * adjusted at runtime to map address regions from the SoC interconnect.
+ */
+struct bcma_pci_regwin {
+	u_int			pci_res;	/**< pci_res[] index of the BAR
+						     in which this register
+						     window is mapped */
+
+	bcma_pci_wintype_t	win_type;	/** register window type */
+	union {
+		/** BCMA_PCI_WINTYPE_DYN configuration */
+		struct {
+			bus_size_t	cfg_offset;	/**< window config offset within the pci
+							     config space. */
+		};
+		
+		/** BCMA_PCI_WINTYPE_FIXED configuration */
+		struct {
+			bhnd_devclass_t	bhnd_class;	/**< mapped cores' class */
+			u_int		port_num;	/**< mapped port number */
+			u_int		region_num;	/**< mapped region number */
+		};
+	};
+
+	bus_size_t	win_offset;	/**< offset of the register block
+					 *   within the PCI resource at */
+	bus_size_t	win_size;	/**< size of the register block */
 };
 
 #endif /* _BCMA_BCMA_PCIVAR_H_ */
