@@ -62,8 +62,8 @@ static const struct chipc_bhnd_device {
 	uint8_t		 revision;
 	const char	*desc;
 } chipc_bhnd_devices[] = {
-	{ JEDEC_MFGID_BCM,	BHND_COREID_CC,		BHND_HWREV_ANY,	NULL },
-	{ 0,			BHND_COREID_NODEV,	BHND_HWREV_ANY,	NULL }
+	{ JEDEC_MFGID_BCM,	BHND_COREID_CC,		BHND_HWREV_INVALID,	NULL },
+	{ 0,			BHND_COREID_INVALID,	BHND_HWREV_INVALID,	NULL }
 };
 
 static int
@@ -72,11 +72,11 @@ bhnd_chipc_probe(device_t dev)
 	const struct chipc_bhnd_device	*id;
 	const char 			*desc;
 
-	for (id = chipc_bhnd_devices; id->device != BHND_COREID_NODEV; id++)
+	for (id = chipc_bhnd_devices; id->device != BHND_COREID_INVALID; id++)
 	{
 		if (bhnd_get_vendor(dev) == id->vendor &&
 		    bhnd_get_device(dev) == id->device &&
-		    (id->revision == BHND_HWREV_ANY ||
+		    (id->revision == BHND_HWREV_INVALID ||
 			bhnd_get_revid(dev) != id->revision))
 		{
 			if (id->desc == NULL)
@@ -96,7 +96,7 @@ static int
 bhnd_chipc_attach(device_t dev)
 {
 	int rid = bhnd_get_port_rid(dev, 0, 0);
-	struct bhnd_resource *res = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY, &rid, 0 /* RF_ACTIVE | RF_SHAREABLE */);
+	struct bhnd_resource *res = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY, &rid, RF_ACTIVE);
 
 	// TODO
 	device_printf(dev, "got rid=%d res=%p\n", rid, res);

@@ -71,6 +71,27 @@ const char		*bhnd_vendor_name(uint16_t vendor);
 const char 		*bhnd_core_name(uint16_t vendor, uint16_t device);
 bhnd_devclass_t		 bhnd_core_class(uint16_t vendor, uint16_t device);
 
+
+/*
+ * Device Matching
+ */
+
+/** A bhnd device match descriptor. */
+struct bhnd_matchdesc {
+	uint16_t	md_vendor;	/**< required JEP106 device vendor or JEDEC_MFGID_INVALID. */
+	uint16_t	md_device;	/**< required core ID or BHND_COREID_INVALID */
+	uint16_t	md_revid;	/**< required revision or BHND_HWREV_INVALID */
+	bhnd_devclass_t	md_class;	/**< required class or BHND_DEVCLASS_INVALID */
+};
+
+bool			bhnd_device_matches(device_t dev,
+			    struct bhnd_matchdesc *desc);
+device_t		bhnd_find_child(device_t dev,
+			    bhnd_devclass_t class);
+device_t		bhnd_match_child(device_t dev,
+			    struct bhnd_matchdesc *desc);
+
+
 /*
  * Generic Bus Methods.
  */
@@ -264,6 +285,9 @@ enum bhnd_device_vars {
 	
 	/** Core revision identifier. */
 	BHND_IVAR_REVID,
+
+	/** Core class. */
+	BHND_IVAR_DEVICE_CLASS,
 	
 	/** Vendor name. */
 	BHND_IVAR_VENDOR_NAME,
@@ -284,6 +308,7 @@ enum bhnd_device_vars {
 BHND_ACCESSOR(vendor,		VENDOR,		uint16_t);
 BHND_ACCESSOR(device,		DEVICE,		uint16_t);
 BHND_ACCESSOR(revid,		REVID,		uint8_t);
+BHND_ACCESSOR(class,		DEVICE_CLASS,	bhnd_devclass_t);
 BHND_ACCESSOR(vendor_name,	VENDOR_NAME,	const char *);
 BHND_ACCESSOR(device_name,	DEVICE_NAME,	const char *);
 BHND_ACCESSOR(core_index,	CORE_INDEX,	u_int);

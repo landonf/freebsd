@@ -228,6 +228,97 @@ bhnd_core_class(uint16_t vendor, uint16_t device)
 	return desc->class;
 }
 
+
+/**
+ * Return true if the @p dev matches @p desc.
+ * 
+ * @param dev A bhnd bus device.
+ * @param desc A match descriptor to compare against @p dev.
+ * 
+ * @retval true if @p dev matches @p match
+ * @retval false if @p dev does not match @p match.
+ */
+bool
+bhnd_device_matches(device_t dev, struct bhnd_matchdesc *desc)
+{
+	if (desc->md_vendor != JEDEC_MFGID_INVALID &&
+	    desc->md_vendor != bhnd_get_vendor(dev))
+		return false;
+
+	if (desc->md_device != BHND_COREID_INVALID &&
+	    desc->md_device != bhnd_get_device(dev))
+		return false;
+
+	if (desc->md_revid != BHND_HWREV_INVALID &&
+	    desc->md_revid != bhnd_get_revid(dev))
+		return false;
+
+	if (desc->md_class != BHND_DEVCLASS_INVALID &&
+	    desc->md_class != bhnd_get_class(dev))
+		return false;
+
+	return true;
+}
+
+/**
+ * Find the first @p class child device on @p dev.
+ * 
+ * @param parent The bhnd-compatible bus to be searched.
+ * @param class The device class to match on.
+ * 
+ * @retval device_t if a matching child device is found.
+ * @retval NULL if no matching child device is found.
+ */
+device_t
+bhnd_find_child(device_t dev, bhnd_devclass_t class)
+{
+	struct bhnd_matchdesc md = {
+		.md_vendor = JEDEC_MFGID_BCM,
+		.md_device = BHND_COREID_INVALID,
+		.md_revid = BHND_HWREV_INVALID,
+		.md_class = class
+	};
+
+	return bhnd_match_child(dev, &md);
+}
+
+/**
+ * Find the first child device on @p dev that matches @p desc.
+ * 
+ * @param parent The bhnd-compatible bus to be searched.
+ * @param desc A match descriptor.
+ * 
+ * @retval device_t if a matching child device is found.
+ * @retval NULL if no matching child device is found.
+ */
+device_t
+bhnd_match_child(device_t dev, struct bhnd_matchdesc *desc)
+{
+	device_t	*devlistp;
+	device_t	 match;
+	int		 devcnt;
+	int		 error;
+
+	error = device_get_children(dev, &devlistp, &devcnt);
+	if (error != 0)
+		return (NULL);
+
+	match = NULL;
+	for (int i = 0; i < devcnt; i++) {
+		device_t dev = devlistp[i];
+		if (bhnd_device_matches(dev, desc)) {
+			match = dev;
+			goto done;
+		}
+	}
+
+done:
+	free(devlistp, M_TEMP);
+	return match;
+}
+
+
+
 /**
  * Return the first matching probe configuration from the given table, or NULL
  * if no match is found.

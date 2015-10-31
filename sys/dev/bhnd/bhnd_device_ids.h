@@ -41,6 +41,7 @@
 #define	JEDEC_MFGID_ARM		0x43b
 #define	JEDEC_MFGID_BCM		0x4bf
 #define	JEDEC_MFGID_MIPS	0x4a7
+#define	JEDEC_MFGID_INVALID	0xFFF
 
 
 /* PCI vendor IDs */
@@ -407,7 +408,7 @@
 
 
 /* Broadcom Core IDs */
-#define	BHND_COREID_NODEV		0x700		/* Invalid coreid */
+#define	BHND_COREID_INVALID		0x700		/* Invalid coreid */
 #define	BHND_COREID_CC			0x800		/* chipcommon core */
 #define	BHND_COREID_ILINE20		0x801		/* iline20 core */
 #define	BHND_COREID_SRAM		0x802		/* sram core */
@@ -478,7 +479,7 @@
 #define	BHND_PRIMEID_MWRAP		0x369		/* PL369 Device Management Interface (Master) */
 
 /* Core HW Revision Numbers */
-#define	BHND_HWREV_ANY			0xFF		/* Matches any revision ID */
+#define	BHND_HWREV_INVALID		0xFF		/* Invalid hardware revision ID */
 
 /* Boardflags */
 #define	BHND_BFL_BTC2WIRE		0x00000001	/* old 2wire Bluetooth coexistence, OBSOLETE */

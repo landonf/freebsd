@@ -50,7 +50,7 @@ static const struct bcma_nomatch {
 	uint16_t	device;		/**< core id */
 	bool		report;		/**< always/only bootverbose */
 } bcma_nomatch_table[] = {
-	{ 0,			BHND_COREID_NODEV,		false }
+	{ 0,			BHND_COREID_INVALID,		false }
 };
 
 int
@@ -86,7 +86,7 @@ bcma_generic_probe_nomatch(device_t dev, device_t child)
 	rl = &dinfo->resources;
 	report = true;
 
-	for (nm = bcma_nomatch_table; nm->device != BHND_COREID_NODEV; nm++) {
+	for (nm = bcma_nomatch_table; nm->device != BHND_COREID_INVALID; nm++) {
 		if (nm->vendor == bhnd_get_vendor(child) &&
 		    nm->device == bhnd_get_device(child))
 		{
@@ -123,6 +123,9 @@ bcma_generic_read_ivar(device_t dev, device_t child, int index, uintptr_t *resul
 	case BHND_IVAR_REVID:
 		*result = cfg->revid;
 		return (0);
+	case BHND_IVAR_DEVICE_CLASS:
+		*result = bhnd_core_class(cfg->vendor, cfg->device);
+		return (0);
 	case BHND_IVAR_VENDOR_NAME:
 		*result = (uintptr_t) bhnd_vendor_name(cfg->vendor);
 		return (0);
@@ -144,6 +147,7 @@ bcma_generic_write_ivar(device_t dev, device_t child, int index, uintptr_t value
 	case BHND_IVAR_VENDOR:
 	case BHND_IVAR_DEVICE:
 	case BHND_IVAR_REVID:
+	case BHND_IVAR_DEVICE_CLASS:
 	case BHND_IVAR_VENDOR_NAME:
 	case BHND_IVAR_DEVICE_NAME:
 	case BHND_IVAR_CORE_INDEX:
