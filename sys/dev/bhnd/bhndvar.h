@@ -36,29 +36,23 @@
 #include <sys/malloc.h>
 
 struct bhnd_resource;
+struct bhnd_probecfg;
 
 #include "bhnd_if.h"
 
 MALLOC_DECLARE(M_BHND);
 
-/**
- * A bus device probe configuration record.
+
+/*
+ * Device Identification
  */
-struct bhnd_probecfg {
-	uint16_t	 vendor;	/**< JEP106 device vendor to match on. */
-	uint16_t	 device;	/**< device identifier to match on. */
-
-	int		 probe_order;	/**< device probe order for this core. */
-	const char	*probe_name;	/**< device name for probe, or NULL. */
-};
-
-extern struct bhnd_probecfg bhnd_generic_probecfg_table[];
-
 const char		*bhnd_vendor_name(uint16_t vendor);
 const char 		*bhnd_core_name(uint16_t vendor, uint16_t device);
-struct bhnd_probecfg	*bhnd_find_probecfg(struct bhnd_probecfg table[],
-			    uint16_t vendor, uint16_t device);
 
+
+/*
+ * Generic Bus Methods.
+ */
 
 struct bhnd_resource	*bhnd_generic_alloc_bhnd_resource (device_t dev,
 			     device_t child, int type, int *rid, u_long start,
@@ -76,6 +70,12 @@ int			 bhnd_generic_deactivate_bhnd_resource (device_t dev,
 			     device_t child, int type, int rid,
 			     struct bhnd_resource *r);
 
+
+
+/*
+ * Bus Resource Management
+ */
+
 /**
 * A bhnd(4) bus resource.
 * 
@@ -89,7 +89,26 @@ struct bhnd_resource {
 					*   is MMIO accessible. */
 };
 
-/* BHND_ALLOC_RESOURCE */
+/**
+ * Allocate a resource from a device's parent bhnd(4) bus.
+ * 
+ * @param dev The device requesting resource ownership.
+ * @param type The type of resource to allocate. This may be any type supported
+ * by the standard bus APIs.
+ * @param rid The bus-specific handle identifying the resource being allocated.
+ * @param start The start address of the resource.
+ * @param end The end address of the resource.
+ * @param count The size of the resource.
+ * @param flags The flags for the resource to be allocated. These may be any
+ * values supported by the standard bus APIs.
+ * 
+ * To request the resource's default addresses, pass @p start and
+ * @p end values of @c 0UL and @c ~0UL, respectively, and
+ * a @p count of @c 1.
+ * 
+ * @retval NULL The resource could not be allocated.
+ * @retval resource The allocated resource.
+ */
 static inline struct bhnd_resource *
 bhnd_alloc_resource (device_t dev, int type, int *rid, u_long start,
     u_long end, u_long count, u_int flags)
@@ -98,44 +117,124 @@ bhnd_alloc_resource (device_t dev, int type, int *rid, u_long start,
 	    start, end, count, flags);
 };
 
-/* BHND_ALLOC_RESOURCE (any) */
+/**
+ * Allocate a resource from a device's parent bhnd(4) bus.
+ * 
+ * This is a convenience wrapper for bhnd_alloc_resource; the default
+ * start, end, and count values for the resource will be requested.
+ * 
+ * @param dev The device requesting resource ownership.
+ * @param type The type of resource to allocate. This may be any type supported
+ * by the standard bus APIs.
+ * @param rid The bus-specific handle identifying the resource being allocated.
+ * @param flags The flags for the resource to be allocated. These may be any
+ * values supported by the standard bus APIs.
+ * 
+ * @retval NULL The resource could not be allocated.
+ * @retval resource The allocated resource.
+ */
 static inline struct bhnd_resource *
 bhnd_alloc_resource_any (device_t dev, int type, int *rid, u_int flags)
 {
 	return bhnd_alloc_resource(dev, type, rid, 0ULL, ~0ULL, 1, flags);
 };
 
-/* BHND_ACTIVATE_RESOURCE */
+/**
+ * Activate a previously allocated bhnd resource.
+ *
+ * @param dev The device holding ownership of the allocated resource.
+ * @param type The type of the resource. 
+ * @param rid The bus-specific handle identifying the resource.
+ * @param r A pointer to the resoruce returned by bhnd_alloc_resource or
+ * BHND_ALLOC_RESOURCE.
+ * 
+ * @retval 0 success
+ * @retval non-zero an error occured while activating the resource.
+ */
 static inline int
-bhnd_activate_resource (device_t dev, device_t child, int type, int rid,
+bhnd_activate_resource (device_t dev, int type, int rid,
    struct bhnd_resource *r)
 {
 	return BHND_ACTIVATE_RESOURCE(device_get_parent(dev), dev, type, rid, r);
 };
 
-/* BHND_DEACTIVATE_RESOURCE */
+/**
+ * Deactivate a previously activated bhnd resource.
+ *
+ * @param dev The device holding ownership of the activated resource.
+ * @param type The type of the resource. 
+ * @param rid The bus-specific handle identifying the resource.
+ * @param r A pointer to the resoruce returned by bhnd_alloc_resource or
+ * BHND_ALLOC_RESOURCE.
+ * 
+ * @retval 0 success
+ * @retval non-zero an error occured while activating the resource.
+ */
 static inline int
-bhnd_deactivate_resource (device_t dev, device_t child, int type, int rid,
+bhnd_deactivate_resource (device_t dev, int type, int rid,
    struct bhnd_resource *r)
 {
 	return BHND_DEACTIVATE_RESOURCE(device_get_parent(dev), dev, type, rid, r);
 };
 
-/* BHND_GET_PORT_RID */
-static inline uint32_t
+/**
+ * Return the resource-ID for a memory region on the given device port.
+ *
+ * @param dev The device being queried.
+ * @param port The index of the device's interconnect port.
+ * @param region The index of the port's mapped address region.
+ *
+ * @retval int The RID for the given @p port and @p region on @p device.
+ * @retval -1 No such port/region found.
+ */
+static inline int
 bhnd_get_port_rid(device_t dev, u_int port, u_int region)
 {
     return BHND_GET_PORT_RID(device_get_parent(dev), dev, port, region);
 }
 
-/** bhnd_probecfg terminating table entry. */
-#define	BHND_PROBECFG_TABLE_END	{ 0, BHND_COREID_NODEV, 0, NULL }
 
-/* Standard device probe ordering. */
-#define	BHND_PROBE_ORDER_FIRST		 0
-#define	BHND_PROBE_ORDER_EARLY		 10
-#define	BHND_PROBE_ORDER_DEFAULT	 20
-#define	BHND_PROBE_ORDER_LAST		 30
+
+/*
+ * Bus Probe Configuration
+ */
+
+/**
+ * A bus device probe configuration record.
+ */
+struct bhnd_probecfg {
+	uint16_t	 vendor;	/**< JEP106 device vendor to match on. */
+	uint16_t	 device;	/**< device identifier to match on. */
+
+	int		 probe_order;	/**< device probe order for this core. */
+	const char	*probe_name;	/**< device name for probe, or NULL. */
+};
+
+struct bhnd_probecfg	*bhnd_find_probecfg(struct bhnd_probecfg table[],
+			    uint16_t vendor, uint16_t device);
+
+/* default table */
+extern struct bhnd_probecfg		bhnd_generic_probecfg_table[];
+
+/**
+ * Entry designating EOF in a bhnd_probecfg table.
+ */
+#define	BHND_PROBECFG_TABLE_END		{ 0, BHND_COREID_NODEV, 0, NULL }
+
+/**
+ * bhnd device probe priority.
+ */
+enum {
+	BHND_PROBE_ORDER_FIRST		= 0,	/**< probe first */
+	BHND_PROBE_ORDER_EARLY		= 10,	/**< probe early */
+	BHND_PROBE_ORDER_DEFAULT	= 20,	/**< default probe priority */
+	BHND_PROBE_ORDER_LAST		= 30,	/**< probe last */
+};
+
+
+/*
+ * Child Instance Variables
+ */
 
 enum bhnd_device_vars {
 	/** Core designer's JEP-106 manufacturer ID. */ 
