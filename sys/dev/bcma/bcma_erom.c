@@ -661,8 +661,8 @@ erom_print_primecell_id(device_t bus, struct resource *res,
 		case 0x3b:	/* Some devices use the JEDEC ID without specifying the
 				 * 4-bit continuation code */
 		case 0x41:
-			designer_name = bhnd_vendor_name(JEDEC_MFGID_ARM);
-			part_name = bhnd_core_name(JEDEC_MFGID_ARM, part);
+			designer_name = bhnd_vendor_name(BHND_MFGID_ARM);
+			part_name = bhnd_core_name(BHND_MFGID_ARM, part);
 			break;
 		default:
 			designer_name = "unknown";
@@ -756,7 +756,7 @@ bcma_scan_erom(device_t bus, struct bhnd_probecfg pcfg_table[],
 			}
 		}
 
-		if (bootverbose && cfg->vendor == JEDEC_MFGID_ARM &&
+		if (bootverbose && cfg->vendor == BHND_MFGID_ARM &&
 		    cfg->device != BHND_COREID_AXI_UNMAPPED)
 		{
 			STAILQ_FOREACH(sp, &cfg->dports, sp_link) {

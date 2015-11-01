@@ -62,7 +62,7 @@ static const struct chipc_bhnd_device {
 	uint8_t		 revision;
 	const char	*desc;
 } chipc_bhnd_devices[] = {
-	{ JEDEC_MFGID_BCM,	BHND_COREID_CC,		BHND_HWREV_INVALID,	NULL },
+	{ BHND_MFGID_BCM,	BHND_COREID_CC,		BHND_HWREV_INVALID,	NULL },
 	{ 0,			BHND_COREID_INVALID,	BHND_HWREV_INVALID,	NULL }
 };
 

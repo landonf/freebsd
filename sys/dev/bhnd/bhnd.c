@@ -76,7 +76,7 @@ static const struct bhnd_core_desc {
 	const char	*desc;
 } bhnd_core_descs[] = {
 	#define	BHND_CDESC(_mfg, _cid, _cls, _desc)		\
-	    { JEDEC_MFGID_ ## _mfg, BHND_COREID_ ## _cid,	\
+	    { BHND_MFGID_ ## _mfg, BHND_COREID_ ## _cid,	\
 		BHND_DEVCLASS_ ## _cls, _desc }
 
 	BHND_CDESC(BCM, CC,		CC,	"ChipCommon I/O Controller"),
@@ -146,11 +146,11 @@ static const struct bhnd_core_desc {
 	/* Derived from inspection of the BCM4331 cores that provide PrimeCell
 	 * IDs. Due to lack of documentation, the surmised device name/purpose
 	 * provided here may be incorrect. */
-	{ JEDEC_MFGID_ARM,	BHND_PRIMEID_EROM,	BHND_DEVCLASS_OTHER,
+	{ BHND_MFGID_ARM,	BHND_PRIMEID_EROM,	BHND_DEVCLASS_OTHER,
 	    "PL364 Device Enumeration ROM" },
-	{ JEDEC_MFGID_ARM,	BHND_PRIMEID_SWRAP,	BHND_DEVCLASS_OTHER,
+	{ BHND_MFGID_ARM,	BHND_PRIMEID_SWRAP,	BHND_DEVCLASS_OTHER,
 	    "PL368 Device Management Interface" },
-	{ JEDEC_MFGID_ARM,	BHND_PRIMEID_MWRAP,	BHND_DEVCLASS_OTHER,
+	{ BHND_MFGID_ARM,	BHND_PRIMEID_MWRAP,	BHND_DEVCLASS_OTHER,
 	    "PL369 Device Management Interface" },
 
 	{ 0, 0, 0, NULL }
@@ -166,13 +166,11 @@ const char *
 bhnd_vendor_name(uint16_t vendor)
 {
 	switch (vendor) {
-	case JEDEC_MFGID_ARM:
+	case BHND_MFGID_ARM:
 		return "ARM";
-		break;
-	case JEDEC_MFGID_BCM:
+	case BHND_MFGID_BCM:
 		return "Broadcom";
-		break;
-	case JEDEC_MFGID_MIPS:
+	case BHND_MFGID_MIPS:
 		return "MIPS";
 	default:
 		return "unknown";
@@ -242,7 +240,7 @@ bhnd_core_class(uint16_t vendor, uint16_t device)
 bool
 bhnd_device_matches(device_t dev, struct bhnd_core_match *desc)
 {
-	if (desc->vendor != JEDEC_MFGID_INVALID &&
+	if (desc->vendor != BHND_MFGID_INVALID &&
 	    desc->vendor != bhnd_get_vendor(dev))
 		return false;
 
@@ -278,7 +276,7 @@ device_t
 bhnd_find_child(device_t dev, bhnd_devclass_t class)
 {
 	struct bhnd_core_match md = {
-		.vendor = JEDEC_MFGID_BCM,
+		.vendor = BHND_MFGID_BCM,
 		.device = BHND_COREID_INVALID,
 		.hwrev.start = BHND_HWREV_INVALID,
 		.hwrev.end = BHND_HWREV_INVALID,

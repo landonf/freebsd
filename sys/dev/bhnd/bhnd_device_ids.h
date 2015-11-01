@@ -27,21 +27,36 @@
 #define _BHND_BHND_DEVICE_IDS_H_
 
 /*
- * JEDEC JEP-106 Manufacturer IDs
+ * Core Vendor IDs
  * 
- * These include ARM's non-standard 4-bit continuation code field:
+ * These are the JEDEC JEP-106 manufacturer ID representions (with ARM's
+ * non-standard 4-bit continutation code), as used in ARM's PrimeCell
+ * identification registers, etc.
+ * 
+ * @note
+ * Bus implementations that predate the adoption of ARM IP -- i.e. siba(4) -- 
+ * will need to convert bus-specific vendor IDs to their BHND_MFGID
+ * JEP-106 equivalents.
+ *
+ * @par ARM 4-bit Continuation Code
+ *
+ * BHND MFGIDs are encoded using ARM's non-standard 4-bit continuation code
+ * format:
+ *
+ * @code{.unparsed}
  * [11:8     ][7:0   ]
  * [cont code][mfg id]
+ * @endcode
  *
- * The continuation code field encodes the number of JEP-106 continuation codes
- * that prefix the manufacturer's ID code. In the case of ARM's JEP106 ID of
- * `0x7F 0x7F 0x7F 0x7F 0x3B`, the four 0x7F continuations are encoded
- * as '4' in the 4-bit continuation code field (i.e. 0x43B).
+ * The 4-bit continuation code field specifies the number of JEP-106
+ * continuation codes that prefix the manufacturer's ID code. In the case of
+ * ARM's JEP-106 ID of `0x7F 0x7F 0x7F 0x7F 0x3B`, the four 0x7F continuations
+ * are encoded as '4' in the 4-bit continuation code field (i.e. 0x43B). 
  */
-#define	JEDEC_MFGID_ARM		0x43b
-#define	JEDEC_MFGID_BCM		0x4bf
-#define	JEDEC_MFGID_MIPS	0x4a7
-#define	JEDEC_MFGID_INVALID	0xFFF
+#define	BHND_MFGID_ARM		0x43b
+#define	BHND_MFGID_BCM		0x4bf
+#define	BHND_MFGID_MIPS		0x4a7
+#define	BHND_MFGID_INVALID	0xFFF
 
 
 /* PCI vendor IDs */
