@@ -24,11 +24,21 @@
 #
 # $FreeBSD$
 
+#include <sys/types.h>
 #include <sys/bus.h>
+#include <sys/rman.h>
 
 #include <dev/bhnd/bhndvar.h>
 
 INTERFACE bhnd;
+
+CODE {
+	static struct rman *
+	bhnd_null_get_rman(device_t dev, int type)
+	{
+		return (NULL);
+	}
+}
 
 /**
  * Allocate a bhnd resource.
@@ -88,6 +98,21 @@ METHOD int deactivate_resource {
 	int rid;
         struct bhnd_resource *r;
 } DEFAULT bhnd_generic_deactivate_bhnd_resource;
+
+/**
+ * Return the resource manager for the given resource type.
+ *
+ * Used by drivers which use bhnd_pci_generic_alloc_resource() etc. to
+ * implement their resource handling.
+ *
+ * @param dev The bus device.
+ * @param type The resource type (e.g. SYS_RES_MEMORY, SYS_REQ_IRQ).
+ */
+METHOD struct rman * get_rman {
+        device_t dev;
+	int type;
+} DEFAULT bhnd_null_get_rman;
+
 
 /**
  * Return the resource-ID for a port / region pair

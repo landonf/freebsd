@@ -50,6 +50,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhndvar.h>
 #include <dev/bhnd/bhnd_core.h>
 #include <dev/bhnd/bhnd_device_ids.h>
+
+#include <dev/bhnd/bhnd_pci.h>
 #include <dev/bhnd/bhnd_pcireg.h>
 
 #include "bcmavar.h"
@@ -265,209 +267,31 @@ bcma_pci_detach(device_t dev)
 	return (0);
 }
 
-static int
-bcma_pci_suspend(device_t dev)
+static struct rman *
+bcma_pci_get_rman(device_t dev, int type)
 {
-	// TODO
-	return (ENXIO);
-}
-
-static int
-bcma_pci_resume(device_t dev)
-{
-	// TODO
-	return (ENXIO);
-}
-
-static struct resource *
-bcma_pci_alloc_resource(device_t dev, device_t child, int type,
-    int *rid, u_long start, u_long end, u_long count, u_int flags)
-{
-	struct resource_list		*rl;
-	struct resource_list_entry	*rle;
-	struct rman			*rm;
-	struct bcma_pci_softc		*sc;
-	int				 error;
-
-	if (device_get_parent(child) != dev) {
-		return (BUS_ALLOC_RESOURCE(device_get_parent(dev), child,
-		    type, rid, start, end, count, flags));
-	}
-
-	sc = device_get_softc(dev);
+	struct bcma_pci_softc *sc = device_get_softc(dev);
 
 	switch (type) {
 	case SYS_RES_MEMORY:
-		rm = &sc->mem_rman;
-		break;
+		return &sc->mem_rman;
 	case SYS_RES_IRQ:
-		// TODO!
+		// TODO
+		// return &sc->irq_rman;
+		return (NULL);
 	default:
 		return (NULL);
-	}
-
-	/* Fetch the resource list entry */
-	rl = BUS_GET_RESOURCE_LIST(dev, child);
-	if (rl == NULL)
-		return (NULL);
-
-	rle = resource_list_find(rl, type, *rid);
-	if (rle == NULL)
-		return (NULL);
-
-	/* Validate the resource addresses */
-	if (start == 0ULL && end == ~0ULL && count <= rle->count) {
-		start = rle->start;
-		end = rle->end;
-		count = rle->count;
-	} else {
-		if (start < rle->start || start > end)
-			return NULL;
-		
-		if (end < start || end > rle->end)
-			return NULL;
-		
-		if (count > end - start)
-			return NULL;
-	}
-
-	/* Check for existing allocation */
-	if (rle->res != NULL) {
-		device_printf(dev,
-		    "resource entry %#x type %d for child %s is busy\n", *rid,
-			type, device_get_nameunit(child));
-		return (NULL);
-	}
-
-	/* Make our reservation */
-	rle->res = rman_reserve_resource(rm, start, end, count, flags, child);
-	if (rle->res == NULL)
-		return (NULL);
-
-	rman_set_rid(rle->res, *rid);
-
-	/* Activate */
-	if (flags & RF_ACTIVE) {
-		error = bus_activate_resource(child, type, *rid, rle->res);
-		if (error) {
-			device_printf(dev,
-			    "failed to activate entry %#x type %d for "
-				"child %s\n",
-			     *rid, type, device_get_nameunit(child));
-
-			rman_release_resource(rle->res);
-			rle->res = NULL;
-			return (NULL);
-		}
-	}
-
-	return (rle->res);
+	};
 }
 
-static int
-bcma_pci_release_resource(device_t dev, device_t child, int type, int rid,
-    struct resource *res)
-{
-	struct resource_list		*rl;
-	struct resource_list_entry	*rle;
-	struct bcma_pci_softc		*sc;
-	int				 error;
+/* delegate all remaining driver methods to generic bcma implementations */
+#define	bcma_pci_print_child		bcma_generic_print_child
+#define	bcma_pci_probe_nomatch		bcma_generic_probe_nomatch
+#define	bcma_pci_read_ivar		bcma_generic_read_ivar
+#define	bcma_pci_write_ivar		bcma_generic_write_ivar
+#define	bcma_pci_child_deleted		bcma_generic_child_deleted
+#define	bcma_pci_get_resource_list	bcma_generic_get_resource_list
+#define	bcma_pci_get_port_rid		bcma_generic_get_port_rid
 
-	if (device_get_parent(child) != dev) {
-		return (BUS_RELEASE_RESOURCE(device_get_parent(dev), child,
-		    type, rid, res));
-	}
-
-	sc = device_get_softc(dev);
-
-	/* Fetch the resource list entry */
-	rl = BUS_GET_RESOURCE_LIST(dev, child);
-	if (rl == NULL)
-		return (EINVAL);
-
-	rle = resource_list_find(rl, type, rid);
-	if (rle == NULL)
-		panic("missing resource list entry");
-
-	if (rle->res != res)
-		panic("resource list entry does not match resource");
-
-	/* Release the resource */
-	if ((error = rman_release_resource(res)))
-		return (error);
-
-	rle->res = NULL;
-	return (0);
-}
-
-
-static int
-bcma_pci_adjust_resource(device_t dev, device_t child, int type,
-    struct resource *res, u_long start, u_long end)
-{
-	if (device_get_parent(child) != dev) {
-		return (BUS_ADJUST_RESOURCE(device_get_parent(dev), child,
-		    type, res, start, end));
-	}
-
-	return (rman_adjust_resource(res, start, end));
-}
-
-
-static int
-bcma_pci_activate_resource(device_t dev, device_t child, int type, int rid,
-    struct resource *r)
-{
-	// TODO - window resource activations
-	return (EINVAL);
-}
-
-
-static int
-bcma_pci_deactivate_resource(device_t dev, device_t child, int type,
-    int rid, struct resource *r)
-{
-	// TODO - window resource deactivations
-	return (EINVAL);
-}
-
-static device_method_t bcma_pci_methods[] = {
-	/* Device interface */
-	DEVMETHOD(device_probe,			bcma_pci_probe),
-	DEVMETHOD(device_attach,		bcma_pci_attach),
-	DEVMETHOD(device_detach,		bcma_pci_detach),
-	DEVMETHOD(device_shutdown,		bus_generic_shutdown),
-	DEVMETHOD(device_suspend,		bcma_pci_suspend),
-	DEVMETHOD(device_resume,		bcma_pci_resume),
-	
-	/* Bus interface */
-	DEVMETHOD(bus_print_child,		bcma_generic_print_child),
-	DEVMETHOD(bus_probe_nomatch,		bcma_generic_probe_nomatch),
-	DEVMETHOD(bus_read_ivar,		bcma_generic_read_ivar),
-	DEVMETHOD(bus_write_ivar,		bcma_generic_write_ivar),
-	DEVMETHOD(bus_child_deleted,		bcma_generic_child_deleted),
-	
-	DEVMETHOD(bus_get_resource_list,	bcma_generic_get_resource_list),
-	DEVMETHOD(bus_set_resource,		bus_generic_rl_set_resource),
-	DEVMETHOD(bus_get_resource,		bus_generic_rl_get_resource),
-	DEVMETHOD(bus_delete_resource,		bus_generic_rl_delete_resource),
-	DEVMETHOD(bus_alloc_resource,		bcma_pci_alloc_resource),
-	DEVMETHOD(bus_adjust_resource,		bcma_pci_adjust_resource),
-	DEVMETHOD(bus_release_resource,		bcma_pci_release_resource),
-	DEVMETHOD(bus_activate_resource,	bcma_pci_activate_resource),
-	DEVMETHOD(bus_deactivate_resource,	bcma_pci_deactivate_resource),
-
-	// TODO: Additional bus_* methods?
-
-	/* BHND interface */
-	DEVMETHOD(bhnd_get_port_rid,		bcma_generic_get_port_rid),
-
-	DEVMETHOD_END
-};
-
-static devclass_t bcma_devclass;
-
-DEFINE_CLASS_0(bcma, bcma_pci_driver, bcma_pci_methods, sizeof(struct bcma_pci_softc));
-DRIVER_MODULE(bcma_pci, pci, bcma_pci_driver, bcma_devclass, 0, 0);
-MODULE_DEPEND(bcma_pci, pci, 1, 1, 1);
-MODULE_DEPEND(bcma_pci, bhnd, 1, 1, 1);
+/* declare our bcma_pci driver */
+BHND_PCI_DECLARE_DRIVER(bcma_pci, bcma);

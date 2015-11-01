@@ -1105,6 +1105,7 @@ dev/bfe/if_bfe.c		optional bfe
 dev/bge/if_bge.c		optional bge
 dev/bhnd/bhnd.c			optional siba | bcma | bwn
 dev/bhnd/bhnd_if.m		optional siba | bcma | bwn
+dev/bhnd/bhnd_pci.c		optional siba | bcma | bwn
 dev/bhnd/cores/bhnd_chipc.c	optional siba | bcma | bwn
 dev/bktr/bktr_audio.c		optional bktr pci
 dev/bktr/bktr_card.c		optional bktr pci
