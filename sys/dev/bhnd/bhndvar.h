@@ -88,7 +88,7 @@ struct bhnd_hwrev_match {
 
 /** A core match descriptor. */
 struct bhnd_core_match {
-	uint16_t		vendor;	/**< required JEP106 device vendor or JEDEC_MFGID_INVALID. */
+	uint16_t		vendor;	/**< required JEP106 device vendor or BHND_MFGID_INVALID. */
 	uint16_t		device;	/**< required core ID or BHND_COREID_INVALID */
 	struct bhnd_hwrev_match	hwrev;	/**< matching revisions. */
 	bhnd_devclass_t		class;	/**< required class or BHND_DEVCLASS_INVALID */
