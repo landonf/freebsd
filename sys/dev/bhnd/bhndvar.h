@@ -109,6 +109,11 @@ device_t		bhnd_find_child(device_t dev,
  * Generic Bus Methods.
  */
 
+int			 bhnd_generic_print_child(device_t dev,
+			     device_t child);
+void			 bhnd_generic_probe_nomatch(device_t dev,
+			     device_t child);
+
 struct bhnd_resource	*bhnd_generic_alloc_bhnd_resource (device_t dev,
 			     device_t child, int type, int *rid, u_long start,
 			     u_long end, u_long count, u_int flags);

@@ -19,6 +19,8 @@
 #ifndef _BHND_BHND_PCI_H_
 #define _BHND_BHND_PCI_H_
 
+#include "bhndvar.h"
+
 int			 bhnd_pci_attach(device_t dev);
 int			 bhnd_pci_detach(device_t dev);
 int			 bhnd_pci_suspend(device_t dev);
@@ -73,8 +75,8 @@ static device_method_t __CONCAT(dname,_methods)[] = { \
 	DEVMETHOD(device_resume,		bhnd_pci_resume),		\
 										\
 	/* Bus interface */							\
-	DEVMETHOD(bus_print_child,		__CONCAT(dname,_print_child)),	\
-	DEVMETHOD(bus_probe_nomatch,		__CONCAT(dname,_probe_nomatch)),\
+	DEVMETHOD(bus_print_child,		bhnd_generic_print_child),	\
+	DEVMETHOD(bus_probe_nomatch,		bhnd_generic_probe_nomatch),	\
 	DEVMETHOD(bus_read_ivar,		__CONCAT(dname,_read_ivar)),	\
 	DEVMETHOD(bus_write_ivar,		__CONCAT(dname,_write_ivar)),	\
 	DEVMETHOD(bus_child_deleted,		__CONCAT(dname,_child_deleted)),\

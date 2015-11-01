@@ -78,8 +78,6 @@ typedef enum {
 } bcma_sport_type;
 
 
-int			 bcma_generic_print_child(device_t dev, device_t child);
-void			 bcma_generic_probe_nomatch(device_t dev, device_t child);
 int			 bcma_generic_read_ivar(device_t dev, device_t child, int index, uintptr_t *result);
 int			 bcma_generic_write_ivar(device_t dev, device_t child, int index, uintptr_t value);
 void			 bcma_generic_child_deleted(device_t dev, device_t child);

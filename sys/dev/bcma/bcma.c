@@ -45,65 +45,6 @@ __FBSDID("$FreeBSD$");
 
 MALLOC_DEFINE(M_BCMA, "bcma", "BCMA bus data structures");
 
-static const struct bcma_nomatch {
-	uint16_t	vendor;		/**< core designer */
-	uint16_t	device;		/**< core id */
-	bool		report;		/**< always/only bootverbose */
-} bcma_nomatch_table[] = {
-	{ 0,			BHND_COREID_INVALID,		false }
-};
-
-int
-bcma_generic_print_child(device_t dev, device_t child)
-{
-	struct resource_list	*rl;
-	int			retval = 0;
-
-	rl = BUS_GET_RESOURCE_LIST(dev, child);
-
-	retval += bus_print_child_header(dev, child);
-
-	retval += resource_list_print_type(rl, "mem", SYS_RES_MEMORY, "%#lx");
-	retval += printf(" at core %u", bhnd_get_core_index(child));
-
-	retval += bus_print_child_domain(dev, child);
-	retval += bus_print_child_footer(dev, child);
-
-	return (retval);
-}
-
-void
-bcma_generic_probe_nomatch(device_t dev, device_t child)
-{
-	struct bcma_corecfg		*cfg;
-	struct bcma_devinfo		*dinfo;
-	const struct bcma_nomatch	*nm;
-	struct resource_list		*rl;
-	bool				report;
-
-	dinfo = device_get_ivars(child);
-	cfg = &dinfo->cfg;
-	rl = &dinfo->resources;
-	report = true;
-
-	for (nm = bcma_nomatch_table; nm->device != BHND_COREID_INVALID; nm++) {
-		if (nm->vendor == bhnd_get_vendor(child) &&
-		    nm->device == bhnd_get_device(child))
-		{
-			report = nm->report;
-		}
-	}
-	
-	if (report || bootverbose) {
-		device_printf(dev, "<%s %s>", bhnd_get_vendor_name(child),
-		    bhnd_get_device_name(child));
-
-		resource_list_print_type(rl, "mem", SYS_RES_MEMORY, "%#lx");
-		printf(" at core %u (no driver attached)\n",
-		    bhnd_get_core_index(child));
-	}
-}
-
 int
 bcma_generic_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 {
