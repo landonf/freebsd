@@ -30,30 +30,53 @@
  * 
  * = MAJOR CORE REVISIONS =
  * 
- * There have been three major revisions to the BAR0/BAR1 memory mappings used
+ * There have been four revisions to the BAR0/BAR1 memory mappings used
  * in BHND PCI/PCIE bridge cores:
  * 
- * == PCI_V0: PCI (cid=0x804, revision ??? TBD) ==
- * 8KB BAR0:
- * 	[0x0000+0x0800]		mapped backplane address space.
- * 	[0x0800+0x0800]		SPROM shadow
- * 	[0x1000+0x0800]		external SPROM
- * 	[0x1800+0x0800]		pci core registers
+ * == PCI_V0 ==
+ * Applies to:
+ * -  PCI (cid=0x804, revision <= 12)
+ * BAR size: 8KB
+ * Address Map:
+ *	[offset+  size]	type	description
+ * 	[0x0000+0x1000]	dynamic mapped backplane address space (window 0).
+ * 	[0x1000+0x0800]	fixed	SPROM shadow
+ * 	[0x1800+0x0800]	fixed	pci core registers
  * 
- * == PCI_V1: PCI (cid=0x804, revision <= 12) ==
- * 8KB BAR0:
- * 	[0x0000+0x1000]		mapped backplane address space.
- * 	[0x1000+0x0800]		SPROM shadow
- * 	[0x1800+0x0800]		pci core registers
+ * == PCI_V1 ==
+ * Applies to:
+ * -  PCI (cid=0x804, revision >= 13)
+ * -  PCIE (cid=0x820) with ChipCommon (revision <= 31)
+ * BAR size: 8KB
+ * Address Map:
+ *	[offset+  size]	type	description
+ *	[0x0000+0x1000]	dynamic	mapped backplane address space (window 0).
+ *	[0x1000+0x1000]	fixed	SPROM shadow
+ *	[0x2000+0x1000]	fixed	pci/pcie core registers
+ *	[0x3000+0x1000]	fixed	chipcommon core registers
  *
- * == PCI_V2: PCIE (cid=0x820) and PCI (cid=0x804, revision >= 13) 
- * 16KB BAR0:
- * 	[0x0000+0x1000]		mapped backplane address space (window 0).
- * 	[0x1000+0x1000]		mapped backplane address space (window 1).
- * 	[0x2000+0x1000]		pci/pcie core registers
- * 	[0x3000+0x1000]		chipcommon core registers
- * 
- * 
+ * == PCI_V2 ==
+ * Applies to:
+ * - PCIE (cid=0x820) with ChipCommon (revision >= 32)
+ * BAR size: 16KB
+ * Address Map:
+ *	[offset+  size]	type	description
+ *	[0x0000+0x1000]	dynamic	mapped backplane address space (window 0).
+ *	[0x1000+0x1000]	dynamic	mapped backplane address space (window 1).
+ *	[0x2000+0x1000]	fixed	pci/pcie core registers
+ *	[0x3000+0x1000]	fixed	chipcommon core registers
+ *
+ * == PCI_V3 ==
+ * Applies to:
+ * - PCIE Gen 2 (cid=0x83c)
+ * BAR size: 32KB?
+ * Address Map:
+ *	[offset+  size]	type	description
+ *	[0x0000+0x1000]	dynamic	mapped backplane address space (window 0).
+ *	[0x1000+0x1000]	dynamic	mapped backplane address space (window 1).
+ *	[0x2000+0x1000]	fixed	pci/pcie core registers
+ *	[0x3000+0x1000]	fixed	chipcommon core registers
+ *	[???]
  * 
  * = MINOR CORE REVISIONS =
  * 
