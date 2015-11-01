@@ -464,6 +464,7 @@
 #define	BHND_COREID_I2S			0x834		/* I2S core */
 #define	BHND_COREID_DMEMS		0x835		/* SDR/DDR1 memory controller core */
 #define	BHND_COREID_UBUS_SHIM		0x837		/* SHIM component in ubus/6362 */
+#define	BHND_COREID_PCIE2		0x83c		/* pci express (gen2) core */
 #define	BHND_COREID_APB_BRIDGE		0x135		/* BP135 AMBA AXI-APB bridge */
 #define	BHND_COREID_PL301		0x301		/* PL301 AMBA AXI Interconnect */
 #define	BHND_COREID_EROM		0x366		/* Enumeration ROM */

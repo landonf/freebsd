@@ -92,7 +92,7 @@ static const struct bhnd_core_desc {
 	BHND_CDESC(BCM, ILINE100,	OTHER,	"iLine100 HPNA"),
 	BHND_CDESC(BCM, IPSEC,		OTHER,	"IPsec Accelerator"),
 	BHND_CDESC(BCM, UTOPIA,		OTHER,	"UTOPIA ATM Core"),
-	BHND_CDESC(BCM, PCMCIA,		PCI,	"PCMCIA Bridge"),
+	BHND_CDESC(BCM, PCMCIA,		OTHER,	"PCMCIA Bridge"),
 	BHND_CDESC(BCM, SOCRAM,		MEM,	"Internal Memory"),
 	BHND_CDESC(BCM, MEMC,		MEMC,	"MEMC SDRAM Controller"),
 	BHND_CDESC(BCM, OFDM,		OTHER,	"OFDM PHY"),
@@ -134,6 +134,7 @@ static const struct bhnd_core_desc {
 	BHND_CDESC(BCM, I2S,		OTHER,	"I2S Digital Audio Interface"),
 	BHND_CDESC(BCM, DMEMS,		MEMC,	"SDR/DDR1 Memory Controller"),
 	BHND_CDESC(BCM, UBUS_SHIM,	OTHER,	"BCM6362/UBUS WLAN SHIM"),
+	BHND_CDESC(BCM,	PCIE2,		PCI,	"PCIe Bridge (Gen2)"),
 
 	BHND_CDESC(ARM, APB_BRIDGE,	SOCB,	"BP135 AMBA3 AXI to APB Bridge"),
 	BHND_CDESC(ARM, PL301,		SOCI,	"PL301 AMBA3 Interconnect"),
