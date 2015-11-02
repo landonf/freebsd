@@ -49,8 +49,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/rman.h>
 #include <machine/resource.h>
 
-#include <dev/bhnd/bhnd_device_ids.h>
-#include <dev/bhnd/bhndvar.h>
+#include <dev/bhnd/bhnd.h>
 
 #include "bhnd_chipc.h"
 

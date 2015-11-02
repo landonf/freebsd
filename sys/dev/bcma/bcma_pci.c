@@ -47,10 +47,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/pci/pcireg.h>
 #include <dev/pci/pcivar.h>
 
-#include <dev/bhnd/bhndvar.h>
-#include <dev/bhnd/bhnd_core.h>
-#include <dev/bhnd/bhnd_device_ids.h>
-
+#include <dev/bhnd/bhnd.h>
 #include <dev/bhnd/bhnd_pci.h>
 #include <dev/bhnd/bhnd_pcireg.h>
 

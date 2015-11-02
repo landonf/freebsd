@@ -19,7 +19,7 @@
 #ifndef _BHND_BHND_PCI_H_
 #define _BHND_BHND_PCI_H_
 
-#include "bhndvar.h"
+#include "bhnd.h"
 
 int			 bhnd_pci_attach(device_t dev);
 int			 bhnd_pci_detach(device_t dev);

@@ -32,6 +32,10 @@
 
 INTERFACE bhnd;
 
+HEADER {
+	struct bhnd_resource;
+}
+
 CODE {
 	static struct rman *
 	bhnd_null_get_rman(device_t dev, int type)
