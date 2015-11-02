@@ -31,7 +31,8 @@
 __FBSDID("$FreeBSD$");
 
 /*
- * Generic PCI BCMA Device Support
+ * XXX: This is a temporary testing stub that will need to be
+ * merged into if_bwn.c, or split off into a new driver.
  */
 
 #include <sys/param.h>
@@ -51,23 +52,23 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhnd_pci.h>
 #include <dev/bhnd/bhnd_pcireg.h>
 
-#include "bcmavar.h"
-#include "bcmareg.h"
+#include <dev/bcma/bcmavar.h>
+#include <dev/bcma/bcmareg.h>
 
-#include "bcma_pcivar.h"
+#include "if_bwn_pcivar.h"
 
-static const struct bcma_pci_device {
+static const struct bwn_pci_device {
 	uint16_t	vendor;
 	uint16_t	device;
 	const char	*desc;
-} bcma_pci_devices[] = {
+} bwn_pci_devices[] = {
 	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4331_D11N,		"Broadcom BCM4331 802.11a/b/g/n Wireless" },
 	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4331_D11N2G,	"Broadcom BCM4331 802.11b/g/n (2GHz) Wireless" },
 	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4331_D11N5G,	"Broadcom BCM4331 802.11a/b/g/n (5GHz) Wireless" },
 	{ 0, 0, NULL }
 };
 
-static struct resource_spec bcma_pci_res_spec[BCMA_PCI_MAX_RES+1] = {
+static struct resource_spec bwn_pci_res_spec[BCMA_PCI_MAX_RES+1] = {
 	{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
 	{ SYS_RES_MEMORY,	PCIR_BAR(1),	RF_ACTIVE },
 	{ -1,			0,		0 }
@@ -167,11 +168,11 @@ static const struct bcma_pci_regwin bcma_pci_v2_windows[] = {
 	bcma_bar_read(sc->pci_res[BPCI_RES_BAR0], BHND_PCI_V2_BAR0_CCREGS_OFFSET, offset, size)
 
 static int
-bcma_pci_probe(device_t dev)
+bwn_pci_probe(device_t dev)
 {
-	const struct bcma_pci_device *ident;
+	const struct bwn_pci_device *ident;
 		
-	for (ident = bcma_pci_devices; ident->vendor != 0; ident++) {
+	for (ident = bwn_pci_devices; ident->vendor != 0; ident++) {
 		if (pci_get_vendor(dev) == ident->vendor && pci_get_device(dev) == ident->device) {
 			device_set_desc(dev, ident->desc);
 			return (BUS_PROBE_DEFAULT);
@@ -182,9 +183,9 @@ bcma_pci_probe(device_t dev)
 }
 
 static int
-bcma_pci_attach(device_t dev)
+bwn_pci_attach(device_t dev)
 {
-	struct bcma_pci_softc	*sc;
+	struct bwn_pci_softc	*sc;
 	device_t		 pci_core;
 	uint32_t		 erom_table;
 	int			 error;
@@ -212,7 +213,7 @@ bcma_pci_attach(device_t dev)
 
 
 	/* Map our PCI device resources. */
-	error = bus_alloc_resources(dev, bcma_pci_res_spec, sc->pci_res);
+	error = bus_alloc_resources(dev, bwn_pci_res_spec, sc->pci_res);
 	if (error) {
 		device_printf(dev, "could not allocate PCI resources\n");
 		goto failed;
@@ -249,25 +250,25 @@ failed:
 		rman_fini(&sc->mem_rman);
 
 	if (free_pci_res)
-		bus_release_resources(dev, bcma_pci_res_spec, sc->pci_res);
+		bus_release_resources(dev, bwn_pci_res_spec, sc->pci_res);
 
 	return (error);
 }
 
 static int
-bcma_pci_detach(device_t dev)
+bwn_pci_detach(device_t dev)
 {
-	struct bcma_pci_softc *sc = device_get_softc(dev);
+	struct bwn_pci_softc *sc = device_get_softc(dev);
 
-	bus_release_resources(dev, bcma_pci_res_spec, sc->pci_res);
+	bus_release_resources(dev, bwn_pci_res_spec, sc->pci_res);
 
 	return (0);
 }
 
 static struct rman *
-bcma_pci_get_rman(device_t dev, int type)
+bwn_pci_get_rman(device_t dev, int type)
 {
-	struct bcma_pci_softc *sc = device_get_softc(dev);
+	struct bwn_pci_softc *sc = device_get_softc(dev);
 
 	switch (type) {
 	case SYS_RES_MEMORY:
@@ -282,11 +283,11 @@ bcma_pci_get_rman(device_t dev, int type)
 }
 
 /* delegate all remaining driver methods to generic bcma implementations */
-#define	bcma_pci_read_ivar		bcma_generic_read_ivar
-#define	bcma_pci_write_ivar		bcma_generic_write_ivar
-#define	bcma_pci_child_deleted		bcma_generic_child_deleted
-#define	bcma_pci_get_resource_list	bcma_generic_get_resource_list
-#define	bcma_pci_get_port_rid		bcma_generic_get_port_rid
+#define	bwn_pci_read_ivar		bcma_generic_read_ivar
+#define	bwn_pci_write_ivar		bcma_generic_write_ivar
+#define	bwn_pci_child_deleted		bcma_generic_child_deleted
+#define	bwn_pci_get_resource_list	bcma_generic_get_resource_list
+#define	bwn_pci_get_port_rid		bcma_generic_get_port_rid
 
-/* declare our bcma_pci driver */
-BHND_PCI_DECLARE_DRIVER(bcma_pci, bcma);
+/* declare our bwn_pci driver */
+BHND_PCI_DECLARE_DRIVER(bwn_pci, bhnd);

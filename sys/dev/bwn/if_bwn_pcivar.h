@@ -29,8 +29,8 @@
  * $FreeBSD$
  */
 
-#ifndef _BCMA_BCMA_PCIVAR_H_
-#define _BCMA_BCMA_PCIVAR_H_
+#ifndef _BWN_IF_BWN_PCIVAR_H_
+#define _BWN_IF_BWN_PCIVAR_H_
 
 struct bcma_pci_regwin;
 
@@ -41,8 +41,8 @@ struct bcma_pci_regwin;
 #define	BCMA_PCI_MAX_RES	2	/**< maximum number of bmca PCI device
 					  *  resources. */
 
-/** BCMA-PCI per-instance state */
-struct bcma_pci_softc {
+/* bwn driver instance state */
+struct bwn_pci_softc {
 	device_t		 bcma_dev;			/**< device */
 	struct resource		*pci_res[BCMA_PCI_MAX_RES];	/**< device resources */
 	struct rman		 mem_rman;			/**< bus memory resource manager */
@@ -87,4 +87,4 @@ struct bcma_pci_regwin {
 	bus_size_t	win_size;	/**< size of the register block */
 };
 
-#endif /* _BCMA_BCMA_PCIVAR_H_ */
+#endif /* _BWN_IF_BWN_PCIVAR_H_ */
