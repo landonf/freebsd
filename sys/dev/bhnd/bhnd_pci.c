@@ -86,7 +86,7 @@ bhnd_pci_resume(device_t dev)
 /**
  * Helper function for implementing BUS_ALLOC_RESOURCE() on bhnd pci hosts.
  * 
- * This simple implementation uses BHND_GET_RMAN() and BUS_GET_RESOURCE_LIST()
+ * This simple implementation uses BHNDBUS_GET_RMAN() and BUS_GET_RESOURCE_LIST()
  * to fetch resource state for allocation.
  */
 struct resource *
@@ -104,7 +104,7 @@ bhnd_pci_alloc_resource(device_t dev, device_t child, int type,
 	}
 
 	/* Fetch the resource manager */
-	rm = BHND_GET_RMAN(dev, type);
+	rm = BHNDBUS_GET_RMAN(dev, type);
 	if (rm == NULL)
 		return (NULL);
 

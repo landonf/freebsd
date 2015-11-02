@@ -200,7 +200,7 @@ bhnd_generic_probe_nomatch(device_t dev, device_t child)
 }
 
 /**
- * Helper function for implementing BHND_ALLOC_RESOURCE().
+ * Helper function for implementing BHNDBUS_ALLOC_RESOURCE().
  * 
  * This simple implementation delegates allocation of the backing resource
  * to BUS_ALLOC_RESOURCE().
@@ -212,7 +212,7 @@ bhnd_generic_alloc_bhnd_resource(device_t dev, device_t child, int type,
 	struct bhnd_resource *r;
 	
 	if (device_get_parent(child) != dev)
-		return (BHND_ALLOC_RESOURCE(device_get_parent(dev), child,
+		return (BHNDBUS_ALLOC_RESOURCE(device_get_parent(dev), child,
 		    type, rid, start, end, count, flags));
 	
 	/* Allocate an empty wrapper for the real bus-allocated resource */
@@ -235,7 +235,7 @@ bhnd_generic_alloc_bhnd_resource(device_t dev, device_t child, int type,
 }
 
 /**
- * Helper function for implementing BHND_RELEASE_RESOURCE().
+ * Helper function for implementing BHNDBUS_RELEASE_RESOURCE().
  * 
  * This simple implementation delegates handling of the backing resource
  * to BUS_RELEASE_RESOURCE().
@@ -247,7 +247,7 @@ bhnd_generic_release_bhnd_resource(device_t dev, device_t child, int type,
 	int error;
 	
 	if (device_get_parent(child) != dev)
-		return (BHND_RELEASE_RESOURCE(device_get_parent(dev), child,
+		return (BHNDBUS_RELEASE_RESOURCE(device_get_parent(dev), child,
 		    type, rid, r));
 
 	error = bus_release_resource(child, type, rid, r->_res);
@@ -259,7 +259,7 @@ bhnd_generic_release_bhnd_resource(device_t dev, device_t child, int type,
 }
 
 /**
- * Helper function for implementing BHND_ACTIVATE_RESOURCE().
+ * Helper function for implementing BHNDBUS_ACTIVATE_RESOURCE().
  * 
  * This simple implementation delegates allocation of the backing resource
  * to BUS_ACTIVATE_RESOURCE().
@@ -269,14 +269,14 @@ bhnd_generic_activate_bhnd_resource(device_t dev, device_t child, int type,
 	int rid, struct bhnd_resource *r)
 {
 	if (device_get_parent(child) != dev)
-		return (BHND_ACTIVATE_RESOURCE(device_get_parent(dev), child,
+		return (BHNDBUS_ACTIVATE_RESOURCE(device_get_parent(dev), child,
 		    type, rid, r));
 
 	return (bus_activate_resource(child, type, rid, r->_res));
 };
 
 /**
- * Helper function for implementing BHND_DEACTIVATE_RESOURCE().
+ * Helper function for implementing BHNDBUS_DEACTIVATE_RESOURCE().
  * 
  * This simple implementation delegates allocation of the backing resource
  * to BUS_DEACTIVATE_RESOURCE().
@@ -286,7 +286,7 @@ bhnd_generic_deactivate_bhnd_resource(device_t dev, device_t child, int type,
 	int rid, struct bhnd_resource *r)
 {
 	if (device_get_parent(child) != dev)
-		return (BHND_DEACTIVATE_RESOURCE(device_get_parent(dev), child,
+		return (BHNDBUS_DEACTIVATE_RESOURCE(device_get_parent(dev), child,
 		    type, rid, r));
 
 	return (bus_deactivate_resource(child, type, rid, r->_res));

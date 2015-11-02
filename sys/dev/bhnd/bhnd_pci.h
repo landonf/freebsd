@@ -92,8 +92,8 @@ static device_method_t __CONCAT(dname,_methods)[] = { \
 	DEVMETHOD(bus_deactivate_resource,	bhnd_pci_deactivate_resource),	\
 										\
 	/* BHND interface */							\
-	DEVMETHOD(bhnd_get_rman,		__CONCAT(dname,_get_rman)),	\
-	DEVMETHOD(bhnd_get_port_rid,		__CONCAT(dname,_get_port_rid)),	\
+	DEVMETHOD(bhndbus_get_rman,		__CONCAT(dname,_get_rman)),	\
+	DEVMETHOD(bhndbus_get_port_rid,		__CONCAT(dname,_get_port_rid)),	\
 										\
 	DEVMETHOD_END								\
 }; \

@@ -40,7 +40,7 @@
 
 #include "bhnd_devinfo.h"
 
-#include "bhnd_if.h"
+#include "bhndbus_if.h"
 
 MALLOC_DECLARE(M_BHND);
 
