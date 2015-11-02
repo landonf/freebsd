@@ -285,8 +285,6 @@ bcma_pci_get_rman(device_t dev, int type)
 }
 
 /* delegate all remaining driver methods to generic bcma implementations */
-#define	bcma_pci_print_child		bcma_generic_print_child
-#define	bcma_pci_probe_nomatch		bcma_generic_probe_nomatch
 #define	bcma_pci_read_ivar		bcma_generic_read_ivar
 #define	bcma_pci_write_ivar		bcma_generic_write_ivar
 #define	bcma_pci_child_deleted		bcma_generic_child_deleted
