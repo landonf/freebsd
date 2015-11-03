@@ -45,6 +45,16 @@ CODE {
 }
 
 /**
+ * Enumerate all devices on this bus, calling BUS_ADD_CHILD for each discovered
+ * core.
+ *
+ * @param dev The bus device.
+ */
+METHOD void enumerate_children {
+	device_t dev;
+};
+
+/**
  * Allocate a bhnd resource.
  *
  * This method's semantics are functionally identical to the bus API of the same
