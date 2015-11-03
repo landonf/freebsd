@@ -40,6 +40,8 @@
 #include "bhnd_devinfo.h"
 #include "bhndvar.h"
 
+int			bhnd_attach(device_t dev, device_t *bhndbus);
+
 device_t		bhnd_match_child(device_t dev,
 			    struct bhnd_core_match *desc);
 

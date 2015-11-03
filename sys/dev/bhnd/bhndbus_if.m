@@ -42,17 +42,26 @@ CODE {
 	{
 		return (NULL);
 	}
+
+        /* delegate enumeration to the device parent. */
+        static int 
+        bhnd_delegate_enumerate_children(device_t dev, device_t child)
+        {
+                return BHNDBUS_ENUMERATE_CHILDREN(device_get_parent(dev), dev);
+        }
 }
 
 /**
  * Enumerate all devices on this bus, calling BUS_ADD_CHILD for each discovered
  * core.
  *
- * @param dev The bus device.
+ * @param dev The bus parent.
+ * @param child The bus device.
  */
-METHOD void enumerate_children {
-	device_t dev;
-};
+METHOD int enumerate_children {
+        device_t dev;
+        device_t child;
+} DEFAULT bhnd_delegate_enumerate_children;
 
 /**
  * Allocate a bhnd resource.

@@ -86,7 +86,7 @@ struct resource_list	*bcma_generic_get_resource_list(device_t dev, device_t chil
 int			 bcma_generic_get_port_rid(device_t dev, device_t child,
 			     u_int port_num, u_int region_num);
 
-int			 bcma_scan_erom(device_t bus,
+int			 bcma_enumerate_children(device_t dev,
 			     struct bhnd_probecfg pcfg_table[],
 			     struct resource *erom_res, bus_size_t erom_offset);
 

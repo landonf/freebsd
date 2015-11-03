@@ -77,6 +77,17 @@ static const struct bhnd_nomatch {
 	{ 0,			BHND_COREID_INVALID,		false }
 };
 
+int
+bhnd_attach(device_t dev, device_t *bhndbus)
+{
+	// TODO!
+	*bhndbus = device_add_child(dev, "bhnd", -1);
+	if (*bhndbus == NULL)
+		return (ENXIO);
+	BHNDBUS_ENUMERATE_CHILDREN(dev, *bhndbus);
+	return (0);
+}
+
 /**
  * Find the first @p class child device on @p dev.
  * 

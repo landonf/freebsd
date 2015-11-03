@@ -681,13 +681,13 @@ erom_print_primecell_id(device_t bus, struct resource *res,
 /**
  * Scan a device enumeration ROM table, adding all discovered cores to the bus.
  * 
- * @param bus The bus to enumerate.
+ * @param dev The bus to enumerate.
  * @param pcfg_table Core probe configuration.
  * @param erom_res The enumeration ROM resource.
  * @param erom_offset Base offset of the EROM register mapping.
  */
 int
-bcma_scan_erom(device_t bus, struct bhnd_probecfg pcfg_table[],
+bcma_enumerate_children(device_t dev, struct bhnd_probecfg pcfg_table[],
     struct resource *erom_res, bus_size_t erom_offset)
 {
 	struct bcma_devinfo	*dinfo;
@@ -709,7 +709,7 @@ bcma_scan_erom(device_t bus, struct bhnd_probecfg pcfg_table[],
 	for (u_int core_index = 0; offset < erom_end && core_index < UINT_MAX;
 	    core_index++) 
 	{
-		error = erom_scan_core(bus, core_index, erom_res, erom_start,
+		error = erom_scan_core(dev, core_index, erom_res, erom_start,
 		    erom_end, &offset, &dinfo);
 		
 		/* Handle EOF or error */
@@ -731,7 +731,7 @@ bcma_scan_erom(device_t bus, struct bhnd_probecfg pcfg_table[],
 		}
 
 		/* Add the child device */
-		child = device_add_child_ordered(bus, probe_order, probe_name, -1);
+		child = device_add_child_ordered(dev, probe_order, probe_name, -1);
 		if (child == NULL) {
 			bcma_free_dinfo(dinfo);
 			return (ENXIO);
@@ -748,7 +748,7 @@ bcma_scan_erom(device_t bus, struct bhnd_probecfg pcfg_table[],
 			STAILQ_FOREACH(sp, &cfg->wports, sp_link) {
 				struct bcma_map *map;
 				STAILQ_FOREACH(map, &sp->sp_maps, m_link) {
-					erom_print_primecell_id(bus, erom_res, map);
+					erom_print_primecell_id(dev, erom_res, map);
 				}
 			}
 		}
@@ -765,7 +765,7 @@ bcma_scan_erom(device_t bus, struct bhnd_probecfg pcfg_table[],
 					continue;
 				
 				STAILQ_FOREACH(map, &sp->sp_maps, m_link) {
-					erom_print_primecell_id(bus, erom_res, map);
+					erom_print_primecell_id(dev, erom_res, map);
 				}
 			}
 		}
