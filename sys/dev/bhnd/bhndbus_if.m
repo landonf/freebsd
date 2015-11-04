@@ -36,29 +36,6 @@ HEADER {
 	struct bhnd_resource;
 }
 
-CODE {
-        static int 
-        bhnd_null_enumerate_children(device_t dev, device_t child)
-        {
-                return (0);
-        }
-}
-
-/**
- * Enumerate all devices on @p child, calling BUS_ADD_CHILD for each discovered
- * core.
- *
- * @param dev The parent device of @p child.
- * @param child The bus device.
- *
- * XXX: Re-evaluate this API design; I'm wary of handling this through
- * bus inheritance.
- */
-METHOD int enumerate_children {
-        device_t dev;
-        device_t child;
-} DEFAULT bhnd_null_enumerate_children;
-
 /**
  * Allocate a bhnd resource.
  *

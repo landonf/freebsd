@@ -183,35 +183,10 @@ bwn_pci_probe(device_t dev)
 }
 
 static int
-bwn_pci_enumerate_children(device_t dev, device_t child)
-{
-	struct bwn_pci_softc	*sc;
-	uint32_t		 erom_table;
-	int			 error;
-
-	sc = device_get_softc(dev);
-	
-	KASSERT(device_get_driver(child) == &bcma_driver,
-	    ("can't enumerate non-bcma child"));
-	
-	KASSERT(device_get_unit(child) == 0,
-	    ("can't enumerate unknown %s instance", device_get_nameunit(child)));
-
-	/* Locate and map the enumeration table into WIN1. A pointer to the
-	 * table can be found within the ChipCommon register map. */
-	erom_table = bcma_read_chipc(sc, BCMA_CC_EROM_ADDR, 4);
-	pci_write_config(dev, BHND_PCI_BAR0_WIN1, erom_table, 4);
-
-	/* Enumerate and register all bcma devices. */
-	error = bcma_scan_erom(child, bhnd_generic_probecfg_table,
-	    sc->pci_res[BMEM_RES_CHIPC], BHND_PCI_V2_BAR0_WIN1_OFFSET);
-	return (error);
-}
-
-static int
 bwn_pci_attach(device_t dev)
 {
 	struct bwn_pci_softc	*sc;
+	uint32_t		 erom_table;
 	int			 error;
 	bool			 free_mem_rman = false;
 	bool			 free_pci_res = false;
@@ -251,6 +226,15 @@ bwn_pci_attach(device_t dev)
 		error = ENXIO;
 		goto failed;
 	}
+	
+	/* Locate and map the bcma bus enumeration table into WIN1. A pointer
+	 * to the table can be found within the ChipCommon register map. */
+	erom_table = bcma_read_chipc(sc, BCMA_CC_EROM_ADDR, 4);
+	pci_write_config(dev, BHND_PCI_BAR0_WIN1, erom_table, 4);
+
+	/* Enumerate and add all bcma devices. */
+	error = bcma_scan_erom(sc->bhnd_dev, bhnd_generic_probecfg_table,
+	    sc->pci_res[BMEM_RES_CHIPC], BHND_PCI_V2_BAR0_WIN1_OFFSET);
 
 	/* Let the generic implementation probe all added children. */
 	return (bus_generic_attach(dev));
@@ -324,7 +308,6 @@ static device_method_t bwn_pci_methods[] = {
 	DEVMETHOD(bus_deactivate_resource,	bus_generic_deactivate_resource),
 
 	/* BHND interface */
-	DEVMETHOD(bhndbus_enumerate_children,	bwn_pci_enumerate_children),
 	DEVMETHOD(bhndbus_get_rman,		bwn_pci_get_rman), // TODO
 
 	DEVMETHOD_END

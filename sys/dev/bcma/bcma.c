@@ -55,12 +55,6 @@ bcma_probe(device_t dev)
 static int
 bcma_attach(device_t dev)
 {
-	int error;
-	error = BHNDBUS_ENUMERATE_CHILDREN(device_get_parent(dev), dev);
-	if (error) {
-		return (error);
-	}
-
 	return (bus_generic_attach(dev));
 }
 
