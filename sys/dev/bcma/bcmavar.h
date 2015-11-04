@@ -40,11 +40,18 @@
 
 #include <dev/bhnd/bhndvar.h>
 
-MALLOC_DECLARE(M_BCMA);
 
 /*
  * Broadcom AMBA backplane types and data structures.
  */
+
+MALLOC_DECLARE(M_BCMA);
+
+extern devclass_t bcma_devclass;
+extern driver_t bcma_driver;
+
+/** bcma(4) device name */
+#define	BCMA_DEVNAME	"bcma"
 
 /** BCMA bus address. The backing bus supports 64-bit addressing. */
 typedef uint64_t	bcma_addr_t;
@@ -77,16 +84,7 @@ typedef enum {
 	BCMA_SPORT_TYPE_MWRAP	= 3,	/**< DMP agent/wrapper for slave port */
 } bcma_sport_type;
 
-
-int			 bcma_generic_read_ivar(device_t dev, device_t child, int index, uintptr_t *result);
-int			 bcma_generic_write_ivar(device_t dev, device_t child, int index, uintptr_t value);
-void			 bcma_generic_child_deleted(device_t dev, device_t child);
-struct resource_list	*bcma_generic_get_resource_list(device_t dev, device_t child);
-
-int			 bcma_generic_get_port_rid(device_t dev, device_t child,
-			     u_int port_num, u_int region_num);
-
-int			 bcma_enumerate_children(device_t dev,
+int			 bcma_scan_erom(device_t dev,
 			     struct bhnd_probecfg pcfg_table[],
 			     struct resource *erom_res, bus_size_t erom_offset);
 
@@ -98,6 +96,9 @@ void			 bcma_free_dinfo(struct bcma_devinfo *dinfo);
 struct bcma_sport	*bcma_alloc_sport(bcma_pid_t port_num, bcma_sport_type port_type);
 void			 bcma_free_sport(struct bcma_sport *sport);
 
+/** BMCA per-instance state */
+struct bcma_softc {
+};
 
 /** BCMA master port descriptor */
 struct bcma_mport {

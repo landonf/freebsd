@@ -37,31 +37,27 @@ HEADER {
 }
 
 CODE {
-	static struct rman *
-	bhnd_null_get_rman(device_t dev, int type)
-	{
-		return (NULL);
-	}
-
-        /* delegate enumeration to the device parent. */
         static int 
-        bhnd_delegate_enumerate_children(device_t dev, device_t child)
+        bhnd_null_enumerate_children(device_t dev, device_t child)
         {
-                return BHNDBUS_ENUMERATE_CHILDREN(device_get_parent(dev), dev);
+                return (0);
         }
 }
 
 /**
- * Enumerate all devices on this bus, calling BUS_ADD_CHILD for each discovered
+ * Enumerate all devices on @p child, calling BUS_ADD_CHILD for each discovered
  * core.
  *
- * @param dev The bus parent.
+ * @param dev The parent device of @p child.
  * @param child The bus device.
+ *
+ * XXX: Re-evaluate this API design; I'm wary of handling this through
+ * bus inheritance.
  */
 METHOD int enumerate_children {
         device_t dev;
         device_t child;
-} DEFAULT bhnd_delegate_enumerate_children;
+} DEFAULT bhnd_null_enumerate_children;
 
 /**
  * Allocate a bhnd resource.
@@ -78,7 +74,7 @@ METHOD struct bhnd_resource * alloc_resource {
 	u_long end;
 	u_long count;
 	u_int flags;
-} DEFAULT bhnd_generic_alloc_bhnd_resource;
+};
 
 /**
  * Release a bhnd resource.
@@ -92,7 +88,7 @@ METHOD int release_resource {
 	int type;
 	int rid;
 	struct bhnd_resource *res;
-} DEFAULT bhnd_generic_release_bhnd_resource;
+};
 
 /**
  * Activate a bhnd resource.
@@ -106,7 +102,7 @@ METHOD int activate_resource {
 	int type;
         int rid;
         struct bhnd_resource *r;
-} DEFAULT bhnd_generic_activate_bhnd_resource;
+};
 
 /**
  * Deactivate a bhnd resource.
@@ -120,7 +116,7 @@ METHOD int deactivate_resource {
         int type;
 	int rid;
         struct bhnd_resource *r;
-} DEFAULT bhnd_generic_deactivate_bhnd_resource;
+};
 
 /**
  * Return the resource manager for the given resource type.
@@ -134,7 +130,7 @@ METHOD int deactivate_resource {
 METHOD struct rman * get_rman {
         device_t dev;
 	int type;
-} DEFAULT bhnd_null_get_rman;
+};
 
 
 /**

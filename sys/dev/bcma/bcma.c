@@ -34,6 +34,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/bus.h>
 #include <sys/kernel.h>
 #include <sys/malloc.h>
+#include <sys/module.h>
 #include <sys/systm.h>
 
 #include <machine/bus.h>
@@ -44,8 +45,33 @@ __FBSDID("$FreeBSD$");
 
 MALLOC_DEFINE(M_BCMA, "bcma", "BCMA bus data structures");
 
-int
-bcma_generic_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
+static int
+bcma_probe(device_t dev)
+{
+	device_set_desc(dev, "BCMA bus");
+	return (BUS_PROBE_NOWILDCARD);
+}
+
+static int
+bcma_attach(device_t dev)
+{
+	int error;
+	error = BHNDBUS_ENUMERATE_CHILDREN(device_get_parent(dev), dev);
+	if (error) {
+		return (error);
+	}
+
+	return (bus_generic_attach(dev));
+}
+
+static int
+bcma_detach(device_t dev)
+{
+	return (bus_generic_detach(dev));
+}
+
+static int
+bcma_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 {
 	const struct bcma_devinfo *dinfo;
 	const struct bcma_corecfg *cfg;
@@ -80,8 +106,8 @@ bcma_generic_read_ivar(device_t dev, device_t child, int index, uintptr_t *resul
 	}
 }
 
-int
-bcma_generic_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
+static int
+bcma_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
 {
 	switch (index) {
 	case BHND_IVAR_VENDOR:
@@ -97,23 +123,23 @@ bcma_generic_write_ivar(device_t dev, device_t child, int index, uintptr_t value
 	}
 }
 
-void
-bcma_generic_child_deleted(device_t dev, device_t child)
+static void
+bcma_child_deleted(device_t dev, device_t child)
 {
 	struct bcma_devinfo *dinfo = device_get_ivars(child);
 	if (dinfo != NULL)
 		bcma_free_dinfo(dinfo);
 }
 
-struct resource_list *
-bcma_generic_get_resource_list(device_t dev, device_t child)
+static struct resource_list *
+bcma_get_resource_list(device_t dev, device_t child)
 {
 	struct bcma_devinfo *dinfo = device_get_ivars(child);
 	return (&dinfo->resources);
 }
 
-int
-bcma_generic_get_port_rid(device_t dev, device_t child, u_int port_num, u_int
+static int
+bcma_get_port_rid(device_t dev, device_t child, u_int port_num, u_int
     region_num)
 {
 	struct bcma_devinfo	*dinfo;
@@ -255,3 +281,50 @@ bcma_free_sport(struct bcma_sport *sport) {
 
 	free(sport, M_BCMA);
 }
+
+static device_method_t bcma_methods[] = {
+	/* Device interface */
+	DEVMETHOD(device_probe,			bcma_probe),
+	DEVMETHOD(device_attach,		bcma_attach),
+	DEVMETHOD(device_detach,		bcma_detach),
+	DEVMETHOD(device_shutdown,		bus_generic_shutdown),
+	DEVMETHOD(device_suspend,		bus_generic_suspend), // TODO
+	DEVMETHOD(device_resume,		bus_generic_resume), // TODO
+	
+	/* Bus interface */
+	DEVMETHOD(bus_child_deleted,		bcma_child_deleted),
+	DEVMETHOD(bus_print_child,		bhnd_generic_print_child),
+	DEVMETHOD(bus_probe_nomatch,		bhnd_generic_probe_nomatch),
+	DEVMETHOD(bus_read_ivar,		bcma_read_ivar),
+	DEVMETHOD(bus_write_ivar,		bcma_write_ivar),
+
+	DEVMETHOD(bus_get_resource_list,	bcma_get_resource_list),
+	DEVMETHOD(bus_set_resource,		bus_generic_rl_set_resource),
+	DEVMETHOD(bus_get_resource,		bus_generic_rl_get_resource),
+	DEVMETHOD(bus_delete_resource,		bus_generic_rl_delete_resource),
+	DEVMETHOD(bus_alloc_resource,		bus_generic_rl_alloc_resource),
+	DEVMETHOD(bus_adjust_resource,		bus_generic_adjust_resource),
+	DEVMETHOD(bus_release_resource,		bus_generic_rl_release_resource),
+	DEVMETHOD(bus_activate_resource,	bus_generic_activate_resource),
+	DEVMETHOD(bus_deactivate_resource,	bus_generic_deactivate_resource),
+
+	/* BHND interface */
+	DEVMETHOD(bhndbus_get_port_rid,		bcma_get_port_rid),
+	DEVMETHOD(bhndbus_alloc_resource,	bhnd_generic_alloc_bhnd_resource),
+	DEVMETHOD(bhndbus_release_resource,	bhnd_generic_release_bhnd_resource),
+	DEVMETHOD(bhndbus_activate_resource,	bhnd_generic_activate_bhnd_resource),
+	DEVMETHOD(bhndbus_deactivate_resource,	bhnd_generic_deactivate_bhnd_resource),
+
+	DEVMETHOD_END
+};
+
+devclass_t bcma_devclass;
+
+driver_t bcma_driver = {
+	BCMA_DEVNAME,
+	bcma_methods,
+	sizeof(struct bcma_softc)
+};
+
+MODULE_VERSION(bcma, 1);
+MODULE_DEPEND(bcma, bhnd, 1, 1, 1);

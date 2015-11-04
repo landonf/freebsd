@@ -191,15 +191,19 @@ bwn_pci_enumerate_children(device_t dev, device_t child)
 
 	sc = device_get_softc(dev);
 	
-	// TODO: assert on child type.
+	KASSERT(device_get_driver(child) == &bcma_driver,
+	    ("can't enumerate non-bcma child"));
+	
+	KASSERT(device_get_unit(child) == 0,
+	    ("can't enumerate unknown %s instance", device_get_nameunit(child)));
 
 	/* Locate and map the enumeration table into WIN1. A pointer to the
 	 * table can be found within the ChipCommon register map. */
 	erom_table = bcma_read_chipc(sc, BCMA_CC_EROM_ADDR, 4);
 	pci_write_config(dev, BHND_PCI_BAR0_WIN1, erom_table, 4);
 
-	/* Enumerate and register all bus devices. */
-	error = bcma_enumerate_children(dev, bhnd_generic_probecfg_table,
+	/* Enumerate and register all bcma devices. */
+	error = bcma_scan_erom(child, bhnd_generic_probecfg_table,
 	    sc->pci_res[BMEM_RES_CHIPC], BHND_PCI_V2_BAR0_WIN1_OFFSET);
 	return (error);
 }
@@ -241,10 +245,12 @@ bwn_pci_attach(device_t dev)
 		free_pci_res = true;
 	}
 
-	/* Attach our bhnd bus */
-	error = bhnd_attach(dev, &sc->bhndbus);
-	if (error)
+	/* Attach our bcma bus */
+	sc->bhnd_dev = device_add_child(dev, BCMA_DEVNAME, 0);
+	if (sc->bhnd_dev == NULL) {
+		error = ENXIO;
 		goto failed;
+	}
 
 	/* Let the generic implementation probe all added children. */
 	return (bus_generic_attach(dev));
@@ -303,21 +309,19 @@ static device_method_t bwn_pci_methods[] = {
 	/* Bus interface */
 	DEVMETHOD(bus_print_child,		bus_generic_print_child),
 	DEVMETHOD(bus_probe_nomatch,		bwn_pci_probe_nomatch), // TODO
-	DEVMETHOD(bus_read_ivar,		bcma_generic_read_ivar),
-	DEVMETHOD(bus_write_ivar,		bcma_generic_write_ivar),
+	DEVMETHOD(bus_read_ivar,		bus_generic_read_ivar),
+	DEVMETHOD(bus_write_ivar,		bus_generic_write_ivar),
 
+	//DEVMETHOD(bus_get_resource_list,	TODO),
 	// TODO
-#if 0
-	DEVMETHOD(bus_get_resource_list,	bcma_generic_get_resource_list),
-	DEVMETHOD(bus_set_resource,		bhnd_pci_set_resource),
-	DEVMETHOD(bus_get_resource,		bhnd_pci_get_resource),
-	DEVMETHOD(bus_delete_resource,		bhnd_pci_delete_resource),
-	DEVMETHOD(bus_alloc_resource,		bhnd_pci_alloc_resource),
-	DEVMETHOD(bus_adjust_resource,		bhnd_pci_adjust_resource),
-	DEVMETHOD(bus_release_resource,		bhnd_pci_release_resource),
-	DEVMETHOD(bus_activate_resource,	bhnd_pci_activate_resource),
-	DEVMETHOD(bus_deactivate_resource,	bhnd_pci_deactivate_resource),
-#endif
+	DEVMETHOD(bus_set_resource,		bus_generic_rl_set_resource),
+	DEVMETHOD(bus_get_resource,		bus_generic_rl_get_resource),
+	DEVMETHOD(bus_delete_resource,		bus_generic_rl_delete_resource),
+	DEVMETHOD(bus_alloc_resource,		bus_generic_rl_alloc_resource),
+	DEVMETHOD(bus_adjust_resource,		bus_generic_adjust_resource),
+	DEVMETHOD(bus_release_resource,		bus_generic_rl_release_resource),
+	DEVMETHOD(bus_activate_resource,	bus_generic_activate_resource),
+	DEVMETHOD(bus_deactivate_resource,	bus_generic_deactivate_resource),
 
 	/* BHND interface */
 	DEVMETHOD(bhndbus_enumerate_children,	bwn_pci_enumerate_children),
@@ -328,9 +332,15 @@ static device_method_t bwn_pci_methods[] = {
 
 static devclass_t bwn_devclass;
 
-DEFINE_CLASS_0(bwn, bwn_pci_driver, bwn_pci_methods, sizeof(struct bwn_pci_softc));
+static driver_t bwn_pci_driver = {
+    "bwn",
+    bwn_pci_methods,
+    sizeof(struct bwn_pci_softc)
+};
+
 DRIVER_MODULE(bwn_pci, pci, bwn_pci_driver, bwn_devclass, NULL, NULL);
-MODULE_VERSION(bwn_pci, 1);
+DRIVER_MODULE(bcma, bwn, bcma_driver, bcma_devclass, NULL, NULL);
+
 MODULE_DEPEND(bwn_pci, pci, 1, 1, 1);
 MODULE_DEPEND(bwn_pci, bcma, 1, 1, 1);
-MODULE_DEPEND(bwn_pci, bhnd, 1, 1, 1);
+MODULE_DEPEND(bwn_pci, siba, 1, 1, 1);

@@ -687,7 +687,7 @@ erom_print_primecell_id(device_t bus, struct resource *res,
  * @param erom_offset Base offset of the EROM register mapping.
  */
 int
-bcma_enumerate_children(device_t dev, struct bhnd_probecfg pcfg_table[],
+bcma_scan_erom(device_t dev, struct bhnd_probecfg pcfg_table[],
     struct resource *erom_res, bus_size_t erom_offset)
 {
 	struct bcma_devinfo	*dinfo;

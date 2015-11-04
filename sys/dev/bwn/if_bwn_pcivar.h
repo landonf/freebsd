@@ -44,7 +44,7 @@ struct bcma_pci_regwin;
 /* bwn driver instance state */
 struct bwn_pci_softc {
 	device_t		 bcma_dev;			/**< device */
-	device_t		 bhndbus;			/**< bhnd bus device */
+	device_t		 bhnd_dev;			/**< bhnd bus device */
 	struct resource		*pci_res[BCMA_PCI_MAX_RES];	/**< device resources */
 	struct rman		 mem_rman;			/**< bus memory resource manager */
 };
