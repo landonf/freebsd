@@ -262,6 +262,13 @@ bwn_pci_detach(device_t dev)
 static void
 bwn_pci_probe_nomatch(device_t dev, device_t child)
 {
+	const char *name;
+
+	name = device_get_name(child);
+	if (name == NULL)
+		name = "unknown device";
+
+	device_printf(dev, "<%s> (no driver attached)\n", name);
 }
 
 static struct rman *
