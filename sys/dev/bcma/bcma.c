@@ -46,6 +46,42 @@ __FBSDID("$FreeBSD$");
 
 MALLOC_DEFINE(M_BCMA, "bcma", "BCMA bus data structures");
 
+/**
+ * Attach the bcma bus to a parent device, using the provided enumeration table
+ * to register cores on the bcma bus.
+ * 
+ * @param dev The parent to which the bcma bus will be attached.
+ * @param[out] bcmabus If successful, the attached child device.
+ * @param unit The unit number for the new bcma device, or -1.
+ * @param pcfg_table Probe configuration.
+ * @param bcma_erom_res The resource mapping a bcma enumeration ROM.
+ * @param bcma_erom_offset The base offset of the EROM table
+ * within @p bcma_erom_res.
+ * 
+ * @retval 0 success
+ * @retval non-zero an error occurred instantiating the bcma bus.
+ */
+int
+bcma_bus_attach(device_t dev, device_t *bcmabus, int unit,
+    struct bhnd_probecfg pcfg_table[], struct resource *bcma_erom_res,
+    bus_size_t bcma_erom_offset)
+{
+	int error;
+
+	/* Add the child device */
+	*bcmabus = device_add_child(dev, BCMA_DEVNAME, unit);
+	if (*bcmabus == NULL)
+		return (ENXIO);
+	
+	/* Perform discovery of cores on the bus */
+	error = bcma_scan_erom(*bcmabus, pcfg_table, bcma_erom_res,
+	    bcma_erom_offset);
+	if (error)
+		device_delete_child(dev, *bcmabus);
+
+	return (error);
+}
+
 static int
 bcma_probe(device_t dev)
 {

@@ -88,13 +88,6 @@ bcmab_pci_attach(device_t dev)
 		device_printf(dev, "failed to allocate PCI BAR0\n");
 		return (ENXIO);
 	}
-	
-	/* Create the child bcma bus device */
-	sc->bcma_bus = device_add_child(dev, BCMA_DEVNAME, -1);
-	if (sc->bcma_bus == NULL) {
-		device_printf(dev, "failed to add bcma device\n");
-		return (ENXIO);
-	}
 
 	/* Locate and map the bcma bus enumeration table into WIN0, which
 	 * should be available on all bcma devices. A pointer to the table can
@@ -102,16 +95,15 @@ bcmab_pci_attach(device_t dev)
 	erom_table = bus_read_4(regs, BHND_PCI_V2_BAR0_CCREGS_OFFSET +
 	    BCMA_CC_EROM_ADDR);
 	pci_write_config(pci_dev, BHND_PCI_BAR0_WIN0, erom_table, 4);
-
-	/* Enumerate and register all devices on the bcma bus before
-	 * discarding our BAR allocation. */
-	error = bcma_scan_erom(sc->bcma_bus, bhnd_generic_probecfg_table, regs,
-	    BHND_PCI_V2_BAR0_WIN0_OFFSET);
+	
+	/* Instantiate the bridged bcma bus using our mapped EROM table. */
+	error = bcma_bus_attach(dev, &sc->bcma_bus, -1,
+	    bhnd_generic_probecfg_table, regs, BHND_PCI_V2_BAR0_WIN0_OFFSET);
 
 	bus_release_resource(pci_dev, SYS_RES_MEMORY, rid, regs);
-
+	
 	if (error) {
-		device_printf(dev, "erom scan failed\n");
+		device_printf(dev, "failed to attach bcma device\n");
 		return (error);
 	}
 

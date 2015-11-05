@@ -52,4 +52,8 @@ extern devclass_t bcmab_devclass;
 #define	BCMA_DEVNAME	"bcma"	/**< bcma(4) device name */
 #define	BCMAB_DEVNAME	"bcmab"	/**< bcma(4) bridge device name */
 
+int	bcma_bus_attach(device_t dev, device_t *bcmabus, int unit,
+	    struct bhnd_probecfg pcfg_table[], struct resource *bcma_erom_res,
+	    bus_size_t bcma_erom_offset);
+
 #endif /* _BCMA_BCMAVAR_H_ */
