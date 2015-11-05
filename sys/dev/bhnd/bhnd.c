@@ -78,65 +78,6 @@ static const struct bhnd_nomatch {
 };
 
 /**
- * Find the first @p class child device on @p dev.
- * 
- * @param parent The bhnd-compatible bus to be searched.
- * @param class The device class to match on.
- * 
- * @retval device_t if a matching child device is found.
- * @retval NULL if no matching child device is found.
- */
-device_t
-bhnd_find_child(device_t dev, bhnd_devclass_t class)
-{
-	struct bhnd_core_match md = {
-		.vendor = BHND_MFGID_INVALID,
-		.device = BHND_COREID_INVALID,
-		.hwrev.start = BHND_HWREV_INVALID,
-		.hwrev.end = BHND_HWREV_INVALID,
-		.class = class,
-		.unit = -1
-	};
-
-	return bhnd_match_child(dev, &md);
-}
-
-/**
- * Find the first child device on @p dev that matches @p desc.
- * 
- * @param parent The bhnd-compatible bus to be searched.
- * @param desc A match descriptor.
- * 
- * @retval device_t if a matching child device is found.
- * @retval NULL if no matching child device is found.
- */
-device_t
-bhnd_match_child(device_t dev, struct bhnd_core_match *desc)
-{
-	device_t	*devlistp;
-	device_t	 match;
-	int		 devcnt;
-	int		 error;
-
-	error = device_get_children(dev, &devlistp, &devcnt);
-	if (error != 0)
-		return (NULL);
-
-	match = NULL;
-	for (int i = 0; i < devcnt; i++) {
-		device_t dev = devlistp[i];
-		if (bhnd_device_matches(dev, desc)) {
-			match = dev;
-			goto done;
-		}
-	}
-
-done:
-	free(devlistp, M_TEMP);
-	return match;
-}
-
-/**
  * Helper function for implementing BUS_PRINT_CHILD().
  * 
  * This implementation requests the device's struct resource_list via

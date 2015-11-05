@@ -88,6 +88,12 @@ const char		*bhnd_vendor_name(uint16_t vendor);
 const char 		*bhnd_core_name(uint16_t vendor, uint16_t device);
 bhnd_devclass_t		 bhnd_core_class(uint16_t vendor, uint16_t device);
 
+device_t		bhnd_match_child(device_t dev,
+			    struct bhnd_core_match *desc);
+
+device_t		bhnd_find_child(device_t dev,
+			    bhnd_devclass_t class);
+
 bool			 bhnd_device_matches(device_t dev,
 			     struct bhnd_core_match *desc);
 

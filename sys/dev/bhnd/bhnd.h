@@ -40,12 +40,6 @@
 #include "bhnd_devinfo.h"
 #include "bhndvar.h"
 
-device_t		bhnd_match_child(device_t dev,
-			    struct bhnd_core_match *desc);
-
-device_t		bhnd_find_child(device_t dev,
-			    bhnd_devclass_t class);
-
 /**
 * A bhnd(4) bus resource.
 * 
