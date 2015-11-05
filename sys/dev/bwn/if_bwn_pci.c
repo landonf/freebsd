@@ -99,7 +99,7 @@ bwn_pci_attach(device_t dev)
 static int
 bwn_pci_detach(device_t dev)
 {
-	return (0);
+	return (bus_generic_detach(dev));
 }
 
 static void
