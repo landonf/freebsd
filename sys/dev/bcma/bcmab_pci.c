@@ -124,4 +124,4 @@ bcmab_pci_detach(device_t dev)
 	return (bhndb_pci_generic_detach(dev));
 }
 
-BHND_PCIEB_DECLARE_DRIVER(bcmab_pci, bcmab);
+BHNDB_PCI_DECLARE_DRIVER(bcmab_pci, bcmab);

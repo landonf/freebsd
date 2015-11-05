@@ -121,7 +121,7 @@ struct bcma_pci_regwin {
  * @param dname The device/driver name (e.g. `bcmab_pci`)
  * @param dclass The device class name (e.g. `bcma`)
  */
-#define	BHND_PCIEB_DECLARE_DRIVER(dname,dclass) \
+#define	BHNDB_PCI_DECLARE_DRIVER(dname,dclass) \
 static device_method_t __CONCAT(dname,_methods)[] = { \
 	/* Device interface */ \
 	DEVMETHOD(device_probe,			__CONCAT(dname,_probe)),		\
