@@ -47,6 +47,7 @@ __FBSDID("$FreeBSD$");
 
 #include "bcmareg.h"
 #include "bcmavar.h"
+#include "bcma_private.h"
 #include "bcmab_pci.h"
 
 struct bcmab_pci_softc {

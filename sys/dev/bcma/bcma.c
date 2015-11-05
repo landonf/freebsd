@@ -42,6 +42,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhnd.h>
 
 #include "bcmavar.h"
+#include "bcma_private.h"
 
 MALLOC_DEFINE(M_BCMA, "bcma", "BCMA bus data structures");
 

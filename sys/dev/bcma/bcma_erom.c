@@ -42,8 +42,9 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhnd.h>
 #include "bcmavar.h"
 
-#include "bcma_dmp.h"
 #include "bcmavar.h"
+#include "bcma_dmp.h"
+#include "bcma_private.h"
 
 // XXX for temporary PrimeCell PeripherialID code
 #include <dev/pci/pcireg.h>
