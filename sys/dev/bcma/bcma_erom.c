@@ -84,6 +84,10 @@ static int		 erom_scan_port_regions(device_t bus,
 			     struct resource *erom_res,
 			     bus_size_t erom_end, bus_size_t * const offset);
 
+static int		 erom_cmp_core_idx(const void *a, const void *b);
+static int		 erom_next_core_unit(device_t dev, uint16_t vendor,
+			     uint16_t device, int *unit);
+
 static int		 erom_scan_core(device_t bus, u_int core_index,
 			     struct resource *erom_res, bus_size_t erom_start,
 			     bus_size_t erom_end, bus_size_t * const offset,
@@ -380,6 +384,67 @@ cleanup:
 	return error;
 }
 
+
+/*
+ * Quick sort callout for comparing bcma devices by core index.
+ */
+static int
+erom_cmp_core_idx(const void *a, const void *b)
+{
+	struct bcma_devinfo	*dinfoA, *dinfoB;
+
+	dinfoA = device_get_ivars(*(device_t *) a);
+	dinfoB = device_get_ivars(*(device_t *) b);
+
+	if (dinfoA->cfg.core_index < dinfoB->cfg.core_index)
+		return (-1);
+	else if (dinfoA->cfg.core_index > dinfoB->cfg.core_index)
+		return (1);
+	else
+		return (0);
+}
+
+
+/**
+ * Determine the next available unit number for the given vendor/device pair.
+ * 
+ * @param dev The bcma bus device.
+ * @param vendor The device vendor
+ * @param evice The device identifier
+ * @param[out] unit On success, the next available unit.
+ * 
+ * @retval 0 success
+ * @retval non-zero an error occured fetching the device list
+ */
+static int
+erom_next_core_unit(device_t dev, uint16_t vendor, uint16_t device, int *unit)
+{
+	struct bcma_devinfo	*dinfo;
+	device_t		*devlist;
+	int			 devcount;
+	int			 error;
+
+	/* Fetch all previously added children */
+	error = device_get_children(dev, &devlist, &devcount);
+	if (error)
+		return (error);
+	
+	/* Sort by core index */
+	if (devcount)
+		qsort(devlist, devcount, sizeof(*devlist), erom_cmp_core_idx);
+
+	/* Determine the next unit number */
+	*unit = 0;
+	for (int i = 0; i < devcount; i++) {
+		dinfo = device_get_ivars(devlist[i]);
+		if (dinfo->cfg.vendor == vendor && dinfo->cfg.device == device)
+			*unit += 1;
+	}
+
+	free(devlist, M_TEMP);
+	return (0);
+}
+
 /**
  * Parse a core entry from the EROM table.
  * 
@@ -471,13 +536,20 @@ erom_scan_core(device_t bus, u_int core_index, struct resource *erom_res,
 	dinfo->cfg.num_mports = num_mport;
 	dinfo->cfg.num_wports = num_mwrap + num_swrap;
 
+	/* Assign a core unit number */
+	error = erom_next_core_unit(bus, dinfo->cfg.vendor, dinfo->cfg.device,
+	    &dinfo->cfg.core_unit);
+	if (error)
+		goto failed;
+
 	if (bootverbose) {
 		device_printf(bus, 
-			    "core%u: %s %s (cid=%hx, rev=%hhu)\n",
+			    "core%u: %s %s (cid=%hx, rev=%hhu, unit=%d)\n",
 			    core_index,
 			    bhnd_vendor_name(dinfo->cfg.vendor),
 			    bhnd_core_name(dinfo->cfg.vendor, dinfo->cfg.device), 
-			    dinfo->cfg.device, dinfo->cfg.revid);
+			    dinfo->cfg.device, dinfo->cfg.revid,
+			    dinfo->cfg.core_unit);
 	}
 	*offset += 4;
 
@@ -734,14 +806,13 @@ bcma_scan_erom(device_t dev, struct bhnd_probecfg pcfg_table[],
 		/* Add the child device */
 		child = device_add_child_ordered(dev, probe_order, probe_name, -1);
 		if (child == NULL) {
-			bcma_free_dinfo(dinfo);
-			return (ENXIO);
+			error = ENXIO;
+			goto failed;
 		}
-		
+
 		/* The child device now owns the dinfo pointer */
 		device_set_ivars(child, dinfo);
-
-
+		dinfo = NULL;
 
 		// XXX Debugging code to print PrimeCell/Peripherial IDs
 		struct bcma_sport *sp;
@@ -773,4 +844,10 @@ bcma_scan_erom(device_t dev, struct bhnd_probecfg pcfg_table[],
 	}
 
 	return (0);
+	
+failed:
+	if (dinfo != NULL)
+		bcma_free_dinfo(dinfo);
+
+	return (error);
 }

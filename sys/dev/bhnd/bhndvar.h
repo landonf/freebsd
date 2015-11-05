@@ -70,26 +70,16 @@ int			 bhnd_generic_deactivate_bhnd_resource (device_t dev,
  * bhnd child instance variables
  */
 enum bhnd_device_vars {
-	/** Core designer's JEP-106 manufacturer ID. */ 
-	BHND_IVAR_VENDOR,
-	
-	/** Core part number (aka core ID). */
-	BHND_IVAR_DEVICE,
-	
-	/** Core revision identifier. */
-	BHND_IVAR_REVID,
-
-	/** Core class. */
-	BHND_IVAR_DEVICE_CLASS,
-	
-	/** Vendor name. */
-	BHND_IVAR_VENDOR_NAME,
-	
-	/** Core name. */
-	BHND_IVAR_DEVICE_NAME,
-
-	/** Core number */
-	BHND_IVAR_CORE_INDEX
+	BHND_IVAR_VENDOR,	/**< Designer's JEP-106 manufacturer ID. */
+	BHND_IVAR_DEVICE,	/**< Part number */
+	BHND_IVAR_REVID,	/**< Core revision */
+	BHND_IVAR_DEVICE_CLASS,	/**< Core class (@sa bhnd_devclass_t) */
+	BHND_IVAR_VENDOR_NAME,	/**< Core vendor name */
+	BHND_IVAR_DEVICE_NAME,	/**< Core name */
+	BHND_IVAR_CORE_INDEX,	/**< Bus-assigned core number */
+	BHND_IVAR_CORE_UNIT,	/**< Bus-assigned core unit number,
+				     assigned sequentially (starting at 0) for
+				     each vendor/device pair. */
 };
 
 /*
@@ -105,6 +95,7 @@ BHND_ACCESSOR(class,		DEVICE_CLASS,	bhnd_devclass_t);
 BHND_ACCESSOR(vendor_name,	VENDOR_NAME,	const char *);
 BHND_ACCESSOR(device_name,	DEVICE_NAME,	const char *);
 BHND_ACCESSOR(core_index,	CORE_INDEX,	u_int);
+BHND_ACCESSOR(core_unit,	CORE_UNIT,	int);
 
 #undef	BHND_ACCESSOR
 

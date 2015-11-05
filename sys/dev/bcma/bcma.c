@@ -132,6 +132,9 @@ bcma_generic_read_ivar(device_t dev, device_t child, int index, uintptr_t *resul
 	case BHND_IVAR_CORE_INDEX:
 		*result = cfg->core_index;
 		return (0);
+	case BHND_IVAR_CORE_UNIT:
+		*result = cfg->core_unit;
+		return (0);
 	default:
 		return (ENOENT);
 	}
@@ -148,6 +151,7 @@ bcma_generic_write_ivar(device_t dev, device_t child, int index, uintptr_t value
 	case BHND_IVAR_VENDOR_NAME:
 	case BHND_IVAR_DEVICE_NAME:
 	case BHND_IVAR_CORE_INDEX:
+	case BHND_IVAR_CORE_UNIT:
 		return (EINVAL);
 	default:
 		return (ENOENT);

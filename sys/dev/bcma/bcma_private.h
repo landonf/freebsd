@@ -137,6 +137,7 @@ struct bcma_corecfg {
 	uint16_t	device;		/**< IP core ID/part number */
 	uint8_t		revid;		/**< IP core revision identifier */
 	u_int		core_index;	/**< core index (bus-unique) */
+	int		core_unit;	/**< core unit number */
 
 	u_long		num_mports;	/**< number of master port descriptors. */
 	struct bcma_mport_list	mports;	/**< master port descriptors */
