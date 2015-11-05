@@ -42,24 +42,24 @@ __FBSDID("$FreeBSD$");
 #include <dev/pci/pcireg.h>
 #include <dev/pci/pcivar.h>
 
-#include <dev/bhnd/bhnd_pcieb.h>
+#include <dev/bhnd/bhndb_pci.h>
 #include <dev/bhnd/bhnd_pcireg.h>
 
 #include "bcmareg.h"
 #include "bcmavar.h"
-#include "bcma_pcieb.h"
+#include "bcmab_pci.h"
 
-struct bcma_pcieb_softc {
-	struct bhnd_pcieb_softc	bhnd_softc;	/**< required bhnd_pcieb state */
+struct bcmab_pci_softc {
+	struct bhndb_pci_softc	bhnd_softc;	/**< required bhndb_pci state */
 	device_t bcma_bus;			/**< the bridged bcma(4) bus */
 };
 
 static int
-bcma_pcieb_probe(device_t dev)
+bcmab_pci_probe(device_t dev)
 {
 	int error;
 	
-	if ((error = bhnd_pcieb_generic_probe(dev)) > 0)
+	if ((error = bhndb_pci_generic_probe(dev)) > 0)
 		return (error);
 
 	device_set_desc(dev, "PCI-BCMA bridge");
@@ -67,9 +67,9 @@ bcma_pcieb_probe(device_t dev)
 }
 
 static int
-bcma_pcieb_attach(device_t dev)
+bcmab_pci_attach(device_t dev)
 {
-	struct bcma_pcieb_softc	*sc;
+	struct bcmab_pci_softc	*sc;
 	struct resource		*regs;
 	device_t		 pci_dev;
 	bus_addr_t		 erom_table;
@@ -115,13 +115,13 @@ bcma_pcieb_attach(device_t dev)
 	}
 
 	/* Delegate remainder to the generic implementation */ 
-	return (bhnd_pcieb_generic_attach(dev));
+	return (bhndb_pci_generic_attach(dev));
 }
 
 static int
-bcma_pcieb_detach(device_t dev)
+bcmab_pci_detach(device_t dev)
 {
-	return (bhnd_pcieb_generic_detach(dev));
+	return (bhndb_pci_generic_detach(dev));
 }
 
-BHND_PCIEB_DECLARE_DRIVER(bcma_pcieb, bcmab);
+BHND_PCIEB_DECLARE_DRIVER(bcmab_pci, bcmab);

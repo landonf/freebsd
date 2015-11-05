@@ -26,11 +26,11 @@
 extern devclass_t bhndb_devclass;
 
 /**
- * BHND PCI endpoint bridge per-instance state.
+ * BHND PCI bridge per-instance state.
  * 
  * This must be the first member of any subclass' softc.
  */
-struct bhnd_pcieb_softc {
+struct bhndb_pci_softc {
 	device_t		 dev;		/**< bridge device */
 	device_t		 pci_dev;	/**< PCI parent device */
 	struct resource		**pci_res;	/**< PCI device resources */
@@ -38,41 +38,41 @@ struct bhnd_pcieb_softc {
 	struct rman		 mem_rman;	/**< bus memory resource manager */
 };
 
-int			 bhnd_pcieb_generic_probe(device_t dev);
-int			 bhnd_pcieb_generic_attach(device_t dev);
-int			 bhnd_pcieb_generic_detach(device_t dev);
-int			 bhnd_pcieb_generic_suspend(device_t dev);
-int			 bhnd_pcieb_generic_resume(device_t dev);
+int			 bhndb_pci_generic_probe(device_t dev);
+int			 bhndb_pci_generic_attach(device_t dev);
+int			 bhndb_pci_generic_detach(device_t dev);
+int			 bhndb_pci_generic_suspend(device_t dev);
+int			 bhndb_pci_generic_resume(device_t dev);
 
-struct resource		*bhnd_pcieb_generic_alloc_resource(device_t dev,
+struct resource		*bhndb_pci_generic_alloc_resource(device_t dev,
 			     device_t child, int type, int *rid, u_long start,
 			     u_long end, u_long count, u_int flags);
 
-int			 bhnd_pcieb_generic_release_resource(device_t dev,
+int			 bhndb_pci_generic_release_resource(device_t dev,
 			     device_t child, int type, int rid,
 			     struct resource *res);
 
-int			 bhnd_pcieb_generic_activate_resource(device_t dev,
+int			 bhndb_pci_generic_activate_resource(device_t dev,
 			     device_t child, int type, int rid,
 			     struct resource *r);
 
-int			 bhnd_pcieb_generic_deactivate_resource(device_t dev,
+int			 bhndb_pci_generic_deactivate_resource(device_t dev,
 			     device_t child, int type, int rid,
 			     struct resource *r);
 
-struct bhnd_resource	*bhnd_pcieb_generic_alloc_bhnd_resource(device_t dev,
+struct bhnd_resource	*bhndb_pci_generic_alloc_bhnd_resource(device_t dev,
 			     device_t child, int type, int *rid, u_long start,
 			     u_long end, u_long count, u_int flags);
 
-int			 bhnd_pcieb_generic_release_bhnd_resource(device_t dev,
+int			 bhndb_pci_generic_release_bhnd_resource(device_t dev,
 			     device_t child, int type, int rid,
 			     struct bhnd_resource *r);
 
-int			 bhnd_pcieb_generic_activate_bhnd_resource(device_t dev,
+int			 bhndb_pci_generic_activate_bhnd_resource(device_t dev,
 			     device_t child, int type, int rid,
 			     struct bhnd_resource *r);
 
-int			 bhnd_pcieb_generic_deactivate_bhnd_resource(
+int			 bhndb_pci_generic_deactivate_bhnd_resource(
 			     device_t dev, device_t child, int type, int rid,
 			     struct bhnd_resource *r);
 
@@ -116,10 +116,9 @@ struct bcma_pci_regwin {
 };
 
 /**
- * Simple declaration of a bhnd PCI/PCIe core-based endpoint bridge
- * bus driver.
+ * Simple declaration of a bhnd PCI/PCIe core-based endpoint bridge driver.
  * 
- * @param dname The device/driver name (e.g. `bcma_pcih`)
+ * @param dname The device/driver name (e.g. `bcmab_pci`)
  * @param dclass The device class name (e.g. `bcma`)
  */
 #define	BHND_PCIEB_DECLARE_DRIVER(dname,dclass) \
@@ -129,20 +128,20 @@ static device_method_t __CONCAT(dname,_methods)[] = { \
 	DEVMETHOD(device_attach,		__CONCAT(dname,_attach)),		\
 	DEVMETHOD(device_detach,		__CONCAT(dname,_detach)),		\
 	DEVMETHOD(device_shutdown,		bus_generic_shutdown),			\
-	DEVMETHOD(device_suspend,		bhnd_pcieb_generic_suspend),		\
-	DEVMETHOD(device_resume,		bhnd_pcieb_generic_resume),		\
+	DEVMETHOD(device_suspend,		bhndb_pci_generic_suspend),		\
+	DEVMETHOD(device_resume,		bhndb_pci_generic_resume),		\
 											\
 	/* Bus interface */								\
-	DEVMETHOD(bus_alloc_resource,		bhnd_pcieb_generic_alloc_resource),	\
-	DEVMETHOD(bus_release_resource,		bhnd_pcieb_generic_release_resource),	\
-	DEVMETHOD(bus_activate_resource,	bhnd_pcieb_generic_activate_resource),	\
-	DEVMETHOD(bus_deactivate_resource,	bhnd_pcieb_generic_deactivate_resource),\
+	DEVMETHOD(bus_alloc_resource,		bhndb_pci_generic_alloc_resource),	\
+	DEVMETHOD(bus_release_resource,		bhndb_pci_generic_release_resource),	\
+	DEVMETHOD(bus_activate_resource,	bhndb_pci_generic_activate_resource),	\
+	DEVMETHOD(bus_deactivate_resource,	bhndb_pci_generic_deactivate_resource),	\
 											\
 	/* BHND interface */								\
-	DEVMETHOD(bhndbus_alloc_resource,	bhnd_pcieb_generic_alloc_bhnd_resource),\
-	DEVMETHOD(bhndbus_release_resource,	bhnd_pcieb_generic_release_bhnd_resource),	\
-	DEVMETHOD(bhndbus_activate_resource,	bhnd_pcieb_generic_activate_bhnd_resource),	\
-	DEVMETHOD(bhndbus_activate_resource,	bhnd_pcieb_generic_deactivate_bhnd_resource),	\
+	DEVMETHOD(bhndbus_alloc_resource,	bhndb_pci_generic_alloc_bhnd_resource),	\
+	DEVMETHOD(bhndbus_release_resource,	bhndb_pci_generic_release_bhnd_resource),	\
+	DEVMETHOD(bhndbus_activate_resource,	bhndb_pci_generic_activate_bhnd_resource),	\
+	DEVMETHOD(bhndbus_activate_resource,	bhndb_pci_generic_deactivate_bhnd_resource),	\
 											\
 	DEVMETHOD_END									\
 }; \

@@ -49,7 +49,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/pci/pcivar.h>
 
 #include <dev/bhnd/bhnd.h>
-#include <dev/bcma/bcma_pcieb.h>
+#include <dev/bcma/bcmab_pci.h>
 
 #include "if_bwn_pcivar.h"
 
@@ -138,7 +138,7 @@ static driver_t bwn_pci_driver = {
 };
 
 DRIVER_MODULE(bwn_pci, pci, bwn_pci_driver, bwn_devclass, NULL, NULL);
-DRIVER_MODULE(bcmab, bwn, bcma_pcieb_driver, bcmab_devclass, NULL, NULL);
+DRIVER_MODULE(bcmab, bwn, bcmab_pci_driver, bcmab_devclass, NULL, NULL);
 
 MODULE_DEPEND(bwn_pci, pci, 1, 1, 1);
 MODULE_DEPEND(bwn_pci, bcma, 1, 1, 1);

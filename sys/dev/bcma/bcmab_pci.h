@@ -29,11 +29,11 @@
  * $FreeBSD$
  */
 
-#ifndef _BCMA_BCMA_PCIEB_H_
-#define _BCMA_BCMA_PCIEB_H_
+#ifndef _BCMA_BCMAB_PCI_H_
+#define _BCMA_BCMAB_PCI_H_
 
 #include "bcmavar.h"
 
-DECLARE_CLASS(bcma_pcieb_driver);
+DECLARE_CLASS(bcmab_pci_driver);
 
 #endif /* _BCMA_BCMA_PCIEB_H_ */
