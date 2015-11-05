@@ -77,43 +77,53 @@ int			 bhndb_pci_generic_deactivate_bhnd_resource(
 			     struct bhnd_resource *r);
 
 /**
- * Register window types.
+ * BHNDB PCI window types.
  */
 typedef enum {
-	BCMA_PCI_WINTYPE_FIXED,	/**< A fixed window that maps a specific core
-				 *   type */
-	BCMA_PCI_WINTYPE_DYN	/**< A dynamically configurable window */
-} bcma_pci_wintype_t;
+	BHNDB_PCIWIN_TYPE_CORE,		/**< Fixed mapping of a core register block. */
+	BHNDB_PCIWIN_TYPE_SPROM,	/**< Fixed mapping PCI SPROM shadow */
+	BHNDB_PCIWIN_TYPE_DYN		/**< A dynamically configurable window */
+} bhndb_pciwin_type_t;
 
 /**
- * Defines a register window within a BCMA PCI BAR resource that can be
- * adjusted at runtime to map address regions from the SoC interconnect.
+ * BHNDB PCI window definition.
  */
-struct bcma_pci_regwin {
-	u_int			pci_res;	/**< pci_res[] index of the BAR
-						     in which this register
-						     window is mapped */
-
-	bcma_pci_wintype_t	win_type;	/** register window type */
+struct bhndb_pciwin {
+	u_int			pci_res;	/**< pci_res[] index of the BAR in which this register window is mapped */
+	bus_size_t		offset;		/**< offset of the register block within the PCI BAR */
+	bus_size_t		size;		/**< size of the register block */
+	bhndb_pciwin_type_t	win_type;	/** window type */
 	union {
-		/** BCMA_PCI_WINTYPE_DYN configuration */
+		/** BHNDB_PCIWIN_TYPE_CORE configuration */
+		struct {
+			bhnd_devclass_t	class;	/**< mapped cores' class */
+			u_int		port;	/**< mapped port number */
+			u_int		region;	/**< mapped region number */
+		} core;
+
+		/** BHNDB_PCIWIN_TYPE_SPROM configuration */
+		struct {} sprom;
+
+		/** BHNDB_PCIWIN_TYPE_DYN configuration */
 		struct {
 			bus_size_t	cfg_offset;	/**< window config offset within the pci
 							     config space. */
-		};
-		
-		/** BCMA_PCI_WINTYPE_FIXED configuration */
-		struct {
-			bhnd_devclass_t	bhnd_class;	/**< mapped cores' class */
-			u_int		port_num;	/**< mapped port number */
-			u_int		region_num;	/**< mapped region number */
-		};
+		} dynamic;
 	};
-
-	bus_size_t	win_offset;	/**< offset of the register block
-					 *   within the PCI resource at */
-	bus_size_t	win_size;	/**< size of the register block */
 };
+
+/**
+ * BHNDB PCI device definition.
+ * 
+ * Used for automatic configuration of Broadcom PCI core resources.
+ */
+struct bhndb_pci_devcfg {
+	const struct bhnd_core_match	*req_cores;		/**< required cores */
+	size_t				 num_req_cores;		/**< number of required cores */
+	const struct bcma_pci_regwin	*register_windows;	/**< device register windows */
+	size_t				 num_register_windows;	/**< number of register windows */
+};
+
 
 /**
  * Simple declaration of a bhnd PCI/PCIe core-based endpoint bridge driver.
