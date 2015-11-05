@@ -4,7 +4,7 @@
 
 KMOD=	bcma
 SRCS=	bcma.c bcmareg.h bcmavar.h bcma_private.h \
-	bcmab_pci.c bcmab_pci.h \
+	bcmab_pci.c bcmab_pcivar.h \
 	bcma_erom.c bcma_dmp.h
 SRCS+=	device_if.h bus_if.h bhndbus_if.h
 

@@ -52,7 +52,7 @@ __FBSDID("$FreeBSD$");
 #include "bhndvar.h"
 #include "bhndreg.h"
 
-#include "bhndb_pci.h"
+#include "bhndb_pcivar.h"
 #include "bhnd_pcireg.h"
 
 devclass_t bhndb_devclass;

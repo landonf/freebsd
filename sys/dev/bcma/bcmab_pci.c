@@ -42,13 +42,13 @@ __FBSDID("$FreeBSD$");
 #include <dev/pci/pcireg.h>
 #include <dev/pci/pcivar.h>
 
-#include <dev/bhnd/bhndb_pci.h>
+#include <dev/bhnd/bhndb_pcivar.h>
 #include <dev/bhnd/bhnd_pcireg.h>
 
 #include "bcmareg.h"
 #include "bcmavar.h"
 #include "bcma_private.h"
-#include "bcmab_pci.h"
+#include "bcmab_pcivar.h"
 
 struct bcmab_pci_softc {
 	struct bhndb_pci_softc	bhnd_softc;	/**< required bhndb_pci state */
