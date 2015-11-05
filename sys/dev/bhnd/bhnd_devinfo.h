@@ -81,6 +81,7 @@ struct bhnd_core_match {
 	uint16_t		device;	/**< required core ID or BHND_COREID_INVALID */
 	struct bhnd_hwrev_match	hwrev;	/**< matching revisions. */
 	bhnd_devclass_t		class;	/**< required class or BHND_DEVCLASS_INVALID */
+	int			unit;	/**< required core unit, or -1 */
 };
 
 const char		*bhnd_vendor_name(uint16_t vendor);

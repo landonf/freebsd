@@ -270,6 +270,9 @@ bhnd_device_matches(device_t dev, struct bhnd_core_match *desc)
 	    desc->device != bhnd_get_device(dev))
 		return false;
 
+	if (desc->unit != -1 && desc->unit != bhnd_get_core_unit(dev))
+		return false;
+
 	if (desc->hwrev.start != BHND_HWREV_INVALID &&
 	    desc->hwrev.start > bhnd_get_revid(dev))
 		return false;

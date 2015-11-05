@@ -90,11 +90,12 @@ device_t
 bhnd_find_child(device_t dev, bhnd_devclass_t class)
 {
 	struct bhnd_core_match md = {
-		.vendor = BHND_MFGID_BCM,
+		.vendor = BHND_MFGID_INVALID,
 		.device = BHND_COREID_INVALID,
 		.hwrev.start = BHND_HWREV_INVALID,
 		.hwrev.end = BHND_HWREV_INVALID,
-		.class = class
+		.class = class,
+		.unit = -1
 	};
 
 	return bhnd_match_child(dev, &md);
