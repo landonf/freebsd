@@ -49,11 +49,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/pci/pcivar.h>
 
 #include <dev/bhnd/bhnd.h>
-#include <dev/bhnd/bhnd_pci.h>
-#include <dev/bhnd/bhnd_pcireg.h>
-
-#include <dev/bcma/bcmavar.h>
-#include <dev/bcma/bcmareg.h>
+#include <dev/bcma/bcma_pcieb.h>
 
 #include "if_bwn_pcivar.h"
 
@@ -67,105 +63,6 @@ static const struct bwn_pci_device {
 	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4331_D11N5G,	"Broadcom BCM4331 802.11a/b/g/n (5GHz) Wireless" },
 	{ 0, 0, NULL }
 };
-
-static struct resource_spec bwn_pci_res_spec[BCMA_PCI_MAX_RES+1] = {
-	{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
-	{ SYS_RES_MEMORY,	PCIR_BAR(1),	RF_ACTIVE },
-	{ -1,			0,		0 }
-};
-
-
-#define BPCI_RES_BAR0	0	/* bar0 pci_res index */
-#define BPCI_RES_BAR1	1	/* bar1 pci_res index */
-
-#if 0
-static const struct bcma_pci_regwin bcma_pci_v0_regwin[] = {
-	{
-		.pci_res	= BPCI_RES_BAR0,
-		.win_type	= BCMA_PCI_WINTYPE_DYN,
-		.cfg_offset	= BHND_PCI_BAR0_WIN0,
-		.win_offset	= BHND_PCI_V0_BAR0_WIN0_OFFSET,
-		.win_size	= BHND_PCI_V0_BAR0_WIN0_SIZE
-	},
-	{
-		.bhnd_class	= BHND_DEVCLASS_PCI,
-		.win_type	= BCMA_PCI_WINTYPE_FIXED,
-		.port_num	= 0,
-		.region_num	= 0,
-		.pci_res	= BPCI_RES_BAR0,
-		.win_offset	= BHND_PCI_V0_BAR0_PCIREGS_OFFSET,
-		.win_size	= BHND_PCI_V0_BAR0_PCIREGS_SIZE
-	}
-};
-#define	BCMA_PCI_V0_REGWIN_NUM \
-    (sizeof(bcma_pci_v0_regwin) / sizeof(bcma_pci_v0_regwin[0])
-
-static const struct bcma_pci_regwin bcma_pci_v1_windows[] = {
-	{
-		.pci_res	= BPCI_RES_BAR0,
-		.win_type	= BCMA_PCI_WINTYPE_DYN,
-		.cfg_offset	= BHND_PCI_BAR0_WIN0,
-		.win_offset	= BHND_PCI_V1_BAR0_WIN0_OFFSET,
-		.win_size	= BHND_PCI_V1_BAR0_WIN0_SIZE
-	},
-	{
-		.bhnd_class	= BHND_DEVCLASS_PCI,
-		.win_type	= BCMA_PCI_WINTYPE_FIXED,
-		.port_num	= 0,
-		.region_num	= 0,
-		.pci_res	= BPCI_RES_BAR0,
-		.win_offset	= BHND_PCI_V1_BAR0_PCIREGS_OFFSET,
-		.win_size	= BHND_PCI_V1_BAR0_PCIREGS_SIZE
-	}
-};
-#define	BCMA_PCI_V1_REGWIN_NUM \
-    (sizeof(bcma_pci_v1_regwin) / sizeof(bcma_pci_v1_regwin[0])
-
-static const struct bcma_pci_regwin bcma_pci_v2_windows[] = {
-	{
-		.pci_res	= BPCI_RES_BAR0,
-		.win_type	= BCMA_PCI_WINTYPE_DYN,
-		.cfg_offset	= BHND_PCI_BAR0_WIN0,
-		.win_offset	= BHND_PCI_V2_BAR0_WIN0_OFFSET,
-		.win_size	= BHND_PCI_V2_BAR0_WIN0_SIZE
-	},
-	{
-		.pci_res	= BPCI_RES_BAR0,
-		.win_type	= BCMA_PCI_WINTYPE_DYN,
-		.cfg_offset	= BHND_PCI_BAR0_WIN1,
-		.win_offset	= BHND_PCI_V2_BAR0_WIN1_OFFSET,
-		.win_size	= BHND_PCI_V2_BAR0_WIN1_SIZE
-	},
-	{
-		.bhnd_class	= BHND_DEVCLASS_PCI,
-		.win_type	= BCMA_PCI_WINTYPE_FIXED,
-		.port_num	= 0,
-		.region_num	= 0,
-		.pci_res	= BPCI_RES_BAR0,
-		.win_offset	= BHND_PCI_V2_BAR0_PCIREGS_OFFSET,
-		.win_size	= BHND_PCI_V2_BAR0_PCIREGS_SIZE
-	},
-	{
-		.bhnd_class	= BHND_DEVCLASS_CC,
-		.win_type	= BCMA_PCI_WINTYPE_FIXED,
-		.port_num	= 0,
-		.region_num	= 0,
-		.pci_res	= BPCI_RES_BAR0,
-		.win_offset	= BHND_PCI_V2_BAR0_CCREGS_OFFSET,
-		.win_size	= BHND_PCI_V2_BAR0_CCREGS_SIZE
-	}
-};
-#define	BCMA_PCI_V2_REGWIN_NUM \
-    (sizeof(bcma_pci_v2_regwin) / sizeof(bcma_pci_v2_regwin[0])
-#endif
-
-#define BMEM_RES_CHIPC	BPCI_RES_BAR0
-
-#define bcma_bar_read(res, base, offset, size) \
-	bus_read_ ## size (res, (base) + (offset))
-
-#define bcma_read_chipc(sc, offset, size) \
-	bcma_bar_read(sc->pci_res[BPCI_RES_BAR0], BHND_PCI_V2_BAR0_CCREGS_OFFSET, offset, size)
 
 static int
 bwn_pci_probe(device_t dev)
@@ -186,76 +83,22 @@ static int
 bwn_pci_attach(device_t dev)
 {
 	struct bwn_pci_softc	*sc;
-	uint32_t		 erom_table;
-	int			 error;
-	bool			 free_mem_rman = false;
-	bool			 free_pci_res = false;
 
 	sc = device_get_softc(dev);
-	sc->bcma_dev = dev;
-	pci_enable_busmaster(dev);
-	
-	/* Set up a resource manager for the device's address space. */
-	sc->mem_rman.rm_start = 0;
-	sc->mem_rman.rm_end = BUS_SPACE_MAXADDR_32BIT;
-	sc->mem_rman.rm_type = RMAN_ARRAY;
-	sc->mem_rman.rm_descr = "bmca bus addresses";
-	
-	if (rman_init(&sc->mem_rman) ||
-	    rman_manage_region(&sc->mem_rman, 0, BUS_SPACE_MAXADDR_32BIT))
-	{
-		device_printf(dev, "could not initialize mem_rman\n");
-		return (ENXIO);
-	} else {
-		free_mem_rman = true;
-	}
-
-
-	/* Map our PCI device resources. */
-	error = bus_alloc_resources(dev, bwn_pci_res_spec, sc->pci_res);
-	if (error) {
-		device_printf(dev, "could not allocate PCI resources\n");
-		goto failed;
-	} else {
-		free_pci_res = true;
-	}
+	sc->bwn_dev = dev;
 
 	/* Attach our bcma bus */
-	sc->bhnd_dev = device_add_child(dev, BCMA_DEVNAME, 0);
-	if (sc->bhnd_dev == NULL) {
-		error = ENXIO;
-		goto failed;
-	}
-	
-	/* Locate and map the bcma bus enumeration table into WIN1. A pointer
-	 * to the table can be found within the ChipCommon register map. */
-	erom_table = bcma_read_chipc(sc, BCMA_CC_EROM_ADDR, 4);
-	pci_write_config(dev, BHND_PCI_BAR0_WIN1, erom_table, 4);
-
-	/* Enumerate and add all bcma devices. */
-	error = bcma_scan_erom(sc->bhnd_dev, bhnd_generic_probecfg_table,
-	    sc->pci_res[BMEM_RES_CHIPC], BHND_PCI_V2_BAR0_WIN1_OFFSET);
+	sc->bhnd_dev = device_add_child(dev, BCMAB_DEVNAME, 0);
+	if (sc->bhnd_dev == NULL)
+		return (ENXIO);
 
 	/* Let the generic implementation probe all added children. */
 	return (bus_generic_attach(dev));
-
-failed:
-	if (free_mem_rman)
-		rman_fini(&sc->mem_rman);
-
-	if (free_pci_res)
-		bus_release_resources(dev, bwn_pci_res_spec, sc->pci_res);
-
-	return (error);
 }
 
 static int
 bwn_pci_detach(device_t dev)
 {
-	struct bwn_pci_softc *sc = device_get_softc(dev);
-
-	bus_release_resources(dev, bwn_pci_res_spec, sc->pci_res);
-
 	return (0);
 }
 
@@ -271,23 +114,6 @@ bwn_pci_probe_nomatch(device_t dev, device_t child)
 	device_printf(dev, "<%s> (no driver attached)\n", name);
 }
 
-static struct rman *
-bwn_pci_get_rman(device_t dev, int type)
-{
-	struct bwn_pci_softc *sc = device_get_softc(dev);
-
-	switch (type) {
-	case SYS_RES_MEMORY:
-		return &sc->mem_rman;
-	case SYS_RES_IRQ:
-		// TODO
-		// return &sc->irq_rman;
-		return (NULL);
-	default:
-		return (NULL);
-	};
-}
-
 static device_method_t bwn_pci_methods[] = {
 	/* Device interface */ \
 	DEVMETHOD(device_probe,			bwn_pci_probe),
@@ -298,24 +124,7 @@ static device_method_t bwn_pci_methods[] = {
 	DEVMETHOD(device_resume,		bus_generic_resume), // TODO
 	
 	/* Bus interface */
-	DEVMETHOD(bus_print_child,		bus_generic_print_child),
-	DEVMETHOD(bus_probe_nomatch,		bwn_pci_probe_nomatch), // TODO
-	DEVMETHOD(bus_read_ivar,		bus_generic_read_ivar),
-	DEVMETHOD(bus_write_ivar,		bus_generic_write_ivar),
-
-	//DEVMETHOD(bus_get_resource_list,	TODO),
-	// TODO
-	DEVMETHOD(bus_set_resource,		bus_generic_rl_set_resource),
-	DEVMETHOD(bus_get_resource,		bus_generic_rl_get_resource),
-	DEVMETHOD(bus_delete_resource,		bus_generic_rl_delete_resource),
-	DEVMETHOD(bus_alloc_resource,		bus_generic_rl_alloc_resource),
-	DEVMETHOD(bus_adjust_resource,		bus_generic_adjust_resource),
-	DEVMETHOD(bus_release_resource,		bus_generic_rl_release_resource),
-	DEVMETHOD(bus_activate_resource,	bus_generic_activate_resource),
-	DEVMETHOD(bus_deactivate_resource,	bus_generic_deactivate_resource),
-
-	/* BHND interface */
-	DEVMETHOD(bhndbus_get_rman,		bwn_pci_get_rman), // TODO
+	DEVMETHOD(bus_probe_nomatch,		bwn_pci_probe_nomatch),
 
 	DEVMETHOD_END
 };
@@ -329,7 +138,7 @@ static driver_t bwn_pci_driver = {
 };
 
 DRIVER_MODULE(bwn_pci, pci, bwn_pci_driver, bwn_devclass, NULL, NULL);
-DRIVER_MODULE(bcma, bwn, bcma_driver, bcma_devclass, NULL, NULL);
+DRIVER_MODULE(bcmab, bwn, bcma_pcieb_driver, bcmab_devclass, NULL, NULL);
 
 MODULE_DEPEND(bwn_pci, pci, 1, 1, 1);
 MODULE_DEPEND(bwn_pci, bcma, 1, 1, 1);

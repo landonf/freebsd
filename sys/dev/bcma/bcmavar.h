@@ -47,11 +47,12 @@
 
 MALLOC_DECLARE(M_BCMA);
 
+DECLARE_CLASS(bcma_driver);
 extern devclass_t bcma_devclass;
-extern driver_t bcma_driver;
+extern devclass_t bcmab_devclass;
 
-/** bcma(4) device name */
-#define	BCMA_DEVNAME	"bcma"
+#define	BCMA_DEVNAME	"bcma"	/**< bcma(4) device name */
+#define	BCMAB_DEVNAME	"bcmab"	/**< bcma(4) bridge device name */
 
 /** BCMA bus address. The backing bus supports 64-bit addressing. */
 typedef uint64_t	bcma_addr_t;

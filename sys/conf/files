@@ -1100,13 +1100,14 @@ dev/ath/ath_dfs/null/dfs_null.c	optional ath \
 dev/bce/if_bce.c		optional bce
 dev/bcma/bcma.c			optional bcma
 dev/bcma/bcma_erom.c		optional bcma
+dev/bcma/bcma_pcieb.c		optional bcma pci
 dev/bfe/if_bfe.c		optional bfe
 dev/bge/if_bge.c		optional bge
 dev/bhnd/bhnd.c			optional bhnd | bhndbus
 dev/bhnd/bhndbus_if.m		optional bhnd | bhndbus
 dev/bhnd/bhnd_devinfo.c		optional bhnd | bhndbus
-dev/bhnd/bhnd_pci.c		optional bhnd | bhndbus pci
-dev/bhnd/cores/bhnd_chipc.c	optional bhnd | bhndbus
+dev/bhnd/bhnd_pcieb.c		optional bhnd | bhndbus pci
+dev/bhnd/cores/bhnd_chipc.c	optional bhnd | bhnd_chipc
 dev/bktr/bktr_audio.c		optional bktr pci
 dev/bktr/bktr_card.c		optional bktr pci
 dev/bktr/bktr_core.c		optional bktr pci

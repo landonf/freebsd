@@ -36,6 +36,15 @@ HEADER {
 	struct bhnd_resource;
 }
 
+CODE {
+	static int
+	bhnd_null_get_port_rid(device_t dev, device_t child, u_int port_num,
+	    u_int region_num)
+	{
+		return (-1);
+	}
+}
+
 /**
  * Allocate a bhnd resource.
  *
@@ -51,7 +60,7 @@ METHOD struct bhnd_resource * alloc_resource {
 	u_long end;
 	u_long count;
 	u_int flags;
-};
+} DEFAULT bhnd_generic_alloc_bhnd_resource;
 
 /**
  * Release a bhnd resource.
@@ -65,7 +74,7 @@ METHOD int release_resource {
 	int type;
 	int rid;
 	struct bhnd_resource *res;
-};
+} DEFAULT bhnd_generic_release_bhnd_resource;
 
 /**
  * Activate a bhnd resource.
@@ -79,7 +88,7 @@ METHOD int activate_resource {
 	int type;
         int rid;
         struct bhnd_resource *r;
-};
+} DEFAULT bhnd_generic_activate_bhnd_resource;
 
 /**
  * Deactivate a bhnd resource.
@@ -93,22 +102,7 @@ METHOD int deactivate_resource {
         int type;
 	int rid;
         struct bhnd_resource *r;
-};
-
-/**
- * Return the resource manager for the given resource type.
- *
- * Used by drivers which use bhnd_pci_generic_alloc_resource() etc. to
- * implement their resource handling.
- *
- * @param dev The bus device.
- * @param type The resource type (e.g. SYS_RES_MEMORY, SYS_REQ_IRQ).
- */
-METHOD struct rman * get_rman {
-        device_t dev;
-	int type;
-};
-
+} DEFAULT bhnd_generic_deactivate_bhnd_resource;
 
 /**
  * Return the resource-ID for a port / region pair
@@ -125,4 +119,4 @@ METHOD int get_port_rid {
 	device_t child;
 	u_int port_num;
 	u_int region_num;
-};
+} DEFAULT bhnd_null_get_port_rid;

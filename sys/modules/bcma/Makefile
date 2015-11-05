@@ -4,6 +4,7 @@
 
 KMOD=	bcma
 SRCS=	bcma.c bcmareg.h bcmavar.h \
+	bcma_pcieb.c bcma_pcieb.h \
 	bcma_erom.c bcma_dmp.h
 SRCS+=	device_if.h bus_if.h bhndbus_if.h
 

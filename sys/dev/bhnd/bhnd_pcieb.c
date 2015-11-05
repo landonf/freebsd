@@ -52,35 +52,120 @@ __FBSDID("$FreeBSD$");
 #include "bhndvar.h"
 #include "bhndreg.h"
 
-#include "bhnd_pci.h"
+#include "bhnd_pcieb.h"
 #include "bhnd_pcireg.h"
 
+devclass_t bhndb_devclass;
+
+static struct resource_spec bhnd_pcieb_res_spec[] = {
+	{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
+	{ SYS_RES_MEMORY,	PCIR_BAR(1),	RF_ACTIVE },
+	{ -1,			0,		0 }
+};
+#define bhnd_pcieb_res_count \
+	(sizeof(bhnd_pcieb_res_spec) / sizeof(bhnd_pcieb_res_spec[0]))
+
 int
-bhnd_pci_attach(device_t dev)
+bhnd_pcieb_generic_probe(device_t dev)
 {
-	// TODO
-	return (ENXIO);
+	return (BUS_PROBE_NOWILDCARD);
 }
 
 int
-bhnd_pci_detach(device_t dev)
+bhnd_pcieb_generic_attach(device_t dev)
 {
-	// TODO
-	return (ENXIO);
+	struct bhnd_pcieb_softc	*sc;
+	int			 error;
+	bool			 free_mem_rman = false;
+	bool			 free_pci_res = false;
+
+	sc = device_get_softc(dev);
+	sc->dev = dev;
+	sc->pci_dev = device_get_parent(dev);
+	
+	/* Allocate our resource table */
+	sc->pci_res = malloc(sizeof(struct resource) * bhnd_pcieb_res_count,
+	    M_BHND, M_WAITOK);
+	if (sc->pci_res == NULL)
+		return (ENOMEM);
+	
+
+	/* Set up a resource manager for the device's address space. */
+	sc->mem_rman.rm_start = 0;
+	sc->mem_rman.rm_end = BUS_SPACE_MAXADDR_32BIT;
+	sc->mem_rman.rm_type = RMAN_ARRAY;
+	sc->mem_rman.rm_descr = "bhnd device address space";
+	
+	if (rman_init(&sc->mem_rman) ||
+	    rman_manage_region(&sc->mem_rman, 0, BUS_SPACE_MAXADDR_32BIT))
+	{
+		device_printf(dev, "could not initialize mem_rman\n");
+		return (ENXIO);
+	} else {
+		free_mem_rman = true;
+	}
+
+	/* Map our PCI device resources. */
+	error = bus_alloc_resources(sc->pci_dev, bhnd_pcieb_res_spec, sc->pci_res);
+	if (error) {
+		device_printf(dev, "could not allocate PCI resources on %s\n",
+		device_get_nameunit(sc->pci_dev));
+		goto failed;
+	} else {
+		free_pci_res = true;
+	}
+
+	return (bus_generic_attach(dev));
+
+failed:
+	if (free_mem_rman)
+		rman_fini(&sc->mem_rman);
+
+	if (free_pci_res)
+		bus_release_resources(dev, bhnd_pcieb_res_spec, sc->pci_res);
+	
+	free(sc->pci_res, M_BHND);
+	return (error);
 }
 
 int
-bhnd_pci_suspend(device_t dev)
+bhnd_pcieb_generic_detach(device_t dev)
 {
-	// TODO
-	return (ENXIO);
+	struct bhnd_pcieb_softc *sc = device_get_softc(dev);
+
+	bus_release_resources(dev, bhnd_pcieb_res_spec, sc->pci_res);
+	free(sc->pci_res, M_BHND);
+
+	return (bus_generic_detach(dev));
 }
 
 int
-bhnd_pci_resume(device_t dev)
+bhnd_pcieb_generic_suspend(device_t dev)
 {
-	// TODO
-	return (ENXIO);
+	return (bus_generic_suspend(dev));
+}
+
+int
+bhnd_pcieb_generic_resume(device_t dev)
+{
+	return (bus_generic_resume(dev));
+}
+
+static struct rman *
+bhnd_pcieb_get_rman(device_t dev, int type)
+{
+	struct bhnd_pcieb_softc *sc = device_get_softc(dev);
+
+	switch (type) {
+	case SYS_RES_MEMORY:
+		return &sc->mem_rman;
+	case SYS_RES_IRQ:
+		// TODO
+		// return &sc->irq_rman;
+		return (NULL);
+	default:
+		return (NULL);
+	};
 }
 
 /**
@@ -90,7 +175,7 @@ bhnd_pci_resume(device_t dev)
  * to fetch resource state for allocation.
  */
 struct resource *
-bhnd_pci_alloc_resource(device_t dev, device_t child, int type,
+bhnd_pcieb_generic_alloc_resource(device_t dev, device_t child, int type,
     int *rid, u_long start, u_long end, u_long count, u_int flags)
 {
 	struct resource_list		*rl;
@@ -104,7 +189,7 @@ bhnd_pci_alloc_resource(device_t dev, device_t child, int type,
 	}
 
 	/* Fetch the resource manager */
-	rm = BHNDBUS_GET_RMAN(dev, type);
+	rm = bhnd_pcieb_get_rman(dev, type);
 	if (rm == NULL)
 		return (NULL);
 
@@ -167,52 +252,13 @@ bhnd_pci_alloc_resource(device_t dev, device_t child, int type,
 }
 
 /**
- * Helper function for implementing BUS_SET_RESOURCE() on bhnd pci hosts.
- * 
- * This simple implementation uses BUS_GET_RESOURCE_LIST() to fetch resource
- * state.
- */
-int
-bhnd_pci_set_resource(device_t dev, device_t child, int type, int rid,
-    u_long start, u_long count)
-{
-	return bus_generic_rl_set_resource(dev, child, type, rid, start, count);
-}
-
-/**
- * Helper function for implementing BUS_GET_RESOURCE() on bhnd pci hosts.
- * 
- * This simple implementation uses BUS_GET_RESOURCE_LIST() to fetch resource
- * state.
- */
-int
-bhnd_pci_get_resource(device_t dev, device_t child, int type, int rid,
-    u_long *startp, u_long *countp)
-{
-	return bus_generic_rl_get_resource(dev, child, type, rid, startp,
-	    countp);
-}
-
-/**
- * Helper function for implementing BUS_DELETE_RESOURCE() on bhnd pci hosts.
- * 
- * This simple implementation uses BUS_GET_RESOURCE_LIST() to fetch resource
- * state.
- */
-void
-bhnd_pci_delete_resource(device_t dev, device_t child, int type, int rid)
-{
-	return bus_generic_rl_delete_resource(dev, child, type, rid);
-}
-
-/**
  * Helper function for implementing BUS_RELEASE_RESOURCE() on bhnd pci hosts.
  * 
  * This simple implementation uses BUS_GET_RESOURCE_LIST() to fetch resource
  * state.
  */
 int
-bhnd_pci_release_resource(device_t dev, device_t child, int type, int rid,
+bhnd_pcieb_generic_release_resource(device_t dev, device_t child, int type, int rid,
     struct resource *res)
 {
 	struct resource_list		*rl;
@@ -245,28 +291,10 @@ bhnd_pci_release_resource(device_t dev, device_t child, int type, int rid,
 }
 
 /**
- * Helper function for implementing BUS_ADJUST_RESOURCE() on bhnd pci hosts.
- * 
- * This simple implementation uses BUS_GET_RESOURCE_LIST() to fetch resource
- * state.
- */
-int
-bhnd_pci_adjust_resource(device_t dev, device_t child, int type,
-    struct resource *res, u_long start, u_long end)
-{
-	if (device_get_parent(child) != dev) {
-		return (BUS_ADJUST_RESOURCE(device_get_parent(dev), child,
-		    type, res, start, end));
-	}
-
-	return (rman_adjust_resource(res, start, end));
-}
-
-/**
  * Helper function for implementing BUS_ACTIVATE_RESOURCE() on bhnd pci hosts.
  */
 int
-bhnd_pci_activate_resource(device_t dev, device_t child, int type, int rid,
+bhnd_pcieb_generic_activate_resource(device_t dev, device_t child, int type, int rid,
     struct resource *r)
 {
 	// TODO - window resource activations
@@ -277,9 +305,82 @@ bhnd_pci_activate_resource(device_t dev, device_t child, int type, int rid,
  * Helper function for implementing BUS_ACTIVATE_RESOURCE() on bhnd pci hosts.
  */
 int
-bhnd_pci_deactivate_resource(device_t dev, device_t child, int type,
+bhnd_pcieb_generic_deactivate_resource(device_t dev, device_t child, int type,
     int rid, struct resource *r)
 {
 	// TODO - window resource deactivations
 	return (EINVAL);
 }
+
+/**
+ * Helper function for implementing BHNDBUS_ALLOC_RESOURCE().
+ * 
+ * This simple implementation delegates allocation of the backing resource
+ * to BUS_ALLOC_RESOURCE().
+ */
+struct bhnd_resource *
+bhnd_pcieb_generic_alloc_bhnd_resource(device_t dev, device_t child, int type,
+     int *rid, u_long start, u_long end, u_long count, u_int flags)
+{
+	// struct bhnd_resource *r;
+	
+	if (device_get_parent(child) != dev)
+		return (BHNDBUS_ALLOC_RESOURCE(device_get_parent(dev), child,
+		    type, rid, start, end, count, flags));
+
+	// TODO
+	return (NULL);
+}
+
+/**
+ * Helper function for implementing BHNDBUS_RELEASE_RESOURCE().
+ */
+int
+bhnd_pcieb_generic_release_bhnd_resource(device_t dev, device_t child,
+    int type, int rid, struct bhnd_resource *r)
+{
+	// int error;
+	
+	if (device_get_parent(child) != dev)
+		return (BHNDBUS_RELEASE_RESOURCE(device_get_parent(dev), child,
+		    type, rid, r));
+
+	// TODO
+	return (EOPNOTSUPP);
+}
+
+/**
+ * Helper function for implementing BHNDBUS_ACTIVATE_RESOURCE().
+ * 
+ * This simple implementation delegates allocation of the backing resource
+ * to BUS_ACTIVATE_RESOURCE().
+ */
+int
+bhnd_pcieb_generic_activate_bhnd_resource(device_t dev, device_t child,
+    int type, int rid, struct bhnd_resource *r)
+{
+	if (device_get_parent(child) != dev)
+		return (BHNDBUS_ACTIVATE_RESOURCE(device_get_parent(dev), child,
+		    type, rid, r));
+
+	// TODO
+	return (EOPNOTSUPP);
+};
+
+/**
+ * Helper function for implementing BHNDBUS_DEACTIVATE_RESOURCE().
+ * 
+ * This simple implementation delegates allocation of the backing resource
+ * to BUS_DEACTIVATE_RESOURCE().
+ */
+int
+bhnd_pcieb_generic_deactivate_bhnd_resource(device_t dev, device_t child,
+    int type, int rid, struct bhnd_resource *r)
+{
+	if (device_get_parent(child) != dev)
+		return (BHNDBUS_DEACTIVATE_RESOURCE(device_get_parent(dev), child,
+		    type, rid, r));
+
+	// TODO
+	return (EOPNOTSUPP);
+};

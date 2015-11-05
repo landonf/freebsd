@@ -29,13 +29,11 @@
  * $FreeBSD$
  */
 
-#ifndef _BWN_IF_BWN_PCIVAR_H_
-#define _BWN_IF_BWN_PCIVAR_H_
+#ifndef _BCMA_BCMA_PCIEB_H_
+#define _BCMA_BCMA_PCIEB_H_
 
-/* bwn driver instance state */
-struct bwn_pci_softc {
-	device_t		 bwn_dev;			/**< device */
-	device_t		 bhnd_dev;			/**< bhnd bus device */
-};
+#include "bcmavar.h"
 
-#endif /* _BWN_IF_BWN_PCIVAR_H_ */
+DECLARE_CLASS(bcma_pcieb_driver);
+
+#endif /* _BCMA_BCMA_PCIEB_H_ */

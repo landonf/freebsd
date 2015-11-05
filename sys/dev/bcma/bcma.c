@@ -313,6 +313,7 @@ static device_method_t bcma_methods[] = {
 };
 
 devclass_t bcma_devclass;
+devclass_t bcmab_devclass;
 
 driver_t bcma_driver = {
 	BCMA_DEVNAME,
