@@ -125,4 +125,3 @@ bcma_pcieb_detach(device_t dev)
 }
 
 BHND_PCIEB_DECLARE_DRIVER(bcma_pcieb, bcmab);
-DRIVER_MODULE(bcma, bcmab, bcma_driver, bcma_devclass, NULL, NULL);

@@ -323,3 +323,4 @@ driver_t bcma_driver = {
 
 MODULE_VERSION(bcma, 1);
 MODULE_DEPEND(bcma, bhnd, 1, 1, 1);
+DRIVER_MODULE(bcma, bcmab, bcma_driver, bcma_devclass, NULL, NULL);
