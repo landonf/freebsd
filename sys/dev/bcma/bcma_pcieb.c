@@ -107,7 +107,6 @@ bcma_pcieb_attach(device_t dev)
 	error = bcma_scan_erom(sc->bcma_bus, bhnd_generic_probecfg_table, regs,
 	    BHND_PCI_V2_BAR0_WIN0_OFFSET);
 
-	bus_deactivate_resource(pci_dev, SYS_RES_MEMORY, rid, regs);
 	bus_release_resource(pci_dev, SYS_RES_MEMORY, rid, regs);
 
 	if (error) {
