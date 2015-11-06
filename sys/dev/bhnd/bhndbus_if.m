@@ -46,6 +46,18 @@ CODE {
 }
 
 /**
+ * Enumerate all devices on @p child, calling BUS_ADD_CHILD for each discovered
+ * core.
+ *
+ * @param dev The parent device of @p child.
+ * @param child The bus device.
+ */
+METHOD int enumerate_children {
+	device_t dev;
+	device_t child;
+} DEFAULT bhnd_generic_enumerate_children;
+
+/**
  * Allocate a bhnd resource.
  *
  * This method's semantics are functionally identical to the bus API of the same

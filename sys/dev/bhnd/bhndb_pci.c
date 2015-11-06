@@ -58,8 +58,9 @@ __FBSDID("$FreeBSD$");
 devclass_t bhndb_devclass;
 
 static struct resource_spec bhndb_pci_res_spec[] = {
-	{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
-	{ SYS_RES_MEMORY,	PCIR_BAR(1),	RF_ACTIVE },
+	// TODO!
+	// { SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
+	// { SYS_RES_MEMORY,	PCIR_BAR(1),	RF_ACTIVE },
 	{ -1,			0,		0 }
 };
 #define bhndb_pci_res_count \

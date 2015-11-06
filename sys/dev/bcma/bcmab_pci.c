@@ -53,6 +53,7 @@ __FBSDID("$FreeBSD$");
 struct bcmab_pci_softc {
 	struct bhndb_pci_softc	bhnd_softc;	/**< required bhndb_pci state */
 	device_t bcma_bus;			/**< the bridged bcma(4) bus */
+	device_t pci_dev;			/**< parent pci device */
 };
 
 static int
@@ -71,41 +72,12 @@ static int
 bcmab_pci_attach(device_t dev)
 {
 	struct bcmab_pci_softc	*sc;
-	struct resource		*regs;
-	device_t		 pci_dev;
-	bus_addr_t		 erom_table;
-	int			 error;
-	int			 rid;
 
 	sc = device_get_softc(dev);
-	pci_dev = device_get_parent(dev);
-
-	/* Allocate and map BAR0, which we'll use to enumerate all attached
-	 * devices. */
-	rid = PCIR_BAR(0);
-	regs = bus_alloc_resource_any(pci_dev, SYS_RES_MEMORY, &rid, RF_ACTIVE);
-	if (regs == NULL) {
-		device_printf(dev, "failed to allocate PCI BAR0\n");
-		return (ENXIO);
-	}
-
-	/* Locate and map the bcma bus enumeration table into WIN0, which
-	 * should be available on all bcma devices. A pointer to the table can
-	 * be found within the ChipCommon register map. */
-	erom_table = bus_read_4(regs, BHND_PCI_V2_BAR0_CCREGS_OFFSET +
-	    BCMA_CC_EROM_ADDR);
-	pci_write_config(pci_dev, BHND_PCI_BAR0_WIN0, erom_table, 4);
+	sc->pci_dev = device_get_parent(dev);
 	
-	/* Instantiate the bridged bcma bus using our mapped EROM table. */
-	error = bcma_bus_attach(dev, &sc->bcma_bus, -1,
-	    bhnd_generic_probecfg_table, regs, BHND_PCI_V2_BAR0_WIN0_OFFSET);
-
-	bus_release_resource(pci_dev, SYS_RES_MEMORY, rid, regs);
-	
-	if (error) {
-		device_printf(dev, "failed to attach bcma device\n");
-		return (error);
-	}
+	/* Add the bridged bcma backplane */
+	sc->bcma_bus = device_add_child(dev, BCMA_DEVNAME, -1);
 
 	/* Delegate remainder to the generic implementation */ 
 	return (bhndb_pci_generic_attach(dev));
@@ -115,6 +87,49 @@ static int
 bcmab_pci_detach(device_t dev)
 {
 	return (bhndb_pci_generic_detach(dev));
+}
+
+static int
+bcmab_pci_enumerate_children(device_t dev, device_t bus)
+{
+	struct bcmab_pci_softc	*sc;
+	struct resource		*regs;
+	bus_addr_t		 erom_table;
+	int			 error;
+	int			 rid;
+
+	sc = device_get_softc(dev);
+
+	/* Allocate our temporary map of BAR0. */
+	rid = PCIR_BAR(0);
+	regs = bus_alloc_resource_any(sc->pci_dev, SYS_RES_MEMORY, &rid,
+	    RF_ACTIVE);
+	if (regs == NULL) {
+		device_printf(dev, "failed to allocate PCI BAR0\n");
+		return (ENXIO);
+	}
+
+	/* Fetch the EROM address from the ChipCommon register shadow. */
+	erom_table = bus_read_4(regs, BHND_PCI_V2_BAR0_CCREGS_OFFSET +
+	    BCMA_CC_EROM_ADDR);
+
+	/* Map the EROM table into BAR0_WIN0; this should be available on
+	 * all bcma(4) bus devices */
+	pci_write_config(sc->pci_dev, BHND_PCI_BAR0_WIN0, erom_table, 4);
+
+	/* Enumerate children using our mapped EROM table. */
+	error = bcma_scan_erom(sc->bcma_bus, bhnd_generic_probecfg_table, regs,
+	    BHND_PCI_V2_BAR0_WIN0_OFFSET);
+
+	/* Drop our PCI BAR mapping */
+	bus_release_resource(sc->pci_dev, SYS_RES_MEMORY, rid, regs);
+	
+	if (error) {
+		device_printf(dev, "failed to attach bcma device\n");
+		return (error);
+	}
+
+	return (error);
 }
 
 BHNDB_PCI_DECLARE_DRIVER(bcmab_pci, bcmab);
