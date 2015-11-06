@@ -19,9 +19,11 @@
 #ifndef _BHND_BHND_PCI_H_
 #define _BHND_BHND_PCI_H_
 
-#include "bhnd.h"
 #include <sys/types.h>
 #include <sys/rman.h>
+
+#include "bhnd.h"
+#include "bhndb_pci_if.h"
 
 extern devclass_t bhndb_devclass;
 
@@ -32,9 +34,10 @@ extern devclass_t bhndb_devclass;
  */
 struct bhndb_pci_softc {
 	device_t		 dev;		/**< bridge device */
-	device_t		 pci_dev;	/**< PCI parent device */
-	struct resource		**pci_res;	/**< PCI device resources */
-	size_t			 num_pci_res;	/**< PCI device resource count */
+	device_t		 pci_dev;	/**< parent pci device */
+	size_t			 num_pci_res;	/**< pci resource count */
+	struct resource_spec	*pci_res_spec;	/**< pci resource specs */
+	struct resource		**pci_res;	/**< pci resources */
 	struct rman		 mem_rman;	/**< bus memory resource manager */
 };
 

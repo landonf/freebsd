@@ -64,6 +64,11 @@ static const struct bwn_pci_device {
 	{ 0, 0, NULL }
 };
 
+static struct resource_spec bwn_pci_res_spec[] = {
+	{ SYS_RES_MEMORY, PCIR_BAR(0),	RF_ACTIVE },
+	{ -1, 0, 0 }
+};
+
 static int
 bwn_pci_probe(device_t dev)
 {
@@ -114,6 +119,12 @@ bwn_pci_probe_nomatch(device_t dev, device_t child)
 	device_printf(dev, "<%s> (no driver attached)\n", name);
 }
 
+static struct resource_spec *
+bwn_pci_get_resource_spec(device_t dev, device_t bridge)
+{
+	return (bwn_pci_res_spec);
+}
+
 static device_method_t bwn_pci_methods[] = {
 	/* Device interface */ \
 	DEVMETHOD(device_probe,			bwn_pci_probe),
@@ -125,6 +136,9 @@ static device_method_t bwn_pci_methods[] = {
 	
 	/* Bus interface */
 	DEVMETHOD(bus_probe_nomatch,		bwn_pci_probe_nomatch),
+
+	/* BHNDB PCI Interface */
+	DEVMETHOD(bhndb_pci_get_resource_spec,	bwn_pci_get_resource_spec),
 
 	DEVMETHOD_END
 };

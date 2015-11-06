@@ -46,6 +46,10 @@ __FBSDID("$FreeBSD$");
 
 MALLOC_DEFINE(M_BCMA, "bcma", "BCMA bus data structures");
 
+/** BMCA per-instance state */
+struct bcma_softc {
+};
+
 int
 bcma_generic_probe(device_t dev)
 {

@@ -33,6 +33,7 @@
 #define _BCMA_BCMAB_PCI_H_
 
 #include "bcmavar.h"
+#include "bhndb_pci_if.h"
 
 DECLARE_CLASS(bcmab_pci_driver);
 

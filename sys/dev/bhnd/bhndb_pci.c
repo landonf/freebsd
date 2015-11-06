@@ -57,15 +57,6 @@ __FBSDID("$FreeBSD$");
 
 devclass_t bhndb_devclass;
 
-static struct resource_spec bhndb_pci_res_spec[] = {
-	// TODO!
-	// { SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
-	// { SYS_RES_MEMORY,	PCIR_BAR(1),	RF_ACTIVE },
-	{ -1,			0,		0 }
-};
-#define bhndb_pci_res_count \
-	(sizeof(bhndb_pci_res_spec) / sizeof(bhndb_pci_res_spec[0]))
-
 int
 bhndb_pci_generic_probe(device_t dev)
 {
@@ -79,17 +70,11 @@ bhndb_pci_generic_attach(device_t dev)
 	int			 error;
 	bool			 free_mem_rman = false;
 	bool			 free_pci_res = false;
+	bool			 free_pci_res_array = false;
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
 	sc->pci_dev = device_get_parent(dev);
-	
-	/* Allocate our resource table */
-	sc->pci_res = malloc(sizeof(struct resource) * bhndb_pci_res_count,
-	    M_BHND, M_WAITOK);
-	if (sc->pci_res == NULL)
-		return (ENOMEM);
-	
 
 	/* Set up a resource manager for the device's address space. */
 	sc->mem_rman.rm_start = 0;
@@ -106,8 +91,26 @@ bhndb_pci_generic_attach(device_t dev)
 		free_mem_rman = true;
 	}
 
-	/* Map our PCI device resources. */
-	error = bus_alloc_resources(sc->pci_dev, bhndb_pci_res_spec, sc->pci_res);
+	/* Fetch our PCI device resource spec and determine its length */	
+	sc->pci_res_spec = BHNDB_PCI_GET_RESOURCE_SPEC(device_get_parent(dev),
+	    dev);
+	
+	sc->num_pci_res = 0;
+	for (size_t i = 0; sc->pci_res_spec[i].type != -1; i++)
+		sc->num_pci_res++;
+
+	/* Allocate an empty PCI resource array */
+	sc->pci_res = malloc(sizeof(struct resource) * sc->num_pci_res,
+	    M_BHND, M_WAITOK);
+	if (sc->pci_res == NULL) {
+		error = ENOMEM;
+		goto failed;
+	} else {
+		free_pci_res_array = true;
+	}
+
+	/* Allocate the actual PCI resources */
+	error = bus_alloc_resources(sc->pci_dev, sc->pci_res_spec, sc->pci_res);
 	if (error) {
 		device_printf(dev, "could not allocate PCI resources on %s\n",
 		device_get_nameunit(sc->pci_dev));
@@ -123,9 +126,11 @@ failed:
 		rman_fini(&sc->mem_rman);
 
 	if (free_pci_res)
-		bus_release_resources(dev, bhndb_pci_res_spec, sc->pci_res);
+		bus_release_resources(dev, sc->pci_res_spec, sc->pci_res);
 	
-	free(sc->pci_res, M_BHND);
+	if (free_pci_res_array)
+		free(sc->pci_res, M_BHND);
+
 	return (error);
 }
 
@@ -134,7 +139,7 @@ bhndb_pci_generic_detach(device_t dev)
 {
 	struct bhndb_pci_softc *sc = device_get_softc(dev);
 
-	bus_release_resources(dev, bhndb_pci_res_spec, sc->pci_res);
+	bus_release_resources(dev, sc->pci_res_spec, sc->pci_res);
 	free(sc->pci_res, M_BHND);
 
 	return (bus_generic_detach(dev));

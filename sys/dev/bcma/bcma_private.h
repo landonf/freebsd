@@ -59,11 +59,6 @@ struct bcma_map;
 struct bcma_mport;
 struct bcma_sport;
 
-
-/** BMCA per-instance state */
-struct bcma_softc {
-};
-
 /**
  * Slave port types.
  */
