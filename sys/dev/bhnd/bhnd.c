@@ -142,10 +142,10 @@ bhnd_generic_probe_nomatch(device_t dev, device_t child)
 }
 
 /**
- * Helper function for implementing BHNDBUS_ENUMERATE_CHILDREN().
+ * Helper function for implementing BHND_ENUMERATE_CHILDREN().
  * 
- * This simple implementation of BHNDBUS_ENUMERATE_CHILDREN() calls the
- * BHNDBUS_ENUMERATE_CHILDREN() method of the parent of @p dev.
+ * This simple implementation of BHND_ENUMERATE_CHILDREN() calls the
+ * BHND_ENUMERATE_CHILDREN() method of the parent of @p dev.
  * 
  * If no parent device is available, this helper triggers a panic().
  */
@@ -154,17 +154,17 @@ bhnd_generic_enumerate_children(device_t dev, device_t child)
 {
 	/* Try to delegate to the parent. */
 	if (device_get_parent(dev) != NULL)
-		return (BHNDBUS_ENUMERATE_CHILDREN(device_get_parent(dev),
+		return (BHND_ENUMERATE_CHILDREN(device_get_parent(dev),
 		   child));
 
-	panic("BHNDBUS_ENUMERATE_CHILDREN() is not implemented");
+	panic("BHND_ENUMERATE_CHILDREN() is not implemented");
 }
 
 /**
- * Helper function for implementing BHNDBUS_ALLOC_RESOURCE().
+ * Helper function for implementing BHND_ALLOC_RESOURCE().
  * 
- * This simple implementation of BHNDBUS_ALLOC_RESOURCE() calls the
- * BHNDBUS_ALLOC_RESOURCE() method of the parent of @p dev.
+ * This simple implementation of BHND_ALLOC_RESOURCE() calls the
+ * BHND_ALLOC_RESOURCE() method of the parent of @p dev.
  * 
  * If no parent device is available, the request is delegated to
  * BUS_ALLOC_RESOURCE().
@@ -177,7 +177,7 @@ bhnd_generic_alloc_bhnd_resource(device_t dev, device_t child, int type,
 
 	/* Try to delegate to the parent. */
 	if (device_get_parent(dev) != NULL)
-		return (BHNDBUS_ALLOC_RESOURCE(device_get_parent(dev), child,
+		return (BHND_ALLOC_RESOURCE(device_get_parent(dev), child,
 		    type, rid, start, end, count, flags));
 
 	/* Allocate an empty wrapper for a real bus-allocated resource */
@@ -200,10 +200,10 @@ bhnd_generic_alloc_bhnd_resource(device_t dev, device_t child, int type,
 }
 
 /**
- * Helper function for implementing BHNDBUS_RELEASE_RESOURCE().
+ * Helper function for implementing BHND_RELEASE_RESOURCE().
  * 
- * This simple implementation of BHNDBUS_RELEASE_RESOURCE() simply calls the
- * BHNDBUS_RELEASE_RESOURCE() method of the parent of @p dev.
+ * This simple implementation of BHND_RELEASE_RESOURCE() simply calls the
+ * BHND_RELEASE_RESOURCE() method of the parent of @p dev.
  * 
  * If no parent device is available, the request is delegated to
  * BUS_RELEASE_RESOURCE().
@@ -216,7 +216,7 @@ bhnd_generic_release_bhnd_resource(device_t dev, device_t child, int type,
 
 	/* Try to delegate to the parent. */
 	if (device_get_parent(dev) != NULL)
-		return (BHNDBUS_RELEASE_RESOURCE(device_get_parent(dev), child,
+		return (BHND_RELEASE_RESOURCE(device_get_parent(dev), child,
 		    type, rid, r));
 
 	/* Release the resource directly */
@@ -232,10 +232,10 @@ bhnd_generic_release_bhnd_resource(device_t dev, device_t child, int type,
 }
 
 /**
- * Helper function for implementing BHNDBUS_ACTIVATE_RESOURCE().
+ * Helper function for implementing BHND_ACTIVATE_RESOURCE().
  * 
- * This simple implementation of BHNDBUS_ACTIVATE_RESOURCE() simply calls the
- * BHNDBUS_ACTIVATE_RESOURCE() method of the parent of @p dev.
+ * This simple implementation of BHND_ACTIVATE_RESOURCE() simply calls the
+ * BHND_ACTIVATE_RESOURCE() method of the parent of @p dev.
  * 
  * If no parent device is available, the request is delegated to
  * BUS_ACTIVATE_RESOURCE().
@@ -246,7 +246,7 @@ bhnd_generic_activate_bhnd_resource(device_t dev, device_t child, int type,
 {
 	/* Try to delegate to the parent */
 	if (device_get_parent(dev) != NULL)
-		return (BHNDBUS_ACTIVATE_RESOURCE(device_get_parent(dev), child,
+		return (BHND_ACTIVATE_RESOURCE(device_get_parent(dev), child,
 		    type, rid, r));
 
 	/* Activate the resource directly */
@@ -257,10 +257,10 @@ bhnd_generic_activate_bhnd_resource(device_t dev, device_t child, int type,
 };
 
 /**
- * Helper function for implementing BHNDBUS_DEACTIVATE_RESOURCE().
+ * Helper function for implementing BHND_DEACTIVATE_RESOURCE().
  * 
- * This simple implementation of BHNDBUS_ACTIVATE_RESOURCE() simply calls the
- * BHNDBUS_ACTIVATE_RESOURCE() method of the parent of @p dev.
+ * This simple implementation of BHND_ACTIVATE_RESOURCE() simply calls the
+ * BHND_ACTIVATE_RESOURCE() method of the parent of @p dev.
  * 
  * If no parent device is available, the request is delegated to
  * BUS_DEACTIVATE_RESOURCE().
@@ -270,7 +270,7 @@ bhnd_generic_deactivate_bhnd_resource(device_t dev, device_t child, int type,
 	int rid, struct bhnd_resource *r)
 {
 	if (device_get_parent(dev) != NULL)
-		return (BHNDBUS_DEACTIVATE_RESOURCE(device_get_parent(dev), child,
+		return (BHND_DEACTIVATE_RESOURCE(device_get_parent(dev), child,
 		    type, rid, r));
 
 	/* De-activate the resource directly */

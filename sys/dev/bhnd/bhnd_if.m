@@ -30,7 +30,7 @@
 
 #include <dev/bhnd/bhndvar.h>
 
-INTERFACE bhndbus;
+INTERFACE bhnd;
 
 HEADER {
 	struct bhnd_resource;

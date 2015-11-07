@@ -35,7 +35,7 @@
 #include <sys/types.h>
 #include <sys/malloc.h>
 
-#include "bhndbus_if.h"
+#include "bhnd_if.h"
 
 #include "bhnd_devinfo.h"
 #include "bhndvar.h"
@@ -77,7 +77,7 @@ static inline struct bhnd_resource *
 bhnd_alloc_resource (device_t dev, int type, int *rid, u_long start,
     u_long end, u_long count, u_int flags)
 {
-	return BHNDBUS_ALLOC_RESOURCE(device_get_parent(dev), dev, type, rid,
+	return BHND_ALLOC_RESOURCE(device_get_parent(dev), dev, type, rid,
 	    start, end, count, flags);
 };
 
@@ -119,7 +119,7 @@ static inline int
 bhnd_activate_resource (device_t dev, int type, int rid,
    struct bhnd_resource *r)
 {
-	return BHNDBUS_ACTIVATE_RESOURCE(device_get_parent(dev), dev, type, rid, r);
+	return BHND_ACTIVATE_RESOURCE(device_get_parent(dev), dev, type, rid, r);
 };
 
 /**
@@ -138,7 +138,7 @@ static inline int
 bhnd_deactivate_resource (device_t dev, int type, int rid,
    struct bhnd_resource *r)
 {
-	return BHNDBUS_DEACTIVATE_RESOURCE(device_get_parent(dev), dev, type, rid, r);
+	return BHND_DEACTIVATE_RESOURCE(device_get_parent(dev), dev, type, rid, r);
 };
 
 /**
@@ -154,7 +154,7 @@ bhnd_deactivate_resource (device_t dev, int type, int rid,
 static inline int
 bhnd_get_port_rid(device_t dev, u_int port, u_int region)
 {
-    return BHNDBUS_GET_PORT_RID(device_get_parent(dev), dev, port, region);
+    return BHND_GET_PORT_RID(device_get_parent(dev), dev, port, region);
 }
 
 #endif /* _BHND_BHND_H_ */

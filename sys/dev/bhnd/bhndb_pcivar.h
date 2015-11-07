@@ -151,11 +151,11 @@ static device_method_t __CONCAT(dname,_methods)[] = { \
 	DEVMETHOD(bus_deactivate_resource,	bhndb_pci_generic_deactivate_resource),	\
 											\
 	/* BHND interface */								\
-	DEVMETHOD(bhndbus_enumerate_children,	__CONCAT(dname,_enumerate_children)),	\
-	DEVMETHOD(bhndbus_alloc_resource,	bhndb_pci_generic_alloc_bhnd_resource),	\
-	DEVMETHOD(bhndbus_release_resource,	bhndb_pci_generic_release_bhnd_resource),	\
-	DEVMETHOD(bhndbus_activate_resource,	bhndb_pci_generic_activate_bhnd_resource),	\
-	DEVMETHOD(bhndbus_activate_resource,	bhndb_pci_generic_deactivate_bhnd_resource),	\
+	DEVMETHOD(bhnd_enumerate_children,	__CONCAT(dname,_enumerate_children)),	\
+	DEVMETHOD(bhnd_alloc_resource,		bhndb_pci_generic_alloc_bhnd_resource),	\
+	DEVMETHOD(bhnd_release_resource,	bhndb_pci_generic_release_bhnd_resource),	\
+	DEVMETHOD(bhnd_activate_resource,	bhndb_pci_generic_activate_bhnd_resource),	\
+	DEVMETHOD(bhnd_activate_resource,	bhndb_pci_generic_deactivate_bhnd_resource),	\
 											\
 	DEVMETHOD_END									\
 }; \
