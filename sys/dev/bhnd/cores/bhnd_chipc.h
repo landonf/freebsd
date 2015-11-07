@@ -34,10 +34,4 @@
 
 #define	BHND_CHIPC_DEVNAME	"bhnd_chipc"
 
-/** BHND ChipCommon per-instance state */
-struct bcma_pci_softc {
-	device_t		 cc_dev;	/* device */
-	struct resource		*mem_res;	/* chipcommon registers */
-};
-
 #endif /* _BHND_CORES_CHIPC_H_ */
