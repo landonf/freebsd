@@ -46,11 +46,6 @@ __FBSDID("$FreeBSD$");
 #include "bcma_dmp.h"
 #include "bcma_private.h"
 
-// XXX for temporary PrimeCell PeripherialID code
-#include <dev/pci/pcireg.h>
-#include <dev/pci/pcivar.h>
-#include <dev/bhnd/bhnd_pcireg.h>
-
 
 /*
  * BCMA Enumeration ROM (EROM) Table
@@ -92,9 +87,6 @@ static int		 erom_scan_core(device_t bus, u_int core_index,
 			     struct resource *erom_res, bus_size_t erom_start,
 			     bus_size_t erom_end, bus_size_t * const offset,
 			     struct bcma_devinfo **result);
-
-static void		 erom_print_primecell_id(device_t bus,
-			     struct resource *res, struct bcma_map *map);
 
 /* Extract entry attribute by applying _MASK and _SHIFT defines. */
 #define	EROM_GET_ATTR(_entry, _attr)			\
@@ -659,99 +651,6 @@ failed:
 }
 
 /**
- * Read and print the ARM PrimeCell identifier from the given device address
- * region.
- * 
- * @param bus The bus containing the PrimeCell-compatible device.
- * @param res The resource containing the target device address region.
- * @param map The device address region.
- * 
- * @warning Not all devices on Broadcom's hardware vend PrimeCell-compatible
- * identifiers, the identifier format may vary between devices and in ways
- * that aren't handled by this implementation, and in some cases, attempting to
- * read the PrimeCell ID registers from non-ARM/Broadcom cores may lock up
- * the device and/or the host system.
- * 
- * @todo This code currently assumes a backing bcma_pci bus. This should be
- * fixed once we've implemented generic bhnd_read*() APIs.
- */
-static void
-erom_print_primecell_id(device_t bus, struct resource *res, 
-    struct bcma_map *map)
-{
-	uint32_t pcell_id, pid0, pid1;
-	bus_size_t offset;
-	const char *designer_name;
-	const char *part_name;
-
-	/* Find the last 4KB block */
-	if (map->m_size < 0x1000)
-		return;
-
-	offset = (map->m_size-1) & ~(0x1000-1);
-				
-	// XXX: Assumes PCI
-	pci_write_config(bus, BHND_PCI_BAR0_WIN0, map->m_base + offset, 4);
-				
-	pcell_id = 0;
-	for (int i = 0; i < 4; i++)
-		pcell_id |= (bus_read_4(res, BHND_PCI_V2_BAR0_WIN0_OFFSET + 0xFF0 + (4 * i)) & 0xFF) << (i * 8);
-
-	if (pcell_id != 0xB105F00D) {
-		device_printf(bus, "Skipping non-PrimeCell device\n");
-		return;
-	}
-
-	/* Read Peripheral ID0-ID3 */
-	pid0 = 0;
-	for (int i = 0; i < 4; i++)
-		pid0 |= (bus_read_4(res, BHND_PCI_V2_BAR0_WIN0_OFFSET + 0xFE0 + (4 * i)) & 0xFF) << (i * 8);
-				
-	uint16_t part = pid0 & 0xFFF;
-	uint8_t use_jedec = (pid0 & 0x80000) >> 19;
-	uint16_t designer = (pid0 & 0x7F000) >> 12;
-	uint8_t rev = (pid0 & 0xF00000) >> 20;
-	uint8_t cust_mod = (pid0 & 0xF000000) >> 24;
-	uint8_t rev_and = (pid0 & 0xF0000000) >> 28;
-				
-	/* Read Peripheral ID4-ID7 */
-	pid1 = 0;
-	for (int i = 0; i < 4; i++)
-		pid1 |= (bus_read_4(res, BHND_PCI_V2_BAR0_WIN0_OFFSET + 0xFD0 + (4 * i)) & 0xFF) << (i * 8);
-				
-	uint8_t jedec_c_cont = pid1 & 0xF;
-	uint32_t region_size = 0x1000 << ((pid1 & 0xF0) >> 4);
-
-	if (use_jedec) {
-		designer |= (jedec_c_cont << 8);
-		designer_name = bhnd_vendor_name(designer);
-		part_name = bhnd_core_name(designer, part);
-	} else {
-		switch (designer) {
-		case 0x3b:	/* Some devices use the JEDEC ID without specifying the
-				 * 4-bit continuation code */
-		case 0x41:
-			designer_name = bhnd_vendor_name(BHND_MFGID_ARM);
-			part_name = bhnd_core_name(BHND_MFGID_ARM, part);
-			break;
-		default:
-			designer_name = "unknown";
-			part_name = "unknown";
-			break;
-		}
-	}
-
-	device_printf(bus, 
-	"  %s %s (designer=0x%hx, jedec=%s, part=0x%hx, rev=%hhu+%hhu, "
-	"cust_mod=%hhu, size=%u, PID0=0x%08x, PID1=0x%08x)\n",
-	designer_name, part_name,
-	designer,
-	use_jedec ? "yes" : "no",
-	part, rev, rev_and, cust_mod, region_size, pid0, pid1);
-}
-
-
-/**
  * Scan a device enumeration ROM table, adding all discovered cores to the bus.
  * 
  * @param dev The bus to enumerate.
@@ -813,34 +712,6 @@ bcma_scan_erom(device_t dev, struct bhnd_probecfg pcfg_table[],
 		/* The child device now owns the dinfo pointer */
 		device_set_ivars(child, dinfo);
 		dinfo = NULL;
-
-		// XXX Debugging code to print PrimeCell/Peripherial IDs
-		struct bcma_sport *sp;
-		if (bootverbose) {
-			STAILQ_FOREACH(sp, &cfg->wports, sp_link) {
-				struct bcma_map *map;
-				STAILQ_FOREACH(map, &sp->sp_maps, m_link) {
-					erom_print_primecell_id(dev, erom_res, map);
-				}
-			}
-		}
-
-		if (bootverbose && cfg->vendor == BHND_MFGID_ARM &&
-		    cfg->device != BHND_COREID_AXI_UNMAPPED)
-		{
-			STAILQ_FOREACH(sp, &cfg->dports, sp_link) {
-				struct bcma_map *map;
-				
-				/* Probing bridge memory regions would simply
-				 * re-discover some the bridged devices */
-				if (sp->sp_type == BCMA_SPORT_TYPE_BRIDGE)
-					continue;
-				
-				STAILQ_FOREACH(map, &sp->sp_maps, m_link) {
-					erom_print_primecell_id(dev, erom_res, map);
-				}
-			}
-		}
 	}
 
 	return (0);
