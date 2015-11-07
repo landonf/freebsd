@@ -8,7 +8,7 @@ SRCS=	bhnd.c bhnd_devinfo.c bhndreg.h bhndvar.h bhndbus_if.h \
 	bhnd_devids.h bhnd_core.h
 SRCS+=	device_if.h bus_if.h
 
-MFILES=	kern/bus_if.m kern/device_if.m \
-	dev/bhnd/bhndbus_if.m dev/bhnd/bhndb_pci_if.m
+SUBDIR=	cores
 
 .include <bsd.kmod.mk>
+.include <bsd.subdir.mk>
