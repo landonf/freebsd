@@ -57,15 +57,6 @@ typedef enum {
 } bhnd_devclass_t;
 
 /**
- * A bus device probe configuration record.
- */
-struct bhnd_probecfg {
-	bhnd_devclass_t	 devclass;	/**< core device class to match. */
-	int		 probe_order;	/**< device probe order for this core. */
-	const char	*probe_name;	/**< device name for probe, or NULL. */
-};
-
-/**
  * A hardware revision match descriptor.
  */
 struct bhnd_hwrev_match {
@@ -97,14 +88,6 @@ device_t		bhnd_find_child(device_t dev,
 bool			 bhnd_device_matches(device_t dev,
 			     struct bhnd_core_match *desc);
 
-struct bhnd_probecfg	*bhnd_find_probecfg(struct bhnd_probecfg table[],
-			    uint16_t vendor, uint16_t device);
-
-/**
- * Entry designating end of bhnd_probecfg table.
- */
-#define	BHND_PROBECFG_TABLE_END		{ BHND_DEVCLASS_INVALID, 0, NULL }
-
 /**
  * bhnd device probe priority.
  */
@@ -114,8 +97,5 @@ enum {
 	BHND_PROBE_ORDER_DEFAULT	= 20,	/**< default probe priority */
 	BHND_PROBE_ORDER_LAST		= 30,	/**< probe last */
 };
-
-/* default table */
-extern struct bhnd_probecfg		bhnd_generic_probecfg_table[];
 
 #endif /* _BHND_BHND_H_ */

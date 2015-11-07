@@ -654,24 +654,19 @@ failed:
  * Scan a device enumeration ROM table, adding all discovered cores to the bus.
  * 
  * @param dev The bus to enumerate.
- * @param pcfg_table Core probe configuration.
  * @param erom_res The enumeration ROM resource.
  * @param erom_offset Base offset of the EROM register mapping.
  */
 int
-bcma_scan_erom(device_t dev, struct bhnd_probecfg pcfg_table[],
-    struct resource *erom_res, bus_size_t erom_offset)
+bcma_scan_erom(device_t dev, struct resource *erom_res, bus_size_t erom_offset)
 {
 	struct bcma_devinfo	*dinfo;
 	struct bcma_corecfg	*cfg;
-	struct bhnd_probecfg	*pcfg;
 	device_t		 child;
 	bus_size_t		 erom_end;
 	bus_size_t		 erom_start;
 	bus_size_t		 offset;
 	int			 error;
-	int			 probe_order;
-	const char *		 probe_name;
 	
 	offset = erom_offset + BCMA_EROM_TABLE;
 	erom_end = erom_offset + BCMA_EROM_TABLE_END;
@@ -692,18 +687,8 @@ bcma_scan_erom(device_t dev, struct bhnd_probecfg pcfg_table[],
 
 		cfg = &dinfo->cfg;
 
-		/* Fetch the device probe configuration */
-		probe_order = BHND_PROBE_ORDER_DEFAULT;
-		probe_name = NULL;
-
-		pcfg = bhnd_find_probecfg(pcfg_table, cfg->vendor, cfg->device);
-		if (pcfg != NULL) {
-			probe_name = pcfg->probe_name;
-			probe_order = pcfg->probe_order;
-		}
-
 		/* Add the child device */
-		child = device_add_child_ordered(dev, probe_order, probe_name, -1);
+		child = device_add_child_ordered(dev, BHND_PROBE_ORDER_DEFAULT, NULL, -1);
 		if (child == NULL) {
 			error = ENXIO;
 			goto failed;

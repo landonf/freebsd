@@ -53,15 +53,6 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_devinfo.h"
 #include "bhndvar.h"
 
-/**
- * Generic probe configuration.
- */
-struct bhnd_probecfg bhnd_generic_probecfg_table[] = {
-	/* ChipCommon devices should always be probed before any other cores. */
-	{ BHND_DEVCLASS_CC,	BHND_PROBE_ORDER_FIRST,	NULL },
-	BHND_PROBECFG_TABLE_END
-};
-
 /* BHND core device description table. */
 static const struct bhnd_core_desc {
 	uint16_t	 vendor;
@@ -149,34 +140,6 @@ static const struct bhnd_core_desc {
 
 	{ 0, 0, 0, NULL }
 };
-
-
-/**
- * Return the first matching probe configuration from the given table, or NULL
- * if no match is found.
- * 
- * @param table The table to search.
- * @param vendor The device's JEP106 manufacturer identifier.
- * @param device The device identifier.
- * @param revid The device's revision identifier.
- */
-struct bhnd_probecfg *
-bhnd_find_probecfg(struct bhnd_probecfg table[], uint16_t vendor,
-    uint16_t device)
-{
-	struct bhnd_probecfg	*cfg;
-	bhnd_devclass_t		 cls;
-	
-	cls = bhnd_core_class(vendor, device);
-
-	for (cfg = table; cfg->devclass != BHND_DEVCLASS_INVALID; cfg++) {
-		if (cls == cfg->devclass)
-			return cfg;
-	}
-	
-	return (NULL);
-}
-
 
 /**
  * Return the name for a given JEP106 manufacturer ID.

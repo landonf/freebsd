@@ -110,7 +110,7 @@ bcmab_pci_enumerate_children(device_t dev, device_t bus)
 	pci_write_config(sc->pci_dev, BHND_PCI_BAR0_WIN0, erom_table, 4);
 
 	/* Enumerate children using our mapped EROM table. */
-	error = bcma_scan_erom(sc->bcma_bus, bhnd_generic_probecfg_table, sc->bhndb_state.pci_res[0],
+	error = bcma_scan_erom(sc->bcma_bus, sc->bhndb_state.pci_res[0],
 	    BHND_PCI_V2_BAR0_WIN0_OFFSET);
 	
 	if (error) {
