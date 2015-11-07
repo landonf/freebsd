@@ -31,13 +31,11 @@
 __FBSDID("$FreeBSD$");
 
 /*
- * Broadcom ChipCommon driver.
+ * Broadcom PCI-BHND Host Bridge.
  * 
- * With the exception of some very early chipsets, the ChipCommon core
- * has been included in all HND SoCs and chipsets based on the siba(4) 
- * and bcma(4) interconnects, providing a common interface to chipset 
- * identification, bus enumeration, UARTs, clocks, watchdog interrupts, GPIO, 
- * flash, etc.
+ * Broadcom PCI(e) cores can be configured to operate as endpoint devices,
+ * serving as a "host bridge" from the host's PCI bus to the BHND bus to
+ * which the PCI(e) core is attached.
  */
 
 #include <sys/param.h>
@@ -51,25 +49,27 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/bhnd.h>
 
-#include "bhnd_chipc.h"
+#include "bhnd_pci_hostb.h"
 
-struct bhnd_chipc_softc {};
+struct bhnd_pci_hostb_softc {};
 
-static const struct chipc_bhnd_device {
+static const struct hostb_bhnd_device {
 	uint16_t	 device;
 	const char	*desc;
-} chipc_bhnd_devices[] = {
-	{ BHND_COREID_CC,	NULL },
+} hostb_bhnd_devices[] = {
+	{ BHND_COREID_PCI,	NULL },
+	{ BHND_COREID_PCIE,	NULL },
+	{ BHND_COREID_PCIE2,	NULL },
 	{ BHND_COREID_INVALID,	NULL }
 };
 
 static int
-bhnd_chipc_probe(device_t dev)
+bhnd_pci_hostb_probe(device_t dev)
 {
-	const struct chipc_bhnd_device	*id;
-	const char 			*desc;
-
-	for (id = chipc_bhnd_devices; id->device != BHND_COREID_INVALID; id++)
+	const struct hostb_bhnd_device	*id;
+	const			char 	*desc;
+	
+	for (id = hostb_bhnd_devices; id->device != BHND_COREID_INVALID; id++)
 	{
 		if (bhnd_get_vendor(dev) == BHND_MFGID_BCM &&
 		    bhnd_get_device(dev) == id->device)
@@ -80,6 +80,8 @@ bhnd_chipc_probe(device_t dev)
 				desc = id->desc;
 		
 			device_set_desc(dev, desc);
+
+			// TODO - BUS_PROBE_NOWILDCARD
 			return (BUS_PROBE_DEFAULT);
 		}
 	}
@@ -88,52 +90,47 @@ bhnd_chipc_probe(device_t dev)
 }
 
 static int
-bhnd_chipc_attach(device_t dev)
+bhnd_pci_hostb_attach(device_t dev)
 {
-	int rid = bhnd_get_port_rid(dev, 0, 0);
-	struct bhnd_resource *res = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY, &rid, RF_ACTIVE);
-
-	// TODO
-	device_printf(dev, "got rid=%d res=%p\n", rid, res);
-
+	// TODO - Quirks
 	return (0);
 }
 
 static int
-bhnd_chipc_detach(device_t dev)
+bhnd_pci_hostb_detach(device_t dev)
 {
-	return (ENXIO);
+	return (0);
 }
 
 static int
-bhnd_chipc_suspend(device_t dev)
+bhnd_pci_hostb_suspend(device_t dev)
 {
-	return (ENXIO);
+	return (0);
 }
 
 static int
-bhnd_chipc_resume(device_t dev)
+bhnd_pci_hostb_resume(device_t dev)
 {
-	return (ENXIO);
+	return (0);
 }
 
-static device_method_t bhnd_chipc_methods[] = {
+static device_method_t bhnd_pci_hostb_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_probe,		bhnd_chipc_probe),
-	DEVMETHOD(device_attach,	bhnd_chipc_attach),
-	DEVMETHOD(device_detach,	bhnd_chipc_detach),
-	DEVMETHOD(device_suspend,	bhnd_chipc_suspend),
-	DEVMETHOD(device_resume,	bhnd_chipc_resume),
+	DEVMETHOD(device_probe,		bhnd_pci_hostb_probe),
+	DEVMETHOD(device_attach,	bhnd_pci_hostb_attach),
+	DEVMETHOD(device_detach,	bhnd_pci_hostb_detach),
+	DEVMETHOD(device_suspend,	bhnd_pci_hostb_suspend),
+	DEVMETHOD(device_resume,	bhnd_pci_hostb_resume),
 	DEVMETHOD_END
 };
 
-static driver_t bhnd_chipc_driver = {
-	BHND_CHIPC_DEVNAME,
-	bhnd_chipc_methods,
-	sizeof(struct bhnd_chipc_softc)
+static driver_t bhnd_pci_hostb_driver = {
+	BHND_HOSTB_DEVNAME,
+	bhnd_pci_hostb_methods,
+	sizeof(struct bhnd_pci_hostb_softc)
 };
 
-static devclass_t bhnd_chipc_devclass;
+static devclass_t bhnd_pci_hostb_devclass;
 
-DRIVER_MODULE(bhnd_chipc, bcma, bhnd_chipc_driver, bhnd_chipc_devclass, 0, 0);
-DRIVER_MODULE(bhnd_chipc, siba, bhnd_chipc_driver, bhnd_chipc_devclass, 0, 0);
+DRIVER_MODULE(bhnd_pci_hostb, bcma, bhnd_pci_hostb_driver, bhnd_pci_hostb_devclass, 0, 0);
+DRIVER_MODULE(bhnd_pci_hostb, siba, bhnd_pci_hostb_driver, bhnd_pci_hostb_devclass, 0, 0);

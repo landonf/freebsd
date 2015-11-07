@@ -1108,7 +1108,8 @@ dev/bhnd/bhnd_devinfo.c		optional bhnd | bhndbus
 dev/bhnd/bhndbus_if.m		optional bhnd | bhndbus
 dev/bhnd/bhndb_pci.c		optional bhnd | bhndbus pci
 dev/bhnd/bhndb_pci_if.m		optional bhnd | bhndbus pci
-dev/bhnd/cores/bhnd_chipc.c	optional bhndbus | bhnd_chipc
+dev/bhnd/cores/bhnd_chipc.c	optional bhnd | bhndbus
+dev/bhnd/cores/bhnd_pci_hostb.c	optional bhnd | bhndbus pci
 dev/bktr/bktr_audio.c		optional bktr pci
 dev/bktr/bktr_card.c		optional bktr pci
 dev/bktr/bktr_core.c		optional bktr pci
