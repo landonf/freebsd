@@ -227,6 +227,20 @@ erom_read_port_region(
 	*address = addr_low | ((uint64_t)addr_high << 32);
 	*size = size_low | ((uint64_t)size_high << 32);
 
+	/* Verify that start+count does not overflow. */
+	if (count != 0 && BCMA_ADDR_MAX - (count - 1) < start) {
+		device_printf(bus,
+			"core%u %s%u.%u: invalid address map %llx:%llx\n",
+			dinfo->cfg.core_index,
+			bcma_port_type_name(port_type),
+			port_num, region_num,
+			(unsigned long long) start,
+			(unsigned long long) count);
+
+		error = EINVAL;
+		goto cleanup;
+	}
+
 	*offset += 4;
 	return (0);
 }
@@ -312,24 +326,15 @@ erom_scan_port_regions(device_t bus, struct bcma_devinfo *dinfo,
 		} else if (error) {
 			goto cleanup;
 		}
-		
-		/* Verify that start+count does not overflow. */
-		if (count != 0 && BCMA_ADDR_MAX - (count - 1) < start) {
-			device_printf(bus,
-			    "core%u %s%u.%u: invalid address map %llx:%llx\n",
-			    dinfo->cfg.core_index,
-			    bcma_port_type_name(port_type),
-			    port_num, region_num,
-			    (unsigned long long) start,
-			    (unsigned long long) count);
 
-			error = EINVAL;
-			goto cleanup;
-		} else {
-			end = start + count;
-		}
-
-		/* Register the map entry and its associated resource. */
+		/*
+		 * Create the map entry associated resource. 
+		 * 		
+		 * We necessarily skip registration of the region in the 
+		 * per-device resource_list if the memory range is not
+		 * representable using rman/resource API's u_long address
+		 * type.
+		 */
 		map = malloc(sizeof(struct bcma_map), M_BCMA, M_WAITOK);
 		if (map == NULL) {
 			error = ENOMEM;
@@ -340,26 +345,26 @@ erom_scan_port_regions(device_t bus, struct bcma_devinfo *dinfo,
 		map->m_base = start;
 		map->m_size = count;
 		map->m_rid = -1;
-		
-		/* Skip resource registration if the range is not representable
-		 * with rman/resource API's u_long address type. */
-		if (start <= ULONG_MAX && end <= ULONG_MAX) {
+
+		if (map->m_base > ULONG_MAX ||
+		    map->m_base + map->m_size > ULONG_MAX)
+		{
+			if (bootverbose) {
+				device_printf(bus,
+				    "core%u %s%u.%u: region %llx-%llx extends "
+				        "beyond supported addressable range\n",
+				    dinfo->cfg.core_index,
+				    bcma_port_type_name(port_type),
+				    port_num, region_num,
+				    (unsigned long long) start,
+				    (unsigned long long) end);
+			}
+		} else {
 			map->m_rid = resource_list_add_next(&dinfo->resources,
 			    SYS_RES_MEMORY, start, end, count);
 		}
 
-		if (map->m_rid == -1 && bootverbose) {
-			device_printf(bus,
-			    "core%u %s%u.%u: region %llx-%llx extends beyond "
-				"supported addressable range\n",
-			    dinfo->cfg.core_index,
-			    bcma_port_type_name(port_type),
-			    port_num, region_num,
-			    (unsigned long long) start,
-			    (unsigned long long) end
-			);
-		}
-
+		/* Add the region map to the port */
 		STAILQ_INSERT_TAIL(&sport->sp_maps, map, m_link);
 		sport->sp_num_maps++;
 	}
