@@ -57,13 +57,12 @@ static int		 bcma_devinfo_fill_port_regions(device_t bus,
 			     struct bcma_erom *erom, struct bcma_devinfo *dinfo,
 			     bcma_pid_t port_num, bcma_sport_type port_type);
 
-static int		 erom_cmp_core_idx(const void *a, const void *b);
-static int		 erom_next_core_unit(device_t dev, uint16_t vendor,
-			     uint16_t device, int *unit);
+int			 bcma_next_core_unit(struct bcma_erom_core *cores,
+			     u_int core_index);
 
 static int		 bcma_next_child_devinfo(device_t bus, 
 			     struct bcma_erom *erom, u_int core_index,
-			     struct bcma_devinfo **result);
+			     int core_unit, struct bcma_devinfo **result);
 
 int
 bcma_generic_probe(device_t dev)
@@ -343,64 +342,32 @@ cleanup:
 }
 
 
-/*
- * Quick sort callout for comparing bcma devices by core index.
- */
-static int
-erom_cmp_core_idx(const void *a, const void *b)
-{
-	struct bcma_devinfo	*dinfoA, *dinfoB;
-
-	dinfoA = device_get_ivars(*(device_t *) a);
-	dinfoB = device_get_ivars(*(device_t *) b);
-
-	if (dinfoA->cfg.core_index < dinfoB->cfg.core_index)
-		return (-1);
-	else if (dinfoA->cfg.core_index > dinfoB->cfg.core_index)
-		return (1);
-	else
-		return (0);
-}
-
-
 /**
- * Determine the next available unit number for the given vendor/device pair.
+ * Determine the next available unit number for the given core.
  * 
- * @param dev The bcma bus device.
- * @param vendor The device vendor
- * @param evice The device identifier
- * @param[out] unit On success, the next available unit.
+ * @param cores All cores on in the EROM table, in their original order.
+ * @param core_index Core for which the unit is to be determined.
  * 
  * @retval 0 success
  * @retval non-zero an error occured fetching the device list
  */
-static int
-erom_next_core_unit(device_t dev, uint16_t vendor, uint16_t device, int *unit)
+int
+bcma_next_core_unit(struct bcma_erom_core *cores, u_int core_index)
 {
-	struct bcma_devinfo	*dinfo;
-	device_t		*devlist;
-	int			 devcount;
-	int			 error;
-
-	/* Fetch all previously added children */
-	error = device_get_children(dev, &devlist, &devcount);
-	if (error)
-		return (error);
+	struct bcma_erom_core	*core;
+	int			 unit;
 	
-	/* Sort by core index */
-	if (devcount)
-		qsort(devlist, devcount, sizeof(*devlist), erom_cmp_core_idx);
+	core = &cores[core_index];
 
 	/* Determine the next unit number */
-	*unit = 0;
-	for (int i = 0; i < devcount; i++) {
-		dinfo = device_get_ivars(devlist[i]);
-		if (dinfo->cfg.vendor == vendor && dinfo->cfg.device == device)
-			*unit += 1;
+	unit = 0;
+	for (u_int i = 0; i < core_index; i++) {
+		if (cores[i].vendor == core->vendor &&
+		    cores[i].device == core->device)
+			unit += 1;
 	}
 
-	free(devlist, M_TEMP);
-	return (0);
+	return (unit);
 }
 
 /**
@@ -417,7 +384,7 @@ erom_next_core_unit(device_t dev, uint16_t vendor, uint16_t device, int *unit)
  */
 static int
 bcma_next_child_devinfo(device_t bus, struct bcma_erom *erom, u_int core_index,
-    struct bcma_devinfo **result)
+    int core_unit, struct bcma_devinfo **result)
 {
 	struct bcma_devinfo	*dinfo;
 	struct bcma_erom_core	 core;
@@ -431,7 +398,8 @@ bcma_next_child_devinfo(device_t bus, struct bcma_erom *erom, u_int core_index,
 		return (error);
 
 	/* Allocate our device info */
-	dinfo = bcma_alloc_dinfo(core_index, core.vendor, core.device, core.rev);
+	dinfo = bcma_alloc_dinfo(core_index, core_unit, core.vendor,
+	    core.device, core.rev);
 	if (dinfo == NULL)
 		return (ENOMEM);
 	
@@ -445,12 +413,6 @@ bcma_next_child_devinfo(device_t bus, struct bcma_erom *erom, u_int core_index,
 	dinfo->cfg.num_dports = core.num_dport;
 	dinfo->cfg.num_mports = core.num_mport;
 	dinfo->cfg.num_wports = core.num_mwrap + core.num_swrap;
-
-	/* Assign a core unit number */
-	error = erom_next_core_unit(bus, dinfo->cfg.vendor, dinfo->cfg.device,
-	    &dinfo->cfg.core_unit);
-	if (error)
-		goto failed;
 
 	if (bootverbose) {
 		device_printf(bus, 
@@ -564,26 +526,39 @@ int
 bcma_add_children(device_t bus, struct resource *erom_res, bus_size_t erom_offset)
 {
 	struct bcma_erom	 erom;
+	struct bcma_erom_core	*cores;
 	struct bcma_devinfo	*dinfo;
 	device_t		 child;
+	u_int			 num_cores;
 	int			 error;
 	
 	dinfo = NULL;
+	cores = NULL;
 
-	/* Initialize EROM reader state */
+	/* Initialize our reader */
 	if ((error = bcma_erom_open(erom_res, erom_offset, &erom)))
 		return (error);
 
-	/* Parse the EROM core-by-core */
-	for (u_int core_index = 0; core_index < UINT_MAX; core_index++) 
+	/* Fetch the full table of core descriptors; used to generate unit
+	 * numbers for each core. */
+	if ((error = bcma_erom_get_cores(&erom, &cores, &num_cores))) {
+		device_printf(bus, "failed to read core table: %d\n", error);
+		return (error);
+	}
+
+	/* Parse per-core descriptors */
+	for (u_int core_index = 0; core_index < num_cores; core_index++) 
 	{
-		error = bcma_next_child_devinfo(bus, &erom, core_index, &dinfo);
+		int core_unit;
+
+		/* Determine the core's unit number */
+		core_unit = bcma_next_core_unit(cores, core_index);
 		
-		/* Handle EOF or error */
-		if (error == ENOENT)
-			break;
-		else if (error)
-			return (error);
+		/* Generate the devinfo structure */
+		error = bcma_next_child_devinfo(bus, &erom, core_index,
+		    core_unit, &dinfo);
+		if (error)
+			goto failed;
 
 		/* Add the child device */
 		child = device_add_child_ordered(bus, BHND_PROBE_ORDER_DEFAULT, NULL, -1);
@@ -602,6 +577,9 @@ bcma_add_children(device_t bus, struct resource *erom_res, bus_size_t erom_offse
 failed:
 	if (dinfo != NULL)
 		bcma_free_dinfo(dinfo);
+	
+	if (cores != NULL)
+		free(cores, M_TEMP);
 
 	return (error);
 }

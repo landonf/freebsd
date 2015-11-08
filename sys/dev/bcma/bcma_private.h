@@ -93,8 +93,8 @@ int			 bcma_add_children(device_t bus,
 
 const char		*bcma_port_type_name (bcma_sport_type port_type);
 
-struct bcma_devinfo	*bcma_alloc_dinfo(u_int core_index, uint16_t vendor,
-			     uint16_t device, uint8_t revid);
+struct bcma_devinfo	*bcma_alloc_dinfo(u_int core_index, int core_unit,
+			     uint16_t vendor, uint16_t device, uint8_t revid);
 void			 bcma_free_dinfo(struct bcma_devinfo *dinfo);
 
 struct bcma_sport	*bcma_alloc_sport(bcma_pid_t port_num, bcma_sport_type port_type);

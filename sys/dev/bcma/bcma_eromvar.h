@@ -27,6 +27,7 @@
 struct bcma_erom {
 	device_t	 dev;		/**< the owning device. */
 	struct resource	*res;		/**< resource mapping the EROM table. */
+	bus_size_t	 start;		/**< EROM table offset */
 	bus_size_t	 offset;	/**< current read offset */
 };
 
@@ -63,6 +64,9 @@ int		bcma_erom_open(struct resource *resource, bus_size_t offset,
 		    struct bcma_erom *erom);
 
 int		bcma_erom_peek32(struct bcma_erom *erom, uint32_t *entry);
+bus_size_t	bcma_erom_tell(struct bcma_erom *erom);
+void		bcma_erom_seek(struct bcma_erom *erom, bus_size_t offset);
+void		bcma_erom_reset(struct bcma_erom *erom);
 
 int		bcma_erom_parse_core(struct bcma_erom *erom,
 		    struct bcma_erom_core *core);
@@ -73,9 +77,11 @@ int		bcma_erom_parse_mport(struct bcma_erom *erom,
 int		bcma_erom_parse_sport_region(struct bcma_erom *erom,
 		    struct bcma_erom_sport_region *region);
 
-int		bcma_erom_skip_core(struct bcma_erom *erom);
+int		bcma_erom_get_cores(struct bcma_erom *erom,
+		    struct bcma_erom_core **cores,
+		    u_int *num_cores);
 
-bus_size_t	bcma_erom_tell(struct bcma_erom *erom);
-void		bcma_erom_seek(struct bcma_erom *erom, bus_size_t offset);
+
+
 
 #endif /* _BCMA_BCMA_EROMVAR_H_ */

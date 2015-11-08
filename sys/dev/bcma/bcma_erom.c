@@ -179,7 +179,8 @@ bcma_erom_open(struct resource *resource, bus_size_t offset,
 	erom->dev = rman_get_device(resource);
 	erom->res = resource;
 	erom->offset = offset + BCMA_EROM_TABLE_START;
-	
+	erom->start = erom->offset;
+
 	/* Verify the resource size */
 	count = rman_get_end(resource) - rman_get_start(resource);
 	if (erom->offset > count || 
@@ -190,6 +191,17 @@ bcma_erom_open(struct resource *resource, bus_size_t offset,
 	}
 
 	return (0);
+}
+
+/**
+ * Return the read position to the start of the EROM table.
+ * 
+ * @param erom EROM read state.
+ */
+void
+bcma_erom_reset(struct bcma_erom *erom)
+{
+	erom->offset = erom->start;
 }
 
 /**
@@ -352,72 +364,42 @@ bcma_erom_parse_sport_region(struct bcma_erom *erom,
  * Seek to the next valid core descriptor.
  * 
  * @param erom EROM read state.
- * @param[out] mport On success, will be populated with the parsed
- * descriptor data.
  * @retval 0 success
  * @retval ENOENT The end of the EROM table was reached.
  * @retval non-zero Reading or parsing the descriptor failed.
  */
-int
-bcma_erom_skip_core(struct bcma_erom *erom)
+static int
+bcma_erom_seek_core(struct bcma_erom *erom)
 {
-	bus_size_t	pos;
-	uint32_t	entry;
-	int		error;
+	struct bcma_erom_mport		mp;
+	struct bcma_erom_sport_region	sp;
+	uint32_t			entry;
+	int				error;
 
-	/* If we're currently positioned at a core descriptor, this
-	 * gaurantees that we'll skip to the next core */
-	if ((error = erom_read32(erom, &entry)))
-		return (error);
-	
-	/* We may have just read the EOF marker */
-	if (entry == BCMA_EROM_TABLE_EOF)
-		return (ENOENT);
-
-	while (!error) {
-		/* Save our current position */
-		pos = erom->offset;
-
-		/* Fetch the next entry */
-		if ((error = erom_read32(erom, &entry)))
-			return (error);
-
-		/* Detect EOF */
+	/* Iterate until we hit a core entry. */
+	while (!(error = bcma_erom_peek32(erom, &entry))) {
+		/* Handle EOF */
 		if (entry == BCMA_EROM_TABLE_EOF)
 			return (ENOENT);
-		
+
+		/* Invalid entry */
 		if (!BCMA_EROM_GET_ATTR(entry, ENTRY_ISVALID))
 			return (EINVAL);
 
+		/* Valid entry; either skip or return. */
 		switch (BCMA_EROM_GET_ATTR(entry, ENTRY_TYPE)) {
 		case BCMA_EROM_ENTRY_TYPE_CORE:
-			erom->offset = pos;
 			return (0);
 
 		case BCMA_EROM_ENTRY_TYPE_MPORT:
+			if ((error = bcma_erom_parse_mport(erom, &mp)))
+				return (error);
+
 			break;
 		
 		case BCMA_EROM_ENTRY_TYPE_REGION:
-			/* Skip region address high-bits */
-			if (BCMA_EROM_GET_ATTR(entry, REGION_64BIT)) {
-				if ((error = erom_skip32(erom)))
-					return (error);
-			}
-
-			/* Skip literal size value */
-			if (BCMA_EROM_GET_ATTR(entry, REGION_SIZE) ==
-			    BCMA_EROM_REGION_SIZE_OTHER)
-			{
-				if ((error = erom_read32(erom, &entry)))
-					return (error);
-				
-				/* Skip region size high bits */
-				if (BCMA_EROM_GET_ATTR(entry, RSIZE_64BIT)) {
-					if ((error = erom_skip32(erom)))
-						return (error);
-				}
-			}
-			
+			if ((error = bcma_erom_parse_sport_region(erom, &sp)))
+				return (error);
 			break;
 
 		default:
@@ -426,5 +408,80 @@ bcma_erom_skip_core(struct bcma_erom *erom)
 		}
 	}
 
+	return (error);
+}
+
+/**
+ * Parse all cores descriptors from @p erom and return the array
+ * in @p cores and the count in @p num_cores. The current EROM read position
+ * is left unmodified.
+ * 
+ * The memory allocated for the table should be freed using
+ * `free(*cores, M_TEMP)`. @p cores and @p num_cores are not changed
+ * when an error is returned.
+ * 
+ * @param erom EROM read state.
+ * @param[out] cores the table of parsed core descriptors.
+ * @param[out] num_cores the number of core records in @p cores.
+ */
+int
+bcma_erom_get_cores(struct bcma_erom *erom,
+    struct bcma_erom_core **cores,
+    u_int *num_cores)
+{
+	struct bcma_erom_core	*buffer;
+	bus_size_t		 initial_offset;
+	u_int			 count;
+	int			 error;
+
+	buffer = NULL;
+	initial_offset = bcma_erom_tell(erom);
+
+	/* Determine the core count */
+	bcma_erom_reset(erom);
+	for (count = 0, error = 0; !error; count++) {
+		struct bcma_erom_core core;
+		/* Seek to the first readable core entry */
+		error = bcma_erom_seek_core(erom);
+		if (error == ENOENT)
+			break;
+		else if (error)
+			goto cleanup;
+		
+		/* Read past the core descriptor */
+		if ((error = bcma_erom_parse_core(erom, &core)))
+			goto cleanup;
+	}
+
+	/* Allocate our output buffer */
+	buffer = malloc(sizeof(struct bcma_erom_core) * count, M_TEMP,
+	    M_WAITOK);
+	if (buffer == NULL) {
+		error = ENOMEM;
+		goto cleanup;
+	}
+
+	/* Parse all core descriptors */
+	bcma_erom_reset(erom);
+	for (u_int i = 0; i < count; i++) {
+		if ((error = bcma_erom_seek_core(erom)))
+			goto cleanup;
+
+		error = bcma_erom_parse_core(erom, &buffer[i]);
+		if (error)
+			goto cleanup;
+	}
+
+cleanup:
+	if (!error) {
+		*cores = buffer;
+		*num_cores = count;
+	} else {
+		if (buffer != NULL)
+			free(buffer, M_TEMP);
+	}
+
+	/* Restore the initial position */
+	bcma_erom_seek(erom, initial_offset);
 	return (error);
 }
