@@ -613,7 +613,7 @@ static device_method_t bcma_methods[] = {
 
 	/* BHND interface */
 	DEVMETHOD(bhnd_get_port_rid,		bcma_generic_get_port_rid),
-	DEVMETHOD(bhnd_alloc_resource,	bhnd_generic_alloc_bhnd_resource),
+	DEVMETHOD(bhnd_alloc_resource,		bhnd_generic_alloc_bhnd_resource),
 	DEVMETHOD(bhnd_release_resource,	bhnd_generic_release_bhnd_resource),
 	DEVMETHOD(bhnd_activate_resource,	bhnd_generic_activate_bhnd_resource),
 	DEVMETHOD(bhnd_deactivate_resource,	bhnd_generic_deactivate_bhnd_resource),
