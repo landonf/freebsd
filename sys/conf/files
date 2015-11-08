@@ -1100,6 +1100,7 @@ dev/ath/ath_dfs/null/dfs_null.c	optional ath \
 dev/bce/if_bce.c		optional bce
 dev/bcma/bcma.c			optional bcma
 dev/bcma/bcma_erom.c		optional bcma
+dev/bcma/bcma_subr.c		optional bcma
 dev/bcma/bcmab_pci.c		optional bcma pci
 dev/bfe/if_bfe.c		optional bfe
 dev/bge/if_bge.c		optional bge

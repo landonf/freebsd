@@ -39,20 +39,15 @@ __FBSDID("$FreeBSD$");
 #include <machine/bus.h>
 #include <machine/resource.h>
 
-#include <dev/bhnd/bhnd.h>
-#include "bcmavar.h"
-
-#include "bcmavar.h"
-#include "bcma_dmp.h"
-#include "bcma_private.h"
-
+#include "bcma_eromreg.h"
+#include "bcma_eromvar.h"
 
 /*
  * BCMA Enumeration ROM (EROM) Table
  * 
  * Provides auto-discovery of BCMA cores on Broadcom's HND SoC.
  * 
- * The EROM table address can be found at BCMA_CC_EROM_ADDR within the
+ * The EROM core address can be found at BCMA_CC_EROM_ADDR within the
  * ChipCommon registers. The table itself is comprised of 32-bit
  * type-tagged entries, organized into an array of variable-length
  * core descriptor records.
@@ -61,48 +56,20 @@ __FBSDID("$FreeBSD$");
  * marker.
  */
 
-static const char	*erom_entry_type_name(uint8_t entry);
+static const char	*erom_entry_type_name (uint8_t entry);
+static int		 erom_read32(struct bcma_erom *erom, uint32_t *entry);
+static int		 erom_skip32(struct bcma_erom *erom);
 
-static int		 erom_read32(device_t bus, struct resource *erom_res,
-			     bus_size_t erom_end, bus_size_t offset,
-			     uint32_t *entry);
+#define	EROM_LOG(erom, fmt, ...)	\
+	device_printf(erom->dev, "erom[0x%lx]: " fmt, erom->offset-4, \
+	    ##__VA_ARGS__);
 
-static int		 erom_read_port_region(device_t bus,
-			     struct resource *erom_res, bus_size_t erom_end,
-			     bcma_pid_t req_port, uint8_t req_type, 
-			     bcma_addr_t *address, bcma_size_t *size,
-			     bus_size_t * const offset);
-
-static int		 erom_scan_port_regions(device_t bus,
-			     struct bcma_devinfo *dinfo, bcma_pid_t port_num,
-			     bcma_sport_type port_type, 
-			     struct resource *erom_res,
-			     bus_size_t erom_end, bus_size_t * const offset);
-
-static int		 erom_cmp_core_idx(const void *a, const void *b);
-static int		 erom_next_core_unit(device_t dev, uint16_t vendor,
-			     uint16_t device, int *unit);
-
-static int		 erom_scan_core(device_t bus, u_int core_index,
-			     struct resource *erom_res, bus_size_t erom_start,
-			     bus_size_t erom_end, bus_size_t * const offset,
-			     struct bcma_devinfo **result);
-
-/* Extract entry attribute by applying _MASK and _SHIFT defines. */
-#define	EROM_GET_ATTR(_entry, _attr)			\
-	((_entry & BCMA_EROM_ ## _attr ## _MASK)	\
-	>> BCMA_EROM_ ## _attr ## _SHIFT)
-
-/* Test an entry's type */
-#define	EROM_ENTRY_IS(_entry, _type)					\
-	(EROM_GET_ATTR(_entry, ENTRY_ISVALID) &&			\
-	 EROM_GET_ATTR(_entry, ENTRY_TYPE) == BCMA_EROM_ENTRY_TYPE_ ## _type)
 
 /** Return the type name for an EROM entry */
 static const char *
 erom_entry_type_name (uint8_t entry)
 {
-	switch (EROM_GET_ATTR(entry, ENTRY_TYPE)) {
+	switch (BCMA_EROM_GET_ATTR(entry, ENTRY_TYPE)) {
 	case BCMA_EROM_ENTRY_TYPE_CORE:
 		return "core";
 	case BCMA_EROM_ENTRY_TYPE_MPORT:
@@ -115,600 +82,349 @@ erom_entry_type_name (uint8_t entry)
 }
 
 /**
- * Read a 32-bit entry value from the EROM table.
- * 
- * @param bus The BCMA bus.
- * @param erom_res The EROM resource.
- * @param erom_end The maximum permitted EROM offset.
- * @param offset The offset at which to perform the read.
- * @param entry Will contain the read result on success.
- * @return If successful, returns 0. If unsuccessful, returns non-zero error.
+ * Return the current read position.
  */
-static int
-erom_read32(device_t bus, struct resource *erom_res, bus_size_t 
-    erom_end, bus_size_t offset, uint32_t *entry)
+bus_size_t
+bcma_erom_tell(struct bcma_erom *erom)
 {
-	if (offset >= erom_end) {
-		device_printf(bus, "EROM table missing terminating EOF\n");
+	return (erom->offset);
+}
+
+/**
+ * Seek to an absolute read position.
+ */
+void
+bcma_erom_seek(struct bcma_erom *erom, bus_size_t offset)
+{
+	erom->offset = offset;
+}
+
+/**
+ * Read a 32-bit entry value from the EROM table without advancing the
+ * read position.
+ * 
+ * @param erom EROM read state.
+ * @param entry Will contain the read result on success.
+ * @retval 0 success
+ * @retval ENOENT The end of the EROM table was reached.
+ * @retval non-zero The read could not be completed.
+ */
+int
+bcma_erom_peek32(struct bcma_erom *erom, uint32_t *entry)
+{
+	if (erom->offset >= BCMA_EROM_TABLE_START + BCMA_EROM_TABLE_SIZE) {
+		EROM_LOG(erom, "BCMA EROM table missing terminating EOF\n");
 		return (EINVAL);
 	}
 	
-	*entry = bus_read_4(erom_res, offset);
+	*entry = bus_read_4(erom->res, erom->offset);
 	return (0);
 }
 
 /**
- * Read a port region descriptor from the EROM table.
+ * Read a 32-bit entry value from the EROM table.
  * 
- * @param bus The BCMA bus.
- * @param erom_res The EROM resource.
- * @param erom_end The maximum permitted EROM offset.
- * @param req_port The required port number.
- * @param req_type The required region type.
- * @param[out] address On success, the parsed region base address.
- * @param[out] size On success, the parsed region size.
- * @param[out] offset The offset at which to perform parsing. On success, this
- * will be updated to point to the next EROM table entry.
- * 
- * @return If successful, returns 0. If the end of the region table for the given
- * port and type is reached, ENOENT will be returned. On error, returns a
- * non-zero error value.
+ * @param erom EROM read state.
+ * @param entry Will contain the read result on success.
+ * @retval 0 success
+ * @retval ENOENT The end of the EROM table was reached.
+ * @retval non-zero The read could not be completed.
  */
 static int
-erom_read_port_region(
-    device_t bus,
-    struct resource *erom_res, 
-    bus_size_t erom_end,
-    bcma_pid_t req_port,
-    uint8_t req_type,
-    bcma_addr_t *address,
-    bcma_size_t *size,
-    bus_size_t * const offset)
+erom_read32(struct bcma_erom *erom, uint32_t *entry)
 {
-	uint32_t 	 addr_high, addr_low;
-	uint32_t	 entry;
-	uint32_t	 size_high, size_low;
-	uint8_t		 type;
-	uint8_t		 port;
-	uint8_t		 size_type;
-	int		 error;
+	int error;
 
-	/* Fetch the next table entry */
-	if ((error = erom_read32(bus, erom_res, erom_end, *offset, &entry)))
+	if ((error = bcma_erom_peek32(erom, entry)) == 0)
+		erom->offset += 4;
+
+	return (error);
+}
+
+/**
+ * Read and discard 32-bit entry value from the EROM table.
+ * 
+ * @param erom EROM read state.
+ * @retval 0 success
+ * @retval ENOENT The end of the EROM table was reached.
+ * @retval non-zero The read could not be completed.
+ */
+static int
+erom_skip32(struct bcma_erom *erom)
+{
+	uint32_t	entry;
+
+	return erom_read32(erom, &entry);
+}
+
+/**
+ * "Open" an EROM core for reading.
+ * 
+ * @param resource An active resource mapping the EROM core.
+ * @param offset Offset of the EROM core relative to @p resource.
+ * @param[out] erom On success, will be populated with a valid EROM
+ * read state.
+ * 
+ * @retval 0 success
+ * @retval non-zero if the resource's size is insufficient for a valid EROM
+ * table.
+ */
+int
+bcma_erom_open(struct resource *resource, bus_size_t offset,
+    struct bcma_erom *erom)
+{
+	bus_size_t count;
+
+	/* Initialize the EROM reader */
+	erom->dev = rman_get_device(resource);
+	erom->res = resource;
+	erom->offset = offset + BCMA_EROM_TABLE_START;
+	
+	/* Verify the resource size */
+	count = rman_get_end(resource) - rman_get_start(resource);
+	if (erom->offset > count || 
+	    count - erom->offset < BCMA_EROM_TABLE_SIZE)
+	{
+		device_printf(erom->dev, "invalid EROM resource size\n");
+		return (EINVAL);
+	}
+
+	return (0);
+}
+
+/**
+ * Read the next core descriptor from the EROM table.
+ * 
+ * @param erom EROM read state.
+ * @param[out] core On success, will be populated with the parsed core
+ * descriptor data.
+ * @retval 0 success
+ * @retval ENOENT The end of the EROM table was reached.
+ * @retval non-zero Reading or parsing the core descriptor failed.
+ */
+int
+bcma_erom_parse_core(struct bcma_erom *erom, struct bcma_erom_core *core)
+{
+	uint32_t	entry;
+	int		error;
+
+	/* Parse CoreDescA */
+	if ((error = erom_read32(erom, &entry)))
+		return (error);
+	
+	/* Handle EOF */
+	if (entry == BCMA_EROM_TABLE_EOF)
+		return (ENOENT);
+	
+	if (!BCMA_EROM_ENTRY_IS(entry, CORE)) {
+		EROM_LOG(erom, "Unexpected EROM entry 0x%x (type=%s)\n",
+                   entry, erom_entry_type_name(entry));
+		
+		return (EINVAL);
+	}
+
+	core->vendor = BCMA_EROM_GET_ATTR(entry, COREA_DESIGNER);
+	core->device = BCMA_EROM_GET_ATTR(entry, COREA_ID);
+	
+	/* Parse CoreDescB */
+	if ((error = erom_read32(erom, &entry)))
 		return (error);
 
-	/* A non-region entry signifies the end of the region table. */
-	if (!EROM_ENTRY_IS(entry, REGION))
-		return (ENOENT);
-		
-	/* Parse the region attributes */
-	addr_low = EROM_GET_ATTR(entry, REGION_BASE);
-	addr_high = 0;
-	size_type = EROM_GET_ATTR(entry, REGION_SIZE);
-	type = EROM_GET_ATTR(entry, REGION_TYPE);
-	port = EROM_GET_ATTR(entry, REGION_PORT);
-
-	/* A region or type mismatch also signifies end of table. */
-	if (port != req_port || type != req_type)
-		return (ENOENT);
-
-	/* Fetch the high bits of a 64-bit region address */
-	if (EROM_GET_ATTR(entry, REGION_64BIT)) {
-		*offset += 4;
-		if ((error = erom_read32(bus, erom_res, erom_end, *offset, &addr_high)))
-			return (error);
+	if (!BCMA_EROM_ENTRY_IS(entry, CORE)) {
+		return (EINVAL);
 	}
+
+	core->rev = BCMA_EROM_GET_ATTR(entry, COREB_REV);
+	core->num_mport = BCMA_EROM_GET_ATTR(entry, COREB_NUM_MP);
+	core->num_dport = BCMA_EROM_GET_ATTR(entry, COREB_NUM_DP);
+	core->num_mwrap = BCMA_EROM_GET_ATTR(entry, COREB_NUM_WMP);
+	core->num_swrap = BCMA_EROM_GET_ATTR(entry, COREB_NUM_WSP);
+
+	return (0);
+}
+
+/**
+ * Read the next master port descriptor from the EROM table.
+ * 
+ * @param erom EROM read state.
+ * @param[out] mport On success, will be populated with the parsed
+ * descriptor data.
+ * @retval 0 success
+ * @retval non-zero Reading or parsing the descriptor failed.
+ */
+int
+bcma_erom_parse_mport(struct bcma_erom *erom,
+    struct bcma_erom_mport *mport)
+{
+	uint32_t	entry;
+	int		error;
+
+	/* Parse the master port descriptor */
+	if ((error = erom_read32(erom, &entry)))
+		return (error);
 	
+	if (!BCMA_EROM_ENTRY_IS(entry, MPORT))
+		return (EINVAL);
+
+	mport->port_vid = BCMA_EROM_GET_ATTR(entry, MPORT_ID);
+	mport->port_num = BCMA_EROM_GET_ATTR(entry, MPORT_NUM);
+
+	return (0);
+}
+
+/**
+ * Read the next slave port region descriptor from the EROM table.
+ * 
+ * @param erom EROM read state.
+ * @param[out] mport On success, will be populated with the parsed
+ * descriptor data.
+ * @retval 0 success
+ * @retval ENOENT The end of the region descriptor table was reached.
+ * @retval non-zero Reading or parsing the descriptor failed.
+ */
+int
+bcma_erom_parse_sport_region(struct bcma_erom *erom,
+    struct bcma_erom_sport_region *region)
+{
+	uint32_t	entry;
+	uint8_t		size_type;
+	int		error;
+
+	/* Peek at the region descriptor */
+	if (bcma_erom_peek32(erom, &entry))
+		return (EINVAL);
+
+	/* A non-region entry signals the end of the region table */
+	if (!BCMA_EROM_ENTRY_IS(entry, REGION)) {
+		return (ENOENT);
+	} else {
+		erom_skip32(erom);
+	}
+
+	region->base_addr = BCMA_EROM_GET_ATTR(entry, REGION_BASE);
+	region->port_type = BCMA_EROM_GET_ATTR(entry, REGION_TYPE);
+	region->port_num = BCMA_EROM_GET_ATTR(entry, REGION_PORT);
+	size_type = BCMA_EROM_GET_ATTR(entry, REGION_SIZE);
+
+	/* If region address is 64-bit, fetch the high bits. */
+	if (BCMA_EROM_GET_ATTR(entry, REGION_64BIT)) {
+		if ((error = erom_read32(erom, &entry)))
+			return (error);
+		
+		region->base_addr |= ((bcma_addr_t) entry << 32);
+	}
+
 	/* Parse the region size; it's either encoded as the binary logarithm
 	 * of the number of 4K pages (i.e. log2 n), or its encoded as a
 	 * 32-bit/64-bit literal value directly following the current entry. */
-	size_high = 0;
-	switch (size_type) {
-	case BCMA_EROM_REGION_SIZE_OTHER:
-		*offset += 4;
-		if ((error = erom_read32(bus, erom_res, erom_end, *offset, &entry)))
+	if (size_type == BCMA_EROM_REGION_SIZE_OTHER) {
+		if ((error = erom_read32(erom, &entry)))
 			return (error);
 
-		size_low = EROM_GET_ATTR(entry, RSIZE_VAL);
-		if (EROM_GET_ATTR(entry, RSIZE_64BIT)) {
-			*offset += 4;
-			if ((erom_read32(bus, erom_res, erom_end, *offset, &size_high)))
+		region->size = BCMA_EROM_GET_ATTR(entry, RSIZE_VAL);
+
+		if (BCMA_EROM_GET_ATTR(entry, RSIZE_64BIT)) {
+			if ((error = erom_read32(erom, &entry)))
 				return (error);
+			region->size |= ((bcma_size_t) entry << 32);
 		}
-
-		break;
-	default:
-		size_low = BCMA_EROM_REGION_SIZE_BASE << size_type;
-		break;
-	}
-
-
-	/* Return the parsed region data */
-	*address = addr_low | ((uint64_t)addr_high << 32);
-	*size = size_low | ((uint64_t)size_high << 32);
-
-	/* Verify that start+count does not overflow. */
-	if (count != 0 && BCMA_ADDR_MAX - (count - 1) < start) {
-		device_printf(bus,
-			"core%u %s%u.%u: invalid address map %llx:%llx\n",
-			dinfo->cfg.core_index,
-			bcma_port_type_name(port_type),
-			port_num, region_num,
-			(unsigned long long) start,
-			(unsigned long long) count);
-
-		error = EINVAL;
-		goto cleanup;
-	}
-
-	*offset += 4;
-	return (0);
-}
-
-/**
- * Register all MMIO region descriptors for the given slave port.
- * 
- * @param bus The BCMA bus.
- * @param dinfo Device info to be populated with the scanned port regions.
- * @param port_num Port index for which regions will be parsed.
- * @param port_type The port region type to be parsed.
- * @param erom_res The EROM resource.
- * @param erom_end The maximum permitted EROM offset.
- * @param[out] offset The offset at which to perform parsing. On success, this
- * will be updated to point to the next EROM table entry.
- */
-static int 
-erom_scan_port_regions(device_t bus, struct bcma_devinfo *dinfo,
-    bcma_pid_t port_num, bcma_sport_type port_type, struct resource *erom_res,
-    bus_size_t erom_end, bus_size_t * const offset)
-{
-	struct bcma_sport	*sport;
-	struct bcma_sport_list	*sports;
-	int			 error;
-	uint8_t			 req_region_type;
-	bool			 skip_registration;
-
-	error = 0;
-	skip_registration = false;
-
-	/* Allocate a new port descriptor */
-	sport = bcma_alloc_sport(port_num, port_type);
-	if (sport == NULL)
-		return (ENOMEM);
-	
-	/* Determine the required region type for our region descriptors */
-	switch (port_type) {
-	case BCMA_SPORT_TYPE_DEVICE:
-		req_region_type = BCMA_EROM_REGION_TYPE_DEVICE;
-		sports = &dinfo->cfg.dports;
-		break;
-	case BCMA_SPORT_TYPE_BRIDGE:
-		req_region_type = BCMA_EROM_REGION_TYPE_BRIDGE;
-		sports = &dinfo->cfg.dports;
-		break;
-	case BCMA_SPORT_TYPE_SWRAP:
-		req_region_type = BCMA_EROM_REGION_TYPE_SWRAP;
-		sports = &dinfo->cfg.wports;
-		break;
-	case BCMA_SPORT_TYPE_MWRAP:
-		req_region_type = BCMA_EROM_REGION_TYPE_MWRAP;
-		sports = &dinfo->cfg.wports;
-		break;
-	}
-
-	/* Read all address regions defined for this port */
-	for (bcma_rmid_t region_num = 0;; region_num++) {
-		struct bcma_map	*map;
-		bcma_addr_t	 start;
-		bcma_addr_t	 end;
-		bcma_size_t	 count;
-
-		/* No valid port definition should come anywhere near
-		 * BCMA_RMID_MAX. */
-		if (region_num == BCMA_RMID_MAX) {
-			device_printf(bus,
-			    "core%u %s%u: region count reached upper limit of %u\n",
-			    dinfo->cfg.core_index,
-			    bcma_port_type_name(port_type),
-			    port_num, BCMA_RMID_MAX);
-
-			error = EINVAL;
-			goto cleanup;
-		}
-
-		/* Parse the next region entry. */
-		error = erom_read_port_region(bus, erom_res, erom_end, port_num, 
-		    req_region_type, &start, &count, offset);
-		if (error == ENOENT) {
-			/* No further entries */
-			error = 0;
-			break;
-		} else if (error) {
-			goto cleanup;
-		}
-
-		/*
-		 * Create the map entry associated resource. 
-		 * 		
-		 * We necessarily skip registration of the region in the 
-		 * per-device resource_list if the memory range is not
-		 * representable using rman/resource API's u_long address
-		 * type.
-		 */
-		map = malloc(sizeof(struct bcma_map), M_BCMA, M_WAITOK);
-		if (map == NULL) {
-			error = ENOMEM;
-			goto cleanup;
-		}
-
-		map->m_region_num = region_num;
-		map->m_base = start;
-		map->m_size = count;
-		map->m_rid = -1;
-
-		if (map->m_base > ULONG_MAX ||
-		    map->m_base + map->m_size > ULONG_MAX)
-		{
-			if (bootverbose) {
-				device_printf(bus,
-				    "core%u %s%u.%u: region %llx-%llx extends "
-				        "beyond supported addressable range\n",
-				    dinfo->cfg.core_index,
-				    bcma_port_type_name(port_type),
-				    port_num, region_num,
-				    (unsigned long long) start,
-				    (unsigned long long) end);
-			}
-		} else {
-			map->m_rid = resource_list_add_next(&dinfo->resources,
-			    SYS_RES_MEMORY, start, end, count);
-		}
-
-		/* Add the region map to the port */
-		STAILQ_INSERT_TAIL(&sport->sp_maps, map, m_link);
-		sport->sp_num_maps++;
-	}
-
-cleanup:
-	/* Append the new port descriptor on success, or deallocate the
-	 * partially parsed descriptor on failure. */
-	if (error == 0) {
-		STAILQ_INSERT_TAIL(sports, sport, sp_link);
-	} else if (sport != NULL) {
-		bcma_free_sport(sport);
-	}
-
-	return error;
-}
-
-
-/*
- * Quick sort callout for comparing bcma devices by core index.
- */
-static int
-erom_cmp_core_idx(const void *a, const void *b)
-{
-	struct bcma_devinfo	*dinfoA, *dinfoB;
-
-	dinfoA = device_get_ivars(*(device_t *) a);
-	dinfoB = device_get_ivars(*(device_t *) b);
-
-	if (dinfoA->cfg.core_index < dinfoB->cfg.core_index)
-		return (-1);
-	else if (dinfoA->cfg.core_index > dinfoB->cfg.core_index)
-		return (1);
-	else
-		return (0);
-}
-
-
-/**
- * Determine the next available unit number for the given vendor/device pair.
- * 
- * @param dev The bcma bus device.
- * @param vendor The device vendor
- * @param evice The device identifier
- * @param[out] unit On success, the next available unit.
- * 
- * @retval 0 success
- * @retval non-zero an error occured fetching the device list
- */
-static int
-erom_next_core_unit(device_t dev, uint16_t vendor, uint16_t device, int *unit)
-{
-	struct bcma_devinfo	*dinfo;
-	device_t		*devlist;
-	int			 devcount;
-	int			 error;
-
-	/* Fetch all previously added children */
-	error = device_get_children(dev, &devlist, &devcount);
-	if (error)
-		return (error);
-	
-	/* Sort by core index */
-	if (devcount)
-		qsort(devlist, devcount, sizeof(*devlist), erom_cmp_core_idx);
-
-	/* Determine the next unit number */
-	*unit = 0;
-	for (int i = 0; i < devcount; i++) {
-		dinfo = device_get_ivars(devlist[i]);
-		if (dinfo->cfg.vendor == vendor && dinfo->cfg.device == device)
-			*unit += 1;
-	}
-
-	free(devlist, M_TEMP);
-	return (0);
-}
-
-/**
- * Parse a core entry from the EROM table.
- * 
- * @param bus The BCMA bus.
- * @param core_index The index of the core being parsed.
- * @param erom_res The EROM resource.
- * @param erom_start The initial offset of the EROM table.
- * @param erom_end The maximum permitted EROM offset.
- * @param[out] offset The offset at which to perform parsing. On success, this
- * will be updated to point to the next EROM table entry.
- * @param[out] result On success, the core's device info. The caller inherits
- * ownership of this allocation.
- * 
- * @return If successful, returns 0. If the end of the EROM table is hit,
- * ENOENT will be returned. On error, returns a non-zero error value.
- */
-static int
-erom_scan_core(device_t bus, u_int core_index, struct resource *erom_res,
-    bus_size_t erom_start, bus_size_t erom_end, bus_size_t * const offset,
-    struct bcma_devinfo **result
-)
-{
-	struct bcma_devinfo	*dinfo;
-	bcma_sport_type		 first_port_type;
-	uint32_t		 entry;
-	uint16_t		 core_designer;
-	uint16_t		 core_part;
-	uint8_t			 core_revid;
-	u_long			 num_mport, num_dport, num_mwrap, num_swrap;
-	int			 error;
-
-	dinfo = NULL;
-
-	/* Fetch the next entry */
-	if (erom_read32(bus, erom_res, erom_end, *offset, &entry))
-		return (EINVAL);
-
-	/* Signal EOF */
-	if (entry == BCMA_EROM_TABLE_EOF)
-		return (ENOENT);
-			
-	/* Must be the start of the next core description */
-	if (!EROM_ENTRY_IS(entry, CORE)) {
-		device_printf(bus,
-		    "Unexpected EROM %s entry 0x%x at offset 0x%llx\n",
-		    erom_entry_type_name(entry), entry,
-		    (unsigned long long) *offset-erom_start);
-		return (EINVAL);
-	}
-	
-	
-	/* Parse CoreDescA */
-	core_designer = EROM_GET_ATTR(entry, COREA_DESIGNER);
-	core_part = EROM_GET_ATTR(entry, COREA_ID);
-	
-
-	/* Parse CoreDescB */
-	*offset += 4;
-	if (erom_read32(bus, erom_res, erom_end, *offset, &entry))
-		return (EINVAL);
-
-	if (!EROM_ENTRY_IS(entry, CORE)) {
-		device_printf(bus,
-		    "Invalid EROM CoreDescB value 0x%x at offset 0x%llx\n", 
-		    entry, (unsigned long long) (*offset-erom_start));
-
-		return (EINVAL);
-	}
-	
-	core_revid = EROM_GET_ATTR(entry, COREB_REV);
-	num_mport = EROM_GET_ATTR(entry, COREB_NUM_MP);
-	num_dport = EROM_GET_ATTR(entry, COREB_NUM_DP);
-	num_mwrap = EROM_GET_ATTR(entry, COREB_NUM_WMP);
-	num_swrap = EROM_GET_ATTR(entry, COREB_NUM_WSP);
-	
-	/* These are 5-bit values in the current implementation, and should
-	 * never be able to overflow BCMA_PID_MAX. */
-	KASSERT(num_mport <= BCMA_PID_MAX, ("unsupported mport count"));
-	KASSERT(num_dport <= BCMA_PID_MAX, ("unsupported dport count"));
-	KASSERT(num_mwrap + num_swrap <= BCMA_PID_MAX,
-	    ("unsupported wport count"));
-
-	/* Allocate our device info */
-	dinfo = bcma_alloc_dinfo(core_index, core_designer, core_part, core_revid);
-	if (dinfo == NULL)
-		return (ENOMEM);
-
-	dinfo->cfg.num_dports = num_dport;
-	dinfo->cfg.num_mports = num_mport;
-	dinfo->cfg.num_wports = num_mwrap + num_swrap;
-
-	/* Assign a core unit number */
-	error = erom_next_core_unit(bus, dinfo->cfg.vendor, dinfo->cfg.device,
-	    &dinfo->cfg.core_unit);
-	if (error)
-		goto failed;
-
-	if (bootverbose) {
-		device_printf(bus, 
-			    "core%u: %s %s (cid=%hx, rev=%hhu, unit=%d)\n",
-			    core_index,
-			    bhnd_vendor_name(dinfo->cfg.vendor),
-			    bhnd_core_name(dinfo->cfg.vendor, dinfo->cfg.device), 
-			    dinfo->cfg.device, dinfo->cfg.revid,
-			    dinfo->cfg.core_unit);
-	}
-	*offset += 4;
-
-	/* Parse Master Port Descriptors */
-	for (uint8_t i = 0; i < num_mport; i++) {
-		struct bcma_mport	*mport;
-		uint8_t			 mp_num;
-		uint8_t			 mp_vid;
-		
-		/* Parse the master port descriptor */
-		error = erom_read32(bus, erom_res, erom_end, *offset, &entry);
-		if (error)
-			goto failed;
-
-		if (!EROM_ENTRY_IS(entry, MPORT)) {
-			device_printf(bus,
-			    "Invalid EROM MPD value 0x%x at ROM "
-			        "offset 0x%llx\n", 
-			    entry, (unsigned long long) (*offset-erom_start));
-			error = EINVAL;
-			goto failed;
-		}
-		
-		mp_vid = EROM_GET_ATTR(entry, MPORT_ID);
-		mp_num = EROM_GET_ATTR(entry, MPORT_NUM);
-
-
-		/* Initialize a new bus mport structure */
-		mport = malloc(sizeof(struct bcma_mport), M_BCMA, M_WAITOK);
-		if (mport == NULL) {
-			error = ENOMEM;
-			goto failed;
-		}
-		
-		mport->mp_vid = mp_vid;
-		mport->mp_num = mp_num;
-
-		/* Update dinfo */
-		STAILQ_INSERT_TAIL(&dinfo->cfg.mports, mport, mp_link);
-
-		*offset += 4;
-	}
-	
-
-	/*
-	 * Determine whether this is a bridge device; if so, we can
-	 * expect the first sequence of address region descriptors to
-	 * be of EROM_REGION_TYPE_BRIDGE instead of
-	 * BCMA_EROM_REGION_TYPE_DEVICE.
-	 * 
-	 * It's unclear whether this is the correct mechanism by which we
-	 * should detect/handle bridge devices, but this approach matches
-	 * that of (some of) Broadcom's published drivers.
-	 */
-	if (erom_read32(bus, erom_res, erom_end, *offset, &entry)) {
-		error = EINVAL;
-		goto failed;
-	}
-	
-	if (EROM_ENTRY_IS(entry, REGION) && 
-	    EROM_GET_ATTR(entry, REGION_TYPE) == BCMA_EROM_REGION_TYPE_BRIDGE)
-	{
-		first_port_type = BCMA_SPORT_TYPE_BRIDGE;
 	} else {
-		first_port_type = BCMA_SPORT_TYPE_DEVICE;
-	}
-	
-	/* Device/bridge port descriptors */
-	for (uint8_t sp_num = 0; sp_num < num_dport; sp_num++) {
-		error = erom_scan_port_regions(bus, dinfo, sp_num,
-		    first_port_type, erom_res, erom_end, offset);
-
-		if (error)
-			goto failed;
+		region->size = BCMA_EROM_REGION_SIZE_BASE << size_type;
 	}
 
-	/* Wrapper (aka device management) descriptors (for master ports). */
-	for (uint8_t sp_num = 0; sp_num < num_mwrap; sp_num++) {
-		error = erom_scan_port_regions(bus, dinfo, sp_num,
-		    BCMA_SPORT_TYPE_MWRAP, erom_res, erom_end, offset);
+	/* Verify that addr+size does not overflow. */
+	if (region->size != 0 &&
+	    BCMA_ADDR_MAX - (region->size - 1) < region->base_addr)
+	{
+		EROM_LOG(erom, "%s%u: invalid address map %llx:%llx\n",
+		    bcma_port_type_name(region->port_type),
+		    region->port_num,
+		    (unsigned long long) region->base_addr,
+		    (unsigned long long) region->size);
 
-		if (error)
-			goto failed;
+		return (EINVAL);
 	}
 
-	
-	/* Wrapper (aka device management) descriptors (for slave ports). */	
-	for (uint8_t i = 0; i < num_swrap; i++) {
-		/* Slave wrapper ports are not numbered distinctly from master
-		 * wrapper ports. */
-		uint8_t sp_num = num_mwrap + i;
-		error = erom_scan_port_regions(bus, dinfo, sp_num,
-		    BCMA_SPORT_TYPE_SWRAP, erom_res, erom_end, offset);
-
-		if (error)
-			goto failed;
-	}
-
-	*result = dinfo;
 	return (0);
-	
-failed:
-	if (dinfo != NULL)
-		bcma_free_dinfo(dinfo);
-
-	return error;
 }
 
 /**
- * Scan a device enumeration ROM table, adding all discovered cores to the bus.
+ * Seek to the next valid core descriptor.
  * 
- * @param dev The bus to enumerate.
- * @param erom_res The enumeration ROM resource.
- * @param erom_offset Base offset of the EROM register mapping.
+ * @param erom EROM read state.
+ * @param[out] mport On success, will be populated with the parsed
+ * descriptor data.
+ * @retval 0 success
+ * @retval ENOENT The end of the EROM table was reached.
+ * @retval non-zero Reading or parsing the descriptor failed.
  */
 int
-bcma_scan_erom(device_t dev, struct resource *erom_res, bus_size_t erom_offset)
+bcma_erom_skip_core(struct bcma_erom *erom)
 {
-	struct bcma_devinfo	*dinfo;
-	struct bcma_corecfg	*cfg;
-	device_t		 child;
-	bus_size_t		 erom_end;
-	bus_size_t		 erom_start;
-	bus_size_t		 offset;
-	int			 error;
+	bus_size_t	pos;
+	uint32_t	entry;
+	int		error;
+
+	/* If we're currently positioned at a core descriptor, this
+	 * gaurantees that we'll skip to the next core */
+	if ((error = erom_read32(erom, &entry)))
+		return (error);
 	
-	offset = erom_offset + BCMA_EROM_TABLE;
-	erom_end = erom_offset + BCMA_EROM_TABLE_END;
-	erom_start = offset;
-	dinfo = NULL;
-	
-	for (u_int core_index = 0; offset < erom_end && core_index < UINT_MAX;
-	    core_index++) 
-	{
-		error = erom_scan_core(dev, core_index, erom_res, erom_start,
-		    erom_end, &offset, &dinfo);
-		
-		/* Handle EOF or error */
-		if (error == ENOENT)
-			break;
-		else if (error)
+	/* We may have just read the EOF marker */
+	if (entry == BCMA_EROM_TABLE_EOF)
+		return (ENOENT);
+
+	while (!error) {
+		/* Save our current position */
+		pos = erom->offset;
+
+		/* Fetch the next entry */
+		if ((error = erom_read32(erom, &entry)))
 			return (error);
 
-		cfg = &dinfo->cfg;
+		/* Detect EOF */
+		if (entry == BCMA_EROM_TABLE_EOF)
+			return (ENOENT);
+		
+		if (!BCMA_EROM_GET_ATTR(entry, ENTRY_ISVALID))
+			return (EINVAL);
 
-		/* Add the child device */
-		child = device_add_child_ordered(dev, BHND_PROBE_ORDER_DEFAULT, NULL, -1);
-		if (child == NULL) {
-			error = ENXIO;
-			goto failed;
+		switch (BCMA_EROM_GET_ATTR(entry, ENTRY_TYPE)) {
+		case BCMA_EROM_ENTRY_TYPE_CORE:
+			erom->offset = pos;
+			return (0);
+
+		case BCMA_EROM_ENTRY_TYPE_MPORT:
+			break;
+		
+		case BCMA_EROM_ENTRY_TYPE_REGION:
+			/* Skip region address high-bits */
+			if (BCMA_EROM_GET_ATTR(entry, REGION_64BIT)) {
+				if ((error = erom_skip32(erom)))
+					return (error);
+			}
+
+			/* Skip literal size value */
+			if (BCMA_EROM_GET_ATTR(entry, REGION_SIZE) ==
+			    BCMA_EROM_REGION_SIZE_OTHER)
+			{
+				if ((error = erom_read32(erom, &entry)))
+					return (error);
+				
+				/* Skip region size high bits */
+				if (BCMA_EROM_GET_ATTR(entry, RSIZE_64BIT)) {
+					if ((error = erom_skip32(erom)))
+						return (error);
+				}
+			}
+			
+			break;
+
+		default:
+			/* Unknown entry type! */
+			return (EINVAL);	
 		}
-
-		/* The child device now owns the dinfo pointer */
-		device_set_ivars(child, dinfo);
-		dinfo = NULL;
 	}
-
-	return (0);
-	
-failed:
-	if (dinfo != NULL)
-		bcma_free_dinfo(dinfo);
 
 	return (error);
 }

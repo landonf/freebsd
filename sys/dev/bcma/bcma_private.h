@@ -32,8 +32,13 @@
 #ifndef _BCMA_BCMA_PRIVATE_H_
 #define _BCMA_BCMA_PRIVATE_H_
 
+#include <sys/types.h>
+#include <sys/malloc.h>
+#include <sys/limits.h>
+#include <sys/rman.h>
+
 /*
- * Internal bcma declarations.
+ * Internal bcma declarations for use by bcma/bcmab implementations.
  */
 
 MALLOC_DECLARE(M_BCMA);
@@ -83,8 +88,8 @@ struct resource_list	*bcma_generic_get_resource_list(device_t dev,
 int			 bcma_generic_get_port_rid(device_t dev, device_t child,
 			     u_int port_num, u_int region_num);
 
-int			 bcma_scan_erom(device_t dev, struct resource *erom_res,
-			     bus_size_t erom_offset);
+int			 bcma_add_children(device_t bus,
+			     struct resource *erom_res, bus_size_t erom_offset);
 
 const char		*bcma_port_type_name (bcma_sport_type port_type);
 
