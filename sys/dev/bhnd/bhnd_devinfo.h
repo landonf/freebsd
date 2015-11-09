@@ -34,7 +34,7 @@
 
 #include <sys/param.h>
 
-#include "bhnd_devids.h"
+#include "bhnd_ids.h"
 
 /** BHND Device Classes. */
 typedef enum {

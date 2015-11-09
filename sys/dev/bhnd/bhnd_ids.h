@@ -23,8 +23,8 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_BHND_DEVIDS_H_
-#define _BHND_BHND_DEVIDS_H_
+#ifndef _BHND_BHND_IDS_H_
+#define _BHND_BHND_IDS_H_
 
 /*
  * Core Vendor IDs
@@ -718,4 +718,4 @@
 #define	BHND_BOOTFLAG_FLASH_KERNEL_NFLASH	0x00000001
 #define	BHND_BOOTFLAG_FLASH_BOOT_NFLASH		0x00000002
 
-#endif /* _BHND_BHND_DEVIDS_H_ */
+#endif /* _BHND_BHND_IDS_H_ */
