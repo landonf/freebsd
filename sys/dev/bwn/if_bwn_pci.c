@@ -49,7 +49,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/pci/pcivar.h>
 
 #include <dev/bhnd/bhnd.h>
-#include <dev/bcma/bcmab_pcivar.h>
+#include <dev/bhnd/bcma/bcmab_pcivar.h>
 
 #include "if_bwn_pcivar.h"
 
