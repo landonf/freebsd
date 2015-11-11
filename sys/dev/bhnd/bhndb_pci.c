@@ -88,10 +88,15 @@ bhndb_pci_generic_attach(device_t dev)
 		free_mem_rman = true;
 	}
 
-	/* Fetch our PCI device resource spec and determine its length */	
+	/* Fetch our PCI device resource spec and determine its length */
+	// TODO
+#if 0
 	sc->pci_res_spec = BHNDB_PCI_GET_RESOURCE_SPEC(device_get_parent(dev),
 	    dev);
-	
+#else
+	sc->pci_res_spec = NULL;
+#endif
+
 	sc->num_pci_res = 0;
 	for (size_t i = 0; sc->pci_res_spec[i].type != -1; i++)
 		sc->num_pci_res++;

@@ -29,12 +29,9 @@
  * $FreeBSD$
  */
 
-#ifndef _BCMA_BCMAB_PCI_H_
-#define _BCMA_BCMAB_PCI_H_
+#ifndef _BHND_CORES_CHIPCREG_H_
+#define _BHND_CORES_CHIPCREG_H_
 
-#include "bcmavar.h"
-#include "bhndb_pci_if.h"
+#define	BCMA_CC_EROM_ADDR	0xFC	/**< 32-bit EROM address (BCMA-only). */
 
-DECLARE_CLASS(bcmab_pci_driver);
-
-#endif /* _BCMA_BCMA_PCIEB_H_ */
+#endif /* _BHND_CORES_CHIPCREG_H_ */
