@@ -4,7 +4,7 @@
 
 KMOD=	bhnd
 SRCS=	bhnd.c bhnd_devinfo.c bhndreg.h bhndvar.h bhnd_if.h \
-	bhndb_pci.c bhndb_pcivar.h bhnd_pcireg.h bhndb_pci_if.h \
+	bhndb_pci.c bhndb_pcivar.h cores/bhnd_pcireg.h bhndb_pci_if.h \
 	bhnd_ids.h bhnd_core.h
 SRCS+=	device_if.h bus_if.h
 
