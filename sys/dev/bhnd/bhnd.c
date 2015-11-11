@@ -63,6 +63,7 @@ __FBSDID("$FreeBSD$");
 #include "bhndvar.h"
 
 MALLOC_DEFINE(M_BHND, "bhnd", "bhnd bus data structures");
+MODULE_VERSION(bhnd, 1);
 
 /**
  * bhnd_generic_probe_nomatch() reporting configuration.
