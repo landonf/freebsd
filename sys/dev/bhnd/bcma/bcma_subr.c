@@ -39,10 +39,9 @@ __FBSDID("$FreeBSD$");
 #include <machine/bus.h>
 #include <machine/resource.h>
 
-#include "bcma_private.h"
+#include <dev/bhnd/bhnd_private.h>
 
-#include "bcma_eromreg.h"
-#include "bcma_eromvar.h"
+#include "bcma_private.h"
 
 
 /**
@@ -78,7 +77,7 @@ bcma_alloc_dinfo(u_int core_index, int core_unit, uint16_t vendor,
 {
 	struct bcma_devinfo *dinfo;
 	
-	dinfo = malloc(sizeof(struct bcma_devinfo), M_BCMA, M_WAITOK);
+	dinfo = malloc(sizeof(struct bcma_devinfo), M_BHND, M_WAITOK);
 	if (dinfo == NULL)
 		return NULL;
 
@@ -111,7 +110,7 @@ bcma_free_dinfo(struct bcma_devinfo *dinfo)
 	resource_list_free(&dinfo->resources);
 
 	STAILQ_FOREACH_SAFE(mport, &dinfo->cfg.mports, mp_link, mnext) {
-		free(mport, M_BCMA);
+		free(mport, M_BHND);
 	}
 	
 	STAILQ_FOREACH_SAFE(sport, &dinfo->cfg.dports, sp_link, snext) {
@@ -122,7 +121,7 @@ bcma_free_dinfo(struct bcma_devinfo *dinfo)
 		bcma_free_sport(sport);
 	}
 
-	free(dinfo, M_BCMA);
+	free(dinfo, M_BHND);
 }
 
 
@@ -137,7 +136,7 @@ bcma_alloc_sport(bcma_pid_t port_num, bcma_sport_type port_type)
 {
 	struct bcma_sport *sport;
 	
-	sport = malloc(sizeof(struct bcma_sport), M_BCMA, M_WAITOK);
+	sport = malloc(sizeof(struct bcma_sport), M_BHND, M_WAITOK);
 	if (sport == NULL)
 		return NULL;
 	
@@ -159,9 +158,9 @@ bcma_free_sport(struct bcma_sport *sport) {
 	struct bcma_map *map, *mapnext;
 
 	STAILQ_FOREACH_SAFE(map, &sport->sp_maps, m_link, mapnext) {
-		free(map, M_BCMA);
+		free(map, M_BHND);
 	}
 
-	free(sport, M_BCMA);
+	free(sport, M_BHND);
 }
 

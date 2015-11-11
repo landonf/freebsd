@@ -41,8 +41,6 @@
  * Internal bcma declarations for use by bcma/bcmab implementations.
  */
 
-MALLOC_DECLARE(M_BCMA);
-
 /** BCMA bus address. The backing bus supports 64-bit addressing. */
 typedef uint64_t	bcma_addr_t;
 #define	BCMA_ADDR_MAX	UINT64_MAX	/**< Maximum bcma_addr_t value */

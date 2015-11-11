@@ -47,8 +47,6 @@ __FBSDID("$FreeBSD$");
 #include "bcma_eromreg.h"
 #include "bcma_eromvar.h"
 
-MALLOC_DEFINE(M_BCMA, "bcma", "BCMA bus data structures");
-
 /** BMCA per-instance state */
 struct bcma_softc {
 };
@@ -290,7 +288,7 @@ bcma_devinfo_fill_port_regions(device_t bus,
 		/*
 		 * Create the map entry. 
 		 */
-		map = malloc(sizeof(struct bcma_map), M_BCMA, M_WAITOK);
+		map = malloc(sizeof(struct bcma_map), M_BHND, M_WAITOK);
 		if (map == NULL) {
 			error = ENOMEM;
 			goto cleanup;
@@ -435,7 +433,7 @@ bcma_next_child_devinfo(device_t bus, struct bcma_erom *erom, u_int core_index,
 			goto failed;
 
 		/* Initialize a new bus mport structure */
-		mport = malloc(sizeof(struct bcma_mport), M_BCMA, M_WAITOK);
+		mport = malloc(sizeof(struct bcma_mport), M_BHND, M_WAITOK);
 		if (mport == NULL) {
 			error = ENOMEM;
 			goto failed;
