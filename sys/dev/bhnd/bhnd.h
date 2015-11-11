@@ -33,25 +33,44 @@
 #define _BHND_BHND_H_
 
 #include <sys/types.h>
-#include <sys/malloc.h>
 
-#include "bhnd_if.h"
-
-#include "bhnd_devinfo.h"
 #include "bhndvar.h"
+#include "bhnd_if.h"
+#include "bhnd_ids.h"
 
 /**
-* A bhnd(4) bus resource.
-* 
-* This provides an abstract interface to per-core resources that may require
-* bus-level remapping of address windows prior to access.
-*/
-struct bhnd_resource {
-	struct resource	*_res;		/**< the system resource. */
-	bool		 _direct;	/**< true if the resource requires
-					*   bus window remapping before it
-					*   is MMIO accessible. */
+ * bhnd child instance variables
+ */
+enum bhnd_device_vars {
+	BHND_IVAR_VENDOR,	/**< Designer's JEP-106 manufacturer ID. */
+	BHND_IVAR_DEVICE,	/**< Part number */
+	BHND_IVAR_REVID,	/**< Core revision */
+	BHND_IVAR_DEVICE_CLASS,	/**< Core class (@sa bhnd_devclass_t) */
+	BHND_IVAR_VENDOR_NAME,	/**< Core vendor name */
+	BHND_IVAR_DEVICE_NAME,	/**< Core name */
+	BHND_IVAR_CORE_INDEX,	/**< Bus-assigned core number */
+	BHND_IVAR_CORE_UNIT,	/**< Bus-assigned core unit number,
+				     assigned sequentially (starting at 0) for
+				     each vendor/device pair. */
 };
+
+/*
+ * Simplified accessors for bhnd device ivars
+ */
+#define	BHND_ACCESSOR(var, ivar, type) \
+	__BUS_ACCESSOR(bhnd, var, BHND, ivar, type)
+
+BHND_ACCESSOR(vendor,		VENDOR,		uint16_t);
+BHND_ACCESSOR(device,		DEVICE,		uint16_t);
+BHND_ACCESSOR(revid,		REVID,		uint8_t);
+BHND_ACCESSOR(class,		DEVICE_CLASS,	bhnd_devclass_t);
+BHND_ACCESSOR(vendor_name,	VENDOR_NAME,	const char *);
+BHND_ACCESSOR(device_name,	DEVICE_NAME,	const char *);
+BHND_ACCESSOR(core_index,	CORE_INDEX,	u_int);
+BHND_ACCESSOR(core_unit,	CORE_UNIT,	int);
+
+#undef	BHND_ACCESSOR
+
 
 /**
  * Allocate a resource from a device's parent bhnd(4) bus.
@@ -157,4 +176,4 @@ bhnd_get_port_rid(device_t dev, u_int port, u_int region)
     return BHND_GET_PORT_RID(device_get_parent(dev), dev, port, region);
 }
 
-#endif /* _BHND_BHND_H_ */
+#endif /* _BHND_BHND_BUS_H_ */

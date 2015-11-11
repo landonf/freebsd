@@ -32,74 +32,82 @@
 #ifndef _BHND_BHNDVAR_H_
 #define _BHND_BHNDVAR_H_
 
-#include <sys/param.h>
-#include <sys/types.h>
-#include <sys/malloc.h>
+/** BHND Device Classes. */
+typedef enum {
+	BHND_DEVCLASS_CC,		/**< chipcommon i/o controller */
+	BHND_DEVCLASS_PCI,		/**< pci/pcie host/device bridge */
+	BHND_DEVCLASS_MEM,		/**< internal RAM/SRAM */
+	BHND_DEVCLASS_MEMC,		/**< memory controller */
+	BHND_DEVCLASS_ENET_MAC,		/**< 802.3 MAC */
+	BHND_DEVCLASS_ENET_PHY,		/**< 802.3 PHY */
+	BHND_DEVCLASS_ENET_MPHY,	/**< 802.3 MAC/PHY */
+	BHND_DEVCLASS_WLAN,		/**< 802.11 MAC/PHY/Radio */
+	BHND_DEVCLASS_WLAN_MAC,		/**< 802.11 MAC */
+	BHND_DEVCLASS_WLAN_PHY,		/**< 802.11 PHY */
+	BHND_DEVCLASS_WLAN_MPHY,	/**< 802.11 mac/phy */
+	BHND_DEVCLASS_CPU,		/**< cpu core */
+	BHND_DEVCLASS_SOCI,		/**< interconnect */
+	BHND_DEVCLASS_SOCB,		/**< interconnect bridge/socket */
+	BHND_DEVCLASS_OTHER,		/**< other / unknown */
 
-#include <sys/bus.h>
+	BHND_DEVCLASS_INVALID	/**< no/invalid class */
+} bhnd_devclass_t;
 
-#include "bhnd_devinfo.h"
-
-#include "bhnd_if.h"
-
-MALLOC_DECLARE(M_BHND);
-
-
-int			 bhnd_generic_print_child(device_t dev,
-			     device_t child);
-void			 bhnd_generic_probe_nomatch(device_t dev,
-			     device_t child);
-
-int			 bhnd_generic_enumerate_children(device_t dev,
-			     device_t child);
-
-struct bhnd_resource	*bhnd_generic_alloc_bhnd_resource (device_t dev,
-			     device_t child, int type, int *rid, u_long start,
-			     u_long end, u_long count, u_int flags);
-
-int			 bhnd_generic_release_bhnd_resource (device_t dev,
-			     device_t child, int type, int rid,
-			     struct bhnd_resource *r);
-
-int			 bhnd_generic_activate_bhnd_resource (device_t dev,
-			     device_t child, int type, int rid,
-			     struct bhnd_resource *r);
-
-int			 bhnd_generic_deactivate_bhnd_resource (device_t dev,
-			     device_t child, int type, int rid,
-			     struct bhnd_resource *r);
 
 /**
- * bhnd child instance variables
+ * bhnd device probe priority.
  */
-enum bhnd_device_vars {
-	BHND_IVAR_VENDOR,	/**< Designer's JEP-106 manufacturer ID. */
-	BHND_IVAR_DEVICE,	/**< Part number */
-	BHND_IVAR_REVID,	/**< Core revision */
-	BHND_IVAR_DEVICE_CLASS,	/**< Core class (@sa bhnd_devclass_t) */
-	BHND_IVAR_VENDOR_NAME,	/**< Core vendor name */
-	BHND_IVAR_DEVICE_NAME,	/**< Core name */
-	BHND_IVAR_CORE_INDEX,	/**< Bus-assigned core number */
-	BHND_IVAR_CORE_UNIT,	/**< Bus-assigned core unit number,
-				     assigned sequentially (starting at 0) for
-				     each vendor/device pair. */
+enum {
+	BHND_PROBE_ORDER_FIRST		= 0,	/**< probe first */
+	BHND_PROBE_ORDER_EARLY		= 10,	/**< probe early */
+	BHND_PROBE_ORDER_DEFAULT	= 20,	/**< default probe priority */
+	BHND_PROBE_ORDER_LAST		= 30,	/**< probe last */
 };
 
-/*
- * Simplified accessors for bhnd device ivars
+
+/**
+* A bhnd(4) bus resource.
+* 
+* This provides an abstract interface to per-core resources that may require
+* bus-level remapping of address windows prior to access.
+*/
+struct bhnd_resource {
+	struct resource	*_res;		/**< the system resource. */
+	bool		 _direct;	/**< true if the resource requires
+					*   bus window remapping before it
+					*   is MMIO accessible. */
+};
+
+/**
+ * A hardware revision match descriptor.
  */
-#define	BHND_ACCESSOR(var, ivar, type) \
-	__BUS_ACCESSOR(bhnd, var, BHND, ivar, type)
+struct bhnd_hwrev_match {
+	uint16_t	start;	/**< first revision, or BHND_HWREV_INVALID
+					     to match on any revision. */
+	uint16_t	end;	/**< last revision, or BHND_HWREV_INVALID
+					     to match on any revision. */
+};
 
-BHND_ACCESSOR(vendor,		VENDOR,		uint16_t);
-BHND_ACCESSOR(device,		DEVICE,		uint16_t);
-BHND_ACCESSOR(revid,		REVID,		uint8_t);
-BHND_ACCESSOR(class,		DEVICE_CLASS,	bhnd_devclass_t);
-BHND_ACCESSOR(vendor_name,	VENDOR_NAME,	const char *);
-BHND_ACCESSOR(device_name,	DEVICE_NAME,	const char *);
-BHND_ACCESSOR(core_index,	CORE_INDEX,	u_int);
-BHND_ACCESSOR(core_unit,	CORE_UNIT,	int);
+/** A core match descriptor. */
+struct bhnd_core_match {
+	uint16_t		vendor;	/**< required JEP106 device vendor or BHND_MFGID_INVALID. */
+	uint16_t		device;	/**< required core ID or BHND_COREID_INVALID */
+	struct bhnd_hwrev_match	hwrev;	/**< matching revisions. */
+	bhnd_devclass_t		class;	/**< required class or BHND_DEVCLASS_INVALID */
+	int			unit;	/**< required core unit, or -1 */
+};
 
-#undef	BHND_ACCESSOR
+const char		*bhnd_vendor_name(uint16_t vendor);
+const char 		*bhnd_core_name(uint16_t vendor, uint16_t device);
+bhnd_devclass_t		 bhnd_core_class(uint16_t vendor, uint16_t device);
+
+device_t		 bhnd_match_child(device_t dev,
+			     struct bhnd_core_match *desc);
+
+device_t		 bhnd_find_child(device_t dev,
+			     bhnd_devclass_t class);
+
+bool			 bhnd_device_matches(device_t dev,
+			     struct bhnd_core_match *desc);
 
 #endif /* _BHND_BHNDVAR_H_ */

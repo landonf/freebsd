@@ -50,8 +50,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/types.h>
 
-#include "bhnd_devinfo.h"
-#include "bhndvar.h"
+#include "bhnd_private.h"
 
 /* BHND core device description table. */
 static const struct bhnd_core_desc {

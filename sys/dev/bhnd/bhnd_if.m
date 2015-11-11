@@ -37,6 +37,8 @@ HEADER {
 }
 
 CODE {
+	#include <dev/bhnd/bhnd_private.h>
+
 	static int
 	bhnd_null_get_port_rid(device_t dev, device_t child, u_int port_num,
 	    u_int region_num)

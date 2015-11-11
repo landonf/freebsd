@@ -29,7 +29,42 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_BHNDREG_H_
-#define _BHND_BHNDREG_H_
+#ifndef _BHND_BHND_PRIVATE_H_
+#define _BHND_BHND_PRIVATE_H_
 
-#endif /* _BHND_BHNDREG_H_ */
+#include <sys/param.h>
+#include <sys/types.h>
+#include <sys/malloc.h>
+
+#include <sys/bus.h>
+
+#include "bhnd.h"
+
+MALLOC_DECLARE(M_BHND);
+
+
+int			 bhnd_generic_print_child(device_t dev,
+			     device_t child);
+void			 bhnd_generic_probe_nomatch(device_t dev,
+			     device_t child);
+
+int			 bhnd_generic_enumerate_children(device_t dev,
+			     device_t child);
+
+struct bhnd_resource	*bhnd_generic_alloc_bhnd_resource (device_t dev,
+			     device_t child, int type, int *rid, u_long start,
+			     u_long end, u_long count, u_int flags);
+
+int			 bhnd_generic_release_bhnd_resource (device_t dev,
+			     device_t child, int type, int rid,
+			     struct bhnd_resource *r);
+
+int			 bhnd_generic_activate_bhnd_resource (device_t dev,
+			     device_t child, int type, int rid,
+			     struct bhnd_resource *r);
+
+int			 bhnd_generic_deactivate_bhnd_resource (device_t dev,
+			     device_t child, int type, int rid,
+			     struct bhnd_resource *r);
+
+#endif /* _BHND_BHND_PRIVATE_H_ */
