@@ -79,6 +79,17 @@ struct bhnd_resource {
 };
 
 /**
+ * A bhnd(4) core descriptor.
+ */
+struct bhnd_core_info {
+	uint16_t	vendor;		/**< vendor */
+	uint16_t	device;		/**< device */
+	uint16_t	hwrev;		/**< hardware revision */
+	u_int		core_id;	/**< bus-assigned core identifier */
+	int		unit;		/**< bus-assigned core unit */
+};
+
+/**
  * A hardware revision match descriptor.
  */
 struct bhnd_hwrev_match {

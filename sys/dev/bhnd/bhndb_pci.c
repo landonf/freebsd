@@ -55,13 +55,13 @@ __FBSDID("$FreeBSD$");
 devclass_t bhndb_devclass;
 
 int
-bhndb_pci_generic_probe(device_t dev)
+bhndb_pci_probe(device_t dev)
 {
 	return (BUS_PROBE_NOWILDCARD);
 }
 
 int
-bhndb_pci_generic_attach(device_t dev)
+bhndb_pci_attach(device_t dev)
 {
 	struct bhndb_pci_softc	*sc;
 	int			 error;
@@ -137,7 +137,7 @@ failed:
 }
 
 int
-bhndb_pci_generic_detach(device_t dev)
+bhndb_pci_detach(device_t dev)
 {
 	struct bhndb_pci_softc *sc = device_get_softc(dev);
 
@@ -148,13 +148,13 @@ bhndb_pci_generic_detach(device_t dev)
 }
 
 int
-bhndb_pci_generic_suspend(device_t dev)
+bhndb_pci_suspend(device_t dev)
 {
 	return (bus_generic_suspend(dev));
 }
 
 int
-bhndb_pci_generic_resume(device_t dev)
+bhndb_pci_resume(device_t dev)
 {
 	return (bus_generic_resume(dev));
 }
@@ -183,7 +183,7 @@ bhndb_pci_get_rman(device_t dev, int type)
  * to fetch resource state for allocation.
  */
 struct resource *
-bhndb_pci_generic_alloc_resource(device_t dev, device_t child, int type,
+bhndb_pci_alloc_resource(device_t dev, device_t child, int type,
     int *rid, u_long start, u_long end, u_long count, u_int flags)
 {
 	struct resource_list		*rl;
@@ -266,7 +266,7 @@ bhndb_pci_generic_alloc_resource(device_t dev, device_t child, int type,
  * state.
  */
 int
-bhndb_pci_generic_release_resource(device_t dev, device_t child, int type, int rid,
+bhndb_pci_release_resource(device_t dev, device_t child, int type, int rid,
     struct resource *res)
 {
 	struct resource_list		*rl;
@@ -302,7 +302,7 @@ bhndb_pci_generic_release_resource(device_t dev, device_t child, int type, int r
  * Helper function for implementing BUS_ACTIVATE_RESOURCE() on bhnd pci hosts.
  */
 int
-bhndb_pci_generic_activate_resource(device_t dev, device_t child, int type, int rid,
+bhndb_pci_activate_resource(device_t dev, device_t child, int type, int rid,
     struct resource *r)
 {
 	// TODO - window resource activations
@@ -313,7 +313,7 @@ bhndb_pci_generic_activate_resource(device_t dev, device_t child, int type, int 
  * Helper function for implementing BUS_ACTIVATE_RESOURCE() on bhnd pci hosts.
  */
 int
-bhndb_pci_generic_deactivate_resource(device_t dev, device_t child, int type,
+bhndb_pci_deactivate_resource(device_t dev, device_t child, int type,
     int rid, struct resource *r)
 {
 	// TODO - window resource deactivations
@@ -327,7 +327,7 @@ bhndb_pci_generic_deactivate_resource(device_t dev, device_t child, int type,
  * to BUS_ALLOC_RESOURCE().
  */
 struct bhnd_resource *
-bhndb_pci_generic_alloc_bhnd_resource(device_t dev, device_t child, int type,
+bhndb_pci_alloc_bhnd_resource(device_t dev, device_t child, int type,
      int *rid, u_long start, u_long end, u_long count, u_int flags)
 {
 	// struct bhnd_resource *r;
@@ -344,7 +344,7 @@ bhndb_pci_generic_alloc_bhnd_resource(device_t dev, device_t child, int type,
  * Helper function for implementing BHND_RELEASE_RESOURCE().
  */
 int
-bhndb_pci_generic_release_bhnd_resource(device_t dev, device_t child,
+bhndb_pci_release_bhnd_resource(device_t dev, device_t child,
     int type, int rid, struct bhnd_resource *r)
 {
 	// int error;
@@ -364,7 +364,7 @@ bhndb_pci_generic_release_bhnd_resource(device_t dev, device_t child,
  * to BUS_ACTIVATE_RESOURCE().
  */
 int
-bhndb_pci_generic_activate_bhnd_resource(device_t dev, device_t child,
+bhndb_pci_activate_bhnd_resource(device_t dev, device_t child,
     int type, int rid, struct bhnd_resource *r)
 {
 	if (device_get_parent(child) != dev)
@@ -382,7 +382,7 @@ bhndb_pci_generic_activate_bhnd_resource(device_t dev, device_t child,
  * to BUS_DEACTIVATE_RESOURCE().
  */
 int
-bhndb_pci_generic_deactivate_bhnd_resource(device_t dev, device_t child,
+bhndb_pci_deactivate_bhnd_resource(device_t dev, device_t child,
     int type, int rid, struct bhnd_resource *r)
 {
 	if (device_get_parent(child) != dev)

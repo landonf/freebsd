@@ -23,7 +23,6 @@
 #include <sys/rman.h>
 
 #include "bhnd.h"
-#include "bhndb_pci_if.h"
 
 extern devclass_t bhndb_devclass;
 
@@ -41,41 +40,41 @@ struct bhndb_pci_softc {
 	struct rman		 mem_rman;	/**< bus memory resource manager */
 };
 
-int			 bhndb_pci_generic_probe(device_t dev);
-int			 bhndb_pci_generic_attach(device_t dev);
-int			 bhndb_pci_generic_detach(device_t dev);
-int			 bhndb_pci_generic_suspend(device_t dev);
-int			 bhndb_pci_generic_resume(device_t dev);
+int			 bhndb_pci_probe(device_t dev);
+int			 bhndb_pci_attach(device_t dev);
+int			 bhndb_pci_detach(device_t dev);
+int			 bhndb_pci_suspend(device_t dev);
+int			 bhndb_pci_resume(device_t dev);
 
-struct resource		*bhndb_pci_generic_alloc_resource(device_t dev,
+struct resource		*bhndb_pci_alloc_resource(device_t dev,
 			     device_t child, int type, int *rid, u_long start,
 			     u_long end, u_long count, u_int flags);
 
-int			 bhndb_pci_generic_release_resource(device_t dev,
+int			 bhndb_pci_release_resource(device_t dev,
 			     device_t child, int type, int rid,
 			     struct resource *res);
 
-int			 bhndb_pci_generic_activate_resource(device_t dev,
+int			 bhndb_pci_activate_resource(device_t dev,
 			     device_t child, int type, int rid,
 			     struct resource *r);
 
-int			 bhndb_pci_generic_deactivate_resource(device_t dev,
+int			 bhndb_pci_deactivate_resource(device_t dev,
 			     device_t child, int type, int rid,
 			     struct resource *r);
 
-struct bhnd_resource	*bhndb_pci_generic_alloc_bhnd_resource(device_t dev,
+struct bhnd_resource	*bhndb_pci_alloc_bhnd_resource(device_t dev,
 			     device_t child, int type, int *rid, u_long start,
 			     u_long end, u_long count, u_int flags);
 
-int			 bhndb_pci_generic_release_bhnd_resource(device_t dev,
+int			 bhndb_pci_release_bhnd_resource(device_t dev,
 			     device_t child, int type, int rid,
 			     struct bhnd_resource *r);
 
-int			 bhndb_pci_generic_activate_bhnd_resource(device_t dev,
+int			 bhndb_pci_activate_bhnd_resource(device_t dev,
 			     device_t child, int type, int rid,
 			     struct bhnd_resource *r);
 
-int			 bhndb_pci_generic_deactivate_bhnd_resource(
+int			 bhndb_pci_deactivate_bhnd_resource(
 			     device_t dev, device_t child, int type, int rid,
 			     struct bhnd_resource *r);
 
@@ -141,21 +140,21 @@ static device_method_t __CONCAT(dname,_methods)[] = { \
 	DEVMETHOD(device_attach,		__CONCAT(dname,_attach)),		\
 	DEVMETHOD(device_detach,		__CONCAT(dname,_detach)),		\
 	DEVMETHOD(device_shutdown,		bus_generic_shutdown),			\
-	DEVMETHOD(device_suspend,		bhndb_pci_generic_suspend),		\
-	DEVMETHOD(device_resume,		bhndb_pci_generic_resume),		\
+	DEVMETHOD(device_suspend,		bhndb_pci_suspend),		\
+	DEVMETHOD(device_resume,		bhndb_pci_resume),		\
 											\
 	/* Bus interface */								\
-	DEVMETHOD(bus_alloc_resource,		bhndb_pci_generic_alloc_resource),	\
-	DEVMETHOD(bus_release_resource,		bhndb_pci_generic_release_resource),	\
-	DEVMETHOD(bus_activate_resource,	bhndb_pci_generic_activate_resource),	\
-	DEVMETHOD(bus_deactivate_resource,	bhndb_pci_generic_deactivate_resource),	\
+	DEVMETHOD(bus_alloc_resource,		bhndb_pci_alloc_resource),	\
+	DEVMETHOD(bus_release_resource,		bhndb_pci_release_resource),	\
+	DEVMETHOD(bus_activate_resource,	bhndb_pci_activate_resource),	\
+	DEVMETHOD(bus_deactivate_resource,	bhndb_pci_deactivate_resource),	\
 											\
 	/* BHND interface */								\
 	DEVMETHOD(bhnd_enumerate_children,	__CONCAT(dname,_enumerate_children)),	\
-	DEVMETHOD(bhnd_alloc_resource,		bhndb_pci_generic_alloc_bhnd_resource),	\
-	DEVMETHOD(bhnd_release_resource,	bhndb_pci_generic_release_bhnd_resource),	\
-	DEVMETHOD(bhnd_activate_resource,	bhndb_pci_generic_activate_bhnd_resource),	\
-	DEVMETHOD(bhnd_activate_resource,	bhndb_pci_generic_deactivate_bhnd_resource),	\
+	DEVMETHOD(bhnd_alloc_resource,		bhndb_pci_alloc_bhnd_resource),	\
+	DEVMETHOD(bhnd_release_resource,	bhndb_pci_release_bhnd_resource),	\
+	DEVMETHOD(bhnd_activate_resource,	bhndb_pci_activate_bhnd_resource),	\
+	DEVMETHOD(bhnd_activate_resource,	bhndb_pci_deactivate_bhnd_resource),	\
 											\
 	DEVMETHOD_END									\
 }; \

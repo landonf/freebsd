@@ -1103,6 +1103,8 @@ dev/bge/if_bge.c		optional bge
 dev/bhnd/bhnd.c			optional bhndbus | bhnd
 dev/bhnd/bhnd_subr.c		optional bhndbus | bhnd
 dev/bhnd/bhnd_if.m		optional bhndbus | bhnd
+dev/bhnd/bhndb_bus_if.m		optional bhndbus | bhnd
+dev/bhnd/bhndb_hw_if.m		optional bhndbus | bhnd
 dev/bhnd/bhndb_pci.c		optional bhndbus pci | bhnd pci
 # bhnd bus modules
 dev/bhnd/bcma/bcma.c		optional bhndbus | bcma
