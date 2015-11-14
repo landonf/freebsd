@@ -52,7 +52,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/cores/bhnd_pcireg.h>
 
 #include "bhndb_bus_if.h"
-#include "bhndb_if.h"
 
 #include "bhndb_private.h"
 #include "bhndb_pcivar.h"
@@ -213,6 +212,29 @@ static int
 bhndb_pci_resume(device_t dev)
 {
 	return (bus_generic_resume(dev));
+}
+
+static int
+bhndb_pci_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
+{
+	switch (index) {
+	case BHNDB_IVAR_DEV_BASE_ADDR:
+		// TODO
+		*result = 0;
+	default:
+		return (ENOENT);
+	}
+}
+
+static int
+bhndb_pci_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
+{
+	switch (index) {
+	case BHNDB_IVAR_DEV_BASE_ADDR:
+		return (EINVAL);
+	default:
+		return (ENOENT);
+	}
 }
 
 static struct rman *
@@ -449,13 +471,6 @@ bhndb_pci_deactivate_bhnd_resource(device_t dev, device_t child,
 	return (EOPNOTSUPP);
 };
 
-static bus_addr_t
-bhndb_pci_get_enum_base_addr(device_t dev, device_t bhnd)
-{
-	// TODO
-	return (0);
-}
-
 static device_method_t bhndb_pci_methods[] = {
 	/* Device interface */ \
 	DEVMETHOD(device_probe,			bhndb_pci_probe),
@@ -470,15 +485,14 @@ static device_method_t bhndb_pci_methods[] = {
 	DEVMETHOD(bus_release_resource,		bhndb_pci_release_resource),
 	DEVMETHOD(bus_activate_resource,	bhndb_pci_activate_resource),
 	DEVMETHOD(bus_deactivate_resource,	bhndb_pci_deactivate_resource),
+	DEVMETHOD(bus_read_ivar,		bhndb_pci_read_ivar),
+	DEVMETHOD(bus_write_ivar,		bhndb_pci_write_ivar),
 
 	/* BHND interface */
 	DEVMETHOD(bhnd_alloc_resource,		bhndb_pci_alloc_bhnd_resource),
 	DEVMETHOD(bhnd_release_resource,	bhndb_pci_release_bhnd_resource),
 	DEVMETHOD(bhnd_activate_resource,	bhndb_pci_activate_bhnd_resource),
 	DEVMETHOD(bhnd_activate_resource,	bhndb_pci_deactivate_bhnd_resource),
-
-	/* BHNDB interface */
-	DEVMETHOD(bhndb_get_enum_base_addr,	bhndb_pci_get_enum_base_addr),
 
 	DEVMETHOD_END
 };

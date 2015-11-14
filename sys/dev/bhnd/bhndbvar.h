@@ -19,7 +19,28 @@
 #ifndef _BHND_BHNDBVAR_H_
 #define _BHND_BHNDBVAR_H_
 
+#include "bhnd.h"
+
 extern devclass_t bhndb_devclass;
 struct bhndb_hw_class;
+
+
+/**
+ * bhndb child instance variables
+ */
+enum bhndb_device_vars {
+	BHNDB_IVAR_DEV_BASE_ADDR,	/**< device enumeration base address */
+};
+
+/*
+ * Simplified accessors for bhndb device ivars
+ */
+#define	BHND_ACCESSOR(var, ivar, type) \
+	__BUS_ACCESSOR(bhndb, var, BHNDB, ivar, type)
+
+BHND_ACCESSOR(dev_base_addr,	DEV_BASE_ADDR,		bus_addr_t);
+
+#undef	BHND_ACCESSOR
+
 
 #endif /* _BHND_BHNDBVAR_H_ */
