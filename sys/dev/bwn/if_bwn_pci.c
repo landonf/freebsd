@@ -31,31 +31,120 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
+#include <sys/kernel.h>
 #include <sys/bus.h>
+#include <sys/module.h>
 
 #include <dev/pci/pcireg.h>
 #include <dev/pci/pcivar.h>
 
-#include <dev/bhnd/bhnd_ids.h>
+#include <dev/bhnd/bhndb_pcivar.h>
+#include "bhndb_bus_if.h"
 
-// TODO: Wire up bhndb_pci driver registration
-#if 0
-
-static const struct bwn_pci_device {
-	uint16_t	vendor;
-	uint16_t	device;
-	const char	*desc;
-} bwn_bcma_devices[] = {
-	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4331_D11N,		"Broadcom BCM4331 802.11a/b/g/n Wireless" },
-	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4331_D11N2G,	"Broadcom BCM4331 802.11b/g/n (2GHz) Wireless" },
-	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4331_D11N5G,	"Broadcom BCM4331 802.11a/b/g/n (5GHz) Wireless" },
-	{ 0, 0, NULL }
+/** bwn_pci per-instance state. */
+struct bwn_pci_softc {
+	device_t		 dev;		/**< device */
+	device_t		 bhndb_dev;	/**< bhnd bridge device */
+	struct bhndb_hw_cfg	*hw_cfg;	/**< bhndb hardware config */
 };
 
+static const struct bwn_pci_device {
+	uint16_t		 vendor;
+	uint16_t		 device;
+	struct bhndb_hw_cfg	*hw_cfg;
+	const char		*desc;
+} bwn_pci_devices[] = {
+	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4331_D11N,		NULL,
+	    "Broadcom BCM4331 802.11a/b/g/n Wireless" },
+	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4331_D11N2G,	NULL,
+	    "Broadcom BCM4331 802.11b/g/n (2GHz) Wireless" },
+	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4331_D11N5G,	NULL,
+	    "Broadcom BCM4331 802.11a/b/g/n (5GHz) Wireless" },
+	{ 0, 0, NULL, NULL }
+};
 
-DRIVER_MODULE(bwn_pci_bcma, pci, bwn_pci_driver, bwn_devclass, NULL, NULL);
-DRIVER_MODULE(bwn_pci_siba, pci, bwn_pci_driver, bwn_devclass, NULL, NULL);
+static int
+bwn_pci_probe(device_t dev)
+{
+	const struct bwn_pci_device *ident;
 
-MODULE_DEPEND(bwn_pci_bcma, bhnd_bcma, 1, 1, 1);
-MODULE_DEPEND(bwn_pci_siba, bhnd_siba, 1, 1, 1);
-#endif
+	for (ident = bwn_pci_devices; ident->vendor != 0; ident++) {
+		if (pci_get_vendor(dev) == ident->vendor && pci_get_device(dev) == ident->device) {
+			device_set_desc(dev, ident->desc);
+			return (BUS_PROBE_DEFAULT);
+		}
+	}
+
+	return (ENXIO);
+}
+
+static int
+bwn_pci_attach(device_t dev)
+{
+	struct bwn_pci_softc *sc;
+
+	sc = device_get_softc(dev);
+	sc->dev = dev;
+	
+	// TODO
+	sc->hw_cfg = NULL;
+
+	/* Attach bridge device */
+	if (bhndb_pci_attach(dev, &sc->bhndb_dev, -1))
+		return (ENXIO);
+
+	/* Let the generic implementation probe all added children. */
+	return (bus_generic_attach(dev));
+}
+
+static int
+bwn_pci_detach(device_t dev)
+{
+	return (bus_generic_detach(dev));
+}
+
+static void
+bwn_pci_probe_nomatch(device_t dev, device_t child)
+{
+	const char *name;
+
+	name = device_get_name(child);
+	if (name == NULL)
+		name = "unknown device";
+
+	device_printf(dev, "<%s> (no driver attached)\n", name);
+}
+
+static struct bhndb_hw_cfg *
+bwn_pci_get_hw_cfg(device_t dev, device_t child)
+{
+	struct bwn_pci_softc *sc = device_get_softc(dev);
+	return (sc->hw_cfg);
+}
+
+static device_method_t bwn_pci_methods[] = {
+	/* Device interface */
+	DEVMETHOD(device_probe,			bwn_pci_probe),
+	DEVMETHOD(device_attach,		bwn_pci_attach),
+	DEVMETHOD(device_detach,		bwn_pci_detach),
+	DEVMETHOD(device_shutdown,		bus_generic_shutdown),
+	DEVMETHOD(device_suspend,		bus_generic_suspend),
+	DEVMETHOD(device_resume,		bus_generic_resume),
+
+	/* Bus interface */
+	DEVMETHOD(bus_probe_nomatch,		bwn_pci_probe_nomatch),
+
+	/* BHNDB_BUS Interface */
+	DEVMETHOD(bhndb_bus_get_hw_cfg,		bwn_pci_get_hw_cfg),
+
+	DEVMETHOD_END
+};
+
+static devclass_t bwn_pci_devclass;
+
+DEFINE_CLASS_0(bwn_pci, bwn_pci_driver, bwn_pci_methods, sizeof(struct bwn_pci_softc));
+DRIVER_MODULE(bwn_pci, pci, bwn_pci_driver, bwn_pci_devclass, NULL, NULL);
+DRIVER_MODULE(bhndb_pci, bwn_pci, bhndb_pci_driver, bhndb_devclass, NULL, NULL);
+
+MODULE_DEPEND(bwn_pci, bhnd_bcma, 1, 1, 1);
+//MODULE_DEPEND(bwn_pci, bhnd_siba, 1, 1, 1);

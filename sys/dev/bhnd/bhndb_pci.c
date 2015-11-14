@@ -54,6 +54,39 @@ __FBSDID("$FreeBSD$");
 
 devclass_t bhndb_devclass;
 
+/**
+ * PCI-BHND bridge per-instance state.
+ */
+struct bhndb_pci_softc {
+	device_t		 dev;		/**< bridge device */
+	device_t		 pci_dev;	/**< parent pci device */
+	size_t			 num_pci_res;	/**< pci resource count */
+	struct resource_spec	*pci_res_spec;	/**< pci resource specs */
+	struct resource		**pci_res;	/**< pci resources */
+	struct rman		 mem_rman;	/**< bus memory manager */
+};
+
+/**
+ * Attach a PCI-BHND bridge device to @p parent.
+ * 
+ * @param parent A parent PCI device.
+ * @param[out] bhndb On success, the attached bhndb bridge device.
+ * @param unit The device unit number, or -1 to select the next available unit
+ * number.
+ * 
+ * @retval 0 success
+ * @retval non-zero Failed to attach the bhndb device.
+ */
+int
+bhndb_pci_attach(device_t parent, device_t *bhndb, int unit)
+{
+	*bhndb = device_add_child(parent, "bhndb_pci", unit);
+	if (*bhndb == NULL)
+		return (ENXIO);
+
+	return (0);
+}
+
 static int
 bhndb_pci_probe(device_t dev)
 {
@@ -61,7 +94,7 @@ bhndb_pci_probe(device_t dev)
 }
 
 static int
-bhndb_pci_attach(device_t dev)
+bhndb_dev_pci_attach(device_t dev)
 {
 	struct bhndb_pci_softc	*sc;
 	int			 error;
@@ -94,7 +127,8 @@ bhndb_pci_attach(device_t dev)
 	sc->pci_res_spec = BHNDB_PCI_GET_RESOURCE_SPEC(device_get_parent(dev),
 	    dev);
 #else
-	sc->pci_res_spec = NULL;
+	device_printf(dev, "Unimplemented!\n");
+	return (ENXIO);
 #endif
 
 	sc->num_pci_res = 0;
@@ -396,7 +430,7 @@ bhndb_pci_deactivate_bhnd_resource(device_t dev, device_t child,
 static device_method_t bhndb_pci_methods[] = {
 	/* Device interface */ \
 	DEVMETHOD(device_probe,			bhndb_pci_probe),
-	DEVMETHOD(device_attach,		bhndb_pci_attach),
+	DEVMETHOD(device_attach,		bhndb_dev_pci_attach),
 	DEVMETHOD(device_detach,		bhndb_pci_detach),
 	DEVMETHOD(device_shutdown,		bus_generic_shutdown),
 	DEVMETHOD(device_suspend,		bhndb_pci_suspend),

@@ -16,8 +16,8 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_BHND_PCI_H_
-#define _BHND_BHND_PCI_H_
+#ifndef _BHND_BHND_PCIVAR_H_
+#define _BHND_BHND_PCIVAR_H_
 
 #include <sys/param.h>
 #include <sys/kernel.h>
@@ -29,16 +29,6 @@
 
 DECLARE_CLASS(bhndb_pci_driver);
 
-/**
- * PCI-BHND bridge per-instance state.
- */
-struct bhndb_pci_softc {
-	device_t		 dev;		/**< bridge device */
-	device_t		 pci_dev;	/**< parent pci device */
-	size_t			 num_pci_res;	/**< pci resource count */
-	struct resource_spec	*pci_res_spec;	/**< pci resource specs */
-	struct resource		**pci_res;	/**< pci resources */
-	struct rman		 mem_rman;	/**< bus memory resource manager */
-};
+int	bhndb_pci_attach(device_t parent, device_t *bhndb, int unit);
 
-#endif /* _BHND_BHND_PCI_H_ */
+#endif /* _BHND_BHND_PCIVAR_H_ */

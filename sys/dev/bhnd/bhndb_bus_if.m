@@ -47,7 +47,7 @@ HEADER {
  * @param dev The parent device.
  * @param child The attached bhndb device.
  */
-METHOD struct bhndb_hw_cfg * get_bootstrap_spec {
+METHOD struct bhndb_hw_cfg * get_hw_cfg {
 	device_t dev;
 	device_t child;
 }
