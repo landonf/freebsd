@@ -54,13 +54,13 @@ __FBSDID("$FreeBSD$");
 
 devclass_t bhndb_devclass;
 
-int
+static int
 bhndb_pci_probe(device_t dev)
 {
 	return (BUS_PROBE_NOWILDCARD);
 }
 
-int
+static int
 bhndb_pci_attach(device_t dev)
 {
 	struct bhndb_pci_softc	*sc;
@@ -136,7 +136,7 @@ failed:
 	return (error);
 }
 
-int
+static int
 bhndb_pci_detach(device_t dev)
 {
 	struct bhndb_pci_softc *sc = device_get_softc(dev);
@@ -147,13 +147,13 @@ bhndb_pci_detach(device_t dev)
 	return (bus_generic_detach(dev));
 }
 
-int
+static int
 bhndb_pci_suspend(device_t dev)
 {
 	return (bus_generic_suspend(dev));
 }
 
-int
+static int
 bhndb_pci_resume(device_t dev)
 {
 	return (bus_generic_resume(dev));
@@ -182,7 +182,7 @@ bhndb_pci_get_rman(device_t dev, int type)
  * This simple implementation uses BHND_GET_RMAN() and BUS_GET_RESOURCE_LIST()
  * to fetch resource state for allocation.
  */
-struct resource *
+static struct resource *
 bhndb_pci_alloc_resource(device_t dev, device_t child, int type,
     int *rid, u_long start, u_long end, u_long count, u_int flags)
 {
@@ -265,7 +265,7 @@ bhndb_pci_alloc_resource(device_t dev, device_t child, int type,
  * This simple implementation uses BUS_GET_RESOURCE_LIST() to fetch resource
  * state.
  */
-int
+static int
 bhndb_pci_release_resource(device_t dev, device_t child, int type, int rid,
     struct resource *res)
 {
@@ -301,7 +301,7 @@ bhndb_pci_release_resource(device_t dev, device_t child, int type, int rid,
 /**
  * Helper function for implementing BUS_ACTIVATE_RESOURCE() on bhnd pci hosts.
  */
-int
+static int
 bhndb_pci_activate_resource(device_t dev, device_t child, int type, int rid,
     struct resource *r)
 {
@@ -312,7 +312,7 @@ bhndb_pci_activate_resource(device_t dev, device_t child, int type, int rid,
 /**
  * Helper function for implementing BUS_ACTIVATE_RESOURCE() on bhnd pci hosts.
  */
-int
+static int
 bhndb_pci_deactivate_resource(device_t dev, device_t child, int type,
     int rid, struct resource *r)
 {
@@ -326,7 +326,7 @@ bhndb_pci_deactivate_resource(device_t dev, device_t child, int type,
  * This simple implementation delegates allocation of the backing resource
  * to BUS_ALLOC_RESOURCE().
  */
-struct bhnd_resource *
+static struct bhnd_resource *
 bhndb_pci_alloc_bhnd_resource(device_t dev, device_t child, int type,
      int *rid, u_long start, u_long end, u_long count, u_int flags)
 {
@@ -343,7 +343,7 @@ bhndb_pci_alloc_bhnd_resource(device_t dev, device_t child, int type,
 /**
  * Helper function for implementing BHND_RELEASE_RESOURCE().
  */
-int
+static int
 bhndb_pci_release_bhnd_resource(device_t dev, device_t child,
     int type, int rid, struct bhnd_resource *r)
 {
@@ -363,7 +363,7 @@ bhndb_pci_release_bhnd_resource(device_t dev, device_t child,
  * This simple implementation delegates allocation of the backing resource
  * to BUS_ACTIVATE_RESOURCE().
  */
-int
+static int
 bhndb_pci_activate_bhnd_resource(device_t dev, device_t child,
     int type, int rid, struct bhnd_resource *r)
 {
@@ -381,7 +381,7 @@ bhndb_pci_activate_bhnd_resource(device_t dev, device_t child,
  * This simple implementation delegates allocation of the backing resource
  * to BUS_DEACTIVATE_RESOURCE().
  */
-int
+static int
 bhndb_pci_deactivate_bhnd_resource(device_t dev, device_t child,
     int type, int rid, struct bhnd_resource *r)
 {
@@ -392,3 +392,32 @@ bhndb_pci_deactivate_bhnd_resource(device_t dev, device_t child,
 	// TODO
 	return (EOPNOTSUPP);
 };
+
+static device_method_t bhndb_pci_methods[] = {
+	/* Device interface */ \
+	DEVMETHOD(device_probe,			bhndb_pci_probe),
+	DEVMETHOD(device_attach,		bhndb_pci_attach),
+	DEVMETHOD(device_detach,		bhndb_pci_detach),
+	DEVMETHOD(device_shutdown,		bus_generic_shutdown),
+	DEVMETHOD(device_suspend,		bhndb_pci_suspend),
+	DEVMETHOD(device_resume,		bhndb_pci_resume),
+
+	/* Bus interface */
+	DEVMETHOD(bus_alloc_resource,		bhndb_pci_alloc_resource),
+	DEVMETHOD(bus_release_resource,		bhndb_pci_release_resource),
+	DEVMETHOD(bus_activate_resource,	bhndb_pci_activate_resource),
+	DEVMETHOD(bus_deactivate_resource,	bhndb_pci_deactivate_resource),
+
+	/* BHND interface */
+	DEVMETHOD(bhnd_alloc_resource,		bhndb_pci_alloc_bhnd_resource),
+	DEVMETHOD(bhnd_release_resource,	bhndb_pci_release_bhnd_resource),
+	DEVMETHOD(bhnd_activate_resource,	bhndb_pci_activate_bhnd_resource),
+	DEVMETHOD(bhnd_activate_resource,	bhndb_pci_deactivate_bhnd_resource),
+
+	DEVMETHOD_END
+};
+
+DEFINE_CLASS_0(bhndb_pci, bhndb_pci_driver, bhndb_pci_methods, sizeof(struct bhndb_pci_softc));
+MODULE_VERSION(bhndb_pci, 1);
+MODULE_DEPEND(bhndb_pci, pci, 1, 1, 1);
+MODULE_DEPEND(bhndb_pci, bhnd, 1, 1, 1);

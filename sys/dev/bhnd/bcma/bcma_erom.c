@@ -417,7 +417,7 @@ bcma_erom_seek_core(struct bcma_erom *erom)
  * is left unmodified.
  * 
  * The memory allocated for the table should be freed using
- * `free(*cores, M_TEMP)`. @p cores and @p num_cores are not changed
+ * `free(*cores, M_BHND)`. @p cores and @p num_cores are not changed
  * when an error is returned.
  * 
  * @param erom EROM read state.
@@ -454,7 +454,7 @@ bcma_erom_get_cores(struct bcma_erom *erom,
 	}
 
 	/* Allocate our output buffer */
-	buffer = malloc(sizeof(struct bcma_erom_core) * count, M_TEMP,
+	buffer = malloc(sizeof(struct bcma_erom_core) * count, M_BHND,
 	    M_WAITOK);
 	if (buffer == NULL) {
 		error = ENOMEM;
@@ -478,7 +478,7 @@ cleanup:
 		*num_cores = count;
 	} else {
 		if (buffer != NULL)
-			free(buffer, M_TEMP);
+			free(buffer, M_BHND);
 	}
 
 	/* Restore the initial position */

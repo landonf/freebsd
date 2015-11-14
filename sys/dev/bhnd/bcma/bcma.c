@@ -73,7 +73,8 @@ int
 bcma_generic_attach(device_t dev)
 {
 	/* Add our child devices */
-	BHND_ENUMERATE_CHILDREN(dev, dev);
+	// TODO
+	// BHND_ENUMERATE_CHILDREN(dev, dev);
 
 	/* Bus' generic attach will probe and attach the enumerated children */
 	return (bus_generic_attach(dev));
@@ -577,7 +578,7 @@ failed:
 		bcma_free_dinfo(dinfo);
 	
 	if (cores != NULL)
-		free(cores, M_TEMP);
+		free(cores, M_BHND);
 
 	return (error);
 }

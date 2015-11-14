@@ -19,6 +19,8 @@
 #ifndef	_BCMA_BCMA_EROMVAR_H_
 #define	_BCMA_BCMA_EROMVAR_H_
 
+#include <dev/bhnd/bhnd_private.h>
+
 #include "bcma_private.h"
 
 /**

@@ -19,4 +19,6 @@
 #ifndef _BHND_BHNDBVAR_H_
 #define _BHND_BHNDBVAR_H_
 
+extern devclass_t bhndb_devclass;
+
 #endif /* _BHND_BHNDBVAR_H_ */

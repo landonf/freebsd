@@ -142,25 +142,6 @@ bhnd_generic_probe_nomatch(device_t dev, device_t child)
 }
 
 /**
- * Helper function for implementing BHND_ENUMERATE_CHILDREN().
- * 
- * This simple implementation of BHND_ENUMERATE_CHILDREN() calls the
- * BHND_ENUMERATE_CHILDREN() method of the parent of @p dev.
- * 
- * If no parent device is available, this helper triggers a panic().
- */
-int
-bhnd_generic_enumerate_children(device_t dev, device_t child)
-{
-	/* Try to delegate to the parent. */
-	if (device_get_parent(dev) != NULL)
-		return (BHND_ENUMERATE_CHILDREN(device_get_parent(dev),
-		   child));
-
-	panic("BHND_ENUMERATE_CHILDREN() is not implemented");
-}
-
-/**
  * Helper function for implementing BHND_ALLOC_RESOURCE().
  * 
  * This simple implementation of BHND_ALLOC_RESOURCE() calls the
