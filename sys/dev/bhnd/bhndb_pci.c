@@ -48,9 +48,14 @@ __FBSDID("$FreeBSD$");
 #include <dev/pci/pcireg.h>
 #include <dev/pci/pcivar.h>
 
-#include "bhnd_private.h"
+#include <dev/bhnd/bhnd_private.h>
+#include <dev/bhnd/cores/bhnd_pcireg.h>
+
+#include "bhndb_bus_if.h"
+#include "bhndb_if.h"
+
+#include "bhndb_private.h"
 #include "bhndb_pcivar.h"
-#include "cores/bhnd_pcireg.h"
 
 devclass_t bhndb_devclass;
 
@@ -59,10 +64,14 @@ devclass_t bhndb_devclass;
  */
 struct bhndb_pci_softc {
 	device_t		 dev;		/**< bridge device */
+	struct bhndb_hw		*hw;		/**< hardware callbacks */
+	struct bhndb_hw_cfg	*hw_cfg;	/**< hardware config */
+
 	device_t		 pci_dev;	/**< parent pci device */
-	size_t			 num_pci_res;	/**< pci resource count */
-	struct resource_spec	*pci_res_spec;	/**< pci resource specs */
-	struct resource		**pci_res;	/**< pci resources */
+	size_t			 res_count;	/**< pci resource count */
+	struct resource_spec	*res_spec;	/**< pci resource specs */
+	struct resource		**res;		/**< pci resources */
+
 	struct rman		 mem_rman;	/**< bus memory manager */
 };
 
@@ -80,7 +89,7 @@ struct bhndb_pci_softc {
 int
 bhndb_pci_attach(device_t parent, device_t *bhndb, int unit)
 {
-	*bhndb = device_add_child(parent, "bhndb_pci", unit);
+	*bhndb = device_add_child(parent, "bhndb", unit);
 	if (*bhndb == NULL)
 		return (ENXIO);
 
@@ -100,7 +109,6 @@ bhndb_dev_pci_attach(device_t dev)
 	int			 error;
 	bool			 free_mem_rman = false;
 	bool			 free_pci_res = false;
-	bool			 free_pci_res_array = false;
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
@@ -121,32 +129,33 @@ bhndb_dev_pci_attach(device_t dev)
 		free_mem_rman = true;
 	}
 
-	/* Fetch our PCI device resource spec and determine its length */
-	// TODO
-#if 0
-	sc->pci_res_spec = BHNDB_PCI_GET_RESOURCE_SPEC(device_get_parent(dev),
-	    dev);
-#else
-	device_printf(dev, "Unimplemented!\n");
-	return (ENXIO);
-#endif
+	/* Fetch our hardware config and determine the resource count. */
+	sc->hw_cfg = BHNDB_BUS_GET_HW_CFG(device_get_parent(dev), dev);
+	sc->res_count = 0;
+	for (size_t i = 0; sc->hw_cfg->resource_specs[i].type != -1; i++)
+		sc->res_count++;
 
-	sc->num_pci_res = 0;
-	for (size_t i = 0; sc->pci_res_spec[i].type != -1; i++)
-		sc->num_pci_res++;
-
-	/* Allocate an empty PCI resource array */
-	sc->pci_res = malloc(sizeof(struct resource) * sc->num_pci_res,
+	
+	/* Allocate resource tables. */
+	sc->res_spec = malloc(sizeof(struct resource_spec) * sc->res_count,
 	    M_BHND, M_WAITOK);
-	if (sc->pci_res == NULL) {
+	if (sc->res_spec == NULL) {
 		error = ENOMEM;
 		goto failed;
-	} else {
-		free_pci_res_array = true;
+	}
+	for (size_t i = 0; i < sc->res_count; i++)
+		sc->res_spec[i] = sc->hw_cfg->resource_specs[i];
+
+	sc->res = malloc(sizeof(struct resource) * sc->res_count,
+	    M_BHND, M_WAITOK);
+	if (sc->res == NULL) {
+		error = ENOMEM;
+		goto failed;
 	}
 
-	/* Allocate the actual PCI resources */
-	error = bus_alloc_resources(sc->pci_dev, sc->pci_res_spec, sc->pci_res);
+
+	/* Allocate the PCI resources */
+	error = bus_alloc_resources(sc->pci_dev, sc->res_spec, sc->res);
 	if (error) {
 		device_printf(dev, "could not allocate PCI resources on %s\n",
 		device_get_nameunit(sc->pci_dev));
@@ -162,10 +171,13 @@ failed:
 		rman_fini(&sc->mem_rman);
 
 	if (free_pci_res)
-		bus_release_resources(dev, sc->pci_res_spec, sc->pci_res);
+		bus_release_resources(dev, sc->res_spec, sc->res);
 	
-	if (free_pci_res_array)
-		free(sc->pci_res, M_BHND);
+	if (sc->res != NULL)
+		free(sc->res, M_BHND);
+
+	if (sc->res_spec != NULL)
+		free(sc->res_spec, M_BHND);
 
 	return (error);
 }
@@ -173,12 +185,22 @@ failed:
 static int
 bhndb_pci_detach(device_t dev)
 {
-	struct bhndb_pci_softc *sc = device_get_softc(dev);
+	struct bhndb_pci_softc	*sc;
+	int			 error;
 
-	bus_release_resources(dev, sc->pci_res_spec, sc->pci_res);
-	free(sc->pci_res, M_BHND);
+	sc = device_get_softc(dev);
+	
+	/* Detach children */
+	error = bus_generic_detach(dev);
 
-	return (bus_generic_detach(dev));
+	/* Clean up */
+	rman_fini(&sc->mem_rman);
+
+	bus_release_resources(dev, sc->res_spec, sc->res);
+	free(sc->res, M_BHND);
+	free(sc->res_spec, M_BHND);
+
+	return (error);
 }
 
 static int
@@ -427,6 +449,13 @@ bhndb_pci_deactivate_bhnd_resource(device_t dev, device_t child,
 	return (EOPNOTSUPP);
 };
 
+static bus_addr_t
+bhndb_pci_get_enum_base_addr(device_t dev, device_t bhnd)
+{
+	// TODO
+	return (0);
+}
+
 static device_method_t bhndb_pci_methods[] = {
 	/* Device interface */ \
 	DEVMETHOD(device_probe,			bhndb_pci_probe),
@@ -448,10 +477,14 @@ static device_method_t bhndb_pci_methods[] = {
 	DEVMETHOD(bhnd_activate_resource,	bhndb_pci_activate_bhnd_resource),
 	DEVMETHOD(bhnd_activate_resource,	bhndb_pci_deactivate_bhnd_resource),
 
+	/* BHNDB interface */
+	DEVMETHOD(bhndb_get_enum_base_addr,	bhndb_pci_get_enum_base_addr),
+
 	DEVMETHOD_END
 };
 
-DEFINE_CLASS_0(bhndb_pci, bhndb_pci_driver, bhndb_pci_methods, sizeof(struct bhndb_pci_softc));
+DEFINE_CLASS_0(bhndb, bhndb_pci_driver, bhndb_pci_methods, sizeof(struct bhndb_pci_softc));
+
 MODULE_VERSION(bhndb_pci, 1);
 MODULE_DEPEND(bhndb_pci, pci, 1, 1, 1);
 MODULE_DEPEND(bhndb_pci, bhnd, 1, 1, 1);

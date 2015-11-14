@@ -19,11 +19,6 @@
 #ifndef _BHND_BHNDB_PRIVATE_H_
 #define _BHND_BHNDB_PRIVATE_H_
 
-/*
- * 
- */
-
-
 #include <sys/param.h>
 #include <sys/bus.h>
 
@@ -35,7 +30,7 @@
 
 
 /**
- * BHNDB register window types.
+ * bhndb register window types.
  */
 typedef enum {
         BHNDB_REGWIN_T_CORE,            /**< Fixed mapping of a core register block. */
@@ -45,7 +40,7 @@ typedef enum {
 
 
 /**
- * BHNDB register window definition.
+ * bhndb register window definition.
  */
 struct bhndb_regwin {
 	int			rid;	/**< resource-id of this register window */
@@ -74,12 +69,28 @@ struct bhndb_regwin {
 
 #define	BHNDB_REGWIN_TABLE_END	{ -1, 0, 0, 0 }
 
+
+/*
+ * bhndb hw class definition
+ */
+struct bhndb_hw_class {
+	KOBJ_CLASS_FIELDS;
+};
+
+/*
+ * bhndb hw per-instance state.
+ */
+struct bhndb_hw {
+	KOBJ_FIELDS;
+};
+
 /**
- * BHNDB hardware configuration.
+ * bhndb hardware configuration.
  */
 struct bhndb_hw_cfg {
-	struct resource_spec	*resources;
-	struct bhndb_regwin	*reg_windows;
+	struct bhndb_hw_class		*cls;
+	const struct resource_spec	*resource_specs;
+	struct bhndb_regwin		*register_windows;
 };
 
 #endif /* _BHND_BHNDB_PRIVATE_H_ */

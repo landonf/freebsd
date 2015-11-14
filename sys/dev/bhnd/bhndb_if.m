@@ -27,6 +27,8 @@
 #include <sys/types.h>
 #include <sys/bus.h>
 
+#include <machine/bus.h>
+
 #
 # bhndb bridge device interface, used by attached bhnd bus devices.
 #
