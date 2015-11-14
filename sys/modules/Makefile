@@ -53,6 +53,7 @@ SUBDIR=	\
 	bfe \
 	bge \
 	bhnd \
+	bhndb_pci \
 	bhnd_bcma \
 	${_bxe} \
 	${_bios} \

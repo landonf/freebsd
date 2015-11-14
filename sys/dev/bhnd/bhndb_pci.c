@@ -58,9 +58,7 @@ __FBSDID("$FreeBSD$");
 
 devclass_t bhndb_devclass;
 
-/**
- * PCI-BHND bridge per-instance state.
- */
+/** PCI-BHND bridge per-instance state. */
 struct bhndb_pci_softc {
 	device_t		 dev;		/**< bridge device */
 	struct bhndb_hw		*hw;		/**< hardware callbacks */
@@ -471,6 +469,7 @@ bhndb_pci_deactivate_bhnd_resource(device_t dev, device_t child,
 	return (EOPNOTSUPP);
 };
 
+
 static device_method_t bhndb_pci_methods[] = {
 	/* Device interface */ \
 	DEVMETHOD(device_probe,			bhndb_pci_probe),
@@ -500,5 +499,6 @@ static device_method_t bhndb_pci_methods[] = {
 DEFINE_CLASS_0(bhndb, bhndb_pci_driver, bhndb_pci_methods, sizeof(struct bhndb_pci_softc));
 
 MODULE_VERSION(bhndb_pci, 1);
+
 MODULE_DEPEND(bhndb_pci, pci, 1, 1, 1);
 MODULE_DEPEND(bhndb_pci, bhnd, 1, 1, 1);

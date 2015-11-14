@@ -24,7 +24,6 @@
 extern devclass_t bhndb_devclass;
 struct bhndb_hw_class;
 
-
 /**
  * bhndb child instance variables
  */

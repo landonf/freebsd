@@ -70,16 +70,12 @@ struct bhndb_regwin {
 #define	BHNDB_REGWIN_TABLE_END	{ -1, 0, 0, 0 }
 
 
-/*
- * bhndb hw class definition
- */
+/** KOBJ bhndb hardware interface. */
 struct bhndb_hw_class {
 	KOBJ_CLASS_FIELDS;
 };
 
-/*
- * bhndb hw per-instance state.
- */
+/** KOBJ bhndb hardware interface instance. */
 struct bhndb_hw {
 	KOBJ_FIELDS;
 };

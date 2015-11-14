@@ -146,5 +146,6 @@ DEFINE_CLASS_0(bwn_pci, bwn_pci_driver, bwn_pci_methods, sizeof(struct bwn_pci_s
 DRIVER_MODULE(bwn_pci, pci, bwn_pci_driver, bwn_pci_devclass, NULL, NULL);
 DRIVER_MODULE(bhndb_pci, bwn_pci, bhndb_pci_driver, bhndb_devclass, NULL, NULL);
 
+MODULE_DEPEND(bwn_pci, bhndb_pci, 1, 1, 1);
 MODULE_DEPEND(bwn_pci, bhnd_bcma, 1, 1, 1);
 //MODULE_DEPEND(bwn_pci, bhnd_siba, 1, 1, 1);
