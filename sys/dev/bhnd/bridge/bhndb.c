@@ -62,5 +62,67 @@ bhndb_attach(device_t parent, devclass_t devclass, device_t *bhndb, int unit)
 	return (0);
 }
 
+/**
+ * Search @p windows for the first window with the given @p type.
+ * 
+ * @param table The table to search.
+ * @param type The required window type.
+ * 
+ * @retval bhndb_regwin The first matching window.
+ * @retval NULL If no window of the requested type could be found. 
+ */
+const struct bhndb_regwin *
+bhndb_regwin_find_type(const struct bhndb_regwin *table,
+    bhndb_regwin_type_t type)
+{
+	const struct bhndb_regwin *rw;
+
+	for (rw = table; rw->win_type != BHNDB_REGWIN_T_INVALID; rw++)
+	{
+		if (rw->win_type == BHNDB_REGWIN_T_DYN)
+			return (rw);
+	}
+
+	return (NULL);
+}
+
+/**
+ * Search @p windows for the first matching core window.
+ * 
+ * @param table The table to search.
+ * @param class The required core class.
+ * @param unit The required core unit, or -1.
+ * @param port The required core unit, or -1.
+ * @param region The required core unit, or -1.
+ *
+ * @retval bhndb_regwin The first matching window.
+ * @retval NULL If no matching window was found. 
+ */
+const struct bhndb_regwin *
+bhndb_regwin_find_core(const struct bhndb_regwin *table, bhnd_devclass_t class,
+    int unit, int port, int region)
+{
+	const struct bhndb_regwin *rw;
+	
+	for (rw = table; rw->win_type != BHNDB_REGWIN_T_INVALID; rw++)
+	{
+		if (rw->win_type != BHNDB_REGWIN_T_CORE)
+			continue;
+		
+		if (unit != -1 && rw->core.unit != unit)
+			continue;
+		
+		if (port != -1 && rw->core.port != port)
+			continue;
+		
+		if (region != -1 && rw->core.region != region)
+			continue;
+
+		return (rw);
+	}
+
+	return (NULL);
+}
+
 MODULE_VERSION(bhndb, 1);
 MODULE_DEPEND(bhndb, bhnd, 1, 1, 1);

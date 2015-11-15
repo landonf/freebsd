@@ -39,6 +39,7 @@ INTERFACE bhndb;
 
 HEADER {
 	struct bhnd_core_info;
+	struct bhndb_regwin;
 }
 
 CODE {
@@ -52,8 +53,8 @@ CODE {
 	}
 
 	static int
-	bhndb_null_set_window_register(device_t dev, bus_size_t reg,
-	    uint32_t addr)
+	bhndb_null_set_window_register(device_t dev,
+	    const struct bhndb_regwin *rw, uint32_t addr)
 	{
 		panic("bhndb_set_window_register unimplemented");
 	}
@@ -80,14 +81,14 @@ METHOD int get_core_table {
  * Write a new base address to a bridge window register.
  *
  * @param dev The bridge device.
- * @param reg The offset of the bridge window register.
- * @param addr The address to be written to @p reg.
+ * @param win The register window (must be of type BHNDB_REGWIN_T_DYN).
+ * @param addr The address to be configured for @p win.
  *
  * @retval 0 success
  * @retval non-zero failure
  */
 METHOD int set_window_register {
 	device_t dev;
-	bus_size_t reg;
+	const struct bhndb_regwin *dynwin;
 	uint32_t addr;
 } DEFAULT bhndb_null_set_window_register;

@@ -28,18 +28,30 @@
 
 #include "bhndb_if.h"
 
-int	bhndb_attach(device_t parent, devclass_t devclass, device_t *bhndb,
-	    int unit);
+struct bhndb_regwin;
 
 /**
  * bhndb register window types.
  */
 typedef enum {
-        BHNDB_REGWIN_T_CORE,            /**< Fixed mapping of a core register block. */
-        BHNDB_REGWIN_T_SPROM,           /**< Fixed mapping an SPROM */
-        BHNDB_REGWIN_T_DYN              /**< A dynamically configurable window */
+	BHNDB_REGWIN_T_CORE,		/**< Fixed mapping of a core register block. */
+	BHNDB_REGWIN_T_SPROM,		/**< Fixed mapping an SPROM */
+	BHNDB_REGWIN_T_DYN,		/**< A dynamically configurable window */
+	BHNDB_REGWIN_T_INVALID		/**< Invalid type */
 } bhndb_regwin_type_t;
 
+
+const struct bhndb_regwin	*bhndb_regwin_find_type(
+    const struct bhndb_regwin *table, bhndb_regwin_type_t type);
+
+const struct bhndb_regwin	*bhndb_regwin_find_core(
+				      const struct bhndb_regwin *table,
+				      bhnd_devclass_t class, int unit,
+				      int port, int region);
+
+int				 bhndb_attach(device_t parent,
+				     devclass_t devclass, device_t *bhndb,
+				     int unit);
 
 /**
  * bhndb register window definition.
@@ -75,7 +87,7 @@ struct bhndb_regwin {
         };
 };
 
-#define	BHNDB_REGWIN_TABLE_END	{ -1, -1, 0, { 0, 0 } }
+#define	BHNDB_REGWIN_TABLE_END	{ BHNDB_REGWIN_T_INVALID, 0, 0, { 0, 0 } }
 
 /**
  * bhndb hardware configuration.
