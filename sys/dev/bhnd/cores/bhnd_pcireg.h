@@ -170,13 +170,4 @@
 #define	BHND_PCI_SPROM_BACKPLANE_EN	0x40	/* Enable indirect backplane access */
 #define	BHND_PCI_SPROM_OTPIN_USE	0x80	/* device OTP In use */
 
-/* Bits in PCI command and status regs */
-#define	BHND_PCI_CMD_IO		0x00000001	/* I/O enable */
-#define	BHND_PCI_CMD_MEMORY	0x00000002	/* Memory enable */
-#define	BHND_PCI_CMD_MASTER	0x00000004	/* Master enable */
-#define	BHND_PCI_CMD_SPECIAL	0x00000008	/* Special cycles enable */
-#define	BHND_PCI_CMD_INVALIDATE	0x00000010	/* Invalidate? */
-#define	BHND_PCI_CMD_VGA_PAL	0x00000040	/* VGA Palate */
-#define	BHND_PCI_STAT_TA	0x08000000	/* target abort status */
-
 #endif /* _BHND_BHND_PCIREG_H_ */
