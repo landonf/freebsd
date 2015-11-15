@@ -1,3 +1,4 @@
+ 
 /*-
  * Copyright (c) 2015 Landon Fuller <landon@landonf.org>
  * All rights reserved.
@@ -25,29 +26,36 @@
  * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGES.
- * 
- * $FreeBSD$
  */
 
-#ifndef _BCMA_BCMAVAR_H_
-#define _BCMA_BCMAVAR_H_
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
 
-#include <sys/types.h>
+#include <sys/param.h>
+#include <sys/kernel.h>
 #include <sys/bus.h>
-#include <sys/malloc.h>
-#include <sys/queue.h>
-#include <sys/rman.h>
 
-#include <dev/bhnd/bhndvar.h>
+#include "bhndbvar.h"
 
+devclass_t bhndb_devclass;
 
-/*
- * Broadcom AMBA backplane types and data structures.
+/**
+ * Attach a PCI-BHND bridge device to @p parent.
+ * 
+ * @param parent A parent PCI device.
+ * @param[out] bhndb On success, the attached bhndb bridge device.
+ * @param unit The device unit number, or -1 to select the next available unit
+ * number.
+ * 
+ * @retval 0 success
+ * @retval non-zero Failed to attach the bhndb device.
  */
+int
+bhndb_attach(device_t parent, devclass_t devclass, device_t *bhndb, int unit)
+{
+	*bhndb = device_add_child(parent, devclass_get_name(devclass), unit);
+	if (*bhndb == NULL)
+		return (ENXIO);
 
-DECLARE_CLASS(bcma_driver);
-
-extern devclass_t bcma_devclass;
-extern devclass_t bcmab_devclass;
-
-#endif /* _BCMA_BCMAVAR_H_ */
+	return (0);
+}

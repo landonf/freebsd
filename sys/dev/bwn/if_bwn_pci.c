@@ -38,7 +38,11 @@ __FBSDID("$FreeBSD$");
 #include <dev/pci/pcireg.h>
 #include <dev/pci/pcivar.h>
 
-#include <dev/bhnd/bhndb_pcivar.h>
+#include <dev/bhnd/bhnd_ids.h>
+#include <dev/bhnd/bhndbvar.h>
+
+#include <dev/bhnd/bcma/bcmab_pcivar.h>
+
 #include "bhndb_bus_if.h"
 
 /** bwn_pci per-instance state. */
@@ -90,7 +94,7 @@ bwn_pci_attach(device_t dev)
 	sc->hw_cfg = NULL;
 
 	/* Attach bridge device */
-	if (bhndb_pci_attach(dev, &sc->bhndb_dev, -1))
+	if (bhndb_attach(dev, bcmab_devclass, &sc->bhndb_dev, -1))
 		return (ENXIO);
 
 	/* Let the generic implementation probe all added children. */
@@ -144,8 +148,9 @@ static devclass_t bwn_pci_devclass;
 
 DEFINE_CLASS_0(bwn_pci, bwn_pci_driver, bwn_pci_methods, sizeof(struct bwn_pci_softc));
 DRIVER_MODULE(bwn_pci, pci, bwn_pci_driver, bwn_pci_devclass, NULL, NULL);
-DRIVER_MODULE(bhndb_pci, bwn_pci, bhndb_pci_driver, bhndb_devclass, NULL, NULL);
 
-MODULE_DEPEND(bwn_pci, bhndb_pci, 1, 1, 1);
+DRIVER_MODULE(bcmab, bwn_pci, bcmab_pci_driver, bcmab_devclass, NULL, NULL);
+
+//MODULE_DEPEND(bwn_pci, bhndb_pci, 1, 1, 1);
 MODULE_DEPEND(bwn_pci, bhnd_bcma, 1, 1, 1);
 //MODULE_DEPEND(bwn_pci, bhnd_siba, 1, 1, 1);

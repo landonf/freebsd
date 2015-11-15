@@ -19,10 +19,64 @@
 #ifndef _BHND_BHNDBVAR_H_
 #define _BHND_BHNDBVAR_H_
 
-#include "bhnd.h"
+#include <sys/param.h>
+#include <sys/bus.h>
 
-extern devclass_t bhndb_devclass;
-struct bhndb_hw_class;
+#include <machine/bus.h>
+
+#include "bhnd.h"
+#include "bhndb_if.h"
+
+int	bhndb_attach(device_t parent, devclass_t devclass, device_t *bhndb,
+	    int unit);
+
+/**
+ * bhndb register window types.
+ */
+typedef enum {
+        BHNDB_REGWIN_T_CORE,            /**< Fixed mapping of a core register block. */
+        BHNDB_REGWIN_T_SPROM,           /**< Fixed mapping an SPROM */
+        BHNDB_REGWIN_T_DYN              /**< A dynamically configurable window */
+} bhndb_regwin_type_t;
+
+
+/**
+ * bhndb register window definition.
+ */
+struct bhndb_regwin {
+	int			rid;	/**< resource-id of this register window */
+	bus_size_t		offset;	/**< offset of the window within the resource */
+	bus_size_t		size;	/**< size of the window */
+	bhndb_regwin_type_t	type;	/**< window type */
+
+	union {
+		/** Core-specific register window (BHNDB_REGWIN_T_CORE). */
+		struct {
+			bhnd_devclass_t	class;	/**< mapped core's class */
+			u_int		unit;	/**< mapped core's unit */
+			u_int		port;	/**< mapped port number */
+			u_int		region;	/**< mapped region number */
+		} core;
+
+		/** SPROM register window (BHNDB_REGWIN_T_SPROM). */
+		struct {} sprom;
+
+                /** Dynamic register window (BHNDB_REGWIN_T_DYN). */
+		struct {
+			bus_size_t	cfg_offset;	/**< window address config offset. */
+		} dyn;
+        };
+};
+
+#define	BHNDB_REGWIN_TABLE_END	{ -1, 0, 0, 0 }
+
+/**
+ * bhndb hardware configuration.
+ */
+struct bhndb_hw_cfg {
+	const struct resource_spec	*resource_specs;
+	struct bhndb_regwin		*register_windows;
+};
 
 /**
  * bhndb child instance variables

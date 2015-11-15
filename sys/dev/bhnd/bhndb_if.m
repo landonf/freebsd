@@ -32,13 +32,31 @@
 #include <machine/resource.h>
 
 #
-# Internal bhndb bridge hardware interface.
+# bhndb bridge device interface.
 #
 
-INTERFACE bhndb_hw;
+INTERFACE bhndb;
 
 HEADER {
-	struct bhndb_core_info;
+	struct bhnd_core_info;
+}
+
+CODE {
+	#include <sys/systm.h>
+
+	static int
+	bhndb_null_get_core_table(device_t dev, struct bhnd_core_info **cores,
+	    size_t *count)
+	{
+		panic("bhndb_get_core_table unimplemented");
+	}
+
+	static int
+	bhndb_null_set_window_register(device_t dev, bus_size_t reg,
+	    uint32_t addr)
+	{
+		panic("bhndb_set_window_register unimplemented");
+	}
 }
 
 /**
@@ -54,14 +72,14 @@ HEADER {
  */
 METHOD int get_core_table {
 	device_t dev;
-	struct bhndb_core_info **cores;
+	struct bhnd_core_info **cores;
 	size_t *count;
-}
+} DEFAULT bhndb_null_get_core_table;
 
 /**
  * Write a new base address to a bridge window register.
  *
- * @param dev The bhndb bridge device.
+ * @param dev The bridge device.
  * @param reg The offset of the bridge window register.
  * @param addr The address to be written to @p reg.
  *
@@ -72,4 +90,4 @@ METHOD int set_window_register {
 	device_t dev;
 	bus_size_t reg;
 	uint32_t addr;
-};
+} DEFAULT bhndb_null_set_window_register;

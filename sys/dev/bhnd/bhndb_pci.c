@@ -52,55 +52,16 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/cores/bhnd_pcireg.h>
 
 #include "bhndb_bus_if.h"
-
-#include "bhndb_private.h"
 #include "bhndb_pcivar.h"
 
-devclass_t bhndb_devclass;
-
-/** PCI-BHND bridge per-instance state. */
-struct bhndb_pci_softc {
-	device_t		 dev;		/**< bridge device */
-	struct bhndb_hw		*hw;		/**< hardware callbacks */
-	struct bhndb_hw_cfg	*hw_cfg;	/**< hardware config */
-
-	device_t		 pci_dev;	/**< parent pci device */
-	size_t			 res_count;	/**< pci resource count */
-	struct resource_spec	*res_spec;	/**< pci resource specs */
-	struct resource		**res;		/**< pci resources */
-
-	struct rman		 mem_rman;	/**< bus memory manager */
-};
-
-/**
- * Attach a PCI-BHND bridge device to @p parent.
- * 
- * @param parent A parent PCI device.
- * @param[out] bhndb On success, the attached bhndb bridge device.
- * @param unit The device unit number, or -1 to select the next available unit
- * number.
- * 
- * @retval 0 success
- * @retval non-zero Failed to attach the bhndb device.
- */
 int
-bhndb_pci_attach(device_t parent, device_t *bhndb, int unit)
-{
-	*bhndb = device_add_child(parent, "bhndb", unit);
-	if (*bhndb == NULL)
-		return (ENXIO);
-
-	return (0);
-}
-
-static int
 bhndb_pci_probe(device_t dev)
 {
 	return (BUS_PROBE_NOWILDCARD);
 }
 
-static int
-bhndb_dev_pci_attach(device_t dev)
+int
+bhndb_pci_attach(device_t dev)
 {
 	struct bhndb_pci_softc	*sc;
 	int			 error;
@@ -179,7 +140,7 @@ failed:
 	return (error);
 }
 
-static int
+int
 bhndb_pci_detach(device_t dev)
 {
 	struct bhndb_pci_softc	*sc;
@@ -200,31 +161,30 @@ bhndb_pci_detach(device_t dev)
 	return (error);
 }
 
-static int
+int
 bhndb_pci_suspend(device_t dev)
 {
 	return (bus_generic_suspend(dev));
 }
 
-static int
+int
 bhndb_pci_resume(device_t dev)
 {
 	return (bus_generic_resume(dev));
 }
 
-static int
+int
 bhndb_pci_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 {
 	switch (index) {
 	case BHNDB_IVAR_DEV_BASE_ADDR:
-		// TODO
-		*result = 0;
+		/* fall through */
 	default:
 		return (ENOENT);
 	}
 }
 
-static int
+int
 bhndb_pci_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
 {
 	switch (index) {
@@ -473,7 +433,7 @@ bhndb_pci_deactivate_bhnd_resource(device_t dev, device_t child,
 static device_method_t bhndb_pci_methods[] = {
 	/* Device interface */ \
 	DEVMETHOD(device_probe,			bhndb_pci_probe),
-	DEVMETHOD(device_attach,		bhndb_dev_pci_attach),
+	DEVMETHOD(device_attach,		bhndb_pci_attach),
 	DEVMETHOD(device_detach,		bhndb_pci_detach),
 	DEVMETHOD(device_shutdown,		bus_generic_shutdown),
 	DEVMETHOD(device_suspend,		bhndb_pci_suspend),

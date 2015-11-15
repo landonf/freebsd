@@ -29,6 +29,30 @@
 
 DECLARE_CLASS(bhndb_pci_driver);
 
-int	bhndb_pci_attach(device_t parent, device_t *bhndb, int unit);
+/**
+ * bhndb driver instance state. Must be first member of all subclass
+ * softc structures.
+ */
+struct bhndb_pci_softc {
+	device_t		 dev;		/**< bridge device */
+	struct bhndb_hw_cfg	*hw_cfg;	/**< hardware config */
+
+	device_t		 pci_dev;	/**< parent pci device */
+	size_t			 res_count;	/**< pci resource count */
+	struct resource_spec	*res_spec;	/**< pci resource specs */
+	struct resource		**res;		/**< pci resources */
+
+	struct rman		 mem_rman;	/**< bus memory manager */
+};
+
+int	bhndb_pci_probe(device_t dev);
+int	bhndb_pci_attach(device_t dev);
+int	bhndb_pci_detach(device_t dev);
+int	bhndb_pci_suspend(device_t dev);
+int	bhndb_pci_resume(device_t dev);
+int	bhndb_pci_read_ivar(device_t dev, device_t child, int index,
+	    uintptr_t *result);
+int	bhndb_pci_write_ivar(device_t dev, device_t child, int index,
+	    uintptr_t value);
 
 #endif /* _BHND_BHND_PCIVAR_H_ */
