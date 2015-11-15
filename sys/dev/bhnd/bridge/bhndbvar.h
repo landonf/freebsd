@@ -24,7 +24,8 @@
 
 #include <machine/bus.h>
 
-#include "bhnd.h"
+#include <dev/bhnd/bhnd.h>
+
 #include "bhndb_if.h"
 
 int	bhndb_attach(device_t parent, devclass_t devclass, device_t *bhndb,

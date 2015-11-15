@@ -32,6 +32,7 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
+#include <sys/module.h>
 #include <sys/kernel.h>
 #include <sys/bus.h>
 
@@ -60,3 +61,6 @@ bhndb_attach(device_t parent, devclass_t devclass, device_t *bhndb, int unit)
 
 	return (0);
 }
+
+MODULE_VERSION(bhndb, 1);
+MODULE_DEPEND(bhndb, bhnd, 1, 1, 1);

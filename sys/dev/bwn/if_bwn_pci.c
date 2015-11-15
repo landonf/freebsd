@@ -39,7 +39,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/pci/pcivar.h>
 
 #include <dev/bhnd/bhnd_ids.h>
-#include <dev/bhnd/bhndbvar.h>
+#include <dev/bhnd/bridge/bhndbvar.h>
 
 #include <dev/bhnd/bcma/bcmab_pcivar.h>
 
@@ -149,10 +149,9 @@ static device_method_t bwn_pci_methods[] = {
 static devclass_t bwn_pci_devclass;
 
 DEFINE_CLASS_0(bwn_pci, bwn_pci_driver, bwn_pci_methods, sizeof(struct bwn_pci_softc));
+
+DRIVER_MODULE(bwn_bcmab, bwn_pci, bcmab_pci_driver, bcmab_devclass, NULL, NULL);
 DRIVER_MODULE(bwn_pci, pci, bwn_pci_driver, bwn_pci_devclass, NULL, NULL);
 
-DRIVER_MODULE(bcmab, bwn_pci, bcmab_pci_driver, bcmab_devclass, NULL, NULL);
-
-//MODULE_DEPEND(bwn_pci, bhndb_pci, 1, 1, 1);
-MODULE_DEPEND(bwn_pci, bhnd_bcma, 1, 1, 1);
-//MODULE_DEPEND(bwn_pci, bhnd_siba, 1, 1, 1);
+MODULE_DEPEND(bwn_pci, bcmab_pci, 1, 1, 1);
+//MODULE_DEPEND(bwn_pci, sibab_pci, 1, 1, 1);

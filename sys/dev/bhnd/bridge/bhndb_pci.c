@@ -471,3 +471,4 @@ MODULE_VERSION(bhndb_pci, 1);
 
 MODULE_DEPEND(bhndb_pci, pci, 1, 1, 1);
 MODULE_DEPEND(bhndb_pci, bhnd, 1, 1, 1);
+MODULE_DEPEND(bhndb_pci, bhndb, 1, 1, 1);

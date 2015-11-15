@@ -16,15 +16,16 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_BHND_PCIVAR_H_
-#define _BHND_BHND_PCIVAR_H_
+#ifndef _BHND_BHNDB_PCIVAR_H_
+#define _BHND_BHNDB_PCIVAR_H_
 
 #include <sys/param.h>
 #include <sys/kernel.h>
 #include <sys/bus.h>
 #include <sys/rman.h>
 
-#include "bhnd.h"
+#include <dev/bhnd/bhnd.h>
+
 #include "bhndbvar.h"
 
 DECLARE_CLASS(bhndb_pci_driver);

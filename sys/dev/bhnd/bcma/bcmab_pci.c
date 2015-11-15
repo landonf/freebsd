@@ -49,9 +49,9 @@ __FBSDID("$FreeBSD$");
 #include <dev/pci/pcivar.h>
 
 #include <dev/bhnd/bhnd_private.h>
-#include <dev/bhnd/bhndb_pcivar.h>
 
-#include <dev/bhnd/cores/bhnd_pci_hostb.h>
+#include <dev/bhnd/bridge/bhndb_pcireg.h>
+#include <dev/bhnd/bridge/bhndb_pcivar.h>
 
 #include "bhndb_bus_if.h"
 
@@ -142,6 +142,9 @@ static device_method_t bcmab_pci_methods[] = {
 DEFINE_CLASS_1(bcmab, bcmab_pci_driver, bcmab_pci_methods,
     sizeof(struct bhndb_pci_softc), bhndb_pci_driver);
 
+MODULE_VERSION(bcmab_pci, 1);
+MODULE_DEPEND(bcmab_pci, pci, 1, 1, 1);
+MODULE_DEPEND(bcmab_pci, bhndb, 1, 1, 1);
 
 // TODO: move to proper home
 static const struct resource_spec bhnd_pci_common_res[] = {
