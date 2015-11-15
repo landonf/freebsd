@@ -73,6 +73,10 @@ bcmab_pci_probe(device_t dev)
 static int
 bcmab_pci_attach(device_t dev)
 {
+	/* Attach bridged bcma(4) bus */
+	if (device_add_child(dev, devclass_get_name(bcma_devclass), 0) == NULL)
+		return (ENXIO);
+
 	/* Call core attach */
 	return bhndb_pci_attach(dev);
 }

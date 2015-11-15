@@ -72,19 +72,9 @@ typedef enum {
 	BCMA_SPORT_TYPE_MWRAP	= 3,	/**< DMP agent/wrapper for slave port */
 } bcma_sport_type;
 
-int			 bcma_generic_probe(device_t dev);
-int			 bcma_generic_attach(device_t dev);
-int			 bcma_generic_detach(device_t dev);
-int			 bcma_generic_read_ivar(device_t dev, device_t child,
-			     int index, uintptr_t *result);
-int			 bcma_generic_write_ivar(device_t dev, device_t child,
-			     int index, uintptr_t value);
-void			 bcma_generic_child_deleted(device_t dev,
-			     device_t child);
-struct resource_list	*bcma_generic_get_resource_list(device_t dev,
-			     device_t child);
-int			 bcma_generic_get_port_rid(device_t dev, device_t child,
-			     u_int port_num, u_int region_num);
+int			 bcma_probe(device_t dev);
+int			 bcma_attach(device_t dev);
+int			 bcma_detach(device_t dev);
 
 int			 bcma_add_children(device_t bus,
 			     struct resource *erom_res, bus_size_t erom_offset);
@@ -152,6 +142,11 @@ struct bcma_corecfg {
 struct bcma_devinfo {
 	struct resource_list	resources;	/**< Slave port memory regions. */
 	struct bcma_corecfg	cfg;		/**< IP core/block config */
+};
+
+
+/** BMCA per-instance state */
+struct bcma_softc {
 };
 
 #endif /* _BCMA_BCMA_PRIVATE_H_ */

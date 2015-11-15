@@ -33,9 +33,8 @@ __FBSDID("$FreeBSD$");
 /*
  * Broadcom PCI-BHND Host Bridge.
  * 
- * Broadcom PCI(e) cores can be configured to operate as endpoint devices,
- * serving as a "host bridge" from the host's PCI bus to the BHND bus to
- * which the PCI(e) core is attached.
+ * This driver is used to "eat" PCI(e) cores operating in endpoint mode when
+ * they're attached to a bhndb_pci driver on the host side.
  */
 
 #include <sys/param.h>
@@ -57,9 +56,9 @@ static const struct hostb_bhnd_device {
 	uint16_t	 device;
 	const char	*desc;
 } hostb_bhnd_devices[] = {
-	{ BHND_COREID_PCI,	NULL },
-	{ BHND_COREID_PCIE,	NULL },
-	{ BHND_COREID_PCIE2,	NULL },
+	{ BHND_COREID_PCI,	"PCI-BHND Bridge" },
+	{ BHND_COREID_PCIE,	"PCI-BHND Bridge (PCIe Gen1)" },
+	{ BHND_COREID_PCIE2,	"PCI-BHND Bridge (PCIe Gen2)" },
 	{ BHND_COREID_INVALID,	NULL }
 };
 
@@ -67,19 +66,13 @@ static int
 bhnd_pci_hostb_probe(device_t dev)
 {
 	const struct hostb_bhnd_device	*id;
-	const			char 	*desc;
 	
 	for (id = hostb_bhnd_devices; id->device != BHND_COREID_INVALID; id++)
 	{
 		if (bhnd_get_vendor(dev) == BHND_MFGID_BCM &&
 		    bhnd_get_device(dev) == id->device)
 		{
-			if (id->desc == NULL)
-				desc = bhnd_get_device_name(dev);
-			else
-				desc = id->desc;
-		
-			device_set_desc(dev, desc);
+			device_set_desc(dev, id->desc);
 
 			// TODO - BUS_PROBE_NOWILDCARD
 			return (BUS_PROBE_DEFAULT);

@@ -25,28 +25,59 @@
  * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGES.
- * 
- * $FreeBSD$
  */
 
-#ifndef _BCMA_BCMAVAR_H_
-#define _BCMA_BCMAVAR_H_
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
 
-#include <sys/types.h>
+#include <sys/param.h>
+#include <sys/kernel.h>
 #include <sys/bus.h>
-#include <sys/malloc.h>
-#include <sys/queue.h>
-#include <sys/rman.h>
+#include <sys/module.h>
 
-#include <dev/bhnd/bhndvar.h>
+#include <dev/bhnd/bridge/bhndbvar.h>
+
+#include "bcmavar.h"
+#include "bcma_private.h"
 
 /*
- * Broadcom AMBA backplane types and data structures.
+ * Supports attachment of bcma(4) bus devices via a bcmab bridge.
  */
 
-DECLARE_CLASS(bcma_driver);
+static int
+bcma_bcmab_probe(device_t dev)
+{
+	int error;
+	
+	if ((error = bcma_probe(dev)) > 0)
+		return (error);
 
-extern devclass_t bcma_devclass;
-extern devclass_t bcmab_devclass;
+	return (BUS_PROBE_NOWILDCARD);
+}
 
-#endif /* _BCMA_BCMAVAR_H_ */
+static int
+bcma_bcmab_attach(device_t dev)
+{
+	bus_addr_t erom_addr = bhndb_get_dev_base_addr(dev);
+
+	// TODO - enumerate cores
+	device_printf(dev, "erom addr=0x%llx\n", (unsigned long long) erom_addr);
+
+	return (bcma_attach(dev));
+}
+
+static device_method_t bcma_bcmab_methods[] = {
+	/* Device interface */
+	DEVMETHOD(device_probe,			bcma_bcmab_probe),
+	DEVMETHOD(device_attach,		bcma_bcmab_attach),
+
+	DEVMETHOD_END
+};
+
+DEFINE_CLASS_1(bcma, bcma_bcmab_driver, bcma_bcmab_methods,
+    sizeof(struct bcma_softc), bcma_driver);
+
+DRIVER_MODULE(bcma_bcmab, bcmab, bcma_bcmab_driver, bcma_devclass, NULL, NULL);
+ 
+MODULE_VERSION(bcma_bcmab, 1);
+MODULE_DEPEND(bcma_bcmab, bcmab, 1, 1, 1);
