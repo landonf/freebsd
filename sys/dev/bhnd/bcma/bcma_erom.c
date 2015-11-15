@@ -425,11 +425,11 @@ bcma_erom_seek_core(struct bcma_erom *erom)
  * @param[out] num_cores the number of core records in @p cores.
  */
 int
-bcma_erom_get_cores(struct bcma_erom *erom,
-    struct bcma_erom_core **cores,
+bcma_erom_get_core_info(struct bcma_erom *erom,
+    struct bhnd_core_info **cores,
     u_int *num_cores)
 {
-	struct bcma_erom_core	*buffer;
+	struct bhnd_core_info	*buffer;
 	bus_size_t		 initial_offset;
 	u_int			 count;
 	int			 error;
@@ -441,6 +441,7 @@ bcma_erom_get_cores(struct bcma_erom *erom,
 	bcma_erom_reset(erom);
 	for (count = 0, error = 0; !error; count++) {
 		struct bcma_erom_core core;
+
 		/* Seek to the first readable core entry */
 		error = bcma_erom_seek_core(erom);
 		if (error == ENOENT)
@@ -454,7 +455,7 @@ bcma_erom_get_cores(struct bcma_erom *erom,
 	}
 
 	/* Allocate our output buffer */
-	buffer = malloc(sizeof(struct bcma_erom_core) * count, M_BHND,
+	buffer = malloc(sizeof(struct bhnd_core_info) * count, M_BHND,
 	    M_WAITOK);
 	if (buffer == NULL) {
 		error = ENOMEM;
@@ -464,12 +465,29 @@ bcma_erom_get_cores(struct bcma_erom *erom,
 	/* Parse all core descriptors */
 	bcma_erom_reset(erom);
 	for (u_int i = 0; i < count; i++) {
+		struct bcma_erom_core core;
+
+		/* Parse the core */
 		if ((error = bcma_erom_seek_core(erom)))
 			goto cleanup;
 
-		error = bcma_erom_parse_core(erom, &buffer[i]);
+		error = bcma_erom_parse_core(erom, &core);
 		if (error)
 			goto cleanup;
+		
+		/* Convert to a bhnd info record */
+		buffer[i].vendor = core.vendor;
+		buffer[i].device = core.device;
+		buffer[i].hwrev = core.rev;
+		buffer[i].core_id = i;
+		buffer[i].unit = 0;
+
+		/* Determine the unit number */
+		for (u_int j = 0; j < i; j++) {
+			if (buffer[i].vendor == buffer[j].vendor &&
+			    buffer[i].device == buffer[j].device)
+				buffer[i].unit++;;
+		}
 	}
 
 cleanup:

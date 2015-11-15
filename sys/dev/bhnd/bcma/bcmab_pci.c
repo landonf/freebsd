@@ -32,7 +32,7 @@
 __FBSDID("$FreeBSD$");
 
 /*
- * Generic BHND PCI Device Support
+ * PCI-BCMA Bridge Device Support
  */
 
 #include <sys/param.h>
@@ -60,6 +60,15 @@ __FBSDID("$FreeBSD$");
 
 #include "bcmab_pcivar.h"
 
+#include "bcma_eromreg.h"
+#include "bcma_eromvar.h"
+
+struct bcmab_pci_softc {
+	struct bhndb_pci_softc	bhndb_softc;	/**< parent softc */
+	device_t		pci_dev;	/**< parent PCI device */
+	bus_addr_t		erom_addr;	/**< EROM's base address */
+};
+
 static int
 bcmab_pci_probe(device_t dev)
 {
@@ -73,16 +82,64 @@ bcmab_pci_probe(device_t dev)
 	return (error);
 }
 
+/* Map the ChipCommon core using our bus-provided register windows 
+ * and fetch the EROM address. */
+static int
+bcmab_find_erom_addr(device_t dev, bus_addr_t *erom_addr)
+{
+	struct bcmab_pci_softc		*sc;
+	const struct bhndb_hwcfg	*cfg;
+	const struct bhndb_regwin	*cc_win;
+	struct resource			*res_mem;
+	int				 rid, rtype;
+
+	sc = device_get_softc(dev);
+
+	/* Fetch the initial hardware configuration */
+	cfg = BHNDB_BUS_GET_HWCFG(sc->pci_dev, dev);
+
+	/* Find the chipc register window */
+	cc_win = bhndb_regwin_find_core(cfg->register_windows,
+	    BHND_DEVCLASS_CC, 0, 0, 0);
+	if (cc_win == NULL) {
+		device_printf(dev, "missing chipcommon register window\n");
+		return (0);
+	}
+
+	/* Allocate the ChipCommon window resource and fetch the EROM table
+	 * address. */
+	rid = cc_win->res.rid;
+	rtype = cc_win->res.type;
+	res_mem = bus_alloc_resource_any(sc->pci_dev, rtype, &rid, RF_ACTIVE);
+	if (res_mem == NULL) {
+		device_printf(dev,
+		    "failed to allocate bcmab_pci chipc resource\n");
+		return (ENXIO);
+	}
+	
+	*erom_addr = bus_read_4(res_mem, cc_win->win_offset + BCMA_CC_EROM_ADDR);
+
+	/* Clean up */
+	bus_release_resource(sc->pci_dev, rtype, rid, res_mem);
+	return (0);
+}
+
 static int
 bcmab_pci_attach(device_t dev)
 {
+	struct bcmab_pci_softc	*sc;
+	int			 error;
+
+	sc = device_get_softc(dev);
+	sc->pci_dev = device_get_parent(dev);
+
+	/* Extract the EROM address for later use */
+	if ((error = bcmab_find_erom_addr(dev, &sc->erom_addr)))
+		return (error);
+
 	/* Attach bridged bcma(4) bus */
 	if (device_add_child(dev, devclass_get_name(bcma_devclass), 0) == NULL)
 		return (ENXIO);
-
-	pci_enable_busmaster(device_get_parent(dev));
-	
-	BHNDB_GET_CORE_TABLE(dev, NULL, NULL);
 
 	/* Call core attach */
 	return bhndb_pci_attach(dev);
@@ -98,10 +155,13 @@ bcmab_pci_detach(device_t dev)
 static int
 bcmab_pci_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 {
+	struct bcmab_pci_softc	*sc;
+	
+	sc = device_get_softc(dev);
+
 	switch (index) {
 	case BHNDB_IVAR_DEV_BASE_ADDR:
-		// TODO
-		*result = 0;
+		*result = sc->erom_addr;
 	default:
 		return (bhndb_pci_read_ivar(dev, child, index, result));
 	}
@@ -122,86 +182,70 @@ static int
 bcmab_pci_set_window_register(device_t dev, const struct bhndb_regwin *rw,
 	uint32_t addr)
 {
+	struct bcmab_pci_softc *sc = device_get_softc(dev);
+
 	KASSERT(rw->win_type == BHNDB_REGWIN_T_DYN,
 	    ("non-dynamic register window type %d", rw->win_type));
-	
-	pci_write_config(device_get_parent(dev), rw->dyn.cfg_offset, addr, 4);
+
+	pci_write_config(sc->pci_dev, rw->dyn.cfg_offset, addr, 4);
 	return (0);
 }
 
 static int
 bcmab_pci_get_core_table(device_t dev, struct bhnd_core_info **cores,
-	size_t *count)
+	u_int *count)
 {
+	struct bcmab_pci_softc		*sc;
+	struct bcma_erom		 erom;
 	const struct bhndb_hwcfg	*cfg;
-	const struct bhndb_regwin	*cc_win;
-	const struct bhndb_regwin	*dyn_win;
+	const struct bhndb_regwin	*erom_win;
 	struct resource			*res_mem;
-	device_t			 parent;
-	uint32_t			 erom_base;
 	int				 error;
-	int				 rid, rtype;
+	int				 rid;
 
-	parent = device_get_parent(dev);
-	cfg = BHNDB_BUS_GET_HWCFG(parent, dev);
-	res_mem = NULL;
+	sc = device_get_softc(dev);
+	cfg = BHNDB_BUS_GET_HWCFG(sc->pci_dev, dev);
 
-	/* Find the register windows we need for device enumeration */
-	cc_win = bhndb_regwin_find_core(cfg->register_windows,
-	    BHND_DEVCLASS_CC, 0, 0, 0);
-	if (cc_win == NULL) {
-		device_printf(dev, "missing ChipCommon register window\n");
-		return (ENXIO);
-	}
+	/* Prefer a fixed EROM mapping window. */
+	erom_win = bhndb_regwin_find_core(cfg->register_windows,
+	    BHND_DEVCLASS_EROM, 0, 0, 0);
+
+	/* Fall back to a dynamic window */
+	if (erom_win == NULL) {
+		erom_win = bhndb_regwin_find_type(cfg->register_windows,
+		    BHNDB_REGWIN_T_DYN);
+		
+		if (erom_win == NULL) {
+			device_printf(dev,
+			    "no usable dynamic register window\n");
+			return (ENXIO);
+		}
 	
-	dyn_win = bhndb_regwin_find_type(cfg->register_windows,
-	    BHNDB_REGWIN_T_DYN);
-	if (dyn_win == NULL) {
-		device_printf(dev, "no usable dynamic register window\n");
-		return (ENXIO);
+		/* Configure the dynamic window's base address. */
+		error = BHNDB_SET_WINDOW_REGISTER(dev, erom_win, sc->erom_addr);
+		if (error)
+			return (error);
 	}
-
-
-	/* Allocate the ChipCommon window resource  */
-	rid = cc_win->res.rid;
-	rtype = cc_win->res.type;
-	res_mem = bus_alloc_resource_any(parent, rtype, &rid, RF_ACTIVE);
-	if (res_mem == NULL) {
-		device_printf(dev,
-		    "failed to allocate bcmab_pci chipc resource\n");
-		return (ENXIO);
-	}
-
-	/* Fetch the EROM table address and clean up */
-	erom_base = bus_read_4(res_mem, cc_win->win_offset + BCMA_CC_EROM_ADDR);
-	bus_release_resource(parent, rtype, rid, res_mem);
-	res_mem = NULL;
-
 
 	/* Allocate the EROM window resource  */
-	rid = dyn_win->res.rid;
-	rtype = dyn_win->res.type;
-	res_mem = bus_alloc_resource_any(parent, rtype, &rid,
+	rid = erom_win->res.rid;
+	res_mem = bus_alloc_resource_any(sc->pci_dev, erom_win->res.type, &rid,
 	    RF_ACTIVE);
 	if (res_mem == NULL) {
 		device_printf(dev,
 		    "failed to allocate bcmab_pci EROM resource\n");
-		error = ENXIO;
-		goto cleanup;
+		return (ENXIO);
 	}
 
-	/* Point the dynamic window at the EROM table */
-	error = BHNDB_SET_WINDOW_REGISTER(dev, dyn_win, erom_base);
+	/* Perform the read */
+	error = bcma_erom_open(res_mem, BCMA_EROM_TABLE_START, &erom);
 	if (error)
 		goto cleanup;
 
-	// TODO - parse the EROM
-	device_printf(dev, "erom addr=0x%llx\n", (unsigned long long) erom_base);
+	bcma_erom_get_core_info(&erom, cores, count);
 
 cleanup:
-	if (res_mem != NULL)
-		bus_release_resource(parent, rtype, rid, res_mem);
-
+	bus_release_resource(sc->pci_dev, erom_win->res.type, rid, res_mem);
 	return (error);
 }
 
@@ -225,7 +269,7 @@ static device_method_t bcmab_pci_methods[] = {
 };
 
 DEFINE_CLASS_1(bcmab, bcmab_pci_driver, bcmab_pci_methods,
-    sizeof(struct bhndb_pci_softc), bhndb_pci_driver);
+    sizeof(struct bcmab_pci_softc), bhndb_pci_driver);
 
 MODULE_VERSION(bcmab_pci, 1);
 MODULE_DEPEND(bcmab_pci, pci, 1, 1, 1);

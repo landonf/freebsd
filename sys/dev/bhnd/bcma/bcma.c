@@ -51,9 +51,6 @@ static int		 bcma_devinfo_fill_port_regions(device_t bus,
 			     struct bcma_erom *erom, struct bcma_devinfo *dinfo,
 			     bcma_pid_t port_num, bcma_sport_type port_type);
 
-static int		 bcma_next_core_unit(struct bcma_erom_core *cores,
-			     u_int core_index);
-
 static int		 bcma_next_child_devinfo(device_t bus, 
 			     struct bcma_erom *erom, u_int core_index,
 			     int core_unit, struct bcma_devinfo **result);
@@ -332,35 +329,6 @@ cleanup:
 	return error;
 }
 
-
-/**
- * Determine the next available unit number for the given core.
- * 
- * @param cores All cores on in the EROM table, in their original order.
- * @param core_index Core for which the unit is to be determined.
- * 
- * @retval 0 success
- * @retval non-zero an error occured fetching the device list
- */
-static int
-bcma_next_core_unit(struct bcma_erom_core *cores, u_int core_index)
-{
-	struct bcma_erom_core	*core;
-	int			 unit;
-	
-	core = &cores[core_index];
-
-	/* Determine the next unit number */
-	unit = 0;
-	for (u_int i = 0; i < core_index; i++) {
-		if (cores[i].vendor == core->vendor &&
-		    cores[i].device == core->device)
-			unit += 1;
-	}
-
-	return (unit);
-}
-
 /**
  * Parse the next child devinfo entry from the EROM table.
  * 
@@ -517,7 +485,7 @@ int
 bcma_add_children(device_t bus, struct resource *erom_res, bus_size_t erom_offset)
 {
 	struct bcma_erom	 erom;
-	struct bcma_erom_core	*cores;
+	struct bhnd_core_info	*cores;
 	struct bcma_devinfo	*dinfo;
 	device_t		 child;
 	u_int			 num_cores;
@@ -530,20 +498,20 @@ bcma_add_children(device_t bus, struct resource *erom_res, bus_size_t erom_offse
 	if ((error = bcma_erom_open(erom_res, erom_offset, &erom)))
 		return (error);
 
-	/* Fetch the full table of core descriptors; used to generate unit
+	/* Fetch the full table of core descriptors; these provide the unit
 	 * numbers for each core. */
-	if ((error = bcma_erom_get_cores(&erom, &cores, &num_cores))) {
+	if ((error = bcma_erom_get_core_info(&erom, &cores, &num_cores))) {
 		device_printf(bus, "failed to read core table: %d\n", error);
 		return (error);
 	}
 
-	/* Parse per-core descriptors */
+	/* Add a device for each core. */
 	for (u_int core_index = 0; core_index < num_cores; core_index++) 
 	{
 		int core_unit;
 
 		/* Determine the core's unit number */
-		core_unit = bcma_next_core_unit(cores, core_index);
+		core_unit = cores[core_index].unit;
 		
 		/* Generate the devinfo structure */
 		error = bcma_next_child_devinfo(bus, &erom, core_index,
@@ -552,7 +520,8 @@ bcma_add_children(device_t bus, struct resource *erom_res, bus_size_t erom_offse
 			goto failed;
 
 		/* Add the child device */
-		child = device_add_child_ordered(bus, BHND_PROBE_ORDER_DEFAULT, NULL, -1);
+		child = device_add_child_ordered(bus, BHND_PROBE_ORDER_DEFAULT,
+		    NULL, -1);
 		if (child == NULL) {
 			error = ENXIO;
 			goto failed;

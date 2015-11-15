@@ -47,7 +47,7 @@ CODE {
 
 	static int
 	bhndb_null_get_core_table(device_t dev, struct bhnd_core_info **cores,
-	    size_t *count)
+	    u_int *count)
 	{
 		panic("bhndb_get_core_table unimplemented");
 	}
@@ -74,7 +74,7 @@ CODE {
 METHOD int get_core_table {
 	device_t dev;
 	struct bhnd_core_info **cores;
-	size_t *count;
+	u_int *count;
 } DEFAULT bhndb_null_get_core_table;
 
 /**

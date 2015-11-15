@@ -122,7 +122,7 @@ static const struct bhnd_core_desc {
 
 	BHND_CDESC(ARM, APB_BRIDGE,	SOCB,		"BP135 AMBA3 AXI to APB Bridge"),
 	BHND_CDESC(ARM, PL301,		SOCI,		"PL301 AMBA3 Interconnect"),
-	BHND_CDESC(ARM, EROM,		OTHER,		"PL366 Device Enumeration ROM"),
+	BHND_CDESC(ARM, EROM,		EROM,		"PL366 Device Enumeration ROM"),
 	BHND_CDESC(ARM, OOB_ROUTER,	OTHER,		"PL367 OOB Interrupt Router"),
 	BHND_CDESC(ARM, AXI_UNMAPPED,	OTHER,		"Unmapped Address Ranges"),
 #undef	BHND_CDESC

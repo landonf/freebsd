@@ -79,11 +79,8 @@ int		bcma_erom_parse_mport(struct bcma_erom *erom,
 int		bcma_erom_parse_sport_region(struct bcma_erom *erom,
 		    struct bcma_erom_sport_region *region);
 
-int		bcma_erom_get_cores(struct bcma_erom *erom,
-		    struct bcma_erom_core **cores,
+int		bcma_erom_get_core_info(struct bcma_erom *erom,
+		    struct bhnd_core_info **cores,
 		    u_int *num_cores);
-
-
-
 
 #endif /* _BCMA_BCMA_EROMVAR_H_ */

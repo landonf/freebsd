@@ -48,6 +48,7 @@ typedef enum {
 	BHND_DEVCLASS_CPU,		/**< cpu core */
 	BHND_DEVCLASS_SOCI,		/**< interconnect */
 	BHND_DEVCLASS_SOCB,		/**< interconnect bridge/socket */
+	BHND_DEVCLASS_EROM,		/**< bus device enumeration ROM */
 	BHND_DEVCLASS_OTHER,		/**< other / unknown */
 
 	BHND_DEVCLASS_INVALID	/**< no/invalid class */
