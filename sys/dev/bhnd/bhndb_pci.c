@@ -49,7 +49,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/pci/pcivar.h>
 
 #include <dev/bhnd/bhnd_private.h>
-#include <dev/bhnd/cores/bhnd_pcireg.h>
 
 #include "bhndb_bus_if.h"
 #include "bhndb_pcivar.h"
