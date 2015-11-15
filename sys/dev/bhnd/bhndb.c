@@ -43,6 +43,7 @@ devclass_t bhndb_devclass;
  * Attach a PCI-BHND bridge device to @p parent.
  * 
  * @param parent A parent PCI device.
+ * @param devclass The devclass of the bridge device to be added.
  * @param[out] bhndb On success, the attached bhndb bridge device.
  * @param unit The device unit number, or -1 to select the next available unit
  * number.
