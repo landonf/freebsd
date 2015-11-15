@@ -44,10 +44,16 @@ typedef enum {
  * bhndb register window definition.
  */
 struct bhndb_regwin {
-	int			rid;	/**< resource-id of this register window */
-	bus_size_t		offset;	/**< offset of the window within the resource */
-	bus_size_t		size;	/**< size of the window */
-	bhndb_regwin_type_t	type;	/**< window type */
+	bhndb_regwin_type_t	win_type;	/**< window type */
+	bus_size_t		win_offset;	/**< offset of the window within the resource */
+	bus_size_t		win_size;	/**< size of the window */
+	
+	/** Resource identification */
+	struct {
+		int		type;		/**< resource type */
+		int		rid;		/**< resource id */
+	} res;
+
 
 	union {
 		/** Core-specific register window (BHNDB_REGWIN_T_CORE). */
@@ -68,14 +74,14 @@ struct bhndb_regwin {
         };
 };
 
-#define	BHNDB_REGWIN_TABLE_END	{ -1, 0, 0, 0 }
+#define	BHNDB_REGWIN_TABLE_END	{ -1, -1, 0, { 0, 0 } }
 
 /**
  * bhndb hardware configuration.
  */
-struct bhndb_hw_cfg {
+struct bhndb_hwcfg {
 	const struct resource_spec	*resource_specs;
-	struct bhndb_regwin		*register_windows;
+	const struct bhndb_regwin	*register_windows;
 };
 
 /**

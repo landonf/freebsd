@@ -70,6 +70,9 @@ bhndb_pci_attach(device_t dev)
 	sc = device_get_softc(dev);
 	sc->dev = dev;
 	sc->pci_dev = device_get_parent(dev);
+	
+	sc->res = NULL;
+	sc->res_spec = NULL;
 
 	/* Set up a resource manager for the device's address space. */
 	sc->mem_rman.rm_start = 0;
@@ -87,22 +90,29 @@ bhndb_pci_attach(device_t dev)
 	}
 
 	/* Fetch our hardware config and determine the resource count. */
-	sc->hw_cfg = BHNDB_BUS_GET_HW_CFG(device_get_parent(dev), dev);
+	sc->hwcfg = BHNDB_BUS_GET_HWCFG(device_get_parent(dev), dev);
 	sc->res_count = 0;
-	for (size_t i = 0; sc->hw_cfg->resource_specs[i].type != -1; i++)
+	for (size_t i = 0; sc->hwcfg->resource_specs[i].type != -1; i++)
 		sc->res_count++;
 
 	
-	/* Allocate resource tables. */
-	sc->res_spec = malloc(sizeof(struct resource_spec) * sc->res_count,
+	/* Allocate space for a non-const copy of our resource_spec
+	 * table; this will be updated with the RIDs assigned by
+	 * bus_alloc_resources. */
+	sc->res_spec = malloc(sizeof(struct resource_spec) * (sc->res_count + 1),
 	    M_BHND, M_WAITOK);
 	if (sc->res_spec == NULL) {
 		error = ENOMEM;
 		goto failed;
 	}
-	for (size_t i = 0; i < sc->res_count; i++)
-		sc->res_spec[i] = sc->hw_cfg->resource_specs[i];
 
+	/* Initialize and terminate the table */
+	for (size_t i = 0; i < sc->res_count; i++)
+		sc->res_spec[i] = sc->hwcfg->resource_specs[i];
+	
+	sc->res_spec[sc->res_count].type = -1;
+
+	/* Allocate space for our resource references */
 	sc->res = malloc(sizeof(struct resource) * sc->res_count,
 	    M_BHND, M_WAITOK);
 	if (sc->res == NULL) {
@@ -110,12 +120,12 @@ bhndb_pci_attach(device_t dev)
 		goto failed;
 	}
 
-
-	/* Allocate the PCI resources */
+	/* Allocate resources */
 	error = bus_alloc_resources(sc->pci_dev, sc->res_spec, sc->res);
 	if (error) {
-		device_printf(dev, "could not allocate PCI resources on %s\n",
-		device_get_nameunit(sc->pci_dev));
+		device_printf(dev,
+		    "could not allocate PCI resources on %s: %d\n",
+		    device_get_nameunit(sc->pci_dev), error);
 		goto failed;
 	} else {
 		free_pci_res = true;

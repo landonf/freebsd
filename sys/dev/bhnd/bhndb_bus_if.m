@@ -34,7 +34,7 @@
 INTERFACE bhndb_bus;
 
 HEADER {
-	struct bhndb_hw_cfg;
+	struct bhndb_hwcfg;
 };
 
 
@@ -47,7 +47,7 @@ HEADER {
  * @param dev The parent device.
  * @param child The attached bhndb device.
  */
-METHOD struct bhndb_hw_cfg * get_hw_cfg {
+METHOD const struct bhndb_hwcfg * get_hwcfg {
 	device_t dev;
 	device_t child;
 }

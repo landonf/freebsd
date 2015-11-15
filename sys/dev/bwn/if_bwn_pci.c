@@ -47,24 +47,26 @@ __FBSDID("$FreeBSD$");
 
 /** bwn_pci per-instance state. */
 struct bwn_pci_softc {
-	device_t		 dev;		/**< device */
-	device_t		 bhndb_dev;	/**< bhnd bridge device */
-	struct bhndb_hw_cfg	*hw_cfg;	/**< bhndb hardware config */
+	device_t			 dev;		/**< device */
+	device_t			 bhndb_dev;	/**< bhnd bridge device */
+	const struct bhndb_hwcfg	*hwcfg;		/**< bhndb hardware config */
 };
 
 static const struct bwn_pci_device {
 	uint16_t		 vendor;
 	uint16_t		 device;
-	struct bhndb_hw_cfg	*hw_cfg;
 	const char		*desc;
+	struct bhndb_hw_cfg	*hw_cfg;
 } bwn_pci_devices[] = {
-	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4331_D11N,		NULL,
-	    "Broadcom BCM4331 802.11a/b/g/n Wireless" },
-	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4331_D11N2G,	NULL,
-	    "Broadcom BCM4331 802.11b/g/n (2GHz) Wireless" },
-	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4331_D11N5G,	NULL,
-	    "Broadcom BCM4331 802.11a/b/g/n (5GHz) Wireless" },
+#define	BWN_DEV(_device, _desc) \
+	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_ ## _device,	_desc, NULL }
+
+	BWN_DEV(BCM4331_D11N,	"Broadcom BCM4331 802.11a/b/g/n Wireless"),
+	BWN_DEV(BCM4331_D11N2G,	"Broadcom BCM4331 802.11b/g/n (2GHz) Wireless"),
+	BWN_DEV(BCM4331_D11N5G,	"Broadcom BCM4331 802.11a/b/g/n (5GHz) Wireless"),
+
 	{ 0, 0, NULL, NULL }
+#undef BWN_DEV
 };
 
 static int
@@ -90,8 +92,8 @@ bwn_pci_attach(device_t dev)
 	sc = device_get_softc(dev);
 	sc->dev = dev;
 	
-	// TODO
-	sc->hw_cfg = NULL;
+	// TODO - select correct config
+	sc->hwcfg = &bhnd_pci_v1_common_hwcfg;
 
 	/* Attach bridge device */
 	if (bhndb_attach(dev, bcmab_devclass, &sc->bhndb_dev, -1))
@@ -119,11 +121,11 @@ bwn_pci_probe_nomatch(device_t dev, device_t child)
 	device_printf(dev, "<%s> (no driver attached)\n", name);
 }
 
-static struct bhndb_hw_cfg *
-bwn_pci_get_hw_cfg(device_t dev, device_t child)
+static const struct bhndb_hwcfg *
+bwn_pci_get_hwcfg(device_t dev, device_t child)
 {
 	struct bwn_pci_softc *sc = device_get_softc(dev);
-	return (sc->hw_cfg);
+	return (sc->hwcfg);
 }
 
 static device_method_t bwn_pci_methods[] = {
@@ -139,7 +141,7 @@ static device_method_t bwn_pci_methods[] = {
 	DEVMETHOD(bus_probe_nomatch,		bwn_pci_probe_nomatch),
 
 	/* BHNDB_BUS Interface */
-	DEVMETHOD(bhndb_bus_get_hw_cfg,		bwn_pci_get_hw_cfg),
+	DEVMETHOD(bhndb_bus_get_hwcfg,		bwn_pci_get_hwcfg),
 
 	DEVMETHOD_END
 };

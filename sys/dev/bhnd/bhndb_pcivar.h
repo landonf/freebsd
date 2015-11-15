@@ -34,15 +34,15 @@ DECLARE_CLASS(bhndb_pci_driver);
  * softc structures.
  */
 struct bhndb_pci_softc {
-	device_t		 dev;		/**< bridge device */
-	struct bhndb_hw_cfg	*hw_cfg;	/**< hardware config */
+	device_t			 dev;		/**< bridge device */
+	const struct bhndb_hwcfg	*hwcfg;		/**< hardware config */
 
-	device_t		 pci_dev;	/**< parent pci device */
-	size_t			 res_count;	/**< pci resource count */
-	struct resource_spec	*res_spec;	/**< pci resource specs */
-	struct resource		**res;		/**< pci resources */
+	device_t			 pci_dev;	/**< parent pci device */
+	size_t				 res_count;	/**< pci resource count */
+	struct resource_spec		*res_spec;	/**< pci resource specs */
+	struct resource			**res;		/**< pci resources */
 
-	struct rman		 mem_rman;	/**< bus memory manager */
+	struct rman			 mem_rman;	/**< bus memory manager */
 };
 
 int	bhndb_pci_probe(device_t dev);
