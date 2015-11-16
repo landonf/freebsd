@@ -274,38 +274,3 @@ DEFINE_CLASS_1(bcmab, bcmab_pci_driver, bcmab_pci_methods,
 MODULE_VERSION(bcmab_pci, 1);
 MODULE_DEPEND(bcmab_pci, pci, 1, 1, 1);
 MODULE_DEPEND(bcmab_pci, bhndb, 1, 1, 1);
-
-// TODO: move to proper home
-static const struct resource_spec bhnd_pci_common_res[] = {
-	{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
-	{ -1,			0,		0 }
-};
-
-static const struct bhndb_regwin bhnd_pci_v1_common_regwin[] = {
-	{
-		.win_type	= BHNDB_REGWIN_T_DYN,
-		.win_offset	= BHNDB_PCI_V1_BAR0_WIN0_OFFSET,
-		.win_size	= BHNDB_PCI_V1_BAR0_WIN0_SIZE,
-		.dyn.cfg_offset = BHNDB_PCI_V1_BAR0_WIN0_CONTROL,
-		.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
-	},
-	{
-		.win_type	= BHNDB_REGWIN_T_CORE,
-		.win_offset	= BHNDB_PCI_V1_BAR0_CCREGS_OFFSET,
-		.win_size	= BHNDB_PCI_V1_BAR0_CCREGS_SIZE,
-		.core = {
-			.class	= BHND_DEVCLASS_CC,
-			.unit	= 0,
-			.port	= 0,
-			.region	= 0 
-		},
-		.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
-	},
-
-	BHNDB_REGWIN_TABLE_END
-};
-
-const struct bhndb_hwcfg bhnd_pci_v1_common_hwcfg = {
-	.resource_specs		= bhnd_pci_common_res,
-	.register_windows	= bhnd_pci_v1_common_regwin
-};

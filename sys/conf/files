@@ -1107,6 +1107,7 @@ dev/bhnd/bridge/bhndb.c		optional bhndbus | bhndb
 dev/bhnd/bridge/bhndb_bus_if.m	optional bhndbus | bhndb
 dev/bhnd/bridge/bhndb_if.m	optional bhndbus | bhndb
 dev/bhnd/bridge/bhndb_pci.c	optional bhndbus pci | bhndb pci
+dev/bhnd/bridge/bhndb_pci_hwdata.c optional bhndbus | bhndb
 # bhnd bus modules
 dev/bhnd/bcma/bcma.c		optional bhndbus | bcma
 dev/bhnd/bcma/bcma_bcmab.c	optional bhndbus | bcmab

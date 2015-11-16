@@ -20,10 +20,8 @@
 #define _BHND_BCMA_BCMAB_PCIVAR_H_
 
 #include <dev/bhnd/bcma/bcmavar.h>
+#include <dev/bhnd/bridge/bhndb_pcivar.h>
 
 DECLARE_CLASS(bcmab_pci_driver);
-
-struct bhndb_hwcfg;
-extern const struct bhndb_hwcfg bhnd_pci_v1_common_hwcfg;
 
 #endif /* _BHND_BCMA_BCMAB_PCIVAR_H_ */

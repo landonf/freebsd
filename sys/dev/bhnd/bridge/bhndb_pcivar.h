@@ -46,6 +46,8 @@ struct bhndb_pci_softc {
 	struct rman			 mem_rman;	/**< bus memory manager */
 };
 
+extern const struct bhndb_hwcfg bhnd_pci_v1_common_hwcfg;
+
 int	bhndb_pci_probe(device_t dev);
 int	bhndb_pci_attach(device_t dev);
 int	bhndb_pci_detach(device_t dev);
