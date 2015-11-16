@@ -49,6 +49,82 @@ __FBSDID("$FreeBSD$");
 #include "bhndb_pcivar.h"
 
 /**
+ * Generic hardware configuration shared by all PCI_V0, PCI_V1, PCI_V2, and
+ * PCI_V3 devices.
+ * 
+ * This is sufficient for enumerating a siba(4) bus.
+ * This is not sufficient for enumerating a bcma(4) bus.
+ * 
+ * Applies to:
+ * - PCI (cid=0x804, revision >= 13)
+ * - PCIE (cid=0x820)
+ * - PCIE2 (cid=0x83c)
+ */
+const struct bhndb_hwcfg bhnd_pci_v0_generic_hwcfg = {
+	.resource_specs		= (const struct resource_spec[]) {
+		{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
+		{ -1,			0,		0 }
+	},
+
+	.register_windows	= (const struct bhndb_regwin[]) {
+		/* bar0+0x0000: configurable backplane window */
+		{
+			.win_type	= BHNDB_REGWIN_T_DYN,
+			.win_offset	= BHNDB_PCI_V1_BAR0_WIN0_OFFSET,
+			.win_size	= BHNDB_PCI_V1_BAR0_WIN0_SIZE,
+			.dyn.cfg_offset = BHNDB_PCI_V1_BAR0_WIN0_CONTROL,
+			.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
+		},
+		BHNDB_REGWIN_TABLE_END
+	},
+};
+
+/**
+ * Generic hardware configuration shared by all PCI_V1, PCI_V2, and
+ * PCI_V3 devices.
+ * 
+ * This is sufficient for enumerating both siba(4) and bcma(4) buses.
+ * 
+ * Applies to:
+ * - PCI (cid=0x804, revision >= 13)
+ * - PCIE (cid=0x820)
+ * - PCIE2 (cid=0x83c)
+ */
+const struct bhndb_hwcfg bhnd_pci_v1_generic_hwcfg = {
+	.resource_specs		= (const struct resource_spec[]) {
+		{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
+		{ -1,			0,		0 }
+	},
+
+	.register_windows	= (const struct bhndb_regwin[]) {
+		/* bar0+0x0000: configurable backplane window */
+		{
+			.win_type	= BHNDB_REGWIN_T_DYN,
+			.win_offset	= BHNDB_PCI_V1_BAR0_WIN0_OFFSET,
+			.win_size	= BHNDB_PCI_V1_BAR0_WIN0_SIZE,
+			.dyn.cfg_offset = BHNDB_PCI_V1_BAR0_WIN0_CONTROL,
+			.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
+		},
+
+		/* bar0+0x3000: chipc core registers */
+		{
+			.win_type	= BHNDB_REGWIN_T_CORE,
+			.win_offset	= BHNDB_PCI_V1_BAR0_CCREGS_OFFSET,
+			.win_size	= BHNDB_PCI_V1_BAR0_CCREGS_SIZE,
+			.core = {
+				.class	= BHND_DEVCLASS_CC,
+				.unit	= 0,
+				.port	= 0,
+				.region	= 0 
+			},
+			.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
+		},
+
+		BHNDB_REGWIN_TABLE_END
+	},
+};
+
+/**
  * PCI_V0 hardware configuration.
  * 
  * Applies to:
@@ -91,52 +167,6 @@ const struct bhndb_hwcfg bhnd_pci_v0_hwcfg = {
 			},
 			.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
 		},
-		BHNDB_REGWIN_TABLE_END
-	},
-};
-
-/**
- * Generic hardware configuration shared by all PCI_V1, PCI_V2, and
- * PCI_V3 devices.
- * 
- * This is sufficient for enumerating the attached bus devices
- * to determine the full hardware configuration.
- * 
- * Applies to:
- * - PCI (cid=0x804, revision >= 13)
- * - PCIE (cid=0x820)
- * - PCIE2 (cid=0x83c)
- */
-const struct bhndb_hwcfg bhnd_pci_v1_common_hwcfg = {
-	.resource_specs		= (const struct resource_spec[]) {
-		{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
-		{ -1,			0,		0 }
-	},
-
-	.register_windows	= (const struct bhndb_regwin[]) {
-		/* bar0+0x0000: configurable backplane window */
-		{
-			.win_type	= BHNDB_REGWIN_T_DYN,
-			.win_offset	= BHNDB_PCI_V1_BAR0_WIN0_OFFSET,
-			.win_size	= BHNDB_PCI_V1_BAR0_WIN0_SIZE,
-			.dyn.cfg_offset = BHNDB_PCI_V1_BAR0_WIN0_CONTROL,
-			.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
-		},
-
-		/* bar0+0x3000: chipc core registers */
-		{
-			.win_type	= BHNDB_REGWIN_T_CORE,
-			.win_offset	= BHNDB_PCI_V1_BAR0_CCREGS_OFFSET,
-			.win_size	= BHNDB_PCI_V1_BAR0_CCREGS_SIZE,
-			.core = {
-				.class	= BHND_DEVCLASS_CC,
-				.unit	= 0,
-				.port	= 0,
-				.region	= 0 
-			},
-			.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
-		},
-
 		BHNDB_REGWIN_TABLE_END
 	},
 };

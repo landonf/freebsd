@@ -44,58 +44,128 @@ __FBSDID("$FreeBSD$");
 
 #include "bhndb_bus_if.h"
 
+struct bwn_pci_devcfg;
+
 /** bwn_pci per-instance state. */
 struct bwn_pci_softc {
 	device_t			 dev;		/**< device */
 	device_t			 bhndb_dev;	/**< bhnd bridge device */
-	const struct bhndb_hwcfg	*hwcfg;		/**< bhndb hardware config */
+	const struct bwn_pci_devcfg	*devcfg;	/**< hw config */
 };
 
-static const struct bwn_pci_device {
-	uint16_t		 vendor;
-	uint16_t		 device;
-	const char		*desc;
-	struct bhndb_hw_cfg	*hw_cfg;
-} bwn_pci_devices[] = {
-#define	BWN_DEV(_device, _desc) \
-	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_ ## _device,	_desc, NULL }
-
-	BWN_DEV(BCM4331_D11N,	"Broadcom BCM4331 802.11a/b/g/n Wireless"),
-	BWN_DEV(BCM4331_D11N2G,	"Broadcom BCM4331 802.11b/g/n (2GHz) Wireless"),
-	BWN_DEV(BCM4331_D11N5G,	"Broadcom BCM4331 802.11a/b/g/n (5GHz) Wireless"),
-
-	{ 0, 0, NULL, NULL }
-#undef BWN_DEV
+/* PCI device descriptor */
+struct bwn_pci_device {
+	uint16_t	vendor;
+	uint16_t	device;
+	const char	*desc;
 };
+
+/* Supported device table */
+struct bwn_pci_devcfg {
+	const devclass_t		*bridge_cls;
+	const struct bhndb_hwcfg	*bridge_hwcfg;
+	const struct bwn_pci_device	*devices;
+};
+
+/* SIBA Devices */
+static const struct bwn_pci_device siba_devices[] = {
+	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4301,		"Broadcom BCM4301 802.11b Wireless" },
+	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4306,		"Broadcom BCM4301 802.11b/g Wireless" },
+	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4307,		"Broadcom BCM4307 802.11b Wireless", },
+	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4311_D11G,		"Broadcom BCM4311 802.11b/g Wireless" },
+	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4311_D11DUAL,	"Broadcom BCM4311 802.11a/b/g Wireless" },
+	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4328_D11G,		"Broadcom BCM4328/4312 802.11b/g Wireless" },
+	
+	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4318_D11G,		"Broadcom BCM4318 802.11b/g Wireless" },
+	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4318_D11DUAL,	"Broadcom BCM4318 802.11a/b/g Wireless" },
+	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4306_D11G,		"Broadcom BCM4306 802.11b/g Wireless" },
+	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4306_D11A,		"Broadcom BCM4306 802.11a Wireless" },
+	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4306_D11DUAL,	"Broadcom BCM4309 802.11a/b/g Wireless" },
+	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4306_D11G_ID2,	"Broadcom BCM4306 802.11b/g Wireless" },
+	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4321_D11N,		"Broadcom BCM4321 802.11a/b/g/n Wireless" },
+	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4321_D11N2G,	"Broadcom BCM4329 802.11b/g/n" },
+	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4322_D11N,		"Broadcom BCM4322 802.11a/b/g/n Wireless" },
+	{ 0, 0, NULL }
+};
+
+/** BCMA Devices */
+static const struct bwn_pci_device bcma_devices[] = {
+	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4331_D11N,		"Broadcom BCM4331 802.11a/b/g/n Wireless" },
+	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4331_D11N2G,	"Broadcom BCM4331 802.11b/g/n 2.4GHz Wireless" },
+	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4331_D11N5G,	"Broadcom BCM4331 802.11a/b/g/n 5GHz Wireless" },
+	{ 0, 0, NULL }
+};
+
+/** Device configuration table */
+static const struct bwn_pci_devcfg bwn_pci_devcfgs[] = {
+	/* SIBA devices */
+	{
+		.bridge_cls	= NULL /* TODO &sibab_devclass */,
+		.bridge_hwcfg	= &bhnd_pci_v0_generic_hwcfg,
+		.devices	= siba_devices
+	},
+	/* BCMA devices */
+	{
+		.bridge_cls	= &bcmab_devclass,
+		.bridge_hwcfg	= &bhnd_pci_v1_generic_hwcfg,
+		.devices	= bcma_devices
+	},
+	{ NULL, NULL, NULL }
+};
+
+/** Search the device configuration table for an entry matching @p dev. */
+static int
+bwn_pci_find_devcfg(device_t dev, const struct bwn_pci_devcfg **cfg,
+    const struct bwn_pci_device **device)
+{
+	const struct bwn_pci_devcfg	*dvc;
+	const struct bwn_pci_device	*dv;
+
+	for (dvc = bwn_pci_devcfgs; dvc->devices != NULL; dvc++) {
+		for (dv = dvc->devices; dv->device != 0; dv++) {
+			if (pci_get_vendor(dev) == dv->vendor &&
+			    pci_get_device(dev) == dv->device)
+			{
+				if (cfg != NULL)
+					*cfg = dvc;
+				
+				if (device != NULL)
+					*device = dv;
+				
+				return (0);
+			}
+		}
+	}
+
+	return (ENOENT);
+}
 
 static int
 bwn_pci_probe(device_t dev)
 {
-	const struct bwn_pci_device *ident;
+	const struct bwn_pci_device	*ident;
+	
+	if (bwn_pci_find_devcfg(dev, NULL, &ident))
+		return (ENXIO);
 
-	for (ident = bwn_pci_devices; ident->vendor != 0; ident++) {
-		if (pci_get_vendor(dev) == ident->vendor && pci_get_device(dev) == ident->device) {
-			device_set_desc(dev, ident->desc);
-			return (BUS_PROBE_DEFAULT);
-		}
-	}
-
-	return (ENXIO);
+	device_set_desc(dev, ident->desc);
+	return (BUS_PROBE_DEFAULT);
 }
 
 static int
 bwn_pci_attach(device_t dev)
 {
-	struct bwn_pci_softc *sc;
+	struct bwn_pci_softc		*sc;
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
-	
-	// TODO - select correct config
-	sc->hwcfg = &bhnd_pci_v1_common_hwcfg;
+
+	/* Find our hardware config */
+	if (bwn_pci_find_devcfg(dev, &sc->devcfg, NULL))
+		return (ENXIO);
 
 	/* Attach bridge device */
-	if (bhndb_attach(dev, bcmab_devclass, &sc->bhndb_dev, -1))
+	if (bhndb_attach(dev, *sc->devcfg->bridge_cls, &sc->bhndb_dev, -1))
 		return (ENXIO);
 
 	/* Let the generic implementation probe all added children. */
@@ -124,7 +194,7 @@ static const struct bhndb_hwcfg *
 bwn_pci_get_hwcfg(device_t dev, device_t child)
 {
 	struct bwn_pci_softc *sc = device_get_softc(dev);
-	return (sc->hwcfg);
+	return (sc->devcfg->bridge_hwcfg);
 }
 
 static device_method_t bwn_pci_methods[] = {
