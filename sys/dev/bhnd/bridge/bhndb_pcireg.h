@@ -123,6 +123,11 @@
 #define	BHNDB_PCI_GPIO_OUT		0xb4	/* pci config space gpio output (>=rev3) */
 #define	BHNDB_PCI_GPIO_OUTEN		0xb8	/* pci config space gpio output enable (>=rev3) */
 
+/* Hardware revisions used to determine PCI revision */
+#define	BHNDB_PCI_V0_MAX_PCI_HWREV	12
+#define	BHNDB_PCI_V1_MIN_PCI_HWREV	13
+#define	BHNDB_PCI_V1_MAX_CHIPC_HWREV	31
+#define	BHNDB_PCI_V2_MIN_CHIPC_HWREV	32
 
 /* PCI_V0  */
 #define	BHNDB_PCI_V0_BAR0_WIN0_CONTROL	0x80	/* backplane address space accessed by BAR0/WIN0 */

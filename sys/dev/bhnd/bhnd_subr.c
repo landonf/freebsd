@@ -95,7 +95,7 @@ static const struct bhnd_core_desc {
 	BHND_CDESC(BCM, ATA100,		OTHER,		"Parallel ATA Controller"),
 	BHND_CDESC(BCM, SATAXOR,	OTHER,		"SATA DMA/XOR Controller"),
 	BHND_CDESC(BCM, GIGETH,		ENET_MAC,	"Gigabit Ethernet MAC"),
-	BHND_CDESC(BCM, PCIE,		PCI,		"PCIe Bridge"),
+	BHND_CDESC(BCM, PCIE,		PCIE,		"PCIe Bridge"),
 	BHND_CDESC(BCM, NPHY,		WLAN_PHY,	"802.11n 2x2 PHY"),
 	BHND_CDESC(BCM, SRAMC,		MEMC,		"SRAM Controller"),
 	BHND_CDESC(BCM, MINIMAC,	WLAN_MPHY,	"MINI MAC/PHY"),
@@ -118,7 +118,7 @@ static const struct bhnd_core_desc {
 	BHND_CDESC(BCM, I2S,		OTHER,		"I2S Digital Audio Interface"),
 	BHND_CDESC(BCM, DMEMS,		MEMC,		"SDR/DDR1 Memory Controller"),
 	BHND_CDESC(BCM, UBUS_SHIM,	OTHER,		"BCM6362/UBUS WLAN SHIM"),
-	BHND_CDESC(BCM,	PCIE2,		PCI,		"PCIe Bridge (Gen2)"),
+	BHND_CDESC(BCM,	PCIE2,		PCIE,		"PCIe Bridge (Gen2)"),
 
 	BHND_CDESC(ARM, APB_BRIDGE,	SOCB,		"BP135 AMBA3 AXI to APB Bridge"),
 	BHND_CDESC(ARM, PL301,		SOCI,		"PL301 AMBA3 Interconnect"),
@@ -245,7 +245,7 @@ bhnd_find_child(device_t dev, bhnd_devclass_t class)
  * @retval NULL if no matching child device is found.
  */
 device_t
-bhnd_match_child(device_t dev, struct bhnd_core_match *desc)
+bhnd_match_child(device_t dev, const struct bhnd_core_match *desc)
 {
 	device_t	*devlistp;
 	device_t	 match;
@@ -271,39 +271,111 @@ done:
 }
 
 /**
+ * Find the first core in @p cores that matches @p desc.
+ * 
+ * @param cores The table to search.
+ * @param num_cores The length of @p cores.
+ * @param desc A match descriptor.
+ * 
+ * @retval bhnd_core_info if a matching core is found.
+ * @retval NULL if no matching core is found.
+ */
+const struct bhnd_core_info *
+bhnd_match_core(const struct bhnd_core_info *cores, u_int num_cores,
+    const struct bhnd_core_match *desc)
+{
+	for (u_int i = 0; i < num_cores; i++) {
+		if (bhnd_core_matches(&cores[i], desc))
+			return &cores[i];
+	}
+
+	return (NULL);
+}
+
+
+/**
+ * Find the first core in @p cores with the given @p class.
+ * 
+ * @param cores The table to search.
+ * @param num_cores The length of @p cores.
+ * @param desc A match descriptor.
+ * 
+ * @retval bhnd_core_info if a matching core is found.
+ * @retval NULL if no matching core is found.
+ */
+const struct bhnd_core_info *
+bhnd_find_core(const struct bhnd_core_info *cores, u_int num_cores,
+    bhnd_devclass_t class)
+{
+	struct bhnd_core_match md = {
+		.vendor = BHND_MFGID_INVALID,
+		.device = BHND_COREID_INVALID,
+		.hwrev.start = BHND_HWREV_INVALID,
+		.hwrev.end = BHND_HWREV_INVALID,
+		.class = class,
+		.unit = -1
+	};
+
+	return bhnd_match_core(cores, num_cores, &md);
+}
+
+/**
+ * Return true if the @p core matches @p desc.
+ * 
+ * @param core A bhnd core descriptor.
+ * @param desc A match descriptor to compare against @p core.
+ * 
+ * @retval true if @p core matches @p match
+ * @retval false if @p core does not match @p match.
+ */
+bool
+bhnd_core_matches(const struct bhnd_core_info *core,
+    const struct bhnd_core_match *desc)
+{
+	if (desc->vendor != BHND_MFGID_INVALID &&
+	    desc->vendor != core->vendor)
+		return false;
+
+	if (desc->device != BHND_COREID_INVALID &&
+	    desc->device != core->device)
+		return false;
+
+	if (desc->unit != -1 && desc->unit != core->unit)
+		return false;
+
+	if (desc->hwrev.start != BHND_HWREV_INVALID &&
+	    desc->hwrev.start > core->hwrev)
+		return false;
+		
+	if (desc->hwrev.end != BHND_HWREV_INVALID &&
+	    desc->hwrev.end < core->hwrev)
+		return false;
+
+	if (desc->class != BHND_DEVCLASS_INVALID &&
+	    desc->class != bhnd_core_class(core->vendor, core->device))
+		return false;
+
+	return true;
+}
+
+/**
  * Return true if the @p dev matches @p desc.
  * 
- * @param dev A bhnd bus device.
+ * @param dev A bhnd device.
  * @param desc A match descriptor to compare against @p dev.
  * 
  * @retval true if @p dev matches @p match
  * @retval false if @p dev does not match @p match.
  */
 bool
-bhnd_device_matches(device_t dev, struct bhnd_core_match *desc)
+bhnd_device_matches(device_t dev, const struct bhnd_core_match *desc)
 {
-	if (desc->vendor != BHND_MFGID_INVALID &&
-	    desc->vendor != bhnd_get_vendor(dev))
-		return false;
+	struct bhnd_core_info ci = {
+		.vendor = bhnd_get_vendor(dev),
+		.device = bhnd_get_device(dev),
+		.unit = bhnd_get_core_unit(dev),
+		.hwrev = bhnd_get_revid(dev)
+	};
 
-	if (desc->device != BHND_COREID_INVALID &&
-	    desc->device != bhnd_get_device(dev))
-		return false;
-
-	if (desc->unit != -1 && desc->unit != bhnd_get_core_unit(dev))
-		return false;
-
-	if (desc->hwrev.start != BHND_HWREV_INVALID &&
-	    desc->hwrev.start > bhnd_get_revid(dev))
-		return false;
-		
-	if (desc->hwrev.end != BHND_HWREV_INVALID &&
-	    desc->hwrev.end < bhnd_get_revid(dev))
-		return false;
-
-	if (desc->class != BHND_DEVCLASS_INVALID &&
-	    desc->class != bhnd_get_class(dev))
-		return false;
-
-	return true;
+	return bhnd_core_matches(&ci, desc);
 }

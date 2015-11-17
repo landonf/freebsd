@@ -51,6 +51,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhnd_private.h>
 
 #include "bhndb_bus_if.h"
+
+#include "bhndb_pcireg.h"
 #include "bhndb_pcivar.h"
 
 int
@@ -74,6 +76,54 @@ bhndb_pci_probe(device_t dev)
 	return (BUS_PROBE_NOWILDCARD);
 }
 
+static bool
+bhndb_pci_hw_matches(device_t dev, struct bhnd_core_info *cores,
+    u_int num_cores, const struct bhndb_hw *hw)
+{
+	for (u_int i = 0; i < hw->num_hw_reqs; i++) {
+		const struct bhnd_core_match *match =  &hw->hw_reqs[i];
+
+		if (bhnd_match_core(cores, num_cores, match) == NULL)
+			return (false);
+	}
+
+	return (true);
+}
+
+static int
+bhndb_pci_find_hwcfg(device_t dev, const struct bhndb_hwcfg **hwcfg)
+{
+	struct bhndb_pci_softc	*sc;
+	const struct bhndb_hw	*hw;
+	struct bhnd_core_info	*cores;
+	u_int			 num_cores;
+	int			 error;
+
+	sc = device_get_softc(dev);
+	error = 0;
+
+	/* Fetch our core table */
+	if ((error = BHNDB_GET_CORE_TABLE(dev, &cores, &num_cores)))
+		return (error);
+	
+	/* Search for the first matching hardware config */
+	for (hw = bhndb_pci_hw; hw->hw_reqs != NULL; hw++) {
+		if (bhndb_pci_hw_matches(dev, cores, num_cores, hw)) {
+			device_printf(dev, "Register Map: %s\n",
+			    hw->name);
+			*hwcfg = hw->cfg;
+			goto finished;
+		}
+	}
+
+	/* Not found */
+	error = ENOENT;
+
+finished:
+	free(cores, M_BHND);
+	return (error);
+}
+
 int
 bhndb_pci_attach(device_t dev)
 {
@@ -88,6 +138,10 @@ bhndb_pci_attach(device_t dev)
 	
 	sc->res = NULL;
 	sc->res_spec = NULL;
+
+	/* Determine our PCI/ChipCommon register window configuration */
+	if ((error = bhndb_pci_find_hwcfg(dev, &sc->hwcfg)))
+		return (error);
 
 	/* Set up a resource manager for the device's address space. */
 	sc->mem_rman.rm_start = 0;
@@ -104,12 +158,10 @@ bhndb_pci_attach(device_t dev)
 		free_mem_rman = true;
 	}
 
-	/* Fetch our hardware config and determine the resource count. */
-	sc->hwcfg = BHNDB_BUS_GET_HWCFG(device_get_parent(dev), dev);
+	/* Determine our PCI resource count from the hardware config. */
 	sc->res_count = 0;
 	for (size_t i = 0; sc->hwcfg->resource_specs[i].type != -1; i++)
 		sc->res_count++;
-
 	
 	/* Allocate space for a non-const copy of our resource_spec
 	 * table; this will be updated with the RIDs assigned by

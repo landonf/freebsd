@@ -48,6 +48,114 @@ __FBSDID("$FreeBSD$");
 #include "bhndb_pcireg.h"
 #include "bhndb_pcivar.h"
 
+#define	_BHNDB_HW_REQ_ARRAY(...) (struct bhnd_core_match[]) { __VA_ARGS__ }
+
+#define	BHNDB_HW_MATCH(_name, _vers, ...) {				\
+	.name		= _name,					\
+	.hw_reqs	= _BHNDB_HW_REQ_ARRAY(__VA_ARGS__),		\
+	.num_hw_reqs	= (sizeof(_BHNDB_HW_REQ_ARRAY(__VA_ARGS__)) /	\
+	    sizeof(_BHNDB_HW_REQ_ARRAY(__VA_ARGS__)[0])),		\
+	.cfg		= &bhndb_pci_hwcfg_ ## _vers			\
+}
+
+// TODO: Lift out into bwn?
+const struct bhndb_hw bhndb_pci_hw[] = {
+	/* PCI/V0 */
+	BHNDB_HW_MATCH("PCI/v0 NIC", v0, {
+		.vendor	= BHND_MFGID_BCM,
+		.device	= BHND_COREID_PCI,
+		.hwrev	= {
+			.start	= 0,
+			.end	= BHNDB_PCI_V0_MAX_PCI_HWREV
+		},
+		.class	= BHND_DEVCLASS_PCI,
+		.unit	= 0
+	}),
+	
+	/* PCI/V1 */
+	BHNDB_HW_MATCH("PCI/v1 NIC", v1, {
+		.vendor	= BHND_MFGID_BCM,
+		.device	= BHND_COREID_PCI,
+		.hwrev	= { 
+			.start	= BHNDB_PCI_V1_MIN_PCI_HWREV,
+			.end	= BHND_HWREV_INVALID
+		},
+		.class	= BHND_DEVCLASS_PCI,
+		.unit	= 0
+	}),
+
+	/* PCIE/V1 */
+	BHNDB_HW_MATCH("PCIe/v1 NIC", v1,
+		/* PCIe Core */
+		{
+			.vendor	= BHND_MFGID_BCM,
+			.device	= BHND_COREID_PCIE,
+			.hwrev	= {
+				.start	= 0,
+				.end	= BHND_HWREV_INVALID
+			},
+			.class	= BHND_DEVCLASS_PCIE,
+			.unit	= 0
+		},
+
+		/* ChipCommon (revision <= 31) */
+		{
+			.vendor	= BHND_MFGID_BCM,
+			.device	= BHND_COREID_CC,
+			.hwrev	= {
+				.start	= 0,
+				.end	= BHNDB_PCI_V1_MAX_CHIPC_HWREV
+			},
+			.class	= BHND_DEVCLASS_CC,
+			.unit	= 0
+		}
+	),
+
+	/* PCIE/V2 */
+	BHNDB_HW_MATCH("PCIe/v2 NIC", v2,
+		/* PCIe Core */
+		{
+			.vendor	= BHND_MFGID_BCM,
+			.device	= BHND_COREID_PCIE,
+			.hwrev	= { 0, BHND_HWREV_INVALID },
+			.class	= BHND_DEVCLASS_PCIE,
+			.unit	= 0
+		},
+
+		/* ChipCommon (revision >= 32) */
+		{
+			.vendor	= BHND_MFGID_BCM,
+			.device	= BHND_COREID_CC,
+			.hwrev	= {
+				.start	= BHNDB_PCI_V2_MIN_CHIPC_HWREV,
+				.end	= BHND_HWREV_INVALID
+			},
+			.class	= BHND_DEVCLASS_CC,
+			.unit	= 0
+		}
+	),
+
+
+	/* PCIE/V3 */
+	BHNDB_HW_MATCH("PCIe-Gen2/v3 NIC", v3,
+		/* PCIe Gen2 Core */
+		{
+			.vendor	= BHND_MFGID_BCM,
+			.device	= BHND_COREID_PCIE2,
+			.hwrev	= {
+				.start	= 0,
+				.end	= BHND_HWREV_INVALID
+			},
+			.class	= BHND_DEVCLASS_PCIE,
+			.unit	= 0
+		}
+	),
+
+	{ NULL, NULL, 0, NULL }
+};
+
+
+
 /**
  * Generic hardware configuration shared by all PCI_V0, PCI_V1, PCI_V2, and
  * PCI_V3 devices.
@@ -60,13 +168,13 @@ __FBSDID("$FreeBSD$");
  * - PCIE (cid=0x820)
  * - PCIE2 (cid=0x83c)
  */
-const struct bhndb_hwcfg bhnd_pci_v0_generic_hwcfg = {
-	.resource_specs		= (const struct resource_spec[]) {
+const struct bhndb_hwcfg bhndb_pci_generic_hwcfg_v0 = {
+	.resource_specs = (const struct resource_spec[]) {
 		{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
 		{ -1,			0,		0 }
 	},
 
-	.register_windows	= (const struct bhndb_regwin[]) {
+	.register_windows = (const struct bhndb_regwin[]) {
 		/* bar0+0x0000: configurable backplane window */
 		{
 			.win_type	= BHNDB_REGWIN_T_DYN,
@@ -90,7 +198,7 @@ const struct bhndb_hwcfg bhnd_pci_v0_generic_hwcfg = {
  * - PCIE (cid=0x820)
  * - PCIE2 (cid=0x83c)
  */
-const struct bhndb_hwcfg bhnd_pci_v1_generic_hwcfg = {
+const struct bhndb_hwcfg bhndb_pci_generic_hwcfg_v1 = {
 	.resource_specs		= (const struct resource_spec[]) {
 		{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
 		{ -1,			0,		0 }
@@ -130,7 +238,7 @@ const struct bhndb_hwcfg bhnd_pci_v1_generic_hwcfg = {
  * Applies to:
  * - PCI (cid=0x804, revision <= 12)
  */
-const struct bhndb_hwcfg bhnd_pci_v0_hwcfg = {
+const struct bhndb_hwcfg bhndb_pci_hwcfg_v0 = {
 	.resource_specs		= (const struct resource_spec[]) {
 		{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
 		{ -1,			0,		0 }
@@ -178,7 +286,7 @@ const struct bhndb_hwcfg bhnd_pci_v0_hwcfg = {
  * - PCI (cid=0x804, revision >= 13)
  * - PCIE (cid=0x820) with ChipCommon (revision <= 31)
  */
-const struct bhndb_hwcfg bhndb_pci_v1_hwcfg = {
+const struct bhndb_hwcfg bhndb_pci_hwcfg_v1 = {
 	.resource_specs		= (const struct resource_spec[]) {
 		{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
 		{ -1,			0,		0 }
@@ -240,7 +348,7 @@ const struct bhndb_hwcfg bhndb_pci_v1_hwcfg = {
  * Applies to:
  * - PCIE (cid=0x820) with ChipCommon (revision >= 32)
  */
-const struct bhndb_hwcfg bhndb_pci_v2_hwcfg = {
+const struct bhndb_hwcfg bhndb_pci_hwcfg_v2 = {
 	.resource_specs		= (const struct resource_spec[]) {
 		{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
 		{ -1,			0,		0 }
@@ -303,7 +411,7 @@ const struct bhndb_hwcfg bhndb_pci_v2_hwcfg = {
  * Applies to:
  * - PCIE2 (cid=0x83c)
  */
-const struct bhndb_hwcfg bhndb_pci_v3_hwcfg = {
+const struct bhndb_hwcfg bhndb_pci_hwcfg_v3 = {
 	.resource_specs		= (const struct resource_spec[]) {
 		{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
 		{ -1,			0,		0 }

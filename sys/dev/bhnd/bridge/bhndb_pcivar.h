@@ -22,6 +22,7 @@
 #include <sys/param.h>
 #include <sys/kernel.h>
 #include <sys/bus.h>
+
 #include <sys/rman.h>
 
 #include <dev/bhnd/bhnd.h>
@@ -46,13 +47,22 @@ struct bhndb_pci_softc {
 	struct rman			 mem_rman;	/**< bus memory manager */
 };
 
-extern const struct bhndb_hwcfg bhnd_pci_v0_generic_hwcfg;
-extern const struct bhndb_hwcfg bhnd_pci_v1_generic_hwcfg;
+extern const struct bhndb_hwcfg bhndb_pci_generic_hwcfg_v0;
+extern const struct bhndb_hwcfg bhndb_pci_generic_hwcfg_v1;
 
-extern const struct bhndb_hwcfg bhnd_pci_v0_hwcfg;
-extern const struct bhndb_hwcfg bhnd_pci_v1_hwcfg;
-extern const struct bhndb_hwcfg bhnd_pci_v2_hwcfg;
-extern const struct bhndb_hwcfg bhnd_pci_v3_hwcfg;
+extern const struct bhndb_hwcfg bhndb_pci_hwcfg_v0;
+extern const struct bhndb_hwcfg bhndb_pci_hwcfg_v1;
+extern const struct bhndb_hwcfg bhndb_pci_hwcfg_v2;
+extern const struct bhndb_hwcfg bhndb_pci_hwcfg_v3;
+
+// TODO -- lift out into bwn?
+struct bhndb_hw {
+	const char			*name;
+	const struct bhnd_core_match	*hw_reqs;
+	u_int				 num_hw_reqs;
+	const struct bhndb_hwcfg	*cfg;
+};
+extern const struct bhndb_hw bhndb_pci_hw[];
 
 int	bhndb_pci_probe(device_t dev);
 int	bhndb_pci_attach(device_t dev);

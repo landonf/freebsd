@@ -35,7 +35,8 @@
 /** BHND Device Classes. */
 typedef enum {
 	BHND_DEVCLASS_CC,		/**< chipcommon i/o controller */
-	BHND_DEVCLASS_PCI,		/**< pci/pcie host/device bridge */
+	BHND_DEVCLASS_PCI,		/**< pci host/device bridge */
+	BHND_DEVCLASS_PCIE,		/**< pcie host/device bridge */
 	BHND_DEVCLASS_MEM,		/**< internal RAM/SRAM */
 	BHND_DEVCLASS_MEMC,		/**< memory controller */
 	BHND_DEVCLASS_ENET_MAC,		/**< 802.3 MAC */
@@ -109,17 +110,30 @@ struct bhnd_core_match {
 	int			unit;	/**< required core unit, or -1 */
 };
 
-const char		*bhnd_vendor_name(uint16_t vendor);
-const char 		*bhnd_core_name(uint16_t vendor, uint16_t device);
-bhnd_devclass_t		 bhnd_core_class(uint16_t vendor, uint16_t device);
+const char			*bhnd_vendor_name(uint16_t vendor);
+const char 			*bhnd_core_name(uint16_t vendor, uint16_t device);
+bhnd_devclass_t			 bhnd_core_class(uint16_t vendor, uint16_t device);
 
-device_t		 bhnd_match_child(device_t dev,
-			     struct bhnd_core_match *desc);
+device_t			 bhnd_match_child(device_t dev,
+				     const struct bhnd_core_match *desc);
 
-device_t		 bhnd_find_child(device_t dev,
-			     bhnd_devclass_t class);
+device_t			 bhnd_find_child(device_t dev,
+				     bhnd_devclass_t class);
 
-bool			 bhnd_device_matches(device_t dev,
-			     struct bhnd_core_match *desc);
+const struct bhnd_core_info	*bhnd_match_core(
+				     const struct bhnd_core_info *cores,
+				     u_int num_cores,
+				     const struct bhnd_core_match *desc);
+
+const struct bhnd_core_info	*bhnd_find_core(
+				     const struct bhnd_core_info *cores,
+				     u_int num_cores, bhnd_devclass_t class);
+
+bool				 bhnd_core_matches(
+				     const struct bhnd_core_info *core,
+				     const struct bhnd_core_match *desc);
+
+bool				 bhnd_device_matches(device_t dev,
+				     const struct bhnd_core_match *desc);
 
 #endif /* _BHND_BHNDVAR_H_ */
