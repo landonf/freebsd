@@ -35,7 +35,7 @@ struct bhndb_regwin;
  */
 typedef enum {
 	BHNDB_REGWIN_T_CORE,		/**< Fixed mapping of a core register block. */
-	BHNDB_REGWIN_T_SPROM,		/**< Fixed mapping an SPROM */
+	BHNDB_REGWIN_T_SPROM,		/**< Fixed mapping of device SPROM */
 	BHNDB_REGWIN_T_DYN,		/**< A dynamically configurable window */
 	BHNDB_REGWIN_T_INVALID		/**< Invalid type */
 } bhndb_regwin_type_t;
