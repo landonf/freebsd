@@ -254,7 +254,9 @@ bhndb_pci_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 {
 	switch (index) {
 	case BHNDB_IVAR_DEV_BASE_ADDR:
-		/* fall through */
+		/* Must be implemented by subclasses */
+		device_printf(dev, "BHNDB_IVAR_DEV_BASE_ADDR unimplemented\n");
+		return (ENOENT);
 	default:
 		return (ENOENT);
 	}
