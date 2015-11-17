@@ -32,7 +32,8 @@
 __FBSDID("$FreeBSD$");
 
 /*
- * BHNDB PCI Hardware Configurations.
+ * Resource specifications and register maps for Broadcom PCI/PCIe cores 
+ * configured as PCI-BHND bridges.
  */
 
 #include <sys/param.h>
@@ -48,8 +49,19 @@ __FBSDID("$FreeBSD$");
 #include "bhndb_pcireg.h"
 #include "bhndb_pcivar.h"
 
+static const struct bhndb_hwcfg bhndb_pci_hwcfg_v0;
+static const struct bhndb_hwcfg bhndb_pci_hwcfg_v1;
+static const struct bhndb_hwcfg bhndb_pci_hwcfg_v2;
+static const struct bhndb_hwcfg bhndb_pci_hwcfg_v3;
+
 #define	_BHNDB_HW_REQ_ARRAY(...) (struct bhnd_core_match[]) { __VA_ARGS__ }
 
+/**
+ * Define a bhndb_hw match entry.
+ * 
+ * @param _name The entry name.
+ * @param _vers The configuration version associated with this entry.
+ */
 #define	BHNDB_HW_MATCH(_name, _vers, ...) {				\
 	.name		= _name,					\
 	.hw_reqs	= _BHNDB_HW_REQ_ARRAY(__VA_ARGS__),		\
@@ -58,7 +70,9 @@ __FBSDID("$FreeBSD$");
 	.cfg		= &bhndb_pci_hwcfg_ ## _vers			\
 }
 
-// TODO: Lift out into bwn?
+/**
+ * Hardware configuration tables for Broadcom HND PCI NICs.
+ */
 const struct bhndb_hw bhndb_pci_hw[] = {
 	/* PCI/V0 */
 	BHNDB_HW_MATCH("PCI/v0 NIC", v0, {
@@ -157,18 +171,18 @@ const struct bhndb_hw bhndb_pci_hw[] = {
 
 
 /**
- * Generic hardware configuration shared by all PCI_V0, PCI_V1, PCI_V2, and
- * PCI_V3 devices.
+ * Generic PCI-SIBA bridge configuration usable with all known siba(4)-based
+ * PCI devices; this configuration is adequate for enumerating a bridged
+ * siba(4) bus to determine the full hardware configuration.
  * 
- * This is sufficient for enumerating a siba(4) bus.
- * This is not sufficient for enumerating a bcma(4) bus.
+ * Compatible with PCI_V0, PCI_V1, PCI_V2, and PCI_V3 devices.
  * 
- * Applies to:
- * - PCI (cid=0x804, revision >= 13)
- * - PCIE (cid=0x820)
- * - PCIE2 (cid=0x83c)
+ * While compatible with bcma(4) devices, this configuration does not define a
+ * ChipCommon register window required for bcma(4) bus enumeration.
+ * 
+ * TODO: Lift out into sibab_pci.c/h
  */
-const struct bhndb_hwcfg bhndb_pci_generic_hwcfg_v0 = {
+const struct bhndb_hwcfg sibab_pci_hwcfg_generic = {
 	.resource_specs = (const struct resource_spec[]) {
 		{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
 		{ -1,			0,		0 }
@@ -188,57 +202,12 @@ const struct bhndb_hwcfg bhndb_pci_generic_hwcfg_v0 = {
 };
 
 /**
- * Generic hardware configuration shared by all PCI_V1, PCI_V2, and
- * PCI_V3 devices.
- * 
- * This is sufficient for enumerating both siba(4) and bcma(4) buses.
- * 
- * Applies to:
- * - PCI (cid=0x804, revision >= 13)
- * - PCIE (cid=0x820)
- * - PCIE2 (cid=0x83c)
- */
-const struct bhndb_hwcfg bhndb_pci_generic_hwcfg_v1 = {
-	.resource_specs		= (const struct resource_spec[]) {
-		{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
-		{ -1,			0,		0 }
-	},
-
-	.register_windows	= (const struct bhndb_regwin[]) {
-		/* bar0+0x0000: configurable backplane window */
-		{
-			.win_type	= BHNDB_REGWIN_T_DYN,
-			.win_offset	= BHNDB_PCI_V1_BAR0_WIN0_OFFSET,
-			.win_size	= BHNDB_PCI_V1_BAR0_WIN0_SIZE,
-			.dyn.cfg_offset = BHNDB_PCI_V1_BAR0_WIN0_CONTROL,
-			.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
-		},
-
-		/* bar0+0x3000: chipc core registers */
-		{
-			.win_type	= BHNDB_REGWIN_T_CORE,
-			.win_offset	= BHNDB_PCI_V1_BAR0_CCREGS_OFFSET,
-			.win_size	= BHNDB_PCI_V1_BAR0_CCREGS_SIZE,
-			.core = {
-				.class	= BHND_DEVCLASS_CC,
-				.unit	= 0,
-				.port	= 0,
-				.region	= 0 
-			},
-			.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
-		},
-
-		BHNDB_REGWIN_TABLE_END
-	},
-};
-
-/**
  * PCI_V0 hardware configuration.
  * 
  * Applies to:
  * - PCI (cid=0x804, revision <= 12)
  */
-const struct bhndb_hwcfg bhndb_pci_hwcfg_v0 = {
+static const struct bhndb_hwcfg bhndb_pci_hwcfg_v0 = {
 	.resource_specs		= (const struct resource_spec[]) {
 		{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
 		{ -1,			0,		0 }
@@ -286,7 +255,7 @@ const struct bhndb_hwcfg bhndb_pci_hwcfg_v0 = {
  * - PCI (cid=0x804, revision >= 13)
  * - PCIE (cid=0x820) with ChipCommon (revision <= 31)
  */
-const struct bhndb_hwcfg bhndb_pci_hwcfg_v1 = {
+static const struct bhndb_hwcfg bhndb_pci_hwcfg_v1 = {
 	.resource_specs		= (const struct resource_spec[]) {
 		{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
 		{ -1,			0,		0 }
@@ -348,7 +317,7 @@ const struct bhndb_hwcfg bhndb_pci_hwcfg_v1 = {
  * Applies to:
  * - PCIE (cid=0x820) with ChipCommon (revision >= 32)
  */
-const struct bhndb_hwcfg bhndb_pci_hwcfg_v2 = {
+static const struct bhndb_hwcfg bhndb_pci_hwcfg_v2 = {
 	.resource_specs		= (const struct resource_spec[]) {
 		{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
 		{ -1,			0,		0 }
@@ -411,7 +380,7 @@ const struct bhndb_hwcfg bhndb_pci_hwcfg_v2 = {
  * Applies to:
  * - PCIE2 (cid=0x83c)
  */
-const struct bhndb_hwcfg bhndb_pci_hwcfg_v3 = {
+static const struct bhndb_hwcfg bhndb_pci_hwcfg_v3 = {
 	.resource_specs		= (const struct resource_spec[]) {
 		{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
 		{ -1,			0,		0 }

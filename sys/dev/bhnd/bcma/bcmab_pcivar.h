@@ -24,4 +24,6 @@
 
 DECLARE_CLASS(bcmab_pci_driver);
 
+extern const struct bhndb_hwcfg bcmab_pci_generic_hwcfg;
+
 #endif /* _BHND_BCMA_BCMAB_PCIVAR_H_ */

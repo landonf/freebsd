@@ -47,21 +47,21 @@ struct bhndb_pci_softc {
 	struct rman			 mem_rman;	/**< bus memory manager */
 };
 
-extern const struct bhndb_hwcfg bhndb_pci_generic_hwcfg_v0;
-extern const struct bhndb_hwcfg bhndb_pci_generic_hwcfg_v1;
+extern const struct bhndb_hwcfg sibab_pci_hwcfg_generic;
 
-extern const struct bhndb_hwcfg bhndb_pci_hwcfg_v0;
-extern const struct bhndb_hwcfg bhndb_pci_hwcfg_v1;
-extern const struct bhndb_hwcfg bhndb_pci_hwcfg_v2;
-extern const struct bhndb_hwcfg bhndb_pci_hwcfg_v3;
-
-// TODO -- lift out into bwn?
+/**
+ * Hardware configuration table entry.
+ * 
+ * Defines a set of match criteria that may be used to determine the
+ * register map and resource configuration for a bhndb bridge device. 
+ */
 struct bhndb_hw {
-	const char			*name;
-	const struct bhnd_core_match	*hw_reqs;
-	u_int				 num_hw_reqs;
-	const struct bhndb_hwcfg	*cfg;
+	const char			*name;		/**< configuration name */
+	const struct bhnd_core_match	*hw_reqs;	/**< match requirements */
+	u_int				 num_hw_reqs;	/**< number of match requirements */
+	const struct bhndb_hwcfg	*cfg;		/**< associated hardware configuration */
 };
+
 extern const struct bhndb_hw bhndb_pci_hw[];
 
 int	bhndb_pci_probe(device_t dev);

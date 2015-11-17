@@ -69,6 +69,53 @@ struct bcmab_pci_softc {
 	bus_addr_t		erom_addr;	/**< EROM's base address */
 };
 
+
+/**
+ * Generic PCI-BCMA bridge configuration usable with all known bcma(4)-based
+ * PCI devices; this configuration is adequate for enumerating a bridged
+ * bcma(4) bus to determine the full hardware configuration.
+ * 
+ * Compatible with PCI_V0, PCI_V1, PCI_V2, and PCI_V3 devices.
+ * 
+ * This configuration defines the full set of register windows required
+ * for both siba(4) and bcma(4) bus enumeration, but note that this
+ * configuration is not compatible with siba(4) devices bridged via a PCI_V0
+ * core.
+ */
+const struct bhndb_hwcfg bcmab_pci_generic_hwcfg = {
+	.resource_specs		= (const struct resource_spec[]) {
+		{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
+		{ -1,			0,		0 }
+	},
+
+	.register_windows	= (const struct bhndb_regwin[]) {
+		/* bar0+0x0000: configurable backplane window */
+		{
+			.win_type	= BHNDB_REGWIN_T_DYN,
+			.win_offset	= BHNDB_PCI_V1_BAR0_WIN0_OFFSET,
+			.win_size	= BHNDB_PCI_V1_BAR0_WIN0_SIZE,
+			.dyn.cfg_offset = BHNDB_PCI_V1_BAR0_WIN0_CONTROL,
+			.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
+		},
+
+		/* bar0+0x3000: chipc core registers */
+		{
+			.win_type	= BHNDB_REGWIN_T_CORE,
+			.win_offset	= BHNDB_PCI_V1_BAR0_CCREGS_OFFSET,
+			.win_size	= BHNDB_PCI_V1_BAR0_CCREGS_SIZE,
+			.core = {
+				.class	= BHND_DEVCLASS_CC,
+				.unit	= 0,
+				.port	= 0,
+				.region	= 0 
+			},
+			.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
+		},
+
+		BHNDB_REGWIN_TABLE_END
+	},
+};
+
 static int
 bcmab_pci_probe(device_t dev)
 {

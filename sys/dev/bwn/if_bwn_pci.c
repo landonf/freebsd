@@ -101,13 +101,13 @@ static const struct bwn_pci_devcfg bwn_pci_devcfgs[] = {
 	/* SIBA devices */
 	{
 		.bridge_cls	= NULL /* TODO &sibab_devclass */,
-		.bridge_hwcfg	= &bhndb_pci_generic_hwcfg_v0,
+		.bridge_hwcfg	= &sibab_pci_hwcfg_generic,
 		.devices	= siba_devices
 	},
 	/* BCMA devices */
 	{
 		.bridge_cls	= &bcmab_devclass,
-		.bridge_hwcfg	= &bhndb_pci_generic_hwcfg_v1,
+		.bridge_hwcfg	= &bcmab_pci_generic_hwcfg,
 		.devices	= bcma_devices
 	},
 	{ NULL, NULL, NULL }
