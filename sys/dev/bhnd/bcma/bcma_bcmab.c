@@ -40,6 +40,9 @@ __FBSDID("$FreeBSD$");
 #include "bcmavar.h"
 #include "bcma_private.h"
 
+#include "bcma_eromreg.h"
+#include "bcma_eromvar.h"
+
 /*
  * Supports attachment of bcma(4) bus devices via a bcmab bridge.
  */
@@ -58,11 +61,32 @@ bcma_bcmab_probe(device_t dev)
 static int
 bcma_bcmab_attach(device_t dev)
 {
-	bus_addr_t erom_addr = bhndb_get_dev_base_addr(dev);
+	struct resource	*erom_res;
+	bus_addr_t	erom_addr;
+	int		error;
+	int		rid;
 
-	// TODO - enumerate cores
-	device_printf(dev, "erom addr=0x%llx\n", (unsigned long long) erom_addr);
+	erom_addr = bhndb_get_dev_base_addr(dev);
 
+	/* Map the EROM resource and enumerate our children. */
+	rid = 0;
+	erom_res = bus_alloc_resource(dev, SYS_RES_MEMORY, &rid, erom_addr,
+		erom_addr + BCMA_EROM_TABLE_SIZE, BCMA_EROM_TABLE_SIZE,
+		RF_ACTIVE);
+	if (erom_res == NULL) {
+		device_printf(dev, "failed to allocate EROM resource\n");
+		return (ENXIO);
+	}
+
+	error = bcma_add_children(dev, erom_res, BCMA_EROM_TABLE_START);
+
+	/* Clean up */
+	bus_release_resource(dev, SYS_RES_MEMORY, rid, erom_res);
+	if (error)
+		return (error);
+
+
+	/* Call our superclass' implementation */
 	return (bcma_attach(dev));
 }
 

@@ -209,6 +209,7 @@ bcmab_pci_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 	switch (index) {
 	case BHNDB_IVAR_DEV_BASE_ADDR:
 		*result = sc->erom_addr;
+		return (0);
 	default:
 		return (bhndb_pci_read_ivar(dev, child, index, result));
 	}
