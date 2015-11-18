@@ -53,10 +53,17 @@ CODE {
 	}
 
 	static int
-	bhndb_null_set_window_register(device_t dev,
+	bhndb_null_get_window_addr(device_t dev,
+	    const struct bhndb_regwin *rw, uint32_t *addr)
+	{
+		panic("bhndb_get_window_addr unimplemented");
+	}
+	
+	static int
+	bhndb_null_set_window_addr(device_t dev,
 	    const struct bhndb_regwin *rw, uint32_t addr)
 	{
-		panic("bhndb_set_window_register unimplemented");
+		panic("bhndb_set_window_addr unimplemented");
 	}
 }
 
@@ -78,17 +85,36 @@ METHOD int get_core_table {
 } DEFAULT bhndb_null_get_core_table;
 
 /**
- * Write a new base address to a bridge window register.
+ * Read a given register window's base address.
  *
  * @param dev The bridge device.
- * @param win The register window (must be of type BHNDB_REGWIN_T_DYN).
+ * @param win The register window.
+ * @param[out] addr On success, the bus address of @p win.
+ *
+ * @retval 0 success
+ * @retval ENODEV The provided @p win is not memory-mapped on the bus. 
+ * @retval non-zero an error occured determining the window address.
+ */
+METHOD int get_window_addr {
+	device_t dev;
+	const struct bhndb_regwin *win;
+	uint32_t *addr;
+} DEFAULT bhndb_null_get_window_addr;
+
+/**
+ * Set a given register window's base address.
+ *
+ * @param dev The bridge device.
+ * @param win The register window.
  * @param addr The address to be configured for @p win.
  *
  * @retval 0 success
+ * @retval ENODEV The provided @p win is not memory-mapped on the bus or does
+ * not support setting a base address.
  * @retval non-zero failure
  */
-METHOD int set_window_register {
+METHOD int set_window_addr {
 	device_t dev;
 	const struct bhndb_regwin *dynwin;
 	uint32_t addr;
-} DEFAULT bhndb_null_set_window_register;
+} DEFAULT bhndb_null_set_window_addr;

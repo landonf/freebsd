@@ -227,15 +227,37 @@ bcmab_pci_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
 }
 
 static int
-bcmab_pci_set_window_register(device_t dev, const struct bhndb_regwin *rw,
+bcmab_pci_get_window_addr(device_t dev, const struct bhndb_regwin *rw,
+	uint32_t *addr)
+{
+	struct bcmab_pci_softc *sc = device_get_softc(dev);
+
+	switch (rw->win_type) {
+	case BHNDB_REGWIN_T_CORE:
+		// TODO
+		return (ENODEV);
+	case BHNDB_REGWIN_T_DYN:
+		*addr = pci_read_config(sc->pci_dev, rw->dyn.cfg_offset, 4);
+		return (0);
+	default:
+		return (ENODEV);
+	}
+}
+
+static int
+bcmab_pci_set_window_addr(device_t dev, const struct bhndb_regwin *rw,
 	uint32_t addr)
 {
 	struct bcmab_pci_softc *sc = device_get_softc(dev);
 
-	KASSERT(rw->win_type == BHNDB_REGWIN_T_DYN,
-	    ("non-dynamic register window type %d", rw->win_type));
+	switch (rw->win_type) {
+	case BHNDB_REGWIN_T_DYN:
+		pci_write_config(sc->pci_dev, rw->dyn.cfg_offset, addr, 4);
+		return (0);
+	default:
+		return (ENODEV);
+	}
 
-	pci_write_config(sc->pci_dev, rw->dyn.cfg_offset, addr, 4);
 	return (0);
 }
 
@@ -270,7 +292,7 @@ bcmab_pci_get_core_table(device_t dev, struct bhnd_core_info **cores,
 		}
 	
 		/* Configure the dynamic window's base address. */
-		error = BHNDB_SET_WINDOW_REGISTER(dev, erom_win, sc->erom_addr);
+		error = BHNDB_SET_WINDOW_ADDR(dev, erom_win, sc->erom_addr);
 		if (error)
 			return (error);
 	}
@@ -309,9 +331,10 @@ static device_method_t bcmab_pci_methods[] = {
 	DEVMETHOD(bus_read_ivar,		bcmab_pci_read_ivar),
 	DEVMETHOD(bus_write_ivar,		bcmab_pci_write_ivar),
 
-	/* BHND-HW interface */
+	/* BHNDB interface */
 	DEVMETHOD(bhndb_get_core_table,		bcmab_pci_get_core_table),
-	DEVMETHOD(bhndb_set_window_register,	bcmab_pci_set_window_register),
+	DEVMETHOD(bhndb_get_window_addr,	bcmab_pci_get_window_addr),
+	DEVMETHOD(bhndb_set_window_addr,	bcmab_pci_set_window_addr),
 
 	DEVMETHOD_END
 };
