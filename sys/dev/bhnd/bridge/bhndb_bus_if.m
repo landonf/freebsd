@@ -37,17 +37,26 @@ HEADER {
 	struct bhndb_hwcfg;
 };
 
+CODE {
+	static const struct bhndb_hwcfg *
+	bhndb_null_get_generic_hwcfg(device_t dev, device_t child)
+	{
+		return (NULL);
+	}
+}
 
 /**
- * Return the basic hardware configuration known to the parent device.
- *
- * This will be used to enumerate the bridge hardware and determine the
- * full set of register windows.
+ * Optionally return a generic hardware configuration to be used by
+ * the bhndb bridge device to enumerate attached devices.
  *
  * @param dev The parent device.
  * @param child The attached bhndb device.
+ *
+ * @retval bhndb_hwcfg The configuration to use for bus enumeration.
+ * @retval NULL The bridge device will perform initial enumeration using its
+ * built-in default configuration, if any.
  */
-METHOD const struct bhndb_hwcfg * get_hwcfg {
+METHOD const struct bhndb_hwcfg * get_generic_hwcfg {
 	device_t dev;
 	device_t child;
-}
+} DEFAULT bhndb_null_get_generic_hwcfg;

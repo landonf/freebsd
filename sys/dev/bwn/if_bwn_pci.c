@@ -39,7 +39,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/pci/pcivar.h>
 
 #include <dev/bhnd/bhnd_ids.h>
-
 #include <dev/bhnd/bcma/bcmab_pcivar.h>
 
 #include "bhndb_bus_if.h"
@@ -101,13 +100,13 @@ static const struct bwn_pci_devcfg bwn_pci_devcfgs[] = {
 	/* SIBA devices */
 	{
 		.bridge_cls	= NULL /* TODO &sibab_devclass */,
-		.bridge_hwcfg	= &sibab_pci_hwcfg_generic,
+		.bridge_hwcfg	= NULL, /* use sibab default */
 		.devices	= siba_devices
 	},
 	/* BCMA devices */
 	{
 		.bridge_cls	= &bcmab_devclass,
-		.bridge_hwcfg	= &bcmab_pci_generic_hwcfg,
+		.bridge_hwcfg	= NULL, /* use bcmab default */
 		.devices	= bcma_devices
 	},
 	{ NULL, NULL, NULL }
@@ -191,7 +190,7 @@ bwn_pci_probe_nomatch(device_t dev, device_t child)
 }
 
 static const struct bhndb_hwcfg *
-bwn_pci_get_hwcfg(device_t dev, device_t child)
+bwn_pci_get_generic_hwcfg(device_t dev, device_t child)
 {
 	struct bwn_pci_softc *sc = device_get_softc(dev);
 	return (sc->devcfg->bridge_hwcfg);
@@ -210,7 +209,7 @@ static device_method_t bwn_pci_methods[] = {
 	DEVMETHOD(bus_probe_nomatch,		bwn_pci_probe_nomatch),
 
 	/* BHNDB_BUS Interface */
-	DEVMETHOD(bhndb_bus_get_hwcfg,		bwn_pci_get_hwcfg),
+	DEVMETHOD(bhndb_bus_get_generic_hwcfg,	bwn_pci_get_generic_hwcfg),
 
 	DEVMETHOD_END
 };

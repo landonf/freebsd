@@ -62,12 +62,11 @@ __FBSDID("$FreeBSD$");
 
 #include "bcma_eromvar.h"
 
-struct bcmab_pci_softc {
-	struct bhndb_pci_softc	bhndb_softc;	/**< parent softc */
-	device_t		pci_dev;	/**< parent PCI device */
-	bhndb_addr_t		erom_addr;	/**< EROM's base address */
-};
-
+static const struct bhndb_hwcfg	*bcmab_get_generic_hwcfg(
+				     struct bcmab_pci_softc *sc);
+static int			 bcmab_find_erom_addr(
+				     struct bcmab_pci_softc *sc,
+				     bhndb_addr_t *erom_addr);
 
 /**
  * Generic PCI-BCMA bridge configuration usable with all known bcma(4)-based
@@ -81,7 +80,7 @@ struct bcmab_pci_softc {
  * configuration is not compatible with siba(4) devices bridged via a PCI_V0
  * core.
  */
-const struct bhndb_hwcfg bcmab_pci_generic_hwcfg = {
+static const struct bhndb_hwcfg bcmab_pci_generic_hwcfg = {
 	.resource_specs		= (const struct resource_spec[]) {
 		{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
 		{ -1,			0,		0 }
@@ -115,6 +114,60 @@ const struct bhndb_hwcfg bcmab_pci_generic_hwcfg = {
 	},
 };
 
+static const struct bhndb_hwcfg *
+bcmab_get_generic_hwcfg(struct bcmab_pci_softc *sc)
+{
+	const struct bhndb_hwcfg *cfg;
+
+	/* Check for a configuration defined by the parent bus */
+	cfg = BHNDB_BUS_GET_GENERIC_HWCFG(sc->pci_dev, sc->dev);
+	if (cfg != NULL)
+		return (cfg);
+
+	/* Fall back to our default configuration */
+	return (&bcmab_pci_generic_hwcfg);
+}
+
+
+/* Map the ChipCommon core using our bus-provided register windows 
+ * and fetch the EROM address. */
+static int
+bcmab_find_erom_addr(struct bcmab_pci_softc *sc, bhndb_addr_t *erom_addr)
+{
+	const struct bhndb_hwcfg	*cfg;
+	const struct bhndb_regwin	*cc_win;
+	struct resource			*res_mem;
+	int				 rid, rtype;
+
+	/* Fetch the initial hardware configuration */
+	cfg = bcmab_get_generic_hwcfg(sc);
+
+	/* Find the chipc register window */
+	cc_win = bhndb_regwin_find_core(cfg->register_windows,
+	    BHND_DEVCLASS_CC, 0, 0, 0);
+	if (cc_win == NULL) {
+		device_printf(sc->dev, "missing chipcommon register window\n");
+		return (0);
+	}
+
+	/* Allocate the ChipCommon window resource and fetch the EROM table
+	 * address. */
+	rid = cc_win->res.rid;
+	rtype = cc_win->res.type;
+	res_mem = bus_alloc_resource_any(sc->pci_dev, rtype, &rid, RF_ACTIVE);
+	if (res_mem == NULL) {
+		device_printf(sc->dev,
+		    "failed to allocate bcmab_pci chipc resource\n");
+		return (ENXIO);
+	}
+	
+	*erom_addr = bus_read_4(res_mem, cc_win->win_offset + BCMA_CC_EROM_ADDR);
+
+	/* Clean up */
+	bus_release_resource(sc->pci_dev, rtype, rid, res_mem);
+	return (0);
+}
+
 static int
 bcmab_pci_probe(device_t dev)
 {
@@ -128,48 +181,6 @@ bcmab_pci_probe(device_t dev)
 	return (error);
 }
 
-/* Map the ChipCommon core using our bus-provided register windows 
- * and fetch the EROM address. */
-static int
-bcmab_find_erom_addr(device_t dev, bhndb_addr_t *erom_addr)
-{
-	struct bcmab_pci_softc		*sc;
-	const struct bhndb_hwcfg	*cfg;
-	const struct bhndb_regwin	*cc_win;
-	struct resource			*res_mem;
-	int				 rid, rtype;
-
-	sc = device_get_softc(dev);
-
-	/* Fetch the initial hardware configuration */
-	cfg = BHNDB_BUS_GET_HWCFG(device_get_parent(dev), dev);
-
-	/* Find the chipc register window */
-	cc_win = bhndb_regwin_find_core(cfg->register_windows,
-	    BHND_DEVCLASS_CC, 0, 0, 0);
-	if (cc_win == NULL) {
-		device_printf(dev, "missing chipcommon register window\n");
-		return (0);
-	}
-
-	/* Allocate the ChipCommon window resource and fetch the EROM table
-	 * address. */
-	rid = cc_win->res.rid;
-	rtype = cc_win->res.type;
-	res_mem = bus_alloc_resource_any(sc->pci_dev, rtype, &rid, RF_ACTIVE);
-	if (res_mem == NULL) {
-		device_printf(dev,
-		    "failed to allocate bcmab_pci chipc resource\n");
-		return (ENXIO);
-	}
-	
-	*erom_addr = bus_read_4(res_mem, cc_win->win_offset + BCMA_CC_EROM_ADDR);
-
-	/* Clean up */
-	bus_release_resource(sc->pci_dev, rtype, rid, res_mem);
-	return (0);
-}
-
 static int
 bcmab_pci_attach(device_t dev)
 {
@@ -177,10 +188,12 @@ bcmab_pci_attach(device_t dev)
 	int			 error;
 
 	sc = device_get_softc(dev);
+
+	sc->dev = dev;
 	sc->pci_dev = device_get_parent(dev);
 
 	/* Extract the EROM address for later use */
-	if ((error = bcmab_find_erom_addr(dev, &sc->erom_addr)))
+	if ((error = bcmab_find_erom_addr(sc, &sc->erom_addr)))
 		return (error);
 
 	/* Attach bridged bcma(4) bus */
@@ -255,7 +268,7 @@ bcmab_pci_get_core_table(device_t dev, struct bhnd_core_info **cores,
 	int				 rid;
 
 	sc = device_get_softc(dev);
-	cfg = BHNDB_BUS_GET_HWCFG(sc->pci_dev, dev);
+	cfg = bcmab_get_generic_hwcfg(sc);
 
 	/* Prefer a fixed EROM mapping window. */
 	erom_win = bhndb_regwin_find_core(cfg->register_windows,

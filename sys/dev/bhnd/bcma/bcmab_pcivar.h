@@ -24,6 +24,11 @@
 
 DECLARE_CLASS(bcmab_pci_driver);
 
-extern const struct bhndb_hwcfg bcmab_pci_generic_hwcfg;
+struct bcmab_pci_softc {
+	struct bhndb_pci_softc	bhndb_softc;	/**< parent softc */
+	device_t		dev;		/**< bcmab device */
+	device_t		pci_dev;	/**< parent PCI device */
+	bhndb_addr_t		erom_addr;	/**< EROM's base address */
+};
 
 #endif /* _BHND_BCMA_BCMAB_PCIVAR_H_ */
