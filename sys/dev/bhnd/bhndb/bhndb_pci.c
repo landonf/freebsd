@@ -110,7 +110,7 @@ bhndb_pci_find_hwcfg(device_t dev, const struct bhndb_hwcfg **hwcfg)
 	/* Search for the first matching hardware config */
 	for (hw = bhndb_pci_hw; hw->hw_reqs != NULL; hw++) {
 		if (bhndb_pci_hw_matches(dev, cores, num_cores, hw)) {
-			device_printf(dev, "Register Map: %s\n",
+			device_printf(dev, "%s register map\n",
 			    hw->name);
 			*hwcfg = hw->cfg;
 			goto finished;
@@ -285,20 +285,13 @@ bhndb_pci_get_rman(device_t dev, int type)
 	};
 }
 
-/**
- * Helper function for implementing BUS_ALLOC_RESOURCE() on bhnd pci hosts.
- * 
- * This simple implementation uses BHND_GET_RMAN() and BUS_GET_RESOURCE_LIST()
- * to fetch resource state for allocation.
- */
 static struct resource *
 bhndb_pci_alloc_resource(device_t dev, device_t child, int type,
     int *rid, u_long start, u_long end, u_long count, u_int flags)
 {
-	struct resource_list		*rl;
-	struct resource_list_entry	*rle;
-	struct rman			*rm;
-	int				 error;
+	struct resource	*res;
+	struct rman	*rm;
+	int		 error;
 
 	if (device_get_parent(child) != dev) {
 		return (BUS_ALLOC_RESOURCE(device_get_parent(dev), child,
@@ -310,76 +303,44 @@ bhndb_pci_alloc_resource(device_t dev, device_t child, int type,
 	if (rm == NULL)
 		return (NULL);
 
-	/* Fetch the resource list entry */
-	rl = BUS_GET_RESOURCE_LIST(dev, child);
-	if (rl == NULL)
-		return (NULL);
-
-	rle = resource_list_find(rl, type, *rid);
-	if (rle == NULL)
-		return (NULL);
-
 	/* Validate the resource addresses */
-	if (start == 0ULL && end == ~0ULL && count <= rle->count) {
-		start = rle->start;
-		end = rle->end;
-		count = rle->count;
-	} else {
-		if (start < rle->start || start > end)
-			return NULL;
-		
-		if (end < start || end > rle->end)
-			return NULL;
-		
-		if (count > end - start)
-			return NULL;
-	}
-
-	/* Check for existing allocation */
-	if (rle->res != NULL) {
-		device_printf(dev,
-		    "resource entry %#x type %d for child %s is busy\n", *rid,
-			type, device_get_nameunit(child));
-		return (NULL);
-	}
+	if (start > end)
+		return NULL;
+	
+	if (end < start)
+		return NULL;
+	
+	if (count > end - start)
+		return NULL;
 
 	/* Make our reservation */
-	rle->res = rman_reserve_resource(rm, start, end, count, flags, child);
-	if (rle->res == NULL)
+	res = rman_reserve_resource(rm, start, end, count, flags, child);
+	if (res == NULL)
 		return (NULL);
 
-	rman_set_rid(rle->res, *rid);
+	rman_set_rid(res, *rid);
 
 	/* Activate */
 	if (flags & RF_ACTIVE) {
-		error = bus_activate_resource(child, type, *rid, rle->res);
+		error = bus_activate_resource(child, type, *rid, res);
 		if (error) {
 			device_printf(dev,
 			    "failed to activate entry %#x type %d for "
 				"child %s\n",
 			     *rid, type, device_get_nameunit(child));
 
-			rman_release_resource(rle->res);
-			rle->res = NULL;
+			rman_release_resource(res);
 			return (NULL);
 		}
 	}
 
-	return (rle->res);
+	return (res);
 }
 
-/**
- * Helper function for implementing BUS_RELEASE_RESOURCE() on bhnd pci hosts.
- * 
- * This simple implementation uses BUS_GET_RESOURCE_LIST() to fetch resource
- * state.
- */
 static int
 bhndb_pci_release_resource(device_t dev, device_t child, int type, int rid,
     struct resource *res)
 {
-	struct resource_list		*rl;
-	struct resource_list_entry	*rle;
 	int				 error;
 
 	if (device_get_parent(child) != dev) {
@@ -387,54 +348,72 @@ bhndb_pci_release_resource(device_t dev, device_t child, int type, int rid,
 		    type, rid, res));
 	}
 
-	/* Fetch the resource list entry */
-	rl = BUS_GET_RESOURCE_LIST(dev, child);
-	if (rl == NULL)
-		return (EINVAL);
-
-	rle = resource_list_find(rl, type, rid);
-	if (rle == NULL)
-		panic("missing resource list entry");
-
-	if (rle->res != res)
-		panic("resource list entry does not match resource");
-
 	/* Release the resource */
 	if ((error = rman_release_resource(res)))
 		return (error);
 
-	rle->res = NULL;
 	return (0);
 }
 
-/**
- * Helper function for implementing BUS_ACTIVATE_RESOURCE() on bhnd pci hosts.
- */
 static int
 bhndb_pci_activate_resource(device_t dev, device_t child, int type, int rid,
     struct resource *r)
 {
+	struct bhndb_pci_softc	*sc;
+	int			 error;
+
+	sc = device_get_softc(dev);
+
+	// hacked in window allocation
+	const struct bhndb_regwin *win = NULL;
+	for (u_int i = 0; sc->hwcfg->register_windows[i].win_type != BHNDB_REGWIN_T_INVALID; i++) {
+		if (sc->hwcfg->register_windows[i].win_type != BHNDB_REGWIN_T_DYN)
+			continue;
+		
+		if (sc->hwcfg->register_windows[i].win_size < rman_get_size(r))
+			continue;
+	
+		win = &sc->hwcfg->register_windows[i];
+		break;
+	}
+	if (win == NULL)
+		return (ENOMEM);
+
+	if ((error = BHNDB_SET_WINDOW_ADDR(dev, win, rman_get_start(r))))
+		return (error);
+	
+	// xxx hacked in find virtual address
+	rman_set_virtual(r, NULL);
+	for (u_int i = 0; sc->hwcfg->resource_specs[i].type != -1; i++) {
+		if (win->res.type != sc->hwcfg->resource_specs[i].type ||
+		    win->res.rid != sc->hwcfg->resource_specs[i].rid)
+			continue;
+			
+		uintptr_t start = (uintptr_t) rman_get_virtual(sc->res[i]);
+		start += win->win_offset;
+		
+
+		rman_set_virtual(r, (void *) start);
+		rman_set_bustag(r, rman_get_bustag(sc->res[i]));
+		rman_set_bushandle(r, rman_get_bushandle(sc->res[i]));
+		break;
+	}
+
+	if (rman_get_virtual(r) == NULL)
+		return (EINVAL);
+	
 	// TODO - window resource activations
-	return (EINVAL);
+	return (0);
 }
 
-/**
- * Helper function for implementing BUS_ACTIVATE_RESOURCE() on bhnd pci hosts.
- */
 static int
 bhndb_pci_deactivate_resource(device_t dev, device_t child, int type,
     int rid, struct resource *r)
 {
 	// TODO - window resource deactivations
-	return (EINVAL);
+	return (0);
 }
 
-/**
- * Helper function for implementing BHND_ALLOC_RESOURCE().
- * 
- * This simple implementation delegates allocation of the backing resource
- * to BUS_ALLOC_RESOURCE().
- */
 static struct bhnd_resource *
 bhndb_pci_alloc_bhnd_resource(device_t dev, device_t child, int type,
      int *rid, u_long start, u_long end, u_long count, u_int flags)
@@ -449,9 +428,6 @@ bhndb_pci_alloc_bhnd_resource(device_t dev, device_t child, int type,
 	return (NULL);
 }
 
-/**
- * Helper function for implementing BHND_RELEASE_RESOURCE().
- */
 static int
 bhndb_pci_release_bhnd_resource(device_t dev, device_t child,
     int type, int rid, struct bhnd_resource *r)
@@ -466,12 +442,6 @@ bhndb_pci_release_bhnd_resource(device_t dev, device_t child,
 	return (EOPNOTSUPP);
 }
 
-/**
- * Helper function for implementing BHND_ACTIVATE_RESOURCE().
- * 
- * This simple implementation delegates allocation of the backing resource
- * to BUS_ACTIVATE_RESOURCE().
- */
 static int
 bhndb_pci_activate_bhnd_resource(device_t dev, device_t child,
     int type, int rid, struct bhnd_resource *r)
@@ -484,12 +454,6 @@ bhndb_pci_activate_bhnd_resource(device_t dev, device_t child,
 	return (EOPNOTSUPP);
 };
 
-/**
- * Helper function for implementing BHND_DEACTIVATE_RESOURCE().
- * 
- * This simple implementation delegates allocation of the backing resource
- * to BUS_DEACTIVATE_RESOURCE().
- */
 static int
 bhndb_pci_deactivate_bhnd_resource(device_t dev, device_t child,
     int type, int rid, struct bhnd_resource *r)
