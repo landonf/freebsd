@@ -47,23 +47,6 @@ struct bhndb_pci_softc {
 	struct rman			 mem_rman;	/**< bus memory manager */
 };
 
-extern const struct bhndb_hwcfg sibab_pci_hwcfg_generic;
-
-/**
- * Hardware configuration table entry.
- * 
- * Defines a set of match criteria that may be used to determine the
- * register map and resource configuration for a bhndb bridge device. 
- */
-struct bhndb_hw {
-	const char			*name;		/**< configuration name */
-	const struct bhnd_core_match	*hw_reqs;	/**< match requirements */
-	u_int				 num_hw_reqs;	/**< number of match requirements */
-	const struct bhndb_hwcfg	*cfg;		/**< associated hardware configuration */
-};
-
-extern const struct bhndb_hw bhndb_pci_hw[];
-
 int	bhndb_pci_probe(device_t dev);
 int	bhndb_pci_attach(device_t dev);
 int	bhndb_pci_detach(device_t dev);

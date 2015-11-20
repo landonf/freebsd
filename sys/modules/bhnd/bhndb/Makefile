@@ -3,7 +3,7 @@
 .PATH: ${.CURDIR}/../../../dev/bhnd/bhndb
 
 KMOD=	bhndb
-SRCS=	bhndb.c \
+SRCS=	bhndb.c bhndb_subr.c \
 	bhndb_bus_if.c bhndb_bus_if.h \
 	bhndb_if.c bhndb_if.h
 

@@ -1108,7 +1108,8 @@ dev/bhnd/bhndb/bhndb_bus_if.m	optional bhndbus | bhndb
 dev/bhnd/bhndb/bhndb_if.m	optional bhndbus | bhndb
 dev/bhnd/bhndb/bhndb_pci.c	optional bhndbus pci | bhndb pci
 dev/bhnd/bhndb/bhndb_pci_hwdata.c optional bhndbus | bhndb
-# bhnd bus modules
+dev/bhnd/bhndb/bhndb_subr.c	optional bhndbus | bhndb
+# bhnd bus drivers
 dev/bhnd/bcma/bcma.c		optional bhndbus | bcma
 dev/bhnd/bcma/bcma_bcmab.c	optional bhndbus | bcmab
 dev/bhnd/bcma/bcma_erom.c	optional bhndbus | bcma
@@ -1117,6 +1118,7 @@ dev/bhnd/bcma/bcmab_pci.c	optional bhndbus pci | bcmab pci
 # bhnd core drivers
 dev/bhnd/cores/bhnd_chipc.c	optional bhndbus | bhnd_chipc
 dev/bhnd/cores/bhnd_pci_hostb.c	optional bhndbus pci | bhnd_hostb bhndb pci
+#
 dev/bktr/bktr_audio.c		optional bktr pci
 dev/bktr/bktr_card.c		optional bktr pci
 dev/bktr/bktr_core.c		optional bktr pci

@@ -35,6 +35,7 @@ INTERFACE bhndb_bus;
 
 HEADER {
 	struct bhndb_hwcfg;
+	struct bhndb_hw;
 };
 
 CODE {

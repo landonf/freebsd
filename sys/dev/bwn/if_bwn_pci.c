@@ -164,8 +164,11 @@ bwn_pci_attach(device_t dev)
 		return (ENXIO);
 
 	/* Attach bridge device */
-	if (bhndb_attach(dev, *sc->devcfg->bridge_cls, &sc->bhndb_dev, -1))
+	if (bhndb_attach_bridge(dev, *sc->devcfg->bridge_cls, &sc->bhndb_dev,
+	    -1))
+	{
 		return (ENXIO);
+	}
 
 	/* Let the generic implementation probe all added children. */
 	return (bus_generic_attach(dev));

@@ -46,6 +46,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/pci/pcireg.h>
 #include <dev/pci/pcivar.h>
 
+#include "bhndb_private.h"
+
 #include "bhndb_pcireg.h"
 #include "bhndb_pcivar.h"
 
@@ -266,6 +268,7 @@ const struct bhndb_hwcfg sibab_pci_hwcfg_generic = {
 		BHNDB_REGWIN_TABLE_END
 	},
 };
+
 
 /**
  * PCI_V0 hardware configuration.

@@ -31,39 +31,73 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-/*
- * BHND Bridge Support
- */
-
 #include <sys/param.h>
-#include <sys/module.h>
 #include <sys/kernel.h>
 
+#include "bhndb_private.h"
 #include "bhndbvar.h"
 
 /**
- * Attach a BHND bridge device to @p parent.
+ * Search @p windows for the first window with the given @p type.
  * 
- * @param parent A parent PCI device.
- * @param devclass The devclass of the bridge device to be added.
- * @param[out] bhndb On success, the attached bhndb bridge device.
- * @param unit The device unit number, or -1 to select the next available unit
- * number.
+ * @param table The table to search.
+ * @param type The required window type.
  * 
- * @retval 0 success
- * @retval non-zero Failed to attach the bhndb device.
+ * @retval bhndb_regwin The first matching window.
+ * @retval NULL If no window of the requested type could be found. 
  */
-int
-bhndb_attach_bridge(device_t parent, devclass_t devclass, device_t *bhndb,
-    int unit)
+const struct bhndb_regwin *
+bhndb_regwin_find_type(const struct bhndb_regwin *table,
+    bhndb_regwin_type_t type)
 {
-	*bhndb = device_add_child(parent, devclass_get_name(devclass), unit);
-	if (*bhndb == NULL)
-		return (ENXIO);
+	const struct bhndb_regwin *rw;
 
-	return (0);
+	for (rw = table; rw->win_type != BHNDB_REGWIN_T_INVALID; rw++)
+	{
+		if (rw->win_type == BHNDB_REGWIN_T_DYN)
+			return (rw);
+	}
+
+	return (NULL);
 }
 
+/**
+ * Search @p windows for the first matching core window.
+ * 
+ * @param table The table to search.
+ * @param class The required core class.
+ * @param unit The required core unit, or -1.
+ * @param port The required core unit, or -1.
+ * @param region The required core unit, or -1.
+ *
+ * @retval bhndb_regwin The first matching window.
+ * @retval NULL If no matching window was found. 
+ */
+const struct bhndb_regwin *
+bhndb_regwin_find_core(const struct bhndb_regwin *table, bhnd_devclass_t class,
+    int unit, int port, int region)
+{
+	const struct bhndb_regwin *rw;
+	
+	for (rw = table; rw->win_type != BHNDB_REGWIN_T_INVALID; rw++)
+	{
+		if (rw->win_type != BHNDB_REGWIN_T_CORE)
+			continue;
 
-MODULE_VERSION(bhndb, 1);
-MODULE_DEPEND(bhndb, bhnd, 1, 1, 1);
+		if (rw->core.class != class)
+			continue;
+		
+		if (unit != -1 && rw->core.unit != unit)
+			continue;
+		
+		if (port != -1 && rw->core.port != port)
+			continue;
+		
+		if (region != -1 && rw->core.region != region)
+			continue;
+
+		return (rw);
+	}
+
+	return (NULL);
+}
