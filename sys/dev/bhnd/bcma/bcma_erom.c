@@ -182,7 +182,7 @@ bcma_erom_open(struct resource *resource, bus_size_t offset,
 	erom->start = erom->offset;
 
 	/* Verify the resource size */
-	count = rman_get_end(resource) - rman_get_start(resource);
+	count = rman_get_size(resource);
 	if (erom->offset > count || 
 	    count - erom->offset < BCMA_EROM_TABLE_SIZE)
 	{
