@@ -312,7 +312,8 @@ bcmab_pci_get_core_table(device_t dev, struct bhnd_core_info **cores,
 	if (error)
 		goto cleanup;
 
-	bcma_erom_get_core_info(&erom, cores, count);
+	if ((error = bcma_erom_get_core_info(&erom, cores, count)))
+		goto cleanup;
 
 cleanup:
 	bus_release_resource(sc->pci_dev, erom_win->res.type, rid, res_mem);
