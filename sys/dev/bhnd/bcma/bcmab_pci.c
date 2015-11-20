@@ -65,7 +65,7 @@ __FBSDID("$FreeBSD$");
 struct bcmab_pci_softc {
 	struct bhndb_pci_softc	bhndb_softc;	/**< parent softc */
 	device_t		pci_dev;	/**< parent PCI device */
-	bus_addr_t		erom_addr;	/**< EROM's base address */
+	bhndb_addr_t		erom_addr;	/**< EROM's base address */
 };
 
 
@@ -131,7 +131,7 @@ bcmab_pci_probe(device_t dev)
 /* Map the ChipCommon core using our bus-provided register windows 
  * and fetch the EROM address. */
 static int
-bcmab_find_erom_addr(device_t dev, bus_addr_t *erom_addr)
+bcmab_find_erom_addr(device_t dev, bhndb_addr_t *erom_addr)
 {
 	struct bcmab_pci_softc		*sc;
 	const struct bhndb_hwcfg	*cfg;
@@ -142,7 +142,7 @@ bcmab_find_erom_addr(device_t dev, bus_addr_t *erom_addr)
 	sc = device_get_softc(dev);
 
 	/* Fetch the initial hardware configuration */
-	cfg = BHNDB_BUS_GET_HWCFG(sc->pci_dev, dev);
+	cfg = BHNDB_BUS_GET_HWCFG(device_get_parent(dev), dev);
 
 	/* Find the chipc register window */
 	cc_win = bhndb_regwin_find_core(cfg->register_windows,
@@ -198,36 +198,16 @@ bcmab_pci_detach(device_t dev)
 	return bhndb_pci_detach(dev);
 }
 
-static int
-bcmab_pci_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
+static bhndb_addr_t
+bcmab_pci_get_enum_addr(device_t dev, device_t child)
 {
-	struct bcmab_pci_softc	*sc;
-	
-	sc = device_get_softc(dev);
-
-	switch (index) {
-	case BHNDB_IVAR_DEV_BASE_ADDR:
-		*result = sc->erom_addr;
-		return (0);
-	default:
-		return (bhndb_pci_read_ivar(dev, child, index, result));
-	}
-}
-
-static int
-bcmab_pci_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
-{
-	switch (index) {
-	case BHNDB_IVAR_DEV_BASE_ADDR:
-		return (EINVAL);
-	default:
-		return (bhndb_pci_write_ivar(dev, child, index, value));
-	}
+	struct bcmab_pci_softc *sc = device_get_softc(dev);
+	return (sc->erom_addr);
 }
 
 static int
 bcmab_pci_get_window_addr(device_t dev, const struct bhndb_regwin *rw,
-	uint32_t *addr)
+	bhndb_addr_t *addr)
 {
 	struct bcmab_pci_softc *sc = device_get_softc(dev);
 
@@ -237,22 +217,24 @@ bcmab_pci_get_window_addr(device_t dev, const struct bhndb_regwin *rw,
 		return (ENODEV);
 	case BHNDB_REGWIN_T_DYN:
 		*addr = pci_read_config(sc->pci_dev, rw->dyn.cfg_offset, 4);
-		return (0);
+		break;
 	default:
 		return (ENODEV);
 	}
+
+	return (0);
 }
 
 static int
 bcmab_pci_set_window_addr(device_t dev, const struct bhndb_regwin *rw,
-	uint32_t addr)
+	bhndb_addr_t addr)
 {
 	struct bcmab_pci_softc *sc = device_get_softc(dev);
 
 	switch (rw->win_type) {
 	case BHNDB_REGWIN_T_DYN:
 		pci_write_config(sc->pci_dev, rw->dyn.cfg_offset, addr, 4);
-		return (0);
+		break;
 	default:
 		return (ENODEV);
 	}
@@ -327,12 +309,9 @@ static device_method_t bcmab_pci_methods[] = {
 	DEVMETHOD(device_attach,		bcmab_pci_attach),
 	DEVMETHOD(device_detach,		bcmab_pci_detach),
 
-	/* Bus interface */
-	DEVMETHOD(bus_read_ivar,		bcmab_pci_read_ivar),
-	DEVMETHOD(bus_write_ivar,		bcmab_pci_write_ivar),
-
 	/* BHNDB interface */
 	DEVMETHOD(bhndb_get_core_table,		bcmab_pci_get_core_table),
+	DEVMETHOD(bhndb_get_enum_addr,		bcmab_pci_get_enum_addr),
 	DEVMETHOD(bhndb_get_window_addr,	bcmab_pci_get_window_addr),
 	DEVMETHOD(bhndb_set_window_addr,	bcmab_pci_set_window_addr),
 

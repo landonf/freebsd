@@ -206,7 +206,7 @@ failed:
 
 	if (free_pci_res)
 		bus_release_resources(dev, sc->res_spec, sc->res);
-	
+
 	if (sc->res != NULL)
 		free(sc->res, M_BHND);
 
@@ -253,10 +253,6 @@ int
 bhndb_pci_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 {
 	switch (index) {
-	case BHNDB_IVAR_DEV_BASE_ADDR:
-		/* Must be implemented by subclasses */
-		device_printf(dev, "BHNDB_IVAR_DEV_BASE_ADDR unimplemented\n");
-		return (ENOENT);
 	default:
 		return (ENOENT);
 	}
@@ -266,8 +262,6 @@ int
 bhndb_pci_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
 {
 	switch (index) {
-	case BHNDB_IVAR_DEV_BASE_ADDR:
-		return (EINVAL);
 	default:
 		return (ENOENT);
 	}

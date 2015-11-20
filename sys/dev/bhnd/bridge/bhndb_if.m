@@ -40,10 +40,23 @@ INTERFACE bhndb;
 HEADER {
 	struct bhnd_core_info;
 	struct bhndb_regwin;
+
+	
+	/** A bridge-addressable bus address. The backing bus supports 64-bit
+	 *  addressing, but the current Broadcom PCI bridge cores only support
+	 *  32-bit addressing */
+	typedef uint32_t	bhndb_addr_t;
+	#define	BHNDB_ADDR_MAX	UINT32_MAX	/**< Maximum bhndb_addr_t value */
 }
 
 CODE {
 	#include <sys/systm.h>
+
+	static bhndb_addr_t
+	bhndb_null_get_enum_addr(device_t dev, device_t child)
+	{
+		panic("bhndb_get_enum_addr unimplemented\n");
+	}
 
 	static int
 	bhndb_null_get_core_table(device_t dev, struct bhnd_core_info **cores,
@@ -54,18 +67,29 @@ CODE {
 
 	static int
 	bhndb_null_get_window_addr(device_t dev,
-	    const struct bhndb_regwin *rw, uint32_t *addr)
+	    const struct bhndb_regwin *rw, bhndb_addr_t *addr)
 	{
 		panic("bhndb_get_window_addr unimplemented");
 	}
 	
 	static int
 	bhndb_null_set_window_addr(device_t dev,
-	    const struct bhndb_regwin *rw, uint32_t addr)
+	    const struct bhndb_regwin *rw, bhndb_addr_t addr)
 	{
 		panic("bhndb_set_window_addr unimplemented");
 	}
 }
+
+/**
+ * Return the base address at which @p child should perform device enumeration.
+ *
+ * @param dev The bhndb bridge device.
+ * @param child The child bhnd bus device.
+ */
+METHOD bhndb_addr_t get_enum_addr {
+	device_t dev;
+	device_t child;
+} DEFAULT bhndb_null_get_enum_addr;
 
 /**
  * Retrieve the list of all cores enumerated by @p dev.
@@ -98,7 +122,7 @@ METHOD int get_core_table {
 METHOD int get_window_addr {
 	device_t dev;
 	const struct bhndb_regwin *win;
-	uint32_t *addr;
+	bhndb_addr_t *addr;
 } DEFAULT bhndb_null_get_window_addr;
 
 /**
@@ -116,5 +140,5 @@ METHOD int get_window_addr {
 METHOD int set_window_addr {
 	device_t dev;
 	const struct bhndb_regwin *dynwin;
-	uint32_t addr;
+	bhndb_addr_t addr;
 } DEFAULT bhndb_null_set_window_addr;

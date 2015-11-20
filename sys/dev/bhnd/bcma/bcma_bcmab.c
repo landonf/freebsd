@@ -66,7 +66,7 @@ bcma_bcmab_attach(device_t dev)
 	int		error;
 	int		rid;
 
-	erom_addr = bhndb_get_dev_base_addr(dev);
+	erom_addr = BHNDB_GET_ENUM_ADDR(device_get_parent(dev), dev);
 
 	/* Map the EROM resource and enumerate our children. */
 	rid = 0;

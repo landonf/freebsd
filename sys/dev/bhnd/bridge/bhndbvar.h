@@ -28,8 +28,6 @@
 
 #include "bhndb_if.h"
 
-struct bhndb_regwin;
-
 /**
  * bhndb register window types.
  */
@@ -96,23 +94,5 @@ struct bhndb_hwcfg {
 	const struct resource_spec	*resource_specs;
 	const struct bhndb_regwin	*register_windows;
 };
-
-/**
- * bhndb child instance variables
- */
-enum bhndb_device_vars {
-	BHNDB_IVAR_DEV_BASE_ADDR,	/**< device enumeration base address */
-};
-
-/*
- * Simplified accessors for bhndb device ivars
- */
-#define	BHND_ACCESSOR(var, ivar, type) \
-	__BUS_ACCESSOR(bhndb, var, BHNDB, ivar, type)
-
-BHND_ACCESSOR(dev_base_addr,	DEV_BASE_ADDR,		bus_addr_t);
-
-#undef	BHND_ACCESSOR
-
 
 #endif /* _BHND_BHNDBVAR_H_ */
