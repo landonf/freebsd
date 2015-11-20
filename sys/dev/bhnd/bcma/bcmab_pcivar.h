@@ -20,7 +20,7 @@
 #define _BHND_BCMA_BCMAB_PCIVAR_H_
 
 #include <dev/bhnd/bcma/bcmavar.h>
-#include <dev/bhnd/bridge/bhndb_pcivar.h>
+#include <dev/bhnd/bhndb/bhndb_pcivar.h>
 
 DECLARE_CLASS(bcmab_pci_driver);
 

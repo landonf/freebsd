@@ -35,7 +35,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/bus.h>
 #include <sys/module.h>
 
-#include <dev/bhnd/bridge/bhndbvar.h>
+#include <dev/bhnd/bhndb/bhndbvar.h>
 
 #include "bcmavar.h"
 #include "bcma_private.h"

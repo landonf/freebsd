@@ -52,8 +52,8 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/cores/bhnd_chipcreg.h>
 
-#include <dev/bhnd/bridge/bhndb_pcireg.h>
-#include <dev/bhnd/bridge/bhndb_pcivar.h>
+#include <dev/bhnd/bhndb/bhndb_pcireg.h>
+#include <dev/bhnd/bhndb/bhndb_pcivar.h>
 
 #include "bhndb_bus_if.h"
 #include "bhndb_if.h"

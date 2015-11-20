@@ -1,6 +1,6 @@
 # $FreeBSD$
 
-.PATH: ${.CURDIR}/../../../dev/bhnd/bridge
+.PATH: ${.CURDIR}/../../../dev/bhnd/bhndb
 
 KMOD=	bhndb_pci
 SRCS=	bhndb_pci.c bhndb_pci_hwdata.c
