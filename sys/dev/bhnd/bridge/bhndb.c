@@ -108,6 +108,9 @@ bhndb_regwin_find_core(const struct bhndb_regwin *table, bhnd_devclass_t class,
 	{
 		if (rw->win_type != BHNDB_REGWIN_T_CORE)
 			continue;
+
+		if (rw->core.class != class)
+			continue;
 		
 		if (unit != -1 && rw->core.unit != unit)
 			continue;
