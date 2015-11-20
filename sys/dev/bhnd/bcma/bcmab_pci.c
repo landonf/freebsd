@@ -60,7 +60,6 @@ __FBSDID("$FreeBSD$");
 
 #include "bcmab_pcivar.h"
 
-#include "bcma_eromreg.h"
 #include "bcma_eromvar.h"
 
 struct bcmab_pci_softc {
@@ -308,7 +307,7 @@ bcmab_pci_get_core_table(device_t dev, struct bhnd_core_info **cores,
 	}
 
 	/* Perform the read */
-	error = bcma_erom_open(res_mem, BCMA_EROM_TABLE_START, &erom);
+	error = bcma_erom_open(res_mem, erom_win->win_offset, &erom);
 	if (error)
 		goto cleanup;
 
