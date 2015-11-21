@@ -31,6 +31,8 @@
 
 DECLARE_CLASS(bhndb_pci_driver);
 
+struct bhndb_pci_regwin_region;
+
 /**
  * bhndb driver instance state. Must be first member of all subclass
  * softc structures.
@@ -45,6 +47,10 @@ struct bhndb_pci_softc {
 	struct resource			**res;		/**< pci resources */
 
 	struct rman			 mem_rman;	/**< bus memory manager */
+	
+	struct bhndb_pci_regwin_region	*dw_regions;	/**< dynamic window regions */
+	size_t				 dw_count;	/**< number of dynamic window regions. */
+	uint32_t			 dw_free_list;	/**< dw_regions free list */
 };
 
 int	bhndb_pci_probe(device_t dev);

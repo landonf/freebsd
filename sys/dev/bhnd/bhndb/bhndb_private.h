@@ -111,6 +111,10 @@ extern const struct bhndb_hw bhndb_pci_hw[];
 int				 bhndb_attach_bridge(device_t parent, devclass_t devclass,
 				     device_t *bhndb, int unit);
 
+size_t				 bhndb_regwin_count(
+				     const struct bhndb_regwin *table,
+				     bhndb_regwin_type_t type);
+
 const struct bhndb_regwin	*bhndb_regwin_find_type(
 				     const struct bhndb_regwin *table,
 				     bhndb_regwin_type_t type);

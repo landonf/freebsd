@@ -38,7 +38,30 @@ __FBSDID("$FreeBSD$");
 #include "bhndbvar.h"
 
 /**
- * Search @p windows for the first window with the given @p type.
+ * Return the count of @p type register windows in @p table.
+ * 
+ * @param table The table to search.
+ * @param type The required window type, or BHNDB_REGWIN_T_INVALID to
+ * count all register window types.
+ */
+size_t
+bhndb_regwin_count(const struct bhndb_regwin *table,
+    bhndb_regwin_type_t type)
+{
+	const struct bhndb_regwin	*rw;
+	size_t				 count;
+
+	count = 0;
+	for (rw = table; rw->win_type != BHNDB_REGWIN_T_INVALID; rw++) {
+		if (type == BHNDB_REGWIN_T_INVALID || rw->win_type == type)
+			count++;
+	}
+
+	return (count);
+}
+
+/**
+ * Search @p table for the first window with the given @p type.
  * 
  * @param table The table to search.
  * @param type The required window type.

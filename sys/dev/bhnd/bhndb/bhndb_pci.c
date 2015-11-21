@@ -56,6 +56,15 @@ __FBSDID("$FreeBSD$");
 #include "bhndb_pcivar.h"
 #include "bhndb_private.h"
 
+/**
+ * A register window managed by our window allocator. 
+ */
+struct bhndb_pci_regwin_region {
+	uintptr_t			 vaddr;	/**< virtual address of the window */
+	const struct bhndb_regwin	*win;	/**< window definition */
+	struct resource			*res;	/**< enclosing resource */
+};
+
 int
 bhndb_pci_probe(device_t dev)
 {
@@ -125,13 +134,99 @@ finished:
 	return (error);
 }
 
+/** Allocate and initialize the BHNDB_REGWIN_T_DYN region allocator state. */
+static int
+init_dw_region_allocator(struct bhndb_pci_softc *sc)
+{
+	const struct resource_spec	*rspecs;
+	const struct bhndb_regwin	*rws;
+	const struct bhndb_regwin	*win;
+	u_int				 region_idx;
+	int				 error;
+	
+	rws = sc->hwcfg->register_windows;
+	rspecs = sc->hwcfg->resource_specs;
+
+	sc->dw_regions = NULL;
+
+	/* Fetch and verify the dynamic regwin count does not exceed
+	 * what is representable via our bitfield freelist. */
+	sc->dw_count = bhndb_regwin_count(rws, BHNDB_REGWIN_T_DYN);
+	if (sc->dw_count >= (8 * sizeof(sc->dw_free_list))) {
+		device_printf(sc->dev, "max dynamic regwin count exceeded\n");
+		return (ENOMEM);
+	}
+	
+	/* Allocate the region table. */
+	sc->dw_regions = malloc(sizeof(struct bhndb_pci_regwin_region) * 
+	    sc->dw_count, M_BHND, M_WAITOK);
+	if (sc->dw_regions == NULL) {
+		return (ENOMEM);
+	}
+
+	/* Initialize the region table and freelist. */
+	sc->dw_free_list = 0;
+	region_idx = 0;
+	for (win = rws; win->win_type != BHNDB_REGWIN_T_INVALID; win++)
+	{
+		struct bhndb_pci_regwin_region *region;
+
+		/* Skip non-DYN windows */
+		if (win->win_type != BHNDB_REGWIN_T_DYN)
+			continue;
+
+		region = &sc->dw_regions[region_idx];
+		region->win = win;
+		region->res = NULL;
+
+		/* Find the corresponding resource. */
+		for (u_int rsi = 0; rspecs[rsi].type != -1; rsi++) {			
+			if (win->res.type != rspecs[rsi].type)
+				continue;
+
+			if (win->res.rid != rspecs[rsi].rid)
+				continue;
+
+			/* Found matching rspec/resource */
+			region->res = sc->res[rsi];
+			break;
+		}
+
+		/* Invalid hwcfg? */
+		if (region->res == NULL) {
+			device_printf(sc->dev,
+			    "missing regwin resource spec (type=%d, rid=%d)\n",
+			    win->res.type, win->res.rid);
+			error = EINVAL;
+			goto failed;
+		}
+
+		/* Cache the resource vaddr */
+		region->vaddr = (uintptr_t) rman_get_virtual(region->res);
+		region->vaddr += win->win_offset;
+
+		/* Add to freelist */
+		sc->dw_free_list |= (1 << region_idx);
+
+		region_idx++;
+	}
+
+	return (0);
+
+failed:
+	if (sc->dw_regions != NULL)
+		free(sc->dw_regions, M_BHND);
+
+	return (error);
+}
+
 int
 bhndb_pci_attach(device_t dev)
 {
-	struct bhndb_pci_softc	*sc;
-	int			 error;
-	bool			 free_mem_rman = false;
-	bool			 free_pci_res = false;
+	struct bhndb_pci_softc		*sc;
+	int				 error;
+	bool				 free_mem_rman = false;
+	bool				 free_pci_res = false;
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
@@ -140,7 +235,7 @@ bhndb_pci_attach(device_t dev)
 	sc->res = NULL;
 	sc->res_spec = NULL;
 
-	/* Determine our PCI/ChipCommon register window configuration */
+	/* Find our register window configuration */
 	if ((error = bhndb_pci_find_hwcfg(dev, &sc->hwcfg)))
 		return (error);
 
@@ -159,11 +254,12 @@ bhndb_pci_attach(device_t dev)
 		free_mem_rman = true;
 	}
 
+
 	/* Determine our PCI resource count from the hardware config. */
 	sc->res_count = 0;
 	for (size_t i = 0; sc->hwcfg->resource_specs[i].type != -1; i++)
 		sc->res_count++;
-	
+
 	/* Allocate space for a non-const copy of our resource_spec
 	 * table; this will be updated with the RIDs assigned by
 	 * bus_alloc_resources. */
@@ -198,6 +294,10 @@ bhndb_pci_attach(device_t dev)
 	} else {
 		free_pci_res = true;
 	}
+
+	/* Initialize dynamic window allocator state */
+	if ((error = init_dw_region_allocator(sc)))
+		goto failed;
 
 	return (bus_generic_attach(dev));
 
@@ -234,6 +334,7 @@ bhndb_pci_detach(device_t dev)
 	bus_release_resources(dev, sc->res_spec, sc->res);
 	free(sc->res, M_BHND);
 	free(sc->res_spec, M_BHND);
+	free(sc->dw_regions, M_BHND);
 
 	return (error);
 }
@@ -359,51 +460,52 @@ static int
 bhndb_pci_activate_resource(device_t dev, device_t child, int type, int rid,
     struct resource *r)
 {
-	struct bhndb_pci_softc	*sc;
-	int			 error;
+	struct bhndb_pci_softc		*sc;
+	struct bhndb_pci_regwin_region	*region;
+	int				 region_ctz;
+	int				 error;
 
 	sc = device_get_softc(dev);
 
-	// hacked in window allocation
-	const struct bhndb_regwin *win = NULL;
-	for (u_int i = 0; sc->hwcfg->register_windows[i].win_type != BHNDB_REGWIN_T_INVALID; i++) {
-		if (sc->hwcfg->register_windows[i].win_type != BHNDB_REGWIN_T_DYN)
-			continue;
-		
-		if (sc->hwcfg->register_windows[i].win_size < rman_get_size(r))
-			continue;
-	
-		win = &sc->hwcfg->register_windows[i];
-		break;
-	}
-	if (win == NULL)
+	// TODO - match against table of fixed core mappings
+
+	// TODO - lock free list
+
+	/* No windows available? */
+	if (sc->dw_free_list == 0)
 		return (ENOMEM);
 
-	if ((error = BHNDB_SET_WINDOW_ADDR(dev, win, rman_get_start(r))))
-		return (error);
+	/* Claim the first free region */
+	region_ctz = __builtin_ctz(sc->dw_free_list);
+	device_printf(dev, "got clz=%d\n", region_ctz);
+	sc->dw_free_list &= ~(1 << region_ctz);
 	
-	// xxx hacked in find virtual address
-	rman_set_virtual(r, NULL);
-	for (u_int i = 0; sc->hwcfg->resource_specs[i].type != -1; i++) {
-		if (win->res.type != sc->hwcfg->resource_specs[i].type ||
-		    win->res.rid != sc->hwcfg->resource_specs[i].rid)
-			continue;
-			
-		uintptr_t start = (uintptr_t) rman_get_virtual(sc->res[i]);
-		start += win->win_offset;
-		
+	// TODO - track RID to support deallocation?
 
-		rman_set_virtual(r, (void *) start);
-		rman_set_bustag(r, rman_get_bustag(sc->res[i]));
-		rman_set_bushandle(r, rman_get_bushandle(sc->res[i]));
-		break;
-	}
+	// TODO - unlock free list
 
-	if (rman_get_virtual(r) == NULL)
-		return (EINVAL);
-	
-	// TODO - window resource activations
+	region = &sc->dw_regions[region_ctz];
+
+	/* Set the target window */
+	error = BHNDB_SET_WINDOW_ADDR(dev, region->win, rman_get_start(r));
+	if (error)
+		goto failed;
+
+	/* Configure resource with its real bus values. */
+	rman_set_virtual(r, (void *) region->vaddr);
+	rman_set_bustag(r, rman_get_bustag(region->res));
+	rman_set_bushandle(r, rman_get_bushandle(region->res));
+
 	return (0);
+failed:
+	// TODO - lock free list
+
+	/* Mark region as free */
+	sc->dw_free_list |= (1 << region_ctz);
+
+	// TODO - unlock free list
+
+	return (error);
 }
 
 static int
