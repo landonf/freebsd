@@ -73,6 +73,7 @@ struct bhndb_pci_regwin_region {
 	struct resource			*res;	/**< enclosing resource */
 };
 
+/** bhndb implementation of device_probe(). */
 int
 bhndb_pci_probe(device_t dev)
 {
@@ -94,6 +95,42 @@ bhndb_pci_probe(device_t dev)
 	return (BUS_PROBE_NOWILDCARD);
 }
 
+static void
+bhndb_pci_probe_nomatch(device_t dev, device_t child)
+{
+	const char *name;
+
+	name = device_get_name(child);
+	if (name == NULL)
+		name = "unknown device";
+
+	device_printf(dev, "<%s> (no driver attached)\n", name);
+}
+
+static int
+bhndb_pci_child_pnpinfo_str(device_t bus, device_t child, char *buf,
+    size_t buflen)
+{
+	// TODO
+	return (ENXIO);
+}
+
+static int
+bhndb_pci_child_location_str(device_t dev, device_t child, char *buf,
+    size_t buflen)
+{
+	// TODO
+	return (ENXIO);
+}
+
+/**
+ * Return true if @p cores matches the @p hw specification.
+ * 
+ * @param dev The bhndb device.
+ * @param cores A core table fetched from @p dev.
+ * @param num_cores The number of cores in @p cores.
+ * @param hw The hardware description to be matched against.
+ */
 static bool
 bhndb_pci_hw_matches(device_t dev, struct bhnd_core_info *cores,
     u_int num_cores, const struct bhndb_hw *hw)
@@ -108,6 +145,16 @@ bhndb_pci_hw_matches(device_t dev, struct bhnd_core_info *cores,
 	return (true);
 }
 
+/**
+ * Find a hardware configuration for @p dev.
+ * 
+ * @param dev The bhndb device.
+ * @param[out] hwconfig On success, the hardware configuration to be used
+ * with @p dev.
+ * 
+ * @retval 0 success
+ * @retval non-zero if an error occurs fetching device info for comparison.
+ */
 static int
 bhndb_pci_find_hwcfg(device_t dev, const struct bhndb_hwcfg **hwcfg)
 {
@@ -228,6 +275,7 @@ failed:
 	return (error);
 }
 
+/** bhndb implementation of device_attach(). */
 int
 bhndb_pci_attach(device_t dev)
 {
@@ -327,6 +375,7 @@ failed:
 	return (error);
 }
 
+/** bhndb implementation of device_detach(). */
 int
 bhndb_pci_detach(device_t dev)
 {
@@ -351,18 +400,21 @@ bhndb_pci_detach(device_t dev)
 	return (error);
 }
 
+/** bhndb implementation of device_suspend(). */
 int
 bhndb_pci_suspend(device_t dev)
 {
 	return (bus_generic_suspend(dev));
 }
 
+/** bhndb implementation of device_resume(). */
 int
 bhndb_pci_resume(device_t dev)
 {
 	return (bus_generic_resume(dev));
 }
 
+/** bhndb implementation of bus_read_ivar(). */
 int
 bhndb_pci_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 {
@@ -372,6 +424,7 @@ bhndb_pci_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 	}
 }
 
+/** bhndb implementation of bus_write_ivar(). */
 int
 bhndb_pci_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
 {
@@ -466,6 +519,14 @@ bhndb_pci_release_resource(device_t dev, device_t child, int type, int rid,
 }
 
 static int
+bhndb_pci_adjust_resource(device_t dev, device_t child, int type,
+    struct resource *r, u_long start, u_long end)
+{
+	// TODO
+	return (EINVAL);
+}
+
+static int
 bhndb_pci_activate_resource(device_t dev, device_t child, int type, int rid,
     struct resource *r)
 {
@@ -525,6 +586,14 @@ bhndb_pci_deactivate_resource(device_t dev, device_t child, int type,
 	return (0);
 }
 
+
+static struct resource_list *
+bhndb_pci_get_resource_list(device_t dev, device_t child)
+{
+	// TODO
+	return (NULL);
+}
+
 static struct bhnd_resource *
 bhndb_pci_alloc_bhnd_resource(device_t dev, device_t child, int type,
      int *rid, u_long start, u_long end, u_long count, u_int flags)
@@ -561,6 +630,51 @@ bhndb_pci_deactivate_bhnd_resource(device_t dev, device_t child,
 	return (EOPNOTSUPP);
 };
 
+static int
+bhndb_pci_setup_intr(device_t dev, device_t child, struct resource *r,
+    int flags, driver_filter_t filter, driver_intr_t handler, void *arg,
+    void **cookiep)
+{
+	// TODO
+	return (EOPNOTSUPP);
+}
+
+static int
+bhndb_pci_teardown_intr(device_t dev, device_t child, struct resource *r,
+    void *cookie)
+{
+	// TODO
+	return (EOPNOTSUPP);
+}
+
+static int
+bhndb_pci_config_intr(device_t dev, int irq, enum intr_trigger trig,
+    enum intr_polarity pol)
+{
+	// TODO
+	return (EOPNOTSUPP);
+}
+
+static int
+bhndb_pci_bind_intr(device_t dev, device_t child, struct resource *r, int cpu) {
+	// TODO
+	return (EOPNOTSUPP);
+}
+
+static int
+bhndb_pci_describe_intr(device_t dev, device_t child, struct resource *irq, void *cookie,
+    const char *descr)
+{
+	// TODO
+	return (EOPNOTSUPP);
+}
+
+static bus_dma_tag_t
+bhndb_pci_get_dma_tag(device_t dev, device_t child)
+{
+	// TODO
+	return (NULL);
+}
 
 static device_method_t bhndb_pci_methods[] = {
 	/* Device interface */ \
@@ -572,10 +686,28 @@ static device_method_t bhndb_pci_methods[] = {
 	DEVMETHOD(device_resume,		bhndb_pci_resume),
 
 	/* Bus interface */
+	DEVMETHOD(bus_probe_nomatch,		bhndb_pci_probe_nomatch),
+	DEVMETHOD(bus_child_pnpinfo_str,	bhndb_pci_child_pnpinfo_str),
+	DEVMETHOD(bus_child_location_str,	bhndb_pci_child_location_str),
 	DEVMETHOD(bus_alloc_resource,		bhndb_pci_alloc_resource),
 	DEVMETHOD(bus_release_resource,		bhndb_pci_release_resource),
 	DEVMETHOD(bus_activate_resource,	bhndb_pci_activate_resource),
 	DEVMETHOD(bus_deactivate_resource,	bhndb_pci_deactivate_resource),
+
+	DEVMETHOD(bus_setup_intr,		bhndb_pci_setup_intr),
+	DEVMETHOD(bus_teardown_intr,		bhndb_pci_teardown_intr),
+	DEVMETHOD(bus_config_intr,		bhndb_pci_config_intr),
+	DEVMETHOD(bus_bind_intr,		bhndb_pci_bind_intr),
+	DEVMETHOD(bus_describe_intr,		bhndb_pci_describe_intr),
+
+	DEVMETHOD(bus_get_dma_tag,		bhndb_pci_get_dma_tag),
+
+	DEVMETHOD(bus_adjust_resource,		bhndb_pci_adjust_resource),
+	DEVMETHOD(bus_set_resource,		bus_generic_rl_set_resource),
+	DEVMETHOD(bus_get_resource,		bus_generic_rl_get_resource),
+	DEVMETHOD(bus_delete_resource,		bus_generic_rl_delete_resource),
+	DEVMETHOD(bus_get_resource_list,	bhndb_pci_get_resource_list),
+
 	DEVMETHOD(bus_read_ivar,		bhndb_pci_read_ivar),
 	DEVMETHOD(bus_write_ivar,		bhndb_pci_write_ivar),
 
