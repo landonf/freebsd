@@ -394,11 +394,6 @@ bhndb_pci_alloc_resource(device_t dev, device_t child, int type,
 	struct rman	*rm;
 	int		 error;
 
-	if (device_get_parent(child) != dev) {
-		return (BUS_ALLOC_RESOURCE(device_get_parent(dev), child,
-		    type, rid, start, end, count, flags));
-	}
-
 	/* Fetch the resource manager */
 	rm = bhndb_pci_get_rman(dev, type);
 	if (rm == NULL)
@@ -415,7 +410,8 @@ bhndb_pci_alloc_resource(device_t dev, device_t child, int type,
 		return NULL;
 
 	/* Make our reservation */
-	res = rman_reserve_resource(rm, start, end, count, flags, child);
+	res = rman_reserve_resource(rm, start, end, count,
+	    (flags & ~RF_ACTIVE), child);
 	if (res == NULL)
 		return (NULL);
 
@@ -440,17 +436,18 @@ bhndb_pci_alloc_resource(device_t dev, device_t child, int type,
 
 static int
 bhndb_pci_release_resource(device_t dev, device_t child, int type, int rid,
-    struct resource *res)
+    struct resource *r)
 {
-	int				 error;
+	int error;
 
-	if (device_get_parent(child) != dev) {
-		return (BUS_RELEASE_RESOURCE(device_get_parent(dev), child,
-		    type, rid, res));
+	/* Release any reserved bridged resources */
+	if (rman_get_flags(r) & RF_ACTIVE) {
+		error = BUS_DEACTIVATE_RESOURCE(dev, child, type, rid, r);
+		if (error)
+			return (error);
 	}
 
-	/* Release the resource */
-	if ((error = rman_release_resource(res)))
+	if ((error = rman_release_resource(r)))
 		return (error);
 
 	return (0);
@@ -477,7 +474,6 @@ bhndb_pci_activate_resource(device_t dev, device_t child, int type, int rid,
 
 	/* Claim the first free region */
 	region_ctz = __builtin_ctz(sc->dw_free_list);
-	device_printf(dev, "got clz=%d\n", region_ctz);
 	sc->dw_free_list &= ~(1 << region_ctz);
 	
 	// TODO - track RID to support deallocation?
@@ -495,6 +491,10 @@ bhndb_pci_activate_resource(device_t dev, device_t child, int type, int rid,
 	rman_set_virtual(r, (void *) region->vaddr);
 	rman_set_bustag(r, rman_get_bustag(region->res));
 	rman_set_bushandle(r, rman_get_bushandle(region->res));
+
+	/* Mark active */
+	if ((error = rman_activate_resource(r)))
+		goto failed;
 
 	return (0);
 failed:
@@ -521,10 +521,6 @@ bhndb_pci_alloc_bhnd_resource(device_t dev, device_t child, int type,
      int *rid, u_long start, u_long end, u_long count, u_int flags)
 {
 	// struct bhnd_resource *r;
-	
-	if (device_get_parent(child) != dev)
-		return (BHND_ALLOC_RESOURCE(device_get_parent(dev), child,
-		    type, rid, start, end, count, flags));
 
 	// TODO
 	return (NULL);
@@ -535,10 +531,6 @@ bhndb_pci_release_bhnd_resource(device_t dev, device_t child,
     int type, int rid, struct bhnd_resource *r)
 {
 	// int error;
-	
-	if (device_get_parent(child) != dev)
-		return (BHND_RELEASE_RESOURCE(device_get_parent(dev), child,
-		    type, rid, r));
 
 	// TODO
 	return (EOPNOTSUPP);
@@ -548,10 +540,6 @@ static int
 bhndb_pci_activate_bhnd_resource(device_t dev, device_t child,
     int type, int rid, struct bhnd_resource *r)
 {
-	if (device_get_parent(child) != dev)
-		return (BHND_ACTIVATE_RESOURCE(device_get_parent(dev), child,
-		    type, rid, r));
-
 	// TODO
 	return (EOPNOTSUPP);
 };
@@ -560,10 +548,6 @@ static int
 bhndb_pci_deactivate_bhnd_resource(device_t dev, device_t child,
     int type, int rid, struct bhnd_resource *r)
 {
-	if (device_get_parent(child) != dev)
-		return (BHND_DEACTIVATE_RESOURCE(device_get_parent(dev), child,
-		    type, rid, r));
-
 	// TODO
 	return (EOPNOTSUPP);
 };
