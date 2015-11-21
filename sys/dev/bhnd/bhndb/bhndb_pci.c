@@ -488,48 +488,85 @@ static struct resource *
 bhndb_pci_alloc_resource(device_t dev, device_t child, int type,
     int *rid, u_long start, u_long end, u_long count, u_int flags)
 {
-	struct resource	*res;
-	struct rman	*rm;
-	int		 error;
+	struct resource_list_entry	*rle;
+	struct resource			*rv;
+	struct rman			*rm;
+	int				 error;
+	bool				 immed_child, defaults;
 
+	immed_child = (device_get_parent(child) == dev);
+	defaults = (start == 0ULL && end == ~0ULL);
+	rle = NULL;
+
+	/* Populate defaults */
+	if (immed_child && defaults) {
+		/* Fetch the resource list entry. */
+		rle = resource_list_find(BUS_GET_RESOURCE_LIST(dev, child),
+		    type, *rid);
+		if (rle == NULL) {
+			device_printf(dev,
+			    "default resource %#x type %d for child %s "
+			    "not found\n", *rid, type,
+			    device_get_nameunit(child));
+			
+			return (NULL);
+		}
+		
+		if (rle->res != NULL) {
+			device_printf(dev,
+			    "resource entry %#x type %d for child %s is busy\n",
+			    *rid, type, device_get_nameunit(child));
+			
+			return (NULL);
+		}
+
+		start = rle->start;
+		end = rle->end;
+		if (count < rle->count)
+			count = rle->count;
+	}
+
+	/* Validate resource addresses */
+	if (start > end || end < start || count > (end - start))
+		return (NULL);
+	
 	/* Fetch the resource manager */
 	rm = bhndb_pci_get_rman(dev, type);
 	if (rm == NULL)
 		return (NULL);
 
-	/* Validate the resource addresses */
-	if (start > end)
-		return NULL;
-	
-	if (end < start)
-		return NULL;
-	
-	if (count > end - start)
-		return NULL;
-
 	/* Make our reservation */
-	res = rman_reserve_resource(rm, start, end, count,
-	    (flags & ~RF_ACTIVE), child);
-	if (res == NULL)
+	rv = rman_reserve_resource(rm, start, end, count, flags & ~RF_ACTIVE,
+	    child);
+	if (rv == NULL)
 		return (NULL);
-
-	rman_set_rid(res, *rid);
+	
+	rman_set_rid(rv, *rid);
 
 	/* Activate */
 	if (flags & RF_ACTIVE) {
-		error = bus_activate_resource(child, type, *rid, res);
+		error = bus_activate_resource(child, type, *rid, rv);
 		if (error) {
 			device_printf(dev,
 			    "failed to activate entry %#x type %d for "
 				"child %s\n",
 			     *rid, type, device_get_nameunit(child));
 
-			rman_release_resource(res);
+			rman_release_resource(rv);
+
 			return (NULL);
 		}
 	}
 
-	return (res);
+	/* Update child's resource list entry */
+	if (rle != NULL) {
+		rle->res = rv;
+		rle->start = rman_get_start(rv);
+		rle->end = rman_get_end(rv);
+		rle->count = rman_get_size(rv);
+	}
+
+	return (rv);
 }
 
 static int
