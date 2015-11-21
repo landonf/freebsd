@@ -56,6 +56,14 @@ __FBSDID("$FreeBSD$");
 #include "bhndb_pcivar.h"
 #include "bhndb_private.h"
 
+#define	BHNDB_RES_LOCK_INIT(sc) \
+	mtx_init(&(sc)->res_mtx, device_get_nameunit((sc)->dev), \
+	    "bhndb_pci resource allocator lock", MTX_DEF)
+#define	BHNDB_RES_LOCK(sc)		mtx_lock(&(sc)->res_mtx)
+#define	BHNDB_RES_UNLOCK(sc)		mtx_unlock(&(sc)->res_mtx)
+#define	BHNDB_RES_LOCK_ASSERT(sc)	mtx_assert(&(sc)->res_mtx, MA_OWNED)
+#define	BHNDB_RES_LOCK_DESTROY(sc)	mtx_destroy(&(sc)->res_mtx)
+
 /**
  * A register window managed by our window allocator. 
  */
@@ -231,13 +239,13 @@ bhndb_pci_attach(device_t dev)
 	sc = device_get_softc(dev);
 	sc->dev = dev;
 	sc->pci_dev = device_get_parent(dev);
-	
-	sc->res = NULL;
-	sc->res_spec = NULL;
 
 	/* Find our register window configuration */
 	if ((error = bhndb_pci_find_hwcfg(dev, &sc->hwcfg)))
 		return (error);
+
+	/* Initialize locking */
+	BHNDB_RES_LOCK_INIT(sc);
 
 	/* Set up a resource manager for the device's address space. */
 	sc->mem_rman.rm_start = 0;
@@ -313,6 +321,8 @@ failed:
 
 	if (sc->res_spec != NULL)
 		free(sc->res_spec, M_BHND);
+	
+	BHNDB_RES_LOCK_DESTROY(sc);
 
 	return (error);
 }
@@ -334,7 +344,9 @@ bhndb_pci_detach(device_t dev)
 	bus_release_resources(dev, sc->res_spec, sc->res);
 	free(sc->res, M_BHND);
 	free(sc->res_spec, M_BHND);
+
 	free(sc->dw_regions, M_BHND);
+	BHNDB_RES_LOCK_DESTROY(sc);
 
 	return (error);
 }
@@ -463,24 +475,23 @@ bhndb_pci_activate_resource(device_t dev, device_t child, int type, int rid,
 	int				 error;
 
 	sc = device_get_softc(dev);
-
-	// TODO - match against table of fixed core mappings
-
-	// TODO - lock free list
+	
+	BHNDB_RES_LOCK(sc);
 
 	/* No windows available? */
-	if (sc->dw_free_list == 0)
+	if (sc->dw_free_list == 0) {
+		BHNDB_RES_UNLOCK(sc);
 		return (ENOMEM);
+	}
 
 	/* Claim the first free region */
 	region_ctz = __builtin_ctz(sc->dw_free_list);
 	sc->dw_free_list &= ~(1 << region_ctz);
-	
+	region = &sc->dw_regions[region_ctz];
+
 	// TODO - track RID to support deallocation?
 
-	// TODO - unlock free list
-
-	region = &sc->dw_regions[region_ctz];
+	BHNDB_RES_UNLOCK(sc);
 
 	/* Set the target window */
 	error = BHNDB_SET_WINDOW_ADDR(dev, region->win, rman_get_start(r));
@@ -498,12 +509,10 @@ bhndb_pci_activate_resource(device_t dev, device_t child, int type, int rid,
 
 	return (0);
 failed:
-	// TODO - lock free list
-
-	/* Mark region as free */
+	/* Release our region allocation. */
+	BHNDB_RES_LOCK(sc);
 	sc->dw_free_list |= (1 << region_ctz);
-
-	// TODO - unlock free list
+	BHNDB_RES_UNLOCK(sc);
 
 	return (error);
 }

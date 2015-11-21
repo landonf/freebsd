@@ -20,9 +20,10 @@
 #define _BHND_BHNDB_PCIVAR_H_
 
 #include <sys/param.h>
-#include <sys/kernel.h>
 #include <sys/bus.h>
-
+#include <sys/kernel.h>
+#include <sys/lock.h>
+#include <sys/mutex.h>
 #include <sys/rman.h>
 
 #include <dev/bhnd/bhnd.h>
@@ -45,8 +46,9 @@ struct bhndb_pci_softc {
 	size_t				 res_count;	/**< pci resource count */
 	struct resource_spec		*res_spec;	/**< pci resource specs */
 	struct resource			**res;		/**< pci resources */
-
 	struct rman			 mem_rman;	/**< bus memory manager */
+
+	struct mtx			 res_mtx;	/**< resource allocator lock. */
 	
 	struct bhndb_pci_regwin_region	*dw_regions;	/**< dynamic window regions */
 	size_t				 dw_count;	/**< number of dynamic window regions. */
