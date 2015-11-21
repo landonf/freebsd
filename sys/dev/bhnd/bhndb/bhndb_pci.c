@@ -451,6 +451,39 @@ bhndb_pci_get_rman(device_t dev, int type)
 	};
 }
 
+static device_t
+bhndb_pci_add_child(device_t dev, u_int order, const char *name, int unit)
+{
+	struct bhndb_devinfo	*dinfo;
+	device_t		 child;
+	
+	child = device_add_child_ordered(dev, order, name, unit);
+	if (child == NULL)
+		return (NULL);
+
+	dinfo = malloc(sizeof(struct bhndb_devinfo), M_BHND, M_WAITOK);
+	if (dinfo == NULL) {
+		device_delete_child(dev, child);
+		return (NULL);
+	}
+
+	resource_list_init(&dinfo->resources);
+
+	device_set_ivars(child, dinfo);
+
+	return (child);
+}
+
+static void
+bhndb_pci_child_deleted(device_t dev, device_t child)
+{
+	struct bhndb_devinfo *dinfo = device_get_ivars(child);
+	if (dinfo != NULL)
+		resource_list_free(&dinfo->resources);
+
+	device_set_ivars(child, NULL);
+}
+
 static struct resource *
 bhndb_pci_alloc_resource(device_t dev, device_t child, int type,
     int *rid, u_long start, u_long end, u_long count, u_int flags)
@@ -590,8 +623,8 @@ bhndb_pci_deactivate_resource(device_t dev, device_t child, int type,
 static struct resource_list *
 bhndb_pci_get_resource_list(device_t dev, device_t child)
 {
-	// TODO
-	return (NULL);
+	struct bhndb_devinfo *dinfo = device_get_ivars(child);
+	return (&dinfo->resources);
 }
 
 static struct bhnd_resource *
@@ -689,6 +722,9 @@ static device_method_t bhndb_pci_methods[] = {
 	DEVMETHOD(bus_probe_nomatch,		bhndb_pci_probe_nomatch),
 	DEVMETHOD(bus_child_pnpinfo_str,	bhndb_pci_child_pnpinfo_str),
 	DEVMETHOD(bus_child_location_str,	bhndb_pci_child_location_str),
+	DEVMETHOD(bus_add_child,		bhndb_pci_add_child),
+	DEVMETHOD(bus_child_deleted,		bhndb_pci_child_deleted),
+
 	DEVMETHOD(bus_alloc_resource,		bhndb_pci_alloc_resource),
 	DEVMETHOD(bus_release_resource,		bhndb_pci_release_resource),
 	DEVMETHOD(bus_activate_resource,	bhndb_pci_activate_resource),

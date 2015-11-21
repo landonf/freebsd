@@ -198,7 +198,7 @@ bcmab_pci_attach(device_t dev)
 		return (error);
 
 	/* Attach bridged bcma(4) bus */
-	if (device_add_child(dev, devclass_get_name(bcma_devclass), 0) == NULL)
+	if (BUS_ADD_CHILD(dev, 0, devclass_get_name(bcma_devclass), 0) == NULL)
 		return (ENXIO);
 
 	/* Call core attach */

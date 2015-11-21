@@ -55,6 +55,14 @@ struct bhndb_pci_softc {
 	uint32_t			 dw_free_list;	/**< dw_regions free list */
 };
 
+/**
+ * bhndb child instance state. Must be first member of all subclass
+ * devinfo structures.
+ */
+struct bhndb_devinfo {
+        struct resource_list    resources;		/**< bridged resources. */
+};
+
 int	bhndb_pci_probe(device_t dev);
 int	bhndb_pci_attach(device_t dev);
 int	bhndb_pci_detach(device_t dev);
