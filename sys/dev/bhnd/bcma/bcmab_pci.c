@@ -211,7 +211,7 @@ bcmab_pci_set_window_addr(device_t dev, const struct bhndb_regwin *rw,
 static device_t
 bcmab_pci_get_attached_bus(device_t dev)
 {
-	struct bcmab_pci_softc *sc = device_get_softc(sc);
+	struct bcmab_pci_softc *sc = device_get_softc(dev);
 	return (sc->bus_dev);
 }
 
