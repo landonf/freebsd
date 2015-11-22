@@ -612,25 +612,39 @@ bhndb_pci_activate_resource(device_t dev, device_t child, int type, int rid,
 {
 	struct bhndb_pci_softc		*sc;
 	struct bhndb_pci_regwin_region	*region;
-	int				 region_ctz;
+	uint32_t			 freelist;
+	int				 rz;
 	int				 error;
 
 	sc = device_get_softc(dev);
 	
 	BHNDB_RES_LOCK(sc);
 
-	/* No windows available? */
-	if (sc->dw_free_list == 0) {
-		BHNDB_RES_UNLOCK(sc);
-		return (ENOMEM);
-	}
+	/*
+	 * Find the first free window of sufficient size.
+	 * 
+	 * On all currently known hardware, dynamic windows are 4K, and 
+	 * register blocks are 4K or smaller; this check should always
+	 * succeed.
+	 */
+	freelist = sc->dw_free_list;
+	do {
+		/* No windows available? */
+		if (freelist == 0) {
+			BHNDB_RES_UNLOCK(sc);
+			return (ENOMEM);
+		}
+		
+		/* Find the next free window */
+		rz = __builtin_ctz(freelist);
+		freelist &= ~(1 << rz);
 
-	/* Claim the first free region */
-	region_ctz = __builtin_ctz(sc->dw_free_list);
-	sc->dw_free_list &= ~(1 << region_ctz);
-	region = &sc->dw_regions[region_ctz];
+		region = &sc->dw_regions[rz];
 
-	// TODO - track RID to support deallocation?
+	} while (region->win->win_size < rman_get_size(r));
+
+	/* Update shared free list */
+	sc->dw_free_list &= ~(1 << rz);
 
 	BHNDB_RES_UNLOCK(sc);
 
@@ -639,20 +653,21 @@ bhndb_pci_activate_resource(device_t dev, device_t child, int type, int rid,
 	if (error)
 		goto failed;
 
+	/* Mark active */
+	if ((error = rman_activate_resource(r)))
+		goto failed;
+
 	/* Configure resource with its real bus values. */
 	rman_set_virtual(r, (void *) region->vaddr);
 	rman_set_bustag(r, rman_get_bustag(region->res));
 	rman_set_bushandle(r, rman_get_bushandle(region->res));
 
-	/* Mark active */
-	if ((error = rman_activate_resource(r)))
-		goto failed;
-
 	return (0);
+
 failed:
 	/* Release our region allocation. */
 	BHNDB_RES_LOCK(sc);
-	sc->dw_free_list |= (1 << region_ctz);
+	sc->dw_free_list |= (1 << rz);
 	BHNDB_RES_UNLOCK(sc);
 
 	return (error);
