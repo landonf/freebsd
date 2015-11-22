@@ -110,7 +110,7 @@ struct bhndb_hw {
  */
 struct bhndb_softc {
 	device_t			 dev;		/**< bridge device */
-	const struct bhndb_hwcfg	*cfg;		/**< hardware config */
+	const struct bhndb_hw		*hw;		/**< hardware spec */
 
 	device_t			 parent_dev;	/**< parent device */
 	size_t				 res_count;	/**< parent bus resource count */

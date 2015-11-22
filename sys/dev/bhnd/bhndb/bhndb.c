@@ -131,6 +131,33 @@ bhndb_probe_nomatch(device_t dev, device_t child)
 }
 
 static int
+bhndb_print_child(device_t dev, device_t child)
+{
+	struct bhndb_softc	*sc;
+	struct resource_list	*rl;
+	bhndb_addr_t		 addr;
+	int			retval = 0;
+
+	sc = device_get_softc(dev);
+	addr = BHNDB_GET_ENUM_ADDR(dev, child);
+
+	retval += bus_print_child_header(dev, child);
+
+	rl = BUS_GET_RESOURCE_LIST(dev, child);
+	if (rl != NULL) {
+		retval += resource_list_print_type(rl, "mem", SYS_RES_MEMORY,
+		    "%#lx");
+		retval += resource_list_print_type(rl, "irq", SYS_RES_IRQ,
+		    "%ld");
+	}
+
+	retval += bus_print_child_domain(dev, child);
+	retval += bus_print_child_footer(dev, child);
+
+	return (retval);
+}
+
+static int
 bhndb_child_pnpinfo_str(device_t bus, device_t child, char *buf,
     size_t buflen)
 {
@@ -152,13 +179,12 @@ bhndb_child_location_str(device_t dev, device_t child, char *buf,
 /**
  * Return true if @p cores matches the @p hw specification.
  * 
- * @param dev The bhndb device.
- * @param cores A core table fetched from @p dev.
+ * @param cores A core table to match against.
  * @param num_cores The number of cores in @p cores.
  * @param hw The hardware description to be matched against.
  */
 static bool
-bhndb_hw_matches(device_t dev, struct bhnd_core_info *cores,
+bhndb_hw_matches(struct bhnd_core_info *cores,
     u_int num_cores, const struct bhndb_hw *hw)
 {
 	for (u_int i = 0; i < hw->num_hw_reqs; i++) {
@@ -172,62 +198,60 @@ bhndb_hw_matches(device_t dev, struct bhnd_core_info *cores,
 }
 
 /**
- * Find a hardware configuration for @p dev.
+ * Find a hardware specification for @p dev.
  * 
  * @param dev The bhndb device.
- * @param[out] hwconfig On success, the hardware configuration to be used
+ * @param[out] hw On success, the matched hardware specification.
  * with @p dev.
  * 
  * @retval 0 success
  * @retval non-zero if an error occurs fetching device info for comparison.
  */
 static int
-bhndb_find_hwcfg(device_t dev, const struct bhndb_hwcfg **hwcfg)
+bhndb_find_hwspec(struct bhndb_softc *sc, const struct bhndb_hw **hw)
 {
-	struct bhndb_softc	*sc;
-	const struct bhndb_hw	*hw, *hw_table;
+	const struct bhndb_hw	*next, *hw_table;
 	struct bhnd_core_info	*cores;
 	u_int			 num_cores;
 	int			 error;
 
-	sc = device_get_softc(dev);
 	error = 0;
 
 	/* Fetch our core table */
-	if ((error = BHNDB_GET_CORE_TABLE(dev, &cores, &num_cores)))
+	if ((error = BHNDB_GET_CORE_TABLE(sc->dev, &cores, &num_cores)))
 		return (error);
 	
 	/* Search for the first matching hardware config. */
-	hw_table = BHNDB_BUS_GET_HARDWARE_TABLE(sc->parent_dev, dev);
-	for (hw = hw_table; hw->hw_reqs != NULL; hw++) {
-		if (bhndb_hw_matches(dev, cores, num_cores, hw)) {
-			device_printf(dev, "%s register map\n",
-			    hw->name);
-			*hwcfg = hw->cfg;
-			goto finished;
+	hw_table = BHNDB_BUS_GET_HARDWARE_TABLE(sc->parent_dev, sc->dev);
+	for (next = hw_table; next->hw_reqs != NULL; next++) {
+		if (bhndb_hw_matches(cores, num_cores, next)) {
+			*hw = next;
+			goto done;
 		}
 	}
 
 	/* Not found */
 	error = ENOENT;
 
-finished:
+done:
 	free(cores, M_BHND);
 	return (error);
 }
 
 /** Allocate and initialize the BHNDB_REGWIN_T_DYN region allocator state. */
 static int
-init_dw_region_allocator(struct bhndb_softc *sc)
+bhndb_init_dw_region_allocator(struct bhndb_softc *sc)
 {
+	const struct bhndb_hwcfg	*cfg;
 	const struct resource_spec	*rspecs;
 	const struct bhndb_regwin	*rws;
 	const struct bhndb_regwin	*win;
 	u_int				 rnid;
 	int				 error;
-	
-	rws = sc->cfg->register_windows;
-	rspecs = sc->cfg->resource_specs;
+
+	cfg = sc->hw->cfg;
+	rws = cfg->register_windows;
+	rspecs = cfg->resource_specs;
 
 	sc->dw_regions = NULL;
 
@@ -322,8 +346,11 @@ bhndb_gen_attach(device_t dev)
 	BHNDB_LOCK_INIT(sc);
 
 	/* Find our register window configuration */
-	if ((error = bhndb_find_hwcfg(dev, &sc->cfg)))
+	if ((error = bhndb_find_hwspec(sc, &sc->hw)))
 		return (error);
+
+	if (bootverbose)
+		device_printf(dev, "%s register map\n", sc->hw->name);
 
 	/* Set up a resource manager for the device's address space. */
 	sc->mem_rman.rm_start = 0;
@@ -343,7 +370,7 @@ bhndb_gen_attach(device_t dev)
 
 	/* Determine our bridge resource count from the hardware config. */
 	sc->res_count = 0;
-	for (size_t i = 0; sc->cfg->resource_specs[i].type != -1; i++)
+	for (size_t i = 0; sc->hw->cfg->resource_specs[i].type != -1; i++)
 		sc->res_count++;
 
 	/* Allocate space for a non-const copy of our resource_spec
@@ -358,7 +385,7 @@ bhndb_gen_attach(device_t dev)
 
 	/* Initialize and terminate the table */
 	for (size_t i = 0; i < sc->res_count; i++)
-		sc->res_spec[i] = sc->cfg->resource_specs[i];
+		sc->res_spec[i] = sc->hw->cfg->resource_specs[i];
 	
 	sc->res_spec[sc->res_count].type = -1;
 
@@ -382,7 +409,7 @@ bhndb_gen_attach(device_t dev)
 	}
 
 	/* Initialize dynamic window allocator state */
-	if ((error = init_dw_region_allocator(sc)))
+	if ((error = bhndb_init_dw_region_allocator(sc)))
 		goto failed;
 
 	return (bus_generic_attach(dev));
@@ -878,6 +905,7 @@ static device_method_t bhndb_methods[] = {
 
 	/* Bus interface */
 	DEVMETHOD(bus_probe_nomatch,		bhndb_probe_nomatch),
+	DEVMETHOD(bus_print_child,		bhndb_print_child),
 	DEVMETHOD(bus_child_pnpinfo_str,	bhndb_child_pnpinfo_str),
 	DEVMETHOD(bus_child_location_str,	bhndb_child_location_str),
 	DEVMETHOD(bus_add_child,		bhndb_add_child),
