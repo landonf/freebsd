@@ -39,25 +39,44 @@ HEADER {
 };
 
 CODE {
+	#include <sys/systm.h>
+
 	static const struct bhndb_hwcfg *
 	bhndb_null_get_generic_hwcfg(device_t dev, device_t child)
 	{
-		return (NULL);
+		panic("bhndb_get_generic_hwcfg unimplemented");
+	}
+
+	static const struct bhndb_hw *
+	bhndb_null_get_hardware_table(device_t dev, device_t child)
+	{
+		panic("bhndb_get_hardware_table unimplemented");
 	}
 }
 
 /**
- * Optionally return a generic hardware configuration to be used by
+ * Return a generic hardware configuration to be used by
  * the bhndb bridge device to enumerate attached devices.
  *
  * @param dev The parent device.
  * @param child The attached bhndb device.
  *
  * @retval bhndb_hwcfg The configuration to use for bus enumeration.
- * @retval NULL The bridge device will perform initial enumeration using its
- * built-in default configuration, if any.
  */
 METHOD const struct bhndb_hwcfg * get_generic_hwcfg {
 	device_t dev;
 	device_t child;
 } DEFAULT bhndb_null_get_generic_hwcfg;
+
+
+/**
+ * Return the hardware specification table to be used when identifying the
+ * bridge's full hardware configuration.
+ *
+ * @param dev The parent device.
+ * @param child The attached bhndb device.
+ */
+ METHOD const struct bhndb_hw * get_hardware_table {
+	device_t dev;
+	device_t child;
+} DEFAULT bhndb_null_get_hardware_table;

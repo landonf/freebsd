@@ -25,9 +25,9 @@
 DECLARE_CLASS(bcmab_pci_driver);
 
 struct bcmab_pci_softc {
-	struct bhndb_softc	bhndb_softc;	/**< parent softc */
+	struct bhndb_softc	bhndb_softc;	/**< bhndb state */
 	device_t		dev;		/**< bcmab device */
-	device_t		pci_dev;	/**< parent PCI device */
+	device_t		parent_dev;	/**< parent PCI device */
 	bhndb_addr_t		erom_addr;	/**< EROM's base address */
 };
 

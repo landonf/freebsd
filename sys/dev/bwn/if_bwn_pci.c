@@ -38,8 +38,10 @@ __FBSDID("$FreeBSD$");
 #include <dev/pci/pcireg.h>
 #include <dev/pci/pcivar.h>
 
-#include <dev/bhnd/bhnd_ids.h>
 #include <dev/bhnd/bcma/bcmab_pcivar.h>
+
+#include <dev/bhnd/bhnd_ids.h>
+#include <dev/bhnd/bhndb/bhndb_pci_hwdata.h>
 
 #include "bhndb_bus_if.h"
 
@@ -49,7 +51,7 @@ struct bwn_pci_devcfg;
 struct bwn_pci_softc {
 	device_t			 dev;		/**< device */
 	device_t			 bhndb_dev;	/**< bhnd bridge device */
-	const struct bwn_pci_devcfg	*devcfg;	/**< hw config */
+	const struct bwn_pci_devcfg	*devcfg;	/**< bwn device config */
 };
 
 /* PCI device descriptor */
@@ -63,6 +65,7 @@ struct bwn_pci_device {
 struct bwn_pci_devcfg {
 	const devclass_t		*bridge_cls;
 	const struct bhndb_hwcfg	*bridge_hwcfg;
+	const struct bhndb_hw		*bridge_hwtable;
 	const struct bwn_pci_device	*devices;
 };
 
@@ -99,14 +102,16 @@ static const struct bwn_pci_device bcma_devices[] = {
 static const struct bwn_pci_devcfg bwn_pci_devcfgs[] = {
 	/* SIBA devices */
 	{
-		.bridge_cls	= NULL /* TODO &sibab_devclass */,
-		.bridge_hwcfg	= NULL, /* use sibab default */
+		.bridge_cls	= NULL, /* TODO &sibab_devclass */
+		.bridge_hwcfg	= &bhndb_pci_siba_generic_hwcfg,
+		.bridge_hwtable	= bhndb_pci_generic_hw_table,
 		.devices	= siba_devices
 	},
 	/* BCMA devices */
 	{
 		.bridge_cls	= &bcmab_devclass,
-		.bridge_hwcfg	= NULL, /* use bcmab default */
+		.bridge_hwcfg	= &bhndb_pci_bcma_generic_hwcfg,
+		.bridge_hwtable	= bhndb_pci_generic_hw_table,
 		.devices	= bcma_devices
 	},
 	{ NULL, NULL, NULL }
@@ -143,7 +148,7 @@ static int
 bwn_pci_probe(device_t dev)
 {
 	const struct bwn_pci_device	*ident;
-	
+
 	if (bwn_pci_find_devcfg(dev, NULL, &ident))
 		return (ENXIO);
 
@@ -199,6 +204,13 @@ bwn_pci_get_generic_hwcfg(device_t dev, device_t child)
 	return (sc->devcfg->bridge_hwcfg);
 }
 
+static const struct bhndb_hw *
+bwn_pci_get_bhndb_hwtable(device_t dev, device_t child)
+{
+	struct bwn_pci_softc *sc = device_get_softc(dev);
+	return (sc->devcfg->bridge_hwtable);
+}
+
 static device_method_t bwn_pci_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,			bwn_pci_probe),
@@ -213,6 +225,7 @@ static device_method_t bwn_pci_methods[] = {
 
 	/* BHNDB_BUS Interface */
 	DEVMETHOD(bhndb_bus_get_generic_hwcfg,	bwn_pci_get_generic_hwcfg),
+	DEVMETHOD(bhndb_bus_get_hardware_table,	bwn_pci_get_bhndb_hwtable),
 
 	DEVMETHOD_END
 };
@@ -224,5 +237,7 @@ DEFINE_CLASS_0(bwn_pci, bwn_pci_driver, bwn_pci_methods, sizeof(struct bwn_pci_s
 DRIVER_MODULE(bwn_bcmab, bwn_pci, bcmab_pci_driver, bcmab_devclass, NULL, NULL);
 DRIVER_MODULE(bwn_pci, pci, bwn_pci_driver, bwn_pci_devclass, NULL, NULL);
 
+MODULE_DEPEND(bwn_pci, bhndb_pci, 1, 1, 1);
 MODULE_DEPEND(bwn_pci, bcmab_pci, 1, 1, 1);
+
 //MODULE_DEPEND(bwn_pci, sibab_pci, 1, 1, 1);

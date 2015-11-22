@@ -81,7 +81,10 @@ struct bhndb_regwin {
 #define	BHNDB_REGWIN_TABLE_END	{ BHNDB_REGWIN_T_INVALID, 0, 0, { 0, 0 } }
 
 /**
- * bhndb hardware configuration.
+ * Bridge hardware configuration.
+ * 
+ * Provides the bridge's register/address mappings, and the resources
+ * via which those mappings may be accessed.
  */
 struct bhndb_hwcfg {
 	const struct resource_spec	*resource_specs;
@@ -89,7 +92,7 @@ struct bhndb_hwcfg {
 };
 
 /**
- * Hardware configuration table entry.
+ * Hardware specification entry.
  * 
  * Defines a set of match criteria that may be used to determine the
  * register map and resource configuration for a bhndb bridge device. 
@@ -107,7 +110,7 @@ struct bhndb_hw {
  */
 struct bhndb_softc {
 	device_t			 dev;		/**< bridge device */
-	const struct bhndb_hwcfg	*hwcfg;		/**< hardware config */
+	const struct bhndb_hwcfg	*cfg;		/**< hardware config */
 
 	device_t			 parent_dev;	/**< parent device */
 	size_t				 res_count;	/**< parent bus resource count */

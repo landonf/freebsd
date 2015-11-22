@@ -54,8 +54,6 @@ __FBSDID("$FreeBSD$");
 #include "bhndb_bus_if.h"
 #include "bhndb_private.h"
 
-#include "bhndb_pci_hwdata.h"
-
 #define	BHNDB_LOCK_INIT(sc) \
 	mtx_init(&(sc)->sc_mtx, device_get_nameunit((sc)->dev), \
 	    "bhndb_gen resource allocator lock", MTX_DEF)
@@ -187,7 +185,7 @@ static int
 bhndb_find_hwcfg(device_t dev, const struct bhndb_hwcfg **hwcfg)
 {
 	struct bhndb_softc	*sc;
-	const struct bhndb_hw	*hw;
+	const struct bhndb_hw	*hw, *hw_table;
 	struct bhnd_core_info	*cores;
 	u_int			 num_cores;
 	int			 error;
@@ -199,9 +197,9 @@ bhndb_find_hwcfg(device_t dev, const struct bhndb_hwcfg **hwcfg)
 	if ((error = BHNDB_GET_CORE_TABLE(dev, &cores, &num_cores)))
 		return (error);
 	
-	/* Search for the first matching hardware config; we currently
-	 * only include PCI bridge hardware definitions. */
-	for (hw = bhndb_pci_hw; hw->hw_reqs != NULL; hw++) {
+	/* Search for the first matching hardware config. */
+	hw_table = BHNDB_BUS_GET_HARDWARE_TABLE(sc->parent_dev, dev);
+	for (hw = hw_table; hw->hw_reqs != NULL; hw++) {
 		if (bhndb_hw_matches(dev, cores, num_cores, hw)) {
 			device_printf(dev, "%s register map\n",
 			    hw->name);
@@ -228,8 +226,8 @@ init_dw_region_allocator(struct bhndb_softc *sc)
 	u_int				 rnid;
 	int				 error;
 	
-	rws = sc->hwcfg->register_windows;
-	rspecs = sc->hwcfg->resource_specs;
+	rws = sc->cfg->register_windows;
+	rspecs = sc->cfg->resource_specs;
 
 	sc->dw_regions = NULL;
 
@@ -324,7 +322,7 @@ bhndb_gen_attach(device_t dev)
 	BHNDB_LOCK_INIT(sc);
 
 	/* Find our register window configuration */
-	if ((error = bhndb_find_hwcfg(dev, &sc->hwcfg)))
+	if ((error = bhndb_find_hwcfg(dev, &sc->cfg)))
 		return (error);
 
 	/* Set up a resource manager for the device's address space. */
@@ -345,7 +343,7 @@ bhndb_gen_attach(device_t dev)
 
 	/* Determine our bridge resource count from the hardware config. */
 	sc->res_count = 0;
-	for (size_t i = 0; sc->hwcfg->resource_specs[i].type != -1; i++)
+	for (size_t i = 0; sc->cfg->resource_specs[i].type != -1; i++)
 		sc->res_count++;
 
 	/* Allocate space for a non-const copy of our resource_spec
@@ -360,7 +358,7 @@ bhndb_gen_attach(device_t dev)
 
 	/* Initialize and terminate the table */
 	for (size_t i = 0; i < sc->res_count; i++)
-		sc->res_spec[i] = sc->hwcfg->resource_specs[i];
+		sc->res_spec[i] = sc->cfg->resource_specs[i];
 	
 	sc->res_spec[sc->res_count].type = -1;
 

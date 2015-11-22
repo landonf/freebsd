@@ -34,6 +34,9 @@
 
 #include "bhndbvar.h"
 
-extern struct bhndb_hw bhndb_pci_hw[];
+extern struct bhndb_hw bhndb_pci_generic_hw_table[];
+
+extern const struct bhndb_hwcfg bhndb_pci_bcma_generic_hwcfg;
+extern const struct bhndb_hwcfg bhndb_pci_siba_generic_hwcfg;
 
 #endif /* _BHND_BHNDB_PCI_HWDATA_H_ */

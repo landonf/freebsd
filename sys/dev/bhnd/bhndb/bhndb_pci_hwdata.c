@@ -38,6 +38,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/bus.h>
+#include <sys/module.h>
 
 #include <machine/bus.h>
 #include <sys/rman.h>
@@ -72,9 +73,82 @@ static const struct bhndb_hwcfg bhndb_pci_hwcfg_v3;
 #define	_BHNDB_HW_REQ_ARRAY(...) (struct bhnd_core_match[]) { __VA_ARGS__ }
 
 /**
+ * Generic PCI-SIBA bridge configuration usable with all known siba(4)-based
+ * PCI devices; this configuration is adequate for enumerating a bridged
+ * siba(4) bus to determine the full hardware configuration.
+ * 
+ * @par Compatibility
+ * - Compatible with PCI_V0, PCI_V1, PCI_V2, and PCI_V3 devices.
+ * - Compatible with siba(4) bus enumeration. Does not define the ChipCommon
+ *   register window required for bcma(4) bus enumeration.
+ */
+const struct bhndb_hwcfg bhndb_pci_siba_generic_hwcfg = {
+	.resource_specs = (const struct resource_spec[]) {
+		{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
+		{ -1,			0,		0 }
+	},
+
+	.register_windows = (const struct bhndb_regwin[]) {
+		/* bar0+0x0000: configurable backplane window */
+		{
+			.win_type	= BHNDB_REGWIN_T_DYN,
+			.win_offset	= BHNDB_PCI_V1_BAR0_WIN0_OFFSET,
+			.win_size	= BHNDB_PCI_V1_BAR0_WIN0_SIZE,
+			.dyn.cfg_offset = BHNDB_PCI_V1_BAR0_WIN0_CONTROL,
+			.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
+		},
+		BHNDB_REGWIN_TABLE_END
+	},
+};
+
+
+/**
+ * Generic PCI-BCMA bridge configuration usable with all known bcma(4)-based
+ * PCI devices; this configuration is adequate for enumerating a bridged
+ * bcma(4) bus to determine the full hardware configuration.
+ *
+ * @par Compatibility
+ * - Compatible with PCI_V1, PCI_V2, and PCI_V3 devices.
+ * - Compatible with both siba(4) and bcma(4) bus enumeration.
+ */
+const struct bhndb_hwcfg bhndb_pci_bcma_generic_hwcfg = {
+	.resource_specs		= (const struct resource_spec[]) {
+		{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
+		{ -1,			0,		0 }
+	},
+
+	.register_windows	= (const struct bhndb_regwin[]) {
+		/* bar0+0x0000: configurable backplane window */
+		{
+			.win_type	= BHNDB_REGWIN_T_DYN,
+			.win_offset	= BHNDB_PCI_V1_BAR0_WIN0_OFFSET,
+			.win_size	= BHNDB_PCI_V1_BAR0_WIN0_SIZE,
+			.dyn.cfg_offset = BHNDB_PCI_V1_BAR0_WIN0_CONTROL,
+			.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
+		},
+
+		/* bar0+0x3000: chipc core registers */
+		{
+			.win_type	= BHNDB_REGWIN_T_CORE,
+			.win_offset	= BHNDB_PCI_V1_BAR0_CCREGS_OFFSET,
+			.win_size	= BHNDB_PCI_V1_BAR0_CCREGS_SIZE,
+			.core = {
+				.class	= BHND_DEVCLASS_CC,
+				.unit	= 0,
+				.port	= 0,
+				.region	= 0 
+			},
+			.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
+		},
+
+		BHNDB_REGWIN_TABLE_END
+	},
+};
+
+/**
  * Hardware configuration tables for Broadcom HND PCI NICs.
  */
-const struct bhndb_hw bhndb_pci_hw[] = {
+const struct bhndb_hw bhndb_pci_generic_hw_table[] = {
 	/* PCI/V0 WLAN */
 	BHNDB_HW_MATCH("PCI/v0 WLAN", v0,
 		/* PCI Core */
@@ -234,40 +308,6 @@ const struct bhndb_hw bhndb_pci_hw[] = {
 
 	{ NULL, NULL, 0, NULL }
 };
-
-
-
-/**
- * Generic PCI-SIBA bridge configuration usable with all known siba(4)-based
- * PCI devices; this configuration is adequate for enumerating a bridged
- * siba(4) bus to determine the full hardware configuration.
- * 
- * Compatible with PCI_V0, PCI_V1, PCI_V2, and PCI_V3 devices.
- * 
- * While compatible with bcma(4) devices, this configuration does not define a
- * ChipCommon register window required for bcma(4) bus enumeration.
- * 
- * TODO: Lift out into sibab_pci.c/h
- */
-const struct bhndb_hwcfg sibab_pci_hwcfg_generic = {
-	.resource_specs = (const struct resource_spec[]) {
-		{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
-		{ -1,			0,		0 }
-	},
-
-	.register_windows = (const struct bhndb_regwin[]) {
-		/* bar0+0x0000: configurable backplane window */
-		{
-			.win_type	= BHNDB_REGWIN_T_DYN,
-			.win_offset	= BHNDB_PCI_V1_BAR0_WIN0_OFFSET,
-			.win_size	= BHNDB_PCI_V1_BAR0_WIN0_SIZE,
-			.dyn.cfg_offset = BHNDB_PCI_V1_BAR0_WIN0_CONTROL,
-			.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
-		},
-		BHNDB_REGWIN_TABLE_END
-	},
-};
-
 
 /**
  * PCI_V0 hardware configuration.
@@ -504,3 +544,6 @@ static const struct bhndb_hwcfg bhndb_pci_hwcfg_v3 = {
 		BHNDB_REGWIN_TABLE_END
 	},
 };
+
+MODULE_VERSION(bhndb_pci, 1);
+MODULE_DEPEND(bhndb_pci, bhndb, 1, 1, 1);
