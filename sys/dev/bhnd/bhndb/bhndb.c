@@ -107,12 +107,25 @@ struct bhndb_regwin_region {
 	u_int				 rnid;		/**< region identifier */
 };
 
-static bool		 bhndb_hw_matches(struct bhnd_core_info *cores,
-			     u_int num_cores, const struct bhndb_hw *hw);
-static int		 bhndb_find_hwspec(struct bhndb_softc *sc,
-			     const struct bhndb_hw **hw);
-static int		 bhndb_init_dw_region_allocator(struct bhndb_softc *sc);
-static struct rman	*bhndb_get_rman(device_t dev, int type);
+static bool				 bhndb_hw_matches(
+					     struct bhnd_core_info *cores,
+					     u_int num_cores,
+					     const struct bhndb_hw *hw);
+
+static int				 bhndb_find_hwspec(
+					     struct bhndb_softc *sc,
+					     const struct bhndb_hw **hw);
+
+static int				 bhndb_init_dw_region_allocator(
+					     struct bhndb_softc *sc);
+
+static struct rman			*bhndb_get_rman(struct bhndb_softc *sc,
+					     int type);
+
+static struct bhndb_regwin_region 	*bhndb_find_resource_region(
+					     struct bhndb_softc *sc,
+					     device_t child, int type, int rid,
+					     struct resource *r);
 
 /** 
  * Default bhnd implementation of device_probe().
@@ -491,10 +504,8 @@ bhndb_gen_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
 }
 
 static struct rman *
-bhndb_get_rman(device_t dev, int type)
+bhndb_get_rman(struct bhndb_softc *sc, int type)
 {
-	struct bhndb_softc *sc = device_get_softc(dev);
-
 	switch (type) {
 	case SYS_RES_MEMORY:
 		return &sc->mem_rman;
@@ -546,12 +557,14 @@ static struct resource *
 bhndb_alloc_resource(device_t dev, device_t child, int type,
     int *rid, u_long start, u_long end, u_long count, u_int flags)
 {
+	struct bhndb_softc		*sc;
 	struct resource_list_entry	*rle;
 	struct resource			*rv;
 	struct rman			*rm;
 	int				 error;
 	bool				 immed_child, defaults;
 
+	sc = device_get_softc(dev);
 	immed_child = (device_get_parent(child) == dev);
 	defaults = (start == 0ULL && end == ~0ULL);
 	rle = NULL;
@@ -589,7 +602,7 @@ bhndb_alloc_resource(device_t dev, device_t child, int type,
 		return (NULL);
 	
 	/* Fetch the resource manager */
-	rm = bhndb_get_rman(dev, type);
+	rm = bhndb_get_rman(sc, type);
 	if (rm == NULL)
 		return (NULL);
 
@@ -646,23 +659,98 @@ bhndb_release_resource(device_t dev, device_t child, int type, int rid,
 	return (0);
 }
 
+
+/**
+ * Find the region allocated for @p r, if any.
+ */
+static struct bhndb_regwin_region *
+bhndb_find_resource_region(struct bhndb_softc *sc, device_t child, int type,
+    int rid, struct resource *r)
+{
+	struct bhndb_regwin_region	*region, *ret;
+	struct rman			*rm;
+	
+	BHNDB_LOCK_ASSERT(sc);
+
+	if ((rm = bhndb_get_rman(sc, type)) == NULL)
+		return (NULL);
+
+	ret = NULL;
+	for (size_t i = 0; i < sc->dw_count; i++) {
+		region = &sc->dw_regions[i];
+
+		/* Skip free regions */
+		if (BHNDB_DW_REGION_IS_FREE(sc, i))
+			continue;
+
+		/* Match dev/type-rm/rid triplet */
+		if (rman_get_device(region->child_res) != child)
+			continue;
+
+		if (!rman_is_region_manager(region->child_res, rm))
+			continue;
+
+		if (rman_get_rid(region->child_res) != rid)
+			continue;
+
+		/* Matching region found */
+		ret = region;
+		break;
+	}
+
+	return (ret);
+}
+
 static int
 bhndb_adjust_resource(device_t dev, device_t child, int type,
     struct resource *r, u_long start, u_long end)
 {
-	struct rman		*rm;
+	struct bhndb_softc		*sc;
+	struct rman			*rm;
+	struct bhndb_regwin_region	*region;
+	int				 error;
+	
+	sc = device_get_softc(dev);
+	error = 0;
 
-	rm = bhndb_get_rman(dev, type);
+	/* Fetch resource manager */
+	rm = bhndb_get_rman(sc, type);
 	if (rm == NULL)
 		return (ENXIO);
 
 	if (!rman_is_region_manager(r, rm))
-		return (EINVAL);
+		return (ENXIO);
 
-	// TODO - if the resource is active, we have to check whether the new
-	// values fit within its allocated window.
+	/* If active, adjustment is limited by the assigned window. */
+	BHNDB_LOCK(sc);
+	region = NULL;
+	if (rman_get_flags(r) & RF_ACTIVE) {
+		region = bhndb_find_resource_region(sc, child, type,
+			rman_get_rid(r), r);
+		if (region == NULL) {
+			error = ENXIO;
+			goto finish;
+		}
+	}
 
-	return (rman_adjust_resource(r, start, end));
+	/* If active, the base address is fixed, and the end address cannot
+	 * grow past the end of the allocated window. */
+	if (region != NULL) {
+		if (rman_get_start(r) != start  ||
+		    end < start ||
+		    end - start > region->win->win_size)
+		{
+			error = EINVAL;
+			goto finish;
+		}
+	}
+
+finish:
+	BHNDB_UNLOCK(sc);
+	if (!error)
+		error = rman_adjust_resource(r, start, end);
+
+	return (error);
 }
 
 static int
@@ -742,7 +830,7 @@ bhndb_deactivate_resource(device_t dev, device_t child, int type,
 
 	sc = device_get_softc(dev);
 
-	if ((rm = bhndb_get_rman(dev, type)) == NULL)
+	if ((rm = bhndb_get_rman(sc, type)) == NULL)
 		return (EINVAL);
 
 	/* Mark inactive */
@@ -751,27 +839,9 @@ bhndb_deactivate_resource(device_t dev, device_t child, int type,
 
 	/* Free any dynamic window allocation. */
 	BHNDB_LOCK(sc);
-	for (size_t i = 0; i < sc->dw_count; i++) {
-		region = &sc->dw_regions[i];
-
-		/* Skip free regions */
-		if (BHNDB_DW_REGION_IS_FREE(sc, i))
-			continue;
-
-		/* Match dev/type-rm/rid triplet */
-		if (rman_get_device(region->child_res) != child)
-			continue;
-
-		if (!rman_is_region_manager(region->child_res, rm))
-			continue;
-
-		if (rman_get_rid(region->child_res) != rid)
-			continue;
-
-		/* Matching region found */
-		BHNDB_DW_REGION_RELEASE(sc, i);
-		break;
-	}
+	region = bhndb_find_resource_region(sc, child, type, rid, r);
+	if (region != NULL)
+		BHNDB_DW_REGION_RELEASE(sc, region->rnid);
 	BHNDB_UNLOCK(sc);
 
 	return (0);
