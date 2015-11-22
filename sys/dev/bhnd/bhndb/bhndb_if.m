@@ -78,6 +78,12 @@ CODE {
 	{
 		panic("bhndb_set_window_addr unimplemented");
 	}
+
+	static device_t
+	bhndb_null_get_attached_bus(device_t dev)
+	{
+		panic("bhndb_get_attached_bus unimplemented");
+	}
 }
 
 /**
@@ -107,6 +113,18 @@ METHOD int get_core_table {
 	struct bhnd_core_info **cores;
 	u_int *count;
 } DEFAULT bhndb_null_get_core_table;
+
+/**
+ * Return the bhnd-compatible child bus device attached to this bridge.
+ *
+ * @param dev The bridge device.
+ *
+ * @retval device_t The attached bus device.
+ * @retval NULL The bus device was not found.
+ */
+METHOD device_t get_attached_bus {
+	device_t dev;
+} DEFAULT bhndb_null_get_attached_bus;
 
 /**
  * Read a given register window's base address.

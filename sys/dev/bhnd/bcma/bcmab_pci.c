@@ -149,7 +149,8 @@ bcmab_pci_attach(device_t dev)
 		return (error);
 
 	/* Attach bridged bcma(4) bus */
-	if (BUS_ADD_CHILD(dev, 0, devclass_get_name(bcma_devclass), 0) == NULL)
+	sc->bus_dev = BUS_ADD_CHILD(dev, 0, devclass_get_name(bcma_devclass), 0);
+	if (sc->bus_dev == NULL)
 		return (ENXIO);
 
 	/* Call default attach implementation */
@@ -205,6 +206,13 @@ bcmab_pci_set_window_addr(device_t dev, const struct bhndb_regwin *rw,
 	}
 
 	return (0);
+}
+
+static device_t
+bcmab_pci_get_attached_bus(device_t dev)
+{
+	struct bcmab_pci_softc *sc = device_get_softc(sc);
+	return (sc->bus_dev);
 }
 
 static int
@@ -277,6 +285,7 @@ static device_method_t bcmab_pci_methods[] = {
 	/* BHNDB interface */
 	DEVMETHOD(bhndb_get_core_table,		bcmab_pci_get_core_table),
 	DEVMETHOD(bhndb_get_enum_addr,		bcmab_pci_get_enum_addr),
+	DEVMETHOD(bhndb_get_attached_bus,	bcmab_pci_get_attached_bus),
 	DEVMETHOD(bhndb_get_window_addr,	bcmab_pci_get_window_addr),
 	DEVMETHOD(bhndb_set_window_addr,	bcmab_pci_set_window_addr),
 
