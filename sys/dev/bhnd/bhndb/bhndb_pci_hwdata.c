@@ -49,14 +49,11 @@ __FBSDID("$FreeBSD$");
 #include "bhndb_private.h"
 
 #include "bhndb_pcireg.h"
-#include "bhndb_pcivar.h"
 
 static const struct bhndb_hwcfg bhndb_pci_hwcfg_v0;
 static const struct bhndb_hwcfg bhndb_pci_hwcfg_v1;
 static const struct bhndb_hwcfg bhndb_pci_hwcfg_v2;
 static const struct bhndb_hwcfg bhndb_pci_hwcfg_v3;
-
-#define	_BHNDB_HW_REQ_ARRAY(...) (struct bhnd_core_match[]) { __VA_ARGS__ }
 
 /**
  * Define a bhndb_hw match entry.
@@ -71,6 +68,8 @@ static const struct bhndb_hwcfg bhndb_pci_hwcfg_v3;
 	    sizeof(_BHNDB_HW_REQ_ARRAY(__VA_ARGS__)[0])),		\
 	.cfg		= &bhndb_pci_hwcfg_ ## _vers			\
 }
+
+#define	_BHNDB_HW_REQ_ARRAY(...) (struct bhnd_core_match[]) { __VA_ARGS__ }
 
 /**
  * Hardware configuration tables for Broadcom HND PCI NICs.

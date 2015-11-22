@@ -38,6 +38,29 @@ __FBSDID("$FreeBSD$");
 #include "bhndbvar.h"
 
 /**
+ * Attach a BHND bridge device to @p parent.
+ * 
+ * @param parent A parent PCI device.
+ * @param devclass The devclass of the bridge device to be added.
+ * @param[out] bhndb On success, the attached bhndb bridge device.
+ * @param unit The device unit number, or -1 to select the next available unit
+ * number.
+ * 
+ * @retval 0 success
+ * @retval non-zero Failed to attach the bhndb device.
+ */
+int
+bhndb_attach_bridge(device_t parent, devclass_t devclass, device_t *bhndb,
+    int unit)
+{
+	*bhndb = device_add_child(parent, devclass_get_name(devclass), unit);
+	if (*bhndb == NULL)
+		return (ENXIO);
+
+	return (0);
+}
+
+/**
  * Return the count of @p type register windows in @p table.
  * 
  * @param table The table to search.

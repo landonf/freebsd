@@ -54,7 +54,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/cores/bhnd_chipcreg.h>
 
 #include <dev/bhnd/bhndb/bhndb_pcireg.h>
-#include <dev/bhnd/bhndb/bhndb_pcivar.h>
+#include <dev/bhnd/bhndb/bhndbvar.h>
 
 #include "bhndb_bus_if.h"
 #include "bhndb_if.h"
@@ -171,11 +171,26 @@ bcmab_find_erom_addr(struct bcmab_pci_softc *sc, bhndb_addr_t *erom_addr)
 
 static int
 bcmab_pci_probe(device_t dev)
-{
-	int error;
+{	
+	device_t	parent;
+	devclass_t	parent_bus;
+	devclass_t	pci;
+	int		error;
 
-	/* Call core probe */
-	if ((error = bhndb_pci_probe(dev)) > 0)
+	/* Our parent must be a PCI device. */
+	pci = devclass_find("pci");
+	parent = device_get_parent(dev);
+	parent_bus = device_get_devclass(device_get_parent(parent));
+
+	if (parent_bus != pci) {
+		device_printf(dev, "attached to non-PCI parent %s\n",
+		    device_get_nameunit(parent));
+		return (ENXIO);
+	}
+	
+
+	/* Call default probe implementation */
+	if ((error = bhndb_gen_probe(dev)) > 0)
 		return (error);
 	
 	device_set_desc(dev, "PCI-BCMA Bridge");
@@ -201,15 +216,15 @@ bcmab_pci_attach(device_t dev)
 	if (BUS_ADD_CHILD(dev, 0, devclass_get_name(bcma_devclass), 0) == NULL)
 		return (ENXIO);
 
-	/* Call core attach */
-	return bhndb_pci_attach(dev);
+	/* Call default attach implementation */
+	return bhndb_gen_attach(dev);
 }
 
 static int
 bcmab_pci_detach(device_t dev)
 {
-	/* Call core detach */
-	return bhndb_pci_detach(dev);
+	/* Call default detach implementation */
+	return bhndb_gen_detach(dev);
 }
 
 static bhndb_addr_t
@@ -333,8 +348,8 @@ static device_method_t bcmab_pci_methods[] = {
 };
 
 DEFINE_CLASS_1(bcmab, bcmab_pci_driver, bcmab_pci_methods,
-    sizeof(struct bcmab_pci_softc), bhndb_pci_driver);
-
+    sizeof(struct bcmab_pci_softc), bhndb_driver);
+// 
 MODULE_VERSION(bcmab_pci, 1);
 MODULE_DEPEND(bcmab_pci, pci, 1, 1, 1);
 MODULE_DEPEND(bcmab_pci, bhndb, 1, 1, 1);

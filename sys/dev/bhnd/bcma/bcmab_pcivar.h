@@ -20,12 +20,12 @@
 #define _BHND_BCMA_BCMAB_PCIVAR_H_
 
 #include <dev/bhnd/bcma/bcmavar.h>
-#include <dev/bhnd/bhndb/bhndb_pcivar.h>
+#include <dev/bhnd/bhndb/bhndbvar.h>
 
 DECLARE_CLASS(bcmab_pci_driver);
 
 struct bcmab_pci_softc {
-	struct bhndb_pci_softc	bhndb_softc;	/**< parent softc */
+	struct bhndb_softc	bhndb_softc;	/**< parent softc */
 	device_t		dev;		/**< bcmab device */
 	device_t		pci_dev;	/**< parent PCI device */
 	bhndb_addr_t		erom_addr;	/**< EROM's base address */
