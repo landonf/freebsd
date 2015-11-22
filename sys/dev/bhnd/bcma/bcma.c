@@ -174,6 +174,34 @@ bcma_get_port_rid(device_t dev, device_t child, u_int port_num, u_int
 	return -1;
 }
 
+static int
+bcma_decode_port_rid(device_t dev, device_t child, int rid,
+    u_int *port_num, u_int *region_num, u_long *region_addr,
+    u_long *region_size)
+{
+	struct bcma_devinfo	*dinfo;
+	struct bcma_map		*map;
+	struct bcma_sport	*port;
+	
+	dinfo = device_get_ivars(child);
+
+	STAILQ_FOREACH(port, &dinfo->cfg.dports, sp_link) {
+		STAILQ_FOREACH(map, &port->sp_maps, m_link) {
+			if (map->m_rid != rid)
+				continue;
+
+			/* Found */
+			*port_num = port->sp_num;
+			*region_num = map->m_region_num;
+			*region_addr = map->m_base;
+			*region_size = map->m_size;
+			return (0);
+		}
+	}
+
+	return (ENOENT);
+}
+
 /**
  * Register all MMIO region descriptors for the given slave port.
  * 
@@ -573,6 +601,7 @@ static device_method_t bcma_methods[] = {
 
 	/* BHND interface */
 	DEVMETHOD(bhnd_get_port_rid,		bcma_get_port_rid),
+	DEVMETHOD(bhnd_decode_port_rid,		bcma_decode_port_rid),
 	DEVMETHOD(bhnd_alloc_resource,		bhnd_generic_alloc_bhnd_resource),
 	DEVMETHOD(bhnd_release_resource,	bhnd_generic_release_bhnd_resource),
 	DEVMETHOD(bhnd_activate_resource,	bhnd_generic_activate_bhnd_resource),

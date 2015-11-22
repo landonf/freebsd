@@ -45,6 +45,14 @@ CODE {
 	{
 		return (-1);
 	}
+	
+	static int
+	bhnd_null_decode_port_rid(device_t dev, device_t child, int rid,
+	    u_int *port_num, u_int *region_num, u_long *region_addr,
+	    u_long *region_size)
+	{
+		return (ENOENT);
+	}
 }
 
 /**
@@ -107,10 +115,10 @@ METHOD int deactivate_resource {
 } DEFAULT bhnd_generic_deactivate_bhnd_resource;
 
 /**
- * Return the resource-ID for a port / region pair
+ * Return the resource-ID for a port /region pair attached to @p child.
  *
- * @param dev The parent device of @p child.
- * @param child The child being queried.
+ * @param dev The bus device.
+ * @param child The bhnd child.
  * @param port_num The index of the child interconnect port.
  * @param region_num The index of the port-mapped address region.
  *
@@ -122,3 +130,28 @@ METHOD int get_port_rid {
 	u_int port_num;
 	u_int region_num;
 } DEFAULT bhnd_null_get_port_rid;
+
+
+/**
+ * Decode a port / region pair on @p child from @p rid.
+ *
+ * @param dev The bus device.
+ * @param child The bhnd child.
+ * @param rid A resource identifier.
+ * @param[out] port_num The index of the child interconnect port.
+ * @param[out] region_num The index of the port-mapped address region.
+ * @param[out] region_addr The base address of the port-mapped region.
+ * @param[out] region_size The size of the port-mapped region.
+ *
+ * @retval 0 success
+ * @retval non-zero No matching port/region found.
+ */
+METHOD int decode_port_rid {
+	device_t dev;
+	device_t child;
+	int rid;
+	u_int *port_num;
+	u_int *region_num;
+	u_long *region_addr;
+	u_long *region_size;
+} DEFAULT bhnd_null_decode_port_rid;
