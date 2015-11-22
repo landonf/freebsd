@@ -45,6 +45,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/resource.h>
 #include <machine/stdarg.h>
 #include <vm/vm.h>
+#include <vm/vm_param.h>
 #include <vm/pmap.h>
 
 #include "ioat.h"
@@ -120,6 +121,18 @@ test_transaction *ioat_test_transaction_create(unsigned num_buffers,
 	return (tx);
 }
 
+static void
+dump_hex(void *p, size_t chunks)
+{
+	size_t i, j;
+
+	for (i = 0; i < chunks; i++) {
+		for (j = 0; j < 8; j++)
+			printf("%08x ", ((uint32_t *)p)[i * 8 + j]);
+		printf("\n");
+	}
+}
+
 static bool
 ioat_compare_ok(struct test_transaction *tx)
 {
@@ -140,18 +153,26 @@ ioat_compare_ok(struct test_transaction *tx)
 				    != 0)
 					return (false);
 			}
-		} else if (test->testkind == IOAT_TEST_DMA)
+		} else if (test->testkind == IOAT_TEST_DMA) {
 			if (memcmp(src, dst, tx->length) != 0)
 				return (false);
+		} else if (test->testkind == IOAT_TEST_RAW_DMA) {
+			if (test->raw_write)
+				dst = test->raw_vtarget;
+			dump_hex(dst, tx->length / 32);
+		}
 	}
 	return (true);
 }
 
 static void
-ioat_dma_test_callback(void *arg)
+ioat_dma_test_callback(void *arg, int error)
 {
 	struct test_transaction *tx;
 	struct ioat_test *test;
+
+	if (error != 0)
+		ioat_test_log(0, "%s: Got error: %d\n", __func__, error);
 
 	tx = arg;
 	test = tx->test;
@@ -242,6 +263,13 @@ ioat_test_submit_1_tx(struct ioat_test *test, bus_dmaengine_t dma)
 		src = vtophys((vm_offset_t)tx->buf[2*i]);
 		dest = vtophys((vm_offset_t)tx->buf[2*i+1]);
 
+		if (test->testkind == IOAT_TEST_RAW_DMA) {
+			if (test->raw_write)
+				dest = test->raw_target;
+			else
+				src = test->raw_target;
+		}
+
 		if (i == tx->depth - 1) {
 			cb = ioat_dma_test_callback;
 			flags = DMA_INT_EN;
@@ -250,7 +278,8 @@ ioat_test_submit_1_tx(struct ioat_test *test, bus_dmaengine_t dma)
 			flags = 0;
 		}
 
-		if (test->testkind == IOAT_TEST_DMA)
+		if (test->testkind == IOAT_TEST_DMA ||
+		    test->testkind == IOAT_TEST_RAW_DMA)
 			desc = ioat_copy(dma, dest, src, tx->length, cb, tx,
 			    flags);
 		else if (test->testkind == IOAT_TEST_FILL) {
@@ -258,12 +287,23 @@ ioat_test_submit_1_tx(struct ioat_test *test, bus_dmaengine_t dma)
 			desc = ioat_blockfill(dma, dest, fillpattern,
 			    tx->length, cb, tx, flags);
 		}
-
 		if (desc == NULL)
-			panic("Failed to allocate a ring slot "
-			    "-- this shouldn't happen!");
+			break;
 	}
 	ioat_release(dma);
+
+	/*
+	 * We couldn't issue an IO -- either the device is being detached or
+	 * the HW reset.  Essentially spin until the device comes back up or
+	 * our timer expires.
+	 */
+	if (desc == NULL && tx->depth > 0) {
+		atomic_add_32(&test->status[IOAT_TEST_NO_DMA_ENGINE], tx->depth);
+		IT_LOCK();
+		TAILQ_REMOVE(&test->pend_q, tx, entry);
+		TAILQ_INSERT_HEAD(&test->free_q, tx, entry);
+		IT_UNLOCK();
+	}
 }
 
 static void
@@ -319,6 +359,25 @@ ioat_dma_test(void *arg)
 		return;
 	}
 
+	if (test->testkind == IOAT_TEST_FILL &&
+	    (to_ioat_softc(dmaengine)->capabilities & IOAT_DMACAP_BFILL) == 0)
+	{
+		ioat_test_log(0,
+		    "Hardware doesn't support block fill, aborting test\n");
+		test->status[IOAT_TEST_INVALID_INPUT]++;
+		goto out;
+	}
+
+	if (test->testkind == IOAT_TEST_RAW_DMA) {
+		if (test->raw_is_virtual) {
+			test->raw_vtarget = (void *)test->raw_target;
+			test->raw_target = vtophys(test->raw_vtarget);
+		} else {
+			test->raw_vtarget = pmap_mapdev(test->raw_target,
+			    test->buffer_size);
+		}
+	}
+
 	index = g_thread_index++;
 	TAILQ_INIT(&test->free_q);
 	TAILQ_INIT(&test->pend_q);
@@ -364,6 +423,9 @@ ioat_dma_test(void *arg)
 
 	ioat_test_release_memory(test);
 out:
+	if (test->testkind == IOAT_TEST_RAW_DMA && !test->raw_is_virtual)
+		pmap_unmapdev((vm_offset_t)test->raw_vtarget,
+		    test->buffer_size);
 	ioat_put_dmaengine(dmaengine);
 }
 

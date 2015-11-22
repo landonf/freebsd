@@ -343,8 +343,6 @@ struct ioat_descriptor {
 		struct ioat_raw_hw_descriptor		*raw;
 	} u;
 	uint32_t		id;
-	uint32_t		length;
-	enum validate_flags	*validate_result;
 	bus_addr_t		hw_desc_bus_addr;
 };
 
@@ -365,6 +363,7 @@ struct ioat_softc {
 })
 
 	int			version;
+	int			chan_idx;
 
 	struct mtx		submit_lock;
 	device_t		device;
@@ -373,6 +372,7 @@ struct ioat_softc {
 	int			pci_resource_id;
 	struct resource		*pci_resource;
 	uint32_t		max_xfer_size;
+	uint32_t		capabilities;
 
 	struct resource		*res;
 	int			rid;
@@ -388,6 +388,7 @@ struct ioat_softc {
 
 	struct callout		timer;
 
+	boolean_t		quiescing;
 	boolean_t		is_resize_pending;
 	boolean_t		is_completion_pending;
 	boolean_t		is_reset_pending;

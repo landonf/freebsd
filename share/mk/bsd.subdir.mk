@@ -49,7 +49,7 @@ STANDALONE_SUBDIR_TARGETS?= obj checkdpadd clean cleandepend cleandir \
 .include <bsd.init.mk>
 
 .if !defined(NEED_SUBDIR)
-.if ${.MAKE.LEVEL} == 0 && ${MK_META_MODE} == "yes" && !empty(SUBDIR) && !(make(clean*) || make(destroy*))
+.if ${.MAKE.LEVEL} == 0 && ${MK_DIRDEPS_BUILD} == "yes" && !empty(SUBDIR) && !(make(clean*) || make(destroy*))
 .include <meta.subdir.mk>
 # ignore this
 _SUBDIR:
@@ -83,7 +83,7 @@ _SUBDIR_SH=	\
 _SUBDIR: .USEBEFORE
 .if defined(SUBDIR) && !empty(SUBDIR) && !defined(NO_SUBDIR)
 	@${_+_}target=${.TARGET:S,realinstall,install,}; \
-	    for dir in ${SUBDIR:N.WAIT}; do ${_SUBDIR_SH}; done
+	    for dir in ${SUBDIR:N.WAIT}; do ( ${_SUBDIR_SH} ); done
 .endif
 
 ${SUBDIR:N.WAIT}: .PHONY .MAKE

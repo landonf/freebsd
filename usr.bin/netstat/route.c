@@ -385,7 +385,11 @@ p_rtentry_sysctl(const char *name, struct rt_msghdr *rtm)
 			strlcpy(prettyname, "---", sizeof(prettyname));
 	}
 
-	xo_emit("{t:interface-name/%*.*s}", wid_if, wid_if, prettyname);
+	if (Wflag)
+		xo_emit("{t:interface-name/%*s}", wid_if, prettyname);
+	else
+		xo_emit("{t:interface-name/%*.*s}", wid_if, wid_if,
+		    prettyname);
 	if (rtm->rtm_rmx.rmx_expire) {
 		time_t expire_time;
 
@@ -637,14 +641,13 @@ netname4(in_addr_t in, in_addr_t mask)
 			trimdomain(cp, strlen(cp));
 		}
 	}
-	inet_ntop(AF_INET, &in, nline, sizeof(line));
-	if (cp != NULL) {
-		if (strcpy(cp, nline) != 0)
-			return (line);
+	if (cp != NULL)
 		strlcpy(line, cp, sizeof(line));
-	} else
+	else {
+		inet_ntop(AF_INET, &in, nline, sizeof(nline));
 		strlcpy(line, nline, sizeof(line));
-	domask(line + strlen(line), i, ntohl(mask));
+		domask(line + strlen(line), i, ntohl(mask));
+	}
 
 	return (line);
 }
@@ -688,9 +691,10 @@ static const char *
 netname6(struct sockaddr_in6 *sa6, struct sockaddr_in6 *mask)
 {
 	static char line[NI_MAXHOST + sizeof("/xxx") - 1];
+	struct sockaddr_in6 addr;
 	char nline[NI_MAXHOST];
 	u_char *p, *lim;
-	int masklen, illegal = 0;
+	int masklen, illegal = 0, i;
 
 	if (mask) {
 		p = (u_char *)&mask->sin6_addr;
@@ -703,6 +707,12 @@ netname6(struct sockaddr_in6 *sa6, struct sockaddr_in6 *mask)
 		}
 		if (illegal)
 			xo_error("illegal prefixlen\n");
+
+		memcpy(&addr, sa6, sizeof(addr));
+		for (i = 0; i < 16; ++i)
+			addr.sin6_addr.s6_addr[i] &=
+			    mask->sin6_addr.s6_addr[i];
+		sa6 = &addr;
 	}
 	else
 		masklen = 128;

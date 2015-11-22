@@ -78,6 +78,7 @@ SUBDIR=	alias \
 	lesskey \
 	limits \
 	locale \
+	localedef \
 	lock \
 	lockf \
 	logger \

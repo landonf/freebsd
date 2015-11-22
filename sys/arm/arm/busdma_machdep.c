@@ -224,9 +224,6 @@ static void free_bounce_page(bus_dma_tag_t dmat, struct bounce_page *bpage);
 static void bus_dmamap_sync_sl(struct sync_list *sl, bus_dmasync_op_t op,
     int bufaligned);
 
-/* Default tag, as most drivers provide no parent tag. */
-bus_dma_tag_t arm_root_dma_tag;
-
 /*
  * ----------------------------------------------------------------------------
  * Begin block of code useful to transplant to other implementations.
@@ -406,8 +403,6 @@ bus_dma_tag_create(bus_dma_tag_t parent, bus_size_t alignment,
 	int error = 0;
 	/* Return a NULL tag on failure */
 	*dmat = NULL;
-	if (!parent)
-		parent = arm_root_dma_tag;
 
 	newtag = (bus_dma_tag_t)malloc(sizeof(*newtag), M_BUSDMA, M_NOWAIT);
 	if (newtag == NULL) {
@@ -574,8 +569,8 @@ allocate_bz_and_pages(bus_dma_tag_t dmat, bus_dmamap_t map)
 		 * basis up to a sane limit.
 		 */
 		maxpages = MAX_BPAGES;
-		if ((dmat->flags & BUS_DMA_MIN_ALLOC_COMP) == 0
-		 || (bz->map_count > 0 && bz->total_bpages < maxpages)) {
+		if ((dmat->flags & BUS_DMA_MIN_ALLOC_COMP) == 0 &&
+		    bz->map_count > 0 && bz->total_bpages < maxpages) {
 			int pages;
 
 			pages = MAX(atop(dmat->maxsize), 1);

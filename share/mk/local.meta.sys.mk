@@ -2,7 +2,7 @@
 
 # local configuration specific to meta mode
 # XXX some of this should be in meta.sys.mk
-# we assume that MK_META_MODE=yes
+# we assume that MK_DIRDEPS_BUILD=yes
 
 # we need this until there is an alternative
 MK_INSTALL_AS_USER= yes
@@ -54,7 +54,7 @@ BOOT_MACHINE_DIR.amd64 = boot/i386
 MACHINE_ARCH.host = ${_HOST_ARCH}
 
 # the list of machines we support
-ALL_MACHINE_LIST?= amd64 arm arm64 i386 ia64 mips pc98 powerpc sparc64
+ALL_MACHINE_LIST?= amd64 arm arm64 i386 mips pc98 powerpc sparc64
 .for m in ${ALL_MACHINE_LIST:O:u}
 MACHINE_ARCH_LIST.$m?= ${TARGET_ARCHES_${m}:U$m}
 MACHINE_ARCH.$m?= ${MACHINE_ARCH_LIST.$m:[1]}
@@ -186,12 +186,6 @@ UPDATE_DEPENDFILE= NO
 # define the list of places that contain files we are responsible for
 .MAKE.META.BAILIWICK = ${SB} ${OBJROOT} ${STAGE_ROOT}
 
-.if defined(CCACHE_DIR)
-CCACHE_DIR := ${CCACHE_DIR:tA}
-.MAKE.META.IGNORE_PATHS += ${CCACHE_DIR}
-.export CCACHE_DIR
-.endif
-
 CSU_DIR.${MACHINE_ARCH} ?= csu/${MACHINE_ARCH}
 CSU_DIR := ${CSU_DIR.${MACHINE_ARCH}}
 
@@ -222,6 +216,15 @@ CPP?=		${HOST_CPP}
 .export HOST_CC CC HOST_CXX CXX HOST_CPP CPP
 .endif
 .endif
+.endif
+
+.if ${MACHINE} == "host"
+HOST_CC?=	/usr/bin/cc
+CC=		${HOST_CC}
+HOST_CXX?=	/usr/bin/c++
+CXX=		${HOST_CXX}
+HOST_CPP?=	/usr/bin/cpp
+CPP=		${HOST_CPP}
 .endif
 
 .if ${MACHINE:Nhost:Ncommon} != "" && ${MACHINE} != ${HOST_MACHINE}

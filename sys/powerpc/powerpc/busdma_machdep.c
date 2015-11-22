@@ -423,8 +423,8 @@ bus_dmamap_create(bus_dma_tag_t dmat, int flags, bus_dmamap_t *mapp)
 			maxpages = MAX_BPAGES;
 		else
 			maxpages = MIN(MAX_BPAGES, Maxmem -atop(dmat->lowaddr));
-		if ((dmat->flags & BUS_DMA_MIN_ALLOC_COMP) == 0
-		 || (bz->map_count > 0 && bz->total_bpages < maxpages)) {
+		if ((dmat->flags & BUS_DMA_MIN_ALLOC_COMP) == 0 &&
+		    bz->map_count > 0 && bz->total_bpages < maxpages) {
 			int pages;
 
 			pages = MAX(atop(dmat->maxsize), 1);
@@ -514,14 +514,14 @@ bus_dmamem_alloc(bus_dma_tag_t dmat, void** vaddr, int flags,
 
 	/* 
 	 * XXX:
-	 * (dmat->alignment < dmat->maxsize) is just a quick hack; the exact
+	 * (dmat->alignment <= dmat->maxsize) is just a quick hack; the exact
 	 * alignment guarantees of malloc need to be nailed down, and the
 	 * code below should be rewritten to take that into account.
 	 *
 	 * In the meantime, we'll warn the user if malloc gets it wrong.
 	 */
 	if ((dmat->maxsize <= PAGE_SIZE) &&
-	   (dmat->alignment < dmat->maxsize) &&
+	   (dmat->alignment <= dmat->maxsize) &&
 	    dmat->lowaddr >= ptoa((vm_paddr_t)Maxmem) &&
 	    attr == VM_MEMATTR_DEFAULT) {
 		*vaddr = malloc(dmat->maxsize, M_DEVBUF, mflags);
