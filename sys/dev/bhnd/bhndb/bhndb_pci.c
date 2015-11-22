@@ -56,21 +56,14 @@ __FBSDID("$FreeBSD$");
 #include "bhndb_pcivar.h"
 #include "bhndb_private.h"
 
-#define	BHNDB_RES_LOCK_INIT(sc) \
-	mtx_init(&(sc)->res_mtx, device_get_nameunit((sc)->dev), \
-	    "bhndb_pci resource allocator lock", MTX_DEF)
-#define	BHNDB_RES_LOCK(sc)		mtx_lock(&(sc)->res_mtx)
-#define	BHNDB_RES_UNLOCK(sc)		mtx_unlock(&(sc)->res_mtx)
-#define	BHNDB_RES_LOCK_ASSERT(sc)	mtx_assert(&(sc)->res_mtx, MA_OWNED)
-#define	BHNDB_RES_LOCK_DESTROY(sc)	mtx_destroy(&(sc)->res_mtx)
-
 /**
  * A register window managed by our window allocator. 
  */
 struct bhndb_pci_regwin_region {
-	uintptr_t			 vaddr;	/**< virtual address of the window */
-	const struct bhndb_regwin	*win;	/**< window definition */
-	struct resource			*res;	/**< enclosing resource */
+	uintptr_t			 vaddr;		/**< virtual address of the window */
+	const struct bhndb_regwin	*win;		/**< window definition */
+	struct resource			*res;		/**< enclosing resource */
+	struct resource			*child_res;	/**< associated child resource, or NULL */
 };
 
 /** bhndb implementation of device_probe(). */
@@ -207,7 +200,7 @@ init_dw_region_allocator(struct bhndb_pci_softc *sc)
 	/* Fetch and verify the dynamic regwin count does not exceed
 	 * what is representable via our bitfield freelist. */
 	sc->dw_count = bhndb_regwin_count(rws, BHNDB_REGWIN_T_DYN);
-	if (sc->dw_count >= (8 * sizeof(sc->dw_free_list))) {
+	if (sc->dw_count >= (8 * sizeof(sc->dw_freelist))) {
 		device_printf(sc->dev, "max dynamic regwin count exceeded\n");
 		return (ENOMEM);
 	}
@@ -220,7 +213,7 @@ init_dw_region_allocator(struct bhndb_pci_softc *sc)
 	}
 
 	/* Initialize the region table and freelist. */
-	sc->dw_free_list = 0;
+	sc->dw_freelist = 0;
 	region_idx = 0;
 	for (win = rws; win->win_type != BHNDB_REGWIN_T_INVALID; win++)
 	{
@@ -233,6 +226,7 @@ init_dw_region_allocator(struct bhndb_pci_softc *sc)
 		region = &sc->dw_regions[region_idx];
 		region->win = win;
 		region->res = NULL;
+		region->child_res = NULL;
 
 		/* Find the corresponding resource. */
 		for (u_int rsi = 0; rspecs[rsi].type != -1; rsi++) {			
@@ -261,7 +255,7 @@ init_dw_region_allocator(struct bhndb_pci_softc *sc)
 		region->vaddr += win->win_offset;
 
 		/* Add to freelist */
-		sc->dw_free_list |= (1 << region_idx);
+		sc->dw_freelist |= (1 << region_idx);
 
 		region_idx++;
 	}
@@ -288,12 +282,11 @@ bhndb_pci_attach(device_t dev)
 	sc->dev = dev;
 	sc->pci_dev = device_get_parent(dev);
 
+	BHNDB_RES_LOCK_INIT(sc);
+
 	/* Find our register window configuration */
 	if ((error = bhndb_pci_find_hwcfg(dev, &sc->hwcfg)))
 		return (error);
-
-	/* Initialize locking */
-	BHNDB_RES_LOCK_INIT(sc);
 
 	/* Set up a resource manager for the device's address space. */
 	sc->mem_rman.rm_start = 0;
@@ -613,21 +606,20 @@ bhndb_pci_activate_resource(device_t dev, device_t child, int type, int rid,
 	struct bhndb_pci_softc		*sc;
 	struct bhndb_pci_regwin_region	*region;
 	uint32_t			 freelist;
-	int				 rz;
+	int				 region_idx;
 	int				 error;
 
 	sc = device_get_softc(dev);
-	
-	BHNDB_RES_LOCK(sc);
 
 	/*
 	 * Find the first free window of sufficient size.
 	 * 
-	 * On all currently known hardware, dynamic windows are 4K, and 
+	 * On all currently known hardware, dynamic windows are 4K and 
 	 * register blocks are 4K or smaller; this check should always
 	 * succeed.
 	 */
-	freelist = sc->dw_free_list;
+	BHNDB_RES_LOCK(sc);
+	freelist = sc->dw_freelist;
 	do {
 		/* No windows available? */
 		if (freelist == 0) {
@@ -636,17 +628,17 @@ bhndb_pci_activate_resource(device_t dev, device_t child, int type, int rid,
 		}
 		
 		/* Find the next free window */
-		rz = __builtin_ctz(freelist);
-		freelist &= ~(1 << rz);
+		region_idx = __builtin_ctz(freelist);
+		freelist &= ~(1 << region_idx);
 
-		region = &sc->dw_regions[rz];
+		region = &sc->dw_regions[region_idx];
 
 	} while (region->win->win_size < rman_get_size(r));
 
-	/* Update shared free list */
-	sc->dw_free_list &= ~(1 << rz);
-
+	/* Mark region as allocated */
+	BHNDB_DWR_RESERVE(sc, region_idx, r);
 	BHNDB_RES_UNLOCK(sc);
+
 
 	/* Set the target window */
 	error = BHNDB_SET_WINDOW_ADDR(dev, region->win, rman_get_start(r));
@@ -667,7 +659,7 @@ bhndb_pci_activate_resource(device_t dev, device_t child, int type, int rid,
 failed:
 	/* Release our region allocation. */
 	BHNDB_RES_LOCK(sc);
-	sc->dw_free_list |= (1 << rz);
+	BHNDB_DWR_RELEASE(sc, region_idx);
 	BHNDB_RES_UNLOCK(sc);
 
 	return (error);
@@ -677,7 +669,45 @@ static int
 bhndb_pci_deactivate_resource(device_t dev, device_t child, int type,
     int rid, struct resource *r)
 {
-	// TODO - window resource deactivations
+	struct bhndb_pci_regwin_region	*region;
+	struct bhndb_pci_softc		*sc;
+	struct rman			*rm;
+	int				 error;
+
+	sc = device_get_softc(dev);
+
+	if ((rm = bhndb_pci_get_rman(dev, type)) == NULL)
+		return (EINVAL);
+
+	/* Mark inactive */
+	if ((error = rman_deactivate_resource(r)))
+		return (error);
+
+	/* Free any dynamic window allocation. */
+	BHNDB_RES_LOCK(sc);
+	for (size_t i = 0; i < sc->dw_count; i++) {
+		region = &sc->dw_regions[i];
+
+		/* Skip free regions */
+		if (BHNDB_DWR_IS_FREE(sc, i))
+			continue;
+
+		/* Match dev/type-rm/rid triplet */
+		if (rman_get_device(region->child_res) != child)
+			continue;
+
+		if (!rman_is_region_manager(region->child_res, rm))
+			continue;
+
+		if (rman_get_rid(region->child_res) != rid)
+			continue;
+
+		/* Matching region found */
+		BHNDB_DWR_RELEASE(sc, i);
+		break;
+	}
+	BHNDB_RES_UNLOCK(sc);
+
 	return (0);
 }
 

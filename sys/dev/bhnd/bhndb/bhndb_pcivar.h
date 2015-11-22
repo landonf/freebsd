@@ -52,7 +52,7 @@ struct bhndb_pci_softc {
 	
 	struct bhndb_pci_regwin_region	*dw_regions;	/**< dynamic window regions */
 	size_t				 dw_count;	/**< number of dynamic window regions. */
-	uint32_t			 dw_free_list;	/**< dw_regions free list */
+	uint32_t			 dw_freelist;	/**< dw_regions free list */
 };
 
 /**
@@ -72,5 +72,36 @@ int	bhndb_pci_read_ivar(device_t dev, device_t child, int index,
 	    uintptr_t *result);
 int	bhndb_pci_write_ivar(device_t dev, device_t child, int index,
 	    uintptr_t value);
+
+#define	BHNDB_RES_LOCK_INIT(sc) \
+	mtx_init(&(sc)->res_mtx, device_get_nameunit((sc)->dev), \
+	    "bhndb_pci resource allocator lock", MTX_DEF)
+#define	BHNDB_RES_LOCK(sc)		mtx_lock(&(sc)->res_mtx)
+#define	BHNDB_RES_UNLOCK(sc)		mtx_unlock(&(sc)->res_mtx)
+#define	BHNDB_RES_LOCK_ASSERT(sc)	mtx_assert(&(sc)->res_mtx, MA_OWNED)
+#define	BHNDB_RES_LOCK_DESTROY(sc)	mtx_destroy(&(sc)->res_mtx)
+
+/* Mark a dw_region as free */
+#define	BHNDB_DWR_RELEASE(sc, idx)	do {			\
+	KASSERT((sc)->dw_regions[idx].child_res != NULL &&	\
+	    !BHNDB_DWR_IS_FREE((sc), (idx)),			\
+	    (("dw_region double free")));			\
+								\
+	(sc)->dw_freelist |= (1 << (idx));			\
+	(sc)->dw_regions[idx].child_res = NULL;			\
+} while(0)
+
+/* Mark a dw_region as reserved */
+#define	BHNDB_DWR_RESERVE(sc, idx, cr)	do {			\
+	KASSERT((sc)->dw_regions[idx].child_res == NULL &&	\
+	    BHNDB_DWR_IS_FREE((sc), (idx)),			\
+	    (("dw_region is busy")));				\
+								\
+	(sc)->dw_freelist &= ~(1 << (idx));			\
+	(sc)->dw_regions[idx].child_res = cr;			\
+} while(0)
+
+/* Return non-zero value if the DWR region is free */
+#define	BHNDB_DWR_IS_FREE(sc, idx)	((sc)->dw_freelist & (1 << (idx)))
 
 #endif /* _BHND_BHND_PCIVAR_H_ */
