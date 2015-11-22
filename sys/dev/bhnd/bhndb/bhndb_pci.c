@@ -201,7 +201,7 @@ init_dw_region_allocator(struct bhndb_pci_softc *sc)
 	sc->dw_regions = NULL;
 
 	/* Fetch and verify the dynamic regwin count does not exceed
-	 * what is representable via our bitfield freelist. */
+	 * what is representable via our freelist bitmask. */
 	sc->dw_count = bhndb_regwin_count(rws, BHNDB_REGWIN_T_DYN);
 	if (sc->dw_count >= (8 * sizeof(sc->dw_freelist))) {
 		device_printf(sc->dev, "max dynamic regwin count exceeded\n");
