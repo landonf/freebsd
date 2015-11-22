@@ -575,7 +575,7 @@ bhndb_pci_release_resource(device_t dev, device_t child, int type, int rid,
 {
 	int error;
 
-	/* Release any reserved bridged resources */
+	/* Deactivate resources */
 	if (rman_get_flags(r) & RF_ACTIVE) {
 		error = BUS_DEACTIVATE_RESOURCE(dev, child, type, rid, r);
 		if (error)
@@ -592,8 +592,18 @@ static int
 bhndb_pci_adjust_resource(device_t dev, device_t child, int type,
     struct resource *r, u_long start, u_long end)
 {
-	// TODO
-	return (EINVAL);
+	struct rman		*rm;
+
+	rm = bhndb_pci_get_rman(dev, type);
+	if (rm == NULL) {
+		return (bus_generic_adjust_resource(dev, child, type, r, start,
+		    end));
+	}
+
+	// TODO - if the resource is active, we have to check whether the new
+	// values fit within its allocated window.
+
+	return (rman_adjust_resource(r, start, end));
 }
 
 static int
@@ -668,9 +678,32 @@ static struct bhnd_resource *
 bhndb_pci_alloc_bhnd_resource(device_t dev, device_t child, int type,
      int *rid, u_long start, u_long end, u_long count, u_int flags)
 {
-	// struct bhnd_resource *r;
+	struct bhnd_resource	*br;
+	
+	br = malloc(sizeof(struct bhnd_resource), M_BHND, M_WAITOK);
+	if (br == NULL)
+		return (NULL);
 
-	// TODO
+	// TODO - support hwcfg specification of indirect targets.
+	br->_direct = true;
+	br->_res = bus_alloc_resource(child, type, rid, start, end, count,
+	    flags & ~RF_ACTIVE);
+	if (br->_res == NULL)
+		goto failed;
+	
+
+	if (flags & RF_ACTIVE) {
+		if (bhnd_activate_resource(child, type, *rid, br))
+			goto failed;
+	}
+
+	return (br);
+
+failed:
+	if (br->_res != NULL)
+		bus_release_resource(child, type, *rid, br->_res);
+
+	free(br, M_BHND);
 	return (NULL);
 }
 
@@ -678,26 +711,35 @@ static int
 bhndb_pci_release_bhnd_resource(device_t dev, device_t child,
     int type, int rid, struct bhnd_resource *r)
 {
-	// int error;
+	int error;
 
-	// TODO
-	return (EOPNOTSUPP);
+	if ((error = bus_release_resource(child, type, rid, r->_res)))
+		return (error);
+
+	free(r, M_BHND);
+	return (0);
 }
 
 static int
 bhndb_pci_activate_bhnd_resource(device_t dev, device_t child,
     int type, int rid, struct bhnd_resource *r)
 {
-	// TODO
-	return (EOPNOTSUPP);
+	/* Indirect resources don't require activation */
+	if (!r->_direct)
+		return (0);
+
+	return (bus_activate_resource(child, type, rid, r->_res));
 };
 
 static int
 bhndb_pci_deactivate_bhnd_resource(device_t dev, device_t child,
     int type, int rid, struct bhnd_resource *r)
 {
-	// TODO
-	return (EOPNOTSUPP);
+	/* Indirect resources don't require activation */
+	if (!r->_direct)
+		return (0);
+
+	return (bus_deactivate_resource(child, type, rid, r->_res));
 };
 
 static int
