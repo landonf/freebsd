@@ -414,20 +414,14 @@ bhndb_pci_resume(device_t dev)
 int
 bhndb_pci_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 {
-	switch (index) {
-	default:
-		return (ENOENT);
-	}
+	return (ENOENT);
 }
 
 /** bhndb implementation of bus_write_ivar(). */
 int
 bhndb_pci_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
 {
-	switch (index) {
-	default:
-		return (ENOENT);
-	}
+	return (ENOENT);
 }
 
 static struct rman *
