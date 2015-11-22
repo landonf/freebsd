@@ -29,7 +29,7 @@
 
 #include "bhndb_if.h"
 
-int				 bhndb_attach_bridge(device_t parent, devclass_t devclass,
-				     device_t *bhndb, int unit);
+int		bhndb_attach_bridge(device_t parent, devclass_t devclass,
+		    device_t *bhndb, int unit);
 
 #endif /* _BHND_BHNDBVAR_H_ */
