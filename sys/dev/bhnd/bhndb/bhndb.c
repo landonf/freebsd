@@ -1,5 +1,4 @@
- 
-/*-
+ /*-
  * Copyright (c) 2015 Landon Fuller <landon@landonf.org>
  * All rights reserved.
  *
@@ -65,19 +64,19 @@ __FBSDID("$FreeBSD$");
 /**
  * Mark a dynamic window region as free.
  */
-#define	BHNDB_DW_REGION_RELEASE(sc, rnid)	do {			\
+#define	BHNDB_DW_REGION_RELEASE(sc, rnid)	do {		\
 	KASSERT((sc)->dw_regions[rnid].child_res != NULL &&	\
 	    !BHNDB_DW_REGION_IS_FREE((sc), (rnid)),		\
 	    (("dw_region double free")));			\
 								\
 	(sc)->dw_freelist |= (1 << (rnid));			\
-	(sc)->dw_regions[rnid].child_res = NULL;			\
+	(sc)->dw_regions[rnid].child_res = NULL;		\
 } while(0)
 
 /**
  * Mark a dynamic window region as reserved.
  */
-#define	BHNDB_DW_REGION_RESERVE(sc, rnid, cr)	do {			\
+#define	BHNDB_DW_REGION_RESERVE(sc, rnid, cr)	do {		\
 	KASSERT((sc)->dw_regions[rnid].child_res == NULL &&	\
 	    BHNDB_DW_REGION_IS_FREE((sc), (rnid)),		\
 	    (("dw_region is busy")));				\
@@ -89,7 +88,7 @@ __FBSDID("$FreeBSD$");
 /**
  * Return non-zero value if a dynamic window region is marked as free.
  */
-#define	BHNDB_DW_REGION_IS_FREE(sc, rnid)	\
+#define	BHNDB_DW_REGION_IS_FREE(sc, rnid) \
 	((sc)->dw_freelist & (1 << (rnid)))
 
 /** bhndb child instance state */
@@ -108,6 +107,12 @@ struct bhndb_regwin_region {
 	u_int				 rnid;		/**< region identifier */
 };
 
+static bool		 bhndb_hw_matches(struct bhnd_core_info *cores,
+			     u_int num_cores, const struct bhndb_hw *hw);
+static int		 bhndb_find_hwspec(struct bhndb_softc *sc,
+			     const struct bhndb_hw **hw);
+static int		 bhndb_init_dw_region_allocator(struct bhndb_softc *sc);
+static struct rman	*bhndb_get_rman(device_t dev, int type);
 
 /** 
  * Default bhnd implementation of device_probe().
@@ -874,7 +879,8 @@ bhndb_config_intr(device_t dev, int irq, enum intr_trigger trig,
 }
 
 static int
-bhndb_bind_intr(device_t dev, device_t child, struct resource *r, int cpu) {
+bhndb_bind_intr(device_t dev, device_t child, struct resource *r, int cpu)
+{
 	// TODO
 	return (EOPNOTSUPP);
 }
