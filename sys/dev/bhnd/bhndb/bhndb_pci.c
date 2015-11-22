@@ -104,16 +104,19 @@ static int
 bhndb_pci_child_pnpinfo_str(device_t bus, device_t child, char *buf,
     size_t buflen)
 {
-	// TODO
-	return (ENXIO);
+	*buf = '\0';
+	return (0);
 }
 
 static int
 bhndb_pci_child_location_str(device_t dev, device_t child, char *buf,
     size_t buflen)
 {
-	// TODO
-	return (ENXIO);
+	bhndb_addr_t addr;
+
+	addr = BHNDB_GET_ENUM_ADDR(dev, child);
+	snprintf(buf, buflen, "enum_base=0x%llx", (unsigned long long) addr);
+	return (0);
 }
 
 /**
