@@ -78,7 +78,6 @@ bcmab_find_erom_addr(struct bcmab_pci_softc *sc, bhndb_addr_t *erom_addr)
 
 	/* Fetch the initial hardware configuration */
 	cfg = BHNDB_BUS_GET_GENERIC_HWCFG(sc->parent_dev, sc->dev);
-	device_printf(sc->dev, "cfg=%p rwin=%p\n", cfg, cfg->register_windows);
 
 	/* Find the chipc register window */
 	cc_win = bhndb_regwin_find_core(cfg->register_windows,
