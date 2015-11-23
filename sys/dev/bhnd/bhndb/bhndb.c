@@ -53,60 +53,6 @@ __FBSDID("$FreeBSD$");
 #include "bhndb_bus_if.h"
 #include "bhndb_private.h"
 
-#define	BHNDB_LOCK_INIT(sc) \
-	mtx_init(&(sc)->sc_mtx, device_get_nameunit((sc)->dev), \
-	    "bhndb_gen resource allocator lock", MTX_DEF)
-#define	BHNDB_LOCK(sc)		mtx_lock(&(sc)->sc_mtx)
-#define	BHNDB_UNLOCK(sc)	mtx_unlock(&(sc)->sc_mtx)
-#define	BHNDB_LOCK_ASSERT(sc)	mtx_assert(&(sc)->sc_mtx, MA_OWNED)
-#define	BHNDB_LOCK_DESTROY(sc)	mtx_destroy(&(sc)->sc_mtx)
-
-/**
- * Mark a dynamic window region as free.
- */
-#define	BHNDB_DW_REGION_RELEASE(sc, rnid)	do {		\
-	KASSERT((sc)->dw_regions[rnid].child_res != NULL &&	\
-	    !BHNDB_DW_REGION_IS_FREE((sc), (rnid)),		\
-	    (("dw_region double free")));			\
-								\
-	(sc)->dw_freelist |= (1 << (rnid));			\
-	(sc)->dw_regions[rnid].child_res = NULL;		\
-} while(0)
-
-/**
- * Mark a dynamic window region as reserved.
- */
-#define	BHNDB_DW_REGION_RESERVE(sc, rnid, cr)	do {		\
-	KASSERT((sc)->dw_regions[rnid].child_res == NULL &&	\
-	    BHNDB_DW_REGION_IS_FREE((sc), (rnid)),		\
-	    (("dw_region is busy")));				\
-								\
-	(sc)->dw_freelist &= ~(1 << (rnid));			\
-	(sc)->dw_regions[rnid].child_res = cr;			\
-} while(0)
-
-/**
- * Return non-zero value if a dynamic window region is marked as free.
- */
-#define	BHNDB_DW_REGION_IS_FREE(sc, rnid) \
-	((sc)->dw_freelist & (1 << (rnid)))
-
-/** bhndb child instance state */
-struct bhndb_devinfo {
-        struct resource_list    resources;	/**< child resources. */
-};
-
-/**
- * A register window allocation record. 
- */
-struct bhndb_regwin_region {
-	uintptr_t			vaddr;		/**< virtual address of the window */
-	const struct bhndb_regwin	*win;		/**< window definition */
-	struct resource			*res;		/**< enclosing resource */
-	struct resource			*child_res;	/**< associated child resource, or NULL */
-	u_int				 rnid;		/**< region identifier */
-};
-
 static bool				 bhndb_hw_matches(
 					     struct bhnd_core_info *cores,
 					     u_int num_cores,
