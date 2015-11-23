@@ -86,7 +86,7 @@ static int				 bhndb_activate_static_core_window(
  * Default bhnd implementation of device_probe().
  */
 int
-bhndb_gen_probe(device_t dev)
+bhndb_generic_probe(device_t dev)
 {
 	return (BUS_PROBE_NOWILDCARD);
 }
@@ -322,7 +322,7 @@ failed:
  * Default bhndb implementation of device_attach().
  */
 int
-bhndb_gen_attach(device_t dev)
+bhndb_generic_attach(device_t dev)
 {
 	struct bhndb_softc		*sc;
 	int				 error;
@@ -424,7 +424,7 @@ failed:
 
 /** Default bhndb implementation of device_detach(). */
 int
-bhndb_gen_detach(device_t dev)
+bhndb_generic_detach(device_t dev)
 {
 	struct bhndb_softc	*sc;
 	int			 error;
@@ -449,28 +449,28 @@ bhndb_gen_detach(device_t dev)
 
 /** Default bhndb implementation of device_suspend(). */
 int
-bhndb_gen_suspend(device_t dev)
+bhndb_generic_suspend(device_t dev)
 {
 	return (bus_generic_suspend(dev));
 }
 
 /** Default bhndb implementation of device_resume(). */
 int
-bhndb_gen_resume(device_t dev)
+bhndb_generic_resume(device_t dev)
 {
 	return (bus_generic_resume(dev));
 }
 
 /** Default bhndb implementation of bus_read_ivar(). */
 int
-bhndb_gen_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
+bhndb_generic_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 {
 	return (ENOENT);
 }
 
 /** Default bhndb implementation of bus_write_ivar(). */
 int
-bhndb_gen_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
+bhndb_generic_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
 {
 	return (ENOENT);
 }
@@ -1019,12 +1019,12 @@ bhndb_get_dma_tag(device_t dev, device_t child)
 
 static device_method_t bhndb_methods[] = {
 	/* Device interface */ \
-	DEVMETHOD(device_probe,			bhndb_gen_probe),
-	DEVMETHOD(device_attach,		bhndb_gen_attach),
-	DEVMETHOD(device_detach,		bhndb_gen_detach),
+	DEVMETHOD(device_probe,			bhndb_generic_probe),
+	DEVMETHOD(device_attach,		bhndb_generic_attach),
+	DEVMETHOD(device_detach,		bhndb_generic_detach),
 	DEVMETHOD(device_shutdown,		bus_generic_shutdown),
-	DEVMETHOD(device_suspend,		bhndb_gen_suspend),
-	DEVMETHOD(device_resume,		bhndb_gen_resume),
+	DEVMETHOD(device_suspend,		bhndb_generic_suspend),
+	DEVMETHOD(device_resume,		bhndb_generic_resume),
 
 	/* Bus interface */
 	DEVMETHOD(bus_probe_nomatch,		bhndb_probe_nomatch),
@@ -1053,8 +1053,8 @@ static device_method_t bhndb_methods[] = {
 	DEVMETHOD(bus_delete_resource,		bus_generic_rl_delete_resource),
 	DEVMETHOD(bus_get_resource_list,	bhndb_get_resource_list),
 
-	DEVMETHOD(bus_read_ivar,		bhndb_gen_read_ivar),
-	DEVMETHOD(bus_write_ivar,		bhndb_gen_write_ivar),
+	DEVMETHOD(bus_read_ivar,		bhndb_generic_read_ivar),
+	DEVMETHOD(bus_write_ivar,		bhndb_generic_write_ivar),
 
 	/* BHND interface */
 	DEVMETHOD(bhnd_alloc_resource,		bhndb_alloc_bhnd_resource),

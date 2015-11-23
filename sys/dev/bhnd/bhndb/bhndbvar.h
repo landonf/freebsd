@@ -37,14 +37,14 @@
 
 DECLARE_CLASS(bhndb_driver);
 
-int	bhndb_gen_probe(device_t dev);
-int	bhndb_gen_attach(device_t dev);
-int	bhndb_gen_detach(device_t dev);
-int	bhndb_gen_suspend(device_t dev);
-int	bhndb_gen_resume(device_t dev);
-int	bhndb_gen_read_ivar(device_t dev, device_t child, int index,
+int	bhndb_generic_probe(device_t dev);
+int	bhndb_generic_attach(device_t dev);
+int	bhndb_generic_detach(device_t dev);
+int	bhndb_generic_suspend(device_t dev);
+int	bhndb_generic_resume(device_t dev);
+int	bhndb_generic_read_ivar(device_t dev, device_t child, int index,
 	    uintptr_t *result);
-int	bhndb_gen_write_ivar(device_t dev, device_t child, int index,
+int	bhndb_generic_write_ivar(device_t dev, device_t child, int index,
 	    uintptr_t value);
 
 

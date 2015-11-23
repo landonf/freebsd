@@ -123,7 +123,7 @@ bcmab_pci_probe(device_t dev)
 	
 
 	/* Call default probe implementation */
-	if ((error = bhndb_gen_probe(dev)) > 0)
+	if ((error = bhndb_generic_probe(dev)) > 0)
 		return (error);
 	
 	device_set_desc(dev, "PCI-BCMA Bridge");
@@ -151,14 +151,14 @@ bcmab_pci_attach(device_t dev)
 		return (ENXIO);
 
 	/* Call default attach implementation */
-	return bhndb_gen_attach(dev);
+	return bhndb_generic_attach(dev);
 }
 
 static int
 bcmab_pci_detach(device_t dev)
 {
 	/* Call default detach implementation */
-	return bhndb_gen_detach(dev);
+	return bhndb_generic_detach(dev);
 }
 
 static bhndb_addr_t
