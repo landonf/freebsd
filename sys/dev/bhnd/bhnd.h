@@ -180,21 +180,22 @@ bhnd_get_port_rid(device_t dev, u_int port, u_int region)
  * Decode a port / region pair on @p dev from @p rid.
  *
  * @param dev The device being queried.
- * @param rid A resource identifier.
- * @param[out] port_num The index of the child interconnect port.
- * @param[out] region_num The index of the port-mapped address region.
- * @param[out] region_addr The base address of the port-mapped region.
- * @param[out] region_size The size of the port-mapped region.
+ * @param type The resource type.
+ * @param rid The resource identifier.
+ * @param[out] port_num The decoded port number.
+ * @param[out] region_num The decoded region number.
+ * @param[out] region_addr The decoded region address.
+ * @param[out] region_size The decoded region size.
  *
  * @retval 0 success
  * @retval non-zero No matching port/region found.
  */
 static inline int
-bhnd_decode_port_rid(device_t dev, int rid, u_int *port, u_int *region,
-    u_long *region_addr, u_long *region_size)
+bhnd_decode_port_rid(device_t dev, int type, int rid, u_int *port,
+    u_int *region, u_long *region_addr, u_long *region_size)
 {
-	return BHND_DECODE_PORT_RID(device_get_parent(dev), dev, rid, port,
-	    region, region_addr, region_size);
+	return BHND_DECODE_PORT_RID(device_get_parent(dev), dev, type, rid,
+	    port, region, region_addr, region_size);
 }
 
 #endif /* _BHND_BHND_BUS_H_ */

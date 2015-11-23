@@ -175,7 +175,7 @@ bcma_get_port_rid(device_t dev, device_t child, u_int port_num, u_int
 }
 
 static int
-bcma_decode_port_rid(device_t dev, device_t child, int rid,
+bcma_decode_port_rid(device_t dev, device_t child, int type, int rid,
     u_int *port_num, u_int *region_num, u_long *region_addr,
     u_long *region_size)
 {
@@ -184,6 +184,10 @@ bcma_decode_port_rid(device_t dev, device_t child, int rid,
 	struct bcma_sport	*port;
 	
 	dinfo = device_get_ivars(child);
+
+	/* Ports are always memory mapped */
+	if (type != SYS_RES_MEMORY)
+		return (EINVAL);
 
 	STAILQ_FOREACH(port, &dinfo->cfg.dports, sp_link) {
 		STAILQ_FOREACH(map, &port->sp_maps, m_link) {
