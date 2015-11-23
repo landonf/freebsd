@@ -116,6 +116,10 @@ static int				 bhndb_find_hwspec(
 					     struct bhndb_softc *sc,
 					     const struct bhndb_hw **hw);
 
+static struct resource			*bhndb_find_winres(
+					     struct bhndb_softc *sc,
+					     const struct bhndb_regwin *win);
+
 static int				 bhndb_init_dw_region_allocator(
 					     struct bhndb_softc *sc);
 
@@ -124,6 +128,11 @@ static struct rman			*bhndb_get_rman(struct bhndb_softc *sc,
 
 static struct bhndb_regwin_region 	*bhndb_find_resource_region(
 					     struct bhndb_softc *sc,
+					     device_t child, int type, int rid,
+					     struct resource *r);
+
+static int				 bhndb_activate_static_core_window(
+					     struct bhndb_softc *sc, 
 					     device_t child, int type, int rid,
 					     struct resource *r);
 
@@ -218,7 +227,7 @@ bhndb_hw_matches(struct bhnd_core_info *cores,
 /**
  * Find a hardware specification for @p dev.
  * 
- * @param dev The bhndb device.
+ * @param sc The bhndb device state
  * @param[out] hw On success, the matched hardware specification.
  * with @p dev.
  * 
@@ -254,6 +263,38 @@ bhndb_find_hwspec(struct bhndb_softc *sc, const struct bhndb_hw **hw)
 done:
 	free(cores, M_BHND);
 	return (error);
+}
+
+/**
+ * Find the resource containing @p win.
+ * 
+ * @param sc The bhndb device state
+ * @param win A register window.
+ * 
+ * @retval resource the resource containing @p win.
+ * @retval NULL if no resource containing @p win can be found.
+ */
+static struct resource *
+bhndb_find_winres(struct bhndb_softc *sc, const struct bhndb_regwin *win)
+{
+	const struct resource_spec *rspecs;
+
+	rspecs = sc->hw->cfg->resource_specs;
+	for (u_int i = 0; rspecs[i].type != -1; i++) {			
+		if (win->res.type != rspecs[i].type)
+			continue;
+
+		if (win->res.rid != rspecs[i].rid)
+			continue;
+
+		/* Found declared resource */
+		return (sc->res[i]);
+	}
+
+	device_printf(sc->dev,
+	    "missing regwin resource spec (type=%d, rid=%d)\n",
+	    win->res.type, win->res.rid);
+	return (NULL);
 }
 
 /** Allocate and initialize the BHNDB_REGWIN_T_DYN region allocator state. */
@@ -306,23 +347,8 @@ bhndb_init_dw_region_allocator(struct bhndb_softc *sc)
 		region->rnid = rnid;
 
 		/* Find the corresponding resource. */
-		for (u_int rsi = 0; rspecs[rsi].type != -1; rsi++) {			
-			if (win->res.type != rspecs[rsi].type)
-				continue;
-
-			if (win->res.rid != rspecs[rsi].rid)
-				continue;
-
-			/* Found matching rspec/resource */
-			region->res = sc->res[rsi];
-			break;
-		}
-
-		/* Invalid hwcfg? */
+		region->res = bhndb_find_winres(sc, win);
 		if (region->res == NULL) {
-			device_printf(sc->dev,
-			    "missing regwin resource spec (type=%d, rid=%d)\n",
-			    win->res.type, win->res.rid);
 			error = EINVAL;
 			goto failed;
 		}
@@ -752,6 +778,77 @@ finish:
 	return (error);
 }
 
+/**
+ * Attempt activation of a fixed register window mapping for @p child.
+ * 
+ * @param sc BHNDB device state.
+ * @param child A child requesting resource activation.
+ * @param type Resource type.
+ * @param rid Resource identifier.
+ * @param r Resource to be activated.
+ * 
+ * @retval 0 if @p r was activated successfully
+ * @retval ENOENT if no fixed register window was found.
+ * @retval non-zero if @p r could not be activated.
+ */
+static int
+bhndb_activate_static_core_window(struct bhndb_softc *sc, device_t child,
+    int type, int rid, struct resource *r)
+{
+	struct resource			*win_res;
+	const struct bhndb_regwin	*win;
+	uintptr_t			 vaddr;
+	u_int				 port, region;
+	u_long				 addr, size;
+	int				 error;
+
+	/* Device must be attached to the bridged bhnd bus */
+	if (device_get_parent(child) != BHNDB_GET_ATTACHED_BUS(sc->dev))
+		return (ENXIO);
+
+	/* Map the resource back to its bhnd port/region */
+	error = bhnd_decode_port_rid(child, type, rid, &port, &region,
+	    &addr, &size);
+	if (error)
+		return (error);
+
+	/* Look for a matching register window */
+	win = bhndb_regwin_find_core(sc->hw->cfg->register_windows,
+	    bhnd_get_class(child), bhnd_get_core_unit(child), port, region);
+	if (win == NULL)
+		return (ENOENT);
+
+	/* The resource must fit within the fixed window */
+	if (rman_get_size(r) > win->win_size)
+		return (ENOENT);
+
+	/* Find the corresponding bridge resource */
+	win_res = bhndb_find_winres(sc, win);
+	if (win_res == NULL)
+		return (ENXIO);
+
+	/* Mark active */
+	if ((error = rman_activate_resource(r)))
+		return (error);
+
+	/* Configure resource with its real bus values. */
+	// TODO - lift to re-usable method
+	bus_space_handle_t bh;
+
+	vaddr = (uintptr_t) rman_get_virtual(win_res);
+	vaddr += win->win_offset;
+
+	rman_set_virtual(r, (void *) vaddr);
+	rman_set_bustag(r, rman_get_bustag(win_res));
+	
+	bus_space_subregion(rman_get_bustag(win_res),
+	    rman_get_bushandle(win_res), win->win_offset,
+	    rman_get_size(win_res) - win->win_offset, &bh);
+	rman_set_bushandle(r, bh);
+
+	return (0);
+}
+
 static int
 bhndb_activate_resource(device_t dev, device_t child, int type, int rid,
     struct resource *r)
@@ -764,8 +861,13 @@ bhndb_activate_resource(device_t dev, device_t child, int type, int rid,
 
 	sc = device_get_softc(dev);
 
+	/* Try static mappings before consuming a dynamic register window. */
+	error = bhndb_activate_static_core_window(sc, child, type, rid, r);
+	if (!error)
+		return (error);
+
 	/*
-	 * Find the first free window of sufficient size.
+	 * Find the first free dynamic window of sufficient size.
 	 * 
 	 * On all currently known hardware, dynamic windows are 4K and 
 	 * register blocks are 4K or smaller; this check should always
