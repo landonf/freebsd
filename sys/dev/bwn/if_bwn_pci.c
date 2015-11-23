@@ -38,7 +38,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/pci/pcireg.h>
 #include <dev/pci/pcivar.h>
 
-#include <dev/bhnd/bcma/bcmab_pcivar.h>
+#include <dev/bhnd/bcma/bcma.h>
 
 #include <dev/bhnd/bhnd_ids.h>
 #include <dev/bhnd/bhndb/bhndb_pci_hwdata.h>

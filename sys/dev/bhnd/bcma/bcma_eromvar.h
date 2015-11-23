@@ -19,9 +19,9 @@
 #ifndef	_BCMA_BCMA_EROMVAR_H_
 #define	_BCMA_BCMA_EROMVAR_H_
 
-#include <dev/bhnd/bhnd_private.h>
+#include <dev/bhnd/bhnd.h>
 
-#include "bcma_private.h"
+#include "bcmavar.h"
 
 /**
  * EROM read context.

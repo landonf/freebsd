@@ -41,7 +41,7 @@ HEADER {
 	struct bhnd_core_info;
 	struct bhndb_regwin;
 	struct bhndb_hw;
-	
+
 	/** A bridge-addressable bus address. The backing bus supports 64-bit
 	 *  addressing, but the current Broadcom PCI bridge cores only support
 	 *  32-bit addressing */
@@ -51,6 +51,7 @@ HEADER {
 
 CODE {
 	#include <sys/systm.h>
+	#include <dev/bhnd/bhndb/bhndbvar.h>
 
 	static bhndb_addr_t
 	bhndb_null_get_enum_addr(device_t dev, device_t child)

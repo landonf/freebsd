@@ -19,10 +19,7 @@
 #ifndef _BHND_BCMA_BCMAB_PCIVAR_H_
 #define _BHND_BCMA_BCMAB_PCIVAR_H_
 
-#include <dev/bhnd/bcma/bcmavar.h>
-#include <dev/bhnd/bhndb/bhndbvar.h>
-
-DECLARE_CLASS(bcmab_pci_driver);
+#include "bcmavar.h"
 
 struct bcmab_pci_softc {
 	struct bhndb_softc	bhndb_softc;	/**< bhndb state */

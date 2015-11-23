@@ -38,7 +38,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhndb/bhndbvar.h>
 
 #include "bcmavar.h"
-#include "bcma_private.h"
 
 #include "bcma_eromreg.h"
 #include "bcma_eromvar.h"

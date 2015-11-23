@@ -21,88 +21,45 @@
 
 #include <sys/param.h>
 #include <sys/bus.h>
-
-#include <machine/bus.h>
+#include <sys/kernel.h>
+#include <sys/lock.h>
+#include <sys/mutex.h>
 #include <sys/rman.h>
 
 #include <dev/bhnd/bhnd.h>
+#include "bhndb.h"
 
 #include "bhndb_if.h"
 
-struct bhndb_regwin_region;
-
-int	bhndb_attach_bridge(device_t parent, devclass_t devclass,
-	    device_t *bhndb, int unit);
-
-/**
- * bhndb register window types.
+/*
+ * Definitions shared by bhndb(4) driver implementations.
  */
-typedef enum {
-	BHNDB_REGWIN_T_CORE,		/**< Fixed mapping of a core register block. */
-	BHNDB_REGWIN_T_SPROM,		/**< Fixed mapping of device SPROM */
-	BHNDB_REGWIN_T_DYN,		/**< A dynamically configurable window */
-	BHNDB_REGWIN_T_INVALID		/**< Invalid type */
-} bhndb_regwin_type_t;
 
-/**
- * bhndb register window definition.
- */
-struct bhndb_regwin {
-	bhndb_regwin_type_t	win_type;	/**< window type */
-	bus_size_t		win_offset;	/**< offset of the window within the resource */
-	bus_size_t		win_size;	/**< size of the window */
-	
-	/** Resource identification */
-	struct {
-		int		type;		/**< resource type */
-		int		rid;		/**< resource id */
-	} res;
+DECLARE_CLASS(bhndb_driver);
+
+int	bhndb_gen_probe(device_t dev);
+int	bhndb_gen_attach(device_t dev);
+int	bhndb_gen_detach(device_t dev);
+int	bhndb_gen_suspend(device_t dev);
+int	bhndb_gen_resume(device_t dev);
+int	bhndb_gen_read_ivar(device_t dev, device_t child, int index,
+	    uintptr_t *result);
+int	bhndb_gen_write_ivar(device_t dev, device_t child, int index,
+	    uintptr_t value);
 
 
-	union {
-		/** Core-specific register window (BHNDB_REGWIN_T_CORE). */
-		struct {
-			bhnd_devclass_t	class;	/**< mapped core's class */
-			u_int		unit;	/**< mapped core's unit */
-			u_int		port;	/**< mapped port number */
-			u_int		region;	/**< mapped region number */
-		} core;
+size_t				 bhndb_regwin_count(
+				     const struct bhndb_regwin *table,
+				     bhndb_regwin_type_t type);
 
-		/** SPROM register window (BHNDB_REGWIN_T_SPROM). */
-		struct {} sprom;
+const struct bhndb_regwin	*bhndb_regwin_find_type(
+				     const struct bhndb_regwin *table,
+				     bhndb_regwin_type_t type);
 
-                /** Dynamic register window (BHNDB_REGWIN_T_DYN). */
-		struct {
-			bus_size_t	cfg_offset;	/**< window address config offset. */
-		} dyn;
-        };
-};
-
-#define	BHNDB_REGWIN_TABLE_END	{ BHNDB_REGWIN_T_INVALID, 0, 0, { 0, 0 } }
-
-/**
- * Bridge hardware configuration.
- * 
- * Provides the bridge's register/address mappings, and the resources
- * via which those mappings may be accessed.
- */
-struct bhndb_hwcfg {
-	const struct resource_spec	*resource_specs;
-	const struct bhndb_regwin	*register_windows;
-};
-
-/**
- * Hardware specification entry.
- * 
- * Defines a set of match criteria that may be used to determine the
- * register map and resource configuration for a bhndb bridge device. 
- */
-struct bhndb_hw {
-	const char			*name;		/**< configuration name */
-	const struct bhnd_core_match	*hw_reqs;	/**< match requirements */
-	u_int				 num_hw_reqs;	/**< number of match requirements */
-	const struct bhndb_hwcfg	*cfg;		/**< associated hardware configuration */
-};
+const struct bhndb_regwin	*bhndb_regwin_find_core(
+				     const struct bhndb_regwin *table,
+				     bhnd_devclass_t class, int unit, int port,
+				     int region);
 
 /**
  * bhndb driver instance state. Must be first member of all subclass

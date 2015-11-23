@@ -30,27 +30,9 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-/*
- * Broadcom Home Networking Division (HND) Bus Driver.
- * 
- * The Broadcom HND family of devices consists of both SoCs and host-connected
- * networking chipsets containing a common family of Broadcom IP cores,
- * including an integrated MIPS and/or ARM cores.
- * 
- * HND devices expose a nearly identical interface whether accessible over a 
- * native SoC interconnect, or when connected via a host interface such as 
- * PCIe. As a result, the majority of hardware support code should be re-usable 
- * across host drivers for HND networking chipsets, as well as FreeBSD support 
- * for Broadcom MIPS/ARM HND SoCs.
- * 
- * Earlier HND models used the siba(4) on-chip interconnect, while later models
- * use bcma(4); the programming model is almost entirely independent
- * of the actual underlying interconect.
- */
+#include <sys/types.h> 
 
-#include <sys/types.h>
-
-#include "bhnd_private.h"
+#include "bhndvar.h"
 
 /* BHND core device description table. */
 static const struct bhnd_core_desc {

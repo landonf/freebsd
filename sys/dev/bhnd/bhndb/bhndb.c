@@ -47,7 +47,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/rman.h>
 #include <machine/resource.h>
 
-#include <dev/bhnd/bhnd_private.h>
+#include <dev/bhnd/bhndvar.h>
 
 #include "bhndbvar.h"
 #include "bhndb_bus_if.h"

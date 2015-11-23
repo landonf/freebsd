@@ -32,41 +32,9 @@
 #ifndef _BHND_BHNDB_PRIVATE_H_
 #define _BHND_BHNDB_PRIVATE_H_
 
-#include <sys/param.h>
-#include <sys/bus.h>
-#include <sys/kernel.h>
-#include <sys/lock.h>
-#include <sys/mutex.h>
-#include <sys/rman.h>
+/*
+ * Private bhndb(4) driver definitions.
+ */
 
-#include <dev/bhnd/bhnd.h>
-
-#include "bhndbvar.h"
-
-DECLARE_CLASS(bhndb_driver);
-
-int	bhndb_gen_probe(device_t dev);
-int	bhndb_gen_attach(device_t dev);
-int	bhndb_gen_detach(device_t dev);
-int	bhndb_gen_suspend(device_t dev);
-int	bhndb_gen_resume(device_t dev);
-int	bhndb_gen_read_ivar(device_t dev, device_t child, int index,
-	    uintptr_t *result);
-int	bhndb_gen_write_ivar(device_t dev, device_t child, int index,
-	    uintptr_t value);
-
-
-size_t				 bhndb_regwin_count(
-				     const struct bhndb_regwin *table,
-				     bhndb_regwin_type_t type);
-
-const struct bhndb_regwin	*bhndb_regwin_find_type(
-				     const struct bhndb_regwin *table,
-				     bhndb_regwin_type_t type);
-
-const struct bhndb_regwin	*bhndb_regwin_find_core(
-				     const struct bhndb_regwin *table,
-				     bhnd_devclass_t class, int unit, int port,
-				     int region);
 
 #endif /* _BHND_BHNDB_PRIVATE_H_ */

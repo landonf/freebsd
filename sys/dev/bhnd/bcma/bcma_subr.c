@@ -39,9 +39,9 @@ __FBSDID("$FreeBSD$");
 #include <machine/bus.h>
 #include <machine/resource.h>
 
-#include <dev/bhnd/bhnd_private.h>
+#include <dev/bhnd/bhndvar.h>
 
-#include "bcma_private.h"
+#include "bcmavar.h"
 
 
 /**

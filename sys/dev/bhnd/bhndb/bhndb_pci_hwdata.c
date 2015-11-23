@@ -47,8 +47,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/pci/pcireg.h>
 #include <dev/pci/pcivar.h>
 
-#include "bhndb_private.h"
-
+#include "bhndbvar.h"
 #include "bhndb_pcireg.h"
 
 static const struct bhndb_hwcfg bhndb_pci_hwcfg_v0;
