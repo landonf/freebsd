@@ -593,8 +593,7 @@ bhndb_alloc_resource(device_t dev, device_t child, int type,
 
 		start = rle->start;
 		end = rle->end;
-		if (count < rle->count)
-			count = rle->count;
+		count = ulmax(count, rle->count);
 	}
 
 	/* Validate resource addresses */

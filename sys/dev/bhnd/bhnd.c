@@ -144,30 +144,58 @@ bhnd_generic_probe_nomatch(device_t dev, device_t child)
 /**
  * Helper function for implementing BHND_ALLOC_RESOURCE().
  * 
- * This simple implementation of BHND_ALLOC_RESOURCE() calls the
+ * This simple implementation of BHND_ALLOC_RESOURCE() determines
+ * any default values via BUS_GET_RESOURCE_LIST(), and calls
  * BHND_ALLOC_RESOURCE() method of the parent of @p dev.
  * 
- * If no parent device is available, the request is delegated to
+ * If no parent device is available, the request is instead delegated to
  * BUS_ALLOC_RESOURCE().
  */
 struct bhnd_resource *
 bhnd_generic_alloc_bhnd_resource(device_t dev, device_t child, int type,
 	int *rid, u_long start, u_long end, u_long count, u_int flags)
 {
-	struct bhnd_resource *r;
+	struct bhnd_resource		*r;
+	struct resource_list		*rl;
+	struct resource_list_entry	*rle;
+	bool				 isdefault;
+	bool				 passthrough;
 
-	/* Try to delegate to the parent. */
-	if (device_get_parent(dev) != NULL)
-		return (BHND_ALLOC_RESOURCE(device_get_parent(dev), child,
-		    type, rid, start, end, count, flags));
+	passthrough = (device_get_parent(child) != dev);
+	isdefault = (start == 0ULL && end == ~0ULL);
 
-	/* Allocate an empty wrapper for a real bus-allocated resource */
+	/* Determine locally-known defaults before delegating the request. */
+	if (!passthrough && isdefault) {
+		/* fetch resource list from child's bus */
+		rl = BUS_GET_RESOURCE_LIST(dev, child);
+		if (rl == NULL)
+			return (NULL); /* no resource list */
+
+		/* look for matching type/rid pair */
+		rle = resource_list_find(BUS_GET_RESOURCE_LIST(dev, child),
+		    type, *rid);
+		if (rle == NULL)
+			return (NULL);
+
+		/* set default values */
+		start = rle->start;
+		end = rle->end;
+		count = ulmax(count, rle->count);
+	}
+
+	/* Try to delegate to our parent. */
+	if (device_get_parent(dev) != NULL) {
+		return (BHND_ALLOC_RESOURCE(device_get_parent(dev), child, type,
+		    rid, start, end, count, flags));
+	}
+
+	/* If this is the bus root, use a real bus-allocated resource */
 	r = malloc(sizeof(struct bhnd_resource), M_BHND, M_WAITOK);
 	if (r == NULL)
 		return NULL;
 
 	/* Allocate the bus resource, marking it as 'direct' (not requiring
-	* any bus window remapping to perform I/O) */
+	 * any bus window remapping to perform I/O) */
 	r->_direct = true;
 	r->_res = BUS_ALLOC_RESOURCE(dev, child, type, rid, start, end,
 	    count, flags);
