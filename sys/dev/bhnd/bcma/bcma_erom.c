@@ -61,8 +61,8 @@ static int		 erom_read32(struct bcma_erom *erom, uint32_t *entry);
 static int		 erom_skip32(struct bcma_erom *erom);
 
 #define	EROM_LOG(erom, fmt, ...)	\
-	device_printf(erom->dev, "erom[0x%lx]: " fmt, erom->offset-4, \
-	    ##__VA_ARGS__);
+	device_printf(erom->dev, "erom[0x%llx]: " fmt, \
+	    (unsigned long long) (erom->offset-4), ##__VA_ARGS__);
 
 
 /** Return the type name for an EROM entry */
