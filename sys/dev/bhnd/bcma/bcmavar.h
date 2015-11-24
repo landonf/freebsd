@@ -151,6 +151,7 @@ struct bcma_devinfo {
 
 /** BMCA per-instance state */
 struct bcma_softc {
+	struct bhnd_softc	bhnd_sc;	/**< bhnd state */
 };
 
 #endif /* _BCMA_BCMAVAR_H_ */

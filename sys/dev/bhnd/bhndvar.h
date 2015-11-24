@@ -43,6 +43,13 @@
  */
 
 MALLOC_DECLARE(M_BHND);
+DECLARE_CLASS(bhnd_driver);
+
+/**
+ * bhnd driver instance state. Must be first member of all subclass
+ * softc structures.
+ */
+struct bhnd_softc {};
 
 int			 bhnd_generic_print_child(device_t dev,
 			     device_t child);

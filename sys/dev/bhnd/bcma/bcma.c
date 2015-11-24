@@ -579,34 +579,16 @@ static device_method_t bcma_methods[] = {
 	DEVMETHOD(device_probe,			bcma_probe),
 	DEVMETHOD(device_attach,		bcma_attach),
 	DEVMETHOD(device_detach,		bcma_detach),
-	DEVMETHOD(device_shutdown,		bus_generic_shutdown),
-	DEVMETHOD(device_suspend,		bus_generic_suspend), // TODO
-	DEVMETHOD(device_resume,		bus_generic_resume), // TODO
 	
 	/* Bus interface */
 	DEVMETHOD(bus_child_deleted,		bcma_child_deleted),
-	DEVMETHOD(bus_print_child,		bhnd_generic_print_child),
-	DEVMETHOD(bus_probe_nomatch,		bhnd_generic_probe_nomatch),
 	DEVMETHOD(bus_read_ivar,		bcma_read_ivar),
 	DEVMETHOD(bus_write_ivar,		bcma_write_ivar),
-
 	DEVMETHOD(bus_get_resource_list,	bcma_get_resource_list),
-	DEVMETHOD(bus_set_resource,		bus_generic_rl_set_resource),
-	DEVMETHOD(bus_get_resource,		bus_generic_rl_get_resource),
-	DEVMETHOD(bus_delete_resource,		bus_generic_rl_delete_resource),
-	DEVMETHOD(bus_alloc_resource,		bus_generic_rl_alloc_resource),
-	DEVMETHOD(bus_adjust_resource,		bus_generic_adjust_resource),
-	DEVMETHOD(bus_release_resource,		bus_generic_rl_release_resource),
-	DEVMETHOD(bus_activate_resource,	bus_generic_activate_resource),
-	DEVMETHOD(bus_deactivate_resource,	bus_generic_deactivate_resource),
 
 	/* BHND interface */
 	DEVMETHOD(bhnd_get_port_rid,		bcma_get_port_rid),
 	DEVMETHOD(bhnd_decode_port_rid,		bcma_decode_port_rid),
-	DEVMETHOD(bhnd_alloc_resource,		bhnd_generic_alloc_bhnd_resource),
-	DEVMETHOD(bhnd_release_resource,	bhnd_generic_release_bhnd_resource),
-	DEVMETHOD(bhnd_activate_resource,	bhnd_generic_activate_bhnd_resource),
-	DEVMETHOD(bhnd_deactivate_resource,	bhnd_generic_deactivate_bhnd_resource),
 
 	DEVMETHOD_END
 };
@@ -614,7 +596,6 @@ static device_method_t bcma_methods[] = {
 devclass_t bcma_devclass;
 devclass_t bcmab_devclass;
 
-DEFINE_CLASS_0(bcma, bcma_driver, bcma_methods, sizeof(struct bcma_softc));
-
+DEFINE_CLASS_1(bcma, bcma_driver, bcma_methods, sizeof(struct bcma_softc), bhnd_driver);
 MODULE_VERSION(bcma, 1);
 MODULE_DEPEND(bcma, bhnd, 1, 1, 1);

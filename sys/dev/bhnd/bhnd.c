@@ -62,7 +62,6 @@ __FBSDID("$FreeBSD$");
 #include "bhndvar.h"
 
 MALLOC_DEFINE(M_BHND, "bhnd", "bhnd bus data structures");
-MODULE_VERSION(bhnd, 1);
 
 /**
  * bhnd_generic_probe_nomatch() reporting configuration.
@@ -288,3 +287,50 @@ bhnd_generic_deactivate_bhnd_resource(device_t dev, device_t child, int type,
 
 	return (BUS_DEACTIVATE_RESOURCE(dev, child, type, rid, r->_res));
 };
+
+static device_method_t bhnd_methods[] = {
+	/* Device interface */ \
+	DEVMETHOD(device_attach,		bus_generic_attach),
+	DEVMETHOD(device_detach,		bus_generic_detach),
+	DEVMETHOD(device_shutdown,		bus_generic_shutdown),
+	DEVMETHOD(device_suspend,		bus_generic_suspend),
+	DEVMETHOD(device_resume,		bus_generic_resume),
+
+	/* Bus interface */
+	DEVMETHOD(bus_probe_nomatch,		bhnd_generic_probe_nomatch),
+	DEVMETHOD(bus_print_child,		bhnd_generic_print_child),
+#if 0
+	// TODO
+	DEVMETHOD(bus_child_pnpinfo_str,	bhnd_generic_child_pnpinfo_str),
+	DEVMETHOD(bus_child_location_str,	bhnd_generic_location_str),
+#endif
+
+	DEVMETHOD(bus_set_resource,		bus_generic_rl_set_resource),
+	DEVMETHOD(bus_get_resource,		bus_generic_rl_get_resource),
+	DEVMETHOD(bus_delete_resource,		bus_generic_rl_delete_resource),
+	DEVMETHOD(bus_alloc_resource,		bus_generic_rl_alloc_resource),
+	DEVMETHOD(bus_adjust_resource,		bus_generic_adjust_resource),
+	DEVMETHOD(bus_release_resource,		bus_generic_rl_release_resource),
+	DEVMETHOD(bus_activate_resource,	bus_generic_activate_resource),
+	DEVMETHOD(bus_deactivate_resource,	bus_generic_deactivate_resource),
+
+	DEVMETHOD(bus_setup_intr,		bus_generic_setup_intr),
+	DEVMETHOD(bus_teardown_intr,		bus_generic_teardown_intr),
+	DEVMETHOD(bus_config_intr,		bus_generic_config_intr),
+	DEVMETHOD(bus_bind_intr,		bus_generic_bind_intr),
+	DEVMETHOD(bus_describe_intr,		bus_generic_describe_intr),
+
+	DEVMETHOD(bus_get_dma_tag,		bus_generic_get_dma_tag),
+
+	/* BHND interface */
+	DEVMETHOD(bhnd_alloc_resource,		bhnd_generic_alloc_bhnd_resource),
+	DEVMETHOD(bhnd_release_resource,	bhnd_generic_release_bhnd_resource),
+	DEVMETHOD(bhnd_activate_resource,	bhnd_generic_activate_bhnd_resource),
+	DEVMETHOD(bhnd_activate_resource,	bhnd_generic_deactivate_bhnd_resource),
+
+	DEVMETHOD_END
+};
+
+
+DEFINE_CLASS_0(bhnd, bhnd_driver, bhnd_methods, sizeof(struct bhnd_softc));
+MODULE_VERSION(bhnd, 1);
