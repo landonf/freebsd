@@ -227,7 +227,7 @@ bhnd_alloc_resource (device_t dev, int type, int *rid, u_long start,
 static inline struct bhnd_resource *
 bhnd_alloc_resource_any (device_t dev, int type, int *rid, u_int flags)
 {
-	return bhnd_alloc_resource(dev, type, rid, 0ULL, ~0ULL, 1, flags);
+	return bhnd_alloc_resource(dev, type, rid, 0UL, ~0UL, 1, flags);
 };
 
 /**

@@ -552,7 +552,7 @@ bhndb_alloc_resource(device_t dev, device_t child, int type,
 
 	sc = device_get_softc(dev);
 	immed_child = (device_get_parent(child) == dev);
-	defaults = (start == 0ULL && end == ~0ULL);
+	defaults = (start == 0UL && end == ~0UL);
 	rle = NULL;
 
 	/* Populate defaults */
