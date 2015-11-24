@@ -62,7 +62,7 @@ static int				 bhndb_find_hwspec(
 					     struct bhndb_softc *sc,
 					     const struct bhndb_hw **hw);
 
-static struct resource			*bhndb_find_winres(
+static struct resource			*bhndb_find_parent_resource(
 					     struct bhndb_softc *sc,
 					     const struct bhndb_regwin *win);
 
@@ -221,7 +221,8 @@ done:
  * @retval NULL if no resource containing @p win can be found.
  */
 static struct resource *
-bhndb_find_winres(struct bhndb_softc *sc, const struct bhndb_regwin *win)
+bhndb_find_parent_resource(struct bhndb_softc *sc,
+    const struct bhndb_regwin *win)
 {
 	const struct resource_spec *rspecs;
 
@@ -292,9 +293,22 @@ bhndb_init_dw_region_allocator(struct bhndb_softc *sc)
 		region->child_res = NULL;
 		region->rnid = rnid;
 
-		/* Find the corresponding resource. */
-		region->res = bhndb_find_winres(sc, win);
+		/* Find and validate corresponding resource. */
+		region->res = bhndb_find_parent_resource(sc, win);
 		if (region->res == NULL) {
+			error = EINVAL;
+			goto failed;
+		}
+
+		if (rman_get_size(region->res) < win->win_offset +
+		    win->win_size)
+		{
+			device_printf(sc->dev, "resource %d too small for "
+			    "register window with offset %llx and size %llx\n",
+			    rman_get_rid(region->res),
+			    (unsigned long long) win->win_offset,
+			    (unsigned long long) win->win_size);
+
 			error = EINVAL;
 			goto failed;
 		}
@@ -769,7 +783,7 @@ bhndb_activate_static_core_window(struct bhndb_softc *sc, device_t child,
 		return (ENOENT);
 
 	/* Find the corresponding bridge resource */
-	win_res = bhndb_find_winres(sc, win);
+	win_res = bhndb_find_parent_resource(sc, win);
 	if (win_res == NULL)
 		return (ENXIO);
 
