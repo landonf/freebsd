@@ -718,12 +718,12 @@ bhndb_adjust_resource(device_t dev, device_t child, int type,
 			goto finish;
 		}
 		
-		/* If active, the base address is fixed, and the end address cannot
-		 * grow past the end of the allocated window.
+		/* If active, the base address is fixed, and the end address
+		 * cannot grow past the end of the allocated window.
 		 * 
-		 * In theory we could support adjusting the base address, but that
-		 * would require that we keep track of the window's absolute
-		 * start and end addresses.
+		 * In theory we could support adjusting the base address, but
+		 * that would require that we keep track of the window's
+		 * absolute start and end addresses.
 		 */
 		if (rman_get_start(r) != start  || end < start ||
 		    end - start > region->win->win_size)
