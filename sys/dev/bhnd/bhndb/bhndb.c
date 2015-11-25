@@ -77,6 +77,11 @@ static struct bhndb_regwin_region 	*bhndb_find_resource_region(
 					     device_t child, int type, int rid,
 					     struct resource *r);
 
+static int				 bhndb_resource_set_subregion(
+					     struct resource *r,
+					     struct resource *parent,
+					     const struct bhndb_regwin *win);
+
 static int				 bhndb_activate_static_core_window(
 					     struct bhndb_softc *sc, 
 					     device_t child, int type, int rid,
@@ -289,33 +294,29 @@ bhndb_init_dw_region_allocator(struct bhndb_softc *sc)
 
 		region = &sc->dw_regions[rnid];
 		region->win = win;
-		region->res = NULL;
+		region->parent_res = NULL;
 		region->child_res = NULL;
 		region->rnid = rnid;
 
 		/* Find and validate corresponding resource. */
-		region->res = bhndb_find_parent_resource(sc, win);
-		if (region->res == NULL) {
+		region->parent_res = bhndb_find_parent_resource(sc, win);
+		if (region->parent_res == NULL) {
 			error = EINVAL;
 			goto failed;
 		}
 
-		if (rman_get_size(region->res) < win->win_offset +
+		if (rman_get_size(region->parent_res) < win->win_offset +
 		    win->win_size)
 		{
 			device_printf(sc->dev, "resource %d too small for "
 			    "register window with offset %llx and size %llx\n",
-			    rman_get_rid(region->res),
+			    rman_get_rid(region->parent_res),
 			    (unsigned long long) win->win_offset,
 			    (unsigned long long) win->win_size);
 
 			error = EINVAL;
 			goto failed;
 		}
-
-		/* Cache the resource vaddr */
-		region->vaddr = (uintptr_t) rman_get_virtual(region->res);
-		region->vaddr += win->win_offset;
 
 		/* Add to freelist */
 		sc->dw_freelist |= (1 << rnid);
@@ -741,6 +742,44 @@ finish:
 }
 
 /**
+ * Initialize @p r with a virtual address, tag, and handle copied
+ * from @p parent, adjusted to contain only the range defined by @p win.
+ * 
+ * @param r The register to be initialized.
+ * @param parent The parent bus resource that fully contains @p win.
+ * @param win The register window defining the subset of @p parent mapped by
+ * @p r.
+ */
+static int
+bhndb_resource_set_subregion(struct resource *r,
+    struct resource *parent, const struct bhndb_regwin *win)
+{
+
+	bus_space_handle_t	bh, child_bh;
+	bus_space_tag_t		bt;
+	uintptr_t		vaddr;
+	int			error;
+
+	/* Fetch the parent resource's real bus values */
+	vaddr = (uintptr_t) rman_get_virtual(parent);
+	bt = rman_get_bustag(parent);
+	bh = rman_get_bushandle(parent);
+
+	/* Configure child resource with window-adjusted real bus values */
+	vaddr += win->win_offset;
+	error = bus_space_subregion(bt, bh, win->win_offset, win->win_size,
+	    &child_bh);
+	if (error)
+		return (error);
+
+	rman_set_virtual(r, (void *) vaddr);
+	rman_set_bustag(r, bt);
+	rman_set_bushandle(r, child_bh);
+
+	return (0);
+}
+
+/**
  * Attempt activation of a fixed register window mapping for @p child.
  * 
  * @param sc BHNDB device state.
@@ -757,9 +796,8 @@ static int
 bhndb_activate_static_core_window(struct bhndb_softc *sc, device_t child,
     int type, int rid, struct resource *r)
 {
-	struct resource			*win_res;
+	struct resource			*parent_res;
 	const struct bhndb_regwin	*win;
-	uintptr_t			 vaddr;
 	u_int				 port, region;
 	u_long				 addr, size;
 	int				 error;
@@ -785,28 +823,17 @@ bhndb_activate_static_core_window(struct bhndb_softc *sc, device_t child,
 		return (ENOENT);
 
 	/* Find the corresponding bridge resource */
-	win_res = bhndb_find_parent_resource(sc, win);
-	if (win_res == NULL)
+	parent_res = bhndb_find_parent_resource(sc, win);
+	if (parent_res == NULL)
 		return (ENXIO);
+	
+	/* Configure resource with its real bus values. */
+	if ((error = bhndb_resource_set_subregion(r, parent_res, win)))
+		return (error);
 
 	/* Mark active */
 	if ((error = rman_activate_resource(r)))
 		return (error);
-
-	/* Configure resource with its real bus values. */
-	// TODO - lift to re-usable method
-	bus_space_handle_t bh;
-
-	vaddr = (uintptr_t) rman_get_virtual(win_res);
-	vaddr += win->win_offset;
-
-	rman_set_virtual(r, (void *) vaddr);
-	rman_set_bustag(r, rman_get_bustag(win_res));
-	
-	bus_space_subregion(rman_get_bustag(win_res),
-	    rman_get_bushandle(win_res), win->win_offset,
-	    rman_get_size(win_res) - win->win_offset, &bh);
-	rman_set_bushandle(r, bh);
 
 	return (0);
 }
@@ -862,14 +889,16 @@ bhndb_activate_resource(device_t dev, device_t child, int type, int rid,
 	if (error)
 		goto failed;
 
+	/* Configure resource with its real bus values. */
+	error = bhndb_resource_set_subregion(r, region->parent_res,
+	    region->win);
+	if (error)
+		goto failed;
+
 	/* Mark active */
 	if ((error = rman_activate_resource(r)))
 		goto failed;
 
-	/* Configure resource with its real bus values. */
-	rman_set_virtual(r, (void *) region->vaddr);
-	rman_set_bustag(r, rman_get_bustag(region->res));
-	rman_set_bushandle(r, rman_get_bushandle(region->res));
 
 	return (0);
 

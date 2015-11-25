@@ -91,9 +91,8 @@ struct bhndb_devinfo {
  * A register window allocation record. 
  */
 struct bhndb_regwin_region {
-	uintptr_t			vaddr;		/**< virtual address of the window */
 	const struct bhndb_regwin	*win;		/**< window definition */
-	struct resource			*res;		/**< enclosing resource */
+	struct resource			*parent_res;	/**< enclosing resource */
 	struct resource			*child_res;	/**< associated child resource, or NULL */
 	u_int				 rnid;		/**< region identifier */
 };
