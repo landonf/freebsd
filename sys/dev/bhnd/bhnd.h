@@ -76,7 +76,7 @@ typedef enum {
 	BHND_DEVCLASS_EROM,		/**< bus device enumeration ROM */
 	BHND_DEVCLASS_OTHER,		/**< other / unknown */
 
-	BHND_DEVCLASS_INVALID	/**< no/invalid class */
+	BHND_DEVCLASS_INVALID		/**< no/invalid class */
 } bhnd_devclass_t;
 
 
