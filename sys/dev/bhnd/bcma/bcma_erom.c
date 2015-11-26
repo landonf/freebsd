@@ -361,15 +361,17 @@ bcma_erom_parse_sport_region(struct bcma_erom *erom,
 }
 
 /**
- * Seek to the next valid core descriptor.
+ * Seek to the next entry with the given EROM entry type.
  * 
  * @param erom EROM read state.
+ * @param etype Required type. One of BCMA_EROM_ENTRY_TYPE_CORE,
+ * BCMA_EROM_ENTRY_TYPE_MPORT, or BCMA_EROM_ENTRY_TYPE_REGION.
  * @retval 0 success
  * @retval ENOENT The end of the EROM table was reached.
  * @retval non-zero Reading or parsing the descriptor failed.
  */
-static int
-bcma_erom_seek_core(struct bcma_erom *erom)
+int
+bcma_erom_seek_type(struct bcma_erom *erom, uint8_t etype)
 {
 	struct bcma_erom_mport		mp;
 	struct bcma_erom_sport_region	sp;
@@ -386,7 +388,11 @@ bcma_erom_seek_core(struct bcma_erom *erom)
 		if (!BCMA_EROM_GET_ATTR(entry, ENTRY_ISVALID))
 			return (EINVAL);
 
-		/* Valid entry; either skip or return. */
+		/* Entry type matches */
+		if (BCMA_EROM_GET_ATTR(entry, ENTRY_TYPE) == etype)
+			return (0);
+
+		/* Skip non-matching entry types. */
 		switch (BCMA_EROM_GET_ATTR(entry, ENTRY_TYPE)) {
 		case BCMA_EROM_ENTRY_TYPE_CORE:
 			return (0);
@@ -443,7 +449,7 @@ bcma_erom_get_core_info(struct bcma_erom *erom,
 		struct bcma_erom_core core;
 
 		/* Seek to the first readable core entry */
-		error = bcma_erom_seek_core(erom);
+		error = bcma_erom_seek_type(erom, BCMA_EROM_ENTRY_TYPE_CORE);
 		if (error == ENOENT)
 			break;
 		else if (error)
@@ -468,7 +474,8 @@ bcma_erom_get_core_info(struct bcma_erom *erom,
 		struct bcma_erom_core core;
 
 		/* Parse the core */
-		if ((error = bcma_erom_seek_core(erom)))
+		error = bcma_erom_seek_type(erom, BCMA_EROM_ENTRY_TYPE_CORE);
+		if (error)
 			goto cleanup;
 
 		error = bcma_erom_parse_core(erom, &core);

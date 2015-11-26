@@ -70,6 +70,8 @@ bus_size_t	bcma_erom_tell(struct bcma_erom *erom);
 void		bcma_erom_seek(struct bcma_erom *erom, bus_size_t offset);
 void		bcma_erom_reset(struct bcma_erom *erom);
 
+int		bcma_erom_seek_type(struct bcma_erom *erom, uint8_t etype);
+
 int		bcma_erom_parse_core(struct bcma_erom *erom,
 		    struct bcma_erom_core *core);
 
