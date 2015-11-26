@@ -77,12 +77,16 @@ static struct bhndb_regwin_region 	*bhndb_find_resource_region(
 					     device_t child, int type, int rid,
 					     struct resource *r);
 
-static int				 bhndb_resource_set_subregion(
+static int				 bhndb_init_child_resource(
 					     struct resource *r,
 					     struct resource *parent,
 					     const struct bhndb_regwin *win);
 
-static int				 bhndb_activate_static_core_window(
+static bool				 bhndb_is_bhnd_core(
+					     struct bhndb_softc *sc,
+					     device_t child);
+
+static int				 bhndb_activate_static_window(
 					     struct bhndb_softc *sc, 
 					     device_t child, int type, int rid,
 					     struct resource *r);
@@ -648,6 +652,15 @@ bhndb_release_resource(device_t dev, device_t child, int type, int rid,
 
 /**
  * Find the region allocated for @p r, if any.
+ * 
+ * @param sc bhndb device state.
+ * @param child The child device making a resource request on @p r.
+ * @param type The resource type.
+ * @param rid The resource ID.
+ * @param r The resource to search for.
+ * 
+ * @retval bhndb_regwin_region The region allocated for @p r.
+ * @retval NULL if no region is allocated for @p r.
  */
 static struct bhndb_regwin_region *
 bhndb_find_resource_region(struct bhndb_softc *sc, device_t child, int type,
@@ -742,8 +755,8 @@ finish:
 }
 
 /**
- * Initialize @p r with a virtual address, tag, and handle copied
- * from @p parent, adjusted to contain only the range defined by @p win.
+ * Initialize child resource @p r with a virtual address, tag, and handle
+ * copied from @p parent, adjusted to contain only the range defined by @p win.
  * 
  * @param r The register to be initialized.
  * @param parent The parent bus resource that fully contains @p win.
@@ -751,7 +764,7 @@ finish:
  * @p r.
  */
 static int
-bhndb_resource_set_subregion(struct resource *r,
+bhndb_init_child_resource(struct resource *r,
     struct resource *parent, const struct bhndb_regwin *win)
 {
 
@@ -780,6 +793,18 @@ bhndb_resource_set_subregion(struct resource *r,
 }
 
 /**
+ * Return true if @p child is attached to the bridged bhnd bus.
+ * 
+ * @param sc BHNDB device state.
+ * @param child A bhndb child/grandchild.
+ */
+static bool
+bhndb_is_bhnd_core(struct bhndb_softc *sc, device_t child)
+{
+	return (device_get_parent(child) == BHNDB_GET_ATTACHED_BUS(sc->dev));
+}
+
+/**
  * Attempt activation of a fixed register window mapping for @p child.
  * 
  * @param sc BHNDB device state.
@@ -793,7 +818,7 @@ bhndb_resource_set_subregion(struct resource *r,
  * @retval non-zero if @p r could not be activated.
  */
 static int
-bhndb_activate_static_core_window(struct bhndb_softc *sc, device_t child,
+bhndb_activate_static_window(struct bhndb_softc *sc, device_t child,
     int type, int rid, struct resource *r)
 {
 	struct resource			*parent_res;
@@ -802,15 +827,14 @@ bhndb_activate_static_core_window(struct bhndb_softc *sc, device_t child,
 	u_long				 addr, size;
 	int				 error;
 
-	/* Device must be attached to the bridged bhnd bus */
-	if (device_get_parent(child) != BHNDB_GET_ATTACHED_BUS(sc->dev))
-		return (ENXIO);
+	KASSERT(bhndb_is_bhnd_core(sc, child),
+	    ("%s is not a bhnd bus device", device_get_nameunit(child)));
 
 	/* Map the resource back to its bhnd port/region */
 	error = bhnd_decode_port_rid(child, type, rid, &port, &region,
 	    &addr, &size);
 	if (error)
-		return (error);
+		return (EINVAL);
 
 	/* Look for a matching register window */
 	win = bhndb_regwin_find_core(sc->hw->cfg->register_windows,
@@ -828,7 +852,7 @@ bhndb_activate_static_core_window(struct bhndb_softc *sc, device_t child,
 		return (ENXIO);
 	
 	/* Configure resource with its real bus values. */
-	if ((error = bhndb_resource_set_subregion(r, parent_res, win)))
+	if ((error = bhndb_init_child_resource(r, parent_res, win)))
 		return (error);
 
 	/* Mark active */
@@ -851,9 +875,11 @@ bhndb_activate_resource(device_t dev, device_t child, int type, int rid,
 	sc = device_get_softc(dev);
 
 	/* Try static mappings before consuming a dynamic register window. */
-	error = bhndb_activate_static_core_window(sc, child, type, rid, r);
-	if (!error)
-		return (error);
+	if (bhndb_is_bhnd_core(sc, child)) {
+		error = bhndb_activate_static_window(sc, child, type, rid, r);
+		if (!error)
+			return (0);
+	}
 
 	/*
 	 * Find the first free dynamic window of sufficient size.
@@ -890,7 +916,7 @@ bhndb_activate_resource(device_t dev, device_t child, int type, int rid,
 		goto failed;
 
 	/* Configure resource with its real bus values. */
-	error = bhndb_resource_set_subregion(r, region->parent_res,
+	error = bhndb_init_child_resource(r, region->parent_res,
 	    region->win);
 	if (error)
 		goto failed;
@@ -951,13 +977,18 @@ static struct bhnd_resource *
 bhndb_alloc_bhnd_resource(device_t dev, device_t child, int type,
      int *rid, u_long start, u_long end, u_long count, u_int flags)
 {
+	struct bhndb_softc	*sc;
 	struct bhnd_resource	*br;
-	
-	br = malloc(sizeof(struct bhnd_resource), M_BHND, M_WAITOK);
+
+	sc = device_get_softc(dev);
+
+	/* Allocate resource wrapper */
+	br = malloc(sizeof(struct bhnd_resource), M_BHND, M_WAITOK|M_ZERO);
 	if (br == NULL)
 		return (NULL);
 
-	// TODO - support hwcfg specification of indirect targets.
+	/* Configure */
+	// TODO - `_direct` must be set at activation time, not allocation.
 	br->_direct = true;
 	br->_res = bus_alloc_resource(child, type, rid, start, end, count,
 	    flags & ~RF_ACTIVE);
