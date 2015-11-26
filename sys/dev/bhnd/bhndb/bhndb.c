@@ -831,8 +831,11 @@ bhndb_activate_static_window(struct bhndb_softc *sc, device_t child,
 	    ("%s is not a bhnd bus device", device_get_nameunit(child)));
 
 	/* Map the resource back to its bhnd port/region */
-	error = bhnd_decode_port_rid(child, type, rid, &port, &region,
-	    &addr, &size);
+	error = bhnd_decode_port_rid(child, type, rid, &port, &region);
+	if (error)
+		return (EINVAL);
+	
+	error = bhnd_get_port_addr(child, port, region, &addr, &size);
 	if (error)
 		return (EINVAL);
 

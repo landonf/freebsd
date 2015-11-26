@@ -35,16 +35,22 @@ INTERFACE bhnd;
 CODE {
 
 	static int
-	bhnd_null_get_port_rid(device_t dev, device_t child, u_int port_num,
-	    u_int region_num)
+	bhnd_null_get_port_rid(device_t dev, device_t child, u_int port,
+	    u_int region)
 	{
 		return (-1);
 	}
 	
 	static int
 	bhnd_null_decode_port_rid(device_t dev, device_t child, int type,
-	    int rid, u_int *port_num, u_int *region_num, u_long *region_addr,
-	    u_long *region_size)
+	    int rid, u_int *port, u_int *region)
+	{
+		return (ENOENT);
+	}
+	
+	static int
+	bhnd_null_get_port_addr(device_t dev, device_t child, u_int port,
+	    u_int region, u_long *addr, u_long *size)
 	{
 		return (ENOENT);
 	}
@@ -129,18 +135,15 @@ METHOD int get_port_rid {
 
 
 /**
- * Decode a port / region pair on @p child from @p rid.
+ * Decode a port / region pair on @p child defined by @p rid.
+ *
  *
  * @param dev The bus device.
  * @param child The bhnd child.
- * @param type The resource type.
- * @param rid The resource identifier.
- * @param[out] port_num The decoded port number.
- * @param[out] region_num The decoded region number.
- * @param[out] region_addr The decoded region address.
- * @param[out] region_size The decoded region size.
- *
- * @retval 0 success
+ * @param port The port identifier.
+ * @param region The identifier of the memory region on @p port.
+ * 
+ * @retval int The RID for the given @p port and @p region on @p device.
  * @retval non-zero No matching port/region found.
  */
 METHOD int decode_port_rid {
@@ -148,8 +151,28 @@ METHOD int decode_port_rid {
 	device_t child;
 	int type;
 	int rid;
-	u_int *port_num;
-	u_int *region_num;
+	u_int *port;
+	u_int *region;
+} DEFAULT bhnd_null_decode_port_rid;
+
+/**
+ * Get the address and size of @p region on @p port.
+ *
+ * @param dev The bus device.
+ * @param child The bhnd child.
+ * @param port The port identifier.
+ * @param region The identifier of the memory region on @p port.
+ * @param[out] region_addr The region's base address.
+ * @param[out] region_size The region's size.
+ *
+ * @retval 0 success
+ * @retval non-zero No matching port/region found.
+ */
+METHOD int get_port_addr {
+	device_t dev;
+	device_t child;
+	u_int port;
+	u_int region;
 	u_long *region_addr;
 	u_long *region_size;
-} DEFAULT bhnd_null_decode_port_rid;
+} DEFAULT bhnd_null_get_port_addr;

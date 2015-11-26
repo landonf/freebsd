@@ -272,9 +272,9 @@ bhnd_deactivate_resource (device_t dev, int type, int rid,
  * Return the resource-ID for a memory region on the given device port.
  *
  * @param dev The device being queried.
- * @param port The index of the device's interconnect port.
- * @param region The index of the port's mapped address region.
- *
+ * @param port The port identifier.
+ * @param region The identifier of the memory region on @p port.
+ * 
  * @retval int The RID for the given @p port and @p region on @p device.
  * @retval -1 No such port/region found.
  */
@@ -285,25 +285,43 @@ bhnd_get_port_rid(device_t dev, u_int port, u_int region)
 }
 
 /**
- * Decode a port / region pair on @p dev from @p rid.
+ * Decode a port / region pair on @p dev defined by @p rid.
  *
  * @param dev The device being queried.
  * @param type The resource type.
  * @param rid The resource identifier.
- * @param[out] port_num The decoded port number.
- * @param[out] region_num The decoded region number.
- * @param[out] region_addr The decoded region address.
- * @param[out] region_size The decoded region size.
+ * @param[out] port The decoded port identifier.
+ * @param[out] region The decoded region identifier.
  *
  * @retval 0 success
  * @retval non-zero No matching port/region found.
  */
 static inline int
 bhnd_decode_port_rid(device_t dev, int type, int rid, u_int *port,
-    u_int *region, u_long *region_addr, u_long *region_size)
+    u_int *region)
 {
 	return BHND_DECODE_PORT_RID(device_get_parent(dev), dev, type, rid,
-	    port, region, region_addr, region_size);
+	    port, region);
+}
+
+/**
+ * Get the address and size of @p region on @p port.
+ *
+ * @param dev The device being queried.
+ * @param port The port identifier.
+ * @param region The identifier of the memory region on @p port.
+ * @param[out] region_addr The region's base address.
+ * @param[out] region_size The region's size.
+ *
+ * @retval 0 success
+ * @retval non-zero No matching port/region found.
+ */
+static inline int
+bhnd_get_port_addr(device_t dev, u_int port, u_int region,
+   u_long *region_addr, u_long *region_size)
+{
+	return BHND_GET_PORT_ADDR(device_get_parent(dev), dev, port, region,
+	    region_addr, region_size);
 }
 
 #endif /* _BHND_BHND_H_ */
