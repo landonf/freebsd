@@ -1,4 +1,3 @@
- 
 /*-
  * Copyright (c) 2015 Landon Fuller <landon@landonf.org>
  * All rights reserved.
