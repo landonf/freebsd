@@ -194,16 +194,18 @@ bhnd_core_class(uint16_t vendor, uint16_t device)
 }
 
 /**
- * Find the first @p class child device on @p dev.
+ * Find a @p class child device with @p unit on @p dev.
  * 
  * @param parent The bhnd-compatible bus to be searched.
  * @param class The device class to match on.
+ * @param unit The device unit number; specify -1 to return the first match
+ * regardless of unit number.
  * 
  * @retval device_t if a matching child device is found.
  * @retval NULL if no matching child device is found.
  */
 device_t
-bhnd_find_child(device_t dev, bhnd_devclass_t class)
+bhnd_find_child(device_t dev, bhnd_devclass_t class, int unit)
 {
 	struct bhnd_core_match md = {
 		.vendor = BHND_MFGID_INVALID,
@@ -211,7 +213,7 @@ bhnd_find_child(device_t dev, bhnd_devclass_t class)
 		.hwrev.start = BHND_HWREV_INVALID,
 		.hwrev.end = BHND_HWREV_INVALID,
 		.class = class,
-		.unit = -1
+		.unit = unit
 	};
 
 	return bhnd_match_child(dev, &md);

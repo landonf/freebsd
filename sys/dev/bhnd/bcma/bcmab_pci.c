@@ -60,8 +60,15 @@ __FBSDID("$FreeBSD$");
 
 #include "bcma_eromvar.h"
 
-static int	bcmab_find_erom_addr(struct bcmab_pci_softc *sc,
-		    bhndb_addr_t *erom_addr);
+static int		 bcmab_find_erom_addr(struct bcmab_pci_softc *sc,
+			     bhndb_addr_t *erom_addr);
+
+static int		 bcmab_get_erom_port_addr(struct bcmab_pci_softc *sc,
+			     const struct bhndb_regwin *rw, u_long *region_addr,
+			     u_long *region_size);
+
+static struct resource	*bcmab_alloc_erom_resource(struct bcmab_pci_softc *sc,
+			     struct bcma_erom *erom, int *rid, int *type);
 
 /* Map the ChipCommon core using our bus-provided register windows 
  * and fetch the EROM address. */
@@ -103,6 +110,86 @@ bcmab_find_erom_addr(struct bcmab_pci_softc *sc, bhndb_addr_t *erom_addr)
 }
 
 /**
+ * Select (and, if necessary, configure) an EROM-mapping register window and
+ * use it to allocate and return a parent resource usable for immediate EROM
+ * parsing.
+ * 
+ * The returned resource should be deallocated using bus_release_resource().
+ * 
+ * This will fail if the parent resource has already been exclusively acquired,
+ * as will be the case once the bridge driver is initialized.
+ * 
+ * @param sc bcmab driver state.
+ * @param[out] erom The open EROM resource.
+ * @param[out] rid id of the allocated resource; must be passed to
+ * bus_release_resource().
+ * @param[out] type type of the allocated resource; must be passed to
+ * bus_release_resource().
+ * 
+ * @retval resource A resource usable for EROM parsing.
+ * @retval NULL If an error occured allocating the resource.
+ */
+static struct resource *
+bcmab_alloc_erom_resource(struct bcmab_pci_softc *sc, struct bcma_erom *erom,
+    int *rid, int *type)
+{
+	const struct bhndb_hwcfg	*cfg;
+	const struct bhndb_regwin	*rw;
+	struct resource			*erom_res;
+	int				 error;
+
+	cfg = BHNDB_BUS_GET_GENERIC_HWCFG(sc->parent_dev, sc->dev);
+
+	/* Prefer a fixed EROM mapping window. */
+	rw = bhndb_regwin_find_core(cfg->register_windows, BHND_DEVCLASS_EROM,
+	    0, 0, 0);
+
+	/* Fall back to a dynamic window */
+	if (rw == NULL) {
+		rw = bhndb_regwin_find_type(cfg->register_windows,
+		    BHNDB_REGWIN_T_DYN);
+		
+		if (rw == NULL) {
+			device_printf(sc->dev,
+			    "no usable dynamic register window\n");
+			return (NULL);
+		}
+	}
+
+	/* Allocate the EROM window resource  */
+	*rid = rw->res.rid;
+	*type = rw->res.type;
+	erom_res = bus_alloc_resource_any(sc->parent_dev, rw->res.type,
+	    rid, RF_ACTIVE);
+	if (erom_res == NULL) {
+		device_printf(sc->dev,
+		    "failed to allocate bcmab_pci EROM resource\n");
+		return (NULL);
+	}
+	
+	/* Configure the dynamic window's base address. This is done after
+	 * resource allocation has succeeded to ensure that we do not modify
+	 * a window backed by an in-use resource. */
+	if (rw->win_type == BHNDB_REGWIN_T_DYN) {
+		if ((error = BHNDB_SET_WINDOW_ADDR(sc->dev, rw, sc->erom_addr)))
+			goto failed;
+	}
+
+	/* Open the EROM for reading */
+	if ((error = bcma_erom_open(erom_res, rw->win_offset, erom)))
+		goto failed;
+
+	return (erom_res);
+
+failed:
+	if (erom_res != NULL)
+		bus_release_resource(sc->parent_dev, *type, *rid,
+		    erom_res);
+
+	return (NULL);
+}
+
+/**
  * Parse the EROM, saving the core information to @p sc.
  * 
  * @param sc bcmab driver state.
@@ -111,49 +198,14 @@ static int
 bcmab_save_core_info(struct bcmab_pci_softc *sc)
 {
 	struct bcma_erom		 erom;
-	const struct bhndb_hwcfg	*cfg;
-	const struct bhndb_regwin	*erom_win;
-	struct resource			*res_mem;
+	struct resource			*erom_res;
 	int				 error;
-	int				 rid;
+	int				 rid, type;
 
-	cfg = BHNDB_BUS_GET_GENERIC_HWCFG(sc->parent_dev, sc->dev);
-
-	/* Prefer a fixed EROM mapping window. */
-	erom_win = bhndb_regwin_find_core(cfg->register_windows,
-	    BHND_DEVCLASS_EROM, 0, 0, 0);
-
-	/* Fall back to a dynamic window */
-	if (erom_win == NULL) {
-		erom_win = bhndb_regwin_find_type(cfg->register_windows,
-		    BHNDB_REGWIN_T_DYN);
-		
-		if (erom_win == NULL) {
-			device_printf(sc->dev,
-			    "no usable dynamic register window\n");
-			return (ENXIO);
-		}
-	
-		/* Configure the dynamic window's base address. */
-		error = BHNDB_SET_WINDOW_ADDR(sc->dev, erom_win, sc->erom_addr);
-		if (error)
-			return (error);
-	}
-
-	/* Allocate the EROM window resource  */
-	rid = erom_win->res.rid;
-	res_mem = bus_alloc_resource_any(sc->parent_dev, erom_win->res.type,
-	    &rid, RF_ACTIVE);
-	if (res_mem == NULL) {
-		device_printf(sc->dev,
-		    "failed to allocate bcmab_pci EROM resource\n");
-		return (ENXIO);
-	}
-
-	/* Open the EROM for reading */
-	error = bcma_erom_open(res_mem, erom_win->win_offset, &erom);
-	if (error)
-		goto cleanup;
+	/* Allocate resource for EROM parsing */
+	erom_res = bcmab_alloc_erom_resource(sc, &erom, &rid, &type);
+	if (erom_res == NULL)
+		return (ENODEV);
 
 	/* Cache the core table */
 	error = bcma_erom_get_core_info(&erom, &sc->cores, &sc->num_cores);
@@ -161,7 +213,7 @@ bcmab_save_core_info(struct bcmab_pci_softc *sc)
 		goto cleanup;
 
 cleanup:
-	bus_release_resource(sc->parent_dev, erom_win->res.type, rid, res_mem);
+	bus_release_resource(sc->parent_dev, type, rid, erom_res);
 	return (error);
 }
 
@@ -254,6 +306,147 @@ bcmab_pci_get_enum_addr(device_t dev, device_t child)
 	return (sc->erom_addr);
 }
 
+/**
+ * Consult the EROM to find the base address and size of the port region
+ * referenced by @p rw.
+ * 
+ * @param sc Driver state.
+ * @param rw A BHNDB_REGWIN_T_CORE register window.
+ * @param[out] region_addr If found, the port region's base address.
+ * @param[out] region_size If found, the port region's size.
+ * 
+ * @retval 0 success
+ * @retval non-zero not found 
+ */
+static int bcmab_get_erom_port_addr(struct bcmab_pci_softc *sc,
+    const struct bhndb_regwin *rw, u_long *region_addr, u_long *region_size)
+{
+	struct bcma_corecfg	*cfg;
+	struct bcma_erom	 erom;
+	struct bcma_map		*map;
+	struct bhnd_core_info	*core;
+	struct resource		*erom_res;
+	int			 error;
+	int			 rid, type;
+
+	KASSERT(rw->win_type == BHNDB_REGWIN_T_CORE, ("unsupported win_type"));
+	
+	core = NULL;
+	cfg = NULL;
+
+	/* Find a core matching the given register window */
+	for (u_int i = 0; i < sc->num_cores; i++) {
+		struct bhnd_core_info *c = &sc->cores[i];
+		if (rw->core.class == bhnd_core_class(c->vendor, c->device) &&
+		    rw->core.unit == c->unit)
+		{
+			core = c;
+			break;
+		}
+	}
+
+	if (core == NULL)
+		return (ENOENT);
+
+	/* Allocate EROM parsing state */
+	erom_res = bcmab_alloc_erom_resource(sc, &erom, &rid, &type);
+	if (erom_res == NULL)
+		return (ENODEV);
+
+	/* Parse the corecfg */
+	if ((error = bcma_erom_seek_core_index(&erom, core->core_id))) {
+		device_printf(sc->dev, "seek to coreid failed!\n");
+		goto cleanup;
+	}
+
+	if ((error = bcma_erom_parse_corecfg(&erom, &cfg))) {
+				device_printf(sc->dev, "corecfg parse failed!\n");
+
+		goto cleanup;
+	}
+
+	/* Find the register window's defined region */
+	map = bcma_corecfg_find_region_map(cfg, BCMA_SPORT_TYPE_DEVICE,
+	    rw->core.port, rw->core.region);
+	if (map == NULL) {
+		error = ENOENT;
+		goto cleanup;
+	}
+
+	/* Usable region? */
+	if (map->m_base > ULONG_MAX || map->m_size > ULONG_MAX)
+	{
+		error = ENODEV;
+		goto cleanup;
+	}
+
+	*region_addr = map->m_base;
+	*region_size = map->m_size;
+
+cleanup:
+	bus_release_resource(sc->parent_dev, type, rid, erom_res);
+	
+	if (cfg != NULL)
+		bcma_free_corecfg(cfg);
+
+	return (error);
+}
+
+/**
+ * Find the core/port/region triplet corresponding to @p rw, if any, and
+ * write the region's base address to @p addr.
+ * 
+ * @param sc Driver state.
+ * @param rw A BHNDB_REGWIN_T_CORE register window.
+ * @param[out] addr If found, the port region's base address.
+ *
+ * @retval 0 success
+ * @retval non-zero not found 
+ */
+static int bcmab_get_core_regwin_addr(struct bcmab_pci_softc *sc,
+    const struct bhndb_regwin *regwin, bhndb_addr_t *addr)
+{
+	u_long		region_addr, region_size;
+	int		error;
+
+	KASSERT(regwin->win_type == BHNDB_REGWIN_T_CORE,
+	    ("unsupported window type"));
+
+	if (device_is_attached(sc->bus_dev)) {
+		/* Prefer fetching device info from the bus device. */
+		device_t child;
+
+		/* Find attached device */
+		child = bhnd_find_child(sc->bus_dev, regwin->core.class,
+		    regwin->core.unit);
+		if (child == NULL)
+			return (ENOENT);
+		
+		error = bhnd_get_port_addr(child, regwin->core.port,
+		    regwin->core.region, &region_addr, &region_size);
+		if (error)
+			return (error);
+	} else {
+		/* If our bus is unavailable, we're running during our own
+		 * attachment and must consult the EROM directly */
+		error = bcmab_get_erom_port_addr(sc, regwin, &region_addr,
+		    &region_size);
+		if (error)
+			return (error);
+	}
+
+	/* The window definition must fit in the mapped region */
+	if (regwin->win_size > region_size) {
+		device_printf(sc->dev,
+		    "register window extends beyond port region at %lx\n",
+		    region_addr);
+		return (ENODEV);
+	}
+
+	*addr = region_addr;
+	return (0);
+}
+
 static int
 bcmab_pci_get_window_addr(device_t dev, const struct bhndb_regwin *rw,
 	bhndb_addr_t *addr)
@@ -262,16 +455,13 @@ bcmab_pci_get_window_addr(device_t dev, const struct bhndb_regwin *rw,
 
 	switch (rw->win_type) {
 	case BHNDB_REGWIN_T_CORE:
-		// TODO
-		return (ENODEV);
+		return (bcmab_get_core_regwin_addr(sc, rw, addr));
 	case BHNDB_REGWIN_T_DYN:
 		*addr = pci_read_config(sc->parent_dev, rw->dyn.cfg_offset, 4);
-		break;
+		return (0);
 	default:
 		return (ENODEV);
 	}
-
-	return (0);
 }
 
 static int

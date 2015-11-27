@@ -44,14 +44,6 @@ __FBSDID("$FreeBSD$");
 #include "bcma_eromreg.h"
 #include "bcma_eromvar.h"
 
-static int		 bcma_devinfo_fill_port_regions(device_t bus,
-			     struct bcma_erom *erom, struct bcma_devinfo *dinfo,
-			     bcma_pid_t port_num, bcma_sport_type port_type);
-
-static int		 bcma_next_child_devinfo(device_t bus, 
-			     struct bcma_erom *erom, u_int core_index,
-			     int core_unit, struct bcma_devinfo **result);
-
 int
 bcma_probe(device_t dev)
 {
@@ -79,7 +71,7 @@ bcma_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 	const struct bcma_corecfg *cfg;
 	
 	dinfo = device_get_ivars(child);
-	cfg = &dinfo->cfg;
+	cfg = dinfo->corecfg;
 	
 	switch (index) {
 	case BHND_IVAR_VENDOR:
@@ -154,10 +146,10 @@ bcma_get_port_rid(device_t dev, device_t child, u_int port_num, u_int
 	
 	dinfo = device_get_ivars(child);
 	
-	if (port_num > dinfo->cfg.num_dports)
+	if (port_num > dinfo->corecfg->num_dev_ports)
 		return -1;
 
-	STAILQ_FOREACH(port, &dinfo->cfg.dports, sp_link) {
+	STAILQ_FOREACH(port, &dinfo->corecfg->dev_ports, sp_link) {
 		if (port->sp_num != port_num)
 			continue;
 		
@@ -186,7 +178,7 @@ bcma_decode_port_rid(device_t dev, device_t child, int type, int rid,
 		return (EINVAL);
 
 	/* Search the port list */
-	STAILQ_FOREACH(port, &dinfo->cfg.dports, sp_link) {
+	STAILQ_FOREACH(port, &dinfo->corecfg->dev_ports, sp_link) {
 		STAILQ_FOREACH(map, &port->sp_maps, m_link) {
 			if (map->m_rid != rid)
 				continue;
@@ -211,7 +203,7 @@ bcma_get_port_addr(device_t dev, device_t child, u_int port_num,
 	dinfo = device_get_ivars(child);
 
 	/* Search the port list */
-	STAILQ_FOREACH(port, &dinfo->cfg.dports, sp_link) {
+	STAILQ_FOREACH(port, &dinfo->corecfg->dev_ports, sp_link) {
 		if (port->sp_num != port_num)
 			continue;
 
@@ -234,306 +226,6 @@ bcma_get_port_addr(device_t dev, device_t child, u_int port_num,
 }
 
 /**
- * Register all MMIO region descriptors for the given slave port.
- * 
- * @param bus The BCMA bus.
- * @param erom EROM reader.
- * @param dinfo Device info to be populated with the scanned port regions.
- * @param port_num Port index for which regions will be parsed.
- * @param port_type The port region type to be parsed.
- * @param[out] offset The offset at which to perform parsing. On success, this
- * will be updated to point to the next EROM table entry.
- */
-static int 
-bcma_devinfo_fill_port_regions(device_t bus,
-    struct bcma_erom *erom, struct bcma_devinfo *dinfo,
-    bcma_pid_t port_num, bcma_sport_type port_type)
-{
-	struct bcma_sport	*sport;
-	struct bcma_sport_list	*sports;
-	bus_size_t		 entry_offset;
-	int			 error;
-	uint8_t			 req_region_type;
-	bool			 skip_registration;
-
-	error = 0;
-	skip_registration = false;
-
-	/* Allocate a new port descriptor */
-	sport = bcma_alloc_sport(port_num, port_type);
-	if (sport == NULL)
-		return (ENOMEM);
-	
-	/* Determine the required region type for our region descriptors */
-	switch (port_type) {
-	case BCMA_SPORT_TYPE_DEVICE:
-		req_region_type = BCMA_EROM_REGION_TYPE_DEVICE;
-		sports = &dinfo->cfg.dports;
-		break;
-	case BCMA_SPORT_TYPE_BRIDGE:
-		req_region_type = BCMA_EROM_REGION_TYPE_BRIDGE;
-		sports = &dinfo->cfg.dports;
-		break;
-	case BCMA_SPORT_TYPE_SWRAP:
-		req_region_type = BCMA_EROM_REGION_TYPE_SWRAP;
-		sports = &dinfo->cfg.wports;
-		break;
-	case BCMA_SPORT_TYPE_MWRAP:
-		req_region_type = BCMA_EROM_REGION_TYPE_MWRAP;
-		sports = &dinfo->cfg.wports;
-		break;
-	}
-
-	/* Read all address regions defined for this port */
-	for (bcma_rmid_t region_num = 0;; region_num++) {
-		struct bcma_map			*map;
-		struct bcma_erom_sport_region	 spr;
-		bcma_addr_t			 end;
-
-		/* No valid port definition should come anywhere near
-		 * BCMA_RMID_MAX. */
-		if (region_num == BCMA_RMID_MAX) {
-			device_printf(bus,
-			    "core%u %s%u: region count reached upper limit of %u\n",
-			    dinfo->cfg.core_index,
-			    bcma_port_type_name(port_type),
-			    port_num, BCMA_RMID_MAX);
-
-			error = EINVAL;
-			goto cleanup;
-		}
-
-		/* Parse the next region entry. */
-		entry_offset = bcma_erom_tell(erom);
-		error = bcma_erom_parse_sport_region(erom, &spr);
-		if (error && error != ENOENT) {
-			device_printf(bus,
-			    "core%u %s%u.%u: invalid slave port address region\n",
-			    dinfo->cfg.core_index,
-			    bcma_port_type_name(port_type),
-			    port_num, region_num);
-			goto cleanup;
-		}
-
-		/* ENOENT signals no further region entries */
-		if (error == ENOENT) {
-			/* No further entries */
-			error = 0;
-			break;
-		} 
-		
-		/* A region or type mismatch also signals no further region
-		 * entries */
-		if (spr.port_num != port_num ||
-		    spr.port_type != req_region_type)
-		{
-			/* We don't want to consume this entry */
-			bcma_erom_seek(erom, entry_offset);
-
-			error = 0;
-			goto cleanup;
-		}
-
-		/*
-		 * Create the map entry. 
-		 */
-		map = malloc(sizeof(struct bcma_map), M_BHND, M_WAITOK);
-		if (map == NULL) {
-			error = ENOMEM;
-			goto cleanup;
-		}
-
-		map->m_region_num = region_num;
-		map->m_base = spr.base_addr;
-		map->m_size = spr.size;
-		map->m_rid = -1;
-
-		/*
-		 * Create the corresponding device resource list entry.
-		 * 
-		 * We necessarily skip registration of the region in the 
-		 * per-device resource_list if the memory range is not
-		 * representable using rman/resource API's u_long address
-		 * type.
-		 */
-		end = map->m_base + spr.size;
-		if (map->m_base <= ULONG_MAX && end <= ULONG_MAX) {
-			map->m_rid = resource_list_add_next(&dinfo->resources,
-			    SYS_RES_MEMORY, spr.base_addr, end, spr.size);
-		} else if (bootverbose) {
-			device_printf(bus,
-				"core%u %s%u.%u: region %llx-%llx extends "
-				"beyond supported addressable range\n",
-				dinfo->cfg.core_index,
-				bcma_port_type_name(port_type),
-				port_num, region_num,
-				(unsigned long long) map->m_base,
-				(unsigned long long) end);
-		}
-
-		/* Add the region map to the port */
-		STAILQ_INSERT_TAIL(&sport->sp_maps, map, m_link);
-		sport->sp_num_maps++;
-	}
-
-cleanup:
-	/* Append the new port descriptor on success, or deallocate the
-	 * partially parsed descriptor on failure. */
-	if (error == 0) {
-		STAILQ_INSERT_TAIL(sports, sport, sp_link);
-	} else if (sport != NULL) {
-		bcma_free_sport(sport);
-	}
-
-	return error;
-}
-
-/**
- * Parse the next child devinfo entry from the EROM table.
- * 
- * @param bus The BCMA bus.
- * @param erom EROM reader.
- * @param core_index The index of the core being parsed.
- * @param[out] result On success, the core's device info. The caller inherits
- * ownership of this allocation.
- * 
- * @return If successful, returns 0. If the end of the EROM table is hit,
- * ENOENT will be returned. On error, returns a non-zero error value.
- */
-static int
-bcma_next_child_devinfo(device_t bus, struct bcma_erom *erom, u_int core_index,
-    int core_unit, struct bcma_devinfo **result)
-{
-	struct bcma_devinfo	*dinfo;
-	struct bcma_erom_core	 core;
-	bcma_sport_type		 first_port_type;
-	int			 error;
-
-	dinfo = NULL;
-
-	/* Parse the next core entry */
-	if ((error = bcma_erom_parse_core(erom, &core)))
-		return (error);
-
-	/* Allocate our device info */
-	dinfo = bcma_alloc_dinfo(core_index, core_unit, core.vendor,
-	    core.device, core.rev);
-	if (dinfo == NULL)
-		return (ENOMEM);
-	
-	/* These are 5-bit values in the EROM table, and should never be able
-	 * to overflow BCMA_PID_MAX. */
-	KASSERT(core.num_mport <= BCMA_PID_MAX, ("unsupported mport count"));
-	KASSERT(core.num_dport <= BCMA_PID_MAX, ("unsupported dport count"));
-	KASSERT(core.num_mwrap + core.num_swrap <= BCMA_PID_MAX,
-	    ("unsupported wport count"));
-
-	dinfo->cfg.num_dports = core.num_dport;
-	dinfo->cfg.num_mports = core.num_mport;
-	dinfo->cfg.num_wports = core.num_mwrap + core.num_swrap;
-
-	if (bootverbose) {
-		device_printf(bus, 
-			    "core%u: %s %s (cid=%hx, rev=%hhu, unit=%d)\n",
-			    core_index,
-			    bhnd_vendor_name(dinfo->cfg.vendor),
-			    bhnd_core_name(dinfo->cfg.vendor, dinfo->cfg.device), 
-			    dinfo->cfg.device, dinfo->cfg.revid,
-			    dinfo->cfg.core_unit);
-	}
-
-	/* Parse Master Port Descriptors */
-	for (uint8_t i = 0; i < core.num_mport; i++) {
-		struct bcma_mport	*mport;
-		struct bcma_erom_mport	 mpd;
-	
-		/* Parse the master port descriptor */
-		error = bcma_erom_parse_mport(erom, &mpd);
-		if (error)
-			goto failed;
-
-		/* Initialize a new bus mport structure */
-		mport = malloc(sizeof(struct bcma_mport), M_BHND, M_WAITOK);
-		if (mport == NULL) {
-			error = ENOMEM;
-			goto failed;
-		}
-		
-		mport->mp_vid = mpd.port_vid;
-		mport->mp_num = mpd.port_num;
-
-		/* Update dinfo */
-		STAILQ_INSERT_TAIL(&dinfo->cfg.mports, mport, mp_link);
-	}
-	
-
-	/*
-	 * Determine whether this is a bridge device; if so, we can
-	 * expect the first sequence of address region descriptors to
-	 * be of EROM_REGION_TYPE_BRIDGE instead of
-	 * BCMA_EROM_REGION_TYPE_DEVICE.
-	 * 
-	 * It's unclear whether this is the correct mechanism by which we
-	 * should detect/handle bridge devices, but this approach matches
-	 * that of (some of) Broadcom's published drivers.
-	 */
-	if (core.num_dport > 0) {
-		uint32_t entry;
-
-		if ((error = bcma_erom_peek32(erom, &entry)))
-			goto failed;
-
-		if (BCMA_EROM_ENTRY_IS(entry, REGION) && 
-		    BCMA_EROM_GET_ATTR(entry, REGION_TYPE) == BCMA_EROM_REGION_TYPE_BRIDGE)
-		{
-			first_port_type = BCMA_SPORT_TYPE_BRIDGE;
-		} else {
-			first_port_type = BCMA_SPORT_TYPE_DEVICE;
-		}
-	}
-	
-	/* Device/bridge port descriptors */
-	for (uint8_t sp_num = 0; sp_num < core.num_dport; sp_num++) {
-		error = bcma_devinfo_fill_port_regions(bus, erom, dinfo, sp_num,
-		    first_port_type);
-
-		if (error)
-			goto failed;
-	}
-
-	/* Wrapper (aka device management) descriptors (for master ports). */
-	for (uint8_t sp_num = 0; sp_num < core.num_mwrap; sp_num++) {
-		error = bcma_devinfo_fill_port_regions(bus, erom, dinfo, sp_num,
-		    BCMA_SPORT_TYPE_MWRAP);
-
-		if (error)
-			goto failed;
-	}
-
-	
-	/* Wrapper (aka device management) descriptors (for slave ports). */	
-	for (uint8_t i = 0; i < core.num_swrap; i++) {
-		/* Slave wrapper ports are not numbered distinctly from master
-		 * wrapper ports. */
-		uint8_t sp_num = core.num_mwrap + i;
-		error = bcma_devinfo_fill_port_regions(bus, erom, dinfo, sp_num,
-		    BCMA_SPORT_TYPE_SWRAP);
-
-		if (error)
-			goto failed;
-	}
-
-	*result = dinfo;
-	return (0);
-	
-failed:
-	if (dinfo != NULL)
-		bcma_free_dinfo(dinfo);
-
-	return error;
-}
-
-/**
  * Scan a device enumeration ROM table, adding all discovered cores to the bus.
  * 
  * @param bus The bcma bus.
@@ -544,39 +236,37 @@ int
 bcma_add_children(device_t bus, struct resource *erom_res, bus_size_t erom_offset)
 {
 	struct bcma_erom	 erom;
-	struct bhnd_core_info	*cores;
+	struct bcma_corecfg	*corecfg;
 	struct bcma_devinfo	*dinfo;
 	device_t		 child;
-	u_int			 num_cores;
 	int			 error;
 	
 	dinfo = NULL;
-	cores = NULL;
+	corecfg = NULL;
 
 	/* Initialize our reader */
 	if ((error = bcma_erom_open(erom_res, erom_offset, &erom)))
 		return (error);
 
-	/* Fetch the full table of core descriptors; these provide the unit
-	 * numbers for each core. */
-	if ((error = bcma_erom_get_core_info(&erom, &cores, &num_cores))) {
-		device_printf(bus, "failed to read core table: %d\n", error);
-		return (error);
-	}
-
-	/* Add a device for each core. */
-	for (u_int core_index = 0; core_index < num_cores; core_index++) 
-	{
-		int core_unit;
-
-		/* Determine the core's unit number */
-		core_unit = cores[core_index].unit;
-		
-		/* Generate the devinfo structure */
-		error = bcma_next_child_devinfo(bus, &erom, core_index,
-		    core_unit, &dinfo);
-		if (error)
+	/* Add all cores. */
+	while (!error) {
+		/* Parse next core */
+		error = bcma_erom_parse_corecfg(&erom, &corecfg);
+		if (error && error == ENOENT) {
+			return (0);
+		} else if (error) {
 			goto failed;
+		}
+
+		/* Allocate per-device bus info */
+		dinfo = bcma_alloc_dinfo(bus, corecfg);
+		if (dinfo == NULL) {
+			error = ENXIO;
+			goto failed;
+		}
+
+		/* The dinfo instance now owns the corecfg value */
+		corecfg = NULL;
 
 		/* Add the child device */
 		child = device_add_child_ordered(bus, BHND_PROBE_ORDER_DEFAULT,
@@ -591,14 +281,16 @@ bcma_add_children(device_t bus, struct resource *erom_res, bus_size_t erom_offse
 		dinfo = NULL;
 	}
 
-	return (0);
+	/* Hit EOF parsing cores? */
+	if (error == ENOENT)
+		return (0);
 	
 failed:
 	if (dinfo != NULL)
 		bcma_free_dinfo(dinfo);
-	
-	if (cores != NULL)
-		free(cores, M_BHND);
+
+	if (corecfg != NULL)
+		bcma_free_corecfg(corecfg);
 
 	return (error);
 }

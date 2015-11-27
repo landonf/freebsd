@@ -70,8 +70,8 @@ bus_size_t	bcma_erom_tell(struct bcma_erom *erom);
 void		bcma_erom_seek(struct bcma_erom *erom, bus_size_t offset);
 void		bcma_erom_reset(struct bcma_erom *erom);
 
-int		bcma_erom_seek_type(struct bcma_erom *erom, uint8_t etype);
-
+int		bcma_erom_seek_core_index(struct bcma_erom *erom,
+		    u_int core_index);
 int		bcma_erom_parse_core(struct bcma_erom *erom,
 		    struct bcma_erom_core *core);
 
@@ -84,5 +84,8 @@ int		bcma_erom_parse_sport_region(struct bcma_erom *erom,
 int		bcma_erom_get_core_info(struct bcma_erom *erom,
 		    struct bhnd_core_info **cores,
 		    u_int *num_cores);
+
+int		bcma_erom_parse_corecfg(struct bcma_erom *erom,
+		    struct bcma_corecfg **result);
 
 #endif /* _BCMA_BCMA_EROMVAR_H_ */

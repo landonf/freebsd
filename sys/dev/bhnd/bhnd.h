@@ -162,7 +162,7 @@ device_t			 bhnd_match_child(device_t dev,
 				     const struct bhnd_core_match *desc);
 
 device_t			 bhnd_find_child(device_t dev,
-				     bhnd_devclass_t class);
+				     bhnd_devclass_t class, int unit);
 
 const struct bhnd_core_info	*bhnd_match_core(
 				     const struct bhnd_core_info *cores,

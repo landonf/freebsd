@@ -63,17 +63,176 @@ bcma_port_type_name (bcma_sport_type port_type)
 }
 
 /**
- * Allocate and initialize new device info structure.
+ * Search @p cfg for mapped address region for the given @p type, @p port_id,
+ * and @p map_id.
+ * 
+ * @param cfg The core configuration to search.
+ * @param type The port type to search for.
+ * @param port_id The port identifier to search for.
+ * @param map_id The map identifier to search for.
+ * 
+ * @retval bcma_map if the requested map is found.
+ * @retval NULL not found
+ */
+struct bcma_map *
+bcma_corecfg_find_region_map(struct bcma_corecfg *cfg, bcma_sport_type type,
+    bcma_pid_t port_id, bcma_rmid_t map_id)
+{
+	struct bcma_sport_list	*ports;
+	struct bcma_sport	*port;
+	struct bcma_map		*map;
+
+	switch (type) {
+	case BCMA_SPORT_TYPE_BRIDGE:
+		ports = &cfg->bridge_ports;
+		break;
+	case BCMA_SPORT_TYPE_DEVICE:
+		ports = &cfg->dev_ports;
+		break;
+	case BCMA_SPORT_TYPE_MWRAP:
+	case BCMA_SPORT_TYPE_SWRAP:
+		ports = &cfg->wrapper_ports;
+		break;
+	}
+
+	STAILQ_FOREACH(port, ports, sp_link) {
+		if (port->sp_num != port_id)
+			continue;
+
+		STAILQ_FOREACH(map, &port->sp_maps, m_link) {
+			if (map->m_region_num == map_id)
+				return (map);
+		}
+	}
+
+	return (NULL);
+}
+
+
+ /**
+ * Allocate and initialize new core config structure.
  * 
  * @param core_index Core index on the bus.
  * @param core_unit Core unit number.
  * @param vendor Core designer.
  * @param device Core identifier (e.g. part number).
- * @param revision Core revision identifier.
+ * @param revid Core revision identifier.
+ */
+struct bcma_corecfg *
+bcma_alloc_corecfg(u_int core_index, int core_unit, uint16_t vendor,
+    uint16_t device, uint8_t revid)
+{
+	struct bcma_corecfg *cfg;
+
+	cfg = malloc(sizeof(*cfg), M_BHND, M_WAITOK);
+	if (cfg == NULL)
+		return NULL;
+
+	cfg->vendor = vendor;
+	cfg->device = device;
+	cfg->revid = revid;
+	cfg->core_index = core_index;
+	cfg->core_unit = core_unit;
+	
+	STAILQ_INIT(&cfg->master_ports);
+	cfg->num_master_ports = 0;
+
+	STAILQ_INIT(&cfg->dev_ports);
+	cfg->num_dev_ports = 0;
+
+	STAILQ_INIT(&cfg->bridge_ports);
+	cfg->num_bridge_ports = 0;
+
+	STAILQ_INIT(&cfg->wrapper_ports);
+	cfg->num_wrapper_ports = 0;
+
+	return (cfg);
+}
+
+/**
+ * Deallocate the given core config and any associated resources.
+ * 
+ * @param corecfg Core info to be deallocated.
+ */
+void
+bcma_free_corecfg(struct bcma_corecfg *corecfg)
+{
+	struct bcma_mport *mport, *mnext;
+	struct bcma_sport *sport, *snext;
+
+	STAILQ_FOREACH_SAFE(mport, &corecfg->master_ports, mp_link, mnext) {
+		free(mport, M_BHND);
+	}
+	
+	STAILQ_FOREACH_SAFE(sport, &corecfg->dev_ports, sp_link, snext) {
+		bcma_free_sport(sport);
+	}
+
+	STAILQ_FOREACH_SAFE(sport, &corecfg->bridge_ports, sp_link, snext) {
+		bcma_free_sport(sport);
+	}
+	
+	STAILQ_FOREACH_SAFE(sport, &corecfg->wrapper_ports, sp_link, snext) {
+		bcma_free_sport(sport);
+	}
+
+	free(corecfg, M_BHND);
+}
+
+/**
+ * Populate the resource list and bcma_map RIDs using the maps defined on
+ * @p ports.
+ * 
+ * @param bus The requesting bus device.
+ * @param dinfo The device info instance to be initialized.
+ * @param ports The set of ports to be enumerated
+ */
+static void
+bcma_dinfo_init_resource_info(device_t bus, struct bcma_devinfo *dinfo,
+    struct bcma_sport_list *ports)
+{
+	struct bcma_map		*map;
+	struct bcma_sport	*port;
+	bcma_addr_t		 end;
+
+	STAILQ_FOREACH(port, ports, sp_link) {
+		STAILQ_FOREACH(map, &port->sp_maps, m_link) {
+			/*
+			* Create the corresponding device resource list entry.
+			* 
+			* We necessarily skip registration of the region in the 
+			* per-device resource_list if the memory range is not
+			* representable using rman/resource API's u_long address
+			* type.
+			*/
+			end = map->m_base + map->m_size;
+			if (map->m_base <= ULONG_MAX && end <= ULONG_MAX) {
+				map->m_rid = resource_list_add_next(
+				    &dinfo->resources, SYS_RES_MEMORY,
+				    map->m_base, end, map->m_size);
+			} else if (bootverbose) {
+				device_printf(bus,
+				    "core%u %s%u.%u: region %llx-%llx extends "
+				        "beyond supported addressable range\n",
+				    dinfo->corecfg->core_index,
+				    bcma_port_type_name(port->sp_type),
+				    port->sp_num, map->m_region_num,
+				    (unsigned long long) map->m_base,
+				    (unsigned long long) end);
+			}
+		}
+	}
+}
+
+/**
+ * Allocate and initialize new device info structure, assuming ownership
+ * of the provided core configuration.
+ * 
+ * @param dev The requesting bus device.
+ * @param corecfg Device core configuration.
  */
 struct bcma_devinfo *
-bcma_alloc_dinfo(u_int core_index, int core_unit, uint16_t vendor,
-    uint16_t device, uint8_t revid)
+bcma_alloc_dinfo(device_t bus, struct bcma_corecfg *corecfg)
 {
 	struct bcma_devinfo *dinfo;
 	
@@ -81,17 +240,13 @@ bcma_alloc_dinfo(u_int core_index, int core_unit, uint16_t vendor,
 	if (dinfo == NULL)
 		return NULL;
 
-	dinfo->cfg.vendor = vendor;
-	dinfo->cfg.device = device;
-	dinfo->cfg.revid = revid;
-	dinfo->cfg.core_index = core_index;
-	dinfo->cfg.core_unit = core_unit;
+	dinfo->corecfg = corecfg;
 
 	resource_list_init(&dinfo->resources);
 
-	STAILQ_INIT(&dinfo->cfg.mports);
-	STAILQ_INIT(&dinfo->cfg.dports);
-	STAILQ_INIT(&dinfo->cfg.wports);
+	bcma_dinfo_init_resource_info(bus, dinfo, &corecfg->dev_ports);
+	bcma_dinfo_init_resource_info(bus, dinfo, &corecfg->bridge_ports);
+	bcma_dinfo_init_resource_info(bus, dinfo, &corecfg->wrapper_ports);
 
 	return dinfo;
 }
@@ -104,22 +259,8 @@ bcma_alloc_dinfo(u_int core_index, int core_unit, uint16_t vendor,
 void
 bcma_free_dinfo(struct bcma_devinfo *dinfo)
 {
-	struct bcma_mport *mport, *mnext;
-	struct bcma_sport *sport, *snext;
-
+	bcma_free_corecfg(dinfo->corecfg);
 	resource_list_free(&dinfo->resources);
-
-	STAILQ_FOREACH_SAFE(mport, &dinfo->cfg.mports, mp_link, mnext) {
-		free(mport, M_BHND);
-	}
-	
-	STAILQ_FOREACH_SAFE(sport, &dinfo->cfg.dports, sp_link, snext) {
-		bcma_free_sport(sport);
-	}
-	
-	STAILQ_FOREACH_SAFE(sport, &dinfo->cfg.wports, sp_link, snext) {
-		bcma_free_sport(sport);
-	}
 
 	free(dinfo, M_BHND);
 }
