@@ -822,7 +822,8 @@ bhndb_activate_static_window(struct bhndb_softc *sc, device_t child,
 	struct resource			*parent_res;
 	const struct bhndb_regwin	*win;
 	u_int				 port, region;
-	u_long				 addr, size;
+	bhnd_addr_t			 addr;
+	bhnd_size_t			 size;
 	int				 error;
 
 	KASSERT(bhndb_is_bhnd_core(sc, child),

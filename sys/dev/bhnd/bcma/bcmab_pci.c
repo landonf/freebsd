@@ -434,8 +434,8 @@ static int bcmab_get_core_regwin_addr(struct bcmab_pci_softc *sc,
 	/* The window definition must fit in the mapped region */
 	if (regwin->win_size > region_size) {
 		device_printf(sc->dev,
-		    "register window extends beyond port region at %lx\n",
-		    region_addr);
+		    "register window extends beyond port region at %llx\n",
+		    (unsigned long long) region_addr);
 		return (ENODEV);
 	}
 
