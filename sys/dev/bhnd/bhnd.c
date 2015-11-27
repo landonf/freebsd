@@ -88,6 +88,10 @@ bhnd_generic_print_child(device_t dev, device_t child)
 	struct resource_list	*rl;
 	int			retval = 0;
 
+	/* Skip reporting host bridge devices */
+	if (bhnd_is_hostb_device(child) && !bootverbose)
+		return (0);
+
 	retval += bus_print_child_header(dev, child);
 
 	rl = BUS_GET_RESOURCE_LIST(dev, child);
