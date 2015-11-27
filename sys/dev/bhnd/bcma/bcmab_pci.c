@@ -49,7 +49,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/pci/pcireg.h>
 #include <dev/pci/pcivar.h>
 
-#include <dev/bhnd/bhndb/bhndbvar.h>
+#include <dev/bhnd/bhndb/bhndb_pcivar.h>
 #include <dev/bhnd/bhndb/bhndb_pcireg.h>
 
 #include <dev/bhnd/cores/bhnd_chipcreg.h>
@@ -528,8 +528,8 @@ static device_method_t bcmab_pci_methods[] = {
 };
 
 DEFINE_CLASS_1(bcmab, bcmab_pci_driver, bcmab_pci_methods,
-    sizeof(struct bcmab_pci_softc), bhndb_driver);
-// 
+    sizeof(struct bcmab_pci_softc), bhndb_pci_driver);
+
 MODULE_VERSION(bcmab_pci, 1);
 MODULE_DEPEND(bcmab_pci, pci, 1, 1, 1);
 MODULE_DEPEND(bcmab_pci, bhndb, 1, 1, 1);

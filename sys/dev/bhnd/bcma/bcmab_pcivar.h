@@ -22,7 +22,7 @@
 #include "bcmavar.h"
 
 struct bcmab_pci_softc {
-	struct bhndb_softc	bhndb_softc;	/**< bhndb state */
+	struct bhndb_pci_softc	bhndb_softc;	/**< bhndb state */
 
 	device_t		dev;		/**< bcmab device */
 	device_t		parent_dev;	/**< parent PCI device */

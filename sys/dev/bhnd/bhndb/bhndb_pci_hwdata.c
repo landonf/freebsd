@@ -38,7 +38,6 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/bus.h>
-#include <sys/module.h>
 
 #include <machine/bus.h>
 #include <sys/rman.h>
@@ -605,6 +604,3 @@ static const struct bhndb_hwcfg bhndb_pci_hwcfg_v3 = {
 		BHNDB_REGWIN_TABLE_END
 	},
 };
-
-MODULE_VERSION(bhndb_pci, 1);
-MODULE_DEPEND(bhndb_pci, bhndb, 1, 1, 1);

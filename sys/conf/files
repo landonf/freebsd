@@ -1106,6 +1106,7 @@ dev/bhnd/bhnd_if.m		optional bhndbus | bhnd
 dev/bhnd/bhndb/bhndb.c		optional bhndbus | bhndb
 dev/bhnd/bhndb/bhndb_bus_if.m	optional bhndbus | bhndb
 dev/bhnd/bhndb/bhndb_if.m	optional bhndbus | bhndb
+dev/bhnd/bhndb/bhndb_pci.c	optional bhndbus pci | bhndb pci
 dev/bhnd/bhndb/bhndb_pci_hwdata.c	optional bhndbus pci | bhndb pci
 dev/bhnd/bhndb/bhndb_subr.c	optional bhndbus | bhndb
 # bhnd bus drivers
