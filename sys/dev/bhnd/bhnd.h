@@ -98,6 +98,17 @@ bool				 bhnd_device_matches(device_t dev,
 				     const struct bhnd_core_match *desc);
 
 /**
+ * Return true if @p dev is serving as a host bridge for its parent bhnd
+ * bus.
+ *
+ * @param dev A bhnd bus child device.
+ */
+static inline bool
+bhnd_is_hostb_device(device_t dev) {
+	return (BHND_IS_HOSTB_DEVICE(device_get_parent(dev), dev));
+}
+
+/**
  * Allocate a resource from a device's parent bhnd(4) bus.
  * 
  * @param dev The device requesting resource ownership.

@@ -34,6 +34,16 @@ INTERFACE bhnd;
 
 CODE {
 	#include <dev/bhnd/bhndvar.h>
+	
+	static int
+	bhnd_null_is_hostb_device(device_t dev, device_t child) {
+		if (device_get_parent(dev) != NULL) {
+			return (BHND_IS_HOSTB_DEVICE(device_get_parent(dev),
+			    child));
+		}
+
+		return (false);
+	}
 
 	static int
 	bhnd_null_get_port_rid(device_t dev, device_t child, u_int port,
@@ -56,6 +66,23 @@ CODE {
 		return (ENOENT);
 	}
 }
+
+
+
+/**
+ * Returns true if @p child is serving as a host bridge for the bhnd
+ * bus.
+ *
+ * The default implementation will walk the parent device tree until
+ * the root node is hit, returning false.
+ *
+ * @param dev The device whose child is being examined.
+ * @param child The child device.
+ */
+METHOD bool is_hostb_device {
+	device_t dev;
+	device_t child;
+} DEFAULT bhnd_null_is_hostb_device;
 
 /**
  * Allocate a bhnd resource.

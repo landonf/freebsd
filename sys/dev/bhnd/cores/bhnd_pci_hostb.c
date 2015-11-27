@@ -47,7 +47,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/resource.h>
 
 #include <dev/bhnd/bhnd.h>
-#include <dev/bhnd/bhndb/bhndbvar.h>
 
 #include "bhnd_pci_hostb.h"
 
@@ -70,7 +69,7 @@ bhnd_pci_hostb_probe(device_t dev)
 	const struct pci_hostb_device *id;
 
 	/* Query hostb status from parent bridge */
-	if (!bhndb_is_hostb_device(dev))
+	if (!bhnd_is_hostb_device(dev))
 		return (ENXIO);
 
 	for (id = pci_hostb_devs; id->device != BHND_COREID_INVALID; id++) {

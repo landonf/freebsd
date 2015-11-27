@@ -47,16 +47,6 @@ HEADER {
 CODE {
 	#include <sys/systm.h>
 	#include <dev/bhnd/bhndb/bhndbvar.h>
-	
-	static int
-	bhndb_null_is_hostb_device(device_t dev, device_t child) {
-		if (device_get_parent(dev) != NULL) {
-			return (BHNDB_IS_HOSTB_DEVICE(device_get_parent(dev),
-			    child));
-		}
-
-		return (false);
-	}
 
 	static bhnd_addr_t
 	bhndb_null_get_enum_addr(device_t dev, device_t child)
@@ -91,21 +81,6 @@ CODE {
 		panic("bhndb_get_attached_bus unimplemented");
 	}
 }
-
-/**
- * Returns true if @p child is serving as a host bridge for the bhnd
- * bus.
- *
- * The default implementation will walk the parent device tree until
- * the root node is hit, returning false.
- *
- * @param dev The device whose child is being examined.
- * @param child The child device.
- */
-METHOD bool is_hostb_device {
-	device_t dev;
-	device_t child;
-} DEFAULT bhndb_null_is_hostb_device;
 
 /**
  * Return the base address at which @p child should perform device enumeration.

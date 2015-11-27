@@ -94,7 +94,7 @@ compare_core_index(const void *lhs, const void *rhs)
 }
 
 /**
- * Default bhndb_pci implementation of bhndb_is_hostb_device().
+ * Default bhndb_pci implementation of bhnd_is_hostb_device().
  * 
  * Returns true if @p child:
  * 
@@ -165,10 +165,10 @@ bhndb_pci_generic_is_hostb_device(device_t dev, device_t child) {
 
 static device_method_t bhndb_pci_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_probe,			bhndb_pci_generic_probe),
+	DEVMETHOD(device_probe,		bhndb_pci_generic_probe),
 
-	/* BHNDB interface */
-	DEVMETHOD(bhndb_is_hostb_device,	bhndb_pci_generic_is_hostb_device),
+	/* BHND interface */
+	DEVMETHOD(bhnd_is_hostb_device,	bhndb_pci_generic_is_hostb_device),
 
 	DEVMETHOD_END
 };

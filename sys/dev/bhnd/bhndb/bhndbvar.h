@@ -95,16 +95,4 @@ struct bhndb_softc {
 	uint32_t			 dw_freelist;	/**< dw_regions free list */
 };
 
-
-/**
- * Returns true if @p dev is serving as a host bridge for its parent bhnd
- * bus.
- *
- * @param dev A bhnd bus child device.
- */
-static inline bool
-bhndb_is_hostb_device(device_t dev) {
-	return (BHNDB_IS_HOSTB_DEVICE(device_get_parent(dev), dev));
-}
-
 #endif /* _BHND_BHNDBVAR_H_ */
