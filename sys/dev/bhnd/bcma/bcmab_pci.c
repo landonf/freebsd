@@ -39,6 +39,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/bus.h>
 #include <sys/module.h>
+#include <sys/sysctl.h>
 #include <sys/systm.h>
 
 #include <machine/bus.h>
@@ -70,6 +71,12 @@ static int		 bcmab_get_erom_port_addr(struct bcmab_pci_softc *sc,
 
 static struct resource	*bcmab_alloc_erom_resource(struct bcmab_pci_softc *sc,
 			     struct bcma_erom *erom, int *rid, int *type);
+
+/* sysctl vars */
+static unsigned int bcmab_debug = 0;
+
+static SYSCTL_NODE(_hw, OID_AUTO, bcmab_pci, CTLFLAG_RD, 0, "bcmab PCI bridge parameters");
+SYSCTL_UINT(_hw_bcmab_pci, OID_AUTO, debug, CTLFLAG_RWTUN, &bcmab_debug, 0, "debug level");
 
 /* Map the ChipCommon core using our bus-provided register windows 
  * and fetch the EROM address. */
@@ -163,8 +170,9 @@ bcmab_alloc_erom_resource(struct bcmab_pci_softc *sc, struct bcma_erom *erom,
 	erom_res = bus_alloc_resource_any(sc->parent_dev, rw->res.type,
 	    rid, RF_ACTIVE);
 	if (erom_res == NULL) {
-		device_printf(sc->dev,
-		    "failed to allocate bcmab_pci EROM resource\n");
+		if (bcmab_debug)
+			device_printf(sc->dev,
+			    "failed to allocate bcmab_pci EROM resource\n");
 		return (NULL);
 	}
 	
@@ -356,16 +364,11 @@ static int bcmab_get_erom_port_addr(struct bcmab_pci_softc *sc,
 		return (ENODEV);
 
 	/* Parse the corecfg */
-	if ((error = bcma_erom_seek_core_index(&erom, core->core_id))) {
-		device_printf(sc->dev, "seek to coreid failed!\n");
+	if ((error = bcma_erom_seek_core_index(&erom, core->core_id)))
 		goto cleanup;
-	}
 
-	if ((error = bcma_erom_parse_corecfg(&erom, &cfg))) {
-				device_printf(sc->dev, "corecfg parse failed!\n");
-
+	if ((error = bcma_erom_parse_corecfg(&erom, &cfg)))
 		goto cleanup;
-	}
 
 	/* Find the register window's defined region */
 	map = bcma_corecfg_find_region_map(cfg, BCMA_SPORT_TYPE_DEVICE,
@@ -401,6 +404,7 @@ cleanup:
 static int bcmab_get_core_regwin_addr(struct bcmab_pci_softc *sc,
     const struct bhndb_regwin *regwin, bhnd_addr_t *addr)
 {
+	device_t	child;
 	bhnd_addr_t	region_addr;
 	bhnd_size_t	region_size;
 	int		error;
@@ -408,22 +412,17 @@ static int bcmab_get_core_regwin_addr(struct bcmab_pci_softc *sc,
 	KASSERT(regwin->win_type == BHNDB_REGWIN_T_CORE,
 	    ("unsupported window type"));
 
-	if (device_is_attached(sc->bus_dev)) {
-		/* Prefer fetching device info from the bus device. */
-		device_t child;
+	/* Prefer fetching device info from the bus device. */
+	child = bhnd_find_child(sc->bus_dev, regwin->core.class,
+	    regwin->core.unit);
 
-		/* Find attached device */
-		child = bhnd_find_child(sc->bus_dev, regwin->core.class,
-		    regwin->core.unit);
-		if (child == NULL)
-			return (ENOENT);
-		
+	if (child != NULL) {
 		error = bhnd_get_port_addr(child, regwin->core.port,
 		    regwin->core.region, &region_addr, &region_size);
 		if (error)
 			return (error);
 	} else {
-		/* If our bus is unavailable, we're running during our own
+		/* If a bus device is unavailable, we're running early during
 		 * attachment and must consult the EROM directly */
 		error = bcmab_get_erom_port_addr(sc, regwin, &region_addr,
 		    &region_size);

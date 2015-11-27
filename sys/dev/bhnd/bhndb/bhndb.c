@@ -80,13 +80,10 @@ static struct bhndb_regwin_region 	*bhndb_find_resource_region(
 static int				 bhndb_init_child_resource(
 					     struct resource *r,
 					     struct resource *parent,
-					     const struct bhndb_regwin *win);
+					     bhnd_size_t offset,
+					     bhnd_size_t size);
 
-static bool				 bhndb_is_bhnd_core(
-					     struct bhndb_softc *sc,
-					     device_t child);
-
-static int				 bhndb_activate_static_window(
+static int				 bhndb_try_activate_static_window(
 					     struct bhndb_softc *sc, 
 					     device_t child, int type, int rid,
 					     struct resource *r);
@@ -757,13 +754,14 @@ finish:
  * copied from @p parent, adjusted to contain only the range defined by @p win.
  * 
  * @param r The register to be initialized.
- * @param parent The parent bus resource that fully contains @p win.
- * @param win The register window defining the subset of @p parent mapped by
+ * @param parent The parent bus resource that fully contains the subregion.
+ * @param offset The subregion offset within @p parent.
+ * @param size The subregion size.
  * @p r.
  */
 static int
 bhndb_init_child_resource(struct resource *r,
-    struct resource *parent, const struct bhndb_regwin *win)
+    struct resource *parent, bhnd_size_t offset, bhnd_size_t size)
 {
 
 	bus_space_handle_t	bh, child_bh;
@@ -777,9 +775,8 @@ bhndb_init_child_resource(struct resource *r,
 	bh = rman_get_bushandle(parent);
 
 	/* Configure child resource with window-adjusted real bus values */
-	vaddr += win->win_offset;
-	error = bus_space_subregion(bt, bh, win->win_offset, win->win_size,
-	    &child_bh);
+	vaddr += offset;
+	error = bus_space_subregion(bt, bh, offset, size, &child_bh);
 	if (error)
 		return (error);
 
@@ -788,18 +785,6 @@ bhndb_init_child_resource(struct resource *r,
 	rman_set_bushandle(r, child_bh);
 
 	return (0);
-}
-
-/**
- * Return true if @p child is attached to the bridged bhnd bus.
- * 
- * @param sc BHNDB device state.
- * @param child A bhndb child/grandchild.
- */
-static bool
-bhndb_is_bhnd_core(struct bhndb_softc *sc, device_t child)
-{
-	return (device_get_parent(child) == BHNDB_GET_ATTACHED_BUS(sc->dev));
 }
 
 /**
@@ -816,52 +801,60 @@ bhndb_is_bhnd_core(struct bhndb_softc *sc, device_t child)
  * @retval non-zero if @p r could not be activated.
  */
 static int
-bhndb_activate_static_window(struct bhndb_softc *sc, device_t child,
+bhndb_try_activate_static_window(struct bhndb_softc *sc, device_t child,
     int type, int rid, struct resource *r)
 {
 	struct resource			*parent_res;
 	const struct bhndb_regwin	*win;
-	u_int				 port, region;
 	bhnd_addr_t			 addr;
-	bhnd_size_t			 size;
+	bhnd_size_t			 parent_offset, size;
+	u_long				 r_start, r_end;
 	int				 error;
 
-	KASSERT(bhndb_is_bhnd_core(sc, child),
-	    ("%s is not a bhnd bus device", device_get_nameunit(child)));
+	r_start = rman_get_start(r);
+	r_end = rman_get_end(r);
 
-	/* Map the resource back to its bhnd port/region */
-	error = bhnd_decode_port_rid(child, type, rid, &port, &region);
-	if (error)
-		return (EINVAL);
-	
-	error = bhnd_get_port_addr(child, port, region, &addr, &size);
-	if (error)
-		return (EINVAL);
+	/* Look for a static window enclosing the resource range. */
+	for (win = sc->hw->cfg->register_windows;
+	    win->win_type != BHNDB_REGWIN_T_INVALID; win++)
+	{
+		if (!BHNDB_REGWIN_T_IS_STATIC(win->win_type))
+			continue;
 
-	/* Look for a matching register window */
-	win = bhndb_regwin_find_core(sc->hw->cfg->register_windows,
-	    bhnd_get_class(child), bhnd_get_core_unit(child), port, region);
-	if (win == NULL)
-		return (ENOENT);
+		size = win->win_size;
+		if ((error = BHNDB_GET_WINDOW_ADDR(sc->dev, win, &addr)))
+			continue;
 
-	/* The resource must fit within the fixed window */
-	if (rman_get_size(r) > win->win_size)
-		return (ENOENT);
+		/* Resource must fit within the mapped range */
+		if (r_start < addr || r_start > addr + size)
+			continue;
 
-	/* Find the corresponding bridge resource */
-	parent_res = bhndb_find_parent_resource(sc, win);
-	if (parent_res == NULL)
-		return (ENXIO);
-	
-	/* Configure resource with its real bus values. */
-	if ((error = bhndb_init_child_resource(r, parent_res, win)))
-		return (error);
+		if (r_end > addr + size)
+			continue;
 
-	/* Mark active */
-	if ((error = rman_activate_resource(r)))
-		return (error);
+		/* Calculate subregion offset within the parent resource */
+		parent_offset = r_start - addr;
+		parent_offset += win->win_offset;
 
-	return (0);
+		/* Find the corresponding bridge resource */
+		parent_res = bhndb_find_parent_resource(sc, win);
+		if (parent_res == NULL)
+			return (ENXIO);
+
+		/* Configure resource with its real bus values. */
+		error = bhndb_init_child_resource(r, parent_res, parent_offset,
+		    size);
+		if (error)
+			return (error);
+
+		/* Mark active */
+		if ((error = rman_activate_resource(r)))
+			return (error);
+		
+		return (0);
+	}
+
+	return (ENOENT);
 }
 
 static int
@@ -876,12 +869,14 @@ bhndb_activate_resource(device_t dev, device_t child, int type, int rid,
 
 	sc = device_get_softc(dev);
 
+	// TODO
+	if (type != SYS_RES_MEMORY)
+		return (ENXIO);
+
 	/* Try static mappings before consuming a dynamic register window. */
-	if (bhndb_is_bhnd_core(sc, child)) {
-		error = bhndb_activate_static_window(sc, child, type, rid, r);
-		if (!error)
-			return (0);
-	}
+	error = bhndb_try_activate_static_window(sc, child, type, rid, r);
+	if (!error)
+		return (0);
 
 	/*
 	 * Find the first free dynamic window of sufficient size.
@@ -919,7 +914,7 @@ bhndb_activate_resource(device_t dev, device_t child, int type, int rid,
 
 	/* Configure resource with its real bus values. */
 	error = bhndb_init_child_resource(r, region->parent_res,
-	    region->win);
+	    region->win->win_offset, region->win->win_size);
 	if (error)
 		goto failed;
 

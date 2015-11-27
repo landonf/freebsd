@@ -44,6 +44,15 @@ typedef enum {
 } bhndb_regwin_type_t;
 
 /**
+ * Evaluate to true if the given register window type defines a static
+ * mapping.
+ * 
+ * @param rtype Window type.
+ */
+#define	BHNDB_REGWIN_T_IS_STATIC(rtype)	\
+    ((rtype) == BHNDB_REGWIN_T_CORE || (rtype) == BHNDB_REGWIN_T_SPROM)
+
+/**
  * bhndb register window definition.
  */
 struct bhndb_regwin {
