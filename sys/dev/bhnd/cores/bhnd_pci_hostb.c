@@ -47,36 +47,41 @@ __FBSDID("$FreeBSD$");
 #include <machine/resource.h>
 
 #include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/bhndb/bhndbvar.h>
 
 #include "bhnd_pci_hostb.h"
 
 struct bhnd_pci_hostb_softc {};
 
-static const struct hostb_bhnd_device {
+static const struct pci_hostb_device {
+	uint16_t	 vendor;
 	uint16_t	 device;
 	const char	*desc;
-} hostb_bhnd_devices[] = {
-	{ BHND_COREID_PCI,	"PCI-BHND Bridge" },
-	{ BHND_COREID_PCIE,	"PCI-BHND Bridge (PCIe Gen1)" },
-	{ BHND_COREID_PCIE2,	"PCI-BHND Bridge (PCIe Gen2)" },
-	{ BHND_COREID_INVALID,	NULL }
+} pci_hostb_devs[] = {
+	{ BHND_MFGID_BCM,	BHND_COREID_PCI,	"PCI-BHND Bridge" },
+	{ BHND_MFGID_BCM,	BHND_COREID_PCIE,	"PCI-BHND Bridge (PCIe Gen1)" },
+	{ BHND_MFGID_BCM,	BHND_COREID_PCIE2,	"PCI-BHND Bridge (PCIe Gen2)" },
+	{ BHND_MFGID_INVALID,	BHND_COREID_INVALID,	NULL }
 };
 
 static int
 bhnd_pci_hostb_probe(device_t dev)
 {
-	const struct hostb_bhnd_device	*id;
-	
-	for (id = hostb_bhnd_devices; id->device != BHND_COREID_INVALID; id++)
-	{
-		if (bhnd_get_vendor(dev) == BHND_MFGID_BCM &&
-		    bhnd_get_device(dev) == id->device)
-		{
-			device_set_desc(dev, id->desc);
+	const struct pci_hostb_device *id;
 
-			// TODO - BUS_PROBE_NOWILDCARD
-			return (BUS_PROBE_DEFAULT);
-		}
+	/* Query hostb status from parent bridge */
+	if (!bhndb_is_hostb_device(dev))
+		return (ENXIO);
+
+	for (id = pci_hostb_devs; id->device != BHND_COREID_INVALID; id++) {
+		if (bhnd_get_vendor(dev) != id->vendor)
+			continue;
+
+		if (bhnd_get_device(dev) != id->device)
+			continue;
+
+		device_set_desc(dev, id->desc);
+		return (BUS_PROBE_SPECIFIC);
 	}
 
 	return (ENXIO);

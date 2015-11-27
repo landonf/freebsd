@@ -40,6 +40,9 @@
 
 DECLARE_CLASS(bhndb_pci_driver);
 
+int	bhndb_pci_generic_probe(device_t dev);
+bool	bhndb_pci_generic_is_hostb_device(device_t dev, device_t child);
+
 /**
  * bhndb PCI driver instance state. Must be first member of all subclass
  * softc structures.

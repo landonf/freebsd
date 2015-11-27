@@ -228,25 +228,10 @@ cleanup:
 static int
 bcmab_pci_probe(device_t dev)
 {	
-	device_t	parent;
-	devclass_t	parent_bus;
-	devclass_t	pci;
-	int		error;
-
-	/* Our parent must be a PCI device. */
-	pci = devclass_find("pci");
-	parent = device_get_parent(dev);
-	parent_bus = device_get_devclass(device_get_parent(parent));
-
-	if (parent_bus != pci) {
-		device_printf(dev, "attached to non-PCI parent %s\n",
-		    device_get_nameunit(parent));
-		return (ENXIO);
-	}
-	
+	int error;
 
 	/* Call default probe implementation */
-	if ((error = bhndb_generic_probe(dev)) > 0)
+	if ((error = bhndb_pci_generic_probe(dev)) > 0)
 		return (error);
 	
 	device_set_desc(dev, "PCI-BCMA Bridge");

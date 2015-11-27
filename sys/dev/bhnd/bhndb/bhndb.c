@@ -89,7 +89,7 @@ static int				 bhndb_try_activate_static_window(
 					     struct resource *r);
 
 /** 
- * Default bhnd implementation of device_probe().
+ * Default bhndb implementation of device_probe().
  */
 int
 bhndb_generic_probe(device_t dev)

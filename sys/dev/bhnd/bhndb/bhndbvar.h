@@ -60,7 +60,6 @@ int	bhndb_generic_read_ivar(device_t dev, device_t child, int index,
 int	bhndb_generic_write_ivar(device_t dev, device_t child, int index,
 	    uintptr_t value);
 
-
 size_t				 bhndb_regwin_count(
 				     const struct bhndb_regwin *table,
 				     bhndb_regwin_type_t type);
@@ -95,5 +94,17 @@ struct bhndb_softc {
 	size_t				 dw_count;	/**< number of dynamic window regions. */
 	uint32_t			 dw_freelist;	/**< dw_regions free list */
 };
+
+
+/**
+ * Returns true if @p dev is serving as a host bridge for its parent bhnd
+ * bus.
+ *
+ * @param dev A bhnd bus child device.
+ */
+static inline bool
+bhndb_is_hostb_device(device_t dev) {
+	return (BHNDB_IS_HOSTB_DEVICE(device_get_parent(dev), dev));
+}
 
 #endif /* _BHND_BHNDBVAR_H_ */
