@@ -51,7 +51,8 @@ __FBSDID("$FreeBSD$");
 #include "bhndb_pcireg.h"
 
 static const struct bhndb_hwcfg bhndb_pci_hwcfg_v0;
-static const struct bhndb_hwcfg bhndb_pci_hwcfg_v1;
+static const struct bhndb_hwcfg bhndb_pci_hwcfg_v1_pci;
+static const struct bhndb_hwcfg bhndb_pci_hwcfg_v1_pcie;
 static const struct bhndb_hwcfg bhndb_pci_hwcfg_v2;
 static const struct bhndb_hwcfg bhndb_pci_hwcfg_v3;
 
@@ -176,7 +177,7 @@ const struct bhndb_hw bhndb_pci_generic_hw_table[] = {
 	),
 	
 	/* PCI/V1 WLAN */
-	BHNDB_HW_MATCH("PCI/v1 WLAN", v1,
+	BHNDB_HW_MATCH("PCI/v1 WLAN", v1_pci,
 		/* PCI Core */
 		{
 			.vendor	= BHND_MFGID_BCM,
@@ -203,7 +204,7 @@ const struct bhndb_hw bhndb_pci_generic_hw_table[] = {
 	),
 
 	/* PCIE/V1 WLAN */
-	BHNDB_HW_MATCH("PCIe/v1 WLAN", v1,
+	BHNDB_HW_MATCH("PCIe/v1 WLAN", v1_pcie,
 		/* PCIe Core */
 		{
 			.vendor	= BHND_MFGID_BCM,
@@ -356,13 +357,12 @@ static const struct bhndb_hwcfg bhndb_pci_hwcfg_v0 = {
 };
 
 /**
- * PCI_V1 hardware configuration.
+ * PCI_V1 (PCI-only) hardware configuration (PCI version)
  * 
  * Applies to:
  * - PCI (cid=0x804, revision >= 13)
- * - PCIE (cid=0x820) with ChipCommon (revision <= 31)
  */
-static const struct bhndb_hwcfg bhndb_pci_hwcfg_v1 = {
+static const struct bhndb_hwcfg bhndb_pci_hwcfg_v1_pci = {
 	.resource_specs		= (const struct resource_spec[]) {
 		{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
 		{ -1,			0,		0 }
@@ -393,6 +393,68 @@ static const struct bhndb_hwcfg bhndb_pci_hwcfg_v1 = {
 			.win_size	= BHNDB_PCI_V1_BAR0_PCIREG_SIZE,
 			.core = {
 				.class	= BHND_DEVCLASS_PCI,
+				.unit	= 0,
+				.port	= 0,
+				.region	= 0 
+			},
+			.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
+		},
+
+		/* bar0+0x3000: chipc core registers */
+		{
+			.win_type	= BHNDB_REGWIN_T_CORE,
+			.win_offset	= BHNDB_PCI_V1_BAR0_CCREGS_OFFSET,
+			.win_size	= BHNDB_PCI_V1_BAR0_CCREGS_SIZE,
+			.core = {
+				.class	= BHND_DEVCLASS_CC,
+				.unit	= 0,
+				.port	= 0,
+				.region	= 0 
+			},
+			.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
+		},
+
+		BHNDB_REGWIN_TABLE_END
+	},
+};
+
+/**
+ * PCI_V1 hardware configuration (PCIE version).
+ * 
+ * Applies to:
+ * - PCIE (cid=0x820) with ChipCommon (revision <= 31)
+ */
+static const struct bhndb_hwcfg bhndb_pci_hwcfg_v1_pcie = {
+	.resource_specs		= (const struct resource_spec[]) {
+		{ SYS_RES_MEMORY,	PCIR_BAR(0),	RF_ACTIVE },
+		{ -1,			0,		0 }
+	},
+
+	.register_windows	= (const struct bhndb_regwin[]) {
+		/* bar0+0x0000: configurable backplane window */
+		{
+			.win_type	= BHNDB_REGWIN_T_DYN,
+			.win_offset	= BHNDB_PCI_V1_BAR0_WIN0_OFFSET,
+			.win_size	= BHNDB_PCI_V1_BAR0_WIN0_SIZE,
+			.dyn.cfg_offset = BHNDB_PCI_V1_BAR0_WIN0_CONTROL,
+			.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
+		},
+		
+		/* bar0+0x1000: sprom shadow */
+		{
+			.win_type	= BHNDB_REGWIN_T_SPROM,
+			.win_offset	= BHNDB_PCI_V1_BAR0_SPROM_OFFSET,
+			.win_size	= BHNDB_PCI_V1_BAR0_SPROM_SIZE,
+			.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
+		},
+		
+		/* bar0+0x2000: pci core registers */
+		{
+			.win_type	= BHNDB_REGWIN_T_CORE,
+			.win_offset	= BHNDB_PCI_V1_BAR0_PCIREG_OFFSET,
+			.win_size	= BHNDB_PCI_V1_BAR0_PCIREG_SIZE,
+			.core = {
+				.class	= BHND_DEVCLASS_PCIE,
 				.unit	= 0,
 				.port	= 0,
 				.region	= 0 
@@ -455,7 +517,7 @@ static const struct bhndb_hwcfg bhndb_pci_hwcfg_v2 = {
 			.win_offset	= BHNDB_PCI_V2_BAR0_PCIREG_OFFSET,
 			.win_size	= BHNDB_PCI_V2_BAR0_PCIREG_SIZE,
 			.core = {
-				.class	= BHND_DEVCLASS_PCI,
+				.class	= BHND_DEVCLASS_PCIE,
 				.unit	= 0,
 				.port	= 0,
 				.region	= 0 
@@ -518,7 +580,7 @@ static const struct bhndb_hwcfg bhndb_pci_hwcfg_v3 = {
 			.win_offset	= BHNDB_PCI_V3_BAR0_PCIREG_OFFSET,
 			.win_size	= BHNDB_PCI_V3_BAR0_PCIREG_SIZE,
 			.core = {
-				.class	= BHND_DEVCLASS_PCI,
+				.class	= BHND_DEVCLASS_PCIE,
 				.unit	= 0,
 				.port	= 0,
 				.region	= 0 
