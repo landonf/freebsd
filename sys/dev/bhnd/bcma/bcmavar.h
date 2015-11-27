@@ -45,14 +45,6 @@
  * Internal definitions shared by bcma(4) driver implementations.
  */
 
-/** BCMA bus address. The backing bus supports 64-bit addressing. */
-typedef uint64_t	bcma_addr_t;
-#define	BCMA_ADDR_MAX	UINT64_MAX	/**< Maximum bcma_addr_t value */
-
-/** BCMA bus size. */
-typedef uint64_t	bcma_size_t;
-#define	BCMA_SIZE_MAX	UINT64_MAX	/**< Maximum bcma_size_t value */
-
 /** BCMA port identifier. */
 typedef u_int		bcma_pid_t;
 #define BCMA_PID_MAX	UINT_MAX	/**< Maximum bcma_pid_t value */
@@ -111,8 +103,8 @@ struct bcma_mport {
 /** BCMA memory region descriptor */
 struct bcma_map {
 	bcma_rmid_t	m_region_num;	/**< region identifier (port-unique). */
-	bcma_addr_t	m_base;		/**< base address */
-	bcma_size_t	m_size;		/**< size */
+	bhnd_addr_t	m_base;		/**< base address */
+	bhnd_size_t	m_size;		/**< size */
 	int		m_rid;		/**< bus resource id, or -1. */
 
 	STAILQ_ENTRY(bcma_map) m_link;

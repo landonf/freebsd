@@ -58,8 +58,8 @@ struct bcma_erom_mport {
 struct bcma_erom_sport_region {
 	uint8_t		port_num;	/**< the slave port mapping this region */
 	uint8_t		port_type;	/**< the mapping port's type */
-	bcma_addr_t	base_addr;	/**< region base address */
-	bcma_addr_t	size;		/**< region size */
+	bhnd_addr_t	base_addr;	/**< region base address */
+	bhnd_addr_t	size;		/**< region size */
 };
 
 int		bcma_erom_open(struct resource *resource, bus_size_t offset,

@@ -61,11 +61,12 @@ __FBSDID("$FreeBSD$");
 #include "bcma_eromvar.h"
 
 static int		 bcmab_find_erom_addr(struct bcmab_pci_softc *sc,
-			     bhndb_addr_t *erom_addr);
+			     bhnd_addr_t *erom_addr);
 
 static int		 bcmab_get_erom_port_addr(struct bcmab_pci_softc *sc,
-			     const struct bhndb_regwin *rw, u_long *region_addr,
-			     u_long *region_size);
+			     const struct bhndb_regwin *rw,
+			     bhnd_addr_t *region_addr,
+			     bhnd_size_t *region_size);
 
 static struct resource	*bcmab_alloc_erom_resource(struct bcmab_pci_softc *sc,
 			     struct bcma_erom *erom, int *rid, int *type);
@@ -73,7 +74,7 @@ static struct resource	*bcmab_alloc_erom_resource(struct bcmab_pci_softc *sc,
 /* Map the ChipCommon core using our bus-provided register windows 
  * and fetch the EROM address. */
 static int
-bcmab_find_erom_addr(struct bcmab_pci_softc *sc, bhndb_addr_t *erom_addr)
+bcmab_find_erom_addr(struct bcmab_pci_softc *sc, bhnd_addr_t *erom_addr)
 {
 	const struct bhndb_hwcfg	*cfg;
 	const struct bhndb_regwin	*cc_win;
@@ -299,7 +300,7 @@ bcmab_pci_detach(device_t dev)
 	return (0);
 }
 
-static bhndb_addr_t
+static bhnd_addr_t
 bcmab_pci_get_enum_addr(device_t dev, device_t child)
 {
 	struct bcmab_pci_softc *sc = device_get_softc(dev);
@@ -319,7 +320,8 @@ bcmab_pci_get_enum_addr(device_t dev, device_t child)
  * @retval non-zero not found 
  */
 static int bcmab_get_erom_port_addr(struct bcmab_pci_softc *sc,
-    const struct bhndb_regwin *rw, u_long *region_addr, u_long *region_size)
+    const struct bhndb_regwin *rw, bhnd_addr_t *region_addr,
+    bhnd_size_t *region_size)
 {
 	struct bcma_corecfg	*cfg;
 	struct bcma_erom	 erom;
@@ -373,13 +375,6 @@ static int bcmab_get_erom_port_addr(struct bcmab_pci_softc *sc,
 		goto cleanup;
 	}
 
-	/* Usable region? */
-	if (map->m_base > ULONG_MAX || map->m_size > ULONG_MAX)
-	{
-		error = ENODEV;
-		goto cleanup;
-	}
-
 	*region_addr = map->m_base;
 	*region_size = map->m_size;
 
@@ -404,9 +399,10 @@ cleanup:
  * @retval non-zero not found 
  */
 static int bcmab_get_core_regwin_addr(struct bcmab_pci_softc *sc,
-    const struct bhndb_regwin *regwin, bhndb_addr_t *addr)
+    const struct bhndb_regwin *regwin, bhnd_addr_t *addr)
 {
-	u_long		region_addr, region_size;
+	bhnd_addr_t	region_addr;
+	bhnd_size_t	region_size;
 	int		error;
 
 	KASSERT(regwin->win_type == BHNDB_REGWIN_T_CORE,
@@ -449,7 +445,7 @@ static int bcmab_get_core_regwin_addr(struct bcmab_pci_softc *sc,
 
 static int
 bcmab_pci_get_window_addr(device_t dev, const struct bhndb_regwin *rw,
-	bhndb_addr_t *addr)
+    bhnd_addr_t *addr)
 {
 	struct bcmab_pci_softc *sc = device_get_softc(dev);
 
@@ -466,9 +462,14 @@ bcmab_pci_get_window_addr(device_t dev, const struct bhndb_regwin *rw,
 
 static int
 bcmab_pci_set_window_addr(device_t dev, const struct bhndb_regwin *rw,
-	bhndb_addr_t addr)
+    bhnd_addr_t addr)
 {
 	struct bcmab_pci_softc *sc = device_get_softc(dev);
+
+	/* The PCI bridge core only supports 32-bit addressing, regardless
+	 * of the bus' support for 64-bit addressing */
+	if (addr > UINT32_MAX)
+		return (ERANGE);
 
 	switch (rw->win_type) {
 	case BHNDB_REGWIN_T_DYN:

@@ -193,7 +193,7 @@ bcma_dinfo_init_resource_info(device_t bus, struct bcma_devinfo *dinfo,
 {
 	struct bcma_map		*map;
 	struct bcma_sport	*port;
-	bcma_addr_t		 end;
+	bhnd_addr_t		 end;
 
 	STAILQ_FOREACH(port, ports, sp_link) {
 		STAILQ_FOREACH(map, &port->sp_maps, m_link) {

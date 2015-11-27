@@ -35,8 +35,7 @@
 #include <sys/types.h>
 
 #include "bhnd_ids.h"
-
-struct bhnd_resource;
+#include "bhnd_types.h"
 #include "bhnd_if.h"
 
 /**
@@ -55,31 +54,6 @@ enum bhnd_device_vars {
 				     each vendor/device pair. */
 };
 
-
-/** BHND Device Classes. */
-typedef enum {
-	BHND_DEVCLASS_CC,		/**< chipcommon i/o controller */
-	BHND_DEVCLASS_PCI,		/**< pci host/device bridge */
-	BHND_DEVCLASS_PCIE,		/**< pcie host/device bridge */
-	BHND_DEVCLASS_MEM,		/**< internal RAM/SRAM */
-	BHND_DEVCLASS_MEMC,		/**< memory controller */
-	BHND_DEVCLASS_ENET_MAC,		/**< 802.3 MAC */
-	BHND_DEVCLASS_ENET_PHY,		/**< 802.3 PHY */
-	BHND_DEVCLASS_ENET_MPHY,	/**< 802.3 MAC/PHY */
-	BHND_DEVCLASS_WLAN,		/**< 802.11 MAC/PHY/Radio */
-	BHND_DEVCLASS_WLAN_MAC,		/**< 802.11 MAC */
-	BHND_DEVCLASS_WLAN_PHY,		/**< 802.11 PHY */
-	BHND_DEVCLASS_WLAN_MPHY,	/**< 802.11 mac/phy */
-	BHND_DEVCLASS_CPU,		/**< cpu core */
-	BHND_DEVCLASS_SOCI,		/**< interconnect */
-	BHND_DEVCLASS_SOCB,		/**< interconnect bridge/socket */
-	BHND_DEVCLASS_EROM,		/**< bus device enumeration ROM */
-	BHND_DEVCLASS_OTHER,		/**< other / unknown */
-
-	BHND_DEVCLASS_INVALID		/**< no/invalid class */
-} bhnd_devclass_t;
-
-
 /*
  * Simplified accessors for bhnd device ivars
  */
@@ -96,63 +70,6 @@ BHND_ACCESSOR(core_index,	CORE_INDEX,	u_int);
 BHND_ACCESSOR(core_unit,	CORE_UNIT,	int);
 
 #undef	BHND_ACCESSOR
-
-/**
- * bhnd device probe priority.
- */
-enum {
-	BHND_PROBE_ORDER_FIRST		= 0,	/**< probe first */
-	BHND_PROBE_ORDER_EARLY		= 10,	/**< probe early */
-	BHND_PROBE_ORDER_DEFAULT	= 20,	/**< default probe priority */
-	BHND_PROBE_ORDER_LAST		= 30,	/**< probe last */
-};
-
-
-/**
-* A bhnd(4) bus resource.
-* 
-* This provides an abstract interface to per-core resources that may require
-* bus-level remapping of address windows prior to access.
-*/
-struct bhnd_resource {
-	struct resource	*_res;		/**< the system resource. */
-	bool		 _direct;	/**< true if the resource requires
-					*   bus window remapping before it
-					*   is MMIO accessible. */
-};
-
-
-/**
- * A bhnd(4) core descriptor.
- */
-struct bhnd_core_info {
-	uint16_t	vendor;		/**< vendor */
-	uint16_t	device;		/**< device */
-	uint16_t	hwrev;		/**< hardware revision */
-	u_int		core_id;	/**< bus-assigned core identifier */
-	int		unit;		/**< bus-assigned core unit */
-};
-
-
-/**
- * A hardware revision match descriptor.
- */
-struct bhnd_hwrev_match {
-	uint16_t	start;	/**< first revision, or BHND_HWREV_INVALID
-					     to match on any revision. */
-	uint16_t	end;	/**< last revision, or BHND_HWREV_INVALID
-					     to match on any revision. */
-};
-
-
-/** A core match descriptor. */
-struct bhnd_core_match {
-	uint16_t		vendor;	/**< required JEP106 device vendor or BHND_MFGID_INVALID. */
-	uint16_t		device;	/**< required core ID or BHND_COREID_INVALID */
-	struct bhnd_hwrev_match	hwrev;	/**< matching revisions. */
-	bhnd_devclass_t		class;	/**< required class or BHND_DEVCLASS_INVALID */
-	int			unit;	/**< required core unit, or -1 */
-};
 
 const char			*bhnd_vendor_name(uint16_t vendor);
 const char 			*bhnd_core_name(uint16_t vendor, uint16_t device);
@@ -318,7 +235,7 @@ bhnd_decode_port_rid(device_t dev, int type, int rid, u_int *port,
  */
 static inline int
 bhnd_get_port_addr(device_t dev, u_int port, u_int region,
-   u_long *region_addr, u_long *region_size)
+   bhnd_addr_t *region_addr, bhnd_size_t *region_size)
 {
 	return BHND_GET_PORT_ADDR(device_get_parent(dev), dev, port, region,
 	    region_addr, region_size);

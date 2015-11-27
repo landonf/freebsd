@@ -28,7 +28,7 @@ struct bcmab_pci_softc {
 	device_t		parent_dev;	/**< parent PCI device */
 	device_t		bus_dev;	/**< child bcma(4) bus */
 
-	bhndb_addr_t		erom_addr;	/**< EROM's base address */
+	bhnd_addr_t		erom_addr;	/**< EROM's base address */
 
 	struct bhnd_core_info	*cores;		/**< cached EROM core table */
 	u_int			 num_cores;	/**< length of core table */

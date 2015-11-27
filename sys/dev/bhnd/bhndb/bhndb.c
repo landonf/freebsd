@@ -117,11 +117,9 @@ bhndb_print_child(device_t dev, device_t child)
 {
 	struct bhndb_softc	*sc;
 	struct resource_list	*rl;
-	bhndb_addr_t		 addr;
-	int			retval = 0;
+	int			 retval = 0;
 
 	sc = device_get_softc(dev);
-	addr = BHNDB_GET_ENUM_ADDR(dev, child);
 
 	retval += bus_print_child_header(dev, child);
 
@@ -151,7 +149,7 @@ static int
 bhndb_child_location_str(device_t dev, device_t child, char *buf,
     size_t buflen)
 {
-	bhndb_addr_t addr;
+	bhnd_addr_t addr;
 
 	addr = BHNDB_GET_ENUM_ADDR(dev, child);
 	snprintf(buf, buflen, "enum_base=0x%llx", (unsigned long long) addr);

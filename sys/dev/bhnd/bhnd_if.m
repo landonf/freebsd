@@ -28,11 +28,12 @@
 #include <sys/bus.h>
 #include <sys/rman.h>
 
-#include <dev/bhnd/bhndvar.h>
+#include <dev/bhnd/bhnd_types.h>
 
 INTERFACE bhnd;
 
 CODE {
+	#include <dev/bhnd/bhndvar.h>
 
 	static int
 	bhnd_null_get_port_rid(device_t dev, device_t child, u_int port,
@@ -50,7 +51,7 @@ CODE {
 	
 	static int
 	bhnd_null_get_port_addr(device_t dev, device_t child, u_int port,
-	    u_int region, u_long *addr, u_long *size)
+	    u_int region, bhnd_addr_t *addr, bhnd_size_t *size)
 	{
 		return (ENOENT);
 	}
@@ -173,6 +174,6 @@ METHOD int get_port_addr {
 	device_t child;
 	u_int port;
 	u_int region;
-	u_long *region_addr;
-	u_long *region_size;
+	bhnd_addr_t *region_addr;
+	bhnd_size_t *region_size;
 } DEFAULT bhnd_null_get_port_addr;

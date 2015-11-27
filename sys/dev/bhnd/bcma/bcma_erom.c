@@ -468,7 +468,7 @@ bcma_erom_parse_sport_region(struct bcma_erom *erom,
 		if ((error = erom_read32(erom, &entry)))
 			return (error);
 		
-		region->base_addr |= ((bcma_addr_t) entry << 32);
+		region->base_addr |= ((bhnd_addr_t) entry << 32);
 	}
 
 	/* Parse the region size; it's either encoded as the binary logarithm
@@ -483,7 +483,7 @@ bcma_erom_parse_sport_region(struct bcma_erom *erom,
 		if (BCMA_EROM_GET_ATTR(entry, RSIZE_64BIT)) {
 			if ((error = erom_read32(erom, &entry)))
 				return (error);
-			region->size |= ((bcma_size_t) entry << 32);
+			region->size |= ((bhnd_size_t) entry << 32);
 		}
 	} else {
 		region->size = BCMA_EROM_REGION_SIZE_BASE << size_type;
@@ -491,7 +491,7 @@ bcma_erom_parse_sport_region(struct bcma_erom *erom,
 
 	/* Verify that addr+size does not overflow. */
 	if (region->size != 0 &&
-	    BCMA_ADDR_MAX - (region->size - 1) < region->base_addr)
+	    BHND_ADDR_MAX - (region->size - 1) < region->base_addr)
 	{
 		EROM_LOG(erom, "%s%u: invalid address map %llx:%llx\n",
 		    bcma_port_type_name(region->port_type),

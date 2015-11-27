@@ -194,7 +194,7 @@ bcma_decode_port_rid(device_t dev, device_t child, int type, int rid,
 
 static int
 bcma_get_port_addr(device_t dev, device_t child, u_int port_num,
-	u_int region_num, u_long *addr, u_long *size)
+	u_int region_num, bhnd_addr_t *addr, bhnd_size_t *size)
 {
 	struct bcma_devinfo	*dinfo;
 	struct bcma_map		*map;
@@ -210,10 +210,6 @@ bcma_get_port_addr(device_t dev, device_t child, u_int port_num,
 		STAILQ_FOREACH(map, &port->sp_maps, m_link) {
 			if (map->m_region_num != region_num)
 				continue;
-			
-			/* Not representable */
-			if (map->m_base > ULONG_MAX || map->m_size > ULONG_MAX)
-				return (ENODEV);
 
 			/* Found! */
 			*addr = map->m_base;
