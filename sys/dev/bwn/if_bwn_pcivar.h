@@ -50,7 +50,7 @@ enum {
 	/**
 	 * This model/revision has not been tested and may not work.
 	 */
-	BWN_QUIRK_UNSUPPORTED		= 1<<0,
+	BWN_QUIRK_UNTESTED		= 1<<0,
 
 	/**
 	 * Early dual-band devices did not support accessing multiple PHYs

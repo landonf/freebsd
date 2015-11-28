@@ -46,7 +46,7 @@ __FBSDID("$FreeBSD$");
 
 #include "if_bwn_pcivar.h"
 
-/* If non-zero, enable attachment of BWN_QUIRK_UNSUPPORTED devices */
+/* If non-zero, enable attachment of BWN_QUIRK_UNTESTED devices */
 static u_int attach_untested = 0; 
 TUNABLE_INT("hw.bwn_pci.attach_untested", &attach_untested);
 
@@ -68,23 +68,23 @@ static const struct bwn_pci_device siba_devices[] = {
 	BWN_BCM_DEV(BCM4311_D11G,	"BCM4311 802.11b/g",		0),
 	BWN_BCM_DEV(BCM4311_D11DUAL,	"BCM4311 802.11a/b/g",		0),
 	BWN_BCM_DEV(BCM4311_D11A,	"BCM4311 802.11a",
-	    BWN_QUIRK_UNSUPPORTED|BWN_QUIRK_WLAN_DUALCORE),
+	    BWN_QUIRK_UNTESTED|BWN_QUIRK_WLAN_DUALCORE),
 
 	BWN_BCM_DEV(BCM4318_D11G,	"BCM4318 802.11b/g",		0),
 	BWN_BCM_DEV(BCM4318_D11DUAL,	"BCM4318 802.11a/b/g",		0),
 	BWN_BCM_DEV(BCM4318_D11A,	"BCM4318 802.11a",
-	    BWN_QUIRK_UNSUPPORTED|BWN_QUIRK_WLAN_DUALCORE),
+	    BWN_QUIRK_UNTESTED|BWN_QUIRK_WLAN_DUALCORE),
 
 	BWN_BCM_DEV(BCM4321_D11N,	"BCM4321 802.11n Dual-Band",	0),
 	BWN_BCM_DEV(BCM4321_D11N2G,	"BCM4321 802.11n 2GHz",		0),
 	BWN_BCM_DEV(BCM4321_D11N2G,	"BCM4321 802.11n 5GHz",
-	    BWN_QUIRK_UNSUPPORTED),
+	    BWN_QUIRK_UNTESTED),
 
 	BWN_BCM_DEV(BCM4322_D11N,	"BCM4322 802.11n Dual-Band",	0),
 	BWN_BCM_DEV(BCM4322_D11N2G,	"BCM4322 802.11n 2GHz",
-	    BWN_QUIRK_UNSUPPORTED),
+	    BWN_QUIRK_UNTESTED),
 	BWN_BCM_DEV(BCM4322_D11N5G,	"BCM4322 802.11n 5GHz",
-	    BWN_QUIRK_UNSUPPORTED),
+	    BWN_QUIRK_UNTESTED),
 
 	BWN_BCM_DEV(BCM4328_D11G,	"BCM4328/4312 802.11g",		0),
 
@@ -155,7 +155,7 @@ bwn_pci_probe(device_t dev)
 		return (ENXIO);
 
 	/* Skip untested devices */
-	if (ident->quirks & BWN_QUIRK_UNSUPPORTED && !attach_untested)
+	if (ident->quirks & BWN_QUIRK_UNTESTED && !attach_untested)
 		return (ENXIO);
 
 	device_set_desc(dev, ident->desc);
