@@ -82,8 +82,8 @@ bhndb_pci_generic_probe(device_t dev)
 static int
 compare_core_index(const void *lhs, const void *rhs)
 {
-	u_int left = bhnd_get_core_index(*(device_t *) lhs);
-	u_int right = bhnd_get_core_index(*(device_t *) rhs);
+	u_int left = bhnd_get_core_index(*(const device_t *) lhs);
+	u_int right = bhnd_get_core_index(*(const device_t *) rhs);
 
 	if (left < right)
 		return (-1);
