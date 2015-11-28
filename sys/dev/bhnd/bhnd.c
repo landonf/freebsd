@@ -64,13 +64,13 @@ __FBSDID("$FreeBSD$");
 MALLOC_DEFINE(M_BHND, "bhnd", "bhnd bus data structures");
 
 /**
- * Child device reporting configuration.
+ * bhnd_generic_probe_nomatch() reporting configuration.
  */
-static const struct bhnd_noprint {
+static const struct bhnd_nomatch {
 	uint16_t	vendor;		/**< core designer */
 	uint16_t	device;		/**< core id */
 	bool		if_verbose;	/**< print when bootverbose is set. */
-} bhnd_noprint_table[] = {
+} bhnd_nomatch_table[] = {
 	{ BHND_MFGID_ARM,	BHND_COREID_OOB_ROUTER,		true	},
 	{ BHND_MFGID_ARM,	BHND_COREID_EROM,		true	},
 	{ BHND_MFGID_ARM,	BHND_COREID_PL301,		true	},
@@ -79,33 +79,6 @@ static const struct bhnd_noprint {
 
 	{ BHND_MFGID_INVALID,	BHND_COREID_INVALID,		false	}
 };
-
-static bool
-bhnd_should_print_child(device_t dev, device_t child) {
-	const struct bhnd_noprint	*np;
-	bool				 report;
-
-	/* Skip reporting host bridge devices */
-	if (!bootverbose && bhnd_is_hostb_device(child))
-		return (false);
-
-	/* Fetch reporting configuration for this device */
-	report = true;
-	for (np = bhnd_noprint_table; np->device != BHND_COREID_INVALID; np++) {
-		if (np->vendor != bhnd_get_vendor(child))
-			continue;
-
-		if (np->device != bhnd_get_device(child))
-			continue;
-
-		report = false;
-		if (bootverbose && np->if_verbose)
-			report = true;
-		break;
-	}
-
-	return (report);
-}
 
 /**
  * Helper function for implementing BUS_PRINT_CHILD().
@@ -118,9 +91,6 @@ bhnd_generic_print_child(device_t dev, device_t child)
 {
 	struct resource_list	*rl;
 	int			retval = 0;
-
-	if (!bhnd_should_print_child(dev, child))
-		return (0);
 
 	retval += bus_print_child_header(dev, child);
 
@@ -146,8 +116,25 @@ void
 bhnd_generic_probe_nomatch(device_t dev, device_t child)
 {
 	struct resource_list		*rl;
+	const struct bhnd_nomatch	*nm;
+	bool				 report;
 
-	if (!bhnd_should_print_child(dev, child))
+	/* Fetch reporting configuration for this device */
+	report = true;
+	for (nm = bhnd_nomatch_table; nm->device != BHND_COREID_INVALID; nm++) {
+		if (nm->vendor != bhnd_get_vendor(child))
+			continue;
+
+		if (nm->device != bhnd_get_device(child))
+			continue;
+
+		report = false;
+		if (bootverbose && nm->if_verbose)
+			report = true;
+		break;
+	}
+	
+	if (!report)
 		return;
 
 	/* Print the non-matched device info */
