@@ -64,17 +64,48 @@ __FBSDID("$FreeBSD$");
 MALLOC_DEFINE(M_BHND, "bhnd", "bhnd bus data structures");
 
 /**
- * bhnd_generic_probe_nomatch() reporting configuration.
+ * Child device reporting configuration.
  */
-static const struct bhnd_nomatch {
+static const struct bhnd_noprint {
 	uint16_t	vendor;		/**< core designer */
 	uint16_t	device;		/**< core id */
-	bool		report;		/**< always (true) or only
-					     bootverbose (false) */
-} bhnd_nomatch_table[] = {
-	{ BHND_MFGID_ARM,	BHND_COREID_AXI_UNMAPPED,	false },
-	{ 0,			BHND_COREID_INVALID,		false }
+	bool		if_verbose;	/**< print when bootverbose is set. */
+} bhnd_noprint_table[] = {
+	{ BHND_MFGID_ARM,	BHND_COREID_OOB_ROUTER,		true	},
+	{ BHND_MFGID_ARM,	BHND_COREID_EROM,		true	},
+	{ BHND_MFGID_ARM,	BHND_COREID_PL301,		true	},
+	{ BHND_MFGID_ARM,	BHND_COREID_APB_BRIDGE,		true	},
+	{ BHND_MFGID_ARM,	BHND_COREID_AXI_UNMAPPED,	false	},
+
+	{ BHND_MFGID_INVALID,	BHND_COREID_INVALID,		false	}
 };
+
+static bool
+bhnd_should_print_child(device_t dev, device_t child) {
+	const struct bhnd_noprint	*np;
+	bool				 report;
+
+	/* Skip reporting host bridge devices */
+	if (!bootverbose && bhnd_is_hostb_device(child))
+		return (false);
+
+	/* Fetch reporting configuration for this device */
+	report = true;
+	for (np = bhnd_noprint_table; np->device != BHND_COREID_INVALID; np++) {
+		if (np->vendor != bhnd_get_vendor(child))
+			continue;
+
+		if (np->device != bhnd_get_device(child))
+			continue;
+
+		report = false;
+		if (bootverbose && np->if_verbose)
+			report = true;
+		break;
+	}
+
+	return (report);
+}
 
 /**
  * Helper function for implementing BUS_PRINT_CHILD().
@@ -88,8 +119,7 @@ bhnd_generic_print_child(device_t dev, device_t child)
 	struct resource_list	*rl;
 	int			retval = 0;
 
-	/* Skip reporting host bridge devices */
-	if (bhnd_is_hostb_device(child) && !bootverbose)
+	if (!bhnd_should_print_child(dev, child))
 		return (0);
 
 	retval += bus_print_child_header(dev, child);
@@ -115,33 +145,20 @@ bhnd_generic_print_child(device_t dev, device_t child)
 void
 bhnd_generic_probe_nomatch(device_t dev, device_t child)
 {
-	const struct bhnd_nomatch	*nm;
 	struct resource_list		*rl;
-	bool				report;
 
-	/* Fetch reporting configuration for this device */
-	report = true;
-	for (nm = bhnd_nomatch_table; nm->device != BHND_COREID_INVALID; nm++) {
-		if (nm->vendor == bhnd_get_vendor(child) &&
-		    nm->device == bhnd_get_device(child))
-		{
-			report = nm->report;
-		}
-	}
+	if (!bhnd_should_print_child(dev, child))
+		return;
 
 	/* Print the non-matched device info */
-	if (report || bootverbose) {
-		device_printf(dev, "<%s %s>", bhnd_get_vendor_name(child),
-		    bhnd_get_device_name(child));
+	device_printf(dev, "<%s %s>", bhnd_get_vendor_name(child),
+		bhnd_get_device_name(child));
 
-		rl = BUS_GET_RESOURCE_LIST(dev, child);
-		if (rl != NULL)
-			resource_list_print_type(rl, "mem", SYS_RES_MEMORY,
-			    "%#lx");
+	rl = BUS_GET_RESOURCE_LIST(dev, child);
+	if (rl != NULL)
+		resource_list_print_type(rl, "mem", SYS_RES_MEMORY, "%#lx");
 
-		printf(" at core %u (no driver attached)\n",
-		    bhnd_get_core_index(child));
-	}
+	printf(" at core %u (no driver attached)\n", bhnd_get_core_index(child));
 }
 
 /**
