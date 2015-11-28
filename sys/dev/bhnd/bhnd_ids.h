@@ -141,7 +141,7 @@
 #define	PCI_DEVID_BCM4306_UART		0x4322	/* 4306 uart */
 #define	PCI_DEVID_BCM4306_V90		0x4323	/* 4306 v90 codec */
 #define	PCI_DEVID_BCM4306_D11DUAL	0x4324	/* 4306 dual A+B */
-#define	PCI_DEVID_BCM4306_D11G_ID2	0x4325	/* BCM4306_D11G_ID; INF w/loose binding war */
+#define	PCI_DEVID_BCM4306_D11G_ID2	0x4325	/* BCM4306_D11G; INF w/loose binding war */
 #define	PCI_DEVID_BCM4321_D11N		0x4328	/* 4321 802.11n dualband id */
 #define	PCI_DEVID_BCM4321_D11N2G	0x4329	/* 4321 802.11n 2.4Ghz band id */
 #define	PCI_DEVID_BCM4321_D11N5G	0x432a	/* 4321 802.11n 5Ghz band id */

@@ -41,13 +41,12 @@ typedef enum {
 	BHND_DEVCLASS_PCIE,		/**< pcie host/device bridge */
 	BHND_DEVCLASS_MEM,		/**< internal RAM/SRAM */
 	BHND_DEVCLASS_MEMC,		/**< memory controller */
+	BHND_DEVCLASS_ENET,		/**< 802.3 MAC/PHY */
 	BHND_DEVCLASS_ENET_MAC,		/**< 802.3 MAC */
 	BHND_DEVCLASS_ENET_PHY,		/**< 802.3 PHY */
-	BHND_DEVCLASS_ENET_MPHY,	/**< 802.3 MAC/PHY */
 	BHND_DEVCLASS_WLAN,		/**< 802.11 MAC/PHY/Radio */
 	BHND_DEVCLASS_WLAN_MAC,		/**< 802.11 MAC */
 	BHND_DEVCLASS_WLAN_PHY,		/**< 802.11 PHY */
-	BHND_DEVCLASS_WLAN_MPHY,	/**< 802.11 mac/phy */
 	BHND_DEVCLASS_CPU,		/**< cpu core */
 	BHND_DEVCLASS_SOCI,		/**< interconnect */
 	BHND_DEVCLASS_SOCB,		/**< interconnect bridge/socket */

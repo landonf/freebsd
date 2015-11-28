@@ -39,63 +39,65 @@ __FBSDID("$FreeBSD$");
 #include <dev/pci/pcivar.h>
 
 #include <dev/bhnd/bcma/bcma.h>
-
-#include <dev/bhnd/bhnd_ids.h>
 #include <dev/bhnd/bhndb/bhndb_pci_hwdata.h>
+#include <dev/bhnd/bhnd_ids.h>
 
 #include "bhndb_bus_if.h"
 
-struct bwn_pci_devcfg;
+#include "if_bwn_pcivar.h"
 
-/** bwn_pci per-instance state. */
-struct bwn_pci_softc {
-	device_t			 dev;		/**< device */
-	device_t			 bhndb_dev;	/**< bhnd bridge device */
-	const struct bwn_pci_devcfg	*devcfg;	/**< bwn device config */
-};
-
-/* PCI device descriptor */
-struct bwn_pci_device {
-	uint16_t	vendor;
-	uint16_t	device;
-	const char	*desc;
-};
-
-/* Supported device table */
-struct bwn_pci_devcfg {
-	const devclass_t		*bridge_cls;
-	const struct bhndb_hwcfg	*bridge_hwcfg;
-	const struct bhndb_hw		*bridge_hwtable;
-	const struct bwn_pci_device	*devices;
-};
+/* If non-zero, enable attachment of BWN_QUIRK_UNSUPPORTED devices */
+static u_int attach_untested = 0; 
+TUNABLE_INT("hw.bwn_pci.attach_untested", &attach_untested);
 
 /* SIBA Devices */
 static const struct bwn_pci_device siba_devices[] = {
-	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4301,		"Broadcom BCM4301 802.11b Wireless" },
-	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4306,		"Broadcom BCM4301 802.11b/g Wireless" },
-	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4307,		"Broadcom BCM4307 802.11b Wireless", },
-	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4311_D11G,		"Broadcom BCM4311 802.11b/g Wireless" },
-	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4311_D11DUAL,	"Broadcom BCM4311 802.11a/b/g Wireless" },
-	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4328_D11G,		"Broadcom BCM4328/4312 802.11b/g Wireless" },
-	
-	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4318_D11G,		"Broadcom BCM4318 802.11b/g Wireless" },
-	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4318_D11DUAL,	"Broadcom BCM4318 802.11a/b/g Wireless" },
-	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4306_D11G,		"Broadcom BCM4306 802.11b/g Wireless" },
-	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4306_D11A,		"Broadcom BCM4306 802.11a Wireless" },
-	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4306_D11DUAL,	"Broadcom BCM4309 802.11a/b/g Wireless" },
-	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4306_D11G_ID2,	"Broadcom BCM4306 802.11b/g Wireless" },
-	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4321_D11N,		"Broadcom BCM4321 802.11a/b/g/n Wireless" },
-	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4321_D11N2G,	"Broadcom BCM4329 802.11b/g/n" },
-	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4322_D11N,		"Broadcom BCM4322 802.11a/b/g/n Wireless" },
-	{ 0, 0, NULL }
+	BWN_BCM_DEV(BCM4301,		"BCM4301 802.11b",
+	    BWN_QUIRK_ENET_HW_UNPOPULATED),
+
+	BWN_BCM_DEV(BCM4306,		"BCM4306 802.11b/g",		0),
+	BWN_BCM_DEV(BCM4306_D11G,	"BCM4306 802.11g",		0),
+	BWN_BCM_DEV(BCM4306_D11A,	"BCM4306 802.11a",
+	    BWN_QUIRK_WLAN_DUALCORE),
+	BWN_BCM_DEV(BCM4306_D11DUAL,	"BCM4306 802.11a/b",
+	    BWN_QUIRK_WLAN_DUALCORE),
+	BWN_BCM_DEV(BCM4306_D11G_ID2,	"BCM4306 802.11g",		0),
+
+	BWN_BCM_DEV(BCM4307,		"BCM4307 802.11b",		0),
+
+	BWN_BCM_DEV(BCM4311_D11G,	"BCM4311 802.11b/g",		0),
+	BWN_BCM_DEV(BCM4311_D11DUAL,	"BCM4311 802.11a/b/g",		0),
+	BWN_BCM_DEV(BCM4311_D11A,	"BCM4311 802.11a",
+	    BWN_QUIRK_UNSUPPORTED|BWN_QUIRK_WLAN_DUALCORE),
+
+	BWN_BCM_DEV(BCM4318_D11G,	"BCM4318 802.11b/g",		0),
+	BWN_BCM_DEV(BCM4318_D11DUAL,	"BCM4318 802.11a/b/g",		0),
+	BWN_BCM_DEV(BCM4318_D11A,	"BCM4318 802.11a",
+	    BWN_QUIRK_UNSUPPORTED|BWN_QUIRK_WLAN_DUALCORE),
+
+	BWN_BCM_DEV(BCM4321_D11N,	"BCM4321 802.11n Dual-Band",	0),
+	BWN_BCM_DEV(BCM4321_D11N2G,	"BCM4321 802.11n 2GHz",		0),
+	BWN_BCM_DEV(BCM4321_D11N2G,	"BCM4321 802.11n 5GHz",
+	    BWN_QUIRK_UNSUPPORTED),
+
+	BWN_BCM_DEV(BCM4322_D11N,	"BCM4322 802.11n Dual-Band",	0),
+	BWN_BCM_DEV(BCM4322_D11N2G,	"BCM4322 802.11n 2GHz",
+	    BWN_QUIRK_UNSUPPORTED),
+	BWN_BCM_DEV(BCM4322_D11N5G,	"BCM4322 802.11n 5GHz",
+	    BWN_QUIRK_UNSUPPORTED),
+
+	BWN_BCM_DEV(BCM4328_D11G,	"BCM4328/4312 802.11g",		0),
+
+	{ 0, 0, NULL, 0 }
 };
 
 /** BCMA Devices */
 static const struct bwn_pci_device bcma_devices[] = {
-	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4331_D11N,		"Broadcom BCM4331 802.11a/b/g/n Wireless" },
-	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4331_D11N2G,	"Broadcom BCM4331 802.11b/g/n 2.4GHz Wireless" },
-	{ PCI_VENDOR_BROADCOM,	PCI_DEVID_BCM4331_D11N5G,	"Broadcom BCM4331 802.11a/b/g/n 5GHz Wireless" },
-	{ 0, 0, NULL }
+	BWN_BCM_DEV(BCM4331_D11N,	"BCM4331 802.11n Dual-Band",	0),
+	BWN_BCM_DEV(BCM4331_D11N2G,	"BCM4331 802.11n 2GHz",		0),
+	BWN_BCM_DEV(BCM4331_D11N5G,	"BCM4331 802.11n 5GHz",		0),
+
+	{ 0, 0, NULL, 0}
 };
 
 /** Device configuration table */
@@ -152,6 +154,10 @@ bwn_pci_probe(device_t dev)
 	if (bwn_pci_find_devcfg(dev, NULL, &ident))
 		return (ENXIO);
 
+	/* Skip untested devices */
+	if (ident->quirks & BWN_QUIRK_UNSUPPORTED && !attach_untested)
+		return (ENXIO);
+
 	device_set_desc(dev, ident->desc);
 	return (BUS_PROBE_DEFAULT);
 }
@@ -160,13 +166,17 @@ static int
 bwn_pci_attach(device_t dev)
 {
 	struct bwn_pci_softc		*sc;
+	const struct bwn_pci_device	*ident;
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
 
 	/* Find our hardware config */
-	if (bwn_pci_find_devcfg(dev, &sc->devcfg, NULL))
+	if (bwn_pci_find_devcfg(dev, &sc->devcfg, &ident))
 		return (ENXIO);
+
+	/* Save quirk flags */
+	sc->quirks = ident->quirks;
 
 	/* Attach bridge device */
 	if (bhndb_attach_bridge(dev, *sc->devcfg->bridge_cls, &sc->bhndb_dev,
@@ -215,8 +225,23 @@ static bool
 bwn_pci_is_core_populated(device_t dev, device_t child,
     struct bhnd_core_info *core)
 {
-	// TODO
-	return (true);
+	struct bwn_pci_softc	*sc;
+
+	sc = device_get_softc(dev);
+
+	switch (bhnd_core_class(core->vendor, core->device)) {
+	case BHND_DEVCLASS_WLAN:
+		if (core->unit > 0)
+			return ((sc->quirks & BWN_QUIRK_WLAN_DUALCORE) != 0);
+
+	case BHND_DEVCLASS_ENET:
+	case BHND_DEVCLASS_ENET_MAC:
+	case BHND_DEVCLASS_ENET_PHY:
+		return ((sc->quirks & BWN_QUIRK_ENET_HW_UNPOPULATED) == 0);
+
+	default:
+		return (true);
+	}
 }
 
 static device_method_t bwn_pci_methods[] = {
