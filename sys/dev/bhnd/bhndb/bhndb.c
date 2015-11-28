@@ -539,6 +539,19 @@ bhndb_child_deleted(device_t dev, device_t child)
 	device_set_ivars(child, NULL);
 }
 
+static bool
+bhndb_is_hw_populated(device_t dev, device_t child) {
+	struct bhnd_core_info core;
+
+	/* We can only handle bhnd-attached devices */
+	if (device_get_parent(child) != BHNDB_GET_ATTACHED_BUS(dev))
+		return (bhnd_generic_is_hw_populated(dev, child));
+
+	/* Ask our bhndb_bus parent */
+	bhnd_to_core_info(child, &core);
+	return (BHNDB_BUS_IS_CORE_POPULATED(device_get_parent(dev), dev, &core));
+}
+
 static struct resource *
 bhndb_alloc_resource(device_t dev, device_t child, int type,
     int *rid, u_long start, u_long end, u_long count, u_int flags)
@@ -1130,6 +1143,7 @@ static device_method_t bhndb_methods[] = {
 	DEVMETHOD(bus_write_ivar,		bhndb_generic_write_ivar),
 
 	/* BHND interface */
+	DEVMETHOD(bhnd_is_hw_populated,		bhndb_is_hw_populated),
 	DEVMETHOD(bhnd_alloc_resource,		bhndb_alloc_bhnd_resource),
 	DEVMETHOD(bhnd_release_resource,	bhndb_release_bhnd_resource),
 	DEVMETHOD(bhnd_activate_resource,	bhndb_activate_bhnd_resource),

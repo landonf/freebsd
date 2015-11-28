@@ -222,7 +222,8 @@ bcma_get_port_addr(device_t dev, device_t child, u_int port_num,
 }
 
 /**
- * Scan a device enumeration ROM table, adding all discovered cores to the bus.
+ * Scan a device enumeration ROM table, adding all valid discovered cores to
+ * the bus.
  * 
  * @param bus The bcma bus.
  * @param erom_res An active resource mapping the EROM core.
@@ -275,6 +276,11 @@ bcma_add_children(device_t bus, struct resource *erom_res, bus_size_t erom_offse
 		/* The child device now owns the dinfo pointer */
 		device_set_ivars(child, dinfo);
 		dinfo = NULL;
+
+		/* If pins are floating or the hardware is otherwise
+		 * unpopulated, the device shouldn't be used. */
+		if (!bhnd_is_hw_populated(child))
+			device_disable(child);
 	}
 
 	/* Hit EOF parsing cores? */

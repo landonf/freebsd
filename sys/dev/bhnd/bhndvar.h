@@ -56,6 +56,12 @@ int			 bhnd_generic_print_child(device_t dev,
 void			 bhnd_generic_probe_nomatch(device_t dev,
 			     device_t child);
 
+	
+bool			 bhnd_generic_is_hostb_device(device_t dev,
+			     device_t child);
+bool			 bhnd_generic_is_hw_populated(device_t dev,
+			     device_t child);
+
 struct bhnd_resource	*bhnd_generic_alloc_bhnd_resource (device_t dev,
 			     device_t child, int type, int *rid, u_long start,
 			     u_long end, u_long count, u_int flags);

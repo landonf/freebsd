@@ -193,6 +193,24 @@ bhnd_core_class(uint16_t vendor, uint16_t device)
 	return desc->class;
 }
 
+
+/**
+ * Initialize a core info record with data from from a bhnd-attached @p dev.
+ * 
+ * @param dev A bhnd device.
+ * @param core The record to be initialized.
+ */
+void
+bhnd_to_core_info(device_t dev, struct bhnd_core_info *core) {
+	*core = (struct bhnd_core_info) {
+		.vendor		= bhnd_get_vendor(dev),
+		.device		= bhnd_get_device(dev),
+		.hwrev		= bhnd_get_revid(dev),
+		.core_id	= bhnd_get_core_index(dev),
+		.unit		= bhnd_get_core_unit(dev)
+	};
+}
+
 /**
  * Find a @p class child device with @p unit on @p dev.
  * 

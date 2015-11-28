@@ -97,6 +97,9 @@ bool				 bhnd_core_matches(
 bool				 bhnd_device_matches(device_t dev,
 				     const struct bhnd_core_match *desc);
 
+void				 bhnd_to_core_info(device_t dev,
+				     struct bhnd_core_info *core);
+
 /**
  * Return true if @p dev is serving as a host bridge for its parent bhnd
  * bus.
@@ -106,6 +109,21 @@ bool				 bhnd_device_matches(device_t dev,
 static inline bool
 bhnd_is_hostb_device(device_t dev) {
 	return (BHND_IS_HOSTB_DEVICE(device_get_parent(dev), dev));
+}
+
+/**
+ * Return true if the hardware components required by @p dev are known to be
+ * populated on the hardware board.
+ *
+ * In some cases, enumerated devices may have pins that are left floating, or
+ * the hardware may otherwise be non-functional; this method allows a parent
+ * device to explicitly specify if a successfully enumerated @p dev should
+ * be disabled.
+ *
+ * @param dev A bhnd bus child device.
+ */
+static inline bool bhnd_is_hw_populated(device_t dev) {
+	return (BHND_IS_HW_POPULATED(device_get_parent(dev), dev));
 }
 
 /**

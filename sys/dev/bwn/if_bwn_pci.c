@@ -211,6 +211,14 @@ bwn_pci_get_bhndb_hwtable(device_t dev, device_t child)
 	return (sc->devcfg->bridge_hwtable);
 }
 
+static bool
+bwn_pci_is_core_populated(device_t dev, device_t child,
+    struct bhnd_core_info *core)
+{
+	// TODO
+	return (true);
+}
+
 static device_method_t bwn_pci_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,			bwn_pci_probe),
@@ -226,6 +234,7 @@ static device_method_t bwn_pci_methods[] = {
 	/* BHNDB_BUS Interface */
 	DEVMETHOD(bhndb_bus_get_generic_hwcfg,	bwn_pci_get_generic_hwcfg),
 	DEVMETHOD(bhndb_bus_get_hardware_table,	bwn_pci_get_bhndb_hwtable),
+	DEVMETHOD(bhndb_bus_is_core_populated,	bwn_pci_is_core_populated),
 
 	DEVMETHOD_END
 };

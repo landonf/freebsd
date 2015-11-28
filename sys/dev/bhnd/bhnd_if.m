@@ -34,16 +34,6 @@ INTERFACE bhnd;
 
 CODE {
 	#include <dev/bhnd/bhndvar.h>
-	
-	static int
-	bhnd_null_is_hostb_device(device_t dev, device_t child) {
-		if (device_get_parent(dev) != NULL) {
-			return (BHND_IS_HOSTB_DEVICE(device_get_parent(dev),
-			    child));
-		}
-
-		return (false);
-	}
 
 	static int
 	bhnd_null_get_port_rid(device_t dev, device_t child, u_int port,
@@ -82,7 +72,24 @@ CODE {
 METHOD bool is_hostb_device {
 	device_t dev;
 	device_t child;
-} DEFAULT bhnd_null_is_hostb_device;
+} DEFAULT bhnd_generic_is_hostb_device;
+
+/**
+ * Return true if the hardware components required by @p child are populated on
+ * the hardware board.
+ *
+ * In some cases, enumerated devices may have pins that are left floating, or
+ * the hardware may otherwise be non-functional; this method allows a parent
+ * device to explicitly specify if a successfully enumerated @p child should
+ * be disabled.
+ *
+ * @param dev The device whose child is being examined.
+ * @param child The child device.
+ */
+METHOD bool is_hw_populated {
+	device_t dev;
+	device_t child;
+} DEFAULT bhnd_generic_is_hw_populated;
 
 /**
  * Allocate a bhnd resource.

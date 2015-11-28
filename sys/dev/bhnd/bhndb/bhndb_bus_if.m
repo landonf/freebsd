@@ -55,7 +55,7 @@ CODE {
 	}
 
 	static bool
-	bhndb_null_is_core_hardware_populated(device_t dev, device_t child,
+	bhndb_null_is_core_populated(device_t dev, device_t child,
 	    struct bhnd_core_info *core)
 	{
 		return (true);
@@ -101,8 +101,8 @@ METHOD const struct bhndb_hw * get_hardware_table {
  * @param child The attached bhndb device.
  * @param core A core discovered on @p child.
  */
-METHOD bool is_core_hardware_populated {
+METHOD bool is_core_populated {
 	device_t dev;
 	device_t child;
 	struct bhnd_core_info *core;
-} DEFAULT bhndb_null_is_core_hardware_populated;
+} DEFAULT bhndb_null_is_core_populated;
