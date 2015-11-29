@@ -39,6 +39,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/pci/pcivar.h>
 
 #include <dev/bhnd/bcma/bcma.h>
+#include <dev/bhnd/siba/siba.h>
+
 #include <dev/bhnd/bhndb/bhndb_pci_hwdata.h>
 #include <dev/bhnd/bhnd_ids.h>
 
@@ -104,7 +106,7 @@ static const struct bwn_pci_device bcma_devices[] = {
 static const struct bwn_pci_devcfg bwn_pci_devcfgs[] = {
 	/* SIBA devices */
 	{
-		.bridge_cls	= NULL, /* TODO &sibab_devclass */
+		.bridge_cls	= &sibab_devclass,
 		.bridge_hwcfg	= &bhndb_pci_siba_generic_hwcfg,
 		.bridge_hwtable	= bhndb_pci_generic_hw_table,
 		.devices	= siba_devices
@@ -267,11 +269,10 @@ static device_method_t bwn_pci_methods[] = {
 static devclass_t bwn_pci_devclass;
 
 DEFINE_CLASS_0(bwn_pci, bwn_pci_driver, bwn_pci_methods, sizeof(struct bwn_pci_softc));
-
-DRIVER_MODULE(bwn_bcmab, bwn_pci, bcmab_pci_driver, bcmab_devclass, NULL, NULL);
 DRIVER_MODULE(bwn_pci, pci, bwn_pci_driver, bwn_pci_devclass, NULL, NULL);
 
-MODULE_DEPEND(bwn_pci, bhndb_pci, 1, 1, 1);
+DRIVER_MODULE(bwn_bcmab, bwn_pci, bcmab_pci_driver, bcmab_devclass, NULL, NULL);
 MODULE_DEPEND(bwn_pci, bcmab_pci, 1, 1, 1);
 
-//MODULE_DEPEND(bwn_pci, sibab_pci, 1, 1, 1);
+DRIVER_MODULE(bwn_sibab, bwn_pci, sibab_pci_driver, sibab_devclass, NULL, NULL);
+MODULE_DEPEND(bwn_pci, sibab_pci, 1, 1, 1);

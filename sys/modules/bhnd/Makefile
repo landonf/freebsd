@@ -12,7 +12,9 @@ SUBDIR=	bcma \
 	bcmab_pci \
 	bhndb \
 	bhndb_pci \
-	cores
+	cores \
+	siba \
+	sibab_pci
 
 .include <bsd.kmod.mk>
 .include <bsd.subdir.mk>
