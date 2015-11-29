@@ -66,7 +66,8 @@ size_t				 bhndb_regwin_count(
 
 const struct bhndb_regwin	*bhndb_regwin_find_type(
 				     const struct bhndb_regwin *table,
-				     bhndb_regwin_type_t type);
+				     bhndb_regwin_type_t type,
+				     bus_size_t min_size);
 
 const struct bhndb_regwin	*bhndb_regwin_find_core(
 				     const struct bhndb_regwin *table,

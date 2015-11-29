@@ -58,6 +58,7 @@ __FBSDID("$FreeBSD$");
 
 #include "bcmab_pcivar.h"
 
+#include "bcma_eromreg.h"
 #include "bcma_eromvar.h"
 
 static int		 bcmab_find_erom_addr(struct bcmab_pci_softc *sc,
@@ -154,7 +155,7 @@ bcmab_alloc_erom_resource(struct bcmab_pci_softc *sc, struct bcma_erom *erom,
 	/* Fall back to a dynamic window */
 	if (rw == NULL) {
 		rw = bhndb_regwin_find_type(cfg->register_windows,
-		    BHNDB_REGWIN_T_DYN);
+		    BHNDB_REGWIN_T_DYN, BCMA_EROM_TABLE_SIZE);
 		
 		if (rw == NULL) {
 			device_printf(sc->dev,

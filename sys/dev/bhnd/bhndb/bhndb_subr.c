@@ -87,19 +87,20 @@ bhndb_regwin_count(const struct bhndb_regwin *table,
  * 
  * @param table The table to search.
  * @param type The required window type.
+ * @param min_size The minimum window size.
  * 
  * @retval bhndb_regwin The first matching window.
  * @retval NULL If no window of the requested type could be found. 
  */
 const struct bhndb_regwin *
 bhndb_regwin_find_type(const struct bhndb_regwin *table,
-    bhndb_regwin_type_t type)
+    bhndb_regwin_type_t type, bus_size_t min_size)
 {
 	const struct bhndb_regwin *rw;
 
 	for (rw = table; rw->win_type != BHNDB_REGWIN_T_INVALID; rw++)
 	{
-		if (rw->win_type == BHNDB_REGWIN_T_DYN)
+		if (rw->win_type == type && rw->win_size >= min_size)
 			return (rw);
 	}
 
