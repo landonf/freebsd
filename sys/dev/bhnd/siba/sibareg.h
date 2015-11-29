@@ -31,10 +31,10 @@
 #ifndef _BHND_SIBA_SIBAREG_
 #define _BHND_SIBA_SIBAREG_
 
-#define	SI_ENUM_BASE_ADDR    	0x18000000	/**< Per-core 4K register blocks */
-#define	SI_ENUM_BASE_SIZE	0x00100000	/**< Size of the enumeration space */ 
-#define	SI_CORE_SIZE    	0x1000		/**< Core register block size */
+#define	SIBA_ENUM_ADDR    	0x18000000	/**< Per-core 4K register blocks */
+#define	SIBA_ENUM_SIZE		0x00100000	/**< Size of the enumeration space */ 
+#define	SIBA_CORE_SIZE    	0x1000		/**< Core register block size */
 
-#define	SI_MAX_CORES		(SI_ENUM_BASE_SIZE/SI_CORE_SIZE)	/**< Maximum number of cores */
+#define	SIBA_MAX_CORES		(SIBA_ENUM_SIZE/SIBA_CORE_SIZE)	/**< Maximum number of cores */
 
 #endif /* _BHND_SIBA_SIBAREG_ */

@@ -113,7 +113,7 @@ sibab_pci_detach(device_t dev)
 static bhnd_addr_t
 sibab_pci_get_enum_addr(device_t dev, device_t child)
 {
-	return (SI_ENUM_BASE_ADDR);
+	return (SIBA_ENUM_ADDR);
 }
 
 static int
