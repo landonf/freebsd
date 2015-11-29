@@ -57,6 +57,8 @@ __FBSDID("$FreeBSD$");
 #include "sibab_pcireg.h"
 #include "sibab_pcivar.h"
 
+#include "siba_configreg.h"
+
 static int
 sibab_pci_probe(device_t dev)
 {	
@@ -70,6 +72,104 @@ sibab_pci_probe(device_t dev)
 	return (error);
 }
 
+#define	CHIPC_CC		0x0
+
+#define	CHIPC_CC_CHIPID_MASK	0x0000FFFF
+#define	CHIPC_CC_CHIPID_SHIFT	0
+
+#define	CHIPC_CC_REV_MASK	0x000F0000
+#define	CHIPC_CC_REV_SHIFT	16
+
+#define	CHIPC_CC_PKG_MASK	0x00F00000
+#define	CHIPC_CC_PKG_SHIFT	20
+
+#define	CHIPC_CC_NUMCORE_MASK	0x0F000000
+#define	CHIPC_CC_NUMCORE_SHIFT	24
+
+#define CHIPC_CC_BUS_T_MASK	0xF0000000
+#define CHIPC_CC_BUS_T_SHIFT	28
+
+#define	CHIPC_GET_ATTR(_entry, _attr) \
+	((_entry & CHIPC_ ## _attr ## _MASK) >> CHIPC_ ## _attr ## _SHIFT)
+
+static int
+test_enumerate_cores(struct sibab_pci_softc *sc)
+{
+	const struct bhndb_hwcfg	*cfg;
+	const struct bhndb_regwin	*rw;
+	struct resource			*enum_res;
+	int				 rid, type;
+	int				 error;
+
+	error = 0;
+	cfg = BHNDB_BUS_GET_GENERIC_HWCFG(sc->parent_dev, sc->dev);
+
+	/* Fetch and configurea register window */
+	rw = bhndb_regwin_find_type(cfg->register_windows, BHNDB_REGWIN_T_DYN,
+	    SIBA_CORE_SIZE);
+	if (rw == NULL) {
+		device_printf(sc->dev, "no usable dynamic register window\n");
+		return (ENODEV);
+	}
+
+	/* Allocate regwin resource.*/
+	rid = rw->res.rid;
+	type = rw->res.type;
+	enum_res = bus_alloc_resource_any(sc->parent_dev, type, &rid, RF_ACTIVE);
+	if (enum_res == NULL) {
+		device_printf(sc->dev, "failed to allocate sibab_pci "
+		    "enumeration resource\n");
+		return (ENXIO);
+	}
+
+	uint8_t ncore = 1;
+	for (uint8_t i = 0; i < ncore; i++) {
+		error = BHNDB_SET_WINDOW_ADDR(sc->dev, rw, SIBA_CORE_ADDR(i));
+		if (error)
+			goto failed;
+		
+		if (i == 0) {
+			uint32_t chipc	= bus_read_4(enum_res, CHIPC_CC);
+			uint16_t chip	= CHIPC_GET_ATTR(chipc, CC_CHIPID);
+			uint8_t rev	= CHIPC_GET_ATTR(chipc, CC_REV);
+			uint8_t pkg	= CHIPC_GET_ATTR(chipc, CC_PKG);
+			ncore		= CHIPC_GET_ATTR(chipc, CC_NUMCORE);
+			uint8_t bus	= CHIPC_GET_ATTR(chipc, CC_BUS_T);
+			device_printf(sc->dev, "chip=0x%hx rev=0x%hhx pkg=0x%hhx ncore=0x%hhu bus=0x%hhx\n", chip, rev, pkg, ncore, bus);
+		}
+		
+		uint32_t idL = bus_read_4(enum_res, SBIDLOW);
+		uint32_t idH = bus_read_4(enum_res, SBIDHIGH);
+
+		uint8_t cspace = SB_REG_GET(idL, IDL_CS);
+		uint8_t arange = SB_REG_GET(idL, IDL_ADDR_RANGE);
+		uint8_t minlat = SB_REG_GET(idL, IDL_MINLAT);
+		uint8_t manlat = SB_REG_GET(idL, IDL_MAXLAT);
+		uint8_t first = SB_REG_GET(idL, IDL_FIRST);
+		uint8_t ccw = SB_REG_GET(idL, IDL_CW);
+		uint8_t tpc = SB_REG_GET(idL, IDL_TP);
+		uint8_t ipc = SB_REG_GET(idL, IDL_IP);
+		uint8_t sbrev = SB_REG_GET(idL, IDL_SBREV);
+
+		uint16_t vendor	= SB_REG_GET(idH, IDH_VENDOR);
+		uint16_t device	= SB_REG_GET(idH, IDH_DEVICE);
+		uint16_t hwrev	= SB_CORE_REV(idH);
+
+
+		device_printf(sc->dev, "vendor=0x%hx device=0x%hx hwrev=0x%hu\n", vendor, device, hwrev);
+		
+		device_printf(sc->dev, "cspace=0x%hhx arange=0x%hhx minlat=0x%hhx manlat=0x%hhx first=0x%hhx ccw=0x%hhu tpc=0x%hhu ipc=0x%hhu sbrev=0x%hhx\n",cspace, arange, minlat, manlat, first, ccw, tpc, ipc, sbrev);
+
+	}
+
+failed:
+	if (enum_res != NULL)
+		bus_release_resource(sc->parent_dev, type, rid, enum_res);
+
+	return (error);
+}
+
+
 static int
 sibab_pci_attach(device_t dev)
 {
@@ -80,6 +180,9 @@ sibab_pci_attach(device_t dev)
 
 	sc->dev = dev;
 	sc->parent_dev = device_get_parent(dev);
+
+	// TODO
+	test_enumerate_cores(sc);
 
 	/* Attach bridged siba(4) bus */
 	sc->bus_dev = BUS_ADD_CHILD(dev, 0, devclass_get_name(siba_devclass), 0);

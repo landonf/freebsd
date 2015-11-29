@@ -28,87 +28,58 @@
  * Sonics Configuration Space Registers.
  * 
  * Backplane configuration registers common to siba(4) core register
- * target regions.
+ * blocks.
  */
 
-#if 0
-typedef volatile struct _sbconfig {
-	u32 PAD[2];
-	u32 sbipsflag;		/* initiator port ocp slave flag */
-	u32 PAD[3];
-	u32 sbtpsflag;		/* target port ocp slave flag */
-	u32 PAD[11];
-	u32 sbtmerrloga;	/* (sonics >= 2.3) */
-	u32 PAD;
-	u32 sbtmerrlog;		/* (sonics >= 2.3) */
-	u32 PAD[3];
-	u32 sbadmatch3;		/* address match3 */
-	u32 PAD;
-	u32 sbadmatch2;		/* address match2 */
-	u32 PAD;
-	u32 sbadmatch1;		/* address match1 */
-	u32 PAD[7];
-	u32 sbimstate;		/* initiator agent state */
-	u32 sbintvec;		/* interrupt mask */
-	u32 sbtmstatelow;	/* target state */
-	u32 sbtmstatehigh;	/* target state */
-	u32 sbbwa0;		/* bandwidth allocation table0 */
-	u32 PAD;
-	u32 sbimconfiglow;	/* initiator configuration */
-	u32 sbimconfighigh;	/* initiator configuration */
-	u32 sbadmatch0;		/* address match0 */
-	u32 PAD;
-	u32 sbtmconfiglow;	/* target configuration */
-	u32 sbtmconfighigh;	/* target configuration */
-	u32 sbbconfig;		/* broadcast configuration */
-	u32 PAD;
-	u32 sbbstate;		/* broadcast state */
-	u32 PAD[3];
-	u32 sbactcnfg;		/* activate configuration */
-	u32 PAD[3];
-	u32 sbflagst;		/* current sbflags */
-	u32 PAD[3];
-	u32 sbidlow;		/* identification */
-	u32 sbidhigh;		/* identification */
-} sbconfig_t;
-#endif
-
-#define	SBCONFIGOFF		0xf00	/* core sbconfig regs are top 256bytes of regs */
-#define	SBCONFIGSIZE		256	/* sizeof (sbconfig_t) */
-
-#define	SBIPSFLAG		0x08
-#define	SBTPSFLAG		0x18
-#define	SBTMERRLOGA		0x48	/* sonics >= 2.3 */
-#define	SBTMERRLOG		0x50	/* sonics >= 2.3 */
-#define	SBADMATCH3		0x60
-#define	SBADMATCH2		0x68
-#define	SBADMATCH1		0x70
-#define	SBIMSTATE		0x90
-#define	SBINTVEC		0x94
-#define	SBTMSTATELOW		0x98
-#define	SBTMSTATEHIGH		0x9c
-#define	SBBWA0			0xa0
-#define	SBIMCONFIGLOW		0xa8
-#define	SBIMCONFIGHIGH		0xac
-#define	SBADMATCH0		0xb0
-#define	SBTMCONFIGLOW		0xb8
-#define	SBTMCONFIGHIGH		0xbc
-#define	SBBCONFIG		0xc0
-#define	SBBSTATE		0xc8
-#define	SBACTCNFG		0xd8
-#define	SBFLAGST		0xe8
-#define	SBIDLOW			0xf8
-#define	SBIDHIGH		0xfc
-
-/* All the previous registers are above SBCONFIGOFF, but with Sonics 2.3, we have
- * a few registers *below* that line. I think it would be very confusing to try
- * and change the value of SBCONFIGOFF, so I'm definig them as absolute offsets here,
+/**
+ * Extract a config attribute by applying _MASK and _SHIFT defines.
+ * 
+ * @param _reg The register value containing the desired attribute
+ * @param _attr The BCMA EROM attribute name (e.g. ENTRY_ISVALID), to be
+ * concatenated with the `SB` prefix and `_MASK`/`_SHIFT` suffixes.
  */
+#define	SB_REG_GET(_entry, _attr)			\
+	((_entry & SB ## _attr ## _MASK)	\
+	>> SB ## _attr ## _SHIFT)
 
-#define	SBIMERRLOGA		0xea8
-#define	SBIMERRLOG		0xeb0
-#define	SBTMPORTCONNID0		0xed8
-#define	SBTMPORTLOCK0		0xef8
+#define	SB_CFG1_OFFSET	0xf00	/**< register block 1 */
+#define	SB_CFG2_OFFSET	0xe00	/**< register block 2 (sonics >= 2.3) */
+
+#define	SB_CFG_SIZE	256	/**< register block size */
+
+/* Define a register relative to either the CFG1 or CFG2 block offset */
+#define	SB_REG(cb, off)	(SB_CFG ## cb ## _OFFSET + (off))
+#define SB1_REG(off)	SB_REG(1, (off))
+#define	SB2_REG(off)	SB_REG(2, (off))
+
+#define	SBIPSFLAG	SB1_REG(0x08)	/**< initiator port ocp slave flag */
+#define	SBTPSFLAG	SB1_REG(0x18)	/**< target port ocp slave flag */
+#define	SBTMERRLOGA	SB1_REG(0x48)	/**< sonics >= 2.3 */
+#define	SBTMERRLOG	SB1_REG(0x50)	/**< sonics >= 2.3 */
+#define	SBADMATCH3	SB1_REG(0x60)	/**< address match3 */
+#define	SBADMATCH2	SB1_REG(0x68)	/**< address match2 */
+#define	SBADMATCH1	SB1_REG(0x70)	/**< address match1 */
+#define	SBIMSTATE	SB1_REG(0x90)	/**< initiator agent state */
+#define	SBINTVEC	SB1_REG(0x94)	/**< interrupt mask */
+#define	SBTMSTATELOW	SB1_REG(0x98)	/**< target state */
+#define	SBTMSTATEHIGH	SB1_REG(0x9c)	/**< target state */
+#define	SBBWA0		SB1_REG(0xa0)	/**< bandwidth allocation table0 */
+#define	SBIMCONFIGLOW	SB1_REG(0xa8)	/**< initiator configuration */
+#define	SBIMCONFIGHIGH	SB1_REG(0xac)	/**< initiator configuration */
+#define	SBADMATCH0	SB1_REG(0xb0)	/**< address match0 */
+#define	SBTMCONFIGLOW	SB1_REG(0xb8)	/**< target configuration */
+#define	SBTMCONFIGHIGH	SB1_REG(0xbc)	/**< target configuration */
+#define	SBBCONFIG	SB1_REG(0xc0)	/**< broadcast configuration */
+#define	SBBSTATE	SB1_REG(0xc8)	/**< broadcast state */
+#define	SBACTCNFG	SB1_REG(0xd8)	/**< activate configuration */
+#define	SBFLAGST	SB1_REG(0xe8)	/**< current sbflags */
+#define	SBIDLOW		SB1_REG(0xf8)	/**< identification */
+#define	SBIDHIGH	SB1_REG(0xfc)	/**< identification */
+
+#define	SBIMERRLOGA	SB2_REG(0xa8)	/**< sonics >= 2.3 */
+#define	SBIMERRLOG	SB2_REG(0xb0)	/**< sonics >= 2.3 */
+#define	SBTMPORTCONNID0	SB2_REG(0xd8)	/**< sonics >= 2.3 */
+#define	SBTMPORTLOCK0	SB2_REG(0xf8)	/**< sonics >= 2.3 */
 
 /* sbipsflag */
 #define	SBIPS_INT1_MASK		0x3f	/* which sbflags get routed to mips interrupt 1 */
@@ -228,36 +199,38 @@ typedef volatile struct _sbconfig {
 
 /* sbidlow */
 #define	SBIDL_CS_MASK		0x3	/* config space */
-#define	SBIDL_AR_MASK		0x38	/* # address ranges supported */
-#define	SBIDL_AR_SHIFT		3
+#define	SBIDL_CS_SHIFT		0
+#define	SBIDL_ADDR_RANGE_MASK	0x38	/* # address ranges supported */
+#define	SBIDL_ADDR_RANGE_SHIFT	3
 #define	SBIDL_SYNCH		0x40	/* sync */
 #define	SBIDL_INIT		0x80	/* initiator */
 #define	SBIDL_MINLAT_MASK	0xf00	/* minimum backplane latency */
 #define	SBIDL_MINLAT_SHIFT	8
-#define	SBIDL_MAXLAT		0xf000	/* maximum backplane latency */
+#define	SBIDL_MAXLAT_MASK	0xf000	/* maximum backplane latency */
 #define	SBIDL_MAXLAT_SHIFT	12
-#define	SBIDL_FIRST		0x10000	/* this initiator is first */
+#define	SBIDL_FIRST_MASK	0x10000	/* this initiator is first */
+#define	SBIDL_FIRST_SHIFT	16
 #define	SBIDL_CW_MASK		0xc0000	/* cycle counter width */
 #define	SBIDL_CW_SHIFT		18
 #define	SBIDL_TP_MASK		0xf00000	/* target ports */
 #define	SBIDL_TP_SHIFT		20
 #define	SBIDL_IP_MASK		0xf000000	/* initiator ports */
 #define	SBIDL_IP_SHIFT		24
-#define	SBIDL_RV_MASK		0xf0000000	/* sonics backplane revision code */
-#define	SBIDL_RV_SHIFT		28
-#define	SBIDL_RV_2_2		0x00000000	/* version 2.2 or earlier */
-#define	SBIDL_RV_2_3		0x10000000	/* version 2.3 */
+#define	SBIDL_SBREV_MASK	0xf0000000	/* sonics backplane revision code */
+#define	SBIDL_SBREV_SHIFT	28
+#define	SBIDL_SBREV_2_2		0x0		/* version 2.2 or earlier */
+#define	SBIDL_SBREV_2_3		0x1		/* version 2.3 */
 
 /* sbidhigh */
 #define	SBIDH_RC_MASK		0x000f	/* revision code */
 #define	SBIDH_RCE_MASK		0x7000	/* revision code extension field */
 #define	SBIDH_RCE_SHIFT		8
-#define	SBCOREREV(sbidh) \
+#define	SB_CORE_REV(sbidh) \
 	((((sbidh) & SBIDH_RCE_MASK) >> SBIDH_RCE_SHIFT) | ((sbidh) & SBIDH_RC_MASK))
-#define	SBIDH_CC_MASK		0x8ff0	/* core code */
-#define	SBIDH_CC_SHIFT		4
-#define	SBIDH_VC_MASK		0xffff0000	/* vendor code */
-#define	SBIDH_VC_SHIFT		16
+#define	SBIDH_DEVICE_MASK	0x8ff0	/* core code */
+#define	SBIDH_DEVICE_SHIFT	4
+#define	SBIDH_VENDOR_MASK	0xffff0000	/* vendor code */
+#define	SBIDH_VENDOR_SHIFT	16
 
 #define	SB_COMMIT		0xfd8	/* update buffered registers value */
 
