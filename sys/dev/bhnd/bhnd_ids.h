@@ -657,12 +657,6 @@
 #define	BHND_GPIO_BTC4W_OUT_4313	0x060	/* bit 5 SW_BT, bit 6 SW_WL */
 #define	BHND_GPIO_BTC4W_OUT_4331_SHARED	0x010	/* GPIO 4  */
 
-/* PCI (non-PCIe) Power Control GPIO Defines */
-#define	BHND_PCI_CFG_GPIO_SCS		0x10	/* PCI config space bit 4 for 4306c0 slow clock source */
-#define	BHND_PCI_CFG_GPIO_HWRAD		0x20	/* PCI config space GPIO 13 for hw radio disable */
-#define	BHND_PCI_CFG_GPIO_XTAL		0x40	/* PCI config space GPIO 14 for Xtal power-up */
-#define	BHND_PCI_CFG_GPIO_PLL		0x80	/* PCI config space GPIO 15 for PLL power-down */
-
 /* Power Control Defines */
 #define	BHND_CHIPC_PLL_DELAY		150	/* us pll on delay */
 #define	BHND_CHIPC_FREF_DELAY		200	/* us fref change delay */

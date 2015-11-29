@@ -2,9 +2,9 @@
  * Copyright (c) 2015 Landon Fuller <landon@landonf.org>
  * Copyright (c) 2010 Broadcom Corporation
  * 
- * This file is derived from the pcicfg.h header distributed with
- * Broadcom's initial brcm80211 Linux driver release, as
- * contributed to the Linux staging repository. 
+ * Portions of this file were derived from the bcmdevs.h header contributed by
+ * Broadcom to Android's bcmdhd driver module, and the pcicfg.h header
+ * distributed with Broadcom's initial brcm80211 Linux driver release.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -25,7 +25,7 @@
 #define _BHND_BHNDB_PCIREG_H_
 
 /*
- * PCI/PCIE Device-Mode Configuration Registers.
+ * Common PCI/PCIE Bridge Configuration Registers.
  * 
  * = MAJOR CORE REVISIONS =
  * 
@@ -118,10 +118,12 @@
 #define	BHNDB_PCI_TO_SB_MB		0x98	/* signal backplane interrupts */
 #define	BHNDB_PCI_BACKPLANE_ADDR	0xa0	/* address an arbitrary location on the system backplane */
 #define	BHNDB_PCI_BACKPLANE_DATA	0xa4	/* data at the location specified by above address */
-#define	BHNDB_PCI_CLK_CTL_ST		0xa8	/* pci config space clock control/status (>=rev14) */
-#define	BHNDB_PCI_GPIO_IN		0xb0	/* pci config space gpio input (>=rev3) */
-#define	BHNDB_PCI_GPIO_OUT		0xb4	/* pci config space gpio output (>=rev3) */
-#define	BHNDB_PCI_GPIO_OUTEN		0xb8	/* pci config space gpio output enable (>=rev3) */
+
+/* PCI (non-PCIe) GPIO/Clock Config Registers */
+#define	BHNDB_PCI_CLK_CTL		0xa8	/* clock control/status (pci >=rev14) */
+#define	BHNDB_PCI_GPIO_IN		0xb0	/* gpio input (pci >=rev3) */
+#define	BHNDB_PCI_GPIO_OUT		0xb4	/* gpio output (pci >=rev3) */
+#define	BHNDB_PCI_GPIO_OUTEN		0xb8	/* gpio output enable (pci >=rev3) */
 
 /* Hardware revisions used to determine PCI revision */
 #define	BHNDB_PCI_V0_MAX_PCI_HWREV	12
@@ -185,15 +187,15 @@
 #define	BHNDB_PCI_V3_BAR0_CCREGS_OFFSET	0x3000	/* bar0 + 12K accesses chipc core registers */
 #define	BHNDB_PCI_V3_BAR0_CCREGS_SIZE	0x1000
 
-/* PCI_INT_STATUS */
+/* BHNDB_PCI_INT_STATUS */
 #define	BHNDB_PCI_SBIM_STATUS_SERR	0x4	/* backplane SBErr interrupt status */
 
-/* PCI_INT_MASK */
+/* BHNDB_PCI_INT_MASK */
 #define	BHNDB_PCI_SBIM_SHIFT		8	/* backplane core interrupt mask bits offset */
 #define	BHNDB_PCI_SBIM_MASK		0xff00	/* backplane core interrupt mask */
 #define	BHNDB_PCI_SBIM_MASK_SERR	0x4	/* backplane SBErr interrupt mask */
 
-/* PCI_SPROM_CONTROL */
+/* BHNDB_PCI_SPROM_CONTROL */
 #define	BHNDB_PCI_SPROM_SZ_MSK		0x02	/* SPROM Size Mask */
 #define	BHNDB_PCI_SPROM_LOCKED		0x08	/* SPROM Locked */
 #define	BHNDB_PCI_SPROM_BLANK		0x04	/* indicating a blank SPROM */
@@ -202,5 +204,11 @@
 #define	BHNDB_PCI_SPROM_BACKPLANE_EN	0x40	/* Enable indirect backplane access */
 #define	BHNDB_PCI_SPROM_OTPIN_USE	0x80	/* device OTP In use */
 
+
+/* PCI (non-PCIe) BHNDB_PCI_GPIO_OUTEN  */
+#define	BHND_PCI_GPIO_EN_SCS		0x10	/* PCI config space bit 4 for 4306c0 slow clock source */
+#define	BHND_PCI_GPIO_EN_HWRAD		0x20	/* PCI config space GPIO 13 for hw radio disable */
+#define	BHND_PCI_GPIO_EN_XTAL		0x40	/* PCI config space GPIO 14 for Xtal power-up */
+#define	BHND_PCI_GPIO_EN_PLL		0x80	/* PCI config space GPIO 15 for PLL power-down */
 
 #endif /* _BHND_BHNDB_PCIREG_H_ */
