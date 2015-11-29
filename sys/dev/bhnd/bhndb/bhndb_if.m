@@ -130,6 +130,9 @@ METHOD int disable_clocks {
 
 /**
  * Retrieve the list of all cores enumerated by @p dev.
+ *
+ * This method may return an error if requisite bus resources
+ * have already been claimed by the bridge.
  * 
  * The memory allocated for the table should be freed using
  * `free(*cores, M_BHND)`. @p cores and @p num_cores are not changed
