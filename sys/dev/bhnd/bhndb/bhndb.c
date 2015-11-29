@@ -348,6 +348,10 @@ bhndb_generic_attach(device_t dev)
 	sc->parent_dev = device_get_parent(dev);
 
 	BHNDB_LOCK_INIT(sc);
+	
+	/* Enable clocks; there's no harm in potentially doing this twice.  */
+	if ((error = BHNDB_ENABLE_CLOCKS(dev)))
+		return (error);
 
 	/* Find our register window configuration */
 	if ((error = bhndb_find_hwspec(sc, &sc->hw)))
@@ -445,8 +449,10 @@ bhndb_generic_detach(device_t dev)
 
 	sc = device_get_softc(dev);
 	
-	/* Detach children */
+	/* Detach children and disable clocks */
 	error = bus_generic_detach(dev);
+	if (!error)
+		error = BHNDB_DISABLE_CLOCKS(dev);
 
 	/* Clean up */
 	rman_fini(&sc->mem_rman);
@@ -465,13 +471,23 @@ bhndb_generic_detach(device_t dev)
 int
 bhndb_generic_suspend(device_t dev)
 {
-	return (bus_generic_suspend(dev));
+	int error;
+
+	if ((error = bus_generic_suspend(dev)))
+		return (error);
+
+	return BHNDB_DISABLE_CLOCKS(dev);
 }
 
 /** Default bhndb implementation of device_resume(). */
 int
 bhndb_generic_resume(device_t dev)
 {
+	int error;
+
+	if ((error = BHNDB_ENABLE_CLOCKS(dev)))
+		return (error);
+
 	return (bus_generic_resume(dev));
 }
 
@@ -548,7 +564,7 @@ bhndb_is_hw_populated(device_t dev, device_t child) {
 		return (bhnd_generic_is_hw_populated(dev, child));
 
 	/* Ask our bhndb_bus parent */
-	bhnd_to_core_info(child, &core);
+	core = bhnd_get_core_info(child);
 	return (BHNDB_BUS_IS_CORE_POPULATED(device_get_parent(dev), dev, &core));
 }
 

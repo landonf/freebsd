@@ -181,6 +181,10 @@ sibab_pci_attach(device_t dev)
 	sc->dev = dev;
 	sc->parent_dev = device_get_parent(dev);
 
+	/* Enable clocks. */
+	if ((error = BHNDB_ENABLE_CLOCKS(dev)))
+		return (error);
+
 	// TODO
 	test_enumerate_cores(sc);
 

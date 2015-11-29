@@ -200,9 +200,9 @@ bhnd_core_class(uint16_t vendor, uint16_t device)
  * @param dev A bhnd device.
  * @param core The record to be initialized.
  */
-void
-bhnd_to_core_info(device_t dev, struct bhnd_core_info *core) {
-	*core = (struct bhnd_core_info) {
+struct bhnd_core_info
+bhnd_get_core_info(device_t dev) {
+	return (struct bhnd_core_info) {
 		.vendor		= bhnd_get_vendor(dev),
 		.device		= bhnd_get_device(dev),
 		.hwrev		= bhnd_get_revid(dev),

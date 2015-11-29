@@ -47,6 +47,18 @@ HEADER {
 CODE {
 	#include <sys/systm.h>
 	#include <dev/bhnd/bhndb/bhndbvar.h>
+	
+	static int
+	bhndb_null_enable_clocks(device_t dev)
+	{
+		return (0);
+	}
+	
+	static int
+	bhndb_null_disable_clocks(device_t dev)
+	{
+		return (0);
+	}
 
 	static bhnd_addr_t
 	bhndb_null_get_enum_addr(device_t dev, device_t child)
@@ -92,6 +104,29 @@ METHOD bhnd_addr_t get_enum_addr {
 	device_t dev;
 	device_t child;
 } DEFAULT bhndb_null_get_enum_addr;
+
+
+/**
+ * Enable clocks required prior to accessing mapped core registers. This must 
+ * be called early in device_attach() and device_resume().
+ * 
+ * @param dev The bridge device.
+ *
+ * @retval 0 success
+ * @retval non-zero Enabling clocks failed; clocks may be in unknown state.
+ */
+METHOD int enable_clocks {
+	device_t dev;
+} DEFAULT bhndb_null_enable_clocks;
+
+/**
+ * Disable clocks required for accessing mapped core registers. 
+ * @retval 0 success
+ * @retval non-zero Disabling clocks failed; clocks may be in unknown state.
+ */
+METHOD int disable_clocks {
+	device_t dev;
+} DEFAULT bhndb_null_disable_clocks;
 
 /**
  * Retrieve the list of all cores enumerated by @p dev.

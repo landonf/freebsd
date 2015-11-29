@@ -97,8 +97,7 @@ bool				 bhnd_core_matches(
 bool				 bhnd_device_matches(device_t dev,
 				     const struct bhnd_core_match *desc);
 
-void				 bhnd_to_core_info(device_t dev,
-				     struct bhnd_core_info *core);
+struct bhnd_core_info		 bhnd_get_core_info(device_t dev);
 
 /**
  * Return true if @p dev is serving as a host bridge for its parent bhnd

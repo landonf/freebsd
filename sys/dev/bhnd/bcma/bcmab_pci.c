@@ -232,7 +232,7 @@ bcmab_pci_probe(device_t dev)
 	int error;
 
 	/* Call default probe implementation */
-	if ((error = bhndb_pci_generic_probe(dev)) > 0)
+	if ((error = bhndb_generic_probe(dev)) > 0)
 		return (error);
 	
 	device_set_desc(dev, "PCI-BCMA Bridge");
@@ -249,6 +249,10 @@ bcmab_pci_attach(device_t dev)
 
 	sc->dev = dev;
 	sc->parent_dev = device_get_parent(dev);
+
+	/* Enable clocks. */
+	if ((error = BHNDB_ENABLE_CLOCKS(dev)))
+		return (error);
 
 	/* Extract the EROM address for later use */
 	if ((error = bcmab_find_erom_addr(sc, &sc->erom_addr)))

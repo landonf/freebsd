@@ -50,6 +50,7 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/bhnd.h>
 
+#include "bhndb_pcireg.h"
 #include "bhndb_pcivar.h"
 
 /** 
@@ -78,6 +79,101 @@ bhndb_pci_generic_probe(device_t dev)
 	return (BUS_PROBE_NOWILDCARD);
 }
 
+/** Returns true if @p parent is pcie */
+static bool
+parent_is_pcie(device_t parent)
+{
+	int reg;
+	return (pci_find_cap(parent, PCIY_EXPRESS, &reg) == 0);
+}
+
+/** 
+ * Standard bhndb_pci implementation of bhndb_enable_clocks().
+ */
+int
+bhndb_pci_generic_enable_clocks(device_t dev)
+{
+	device_t		pci_parent;
+	uint32_t		gpio_in, gpio_out, gpio_en;
+	uint32_t		gpio_flags;
+	uint16_t		pci_status;
+
+	/* This may be called prior to attach(), in which case
+	 * we must be able to operate without driver state. */
+
+	/* Broadcom's PCIe devices do not require external clock gating */
+	pci_parent = device_get_parent(dev);
+	if (parent_is_pcie(pci_parent))
+		return (0);
+
+	/* Read state of XTAL pin */
+	gpio_in = pci_read_config(pci_parent, BHNDB_PCI_GPIO_IN, 4);
+	if (gpio_in & BHNDB_PCI_GPIO_XTAL_ON)
+		return (0); /* already enabled */
+
+	/* Fetch current config */
+	gpio_out = pci_read_config(pci_parent, BHNDB_PCI_GPIO_OUT, 4);
+	gpio_en = pci_read_config(pci_parent, BHNDB_PCI_GPIO_OUTEN, 4);
+
+	/* Set PLL_OFF/XTAL_ON pins to HIGH and enable both pins */
+	gpio_flags = (BHNDB_PCI_GPIO_PLL_OFF|BHNDB_PCI_GPIO_XTAL_ON);
+	gpio_out |= gpio_flags;
+	gpio_en |= gpio_flags;
+
+	pci_write_config(pci_parent, BHNDB_PCI_GPIO_OUT, gpio_out, 4);
+	pci_write_config(pci_parent, BHNDB_PCI_GPIO_OUTEN, gpio_en, 4);
+	DELAY(1000);
+
+	/* Reset PLL_OFF */
+	gpio_out &= ~BHNDB_PCI_GPIO_PLL_OFF;
+	pci_write_config(pci_parent, BHNDB_PCI_GPIO_OUT, gpio_out, 4);
+	DELAY(5000);
+
+	/* Clear any PCI 'sent target-abort' flag. */
+	pci_status = pci_read_config(pci_parent, PCIR_STATUS, 2);
+	pci_status &= ~PCIM_STATUS_STABORT;
+	pci_write_config(pci_parent, PCIR_STATUS, pci_status, 2);
+
+	return (0);
+}
+
+/** 
+ * Standard bhndb_pci implementation of bhndb_disable_clocks().
+ */
+int
+bhndb_pci_generic_disable_clocks(device_t dev)
+{
+	struct bhndb_softc	*sc;
+	uint32_t		gpio_out, gpio_en;
+
+	sc = device_get_softc(dev);
+
+	KASSERT(sc->parent_dev != NULL,
+	    (("called prior to attach()")));
+
+	/* Broadcom's PCIe bridges do not require external clock gate config */
+	if (parent_is_pcie(sc->parent_dev))
+		return (0);
+
+	// TODO: Check ChipCommon board flags for BFL2_XTALBUFOUTEN?
+	// TODO: Check PCI core revision?
+	// TODO: Switch to 'slow' clock?
+
+	/* Fetch current config */
+	gpio_out = pci_read_config(sc->parent_dev, BHNDB_PCI_GPIO_OUT, 4);
+	gpio_en = pci_read_config(sc->parent_dev, BHNDB_PCI_GPIO_OUTEN, 4);
+
+	/* Set PLL_OFF to HIGH, XTAL_ON to LOW. */
+	gpio_out &= ~BHNDB_PCI_GPIO_XTAL_ON;
+	gpio_out |= BHNDB_PCI_GPIO_PLL_OFF;
+	pci_write_config(sc->parent_dev, BHNDB_PCI_GPIO_OUT, gpio_out, 4);
+
+	/* Enable both output pins */
+	gpio_en |= (BHNDB_PCI_GPIO_PLL_OFF|BHNDB_PCI_GPIO_XTAL_ON);
+	pci_write_config(sc->parent_dev, BHNDB_PCI_GPIO_OUTEN, gpio_en, 4);
+
+	return (0);
+}
 
 static int
 compare_core_index(const void *lhs, const void *rhs)
@@ -113,7 +209,7 @@ bhndb_pci_generic_is_hostb_device(device_t dev, device_t child) {
 	device_t		 bhnd_bus;
 	device_t		 hostb_dev;
 	device_t		*devlist;
-	int			 devcnt, error, pcireg;
+	int			 devcnt, error;
 
 	sc = device_get_softc(dev);
 	bhnd_bus = BHNDB_GET_ATTACHED_BUS(dev);
@@ -124,7 +220,7 @@ bhndb_pci_generic_is_hostb_device(device_t dev, device_t child) {
 
 	/* Determine required PCI class */
 	pci_cls = BHND_DEVCLASS_PCI;
-	if (pci_find_cap(sc->bhndb_sc.parent_dev, PCIY_EXPRESS, &pcireg) == 0)
+	if (parent_is_pcie(sc->bhndb_sc.parent_dev))
 		pci_cls = BHND_DEVCLASS_PCIE;
 
 	/* Pre-screen the device before searching over the full device list. */
@@ -166,6 +262,10 @@ bhndb_pci_generic_is_hostb_device(device_t dev, device_t child) {
 static device_method_t bhndb_pci_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,		bhndb_pci_generic_probe),
+
+	/* BHNDB interface */
+	DEVMETHOD(bhndb_enable_clocks,	bhndb_pci_generic_enable_clocks),
+	DEVMETHOD(bhndb_disable_clocks,	bhndb_pci_generic_disable_clocks),
 
 	/* BHND interface */
 	DEVMETHOD(bhnd_is_hostb_device,	bhndb_pci_generic_is_hostb_device),

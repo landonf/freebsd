@@ -41,6 +41,10 @@
 DECLARE_CLASS(bhndb_pci_driver);
 
 int	bhndb_pci_generic_probe(device_t dev);
+
+int	bhndb_pci_generic_enable_clocks(device_t dev);
+int	bhndb_pci_generic_disable_clocks(device_t dev);
+
 bool	bhndb_pci_generic_is_hostb_device(device_t dev, device_t child);
 
 /**

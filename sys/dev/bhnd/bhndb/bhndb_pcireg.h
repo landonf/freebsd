@@ -79,7 +79,7 @@
  * 
  * = MINOR CORE REVISIONS =
  * 
- * == PCI/PCIE Cores Revision >= 3 ==
+ * == PCI Cores Revision >= 3 ==
  * - Mapped GPIO CSRs into the PCI config space. Refer to
  *   BHND_PCI_GPIO_*.
  * 
@@ -206,9 +206,9 @@
 
 
 /* PCI (non-PCIe) BHNDB_PCI_GPIO_OUTEN  */
-#define	BHND_PCI_GPIO_EN_SCS		0x10	/* PCI config space bit 4 for 4306c0 slow clock source */
-#define	BHND_PCI_GPIO_EN_HWRAD		0x20	/* PCI config space GPIO 13 for hw radio disable */
-#define	BHND_PCI_GPIO_EN_XTAL		0x40	/* PCI config space GPIO 14 for Xtal power-up */
-#define	BHND_PCI_GPIO_EN_PLL		0x80	/* PCI config space GPIO 15 for PLL power-down */
+#define	BHNDB_PCI_GPIO_SCS		0x10	/* PCI config space bit 4 for 4306c0 slow clock source */
+#define	BHNDB_PCI_GPIO_HWRAD_OFF		0x20	/* PCI config space GPIO 13 for hw radio disable */
+#define	BHNDB_PCI_GPIO_XTAL_ON		0x40	/* PCI config space GPIO 14 for Xtal power-up */
+#define	BHNDB_PCI_GPIO_PLL_OFF		0x80	/* PCI config space GPIO 15 for PLL power-down */
 
 #endif /* _BHND_BHNDB_PCIREG_H_ */
