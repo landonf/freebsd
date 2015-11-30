@@ -59,8 +59,6 @@ __FBSDID("$FreeBSD$");
 #include "sibab_pcireg.h"
 #include "sibab_pcivar.h"
 
-#include "siba_configreg.h"
-
 static int
 sibab_pci_probe(device_t dev)
 {	
@@ -120,22 +118,22 @@ test_enumerate_cores(struct sibab_pci_softc *sc)
 			device_printf(sc->dev, "chip=0x%hx rev=0x%hhx pkg=0x%hhx ncore=0x%hhu bus=0x%hhx\n", chip, rev, pkg, ncore, bus);
 		}
 		
-		uint32_t idL = bus_read_4(enum_res, SBIDLOW);
-		uint32_t idH = bus_read_4(enum_res, SBIDHIGH);
+		uint32_t idL = bus_read_4(enum_res, SIBA_IDLOW);
+		uint32_t idH = bus_read_4(enum_res, SIBA_IDHIGH);
 
-		uint8_t cspace = SB_REG_GET(idL, IDL_CS);
-		uint8_t arange = SB_REG_GET(idL, IDL_ADDR_RANGE);
-		uint8_t minlat = SB_REG_GET(idL, IDL_MINLAT);
-		uint8_t manlat = SB_REG_GET(idL, IDL_MAXLAT);
-		uint8_t first = SB_REG_GET(idL, IDL_FIRST);
-		uint8_t ccw = SB_REG_GET(idL, IDL_CW);
-		uint8_t tpc = SB_REG_GET(idL, IDL_TP);
-		uint8_t ipc = SB_REG_GET(idL, IDL_IP);
-		uint8_t sbrev = SB_REG_GET(idL, IDL_SBREV);
+		uint8_t cspace = SIBA_REG_GET(idL, IDL_CS);
+		uint8_t arange = SIBA_REG_GET(idL, IDL_NRADDR);
+		uint8_t minlat = SIBA_REG_GET(idL, IDL_MINLAT);
+		uint8_t manlat = SIBA_REG_GET(idL, IDL_MAXLAT);
+		uint8_t first = SIBA_REG_GET(idL, IDL_FIRST);
+		uint8_t ccw = SIBA_REG_GET(idL, IDL_CW);
+		uint8_t tpc = SIBA_REG_GET(idL, IDL_TP);
+		uint8_t ipc = SIBA_REG_GET(idL, IDL_IP);
+		uint8_t sbrev = SIBA_REG_GET(idL, IDL_SBREV);
 
-		uint16_t vendor	= SB_REG_GET(idH, IDH_VENDOR);
-		uint16_t device	= SB_REG_GET(idH, IDH_DEVICE);
-		uint16_t hwrev	= SB_CORE_REV(idH);
+		uint16_t vendor	= SIBA_REG_GET(idH, IDH_VENDOR);
+		uint16_t device	= SIBA_REG_GET(idH, IDH_DEVICE);
+		uint16_t hwrev	= SIBA_CORE_REV(idH);
 
 
 		device_printf(sc->dev, "vendor=0x%hx device=0x%hx hwrev=0x%hu\n", vendor, device, hwrev);
