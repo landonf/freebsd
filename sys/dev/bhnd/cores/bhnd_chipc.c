@@ -52,6 +52,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhnd.h>
 
 #include "bhnd_chipc.h"
+#include "bhnd_chipcreg.h"
 
 struct bhnd_chipc_softc {};
 
@@ -90,12 +91,28 @@ bhnd_chipc_probe(device_t dev)
 static int
 bhnd_chipc_attach(device_t dev)
 {
-	int rid = bhnd_get_port_rid(dev, 0, 0);
-	struct bhnd_resource *res = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY, &rid, RF_ACTIVE);
+	struct bhnd_resource	*r;
+	int			 rid;
 
 	// TODO
-	device_printf(dev, "got rid=%d res=%p\n", rid, res);
+	if ((rid = bhnd_get_port_rid(dev, 0, 0)) == -1)
+		return (ENXIO);
 
+	r = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY,
+	    &rid, RF_ACTIVE);
+	if (r == NULL)
+		return (ENXIO);
+
+	device_printf(dev, "got rid=%d res=%p\n", rid, r);
+	uint32_t chipc	= bhnd_bus_read_4(r, CHIPC_ID);
+	uint16_t chip	= CHIPC_GET_ATTR(chipc, ID_CHIP);
+	uint8_t rev	= CHIPC_GET_ATTR(chipc, ID_REV);
+	uint8_t pkg	= CHIPC_GET_ATTR(chipc, ID_PKG);
+	uint8_t ncore	= CHIPC_GET_ATTR(chipc, ID_NUMCORE);
+	uint8_t bus	= CHIPC_GET_ATTR(chipc, ID_BUS);
+	device_printf(dev, "chip=0x%hx rev=0x%hhx pkg=0x%hhx ncore=0x%hhu bus=0x%hhx\n", chip, rev, pkg, ncore, bus);
+
+	bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
 	return (0);
 }
 

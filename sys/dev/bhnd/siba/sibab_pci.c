@@ -51,6 +51,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhndb/bhndb_pcivar.h>
 #include <dev/bhnd/bhndb/bhndb_pcireg.h>
 
+#include <dev/bhnd/cores/bhnd_chipcreg.h>
+
 #include "bhndb_bus_if.h"
 #include "bhndb_if.h"
 
@@ -71,26 +73,6 @@ sibab_pci_probe(device_t dev)
 	device_set_desc(dev, "PCI-SIBA Bridge");
 	return (error);
 }
-
-#define	CHIPC_CC		0x0
-
-#define	CHIPC_CC_CHIPID_MASK	0x0000FFFF
-#define	CHIPC_CC_CHIPID_SHIFT	0
-
-#define	CHIPC_CC_REV_MASK	0x000F0000
-#define	CHIPC_CC_REV_SHIFT	16
-
-#define	CHIPC_CC_PKG_MASK	0x00F00000
-#define	CHIPC_CC_PKG_SHIFT	20
-
-#define	CHIPC_CC_NUMCORE_MASK	0x0F000000
-#define	CHIPC_CC_NUMCORE_SHIFT	24
-
-#define CHIPC_CC_BUS_T_MASK	0xF0000000
-#define CHIPC_CC_BUS_T_SHIFT	28
-
-#define	CHIPC_GET_ATTR(_entry, _attr) \
-	((_entry & CHIPC_ ## _attr ## _MASK) >> CHIPC_ ## _attr ## _SHIFT)
 
 static int
 test_enumerate_cores(struct sibab_pci_softc *sc)
@@ -129,12 +111,12 @@ test_enumerate_cores(struct sibab_pci_softc *sc)
 			goto failed;
 		
 		if (i == 0) {
-			uint32_t chipc	= bus_read_4(enum_res, CHIPC_CC);
-			uint16_t chip	= CHIPC_GET_ATTR(chipc, CC_CHIPID);
-			uint8_t rev	= CHIPC_GET_ATTR(chipc, CC_REV);
-			uint8_t pkg	= CHIPC_GET_ATTR(chipc, CC_PKG);
-			ncore		= CHIPC_GET_ATTR(chipc, CC_NUMCORE);
-			uint8_t bus	= CHIPC_GET_ATTR(chipc, CC_BUS_T);
+			uint32_t chipc	= bus_read_4(enum_res, CHIPC_ID);
+			uint16_t chip	= CHIPC_GET_ATTR(chipc, ID_CHIP);
+			uint8_t rev	= CHIPC_GET_ATTR(chipc, ID_REV);
+			uint8_t pkg	= CHIPC_GET_ATTR(chipc, ID_PKG);
+			ncore		= CHIPC_GET_ATTR(chipc, ID_NUMCORE);
+			uint8_t bus	= CHIPC_GET_ATTR(chipc, ID_BUS);
 			device_printf(sc->dev, "chip=0x%hx rev=0x%hhx pkg=0x%hhx ncore=0x%hhu bus=0x%hhx\n", chip, rev, pkg, ncore, bus);
 		}
 		

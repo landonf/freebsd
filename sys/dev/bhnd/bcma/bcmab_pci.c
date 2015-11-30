@@ -110,7 +110,8 @@ bcmab_find_erom_addr(struct bcmab_pci_softc *sc, bhnd_addr_t *erom_addr)
 		return (ENXIO);
 	}
 	
-	*erom_addr = bus_read_4(res_mem, cc_win->win_offset + BCMA_CC_EROM_ADDR);
+	*erom_addr = bus_read_4(res_mem, cc_win->win_offset +
+	    CHIPC_EROM_CORE_ADDR);
 
 	/* Clean up */
 	bus_release_resource(sc->parent_dev, rtype, rid, res_mem);

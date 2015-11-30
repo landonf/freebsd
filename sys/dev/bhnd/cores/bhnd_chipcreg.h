@@ -32,6 +32,23 @@
 #ifndef _BHND_CORES_CHIPCREG_H_
 #define _BHND_CORES_CHIPCREG_H_
 
-#define	BCMA_CC_EROM_ADDR	0xFC	/**< 32-bit EROM address (BCMA-only). */
+#define	CHIPC_GET_ATTR(_entry, _attr) \
+	((_entry & CHIPC_ ## _attr ## _MASK) >> CHIPC_ ## _attr ## _SHIFT)
+
+/** device identification register */
+#define	CHIPC_ID		0x0
+#define	CHIPC_ID_CHIP_MASK	0x0000FFFF	/**< chip id */
+#define	CHIPC_ID_CHIP_SHIFT	0
+#define	CHIPC_ID_REV_MASK	0x000F0000	/**< chip revision */
+#define	CHIPC_ID_REV_SHIFT	16
+#define	CHIPC_ID_PKG_MASK	0x00F00000	/**< physical package ID */
+#define	CHIPC_ID_PKG_SHIFT	20
+#define	CHIPC_ID_NUMCORE_MASK	0x0F000000	/**< number of cores on chip (rev >= 4) */
+#define	CHIPC_ID_NUMCORE_SHIFT	24
+#define CHIPC_ID_BUS_MASK	0xF0000000	/**< interconnect type */
+#define CHIPC_ID_BUS_SHIFT	28
+
+/**< 32bit EROM address (bcma) */
+#define	CHIPC_EROM_CORE_ADDR	0xFC
 
 #endif /* _BHND_CORES_CHIPCREG_H_ */

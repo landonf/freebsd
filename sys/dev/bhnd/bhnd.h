@@ -33,6 +33,9 @@
 #define _BHND_BHND_H_
 
 #include <sys/types.h>
+#include <sys/bus.h>
+
+#include <machine/bus.h>
 
 #include "bhnd_ids.h"
 #include "bhnd_types.h"
@@ -121,7 +124,8 @@ bhnd_is_hostb_device(device_t dev) {
  *
  * @param dev A bhnd bus child device.
  */
-static inline bool bhnd_is_hw_populated(device_t dev) {
+static inline bool
+bhnd_is_hw_populated(device_t dev) {
 	return (BHND_IS_HW_POPULATED(device_get_parent(dev), dev));
 }
 
@@ -146,7 +150,7 @@ static inline bool bhnd_is_hw_populated(device_t dev) {
  * @retval resource The allocated resource.
  */
 static inline struct bhnd_resource *
-bhnd_alloc_resource (device_t dev, int type, int *rid, u_long start,
+bhnd_alloc_resource(device_t dev, int type, int *rid, u_long start,
     u_long end, u_long count, u_int flags)
 {
 	return BHND_ALLOC_RESOURCE(device_get_parent(dev), dev, type, rid,
@@ -170,7 +174,7 @@ bhnd_alloc_resource (device_t dev, int type, int *rid, u_long start,
  * @retval resource The allocated resource.
  */
 static inline struct bhnd_resource *
-bhnd_alloc_resource_any (device_t dev, int type, int *rid, u_int flags)
+bhnd_alloc_resource_any(device_t dev, int type, int *rid, u_int flags)
 {
 	return bhnd_alloc_resource(dev, type, rid, 0UL, ~0UL, 1, flags);
 };
@@ -188,7 +192,7 @@ bhnd_alloc_resource_any (device_t dev, int type, int *rid, u_int flags)
  * @retval non-zero an error occured while activating the resource.
  */
 static inline int
-bhnd_activate_resource (device_t dev, int type, int rid,
+bhnd_activate_resource(device_t dev, int type, int rid,
    struct bhnd_resource *r)
 {
 	return BHND_ACTIVATE_RESOURCE(device_get_parent(dev), dev, type, rid, r);
@@ -207,10 +211,29 @@ bhnd_activate_resource (device_t dev, int type, int rid,
  * @retval non-zero an error occured while activating the resource.
  */
 static inline int
-bhnd_deactivate_resource (device_t dev, int type, int rid,
+bhnd_deactivate_resource(device_t dev, int type, int rid,
    struct bhnd_resource *r)
 {
 	return BHND_DEACTIVATE_RESOURCE(device_get_parent(dev), dev, type, rid, r);
+};
+
+/**
+ * Free a resource allocated by bhnd_alloc_resource().
+ *
+ * @param dev The device holding ownership of the resource.
+ * @param type The type of the resource. 
+ * @param rid The bus-specific handle identifying the resource.
+ * @param r A pointer to the resoruce returned by bhnd_alloc_resource or
+ * BHND_ALLOC_RESOURCE.
+ * 
+ * @retval 0 success
+ * @retval non-zero an error occured while activating the resource.
+ */
+static inline int
+bhnd_release_resource(device_t dev, int type, int rid,
+   struct bhnd_resource *r)
+{
+	return BHND_RELEASE_RESOURCE(device_get_parent(dev), dev, type, rid, r);
 };
 
 /**
@@ -268,5 +291,56 @@ bhnd_get_port_addr(device_t dev, u_int port, u_int region,
 	return BHND_GET_PORT_ADDR(device_get_parent(dev), dev, port, region,
 	    region_addr, region_size);
 }
+
+
+uint8_t		_bhnd_bus_read_1(struct bhnd_resource *r, bus_size_t offset);
+uint16_t	_bhnd_bus_read_2(struct bhnd_resource *r, bus_size_t offset);
+uint32_t	_bhnd_bus_read_4(struct bhnd_resource *r, bus_size_t offset);
+
+void		_bhnd_bus_write_1(struct bhnd_resource *r, bus_size_t offset,
+		    uint8_t value);
+void		_bhnd_bus_write_2(struct bhnd_resource *r, bus_size_t offset,
+		    uint16_t value);
+void		_bhnd_bus_write_4(struct bhnd_resource *r, bus_size_t offset,
+		    uint32_t value);
+
+void		_bhnd_bus_barrier(struct bhnd_resource *r, bus_size_t offset,
+		    bus_size_t length, int flags);
+
+/*
+ * bhnd resource equivalents of the bus_(read|write|set|barrier|...)
+ * macros.
+ *
+ * Generated with bhnd/tools/bus_macro.sh
+ */
+
+#define bhnd_bus_barrier(r, o, l, f) \
+	(__predict_true((r)->_direct) ? \
+		bus_barrier((r)->_res, (o), (l), (f)) : \
+		_bhnd_bus_barrier((r), (o), (l), (f)))
+#define bhnd_bus_read_1(r, o) \
+	(__predict_true((r)->_direct) ? \
+		bus_read_1((r)->_res, (o)) : \
+		_bhnd_bus_read_1((r), (o)))
+#define bhnd_bus_write_1(r, o, v) \
+	(__predict_true((r)->_direct) ? \
+		bus_write_1((r)->_res, (o), (v)) : \
+		_bhnd_bus_write_1((r), (o), (v)))
+#define bhnd_bus_read_2(r, o) \
+	(__predict_true((r)->_direct) ? \
+		bus_read_2((r)->_res, (o)) : \
+		_bhnd_bus_read_2((r), (o)))
+#define bhnd_bus_write_2(r, o, v) \
+	(__predict_true((r)->_direct) ? \
+		bus_write_2((r)->_res, (o), (v)) : \
+		_bhnd_bus_write_2((r), (o), (v)))
+#define bhnd_bus_read_4(r, o) \
+	(__predict_true((r)->_direct) ? \
+		bus_read_4((r)->_res, (o)) : \
+		_bhnd_bus_read_4((r), (o)))
+#define bhnd_bus_write_4(r, o, v) \
+	(__predict_true((r)->_direct) ? \
+		bus_write_4((r)->_res, (o), (v)) : \
+		_bhnd_bus_write_4((r), (o), (v)))
 
 #endif /* _BHND_BHND_H_ */

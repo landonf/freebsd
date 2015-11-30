@@ -30,7 +30,10 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include <sys/types.h> 
+#include <sys/types.h>
+#include <sys/bus.h>
+
+#include <machine/bus.h>
 
 #include "bhndvar.h"
 
@@ -380,4 +383,52 @@ bhnd_device_matches(device_t dev, const struct bhnd_core_match *desc)
 	};
 
 	return bhnd_core_matches(&ci, desc);
+}
+
+uint8_t
+_bhnd_bus_read_1(struct bhnd_resource *r, bus_size_t offset)
+{
+	// TODO
+	return 0xFF;
+}
+
+uint16_t
+_bhnd_bus_read_2(struct bhnd_resource *r, bus_size_t offset)
+{
+	// TODO
+	return 0xFFFF;
+}
+
+uint32_t
+_bhnd_bus_read_4(struct bhnd_resource *r, bus_size_t offset)
+{
+	// TODO
+	return 0xFFFFFFFF;
+}
+
+void
+_bhnd_bus_write_1(struct bhnd_resource *r, bus_size_t offset, uint8_t value)
+{
+	// TODO
+}
+
+void
+_bhnd_bus_write_2(struct bhnd_resource *r, bus_size_t offset,
+    uint16_t value)
+{
+	// TODO
+}
+
+void
+_bhnd_bus_write_4(struct bhnd_resource *r, bus_size_t offset,
+    uint32_t value)
+{
+	// TODO
+}
+
+void
+_bhnd_bus_barrier(struct bhnd_resource *r, bus_size_t offset,
+    bus_size_t length, int flags)
+{
+	// TODO
 }
