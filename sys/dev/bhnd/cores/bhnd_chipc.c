@@ -104,7 +104,7 @@ bhnd_chipc_attach(device_t dev)
 		return (ENXIO);
 
 	device_printf(dev, "got rid=%d res=%p\n", rid, r);
-	uint32_t chipc	= bhnd_bus_read_4(r, CHIPC_ID);
+	uint32_t chipc	= bhnd_bus_read_4(dev, r, CHIPC_ID);
 	uint16_t chip	= CHIPC_GET_ATTR(chipc, ID_CHIP);
 	uint8_t rev	= CHIPC_GET_ATTR(chipc, ID_REV);
 	uint8_t pkg	= CHIPC_GET_ATTR(chipc, ID_PKG);

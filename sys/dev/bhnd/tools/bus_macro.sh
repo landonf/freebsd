@@ -33,23 +33,24 @@
 #
 
 macro () {
-
 	n=${1}
+	bus_n=$(echo $n | tr "[:lower:]" "[:upper:]")
+
 	shift
-	echo -n "#define bhnd_bus_${n}(r"
+	echo -n "#define bhnd_bus_${n}(d, r"
 	for i
 	do
 		echo -n ", ${i}"
 	done
 	echo ") \\"
-	echo "	(__predict_true((r)->_direct) ? \\"
-	echo -n "		bus_${n}((r)->_res"
+	echo "    (__predict_true((r)->_direct) ? \\"
+	echo -n "	bus_${n}((r)->_res"
 	for i
 	do
 		echo -n ", (${i})"
 	done
 	echo ") : \\"
-	echo -n "		_bhnd_bus_${n}((r)"
+	echo -n "	BHND_BUS_${bus_n}(device_get_parent((d)), (d), (r)"
 	for i
 	do
 		echo -n ", (${i})"

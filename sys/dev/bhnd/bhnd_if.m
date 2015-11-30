@@ -211,3 +211,65 @@ METHOD int get_port_addr {
 	bhnd_addr_t *region_addr;
 	bhnd_size_t *region_size;
 } DEFAULT bhnd_null_get_port_addr;
+
+
+/** An implementation of bus_read_1() compatible with bhnd_resource */
+METHOD uint8_t bus_read_1 {
+	device_t dev;
+	device_t child;
+	struct bhnd_resource *r;
+	bus_size_t offset;
+}
+
+/** An implementation of bus_read_2() compatible with bhnd_resource */
+METHOD uint16_t bus_read_2 {
+	device_t dev;
+	device_t child;
+	struct bhnd_resource *r;
+	bus_size_t offset
+}
+
+/** An implementation of bus_read_4() compatible with bhnd_resource */
+METHOD uint32_t bus_read_4 {
+	device_t dev;
+	device_t child;
+	struct bhnd_resource *r;
+	bus_size_t offset;
+}
+
+/** An implementation of bus_write_1() compatible with bhnd_resource */
+METHOD void bus_write_1 {
+	device_t dev;
+	device_t child;
+	struct bhnd_resource *r;
+	bus_size_t offset;
+	uint8_t value;
+}
+
+/** An implementation of bus_write_2() compatible with bhnd_resource */
+METHOD void bhnd_bus_write_2 {
+	device_t dev;
+	device_t child;
+	struct bhnd_resource *r;
+	bus_size_t offset;
+	uint16_t value;
+}
+
+/** An implementation of bus_write_4() compatible with bhnd_resource */
+METHOD void bhnd_bus_write_4 {
+	device_t dev;
+	device_t child;
+	struct bhnd_resource *r;
+	bus_size_t offset;
+	uint32_t value;
+}
+
+/** An implementation of bus_barrier() compatible with bhnd_resource */
+METHOD void bhnd_bus_barrier {
+	device_t dev;
+	device_t child;
+	struct bhnd_resource *r;
+	bus_size_t offset;
+	bus_size_t length;
+	int flags;
+}
