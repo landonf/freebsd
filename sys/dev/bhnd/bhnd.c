@@ -238,11 +238,11 @@ bhnd_generic_alloc_bhnd_resource(device_t dev, device_t child, int type,
 
 	/* Allocate the bus resource, marking it as 'direct' (not requiring
 	 * any bus window remapping to perform I/O) */
-	r->_direct = true;
-	r->_res = BUS_ALLOC_RESOURCE(dev, child, type, rid, start, end,
+	r->direct = true;
+	r->res = BUS_ALLOC_RESOURCE(dev, child, type, rid, start, end,
 	    count, flags);
 
-	if (r->_res == NULL) {
+	if (r->res == NULL) {
 		free(r, M_BHND);
 		return NULL;
 	}
@@ -271,10 +271,10 @@ bhnd_generic_release_bhnd_resource(device_t dev, device_t child, int type,
 		    type, rid, r));
 
 	/* Release the resource directly */
-	if (!r->_direct)
+	if (!r->direct)
 		panic("bhnd indirect resource released without bhnd parent bus");
 
-	error = BUS_RELEASE_RESOURCE(dev, child, type, rid, r->_res);
+	error = BUS_RELEASE_RESOURCE(dev, child, type, rid, r->res);
 	if (error)
 		return (error);
 
@@ -301,10 +301,10 @@ bhnd_generic_activate_bhnd_resource(device_t dev, device_t child, int type,
 		    type, rid, r));
 
 	/* Activate the resource directly */
-	if (!r->_direct)
+	if (!r->direct)
 		panic("bhnd indirect resource activated without bhnd parent bus");
 
-	return (BUS_ACTIVATE_RESOURCE(dev, child, type, rid, r->_res));
+	return (BUS_ACTIVATE_RESOURCE(dev, child, type, rid, r->res));
 };
 
 /**
@@ -325,10 +325,10 @@ bhnd_generic_deactivate_bhnd_resource(device_t dev, device_t child, int type,
 		    type, rid, r));
 
 	/* De-activate the resource directly */
-	if (!r->_direct)
+	if (!r->direct)
 		panic("bhnd indirect resource deactivated without bhnd parent bus");
 
-	return (BUS_DEACTIVATE_RESOURCE(dev, child, type, rid, r->_res));
+	return (BUS_DEACTIVATE_RESOURCE(dev, child, type, rid, r->res));
 };
 
 static device_method_t bhnd_methods[] = {

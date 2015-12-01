@@ -1015,10 +1015,10 @@ bhndb_alloc_bhnd_resource(device_t dev, device_t child, int type,
 
 	/* Configure */
 	// TODO - `_direct` must be set at activation time, not allocation.
-	br->_direct = true;
-	br->_res = bus_alloc_resource(child, type, rid, start, end, count,
+	br->direct = true;
+	br->res = bus_alloc_resource(child, type, rid, start, end, count,
 	    flags & ~RF_ACTIVE);
-	if (br->_res == NULL)
+	if (br->res == NULL)
 		goto failed;
 	
 
@@ -1030,8 +1030,8 @@ bhndb_alloc_bhnd_resource(device_t dev, device_t child, int type,
 	return (br);
 
 failed:
-	if (br->_res != NULL)
-		bus_release_resource(child, type, *rid, br->_res);
+	if (br->res != NULL)
+		bus_release_resource(child, type, *rid, br->res);
 
 	free(br, M_BHND);
 	return (NULL);
@@ -1043,7 +1043,7 @@ bhndb_release_bhnd_resource(device_t dev, device_t child,
 {
 	int error;
 
-	if ((error = bus_release_resource(child, type, rid, r->_res)))
+	if ((error = bus_release_resource(child, type, rid, r->res)))
 		return (error);
 
 	free(r, M_BHND);
@@ -1055,10 +1055,10 @@ bhndb_activate_bhnd_resource(device_t dev, device_t child,
     int type, int rid, struct bhnd_resource *r)
 {
 	/* Indirect resources don't require activation */
-	if (!r->_direct)
+	if (!r->direct)
 		return (0);
 
-	return (bus_activate_resource(child, type, rid, r->_res));
+	return (bus_activate_resource(child, type, rid, r->res));
 };
 
 static int
@@ -1066,10 +1066,10 @@ bhndb_deactivate_bhnd_resource(device_t dev, device_t child,
     int type, int rid, struct bhnd_resource *r)
 {
 	/* Indirect resources don't require activation */
-	if (!r->_direct)
+	if (!r->direct)
 		return (0);
 
-	return (bus_deactivate_resource(child, type, rid, r->_res));
+	return (bus_deactivate_resource(child, type, rid, r->res));
 };
 
 static int

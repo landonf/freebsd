@@ -87,10 +87,10 @@ enum {
 * bus-level remapping of address windows prior to access.
 */
 struct bhnd_resource {
-	struct resource	*_res;		/**< the system resource. */
-	bool		 _direct;	/**< true if the resource requires
-					*   bus window remapping before it
-					*   is MMIO accessible. */
+	struct resource	*res;		/**< the system resource. */
+	bool		 direct;	/**< false if the resource requires
+					 *   bus window remapping before it
+					 *   is MMIO accessible. */
 };
 
 

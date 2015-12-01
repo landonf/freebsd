@@ -43,8 +43,8 @@ macro () {
 		echo -n ", ${i}"
 	done
 	echo ") \\"
-	echo "    (__predict_true((r)->_direct) ? \\"
-	echo -n "	bus_${n}((r)->_res"
+	echo "    (__predict_true((r)->direct) ? \\"
+	echo -n "	bus_${n}((r)->res"
 	for i
 	do
 		echo -n ", (${i})"
