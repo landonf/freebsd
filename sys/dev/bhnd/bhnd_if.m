@@ -32,6 +32,10 @@
 
 INTERFACE bhnd;
 
+#
+# bhnd(4) bus interface
+#
+
 CODE {
 	#include <dev/bhnd/bhndvar.h>
 
