@@ -94,6 +94,16 @@ struct bhnd_resource {
 };
 
 
+/** bhnd(4) direct bus I/O switch table */
+struct bhnd_iosw {
+	int (*read2)(device_t dev, bhnd_addr_t addr, uint16_t *value);
+	int (*read4)(device_t dev, bhnd_addr_t addr, uint32_t *value);
+
+	int (*write2)(device_t dev, bhnd_addr_t addr, uint16_t value);
+	int (*write4)(device_t dev, bhnd_addr_t addr, uint32_t value);
+};
+
+
 /**
  * A bhnd(4) core descriptor.
  */
