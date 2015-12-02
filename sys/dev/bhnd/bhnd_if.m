@@ -38,11 +38,11 @@ INTERFACE bhnd;
 
 CODE {
 	#include <dev/bhnd/bhndvar.h>
-
+	
 	static int
-	bhnd_null_read_core_table(kobj_class_t driver, device_t dev,
-	    struct bhnd_iosw *iosw, struct bhnd_core_info **cores,
-	    u_int *num_cores)
+	bhnd_null_read_core_table(kobj_class_t driver,
+	    struct bhnd_chipid *chipid, device_t dev, struct bhnd_iosw *iosw,
+	    struct bhnd_core_info **cores, u_int *num_cores)
 	{
 		return (ENXIO);
 	}
@@ -70,22 +70,19 @@ CODE {
 }
 
 /**
- * Probe the given bus address, and if a supported bus type, enumerate all
- * devices defined on the bus.
- *
- * The enumerated devices will be returned in @p cores and the count
- * in @p num_cores.
+ * Probe the bus defined by @p chipid, and if a supported bus type, enumerate
+ * all devices on the bus.
  * 
  * The memory allocated for the table should be freed using
  * `free(*cores, M_BHND)`. @p cores and @p num_cores are not changed
  * when an error is returned.
  * 
- * @param driver the driver class.
- * @param dev the requesting device.
- * @param addr the enumeration base address.
- * @param iosw bus i/o callbacks.
- * @param[out] cores the table of parsed core descriptors.
- * @param[out] num_cores the number of core records in @p cores.
+ * @param	driver		the driver class.
+ * @param	chipid		the chip's identification info.
+ * @param	dev		the requesting device.
+ * @param	iosw		device i/o callbacks.
+ * @param[out]	cores		the table of parsed core descriptors.
+ * @param[out]	num_cores	the number of core records in @p cores.
  * 
  * @retval 0		success
  * @retval ENXIO	if the bhnd(4) bus type is not supported.
@@ -94,12 +91,12 @@ CODE {
  */
 STATICMETHOD int read_core_table {
 	kobj_class_t driver;
+	struct bhnd_chipid *chipid;
 	device_t dev;
-	bhnd_addr_t base_addr;
 	struct bhnd_iosw *iosw;
 	struct bhnd_core_info **cores;
 	u_int *num_cores;
-} bhnd_null_read_core_table;
+} DEFAULT bhnd_null_read_core_table;
 
 /**
  * Returns true if @p child is serving as a host bridge for the bhnd

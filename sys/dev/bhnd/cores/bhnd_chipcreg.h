@@ -34,7 +34,7 @@
 #define	CHIPC_EROMPTR		0xfc
 
 /** chipid */
-#define	CHIPC_ID		0x0
+#define	CHIPC_ID		0x0		/**< identification register */
 #define	CHIPC_ID_CHIP_MASK	0x0000FFFF	/**< chip id */
 #define	CHIPC_ID_CHIP_SHIFT	0
 #define	CHIPC_ID_REV_MASK	0x000F0000	/**< chip revision */
@@ -43,8 +43,10 @@
 #define	CHIPC_ID_PKG_SHIFT	20
 #define	CHIPC_ID_NUMCORE_MASK	0x0F000000	/**< number of cores on chip (rev >= 4) */
 #define	CHIPC_ID_NUMCORE_SHIFT	24
-#define CHIPC_ID_BUS_MASK	0xF0000000	/**< interconnect type */
-#define CHIPC_ID_BUS_SHIFT	28
+#define	CHIPC_ID_BUS_MASK	0xF0000000	/**< interconnect type */
+#define	CHIPC_ID_BUS_SHIFT	28
+#  define CHIPC_ID_BUS_SIBA	0		/**< siba(4) interconnect */
+#  define CHIPC_ID_BUS_BCMA	1		/**< bcma(4) interconnect */
 
 /**< 32bit EROM address (bcma) */
 #define	CHIPC_EROM_CORE_ADDR	0xFC
@@ -85,17 +87,6 @@
 #define PMU_PLL_CONTROL_ADDR 	0x660
 #define PMU_PLL_CONTROL_DATA 	0x664
 #define	CC_SROM_OTP		0x800	/* SROM/OTP address space */
-
-/* chipid */
-#define	CID_ID_MASK		0x0000ffff	/* Chip Id mask */
-#define	CID_REV_MASK		0x000f0000	/* Chip Revision mask */
-#define	CID_REV_SHIFT		16	/* Chip Revision shift */
-#define	CID_PKG_MASK		0x00f00000	/* Package Option mask */
-#define	CID_PKG_SHIFT		20	/* Package Option shift */
-#define	CID_CC_MASK		0x0f000000	/* CoreCount (corerev >= 4) */
-#define CID_CC_SHIFT		24
-#define	CID_TYPE_MASK		0xf0000000	/* Chip Type */
-#define CID_TYPE_SHIFT		28
 
 /* capabilities */
 #define	CC_CAP_UARTS_MASK	0x00000003	/* Number of UARTs */

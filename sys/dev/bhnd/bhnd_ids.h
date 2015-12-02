@@ -500,6 +500,10 @@
 /* Core HW Revision Numbers */
 #define	BHND_HWREV_INVALID		0xFF		/* Invalid hardware revision ID */
 
+/* Chip Types */
+#define	BHND_CHIPTYPE_SIBA		0		/**< siba(4) interconnect */
+#define	BHND_CHIPTYPE_BCMA		1		/**< bcma(4) interconnect */
+
 /* Boardflags */
 #define	BHND_BFL_BTC2WIRE		0x00000001	/* old 2wire Bluetooth coexistence, OBSOLETE */
 #define	BHND_BFL_BTCOEX			0x00000001	/* Board supports BTCOEX */

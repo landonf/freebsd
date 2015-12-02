@@ -79,6 +79,26 @@ enum {
 	BHND_PROBE_ORDER_LAST		= 30,	/**< probe last */
 };
 
+/**
+ * Chip Identification
+ * 
+ * This is read from the ChipCommon ID register; on earlier bhnd(4) devices
+ * where ChipCommon is unavailable, known values must be supplied.
+ */
+struct bhnd_chipid {
+	uint16_t	chip_id;	/**< chip id (BHND_CHIPID_*) */
+	uint8_t		chip_rev;	/**< chip revision */
+	uint8_t		chip_pkg;	/**< chip package (BHND_PKGID_*) */
+	uint8_t		chip_type;	/**< chip type (BHND_CHIPTYPE_*) */
+
+	bhnd_addr_t	enum_addr;	/**< chip_type-specific enumeration
+					  *  address; either the siba(4) base
+					  *  core register block, or the bcma(4)
+					  *  EROM core address. */
+
+	uint8_t		ncores;		/**< number of cores, if known. 0 if
+					  *  not available. */
+};
 
 /**
 * A bhnd(4) bus resource.

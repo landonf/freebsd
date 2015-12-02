@@ -62,6 +62,16 @@ siba_detach(device_t dev)
 }
 
 static int
+siba_read_core_table(kobj_class_t driver, struct bhnd_chipid *chipid,
+    device_t dev, struct bhnd_iosw *iosw, struct bhnd_core_info **cores,
+    u_int *num_cores)
+{
+
+	// TODO
+	return (ENXIO);
+}
+
+static int
 siba_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 {
 	const struct siba_devinfo *dinfo;
@@ -184,6 +194,7 @@ static device_method_t siba_methods[] = {
 	DEVMETHOD(bus_get_resource_list,	siba_get_resource_list),
 
 	/* BHND interface */
+	DEVMETHOD(bhnd_read_core_table,		siba_read_core_table),
 	DEVMETHOD(bhnd_get_port_rid,		siba_get_port_rid),
 	DEVMETHOD(bhnd_decode_port_rid,		siba_decode_port_rid),
 	DEVMETHOD(bhnd_get_port_addr,		siba_get_port_addr),
