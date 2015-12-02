@@ -65,9 +65,9 @@ bcma_detach(device_t dev)
 }
 
 static int
-bcma_read_core_table(kobj_class_t driver, struct bhnd_chipid *chipid,
-    device_t dev, struct bhnd_iosw *iosw, struct bhnd_core_info **cores,
-    u_int *num_cores)
+bcma_read_core_table(kobj_class_t driver, device_t dev,
+    const struct bhnd_chipid *chipid, struct bhnd_iosw *iosw,
+    struct bhnd_core_info **cores, u_int *num_cores)
 {
 
 	// TODO

@@ -40,8 +40,8 @@ CODE {
 	#include <dev/bhnd/bhndvar.h>
 	
 	static int
-	bhnd_null_read_core_table(kobj_class_t driver,
-	    struct bhnd_chipid *chipid, device_t dev, struct bhnd_iosw *iosw,
+	bhnd_null_read_core_table(kobj_class_t driver, device_t dev,
+	    const struct bhnd_chipid *chipid, struct bhnd_iosw *iosw,
 	    struct bhnd_core_info **cores, u_int *num_cores)
 	{
 		return (ENXIO);
@@ -91,8 +91,8 @@ CODE {
  */
 STATICMETHOD int read_core_table {
 	kobj_class_t driver;
-	struct bhnd_chipid *chipid;
 	device_t dev;
+	const struct bhnd_chipid *chipid;
 	struct bhnd_iosw *iosw;
 	struct bhnd_core_info **cores;
 	u_int *num_cores;

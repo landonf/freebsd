@@ -42,6 +42,12 @@ HEADER {
 CODE {
 	#include <sys/systm.h>
 
+	static const struct bhnd_chipid *
+	bhndb_null_get_chipid(device_t dev, device_t child)
+	{
+		return (NULL);
+	}
+
 	static const struct bhndb_hwcfg *
 	bhndb_null_get_generic_hwcfg(device_t dev, device_t child)
 	{
@@ -76,6 +82,17 @@ METHOD const struct bhndb_hwcfg * get_generic_hwcfg {
 	device_t child;
 } DEFAULT bhndb_null_get_generic_hwcfg;
 
+/**
+ * Return the chip identification information to be used by @p child if the
+ * device does not include a ChipCommon core. Otherwise, return NULL.
+ *
+ * @param dev The parent device.
+ * @param child The attached bhndb device.
+ */
+METHOD const struct bhnd_chipid * get_chipid {
+	device_t dev;
+	device_t child;
+} DEFAULT bhndb_null_get_chipid;
 
 /**
  * Return the hardware specification table to be used when identifying the
