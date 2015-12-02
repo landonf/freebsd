@@ -77,8 +77,9 @@ static const struct bhndb_hwcfg bhndb_pci_hwcfg_v3;
  * 
  * @par Compatibility
  * - Compatible with PCI_V0, PCI_V1, PCI_V2, and PCI_V3 devices.
- * - Compatible with siba(4) bus enumeration. Does not define the ChipCommon
- *   register window required for bcma(4) bus enumeration.
+ * - Compatible with siba(4) bus enumeration.
+ * - Compatible with bcma(4) bus enumeration if the ChipCommon core is mapped
+ *   at the default enumeration address (0x18000000).
  */
 const struct bhndb_hwcfg bhndb_pci_siba_generic_hwcfg = {
 	.resource_specs = (const struct resource_spec[]) {
