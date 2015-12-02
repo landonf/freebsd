@@ -85,7 +85,6 @@ struct bwn_pci_device {
 
 /* Supported device table */
 struct bwn_pci_devcfg {
-	const devclass_t		*bridge_cls;
 	const struct bhndb_hwcfg	*bridge_hwcfg;
 	const struct bhndb_hw		*bridge_hwtable;
 	const struct bwn_pci_device	*devices;

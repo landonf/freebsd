@@ -152,5 +152,4 @@ static driver_t bhnd_chipc_driver = {
 
 static devclass_t bhnd_chipc_devclass;
 
-DRIVER_MODULE(bhnd_chipc, bcma, bhnd_chipc_driver, bhnd_chipc_devclass, 0, 0);
-DRIVER_MODULE(bhnd_chipc, siba, bhnd_chipc_driver, bhnd_chipc_devclass, 0, 0);
+DRIVER_MODULE(bhnd_chipc, bhnd, bhnd_chipc_driver, bhnd_chipc_devclass, 0, 0);

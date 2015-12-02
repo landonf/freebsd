@@ -43,8 +43,9 @@
 
 #include "bhndb_bus_if.h"
 
-int	bhndb_attach_bridge(device_t parent, devclass_t devclass,
-	    device_t *bhndb, int unit);
+extern devclass_t bhndb_devclass;
+
+int	bhndb_attach_bridge(device_t parent, device_t *bhndb, int unit);
 
 /**
  * bhndb register window types.

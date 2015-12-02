@@ -348,10 +348,6 @@ bhndb_generic_attach(device_t dev)
 	sc->parent_dev = device_get_parent(dev);
 
 	BHNDB_LOCK_INIT(sc);
-	
-	/* Enable clocks; there's no harm in potentially doing this twice.  */
-	if ((error = BHNDB_ENABLE_CLOCKS(dev)))
-		return (error);
 
 	/* Find our register window configuration */
 	if ((error = bhndb_find_hwspec(sc, &sc->hw)))
@@ -449,10 +445,9 @@ bhndb_generic_detach(device_t dev)
 
 	sc = device_get_softc(dev);
 	
-	/* Detach children and disable clocks */
-	error = bus_generic_detach(dev);
-	if (!error)
-		error = BHNDB_DISABLE_CLOCKS(dev);
+	/* Detach children */
+	if ((error = bus_generic_detach(dev)))
+		return (error);
 
 	/* Clean up */
 	rman_fini(&sc->mem_rman);
@@ -464,30 +459,20 @@ bhndb_generic_detach(device_t dev)
 	free(sc->dw_regions, M_BHND);
 	BHNDB_LOCK_DESTROY(sc);
 
-	return (error);
+	return (0);
 }
 
 /** Default bhndb implementation of device_suspend(). */
 int
 bhndb_generic_suspend(device_t dev)
 {
-	int error;
-
-	if ((error = bus_generic_suspend(dev)))
-		return (error);
-
-	return BHNDB_DISABLE_CLOCKS(dev);
+	return (bus_generic_suspend(dev));
 }
 
 /** Default bhndb implementation of device_resume(). */
 int
 bhndb_generic_resume(device_t dev)
 {
-	int error;
-
-	if ((error = BHNDB_ENABLE_CLOCKS(dev)))
-		return (error);
-
 	return (bus_generic_resume(dev));
 }
 
@@ -833,6 +818,7 @@ static int
 bhndb_try_activate_static_window(struct bhndb_softc *sc, device_t child,
     int type, int rid, struct resource *r)
 {
+#ifdef notyet
 	struct resource			*parent_res;
 	const struct bhndb_regwin	*win;
 	bhnd_addr_t			 addr;
@@ -882,7 +868,7 @@ bhndb_try_activate_static_window(struct bhndb_softc *sc, device_t child,
 		
 		return (0);
 	}
-
+#endif
 	return (ENOENT);
 }
 
@@ -1167,6 +1153,8 @@ static device_method_t bhndb_methods[] = {
 
 	DEVMETHOD_END
 };
+
+devclass_t bhndb_devclass;
 
 DEFINE_CLASS_0(bhndb, bhndb_driver, bhndb_methods, sizeof(struct bhndb_softc));
 

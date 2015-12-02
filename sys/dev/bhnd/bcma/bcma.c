@@ -358,9 +358,6 @@ static device_method_t bcma_methods[] = {
 	DEVMETHOD_END
 };
 
-devclass_t bcma_devclass;
-devclass_t bcmab_devclass;
-
-DEFINE_CLASS_1(bcma, bcma_driver, bcma_methods, sizeof(struct bcma_softc), bhnd_driver);
+DEFINE_CLASS_1(bhnd, bcma_driver, bcma_methods, sizeof(struct bcma_softc), bhnd_driver);
 MODULE_VERSION(bcma, 1);
 MODULE_DEPEND(bcma, bhnd, 1, 1, 1);

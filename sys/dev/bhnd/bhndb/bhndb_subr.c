@@ -40,8 +40,7 @@ __FBSDID("$FreeBSD$");
  * Attach a BHND bridge device to @p parent.
  * 
  * @param parent A parent PCI device.
- * @param devclass The devclass of the bridge device to be added.
- * @param[out] bhndb On success, the attached bhndb bridge device.
+ * @param[out] bhndb On success, the probed and attached bhndb bridge device.
  * @param unit The device unit number, or -1 to select the next available unit
  * number.
  * 
@@ -49,14 +48,22 @@ __FBSDID("$FreeBSD$");
  * @retval non-zero Failed to attach the bhndb device.
  */
 int
-bhndb_attach_bridge(device_t parent, devclass_t devclass, device_t *bhndb,
-    int unit)
+bhndb_attach_bridge(device_t parent, device_t *bhndb, int unit)
 {
-	*bhndb = device_add_child(parent, devclass_get_name(devclass), unit);
+	int error;
+
+	*bhndb = device_add_child(parent, devclass_get_name(bhndb_devclass),
+	    unit);
 	if (*bhndb == NULL)
 		return (ENXIO);
 
-	return (0);
+	if (!(error = device_probe_and_attach(*bhndb)))
+		return (0);
+
+	if ((device_delete_child(parent, *bhndb)))
+		device_printf(parent, "failed to detach bhndb child\n");
+
+	return (error);
 }
 
 /**

@@ -2,10 +2,10 @@
 
 .PATH:	${.CURDIR}/../../../dev/bhnd/bcma
 
-KMOD=	bcmab_pci
-SRCS=	bcmab_pci.c
+KMOD=	bcma_bhndb
+SRCS=	bcma_bhndb.c
 
-SRCS+=	bhnd_if.h bhndb_if.h bhndb_bus_if.h
+SRCS+=	bhnd_if.h bhndb_if.h
 SRCS+=	device_if.h bus_if.h
 
 .include <bsd.kmod.mk>

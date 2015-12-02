@@ -41,6 +41,8 @@
 #include "bhnd_types.h"
 #include "bhnd_if.h"
 
+extern devclass_t bhnd_devclass;
+
 /**
  * bhnd child instance variables
  */

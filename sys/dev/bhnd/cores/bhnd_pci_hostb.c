@@ -129,5 +129,4 @@ static driver_t bhnd_pci_hostb_driver = {
 
 static devclass_t bhnd_pci_hostb_devclass;
 
-DRIVER_MODULE(bhnd_pci_hostb, bcma, bhnd_pci_hostb_driver, bhnd_pci_hostb_devclass, 0, 0);
-DRIVER_MODULE(bhnd_pci_hostb, siba, bhnd_pci_hostb_driver, bhnd_pci_hostb_devclass, 0, 0);
+DRIVER_MODULE(bhnd_pci_hostb, bhnd, bhnd_pci_hostb_driver, bhnd_pci_hostb_devclass, 0, 0);

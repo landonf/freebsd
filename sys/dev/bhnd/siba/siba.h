@@ -45,9 +45,5 @@
  */
 
 DECLARE_CLASS(siba_driver);
-DECLARE_CLASS(sibab_pci_driver);
-
-extern devclass_t siba_devclass;
-extern devclass_t sibab_devclass;
 
 #endif /* _SIBA_SIBA_H_ */

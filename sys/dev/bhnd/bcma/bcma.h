@@ -45,9 +45,5 @@
  */
 
 DECLARE_CLASS(bcma_driver);
-DECLARE_CLASS(bcmab_pci_driver);
-
-extern devclass_t bcma_devclass;
-extern devclass_t bcmab_devclass;
 
 #endif /* _BCMA_BCMA_H_ */

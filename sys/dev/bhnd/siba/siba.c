@@ -202,9 +202,7 @@ static device_method_t siba_methods[] = {
 	DEVMETHOD_END
 };
 
-devclass_t siba_devclass;
-devclass_t sibab_devclass;
+DEFINE_CLASS_1(bhnd, siba_driver, siba_methods, sizeof(struct siba_softc), bhnd_driver);
 
-DEFINE_CLASS_1(siba, siba_driver, siba_methods, sizeof(struct siba_softc), bhnd_driver);
 MODULE_VERSION(siba, 1);
 MODULE_DEPEND(siba, bhnd, 1, 1, 1);

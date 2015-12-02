@@ -9,12 +9,12 @@ SRCS=	bhnd.c bhnd_subr.c \
 SRCS+=	device_if.h bus_if.h
 
 SUBDIR=	bcma \
-	bcmab_pci \
+	bcma_bhndb \
 	bhndb \
 	bhndb_pci \
 	cores \
 	siba \
-	sibab_pci
+	siba_bhndb
 
 .include <bsd.kmod.mk>
 .include <bsd.subdir.mk>

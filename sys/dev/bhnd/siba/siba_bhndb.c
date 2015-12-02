@@ -25,26 +25,62 @@
  * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGES.
- * 
- * $FreeBSD$
  */
 
-#ifndef _BHND_BCMA_BCMAB_PCIVAR_H_
-#define _BHND_BCMA_BCMAB_PCIVAR_H_
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
 
-#include "bcmavar.h"
+#include <sys/param.h>
+#include <sys/kernel.h>
+#include <sys/bus.h>
+#include <sys/module.h>
 
-struct bcmab_pci_softc {
-	struct bhndb_pci_softc	bhndb_softc;	/**< bhndb state */
+#include <dev/bhnd/bhndb/bhndbvar.h>
 
-	device_t		dev;		/**< bcmab device */
-	device_t		parent_dev;	/**< parent PCI device */
-	device_t		bus_dev;	/**< child bcma(4) bus */
+#include "sibavar.h"
 
-	bhnd_addr_t		erom_addr;	/**< EROM's base address */
+/*
+ * Supports attachment of siba(4) bus devices via a bhndb bridge.
+ */
 
-	struct bhnd_core_info	*cores;		/**< cached EROM core table */
-	u_int			 num_cores;	/**< length of core table */
+static int
+siba_bhndb_probe(device_t dev)
+{
+	int error;
+	
+	if ((error = siba_probe(dev)) > 0)
+		return (error);
+
+	return (BUS_PROBE_NOWILDCARD);
+}
+
+static int
+siba_bhndb_attach(device_t dev)
+{
+	int error;
+
+	/* Enumerate our children. */
+	// TODO
+	if ((error = siba_add_children(dev)))
+		return (error);
+
+	/* Call our superclass' implementation */
+	return (siba_attach(dev));
+}
+
+static device_method_t siba_bhndb_methods[] = {
+	/* Device interface */
+	DEVMETHOD(device_probe,			siba_bhndb_probe),
+	DEVMETHOD(device_attach,		siba_bhndb_attach),
+
+	DEVMETHOD_END
 };
 
-#endif /* _BHND_BCMA_BCMAB_PCIVAR_H_ */
+DEFINE_CLASS_1(bhnd, siba_bhndb_driver, siba_bhndb_methods,
+    sizeof(struct siba_softc), siba_driver);
+
+DRIVER_MODULE(siba_bhndb, sibab, siba_bhndb_driver, bhnd_devclass, NULL, NULL);
+ 
+MODULE_VERSION(siba_bhndb, 1);
+MODULE_DEPEND(siba_bhndb, siba, 1, 1, 1);
+MODULE_DEPEND(siba_bhndb, bhndb, 1, 1, 1);

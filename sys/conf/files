@@ -1111,15 +1111,13 @@ dev/bhnd/bhndb/bhndb_pci_hwdata.c	optional bhndbus pci | bhndb pci
 dev/bhnd/bhndb/bhndb_subr.c	optional bhndbus | bhndb
 # bhnd bus drivers
 dev/bhnd/bcma/bcma.c		optional bhndbus | bcma
-dev/bhnd/bcma/bcma_bcmab.c	optional bhndbus | bcmab
+dev/bhnd/bcma/bcma_bhndb.c	optional bhndbus | bcma bhndb
 dev/bhnd/bcma/bcma_erom.c	optional bhndbus | bcma
 dev/bhnd/bcma/bcma_subr.c	optional bhndbus | bcma
-dev/bhnd/bcma/bcmab_pci.c	optional bhndbus pci | bcmab pci
 #
 dev/bhnd/siba/siba.c		optional bhndbus | siba
-dev/bhnd/siba/siba_sibab.c	optional bhndbus | sibab
+dev/bhnd/siba/siba_bhndb.c	optional bhndbus | siba bhndb
 dev/bhnd/siba/siba_subr.c	optional bhndbus | siba
-dev/bhnd/siba/sibab_pci.c	optional bhndbus pci | sibab pci
 #
 # bhnd core drivers
 dev/bhnd/cores/bhnd_chipc.c	optional bhndbus | bhnd_chipc

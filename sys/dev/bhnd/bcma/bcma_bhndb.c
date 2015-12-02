@@ -43,11 +43,11 @@ __FBSDID("$FreeBSD$");
 #include "bcma_eromvar.h"
 
 /*
- * Supports attachment of bcma(4) bus devices via a bcmab bridge.
+ * Supports attachment of bcma(4) bus devices via a bhndb bridge.
  */
 
 static int
-bcma_bcmab_probe(device_t dev)
+bcma_bhndb_probe(device_t dev)
 {
 	int error;
 	
@@ -58,7 +58,7 @@ bcma_bcmab_probe(device_t dev)
 }
 
 static int
-bcma_bcmab_attach(device_t dev)
+bcma_bhndb_attach(device_t dev)
 {
 	struct resource	*erom_res;
 	bus_addr_t	erom_addr;
@@ -89,18 +89,19 @@ bcma_bcmab_attach(device_t dev)
 	return (bcma_attach(dev));
 }
 
-static device_method_t bcma_bcmab_methods[] = {
+static device_method_t bcma_bhndb_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_probe,			bcma_bcmab_probe),
-	DEVMETHOD(device_attach,		bcma_bcmab_attach),
+	DEVMETHOD(device_probe,			bcma_bhndb_probe),
+	DEVMETHOD(device_attach,		bcma_bhndb_attach),
 
 	DEVMETHOD_END
 };
 
-DEFINE_CLASS_1(bcma, bcma_bcmab_driver, bcma_bcmab_methods,
+DEFINE_CLASS_1(bhnd, bcma_bhndb_driver, bcma_bhndb_methods,
     sizeof(struct bcma_softc), bcma_driver);
 
-DRIVER_MODULE(bcma_bcmab, bcmab, bcma_bcmab_driver, bcma_devclass, NULL, NULL);
+DRIVER_MODULE(bcma_bhndb, bcmab, bcma_bhndb_driver, bhnd_devclass, NULL, NULL);
  
-MODULE_VERSION(bcma_bcmab, 1);
-MODULE_DEPEND(bcma_bcmab, bcmab, 1, 1, 1);
+MODULE_VERSION(bcma_bhndb, 1);
+MODULE_DEPEND(bcma_bhndb, bcma, 1, 1, 1);
+MODULE_DEPEND(bcma_bhndb, bhndb, 1, 1, 1);

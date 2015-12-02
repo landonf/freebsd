@@ -65,16 +65,13 @@ bhndb_pci_generic_probe(device_t dev)
 	devclass_t	parent_bus;
 	devclass_t	pci;
 
-	/* Our parent must be a PCI device. */
+	/* Our parent must be a PCI/PCIe device. */
 	pci = devclass_find("pci");
 	parent = device_get_parent(dev);
 	parent_bus = device_get_devclass(device_get_parent(parent));
 
-	if (parent_bus != pci) {
-		device_printf(dev, "attached to non-PCI parent %s\n",
-		    device_get_nameunit(parent));
+	if (parent_bus != pci)
 		return (ENXIO);
-	}
 
 	return (BUS_PROBE_NOWILDCARD);
 }
@@ -262,10 +259,6 @@ bhndb_pci_generic_is_hostb_device(device_t dev, device_t child) {
 static device_method_t bhndb_pci_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,		bhndb_pci_generic_probe),
-
-	/* BHNDB interface */
-	DEVMETHOD(bhndb_enable_clocks,	bhndb_pci_generic_enable_clocks),
-	DEVMETHOD(bhndb_disable_clocks,	bhndb_pci_generic_disable_clocks),
 
 	/* BHND interface */
 	DEVMETHOD(bhnd_is_hostb_device,	bhndb_pci_generic_is_hostb_device),
