@@ -1101,7 +1101,6 @@ dev/bce/if_bce.c		optional bce
 dev/bfe/if_bfe.c		optional bfe
 dev/bge/if_bge.c		optional bge
 dev/bhnd/bhnd.c			optional bhndbus | bhnd
-dev/bhnd/bhnd_erom_if.m		optional bhndbus | bhnd
 dev/bhnd/bhnd_subr.c		optional bhndbus | bhnd
 dev/bhnd/bhnd_if.m		optional bhndbus | bhnd
 dev/bhnd/bhndb/bhndb.c		optional bhndbus | bhndb
