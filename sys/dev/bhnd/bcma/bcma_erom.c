@@ -68,41 +68,29 @@ static int		 erom_seek_next(struct bcma_erom *erom, uint8_t etype);
 
 #define	EROM_LOG(erom, fmt, ...)	\
 	device_printf(erom->dev, "erom[0x%llx]: " fmt, \
-	    (unsigned long long) (erom->offset - erom->start), ##__VA_ARGS__);
-
+	    (unsigned long long) (erom->offset), ##__VA_ARGS__);
 
 /**
- * "Open" an EROM core for reading.
+ * "Open" an EROM table for reading.
  * 
- * @param resource An active resource mapping the EROM core.
- * @param offset Offset of the EROM core relative to @p resource.
+ * @param dev the requesting device.
+ * @param iosw i/o callbacks.
+ * @param addr bus address of the EROM's core mapping.
  * @param[out] erom On success, will be populated with a valid EROM
  * read state.
- * 
+ *
  * @retval 0 success
- * @retval non-zero if the resource's size is insufficient for a valid EROM
- * table.
+ * @retval non-zero if the erom table could not be opened.
  */
 int
-bcma_erom_open(struct resource *resource, bus_size_t offset,
-    struct bcma_erom *erom)
+bcma_erom_open(device_t dev, const void *ioh, const struct bhnd_iosw *iosw,
+    bhnd_addr_t addr, struct bcma_erom *erom)
 {
-	bus_size_t count;
-
 	/* Initialize the EROM reader */
-	erom->dev = rman_get_device(resource);
-	erom->res = resource;
-	erom->offset = offset + BCMA_EROM_TABLE_START;
-	erom->start = erom->offset;
-
-	/* Verify the resource size */
-	count = rman_get_size(resource);
-	if (erom->offset > count || 
-	    count - erom->offset < BCMA_EROM_TABLE_SIZE)
-	{
-		device_printf(erom->dev, "invalid EROM resource size\n");
-		return (EINVAL);
-	}
+	erom->dev = dev;
+	erom->ioh = ioh;
+	erom->start = addr + BCMA_EROM_TABLE_START;
+	erom->offset = 0;
 
 	return (0);
 }
@@ -154,12 +142,12 @@ bcma_erom_seek(struct bcma_erom *erom, bus_size_t offset)
 int
 bcma_erom_peek32(struct bcma_erom *erom, uint32_t *entry)
 {
-	if (erom->offset >= BCMA_EROM_TABLE_START + BCMA_EROM_TABLE_SIZE) {
+	if (erom->offset >= BCMA_EROM_TABLE_SIZE) {
 		EROM_LOG(erom, "BCMA EROM table missing terminating EOF\n");
 		return (EINVAL);
 	}
-	
-	*entry = bus_read_4(erom->res, erom->offset);
+
+	*entry = erom->iosw->read4(erom->ioh, erom->start + erom->offset);
 	return (0);
 }
 

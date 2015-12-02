@@ -114,13 +114,11 @@ struct bhnd_resource {
 };
 
 
-/** bhnd(4) direct bus I/O switch table */
+/** bhnd(4) direct bus I/O switch table. Unsupported operations may be
+ *  initialized to NULL. */
 struct bhnd_iosw {
-	int (*read2)(device_t dev, bhnd_addr_t addr, uint16_t *value);
-	int (*read4)(device_t dev, bhnd_addr_t addr, uint32_t *value);
-
-	int (*write2)(device_t dev, bhnd_addr_t addr, uint16_t value);
-	int (*write4)(device_t dev, bhnd_addr_t addr, uint32_t value);
+	uint32_t (*read4)(const void *handle, bhnd_addr_t addr);
+	void (*write4)(const void *handle, bhnd_addr_t addr, uint32_t value);
 };
 
 

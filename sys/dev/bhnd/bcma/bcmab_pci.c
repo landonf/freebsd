@@ -185,11 +185,16 @@ bcmab_alloc_erom_resource(struct bcmab_pci_softc *sc, struct bcma_erom *erom,
 			goto failed;
 	}
 
+#if 0
+	// EROM TODO
 	/* Open the EROM for reading */
 	if ((error = bcma_erom_open(erom_res, rw->win_offset, erom)))
 		goto failed;
 
 	return (erom_res);
+#else
+	erom_res = NULL;
+#endif
 
 failed:
 	if (erom_res != NULL)

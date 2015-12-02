@@ -41,8 +41,9 @@ CODE {
 	
 	static int
 	bhnd_null_read_core_table(kobj_class_t driver, device_t dev,
-	    const struct bhnd_chipid *chipid, struct bhnd_iosw *iosw,
-	    struct bhnd_core_info **cores, u_int *num_cores)
+	    const struct bhnd_chipid *chipid, const void *ioh,
+	    const struct bhnd_iosw *iosw, struct bhnd_core_info **cores,
+	    u_int *num_cores)
 	{
 		return (ENXIO);
 	}
@@ -79,7 +80,7 @@ CODE {
  * 
  * @param	driver		the driver class.
  * @param	chipid		the chip's identification info.
- * @param	dev		the requesting device.
+  * @param	ioh		device i/o handle.
  * @param	iosw		device i/o callbacks.
  * @param[out]	cores		the table of parsed core descriptors.
  * @param[out]	num_cores	the number of core records in @p cores.
@@ -93,7 +94,8 @@ STATICMETHOD int read_core_table {
 	kobj_class_t driver;
 	device_t dev;
 	const struct bhnd_chipid *chipid;
-	struct bhnd_iosw *iosw;
+	const void *ioh;
+	const struct bhnd_iosw *iosw;
 	struct bhnd_core_info **cores;
 	u_int *num_cores;
 } DEFAULT bhnd_null_read_core_table;
