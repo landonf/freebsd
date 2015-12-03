@@ -26,15 +26,17 @@
 #ifndef _BHND_BHND_IDS_H_
 #define _BHND_BHND_IDS_H_
 
+
+
 /*
- * Core Vendor IDs
+ * JEDEC JEP-106 Core Vendor IDs
  * 
  * These are the JEDEC JEP-106 manufacturer ID representions (with ARM's
  * non-standard 4-bit continutation code), as used in ARM's PrimeCell
- * identification registers, etc.
+ * identification registers, bcma(4) EROM core descriptors, etc.
  * 
  * @note
- * Bus implementations that predate the adoption of ARM IP -- i.e. siba(4) -- 
+ * Bus implementations that predate the adoption of ARM IP
  * will need to convert bus-specific vendor IDs to their BHND_MFGID
  * JEP-106 equivalents.
  *
@@ -53,10 +55,17 @@
  * ARM's JEP-106 ID of `0x7F 0x7F 0x7F 0x7F 0x3B`, the four 0x7F continuations
  * are encoded as '4' in the 4-bit continuation code field (i.e. 0x43B). 
  */
-#define	BHND_MFGID_ARM		0x43b
-#define	BHND_MFGID_BCM		0x4bf
-#define	BHND_MFGID_MIPS		0x4a7
-#define	BHND_MFGID_INVALID	0xFFF
+#define	BHND_MFGID_ARM		0x043b		/**< arm JEP-106 vendor id */
+#define	BHND_MFGID_BCM		0x04bf		/**< broadcom JEP-106 vendor id */
+#define	BHND_MFGID_MIPS		0x04a7		/**< mips JEP-106 vendor id */
+#define	BHND_MFGID_INVALID	0x0000		/**< invalid JEP-106 vendor id */
+
+/*
+ * OCP (Open Core Protocol) Vendor IDs.
+ * 
+ * OCP-IP assigned vendor codes are used by siba(4)
+ */
+#define	OCP_VENDOR_BCM		0x4243		/**< Broadcom OCP vendor id */
 
 
 /* PCI vendor IDs */
