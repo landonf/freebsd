@@ -39,6 +39,9 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/bus.h>
 
+#include <dev/bhnd/cores/bhnd_chipcreg.h>
+
+#include "sibareg.h"
 #include "sibavar.h"
 
 int
@@ -61,14 +64,138 @@ siba_detach(device_t dev)
 	return (bus_generic_detach(dev));
 }
 
+/**
+ * Determine the number of cores available on the bus.
+ * 
+ * Some devices require a hardcoded core count:
+ * - Earlier ChipCommon revisions (chip_rev <= 4) did not include a core count.
+ * - Earlier siba(4) devices did not include a ChipCommon core at all.
+ */
+static uint8_t
+siba_get_ncores(const struct bhnd_chipid *chipid) {
+	/* Use the real count if available. */
+	if (chipid->ncores > 0)
+		return (chipid->ncores);
+
+	/*
+	 * The magic constants below were copied from the previous
+	 * siba driver implementation; their correctness has
+	 * not been verified.
+	 */
+	switch (chipid->chip_id) {
+		case 0x4401:	/* BCM4401 PCI ID? */
+		case BHND_CHIPID_BCM4402:
+			return (3);
+
+		case 0x4301:	/* BCM4031 PCI ID? */
+		case 0x4307:	/* BCM4307 PCI ID? */
+			return (5);
+			
+		case BHND_CHIPID_BCM4306:
+			return (6);
+			
+		case BHND_CHIPID_BCM5365:
+			return (7);
+
+		case 0x4310:	/* ??? */
+			return (8);
+
+		case 0x4610:	/* BCM4610 Sentry5 PCI Card? */
+		case BHND_CHIPID_BCM4704:
+		case BHND_CHIPID_BCM4710:
+			return (9);
+
+		default:
+			return (0);
+	}
+}
+
+// TODO lift out into siba_subr
+// TODO additional vendor codes
+static uint16_t
+siba_bhnd_mfgid(uint16_t vendor)
+{
+	switch (vendor) {
+	case SIBA_VEND_BCM:
+		return (BHND_MFGID_BCM);
+	default:
+		return (BHND_MFGID_INVALID);
+	}
+}
+
 static int
 siba_read_core_table(kobj_class_t driver, device_t dev,
-    const struct bhnd_chipid *chipid, const void *ioh,
-    const struct bhnd_iosw *iosw, struct bhnd_core_info **cores,
+    const struct bhnd_chipid *chipid, 
+    void *ioh,
+    const struct bhnd_iosw *iosw,
+    struct bhnd_core_info **core_table,
     u_int *num_cores)
 {
-	// TODO
-	return (ENXIO);
+	struct bhnd_core_info	*cores;
+	uint8_t			 ncores;
+
+	/* We can only handle siba(4) */
+	if (chipid->chip_type != BHND_CHIPTYPE_SIBA)
+		return (ENXIO);
+
+	/* Determine the core count */
+	ncores = siba_get_ncores(chipid);
+	if (ncores == 0) {
+		device_printf(dev, "core count unknown for chip ID 0x%hx\n",
+		    chipid->chip_id);
+		return (ENXIO);
+	}
+
+	/* Allocate output table */
+	cores = malloc(sizeof(*cores) * ncores, M_BHND, M_WAITOK);
+	if (cores == NULL)
+		return (ENOMEM);
+
+	/* Iterate the bus */
+	// TODO lift out into siba_subr
+	for (uint8_t i = 0; i < ncores; i++) {
+		struct bhnd_core_info	*ci;
+		bhnd_addr_t		 addr;
+		uint32_t		 idH;
+
+		/* Fetch ID register */
+		ci = &cores[i];
+		addr = SIBA_CORE_ADDR(i);
+		idH = iosw->read4(ioh, addr + SIBA_IDHIGH);
+
+		/* Extract core info */
+		*ci = (struct bhnd_core_info) {
+			.vendor	= SIBA_REG_GET(idH, IDH_VENDOR),
+			.device	= SIBA_REG_GET(idH, IDH_DEVICE),
+			.hwrev	= SIBA_CORE_REV(idH),
+			.core_id = i,
+			.unit	= 0
+		};
+		
+		/* Map vendor to bhnd mfgid */
+		ci->vendor = siba_bhnd_mfgid(ci->vendor);
+
+		/* Determine unit number */
+		for (uint8_t j = 0; j < i; j++) {
+			if (cores[j].vendor == ci->vendor &&
+			    cores[j].device == ci->device)
+			{
+				ci->unit++;
+			}
+		}
+
+		// TODO
+		device_printf(dev,
+		    "found 0x%hx/0x%hx (rev %hu) unit %d %s %s\n",
+		    ci->vendor, ci->device, ci->hwrev, ci->unit,
+		    bhnd_vendor_name(ci->vendor),
+		    bhnd_core_name(ci->vendor, ci->device));
+	}
+
+	*core_table = cores;
+	*num_cores = ncores;
+
+	return (0);
 }
 
 static int

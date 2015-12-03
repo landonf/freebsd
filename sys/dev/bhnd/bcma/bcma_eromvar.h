@@ -41,7 +41,7 @@
  */
 struct bcma_erom {
 	device_t		 dev;		/**< the owning device. */
-	const void		*ioh;		/**< i/o handle */
+	void			*ioh;		/**< i/o handle */
 	const struct bhnd_iosw	*iosw;		/**< i/o operations */
 	bhnd_addr_t		 start;		/**< EROM table address */
 	bus_size_t		 offset;	/**< current read offset */
@@ -76,7 +76,7 @@ struct bcma_erom_sport_region {
 	bhnd_addr_t	size;		/**< region size */
 };
 
-int		bcma_erom_open(device_t dev, const void *ioh,
+int		bcma_erom_open(device_t dev, void *ioh,
 		    const struct bhnd_iosw *iosw, bhnd_addr_t addr,
 		    struct bcma_erom *erom);
 

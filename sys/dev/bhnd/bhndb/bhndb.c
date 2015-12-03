@@ -188,12 +188,12 @@ struct bhndb_regwin_ioh {
 };
 
 static uint32_t
-bhnd_iosw_regwin_read4(const void *handle, bhnd_addr_t addr)
+bhnd_iosw_regwin_read4(void *handle, bhnd_addr_t addr)
 {
 	struct bhndb_regwin_ioh		*ioh;
 	struct bhndb_softc		*sc;
 	const struct bhndb_regwin	*rw;
-	bus_addr_t			 offset;
+	bus_addr_t			 base, offset;
 	
 	ioh = (struct bhndb_regwin_ioh *) handle;
 	sc = ioh->sc;
@@ -201,10 +201,15 @@ bhnd_iosw_regwin_read4(const void *handle, bhnd_addr_t addr)
 
 	/* Adjust window on-demand */
 	if (addr < ioh->addr || addr > ioh->addr + rw->win_size) {
-		if (BHNDB_SET_WINDOW_ADDR(sc->dev, ioh->regwin, ioh->addr))
+		/* maintain window alignment */
+		base = addr - (addr % rw->win_size);
+
+		if (BHNDB_SET_WINDOW_ADDR(sc->dev, ioh->regwin, base))
 			return (UINT32_MAX);
-		ioh->addr = addr;
+
+		ioh->addr = base;
 	}
+
 
 	/* Perform the read, relative to the resource's window mapping. */
 	offset = rw->win_offset + (addr - ioh->addr);
@@ -571,8 +576,10 @@ bhndb_generic_attach(device_t dev)
 		return (error);
 
 	/* Find our register window configuration */
-	if ((error = bhndb_find_hwspec(sc, &sc->hw)))
+	if ((error = bhndb_find_hwspec(sc, &sc->hw))) {
+		device_printf(dev, "no usable hardware spec found\n");
 		return (error);
+	}
 
 	if (bootverbose)
 		device_printf(dev, "%s register map\n", sc->hw->name);

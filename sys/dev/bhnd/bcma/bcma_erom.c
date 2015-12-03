@@ -83,7 +83,7 @@ static int		 erom_seek_next(struct bcma_erom *erom, uint8_t etype);
  * @retval non-zero if the erom table could not be opened.
  */
 int
-bcma_erom_open(device_t dev, const void *ioh, const struct bhnd_iosw *iosw,
+bcma_erom_open(device_t dev, void *ioh, const struct bhnd_iosw *iosw,
     bhnd_addr_t addr, struct bcma_erom *erom)
 {
 	/* Initialize the EROM reader */

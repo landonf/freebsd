@@ -117,8 +117,8 @@ struct bhnd_resource {
 /** bhnd(4) direct bus I/O switch table. Unsupported operations may be
  *  initialized to NULL. */
 struct bhnd_iosw {
-	uint32_t (*read4)(const void *handle, bhnd_addr_t addr);
-	void (*write4)(const void *handle, bhnd_addr_t addr, uint32_t value);
+	uint32_t (*read4)(void *handle, bhnd_addr_t addr);
+	void (*write4)(void *handle, bhnd_addr_t addr, uint32_t value);
 };
 
 

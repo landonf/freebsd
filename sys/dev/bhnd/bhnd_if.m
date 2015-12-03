@@ -41,7 +41,7 @@ CODE {
 	
 	static int
 	bhnd_null_read_core_table(kobj_class_t driver, device_t dev,
-	    const struct bhnd_chipid *chipid, const void *ioh,
+	    const struct bhnd_chipid *chipid, void *ioh,
 	    const struct bhnd_iosw *iosw, struct bhnd_core_info **cores,
 	    u_int *num_cores)
 	{
@@ -94,7 +94,7 @@ STATICMETHOD int read_core_table {
 	kobj_class_t driver;
 	device_t dev;
 	const struct bhnd_chipid *chipid;
-	const void *ioh;
+	void *ioh;
 	const struct bhnd_iosw *iosw;
 	struct bhnd_core_info **cores;
 	u_int *num_cores;

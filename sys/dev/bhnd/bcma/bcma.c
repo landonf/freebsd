@@ -66,7 +66,7 @@ bcma_detach(device_t dev)
 
 static int
 bcma_read_core_table(kobj_class_t driver, device_t dev,
-    const struct bhnd_chipid *chipid, const void *ioh,
+    const struct bhnd_chipid *chipid, void *ioh,
     const struct bhnd_iosw *iosw, struct bhnd_core_info **cores,
     u_int *num_cores)
 {
@@ -240,7 +240,7 @@ bcma_get_port_addr(device_t dev, device_t child, u_int port_num,
 
 /* resource-based read implementation for bcma_add_children() */
 static uint32_t
-bcma_erom_read4(const void *handle, bhnd_addr_t addr)
+bcma_erom_read4(void *handle, bhnd_addr_t addr)
 {
 	struct resource	*r;
 	u_long		 start;
