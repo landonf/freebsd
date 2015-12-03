@@ -89,6 +89,7 @@ bcma_erom_open(device_t dev, const void *ioh, const struct bhnd_iosw *iosw,
 	/* Initialize the EROM reader */
 	erom->dev = dev;
 	erom->ioh = ioh;
+	erom->iosw = iosw;
 	erom->start = addr + BCMA_EROM_TABLE_START;
 	erom->offset = 0;
 
@@ -298,7 +299,7 @@ erom_seek_next(struct bcma_erom *erom, uint8_t etype)
 void
 bcma_erom_reset(struct bcma_erom *erom)
 {
-	erom->offset = erom->start;
+	erom->offset = 0;
 }
 
 /**

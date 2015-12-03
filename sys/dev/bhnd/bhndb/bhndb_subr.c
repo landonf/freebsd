@@ -154,3 +154,33 @@ bhndb_regwin_find_core(const struct bhndb_regwin *table, bhnd_devclass_t class,
 
 	return (NULL);
 }
+
+/**
+ * Search @p windows for the first matching core window. If none is found,
+ * search instead for a dynamic window of at least @p min_size.
+ * 
+ * @param table The table to search.
+ * @param class The required core class.
+ * @param unit The required core unit, or -1.
+ * @param port The required core unit, or -1.
+ * @param region The required core unit, or -1.
+ * @param min_size The minimum window size.
+ *
+ * @retval bhndb_regwin The first matching window.
+ * @retval NULL If no matching window was found. 
+ */
+const struct bhndb_regwin *
+bhndb_regwin_find_core_or_dyn(const struct bhndb_regwin *table,
+    bhnd_devclass_t class, int unit, int port, int region,
+    bus_size_t min_size)
+{
+	const struct bhndb_regwin *rw;
+
+	/* Prefer a fixed core mapping */
+	rw = bhndb_regwin_find_core(table, class, unit, port, region);
+	if (rw != NULL)
+		return (rw);
+
+	/* Fall back on a generic dynamic window */
+	return (bhndb_regwin_find_type(table, BHNDB_REGWIN_T_DYN, min_size));
+}

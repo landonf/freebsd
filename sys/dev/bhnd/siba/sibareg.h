@@ -24,6 +24,8 @@
 #ifndef _BHND_SIBA_SIBAREG_
 #define _BHND_SIBA_SIBAREG_
 
+#include <dev/bhnd/bhndreg.h>
+
 /*
  * Broadcom SIBA Configuration Space Registers.
  * 
@@ -43,9 +45,9 @@
 	>> SIBA_ ## _attr ## _SHIFT)
 
 
-#define	SIBA_ENUM_ADDR		0x18000000	/**< Per-core 4K register blocks */
-#define	SIBA_ENUM_SIZE		0x00100000	/**< Size of the enumeration space */ 
-#define	SIBA_CORE_SIZE		0x1000		/**< Per-core register block size */
+#define	SIBA_ENUM_ADDR		BHND_CHIPC_DEFAULT_ADDR	/**< enumeration space */
+#define	SIBA_ENUM_SIZE		0x00100000		/**< size of the enumeration space */ 
+#define	SIBA_CORE_SIZE		0x1000			/**< per-core register block size */
 #define	SIBA_MAX_CORES	\
     (SIBA_ENUM_SIZE/SIBA_CORE_SIZE)		/**< Maximum number of cores */
 
@@ -56,7 +58,7 @@
 #define	SIBA_CFG1_OFFSET	0xf00	/**< register block 1 */
 #define	SIBA_CFG2_OFFSET	0xe00	/**< register block 2 (sonics >= 2.3) */
 
-#define	SIBA_CFG_SIZE	256	/**< register block size */
+#define	SIBA_CFG_SIZE		0x100	/**< SIBA_CFG* register block size */
 
 /* Define a register relative to either the CFG1 or CFG2 block offset */
 #define	SB_REG(cb, off)	(SIBA_CFG ## cb ## _OFFSET + (off))

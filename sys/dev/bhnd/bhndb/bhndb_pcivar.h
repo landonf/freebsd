@@ -35,24 +35,9 @@
 #include "bhndbvar.h"
 
 /*
- * Definitions shared by bhndb(4) PCI driver implementations.
+ * bhndb(4) PCI driver subclass.
  */
 
 DECLARE_CLASS(bhndb_pci_driver);
-
-int	bhndb_pci_generic_probe(device_t dev);
-
-int	bhndb_pci_generic_enable_clocks(device_t dev);
-int	bhndb_pci_generic_disable_clocks(device_t dev);
-
-bool	bhndb_pci_generic_is_hostb_device(device_t dev, device_t child);
-
-/**
- * bhndb PCI driver instance state. Must be first member of all subclass
- * softc structures.
- */
-struct bhndb_pci_softc {
-	struct bhndb_softc	bhndb_sc;	/**< bhndb state */
-};
 
 #endif /* _BHND_BHNDB_PCIVAR_H_ */

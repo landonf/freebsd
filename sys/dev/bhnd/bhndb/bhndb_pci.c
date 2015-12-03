@@ -58,8 +58,8 @@ __FBSDID("$FreeBSD$");
  * 
  * Verifies that the parent is a PCI/PCIe device.
  */
-int
-bhndb_pci_generic_probe(device_t dev)
+static int
+bhndb_pci_probe(device_t dev)
 {
 	device_t	parent;
 	devclass_t	parent_bus;
@@ -73,7 +73,7 @@ bhndb_pci_generic_probe(device_t dev)
 	if (parent_bus != pci)
 		return (ENXIO);
 
-	return (BUS_PROBE_NOWILDCARD);
+	return (BUS_PROBE_DEFAULT);
 }
 
 /** Returns true if @p parent is pcie */
@@ -84,11 +84,34 @@ parent_is_pcie(device_t parent)
 	return (pci_find_cap(parent, PCIY_EXPRESS, &reg) == 0);
 }
 
+// TODO - swap out bcma/siba implementations as required.
+static int
+bhndb_pci_set_window_addr(device_t dev, const struct bhndb_regwin *rw,
+    bhnd_addr_t addr)
+{
+	struct bhndb_softc *sc = device_get_softc(dev);
+
+	/* The PCI bridge core only supports 32-bit addressing, regardless
+	 * of the bus' support for 64-bit addressing */
+	if (addr > UINT32_MAX)
+		return (ERANGE);
+
+	switch (rw->win_type) {
+	case BHNDB_REGWIN_T_DYN:
+		pci_write_config(sc->parent_dev, rw->dyn.cfg_offset, addr, 4);
+		break;
+	default:
+		return (ENODEV);
+	}
+
+	return (0);
+}
+
 /** 
  * Standard bhndb_pci implementation of bhndb_enable_clocks().
  */
-int
-bhndb_pci_generic_enable_clocks(device_t dev)
+static int
+bhndb_pci_enable_clocks(device_t dev)
 {
 	device_t		pci_parent;
 	uint32_t		gpio_in, gpio_out, gpio_en;
@@ -137,8 +160,8 @@ bhndb_pci_generic_enable_clocks(device_t dev)
 /** 
  * Standard bhndb_pci implementation of bhndb_disable_clocks().
  */
-int
-bhndb_pci_generic_disable_clocks(device_t dev)
+static int
+bhndb_pci_disable_clocks(device_t dev)
 {
 	struct bhndb_softc	*sc;
 	uint32_t		gpio_out, gpio_en;
@@ -198,9 +221,9 @@ compare_core_index(const void *lhs, const void *rhs)
  * This heuristic should be valid on all currently known PCI/PCIe-bridged
  * devices.
  */
-bool
-bhndb_pci_generic_is_hostb_device(device_t dev, device_t child) {
-	struct bhndb_pci_softc	*sc;
+static bool
+bhndb_pci_is_hostb_device(device_t dev, device_t child) {
+	struct bhndb_softc	*sc;
 	struct bhnd_core_match	 md;
 	bhnd_devclass_t		 pci_cls;
 	device_t		 bhnd_bus;
@@ -217,7 +240,7 @@ bhndb_pci_generic_is_hostb_device(device_t dev, device_t child) {
 
 	/* Determine required PCI class */
 	pci_cls = BHND_DEVCLASS_PCI;
-	if (parent_is_pcie(sc->bhndb_sc.parent_dev))
+	if (parent_is_pcie(sc->parent_dev))
 		pci_cls = BHND_DEVCLASS_PCIE;
 
 	/* Pre-screen the device before searching over the full device list. */
@@ -258,16 +281,19 @@ bhndb_pci_generic_is_hostb_device(device_t dev, device_t child) {
 
 static device_method_t bhndb_pci_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_probe,		bhndb_pci_generic_probe),
+	DEVMETHOD(device_probe,			bhndb_pci_probe),
+
+	/* BHNDB interface */
+	DEVMETHOD(bhndb_set_window_addr,	bhndb_pci_set_window_addr),
 
 	/* BHND interface */
-	DEVMETHOD(bhnd_is_hostb_device,	bhndb_pci_generic_is_hostb_device),
+	DEVMETHOD(bhnd_is_hostb_device,		bhndb_pci_is_hostb_device),
 
 	DEVMETHOD_END
 };
 
-DEFINE_CLASS_1(bhndb_pci, bhndb_pci_driver, bhndb_pci_methods,
-    sizeof(struct bhndb_pci_softc), bhndb_driver);
+DEFINE_CLASS_1(bhndb, bhndb_pci_driver, bhndb_pci_methods,
+    sizeof(struct bhndb_softc), bhndb_driver);
 
 MODULE_VERSION(bhndb_pci, 1);
 MODULE_DEPEND(bhndb_pci, pci, 1, 1, 1);

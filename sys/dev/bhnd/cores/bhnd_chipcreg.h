@@ -25,6 +25,12 @@
 #ifndef _BHND_CORES_CHIPCREG_H_
 #define _BHND_CORES_CHIPCREG_H_
 
+#define	CHIPC_CHIPID_SIZE	0x100	/**< size of the register block
+					     containing the chip
+					     identification registers. */
+
+#define	CHIPC_NCORES_MINREV	4	/**< chipid num_core requires rev >= 4 */
+
 #define	CHIPC_GET_ATTR(_entry, _attr) \
 	((_entry & CHIPC_ ## _attr ## _MASK) >> CHIPC_ ## _attr ## _SHIFT)
 

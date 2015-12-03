@@ -74,6 +74,11 @@ const struct bhndb_regwin	*bhndb_regwin_find_core(
 				     bhnd_devclass_t class, int unit, int port,
 				     int region);
 
+const struct bhndb_regwin	*bhndb_regwin_find_core_or_dyn(
+				     const struct bhndb_regwin *table,
+				     bhnd_devclass_t class, int unit, int port,
+				     int region, bus_size_t min_size);
+
 /**
  * bhndb driver instance state. Must be first member of all subclass
  * softc structures.
@@ -81,12 +86,14 @@ const struct bhndb_regwin	*bhndb_regwin_find_core(
 struct bhndb_softc {
 	device_t			 dev;		/**< bridge device */
 	const struct bhndb_hw		*hw;		/**< hardware spec */
+	struct bhnd_chipid		 chipid;	/**< chip identification */
 
 	device_t			 parent_dev;	/**< parent device */
 	size_t				 res_count;	/**< parent bus resource count */
 	struct resource_spec		*res_spec;	/**< parent bus resource specs */
 	struct resource			**res;		/**< parent bus resources */
 
+	device_t			 bus_dev;	/**< child bhnd(4) bus */
 	struct rman			 mem_rman;	/**< bridged bus memory manager */
 
 	struct mtx			 sc_mtx;	/**< softc lock. */

@@ -44,14 +44,6 @@ __FBSDID("$FreeBSD$");
 #include "bcma_eromreg.h"
 #include "bcma_eromvar.h"
 
-/* i/o ops for bcma_add_children() */
-static uint32_t	bcma_erom_read4(const void *handle, bhnd_addr_t addr);
-
-static const struct bhnd_iosw bcma_erom_iosw = {
-	.read4	= bcma_erom_read4,
-	.write4	= NULL
-};
-
 int
 bcma_probe(device_t dev)
 {
@@ -79,8 +71,13 @@ bcma_read_core_table(kobj_class_t driver, device_t dev,
     u_int *num_cores)
 {
 
-	// TODO
-	return (ENXIO);
+	struct bcma_erom	erom;
+	int			error;
+
+	if ((error = bcma_erom_open(dev, ioh, iosw, chipid->enum_addr, &erom)))
+		return (error);
+
+	return (bcma_erom_get_core_info(&erom, cores, num_cores));
 }
 
 static int
@@ -241,7 +238,7 @@ bcma_get_port_addr(device_t dev, device_t child, u_int port_num,
 }
 
 
-/* Provides EROM parsing read operation for @p bcma_add_children */
+/* resource-based read implementation for bcma_add_children() */
 static uint32_t
 bcma_erom_read4(const void *handle, bhnd_addr_t addr)
 {
@@ -257,7 +254,6 @@ bcma_erom_read4(const void *handle, bhnd_addr_t addr)
 	return (bus_read_4(r, addr));
 }
 
-
 /**
  * Scan a device enumeration ROM table, adding all valid discovered cores to
  * the bus.
@@ -272,16 +268,19 @@ bcma_add_children(device_t bus, struct resource *erom_res, bus_size_t erom_offse
 	struct bcma_erom	 erom;
 	struct bcma_corecfg	*corecfg;
 	struct bcma_devinfo	*dinfo;
+	struct bhnd_iosw	 iosw;
 	device_t		 child;
 	int			 error;
 	
 	dinfo = NULL;
 	corecfg = NULL;
+	iosw = (struct bhnd_iosw) {
+		.read4	= bcma_erom_read4,
+		.write4	= NULL
+	};
 
 	/* Initialize our reader */
-	error = bcma_erom_open(bus, erom_res, &bcma_erom_iosw, erom_offset,
-	    &erom);
-	if (error)
+	if ((error = bcma_erom_open(bus, erom_res, &iosw, erom_offset, &erom)))
 		return (error);
 
 	/* Add all cores. */

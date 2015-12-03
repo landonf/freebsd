@@ -25,66 +25,18 @@
  * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGES.
+ * 
+ * $FreeBSD$
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
+#ifndef _BHND_BHNDREG_H_
+#define _BHND_BHNDREG_H_
 
-#include <sys/param.h>
-#include <sys/kernel.h>
-#include <sys/bus.h>
-#include <sys/module.h>
-
-#include <dev/bhnd/bhnd_ids.h>
-#include <dev/bhnd/bhndb/bhndbvar.h>
-
-#include "sibavar.h"
-
-/*
- * Supports attachment of siba(4) bus devices via a bhndb bridge.
+/**
+ * The default address at which the ChipCommon core is mapped on all siba(4)
+ * devices, and most bcma(4) devices.
  */
+#define	BHND_CHIPC_DEFAULT_ADDR		0x18000000
 
-static int
-siba_bhndb_probe(device_t dev)
-{
-	struct bhnd_chipid	cid;
 
-	/* Check bus type */
-	cid = BHNDB_GET_CHIPID(device_get_parent(dev), dev);
-	if (cid.chip_type != BHND_CHIPTYPE_SIBA)
-		return (ENXIO);
-
-	/* Delegate to default probe implementation */
-	return (siba_probe(dev));
-}
-
-static int
-siba_bhndb_attach(device_t dev)
-{
-	int error;
-
-	/* Enumerate our children. */
-	// TODO
-	if ((error = siba_add_children(dev)))
-		return (error);
-
-	/* Call our superclass' implementation */
-	return (siba_attach(dev));
-}
-
-static device_method_t siba_bhndb_methods[] = {
-	/* Device interface */
-	DEVMETHOD(device_probe,			siba_bhndb_probe),
-	DEVMETHOD(device_attach,		siba_bhndb_attach),
-
-	DEVMETHOD_END
-};
-
-DEFINE_CLASS_1(bhnd, siba_bhndb_driver, siba_bhndb_methods,
-    sizeof(struct siba_softc), siba_driver);
-
-DRIVER_MODULE(siba_bhndb, bhndb, siba_bhndb_driver, bhnd_devclass, NULL, NULL);
- 
-MODULE_VERSION(siba_bhndb, 1);
-MODULE_DEPEND(siba_bhndb, siba, 1, 1, 1);
-MODULE_DEPEND(siba_bhndb, bhndb, 1, 1, 1);
+#endif /* _BHND_BHNDREG_H_ */

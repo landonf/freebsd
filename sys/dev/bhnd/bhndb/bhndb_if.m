@@ -48,17 +48,10 @@ CODE {
 	#include <sys/systm.h>
 	#include <dev/bhnd/bhndb/bhndbvar.h>
 
-	static bhnd_addr_t
-	bhndb_null_get_enum_addr(device_t dev, device_t child)
+	static struct bhnd_chipid
+	bhndb_null_get_chipid(device_t dev, device_t child)
 	{
-		panic("bhndb_get_enum_addr unimplemented\n");
-	}
-
-	static int
-	bhndb_null_get_core_table(device_t dev, struct bhnd_core_info **cores,
-	    u_int *count)
-	{
-		panic("bhndb_get_core_table unimplemented");
+		panic("bhndb_get_chipid unimplemented\n");
 	}
 	
 	static int
@@ -76,35 +69,15 @@ CODE {
 }
 
 /**
- * Return the base address at which @p child should perform device enumeration.
+ * Return the chip identification information for @p child.
  *
  * @param dev The parent device of @p child.
- * @param child The bhndb child performing bus enumeration.
+ * @param child The attached bhndb device.
  */
-METHOD bhnd_addr_t get_enum_addr {
+METHOD struct bhnd_chipid get_chipid {
 	device_t dev;
 	device_t child;
-} DEFAULT bhndb_null_get_enum_addr;
-
-/**
- * Retrieve the list of all cores enumerated by @p dev.
- *
- * This method may return an error if requisite bus resources
- * have already been claimed by the bridge.
- * 
- * The memory allocated for the table should be freed using
- * `free(*cores, M_BHND)`. @p cores and @p num_cores are not changed
- * when an error is returned.
- * 
- * @param dev The bridge device.
- * @param[out] cores the table of parsed core descriptors.
- * @param[out] num_cores the number of core records in @p cores.
- */
-METHOD int get_core_table {
-	device_t dev;
-	struct bhnd_core_info **cores;
-	u_int *count;
-} DEFAULT bhndb_null_get_core_table;
+} DEFAULT bhndb_null_get_chipid;
 
 /**
  * Return the bhnd-compatible child bus device attached to this bridge.

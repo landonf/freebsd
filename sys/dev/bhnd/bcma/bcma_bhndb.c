@@ -35,6 +35,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/bus.h>
 #include <sys/module.h>
 
+#include <dev/bhnd/bhnd_ids.h>
 #include <dev/bhnd/bhndb/bhndbvar.h>
 
 #include "bcmavar.h"
@@ -49,28 +50,31 @@ __FBSDID("$FreeBSD$");
 static int
 bcma_bhndb_probe(device_t dev)
 {
-	int error;
-	
-	if ((error = bcma_probe(dev)) > 0)
-		return (error);
+	struct bhnd_chipid	cid;
 
-	return (BUS_PROBE_NOWILDCARD);
+	/* Check bus type */
+	cid = BHNDB_GET_CHIPID(device_get_parent(dev), dev);
+	if (cid.chip_type != BHND_CHIPTYPE_BCMA)
+		return (ENXIO);
+
+	/* Delegate to default probe implementation */
+	return (bcma_probe(dev));
 }
 
 static int
 bcma_bhndb_attach(device_t dev)
 {
-	struct resource	*erom_res;
-	bus_addr_t	erom_addr;
-	int		error;
-	int		rid;
+	struct bhnd_chipid	 cid;
+	struct resource		*erom_res;
+	int			 error;
+	int			 rid;
 
-	erom_addr = BHNDB_GET_ENUM_ADDR(device_get_parent(dev), dev);
+	cid = BHNDB_GET_CHIPID(device_get_parent(dev), dev);
 
 	/* Map the EROM resource and enumerate our children. */
 	rid = 0;
-	erom_res = bus_alloc_resource(dev, SYS_RES_MEMORY, &rid, erom_addr,
-		erom_addr + BCMA_EROM_TABLE_SIZE, BCMA_EROM_TABLE_SIZE,
+	erom_res = bus_alloc_resource(dev, SYS_RES_MEMORY, &rid, cid.enum_addr,
+		cid.enum_addr + BCMA_EROM_TABLE_SIZE, BCMA_EROM_TABLE_SIZE,
 		RF_ACTIVE);
 	if (erom_res == NULL) {
 		device_printf(dev, "failed to allocate EROM resource\n");
@@ -100,7 +104,7 @@ static device_method_t bcma_bhndb_methods[] = {
 DEFINE_CLASS_1(bhnd, bcma_bhndb_driver, bcma_bhndb_methods,
     sizeof(struct bcma_softc), bcma_driver);
 
-DRIVER_MODULE(bcma_bhndb, bcmab, bcma_bhndb_driver, bhnd_devclass, NULL, NULL);
+DRIVER_MODULE(bcma_bhndb, bhndb, bcma_bhndb_driver, bhnd_devclass, NULL, NULL);
  
 MODULE_VERSION(bcma_bhndb, 1);
 MODULE_DEPEND(bcma_bhndb, bcma, 1, 1, 1);

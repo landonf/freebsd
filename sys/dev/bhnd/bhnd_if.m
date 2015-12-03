@@ -80,7 +80,7 @@ CODE {
  * 
  * @param	driver		the driver class.
  * @param	chipid		the chip's identification info.
-  * @param	ioh		device i/o handle.
+ * @param	ioh		device i/o handle.
  * @param	iosw		device i/o callbacks.
  * @param[out]	cores		the table of parsed core descriptors.
  * @param[out]	num_cores	the number of core records in @p cores.
