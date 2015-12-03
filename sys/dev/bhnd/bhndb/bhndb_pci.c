@@ -73,6 +73,8 @@ bhndb_pci_probe(device_t dev)
 	if (parent_bus != pci)
 		return (ENXIO);
 
+	device_set_desc(dev, "PCI-BHND bridge");
+
 	return (BUS_PROBE_DEFAULT);
 }
 

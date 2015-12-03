@@ -47,7 +47,7 @@ __FBSDID("$FreeBSD$");
 int
 bcma_probe(device_t dev)
 {
-	device_set_desc(dev, "BCMA bus");
+	device_set_desc(dev, "BCMA BHND bus");
 	return (BUS_PROBE_NOWILDCARD);
 }
 
