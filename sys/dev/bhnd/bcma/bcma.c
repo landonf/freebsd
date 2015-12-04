@@ -248,7 +248,8 @@ bcma_erom_read4(void *handle, bhnd_addr_t addr)
 	r = (struct resource *) handle;
 	start = rman_get_start(r);
 
-	if (addr > rman_get_size(r))
+	/* The 4 byte request may be impossible to fill */
+	if (addr > (rman_get_size(r) - sizeof(uint32_t)))
 		return (EINVAL);
 
 	return (bus_read_4(r, addr));

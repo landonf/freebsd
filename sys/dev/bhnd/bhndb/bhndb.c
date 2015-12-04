@@ -202,16 +202,22 @@ bhndb_regwin_bus_read4(void *handle, bhnd_addr_t addr)
 	rw = ctx->regwin;
 
 	/* Adjust window on-demand */
-	if (addr < ctx->addr || addr > ctx->addr + rw->win_size) {
+	if (addr < ctx->addr || addr > (ctx->addr + rw->win_size)) {
 		/* maintain window alignment */
 		base = addr - (addr % rw->win_size);
+		
+		/* The 4 byte request may be impossible to fill within
+		 * an aligned window. */
+		if (addr > (base + rw->win_size - sizeof(uint32_t)))
+			return (UINT32_MAX);
 
 		if (BHNDB_SET_WINDOW_ADDR(sc->dev, ctx->regwin, base))
 			return (UINT32_MAX);
 
 		ctx->addr = base;
 	}
-
+	
+	
 
 	/* Perform the read, relative to the resource's window mapping. */
 	offset = rw->win_offset + (addr - ctx->addr);
