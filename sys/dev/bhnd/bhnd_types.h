@@ -39,6 +39,7 @@ typedef enum {
 	BHND_DEVCLASS_CC,		/**< chipcommon i/o controller */
 	BHND_DEVCLASS_PCI,		/**< pci host/device bridge */
 	BHND_DEVCLASS_PCIE,		/**< pcie host/device bridge */
+	BHND_DEVCLASS_PCCARD,		/**< pcmcia host/device bridge */
 	BHND_DEVCLASS_MEM,		/**< internal RAM/SRAM */
 	BHND_DEVCLASS_MEMC,		/**< memory controller */
 	BHND_DEVCLASS_ENET,		/**< 802.3 MAC/PHY */
@@ -55,6 +56,12 @@ typedef enum {
 
 	BHND_DEVCLASS_INVALID		/**< no/invalid class */
 } bhnd_devclass_t;
+
+/** Evaluates to true if @p cls is a device class that can be configured
+ *  as a host bridge device. */
+#define	BHND_DEVCLASS_SUPPORTS_HOSTB(cls)					\
+	((cls) == BHND_DEVCLASS_PCI || (cls) == BHND_DEVCLASS_PCIE ||	\
+	 (cls) == BHND_DEVCLASS_PCCARD)
 
 /**
  * BHND bus address.

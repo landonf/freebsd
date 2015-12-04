@@ -812,8 +812,104 @@ bhndb_is_hw_populated(device_t dev, device_t child) {
 
 	/* Ask our bhndb_bus parent */
 	core = bhnd_get_core_info(child);
-	return (BHNDB_BUS_IS_CORE_POPULATED(device_get_parent(dev), dev, &core));
+	if (!BHNDB_BUS_IS_CORE_POPULATED(device_get_parent(dev), dev, &core))
+		return (false);
+
+	/* Treat bridge-capable cores as unpopulated if they're not the
+	 * configured host bridge. This will need to be revisited if there's
+	 * ever a Broadcom chip that operates PCI/PCIe/etc cores in host
+	 * mode (ie presenting a functional PCI-BHND-PCI bridge). */
+	if (BHND_DEVCLASS_SUPPORTS_HOSTB(bhnd_core_class(&core)))
+		return (bhnd_is_hostb_device(child));
+
+	/* Otherwise, assume the core is populated */
+	return (true);
 }
+
+/* bhnd core index sorting used by bhndb_is_hostb_device() */ 
+static int
+compare_core_index(const void *lhs, const void *rhs)
+{
+	u_int left = bhnd_get_core_index(*(const device_t *) lhs);
+	u_int right = bhnd_get_core_index(*(const device_t *) rhs);
+
+	if (left < right)
+		return (-1);
+	else if (left > right)
+		return (1);
+	else
+		return (0);
+}
+
+/**
+ * Default implementation of bhnd_is_hostb_device that applies a common
+ * heuristic for detecting bhndb bridge cores.
+ * 
+ * Returns true if @p child:
+ * 
+ * - is a Broadcom core matching the devclass returned by
+ *   BHNDB_GET_BRIDGE_DEVCLASS()
+ * - is the first core on the bus with this device class.
+ * 
+ * This heuristic should be valid on all known PCI/PCIe/PCMCIA-bridged
+ * devices.
+ */
+static bool
+bhndb_is_hostb_device(device_t dev, device_t child) {
+	struct bhndb_softc	*sc;
+	struct bhnd_core_match	 md;
+	bhnd_devclass_t		 bridge_cls;
+	device_t		 bhnd_bus;
+	device_t		 hostb_dev;
+	device_t		*devlist;
+	int			 devcnt, error;
+
+	sc = device_get_softc(dev);
+	bhnd_bus = BHNDB_GET_ATTACHED_BUS(dev);
+	
+	/* Requestor must be attached to the bhnd bus */
+	if (device_get_parent(child) != bhnd_bus)
+		return (false);
+
+	/* Determine required device class */
+	bridge_cls = BHNDB_GET_BRIDGE_DEVCLASS(dev);
+
+	/* Pre-screen the device before searching over the full device list. */
+	md = (struct bhnd_core_match) {
+		.vendor = BHND_MFGID_BCM,
+		.device = BHND_COREID_INVALID,
+		.hwrev = { BHND_HWREV_INVALID, BHND_HWREV_INVALID },
+		.class = bridge_cls,
+		.unit = 0
+	};
+
+	if (!bhnd_device_matches(child, &md))
+		return (false);
+
+	/*
+	 * Confirm that this is the absolute first matching device on the bus.
+	 */
+	if ((error = device_get_children(bhnd_bus, &devlist, &devcnt)))
+		return (false);
+
+	/* Sort by core index value, ascending */
+	qsort(devlist, devcnt, sizeof(*devlist), compare_core_index);
+
+	/* Find the actual hostb device */
+	hostb_dev = NULL;
+	for (int i = 0; i < devcnt; i++) {
+		if (bhnd_device_matches(devlist[i], &md)) {
+			hostb_dev = devlist[i];
+			break;
+		}
+	}
+
+	/* Clean up */
+	free(devlist, M_TEMP);
+
+	return (child == hostb_dev);
+}
+
 
 static struct resource *
 bhndb_alloc_resource(device_t dev, device_t child, int type,
@@ -1424,6 +1520,7 @@ static device_method_t bhndb_methods[] = {
 
 	/* BHND interface */
 	DEVMETHOD(bhnd_is_hw_populated,		bhndb_is_hw_populated),
+	DEVMETHOD(bhnd_is_hostb_device,		bhndb_is_hostb_device),
 	DEVMETHOD(bhnd_alloc_resource,		bhndb_alloc_bhnd_resource),
 	DEVMETHOD(bhnd_release_resource,	bhndb_release_bhnd_resource),
 	DEVMETHOD(bhnd_activate_resource,	bhndb_activate_bhnd_resource),

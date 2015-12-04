@@ -61,7 +61,7 @@ static const struct bhnd_core_desc {
 	BHND_CDESC(BCM, ILINE100,	OTHER,		"iLine100 HPNA"),
 	BHND_CDESC(BCM, IPSEC,		OTHER,		"IPsec Accelerator"),
 	BHND_CDESC(BCM, UTOPIA,		OTHER,		"UTOPIA ATM Core"),
-	BHND_CDESC(BCM, PCMCIA,		OTHER,		"PCMCIA Bridge"),
+	BHND_CDESC(BCM, PCMCIA,		PCCARD,		"PCMCIA Bridge"),
 	BHND_CDESC(BCM, SOCRAM,		MEM,		"Internal Memory"),
 	BHND_CDESC(BCM, MEMC,		MEMC,		"MEMC SDRAM Controller"),
 	BHND_CDESC(BCM, OFDM,		OTHER,		"OFDM PHY"),

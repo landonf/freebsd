@@ -53,7 +53,13 @@ CODE {
 	{
 		panic("bhndb_get_chipid unimplemented\n");
 	}
-	
+
+	static bhnd_devclass_t
+	bhndb_null_get_bridge_devclass(device_t dev)
+	{
+		panic("bhndb_get_bridge_devclass unimplemented");
+	}
+
 	static int
 	bhndb_null_set_window_addr(device_t dev,
 	    const struct bhndb_regwin *rw, bhnd_addr_t addr)
@@ -78,6 +84,15 @@ METHOD struct bhnd_chipid get_chipid {
 	device_t dev;
 	device_t child;
 } DEFAULT bhndb_null_get_chipid;
+
+/**
+ * Return the device class of the bridge. This is used to automatically
+ * detect the bridge core, and to disable additional bridge cores (e.g. 
+ * PCMCIA on a PCIe device).
+ */
+METHOD bhnd_devclass_t get_bridge_devclass {
+	device_t dev;
+} DEFAULT bhndb_null_get_bridge_devclass;
 
 /**
  * Return the bhnd-compatible child bus device attached to this bridge.

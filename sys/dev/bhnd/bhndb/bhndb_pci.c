@@ -197,88 +197,15 @@ bhndb_pci_disable_clocks(device_t dev)
 	return (0);
 }
 
-static int
-compare_core_index(const void *lhs, const void *rhs)
+static bhnd_devclass_t
+bhndb_pci_get_bridge_devclass(device_t dev)
 {
-	u_int left = bhnd_get_core_index(*(const device_t *) lhs);
-	u_int right = bhnd_get_core_index(*(const device_t *) rhs);
+	struct bhndb_softc *sc = device_get_softc(dev);
 
-	if (left < right)
-		return (-1);
-	else if (left > right)
-		return (1);
-	else
-		return (0);
-}
-
-/**
- * Default bhndb_pci implementation of bhnd_is_hostb_device().
- * 
- * Returns true if @p child:
- * 
- * - is a Broadcom PCI core attached to the bhnd bus.
- * - is the first core on the bus matching the PCI type (PCI or PCIe) of the
- *   bhndb parent device.
- * 
- * This heuristic should be valid on all currently known PCI/PCIe-bridged
- * devices.
- */
-static bool
-bhndb_pci_is_hostb_device(device_t dev, device_t child) {
-	struct bhndb_softc	*sc;
-	struct bhnd_core_match	 md;
-	bhnd_devclass_t		 pci_cls;
-	device_t		 bhnd_bus;
-	device_t		 hostb_dev;
-	device_t		*devlist;
-	int			 devcnt, error;
-
-	sc = device_get_softc(dev);
-	bhnd_bus = BHNDB_GET_ATTACHED_BUS(dev);
-	
-	/* Requestor must be attached to the bhnd bus */
-	if (device_get_parent(child) != bhnd_bus)
-		return (false);
-
-	/* Determine required PCI class */
-	pci_cls = BHND_DEVCLASS_PCI;
 	if (parent_is_pcie(sc->parent_dev))
-		pci_cls = BHND_DEVCLASS_PCIE;
-
-	/* Pre-screen the device before searching over the full device list. */
-	md = (struct bhnd_core_match) {
-		.vendor = BHND_MFGID_BCM,
-		.device = BHND_COREID_INVALID,
-		.hwrev = { BHND_HWREV_INVALID, BHND_HWREV_INVALID },
-		.class = pci_cls,
-		.unit = 0
-	};
-
-	if (!bhnd_device_matches(child, &md))
-		return (false);
-
-	/*
-	 * Confirm that this is the absolute first matching device on the bus.
-	 */
-	if ((error = device_get_children(bhnd_bus, &devlist, &devcnt)))
-		return (false);
-
-	/* Sort by core index value, ascending */
-	qsort(devlist, devcnt, sizeof(*devlist), compare_core_index);
-
-	/* Find the actual hostb device */
-	hostb_dev = NULL;
-	for (int i = 0; i < devcnt; i++) {
-		if (bhnd_device_matches(devlist[i], &md)) {
-			hostb_dev = devlist[i];
-			break;
-		}
-	}
-
-	/* Clean up */
-	free(devlist, M_TEMP);
-
-	return (child == hostb_dev);
+		return (BHND_DEVCLASS_PCIE);
+	else
+		return (BHND_DEVCLASS_PCI);
 }
 
 static device_method_t bhndb_pci_methods[] = {
@@ -286,10 +213,8 @@ static device_method_t bhndb_pci_methods[] = {
 	DEVMETHOD(device_probe,			bhndb_pci_probe),
 
 	/* BHNDB interface */
+	DEVMETHOD(bhndb_get_bridge_devclass,	bhndb_pci_get_bridge_devclass),
 	DEVMETHOD(bhndb_set_window_addr,	bhndb_pci_set_window_addr),
-
-	/* BHND interface */
-	DEVMETHOD(bhnd_is_hostb_device,		bhndb_pci_is_hostb_device),
 
 	DEVMETHOD_END
 };
