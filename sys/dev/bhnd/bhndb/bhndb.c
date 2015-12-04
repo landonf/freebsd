@@ -153,7 +153,7 @@ bhndb_child_location_str(device_t dev, device_t child, char *buf,
 
 	sc = device_get_softc(dev);
 
-	snprintf(buf, buflen, "enum_base=0x%llx",
+	snprintf(buf, buflen, "base=0x%llx",
 	    (unsigned long long) sc->chipid.enum_addr);
 	return (0);
 }

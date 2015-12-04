@@ -49,7 +49,7 @@ extern devclass_t bhnd_devclass;
 enum bhnd_device_vars {
 	BHND_IVAR_VENDOR,	/**< Designer's JEP-106 manufacturer ID. */
 	BHND_IVAR_DEVICE,	/**< Part number */
-	BHND_IVAR_REVID,	/**< Core revision */
+	BHND_IVAR_HWREV,	/**< Core revision */
 	BHND_IVAR_DEVICE_CLASS,	/**< Core class (@sa bhnd_devclass_t) */
 	BHND_IVAR_VENDOR_NAME,	/**< Core vendor name */
 	BHND_IVAR_DEVICE_NAME,	/**< Core name */
@@ -67,7 +67,7 @@ enum bhnd_device_vars {
 
 BHND_ACCESSOR(vendor,		VENDOR,		uint16_t);
 BHND_ACCESSOR(device,		DEVICE,		uint16_t);
-BHND_ACCESSOR(revid,		REVID,		uint8_t);
+BHND_ACCESSOR(hwrev,		HWREV,		uint8_t);
 BHND_ACCESSOR(class,		DEVICE_CLASS,	bhnd_devclass_t);
 BHND_ACCESSOR(vendor_name,	VENDOR_NAME,	const char *);
 BHND_ACCESSOR(device_name,	DEVICE_NAME,	const char *);

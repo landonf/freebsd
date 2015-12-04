@@ -87,7 +87,7 @@ struct bcma_devinfo	*bcma_alloc_dinfo(device_t dev,
 void			 bcma_free_dinfo(struct bcma_devinfo *dinfo);
 
 struct bcma_corecfg	*bcma_alloc_corecfg(u_int core_index, int core_unit,
-			     uint16_t vendor, uint16_t device, uint8_t revid);
+			     uint16_t vendor, uint16_t device, uint8_t hwrev);
 void			 bcma_free_corecfg(struct bcma_corecfg *corecfg);
 
 struct bcma_sport	*bcma_alloc_sport(bcma_pid_t port_num, bcma_sport_type port_type);
@@ -125,11 +125,7 @@ STAILQ_HEAD(bcma_sport_list, bcma_sport);
 
 /** BCMA IP core/block configuration */
 struct bcma_corecfg {
-	uint16_t	vendor;		/**< IP designer's JEP-106 mfgid */
-	uint16_t	device;		/**< IP core ID/part number */
-	uint8_t		revid;		/**< IP core revision identifier */
-	u_int		core_index;	/**< core index (bus-unique) */
-	int		core_unit;	/**< core unit number */
+	struct bhnd_core_info	core_info;	/**< standard core info */
 
 	u_long		num_master_ports;	/**< number of master port descriptors. */
 	struct bcma_mport_list	master_ports;	/**< master port descriptors */

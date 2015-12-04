@@ -116,11 +116,11 @@ bcma_corecfg_find_region_map(struct bcma_corecfg *cfg, bcma_sport_type type,
  * @param core_unit Core unit number.
  * @param vendor Core designer.
  * @param device Core identifier (e.g. part number).
- * @param revid Core revision identifier.
+ * @param hwrev Core revision.
  */
 struct bcma_corecfg *
 bcma_alloc_corecfg(u_int core_index, int core_unit, uint16_t vendor,
-    uint16_t device, uint8_t revid)
+    uint16_t device, uint8_t hwrev)
 {
 	struct bcma_corecfg *cfg;
 
@@ -128,11 +128,13 @@ bcma_alloc_corecfg(u_int core_index, int core_unit, uint16_t vendor,
 	if (cfg == NULL)
 		return NULL;
 
-	cfg->vendor = vendor;
-	cfg->device = device;
-	cfg->revid = revid;
-	cfg->core_index = core_index;
-	cfg->core_unit = core_unit;
+	cfg->core_info = (struct bhnd_core_info) {
+		.vendor = vendor,
+		.device = device,
+		.hwrev = hwrev,
+		.core_id = core_index,
+		.unit = core_unit
+	};
 	
 	STAILQ_INIT(&cfg->master_ports);
 	cfg->num_master_ports = 0;
@@ -214,7 +216,7 @@ bcma_dinfo_init_resource_info(device_t bus, struct bcma_devinfo *dinfo,
 				device_printf(bus,
 				    "core%u %s%u.%u: region %llx-%llx extends "
 				        "beyond supported addressable range\n",
-				    dinfo->corecfg->core_index,
+				    dinfo->corecfg->core_info.core_id,
 				    bcma_port_type_name(port->sp_type),
 				    port->sp_num, map->m_region_num,
 				    (unsigned long long) map->m_base,

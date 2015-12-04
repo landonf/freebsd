@@ -149,6 +149,52 @@ bhnd_generic_probe_nomatch(device_t dev, device_t child)
 }
 
 /**
+ * Default implementation of BUS_CHILD_PNPINFO_STR().
+ */
+static int
+bhnd_child_pnpinfo_str(device_t dev, device_t child, char *buf,
+    size_t buflen)
+{
+	if (device_get_parent(child) != dev) {
+		return (BUS_CHILD_PNPINFO_STR(device_get_parent(dev), child,
+		    buf, buflen));
+	}
+
+	snprintf(buf, buflen, "vendor=0x%hx device=0x%hx rev=0x%hhx",
+	    bhnd_get_vendor(child), bhnd_get_device(child),
+	    bhnd_get_hwrev(child));
+
+	return (0);
+}
+
+/**
+ * Default implementation of implementing BUS_PRINT_CHILD().
+ */
+static int
+bhnd_child_location_str(device_t dev, device_t child, char *buf,
+    size_t buflen)
+{
+	bhnd_addr_t	addr;
+	bhnd_size_t	size;
+	
+	if (device_get_parent(child) != dev) {
+		return (BUS_CHILD_LOCATION_STR(device_get_parent(dev), child,
+		    buf, buflen));
+	}
+
+
+	if (bhnd_get_port_addr(child, 0, 0, &addr, &size)) {
+		/* No device default port/region */
+		if (buflen > 0)
+			*buf = '\0';
+		return (0);
+	}
+
+	snprintf(buf, buflen, "port0.0=0x%llx", (unsigned long long) addr);
+	return (0);
+}
+
+/**
  * Helper function for implementing BHND_IS_HOSTB_DEVICE().
  * 
  * If a parent device is available, this implementation delegates the
@@ -342,11 +388,8 @@ static device_method_t bhnd_methods[] = {
 	/* Bus interface */
 	DEVMETHOD(bus_probe_nomatch,		bhnd_generic_probe_nomatch),
 	DEVMETHOD(bus_print_child,		bhnd_generic_print_child),
-#if 0
-	// TODO
-	DEVMETHOD(bus_child_pnpinfo_str,	bhnd_generic_child_pnpinfo_str),
-	DEVMETHOD(bus_child_location_str,	bhnd_generic_location_str),
-#endif
+	DEVMETHOD(bus_child_pnpinfo_str,	bhnd_child_pnpinfo_str),
+	DEVMETHOD(bus_child_location_str,	bhnd_child_location_str),
 
 	DEVMETHOD(bus_set_resource,		bus_generic_rl_set_resource),
 	DEVMETHOD(bus_get_resource,		bus_generic_rl_get_resource),

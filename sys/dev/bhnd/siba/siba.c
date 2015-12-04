@@ -164,7 +164,7 @@ siba_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 	case BHND_IVAR_DEVICE:
 		*result = cfg->device;
 		return (0);
-	case BHND_IVAR_REVID:
+	case BHND_IVAR_HWREV:
 		*result = cfg->hwrev;
 		return (0);
 	case BHND_IVAR_DEVICE_CLASS:
@@ -193,7 +193,7 @@ siba_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
 	switch (index) {
 	case BHND_IVAR_VENDOR:
 	case BHND_IVAR_DEVICE:
-	case BHND_IVAR_REVID:
+	case BHND_IVAR_HWREV:
 	case BHND_IVAR_DEVICE_CLASS:
 	case BHND_IVAR_VENDOR_NAME:
 	case BHND_IVAR_DEVICE_NAME:

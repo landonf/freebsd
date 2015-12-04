@@ -647,7 +647,7 @@ erom_corecfg_fill_port_regions(struct bcma_erom *erom,
 		if (region_num == BCMA_RMID_MAX) {
 			EROM_LOG(erom, "core%u %s%u: region count reached "
 			    "upper limit of %u\n",
-			    corecfg->core_index,
+			    corecfg->core_info.core_id,
 			    bcma_port_type_name(port_type),
 			    port_num, BCMA_RMID_MAX);
 
@@ -661,7 +661,7 @@ erom_corecfg_fill_port_regions(struct bcma_erom *erom,
 		if (error && error != ENOENT) {
 			EROM_LOG(erom, "core%u %s%u.%u: invalid slave port "
 			    "address region\n",
-			    corecfg->core_index,
+			    corecfg->core_info.core_id,
 			    bcma_port_type_name(port_type),
 			    port_num, region_num);
 			goto cleanup;

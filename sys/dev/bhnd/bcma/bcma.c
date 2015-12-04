@@ -83,36 +83,35 @@ static int
 bcma_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 {
 	const struct bcma_devinfo *dinfo;
-	const struct bcma_corecfg *cfg;
+	const struct bhnd_core_info *ci;
 	
 	dinfo = device_get_ivars(child);
-	cfg = dinfo->corecfg;
+	ci = &dinfo->corecfg->core_info;
 	
 	switch (index) {
 	case BHND_IVAR_VENDOR:
-		*result = cfg->vendor;
+		*result = ci->vendor;
 		return (0);
 	case BHND_IVAR_DEVICE:
-		*result = cfg->device;
+		*result = ci->device;
 		return (0);
-	case BHND_IVAR_REVID:
-		*result = cfg->revid;
+	case BHND_IVAR_HWREV:
+		*result = ci->hwrev;
 		return (0);
 	case BHND_IVAR_DEVICE_CLASS:
-		*result = bhnd_find_core_class(cfg->vendor, cfg->device);
+		*result = bhnd_core_class(ci);
 		return (0);
 	case BHND_IVAR_VENDOR_NAME:
-		*result = (uintptr_t) bhnd_vendor_name(cfg->vendor);
+		*result = (uintptr_t) bhnd_vendor_name(ci->vendor);
 		return (0);
 	case BHND_IVAR_DEVICE_NAME:
-		*result = (uintptr_t) bhnd_find_core_name(cfg->vendor,
-		    cfg->device);
+		*result = (uintptr_t) bhnd_core_name(ci);
 		return (0);
 	case BHND_IVAR_CORE_INDEX:
-		*result = cfg->core_index;
+		*result = ci->core_id;
 		return (0);
 	case BHND_IVAR_CORE_UNIT:
-		*result = cfg->core_unit;
+		*result = ci->unit;
 		return (0);
 	default:
 		return (ENOENT);
@@ -125,7 +124,7 @@ bcma_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
 	switch (index) {
 	case BHND_IVAR_VENDOR:
 	case BHND_IVAR_DEVICE:
-	case BHND_IVAR_REVID:
+	case BHND_IVAR_HWREV:
 	case BHND_IVAR_DEVICE_CLASS:
 	case BHND_IVAR_VENDOR_NAME:
 	case BHND_IVAR_DEVICE_NAME:

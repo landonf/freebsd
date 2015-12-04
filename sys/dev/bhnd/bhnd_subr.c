@@ -234,7 +234,7 @@ bhnd_get_core_info(device_t dev) {
 	return (struct bhnd_core_info) {
 		.vendor		= bhnd_get_vendor(dev),
 		.device		= bhnd_get_device(dev),
-		.hwrev		= bhnd_get_revid(dev),
+		.hwrev		= bhnd_get_hwrev(dev),
 		.core_id	= bhnd_get_core_index(dev),
 		.unit		= bhnd_get_core_unit(dev)
 	};
@@ -405,7 +405,7 @@ bhnd_device_matches(device_t dev, const struct bhnd_core_match *desc)
 		.vendor = bhnd_get_vendor(dev),
 		.device = bhnd_get_device(dev),
 		.unit = bhnd_get_core_unit(dev),
-		.hwrev = bhnd_get_revid(dev)
+		.hwrev = bhnd_get_hwrev(dev)
 	};
 
 	return bhnd_core_matches(&ci, desc);
