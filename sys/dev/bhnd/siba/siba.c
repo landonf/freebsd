@@ -296,7 +296,7 @@ siba_get_port_addr(device_t dev, device_t child, u_int port_num,
  * Automatically maps/unmaps core-sized resources to meet bus I/O
  * requests.
  * 
- * We don't bother caching the allocated core across requests resource; our
+ * We don't bother caching the allocated core resource across requests; our
  * enumeration code only performs a single read from each core.
  */
 static uint32_t
