@@ -1004,7 +1004,7 @@ bhndb_adjust_resource(device_t dev, device_t child, int type,
 		 * absolute start and end addresses.
 		 */
 		if (rman_get_start(r) != start  || end < start ||
-		    end - start > region->win->win_size)
+		    (end - start) + 1 > region->win->win_size)
 		{
 			error = EINVAL;
 			goto finish;
@@ -1112,7 +1112,7 @@ bhndb_try_activate_static_window(struct bhndb_softc *sc, device_t child,
 		if (r_start < addr || r_start > addr + size)
 			continue;
 
-		if (r_end > addr + size)
+		if ((r_end + 1) > addr + size)
 			continue;
 
 		/* Calculate subregion offset within the parent resource */
