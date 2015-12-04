@@ -69,30 +69,6 @@ siba_detach(device_t dev)
 	return (bus_generic_detach(dev));
 }
 
-/**
- * Parse the SIBA_IDH_* fields from the per-core SIBA_IDHIGH identification
- * register, returning its bhnd_core_info representation.
- * 
- * @param idhigh The SIBA_IDHIGH register.
- * @param core_id The core id (index) to include in the result.
- * @param unit The unit number to include in the result.
- */
-static struct bhnd_core_info
-siba_parse_core_info(uint32_t idhigh, u_int core_id, int unit)
-{
-	uint16_t ocp_vendor;
-
-	ocp_vendor = SIBA_REG_GET(idhigh, IDH_VENDOR);
-
-	return (struct bhnd_core_info) {
-		.vendor	= siba_get_bhnd_mfgid(ocp_vendor),
-		.device	= SIBA_REG_GET(idhigh, IDH_DEVICE),
-		.hwrev	= SIBA_CORE_REV(idhigh),
-		.core_id = core_id,
-		.unit	= unit
-	};
-}
-
 static int
 siba_read_core_table(kobj_class_t driver, const struct bhnd_chipid *chipid, 
     const struct bhnd_bus_ctx *bus, struct bhnd_core_info **core_table,

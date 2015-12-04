@@ -110,6 +110,9 @@ bool				 bhnd_device_matches(device_t dev,
 
 struct bhnd_core_info		 bhnd_get_core_info(device_t dev);
 
+struct bhnd_chipid		 bhnd_parse_chipid(uint32_t idreg,
+				     bhnd_addr_t enum_addr);
+
 int				 bhnd_read_chipid(device_t dev,
 				     struct resource_spec *rs,
 				     bus_size_t chipc_offset,

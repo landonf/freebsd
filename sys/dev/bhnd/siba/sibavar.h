@@ -54,6 +54,9 @@ int			 siba_detach(device_t dev);
 uint16_t		 siba_get_bhnd_mfgid(uint16_t ocp_vendor);
 uint8_t			 siba_get_ncores(const struct bhnd_chipid *chipid);
 
+struct bhnd_core_info	 siba_parse_core_info(uint32_t idhigh, u_int core_id,
+			     int unit);
+
 int			 siba_add_children(device_t bus,
 			     const struct bhnd_chipid *chipid);
 

@@ -411,6 +411,39 @@ bhnd_device_matches(device_t dev, const struct bhnd_core_match *desc)
 	return bhnd_core_matches(&ci, desc);
 }
 
+
+/**
+ * Parse the CHIPC_ID_* fields from the ChipCommon CHIPC_ID
+ * register, returning its bhnd_chipid representation.
+ * 
+ * If the ChipCommon revision does not provide the number of
+ * attached cores, the `ncores` value will be set to 0.
+ * 
+ * @param idreg The CHIPC_ID register value.
+ * @param enum_addr The enumeration address to include in the result.
+ */
+struct bhnd_chipid
+bhnd_parse_chipid(uint32_t idreg, bhnd_addr_t enum_addr)
+{
+	struct bhnd_chipid result;
+
+	/* Fetch the basic chip info */
+	result.chip_id = CHIPC_GET_ATTR(idreg, ID_CHIP);
+	result.chip_pkg = CHIPC_GET_ATTR(idreg, ID_PKG);
+	result.chip_rev = CHIPC_GET_ATTR(idreg, ID_REV);
+	result.chip_type = CHIPC_GET_ATTR(idreg, ID_BUS);
+
+	if (result.chip_rev < CHIPC_NCORES_MINREV) {
+		result.ncores = CHIPC_GET_ATTR(idreg, ID_NUMCORE);
+	} else {
+		result.ncores = 0;
+	}
+
+	result.enum_addr = enum_addr;
+
+	return (result);
+}
+
 /**
  * Allocate the resource defined by @p rs via @p dev, use it
  * to read the ChipCommon ID register relative to @p chipc_offset,
@@ -429,6 +462,7 @@ bhnd_read_chipid(device_t dev, struct resource_spec *rs,
     bus_size_t chipc_offset, struct bhnd_chipid *result)
 {
 	struct resource			*res;
+	bhnd_addr_t			 enum_addr;
 	uint32_t			 reg;
 	int				 error, rid, rtype;
 
@@ -442,34 +476,25 @@ bhnd_read_chipid(device_t dev, struct resource_spec *rs,
 		return (ENXIO);
 	}
 
-	/* Fetch the basic chip info */
-	reg = bus_read_4(res, chipc_offset + CHIPC_ID);
-	result->chip_id = CHIPC_GET_ATTR(reg, ID_CHIP);
-	result->chip_pkg = CHIPC_GET_ATTR(reg, ID_PKG);
-	result->chip_rev = CHIPC_GET_ATTR(reg, ID_REV);
-	result->chip_type = CHIPC_GET_ATTR(reg, ID_BUS);
-
-	if (result->chip_rev < CHIPC_NCORES_MINREV) {
-		result->ncores = CHIPC_GET_ATTR(reg, ID_NUMCORE);
-	} else {
-		result->ncores = 0;
-	}
-
 	/* Fetch the enum base address */
 	error = 0;
 	switch (result->chip_type) {
 	case BHND_CHIPTYPE_SIBA:
-		result->enum_addr = BHND_CHIPC_DEFAULT_ADDR;
+		enum_addr = BHND_CHIPC_DEFAULT_ADDR;
 		break;
 	case BHND_CHIPTYPE_BCMA:
-		result->enum_addr = bus_read_4(res, chipc_offset +
-		    CHIPC_EROM_CORE_ADDR);
+		enum_addr = bus_read_4(res, chipc_offset + CHIPC_EROM_CORE_ADDR);
 		break;
 	default:
 		error = ENODEV;
-		break;
+		goto cleanup;
 	}
 
+	/* Fetch the basic chip info */
+	reg = bus_read_4(res, chipc_offset + CHIPC_ID);
+	*result = bhnd_parse_chipid(reg, enum_addr);
+
+cleanup:
 	/* Clean up */
 	bus_release_resource(dev, rtype, rid, res);
 	return (error);

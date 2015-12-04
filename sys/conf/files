@@ -1117,6 +1117,7 @@ dev/bhnd/bcma/bcma_subr.c	optional bhndbus | bcma
 #
 dev/bhnd/siba/siba.c		optional bhndbus | siba
 dev/bhnd/siba/siba_bhndb.c	optional bhndbus | siba bhndb
+dev/bhnd/siba/siba_nexus.c	optional siba_nexus
 dev/bhnd/siba/siba_subr.c	optional bhndbus | siba
 #
 # bhnd core drivers
