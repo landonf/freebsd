@@ -250,7 +250,7 @@ bhndb_read_core_table(struct bhndb_softc *sc, struct bhnd_core_info **cores,
 	drvs = NULL;
 	r = NULL;
 
-	/* Find a usable dynamic register window. */
+	/* Find a dynamic register window capable of 4 byte reads. */
 	cfg = BHNDB_BUS_GET_GENERIC_HWCFG(sc->parent_dev, sc->dev);
 	regwin = bhndb_regwin_find_type(cfg->register_windows,
 	    BHNDB_REGWIN_T_DYN, sizeof(uint32_t));
