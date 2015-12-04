@@ -267,6 +267,7 @@ siba_get_port_addr(device_t dev, device_t child, u_int port_num,
 {
 	struct siba_devinfo		*dinfo;
 	struct resource_list_entry	*rle;
+
 	/* delegate non-bus-attached devices to our parent */
 	if (device_get_parent(child) != dev) {
 		return (BHND_GET_PORT_ADDR(device_get_parent(dev), child,
