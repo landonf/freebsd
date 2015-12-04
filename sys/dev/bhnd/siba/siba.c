@@ -342,14 +342,16 @@ siba_enum_read4(void *handle, bhnd_addr_t addr)
  * the bus.
  * 
  * @param bus The siba bus.
- * @param chipid The chip identifier.
+ * @param chipid The chip identifier, if known or if the device
+ * does not provide a ChipCommon core. May be NULL otherwise.
  */
 int
 siba_add_children(device_t bus, const struct bhnd_chipid *chipid)
 {
 	struct bhnd_bus_ctx	 bus_ctx;
-	struct siba_devinfo	*dinfo;
+	struct bhnd_chipid	 ccid;
 	struct bhnd_core_info	*cores;
+	struct siba_devinfo	*dinfo;
 	device_t		 child;
 	u_int			 num_cores;
 	int			 error;
@@ -366,6 +368,23 @@ siba_add_children(device_t bus, const struct bhnd_chipid *chipid)
 			.write4 = NULL
 		}
 	};
+
+	/* If not provided by our caller, read the chip ID now. */
+	if (chipid == NULL) {
+		struct resource_spec rs = {
+			.rid = 0,
+			.type = SYS_RES_MEMORY,
+			.flags = RF_ACTIVE,
+		};
+
+		error = bhnd_read_chipid(bus, &rs, SIBA_ENUM_ADDR, &ccid);
+		if (error) {
+			device_printf(bus, "failed to read bus chipid\n");
+			return (error);
+		}
+
+		chipid = &ccid;
+	}
 
 	/* Parse the core table */
 	error = BHND_READ_CORE_TABLE(device_get_driver(bus), chipid, &bus_ctx,

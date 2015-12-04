@@ -487,9 +487,8 @@ bhndb_read_chipid(struct bhndb_softc *sc, struct bhnd_chipid *result)
 	const struct bhnd_chipid	*parent_cid;
 	const struct bhndb_hwcfg	*cfg;
 	const struct bhndb_regwin	*cc_win;
-	struct resource			*res_mem;
-	uint32_t			 reg;
-	int				 error, rid, rtype;
+	struct resource_spec		 rs;
+	int				 error;
 
 	/* Let our parent device override the discovery process */
 	parent_cid = BHNDB_BUS_GET_CHIPID(sc->parent_dev, sc->dev);
@@ -498,12 +497,9 @@ bhndb_read_chipid(struct bhndb_softc *sc, struct bhnd_chipid *result)
 		return (0);
 	}
 
-	/* Otherwise, we'll need to use our generic hardware configuration
-	 * to find a valid window and perform the read. */
-	cfg = BHNDB_BUS_GET_GENERIC_HWCFG(sc->parent_dev, sc->dev);
-
 	/* Try to find a register window we can use to map the first
 	 * CHIPC_CHIPID_SIZE of ChipCommon registers. */
+	cfg = BHNDB_BUS_GET_GENERIC_HWCFG(sc->parent_dev, sc->dev);
 	cc_win = bhndb_regwin_find_core_or_dyn(cfg->register_windows,
 	    BHND_DEVCLASS_CC, 0, 0, 0, CHIPC_CHIPID_SIZE);
 	if (cc_win == NULL) {
@@ -511,8 +507,8 @@ bhndb_read_chipid(struct bhndb_softc *sc, struct bhnd_chipid *result)
 		return (0);
 	}
 
-	/* If only a generic dynamic register window was found, we can assume
-	 * the default ChipCommon address is valid. */
+	/* We can assume a device without a static ChipCommon window uses the
+	 * default ChipCommon address. */
 	if (cc_win->win_type == BHNDB_REGWIN_T_DYN) {
 		error = BHNDB_SET_WINDOW_ADDR(sc->dev, cc_win,
 		    BHND_CHIPC_DEFAULT_ADDR);
@@ -523,47 +519,14 @@ bhndb_read_chipid(struct bhndb_softc *sc, struct bhnd_chipid *result)
 		}
 	}
 
-	/* Allocate the ChipCommon window resource and fetch the chipid data */
-	rid = cc_win->res.rid;
-	rtype = cc_win->res.type;
-	res_mem = bus_alloc_resource_any(sc->parent_dev, rtype, &rid, RF_ACTIVE);
-	if (res_mem == NULL) {
-		device_printf(sc->dev,
-		    "failed to allocate bhndb chipc resource\n");
-		return (ENXIO);
-	}
+	/* Let the default bhnd implemenation alloc/release the resource and
+	 * perform the read */
+	rs.type = cc_win->res.type;
+	rs.rid = cc_win->res.rid;
+	rs.flags = RF_ACTIVE;
 
-	/* Fetch the basic chip info */
-	reg = bus_read_4(res_mem, cc_win->win_offset + CHIPC_ID);
-	result->chip_id = CHIPC_GET_ATTR(reg, ID_CHIP);
-	result->chip_pkg = CHIPC_GET_ATTR(reg, ID_PKG);
-	result->chip_rev = CHIPC_GET_ATTR(reg, ID_REV);
-	result->chip_type = CHIPC_GET_ATTR(reg, ID_BUS);
-
-	if (result->chip_rev < CHIPC_NCORES_MINREV) {
-		result->ncores = CHIPC_GET_ATTR(reg, ID_NUMCORE);
-	} else {
-		result->ncores = 0;
-	}
-
-	/* Fetch the enum base address */
-	error = 0;
-	switch (result->chip_type) {
-	case BHND_CHIPTYPE_SIBA:
-		result->enum_addr = BHND_CHIPC_DEFAULT_ADDR;
-		break;
-	case BHND_CHIPTYPE_BCMA:
-		result->enum_addr = bus_read_4(res_mem, cc_win->win_offset +
-		    CHIPC_EROM_CORE_ADDR);
-		break;
-	default:
-		error = ENODEV;
-		break;
-	}
-
-	/* Clean up */
-	bus_release_resource(sc->parent_dev, rtype, rid, res_mem);
-	return (error);
+	return (bhnd_read_chipid(sc->parent_dev, &rs, cc_win->win_offset,
+	    result));
 }
 
 /**

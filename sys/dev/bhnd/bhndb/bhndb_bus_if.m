@@ -83,8 +83,10 @@ METHOD const struct bhndb_hwcfg * get_generic_hwcfg {
 } DEFAULT bhndb_null_get_generic_hwcfg;
 
 /**
- * Return the chip identification information to be used by @p child if the
- * device does not include a ChipCommon core. Otherwise, return NULL.
+ * Provide chip identification information to be used by a @p child during
+ * device enumeration.
+ * 
+ * May return NULL if the device includes a ChipCommon core.
  *
  * @param dev The parent device.
  * @param child The attached bhndb device.

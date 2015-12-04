@@ -110,6 +110,12 @@ bool				 bhnd_device_matches(device_t dev,
 
 struct bhnd_core_info		 bhnd_get_core_info(device_t dev);
 
+int				 bhnd_read_chipid(device_t dev,
+				     struct resource_spec *rs,
+				     bus_size_t chipc_offset,
+				     struct bhnd_chipid *result);
+
+
 /**
  * Return true if @p dev is serving as a host bridge for its parent bhnd
  * bus.

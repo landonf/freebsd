@@ -34,7 +34,12 @@ __FBSDID("$FreeBSD$");
 #include <sys/bus.h>
 
 #include <machine/bus.h>
+#include <sys/rman.h>
+#include <machine/resource.h>
 
+#include <dev/bhnd/cores/bhnd_chipcreg.h>
+
+#include "bhndreg.h"
 #include "bhndvar.h"
 
 /* BHND core device description table. */
@@ -404,4 +409,68 @@ bhnd_device_matches(device_t dev, const struct bhnd_core_match *desc)
 	};
 
 	return bhnd_core_matches(&ci, desc);
+}
+
+/**
+ * Allocate the resource defined by @p rs via @p dev, use it
+ * to read the ChipCommon ID register relative to @p chipc_offset,
+ * then release the resource.
+ * 
+ * @param dev The device owning @p rs.
+ * @param rs A resource spec that encompasses the ChipCommon register block.
+ * @param chipc_offset The offset of the ChipCommon registers within @p rs.
+ * @param[out] result the chip identification data.
+ * 
+ * @retval 0 success
+ * @retval non-zero if the ChipCommon identification data could not be read.
+ */
+int
+bhnd_read_chipid(device_t dev, struct resource_spec *rs,
+    bus_size_t chipc_offset, struct bhnd_chipid *result)
+{
+	struct resource			*res;
+	uint32_t			 reg;
+	int				 error, rid, rtype;
+
+	/* Allocate the ChipCommon window resource and fetch the chipid data */
+	rid = rs->rid;
+	rtype = rs->type;
+	res = bus_alloc_resource_any(dev, rtype, &rid, RF_ACTIVE);
+	if (res == NULL) {
+		device_printf(dev,
+		    "failed to allocate bhnd chipc resource\n");
+		return (ENXIO);
+	}
+
+	/* Fetch the basic chip info */
+	reg = bus_read_4(res, chipc_offset + CHIPC_ID);
+	result->chip_id = CHIPC_GET_ATTR(reg, ID_CHIP);
+	result->chip_pkg = CHIPC_GET_ATTR(reg, ID_PKG);
+	result->chip_rev = CHIPC_GET_ATTR(reg, ID_REV);
+	result->chip_type = CHIPC_GET_ATTR(reg, ID_BUS);
+
+	if (result->chip_rev < CHIPC_NCORES_MINREV) {
+		result->ncores = CHIPC_GET_ATTR(reg, ID_NUMCORE);
+	} else {
+		result->ncores = 0;
+	}
+
+	/* Fetch the enum base address */
+	error = 0;
+	switch (result->chip_type) {
+	case BHND_CHIPTYPE_SIBA:
+		result->enum_addr = BHND_CHIPC_DEFAULT_ADDR;
+		break;
+	case BHND_CHIPTYPE_BCMA:
+		result->enum_addr = bus_read_4(res, chipc_offset +
+		    CHIPC_EROM_CORE_ADDR);
+		break;
+	default:
+		error = ENODEV;
+		break;
+	}
+
+	/* Clean up */
+	bus_release_resource(dev, rtype, rid, res);
+	return (error);
 }
