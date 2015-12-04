@@ -79,6 +79,9 @@ enum {
 	BHND_PROBE_ORDER_LAST		= 30,	/**< probe last */
 };
 
+/* forward declaration; private to bhndvar.h */
+struct bhnd_bus_ctx;
+
 /**
  * Chip Identification
  * 
@@ -112,15 +115,6 @@ struct bhnd_resource {
 					 *   bus window remapping before it
 					 *   is MMIO accessible. */
 };
-
-
-/** bhnd(4) direct bus I/O switch table. Unsupported operations may be
- *  initialized to NULL. */
-struct bhnd_iosw {
-	uint32_t (*read4)(void *handle, bhnd_addr_t addr);
-	void (*write4)(void *handle, bhnd_addr_t addr, uint32_t value);
-};
-
 
 /**
  * A bhnd(4) core descriptor.

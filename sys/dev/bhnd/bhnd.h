@@ -77,8 +77,14 @@ BHND_ACCESSOR(core_unit,	CORE_UNIT,	int);
 #undef	BHND_ACCESSOR
 
 const char			*bhnd_vendor_name(uint16_t vendor);
-const char 			*bhnd_core_name(uint16_t vendor, uint16_t device);
-bhnd_devclass_t			 bhnd_core_class(uint16_t vendor, uint16_t device);
+const char 			*bhnd_find_core_name(uint16_t vendor,
+				     uint16_t device);
+bhnd_devclass_t			 bhnd_find_core_class(uint16_t vendor,
+				     uint16_t device);
+
+const char			*bhnd_core_name(const struct bhnd_core_info *ci);
+bhnd_devclass_t			 bhnd_core_class(const struct bhnd_core_info *ci);
+
 
 device_t			 bhnd_match_child(device_t dev,
 				     const struct bhnd_core_match *desc);

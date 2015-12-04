@@ -169,7 +169,7 @@ bhnd_find_core_desc(uint16_t vendor, uint16_t device)
  * @param device The core identifier.
  */
 const char *
-bhnd_core_name(uint16_t vendor, uint16_t device)
+bhnd_find_core_name(uint16_t vendor, uint16_t device)
 {
 	const struct bhnd_core_desc *desc;
 	
@@ -186,7 +186,7 @@ bhnd_core_name(uint16_t vendor, uint16_t device)
  * @param device The core identifier.
  */
 bhnd_devclass_t
-bhnd_core_class(uint16_t vendor, uint16_t device)
+bhnd_find_core_class(uint16_t vendor, uint16_t device)
 {
 	const struct bhnd_core_desc *desc;
 	
@@ -196,6 +196,27 @@ bhnd_core_class(uint16_t vendor, uint16_t device)
 	return desc->class;
 }
 
+/**
+ * Return a human-readable name for a BHND core.
+ * 
+ * @param ci The core's info record.
+ */
+const char *
+bhnd_core_name(const struct bhnd_core_info *ci)
+{
+	return bhnd_find_core_name(ci->vendor, ci->device);
+}
+
+/**
+ * Return the device class for a BHND core.
+ * 
+ * @param ci The core's info record.
+ */
+bhnd_devclass_t
+bhnd_core_class(const struct bhnd_core_info *ci)
+{
+	return bhnd_find_core_class(ci->vendor, ci->device);
+}
 
 /**
  * Initialize a core info record with data from from a bhnd-attached @p dev.
@@ -357,7 +378,7 @@ bhnd_core_matches(const struct bhnd_core_info *core,
 		return false;
 
 	if (desc->class != BHND_DEVCLASS_INVALID &&
-	    desc->class != bhnd_core_class(core->vendor, core->device))
+	    desc->class != bhnd_core_class(core))
 		return false;
 
 	return true;

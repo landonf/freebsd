@@ -65,16 +65,15 @@ bcma_detach(device_t dev)
 }
 
 static int
-bcma_read_core_table(kobj_class_t driver, device_t dev,
-    const struct bhnd_chipid *chipid, void *ioh,
-    const struct bhnd_iosw *iosw, struct bhnd_core_info **cores,
+bcma_read_core_table(kobj_class_t driver, const struct bhnd_chipid *chipid,
+    const struct bhnd_bus_ctx *bus_ctx, struct bhnd_core_info **cores,
     u_int *num_cores)
 {
 
 	struct bcma_erom	erom;
 	int			error;
 
-	if ((error = bcma_erom_open(dev, ioh, iosw, chipid->enum_addr, &erom)))
+	if ((error = bcma_erom_open(bus_ctx, chipid->enum_addr, &erom)))
 		return (error);
 
 	return (bcma_erom_get_core_info(&erom, cores, num_cores));
@@ -100,13 +99,14 @@ bcma_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 		*result = cfg->revid;
 		return (0);
 	case BHND_IVAR_DEVICE_CLASS:
-		*result = bhnd_core_class(cfg->vendor, cfg->device);
+		*result = bhnd_find_core_class(cfg->vendor, cfg->device);
 		return (0);
 	case BHND_IVAR_VENDOR_NAME:
 		*result = (uintptr_t) bhnd_vendor_name(cfg->vendor);
 		return (0);
 	case BHND_IVAR_DEVICE_NAME:
-		*result = (uintptr_t) bhnd_core_name(cfg->vendor, cfg->device);
+		*result = (uintptr_t) bhnd_find_core_name(cfg->vendor,
+		    cfg->device);
 		return (0);
 	case BHND_IVAR_CORE_INDEX:
 		*result = cfg->core_index;
@@ -268,19 +268,26 @@ bcma_add_children(device_t bus, struct resource *erom_res, bus_size_t erom_offse
 	struct bcma_erom	 erom;
 	struct bcma_corecfg	*corecfg;
 	struct bcma_devinfo	*dinfo;
-	struct bhnd_iosw	 iosw;
+	struct bhnd_bus_ctx	 bus_ctx;
 	device_t		 child;
 	int			 error;
 	
 	dinfo = NULL;
 	corecfg = NULL;
-	iosw = (struct bhnd_iosw) {
-		.read4	= bcma_erom_read4,
-		.write4	= NULL
+
+	/* Initialize bus direct I/O context */
+	bus_ctx = (struct bhnd_bus_ctx) {
+		.dev = bus,
+		.context = erom_res,
+		.ops = &(struct bhnd_bus_ops) {
+			.read4	= bcma_erom_read4,
+			.write4	= NULL
+		}
 	};
 
 	/* Initialize our reader */
-	if ((error = bcma_erom_open(bus, erom_res, &iosw, erom_offset, &erom)))
+	error = bcma_erom_open(&bus_ctx, erom_offset, &erom);
+	if (error)
 		return (error);
 
 	/* Add all cores. */

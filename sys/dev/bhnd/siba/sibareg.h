@@ -49,7 +49,7 @@
 #define	SIBA_ENUM_SIZE		0x00100000		/**< size of the enumeration space */ 
 #define	SIBA_CORE_SIZE		0x1000			/**< per-core register block size */
 #define	SIBA_MAX_CORES	\
-    (SIBA_ENUM_SIZE/SIBA_CORE_SIZE)		/**< Maximum number of cores */
+    (SIBA_ENUM_SIZE/SIBA_CORE_SIZE)			/**< Maximum number of cores */
 
 /**< Evaluates to the bus address of the @p idx core register block */
 #define	SIBA_CORE_ADDR(idx)	\
@@ -247,8 +247,5 @@
 	(SIBA_REG_GET((sbidh), IDH_RCE) | ((sbidh) & SIBA_IDH_RC_MASK))
 
 #define	SIBA_COMMIT		0xfd8		/* update buffered registers value */
-
-/* vendor codes */
-#define	SIBA_VEND_BCM		0x4243		/* Broadcom's SB vendor code */
 
 #endif /* _BHND_SIBA_SIBAREG_ */

@@ -179,8 +179,10 @@ bhndb_hw_matches(struct bhnd_core_info *cores,
 	return (true);
 }
 
-/* regwin-based i/o implementation for bhndb_read_core_table() */
-struct bhndb_regwin_ioh {
+/*
+ * regwin-based bus i/o implementation for bhndb_read_core_table()
+ */
+struct bhnd_regwin_bus_ctx {
 	struct bhndb_softc		*sc;
 	struct resource			*r;
 	const struct bhndb_regwin	*regwin;
@@ -188,38 +190,33 @@ struct bhndb_regwin_ioh {
 };
 
 static uint32_t
-bhnd_iosw_regwin_read4(void *handle, bhnd_addr_t addr)
+bhndb_regwin_bus_read4(void *handle, bhnd_addr_t addr)
 {
-	struct bhndb_regwin_ioh		*ioh;
+	struct bhnd_regwin_bus_ctx	*ctx;
 	struct bhndb_softc		*sc;
 	const struct bhndb_regwin	*rw;
 	bus_addr_t			 base, offset;
 	
-	ioh = (struct bhndb_regwin_ioh *) handle;
-	sc = ioh->sc;
-	rw = ioh->regwin;
+	ctx = (struct bhnd_regwin_bus_ctx *) handle;
+	sc = ctx->sc;
+	rw = ctx->regwin;
 
 	/* Adjust window on-demand */
-	if (addr < ioh->addr || addr > ioh->addr + rw->win_size) {
+	if (addr < ctx->addr || addr > ctx->addr + rw->win_size) {
 		/* maintain window alignment */
 		base = addr - (addr % rw->win_size);
 
-		if (BHNDB_SET_WINDOW_ADDR(sc->dev, ioh->regwin, base))
+		if (BHNDB_SET_WINDOW_ADDR(sc->dev, ctx->regwin, base))
 			return (UINT32_MAX);
 
-		ioh->addr = base;
+		ctx->addr = base;
 	}
 
 
 	/* Perform the read, relative to the resource's window mapping. */
-	offset = rw->win_offset + (addr - ioh->addr);
-	return (bus_read_4(ioh->r, offset));
+	offset = rw->win_offset + (addr - ctx->addr);
+	return (bus_read_4(ctx->r, offset));
 }
-
-static const struct bhnd_iosw bhndb_iosw_regwin = {
-	.read4 = &bhnd_iosw_regwin_read4,
-	.write4 = NULL
-};
 
 /**
  * Look for a bhnd(4)-compatible bus driver capable of reading our
@@ -238,7 +235,7 @@ bhndb_read_core_table(struct bhndb_softc *sc, struct bhnd_core_info **cores,
 {
 	const struct bhndb_hwcfg	*cfg;
 	const struct bhndb_regwin	*regwin;
-	struct bhndb_regwin_ioh		 ioh;
+	struct bhnd_bus_ctx		bus_ctx;
 	struct resource			*r;
 	driver_t			**drvs;
 	int				 num_drvs;
@@ -267,24 +264,33 @@ bhndb_read_core_table(struct bhndb_softc *sc, struct bhnd_core_info **cores,
 		return (ENXIO);
 	}
 
-	/* Configure our I/O callback handle */
-	ioh = (struct bhndb_regwin_ioh) {
-		.sc = sc,
-		.r = r,
-		.regwin = regwin,
-		.addr = sc->chipid.enum_addr
-	};
-	if ((error = BHNDB_SET_WINDOW_ADDR(sc->dev, regwin, ioh.addr)))
+	/* Initialize the register window */
+	error = BHNDB_SET_WINDOW_ADDR(sc->dev, regwin, sc->chipid.enum_addr);
+	if (error)
 		goto cleanup;
 
+	/* Configure our bus I/O context */
+	bus_ctx = (struct bhnd_bus_ctx) {
+		.dev = sc->dev,
+		.ops = &(struct bhnd_bus_ops) {
+			.read4 = bhndb_regwin_bus_read4,
+			.write4 = NULL,
+		},
+		.context = &(struct bhnd_regwin_bus_ctx) {
+			.sc = sc,
+			.r = r,
+			.regwin = regwin,
+			.addr = sc->chipid.enum_addr
+		}
+	};
 
-	/* Look for the first driver that'll handle our core table */	
+	/* Look for the first driver that'll handle our core table */
 	if ((error = devclass_get_drivers(bhndb_devclass, &drvs, &num_drvs)))
 		goto cleanup;
 
 	for (int i = 0; i < num_drvs; i++) {
-		error = BHND_READ_CORE_TABLE(drvs[i], sc->dev, &sc->chipid,
-		    &ioh, &bhndb_iosw_regwin, cores, count);
+		error = BHND_READ_CORE_TABLE(drvs[i], &sc->chipid, &bus_ctx,
+		    cores, count);
 		if (!error)
 			break;
 	}
@@ -847,7 +853,7 @@ bhndb_alloc_resource(device_t dev, device_t child, int type,
 	}
 
 	/* Validate resource addresses */
-	if (start > end || end < start || count > (end - start))
+	if (start > end || end < start || count > ((end - start) + 1))
 		return (NULL);
 	
 	/* Fetch the resource manager */

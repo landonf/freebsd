@@ -226,7 +226,7 @@ bwn_pci_is_core_populated(device_t dev, device_t child,
 
 	sc = device_get_softc(dev);
 
-	switch (bhnd_core_class(core->vendor, core->device)) {
+	switch (bhnd_core_class(core)) {
 	case BHND_DEVCLASS_WLAN:
 		if (core->unit > 0)
 			return ((sc->quirks & BWN_QUIRK_WLAN_DUALCORE) != 0);

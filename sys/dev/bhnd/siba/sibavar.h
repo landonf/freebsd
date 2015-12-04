@@ -51,7 +51,11 @@ int			 siba_probe(device_t dev);
 int			 siba_attach(device_t dev);
 int			 siba_detach(device_t dev);
 
-int			 siba_add_children(device_t bus);
+uint16_t		 siba_get_bhnd_mfgid(uint16_t ocp_vendor);
+uint8_t			 siba_get_ncores(const struct bhnd_chipid *chipid);
+
+int			 siba_add_children(device_t bus,
+			     const struct bhnd_chipid *chipid);
 
 struct siba_devinfo	*siba_alloc_dinfo(device_t dev,
 			     const struct bhnd_core_info *core_info);

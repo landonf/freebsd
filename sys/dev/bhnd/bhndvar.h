@@ -51,6 +51,29 @@ DECLARE_CLASS(bhnd_driver);
  */
 struct bhnd_softc {};
 
+/** 
+ * bhnd(4) direct bus I/O operations; used to support reading/writing
+ * of arbitrary bus addresses prior to full attachment of the bus and
+ * initialization of resource management.
+ * 
+ * Unsupported operations may be initialized to NULL.
+ */
+struct bhnd_bus_ops {
+	uint32_t (*read4)(void *ctx, bhnd_addr_t addr);
+	void (*write4)(void *ctx, bhnd_addr_t addr, uint32_t value);
+};
+
+/**
+ * bhnd(4) direct bus I/O context; used in combination with bhnd_bus_ops to
+ * support reading/writing of arbitrary bus addresses prior to full attachment
+ * of the bus and initialization of resource management.
+ */
+struct bhnd_bus_ctx {
+	device_t			 dev;		/**< owning device */
+	void				*context;	/**< i/o context */
+	const struct bhnd_bus_ops	*ops;		/**< i/o ops */
+};
+
 int			 bhnd_generic_print_child(device_t dev,
 			     device_t child);
 void			 bhnd_generic_probe_nomatch(device_t dev,

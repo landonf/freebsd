@@ -41,7 +41,75 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/bhndvar.h>
 
+#include "sibareg.h"
 #include "sibavar.h"
+
+/**
+ * Map a siba(4) OCP vendor code to its corresponding JEDEC JEP-106 vendor
+ * code.
+ * 
+ * @param ocp_vendor An OCP vendor code.
+ * @return The BHND_MFGID constant corresponding to @p ocp_vendor, or
+ * BHND_MFGID_INVALID if the OCP vendor is unknown.
+ */
+uint16_t
+siba_get_bhnd_mfgid(uint16_t ocp_vendor)
+{
+	switch (ocp_vendor) {
+	case OCP_VENDOR_BCM:
+		return (BHND_MFGID_BCM);
+	default:
+		return (BHND_MFGID_INVALID);
+	}
+}
+
+
+/**
+ * Determine the number of cores available on the bus.
+ * 
+ * Some devices require a hardcoded core count:
+ * - Earlier ChipCommon revisions (chip_rev <= 4) did not include a core count.
+ * - Earlier siba(4) devices did not include a ChipCommon core at all.
+ */
+uint8_t
+siba_get_ncores(const struct bhnd_chipid *chipid)
+{
+	/* Use the real count if available. */
+	if (chipid->ncores > 0)
+		return (chipid->ncores);
+
+	/*
+	 * The magic constants below were copied from the previous
+	 * siba driver implementation; their correctness has
+	 * not been verified.
+	 */
+	switch (chipid->chip_id) {
+		case 0x4401:	/* BCM4401 PCI ID? */
+		case BHND_CHIPID_BCM4402:
+			return (3);
+
+		case 0x4301:	/* BCM4031 PCI ID? */
+		case 0x4307:	/* BCM4307 PCI ID? */
+			return (5);
+			
+		case BHND_CHIPID_BCM4306:
+			return (6);
+			
+		case BHND_CHIPID_BCM5365:
+			return (7);
+
+		case 0x4310:	/* ??? */
+			return (8);
+
+		case 0x4610:	/* BCM4610 Sentry5 PCI Card? */
+		case BHND_CHIPID_BCM4704:
+		case BHND_CHIPID_BCM4710:
+			return (9);
+
+		default:
+			return (0);
+	}
+}
 
 /**
  * Allocate and initialize new device info structure, copying the
@@ -62,7 +130,6 @@ siba_alloc_dinfo(device_t bus, const struct bhnd_core_info *core_info)
 	dinfo->core_info = *core_info;
 
 	resource_list_init(&dinfo->resources);
-	// TODO - populate resource list
 
 	return dinfo;
 }

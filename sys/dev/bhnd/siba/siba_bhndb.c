@@ -61,11 +61,12 @@ siba_bhndb_probe(device_t dev)
 static int
 siba_bhndb_attach(device_t dev)
 {
-	int error;
+	struct bhnd_chipid	chipid;
+	int			error;
 
 	/* Enumerate our children. */
-	// TODO
-	if ((error = siba_add_children(dev)))
+	chipid = BHNDB_GET_CHIPID(device_get_parent(dev), dev);
+	if ((error = siba_add_children(dev, &chipid)))
 		return (error);
 
 	/* Call our superclass' implementation */
