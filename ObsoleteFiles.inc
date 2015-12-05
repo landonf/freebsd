@@ -38,6 +38,44 @@
 #   xargs -n1 | sort | uniq -d;
 # done
 
+# 20151115: added missing _test suffix on multiple tests in lib/libc
+OLD_FILES+=usr/tests/lib/libc/c063/faccessat
+OLD_FILES+=usr/tests/lib/libc/c063/fchmodat
+OLD_FILES+=usr/tests/lib/libc/c063/fchownat
+OLD_FILES+=usr/tests/lib/libc/c063/fexecve
+OLD_FILES+=usr/tests/lib/libc/c063/fstatat
+OLD_FILES+=usr/tests/lib/libc/c063/linkat
+OLD_FILES+=usr/tests/lib/libc/c063/mkdirat
+OLD_FILES+=usr/tests/lib/libc/c063/mkfifoat
+OLD_FILES+=usr/tests/lib/libc/c063/mknodat
+OLD_FILES+=usr/tests/lib/libc/c063/openat
+OLD_FILES+=usr/tests/lib/libc/c063/readlinkat
+OLD_FILES+=usr/tests/lib/libc/c063/renameat
+OLD_FILES+=usr/tests/lib/libc/c063/symlinkat
+OLD_FILES+=usr/tests/lib/libc/c063/unlinkat
+OLD_FILES+=usr/tests/lib/libc/string/memchr
+OLD_FILES+=usr/tests/lib/libc/string/memcpy
+OLD_FILES+=usr/tests/lib/libc/string/memmem
+OLD_FILES+=usr/tests/lib/libc/string/memset
+OLD_FILES+=usr/tests/lib/libc/string/strcat
+OLD_FILES+=usr/tests/lib/libc/string/strchr
+OLD_FILES+=usr/tests/lib/libc/string/strcmp
+OLD_FILES+=usr/tests/lib/libc/string/strcpy
+OLD_FILES+=usr/tests/lib/libc/string/strcspn
+OLD_FILES+=usr/tests/lib/libc/string/strerror
+OLD_FILES+=usr/tests/lib/libc/string/strlen
+OLD_FILES+=usr/tests/lib/libc/string/strpbrk
+OLD_FILES+=usr/tests/lib/libc/string/strrchr
+OLD_FILES+=usr/tests/lib/libc/string/strspn
+OLD_FILES+=usr/tests/lib/libc/string/swab
+# 20151025: remove links to removed/unimplemented mbuf(9) macros
+OLD_FILES+=usr/share/man/man9/MEXT_ADD_REF.9.gz
+OLD_FILES+=usr/share/man/man9/MEXTFREE.9.gz
+OLD_FILES+=usr/share/man/man9/MEXT_IS_REF.9.gz
+OLD_FILES+=usr/share/man/man9/MEXT_REM_REF.9.gz
+OLD_FILES+=usr/share/man/man9/MFREE.9.gz
+# 20151023: unused sgsmsg utility is removed
+OLD_FILES+=usr/bin/sgsmsg
 # 20150506
 OLD_FILES+=usr/share/man/man9/NDHASGIANT.9.gz
 # 20141223: remove in6_gif.h and in_gif.h
@@ -6403,6 +6441,12 @@ OLD_LIBS+=usr/lib/libposix1e.so.2
 OLD_LIBS+=usr/lib/libskey.so.2
 OLD_LIBS+=usr/lib/libusbhid.so.0
 OLD_LIBS+=usr/lib/libvgl.so.2
+# 20030218: OpenSSL 0.9.7 import
+OLD_FILES+=usr/include/des.h
+OLD_FILES+=usr/lib/libdes.a
+OLD_FILES+=usr/lib/libdes.so
+OLD_LIBS+=usr/lib/libdes.so.3
+OLD_FILES+=usr/lib/libdes_p.a
 # 200302XX
 OLD_LIBS+=usr/lib/libacl.so.3
 OLD_LIBS+=usr/lib/libasn1.so.5
@@ -6461,6 +6505,8 @@ OLD_LIBS+=usr/lib/libtermcap.so.2
 OLD_LIBS+=usr/lib/libutil.so.2
 OLD_LIBS+=usr/lib/libvgl.so.1
 OLD_LIBS+=usr/lib/libwrap.so.2
+# 19991216
+OLD_FILES+=usr/sbin/xntpdc
 # 199909XX
 OLD_LIBS+=usr/lib/libc_r.so.3
 # ???

@@ -3,7 +3,6 @@
 MAN=
 
 .include <bsd.own.mk>
-.include <bsd.own.mk>
 
 .PATH: ${.CURDIR}/../../../contrib/ntp/ntpdc
 
@@ -36,8 +35,5 @@ CLEANFILES+= .version version.c
 
 version.c:
 	sh -e ${.CURDIR}/../scripts/mkver ntpdc
-
-afterinstall:
-	rm -f ${DESTDIR}/usr/sbin/xntpdc
 
 .include <bsd.prog.mk>

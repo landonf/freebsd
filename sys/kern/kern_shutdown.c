@@ -139,6 +139,10 @@ static int show_busybufs = 1;
 SYSCTL_INT(_kern_shutdown, OID_AUTO, show_busybufs, CTLFLAG_RW,
 	&show_busybufs, 0, "");
 
+int suspend_blocked = 0;
+SYSCTL_INT(_kern, OID_AUTO, suspend_blocked, CTLFLAG_RW,
+	&suspend_blocked, 0, "Block suspend due to a pending shutdown");
+
 /*
  * Variable panicstr contains argument to first call to panic; used as flag
  * to indicate that the kernel has already called panic.
@@ -839,9 +843,14 @@ SYSCTL_STRING(_kern_shutdown, OID_AUTO, dumpdevname, CTLFLAG_RD,
 
 /* Registration of dumpers */
 int
-set_dumper(struct dumperinfo *di, const char *devname)
+set_dumper(struct dumperinfo *di, const char *devname, struct thread *td)
 {
 	size_t wantcopy;
+	int error;
+
+	error = priv_check(td, PRIV_SETDUMPER);
+	if (error != 0)
+		return (error);
 
 	if (di == NULL) {
 		bzero(&dumper, sizeof dumper);

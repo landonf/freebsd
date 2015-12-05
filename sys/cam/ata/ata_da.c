@@ -233,13 +233,28 @@ static struct ada_quirk_entry ada_quirk_table[] =
 		/*quirks*/ADA_Q_4K
 	},
 	{
+		/* WDC Caviar Red Advanced Format (4k) drives */
+		{ T_DIRECT, SIP_MEDIA_FIXED, "*", "WDC WD????CX*", "*" },
+		/*quirks*/ADA_Q_4K
+	},
+	{
 		/* WDC Caviar Green Advanced Format (4k) drives */
 		{ T_DIRECT, SIP_MEDIA_FIXED, "*", "WDC WD????RS*", "*" },
 		/*quirks*/ADA_Q_4K
 	},
 	{
-		/* WDC Caviar Green Advanced Format (4k) drives */
+		/* WDC Caviar Green/Red Advanced Format (4k) drives */
 		{ T_DIRECT, SIP_MEDIA_FIXED, "*", "WDC WD????RX*", "*" },
+		/*quirks*/ADA_Q_4K
+	},
+	{
+		/* WDC Caviar Red Advanced Format (4k) drives */
+		{ T_DIRECT, SIP_MEDIA_FIXED, "*", "WDC WD??????CX*", "*" },
+		/*quirks*/ADA_Q_4K
+	},
+	{
+		/* WDC Caviar Black Advanced Format (4k) drives */
+		{ T_DIRECT, SIP_MEDIA_FIXED, "*", "WDC WD??????EX*", "*" },
 		/*quirks*/ADA_Q_4K
 	},
 	{
@@ -626,8 +641,6 @@ static struct periph_driver adadriver =
 };
 
 PERIPHDRIVER_DECLARE(ada, adadriver);
-
-static MALLOC_DEFINE(M_ATADA, "ata_da", "ata_da buffers");
 
 static int
 adaopen(struct disk *dp)
@@ -1357,12 +1370,9 @@ adaregister(struct cam_periph *periph, void *arg)
 
 	dp = &softc->params;
 	snprintf(announce_buf, sizeof(announce_buf),
-		"%juMB (%ju %u byte sectors: %dH %dS/T %dC)",
-		(uintmax_t)(((uintmax_t)dp->secsize *
-		dp->sectors) / (1024*1024)),
-		(uintmax_t)dp->sectors,
-		dp->secsize, dp->heads,
-		dp->secs_per_track, dp->cylinders);
+	    "%juMB (%ju %u byte sectors)",
+	    ((uintmax_t)dp->secsize * dp->sectors) / (1024 * 1024),
+	    (uintmax_t)dp->sectors, dp->secsize);
 	xpt_announce_periph(periph, announce_buf);
 	xpt_announce_quirks(periph, softc->quirks, ADA_Q_BIT_STRING);
 	if (legacy_id >= 0)
@@ -1797,6 +1807,16 @@ adadone(struct cam_periph *periph, union ccb *done_ccb)
 
 			TAILQ_INIT(&queue);
 			TAILQ_CONCAT(&queue, &softc->trim_req.bps, bio_queue);
+			/*
+			 * Normally, the xpt_release_ccb() above would make sure
+			 * that when we have more work to do, that work would
+			 * get kicked off. However, we specifically keep
+			 * trim_running set to 0 before the call above to allow
+			 * other I/O to progress when many BIO_DELETE requests
+			 * are pushed down. We set trim_running to 0 and call
+			 * daschedule again so that we don't stall if there are
+			 * no other I/Os pending apart from BIO_DELETEs.
+			 */
 			softc->trim_running = 0;
 			adaschedule(periph);
 			cam_periph_unlock(periph);

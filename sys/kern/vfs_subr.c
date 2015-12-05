@@ -2425,6 +2425,10 @@ vdrop(struct vnode *vp)
  * Drop the hold count of the vnode.  If this is the last reference to
  * the vnode we place it on the free list unless it has been vgone'd
  * (marked VI_DOOMED) in which case we will free it.
+ *
+ * Because the vnode vm object keeps a hold reference on the vnode if
+ * there is at least one resident non-cached page, the vnode cannot
+ * leave the active list without the page cleanup done.
  */
 void
 vdropl(struct vnode *vp)
@@ -2540,11 +2544,13 @@ vinactive(struct vnode *vp, struct thread *td)
 	VI_UNLOCK(vp);
 	/*
 	 * Before moving off the active list, we must be sure that any
-	 * modified pages are on the vnode's dirty list since these will
-	 * no longer be checked once the vnode is on the inactive list.
-	 * Because the vnode vm object keeps a hold reference on the vnode
-	 * if there is at least one resident non-cached page, the vnode
-	 * cannot leave the active list without the page cleanup done.
+	 * modified pages are converted into the vnode's dirty
+	 * buffers, since these will no longer be checked once the
+	 * vnode is on the inactive list.
+	 *
+	 * The write-out of the dirty pages is asynchronous.  At the
+	 * point that VOP_INACTIVE() is called, there could still be
+	 * pending I/O and dirty pages in the object.
 	 */
 	obj = vp->v_object;
 	if (obj != NULL && (obj->flags & OBJ_MIGHTBEDIRTY) != 0) {
@@ -2661,10 +2667,6 @@ loop:
 		 * If FORCECLOSE is set, forcibly close the vnode.
 		 */
 		if (vp->v_usecount == 0 || (flags & FORCECLOSE)) {
-			VNASSERT(vp->v_usecount == 0 ||
-			    vp->v_op != &devfs_specops ||
-			    (vp->v_type != VCHR && vp->v_type != VBLK), vp,
-			    ("device VNODE %p is FORCECLOSED", vp));
 			vgonel(vp);
 		} else {
 			busy++;
@@ -2802,7 +2804,7 @@ unlock:
 /*
  * vgone, with the vp interlock held.
  */
-void
+static void
 vgonel(struct vnode *vp)
 {
 	struct thread *td;
@@ -3840,17 +3842,20 @@ vn_isdisk(struct vnode *vp, int *errp)
 {
 	int error;
 
+	if (vp->v_type != VCHR) {
+		error = ENOTBLK;
+		goto out;
+	}
 	error = 0;
 	dev_lock();
-	if (vp->v_type != VCHR)
-		error = ENOTBLK;
-	else if (vp->v_rdev == NULL)
+	if (vp->v_rdev == NULL)
 		error = ENXIO;
 	else if (vp->v_rdev->si_devsw == NULL)
 		error = ENXIO;
 	else if (!(vp->v_rdev->si_devsw->d_flags & D_DISK))
 		error = ENOTBLK;
 	dev_unlock();
+out:
 	if (errp != NULL)
 		*errp = error;
 	return (error == 0);
