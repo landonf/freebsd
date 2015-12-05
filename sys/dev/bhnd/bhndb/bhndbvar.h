@@ -60,30 +60,9 @@ int	bhndb_generic_read_ivar(device_t dev, device_t child, int index,
 int	bhndb_generic_write_ivar(device_t dev, device_t child, int index,
 	    uintptr_t value);
 
-/**
- * BHNDB resource allocation priorities.
- */
-enum {
-	/** No direct resources should ever be allocated for this core. */
-	BHNDB_RES_PRIO_NONE	= 0,
-
-	/** Allocate a direct resource if available after serving all other
-	  * higher-priority requests. */
-	BHNDB_RES_PRIO_LOW	= 100,
-
-	/** Direct resource allocation is preferred. */
-	BHNDB_RES_PRIO_DEFAULT	= 200,
-
-	/** Indirect resource allocation would incur high runtime overhead. */
-	BHNDB_RES_PRIO_CRITICAL	= 300
-};
-
-int				 bhndb_class_resource_prio(bhnd_devclass_t cls);
-
 size_t				 bhndb_regwin_count(
 				     const struct bhndb_regwin *table,
-				     bhndb_regwin_type_t type,
-				     bus_size_t min_size);
+				     bhndb_regwin_type_t type);
 
 const struct bhndb_regwin	*bhndb_regwin_find_type(
 				     const struct bhndb_regwin *table,

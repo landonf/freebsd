@@ -87,7 +87,8 @@ static bool				 bhndb_is_hostb_core(
 static int				 bhndb_init_core_flags(
 					     struct bhndb_softc *sc,
 					     struct bhnd_core_info *cores,
-					     u_int num_cores);
+					     u_int num_cores,
+					     uint8_t **core_flags);
 
 static struct rman			*bhndb_get_rman(struct bhndb_softc *sc,
 					     int type);
@@ -417,7 +418,7 @@ bhndb_init_dw_region_allocator(struct bhndb_softc *sc)
 
 	/* Fetch and verify the dynamic regwin count does not exceed
 	 * what is representable via our freelist bitmask. */
-	sc->dw_count = bhndb_regwin_count(rws, BHNDB_REGWIN_T_DYN, 0);
+	sc->dw_count = bhndb_regwin_count(rws, BHNDB_REGWIN_T_DYN);
 	if (sc->dw_count >= (8 * sizeof(sc->dw_freelist))) {
 		device_printf(sc->dev, "max dynamic regwin count exceeded\n");
 		return (ENOMEM);
@@ -587,112 +588,33 @@ bhndb_is_hostb_core(struct bhndb_softc *sc, struct bhnd_core_info *cores,
 	return (false);
 }
 
-/* Return the dynamic resource priority for @p core. Used by
- * bhndb_init_core_flags()'s priority sorting. */
-static int
-dynamic_regwin_prio(struct bhndb_softc *sc, const struct bhnd_core_info *core)
-{
-	const struct bhndb_regwin	*rws;
-	bhnd_devclass_t			 devcls;
-	int				 prio;
-
-	KASSERT(core->core_id < sc->num_cores,
-	    ("core index %u out of range %u!", core->core_id, sc->num_cores));
-
-	rws = sc->hw->cfg->register_windows;
-	devcls = bhnd_core_class(core);
-
-	/* Get default priority for this core. */
-	prio = bhndb_class_resource_prio(devcls);
-	
-	/* Disabled cores don't require a dynamic window */
-	if (sc->core_flags[core->core_id] & BHNDB_CF_HW_DISABLED)
-		return (BHNDB_RES_PRIO_NONE);
-
-	/* Cores with static register windows don't need a dynamic window
-	 * NOTE: This assumes cores will only be mapping the first port and
-	 * region. This is true on all known hardware, but if this changes,
-	 * we'll need to track resource priority by (core,port,region) */
-	if (bhndb_regwin_find_core(rws, devcls, core->unit, 0, 0) != NULL)
-		return (BHNDB_RES_PRIO_NONE);
-
-	/* Cores configured for host bridging are managed by the host and
-	 * generally don't require direct register access. */
-	if (sc->core_flags[core->core_id] & BHNDB_CF_HOSTB)
-		return (BHNDB_RES_PRIO_LOW);
-
-	/* The core's class-default priority applies */
-	return (prio);
-}
-
-/* Comparison function used by bhndb_init_core_flags() to perform sorting
- * by dynamic window priority */
-static int
-compare_dynamic_regwin_prio(void *ctx, const void *lhs, const void *rhs) {
-	struct bhndb_softc	*sc;
-	int			 lprio, rprio;
-
-	sc = (struct bhndb_softc *) ctx;
-	
-	lprio = dynamic_regwin_prio(sc, *(struct bhnd_core_info * const *) lhs);
-	rprio = dynamic_regwin_prio(sc, *(struct bhnd_core_info * const *) rhs);
-
-	if (lprio > rprio) {
-		return (-1);
-	} else if (lprio < rprio) {
-		return (1);
-	} else {
-		return (0);
-	}
-}
-
 /**
- * Allocate @p sc's core flags table and initialize it using @p cores.
+ * Allocate a core flag table and initialize it using @p cores.
  * 
- * This computes bridge-level flags for all cores on the device, flagging:
- * - Cores serving as host bridge devices.
- * - Cores with disabled hardware.
- * - Cores granted dynamic register window reservations.
+ * The memory allocated for the table should be freed using
+ * `free(core_flags, M_BHND)`.
  * 
  * @param sc The bridge device state.
  * @param cores A table of enumerated cores.
  * @param num_cores The length of @p cores.
+ * @param core_flags The flags table to be allocated and initialized.
  */
 static int
 bhndb_init_core_flags(struct bhndb_softc *sc, struct bhnd_core_info *cores,
-    u_int num_cores)
+    u_int num_cores, uint8_t **core_flags)
 {
-	struct bhnd_core_info		*core, **core_prio;
-	size_t				 avail_regwin;
-	int				 error;
-
-	error = 0;
-	sc->core_flags = NULL;
-	core_prio = NULL;
-
-	/* Allocate output and state arrays */
-	sc->num_cores = num_cores;
-	sc->core_flags = malloc(sizeof(uint8_t) * num_cores, M_BHND, M_WAITOK);
-	if (sc->core_flags == NULL)
+	*core_flags = malloc(sizeof(uint8_t) * num_cores, M_BHND, M_WAITOK);
+	if (*core_flags == NULL)
 		return (ENOMEM);
 
-	core_prio = malloc(sizeof(*core_prio) * num_cores,  M_BHND, M_WAITOK);
-	if (core_prio == NULL) {
-		error = ENOMEM;
-		goto cleanup;
-	}
-
-	/* Determine basic core flags and populate our priority state  */
 	for (u_int i = 0; i < num_cores; i++) {
+		struct bhnd_core_info	*core;
 		uint8_t			 flags;
 		bhnd_devclass_t		 core_cls;
 
 		core = &cores[i];
 		core_cls = bhnd_core_class(core);
 		flags = 0;
-
-		/* Populate priority array */
-		core_prio[i] = core;
 
 		/* Check for a parent-disabled core */
 		if (BHNDB_BUS_IS_CORE_DISABLED(sc->parent_dev, sc->dev, core))
@@ -707,34 +629,10 @@ bhndb_init_core_flags(struct bhndb_softc *sc, struct bhnd_core_info *cores,
 		}
 
 		/* Save flags */
-		sc->core_flags[i] = flags;
+		(*core_flags)[i] = flags;
 	}
 
-	/* Determine the number of usable register windows. */
-	avail_regwin = bhndb_regwin_count(sc->hw->cfg->register_windows,
-	    BHNDB_REGWIN_T_DYN, BHND_DEFAULT_CORE_SIZE);
-
-	
-	/* Sort cores by their dynamic regwin assignment priority */
-	qsort_r(&core_prio[0], num_cores, sizeof(core_prio[0]),
-	    sc, compare_dynamic_regwin_prio);
-
-	/* Assign DRW reservation flags, saving at least one dynamic register
-	 * window for arbitrary use. */
-	for (u_int i = 0; i < num_cores && avail_regwin > 1; i++) {
-		core = core_prio[i];
-		sc->core_flags[core->core_id] |= BHNDB_CF_DRW_RESERVED;
-		avail_regwin--;
-	}
-
-cleanup:
-	if (error && sc->core_flags != NULL)
-		free(sc->core_flags, M_BHND);
-
-	if (core_prio != NULL)
-		free(core_prio, M_BHND);
-
-	return (error);
+	return (0);
 }
 
 /**
@@ -745,7 +643,6 @@ bhndb_generic_attach(device_t dev)
 {
 	struct bhndb_softc		*sc;
 	struct bhnd_core_info		*cores;
-	u_int				 num_cores;
 	int				 error;
 	bool				 free_mem_rman = false;
 	bool				 free_parent_res = false;
@@ -763,13 +660,13 @@ bhndb_generic_attach(device_t dev)
 		return (error);
 	
 	/* Read our core table */
-	if ((error = bhndb_read_core_table(sc, &cores, &num_cores))) {
+	if ((error = bhndb_read_core_table(sc, &cores, &sc->num_cores))) {
 		device_printf(dev, "failure enumerating attached cores\n");
 		return (error);
 	}
 
 	/* Find our register window configuration */
-	if ((error = bhndb_find_hwspec(sc, cores, num_cores, &sc->hw))) {
+	if ((error = bhndb_find_hwspec(sc, cores, sc->num_cores, &sc->hw))) {
 		device_printf(dev, "no usable hardware spec found\n");
 		goto failed;
 	}
@@ -778,7 +675,8 @@ bhndb_generic_attach(device_t dev)
 		device_printf(dev, "%s register map\n", sc->hw->name);
 
 	/* Produce per-core flags table */
-	error = bhndb_init_core_flags(sc, cores, num_cores);
+	error = bhndb_init_core_flags(sc, cores, sc->num_cores,
+	    &sc->core_flags);
 	if (error) {
 		device_printf(dev, "could not initialize core flag table\n");
 		goto failed;

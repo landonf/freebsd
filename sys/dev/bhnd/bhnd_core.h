@@ -34,6 +34,14 @@
 #define	BHND_SDRAM_SWAPPED	0x10000000	/* Byteswapped Physical SDRAM */
 #define	BHND_SDRAM_R2		0x80000000	/* Region 2 for sdram (512 MB) */
 
+#define	BHND_CORE_BASE	    	0x18000000	/* Per-core register blocks */
+#define	BHND_WRAP_BASE    	0x18100000	/* AXI wrapper register blocks (only
+						 * available on bcma(4) devices) */
+
+#define	BHND_CORE_SIZE    	0x1000		/* each core gets 4Kbytes for registers */
+
+#define	BHND_MAX_CORES		((SI_WRAP_BASE-SI_CORE_BASE)/SI_CORE_SIZE) /* Maximum number of cores */
+
 #define	SI_FASTRAM		0x19000000	/* On-chip RAM on chips that also have DDR */
 #define	SI_FASTRAM_SWAPPED	0x19800000
 
