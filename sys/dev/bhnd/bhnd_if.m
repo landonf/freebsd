@@ -36,6 +36,14 @@ INTERFACE bhnd;
 # bhnd(4) bus interface
 #
 
+HEADER {
+	/* forward declarations */
+	struct bhnd_core_info;
+	struct bhnd_chipid;
+	struct bhnd_resource;
+	struct bhnd_bus_ctx;
+}
+
 CODE {
 	#include <dev/bhnd/bhndvar.h>
 	
