@@ -522,7 +522,7 @@ bhndb_read_chipid(struct bhndb_softc *sc, struct bhnd_chipid *result)
 	 * default ChipCommon address. */
 	if (cc_win->win_type == BHNDB_REGWIN_T_DYN) {
 		error = BHNDB_SET_WINDOW_ADDR(sc->dev, cc_win,
-		    BHND_CHIPC_DEFAULT_ADDR);
+		    BHND_DEFAULT_CHIPC_ADDR);
 		if (error) {
 			device_printf(sc->dev,
 			     "failed to set chipcommon register window\n");

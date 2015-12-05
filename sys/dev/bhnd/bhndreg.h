@@ -36,7 +36,7 @@
  * The default address at which the ChipCommon core is mapped on all siba(4)
  * devices, and most bcma(4) devices.
  */
-#define	BHND_CHIPC_DEFAULT_ADDR		0x18000000
+#define	BHND_DEFAULT_CHIPC_ADDR		0x18000000
 
 
 #endif /* _BHND_BHNDREG_H_ */
