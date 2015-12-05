@@ -601,7 +601,7 @@ bhndb_init_core_flags(struct bhndb_softc *sc, struct bhnd_core_info *cores,
 		flags = 0;
 
 		/* Check for a parent-disabled core */
-		if (!BHNDB_BUS_IS_CORE_DISABLED(sc->parent_dev, sc->dev, core))
+		if (BHNDB_BUS_IS_CORE_DISABLED(sc->parent_dev, sc->dev, core))
 			flags |= BHNDB_CF_HW_DISABLED;
 
 		/* Check for our host bridge core; all other host bridge
