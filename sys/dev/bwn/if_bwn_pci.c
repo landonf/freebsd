@@ -219,7 +219,7 @@ bwn_pci_get_bhndb_hwtable(device_t dev, device_t child)
 }
 
 static bool
-bwn_pci_is_core_populated(device_t dev, device_t child,
+bwn_pci_is_core_disabled(device_t dev, device_t child,
     struct bhnd_core_info *core)
 {
 	struct bwn_pci_softc	*sc;
@@ -228,16 +228,18 @@ bwn_pci_is_core_populated(device_t dev, device_t child,
 
 	switch (bhnd_core_class(core)) {
 	case BHND_DEVCLASS_WLAN:
-		if (core->unit > 0)
-			return ((sc->quirks & BWN_QUIRK_WLAN_DUALCORE) != 0);
+		if (core->unit > 0 && !(sc->quirks & BWN_QUIRK_WLAN_DUALCORE))
+			return (true);
+
+		return (false);
 
 	case BHND_DEVCLASS_ENET:
 	case BHND_DEVCLASS_ENET_MAC:
 	case BHND_DEVCLASS_ENET_PHY:
-		return ((sc->quirks & BWN_QUIRK_ENET_HW_UNPOPULATED) == 0);
+		return ((sc->quirks & BWN_QUIRK_ENET_HW_UNPOPULATED) != 0);
 
 	default:
-		return (true);
+		return (false);
 	}
 }
 
@@ -256,7 +258,7 @@ static device_method_t bwn_pci_methods[] = {
 	/* BHNDB_BUS Interface */
 	DEVMETHOD(bhndb_bus_get_generic_hwcfg,	bwn_pci_get_generic_hwcfg),
 	DEVMETHOD(bhndb_bus_get_hardware_table,	bwn_pci_get_bhndb_hwtable),
-	DEVMETHOD(bhndb_bus_is_core_populated,	bwn_pci_is_core_populated),
+	DEVMETHOD(bhndb_bus_is_core_disabled,	bwn_pci_is_core_disabled),
 
 	DEVMETHOD_END
 };

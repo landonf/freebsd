@@ -82,6 +82,14 @@
 #define	BHNDB_DW_REGION_IS_FREE(sc, rnid) \
 	((sc)->dw_freelist & (1 << (rnid)))
 
+/**
+ * Private per-core flags
+ */
+enum {
+	BHNDB_CF_HW_DISABLED	= 1 << 0,	/**< core hardware is unusable */
+	BHNDB_CF_HOSTB		= 1 << 1,	/**< core is host bridge */
+};
+
 /** bhndb child instance state */
 struct bhndb_devinfo {
         struct resource_list    resources;	/**< child resources. */

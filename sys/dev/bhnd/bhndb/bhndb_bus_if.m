@@ -61,7 +61,7 @@ CODE {
 	}
 
 	static bool
-	bhndb_null_is_core_populated(device_t dev, device_t child,
+	bhndb_null_is_core_disabled(device_t dev, device_t child,
 	    struct bhnd_core_info *core)
 	{
 		return (true);
@@ -109,8 +109,8 @@ METHOD const struct bhndb_hw * get_hardware_table {
 } DEFAULT bhndb_null_get_hardware_table;
 
 /**
- * Return true if the hardware required by @p core is populated on
- * this board.
+ * Return true if the hardware required by @p core is unpopulated or
+ * otherwise unusable.
  *
  * In some cases, the core's pins may be left floating, or the hardware
  * may otherwise be non-functional; this method allows the parent device
@@ -120,8 +120,8 @@ METHOD const struct bhndb_hw * get_hardware_table {
  * @param child The attached bhndb device.
  * @param core A core discovered on @p child.
  */
-METHOD bool is_core_populated {
+METHOD bool is_core_disabled {
 	device_t dev;
 	device_t child;
 	struct bhnd_core_info *core;
-} DEFAULT bhndb_null_is_core_populated;
+} DEFAULT bhndb_null_is_core_disabled;

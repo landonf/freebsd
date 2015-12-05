@@ -211,7 +211,7 @@ bhnd_is_hostb_device(device_t dev) {
 
 /**
  * Return true if the hardware components required by @p dev are known to be
- * populated on the hardware board.
+ * unpopulated or otherwise unusable.
  *
  * In some cases, enumerated devices may have pins that are left floating, or
  * the hardware may otherwise be non-functional; this method allows a parent
@@ -221,8 +221,8 @@ bhnd_is_hostb_device(device_t dev) {
  * @param dev A bhnd bus child device.
  */
 static inline bool
-bhnd_is_hw_populated(device_t dev) {
-	return (BHND_IS_HW_POPULATED(device_get_parent(dev), dev));
+bhnd_is_hw_disabled(device_t dev) {
+	return (BHND_IS_HW_DISABLED(device_get_parent(dev), dev));
 }
 
 /**

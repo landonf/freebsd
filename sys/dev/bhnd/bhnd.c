@@ -212,21 +212,21 @@ bhnd_generic_is_hostb_device(device_t dev, device_t child) {
 }
 
 /**
- * Helper function for implementing BHND_IS_HW_POPULATED().
+ * Helper function for implementing BHND_IS_HW_DISABLED().
  * 
  * If a parent device is available, this implementation delegates the
- * request to the BHND_IS_HW_POPULATED() method on the parent of @p dev.
+ * request to the BHND_IS_HW_DISABLED() method on the parent of @p dev.
  * 
  * If no parent device is available (i.e. on a the bus root), the hardware
- * is assumed to be usable and true is returned.
+ * is assumed to be usable and false is returned.
  */
 bool
-bhnd_generic_is_hw_populated(device_t dev, device_t child)
+bhnd_generic_is_hw_disabled(device_t dev, device_t child)
 {
 	if (device_get_parent(dev) != NULL)
-		return (BHND_IS_HW_POPULATED(device_get_parent(dev), child));
+		return (BHND_IS_HW_DISABLED(device_get_parent(dev), child));
 
-	return (true);
+	return (false);
 }
 
 /**

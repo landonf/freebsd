@@ -120,8 +120,8 @@ METHOD bool is_hostb_device {
 } DEFAULT bhnd_generic_is_hostb_device;
 
 /**
- * Return true if the hardware components required by @p child are populated on
- * the hardware board.
+ * Return true if the hardware components required by @p child are unpopulated
+ * or otherwise unusable.
  *
  * In some cases, enumerated devices may have pins that are left floating, or
  * the hardware may otherwise be non-functional; this method allows a parent
@@ -131,10 +131,10 @@ METHOD bool is_hostb_device {
  * @param dev The device whose child is being examined.
  * @param child The child device.
  */
-METHOD bool is_hw_populated {
+METHOD bool is_hw_disabled {
 	device_t dev;
 	device_t child;
-} DEFAULT bhnd_generic_is_hw_populated;
+} DEFAULT bhnd_generic_is_hw_disabled;
 
 /**
  * Allocate a bhnd resource.

@@ -324,7 +324,7 @@ bcma_add_children(device_t bus, struct resource *erom_res, bus_size_t erom_offse
 
 		/* If pins are floating or the hardware is otherwise
 		 * unpopulated, the device shouldn't be used. */
-		if (!bhnd_is_hw_populated(child))
+		if (bhnd_is_hw_disabled(child))
 			device_disable(child);
 	}
 

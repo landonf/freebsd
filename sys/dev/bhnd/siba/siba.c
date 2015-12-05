@@ -402,7 +402,7 @@ siba_add_children(device_t bus, const struct bhnd_chipid *chipid)
 
 		/* If pins are floating or the hardware is otherwise
 		 * unpopulated, the device shouldn't be used. */
-		if (!bhnd_is_hw_populated(child))
+		if (bhnd_is_hw_disabled(child))
 			device_disable(child);
 	}
 	
