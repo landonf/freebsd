@@ -131,6 +131,15 @@
 #define	BHNDB_PCI_V1_MAX_CHIPC_HWREV	31
 #define	BHNDB_PCI_V2_MIN_CHIPC_HWREV	32
 
+/**
+ * Number of times to retry writing to a PCI window address register.
+ * 
+ * On siba(4) devices, it's possible that writing a PCI window register may
+ * not succeed; it's necessary to immediately read the configuration register
+ * and retry if not set to the desired value.
+ */
+#define	BHNDB_PCI_BARCTRL_WRITE_RETRY	50	
+
 /* PCI_V0  */
 #define	BHNDB_PCI_V0_BAR0_WIN0_CONTROL	0x80	/* backplane address space accessed by BAR0/WIN0 */
 #define	BHNDB_PCI_V0_BAR1_WIN0_CONTROL	0x84	/* backplane address space accessed by BAR1/WIN0. */

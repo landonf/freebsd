@@ -40,4 +40,17 @@
 
 DECLARE_CLASS(bhndb_pci_driver);
 
+struct bhndb_pci_softc;
+
+/*
+ * An interconnect-specific function implementing BHNDB_SET_WINDOW_ADDR
+ */
+typedef int (*bhndb_pci_set_regwin_t)(struct bhndb_pci_softc *sc,
+	         const struct bhndb_regwin *rw, bhnd_addr_t addr);
+
+struct bhndb_pci_softc {
+	struct bhndb_softc	bhndb;		/**< parent softc */
+	bhndb_pci_set_regwin_t	set_regwin;	/**< regwin handler */
+};
+
 #endif /* _BHND_BHNDB_PCIVAR_H_ */

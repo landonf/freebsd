@@ -53,6 +53,14 @@ __FBSDID("$FreeBSD$");
 #include "bhndb_pcireg.h"
 #include "bhndb_pcivar.h"
 
+static int	bhndb_enable_pci_clocks(device_t dev);
+static int	bhndb_disable_pci_clocks(device_t dev);
+
+static int	bhndb_pci_compat_setregwin(struct bhndb_pci_softc *,
+		    const struct bhndb_regwin *, bhnd_addr_t);
+static int	bhndb_pci_fast_setregwin(struct bhndb_pci_softc *,
+		    const struct bhndb_regwin *, bhnd_addr_t);
+
 /** 
  * Default bhndb_pci implementation of device_probe().
  * 
@@ -78,20 +86,148 @@ bhndb_pci_probe(device_t dev)
 	return (BUS_PROBE_DEFAULT);
 }
 
-/** Returns true if @p parent is pcie */
-static bool
-parent_is_pcie(device_t parent)
+static int
+bhndb_pci_attach(device_t dev)
 {
-	int reg;
-	return (pci_find_cap(parent, PCIY_EXPRESS, &reg) == 0);
+	struct bhndb_pci_softc	*sc;
+	int			 error;
+
+	sc = device_get_softc(dev);
+
+	if ((error = bhndb_enable_pci_clocks(dev))) {
+		device_printf(dev, "clock initialization failed\n");
+		return (error);
+	}
+
+	/* Use siba(4)-compatible regwin handling until we know
+	 * what kind of bus is attached */
+	sc->set_regwin = bhndb_pci_compat_setregwin;
+
+	/* Perform full bridge attach */
+	if ((error = bhndb_generic_attach(dev)))
+		return (error);
+
+	/* If supported, switch to the faster regwin handling */
+	if (sc->bhndb.chipid.chip_type != BHND_CHIPTYPE_SIBA) {
+		atomic_store_rel_ptr((volatile void *) &sc->set_regwin,
+		    (uintptr_t) &bhndb_pci_fast_setregwin);
+	}
+
+	return (0);
 }
 
-// TODO - swap out bcma/siba implementations as required.
+static int
+bhndb_pci_detach(device_t dev)
+{
+	int error;
+
+	if ((error = bhndb_generic_detach(dev)))
+		return (error);
+
+	if ((error = bhndb_disable_pci_clocks(dev))) {
+		device_printf(dev, "failed to disable clocks\n");
+		return (error);
+	}
+
+	return (0);
+}
+
+static int
+bhndb_pci_suspend(device_t dev)
+{
+	int error;
+
+	if ((error = bhndb_generic_suspend(dev)))
+		return (error);
+
+	if ((error = bhndb_disable_pci_clocks(dev))) {
+		device_printf(dev, "suspend failed to disable clocks\n");
+		return (error);
+	}
+
+	return (0);
+}
+
+static int
+bhndb_pci_resume(device_t dev)
+{
+	int error;
+
+	if ((error = bhndb_enable_pci_clocks(dev))) {
+		device_printf(dev, "resume failed to enable clocks\n");
+		return (error);
+	}
+	
+	if ((error = bhndb_generic_resume(dev)))
+		return (error);
+
+	return (0);
+}
+
+static bhnd_devclass_t
+bhndb_pci_get_bridge_devclass(device_t dev)
+{
+	int reg;
+
+	/* Check for a PCIe parent device */
+	if (pci_find_cap(device_get_parent(dev), PCIY_EXPRESS, &reg) == 0)
+		return (BHND_DEVCLASS_PCIE);
+	else
+		return (BHND_DEVCLASS_PCI);
+}
+
 static int
 bhndb_pci_set_window_addr(device_t dev, const struct bhndb_regwin *rw,
     bhnd_addr_t addr)
 {
-	struct bhndb_softc *sc = device_get_softc(dev);
+	struct bhndb_pci_softc *sc = device_get_softc(dev);
+	return (sc->set_regwin(sc, rw, addr));
+}
+
+/**
+ * A siba(4) and bcma(4)-compatible bhndb_set_window_addr implementation.
+ * 
+ * On siba(4) devices, it's possible that writing a PCI window register may
+ * not succeed; it's necessary to immediately read the configuration register
+ * and retry if not set to the desired value.
+ * 
+ * This is not necessary on bcma(4) devices, but other than the overhead of
+ * validating the register, there's no harm in performing the verification.
+ */
+static int
+bhndb_pci_compat_setregwin(struct bhndb_pci_softc *sc,
+    const struct bhndb_regwin *rw, bhnd_addr_t addr)
+{
+	device_t	parent;
+	int		error;
+
+	parent = sc->bhndb.parent_dev;
+
+	if (rw->win_type != BHNDB_REGWIN_T_DYN)
+		return (ENODEV);
+
+	for (u_int i = 0; i < BHNDB_PCI_BARCTRL_WRITE_RETRY; i++) {
+		if ((error = bhndb_pci_fast_setregwin(sc, rw, addr)))
+			return (error);
+
+		if (pci_read_config(parent, rw->dyn.cfg_offset, 4) == addr)
+			return (0);
+
+		DELAY(10);
+	}
+
+	/* Unable to set window */
+	return (ENODEV);
+}
+
+/**
+ * A bcma(4)-only bhndb_set_window_addr implementation.
+ */
+static int
+bhndb_pci_fast_setregwin(struct bhndb_pci_softc *sc,
+    const struct bhndb_regwin *rw, bhnd_addr_t addr)
+{
+	device_t parent = sc->bhndb.parent_dev;
 
 	/* The PCI bridge core only supports 32-bit addressing, regardless
 	 * of the bus' support for 64-bit addressing */
@@ -100,7 +236,7 @@ bhndb_pci_set_window_addr(device_t dev, const struct bhndb_regwin *rw,
 
 	switch (rw->win_type) {
 	case BHNDB_REGWIN_T_DYN:
-		pci_write_config(sc->parent_dev, rw->dyn.cfg_offset, addr, 4);
+		pci_write_config(parent, rw->dyn.cfg_offset, addr, 4);
 		break;
 	default:
 		return (ENODEV);
@@ -109,23 +245,24 @@ bhndb_pci_set_window_addr(device_t dev, const struct bhndb_regwin *rw,
 	return (0);
 }
 
-/** 
- * Standard bhndb_pci implementation of bhndb_enable_clocks().
+/**
+ * If supported (and required) by @p dev, enable any externally managed
+ * clocks. 
  */
 static int
-bhndb_pci_enable_clocks(device_t dev)
+bhndb_enable_pci_clocks(device_t dev)
 {
 	device_t		pci_parent;
 	uint32_t		gpio_in, gpio_out, gpio_en;
 	uint32_t		gpio_flags;
 	uint16_t		pci_status;
 
-	/* This may be called prior to attach(), in which case
-	 * we must be able to operate without driver state. */
-
-	/* Broadcom's PCIe devices do not require external clock gating */
+	/* This may be called prior to softc initialization;
+         * we must be able to operate without driver state. */
 	pci_parent = device_get_parent(dev);
-	if (parent_is_pcie(pci_parent))
+
+	/* Only Broadcom's PCI devices require external clock gating */
+	if (BHNDB_GET_BRIDGE_DEVCLASS(dev) != BHND_DEVCLASS_PCI)
 		return (0);
 
 	/* Read state of XTAL pin */
@@ -159,25 +296,23 @@ bhndb_pci_enable_clocks(device_t dev)
 	return (0);
 }
 
-/** 
- * Standard bhndb_pci implementation of bhndb_disable_clocks().
+/**
+ * If supported (and required) by @p dev, disable any externally managed
+ * clocks.
  */
 static int
-bhndb_pci_disable_clocks(device_t dev)
+bhndb_disable_pci_clocks(device_t dev)
 {
 	struct bhndb_softc	*sc;
 	uint32_t		gpio_out, gpio_en;
 
 	sc = device_get_softc(dev);
 
-	KASSERT(sc->parent_dev != NULL,
-	    (("called prior to attach()")));
-
-	/* Broadcom's PCIe bridges do not require external clock gate config */
-	if (parent_is_pcie(sc->parent_dev))
+	/* Only Broadcom's PCI devices require external clock gating */
+	if (BHNDB_GET_BRIDGE_DEVCLASS(dev) != BHND_DEVCLASS_PCI)
 		return (0);
 
-	// TODO: Check ChipCommon board flags for BFL2_XTALBUFOUTEN?
+	// TODO: Check board flags for BFL2_XTALBUFOUTEN?
 	// TODO: Check PCI core revision?
 	// TODO: Switch to 'slow' clock?
 
@@ -197,20 +332,14 @@ bhndb_pci_disable_clocks(device_t dev)
 	return (0);
 }
 
-static bhnd_devclass_t
-bhndb_pci_get_bridge_devclass(device_t dev)
-{
-	struct bhndb_softc *sc = device_get_softc(dev);
-
-	if (parent_is_pcie(sc->parent_dev))
-		return (BHND_DEVCLASS_PCIE);
-	else
-		return (BHND_DEVCLASS_PCI);
-}
 
 static device_method_t bhndb_pci_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,			bhndb_pci_probe),
+	DEVMETHOD(device_attach,		bhndb_pci_attach),
+	DEVMETHOD(device_detach,		bhndb_pci_detach),
+	DEVMETHOD(device_suspend,		bhndb_pci_suspend),
+	DEVMETHOD(device_resume,		bhndb_pci_resume),
 
 	/* BHNDB interface */
 	DEVMETHOD(bhndb_get_bridge_devclass,	bhndb_pci_get_bridge_devclass),
@@ -220,7 +349,7 @@ static device_method_t bhndb_pci_methods[] = {
 };
 
 DEFINE_CLASS_1(bhndb, bhndb_pci_driver, bhndb_pci_methods,
-    sizeof(struct bhndb_softc), bhndb_driver);
+    sizeof(struct bhndb_pci_softc), bhndb_driver);
 
 MODULE_VERSION(bhndb_pci, 1);
 MODULE_DEPEND(bhndb_pci, pci, 1, 1, 1);
