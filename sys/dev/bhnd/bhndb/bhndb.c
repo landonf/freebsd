@@ -74,6 +74,22 @@ static struct resource			*bhndb_find_parent_resource(
 static int				 bhndb_init_dw_region_allocator(
 					     struct bhndb_softc *sc);
 
+static int				 bhndb_read_chipid(
+					     struct bhndb_softc *sc,
+					     struct bhnd_chipid *result);
+
+static bool				 bhndb_is_hostb_core(
+					     struct bhndb_softc *sc,
+					     struct bhnd_core_info *cores,
+					     u_int num_cores,
+					     struct bhnd_core_info *core);
+
+static int				 bhndb_init_core_flags(
+					     struct bhndb_softc *sc,
+					     struct bhnd_core_info *cores,
+					     u_int num_cores,
+					     uint8_t **core_flags);
+
 static struct rman			*bhndb_get_rman(struct bhndb_softc *sc,
 					     int type);
 
