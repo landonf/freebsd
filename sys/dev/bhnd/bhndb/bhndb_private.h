@@ -88,6 +88,9 @@
 enum {
 	BHNDB_CF_HW_DISABLED	= 1 << 0,	/**< core hardware is unusable */
 	BHNDB_CF_HOSTB		= 1 << 1,	/**< core is host bridge */
+	BHNDB_CF_DRW_RESERVED	= 1 << 2,	/**< core is reserved a dynamic
+						     register window for its
+						     primary register block. */
 };
 
 /** bhndb child instance state */

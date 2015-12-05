@@ -38,5 +38,9 @@
  */
 #define	BHND_DEFAULT_CHIPC_ADDR		0x18000000
 
+/**
+ * The default size of bhnd core's primary register block.
+ */
+#define	BHND_DEFAULT_CORE_SIZE		0x1000
 
 #endif /* _BHND_BHNDREG_H_ */

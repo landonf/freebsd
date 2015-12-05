@@ -66,23 +66,64 @@ bhndb_attach_bridge(device_t parent, device_t *bhndb, int unit)
 	return (error);
 }
 
+
 /**
- * Return the count of @p type register windows in @p table.
+ * Return the default bridge resource allocation priority for the given device
+ * class.
+ * 
+ * Refer to BHNDB_RES_PRIO_CRITICAL, BHNDB_RES_PRIO_DEFAULT,
+ * BHNDB_RES_PRIO_LOW, and BHNDB_RES_PRIO_NONE.
+ * 
+ * @param cls A BHND device class.
+ */
+int
+bhndb_class_resource_prio(bhnd_devclass_t cls)
+{
+	switch (cls) {
+	case BHND_DEVCLASS_SOCI:
+	case BHND_DEVCLASS_SOCB:
+	case BHND_DEVCLASS_OTHER:
+	case BHND_DEVCLASS_INVALID:
+		return (BHNDB_RES_PRIO_NONE);
+
+	case BHND_DEVCLASS_CC:
+	case BHND_DEVCLASS_CPU:
+	case BHND_DEVCLASS_EROM:
+		return (BHNDB_RES_PRIO_LOW);
+
+	case BHND_DEVCLASS_PCCARD:
+	case BHND_DEVCLASS_PCI:
+	case BHND_DEVCLASS_PCIE:
+	case BHND_DEVCLASS_MEM:
+	case BHND_DEVCLASS_MEMC:
+	case BHND_DEVCLASS_ENET:
+	case BHND_DEVCLASS_ENET_MAC:
+	case BHND_DEVCLASS_ENET_PHY:
+	case BHND_DEVCLASS_WLAN:
+	case BHND_DEVCLASS_WLAN_MAC:
+	case BHND_DEVCLASS_WLAN_PHY:
+		return (BHNDB_RES_PRIO_CRITICAL);
+	}
+}
+
+/**
+ * Return the count of @p type register windows in @p table that are
+ * at least @p min_size large.
  * 
  * @param table The table to search.
- * @param type The required window type, or BHNDB_REGWIN_T_INVALID to
- * count all register window types.
+ * @param type The required window type.
+ * @param min_size The minimum window size.
  */
 size_t
-bhndb_regwin_count(const struct bhndb_regwin *table,
-    bhndb_regwin_type_t type)
+bhndb_regwin_count(const struct bhndb_regwin *table, bhndb_regwin_type_t type,
+    bus_size_t min_size)
 {
 	const struct bhndb_regwin	*rw;
 	size_t				 count;
 
 	count = 0;
 	for (rw = table; rw->win_type != BHNDB_REGWIN_T_INVALID; rw++) {
-		if (type == BHNDB_REGWIN_T_INVALID || rw->win_type == type)
+		if (rw->win_type == type && rw->win_size >= min_size)
 			count++;
 	}
 
