@@ -462,7 +462,6 @@ bhnd_read_chipid(device_t dev, struct resource_spec *rs,
     bus_size_t chipc_offset, struct bhnd_chipid *result)
 {
 	struct resource			*res;
-	bhnd_addr_t			 enum_addr;
 	uint32_t			 reg;
 	int				 error, rid, rtype;
 
@@ -476,23 +475,24 @@ bhnd_read_chipid(device_t dev, struct resource_spec *rs,
 		return (ENXIO);
 	}
 
+	/* Fetch the basic chip info */
+	reg = bus_read_4(res, chipc_offset + CHIPC_ID);
+	*result = bhnd_parse_chipid(reg, 0x0);
+
 	/* Fetch the enum base address */
 	error = 0;
 	switch (result->chip_type) {
 	case BHND_CHIPTYPE_SIBA:
-		enum_addr = BHND_CHIPC_DEFAULT_ADDR;
+		result->enum_addr = BHND_CHIPC_DEFAULT_ADDR;
 		break;
 	case BHND_CHIPTYPE_BCMA:
-		enum_addr = bus_read_4(res, chipc_offset + CHIPC_EROM_CORE_ADDR);
+		result->enum_addr = bus_read_4(res, chipc_offset +
+		    CHIPC_EROM_CORE_ADDR);
 		break;
 	default:
 		error = ENODEV;
 		goto cleanup;
 	}
-
-	/* Fetch the basic chip info */
-	reg = bus_read_4(res, chipc_offset + CHIPC_ID);
-	*result = bhnd_parse_chipid(reg, enum_addr);
 
 cleanup:
 	/* Clean up */
