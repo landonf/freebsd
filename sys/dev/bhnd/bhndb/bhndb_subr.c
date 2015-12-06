@@ -120,15 +120,16 @@ bhndb_regwin_find_type(const struct bhndb_regwin *table,
  * @param table The table to search.
  * @param class The required core class.
  * @param unit The required core unit, or -1.
- * @param port The required core unit, or -1.
- * @param region The required core unit, or -1.
+ * @param port_type The required port type.
+ * @param port The required port.
+ * @param region The required region.
  *
  * @retval bhndb_regwin The first matching window.
  * @retval NULL If no matching window was found. 
  */
 const struct bhndb_regwin *
 bhndb_regwin_find_core(const struct bhndb_regwin *table, bhnd_devclass_t class,
-    int unit, int port, int region)
+    int unit, bhnd_port_type port_type, u_int port, u_int region)
 {
 	const struct bhndb_regwin *rw;
 	
@@ -142,11 +143,14 @@ bhndb_regwin_find_core(const struct bhndb_regwin *table, bhnd_devclass_t class,
 		
 		if (unit != -1 && rw->core.unit != unit)
 			continue;
-		
-		if (port != -1 && rw->core.port != port)
+
+		if (rw->core.type != port_type)
+			continue;
+
+		if (rw->core.port != port)
 			continue;
 		
-		if (region != -1 && rw->core.region != region)
+		if (rw->core.region != region)
 			continue;
 
 		return (rw);
@@ -156,28 +160,33 @@ bhndb_regwin_find_core(const struct bhndb_regwin *table, bhnd_devclass_t class,
 }
 
 /**
- * Search @p windows for the first matching core window. If none is found,
- * search instead for a dynamic window of at least @p min_size.
+ * Search @p windows for the best available window of at least @p min_size.
+ * 
+ * Search order:
+ * - BHND_REGWIN_T_CORE
+ * - BHND_REGWIN_T_DYN
  * 
  * @param table The table to search.
  * @param class The required core class.
  * @param unit The required core unit, or -1.
- * @param port The required core unit, or -1.
- * @param region The required core unit, or -1.
+ * @param port_type The required port type.
+ * @param port The required port.
+ * @param region The required region.
  * @param min_size The minimum window size.
  *
  * @retval bhndb_regwin The first matching window.
  * @retval NULL If no matching window was found. 
  */
 const struct bhndb_regwin *
-bhndb_regwin_find_core_or_dyn(const struct bhndb_regwin *table,
-    bhnd_devclass_t class, int unit, int port, int region,
-    bus_size_t min_size)
+bhndb_regwin_find_best(const struct bhndb_regwin *table,
+    bhnd_devclass_t class, int unit, bhnd_port_type port_type, u_int port,
+    u_int region, bus_size_t min_size)
 {
 	const struct bhndb_regwin *rw;
 
 	/* Prefer a fixed core mapping */
-	rw = bhndb_regwin_find_core(table, class, unit, port, region);
+	rw = bhndb_regwin_find_core(table, class, unit, port_type,
+	    port, region);
 	if (rw != NULL)
 		return (rw);
 

@@ -71,15 +71,16 @@ const struct bhndb_regwin	*bhndb_regwin_find_type(
 
 const struct bhndb_regwin	*bhndb_regwin_find_core(
 				     const struct bhndb_regwin *table,
-				     bhnd_devclass_t class, int unit, int port,
-				     int region);
+				     bhnd_devclass_t class, int unit,
+				     bhnd_port_type port_type, u_int port,
+				     u_int region);
 
-const struct bhndb_regwin	*bhndb_regwin_find_core_or_dyn(
+
+const struct bhndb_regwin	*bhndb_regwin_find_best(
 				     const struct bhndb_regwin *table,
-				     bhnd_devclass_t class, int unit, int port,
-				     int region, bus_size_t min_size);
-
-
+				     bhnd_devclass_t class, int unit,
+				     bhnd_port_type port_type, u_int port,
+				     u_int region, bus_size_t min_size);
 
 /**
  * bhndb resource allocation priorities.

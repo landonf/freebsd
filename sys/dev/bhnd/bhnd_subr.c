@@ -151,6 +151,23 @@ bhnd_vendor_name(uint16_t vendor)
 	}
 }
 
+/**
+ * Return the name of a port type.
+ */
+const char *
+bhnd_port_type_name(bhnd_port_type port_type)
+{
+	switch (port_type) {
+	case BHND_PORT_DEVICE:
+		return ("device");
+	case BHND_PORT_BRIDGE:
+		return ("bridge");
+	case BHND_PORT_AGENT:
+		return ("agent");
+	}
+}
+
+
 static const struct bhnd_core_desc *
 bhnd_find_core_desc(uint16_t vendor, uint16_t device)
 {

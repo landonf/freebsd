@@ -49,6 +49,11 @@ __FBSDID("$FreeBSD$");
 #define	SIBA_CORE_REGION	0	/**< fixed register block region. */
 #define SIBA_CORE_RID		1	/**< fixed register resource-ID */
 
+#define SIBA_IS_PORT_VALID(type, port, region)	\
+	((type) == BHND_PORT_DEVICE &&		\
+	 (port_num) == SIBA_CORE_PORT &&	\
+	 region_num == SIBA_CORE_REGION)
+
 int
 siba_probe(device_t dev)
 {
@@ -197,31 +202,30 @@ siba_get_resource_list(device_t dev, device_t child)
 }
 
 static int
-siba_get_port_rid(device_t dev, device_t child, u_int port_num, u_int
-    region_num)
+siba_get_port_rid(device_t dev, device_t child, bhnd_port_type port_type,
+    u_int port_num, u_int region_num)
 {
 	/* delegate non-bus-attached devices to our parent */
 	if (device_get_parent(child) != dev) {
 		return (BHND_GET_PORT_RID(device_get_parent(dev), child,
-		    port_num, region_num));
+		    port_type, port_num, region_num));
 	}
 
-	/* siba(4) cores only support a single port and region */
-	if (port_num != SIBA_CORE_PORT || region_num != SIBA_CORE_REGION)
-		return (-1);
+	if (SIBA_IS_PORT_VALID(port_type, port_num, region_num))
+		return (SIBA_CORE_RID);
 
-	/* found */
-	return (SIBA_CORE_RID);
+	/* not found */
+	return (-1);
 }
 
 static int
 siba_decode_port_rid(device_t dev, device_t child, int type, int rid,
-    u_int *port_num, u_int *region_num)
+    bhnd_port_type *port_type, u_int *port_num, u_int *region_num)
 {
 	/* delegate non-bus-attached devices to our parent */
 	if (device_get_parent(child) != dev) {
 		return (BHND_DECODE_PORT_RID(device_get_parent(dev), child,
-		    type, rid, port_num, region_num));
+		    type, rid, port_type, port_num, region_num));
 	}
 	
 	if (type != SYS_RES_MEMORY)
@@ -231,15 +235,15 @@ siba_decode_port_rid(device_t dev, device_t child, int type, int rid,
 	if (rid != SIBA_CORE_RID)
 		return (ENOENT);
 
-
+	*port_type = BHND_PORT_DEVICE;
 	*port_num = SIBA_CORE_PORT;
 	*region_num = SIBA_CORE_REGION;
 	return (0);
 }
 
 static int
-siba_get_port_addr(device_t dev, device_t child, u_int port_num,
-	u_int region_num, bhnd_addr_t *addr, bhnd_size_t *size)
+siba_get_port_addr(device_t dev, device_t child, bhnd_port_type port_type,
+    u_int port_num, u_int region_num, bhnd_addr_t *addr, bhnd_size_t *size)
 {
 	struct siba_devinfo		*dinfo;
 	struct resource_list_entry	*rle;
@@ -247,15 +251,15 @@ siba_get_port_addr(device_t dev, device_t child, u_int port_num,
 	/* delegate non-bus-attached devices to our parent */
 	if (device_get_parent(child) != dev) {
 		return (BHND_GET_PORT_ADDR(device_get_parent(dev), child,
-		    port_num, region_num, addr, size));
+		    port_type, port_num, region_num, addr, size));
 	}
 
 	dinfo = device_get_ivars(child);
 
-	/* siba(4) cores only support a single port and region */
-	if (port_num != SIBA_CORE_PORT || region_num != SIBA_CORE_REGION)
+	/* siba(4) cores only support a single device port region */
+	if (!SIBA_IS_PORT_VALID(port_type, port_num, region_num))
 		return (ENOENT);
-	
+
 	/* fetch the port addr/size from the resource list */
 	rle = resource_list_find(&dinfo->resources, SYS_RES_MEMORY,
 	    SIBA_CORE_RID);

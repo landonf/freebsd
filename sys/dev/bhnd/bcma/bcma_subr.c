@@ -43,72 +43,6 @@ __FBSDID("$FreeBSD$");
 
 #include "bcmavar.h"
 
-
-/**
- * Return the name of a slave port type.
- */
-const char *
-bcma_port_type_name (bcma_sport_type port_type)
-{
-	switch (port_type) {
-	case BCMA_SPORT_TYPE_DEVICE:
-		return "device";
-	case BCMA_SPORT_TYPE_BRIDGE:
-		return "bridge";
-	case BCMA_SPORT_TYPE_SWRAP:
-		return "swrap";
-	case BCMA_SPORT_TYPE_MWRAP:
-		return "mwrap";
-	}
-}
-
-/**
- * Search @p cfg for mapped address region for the given @p type, @p port_id,
- * and @p map_id.
- * 
- * @param cfg The core configuration to search.
- * @param type The port type to search for.
- * @param port_id The port identifier to search for.
- * @param map_id The map identifier to search for.
- * 
- * @retval bcma_map if the requested map is found.
- * @retval NULL not found
- */
-struct bcma_map *
-bcma_corecfg_find_region_map(struct bcma_corecfg *cfg, bcma_sport_type type,
-    bcma_pid_t port_id, bcma_rmid_t map_id)
-{
-	struct bcma_sport_list	*ports;
-	struct bcma_sport	*port;
-	struct bcma_map		*map;
-
-	switch (type) {
-	case BCMA_SPORT_TYPE_BRIDGE:
-		ports = &cfg->bridge_ports;
-		break;
-	case BCMA_SPORT_TYPE_DEVICE:
-		ports = &cfg->dev_ports;
-		break;
-	case BCMA_SPORT_TYPE_MWRAP:
-	case BCMA_SPORT_TYPE_SWRAP:
-		ports = &cfg->wrapper_ports;
-		break;
-	}
-
-	STAILQ_FOREACH(port, ports, sp_link) {
-		if (port->sp_num != port_id)
-			continue;
-
-		STAILQ_FOREACH(map, &port->sp_maps, m_link) {
-			if (map->m_region_num == map_id)
-				return (map);
-		}
-	}
-
-	return (NULL);
-}
-
-
  /**
  * Allocate and initialize new core config structure.
  * 
@@ -182,6 +116,28 @@ bcma_free_corecfg(struct bcma_corecfg *corecfg)
 }
 
 /**
+ * Return the @p cfg port list for @p type.
+ * 
+ * @param cfg The core configuration.
+ * @param type The requested port type.
+ */
+struct bcma_sport_list *
+bcma_corecfg_get_port_list(struct bcma_corecfg *cfg, bhnd_port_type type)
+{
+	switch (type) {
+	case BHND_PORT_DEVICE:
+		return (&cfg->dev_ports);
+		break;
+	case BHND_PORT_BRIDGE:
+		return (&cfg->bridge_ports);
+		break;
+	case BHND_PORT_AGENT:
+		return (&cfg->wrapper_ports);
+		break;
+	}
+}
+
+/**
  * Populate the resource list and bcma_map RIDs using the maps defined on
  * @p ports.
  * 
@@ -217,7 +173,7 @@ bcma_dinfo_init_resource_info(device_t bus, struct bcma_devinfo *dinfo,
 				    "core%u %s%u.%u: region %llx-%llx extends "
 				        "beyond supported addressable range\n",
 				    dinfo->corecfg->core_info.core_id,
-				    bcma_port_type_name(port->sp_type),
+				    bhnd_port_type_name(port->sp_type),
 				    port->sp_num, map->m_region_num,
 				    (unsigned long long) map->m_base,
 				    (unsigned long long) end);
@@ -275,7 +231,7 @@ bcma_free_dinfo(struct bcma_devinfo *dinfo)
  * @param port_type Port type.
  */
 struct bcma_sport *
-bcma_alloc_sport(bcma_pid_t port_num, bcma_sport_type port_type)
+bcma_alloc_sport(bcma_pid_t port_num, bhnd_port_type port_type)
 {
 	struct bcma_sport *sport;
 	

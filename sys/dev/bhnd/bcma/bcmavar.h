@@ -59,16 +59,6 @@ struct bcma_map;
 struct bcma_mport;
 struct bcma_sport;
 
-/**
- * Slave port types.
- */
-typedef enum {
-	BCMA_SPORT_TYPE_DEVICE	= 0,	/**< device/core. */
-	BCMA_SPORT_TYPE_BRIDGE	= 1,	/**< bridge. */
-	BCMA_SPORT_TYPE_SWRAP	= 2,	/**< DMP agent/wrapper for master port */
-	BCMA_SPORT_TYPE_MWRAP	= 3,	/**< DMP agent/wrapper for slave port */
-} bcma_sport_type;
-
 int			 bcma_probe(device_t dev);
 int			 bcma_attach(device_t dev);
 int			 bcma_detach(device_t dev);
@@ -76,11 +66,8 @@ int			 bcma_detach(device_t dev);
 int			 bcma_add_children(device_t bus,
 			     struct resource *erom_res, bus_size_t erom_offset);
 
-const char		*bcma_port_type_name(bcma_sport_type port_type);
-
-struct bcma_map		*bcma_corecfg_find_region_map(struct bcma_corecfg *cfg,
-			     bcma_sport_type type, bcma_pid_t port_id,
-			     bcma_rmid_t map_id);
+struct bcma_sport_list	*bcma_corecfg_get_port_list(struct bcma_corecfg *cfg,
+			     bhnd_port_type type);
 
 struct bcma_devinfo	*bcma_alloc_dinfo(device_t dev,
 			     struct bcma_corecfg *corecfg);
@@ -90,7 +77,7 @@ struct bcma_corecfg	*bcma_alloc_corecfg(u_int core_index, int core_unit,
 			     uint16_t vendor, uint16_t device, uint8_t hwrev);
 void			 bcma_free_corecfg(struct bcma_corecfg *corecfg);
 
-struct bcma_sport	*bcma_alloc_sport(bcma_pid_t port_num, bcma_sport_type port_type);
+struct bcma_sport	*bcma_alloc_sport(bcma_pid_t port_num, bhnd_port_type port_type);
 void			 bcma_free_sport(struct bcma_sport *sport);
 
 /** BCMA master port descriptor */
@@ -113,7 +100,7 @@ struct bcma_map {
 /** BCMA slave port descriptor */
 struct bcma_sport {
 	bcma_pid_t	sp_num;		/**< slave port number (core-unique) */
-	bcma_sport_type	sp_type;	/**< port type */
+	bhnd_port_type	sp_type;	/**< port type */
 
 	u_long		sp_num_maps;	/**< number of regions mapped to this port */
 	STAILQ_HEAD(, bcma_map) sp_maps;

@@ -56,22 +56,23 @@ CODE {
 	}
 
 	static int
-	bhnd_null_get_port_rid(device_t dev, device_t child, u_int port,
-	    u_int region)
+	bhnd_null_get_port_rid(device_t dev, device_t child,
+	    bhnd_port_type port_type, u_int port, u_int region)
 	{
 		return (-1);
 	}
 	
 	static int
 	bhnd_null_decode_port_rid(device_t dev, device_t child, int type,
-	    int rid, u_int *port, u_int *region)
+	    int rid, bhnd_port_type *port_type, u_int *port, u_int *region)
 	{
 		return (ENOENT);
 	}
 	
 	static int
-	bhnd_null_get_port_addr(device_t dev, device_t child, u_int port,
-	    u_int region, bhnd_addr_t *addr, bhnd_size_t *size)
+	bhnd_null_get_port_addr(device_t dev, device_t child, 
+	    bhnd_port_type type, u_int port, u_int region, bhnd_addr_t *addr,
+	    bhnd_size_t *size)
 	{
 		return (ENOENT);
 	}
@@ -201,6 +202,7 @@ METHOD int deactivate_resource {
  *
  * @param dev The bus device.
  * @param child The bhnd child.
+ * @param port_type The port type.
  * @param port_num The index of the child interconnect port.
  * @param region_num The index of the port-mapped address region.
  *
@@ -209,28 +211,33 @@ METHOD int deactivate_resource {
 METHOD int get_port_rid {
 	device_t dev;
 	device_t child;
+	bhnd_port_type port_type;
 	u_int port_num;
 	u_int region_num;
 } DEFAULT bhnd_null_get_port_rid;
 
 
 /**
- * Decode a port / region pair on @p child defined by @p rid.
+ * Decode a port / region pair on @p child defined by @p type and @p rid.
  *
  *
  * @param dev The bus device.
  * @param child The bhnd child.
- * @param port The port identifier.
- * @param region The identifier of the memory region on @p port.
+ * @param type The resource type.
+ * @param rid The resource ID.
+ * @param[out] port_type The port's type.
+ * @param[out] port The port identifier.
+ * @param[out] region The identifier of the memory region on @p port.
  * 
- * @retval int The RID for the given @p port and @p region on @p device.
- * @retval non-zero No matching port/region found.
+ * @retval 0 success
+ * @retval non-zero No matching type/rid found.
  */
 METHOD int decode_port_rid {
 	device_t dev;
 	device_t child;
 	int type;
 	int rid;
+	bhnd_port_type *port_type;
 	u_int *port;
 	u_int *region;
 } DEFAULT bhnd_null_decode_port_rid;
@@ -240,6 +247,7 @@ METHOD int decode_port_rid {
  *
  * @param dev The bus device.
  * @param child The bhnd child.
+ * @param port_type The port type.
  * @param port The port identifier.
  * @param region The identifier of the memory region on @p port.
  * @param[out] region_addr The region's base address.
@@ -251,6 +259,7 @@ METHOD int decode_port_rid {
 METHOD int get_port_addr {
 	device_t dev;
 	device_t child;
+	bhnd_port_type port_type;
 	u_int port;
 	u_int region;
 	bhnd_addr_t *region_addr;

@@ -152,27 +152,24 @@ bcma_get_resource_list(device_t dev, device_t child)
 }
 
 static int
-bcma_get_port_rid(device_t dev, device_t child, u_int port_num, u_int
-    region_num)
+bcma_get_port_rid(device_t dev, device_t child, bhnd_port_type port_type,
+    u_int port_num, u_int region_num)
 {
 	struct bcma_devinfo	*dinfo;
 	struct bcma_map		*map;
+	struct bcma_sport_list	*ports;
 	struct bcma_sport	*port;
 	
 	dinfo = device_get_ivars(child);
-	
-	if (port_num > dinfo->corecfg->num_dev_ports)
-		return -1;
+	ports = bcma_corecfg_get_port_list(dinfo->corecfg, port_type);
 
-	STAILQ_FOREACH(port, &dinfo->corecfg->dev_ports, sp_link) {
+	STAILQ_FOREACH(port, ports, sp_link) {
 		if (port->sp_num != port_num)
 			continue;
-		
-		STAILQ_FOREACH(map, &port->sp_maps, m_link) {
-			if (map->m_region_num == region_num) {
+
+		STAILQ_FOREACH(map, &port->sp_maps, m_link)
+			if (map->m_region_num == region_num)
 				return map->m_rid;
-			}
-		}
 	}
 
 	return -1;
@@ -180,10 +177,11 @@ bcma_get_port_rid(device_t dev, device_t child, u_int port_num, u_int
 
 static int
 bcma_decode_port_rid(device_t dev, device_t child, int type, int rid,
-    u_int *port_num, u_int *region_num)
+    bhnd_port_type *port_type, u_int *port_num, u_int *region_num)
 {
 	struct bcma_devinfo	*dinfo;
 	struct bcma_map		*map;
+	struct bcma_sport_list	*ports;
 	struct bcma_sport	*port;
 
 	dinfo = device_get_ivars(child);
@@ -192,15 +190,27 @@ bcma_decode_port_rid(device_t dev, device_t child, int type, int rid,
 	if (type != SYS_RES_MEMORY)
 		return (EINVAL);
 
-	/* Search the port list */
-	STAILQ_FOREACH(port, &dinfo->corecfg->dev_ports, sp_link) {
-		STAILQ_FOREACH(map, &port->sp_maps, m_link) {
-			if (map->m_rid != rid)
-				continue;
+	/* Starting with the most likely device list, search all three port
+	 * lists */
+	bhnd_port_type types[] = {
+	    BHND_PORT_DEVICE, 
+	    BHND_PORT_AGENT,
+	    BHND_PORT_BRIDGE
+	};
 
-			*port_num = port->sp_num;
-			*region_num = map->m_region_num;
-			return (0);
+	for (int i = 0; i < sizeof(types) / sizeof(types[0]); i++) {
+		ports = bcma_corecfg_get_port_list(dinfo->corecfg, types[i]);
+
+		STAILQ_FOREACH(port, ports, sp_link) {
+			STAILQ_FOREACH(map, &port->sp_maps, m_link) {
+				if (map->m_rid != rid)
+					continue;
+
+				*port_type = port->sp_type;
+				*port_num = port->sp_num;
+				*region_num = map->m_region_num;
+				return (0);
+			}
 		}
 	}
 
@@ -208,17 +218,19 @@ bcma_decode_port_rid(device_t dev, device_t child, int type, int rid,
 }
 
 static int
-bcma_get_port_addr(device_t dev, device_t child, u_int port_num,
-	u_int region_num, bhnd_addr_t *addr, bhnd_size_t *size)
+bcma_get_port_addr(device_t dev, device_t child, bhnd_port_type port_type,
+    u_int port_num, u_int region_num, bhnd_addr_t *addr, bhnd_size_t *size)
 {
 	struct bcma_devinfo	*dinfo;
 	struct bcma_map		*map;
+	struct bcma_sport_list	*ports;
 	struct bcma_sport	*port;
-
+	
 	dinfo = device_get_ivars(child);
+	ports = bcma_corecfg_get_port_list(dinfo->corecfg, port_type);
 
 	/* Search the port list */
-	STAILQ_FOREACH(port, &dinfo->corecfg->dev_ports, sp_link) {
+	STAILQ_FOREACH(port, ports, sp_link) {
 		if (port->sp_num != port_num)
 			continue;
 

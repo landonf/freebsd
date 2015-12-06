@@ -183,7 +183,7 @@ bhnd_child_location_str(device_t dev, device_t child, char *buf,
 	}
 
 
-	if (bhnd_get_port_addr(child, 0, 0, &addr, &size)) {
+	if (bhnd_get_port_addr(child, BHND_PORT_DEVICE, 0, 0, &addr, &size)) {
 		/* No device default port/region */
 		if (buflen > 0)
 			*buf = '\0';

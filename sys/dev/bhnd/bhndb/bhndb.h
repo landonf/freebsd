@@ -51,7 +51,7 @@ int	bhndb_attach_bridge(device_t parent, device_t *bhndb, int unit);
  * bhndb register window types.
  */
 typedef enum {
-	BHNDB_REGWIN_T_CORE,		/**< Fixed mapping of a core register block. */
+	BHNDB_REGWIN_T_CORE,		/**< Fixed mapping of a core port region. */
 	BHNDB_REGWIN_T_SPROM,		/**< Fixed mapping of device SPROM */
 	BHNDB_REGWIN_T_DYN,		/**< A dynamically configurable window */
 	BHNDB_REGWIN_T_INVALID		/**< Invalid type */
@@ -75,10 +75,11 @@ struct bhndb_regwin {
 	union {
 		/** Core-specific register window (BHNDB_REGWIN_T_CORE). */
 		struct {
-			bhnd_devclass_t	class;	/**< mapped core's class */
-			u_int		unit;	/**< mapped core's unit */
-			u_int		port;	/**< mapped port number */
-			u_int		region;	/**< mapped region number */
+			bhnd_devclass_t	class;		/**< mapped core's class */
+			u_int		unit;		/**< mapped core's unit */
+			bhnd_port_type	type;		/**< mapped port type */
+			u_int		port;		/**< mapped port number */
+			u_int		region;		/**< mapped region number */
 		} core;
 
 		/** SPROM register window (BHNDB_REGWIN_T_SPROM). */

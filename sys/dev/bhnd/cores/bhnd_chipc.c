@@ -95,7 +95,7 @@ bhnd_chipc_attach(device_t dev)
 	int			 rid;
 
 	// TODO
-	if ((rid = bhnd_get_port_rid(dev, 0, 0)) == -1)
+	if ((rid = bhnd_get_port_rid(dev, BHND_PORT_DEVICE, 0, 0)) == -1)
 		return (ENXIO);
 
 	r = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY,

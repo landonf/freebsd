@@ -68,8 +68,8 @@ struct bcma_erom_mport {
 
 /** EROM slave port region descriptor. */
 struct bcma_erom_sport_region {
-	uint8_t		port_num;	/**< the slave port mapping this region */
-	uint8_t		port_type;	/**< the mapping port's type */
+	uint8_t		region_port;	/**< the slave port mapping this region */
+	uint8_t		region_type;	/**< the mapping port's type */
 	bhnd_addr_t	base_addr;	/**< region base address */
 	bhnd_addr_t	size;		/**< region size */
 };

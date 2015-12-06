@@ -34,7 +34,7 @@
 
 #include <sys/types.h>
 
-/** BHND Device Classes. */
+/** bhnd(4) device classes. */
 typedef enum {
 	BHND_DEVCLASS_CC,		/**< chipcommon i/o controller */
 	BHND_DEVCLASS_PCI,		/**< pci host/device bridge */
@@ -56,6 +56,20 @@ typedef enum {
 
 	BHND_DEVCLASS_INVALID		/**< no/invalid class */
 } bhnd_devclass_t;
+
+
+/**
+ * bhnd(4) port types.
+ * 
+ * Only BHND_PORT_DEVICE is guaranteed to be supported by all bhnd(4) bus
+ * implementations.
+ */
+typedef enum {
+	BHND_PORT_DEVICE	= 0,	/**< device memory */
+	BHND_PORT_BRIDGE	= 1,	/**< bridge memory */
+	BHND_PORT_AGENT		= 2,	/**< interconnect agent/wrapper */
+} bhnd_port_type;
+
 
 /** Evaluates to true if @p cls is a device class that can be configured
  *  as a host bridge device. */

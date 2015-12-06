@@ -448,8 +448,8 @@ bcma_erom_parse_sport_region(struct bcma_erom *erom,
 	}
 
 	region->base_addr = BCMA_EROM_GET_ATTR(entry, REGION_BASE);
-	region->port_type = BCMA_EROM_GET_ATTR(entry, REGION_TYPE);
-	region->port_num = BCMA_EROM_GET_ATTR(entry, REGION_PORT);
+	region->region_type = BCMA_EROM_GET_ATTR(entry, REGION_TYPE);
+	region->region_port = BCMA_EROM_GET_ATTR(entry, REGION_PORT);
 	size_type = BCMA_EROM_GET_ATTR(entry, REGION_SIZE);
 
 	/* If region address is 64-bit, fetch the high bits. */
@@ -483,8 +483,8 @@ bcma_erom_parse_sport_region(struct bcma_erom *erom,
 	    BHND_ADDR_MAX - (region->size - 1) < region->base_addr)
 	{
 		EROM_LOG(erom, "%s%u: invalid address map %llx:%llx\n",
-		    bcma_port_type_name(region->port_type),
-		    region->port_num,
+		    erom_entry_type_name(region->region_type),
+		    region->region_port,
 		    (unsigned long long) region->base_addr,
 		    (unsigned long long) region->size);
 
@@ -595,47 +595,48 @@ cleanup:
  * @param erom EROM read state.
  * @param corecfg Core info to be populated with the scanned port regions.
  * @param port_num Port index for which regions will be parsed.
- * @param port_type The port region type to be parsed.
+ * @param region_type The region type to be parsed.
  * @param[out] offset The offset at which to perform parsing. On success, this
  * will be updated to point to the next EROM table entry.
  */
 static int 
 erom_corecfg_fill_port_regions(struct bcma_erom *erom,
     struct bcma_corecfg *corecfg, bcma_pid_t port_num,
-    bcma_sport_type port_type)
+    uint8_t region_type)
 {
 	struct bcma_sport	*sport;
 	struct bcma_sport_list	*sports;
 	bus_size_t		 entry_offset;
 	int			 error;
-	uint8_t			 req_region_type;
+	bhnd_port_type		 port_type;
 
 	error = 0;
+	
+	/* Determine the port type for this region type. */
+	switch (region_type) {
+		case BCMA_EROM_REGION_TYPE_DEVICE:
+			port_type = BHND_PORT_DEVICE;
+			break;
+		case BCMA_EROM_REGION_TYPE_BRIDGE:
+			port_type = BHND_PORT_BRIDGE;
+			break;
+		case BCMA_EROM_REGION_TYPE_MWRAP:
+		case BCMA_EROM_REGION_TYPE_SWRAP:
+			port_type = BHND_PORT_AGENT;
+			break;
+		default:
+			EROM_LOG(erom, "unsupported region type %hhx\n",
+			    region_type);
+			return (EINVAL);
+	};
 
+	/* Fetch the list to be populated */
+	sports = bcma_corecfg_get_port_list(corecfg, port_type);
+	
 	/* Allocate a new port descriptor */
 	sport = bcma_alloc_sport(port_num, port_type);
 	if (sport == NULL)
 		return (ENOMEM);
-	
-	/* Determine the required region type for our region descriptors */
-	switch (port_type) {
-	case BCMA_SPORT_TYPE_DEVICE:
-		req_region_type = BCMA_EROM_REGION_TYPE_DEVICE;
-		sports = &corecfg->dev_ports;
-		break;
-	case BCMA_SPORT_TYPE_BRIDGE:
-		req_region_type = BCMA_EROM_REGION_TYPE_BRIDGE;
-		sports = &corecfg->bridge_ports;
-		break;
-	case BCMA_SPORT_TYPE_SWRAP:
-		req_region_type = BCMA_EROM_REGION_TYPE_SWRAP;
-		sports = &corecfg->wrapper_ports;
-		break;
-	case BCMA_SPORT_TYPE_MWRAP:
-		req_region_type = BCMA_EROM_REGION_TYPE_MWRAP;
-		sports = &corecfg->wrapper_ports;
-		break;
-	}
 
 	/* Read all address regions defined for this port */
 	for (bcma_rmid_t region_num = 0;; region_num++) {
@@ -648,7 +649,7 @@ erom_corecfg_fill_port_regions(struct bcma_erom *erom,
 			EROM_LOG(erom, "core%u %s%u: region count reached "
 			    "upper limit of %u\n",
 			    corecfg->core_info.core_id,
-			    bcma_port_type_name(port_type),
+			    bhnd_port_type_name(port_type),
 			    port_num, BCMA_RMID_MAX);
 
 			error = EINVAL;
@@ -662,7 +663,7 @@ erom_corecfg_fill_port_regions(struct bcma_erom *erom,
 			EROM_LOG(erom, "core%u %s%u.%u: invalid slave port "
 			    "address region\n",
 			    corecfg->core_info.core_id,
-			    bcma_port_type_name(port_type),
+			    bhnd_port_type_name(port_type),
 			    port_num, region_num);
 			goto cleanup;
 		}
@@ -676,8 +677,8 @@ erom_corecfg_fill_port_regions(struct bcma_erom *erom,
 		
 		/* A region or type mismatch also signals no further region
 		 * entries */
-		if (spr.port_num != port_num ||
-		    spr.port_type != req_region_type)
+		if (spr.region_port != port_num ||
+		    spr.region_type != region_type)
 		{
 			/* We don't want to consume this entry */
 			bcma_erom_seek(erom, entry_offset);
@@ -733,7 +734,7 @@ bcma_erom_parse_corecfg(struct bcma_erom *erom, struct bcma_corecfg **result)
 {
 	struct bcma_corecfg	*cfg;
 	struct bcma_erom_core	 core;
-	bcma_sport_type		 first_port_type;
+	uint8_t			 first_region_type;
 	bus_size_t		 initial_offset;
 	u_int			 core_index;
 	int			 core_unit;
@@ -847,11 +848,11 @@ bcma_erom_parse_corecfg(struct bcma_erom *erom, struct bcma_corecfg **result)
 		if (BCMA_EROM_ENTRY_IS(entry, REGION) && 
 		    BCMA_EROM_GET_ATTR(entry, REGION_TYPE) == BCMA_EROM_REGION_TYPE_BRIDGE)
 		{
-			first_port_type = BCMA_SPORT_TYPE_BRIDGE;
+			first_region_type = BCMA_EROM_REGION_TYPE_BRIDGE;
 			cfg->num_dev_ports = 0;
 			cfg->num_bridge_ports = core.num_dport;
 		} else {
-			first_port_type = BCMA_SPORT_TYPE_DEVICE;
+			first_region_type = BCMA_EROM_REGION_TYPE_DEVICE;
 			cfg->num_dev_ports = core.num_dport;
 			cfg->num_bridge_ports = 0;
 		}
@@ -860,7 +861,7 @@ bcma_erom_parse_corecfg(struct bcma_erom *erom, struct bcma_corecfg **result)
 	/* Device/bridge port descriptors */
 	for (uint8_t sp_num = 0; sp_num < core.num_dport; sp_num++) {
 		error = erom_corecfg_fill_port_regions(erom, cfg, sp_num,
-		    first_port_type);
+		    first_region_type);
 
 		if (error)
 			goto failed;
@@ -869,7 +870,7 @@ bcma_erom_parse_corecfg(struct bcma_erom *erom, struct bcma_corecfg **result)
 	/* Wrapper (aka device management) descriptors (for master ports). */
 	for (uint8_t sp_num = 0; sp_num < core.num_mwrap; sp_num++) {
 		error = erom_corecfg_fill_port_regions(erom, cfg, sp_num,
-		    BCMA_SPORT_TYPE_MWRAP);
+		    BCMA_EROM_REGION_TYPE_MWRAP);
 
 		if (error)
 			goto failed;
@@ -882,7 +883,7 @@ bcma_erom_parse_corecfg(struct bcma_erom *erom, struct bcma_corecfg **result)
 		 * wrapper ports. */
 		uint8_t sp_num = core.num_mwrap + i;
 		error = erom_corecfg_fill_port_regions(erom, cfg, sp_num,
-		    BCMA_SPORT_TYPE_SWRAP);
+		    BCMA_EROM_REGION_TYPE_SWRAP);
 
 		if (error)
 			goto failed;

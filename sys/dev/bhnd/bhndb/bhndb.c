@@ -511,8 +511,8 @@ bhndb_read_chipid(struct bhndb_softc *sc, struct bhnd_chipid *result)
 	/* Try to find a register window we can use to map the first
 	 * CHIPC_CHIPID_SIZE of ChipCommon registers. */
 	cfg = BHNDB_BUS_GET_GENERIC_HWCFG(sc->parent_dev, sc->dev);
-	cc_win = bhndb_regwin_find_core_or_dyn(cfg->register_windows,
-	    BHND_DEVCLASS_CC, 0, 0, 0, CHIPC_CHIPID_SIZE);
+	cc_win = bhndb_regwin_find_best(cfg->register_windows,
+	    BHND_DEVCLASS_CC, 0, BHND_PORT_DEVICE, 0, 0, CHIPC_CHIPID_SIZE);
 	if (cc_win == NULL) {
 		device_printf(sc->dev, "no chipcommon register window\n");
 		return (0);
@@ -1229,30 +1229,42 @@ bhndb_try_activate_static_window(struct bhndb_softc *sc, device_t child,
 	const struct bhndb_regwin	*win;
 	bhnd_addr_t			 addr;
 	bhnd_size_t			 parent_offset, size;
+	bhnd_port_type			 port_type;
+	u_int				 port, region;
 	u_long				 r_start, r_end;
 	int				 error;
 
 	r_start = rman_get_start(r);
 	r_end = rman_get_end(r);
 
-	/* Look for a core window enclosing the resource range. */
+	/* Only core register windows are currently supported; this requires a
+	 * bus-attached device. */
+	if (device_get_parent(child) != BHNDB_GET_ATTACHED_BUS(sc->dev))
+		return (ENOENT);
+
+	/* Try to map the resource back to a port triplet */
+	error = bhnd_decode_port_rid(child, type, rid, &port_type, &port,
+	    &region);
+	if (error)
+		return (error);
+
+	/* Look for a core window matching this port triplet. */
 	for (win = sc->hw->cfg->register_windows;
 	    win->win_type != BHNDB_REGWIN_T_INVALID; win++)
 	{
-		device_t bhnd_child;
-
 		if (win->win_type != BHNDB_REGWIN_T_CORE)
 			continue;
 
-		/* Find the core's device on the bhnd bus */
-		bhnd_child = bhnd_find_child(sc->bus_dev, win->core.class,
-		    win->core.unit);
-		if (bhnd_child == NULL)
+		if (win->core.type != port_type ||
+		    win->core.port != port ||
+		    win->core.region != region)
+		{
 			continue;
+		}
 
 		/* Fetch the address and size of the core's mapped port. */
-		error = bhnd_get_port_addr(bhnd_child, win->core.port,
-		    win->core.region, &addr, &size);
+		error = bhnd_get_port_addr(child, win->core.type,
+		    win->core.port, win->core.region, &addr, &size);
 		if (error)
 			return (error);
 
@@ -1284,7 +1296,7 @@ bhndb_try_activate_static_window(struct bhndb_softc *sc, device_t child,
 		/* Mark active */
 		if ((error = rman_activate_resource(r)))
 			return (error);
-		
+
 		return (0);
 	}
 

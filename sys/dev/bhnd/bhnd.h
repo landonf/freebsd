@@ -101,18 +101,6 @@ struct bhnd_chipid {
 };
 
 /**
- * Port types.
- * 
- * Only BHND_PORT_TYPE_DEVICE is supported by all bhnd(4) bus
- * implementations.
- */
-typedef enum {
-	BHND_PORT_TYPE_DEVICE	= 0,	/**< device memory */
-	BHND_PORT_TYPE_BRIDGE	= 1,	/**< bridge memory */
-	BHND_PORT_TYPE_AGENT	= 2,	/**< interconnect agent/wrapper */
-} bhnd_port_type;
-
-/**
 * A bhnd(4) bus resource.
 * 
 * This provides an abstract interface to per-core resources that may require
@@ -158,6 +146,8 @@ struct bhnd_core_match {
 };
 
 const char			*bhnd_vendor_name(uint16_t vendor);
+const char			*bhnd_port_type_name(bhnd_port_type port_type);
+
 const char 			*bhnd_find_core_name(uint16_t vendor,
 				     uint16_t device);
 bhnd_devclass_t			 bhnd_find_core_class(uint16_t vendor,
@@ -338,6 +328,7 @@ bhnd_release_resource(device_t dev, int type, int rid,
  * Return the resource-ID for a memory region on the given device port.
  *
  * @param dev The device being queried.
+ * @param type The port type.
  * @param port The port identifier.
  * @param region The identifier of the memory region on @p port.
  * 
@@ -345,9 +336,10 @@ bhnd_release_resource(device_t dev, int type, int rid,
  * @retval -1 No such port/region found.
  */
 static inline int
-bhnd_get_port_rid(device_t dev, u_int port, u_int region)
+bhnd_get_port_rid(device_t dev, bhnd_port_type type, u_int port, u_int region)
 {
-	return BHND_GET_PORT_RID(device_get_parent(dev), dev, port, region);
+	return BHND_GET_PORT_RID(device_get_parent(dev), dev, type, port,
+	    region);
 }
 
 /**
@@ -356,6 +348,7 @@ bhnd_get_port_rid(device_t dev, u_int port, u_int region)
  * @param dev The device being queried.
  * @param type The resource type.
  * @param rid The resource identifier.
+ * @param[out] port_type The decoded port type.
  * @param[out] port The decoded port identifier.
  * @param[out] region The decoded region identifier.
  *
@@ -363,17 +356,18 @@ bhnd_get_port_rid(device_t dev, u_int port, u_int region)
  * @retval non-zero No matching port/region found.
  */
 static inline int
-bhnd_decode_port_rid(device_t dev, int type, int rid, u_int *port,
-    u_int *region)
+bhnd_decode_port_rid(device_t dev, int type, int rid, bhnd_port_type *port_type,
+    u_int *port, u_int *region)
 {
 	return BHND_DECODE_PORT_RID(device_get_parent(dev), dev, type, rid,
-	    port, region);
+	    port_type, port, region);
 }
 
 /**
  * Get the address and size of @p region on @p port.
  *
  * @param dev The device being queried.
+ * @param port_type The port type.
  * @param port The port identifier.
  * @param region The identifier of the memory region on @p port.
  * @param[out] region_addr The region's base address.
@@ -383,11 +377,11 @@ bhnd_decode_port_rid(device_t dev, int type, int rid, u_int *port,
  * @retval non-zero No matching port/region found.
  */
 static inline int
-bhnd_get_port_addr(device_t dev, u_int port, u_int region,
-   bhnd_addr_t *region_addr, bhnd_size_t *region_size)
+bhnd_get_port_addr(device_t dev, bhnd_port_type port_type, u_int port,
+    u_int region, bhnd_addr_t *region_addr, bhnd_size_t *region_size)
 {
-	return BHND_GET_PORT_ADDR(device_get_parent(dev), dev, port, region,
-	    region_addr, region_size);
+	return BHND_GET_PORT_ADDR(device_get_parent(dev), dev, port_type,
+	    port, region, region_addr, region_size);
 }
 
 /*
