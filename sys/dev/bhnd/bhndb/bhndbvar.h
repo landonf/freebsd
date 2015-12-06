@@ -79,6 +79,26 @@ const struct bhndb_regwin	*bhndb_regwin_find_core_or_dyn(
 				     bhnd_devclass_t class, int unit, int port,
 				     int region, bus_size_t min_size);
 
+
+
+/**
+ * bhndb resource allocation priorities.
+ */
+typedef enum {
+	/** No direct resources should ever be allocated for this device. */
+	BHNDB_RES_PRIO_NONE	= 0,
+
+	/** Allocate a direct resource if available after serving all other
+	  * higher-priority requests. */
+	BHNDB_RES_PRIO_LOW	= 100,
+
+	/** Direct resource allocation is preferred. */
+	BHNDB_RES_PRIO_DEFAULT	= 200,
+
+	/** Indirect resource allocation would incur high runtime overhead. */
+	BHNDB_RES_PRIO_CRITICAL	= 300
+} bhndb_res_prio_t;
+
 /**
  * bhndb driver instance state. Must be first member of all subclass
  * softc structures.
