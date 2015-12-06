@@ -76,16 +76,6 @@ BHND_ACCESSOR(core_unit,	CORE_UNIT,	int);
 
 #undef	BHND_ACCESSOR
 
-/**
- * bhnd device probe priority.
- */
-enum {
-	BHND_PROBE_ORDER_FIRST		= 0,	/**< probe first */
-	BHND_PROBE_ORDER_EARLY		= 10,	/**< probe early */
-	BHND_PROBE_ORDER_DEFAULT	= 20,	/**< default probe priority */
-	BHND_PROBE_ORDER_LAST		= 30,	/**< probe last */
-};
-
 /* forward declaration; private to bhndvar.h */
 struct bhnd_bus_ctx;
 

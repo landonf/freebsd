@@ -311,8 +311,7 @@ bcma_add_children(device_t bus, struct resource *erom_res, bus_size_t erom_offse
 		corecfg = NULL;
 
 		/* Add the child device */
-		child = device_add_child_ordered(bus, BHND_PROBE_ORDER_DEFAULT,
-		    NULL, -1);
+		child = device_add_child(bus, NULL, -1);
 		if (child == NULL) {
 			error = ENXIO;
 			goto failed;

@@ -389,8 +389,7 @@ siba_add_children(device_t bus, const struct bhnd_chipid *chipid)
 		    SIBA_CORE_ADDR(i) + SIBA_CORE_SIZE - 1, SIBA_CORE_SIZE);
 
 		/* Add the child device */
-		child = device_add_child_ordered(bus, BHND_PROBE_ORDER_DEFAULT,
-		    NULL, -1);
+		child = device_add_child(bus, NULL, -1);
 		if (child == NULL) {
 			error = ENXIO;
 			goto cleanup;
