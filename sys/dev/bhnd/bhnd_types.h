@@ -37,6 +37,7 @@
 /** bhnd(4) device classes. */
 typedef enum {
 	BHND_DEVCLASS_CC,		/**< chipcommon i/o controller */
+	BHND_DEVCLASS_PMU,		/**< pmu controller */
 	BHND_DEVCLASS_PCI,		/**< pci host/device bridge */
 	BHND_DEVCLASS_PCIE,		/**< pcie host/device bridge */
 	BHND_DEVCLASS_PCCARD,		/**< pcmcia host/device bridge */

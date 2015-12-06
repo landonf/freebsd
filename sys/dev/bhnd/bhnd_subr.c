@@ -92,7 +92,7 @@ static const struct bhnd_core_desc {
 	BHND_CDESC(BCM, ARM11,		CPU,		"ARM1176 Core"),
 	BHND_CDESC(BCM, ARM7S,		CPU,		"ARM7TDMI-S Core"),
 	BHND_CDESC(BCM, LPPHY,		WLAN_PHY,	"802.11a/b/g PHY"),
-	BHND_CDESC(BCM, PMU,		OTHER,		"PMU"),
+	BHND_CDESC(BCM, PMU,		PMU,		"PMU"),
 	BHND_CDESC(BCM, SSNPHY,		WLAN_PHY,	"802.11n Single-Stream PHY"),
 	BHND_CDESC(BCM, SDIOD,		OTHER,		"SDIO Device Core"),
 	BHND_CDESC(BCM, ARMCM3,		CPU,		"ARM Cortex-M3 Core"),

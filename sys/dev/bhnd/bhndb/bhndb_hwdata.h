@@ -29,20 +29,11 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_BHNDREG_H_
-#define _BHND_BHNDREG_H_
+#ifndef _BHND_BHNDB_HWDATA_H_
+#define _BHND_BHNDB_HWDATA_H_
 
-/**
- * The default address at which the ChipCommon core is mapped on all siba(4)
- * devices, and most bcma(4) devices.
- */
-#define	BHND_DEFAULT_CHIPC_ADDR		0x18000000
+#include "bhndb.h"
 
-/**
- * The standard size of a primary BHND_PORT_DEVICE or BHND_PORT_AGENT
- * register block.
- */
-#define	BHND_DEFAULT_CORE_SIZE	0x1000
+extern const struct bhndb_core_prio bhndb_generic_res_prio_table[];
 
-
-#endif /* _BHND_BHNDREG_H_ */
+#endif /* _BHND_BHNDB_HWDATA_H_ */

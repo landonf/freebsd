@@ -32,7 +32,7 @@
 #ifndef _BHND_BHNDB_PCI_HWDATA_H_
 #define _BHND_BHNDB_PCI_HWDATA_H_
 
-#include "bhndbvar.h"
+#include "bhndb.h"
 
 extern struct bhndb_hw bhndb_pci_generic_hw_table[];
 

@@ -83,45 +83,6 @@ const struct bhndb_regwin	*bhndb_regwin_find_best(
 				     u_int region, bus_size_t min_size);
 
 /**
- * bhndb resource allocation priorities.
- */
-typedef enum {
-	/** No direct resources should ever be allocated for this device. */
-	BHNDB_RES_PRIO_NONE	= 0,
-
-	/** Allocate a direct resource if available after serving all other
-	  * higher-priority requests. */
-	BHNDB_RES_PRIO_LOW	= 100,
-
-	/** Direct resource allocation is preferred. */
-	BHNDB_RES_PRIO_DEFAULT	= 200,
-
-	/** Indirect resource allocation would incur high runtime overhead. */
-	BHNDB_RES_PRIO_CRITICAL	= 300
-} bhndb_res_prio;
-
-/**
- * Core resource priority descriptor.
- */
-struct bhndb_core_res_priority {
-	struct bhnd_core_match			 match;		/**< core match descriptor */
-	bhndb_res_prio				 prio;		/**< core-level priority */
-	const struct bhndb_port_res_priority	*ports;		/**< port priorities */
-	u_int					 num_ports;	/**< number of port priority records. */
-};
-
-/**
- * Port resource priority descriptor.
- */
-struct bhndb_port_res_priority {
-	bhnd_port_type	type;		/**< port type. */
-	u_int		port;		/**< port */
-	u_int		region;		/**< region */
-	bhnd_size_t	min_size;	/**< minimum required mapping size */
-	bhndb_res_prio	prio;		/**< port-level priority */
-};
-
-/**
  * bhndb driver instance state. Must be first member of all subclass
  * softc structures.
  */
