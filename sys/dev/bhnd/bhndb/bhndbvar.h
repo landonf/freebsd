@@ -98,7 +98,28 @@ typedef enum {
 
 	/** Indirect resource allocation would incur high runtime overhead. */
 	BHNDB_RES_PRIO_CRITICAL	= 300
-} bhndb_res_prio_t;
+} bhndb_res_prio;
+
+/**
+ * Core resource priority descriptor.
+ */
+struct bhndb_core_res_priority {
+	struct bhnd_core_match			 match;		/**< core match descriptor */
+	bhndb_res_prio				 prio;		/**< core-level priority */
+	const struct bhndb_port_res_priority	*ports;		/**< port priorities */
+	u_int					 num_ports;	/**< number of port priority records. */
+};
+
+/**
+ * Port resource priority descriptor.
+ */
+struct bhndb_port_res_priority {
+	bhnd_port_type	type;		/**< port type. */
+	u_int		port;		/**< port */
+	u_int		region;		/**< region */
+	bhnd_size_t	min_size;	/**< minimum required mapping size */
+	bhndb_res_prio	prio;		/**< port-level priority */
+};
 
 /**
  * bhndb driver instance state. Must be first member of all subclass
