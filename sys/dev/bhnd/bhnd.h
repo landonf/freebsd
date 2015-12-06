@@ -101,6 +101,18 @@ struct bhnd_chipid {
 };
 
 /**
+ * Port types.
+ * 
+ * Only BHND_PORT_TYPE_DEVICE is supported by all bhnd(4) bus
+ * implementations.
+ */
+typedef enum {
+	BHND_PORT_TYPE_DEVICE	= 0,	/**< device memory */
+	BHND_PORT_TYPE_BRIDGE	= 1,	/**< bridge memory */
+	BHND_PORT_TYPE_AGENT	= 2,	/**< interconnect agent/wrapper */
+} bhnd_port_type;
+
+/**
 * A bhnd(4) bus resource.
 * 
 * This provides an abstract interface to per-core resources that may require
