@@ -54,6 +54,7 @@ typedef enum {
 	BHNDB_REGWIN_T_CORE,		/**< Fixed mapping of a core register block. */
 	BHNDB_REGWIN_T_SPROM,		/**< Fixed mapping of device SPROM */
 	BHNDB_REGWIN_T_DYN,		/**< A dynamically configurable window */
+	BHNDB_REGWIN_T_INDIRECT,	/**< A dynamic indirectly addressable window */
 	BHNDB_REGWIN_T_INVALID		/**< Invalid type */
 } bhndb_regwin_type_t;
 
@@ -88,6 +89,12 @@ struct bhndb_regwin {
 		struct {
 			bus_size_t	cfg_offset;	/**< window address config offset. */
 		} dyn;
+
+		/** Indirect register window (BHNDB_REGWIN_T_INDIRECT). */
+		struct {
+			bus_size_t	addr_offset;	/**< target address offset. */
+			bus_size_t	data_offset;	/**< target data offset. */
+		} ind;
         };
 };
 

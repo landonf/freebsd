@@ -184,6 +184,61 @@ bhndb_pci_set_window_addr(device_t dev, const struct bhndb_regwin *rw,
 	return (sc->set_regwin(sc, rw, addr));
 }
 
+/* Common read_indirect/write_indirect implementation */
+static int
+perform_indirect_io_op(device_t dev, bhnd_addr_t addr, uint32_t *value,
+    bool write)
+{
+	struct bhndb_softc		*sc;
+	const struct bhndb_regwin	*indrw;
+	device_t			 pci_parent;
+
+	sc = device_get_softc(dev);
+	pci_parent = sc->parent_dev;
+	indrw = sc->ind_regwin;
+
+	if (indrw == NULL)
+		return (ENXIO);
+
+	KASSERT(indrw->win_type == BHNDB_REGWIN_T_INDIRECT,
+	    ("unsupported regwin type\n"));
+
+	KASSERT(indrw->win_size == sizeof(uint32_t),
+	    ("unsupported regwin size\n"));
+
+	/* The PCI bridge only supports 32-bit addressing. */
+	if (addr > UINT32_MAX)
+		return (ERANGE);
+
+	/* Set the target address */
+	device_printf(dev, "ADDR=0x%x\n", pci_read_config(pci_parent, indrw->ind.addr_offset, 4));
+	
+	pci_write_config(pci_parent, indrw->ind.addr_offset, addr, 4);
+
+	device_printf(dev, "ADDR=0x%x\n", pci_read_config(pci_parent, indrw->ind.addr_offset, 4));
+
+	/* Perform the op */
+	if (write) {
+		pci_write_config(pci_parent, indrw->ind.data_offset, *value, 4);
+	} else {
+		*value = pci_read_config(pci_parent, indrw->ind.data_offset, 4);
+	}
+
+	return (0);
+}
+
+static int
+bhndb_pci_read_indirect(device_t dev, bhnd_addr_t addr, uint32_t *value)
+{
+	return (perform_indirect_io_op(dev, addr, value, false));
+}
+
+static int
+bhndb_pci_write_indirect(device_t dev, bhnd_addr_t addr, uint32_t value)
+{
+	return (perform_indirect_io_op(dev, addr, &value, true));
+}
+
 /**
  * A siba(4) and bcma(4)-compatible bhndb_set_window_addr implementation.
  * 
@@ -344,6 +399,8 @@ static device_method_t bhndb_pci_methods[] = {
 	/* BHNDB interface */
 	DEVMETHOD(bhndb_get_bridge_devclass,	bhndb_pci_get_bridge_devclass),
 	DEVMETHOD(bhndb_set_window_addr,	bhndb_pci_set_window_addr),
+	DEVMETHOD(bhndb_read_indirect,		bhndb_pci_read_indirect),
+	DEVMETHOD(bhndb_write_indirect,		bhndb_pci_write_indirect),
 
 	DEVMETHOD_END
 };

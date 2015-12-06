@@ -321,6 +321,17 @@ static const struct bhndb_hwcfg bhndb_pci_hwcfg_v0 = {
 	},
 
 	.register_windows	= (const struct bhndb_regwin[]) {
+		/* indirect backplane accesss */
+		{
+			.win_type	= BHNDB_REGWIN_T_INDIRECT,
+			.win_offset	= 0,
+			.win_size	= sizeof(uint32_t),
+			.ind		= {
+				.addr_offset	= BHNDB_PCI_BACKPLANE_ADDR,
+				.data_offset	= BHNDB_PCI_BACKPLANE_DATA
+			},
+			.res		= { -1, -1 }
+		},
 		/* bar0+0x0000: configurable backplane window */
 		{
 			.win_type	= BHNDB_REGWIN_T_DYN,

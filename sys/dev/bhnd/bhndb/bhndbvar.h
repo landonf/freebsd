@@ -103,6 +103,8 @@ struct bhndb_softc {
 	struct bhndb_regwin_region	*dw_regions;	/**< dynamic window regions */
 	size_t				 dw_count;	/**< number of dynamic window regions. */
 	uint32_t			 dw_freelist;	/**< dw_regions free list */
+
+	const struct bhndb_regwin	*ind_regwin;	/**< indirect register window, or NULL */
 };
 
 #endif /* _BHND_BHNDBVAR_H_ */

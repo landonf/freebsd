@@ -72,6 +72,20 @@ CODE {
 	{
 		panic("bhndb_get_attached_bus unimplemented");
 	}
+	
+	static int
+	bhndb_null_read_indirect(device_t dev, bhnd_addr_t addr,
+	    uint32_t *value)
+	{
+		return (ENXIO);
+	}
+
+	static int
+	bhndb_null_write_indirect(device_t dev, bhnd_addr_t addr,
+	    uint32_t value)
+	{
+		return (ENXIO);
+	}
 }
 
 /**
@@ -123,3 +137,42 @@ METHOD int set_window_addr {
 	const struct bhndb_regwin *dynwin;
 	bhnd_addr_t addr;
 } DEFAULT bhndb_null_set_window_addr;
+
+/**
+ * Perform an indirect read of a @p width byte value.
+ *
+ * Indirect reads will fail if no BHNDB_REGWIN_T_INDIRECT window is
+ * defined for this bridge.
+ *
+ * @param dev The bridge device.
+ * @param addr The target read address.
+ * @param[out] value On success, the read value.
+ *
+ * @retval 0 success
+ * @retval ENXIO The device does not support indirect I/O.
+ */
+METHOD int read_indirect {
+	device_t dev;
+	bhnd_addr_t addr;
+	uint32_t *value;
+} DEFAULT bhndb_null_read_indirect;
+
+/**
+ * Perform an indirect write of a @p width byte value.
+ *
+ * Indirect writes will fail if no BHNDB_REGWIN_T_INDIRECT window is
+ * defined for this bridge.
+ *
+ * @param dev The bridge device.
+ * @param addr The target writes address.
+ * @param value The value to write.
+ *
+ * @retval 0 success
+ * @retval ENXIO The device does not support indirect I/O.
+ * @retval ENODEV The requested width is unsupported by the bridge.
+ */
+METHOD int write_indirect {
+	device_t dev;
+	bhnd_addr_t addr;
+	uint32_t value;
+} DEFAULT bhndb_null_write_indirect;

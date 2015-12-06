@@ -743,6 +743,20 @@ bhndb_generic_attach(device_t dev)
 	if ((error = bhndb_init_dw_region_allocator(sc)))
 		goto failed;
 
+	/* Save a reference to our indirect register window, if any. If 
+	 * we ever have devices that support multiple indirect windows we'll
+	 * need to revisit this approach. */
+	sc->ind_regwin = bhndb_regwin_find_type(sc->hw->cfg->register_windows,
+	    BHNDB_REGWIN_T_INDIRECT, sizeof(uint32_t));
+
+	uint32_t val;
+	int r = BHNDB_READ_INDIRECT(dev, BHND_DEFAULT_CHIPC_ADDR, &val);
+	if (r) {
+		device_printf(dev, "indirect read failed: %d\n", r);
+	} else {
+		device_printf(dev, "got 0x%x\n", val);
+	}
+
 	/* Attach our bridged bus device */
 	sc->bus_dev = device_add_child(dev, devclass_get_name(bhnd_devclass),
 	    -1);
