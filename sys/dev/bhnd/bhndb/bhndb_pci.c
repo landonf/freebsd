@@ -53,8 +53,8 @@ __FBSDID("$FreeBSD$");
 #include "bhndb_pcireg.h"
 #include "bhndb_pcivar.h"
 
-static int	bhndb_enable_pci_clocks(device_t dev);
-static int	bhndb_disable_pci_clocks(device_t dev);
+static int	bhndb_enable_pci_clocks(struct bhndb_pci_softc *sc);
+static int	bhndb_disable_pci_clocks(struct bhndb_pci_softc *sc);
 
 static int	bhndb_pci_compat_setregwin(struct bhndb_pci_softc *,
 		    const struct bhndb_regwin *, bhnd_addr_t);
@@ -90,11 +90,18 @@ static int
 bhndb_pci_attach(device_t dev)
 {
 	struct bhndb_pci_softc	*sc;
-	int			 error;
+	int			 error, reg;
 
 	sc = device_get_softc(dev);
+	sc->dev = dev;
 
-	if ((error = bhndb_enable_pci_clocks(dev))) {
+	/* Determine our bridge device class */
+	sc->pci_devclass = BHND_DEVCLASS_PCI;
+	if (pci_find_cap(device_get_parent(dev), PCIY_EXPRESS, &reg) == 0)
+		sc->pci_devclass = BHND_DEVCLASS_PCIE;
+
+	/* Enable PCI clocks */
+	if ((error = bhndb_enable_pci_clocks(sc))) {
 		device_printf(dev, "clock initialization failed\n");
 		return (error);
 	}
@@ -104,7 +111,7 @@ bhndb_pci_attach(device_t dev)
 	sc->set_regwin = bhndb_pci_compat_setregwin;
 
 	/* Perform full bridge attach */
-	if ((error = bhndb_generic_attach(dev)))
+	if ((error = bhndb_attach(dev, sc->pci_devclass)))
 		return (error);
 
 	/* If supported, switch to the faster regwin handling */
@@ -119,12 +126,15 @@ bhndb_pci_attach(device_t dev)
 static int
 bhndb_pci_detach(device_t dev)
 {
-	int error;
+	struct bhndb_pci_softc	*sc;
+	int			 error;
+
+	sc = device_get_softc(dev);
 
 	if ((error = bhndb_generic_detach(dev)))
 		return (error);
 
-	if ((error = bhndb_disable_pci_clocks(dev))) {
+	if ((error = bhndb_disable_pci_clocks(sc))) {
 		device_printf(dev, "failed to disable clocks\n");
 		return (error);
 	}
@@ -135,12 +145,15 @@ bhndb_pci_detach(device_t dev)
 static int
 bhndb_pci_suspend(device_t dev)
 {
-	int error;
+	struct bhndb_pci_softc	*sc;
+	int			 error;
+
+	sc = device_get_softc(dev);
 
 	if ((error = bhndb_generic_suspend(dev)))
 		return (error);
 
-	if ((error = bhndb_disable_pci_clocks(dev))) {
+	if ((error = bhndb_disable_pci_clocks(sc))) {
 		device_printf(dev, "suspend failed to disable clocks\n");
 		return (error);
 	}
@@ -151,9 +164,12 @@ bhndb_pci_suspend(device_t dev)
 static int
 bhndb_pci_resume(device_t dev)
 {
-	int error;
+	struct bhndb_pci_softc	*sc;
+	int			 error;
 
-	if ((error = bhndb_enable_pci_clocks(dev))) {
+	sc = device_get_softc(dev);
+
+	if ((error = bhndb_enable_pci_clocks(sc))) {
 		device_printf(dev, "resume failed to enable clocks\n");
 		return (error);
 	}
@@ -162,18 +178,6 @@ bhndb_pci_resume(device_t dev)
 		return (error);
 
 	return (0);
-}
-
-static bhnd_devclass_t
-bhndb_pci_get_bridge_devclass(device_t dev)
-{
-	int reg;
-
-	/* Check for a PCIe parent device */
-	if (pci_find_cap(device_get_parent(dev), PCIY_EXPRESS, &reg) == 0)
-		return (BHND_DEVCLASS_PCIE);
-	else
-		return (BHND_DEVCLASS_PCI);
 }
 
 static int
@@ -246,23 +250,23 @@ bhndb_pci_fast_setregwin(struct bhndb_pci_softc *sc,
 }
 
 /**
- * If supported (and required) by @p dev, enable any externally managed
+ * If supported (and required), enable any externally managed
  * clocks. 
+ * 
+ * @param sc Bridge driver state.
  */
 static int
-bhndb_enable_pci_clocks(device_t dev)
+bhndb_enable_pci_clocks(struct bhndb_pci_softc *sc)
 {
 	device_t		pci_parent;
 	uint32_t		gpio_in, gpio_out, gpio_en;
 	uint32_t		gpio_flags;
 	uint16_t		pci_status;
 
-	/* This may be called prior to softc initialization;
-         * we must be able to operate without driver state. */
-	pci_parent = device_get_parent(dev);
+	pci_parent = device_get_parent(sc->dev);
 
 	/* Only Broadcom's PCI devices require external clock gating */
-	if (BHNDB_GET_BRIDGE_DEVCLASS(dev) != BHND_DEVCLASS_PCI)
+	if (sc->pci_devclass != BHND_DEVCLASS_PCI)
 		return (0);
 
 	/* Read state of XTAL pin */
@@ -297,19 +301,19 @@ bhndb_enable_pci_clocks(device_t dev)
 }
 
 /**
- * If supported (and required) by @p dev, disable any externally managed
+ * If supported (and required), disable any externally managed
  * clocks.
  */
 static int
-bhndb_disable_pci_clocks(device_t dev)
+bhndb_disable_pci_clocks(struct bhndb_pci_softc *sc)
 {
-	struct bhndb_softc	*sc;
-	uint32_t		gpio_out, gpio_en;
+	device_t	parent_dev;
+	uint32_t	gpio_out, gpio_en;
 
-	sc = device_get_softc(dev);
+	parent_dev = device_get_parent(sc->dev);
 
 	/* Only Broadcom's PCI devices require external clock gating */
-	if (BHNDB_GET_BRIDGE_DEVCLASS(dev) != BHND_DEVCLASS_PCI)
+	if (sc->pci_devclass != BHND_DEVCLASS_PCI)
 		return (0);
 
 	// TODO: Check board flags for BFL2_XTALBUFOUTEN?
@@ -317,17 +321,17 @@ bhndb_disable_pci_clocks(device_t dev)
 	// TODO: Switch to 'slow' clock?
 
 	/* Fetch current config */
-	gpio_out = pci_read_config(sc->parent_dev, BHNDB_PCI_GPIO_OUT, 4);
-	gpio_en = pci_read_config(sc->parent_dev, BHNDB_PCI_GPIO_OUTEN, 4);
+	gpio_out = pci_read_config(parent_dev, BHNDB_PCI_GPIO_OUT, 4);
+	gpio_en = pci_read_config(parent_dev, BHNDB_PCI_GPIO_OUTEN, 4);
 
 	/* Set PLL_OFF to HIGH, XTAL_ON to LOW. */
 	gpio_out &= ~BHNDB_PCI_GPIO_XTAL_ON;
 	gpio_out |= BHNDB_PCI_GPIO_PLL_OFF;
-	pci_write_config(sc->parent_dev, BHNDB_PCI_GPIO_OUT, gpio_out, 4);
+	pci_write_config(parent_dev, BHNDB_PCI_GPIO_OUT, gpio_out, 4);
 
 	/* Enable both output pins */
 	gpio_en |= (BHNDB_PCI_GPIO_PLL_OFF|BHNDB_PCI_GPIO_XTAL_ON);
-	pci_write_config(sc->parent_dev, BHNDB_PCI_GPIO_OUTEN, gpio_en, 4);
+	pci_write_config(parent_dev, BHNDB_PCI_GPIO_OUTEN, gpio_en, 4);
 
 	return (0);
 }
@@ -342,7 +346,6 @@ static device_method_t bhndb_pci_methods[] = {
 	DEVMETHOD(device_resume,		bhndb_pci_resume),
 
 	/* BHNDB interface */
-	DEVMETHOD(bhndb_get_bridge_devclass,	bhndb_pci_get_bridge_devclass),
 	DEVMETHOD(bhndb_set_window_addr,	bhndb_pci_set_window_addr),
 
 	DEVMETHOD_END

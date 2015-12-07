@@ -69,6 +69,10 @@ siba_bhndb_attach(device_t dev)
 	if ((error = siba_add_children(dev, &chipid)))
 		return (error);
 
+	/* Initialize full bridge configuration */
+	if ((error = BHNDB_INIT_FULL_CONFIG(device_get_parent(dev), dev)))
+		return (error);
+
 	/* Call our superclass' implementation */
 	return (siba_attach(dev));
 }

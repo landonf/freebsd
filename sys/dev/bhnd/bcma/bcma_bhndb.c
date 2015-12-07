@@ -88,6 +88,9 @@ bcma_bhndb_attach(device_t dev)
 	if (error)
 		return (error);
 
+	/* Initialize full bridge configuration */
+	if ((error = BHNDB_INIT_FULL_CONFIG(device_get_parent(dev), dev)))
+		return (error);
 
 	/* Call our superclass' implementation */
 	return (bcma_attach(dev));

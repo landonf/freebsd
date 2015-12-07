@@ -54,10 +54,10 @@ CODE {
 		panic("bhndb_get_chipid unimplemented\n");
 	}
 
-	static bhnd_devclass_t
-	bhndb_null_get_bridge_devclass(device_t dev)
+	static int
+	bhndb_null_init_full_config(device_t dev, device_t child)
 	{
-		panic("bhndb_get_bridge_devclass unimplemented");
+		panic("bhndb_init_full_config unimplemented\n");
 	}
 
 	static int
@@ -65,12 +65,6 @@ CODE {
 	    const struct bhndb_regwin *rw, bhnd_addr_t addr)
 	{
 		panic("bhndb_set_window_addr unimplemented");
-	}
-
-	static device_t
-	bhndb_null_get_attached_bus(device_t dev)
-	{
-		panic("bhndb_get_attached_bus unimplemented");
 	}
 }
 
@@ -86,25 +80,22 @@ METHOD struct bhnd_chipid get_chipid {
 } DEFAULT bhndb_null_get_chipid;
 
 /**
- * Return the device class of the bridge. This is used to automatically
- * detect the bridge core, and to disable additional bridge cores (e.g. 
- * PCMCIA on a PCIe device).
- */
-METHOD bhnd_devclass_t get_bridge_devclass {
-	device_t dev;
-} DEFAULT bhndb_null_get_bridge_devclass;
-
-/**
- * Return the bhnd-compatible child bus device attached to this bridge.
+ * Perform final bridge hardware configuration after @p child has fully
+ * enumerated its children.
  *
- * @param dev The bridge device.
+ * This must be called by any bhndb-attached bridge devices; this allows the
+ * bridge to perform final configuration based on the hardware information
+ * enumerated by the child bus.
  *
- * @retval device_t The attached bus device.
- * @retval NULL The bus device was not found.
+ * When calling this method:
+ * - Any bus resources previously allocated by @p child must be deallocated.
+ * - The @p child bus must have performed initial enumeration -- but not
+ *   probe or attachment -- of its children.
  */
-METHOD device_t get_attached_bus {
+METHOD int init_full_config {
 	device_t dev;
-} DEFAULT bhndb_null_get_attached_bus;
+	device_t child;
+} DEFAULT bhndb_null_init_full_config;
 
 /**
  * Set a given register window's base address.
@@ -120,6 +111,6 @@ METHOD device_t get_attached_bus {
  */
 METHOD int set_window_addr {
 	device_t dev;
-	const struct bhndb_regwin *dynwin;
+	const struct bhndb_regwin *win;
 	bhnd_addr_t addr;
 } DEFAULT bhndb_null_set_window_addr;

@@ -51,7 +51,6 @@
 DECLARE_CLASS(bhndb_driver);
 
 int	bhndb_generic_probe(device_t dev);
-int	bhndb_generic_attach(device_t dev);
 int	bhndb_generic_detach(device_t dev);
 int	bhndb_generic_suspend(device_t dev);
 int	bhndb_generic_resume(device_t dev);
@@ -59,6 +58,8 @@ int	bhndb_generic_read_ivar(device_t dev, device_t child, int index,
 	    uintptr_t *result);
 int	bhndb_generic_write_ivar(device_t dev, device_t child, int index,
 	    uintptr_t value);
+
+int	bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass);
 
 size_t				 bhndb_regwin_count(
 				     const struct bhndb_regwin *table,
@@ -90,6 +91,7 @@ struct bhndb_softc {
 	device_t			 dev;		/**< bridge device */
 	const struct bhndb_hwcfg	*cfg;		/**< hardware configuration */
 	struct bhnd_chipid		 chipid;	/**< chip identification */
+	bhnd_devclass_t			 bridge_class;	/**< bridge core type */
 
 	device_t			 parent_dev;	/**< parent device */
 	size_t				 res_count;	/**< parent bus resource count */
