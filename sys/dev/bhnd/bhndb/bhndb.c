@@ -1150,6 +1150,12 @@ bhndb_try_activate_static_window(struct bhndb_softc *sc, device_t child,
 		if (win->win_type != BHNDB_REGWIN_T_CORE)
 			continue;
 
+		/* Check the core */
+		if (win->core.class != bhnd_get_class(child) ||
+		    win->core.unit != bhnd_get_core_unit(child))
+			continue;
+
+		/* Check the port */
 		if (win->core.type != port_type ||
 		    win->core.port != port ||
 		    win->core.region != region)
