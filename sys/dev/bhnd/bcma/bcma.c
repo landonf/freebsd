@@ -65,21 +65,6 @@ bcma_detach(device_t dev)
 }
 
 static int
-bcma_read_core_table(kobj_class_t driver, const struct bhnd_chipid *chipid,
-    const struct bhnd_bus_ctx *bus_ctx, struct bhnd_core_info **cores,
-    u_int *num_cores)
-{
-
-	struct bcma_erom	erom;
-	int			error;
-
-	if ((error = bcma_erom_open(bus_ctx, chipid->enum_addr, &erom)))
-		return (error);
-
-	return (bcma_erom_get_core_info(&erom, cores, num_cores));
-}
-
-static int
 bcma_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 {
 	const struct bcma_devinfo *dinfo;
@@ -248,24 +233,6 @@ bcma_get_port_addr(device_t dev, device_t child, bhnd_port_type port_type,
 	return (ENOENT);
 }
 
-
-/* resource-based read implementation for bcma_add_children() */
-static uint32_t
-bcma_erom_read4(void *handle, bhnd_addr_t addr)
-{
-	struct resource	*r;
-	u_long		 start;
-
-	r = (struct resource *) handle;
-	start = rman_get_start(r);
-
-	/* The 4 byte request may be impossible to fill */
-	if (addr > (rman_get_size(r) - sizeof(uint32_t)))
-		return (EINVAL);
-
-	return (bus_read_4(r, addr));
-}
-
 /**
  * Scan a device enumeration ROM table, adding all valid discovered cores to
  * the bus.
@@ -280,25 +247,14 @@ bcma_add_children(device_t bus, struct resource *erom_res, bus_size_t erom_offse
 	struct bcma_erom	 erom;
 	struct bcma_corecfg	*corecfg;
 	struct bcma_devinfo	*dinfo;
-	struct bhnd_bus_ctx	 bus_ctx;
 	device_t		 child;
 	int			 error;
 	
 	dinfo = NULL;
 	corecfg = NULL;
 
-	/* Initialize bus direct I/O context */
-	bus_ctx = (struct bhnd_bus_ctx) {
-		.dev = bus,
-		.context = erom_res,
-		.ops = &(struct bhnd_bus_ops) {
-			.read4	= bcma_erom_read4,
-			.write4	= NULL
-		}
-	};
-
 	/* Initialize our reader */
-	error = bcma_erom_open(&bus_ctx, erom_offset, &erom);
+	error = bcma_erom_open(&erom, erom_res, erom_offset);
 	if (error)
 		return (error);
 
@@ -367,7 +323,6 @@ static device_method_t bcma_methods[] = {
 	DEVMETHOD(bus_get_resource_list,	bcma_get_resource_list),
 
 	/* BHND interface */
-	DEVMETHOD(bhnd_read_core_table,		bcma_read_core_table),
 	DEVMETHOD(bhnd_get_port_rid,		bcma_get_port_rid),
 	DEVMETHOD(bhnd_decode_port_rid,		bcma_decode_port_rid),
 	DEVMETHOD(bhnd_get_port_addr,		bcma_get_port_addr),

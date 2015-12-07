@@ -76,9 +76,6 @@ BHND_ACCESSOR(core_unit,	CORE_UNIT,	int);
 
 #undef	BHND_ACCESSOR
 
-/* forward declaration; private to bhndvar.h */
-struct bhnd_bus_ctx;
-
 /**
  * Chip Identification
  * 

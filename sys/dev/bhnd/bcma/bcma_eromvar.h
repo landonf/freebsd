@@ -40,9 +40,10 @@
  * EROM read context.
  */
 struct bcma_erom {
-	const struct bhnd_bus_ctx	*bus;		/**< bus i/o context */
-	bhnd_addr_t			 start;		/**< EROM table address */
-	bus_size_t			 offset;	/**< current read offset */
+	device_t	 dev;		/**< EROM parent device */
+	struct resource	*r;		/**< EROM table resource. */
+	bus_size_t	 start;		/**< EROM table offset */
+	bus_size_t	 offset;	/**< current read offset */
 };
 
 /** EROM core descriptor. */
@@ -74,8 +75,8 @@ struct bcma_erom_sport_region {
 	bhnd_addr_t	size;		/**< region size */
 };
 
-int		bcma_erom_open(const struct bhnd_bus_ctx *bus, bhnd_addr_t addr,
-		    struct bcma_erom *erom);
+int		bcma_erom_open(struct bcma_erom *erom, struct resource *r,
+		    bus_size_t offset);
 
 int		bcma_erom_peek32(struct bcma_erom *erom, uint32_t *entry);
 bus_size_t	bcma_erom_tell(struct bcma_erom *erom);

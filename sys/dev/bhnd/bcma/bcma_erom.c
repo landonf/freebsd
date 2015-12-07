@@ -67,27 +67,27 @@ static int		 erom_skip_sport_region(struct bcma_erom *erom);
 static int		 erom_seek_next(struct bcma_erom *erom, uint8_t etype);
 
 #define	EROM_LOG(erom, fmt, ...)	\
-	device_printf(erom->bus->dev, "erom[0x%llx]: " fmt, \
+	device_printf(erom->dev, "erom[0x%llx]: " fmt, \
 	    (unsigned long long) (erom->offset), ##__VA_ARGS__);
 
 /**
  * "Open" an EROM table for reading.
  * 
- * @param bus_ctx erom i/o context.
- * @param addr bus address of the EROM's core mapping.
  * @param[out] erom On success, will be populated with a valid EROM
  * read state.
+ * @param r An active resource mapping the EROM core.
+ * @param offset Offset of the EROM core within @p resource.
  *
  * @retval 0 success
  * @retval non-zero if the erom table could not be opened.
  */
 int
-bcma_erom_open(const struct bhnd_bus_ctx *bus, bhnd_addr_t addr,
-    struct bcma_erom *erom)
+bcma_erom_open(struct bcma_erom *erom, struct resource *r, bus_size_t offset)
 {
 	/* Initialize the EROM reader */
-	erom->bus = bus;
-	erom->start = addr + BCMA_EROM_TABLE_START;
+	erom->dev = rman_get_device(r);
+	erom->r = r;
+	erom->start = offset + BCMA_EROM_TABLE_START;
 	erom->offset = 0;
 
 	return (0);
@@ -140,15 +140,12 @@ bcma_erom_seek(struct bcma_erom *erom, bus_size_t offset)
 int
 bcma_erom_peek32(struct bcma_erom *erom, uint32_t *entry)
 {
-	const struct bhnd_bus_ops *ops;
-
 	if (erom->offset >= BCMA_EROM_TABLE_SIZE) {
 		EROM_LOG(erom, "BCMA EROM table missing terminating EOF\n");
 		return (EINVAL);
 	}
 
-	ops = erom->bus->ops;
-	*entry = ops->read4(erom->bus->context, erom->start + erom->offset);
+	*entry = bus_read_4(erom->r, erom->start + erom->offset);
 	return (0);
 }
 
