@@ -88,10 +88,8 @@ const struct bhndb_regwin	*bhndb_regwin_find_best(
  */
 struct bhndb_softc {
 	device_t			 dev;		/**< bridge device */
-	const struct bhndb_hw		*hw;		/**< hardware spec */
+	const struct bhndb_hwcfg	*cfg;		/**< hardware configuration */
 	struct bhnd_chipid		 chipid;	/**< chip identification */
-	uint8_t				*core_flags;	/**< core flag table */
-	u_int				 num_cores;	/**< length of core_flags table */
 
 	device_t			 parent_dev;	/**< parent device */
 	size_t				 res_count;	/**< parent bus resource count */
