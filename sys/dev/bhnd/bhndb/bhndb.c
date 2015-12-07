@@ -1122,49 +1122,37 @@ bhndb_try_activate_static_window(struct bhndb_softc *sc, device_t child,
 {
 	struct resource			*parent_res;
 	const struct bhndb_regwin	*win;
+	device_t			 bus_dev;
 	bhnd_addr_t			 addr;
 	bhnd_size_t			 parent_offset, size;
-	bhnd_port_type			 port_type;
-	u_int				 port, region;
 	u_long				 r_start, r_end;
 	int				 error;
 
 	r_start = rman_get_start(r);
 	r_end = rman_get_end(r);
 
-	/* Only core register windows are currently supported; this requires a
-	 * bus-attached device. */
-	if (device_get_parent(child) != sc->bus_dev)
-		return (ENOENT);
-
-	/* Try to map the resource back to a port triplet */
-	error = bhnd_decode_port_rid(child, type, rid, &port_type, &port,
-	    &region);
-	if (error)
-		return (error);
-
-	/* Look for a core window matching this port triplet. */
+	/*
+	 * Look for any static window capable of mapping this resource:
+	 * - Use the bus to find the actual base address and size of the
+	 *   static window.
+	 * - If the resource falls within this range, it can be activated
+	 *   with this static window.
+	 */
 	for (win = sc->cfg->register_windows;
 	    win->win_type != BHNDB_REGWIN_T_INVALID; win++)
 	{
+		/* Only core windows are currently supported */
 		if (win->win_type != BHNDB_REGWIN_T_CORE)
 			continue;
 
-		/* Check the core */
-		if (win->core.class != bhnd_get_class(child) ||
-		    win->core.unit != bhnd_get_core_unit(child))
+		/* Find a core that matches the window */
+		bus_dev = bhnd_find_child(sc->bus_dev, win->core.class,
+		    win->core.unit);
+		if (bus_dev == NULL)
 			continue;
 
-		/* Check the port */
-		if (win->core.type != port_type ||
-		    win->core.port != port ||
-		    win->core.region != region)
-		{
-			continue;
-		}
-
-		/* Fetch the address and size of the core's mapped port. */
-		error = bhnd_get_port_addr(child, win->core.type,
+		/* Fetch the address and size of the mapped port. */
+		error = bhnd_get_port_addr(bus_dev, win->core.type,
 		    win->core.port, win->core.region, &addr, &size);
 		if (error)
 			return (error);
