@@ -61,28 +61,6 @@ int	bhndb_generic_write_ivar(device_t dev, device_t child, int index,
 
 int	bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass);
 
-size_t				 bhndb_regwin_count(
-				     const struct bhndb_regwin *table,
-				     bhndb_regwin_type_t type);
-
-const struct bhndb_regwin	*bhndb_regwin_find_type(
-				     const struct bhndb_regwin *table,
-				     bhndb_regwin_type_t type,
-				     bus_size_t min_size);
-
-const struct bhndb_regwin	*bhndb_regwin_find_core(
-				     const struct bhndb_regwin *table,
-				     bhnd_devclass_t class, int unit,
-				     bhnd_port_type port_type, u_int port,
-				     u_int region);
-
-
-const struct bhndb_regwin	*bhndb_regwin_find_best(
-				     const struct bhndb_regwin *table,
-				     bhnd_devclass_t class, int unit,
-				     bhnd_port_type port_type, u_int port,
-				     u_int region, bus_size_t min_size);
-
 /**
  * bhndb driver instance state. Must be first member of all subclass
  * softc structures.

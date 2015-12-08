@@ -40,9 +40,56 @@
 #include <sys/rman.h>
 #include <machine/resource.h>
 
+#include "bhndbvar.h"
+
 /*
  * Private bhndb(4) driver definitions.
  */
+
+size_t				 bhndb_regwin_count(
+				     const struct bhndb_regwin *table,
+				     bhndb_regwin_type_t type);
+
+const struct bhndb_regwin	*bhndb_regwin_find_type(
+				     const struct bhndb_regwin *table,
+				     bhndb_regwin_type_t type,
+				     bus_size_t min_size);
+
+const struct bhndb_regwin	*bhndb_regwin_find_core(
+				     const struct bhndb_regwin *table,
+				     bhnd_devclass_t class, int unit,
+				     bhnd_port_type port_type, u_int port,
+				     u_int region);
+
+
+const struct bhndb_regwin	*bhndb_regwin_find_best(
+				     const struct bhndb_regwin *table,
+				     bhnd_devclass_t class, int unit,
+				     bhnd_port_type port_type, u_int port,
+				     u_int region, bus_size_t min_size);
+
+/**
+ * Private per-core flags
+ */
+enum {
+	BHNDB_CF_HW_DISABLED	= 1 << 0,	/**< core hardware is unusable */
+	BHNDB_CF_HOSTB		= 1 << 1,	/**< core is host bridge */
+};
+
+/** bhndb child instance state */
+struct bhndb_devinfo {
+        struct resource_list    resources;	/**< child resources. */
+};
+
+/**
+ * A register window allocation record. 
+ */
+struct bhndb_regwin_region {
+	const struct bhndb_regwin	*win;		/**< window definition */
+	struct resource			*parent_res;	/**< enclosing resource */
+	struct resource			*child_res;	/**< associated child resource, or NULL */
+	u_int				 rnid;		/**< region identifier */
+};
 
 #define	BHNDB_LOCK_INIT(sc) \
 	mtx_init(&(sc)->sc_mtx, device_get_nameunit((sc)->dev), \
@@ -81,28 +128,5 @@
  */
 #define	BHNDB_DW_REGION_IS_FREE(sc, rnid) \
 	((sc)->dw_freelist & (1 << (rnid)))
-
-/**
- * Private per-core flags
- */
-enum {
-	BHNDB_CF_HW_DISABLED	= 1 << 0,	/**< core hardware is unusable */
-	BHNDB_CF_HOSTB		= 1 << 1,	/**< core is host bridge */
-};
-
-/** bhndb child instance state */
-struct bhndb_devinfo {
-        struct resource_list    resources;	/**< child resources. */
-};
-
-/**
- * A register window allocation record. 
- */
-struct bhndb_regwin_region {
-	const struct bhndb_regwin	*win;		/**< window definition */
-	struct resource			*parent_res;	/**< enclosing resource */
-	struct resource			*child_res;	/**< associated child resource, or NULL */
-	u_int				 rnid;		/**< region identifier */
-};
 
 #endif /* _BHND_BHNDB_PRIVATE_H_ */
