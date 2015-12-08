@@ -144,7 +144,7 @@ bhndb_regwin_find_core(const struct bhndb_regwin *table, bhnd_devclass_t class,
 		if (unit != -1 && rw->core.unit != unit)
 			continue;
 
-		if (rw->core.type != port_type)
+		if (rw->core.port_type != port_type)
 			continue;
 
 		if (rw->core.port != port)

@@ -74,23 +74,13 @@ __FBSDID("$FreeBSD$");
 }
 
 /* Define a port priority record for the (_type, 0, 0) type/port/region
- * triplet, using the standard BHND_DEFAULT_CORE_SIZE */
+ * triplet. */
 #define	BHNDB_PORT0_PRIO(_type, _priority) {			\
 	.type		= (BHND_PORT_ ## _type),		\
 	.port		= 0,					\
 	.region		= 0,					\
-	.min_size	= BHND_DEFAULT_CORE_SIZE,		\
 	.priority	= (BHNDB_RES_PRIO_ ## _priority)	\
 }
-
-/* Define a standard port priority set, consisting of the
- * device and agent register blocks. */
-#define	BHNDB_DEFAULT_PORT_PRIO			\
-	/* Register block */			\
-	BHNDB_PORT0_PRIO(DEVICE,	DEFAULT),	\
-						\
-	/* Agent */				\
-	BHNDB_PORT0_PRIO(AGENT,		LOW)
 
 /**
  * Generic resource priority configuration usable with all currently supported
@@ -114,8 +104,21 @@ const struct bhndb_core_prio bhndb_generic_res_prio_table[] = {
 	 * These devices do not sit in a performance-critical path and can be
 	 * treated as a low allocation priority.
 	 */
-	BHNDB_CLASS_PRIO(CC,		-1,	LOW,		BHNDB_DEFAULT_PORT_PRIO),
-	BHNDB_CLASS_PRIO(PMU,		-1,	LOW,		BHNDB_DEFAULT_PORT_PRIO),
+	BHNDB_CLASS_PRIO(CC,		-1,	LOW,
+		/* Device Block */
+		BHNDB_PORT0_PRIO(DEVICE,	LOW),
+
+		/* CC agent registers are not accessed via the bridge. */
+		BHNDB_PORT0_PRIO(AGENT,		NONE)
+	),
+
+	BHNDB_CLASS_PRIO(PMU,		-1,	LOW,
+		/* Device Block */
+		BHNDB_PORT0_PRIO(DEVICE,	LOW),
+
+		/* PMU agent registers are not accessed via the bridge. */
+		BHNDB_PORT0_PRIO(AGENT,		NONE)
+	),
 
 	/*
 	 * Default Core Behavior
@@ -123,7 +126,13 @@ const struct bhndb_core_prio bhndb_generic_res_prio_table[] = {
 	 * All other cores are assumed to require effecient runtime access to
 	 * the default device port, and if supported by the bus, an agent port.
 	 */
-	BHNDB_CLASS_PRIO(INVALID,	-1,	DEFAULT,	BHNDB_DEFAULT_PORT_PRIO),
+	BHNDB_CLASS_PRIO(INVALID,	-1,	DEFAULT,
+		/* Device Block */
+		BHNDB_PORT0_PRIO(DEVICE,	HIGH),
+
+		/* Agent Block */
+		BHNDB_PORT0_PRIO(AGENT,		DEFAULT)
+	),
 
 	BHNDB_CORE_PRIO_TABLE_END
 };

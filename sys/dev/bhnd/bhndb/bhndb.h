@@ -77,7 +77,7 @@ struct bhndb_regwin {
 		struct {
 			bhnd_devclass_t	class;		/**< mapped core's class */
 			u_int		unit;		/**< mapped core's unit */
-			bhnd_port_type	type;		/**< mapped port type */
+			bhnd_port_type	port_type;	/**< mapped port type */
 			u_int		port;		/**< mapped port number */
 			u_int		region;		/**< mapped region number */
 		} core;
@@ -128,14 +128,14 @@ typedef enum {
 
 	/** Allocate a direct resource if available after serving all other
 	  * higher-priority requests. */
-	BHNDB_RES_PRIO_LOW	= 100,
+	BHNDB_RES_PRIO_LOW	= 1,
 
 	/** Direct resource allocation is preferred, but not necessary
 	 *  for reasonable runtime performance. */
-	BHNDB_RES_PRIO_DEFAULT	= 200,
+	BHNDB_RES_PRIO_DEFAULT	= 2,
 
 	/** Indirect resource allocation would incur high runtime overhead. */
-	BHNDB_RES_PRIO_CRITICAL	= 300
+	BHNDB_RES_PRIO_HIGH	= 3
 } bhndb_res_prio;
 
 /**
@@ -145,8 +145,7 @@ struct bhndb_port_prio {
 	bhnd_port_type	type;		/**< port type. */
 	u_int		port;		/**< port */
 	u_int		region;		/**< region */
-	bhnd_size_t	min_size;	/**< minimum required mapping size */
-	bhndb_res_prio	priority;	/**< port-level priority */
+	bhndb_res_prio	priority;	/**< port priority */
 };
 
 /**

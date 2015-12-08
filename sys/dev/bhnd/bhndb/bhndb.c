@@ -54,6 +54,7 @@ __FBSDID("$FreeBSD$");
 
 #include "bhndbvar.h"
 #include "bhndb_bus_if.h"
+#include "bhndb_hwdata.h"
 #include "bhndb_private.h"
 
 static bool				 bhndb_hw_matches(device_t *devlist,
@@ -191,6 +192,173 @@ bhndb_hw_matches(device_t *devlist, int num_devs, const struct bhndb_hw *hw)
 	}
 
 	return (true);
+}
+
+/**
+ * Find a resource priority descriptor for @p child in @p table.
+ */
+static const struct bhndb_core_prio *
+bhndb_find_core_prio(const struct bhndb_core_prio *table, device_t child)
+{
+	const struct bhndb_core_prio *cp;
+
+	for (cp = table; cp->ports != NULL; cp++) {
+		if (bhnd_device_matches(child, &cp->match))
+			return (cp);
+	}
+
+	/* not found */
+	return (NULL);
+}
+
+static bool
+bhndb_prio_port_exists(struct bhndb_softc *sc, device_t child,
+    const struct bhndb_port_prio *pp)
+{
+	/* Does the port exist? */
+	if (pp->port >= bhnd_get_port_count(child, pp->type))
+		return (false);
+
+	/* Does the region exist? */
+	if (pp->region >= bhnd_get_region_count(child, pp->type, pp->port))
+		return (false);
+
+	/* Found */
+	return (true);
+}
+
+
+// TODO
+static int
+bhndb_compute_port_prio(struct bhndb_softc *sc)
+{
+	const struct bhndb_core_prio	*cp;
+	device_t			 child, *devices;
+	int				 ndevs;
+	int				 error;
+
+	const struct bhndb_core_prio *table = bhndb_generic_res_prio_table;
+
+	/* Fetch the full set of attached devices */
+	if ((error = device_get_children(sc->bus_dev, &devices, &ndevs)))
+		return (error);
+
+	size_t prio_low, prio_default, prio_high;
+
+	prio_low = prio_default = prio_high = 0;
+
+	for (int i = 0; i < ndevs; i++) {
+		child = devices[i];
+
+		/* Skip cores that do not require bridge resources */
+		if (bhnd_is_hw_disabled(child) || bhnd_is_hostb_device(child))
+			continue;
+
+		/* Skip devices without a priority table entry */
+		if ((cp = bhndb_find_core_prio(table, child)) == NULL)
+			continue;
+
+		/* Skip non-mapped devices */
+		if (cp->priority == BHNDB_RES_PRIO_NONE)
+			continue;
+
+		/* Find the number of windows required for this device. */
+		for (u_int i = 0; i < cp->num_ports; i++) {
+			const struct bhndb_port_prio *pp;
+
+			pp = &cp->ports[i];
+			
+			/* Skip ports not defined on this device */
+			if (!bhndb_prio_port_exists(sc, child, pp))
+				continue;
+
+			/* Skip ports with static mappings */
+			// TODO - we should check our static mapping table
+			if (bhndb_regwin_find_core(sc->cfg->register_windows,
+			    bhnd_get_class(child), bhnd_get_core_unit(child),
+			    pp->type, pp->port, pp->region) != NULL)
+			{
+				continue;
+			}
+
+			device_printf(sc->dev, "adding %s %s\n", bhnd_get_vendor_name(child), bhnd_get_device_name(child));
+
+			// TODO
+			switch (pp->priority) {
+			case BHNDB_RES_PRIO_NONE:
+				break;
+			case BHNDB_RES_PRIO_LOW:
+				prio_low++;
+				break;
+			case BHNDB_RES_PRIO_DEFAULT:
+				prio_default++;
+				break;
+			case BHNDB_RES_PRIO_HIGH:
+				prio_high++;
+				break;
+			}
+		}
+	}
+
+
+	device_printf(sc->dev, "prio_low: %zu\n", prio_low);
+	device_printf(sc->dev, "prio_default: %zu\n", prio_default);
+	device_printf(sc->dev, "prio_high: %zu\n", prio_high);
+
+	free(devices, M_TEMP);
+	return (0);
+}
+
+
+// TODO
+static int
+bhndb_register_static_windows(struct bhndb_softc *sc)
+{
+	const struct bhndb_regwin	*regw;
+	device_t			 child;
+	bhnd_addr_t			 addr;
+	bhnd_size_t			 size;
+	int				 error;
+
+	for (regw = sc->cfg->register_windows;
+	    regw->win_type != BHNDB_REGWIN_T_INVALID; regw++)
+	{
+		u_int pr_count;
+
+		/* Only core windows are currently supported */
+		if (regw->win_type != BHNDB_REGWIN_T_CORE)
+			continue;
+		
+		/* Find a core that matches the window */
+		child = bhnd_find_child(sc->bus_dev, regw->core.class,
+		    regw->core.unit);
+		if (child == NULL)
+			continue;
+
+		/* The port and region must be defined */
+		pr_count = bhnd_get_port_count(child, regw->core.port_type);
+		if (regw->core.port > pr_count)
+			continue;
+		
+		pr_count = bhnd_get_region_count(child, regw->core.port_type,
+		    regw->core.port);
+		if (regw->core.region > pr_count)
+			continue;
+
+		/* Fetch the address and size of the mapped port. */
+		error = bhnd_get_region_addr(child, regw->core.port_type,
+		    regw->core.port, regw->core.region, &addr, &size);
+		if (error)
+			return (error);
+
+		// TODO
+		// Mappings smaller than the port may not be usable?
+
+		device_printf(sc->dev, "found static regwin over 0x%llx + 0x%llx\n",
+		   (unsigned long long) addr, (unsigned long long) size); 
+	}
+
+	return (0);
 }
 
 /**
@@ -632,8 +800,17 @@ bhndb_init_full_config(device_t dev, device_t child)
 	if ((error = bhndb_reset_bridged_resources(sc)))
 		return (error);
 
-	/* Reinitialize our resource state */
 	sc->cfg = hw->cfg;
+
+	// XXX TODO
+	if ((error = bhndb_compute_port_prio(sc)))
+		return (error);
+
+	// XXX TODO
+	if ((error = bhndb_register_static_windows(sc)))
+		return (error);
+
+	/* Reinitialize our resource state */
 	if ((error = bhndb_init_bridge_resources(sc)))
 		return (error);
 
@@ -1151,7 +1328,7 @@ bhndb_try_activate_static_window(struct bhndb_softc *sc, device_t child,
 			continue;
 
 		/* Fetch the address and size of the mapped port. */
-		error = bhnd_get_region_addr(bus_dev, win->core.type,
+		error = bhnd_get_region_addr(bus_dev, win->core.port_type,
 		    win->core.port, win->core.region, &addr, &size);
 		if (error)
 			return (error);

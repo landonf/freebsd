@@ -136,7 +136,7 @@ const struct bhndb_hwcfg bhndb_pci_bcma_generic_hwcfg = {
 				.unit	= 0,
 				.port	= 0,
 				.region	= 0,
-				.type	= BHND_PORT_DEVICE
+				.port_type = BHND_PORT_DEVICE
 			},
 			.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
 		},
@@ -349,7 +349,7 @@ static const struct bhndb_hwcfg bhndb_pci_hwcfg_v0 = {
 				.unit	= 0,
 				.port	= 0,
 				.region	= 0,
-				.type	= BHND_PORT_DEVICE
+				.port_type = BHND_PORT_DEVICE
 			},
 			.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
 		},
@@ -397,7 +397,7 @@ static const struct bhndb_hwcfg bhndb_pci_hwcfg_v1_pci = {
 				.unit	= 0,
 				.port	= 0,
 				.region	= 0,
-				.type	= BHND_PORT_DEVICE
+				.port_type = BHND_PORT_DEVICE
 			},
 			.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
 		},
@@ -412,7 +412,7 @@ static const struct bhndb_hwcfg bhndb_pci_hwcfg_v1_pci = {
 				.unit	= 0,
 				.port	= 0,
 				.region	= 0,
-				.type	= BHND_PORT_DEVICE
+				.port_type = BHND_PORT_DEVICE
 			},
 			.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
 		},
@@ -461,7 +461,7 @@ static const struct bhndb_hwcfg bhndb_pci_hwcfg_v1_pcie = {
 				.unit	= 0,
 				.port	= 0,
 				.region	= 0,
-				.type	= BHND_PORT_DEVICE
+				.port_type = BHND_PORT_DEVICE
 			},
 			.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
 		},
@@ -476,7 +476,7 @@ static const struct bhndb_hwcfg bhndb_pci_hwcfg_v1_pcie = {
 				.unit	= 0,
 				.port	= 0,
 				.region	= 0,
-				.type	= BHND_PORT_DEVICE
+				.port_type = BHND_PORT_DEVICE
 			},
 			.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
 		},
@@ -526,7 +526,7 @@ static const struct bhndb_hwcfg bhndb_pci_hwcfg_v2 = {
 				.unit	= 0,
 				.port	= 0,
 				.region	= 0,
-				.type	= BHND_PORT_DEVICE
+				.port_type = BHND_PORT_DEVICE
 			},
 			.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
 		},
@@ -541,7 +541,7 @@ static const struct bhndb_hwcfg bhndb_pci_hwcfg_v2 = {
 				.unit	= 0,
 				.port	= 0,
 				.region	= 0,
-				.type	= BHND_PORT_DEVICE
+				.port_type = BHND_PORT_DEVICE
 			},
 			.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
 		},
@@ -591,7 +591,7 @@ static const struct bhndb_hwcfg bhndb_pci_hwcfg_v3 = {
 				.unit	= 0,
 				.port	= 0,
 				.region	= 0,
-				.type	= BHND_PORT_DEVICE
+				.port_type = BHND_PORT_DEVICE
 			},
 			.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
 		},
@@ -606,7 +606,7 @@ static const struct bhndb_hwcfg bhndb_pci_hwcfg_v3 = {
 				.unit	= 0,
 				.port	= 0,
 				.region	= 0,
-				.type	= BHND_PORT_DEVICE
+				.port_type = BHND_PORT_DEVICE
 			},
 			.res		= { SYS_RES_MEMORY, PCIR_BAR(0) }
 		},
