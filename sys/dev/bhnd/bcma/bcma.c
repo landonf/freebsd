@@ -136,6 +136,52 @@ bcma_get_resource_list(device_t dev, device_t child)
 	return (&dinfo->resources);
 }
 
+static u_int
+bcma_get_port_count(device_t dev, device_t child, bhnd_port_type type)
+{
+	struct bcma_devinfo *dinfo;
+
+	/* delegate non-bus-attached devices to our parent */
+	if (device_get_parent(child) != dev)
+		return (BHND_GET_PORT_COUNT(device_get_parent(dev), child,
+		    type));
+
+	dinfo = device_get_ivars(child);
+	switch (type) {
+	case BHND_PORT_DEVICE:
+		return (dinfo->corecfg->num_dev_ports);
+	case BHND_PORT_BRIDGE:
+		return (dinfo->corecfg->num_bridge_ports);
+	case BHND_PORT_AGENT:
+		return (dinfo->corecfg->num_wrapper_ports);
+	}
+}
+
+static u_int
+bcma_get_region_count(device_t dev, device_t child, bhnd_port_type type,
+    u_int port_num)
+{
+	struct bcma_devinfo	*dinfo;
+	struct bcma_sport_list	*ports;
+	struct bcma_sport	*port;
+
+	/* delegate non-bus-attached devices to our parent */
+	if (device_get_parent(child) != dev)
+		return (BHND_GET_REGION_COUNT(device_get_parent(dev), child,
+		    type, port_num));
+
+	dinfo = device_get_ivars(child);
+	ports = bcma_corecfg_get_port_list(dinfo->corecfg, type);
+	
+	STAILQ_FOREACH(port, ports, sp_link) {
+		if (port->sp_num == port_num)
+			return (port->sp_num_maps);
+	}
+
+	/* not found */
+	return (0);
+}
+
 static int
 bcma_get_port_rid(device_t dev, device_t child, bhnd_port_type port_type,
     u_int port_num, u_int region_num)
@@ -203,7 +249,7 @@ bcma_decode_port_rid(device_t dev, device_t child, int type, int rid,
 }
 
 static int
-bcma_get_port_addr(device_t dev, device_t child, bhnd_port_type port_type,
+bcma_get_region_addr(device_t dev, device_t child, bhnd_port_type port_type,
     u_int port_num, u_int region_num, bhnd_addr_t *addr, bhnd_size_t *size)
 {
 	struct bcma_devinfo	*dinfo;
@@ -323,9 +369,11 @@ static device_method_t bcma_methods[] = {
 	DEVMETHOD(bus_get_resource_list,	bcma_get_resource_list),
 
 	/* BHND interface */
+	DEVMETHOD(bhnd_get_port_count,		bcma_get_port_count),
+	DEVMETHOD(bhnd_get_region_count,	bcma_get_region_count),
 	DEVMETHOD(bhnd_get_port_rid,		bcma_get_port_rid),
 	DEVMETHOD(bhnd_decode_port_rid,		bcma_decode_port_rid),
-	DEVMETHOD(bhnd_get_port_addr,		bcma_get_port_addr),
+	DEVMETHOD(bhnd_get_region_addr,		bcma_get_region_addr),
 
 	DEVMETHOD_END
 };

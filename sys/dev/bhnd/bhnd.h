@@ -322,6 +322,32 @@ bhnd_release_resource(device_t dev, int type, int rid,
 };
 
 /**
+ * Return the number of ports of type @p type attached to @p def.
+ *
+ * @param dev The device being queried.
+ * @param type The port type being queried.
+ */
+static inline u_int
+bhnd_get_port_count(device_t child, bhnd_port_type type) {
+	return (BHND_GET_PORT_COUNT(device_get_parent(child), child, type));
+}
+
+/**
+ * Return the number of memory regions mapped to @p child @p port of
+ * type @p type.
+ *
+ * @param dev The device whose child is being examined.
+ * @param child The child device.
+ * @param port The port number being queried.
+ * @param type The port type being queried.
+ */
+static inline u_int
+bhnd_get_region_count(device_t child, bhnd_port_type type, u_int port) {
+	return (BHND_GET_REGION_COUNT(device_get_parent(child), child, type,
+	    port));
+}
+
+/**
  * Return the resource-ID for a memory region on the given device port.
  *
  * @param dev The device being queried.
@@ -374,10 +400,10 @@ bhnd_decode_port_rid(device_t dev, int type, int rid, bhnd_port_type *port_type,
  * @retval non-zero No matching port/region found.
  */
 static inline int
-bhnd_get_port_addr(device_t dev, bhnd_port_type port_type, u_int port,
+bhnd_get_region_addr(device_t dev, bhnd_port_type port_type, u_int port,
     u_int region, bhnd_addr_t *region_addr, bhnd_size_t *region_size)
 {
-	return BHND_GET_PORT_ADDR(device_get_parent(dev), dev, port_type,
+	return BHND_GET_REGION_ADDR(device_get_parent(dev), dev, port_type,
 	    port, region, region_addr, region_size);
 }
 

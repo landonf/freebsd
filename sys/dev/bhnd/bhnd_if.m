@@ -62,7 +62,7 @@ CODE {
 	}
 	
 	static int
-	bhnd_null_get_port_addr(device_t dev, device_t child, 
+	bhnd_null_get_region_addr(device_t dev, device_t child, 
 	    bhnd_port_type type, u_int port, u_int region, bhnd_addr_t *addr,
 	    bhnd_size_t *size)
 	{
@@ -162,7 +162,36 @@ METHOD int deactivate_resource {
 } DEFAULT bhnd_generic_deactivate_bhnd_resource;
 
 /**
- * Return the SYS_RES_MEMORY resource-ID for a port /region pair attached to
+ * Return the number of ports of type @p type attached to @p child.
+ *
+ * @param dev The device whose child is being examined.
+ * @param child The child device.
+ * @param type The port type being queried.
+ */
+METHOD u_int get_port_count {
+	device_t dev;
+	device_t child;
+	bhnd_port_type type;
+}
+
+/**
+ * Return the number of memory regions mapped to @p child @p port of
+ * type @p type.
+ *
+ * @param dev The device whose child is being examined.
+ * @param child The child device.
+ * @param port The port number being queried.
+ * @param type The port type being queried.
+ */
+METHOD u_int get_region_count {
+	device_t dev;
+	device_t child;
+	bhnd_port_type type;
+	u_int port;
+}
+
+/**
+ * Return the SYS_RES_MEMORY resource-ID for a port/region pair attached to
  * @p child.
  *
  * @param dev The bus device.
@@ -221,7 +250,7 @@ METHOD int decode_port_rid {
  * @retval 0 success
  * @retval non-zero No matching port/region found.
  */
-METHOD int get_port_addr {
+METHOD int get_region_addr {
 	device_t dev;
 	device_t child;
 	bhnd_port_type port_type;
@@ -229,7 +258,7 @@ METHOD int get_port_addr {
 	u_int region;
 	bhnd_addr_t *region_addr;
 	bhnd_size_t *region_size;
-} DEFAULT bhnd_null_get_port_addr;
+} DEFAULT bhnd_null_get_region_addr;
 
 
 /** An implementation of bus_read_1() compatible with bhnd_resource */

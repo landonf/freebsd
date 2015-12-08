@@ -146,15 +146,44 @@ siba_get_resource_list(device_t dev, device_t child)
 	return (&dinfo->resources);
 }
 
+static u_int
+siba_get_port_count(device_t dev, device_t child, bhnd_port_type type)
+{
+	/* delegate non-bus-attached devices to our parent */
+	if (device_get_parent(child) != dev)
+		return (BHND_GET_PORT_COUNT(device_get_parent(dev), child, type));
+
+	/* We advertise exactly one device port */
+	if (type == BHND_PORT_DEVICE)
+		return (1);
+
+	return (0);
+}
+
+static u_int
+siba_get_region_count(device_t dev, device_t child, bhnd_port_type type,
+    u_int port)
+{
+	/* delegate non-bus-attached devices to our parent */
+	if (device_get_parent(child) != dev)
+		return (BHND_GET_REGION_COUNT(device_get_parent(dev), child,
+		    type, port));
+
+	/* We advertise exactly one port region */
+	if (type == BHND_PORT_DEVICE && port == SIBA_CORE_PORT)
+		return (1);
+
+	return (0);
+}
+
 static int
 siba_get_port_rid(device_t dev, device_t child, bhnd_port_type port_type,
     u_int port_num, u_int region_num)
 {
 	/* delegate non-bus-attached devices to our parent */
-	if (device_get_parent(child) != dev) {
+	if (device_get_parent(child) != dev)
 		return (BHND_GET_PORT_RID(device_get_parent(dev), child,
 		    port_type, port_num, region_num));
-	}
 
 	if (SIBA_IS_PORT_VALID(port_type, port_num, region_num))
 		return (SIBA_CORE_RID);
@@ -187,7 +216,7 @@ siba_decode_port_rid(device_t dev, device_t child, int type, int rid,
 }
 
 static int
-siba_get_port_addr(device_t dev, device_t child, bhnd_port_type port_type,
+siba_get_region_addr(device_t dev, device_t child, bhnd_port_type port_type,
     u_int port_num, u_int region_num, bhnd_addr_t *addr, bhnd_size_t *size)
 {
 	struct siba_devinfo		*dinfo;
@@ -195,7 +224,7 @@ siba_get_port_addr(device_t dev, device_t child, bhnd_port_type port_type,
 
 	/* delegate non-bus-attached devices to our parent */
 	if (device_get_parent(child) != dev) {
-		return (BHND_GET_PORT_ADDR(device_get_parent(dev), child,
+		return (BHND_GET_REGION_ADDR(device_get_parent(dev), child,
 		    port_type, port_num, region_num, addr, size));
 	}
 
@@ -352,9 +381,11 @@ static device_method_t siba_methods[] = {
 	DEVMETHOD(bus_get_resource_list,	siba_get_resource_list),
 
 	/* BHND interface */
+	DEVMETHOD(bhnd_get_port_count,		siba_get_port_count),
+	DEVMETHOD(bhnd_get_region_count,	siba_get_region_count),
 	DEVMETHOD(bhnd_get_port_rid,		siba_get_port_rid),
 	DEVMETHOD(bhnd_decode_port_rid,		siba_decode_port_rid),
-	DEVMETHOD(bhnd_get_port_addr,		siba_get_port_addr),
+	DEVMETHOD(bhnd_get_region_addr,		siba_get_region_addr),
 
 	DEVMETHOD_END
 };
