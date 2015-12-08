@@ -94,10 +94,10 @@ struct bhndb_regwin_region {
 #define	BHNDB_LOCK_INIT(sc) \
 	mtx_init(&(sc)->sc_mtx, device_get_nameunit((sc)->dev), \
 	    "bhndb_gen resource allocator lock", MTX_DEF)
-#define	BHNDB_LOCK(sc)		mtx_lock(&(sc)->sc_mtx)
-#define	BHNDB_UNLOCK(sc)	mtx_unlock(&(sc)->sc_mtx)
-#define	BHNDB_LOCK_ASSERT(sc)	mtx_assert(&(sc)->sc_mtx, MA_OWNED)
-#define	BHNDB_LOCK_DESTROY(sc)	mtx_destroy(&(sc)->sc_mtx)
+#define	BHNDB_LOCK(sc)			mtx_lock(&(sc)->sc_mtx)
+#define	BHNDB_UNLOCK(sc)		mtx_unlock(&(sc)->sc_mtx)
+#define	BHNDB_LOCK_ASSERT(sc, what)	mtx_assert(&(sc)->sc_mtx, what)
+#define	BHNDB_LOCK_DESTROY(sc)		mtx_destroy(&(sc)->sc_mtx)
 
 /**
  * Mark a dynamic window region as free.

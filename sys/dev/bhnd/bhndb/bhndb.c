@@ -299,7 +299,7 @@ bhndb_init_dw_region_allocator(struct bhndb_softc *sc)
 	
 	/* Allocate the region table. */
 	sc->dw_regions = malloc(sizeof(struct bhndb_regwin_region) * 
-	    sc->dw_count, M_BHND, M_NOWAIT);
+	    sc->dw_count, M_BHND, M_WAITOK);
 	if (sc->dw_regions == NULL) {
 		return (ENOMEM);
 	}
@@ -462,6 +462,8 @@ bhndb_init_bridge_resources(struct bhndb_softc *sc)
 	int	error;
 	bool	free_parent_res;
 
+	/* Can't hold lock while also making M_WAITOK allocations */
+	BHNDB_LOCK_ASSERT(sc, MA_NOTOWNED);
 	KASSERT(sc->res_spec == NULL && 
 		sc->res == NULL, ("bhndb resources already allocated\n"));
 
@@ -476,7 +478,7 @@ bhndb_init_bridge_resources(struct bhndb_softc *sc)
 	 * table; this will be updated with the RIDs assigned by
 	 * bus_alloc_resources. */
 	sc->res_spec = malloc(sizeof(struct resource_spec) * (res_count + 1),
-	    M_BHND, M_NOWAIT);
+	    M_BHND, M_WAITOK);
 	if (sc->res_spec == NULL) {
 		error = ENOMEM;
 		goto failed;
@@ -490,7 +492,7 @@ bhndb_init_bridge_resources(struct bhndb_softc *sc)
 
 	/* Allocate space for our resource references */
 	sc->res = malloc(sizeof(struct resource) * res_count,
-	    M_BHND, M_NOWAIT);
+	    M_BHND, M_WAITOK);
 	if (sc->res == NULL) {
 		error = ENOMEM;
 		goto failed;
@@ -615,29 +617,26 @@ bhndb_init_full_config(device_t dev, device_t child)
 
 	sc = device_get_softc(dev);
 	error = 0;
-
-	BHNDB_LOCK(sc);
-
-	/* Reset existing resource state */
-	if ((error = bhndb_reset_bridged_resources(sc)))
-		goto cleanup;
-
+	
 	/* Find our full register window configuration */
 	if ((error = bhndb_find_hwspec(sc, &hw))) {
-		device_printf(sc->dev, "no usable hardware spec found\n");
-		goto cleanup;
+		device_printf(sc->dev, "unable to identify device, "
+			" using generic bridge resource definitions\n");
+		return (0);
 	}
 
 	if (bootverbose)
-		device_printf(sc->dev, "%s register map\n", hw->name);
+		device_printf(sc->dev, "%s resource configuration\n", hw->name);
+
+	/* Reset existing resource state */
+	if ((error = bhndb_reset_bridged_resources(sc)))
+		return (error);
 
 	/* Reinitialize our resource state */
 	sc->cfg = hw->cfg;
 	if ((error = bhndb_init_bridge_resources(sc)))
-		goto cleanup;
+		return (error);
 
-cleanup:
-	BHNDB_UNLOCK(sc);
 	return (error);
 }
 
@@ -716,7 +715,7 @@ bhndb_add_child(device_t dev, u_int order, const char *name, int unit)
 	if (child == NULL)
 		return (NULL);
 
-	dinfo = malloc(sizeof(struct bhndb_devinfo), M_BHND, M_NOWAIT);
+	dinfo = malloc(sizeof(struct bhndb_devinfo), M_BHND, M_WAITOK);
 	if (dinfo == NULL) {
 		device_delete_child(dev, child);
 		return (NULL);
@@ -980,7 +979,7 @@ bhndb_find_resource_region(struct bhndb_softc *sc, device_t child, int type,
 	struct bhndb_regwin_region	*region, *ret;
 	struct rman			*rm;
 	
-	BHNDB_LOCK_ASSERT(sc);
+	BHNDB_LOCK_ASSERT(sc, MA_OWNED);
 
 	if ((rm = bhndb_get_rman(sc, type)) == NULL)
 		return (NULL);
@@ -1315,7 +1314,7 @@ bhndb_alloc_bhnd_resource(device_t dev, device_t child, int type,
 	sc = device_get_softc(dev);
 
 	/* Allocate resource wrapper */
-	br = malloc(sizeof(struct bhnd_resource), M_BHND, M_NOWAIT|M_ZERO);
+	br = malloc(sizeof(struct bhnd_resource), M_BHND, M_WAITOK|M_ZERO);
 	if (br == NULL)
 		return (NULL);
 
