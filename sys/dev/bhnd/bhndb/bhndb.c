@@ -194,76 +194,6 @@ bhndb_hw_matches(device_t *devlist, int num_devs, const struct bhndb_hw *hw)
 	return (true);
 }
 
-/**
- * Find a resource priority descriptor for @p child in @p table.
- */
-static const struct bhndb_core_prio *
-bhndb_find_core_prio(const struct bhndb_core_prio *table, device_t child)
-{
-	const struct bhndb_core_prio *cp;
-
-	for (cp = table; cp->ports != NULL; cp++) {
-		if (bhnd_device_matches(child, &cp->match))
-			return (cp);
-	}
-
-	/* not found */
-	return (NULL);
-}
-
-/**
- * Return true if @p regw is defined on bhnd @p child, false
- * otherwise.
- */
-static const bool
-bhndb_device_regwin_matches(device_t child, const struct bhndb_regwin *regw)
-{
-	/* Only core windows are supported */
-	if (regw->win_type != BHNDB_REGWIN_T_CORE)
-		return (false);
-
-	/* Device class must match */
-	if (bhnd_get_class(child) != regw->core.class)
-		return (false);
-
-	/* Device unit must match */
-	if (bhnd_get_core_unit(child) != regw->core.unit)
-		return (false);
-	
-	/* The regwin port must be defined. */
-	if (regw->core.port > bhnd_get_port_count(child, regw->core.port_type))
-		return (false);
-
-	/* The regwin region must be defined. */
-	if (regw->core.region > bhnd_get_region_count(child,
-	    regw->core.port_type, regw->core.port))
-		return (false);
-
-	/* Matches */
-	return (true);
-}
-
-/**
- * Return true if the priority descriptor's port and region is defined on
- * @p child, false otherwise.
- */
-static bool
-bhndb_prio_port_exists(struct bhndb_softc *sc, device_t child,
-    const struct bhndb_port_prio *pp)
-{
-	/* Does the port exist? */
-	if (pp->port >= bhnd_get_port_count(child, pp->type))
-		return (false);
-
-	/* Does the region exist? */
-	if (pp->region >= bhnd_get_region_count(child, pp->type, pp->port))
-		return (false);
-
-	/* Found */
-	return (true);
-}
-
-
 // TODO
 static int
 bhndb_compute_port_prio(struct bhndb_softc *sc)
@@ -299,12 +229,16 @@ bhndb_compute_port_prio(struct bhndb_softc *sc)
 			bhnd_addr_t	 addr;
 			bhnd_size_t	 size;
 			
-			if (!bhndb_device_regwin_matches(child, regw))
+			if (regw->win_type != BHNDB_REGWIN_T_CORE)
+				continue;
+
+			if (!bhndb_device_defines_regwin(child, regw))
 				continue;
 
 			/* Fetch the address and size of the mapped port. */
-			error = bhnd_get_region_addr(child, regw->core.port_type,
-			    regw->core.port, regw->core.region, &addr, &size);
+			error = bhnd_get_region_addr(child,
+			    regw->core.port_type, regw->core.port,
+			    regw->core.region, &addr, &size);
 			if (error)
 				return (error);
 
@@ -320,7 +254,7 @@ bhndb_compute_port_prio(struct bhndb_softc *sc)
 			continue;
 
 		/* Skip devices without a priority table entry */
-		if ((cp = bhndb_find_core_prio(table, child)) == NULL)
+		if ((cp = bhndb_core_prio_find_device(table, child)) == NULL)
 			continue;
 
 		/* Skip non-mapped devices */
@@ -334,7 +268,7 @@ bhndb_compute_port_prio(struct bhndb_softc *sc)
 			pp = &cp->ports[i];
 			
 			/* Skip ports not defined on this device */
-			if (!bhndb_prio_port_exists(sc, child, pp))
+			if (!bhndb_device_defines_port_prio(child, pp))
 				continue;
 
 			/* Skip ports with static mappings */
@@ -364,7 +298,7 @@ bhndb_compute_port_prio(struct bhndb_softc *sc)
 		}
 	}
 
-	bhndb_res_prio min_direct_priority;
+	bhndb_res_prio dw_min_priority;
 	size_t prio_total = prio_low + prio_default + prio_high;
 
 
@@ -374,26 +308,26 @@ bhndb_compute_port_prio(struct bhndb_softc *sc)
 		/* If all requests fit within the available windows, no windows
 		 * need be reserved for indirect resource access. */
 		dw_reserved = 0;
-		min_direct_priority = BHNDB_RES_PRIO_NONE;
+		dw_min_priority = BHNDB_RES_PRIO_NONE;
 
 	} else if (prio_high >= sc->dw_count) {
 		/* Grant direct resources to ports with a priority >= high */
-		min_direct_priority = BHNDB_RES_PRIO_HIGH;
+		dw_min_priority = BHNDB_RES_PRIO_HIGH;
 
 	} else if (prio_default + prio_high >= sc->dw_count) {
 		/* Grant direct resources to ports with a priority >= default */
-		min_direct_priority = BHNDB_RES_PRIO_DEFAULT;
+		dw_min_priority = BHNDB_RES_PRIO_DEFAULT;
 
 	} else {
 		/* Grant direct resources to ports with a priority >= low */
-		min_direct_priority = BHNDB_RES_PRIO_LOW;
+		dw_min_priority = BHNDB_RES_PRIO_LOW;
 	}
 
 	device_printf(sc->dev, "prio_low: %zu\n", prio_low);
 	device_printf(sc->dev, "prio_default: %zu\n", prio_default);
 	device_printf(sc->dev, "prio_high: %zu\n", prio_high);
 	
-	device_printf(sc->dev, "min_direct: %d\n", min_direct_priority);
+	device_printf(sc->dev, "min_direct: %d\n", dw_min_priority);
 	device_printf(sc->dev, "dw_reserved: %zu\n", dw_reserved);
 
 

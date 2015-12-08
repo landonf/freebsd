@@ -68,6 +68,16 @@ const struct bhndb_regwin	*bhndb_regwin_find_best(
 				     bhnd_port_type port_type, u_int port,
 				     u_int region, bus_size_t min_size);
 
+bool				 bhndb_device_defines_regwin(device_t device,
+				     const struct bhndb_regwin *regw);
+
+bool				 bhndb_device_defines_port_prio(device_t device,
+				     const struct bhndb_port_prio *pp);
+
+const struct bhndb_core_prio	*bhndb_core_prio_find_device(
+				     const struct bhndb_core_prio *table,
+				     device_t device);
+
 /**
  * Private per-core flags
  */

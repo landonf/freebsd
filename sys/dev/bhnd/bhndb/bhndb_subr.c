@@ -193,3 +193,94 @@ bhndb_regwin_find_best(const struct bhndb_regwin *table,
 	/* Fall back on a generic dynamic window */
 	return (bhndb_regwin_find_type(table, BHNDB_REGWIN_T_DYN, min_size));
 }
+
+
+bool				 bhndb_device_matches_regwin(device_t device,
+				     const struct bhndb_regwin *regw);
+
+bool				 bhndb_device_matches_port_prio(device_t device,
+				     const struct bhndb_port_prio *pp);
+
+const struct bhndb_core_prio	*bhndb_core_prio_find_device(
+				     const struct bhndb_core_prio *table,
+				     device_t device);
+
+/**
+ * Return true if the port/region described by @p regw is defined on
+ * @p device, false otherwise.
+ * 
+ * @param device A bhnd(4) bus device.
+ * @param regw A register window to match against 
+ */
+bool
+bhndb_device_defines_regwin(device_t device, const struct bhndb_regwin *regw)
+{
+	/* Only core windows are supported */
+	if (regw->win_type != BHNDB_REGWIN_T_CORE)
+		return (false);
+
+	/* Device class must match */
+	if (bhnd_get_class(device) != regw->core.class)
+		return (false);
+
+	/* Device unit must match */
+	if (bhnd_get_core_unit(device) != regw->core.unit)
+		return (false);
+	
+	/* The regwin port must be defined. */
+	if (regw->core.port > bhnd_get_port_count(device, regw->core.port_type))
+		return (false);
+
+	/* The regwin region must be defined. */
+	if (regw->core.region > bhnd_get_region_count(device,
+	    regw->core.port_type, regw->core.port))
+		return (false);
+
+	/* Matches */
+	return (true);
+}
+
+/**
+ * Search for a core resource priority descriptor in @p table that matches
+ * @p device.
+ * 
+ * @param table The table to search.
+ * @param device A bhnd(4) bus device.
+ */
+const struct bhndb_core_prio *
+bhndb_core_prio_find_device(const struct bhndb_core_prio *table,
+    device_t device)
+{
+	const struct bhndb_core_prio *cp;
+
+	for (cp = table; cp->ports != NULL; cp++) {
+		if (bhnd_device_matches(device, &cp->match))
+			return (cp);
+	}
+
+	/* not found */
+	return (NULL);
+}
+
+/**
+ * Return true if the port/region described by @p pp is defined on
+ * @p device, false otherwise.
+ * 
+ * @param device A bhnd(4) bus device.
+ * @param pp A port priority descriptor to match against.
+ */
+bool
+bhndb_device_defines_port_prio(device_t device,
+    const struct bhndb_port_prio *pp)
+{
+	/* Does the port exist? */
+	if (pp->port >= bhnd_get_port_count(device, pp->type))
+		return (false);
+
+	/* Does the region exist? */
+	if (pp->region >= bhnd_get_region_count(device, pp->type, pp->port))
+		return (false);
+
+	/* Found */
+	return (true);
+}
