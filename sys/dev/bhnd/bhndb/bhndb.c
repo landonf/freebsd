@@ -1151,7 +1151,7 @@ bhndb_try_activate_static_window(struct bhndb_softc *sc, device_t child,
 			continue;
 
 		/* Fetch the address and size of the mapped port. */
-		error = bhnd_get_port_addr(bus_dev, win->core.type,
+		error = bhnd_get_region_addr(bus_dev, win->core.type,
 		    win->core.port, win->core.region, &addr, &size);
 		if (error)
 			return (error);
