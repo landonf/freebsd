@@ -279,6 +279,10 @@ bhndb_init_dw_region_allocator(struct bhndb_softc *sc)
 	u_int				 rnid;
 	int				 error;
 
+	KASSERT(sc->dw_regions == NULL &&
+		sc->dw_freelist == 0 &&
+		sc->dw_count == 0, ("bhndb allocator already initialized\n"));
+
 	cfg = sc->cfg;
 	rws = cfg->register_windows;
 	rspecs = cfg->resource_specs;
@@ -434,7 +438,6 @@ bhndb_reset_bridged_resources(struct bhndb_softc *sc)
 
 	/* Free (and reset) resource state */
 	free(sc->res, M_BHND);
-	sc->res_count = 0;
 	sc->res = NULL;
 
 	free(sc->res_spec, M_BHND);
@@ -455,27 +458,24 @@ bhndb_reset_bridged_resources(struct bhndb_softc *sc)
 static int
 bhndb_init_bridge_resources(struct bhndb_softc *sc)
 {
+	size_t	res_count;
 	int	error;
 	bool	free_parent_res;
 
-	KASSERT(sc->res_count == 0 && 
-		sc->res_spec == NULL && 
-		sc->res == NULL &&
-		sc->dw_regions == NULL &&
-		sc->dw_freelist == 0 &&
-		sc->dw_count == 0, ("bhndb already initialized\n"));
-	
+	KASSERT(sc->res_spec == NULL && 
+		sc->res == NULL, ("bhndb resources already allocated\n"));
+
 	free_parent_res = false;
 
 	/* Determine our bridge resource count from the hardware config. */
-	sc->res_count = 0;
+	res_count = 0;
 	for (size_t i = 0; sc->cfg->resource_specs[i].type != -1; i++)
-		sc->res_count++;
+		res_count++;
 
 	/* Allocate space for a non-const copy of our resource_spec
 	 * table; this will be updated with the RIDs assigned by
 	 * bus_alloc_resources. */
-	sc->res_spec = malloc(sizeof(struct resource_spec) * (sc->res_count + 1),
+	sc->res_spec = malloc(sizeof(struct resource_spec) * (res_count + 1),
 	    M_BHND, M_NOWAIT);
 	if (sc->res_spec == NULL) {
 		error = ENOMEM;
@@ -483,13 +483,13 @@ bhndb_init_bridge_resources(struct bhndb_softc *sc)
 	}
 
 	/* Initialize and terminate the table */
-	for (size_t i = 0; i < sc->res_count; i++)
+	for (size_t i = 0; i < res_count; i++)
 		sc->res_spec[i] = sc->cfg->resource_specs[i];
 	
-	sc->res_spec[sc->res_count].type = -1;
+	sc->res_spec[res_count].type = -1;
 
 	/* Allocate space for our resource references */
-	sc->res = malloc(sizeof(struct resource) * sc->res_count,
+	sc->res = malloc(sizeof(struct resource) * res_count,
 	    M_BHND, M_NOWAIT);
 	if (sc->res == NULL) {
 		error = ENOMEM;

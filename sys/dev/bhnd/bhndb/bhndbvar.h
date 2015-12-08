@@ -94,7 +94,6 @@ struct bhndb_softc {
 	bhnd_devclass_t			 bridge_class;	/**< bridge core type */
 
 	device_t			 parent_dev;	/**< parent device */
-	size_t				 res_count;	/**< parent bus resource count */
 	struct resource_spec		*res_spec;	/**< parent bus resource specs */
 	struct resource			**res;		/**< parent bus resources */
 
