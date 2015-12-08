@@ -569,7 +569,7 @@ bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass)
 	sc->mem_rman.rm_start = 0;
 	sc->mem_rman.rm_end = BUS_SPACE_MAXADDR_32BIT;
 	sc->mem_rman.rm_type = RMAN_ARRAY;
-	sc->mem_rman.rm_descr = "bhnd device address space";
+	sc->mem_rman.rm_descr = "BHND I/O memory addresses";
 	
 	if ((error = rman_init(&sc->mem_rman))) {
 		device_printf(dev, "could not initialize mem_rman\n");
