@@ -130,7 +130,7 @@ bhndb_alloc_resources(device_t dev, device_t parent_dev,
 	r->dev = dev;
 	r->parent_dev = parent_dev;
 	r->cfg = cfg;
-	r->dw_min_prio = BHNDB_PRIORITY_NONE;
+	r->min_prio = BHNDB_PRIORITY_NONE;
 	STAILQ_INIT(&r->bus_regions);
 	
 	/* Determine our bridge resource count from the hardware config. */
@@ -338,7 +338,7 @@ bhndb_resources_add_device_region(struct bhndb_resources *r, device_t dev,
 	*reg = (struct bhndb_region) {
 		.addr = addr,
 		.size = size,
-		.dw_priority = priority,
+		.priority = priority,
 		.static_regwin = static_regwin
 	};
 

@@ -119,7 +119,7 @@ struct bhndb_dw_region {
 struct bhndb_region {
 	bhnd_addr_t			 addr;		/**< start of mapped range */
 	bhnd_size_t			 size;		/**< size of mapped range */
-	bhndb_priority_t		 dw_priority;	/**< dynamic window allocation priority */
+	bhndb_priority_t		 priority;	/**< direct resource allocation priority */
 	const struct bhndb_regwin	*static_regwin;	/**< fixed mapping regwin, if any */
 
 	STAILQ_ENTRY(bhndb_region)	 link;
@@ -141,8 +141,8 @@ struct bhndb_resources {
 	struct bhndb_dw_region		*dw_regions;	/**< dynamic window regions */
 	size_t				 dw_count;	/**< number of dynamic window regions. */
 	uint32_t			 dw_freelist;	/**< dw_regions free list */
-	bhndb_priority_t		 dw_min_prio;	/**< minimum resource priority required to
-							     allocate a dynamic window region */
+	bhndb_priority_t		 min_prio;	/**< minimum resource priority required to
+							     allocate a window region */
 };
 
 #define	BHNDB_LOCK_INIT(sc) \

@@ -261,8 +261,8 @@ bhndb_initialize_region_cfg(device_t bus_dev,
 		child = devices[i];
 
 		/* Register bridge regions for any statically mapped device
-		 * ports. The dynamic window priority for a statically mapped
-		 * region is always NONE. */
+		 * ports. The window priority for a statically mapped
+		 * region is always HIGH. */
 		for (regw = r->cfg->register_windows;
 		    regw->win_type != BHNDB_REGWIN_T_INVALID; regw++)
 		{
@@ -277,7 +277,7 @@ bhndb_initialize_region_cfg(device_t bus_dev,
 			/* Insert in the bus region list */
 			error = bhndb_resources_add_device_region(r, child,
 			    regw->core.port_type, regw->core.port,
-			    regw->core.region, regw, BHNDB_PRIORITY_NONE);
+			    regw->core.region, regw, BHNDB_PRIORITY_HIGH);
 			if (error)
 				return (error);
 		}
@@ -349,22 +349,22 @@ bhndb_initialize_region_cfg(device_t bus_dev,
 	size_t prio_total = prio_low + prio_default + prio_high;
 	if (prio_total <= r->dw_count) {
 		/* low+default+high priority regions get windows */
-		r->dw_min_prio = BHNDB_PRIORITY_LOW;
+		r->min_prio = BHNDB_PRIORITY_LOW;
 
 	} else if (prio_default + prio_high <= r->dw_count) {
 		/* default+high priority regions get windows */
-		r->dw_min_prio = BHNDB_PRIORITY_DEFAULT;
+		r->min_prio = BHNDB_PRIORITY_DEFAULT;
 
 	} else {
 		/* high priority regions get windows */
-		r->dw_min_prio = BHNDB_PRIORITY_HIGH;
+		r->min_prio = BHNDB_PRIORITY_HIGH;
 	}
 
 	if (BHNDB_DEBUG_PRIO) {
 		device_printf(r->dev, "prio_low: %zu\n", prio_low);
 		device_printf(r->dev, "prio_default: %zu\n", prio_default);
 		device_printf(r->dev, "prio_high: %zu\n", prio_high);
-		device_printf(r->dev, "dw_min_prio: %d\n", r->dw_min_prio);
+		device_printf(r->dev, "min_prio: %d\n", r->min_prio);
 	}
 
 	free(devices, M_TEMP);
@@ -1112,7 +1112,7 @@ bhndb_activate_resource(device_t dev, device_t child, int type, int rid,
 	r_size = rman_get_size(r);
 	region = bhndb_resources_find_region(sc->bus_res, r_start, r_size);
 	if (region != NULL)
-		dw_priority = region->dw_priority;
+		dw_priority = region->priority;
 
 	/* Prefer static mappings over consuming a dynamic windows. */
 	if (region && region->static_regwin) {
@@ -1123,7 +1123,7 @@ bhndb_activate_resource(device_t dev, device_t child, int type, int rid,
 
 	/* A dynamic window will be required; is this resource high enough
 	 * priority to be reserved a dynamic window? */
-	if (dw_priority < sc->bus_res->dw_min_prio)
+	if (dw_priority < sc->bus_res->min_prio)
 		return (ENOMEM);
 
 	/* Find the first free dynamic window. */
@@ -1220,8 +1220,7 @@ bhndb_alloc_bhnd_resource(device_t dev, device_t child, int type,
 		return (NULL);
 
 	/* Configure */
-	// TODO - `_direct` must be set at activation time, not allocation.
-	br->direct = true;
+	br->direct = false;
 	br->res = bus_alloc_resource(child, type, rid, start, end, count,
 	    flags & ~RF_ACTIVE);
 	if (br->res == NULL)
@@ -1260,22 +1259,61 @@ static int
 bhndb_activate_bhnd_resource(device_t dev, device_t child,
     int type, int rid, struct bhnd_resource *r)
 {
-	/* Indirect resources don't require activation */
-	if (!r->direct)
+	struct bhndb_softc	*sc;
+	struct bhndb_region	*region;
+	bhndb_priority_t	 r_prio;
+	u_long			 r_start, r_size;
+	int 			 error;
+
+	KASSERT(!r->direct,
+	    ("direct flag set on inactive resource"));
+	
+	KASSERT(!(rman_get_flags(r->res) & RF_ACTIVE),
+	    ("RF_ACTIVE set on inactive resource"));
+
+	sc = device_get_softc(dev);
+
+	/* Fetch the address range's resource priority */
+	r_start = rman_get_start(r->res);
+	r_size = rman_get_size(r->res);
+	r_prio = BHNDB_PRIORITY_NONE;
+
+	region = bhndb_resources_find_region(sc->bus_res, r_start, r_size);
+	if (region != NULL)
+		r_prio = region->priority;
+	
+	/* If less than the minimum dynamic window priority, this
+	 * resource should always be indirect. */
+	if (r_prio < sc->bus_res->min_prio)
 		return (0);
 
-	return (bus_activate_resource(child, type, rid, r->res));
+	/* Perform direct activation */
+	error = bus_activate_resource(child, type, rid, r->res);
+	if (!error)
+		r->direct = true;
+
+	return (error);
 };
 
 static int
 bhndb_deactivate_bhnd_resource(device_t dev, device_t child,
     int type, int rid, struct bhnd_resource *r)
 {
+	int error;
+
 	/* Indirect resources don't require activation */
 	if (!r->direct)
 		return (0);
 
-	return (bus_deactivate_resource(child, type, rid, r->res));
+	KASSERT(rman_get_flags(r->res) & RF_ACTIVE,
+	    ("RF_ACTIVE not set on direct resource"));
+
+	/* Perform deactivation */
+	error = bus_deactivate_resource(child, type, rid, r->res);
+	if (!error)
+		r->direct = false;
+
+	return (error);
 };
 
 static int
