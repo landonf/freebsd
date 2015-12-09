@@ -111,6 +111,7 @@ struct bhndb_dw_region {
 	struct resource			*parent_res;	/**< enclosing resource */
 	struct resource			*child_res;	/**< associated child resource, or NULL */
 	u_int				 rnid;		/**< region identifier */
+	u_long				 target;	/**< the current window address, or 0x0 if unknown */
 };
 
 /**

@@ -223,6 +223,7 @@ bhndb_alloc_resources(device_t dev, device_t parent_dev,
 		region->parent_res = NULL;
 		region->child_res = NULL;
 		region->rnid = rnid;
+		region->target = 0x0;
 
 		/* Find and validate corresponding resource. */
 		region->parent_res = bhndb_find_regwin_resource(r, win);

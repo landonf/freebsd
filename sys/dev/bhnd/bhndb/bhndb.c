@@ -625,6 +625,42 @@ bhndb_generic_suspend(device_t dev)
 int
 bhndb_generic_resume(device_t dev)
 {
+	struct bhndb_softc	*sc;
+	struct bhndb_resources	*bus_res;
+	struct bhndb_dw_region	*dw_region;
+	int			 error;
+
+	sc = device_get_softc(dev);
+	bus_res = sc->bus_res;
+
+	/* Guarantee that all in-use dynamic register windows are mapped to
+	 * their previously configured target address. */
+	BHNDB_LOCK(sc);
+	for (size_t i = 0; i < bus_res->dw_count; i++) {
+		dw_region = &bus_res->dw_regions[i];
+	
+		/* If not in-use, return the region to its initial state */
+		if (BHNDB_DW_REGION_IS_FREE(bus_res, i)) {
+			dw_region->target = 0x0;
+			continue;
+		}
+
+		/* Otherwise, ensure the register window is correct before
+		 * any children attempt MMIO */
+		error = BHNDB_SET_WINDOW_ADDR(dev, dw_region->win, 
+		    dw_region->target);
+		if (error)
+			break;
+	}
+	BHNDB_UNLOCK(sc);
+
+	/* Error restoring hardware state; children cannot be safely resumed */
+	if (error) {
+		device_printf(dev, "Unable to restore hardware configuration; "
+		    "cannot resume: %d\n", error);
+		return (error);
+	}
+
 	return (bus_generic_resume(dev));
 }
 
@@ -1139,13 +1175,16 @@ bhndb_activate_resource(device_t dev, device_t child, int type, int rid,
 	rnid = BHNDB_DW_REGION_NEXT_FREE(sc->bus_res);
 	BHNDB_DW_REGION_RESERVE(sc->bus_res, rnid, r);
 
-	BHNDB_UNLOCK(sc);
-
-	/* Set the target window */
+	/* Set the window target */
 	dw_region = &sc->bus_res->dw_regions[rnid];
-	error = BHNDB_SET_WINDOW_ADDR(dev, dw_region->win, rman_get_start(r));
-	if (error)
+	dw_region->target = rman_get_start(r);
+	error = BHNDB_SET_WINDOW_ADDR(dev, dw_region->win, dw_region->target);
+	if (error) {
+		dw_region->target = 0x0;
 		goto failed;
+	}
+
+	BHNDB_UNLOCK(sc);
 
 	/* Configure resource with its real bus values. */
 	error = bhndb_init_child_resource(r, dw_region->parent_res,
