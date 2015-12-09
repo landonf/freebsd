@@ -60,38 +60,34 @@ __FBSDID("$FreeBSD$");
 /* enables prioritization debugging */
 #define	BHNDB_DEBUG_PRIO	0
 
-static bool				 bhndb_hw_matches(device_t *devlist,
-					     int num_devs,
-					     const struct bhndb_hw *hw);
+static bool			 bhndb_hw_matches(device_t *devlist,
+				     int num_devs,
+				     const struct bhndb_hw *hw);
 
-static int				 bhndb_find_hwspec(
-					     struct bhndb_softc *sc,
-					     const struct bhndb_hw **hw);
+static int			 bhndb_find_hwspec(struct bhndb_softc *sc,
+				     const struct bhndb_hw **hw);
 
-static int				 bhndb_read_chipid(
-					     struct bhndb_softc *sc,
-					     const struct bhndb_hwcfg *cfg,
-					     struct bhnd_chipid *result);
+static int			 bhndb_read_chipid(struct bhndb_softc *sc,
+				     const struct bhndb_hwcfg *cfg,
+				     struct bhnd_chipid *result);
 
-static struct rman			*bhndb_get_rman(struct bhndb_softc *sc,
-					     int type);
+static struct rman		*bhndb_get_rman(struct bhndb_softc *sc,
+				     int type);
 
-static struct bhndb_regwin_region 	*bhndb_find_dw_region(
-					     struct bhndb_softc *sc,
-					     device_t child, int type, int rid,
-					     struct resource *r);
+static struct bhndb_dw_region 	*bhndb_find_dw_region(struct bhndb_softc *sc,
+				     device_t child, int type, int rid,
+				     struct resource *r);
 
-static int				 bhndb_init_child_resource(
-					     struct resource *r,
-					     struct resource *parent,
-					     bhnd_size_t offset,
-					     bhnd_size_t size);
+static int			 bhndb_init_child_resource(struct resource *r,
+				     struct resource *parent,
+				     bhnd_size_t offset,
+				     bhnd_size_t size);
 
-static int				 bhndb_activate_static_region(
-					     struct bhndb_softc *sc,
-					     struct bhndb_region *region, 
-					     device_t child, int type, int rid,
-					     struct resource *r);
+static int			 bhndb_activate_static_region(
+				     struct bhndb_softc *sc,
+				     struct bhndb_region *region, 
+				     device_t child, int type, int rid,
+				     struct resource *r);
 
 /** 
  * Default bhndb implementation of device_probe().
@@ -925,15 +921,15 @@ bhndb_release_resource(device_t dev, device_t child, int type, int rid,
  * @param rid The resource ID.
  * @param r The resource to search for.
  * 
- * @retval bhndb_regwin_region The region allocated for @p r.
+ * @retval bhndb_dw_region The region allocated for @p r.
  * @retval NULL if no region is allocated for @p r.
  */
-static struct bhndb_regwin_region *
+static struct bhndb_dw_region *
 bhndb_find_dw_region(struct bhndb_softc *sc, device_t child, int type,
     int rid, struct resource *r)
 {
-	struct bhndb_regwin_region	*region, *ret;
-	struct rman			*rm;
+	struct bhndb_dw_region	*region, *ret;
+	struct rman		*rm;
 	
 	BHNDB_LOCK_ASSERT(sc, MA_OWNED);
 
@@ -1094,13 +1090,13 @@ static int
 bhndb_activate_resource(device_t dev, device_t child, int type, int rid,
     struct resource *r)
 {
-	struct bhndb_softc		*sc;
-	struct bhndb_region		*region;
-	struct bhndb_regwin_region	*dw_region;
-	bhndb_priority_t		 dw_priority;
-	u_long				 r_start, r_size;
-	int				 rnid;
-	int				 error;
+	struct bhndb_softc	*sc;
+	struct bhndb_region	*region;
+	struct bhndb_dw_region	*dw_region;
+	bhndb_priority_t	 dw_priority;
+	u_long			 r_start, r_size;
+	int			 rnid;
+	int			 error;
 
 	sc = device_get_softc(dev);
 
@@ -1177,10 +1173,10 @@ static int
 bhndb_deactivate_resource(device_t dev, device_t child, int type,
     int rid, struct resource *r)
 {
-	struct bhndb_regwin_region	*region;
-	struct bhndb_softc		*sc;
-	struct rman			*rm;
-	int				 error;
+	struct bhndb_dw_region	*region;
+	struct bhndb_softc	*sc;
+	struct rman		*rm;
+	int			 error;
 
 	sc = device_get_softc(dev);
 

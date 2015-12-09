@@ -190,7 +190,7 @@ bhndb_alloc_resources(device_t dev, device_t parent_dev,
 	for (win = cfg->register_windows;
 	    win->win_type != BHNDB_REGWIN_T_INVALID; win++)
 	{
-		struct bhndb_regwin_region *region;
+		struct bhndb_dw_region *region;
 
 		/* Skip non-DYN windows */
 		if (win->win_type != BHNDB_REGWIN_T_DYN)

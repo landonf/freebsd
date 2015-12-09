@@ -46,6 +46,10 @@
  * Private bhndb(4) driver definitions.
  */
 
+struct bhndb_dw_region;
+struct bhndb_region;
+struct bhndb_resources;
+
 struct resource			*bhndb_find_regwin_resource(
 				     struct bhndb_resources *r,
 				     const struct bhndb_regwin *win);
@@ -98,19 +102,48 @@ const struct bhndb_hw_priority	*bhndb_hw_priority_find_device(
 				     const struct bhndb_hw_priority *table,
 				     device_t device);
 
+
 /**
- * Private per-core flags
+ * A dynamic register window allocation record. 
  */
-enum {
-	BHNDB_CF_HW_DISABLED	= 1 << 0,	/**< core hardware is unusable */
-	BHNDB_CF_HOSTB		= 1 << 1,	/**< core is host bridge */
+struct bhndb_dw_region {
+	const struct bhndb_regwin	*win;		/**< window definition */
+	struct resource			*parent_res;	/**< enclosing resource */
+	struct resource			*child_res;	/**< associated child resource, or NULL */
+	u_int				 rnid;		/**< region identifier */
 };
 
-/** bhndb child instance state */
-struct bhndb_devinfo {
-        struct resource_list    resources;	/**< child resources. */
+/**
+ * A bus address region description.
+ */
+struct bhndb_region {
+	bhnd_addr_t			 addr;		/**< start of mapped range */
+	bhnd_size_t			 size;		/**< size of mapped range */
+	bhndb_priority_t		 dw_priority;	/**< dynamic window allocation priority */
+	const struct bhndb_regwin	*static_regwin;	/**< fixed mapping regwin, if any */
+
+	STAILQ_ENTRY(bhndb_region)	 link;
 };
 
+/**
+ * BHNDB resource allocation state.
+ */
+struct bhndb_resources {
+	device_t			 dev;		/**< bridge device */
+	const struct bhndb_hwcfg	*cfg;		/**< hardware configuration */
+
+	device_t			 parent_dev;	/**< parent device */
+	struct resource_spec		*res_spec;	/**< parent bus resource specs */
+	struct resource			**res;		/**< parent bus resources */
+
+	STAILQ_HEAD(, bhndb_region) 	 bus_regions;	/**< bus region descriptors */
+
+	struct bhndb_dw_region		*dw_regions;	/**< dynamic window regions */
+	size_t				 dw_count;	/**< number of dynamic window regions. */
+	uint32_t			 dw_freelist;	/**< dw_regions free list */
+	bhndb_priority_t		 dw_min_prio;	/**< minimum resource priority required to
+							     allocate a dynamic window region */
+};
 
 #define	BHNDB_LOCK_INIT(sc) \
 	mtx_init(&(sc)->sc_mtx, device_get_nameunit((sc)->dev), \

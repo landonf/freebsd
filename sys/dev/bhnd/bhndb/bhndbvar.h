@@ -51,6 +51,8 @@
 
 DECLARE_CLASS(bhndb_driver);
 
+struct bhndb_resources;
+
 int	bhndb_generic_probe(device_t dev);
 int	bhndb_generic_detach(device_t dev);
 int	bhndb_generic_suspend(device_t dev);
@@ -62,46 +64,9 @@ int	bhndb_generic_write_ivar(device_t dev, device_t child, int index,
 
 int	bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass);
 
-/**
- * A dynamic register window allocation record. 
- */
-struct bhndb_regwin_region {
-	const struct bhndb_regwin	*win;		/**< window definition */
-	struct resource			*parent_res;	/**< enclosing resource */
-	struct resource			*child_res;	/**< associated child resource, or NULL */
-	u_int				 rnid;		/**< region identifier */
-};
-
-/**
- * A bus address region description.
- */
-struct bhndb_region {
-	bhnd_addr_t			 addr;		/**< start of mapped range */
-	bhnd_size_t			 size;		/**< size of mapped range */
-	bhndb_priority_t		 dw_priority;	/**< dynamic window allocation priority */
-	const struct bhndb_regwin	*static_regwin;	/**< fixed mapping regwin, if any */
-
-	STAILQ_ENTRY(bhndb_region)	 link;
-};
-
-/**
- * BHNDB resource allocation state.
- */
-struct bhndb_resources {
-	device_t			 dev;		/**< bridge device */
-	const struct bhndb_hwcfg	*cfg;		/**< hardware configuration */
-
-	device_t			 parent_dev;	/**< parent device */
-	struct resource_spec		*res_spec;	/**< parent bus resource specs */
-	struct resource			**res;		/**< parent bus resources */
-
-	STAILQ_HEAD(, bhndb_region) 	 bus_regions;	/**< bus region descriptors */
-
-	struct bhndb_regwin_region	*dw_regions;	/**< dynamic window regions */
-	size_t				 dw_count;	/**< number of dynamic window regions. */
-	uint32_t			 dw_freelist;	/**< dw_regions free list */
-	bhndb_priority_t		 dw_min_prio;	/**< minimum resource priority required to
-							     allocate a dynamic window region */
+/** bhndb child instance state */
+struct bhndb_devinfo {
+        struct resource_list    resources;	/**< child resources. */
 };
 
 /**
