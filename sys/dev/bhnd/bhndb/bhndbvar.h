@@ -36,10 +36,11 @@
 #include <sys/bus.h>
 #include <sys/kernel.h>
 #include <sys/lock.h>
+#include <sys/malloc.h>
 #include <sys/mutex.h>
 #include <sys/rman.h>
 
-#include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/bhndvar.h>
 #include "bhndb.h"
 
 #include "bhndb_if.h"
@@ -62,27 +63,63 @@ int	bhndb_generic_write_ivar(device_t dev, device_t child, int index,
 int	bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass);
 
 /**
- * bhndb driver instance state. Must be first member of all subclass
- * softc structures.
+ * A dynamic register window allocation record. 
  */
-struct bhndb_softc {
+struct bhndb_regwin_region {
+	const struct bhndb_regwin	*win;		/**< window definition */
+	struct resource			*parent_res;	/**< enclosing resource */
+	struct resource			*child_res;	/**< associated child resource, or NULL */
+	u_int				 rnid;		/**< region identifier */
+};
+
+/**
+ * A bus address region description.
+ */
+struct bhndb_region {
+	bhnd_addr_t			 addr;		/**< start of mapped range */
+	bhnd_size_t			 size;		/**< size of mapped range */
+	bhndb_priority_t		 dw_priority;	/**< dynamic window allocation priority */
+	const struct bhndb_regwin	*static_regwin;	/**< fixed mapping regwin, if any */
+
+	STAILQ_ENTRY(bhndb_region)	 link;
+};
+
+/**
+ * BHNDB resource allocation state.
+ */
+struct bhndb_resources {
 	device_t			 dev;		/**< bridge device */
 	const struct bhndb_hwcfg	*cfg;		/**< hardware configuration */
-	struct bhnd_chipid		 chipid;	/**< chip identification */
-	bhnd_devclass_t			 bridge_class;	/**< bridge core type */
 
 	device_t			 parent_dev;	/**< parent device */
 	struct resource_spec		*res_spec;	/**< parent bus resource specs */
 	struct resource			**res;		/**< parent bus resources */
 
-	device_t			 bus_dev;	/**< child bhnd(4) bus */
-	struct rman			 mem_rman;	/**< bridged bus memory manager */
+	STAILQ_HEAD(, bhndb_region) 	 bus_regions;	/**< bus region descriptors */
 
-	struct mtx			 sc_mtx;	/**< softc lock. */
-	
 	struct bhndb_regwin_region	*dw_regions;	/**< dynamic window regions */
 	size_t				 dw_count;	/**< number of dynamic window regions. */
 	uint32_t			 dw_freelist;	/**< dw_regions free list */
+	bhndb_priority_t		 dw_min_prio;	/**< minimum resource priority required to
+							     allocate a dynamic window region */
+};
+
+/**
+ * bhndb driver instance state. Must be first member of all subclass
+ * softc structures.
+ */
+struct bhndb_softc {
+	device_t			 dev;		/**< bridge device */
+	struct bhnd_chipid		 chipid;	/**< chip identification */
+	bhnd_devclass_t			 bridge_class;	/**< bridge core type */
+
+	device_t			 parent_dev;	/**< parent device */
+	device_t			 bus_dev;	/**< child bhnd(4) bus */
+
+	struct rman			 mem_rman;	/**< bridged bus memory manager */
+	struct mtx			 sc_mtx;	/**< resource lock. */
+
+	struct bhndb_resources		*bus_res;	/**< bus resource state */
 };
 
 #endif /* _BHND_BHNDBVAR_H_ */

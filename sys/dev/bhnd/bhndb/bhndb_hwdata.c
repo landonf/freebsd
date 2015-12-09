@@ -44,13 +44,16 @@ __FBSDID("$FreeBSD$");
  */
 
 /*
- * Define a bhndb_port_prio table.
+ * Define a bhndb_port_priority table.
  */
 #define	BHNDB_PORTS(...)	\
 	.ports		= _BHNDB_PORT_ARRAY(__VA_ARGS__),		\
 	.num_ports	= (sizeof(_BHNDB_PORT_ARRAY(__VA_ARGS__)) /	\
 	    sizeof(_BHNDB_PORT_ARRAY(__VA_ARGS__)[0]))
-#define	_BHNDB_PORT_ARRAY(...) (const struct bhndb_port_prio[]) { __VA_ARGS__ }
+
+#define	_BHNDB_PORT_ARRAY(...) (const struct bhndb_port_priority[]) {	\
+	__VA_ARGS__							\
+}
 
 /*
  * Define a core priority record for all cores matching @p devclass and
@@ -69,7 +72,7 @@ __FBSDID("$FreeBSD$");
 		.class	= (BHND_DEVCLASS_ ## _devclass),		\
 		.unit	= (_unit)					\
 	},								\
-	.priority = (BHNDB_RES_PRIO_ ## _priority),		\
+	.priority = (BHNDB_PRIORITY_ ## _priority),		\
 	BHNDB_PORTS(__VA_ARGS__)					\
 }
 
@@ -79,14 +82,14 @@ __FBSDID("$FreeBSD$");
 	.type		= (BHND_PORT_ ## _type),		\
 	.port		= 0,					\
 	.region		= 0,					\
-	.priority	= (BHNDB_RES_PRIO_ ## _priority)	\
+	.priority	= (BHNDB_PRIORITY_ ## _priority)	\
 }
 
 /**
  * Generic resource priority configuration usable with all currently supported
  * bcma(4) and siba(4)-based PCI devices.
  */
-const struct bhndb_core_prio bhndb_generic_res_prio_table[] = {
+const struct bhndb_hw_priority bhndb_generic_priority_table[] = {
 	/*
 	 * Ignorable device classes.
 	 * 

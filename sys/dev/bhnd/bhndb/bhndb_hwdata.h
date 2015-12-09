@@ -34,6 +34,6 @@
 
 #include "bhndb.h"
 
-extern const struct bhndb_core_prio bhndb_generic_res_prio_table[];
+extern const struct bhndb_hw_priority bhndb_generic_priority_table[];
 
 #endif /* _BHND_BHNDB_HWDATA_H_ */

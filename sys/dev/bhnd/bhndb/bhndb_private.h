@@ -46,6 +46,28 @@
  * Private bhndb(4) driver definitions.
  */
 
+struct resource			*bhndb_find_regwin_resource(
+				     struct bhndb_resources *r,
+				     const struct bhndb_regwin *win);
+
+struct bhndb_resources		*bhndb_alloc_resources(device_t dev,
+				     device_t parent_dev,
+				     const struct bhndb_hwcfg *cfg);
+
+void				 bhndb_free_resources(
+				     struct bhndb_resources *res);
+
+int				 bhndb_resources_add_device_region(
+				     struct bhndb_resources *r, device_t dev,
+				     bhnd_port_type port_type, u_int port,
+				     u_int region,
+				     const struct bhndb_regwin *static_regwin, 
+				     bhndb_priority_t priority);
+
+struct bhndb_region		*bhndb_resources_find_region(
+				     struct bhndb_resources *r,
+				     bhnd_addr_t addr, bhnd_size_t size);
+
 size_t				 bhndb_regwin_count(
 				     const struct bhndb_regwin *table,
 				     bhndb_regwin_type_t type);
@@ -68,14 +90,12 @@ const struct bhndb_regwin	*bhndb_regwin_find_best(
 				     bhnd_port_type port_type, u_int port,
 				     u_int region, bus_size_t min_size);
 
-bool				 bhndb_device_defines_regwin(device_t device,
-				     const struct bhndb_regwin *regw);
+bool				 bhndb_regwin_matches_device(
+				     const struct bhndb_regwin *regw,
+				     device_t dev);
 
-bool				 bhndb_device_defines_port_prio(device_t device,
-				     const struct bhndb_port_prio *pp);
-
-const struct bhndb_core_prio	*bhndb_core_prio_find_device(
-				     const struct bhndb_core_prio *table,
+const struct bhndb_hw_priority	*bhndb_hw_priority_find_device(
+				     const struct bhndb_hw_priority *table,
 				     device_t device);
 
 /**
@@ -91,15 +111,6 @@ struct bhndb_devinfo {
         struct resource_list    resources;	/**< child resources. */
 };
 
-/**
- * A register window allocation record. 
- */
-struct bhndb_regwin_region {
-	const struct bhndb_regwin	*win;		/**< window definition */
-	struct resource			*parent_res;	/**< enclosing resource */
-	struct resource			*child_res;	/**< associated child resource, or NULL */
-	u_int				 rnid;		/**< region identifier */
-};
 
 #define	BHNDB_LOCK_INIT(sc) \
 	mtx_init(&(sc)->sc_mtx, device_get_nameunit((sc)->dev), \
@@ -112,31 +123,43 @@ struct bhndb_regwin_region {
 /**
  * Mark a dynamic window region as free.
  */
-#define	BHNDB_DW_REGION_RELEASE(sc, rnid)	do {		\
-	KASSERT((sc)->dw_regions[rnid].child_res != NULL &&	\
-	    !BHNDB_DW_REGION_IS_FREE((sc), (rnid)),		\
+#define	BHNDB_DW_REGION_RELEASE(r, rnid)	do {		\
+	KASSERT((r)->dw_regions[rnid].child_res != NULL &&	\
+	    !BHNDB_DW_REGION_IS_FREE((r), (rnid)),		\
 	    (("dw_region double free")));			\
 								\
-	(sc)->dw_freelist |= (1 << (rnid));			\
-	(sc)->dw_regions[rnid].child_res = NULL;		\
+	(r)->dw_freelist |= (1 << (rnid));			\
+	(r)->dw_regions[rnid].child_res = NULL;		\
 } while(0)
+
+/**
+ * Evaluates to true if the all dynamic regions have been exhausted.
+ */
+#define	BHNDB_DW_REGION_EXHAUSTED(r)		((r)->dw_freelist == 0)
+
+/**
+ * Find the next free dynamic window region. It is an error to
+ * call this macro without first checking if BHNDB_DW_REGION_EXHAUSTED
+ * evaluates to true.
+ */
+#define	BHNDB_DW_REGION_NEXT_FREE(r)		__builtin_ctz((r)->dw_freelist)
 
 /**
  * Mark a dynamic window region as reserved.
  */
-#define	BHNDB_DW_REGION_RESERVE(sc, rnid, cr)	do {		\
-	KASSERT((sc)->dw_regions[rnid].child_res == NULL &&	\
-	    BHNDB_DW_REGION_IS_FREE((sc), (rnid)),		\
+#define	BHNDB_DW_REGION_RESERVE(r, rnid, cr)	do {		\
+	KASSERT((r)->dw_regions[rnid].child_res == NULL &&	\
+	    BHNDB_DW_REGION_IS_FREE((r), (rnid)),		\
 	    (("dw_region is busy")));				\
 								\
-	(sc)->dw_freelist &= ~(1 << (rnid));			\
-	(sc)->dw_regions[rnid].child_res = cr;			\
+	(r)->dw_freelist &= ~(1 << (rnid));			\
+	(r)->dw_regions[rnid].child_res = cr;			\
 } while(0)
 
 /**
  * Return non-zero value if a dynamic window region is marked as free.
  */
-#define	BHNDB_DW_REGION_IS_FREE(sc, rnid) \
-	((sc)->dw_freelist & (1 << (rnid)))
+#define	BHNDB_DW_REGION_IS_FREE(r, rnid) \
+	((r)->dw_freelist & (1 << (rnid)))
 
 #endif /* _BHND_BHNDB_PRIVATE_H_ */

@@ -58,6 +58,15 @@ typedef enum {
 } bhndb_regwin_type_t;
 
 /**
+ * Evaluates to true if @p _rt defines a static mapping.
+ * 
+ * @param _rt A bhndb_regwin_type_t value.
+ */
+#define	BHNDB_REGWIN_T_IS_STATIC(_rt)		\
+	((_rt) == BHNDB_REGWIN_T_CORE ||	\
+	 (_rt) == BHNDB_REGWIN_T_SPROM)
+
+/**
  * bhndb register window definition.
  */
 struct bhndb_regwin {
@@ -124,41 +133,41 @@ struct bhndb_hw {
  */
 typedef enum {
 	/** No direct resources should ever be allocated for this device. */
-	BHNDB_RES_PRIO_NONE	= 0,
+	BHNDB_PRIORITY_NONE	= 0,
 
 	/** Allocate a direct resource if available after serving all other
 	  * higher-priority requests. */
-	BHNDB_RES_PRIO_LOW	= 1,
+	BHNDB_PRIORITY_LOW	= 1,
 
 	/** Direct resource allocation is preferred, but not necessary
 	 *  for reasonable runtime performance. */
-	BHNDB_RES_PRIO_DEFAULT	= 2,
+	BHNDB_PRIORITY_DEFAULT	= 2,
 
 	/** Indirect resource allocation would incur high runtime overhead. */
-	BHNDB_RES_PRIO_HIGH	= 3
-} bhndb_res_prio;
+	BHNDB_PRIORITY_HIGH	= 3
+} bhndb_priority_t;
 
 /**
  * Port resource priority descriptor.
  */
-struct bhndb_port_prio {
-	bhnd_port_type	type;		/**< port type. */
-	u_int		port;		/**< port */
-	u_int		region;		/**< region */
-	bhndb_res_prio	priority;	/**< port priority */
+struct bhndb_port_priority {
+	bhnd_port_type		type;		/**< port type. */
+	u_int			port;		/**< port */
+	u_int			region;		/**< region */
+	bhndb_priority_t	priority;	/**< port priority */
 };
 
 /**
  * Core resource priority descriptor.
  */
-struct bhndb_core_prio {
+struct bhndb_hw_priority {
 	struct bhnd_core_match			 match;		/**< core match descriptor */
-	bhndb_res_prio				 priority;	/**< core-level priority */
-	const struct bhndb_port_prio		*ports;		/**< port priorities */
+	bhndb_priority_t			 priority;	/**< core-level priority */
+	const struct bhndb_port_priority	*ports;		/**< port priorities */
 	u_int					 num_ports;	/**< number of port priority records. */
 };
 
-#define	BHNDB_CORE_PRIO_TABLE_END	{ {}, BHNDB_RES_PRIO_NONE, NULL, 0 }
+#define	BHNDB_CORE_PRIO_TABLE_END	{ {}, BHNDB_PRIORITY_NONE, NULL, 0 }
 
 
 #endif /* _BHND_BHNDB_H_ */
