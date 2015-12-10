@@ -47,11 +47,11 @@ __FBSDID("$FreeBSD$");
 static int
 siba_bhndb_probe(device_t dev)
 {
-	struct bhnd_chipid	cid;
+	const struct bhnd_chipid *cid;
 
 	/* Check bus type */
 	cid = BHNDB_GET_CHIPID(device_get_parent(dev), dev);
-	if (cid.chip_type != BHND_CHIPTYPE_SIBA)
+	if (cid->chip_type != BHND_CHIPTYPE_SIBA)
 		return (ENXIO);
 
 	/* Delegate to default probe implementation */
@@ -61,12 +61,12 @@ siba_bhndb_probe(device_t dev)
 static int
 siba_bhndb_attach(device_t dev)
 {
-	struct bhnd_chipid	chipid;
-	int			error;
+	const struct bhnd_chipid	*chipid;
+	int				 error;
 
 	/* Enumerate our children. */
 	chipid = BHNDB_GET_CHIPID(device_get_parent(dev), dev);
-	if ((error = siba_add_children(dev, &chipid)))
+	if ((error = siba_add_children(dev, chipid)))
 		return (error);
 
 	/* Initialize full bridge configuration */

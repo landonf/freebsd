@@ -728,11 +728,11 @@ bhndb_child_deleted(device_t dev, device_t child)
 	device_set_ivars(child, NULL);
 }
 
-static struct bhnd_chipid
+static const struct bhnd_chipid *
 bhndb_get_chipid(device_t dev, device_t child)
 {
 	struct bhndb_softc *sc = device_get_softc(dev);
-	return (sc->chipid);
+	return (&sc->chipid);
 }
 
 static bool
@@ -1630,6 +1630,7 @@ static device_method_t bhndb_methods[] = {
 	/* BHND interface */
 	DEVMETHOD(bhnd_is_hw_disabled,		bhndb_is_hw_disabled),
 	DEVMETHOD(bhnd_is_hostb_device,		bhndb_is_hostb_device),
+	DEVMETHOD(bhnd_get_chipid,		bhndb_get_chipid),
 	DEVMETHOD(bhnd_alloc_resource,		bhndb_alloc_bhnd_resource),
 	DEVMETHOD(bhnd_release_resource,	bhndb_release_bhnd_resource),
 	DEVMETHOD(bhnd_activate_resource,	bhndb_activate_bhnd_resource),

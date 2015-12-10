@@ -48,7 +48,7 @@ CODE {
 	#include <sys/systm.h>
 	#include <dev/bhnd/bhndb/bhndbvar.h>
 
-	static struct bhnd_chipid
+	static const struct bhnd_chipid *
 	bhndb_null_get_chipid(device_t dev, device_t child)
 	{
 		panic("bhndb_get_chipid unimplemented\n");
@@ -72,9 +72,9 @@ CODE {
  * Return the chip identification information for @p child.
  *
  * @param dev The parent device of @p child.
- * @param child The attached bhndb device.
+ * @param child The bhndb-attached device.
  */
-METHOD struct bhnd_chipid get_chipid {
+METHOD const struct bhnd_chipid * get_chipid {
 	device_t dev;
 	device_t child;
 } DEFAULT bhndb_null_get_chipid;

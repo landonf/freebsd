@@ -298,6 +298,12 @@ siba_nexus_attach(device_t dev)
 	return (siba_attach(dev));
 }
 
+static const struct bhnd_chipid *
+siba_nexus_get_chipid(device_t dev, device_t child) {
+	struct siba_nexus_softc	*sc = device_get_softc(dev);
+	return (&sc->siba_cid);
+}
+
 static struct resource *
 siba_nexus_alloc_resource(device_t bus, device_t child, int type, int *rid,
     u_long start, u_long end, u_long count, u_int flags)
@@ -434,6 +440,9 @@ static device_method_t siba_nexus_methods[] = {
 	DEVMETHOD(bus_alloc_resource,	siba_nexus_alloc_resource),
 	DEVMETHOD(bus_setup_intr,	bus_generic_setup_intr),
 	DEVMETHOD(bus_teardown_intr,	bus_generic_teardown_intr),
+
+	/* bhnd interface */
+	DEVMETHOD(bhnd_get_chipid,	siba_nexus_get_chipid),
 
 	DEVMETHOD_END
 };

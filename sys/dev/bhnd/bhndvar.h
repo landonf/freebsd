@@ -62,6 +62,8 @@ bool			 bhnd_generic_is_hostb_device(device_t dev,
 bool			 bhnd_generic_is_hw_disabled(device_t dev,
 			     device_t child);
 
+const struct bhnd_chipid *bhnd_generic_get_chipid(device_t dev, device_t child);
+
 struct bhnd_resource	*bhnd_generic_alloc_bhnd_resource (device_t dev,
 			     device_t child, int type, int *rid, u_long start,
 			     u_long end, u_long count, u_int flags);

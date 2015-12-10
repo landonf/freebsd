@@ -230,6 +230,17 @@ bhnd_generic_is_hw_disabled(device_t dev, device_t child)
 }
 
 /**
+ * Helper function for implementing BHND_GET_CHIPID().
+ * 
+ * This implementation delegates the request to the BHND_GET_CHIPID() method on
+ * the parent of @p dev.
+ */
+const struct bhnd_chipid *
+bhnd_generic_get_chipid(device_t dev, device_t child) {
+	return (BHND_GET_CHIPID(device_get_parent(dev), child));
+}
+
+/**
  * Helper function for implementing BHND_ALLOC_RESOURCE().
  * 
  * This simple implementation of BHND_ALLOC_RESOURCE() determines
@@ -469,6 +480,7 @@ static device_method_t bhnd_methods[] = {
 	DEVMETHOD(bhnd_release_resource,	bhnd_generic_release_bhnd_resource),
 	DEVMETHOD(bhnd_activate_resource,	bhnd_generic_activate_bhnd_resource),
 	DEVMETHOD(bhnd_activate_resource,	bhnd_generic_deactivate_bhnd_resource),
+	DEVMETHOD(bhnd_get_chipid,		bhnd_generic_get_chipid),
 	DEVMETHOD(bhnd_bus_read_1,		bhnd_read_1),
 	DEVMETHOD(bhnd_bus_read_2,		bhnd_read_2),
 	DEVMETHOD(bhnd_bus_read_4,		bhnd_read_4),

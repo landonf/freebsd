@@ -45,7 +45,15 @@ HEADER {
 }
 
 CODE {
+	#include <sys/systm.h>
+
 	#include <dev/bhnd/bhndvar.h>
+	
+	static struct bhnd_chipid *
+	bhnd_null_get_chipid(device_t dev, device_t child)
+	{
+		panic("bhnd_get_chipid unimplemented");
+	}
 
 	static int
 	bhnd_null_get_port_rid(device_t dev, device_t child,
@@ -101,6 +109,17 @@ METHOD bool is_hw_disabled {
 	device_t dev;
 	device_t child;
 } DEFAULT bhnd_generic_is_hw_disabled;
+
+/**
+ * Return the BHND chip identification for the parent bus.
+ *
+ * @param dev The device whose child is being examined.
+ * @param child The child device.
+ */
+METHOD const struct bhnd_chipid * get_chipid {
+	device_t dev;
+	device_t child;
+} DEFAULT bhnd_null_get_chipid;
 
 /**
  * Allocate a bhnd resource.

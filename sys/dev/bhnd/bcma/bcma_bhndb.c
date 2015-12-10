@@ -50,11 +50,11 @@ __FBSDID("$FreeBSD$");
 static int
 bcma_bhndb_probe(device_t dev)
 {
-	struct bhnd_chipid	cid;
+	const struct bhnd_chipid *cid;
 
 	/* Check bus type */
 	cid = BHNDB_GET_CHIPID(device_get_parent(dev), dev);
-	if (cid.chip_type != BHND_CHIPTYPE_BCMA)
+	if (cid->chip_type != BHND_CHIPTYPE_BCMA)
 		return (ENXIO);
 
 	/* Delegate to default probe implementation */
@@ -64,17 +64,17 @@ bcma_bhndb_probe(device_t dev)
 static int
 bcma_bhndb_attach(device_t dev)
 {
-	struct bhnd_chipid	 cid;
-	struct resource		*erom_res;
-	int			 error;
-	int			 rid;
+	const struct bhnd_chipid	*cid;
+	struct resource			*erom_res;
+	int				 error;
+	int				 rid;
 
 	cid = BHNDB_GET_CHIPID(device_get_parent(dev), dev);
 
 	/* Map the EROM resource and enumerate our children. */
 	rid = 0;
-	erom_res = bus_alloc_resource(dev, SYS_RES_MEMORY, &rid, cid.enum_addr,
-		cid.enum_addr + BCMA_EROM_TABLE_SIZE, BCMA_EROM_TABLE_SIZE,
+	erom_res = bus_alloc_resource(dev, SYS_RES_MEMORY, &rid, cid->enum_addr,
+		cid->enum_addr + BCMA_EROM_TABLE_SIZE, BCMA_EROM_TABLE_SIZE,
 		RF_ACTIVE);
 	if (erom_res == NULL) {
 		device_printf(dev, "failed to allocate EROM resource\n");
