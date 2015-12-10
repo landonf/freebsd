@@ -1355,6 +1355,189 @@ bhndb_deactivate_bhnd_resource(device_t dev, device_t child,
 	return (error);
 };
 
+/* slow path for bhndb_io_region; iterates over the existing allocated
+ * dw_regions looking for a viable in-use region */
+static struct resource *
+bhndb_io_resource_slow(struct bhndb_softc *sc, u_long r_addr, u_long r_size,
+    bus_size_t *offset)
+{
+	struct bhndb_resources	*br;
+	struct bhndb_dw_region	*dw_region;
+
+	BHNDB_LOCK_ASSERT(sc, MA_OWNED);
+
+	br = sc->bus_res;
+
+	/* Search for an existing dynamic mapping of this address range.
+	 * Static regions are not searched, as a statically mapped
+	 * region would never be allocated as an indirect resource. */
+	for (size_t i = 0; i < br->dw_count; i++) {
+		const struct bhndb_regwin *win;
+
+		dw_region = &br->dw_regions[i];
+		win = dw_region->win;
+
+		KASSERT(win->win_type == BHNDB_REGWIN_T_DYN,
+			("invalid register window type"));
+
+		/* Verify the range */
+		if (r_addr < dw_region->target)
+			continue;
+
+		if (r_addr + r_size > dw_region->target + win->win_size)
+			continue;
+
+		/* Found */
+		*offset = dw_region->win->win_offset;
+		*offset += r_addr - dw_region->target;
+
+		return (dw_region->parent_res);
+	}
+
+
+	/* not found */
+	return (NULL);
+}
+
+/**
+ * Find the bridge resource to be used for I/O requests over @p r.
+ * 
+ * @param sc Bridge driver state.
+ * @param r An indirect bhnd_resource's backing resource.
+ * @param[out] offset The offset to apply to any I/O operations performed
+ * using the returned resource.
+ */
+static inline struct resource *
+bhndb_io_resource(struct bhndb_softc *sc, struct resource *r,
+    bus_size_t *offset)
+{
+	struct bhndb_resources	*br;
+	struct bhndb_dw_region	*dw_region;
+	struct resource		*parent_res;
+	u_long			 r_addr, r_size;
+	u_int			 rnid;
+	int			 error;
+
+	BHNDB_LOCK_ASSERT(sc, MA_OWNED);
+
+	br = sc->bus_res;
+	r_addr = rman_get_start(r);
+	r_size = rman_get_size(r);
+
+	/*
+	 * If no dynamic regions are available, look for an existing
+	 * region that maps the target range. 
+	 * 
+	 * If none are found, this is a child driver bug -- our window
+	 * over-commit should only fail in the case where a child driver leaks
+	 * resources, or perform operations out-of-order.
+	 * 
+	 * Broadcom HND chipsets are designed to not require register window
+	 * swapping during execution; as long as the child devices are
+	 * attached/detached correctly, using the hardware's required order
+	 * of operations, there should always be a window available for the
+	 * current operation.
+	 */
+	if (BHNDB_DW_REGION_EXHAUSTED(br)) {
+		parent_res = bhndb_io_resource_slow(sc, r_addr, r_size, offset);
+		if (parent_res == NULL)
+			panic("driver bug - register windows exhausted\n");
+
+		return (parent_res);
+	}
+
+	/* Fetch a free window */
+	rnid = BHNDB_DW_REGION_NEXT_FREE(br);
+	dw_region = &br->dw_regions[rnid];
+	*offset = dw_region->win->win_offset;
+
+	/* Adjust the window if necessary; the window may already
+	 * be configured appropriately from a previous I/O operation. */
+	if (dw_region->target != r_addr) {
+		error = BHNDB_SET_WINDOW_ADDR(sc->dev, dw_region->win, r_addr);
+		if (error)
+			panic("failed to set window target: %d", error);
+	}
+
+	return (dw_region->parent_res);
+}
+
+/* bhndb_bus_(read|write) common implementation */
+#define	BHNDB_IO_COMMON						\
+	struct bhndb_softc	*sc;				\
+	struct resource		*io_res;			\
+	bus_size_t		 io_offset;			\
+								\
+	sc = device_get_softc(dev);				\
+								\
+	BHNDB_LOCK(sc);						\
+	io_res = bhndb_io_resource(sc, r->res, &io_offset);	\
+								\
+	KASSERT(!r->direct,					\
+	    ("bhnd_bus slow path used for direct resource"));	\
+								\
+	KASSERT(rman_get_flags(io_res) & RF_ACTIVE,		\
+	    ("i/o resource is not active"));
+
+/* Defines a bhndb_bus_read_* method implementation */
+#define	BHNDB_IO_READ(_type, _size)				\
+static _type							\
+bhndb_bus_read_ ## _size (device_t dev, device_t child,		\
+    struct bhnd_resource *r, bus_size_t offset)			\
+{								\
+	_type v;						\
+	BHNDB_IO_COMMON;					\
+	v = bus_read_ ## _size (io_res, io_offset + offset);	\
+	BHNDB_UNLOCK(sc);					\
+								\
+	return (v);						\
+}
+
+/* Defines a bhndb_bus_write_* method implementation */
+#define	BHNDB_IO_WRITE(_type, _size)				\
+static void							\
+bhndb_bus_write_ ## _size (device_t dev, device_t child,	\
+    struct bhnd_resource *r, bus_size_t offset, _type value)	\
+{								\
+	BHNDB_IO_COMMON;					\
+	bus_write_ ## _size (io_res, io_offset + offset, value);\
+	BHNDB_UNLOCK(sc);					\
+}
+
+BHNDB_IO_READ(uint8_t, 1);
+BHNDB_IO_READ(uint16_t, 2);
+BHNDB_IO_READ(uint32_t, 4);
+
+BHNDB_IO_WRITE(uint8_t, 1);
+BHNDB_IO_WRITE(uint16_t, 2);
+BHNDB_IO_WRITE(uint32_t, 4);
+
+static void 
+bhndb_bus_barrier(device_t dev, device_t child, struct bhnd_resource *r,
+    bus_size_t offset, bus_size_t length, int flags)
+{
+	bus_size_t remain;
+
+	BHNDB_IO_COMMON;
+
+	/* TODO: It's unclear whether we need a barrier implementation,
+	 * and if we do, what it needs to actually do. This may need
+	 * revisiting once we have a better idea of requirements after
+	 * porting the core drivers. */
+	panic("implementation incorrect");
+
+	/* Use 4-byte reads where possible */
+	remain = length % sizeof(uint32_t);
+	for (bus_size_t i = 0; i < (length - remain); i += 4)
+		bus_read_4(io_res, io_offset + offset + i);
+
+	/* Use 1 byte reads for the remainder */
+	for (bus_size_t i = 0; i < remain; i++)
+		bus_read_1(io_res, io_offset + offset + length + i);
+
+	BHNDB_UNLOCK(sc);
+}
+
 static int
 bhndb_setup_intr(device_t dev, device_t child, struct resource *r,
     int flags, driver_filter_t filter, driver_intr_t handler, void *arg,
@@ -1451,6 +1634,13 @@ static device_method_t bhndb_methods[] = {
 	DEVMETHOD(bhnd_release_resource,	bhndb_release_bhnd_resource),
 	DEVMETHOD(bhnd_activate_resource,	bhndb_activate_bhnd_resource),
 	DEVMETHOD(bhnd_activate_resource,	bhndb_deactivate_bhnd_resource),
+	DEVMETHOD(bhnd_bus_read_1,		bhndb_bus_read_1),
+	DEVMETHOD(bhnd_bus_read_2,		bhndb_bus_read_2),
+	DEVMETHOD(bhnd_bus_read_4,		bhndb_bus_read_4),
+	DEVMETHOD(bhnd_bus_write_1,		bhndb_bus_write_1),
+	DEVMETHOD(bhnd_bus_write_2,		bhndb_bus_write_2),
+	DEVMETHOD(bhnd_bus_write_4,		bhndb_bus_write_4),
+	DEVMETHOD(bhnd_bus_barrier,		bhndb_bus_barrier),
 
 	DEVMETHOD_END
 };

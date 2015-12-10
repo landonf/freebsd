@@ -274,7 +274,7 @@ METHOD uint16_t bus_read_2 {
 	device_t dev;
 	device_t child;
 	struct bhnd_resource *r;
-	bus_size_t offset
+	bus_size_t offset;
 }
 
 /** An implementation of bus_read_4() compatible with bhnd_resource */
@@ -295,7 +295,7 @@ METHOD void bus_write_1 {
 }
 
 /** An implementation of bus_write_2() compatible with bhnd_resource */
-METHOD void bhnd_bus_write_2 {
+METHOD void bus_write_2 {
 	device_t dev;
 	device_t child;
 	struct bhnd_resource *r;
@@ -304,7 +304,7 @@ METHOD void bhnd_bus_write_2 {
 }
 
 /** An implementation of bus_write_4() compatible with bhnd_resource */
-METHOD void bhnd_bus_write_4 {
+METHOD void bus_write_4 {
 	device_t dev;
 	device_t child;
 	struct bhnd_resource *r;
@@ -313,7 +313,7 @@ METHOD void bhnd_bus_write_4 {
 }
 
 /** An implementation of bus_barrier() compatible with bhnd_resource */
-METHOD void bhnd_bus_barrier {
+METHOD void bus_barrier {
 	device_t dev;
 	device_t child;
 	struct bhnd_resource *r;

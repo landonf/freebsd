@@ -377,6 +377,62 @@ bhnd_generic_deactivate_bhnd_resource(device_t dev, device_t child, int type,
 	return (BUS_DEACTIVATE_RESOURCE(dev, child, type, rid, r->res));
 };
 
+/*
+ * Delegate all indirect I/O to the parent device. When inherited by
+ * non-bridged bus implementations, resources will never be marked as
+ * indirect, and these methods should never be called.
+ */
+
+static uint8_t
+bhnd_read_1(device_t dev, device_t child, struct bhnd_resource *r,
+    bus_size_t offset)
+{
+	return (BHND_BUS_READ_1(device_get_parent(dev), child, r, offset));
+}
+
+static uint16_t 
+bhnd_read_2(device_t dev, device_t child, struct bhnd_resource *r,
+    bus_size_t offset)
+{
+	return (BHND_BUS_READ_2(device_get_parent(dev), child, r, offset));
+}
+
+static uint32_t 
+bhnd_read_4(device_t dev, device_t child, struct bhnd_resource *r,
+    bus_size_t offset)
+{
+	return (BHND_BUS_READ_4(device_get_parent(dev), child, r, offset));
+}
+
+static void
+bhnd_write_1(device_t dev, device_t child, struct bhnd_resource *r,
+    bus_size_t offset, uint8_t value)
+{
+	BHND_BUS_WRITE_1(device_get_parent(dev), child, r, offset, value);
+}
+
+static void
+bhnd_write_2(device_t dev, device_t child, struct bhnd_resource *r,
+    bus_size_t offset, uint16_t value)
+{
+	BHND_BUS_WRITE_2(device_get_parent(dev), child, r, offset, value);
+}
+
+static void 
+bhnd_write_4(device_t dev, device_t child, struct bhnd_resource *r,
+    bus_size_t offset, uint32_t value)
+{
+	BHND_BUS_WRITE_4(device_get_parent(dev), child, r, offset, value);
+}
+
+static void 
+bhnd_barrier(device_t dev, device_t child, struct bhnd_resource *r,
+    bus_size_t offset, bus_size_t length, int flags)
+{
+	BHND_BUS_BARRIER(device_get_parent(dev), child, r, offset, length,
+	    flags);
+}
+
 static device_method_t bhnd_methods[] = {
 	/* Device interface */ \
 	DEVMETHOD(device_attach,		bus_generic_attach),
@@ -413,6 +469,13 @@ static device_method_t bhnd_methods[] = {
 	DEVMETHOD(bhnd_release_resource,	bhnd_generic_release_bhnd_resource),
 	DEVMETHOD(bhnd_activate_resource,	bhnd_generic_activate_bhnd_resource),
 	DEVMETHOD(bhnd_activate_resource,	bhnd_generic_deactivate_bhnd_resource),
+	DEVMETHOD(bhnd_bus_read_1,		bhnd_read_1),
+	DEVMETHOD(bhnd_bus_read_2,		bhnd_read_2),
+	DEVMETHOD(bhnd_bus_read_4,		bhnd_read_4),
+	DEVMETHOD(bhnd_bus_write_1,		bhnd_write_1),
+	DEVMETHOD(bhnd_bus_write_2,		bhnd_write_2),
+	DEVMETHOD(bhnd_bus_write_4,		bhnd_write_4),
+	DEVMETHOD(bhnd_bus_barrier,		bhnd_barrier),
 
 	DEVMETHOD_END
 };
