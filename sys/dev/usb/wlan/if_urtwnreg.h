@@ -503,6 +503,13 @@
 #define R92C_DUAL_TSF_RST0		0x01
 #define R92C_DUAL_TSF_RST1		0x02
 
+/* Bits for R92C_ACMHWCTRL. */
+#define R92C_ACMHWCTRL_EN		0x01
+#define R92C_ACMHWCTRL_BE		0x02
+#define R92C_ACMHWCTRL_VI		0x04
+#define R92C_ACMHWCTRL_VO		0x08
+#define R92C_ACMHWCTRL_ACM_MASK		0x0f
+
 /* Bits for R92C_APSD_CTRL. */
 #define R92C_APSD_CTRL_OFF		0x40
 #define R92C_APSD_CTRL_OFF_STATUS	0x80
@@ -938,6 +945,8 @@ struct r92c_rom {
 	uint8_t		curstomer_id;
 } __packed;
 
+#define	URTWN_EFUSE_MAX_LEN		512
+
 /* Rx MAC descriptor. */
 struct r92c_rx_stat {
 	uint32_t	rxdw0;
@@ -1053,12 +1062,13 @@ struct r92c_tx_desc {
 
 	uint16_t	txdw3;
 	uint16_t	txdseq;
-#define R92C_TXDSEQ_HWSEQ_EN	0x8000
+#define R88E_TXDSEQ_HWSEQ_EN	0x8000
 
 	uint32_t	txdw4;
 #define R92C_TXDW4_RTSRATE_M	0x0000003f
 #define R92C_TXDW4_RTSRATE_S	0
 #define R92C_TXDW4_HWSEQ_QOS	0x00000040
+#define R92C_TXDW4_HWSEQ_EN	0x00000080
 #define R92C_TXDW4_DRVRATE	0x00000100
 #define R92C_TXDW4_CTS2SELF	0x00000800
 #define R92C_TXDW4_RTSEN	0x00001000

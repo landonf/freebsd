@@ -70,10 +70,14 @@ sys/dev/ixgbe	erj	Pre-commit phabricator review requested.
 sys/dev/ixl	erj	Pre-commit phabricator review requested.
 sys/netinet/ip_carp.c	glebius	Pre-commit review recommended.
 sys/netpfil/pf	kp,glebius	Pre-commit review recommended.
+sctp		rrs,tuexen	Pre-commit review requested (changes need to be backported to github).
+pmcstudy(8)	rrs		Pre-commit review requested.
+callout_*(9)	rrs		Pre-commit review requested -- becareful its tricksy code :o.
 usr.sbin/pkg	pkg@	Please coordinate behavior or flag changes with pkg team.
 lpr		gad	Pre-commit review requested, particularly for
 			lpd/recvjob.c and lpd/printjob.c.
 nis(8), yp(8)	araujo	Pre-commit review requested.
+vmm(4)		neel,grehan	Pre-commit review requested.
 ---- OLD ----
 libc/posix1e	rwatson	Pre-commit review requested.
 POSIX.1e ACLs	rwatson	Pre-commit review requested.
@@ -153,4 +157,4 @@ cmx		daniel@roe.ch	Pre-commit review preferred.
 filemon		obrien		Pre-commit review preferred.
 sysdoc		trhodes		Pre-commit review preferred.
 nanobsd		imp	Pre-commit review requested for coordination.
-vmm(4)		neel,grehan	Pre-commit review requested.
+

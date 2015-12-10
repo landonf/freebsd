@@ -1501,6 +1501,7 @@ sctp_do_connect_x(struct socket *so, struct sctp_inpcb *inp, void *optval,
 
 	/* We are GOOD to go */
 	stcb = sctp_aloc_assoc(inp, sa, &error, 0, vrf_id,
+	    inp->sctp_ep.pre_open_stream_count,
 	    (struct thread *)p
 	    );
 	if (stcb == NULL) {
@@ -4651,11 +4652,20 @@ sctp_setopt(struct socket *so, int optname, void *optval, size_t optsize,
 				error = sctp_send_str_reset_req(stcb, strrst->srs_number_streams,
 				    strrst->srs_stream_list,
 				    send_in, 0, 0, 0, 0, 0);
-			} else
+			} else {
 				error = sctp_send_stream_reset_out_if_possible(stcb, SCTP_SO_LOCKED);
-			if (!error)
+			}
+			if (error == 0) {
 				sctp_chunk_output(inp, stcb, SCTP_OUTPUT_FROM_STRRST_REQ, SCTP_SO_LOCKED);
-
+			} else {
+				/*
+				 * For outgoing streams don't report any
+				 * problems in sending the request to the
+				 * application. XXX: Double check resetting
+				 * incoming streams.
+				 */
+				error = 0;
+			}
 			SCTP_TCB_UNLOCK(stcb);
 			break;
 		}
@@ -6920,7 +6930,7 @@ sctp_connect(struct socket *so, struct sockaddr *addr, struct thread *p)
 	}
 	vrf_id = inp->def_vrf_id;
 	/* We are GOOD to go */
-	stcb = sctp_aloc_assoc(inp, addr, &error, 0, vrf_id, p);
+	stcb = sctp_aloc_assoc(inp, addr, &error, 0, vrf_id, inp->sctp_ep.pre_open_stream_count, p);
 	if (stcb == NULL) {
 		/* Gak! no memory */
 		goto out_now;

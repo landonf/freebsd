@@ -171,7 +171,6 @@ typedef struct {
 	uint32_t 				: 8,
 			update			: 1,
 			sendmarker		: 1,
-			role			: 2,
 			isp_req_ack_active_neg	: 1,
 			isp_data_line_active_neg: 1,
 			isp_cmd_dma_burst_enable: 1,
@@ -439,10 +438,9 @@ typedef struct {
 	int			isp_loopstate;		/* Loop State */
 	int			isp_topo;		/* Connection Type */
 
-	uint32_t				: 3,
+	uint32_t				: 4,
 				fctape_enabled	: 1,
 				sendmarker	: 1,
-				loop_seen_once	: 1,
 				role		: 2,
 				isp_portid	: 24;	/* S_ID */
 
@@ -491,14 +489,15 @@ typedef struct {
 #define	FW_NON_PART		7
 
 #define	LOOP_NIL		0
-#define	LOOP_TESTING_LINK	1
-#define	LOOP_LTEST_DONE		2
-#define	LOOP_SCANNING_LOOP	3
-#define	LOOP_LSCAN_DONE		4
-#define	LOOP_SCANNING_FABRIC	5
-#define	LOOP_FSCAN_DONE		6
-#define	LOOP_SYNCING_PDB	7
-#define	LOOP_READY		8
+#define	LOOP_HAVE_LINK		1
+#define	LOOP_TESTING_LINK	2
+#define	LOOP_LTEST_DONE		3
+#define	LOOP_SCANNING_LOOP	4
+#define	LOOP_LSCAN_DONE		5
+#define	LOOP_SCANNING_FABRIC	6
+#define	LOOP_FSCAN_DONE		7
+#define	LOOP_SYNCING_PDB	8
+#define	LOOP_READY		9
 
 #define	TOPO_NL_PORT		0
 #define	TOPO_FL_PORT		1
@@ -654,8 +653,8 @@ struct ispsoftc {
 #define	ISP_CFG_NPORT		0x04	/* prefer {N/F}-Port connection */
 #define	ISP_CFG_NPORT_ONLY	0x08	/* insist on {N/F}-Port connection */
 #define	ISP_CFG_LPORT_ONLY	0x0c	/* insist on {N/F}L-Port connection */
-#define	ISP_CFG_ONEGB		0x10	/* force 1GB connection (23XX only) */
-#define	ISP_CFG_TWOGB		0x20	/* force 2GB connection (23XX only) */
+#define	ISP_CFG_1GB		0x10	/* force 1GB connection (23XX only) */
+#define	ISP_CFG_2GB		0x20	/* force 2GB connection (23XX only) */
 #define	ISP_CFG_NORELOAD	0x80	/* don't download f/w */
 #define	ISP_CFG_NONVRAM		0x40	/* ignore NVRAM */
 #define	ISP_CFG_NOFCTAPE	0x100	/* disable FC-Tape */
@@ -663,9 +662,9 @@ struct ispsoftc {
 #define	ISP_CFG_OWNFSZ		0x400	/* override NVRAM frame size */
 #define	ISP_CFG_OWNLOOPID	0x800	/* override NVRAM loopid */
 #define	ISP_CFG_OWNEXCTHROTTLE	0x1000	/* override NVRAM execution throttle */
-#define	ISP_CFG_FOURGB		0x2000	/* force 4GB connection (24XX only) */
-#define	ISP_CFG_EIGHTGB		0x4000	/* force 8GB connection (25XX only) */
-#define	ISP_CFG_SIXTEENGB	0x8000	/* force 16GB connection (82XX only) */
+#define	ISP_CFG_4GB		0x2000	/* force 4GB connection (24XX only) */
+#define	ISP_CFG_8GB		0x4000	/* force 8GB connection (25XX only) */
+#define	ISP_CFG_16GB		0x8000	/* force 16GB connection (82XX only) */
 
 /*
  * For each channel, the outer layers should know what role that channel
@@ -765,6 +764,7 @@ struct ispsoftc {
 #define	ISP_HA_FC_2322		0x50
 #define	ISP_HA_FC_2400		0x60
 #define	ISP_HA_FC_2500		0x70
+#define	ISP_HA_FC_2600		0x80
 
 #define	IS_SCSI(isp)	(isp->isp_type & ISP_HA_SCSI)
 #define	IS_1020(isp)	(isp->isp_type < ISP_HA_SCSI_1240)
@@ -790,6 +790,7 @@ struct ispsoftc {
 #define	IS_2322(isp)	((isp)->isp_type == ISP_HA_FC_2322)
 #define	IS_24XX(isp)	((isp)->isp_type >= ISP_HA_FC_2400)
 #define	IS_25XX(isp)	((isp)->isp_type >= ISP_HA_FC_2500)
+#define	IS_26XX(isp)	((isp)->isp_type >= ISP_HA_FC_2600)
 
 /*
  * DMA related macros
@@ -1070,8 +1071,7 @@ void isp_prt_endcmd(ispsoftc_t *, XS_T *);
  *	DEFAULT_FRAMESIZE(ispsoftc_t *)		Default Frame Size
  *	DEFAULT_EXEC_THROTTLE(ispsoftc_t *)	Default Execution Throttle
  *
- *	GET_DEFAULT_ROLE(ispsoftc_t *, int)	Get Default Role for a channel
- *	SET_DEFAULT_ROLE(ispsoftc_t *, int, int) Set Default Role for a channel
+ *	DEFAULT_ROLE(ispsoftc_t *, int)		Get Default Role for a channel
  *	DEFAULT_IID(ispsoftc_t *, int)		Default SCSI initiator ID
  *	DEFAULT_LOOPID(ispsoftc_t *, int)	Default FC Loop ID
  *
@@ -1127,14 +1127,6 @@ int isp_notify_ack(ispsoftc_t *, void *);
  * This function externalized acknowledging (success/fail) an ABTS frame
  */
 int isp_acknak_abts(ispsoftc_t *, void *, int);
-
-/*
- * Enable/Disable/Modify a logical unit.
- * (softc, cmd, bus, tgt, lun, cmd_cnt, inotify_cnt)
- */
-#define	DFLT_CMND_CNT	0xff	/* unmonitored */
-#define	DFLT_INOT_CNT	0xff	/* unmonitored */
-int isp_lun_cmd(ispsoftc_t *, int, int, int, int, int);
 
 /*
  * General request queue 'put' routine for target mode entries.
