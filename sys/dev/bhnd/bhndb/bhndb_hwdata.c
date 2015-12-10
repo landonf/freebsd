@@ -76,20 +76,25 @@ __FBSDID("$FreeBSD$");
 	BHNDB_PORTS(__VA_ARGS__)					\
 }
 
-/* Define a port priority record for the (_type, 0, 0) type/port/region
+/* Define a port priority record for the type/port/region
  * triplet. */
-#define	BHNDB_PORT0_PRIO(_type, _priority) {			\
+#define	BHNDB_PORT_PRIO(_type, _port, _region, _priority) {	\
 	.type		= (BHND_PORT_ ## _type),		\
-	.port		= 0,					\
-	.region		= 0,					\
+	.port		= _port,				\
+	.region		= _region,				\
 	.priority	= (BHNDB_PRIORITY_ ## _priority)	\
 }
 
+/* Define a port priority record for the default (_type, 0, 0) type/port/region
+ * triplet. */
+#define	BHNDB_PORT0_PRIO(_type, _priority)	\
+	BHNDB_PORT_PRIO(_type, 0, 0, _priority)
+
 /**
  * Generic resource priority configuration usable with all currently supported
- * bcma(4) and siba(4)-based PCI devices.
+ * bcma(4)-based PCI devices.
  */
-const struct bhndb_hw_priority bhndb_generic_priority_table[] = {
+const struct bhndb_hw_priority bhndb_bcma_priority_table[] = {
 	/*
 	 * Ignorable device classes.
 	 * 
@@ -135,6 +140,74 @@ const struct bhndb_hw_priority bhndb_generic_priority_table[] = {
 
 		/* Agent Block */
 		BHNDB_PORT0_PRIO(AGENT,		DEFAULT)
+	),
+
+	BHNDB_HW_PRIORITY_TABLE_END
+};
+
+/**
+ * Generic resource priority configuration usable with all currently supported
+ * siba(4)-based PCI devices.
+ */
+const struct bhndb_hw_priority bhndb_siba_priority_table[] = {
+	/*
+	 * Ignorable device classes.
+	 * 
+	 * Runtime access to these cores is not required, and no register
+	 * windows should be reserved for these device types.
+	 */
+	BHNDB_CLASS_PRIO(SOCI,		-1,	NONE),
+	BHNDB_CLASS_PRIO(SOCB,		-1,	NONE),
+	BHNDB_CLASS_PRIO(EROM,		-1,	NONE),
+	BHNDB_CLASS_PRIO(OTHER,		-1,	NONE),
+
+	/*
+	 * Low priority device classes.
+	 * 
+	 * These devices do not sit in a performance-critical path and can be
+	 * treated as a low allocation priority.
+	 * 
+	 * Agent ports are marked as 'NONE' on siba(4) devices, as they
+	 * will be fully mappable via register windows shared with the
+	 * device0.0 port.
+	 */
+	BHNDB_CLASS_PRIO(CC,		-1,	LOW,
+		/* Device Block */
+		BHNDB_PORT_PRIO(DEVICE,	0,	0,	LOW),
+
+		/* Agent 0  */
+		BHNDB_PORT_PRIO(AGENT,	0,	0,	NONE),
+		
+		/* Agent 1 (sonics >= 2.3) */
+		BHNDB_PORT_PRIO(AGENT,	0,	1,	NONE)
+	),
+
+	BHNDB_CLASS_PRIO(PMU,		-1,	LOW,
+		/* Device Block */
+		BHNDB_PORT_PRIO(DEVICE,	0,	0,	LOW),
+
+		/* Agent 0  */
+		BHNDB_PORT_PRIO(AGENT,	0,	0,	NONE),
+		
+		/* Agent 1 (sonics >= 2.3) */
+		BHNDB_PORT_PRIO(AGENT,	0,	1,	NONE)
+	),
+
+	/*
+	 * Default Core Behavior
+	 * 
+	 * All other cores are assumed to require effecient runtime access to
+	 * the device port.
+	 */
+	BHNDB_CLASS_PRIO(INVALID,	-1,	DEFAULT,
+		/* Device Block */
+		BHNDB_PORT_PRIO(DEVICE,	0,	0,	HIGH),
+
+		/* Agent 0  */
+		BHNDB_PORT_PRIO(AGENT,	0,	0,	NONE),
+
+		/* Agent 1 (sonics >= 2.3) */
+		BHNDB_PORT_PRIO(AGENT,	0,	1,	NONE)
 	),
 
 	BHNDB_HW_PRIORITY_TABLE_END

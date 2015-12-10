@@ -91,7 +91,7 @@ bcma_bhndb_attach(device_t dev)
 
 	/* Initialize full bridge configuration */
 	error = BHNDB_INIT_FULL_CONFIG(device_get_parent(dev), dev,
-	    bhndb_generic_priority_table);
+	    bhndb_bcma_priority_table);
 	if (error)
 		return (error);
 
