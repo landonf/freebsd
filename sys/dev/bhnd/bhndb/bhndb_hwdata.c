@@ -137,5 +137,5 @@ const struct bhndb_hw_priority bhndb_generic_priority_table[] = {
 		BHNDB_PORT0_PRIO(AGENT,		DEFAULT)
 	),
 
-	BHNDB_CORE_PRIO_TABLE_END
+	BHNDB_HW_PRIORITY_TABLE_END
 };

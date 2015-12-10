@@ -42,6 +42,7 @@ INTERFACE bhndb;
 HEADER {
 	struct bhndb_regwin;
 	struct bhndb_hw;
+	struct bhndb_hw_priority;
 }
 
 CODE {
@@ -55,7 +56,8 @@ CODE {
 	}
 
 	static int
-	bhndb_null_init_full_config(device_t dev, device_t child)
+	bhndb_null_init_full_config(device_t dev, device_t child,
+	    const struct bhndb_hw_priority *priority_table)
 	{
 		panic("bhndb_init_full_config unimplemented\n");
 	}
@@ -83,7 +85,7 @@ METHOD const struct bhnd_chipid * get_chipid {
  * Perform final bridge hardware configuration after @p child has fully
  * enumerated its children.
  *
- * This must be called by any bhndb-attached bridge devices; this allows the
+ * This must be called by any bhndb-attached bus device; this allows the
  * bridge to perform final configuration based on the hardware information
  * enumerated by the child bus.
  *
@@ -91,10 +93,16 @@ METHOD const struct bhnd_chipid * get_chipid {
  * - Any bus resources previously allocated by @p child must be deallocated.
  * - The @p child bus must have performed initial enumeration -- but not
  *   probe or attachment -- of its children.
+ *
+ * @param dev The bridge device.
+ * @param child The bhnd bus device attached to @p dev.
+ * @param hw_priority The hardware priority table to be used when determining
+ * the bridge resource allocation strategy.
  */
 METHOD int init_full_config {
 	device_t dev;
 	device_t child;
+	const struct bhndb_hw_priority *priority_table;
 } DEFAULT bhndb_null_init_full_config;
 
 /**

@@ -545,7 +545,8 @@ failed:
 }
 
 static int
-bhndb_init_full_config(device_t dev, device_t child)
+bhndb_init_full_config(device_t dev, device_t child,
+    const struct bhndb_hw_priority *hw_prio_table)
 {
 	struct bhndb_softc		*sc;
 	const struct bhndb_hw		*hw;
@@ -577,8 +578,7 @@ bhndb_init_full_config(device_t dev, device_t child)
 		return (ENXIO);
 
 	/* Initialize our resource priority configuration */
-	error = bhndb_initialize_region_cfg(sc->bus_dev,
-	    bhndb_generic_priority_table, r);
+	error = bhndb_initialize_region_cfg(sc->bus_dev, hw_prio_table, r);
 	if (error) {
 		bhndb_free_resources(r);
 		return (error);

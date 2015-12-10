@@ -167,7 +167,7 @@ struct bhndb_hw_priority {
 	u_int					 num_ports;	/**< number of port priority records. */
 };
 
-#define	BHNDB_CORE_PRIO_TABLE_END	{ {}, BHNDB_PRIORITY_NONE, NULL, 0 }
+#define	BHNDB_HW_PRIORITY_TABLE_END	{ {}, BHNDB_PRIORITY_NONE, NULL, 0 }
 
 
 #endif /* _BHND_BHNDB_H_ */

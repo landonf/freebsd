@@ -37,6 +37,7 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/bhnd_ids.h>
 #include <dev/bhnd/bhndb/bhndbvar.h>
+#include <dev/bhnd/bhndb/bhndb_hwdata.h>
 
 #include "bcmavar.h"
 
@@ -89,7 +90,9 @@ bcma_bhndb_attach(device_t dev)
 		return (error);
 
 	/* Initialize full bridge configuration */
-	if ((error = BHNDB_INIT_FULL_CONFIG(device_get_parent(dev), dev)))
+	error = BHNDB_INIT_FULL_CONFIG(device_get_parent(dev), dev,
+	    bhndb_generic_priority_table);
+	if (error)
 		return (error);
 
 	/* Call our superclass' implementation */
