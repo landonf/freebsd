@@ -1355,7 +1355,7 @@ bhndb_deactivate_bhnd_resource(device_t dev, device_t child,
 	return (error);
 };
 
-/* slow path for bhndb_io_region; iterates over the existing allocated
+/* slow path for bhndb_io_resource; iterates over the existing allocated
  * dw_regions looking for a viable in-use region */
 static struct resource *
 bhndb_io_resource_slow(struct bhndb_softc *sc, u_long r_addr, u_long r_size,
