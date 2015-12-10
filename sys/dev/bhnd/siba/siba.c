@@ -316,7 +316,7 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 		}
 
 		/* Read the core info */
-		idreg = bus_read_4(r, SIBA_IDHIGH);
+		idreg = bus_read_4(r, SB0_REG_ABS(SIBA_R0_IDHIGH));
 		cores[i] = siba_parse_core_info(idreg, i, 0);
 
 		/* Release our resource */
