@@ -308,12 +308,12 @@ bhndb_initialize_region_cfg(device_t bus_dev,
 			
 			/* Skip ports not defined on this device */
 			if (pp->port >= bhnd_get_port_count(child, pp->type))
-				return (false);
+				continue;
 
 			if (pp->region >= bhnd_get_region_count(child,
 			    pp->type, pp->port))
 			{
-				return (false);
+				continue;
 			}
 
 			/* Skip ports with an existing static mapping */
