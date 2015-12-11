@@ -361,10 +361,26 @@ bhndb_initialize_region_cfg(device_t bus_dev,
 	}
 
 	if (BHNDB_DEBUG_PRIO) {
-		device_printf(r->dev, "prio_low: %zu\n", prio_low);
-		device_printf(r->dev, "prio_default: %zu\n", prio_default);
-		device_printf(r->dev, "prio_high: %zu\n", prio_high);
-		device_printf(r->dev, "min_prio: %d\n", r->min_prio);
+		struct bhndb_region	*region;
+		const char		*direct_msg, *type_msg;
+		bhndb_priority_t	 prio, prio_min;
+
+		prio_min = r->min_prio;
+		device_printf(r->dev, "min_prio: %d\n", prio_min);
+
+		STAILQ_FOREACH(region, &r->bus_regions, link) {
+			prio = region->priority;
+
+			direct_msg = prio > prio_min ? "direct" : "indirect";
+			type_msg = region->static_regwin ? "static" : "dynamic";
+	
+			device_printf(r->dev, "region 0x%llx+0x%llx priority "
+			    "%u %s/%s\n",
+			    (unsigned long long) region->addr, 
+			    (unsigned long long) region->size,
+			    region->priority,
+			    direct_msg, type_msg);
+		}
 	}
 
 	free(devices, M_TEMP);

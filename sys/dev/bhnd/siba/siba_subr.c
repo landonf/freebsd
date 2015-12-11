@@ -156,8 +156,8 @@ siba_init_port(struct siba_port *port, bhnd_port_type port_type, u_int port_num)
 {	
 	port->sp_num = port_num;
 	port->sp_type = port_type;
-	port->sp_num_maps = 0;
-	STAILQ_INIT(&port->sp_maps);
+	port->sp_num_addrs = 0;
+	STAILQ_INIT(&port->sp_addrs);
 }
 
 /**
@@ -169,7 +169,7 @@ static void
 siba_release_port(struct siba_port *port) {
 	struct siba_addrspace *as, *as_next;
 
-	STAILQ_FOREACH_SAFE(as, &port->sp_maps, sa_link, as_next) {
+	STAILQ_FOREACH_SAFE(as, &port->sp_addrs, sa_link, as_next) {
 		free(as, M_BHND);
 	}
 }
@@ -235,7 +235,7 @@ siba_dinfo_get_port(struct siba_devinfo *dinfo, bhnd_port_type port_type,
  * @param dinfo The device info entry to update.
  * @param port_type The port type.
  * @param port_num The port number.
- * @param space_id The siba-assigned core-unique address space identifier.
+ * @param region_num The siba-assigned core-unique address space identifier.
  * @param base The mapping's base address.
  * @param size The mapping size.
  * 
@@ -244,7 +244,7 @@ siba_dinfo_get_port(struct siba_devinfo *dinfo, bhnd_port_type port_type,
  */
 int
 siba_append_dinfo_region(struct siba_devinfo *dinfo, bhnd_port_type port_type, 
-    u_int port_num, uint8_t space_id, uint32_t base, uint32_t size)
+    u_int port_num, uint8_t region_num, uint32_t base, uint32_t size)
 {
 	struct siba_addrspace	*sa;
 	struct siba_port	*port;
@@ -269,14 +269,14 @@ siba_append_dinfo_region(struct siba_devinfo *dinfo, bhnd_port_type port_type,
 
 	sa->sa_base = base;
 	sa->sa_size = size;
-	sa->sa_space_id = space_id;
+	sa->sa_region = region_num;
 	
 	/* Populate the resource list */
 	sa->sa_rid = resource_list_add_next(&dinfo->resources, SYS_RES_MEMORY,
 	    base, base + size - 1, size);
 
 	/* Append to target port */
-	STAILQ_INSERT_TAIL(&port->sp_maps, sa, sa_link);
+	STAILQ_INSERT_TAIL(&port->sp_addrs, sa, sa_link);
 
 	return (0);
 }

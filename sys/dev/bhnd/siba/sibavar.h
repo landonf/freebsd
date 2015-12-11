@@ -71,7 +71,7 @@ struct siba_port	*siba_dinfo_get_port(struct siba_devinfo *dinfo,
 
 int			 siba_append_dinfo_region(struct siba_devinfo *dinfo,
 			     bhnd_port_type port_type, u_int port_num,
-			     uint8_t space_id, uint32_t base, uint32_t size);
+			     uint8_t region_num, uint32_t base, uint32_t size);
 
 u_int			 siba_admatch_offset(uint8_t addrspace);
 int			 siba_parse_admatch(uint32_t am, uint32_t *addr,
@@ -81,7 +81,7 @@ int			 siba_parse_admatch(uint32_t am, uint32_t *addr,
 struct siba_addrspace {
 	uint32_t	sa_base;	/**< base address */
 	uint32_t	sa_size;	/**< size */
-	uint8_t		sa_space_id;	/**< siba-assigned address space ID */
+	uint8_t		sa_region;	/**< siba-assigned address space ID */
 	int		sa_rid;		/**< bus resource id */
 
 	STAILQ_ENTRY(siba_addrspace) sa_link;
@@ -91,9 +91,9 @@ struct siba_addrspace {
 struct siba_port {
 	bhnd_port_type		 sp_type;	/**< port type */
 	u_int			 sp_num;	/**< port number */
-	u_int			 sp_num_maps;	/**< number of address space mappings */
+	u_int			 sp_num_addrs;	/**< number of address space mappings */
 
-	STAILQ_HEAD(, siba_addrspace) sp_maps;	/**< address spaces mapped to this port */
+	STAILQ_HEAD(, siba_addrspace) sp_addrs;	/**< address spaces mapped to this port */
 };
 
 /**

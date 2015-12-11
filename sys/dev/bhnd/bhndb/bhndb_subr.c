@@ -331,6 +331,19 @@ bhndb_resources_add_device_region(struct bhndb_resources *r, device_t dev,
 	if (error)
 		return (error);
 
+	/*
+	 * Always defer to the register window's size.
+	 * 
+	 * If the port size is smaller than the window size, this ensures
+	 * that we fully utilize register windows that cover more than one
+	 * related port/region, as is the case with siba(4)'s agent pseudo-port.
+	 * 
+	 * If the port size is larger than the window size, this ensures
+	 * that we do not directly map the port's full region to a too-small
+	 * window. 
+	 */
+	size = static_regwin->win_size;
+
 	/* Insert in the bus resource list */
 	reg = malloc(sizeof(*reg), M_BHND, M_WAITOK);
 	if (reg == NULL)

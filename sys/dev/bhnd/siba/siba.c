@@ -44,16 +44,6 @@ __FBSDID("$FreeBSD$");
 #include "sibareg.h"
 #include "sibavar.h"
 
-/* The port/region/rid triplet used for all siba(4) cores. */
-#define	SIBA_CORE_PORT		0	/**< fixed register block port. */
-#define	SIBA_CORE_REGION	0	/**< fixed register block region. */
-#define SIBA_CORE_RID		1	/**< fixed register resource-ID */
-
-#define SIBA_IS_PORT_VALID(type, port, region)	\
-	((type) == BHND_PORT_DEVICE &&		\
-	 (port_num) == SIBA_CORE_PORT &&	\
-	 region_num == SIBA_CORE_REGION)
-
 int
 siba_probe(device_t dev)
 {
@@ -149,12 +139,17 @@ siba_get_resource_list(device_t dev, device_t child)
 static u_int
 siba_get_port_count(device_t dev, device_t child, bhnd_port_type type)
 {
+	struct siba_devinfo *dinfo;
+
 	/* delegate non-bus-attached devices to our parent */
 	if (device_get_parent(child) != dev)
-		return (BHND_GET_PORT_COUNT(device_get_parent(dev), child, type));
+		return (BHND_GET_PORT_COUNT(device_get_parent(dev), child,
+		    type));
 
-	/* We advertise exactly one device port */
-	if (type == BHND_PORT_DEVICE)
+	dinfo = device_get_ivars(child);
+
+	/* We advertise exactly one port of any type */
+	if (siba_dinfo_get_port(dinfo, type, 0) != NULL)
 		return (1);
 
 	return (0);
@@ -162,31 +157,46 @@ siba_get_port_count(device_t dev, device_t child, bhnd_port_type type)
 
 static u_int
 siba_get_region_count(device_t dev, device_t child, bhnd_port_type type,
-    u_int port)
+    u_int port_num)
 {
+	struct siba_devinfo	*dinfo;
+	struct siba_port	*port;
+
 	/* delegate non-bus-attached devices to our parent */
 	if (device_get_parent(child) != dev)
 		return (BHND_GET_REGION_COUNT(device_get_parent(dev), child,
-		    type, port));
+		    type, port_num));
 
-	/* We advertise exactly one port region */
-	if (type == BHND_PORT_DEVICE && port == SIBA_CORE_PORT)
-		return (1);
+	dinfo = device_get_ivars(child);
+	port = siba_dinfo_get_port(dinfo, type, port_num);
+	if (port == NULL)
+		return (0);
 
-	return (0);
+	return (port->sp_num_addrs);
 }
 
 static int
 siba_get_port_rid(device_t dev, device_t child, bhnd_port_type port_type,
     u_int port_num, u_int region_num)
 {
+	struct siba_devinfo	*dinfo;
+	struct siba_port	*port;
+	struct siba_addrspace	*addrspace;
+
 	/* delegate non-bus-attached devices to our parent */
 	if (device_get_parent(child) != dev)
 		return (BHND_GET_PORT_RID(device_get_parent(dev), child,
 		    port_type, port_num, region_num));
 
-	if (SIBA_IS_PORT_VALID(port_type, port_num, region_num))
-		return (SIBA_CORE_RID);
+	dinfo = device_get_ivars(child);
+	port = siba_dinfo_get_port(dinfo, port_type, port_num);
+	if (port == NULL)
+		return (-1);
+
+	STAILQ_FOREACH(addrspace, &port->sp_addrs, sa_link) {
+		if (addrspace->sa_region == region_num)
+			return (addrspace->sa_rid);
+	}
 
 	/* not found */
 	return (-1);
@@ -196,31 +206,54 @@ static int
 siba_decode_port_rid(device_t dev, device_t child, int type, int rid,
     bhnd_port_type *port_type, u_int *port_num, u_int *region_num)
 {
+	struct siba_devinfo	*dinfo;
+	struct siba_port	*port;
+	struct siba_addrspace	*addrspace;
+
 	/* delegate non-bus-attached devices to our parent */
-	if (device_get_parent(child) != dev) {
+	if (device_get_parent(child) != dev)
 		return (BHND_DECODE_PORT_RID(device_get_parent(dev), child,
 		    type, rid, port_type, port_num, region_num));
-	}
-	
+
+	dinfo = device_get_ivars(child);
+
+	/* Ports are always memory mapped */
 	if (type != SYS_RES_MEMORY)
 		return (EINVAL);
 
-	/* siba(4) cores only support a single memory RID */
-	if (rid != SIBA_CORE_RID)
-		return (ENOENT);
+	/* Starting with the most likely device list, search all three port
+	 * lists */
+	bhnd_port_type types[] = {
+	    BHND_PORT_DEVICE, 
+	    BHND_PORT_AGENT,
+	    BHND_PORT_BRIDGE
+	};
 
-	*port_type = BHND_PORT_DEVICE;
-	*port_num = SIBA_CORE_PORT;
-	*region_num = SIBA_CORE_REGION;
-	return (0);
+	for (int i = 0; i < sizeof(types) / sizeof(types[0]); i++) {
+		port = siba_dinfo_get_port(dinfo, types[i], 0);
+		if (port == NULL)
+			continue;
+		
+		STAILQ_FOREACH(addrspace, &port->sp_addrs, sa_link) {
+			if (addrspace->sa_rid != rid)
+				continue;
+
+			*port_type = port->sp_type;
+			*port_num = port->sp_num;
+			*region_num = addrspace->sa_region;
+		}
+	}
+
+	return (ENOENT);
 }
 
 static int
 siba_get_region_addr(device_t dev, device_t child, bhnd_port_type port_type,
     u_int port_num, u_int region_num, bhnd_addr_t *addr, bhnd_size_t *size)
 {
-	struct siba_devinfo		*dinfo;
-	struct resource_list_entry	*rle;
+	struct siba_devinfo	*dinfo;
+	struct siba_port	*port;
+	struct siba_addrspace	*addrspace;
 
 	/* delegate non-bus-attached devices to our parent */
 	if (device_get_parent(child) != dev) {
@@ -229,20 +262,20 @@ siba_get_region_addr(device_t dev, device_t child, bhnd_port_type port_type,
 	}
 
 	dinfo = device_get_ivars(child);
+	port = siba_dinfo_get_port(dinfo, port_type, port_num);
+	if (port == NULL)
+		return (-1);
 
-	/* siba(4) cores only support a single device port region */
-	if (!SIBA_IS_PORT_VALID(port_type, port_num, region_num))
-		return (ENOENT);
+	STAILQ_FOREACH(addrspace, &port->sp_addrs, sa_link) {
+		if (addrspace->sa_region != region_num)
+			continue;
 
-	/* fetch the port addr/size from the resource list */
-	rle = resource_list_find(&dinfo->resources, SYS_RES_MEMORY,
-	    SIBA_CORE_RID);
-	if (rle == NULL)
-		return (ENOENT);
+		*addr = addrspace->sa_base;
+		*size = addrspace->sa_size;
+		return (0);
+	}
 
-	*addr = rle->start;
-	*size = rle->count;
-	return (0);
+	return (ENOENT);
 }
 
 
@@ -261,7 +294,15 @@ siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
 	struct siba_addrspace	*enum_spc;
 	uint32_t		 addr;
 	uint32_t		 size;
+	u_int			 siba_agent_reserved;
+	u_int			 siba_agent_count;
 	int			 error;
+
+	/* Determine the count and total size of trailing SIBA_AGENT_* blocks */
+	siba_agent_count = 1;
+	if (di->core_id.sonics_rev >= SIBA_IDL_SBREV_2_3)
+		siba_agent_count = 2;
+	siba_agent_reserved = SIBA_AGENT_REGION_SIZE * siba_agent_count;
 
 	/* Register the device address space entries */
 	for (uint8_t i = 0; i < di->core_id.num_addrspace; i++) {
@@ -289,6 +330,10 @@ siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
 			return (error);
 		}
 
+		/* Reserve space for agent register blocks */
+		if (i == 0 && size >= siba_agent_reserved)
+			size -= siba_agent_reserved;
+
 		/* Append the region info */
 		error = siba_append_dinfo_region(di, BHND_PORT_DEVICE, 0, i,
 		    addr, size);
@@ -298,18 +343,17 @@ siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
 
 	/* Register agent regions mapped within the 4kb enumeration space
 	 * register block */
-	enum_spc = STAILQ_FIRST(&di->device_port.sp_maps);
+	enum_spc = STAILQ_FIRST(&di->device_port.sp_addrs);
 
 	/* If no enum space mapping, nothing to register */
-	if (enum_spc == NULL || enum_spc->sa_space_id != 0) {
+	if (enum_spc == NULL || enum_spc->sa_region != 0) {
 		device_printf(dev, "core missing enumeration space\n");
 		return (EINVAL);
 	}
 
 	/* Sanity check the address region */
 	if (enum_spc->sa_base < SIBA_ENUM_ADDR ||
-	    enum_spc->sa_base >= SIBA_ENUM_ADDR + SIBA_ENUM_SIZE ||
-	    enum_spc->sa_size < SIBA_AGENT_0_OFFSET + SIBA_AGENT_REGION_SIZE)
+	    enum_spc->sa_base >= SIBA_ENUM_ADDR + SIBA_ENUM_SIZE)
 	{
 		device_printf(dev, "core has invalid enumeration space "
 		    "(0x%x 0x%x)\n", enum_spc->sa_base, enum_spc->sa_size);
@@ -320,7 +364,7 @@ siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
 	addr = enum_spc->sa_base + SIBA_AGENT_0_OFFSET;
 	size = SIBA_AGENT_REGION_SIZE;
 	error = siba_append_dinfo_region(di, BHND_PORT_AGENT, 0,
-	    enum_spc->sa_space_id, addr, size);
+	    enum_spc->sa_region, addr, size);
 	if (error) {
 		device_printf(dev, "failed to register agent 0 region\n");
 		return (error);
@@ -331,7 +375,7 @@ siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
 		addr = enum_spc->sa_base + SIBA_AGENT_1_OFFSET;
 		size = SIBA_AGENT_REGION_SIZE;
 		error = siba_append_dinfo_region(di, BHND_PORT_AGENT, 0,
-		    enum_spc->sa_space_id, addr, size);
+		    enum_spc->sa_region, addr, size);
 		if (error) {
 		device_printf(dev, "failed to register agent 1 region\n");
 			return (error);
