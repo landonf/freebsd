@@ -37,11 +37,12 @@
 /** bhnd(4) device classes. */
 typedef enum {
 	BHND_DEVCLASS_CC,		/**< chipcommon i/o controller */
+	BHND_DEVCLASS_CC_B,		/**< chipcommon auxiliary controller */
 	BHND_DEVCLASS_PMU,		/**< pmu controller */
 	BHND_DEVCLASS_PCI,		/**< pci host/device bridge */
 	BHND_DEVCLASS_PCIE,		/**< pcie host/device bridge */
 	BHND_DEVCLASS_PCCARD,		/**< pcmcia host/device bridge */
-	BHND_DEVCLASS_MEM,		/**< internal RAM/SRAM */
+	BHND_DEVCLASS_RAM,		/**< internal RAM/SRAM */
 	BHND_DEVCLASS_MEMC,		/**< memory controller */
 	BHND_DEVCLASS_ENET,		/**< 802.3 MAC/PHY */
 	BHND_DEVCLASS_ENET_MAC,		/**< 802.3 MAC */
@@ -50,8 +51,8 @@ typedef enum {
 	BHND_DEVCLASS_WLAN_MAC,		/**< 802.11 MAC */
 	BHND_DEVCLASS_WLAN_PHY,		/**< 802.11 PHY */
 	BHND_DEVCLASS_CPU,		/**< cpu core */
-	BHND_DEVCLASS_SOCI,		/**< interconnect */
-	BHND_DEVCLASS_SOCB,		/**< interconnect bridge/socket */
+	BHND_DEVCLASS_SOC_ROUTER,	/**< interconnect router */
+	BHND_DEVCLASS_SOC_BRIDGE,	/**< interconnect host bridge */
 	BHND_DEVCLASS_EROM,		/**< bus device enumeration ROM */
 	BHND_DEVCLASS_OTHER,		/**< other / unknown */
 

@@ -101,8 +101,8 @@ const struct bhndb_hw_priority bhndb_bcma_priority_table[] = {
 	 * Runtime access to these cores is not required, and no register
 	 * windows should be reserved for these device types.
 	 */
-	BHNDB_CLASS_PRIO(SOCI,		-1,	NONE),
-	BHNDB_CLASS_PRIO(SOCB,		-1,	NONE),
+	BHNDB_CLASS_PRIO(SOC_ROUTER,	-1,	NONE),
+	BHNDB_CLASS_PRIO(SOC_BRIDGE,	-1,	NONE),
 	BHNDB_CLASS_PRIO(EROM,		-1,	NONE),
 	BHNDB_CLASS_PRIO(OTHER,		-1,	NONE),
 
@@ -156,8 +156,8 @@ const struct bhndb_hw_priority bhndb_siba_priority_table[] = {
 	 * Runtime access to these cores is not required, and no register
 	 * windows should be reserved for these device types.
 	 */
-	BHNDB_CLASS_PRIO(SOCI,		-1,	NONE),
-	BHNDB_CLASS_PRIO(SOCB,		-1,	NONE),
+	BHNDB_CLASS_PRIO(SOC_ROUTER,	-1,	NONE),
+	BHNDB_CLASS_PRIO(SOC_BRIDGE,	-1,	NONE),
 	BHNDB_CLASS_PRIO(EROM,		-1,	NONE),
 	BHNDB_CLASS_PRIO(OTHER,		-1,	NONE),
 

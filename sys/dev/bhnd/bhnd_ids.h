@@ -492,12 +492,33 @@
 #define	BHND_COREID_DMEMS		0x835		/* SDR/DDR1 memory controller core */
 #define	BHND_COREID_UBUS_SHIM		0x837		/* SHIM component in ubus/6362 */
 #define	BHND_COREID_PCIE2		0x83c		/* pci express (gen2) core */
+/* ARM/AMBA Core IDs */
 #define	BHND_COREID_APB_BRIDGE		0x135		/* BP135 AMBA AXI-APB bridge */
 #define	BHND_COREID_PL301		0x301		/* PL301 AMBA AXI Interconnect */
 #define	BHND_COREID_EROM		0x366		/* Enumeration ROM */
 #define	BHND_COREID_OOB_ROUTER		0x367		/* OOB router core ID */
 #define	BHND_COREID_AXI_UNMAPPED	0xfff		/* AXI "Default Slave"; maps all unused address
 							 * ranges, returning DECERR on read or write. */
+/* Northstar Plus and BCM4706 Core IDs */
+#define	BHND_COREID_4706_CC		0x500		/* chipcommon core */
+#define	BHND_COREID_NS_PCIE2		0x501		/* pci express (gen2) core */
+#define	BHND_COREID_NS_DMA		0x502		/* dma core */
+#define	BHND_COREID_NS_SDIO		0x503		/* sdio host core */
+#define	BHND_COREID_NS_USB20H		0x504		/* usb 2.0 host core */
+#define	BHND_COREID_NS_USB30H		0x505		/* usb 3.0 host core */
+#define	BHND_COREID_NS_A9JTAG		0x506		/* ARM Cortex A9 JTAG core */
+#define	BHND_COREID_NS_DDR23_MEMC	0x507		/* DDR2/3 cadence/denali memory controller core () */
+#define	BHND_COREID_NS_ROM		0x508		/* device ROM core */
+#define	BHND_COREID_NS_NAND		0x509		/* NAND flash controller core */
+#define	BHND_COREID_NS_QSPI		0x50a		/* QSPI flash controller core */
+#define	BHND_COREID_NS_CC_B		0x50b		/* chipcommon `b' (auxiliary) core */
+#define	BHND_COREID_4706_SOCRAM		0x50e		/* internal memory core */
+#define	BHND_COREID_IHOST_ARMCA9	0x510		/* ARM Cortex A9 core */
+#define	BHND_COREID_4706_GMAC_COMMON	0x5dc		/* Gigabit MAC common core */
+#define	BHND_COREID_4706_GMAC		0x52d           /* Gigabit MAC core */
+#define	BHND_COREID_AMEMC		0x52e           /* DDR1/2 cadence/denali memory controller core */
+
+
 
 /* ARM PrimeCell Peripherial IDs. These were derived from inspection of the
  * PrimeCell-compatible BCM4331 cores, but due to lack of documentation, the
