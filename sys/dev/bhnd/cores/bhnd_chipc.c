@@ -44,6 +44,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/bus.h>
 #include <sys/module.h>
+#include <sys/systm.h>
 
 #include <machine/bus.h>
 #include <sys/rman.h>
@@ -54,12 +55,22 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_chipc.h"
 #include "bhnd_chipcreg.h"
 
-struct bhnd_chipc_softc {};
+static const struct resource_spec bhnd_chipc_rspec[] = {
+	{ SYS_RES_MEMORY,	0,	RF_ACTIVE },
+	{ -1, -1, 0 }
+};
 
-static const struct chipc_bhnd_device {
+#define	RSPEC_LEN	(sizeof(bhnd_chipc_rspec)/sizeof(bhnd_chipc_rspec[0]))
+
+struct bhnd_chipc_softc {
+	struct resource_spec	rspec[RSPEC_LEN];
+	struct bhnd_resource	*res[RSPEC_LEN-1];
+};
+
+static const struct bhnd_chipc_device {
 	uint16_t	 device;
 	const char	*desc;
-} chipc_bhnd_devices[] = {
+} bhnd_chipc_devices[] = {
 	{ BHND_COREID_CC,	NULL },
 	{ BHND_COREID_INVALID,	NULL }
 };
@@ -67,10 +78,10 @@ static const struct chipc_bhnd_device {
 static int
 bhnd_chipc_probe(device_t dev)
 {
-	const struct chipc_bhnd_device	*id;
+	const struct bhnd_chipc_device	*id;
 	const char 			*desc;
 
-	for (id = chipc_bhnd_devices; id->device != BHND_COREID_INVALID; id++)
+	for (id = bhnd_chipc_devices; id->device != BHND_COREID_INVALID; id++)
 	{
 		if (bhnd_get_vendor(dev) == BHND_MFGID_BCM &&
 		    bhnd_get_device(dev) == id->device)
@@ -91,19 +102,20 @@ bhnd_chipc_probe(device_t dev)
 static int
 bhnd_chipc_attach(device_t dev)
 {
+	struct bhnd_chipc_softc	*sc;
 	struct bhnd_resource	*r;
-	int			 rid;
+	int			 error;
+
+	sc = device_get_softc(dev);
+
+	memcpy(sc->rspec, bhnd_chipc_rspec, sizeof(bhnd_chipc_rspec));
+	if ((error = bhnd_alloc_resources(dev, sc->rspec, sc->res)))
+		return (error);
 
 	// TODO
-	if ((rid = bhnd_get_port_rid(dev, BHND_PORT_DEVICE, 0, 0)) == -1)
-		return (ENXIO);
-
-	r = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY,
-	    &rid, RF_ACTIVE);
-	if (r == NULL)
-		return (ENXIO);
-
-	device_printf(dev, "got rid=%d res=%p\n", rid, r);
+	r = sc->res[0];
+	device_printf(dev, "got rid=%d res=%p\n", sc->rspec[0].rid, r);
+	
 	uint32_t chipc	= bhnd_bus_read_4(dev, r, CHIPC_ID);
 	uint16_t chip	= CHIPC_GET_ATTR(chipc, ID_CHIP);
 	uint8_t rev	= CHIPC_GET_ATTR(chipc, ID_REV);
@@ -112,14 +124,18 @@ bhnd_chipc_attach(device_t dev)
 	uint8_t bus	= CHIPC_GET_ATTR(chipc, ID_BUS);
 	device_printf(dev, "chip=0x%hx rev=0x%hhx pkg=0x%hhx ncore=0x%hhu bus=0x%hhx\n", chip, rev, pkg, ncore, bus);
 
-	bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
 	return (0);
 }
 
 static int
 bhnd_chipc_detach(device_t dev)
 {
-	return (ENXIO);
+	struct bhnd_chipc_softc	*sc;
+
+	sc = device_get_softc(dev);
+	bhnd_release_resources(dev, sc->rspec, sc->res);
+
+	return (0);
 }
 
 static int
