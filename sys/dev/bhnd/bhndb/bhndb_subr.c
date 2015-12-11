@@ -300,49 +300,25 @@ bhndb_free_resources(struct bhndb_resources *r)
 }
 
 /**
- * Add a bus region entry to @p r for the given port defined on @p dev,
- * with @p priority.
+ * Add a bus region entry to @p r for the given base @p addr and @p size.
  * 
  * @param r The resource state to which the bus region entry will be added.
- * @param dev A bhnd device defining the given port/region.
- * @param port_type The port type of @p port.
- * @param port The port on @p dev.
- * @param region The region mapped to @p port.
- * @param static_regwin The static register window for this bus region entry,
- * or NULL.
- * @param priority The resource priority to be assigned to the bus region
- * entry.
+ * @param addr The base address of this region.
+ * @param size The size of this region.
+ * @param priority The resource priority to be assigned to allocations
+ * made within this bus region.
+ * @param static_regwin If available, a static register window mapping this
+ * bus region entry. If not available, NULL.
  * 
  * @retval 0 success
  * @retval non-zero if adding the bus region fails.
  */
 int
-bhndb_resources_add_device_region(struct bhndb_resources *r, device_t dev,
-    bhnd_port_type port_type, u_int port, u_int region,
-    const struct bhndb_regwin *static_regwin, bhndb_priority_t priority)
+bhndb_add_resource_region(struct bhndb_resources *r, bhnd_addr_t addr,
+    bhnd_size_t size, bhndb_priority_t priority,
+    const struct bhndb_regwin *static_regwin)
 {
 	struct bhndb_region	*reg;
-	bhnd_addr_t		 addr;
-	bhnd_size_t		 size;
-	int			 error;
-
-	/* Fetch the address and size of the mapped port. */
-	error = bhnd_get_region_addr(dev, port_type, port, region, &addr, &size);
-	if (error)
-		return (error);
-
-	/*
-	 * Always defer to the register window's size.
-	 * 
-	 * If the port size is smaller than the window size, this ensures
-	 * that we fully utilize register windows that cover more than one
-	 * related port/region, as is the case with siba(4)'s agent pseudo-port.
-	 * 
-	 * If the port size is larger than the window size, this ensures
-	 * that we do not directly map the port's full region to a too-small
-	 * window. 
-	 */
-	size = static_regwin->win_size;
 
 	/* Insert in the bus resource list */
 	reg = malloc(sizeof(*reg), M_BHND, M_WAITOK);
@@ -372,7 +348,7 @@ bhndb_resources_add_device_region(struct bhndb_resources *r, device_t dev,
  * @retval NULL If no mapping region can be found.
  */
 struct bhndb_region *
-bhndb_resources_find_region(struct bhndb_resources *r, bhnd_addr_t addr,
+bhndb_find_resource_region(struct bhndb_resources *r, bhnd_addr_t addr,
     bhnd_size_t size)
 {
 	struct bhndb_region *region;

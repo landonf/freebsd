@@ -61,14 +61,13 @@ struct bhndb_resources		*bhndb_alloc_resources(device_t dev,
 void				 bhndb_free_resources(
 				     struct bhndb_resources *res);
 
-int				 bhndb_resources_add_device_region(
-				     struct bhndb_resources *r, device_t dev,
-				     bhnd_port_type port_type, u_int port,
-				     u_int region,
-				     const struct bhndb_regwin *static_regwin, 
-				     bhndb_priority_t priority);
+int				 bhndb_add_resource_region(
+				     struct bhndb_resources *r,
+				     bhnd_addr_t addr, bhnd_size_t size,
+				     bhndb_priority_t priority,
+				     const struct bhndb_regwin *static_regwin);
 
-struct bhndb_region		*bhndb_resources_find_region(
+struct bhndb_region		*bhndb_find_resource_region(
 				     struct bhndb_resources *r,
 				     bhnd_addr_t addr, bhnd_size_t size);
 

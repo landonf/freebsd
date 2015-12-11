@@ -189,43 +189,6 @@ bhndb_hw_matches(device_t *devlist, int num_devs, const struct bhndb_hw *hw)
 }
 
 /**
- * Return true if @p device contains a statically mapped port/region as
- * described by @p pp.
- * 
- * @param res Bridge resource state.
- * @param pp The port priority descriptor.
- */
-static bool
-bhndb_prio_has_static_device_region(struct bhndb_resources *res,
-    device_t device, const struct bhndb_port_priority *pp)
-{
-	const struct bhndb_regwin	*win;
-	struct bhndb_region		*region;
-	bhnd_devclass_t			 devcls;
-	int				 unit;
-
-	devcls = bhnd_get_class(device);
-	unit = bhnd_get_core_unit(device);
-	win = bhndb_regwin_find_core(res->cfg->register_windows, devcls, unit,
-	    pp->type, pp->port, pp->region);
-
-	if (win == NULL)
-		return (false);
-
-	/* It must also exist in the registered bus regions; this should
-	 * always be true. */
-	STAILQ_FOREACH(region, &res->bus_regions, link) {
-		if (win == region->static_regwin)
-			return (true);
-	}
-
-	/* not found */
-	device_printf(res->dev, "unexpected missing bus_region for static "
-	    "register window\n");
-	return (false);
-}
-
-/**
  * Initialize the region maps and priority configuration in @p r using
  * the provided priority @p table and the set of devices attached to
  * the bridged @p bus_dev .
@@ -240,7 +203,9 @@ bhndb_initialize_region_cfg(device_t bus_dev,
     const struct bhndb_hw_priority *table, struct bhndb_resources *r)
 {
 	const struct bhndb_hw_priority	*hp;
-	device_t			 child, *devices;
+	device_t			*devices;
+	bhnd_addr_t			 addr;
+	bhnd_size_t			 size;
 	size_t				 prio_low, prio_default, prio_high;
 	int				 ndevs;
 	int				 error;
@@ -255,14 +220,15 @@ bhndb_initialize_region_cfg(device_t bus_dev,
 	prio_default = 0;
 	prio_high = 0;
 
+	/* 
+	 * Register bridge regions covering all statically mapped ports.
+	 */
 	for (int i = 0; i < ndevs; i++) {
 		const struct bhndb_regwin	*regw;
+		device_t			 child;
 
 		child = devices[i];
 
-		/* Register bridge regions for any statically mapped device
-		 * ports. The window priority for a statically mapped
-		 * region is always HIGH. */
 		for (regw = r->cfg->register_windows;
 		    regw->win_type != BHNDB_REGWIN_T_INVALID; regw++)
 		{
@@ -273,21 +239,56 @@ bhndb_initialize_region_cfg(device_t bus_dev,
 			/* Skip non-applicable register windows. */
 			if (!bhndb_regwin_matches_device(regw, child))
 				continue;
+			
+			/* Fetch the base address of the mapped port. */
+			error = bhnd_get_region_addr(child, 
+			    regw->core.port_type, regw->core.port, 
+			    regw->core.region, &addr, &size);
+			if (error)
+			    return (error);
 
-			/* Insert in the bus region list */
-			error = bhndb_resources_add_device_region(r, child,
-			    regw->core.port_type, regw->core.port,
-			    regw->core.region, regw, BHNDB_PRIORITY_HIGH);
+			/*
+			 * Always defer to the register window's size.
+			 * 
+			 * If the port size is smaller than the window size,
+			 * this ensures that we fully utilize register windows
+			 * larger than the referenced port.
+			 * 
+			 * If the port size is larger than the window size, this
+			 * ensures that we do not directly map the allocations
+			 * within the region to a too-small window.
+			 */
+			size = regw->win_size;
+
+			/*
+			 * Insert in the bus region list.
+			 * 
+			 * The window priority for a statically mapped
+			 * region is always HIGH.
+			 */
+			error = bhndb_add_resource_region(r, addr, size,
+			    BHNDB_PRIORITY_HIGH, regw);
 			if (error)
 				return (error);
 		}
+	}
+
+	/*
+	 * Perform priority accounting and register bridge regions for all
+	 * ports defined in the priority table
+	 */
+	for (int i = 0; i < ndevs; i++) {
+		struct bhndb_region	*region;
+		device_t		 child;
+
+		child = devices[i];
 
 		/* 
 		 * Skip priority accounting for cores that ...
 		 */
 		
 		/* ... do not require bridge resources */
-		if (bhnd_is_hw_disabled(child))
+		if (bhnd_is_hw_disabled(child) || !device_is_enabled(child))
 			continue;
 
 		/* ... do not have a priority table entry */
@@ -307,23 +308,27 @@ bhndb_initialize_region_cfg(device_t bus_dev,
 			pp = &hp->ports[i];
 			
 			/* Skip ports not defined on this device */
-			if (pp->port >= bhnd_get_port_count(child, pp->type))
-				continue;
-
-			if (pp->region >= bhnd_get_region_count(child,
-			    pp->type, pp->port))
+			if (pp->port >= bhnd_get_port_count(child, pp->type) ||
+			    pp->region >= bhnd_get_region_count(child, pp->type,
+				pp->port))
 			{
 				continue;
 			}
 
+			/* Fetch the address+size of the mapped port. */
+			error = bhnd_get_region_addr(child, pp->type, pp->port,
+			    pp->region, &addr, &size);
+			if (error)
+			    return (error);
+
 			/* Skip ports with an existing static mapping */
-			if (bhndb_prio_has_static_device_region(r, child, pp))
+			region = bhndb_find_resource_region(r, addr, size);
+			if (region != NULL && region->static_regwin != NULL)
 				continue;
 
-			/* Insert in the bus region list */
-			error = bhndb_resources_add_device_region(r, child,
-			    pp->type, pp->port, pp->region, NULL,
-			    pp->priority);
+			/* Define a dynamic region for this port */
+			error = bhndb_add_resource_region(r, addr, size,
+			    pp->priority, NULL);
 			if (error)
 				return (error);
 
@@ -1162,7 +1167,7 @@ bhndb_activate_resource(device_t dev, device_t child, int type, int rid,
 	/* Look for a bus region matching the resource's address range */
 	r_start = rman_get_start(r);
 	r_size = rman_get_size(r);
-	region = bhndb_resources_find_region(sc->bus_res, r_start, r_size);
+	region = bhndb_find_resource_region(sc->bus_res, r_start, r_size);
 	if (region != NULL)
 		dw_priority = region->priority;
 
@@ -1333,7 +1338,7 @@ bhndb_activate_bhnd_resource(device_t dev, device_t child,
 	r_size = rman_get_size(r->res);
 	r_prio = BHNDB_PRIORITY_NONE;
 
-	region = bhndb_resources_find_region(sc->bus_res, r_start, r_size);
+	region = bhndb_find_resource_region(sc->bus_res, r_start, r_size);
 	if (region != NULL)
 		r_prio = region->priority;
 	

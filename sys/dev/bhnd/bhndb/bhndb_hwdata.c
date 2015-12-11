@@ -173,24 +173,12 @@ const struct bhndb_hw_priority bhndb_siba_priority_table[] = {
 	 */
 	BHNDB_CLASS_PRIO(CC,		-1,	LOW,
 		/* Device Block */
-		BHNDB_PORT_PRIO(DEVICE,	0,	0,	LOW),
-
-		/* Agent 0  */
-		BHNDB_PORT_PRIO(AGENT,	0,	0,	NONE),
-		
-		/* Agent 1 (sonics >= 2.3) */
-		BHNDB_PORT_PRIO(AGENT,	0,	1,	NONE)
+		BHNDB_PORT_PRIO(DEVICE,	0,	0,	LOW)
 	),
 
 	BHNDB_CLASS_PRIO(PMU,		-1,	LOW,
 		/* Device Block */
-		BHNDB_PORT_PRIO(DEVICE,	0,	0,	LOW),
-
-		/* Agent 0  */
-		BHNDB_PORT_PRIO(AGENT,	0,	0,	NONE),
-		
-		/* Agent 1 (sonics >= 2.3) */
-		BHNDB_PORT_PRIO(AGENT,	0,	1,	NONE)
+		BHNDB_PORT_PRIO(DEVICE,	0,	0,	LOW)
 	),
 
 	/*
@@ -201,13 +189,7 @@ const struct bhndb_hw_priority bhndb_siba_priority_table[] = {
 	 */
 	BHNDB_CLASS_PRIO(INVALID,	-1,	DEFAULT,
 		/* Device Block */
-		BHNDB_PORT_PRIO(DEVICE,	0,	0,	HIGH),
-
-		/* Agent 0  */
-		BHNDB_PORT_PRIO(AGENT,	0,	0,	NONE),
-
-		/* Agent 1 (sonics >= 2.3) */
-		BHNDB_PORT_PRIO(AGENT,	0,	1,	NONE)
+		BHNDB_PORT_PRIO(DEVICE,	0,	0,	HIGH)
 	),
 
 	BHNDB_HW_PRIORITY_TABLE_END
