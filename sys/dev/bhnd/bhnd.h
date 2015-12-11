@@ -178,6 +178,15 @@ bool				 bhnd_device_matches(device_t dev,
 
 struct bhnd_core_info		 bhnd_get_core_info(device_t dev);
 
+
+int				 bhnd_alloc_resources(device_t dev,
+				     struct resource_spec *rs,
+				     struct bhnd_resource **res);
+
+void				 bhnd_release_resources(device_t dev,
+				     const struct resource_spec *rs,
+				     struct bhnd_resource **res);
+
 struct bhnd_chipid		 bhnd_parse_chipid(uint32_t idreg,
 				     bhnd_addr_t enum_addr);
 
@@ -240,13 +249,12 @@ bhnd_alloc_resource(device_t dev, int type, int *rid, u_long start,
 {
 	return BHND_ALLOC_RESOURCE(device_get_parent(dev), dev, type, rid,
 	    start, end, count, flags);
-};
+}
+
 
 /**
- * Allocate a resource from a device's parent bhnd(4) bus.
- * 
- * This is a convenience wrapper for bhnd_alloc_resource; the default
- * start, end, and count values for the resource will be requested.
+ * Allocate a resource from a device's parent bhnd(4) bus, using the
+ * resource's default start, end, and count values.
  * 
  * @param dev The device requesting resource ownership.
  * @param type The type of resource to allocate. This may be any type supported
@@ -262,7 +270,7 @@ static inline struct bhnd_resource *
 bhnd_alloc_resource_any(device_t dev, int type, int *rid, u_int flags)
 {
 	return bhnd_alloc_resource(dev, type, rid, 0UL, ~0UL, 1, flags);
-};
+}
 
 /**
  * Activate a previously allocated bhnd resource.
@@ -281,7 +289,7 @@ bhnd_activate_resource(device_t dev, int type, int rid,
    struct bhnd_resource *r)
 {
 	return BHND_ACTIVATE_RESOURCE(device_get_parent(dev), dev, type, rid, r);
-};
+}
 
 /**
  * Deactivate a previously activated bhnd resource.
@@ -300,7 +308,7 @@ bhnd_deactivate_resource(device_t dev, int type, int rid,
    struct bhnd_resource *r)
 {
 	return BHND_DEACTIVATE_RESOURCE(device_get_parent(dev), dev, type, rid, r);
-};
+}
 
 /**
  * Free a resource allocated by bhnd_alloc_resource().
@@ -319,7 +327,7 @@ bhnd_release_resource(device_t dev, int type, int rid,
    struct bhnd_resource *r)
 {
 	return BHND_RELEASE_RESOURCE(device_get_parent(dev), dev, type, rid, r);
-};
+}
 
 /**
  * Return the number of ports of type @p type attached to @p def.

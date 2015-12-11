@@ -263,6 +263,13 @@ bhnd_generic_alloc_bhnd_resource(device_t dev, device_t child, int type,
 	passthrough = (device_get_parent(child) != dev);
 	isdefault = (start == 0UL && end == ~0UL);
 
+	/* the default RID must always be the first device port/region. */
+	if (!passthrough && *rid == 0) {
+		int rid0 = bhnd_get_port_rid(child, BHND_PORT_DEVICE, 0, 0);
+		KASSERT(*rid == rid0,
+		    ("rid 0 does not map to the first device port (%d)", rid0));
+	}
+
 	/* Determine locally-known defaults before delegating the request. */
 	if (!passthrough && isdefault) {
 		/* fetch resource list from child's bus */

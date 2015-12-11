@@ -156,13 +156,13 @@ bcma_dinfo_init_resource_info(device_t bus, struct bcma_devinfo *dinfo,
 	STAILQ_FOREACH(port, ports, sp_link) {
 		STAILQ_FOREACH(map, &port->sp_maps, m_link) {
 			/*
-			* Create the corresponding device resource list entry.
-			* 
-			* We necessarily skip registration of the region in the 
-			* per-device resource_list if the memory range is not
-			* representable using rman/resource API's u_long address
-			* type.
-			*/
+			 * Create the corresponding device resource list entry.
+			 * 
+			 * We necessarily skip registration of the region in the 
+			 * per-device resource_list if the memory range is not
+			 * representable using rman/resource API's u_long
+			 * address type.
+			 */
 			end = map->m_base + map->m_size;
 			if (map->m_base <= ULONG_MAX && end <= ULONG_MAX) {
 				map->m_rid = resource_list_add_next(
@@ -202,7 +202,10 @@ bcma_alloc_dinfo(device_t bus, struct bcma_corecfg *corecfg)
 
 	resource_list_init(&dinfo->resources);
 
+	/* The device ports must always be initialized first to ensure that
+	 * rid 0 maps to the first device port */
 	bcma_dinfo_init_resource_info(bus, dinfo, &corecfg->dev_ports);
+
 	bcma_dinfo_init_resource_info(bus, dinfo, &corecfg->bridge_ports);
 	bcma_dinfo_init_resource_info(bus, dinfo, &corecfg->wrapper_ports);
 

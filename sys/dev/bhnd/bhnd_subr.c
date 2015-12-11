@@ -428,6 +428,61 @@ bhnd_device_matches(device_t dev, const struct bhnd_core_match *desc)
 	return bhnd_core_matches(&ci, desc);
 }
 
+/**
+ * Allocate bhnd(4) resources defined in @p rs from a parent bus.
+ * 
+ * @param dev The device requesting ownership of the resources.
+ * @param rs A standard bus resource specification. This will be updated
+ * with the allocated resource's RIDs.
+ * @param res On success, the allocated bhnd resources.
+ * 
+ * @retval 0 success
+ * @retval non-zero if allocation of any non-RF_OPTIONAL resource fails,
+ * 		    all allocated resources will be released and a regular
+ * 		    unix error code will be returned.
+ */
+int
+bhnd_alloc_resources(device_t dev, struct resource_spec *rs,
+    struct bhnd_resource **res)
+{
+	/* Initialize output array */
+	for (u_int i = 0; rs[i].type != -1; i++)
+		res[i] = NULL;
+
+	for (u_int i = 0; rs[i].type != -1; i++) {
+		res[i] = bhnd_alloc_resource_any(dev, rs[i].type, &rs[i].rid,
+		    rs[i].flags);
+
+		/* Clean up all allocations on failure */
+		if (res[i] == NULL && !(rs[i].flags & RF_OPTIONAL)) {
+			bhnd_release_resources(dev, rs, res);
+			return (ENXIO);
+		}
+	}
+
+	return (0);
+};
+
+/**
+ * Release bhnd(4) resources defined in @p rs from a parent bus.
+ * 
+ * @param dev The device that owns the resources.
+ * @param rs A standard bus resource specification previously initialized
+ * by @p bhnd_alloc_resources.
+ * @param res The bhnd resources to be released.
+ */
+void
+bhnd_release_resources(device_t dev, const struct resource_spec *rs,
+    struct bhnd_resource **res)
+{
+	for (u_int i = 0; rs[i].type != -1; i++) {
+		if (res[i] == NULL)
+			continue;
+
+		bhnd_release_resource(dev, rs[i].type, rs[i].rid, res[i]);
+		res[i] = NULL;
+	}
+}
 
 /**
  * Parse the CHIPC_ID_* fields from the ChipCommon CHIPC_ID
