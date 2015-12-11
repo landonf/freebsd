@@ -46,6 +46,8 @@
  */
 
 struct siba_devinfo;
+struct siba_port;
+struct siba_core_id;
 
 int			 siba_probe(device_t dev);
 int			 siba_attach(device_t dev);
@@ -54,22 +56,67 @@ int			 siba_detach(device_t dev);
 uint16_t		 siba_get_bhnd_mfgid(uint16_t ocp_vendor);
 uint8_t			 siba_get_ncores(const struct bhnd_chipid *chipid);
 
-struct bhnd_core_info	 siba_parse_core_info(uint32_t idhigh, u_int core_id,
-			     int unit);
+struct siba_core_id	 siba_parse_core_id(uint32_t idhigh, uint32_t idlow,
+			     u_int core_id, int unit);
 
 int			 siba_add_children(device_t bus,
 			     const struct bhnd_chipid *chipid);
 
 struct siba_devinfo	*siba_alloc_dinfo(device_t dev,
-			     const struct bhnd_core_info *core_info);
+			     const struct siba_core_id *core_id);
 void			 siba_free_dinfo(struct siba_devinfo *dinfo);
+
+struct siba_port	*siba_dinfo_get_port(struct siba_devinfo *dinfo,
+			     bhnd_port_type port_type, u_int port_num);
+
+int			 siba_append_dinfo_region(struct siba_devinfo *dinfo,
+			     bhnd_port_type port_type, u_int port_num,
+			     uint8_t space_id, uint32_t base, uint32_t size);
+
+u_int			 siba_admatch_offset(uint8_t addrspace);
+int			 siba_parse_admatch(uint32_t am, uint32_t *addr,
+			     uint32_t *size);
+
+/** siba(4) address space descriptor */
+struct siba_addrspace {
+	uint32_t	sa_base;	/**< base address */
+	uint32_t	sa_size;	/**< size */
+	uint8_t		sa_space_id;	/**< siba-assigned address space ID */
+	int		sa_rid;		/**< bus resource id */
+
+	STAILQ_ENTRY(siba_addrspace) sa_link;
+};
+
+/** siba(4) port descriptor */
+struct siba_port {
+	bhnd_port_type		 sp_type;	/**< port type */
+	u_int			 sp_num;	/**< port number */
+	u_int			 sp_num_maps;	/**< number of address space mappings */
+
+	STAILQ_HEAD(, siba_addrspace) sp_maps;	/**< address spaces mapped to this port */
+};
+
+/**
+ * siba(4) per-core identification info.
+ */
+struct siba_core_id {
+	struct bhnd_core_info	core_info;	/**< standard bhnd(4) core info */
+	uint16_t		sonics_vendor;	/**< OCP vendor identifier used to generate
+						  *  the JEDEC-106 bhnd(4) vendor identifier. */
+	uint8_t			sonics_rev;	/**< sonics backplane revision code */
+	uint8_t			num_addrspace;	/**< number of address ranges mapped to
+						     this core. */	
+};
 
 /**
  * siba(4) per-device info
  */
 struct siba_devinfo {
 	struct resource_list	resources;	/**< per-core memory regions. */
-	struct bhnd_core_info	core_info;	/**< IP core/block config */
+	struct siba_core_id	core_id;	/**< core identification info */
+
+	struct siba_port	device_port;	/**< device register block (BHND_PORT_DEVICE) */
+	struct siba_port	agent_port;	/**< backplane register blocks (BHND_PORT_AGENT) */
 };
 
 

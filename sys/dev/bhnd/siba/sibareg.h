@@ -55,6 +55,8 @@
 #define	SIBA_CORE_ADDR(idx)	\
     (SIBA_ENUM_ADDR + ((idx) * SIBA_CORE_SIZE))
 
+#define	SIBA_DEVICE_0_SIZE	SIBA_AGENT_1_OFFSET	/**< size of the device register block */
+
 #define	SIBA_AGENT_0_OFFSET	0xf00	/**< agent register region 1 */
 #define	SIBA_AGENT_1_OFFSET	0xe00	/**< agent register region 2 (sonics >= 2.3) */
 
@@ -164,6 +166,7 @@
 
 /* sbadmatch0 */
 #define	SIBA_AM_TYPE_MASK	0x3		/* address type */
+#define	SIBA_AM_TYPE_SHIFT	0x0
 #define	SIBA_AM_AD64		0x4		/* reserved */
 #define	SIBA_AM_ADINT0_MASK	0xf8		/* type0 size */
 #define	SIBA_AM_ADINT0_SHIFT	3

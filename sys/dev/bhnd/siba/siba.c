@@ -81,7 +81,7 @@ siba_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 	const struct bhnd_core_info *cfg;
 	
 	dinfo = device_get_ivars(child);
-	cfg = &dinfo->core_info;
+	cfg = &dinfo->core_id.core_info;
 	
 	switch (index) {
 	case BHND_IVAR_VENDOR:
@@ -245,6 +245,102 @@ siba_get_region_addr(device_t dev, device_t child, bhnd_port_type port_type,
 	return (0);
 }
 
+
+/**
+ * Register all address space mappings for @p di.
+ *
+ * @param dev The siba bus device.
+ * @param di The device info instance on which to register all address
+ * space entries.
+ * @param r A resource mapping the enumeration table block for @p di.
+ */
+static int
+siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
+    struct resource *r)
+{
+	struct siba_addrspace	*enum_spc;
+	uint32_t		 addr;
+	uint32_t		 size;
+	int			 error;
+
+	/* Register the device address space entries */
+	for (uint8_t i = 0; i < di->core_id.num_addrspace; i++) {
+		uint32_t	adm;
+		u_int		adm_offset;
+
+		/* Determine the register offset */
+		adm_offset = siba_admatch_offset(i);
+		if (adm_offset == 0) {
+		    device_printf(dev, "address region %hhu is unsupported", i);
+		    return (ENODEV);
+		}
+
+		/* Fetch the address match register value */
+		adm = bus_read_4(r, adm_offset);
+
+		/* Skip disabled entries */
+		if (adm & SIBA_AM_ADEN)
+			continue;
+			
+		/* Parse the value */
+		if ((error = siba_parse_admatch(adm, &addr, &size))) {
+			device_printf(dev, "failed to decode address "
+			    " match register value 0x%x\n", adm);
+			return (error);
+		}
+
+		/* Append the region info */
+		error = siba_append_dinfo_region(di, BHND_PORT_DEVICE, 0, i,
+		    addr, size);
+		if (error)
+			return (error);
+	}
+
+	/* Register agent regions mapped within the 4kb enumeration space
+	 * register block */
+	enum_spc = STAILQ_FIRST(&di->device_port.sp_maps);
+
+	/* If no enum space mapping, nothing to register */
+	if (enum_spc == NULL || enum_spc->sa_space_id != 0) {
+		device_printf(dev, "core missing enumeration space\n");
+		return (EINVAL);
+	}
+
+	/* Sanity check the address region */
+	if (enum_spc->sa_base < SIBA_ENUM_ADDR ||
+	    enum_spc->sa_base >= SIBA_ENUM_ADDR + SIBA_ENUM_SIZE ||
+	    enum_spc->sa_size < SIBA_AGENT_0_OFFSET + SIBA_AGENT_REGION_SIZE)
+	{
+		device_printf(dev, "core has invalid enumeration space "
+		    "(0x%x 0x%x)\n", enum_spc->sa_base, enum_spc->sa_size);
+		return (EINVAL);
+	}
+
+	/* Register SIBA_AGENT_0 */
+	addr = enum_spc->sa_base + SIBA_AGENT_0_OFFSET;
+	size = SIBA_AGENT_REGION_SIZE;
+	error = siba_append_dinfo_region(di, BHND_PORT_AGENT, 0,
+	    enum_spc->sa_space_id, addr, size);
+	if (error) {
+		device_printf(dev, "failed to register agent 0 region\n");
+		return (error);
+	}
+
+	/* Register SIBA_AGENT_1 (sonics >= 2.3) */
+	if (di->core_id.sonics_rev >= SIBA_IDL_SBREV_2_3) {
+		addr = enum_spc->sa_base + SIBA_AGENT_1_OFFSET;
+		size = SIBA_AGENT_REGION_SIZE;
+		error = siba_append_dinfo_region(di, BHND_PORT_AGENT, 0,
+		    enum_spc->sa_space_id, addr, size);
+		if (error) {
+		device_printf(dev, "failed to register agent 1 region\n");
+			return (error);
+		}
+	}
+
+	return (0);
+}
+
 /**
  * Scan the core table and add all valid discovered cores to
  * the bus.
@@ -259,11 +355,14 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 	struct bhnd_chipid	 ccid;
 	struct bhnd_core_info	*cores;
 	struct siba_devinfo	*dinfo;
+	struct resource		*r;
 	u_int			 ncores;
+	int			 rid;
 	int			 error;
 
 	dinfo = NULL;
 	cores = NULL;
+	r = NULL;
 
 	/* If not provided by our caller, read the chip ID now. */
 	if (chipid == NULL) {
@@ -297,11 +396,10 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 
 	/* Add all cores. */
 	for (u_int i = 0; i < ncores; i++) {
-		struct resource	*r;
-		device_t	 child;
-		uint32_t	 idreg;
-		u_long		 r_count, r_end, r_start;
-		int		 rid;
+		struct siba_core_id	 cid;
+		device_t		 child;
+		uint32_t		 idhigh, idlow;
+		u_long			 r_count, r_end, r_start;
 
 		/* Map the core's register block */
 		rid = 0;
@@ -316,11 +414,11 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 		}
 
 		/* Read the core info */
-		idreg = bus_read_4(r, SB0_REG_ABS(SIBA_R0_IDHIGH));
-		cores[i] = siba_parse_core_info(idreg, i, 0);
+		idhigh = bus_read_4(r, SB0_REG_ABS(SIBA_R0_IDHIGH));
+		idlow = bus_read_4(r, SB0_REG_ABS(SIBA_R0_IDLOW));
 
-		/* Release our resource */
-		bus_release_resource(dev, SYS_RES_MEMORY, rid, r);
+		cid = siba_parse_core_id(idhigh, idlow, i, 0);
+		cores[i] = cid.core_info;
 
 		/* Determine unit number */
 		for (u_int j = 0; j < i; j++) {
@@ -330,16 +428,15 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 		}
 
 		/* Allocate per-device bus info */
-		dinfo = siba_alloc_dinfo(dev, &cores[i]);
+		dinfo = siba_alloc_dinfo(dev, &cid);
 		if (dinfo == NULL) {
 			error = ENXIO;
 			goto cleanup;
 		}
 
-		/* Populate the resource list */
-		resource_list_add(&dinfo->resources, SYS_RES_MEMORY,
-		    SIBA_CORE_RID, SIBA_CORE_ADDR(i),
-		    SIBA_CORE_ADDR(i) + SIBA_CORE_SIZE - 1, SIBA_CORE_SIZE);
+		/* Register the core's address space(s). */
+		if ((error = siba_register_addrspaces(dev, dinfo, r)))
+			goto cleanup;
 
 		/* Add the child device */
 		child = device_add_child(dev, NULL, -1);
@@ -356,6 +453,10 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 		 * unpopulated, the device shouldn't be used. */
 		if (bhnd_is_hw_disabled(child))
 			device_disable(child);
+				
+		/* Release our resource */
+		bus_release_resource(dev, SYS_RES_MEMORY, rid, r);
+		r = NULL;
 	}
 	
 cleanup:
@@ -364,6 +465,9 @@ cleanup:
 
 	if (dinfo != NULL)
 		siba_free_dinfo(dinfo);
+
+	if (r != NULL)
+		bus_release_resource(dev, SYS_RES_MEMORY, rid, r);
 
 	return (error);
 }
