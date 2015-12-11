@@ -291,10 +291,13 @@ static int
 siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
     struct resource *r)
 {
+	struct siba_core_id	*cid;
 	uint32_t		 addr;
 	uint32_t		 size;
 	u_int			 region_num;
 	int			 error;
+
+	cid = &di->core_id;
 
 	/* Region numbers must be assigned in order, but our siba address
 	 * space IDs may be sparsely allocated; thus, we track
@@ -305,6 +308,7 @@ siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
 	for (uint8_t sid = 0; sid < di->core_id.num_addrspace; sid++) {
 		uint32_t	adm;
 		u_int		adm_offset;
+		uint32_t	bus_reserved;
 
 		/* Determine the register offset */
 		adm_offset = siba_admatch_offset(sid);
@@ -327,9 +331,16 @@ siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
 			return (error);
 		}
 
+		/* If this is the device's core/enumeration addrespace,
+		 * reserve the Sonics configuration register blocks for the
+		 * use of our bus. */
+		bus_reserved = 0;
+		if (sid == SIBA_ADDRSPACE_CORE)
+			bus_reserved = cid->num_cfg_blocks * SIBA_CFG_SIZE;
+
 		/* Append the region info */
 		error = siba_append_dinfo_region(di, BHND_PORT_DEVICE, 0,
-		    region_num, sid, addr, size);
+		    region_num, sid, addr, size, bus_reserved);
 		if (error)
 			return (error);
 
@@ -413,8 +424,8 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 		}
 
 		/* Read the core info */
-		idhigh = bus_read_4(r, SB0_REG_ABS(SIBA_R0_IDHIGH));
-		idlow = bus_read_4(r, SB0_REG_ABS(SIBA_R0_IDLOW));
+		idhigh = bus_read_4(r, SB0_REG_ABS(SIBA_CFG0_IDHIGH));
+		idlow = bus_read_4(r, SB0_REG_ABS(SIBA_CFG0_IDLOW));
 
 		cid = siba_parse_core_id(idhigh, idlow, i, 0);
 		cores[i] = cid.core_info;

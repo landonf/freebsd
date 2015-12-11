@@ -126,10 +126,18 @@ siba_parse_core_id(uint32_t idhigh, uint32_t idlow, u_int core_id, int unit)
 {
 
 	uint16_t	ocp_vendor;
+	uint8_t		sonics_rev;
 	uint8_t		num_addrspace;
+	uint8_t		num_cfg;
 
 	ocp_vendor = SIBA_REG_GET(idhigh, IDH_VENDOR);
+	sonics_rev = SIBA_REG_GET(idlow, IDL_SBREV);
 	num_addrspace = SIBA_REG_GET(idlow, IDL_NRADDR) + 1 /* + enum block */;
+
+	/* Determine the number of sonics config register blocks */
+	num_cfg = SIBA_CFG_NUM_2_2;
+	if (sonics_rev >= SIBA_IDL_SBREV_2_3)
+		num_cfg = SIBA_CFG_NUM_2_3;
 
 	return (struct siba_core_id) {
 		.core_info	= {
@@ -140,8 +148,9 @@ siba_parse_core_id(uint32_t idhigh, uint32_t idlow, u_int core_id, int unit)
 			.unit	= unit
 		},
 		.sonics_vendor	= ocp_vendor,
-		.sonics_rev	= SIBA_REG_GET(idlow, IDL_SBREV),
-		.num_addrspace	= num_addrspace
+		.sonics_rev	= sonics_rev,
+		.num_addrspace	= num_addrspace,
+		.num_cfg_blocks	= num_cfg
 	};	
 }
 
@@ -238,13 +247,17 @@ siba_dinfo_get_port(struct siba_devinfo *dinfo, bhnd_port_type port_type,
  * @param sid The siba-assigned core-unique address space identifier.
  * @param base The mapping's base address.
  * @param size The mapping size.
+ * @param bus_reserved Number of bytes to reserve in @p size for bus use
+ * when registering the resource list entry. This is used to reserve bus
+ * access to the core's SIBA_CFG* register blocks.
  * 
  * @retval 0 success
  * @retval non-zero An error occurred appending the entry.
  */
 int
 siba_append_dinfo_region(struct siba_devinfo *dinfo, bhnd_port_type port_type, 
-    u_int port_num, u_int region_num, uint8_t sid, uint32_t base, uint32_t size)
+    u_int port_num, u_int region_num, uint8_t sid, uint32_t base, uint32_t size,
+    uint32_t reserved)
 {
 	struct siba_addrspace	*sa;
 	struct siba_port	*port;
@@ -273,6 +286,7 @@ siba_append_dinfo_region(struct siba_devinfo *dinfo, bhnd_port_type port_type,
 	sa->sa_region_num = region_num;
 	
 	/* Populate the resource list */
+	size -= reserved;
 	sa->sa_rid = resource_list_add_next(&dinfo->resources, SYS_RES_MEMORY,
 	    base, base + size - 1, size);
 
@@ -311,13 +325,13 @@ siba_admatch_offset(uint8_t addrspace)
 {
 	switch (addrspace) {
 	case 0:
-		return SB0_REG_ABS(SIBA_R0_ADMATCH0);
+		return SB0_REG_ABS(SIBA_CFG0_ADMATCH0);
 	case 1:
-		return SB0_REG_ABS(SIBA_R0_ADMATCH1);
+		return SB0_REG_ABS(SIBA_CFG0_ADMATCH1);
 	case 2:
-		return SB0_REG_ABS(SIBA_R0_ADMATCH2);
+		return SB0_REG_ABS(SIBA_CFG0_ADMATCH2);
 	case 3:
-		return SB0_REG_ABS(SIBA_R0_ADMATCH3);
+		return SB0_REG_ABS(SIBA_CFG0_ADMATCH3);
 	default:
 		return (0);
 	}

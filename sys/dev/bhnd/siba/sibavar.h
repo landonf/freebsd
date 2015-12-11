@@ -72,7 +72,7 @@ struct siba_port	*siba_dinfo_get_port(struct siba_devinfo *dinfo,
 int			 siba_append_dinfo_region(struct siba_devinfo *dinfo,
 			     bhnd_port_type port_type, u_int port_num,
 			     u_int region_num, uint8_t sid, uint32_t base,
-			     uint32_t size);
+			     uint32_t size, uint32_t bus_reserved);
 
 u_int			 siba_admatch_offset(uint8_t addrspace);
 int			 siba_parse_admatch(uint32_t am, uint32_t *addr,
@@ -107,7 +107,10 @@ struct siba_core_id {
 						  *  the JEDEC-106 bhnd(4) vendor identifier. */
 	uint8_t			sonics_rev;	/**< sonics backplane revision code */
 	uint8_t			num_addrspace;	/**< number of address ranges mapped to
-						     this core. */	
+						     this core. */
+	uint8_t			num_cfg_blocks;	/**< number of Sonics configuration register
+						     blocks mapped to the core's enumeration
+						     space */
 };
 
 /**
