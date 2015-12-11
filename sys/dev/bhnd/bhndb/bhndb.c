@@ -287,7 +287,7 @@ bhndb_initialize_region_cfg(device_t bus_dev,
 		 */
 		
 		/* ... do not require bridge resources */
-		if (bhnd_is_hw_disabled(child) || bhnd_is_hostb_device(child))
+		if (bhnd_is_hw_disabled(child))
 			continue;
 
 		/* ... do not have a priority table entry */
@@ -371,7 +371,7 @@ bhndb_initialize_region_cfg(device_t bus_dev,
 		STAILQ_FOREACH(region, &r->bus_regions, link) {
 			prio = region->priority;
 
-			direct_msg = prio > prio_min ? "direct" : "indirect";
+			direct_msg = prio >= prio_min ? "direct" : "indirect";
 			type_msg = region->static_regwin ? "static" : "dynamic";
 	
 			device_printf(r->dev, "region 0x%llx+0x%llx priority "
