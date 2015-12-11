@@ -194,7 +194,7 @@ siba_get_port_rid(device_t dev, device_t child, bhnd_port_type port_type,
 		return (-1);
 
 	STAILQ_FOREACH(addrspace, &port->sp_addrs, sa_link) {
-		if (addrspace->sa_region == region_num)
+		if (addrspace->sa_region_num == region_num)
 			return (addrspace->sa_rid);
 	}
 
@@ -240,7 +240,7 @@ siba_decode_port_rid(device_t dev, device_t child, int type, int rid,
 
 			*port_type = port->sp_type;
 			*port_num = port->sp_num;
-			*region_num = addrspace->sa_region;
+			*region_num = addrspace->sa_region_num;
 		}
 	}
 
@@ -264,10 +264,10 @@ siba_get_region_addr(device_t dev, device_t child, bhnd_port_type port_type,
 	dinfo = device_get_ivars(child);
 	port = siba_dinfo_get_port(dinfo, port_type, port_num);
 	if (port == NULL)
-		return (-1);
+		return (ENOENT);
 
 	STAILQ_FOREACH(addrspace, &port->sp_addrs, sa_link) {
-		if (addrspace->sa_region != region_num)
+		if (addrspace->sa_region_num != region_num)
 			continue;
 
 		*addr = addrspace->sa_base;
@@ -294,6 +294,7 @@ siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
 	struct siba_addrspace	*enum_spc;
 	uint32_t		 addr;
 	uint32_t		 size;
+	u_int			 region_num;
 	u_int			 siba_agent_reserved;
 	u_int			 siba_agent_count;
 	int			 error;
@@ -304,15 +305,20 @@ siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
 		siba_agent_count = 2;
 	siba_agent_reserved = SIBA_AGENT_REGION_SIZE * siba_agent_count;
 
+	/* Region numbers must be assigned in order, but our siba address
+	 * space IDs may be sparsely allocated; thus, we track
+	 * the region index seperately. */
+	region_num = 0;
+
 	/* Register the device address space entries */
-	for (uint8_t i = 0; i < di->core_id.num_addrspace; i++) {
+	for (uint8_t sid = 0; sid < di->core_id.num_addrspace; sid++) {
 		uint32_t	adm;
 		u_int		adm_offset;
 
 		/* Determine the register offset */
-		adm_offset = siba_admatch_offset(i);
+		adm_offset = siba_admatch_offset(sid);
 		if (adm_offset == 0) {
-		    device_printf(dev, "address region %hhu is unsupported", i);
+		    device_printf(dev, "addrmatch %hhu is unsupported", sid);
 		    return (ENODEV);
 		}
 
@@ -331,14 +337,17 @@ siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
 		}
 
 		/* Reserve space for agent register blocks */
-		if (i == 0 && size >= siba_agent_reserved)
+		if (sid == 0 && size >= siba_agent_reserved)
 			size -= siba_agent_reserved;
 
 		/* Append the region info */
-		error = siba_append_dinfo_region(di, BHND_PORT_DEVICE, 0, i,
-		    addr, size);
+		error = siba_append_dinfo_region(di, BHND_PORT_DEVICE, 0,
+		    region_num, sid, addr, size);
 		if (error)
 			return (error);
+
+
+		region_num++;
 	}
 
 	/* Register agent regions mapped within the 4kb enumeration space
@@ -346,7 +355,7 @@ siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
 	enum_spc = STAILQ_FIRST(&di->device_port.sp_addrs);
 
 	/* If no enum space mapping, nothing to register */
-	if (enum_spc == NULL || enum_spc->sa_region != 0) {
+	if (enum_spc == NULL || enum_spc->sa_sid != 0) {
 		device_printf(dev, "core missing enumeration space\n");
 		return (EINVAL);
 	}
@@ -360,24 +369,18 @@ siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
 		return (EINVAL);
 	}
 
-	/* Register SIBA_AGENT_0 */
-	addr = enum_spc->sa_base + SIBA_AGENT_0_OFFSET;
-	size = SIBA_AGENT_REGION_SIZE;
-	error = siba_append_dinfo_region(di, BHND_PORT_AGENT, 0,
-	    enum_spc->sa_region, addr, size);
-	if (error) {
-		device_printf(dev, "failed to register agent 0 region\n");
-		return (error);
-	}
-
-	/* Register SIBA_AGENT_1 (sonics >= 2.3) */
-	if (di->core_id.sonics_rev >= SIBA_IDL_SBREV_2_3) {
-		addr = enum_spc->sa_base + SIBA_AGENT_1_OFFSET;
+	/* Register the agent regions */
+	for (u_int agent_reg = 0; agent_reg < siba_agent_count; agent_reg++) {
+		/* Agent regions are assigned starting at SIBA_AGENT_0_OFFSET,
+		 * growing downwards towards the device registers */
+		addr = enum_spc->sa_base + SIBA_AGENT_0_OFFSET;
+		addr -= (agent_reg * SIBA_AGENT_REGION_SIZE);
 		size = SIBA_AGENT_REGION_SIZE;
+
 		error = siba_append_dinfo_region(di, BHND_PORT_AGENT, 0,
-		    enum_spc->sa_region, addr, size);
+		    agent_reg, enum_spc->sa_sid, addr, size);
 		if (error) {
-		device_printf(dev, "failed to register agent 1 region\n");
+			device_printf(dev, "failed to register agent 0 region\n");
 			return (error);
 		}
 	}
