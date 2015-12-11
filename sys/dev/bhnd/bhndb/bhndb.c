@@ -57,8 +57,15 @@ __FBSDID("$FreeBSD$");
 #include "bhndb_hwdata.h"
 #include "bhndb_private.h"
 
-/* enables prioritization debugging */
-#define	BHNDB_DEBUG_PRIO	0
+/* Debugging flags */
+static u_int bhndb_debug = 0;
+TUNABLE_INT("hw.bhndb.debug_flags", &bhndb_debug);
+
+enum {
+	BHNDB_DEBUG_PRIO = 1 << 0,
+};
+
+#define	BHNDB_DEBUG(_type)	(BHNDB_DEBUG_ ## _type & bhndb_debug)
 
 static bool			 bhndb_hw_matches(device_t *devlist,
 				     int num_devs,
@@ -261,7 +268,7 @@ bhndb_initialize_region_cfg(device_t bus_dev,
 			size = regw->win_size;
 
 			/*
-			 * Insert in the bus region list.
+			 * Add to the bus region list.
 			 * 
 			 * The window priority for a statically mapped
 			 * region is always HIGH.
@@ -365,7 +372,7 @@ bhndb_initialize_region_cfg(device_t bus_dev,
 		r->min_prio = BHNDB_PRIORITY_HIGH;
 	}
 
-	if (BHNDB_DEBUG_PRIO) {
+	if (BHNDB_DEBUG(PRIO)) {
 		struct bhndb_region	*region;
 		const char		*direct_msg, *type_msg;
 		bhndb_priority_t	 prio, prio_min;
