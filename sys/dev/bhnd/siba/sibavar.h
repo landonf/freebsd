@@ -117,8 +117,9 @@ struct siba_devinfo {
 	struct resource_list	resources;	/**< per-core memory regions. */
 	struct siba_core_id	core_id;	/**< core identification info */
 
-	struct siba_port	device_port;	/**< device register block (BHND_PORT_DEVICE) */
-	struct siba_port	agent_port;	/**< backplane register blocks (BHND_PORT_AGENT) */
+	struct siba_port	device_port;	/**< device port holding ownership
+						 *   of all siba address space
+						 *   entries for this core. */
 };
 
 

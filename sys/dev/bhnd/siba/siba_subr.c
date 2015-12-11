@@ -193,7 +193,6 @@ siba_alloc_dinfo(device_t bus, const struct siba_core_id *core_id)
 	dinfo->core_id = *core_id;
 
 	siba_init_port(&dinfo->device_port, BHND_PORT_DEVICE, 0);
-	siba_init_port(&dinfo->agent_port, BHND_PORT_DEVICE, 0);
 	resource_list_init(&dinfo->resources);
 
 	return dinfo;
@@ -222,7 +221,7 @@ siba_dinfo_get_port(struct siba_devinfo *dinfo, bhnd_port_type port_type,
 	case BHND_PORT_BRIDGE:
 		return (NULL);
 	case BHND_PORT_AGENT:
-		return (&dinfo->agent_port);
+		return (NULL);
 	}
 }
 
@@ -293,7 +292,6 @@ void
 siba_free_dinfo(struct siba_devinfo *dinfo)
 {
 	siba_release_port(&dinfo->device_port);
-	siba_release_port(&dinfo->agent_port);
 	
 	resource_list_free(&dinfo->resources);
 	free(dinfo, M_BHND);
