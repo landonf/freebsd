@@ -80,6 +80,182 @@ static const struct bhnd_nomatch {
 	{ BHND_MFGID_INVALID,	BHND_COREID_INVALID,		false	}
 };
 
+
+/**
+ * Helper function for implementing DEVICE_ATTACH().
+ * 
+ * This function can be used to implement DEVICE_ATTACH() for bhnd(4)
+ * bus implementations. It calls device_probe_and_attach() for each
+ * of the device's children, in order.
+ */
+int
+bhnd_generic_attach(device_t dev)
+{
+	device_t	*devs;
+	int		 ndevs;
+	int		 error;
+
+	if (device_is_attached(dev))
+		return (EBUSY);
+
+	if ((error = device_get_children(dev, &devs, &ndevs)))
+		return (error);
+
+	for (int i = 0; i < ndevs; i++) {
+		device_t child = devs[i];
+		device_probe_and_attach(child);
+	}
+
+	free(devs, M_TEMP);
+	return (0);
+}
+
+/**
+ * Helper function for implementing DEVICE_DETACH().
+ * 
+ * This function can be used to implement DEVICE_DETACH() for bhnd(4)
+ * bus implementations. It calls device_detach() for each
+ * of the device's children, in reverse order, terminating if
+ * any call to device_detach() fails.
+ */
+int
+bhnd_generic_detach(device_t dev)
+{
+	device_t	*devs;
+	int		 ndevs;
+	int		 error;
+
+	if (!device_is_attached(dev))
+		return (EBUSY);
+
+	if ((error = device_get_children(dev, &devs, &ndevs)))
+		return (error);
+
+	/* Detach in the reverse of attach order */
+	for (int i = 0; i < ndevs; i++) {
+		device_t child = devs[ndevs - 1 - i];
+
+		/* Terminate on first error */
+		if ((error = device_detach(child)))
+			goto cleanup;
+	}
+
+cleanup:
+	free(devs, M_TEMP);
+	return (error);
+}
+
+/**
+ * Helper function for implementing DEVICE_SHUTDOWN().
+ * 
+ * This function can be used to implement DEVICE_SHUTDOWN() for bhnd(4)
+ * bus implementations. It calls device_shutdown() for each
+ * of the device's children, in reverse order, terminating if
+ * any call to device_shutdown() fails.
+ */
+int
+bhnd_generic_shutdown(device_t dev)
+{
+	device_t	*devs;
+	int		 ndevs;
+	int		 error;
+
+	if (!device_is_attached(dev))
+		return (EBUSY);
+
+	if ((error = device_get_children(dev, &devs, &ndevs)))
+		return (error);
+
+	/* Shutdown in the reverse of attach order */
+	for (int i = 0; i < ndevs; i++) {
+		device_t child = devs[ndevs - 1 - i];
+
+		/* Terminate on first error */
+		if ((error = device_shutdown(child)))
+			goto cleanup;
+	}
+
+cleanup:
+	free(devs, M_TEMP);
+	return (error);
+}
+
+/**
+ * Helper function for implementing DEVICE_RESUME().
+ * 
+ * This function can be used to implement DEVICE_RESUME() for bhnd(4)
+ * bus implementations. It calls DEVICE_RESUME() for each
+ * of the device's children, in order, terminating if
+ * any call to DEVICE_RESUME() fails.
+ */
+int
+bhnd_generic_resume(device_t dev)
+{
+	device_t	*devs;
+	int		 ndevs;
+	int		 error;
+
+	if (!device_is_attached(dev))
+		return (EBUSY);
+
+	if ((error = device_get_children(dev, &devs, &ndevs)))
+		return (error);
+
+	for (int i = 0; i < ndevs; i++) {
+		device_t child = devs[i];
+
+		/* Terminate on first error */
+		if ((error = DEVICE_RESUME(child)))
+			goto cleanup;
+	}
+
+cleanup:
+	free(devs, M_TEMP);
+	return (error);
+}
+
+/**
+ * Helper function for implementing DEVICE_SUSPEND().
+ * 
+ * This function can be used to implement DEVICE_SUSPEND() for bhnd(4)
+ * bus implementations. It calls DEVICE_SUSPEND() for each
+ * of the device's children, in reverse order. If any call to
+ * DEVICE_SUSPEND() fails, the suspend operation is terminated and
+ * any devices that were suspended are resumed immediately by calling
+ * their DEVICE_RESUME() methods.
+ */
+int
+bhnd_generic_suspend(device_t dev)
+{
+	device_t	*devs;
+	int		 ndevs;
+	int		 error;
+
+	if (!device_is_attached(dev))
+		return (EBUSY);
+
+	if ((error = device_get_children(dev, &devs, &ndevs)))
+		return (error);
+
+	/* Suspend in the reverse of attach order */
+	for (int i = 0; i < ndevs; i++) {
+		device_t child = devs[ndevs - 1 - i];
+
+		/* On error, resume suspended devices and then terminate */
+		if ((error = DEVICE_SUSPEND(child))) {
+			for (int j = 0; j < i; j++) {
+				DEVICE_RESUME(devs[ndevs - 1 - j]);
+			}
+
+			goto cleanup;
+		}
+	}
+
+cleanup:
+	free(devs, M_TEMP);
+	return (error);
+}
+
 /**
  * Helper function for implementing BUS_PRINT_CHILD().
  * 
@@ -453,11 +629,11 @@ bhnd_barrier(device_t dev, device_t child, struct bhnd_resource *r,
 
 static device_method_t bhnd_methods[] = {
 	/* Device interface */ \
-	DEVMETHOD(device_attach,		bus_generic_attach),
-	DEVMETHOD(device_detach,		bus_generic_detach),
-	DEVMETHOD(device_shutdown,		bus_generic_shutdown),
-	DEVMETHOD(device_suspend,		bus_generic_suspend),
-	DEVMETHOD(device_resume,		bus_generic_resume),
+	DEVMETHOD(device_attach,		bhnd_generic_attach),
+	DEVMETHOD(device_detach,		bhnd_generic_detach),
+	DEVMETHOD(device_shutdown,		bhnd_generic_shutdown),
+	DEVMETHOD(device_suspend,		bhnd_generic_suspend),
+	DEVMETHOD(device_resume,		bhnd_generic_resume),
 
 	/* Bus interface */
 	DEVMETHOD(bus_probe_nomatch,		bhnd_generic_probe_nomatch),

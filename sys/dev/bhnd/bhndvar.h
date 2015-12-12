@@ -51,6 +51,13 @@ DECLARE_CLASS(bhnd_driver);
  */
 struct bhnd_softc {};
 
+
+int			 bhnd_generic_attach(device_t dev);
+int			 bhnd_generic_detach(device_t dev);
+int			 bhnd_generic_shutdown(device_t dev);
+int			 bhnd_generic_resume(device_t dev);
+int			 bhnd_generic_suspend(device_t dev);
+
 int			 bhnd_generic_print_child(device_t dev,
 			     device_t child);
 void			 bhnd_generic_probe_nomatch(device_t dev,

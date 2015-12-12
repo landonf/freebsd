@@ -54,14 +54,13 @@ siba_probe(device_t dev)
 int
 siba_attach(device_t dev)
 {
-	/* Bus' generic attach will probe and attach any enumerated children */
-	return (bus_generic_attach(dev));
+	return (bhnd_generic_attach(dev));
 }
 
 int
 siba_detach(device_t dev)
 {
-	return (bus_generic_detach(dev));
+	return (bhnd_generic_detach(dev));
 }
 
 static int
@@ -448,8 +447,11 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 		if ((error = siba_register_addrspaces(dev, dinfo, r)))
 			goto cleanup;
 
-		/* Add the child device */
-		child = device_add_child(dev, NULL, -1);
+		/* Add the child device, using the core ID as the device order;
+		 * on all known devices, cores are enumerated in their natural
+		 * dependency order. */
+		child = device_add_child_ordered(dev, cores[i].core_id, NULL,
+		    -1);
 		if (child == NULL) {
 			error = ENXIO;
 			goto cleanup;
