@@ -66,7 +66,7 @@ bcma_alloc_corecfg(u_int core_index, int core_unit, uint16_t vendor,
 		.vendor = vendor,
 		.device = device,
 		.hwrev = hwrev,
-		.core_id = core_index,
+		.core_idx = core_index,
 		.unit = core_unit
 	};
 	
@@ -172,7 +172,7 @@ bcma_dinfo_init_resource_info(device_t bus, struct bcma_devinfo *dinfo,
 				device_printf(bus,
 				    "core%u %s%u.%u: region %llx-%llx extends "
 				        "beyond supported addressable range\n",
-				    dinfo->corecfg->core_info.core_id,
+				    dinfo->corecfg->core_info.core_idx,
 				    bhnd_port_type_name(port->sp_type),
 				    port->sp_num, map->m_region_num,
 				    (unsigned long long) map->m_base,

@@ -92,7 +92,7 @@ bcma_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 		*result = (uintptr_t) bhnd_core_name(ci);
 		return (0);
 	case BHND_IVAR_CORE_INDEX:
-		*result = ci->core_id;
+		*result = ci->core_idx;
 		return (0);
 	case BHND_IVAR_CORE_UNIT:
 		*result = ci->unit;

@@ -122,7 +122,7 @@ siba_get_ncores(const struct bhnd_chipid *chipid)
  * @param unit The unit number to include in the result.
  */
 struct siba_core_id	 
-siba_parse_core_id(uint32_t idhigh, uint32_t idlow, u_int core_id, int unit)
+siba_parse_core_id(uint32_t idhigh, uint32_t idlow, u_int core_idx, int unit)
 {
 
 	uint16_t	ocp_vendor;
@@ -144,7 +144,7 @@ siba_parse_core_id(uint32_t idhigh, uint32_t idlow, u_int core_id, int unit)
 			.vendor	= siba_get_bhnd_mfgid(ocp_vendor),
 			.device	= SIBA_REG_GET(idhigh, IDH_DEVICE),
 			.hwrev	= SIBA_CORE_REV(idhigh),
-			.core_id = core_id,
+			.core_idx = core_idx,
 			.unit	= unit
 		},
 		.sonics_vendor	= ocp_vendor,

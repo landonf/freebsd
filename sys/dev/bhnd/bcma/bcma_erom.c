@@ -560,7 +560,7 @@ bcma_erom_get_core_info(struct bcma_erom *erom,
 		buffer[i].vendor = core.vendor;
 		buffer[i].device = core.device;
 		buffer[i].hwrev = core.rev;
-		buffer[i].core_id = i;
+		buffer[i].core_idx = i;
 		buffer[i].unit = 0;
 
 		/* Determine the unit number */
@@ -645,7 +645,7 @@ erom_corecfg_fill_port_regions(struct bcma_erom *erom,
 		if (region_num == BCMA_RMID_MAX) {
 			EROM_LOG(erom, "core%u %s%u: region count reached "
 			    "upper limit of %u\n",
-			    corecfg->core_info.core_id,
+			    corecfg->core_info.core_idx,
 			    bhnd_port_type_name(port_type),
 			    port_num, BCMA_RMID_MAX);
 
@@ -659,7 +659,7 @@ erom_corecfg_fill_port_regions(struct bcma_erom *erom,
 		if (error && error != ENOENT) {
 			EROM_LOG(erom, "core%u %s%u.%u: invalid slave port "
 			    "address region\n",
-			    corecfg->core_info.core_id,
+			    corecfg->core_info.core_idx,
 			    bhnd_port_type_name(port_type),
 			    port_num, region_num);
 			goto cleanup;

@@ -92,7 +92,7 @@ siba_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 		*result = (uintptr_t) bhnd_core_name(cfg);
 		return (0);
 	case BHND_IVAR_CORE_INDEX:
-		*result = cfg->core_id;
+		*result = cfg->core_idx;
 		return (0);
 	case BHND_IVAR_CORE_UNIT:
 		*result = cfg->unit;

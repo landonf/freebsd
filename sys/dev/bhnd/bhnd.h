@@ -146,7 +146,7 @@ struct bhnd_core_info {
 	uint16_t	vendor;		/**< vendor */
 	uint16_t	device;		/**< device */
 	uint16_t	hwrev;		/**< hardware revision */
-	u_int		core_id;	/**< bus-assigned core identifier */
+	u_int		core_idx;	/**< bus-assigned core index */
 	int		unit;		/**< bus-assigned core unit */
 };
 
