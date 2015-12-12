@@ -54,6 +54,7 @@ typedef enum {
 	BHND_DEVCLASS_SOC_ROUTER,	/**< interconnect router */
 	BHND_DEVCLASS_SOC_BRIDGE,	/**< interconnect host bridge */
 	BHND_DEVCLASS_EROM,		/**< bus device enumeration ROM */
+	BHND_DEVCLASS_NVRAM,		/**< nvram/flash controller */
 	BHND_DEVCLASS_OTHER,		/**< other / unknown */
 
 	BHND_DEVCLASS_INVALID		/**< no/invalid class */

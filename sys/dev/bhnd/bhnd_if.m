@@ -111,6 +111,38 @@ METHOD bool is_hw_disabled {
 } DEFAULT bhnd_generic_is_hw_disabled;
 
 /**
+ * Return the probe (and attach) order for @p child. 
+ *
+ * All devices on the bhnd(4) bus will be probed, attached, or resumed in
+ * ascending order; they will be suspended, shutdown, and detached in
+ * descending order.
+ *
+ * The following device methods will be dispatched in ascending probe order
+ * by the bus:
+ *
+ * - DEVICE_PROBE()
+ * - DEVICE_ATTACH()
+ * - DEVICE_RESUME()
+ *
+ * The following device methods will be dispatched in descending probe order
+ * by the bus:
+ *
+ * - DEVICE_SHUTDOWN()
+ * - DEVICE_DETACH()
+ * - DEVICE_SUSPEND()
+ *
+ * @param dev The device whose child is being examined.
+ * @param child The child device.
+ *
+ * Refer to BHND_PROBE_* and BHND_PROBE_ORDER_* for the standard set of
+ * priorities.
+ */
+METHOD int get_probe_order {
+	device_t dev;
+	device_t child;
+} DEFAULT bhnd_generic_get_probe_order;
+
+/**
  * Return the BHND chip identification for the parent bus.
  *
  * @param dev The device whose child is being examined.

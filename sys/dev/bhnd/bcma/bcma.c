@@ -323,11 +323,8 @@ bcma_add_children(device_t bus, struct resource *erom_res, bus_size_t erom_offse
 		/* The dinfo instance now owns the corecfg value */
 		corecfg = NULL;
 
-		/* Add the child device, using the core ID as the device order;
-		 * on all known devices, cores are enumerated in their natural
-		 * dependency order. */
-		child = device_add_child_ordered(bus,
-		    dinfo->corecfg->core_info.core_id, NULL, -1);
+		/* Add the child device */
+		child = device_add_child(bus, NULL, -1);
 		if (child == NULL) {
 			error = ENXIO;
 			goto failed;

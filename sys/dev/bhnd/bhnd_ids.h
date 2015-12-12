@@ -514,7 +514,7 @@
 #define	BHND_COREID_NS_CC_B		0x50b		/* chipcommon `b' (auxiliary) core */
 #define	BHND_COREID_4706_SOCRAM		0x50e		/* internal memory core */
 #define	BHND_COREID_IHOST_ARMCA9	0x510		/* ARM Cortex A9 core */
-#define	BHND_COREID_4706_GMAC_COMMON	0x5dc		/* Gigabit MAC common core */
+#define	BHND_COREID_4706_GMAC_CMN	0x5dc		/* Gigabit MAC common core */
 #define	BHND_COREID_4706_GMAC		0x52d           /* Gigabit MAC core */
 #define	BHND_COREID_AMEMC		0x52e           /* DDR1/2 cadence/denali memory controller core */
 

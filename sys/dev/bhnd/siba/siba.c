@@ -447,11 +447,8 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 		if ((error = siba_register_addrspaces(dev, dinfo, r)))
 			goto cleanup;
 
-		/* Add the child device, using the core ID as the device order;
-		 * on all known devices, cores are enumerated in their natural
-		 * dependency order. */
-		child = device_add_child_ordered(dev, cores[i].core_id, NULL,
-		    -1);
+		/* Add the child device */
+		child = device_add_child(dev, NULL, -1);
 		if (child == NULL) {
 			error = ENXIO;
 			goto cleanup;

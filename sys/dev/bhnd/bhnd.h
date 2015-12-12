@@ -59,6 +59,35 @@ enum bhnd_device_vars {
 				     each vendor/device pair. */
 };
 
+/**
+ * bhnd device probe priority bands.
+ */
+enum {
+	BHND_PROBE_BUS		= 0,	/**< Busses and bridges */
+	BHND_PROBE_CPU		= 1000,	/**< CPU devices */
+	BHND_PROBE_INTERRUPT	= 2000,	/**< Interrupt controllers. */
+	BHND_PROBE_TIMER	= 3000,	/**< Timers and clocks. */
+	BHND_PROBE_RESOURCE	= 4000,	/**< Resource discovery (including NVRAM/SPROM) */
+	BHND_PROBE_DEFAULT	= 5000,	/**< Default device priority */
+};
+
+/**
+ * Constants defining fine grained ordering within a BHND_PROBE_* priority band.
+ * 
+ * Example:
+ * @code
+ * BHND_PROBE_BUS + BHND_PROBE_ORDER_FIRST
+ * @endcode
+ */
+enum {
+	BHND_PROBE_ORDER_FIRST		= 0,
+	BHND_PROBE_ORDER_EARLY		= 25,
+	BHND_PROBE_ORDER_MIDDLE		= 50,
+	BHND_PROBE_ORDER_LATE		= 75,
+	BHND_PROBE_ORDER_LAST		= 100
+
+};
+
 /*
  * Simplified accessors for bhnd device ivars
  */

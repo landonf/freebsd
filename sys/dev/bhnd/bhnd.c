@@ -81,6 +81,11 @@ static const struct bhnd_nomatch {
 };
 
 
+static int	compare_ascending_probe_order(const void *lhs,
+		    const void *rhs);
+static int	compare_descending_probe_order(const void *lhs,
+		    const void *rhs);
+
 /**
  * Helper function for implementing DEVICE_ATTACH().
  * 
@@ -101,6 +106,7 @@ bhnd_generic_attach(device_t dev)
 	if ((error = device_get_children(dev, &devs, &ndevs)))
 		return (error);
 
+	qsort(devs, ndevs, sizeof(*devs), compare_ascending_probe_order);
 	for (int i = 0; i < ndevs; i++) {
 		device_t child = devs[i];
 		device_probe_and_attach(child);
@@ -132,8 +138,9 @@ bhnd_generic_detach(device_t dev)
 		return (error);
 
 	/* Detach in the reverse of attach order */
+	qsort(devs, ndevs, sizeof(*devs), compare_descending_probe_order);
 	for (int i = 0; i < ndevs; i++) {
-		device_t child = devs[ndevs - 1 - i];
+		device_t child = devs[i];
 
 		/* Terminate on first error */
 		if ((error = device_detach(child)))
@@ -167,8 +174,9 @@ bhnd_generic_shutdown(device_t dev)
 		return (error);
 
 	/* Shutdown in the reverse of attach order */
+	qsort(devs, ndevs, sizeof(*devs), compare_descending_probe_order);
 	for (int i = 0; i < ndevs; i++) {
-		device_t child = devs[ndevs - 1 - i];
+		device_t child = devs[i];
 
 		/* Terminate on first error */
 		if ((error = device_shutdown(child)))
@@ -201,6 +209,7 @@ bhnd_generic_resume(device_t dev)
 	if ((error = device_get_children(dev, &devs, &ndevs)))
 		return (error);
 
+	qsort(devs, ndevs, sizeof(*devs), compare_ascending_probe_order);
 	for (int i = 0; i < ndevs; i++) {
 		device_t child = devs[i];
 
@@ -238,13 +247,14 @@ bhnd_generic_suspend(device_t dev)
 		return (error);
 
 	/* Suspend in the reverse of attach order */
+	qsort(devs, ndevs, sizeof(*devs), compare_descending_probe_order);
 	for (int i = 0; i < ndevs; i++) {
-		device_t child = devs[ndevs - 1 - i];
+		device_t child = devs[i];
 
 		/* On error, resume suspended devices and then terminate */
 		if ((error = DEVICE_SUSPEND(child))) {
 			for (int j = 0; j < i; j++) {
-				DEVICE_RESUME(devs[ndevs - 1 - j]);
+				DEVICE_RESUME(devs[j]);
 			}
 
 			goto cleanup;
@@ -254,6 +264,94 @@ bhnd_generic_suspend(device_t dev)
 cleanup:
 	free(devs, M_TEMP);
 	return (error);
+}
+
+/*
+ * Ascending comparison of bhnd device's probe order.
+ */
+static int
+compare_ascending_probe_order(const void *lhs, const void *rhs)
+{
+	device_t	ldev, rdev;
+	int		lorder, rorder;
+
+	ldev = (*(const device_t *) lhs);
+	rdev = (*(const device_t *) rhs);
+
+	lorder = BHND_GET_PROBE_ORDER(device_get_parent(ldev), ldev);
+	rorder = BHND_GET_PROBE_ORDER(device_get_parent(rdev), rdev);
+
+	if (lorder < rorder) {
+		return (-1);
+	} else if (lorder > rorder) {
+		return (1);
+	} else {
+		return (0);
+	}
+}
+
+/*
+ * Descending comparison of bhnd device's probe order.
+ */
+static int
+compare_descending_probe_order(const void *lhs, const void *rhs)
+{
+	return (compare_ascending_probe_order(rhs, lhs));
+}
+
+/**
+ * Helper function for implementing BHND_GET_PROBE_ORDER().
+ * 
+ * This implementation determines probe ordering based on the device's class
+ * and other properties, including whether the device is serving as a host
+ * bridge.
+ */
+int
+bhnd_generic_get_probe_order(device_t dev, device_t child)
+{
+	switch (bhnd_get_class(child)) {
+	case BHND_DEVCLASS_CC:
+		return (BHND_PROBE_BUS + BHND_PROBE_ORDER_FIRST);
+
+	case BHND_DEVCLASS_CC_B:
+		/* fall through */
+	case BHND_DEVCLASS_PMU:
+		return (BHND_PROBE_BUS + BHND_PROBE_ORDER_EARLY);
+
+	case BHND_DEVCLASS_SOC_ROUTER:
+		return (BHND_PROBE_BUS + BHND_PROBE_ORDER_LATE);
+
+	case BHND_DEVCLASS_SOC_BRIDGE:
+		return (BHND_PROBE_BUS + BHND_PROBE_ORDER_LAST);
+		
+	case BHND_DEVCLASS_CPU:
+		return (BHND_PROBE_CPU + BHND_PROBE_ORDER_FIRST);
+
+	case BHND_DEVCLASS_RAM:
+		/* fall through */
+	case BHND_DEVCLASS_MEMC:
+		return (BHND_PROBE_CPU + BHND_PROBE_ORDER_EARLY);
+		
+	case BHND_DEVCLASS_NVRAM:
+		return (BHND_PROBE_RESOURCE + BHND_PROBE_ORDER_EARLY);
+
+	case BHND_DEVCLASS_PCI:
+	case BHND_DEVCLASS_PCIE:
+	case BHND_DEVCLASS_PCCARD:
+	case BHND_DEVCLASS_ENET:
+	case BHND_DEVCLASS_ENET_MAC:
+	case BHND_DEVCLASS_ENET_PHY:
+	case BHND_DEVCLASS_WLAN:
+	case BHND_DEVCLASS_WLAN_MAC:
+	case BHND_DEVCLASS_WLAN_PHY:
+	case BHND_DEVCLASS_EROM:
+	case BHND_DEVCLASS_OTHER:
+	case BHND_DEVCLASS_INVALID:
+		if (bhnd_is_hostb_device(child))
+			return (BHND_PROBE_BUS + BHND_PROBE_ORDER_LATE);
+
+		return (BHND_PROBE_DEFAULT);
+	}
 }
 
 /**
@@ -664,6 +762,7 @@ static device_method_t bhnd_methods[] = {
 	DEVMETHOD(bhnd_activate_resource,	bhnd_generic_activate_bhnd_resource),
 	DEVMETHOD(bhnd_activate_resource,	bhnd_generic_deactivate_bhnd_resource),
 	DEVMETHOD(bhnd_get_chipid,		bhnd_generic_get_chipid),
+	DEVMETHOD(bhnd_get_probe_order,		bhnd_generic_get_probe_order),
 	DEVMETHOD(bhnd_bus_read_1,		bhnd_read_1),
 	DEVMETHOD(bhnd_bus_read_2,		bhnd_read_2),
 	DEVMETHOD(bhnd_bus_read_4,		bhnd_read_4),
