@@ -41,7 +41,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/bus.h>
 #include <sys/module.h>
-#include <sys/systm.h>
 
 #include <machine/bus.h>
 #include <sys/rman.h>
@@ -49,36 +48,30 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/bhnd.h>
 
-#include "bhnd_pcibvar.h"
 #include "bhnd_pcibreg.h"
-#include "bhnd_pciebreg.h"
+#include "bhnd_pcibvar.h"
 
-static const struct resource_spec bhnd_pci_hostb_rspec[BHND_PCIB_MAX_RSPEC] = {
-	{ SYS_RES_MEMORY,	0,	RF_ACTIVE },
-	{ -1, -1, 0 }
-};
-
-static const struct bhnd_hostb_device {
+static const struct bhnd_pcib_device {
 	uint16_t	 vendor;
 	uint16_t	 device;
 	const char	*desc;
-} bhnd_hostb_devs[] = {
-	{ BHND_MFGID_BCM,	BHND_COREID_PCI,	"Broadcom PCI-BHND host bridge" },
-	{ BHND_MFGID_BCM,	BHND_COREID_PCIE,	"Broadcom PCIe-G1 PCI-BHND host bridge" },
-	{ BHND_MFGID_BCM,	BHND_COREID_PCIE2,	"Broadcom PCIe-G2 PCI-BHND host bridge" },
+} bhnd_pcib_devs[] = {
+	{ BHND_MFGID_BCM,	BHND_COREID_PCI,	"BHND Host-PCI bridge" },
+	{ BHND_MFGID_BCM,	BHND_COREID_PCIE,	"BHND Host-PCI bridge (PCIe Gen1)" },
+	{ BHND_MFGID_BCM,	BHND_COREID_PCIE2,	"BHND Host-PCI bridge (PCIe Gen2)" },
 	{ BHND_MFGID_INVALID,	BHND_COREID_INVALID,	NULL }
 };
 
 static int
-bhnd_pci_hostb_probe(device_t dev)
+bhnd_pcib_probe(device_t dev)
 {
-	const struct bhnd_hostb_device *id;
+	const struct bhnd_pcib_device *id;
 
-	/* Ignore PCI cores not in host bridge mode. */
-	if (!bhnd_is_hostb_device(dev))
+	/* Ignore PCI cores configured in host bridge mode */
+	if (bhnd_is_hostb_device(dev))
 		return (ENXIO);
 
-	for (id = bhnd_hostb_devs; id->device != BHND_COREID_INVALID; id++) {
+	for (id = bhnd_pcib_devs; id->device != BHND_COREID_INVALID; id++) {
 		if (bhnd_get_vendor(dev) != id->vendor)
 			continue;
 
@@ -93,66 +86,38 @@ bhnd_pci_hostb_probe(device_t dev)
 }
 
 static int
-bhnd_pci_hostb_attach(device_t dev)
+bhnd_pcib_attach(device_t dev)
 {
-	struct bhnd_pcib_softc	*sc;
-	struct bhnd_resource	*r;
-	int			 error;
-
-	/* We can't support the PCIe Gen 2 cores until we get development
-	 * hardware */
-	if (bhnd_get_device(dev) == BHND_COREID_PCIE2) {
-		device_printf(dev, "PCIe-Gen2 core support unimplemented "
-		    "unsupported\n");
-		return (ENXIO);
-	}
-
-	sc = device_get_softc(dev);
-	memcpy(sc->rspec, bhnd_pci_hostb_rspec, sizeof(sc->rspec));
-
-	if ((error = bhnd_alloc_resources(dev, sc->rspec, sc->res)))
-		return (error);
-
-	// TODO - Quirks
-	r = sc->res[0];
-	device_printf(dev, "got rid=%d res=%p\n", sc->rspec[0].rid, r);
-
-	return (0);
+	return (ENXIO);
 }
 
 static int
-bhnd_pci_hostb_detach(device_t dev)
+bhnd_pcib_detach(device_t dev)
 {
-	struct bhnd_pcib_softc	*sc;
-
-	sc = device_get_softc(dev);
-	bhnd_release_resources(dev, sc->rspec, sc->res);
-
-	return (0);
+	return (ENXIO);
 }
 
 static int
-bhnd_pci_hostb_suspend(device_t dev)
+bhnd_pcib_suspend(device_t dev)
 {
-	return (0);
+	return (ENXIO);
 }
 
 static int
-bhnd_pci_hostb_resume(device_t dev)
+bhnd_pcib_resume(device_t dev)
 {
-	return (0);
+	return (ENXIO);
 }
 
-static device_method_t bhnd_pci_hostb_methods[] = {
+static device_method_t bhnd_pcib_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_probe,		bhnd_pci_hostb_probe),
-	DEVMETHOD(device_attach,	bhnd_pci_hostb_attach),
-	DEVMETHOD(device_detach,	bhnd_pci_hostb_detach),
-	DEVMETHOD(device_suspend,	bhnd_pci_hostb_suspend),
-	DEVMETHOD(device_resume,	bhnd_pci_hostb_resume),
+	DEVMETHOD(device_probe,		bhnd_pcib_probe),
+	DEVMETHOD(device_attach,	bhnd_pcib_attach),
+	DEVMETHOD(device_detach,	bhnd_pcib_detach),
+	DEVMETHOD(device_suspend,	bhnd_pcib_suspend),
+	DEVMETHOD(device_resume,	bhnd_pcib_resume),
 	DEVMETHOD_END
 };
 
-DEFINE_CLASS_0(bhnd_hostb, bhnd_pci_hostb_driver, bhnd_pci_hostb_methods, sizeof(struct bhnd_pcib_softc));
-
-DRIVER_MODULE(bhnd_pci_hostb, bhnd, bhnd_pci_hostb_driver, bhnd_hostb_devclass, 0, 0);
+DEFINE_CLASS_0(bhnd_pcib, bhnd_pcib_driver, bhnd_pcib_methods, sizeof(struct bhnd_pcib_softc));
+DRIVER_MODULE(bhnd_pcib, bhnd, bhnd_pcib_driver, bhnd_hostb_devclass, 0, 0);

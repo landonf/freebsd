@@ -52,19 +52,12 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/bhnd.h>
 
-#include "bhnd_chipc.h"
 #include "bhnd_chipcreg.h"
+#include "bhnd_chipcvar.h"
 
-static const struct resource_spec bhnd_chipc_rspec[] = {
+static const struct resource_spec bhnd_chipc_rspec[BHND_CHIPC_MAX_RSPEC] = {
 	{ SYS_RES_MEMORY,	0,	RF_ACTIVE },
 	{ -1, -1, 0 }
-};
-
-#define	RSPEC_LEN	(sizeof(bhnd_chipc_rspec)/sizeof(bhnd_chipc_rspec[0]))
-
-struct bhnd_chipc_softc {
-	struct resource_spec	rspec[RSPEC_LEN];
-	struct bhnd_resource	*res[RSPEC_LEN-1];
 };
 
 static const struct bhnd_chipc_device {
@@ -107,8 +100,8 @@ bhnd_chipc_attach(device_t dev)
 	int			 error;
 
 	sc = device_get_softc(dev);
+	memcpy(sc->rspec, bhnd_chipc_rspec, sizeof(sc->rspec));
 
-	memcpy(sc->rspec, bhnd_chipc_rspec, sizeof(bhnd_chipc_rspec));
 	if ((error = bhnd_alloc_resources(dev, sc->rspec, sc->res)))
 		return (error);
 

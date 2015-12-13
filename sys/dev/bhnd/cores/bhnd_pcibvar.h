@@ -29,9 +29,15 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_CORES_CHIPC_H_
-#define _BHND_CORES_CHIPC_H_
+#ifndef _BHND_CORES_PCIBVAR_H_
+#define _BHND_CORES_PCIBVAR_H_
 
-DECLARE_CLASS(bhnd_cc);
+#define	BHND_PCIB_MAX_RES	2
+#define	BHND_PCIB_MAX_RSPEC	(BHND_PCIB_MAX_RES+1)
+
+struct bhnd_pcib_softc {
+	struct resource_spec	rspec[BHND_PCIB_MAX_RSPEC];
+	struct bhnd_resource	*res[BHND_PCIB_MAX_RES];
+};
 
 #endif /* _BHND_CORES_CHIPC_H_ */

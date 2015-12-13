@@ -25,7 +25,7 @@
 #ifndef _BHND_CORES_PCIEREG_H_
 #define	_BHND_CORES_PCIEREG_H_
 
-#include "bhnd_pcireg.h"
+#include "bhnd_pcibreg.h"
 
 /*
  * PCIe-Gen1 Core Registers
@@ -75,8 +75,8 @@
 
 /* SB to PCIE translation masks */
 #define	BHND_PCIE_SBTOPCI0_MASK	BHND_PCI_SBTOPCI0_MASK
-#define	BHND_PCIE_SBTOPCI0_MASK	BHND_PCI_SBTOPCI1_MASK
-#define	BHND_PCIE_SBTOPCI0_MASK	BHND_PCI_SBTOPCI2_MASK
+#define	BHND_PCIE_SBTOPCI1_MASK	BHND_PCI_SBTOPCI1_MASK
+#define	BHND_PCIE_SBTOPCI2_MASK	BHND_PCI_SBTOPCI2_MASK
 
 /* Access type bits (0:1) */
 #define	BHND_PCIE_SBTOPCI_MEM	BHND_PCI_SBTOPCI_MEM
