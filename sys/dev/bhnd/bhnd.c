@@ -348,7 +348,7 @@ bhnd_generic_get_probe_order(device_t dev, device_t child)
 	case BHND_DEVCLASS_OTHER:
 	case BHND_DEVCLASS_INVALID:
 		if (bhnd_is_hostb_device(child))
-			return (BHND_PROBE_BUS + BHND_PROBE_ORDER_LATE);
+			return (BHND_PROBE_ROOT + BHND_PROBE_ORDER_EARLY);
 
 		return (BHND_PROBE_DEFAULT);
 	}
