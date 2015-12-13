@@ -1106,31 +1106,31 @@ dev/ath/ath_dfs/null/dfs_null.c	optional ath \
 dev/bce/if_bce.c		optional bce
 dev/bfe/if_bfe.c		optional bfe
 dev/bge/if_bge.c		optional bge
-dev/bhnd/bhnd.c			optional bhndbus | bhnd
-dev/bhnd/bhnd_subr.c		optional bhndbus | bhnd
-dev/bhnd/bhnd_if.m		optional bhndbus | bhnd
-dev/bhnd/bhndb/bhndb.c		optional bhndbus | bhndb
-dev/bhnd/bhndb/bhndb_bus_if.m	optional bhndbus | bhndb
-dev/bhnd/bhndb/bhndb_hwdata.c	optional bhndbus | bhndb
-dev/bhnd/bhndb/bhndb_if.m	optional bhndbus | bhndb
-dev/bhnd/bhndb/bhndb_pci.c	optional bhndbus pci | bhndb pci
-dev/bhnd/bhndb/bhndb_pci_hwdata.c	optional bhndbus pci | bhndb pci
-dev/bhnd/bhndb/bhndb_subr.c	optional bhndbus | bhndb
+dev/bhnd/bhnd.c			optional bhnd
+dev/bhnd/bhnd_subr.c		optional bhnd
+dev/bhnd/bhnd_if.m		optional bhnd
+dev/bhnd/bhndb/bhndb.c		optional bhndb
+dev/bhnd/bhndb/bhndb_bus_if.m	optional bhndb
+dev/bhnd/bhndb/bhndb_hwdata.c	optional bhndb
+dev/bhnd/bhndb/bhndb_if.m	optional bhndb
+dev/bhnd/bhndb/bhndb_pci.c	optional bhndb pci
+dev/bhnd/bhndb/bhndb_pci_hwdata.c optional bhndb pci
+dev/bhnd/bhndb/bhndb_subr.c	optional bhndb
 # bhnd bus drivers
-dev/bhnd/bcma/bcma.c		optional bhndbus | bcma
-dev/bhnd/bcma/bcma_bhndb.c	optional bhndbus | bcma bhndb
-dev/bhnd/bcma/bcma_erom.c	optional bhndbus | bcma
-dev/bhnd/bcma/bcma_subr.c	optional bhndbus | bcma
+dev/bhnd/bcma/bcma.c		optional bcma
+dev/bhnd/bcma/bcma_bhndb.c	optional bcma bhndb
+dev/bhnd/bcma/bcma_erom.c	optional bcma
+dev/bhnd/bcma/bcma_subr.c	optional bcma
 #
-dev/bhnd/siba/siba.c		optional bhndbus | siba
-dev/bhnd/siba/siba_bhndb.c	optional bhndbus | siba bhndb
-dev/bhnd/siba/siba_nexus.c	optional siba_nexus
-dev/bhnd/siba/siba_subr.c	optional bhndbus | siba
+dev/bhnd/siba/siba.c		optional siba
+dev/bhnd/siba/siba_bhndb.c	optional siba bhndb
+dev/bhnd/siba/siba_nexus.c	optional siba_nexus siba
+dev/bhnd/siba/siba_subr.c	optional siba
 #
 # bhnd core drivers
-dev/bhnd/cores/bhnd_chipc.c	optional bhndbus | bhnd_chipc
-dev/bhnd/cores/bhnd_pcib.c	optional bhndbus pci | bhnd_soc pci
-dev/bhnd/cores/bhnd_pci_hostb.c	optional bhndbus pci | bhnd_hostb bhndb pci
+dev/bhnd/cores/bhnd_chipc.c	optional bhnd
+dev/bhnd/cores/bhnd_pcib.c	optional bhnd_pcib bhnd pci
+dev/bhnd/cores/bhnd_pci_hostb.c	optional bhndb bhnd pci
 #
 dev/bktr/bktr_audio.c		optional bktr pci
 dev/bktr/bktr_card.c		optional bktr pci

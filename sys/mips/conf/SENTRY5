@@ -57,10 +57,12 @@ options 	INVARIANT_SUPPORT
 #options 	BUS_DEBUG
 #makeoptions	BUS_DEBUG
 
-device		bhnd			# BHND Backplane
-device		bhnd_soc
-device		siba			# BHND Sonics SilconBackplane
-device		pci			# bhnd_pcib
+device		bhnd			# Broadcom Backplane
+device		siba			# Broadcom Sonics Backplane Support
+device		siba_nexus		# Sonics Nexus
+
+device		bhnd_pcib		# Broadcom Host-PCI bridge
+device		pci
 
 # device 	bfe			# XXX will build both pci and siba
 # device 	miibus			# attachments
