@@ -32,6 +32,6 @@
 #ifndef _BHND_CORES_CHIPC_H_
 #define _BHND_CORES_CHIPC_H_
 
-#define	BHND_CHIPC_DEVNAME	"bhnd_chipc"
+DECLARE_CLASS(bhnd_cc);
 
 #endif /* _BHND_CORES_CHIPC_H_ */

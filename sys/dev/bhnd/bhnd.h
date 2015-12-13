@@ -42,6 +42,7 @@
 #include "bhnd_if.h"
 
 extern devclass_t bhnd_devclass;
+extern devclass_t bhnd_hostb_devclass;
 
 /**
  * bhnd child instance variables

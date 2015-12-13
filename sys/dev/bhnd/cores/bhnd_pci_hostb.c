@@ -48,8 +48,6 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/bhnd.h>
 
-#include "bhnd_pci_hostb.h"
-
 struct bhnd_pci_hostb_softc {};
 
 static const struct pci_hostb_device {
@@ -121,12 +119,6 @@ static device_method_t bhnd_pci_hostb_methods[] = {
 	DEVMETHOD_END
 };
 
-static driver_t bhnd_pci_hostb_driver = {
-	BHND_HOSTB_DEVNAME,
-	bhnd_pci_hostb_methods,
-	sizeof(struct bhnd_pci_hostb_softc)
-};
+DEFINE_CLASS_0(bhnd_hostb, bhnd_pci_hostb_driver, bhnd_pci_hostb_methods, sizeof(struct bhnd_pci_hostb_softc));
 
-static devclass_t bhnd_pci_hostb_devclass;
-
-DRIVER_MODULE(bhnd_pci_hostb, bhnd, bhnd_pci_hostb_driver, bhnd_pci_hostb_devclass, 0, 0);
+DRIVER_MODULE(bhnd_pci_hostb, bhnd, bhnd_pci_hostb_driver, bhnd_hostb_devclass, 0, 0);

@@ -160,12 +160,7 @@ static device_method_t bhnd_chipc_methods[] = {
 	DEVMETHOD_END
 };
 
-static driver_t bhnd_chipc_driver = {
-	BHND_CHIPC_DEVNAME,
-	bhnd_chipc_methods,
-	sizeof(struct bhnd_chipc_softc)
-};
-
 static devclass_t bhnd_chipc_devclass;
 
-DRIVER_MODULE(bhnd_chipc, bhnd, bhnd_chipc_driver, bhnd_chipc_devclass, 0, 0);
+DEFINE_CLASS_0(bhnd_cc, bhnd_chipc_driver, bhnd_chipc_methods, sizeof(struct bhnd_chipc_softc));
+DRIVER_MODULE(bhnd_cc, bhnd, bhnd_chipc_driver, bhnd_chipc_devclass, 0, 0);
