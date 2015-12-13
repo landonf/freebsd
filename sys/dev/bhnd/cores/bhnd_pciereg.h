@@ -25,99 +25,67 @@
 #ifndef _BHND_CORES_PCIEREG_H_
 #define _BHND_CORES_PCIEREG_H_
 
-/* cpp contortions to concatenate w/arg prescan */
-#ifndef PAD
-#define	_PADLINE(line)	pad ## line
-#define	_XSTR(line)	_PADLINE(line)
-#define	PAD		_XSTR(__LINE__)
-#endif
+#include "bhnd_pcireg.h"
 
-/* PCIE Enumeration space offsets */
-#define  PCIE_CORE_CONFIG_OFFSET	0x0
-#define  PCIE_FUNC0_CONFIG_OFFSET	0x400
-#define  PCIE_FUNC1_CONFIG_OFFSET	0x500
-#define  PCIE_FUNC2_CONFIG_OFFSET	0x600
-#define  PCIE_FUNC3_CONFIG_OFFSET	0x700
-#define  PCIE_SPROM_SHADOW_OFFSET	0x800
-#define  PCIE_SBCONFIG_OFFSET		0xE00
+/*
+ * PCIe-Gen1 Core Registers
+ */
 
-/* PCIE Bar0 Address Mapping. Each function maps 16KB config space */
-#define PCIE_DEV_BAR0_SIZE		0x4000
-#define PCIE_BAR0_WINMAPCORE_OFFSET	0x0
-#define PCIE_BAR0_EXTSPROM_OFFSET	0x1000
-#define PCIE_BAR0_PCIECORE_OFFSET	0x2000
-#define PCIE_BAR0_CCCOREREG_OFFSET	0x3000
+#define	BHND_PCIE_CTRL		BHND_PCI_CTRL		/**< PCI core control*/
+#define	BHND_PCIE_BIST_STATUS	0x00C			/**< BIST status */
+#define	BHND_PCIE_GPIO_SEL	0x010			/**< GPIO select */
+#define	BHND_PCIE_GPIO_OUT_EN	0x014			/**< GPIO output enable */
+#define	BHND_PCIE_INTR_STATUS	BHND_PCI_INTR_STATUS	/**< Interrupt status */
+#define	BHND_PCIE_INTR_MASK	BHND_PCI_INTR_MASK	/**< Interrupt mask */
+#define	BHND_PCIE_SBTOPCI_MBOX	BHND_PCI_SBTOPCI_MBOX	/**< Sonics to PCI mailbox */
+#define	BHND_PCIE_SBTOPCI0	BHND_PCI_SBTOPCI0	/**< Sonics to PCI translation 0 */
+#define	BHND_PCIE_SBTOPCI1	BHND_PCI_SBTOPCI1	/**< Sonics to PCI translation 1 */
+#define	BHND_PCIE_SBTOPCI2	BHND_PCI_SBTOPCI2	/**< Sonics to PCI translation 2 */
 
-/* different register spaces to access thr'u pcie indirect access */
-#define PCIE_CONFIGREGS 	1	/* Access to config space */
-#define PCIE_PCIEREGS 		2	/* Access to pcie registers */
+/* indirect pci config space access */
+#define	BHND_PCIE_CONFIG_ADDR	0x120			/**< pcie config space address */
+#define	BHND_PCIE_CONFIG_DATA	0x124			/**< pcie config space data */
 
-/* SB side: PCIE core and host control registers */
-typedef struct sbpcieregs {
-	u32 control;		/* host mode only */
-	u32 PAD[2];
-	u32 biststatus;	/* bist Status: 0x00C */
-	u32 gpiosel;		/* PCIE gpio sel: 0x010 */
-	u32 gpioouten;	/* PCIE gpio outen: 0x14 */
-	u32 PAD[2];
-	u32 intstatus;	/* Interrupt status: 0x20 */
-	u32 intmask;		/* Interrupt mask: 0x24 */
-	u32 sbtopcimailbox;	/* sb to pcie mailbox: 0x028 */
-	u32 PAD[53];
-	u32 sbtopcie0;	/* sb to pcie translation 0: 0x100 */
-	u32 sbtopcie1;	/* sb to pcie translation 1: 0x104 */
-	u32 sbtopcie2;	/* sb to pcie translation 2: 0x108 */
-	u32 PAD[5];
+/* indirect mdio access to serdes */
+#define	BHND_PCIE_MDIO_CTRL	0x128			/**< mdio control */
+#define	BHND_PCIE_MDIO_DATA	0x12C			/**< mdio data */
 
-	/* pcie core supports in direct access to config space */
-	u32 configaddr;	/* pcie config space access: Address field: 0x120 */
-	u32 configdata;	/* pcie config space access: Data field: 0x124 */
+/* indirect protocol phy/dllp/tlp register access */
+#define	BHND_PCIE_IND_ADDR	0x130			/**< internal protocol register address */
+#define	BHND_PCIE_IND_DATA	0x134			/**< internal protocol register data */
 
-	/* mdio access to serdes */
-	u32 mdiocontrol;	/* controls the mdio access: 0x128 */
-	u32 mdiodata;	/* Data to the mdio access: 0x12c */
+#define	BHND_PCIE_CLKREQEN_CTRL	0x138			/**< clkreq rdma control */
+#define	BHND_PCIE_FUNC0_CFG	BHND_PCI_FUNC0_CFG	/**< PCI function 0 cfg space */
+#define	BHND_PCIE_FUNC1_CFG	BHND_PCI_FUNC1_CFG	/**< PCI function 1 cfg space */
+#define	BHND_PCIE_FUNC2_CFG	BHND_PCI_FUNC2_CFG	/**< PCI function 2 cfg space */
+#define	BHND_PCIE_FUNC3_CFG	BHND_PCI_FUNC3_CFG	/**< PCI function 3 cfg space */
+#define	BHND_PCIE_SPROM_SHADOW	BHND_PCI_SPROM_SHADOW	/**< PCI SPROM shadow */
 
-	/* pcie protocol phy/dllp/tlp register indirect access mechanism */
-	u32 pcieindaddr;	/* indirect access to the internal register: 0x130 */
-	u32 pcieinddata;	/* Data to/from the internal regsiter: 0x134 */
+/* BHND_PCIE_CTRL */
+#define	BHND_PCIE_CTRL_RST_OE	BHND_PCI_CTRL_RST_OE	/* When set, drives PCI_RESET out to pin */
+#define	BHND_PCIE_CTRL_RST	BHND_PCI_CTRL_RST_OE	/* Value driven out to pin */
 
-	u32 clkreqenctrl;	/* >= rev 6, Clkreq rdma control : 0x138 */
-	u32 PAD[177];
-	u32 pciecfg[4][64];	/* 0x400 - 0x7FF, PCIE Cfg Space */
-	u16 sprom[64];	/* SPROM shadow Area */
-} sbpcieregs_t;
-
-/* PCI control */
-#define PCIE_RST_OE	0x01	/* When set, drives PCI_RESET out to pin */
-#define PCIE_RST	0x02	/* Value driven out to pin */
-
-#define	PCIE_CFGADDR	0x120	/* offsetof(configaddr) */
-#define	PCIE_CFGDATA	0x124	/* offsetof(configdata) */
-
-/* Interrupt status/mask */
-#define PCIE_INTA	0x01	/* PCIE INTA message is received */
-#define PCIE_INTB	0x02	/* PCIE INTB message is received */
-#define PCIE_INTFATAL	0x04	/* PCIE INTFATAL message is received */
-#define PCIE_INTNFATAL	0x08	/* PCIE INTNONFATAL message is received */
-#define PCIE_INTCORR	0x10	/* PCIE INTCORR message is received */
-#define PCIE_INTPME	0x20	/* PCIE INTPME message is received */
+/* BHND_PCI_INTR_STATUS / BHND_PCI_INTR_MASK */
+#define	BHND_PCIE_INTA		BHND_PCI_INTA		/* PCIE INTA message is received */
+#define	BHND_PCIE_INTB		BHND_PCI_INTB		/* PCIE INTB message is received */
+#define	BHND_PCIE_INTFATAL	0x04			/* PCIE INTFATAL message is received */
+#define	BHND_PCIE_INTNFATAL	0x08			/* PCIE INTNONFATAL message is received */
+#define	BHND_PCIE_INTCORR	0x10			/* PCIE INTCORR message is received */
+#define	BHND_PCIE_INTPME	0x20			/* PCIE INTPME message is received */
 
 /* SB to PCIE translation masks */
-#define SBTOPCIE0_MASK	0xfc000000
-#define SBTOPCIE1_MASK	0xfc000000
-#define SBTOPCIE2_MASK	0xc0000000
+#define	BHND_SBTOPCIE0_MASK	BHND_SBTOPCI0_MASK
+#define	BHND_SBTOPCIE1_MASK	BHND_SBTOPCI1_MASK
+#define	BHND_SBTOPCIE2_MASK	BHND_SBTOPCI2_MASK
 
 /* Access type bits (0:1) */
-#define SBTOPCIE_MEM	0
-#define SBTOPCIE_IO	1
-#define SBTOPCIE_CFG0	2
-#define SBTOPCIE_CFG1	3
+#define BHND_SBTOPCIE_MEM	BHND_SBTOPCI_MEM
+#define BHND_SBTOPCIE_IO	BHND_SBTOPCI_IO
+#define BHND_SBTOPCIE_CFG0	BHND_SBTOPCI_CFG0
+#define BHND_SBTOPCIE_CFG1	BHND_SBTOPCI_CFG1
 
-/* Prefetch enable bit 2 */
-#define SBTOPCIE_PF		4
-
-/* Write Burst enable for memory write bit 3 */
-#define SBTOPCIE_WR_BURST	8
+#define	BHND_SBTOPCIE_PREF	BHND_SBTOPCI_PREF	/* prefetch enable */
+#define	BHND_SBTOPCIE_BURST	BHND_SBTOPCI_BURST	/* burst enable */
 
 /* config access */
 #define CONFIGADDR_FUNC_MASK	0x7000
@@ -257,17 +225,17 @@ typedef struct sbpcieregs {
 #define MDIODATA_DEV_PLL       		0x1d	/* SERDES PLL Dev */
 #define MDIODATA_DEV_TX        		0x1e	/* SERDES TX Dev */
 #define MDIODATA_DEV_RX        		0x1f	/* SERDES RX Dev */
-	/* SERDES RX registers */
+/* SERDES RX registers */
 #define SERDES_RX_CTRL			1	/* Rx cntrl */
 #define SERDES_RX_TIMER1		2	/* Rx Timer1 */
 #define SERDES_RX_CDR			6	/* CDR */
 #define SERDES_RX_CDRBW			7	/* CDR BW */
 
-	/* SERDES RX control register */
+/* SERDES RX control register */
 #define SERDES_RX_CTRL_FORCE		0x80	/* rxpolarity_force */
 #define SERDES_RX_CTRL_POLARITY		0x40	/* rxpolarity_value */
 
-	/* SERDES PLL registers */
+/* SERDES PLL registers */
 #define SERDES_PLL_CTRL                 1	/* PLL control reg */
 #define PLL_CTRL_FREQDET_EN             0x4000	/* bit 14 is FREQDET on */
 
