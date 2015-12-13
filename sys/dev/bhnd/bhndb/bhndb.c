@@ -1209,7 +1209,9 @@ bhndb_activate_resource(device_t dev, device_t child, int type, int rid,
 	error = BHNDB_SET_WINDOW_ADDR(dev, dw_region->win, dw_region->target);
 	if (error) {
 		dw_region->target = 0x0;
-		goto failed;
+		BHNDB_DW_REGION_RELEASE(sc->bus_res, rnid);
+		BHNDB_UNLOCK(sc);
+		return (error);
 	}
 
 	BHNDB_UNLOCK(sc);
