@@ -59,15 +59,35 @@ static const struct resource_spec bhnd_pci_hostb_rspec[BHND_PCIB_MAX_RSPEC] = {
 };
 
 static const struct bhnd_hostb_device {
-	uint16_t	 vendor;
-	uint16_t	 device;
-	const char	*desc;
+	uint16_t		 vendor;
+	uint16_t		 device;
+	bhndb_pcib_rdefs_t	 rdefs;
+	const char		*desc;
 } bhnd_hostb_devs[] = {
-	{ BHND_MFGID_BCM,	BHND_COREID_PCI,	"Broadcom PCI-BHND host bridge" },
-	{ BHND_MFGID_BCM,	BHND_COREID_PCIE,	"Broadcom PCIe-G1 PCI-BHND host bridge" },
-	{ BHND_MFGID_BCM,	BHND_COREID_PCIE2,	"Broadcom PCIe-G2 PCI-BHND host bridge" },
-	{ BHND_MFGID_INVALID,	BHND_COREID_INVALID,	NULL }
+	{ BHND_MFGID_BCM,	BHND_COREID_PCI,	BHNDB_PCIB_RDEFS_PCI,
+	    "Broadcom PCI-BHND host bridge" },
+	{ BHND_MFGID_BCM,	BHND_COREID_PCIE,	BHNDB_PCIB_RDEFS_PCIE,
+	    "Broadcom PCIe-G1 PCI-BHND host bridge" },
+	{ BHND_MFGID_BCM,	BHND_COREID_PCIE2,	BHNDB_PCIB_RDEFS_PCIE,
+	    "Broadcom PCIe-G2 PCI-BHND host bridge" },
+	{ BHND_MFGID_INVALID,	BHND_COREID_INVALID,	BHNDB_PCIB_RDEFS_PCI,
+	    NULL }
 };
+
+static const struct bhnd_hostb_device *
+find_dev_entry(device_t dev)
+{
+	const struct bhnd_hostb_device *id;
+
+	for (id = bhnd_hostb_devs; id->device != BHND_COREID_INVALID; id++) {
+		if (bhnd_get_vendor(dev) == id->vendor &&
+		    bhnd_get_device(dev) != id->device)
+			return (id);
+
+	}
+
+	return (NULL);
+}
 
 static int
 bhnd_pci_hostb_probe(device_t dev)
@@ -78,44 +98,46 @@ bhnd_pci_hostb_probe(device_t dev)
 	if (!bhnd_is_hostb_device(dev))
 		return (ENXIO);
 
-	for (id = bhnd_hostb_devs; id->device != BHND_COREID_INVALID; id++) {
-		if (bhnd_get_vendor(dev) != id->vendor)
-			continue;
+	if ((id = find_dev_entry(dev)) == NULL)
+		return (ENXIO);
 
-		if (bhnd_get_device(dev) != id->device)
-			continue;
-
-		device_set_desc(dev, id->desc);
-		return (BUS_PROBE_SPECIFIC);
-	}
-
-	return (ENXIO);
+	device_set_desc(dev, id->desc);
+	return (BUS_PROBE_DEFAULT);
 }
 
 static int
 bhnd_pci_hostb_attach(device_t dev)
 {
-	struct bhnd_pcib_softc	*sc;
-	struct bhnd_resource	*r;
-	int			 error;
+	const struct bhnd_hostb_device	*id;
+	struct bhnd_pcib_softc		*sc;
+	struct bhnd_resource		*r;
+	int				 error;
+
+	sc = device_get_softc(dev);
+	id = find_dev_entry(dev);
+
+	KASSERT(id != NULL, ("device entry went missing"));
+	sc->rdefs = id->rdefs;
 
 	/* We can't support the PCIe Gen 2 cores until we get development
 	 * hardware */
-	if (bhnd_get_device(dev) == BHND_COREID_PCIE2) {
+	if (id->vendor == BHND_MFGID_BCM && id->device == BHND_COREID_PCIE2) {
 		device_printf(dev, "PCIe-Gen2 core support unimplemented "
 		    "unsupported\n");
 		return (ENXIO);
 	}
 
-	sc = device_get_softc(dev);
+	/* Allocate core registers */
 	memcpy(sc->rspec, bhnd_pci_hostb_rspec, sizeof(sc->rspec));
-
 	if ((error = bhnd_alloc_resources(dev, sc->rspec, sc->res)))
 		return (error);
 
+	/* Quirks */
 	// TODO - Quirks
 	r = sc->res[0];
 	device_printf(dev, "got rid=%d res=%p\n", sc->rspec[0].rid, r);
+
+	return (BHND_PCIB_COMMON_REG(sc, SRSH_PI_OFFSET));
 
 	return (0);
 }

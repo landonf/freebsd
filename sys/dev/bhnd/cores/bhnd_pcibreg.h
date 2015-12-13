@@ -22,8 +22,8 @@
  * $FreeBSD$
  */
 
-#ifndef	_BHND_CORES_PCIREG_H_
-#define	_BHND_CORES_PCIREG_H_
+#ifndef _BHND_CORES_PCIBREG_H_
+#define _BHND_CORES_PCIBREG_H_
 
 /*
  * PCI Core Registers
@@ -119,4 +119,4 @@
 #define	BHND_PCI_SRSH_PI_MASK		0xf000	/* bit 15:12 */
 #define	BHND_PCI_SRSH_PI_SHIFT		12	/* bit 15:12 */
 
-#endif				/* _BHND_CORES_PCIREG_H_ */
+#endif /* _BHND_CORES_PCIBREG_H_ */

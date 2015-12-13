@@ -35,9 +35,31 @@
 #define	BHND_PCIB_MAX_RES	2
 #define	BHND_PCIB_MAX_RSPEC	(BHND_PCIB_MAX_RES+1)
 
+/* Device register definitions */
+typedef enum {
+	BHNDB_PCIB_RDEFS_PCI	= 0,	/* PCI register definitions */
+	BHNDB_PCIB_RDEFS_PCIE	= 1,	/* PCIe-Gen1 register definitions */
+} bhndb_pcib_rdefs_t;
+
 struct bhnd_pcib_softc {
-	struct resource_spec	rspec[BHND_PCIB_MAX_RSPEC];
+	struct resource_spec	 rspec[BHND_PCIB_MAX_RSPEC];
 	struct bhnd_resource	*res[BHND_PCIB_MAX_RES];
+
+	bhndb_pcib_rdefs_t	 rdefs;	/**< device register definitions */
 };
 
-#endif /* _BHND_CORES_CHIPC_H_ */
+/**
+ * Evaluates to the offset of a common PCI/PCIe register definition. 
+ * 
+ * This will trigger a compile-time error if the register is not defined
+ * for all supported PCI/PCIe cores.
+ * 
+ * This should be optimized down to a constant value if the register constant
+ * is the same across the register definitions.
+ */
+#define	BHND_PCIB_COMMON_REG(_sc, _name)	(			\
+	(_sc)->rdefs == BHNDB_PCIB_RDEFS_PCI ? BHND_PCI_ ## _name :	\
+	BHND_PCIE_ ## _name						\
+)
+
+#endif /* _BHND_CORES_PCIBVAR_H_ */
