@@ -95,6 +95,9 @@ bhndb_pci_attach(device_t dev)
 	sc = device_get_softc(dev);
 	sc->dev = dev;
 
+	/* Enable PCI bus mastering */
+	pci_enable_busmaster(device_get_parent(dev));
+
 	/* Determine our bridge device class */
 	sc->pci_devclass = BHND_DEVCLASS_PCI;
 	if (pci_find_cap(device_get_parent(dev), PCIY_EXPRESS, &reg) == 0)
@@ -138,6 +141,9 @@ bhndb_pci_detach(device_t dev)
 		device_printf(dev, "failed to disable clocks\n");
 		return (error);
 	}
+
+	/* Disable PCI bus mastering */
+	pci_disable_busmaster(device_get_parent(dev));
 
 	return (0);
 }
