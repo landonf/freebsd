@@ -1129,7 +1129,7 @@ dev/bhnd/siba/siba_subr.c	optional bhndbus | siba
 #
 # bhnd core drivers
 dev/bhnd/cores/bhnd_chipc.c	optional bhndbus | bhnd_chipc
-dev/bhnd/cores/bhnd_pcib.c	optional bhndbus pci | bhnd_pcib pci
+dev/bhnd/cores/bhnd_pcib.c	optional bhndbus pci | bhnd_soc pci
 dev/bhnd/cores/bhnd_pci_hostb.c	optional bhndbus pci | bhnd_hostb bhndb pci
 #
 dev/bktr/bktr_audio.c		optional bktr pci
