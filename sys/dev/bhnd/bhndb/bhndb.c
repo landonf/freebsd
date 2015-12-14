@@ -1475,7 +1475,7 @@ bhndb_activate_bhnd_resource(device_t dev, device_t child,
 	}
 
 	if (BHNDB_DEBUG(PRIO)) {
-		device_printf(child, "activated 0x%llx+0x%llx as %s "
+		device_printf(child, "activated 0x%llx-0x%llx as %s "
 		    "resource\n",
 		    (unsigned long long) r_start, 
 		    (unsigned long long) r_start + r_size - 1,
