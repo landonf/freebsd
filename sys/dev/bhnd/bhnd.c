@@ -369,8 +369,10 @@ bhnd_generic_print_child(device_t dev, device_t child)
 	retval += bus_print_child_header(dev, child);
 
 	rl = BUS_GET_RESOURCE_LIST(dev, child);
-	if (rl != NULL)
-		retval += resource_list_print_type(rl, "mem", SYS_RES_MEMORY, "%#lx");
+	if (rl != NULL) {
+		retval += resource_list_print_type(rl, "mem", SYS_RES_MEMORY,
+		    "%#lx");
+	}
 
 	retval += printf(" at core %u", bhnd_get_core_index(child));
 
@@ -419,7 +421,8 @@ bhnd_generic_probe_nomatch(device_t dev, device_t child)
 	if (rl != NULL)
 		resource_list_print_type(rl, "mem", SYS_RES_MEMORY, "%#lx");
 
-	printf(" at core %u (no driver attached)\n", bhnd_get_core_index(child));
+	printf(" at core %u (no driver attached)\n",
+	    bhnd_get_core_index(child));
 }
 
 /**
@@ -609,8 +612,10 @@ bhnd_generic_release_bhnd_resource(device_t dev, device_t child, int type,
 		    type, rid, r));
 
 	/* Release the resource directly */
-	if (!r->direct)
-		panic("bhnd indirect resource released without bhnd parent bus");
+	if (!r->direct) {
+		panic("bhnd indirect resource released without "
+		    "bhnd parent bus");
+	}
 
 	error = BUS_RELEASE_RESOURCE(dev, child, type, rid, r->res);
 	if (error)
@@ -639,8 +644,10 @@ bhnd_generic_activate_bhnd_resource(device_t dev, device_t child, int type,
 		    type, rid, r));
 
 	/* Activate the resource directly */
-	if (!r->direct)
-		panic("bhnd indirect resource activated without bhnd parent bus");
+	if (!r->direct) {
+		panic("bhnd indirect resource released without "
+		    "bhnd parent bus");
+	}
 
 	return (BUS_ACTIVATE_RESOURCE(dev, child, type, rid, r->res));
 };
@@ -663,8 +670,10 @@ bhnd_generic_deactivate_bhnd_resource(device_t dev, device_t child, int type,
 		    type, rid, r));
 
 	/* De-activate the resource directly */
-	if (!r->direct)
-		panic("bhnd indirect resource deactivated without bhnd parent bus");
+	if (!r->direct) {
+		panic("bhnd indirect resource released without "
+		    "bhnd parent bus");
+	}
 
 	return (BUS_DEACTIVATE_RESOURCE(dev, child, type, rid, r->res));
 };
