@@ -475,6 +475,9 @@ bhnd_child_location_str(device_t dev, device_t child, char *buf,
  * Helper function for implementing BUS_SUSPEND_CHILD().
  *
  * TODO: Power management
+ * 
+ * If @p child is not a direct child of @p dev, suspension is delegated to
+ * the @p dev parent.
  */
 int
 bhnd_generic_suspend_child(device_t dev, device_t child)
@@ -489,6 +492,9 @@ bhnd_generic_suspend_child(device_t dev, device_t child)
  * Helper function for implementing BUS_RESUME_CHILD().
  *
  * TODO: Power management
+ * 
+ * If @p child is not a direct child of @p dev, suspension is delegated to
+ * the @p dev parent.
  */
 int
 bhnd_generic_resume_child(device_t dev, device_t child)
