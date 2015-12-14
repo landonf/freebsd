@@ -246,6 +246,10 @@ bhndb_pci_fast_setregwin(struct bhndb_pci_softc *sc,
 
 	switch (rw->win_type) {
 	case BHNDB_REGWIN_T_DYN:
+		/* Addresses must be page aligned */
+		if (addr % rw->win_size != 0)
+			return (EINVAL);
+
 		pci_write_config(parent, rw->dyn.cfg_offset, addr, 4);
 		break;
 	default:
