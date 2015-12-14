@@ -1161,10 +1161,15 @@ bhndb_activate_static_region(struct bhndb_softc *sc,
  * @param size The number of bytes to be mapped at @p addr.
  * @param r A resource to be mapped via a dynamic register window.
  * @param[out] region On success, the allocated region.
+ * @param[out] indirect On error and if not NULL, will be set to 'true' if the
+ * caller should instead use an indirect resource mapping.
+ *
+ * @retval 0 success
+ * @retval non-zero no usable register window available.
  */
 static int
 bhndb_set_dwr_target(struct bhndb_softc *sc, struct bhndb_dw_region *dw_region,
-    bus_addr_t addr, bus_size_t size)
+    bus_addr_t addr, bus_size_t size, bool *indirect)
 {
 	const struct bhndb_regwin	*rw;
 	u_long				 offset;
@@ -1173,14 +1178,21 @@ bhndb_set_dwr_target(struct bhndb_softc *sc, struct bhndb_dw_region *dw_region,
 	BHNDB_LOCK_ASSERT(sc, MA_OWNED);
 
 	rw = dw_region->win;
+	if (indirect != NULL)
+		*indirect = false;
 
 	/* Page-align the region target address */
 	offset = addr % rw->win_size;
 	dw_region->target = addr - offset;
 
 	/* Verify that the window is large enough for the full target */
-	if (rw->win_size - offset < size)
+	if (rw->win_size - offset < size) {
+		/* The caller can still use indirect mapping */
+		if (indirect != NULL)
+			*indirect = true;
+
 		return (ENOMEM);
+	}
 	
 	/* Update the window target */
 	error = BHNDB_SET_WINDOW_ADDR(sc->dev, dw_region->win,
@@ -1193,11 +1205,24 @@ bhndb_set_dwr_target(struct bhndb_softc *sc, struct bhndb_dw_region *dw_region,
 	return (0);
 }
 
+/**
+ * Activate a resource using any viable static or dynamic register window.
+ * 
+ * @param sc The bhndb driver state.
+ * @param child The child holding ownership of @p r.
+ * @param type The type of the resource to be activated.
+ * @param rid The resource ID of @p r.
+ * @param r The resource to be activated
+ * @param[out] indirect On error and if not NULL, will be set to 'true' if
+ * the caller should instead use an indirect resource mapping.
+ * 
+ * @retval 0 success
+ * @retval non-zero activation failed.
+ */
 static int
-bhndb_activate_resource(device_t dev, device_t child, int type, int rid,
-    struct resource *r)
+bhndb_try_activate_resource(struct bhndb_softc *sc, device_t child, int type,
+    int rid, struct resource *r, bool *indirect)
 {
-	struct bhndb_softc	*sc;
 	struct bhndb_region	*region;
 	struct bhndb_dw_region	*dw_region;
 	bhndb_priority_t	 dw_priority;
@@ -1206,12 +1231,13 @@ bhndb_activate_resource(device_t dev, device_t child, int type, int rid,
 	int			 rnid;
 	int			 error;
 
-	sc = device_get_softc(dev);
-
 	// TODO - IRQs
 	if (type != SYS_RES_MEMORY)
 		return (ENXIO);
 	
+	if (indirect != NULL)
+		*indirect = false;
+
 	/* Default to low priority */
 	dw_priority = BHNDB_PRIORITY_LOW;
 
@@ -1231,8 +1257,12 @@ bhndb_activate_resource(device_t dev, device_t child, int type, int rid,
 
 	/* A dynamic window will be required; is this resource high enough
 	 * priority to be reserved a dynamic window? */
-	if (dw_priority < sc->bus_res->min_prio)
+	if (dw_priority < sc->bus_res->min_prio) {
+		if (indirect != NULL)
+			*indirect = true;
+
 		return (ENOMEM);
+	}
 
 	/* Find and claim next free window */
 	BHNDB_LOCK(sc); {
@@ -1248,7 +1278,7 @@ bhndb_activate_resource(device_t dev, device_t child, int type, int rid,
 		
 		/* Set the region target */
 		error = bhndb_set_dwr_target(sc, dw_region, rman_get_start(r),
-		    rman_get_size(r));
+		    rman_get_size(r), indirect);
 		if (error) {
 			BHNDB_UNLOCK(sc);
 			BHNDB_DW_REGION_RELEASE(sc->bus_res, rnid);
@@ -1279,6 +1309,25 @@ failed:
 	BHNDB_UNLOCK(sc);
 
 	return (error);
+}
+
+/**
+ * Implementation of BUS_ACTIVATE_RESOURCE() that maps resources to any usable
+ * static or dynamic register window.
+ * 
+ *  * @param[out] indirect On error, will be set to 'true' if the caller should
+ * instead use an indirect resource mapping.
+ * 
+ * @retval 0 success
+ * @retval non-zero activation failed.
+ */
+static int
+bhndb_activate_resource(device_t dev, device_t child, int type, int rid,
+    struct resource *r)
+{
+	struct bhndb_softc *sc = device_get_softc(dev);
+
+	return (bhndb_try_activate_resource(sc, child, type, rid, r, NULL));
 }
 
 static int
@@ -1376,6 +1425,7 @@ bhndb_activate_bhnd_resource(device_t dev, device_t child,
 	bhndb_priority_t	 r_prio;
 	u_long			 r_start, r_size;
 	int 			 error;
+	bool			 indirect;
 
 	KASSERT(!r->direct,
 	    ("direct flag set on inactive resource"));
@@ -1399,10 +1449,17 @@ bhndb_activate_bhnd_resource(device_t dev, device_t child,
 	if (r_prio < sc->bus_res->min_prio)
 		return (0);
 
-	/* Perform direct activation */
-	error = bus_activate_resource(child, type, rid, r->res);
-	if (!error)
+	/* Attempt direct activation */
+	error = bhndb_try_activate_resource(sc, child, type, rid, r->res,
+	    &indirect);
+	if (!error) {
 		r->direct = true;
+	} else if (indirect) {
+		/* The request was valid, but no viable register window is
+		 * available; indirection must be employed. */
+		error = 0;
+		r->direct = false;
+	}
 
 	return (error);
 };
@@ -1511,8 +1568,12 @@ bhndb_io_resource(struct bhndb_softc *sc, bus_addr_t addr, bus_size_t size,
 	 */
 	if (BHNDB_DW_REGION_EXHAUSTED(br)) {
 		parent_res = bhndb_io_resource_slow(sc, addr, size, offset);
-		if (parent_res == NULL)
-			panic("driver bug - register windows exhausted\n");
+		if (parent_res == NULL) {
+			panic("register windows exhausted attempting to map "
+			    "0x%llx-0x%llx\n", 
+			    (unsigned long long) addr,
+			    (unsigned long long) addr+size-1);
+		}
 
 		return (parent_res);
 	}
@@ -1526,8 +1587,12 @@ bhndb_io_resource(struct bhndb_softc *sc, bus_addr_t addr, bus_size_t size,
 	if (addr < dwr->target || 
 	   (dwr->target + dwr->win->win_size) - addr < size)
 	{
-		if ((error = bhndb_set_dwr_target(sc, dwr, addr, size)))
-		    panic("failed to set window target: %d", error);
+		if ((error = bhndb_set_dwr_target(sc, dwr, addr, size, NULL))) {
+		    panic("failed to set register window target mapping "
+			    "0x%llx-0x%llx\n", 
+			    (unsigned long long) addr,
+			    (unsigned long long) addr+size-1);
+		}
 	}
 
 	/* Calculate the offset and return */
