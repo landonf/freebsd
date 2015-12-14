@@ -1235,7 +1235,7 @@ bhndb_try_activate_resource(struct bhndb_softc *sc, device_t child, int type,
 	if (type != SYS_RES_MEMORY)
 		return (ENXIO);
 	
-	if (indirect != NULL)
+	if (indirect)
 		*indirect = false;
 
 	/* Default to low priority */
@@ -1252,13 +1252,18 @@ bhndb_try_activate_resource(struct bhndb_softc *sc, device_t child, int type,
 	if (region && region->static_regwin) {
 		error = bhndb_activate_static_region(sc, region, child, type,
 		    rid, r);
+		if (error)
+			device_printf(sc->dev, "static window allocation "
+			     "for 0x%llx-0x%llx failed\n",
+			     (unsigned long long) r_start,
+			     (unsigned long long) r_start + r_size - 1);
 		return (error);
 	}
 
 	/* A dynamic window will be required; is this resource high enough
 	 * priority to be reserved a dynamic window? */
 	if (dw_priority < sc->bus_res->min_prio) {
-		if (indirect != NULL)
+		if (indirect)
 			*indirect = true;
 
 		return (ENOMEM);
@@ -1268,6 +1273,9 @@ bhndb_try_activate_resource(struct bhndb_softc *sc, device_t child, int type,
 	BHNDB_LOCK(sc); {
 		if (BHNDB_DW_REGION_EXHAUSTED(sc->bus_res)) {
 			BHNDB_UNLOCK(sc);
+			if (indirect)
+				*indirect = true;
+
 			return (ENOMEM);
 		}
 
@@ -1282,6 +1290,11 @@ bhndb_try_activate_resource(struct bhndb_softc *sc, device_t child, int type,
 		if (error) {
 			BHNDB_UNLOCK(sc);
 			BHNDB_DW_REGION_RELEASE(sc->bus_res, rnid);
+			device_printf(sc->dev, "dynamic window initialization "
+			     "for 0x%llx-0x%llx failed\n",
+			     (unsigned long long) r_start,
+			     (unsigned long long) r_start + r_size - 1);
+			
 			return (error);
 		}
 	} BHNDB_UNLOCK(sc);
