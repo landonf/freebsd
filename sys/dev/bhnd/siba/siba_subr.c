@@ -201,6 +201,11 @@ siba_alloc_dinfo(device_t bus, const struct siba_core_id *core_id)
 
 	dinfo->core_id = *core_id;
 
+	for (u_int i = 0; i < sizeof(dinfo->cfg)/sizeof(dinfo->cfg[0]); i++) {
+		dinfo->cfg[i] = NULL;
+		dinfo->cfg_rid[i] = -1;
+	}
+
 	siba_init_port(&dinfo->device_port, BHND_PORT_DEVICE, 0);
 	resource_list_init(&dinfo->resources);
 
@@ -232,6 +237,27 @@ siba_dinfo_get_port(struct siba_devinfo *dinfo, bhnd_port_type port_type,
 	case BHND_PORT_AGENT:
 		return (NULL);
 	}
+}
+
+
+/**
+ * Find an address space with @p sid on @p port.
+ * 
+ * @param port The port to search for a matching address space.
+ * @param sid The siba-assigned address space ID to search for.
+ */
+struct siba_addrspace *
+siba_find_port_addrspace(struct siba_port *port, uint8_t sid)
+{
+	struct siba_addrspace	*addrspace;
+
+	STAILQ_FOREACH(addrspace, &port->sp_addrs, sa_link) {
+		if (addrspace->sa_sid == sid)
+			return (addrspace);
+	}
+
+	/* not found */
+	return (NULL);
 }
 
 /**
@@ -300,14 +326,28 @@ siba_append_dinfo_region(struct siba_devinfo *dinfo, bhnd_port_type port_type,
 /**
  * Deallocate the given device info structure and any associated resources.
  * 
+ * @param dev The requesting bus device.
  * @param dinfo Device info to be deallocated.
  */
 void
-siba_free_dinfo(struct siba_devinfo *dinfo)
+siba_free_dinfo(device_t dev, struct siba_devinfo *dinfo)
 {
 	siba_release_port(&dinfo->device_port);
 	
 	resource_list_free(&dinfo->resources);
+
+	/* Free all mapped configuration blocks */
+	for (u_int i = 0; i < sizeof(dinfo->cfg)/sizeof(dinfo->cfg[0]); i++) {
+		if (dinfo->cfg[i] == NULL)
+			continue;
+
+		bhnd_release_resource(dev, SYS_RES_MEMORY, dinfo->cfg_rid[i],
+		    dinfo->cfg[i]);
+
+		dinfo->cfg[i] = NULL;
+		dinfo->cfg_rid[i] = -1;
+	}
+
 	free(dinfo, M_BHND);
 }
 

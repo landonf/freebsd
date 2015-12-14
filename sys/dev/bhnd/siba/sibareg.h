@@ -68,9 +68,6 @@
  * [0x0f00-0x0fff]	SIBA_R0 registers
  */
 
-#define	SIBA_CFG_NUM_2_2	1	/**< sonics <= 2.2 maps SIBA_CFG0. */
-#define	SIBA_CFG_NUM_2_3	2	/**< sonics <= 2.3 maps SIBA_CFG0 and SIBA_CFG1 */
-
 #define	SIBA_CFG0_OFFSET	0xf00	/**< first configuration block */
 #define	SIBA_CFG1_OFFSET	0xe00	/**< second configuration block (sonics >= 2.3) */
 

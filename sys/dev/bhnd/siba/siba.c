@@ -54,6 +54,77 @@ siba_probe(device_t dev)
 int
 siba_attach(device_t dev)
 {
+	struct siba_devinfo	*dinfo;
+	device_t		*devs;
+	int			 ndevs;
+	int			 error;
+
+	/* Fetch references to the siba SIBA_CFG* blocks for all
+	 * registered devices */
+	if ((error = device_get_children(dev, &devs, &ndevs)))
+		return (error);
+
+	for (int i = 0; i < ndevs; i++) {
+		struct siba_addrspace	*addrspace;
+		struct siba_port	*port;
+
+		dinfo = device_get_ivars(devs[i]);
+
+		/* Fetch the core register address space */
+		port = siba_dinfo_get_port(dinfo, BHND_PORT_DEVICE, 0);
+		if (port == NULL) {
+			error = ENXIO;
+			goto cleanup;
+		}
+
+		addrspace = siba_find_port_addrspace(port, SIBA_ADDRSPACE_CORE);
+		if (addrspace == NULL) {
+			error = ENXIO;
+			goto cleanup;
+		}
+
+		/*
+		 * Map the per-core configuration blocks
+		 */
+		KASSERT(dinfo->core_id.num_cfg_blocks <= SIBA_CFG_NUM_MAX,
+		    ("config block count %u out of range", 
+		        dinfo->core_id.num_cfg_blocks));
+
+		for (u_int cfgidx = 0; cfgidx < dinfo->core_id.num_cfg_blocks;
+		    cfgidx++)
+		{
+			u_long	r_start, r_count, r_end;
+
+			/* Determine the config block's address range; configuration
+			 * blocks are allocated starting at SIBA_CFG0_OFFSET,
+			 * growing downwards. */
+			r_start = addrspace->sa_base + SIBA_CFG0_OFFSET;
+			r_start -= cfgidx * SIBA_CFG_SIZE;
+
+			r_count = SIBA_CFG_SIZE;
+			r_end = r_start + r_count - 1;
+
+			/* Allocate the config resource */
+			dinfo->cfg_rid[cfgidx] = 0;
+			dinfo->cfg[cfgidx] = bhnd_alloc_resource(dev,
+			    SYS_RES_MEMORY, &dinfo->cfg_rid[cfgidx], r_start,
+			    r_end, r_count, RF_ACTIVE);
+	
+			if (dinfo->cfg[cfgidx] == NULL) {
+			     device_printf(dev, "failed allocating CFG_%u for "
+			     "core %d\n", cfgidx, i);
+			     error = ENXIO;
+			     goto cleanup;
+			}
+		};
+	}
+
+cleanup:
+	free(devs, M_BHND);
+	if (error)
+		return (error);
+
+	/* Delegate remainder to standard bhnd method implementation */
 	return (bhnd_generic_attach(dev));
 }
 
@@ -125,7 +196,7 @@ siba_child_deleted(device_t dev, device_t child)
 {
 	struct siba_devinfo *dinfo = device_get_ivars(child);
 	if (dinfo != NULL)
-		siba_free_dinfo(dinfo);
+		siba_free_dinfo(dev, dinfo);
 }
 
 static struct resource_list *
@@ -473,7 +544,7 @@ cleanup:
 		free(cores, M_BHND);
 
 	if (dinfo != NULL)
-		siba_free_dinfo(dinfo);
+		siba_free_dinfo(dev, dinfo);
 
 	if (r != NULL)
 		bus_release_resource(dev, SYS_RES_MEMORY, rid, r);

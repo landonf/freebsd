@@ -45,6 +45,7 @@
  * Internal definitions shared by siba(4) driver implementations.
  */
 
+struct siba_addrspace;
 struct siba_devinfo;
 struct siba_port;
 struct siba_core_id;
@@ -64,10 +65,14 @@ int			 siba_add_children(device_t bus,
 
 struct siba_devinfo	*siba_alloc_dinfo(device_t dev,
 			     const struct siba_core_id *core_id);
-void			 siba_free_dinfo(struct siba_devinfo *dinfo);
+void			 siba_free_dinfo(device_t dev,
+			     struct siba_devinfo *dinfo);
 
 struct siba_port	*siba_dinfo_get_port(struct siba_devinfo *dinfo,
 			     bhnd_port_type port_type, u_int port_num);
+
+struct siba_addrspace	*siba_find_port_addrspace(struct siba_port *port,
+			     uint8_t sid);
 
 int			 siba_append_dinfo_region(struct siba_devinfo *dinfo,
 			     bhnd_port_type port_type, u_int port_num,
@@ -77,6 +82,12 @@ int			 siba_append_dinfo_region(struct siba_devinfo *dinfo,
 u_int			 siba_admatch_offset(uint8_t addrspace);
 int			 siba_parse_admatch(uint32_t am, uint32_t *addr,
 			     uint32_t *size);
+
+/* Sonics configuration register blocks */
+#define	SIBA_CFG_NUM_2_2	1			/**< sonics <= 2.2 maps SIBA_CFG0. */
+#define	SIBA_CFG_NUM_2_3	2			/**< sonics <= 2.3 maps SIBA_CFG0 and SIBA_CFG1 */
+#define	SIBA_CFG_NUM_MAX	SIBA_CFG_NUM_2_3	/**< maximum number of supported config
+							     register blocks */
 
 /** siba(4) address space descriptor */
 struct siba_addrspace {
@@ -117,12 +128,18 @@ struct siba_core_id {
  * siba(4) per-device info
  */
 struct siba_devinfo {
-	struct resource_list	resources;	/**< per-core memory regions. */
-	struct siba_core_id	core_id;	/**< core identification info */
+	struct resource_list	 resources;	/**< per-core memory regions. */
+	struct siba_core_id	 core_id;	/**< core identification info */
 
-	struct siba_port	device_port;	/**< device port holding ownership
+	struct siba_port	 device_port;	/**< device port holding ownership
 						 *   of all siba address space
 						 *   entries for this core. */
+
+	/** SIBA_CFG* register blocks */
+	struct bhnd_resource	*cfg[SIBA_CFG_NUM_MAX];
+
+	/** SIBA_CFG* resource IDs */
+	int			 cfg_rid[SIBA_CFG_NUM_MAX];
 };
 
 
