@@ -472,6 +472,34 @@ bhnd_child_location_str(device_t dev, device_t child, char *buf,
 }
 
 /**
+ * Helper function for implementing BUS_SUSPEND_CHILD().
+ *
+ * TODO: Power management
+ */
+int
+bhnd_generic_suspend_child(device_t dev, device_t child)
+{
+	if (device_get_parent(child) != dev)
+		BUS_SUSPEND_CHILD(device_get_parent(dev), child);
+
+	return bus_generic_suspend_child(dev, child);
+}
+
+/**
+ * Helper function for implementing BUS_RESUME_CHILD().
+ *
+ * TODO: Power management
+ */
+int
+bhnd_generic_resume_child(device_t dev, device_t child)
+{
+	if (device_get_parent(child) != dev)
+		BUS_RESUME_CHILD(device_get_parent(dev), child);
+
+	return bus_generic_resume_child(dev, child);
+}
+
+/**
  * Helper function for implementing BHND_IS_HOSTB_DEVICE().
  * 
  * If a parent device is available, this implementation delegates the
@@ -747,6 +775,9 @@ static device_method_t bhnd_methods[] = {
 	DEVMETHOD(bus_print_child,		bhnd_generic_print_child),
 	DEVMETHOD(bus_child_pnpinfo_str,	bhnd_child_pnpinfo_str),
 	DEVMETHOD(bus_child_location_str,	bhnd_child_location_str),
+
+	DEVMETHOD(bus_suspend_child,		bhnd_generic_suspend_child),
+	DEVMETHOD(bus_resume_child,		bhnd_generic_resume_child),
 
 	DEVMETHOD(bus_set_resource,		bus_generic_rl_set_resource),
 	DEVMETHOD(bus_get_resource,		bus_generic_rl_get_resource),

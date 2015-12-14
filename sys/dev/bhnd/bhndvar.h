@@ -66,6 +66,10 @@ int			 bhnd_generic_print_child(device_t dev,
 void			 bhnd_generic_probe_nomatch(device_t dev,
 			     device_t child);
 
+int			 bhnd_generic_suspend_child(device_t dev,
+			     device_t child);
+int			 bhnd_generic_resume_child(device_t dev,
+			     device_t child);
 	
 bool			 bhnd_generic_is_hostb_device(device_t dev,
 			     device_t child);
