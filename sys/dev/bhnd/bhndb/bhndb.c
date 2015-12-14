@@ -1615,7 +1615,7 @@ bhndb_io_resource(struct bhndb_softc *sc, bus_addr_t addr, bus_size_t size,
 	}
 
 	/* Calculate the offset and return */
-	*offset = (addr - dwr->target) + dwr->win->win_size;
+	*offset = (addr - dwr->target) + dwr->win->win_offset;
 	return (dwr);
 }
 
