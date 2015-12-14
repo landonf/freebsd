@@ -58,8 +58,8 @@ __FBSDID("$FreeBSD$");
 #include "bhndb_private.h"
 
 /* Debugging flags */
-static u_int bhndb_debug = 0;
-TUNABLE_INT("hw.bhndb.debug_flags", &bhndb_debug);
+static u_long bhndb_debug = 0;
+TUNABLE_ULONG("hw.bhndb.debug", &bhndb_debug);
 
 enum {
 	BHNDB_DEBUG_PRIO = 1 << 0,
@@ -1472,6 +1472,14 @@ bhndb_activate_bhnd_resource(device_t dev, device_t child,
 		 * available; indirection must be employed. */
 		error = 0;
 		r->direct = false;
+	}
+
+	if (BHNDB_DEBUG(PRIO)) {
+		device_printf(child, "activated 0x%llx+0x%llx as %s "
+		    "resource\n",
+		    (unsigned long long) r_start, 
+		    (unsigned long long) r_start + r_size - 1,
+		    r->direct ? "direct" : "indirect");
 	}
 
 	return (error);
