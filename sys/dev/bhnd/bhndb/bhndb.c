@@ -1487,7 +1487,7 @@ bhndb_deactivate_bhnd_resource(device_t dev, device_t child,
 
 /* slow path for bhndb_io_resource; iterates over the existing allocated
  * dw_regions looking for a viable in-use region */
-static struct resource *
+static struct bhndb_dw_region *
 bhndb_io_resource_slow(struct bhndb_softc *sc, bus_addr_t addr,
     bus_size_t size, bus_size_t *offset)
 {
@@ -1521,9 +1521,8 @@ bhndb_io_resource_slow(struct bhndb_softc *sc, bus_addr_t addr,
 		*offset = dw_region->win->win_offset;
 		*offset += addr - dw_region->target;
 
-		return (dw_region->parent_res);
+		return (dw_region);
 	}
-
 
 	/* not found */
 	return (NULL);
@@ -1538,13 +1537,12 @@ bhndb_io_resource_slow(struct bhndb_softc *sc, bus_addr_t addr,
  * @param[out] offset The offset within the returned resource at which
  * to perform the I/O request.
  */
-static inline struct resource *
+static inline struct bhndb_dw_region *
 bhndb_io_resource(struct bhndb_softc *sc, bus_addr_t addr, bus_size_t size,
     bus_size_t *offset)
 {
 	struct bhndb_resources	*br;
 	struct bhndb_dw_region	*dwr;
-	struct resource		*parent_res;
 	u_int			 rnid;
 	int			 error;
 
@@ -1567,15 +1565,15 @@ bhndb_io_resource(struct bhndb_softc *sc, bus_addr_t addr, bus_size_t size,
 	 * current operation.
 	 */
 	if (BHNDB_DW_REGION_EXHAUSTED(br)) {
-		parent_res = bhndb_io_resource_slow(sc, addr, size, offset);
-		if (parent_res == NULL) {
+		dwr = bhndb_io_resource_slow(sc, addr, size, offset);
+		if (dwr == NULL) {
 			panic("register windows exhausted attempting to map "
 			    "0x%llx-0x%llx\n", 
 			    (unsigned long long) addr,
 			    (unsigned long long) addr+size-1);
 		}
 
-		return (parent_res);
+		return (dwr);
 	}
 
 	/* Fetch a free window */
@@ -1597,26 +1595,31 @@ bhndb_io_resource(struct bhndb_softc *sc, bus_addr_t addr, bus_size_t size,
 
 	/* Calculate the offset and return */
 	*offset = (addr - dwr->target) + dwr->win->win_size;
-	return (dwr->parent_res);
+	return (dwr);
 }
 
 /* bhndb_bus_(read|write) common implementation */
-#define	BHNDB_IO_COMMON(_io_size)				\
+#define	BHNDB_IO_COMMON_SETUP(_io_size)				\
 	struct bhndb_softc	*sc;				\
+	struct bhndb_dw_region	*dwr;				\
 	struct resource		*io_res;			\
 	bus_size_t		 io_offset;			\
 								\
 	sc = device_get_softc(dev);				\
 								\
 	BHNDB_LOCK(sc);						\
-	io_res = bhndb_io_resource(sc, rman_get_start(r->res) +	\
+	dwr = bhndb_io_resource(sc, rman_get_start(r->res) +	\
 	    offset, _io_size, &io_offset);			\
+	io_res = dwr->parent_res;				\
 								\
 	KASSERT(!r->direct,					\
 	    ("bhnd_bus slow path used for direct resource"));	\
 								\
 	KASSERT(rman_get_flags(io_res) & RF_ACTIVE,		\
 	    ("i/o resource is not active"));
+
+#define	BHNDB_IO_COMMON_TEARDOWN()				\
+	BHNDB_UNLOCK(sc);
 
 /* Defines a bhndb_bus_read_* method implementation */
 #define	BHNDB_IO_READ(_type, _size)				\
@@ -1625,9 +1628,9 @@ bhndb_bus_read_ ## _size (device_t dev, device_t child,		\
     struct bhnd_resource *r, bus_size_t offset)			\
 {								\
 	_type v;						\
-	BHNDB_IO_COMMON(sizeof(_type));				\
+	BHNDB_IO_COMMON_SETUP(sizeof(_type));			\
 	v = bus_read_ ## _size (io_res, io_offset);		\
-	BHNDB_UNLOCK(sc);					\
+	BHNDB_IO_COMMON_TEARDOWN();				\
 								\
 	return (v);						\
 }
@@ -1638,9 +1641,9 @@ static void							\
 bhndb_bus_write_ ## _size (device_t dev, device_t child,	\
     struct bhnd_resource *r, bus_size_t offset, _type value)	\
 {								\
-	BHNDB_IO_COMMON(sizeof(_type));				\
+	BHNDB_IO_COMMON_SETUP(sizeof(_type));			\
 	bus_write_ ## _size (io_res, io_offset, value);		\
-	BHNDB_UNLOCK(sc);					\
+	BHNDB_IO_COMMON_TEARDOWN();				\
 }
 
 BHNDB_IO_READ(uint8_t, 1);
@@ -1657,7 +1660,7 @@ bhndb_bus_barrier(device_t dev, device_t child, struct bhnd_resource *r,
 {
 	bus_size_t remain;
 
-	BHNDB_IO_COMMON(length);
+	BHNDB_IO_COMMON_SETUP(length);
 
 	/* TODO: It's unclear whether we need a barrier implementation,
 	 * and if we do, what it needs to actually do. This may need
@@ -1674,7 +1677,7 @@ bhndb_bus_barrier(device_t dev, device_t child, struct bhnd_resource *r,
 	for (bus_size_t i = 0; i < remain; i++)
 		bus_read_1(io_res, io_offset + offset + length + i);
 
-	BHNDB_UNLOCK(sc);
+	BHNDB_IO_COMMON_TEARDOWN();
 }
 
 static int
