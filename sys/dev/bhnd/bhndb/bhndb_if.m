@@ -158,7 +158,7 @@ METHOD void suspend_resource {
  * @param type The resource type.
  * @param r The resource to be suspended.
  */
-METHOD void resume_resource {
+METHOD int resume_resource {
 	device_t dev;
 	device_t child;
 	int type;

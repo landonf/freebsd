@@ -85,15 +85,6 @@ siba_attach(device_t dev)
 
 		/*
 		 * Map the per-core configuration blocks
-		 * 
-		 * TODO: These currently consume a direct register window
-		 * allocation on the bhndb bridge, preventing the actual
-		 * device drivers from acquiring direct allocations.
-		 * 
-		 * We'll need to modify bhndb to support this use-case, either
-		 * by:
-		 * - Supporting explicit requests for indirect allocations, or
-		 * - Refcounting allocations that target a common window.
 		 */
 		KASSERT(dinfo->core_id.num_cfg_blocks <= SIBA_CFG_NUM_MAX,
 		    ("config block count %u out of range", 

@@ -92,6 +92,11 @@ static int			 bhndb_activate_static_region(
 				     device_t child, int type, int rid,
 				     struct resource *r);
 
+static int			 bhndb_try_activate_resource(
+				     struct bhndb_softc *sc, device_t child,
+				     int type, int rid, struct resource *r,
+				     bool *indirect);
+
 /** 
  * Default bhndb implementation of device_probe().
  */
@@ -685,6 +690,61 @@ bhndb_generic_resume(device_t dev)
 	return (bus_generic_resume(dev));
 }
 
+static void
+bhndb_suspend_resource(device_t dev, device_t child, int type,
+    struct resource *r)
+{
+	struct bhndb_softc	*sc;
+	struct bhndb_dw_alloc	*dwa;
+
+	sc = device_get_softc(dev);
+
+	// TODO: IRQs?
+	if (type != SYS_RES_MEMORY)
+		return;
+
+	BHNDB_LOCK(sc);
+	dwa = bhndb_dw_find_resource(sc->bus_res, r);
+	if (dwa == NULL) {
+		BHNDB_UNLOCK(sc);
+		return;
+	}
+
+	if (BHNDB_DEBUG(PRIO))
+		device_printf(child, "suspend resource type=%d 0x%lx+0x%lx\n",
+		    type, rman_get_start(r), rman_get_size(r));
+
+	/* Release the resource's window reference */
+	bhndb_dw_release(sc->bus_res, dwa, r);
+	BHNDB_UNLOCK(sc);
+}
+
+
+static int
+bhndb_resume_resource(device_t dev, device_t child, int type,
+    struct resource *r)
+{
+	struct bhndb_softc	*sc;
+
+	sc = device_get_softc(dev);
+
+	// TODO: IRQs?
+	if (type != SYS_RES_MEMORY)
+		return (0);
+
+	/* Inactive resources don't require reallocation of bridge resources */
+	if (!(rman_get_flags(r) & RF_ACTIVE))
+		return (0);
+
+	if (BHNDB_DEBUG(PRIO))
+		device_printf(child, "resume resource type=%d 0x%lx+0x%lx\n",
+		    type, rman_get_start(r), rman_get_size(r));
+
+	return (bhndb_try_activate_resource(sc, rman_get_device(r), type,
+	    rman_get_rid(r), r, NULL));
+}
+
+
 /** Default bhndb implementation of bus_read_ivar(). */
 int
 bhndb_generic_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
@@ -1169,6 +1229,8 @@ bhndb_try_activate_resource(struct bhndb_softc *sc, device_t child, int type,
 	u_long			 r_start, r_size;
 	u_long			 parent_offset;
 	int			 error;
+
+	BHNDB_LOCK_ASSERT(sc, MA_NOTOWNED);
 
 	// TODO - IRQs
 	if (type != SYS_RES_MEMORY)
@@ -1708,6 +1770,8 @@ static device_method_t bhndb_methods[] = {
 	/* BHNDB interface */
 	DEVMETHOD(bhndb_get_chipid,		bhndb_get_chipid),
 	DEVMETHOD(bhndb_init_full_config,	bhndb_init_full_config),
+	DEVMETHOD(bhndb_suspend_resource,	bhndb_suspend_resource),
+	DEVMETHOD(bhndb_resume_resource,	bhndb_resume_resource),
 
 	/* BHND interface */
 	DEVMETHOD(bhnd_is_hw_disabled,		bhndb_is_hw_disabled),

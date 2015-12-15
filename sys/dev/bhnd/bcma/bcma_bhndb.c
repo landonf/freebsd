@@ -104,6 +104,10 @@ static device_method_t bcma_bhndb_methods[] = {
 	DEVMETHOD(device_probe,			bcma_bhndb_probe),
 	DEVMETHOD(device_attach,		bcma_bhndb_attach),
 
+	/* Bus interface */
+	DEVMETHOD(bus_suspend_child,		bhnd_generic_br_suspend_child),
+	DEVMETHOD(bus_resume_child,		bhnd_generic_br_resume_child),
+
 	DEVMETHOD_END
 };
 

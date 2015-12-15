@@ -66,6 +66,122 @@ bhndb_attach_bridge(device_t parent, device_t *bhndb, int unit)
 	return (error);
 }
 
+/*
+ * Call BHNDB_SUSPEND_RESOURCE() for all resources in @p rl.
+ */
+static void
+bhndb_do_suspend_resources(device_t dev, struct resource_list *rl)
+{
+	struct resource_list_entry *rle;
+
+	/* Suspend all child resources. */
+	STAILQ_FOREACH(rle, rl, link) {
+		/* Skip non-allocated resources */
+		if (rle->res == NULL)
+			continue;
+
+		BHNDB_SUSPEND_RESOURCE(device_get_parent(dev), dev, rle->type,
+		    rle->res);
+	}
+}
+
+/**
+ * Helper function for implementing BUS_RESUME_CHILD() on bridged
+ * bhnd(4) buses.
+ * 
+ * This implementation of BUS_RESUME_CHILD() uses BUS_GET_RESOURCE_LIST()
+ * to find the child's resources and call BHNDB_SUSPEND_RESOURCE() for all
+ * child resources, ensuring that the device's allocated bridge resources
+ * will be available to other devices during bus resumption.
+ * 
+ * Before suspending any resources, @p child is suspended by 
+ * calling bhnd_generic_suspend_child().
+ * 
+ * If @p child is not a direct child of @p dev, suspension is delegated to
+ * the @p dev parent.
+ */
+int
+bhnd_generic_br_suspend_child(device_t dev, device_t child)
+{
+	struct resource_list		*rl;
+	int				 error;
+
+	if (device_get_parent(child) != dev)
+		BUS_SUSPEND_CHILD(device_get_parent(dev), child);
+
+	if (device_is_suspended(child))
+		return (EBUSY);
+
+	/* Suspend the child device */
+	if ((error = bhnd_generic_suspend_child(dev, child)))
+		return (error);
+
+	/* Fetch the resource list. If none, there's nothing else to do */
+	rl = BUS_GET_RESOURCE_LIST(device_get_parent(child), child);
+	if (rl == NULL)
+		return (0);
+
+	/* Suspend all child resources. */
+	bhndb_do_suspend_resources(dev, rl);
+
+	return (0);
+}
+
+/**
+ * Helper function for implementing BUS_RESUME_CHILD() on bridged
+ * bhnd(4) bus devices.
+ * 
+ * This implementation of BUS_RESUME_CHILD() uses BUS_GET_RESOURCE_LIST()
+ * to find the child's resources and call BHNDB_RESUME_RESOURCE() for all
+ * child resources, before delegating to bhnd_generic_resume_child().
+ * 
+ * If resource resumption fails, @p child will not be resumed.
+ * 
+ * If @p child is not a direct child of @p dev, suspension is delegated to
+ * the @p dev parent.
+ */
+int
+bhnd_generic_br_resume_child(device_t dev, device_t child)
+{
+	struct resource_list		*rl;
+	struct resource_list_entry	*rle;
+	int				 error;
+	
+	if (device_get_parent(child) != dev)
+		BUS_RESUME_CHILD(device_get_parent(dev), child);
+
+	if (!device_is_suspended(child))
+		return (EBUSY);
+
+	/* Fetch the resource list. If none, there's nothing else to do */
+	rl = BUS_GET_RESOURCE_LIST(device_get_parent(child), child);
+	if (rl == NULL)
+		return (bhnd_generic_resume_child(dev, child));
+
+	/* Resume all resources */
+	STAILQ_FOREACH(rle, rl, link) {
+		/* Skip non-allocated resources */
+		if (rle->res == NULL)
+			continue;
+
+		error = BHNDB_RESUME_RESOURCE(device_get_parent(dev), dev,
+		    rle->type, rle->res);
+		if (error) {
+			/* Put all resources back into a suspend state */
+			bhndb_do_suspend_resources(dev, rl);
+			return (error);
+		}
+	}
+
+	/* Now that all resources are resumed, resume child */
+	if ((error = bhnd_generic_resume_child(dev, child))) {
+		/* Put all resources back into a suspend state */
+		bhndb_do_suspend_resources(dev, rl);
+	}
+
+	return (error);
+}
+
 /**
  * Find the resource containing @p win.
  * 

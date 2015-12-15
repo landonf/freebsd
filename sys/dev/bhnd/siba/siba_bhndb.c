@@ -80,10 +80,83 @@ siba_bhndb_attach(device_t dev)
 	return (siba_attach(dev));
 }
 
+/* Suspend all references to the device's cfg register blocks */
+static void
+siba_bhndb_suspend_cfgblocks(device_t dev, struct siba_devinfo *dinfo) {
+	for (u_int i = 0; i < dinfo->core_id.num_cfg_blocks; i++) {
+		if (dinfo->cfg[i] == NULL)
+			continue;
+
+		BHNDB_SUSPEND_RESOURCE(device_get_parent(dev), dev,
+		    SYS_RES_MEMORY, dinfo->cfg[i]->res);
+	}
+}
+
+static int
+siba_bhndb_suspend_child(device_t dev, device_t child)
+{
+	struct siba_devinfo	*dinfo;
+	int			 error;
+
+	if (device_get_parent(child) != dev)
+		BUS_SUSPEND_CHILD(device_get_parent(dev), child);
+
+	dinfo = device_get_ivars(child);
+
+	/* Suspend the child */
+	if ((error = bhnd_generic_br_suspend_child(dev, child)))
+		return (error);
+
+	/* Suspend resource references to the child's config registers */
+	siba_bhndb_suspend_cfgblocks(dev, dinfo);
+	
+	return (0);
+}
+
+static int
+siba_bhndb_resume_child(device_t dev, device_t child)
+{
+	struct siba_devinfo	*dinfo;
+	int			 error;
+
+	if (device_get_parent(child) != dev)
+		BUS_SUSPEND_CHILD(device_get_parent(dev), child);
+
+	if (!device_is_suspended(child))
+		return (EBUSY);
+
+	dinfo = device_get_ivars(child);
+
+	/* Resume all resource references to the child's config registers */
+	for (u_int i = 0; i < dinfo->core_id.num_cfg_blocks; i++) {
+		if (dinfo->cfg[i] == NULL)
+			continue;
+
+		error = BHNDB_RESUME_RESOURCE(device_get_parent(dev), dev,
+		    SYS_RES_MEMORY, dinfo->cfg[i]->res);
+		if (error) {
+			siba_bhndb_suspend_cfgblocks(dev, dinfo);
+			return (error);
+		}
+	}
+
+	/* Resume the child */
+	if ((error = bhnd_generic_br_resume_child(dev, child))) {
+		siba_bhndb_suspend_cfgblocks(dev, dinfo);
+		return (error);
+	}
+
+	return (0);
+}
+
 static device_method_t siba_bhndb_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,			siba_bhndb_probe),
 	DEVMETHOD(device_attach,		siba_bhndb_attach),
+
+	/* Bus interface */
+	DEVMETHOD(bus_suspend_child,		siba_bhndb_suspend_child),
+	DEVMETHOD(bus_resume_child,		siba_bhndb_resume_child),
 
 	DEVMETHOD_END
 };

@@ -64,6 +64,9 @@ int	bhndb_generic_write_ivar(device_t dev, device_t child, int index,
 
 int	bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass);
 
+int	bhnd_generic_br_suspend_child(device_t dev, device_t child);
+int	bhnd_generic_br_resume_child(device_t dev, device_t child);
+
 /** bhndb child instance state */
 struct bhndb_devinfo {
         struct resource_list    resources;	/**< child resources. */
