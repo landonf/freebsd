@@ -134,13 +134,13 @@ bhnd_chipc_detach(device_t dev)
 static int
 bhnd_chipc_suspend(device_t dev)
 {
-	return (ENXIO);
+	return (0);
 }
 
 static int
 bhnd_chipc_resume(device_t dev)
 {
-	return (ENXIO);
+	return (0);
 }
 
 static device_method_t bhnd_chipc_methods[] = {

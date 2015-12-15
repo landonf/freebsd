@@ -114,13 +114,13 @@ bwn_detach(device_t dev)
 static int
 bwn_suspend(device_t dev)
 {
-	return (ENXIO);
+	return (0);
 }
 
 static int
 bwn_resume(device_t dev)
 {
-	return (ENXIO);
+	return (0);
 }
 
 static device_method_t bwn_methods[] = {
