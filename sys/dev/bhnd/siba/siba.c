@@ -210,6 +210,45 @@ siba_get_resource_list(device_t dev, device_t child)
 	return (&dinfo->resources);
 }
 
+static int
+siba_reset_core(device_t dev, device_t child, uint16_t flags)
+{
+	struct siba_devinfo *dinfo;
+
+	if (device_get_parent(child) != dev)
+		BHND_RESET_CORE(device_get_parent(dev), child, flags);
+
+	dinfo = device_get_ivars(child);
+
+	/* Can't reset the core without access to the CFG0 registers */
+	if (dinfo->cfg[0] == NULL)
+		return (ENODEV);
+
+	// TODO - perform reset
+
+	return (ENXIO);
+}
+
+static int
+siba_suspend_core(device_t dev, device_t child)
+{
+	struct siba_devinfo *dinfo;
+
+	if (device_get_parent(child) != dev)
+		BHND_SUSPEND_CORE(device_get_parent(dev), child);
+
+	dinfo = device_get_ivars(child);
+
+	/* Can't suspend the core without access to the CFG0 registers */
+	if (dinfo->cfg[0] == NULL)
+		return (ENODEV);
+
+	// TODO - perform suspend
+
+	return (ENXIO);
+}
+
+
 static u_int
 siba_get_port_count(device_t dev, device_t child, bhnd_port_type type)
 {
@@ -569,6 +608,8 @@ static device_method_t siba_methods[] = {
 	DEVMETHOD(bus_get_resource_list,	siba_get_resource_list),
 
 	/* BHND interface */
+	DEVMETHOD(bhnd_reset_core,		siba_reset_core),
+	DEVMETHOD(bhnd_suspend_core,		siba_suspend_core),
 	DEVMETHOD(bhnd_get_port_count,		siba_get_port_count),
 	DEVMETHOD(bhnd_get_region_count,	siba_get_region_count),
 	DEVMETHOD(bhnd_get_port_rid,		siba_get_port_rid),

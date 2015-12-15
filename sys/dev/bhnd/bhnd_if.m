@@ -154,18 +154,31 @@ METHOD const struct bhnd_chipid * get_chipid {
 } DEFAULT bhnd_null_get_chipid;
 
 /**
- * Reset a device core.
+ * Reset the device's hardware core.
+ *
+ * @param dev The parent of @p child.
+ * @param child The device to be reset.
+ * @param flags Device-specific core flags to be supplied on reset.
+ *
+ * @retval 0 success
+ * @retval non-zero error
  */
 METHOD int reset_core {
 	device_t dev;
 	device_t child;
-	
+	uint16_t flags;
 }
 
 /**
- * Disable a device hardware block.
+ * Suspend a device hardware core.
+ *
+ * @param dev The parent of @p child.
+ * @param child The device to be reset.
+ *
+ * @retval 0 success
+ * @retval non-zero error
  */
-METHOD int disable_core {
+METHOD int suspend_core {
 	device_t dev;
 	device_t child;
 }
