@@ -46,7 +46,7 @@
  * Private bhndb(4) driver definitions.
  */
 
-struct bhndb_dw_region;
+struct bhndb_dw_alloc;
 struct bhndb_region;
 struct bhndb_resources;
 
@@ -105,7 +105,7 @@ const struct bhndb_hw_priority	*bhndb_hw_priority_find_device(
 /**
  * A dynamic register window allocation record. 
  */
-struct bhndb_dw_region {
+struct bhndb_dw_alloc {
 	const struct bhndb_regwin	*win;		/**< window definition */
 	struct resource			*parent_res;	/**< enclosing resource */
 	struct resource			*child_res;	/**< associated child resource, or NULL */
@@ -138,11 +138,11 @@ struct bhndb_resources {
 
 	STAILQ_HEAD(, bhndb_region) 	 bus_regions;	/**< bus region descriptors */
 
-	struct bhndb_dw_region		*dw_regions;	/**< dynamic window regions */
-	size_t				 dw_count;	/**< number of dynamic window regions. */
-	uint32_t			 dw_freelist;	/**< dw_regions free list */
+	struct bhndb_dw_alloc		*dw_alloc;	/**< dynamic window allocation records */
+	size_t				 dwa_count;	/**< number of dynamic windows available. */
+	uint32_t			 dwa_freelist;	/**< dynamic window free list */
 	bhndb_priority_t		 min_prio;	/**< minimum resource priority required to
-							     allocate a window region */
+							     allocate a dynamic window */
 };
 
 #define	BHNDB_LOCK_INIT(sc) \
@@ -156,43 +156,43 @@ struct bhndb_resources {
 /**
  * Mark a dynamic window region as free.
  */
-#define	BHNDB_DW_REGION_RELEASE(r, rnid)	do {		\
-	KASSERT((r)->dw_regions[rnid].child_res != NULL &&	\
-	    !BHNDB_DW_REGION_IS_FREE((r), (rnid)),		\
-	    (("dw_region double free")));			\
-								\
-	(r)->dw_freelist |= (1 << (rnid));			\
-	(r)->dw_regions[rnid].child_res = NULL;		\
+#define	BHNDB_DW_REGION_RELEASE(r, rnid)	do {	\
+	KASSERT((r)->dw_alloc[rnid].child_res != NULL &&	\
+	    !BHNDB_DW_REGION_IS_FREE((r), (rnid)),	\
+	    (("dynamic window double free")));		\
+							\
+	(r)->dwa_freelist |= (1 << (rnid));		\
+	(r)->dw_alloc[rnid].child_res = NULL;		\
 } while(0)
 
 /**
  * Evaluates to true if the all dynamic regions have been exhausted.
  */
-#define	BHNDB_DW_REGION_EXHAUSTED(r)		((r)->dw_freelist == 0)
+#define	BHNDB_DW_REGION_EXHAUSTED(r)		((r)->dwa_freelist == 0)
 
 /**
  * Find the next free dynamic window region. It is an error to
  * call this macro without first checking if BHNDB_DW_REGION_EXHAUSTED
  * evaluates to true.
  */
-#define	BHNDB_DW_REGION_NEXT_FREE(r)		__builtin_ctz((r)->dw_freelist)
+#define	BHNDB_DW_REGION_NEXT_FREE(r)		__builtin_ctz((r)->dwa_freelist)
 
 /**
  * Mark a dynamic window region as reserved.
  */
 #define	BHNDB_DW_REGION_RESERVE(r, rnid, cr)	do {		\
-	KASSERT((r)->dw_regions[rnid].child_res == NULL &&	\
+	KASSERT((r)->dw_alloc[rnid].child_res == NULL &&	\
 	    BHNDB_DW_REGION_IS_FREE((r), (rnid)),		\
-	    (("dw_region is busy")));				\
+	    (("dynamic window is busy")));			\
 								\
-	(r)->dw_freelist &= ~(1 << (rnid));			\
-	(r)->dw_regions[rnid].child_res = cr;			\
+	(r)->dwa_freelist &= ~(1 << (rnid));			\
+	(r)->dw_alloc[rnid].child_res = cr;			\
 } while(0)
 
 /**
  * Return non-zero value if a dynamic window region is marked as free.
  */
 #define	BHNDB_DW_REGION_IS_FREE(r, rnid) \
-	((r)->dw_freelist & (1 << (rnid)))
+	((r)->dwa_freelist & (1 << (rnid)))
 
 #endif /* _BHND_BHNDB_PRIVATE_H_ */

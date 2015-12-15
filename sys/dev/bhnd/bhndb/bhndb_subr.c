@@ -170,27 +170,27 @@ bhndb_alloc_resources(device_t dev, device_t parent_dev,
 
 	/* Fetch the dynamic regwin count and verify that it does not exceed
 	 * what is representable via our freelist bitmask. */
-	r->dw_count = bhndb_regwin_count(cfg->register_windows,
+	r->dwa_count = bhndb_regwin_count(cfg->register_windows,
 	    BHNDB_REGWIN_T_DYN);
-	if (r->dw_count >= (8 * sizeof(r->dw_freelist))) {
+	if (r->dwa_count >= (8 * sizeof(r->dwa_freelist))) {
 		device_printf(r->dev, "max dynamic regwin count exceeded\n");
 		goto failed;
 	}
 	
-	/* Allocate the dynamic region table. */
-	r->dw_regions = malloc(sizeof(r->dw_regions[0]) * r->dw_count, M_BHND,
+	/* Allocate the dynamic window allocation table. */
+	r->dw_alloc = malloc(sizeof(r->dw_alloc[0]) * r->dwa_count, M_BHND,
 	    M_WAITOK);
-	if (r->dw_regions == NULL)
+	if (r->dw_alloc == NULL)
 		goto failed;
 
 	/* Initialize the dynamic region table and freelist. */
-	r->dw_freelist = 0;
+	r->dwa_freelist = 0;
 	rnid = 0;
 	last_window_size = 0;
 	for (win = cfg->register_windows;
 	    win->win_type != BHNDB_REGWIN_T_INVALID; win++)
 	{
-		struct bhndb_dw_region *region;
+		struct bhndb_dw_alloc *dwa;
 
 		/* Skip non-DYN windows */
 		if (win->win_type != BHNDB_REGWIN_T_DYN)
@@ -218,24 +218,24 @@ bhndb_alloc_resources(device_t dev, device_t parent_dev,
 			goto failed;
 		}
 
-		region = &r->dw_regions[rnid];
-		region->win = win;
-		region->parent_res = NULL;
-		region->child_res = NULL;
-		region->rnid = rnid;
-		region->target = 0x0;
+		dwa = &r->dw_alloc[rnid];
+		dwa->win = win;
+		dwa->parent_res = NULL;
+		dwa->child_res = NULL;
+		dwa->rnid = rnid;
+		dwa->target = 0x0;
 
 		/* Find and validate corresponding resource. */
-		region->parent_res = bhndb_find_regwin_resource(r, win);
-		if (region->parent_res == NULL)
+		dwa->parent_res = bhndb_find_regwin_resource(r, win);
+		if (dwa->parent_res == NULL)
 			goto failed;
 
-		if (rman_get_size(region->parent_res) < win->win_offset +
+		if (rman_get_size(dwa->parent_res) < win->win_offset +
 		    win->win_size)
 		{
 			device_printf(r->dev, "resource %d too small for "
 			    "register window with offset %llx and size %llx\n",
-			    rman_get_rid(region->parent_res),
+			    rman_get_rid(dwa->parent_res),
 			    (unsigned long long) win->win_offset,
 			    (unsigned long long) win->win_size);
 
@@ -244,7 +244,7 @@ bhndb_alloc_resources(device_t dev, device_t parent_dev,
 		}
 
 		/* Add to freelist */
-		r->dw_freelist |= (1 << rnid);
+		r->dwa_freelist |= (1 << rnid);
 
 		rnid++;
 	}
@@ -261,8 +261,8 @@ failed:
 	if (r->res_spec != NULL)
 		free(r->res_spec, M_BHND);
 
-	if (r->dw_regions != NULL)
-		free(r->dw_regions, M_BHND);
+	if (r->dw_alloc != NULL)
+		free(r->dw_alloc, M_BHND);
 
 	free (r, M_BHND);
 
@@ -280,9 +280,9 @@ bhndb_free_resources(struct bhndb_resources *r)
 	struct bhndb_region *region, *r_next;
 
 	/* No window regions may still be held */
-	if (__builtin_popcount(r->dw_freelist) != r->dw_count) {
+	if (__builtin_popcount(r->dwa_freelist) != r->dwa_count) {
 		device_printf(r->dev, "leaked %llu dynamic register regions\n",
-		    (unsigned long long) r->dw_count - r->dw_freelist);
+		    (unsigned long long) r->dwa_count - r->dwa_freelist);
 	}
 
 	/* Release resources allocated through our parent. */
@@ -291,7 +291,7 @@ bhndb_free_resources(struct bhndb_resources *r)
 	/* Free resource state structures */
 	free(r->res, M_BHND);
 	free(r->res_spec, M_BHND);
-	free(r->dw_regions, M_BHND);
+	free(r->dw_alloc, M_BHND);
 	
 	STAILQ_FOREACH_SAFE(region, &r->bus_regions, link, r_next) {
 		STAILQ_REMOVE(&r->bus_regions, region, bhndb_region, link);
