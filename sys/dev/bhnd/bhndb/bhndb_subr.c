@@ -69,19 +69,19 @@ bhndb_attach_bridge(device_t parent, device_t *bhndb, int unit)
 /**
  * Find the resource containing @p win.
  * 
- * @param res The bhndb resource state to search.
+ * @param br The bhndb resource state to search.
  * @param win A register window.
  * 
  * @retval resource the resource containing @p win.
  * @retval NULL if no resource containing @p win can be found.
  */
 struct resource *
-bhndb_find_regwin_resource(struct bhndb_resources *r,
+bhndb_find_regwin_resource(struct bhndb_resources *br,
     const struct bhndb_regwin *win)
 {
 	const struct resource_spec *rspecs;
 
-	rspecs = r->cfg->resource_specs;
+	rspecs = br->cfg->resource_specs;
 	for (u_int i = 0; rspecs[i].type != -1; i++) {			
 		if (win->res.type != rspecs[i].type)
 			continue;
@@ -90,10 +90,10 @@ bhndb_find_regwin_resource(struct bhndb_resources *r,
 			continue;
 
 		/* Found declared resource */
-		return (r->res[i]);
+		return (br->res[i]);
 	}
 
-	device_printf(r->dev,
+	device_printf(br->dev,
 	    "missing regwin resource spec (type=%d, rid=%d)\n",
 	    win->res.type, win->res.rid);
 
@@ -183,7 +183,7 @@ bhndb_alloc_resources(device_t dev, device_t parent_dev,
 	if (r->dw_alloc == NULL)
 		goto failed;
 
-	/* Initialize the dynamic region table and freelist. */
+	/* Initialize the dynamic window table and freelist. */
 	r->dwa_freelist = 0;
 	rnid = 0;
 	last_window_size = 0;
@@ -221,9 +221,10 @@ bhndb_alloc_resources(device_t dev, device_t parent_dev,
 		dwa = &r->dw_alloc[rnid];
 		dwa->win = win;
 		dwa->parent_res = NULL;
-		dwa->child_res = NULL;
 		dwa->rnid = rnid;
 		dwa->target = 0x0;
+		
+		LIST_INIT(&dwa->refs);
 
 		/* Find and validate corresponding resource. */
 		dwa->parent_res = bhndb_find_regwin_resource(r, win);
@@ -272,37 +273,50 @@ failed:
 /**
  * Deallocate the given bridge resource structure and any associated resources.
  * 
- * @param res Resource state to be deallocated.
+ * @param br Resource state to be deallocated.
  */
 void
-bhndb_free_resources(struct bhndb_resources *r)
+bhndb_free_resources(struct bhndb_resources *br)
 {
-	struct bhndb_region *region, *r_next;
+	struct bhndb_region	*region, *r_next;
+	struct bhndb_dw_alloc	*dwa;
+	struct bhndb_dw_rentry	*dwr, *dwr_next;
 
 	/* No window regions may still be held */
-	if (__builtin_popcount(r->dwa_freelist) != r->dwa_count) {
-		device_printf(r->dev, "leaked %llu dynamic register regions\n",
-		    (unsigned long long) r->dwa_count - r->dwa_freelist);
+	if (__builtin_popcount(br->dwa_freelist) != br->dwa_count) {
+		device_printf(br->dev, "leaked %llu dynamic register regions\n",
+		    (unsigned long long) br->dwa_count - br->dwa_freelist);
 	}
 
 	/* Release resources allocated through our parent. */
-	bus_release_resources(r->parent_dev, r->res_spec, r->res);
+	bus_release_resources(br->parent_dev, br->res_spec, br->res);
 
-	/* Free resource state structures */
-	free(r->res, M_BHND);
-	free(r->res_spec, M_BHND);
-	free(r->dw_alloc, M_BHND);
+	/* Clean up resource reservations */
+	for (size_t i = 0; i < br->dwa_count; i++) {
+		dwa = &br->dw_alloc[i];
+
+		LIST_FOREACH_SAFE(dwr, &dwa->refs, dw_link, dwr_next) {
+			LIST_REMOVE(dwr, dw_link);
+			free(dwr, M_BHND);
+		}
+	}
 	
-	STAILQ_FOREACH_SAFE(region, &r->bus_regions, link, r_next) {
-		STAILQ_REMOVE(&r->bus_regions, region, bhndb_region, link);
+	/* Release bus regions */
+	STAILQ_FOREACH_SAFE(region, &br->bus_regions, link, r_next) {
+		STAILQ_REMOVE(&br->bus_regions, region, bhndb_region, link);
 		free(region, M_BHND);
 	}
+
+	/* Free backing resource state structures */
+	free(br->res, M_BHND);
+	free(br->res_spec, M_BHND);
+	free(br->dw_alloc, M_BHND);
 }
 
 /**
  * Add a bus region entry to @p r for the given base @p addr and @p size.
  * 
- * @param r The resource state to which the bus region entry will be added.
+ * @param br The resource state to which the bus region entry will be added.
  * @param addr The base address of this region.
  * @param size The size of this region.
  * @param priority The resource priority to be assigned to allocations
@@ -314,7 +328,7 @@ bhndb_free_resources(struct bhndb_resources *r)
  * @retval non-zero if adding the bus region fails.
  */
 int
-bhndb_add_resource_region(struct bhndb_resources *r, bhnd_addr_t addr,
+bhndb_add_resource_region(struct bhndb_resources *br, bhnd_addr_t addr,
     bhnd_size_t size, bhndb_priority_t priority,
     const struct bhndb_regwin *static_regwin)
 {
@@ -332,15 +346,15 @@ bhndb_add_resource_region(struct bhndb_resources *r, bhnd_addr_t addr,
 		.static_regwin = static_regwin
 	};
 
-	STAILQ_INSERT_HEAD(&r->bus_regions, reg, link);
+	STAILQ_INSERT_HEAD(&br->bus_regions, reg, link);
 
 	return (0);
 }
 
 /**
- * Find a bus region that maps the address range at @p addr of @p size.
+ * Find a bus region that maps @p size bytes at @p addr.
  * 
- * @param r The resource state to search.
+ * @param br The resource state to search.
  * @param addr The requested starting address.
  * @param size The requested size.
  * 
@@ -348,12 +362,12 @@ bhndb_add_resource_region(struct bhndb_resources *r, bhnd_addr_t addr,
  * @retval NULL If no mapping region can be found.
  */
 struct bhndb_region *
-bhndb_find_resource_region(struct bhndb_resources *r, bhnd_addr_t addr,
+bhndb_find_resource_region(struct bhndb_resources *br, bhnd_addr_t addr,
     bhnd_size_t size)
 {
 	struct bhndb_region *region;
 
-	STAILQ_FOREACH(region, &r->bus_regions, link) {
+	STAILQ_FOREACH(region, &br->bus_regions, link) {
 		/* Request must fit within the region's mapping  */
 		if (addr < region->addr)
 			continue;
@@ -366,6 +380,213 @@ bhndb_find_resource_region(struct bhndb_resources *r, bhnd_addr_t addr,
 
 	/* Not found */
 	return (NULL);
+}
+
+/**
+ * Find the entry matching @p r in @p dwa's references, if any.
+ * 
+ * @param dwa The dynamic window allocation to search
+ * @param r The resource to search for in @p dwa.
+ */
+static struct bhndb_dw_rentry *
+bhndb_dw_find_resource_entry(struct bhndb_dw_alloc *dwa, struct resource *r)
+{
+	struct bhndb_dw_rentry	*rentry;
+
+	LIST_FOREACH(rentry, &dwa->refs, dw_link) {
+		struct resource *dw_res = rentry->dw_res;
+
+		/* Match dev/rid/addr/size */
+		if (rman_get_device(dw_res)	!= rman_get_device(r) ||
+			rman_get_rid(dw_res)	!= rman_get_rid(r) ||
+			rman_get_start(dw_res)	!= rman_get_start(r) ||
+			rman_get_size(dw_res)	!= rman_get_size(r))
+		{
+			continue;
+		}
+
+		/* Matching allocation found */
+		return (rentry);
+	}
+
+	return (NULL);
+}
+
+/**
+ * Find the dynamic region allocated for @p r, if any.
+ * 
+ * @param br The resource state to search.
+ * @param r The resource to search for.
+ * 
+ * @retval bhndb_dw_alloc The allocation record for @p r.
+ * @retval NULL if no dynamic window is allocated for @p r.
+ */
+struct bhndb_dw_alloc *
+bhndb_dw_find_resource(struct bhndb_resources *br, struct resource *r)
+{
+	struct bhndb_dw_alloc	*dwa;
+
+	for (size_t i = 0; i < br->dwa_count; i++) {
+		dwa = &br->dw_alloc[i];
+
+		/* Skip free dynamic windows */
+		if (bhndb_dw_is_free(br, dwa))
+			continue;
+
+		/* Matching allocation found? */
+		if (bhndb_dw_find_resource_entry(dwa, r) != NULL)
+			return (dwa);
+	}
+
+	return (NULL);
+}
+
+/**
+ * Find an existing dynamic window mapping @p size bytes
+ * at @p addr. The window may or may not be free.
+ * 
+ * @param br The resource state to search.
+ * @param addr The requested starting address.
+ * @param size The requested size.
+ * 
+ * @retval bhndb_dw_alloc A window allocation that fully contains the requested
+ * range.
+ * @retval NULL If no mapping region can be found.
+ */
+struct bhndb_dw_alloc *
+bhndb_dw_find_mapping(struct bhndb_resources *br, bhnd_addr_t addr,
+    bhnd_size_t size)
+{
+	struct bhndb_dw_alloc		*dwr;
+	const struct bhndb_regwin	*win;
+
+	/* Search for an existing dynamic mapping of this address range. */
+	for (size_t i = 0; i < br->dwa_count; i++) {
+		dwr = &br->dw_alloc[i];
+		win = dwr->win;
+
+		/* Verify the range */
+		if (addr < dwr->target)
+			continue;
+
+		if (addr + size > dwr->target + win->win_size)
+			continue;
+
+		/* Found a usable mapping */
+		return (dwr);
+	}
+
+	/* not found */
+	return (NULL);
+}
+
+/**
+ * Retain a reference to @p dwa for use by @p res.
+ * 
+ * @param br The resource state owning @p dwa.
+ * @param dwa The allocation record to be retained.
+ * @param res The resource that will own a reference to @p dwa.
+ * 
+ * @retval 0 success
+ * @retval ENOMEM Failed to allocate a new reference structure.
+ */
+int
+bhndb_dw_retain(struct bhndb_resources *br, struct bhndb_dw_alloc *dwa,
+    struct resource *res)
+{
+	struct bhndb_dw_rentry *rentry;
+
+	KASSERT(bhndb_dw_find_resource_entry(dwa, res) == NULL,
+	    ("double-retain of dynamic window for same resource"));
+
+	/* Insert a reference entry; we use M_NOWAIT to allow use from
+	 * within a non-sleepable lock */
+	rentry = malloc(sizeof(*rentry), M_BHND, M_NOWAIT);
+	if (rentry == NULL)
+		return (ENOMEM);
+
+	rentry->dw_res = res;
+	LIST_INSERT_HEAD(&dwa->refs, rentry, dw_link);
+
+	/* Update the free list */
+	br->dwa_freelist &= ~(1 << (dwa->rnid));
+ 
+	return (0);
+}
+
+/**
+ * Release a reference to @p dwa previously retained by @p res. If the
+ * reference count of @p dwa reaches zero, it will be added to the
+ * free list.
+ * 
+ * @param br The resource state owning @p dwa.
+ * @param dwa The allocation record to be released.
+ * @param res The resource that currently owns a reference to @p dwa.
+ */
+void
+bhndb_dw_release(struct bhndb_resources *br, struct bhndb_dw_alloc *dwa,
+    struct resource *r)
+{
+	struct bhndb_dw_rentry	*rentry;
+
+	/* Find the rentry */
+	rentry = bhndb_dw_find_resource_entry(dwa, r);
+	KASSERT(rentry != NULL, ("over release of resource entry"));
+
+	LIST_REMOVE(rentry, dw_link);
+	free(rentry, M_BHND);
+
+	/* If this was the last reference, update the free list */
+	if (LIST_EMPTY(&dwa->refs))
+		br->dwa_freelist |= (1 << (dwa->rnid));
+}
+
+/**
+ * Attempt to set (or reset) the target address of @p dwa to map @p size bytes
+ * at @p addr.
+ * 
+ * This will apply any necessary window alignment and verify that
+ * the window is capable of mapping the requested range prior to modifying
+ * therecord.
+ * 
+ * @param dev The device on which to issue the BHNDB_SET_WINDOW_ADDR() request.
+ * @param br The resource state owning @p dwa.
+ * @param dwa The allocation record to be configured.
+ * @param addr The address to be mapped via @p dwa.
+ * @param size The number of bytes to be mapped at @p addr.
+ *
+ * @retval 0 success
+ * @retval non-zero no usable register window available.
+ */
+int
+bhndb_dw_set_addr(device_t dev, struct bhndb_resources *br,
+    struct bhndb_dw_alloc *dwa, bus_addr_t addr, bus_size_t size)
+{
+	const struct bhndb_regwin	*rw;
+	u_long				 offset;
+	int				 error;
+
+	rw = dwa->win;
+
+	KASSERT(bhndb_dw_is_free(br, dwa),
+	    ("attempting to set the target address on an in-use window"));
+
+	/* Page-align the target address */
+	offset = addr % rw->win_size;
+	dwa->target = addr - offset;
+
+	/* Verify that the window is large enough for the full target */
+	if (rw->win_size - offset < size)
+		return (ENOMEM);
+	
+	/* Update the window target */
+	error = BHNDB_SET_WINDOW_ADDR(dev, dwa->win, dwa->target);
+	if (error) {
+		dwa->target = 0x0;
+		return (error);
+	}
+
+	return (0);
 }
 
 /**

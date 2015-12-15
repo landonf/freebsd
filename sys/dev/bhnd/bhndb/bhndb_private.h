@@ -51,7 +51,7 @@ struct bhndb_region;
 struct bhndb_resources;
 
 struct resource			*bhndb_find_regwin_resource(
-				     struct bhndb_resources *r,
+				     struct bhndb_resources *br,
 				     const struct bhndb_regwin *win);
 
 struct bhndb_resources		*bhndb_alloc_resources(device_t dev,
@@ -59,17 +59,40 @@ struct bhndb_resources		*bhndb_alloc_resources(device_t dev,
 				     const struct bhndb_hwcfg *cfg);
 
 void				 bhndb_free_resources(
-				     struct bhndb_resources *res);
+				     struct bhndb_resources *br);
 
 int				 bhndb_add_resource_region(
-				     struct bhndb_resources *r,
+				     struct bhndb_resources *br,
 				     bhnd_addr_t addr, bhnd_size_t size,
 				     bhndb_priority_t priority,
 				     const struct bhndb_regwin *static_regwin);
 
 struct bhndb_region		*bhndb_find_resource_region(
-				     struct bhndb_resources *r,
+				     struct bhndb_resources *br,
 				     bhnd_addr_t addr, bhnd_size_t size);
+
+struct bhndb_dw_alloc		*bhndb_dw_find_resource(
+				     struct bhndb_resources *dr,
+				     struct resource *r);
+				     
+struct bhndb_dw_alloc		*bhndb_dw_find_mapping(
+				     struct bhndb_resources *br,
+				     bhnd_addr_t addr, bhnd_size_t size);
+
+int				 bhndb_dw_retain(
+				     struct bhndb_resources *br,
+				     struct bhndb_dw_alloc *dwa,
+				     struct resource *res);
+
+void				 bhndb_dw_release(
+				     struct bhndb_resources *br,
+				     struct bhndb_dw_alloc *dwa,
+				     struct resource *res);
+
+int				 bhndb_dw_set_addr(device_t dev,
+				     struct bhndb_resources *br,
+				     struct bhndb_dw_alloc *dwa,
+				     bus_addr_t addr, bus_size_t size);
 
 size_t				 bhndb_regwin_count(
 				     const struct bhndb_regwin *table,
@@ -103,14 +126,23 @@ const struct bhndb_hw_priority	*bhndb_hw_priority_find_device(
 
 
 /**
+ * Dynamic register window allocation reference.
+ */
+struct bhndb_dw_rentry {
+	struct resource			*dw_res;		/**< child resource */
+	LIST_ENTRY(bhndb_dw_rentry)	 dw_link;
+};
+
+/**
  * A dynamic register window allocation record. 
  */
 struct bhndb_dw_alloc {
 	const struct bhndb_regwin	*win;		/**< window definition */
 	struct resource			*parent_res;	/**< enclosing resource */
-	struct resource			*child_res;	/**< associated child resource, or NULL */
 	u_int				 rnid;		/**< region identifier */
 	u_long				 target;	/**< the current window address, or 0x0 if unknown */
+
+	LIST_HEAD(, bhndb_dw_rentry)	 refs;		/**< references */
 };
 
 /**
@@ -145,6 +177,57 @@ struct bhndb_resources {
 							     allocate a dynamic window */
 };
 
+/**
+ * Returns true if the all dynamic windows have been exhausted, false
+ * otherwise.
+ * 
+ * @param br The resource state to check.
+ */
+static inline bool
+bhndb_dw_exhausted(struct bhndb_resources *br)
+{
+	return (br->dwa_freelist == 0);
+}
+
+/**
+ * Find the next free dynamic window region in @p br.
+ * 
+ * @param br The resource state to search.
+ */
+static inline struct bhndb_dw_alloc *
+bhndb_dw_next_free(struct bhndb_resources *br)
+{
+	struct bhndb_dw_alloc *dw_free;
+
+	if (bhndb_dw_exhausted(br))
+		return (NULL);
+
+	dw_free = &br->dw_alloc[__builtin_ctz(br->dwa_freelist)];
+
+	KASSERT(LIST_EMPTY(&dw_free->refs),
+	    ("free list out of sync with refs"));
+
+	return (dw_free);
+}
+
+/**
+ * Returns true if a dynamic window allocation is marked as free.
+ * 
+ * @param br The resource state owning @p dwa.
+ * @param dwa The dynamic window allocation record to be checked.
+ */
+static inline bool
+bhndb_dw_is_free(struct bhndb_resources *br, struct bhndb_dw_alloc *dwa)
+{
+	bool is_free = LIST_EMPTY(&dwa->refs);
+
+	KASSERT(is_free == ((br->dwa_freelist & (1 << dwa->rnid)) != 0),
+	    ("refs out of sync with free list"));
+
+	return (is_free);
+}
+
+
 #define	BHNDB_LOCK_INIT(sc) \
 	mtx_init(&(sc)->sc_mtx, device_get_nameunit((sc)->dev), \
 	    "bhndb_gen resource allocator lock", MTX_DEF)
@@ -152,47 +235,5 @@ struct bhndb_resources {
 #define	BHNDB_UNLOCK(sc)		mtx_unlock(&(sc)->sc_mtx)
 #define	BHNDB_LOCK_ASSERT(sc, what)	mtx_assert(&(sc)->sc_mtx, what)
 #define	BHNDB_LOCK_DESTROY(sc)		mtx_destroy(&(sc)->sc_mtx)
-
-/**
- * Mark a dynamic window region as free.
- */
-#define	BHNDB_DW_REGION_RELEASE(r, rnid)	do {	\
-	KASSERT((r)->dw_alloc[rnid].child_res != NULL &&	\
-	    !BHNDB_DW_REGION_IS_FREE((r), (rnid)),	\
-	    (("dynamic window double free")));		\
-							\
-	(r)->dwa_freelist |= (1 << (rnid));		\
-	(r)->dw_alloc[rnid].child_res = NULL;		\
-} while(0)
-
-/**
- * Evaluates to true if the all dynamic regions have been exhausted.
- */
-#define	BHNDB_DW_REGION_EXHAUSTED(r)		((r)->dwa_freelist == 0)
-
-/**
- * Find the next free dynamic window region. It is an error to
- * call this macro without first checking if BHNDB_DW_REGION_EXHAUSTED
- * evaluates to true.
- */
-#define	BHNDB_DW_REGION_NEXT_FREE(r)		__builtin_ctz((r)->dwa_freelist)
-
-/**
- * Mark a dynamic window region as reserved.
- */
-#define	BHNDB_DW_REGION_RESERVE(r, rnid, cr)	do {		\
-	KASSERT((r)->dw_alloc[rnid].child_res == NULL &&	\
-	    BHNDB_DW_REGION_IS_FREE((r), (rnid)),		\
-	    (("dynamic window is busy")));			\
-								\
-	(r)->dwa_freelist &= ~(1 << (rnid));			\
-	(r)->dw_alloc[rnid].child_res = cr;			\
-} while(0)
-
-/**
- * Return non-zero value if a dynamic window region is marked as free.
- */
-#define	BHNDB_DW_REGION_IS_FREE(r, rnid) \
-	((r)->dwa_freelist & (1 << (rnid)))
 
 #endif /* _BHND_BHNDB_PRIVATE_H_ */

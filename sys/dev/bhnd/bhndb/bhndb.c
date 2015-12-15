@@ -81,10 +81,6 @@ static int			 bhndb_read_chipid(struct bhndb_softc *sc,
 static struct rman		*bhndb_get_rman(struct bhndb_softc *sc,
 				     int type);
 
-static struct bhndb_dw_alloc 	*bhndb_find_dw_alloc(struct bhndb_softc *sc,
-				     device_t child, int type, int rid,
-				     struct resource *r);
-
 static int			 bhndb_init_child_resource(struct resource *r,
 				     struct resource *parent,
 				     bhnd_size_t offset,
@@ -667,11 +663,9 @@ bhndb_generic_resume(device_t dev)
 	for (size_t i = 0; i < bus_res->dwa_count; i++) {
 		dwa = &bus_res->dw_alloc[i];
 	
-		/* If not in-use, return the region to its initial state */
-		if (BHNDB_DW_REGION_IS_FREE(bus_res, i)) {
-			dwa->target = 0x0;
+		/* Skip regions that were not previously used */
+		if (bhndb_dw_is_free(bus_res, dwa) && dwa->target == 0x0)
 			continue;
-		}
 
 		/* Otherwise, ensure the register window is correct before
 		 * any children attempt MMIO */
@@ -974,57 +968,6 @@ bhndb_release_resource(device_t dev, device_t child, int type, int rid,
 	return (0);
 }
 
-
-/**
- * Find the dynamic region allocated for @p r, if any.
- * 
- * @param sc bhndb device state.
- * @param child The child device making a resource request on @p r.
- * @param type The resource type.
- * @param rid The resource ID.
- * @param r The resource to search for.
- * 
- * @retval bhndb_dw_alloc The allocation record for @p r.
- * @retval NULL if no dynamic window is allocated for @p r.
- */
-static struct bhndb_dw_alloc *
-bhndb_find_dw_alloc(struct bhndb_softc *sc, device_t child, int type,
-    int rid, struct resource *r)
-{
-	struct bhndb_dw_alloc	*dwa, *ret;
-	struct rman		*rm;
-	
-	BHNDB_LOCK_ASSERT(sc, MA_OWNED);
-
-	if ((rm = bhndb_get_rman(sc, type)) == NULL)
-		return (NULL);
-
-	ret = NULL;
-	for (size_t i = 0; i < sc->bus_res->dwa_count; i++) {
-		dwa = &sc->bus_res->dw_alloc[i];
-
-		/* Skip free regions */
-		if (BHNDB_DW_REGION_IS_FREE(sc->bus_res, i))
-			continue;
-
-		/* Match dev/type-rm/rid triplet */
-		if (rman_get_device(dwa->child_res) != child)
-			continue;
-
-		if (!rman_is_region_manager(dwa->child_res, rm))
-			continue;
-
-		if (rman_get_rid(dwa->child_res) != rid)
-			continue;
-
-		/* Matching region found */
-		ret = dwa;
-		break;
-	}
-
-	return (ret);
-}
-
 static int
 bhndb_adjust_resource(device_t dev, device_t child, int type,
     struct resource *r, u_long start, u_long end)
@@ -1150,60 +1093,56 @@ bhndb_activate_static_region(struct bhndb_softc *sc,
 }
 
 /**
- * Initialize a dynamic window allocation record, mapping @p size bytes at
- * @p addr.
+ * Attempt to allocate/retain a dynamic register window for @p r, returning
+ * the retained window.
  * 
- * This will apply any necessary window alignment and verify that
- * the window is capable of mapping the requested range prior to modifying
- * therecord.
- * 
- * @param sc BHNDB driver state.
- * @param dwa The allocation record to be configured.
- * @param addr The address to be mapped via @p dwa.
- * @param size The number of bytes to be mapped at @p addr.
- * @param r A resource to be mapped via a dynamic register window.
- * @param[out] region On success, the allocated region.
- * @param[out] indirect On error and if not NULL, will be set to 'true' if the
- * caller should instead use an indirect resource mapping.
- *
- * @retval 0 success
- * @retval non-zero no usable register window available.
+ * @param sc The bhndb driver state.
+ * @param r The resource for which a window will be retained.
  */
-static int
-bhndb_set_dwa_target(struct bhndb_softc *sc, struct bhndb_dw_alloc *dwa,
-    bus_addr_t addr, bus_size_t size, bool *indirect)
+static struct bhndb_dw_alloc *
+bhndb_retain_dynamic_window(struct bhndb_softc *sc, struct resource *r)
 {
-	const struct bhndb_regwin	*rw;
-	u_long				 offset;
-	int				 error;
+	struct bhndb_dw_alloc	*dwa;
+	u_long			 r_start, r_size;
+	int			 error;
 
 	BHNDB_LOCK_ASSERT(sc, MA_OWNED);
 
-	rw = dwa->win;
-	if (indirect != NULL)
-		*indirect = false;
+	r_start = rman_get_start(r);
+	r_size = rman_get_size(r);
 
-	/* Page-align the region target address */
-	offset = addr % rw->win_size;
-	dwa->target = addr - offset;
+	/* Look for an existing dynamic window we can reference */
+	dwa = bhndb_dw_find_mapping(sc->bus_res, r_start, r_size);
+	if (dwa != NULL) {
+		if (bhndb_dw_retain(sc->bus_res, dwa, r) == 0)
+			return (dwa);
 
-	/* Verify that the window is large enough for the full target */
-	if (rw->win_size - offset < size) {
-		/* The caller can still use indirect mapping */
-		if (indirect != NULL)
-			*indirect = true;
-
-		return (ENOMEM);
+		return (NULL);
 	}
-	
-	/* Update the window target */
-	error = BHNDB_SET_WINDOW_ADDR(sc->dev, dwa->win, dwa->target);
+
+	/* Otherwise, try to reserve a free window */
+	dwa = bhndb_dw_next_free(sc->bus_res);
+	if (dwa == NULL) {
+		/* No free windows */
+		return (NULL);
+	}
+
+	/* Set the window target */
+	error = bhndb_dw_set_addr(sc->dev, sc->bus_res, dwa, rman_get_start(r),
+	    rman_get_size(r));
 	if (error) {
-		dwa->target = 0x0;
-		return (error);
+		device_printf(sc->dev, "dynamic window initialization "
+			"for 0x%llx-0x%llx failed\n",
+			(unsigned long long) r_start,
+			(unsigned long long) r_start + r_size - 1);
+		return (NULL);
 	}
 
-	return (0);
+	/* Add our reservation */
+	if (bhndb_dw_retain(sc->bus_res, dwa, r))
+		return (NULL);
+
+	return (dwa);
 }
 
 /**
@@ -1229,7 +1168,6 @@ bhndb_try_activate_resource(struct bhndb_softc *sc, device_t child, int type,
 	bhndb_priority_t	 dw_priority;
 	u_long			 r_start, r_size;
 	u_long			 parent_offset;
-	int			 rnid;
 	int			 error;
 
 	// TODO - IRQs
@@ -1270,35 +1208,16 @@ bhndb_try_activate_resource(struct bhndb_softc *sc, device_t child, int type,
 		return (ENOMEM);
 	}
 
-	/* Find and claim next free window */
+	/* Find and retain a usable window */
 	BHNDB_LOCK(sc); {
-		if (BHNDB_DW_REGION_EXHAUSTED(sc->bus_res)) {
-			BHNDB_UNLOCK(sc);
-			if (indirect)
-				*indirect = true;
-
-			return (ENOMEM);
-		}
-
-		/* Reserve a free region */
-		rnid = BHNDB_DW_REGION_NEXT_FREE(sc->bus_res);
-		BHNDB_DW_REGION_RESERVE(sc->bus_res, rnid, r);
-		dwa = &sc->bus_res->dw_alloc[rnid];
-		
-		/* Set the region target */
-		error = bhndb_set_dwa_target(sc, dwa, rman_get_start(r),
-		    rman_get_size(r), indirect);
-		if (error) {
-			BHNDB_UNLOCK(sc);
-			BHNDB_DW_REGION_RELEASE(sc->bus_res, rnid);
-			device_printf(sc->dev, "dynamic window initialization "
-			     "for 0x%llx-0x%llx failed\n",
-			     (unsigned long long) r_start,
-			     (unsigned long long) r_start + r_size - 1);
-			
-			return (error);
-		}
+		dwa = bhndb_retain_dynamic_window(sc, r);
 	} BHNDB_UNLOCK(sc);
+
+	if (dwa == NULL) {
+		if (indirect)
+			*indirect = true;
+		return (ENOMEM);
+	}
 
 	/* Configure resource with its real bus values. */
 	parent_offset = dwa->win->win_offset;
@@ -1313,13 +1232,12 @@ bhndb_try_activate_resource(struct bhndb_softc *sc, device_t child, int type,
 	if ((error = rman_activate_resource(r)))
 		goto failed;
 
-
 	return (0);
 
 failed:
 	/* Release our region allocation. */
 	BHNDB_LOCK(sc);
-	BHNDB_DW_REGION_RELEASE(sc->bus_res, dwa->rnid);
+	bhndb_dw_release(sc->bus_res, dwa, r);
 	BHNDB_UNLOCK(sc);
 
 	return (error);
@@ -1364,9 +1282,9 @@ bhndb_deactivate_resource(device_t dev, device_t child, int type,
 
 	/* Free any dynamic window allocation. */
 	BHNDB_LOCK(sc);
-	dwa = bhndb_find_dw_alloc(sc, child, type, rid, r);
+	dwa = bhndb_dw_find_resource(sc->bus_res, r);
 	if (dwa != NULL)
-		BHNDB_DW_REGION_RELEASE(sc->bus_res, dwa->rnid);
+		bhndb_dw_release(sc->bus_res, dwa, r);
 	BHNDB_UNLOCK(sc);
 
 	return (0);
@@ -1565,15 +1483,17 @@ bhndb_io_resource(struct bhndb_softc *sc, bus_addr_t addr, bus_size_t size,
 {
 	struct bhndb_resources	*br;
 	struct bhndb_dw_alloc	*dwa;
-	u_int			 rnid;
 	int			 error;
 
 	BHNDB_LOCK_ASSERT(sc, MA_OWNED);
 
 	br = sc->bus_res;
 
+	/* Try to fetch a free window */
+	dwa = bhndb_dw_next_free(br);
+
 	/*
-	 * If no dynamic regions are available, look for an existing
+	 * If no dynamic windows are available, look for an existing
 	 * region that maps the target range. 
 	 * 
 	 * If none are found, this is a child driver bug -- our window
@@ -1586,7 +1506,7 @@ bhndb_io_resource(struct bhndb_softc *sc, bus_addr_t addr, bus_size_t size,
 	 * of operations, there should always be a window available for the
 	 * current operation.
 	 */
-	if (BHNDB_DW_REGION_EXHAUSTED(br)) {
+	if (dwa == NULL) {
 		dwa = bhndb_io_resource_slow(sc, addr, size, offset);
 		if (dwa == NULL) {
 			panic("register windows exhausted attempting to map "
@@ -1598,16 +1518,14 @@ bhndb_io_resource(struct bhndb_softc *sc, bus_addr_t addr, bus_size_t size,
 		return (dwa);
 	}
 
-	/* Fetch a free window */
-	rnid = BHNDB_DW_REGION_NEXT_FREE(br);
-	dwa = &br->dw_alloc[rnid];
-
 	/* Adjust the window if the I/O request won't fit in the current
 	 * target range. */
 	if (addr < dwa->target || 
 	   (dwa->target + dwa->win->win_size) - addr < size)
 	{
-		if ((error = bhndb_set_dwa_target(sc, dwa, addr, size, NULL))) {
+		error = bhndb_dw_set_addr(sc->dev, sc->bus_res, dwa, addr,
+		    size);
+		if (error) {
 		    panic("failed to set register window target mapping "
 			    "0x%llx-0x%llx\n", 
 			    (unsigned long long) addr,
