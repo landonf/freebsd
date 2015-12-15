@@ -70,6 +70,10 @@ siba_attach(device_t dev)
 
 		dinfo = device_get_ivars(devs[i]);
 
+		KASSERT(!device_is_suspended(devs[i]),
+		    ("siba(4) stateful suspend handling requires that devices "
+		        "not be suspended before siba_attach()"));
+
 		/* Fetch the core register address space */
 		port = siba_dinfo_get_port(dinfo, BHND_PORT_DEVICE, 0);
 		if (port == NULL) {

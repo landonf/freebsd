@@ -54,6 +54,65 @@ bcma_probe(device_t dev)
 int
 bcma_attach(device_t dev)
 {
+	struct bcma_devinfo	*dinfo;
+	device_t		*devs, child;
+	int			 ndevs;
+	int			 error;
+
+
+	if ((error = device_get_children(dev, &devs, &ndevs)))
+		return (error);
+
+	/*
+	 * Map our children's agent register block.
+	 */
+	for (int i = 0; i < ndevs; i++) {
+		bhnd_addr_t	addr;
+		bhnd_size_t	size;
+		u_long		r_start, r_count, r_end;
+
+		child = devs[i];
+		dinfo = device_get_ivars(child);
+
+		KASSERT(!device_is_suspended(child),
+		    ("bcma(4) stateful suspend handling requires that devices "
+		        "not be suspended before bcma_attach()"));
+		
+		/* Verify that the agent register block exists and is
+		 * mappable */
+		if (bhnd_get_port_rid(child, BHND_PORT_AGENT, 0, 0) == -1)
+			continue;
+
+		/* Fetch the address of the agent register block */
+		error = bhnd_get_region_addr(child, BHND_PORT_AGENT, 0, 0,
+		    &addr, &size);
+		if (error) {
+			device_printf(dev, "failed fetching agent register "
+			    "block address for core %d\n", i);
+			goto cleanup;
+		}
+
+		/* Allocate the resource */
+		r_start = addr;
+		r_count = size;
+		r_end = r_start + r_count - 1;
+
+		dinfo->rid_agent = 0;
+		dinfo->res_agent = bhnd_alloc_resource(dev, SYS_RES_MEMORY,
+		    &dinfo->rid_agent, r_start, r_end, r_count, RF_ACTIVE);
+		if (dinfo->res_agent == NULL) {
+			device_printf(dev, "failed allocating agent register "
+			    "block for core %d\n", i);
+			error = ENXIO;
+			goto cleanup;
+		}
+	}
+
+cleanup:
+	free(devs, M_BHND);
+	if (error)
+		return (error);
+	
 	return (bhnd_generic_attach(dev));
 }
 
@@ -125,7 +184,7 @@ bcma_child_deleted(device_t dev, device_t child)
 {
 	struct bcma_devinfo *dinfo = device_get_ivars(child);
 	if (dinfo != NULL)
-		bcma_free_dinfo(dinfo);
+		bcma_free_dinfo(dev, dinfo);
 }
 
 static struct resource_list *
@@ -346,7 +405,7 @@ bcma_add_children(device_t bus, struct resource *erom_res, bus_size_t erom_offse
 	
 failed:
 	if (dinfo != NULL)
-		bcma_free_dinfo(dinfo);
+		bcma_free_dinfo(bus, dinfo);
 
 	if (corecfg != NULL)
 		bcma_free_corecfg(corecfg);

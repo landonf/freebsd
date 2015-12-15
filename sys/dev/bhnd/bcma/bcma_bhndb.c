@@ -99,14 +99,76 @@ bcma_bhndb_attach(device_t dev)
 	return (bcma_attach(dev));
 }
 
+static int
+bcma_bhndb_suspend_child(device_t dev, device_t child)
+{
+	struct bcma_devinfo	*dinfo;
+	int			 error;
+
+	if (device_get_parent(child) != dev)
+		BUS_SUSPEND_CHILD(device_get_parent(dev), child);
+	
+	if (device_is_suspended(child))
+		return (EBUSY);
+
+	dinfo = device_get_ivars(child);
+
+	/* Suspend the child */
+	if ((error = bhnd_generic_br_suspend_child(dev, child)))
+		return (error);
+
+	/* Suspend child's agent resource  */
+	if (dinfo->res_agent != NULL)
+		BHNDB_SUSPEND_RESOURCE(device_get_parent(dev), dev,
+		    SYS_RES_MEMORY, dinfo->res_agent->res);
+	
+	return (0);
+}
+
+static int
+bcma_bhndb_resume_child(device_t dev, device_t child)
+{
+	struct bcma_devinfo	*dinfo;
+	int			 error;
+
+	if (device_get_parent(child) != dev)
+		BUS_SUSPEND_CHILD(device_get_parent(dev), child);
+
+	if (!device_is_suspended(child))
+		return (EBUSY);
+
+	dinfo = device_get_ivars(child);
+
+	/* Resume child's agent resource  */
+	if (dinfo->res_agent != NULL) {
+		error = BHNDB_RESUME_RESOURCE(device_get_parent(dev), dev,
+		    SYS_RES_MEMORY, dinfo->res_agent->res);
+		if (error)
+			return (error);
+	}
+
+	/* Resume the child */
+	if ((error = bhnd_generic_br_resume_child(dev, child))) {
+		/* On failure, re-suspend the agent resource */
+		if (dinfo->res_agent != NULL) {
+			BHNDB_SUSPEND_RESOURCE(device_get_parent(dev), dev,
+			    SYS_RES_MEMORY, dinfo->res_agent->res);
+		}
+
+		return (error);
+	}
+
+	return (0);
+}
+
 static device_method_t bcma_bhndb_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,			bcma_bhndb_probe),
 	DEVMETHOD(device_attach,		bcma_bhndb_attach),
 
 	/* Bus interface */
-	DEVMETHOD(bus_suspend_child,		bhnd_generic_br_suspend_child),
-	DEVMETHOD(bus_resume_child,		bhnd_generic_br_resume_child),
+	DEVMETHOD(bus_suspend_child,		bcma_bhndb_suspend_child),
+	DEVMETHOD(bus_resume_child,		bcma_bhndb_resume_child),
 
 	DEVMETHOD_END
 };

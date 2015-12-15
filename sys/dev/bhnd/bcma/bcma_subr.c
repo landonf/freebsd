@@ -186,7 +186,7 @@ bcma_dinfo_init_resource_info(device_t bus, struct bcma_devinfo *dinfo,
  * Allocate and initialize new device info structure, assuming ownership
  * of the provided core configuration.
  * 
- * @param dev The requesting bus device.
+ * @param bus The requesting bus device.
  * @param corecfg Device core configuration.
  */
 struct bcma_devinfo *
@@ -199,6 +199,8 @@ bcma_alloc_dinfo(device_t bus, struct bcma_corecfg *corecfg)
 		return NULL;
 
 	dinfo->corecfg = corecfg;
+	dinfo->res_agent = NULL;
+	dinfo->rid_agent = -1;
 
 	resource_list_init(&dinfo->resources);
 
@@ -215,13 +217,20 @@ bcma_alloc_dinfo(device_t bus, struct bcma_corecfg *corecfg)
 /**
  * Deallocate the given device info structure and any associated resources.
  * 
+ * @param bus The requesting bus device.
  * @param dinfo Device info to be deallocated.
  */
 void
-bcma_free_dinfo(struct bcma_devinfo *dinfo)
+bcma_free_dinfo(device_t bus, struct bcma_devinfo *dinfo)
 {
 	bcma_free_corecfg(dinfo->corecfg);
 	resource_list_free(&dinfo->resources);
+
+	/* Release agent resource, if any */
+	if (dinfo->res_agent != NULL) {
+		bhnd_release_resource(bus, SYS_RES_MEMORY, dinfo->rid_agent,
+		    dinfo->res_agent);
+	}
 
 	free(dinfo, M_BHND);
 }
