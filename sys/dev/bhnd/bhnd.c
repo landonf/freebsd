@@ -192,9 +192,9 @@ cleanup:
  * Helper function for implementing DEVICE_RESUME().
  * 
  * This function can be used to implement DEVICE_RESUME() for bhnd(4)
- * bus implementations. It calls DEVICE_RESUME() for each
+ * bus implementations. It calls BUS_RESUME_CHILD() for each
  * of the device's children, in order, terminating if
- * any call to DEVICE_RESUME() fails.
+ * any call to BUS_RESUME_CHILD() fails.
  */
 int
 bhnd_generic_resume(device_t dev)
@@ -214,7 +214,7 @@ bhnd_generic_resume(device_t dev)
 		device_t child = devs[i];
 
 		/* Terminate on first error */
-		if ((error = DEVICE_RESUME(child)))
+		if ((error = BUS_RESUME_CHILD(device_get_parent(child), child)))
 			goto cleanup;
 	}
 
@@ -227,11 +227,11 @@ cleanup:
  * Helper function for implementing DEVICE_SUSPEND().
  * 
  * This function can be used to implement DEVICE_SUSPEND() for bhnd(4)
- * bus implementations. It calls DEVICE_SUSPEND() for each
+ * bus implementations. It calls BUS_SUSPEND_CHILD() for each
  * of the device's children, in reverse order. If any call to
- * DEVICE_SUSPEND() fails, the suspend operation is terminated and
+ * BUS_SUSPEND_CHILD() fails, the suspend operation is terminated and
  * any devices that were suspended are resumed immediately by calling
- * their DEVICE_RESUME() methods.
+ * their BUS_RESUME_CHILD() methods.
  */
 int
 bhnd_generic_suspend(device_t dev)
@@ -250,11 +250,13 @@ bhnd_generic_suspend(device_t dev)
 	qsort(devs, ndevs, sizeof(*devs), compare_descending_probe_order);
 	for (int i = 0; i < ndevs; i++) {
 		device_t child = devs[i];
+		error = BUS_SUSPEND_CHILD(device_get_parent(child), child);
 
 		/* On error, resume suspended devices and then terminate */
-		if ((error = DEVICE_SUSPEND(child))) {
+		if (error) {
 			for (int j = 0; j < i; j++) {
-				DEVICE_RESUME(devs[j]);
+				BUS_RESUME_CHILD(device_get_parent(devs[j]),
+				    devs[j]);
 			}
 
 			goto cleanup;
