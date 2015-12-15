@@ -52,14 +52,28 @@ CODE {
 	static const struct bhnd_chipid *
 	bhndb_null_get_chipid(device_t dev, device_t child)
 	{
-		panic("bhndb_get_chipid unimplemented\n");
+		panic("bhndb_get_chipid unimplemented");
 	}
 
 	static int
 	bhndb_null_init_full_config(device_t dev, device_t child,
 	    const struct bhndb_hw_priority *priority_table)
 	{
-		panic("bhndb_init_full_config unimplemented\n");
+		panic("bhndb_init_full_config unimplemented");
+	}
+	
+	static void
+	bhndb_null_suspend_resource(device_t dev, device_t child, int type,
+	    struct resource *r)
+	{
+		panic("bhndb_suspend_resource unimplemented");
+	}
+
+	static int
+	bhndb_null_resume_resource(device_t dev, device_t child, int type,
+	    struct resource *r)
+	{
+		panic("bhndb_resume_resource unimplemented");
 	}
 
 	static int
@@ -104,6 +118,52 @@ METHOD int init_full_config {
 	device_t child;
 	const struct bhndb_hw_priority *priority_table;
 } DEFAULT bhndb_null_init_full_config;
+
+/**
+ * Mark a resource as 'suspended', gauranteeing to the bridge that no
+ * further use of the resource will be made until BHNDB_RESUME_RESOURCE()
+ * is called.
+ *
+ * Bridge resources consumed by the reference may be released; these will
+ * be reacquired if BHNDB_RESUME_RESOURCE() completes successfully.
+ *
+ * Requests to suspend a suspended resource will be ignored.
+ *
+ * @param dev The bridge device.
+ * @param child The child device requesting resource suspension. This does
+ * not need to be the owner of @p r.
+ * @param type The resource type.
+ * @param r The resource to be suspended.
+ */
+METHOD void suspend_resource {
+	device_t dev;
+	device_t child;
+	int type;
+	struct resource *r;
+} DEFAULT bhndb_null_suspend_resource;
+
+/**
+ * Attempt to re-enable a resource previously suspended by
+ * BHNDB_SUSPEND_RESOURCE().
+ *
+ * Bridge resources required by the reference may not be available, in which
+ * case an error will be returned and the resource mapped by @p r must not be
+ * used in any capacity.
+ *
+ * Requests to resume a non-suspended resource will be ignored.
+ * 
+ * @param dev The bridge device.
+ * @param child The child device requesting resource suspension. This does
+ * not need to be the owner of @p r.
+ * @param type The resource type.
+ * @param r The resource to be suspended.
+ */
+METHOD void resume_resource {
+	device_t dev;
+	device_t child;
+	int type;
+	struct resource *r;
+} DEFAULT bhndb_null_resume_resource;
 
 /**
  * Set a given register window's base address.
