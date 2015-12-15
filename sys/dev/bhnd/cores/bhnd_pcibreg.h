@@ -3,8 +3,8 @@
  * Copyright (c) 2010 Broadcom Corporation
  * All rights reserved.
  *
- * This file is derived from the pci_core.h and pcie_core.h headers distributed
- * with Broadcom's initial brcm80211 Linux driver release, as
+ * This file is derived from the hndsoc.h, pci_core.h, and pcie_core.h headers
+ * distributed with Broadcom's initial brcm80211 Linux driver release, as
  * contributed to the Linux staging repository.
  * 
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -24,6 +24,13 @@
 
 #ifndef _BHND_CORES_PCIBREG_H_
 #define _BHND_CORES_PCIBREG_H_
+
+/*
+ * PCI DMA Constants
+ */
+
+#define	BHND_PCI_DMA32_TRANSLATION	0x40000000	/* Client Mode sb2pcitranslation2 (1 GB) */
+#define	BHND_PCI_DMA32_SZ		0x40000000	/* Client Mode sb2pcitranslation2 size in bytes */
 
 /*
  * PCI Core Registers

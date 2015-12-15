@@ -28,6 +28,18 @@
 #include "bhnd_pcibreg.h"
 
 /*
+ * PCIe-Gen1 DMA Constants
+ */
+
+/* 32-bit DMA */
+#define	BHND_PCIE_DMA32_TRANSLATION	BHND_PCI_DMA32_TRANSLATION	/**< Client Mode sb2pcitranslation2 (1 GB) */
+#define	BHND_PCIE_DMA32_SZ		BHND_PCI_DMA32_SZ		/**< Client Mode sb2pcitranslation2 size in bytes */
+
+/* 64-bit DMA */
+#define	BHND_PCIE_DMA64_L32		0x00000000	/**< 64-bit client mode sb2pcitranslation2 (2 ZettaBytes, low 32 bits) */
+#define	BHND_PCIE_DMA64_H32		0x80000000	/**< 64-bit client mode sb2pcitranslation2 (2 ZettaBytes, high 32 bits) */
+
+/*
  * PCIe-Gen1 Core Registers
  */
 
