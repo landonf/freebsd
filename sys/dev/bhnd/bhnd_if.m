@@ -154,6 +154,23 @@ METHOD const struct bhnd_chipid * get_chipid {
 } DEFAULT bhnd_null_get_chipid;
 
 /**
+ * Reset a device core.
+ */
+METHOD int reset_core {
+	device_t dev;
+	device_t child;
+	
+}
+
+/**
+ * Disable a device hardware block.
+ */
+METHOD int disable_core {
+	device_t dev;
+	device_t child;
+}
+
+/**
  * Allocate a bhnd resource.
  *
  * This method's semantics are functionally identical to the bus API of the same
