@@ -49,39 +49,13 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/bhnd.h>
 
-#include "bhnd_pcibvar.h"
-#include "bhnd_pcibreg.h"
-#include "bhnd_pciebreg.h"
-
-
-/* BHNDB_PCI_REG convenience macros */ 
-#define	BPCI_REG_GET			BHND_PCIB_REG_GET
-#define	BPCI_REG_SET			BHND_PCIB_REG_SET
-#define	BPCI_COMMON_REG_GET(_r, _a)	BHND_PCIB_COMMON_REG_GET(sc, _r, _a)
-#define	BPCI_COMMON_REG_SET(_r, _a, _v)	BHND_PCIB_COMMON_REG_SET(sc, _r, _a, _v)
-#define	BPCI_COMMON_REG(_name)		BHND_PCIB_COMMON_REG(sc, _name)
-
-#define	BPCI_COMMON_REG_OFFSET(_base, _offset)	\
-	(BPCI_COMMON_REG(_base) + BPCI_COMMON_REG(_offset))
-
-#define	BHND_HOSTB_DEV(_device, _desc, _regs, ...)	{	\
-	BHND_COREID_ ## _device, 				\
-	"Broadcom " _desc " PCI-BHND host bridge",		\
-	BHNDB_PCIB_REGS_ ## _regs,				\
-	(struct bhnd_device_quirk[]) {				\
-		__VA_ARGS__					\
-	}							\
-}
+#include "bhnd_pcireg.h"
+#include "bhnd_pci_hostbvar.h"
 
 /*
  * Supported PCI bridge cores
  */
-static const struct bhnd_hostb_device {
-	uint16_t			 device;
-	const char			*desc;
-	bhndb_pcib_regs_t		 regs;
-	struct bhnd_device_quirk	*quirks;
-} bhnd_hostb_devs[] = {
+static const struct bhnd_hostb_device bhnd_hostb_devs[] = {
 	/* PCI */
 	BHND_HOSTB_DEV(PCI,	"PCI",		PCI,
 	    BHND_QUIRK_HWREV_RANGE	(0, 5,	BHND_PCI_QUIRK_SBINTVEC),

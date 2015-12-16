@@ -48,7 +48,8 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/bhnd.h>
 
-#include "bhnd_pcibreg.h"
+#include "bhnd_pcireg.h"
+
 #include "bhnd_pcibvar.h"
 
 static const struct bhnd_pcib_device {
