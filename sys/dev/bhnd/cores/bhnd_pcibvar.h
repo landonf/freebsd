@@ -55,14 +55,46 @@ struct bhnd_pcib_softc {
 /* broadcom pci/pcie-gen1 device quirks */
 enum {
 	BHND_PCIB_QUIRK_NONE		= (0<<1),	/**< No quirks */
-	BHND_PCIB_QUIRK_TLP_SREG	= (1<<1),	/**< ??? */
-	BHND_PCIB_QUIRK_DLLP_LCREG	= (1<<2),	/**< ??? */
-	BHND_PCIB_QUIRK_ASPM_EN_CLKREQ	= (1<<3),	/**< ??? */
-	BHND_PCIB_QUIRK_DLLP_PMTHRESH	= (1<<4),	/**< ??? */
-	BHND_PCIB_QUIRK_MDIO_SERDES_RX	= (1<<5),	/**< ??? */
-	BHND_PCIB_QUIRK_NOPLLDOWN	= (1<<6),	/**< ??? */
-	BHND_PCIB_QUIRK_SROM_FIXUP	= (1<<7),	/**< ??? */
-	BHND_PCIB_QUIRK_SERDES_POLARITY	= (1<<8),	/**< ??? */
+	
+	/**
+	 * PCIe Vendor-Defined Messages should never set the 
+	 * 'Unsupported Request' bit.
+	 */
+	BHND_PCIB_QUIRK_IGNORE_VDM	= (1<<1),
+
+	/**
+	 * PCI-PM power management must be explicitly enabled via
+	 * the data link control register.
+	 */
+	BHND_PCIB_QUIRK_PCIPM_REQEN	= (1<<2),
+
+	/**
+	 * Fix L0s to L0 exit transition.
+	 * 
+	 * Increase SerDes RX timer to ensure SerDes CDR circuit is
+	 * stable.
+	 * 
+	 * Modify CDR bandwidth (reason undocumented).
+	 */
+	BHND_PCIB_QUIRK_SERDES_L0s_HANG	= (1<<3),
+
+	/**
+	 * The idle time for entering L1 low-power state must be
+	 * explicitly set (to 114ns) to fix slow L1->L0 transition issues.
+	 */
+	BHND_PCIB_QUIRK_L1_IDLE_THRESH	= (1<<4),
+	
+	/**
+	 * The ASPM L1 entry timer should be extended for better performance,
+	 * and restored for better power savings.
+	 */
+	BHND_PCIB_QUIRK_L1_TIMER_PERF	= (1<<5),
+
+
+	BHND_PCIB_QUIRK_ASPM_EN_CLKREQ	= (1<<6),	/**< ??? */
+	BHND_PCIB_QUIRK_NOPLLDOWN	= (1<<7),	/**< ??? */
+	BHND_PCIB_QUIRK_SROM_FIXUP	= (1<<8),	/**< ??? */
+	BHND_PCIB_QUIRK_SERDES_POLARITY	= (1<<9),	/**< ??? */
 };
 
 
