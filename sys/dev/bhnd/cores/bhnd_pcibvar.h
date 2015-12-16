@@ -55,19 +55,43 @@ struct bhnd_pcib_softc {
 /* broadcom pci/pcie-gen1 device quirks */
 enum {
 	/** No quirks */
-	BHND_PCIB_QUIRK_NONE			= (0<<1),
-	
+	BHND_PCI_QUIRK_NONE			= 0,
+
+	/**
+	 * SBTOPCI_PREF and SBTOPCI_BURST must be set on the
+	 * SSB_PCICORE_SBTOPCI2 register.
+	 */
+	BHND_PCI_QUIRK_SBTOPCI2_PREF_BURST	= (1<<1),
+
+	/**
+	 * SBTOPCI_RC_READMULTI must be set on the SSB_PCICORE_SBTOPCI2
+	 * register.
+	 */
+	BHND_PCI_QUIRK_SBTOPCI2_READMULTI	= (1<<2),
+
+	/**
+	 * Interrupt masking is handled via the interconnect configuration
+	 * registers (SBINTVEC on siba), rather than the PCI_INT_MASK
+	 * config register.
+	 */
+	BHND_PCI_QUIRK_SBINTVEC			= (1<<3),
+
+	/**
+	 * PCI CLKRUN# should be explicitly disabled (via CLKRUN_DSBL).
+	 */
+	BHND_PCI_QUIRK_CLKRUN_DSBL		= (1<<4),
+
 	/**
 	 * PCIe Vendor-Defined Messages should never set the 
 	 * 'Unsupported Request' bit.
 	 */
-	BHND_PCIB_QUIRK_IGNORE_VDM		= (1<<1),
+	BHND_PCIE_QUIRK_IGNORE_VDM		= (1<<5),
 
 	/**
 	 * PCI-PM power management must be explicitly enabled via
 	 * the data link control register.
 	 */
-	BHND_PCIB_QUIRK_PCIPM_REQEN		= (1<<2),
+	BHND_PCIE_QUIRK_PCIPM_REQEN		= (1<<6),
 
 	/**
 	 * Fix L0s to L0 exit transition.
@@ -77,19 +101,19 @@ enum {
 	 * 
 	 * Modify CDR bandwidth (reason undocumented).
 	 */
-	BHND_PCIB_QUIRK_SERDES_L0s_HANG		= (1<<3),
+	BHND_PCIE_QUIRK_SERDES_L0s_HANG		= (1<<7),
 
 	/**
 	 * The idle time for entering L1 low-power state must be
 	 * explicitly set (to 114ns) to fix slow L1->L0 transition issues.
 	 */
-	BHND_PCIB_QUIRK_L1_IDLE_THRESH		= (1<<4),
+	BHND_PCIE_QUIRK_L1_IDLE_THRESH		= (1<<8),
 	
 	/**
 	 * The ASPM L1 entry timer should be extended for better performance,
 	 * and restored for better power savings.
 	 */
-	BHND_PCIB_QUIRK_L1_TIMER_PERF		= (1<<5),
+	BHND_PCIE_QUIRK_L1_TIMER_PERF		= (1<<9),
 
 	/**
 	 * ASPM and ECPM settings must be overridden manually.
@@ -109,19 +133,19 @@ enum {
 	 * - When the device enters D3 state, or system enters S3/S4 state,
 	 *   clear ASPM L1 in the PCIER_LINK_CTL register.
 	 */
-	BHND_PCIB_QUIRK_ASPM_OVR		= (1<<6),
+	BHND_PCIE_QUIRK_ASPM_OVR		= (1<<10),
 	
 	/**
 	 * The SerDes polarity must be saved at device attachment, and
 	 * restored on suspend/resume.
 	 */
-	BHND_PCIB_QUIRK_SERDES_POLARITY		= (1<<7),
+	BHND_PCIE_QUIRK_SERDES_POLARITY		= (1<<11),
 
 	/**
 	 * The SerDes PLL override flag (CHIPCTRL_4321_PLL_DOWN) must be set on
 	 * the ChipCommon core.
 	 */
-	BHND_PCIB_QUIRK_SERDES_NOPLLDOWN	= (1<<8),
+	BHND_PCIE_QUIRK_SERDES_NOPLLDOWN	= (1<<12),
 
 	/**
 	 * On attach and resume, consult the SPROM to determine whether
@@ -131,7 +155,7 @@ enum {
 	 * L23READY_EXIT_NOPRST flag to the PCI register defined by
 	 * SRSH_PCIE_MISC_CONFIG.
 	 */
-	BHND_PCIB_QUIRK_SPROM_L23_PCI_RESET	= (1<<9),
+	BHND_PCIE_QUIRK_SPROM_L23_PCI_RESET	= (1<<13),
 };
 
 

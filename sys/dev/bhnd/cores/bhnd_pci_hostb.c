@@ -53,6 +53,17 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_pcibreg.h"
 #include "bhnd_pciebreg.h"
 
+
+/* BHNDB_PCI_REG convenience macros */ 
+#define	BPCI_REG_GET			BHND_PCIB_REG_GET
+#define	BPCI_REG_SET			BHND_PCIB_REG_SET
+#define	BPCI_COMMON_REG_GET(_r, _a)	BHND_PCIB_COMMON_REG_GET(sc, _r, _a)
+#define	BPCI_COMMON_REG_SET(_r, _a, _v)	BHND_PCIB_COMMON_REG_SET(sc, _r, _a, _v)
+#define	BPCI_COMMON_REG(_name)		BHND_PCIB_COMMON_REG(sc, _name)
+
+#define	BPCI_COMMON_REG_OFFSET(_base, _offset)	\
+	(BPCI_COMMON_REG(_base) + BPCI_COMMON_REG(_offset))
+
 #define	BHND_HOSTB_DEV(_device, _desc, _regs, ...)	{	\
 	BHND_COREID_ ## _device, 				\
 	"Broadcom " _desc " PCI-BHND host bridge",		\
@@ -62,28 +73,35 @@ __FBSDID("$FreeBSD$");
 	}							\
 }
 
-/** PCI bridge core identification descriptor */
+/*
+ * Supported PCI bridge cores
+ */
 static const struct bhnd_hostb_device {
 	uint16_t			 device;
 	const char			*desc;
 	bhndb_pcib_regs_t		 regs;
 	struct bhnd_device_quirk	*quirks;
 } bhnd_hostb_devs[] = {
-	BHND_HOSTB_DEV(PCI,	"PCI",		PCI),
-	BHND_HOSTB_DEV(PCIE,	"PCIe-G1",	PCIE,
-		BHND_QUIRK_HWREV_EQ	(0,	BHND_PCIB_QUIRK_PCIPM_REQEN	| BHND_PCIB_QUIRK_SERDES_L0s_HANG),
-
-		BHND_QUIRK_HWREV_RANGE	(0, 1,	BHND_PCIB_QUIRK_IGNORE_VDM),
-
-		BHND_QUIRK_HWREV_RANGE	(3, 5,	BHND_PCIB_QUIRK_ASPM_OVR	| BHND_PCIB_QUIRK_SERDES_POLARITY),
-		BHND_QUIRK_HWREV_LTE	(6,	BHND_PCIB_QUIRK_L1_IDLE_THRESH),
-		BHND_QUIRK_HWREV_GTE	(6,	BHND_PCIB_QUIRK_SPROM_L23_PCI_RESET),
-		BHND_QUIRK_HWREV_EQ	(7,	BHND_PCIB_QUIRK_SERDES_NOPLLDOWN),
-		BHND_QUIRK_HWREV_GTE	(8,	BHND_PCIB_QUIRK_L1_TIMER_PERF),
-
-		BHND_QUIRK_HWREV_END
+	/* PCI */
+	BHND_HOSTB_DEV(PCI,	"PCI",		PCI,
+	    BHND_QUIRK_HWREV_RANGE	(0, 5,	BHND_PCI_QUIRK_SBINTVEC),
+	    BHND_QUIRK_HWREV_GTE	(0,	BHND_PCI_QUIRK_SBTOPCI2_PREF_BURST),
+	    BHND_QUIRK_HWREV_GTE	(11,	BHND_PCI_QUIRK_SBTOPCI2_READMULTI),
+	    BHND_QUIRK_HWREV_END
 	),
-	BHND_HOSTB_DEV(PCIE2,	"PCIe-G2",	PCIE),
+
+	/* PCI Gen 1 */
+	BHND_HOSTB_DEV(PCIE,	"PCIe-G1",	PCIE,
+	    BHND_QUIRK_HWREV_EQ		(0,	BHND_PCIE_QUIRK_PCIPM_REQEN | BHND_PCIE_QUIRK_SERDES_L0s_HANG),
+	    BHND_QUIRK_HWREV_RANGE	(0, 1,	BHND_PCIE_QUIRK_IGNORE_VDM),
+	    BHND_QUIRK_HWREV_RANGE	(3, 5,	BHND_PCIE_QUIRK_ASPM_OVR | BHND_PCIE_QUIRK_SERDES_POLARITY),
+	    BHND_QUIRK_HWREV_LTE	(6,	BHND_PCIE_QUIRK_L1_IDLE_THRESH),
+	    BHND_QUIRK_HWREV_GTE	(6,	BHND_PCIE_QUIRK_SPROM_L23_PCI_RESET),
+	    BHND_QUIRK_HWREV_EQ		(7,	BHND_PCIE_QUIRK_SERDES_NOPLLDOWN),
+	    BHND_QUIRK_HWREV_GTE	(8,	BHND_PCIE_QUIRK_L1_TIMER_PERF),
+
+	    BHND_QUIRK_HWREV_END
+	),
 
 	{ BHND_COREID_INVALID, NULL, BHNDB_PCIB_REGS_PCI, NULL }
 };
@@ -95,15 +113,6 @@ static const struct resource_spec bhnd_pci_hostb_rspec[BHND_PCIB_MAX_RSPEC] = {
 };
 #define	CORE_RES_IDX	0
 
-/* BHNDB_PCI_REG convenience macros */ 
-#define	BPCI_REG_GET			BHND_PCIB_REG_GET
-#define	BPCI_REG_SET			BHND_PCIB_REG_SET
-#define	BPCI_COMMON_REG_GET(_r, _a)	BHND_PCIB_COMMON_REG_GET(sc, _r, _a)
-#define	BPCI_COMMON_REG_SET(_r, _a, _v)	BHND_PCIB_COMMON_REG_SET(sc, _r, _a, _v)
-#define	BPCI_COMMON_REG(_name)		BHND_PCIB_COMMON_REG(sc, _name)
-
-#define	BPCI_COMMON_REG_OFFSET(_base, _offset)	\
-	(BPCI_COMMON_REG(_base) + BPCI_COMMON_REG(_offset))
 
 static const struct bhnd_hostb_device *
 find_dev_entry(device_t dev)
@@ -175,13 +184,6 @@ bhnd_pci_hostb_attach(device_t dev)
 	sc = device_get_softc(dev);
 	sc->dev = dev;
 	sc->regs = find_dev_entry(dev)->regs;
-
-	/* We can't support the PCIe Gen 2 cores until we get development
-	 * hardware */
-	if (id->device == BHND_COREID_PCIE2) {
-		device_printf(dev, "PCIe-Gen2 core support unimplemented\n");
-		return (ENXIO);
-	}
 
 	/*
 	 * Map our PCI core registers
