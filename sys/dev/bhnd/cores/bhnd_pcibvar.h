@@ -54,19 +54,20 @@ struct bhnd_pcib_softc {
 
 /* broadcom pci/pcie-gen1 device quirks */
 enum {
-	BHND_PCIB_QUIRK_NONE		= (0<<1),	/**< No quirks */
+	/** No quirks */
+	BHND_PCIB_QUIRK_NONE			= (0<<1),
 	
 	/**
 	 * PCIe Vendor-Defined Messages should never set the 
 	 * 'Unsupported Request' bit.
 	 */
-	BHND_PCIB_QUIRK_IGNORE_VDM	= (1<<1),
+	BHND_PCIB_QUIRK_IGNORE_VDM		= (1<<1),
 
 	/**
 	 * PCI-PM power management must be explicitly enabled via
 	 * the data link control register.
 	 */
-	BHND_PCIB_QUIRK_PCIPM_REQEN	= (1<<2),
+	BHND_PCIB_QUIRK_PCIPM_REQEN		= (1<<2),
 
 	/**
 	 * Fix L0s to L0 exit transition.
@@ -76,25 +77,61 @@ enum {
 	 * 
 	 * Modify CDR bandwidth (reason undocumented).
 	 */
-	BHND_PCIB_QUIRK_SERDES_L0s_HANG	= (1<<3),
+	BHND_PCIB_QUIRK_SERDES_L0s_HANG		= (1<<3),
 
 	/**
 	 * The idle time for entering L1 low-power state must be
 	 * explicitly set (to 114ns) to fix slow L1->L0 transition issues.
 	 */
-	BHND_PCIB_QUIRK_L1_IDLE_THRESH	= (1<<4),
+	BHND_PCIB_QUIRK_L1_IDLE_THRESH		= (1<<4),
 	
 	/**
 	 * The ASPM L1 entry timer should be extended for better performance,
 	 * and restored for better power savings.
 	 */
-	BHND_PCIB_QUIRK_L1_TIMER_PERF	= (1<<5),
+	BHND_PCIB_QUIRK_L1_TIMER_PERF		= (1<<5),
 
+	/**
+	 * ASPM and ECPM settings must be overridden manually.
+	 * 
+	 * The override behavior is controlled by the BHND_BFL2_PCIEWAR_OVR
+	 * flag. If this flag is set, ASPM/CLKREQ should be overridden as
+	 * enabled; otherwise, they should be overridden as disabled.
+	 * 
+	 * Attach/Resume:
+	 *   - Set SRSH_ASPM_ENB flag in the SPROM ASPM register.
+	 *   - Set ASPM L0S/L1 in the PCIER_LINK_CTL register.
+	 *   - Set SRSH_CLKREQ_ENB flag in the SPROM CLKREQ_REV5 register.
+	 *   - Clear ECPM in the PCIER_LINK_CTL register.
+	 * 
+	 * Detach/Suspend:
+	 * - 
+	 * - When the device enters D3 state, or system enters S3/S4 state,
+	 *   clear ASPM L1 in the PCIER_LINK_CTL register.
+	 */
+	BHND_PCIB_QUIRK_ASPM_OVR		= (1<<6),
+	
+	/**
+	 * The SerDes polarity must be saved at device attachment, and
+	 * restored on suspend/resume.
+	 */
+	BHND_PCIB_QUIRK_SERDES_POLARITY		= (1<<7),
 
-	BHND_PCIB_QUIRK_ASPM_EN_CLKREQ	= (1<<6),	/**< ??? */
-	BHND_PCIB_QUIRK_NOPLLDOWN	= (1<<7),	/**< ??? */
-	BHND_PCIB_QUIRK_SROM_FIXUP	= (1<<8),	/**< ??? */
-	BHND_PCIB_QUIRK_SERDES_POLARITY	= (1<<9),	/**< ??? */
+	/**
+	 * The SerDes PLL override flag (CHIPCTRL_4321_PLL_DOWN) must be set on
+	 * the ChipCommon core.
+	 */
+	BHND_PCIB_QUIRK_SERDES_NOPLLDOWN	= (1<<8),
+
+	/**
+	 * On attach and resume, consult the SPROM to determine whether
+	 * the L2/L3-Ready w/o PCI RESET work-around must be applied.
+	 * 
+	 * If L23READY_EXIT_NOPRST is set in the SPROM, write the
+	 * L23READY_EXIT_NOPRST flag to the PCI register defined by
+	 * SRSH_PCIE_MISC_CONFIG.
+	 */
+	BHND_PCIB_QUIRK_SPROM_L23_PCI_RESET	= (1<<9),
 };
 
 

@@ -270,7 +270,7 @@
 #define	BHND_PCIE_SRSH_ASPM_L1_ENB		0x10	/* bit 4 */
 #define	BHND_PCIE_SRSH_ASPM_L0s_ENB		0x8	/* bit 3 */
 #define	BHND_PCIE_SRSH_PCIE_MISC_CONFIG		5	/* word 5 */
-#define	BHND_PCIE_SRSH_L23READY_EXIT_NOPERST	0x8000	/* bit 15 */
+#define	BHND_PCIE_SRSH_L23READY_EXIT_NOPRST	0x8000	/* bit 15 */
 #define	BHND_PCIE_SRSH_CLKREQ_OFFSET_REV5	20	/* word 20 for srom rev <= 5 */
 #define	BHND_PCIE_SRSH_CLKREQ_OFFSET_REV8	52	/* word 52 for srom rev 8 */
 #define	BHND_PCIE_SRSH_CLKREQ_ENB		0x0800	/* bit 11 */
