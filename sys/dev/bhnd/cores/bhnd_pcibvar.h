@@ -41,32 +41,63 @@ typedef enum {
 	BHNDB_PCIB_RDEFS_PCIE	= 1,	/* PCIe-Gen1 register definitions */
 } bhndb_pcib_rdefs_t;
 
-/* Common BHND_PCI_*_REG_(GET|SET) implementation */
-#define	_BHND_PCI_REG_GET(_regval, _mask, _shift)		\
-	((_regval & _mask) >> _shift)
-#define _BHND_PCI_REG_SET(_regval, _mask, _shift, _setval)	\
-	(((_regval) & ~ _mask) | (((_setval) << _shift) & _mask))
+struct bhnd_pcib_softc {
+	device_t		 dev;	/**< pci device */
+	struct bhnd_resource	*core;	/**< core registers. */
+	bhndb_pcib_rdefs_t	 rdefs;	/**< device register definitions */
 
-/**
- * Extract a register value by applying _MASK and _SHIFT defines.
- * 
- * @param _regv The register value containing the desired attribute
- * @param _attr The register attribute name to which to append `_MASK`/`_SHIFT`
- * suffixes.
- */
-#define	BHND_PCIB_REG_GET(_regv, _attr)	\
-	_BHND_PCI_REG_GET(_regv, _attr ## _MASK, _attr ## _SHIFT)
+	struct resource_spec	 rspec[BHND_PCIB_MAX_RSPEC];
+	struct bhnd_resource	*res[BHND_PCIB_MAX_RES];
 
-/**
- * Set a register value by applying _MASK and _SHIFT defines.
- * 
- * @param _regv The register value containing the desired attribute
- * @param _attr The register attribute name to which to append `_MASK`/`_SHIFT`
- * suffixes.
- * @param _val The value to bet set in @p _regv.
- */
-#define	BHND_PCIB_REG_SET(_regv, _attr, _val)		\
-	_BHND_PCI_REG_SET(_regv, _attr ## _MASK, _attr ## _SHIFT, _val)
+};
+
+/* broadcom pci/pcie-gen1 device quirks */
+enum {
+	BHND_PCIB_QUIRK_NONE		= (0<<1),	/**< No quirks */
+	BHND_PCIB_QUIRK_TLP_SREG	= (1<<1),	/**< ??? */
+	BHND_PCIB_QUIRK_DLLP_LCREG	= (1<<2),	/**< ??? */
+	BHND_PCIB_QUIRK_ASPM_EN_CLKREQ	= (1<<3),	/**< ??? */
+	BHND_PCIB_QUIRK_DLLP_PMTHRESH	= (1<<4),	/**< ??? */
+	BHND_PCIB_QUIRK_MDIO_SERDES_RX	= (1<<5),	/**< ??? */
+	BHND_PCIB_QUIRK_NOPLLDOWN	= (1<<6),	/**< ??? */
+	BHND_PCIB_QUIRK_SROM_FIXUP	= (1<<7),	/**< ??? */
+	BHND_PCIB_QUIRK_SERDES_POLARITY	= (1<<8),	/**< ??? */
+};
+
+struct bhnd_hostb_quirk {
+	struct bhnd_hwrev_match	 hwrev;
+	uint32_t		 quirks;
+};
+
+struct bhnd_hostb_device {
+	uint16_t		 device;
+	const char		*desc;
+	bhndb_pcib_rdefs_t	 rdefs;
+	struct bhnd_hostb_quirk	*quirks;
+};
+
+#define	BHND_HOSTB_DEV(_device, _desc, _rdefs, ...)	{	\
+	BHND_COREID_ ## _device, 			\
+	"Broadcom " _desc " PCI-BHND host bridge",	\
+	BHNDB_PCIB_RDEFS_ ## _rdefs,			\
+	(struct bhnd_hostb_quirk[]) {			\
+		__VA_ARGS__				\
+	}						\
+}
+
+#define	BHND_HOSTB_HWREV_RANGE(_start, _end, _quirks)	\
+	{ .hwrev = { _start, _end }, .quirks = _quirks }
+
+#define	BHND_HOSTB_HWREV_EQ(_hwrev, _quirks)	\
+	BHND_HOSTB_HWREV_RANGE(_hwrev, _hwrev, _quirks)
+
+#define	BHND_HOSTB_HWREV_GTE(_start, _quirks)	\
+	BHND_HOSTB_HWREV_RANGE(_start, BHND_HWREV_INVALID, _quirks)
+
+#define	BHND_HOSTB_HWREV_LTE(_end, _quirks)	\
+	BHND_HOSTB_HWREV_RANGE(0, _end, _quirks)
+
+#define	BHND_HOSTB_HWREV_END	{ BHND_HWREV_MATCH_ANY, BHND_PCIB_QUIRK_NONE }
 
 /**
  * Extract a register value by applying _MASK and _SHIFT defines to the common
@@ -112,16 +143,5 @@ typedef enum {
 	(_sc)->rdefs == BHNDB_PCIB_RDEFS_PCI ? BHND_PCI_ ## _name :	\
 	BHND_PCIE_ ## _name						\
 )
-
-
-struct bhnd_pcib_softc {
-	device_t		 dev;	/**< pci device */
-	struct bhnd_resource	*core;	/**< core registers. */
-	bhndb_pcib_rdefs_t	 rdefs;	/**< device register definitions */
-
-	struct resource_spec	 rspec[BHND_PCIB_MAX_RSPEC];
-	struct bhnd_resource	*res[BHND_PCIB_MAX_RES];
-
-};
 
 #endif /* _BHND_CORES_PCIBVAR_H_ */

@@ -53,13 +53,40 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_pcibreg.h"
 #include "bhnd_pciebreg.h"
 
+#define	BHND_HOSTB_DEV(_device, _desc, _rdefs, ...)	{	\
+	BHND_COREID_ ## _device, 			\
+	"Broadcom " _desc " PCI-BHND host bridge",	\
+	BHNDB_PCIB_RDEFS_ ## _rdefs,			\
+	(struct bhnd_hostb_quirk[]) {			\
+		__VA_ARGS__				\
+	}						\
+}
+
+static const struct bhnd_hostb_device bhnd_hostb_devs[] = {
+	BHND_HOSTB_DEV(PCI,	"PCI",		PCI),
+	BHND_HOSTB_DEV(PCIE,	"PCIe-G1",	PCIE,
+		BHND_HOSTB_HWREV_EQ	(0,	BHND_PCIB_QUIRK_DLLP_LCREG	| BHND_PCIB_QUIRK_MDIO_SERDES_RX),
+		BHND_HOSTB_HWREV_RANGE	(0, 1,	BHND_PCIB_QUIRK_TLP_SREG),
+		BHND_HOSTB_HWREV_RANGE	(3, 5,	BHND_PCIB_QUIRK_ASPM_EN_CLKREQ	| BHND_PCIB_QUIRK_SERDES_POLARITY),
+		BHND_HOSTB_HWREV_LTE	(6,	BHND_PCIB_QUIRK_DLLP_PMTHRESH),
+		BHND_HOSTB_HWREV_GTE	(6,	BHND_PCIB_QUIRK_SROM_FIXUP),
+		BHND_HOSTB_HWREV_EQ	(7,	BHND_PCIB_QUIRK_NOPLLDOWN),
+
+		BHND_HOSTB_HWREV_END
+	),
+	BHND_HOSTB_DEV(PCIE2,	"PCIe-G2",	PCIE),
+
+	{ BHND_COREID_INVALID, NULL, BHNDB_PCIB_RDEFS_PCI, NULL }
+};
+
+/* Standard core resource specification */
 static const struct resource_spec bhnd_pci_hostb_rspec[BHND_PCIB_MAX_RSPEC] = {
 	{ SYS_RES_MEMORY,	0,	RF_ACTIVE },
 	{ -1, -1, 0 }
 };
-
 #define	CORE_RES_IDX	0
 
+/* BHNDB_PCI_REG convenience macros */ 
 #define	BPCI_REG_GET			BHND_PCIB_REG_GET
 #define	BPCI_REG_SET			BHND_PCIB_REG_SET
 #define	BPCI_COMMON_REG_GET(_r, _a)	BHND_PCIB_COMMON_REG_GET(sc, _r, _a)
@@ -69,32 +96,15 @@ static const struct resource_spec bhnd_pci_hostb_rspec[BHND_PCIB_MAX_RSPEC] = {
 #define	BPCI_COMMON_REG_OFFSET(_base, _offset)	\
 	(BPCI_COMMON_REG(_base) + BPCI_COMMON_REG(_offset))
 
-static const struct bhnd_hostb_device {
-	uint16_t		 vendor;
-	uint16_t		 device;
-	bhndb_pcib_rdefs_t	 rdefs;
-	const char		*desc;
-} bhnd_hostb_devs[] = {
-	{ BHND_MFGID_BCM,	BHND_COREID_PCI,	BHNDB_PCIB_RDEFS_PCI,
-	    "Broadcom PCI-BHND host bridge" },
-	{ BHND_MFGID_BCM,	BHND_COREID_PCIE,	BHNDB_PCIB_RDEFS_PCIE,
-	    "Broadcom PCIe-G1 PCI-BHND host bridge" },
-	{ BHND_MFGID_BCM,	BHND_COREID_PCIE2,	BHNDB_PCIB_RDEFS_PCIE,
-	    "Broadcom PCIe-G2 PCI-BHND host bridge" },
-	{ BHND_MFGID_INVALID,	BHND_COREID_INVALID,	BHNDB_PCIB_RDEFS_PCI,
-	    NULL }
-};
-
 static const struct bhnd_hostb_device *
 find_dev_entry(device_t dev)
 {
 	const struct bhnd_hostb_device *id;
 
 	for (id = bhnd_hostb_devs; id->device != BHND_COREID_INVALID; id++) {
-		if (bhnd_get_vendor(dev) == id->vendor &&
+		if (bhnd_get_vendor(dev) == BHND_MFGID_BCM &&
 		    bhnd_get_device(dev) != id->device)
 			return (id);
-
 	}
 
 	return (NULL);
@@ -159,7 +169,7 @@ bhnd_pci_hostb_attach(device_t dev)
 
 	/* We can't support the PCIe Gen 2 cores until we get development
 	 * hardware */
-	if (id->vendor == BHND_MFGID_BCM && id->device == BHND_COREID_PCIE2) {
+	if (id->device == BHND_COREID_PCIE2) {
 		device_printf(dev, "PCIe-Gen2 core support unimplemented "
 		    "unsupported\n");
 		return (ENXIO);

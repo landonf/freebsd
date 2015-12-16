@@ -163,6 +163,11 @@ struct bhnd_hwrev_match {
 					     to match on any revision. */
 };
 
+/** 
+ * Wildcard hardware revision match descriptor.
+ */
+#define	BHND_HWREV_MATCH_ANY	{ BHND_HWREV_INVALID, BHND_HWREV_INVALID }
+
 
 /** A core match descriptor. */
 struct bhnd_core_match {
