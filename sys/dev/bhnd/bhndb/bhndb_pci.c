@@ -36,6 +36,10 @@ __FBSDID("$FreeBSD$");
  * Provides support for bridging from a PCI parent bus to a BHND-compatible
  * bus (e.g. bcma or siba) via a Broadcom PCI core configured in end-point
  * mode.
+ * 
+ * This driver handles host interactions with the PCI bridge core, including
+ * reading/writing of PCI config space. Once the bhnd bus is up, the PCI bridge
+ * core is managed from the "SoC" side by a bhnd_hostb driver.
  */
 
 #include <sys/param.h>
