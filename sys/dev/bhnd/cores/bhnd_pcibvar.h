@@ -41,6 +41,7 @@ typedef enum {
 	BHNDB_PCIB_REGS_PCIE	= 1,	/* PCIe-Gen1 register definitions */
 } bhndb_pcib_regs_t;
 
+/** PCI bridge driver-specific state */
 struct bhnd_pcib_softc {
 	device_t		 dev;	/**< pci device */
 	struct bhnd_resource	*core;	/**< core registers. */
@@ -64,31 +65,7 @@ enum {
 	BHND_PCIB_QUIRK_SERDES_POLARITY	= (1<<8),	/**< ??? */
 };
 
-struct bhnd_hostb_quirk {
-	struct bhnd_hwrev_match	 hwrev;
-	uint32_t		 quirks;
-};
 
-struct bhnd_hostb_device {
-	uint16_t		 device;
-	const char		*desc;
-	bhndb_pcib_regs_t	 regs;
-	struct bhnd_hostb_quirk	*quirks;
-};
-
-#define	BHND_HOSTB_HWREV_RANGE(_start, _end, _quirks)	\
-	{ .hwrev = { _start, _end }, .quirks = _quirks }
-
-#define	BHND_HOSTB_HWREV_EQ(_hwrev, _quirks)	\
-	BHND_HOSTB_HWREV_RANGE(_hwrev, _hwrev, _quirks)
-
-#define	BHND_HOSTB_HWREV_GTE(_start, _quirks)	\
-	BHND_HOSTB_HWREV_RANGE(_start, BHND_HWREV_INVALID, _quirks)
-
-#define	BHND_HOSTB_HWREV_LTE(_end, _quirks)	\
-	BHND_HOSTB_HWREV_RANGE(0, _end, _quirks)
-
-#define	BHND_HOSTB_HWREV_END	{ BHND_HWREV_MATCH_ANY, BHND_PCIB_QUIRK_NONE }
 
 /**
  * Extract a register value by applying _MASK and _SHIFT defines to the common

@@ -54,25 +54,31 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_pciebreg.h"
 
 #define	BHND_HOSTB_DEV(_device, _desc, _regs, ...)	{	\
-	BHND_COREID_ ## _device, 			\
-	"Broadcom " _desc " PCI-BHND host bridge",	\
-	BHNDB_PCIB_REGS_ ## _regs,			\
-	(struct bhnd_hostb_quirk[]) {			\
-		__VA_ARGS__				\
-	}						\
+	BHND_COREID_ ## _device, 				\
+	"Broadcom " _desc " PCI-BHND host bridge",		\
+	BHNDB_PCIB_REGS_ ## _regs,				\
+	(struct bhnd_device_quirk[]) {				\
+		__VA_ARGS__					\
+	}							\
 }
 
-static const struct bhnd_hostb_device bhnd_hostb_devs[] = {
+/** PCI bridge core identification descriptor */
+static const struct bhnd_hostb_device {
+	uint16_t			 device;
+	const char			*desc;
+	bhndb_pcib_regs_t		 regs;
+	struct bhnd_device_quirk	*quirks;
+} bhnd_hostb_devs[] = {
 	BHND_HOSTB_DEV(PCI,	"PCI",		PCI),
 	BHND_HOSTB_DEV(PCIE,	"PCIe-G1",	PCIE,
-		BHND_HOSTB_HWREV_EQ	(0,	BHND_PCIB_QUIRK_DLLP_LCREG	| BHND_PCIB_QUIRK_MDIO_SERDES_RX),
-		BHND_HOSTB_HWREV_RANGE	(0, 1,	BHND_PCIB_QUIRK_TLP_SREG),
-		BHND_HOSTB_HWREV_RANGE	(3, 5,	BHND_PCIB_QUIRK_ASPM_EN_CLKREQ	| BHND_PCIB_QUIRK_SERDES_POLARITY),
-		BHND_HOSTB_HWREV_LTE	(6,	BHND_PCIB_QUIRK_DLLP_PMTHRESH),
-		BHND_HOSTB_HWREV_GTE	(6,	BHND_PCIB_QUIRK_SROM_FIXUP),
-		BHND_HOSTB_HWREV_EQ	(7,	BHND_PCIB_QUIRK_NOPLLDOWN),
+		BHND_QUIRK_HWREV_EQ	(0,	BHND_PCIB_QUIRK_DLLP_LCREG	| BHND_PCIB_QUIRK_MDIO_SERDES_RX),
+		BHND_QUIRK_HWREV_RANGE	(0, 1,	BHND_PCIB_QUIRK_TLP_SREG),
+		BHND_QUIRK_HWREV_RANGE	(3, 5,	BHND_PCIB_QUIRK_ASPM_EN_CLKREQ	| BHND_PCIB_QUIRK_SERDES_POLARITY),
+		BHND_QUIRK_HWREV_LTE	(6,	BHND_PCIB_QUIRK_DLLP_PMTHRESH),
+		BHND_QUIRK_HWREV_GTE	(6,	BHND_PCIB_QUIRK_SROM_FIXUP),
+		BHND_QUIRK_HWREV_EQ	(7,	BHND_PCIB_QUIRK_NOPLLDOWN),
 
-		BHND_HOSTB_HWREV_END
+		BHND_QUIRK_HWREV_END
 	),
 	BHND_HOSTB_DEV(PCIE2,	"PCIe-G2",	PCIE),
 

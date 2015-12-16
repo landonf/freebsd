@@ -178,6 +178,61 @@ struct bhnd_core_match {
 	int			unit;	/**< required core unit, or -1 */
 };
 
+
+/**
+ * Revision-specific hardware quirk descriptor.
+ * 
+ * Defines a set of quirk flags applicable to a range of hardware
+ * revisions.
+ */
+struct bhnd_device_quirk {
+	struct bhnd_hwrev_match	 hwrev;
+	uint32_t		 quirks;
+};
+
+/**
+ * Define a bhnd_device_quirk over a range of hardware revisions.
+ * 
+ * @param _start The first applicable hardware revision.
+ * @param _end The last applicable hardware revision, or BHND_HWREV_INVALID
+ * to match on any revision.
+ * @param _quirks Quirk flags applicable to this revision range.
+ */
+#define	BHND_QUIRK_HWREV_RANGE(_start, _end, _quirks)	\
+	{ .hwrev = { _start, _end }, .quirks = _quirks }
+
+/**
+ * Define a bhnd_device_quirk for a specific hardware revision.
+ * 
+ * @param _hwrev The hardware revision to match on.
+ * @param _quirks Quirk flags applicable to this revision.
+ */
+#define	BHND_QUIRK_HWREV_EQ(_hwrev, _quirks)	\
+	BHND_QUIRK_HWREV_RANGE(_hwrev, _hwrev, _quirks)
+
+/**
+ * Define a bhnd_device_quirk for any hardware revision equal or greater
+ * than @p _start.
+ * 
+ * @param _start The first hardware revision to match on.
+ * @param _quirks Quirk flags applicable to this revision.
+ */
+#define	BHND_QUIRK_HWREV_GTE(_start, _quirks)	\
+	BHND_QUIRK_HWREV_RANGE(_start, BHND_HWREV_INVALID, _quirks)
+
+/**
+ * Define a bhnd_device_quirk for any hardware revision equal or less
+ * than @p _end.
+ * 
+ * @param _end The last hardware revision to match on.
+ * @param _quirks Quirk flags applicable to this revision.
+ */
+#define	BHND_QUIRK_HWREV_LTE(_end, _quirks)	\
+	BHND_QUIRK_HWREV_RANGE(0, _end, _quirks)
+
+/** Mark the end of a bhnd_device_quirk table. */
+#define	BHND_QUIRK_HWREV_END	{ BHND_HWREV_MATCH_ANY, 0 }
+
 const char			*bhnd_vendor_name(uint16_t vendor);
 const char			*bhnd_port_type_name(bhnd_port_type port_type);
 
