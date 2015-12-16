@@ -53,10 +53,10 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_pcibreg.h"
 #include "bhnd_pciebreg.h"
 
-#define	BHND_HOSTB_DEV(_device, _desc, _rdefs, ...)	{	\
+#define	BHND_HOSTB_DEV(_device, _desc, _regs, ...)	{	\
 	BHND_COREID_ ## _device, 			\
 	"Broadcom " _desc " PCI-BHND host bridge",	\
-	BHNDB_PCIB_RDEFS_ ## _rdefs,			\
+	BHNDB_PCIB_REGS_ ## _regs,			\
 	(struct bhnd_hostb_quirk[]) {			\
 		__VA_ARGS__				\
 	}						\
@@ -76,7 +76,7 @@ static const struct bhnd_hostb_device bhnd_hostb_devs[] = {
 	),
 	BHND_HOSTB_DEV(PCIE2,	"PCIe-G2",	PCIE),
 
-	{ BHND_COREID_INVALID, NULL, BHNDB_PCIB_RDEFS_PCI, NULL }
+	{ BHND_COREID_INVALID, NULL, BHNDB_PCIB_REGS_PCI, NULL }
 };
 
 /* Standard core resource specification */
@@ -165,13 +165,12 @@ bhnd_pci_hostb_attach(device_t dev)
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
-	sc->rdefs = find_dev_entry(dev)->rdefs;
+	sc->regs = find_dev_entry(dev)->regs;
 
 	/* We can't support the PCIe Gen 2 cores until we get development
 	 * hardware */
 	if (id->device == BHND_COREID_PCIE2) {
-		device_printf(dev, "PCIe-Gen2 core support unimplemented "
-		    "unsupported\n");
+		device_printf(dev, "PCIe-Gen2 core support unimplemented\n");
 		return (ENXIO);
 	}
 

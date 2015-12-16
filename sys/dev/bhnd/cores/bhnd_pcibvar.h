@@ -35,16 +35,16 @@
 #define	BHND_PCIB_MAX_RES	2
 #define	BHND_PCIB_MAX_RSPEC	(BHND_PCIB_MAX_RES+1)
 
-/* Device register definitions */
+/* Device register families. */
 typedef enum {
-	BHNDB_PCIB_RDEFS_PCI	= 0,	/* PCI register definitions */
-	BHNDB_PCIB_RDEFS_PCIE	= 1,	/* PCIe-Gen1 register definitions */
-} bhndb_pcib_rdefs_t;
+	BHNDB_PCIB_REGS_PCI	= 0,	/* PCI register definitions */
+	BHNDB_PCIB_REGS_PCIE	= 1,	/* PCIe-Gen1 register definitions */
+} bhndb_pcib_regs_t;
 
 struct bhnd_pcib_softc {
 	device_t		 dev;	/**< pci device */
 	struct bhnd_resource	*core;	/**< core registers. */
-	bhndb_pcib_rdefs_t	 rdefs;	/**< device register definitions */
+	bhndb_pcib_regs_t	 regs;	/**< device register family */
 
 	struct resource_spec	 rspec[BHND_PCIB_MAX_RSPEC];
 	struct bhnd_resource	*res[BHND_PCIB_MAX_RES];
@@ -72,18 +72,9 @@ struct bhnd_hostb_quirk {
 struct bhnd_hostb_device {
 	uint16_t		 device;
 	const char		*desc;
-	bhndb_pcib_rdefs_t	 rdefs;
+	bhndb_pcib_regs_t	 regs;
 	struct bhnd_hostb_quirk	*quirks;
 };
-
-#define	BHND_HOSTB_DEV(_device, _desc, _rdefs, ...)	{	\
-	BHND_COREID_ ## _device, 			\
-	"Broadcom " _desc " PCI-BHND host bridge",	\
-	BHNDB_PCIB_RDEFS_ ## _rdefs,			\
-	(struct bhnd_hostb_quirk[]) {			\
-		__VA_ARGS__				\
-	}						\
-}
 
 #define	BHND_HOSTB_HWREV_RANGE(_start, _end, _quirks)	\
 	{ .hwrev = { _start, _end }, .quirks = _quirks }
@@ -140,7 +131,7 @@ struct bhnd_hostb_device {
  * is the same across the register definitions.
  */
 #define	BHND_PCIB_COMMON_REG(_sc, _name)	(			\
-	(_sc)->rdefs == BHNDB_PCIB_RDEFS_PCI ? BHND_PCI_ ## _name :	\
+	(_sc)->regs == BHNDB_PCIB_REGS_PCI ? BHND_PCI_ ## _name :	\
 	BHND_PCIE_ ## _name						\
 )
 
