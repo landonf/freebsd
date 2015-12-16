@@ -59,6 +59,12 @@ siba_attach(device_t dev)
 	int			 ndevs;
 	int			 error;
 
+	// TODO: We need to set the initiator timeout for the
+	// core that will be issuing requests to non-memory locations.
+	//
+	// In the case of a bridged device, this is the hostb core.
+	// On a non-bridged device, this will be the CPU.
+
 	/* Fetch references to the siba SIBA_CFG* blocks for all
 	 * registered devices */
 	if ((error = device_get_children(dev, &devs, &ndevs)))
