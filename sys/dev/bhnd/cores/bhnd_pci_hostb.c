@@ -183,8 +183,6 @@ bhnd_pci_hostb_attach(device_t dev)
 	sc->regs = id->regs;
 	sc->quirks = pcihb_get_quirks(dev, id);
 
-	device_printf(dev, "QUIRKS: 0x%x\n", sc->quirks);
-
 	/*
 	 * Map our PCI core registers
 	 */
