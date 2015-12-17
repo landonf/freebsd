@@ -30,7 +30,7 @@
 #include <sys/bus.h>
 #include <sys/systm.h>
 
-#include <dev/etherswitch/mdio.h>
+#include <dev/mdio/mdio.h>
 
 #include "mdio_if.h"
 
