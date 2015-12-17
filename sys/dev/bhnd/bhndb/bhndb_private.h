@@ -230,7 +230,7 @@ bhndb_dw_is_free(struct bhndb_resources *br, struct bhndb_dw_alloc *dwa)
 
 #define	BHNDB_LOCK_INIT(sc) \
 	mtx_init(&(sc)->sc_mtx, device_get_nameunit((sc)->dev), \
-	    "bhndb_gen resource allocator lock", MTX_DEF)
+	    "bhndb resource allocator lock", MTX_DEF)
 #define	BHNDB_LOCK(sc)			mtx_lock(&(sc)->sc_mtx)
 #define	BHNDB_UNLOCK(sc)		mtx_unlock(&(sc)->sc_mtx)
 #define	BHNDB_LOCK_ASSERT(sc, what)	mtx_assert(&(sc)->sc_mtx, what)
