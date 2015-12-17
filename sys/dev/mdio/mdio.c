@@ -29,6 +29,7 @@
 #include <sys/param.h>
 #include <sys/bus.h>
 #include <sys/systm.h>
+#include <sys/module.h>
 
 #include <dev/mdio/mdio.h>
 
@@ -132,3 +133,5 @@ driver_t mdio_driver = {
 };
 
 devclass_t mdio_devclass;
+
+MODULE_VERSION(mdio, 1);
