@@ -35,7 +35,7 @@
 #include "bhnd_pcivar.h"
 
 /* PCI hostb device identification */
-struct bhnd_hostb_device {
+struct bhnd_pci_device {
 	uint16_t			 device;
 	const char			*desc;
 	bhnd_pci_regs_t			 regs;
@@ -51,12 +51,22 @@ struct bhnd_pci_hostb_softc {
 	bhnd_pci_regs_t		 regs;		/**< device register family */
 	uint32_t		 quirks;	/**< BHND_PCI_QUIRK flags */
 
+	struct mtx		 sc_mtx;	/**< softc lock */
+
 	struct resource_spec	 rspec[BHND_PCI_HOSTB_MAX_RSPEC];
 	struct bhnd_resource	*res[BHND_PCI_HOSTB_MAX_RES];
 
 };
 
-/* Declare a bhnd_hostb_device entry */
+#define	BHND_PCI_LOCK_INIT(sc) \
+	mtx_init(&(sc)->sc_mtx, device_get_nameunit((sc)->dev), \
+	    "bhnd_pci_hostb softc lock", MTX_DEF)
+#define	BHND_PCI_LOCK(sc)			mtx_lock(&(sc)->sc_mtx)
+#define	BHND_PCI_UNLOCK(sc)		mtx_unlock(&(sc)->sc_mtx)
+#define	BHND_PCI_LOCK_ASSERT(sc, what)	mtx_assert(&(sc)->sc_mtx, what)
+#define	BHND_PCI_LOCK_DESTROY(sc)	mtx_destroy(&(sc)->sc_mtx)
+
+/* Declare a bhnd_pci_device entry */
 #define	BHND_HOSTB_DEV(_device, _desc, ...)	{	\
 	BHND_COREID_ ## _device, 				\
 	"Broadcom " _desc "-BHND host bridge",		\

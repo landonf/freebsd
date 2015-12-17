@@ -52,10 +52,15 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_pcireg.h"
 #include "bhnd_pci_hostbvar.h"
 
+static uint32_t				 pcihb_get_quirks(device_t dev,
+					     const struct bhnd_pci_device *id);
+
+static const struct bhnd_pci_device	*pcihb_find_dev_entry(device_t dev);
+
 /*
  * Supported PCI bridge cores
  */
-static const struct bhnd_hostb_device bhnd_hostb_devs[] = {
+static const struct bhnd_pci_device bhnd_pci_devs[] = {
 	/* PCI */
 	BHND_HOSTB_DEV(PCI,	"PCI",
 	    BHND_QUIRK_HWREV_RANGE	(0, 5,	BHND_PCI_QUIRK_SBINTVEC),
@@ -91,7 +96,7 @@ static const struct resource_spec bhnd_pci_hostb_rspec[] = {
  * Collect all quirks defined in @p id that match @p dev.
  */
 static uint32_t 
-pcihb_get_quirks(device_t dev, const struct bhnd_hostb_device *id)
+pcihb_get_quirks(device_t dev, const struct bhnd_pci_device *id)
 {
 	struct bhnd_device_quirk	*dq;
 	uint32_t			 quirks;
@@ -111,12 +116,12 @@ pcihb_get_quirks(device_t dev, const struct bhnd_hostb_device *id)
 /**
  * Find the device table entry for @p dev, if any.
  */
-static const struct bhnd_hostb_device *
+static const struct bhnd_pci_device *
 pcihb_find_dev_entry(device_t dev)
 {
-	const struct bhnd_hostb_device *id;
+	const struct bhnd_pci_device *id;
 
-	for (id = bhnd_hostb_devs; id->device != BHND_COREID_INVALID; id++) {
+	for (id = bhnd_pci_devs; id->device != BHND_COREID_INVALID; id++) {
 		if (bhnd_get_vendor(dev) == BHND_MFGID_BCM &&
 		    bhnd_get_device(dev) == id->device)
 			return (id);
@@ -128,7 +133,7 @@ pcihb_find_dev_entry(device_t dev)
 static int
 bhnd_pci_hostb_probe(device_t dev)
 {
-	const struct bhnd_hostb_device *id;
+	const struct bhnd_pci_device *id;
 
 	/* Ignore PCI cores not in host bridge mode. */
 	if (!bhnd_is_hostb_device(dev))
@@ -171,7 +176,7 @@ bhndb_pci_sprom_target_war(struct bhnd_pci_hostb_softc *sc)
 static int
 bhnd_pci_hostb_attach(device_t dev)
 {
-	const struct bhnd_hostb_device	*id;
+	const struct bhnd_pci_device	*id;
 	struct bhnd_pci_hostb_softc	*sc;
 	int				 error;
 
@@ -182,6 +187,7 @@ bhnd_pci_hostb_attach(device_t dev)
 	sc->dev = dev;
 	sc->regs = id->regs;
 	sc->quirks = pcihb_get_quirks(dev, id);
+	BHND_PCI_LOCK_INIT(sc);
 
 	/*
 	 * Map our PCI core registers
@@ -205,6 +211,7 @@ bhnd_pci_hostb_detach(device_t dev)
 
 	sc = device_get_softc(dev);
 	bhnd_release_resources(dev, sc->rspec, sc->res);
+	BHND_PCI_LOCK_DESTROY(sc);
 
 	return (0);
 }
