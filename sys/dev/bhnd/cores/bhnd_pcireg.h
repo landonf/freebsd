@@ -314,9 +314,8 @@
 
 /* 
  * MDIO devices (SERDES modules)
- *  unlike old pcie cores (rev < 10), rev10 pcie serde organizes registers into
- * a few blocks.
- *  two layers mapping (blockidx, register offset) is required
+ * unlike old pcie cores (rev < 10), rev10 pcie serde organizes registers into
+ * a few blocks. two layers mapping (blockidx, register offset) is required
  */
 #define	BHND_PCIE_MDIO_DEV_IEEE0		0x000
 #define	BHND_PCIE_MDIO_DEV_IEEE1		0x001

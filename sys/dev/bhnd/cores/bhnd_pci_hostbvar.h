@@ -198,6 +198,13 @@ enum {
 	 * SRSH_PCIE_MISC_CONFIG.
 	 */
 	BHND_PCIE_QUIRK_SPROM_L23_PCI_RESET	= (1<<13),
+
+	/**
+	 * The SerDes registers are organized into a single block; standard
+	 * two level addressing is not required, and the MDIO *_OLD register
+	 * variants must be used.
+	 */
+	BHND_PCIE_QUIRK_SERDES_NOSETBLOCK	= (1<<14),
 };
 
 
