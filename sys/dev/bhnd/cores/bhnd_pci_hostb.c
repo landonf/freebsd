@@ -77,11 +77,11 @@ static const struct bhnd_hostb_device bhnd_hostb_devs[] = {
 	    BHND_QUIRK_HWREV_END
 	),
 
-	{ BHND_COREID_INVALID, NULL, BHNDB_PCIB_REGS_PCI, NULL }
+	{ BHND_COREID_INVALID, NULL, BHND_PCI_REGS_PCI, NULL }
 };
 
 /* Standard core resource specification */
-static const struct resource_spec bhnd_pci_hostb_rspec[BHND_PCIB_MAX_RSPEC] = {
+static const struct resource_spec bhnd_pci_hostb_rspec[] = {
 	{ SYS_RES_MEMORY,	0,	RF_ACTIVE },
 	{ -1, -1, 0 }
 };
@@ -124,7 +124,7 @@ bhnd_pci_hostb_probe(device_t dev)
 * PCI core.
 */
 static void
-bhndb_pci_sprom_target_war(struct bhnd_pcib_softc *sc)
+bhndb_pci_sprom_target_war(struct bhnd_pci_hostb_softc *sc)
 {
 	bus_size_t	sprom_addr;
 	u_int		sprom_core_idx;
@@ -149,7 +149,7 @@ static int
 bhnd_pci_hostb_attach(device_t dev)
 {
 	const struct bhnd_hostb_device	*id;
-	struct bhnd_pcib_softc		*sc;
+	struct bhnd_pci_hostb_softc	*sc;
 	int				 error;
 
 	id = find_dev_entry(dev);
@@ -177,7 +177,7 @@ bhnd_pci_hostb_attach(device_t dev)
 static int
 bhnd_pci_hostb_detach(device_t dev)
 {
-	struct bhnd_pcib_softc	*sc;
+	struct bhnd_pci_hostb_softc	*sc;
 
 	sc = device_get_softc(dev);
 	bhnd_release_resources(dev, sc->rspec, sc->res);
@@ -207,6 +207,6 @@ static device_method_t bhnd_pci_hostb_methods[] = {
 	DEVMETHOD_END
 };
 
-DEFINE_CLASS_0(bhnd_hostb, bhnd_pci_hostb_driver, bhnd_pci_hostb_methods, sizeof(struct bhnd_pcib_softc));
+DEFINE_CLASS_0(bhnd_hostb, bhnd_pci_hostb_driver, bhnd_pci_hostb_methods, sizeof(struct bhnd_pci_hostb_softc));
 
 DRIVER_MODULE(bhnd_pci_hostb, bhnd, bhnd_pci_hostb_driver, bhnd_hostb_devclass, 0, 0);

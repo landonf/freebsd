@@ -32,33 +32,54 @@
 #ifndef _BHND_CORES_PCI_HOSTBVAR_H_
 #define _BHND_CORES_PCI_HOSTBVAR_H_
 
-#include "bhnd_pcibvar.h"
+#include "bhnd_pcivar.h"
 
-/* BHNDB_PCI_REG convenience macros */ 
-#define	BPCI_REG_GET			BHND_PCIB_REG_GET
-#define	BPCI_REG_SET			BHND_PCIB_REG_SET
-#define	BPCI_COMMON_REG_GET(_r, _a)	BHND_PCIB_COMMON_REG_GET(sc, _r, _a)
-#define	BPCI_COMMON_REG_SET(_r, _a, _v)	BHND_PCIB_COMMON_REG_SET(sc, _r, _a, _v)
-#define	BPCI_COMMON_REG(_name)		BHND_PCIB_COMMON_REG(sc, _name)
+/* PCI hostb device identification */
+struct bhnd_hostb_device {
+	uint16_t			 device;
+	const char			*desc;
+	bhnd_pci_regs_t			 regs;
+	struct bhnd_device_quirk	*quirks;
+};
 
-#define	BPCI_COMMON_REG_OFFSET(_base, _offset)	\
-	(BPCI_COMMON_REG(_base) + BPCI_COMMON_REG(_offset))
+/** PCI host bridge driver state */
+#define	BHND_PCI_HOSTB_MAX_RES		2
+#define	BHND_PCI_HOSTB_MAX_RSPEC	(BHND_PCI_HOSTB_MAX_RES+1)
+struct bhnd_pci_hostb_softc {
+	device_t		 dev;	/**< pci device */
+	struct bhnd_resource	*core;	/**< core registers. */
+	bhnd_pci_regs_t		 regs;	/**< device register family */
 
+	struct resource_spec	 rspec[BHND_PCI_HOSTB_MAX_RSPEC];
+	struct bhnd_resource	*res[BHND_PCI_HOSTB_MAX_RES];
+
+};
+
+/* Declare a bhnd_hostb_device entry */
 #define	BHND_HOSTB_DEV(_device, _desc, _regs, ...)	{	\
 	BHND_COREID_ ## _device, 				\
 	"Broadcom " _desc " PCI-BHND host bridge",		\
-	BHNDB_PCIB_REGS_ ## _regs,				\
+	BHND_PCI_REGS_ ## _regs,				\
 	(struct bhnd_device_quirk[]) {				\
 		__VA_ARGS__					\
 	}							\
 }
 
-struct bhnd_hostb_device {
-	uint16_t			 device;
-	const char			*desc;
-	bhndb_pcib_regs_t		 regs;
-	struct bhnd_device_quirk	*quirks;
-};
+/* BHNDB_PCI_REG_* convenience macros */ 
+#define	BPCI_REG_GET			BHND_PCI_REG_GET
+#define	BPCI_REG_SET			BHND_PCI_REG_SET
+
+#define	BPCI_COMMON_REG_GET(_r, _a)	\
+	BHND_PCI_COMMON_REG_GET(sc->regs, _r, _a)
+
+#define	BPCI_COMMON_REG_SET(_r, _a, _v)	\
+	BHND_PCI_COMMON_REG_SET(sc->regs, _r, _a, _v)
+
+#define	BPCI_COMMON_REG(_name)		\
+	BHND_PCI_COMMON_REG(sc->regs, _name)
+
+#define	BPCI_COMMON_REG_OFFSET(_base, _offset)	\
+	(BPCI_COMMON_REG(_base) + BPCI_COMMON_REG(_offset))
 
 /* 
  * PCI/PCIe-Gen1 endpoint-mode device quirks
@@ -167,5 +188,6 @@ enum {
 	 */
 	BHND_PCIE_QUIRK_SPROM_L23_PCI_RESET	= (1<<13),
 };
+
 
 #endif /* _BHND_CORES_PCI_HOSTBVAR_H_ */

@@ -22,39 +22,8 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_CORES_PCI_REG_H_
-#define _BHND_CORES_PCI_REG_H_
-
-/*
- * PCI Register Macros
- */
-
-/* Common BHND_PCI_*_REG_(GET|SET) implementation */
-#define	_BHND_PCI_REG_GET(_regval, _mask, _shift)		\
-	((_regval & _mask) >> _shift)
-#define _BHND_PCI_REG_SET(_regval, _mask, _shift, _setval)	\
-	(((_regval) & ~ _mask) | (((_setval) << _shift) & _mask))
-
-/**
- * Extract a register value by applying _MASK and _SHIFT defines.
- * 
- * @param _regv The register value containing the desired attribute
- * @param _attr The register attribute name to which to append `_MASK`/`_SHIFT`
- * suffixes.
- */
-#define	BHND_PCIB_REG_GET(_regv, _attr)	\
-	_BHND_PCI_REG_GET(_regv, _attr ## _MASK, _attr ## _SHIFT)
-
-/**
- * Set a register value by applying _MASK and _SHIFT defines.
- * 
- * @param _regv The register value containing the desired attribute
- * @param _attr The register attribute name to which to append `_MASK`/`_SHIFT`
- * suffixes.
- * @param _val The value to bet set in @p _regv.
- */
-#define	BHND_PCIB_REG_SET(_regv, _attr, _val)		\
-	_BHND_PCI_REG_SET(_regv, _attr ## _MASK, _attr ## _SHIFT, _val)
+#ifndef _BHND_CORES_PCIREG_H_
+#define _BHND_CORES_PCIREG_H_
 
 /*
  * PCI/PCIe-Gen1 DMA Constants
@@ -68,8 +37,6 @@
 
 #define	BHND_PCIE_DMA64_L32		0x00000000	/**< 64-bit client mode sb2pcitranslation2 (2 ZettaBytes, low 32 bits) */
 #define	BHND_PCIE_DMA64_H32		0x80000000	/**< 64-bit client mode sb2pcitranslation2 (2 ZettaBytes, high 32 bits) */
-
-
 
 /*
  * PCI Core Registers
@@ -419,4 +386,4 @@
 /* Status reg PCIE_PLP_STATUSREG */
 #define	BHND_PCIE_PLP_POLARITYINV_STAT	0x10
 
-#endif /* _BHND_CORES_PCI_REG_H_ */
+#endif /* _BHND_CORES_PCIREG_H_ */
