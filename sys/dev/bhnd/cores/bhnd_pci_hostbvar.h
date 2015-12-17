@@ -46,9 +46,10 @@ struct bhnd_hostb_device {
 #define	BHND_PCI_HOSTB_MAX_RES		2
 #define	BHND_PCI_HOSTB_MAX_RSPEC	(BHND_PCI_HOSTB_MAX_RES+1)
 struct bhnd_pci_hostb_softc {
-	device_t		 dev;	/**< pci device */
-	struct bhnd_resource	*core;	/**< core registers. */
-	bhnd_pci_regs_t		 regs;	/**< device register family */
+	device_t		 dev;		/**< pci device */
+	struct bhnd_resource	*core;		/**< core registers. */
+	bhnd_pci_regs_t		 regs;		/**< device register family */
+	uint32_t		 quirks;	/**< BHND_PCI_QUIRK flags */
 
 	struct resource_spec	 rspec[BHND_PCI_HOSTB_MAX_RSPEC];
 	struct bhnd_resource	*res[BHND_PCI_HOSTB_MAX_RES];
@@ -56,10 +57,10 @@ struct bhnd_pci_hostb_softc {
 };
 
 /* Declare a bhnd_hostb_device entry */
-#define	BHND_HOSTB_DEV(_device, _desc, _regs, ...)	{	\
+#define	BHND_HOSTB_DEV(_device, _desc, ...)	{	\
 	BHND_COREID_ ## _device, 				\
-	"Broadcom " _desc " PCI-BHND host bridge",		\
-	BHND_PCI_REGS_ ## _regs,				\
+	"Broadcom " _desc "-BHND host bridge",		\
+	BHND_PCI_REGS_ ## _device,				\
 	(struct bhnd_device_quirk[]) {				\
 		__VA_ARGS__					\
 	}							\

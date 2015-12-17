@@ -57,7 +57,7 @@ __FBSDID("$FreeBSD$");
  */
 static const struct bhnd_hostb_device bhnd_hostb_devs[] = {
 	/* PCI */
-	BHND_HOSTB_DEV(PCI,	"PCI",		PCI,
+	BHND_HOSTB_DEV(PCI,	"PCI",
 	    BHND_QUIRK_HWREV_RANGE	(0, 5,	BHND_PCI_QUIRK_SBINTVEC),
 	    BHND_QUIRK_HWREV_GTE	(0,	BHND_PCI_QUIRK_SBTOPCI2_PREF_BURST),
 	    BHND_QUIRK_HWREV_GTE	(11,	BHND_PCI_QUIRK_SBTOPCI2_READMULTI),
@@ -65,7 +65,7 @@ static const struct bhnd_hostb_device bhnd_hostb_devs[] = {
 	),
 
 	/* PCI Gen 1 */
-	BHND_HOSTB_DEV(PCIE,	"PCIe-G1",	PCIE,
+	BHND_HOSTB_DEV(PCIE,	"PCIe",
 	    BHND_QUIRK_HWREV_EQ		(0,	BHND_PCIE_QUIRK_PCIPM_REQEN | BHND_PCIE_QUIRK_SERDES_L0s_HANG),
 	    BHND_QUIRK_HWREV_RANGE	(0, 1,	BHND_PCIE_QUIRK_IGNORE_VDM),
 	    BHND_QUIRK_HWREV_RANGE	(3, 5,	BHND_PCIE_QUIRK_ASPM_OVR | BHND_PCIE_QUIRK_SERDES_POLARITY),
@@ -87,15 +87,38 @@ static const struct resource_spec bhnd_pci_hostb_rspec[] = {
 };
 #define	CORE_RES_IDX	0
 
+/**
+ * Collect all quirks defined in @p id that match @p dev.
+ */
+static uint32_t 
+pcihb_get_quirks(device_t dev, const struct bhnd_hostb_device *id)
+{
+	struct bhnd_device_quirk	*dq;
+	uint32_t			 quirks;
+	uint16_t			 hwrev;
 
+	hwrev = bhnd_get_hwrev(dev);
+	quirks = BHND_PCI_QUIRK_NONE;
+
+	for (dq = id->quirks; dq->quirks != 0; dq++) {
+		if (bhnd_hwrev_matches(hwrev, &dq->hwrev))
+			quirks |= dq->quirks;
+	};
+
+	return (quirks);
+}
+
+/**
+ * Find the device table entry for @p dev, if any.
+ */
 static const struct bhnd_hostb_device *
-find_dev_entry(device_t dev)
+pcihb_find_dev_entry(device_t dev)
 {
 	const struct bhnd_hostb_device *id;
 
 	for (id = bhnd_hostb_devs; id->device != BHND_COREID_INVALID; id++) {
 		if (bhnd_get_vendor(dev) == BHND_MFGID_BCM &&
-		    bhnd_get_device(dev) != id->device)
+		    bhnd_get_device(dev) == id->device)
 			return (id);
 	}
 
@@ -111,7 +134,7 @@ bhnd_pci_hostb_probe(device_t dev)
 	if (!bhnd_is_hostb_device(dev))
 		return (ENXIO);
 
-	if ((id = find_dev_entry(dev)) == NULL)
+	if ((id = pcihb_find_dev_entry(dev)) == NULL)
 		return (ENXIO);
 
 	device_set_desc(dev, id->desc);
@@ -152,12 +175,15 @@ bhnd_pci_hostb_attach(device_t dev)
 	struct bhnd_pci_hostb_softc	*sc;
 	int				 error;
 
-	id = find_dev_entry(dev);
+	id = pcihb_find_dev_entry(dev);
 	KASSERT(id != NULL, ("device entry went missing"));
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
-	sc->regs = find_dev_entry(dev)->regs;
+	sc->regs = id->regs;
+	sc->quirks = pcihb_get_quirks(dev, id);
+
+	device_printf(dev, "QUIRKS: 0x%x\n", sc->quirks);
 
 	/*
 	 * Map our PCI core registers
