@@ -400,25 +400,47 @@ bhnd_core_matches(const struct bhnd_core_info *core,
 {
 	if (desc->vendor != BHND_MFGID_INVALID &&
 	    desc->vendor != core->vendor)
-		return false;
+		return (false);
 
 	if (desc->device != BHND_COREID_INVALID &&
 	    desc->device != core->device)
-		return false;
+		return (false);
 
 	if (desc->unit != -1 && desc->unit != core->unit)
-		return false;
+		return (false);
 
-	if (desc->hwrev.start != BHND_HWREV_INVALID &&
-	    desc->hwrev.start > core->hwrev)
-		return false;
+	if (!bhnd_hwrev_matches(core->hwrev, &desc->hwrev))
+		return (false);
 		
 	if (desc->hwrev.end != BHND_HWREV_INVALID &&
 	    desc->hwrev.end < core->hwrev)
-		return false;
+		return (false);
 
 	if (desc->class != BHND_DEVCLASS_INVALID &&
 	    desc->class != bhnd_core_class(core))
+		return (false);
+
+	return true;
+}
+
+/**
+ * Return true if the @p hwrev matches @p desc.
+ * 
+ * @param hwrev A bhnd hardware revision.
+ * @param desc A match descriptor to compare against @p core.
+ * 
+ * @retval true if @p hwrev matches @p match
+ * @retval false if @p hwrev does not match @p match.
+ */
+bool
+bhnd_hwrev_matches(uint16_t hwrev, const struct bhnd_hwrev_match *desc)
+{
+	if (desc->start != BHND_HWREV_INVALID &&
+	    desc->start > hwrev)
+		return false;
+		
+	if (desc->end != BHND_HWREV_INVALID &&
+	    desc->end < hwrev)
 		return false;
 
 	return true;

@@ -186,8 +186,8 @@ struct bhnd_core_match {
  * revisions.
  */
 struct bhnd_device_quirk {
-	struct bhnd_hwrev_match	 hwrev;
-	uint32_t		 quirks;
+	struct bhnd_hwrev_match	 hwrev;		/**< applicable hardware revisions */
+	uint32_t		 quirks;	/**< applicable quirk flags */
 };
 
 /**
@@ -263,6 +263,9 @@ const struct bhnd_core_info	*bhnd_find_core(
 bool				 bhnd_core_matches(
 				     const struct bhnd_core_info *core,
 				     const struct bhnd_core_match *desc);
+
+bool				 bhnd_hwrev_matches(uint16_t hwrev,
+				     const struct bhnd_hwrev_match *desc);
 
 bool				 bhnd_device_matches(device_t dev,
 				     const struct bhnd_core_match *desc);
