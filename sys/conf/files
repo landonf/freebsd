@@ -1109,6 +1109,7 @@ dev/bge/if_bge.c		optional bge
 dev/bhnd/bhnd.c			optional bhndbus | bhnd
 dev/bhnd/bhnd_subr.c		optional bhndbus | bhnd
 dev/bhnd/bhnd_if.m		optional bhndbus | bhnd
+dev/bhnd/bhnd_mdio.c		optional bhndbus | bhndb pci
 dev/bhnd/bhndb/bhndb.c		optional bhndbus | bhndb
 dev/bhnd/bhndb/bhndb_bus_if.m	optional bhndbus | bhndb
 dev/bhnd/bhndb/bhndb_hwdata.c	optional bhndbus | bhndb
@@ -1129,6 +1130,7 @@ dev/bhnd/siba/siba_subr.c	optional bhndbus | siba
 #
 # bhnd core drivers
 dev/bhnd/cores/bhnd_chipc.c	optional bhndbus | bhnd
+dev/bhnd/cores/bhnd_mdio_pcie.c	optional bhndbus | bhnd pci
 dev/bhnd/cores/bhnd_pcib.c	optional bhnd_pcib bhnd pci
 dev/bhnd/cores/bhnd_pci_hostb.c	optional bhndbus | bhndb bhnd pci
 #

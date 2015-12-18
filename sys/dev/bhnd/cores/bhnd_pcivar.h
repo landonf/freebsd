@@ -36,6 +36,8 @@
  * Shared PCI Bridge/PCI Host Bridge definitions.
  */
 
+extern devclass_t bhnd_mdio_pcie;	/**< MDIO interface device class */
+
 /* Device register families. */
 typedef enum {
 	BHND_PCI_REGS_PCI	= 0,	/* PCI register definitions */

@@ -10,6 +10,7 @@ SRCS+=	device_if.h bus_if.h
 
 SUBDIR=	bcma \
 	bcma_bhndb \
+	bhnd_mdio \
 	bhndb \
 	bhndb_pci \
 	cores \

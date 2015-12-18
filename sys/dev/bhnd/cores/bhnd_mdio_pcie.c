@@ -31,97 +31,82 @@
 __FBSDID("$FreeBSD$");
 
 /*
- * Broadcom PCI-BHND Host Bridge.
+ * Broadcom PCIe MDIO Driver
  * 
- * This driver is used to "eat" PCI(e) cores operating in endpoint mode when
- * they're attached to a bhndb_pci driver on the host side.
+ * Provides access to the PCIe-G1 core's MDIO interface; the PCIe SerDes and other
+ * devices' management interfaces are accessible via MDIO.
+ * 
+ * The PCIe-G1 device uses the generic BHND MDIO interface supported by
+ * bhnd_mdio; this driver subclasses the common bhnd_mdio driver to fetch
+ * a borrowed reference to the parent's PCIe register block during attachment.
  */
 
 #include <sys/param.h>
 #include <sys/kernel.h>
 #include <sys/bus.h>
 #include <sys/module.h>
+#include <sys/systm.h>
 
 #include <machine/bus.h>
 #include <sys/rman.h>
 #include <machine/resource.h>
 
 #include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/bhnd_mdiovar.h>
 
 #include "bhnd_pcireg.h"
+#include "bhnd_pci_hostbvar.h"
 
-#include "bhnd_pcibvar.h"
-
-static const struct bhnd_pcib_device {
-	uint16_t	 vendor;
-	uint16_t	 device;
-	const char	*desc;
-} bhnd_pcib_devs[] = {
-	{ BHND_MFGID_BCM,	BHND_COREID_PCI,	"BHND Host-PCI bridge" },
-	{ BHND_MFGID_BCM,	BHND_COREID_PCIE,	"BHND Host-PCI bridge (PCIe Gen1)" },
-	{ BHND_MFGID_INVALID,	BHND_COREID_INVALID,	NULL }
-};
-
-static int
-bhnd_pcib_probe(device_t dev)
+static void
+bhnd_mdio_pcie_identify(driver_t *driver, device_t parent)
 {
-	const struct bhnd_pcib_device *id;
+	const char *name = devclass_get_name(bhnd_mdio_pcie);
 
-	/* Ignore PCI cores configured in host bridge mode */
-	if (bhnd_is_hostb_device(dev))
-		return (ENXIO);
+	if (bhnd_get_vendor(parent) != BHND_MFGID_BCM ||
+	    bhnd_get_device(parent) != BHND_COREID_PCIE)
+		return;
 
-	for (id = bhnd_pcib_devs; id->device != BHND_COREID_INVALID; id++) {
-		if (bhnd_get_vendor(dev) != id->vendor)
-			continue;
-
-		if (bhnd_get_device(dev) != id->device)
-			continue;
-
-		device_set_desc(dev, id->desc);
-		return (BUS_PROBE_SPECIFIC);
-	}
-
-	return (ENXIO);
+	if (device_find_child(parent, name, -1) == NULL)
+		BUS_ADD_CHILD(parent, 0, name, -1);
 }
 
 static int
-bhnd_pcib_attach(device_t dev)
+bhnd_mdio_pcie_probe(device_t dev)
 {
-	return (ENXIO);
+	device_set_desc(dev, "Broadcom MDIO");
+	device_quiet(dev);
+
+	return (BUS_PROBE_DEFAULT);
 }
 
+/*
+ * Fetch a borrowed reference to a parent bhnd_pci_hostb's register block
+ * during attach.
+ */
 static int
-bhnd_pcib_detach(device_t dev)
+bhnd_mdio_pcie_hb_attach(device_t dev)
 {
-	return (ENXIO);
+	struct bhnd_pci_hostb_softc	*parent_sc;
+	device_t			 parent;
+
+	parent = device_get_parent(dev);
+	parent_sc = device_get_softc(parent);
+
+	return (bhnd_mdio_attach(dev, parent_sc->core, -1, BHND_PCIE_MDIO_CTL));
 }
 
-static int
-bhnd_pcib_suspend(device_t dev)
-{
-	return (ENXIO);
-}
-
-static int
-bhnd_pcib_resume(device_t dev)
-{
-	return (ENXIO);
-}
-
-static device_method_t bhnd_pcib_methods[] = {
+static device_method_t bhnd_mdio_pci_hb_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_probe,		bhnd_pcib_probe),
-	DEVMETHOD(device_attach,	bhnd_pcib_attach),
-	DEVMETHOD(device_detach,	bhnd_pcib_detach),
-	DEVMETHOD(device_suspend,	bhnd_pcib_suspend),
-	DEVMETHOD(device_resume,	bhnd_pcib_resume),
+	DEVMETHOD(device_identify,	bhnd_mdio_pcie_identify),
+	DEVMETHOD(device_probe,		bhnd_mdio_pcie_probe),
+	DEVMETHOD(device_attach,	bhnd_mdio_pcie_hb_attach),
 	DEVMETHOD_END
 };
 
-DEFINE_CLASS_0(bhnd_pcib, bhnd_pcib_driver, bhnd_pcib_methods, sizeof(struct bhnd_pcib_softc));
-DRIVER_MODULE(bhnd_pcib, bhnd, bhnd_pcib_driver, bhnd_hostb_devclass, 0, 0);
+devclass_t bhnd_mdio_pcie;
 
-MODULE_VERSION(bhnd_pcib, 1);
-MODULE_DEPEND(bhnd_pcib, pci, 1, 1, 1);
-MODULE_DEPEND(bhnd_pcib, bhnd_pci_mdio, 1, 1, 1);
+DEFINE_CLASS_1(bhnd_mdio_pcie, bhnd_mdio_pci_hb_driver,
+    bhnd_mdio_pci_hb_methods, sizeof(struct bhnd_mdio_softc), bhnd_mdio_driver);
+
+DRIVER_MODULE(bhnd_mdio_pcie, bhnd_pci_hostb, bhnd_mdio_pci_hb_driver,
+    bhnd_mdio_pcie, 0, 0);

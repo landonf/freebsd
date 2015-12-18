@@ -153,7 +153,7 @@
 #define	BHND_PCIE_CFG_ADDR	0x120			/**< pcie config space address */
 #define	BHND_PCIE_CFG_DATA	0x124			/**< pcie config space data */
 
-/* indirect mdio access to serdes */
+/* mdio register access */
 #define	BHND_PCIE_MDIO_CTL	0x128			/**< mdio control */
 #define	BHND_PCIE_MDIO_DATA	0x12C			/**< mdio data */
 
@@ -288,27 +288,8 @@
 #define	BHND_PCIE_IND_TLP_TGTDEBUG3		0x07C	/* Target Debug Reg3 */
 #define	BHND_PCIE_IND_TLP_TGTDEBUG4		0x080	/* Target Debug Reg4 */
 
-/* MDIO control */
-#define	BHND_PCIE_MDIOCTL_DIVISOR_MASK		0x7f	/* clock to be used on MDIO */
-#define	BHND_PCIE_MDIOCTL_DIVISOR_VAL		0x2
-#define	BHND_PCIE_MDIOCTL_PREAM_EN		0x80	/* Enable preamble sequnce */
-#define	BHND_PCIE_MDIOCTL_ACCESS_DONE		0x100	/* Tranaction complete */
 
-/* MDIO Data */
-#define	BHND_PCIE_MDIODATA_MASK			0x0000ffff	/* data 2 bytes */
-#define	BHND_PCIE_MDIODATA_TA			0x00020000	/* Turnaround */
-#define	BHND_PCIE_MDIODATA_REGADDR_SHIFT_OLD	18		/* Regaddr shift (rev < 10) */
-#define	BHND_PCIE_MDIODATA_REGADDR_MASK_OLD	0x003c0000	/* Regaddr Mask (rev < 10) */
-#define	BHND_PCIE_MDIODATA_DEVADDR_SHIFT_OLD	22		/* Physmedia devaddr shift (rev < 10) */
-#define	BHND_PCIE_MDIODATA_DEVADDR_MASK_OLD	0x0fc00000	/* Physmedia devaddr Mask (rev < 10) */
-#define	BHND_PCIE_MDIODATA_REGADDR_SHIFT	18		/* Regaddr shift */
-#define	BHND_PCIE_MDIODATA_REGADDR_MASK		0x007c0000	/* Regaddr Mask */
-#define	BHND_PCIE_MDIODATA_DEVADDR_SHIFT	23		/* Physmedia devaddr shift */
-#define	BHND_PCIE_MDIODATA_DEVADDR_MASK		0x0f800000	/* Physmedia devaddr Mask */
-#define	BHND_PCIE_MDIODATA_WRITE		0x10000000	/* write Transaction */
-#define	BHND_PCIE_MDIODATA_READ			0x20000000	/* Read Transaction */
-#define	BHND_PCIE_MDIODATA_START		0x40000000	/* start of Transaction */
-
+/* SerDes MDIO devices */
 #define	BHND_PCIE_MDIODATA_DEV_ADDR		0x0	/* dev address for serdes */
 #define	BHND_PCIE_MDIODATA_BLK_ADDR		0x1F	/* blk address for serdes */
 

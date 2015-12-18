@@ -51,6 +51,8 @@ struct bhnd_pci_hostb_softc {
 	bhnd_pci_regs_t		 regs;		/**< device register family */
 	uint32_t		 quirks;	/**< BHND_PCI_QUIRK flags */
 
+	device_t		 mdio;		/**< PCIe MDIO device. NULL if PCI. */
+
 	struct mtx		 sc_mtx;	/**< softc lock */
 
 	struct resource_spec	 rspec[BHND_PCI_HOSTB_MAX_RSPEC];
@@ -198,13 +200,6 @@ enum {
 	 * SRSH_PCIE_MISC_CONFIG.
 	 */
 	BHND_PCIE_QUIRK_SPROM_L23_PCI_RESET	= (1<<13),
-
-	/**
-	 * The SerDes registers are organized into a single block; standard
-	 * two level addressing is not required, and the MDIO *_OLD register
-	 * variants must be used.
-	 */
-	BHND_PCIE_QUIRK_SERDES_NOSETBLOCK	= (1<<14),
 };
 
 

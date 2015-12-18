@@ -48,6 +48,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/resource.h>
 
 #include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/bhnd_mdiovar.h>
 
 #include "bhnd_pcireg.h"
 #include "bhnd_pci_hostbvar.h"
@@ -78,7 +79,6 @@ static const struct bhnd_pci_device bhnd_pci_devs[] = {
 	    BHND_QUIRK_HWREV_GTE	(6,	BHND_PCIE_QUIRK_SPROM_L23_PCI_RESET),
 	    BHND_QUIRK_HWREV_EQ		(7,	BHND_PCIE_QUIRK_SERDES_NOPLLDOWN),
 	    BHND_QUIRK_HWREV_GTE	(8,	BHND_PCIE_QUIRK_L1_TIMER_PERF),
-	    BHND_QUIRK_HWREV_LTE	(9,	BHND_PCIE_QUIRK_SERDES_NOSETBLOCK),
 
 	    BHND_QUIRK_HWREV_END
 	),
@@ -202,32 +202,49 @@ bhnd_pci_hostb_attach(device_t dev)
 	/* Apply SPROM shadow work-around */
 	bhndb_pci_sprom_target_war(sc);
 
-	return (0);
+	/* Attach PCIe MDIO interface */
+	bus_generic_probe(dev);
+	sc->mdio = device_find_child(dev, devclass_get_name(bhnd_mdio_pcie), 0);
+
+	if (bhnd_get_class(dev) == BHND_DEVCLASS_PCIE && sc->mdio == NULL) {
+		device_printf(dev, "failed to attach MDIO device\n");
+		error = ENXIO;
+		goto failed;
+	}
+
+	if ((error = bus_generic_attach(dev)))
+		goto failed;
+
+	return (error);
+
+failed:
+	bhnd_release_resources(dev, sc->rspec, sc->res);
+	return (error);
 }
 
 static int
 bhnd_pci_hostb_detach(device_t dev)
 {
-	struct bhnd_pci_hostb_softc	*sc;
+	struct bhnd_pci_hostb_softc *sc = device_get_softc(dev);
 
-	sc = device_get_softc(dev);
 	bhnd_release_resources(dev, sc->rspec, sc->res);
 	BHND_PCI_LOCK_DESTROY(sc);
 
-	return (0);
+	return (bus_generic_detach(dev));
 }
 
 static int
 bhnd_pci_hostb_suspend(device_t dev)
 {
-	return (0);
+	return (bus_generic_suspend(dev));
 }
 
 static int
 bhnd_pci_hostb_resume(device_t dev)
 {
-	return (0);
+	return (bus_generic_resume(dev));
 }
+
 
 static device_method_t bhnd_pci_hostb_methods[] = {
 	/* Device interface */
@@ -236,9 +253,21 @@ static device_method_t bhnd_pci_hostb_methods[] = {
 	DEVMETHOD(device_detach,	bhnd_pci_hostb_detach),
 	DEVMETHOD(device_suspend,	bhnd_pci_hostb_suspend),
 	DEVMETHOD(device_resume,	bhnd_pci_hostb_resume),
+
+	/* Bus interface */
+	DEVMETHOD(bus_add_child,	device_add_child_ordered),
+
 	DEVMETHOD_END
 };
 
-DEFINE_CLASS_0(bhnd_hostb, bhnd_pci_hostb_driver, bhnd_pci_hostb_methods, sizeof(struct bhnd_pci_hostb_softc));
+static devclass_t bhnd_pci_hostb_devclass;
 
-DRIVER_MODULE(bhnd_pci_hostb, bhnd, bhnd_pci_hostb_driver, bhnd_hostb_devclass, 0, 0);
+DEFINE_CLASS_0(bhnd_pci_hostb, bhnd_pci_hostb_driver, bhnd_pci_hostb_methods, 
+    sizeof(struct bhnd_pci_hostb_softc));
+
+DRIVER_MODULE(bhnd_pci_hostb, bhnd, bhnd_pci_hostb_driver,
+    bhnd_pci_hostb_devclass, 0, 0);
+
+MODULE_VERSION(bhnd_pci_hostb, 1);
+MODULE_DEPEND(bhnd_pci_hostb, pci, 1, 1, 1);
+MODULE_DEPEND(bhnd_pci_hostb, bhnd_mdio, 1, 1, 1);
