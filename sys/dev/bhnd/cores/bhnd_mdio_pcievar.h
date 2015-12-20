@@ -29,22 +29,20 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_BHND_MDIOVAR_H_
-#define _BHND_BHND_MDIOVAR_H_
+#ifndef _BHND_CORES_PCIE_MDIOVAR_H_
+#define _BHND_CORES_PCIE_MDIOVAR_H_
 
 #include <dev/mdio/mdio.h>
-
-DECLARE_CLASS(bhnd_mdio_driver);
-
-int bhnd_mdio_attach(device_t dev, struct bhnd_resource *mem_res, int mem_rid,
-    bus_size_t offset);
+#include "mdio_if.h"
 
 struct bhnd_mdio_softc {
-	device_t		 dev;		/**< MDIO device */
-	struct bhnd_resource	*mem_res;	/**< MDIO registers */
-	int			 mem_rid;	/**< MDIO register resID, or -1 */
-	bus_size_t		 mem_off;	/**< MDIO offset */
-	struct mtx		 sc_mtx;	/**< MDIO lock */
+	device_t		 dev;		/**< mdio device */
+	struct mtx		 sc_mtx;	/**< mdio register lock */
+
+	struct bhnd_resource	*mem_res;	/**< parent pcie registers */
+	bus_size_t		 mem_off;	/**< mdio register offset */
+
+	uint32_t		 parent_quirks;	/**< parent PCIe quirk flags */
 };
 
 #define	BHND_MDIO_LOCK_INIT(sc) \
@@ -55,4 +53,4 @@ struct bhnd_mdio_softc {
 #define	BHND_MDIO_LOCK_ASSERT(sc, what)	mtx_assert(&(sc)->sc_mtx, what)
 #define	BHND_MDIO_LOCK_DESTROY(sc)		mtx_destroy(&(sc)->sc_mtx)
 
-#endif /* _BHND_BHND_MDIOVAR_H_ */
+#endif /* _BHND_CORES_PCIE_MDIOVAR_H_ */

@@ -22,8 +22,8 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_BHND_MDIO_H_
-#define _BHND_BHND_MDIO_H_
+#ifndef _BHND_CORES_PCIE_MDIOREG_H_
+#define _BHND_CORES_PCIE_MDIOREG_H_
 
 /* MDIO register offsets */
 #define	BHND_MDIO_CTL			0x0	/**< mdio control */
@@ -54,4 +54,4 @@
 	    BHND_MDIODATA_REGADDR_MASK)			\
 )
 
-#endif /* _BHND_BHND_MDIO_H_ */
+#endif /* _BHND_CORES_PCIE_MDIOREG_H_ */

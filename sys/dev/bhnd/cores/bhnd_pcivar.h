@@ -32,11 +32,14 @@
 #ifndef _BHND_CORES_PCIVAR_H_
 #define _BHND_CORES_PCIVAR_H_
 
+#include <sys/param.h>
+#include <sys/bus.h>
+
 /*
  * Shared PCI Bridge/PCI Host Bridge definitions.
  */
 
-extern devclass_t bhnd_mdio_pcie;	/**< MDIO interface device class */
+extern devclass_t bhnd_mdio_pci;
 
 /* Device register families. */
 typedef enum {

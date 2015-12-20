@@ -48,7 +48,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/resource.h>
 
 #include <dev/bhnd/bhnd.h>
-#include <dev/bhnd/bhnd_mdiovar.h>
 
 #include "mdio_if.h"
 
@@ -186,7 +185,7 @@ bhnd_pci_hostb_attach(device_t dev)
 
 	/* Attach PCIe MDIO interface */
 	bus_generic_probe(dev);
-	sc->mdio = device_find_child(dev, devclass_get_name(bhnd_mdio_pcie), 0);
+	sc->mdio = device_find_child(dev, devclass_get_name(bhnd_mdio_pci), 0);
 
 	if (bhnd_get_class(dev) == BHND_DEVCLASS_PCIE && sc->mdio == NULL) {
 		device_printf(dev, "failed to attach MDIO device\n");
@@ -322,4 +321,4 @@ DRIVER_MODULE(bhnd_pci_hostb, bhnd, bhnd_pci_hostb_driver,
 
 MODULE_VERSION(bhnd_pci_hostb, 1);
 MODULE_DEPEND(bhnd_pci_hostb, pci, 1, 1, 1);
-MODULE_DEPEND(bhnd_pci_hostb, bhnd_mdio, 1, 1, 1);
+MODULE_DEPEND(bhnd_pci_hostb, bhnd_pci, 1, 1, 1);
