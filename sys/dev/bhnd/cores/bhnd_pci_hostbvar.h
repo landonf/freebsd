@@ -40,6 +40,9 @@ struct bhnd_pci_device {
 	const char			*desc;
 	bhnd_pci_regs_t			 regs;
 	struct bhnd_device_quirk	*quirks;
+
+	/* Saved PCIe SerDes polarity (BHND_PCIE_QUIRK_SERDES_POLARITY) */
+	uint16_t			 serdes_polarity;
 };
 
 /** PCI host bridge driver state */
@@ -121,15 +124,22 @@ enum {
 	BHND_PCI_QUIRK_SBINTVEC			= (1<<3),
 
 	/**
-	 * PCI CLKRUN# should be explicitly disabled (via CLKRUN_DSBL).
+	 * PCI CLKRUN# should be disabled on attach (via CLKRUN_DSBL).
+	 * 
+	 * The purpose of this work-around is unclear; there is some
+	 * documentation regarding earlier Broadcom drivers supporting
+	 * a "force CLKRUN#" *enable* registry key for use on mobile
+	 * hardware.
 	 */
 	BHND_PCI_QUIRK_CLKRUN_DSBL		= (1<<4),
 
 	/**
-	 * PCIe Vendor-Defined Messages should never set the 
-	 * 'Unsupported Request' bit.
+	 * TLP workaround for unmatched address handling is required.
+	 * 
+	 * This TLP workaround will enable setting of the PCIe UR status bit
+	 * on memory access to an unmatched address.
 	 */
-	BHND_PCIE_QUIRK_IGNORE_VDM		= (1<<5),
+	BHND_PCIE_QUIRK_UR_STATUS_FIX		= (1<<5),
 
 	/**
 	 * PCI-PM power management must be explicitly enabled via
@@ -138,14 +148,17 @@ enum {
 	BHND_PCIE_QUIRK_PCIPM_REQEN		= (1<<6),
 
 	/**
-	 * Fix L0s to L0 exit transition.
+	 * Fix L0s to L0 exit transition on SerDes <= rev9 devices.
 	 * 
-	 * Increase SerDes RX timer to ensure SerDes CDR circuit is
-	 * stable.
+	 * On these devices, PCIe/SerDes symbol lock can be lost if the
+	 * reference clock has not fully stabilized during the L0s to L0
+	 * exit transition, triggering an internal reset of the chip.
 	 * 
-	 * Modify CDR bandwidth (reason undocumented).
+	 * The SerDes RX CDR phase lock timers and proportional/integral
+	 * filters must be tweaked to ensure the CDR has fully stabilized
+	 * before asserting receive sequencer completion.
 	 */
-	BHND_PCIE_QUIRK_SERDES_L0s_HANG		= (1<<7),
+	BHND_PCIE_QUIRK_SDR9_L0s_HANG		= (1<<7),
 
 	/**
 	 * The idle time for entering L1 low-power state must be
@@ -180,10 +193,12 @@ enum {
 	BHND_PCIE_QUIRK_ASPM_OVR		= (1<<10),
 	
 	/**
+	 * Fix SerDes polarity on SerDes <= rev9 devices.
+	 *
 	 * The SerDes polarity must be saved at device attachment, and
 	 * restored on suspend/resume.
 	 */
-	BHND_PCIE_QUIRK_SERDES_POLARITY		= (1<<11),
+	BHND_PCIE_QUIRK_SDR9_POLARITY		= (1<<11),
 
 	/**
 	 * The SerDes PLL override flag (CHIPCTRL_4321_PLL_DOWN) must be set on
@@ -200,6 +215,14 @@ enum {
 	 * SRSH_PCIE_MISC_CONFIG.
 	 */
 	BHND_PCIE_QUIRK_SPROM_L23_PCI_RESET	= (1<<13),
+	
+	/**
+	 * The PCIe SerDes supports non-standard extended MDIO register access.
+	 * 
+	 * The PCIe SerDes supports access to extended MDIO registers via
+	 * a non-standard Clause 22 address extension mechanism.
+	 */
+	BHND_PCIE_QUIRK_SD_C22_EXTADDR	= (1<<14),
 };
 
 

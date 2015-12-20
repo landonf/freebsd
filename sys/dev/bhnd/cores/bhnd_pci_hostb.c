@@ -50,6 +50,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhnd.h>
 #include <dev/bhnd/bhnd_mdiovar.h>
 
+#include "mdio_if.h"
+
 #include "bhnd_pcireg.h"
 #include "bhnd_pci_hostbvar.h"
 
@@ -57,6 +59,9 @@ static uint32_t				 pcihb_get_quirks(device_t dev,
 					     const struct bhnd_pci_device *id);
 
 static const struct bhnd_pci_device	*pcihb_find_dev_entry(device_t dev);
+
+static void				 bcm_pci_attach_wars(
+					     struct bhnd_pci_hostb_softc *sc);
 
 /*
  * Supported PCI bridge cores
@@ -66,19 +71,20 @@ static const struct bhnd_pci_device bhnd_pci_devs[] = {
 	BHND_HOSTB_DEV(PCI,	"PCI",
 	    BHND_QUIRK_HWREV_RANGE	(0, 5,	BHND_PCI_QUIRK_SBINTVEC),
 	    BHND_QUIRK_HWREV_GTE	(0,	BHND_PCI_QUIRK_SBTOPCI2_PREF_BURST),
-	    BHND_QUIRK_HWREV_GTE	(11,	BHND_PCI_QUIRK_SBTOPCI2_READMULTI),
+	    BHND_QUIRK_HWREV_GTE	(11,	BHND_PCI_QUIRK_SBTOPCI2_READMULTI | BHND_PCI_QUIRK_CLKRUN_DSBL),
 	    BHND_QUIRK_HWREV_END
 	),
 
 	/* PCI Gen 1 */
 	BHND_HOSTB_DEV(PCIE,	"PCIe",
-	    BHND_QUIRK_HWREV_EQ		(0,	BHND_PCIE_QUIRK_PCIPM_REQEN | BHND_PCIE_QUIRK_SERDES_L0s_HANG),
-	    BHND_QUIRK_HWREV_RANGE	(0, 1,	BHND_PCIE_QUIRK_IGNORE_VDM),
-	    BHND_QUIRK_HWREV_RANGE	(3, 5,	BHND_PCIE_QUIRK_ASPM_OVR | BHND_PCIE_QUIRK_SERDES_POLARITY),
+	    BHND_QUIRK_HWREV_EQ		(0,	BHND_PCIE_QUIRK_PCIPM_REQEN | BHND_PCIE_QUIRK_SDR9_L0s_HANG),
+	    BHND_QUIRK_HWREV_RANGE	(0, 1,	BHND_PCIE_QUIRK_UR_STATUS_FIX),
+	    BHND_QUIRK_HWREV_RANGE	(3, 5,	BHND_PCIE_QUIRK_ASPM_OVR | BHND_PCIE_QUIRK_SDR9_POLARITY),
 	    BHND_QUIRK_HWREV_LTE	(6,	BHND_PCIE_QUIRK_L1_IDLE_THRESH),
 	    BHND_QUIRK_HWREV_GTE	(6,	BHND_PCIE_QUIRK_SPROM_L23_PCI_RESET),
 	    BHND_QUIRK_HWREV_EQ		(7,	BHND_PCIE_QUIRK_SERDES_NOPLLDOWN),
 	    BHND_QUIRK_HWREV_GTE	(8,	BHND_PCIE_QUIRK_L1_TIMER_PERF),
+	    BHND_QUIRK_HWREV_GTE	(10,	BHND_PCIE_QUIRK_SD_C22_EXTADDR),
 
 	    BHND_QUIRK_HWREV_END
 	),
@@ -92,6 +98,12 @@ static const struct resource_spec bhnd_pci_hostb_rspec[] = {
 	{ -1, -1, 0 }
 };
 #define	CORE_RES_IDX	0
+
+#define	BHND_PCI_QUIRK(_sc, _name)	\
+    ((_sc)->quirks & BHND_PCI_QUIRK_ ## _name)
+
+#define	BHND_PCIE_QUIRK(_sc, _name)	\
+    ((_sc)->quirks & BHND_PCIE_QUIRK_ ## _name)
 
 /**
  * Collect all quirks defined in @p id that match @p dev.
@@ -147,33 +159,6 @@ bhnd_pci_hostb_probe(device_t dev)
 	return (BUS_PROBE_DEFAULT);
 }
 
-
-/*
-* Ensure that the correct PCI core's SPROM shadow is mapped to the first
-* PCI core.
-*/
-static void
-bhndb_pci_sprom_target_war(struct bhnd_pci_hostb_softc *sc)
-{
-	bus_size_t	sprom_addr;
-	u_int		sprom_core_idx;
-	u_int		pci_core_idx;
-	uint16_t	val;
-
-	/* Fetch the SPROM's configured core index */
-	sprom_addr = BPCI_COMMON_REG_OFFSET(SPROM_SHADOW, SRSH_PI_OFFSET);
-	val = bhnd_bus_read_2(sc->dev, sc->core, sprom_addr);
-
-	/* If it doesn't match our core index, update the index value */
-	sprom_core_idx = BPCI_COMMON_REG_GET(val, SRSH_PI);
-	pci_core_idx = bhnd_get_core_index(sc->dev);
-
-	if (sprom_core_idx != pci_core_idx) {
-		val = BPCI_COMMON_REG_SET(val, SRSH_PI, pci_core_idx);
-		bhnd_bus_write_2(sc->dev, sc->core, sprom_addr, val);
-	}
-}
-
 static int
 bhnd_pci_hostb_attach(device_t dev)
 {
@@ -199,9 +184,6 @@ bhnd_pci_hostb_attach(device_t dev)
 
 	sc->core = sc->res[CORE_RES_IDX];
 
-	/* Apply SPROM shadow work-around */
-	bhndb_pci_sprom_target_war(sc);
-
 	/* Attach PCIe MDIO interface */
 	bus_generic_probe(dev);
 	sc->mdio = device_find_child(dev, devclass_get_name(bhnd_mdio_pcie), 0);
@@ -214,6 +196,9 @@ bhnd_pci_hostb_attach(device_t dev)
 
 	if ((error = bus_generic_attach(dev)))
 		goto failed;
+
+	/* Apply work-arounds */
+	bcm_pci_attach_wars(sc);
 
 	return (error);
 
@@ -243,6 +228,73 @@ static int
 bhnd_pci_hostb_resume(device_t dev)
 {
 	return (bus_generic_resume(dev));
+}
+
+/*
+ * Hardware Workarounds (WARs)
+ */
+
+/*
+ * On devices without a SROM, the PCI(e) cores will be initialized with
+ * their Power-on-Reset defaults; this can leave the the BAR0 PCIe windows
+ * potentially mapped to the wrong core.
+ * 
+ * This WAR updates the BAR0 defaults to point at the current PCIe core.
+ */
+static void
+bhndb_pci_sromless_defaults_war(struct bhnd_pci_hostb_softc *sc)
+{
+	bus_size_t	sprom_addr;
+	u_int		sprom_core_idx;
+	u_int		pci_core_idx;
+	uint16_t	val;
+
+	/* Fetch the SPROM's configured core index */
+	sprom_addr = BPCI_COMMON_REG_OFFSET(SPROM_SHADOW, SRSH_PI_OFFSET);
+	val = bhnd_bus_read_2(sc->dev, sc->core, sprom_addr);
+
+	/* If it doesn't match our core index, update the index value */
+	sprom_core_idx = BPCI_COMMON_REG_GET(val, SRSH_PI);
+	pci_core_idx = bhnd_get_core_index(sc->dev);
+
+	if (sprom_core_idx != pci_core_idx) {
+		val = BPCI_COMMON_REG_SET(val, SRSH_PI, pci_core_idx);
+		bhnd_bus_write_2(sc->dev, sc->core, sprom_addr, val);
+	}
+}
+
+/* Attach-time WARs */
+static void
+bcm_pci_attach_wars(struct bhnd_pci_hostb_softc *sc)
+{
+	/* Fix Power-on-Reset defaults on SROM-less PCI/PCIe devices. */
+	bhndb_pci_sromless_defaults_war(sc);
+
+	/* Adjust SerDes RX timer and CDR bandwidth to ensure that 
+	 * CDR circuit is stable before sending data during
+	 * L0s to L0 exit transitions. */
+	if (BHND_PCIE_QUIRK(sc, SDR9_L0s_HANG)) {
+		// TODO
+	}
+
+	/* Save the SerDes polarity for restoration on resume */
+	if (BHND_PCIE_QUIRK(sc, SDR9_POLARITY)) {
+		// TODO
+	}
+
+	device_printf(sc->dev, "QUIRKS=0x%x\n", sc->quirks);
+	
+	if (bhnd_get_hwrev(sc->dev) < 10) {
+		uint16_t t1 = MDIO_READREG(sc->mdio, BHND_PCIE_PHY_SDR9_TXRX,
+		    BHND_PCIE_SDR9_RX_TIMER1);
+		device_printf(sc->dev, "timer1=0x%x\n", t1);
+		uint32_t track_delay = ((t1 & BHND_PCIE_SDR9_RX_TIMER1_LKTRK_MASK) >> BHND_PCIE_SDR9_RX_TIMER1_LKTRK_SHIFT);
+		uint32_t acq_delay = ((t1 & BHND_PCIE_SDR9_RX_TIMER1_LKACQ_MASK) >> BHND_PCIE_SDR9_RX_TIMER1_LKACQ_SHIFT);
+		
+		device_printf(sc->dev, "track_delay=0x%x acq_delay=0x%x\n",
+		((track_delay*16)), ((acq_delay*1024)));
+	}
+	while(1);
 }
 
 

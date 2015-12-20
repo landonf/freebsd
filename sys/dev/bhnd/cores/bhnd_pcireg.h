@@ -289,44 +289,65 @@
 #define	BHND_PCIE_IND_TLP_TGTDEBUG4		0x080	/* Target Debug Reg4 */
 
 
-/* SerDes MDIO devices */
-#define	BHND_PCIE_MDIODATA_DEV_ADDR		0x0	/* dev address for serdes */
-#define	BHND_PCIE_MDIODATA_BLK_ADDR		0x1F	/* blk address for serdes */
-
-/* 
- * MDIO devices (SERDES modules)
- * unlike old pcie cores (rev < 10), rev10 pcie serde organizes registers into
- * a few blocks. two layers mapping (blockidx, register offset) is required
+/*
+ * PCIe-G1 SerDes MDIO Registers (>= rev10)
  */
-#define	BHND_PCIE_MDIO_DEV_IEEE0		0x000
-#define	BHND_PCIE_MDIO_DEV_IEEE1		0x001
-#define	BHND_PCIE_MDIO_DEV_BLK0			0x800
-#define	BHND_PCIE_MDIO_DEV_BLK1			0x801
-#define	BHND_PCIE_MDIO_DEV_BLK2			0x802
-#define	BHND_PCIE_MDIO_DEV_BLK3			0x803
-#define	BHND_PCIE_MDIO_DEV_BLK4			0x804
-#define	BHND_PCIE_MDIO_DEV_TXPLL		0x808	/* TXPLL register block idx */
-#define	BHND_PCIE_MDIO_DEV_TXCTRL0		0x820
-#define	BHND_PCIE_MDIO_DEV_SERDESID		0x831
-#define	BHND_PCIE_MDIO_DEV_RXCTRL0		0x840
+#define BHND_PCIE_PHYADDR_SD		0x0	/* serdes PHY address */
+#define	BHND_PCIE_DEVAD_SD		0x1	/* serdes pseudo-devad (PMA) recognized by
+						   the bhnd_mdio_pcie driver */
 
-/* serdes regs (rev < 10) */
-#define	BHND_PCIE_MDIODATA_DEV_PLL       	0x1d	/* SERDES PLL Dev */
-#define	BHND_PCIE_MDIODATA_DEV_TX        	0x1e	/* SERDES TX Dev */
-#define	BHND_PCIE_MDIODATA_DEV_RX        	0x1f	/* SERDES RX Dev */
-/* SERDES RX registers */
-#define	BHND_PCIE_SERDES_RX_CTRL		1	/* Rx cntrl */
-#define	BHND_PCIE_SERDES_RX_TIMER1		2	/* Rx Timer1 */
-#define	BHND_PCIE_SERDES_RX_CDR			6	/* CDR */
-#define	BHND_PCIE_SERDES_RX_CDRBW		7	/* CDR BW */
+#define	BHND_PCIE_SD_ADDREXT		0x1F	/* serdes address extension register */
+#define	BHND_PCIE_SD_ADDREXT_BLK_MASK	0xFFF0	/* register block mask */
+#define	BHND_PCIE_SD_ADDREXT_REG_MASK	0x000F	/* register address mask */
 
-/* SERDES RX control register */
-#define	BHND_PCIE_SERDES_RX_CTRL_FORCE		0x80	/* rxpolarity_force */
-#define	BHND_PCIE_SERDES_RX_CTRL_POLARITY	0x40	/* rxpolarity_value */
+#define	BHND_PCIE_SD_REGS_IEEE0		0x0000	/* IEEE0 AN CTRL block */
+#define	BHND_PCIE_SD_REGS_IEEE1		0x0010	/* IEEE1 AN ADV block */
+#define	BHND_PCIE_SD_REGS_BLK0		0x8000	/* ??? */
+#define	BHND_PCIE_SD_REGS_BLK1		0x8010	/* ??? */
+#define	BHND_PCIE_SD_REGS_BLK2		0x8020	/* ??? */
+#define	BHND_PCIE_SD_REGS_BLK3		0x8030	/* ??? */
+#define	BHND_PCIE_SD_REGS_BLK4		0x8040	/* ??? */
+#define	BHND_PCIE_SD_REGS_TXPLL		0x8080	/* TXPLL register block */
+#define	BHND_PCIE_SD_REGS_TXCTRL0		0x8200	/* ??? */
+#define	BHND_PCIE_SD_REGS_SERDESID		0x8310	/* ??? */
+#define	BHND_PCIE_SD_REGS_RXCTRL0		0x8400	/* ??? */
 
-/* SERDES PLL registers */
-#define	BHND_PCIE_SERDES_PLL_CTRL		1	/* PLL control reg */
-#define	BHND_PCIE_PLL_CTRL_FREQDET_EN		0x4000	/* bit 14 is FREQDET on */
+/*
+ * PCIe-G1 SerDes-R9 MDIO Registers (<= rev9)
+ * 
+ * These register definitions appear to match those provided in the
+ * "PCI Express SerDes Registers" section of the BCM5761 Ethernet Controller 
+ * Programmer's Reference Guide.
+ */
+#define	BHND_PCIE_PHY_SDR9_PLL       		0x1C	/* SerDes PLL PHY Address*/
+#define	  BHND_PCIE_SDR9_PLL_CTRL		0x17	/* PLL control reg */
+#define	    BHND_PCIE_SDR9_PLL_CTRL_FREQDET_EN	0x4000	/* bit 14 is FREQDET on */
+#define	BHND_PCIE_PHY_SDR9_TXRX       	 	0x0F	/* SerDes RX/TX PHY Address */
+
+#define	BHND_PCIE_SDR9_RX_CTRL			0x11	/* RX ctrl register */
+#define	    BHND_PCIE_SDR9_RX_CTRL_FORCE	0x80	/* rxpolarity_force */
+#define	    BHND_PCIE_SDR9_RX_CTRL_POLARITY	0x40	/* rxpolarity_value */
+
+#define	BHND_PCIE_SDR9_RX_CDR			0x16	/* RX CDR ctrl register */
+#define	  BHND_PCIE_SDR9_RX_CDR_FREQ_OVR_EN	0x0100	/* freq_override_en flag */
+#define	  BHND_PCIE_SDR9_RX_CDR_FREQ_OVR_MASK	0x01FF	/* freq_override_val */
+#define	  BHND_PCIE_SDR9_RX_CDR_FREQ_OVR_SHIFT	0
+
+#define	BHND_PCIE_SDR9_RX_CDRBW			0x17	/* RX CDR bandwidth (PLL tuning) */
+#define	  BHND_PCIE_SDR9_RX_CDRBW_INTGTRK_MASK	0x7000	/* integral loop bandwidth (phase tracking mode) */
+#define	  BHND_PCIE_SDR9_RX_CDRBW_INTGTRK_SHIFT	11
+#define	  BHND_PCIE_SDR9_RX_CDRBW_INTGACQ_MASK	0x0700	/* integral loop bandwidth (phase acquisition mode) */
+#define	  BHND_PCIE_SDR9_RX_CDRBW_INTGACQ_SHIFT	8
+#define	  BHND_PCIE_SDR9_RX_CDRBW_PROPTRK_MASK	0x0070	/* proportional loop bandwidth (phase tracking mode) */
+#define	  BHND_PCIE_SDR9_RX_CDRBW_PROPTRK_SHIFT	4
+#define	  BHND_PCIE_SDR9_RX_CDRBW_PROPACQ_MASK	0x0007	/* proportional loop bandwidth (phase acquisition mode) */
+#define	  BHND_PCIE_SDR9_RX_CDRBW_PROPACQ_SHIFT	0
+
+#define	BHND_PCIE_SDR9_RX_TIMER1		0x12	/* timer1 register */
+#define	  BHND_PCIE_SDR9_RX_TIMER1_LKTRK_MASK	0xFF00	/* phase tracking delay before asserting RX seq completion (in 16ns units) */
+#define	  BHND_PCIE_SDR9_RX_TIMER1_LKTRK_SHIFT	8
+#define	  BHND_PCIE_SDR9_RX_TIMER1_LKACQ_MASK	0x00FF	/* phase acquisition mode time (in 1024ns units) */
+#define	  BHND_PCIE_SDR9_RX_TIMER1_LKACQ_SHIFT	0
 
 /* Power management threshold */
 #define	BHND_PCIE_L0THRESHOLDTIME_MASK		0xFF00		/* bits 0 - 7 */
