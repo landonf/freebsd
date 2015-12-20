@@ -38,8 +38,12 @@ __FBSDID("$FreeBSD$");
  * 
  * Compatible with:
  * 	- BHND PCIe Gen1 Core
- * 	- BHND PCIe Gen2 Core (untested)
- * 	- Broadcom iProc SoC (untested)
+ * 	- Broadcom iProc SoC (Multiple PHYs) (untested)
+ * 
+ * Some Broadcom SoCs present a single MDIO bus used to communicate
+ * with multiple PHY/SerDes slaves (PCIe, USB, Ethernet, etc), in which
+ * case access to this driver may be shared across multiple
+ * PCIe/USB/Ethernet drivers.
  */
 
 #include <sys/param.h>
@@ -60,6 +64,10 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_mdiovar.h"
 
 #define	BHND_MDIO_RETRY_COUNT	200
+#define	BHND_MDIO_IDLE_DELAY	2000
+
+/* Delay required between MDIO_CTL/MDIO_DATA access */
+#define	BHND_MDIO_CTL_DELAY	10
 
 #define	BHND_MDIO_READ_4(_sc, _reg)	\
 	bhnd_bus_read_4((_sc)->dev, (_sc)->mem_res, (_sc)->mem_off + (_reg))
@@ -134,10 +142,10 @@ bhnd_mdio_wait_idle(struct bhnd_mdio_softc *sc)
 	/* Spin waiting for the BUSY flag to clear */
 	for (int i = 0; i < BHND_MDIO_RETRY_COUNT; i++) {
 		ctl = BHND_MDIO_READ_4(sc, BHND_MDIO_CTL);
-		if (!(ctl & BHND_MDIOCTL_BUSY))
+		if ((ctl & BHND_MDIOCTL_DONE))
 			return (0);
 
-		DELAY(1000);
+		DELAY(BHND_MDIO_IDLE_DELAY);
 	}
 
 	return (ETIMEDOUT);
@@ -150,23 +158,10 @@ bhnd_mdio_wait_idle(struct bhnd_mdio_softc *sc)
 static int
 bhnd_mdio_ioctl(struct bhnd_mdio_softc *sc, uint32_t cmd)
 {
-	int error;
-
 	BHND_MDIO_LOCK_ASSERT(sc, MA_OWNED);
 
-	if ((error = bhnd_mdio_wait_idle(sc))) {
-		device_printf(sc->dev,
-		    "timeout waiting to send cmd 0x%x\n", cmd);
-		return (error);
-	}
-
 	BHND_MDIO_WRITE_4(sc, BHND_MDIO_CTL, cmd);
-
-	if ((error = bhnd_mdio_wait_idle(sc))) {
-		device_printf(sc->dev, "timeout waiting on 0x%x\n", cmd);
-		return (error);
-	}
-
+	DELAY(BHND_MDIO_CTL_DELAY);
 	return (0);
 }
 
@@ -202,16 +197,12 @@ bhnd_mdio_cmd_write(struct bhnd_mdio_softc *sc, uint32_t cmd)
 	int error;
 
 	BHND_MDIO_LOCK_ASSERT(sc, MA_OWNED);
-	
-	if ((error = bhnd_mdio_wait_idle(sc))) {
-		device_printf(sc->dev,
-		    "timeout waiting to write 0x%x\n", cmd);
-		return (error);
-	}
 
 	cmd |= BHND_MDIODATA_START|BHND_MDIODATA_TA|BHND_MDIODATA_CMD_WRITE;
+	device_printf(sc->dev, "sending write cmd=0x%x\n", cmd);
 
 	BHND_MDIO_WRITE_4(sc, BHND_MDIO_DATA, cmd);
+	DELAY(BHND_MDIO_CTL_DELAY);
 
 	if ((error = bhnd_mdio_wait_idle(sc))) {
 		device_printf(sc->dev, "timeout on write 0x%x\n", cmd);
@@ -232,39 +223,24 @@ bhnd_mdio_cmd_read(struct bhnd_mdio_softc *sc, uint32_t cmd,
 	int error;
 
 	BHND_MDIO_LOCK_ASSERT(sc, MA_OWNED);
-	
-	if ((error = bhnd_mdio_wait_idle(sc))) {
-		device_printf(sc->dev,
-		    "timeout waiting to write 0x%x\n", cmd);
-		return (error);
-	}
 
 	cmd |= BHND_MDIODATA_START|BHND_MDIODATA_TA|BHND_MDIODATA_CMD_READ;
+	device_printf(sc->dev, "sending read cmd=0x%x\n", cmd);
 	BHND_MDIO_WRITE_4(sc, BHND_MDIO_DATA, cmd);
+	DELAY(BHND_MDIO_CTL_DELAY);
 
 	if ((error = bhnd_mdio_wait_idle(sc))) {
-		device_printf(sc->dev, "timeout on write 0x%x\n", cmd);
+		device_printf(sc->dev, "timeout on read 0x%x\n", cmd);
 		return (error);
 	}
 
-	*data_read = BHND_MDIO_READ_4(sc, BHND_MDIO_DATA) & BHND_MDIODATA_MASK;
+	*data_read = (BHND_MDIO_READ_4(sc, BHND_MDIO_DATA) & 
+	    BHND_MDIODATA_DATA_MASK);
 	return (0);
 }
 
 static int
 bhnd_mdio_read(device_t dev, int phy, int reg)
-{
-	return (MDIO_READEXTREG(dev, phy, MDIO_DEVADDR_NONE, reg));
-}
-
-static int
-bhnd_mdio_write(device_t dev, int phy, int reg, int val)
-{
-	return (MDIO_WRITEEXTREG(dev, phy, MDIO_DEVADDR_NONE, reg, val));
-}
-
-static int
-bhnd_mdio_readext(device_t dev, int phy, int devaddr, int reg)
 {
 	struct bhnd_mdio_softc	*sc;
 	uint32_t			 cmd;
@@ -277,26 +253,10 @@ bhnd_mdio_readext(device_t dev, int phy, int devaddr, int reg)
 	BHND_MDIO_LOCK(sc);
 	bhnd_mdio_enable(sc);
 
-	if (devaddr != MDIO_DEVADDR_NONE) {
-		/* Set the target address */
-		cmd = BHND_MDIODATA_ADDR(C45, phy, devaddr) |
-		    (reg & BHND_MDIODATA_MASK);
+	/* Issue the read */
+	cmd = BHND_MDIODATA_ADDR(phy, reg);
+	error = bhnd_mdio_cmd_read(sc, cmd, &val);
 
-		if ((error = bhnd_mdio_cmd_write(sc, cmd)))
-			goto cleanup;
-
-		/* Populate the read command address */
-		cmd = BHND_MDIODATA_ADDR(C45, phy, devaddr);
-
-	} else {
-		/* Populate the read command address */
-		cmd = BHND_MDIODATA_ADDR(C22, phy, reg);
-	}
-	
-	if ((error = bhnd_mdio_cmd_read(sc, cmd, &val)))
-		goto cleanup;
-
-cleanup:
 	/* Disable MDIO access */
 	bhnd_mdio_disable(sc);
 	BHND_MDIO_UNLOCK(sc);
@@ -308,7 +268,7 @@ cleanup:
 }
 
 static int
-bhnd_mdio_writeext(device_t dev, int phy, int devaddr, int reg, int val)
+bhnd_mdio_write(device_t dev, int phy, int reg, int val)
 {
 	struct bhnd_mdio_softc	*sc;
 	uint32_t			 cmd;
@@ -320,29 +280,10 @@ bhnd_mdio_writeext(device_t dev, int phy, int devaddr, int reg, int val)
 	BHND_MDIO_LOCK(sc);
 	bhnd_mdio_enable(sc);
 
-	if (devaddr != MDIO_DEVADDR_NONE) {
-		/* Set the target address */
-		cmd = BHND_MDIODATA_ADDR(C45, phy, devaddr) |
-		    (reg & BHND_MDIODATA_MASK);
+	/* Issue the write */
+	cmd = BHND_MDIODATA_ADDR(phy, reg) | (val & BHND_MDIODATA_DATA_MASK);
+	error = bhnd_mdio_cmd_write(sc, cmd);
 
-		if ((error = bhnd_mdio_cmd_write(sc, cmd)))
-			goto cleanup;
-
-		/* Populate the write command address */
-		cmd = BHND_MDIODATA_ADDR(C45, phy, devaddr);
-	} else {
-		/* Populate the write command address */
-		cmd = BHND_MDIODATA_ADDR(C22, phy, reg);
-	}
-
-	/* Populate the cmd data */
-	cmd |= (val & BHND_MDIODATA_MASK);
-
-	/* Perform the write */
-	if ((error = bhnd_mdio_cmd_write(sc, cmd)))
-		goto cleanup;
-
-cleanup:
 	/* Disable MDIO access */
 	bhnd_mdio_disable(sc);
 	BHND_MDIO_UNLOCK(sc);
@@ -358,8 +299,6 @@ static device_method_t bhnd_mdio_methods[] = {
 	/* MDIO interface */
 	DEVMETHOD(mdio_readreg,		bhnd_mdio_read),
 	DEVMETHOD(mdio_writereg,	bhnd_mdio_write),
-	DEVMETHOD(mdio_readextreg,	bhnd_mdio_readext),
-	DEVMETHOD(mdio_writeextreg,	bhnd_mdio_writeext),
 
 	DEVMETHOD_END
 };
