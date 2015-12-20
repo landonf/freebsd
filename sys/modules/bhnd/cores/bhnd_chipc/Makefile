@@ -1,9 +1,9 @@
 # $FreeBSD$
 
-.PATH: ${.CURDIR}/../../../../dev/bhnd/cores
+.PATH: ${.CURDIR}/../../../../dev/bhnd/cores/chipc
 
-KMOD=	bhnd_chipc
-SRCS=	bhnd_chipc.c
+KMOD=	chipc
+SRCS=	chipc.c
 SRCS+=	device_if.h bus_if.h bhnd_if.h
 
 .include <bsd.kmod.mk>

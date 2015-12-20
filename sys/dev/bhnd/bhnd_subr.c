@@ -37,7 +37,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/rman.h>
 #include <machine/resource.h>
 
-#include <dev/bhnd/cores/bhnd_chipcreg.h>
+#include <dev/bhnd/cores/chipc/chipcreg.h>
 
 #include "bhndreg.h"
 #include "bhndvar.h"

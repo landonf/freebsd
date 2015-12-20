@@ -52,29 +52,29 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/bhnd.h>
 
-#include "bhnd_chipcreg.h"
-#include "bhnd_chipcvar.h"
+#include "chipcreg.h"
+#include "chipcvar.h"
 
-static const struct resource_spec bhnd_chipc_rspec[BHND_CHIPC_MAX_RSPEC] = {
+static const struct resource_spec chipc_rspec[CHIPC_MAX_RSPEC] = {
 	{ SYS_RES_MEMORY,	0,	RF_ACTIVE },
 	{ -1, -1, 0 }
 };
 
-static const struct bhnd_chipc_device {
+static const struct chipc_device {
 	uint16_t	 device;
 	const char	*desc;
-} bhnd_chipc_devices[] = {
+} chipc_devices[] = {
 	{ BHND_COREID_CC,	NULL },
 	{ BHND_COREID_INVALID,	NULL }
 };
 
 static int
-bhnd_chipc_probe(device_t dev)
+chipc_probe(device_t dev)
 {
-	const struct bhnd_chipc_device	*id;
+	const struct chipc_device	*id;
 	const char 			*desc;
 
-	for (id = bhnd_chipc_devices; id->device != BHND_COREID_INVALID; id++)
+	for (id = chipc_devices; id->device != BHND_COREID_INVALID; id++)
 	{
 		if (bhnd_get_vendor(dev) == BHND_MFGID_BCM &&
 		    bhnd_get_device(dev) == id->device)
@@ -93,14 +93,14 @@ bhnd_chipc_probe(device_t dev)
 }
 
 static int
-bhnd_chipc_attach(device_t dev)
+chipc_attach(device_t dev)
 {
-	struct bhnd_chipc_softc	*sc;
+	struct chipc_softc	*sc;
 	struct bhnd_resource	*r;
 	int			 error;
 
 	sc = device_get_softc(dev);
-	memcpy(sc->rspec, bhnd_chipc_rspec, sizeof(sc->rspec));
+	memcpy(sc->rspec, chipc_rspec, sizeof(sc->rspec));
 
 	if ((error = bhnd_alloc_resources(dev, sc->rspec, sc->res)))
 		return (error);
@@ -121,9 +121,9 @@ bhnd_chipc_attach(device_t dev)
 }
 
 static int
-bhnd_chipc_detach(device_t dev)
+chipc_detach(device_t dev)
 {
-	struct bhnd_chipc_softc	*sc;
+	struct chipc_softc	*sc;
 
 	sc = device_get_softc(dev);
 	bhnd_release_resources(dev, sc->rspec, sc->res);
@@ -132,28 +132,28 @@ bhnd_chipc_detach(device_t dev)
 }
 
 static int
-bhnd_chipc_suspend(device_t dev)
+chipc_suspend(device_t dev)
 {
 	return (0);
 }
 
 static int
-bhnd_chipc_resume(device_t dev)
+chipc_resume(device_t dev)
 {
 	return (0);
 }
 
-static device_method_t bhnd_chipc_methods[] = {
+static device_method_t chipc_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_probe,		bhnd_chipc_probe),
-	DEVMETHOD(device_attach,	bhnd_chipc_attach),
-	DEVMETHOD(device_detach,	bhnd_chipc_detach),
-	DEVMETHOD(device_suspend,	bhnd_chipc_suspend),
-	DEVMETHOD(device_resume,	bhnd_chipc_resume),
+	DEVMETHOD(device_probe,		chipc_probe),
+	DEVMETHOD(device_attach,	chipc_attach),
+	DEVMETHOD(device_detach,	chipc_detach),
+	DEVMETHOD(device_suspend,	chipc_suspend),
+	DEVMETHOD(device_resume,	chipc_resume),
 	DEVMETHOD_END
 };
 
 static devclass_t bhnd_chipc_devclass;
 
-DEFINE_CLASS_0(bhnd_cc, bhnd_chipc_driver, bhnd_chipc_methods, sizeof(struct bhnd_chipc_softc));
-DRIVER_MODULE(bhnd_cc, bhnd, bhnd_chipc_driver, bhnd_chipc_devclass, 0, 0);
+DEFINE_CLASS_0(bhnd_cc, chipc_driver, chipc_methods, sizeof(struct chipc_softc));
+DRIVER_MODULE(bhnd_cc, bhnd, chipc_driver, bhnd_chipc_devclass, 0, 0);

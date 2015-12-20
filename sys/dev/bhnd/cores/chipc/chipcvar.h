@@ -29,17 +29,17 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_CORES_CHIPCVAR_H_
-#define _BHND_CORES_CHIPCVAR_H_
+#ifndef _BHND_CORES_CHIPC_CHIPCVAR_H_
+#define _BHND_CORES_CHIPC_CHIPCVAR_H_
 
 DECLARE_CLASS(bhnd_cc);
 
-#define	BHND_CHIPC_MAX_RES	1
-#define	BHND_CHIPC_MAX_RSPEC	(BHND_CHIPC_MAX_RES+1)
+#define	CHIPC_MAX_RES	1
+#define	CHIPC_MAX_RSPEC	(CHIPC_MAX_RES+1)
 
-struct bhnd_chipc_softc {
-	struct resource_spec	rspec[BHND_CHIPC_MAX_RSPEC];
-	struct bhnd_resource	*res[BHND_CHIPC_MAX_RES];
+struct chipc_softc {
+	struct resource_spec	rspec[CHIPC_MAX_RSPEC];
+	struct bhnd_resource	*res[CHIPC_MAX_RES];
 };
 
-#endif /* _BHND_CORES_CHIPCVAR_H_ */
+#endif /* _BHND_CORES_CHIPC_CHIPCVAR_H_ */

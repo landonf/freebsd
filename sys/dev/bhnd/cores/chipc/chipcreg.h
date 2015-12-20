@@ -22,8 +22,8 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_CORES_CHIPCREG_H_
-#define _BHND_CORES_CHIPCREG_H_
+#ifndef _BHND_CORES_CHIPC_CHIPCREG_H_
+#define _BHND_CORES_CHIPC_CHIPCREG_H_
 
 #define	CHIPC_CHIPID_SIZE	0x100	/**< size of the register block
 					     containing the chip
@@ -1384,4 +1384,4 @@
 #define BT_LOWEST_PRIO			0x0
 #define BT_HIGHEST_PRIO			0x3
 
-#endif /* _BHND_CORES_CHIPCREG_H_ */
+#endif /* _BHND_CORES_CHIPC_CHIPCREG_H_ */

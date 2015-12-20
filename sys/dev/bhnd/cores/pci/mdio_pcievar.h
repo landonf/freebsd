@@ -29,22 +29,28 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_CORES_PCIBVAR_H_
-#define _BHND_CORES_PCIBVAR_H_
+#ifndef _BHND_CORES_PCI_MDIO_PCIEVAR_H_
+#define _BHND_CORES_PCI_MDIO_PCIEVAR_H_
 
-#include "bhnd_pcivar.h"
+#include <dev/mdio/mdio.h>
+#include "mdio_if.h"
 
-/* PCI bridge driver-specific state */
-#define	BHND_PCIB_MAX_RES	2
-#define	BHND_PCIB_MAX_RSPEC	(BHND_PCIB_MAX_RES+1)
-struct bhnd_pcib_softc {
-	device_t		 dev;	/**< pci device */
-	struct bhnd_resource	*core;	/**< core registers. */
-	bhnd_pci_regs_t	 	 regs;	/**< device register family */
+struct bhnd_mdio_softc {
+	device_t		 dev;		/**< mdio device */
+	struct mtx		 sc_mtx;	/**< mdio register lock */
 
-	struct resource_spec	 rspec[BHND_PCIB_MAX_RSPEC];
-	struct bhnd_resource	*res[BHND_PCIB_MAX_RES];
+	struct bhnd_resource	*mem_res;	/**< parent pcie registers */
+	bus_size_t		 mem_off;	/**< mdio register offset */
 
+	uint32_t		 parent_quirks;	/**< parent PCIe quirk flags */
 };
 
-#endif /* _BHND_CORES_PCIBVAR_H_ */
+#define	BHND_MDIO_LOCK_INIT(sc) \
+	mtx_init(&(sc)->sc_mtx, device_get_nameunit((sc)->dev), \
+	    "bhnd_pci_mdio register lock", MTX_DEF)
+#define	BHND_MDIO_LOCK(sc)			mtx_lock(&(sc)->sc_mtx)
+#define	BHND_MDIO_UNLOCK(sc)		mtx_unlock(&(sc)->sc_mtx)
+#define	BHND_MDIO_LOCK_ASSERT(sc, what)	mtx_assert(&(sc)->sc_mtx, what)
+#define	BHND_MDIO_LOCK_DESTROY(sc)		mtx_destroy(&(sc)->sc_mtx)
+
+#endif /* _BHND_CORES_PCI_MDIO_PCIEVAR_H_ */

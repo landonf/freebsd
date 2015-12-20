@@ -29,8 +29,8 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_CORES_PCIVAR_H_
-#define _BHND_CORES_PCIVAR_H_
+#ifndef _BHND_CORES_PCI_BHND_PCIVAR_H_
+#define _BHND_CORES_PCI_BHND_PCIVAR_H_
 
 #include <sys/param.h>
 #include <sys/bus.h>
@@ -122,4 +122,4 @@ typedef enum {
 	BHND_PCIE_ ## _name						\
 )
 
-#endif /* _BHND_CORES_PCIVAR_H_ */
+#endif /* _BHND_CORES_PCI_BHND_PCIVAR_H_ */

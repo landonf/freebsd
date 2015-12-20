@@ -50,7 +50,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhndvar.h>
 #include <dev/bhnd/bhndreg.h>
 
-#include <dev/bhnd/cores/bhnd_chipcreg.h>
+#include <dev/bhnd/cores/chipc/chipcreg.h>
 
 #include "bhndbvar.h"
 #include "bhndb_bus_if.h"

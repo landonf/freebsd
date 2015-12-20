@@ -39,8 +39,6 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/bus.h>
 
-#include <dev/bhnd/cores/bhnd_chipcreg.h>
-
 #include "sibareg.h"
 #include "sibavar.h"
 

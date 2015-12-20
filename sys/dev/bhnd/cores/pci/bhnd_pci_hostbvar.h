@@ -29,8 +29,8 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_CORES_PCI_HOSTBVAR_H_
-#define _BHND_CORES_PCI_HOSTBVAR_H_
+#ifndef _BHND_CORES_PCI_BHND_PCI_HOSTBVAR_H_
+#define _BHND_CORES_PCI_BHND_PCI_HOSTBVAR_H_
 
 #include "bhnd_pcivar.h"
 
@@ -226,4 +226,4 @@ enum {
 };
 
 
-#endif /* _BHND_CORES_PCI_HOSTBVAR_H_ */
+#endif /* _BHND_CORES_PCI_BHND_PCI_HOSTBVAR_H_ */

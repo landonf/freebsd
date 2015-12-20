@@ -22,8 +22,8 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_CORES_PCIREG_H_
-#define _BHND_CORES_PCIREG_H_
+#ifndef _BHND_CORES_PCI_BHND_PCIREG_H_
+#define _BHND_CORES_PCI_BHND_PCIREG_H_
 
 /*
  * PCI/PCIe-Gen1 DMA Constants
@@ -387,4 +387,4 @@
 /* Status reg PCIE_PLP_STATUSREG */
 #define	BHND_PCIE_PLP_POLARITYINV_STAT	0x10
 
-#endif /* _BHND_CORES_PCIREG_H_ */
+#endif /* _BHND_CORES_PCI_BHND_PCIREG_H_ */

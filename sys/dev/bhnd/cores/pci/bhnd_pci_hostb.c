@@ -293,7 +293,6 @@ bcm_pci_attach_wars(struct bhnd_pci_hostb_softc *sc)
 		device_printf(sc->dev, "track_delay=0x%x acq_delay=0x%x\n",
 		((track_delay*16)), ((acq_delay*1024)));
 	}
-	while(1);
 }
 
 
