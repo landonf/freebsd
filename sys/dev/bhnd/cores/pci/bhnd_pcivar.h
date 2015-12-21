@@ -51,7 +51,7 @@ typedef enum {
 #define	_BHND_PCI_REG_GET(_regval, _mask, _shift)		\
 	((_regval & _mask) >> _shift)
 #define _BHND_PCI_REG_SET(_regval, _mask, _shift, _setval)	\
-	(((_regval) & ~ _mask) | (((_setval) << _shift) & _mask))
+	_regval = (((_regval) & ~ _mask) | (((_setval) << _shift) & _mask))
 
 /**
  * Extract a register value by applying _MASK and _SHIFT defines.
@@ -66,7 +66,7 @@ typedef enum {
 /**
  * Set a register value by applying _MASK and _SHIFT defines.
  * 
- * @param _regv The register value containing the desired attribute
+ * @param _regv The current register value.
  * @param _attr The register attribute name to which to append `_MASK`/`_SHIFT`
  * suffixes.
  * @param _val The value to bet set in @p _regv.

@@ -40,9 +40,6 @@ struct bhnd_pci_device {
 	const char			*desc;
 	bhnd_pci_regs_t			 regs;
 	struct bhnd_device_quirk	*quirks;
-
-	/* Saved PCIe SerDes polarity (BHND_PCIE_QUIRK_SERDES_POLARITY) */
-	uint16_t			 serdes_polarity;
 };
 
 /** PCI host bridge driver state */
@@ -55,6 +52,11 @@ struct bhnd_pci_hostb_softc {
 	uint32_t		 quirks;	/**< BHND_PCI_QUIRK flags */
 
 	device_t		 mdio;		/**< PCIe MDIO device. NULL if PCI. */
+	
+	bool			 polarity_inv;	/**< If BHND_PCIE_QUIRK_SDR9_POLARITY is set, this
+						  *  is initialized to the PCIe link's RX polarity
+						  *  at attach time. This is used to restore the
+						  *  correct polarity on resume. */
 
 	struct mtx		 sc_mtx;	/**< softc lock */
 
@@ -82,8 +84,8 @@ struct bhnd_pci_hostb_softc {
 }
 
 /* BHNDB_PCI_REG_* convenience macros */ 
-#define	BPCI_REG_GET			BHND_PCI_REG_GET
-#define	BPCI_REG_SET			BHND_PCI_REG_SET
+#define	BPCI_REG_GET(_rv, _a)		BHND_PCI_REG_GET(_rv, BHND_ ## _a)
+#define	BPCI_REG_SET(_rv, _a, _v)	BHND_PCI_REG_SET(_rv, BHND_ ## _a, _v)
 
 #define	BPCI_COMMON_REG_GET(_r, _a)	\
 	BHND_PCI_COMMON_REG_GET(sc->regs, _r, _a)

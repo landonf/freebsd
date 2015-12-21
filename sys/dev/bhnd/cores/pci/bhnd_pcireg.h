@@ -326,11 +326,11 @@
 
 #define	BHND_PCIE_SDR9_RX_CTRL			0x11	/* RX ctrl register */
 #define	    BHND_PCIE_SDR9_RX_CTRL_FORCE	0x80	/* rxpolarity_force */
-#define	    BHND_PCIE_SDR9_RX_CTRL_POLARITY	0x40	/* rxpolarity_value */
+#define	    BHND_PCIE_SDR9_RX_CTRL_POLARITY_INV	0x40	/* rxpolarity_value (if set, inverse polarity) */
 
 #define	BHND_PCIE_SDR9_RX_CDR			0x16	/* RX CDR ctrl register */
 #define	  BHND_PCIE_SDR9_RX_CDR_FREQ_OVR_EN	0x0100	/* freq_override_en flag */
-#define	  BHND_PCIE_SDR9_RX_CDR_FREQ_OVR_MASK	0x01FF	/* freq_override_val */
+#define	  BHND_PCIE_SDR9_RX_CDR_FREQ_OVR_MASK	0x00FF	/* freq_override_val */
 #define	  BHND_PCIE_SDR9_RX_CDR_FREQ_OVR_SHIFT	0
 
 #define	BHND_PCIE_SDR9_RX_CDRBW			0x17	/* RX CDR bandwidth (PLL tuning) */
@@ -385,6 +385,6 @@
 #define	BHND_PCIE_ASPM_DISAB			0	/* ASPM L0s & L1 in linkctrl */
 
 /* Status reg PCIE_PLP_STATUSREG */
-#define	BHND_PCIE_PLP_POLARITYINV_STAT	0x10
+#define	BHND_PCIE_PLP_POLARITY_INV		0x10	/* lane polarity is inverted */
 
 #endif /* _BHND_CORES_PCI_BHND_PCIREG_H_ */

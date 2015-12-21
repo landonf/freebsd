@@ -54,12 +54,14 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_pcireg.h"
 #include "bhnd_pci_hostbvar.h"
 
-static uint32_t				 pcihb_get_quirks(device_t dev,
+static uint32_t				 bcm_pci_get_quirks(device_t dev,
 					     const struct bhnd_pci_device *id);
 
-static const struct bhnd_pci_device	*pcihb_find_dev_entry(device_t dev);
+static const struct bhnd_pci_device	*bcm_pci_find_dev_entry(device_t dev);
 
 static void				 bcm_pci_attach_wars(
+					     struct bhnd_pci_hostb_softc *sc);
+static void				 bcm_pci_resume_wars(
 					     struct bhnd_pci_hostb_softc *sc);
 
 /*
@@ -104,11 +106,17 @@ static const struct resource_spec bhnd_pci_hostb_rspec[] = {
 #define	BHND_PCIE_QUIRK(_sc, _name)	\
     ((_sc)->quirks & BHND_PCIE_QUIRK_ ## _name)
 
+#define	BHND_PCI_ASSERT_QUIRK(_sc, name)	\
+    KASSERT(BHND_PCI_QUIRK((_sc), name), ("quirk " __STRING(_name) " not set"))
+
+#define	BHND_PCIE_ASSERT_QUIRK(_sc, name)	\
+    KASSERT(BHND_PCIE_QUIRK((_sc), name), ("quirk " __STRING(_name) " not set"))
+
 /**
  * Collect all quirks defined in @p id that match @p dev.
  */
 static uint32_t 
-pcihb_get_quirks(device_t dev, const struct bhnd_pci_device *id)
+bcm_pci_get_quirks(device_t dev, const struct bhnd_pci_device *id)
 {
 	struct bhnd_device_quirk	*dq;
 	uint32_t			 quirks;
@@ -129,7 +137,7 @@ pcihb_get_quirks(device_t dev, const struct bhnd_pci_device *id)
  * Find the device table entry for @p dev, if any.
  */
 static const struct bhnd_pci_device *
-pcihb_find_dev_entry(device_t dev)
+bcm_pci_find_dev_entry(device_t dev)
 {
 	const struct bhnd_pci_device *id;
 
@@ -151,7 +159,7 @@ bhnd_pci_hostb_probe(device_t dev)
 	if (!bhnd_is_hostb_device(dev))
 		return (ENXIO);
 
-	if ((id = pcihb_find_dev_entry(dev)) == NULL)
+	if ((id = bcm_pci_find_dev_entry(dev)) == NULL)
 		return (ENXIO);
 
 	device_set_desc(dev, id->desc);
@@ -165,13 +173,13 @@ bhnd_pci_hostb_attach(device_t dev)
 	struct bhnd_pci_hostb_softc	*sc;
 	int				 error;
 
-	id = pcihb_find_dev_entry(dev);
+	id = bcm_pci_find_dev_entry(dev);
 	KASSERT(id != NULL, ("device entry went missing"));
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
 	sc->regs = id->regs;
-	sc->quirks = pcihb_get_quirks(dev, id);
+	sc->quirks = bcm_pci_get_quirks(dev, id);
 	BHND_PCI_LOCK_INIT(sc);
 
 	/*
@@ -226,7 +234,51 @@ bhnd_pci_hostb_suspend(device_t dev)
 static int
 bhnd_pci_hostb_resume(device_t dev)
 {
-	return (bus_generic_resume(dev));
+	struct bhnd_pci_hostb_softc	*sc;
+	int				 error;
+	
+	sc = device_get_softc(dev);
+
+	if ((error = bus_generic_resume(dev)))
+		return (error);
+
+	/* Apply work-arounds */
+	bcm_pci_resume_wars(sc);
+
+	return (0);
+}
+
+/*
+ * PCIe Protocol Register Access
+ */
+
+static uint32_t
+bcm_pcie_read_proto_reg(struct bhnd_pci_hostb_softc *sc, uint32_t addr)
+{
+	uint32_t val;
+
+	KASSERT(bhnd_get_class(sc->dev) == BHND_DEVCLASS_PCIE,
+	    ("not a pcie device!"));
+
+	BHND_PCI_LOCK(sc);	
+	bhnd_bus_write_4(sc->dev, sc->core, BHND_PCIE_IND_ADDR, addr);
+	val = bhnd_bus_read_4(sc->dev, sc->core, BHND_PCIE_IND_DATA);
+	BHND_PCI_UNLOCK(sc);
+
+	return (val);
+}
+
+static void
+bcm_pcie_write_proto_reg(struct bhnd_pci_hostb_softc *sc, uint32_t addr,
+    uint32_t val)
+{
+	KASSERT(bhnd_get_class(sc->dev) == BHND_DEVCLASS_PCIE,
+	    ("not a pcie device!"));
+
+	BHND_PCI_LOCK(sc);	
+	bhnd_bus_write_4(sc->dev, sc->core, BHND_PCIE_IND_ADDR, addr);
+	bhnd_bus_write_4(sc->dev, sc->core, BHND_PCIE_IND_DATA, val);
+	BHND_PCI_UNLOCK(sc);
 }
 
 /*
@@ -234,6 +286,9 @@ bhnd_pci_hostb_resume(device_t dev)
  */
 
 /*
+ * Quirk: N/A
+ * Applies to all PCI/PCIe revisions.
+ * 
  * On devices without a SROM, the PCI(e) cores will be initialized with
  * their Power-on-Reset defaults; this can leave the the BAR0 PCIe windows
  * potentially mapped to the wrong core.
@@ -241,7 +296,7 @@ bhnd_pci_hostb_resume(device_t dev)
  * This WAR updates the BAR0 defaults to point at the current PCIe core.
  */
 static void
-bhndb_pci_sromless_defaults_war(struct bhnd_pci_hostb_softc *sc)
+bcm_pci_sromless_defaults_war(struct bhnd_pci_hostb_softc *sc)
 {
 	bus_size_t	sprom_addr;
 	u_int		sprom_core_idx;
@@ -257,9 +312,74 @@ bhndb_pci_sromless_defaults_war(struct bhnd_pci_hostb_softc *sc)
 	pci_core_idx = bhnd_get_core_index(sc->dev);
 
 	if (sprom_core_idx != pci_core_idx) {
-		val = BPCI_COMMON_REG_SET(val, SRSH_PI, pci_core_idx);
+		BPCI_COMMON_REG_SET(val, SRSH_PI, pci_core_idx);
 		bhnd_bus_write_2(sc->dev, sc->core, sprom_addr, val);
 	}
+}
+
+/* 
+ * Quirk: BHND_PCIE_QUIRK_SDR9_L0s_HANG
+ * 
+ * Adjust SerDes CDR tuning to ensure that CDR is stable before sending
+ * data during L0s to L0 exit transitions.
+ */
+static void
+bcm_pci_sdr9_hang_war(struct bhnd_pci_hostb_softc *sc)
+{
+	uint16_t sdv;
+	
+	BHND_PCIE_ASSERT_QUIRK(sc, SDR9_L0s_HANG);
+
+	/* Set RX track/acquire timers to 2.064us/40.96us */
+	sdv = 0;
+	BPCI_REG_SET(sdv, PCIE_SDR9_RX_TIMER1_LKTRK, (2064/16));
+	BPCI_REG_SET(sdv, PCIE_SDR9_RX_TIMER1_LKACQ, (40960/1024));
+	MDIO_WRITEREG(sc->mdio, BHND_PCIE_PHY_SDR9_TXRX,
+	    BHND_PCIE_SDR9_RX_TIMER1, sdv);
+
+	/* Apply CDR frequency workaround */
+	sdv = BHND_PCIE_SDR9_RX_CDR_FREQ_OVR_EN;
+	BPCI_REG_SET(sdv, PCIE_SDR9_RX_CDR_FREQ_OVR, 0x0);
+	MDIO_WRITEREG(sc->mdio, BHND_PCIE_PHY_SDR9_TXRX,
+	    BHND_PCIE_SDR9_RX_CDR, sdv);
+
+	/* Apply CDR BW tunings */
+	sdv = 0;
+	BPCI_REG_SET(sdv, PCIE_SDR9_RX_CDRBW_INTGTRK, 0x2);
+	BPCI_REG_SET(sdv, PCIE_SDR9_RX_CDRBW_INTGACQ, 0x4);
+	BPCI_REG_SET(sdv, PCIE_SDR9_RX_CDRBW_PROPTRK, 0x6);
+	BPCI_REG_SET(sdv, PCIE_SDR9_RX_CDRBW_PROPACQ, 0x6);
+	MDIO_WRITEREG(sc->mdio, BHND_PCIE_PHY_SDR9_TXRX,
+	    BHND_PCIE_SDR9_RX_CDRBW, sdv);
+}
+
+/* 
+ * Quirk: BHND_PCIE_QUIRK_SDR9_POLARITY
+ * 
+ * Apply the current `polarity_inv` value to the SerDes' RX polarity override.
+ * This must be called on both attach and resume.
+ */
+static void
+bcm_pci_sdr9_override_polarity_war(struct bhnd_pci_hostb_softc *sc)
+{
+	uint16_t	rxctl;
+
+	BHND_PCIE_ASSERT_QUIRK(sc, SDR9_POLARITY);
+
+	/* Fetch current RX control value */
+	rxctl = MDIO_READREG(sc->mdio, BHND_PCIE_PHY_SDR9_TXRX,
+	    BHND_PCIE_SDR9_RX_CTRL);
+	
+	/* Apply override */
+	rxctl |= BHND_PCIE_SDR9_RX_CTRL_FORCE;
+	if (sc->polarity_inv) {
+		rxctl |= BHND_PCIE_SDR9_RX_CTRL_POLARITY_INV;
+	} else {
+		rxctl &= ~BHND_PCIE_SDR9_RX_CTRL_POLARITY_INV;
+	}
+
+	MDIO_WRITEREG(sc->mdio, BHND_PCIE_PHY_SDR9_TXRX,
+	    BHND_PCIE_SDR9_RX_CTRL, rxctl);
 }
 
 /* Attach-time WARs */
@@ -267,32 +387,37 @@ static void
 bcm_pci_attach_wars(struct bhnd_pci_hostb_softc *sc)
 {
 	/* Fix Power-on-Reset defaults on SROM-less PCI/PCIe devices. */
-	bhndb_pci_sromless_defaults_war(sc);
+	bcm_pci_sromless_defaults_war(sc);
 
-	/* Adjust SerDes RX timer and CDR bandwidth to ensure that 
-	 * CDR circuit is stable before sending data during
-	 * L0s to L0 exit transitions. */
-	if (BHND_PCIE_QUIRK(sc, SDR9_L0s_HANG)) {
-		// TODO
-	}
+	/* Adjust SerDes CDR tuning to ensure that CDR is stable before sending
+	 * data during L0s to L0 exit transitions. */
+	if (BHND_PCIE_QUIRK(sc, SDR9_L0s_HANG))
+		bcm_pci_sdr9_hang_war(sc);
 
-	/* Save the SerDes polarity for restoration on resume */
+	/* Determine the current RX polarity, save the result for later use
+	 * on device resume, and override the SerDes' configuration based
+	 * on the current polarity. */
 	if (BHND_PCIE_QUIRK(sc, SDR9_POLARITY)) {
-		// TODO
-	}
+		uint32_t st;
 
-	device_printf(sc->dev, "QUIRKS=0x%x\n", sc->quirks);
-	
-	if (bhnd_get_hwrev(sc->dev) < 10) {
-		uint16_t t1 = MDIO_READREG(sc->mdio, BHND_PCIE_PHY_SDR9_TXRX,
-		    BHND_PCIE_SDR9_RX_TIMER1);
-		device_printf(sc->dev, "timer1=0x%x\n", t1);
-		uint32_t track_delay = ((t1 & BHND_PCIE_SDR9_RX_TIMER1_LKTRK_MASK) >> BHND_PCIE_SDR9_RX_TIMER1_LKTRK_SHIFT);
-		uint32_t acq_delay = ((t1 & BHND_PCIE_SDR9_RX_TIMER1_LKACQ_MASK) >> BHND_PCIE_SDR9_RX_TIMER1_LKACQ_SHIFT);
-		
-		device_printf(sc->dev, "track_delay=0x%x acq_delay=0x%x\n",
-		((track_delay*16)), ((acq_delay*1024)));
+		/* Determine correct polarity from the attach-time PCIe PHY
+		 * link status. */
+		st = bcm_pcie_read_proto_reg(sc, BHND_PCIE_IND_PLP_STATUSREG);
+		sc->polarity_inv = ((st & BHND_PCIE_PLP_POLARITY_INV) != 0);
+
+		/* Apply the override */
+		bcm_pci_sdr9_override_polarity_war(sc);
 	}
+	
+}
+
+/* Resume-time WARs */
+static void
+bcm_pci_resume_wars(struct bhnd_pci_hostb_softc *sc)
+{
+	/* Override the SerDes using the polarity discovered at attach time. */
+	if (BHND_PCIE_QUIRK(sc, SDR9_POLARITY))
+		bcm_pci_sdr9_override_polarity_war(sc);
 }
 
 
