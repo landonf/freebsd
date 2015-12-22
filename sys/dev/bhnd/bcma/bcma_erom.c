@@ -71,7 +71,7 @@ static int		 erom_seek_next(struct bcma_erom *erom, uint8_t etype);
 	    (unsigned long long) (erom->offset), ##__VA_ARGS__);
 
 /**
- * "Open" an EROM table for reading.
+ * Open an EROM table for reading.
  * 
  * @param[out] erom On success, will be populated with a valid EROM
  * read state.

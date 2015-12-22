@@ -295,7 +295,6 @@ METHOD int get_port_rid {
 /**
  * Decode a port / region pair on @p child defined by @p type and @p rid.
  *
- *
  * @param dev The bus device.
  * @param child The bhnd child.
  * @param type The resource type.
