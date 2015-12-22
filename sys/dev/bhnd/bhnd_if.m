@@ -243,6 +243,24 @@ METHOD int deactivate_resource {
 } DEFAULT bhnd_generic_deactivate_bhnd_resource;
 
 /**
+ * Return true if @p region_num is a valid region on @p port_num of
+ * @p type attached to @p child.
+ *
+ * @param dev The device whose child is being examined.
+ * @param child The child device.
+ * @param type The port type being queried.
+ * @param port_num The port number being queried.
+ * @param region_num The region number being queried.
+ */
+METHOD u_int is_region_valid {
+	device_t dev;
+	device_t child;
+	bhnd_port_type type;
+	u_int port_num;
+	u_int region_num;
+} DEFAULT bhnd_generic_is_region_valid;
+
+/**
  * Return the number of ports of type @p type attached to @p child.
  *
  * @param dev The device whose child is being examined.

@@ -75,6 +75,9 @@ bool			 bhnd_generic_is_hostb_device(device_t dev,
 			     device_t child);
 bool			 bhnd_generic_is_hw_disabled(device_t dev,
 			     device_t child);
+bool			 bhnd_generic_is_region_valid(device_t dev,
+			     device_t child, bhnd_port_type type, u_int port,
+			     u_int region);
 
 const struct bhnd_chipid *bhnd_generic_get_chipid(device_t dev, device_t child);
 

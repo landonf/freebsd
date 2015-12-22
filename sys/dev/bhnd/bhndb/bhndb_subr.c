@@ -855,13 +855,9 @@ bhndb_regwin_matches_device(const struct bhndb_regwin *regw, device_t dev)
 	if (bhnd_get_core_unit(dev) != regw->core.unit)
 		return (false);
 	
-	/* The regwin port must be defined. */
-	if (regw->core.port > bhnd_get_port_count(dev, regw->core.port_type))
-		return (false);
-
-	/* The regwin region must be defined. */
-	if (regw->core.region > bhnd_get_region_count(dev, regw->core.port_type,
-	    regw->core.port))
+	/* The regwin port/region must be defined. */
+	if (!bhnd_is_region_valid(dev, regw->core.port_type, regw->core.port,
+	    regw->core.region))
 	{
 		return (false);
 	}

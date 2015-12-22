@@ -357,6 +357,27 @@ bhnd_generic_get_probe_order(device_t dev, device_t child)
 }
 
 /**
+ * Helper function for implementing BHND_IS_REGION_VALID().
+ * 
+ * This implementation assumes that port and region numbers are 0-indexed and
+ * are allocated non-sparsely, using BHND_GET_PORT_COUNT() and
+ * BHND_GET_REGION_COUNT() to determine if @p port and @p region fall within
+ * the defined range.
+ */
+bool
+bhnd_generic_is_region_valid(device_t dev, device_t child,
+    bhnd_port_type type, u_int port, u_int region)
+{
+	if (port >= bhnd_get_port_count(child, type))
+		return (false);
+
+	if (region >= bhnd_get_region_count(child, type, port))
+		return (false);
+
+	return (true);
+}
+
+/**
  * Helper function for implementing BUS_PRINT_CHILD().
  * 
  * This implementation requests the device's struct resource_list via

@@ -320,9 +320,8 @@ bhndb_initialize_region_cfg(device_t bus_dev,
 			pp = &hp->ports[i];
 			
 			/* Skip ports not defined on this device */
-			if (pp->port >= bhnd_get_port_count(child, pp->type) ||
-			    pp->region >= bhnd_get_region_count(child, pp->type,
-				pp->port))
+			if (!bhnd_is_region_valid(child, pp->type, pp->port,
+			    pp->region))
 			{
 				continue;
 			}

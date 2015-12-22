@@ -424,35 +424,51 @@ bhnd_release_resource(device_t dev, int type, int rid,
 }
 
 /**
+ * Return true if @p region_num is a valid region on @p port_num of
+ * @p type attached to @p dev.
+ *
+ * @param dev A bhnd bus child device.
+ * @param type The port type being queried.
+ * @param port_num The port number being queried.
+ * @param region_num The region number being queried.
+ */
+static inline bool
+bhnd_is_region_valid(device_t dev, bhnd_port_type type, u_int port_num,
+    u_int region_num)
+{
+	return (BHND_IS_REGION_VALID(device_get_parent(dev), dev, type,
+	    port_num, region_num));
+}
+
+/**
  * Return the number of ports of type @p type attached to @p def.
  *
- * @param dev The device being queried.
+ * @param dev A bhnd bus child device.
  * @param type The port type being queried.
  */
 static inline u_int
-bhnd_get_port_count(device_t child, bhnd_port_type type) {
-	return (BHND_GET_PORT_COUNT(device_get_parent(child), child, type));
+bhnd_get_port_count(device_t dev, bhnd_port_type type) {
+	return (BHND_GET_PORT_COUNT(device_get_parent(dev), dev, type));
 }
 
 /**
  * Return the number of memory regions mapped to @p child @p port of
  * type @p type.
  *
- * @param dev The device whose child is being examined.
- * @param child The child device.
+ * @param dev A bhnd bus child device.
  * @param port The port number being queried.
  * @param type The port type being queried.
  */
 static inline u_int
-bhnd_get_region_count(device_t child, bhnd_port_type type, u_int port) {
-	return (BHND_GET_REGION_COUNT(device_get_parent(child), child, type,
+bhnd_get_region_count(device_t dev, bhnd_port_type type, u_int port) {
+	return (BHND_GET_REGION_COUNT(device_get_parent(dev), dev, type,
 	    port));
 }
 
 /**
  * Return the resource-ID for a memory region on the given device port.
  *
- * @param dev The device being queried.
+ * @param dev A bhnd bus child device.
  * @param type The port type.
  * @param port The port identifier.
  * @param region The identifier of the memory region on @p port.
@@ -470,7 +486,7 @@ bhnd_get_port_rid(device_t dev, bhnd_port_type type, u_int port, u_int region)
 /**
  * Decode a port / region pair on @p dev defined by @p rid.
  *
- * @param dev The device being queried.
+ * @param dev A bhnd bus child device.
  * @param type The resource type.
  * @param rid The resource identifier.
  * @param[out] port_type The decoded port type.
@@ -491,7 +507,7 @@ bhnd_decode_port_rid(device_t dev, int type, int rid, bhnd_port_type *port_type,
 /**
  * Get the address and size of @p region on @p port.
  *
- * @param dev The device being queried.
+ * @param dev A bhnd bus child device.
  * @param port_type The port type.
  * @param port The port identifier.
  * @param region The identifier of the memory region on @p port.
