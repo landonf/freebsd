@@ -283,7 +283,7 @@ siba_find_port_addrspace(struct siba_port *port, uint8_t sid)
 int
 siba_append_dinfo_region(struct siba_devinfo *dinfo, bhnd_port_type port_type, 
     u_int port_num, u_int region_num, uint8_t sid, uint32_t base, uint32_t size,
-    uint32_t reserved)
+    uint32_t bus_reserved)
 {
 	struct siba_addrspace	*sa;
 	struct siba_port	*port;
@@ -312,7 +312,7 @@ siba_append_dinfo_region(struct siba_devinfo *dinfo, bhnd_port_type port_type,
 	sa->sa_region_num = region_num;
 	
 	/* Populate the resource list */
-	size -= reserved;
+	size -= bus_reserved;
 	sa->sa_rid = resource_list_add_next(&dinfo->resources, SYS_RES_MEMORY,
 	    base, base + size - 1, size);
 
