@@ -37,14 +37,15 @@ __FBSDID("$FreeBSD$");
  * bus (e.g. bcma or siba) via a Broadcom PCI core configured in end-point
  * mode.
  * 
- * This driver handles host interactions with the PCI bridge core, including
- * reading/writing of PCI config space. Once the bhnd bus is up, the PCI bridge
- * core is managed from the "SoC" side by a bhnd_hostb driver.
+ * This driver handles all interactions with the PCI bridge core. On the
+ * bridged bhnd bus, the PCI core device will be claimed by a simple
+ * bhnd_hostb driver.
  */
 
 #include <sys/param.h>
 #include <sys/kernel.h>
 #include <sys/bus.h>
+#include <sys/limits.h>
 #include <sys/malloc.h>
 #include <sys/module.h>
 #include <sys/systm.h>
@@ -56,6 +57,7 @@ __FBSDID("$FreeBSD$");
 
 #include "bhndb_pcireg.h"
 #include "bhndb_pcivar.h"
+#include "bhndb_private.h"
 
 static int	bhndb_enable_pci_clocks(struct bhndb_pci_softc *sc);
 static int	bhndb_disable_pci_clocks(struct bhndb_pci_softc *sc);
@@ -64,6 +66,46 @@ static int	bhndb_pci_compat_setregwin(struct bhndb_pci_softc *,
 		    const struct bhndb_regwin *, bhnd_addr_t);
 static int	bhndb_pci_fast_setregwin(struct bhndb_pci_softc *,
 		    const struct bhndb_regwin *, bhnd_addr_t);
+
+static uint32_t	bhndb_pci_get_hostb_quirks(struct bhndb_pci_softc *,
+		    const struct bhndb_pci_id *);
+
+static const struct bhndb_pci_id *bhndb_pci_find_core_id(
+				      struct bhnd_core_info *core);
+
+
+/*
+ * Supported PCI bridge cores.
+ *
+ * This table defines quirks specific to core hwrev ranges; see also
+ * bhndb_pci_get_hostb_quirks() for additional quirk detection.
+ */
+static const struct bhndb_pci_id bhndb_pci_ids[] = {
+	/* PCI */
+	BHNDB_PCI_ID(PCI,
+	    BHND_QUIRK_HWREV_RANGE	(0, 5,	BHNDB_PCI_QUIRK_SBINTVEC),
+	    BHND_QUIRK_HWREV_GTE	(0,	BHNDB_PCI_QUIRK_SBTOPCI2_PREF_BURST),
+	    BHND_QUIRK_HWREV_GTE	(11,	BHNDB_PCI_QUIRK_SBTOPCI2_READMULTI | BHNDB_PCI_QUIRK_CLKRUN_DSBL),
+	    BHND_QUIRK_HWREV_END
+	),
+
+	/* PCI Gen 1 */
+	BHNDB_PCI_ID(PCIE,
+	    BHND_QUIRK_HWREV_EQ		(0,	BHNDB_PCIE_QUIRK_SDR9_L0s_HANG),
+	    BHND_QUIRK_HWREV_RANGE	(0, 1,	BHNDB_PCIE_QUIRK_UR_STATUS_FIX),
+	    BHND_QUIRK_HWREV_EQ		(1,	BHNDB_PCIE_QUIRK_PCIPM_REQEN),
+	    BHND_QUIRK_HWREV_RANGE	(3, 5,	BHNDB_PCIE_QUIRK_ASPM_OVR | BHNDB_PCIE_QUIRK_SDR9_POLARITY),
+	    BHND_QUIRK_HWREV_LTE	(6,	BHNDB_PCIE_QUIRK_L1_IDLE_THRESH),
+	    BHND_QUIRK_HWREV_GTE	(6,	BHNDB_PCIE_QUIRK_SPROM_L23_PCI_RESET),
+	    BHND_QUIRK_HWREV_EQ		(7,	BHNDB_PCIE_QUIRK_SERDES_NOPLLDOWN),
+	    BHND_QUIRK_HWREV_GTE	(8,	BHNDB_PCIE_QUIRK_L1_TIMER_PERF),
+	    BHND_QUIRK_HWREV_GTE	(10,	BHNDB_PCIE_QUIRK_SD_C22_EXTADDR),
+
+	    BHND_QUIRK_HWREV_END
+	),
+
+	{ BHND_COREID_INVALID, BHND_PCI_REGS_PCI, NULL }
+};
 
 /** 
  * Default bhndb_pci implementation of device_probe().
@@ -126,6 +168,72 @@ bhndb_pci_attach(device_t dev)
 		atomic_store_rel_ptr((volatile void *) &sc->set_regwin,
 		    (uintptr_t) &bhndb_pci_fast_setregwin);
 	}
+
+	return (0);
+}
+
+static int
+bhndb_pci_init_full_config(device_t dev, device_t child,
+    const struct bhndb_hw_priority *prio_table)
+{
+	struct bhnd_core_info		 core;
+	const struct bhndb_pci_id	*id;
+	struct bhndb_pci_softc		*sc;
+	struct bhndb_region		*pcir;
+	bhnd_addr_t			 pcir_addr;
+	bhnd_size_t			 pcir_size;
+	int				 error;
+
+	sc = device_get_softc(dev);
+
+	/* Let bhndb perform full initialization */
+	if ((error = bhndb_generic_init_full_config(dev, child, prio_table)))
+		return (error);
+
+	/* Identify our bridge core and register family. */
+	KASSERT(sc->bhndb.hostb_dev,
+	    ("missing hostb device\n"));
+
+	core = bhnd_get_core_info(sc->bhndb.hostb_dev);
+	id = bhndb_pci_find_core_id(&core);
+	if (id == NULL) {
+		device_printf(dev, "%s %s hostb core is not recognized\n",
+		    bhnd_vendor_name(core.vendor), bhnd_core_name(&core));
+	}
+
+	/* Fetch register family and device quirks */
+	sc->regf = id->regf;
+	sc->quirks = bhndb_pci_get_hostb_quirks(sc, id);
+
+
+	/* Find the PCI core register block address/size. */
+	error = bhnd_get_region_addr(sc->bhndb.hostb_dev, BHND_PORT_DEVICE, 0,
+	    0, &pcir_addr, &pcir_size);
+	if (error) {
+		device_printf(dev,
+		    "failed to locate usable hostb core registers\n");
+		return (error);
+	}
+
+	/* Find the bhndb_region that statically maps this block */
+	pcir = bhndb_find_resource_region(sc->bhndb.bus_res, pcir_addr,
+	    pcir_size);
+	if (pcir == NULL || pcir->static_regwin == NULL) {
+		device_printf(dev,
+		    "missing static PCI hostb register window\n");
+		return (ENXIO);
+	}
+
+	/* Save reference to the mapped PCI core registers */
+	sc->res_offset = pcir->static_regwin->win_offset;
+	sc->res = bhndb_find_regwin_resource(sc->bhndb.bus_res,
+	    pcir->static_regwin);
+	if (sc->res == NULL || !(rman_get_flags(sc->res) & RF_ACTIVE)) {
+		device_printf(dev,
+		    "no active resource maps the hostb register window\n");
+		return (ENXIO);
+	}
+
 
 	return (0);
 }
@@ -351,6 +459,57 @@ bhndb_disable_pci_clocks(struct bhndb_pci_softc *sc)
 }
 
 
+/**
+ * Find the identification table entry for a core descriptor.
+ * 
+ * @param sc bhndb PCI driver state.
+ */
+static const struct bhndb_pci_id *
+bhndb_pci_find_core_id(struct bhnd_core_info *core)
+{
+	const struct bhndb_pci_id *id;
+
+	for (id = bhndb_pci_ids; id->device != BHND_COREID_INVALID; id++) {
+		if (core->vendor == BHND_MFGID_BCM && 
+		    core->device == id->device)
+			return (id);
+	}
+
+	return (NULL);
+}
+
+
+/**
+ * Return all quirks applicable to the host bridge core.
+ * 
+ * @param sc bhndb PCI driver state.
+ * @param id The host bridge core's identification table entry.
+ * 
+ * @return Returns the set of quirks applicable to the PCI bridge core,
+ * or BHNDB_PCI_QUIRK_INVALID if the host bridge core is not recognized.
+ */
+static uint32_t 
+bhndb_pci_get_hostb_quirks(struct bhndb_pci_softc *sc,
+    const struct bhndb_pci_id *id)
+{
+	struct bhnd_device_quirk	*qt;
+	uint32_t			 quirks;
+	uint8_t				 hwrev;
+
+	/* Collect all the hwrev quirk flags */
+	hwrev = bhnd_get_hwrev(sc->bhndb.hostb_dev);
+	quirks = BHNDB_PCI_QUIRK_NONE;
+	for (qt = id->quirks; qt->quirks != 0; qt++) {
+		if (bhnd_hwrev_matches(hwrev, &qt->hwrev))
+			quirks |= qt->quirks;
+	};
+
+	// TODO: Additional quirk matching
+
+	return (quirks);
+}
+
+
 static device_method_t bhndb_pci_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,			bhndb_pci_probe),
@@ -360,6 +519,7 @@ static device_method_t bhndb_pci_methods[] = {
 	DEVMETHOD(device_resume,		bhndb_pci_resume),
 
 	/* BHNDB interface */
+	DEVMETHOD(bhndb_init_full_config,	bhndb_pci_init_full_config),
 	DEVMETHOD(bhndb_set_window_addr,	bhndb_pci_set_window_addr),
 
 	DEVMETHOD_END
