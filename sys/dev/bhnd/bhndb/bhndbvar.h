@@ -53,16 +53,14 @@ DECLARE_CLASS(bhndb_driver);
 
 struct bhndb_resources;
 
+int	bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass);
+
 int	bhndb_generic_probe(device_t dev);
 int	bhndb_generic_detach(device_t dev);
 int	bhndb_generic_suspend(device_t dev);
 int	bhndb_generic_resume(device_t dev);
-int	bhndb_generic_read_ivar(device_t dev, device_t child, int index,
-	    uintptr_t *result);
-int	bhndb_generic_write_ivar(device_t dev, device_t child, int index,
-	    uintptr_t value);
-
-int	bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass);
+int	bhndb_generic_init_full_config(device_t dev, device_t child,
+	    const struct bhndb_hw_priority *hw_prio_table);
 
 int	bhnd_generic_br_suspend_child(device_t dev, device_t child);
 int	bhnd_generic_br_resume_child(device_t dev, device_t child);

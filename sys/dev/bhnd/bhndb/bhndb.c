@@ -97,8 +97,12 @@ static int			 bhndb_try_activate_resource(
 				     int type, int rid, struct resource *r,
 				     bool *indirect);
 
-/** 
- * Default bhndb implementation of device_probe().
+
+/**
+ * Default bhndb(4) implementation of DEVICE_PROBE().
+ * 
+ * This function provides the default bhndb implementation of DEVICE_PROBE(),
+ * and is compatible with bhndb(4) bridges attached via bhndb_attach_bridge().
  */
 int
 bhndb_generic_probe(device_t dev)
@@ -509,6 +513,17 @@ bhndb_read_chipid(struct bhndb_softc *sc, const struct bhndb_hwcfg *cfg,
  * to automatically detect the bridge core, and to disable additional bridge
  * cores (e.g. PCMCIA on a PCIe device).
  */
+
+/**
+ * Helper function that must be called by subclass bhndb(4) drivers
+ * when implementing DEVICE_ATTACH() before calling any bhnd(4) or bhndb(4)
+ * APIs on the bridge device.
+ * 
+ * @param dev The bridge device to attach.
+ * @param bridge_devclass The device class of the bridging core. This is used
+ * to automatically detect the bridge core, and to disable additional bridge
+ * cores (e.g. PCMCIA on a PCIe device).
+ */
 int
 bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass)
 {
@@ -573,8 +588,24 @@ failed:
 	return (error);
 }
 
-static int
-bhndb_init_full_config(device_t dev, device_t child,
+/**
+ * Default bhndb(4) implementation of BHNDB_INIT_FULL_CONFIG().
+ * 
+ * This function provides the default bhndb implementation of
+ * BHNDB_INIT_FULL_CONFIG(), and must be called by any subclass driver
+ * overriding BHNDB_INIT_FULL_CONFIG().
+ * 
+ * As documented by BHNDB_INIT_FULL_CONFIG, this function performs final
+ * bridge configuration based on the hardware information enumerated by the
+ * child bus, and will reset all resource allocation state on the bridge.
+ * 
+ * When calling this method:
+ * - Any bus resources previously allocated by @p child must be deallocated.
+ * - The @p child bus must have performed initial enumeration -- but not
+ *   probe or attachment -- of its children.
+ */
+int
+bhndb_generic_init_full_config(device_t dev, device_t child,
     const struct bhndb_hw_priority *hw_prio_table)
 {
 	struct bhndb_softc		*sc;
@@ -621,7 +652,12 @@ bhndb_init_full_config(device_t dev, device_t child,
 	return (0);
 }
 
-/** Default bhndb implementation of device_detach(). */
+/**
+ * Default bhndb(4) implementation of DEVICE_DETACH().
+ * 
+ * This function detaches any child devices, and if successful, releases all
+ * resources held by the bridge device.
+ */
 int
 bhndb_generic_detach(device_t dev)
 {
@@ -643,14 +679,24 @@ bhndb_generic_detach(device_t dev)
 	return (0);
 }
 
-/** Default bhndb implementation of device_suspend(). */
+/**
+ * Default bhndb(4) implementation of DEVICE_SUSPEND().
+ * 
+ * This function calls bus_generic_suspend() (or implements equivalent
+ * behavior).
+ */
 int
 bhndb_generic_suspend(device_t dev)
 {
 	return (bus_generic_suspend(dev));
 }
 
-/** Default bhndb implementation of device_resume(). */
+/**
+ * Default bhndb(4) implementation of DEVICE_RESUME().
+ * 
+ * This function calls bus_generic_resume() (or implements equivalent
+ * behavior).
+ */
 int
 bhndb_generic_resume(device_t dev)
 {
@@ -690,6 +736,9 @@ bhndb_generic_resume(device_t dev)
 	return (bus_generic_resume(dev));
 }
 
+/**
+ * Default implementation of BHNDB_SUSPEND_RESOURCE.
+ */
 static void
 bhndb_suspend_resource(device_t dev, device_t child, int type,
     struct resource *r)
@@ -719,7 +768,9 @@ bhndb_suspend_resource(device_t dev, device_t child, int type,
 	BHNDB_UNLOCK(sc);
 }
 
-
+/**
+ * Default implementation of BHNDB_RESUME_RESOURCE.
+ */
 static int
 bhndb_resume_resource(device_t dev, device_t child, int type,
     struct resource *r)
@@ -745,20 +796,32 @@ bhndb_resume_resource(device_t dev, device_t child, int type,
 }
 
 
-/** Default bhndb implementation of bus_read_ivar(). */
-int
-bhndb_generic_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
+/**
+ * Default bhndb(4) implementation of BUS_READ_IVAR().
+ */
+static int
+bhndb_read_ivar(device_t dev, device_t child, int index,
+    uintptr_t *result)
 {
 	return (ENOENT);
 }
 
-/** Default bhndb implementation of bus_write_ivar(). */
-int
-bhndb_generic_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
+/**
+ * Default bhndb(4) implementation of BUS_WRITE_IVAR().
+ */
+static int
+bhndb_write_ivar(device_t dev, device_t child, int index,
+    uintptr_t value)
 {
 	return (ENOENT);
 }
 
+/**
+ * Return the rman instance for a given resource @p type, if any.
+ * 
+ * @param sc The bhndb device state.
+ * @param type The resource type (e.g. SYS_RES_MEMORY, SYS_RES_IRQ, ...)
+ */
 static struct rman *
 bhndb_get_rman(struct bhndb_softc *sc, int type)
 {
@@ -774,6 +837,9 @@ bhndb_get_rman(struct bhndb_softc *sc, int type)
 	};
 }
 
+/**
+ * Default implementation of BUS_ADD_CHILD()
+ */
 static device_t
 bhndb_add_child(device_t dev, u_int order, const char *name, int unit)
 {
@@ -797,6 +863,9 @@ bhndb_add_child(device_t dev, u_int order, const char *name, int unit)
 	return (child);
 }
 
+/**
+ * Default implementation of BUS_CHILD_DELETED().
+ */
 static void
 bhndb_child_deleted(device_t dev, device_t child)
 {
@@ -809,6 +878,9 @@ bhndb_child_deleted(device_t dev, device_t child)
 	device_set_ivars(child, NULL);
 }
 
+/**
+ * Default implementation of BHNDB_GET_CHIPID().
+ */
 static const struct bhnd_chipid *
 bhndb_get_chipid(device_t dev, device_t child)
 {
@@ -816,6 +888,10 @@ bhndb_get_chipid(device_t dev, device_t child)
 	return (&sc->chipid);
 }
 
+
+/**
+ * Default implementation of BHNDB_IS_HW_DISABLED().
+ */
 static bool
 bhndb_is_hw_disabled(device_t dev, device_t child) {
 	struct bhndb_softc	*sc;
@@ -860,8 +936,10 @@ compare_core_index(const void *lhs, const void *rhs)
 }
 
 /**
- * BHND_IS_HOSTB_DEVICE implementation that uses a heuristic valid on all known
- * PCI/PCIe/PCMCIA-bridged bhnd(4) devices:
+ * Default bhndb(4) implementation of BHND_IS_HOSTB_DEVICE().
+ * 
+ * This function uses a heuristic valid on all known PCI/PCIe/PCMCIA-bridged
+ * bhnd(4) devices to determine the hostb core:
  * 
  * - The core must have a Broadcom vendor ID.
  * - The core devclass must match the bridge type.
@@ -874,7 +952,8 @@ compare_core_index(const void *lhs, const void *rhs)
  * @param core The core to check.
  */
 static bool
-bhndb_is_hostb_device(device_t dev, device_t child) {
+bhndb_is_hostb_device(device_t dev, device_t child)
+{
 	struct bhndb_softc	*sc;
 	struct bhnd_core_match	 md;
 	device_t		 hostb_dev, *devlist;
@@ -922,7 +1001,9 @@ bhndb_is_hostb_device(device_t dev, device_t child) {
 	return (child == hostb_dev);
 }
 
-
+/**
+ * Default bhndb(4) implementation of BUS_ALLOC_RESOURCE().
+ */
 static struct resource *
 bhndb_alloc_resource(device_t dev, device_t child, int type,
     int *rid, u_long start, u_long end, u_long count, u_int flags)
@@ -1009,6 +1090,9 @@ bhndb_alloc_resource(device_t dev, device_t child, int type,
 	return (rv);
 }
 
+/**
+ * Default bhndb(4) implementation of BUS_RELEASE_RESOURCE().
+ */
 static int
 bhndb_release_resource(device_t dev, device_t child, int type, int rid,
     struct resource *r)
@@ -1028,6 +1112,9 @@ bhndb_release_resource(device_t dev, device_t child, int type, int rid,
 	return (0);
 }
 
+/**
+ * Default bhndb(4) implementation of BUS_ADJUST_RESOURCE().
+ */
 static int
 bhndb_adjust_resource(device_t dev, device_t child, int type,
     struct resource *r, u_long start, u_long end)
@@ -1306,14 +1393,10 @@ failed:
 }
 
 /**
- * Implementation of BUS_ACTIVATE_RESOURCE() that maps resources to any usable
- * static or dynamic register window.
- * 
- *  * @param[out] indirect On error, will be set to 'true' if the caller should
- * instead use an indirect resource mapping.
- * 
- * @retval 0 success
- * @retval non-zero activation failed.
+ * Default bhndb(4) implementation of BUS_ACTIVATE_RESOURCE().
+ *
+ * Maps resource activation requests to a viable static or dynamic
+ * register window, if any.
  */
 static int
 bhndb_activate_resource(device_t dev, device_t child, int type, int rid,
@@ -1324,6 +1407,9 @@ bhndb_activate_resource(device_t dev, device_t child, int type, int rid,
 	return (bhndb_try_activate_resource(sc, child, type, rid, r, NULL));
 }
 
+/**
+ * Default bhndb(4) implementation of BUS_DEACTIVATE_RESOURCE().
+ */
 static int
 bhndb_deactivate_resource(device_t dev, device_t child, int type,
     int rid, struct resource *r)
@@ -1352,7 +1438,9 @@ bhndb_deactivate_resource(device_t dev, device_t child, int type,
 	return (0);
 }
 
-
+/**
+ * Default bhndb(4) implementation of BUS_GET_RESOURCE_LIST().
+ */
 static struct resource_list *
 bhndb_get_resource_list(device_t dev, device_t child)
 {
@@ -1360,6 +1448,9 @@ bhndb_get_resource_list(device_t dev, device_t child)
 	return (&dinfo->resources);
 }
 
+/**
+ * Default bhndb(4) implementation of BHND_ALLOC_RESOURCE().
+ */
 static struct bhnd_resource *
 bhndb_alloc_bhnd_resource(device_t dev, device_t child, int type,
      int *rid, u_long start, u_long end, u_long count, u_int flags)
@@ -1397,6 +1488,9 @@ failed:
 	return (NULL);
 }
 
+/**
+ * Default bhndb(4) implementation of BHND_RELEASE_RESOURCE().
+ */
 static int
 bhndb_release_bhnd_resource(device_t dev, device_t child,
     int type, int rid, struct bhnd_resource *r)
@@ -1410,6 +1504,12 @@ bhndb_release_bhnd_resource(device_t dev, device_t child,
 	return (0);
 }
 
+/**
+ * Default bhndb(4) implementation of BHND_ACTIVATE_RESOURCE().
+ * 
+ * Attempts to activate a static register window, a dynamic register window,
+ * or configures @p r as an indirect resource -- in that order.
+ */
 static int
 bhndb_activate_bhnd_resource(device_t dev, device_t child,
     int type, int rid, struct bhnd_resource *r)
@@ -1466,6 +1566,9 @@ bhndb_activate_bhnd_resource(device_t dev, device_t child,
 	return (error);
 };
 
+/**
+ * Default bhndb(4) implementation of BHND_DEACTIVATE_RESOURCE().
+ */
 static int
 bhndb_deactivate_bhnd_resource(device_t dev, device_t child,
     int type, int rid, struct bhnd_resource *r)
@@ -1487,8 +1590,12 @@ bhndb_deactivate_bhnd_resource(device_t dev, device_t child,
 	return (error);
 };
 
-/* slow path for bhndb_io_resource; iterates over the existing allocated
- * dynamic windows looking for a viable in-use region */
+/**
+ * Slow path for bhndb_io_resource().
+ *
+ * Iterates over the existing allocated dynamic windows looking for a viable
+ * in-use region; the first matching region is returned.
+ */
 static struct bhndb_dw_alloc *
 bhndb_io_resource_slow(struct bhndb_softc *sc, bus_addr_t addr,
     bus_size_t size, bus_size_t *offset)
@@ -1600,6 +1707,10 @@ bhndb_io_resource(struct bhndb_softc *sc, bus_addr_t addr, bus_size_t size,
 	return (dwa);
 }
 
+/*
+ * BHND_BUS_(READ|WRITE_* implementations
+ */
+
 /* bhndb_bus_(read|write) common implementation */
 #define	BHNDB_IO_COMMON_SETUP(_io_size)				\
 	struct bhndb_softc	*sc;				\
@@ -1656,6 +1767,9 @@ BHNDB_IO_WRITE(uint8_t, 1);
 BHNDB_IO_WRITE(uint16_t, 2);
 BHNDB_IO_WRITE(uint32_t, 4);
 
+/**
+ * Default bhndb(4) implementation of BHND_BUS_BARRIER().
+ */
 static void 
 bhndb_bus_barrier(device_t dev, device_t child, struct bhnd_resource *r,
     bus_size_t offset, bus_size_t length, int flags)
@@ -1682,6 +1796,9 @@ bhndb_bus_barrier(device_t dev, device_t child, struct bhnd_resource *r,
 	BHNDB_IO_COMMON_TEARDOWN();
 }
 
+/**
+ * Default bhndb(4) implementation of BUS_SETUP_INTR().
+ */
 static int
 bhndb_setup_intr(device_t dev, device_t child, struct resource *r,
     int flags, driver_filter_t filter, driver_intr_t handler, void *arg,
@@ -1691,6 +1808,9 @@ bhndb_setup_intr(device_t dev, device_t child, struct resource *r,
 	return (EOPNOTSUPP);
 }
 
+/**
+ * Default bhndb(4) implementation of BUS_TEARDOWN_INTR().
+ */
 static int
 bhndb_teardown_intr(device_t dev, device_t child, struct resource *r,
     void *cookie)
@@ -1699,6 +1819,9 @@ bhndb_teardown_intr(device_t dev, device_t child, struct resource *r,
 	return (EOPNOTSUPP);
 }
 
+/**
+ * Default bhndb(4) implementation of BUS_CONFIG_INTR().
+ */
 static int
 bhndb_config_intr(device_t dev, int irq, enum intr_trigger trig,
     enum intr_polarity pol)
@@ -1707,6 +1830,9 @@ bhndb_config_intr(device_t dev, int irq, enum intr_trigger trig,
 	return (EOPNOTSUPP);
 }
 
+/**
+ * Default bhndb(4) implementation of BUS_BIND_INTR().
+ */
 static int
 bhndb_bind_intr(device_t dev, device_t child, struct resource *r, int cpu)
 {
@@ -1714,6 +1840,9 @@ bhndb_bind_intr(device_t dev, device_t child, struct resource *r, int cpu)
 	return (EOPNOTSUPP);
 }
 
+/**
+ * Default bhndb(4) implementation of BUS_DESCRIBE_INTR().
+ */
 static int
 bhndb_describe_intr(device_t dev, device_t child, struct resource *irq, void *cookie,
     const char *descr)
@@ -1722,6 +1851,9 @@ bhndb_describe_intr(device_t dev, device_t child, struct resource *irq, void *co
 	return (EOPNOTSUPP);
 }
 
+/**
+ * Default bhndb(4) implementation of BUS_GET_DMA_TAG().
+ */
 static bus_dma_tag_t
 bhndb_get_dma_tag(device_t dev, device_t child)
 {
@@ -1764,12 +1896,12 @@ static device_method_t bhndb_methods[] = {
 	DEVMETHOD(bus_delete_resource,		bus_generic_rl_delete_resource),
 	DEVMETHOD(bus_get_resource_list,	bhndb_get_resource_list),
 
-	DEVMETHOD(bus_read_ivar,		bhndb_generic_read_ivar),
-	DEVMETHOD(bus_write_ivar,		bhndb_generic_write_ivar),
+	DEVMETHOD(bus_read_ivar,		bhndb_read_ivar),
+	DEVMETHOD(bus_write_ivar,		bhndb_write_ivar),
 
 	/* BHNDB interface */
 	DEVMETHOD(bhndb_get_chipid,		bhndb_get_chipid),
-	DEVMETHOD(bhndb_init_full_config,	bhndb_init_full_config),
+	DEVMETHOD(bhndb_init_full_config,	bhndb_generic_init_full_config),
 	DEVMETHOD(bhndb_suspend_resource,	bhndb_suspend_resource),
 	DEVMETHOD(bhndb_resume_resource,	bhndb_resume_resource),
 
