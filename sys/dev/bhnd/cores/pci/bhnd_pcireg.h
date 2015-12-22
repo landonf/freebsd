@@ -204,89 +204,87 @@
 	((((f) & BHND_PCIE_CFG_ADDR_FUNC_MASK) << BHND_PCIE_CFG_ADDR_FUNC_SHIFT) | \
 	(((r) & BHND_PCIE_CFG_ADDR_FUNC_SHIFT) << BHND_PCIE_CFG_ADDR_REG_SHIFT))
 
-/* PCIE protocol regs Indirect Address */
-#define	BHND_PCIE_IND_ADDR_PROT_MASK	0x300
-#define	BHND_PCIE_IND_ADDR_PROT_SHIFT	8
-#define	BHND_PCIE_IND_ADDR_PL_TLP	0
-#define	BHND_PCIE_IND_ADDR_PL_DLLP	1
-#define	BHND_PCIE_IND_ADDR_PL_PLP	2
-
 /* PCIE protocol PHY diagnostic registers */
-#define	BHND_PCIE_IND_PLP_MODEREG		0x200	/* Mode */
-#define	BHND_PCIE_IND_PLP_STATUSREG		0x204	/* Status */
-#define	BHND_PCIE_IND_PLP_LTSSMCTRLREG		0x208	/* LTSSM control */
-#define	BHND_PCIE_IND_PLP_LTLINKNUMREG		0x20c	/* Link Training Link number */
-#define	BHND_PCIE_IND_PLP_LTLANENUMREG		0x210	/* Link Training Lane number */
-#define	BHND_PCIE_IND_PLP_LTNFTSREG		0x214	/* Link Training N_FTS */
-#define	BHND_PCIE_IND_PLP_ATTNREG		0x218	/* Attention */
-#define	BHND_PCIE_IND_PLP_ATTNMASKREG		0x21C	/* Attention Mask */
-#define	BHND_PCIE_IND_PLP_RXERRCTR		0x220	/* Rx Error */
-#define	BHND_PCIE_IND_PLP_RXFRMERRCTR		0x224	/* Rx Framing Error */
-#define	BHND_PCIE_IND_PLP_RXERRTHRESHREG	0x228	/* Rx Error threshold */
-#define	BHND_PCIE_IND_PLP_TESTCTRLREG		0x22C	/* Test Control reg */
-#define	BHND_PCIE_IND_PLP_SERDESCTRLOVRDREG	0x230	/* SERDES Control Override */
-#define	BHND_PCIE_IND_PLP_TIMINGOVRDREG		0x234	/* Timing param override */
-#define	BHND_PCIE_IND_PLP_RXTXSMDIAGREG		0x238	/* RXTX State Machine Diag */
-#define	BHND_PCIE_IND_PLP_LTSSMDIAGREG		0x23C	/* LTSSM State Machine Diag */
+#define	BHND_PCIE_PLP_MODEREG			0x200	/* Mode */
+#define	BHND_PCIE_PLP_STATUSREG			0x204	/* Status */
+#define	BHND_PCIE_PLP_LTSSMCTRLREG		0x208	/* LTSSM control */
+#define	BHND_PCIE_PLP_LTLINKNUMREG		0x20c	/* Link Training Link number */
+#define	BHND_PCIE_PLP_LTLANENUMREG		0x210	/* Link Training Lane number */
+#define	BHND_PCIE_PLP_LTNFTSREG			0x214	/* Link Training N_FTS */
+#define	BHND_PCIE_PLP_ATTNREG			0x218	/* Attention */
+#define	BHND_PCIE_PLP_ATTNMASKREG		0x21C	/* Attention Mask */
+#define	BHND_PCIE_PLP_RXERRCTR			0x220	/* Rx Error */
+#define	BHND_PCIE_PLP_RXFRMERRCTR		0x224	/* Rx Framing Error */
+#define	BHND_PCIE_PLP_RXERRTHRESHREG		0x228	/* Rx Error threshold */
+#define	BHND_PCIE_PLP_TESTCTRLREG		0x22C	/* Test Control reg */
+#define	BHND_PCIE_PLP_SERDESCTRLOVRDREG		0x230	/* SERDES Control Override */
+#define	BHND_PCIE_PLP_TIMINGOVRDREG		0x234	/* Timing param override */
+#define	BHND_PCIE_PLP_RXTXSMDIAGREG		0x238	/* RXTX State Machine Diag */
+#define	BHND_PCIE_PLP_LTSSMDIAGREG		0x23C	/* LTSSM State Machine Diag */
 
 /* PCIE protocol DLLP diagnostic registers */
-#define	BHND_PCIE_IND_DLLP_LCREG		0x100	/* Link Control */
-#define	BHND_PCIE_IND_DLLP_LSREG		0x104	/* Link Status */
-#define	BHND_PCIE_IND_DLLP_LAREG		0x108	/* Link Attention */
-#define	BHND_PCIE_IND_DLLP_LAMASKREG		0x10C	/* Link Attention Mask */
-#define	BHND_PCIE_IND_DLLP_NEXTTXSEQNUMREG	0x110	/* Next Tx Seq Num */
-#define	BHND_PCIE_IND_DLLP_ACKEDTXSEQNUMREG	0x114	/* Acked Tx Seq Num */
-#define	BHND_PCIE_IND_DLLP_PURGEDTXSEQNUMREG	0x118	/* Purged Tx Seq Num */
-#define	BHND_PCIE_IND_DLLP_RXSEQNUMREG		0x11C	/* Rx Sequence Number */
-#define	BHND_PCIE_IND_DLLP_LRREG		0x120	/* Link Replay */
-#define	BHND_PCIE_IND_DLLP_LACKTOREG		0x124	/* Link Ack Timeout */
-#define	BHND_PCIE_IND_DLLP_PMTHRESHREG		0x128	/* Power Management Threshold */
-#define	BHND_PCIE_IND_DLLP_RTRYWPREG		0x12C	/* Retry buffer write ptr */
-#define	BHND_PCIE_IND_DLLP_RTRYRPREG		0x130	/* Retry buffer Read ptr */
-#define	BHND_PCIE_IND_DLLP_RTRYPPREG		0x134	/* Retry buffer Purged ptr */
-#define	BHND_PCIE_IND_DLLP_RTRRWREG		0x138	/* Retry buffer Read/Write */
-#define	BHND_PCIE_IND_DLLP_ECTHRESHREG		0x13C	/* Error Count Threshold */
-#define	BHND_PCIE_IND_DLLP_TLPERRCTRREG		0x140	/* TLP Error Counter */
-#define	BHND_PCIE_IND_DLLP_ERRCTRREG		0x144	/* Error Counter */
-#define	BHND_PCIE_IND_DLLP_NAKRXCTRREG		0x148	/* NAK Received Counter */
-#define	BHND_PCIE_IND_DLLP_TESTREG		0x14C	/* Test */
-#define	BHND_PCIE_IND_DLLP_PKTBIST		0x150	/* Packet BIST */
-#define	BHND_PCIE_IND_DLLP_PCIE11		0x154	/* DLLP PCIE 1.1 reg */
+#define	BHND_PCIE_DLLP_LCREG			0x100	/* Link Control */
+#define	  BHND_PCIE_DLLP_LCREG_PCIPM_EN		0x40	/* Enable PCI-PM power management */
+#define	BHND_PCIE_DLLP_LSREG			0x104	/* Link Status */
+#define	BHND_PCIE_DLLP_LAREG			0x108	/* Link Attention */
+#define	BHND_PCIE_DLLP_LAMASKREG		0x10C	/* Link Attention Mask */
+#define	BHND_PCIE_DLLP_NEXTTXSEQNUMREG		0x110	/* Next Tx Seq Num */
+#define	BHND_PCIE_DLLP_ACKEDTXSEQNUMREG		0x114	/* Acked Tx Seq Num */
+#define	BHND_PCIE_DLLP_PURGEDTXSEQNUMREG	0x118	/* Purged Tx Seq Num */
+#define	BHND_PCIE_DLLP_RXSEQNUMREG		0x11C	/* Rx Sequence Number */
+#define	BHND_PCIE_DLLP_LRREG			0x120	/* Link Replay */
+#define	BHND_PCIE_DLLP_LACKTOREG		0x124	/* Link Ack Timeout */
+#define	BHND_PCIE_DLLP_PMTHRESHREG		0x128	/* Power Management Threshold */
+#define	BHND_PCIE_DLLP_RTRYWPREG		0x12C	/* Retry buffer write ptr */
+#define	BHND_PCIE_DLLP_RTRYRPREG		0x130	/* Retry buffer Read ptr */
+#define	BHND_PCIE_DLLP_RTRYPPREG		0x134	/* Retry buffer Purged ptr */
+#define	BHND_PCIE_DLLP_RTRRWREG			0x138	/* Retry buffer Read/Write */
+#define	BHND_PCIE_DLLP_ECTHRESHREG		0x13C	/* Error Count Threshold */
+#define	BHND_PCIE_DLLP_TLPERRCTRREG		0x140	/* TLP Error Counter */
+#define	BHND_PCIE_DLLP_ERRCTRREG		0x144	/* Error Counter */
+#define	BHND_PCIE_DLLP_NAKRXCTRREG		0x148	/* NAK Received Counter */
+#define	BHND_PCIE_DLLP_TESTREG			0x14C	/* Test */
+#define	BHND_PCIE_DLLP_PKTBIST			0x150	/* Packet BIST */
+#define	BHND_PCIE_DLLP_PCIE11			0x154	/* DLLP PCIE 1.1 reg */
 
-#define	BHND_PCIE_IND_DLLP_LSREG_LINKUP		(1 << 16)
+#define	BHND_PCIE_DLLP_LSREG_LINKUP		(1 << 16)
 
 /* PCIE protocol TLP diagnostic registers */
-#define	BHND_PCIE_IND_TLP_CONFIGREG		0x000	/* Configuration */
-#define	BHND_PCIE_IND_TLP_WORKAROUNDSREG	0x004	/* TLP Workarounds */
-#define	BHND_PCIE_IND_TLP_WRDMAUPPER		0x010	/* Write DMA Upper Address */
-#define	BHND_PCIE_IND_TLP_WRDMALOWER		0x014	/* Write DMA Lower Address */
-#define	BHND_PCIE_IND_TLP_WRDMAREQ_LBEREG	0x018	/* Write DMA Len/ByteEn Req */
-#define	BHND_PCIE_IND_TLP_RDDMAUPPER		0x01C	/* Read DMA Upper Address */
-#define	BHND_PCIE_IND_TLP_RDDMALOWER		0x020	/* Read DMA Lower Address */
-#define	BHND_PCIE_IND_TLP_RDDMALENREG		0x024	/* Read DMA Len Req */
-#define	BHND_PCIE_IND_TLP_MSIDMAUPPER		0x028	/* MSI DMA Upper Address */
-#define	BHND_PCIE_IND_TLP_MSIDMALOWER		0x02C	/* MSI DMA Lower Address */
-#define	BHND_PCIE_IND_TLP_MSIDMALENREG		0x030	/* MSI DMA Len Req */
-#define	BHND_PCIE_IND_TLP_SLVREQLENREG		0x034	/* Slave Request Len */
-#define	BHND_PCIE_IND_TLP_FCINPUTSREQ		0x038	/* Flow Control Inputs */
-#define	BHND_PCIE_IND_TLP_TXSMGRSREQ		0x03C	/* Tx StateMachine and Gated Req */
-#define	BHND_PCIE_IND_TLP_ADRACKCNTARBLEN	0x040	/* Address Ack XferCnt and ARB Len */
-#define	BHND_PCIE_IND_TLP_DMACPLHDR0		0x044	/* DMA Completion Hdr 0 */
-#define	BHND_PCIE_IND_TLP_DMACPLHDR1		0x048	/* DMA Completion Hdr 1 */
-#define	BHND_PCIE_IND_TLP_DMACPLHDR2		0x04C	/* DMA Completion Hdr 2 */
-#define	BHND_PCIE_IND_TLP_DMACPLMISC0		0x050	/* DMA Completion Misc0 */
-#define	BHND_PCIE_IND_TLP_DMACPLMISC1		0x054	/* DMA Completion Misc1 */
-#define	BHND_PCIE_IND_TLP_DMACPLMISC2		0x058	/* DMA Completion Misc2 */
-#define	BHND_PCIE_IND_TLP_SPTCTRLLEN		0x05C	/* Split Controller Req len */
-#define	BHND_PCIE_IND_TLP_SPTCTRLMSIC0		0x060	/* Split Controller Misc 0 */
-#define	BHND_PCIE_IND_TLP_SPTCTRLMSIC1		0x064	/* Split Controller Misc 1 */
-#define	BHND_PCIE_IND_TLP_BUSDEVFUNC		0x068	/* Bus/Device/Func */
-#define	BHND_PCIE_IND_TLP_RESETCTR		0x06C	/* Reset Counter */
-#define	BHND_PCIE_IND_TLP_RTRYBUF		0x070	/* Retry Buffer value */
-#define	BHND_PCIE_IND_TLP_TGTDEBUG1		0x074	/* Target Debug Reg1 */
-#define	BHND_PCIE_IND_TLP_TGTDEBUG2		0x078	/* Target Debug Reg2 */
-#define	BHND_PCIE_IND_TLP_TGTDEBUG3		0x07C	/* Target Debug Reg3 */
-#define	BHND_PCIE_IND_TLP_TGTDEBUG4		0x080	/* Target Debug Reg4 */
+#define	BHND_PCIE_TLP_CONFIGREG			0x000	/* Configuration */
+#define	BHND_PCIE_TLP_WORKAROUNDSREG		0x004	/* TLP Workarounds */
+#define	  BHND_PCIE_TLP_WORKAROUND_URBIT	0x8	/* If enabled, UR status bit is set 
+							 * on memory access of an unmatched
+							 * address */
+
+#define	BHND_PCIE_TLP_WRDMAUPPER		0x010	/* Write DMA Upper Address */
+#define	BHND_PCIE_TLP_WRDMALOWER		0x014	/* Write DMA Lower Address */
+#define	BHND_PCIE_TLP_WRDMAREQ_LBEREG		0x018	/* Write DMA Len/ByteEn Req */
+#define	BHND_PCIE_TLP_RDDMAUPPER		0x01C	/* Read DMA Upper Address */
+#define	BHND_PCIE_TLP_RDDMALOWER		0x020	/* Read DMA Lower Address */
+#define	BHND_PCIE_TLP_RDDMALENREG		0x024	/* Read DMA Len Req */
+#define	BHND_PCIE_TLP_MSIDMAUPPER		0x028	/* MSI DMA Upper Address */
+#define	BHND_PCIE_TLP_MSIDMALOWER		0x02C	/* MSI DMA Lower Address */
+#define	BHND_PCIE_TLP_MSIDMALENREG		0x030	/* MSI DMA Len Req */
+#define	BHND_PCIE_TLP_SLVREQLENREG		0x034	/* Slave Request Len */
+#define	BHND_PCIE_TLP_FCINPUTSREQ		0x038	/* Flow Control Inputs */
+#define	BHND_PCIE_TLP_TXSMGRSREQ		0x03C	/* Tx StateMachine and Gated Req */
+#define	BHND_PCIE_TLP_ADRACKCNTARBLEN		0x040	/* Address Ack XferCnt and ARB Len */
+#define	BHND_PCIE_TLP_DMACPLHDR0		0x044	/* DMA Completion Hdr 0 */
+#define	BHND_PCIE_TLP_DMACPLHDR1		0x048	/* DMA Completion Hdr 1 */
+#define	BHND_PCIE_TLP_DMACPLHDR2		0x04C	/* DMA Completion Hdr 2 */
+#define	BHND_PCIE_TLP_DMACPLMISC0		0x050	/* DMA Completion Misc0 */
+#define	BHND_PCIE_TLP_DMACPLMISC1		0x054	/* DMA Completion Misc1 */
+#define	BHND_PCIE_TLP_DMACPLMISC2		0x058	/* DMA Completion Misc2 */
+#define	BHND_PCIE_TLP_SPTCTRLLEN		0x05C	/* Split Controller Req len */
+#define	BHND_PCIE_TLP_SPTCTRLMSIC0		0x060	/* Split Controller Misc 0 */
+#define	BHND_PCIE_TLP_SPTCTRLMSIC1		0x064	/* Split Controller Misc 1 */
+#define	BHND_PCIE_TLP_BUSDEVFUNC		0x068	/* Bus/Device/Func */
+#define	BHND_PCIE_TLP_RESETCTR			0x06C	/* Reset Counter */
+#define	BHND_PCIE_TLP_RTRYBUF			0x070	/* Retry Buffer value */
+#define	BHND_PCIE_TLP_TGTDEBUG1			0x074	/* Target Debug Reg1 */
+#define	BHND_PCIE_TLP_TGTDEBUG2			0x078	/* Target Debug Reg2 */
+#define	BHND_PCIE_TLP_TGTDEBUG3			0x07C	/* Target Debug Reg3 */
+#define	BHND_PCIE_TLP_TGTDEBUG4			0x080	/* Target Debug Reg4 */
 
 
 /*
@@ -361,17 +359,17 @@
 #define	BHND_PCIE_SRSH_PI_MASK			BHND_PCI_SRSH_PI_MASK
 #define	BHND_PCIE_SRSH_PI_SHIFT			BHND_PCI_SRSH_PI_SHIFT
 
-#define	BHND_PCIE_SRSH_ASPM_OFFSET		4	/* word 4 */
+#define	BHND_PCIE_SRSH_ASPM_OFFSET		8	/* word 4 */
 #define	BHND_PCIE_SRSH_ASPM_ENB			0x18	/* bit 3, 4 */
 #define	BHND_PCIE_SRSH_ASPM_L1_ENB		0x10	/* bit 4 */
 #define	BHND_PCIE_SRSH_ASPM_L0s_ENB		0x8	/* bit 3 */
-#define	BHND_PCIE_SRSH_PCIE_MISC_CONFIG		5	/* word 5 */
+#define	BHND_PCIE_SRSH_PCIE_MISC_CONFIG		10	/* word 5 */
 #define	BHND_PCIE_SRSH_L23READY_EXIT_NOPRST	0x8000	/* bit 15 */
-#define	BHND_PCIE_SRSH_CLKREQ_OFFSET_REV5	20	/* word 20 for srom rev <= 5 */
-#define	BHND_PCIE_SRSH_CLKREQ_OFFSET_REV8	52	/* word 52 for srom rev 8 */
+#define	BHND_PCIE_SRSH_CLKREQ_OFFSET_REV5	40	/* word 20 for srom rev <= 5 */
+#define	BHND_PCIE_SRSH_CLKREQ_OFFSET_REV8	104	/* word 52 for srom rev 8 */
 #define	BHND_PCIE_SRSH_CLKREQ_ENB		0x0800	/* bit 11 */
-#define	BHND_PCIE_SRSH_BD_OFFSET		6	/* word 6 */
-#define	BHND_PCIE_SRSH_AUTOINIT_OFFSET		18	/* auto initialization enable */
+#define	BHND_PCIE_SRSH_BD_OFFSET		12	/* word 6 */
+#define	BHND_PCIE_SRSH_AUTOINIT_OFFSET		36	/* auto initialization enable */
 
 /* Linkcontrol reg offset in PCIE Cap */
 #define	BHND_PCIE_CAP_LINKCTRL_OFFSET		16	/* linkctrl offset in pcie cap */

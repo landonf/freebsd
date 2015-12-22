@@ -204,17 +204,15 @@ enum {
 
 	/**
 	 * The SerDes PLL override flag (CHIPCTRL_4321_PLL_DOWN) must be set on
-	 * the ChipCommon core.
+	 * the ChipCommon core on resume.
 	 */
 	BHND_PCIE_QUIRK_SERDES_NOPLLDOWN	= (1<<12),
 
-	/**
+        /**
 	 * On attach and resume, consult the SPROM to determine whether
 	 * the L2/L3-Ready w/o PCI RESET work-around must be applied.
-	 * 
-	 * If L23READY_EXIT_NOPRST is set in the SPROM, write the
-	 * L23READY_EXIT_NOPRST flag to the PCI register defined by
-	 * SRSH_PCIE_MISC_CONFIG.
+	 *
+	 * If L23READY_EXIT_NOPRST is not already set in the SPROM, set it
 	 */
 	BHND_PCIE_QUIRK_SPROM_L23_PCI_RESET	= (1<<13),
 	
