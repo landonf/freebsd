@@ -87,6 +87,39 @@ static uint32_t	bhndb_pci_discover_quirks(struct bhndb_pci_softc *,
 
 static const struct bhndb_pci_id *bhndb_pci_find_core_id(
 				      struct bhnd_core_info *core);
+/*
+ * Supported PCI bridge cores.
+ *
+ * This table defines quirks specific to core hwrev ranges; see also
+ * bhndb_pci_discover_quirks() for additional quirk detection.
+ */
+static const struct bhndb_pci_id bhndb_pci_ids[] = {
+	/* PCI */
+	BHNDB_PCI_ID(PCI,
+	    BHND_QUIRK_HWREV_GTE	(0,	BHNDB_PCI_QUIRK_EXT_CLOCK_GATING|BHNDB_PCI_QUIRK_SBTOPCI2_PREF_BURST),
+	    BHND_QUIRK_HWREV_RANGE	(0, 5,	BHNDB_PCI_QUIRK_SBINTVEC),
+	    BHND_QUIRK_HWREV_GTE	(11,	BHNDB_PCI_QUIRK_SBTOPCI2_READMULTI | BHNDB_PCI_QUIRK_CLKRUN_DSBL),
+	    BHND_QUIRK_HWREV_END
+	),
+
+	/* PCI Gen 1 */
+	BHNDB_PCI_ID(PCIE,
+	    BHND_QUIRK_HWREV_EQ		(0,	BHNDB_PCIE_QUIRK_SDR9_L0s_HANG),
+	    BHND_QUIRK_HWREV_RANGE	(0, 1,	BHNDB_PCIE_QUIRK_UR_STATUS_FIX),
+	    BHND_QUIRK_HWREV_EQ		(1,	BHNDB_PCIE_QUIRK_PCIPM_REQEN),
+	    BHND_QUIRK_HWREV_RANGE	(3, 5,	BHNDB_PCIE_QUIRK_ASPM_OVR | BHNDB_PCIE_QUIRK_SDR9_POLARITY),
+	    BHND_QUIRK_HWREV_LTE	(6,	BHNDB_PCIE_QUIRK_L1_IDLE_THRESH),
+	    BHND_QUIRK_HWREV_GTE	(6,	BHNDB_PCIE_QUIRK_SPROM_L23_PCI_RESET),
+	    BHND_QUIRK_HWREV_EQ		(7,	BHNDB_PCIE_QUIRK_SERDES_NOPLLDOWN),
+	    BHND_QUIRK_HWREV_GTE	(8,	BHNDB_PCIE_QUIRK_L1_TIMER_PERF),
+	    BHND_QUIRK_HWREV_GTE	(10,	BHNDB_PCIE_QUIRK_SD_C22_EXTADDR),
+
+	    BHND_QUIRK_HWREV_END
+	),
+
+	{ BHND_COREID_INVALID, BHND_PCI_REGFMT_PCI, NULL }
+};
+
 
 /* quirk flag convenience macros */
 #define	BHNDB_PCI_QUIRK(_sc, _name)	\
@@ -127,39 +160,6 @@ static const struct bhndb_pci_id *bhndb_pci_find_core_id(
 
 #define	BPCI_COMMON_REG_OFFSET(_base, _offset)	\
 	(BPCI_COMMON_REG(_base) + BPCI_COMMON_REG(_offset))
-
-/*
- * Supported PCI bridge cores.
- *
- * This table defines quirks specific to core hwrev ranges; see also
- * bhndb_pci_get_hostb_quirks() for additional quirk detection.
- */
-static const struct bhndb_pci_id bhndb_pci_ids[] = {
-	/* PCI */
-	BHNDB_PCI_ID(PCI,
-	    BHND_QUIRK_HWREV_GTE	(0,	BHNDB_PCI_QUIRK_EXT_CLOCK_GATING|BHNDB_PCI_QUIRK_SBTOPCI2_PREF_BURST),
-	    BHND_QUIRK_HWREV_RANGE	(0, 5,	BHNDB_PCI_QUIRK_SBINTVEC),
-	    BHND_QUIRK_HWREV_GTE	(11,	BHNDB_PCI_QUIRK_SBTOPCI2_READMULTI | BHNDB_PCI_QUIRK_CLKRUN_DSBL),
-	    BHND_QUIRK_HWREV_END
-	),
-
-	/* PCI Gen 1 */
-	BHNDB_PCI_ID(PCIE,
-	    BHND_QUIRK_HWREV_EQ		(0,	BHNDB_PCIE_QUIRK_SDR9_L0s_HANG),
-	    BHND_QUIRK_HWREV_RANGE	(0, 1,	BHNDB_PCIE_QUIRK_UR_STATUS_FIX),
-	    BHND_QUIRK_HWREV_EQ		(1,	BHNDB_PCIE_QUIRK_PCIPM_REQEN),
-	    BHND_QUIRK_HWREV_RANGE	(3, 5,	BHNDB_PCIE_QUIRK_ASPM_OVR | BHNDB_PCIE_QUIRK_SDR9_POLARITY),
-	    BHND_QUIRK_HWREV_LTE	(6,	BHNDB_PCIE_QUIRK_L1_IDLE_THRESH),
-	    BHND_QUIRK_HWREV_GTE	(6,	BHNDB_PCIE_QUIRK_SPROM_L23_PCI_RESET),
-	    BHND_QUIRK_HWREV_EQ		(7,	BHNDB_PCIE_QUIRK_SERDES_NOPLLDOWN),
-	    BHND_QUIRK_HWREV_GTE	(8,	BHNDB_PCIE_QUIRK_L1_TIMER_PERF),
-	    BHND_QUIRK_HWREV_GTE	(10,	BHNDB_PCIE_QUIRK_SD_C22_EXTADDR),
-
-	    BHND_QUIRK_HWREV_END
-	),
-
-	{ BHND_COREID_INVALID, BHND_PCI_REGFMT_PCI, NULL }
-};
 
 /** 
  * Default bhndb_pci implementation of device_probe().
@@ -442,24 +442,6 @@ bhndb_pci_wars_hwup(struct bhndb_pci_softc *sc)
 		ctl |= BHND_PCI_CLKRUN_DSBL;
 		BHNDB_PCI_WRITE_4(sc, BHND_PCI_CLKRUN_CTL, ctl);
 	}
-
-	/* Force correct SerDes polarity */
-	if (BHNDB_PCIE_QUIRK(sc, SDR9_POLARITY)) {
-		uint16_t	rxctl;
-
-		rxctl = MDIO_READREG(sc->mdio, BHND_PCIE_PHY_SDR9_TXRX,
-		    BHND_PCIE_SDR9_RX_CTRL);
-
-		rxctl |= BHND_PCIE_SDR9_RX_CTRL_FORCE;
-		if (sc->sdr9_quirk_polarity.inv)
-			rxctl |= BHND_PCIE_SDR9_RX_CTRL_POLARITY_INV;
-		else
-			rxctl &= ~BHND_PCIE_SDR9_RX_CTRL_POLARITY_INV;
-
-		MDIO_WRITEREG(sc->mdio, BHND_PCIE_PHY_SDR9_TXRX,
-		    BHND_PCIE_SDR9_RX_CTRL, rxctl);
-	}
-
 	
 	/* Enable TLP unmatched address handling work-around */
 	if (BHNDB_PCIE_QUIRK(sc, UR_STATUS_FIX)) {
@@ -467,14 +449,6 @@ bhndb_pci_wars_hwup(struct bhndb_pci_softc *sc)
 		wrs = bhndb_pcie_read_proto_reg(sc, BHND_PCIE_TLP_WORKAROUNDSREG);
 		wrs |= BHND_PCIE_TLP_WORKAROUND_URBIT;
 		bhndb_pcie_write_proto_reg(sc, BHND_PCIE_TLP_WORKAROUNDSREG, wrs);
-	}
-
-	/* Explicitly enable PCI-PM */
-	if (BHNDB_PCIE_QUIRK(sc, PCIPM_REQEN)) {
-		uint32_t lcreg;
-		lcreg = bhndb_pcie_read_proto_reg(sc, BHND_PCIE_DLLP_LCREG);
-		lcreg |= BHND_PCIE_DLLP_LCREG_PCIPM_EN;
-		bhndb_pcie_write_proto_reg(sc, BHND_PCIE_DLLP_LCREG, lcreg);
 	}
 
 	/* Adjust SerDes CDR tuning to ensure that CDR is stable before sending
@@ -503,6 +477,31 @@ bhndb_pci_wars_hwup(struct bhndb_pci_softc *sc)
 		sdv = BPCI_REG_INSERT(sdv, PCIE_SDR9_RX_CDRBW_PROPACQ, 0x6);
 		MDIO_WRITEREG(sc->mdio, BHND_PCIE_PHY_SDR9_TXRX,
 		    BHND_PCIE_SDR9_RX_CDRBW, sdv);
+	}
+
+	/* Force correct SerDes polarity */
+	if (BHNDB_PCIE_QUIRK(sc, SDR9_POLARITY)) {
+		uint16_t	rxctl;
+
+		rxctl = MDIO_READREG(sc->mdio, BHND_PCIE_PHY_SDR9_TXRX,
+		    BHND_PCIE_SDR9_RX_CTRL);
+
+		rxctl |= BHND_PCIE_SDR9_RX_CTRL_FORCE;
+		if (sc->sdr9_quirk_polarity.inv)
+			rxctl |= BHND_PCIE_SDR9_RX_CTRL_POLARITY_INV;
+		else
+			rxctl &= ~BHND_PCIE_SDR9_RX_CTRL_POLARITY_INV;
+
+		MDIO_WRITEREG(sc->mdio, BHND_PCIE_PHY_SDR9_TXRX,
+		    BHND_PCIE_SDR9_RX_CTRL, rxctl);
+	}
+	
+	/* Explicitly enable PCI-PM */
+	if (BHNDB_PCIE_QUIRK(sc, PCIPM_REQEN)) {
+		uint32_t lcreg;
+		lcreg = bhndb_pcie_read_proto_reg(sc, BHND_PCIE_DLLP_LCREG);
+		lcreg |= BHND_PCIE_DLLP_LCREG_PCIPM_EN;
+		bhndb_pcie_write_proto_reg(sc, BHND_PCIE_DLLP_LCREG, lcreg);
 	}
 
 	/* Enable L23READY_EXIT_NOPRST if not already set in SPROM. */
