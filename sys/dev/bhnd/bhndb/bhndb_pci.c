@@ -75,9 +75,10 @@ static uint32_t	bhndb_pcie_read_proto_reg(struct bhndb_pci_softc *sc,
 static void	bhndb_pcie_write_proto_reg(struct bhndb_pci_softc *sc,
 		    uint32_t addr, uint32_t val);
 
-static void	bhndb_pci_sromless_init_config(struct bhndb_pci_softc *sc);
+static void	bhndb_init_sromless_pci_config(struct bhndb_pci_softc *sc);
 
-static int	bhndb_pci_wars_early(struct bhndb_pci_softc *sc);
+static int	bhndb_pci_wars_register_access(struct bhndb_pci_softc *sc);
+static int	bhndb_pci_wars_early_once(struct bhndb_pci_softc *sc);
 static int	bhndb_pci_wars_hwup(struct bhndb_pci_softc *sc);
 static int	bhndb_pci_wars_hwdown(struct bhndb_pci_softc *sc);
 
@@ -93,6 +94,12 @@ static const struct bhndb_pci_id *bhndb_pci_find_core_id(
 #define	BHNDB_PCIE_QUIRK(_sc, _name)	\
     ((_sc)->quirks & BHNDB_PCIE_QUIRK_ ## _name)
 
+#define	BHNDB_PCI_ASSERT_QUIRK(_sc, name)	\
+    KASSERT(BHNDB_PCI_QUIRK((_sc), name), ("quirk " __STRING(_name) " not set"))
+#define	BHNDB_PCIE_ASSERT_QUIRK(_sc, name)	\
+    KASSERT(BHNDB_PCIE_QUIRK((_sc), name), ("quirk " __STRING(_name) " not set"))
+
+
 /* bus_(read|write)_* convenience macros */
 #define	BHNDB_PCI_READ_2(_sc, _reg)		\
 	bus_read_2((_sc)->mem_res, (_sc)->mem_off + (_reg))
@@ -103,7 +110,8 @@ static const struct bhndb_pci_id *bhndb_pci_find_core_id(
 	bus_write_2((_sc)->mem_res, (_sc)->mem_off +  (_reg), (_val))
 #define	BHNDB_PCI_WRITE_4(_sc, _reg, _val)	\
 	bus_write_4((_sc)->mem_res, (_sc)->mem_off +  (_reg), (_val))
-	
+
+
 /* BHNDB_PCI_REG_* convenience macros */ 
 #define	BPCI_REG_EXTRACT(_rv, _a)	BHND_PCI_REG_EXTRACT(_rv, BHND_ ## _a)
 #define	BPCI_REG_INSERT(_rv, _a, _v)	BHND_PCI_REG_INSERT(_rv, BHND_ ## _a, _v)
@@ -129,9 +137,8 @@ static const struct bhndb_pci_id *bhndb_pci_find_core_id(
 static const struct bhndb_pci_id bhndb_pci_ids[] = {
 	/* PCI */
 	BHNDB_PCI_ID(PCI,
-	    BHND_QUIRK_HWREV_GTE	(0,	BHNDB_PCI_QUIRK_EXT_CLOCK_GATING),
+	    BHND_QUIRK_HWREV_GTE	(0,	BHNDB_PCI_QUIRK_EXT_CLOCK_GATING|BHNDB_PCI_QUIRK_SBTOPCI2_PREF_BURST),
 	    BHND_QUIRK_HWREV_RANGE	(0, 5,	BHNDB_PCI_QUIRK_SBINTVEC),
-	    BHND_QUIRK_HWREV_GTE	(0,	BHNDB_PCI_QUIRK_SBTOPCI2_PREF_BURST),
 	    BHND_QUIRK_HWREV_GTE	(11,	BHNDB_PCI_QUIRK_SBTOPCI2_READMULTI | BHNDB_PCI_QUIRK_CLKRUN_DSBL),
 	    BHND_QUIRK_HWREV_END
 	),
@@ -201,11 +208,10 @@ bhndb_pci_attach(device_t dev)
 	 * been enumerated. */
 	sc->quirks = bhndb_pci_discover_quirks(sc, NULL);
 
-	/* Enable PCI clocks */
-	if ((error = bhndb_enable_pci_clocks(sc))) {
-		device_printf(dev, "clock initialization failed\n");
+	/* Using the discovered quirks, apply any WARs required for basic
+	 * register access. */
+	if ((error = bhndb_pci_wars_register_access(sc)))
 		return (error);
-	}
 
 	/* Use siba(4)-compatible regwin handling until we know
 	 * what kind of bus is attached */
@@ -251,11 +257,15 @@ bhndb_pci_init_full_config(device_t dev, device_t child,
 
 	sc = device_get_softc(dev);
 
-	/* Let bhndb perform full initialization */
+	/* Let bhndb perform full discovery and initialization of the
+	 * available register windows and bridge resources. */
 	if ((error = bhndb_generic_init_full_config(dev, child, prio_table)))
 		return (error);
 
-	/* Identify our bridge core and register family. */
+	/* 
+	 * Identify our PCI bridge core, its register family, and any
+	 * applicable hardware quirks.
+	 */
 	KASSERT(sc->bhndb.hostb_dev,
 	    ("missing hostb device\n"));
 
@@ -266,16 +276,28 @@ bhndb_pci_init_full_config(device_t dev, device_t child,
 		    bhnd_vendor_name(core.vendor), bhnd_core_name(&core));
 	}
 
-	/* Fetch register family and complete device quirks */
 	sc->regfmt = id->regfmt;
+
+	/* Now that we've identified the PCI bridge core, we can determine the
+	 * full set of device quirks */
 	sc->quirks = bhndb_pci_discover_quirks(sc, id);
-	
-	/* Find the PCI core register block address/size. */
+
+	/*
+	 * Determine and save a reference to the bhndb resource and offset
+	 * at which the bridge core's device registers are mapped.
+	 * 
+	 * All known bhnd(4) hardware provides a fixed static mapping of
+	 * the PCI core's registers. If this changes in the future -- which
+	 * is unlikely -- this driver will need to be adjusted to use
+	 * dynamic register windows.
+	 */
+
+	/* Find base address and size of the PCI core's register block. */
 	error = bhnd_get_region_addr(sc->bhndb.hostb_dev, BHND_PORT_DEVICE, 0,
 	    0, &pcir_addr, &pcir_size);
 	if (error) {
 		device_printf(dev,
-		    "failed to locate usable hostb core registers\n");
+		    "failed to locate PCI core registers\n");
 		return (error);
 	}
 
@@ -284,7 +306,7 @@ bhndb_pci_init_full_config(device_t dev, device_t child,
 	    pcir_size);
 	if (pcir == NULL || pcir->static_regwin == NULL) {
 		device_printf(dev,
-		    "missing static PCI hostb register window\n");
+		    "missing static PCI core register window\n");
 		return (ENXIO);
 	}
 
@@ -294,7 +316,7 @@ bhndb_pci_init_full_config(device_t dev, device_t child,
 	    pcir->static_regwin);
 	if (sc->mem_res == NULL || !(rman_get_flags(sc->mem_res) & RF_ACTIVE)) {
 		device_printf(dev,
-		    "no active resource maps the hostb register window\n");
+		    "no active resource maps the PCI core register window\n");
 		return (ENXIO);
 	}
 
@@ -305,75 +327,67 @@ bhndb_pci_init_full_config(device_t dev, device_t child,
 		.direct = true
 	};
 
-	/* Attach our MMIO device */
+	/*
+	 * Attach MMIO device (if this is a PCIe device), which is used for
+	 * access to the PCIe SerDes required by the quirk workarounds.
+	 */
 	if (sc->pci_devclass == BHND_DEVCLASS_PCIE) {
-		device_t child = device_add_child(dev,
+		sc->mdio = device_add_child(dev, 
 		    devclass_get_name(bhnd_mdio_pci_devclass), 0);
-		if (child == NULL)
+		if (sc->mdio == NULL)
 			return (ENXIO);
 
-		if ((error = device_probe_and_attach(child))) {
+		if ((error = device_probe_and_attach(sc->mdio))) {
 			device_printf(dev, "failed to attach MDIO device\n");
 			return (error);
 		}
 	}
 
-	/* Apply any early quirk workarounds */
-	if ((error = bhndb_pci_wars_early(sc)))
+	/* Apply any early one-time quirk workarounds */
+	if ((error = bhndb_pci_wars_early_once(sc)))
 		return (error);
 
-	/* Apply any attach/resume quirk workarounds */
+	/* Apply attach-time quirk workarounds, required before the bridged
+	 * bhnd(4) bus itself performs a full attach(). */
 	if ((error = bhndb_pci_wars_hwup(sc)))
 		return (error);
 
 	return (0);
 }
 
-
-/*
- * On devices without a SROM, the PCI(e) cores will be initialized with
- * their Power-on-Reset defaults; this can leave the the BAR0 PCI windows
- * potentially mapped to the wrong core index.
+/**
+ * Apply any hardware workarounds that must be executed prior to attempting
+ * register access on the bridged chipset.
  * 
- * This function updates the PCI core's BAR0 PCI configuration to point at the
- * current PCI core.
- * 
- * Applies to all PCI/PCIe revisions. Must be applied before bus devices
- * are probed/attached or the SPROM is parsed.
+ * This must be called very early in attach() or resume(), after the basic
+ * set of applicable device quirks has been determined.
  */
-static void
-bhndb_pci_sromless_init_config(struct bhndb_pci_softc *sc)
+static int
+bhndb_pci_wars_register_access(struct bhndb_pci_softc *sc)
 {
-	bus_size_t	sprom_addr;
-	u_int		sprom_core_idx;
-	u_int		pci_core_idx;
-	uint16_t	val;
+	int error;
 
-	/* Fetch the SPROM's configured core index */
-	sprom_addr = BPCI_COMMON_REG_OFFSET(SPROM_SHADOW, SRSH_PI_OFFSET);
-	val = BHNDB_PCI_READ_2(sc, sprom_addr);
-
-	/* If it doesn't match host bridge's core index, update the index
-	 * value */
-	sprom_core_idx = BPCI_COMMON_REG_EXTRACT(val, SRSH_PI);
-	pci_core_idx = bhnd_get_core_index(sc->bhndb.hostb_dev);
-
-	if (sprom_core_idx != pci_core_idx) {
-		BPCI_COMMON_REG_INSERT(val, SRSH_PI, pci_core_idx);
-		BHNDB_PCI_WRITE_2(sc, sprom_addr, val);
+	if (BHNDB_PCI_QUIRK(sc, EXT_CLOCK_GATING)) {
+		if ((error = bhndb_enable_pci_clocks(sc))) {
+			device_printf(sc->dev, "failed to enable clocks\n");
+			return (error);
+		}
 	}
+
+	return (0);
 }
 
 /**
  * Apply any hardware work-arounds that must be executed exactly once, early in
- * the attach process. This must be called after core enumeration, but prior to
- * probe/attach of any cores, parsing of SPROM, etc.
+ * the attach process.
+ * 
+ * This must be called after core enumeration and discovery of all applicable
+ * quirks, but prior to probe/attach of any cores, parsing of
+ * SPROM, etc.
  */
 static int
-bhndb_pci_wars_early(struct bhndb_pci_softc *sc)
+bhndb_pci_wars_early_once(struct bhndb_pci_softc *sc)
 {
-	bhndb_pci_sromless_init_config(sc);
-
 	/* Determine correct polarity by observing the attach-time PCIe PHY
 	 * link status. This is used later to reset/force the SerDes
 	 * polarity */
@@ -397,7 +411,136 @@ bhndb_pci_wars_early(struct bhndb_pci_softc *sc)
 static int
 bhndb_pci_wars_hwup(struct bhndb_pci_softc *sc)
 {
+	/* Note that the order here matters; these work-arounds
+	 * should not be re-ordered without careful review of their
+	 * interdependencies */
+
+	/* Fix up any PoR defaults on SROMless devices */
+	bhndb_init_sromless_pci_config(sc);
+
+	/* Enable PCI prefetch/burst/readmulti flags */
+	if (BHNDB_PCI_QUIRK(sc, SBTOPCI2_PREF_BURST) ||
+	    BHNDB_PCI_QUIRK(sc, SBTOPCI2_READMULTI))
+	{
+		uint32_t sbp2;
+		sbp2 = BHNDB_PCI_READ_4(sc, BHND_PCI_SBTOPCI2);
+
+		if (BHNDB_PCI_QUIRK(sc, SBTOPCI2_PREF_BURST))
+			sbp2 |= (BHND_PCI_SBTOPCI_PREF|BHND_PCI_SBTOPCI_BURST);
+		
+		if (BHNDB_PCI_QUIRK(sc, SBTOPCI2_READMULTI))
+			sbp2 |= BHND_PCI_SBTOPCI_RC_READMULTI;
+
+		BHNDB_PCI_WRITE_4(sc, BHND_PCI_SBTOPCI2, sbp2);
+	}
+
+	/* Disable PCI CLKRUN# */
+	if (BHNDB_PCI_QUIRK(sc, CLKRUN_DSBL)) {
+		uint32_t ctl;
+	
+		ctl = BHNDB_PCI_READ_4(sc, BHND_PCI_CLKRUN_CTL);
+		ctl |= BHND_PCI_CLKRUN_DSBL;
+		BHNDB_PCI_WRITE_4(sc, BHND_PCI_CLKRUN_CTL, ctl);
+	}
+
+	/* Force correct SerDes polarity */
+	if (BHNDB_PCIE_QUIRK(sc, SDR9_POLARITY)) {
+		uint16_t	rxctl;
+
+		rxctl = MDIO_READREG(sc->mdio, BHND_PCIE_PHY_SDR9_TXRX,
+		    BHND_PCIE_SDR9_RX_CTRL);
+
+		rxctl |= BHND_PCIE_SDR9_RX_CTRL_FORCE;
+		if (sc->sdr9_quirk_polarity.inv)
+			rxctl |= BHND_PCIE_SDR9_RX_CTRL_POLARITY_INV;
+		else
+			rxctl &= ~BHND_PCIE_SDR9_RX_CTRL_POLARITY_INV;
+
+		MDIO_WRITEREG(sc->mdio, BHND_PCIE_PHY_SDR9_TXRX,
+		    BHND_PCIE_SDR9_RX_CTRL, rxctl);
+	}
+
+	
+	/* Enable TLP unmatched address handling work-around */
+	if (BHNDB_PCIE_QUIRK(sc, UR_STATUS_FIX)) {
+		uint32_t wrs;
+		wrs = bhndb_pcie_read_proto_reg(sc, BHND_PCIE_TLP_WORKAROUNDSREG);
+		wrs |= BHND_PCIE_TLP_WORKAROUND_URBIT;
+		bhndb_pcie_write_proto_reg(sc, BHND_PCIE_TLP_WORKAROUNDSREG, wrs);
+	}
+
+	/* Explicitly enable PCI-PM */
+	if (BHNDB_PCIE_QUIRK(sc, PCIPM_REQEN)) {
+		uint32_t lcreg;
+		lcreg = bhndb_pcie_read_proto_reg(sc, BHND_PCIE_DLLP_LCREG);
+		lcreg |= BHND_PCIE_DLLP_LCREG_PCIPM_EN;
+		bhndb_pcie_write_proto_reg(sc, BHND_PCIE_DLLP_LCREG, lcreg);
+	}
+
+	/* Adjust SerDes CDR tuning to ensure that CDR is stable before sending
+	 * data during L0s to L0 exit transitions. */
+	if (BHNDB_PCIE_QUIRK(sc, SDR9_L0s_HANG)) {
+		uint16_t sdv;
+
+		/* Set RX track/acquire timers to 2.064us/40.96us */
+		sdv = BPCI_REG_INSERT(0, PCIE_SDR9_RX_TIMER1_LKTRK, (2064/16));
+		sdv = BPCI_REG_INSERT(sdv, PCIE_SDR9_RX_TIMER1_LKACQ,
+		    (40960/1024));
+		MDIO_WRITEREG(sc->mdio, BHND_PCIE_PHY_SDR9_TXRX,
+		    BHND_PCIE_SDR9_RX_TIMER1, sdv);
+
+		/* Apply CDR frequency workaround */
+		sdv = BHND_PCIE_SDR9_RX_CDR_FREQ_OVR_EN;
+		sdv = BPCI_REG_INSERT(sdv, PCIE_SDR9_RX_CDR_FREQ_OVR, 0x0);
+		MDIO_WRITEREG(sc->mdio, BHND_PCIE_PHY_SDR9_TXRX,
+		    BHND_PCIE_SDR9_RX_CDR, sdv);
+
+		/* Apply CDR BW tunings */
+		sdv = 0;
+		sdv = BPCI_REG_INSERT(sdv, PCIE_SDR9_RX_CDRBW_INTGTRK, 0x2);
+		sdv = BPCI_REG_INSERT(sdv, PCIE_SDR9_RX_CDRBW_INTGACQ, 0x4);
+		sdv = BPCI_REG_INSERT(sdv, PCIE_SDR9_RX_CDRBW_PROPTRK, 0x6);
+		sdv = BPCI_REG_INSERT(sdv, PCIE_SDR9_RX_CDRBW_PROPACQ, 0x6);
+		MDIO_WRITEREG(sc->mdio, BHND_PCIE_PHY_SDR9_TXRX,
+		    BHND_PCIE_SDR9_RX_CDRBW, sdv);
+	}
+
+	/* Enable L23READY_EXIT_NOPRST if not already set in SPROM. */
+	if (BHNDB_PCIE_QUIRK(sc, SPROM_L23_PCI_RESET)) {
+		bus_size_t	reg;
+		uint16_t	cfg;
+
+		/* Fetch the misc cfg flags from SPROM */
+		reg = BHND_PCIE_SPROM_SHADOW + BHND_PCIE_SRSH_PCIE_MISC_CONFIG;
+		cfg = BHNDB_PCI_READ_2(sc, reg);
+
+		/* Write EXIT_NOPRST flag if not already set in SPROM */
+		if (!(cfg & BHND_PCIE_SRSH_L23READY_EXIT_NOPRST)) {
+			cfg |= BHND_PCIE_SRSH_L23READY_EXIT_NOPRST;
+			BHNDB_PCI_WRITE_2(sc, reg, cfg);
+		}
+	}
+
 	return (0);
+}
+
+/**
+ * Apply any hardware workarounds that are required upon resume of the
+ * bridge device.
+ * 
+ * This must be called before any bridged bhnd(4) cores have been resumed.
+ */
+static int
+bhndb_pci_wars_hwresume(struct bhndb_pci_softc *sc)
+{
+	int error;
+
+	/* Nothing is possible without register access */
+	if ((error = bhndb_pci_wars_register_access(sc)))
+		return (error);
+
+	/* Apply the general hwup workarounds */
+	return (bhndb_pci_wars_hwup(sc));
 }
 
 /**
@@ -407,125 +550,51 @@ bhndb_pci_wars_hwup(struct bhndb_pci_softc *sc)
 static int
 bhndb_pci_wars_hwdown(struct bhndb_pci_softc *sc)
 {
+	int error;
+
+	if (BHNDB_PCI_QUIRK(sc, EXT_CLOCK_GATING)) {
+		if ((error = bhndb_disable_pci_clocks(sc))) {
+			device_printf(sc->dev, "failed to disable clocks\n");
+			return (error);
+		}
+	}
+
 	return (0);
 }
 
-#if 0
-/* Hardware Setup WARs */
+/*
+ * On devices without a SROM, the PCI(e) cores will be initialized with
+ * their Power-on-Reset defaults; this can leave the the BAR0 PCI windows
+ * potentially mapped to the wrong core index.
+ * 
+ * This function updates the PCI core's BAR0 PCI configuration to point at the
+ * current PCI core.
+ * 
+ * Applies to all PCI/PCIe revisions. Must be applied before bus devices
+ * are probed/attached or the SPROM is parsed.
+ */
 static void
-bcm_pci_hw_wars(struct bhnd_pci_hostb_softc *sc)
+bhndb_init_sromless_pci_config(struct bhndb_pci_softc *sc)
 {
-	/* Fix Power-on-Reset defaults on SROM-less PCI/PCIe devices. */
-	// TODO - This must be lifted out into bridge-level initialization
-	bcm_pci_sromless_defaults_war(sc);
+	bus_size_t	sprom_addr;
+	u_int		sprom_core_idx;
+	u_int		pci_core_idx;
+	uint16_t	val;
 
-	/* Enable PCI prefetch/burst/MRM support */
-	if (BHND_PCI_QUIRK(sc, SBTOPCI2_PREF_BURST) ||
-	    BHND_PCI_QUIRK(sc, SBTOPCI2_READMULTI))
-	{
-		uint32_t sbp2;
-		sbp2 = bhnd_bus_read_4(sc->dev, sc->core, BHND_PCI_SBTOPCI2);
+	/* Fetch the SPROM's configured core index */
+	sprom_addr = BPCI_COMMON_REG_OFFSET(SPROM_SHADOW, SRSH_PI_OFFSET);
+	val = BHNDB_PCI_READ_2(sc, sprom_addr);
 
-		if (BHND_PCI_QUIRK(sc, SBTOPCI2_PREF_BURST))
-			sbp2 |= (BHND_PCI_SBTOPCI_PREF|BHND_PCI_SBTOPCI_BURST);
-		
-		if (BHND_PCI_QUIRK(sc, SBTOPCI2_READMULTI))
-			sbp2 |= BHND_PCI_SBTOPCI_RC_READMULTI;
+	/* If it doesn't match host bridge's core index, update the index
+	 * value */
+	sprom_core_idx = BPCI_COMMON_REG_EXTRACT(val, SRSH_PI);
+	pci_core_idx = bhnd_get_core_index(sc->bhndb.hostb_dev);
 
-		bhnd_bus_write_4(sc->dev, sc->core, BHND_PCI_SBTOPCI2, sbp2);
-	}
-	
-	/* Disable PCI CLKRUN# */
-	if (BHND_PCI_QUIRK(sc, CLKRUN_DSBL)) {
-		uint32_t ctl;
-	
-		ctl = bhnd_bus_read_4(sc->dev, sc->core, BHND_PCI_CLKRUN_CTL);
-		ctl |= BHND_PCI_CLKRUN_DSBL;
-		bhnd_bus_write_4(sc->dev, sc->core, BHND_PCI_CLKRUN_CTL, ctl);
-	}
-
-	/* Force correct SerDes polarity */
-	if (BHND_PCIE_QUIRK(sc, SDR9_POLARITY)) {
-		device_printf(sc->dev, "SDR9_POLARITY\n");
-		uint16_t	rxctl;
-
-		rxctl = MDIO_READREG(sc->mdio, BHND_PCIE_PHY_SDR9_TXRX,
-		    BHND_PCIE_SDR9_RX_CTRL);
-
-		rxctl |= BHND_PCIE_SDR9_RX_CTRL_FORCE;
-		if (sc->polarity_inv)
-			rxctl |= BHND_PCIE_SDR9_RX_CTRL_POLARITY_INV;
-		else
-			rxctl &= ~BHND_PCIE_SDR9_RX_CTRL_POLARITY_INV;
-
-		MDIO_WRITEREG(sc->mdio, BHND_PCIE_PHY_SDR9_TXRX,
-		    BHND_PCIE_SDR9_RX_CTRL, rxctl);
-	}
-
-	/* Enable TLP unmatched address handling work-around */
-	if (BHND_PCIE_QUIRK(sc, UR_STATUS_FIX)) {
-		device_printf(sc->dev, "UR_STATUS_FIX\n");
-		uint32_t wrs;
-		wrs = bcm_pcie_read_proto_reg(sc, BHND_PCIE_TLP_WORKAROUNDSREG);
-		wrs |= BHND_PCIE_TLP_WORKAROUND_URBIT;
-		bcm_pcie_write_proto_reg(sc, BHND_PCIE_TLP_WORKAROUNDSREG, wrs);
-	}
-
-	/* Explicitly enable PCI-PM */
-	if (BHND_PCIE_QUIRK(sc, PCIPM_REQEN)) {
-		device_printf(sc->dev, "PCIPM_REQEN\n");
-		uint32_t lcreg;
-		lcreg = bcm_pcie_read_proto_reg(sc, BHND_PCIE_DLLP_LCREG);
-		lcreg |= BHND_PCIE_DLLP_LCREG_PCIPM_EN;
-		bcm_pcie_write_proto_reg(sc, BHND_PCIE_DLLP_LCREG, lcreg);
-	}
-
-	/* Adjust SerDes CDR tuning to ensure that CDR is stable before sending
-	 * data during L0s to L0 exit transitions. */
-	if (BHND_PCIE_QUIRK(sc, SDR9_L0s_HANG)) {
-		device_printf(sc->dev, "SDR9_L0s_HANG\n");
-		uint16_t sdv;
-
-		/* Set RX track/acquire timers to 2.064us/40.96us */
-		sdv = 0;
-		BPCI_REG_SET(sdv, PCIE_SDR9_RX_TIMER1_LKTRK, (2064/16));
-		BPCI_REG_SET(sdv, PCIE_SDR9_RX_TIMER1_LKACQ, (40960/1024));
-		MDIO_WRITEREG(sc->mdio, BHND_PCIE_PHY_SDR9_TXRX,
-		BHND_PCIE_SDR9_RX_TIMER1, sdv);
-
-		/* Apply CDR frequency workaround */
-		sdv = BHND_PCIE_SDR9_RX_CDR_FREQ_OVR_EN;
-		BPCI_REG_SET(sdv, PCIE_SDR9_RX_CDR_FREQ_OVR, 0x0);
-		MDIO_WRITEREG(sc->mdio, BHND_PCIE_PHY_SDR9_TXRX,
-		BHND_PCIE_SDR9_RX_CDR, sdv);
-
-		/* Apply CDR BW tunings */
-		sdv = 0;
-		BPCI_REG_SET(sdv, PCIE_SDR9_RX_CDRBW_INTGTRK, 0x2);
-		BPCI_REG_SET(sdv, PCIE_SDR9_RX_CDRBW_INTGACQ, 0x4);
-		BPCI_REG_SET(sdv, PCIE_SDR9_RX_CDRBW_PROPTRK, 0x6);
-		BPCI_REG_SET(sdv, PCIE_SDR9_RX_CDRBW_PROPACQ, 0x6);
-		MDIO_WRITEREG(sc->mdio, BHND_PCIE_PHY_SDR9_TXRX,
-		BHND_PCIE_SDR9_RX_CDRBW, sdv);
-	}
-
-	/* Enable L23READY_EXIT_NOPRST if not already set in SPROM. */
-	if (BHND_PCIE_QUIRK(sc, SPROM_L23_PCI_RESET)) {
-		bus_size_t	reg;
-		uint16_t	cfg;
-
-		/* Fetch the misccfg offset from SPROM */
-		reg = BHND_PCIE_SPROM_SHADOW + BHND_PCIE_SRSH_PCIE_MISC_CONFIG;
-		cfg = bhnd_bus_read_2(sc->dev, sc->core, reg);
-
-		/* Set NOPRST enable flag if not already set */
-		if (!(cfg & BHND_PCIE_SRSH_L23READY_EXIT_NOPRST)) {
-			cfg |= BHND_PCIE_SRSH_L23READY_EXIT_NOPRST;
-			bhnd_bus_write_2(sc->dev, sc->core, reg, cfg);
-		}
+	if (sprom_core_idx != pci_core_idx) {
+		BPCI_COMMON_REG_INSERT(val, SRSH_PI, pci_core_idx);
+		BHNDB_PCI_WRITE_2(sc, sprom_addr, val);
 	}
 }
-#endif
 
 static int
 bhndb_pci_detach(device_t dev)
@@ -538,10 +607,10 @@ bhndb_pci_detach(device_t dev)
 	if ((error = bhndb_generic_detach(dev)))
 		return (error);
 
-	if ((error = bhndb_disable_pci_clocks(sc))) {
-		device_printf(dev, "failed to disable clocks\n");
+	/* Apply any hardware workarounds. This may disable the clock, and
+	 * thus must be called *after* any children have been detached. */
+	if ((error = bhndb_pci_wars_hwdown(sc)))
 		return (error);
-	}
 
 	/* Disable PCI bus mastering */
 	pci_disable_busmaster(device_get_parent(dev));
@@ -560,10 +629,10 @@ bhndb_pci_suspend(device_t dev)
 	if ((error = bhndb_generic_suspend(dev)))
 		return (error);
 
-	if ((error = bhndb_disable_pci_clocks(sc))) {
-		device_printf(dev, "suspend failed to disable clocks\n");
+	/* Apply any hardware workarounds. This may disable the clock, and
+	 * thus must be called *after* any children have been suspended. */
+	if ((error = bhndb_pci_wars_hwdown(sc)))
 		return (error);
-	}
 
 	return (0);
 }
@@ -576,13 +645,10 @@ bhndb_pci_resume(device_t dev)
 
 	sc = device_get_softc(dev);
 
-	if ((error = bhndb_enable_pci_clocks(sc))) {
-		device_printf(dev, "resume failed to enable clocks\n");
-		return (error);
-	}
-
-	/* Apply any attach/resume quirk workarounds */
-	if ((error = bhndb_pci_wars_hwup(sc)))
+	/* Apply any resume workarounds; these may be required for bridged
+	 * device access, and thus must be called *before* any children are
+	 * resumed. */
+	if ((error = bhndb_pci_wars_hwresume(sc)))
 		return (error);
 
 	if ((error = bhndb_generic_resume(dev)))
@@ -709,8 +775,9 @@ bhndb_pcie_write_proto_reg(struct bhndb_pci_softc *sc, uint32_t addr,
 
 
 /**
- * If supported (and required), enable any externally managed
- * clocks. 
+ * Enable externally managed clocks.
+ * 
+ * Quirk Required: EXT_CLOCK_GATING
  * 
  * @param sc Bridge driver state.
  */
@@ -722,11 +789,9 @@ bhndb_enable_pci_clocks(struct bhndb_pci_softc *sc)
 	uint32_t		gpio_flags;
 	uint16_t		pci_status;
 
-	pci_parent = device_get_parent(sc->dev);
+	BHNDB_PCI_ASSERT_QUIRK(sc, EXT_CLOCK_GATING);
 
-	/* Only Broadcom's PCI devices require external clock gating */
-	if (!BHNDB_PCI_QUIRK(sc, EXT_CLOCK_GATING))
-		return (0);
+	pci_parent = device_get_parent(sc->dev);
 
 	/* Read state of XTAL pin */
 	gpio_in = pci_read_config(pci_parent, BHNDB_PCI_GPIO_IN, 4);
@@ -760,8 +825,11 @@ bhndb_enable_pci_clocks(struct bhndb_pci_softc *sc)
 }
 
 /**
- * If supported (and required), disable any externally managed
- * clocks.
+ * Disable externally managed clocks.
+ * 
+ * Quirk Required: EXT_CLOCK_GATING
+ * 
+ * @param sc Bridge driver state.
  */
 static int
 bhndb_disable_pci_clocks(struct bhndb_pci_softc *sc)
@@ -769,11 +837,9 @@ bhndb_disable_pci_clocks(struct bhndb_pci_softc *sc)
 	device_t	parent_dev;
 	uint32_t	gpio_out, gpio_en;
 
-	parent_dev = device_get_parent(sc->dev);
+	BHNDB_PCI_ASSERT_QUIRK(sc, EXT_CLOCK_GATING);
 
-	/* Only Broadcom's PCI devices require external clock gating */
-	if (!BHNDB_PCI_QUIRK(sc, EXT_CLOCK_GATING))
-		return (0);
+	parent_dev = device_get_parent(sc->dev);
 
 	// TODO: Check board flags for BFL2_XTALBUFOUTEN?
 	// TODO: Check PCI core revision?
