@@ -235,6 +235,11 @@
 #define	BHND_PCIE_DLLP_LRREG			0x120	/* Link Replay */
 #define	BHND_PCIE_DLLP_LACKTOREG		0x124	/* Link Ack Timeout */
 #define	BHND_PCIE_DLLP_PMTHRESHREG		0x128	/* Power Management Threshold */
+#define	  BHND_PCIE_L0THRESHOLDTIME_MASK	0xFF00	/* bits 0 - 7 */
+#define	  BHND_PCIE_L1THRESHOLDTIME_MASK	0xFF00	/* bits 8 - 15 */
+#define	  BHND_PCIE_L1THRESHOLDTIME_SHIFT	8	/* PCIE_L1THRESHOLDTIME_SHIFT */
+#define	  BHND_PCIE_L1THRESHOLD_WARVAL		0x72	/* WAR value */
+#define	  BHND_PCIE_ASPMTIMER_EXTEND		0x1000000 /* > rev7: enable extend ASPM timer */
 #define	BHND_PCIE_DLLP_RTRYWPREG		0x12C	/* Retry buffer write ptr */
 #define	BHND_PCIE_DLLP_RTRYRPREG		0x130	/* Retry buffer Read ptr */
 #define	BHND_PCIE_DLLP_RTRYPPREG		0x134	/* Retry buffer Purged ptr */
@@ -347,12 +352,6 @@
 #define	  BHND_PCIE_SDR9_RX_TIMER1_LKACQ_MASK	0x00FF	/* phase acquisition mode time (in 1024ns units) */
 #define	  BHND_PCIE_SDR9_RX_TIMER1_LKACQ_SHIFT	0
 
-/* Power management threshold */
-#define	BHND_PCIE_L0THRESHOLDTIME_MASK		0xFF00		/* bits 0 - 7 */
-#define	BHND_PCIE_L1THRESHOLDTIME_MASK		0xFF00		/* bits 8 - 15 */
-#define	BHND_PCIE_L1THRESHOLDTIME_SHIFT		8		/* PCIE_L1THRESHOLDTIME_SHIFT */
-#define	BHND_PCIE_L1THRESHOLD_WARVAL		0x72		/* WAR value */
-#define	BHND_PCIE_ASPMTIMER_EXTEND		0x01000000	/* > rev7: enable extend ASPM timer */
 
 /* SPROM offsets */
 #define	BHND_PCIE_SRSH_PI_OFFSET		BHND_PCI_SRSH_PI_OFFSET	/**< PCI core index in SROM shadow area */

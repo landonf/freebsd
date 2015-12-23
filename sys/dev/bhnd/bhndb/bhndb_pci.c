@@ -543,6 +543,25 @@ bhndb_pci_wars_hwup(struct bhndb_pci_softc *sc)
 		bhndb_pcie_write_proto_reg(sc, BHND_PCIE_DLLP_LCREG, lcreg);
 	}
 
+	/* Adjust L1 timer to fix slow L1->L0 transitions */
+	if (BHNDB_PCIE_QUIRK(sc, L1_IDLE_THRESH)) {
+		uint32_t pmt;
+		pmt = bhndb_pcie_read_proto_reg(sc, BHND_PCIE_DLLP_PMTHRESHREG);
+		pmt = BPCI_REG_INSERT(pmt, PCIE_L1THRESHOLDTIME,
+		    BHND_PCIE_L1THRESHOLD_WARVAL);
+		bhndb_pcie_write_proto_reg(sc, BHND_PCIE_DLLP_PMTHRESHREG, pmt);
+	}
+
+	/* Extend L1 timer for better performance.
+	 * TODO: We could enable/disable this on demand for better power
+	 * savings if we tie this to HT clock request handling */
+	if (BHNDB_PCIE_QUIRK(sc, L1_TIMER_PERF)) {
+		uint32_t pmt;
+		pmt = bhndb_pcie_read_proto_reg(sc, BHND_PCIE_DLLP_PMTHRESHREG);
+		pmt |= BHND_PCIE_ASPMTIMER_EXTEND;
+		bhndb_pcie_write_proto_reg(sc, BHND_PCIE_DLLP_PMTHRESHREG, pmt);
+	}
+
 	/* Enable L23READY_EXIT_NOPRST if not already set in SPROM. */
 	if (BHNDB_PCIE_QUIRK(sc, SPROM_L23_PCI_RESET)) {
 		bus_size_t	reg;
@@ -589,7 +608,18 @@ static int
 bhndb_pci_wars_hwdown(struct bhndb_pci_softc *sc)
 {
 	int error;
+	
+	/* Reduce L1 timer for better power savings.
+	 * TODO: We could enable/disable this on demand for better power
+	 * savings if we tie this to HT clock request handling */
+	if (BHNDB_PCIE_QUIRK(sc, L1_TIMER_PERF)) {
+		uint32_t pmt;
+		pmt = bhndb_pcie_read_proto_reg(sc, BHND_PCIE_DLLP_PMTHRESHREG);
+		pmt &= ~BHND_PCIE_ASPMTIMER_EXTEND;
+		bhndb_pcie_write_proto_reg(sc, BHND_PCIE_DLLP_PMTHRESHREG, pmt);
+	}
 
+	/* Disable clocks */
 	if (BHNDB_PCI_QUIRK(sc, EXT_CLOCK_GATING)) {
 		if ((error = bhndb_disable_pci_clocks(sc))) {
 			device_printf(sc->dev, "failed to disable clocks\n");
