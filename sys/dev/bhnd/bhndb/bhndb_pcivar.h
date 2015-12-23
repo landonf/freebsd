@@ -238,6 +238,14 @@ enum {
 	 * a non-standard Clause 22 address extension mechanism.
 	 */
 	BHNDB_PCIE_QUIRK_SD_C22_EXTADDR		= (1<<15),
+	
+	/**
+	 * The PCIe SerDes PLL must be configured to not retry the startup
+	 * sequence upon frequency detection failure on SerDes <= rev9 devices
+	 * 
+	 * The issue this workaround resolves has not be determined.
+	 */
+	BHNDB_PCIE_QUIRK_SDR9_NO_FREQRETRY	= (1<<16),
 };
 
 #endif /* _BHND_BHNDB_PCIVAR_H_ */
