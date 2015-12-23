@@ -114,23 +114,31 @@ enum {
 	BHNDB_PCI_QUIRK_NONE			= 0,
 
 	/**
+	 * BCM4306 chips (and possibly others) do not support the idle
+	 * low-power clock. Clocking must be bootstrapped at attach/resume by
+	 * directly adjusting GPIO registers exposed in the PCI config space,
+	 * and correspondingly, explicitly shutdown at detach/suspend.
+	 */
+	BHNDB_PCI_QUIRK_EXT_CLOCK_GATING	= (1<<1),
+
+	/**
 	 * SBTOPCI_PREF and SBTOPCI_BURST must be set on the
 	 * SSB_PCICORE_SBTOPCI2 register.
 	 */
-	BHNDB_PCI_QUIRK_SBTOPCI2_PREF_BURST	= (1<<1),
+	BHNDB_PCI_QUIRK_SBTOPCI2_PREF_BURST	= (1<<2),
 
 	/**
 	 * SBTOPCI_RC_READMULTI must be set on the SSB_PCICORE_SBTOPCI2
 	 * register.
 	 */
-	BHNDB_PCI_QUIRK_SBTOPCI2_READMULTI	= (1<<2),
+	BHNDB_PCI_QUIRK_SBTOPCI2_READMULTI	= (1<<3),
 
 	/**
 	 * Interrupt masking is handled via the interconnect configuration
 	 * registers (SBINTVEC on siba), rather than the PCI_INT_MASK
 	 * config register.
 	 */
-	BHNDB_PCI_QUIRK_SBINTVEC		= (1<<3),
+	BHNDB_PCI_QUIRK_SBINTVEC		= (1<<4),
 
 	/**
 	 * PCI CLKRUN# should be disabled on attach (via CLKRUN_DSBL).
@@ -140,7 +148,7 @@ enum {
 	 * a "force CLKRUN#" *enable* registry key for use on mobile
 	 * hardware.
 	 */
-	BHNDB_PCI_QUIRK_CLKRUN_DSBL		= (1<<4),
+	BHNDB_PCI_QUIRK_CLKRUN_DSBL		= (1<<5),
 
 	/**
 	 * TLP workaround for unmatched address handling is required.
@@ -148,13 +156,13 @@ enum {
 	 * This TLP workaround will enable setting of the PCIe UR status bit
 	 * on memory access to an unmatched address.
 	 */
-	BHNDB_PCIE_QUIRK_UR_STATUS_FIX		= (1<<5),
+	BHNDB_PCIE_QUIRK_UR_STATUS_FIX		= (1<<6),
 
 	/**
 	 * PCI-PM power management must be explicitly enabled via
 	 * the data link control register.
 	 */
-	BHNDB_PCIE_QUIRK_PCIPM_REQEN		= (1<<6),
+	BHNDB_PCIE_QUIRK_PCIPM_REQEN		= (1<<7),
 
 	/**
 	 * Fix L0s to L0 exit transition on SerDes <= rev9 devices.
@@ -167,19 +175,19 @@ enum {
 	 * filters must be tweaked to ensure the CDR has fully stabilized
 	 * before asserting receive sequencer completion.
 	 */
-	BHNDB_PCIE_QUIRK_SDR9_L0s_HANG		= (1<<7),
+	BHNDB_PCIE_QUIRK_SDR9_L0s_HANG		= (1<<8),
 
 	/**
 	 * The idle time for entering L1 low-power state must be
 	 * explicitly set (to 114ns) to fix slow L1->L0 transition issues.
 	 */
-	BHNDB_PCIE_QUIRK_L1_IDLE_THRESH		= (1<<8),
+	BHNDB_PCIE_QUIRK_L1_IDLE_THRESH		= (1<<9),
 	
 	/**
 	 * The ASPM L1 entry timer should be extended for better performance,
 	 * and restored for better power savings.
 	 */
-	BHNDB_PCIE_QUIRK_L1_TIMER_PERF		= (1<<9),
+	BHNDB_PCIE_QUIRK_L1_TIMER_PERF		= (1<<10),
 
 	/**
 	 * ASPM and ECPM settings must be overridden manually.
@@ -199,7 +207,7 @@ enum {
 	 * - When the device enters D3 state, or system enters S3/S4 state,
 	 *   clear ASPM L1 in the PCIER_LINK_CTL register.
 	 */
-	BHNDB_PCIE_QUIRK_ASPM_OVR		= (1<<10),
+	BHNDB_PCIE_QUIRK_ASPM_OVR		= (1<<11),
 	
 	/**
 	 * Fix SerDes polarity on SerDes <= rev9 devices.
@@ -207,13 +215,13 @@ enum {
 	 * The SerDes polarity must be saved at device attachment, and
 	 * restored on suspend/resume.
 	 */
-	BHNDB_PCIE_QUIRK_SDR9_POLARITY		= (1<<11),
+	BHNDB_PCIE_QUIRK_SDR9_POLARITY		= (1<<12),
 
 	/**
 	 * The SerDes PLL override flag (CHIPCTRL_4321_PLL_DOWN) must be set on
 	 * the ChipCommon core on resume.
 	 */
-	BHNDB_PCIE_QUIRK_SERDES_NOPLLDOWN	= (1<<12),
+	BHNDB_PCIE_QUIRK_SERDES_NOPLLDOWN	= (1<<13),
 
         /**
 	 * On attach and resume, consult the SPROM to determine whether
@@ -221,7 +229,7 @@ enum {
 	 *
 	 * If L23READY_EXIT_NOPRST is not already set in the SPROM, set it
 	 */
-	BHNDB_PCIE_QUIRK_SPROM_L23_PCI_RESET	= (1<<13),
+	BHNDB_PCIE_QUIRK_SPROM_L23_PCI_RESET	= (1<<14),
 	
 	/**
 	 * The PCIe SerDes supports non-standard extended MDIO register access.
@@ -229,10 +237,7 @@ enum {
 	 * The PCIe SerDes supports access to extended MDIO registers via
 	 * a non-standard Clause 22 address extension mechanism.
 	 */
-	BHNDB_PCIE_QUIRK_SD_C22_EXTADDR		= (1<<14),
-
-	/** Device unrecognized or otherwise invalid quirk. */
-	BHNDB_PCI_QUIRK_INVALID			= (UINT32_MAX)
+	BHNDB_PCIE_QUIRK_SD_C22_EXTADDR		= (1<<15),
 };
 
 #endif /* _BHND_BHNDB_PCIVAR_H_ */

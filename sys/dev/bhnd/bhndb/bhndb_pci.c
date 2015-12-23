@@ -75,18 +75,25 @@ static uint32_t	bhndb_pcie_read_proto_reg(struct bhndb_pci_softc *sc,
 static void	bhndb_pcie_write_proto_reg(struct bhndb_pci_softc *sc,
 		    uint32_t addr, uint32_t val);
 
-static uint32_t	bhndb_pci_get_hostb_quirks(struct bhndb_pci_softc *,
+static void	bhndb_pci_sromless_init_config(struct bhndb_pci_softc *sc);
+
+static int	bhndb_pci_wars_early(struct bhndb_pci_softc *sc);
+static int	bhndb_pci_wars_hwup(struct bhndb_pci_softc *sc);
+static int	bhndb_pci_wars_hwdown(struct bhndb_pci_softc *sc);
+
+static uint32_t	bhndb_pci_discover_quirks(struct bhndb_pci_softc *,
 		    const struct bhndb_pci_id *);
 
 static const struct bhndb_pci_id *bhndb_pci_find_core_id(
 				      struct bhnd_core_info *core);
 
+/* quirk flag convenience macros */
 #define	BHNDB_PCI_QUIRK(_sc, _name)	\
     ((_sc)->quirks & BHNDB_PCI_QUIRK_ ## _name)
-
 #define	BHNDB_PCIE_QUIRK(_sc, _name)	\
     ((_sc)->quirks & BHNDB_PCIE_QUIRK_ ## _name)
 
+/* bus_(read|write)_* convenience macros */
 #define	BHNDB_PCI_READ_2(_sc, _reg)		\
 	bus_read_2((_sc)->mem_res, (_sc)->mem_off + (_reg))
 #define	BHNDB_PCI_READ_4(_sc, _reg)		\
@@ -96,6 +103,22 @@ static const struct bhndb_pci_id *bhndb_pci_find_core_id(
 	bus_write_2((_sc)->mem_res, (_sc)->mem_off +  (_reg), (_val))
 #define	BHNDB_PCI_WRITE_4(_sc, _reg, _val)	\
 	bus_write_4((_sc)->mem_res, (_sc)->mem_off +  (_reg), (_val))
+	
+/* BHNDB_PCI_REG_* convenience macros */ 
+#define	BPCI_REG_EXTRACT(_rv, _a)	BHND_PCI_REG_EXTRACT(_rv, BHND_ ## _a)
+#define	BPCI_REG_INSERT(_rv, _a, _v)	BHND_PCI_REG_INSERT(_rv, BHND_ ## _a, _v)
+
+#define	BPCI_COMMON_REG_EXTRACT(_r, _a)	\
+	BHND_PCI_COMMON_REG_EXTRACT(sc->regfmt, _r, _a)
+
+#define	BPCI_COMMON_REG_INSERT(_r, _a, _v)	\
+	BHND_PCI_COMMON_REG_INSERT(sc->regfmt, _r, _a, _v)
+
+#define	BPCI_COMMON_REG(_name)		\
+	BHND_PCI_COMMON_REG(sc->regfmt, _name)
+
+#define	BPCI_COMMON_REG_OFFSET(_base, _offset)	\
+	(BPCI_COMMON_REG(_base) + BPCI_COMMON_REG(_offset))
 
 /*
  * Supported PCI bridge cores.
@@ -106,6 +129,7 @@ static const struct bhndb_pci_id *bhndb_pci_find_core_id(
 static const struct bhndb_pci_id bhndb_pci_ids[] = {
 	/* PCI */
 	BHNDB_PCI_ID(PCI,
+	    BHND_QUIRK_HWREV_GTE	(0,	BHNDB_PCI_QUIRK_EXT_CLOCK_GATING),
 	    BHND_QUIRK_HWREV_RANGE	(0, 5,	BHNDB_PCI_QUIRK_SBINTVEC),
 	    BHND_QUIRK_HWREV_GTE	(0,	BHNDB_PCI_QUIRK_SBTOPCI2_PREF_BURST),
 	    BHND_QUIRK_HWREV_GTE	(11,	BHNDB_PCI_QUIRK_SBTOPCI2_READMULTI | BHNDB_PCI_QUIRK_CLKRUN_DSBL),
@@ -172,6 +196,11 @@ bhndb_pci_attach(device_t dev)
 	if (pci_find_cap(device_get_parent(dev), PCIY_EXPRESS, &reg) == 0)
 		sc->pci_devclass = BHND_DEVCLASS_PCIE;
 
+	/* Determine the basic set of applicable quirks. This will be updated
+	 * in bhndb_pci_init_full_config() once the PCI device core has
+	 * been enumerated. */
+	sc->quirks = bhndb_pci_discover_quirks(sc, NULL);
+
 	/* Enable PCI clocks */
 	if ((error = bhndb_enable_pci_clocks(sc))) {
 		device_printf(dev, "clock initialization failed\n");
@@ -182,7 +211,10 @@ bhndb_pci_attach(device_t dev)
 	 * what kind of bus is attached */
 	sc->set_regwin = bhndb_pci_compat_setregwin;
 
-	/* Perform full bridge attach */
+	/* Perform full bridge attach. This should call back into our
+	 * bhndb_pci_init_full_config() implementation once the bridged
+	 * bhnd(4) bus has been enumerated, but before any devices have been
+	 * probed or attached. */
 	if ((error = bhndb_attach(dev, sc->pci_devclass)))
 		return (error);
 
@@ -195,19 +227,122 @@ bhndb_pci_attach(device_t dev)
 	return (0);
 }
 
-#if 0
+/**
+ * Initialize the full bridge configuration.
+ * 
+ * This is called during the DEVICE_ATTACH() process by the bridged bhndb(4)
+ * bus, prior to probe/attachment of child cores.
+ * 
+ * At this point, we can introspect the enumerated cores, find our host
+ * bridge device, and apply any bridge-level hardware workarounds required
+ * for proper operation of the bridged device cores.
+ */
+static int
+bhndb_pci_init_full_config(device_t dev, device_t child,
+    const struct bhndb_hw_priority *prio_table)
+{
+	struct bhnd_core_info		 core;
+	const struct bhndb_pci_id	*id;
+	struct bhndb_pci_softc		*sc;
+	struct bhndb_region		*pcir;
+	bhnd_addr_t			 pcir_addr;
+	bhnd_size_t			 pcir_size;
+	int				 error;
+
+	sc = device_get_softc(dev);
+
+	/* Let bhndb perform full initialization */
+	if ((error = bhndb_generic_init_full_config(dev, child, prio_table)))
+		return (error);
+
+	/* Identify our bridge core and register family. */
+	KASSERT(sc->bhndb.hostb_dev,
+	    ("missing hostb device\n"));
+
+	core = bhnd_get_core_info(sc->bhndb.hostb_dev);
+	id = bhndb_pci_find_core_id(&core);
+	if (id == NULL) {
+		device_printf(dev, "%s %s hostb core is not recognized\n",
+		    bhnd_vendor_name(core.vendor), bhnd_core_name(&core));
+	}
+
+	/* Fetch register family and complete device quirks */
+	sc->regfmt = id->regfmt;
+	sc->quirks = bhndb_pci_discover_quirks(sc, id);
+	
+	/* Find the PCI core register block address/size. */
+	error = bhnd_get_region_addr(sc->bhndb.hostb_dev, BHND_PORT_DEVICE, 0,
+	    0, &pcir_addr, &pcir_size);
+	if (error) {
+		device_printf(dev,
+		    "failed to locate usable hostb core registers\n");
+		return (error);
+	}
+
+	/* Find the bhndb_region that statically maps this block */
+	pcir = bhndb_find_resource_region(sc->bhndb.bus_res, pcir_addr,
+	    pcir_size);
+	if (pcir == NULL || pcir->static_regwin == NULL) {
+		device_printf(dev,
+		    "missing static PCI hostb register window\n");
+		return (ENXIO);
+	}
+
+	/* Save borrowed reference to the mapped PCI core registers */
+	sc->mem_off = pcir->static_regwin->win_offset;
+	sc->mem_res = bhndb_find_regwin_resource(sc->bhndb.bus_res,
+	    pcir->static_regwin);
+	if (sc->mem_res == NULL || !(rman_get_flags(sc->mem_res) & RF_ACTIVE)) {
+		device_printf(dev,
+		    "no active resource maps the hostb register window\n");
+		return (ENXIO);
+	}
+
+	/* Configure a direct bhnd_resource wrapper that we can pass to
+	 * bhnd_resource APIs */
+	sc->bhnd_mem_res = (struct bhnd_resource) {
+		.res = sc->mem_res,
+		.direct = true
+	};
+
+	/* Attach our MMIO device */
+	if (sc->pci_devclass == BHND_DEVCLASS_PCIE) {
+		device_t child = device_add_child(dev,
+		    devclass_get_name(bhnd_mdio_pci_devclass), 0);
+		if (child == NULL)
+			return (ENXIO);
+
+		if ((error = device_probe_and_attach(child))) {
+			device_printf(dev, "failed to attach MDIO device\n");
+			return (error);
+		}
+	}
+
+	/* Apply any early quirk workarounds */
+	if ((error = bhndb_pci_wars_early(sc)))
+		return (error);
+
+	/* Apply any attach/resume quirk workarounds */
+	if ((error = bhndb_pci_wars_hwup(sc)))
+		return (error);
+
+	return (0);
+}
+
+
 /*
- * Quirk: N/A
- * Applies to all PCI/PCIe revisions.
- * 
  * On devices without a SROM, the PCI(e) cores will be initialized with
- * their Power-on-Reset defaults; this can leave the the BAR0 PCIe windows
- * potentially mapped to the wrong core.
+ * their Power-on-Reset defaults; this can leave the the BAR0 PCI windows
+ * potentially mapped to the wrong core index.
  * 
- * This WAR updates the BAR0 defaults to point at the current PCIe core.
+ * This function updates the PCI core's BAR0 PCI configuration to point at the
+ * current PCI core.
+ * 
+ * Applies to all PCI/PCIe revisions. Must be applied before bus devices
+ * are probed/attached or the SPROM is parsed.
  */
 static void
-bcm_pci_sromless_defaults_war(struct bhnd_pci_hostb_softc *sc)
+bhndb_pci_sromless_init_config(struct bhndb_pci_softc *sc)
 {
 	bus_size_t	sprom_addr;
 	u_int		sprom_core_idx;
@@ -216,18 +351,66 @@ bcm_pci_sromless_defaults_war(struct bhnd_pci_hostb_softc *sc)
 
 	/* Fetch the SPROM's configured core index */
 	sprom_addr = BPCI_COMMON_REG_OFFSET(SPROM_SHADOW, SRSH_PI_OFFSET);
-	val = bhnd_bus_read_2(sc->dev, sc->core, sprom_addr);
+	val = BHNDB_PCI_READ_2(sc, sprom_addr);
 
-	/* If it doesn't match our core index, update the index value */
-	sprom_core_idx = BPCI_COMMON_REG_GET(val, SRSH_PI);
-	pci_core_idx = bhnd_get_core_index(sc->dev);
+	/* If it doesn't match host bridge's core index, update the index
+	 * value */
+	sprom_core_idx = BPCI_COMMON_REG_EXTRACT(val, SRSH_PI);
+	pci_core_idx = bhnd_get_core_index(sc->bhndb.hostb_dev);
 
 	if (sprom_core_idx != pci_core_idx) {
-		BPCI_COMMON_REG_SET(val, SRSH_PI, pci_core_idx);
-		bhnd_bus_write_2(sc->dev, sc->core, sprom_addr, val);
+		BPCI_COMMON_REG_INSERT(val, SRSH_PI, pci_core_idx);
+		BHNDB_PCI_WRITE_2(sc, sprom_addr, val);
 	}
 }
 
+/**
+ * Apply any hardware work-arounds that must be executed exactly once, early in
+ * the attach process. This must be called after core enumeration, but prior to
+ * probe/attach of any cores, parsing of SPROM, etc.
+ */
+static int
+bhndb_pci_wars_early(struct bhndb_pci_softc *sc)
+{
+	bhndb_pci_sromless_init_config(sc);
+
+	/* Determine correct polarity by observing the attach-time PCIe PHY
+	 * link status. This is used later to reset/force the SerDes
+	 * polarity */
+	if (BHNDB_PCIE_QUIRK(sc, SDR9_POLARITY)) {
+		uint32_t st;
+		bool inv;
+
+
+		st = bhndb_pcie_read_proto_reg(sc, BHND_PCIE_PLP_STATUSREG);
+		inv = ((st & BHND_PCIE_PLP_POLARITY_INV) != 0);
+		sc->sdr9_quirk_polarity.inv = inv;
+	}
+
+	return (0);
+}
+
+/**
+ * Apply any hardware workarounds that are required upon attach or resume
+ * of the bridge device.
+ */
+static int
+bhndb_pci_wars_hwup(struct bhndb_pci_softc *sc)
+{
+	return (0);
+}
+
+/**
+ * Apply any hardware workarounds that are required upon detach or suspend
+ * of the bridge device.
+ */
+static int
+bhndb_pci_wars_hwdown(struct bhndb_pci_softc *sc)
+{
+	return (0);
+}
+
+#if 0
 /* Hardware Setup WARs */
 static void
 bcm_pci_hw_wars(struct bhnd_pci_hostb_softc *sc)
@@ -344,105 +527,6 @@ bcm_pci_hw_wars(struct bhnd_pci_hostb_softc *sc)
 }
 #endif
 
-/**
- * Initialize the full bridge configuration.
- * 
- */
-static int
-bhndb_pci_init_full_config(device_t dev, device_t child,
-    const struct bhndb_hw_priority *prio_table)
-{
-	struct bhnd_core_info		 core;
-	const struct bhndb_pci_id	*id;
-	struct bhndb_pci_softc		*sc;
-	struct bhndb_region		*pcir;
-	bhnd_addr_t			 pcir_addr;
-	bhnd_size_t			 pcir_size;
-	int				 error;
-
-	sc = device_get_softc(dev);
-
-	/* Let bhndb perform full initialization */
-	if ((error = bhndb_generic_init_full_config(dev, child, prio_table)))
-		return (error);
-
-	/* Identify our bridge core and register family. */
-	KASSERT(sc->bhndb.hostb_dev,
-	    ("missing hostb device\n"));
-
-	core = bhnd_get_core_info(sc->bhndb.hostb_dev);
-	id = bhndb_pci_find_core_id(&core);
-	if (id == NULL) {
-		device_printf(dev, "%s %s hostb core is not recognized\n",
-		    bhnd_vendor_name(core.vendor), bhnd_core_name(&core));
-	}
-
-	/* Fetch register family and device quirks */
-	sc->regfmt = id->regfmt;
-	sc->quirks = bhndb_pci_get_hostb_quirks(sc, id);
-
-	/* Apply any early quirk workarounds */
-	if (BHNDB_PCIE_QUIRK(sc, SDR9_POLARITY)) {
-		uint32_t st;
-		bool inv;
-
-		/* Determine correct polarity by observing the attach-time PCIe PHY
-		 * link status. This is used later to reset/force the SerDes
-		 * polarity */
-		st = bhndb_pcie_read_proto_reg(sc, BHND_PCIE_PLP_STATUSREG);
-		inv = ((st & BHND_PCIE_PLP_POLARITY_INV) != 0);
-		sc->sdr9_quirk_polarity.inv = inv;
-	}
-	
-	/* Find the PCI core register block address/size. */
-	error = bhnd_get_region_addr(sc->bhndb.hostb_dev, BHND_PORT_DEVICE, 0,
-	    0, &pcir_addr, &pcir_size);
-	if (error) {
-		device_printf(dev,
-		    "failed to locate usable hostb core registers\n");
-		return (error);
-	}
-
-	/* Find the bhndb_region that statically maps this block */
-	pcir = bhndb_find_resource_region(sc->bhndb.bus_res, pcir_addr,
-	    pcir_size);
-	if (pcir == NULL || pcir->static_regwin == NULL) {
-		device_printf(dev,
-		    "missing static PCI hostb register window\n");
-		return (ENXIO);
-	}
-
-	/* Save borrowed reference to the mapped PCI core registers */
-	sc->mem_off = pcir->static_regwin->win_offset;
-	sc->mem_res = bhndb_find_regwin_resource(sc->bhndb.bus_res,
-	    pcir->static_regwin);
-	if (sc->mem_res == NULL || !(rman_get_flags(sc->mem_res) & RF_ACTIVE)) {
-		device_printf(dev,
-		    "no active resource maps the hostb register window\n");
-		return (ENXIO);
-	}
-
-	sc->bhnd_mem_res = (struct bhnd_resource) {
-		.res = sc->mem_res,
-		.direct = true
-	};
-
-	/* Attach our MMIO device */
-	if (sc->pci_devclass == BHND_DEVCLASS_PCIE) {
-		device_t child = device_add_child(dev,
-		    devclass_get_name(bhnd_mdio_pci_devclass), 0);
-		if (child == NULL)
-			return (ENXIO);
-
-		if ((error = device_probe_and_attach(child))) {
-			device_printf(dev, "failed to attach MDIO device\n");
-			return (error);
-		}
-	}
-
-	return (0);
-}
-
 static int
 bhndb_pci_detach(device_t dev)
 {
@@ -496,7 +580,11 @@ bhndb_pci_resume(device_t dev)
 		device_printf(dev, "resume failed to enable clocks\n");
 		return (error);
 	}
-	
+
+	/* Apply any attach/resume quirk workarounds */
+	if ((error = bhndb_pci_wars_hwup(sc)))
+		return (error);
+
 	if ((error = bhndb_generic_resume(dev)))
 		return (error);
 
@@ -637,7 +725,7 @@ bhndb_enable_pci_clocks(struct bhndb_pci_softc *sc)
 	pci_parent = device_get_parent(sc->dev);
 
 	/* Only Broadcom's PCI devices require external clock gating */
-	if (sc->pci_devclass != BHND_DEVCLASS_PCI)
+	if (!BHNDB_PCI_QUIRK(sc, EXT_CLOCK_GATING))
 		return (0);
 
 	/* Read state of XTAL pin */
@@ -684,7 +772,7 @@ bhndb_disable_pci_clocks(struct bhndb_pci_softc *sc)
 	parent_dev = device_get_parent(sc->dev);
 
 	/* Only Broadcom's PCI devices require external clock gating */
-	if (sc->pci_devclass != BHND_DEVCLASS_PCI)
+	if (!BHNDB_PCI_QUIRK(sc, EXT_CLOCK_GATING))
 		return (0);
 
 	// TODO: Check board flags for BFL2_XTALBUFOUTEN?
@@ -727,33 +815,51 @@ bhndb_pci_find_core_id(struct bhnd_core_info *core)
 	return (NULL);
 }
 
-
 /**
- * Return all quirks applicable to the host bridge core.
+ * Return all quirks known to be applicable to the host bridge.
+ * 
+ * If the PCI bridge core has not yet been identified, no core-specific
+ * quirk flags will be returned. This function may be called again to
+ * rediscover applicable quirks after the host bridge core has been
+ * identified.
  * 
  * @param sc bhndb PCI driver state.
- * @param id The host bridge core's identification table entry.
+ * @param id The host bridge core's identification table entry, or NULL
+ * if the host bridge core has not yet been identified.
  * 
- * @return Returns the set of quirks applicable to the PCI bridge core,
- * or BHNDB_PCI_QUIRK_INVALID if the host bridge core is not recognized.
+ * @return Returns the set of quirks applicable to the current hardware.
  */
 static uint32_t 
-bhndb_pci_get_hostb_quirks(struct bhndb_pci_softc *sc,
+bhndb_pci_discover_quirks(struct bhndb_pci_softc *sc,
     const struct bhndb_pci_id *id)
 {
 	struct bhnd_device_quirk	*qt;
 	uint32_t			 quirks;
 	uint8_t				 hwrev;
 
-	/* Collect all the hwrev quirk flags */
-	hwrev = bhnd_get_hwrev(sc->bhndb.hostb_dev);
 	quirks = BHNDB_PCI_QUIRK_NONE;
-	for (qt = id->quirks; qt->quirks != 0; qt++) {
-		if (bhnd_hwrev_matches(hwrev, &qt->hwrev))
-			quirks |= qt->quirks;
-	};
+
+	/* Determine any device class-specific quirks */
+	switch (sc->pci_devclass) {
+	case BHND_DEVCLASS_PCI:
+		/* All PCI devices require external clock gating */
+		sc->quirks |= BHNDB_PCI_QUIRK_EXT_CLOCK_GATING;
+		break;
+	default:
+		break;
+	}
 
 	// TODO: Additional quirk matching
+
+	/* Determine any PCI core hwrev-specific device quirks */
+	if (id != NULL) {
+		hwrev = bhnd_get_hwrev(sc->bhndb.hostb_dev);
+		for (qt = id->quirks; qt->quirks != 0; qt++) {
+			if (bhnd_hwrev_matches(hwrev, &qt->hwrev))
+				quirks |= qt->quirks;
+		};
+	}
+
 
 	return (quirks);
 }

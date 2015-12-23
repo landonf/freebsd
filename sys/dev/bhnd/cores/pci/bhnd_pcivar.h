@@ -47,11 +47,11 @@ typedef enum {
 	BHND_PCI_REGFMT_PCIE	= 1,	/* PCIe-Gen1 register definitions */
 } bhnd_pci_regfmt_t;
 
-/* Common BHND_PCI_*_REG_(GET|SET) implementation */
-#define	_BHND_PCI_REG_GET(_regval, _mask, _shift)		\
+/* Common BHND_PCI_*_REG_(EXTRACT|INSERT) implementation */
+#define	_BHND_PCI_REG_EXTRACT(_regval, _mask, _shift)		\
 	((_regval & _mask) >> _shift)
-#define _BHND_PCI_REG_SET(_regval, _mask, _shift, _setval)	\
-	_regval = (((_regval) & ~ _mask) | (((_setval) << _shift) & _mask))
+#define _BHND_PCI_REG_INSERT(_regval, _mask, _shift, _setval)	\
+	(((_regval) & ~ _mask) | (((_setval) << _shift) & _mask))
 
 /**
  * Extract a register value by applying _MASK and _SHIFT defines.
@@ -60,22 +60,22 @@ typedef enum {
  * @param _attr The register attribute name to which to append `_MASK`/`_SHIFT`
  * suffixes.
  */
-#define	BHND_PCI_REG_GET(_regv, _attr)	\
-	_BHND_PCI_REG_GET(_regv, _attr ## _MASK, _attr ## _SHIFT)
+#define	BHND_PCI_REG_EXTRACT(_regv, _attr)	\
+	_BHND_PCI_REG_EXTRACT(_regv, _attr ## _MASK, _attr ## _SHIFT)
 
 /**
- * Set a register value by applying _MASK and _SHIFT defines.
+ * Insert a value in @p _regv by applying _MASK and _SHIFT defines.
  * 
  * @param _regv The current register value.
  * @param _attr The register attribute name to which to append `_MASK`/`_SHIFT`
  * suffixes.
- * @param _val The value to bet set in @p _regv.
+ * @param _val The value to be set in @p _regv.
  */
-#define	BHND_PCI_REG_SET(_regv, _attr, _val)		\
-	_BHND_PCI_REG_SET(_regv, _attr ## _MASK, _attr ## _SHIFT, _val)
+#define	BHND_PCI_REG_INSERT(_regv, _attr, _val)		\
+	_BHND_PCI_REG_INSERT(_regv, _attr ## _MASK, _attr ## _SHIFT, _val)
 
 /**
- * Extract a register value by applying _MASK and _SHIFT defines to the common
+ * Extract a value by applying _MASK and _SHIFT defines to the common
  * PCI/PCIe register definition @p _regv
  * 
  * @param _regf The PCI core register format (BHNDB_PCI_REGFMT_*).
@@ -83,13 +83,13 @@ typedef enum {
  * @param _attr The register attribute name to which to prepend the register
  * definition prefix and append `_MASK`/`_SHIFT` suffixes.
  */
-#define BHND_PCI_COMMON_REG_GET(_regf, _regv, _attr)		\
-	_BHND_PCI_REG_GET(_regv,				\
+#define BHND_PCI_COMMON_REG_EXTRACT(_regf, _regv, _attr)		\
+	_BHND_PCI_REG_EXTRACT(_regv,				\
 	    BHND_PCI_COMMON_REG((_regf), _attr ## _MASK),	\
 	    BHND_PCI_COMMON_REG((_regf), _attr ## _SHIFT))
 
 /**
- * Set a register value by applying _MASK and _SHIFT defines to the common
+ * Insert a register value by applying _MASK and _SHIFT defines to the common
  * PCI/PCIe register definition @p _regv
  * 
  * @param _regf The PCI core register format (BHNDB_PCI_REGFMT_*).
@@ -98,8 +98,8 @@ typedef enum {
  * definition prefix and append `_MASK`/`_SHIFT` suffixes.
  * @param _val The value to bet set in @p _regv.
  */
-#define BHND_PCI_COMMON_REG_SET(_regf, _regv, _attr, _val)	\
-	_BHND_PCI_REG_SET(_regv,				\
+#define BHND_PCI_COMMON_REG_INSERT(_regf, _regv, _attr, _val)	\
+	_BHND_PCI_REG_INSERT(_regv,				\
 	    BHND_PCI_COMMON_REG((_regf), _attr ## _MASK),	\
 	    BHND_PCI_COMMON_REG((_regf), _attr ## _SHIFT),	\
 	    _val)
