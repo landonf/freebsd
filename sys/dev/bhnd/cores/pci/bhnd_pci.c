@@ -46,7 +46,7 @@ __FBSDID("$FreeBSD$");
 /**
  * PCIe MDIO interface device class
  */
-devclass_t bhnd_mdio_pci;
+devclass_t bhnd_mdio_pci_devclass;
 
 MODULE_VERSION(bhnd_pci, 1);
 MODULE_DEPEND(bhnd_pci, pci, 1, 1, 1);

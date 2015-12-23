@@ -38,9 +38,9 @@
 #define	BHND_PCIB_MAX_RES	2
 #define	BHND_PCIB_MAX_RSPEC	(BHND_PCIB_MAX_RES+1)
 struct bhnd_pcib_softc {
-	device_t		 dev;	/**< pci device */
-	struct bhnd_resource	*core;	/**< core registers. */
-	bhnd_pci_regs_t	 	 regs;	/**< device register family */
+	device_t		 dev;		/**< pci device */
+	struct bhnd_resource	*core;		/**< core registers. */
+	bhnd_pci_regfmt_t	 regfmt;	/**< device register format */
 
 	struct resource_spec	 rspec[BHND_PCIB_MAX_RSPEC];
 	struct bhnd_resource	*res[BHND_PCIB_MAX_RES];

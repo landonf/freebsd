@@ -497,15 +497,6 @@ bhndb_read_chipid(struct bhndb_softc *sc, const struct bhndb_hwcfg *cfg,
 }
 
 /**
- * Default bhndb implementation of device_attach().
- * 
- * @param dev Bridge device.
- * @param bridge_devclass The device class of the bridging core. This is used
- * to automatically detect the bridge core, and to disable additional bridge
- * cores (e.g. PCMCIA on a PCIe device).
- */
-
-/**
  * Helper function that must be called by subclass bhndb(4) drivers
  * when implementing DEVICE_ATTACH() before calling any bhnd(4) or bhndb(4)
  * APIs on the bridge device.

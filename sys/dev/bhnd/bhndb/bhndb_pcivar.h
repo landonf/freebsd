@@ -58,7 +58,7 @@ typedef int (*bhndb_pci_set_regwin_t)(struct bhndb_pci_softc *sc,
  */
 struct bhndb_pci_id {
 	uint16_t			 device;	/**< bhnd device ID */
-	bhnd_pci_regs_t			 regf;		/**< register family */
+	bhnd_pci_regfmt_t		 regfmt;	/**< register format */
 	struct bhnd_device_quirk	*quirks;	/**< quirks table */
 };
 
@@ -72,13 +72,16 @@ struct bhndb_pci_softc {
 	 * Initialized in BHNDB_INIT_FULL_CONFIG()
 	 */
 
-	struct resource		*res;		/**< borrowed reference to the bhndb resource mapping
-						     the PCI host bridge's register block. */
-	bus_size_t		 res_offset;	/**< offset to the PCI registers. */
-	bhnd_pci_regs_t		 regf;		/**< device register family */
-	uint32_t		 quirks;	/**< BHNDB_PCI(E)_QUIRK flags */
 	device_t		 mdio;		/**< PCIe MDIO device. NULL if not PCIe. */
-	
+	bhnd_pci_regfmt_t	 regfmt;	/**< device register format */
+
+	struct resource		*mem_res;	/**< pci core's registers (borrowed reference) */
+	bus_size_t		 mem_off;	/**< offset to the PCI core's registers within `mem_res` . */
+
+	struct bhnd_resource	 bhnd_mem_res;	/**< bhnd resource representation of mem_res.
+						     this is a simple 'direct' resource mapping */
+
+	uint32_t		 quirks;	/**< BHNDB_PCI(E)_QUIRK flags */
 
 	/**
 	 * Driver state specific to BHNDB_PCIE_QUIRK_SDR9_POLARITY.
@@ -97,7 +100,7 @@ struct bhndb_pci_softc {
 /* Declare a bhndb_pci_id entry */
 #define	BHNDB_PCI_ID(_device, _desc, ...)	{	\
 	BHND_COREID_ ## _device, 			\
-	BHND_PCI_REGS_ ## _device,			\
+	BHND_PCI_REGFMT_ ## _device,			\
 	(struct bhnd_device_quirk[]) {			\
 		__VA_ARGS__				\
 	}						\

@@ -39,13 +39,13 @@
  * Shared PCI Bridge/PCI Host Bridge definitions.
  */
 
-extern devclass_t bhnd_mdio_pci;
+extern devclass_t bhnd_mdio_pci_devclass;
 
 /* Device register families. */
 typedef enum {
-	BHND_PCI_REGS_PCI	= 0,	/* PCI register definitions */
-	BHND_PCI_REGS_PCIE	= 1,	/* PCIe-Gen1 register definitions */
-} bhnd_pci_regs_t;
+	BHND_PCI_REGFMT_PCI	= 0,	/* PCI register definitions */
+	BHND_PCI_REGFMT_PCIE	= 1,	/* PCIe-Gen1 register definitions */
+} bhnd_pci_regfmt_t;
 
 /* Common BHND_PCI_*_REG_(GET|SET) implementation */
 #define	_BHND_PCI_REG_GET(_regval, _mask, _shift)		\
@@ -78,30 +78,30 @@ typedef enum {
  * Extract a register value by applying _MASK and _SHIFT defines to the common
  * PCI/PCIe register definition @p _regv
  * 
- * @param _regs The pcib device register family (BHNDB_PCI_REGS_*).
+ * @param _regf The PCI core register format (BHNDB_PCI_REGFMT_*).
  * @param _regv The register value containing the desired attribute
  * @param _attr The register attribute name to which to prepend the register
  * definition prefix and append `_MASK`/`_SHIFT` suffixes.
  */
-#define BHND_PCI_COMMON_REG_GET(_regs, _regv, _attr)		\
+#define BHND_PCI_COMMON_REG_GET(_regf, _regv, _attr)		\
 	_BHND_PCI_REG_GET(_regv,				\
-	    BHND_PCI_COMMON_REG((_regs), _attr ## _MASK),	\
-	    BHND_PCI_COMMON_REG((_regs), _attr ## _SHIFT))
+	    BHND_PCI_COMMON_REG((_regf), _attr ## _MASK),	\
+	    BHND_PCI_COMMON_REG((_regf), _attr ## _SHIFT))
 
 /**
  * Set a register value by applying _MASK and _SHIFT defines to the common
  * PCI/PCIe register definition @p _regv
  * 
- * @param _regs The pcib device register family (BHNDB_PCI_REGS_*).
+ * @param _regf The PCI core register format (BHNDB_PCI_REGFMT_*).
  * @param _regv The register value containing the desired attribute
  * @param _attr The register attribute name to which to prepend the register
  * definition prefix and append `_MASK`/`_SHIFT` suffixes.
  * @param _val The value to bet set in @p _regv.
  */
-#define BHND_PCI_COMMON_REG_SET(_regs, _regv, _attr, _val)	\
+#define BHND_PCI_COMMON_REG_SET(_regf, _regv, _attr, _val)	\
 	_BHND_PCI_REG_SET(_regv,				\
-	    BHND_PCI_COMMON_REG((_regs), _attr ## _MASK),	\
-	    BHND_PCI_COMMON_REG((_regs), _attr ## _SHIFT),	\
+	    BHND_PCI_COMMON_REG((_regf), _attr ## _MASK),	\
+	    BHND_PCI_COMMON_REG((_regf), _attr ## _SHIFT),	\
 	    _val)
 
 
@@ -114,11 +114,11 @@ typedef enum {
  * This should be optimized down to a constant value if the register constant
  * is the same across the register definitions.
  * 
- * @param _regs The pcib device register family (BHNDB_PCI_REGS_*).
+ * @param _regf The PCI core register format (BHNDB_PCI_REGFMT_*).
  * @param _name The base name of the register.
  */
-#define	BHND_PCI_COMMON_REG(_regs, _name)	(			\
-	(_regs) == BHND_PCI_REGS_PCI ? BHND_PCI_ ## _name :	\
+#define	BHND_PCI_COMMON_REG(_regf, _name)	(			\
+	(_regf) == BHND_PCI_REGFMT_PCI ? BHND_PCI_ ## _name :	\
 	BHND_PCIE_ ## _name						\
 )
 

@@ -49,7 +49,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhnd.h>
 
 #include "bhnd_pcireg.h"
-#include "bhnd_pci_hostbvar.h"
 
 #include "mdio_pciereg.h"
 #include "mdio_pcievar.h"
@@ -68,22 +67,8 @@ __FBSDID("$FreeBSD$");
 	bhnd_bus_write_4((_sc)->dev, (_sc)->mem_res,	\
 	    (_sc)->mem_off +  (_reg), (_val))
 
-static void
-bhnd_mdio_identify(driver_t *driver, device_t parent)
-{
-	const char *name = devclass_get_name(bhnd_mdio_pci);
-
-	/* Only PCIe-G1 cores are supported */
-	if (bhnd_get_vendor(parent) != BHND_MFGID_BCM ||
-	    bhnd_get_device(parent) != BHND_COREID_PCIE)
-		return;
-
-	if (device_find_child(parent, name, -1) == NULL)
-		BUS_ADD_CHILD(parent, 0, name, -1);
-}
-
 static int
-bhnd_mdio_probe(device_t dev)
+bhnd_mdio_pcie_probe(device_t dev)
 {
 	device_set_desc(dev, "Broadcom PCIe-G1 MDIO");
 	device_quiet(dev);
@@ -91,42 +76,50 @@ bhnd_mdio_probe(device_t dev)
 	return (BUS_PROBE_DEFAULT);
 }
 
-/*
- * Fetch a borrowed reference to a parent bhnd_pci_hostb's register block
- * during attach.
+/**
+ * Helper function that must be called by subclass BHND MDIO drivers
+ * when implementing DEVICE_ATTACH().
+ * 
+ * @param dev The bhnd_mdio device.
+ * @param mem_res A memory resource containing the device resources; this
+ * @param mem_rid The @p mem_res resource ID, or -1 if this is a borrowed
+ * reference that the device should not assume ownership of.
+ * @param offset The offset within @p mem_res at which the MMIO register
+ * block is defined.
+ * @param c22ext If true, the MDIO driver will automatically use the PCIe
+ * SerDes' non-standard extended address mechanism when handling C45 register
+ * accesses to the PCIe SerDes device (BHND_PCIE_PHYADDR_SD / 
+ * BHND_PCIE_DEVAD_SD).
  */
-static int
-bhnd_mdio_attach(device_t dev)
+int bhnd_mdio_pcie_attach(device_t dev, struct bhnd_resource *mem_res,
+    int mem_rid, bus_size_t offset, bool c22ext)
 {
-	struct bhnd_mdio_softc	*sc;
-	struct bhnd_pci_hostb_softc	*parent_sc;
-
-	
-	sc = device_get_softc(dev);
-	parent_sc = device_get_softc(device_get_parent(dev));
+	struct bhnd_mdio_pcie_softc *sc = device_get_softc(dev);
 
 	sc->dev = dev;
-	sc->mem_res = parent_sc->core;
-	sc->mem_off = BHND_PCIE_MDIO_CTL;
-	sc->parent_quirks = parent_sc->quirks;
-	BHND_MDIO_LOCK_INIT(sc);
+	sc->mem_res = mem_res;
+	sc->mem_rid = mem_rid;
+	sc->mem_off = offset;
+	sc->c22ext = c22ext;
 
-	return (0);
+	BHND_MDIO_PCIE_LOCK_INIT(sc);
+
+	return (bus_generic_attach(dev));
 }
 
 static int
-bhnd_mdio_detach(device_t dev)
+bhnd_mdio_pcie_detach(device_t dev)
 {
-	struct bhnd_mdio_softc *sc = device_get_softc(dev);
+	struct bhnd_mdio_pcie_softc *sc = device_get_softc(dev);
 	
-	BHND_MDIO_LOCK_DESTROY(sc);
+	BHND_MDIO_PCIE_LOCK_DESTROY(sc);
 
 	return (0);
 }
 
 /* Spin until the MDIO device reports itself as idle, or timeout is reached. */
 static int
-bhnd_mdio_wait_idle(struct bhnd_mdio_softc *sc)
+bhnd_mdio_pcie_wait_idle(struct bhnd_mdio_pcie_softc *sc)
 {
 	uint32_t ctl;
 
@@ -147,9 +140,9 @@ bhnd_mdio_wait_idle(struct bhnd_mdio_softc *sc)
  * Write an MDIO IOCTL and wait for completion.
  */
 static int
-bhnd_mdio_ioctl(struct bhnd_mdio_softc *sc, uint32_t cmd)
+bhnd_mdio_pcie_ioctl(struct bhnd_mdio_pcie_softc *sc, uint32_t cmd)
 {
-	BHND_MDIO_LOCK_ASSERT(sc, MA_OWNED);
+	BHND_MDIO_PCIE_LOCK_ASSERT(sc, MA_OWNED);
 
 	BHND_MDIO_WRITE_4(sc, BHND_MDIO_CTL, cmd);
 	DELAY(BHND_MDIO_CTL_DELAY);
@@ -160,22 +153,22 @@ bhnd_mdio_ioctl(struct bhnd_mdio_softc *sc, uint32_t cmd)
  * Enable MDIO device
  */
 static int
-bhnd_mdio_enable(struct bhnd_mdio_softc *sc)
+bhnd_mdio_pcie_enable(struct bhnd_mdio_pcie_softc *sc)
 {
 	uint32_t ctl;
 
 	/* Enable MDIO clock and preamble mode */
 	ctl = BHND_MDIOCTL_PREAM_EN|BHND_MDIOCTL_DIVISOR_VAL;
-	return (bhnd_mdio_ioctl(sc, ctl));
+	return (bhnd_mdio_pcie_ioctl(sc, ctl));
 }
 
 /**
  * Disable MDIO device.
  */
 static void
-bhnd_mdio_disable(struct bhnd_mdio_softc *sc)
+bhnd_mdio_pcie_disable(struct bhnd_mdio_pcie_softc *sc)
 {
-	if (bhnd_mdio_ioctl(sc, 0))
+	if (bhnd_mdio_pcie_ioctl(sc, 0))
 		device_printf(sc->dev, "failed to disable MDIO clock\n");
 }
 
@@ -184,18 +177,18 @@ bhnd_mdio_disable(struct bhnd_mdio_softc *sc)
  * Issue a write command and wait for completion
  */
 static int
-bhnd_mdio_cmd_write(struct bhnd_mdio_softc *sc, uint32_t cmd)
+bhnd_mdio_pcie_cmd_write(struct bhnd_mdio_pcie_softc *sc, uint32_t cmd)
 {
 	int error;
 
-	BHND_MDIO_LOCK_ASSERT(sc, MA_OWNED);
+	BHND_MDIO_PCIE_LOCK_ASSERT(sc, MA_OWNED);
 
 	cmd |= BHND_MDIODATA_START|BHND_MDIODATA_TA|BHND_MDIODATA_CMD_WRITE;
 
 	BHND_MDIO_WRITE_4(sc, BHND_MDIO_DATA, cmd);
 	DELAY(BHND_MDIO_CTL_DELAY);
 
-	if ((error = bhnd_mdio_wait_idle(sc)))
+	if ((error = bhnd_mdio_pcie_wait_idle(sc)))
 		return (error);
 
 	return (0);
@@ -206,18 +199,18 @@ bhnd_mdio_cmd_write(struct bhnd_mdio_softc *sc, uint32_t cmd)
  * the result in @p data_read.
  */
 static int
-bhnd_mdio_cmd_read(struct bhnd_mdio_softc *sc, uint32_t cmd,
+bhnd_mdio_pcie_cmd_read(struct bhnd_mdio_pcie_softc *sc, uint32_t cmd,
     uint16_t *data_read)
 {
 	int error;
 
-	BHND_MDIO_LOCK_ASSERT(sc, MA_OWNED);
+	BHND_MDIO_PCIE_LOCK_ASSERT(sc, MA_OWNED);
 
 	cmd |= BHND_MDIODATA_START|BHND_MDIODATA_TA|BHND_MDIODATA_CMD_READ;
 	BHND_MDIO_WRITE_4(sc, BHND_MDIO_DATA, cmd);
 	DELAY(BHND_MDIO_CTL_DELAY);
 
-	if ((error = bhnd_mdio_wait_idle(sc)))
+	if ((error = bhnd_mdio_pcie_wait_idle(sc)))
 		return (error);
 
 	*data_read = (BHND_MDIO_READ_4(sc, BHND_MDIO_DATA) & 
@@ -227,9 +220,9 @@ bhnd_mdio_cmd_read(struct bhnd_mdio_softc *sc, uint32_t cmd,
 
 
 static int
-bhnd_mdio_read(device_t dev, int phy, int reg)
+bhnd_mdio_pcie_read(device_t dev, int phy, int reg)
 {
-	struct bhnd_mdio_softc	*sc;
+	struct bhnd_mdio_pcie_softc	*sc;
 	uint32_t			 cmd;
 	uint16_t			 val;
 	int				 error;
@@ -237,16 +230,16 @@ bhnd_mdio_read(device_t dev, int phy, int reg)
 	sc = device_get_softc(dev);
 
 	/* Enable MDIO access */
-	BHND_MDIO_LOCK(sc);
-	bhnd_mdio_enable(sc);
+	BHND_MDIO_PCIE_LOCK(sc);
+	bhnd_mdio_pcie_enable(sc);
 
 	/* Issue the read */
 	cmd = BHND_MDIODATA_ADDR(phy, reg);
-	error = bhnd_mdio_cmd_read(sc, cmd, &val);
+	error = bhnd_mdio_pcie_cmd_read(sc, cmd, &val);
 
 	/* Disable MDIO access */
-	bhnd_mdio_disable(sc);
-	BHND_MDIO_UNLOCK(sc);
+	bhnd_mdio_pcie_disable(sc);
+	BHND_MDIO_PCIE_UNLOCK(sc);
 
 	if (error)
 		return (~0U);
@@ -255,37 +248,37 @@ bhnd_mdio_read(device_t dev, int phy, int reg)
 }
 
 static int
-bhnd_mdio_write(device_t dev, int phy, int reg, int val)
+bhnd_mdio_pcie_write(device_t dev, int phy, int reg, int val)
 {
-	struct bhnd_mdio_softc	*sc;
+	struct bhnd_mdio_pcie_softc	*sc;
 	uint32_t			 cmd;
 	int				 error;
 
 	sc = device_get_softc(dev);
 
 	/* Enable MDIO access */
-	BHND_MDIO_LOCK(sc);
-	bhnd_mdio_enable(sc);
+	BHND_MDIO_PCIE_LOCK(sc);
+	bhnd_mdio_pcie_enable(sc);
 
 	/* Issue the write */
 	cmd = BHND_MDIODATA_ADDR(phy, reg) | (val & BHND_MDIODATA_DATA_MASK);
-	error = bhnd_mdio_cmd_write(sc, cmd);
+	error = bhnd_mdio_pcie_cmd_write(sc, cmd);
 
 	/* Disable MDIO access */
-	bhnd_mdio_disable(sc);
-	BHND_MDIO_UNLOCK(sc);
+	bhnd_mdio_pcie_disable(sc);
+	BHND_MDIO_PCIE_UNLOCK(sc);
 
 	return (error);
 }
 
 static int
-bhnd_mdio_read_ext(device_t dev, int phy, int devaddr, int reg)
+bhnd_mdio_pcie_read_ext(device_t dev, int phy, int devaddr, int reg)
 {
-	struct bhnd_mdio_softc	*sc;
-	uint32_t		 cmd;
-	uint16_t		 blk, val;
-	uint8_t			 blk_reg;
-	int			 error;
+	struct bhnd_mdio_pcie_softc	*sc;
+	uint32_t			 cmd;
+	uint16_t			 blk, val;
+	uint8_t				 blk_reg;
+	int				 error;
 
 	if (devaddr == MDIO_DEVADDR_NONE)
 		return (MDIO_READREG(dev, phy, reg));
@@ -294,14 +287,14 @@ bhnd_mdio_read_ext(device_t dev, int phy, int devaddr, int reg)
 
 	/* Extended register access is only supported for the SerDes device,
 	 * using the non-standard C22 extended address mechanism */
-	if (!(sc->parent_quirks & BHND_PCIE_QUIRK_SD_C22_EXTADDR))
+	if (!sc->c22ext)
 		return (~0U);	
 	if (phy != BHND_PCIE_PHYADDR_SD || devaddr != BHND_PCIE_DEVAD_SD)
 		return (~0U);
 
 	/* Enable MDIO access */
-	BHND_MDIO_LOCK(sc);
-	bhnd_mdio_enable(sc);
+	BHND_MDIO_PCIE_LOCK(sc);
+	bhnd_mdio_pcie_enable(sc);
 
 	/* Determine the block and register values */
 	blk = (reg & BHND_PCIE_SD_ADDREXT_BLK_MASK);
@@ -310,16 +303,16 @@ bhnd_mdio_read_ext(device_t dev, int phy, int devaddr, int reg)
 	/* Write the block address to the address extension register */
 	cmd = BHND_MDIODATA_ADDR(phy, BHND_PCIE_SD_ADDREXT) |
 	    (blk & BHND_MDIODATA_DATA_MASK);
-	if ((error = bhnd_mdio_cmd_write(sc, cmd)))
+	if ((error = bhnd_mdio_pcie_cmd_write(sc, cmd)))
 		goto cleanup;
 
 	/* Issue the read */
 	cmd = BHND_MDIODATA_ADDR(phy, blk_reg);
-	error = bhnd_mdio_cmd_read(sc, cmd, &val);
+	error = bhnd_mdio_pcie_cmd_read(sc, cmd, &val);
 
 cleanup:
-	bhnd_mdio_disable(sc);
-	BHND_MDIO_UNLOCK(sc);
+	bhnd_mdio_pcie_disable(sc);
+	BHND_MDIO_PCIE_UNLOCK(sc);
 
 	if (error)
 		return (~0U);
@@ -328,14 +321,14 @@ cleanup:
 }
 
 static int
-bhnd_mdio_write_ext(device_t dev, int phy, int devaddr, int reg,
+bhnd_mdio_pcie_write_ext(device_t dev, int phy, int devaddr, int reg,
     int val)
 {	
-	struct bhnd_mdio_softc	*sc;
-	uint32_t		 cmd;
-	uint16_t		 blk;
-	uint8_t			 blk_reg;
-	int			 error;
+	struct bhnd_mdio_pcie_softc	*sc;
+	uint32_t			 cmd;
+	uint16_t			 blk;
+	uint8_t				 blk_reg;
+	int				 error;
 
 	if (devaddr == MDIO_DEVADDR_NONE)
 		return (MDIO_READREG(dev, phy, reg));
@@ -344,14 +337,14 @@ bhnd_mdio_write_ext(device_t dev, int phy, int devaddr, int reg,
 
 	/* Extended register access is only supported for the SerDes device,
 	 * using the non-standard C22 extended address mechanism */
-	if (!(sc->parent_quirks & BHND_PCIE_QUIRK_SD_C22_EXTADDR))
+	if (!sc->c22ext)
 		return (~0U);	
 	if (phy != BHND_PCIE_PHYADDR_SD || devaddr != BHND_PCIE_DEVAD_SD)
 		return (~0U);
 
 	/* Enable MDIO access */
-	BHND_MDIO_LOCK(sc);
-	bhnd_mdio_enable(sc);
+	BHND_MDIO_PCIE_LOCK(sc);
+	bhnd_mdio_pcie_enable(sc);
 
 	/* Determine the block and register values */
 	blk = (reg & BHND_PCIE_SD_ADDREXT_BLK_MASK);
@@ -360,37 +353,33 @@ bhnd_mdio_write_ext(device_t dev, int phy, int devaddr, int reg,
 	/* Write the block address to the address extension register */
 	cmd = BHND_MDIODATA_ADDR(phy, BHND_PCIE_SD_ADDREXT) |
 	    (blk & BHND_MDIODATA_DATA_MASK);
-	if ((error = bhnd_mdio_cmd_write(sc, cmd)))
+	if ((error = bhnd_mdio_pcie_cmd_write(sc, cmd)))
 		goto cleanup;
 
 	/* Issue the write */
 	cmd = BHND_MDIODATA_ADDR(phy, blk_reg) |
 	    (val & BHND_MDIODATA_DATA_MASK);
-	error = bhnd_mdio_cmd_write(sc, cmd);
+	error = bhnd_mdio_pcie_cmd_write(sc, cmd);
 
 cleanup:
-	bhnd_mdio_disable(sc);
-	BHND_MDIO_UNLOCK(sc);
+	bhnd_mdio_pcie_disable(sc);
+	BHND_MDIO_PCIE_UNLOCK(sc);
 
 	return (error);
 }
 
-static device_method_t bhnd_mdio_methods[] = {
+static device_method_t bhnd_mdio_pcie_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_identify,	bhnd_mdio_identify),
-	DEVMETHOD(device_probe,		bhnd_mdio_probe),
-	DEVMETHOD(device_attach,	bhnd_mdio_attach),
-	DEVMETHOD(device_detach,	bhnd_mdio_detach),
+	DEVMETHOD(device_probe,		bhnd_mdio_pcie_probe),
+	DEVMETHOD(device_detach,	bhnd_mdio_pcie_detach),
 
 	/* MDIO interface */
-	DEVMETHOD(mdio_readreg,		bhnd_mdio_read),
-	DEVMETHOD(mdio_writereg,	bhnd_mdio_write),
-	DEVMETHOD(mdio_readextreg,	bhnd_mdio_read_ext),
-	DEVMETHOD(mdio_writeextreg,	bhnd_mdio_write_ext),
+	DEVMETHOD(mdio_readreg,		bhnd_mdio_pcie_read),
+	DEVMETHOD(mdio_writereg,	bhnd_mdio_pcie_write),
+	DEVMETHOD(mdio_readextreg,	bhnd_mdio_pcie_read_ext),
+	DEVMETHOD(mdio_writeextreg,	bhnd_mdio_pcie_write_ext),
 
 	DEVMETHOD_END
 };
 
-DEFINE_CLASS_0(bhnd_mdio_pci, bhnd_mdio_driver, bhnd_mdio_methods, sizeof(struct bhnd_mdio_softc));
-
-DRIVER_MODULE(bhnd_mdio_pci, bhnd_pci_hostb, bhnd_mdio_driver, bhnd_mdio_pci, 0, 0);
+DEFINE_CLASS_0(bhnd_mdio_pcie, bhnd_mdio_pcie_driver, bhnd_mdio_pcie_methods, sizeof(struct bhnd_mdio_pcie_softc));
