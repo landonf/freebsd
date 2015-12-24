@@ -42,6 +42,21 @@ __FBSDID("$FreeBSD$");
  * bhnd_hostb driver.
  */
 
+// Quirk TODO
+// WARs for the following are not yet implemented:
+// - BHND_PCI_QUIRK_SBINTVEC
+// - BHND_PCIE_QUIRK_ASPM_OVR
+// - BHND_PCIE_QUIRK_SERDES_NOPLLDOWN
+// Quirks (and WARs) for the following are not yet defined:
+// - WOWL PME enable/disable
+// - 4360 PCIe SerDes Tx amplitude/deemphasis (vendor Apple, boards
+//   BCM94360X51P2, BCM94360X51A).
+// - PCI latency timer (boards CB2_4321_BOARD, CB2_4321_AG_BOARD)
+// - Max SerDes TX drive strength (vendor Apple, pcie >= rev10,
+//   board BCM94322X9)
+// - 700mV SerDes TX drive strength (chipid BCM4331, boards BCM94331X19,
+//   BCM94331X28, BCM94331X29B, BCM94331X19C)
+
 #include <sys/param.h>
 #include <sys/kernel.h>
 #include <sys/bus.h>
