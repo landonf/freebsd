@@ -675,7 +675,7 @@ bhndb_init_sromless_pci_config(struct bhndb_pci_softc *sc)
 	pci_core_idx = bhnd_get_core_index(sc->bhndb.hostb_dev);
 
 	if (sprom_core_idx != pci_core_idx) {
-		BPCI_COMMON_REG_INSERT(val, SRSH_PI, pci_core_idx);
+		val = BPCI_COMMON_REG_INSERT(val, SRSH_PI, pci_core_idx);
 		BHNDB_PCI_WRITE_2(sc, sprom_addr, val);
 	}
 }
