@@ -346,7 +346,7 @@ siba_decode_port_rid(device_t dev, device_t child, int type, int rid,
 	    BHND_PORT_BRIDGE
 	};
 
-	for (int i = 0; i < sizeof(types) / sizeof(types[0]); i++) {
+	for (int i = 0; i < nitems(types); i++) {
 		port = siba_dinfo_get_port(dinfo, types[i], 0);
 		if (port == NULL)
 			continue;

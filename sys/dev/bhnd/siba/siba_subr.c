@@ -201,7 +201,7 @@ siba_alloc_dinfo(device_t bus, const struct siba_core_id *core_id)
 
 	dinfo->core_id = *core_id;
 
-	for (u_int i = 0; i < sizeof(dinfo->cfg)/sizeof(dinfo->cfg[0]); i++) {
+	for (u_int i = 0; i < nitems(dinfo->cfg); i++) {
 		dinfo->cfg[i] = NULL;
 		dinfo->cfg_rid[i] = -1;
 	}
@@ -337,7 +337,7 @@ siba_free_dinfo(device_t dev, struct siba_devinfo *dinfo)
 	resource_list_free(&dinfo->resources);
 
 	/* Free all mapped configuration blocks */
-	for (u_int i = 0; i < sizeof(dinfo->cfg)/sizeof(dinfo->cfg[0]); i++) {
+	for (u_int i = 0; i < nitems(dinfo->cfg); i++) {
 		if (dinfo->cfg[i] == NULL)
 			continue;
 

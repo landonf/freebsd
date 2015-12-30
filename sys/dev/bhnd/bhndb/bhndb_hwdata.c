@@ -48,8 +48,7 @@ __FBSDID("$FreeBSD$");
  */
 #define	BHNDB_PORTS(...)	\
 	.ports		= _BHNDB_PORT_ARRAY(__VA_ARGS__),		\
-	.num_ports	= (sizeof(_BHNDB_PORT_ARRAY(__VA_ARGS__)) /	\
-	    sizeof(_BHNDB_PORT_ARRAY(__VA_ARGS__)[0]))
+	.num_ports	= nitems(_BHNDB_PORT_ARRAY(__VA_ARGS__))
 
 #define	_BHNDB_PORT_ARRAY(...) (const struct bhndb_port_priority[]) {	\
 	__VA_ARGS__							\
