@@ -280,8 +280,8 @@ compare_ascending_probe_order(const void *lhs, const void *rhs)
 	ldev = (*(const device_t *) lhs);
 	rdev = (*(const device_t *) rhs);
 
-	lorder = BHND_GET_PROBE_ORDER(device_get_parent(ldev), ldev);
-	rorder = BHND_GET_PROBE_ORDER(device_get_parent(rdev), rdev);
+	lorder = BHND_BUS_GET_PROBE_ORDER(device_get_parent(ldev), ldev);
+	rorder = BHND_BUS_GET_PROBE_ORDER(device_get_parent(rdev), rdev);
 
 	if (lorder < rorder) {
 		return (-1);
@@ -302,7 +302,7 @@ compare_descending_probe_order(const void *lhs, const void *rhs)
 }
 
 /**
- * Helper function for implementing BHND_GET_PROBE_ORDER().
+ * Helper function for implementing BHND_BUS_GET_PROBE_ORDER().
  * 
  * This implementation determines probe ordering based on the device's class
  * and other properties, including whether the device is serving as a host
@@ -357,12 +357,12 @@ bhnd_generic_get_probe_order(device_t dev, device_t child)
 }
 
 /**
- * Helper function for implementing BHND_IS_REGION_VALID().
+ * Helper function for implementing BHND_BUS_IS_REGION_VALID().
  * 
  * This implementation assumes that port and region numbers are 0-indexed and
- * are allocated non-sparsely, using BHND_GET_PORT_COUNT() and
- * BHND_GET_REGION_COUNT() to determine if @p port and @p region fall within
- * the defined range.
+ * are allocated non-sparsely, using BHND_BUS_GET_PORT_COUNT() and
+ * BHND_BUS_GET_REGION_COUNT() to determine if @p port and @p region fall
+ * within the defined range.
  */
 bool
 bhnd_generic_is_region_valid(device_t dev, device_t child,
@@ -529,10 +529,10 @@ bhnd_generic_resume_child(device_t dev, device_t child)
 }
 
 /**
- * Helper function for implementing BHND_IS_HOSTB_DEVICE().
+ * Helper function for implementing BHND_BUS_IS_HOSTB_DEVICE().
  * 
  * If a parent device is available, this implementation delegates the
- * request to the BHND_IS_HOSTB_DEVICE() method on the parent of @p dev.
+ * request to the BHND_BUS_IS_HOSTB_DEVICE() method on the parent of @p dev.
  * 
  * If no parent device is available (i.e. on a the bus root), false
  * is returned.
@@ -540,16 +540,17 @@ bhnd_generic_resume_child(device_t dev, device_t child)
 bool
 bhnd_generic_is_hostb_device(device_t dev, device_t child) {
 	if (device_get_parent(dev) != NULL)
-		return (BHND_IS_HOSTB_DEVICE(device_get_parent(dev), child));
+		return (BHND_BUS_IS_HOSTB_DEVICE(device_get_parent(dev),
+		    child));
 
 	return (false);
 }
 
 /**
- * Helper function for implementing BHND_IS_HW_DISABLED().
+ * Helper function for implementing BHND_BUS_IS_HW_DISABLED().
  * 
  * If a parent device is available, this implementation delegates the
- * request to the BHND_IS_HW_DISABLED() method on the parent of @p dev.
+ * request to the BHND_BUS_IS_HW_DISABLED() method on the parent of @p dev.
  * 
  * If no parent device is available (i.e. on a the bus root), the hardware
  * is assumed to be usable and false is returned.
@@ -558,28 +559,28 @@ bool
 bhnd_generic_is_hw_disabled(device_t dev, device_t child)
 {
 	if (device_get_parent(dev) != NULL)
-		return (BHND_IS_HW_DISABLED(device_get_parent(dev), child));
+		return (BHND_BUS_IS_HW_DISABLED(device_get_parent(dev), child));
 
 	return (false);
 }
 
 /**
- * Helper function for implementing BHND_GET_CHIPID().
+ * Helper function for implementing BHND_BUS_GET_CHIPID().
  * 
- * This implementation delegates the request to the BHND_GET_CHIPID() method on
- * the parent of @p dev.
+ * This implementation delegates the request to the BHND_BUS_GET_CHIPID()
+ * method on the parent of @p dev.
  */
 const struct bhnd_chipid *
 bhnd_generic_get_chipid(device_t dev, device_t child) {
-	return (BHND_GET_CHIPID(device_get_parent(dev), child));
+	return (BHND_BUS_GET_CHIPID(device_get_parent(dev), child));
 }
 
 /**
- * Helper function for implementing BHND_ALLOC_RESOURCE().
+ * Helper function for implementing BHND_BUS_ALLOC_RESOURCE().
  * 
- * This simple implementation of BHND_ALLOC_RESOURCE() determines
+ * This simple implementation of BHND_BUS_ALLOC_RESOURCE() determines
  * any default values via BUS_GET_RESOURCE_LIST(), and calls
- * BHND_ALLOC_RESOURCE() method of the parent of @p dev.
+ * BHND_BUS_ALLOC_RESOURCE() method of the parent of @p dev.
  * 
  * If no parent device is available, the request is instead delegated to
  * BUS_ALLOC_RESOURCE().
@@ -625,8 +626,8 @@ bhnd_generic_alloc_bhnd_resource(device_t dev, device_t child, int type,
 
 	/* Try to delegate to our parent. */
 	if (device_get_parent(dev) != NULL) {
-		return (BHND_ALLOC_RESOURCE(device_get_parent(dev), child, type,
-		    rid, start, end, count, flags));
+		return (BHND_BUS_ALLOC_RESOURCE(device_get_parent(dev), child,
+		    type, rid, start, end, count, flags));
 	}
 
 	/* If this is the bus root, use a real bus-allocated resource */
@@ -649,10 +650,10 @@ bhnd_generic_alloc_bhnd_resource(device_t dev, device_t child, int type,
 }
 
 /**
- * Helper function for implementing BHND_RELEASE_RESOURCE().
+ * Helper function for implementing BHND_BUS_RELEASE_RESOURCE().
  * 
- * This simple implementation of BHND_RELEASE_RESOURCE() simply calls the
- * BHND_RELEASE_RESOURCE() method of the parent of @p dev.
+ * This simple implementation of BHND_BUS_RELEASE_RESOURCE() simply calls the
+ * BHND_BUS_RELEASE_RESOURCE() method of the parent of @p dev.
  * 
  * If no parent device is available, the request is delegated to
  * BUS_RELEASE_RESOURCE().
@@ -665,7 +666,7 @@ bhnd_generic_release_bhnd_resource(device_t dev, device_t child, int type,
 
 	/* Try to delegate to the parent. */
 	if (device_get_parent(dev) != NULL)
-		return (BHND_RELEASE_RESOURCE(device_get_parent(dev), child,
+		return (BHND_BUS_RELEASE_RESOURCE(device_get_parent(dev), child,
 		    type, rid, r));
 
 	/* Release the resource directly */
@@ -683,10 +684,10 @@ bhnd_generic_release_bhnd_resource(device_t dev, device_t child, int type,
 }
 
 /**
- * Helper function for implementing BHND_ACTIVATE_RESOURCE().
+ * Helper function for implementing BHND_BUS_ACTIVATE_RESOURCE().
  * 
- * This simple implementation of BHND_ACTIVATE_RESOURCE() simply calls the
- * BHND_ACTIVATE_RESOURCE() method of the parent of @p dev.
+ * This simple implementation of BHND_BUS_ACTIVATE_RESOURCE() simply calls the
+ * BHND_BUS_ACTIVATE_RESOURCE() method of the parent of @p dev.
  * 
  * If no parent device is available, the request is delegated to
  * BUS_ACTIVATE_RESOURCE().
@@ -697,8 +698,8 @@ bhnd_generic_activate_bhnd_resource(device_t dev, device_t child, int type,
 {
 	/* Try to delegate to the parent */
 	if (device_get_parent(dev) != NULL)
-		return (BHND_ACTIVATE_RESOURCE(device_get_parent(dev), child,
-		    type, rid, r));
+		return (BHND_BUS_ACTIVATE_RESOURCE(device_get_parent(dev),
+		    child, type, rid, r));
 
 	/* Activate the resource directly */
 	if (!r->direct) {
@@ -710,10 +711,10 @@ bhnd_generic_activate_bhnd_resource(device_t dev, device_t child, int type,
 };
 
 /**
- * Helper function for implementing BHND_DEACTIVATE_RESOURCE().
+ * Helper function for implementing BHND_BUS_DEACTIVATE_RESOURCE().
  * 
- * This simple implementation of BHND_ACTIVATE_RESOURCE() simply calls the
- * BHND_ACTIVATE_RESOURCE() method of the parent of @p dev.
+ * This simple implementation of BHND_BUS_ACTIVATE_RESOURCE() simply calls the
+ * BHND_BUS_ACTIVATE_RESOURCE() method of the parent of @p dev.
  * 
  * If no parent device is available, the request is delegated to
  * BUS_DEACTIVATE_RESOURCE().
@@ -723,8 +724,8 @@ bhnd_generic_deactivate_bhnd_resource(device_t dev, device_t child, int type,
 	int rid, struct bhnd_resource *r)
 {
 	if (device_get_parent(dev) != NULL)
-		return (BHND_DEACTIVATE_RESOURCE(device_get_parent(dev), child,
-		    type, rid, r));
+		return (BHND_BUS_DEACTIVATE_RESOURCE(device_get_parent(dev),
+		    child, type, rid, r));
 
 	/* De-activate the resource directly */
 	if (!r->direct) {
@@ -826,12 +827,12 @@ static device_method_t bhnd_methods[] = {
 	DEVMETHOD(bus_get_dma_tag,		bus_generic_get_dma_tag),
 
 	/* BHND interface */
-	DEVMETHOD(bhnd_alloc_resource,		bhnd_generic_alloc_bhnd_resource),
-	DEVMETHOD(bhnd_release_resource,	bhnd_generic_release_bhnd_resource),
-	DEVMETHOD(bhnd_activate_resource,	bhnd_generic_activate_bhnd_resource),
-	DEVMETHOD(bhnd_activate_resource,	bhnd_generic_deactivate_bhnd_resource),
-	DEVMETHOD(bhnd_get_chipid,		bhnd_generic_get_chipid),
-	DEVMETHOD(bhnd_get_probe_order,		bhnd_generic_get_probe_order),
+	DEVMETHOD(bhnd_bus_alloc_resource,	bhnd_generic_alloc_bhnd_resource),
+	DEVMETHOD(bhnd_bus_release_resource,	bhnd_generic_release_bhnd_resource),
+	DEVMETHOD(bhnd_bus_activate_resource,	bhnd_generic_activate_bhnd_resource),
+	DEVMETHOD(bhnd_bus_activate_resource,	bhnd_generic_deactivate_bhnd_resource),
+	DEVMETHOD(bhnd_bus_get_chipid,		bhnd_generic_get_chipid),
+	DEVMETHOD(bhnd_bus_get_probe_order,	bhnd_generic_get_probe_order),
 	DEVMETHOD(bhnd_bus_read_1,		bhnd_read_1),
 	DEVMETHOD(bhnd_bus_read_2,		bhnd_read_2),
 	DEVMETHOD(bhnd_bus_read_4,		bhnd_read_4),

@@ -30,7 +30,7 @@
 
 #include <dev/bhnd/bhnd_types.h>
 
-INTERFACE bhnd;
+INTERFACE bhnd_bus;
 
 #
 # bhnd(4) bus interface
@@ -50,27 +50,27 @@ CODE {
 	#include <dev/bhnd/bhndvar.h>
 	
 	static struct bhnd_chipid *
-	bhnd_null_get_chipid(device_t dev, device_t child)
+	bhnd_bus_null_get_chipid(device_t dev, device_t child)
 	{
 		panic("bhnd_get_chipid unimplemented");
 	}
 
 	static int
-	bhnd_null_get_port_rid(device_t dev, device_t child,
+	bhnd_bus_null_get_port_rid(device_t dev, device_t child,
 	    bhnd_port_type port_type, u_int port, u_int region)
 	{
 		return (-1);
 	}
 	
 	static int
-	bhnd_null_decode_port_rid(device_t dev, device_t child, int type,
+	bhnd_bus_null_decode_port_rid(device_t dev, device_t child, int type,
 	    int rid, bhnd_port_type *port_type, u_int *port, u_int *region)
 	{
 		return (ENOENT);
 	}
 	
 	static int
-	bhnd_null_get_region_addr(device_t dev, device_t child, 
+	bhnd_bus_null_get_region_addr(device_t dev, device_t child, 
 	    bhnd_port_type type, u_int port, u_int region, bhnd_addr_t *addr,
 	    bhnd_size_t *size)
 	{
@@ -151,7 +151,7 @@ METHOD int get_probe_order {
 METHOD const struct bhnd_chipid * get_chipid {
 	device_t dev;
 	device_t child;
-} DEFAULT bhnd_null_get_chipid;
+} DEFAULT bhnd_bus_null_get_chipid;
 
 /**
  * Reset the device's hardware core.
@@ -307,7 +307,7 @@ METHOD int get_port_rid {
 	bhnd_port_type port_type;
 	u_int port_num;
 	u_int region_num;
-} DEFAULT bhnd_null_get_port_rid;
+} DEFAULT bhnd_bus_null_get_port_rid;
 
 
 /**
@@ -332,7 +332,7 @@ METHOD int decode_port_rid {
 	bhnd_port_type *port_type;
 	u_int *port;
 	u_int *region;
-} DEFAULT bhnd_null_decode_port_rid;
+} DEFAULT bhnd_bus_null_decode_port_rid;
 
 /**
  * Get the address and size of @p region on @p port.
@@ -356,11 +356,11 @@ METHOD int get_region_addr {
 	u_int region;
 	bhnd_addr_t *region_addr;
 	bhnd_size_t *region_size;
-} DEFAULT bhnd_null_get_region_addr;
+} DEFAULT bhnd_bus_null_get_region_addr;
 
 
 /** An implementation of bus_read_1() compatible with bhnd_resource */
-METHOD uint8_t bus_read_1 {
+METHOD uint8_t read_1 {
 	device_t dev;
 	device_t child;
 	struct bhnd_resource *r;
@@ -368,7 +368,7 @@ METHOD uint8_t bus_read_1 {
 }
 
 /** An implementation of bus_read_2() compatible with bhnd_resource */
-METHOD uint16_t bus_read_2 {
+METHOD uint16_t read_2 {
 	device_t dev;
 	device_t child;
 	struct bhnd_resource *r;
@@ -376,7 +376,7 @@ METHOD uint16_t bus_read_2 {
 }
 
 /** An implementation of bus_read_4() compatible with bhnd_resource */
-METHOD uint32_t bus_read_4 {
+METHOD uint32_t read_4 {
 	device_t dev;
 	device_t child;
 	struct bhnd_resource *r;
@@ -384,7 +384,7 @@ METHOD uint32_t bus_read_4 {
 }
 
 /** An implementation of bus_write_1() compatible with bhnd_resource */
-METHOD void bus_write_1 {
+METHOD void write_1 {
 	device_t dev;
 	device_t child;
 	struct bhnd_resource *r;
@@ -393,7 +393,7 @@ METHOD void bus_write_1 {
 }
 
 /** An implementation of bus_write_2() compatible with bhnd_resource */
-METHOD void bus_write_2 {
+METHOD void write_2 {
 	device_t dev;
 	device_t child;
 	struct bhnd_resource *r;
@@ -402,7 +402,7 @@ METHOD void bus_write_2 {
 }
 
 /** An implementation of bus_write_4() compatible with bhnd_resource */
-METHOD void bus_write_4 {
+METHOD void write_4 {
 	device_t dev;
 	device_t child;
 	struct bhnd_resource *r;
@@ -411,7 +411,7 @@ METHOD void bus_write_4 {
 }
 
 /** An implementation of bus_barrier() compatible with bhnd_resource */
-METHOD void bus_barrier {
+METHOD void barrier {
 	device_t dev;
 	device_t child;
 	struct bhnd_resource *r;

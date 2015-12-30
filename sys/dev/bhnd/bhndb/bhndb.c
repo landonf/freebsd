@@ -910,7 +910,7 @@ bhndb_is_hw_disabled(device_t dev, device_t child) {
 
 	/* Requestor must be attached to the bhnd bus */
 	if (device_get_parent(child) != sc->bus_dev) {
-		return (BHND_IS_HW_DISABLED(device_get_parent(dev), child));
+		return (BHND_BUS_IS_HW_DISABLED(device_get_parent(dev), child));
 	}
 
 	/* Fetch core info */
@@ -923,7 +923,7 @@ bhndb_is_hw_disabled(device_t dev, device_t child) {
 	/* Otherwise, we treat bridge-capable cores as unpopulated if they're
 	 * not the configured host bridge */
 	if (BHND_DEVCLASS_SUPPORTS_HOSTB(bhnd_core_class(&core)))
-		return (!BHND_IS_HOSTB_DEVICE(dev, child));
+		return (!BHND_BUS_IS_HOSTB_DEVICE(dev, child));
 
 	/* Otherwise, assume the core is populated */
 	return (false);
@@ -945,7 +945,7 @@ compare_core_index(const void *lhs, const void *rhs)
 }
 
 /**
- * Default bhndb(4) implementation of BHND_IS_HOSTB_DEVICE().
+ * Default bhndb(4) implementation of BHND_BUS_IS_HOSTB_DEVICE().
  * 
  * This function uses a heuristic valid on all known PCI/PCIe/PCMCIA-bridged
  * bhnd(4) devices to determine the hostb core:
@@ -973,7 +973,8 @@ bhndb_is_hostb_device(device_t dev, device_t child)
 
 	/* Requestor must be attached to the bhnd bus */
 	if (device_get_parent(child) != sc->bus_dev)
-		return (BHND_IS_HOSTB_DEVICE(device_get_parent(dev), child));
+		return (BHND_BUS_IS_HOSTB_DEVICE(device_get_parent(dev),
+		    child));
 
 	/* Determine required device class and set up a match descriptor. */
 	md = (struct bhnd_core_match) {
@@ -1458,7 +1459,7 @@ bhndb_get_resource_list(device_t dev, device_t child)
 }
 
 /**
- * Default bhndb(4) implementation of BHND_ALLOC_RESOURCE().
+ * Default bhndb(4) implementation of BHND_BUS_ALLOC_RESOURCE().
  */
 static struct bhnd_resource *
 bhndb_alloc_bhnd_resource(device_t dev, device_t child, int type,
@@ -1498,7 +1499,7 @@ failed:
 }
 
 /**
- * Default bhndb(4) implementation of BHND_RELEASE_RESOURCE().
+ * Default bhndb(4) implementation of BHND_BUS_RELEASE_RESOURCE().
  */
 static int
 bhndb_release_bhnd_resource(device_t dev, device_t child,
@@ -1514,7 +1515,7 @@ bhndb_release_bhnd_resource(device_t dev, device_t child,
 }
 
 /**
- * Default bhndb(4) implementation of BHND_ACTIVATE_RESOURCE().
+ * Default bhndb(4) implementation of BHND_BUS_ACTIVATE_RESOURCE().
  * 
  * Attempts to activate a static register window, a dynamic register window,
  * or configures @p r as an indirect resource -- in that order.
@@ -1576,7 +1577,7 @@ bhndb_activate_bhnd_resource(device_t dev, device_t child,
 };
 
 /**
- * Default bhndb(4) implementation of BHND_DEACTIVATE_RESOURCE().
+ * Default bhndb(4) implementation of BHND_BUS_DEACTIVATE_RESOURCE().
  */
 static int
 bhndb_deactivate_bhnd_resource(device_t dev, device_t child,
@@ -1915,13 +1916,13 @@ static device_method_t bhndb_methods[] = {
 	DEVMETHOD(bhndb_resume_resource,	bhndb_resume_resource),
 
 	/* BHND interface */
-	DEVMETHOD(bhnd_is_hw_disabled,		bhndb_is_hw_disabled),
-	DEVMETHOD(bhnd_is_hostb_device,		bhndb_is_hostb_device),
-	DEVMETHOD(bhnd_get_chipid,		bhndb_get_chipid),
-	DEVMETHOD(bhnd_alloc_resource,		bhndb_alloc_bhnd_resource),
-	DEVMETHOD(bhnd_release_resource,	bhndb_release_bhnd_resource),
-	DEVMETHOD(bhnd_activate_resource,	bhndb_activate_bhnd_resource),
-	DEVMETHOD(bhnd_activate_resource,	bhndb_deactivate_bhnd_resource),
+	DEVMETHOD(bhnd_bus_is_hw_disabled,	bhndb_is_hw_disabled),
+	DEVMETHOD(bhnd_bus_is_hostb_device,	bhndb_is_hostb_device),
+	DEVMETHOD(bhnd_bus_get_chipid,		bhndb_get_chipid),
+	DEVMETHOD(bhnd_bus_alloc_resource,	bhndb_alloc_bhnd_resource),
+	DEVMETHOD(bhnd_bus_release_resource,	bhndb_release_bhnd_resource),
+	DEVMETHOD(bhnd_bus_activate_resource,	bhndb_activate_bhnd_resource),
+	DEVMETHOD(bhnd_bus_activate_resource,	bhndb_deactivate_bhnd_resource),
 	DEVMETHOD(bhnd_bus_read_1,		bhndb_bus_read_1),
 	DEVMETHOD(bhnd_bus_read_2,		bhndb_bus_read_2),
 	DEVMETHOD(bhnd_bus_read_4,		bhndb_bus_read_4),

@@ -39,7 +39,7 @@
 
 #include "bhnd_ids.h"
 #include "bhnd_types.h"
-#include "bhnd_if.h"
+#include "bhnd_bus_if.h"
 
 extern devclass_t bhnd_devclass;
 extern devclass_t bhnd_hostb_devclass;
@@ -298,7 +298,7 @@ int				 bhnd_read_chipid(device_t dev,
  */
 static inline bool
 bhnd_is_hostb_device(device_t dev) {
-	return (BHND_IS_HOSTB_DEVICE(device_get_parent(dev), dev));
+	return (BHND_BUS_IS_HOSTB_DEVICE(device_get_parent(dev), dev));
 }
 
 /**
@@ -314,7 +314,7 @@ bhnd_is_hostb_device(device_t dev) {
  */
 static inline bool
 bhnd_is_hw_disabled(device_t dev) {
-	return (BHND_IS_HW_DISABLED(device_get_parent(dev), dev));
+	return (BHND_BUS_IS_HW_DISABLED(device_get_parent(dev), dev));
 }
 
 /**
@@ -341,7 +341,7 @@ static inline struct bhnd_resource *
 bhnd_alloc_resource(device_t dev, int type, int *rid, u_long start,
     u_long end, u_long count, u_int flags)
 {
-	return BHND_ALLOC_RESOURCE(device_get_parent(dev), dev, type, rid,
+	return BHND_BUS_ALLOC_RESOURCE(device_get_parent(dev), dev, type, rid,
 	    start, end, count, flags);
 }
 
@@ -372,8 +372,8 @@ bhnd_alloc_resource_any(device_t dev, int type, int *rid, u_int flags)
  * @param dev The device holding ownership of the allocated resource.
  * @param type The type of the resource. 
  * @param rid The bus-specific handle identifying the resource.
- * @param r A pointer to the resoruce returned by bhnd_alloc_resource or
- * BHND_ALLOC_RESOURCE.
+ * @param r A pointer to the resource returned by bhnd_alloc_resource or
+ * BHND_BUS_ALLOC_RESOURCE.
  * 
  * @retval 0 success
  * @retval non-zero an error occured while activating the resource.
@@ -382,7 +382,8 @@ static inline int
 bhnd_activate_resource(device_t dev, int type, int rid,
    struct bhnd_resource *r)
 {
-	return BHND_ACTIVATE_RESOURCE(device_get_parent(dev), dev, type, rid, r);
+	return BHND_BUS_ACTIVATE_RESOURCE(device_get_parent(dev), dev, type,
+	    rid, r);
 }
 
 /**
@@ -391,8 +392,8 @@ bhnd_activate_resource(device_t dev, int type, int rid,
  * @param dev The device holding ownership of the activated resource.
  * @param type The type of the resource. 
  * @param rid The bus-specific handle identifying the resource.
- * @param r A pointer to the resoruce returned by bhnd_alloc_resource or
- * BHND_ALLOC_RESOURCE.
+ * @param r A pointer to the resource returned by bhnd_alloc_resource or
+ * BHND_BUS_ALLOC_RESOURCE.
  * 
  * @retval 0 success
  * @retval non-zero an error occured while activating the resource.
@@ -401,7 +402,8 @@ static inline int
 bhnd_deactivate_resource(device_t dev, int type, int rid,
    struct bhnd_resource *r)
 {
-	return BHND_DEACTIVATE_RESOURCE(device_get_parent(dev), dev, type, rid, r);
+	return BHND_BUS_DEACTIVATE_RESOURCE(device_get_parent(dev), dev, type,
+	    rid, r);
 }
 
 /**
@@ -410,7 +412,7 @@ bhnd_deactivate_resource(device_t dev, int type, int rid,
  * @param dev The device holding ownership of the resource.
  * @param type The type of the resource. 
  * @param rid The bus-specific handle identifying the resource.
- * @param r A pointer to the resoruce returned by bhnd_alloc_resource or
+ * @param r A pointer to the resource returned by bhnd_alloc_resource or
  * BHND_ALLOC_RESOURCE.
  * 
  * @retval 0 success
@@ -420,7 +422,8 @@ static inline int
 bhnd_release_resource(device_t dev, int type, int rid,
    struct bhnd_resource *r)
 {
-	return BHND_RELEASE_RESOURCE(device_get_parent(dev), dev, type, rid, r);
+	return BHND_BUS_RELEASE_RESOURCE(device_get_parent(dev), dev, type,
+	    rid, r);
 }
 
 /**
@@ -436,7 +439,7 @@ static inline bool
 bhnd_is_region_valid(device_t dev, bhnd_port_type type, u_int port_num,
     u_int region_num)
 {
-	return (BHND_IS_REGION_VALID(device_get_parent(dev), dev, type,
+	return (BHND_BUS_IS_REGION_VALID(device_get_parent(dev), dev, type,
 	    port_num, region_num));
 }
 
@@ -448,7 +451,7 @@ bhnd_is_region_valid(device_t dev, bhnd_port_type type, u_int port_num,
  */
 static inline u_int
 bhnd_get_port_count(device_t dev, bhnd_port_type type) {
-	return (BHND_GET_PORT_COUNT(device_get_parent(dev), dev, type));
+	return (BHND_BUS_GET_PORT_COUNT(device_get_parent(dev), dev, type));
 }
 
 /**
@@ -461,7 +464,7 @@ bhnd_get_port_count(device_t dev, bhnd_port_type type) {
  */
 static inline u_int
 bhnd_get_region_count(device_t dev, bhnd_port_type type, u_int port) {
-	return (BHND_GET_REGION_COUNT(device_get_parent(dev), dev, type,
+	return (BHND_BUS_GET_REGION_COUNT(device_get_parent(dev), dev, type,
 	    port));
 }
 
@@ -479,7 +482,7 @@ bhnd_get_region_count(device_t dev, bhnd_port_type type, u_int port) {
 static inline int
 bhnd_get_port_rid(device_t dev, bhnd_port_type type, u_int port, u_int region)
 {
-	return BHND_GET_PORT_RID(device_get_parent(dev), dev, type, port,
+	return BHND_BUS_GET_PORT_RID(device_get_parent(dev), dev, type, port,
 	    region);
 }
 
@@ -500,7 +503,7 @@ static inline int
 bhnd_decode_port_rid(device_t dev, int type, int rid, bhnd_port_type *port_type,
     u_int *port, u_int *region)
 {
-	return BHND_DECODE_PORT_RID(device_get_parent(dev), dev, type, rid,
+	return BHND_BUS_DECODE_PORT_RID(device_get_parent(dev), dev, type, rid,
 	    port_type, port, region);
 }
 
@@ -521,7 +524,7 @@ static inline int
 bhnd_get_region_addr(device_t dev, bhnd_port_type port_type, u_int port,
     u_int region, bhnd_addr_t *region_addr, bhnd_size_t *region_size)
 {
-	return BHND_GET_REGION_ADDR(device_get_parent(dev), dev, port_type,
+	return BHND_BUS_GET_REGION_ADDR(device_get_parent(dev), dev, port_type,
 	    port, region, region_addr, region_size);
 }
 
