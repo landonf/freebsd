@@ -37,25 +37,27 @@ macro () {
 	bus_n=$(echo $n | tr "[:lower:]" "[:upper:]")
 
 	shift
-	echo -n "#define bhnd_bus_${n}(d, r"
+	echo -n "#define bhnd_bus_${n}(r"
 	for i
 	do
 		echo -n ", ${i}"
 	done
 	echo ") \\"
-	echo "    (__predict_true((r)->direct) ? \\"
+	echo "    ((r)->direct) ? \\"
 	echo -n "	bus_${n}((r)->res"
 	for i
 	do
 		echo -n ", (${i})"
 	done
 	echo ") : \\"
-	echo -n "	BHND_BUS_${bus_n}(device_get_parent((d)), (d), (r)"
+	echo -n "	BHND_BUS_${bus_n}("
+	echo "device_get_parent(rman_get_device((r)->res)),	\\"
+	echo -n "	    rman_get_device((r)->res), (r)"
 	for i
 	do
 		echo -n ", (${i})"
 	done
-	echo "))"
+	echo ")"
 
 }
 

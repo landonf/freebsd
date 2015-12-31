@@ -534,34 +534,40 @@ bhnd_get_region_addr(device_t dev, bhnd_port_type port_type, u_int port,
  *
  * Generated with bhnd/tools/bus_macro.sh
  */
-
-#define bhnd_bus_barrier(d, r, o, l, f) \
-    (__predict_true((r)->direct) ? \
+#define bhnd_bus_barrier(r, o, l, f) \
+    ((r)->direct) ? \
 	bus_barrier((r)->res, (o), (l), (f)) : \
-	BHND_BUS_BARRIER(device_get_parent((d)), (d), (r), (o), (l), (f)))
-#define bhnd_bus_read_1(d, r, o) \
-    (__predict_true((r)->direct) ? \
+	BHND_BUS_BARRIER(device_get_parent(rman_get_device((r)->res)),	\
+	    rman_get_device((r)->res), (r), (o), (l), (f))
+#define bhnd_bus_read_1(r, o) \
+    ((r)->direct) ? \
 	bus_read_1((r)->res, (o)) : \
-	BHND_BUS_READ_1(device_get_parent((d)), (d), (r), (o)))
-#define bhnd_bus_write_1(d, r, o, v) \
-    (__predict_true((r)->direct) ? \
+	BHND_BUS_READ_1(device_get_parent(rman_get_device((r)->res)),	\
+	    rman_get_device((r)->res), (r), (o))
+#define bhnd_bus_write_1(r, o, v) \
+    ((r)->direct) ? \
 	bus_write_1((r)->res, (o), (v)) : \
-	BHND_BUS_WRITE_1(device_get_parent((d)), (d), (r), (o), (v)))
-#define bhnd_bus_read_2(d, r, o) \
-    (__predict_true((r)->direct) ? \
+	BHND_BUS_WRITE_1(device_get_parent(rman_get_device((r)->res)),	\
+	    rman_get_device((r)->res), (r), (o), (v))
+#define bhnd_bus_read_2(r, o) \
+    ((r)->direct) ? \
 	bus_read_2((r)->res, (o)) : \
-	BHND_BUS_READ_2(device_get_parent((d)), (d), (r), (o)))
-#define bhnd_bus_write_2(d, r, o, v) \
-    (__predict_true((r)->direct) ? \
+	BHND_BUS_READ_2(device_get_parent(rman_get_device((r)->res)),	\
+	    rman_get_device((r)->res), (r), (o))
+#define bhnd_bus_write_2(r, o, v) \
+    ((r)->direct) ? \
 	bus_write_2((r)->res, (o), (v)) : \
-	BHND_BUS_WRITE_2(device_get_parent((d)), (d), (r), (o), (v)))
-#define bhnd_bus_read_4(d, r, o) \
-    (__predict_true((r)->direct) ? \
+	BHND_BUS_WRITE_2(device_get_parent(rman_get_device((r)->res)),	\
+	    rman_get_device((r)->res), (r), (o), (v))
+#define bhnd_bus_read_4(r, o) \
+    ((r)->direct) ? \
 	bus_read_4((r)->res, (o)) : \
-	BHND_BUS_READ_4(device_get_parent((d)), (d), (r), (o)))
-#define bhnd_bus_write_4(d, r, o, v) \
-    (__predict_true((r)->direct) ? \
+	BHND_BUS_READ_4(device_get_parent(rman_get_device((r)->res)),	\
+	    rman_get_device((r)->res), (r), (o))
+#define bhnd_bus_write_4(r, o, v) \
+    ((r)->direct) ? \
 	bus_write_4((r)->res, (o), (v)) : \
-	BHND_BUS_WRITE_4(device_get_parent((d)), (d), (r), (o), (v)))
+	BHND_BUS_WRITE_4(device_get_parent(rman_get_device((r)->res)),	\
+	    rman_get_device((r)->res), (r), (o), (v))
 
 #endif /* _BHND_BHND_H_ */

@@ -61,11 +61,10 @@ __FBSDID("$FreeBSD$");
 					  *  for BHND_MDIOCTL_DONE. */
 
 #define	BHND_MDIO_READ_4(_sc, _reg)	\
-	bhnd_bus_read_4((_sc)->dev, (_sc)->mem_res, (_sc)->mem_off + (_reg))
+	bhnd_bus_read_4((_sc)->mem_res, (_sc)->mem_off + (_reg))
 
 #define	BHND_MDIO_WRITE_4(_sc, _reg, _val)		\
-	bhnd_bus_write_4((_sc)->dev, (_sc)->mem_res,	\
-	    (_sc)->mem_off +  (_reg), (_val))
+	bhnd_bus_write_4((_sc)->mem_res, (_sc)->mem_off + (_reg), (_val))
 
 static int
 bhnd_mdio_pcie_probe(device_t dev)
