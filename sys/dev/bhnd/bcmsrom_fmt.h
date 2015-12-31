@@ -21,19 +21,19 @@
  */
 
 #ifndef _BHND_BCMSROM_FMT_H_
-#define _BHND_BCMSROM_FMT_H_
+#define	_BHND_BCMSROM_FMT_H_
 
 /* Maximum srom: 6 Kilobits == 768 bytes */
 #define	SROM_MAX		768
-#define SROM_MAXW		384
-#define VARS_MAX		4096
+#define	SROM_MAXW		384
+#define	VARS_MAX		4096
 
 /* PCI fields */
-#define PCI_F0DEVID		48
+#define	PCI_F0DEVID		48
 
 #define	SROM_WORDS		64
 
-#define SROM3_SWRGN_OFF		28	/* s/w region offset in words */
+#define	SROM3_SWRGN_OFF		28	/* s/w region offset in words */
 
 #define	SROM_SSID		2
 
@@ -165,13 +165,13 @@
 #define	SROM4_TXPID5GL		53
 #define	SROM4_TXPID5GH		55
 
-#define SROM4_TXRXC		61
-#define SROM4_TXCHAIN_MASK	0x000f
-#define SROM4_TXCHAIN_SHIFT	0
-#define SROM4_RXCHAIN_MASK	0x00f0
-#define SROM4_RXCHAIN_SHIFT	4
-#define SROM4_SWITCH_MASK	0xff00
-#define SROM4_SWITCH_SHIFT	8
+#define	SROM4_TXRXC		61
+#define	SROM4_TXCHAIN_MASK	0x000f
+#define	SROM4_TXCHAIN_SHIFT	0
+#define	SROM4_RXCHAIN_MASK	0x00f0
+#define	SROM4_RXCHAIN_SHIFT	4
+#define	SROM4_SWITCH_MASK	0xff00
+#define	SROM4_SWITCH_SHIFT	8
 
 /* Per-path fields */
 #define	MAX_PATH_SROM		4
@@ -252,29 +252,29 @@
 #define	SROM8_TRI5GHL		85
 #define	SROM8_RXPO52G		86
 
-#define SROM8_FEM2G		87
-#define SROM8_FEM5G		88
-#define SROM8_FEM_ANTSWLUT_MASK		0xf800
-#define SROM8_FEM_ANTSWLUT_SHIFT	11
-#define SROM8_FEM_TR_ISO_MASK		0x0700
-#define SROM8_FEM_TR_ISO_SHIFT		8
-#define SROM8_FEM_PDET_RANGE_MASK	0x00f8
-#define SROM8_FEM_PDET_RANGE_SHIFT	3
-#define SROM8_FEM_EXTPA_GAIN_MASK	0x0006
-#define SROM8_FEM_EXTPA_GAIN_SHIFT	1
-#define SROM8_FEM_TSSIPOS_MASK		0x0001
-#define SROM8_FEM_TSSIPOS_SHIFT		0
+#define	SROM8_FEM2G			87
+#define	SROM8_FEM5G			88
+#define	SROM8_FEM_ANTSWLUT_MASK		0xf800
+#define	SROM8_FEM_ANTSWLUT_SHIFT	11
+#define	SROM8_FEM_TR_ISO_MASK		0x0700
+#define	SROM8_FEM_TR_ISO_SHIFT		8
+#define	SROM8_FEM_PDET_RANGE_MASK	0x00f8
+#define	SROM8_FEM_PDET_RANGE_SHIFT	3
+#define	SROM8_FEM_EXTPA_GAIN_MASK	0x0006
+#define	SROM8_FEM_EXTPA_GAIN_SHIFT	1
+#define	SROM8_FEM_TSSIPOS_MASK		0x0001
+#define	SROM8_FEM_TSSIPOS_SHIFT		0
 
-#define SROM8_THERMAL		89
+#define	SROM8_THERMAL		89
 
 /* Temp sense related entries */
-#define SROM8_MPWR_RAWTS		90
-#define SROM8_TS_SLP_OPT_CORRX	91
+#define	SROM8_MPWR_RAWTS	90
+#define	SROM8_TS_SLP_OPT_CORRX	91
 /* FOC: freiquency offset correction, HWIQ: H/W IOCAL enable, IQSWP: IQ CAL swap disable */
-#define SROM8_FOC_HWIQ_IQSWP	92
+#define	SROM8_FOC_HWIQ_IQSWP	92
 
 /* Temperature delta for PHY calibration */
-#define SROM8_PHYCAL_TEMPDELTA	93
+#define	SROM8_PHYCAL_TEMPDELTA	93
 
 /* Per-path offsets & fields */
 #define	SROM8_PATH0		96
@@ -331,41 +331,41 @@
 #define	SROM8_CRCREV		219
 
 /* SROM REV 9 */
-#define SROM9_2GPO_CCKBW20	160
-#define SROM9_2GPO_CCKBW20UL	161
-#define SROM9_2GPO_LOFDMBW20	162
-#define SROM9_2GPO_LOFDMBW20UL	164
+#define	SROM9_2GPO_CCKBW20	160
+#define	SROM9_2GPO_CCKBW20UL	161
+#define	SROM9_2GPO_LOFDMBW20	162
+#define	SROM9_2GPO_LOFDMBW20UL	164
 
-#define SROM9_5GLPO_LOFDMBW20	166
-#define SROM9_5GLPO_LOFDMBW20UL	168
-#define SROM9_5GMPO_LOFDMBW20	170
-#define SROM9_5GMPO_LOFDMBW20UL	172
-#define SROM9_5GHPO_LOFDMBW20	174
-#define SROM9_5GHPO_LOFDMBW20UL	176
+#define	SROM9_5GLPO_LOFDMBW20	166
+#define	SROM9_5GLPO_LOFDMBW20UL	168
+#define	SROM9_5GMPO_LOFDMBW20	170
+#define	SROM9_5GMPO_LOFDMBW20UL	172
+#define	SROM9_5GHPO_LOFDMBW20	174
+#define	SROM9_5GHPO_LOFDMBW20UL	176
 
-#define SROM9_2GPO_MCSBW20	178
-#define SROM9_2GPO_MCSBW20UL	180
-#define SROM9_2GPO_MCSBW40	182
+#define	SROM9_2GPO_MCSBW20	178
+#define	SROM9_2GPO_MCSBW20UL	180
+#define	SROM9_2GPO_MCSBW40	182
 
-#define SROM9_5GLPO_MCSBW20	184
-#define SROM9_5GLPO_MCSBW20UL	186
-#define SROM9_5GLPO_MCSBW40	188
-#define SROM9_5GMPO_MCSBW20	190
-#define SROM9_5GMPO_MCSBW20UL	192
-#define SROM9_5GMPO_MCSBW40	194
-#define SROM9_5GHPO_MCSBW20	196
-#define SROM9_5GHPO_MCSBW20UL	198
-#define SROM9_5GHPO_MCSBW40	200
+#define	SROM9_5GLPO_MCSBW20	184
+#define	SROM9_5GLPO_MCSBW20UL	186
+#define	SROM9_5GLPO_MCSBW40	188
+#define	SROM9_5GMPO_MCSBW20	190
+#define	SROM9_5GMPO_MCSBW20UL	192
+#define	SROM9_5GMPO_MCSBW40	194
+#define	SROM9_5GHPO_MCSBW20	196
+#define	SROM9_5GHPO_MCSBW20UL	198
+#define	SROM9_5GHPO_MCSBW40	200
 
-#define SROM9_PO_MCS32		202
-#define SROM9_PO_LOFDM40DUP	203
+#define	SROM9_PO_MCS32		202
+#define	SROM9_PO_LOFDM40DUP	203
 
-#define SROM9_REV_CRC		219
+#define	SROM9_REV_CRC		219
 
 typedef struct {
 	u8 tssipos;		/* TSSI positive slope, 1: positive, 0: negative */
-	u8 extpagain;	/* Ext PA gain-type: full-gain: 0, pa-lite: 1, no_pa: 2 */
-	u8 pdetrange;	/* support 32 combinations of different Pdet dynamic ranges */
+	u8 extpagain;		/* Ext PA gain-type: full-gain: 0, pa-lite: 1, no_pa: 2 */
+	u8 pdetrange;		/* support 32 combinations of different Pdet dynamic ranges */
 	u8 triso;		/* TR switch isolation */
 	u8 antswctrllut;	/* antswctrl lookup table configuration: 32 possible choices */
 } srom_fem_t;
