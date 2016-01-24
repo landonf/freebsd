@@ -38,45 +38,27 @@ INTERFACE bhnd_nvram;
 # access to a common set of hardware/device configuration variables.
 #
 
-
-/**
- * Return the size of an NVRAM variable.
- *
- * @param	dev	The NVRAM device.
- * @param	name	The NVRAM variable name.
- * @param[out]	size	On success, the size of @p name.
- *
- * @retval 0		success
- * @retval ENOENT	The requested variable was not found.
- * @retval non-zero	If determining the size of @p name otherwise fails, a
- *			regular unix error code will be returned.
- */
-METHOD int get_var_size {
-	device_t	 dev;
-	const char	*name;
-	size_t		*size;
-};
-
-
 /**
  * Read an NVRAM variable.
  *
- * @param	dev	The NVRAM device.
- * @param	name	The NVRAM variable name.
- * @param[out]	buf	On success, the NVRAM variable will be read into this
- *			buffer.
- * @param	size	Size of buffer.
+ * @param		dev	The NVRAM device.
+ * @param		name	The NVRAM variable name.
+ * @param[out]		buf	On success, the requested value will be written
+ *				to this buffer. This argment may be NULL if
+ *				the value is not desired.
+ * @param[in,out]	size	The capacity of @p buf. On success, will be set
+ *				to the actual size of the requested value.
  *
  * @retval 0		success
  * @retval ENOENT	The requested variable was not found.
- * @retval ENOMEM	A buffer of @p size is too small to hold the requested
- *			value.
- * @retval non-zero	If determining the size of @p name otherwise fails, a
- *			regular unix error code will be returned.
+ * @retval ENOMEM	If @p buf is non-NULL and a buffer of @p size is too
+ *			small to hold the requested value.
+ * @retval non-zero	If reading @p name otherwise fails, a regular unix
+ *			error code will be returned.
  */
-METHOD int read_var {
-	device_t	dev;
+METHOD int getvar {
+	device_t	 dev;
 	const char	*name;
 	void		*buf;
-	size_t		size;
+	size_t		*size;
 };

@@ -43,6 +43,7 @@
 
 extern devclass_t bhnd_devclass;
 extern devclass_t bhnd_hostb_devclass;
+extern devclass_t bhnd_nvram_devclass;
 
 /**
  * bhnd child instance variables

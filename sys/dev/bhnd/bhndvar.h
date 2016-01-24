@@ -79,6 +79,10 @@ bool			 bhnd_generic_is_region_valid(device_t dev,
 			     device_t child, bhnd_port_type type, u_int port,
 			     u_int region);
 
+int			 bhnd_generic_read_nvram_var(device_t dev,
+			     device_t child, const char *name, void *buf,
+			     size_t *size);
+
 const struct bhnd_chipid *bhnd_generic_get_chipid(device_t dev, device_t child);
 
 struct bhnd_resource	*bhnd_generic_alloc_bhnd_resource (device_t dev,

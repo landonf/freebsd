@@ -61,6 +61,8 @@ __FBSDID("$FreeBSD$");
 #include "bhnd.h"
 #include "bhndvar.h"
 
+#include "bhnd_nvram_if.h"
+
 MALLOC_DEFINE(M_BHND, "bhnd", "bhnd bus data structures");
 
 /**
@@ -80,6 +82,7 @@ static const struct bhnd_nomatch {
 	{ BHND_MFGID_INVALID,	BHND_COREID_INVALID,		false	}
 };
 
+static device_t	find_nvram_child(device_t dev);
 
 static int	compare_ascending_probe_order(const void *lhs,
 		    const void *rhs);
@@ -375,6 +378,60 @@ bhnd_generic_is_region_valid(device_t dev, device_t child,
 		return (false);
 
 	return (true);
+}
+
+/**
+ * Find an NVRAM child device on @p dev, if any.
+ * 
+ * @retval device_t An NVRAM device.
+ * @retval NULL If no NVRAM device is found.
+ */
+static device_t
+find_nvram_child(device_t dev)
+{
+	device_t chipc, nvram;
+
+	/* Look for a directly-attached NVRAM child */
+	nvram = device_find_child(dev, devclass_get_name(bhnd_nvram_devclass),
+	    -1);
+	if (nvram == NULL)
+		return (NULL);
+
+	/* Further checks require a bhnd(4) bus */
+	if (device_get_devclass(dev) != bhnd_devclass)
+		return (NULL);
+
+	/* Look for a ChipCommon-attached OTP device */
+	if ((chipc = bhnd_find_child(dev, BHND_DEVCLASS_CC, -1)) != NULL) {
+		/* Recursively search the ChipCommon device */
+		if ((nvram = find_nvram_child(chipc)) != NULL)
+			return (nvram);
+	}
+
+	/* Not found */
+	return (NULL);
+}
+
+/**
+ * Helper function for implementing BHND_BUS_READ_NVRAM_VAR().
+ * 
+ * This implementation searches @p dev for a valid NVRAM device. If no NVRAM
+ * child device is found on @p dev, the request is delegated to the
+ * BHND_BUS_READ_NVRAM_VAR() method on the parent
+ * of @p dev.
+ */
+int
+bhnd_generic_read_nvram_var(device_t dev, device_t child, const char *name,
+    void *buf, size_t *size)
+{
+	device_t nvram;
+
+	/* Try to find an NVRAM device applicable to @p child */
+	if ((nvram = find_nvram_child(dev)) == NULL)
+		return (BHND_BUS_READ_NVRAM_VAR(device_get_parent(dev), child,
+		    name, buf, size));
+
+	return BHND_NVRAM_GETVAR(nvram, name, buf, size);
 }
 
 /**
@@ -846,6 +903,7 @@ static device_method_t bhnd_methods[] = {
 
 devclass_t bhnd_devclass;	/**< bhnd bus. */
 devclass_t bhnd_hostb_devclass;	/**< bhnd bus host bridge. */
+devclass_t bhnd_nvram_devclass;	/**< bhnd NVRAM device */
 
 DEFINE_CLASS_0(bhnd, bhnd_driver, bhnd_methods, sizeof(struct bhnd_softc));
 MODULE_VERSION(bhnd, 1);
