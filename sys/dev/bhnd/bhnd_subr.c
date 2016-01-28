@@ -32,6 +32,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/types.h>
 #include <sys/bus.h>
+#include <sys/systm.h>
 
 #include <machine/bus.h>
 #include <sys/rman.h>
@@ -610,4 +611,33 @@ cleanup:
 	/* Clean up */
 	bus_release_resource(dev, rtype, rid, res);
 	return (error);
+}
+
+/**
+ * Using the bhnd(4) bus-level core information, populate @p dev's device
+ * description.
+ * 
+ * @param dev A bhnd-bus attached device.
+ */
+void
+bhnd_set_generic_core_desc(device_t dev)
+{
+	const char *dev_name;
+	const char *vendor_name;
+	char *desc;
+
+	vendor_name = bhnd_get_vendor_name(dev);
+	dev_name = bhnd_get_device_name(dev);
+
+	asprintf(&desc, M_BHND, "%s %s, rev %hhu",
+		bhnd_get_vendor_name(dev),
+		bhnd_get_device_name(dev),
+		bhnd_get_hwrev(dev));
+
+	if (desc != NULL) {
+		device_set_desc_copy(dev, desc);
+		free(desc, M_BHND);
+	} else {
+		device_set_desc(dev, dev_name);
+	}
 }

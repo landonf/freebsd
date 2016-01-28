@@ -62,29 +62,22 @@ static const struct resource_spec chipc_rspec[CHIPC_MAX_RSPEC] = {
 
 static const struct chipc_device {
 	uint16_t	 device;
-	const char	*desc;
 } chipc_devices[] = {
-	{ BHND_COREID_CC,	NULL },
-	{ BHND_COREID_INVALID,	NULL }
+	{ BHND_COREID_CC },
+	{ BHND_COREID_INVALID }
 };
 
 static int
 chipc_probe(device_t dev)
 {
 	const struct chipc_device	*id;
-	const char 			*desc;
 
 	for (id = chipc_devices; id->device != BHND_COREID_INVALID; id++)
 	{
 		if (bhnd_get_vendor(dev) == BHND_MFGID_BCM &&
 		    bhnd_get_device(dev) == id->device)
 		{
-			if (id->desc == NULL)
-				desc = bhnd_get_device_name(dev);
-			else
-				desc = id->desc;
-		
-			device_set_desc(dev, desc);
+			bhnd_set_generic_core_desc(dev);
 			return (BUS_PROBE_DEFAULT);
 		}
 	}

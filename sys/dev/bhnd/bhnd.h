@@ -290,6 +290,8 @@ int				 bhnd_read_chipid(device_t dev,
 				     bus_size_t chipc_offset,
 				     struct bhnd_chipid *result);
 
+void				 bhnd_set_generic_core_desc(device_t dev);
+
 
 /**
  * Return true if @p dev is serving as a host bridge for its parent bhnd
