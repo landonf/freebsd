@@ -4,8 +4,7 @@
 
 KMOD=	bhnd
 SRCS=	bhnd.c bhnd_subr.c \
-	bhnd_bus_if.c bhnd_bus_if.h \
-	bhnd_nvram_if.c bhnd_nvram_if.h
+	bhnd_bus_if.c bhnd_bus_if.h
 
 SRCS+=	device_if.h bus_if.h
 
@@ -14,6 +13,7 @@ SUBDIR=	bcma \
 	bhndb \
 	bhndb_pci \
 	cores \
+	nvram \
 	siba \
 	siba_bhndb
 
