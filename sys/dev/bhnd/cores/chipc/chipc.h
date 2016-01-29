@@ -32,6 +32,7 @@
 #ifndef _BHND_CORES_CHIPC_CHIPC_H_
 #define _BHND_CORES_CHIPC_CHIPC_H_
 
+#include <dev/bhnd/bhnd.h>
 #include <dev/bhnd/nvram/bhnd_nvram.h>
 
 #include "bhnd_chipc_if.h"

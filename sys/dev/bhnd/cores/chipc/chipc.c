@@ -91,7 +91,9 @@ static int
 chipc_attach(device_t dev)
 {
 	struct chipc_softc	*sc;
-	struct bhnd_resource	*r;
+	bhnd_addr_t		 enum_addr;
+	uint32_t		 ccid_reg;
+	uint8_t			 chip_type;
 	int			 error;
 
 	sc = device_get_softc(dev);
@@ -100,19 +102,34 @@ chipc_attach(device_t dev)
 	if ((error = bhnd_alloc_resources(dev, sc->rspec, sc->res)))
 		return (error);
 
-	// TODO
-	r = sc->res[0];
-	device_printf(dev, "got rid=%d res=%p\n", sc->rspec[0].rid, r);
+	sc->core = sc->res[0];
 	
-	uint32_t chipc	= bhnd_bus_read_4(r, CHIPC_ID);
-	uint16_t chip	= CHIPC_GET_ATTR(chipc, ID_CHIP);
-	uint8_t rev	= CHIPC_GET_ATTR(chipc, ID_REV);
-	uint8_t pkg	= CHIPC_GET_ATTR(chipc, ID_PKG);
-	uint8_t ncore	= CHIPC_GET_ATTR(chipc, ID_NUMCORE);
-	uint8_t bus	= CHIPC_GET_ATTR(chipc, ID_BUS);
-	device_printf(dev, "chip=0x%hx rev=0x%hhx pkg=0x%hhx ncore=0x%hhu bus=0x%hhx\n", chip, rev, pkg, ncore, bus);
+	/* Fetch our chipset identification data */
+	ccid_reg = bhnd_bus_read_4(sc->core, CHIPC_ID);
+	chip_type = CHIPC_GET_ATTR(ccid_reg, ID_BUS);
+
+	switch (chip_type) {
+	case BHND_CHIPTYPE_SIBA:
+		/* enumeration space starts at the ChipCommon register base. */
+		enum_addr = rman_get_start(sc->core->res);
+		break;
+	case BHND_CHIPTYPE_BCMA:
+	case BHND_CHIPTYPE_BCMA_1:
+		enum_addr = bhnd_bus_read_4(sc->core, CHIPC_EROMPTR);
+		break;
+	default:
+		device_printf(dev, "unsupported chip type %hhu\n", chip_type);
+		error = ENODEV;
+		goto cleanup;
+	}
+
+	sc->ccid = bhnd_parse_chipid(ccid_reg, enum_addr);
 
 	return (0);
+	
+cleanup:
+	bhnd_release_resources(dev, sc->rspec, sc->res);
+	return (error);
 }
 
 static int

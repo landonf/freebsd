@@ -599,10 +599,17 @@ bhnd_read_chipid(device_t dev, struct resource_spec *rs,
 		result->enum_addr = BHND_DEFAULT_CHIPC_ADDR;
 		break;
 	case BHND_CHIPTYPE_BCMA:
+	case BHND_CHIPTYPE_BCMA_1:
 		result->enum_addr = bus_read_4(res, chipc_offset +
-		    CHIPC_EROM_CORE_ADDR);
+		    CHIPC_EROMPTR);
 		break;
+	case BHND_CHIPTYPE_UBUS:
+		device_printf(dev, "unsupported ubus/bcm63xx chip type");
+		error = ENODEV;
+		goto cleanup;
 	default:
+		device_printf(dev, "unknown chip type %hhu\n",
+		    result->chip_type);
 		error = ENODEV;
 		goto cleanup;
 	}

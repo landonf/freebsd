@@ -41,8 +41,11 @@ extern devclass_t bhnd_chipc_devclass;
 #define	CHIPC_MAX_RSPEC	(CHIPC_MAX_RES+1)
 
 struct chipc_softc {
-	struct resource_spec	rspec[CHIPC_MAX_RSPEC];
+	struct resource_spec	 rspec[CHIPC_MAX_RSPEC];
 	struct bhnd_resource	*res[CHIPC_MAX_RES];
+
+	struct bhnd_resource	*core;			/**< core registers. */
+	struct bhnd_chipid	 ccid;			/**< chip identification */
 };
 
 #endif /* _BHND_CORES_CHIPC_CHIPCVAR_H_ */

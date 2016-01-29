@@ -37,7 +37,8 @@
 #define	CHIPC_ID		0x0
 #define	CHIPC_CAPABILITIES	0x04
 #define	CHIPC_CHIPST		0x2c
-#define	CHIPC_EROMPTR		0xfc
+#define	CHIPC_EROMPTR		0xfc		/**< 32-bit EROM base address
+						  *  on BCMA devices */
 
 /** chipid */
 #define	CHIPC_ID		0x0		/**< identification register */
@@ -49,13 +50,8 @@
 #define	CHIPC_ID_PKG_SHIFT	20
 #define	CHIPC_ID_NUMCORE_MASK	0x0F000000	/**< number of cores on chip (rev >= 4) */
 #define	CHIPC_ID_NUMCORE_SHIFT	24
-#define	CHIPC_ID_BUS_MASK	0xF0000000	/**< interconnect type */
+#define	CHIPC_ID_BUS_MASK	0xF0000000	/**< chip/interconnect type (BHND_CHIPTYPE_*) */
 #define	CHIPC_ID_BUS_SHIFT	28
-#  define CHIPC_ID_BUS_SIBA	0		/**< siba(4) interconnect */
-#  define CHIPC_ID_BUS_BCMA	1		/**< bcma(4) interconnect */
-
-/**< 32bit EROM address (bcma) */
-#define	CHIPC_EROM_CORE_ADDR	0xFC
 
 #define CC_OTPST		0x10
 #define	CC_JTAGCMD		0x30
