@@ -79,42 +79,42 @@
 #define	CHIPC_PMU_CAP			0x604
 #define	CHIPC_PMU_ST			0x608
 #define	CHIPC_PMU_RES_STATE		0x60c
-#define	CHIPC_PMU_TIMER		0x614
-#define	CHIPC_PMU_MIN_RES_MASK	0x618
-#define	CHIPC_PMU_MAX_RES_MASK	0x61c
-#define	CHIPC_CHIPCTL_ADDR         0x650
-#define	CHIPC_CHIPCTL_DATA         0x654
+#define	CHIPC_PMU_TIMER			0x614
+#define	CHIPC_PMU_MIN_RES_MASK		0x618
+#define	CHIPC_PMU_MAX_RES_MASK		0x61c
+#define	CHIPC_CHIPCTL_ADDR		0x650
+#define	CHIPC_CHIPCTL_DATA		0x654
 #define	CHIPC_PMU_REG_CONTROL_ADDR	0x658
 #define	CHIPC_PMU_REG_CONTROL_DATA	0x65C
 #define	CHIPC_PMU_PLL_CONTROL_ADDR 	0x660
 #define	CHIPC_PMU_PLL_CONTROL_DATA 	0x664
-#define	CHIPC_SROM_OTP		0x800	/* SROM/OTP address space */
+#define	CHIPC_SROM_OTP			0x800	/* SROM/OTP address space */
 
 /* capabilities */
-#define	CHIPC_CAP_UARTS_MASK	0x00000003	/* Number of UARTs */
+#define	CHIPC_CAP_UARTS_MASK		0x00000003	/* Number of UARTs */
 #define	CHIPC_CAP_MIPSEB		0x00000004	/* MIPS is in big-endian mode */
 #define	CHIPC_CAP_UCLKSEL		0x00000018	/* UARTs clock select */
 #define	CHIPC_CAP_UINTCLK		0x00000008	/* UARTs are driven by internal divided clock */
 #define	CHIPC_CAP_UARTGPIO		0x00000020	/* UARTs own GPIOs 15:12 */
-#define	CHIPC_CAP_EXTBUS_MASK	0x000000c0	/* External bus mask */
-#define	CHIPC_CAP_EXTBUS_NONE	0x00000000	/* No ExtBus present */
-#define	CHIPC_CAP_EXTBUS_FULL	0x00000040	/* ExtBus: PCMCIA, IDE & Prog */
-#define	CHIPC_CAP_EXTBUS_PROG	0x00000080	/* ExtBus: ProgIf only */
-#define	CHIPC_CAP_FLASH_MASK	0x00000700	/* Type of flash */
+#define	CHIPC_CAP_EXTBUS_MASK		0x000000c0	/* External bus mask */
+#define	CHIPC_CAP_EXTBUS_NONE		0x00000000	/* No ExtBus present */
+#define	CHIPC_CAP_EXTBUS_FULL		0x00000040	/* ExtBus: PCMCIA, IDE & Prog */
+#define	CHIPC_CAP_EXTBUS_PROG		0x00000080	/* ExtBus: ProgIf only */
+#define	CHIPC_CAP_FLASH_MASK		0x00000700	/* Type of flash */
 #define	CHIPC_CAP_PLL_MASK		0x00038000	/* Type of PLL */
 #define	CHIPC_CAP_PWR_CTL		0x00040000	/* Power control */
 #define	CHIPC_CAP_OTPSIZE		0x00380000	/* OTP Size (0 = none) */
-#define	CHIPC_CAP_OTPSIZE_SHIFT	19	/* OTP Size shift */
-#define	CHIPC_CAP_OTPSIZE_BASE	5	/* OTP Size base */
-#define	CHIPC_CAP_JTAGP		0x00400000	/* JTAG Master Present */
-#define	CHIPC_CAP_ROM		0x00800000	/* Internal boot rom active */
+#define	CHIPC_CAP_OTPSIZE_SHIFT		19	/* OTP Size shift */
+#define	CHIPC_CAP_OTPSIZE_BASE		5	/* OTP Size base */
+#define	CHIPC_CAP_JTAGP			0x00400000	/* JTAG Master Present */
+#define	CHIPC_CAP_ROM			0x00800000	/* Internal boot rom active */
 #define	CHIPC_CAP_BKPLN64		0x08000000	/* 64-bit backplane */
-#define	CHIPC_CAP_PMU		0x10000000	/* PMU Present, rev >= 20 */
-#define	CHIPC_CAP_SROM		0x40000000	/* Srom Present, rev >= 32 */
+#define	CHIPC_CAP_PMU			0x10000000	/* PMU Present, rev >= 20 */
+#define	CHIPC_CAP_SROM			0x40000000	/* Srom Present, rev >= 32 */
 #define	CHIPC_CAP_NFLASH		0x80000000	/* Nand flash present, rev >= 35 */
 
-#define	CHIPC_CAP2_SECI		0x00000001	/* SECI Present, rev >= 36 */
-#define	CHIPC_CAP2_GSIO		0x00000002	/* GSIO (spi/i2c) present, rev >= 37 */
+#define	CHIPC_CAP2_SECI			0x00000001	/* SECI Present, rev >= 36 */
+#define	CHIPC_CAP2_GSIO			0x00000002	/* GSIO (spi/i2c) present, rev >= 37 */
 
 /* PLL type */
 #define	CHIPC_PLL_NONE		0x00000000
@@ -137,7 +137,7 @@
 
 /* corecontrol */
 #define	CHIPC_UARTCLKO		0x00000001	/* Drive UART with internal clock */
-#define	CHIPC_SE			0x00000002	/* sync clk out enable (corerev >= 3) */
+#define	CHIPC_SE		0x00000002	/* sync clk out enable (corerev >= 3) */
 #define	CHIPC_UARTCLKEN		0x00000008	/* enable UART Clock (corerev > = 21 */
 
 /* chipcontrol */
@@ -163,13 +163,13 @@
 
 /* Fields in the otpcontrol register in rev >= 21 */
 #define	CHIPC_OTPC_PROGSEL		0x00000001
-#define	CHIPC_OTPC_PCOUNT_MASK	0x0000000e
+#define	CHIPC_OTPC_PCOUNT_MASK		0x0000000e
 #define	CHIPC_OTPC_PCOUNT_SHIFT	1
 #define	CHIPC_OTPC_VSEL_MASK		0x000000f0
 #define	CHIPC_OTPC_VSEL_SHIFT		4
 #define	CHIPC_OTPC_TMM_MASK		0x00000700
 #define	CHIPC_OTPC_TMM_SHIFT		8
-#define	CHIPC_OTPC_ODM		0x00000800
+#define	CHIPC_OTPC_ODM			0x00000800
 #define	CHIPC_OTPC_PROGEN		0x80000000
 
 /* Fields in otpprog in rev >= 21 and HND OTP */
@@ -183,7 +183,7 @@
 #define	CHIPC_OTPP_VALUE_MASK		0x20000000
 #define	CHIPC_OTPP_VALUE_SHIFT	29
 #define	CHIPC_OTPP_START_BUSY		0x80000000
-#define	CHIPC_OTPP_READ		0x40000000	/* HND OTP */
+#define	CHIPC_OTPP_READ			0x40000000	/* HND OTP */
 
 /* otplayout reg corerev >= 36 */
 #define	CHIPC_OTP_CISFORMAT_NEW	0x80000000
@@ -206,7 +206,7 @@
 
 /* jtagcmd */
 #define	CHIPC_JCMD_START		0x80000000
-#define	CHIPC_JCMD_BUSY		0x80000000
+#define	CHIPC_JCMD_BUSY			0x80000000
 #define	CHIPC_JCMD_STATE_MASK		0x60000000
 #define	CHIPC_JCMD_STATE_TLR		0x00000000	/* Test-logic-reset */
 #define	CHIPC_JCMD_STATE_PIR		0x20000000	/* Pause IR */
@@ -241,12 +241,12 @@
 
 /* Fields in clkdiv */
 #define	CHIPC_CLKD_SFLASH		0x0f000000
-#define	CHIPC_CLKD_SFLASH_SHIFT	24
-#define	CHIPC_CLKD_OTP		0x000f0000
+#define	CHIPC_CLKD_SFLASH_SHIFT		24
+#define	CHIPC_CLKD_OTP			0x000f0000
 #define	CHIPC_CLKD_OTP_SHIFT		16
-#define	CHIPC_CLKD_JTAG		0x00000f00
+#define	CHIPC_CLKD_JTAG			0x00000f00
 #define	CHIPC_CLKD_JTAG_SHIFT		8
-#define	CHIPC_CLKD_UART		0x000000ff
+#define	CHIPC_CLKD_UART			0x000000ff
 
 #define	CHIPC_CLKD2_SROM		0x00000003
 
@@ -292,13 +292,13 @@
 
 /* Indirect backplane access */
 #define	CHIPC_BPIA_BYTEEN		0x0000000f
-#define	CHIPC_BPIA_SZ1		0x00000001
-#define	CHIPC_BPIA_SZ2		0x00000003
-#define	CHIPC_BPIA_SZ4		0x00000007
-#define	CHIPC_BPIA_SZ8		0x0000000f
+#define	CHIPC_BPIA_SZ1			0x00000001
+#define	CHIPC_BPIA_SZ2			0x00000003
+#define	CHIPC_BPIA_SZ4			0x00000007
+#define	CHIPC_BPIA_SZ8			0x0000000f
 #define	CHIPC_BPIA_WRITE		0x00000100
 #define	CHIPC_BPIA_START		0x00000200
-#define	CHIPC_BPIA_BUSY		0x00000200
+#define	CHIPC_BPIA_BUSY			0x00000200
 #define	CHIPC_BPIA_ERROR		0x00000400
 
 /* pcmcia/prog/flash_config */
@@ -369,15 +369,15 @@
 #define	CHIPC_FW_W3_SHIFT		24
 
 /* When Srom support present, fields in sromcontrol */
-#define	CHIPC_SRC_START		0x80000000
-#define	CHIPC_SRC_BUSY		0x80000000
+#define	CHIPC_SRC_START			0x80000000
+#define	CHIPC_SRC_BUSY			0x80000000
 #define	CHIPC_SRC_OPCODE		0x60000000
 #define	CHIPC_SRC_OP_READ		0x00000000
 #define	CHIPC_SRC_OP_WRITE		0x20000000
 #define	CHIPC_SRC_OP_WRDIS		0x40000000
 #define	CHIPC_SRC_OP_WREN		0x60000000
 #define	CHIPC_SRC_OTPSEL		0x00000010
-#define	CHIPC_SRC_LOCK		0x00000008
+#define	CHIPC_SRC_LOCK			0x00000008
 #define	CHIPC_SRC_SIZE_MASK		0x00000006
 #define	CHIPC_SRC_SIZE_1K		0x00000000
 #define	CHIPC_SRC_SIZE_4K		0x00000002
@@ -386,7 +386,7 @@
 #define	CHIPC_SRC_PRESENT		0x00000001
 
 /* Fields in pmucontrol */
-#define	CHIPC_PCTL_ILP_DIV_MASK	0xffff0000
+#define	CHIPC_PCTL_ILP_DIV_MASK		0xffff0000
 #define	CHIPC_PCTL_ILP_DIV_SHIFT	16
 #define	CHIPC_PCTL_PLL_PLLCTL_UPD	0x00000400	/* rev 2 */
 #define	CHIPC_PCTL_NOILP_ON_WAIT	0x00000200	/* rev 1 */
@@ -421,12 +421,12 @@
 #define	CHIPC_MC_SHIFT		24
 
 /* N3M Clock control magic field values */
-#define	CHIPC_F6_2			0x02	/* A factor of 2 in */
-#define	CHIPC_F6_3			0x03	/* 6-bit fields like */
-#define	CHIPC_F6_4			0x05	/* N1, M1 or M3 */
-#define	CHIPC_F6_5			0x09
-#define	CHIPC_F6_6			0x11
-#define	CHIPC_F6_7			0x21
+#define	CHIPC_F6_2		0x02	/* A factor of 2 in */
+#define	CHIPC_F6_3		0x03	/* 6-bit fields like */
+#define	CHIPC_F6_4		0x05	/* N1, M1 or M3 */
+#define	CHIPC_F6_5		0x09
+#define	CHIPC_F6_6		0x11
+#define	CHIPC_F6_7		0x21
 
 #define	CHIPC_F5_BIAS		5	/* 5-bit fields get this added */
 
@@ -440,39 +440,39 @@
 #define	CHIPC_T2_BIAS		2	/* n1, n2, m1 & m3 bias */
 #define	CHIPC_T2M2_BIAS		3	/* m2 bias */
 
-#define	CHIPC_T2MC_M1BYP		1
-#define	CHIPC_T2MC_M2BYP		2
-#define	CHIPC_T2MC_M3BYP		4
+#define	CHIPC_T2MC_M1BYP	1
+#define	CHIPC_T2MC_M2BYP	2
+#define	CHIPC_T2MC_M3BYP	4
 
 /* Type 6 Clock control magic field values */
 #define	CHIPC_T6_MMASK		1	/* bits of interest in m */
 #define	CHIPC_T6_M0		120000000	/* sb clock for m = 0 */
 #define	CHIPC_T6_M1		100000000	/* sb clock for m = 1 */
-#define	CHIPC_SB2MIPS_T6(sb)		(2 * (sb))
+#define	CHIPC_SB2MIPS_T6(sb)	(2 * (sb))
 
 /* Common clock base */
-#define	CHIPC_CLOCK_BASE1		24000000	/* Half the clock freq */
-#define	CHIPC_CLOCK_BASE2		12500000	/* Alternate crystal on some PLLs */
+#define	CHIPC_CLOCK_BASE1	24000000	/* Half the clock freq */
+#define	CHIPC_CLOCK_BASE2	12500000	/* Alternate crystal on some PLLs */
 
 /* Clock control values for 200MHz in 5350 */
-#define	CHIPC_CLKC_5350_N		0x0311
-#define	CHIPC_CLKC_5350_M		0x04020009
+#define	CHIPC_CLKC_5350_N	0x0311
+#define	CHIPC_CLKC_5350_M	0x04020009
 
 /* Flash types in the chipcommon capabilities register */
-#define	CHIPC_FLASH_NONE		0x000	/* No flash */
+#define	CHIPC_FLASH_NONE	0x000	/* No flash */
 #define	CHIPC_SFLASH_ST		0x100	/* ST serial flash */
 #define	CHIPC_SFLASH_AT		0x200	/* Atmel serial flash */
-#define	CHIPC_PFLASH			0x700	/* Parallel flash */
+#define	CHIPC_PFLASH		0x700	/* Parallel flash */
 
 /* Bits in the ExtBus config registers */
 #define	CHIPC_CFG_EN		0x0001	/* Enable */
-#define	CHIPC_CFG_EM_MASK		0x000e	/* Extif Mode */
-#define	CHIPC_CFG_EM_ASYNC		0x0000	/*   Async/Parallel flash */
-#define	CHIPC_CFG_EM_SYNC		0x0002	/*   Synchronous */
+#define	CHIPC_CFG_EM_MASK	0x000e	/* Extif Mode */
+#define	CHIPC_CFG_EM_ASYNC	0x0000	/*   Async/Parallel flash */
+#define	CHIPC_CFG_EM_SYNC	0x0002	/*   Synchronous */
 #define	CHIPC_CFG_EM_PCMCIA	0x0004	/*   PCMCIA */
-#define	CHIPC_CFG_EM_IDE		0x0006	/*   IDE */
+#define	CHIPC_CFG_EM_IDE	0x0006	/*   IDE */
 #define	CHIPC_CFG_DS		0x0010	/* Data size, 0=8bit, 1=16bit */
-#define	CHIPC_CFG_CD_MASK		0x00e0	/* Sync: Clock divisor, rev >= 20 */
+#define	CHIPC_CFG_CD_MASK	0x00e0	/* Sync: Clock divisor, rev >= 20 */
 #define	CHIPC_CFG_CE		0x0100	/* Sync: Clock enable, rev >= 20 */
 #define	CHIPC_CFG_SB		0x0200	/* Sync: Size/Bytestrobe, rev >= 20 */
 #define	CHIPC_CFG_IS		0x0400	/* Extif Sync Clk Select, rev >= 20 */
@@ -480,7 +480,7 @@
 /* ExtBus address space */
 #define	CHIPC_EB_BASE		0x1a000000	/* Chipc ExtBus base address */
 #define	CHIPC_EB_PCMCIA_MEM	0x1a000000	/* PCMCIA 0 memory base address */
-#define	CHIPC_EB_PCMCIA_IO		0x1a200000	/* PCMCIA 0 I/O base address */
+#define	CHIPC_EB_PCMCIA_IO	0x1a200000	/* PCMCIA 0 I/O base address */
 #define	CHIPC_EB_PCMCIA_CFG	0x1a400000	/* PCMCIA 0 config base address */
 #define	CHIPC_EB_IDE		0x1a800000	/* IDE memory base */
 #define	CHIPC_EB_PCMCIA1_MEM	0x1a800000	/* PCMCIA 1 memory base address */
@@ -489,18 +489,18 @@
 #define	CHIPC_EB_PROGIF		0x1b000000	/* ProgIF Async/Sync base address */
 
 /* Start/busy bit in flashcontrol */
-#define	CHIPC_SFLASH_OPCODE		0x000000ff
-#define	CHIPC_SFLASH_ACTION		0x00000700
+#define	CHIPC_SFLASH_OPCODE	0x000000ff
+#define	CHIPC_SFLASH_ACTION	0x00000700
 #define	CHIPC_SFLASH_CS_ACTIVE	0x00001000	/* Chip Select Active, rev >= 20 */
-#define	CHIPC_SFLASH_START		0x80000000
-#define	CHIPC_SFLASH_BUSY		SFLASH_START
+#define	CHIPC_SFLASH_START	0x80000000
+#define	CHIPC_SFLASH_BUSY	SFLASH_START
 
 /* flashcontrol action codes */
-#define	CHIPC_SFLASH_ACT_OPONLY	0x0000	/* Issue opcode only */
+#define	CHIPC_SFLASH_ACT_OPONLY		0x0000	/* Issue opcode only */
 #define	CHIPC_SFLASH_ACT_OP1D		0x0100	/* opcode + 1 data byte */
 #define	CHIPC_SFLASH_ACT_OP3A		0x0200	/* opcode + 3 addr bytes */
-#define	CHIPC_SFLASH_ACT_OP3A1D	0x0300	/* opcode + 3 addr & 1 data bytes */
-#define	CHIPC_SFLASH_ACT_OP3A4D	0x0400	/* opcode + 3 addr & 4 data bytes */
+#define	CHIPC_SFLASH_ACT_OP3A1D		0x0300	/* opcode + 3 addr & 1 data bytes */
+#define	CHIPC_SFLASH_ACT_OP3A4D		0x0400	/* opcode + 3 addr & 4 data bytes */
 #define	CHIPC_SFLASH_ACT_OP3A4X4D	0x0500	/* opcode + 3 addr, 4 don't care & 4 data bytes */
 #define	CHIPC_SFLASH_ACT_OP3A1X4D	0x0700	/* opcode + 3 addr, 1 don't care & 4 data bytes */
 
@@ -521,7 +521,7 @@
 /* Status register bits for ST flashes */
 #define	CHIPC_SFLASH_ST_WIP		0x01	/* Write In Progress */
 #define	CHIPC_SFLASH_ST_WEL		0x02	/* Write Enable Latch */
-#define	CHIPC_SFLASH_ST_BP_MASK	0x1c	/* Block Protect */
+#define	CHIPC_SFLASH_ST_BP_MASK		0x1c	/* Block Protect */
 #define	CHIPC_SFLASH_ST_BP_SHIFT	2
 #define	CHIPC_SFLASH_ST_SRWD		0x80	/* Status Register Write Disable */
 
@@ -530,7 +530,7 @@
 #define	CHIPC_SFLASH_AT_PAGE_READ			0x07d2
 #define	CHIPC_SFLASH_AT_BUF1_READ
 #define	CHIPC_SFLASH_AT_BUF2_READ
-#define	CHIPC_SFLASH_AT_STATUS			0x01d7
+#define	CHIPC_SFLASH_AT_STATUS				0x01d7
 #define	CHIPC_SFLASH_AT_BUF1_WRITE			0x0384
 #define	CHIPC_SFLASH_AT_BUF2_WRITE			0x0387
 #define	CHIPC_SFLASH_AT_BUF1_ERASE_PROGRAM		0x0283
@@ -545,13 +545,13 @@
 #define	CHIPC_SFLASH_AT_BUF2_LOAD			0x0255
 #define	CHIPC_SFLASH_AT_BUF1_COMPARE			0x0260
 #define	CHIPC_SFLASH_AT_BUF2_COMPARE			0x0261
-#define	CHIPC_SFLASH_AT_BUF1_REPROGRAM		0x0258
-#define	CHIPC_SFLASH_AT_BUF2_REPROGRAM		0x0259
+#define	CHIPC_SFLASH_AT_BUF1_REPROGRAM			0x0258
+#define	CHIPC_SFLASH_AT_BUF2_REPROGRAM			0x0259
 
 /* Status register bits for Atmel flashes */
 #define	CHIPC_SFLASH_AT_READY				0x80
 #define	CHIPC_SFLASH_AT_MISMATCH			0x40
-#define	CHIPC_SFLASH_AT_ID_MASK			0x38
+#define	CHIPC_SFLASH_AT_ID_MASK				0x38
 #define	CHIPC_SFLASH_AT_ID_SHIFT			3
 
 /*
@@ -560,36 +560,36 @@
  * a 8250, 16450, or 16550(A).
  */
 
-#define	CHIPC_UART_RX		0	/* In:  Receive buffer (DLAB=0) */
-#define	CHIPC_UART_TX		0	/* Out: Transmit buffer (DLAB=0) */
-#define	CHIPC_UART_DLL	0	/* Out: Divisor Latch Low (DLAB=1) */
-#define	CHIPC_UART_IER	1	/* In/Out: Interrupt Enable Register (DLAB=0) */
-#define	CHIPC_UART_DLM	1	/* Out: Divisor Latch High (DLAB=1) */
-#define	CHIPC_UART_IIR	2	/* In: Interrupt Identity Register  */
-#define	CHIPC_UART_FCR	2	/* Out: FIFO Control Register */
-#define	CHIPC_UART_LCR	3	/* Out: Line Control Register */
-#define	CHIPC_UART_MCR	4	/* Out: Modem Control Register */
-#define	CHIPC_UART_LSR	5	/* In:  Line Status Register */
-#define	CHIPC_UART_MSR	6	/* In:  Modem Status Register */
-#define	CHIPC_UART_SCR	7	/* I/O: Scratch Register */
-#define	CHIPC_UART_LCR_DLAB	0x80	/* Divisor latch access bit */
-#define	CHIPC_UART_LCR_WLEN8	0x03	/* Word length: 8 bits */
-#define	CHIPC_UART_MCR_OUT2	0x08	/* MCR GPIO out 2 */
-#define	CHIPC_UART_MCR_LOOP	0x10	/* Enable loopback test mode */
-#define	CHIPC_UART_LSR_RX_FIFO 	0x80	/* Receive FIFO error */
+#define	CHIPC_UART_RX			0	/* In:  Receive buffer (DLAB=0) */
+#define	CHIPC_UART_TX			0	/* Out: Transmit buffer (DLAB=0) */
+#define	CHIPC_UART_DLL			0	/* Out: Divisor Latch Low (DLAB=1) */
+#define	CHIPC_UART_IER			1	/* In/Out: Interrupt Enable Register (DLAB=0) */
+#define	CHIPC_UART_DLM			1	/* Out: Divisor Latch High (DLAB=1) */
+#define	CHIPC_UART_IIR			2	/* In: Interrupt Identity Register  */
+#define	CHIPC_UART_FCR			2	/* Out: FIFO Control Register */
+#define	CHIPC_UART_LCR			3	/* Out: Line Control Register */
+#define	CHIPC_UART_MCR			4	/* Out: Modem Control Register */
+#define	CHIPC_UART_LSR			5	/* In:  Line Status Register */
+#define	CHIPC_UART_MSR			6	/* In:  Modem Status Register */
+#define	CHIPC_UART_SCR			7	/* I/O: Scratch Register */
+#define	CHIPC_UART_LCR_DLAB		0x80	/* Divisor latch access bit */
+#define	CHIPC_UART_LCR_WLEN8		0x03	/* Word length: 8 bits */
+#define	CHIPC_UART_MCR_OUT2		0x08	/* MCR GPIO out 2 */
+#define	CHIPC_UART_MCR_LOOP		0x10	/* Enable loopback test mode */
+#define	CHIPC_UART_LSR_RX_FIFO 		0x80	/* Receive FIFO error */
 #define	CHIPC_UART_LSR_TDHR		0x40	/* Data-hold-register empty */
 #define	CHIPC_UART_LSR_THRE		0x20	/* Transmit-hold-register empty */
 #define	CHIPC_UART_LSR_BREAK		0x10	/* Break interrupt */
-#define	CHIPC_UART_LSR_FRAMING	0x08	/* Framing error */
+#define	CHIPC_UART_LSR_FRAMING		0x08	/* Framing error */
 #define	CHIPC_UART_LSR_PARITY		0x04	/* Parity error */
-#define	CHIPC_UART_LSR_OVERRUN	0x02	/* Overrun error */
+#define	CHIPC_UART_LSR_OVERRUN		0x02	/* Overrun error */
 #define	CHIPC_UART_LSR_RXRDY		0x01	/* Receiver ready */
-#define	CHIPC_UART_FCR_FIFO_ENABLE 1	/* FIFO control register bit controlling FIFO enable/disable */
+#define	CHIPC_UART_FCR_FIFO_ENABLE	1	/* FIFO control register bit controlling FIFO enable/disable */
 
 /* Interrupt Identity Register (IIR) bits */
 #define	CHIPC_UART_IIR_FIFO_MASK	0xc0	/* IIR FIFO disable/enabled mask */
-#define	CHIPC_UART_IIR_INT_MASK	0xf	/* IIR interrupt ID source */
-#define	CHIPC_UART_IIR_MDM_CHG	0x0	/* Modem status changed */
+#define	CHIPC_UART_IIR_INT_MASK		0xf	/* IIR interrupt ID source */
+#define	CHIPC_UART_IIR_MDM_CHG		0x0	/* Modem status changed */
 #define	CHIPC_UART_IIR_NOINT		0x1	/* No interrupt pending */
 #define	CHIPC_UART_IIR_THRE		0x2	/* THR empty */
 #define	CHIPC_UART_IIR_RCVD_DATA	0x4	/* Received data available */
@@ -599,7 +599,7 @@
 /* Interrupt Enable Register (IER) bits */
 #define	CHIPC_UART_IER_EDSSI	8	/* enable modem status interrupt */
 #define	CHIPC_UART_IER_ELSI	4	/* enable receiver line status interrupt */
-#define	CHIPC_UART_IER_ETBEI  2	/* enable transmitter holding register empty interrupt */
+#define	CHIPC_UART_IER_ETBEI	2	/* enable transmitter holding register empty interrupt */
 #define	CHIPC_UART_IER_ERBFI	1	/* enable data available interrupt */
 
 /* pmustatus */
@@ -648,22 +648,22 @@
 #define	CHIPC_PMURES_MAX_RESNUM	30
 
 /* PMU chip control0 register */
-#define	CHIPC_PMU_CHIPCTL0		0
+#define	CHIPC_PMU_CHIPCTL0	0
 
 /* PMU chip control1 register */
-#define	CHIPC_PMU_CHIPCTL1			1
-#define	CHIPC_PMU_CC1_RXC_DLL_BYPASS		0x00010000
+#define	CHIPC_PMU_CHIPCTL1		1
+#define	CHIPC_PMU_CC1_RXC_DLL_BYPASS	0x00010000
 
-#define	CHIPC_PMU_CC1_IF_TYPE_MASK   		0x00000030
-#define	CHIPC_PMU_CC1_IF_TYPE_RMII    	0x00000000
-#define	CHIPC_PMU_CC1_IF_TYPE_MII     	0x00000010
-#define	CHIPC_PMU_CC1_IF_TYPE_RGMII   	0x00000020
+#define	CHIPC_PMU_CC1_IF_TYPE_MASK	0x00000030
+#define	CHIPC_PMU_CC1_IF_TYPE_RMII	0x00000000
+#define	CHIPC_PMU_CC1_IF_TYPE_MII	0x00000010
+#define	CHIPC_PMU_CC1_IF_TYPE_RGMII	0x00000020
 
-#define	CHIPC_PMU_CC1_SW_TYPE_MASK    	0x000000c0
-#define	CHIPC_PMU_CC1_SW_TYPE_EPHY    	0x00000000
-#define	CHIPC_PMU_CC1_SW_TYPE_EPHYMII 	0x00000040
+#define	CHIPC_PMU_CC1_SW_TYPE_MASK	0x000000c0
+#define	CHIPC_PMU_CC1_SW_TYPE_EPHY	0x00000000
+#define	CHIPC_PMU_CC1_SW_TYPE_EPHYMII	0x00000040
 #define	CHIPC_PMU_CC1_SW_TYPE_EPHYRMII	0x00000080
-#define	CHIPC_PMU_CC1_SW_TYPE_RGMII   	0x000000c0
+#define	CHIPC_PMU_CC1_SW_TYPE_RGMII	0x000000c0
 
 /* PMU corerev and chip specific PLL controls.
  * PMU<rev>_PLL<num>_XX where <rev> is PMU corerev and <num> is an arbitrary number
@@ -671,7 +671,7 @@
  */
 /* pllcontrol registers */
 /* PDIV, div_phy, div_arm, div_adc, dith_sel, ioff, kpd_scale, lsb_sel, mash_sel, lf_c & lf_r */
-#define	CHIPC_PMU0_PLL0_PLLCTL0		0
+#define	CHIPC_PMU0_PLL0_PLLCTL0			0
 #define	CHIPC_PMU0_PLL0_PC0_PDIV_MASK		1
 #define	CHIPC_PMU0_PLL0_PC0_PDIV_FREQ		25000
 #define	CHIPC_PMU0_PLL0_PC0_DIV_ARM_MASK	0x00000038
@@ -689,7 +689,7 @@
 #define	CHIPC_PMU0_PLL0_PC0_DIV_ARM_58_6MHZ	7
 
 /* Wildcard base, stop_mod, en_lf_tp, en_cal & lf_r2 */
-#define	CHIPC_PMU0_PLL0_PLLCTL1		1
+#define	CHIPC_PMU0_PLL0_PLLCTL1			1
 #define	CHIPC_PMU0_PLL0_PC1_WILD_INT_MASK	0xf0000000
 #define	CHIPC_PMU0_PLL0_PC1_WILD_INT_SHIFT	28
 #define	CHIPC_PMU0_PLL0_PC1_WILD_FRAC_MASK	0x0fffff00
@@ -697,7 +697,7 @@
 #define	CHIPC_PMU0_PLL0_PC1_STOP_MOD		0x00000040
 
 /* Wildcard base, vco_calvar, vco_swc, vco_var_selref, vso_ical & vco_sel_avdd */
-#define	CHIPC_PMU0_PLL0_PLLCTL2		2
+#define	CHIPC_PMU0_PLL0_PLLCTL2			2
 #define	CHIPC_PMU0_PLL0_PC2_WILD_INT_MASK	0xf
 #define	CHIPC_PMU0_PLL0_PC2_WILD_INT_SHIFT	4
 
@@ -725,11 +725,11 @@
 #define	CHIPC_DOT11MAC_880MHZ_CLK_DIVISOR_VAL  (0xE << DOT11MAC_880MHZ_CLK_DIVISOR_SHIFT)
 
 /* m<x>div, ndiv_dither_mfb, ndiv_mode, ndiv_int */
-#define	CHIPC_PMU1_PLL0_PLLCTL2		2
-#define	CHIPC_PMU1_PLL0_PC2_M5DIV_MASK	0x000000ff
-#define	CHIPC_PMU1_PLL0_PC2_M5DIV_SHIFT	0
-#define	CHIPC_PMU1_PLL0_PC2_M6DIV_MASK	0x0000ff00
-#define	CHIPC_PMU1_PLL0_PC2_M6DIV_SHIFT	8
+#define	CHIPC_PMU1_PLL0_PLLCTL2			2
+#define	CHIPC_PMU1_PLL0_PC2_M5DIV_MASK		0x000000ff
+#define	CHIPC_PMU1_PLL0_PC2_M5DIV_SHIFT		0
+#define	CHIPC_PMU1_PLL0_PC2_M6DIV_MASK		0x0000ff00
+#define	CHIPC_PMU1_PLL0_PC2_M6DIV_SHIFT		8
 #define	CHIPC_PMU1_PLL0_PC2_NDIV_MODE_MASK	0x000e0000
 #define	CHIPC_PMU1_PLL0_PC2_NDIV_MODE_SHIFT	17
 #define	CHIPC_PMU1_PLL0_PC2_NDIV_MODE_MASH	1
@@ -738,7 +738,7 @@
 #define	CHIPC_PMU1_PLL0_PC2_NDIV_INT_SHIFT	20
 
 /* ndiv_frac */
-#define	CHIPC_PMU1_PLL0_PLLCTL3		3
+#define	CHIPC_PMU1_PLL0_PLLCTL3			3
 #define	CHIPC_PMU1_PLL0_PC3_NDIV_FRAC_MASK	0x00ffffff
 #define	CHIPC_PMU1_PLL0_PC3_NDIV_FRAC_SHIFT	0
 
@@ -746,9 +746,9 @@
 #define	CHIPC_PMU1_PLL0_PLLCTL4		4
 
 /* pll_ctrl, vco_rng, clkdrive_ch<x> */
-#define	CHIPC_PMU1_PLL0_PLLCTL5		5
-#define	CHIPC_PMU1_PLL0_PC5_CLK_DRV_MASK 0xffffff00
-#define	CHIPC_PMU1_PLL0_PC5_CLK_DRV_SHIFT 8
+#define	CHIPC_PMU1_PLL0_PLLCTL5			5
+#define	CHIPC_PMU1_PLL0_PC5_CLK_DRV_MASK	0xffffff00
+#define	CHIPC_PMU1_PLL0_PC5_CLK_DRV_SHIFT	8
 
 /* PMU rev 2 control words */
 #define	CHIPC_PMU2_PHY_PLL_PLLCTL		4
@@ -775,26 +775,26 @@
 #define	CHIPC_PMU2_PLL_PC1_M4DIV_SHIFT	24
 
 /* m<x>div, ndiv_dither_mfb, ndiv_mode, ndiv_int */
-#define	CHIPC_PMU2_PLL_PLLCTL2		2
-#define	CHIPC_PMU2_PLL_PC2_M5DIV_MASK 	0x000000ff
-#define	CHIPC_PMU2_PLL_PC2_M5DIV_SHIFT	0
-#define	CHIPC_PMU2_PLL_PC2_M6DIV_MASK 	0x0000ff00
-#define	CHIPC_PMU2_PLL_PC2_M6DIV_SHIFT	8
+#define	CHIPC_PMU2_PLL_PLLCTL2			2
+#define	CHIPC_PMU2_PLL_PC2_M5DIV_MASK 		0x000000ff
+#define	CHIPC_PMU2_PLL_PC2_M5DIV_SHIFT		0
+#define	CHIPC_PMU2_PLL_PC2_M6DIV_MASK 		0x0000ff00
+#define	CHIPC_PMU2_PLL_PC2_M6DIV_SHIFT		8
 #define	CHIPC_PMU2_PLL_PC2_NDIV_MODE_MASK	0x000e0000
 #define	CHIPC_PMU2_PLL_PC2_NDIV_MODE_SHIFT	17
 #define	CHIPC_PMU2_PLL_PC2_NDIV_INT_MASK	0x1ff00000
 #define	CHIPC_PMU2_PLL_PC2_NDIV_INT_SHIFT	20
 
 /* ndiv_frac */
-#define	CHIPC_PMU2_PLL_PLLCTL3		3
+#define	CHIPC_PMU2_PLL_PLLCTL3			3
 #define	CHIPC_PMU2_PLL_PC3_NDIV_FRAC_MASK	0x00ffffff
 #define	CHIPC_PMU2_PLL_PC3_NDIV_FRAC_SHIFT	0
 
 /* pll_ctrl */
-#define	CHIPC_PMU2_PLL_PLLCTL4		4
+#define	CHIPC_PMU2_PLL_PLLCTL4			4
 
 /* pll_ctrl, vco_rng, clkdrive_ch<x> */
-#define	CHIPC_PMU2_PLL_PLLCTL5		5
+#define	CHIPC_PMU2_PLL_PLLCTL5			5
 #define	CHIPC_PMU2_PLL_PC5_CLKDRIVE_CH1_MASK	0x00000f00
 #define	CHIPC_PMU2_PLL_PC5_CLKDRIVE_CH1_SHIFT	8
 #define	CHIPC_PMU2_PLL_PC5_CLKDRIVE_CH2_MASK	0x0000f000
@@ -815,22 +815,22 @@
 #define	CHIPC_PMU5_PLL_P2_MASK		0x00f00000
 #define	CHIPC_PMU5_PLL_P2_SHIFT		20
 #define	CHIPC_PMU5_PLL_M14_OFF		1
-#define	CHIPC_PMU5_PLL_MDIV_MASK		0x000000ff
-#define	CHIPC_PMU5_PLL_MDIV_WIDTH		8
+#define	CHIPC_PMU5_PLL_MDIV_MASK	0x000000ff
+#define	CHIPC_PMU5_PLL_MDIV_WIDTH	8
 #define	CHIPC_PMU5_PLL_NM5_OFF		2
-#define	CHIPC_PMU5_PLL_NDIV_MASK		0xfff00000
-#define	CHIPC_PMU5_PLL_NDIV_SHIFT		20
-#define	CHIPC_PMU5_PLL_NDIV_MODE_MASK		0x000e0000
+#define	CHIPC_PMU5_PLL_NDIV_MASK	0xfff00000
+#define	CHIPC_PMU5_PLL_NDIV_SHIFT	20
+#define	CHIPC_PMU5_PLL_NDIV_MODE_MASK	0x000e0000
 #define	CHIPC_PMU5_PLL_NDIV_MODE_SHIFT	17
 #define	CHIPC_PMU5_PLL_FMAB_OFF		3
-#define	CHIPC_PMU5_PLL_MRAT_MASK		0xf0000000
-#define	CHIPC_PMU5_PLL_MRAT_SHIFT		28
-#define	CHIPC_PMU5_PLL_ABRAT_MASK		0x08000000
-#define	CHIPC_PMU5_PLL_ABRAT_SHIFT		27
-#define	CHIPC_PMU5_PLL_FDIV_MASK		0x07ffffff
-#define	CHIPC_PMU5_PLL_PLLCTL_OFF		4
+#define	CHIPC_PMU5_PLL_MRAT_MASK	0xf0000000
+#define	CHIPC_PMU5_PLL_MRAT_SHIFT	28
+#define	CHIPC_PMU5_PLL_ABRAT_MASK	0x08000000
+#define	CHIPC_PMU5_PLL_ABRAT_SHIFT	27
+#define	CHIPC_PMU5_PLL_FDIV_MASK	0x07ffffff
+#define	CHIPC_PMU5_PLL_PLLCTL_OFF	4
 #define	CHIPC_PMU5_PLL_PCHI_OFF		5
-#define	CHIPC_PMU5_PLL_PCHI_MASK		0x0000003f
+#define	CHIPC_PMU5_PLL_PCHI_MASK	0x0000003f
 
 /* pmu XtalFreqRatio */
 #define	CHIPC_PMU_XTALFREQ_REG_ILPCTR_MASK	0x00001FFF
@@ -840,37 +840,37 @@
 /* Divider allocation in 4716/47162/5356/5357 */
 #define	CHIPC_PMU5_MAINPLL_CPU		1
 #define	CHIPC_PMU5_MAINPLL_MEM		2
-#define	CHIPC_PMU5_MAINPLL_SI			3
+#define	CHIPC_PMU5_MAINPLL_SI		3
 
-#define	CHIPC_PMU7_PLL_PLLCTL7                7
-#define	CHIPC_PMU7_PLL_PLLCTL8                8
+#define	CHIPC_PMU7_PLL_PLLCTL7		7
+#define	CHIPC_PMU7_PLL_PLLCTL8		8
 #define	CHIPC_PMU7_PLL_PLLCTL11		11
 
 /* PLL usage in 4716/47162 */
-#define	CHIPC_PMU4716_MAINPLL_PLL0		12
+#define	CHIPC_PMU4716_MAINPLL_PLL0	12
 
 /* PLL usage in 5356/5357 */
-#define	CHIPC_PMU5356_MAINPLL_PLL0		0
-#define	CHIPC_PMU5357_MAINPLL_PLL0		0
+#define	CHIPC_PMU5356_MAINPLL_PLL0	0
+#define	CHIPC_PMU5357_MAINPLL_PLL0	0
 
 /* 4716/47162 resources */
-#define	CHIPC_RES4716_PROC_PLL_ON		0x00000040
-#define	CHIPC_RES4716_PROC_HT_AVAIL		0x00000080
+#define	CHIPC_RES4716_PROC_PLL_ON	0x00000040
+#define	CHIPC_RES4716_PROC_HT_AVAIL	0x00000080
 
 /* 4716/4717/4718 Chip specific ChipControl register bits */
-#define	CHIPC_CCTRL471X_I2S_PINS_ENABLE          0x0080	/* I2S pins off by default, shared with pflash */
+#define	CHIPC_CCTRL471X_I2S_PINS_ENABLE	0x0080	/* I2S pins off by default, shared with pflash */
 
 /* 5354 resources */
-#define	CHIPC_RES5354_EXT_SWITCHER_PWM	0	/* 0x00001 */
+#define	CHIPC_RES5354_EXT_SWITCHER_PWM		0	/* 0x00001 */
 #define	CHIPC_RES5354_BB_SWITCHER_PWM		1	/* 0x00002 */
-#define	CHIPC_RES5354_BB_SWITCHER_BURST	2	/* 0x00004 */
+#define	CHIPC_RES5354_BB_SWITCHER_BURST		2	/* 0x00004 */
 #define	CHIPC_RES5354_BB_EXT_SWITCHER_BURST	3	/* 0x00008 */
 #define	CHIPC_RES5354_ILP_REQUEST		4	/* 0x00010 */
 #define	CHIPC_RES5354_RADIO_SWITCHER_PWM	5	/* 0x00020 */
 #define	CHIPC_RES5354_RADIO_SWITCHER_BURST	6	/* 0x00040 */
 #define	CHIPC_RES5354_ROM_SWITCH		7	/* 0x00080 */
 #define	CHIPC_RES5354_PA_REF_LDO		8	/* 0x00100 */
-#define	CHIPC_RES5354_RADIO_LDO		9	/* 0x00200 */
+#define	CHIPC_RES5354_RADIO_LDO			9	/* 0x00200 */
 #define	CHIPC_RES5354_AFE_LDO			10	/* 0x00400 */
 #define	CHIPC_RES5354_PLL_LDO			11	/* 0x00800 */
 #define	CHIPC_RES5354_BG_FILTBYP		12	/* 0x01000 */
@@ -880,10 +880,10 @@
 #define	CHIPC_RES5354_XTAL_EN			16	/* 0x10000 */
 #define	CHIPC_RES5354_BB_PLL_FILTBYP		17	/* 0x20000 */
 #define	CHIPC_RES5354_RF_PLL_FILTBYP		18	/* 0x40000 */
-#define	CHIPC_RES5354_BB_PLL_PU		19	/* 0x80000 */
+#define	CHIPC_RES5354_BB_PLL_PU			19	/* 0x80000 */
 
 /* 5357 Chip specific ChipControl register bits */
-#define	CHIPC_CCTRL5357_EXTPA                 (1<<14)	/* extPA in ChipControl 1, bit 14 */
+#define	CHIPC_CCTRL5357_EXTPA			(1<<14)	/* extPA in ChipControl 1, bit 14 */
 #define	CHIPC_CCTRL5357_ANT_MUX_2o3		(1<<15)	/* 2o3 in ChipControl 1, bit 15 */
 
 /* 4328 resources */
@@ -1096,7 +1096,7 @@
 #define	CHIPC_CCTRL4331_BT_COEXIST		(1<<0)	/* 0 disable */
 #define	CHIPC_CCTRL4331_SECI			(1<<1)	/* 0 SECI is disabled (JATG functional) */
 #define	CHIPC_CCTRL4331_EXT_LNA			(1<<2)	/* 0 disable */
-#define	CHIPC_CCTRL4331_SPROM_GPIO13_15       (1<<3)	/* sprom/gpio13-15 mux */
+#define	CHIPC_CCTRL4331_SPROM_GPIO13_15		(1<<3)	/* sprom/gpio13-15 mux */
 #define	CHIPC_CCTRL4331_EXTPA_EN		(1<<4)	/* 0 ext pa disable, 1 ext pa enabled */
 #define	CHIPC_CCTRL4331_GPIOCLK_ON_SPROMCS	(1<<5)	/* set drive out GPIO_CLK on sprom_cs pin */
 #define	CHIPC_CCTRL4331_PCIE_MDIO_ON_SPROMCS	(1<<6)	/* use sprom_cs pin as PCIE mdio interface */
