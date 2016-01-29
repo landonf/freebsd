@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2015 Landon Fuller <landon@landonf.org>
+ * Copyright (c) 2015-2016 Landon Fuller <landon@landonf.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,20 +29,31 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_CORES_CHIPC_CHIPCVAR_H_
-#define _BHND_CORES_CHIPC_CHIPCVAR_H_
+#ifndef _BHND_NVRAM_BHND_NVRAM_H_
+#define _BHND_NVRAM_BHND_NVRAM_H_
 
-#include "chipc.h"
+/**
+ * NVRAM hardware types that may be attached to a bhnd(4) device.
+ */
+typedef enum {
+	BHND_NVRAM_HW_OTP,		/**< On-chip one-time-programmable
+					  *  memory. */
+	BHND_NVRAM_HW_FLASHCORE,	/**< External flash device accessible
+					  *  via on-chip flash core, such
+					  *  as the NAND/QSPI controller cores
+					  *  used on Northstar devices to access
+					  *  NVRAM. */
+	BHND_NVRAM_HW_SPROM,		/**< External serial EEPROM. */
+	
+	BHND_NVRAM_HW_NONE		/**< No NVRAM hardware is directly
+					  *  attached. This is used on devices
+					  *  attached via PCI(e) to BHND SoCs,
+					  *  where to avoid unnecessary flash
+					  *  hardware, NVRAM configuration for
+					  *  individual devices is provided by
+					  *  hardware attached to the SoC
+					  *  itself.
+					  */
+} bhnd_nvram_hw_t;
 
-DECLARE_CLASS(bhnd_chipc);
-extern devclass_t bhnd_chipc_devclass;
-
-#define	CHIPC_MAX_RES	1
-#define	CHIPC_MAX_RSPEC	(CHIPC_MAX_RES+1)
-
-struct chipc_softc {
-	struct resource_spec	rspec[CHIPC_MAX_RSPEC];
-	struct bhnd_resource	*res[CHIPC_MAX_RES];
-};
-
-#endif /* _BHND_CORES_CHIPC_CHIPCVAR_H_ */
+#endif /* _BHND_NVRAM_BHND_NVRAM_H_ */

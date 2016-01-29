@@ -55,6 +55,8 @@ __FBSDID("$FreeBSD$");
 #include "chipcreg.h"
 #include "chipcvar.h"
 
+devclass_t bhnd_chipc_devclass;	/**< bhnd(4) chipcommon device class */
+
 static const struct resource_spec chipc_rspec[CHIPC_MAX_RSPEC] = {
 	{ SYS_RES_MEMORY,	0,	RF_ACTIVE },
 	{ -1, -1, 0 }
@@ -136,17 +138,27 @@ chipc_resume(device_t dev)
 	return (0);
 }
 
+static bhnd_nvram_hw_t
+chipc_avail_nvram_hw(device_t dev)
+{
+	// TODO
+	return (BHND_NVRAM_HW_NONE);
+}
+
 static device_method_t chipc_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_probe,		chipc_probe),
-	DEVMETHOD(device_attach,	chipc_attach),
-	DEVMETHOD(device_detach,	chipc_detach),
-	DEVMETHOD(device_suspend,	chipc_suspend),
-	DEVMETHOD(device_resume,	chipc_resume),
+	DEVMETHOD(device_probe,			chipc_probe),
+	DEVMETHOD(device_attach,		chipc_attach),
+	DEVMETHOD(device_detach,		chipc_detach),
+	DEVMETHOD(device_suspend,		chipc_suspend),
+	DEVMETHOD(device_resume,		chipc_resume),
+	
+	/* ChipCommon interface */
+	DEVMETHOD(bhnd_chipc_avail_nvram_hw,	chipc_avail_nvram_hw),
+
 	DEVMETHOD_END
 };
 
-static devclass_t bhnd_chipc_devclass;
-
-DEFINE_CLASS_0(bhnd_cc, chipc_driver, chipc_methods, sizeof(struct chipc_softc));
-DRIVER_MODULE(bhnd_cc, bhnd, chipc_driver, bhnd_chipc_devclass, 0, 0);
+DEFINE_CLASS_0(bhnd_chipc, chipc_driver, chipc_methods, sizeof(struct chipc_softc));
+DRIVER_MODULE(bhnd_chipc, bhnd, chipc_driver, bhnd_chipc_devclass, 0, 0);
+MODULE_VERSION(bhnd_chipc, 1);

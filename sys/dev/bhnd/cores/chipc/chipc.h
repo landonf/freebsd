@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2015 Landon Fuller <landon@landonf.org>
+ * Copyright (c) 2015-2016 Landon Fuller <landon@landonf.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,20 +29,11 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_CORES_CHIPC_CHIPCVAR_H_
-#define _BHND_CORES_CHIPC_CHIPCVAR_H_
+#ifndef _BHND_CORES_CHIPC_CHIPC_H_
+#define _BHND_CORES_CHIPC_CHIPC_H_
 
-#include "chipc.h"
+#include <dev/bhnd/nvram/bhnd_nvram.h>
 
-DECLARE_CLASS(bhnd_chipc);
-extern devclass_t bhnd_chipc_devclass;
+#include "bhnd_chipc_if.h"
 
-#define	CHIPC_MAX_RES	1
-#define	CHIPC_MAX_RSPEC	(CHIPC_MAX_RES+1)
-
-struct chipc_softc {
-	struct resource_spec	rspec[CHIPC_MAX_RSPEC];
-	struct bhnd_resource	*res[CHIPC_MAX_RES];
-};
-
-#endif /* _BHND_CORES_CHIPC_CHIPCVAR_H_ */
+#endif /* _BHND_CORES_CHIPC_CHIPC_H_ */

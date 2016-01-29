@@ -1120,6 +1120,7 @@ dev/bhnd/bcma/bcma_bhndb.c		optional bhndbus | bcma bhndb
 dev/bhnd/bcma/bcma_erom.c		optional bhndbus | bcma
 dev/bhnd/bcma/bcma_subr.c		optional bhndbus | bcma
 dev/bhnd/cores/chipc/chipc.c		optional bhndbus | bhnd
+dev/bhnd/cores/chipc/bhnd_chipc_if.m	optional bhndbus | bhnd
 dev/bhnd/cores/pci/mdio_pcie.c		optional bhndbus pci | bhnd pci
 dev/bhnd/cores/pci/bhnd_pci.c		optional bhndbus pci | bhnd pci
 dev/bhnd/cores/pci/bhnd_pcib.c		optional bhnd_pcib bhnd pci
