@@ -62,7 +62,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/ofw/ofw_bus.h>
 #include <dev/ofw/ofw_bus_subr.h>
 
-#include <arm/mv/mvreg.h>
 #include <arm/mv/mvvar.h>
 
 #include "iicbus_if.h"
@@ -401,10 +400,9 @@ mv_twsi_attach(device_t dev)
 	for (child = OF_child(ofw_bus_get_node(dev)); child != 0;
 	    child = OF_peer(child)) {
 		len = OF_getproplen(child, "model");
-		if (len <= 0 || len > sizeof(dname) - 1)
+		if (len <= 0 || len > sizeof(dname))
 			continue;
 		error = OF_getprop(child, "model", &dname, len);
-		dname[len + 1] = '\0';
 		if (error == -1)
 			continue;
 		len = strlen(dname);
@@ -428,10 +426,9 @@ mv_twsi_attach(device_t dev)
 
 		/* Get device driver name. */
 		len = OF_getproplen(child, "model");
-		if (len <= 0 || len > sizeof(dname) - 1)
+		if (len <= 0 || len > sizeof(dname))
 			continue;
 		OF_getprop(child, "model", &dname, len);
-		dname[len + 1] = '\0';
 
 		if (bootverbose)
 			device_printf(dev, "adding a device %s at %d.\n",

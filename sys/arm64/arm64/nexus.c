@@ -64,7 +64,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_platform.h"
 
 #ifdef FDT
-#include <dev/fdt/fdt_common.h>
+#include <dev/ofw/openfirm.h>
 #include "ofw_bus_if.h"
 #endif
 #ifdef DEV_ACPI
@@ -99,19 +99,23 @@ static device_attach_t	nexus_acpi_attach;
 static	int nexus_print_child(device_t, device_t);
 static	device_t nexus_add_child(device_t, u_int, const char *, int);
 static	struct resource *nexus_alloc_resource(device_t, device_t, int, int *,
-    u_long, u_long, u_long, u_int);
+    rman_res_t, rman_res_t, rman_res_t, u_int);
 static	int nexus_activate_resource(device_t, device_t, int, int,
     struct resource *);
 static int nexus_config_intr(device_t dev, int irq, enum intr_trigger trig,
     enum intr_polarity pol);
 static struct resource_list *nexus_get_reslist(device_t, device_t);
-static	int nexus_set_resource(device_t, device_t, int, int, u_long, u_long);
+static	int nexus_set_resource(device_t, device_t, int, int,
+    rman_res_t, rman_res_t);
 static	int nexus_deactivate_resource(device_t, device_t, int, int,
     struct resource *);
 
 static int nexus_setup_intr(device_t dev, device_t child, struct resource *res,
     int flags, driver_filter_t *filt, driver_intr_t *intr, void *arg, void **cookiep);
 static int nexus_teardown_intr(device_t, device_t, struct resource *, void *);
+#ifdef SMP
+static int nexus_bind_intr(device_t, device_t, struct resource *, int);
+#endif
 
 #ifdef FDT
 static int nexus_ofw_map_intr(device_t dev, device_t child, phandle_t iparent,
@@ -130,7 +134,9 @@ static device_method_t nexus_methods[] = {
 	DEVMETHOD(bus_deactivate_resource,	nexus_deactivate_resource),
 	DEVMETHOD(bus_setup_intr,	nexus_setup_intr),
 	DEVMETHOD(bus_teardown_intr,	nexus_teardown_intr),
-
+#ifdef SMP
+	DEVMETHOD(bus_bind_intr,	nexus_bind_intr),
+#endif
 	{ 0, 0 }
 };
 
@@ -201,7 +207,7 @@ nexus_add_child(device_t bus, u_int order, const char *name, int unit)
  */
 static struct resource *
 nexus_alloc_resource(device_t bus, device_t child, int type, int *rid,
-    u_long start, u_long end, u_long count, u_int flags)
+    rman_res_t start, rman_res_t end, rman_res_t count, u_int flags)
 {
 	struct nexus_device *ndev = DEVTONX(child);
 	struct resource *rv;
@@ -292,6 +298,15 @@ nexus_teardown_intr(device_t dev, device_t child, struct resource *r, void *ih)
 	return (arm_teardown_intr(ih));
 }
 
+#ifdef SMP
+static int
+nexus_bind_intr(device_t dev, device_t child, struct resource *irq, int cpu)
+{
+
+	return (arm_intr_bind(rman_get_start(irq), cpu));
+}
+#endif
+
 static int
 nexus_activate_resource(device_t bus, device_t child, int type, int rid,
     struct resource *r)
@@ -332,7 +347,7 @@ nexus_get_reslist(device_t dev, device_t child)
 
 static int
 nexus_set_resource(device_t dev, device_t child, int type, int rid,
-    u_long start, u_long count)
+    rman_res_t start, rman_res_t count)
 {
 	struct nexus_device	*ndev = DEVTONX(child);
 	struct resource_list	*rl = &ndev->nx_resources;

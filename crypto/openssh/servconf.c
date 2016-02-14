@@ -320,7 +320,7 @@ fill_default_server_options(ServerOptions *options)
 	if (options->max_sessions == -1)
 		options->max_sessions = DEFAULT_SESSIONS_MAX;
 	if (options->use_dns == -1)
-		options->use_dns = 0;
+		options->use_dns = 1;
 	if (options->client_alive_interval == -1)
 		options->client_alive_interval = 0;
 	if (options->client_alive_count_max == -1)
@@ -565,6 +565,7 @@ static struct {
 	{ "streamlocalbindunlink", sStreamLocalBindUnlink, SSHCFG_ALL },
 	{ "allowstreamlocalforwarding", sAllowStreamLocalForwarding, SSHCFG_ALL },
 	{ "fingerprinthash", sFingerprintHash, SSHCFG_GLOBAL },
+	{ "noneenabled", sUnsupported, SSHCFG_ALL },
 	{ "hpndisabled", sDeprecated, SSHCFG_ALL },
 	{ "hpnbuffersize", sDeprecated, SSHCFG_ALL },
 	{ "tcprcvbufpoll", sDeprecated, SSHCFG_ALL },

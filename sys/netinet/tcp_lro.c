@@ -38,8 +38,9 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
-#include <sys/mbuf.h>
 #include <sys/kernel.h>
+#include <sys/malloc.h>
+#include <sys/mbuf.h>
 #include <sys/socket.h>
 
 #include <net/if.h>
@@ -346,9 +347,10 @@ tcp_lro_mbuf_compare_header(const void *ppa, const void *ppb)
 	if (ret != 0)
 		goto done;
 
-	ret = ma->m_pkthdr.flowid - mb->m_pkthdr.flowid;
-	if (ret != 0)
-		goto done;
+	if (ma->m_pkthdr.flowid > mb->m_pkthdr.flowid)
+		return (1);
+	else if (ma->m_pkthdr.flowid < mb->m_pkthdr.flowid)
+		return (-1);
 
 	ret = TCP_LRO_SEQUENCE(ma) - TCP_LRO_SEQUENCE(mb);
 done:

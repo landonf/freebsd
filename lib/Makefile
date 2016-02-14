@@ -80,6 +80,7 @@ SUBDIR=	${SUBDIR_ORDERED} \
 	libopie \
 	libpam \
 	libpcap \
+	${_libpe} \
 	libpjdlog \
 	${_libpmc} \
 	${_libproc} \
@@ -184,6 +185,7 @@ _cuse=		libcuse
 
 .if ${MK_TOOLCHAIN} != "no"
 _libelftc=	libelftc
+_libpe=		libpe
 .endif
 
 .if ${MK_FILE} != "no"
@@ -264,7 +266,8 @@ _libproc=	libproc
 _librtld_db=	librtld_db
 .endif
 
-.if ${MACHINE_CPUARCH} == "aarch64" || ${MACHINE_CPUARCH} == "arm"
+.if ${MACHINE_CPUARCH} == "aarch64" || ${MACHINE_CPUARCH} == "arm" || \
+    ${MACHINE_CPUARCH} == "riscv"
 _libproc=	libproc
 _librtld_db=	librtld_db
 .endif
