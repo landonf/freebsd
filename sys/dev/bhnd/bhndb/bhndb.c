@@ -1016,7 +1016,7 @@ bhndb_is_hostb_device(device_t dev, device_t child)
  */
 static struct resource *
 bhndb_alloc_resource(device_t dev, device_t child, int type,
-    int *rid, u_long start, u_long end, u_long count, u_int flags)
+    int *rid, rman_res_t start, rman_res_t end, rman_res_t count, u_int flags)
 {
 	struct bhndb_softc		*sc;
 	struct resource_list_entry	*rle;
@@ -1127,7 +1127,7 @@ bhndb_release_resource(device_t dev, device_t child, int type, int rid,
  */
 static int
 bhndb_adjust_resource(device_t dev, device_t child, int type,
-    struct resource *r, u_long start, u_long end)
+    struct resource *r, rman_res_t start, rman_res_t end)
 {
 	struct bhndb_softc		*sc;
 	struct rman			*rm;
@@ -1217,7 +1217,7 @@ bhndb_activate_static_region(struct bhndb_softc *sc,
 	struct resource			*bridge_res;
 	const struct bhndb_regwin	*win;
 	bhnd_size_t			 parent_offset;
-	u_long				 r_start, r_size;
+	rman_res_t			 r_start, r_size;
 	int				 error;
 
 	win = region->static_regwin;
@@ -1260,7 +1260,7 @@ static struct bhndb_dw_alloc *
 bhndb_retain_dynamic_window(struct bhndb_softc *sc, struct resource *r)
 {
 	struct bhndb_dw_alloc	*dwa;
-	u_long			 r_start, r_size;
+	rman_res_t		 r_start, r_size;
 	int			 error;
 
 	BHNDB_LOCK_ASSERT(sc, MA_OWNED);
@@ -1323,8 +1323,8 @@ bhndb_try_activate_resource(struct bhndb_softc *sc, device_t child, int type,
 	struct bhndb_region	*region;
 	struct bhndb_dw_alloc	*dwa;
 	bhndb_priority_t	 dw_priority;
-	u_long			 r_start, r_size;
-	u_long			 parent_offset;
+	rman_res_t		 r_start, r_size;
+	rman_res_t		 parent_offset;
 	int			 error;
 
 	BHNDB_LOCK_ASSERT(sc, MA_NOTOWNED);
@@ -1463,7 +1463,7 @@ bhndb_get_resource_list(device_t dev, device_t child)
  */
 static struct bhnd_resource *
 bhndb_alloc_bhnd_resource(device_t dev, device_t child, int type,
-     int *rid, u_long start, u_long end, u_long count, u_int flags)
+     int *rid, rman_res_t start, rman_res_t end, rman_res_t count, u_int flags)
 {
 	struct bhndb_softc	*sc;
 	struct bhnd_resource	*br;
@@ -1527,7 +1527,7 @@ bhndb_activate_bhnd_resource(device_t dev, device_t child,
 	struct bhndb_softc	*sc;
 	struct bhndb_region	*region;
 	bhndb_priority_t	 r_prio;
-	u_long			 r_start, r_size;
+	rman_res_t		 r_start, r_size;
 	int 			 error;
 	bool			 indirect;
 

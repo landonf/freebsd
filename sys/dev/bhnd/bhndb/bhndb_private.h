@@ -140,7 +140,7 @@ struct bhndb_dw_alloc {
 	const struct bhndb_regwin	*win;		/**< window definition */
 	struct resource			*parent_res;	/**< enclosing resource */
 	u_int				 rnid;		/**< region identifier */
-	u_long				 target;	/**< the current window address, or 0x0 if unknown */
+	rman_res_t			 target;	/**< the current window address, or 0x0 if unknown */
 
 	LIST_HEAD(, bhndb_dw_rentry)	 refs;		/**< references */
 };

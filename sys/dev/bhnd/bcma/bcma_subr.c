@@ -158,13 +158,15 @@ bcma_dinfo_init_resource_info(device_t bus, struct bcma_devinfo *dinfo,
 			/*
 			 * Create the corresponding device resource list entry.
 			 * 
-			 * We necessarily skip registration of the region in the 
-			 * per-device resource_list if the memory range is not
-			 * representable using rman/resource API's u_long
-			 * address type.
+			 * We necessarily skip registration if the region's
+			 * device memory range is not representable via
+			 * rman_res_t.
+			 * 
+			 * When rman_res_t is migrated to uintmax_t, any
+			 * range should be representable.
 			 */
 			end = map->m_base + map->m_size;
-			if (map->m_base <= ULONG_MAX && end <= ULONG_MAX) {
+			if (map->m_base <= RM_MAX_END && end <= RM_MAX_END) {
 				map->m_rid = resource_list_add_next(
 				    &dinfo->resources, SYS_RES_MEMORY,
 				    map->m_base, end, map->m_size);

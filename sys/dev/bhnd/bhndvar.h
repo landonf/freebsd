@@ -86,8 +86,9 @@ int			 bhnd_generic_read_nvram_var(device_t dev,
 const struct bhnd_chipid *bhnd_generic_get_chipid(device_t dev, device_t child);
 
 struct bhnd_resource	*bhnd_generic_alloc_bhnd_resource (device_t dev,
-			     device_t child, int type, int *rid, u_long start,
-			     u_long end, u_long count, u_int flags);
+			     device_t child, int type, int *rid,
+			     rman_res_t start, rman_res_t end, rman_res_t count,
+			     u_int flags);
 
 int			 bhnd_generic_release_bhnd_resource (device_t dev,
 			     device_t child, int type, int rid,

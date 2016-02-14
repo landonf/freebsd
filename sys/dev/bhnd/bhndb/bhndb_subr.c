@@ -679,7 +679,7 @@ bhndb_dw_set_addr(device_t dev, struct bhndb_resources *br,
     struct bhndb_dw_alloc *dwa, bus_addr_t addr, bus_size_t size)
 {
 	const struct bhndb_regwin	*rw;
-	u_long				 offset;
+	bus_addr_t			 offset;
 	int				 error;
 
 	rw = dwa->win;

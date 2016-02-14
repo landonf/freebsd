@@ -341,8 +341,8 @@ bhnd_is_hw_disabled(device_t dev) {
  * @retval resource The allocated resource.
  */
 static inline struct bhnd_resource *
-bhnd_alloc_resource(device_t dev, int type, int *rid, u_long start,
-    u_long end, u_long count, u_int flags)
+bhnd_alloc_resource(device_t dev, int type, int *rid, rman_res_t start,
+    rman_res_t end, rman_res_t count, u_int flags)
 {
 	return BHND_BUS_ALLOC_RESOURCE(device_get_parent(dev), dev, type, rid,
 	    start, end, count, flags);

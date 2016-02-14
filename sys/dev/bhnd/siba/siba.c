@@ -101,7 +101,7 @@ siba_attach(device_t dev)
 		for (u_int cfgidx = 0; cfgidx < dinfo->core_id.num_cfg_blocks;
 		    cfgidx++)
 		{
-			u_long	r_start, r_count, r_end;
+			rman_res_t	r_start, r_count, r_end;
 
 			/* Determine the config block's address range; configuration
 			 * blocks are allocated starting at SIBA_CFG0_OFFSET,
@@ -526,7 +526,7 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 		struct siba_core_id	 cid;
 		device_t		 child;
 		uint32_t		 idhigh, idlow;
-		u_long			 r_count, r_end, r_start;
+		rman_res_t		 r_count, r_end, r_start;
 
 		/* Map the core's register block */
 		rid = 0;

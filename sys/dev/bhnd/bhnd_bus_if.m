@@ -201,9 +201,9 @@ METHOD struct bhnd_resource * alloc_resource {
 	device_t child;
 	int type;
 	int *rid;
-	u_long start;
-	u_long end;
-	u_long count;
+	rman_res_t start;
+	rman_res_t end;
+	rman_res_t count;
 	u_int flags;
 } DEFAULT bhnd_generic_alloc_bhnd_resource;
 

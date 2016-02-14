@@ -69,7 +69,7 @@ bcma_attach(device_t dev)
 	for (int i = 0; i < ndevs; i++) {
 		bhnd_addr_t	addr;
 		bhnd_size_t	size;
-		u_long		r_start, r_count, r_end;
+		rman_res_t	r_start, r_count, r_end;
 
 		child = devs[i];
 		dinfo = device_get_ivars(child);
