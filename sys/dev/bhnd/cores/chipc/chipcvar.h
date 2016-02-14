@@ -40,12 +40,55 @@ extern devclass_t bhnd_chipc_devclass;
 #define	CHIPC_MAX_RES	1
 #define	CHIPC_MAX_RSPEC	(CHIPC_MAX_RES+1)
 
+/* 
+ * ChipCommon device quirks / features
+ */
+enum {
+	/** No quirks */
+	CHIPC_QUIRK_NONE		= 0,
+	
+	/**
+	 * The device always provides an external SROM.
+	 */
+	CHIPC_QUIRK_ALWAYS_HAS_SPROM	= (1<<1),
+	
+	
+	/**
+	 * SROM availability must be determined through chip-specific
+	 * ChipStatus flags.
+	 */
+	CHIPC_QUIRK_SPROM_CHECK_CHIPST	= (1<<3),
+
+	/**
+	 * Use the rev22 chipstatus register format when determining SPROM
+	 * availability.
+	 */
+	CHIPC_QUIRK_SPROM_CHECK_CST_R22	= (1<<4)|CHIPC_QUIRK_SPROM_CHECK_CHIPST,
+	
+	/**
+	 * Use the rev23 chipstatus register format when determining SPROM
+	 * availability.
+	 */
+	CHIPC_QUIRK_SPROM_CHECK_CST_R23	= (1<<5)|CHIPC_QUIRK_SPROM_CHECK_CHIPST,
+
+	/**
+	 * External NAND NVRAM is supported, along with the CHIPC_CAP_NFLASH
+	 * capability flag.
+	 */
+	CHIPC_QUIRK_SUPPORTS_NFLASH	= (1<<6),
+};
+
 struct chipc_softc {
+	device_t		dev;
+
 	struct resource_spec	 rspec[CHIPC_MAX_RSPEC];
 	struct bhnd_resource	*res[CHIPC_MAX_RES];
 
-	struct bhnd_resource	*core;			/**< core registers. */
-	struct bhnd_chipid	 ccid;			/**< chip identification */
+	struct bhnd_resource	*core;		/**< core registers. */
+	struct bhnd_chipid	 ccid;		/**< chip identification */
+	uint32_t		 quirks;	/**< CHIPC_QUIRK_* quirk flags */
+	uint32_t		 caps;		/**< CHIPC_CAP_* capability register flags */
+	uint32_t		 cst;		/**< CHIPC_CST* status register flags */
 };
 
 #endif /* _BHND_CORES_CHIPC_CHIPCVAR_H_ */

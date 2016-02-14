@@ -37,10 +37,10 @@ INTERFACE bhnd_chipc;
 #
 
 /**
- * Return the bhnd(4) chipset's NVRAM hardware device type.
+ * Return the preferred NVRAM data source.
  *
  * @param dev A bhnd(4) ChipCommon device.
  */
-METHOD bhnd_nvram_hw_t avail_nvram_hw {
+METHOD bhnd_nvram_src_t nvram_src {
 	device_t dev;
 }

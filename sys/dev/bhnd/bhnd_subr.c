@@ -599,7 +599,7 @@ bhnd_read_chipid(device_t dev, struct resource_spec *rs,
 		result->enum_addr = BHND_DEFAULT_CHIPC_ADDR;
 		break;
 	case BHND_CHIPTYPE_BCMA:
-	case BHND_CHIPTYPE_BCMA_1:
+	case BHND_CHIPTYPE_BCMA_ALT:
 		result->enum_addr = bus_read_4(res, chipc_offset +
 		    CHIPC_EROMPTR);
 		break;

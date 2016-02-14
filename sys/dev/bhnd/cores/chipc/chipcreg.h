@@ -53,27 +53,30 @@
 #define	CHIPC_ID_BUS_MASK	0xF0000000	/**< chip/interconnect type (BHND_CHIPTYPE_*) */
 #define	CHIPC_ID_BUS_SHIFT	28
 
-#define	CHIPC_OTPST		0x10
-#define	CHIPC_JTAGCMD		0x30
-#define	CHIPC_JTAGIR		0x34
-#define	CHIPC_JTAGDR		0x38
-#define	CHIPC_JTAGCTRL		0x3c
-#define	CHIPC_GPIOPU		0x58
-#define	CHIPC_GPIOPD		0x5c
-#define	CHIPC_GPIOIN		0x60
-#define	CHIPC_GPIOOUT		0x64
-#define	CHIPC_GPIOOUTEN		0x68
-#define	CHIPC_GPIOCTRL		0x6c
-#define	CHIPC_GPIOPOL		0x70
-#define	CHIPC_GPIOINTM		0x74
-#define	CHIPC_WATCHDOG		0x80
-#define	CHIPC_CLKC_N		0x90
-#define	CHIPC_CLKC_M0		0x94
-#define	CHIPC_CLKC_M1		0x98
-#define	CHIPC_CLKC_M2		0x9c
-#define	CHIPC_CLKC_M3		0xa0
-#define	CHIPC_CLKDIV		0xa4
+#define	CHIPC_OTPST			0x10
+#define	CHIPC_JTAGCMD			0x30
+#define	CHIPC_JTAGIR			0x34
+#define	CHIPC_JTAGDR			0x38
+#define	CHIPC_JTAGCTRL			0x3c
+#define	CHIPC_GPIOPU			0x58
+#define	CHIPC_GPIOPD			0x5c
+#define	CHIPC_GPIOIN			0x60
+#define	CHIPC_GPIOOUT			0x64
+#define	CHIPC_GPIOOUTEN			0x68
+#define	CHIPC_GPIOCTRL			0x6c
+#define	CHIPC_GPIOPOL			0x70
+#define	CHIPC_GPIOINTM			0x74
+#define	CHIPC_WATCHDOG			0x80
+#define	CHIPC_CLKC_N			0x90
+#define	CHIPC_CLKC_M0			0x94
+#define	CHIPC_CLKC_M1			0x98
+#define	CHIPC_CLKC_M2			0x9c
+#define	CHIPC_CLKC_M3			0xa0
+#define	CHIPC_CLKDIV			0xa4
 #define	CHIPC_SYS_CLK_CTL		0xc0
+#define	CHIPC_SPROM_CTRL		0x190	/**< SPROM interface (rev >= 32) */
+#define	CHIPC_SPROM_ADDR		0x194
+#define	CHIPC_SPROM_DATA		0x198
 #define	CHIPC_CLK_CTL_ST		SI_CLK_CTL_ST
 #define	CHIPC_PMU_CTL			0x600
 #define	CHIPC_PMU_CAP			0x604
@@ -88,7 +91,7 @@
 #define	CHIPC_PMU_REG_CONTROL_DATA	0x65C
 #define	CHIPC_PMU_PLL_CONTROL_ADDR 	0x660
 #define	CHIPC_PMU_PLL_CONTROL_DATA 	0x664
-#define	CHIPC_SROM_OTP			0x800	/* SROM/OTP address space */
+#define	CHIPC_SPROM_OTP			0x800	/* SPROM/OTP address space */
 
 /* capabilities */
 #define	CHIPC_CAP_UARTS_MASK		0x00000003	/* Number of UARTs */
@@ -103,18 +106,42 @@
 #define	CHIPC_CAP_FLASH_MASK		0x00000700	/* Type of flash */
 #define	CHIPC_CAP_PLL_MASK		0x00038000	/* Type of PLL */
 #define	CHIPC_CAP_PWR_CTL		0x00040000	/* Power control */
-#define	CHIPC_CAP_OTPSIZE		0x00380000	/* OTP Size (0 = none) */
-#define	CHIPC_CAP_OTPSIZE_SHIFT		19	/* OTP Size shift */
-#define	CHIPC_CAP_OTPSIZE_BASE		5	/* OTP Size base */
+#define	CHIPC_CAP_OTP_SIZE		0x00380000	/* OTP Size (0 = none) */
+#define	CHIPC_CAP_OTP_SIZE_SHIFT	19		/* OTP Size shift */
+#define	CHIPC_CAP_OTP_SIZE_BASE		5		/* OTP Size base */
 #define	CHIPC_CAP_JTAGP			0x00400000	/* JTAG Master Present */
 #define	CHIPC_CAP_ROM			0x00800000	/* Internal boot rom active */
 #define	CHIPC_CAP_BKPLN64		0x08000000	/* 64-bit backplane */
 #define	CHIPC_CAP_PMU			0x10000000	/* PMU Present, rev >= 20 */
-#define	CHIPC_CAP_SROM			0x40000000	/* Srom Present, rev >= 32 */
+#define	CHIPC_CAP_SPROM			0x40000000	/* SPROM Present, rev >= 32 */
 #define	CHIPC_CAP_NFLASH		0x80000000	/* Nand flash present, rev >= 35 */
 
 #define	CHIPC_CAP2_SECI			0x00000001	/* SECI Present, rev >= 36 */
 #define	CHIPC_CAP2_GSIO			0x00000002	/* GSIO (spi/i2c) present, rev >= 37 */
+
+/*
+ * ChipStatus (Common)
+ */
+
+/** ChipStatus CIS/OTP/SPROM values used to advertise OTP/SPROM availability in
+ *  chipcommon revs 11-31. */
+enum {
+	CHIPC_CST_DEFCIS_SEL	= 0,	/**< OTP is powered up, use default CIS, no SPROM */
+	CHIPC_CST_SPROM_SEL	= 1,	/**< OTP is powered up, SPROM is present */
+	CHIPC_CST_OTP_SEL	= 2,	/**< OTP is powered up, no SPROM */
+	CHIPC_CST_OTP_PWRDN	= 3	/**< OTP is powered down, SPROM is present (rev <= 22 only) */
+};
+
+
+#define	CHIPC_CST_SPROM_OTP_SEL_R22_MASK	0x00000003	/**< chipstatus OTP/SPROM SEL value (rev 22) */
+#define	CHIPC_CST_SPROM_OTP_SEL_R22_SHIFT	0
+#define	CHIPC_CST_SPROM_OTP_SEL_R23_MASK	0x000000c0	/**< chipstatus OTP/SPROM SEL value (revs 23-31)
+								  *  
+								  *  it is unknown whether this is supported on
+								  *  any CC revs >= 32 that also vend CHIPC_CAP_*
+								  *  constants for OTP/SPROM/NVRAM availability.
+								  */
+#define	CHIPC_CST_SPROM_OTP_SEL_R23_SHIFT	6
 
 /* PLL type */
 #define	CHIPC_PLL_NONE		0x00000000
@@ -248,7 +275,7 @@
 #define	CHIPC_CLKD_JTAG_SHIFT		8
 #define	CHIPC_CLKD_UART			0x000000ff
 
-#define	CHIPC_CLKD2_SROM		0x00000003
+#define	CHIPC_CLKD2_SPROM		0x00000003
 
 /* intstatus/intmask */
 #define	CHIPC_CI_GPIO			0x00000001	/* gpio intr */
@@ -368,7 +395,7 @@
 #define	CHIPC_FW_W3_MASK		0x1f000000	/* waitcount3 */
 #define	CHIPC_FW_W3_SHIFT		24
 
-/* When Srom support present, fields in sromcontrol */
+/* When SPROM support present, fields in spromcontrol */
 #define	CHIPC_SRC_START			0x80000000
 #define	CHIPC_SRC_BUSY			0x80000000
 #define	CHIPC_SRC_OPCODE		0x60000000
@@ -942,11 +969,8 @@
 #define	CHIPC_RES4325C1_LNLDO2_PU		12	/* 0x00001000 */
 
 /* 4325 chip-specific ChipStatus register bits */
-#define	CHIPC_CST4325_SPROM_OTP_SEL_MASK	0x00000003
-#define	CHIPC_CST4325_DEFCIS_SEL		0	/* OTP is powered up, use def. CIS, no SPROM */
-#define	CHIPC_CST4325_SPROM_SEL			1	/* OTP is powered up, SPROM is present */
-#define	CHIPC_CST4325_OTP_SEL			2	/* OTP is powered up, no SPROM */
-#define	CHIPC_CST4325_OTP_PWRDN			3	/* OTP is powered down, SPROM is present */
+#define	CHIPC_CST4325_SPROM_OTP_SEL_MASK	CHIPC_CST_SPROM_OTP_SEL_R22_MASK
+#define	CHIPC_CST4325_SPROM_OTP_SEL_SHIFT	CHIPC_CST_SPROM_OTP_SEL_R22_SHIFT
 #define	CHIPC_CST4325_SDIO_USB_MODE_MASK	0x00000004
 #define	CHIPC_CST4325_SDIO_USB_MODE_SHIFT	2
 #define	CHIPC_CST4325_RCAL_VALID_MASK		0x00000008
@@ -979,20 +1003,15 @@
 #define	CHIPC_RES4329_BBPLL_PWRSW_PU		20	/* 0x00100000 */
 #define	CHIPC_RES4329_HT_AVAIL			21	/* 0x00200000 */
 
-#define	CHIPC_CST4329_SPROM_OTP_SEL_MASK	0x00000003
-#define	CHIPC_CST4329_DEFCIS_SEL		0	/* OTP is powered up, use def. CIS, no SPROM */
-#define	CHIPC_CST4329_SPROM_SEL			1	/* OTP is powered up, SPROM is present */
-#define	CHIPC_CST4329_OTP_SEL			2	/* OTP is powered up, no SPROM */
-#define	CHIPC_CST4329_OTP_PWRDN			3	/* OTP is powered down, SPROM is present */
+/* 4329 chip-specific ChipStatus register bits */
+#define	CHIPC_CST4329_SPROM_OTP_SEL_MASK	CHIPC_CST_SPROM_OTP_SEL_R22_MASK
+#define	CHIPC_CST4329_SPROM_OTP_SEL_SHIFT	CHIPC_CST_SPROM_OTP_SEL_R22_SHIFT
 #define	CHIPC_CST4329_SPI_SDIO_MODE_MASK	0x00000004
 #define	CHIPC_CST4329_SPI_SDIO_MODE_SHIFT	2
 
 /* 4312 chip-specific ChipStatus register bits */
-#define	CHIPC_CST4312_SPROM_OTP_SEL_MASK	0x00000003
-#define	CHIPC_CST4312_DEFCIS_SEL		0	/* OTP is powered up, use def. CIS, no SPROM */
-#define	CHIPC_CST4312_SPROM_SEL			1	/* OTP is powered up, SPROM is present */
-#define	CHIPC_CST4312_OTP_SEL			2	/* OTP is powered up, no SPROM */
-#define	CHIPC_CST4312_OTP_BAD			3	/* OTP is broken, SPROM is present */
+#define	CHIPC_CST4312_SPROM_OTP_SEL_MASK	CHIPC_CST_SPROM_OTP_SEL_R22_MASK
+#define	CHIPC_CST4312_SPROM_OTP_SEL_SHIFT	CHIPC_CST_SPROM_OTP_SEL_R22_SHIFT
 
 /* 4312 resources (all PMU chips with little memory constraint) */
 #define	CHIPC_RES4312_SWITCHER_BURST		0	/* 0x00000001 */
@@ -1024,11 +1043,8 @@
 
 /* 4322 chip-specific ChipStatus register bits */
 #define	CHIPC_CST4322_XTAL_FREQ_20_40MHZ	0x00000020
-#define	CHIPC_CST4322_SPROM_OTP_SEL_MASK	0x000000c0
-#define	CHIPC_CST4322_SPROM_OTP_SEL_SHIFT	6
-#define	CHIPC_CST4322_NO_SPROM_OTP		0	/* no OTP, no SPROM */
-#define	CHIPC_CST4322_SPROM_PRESENT		1	/* SPROM is present */
-#define	CHIPC_CST4322_OTP_PRESENT		2	/* OTP is present */
+#define	CHIPC_CST4322_SPROM_OTP_SEL_MASK	CHIPC_CST_SPROM_OTP_SEL_R23_MASK
+#define	CHIPC_CST4322_SPROM_OTP_SEL_SHIFT	CHIPC_CST_SPROM_OTP_SEL_R23_SHIFT
 #define	CHIPC_CST4322_PCI_OR_USB		0x00000100
 #define	CHIPC_CST4322_BOOT_MASK			0x00000600
 #define	CHIPC_CST4322_BOOT_SHIFT		9
@@ -1074,7 +1090,8 @@
 
 /* 43236 Chip specific ChipStatus register bits */
 #define	CHIPC_CST43236_SFLASH_MASK		0x00000040
-#define	CHIPC_CST43236_OTP_MASK			0x00000080
+#define	CHIPC_CST43236_OTP_SEL_MASK		0x00000080
+#define	CHIPC_CST43236_OTP_SEL_SHIFT		7
 #define	CHIPC_CST43236_HSIC_MASK		0x00000100	/* USB/HSIC */
 #define	CHIPC_CST43236_BP_CLK			0x00000200	/* 120/96Mbps */
 #define	CHIPC_CST43236_BOOT_MASK		0x00001800
@@ -1136,11 +1153,8 @@
 #define	CHIPC_RES4315_HT_AVAIL			21	/* 0x00200000 */
 
 /* 4315 chip-specific ChipStatus register bits */
-#define	CHIPC_CST4315_SPROM_OTP_SEL_MASK	0x00000003	/* gpio [7:6], SDIO CIS selection */
-#define	CHIPC_CST4315_DEFCIS_SEL		0x00000000	/* use default CIS, OTP is powered up */
-#define	CHIPC_CST4315_SPROM_SEL			0x00000001	/* use SPROM, OTP is powered up */
-#define	CHIPC_CST4315_OTP_SEL			0x00000002	/* use OTP, OTP is powered up */
-#define	CHIPC_CST4315_OTP_PWRDN			0x00000003	/* use SPROM, OTP is powered down */
+#define	CHIPC_CST4315_SPROM_OTP_SEL_MASK	CHIPC_CST_SPROM_OTP_SEL_R22_MASK
+#define	CHIPC_CST4315_SPROM_OTP_SEL_SHIFT	CHIPC_CST_SPROM_OTP_SEL_R22_SHIFT
 #define	CHIPC_CST4315_SDIO_MODE			0x00000004	/* gpio [8], sdio/usb mode */
 #define	CHIPC_CST4315_RCAL_VALID		0x00000008
 #define	CHIPC_CST4315_RCAL_VALUE_MASK		0x000001f0
@@ -1174,12 +1188,8 @@
 #define	CHIPC_CST4319_SPI_CPULESSUSB		0x00000001
 #define	CHIPC_CST4319_SPI_CLK_POL		0x00000002
 #define	CHIPC_CST4319_SPI_CLK_PH		0x00000008
-#define	CHIPC_CST4319_SPROM_OTP_SEL_MASK	0x000000c0	/* gpio [7:6], SDIO CIS selection */
-#define	CHIPC_CST4319_SPROM_OTP_SEL_SHIFT	6
-#define	CHIPC_CST4319_DEFCIS_SEL		0x00000000	/* use default CIS, OTP is powered up */
-#define	CHIPC_CST4319_SPROM_SEL			0x00000040	/* use SPROM, OTP is powered up */
-#define	CHIPC_CST4319_OTP_SEL			0x00000080	/* use OTP, OTP is powered up */
-#define	CHIPC_CST4319_OTP_PWRDN			0x000000c0	/* use SPROM, OTP is powered down */
+#define	CHIPC_CST4319_SPROM_OTP_SEL_MASK	CHIPC_CST_SPROM_OTP_SEL_R23_MASK	/* gpio [7:6], SDIO CIS selection */
+#define	CHIPC_CST4319_SPROM_OTP_SEL_SHIFT	CHIPC_CST_SPROM_OTP_SEL_R23_SHIFT
 #define	CHIPC_CST4319_SDIO_USB_MODE		0x00000100	/* gpio [8], sdio/usb mode */
 #define	CHIPC_CST4319_REMAP_SEL_MASK		0x00000600
 #define	CHIPC_CST4319_ILPDIV_EN			0x00000800

@@ -33,27 +33,33 @@
 #define _BHND_NVRAM_BHND_NVRAM_H_
 
 /**
- * NVRAM hardware types that may be attached to a bhnd(4) device.
+ * NVRAM data sources supported by bhnd(4) devices.
  */
 typedef enum {
-	BHND_NVRAM_HW_OTP,		/**< On-chip one-time-programmable
-					  *  memory. */
-	BHND_NVRAM_HW_FLASHCORE,	/**< External flash device accessible
-					  *  via on-chip flash core, such
-					  *  as the NAND/QSPI controller cores
-					  *  used on Northstar devices to access
-					  *  NVRAM. */
-	BHND_NVRAM_HW_SPROM,		/**< External serial EEPROM. */
+	BHND_NVRAM_SRC_CIS,	/**< Default CIS source; this may
+				  *  apply, for example, to PCMCIA cards
+				  *  vending Broadcom NVRAM data via
+				  *  their standard CIS table. */
 	
-	BHND_NVRAM_HW_NONE		/**< No NVRAM hardware is directly
-					  *  attached. This is used on devices
-					  *  attached via PCI(e) to BHND SoCs,
-					  *  where to avoid unnecessary flash
-					  *  hardware, NVRAM configuration for
-					  *  individual devices is provided by
-					  *  hardware attached to the SoC
-					  *  itself.
-					  */
-} bhnd_nvram_hw_t;
+	BHND_NVRAM_SRC_OTP,	/**< On-chip one-time-programmable
+				  *  memory. */
+
+	BHND_NVRAM_SRC_NFLASH,	/**< External flash device accessible
+				  *  via on-chip flash core, such
+				  *  as the NAND/QSPI controller cores
+				  *  used on Northstar devices to access
+				  *  NVRAM. */
+	BHND_NVRAM_SRC_SPROM,	/**< External serial EEPROM. */
+	
+	BHND_NVRAM_SRC_NONE	/**< No NVRAM source is directly
+				  *  attached. This is used on devices
+				  *  attached via PCI(e) to BHND SoCs,
+				  *  where to avoid unnecessary flash
+				  *  hardware, NVRAM configuration for
+				  *  individual devices is provided by
+				  *  hardware attached to the SoC
+				  *  itself.
+				  */
+} bhnd_nvram_src_t;
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_H_ */

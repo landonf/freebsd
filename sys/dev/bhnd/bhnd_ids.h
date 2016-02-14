@@ -534,7 +534,7 @@
 #define	BHND_CHIPTYPE_SIBA		0		/**< siba(4) interconnect */
 #define	BHND_CHIPTYPE_BCMA		1		/**< bcma(4) interconnect */
 #define	BHND_CHIPTYPE_UBUS		2		/**< ubus interconnect found in bcm63xx devices */
-#define	BHND_CHIPTYPE_BCMA_1		3		/**< bcma(4) interconnect */
+#define	BHND_CHIPTYPE_BCMA_ALT		3		/**< bcma(4) interconnect */
 
 /* Boardflags */
 #define	BHND_BFL_BTC2WIRE		0x00000001	/* old 2wire Bluetooth coexistence, OBSOLETE */
