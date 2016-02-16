@@ -39,6 +39,8 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/bus.h>
 
+#include <dev/bhnd/cores/chipc/chipcreg.h>
+
 #include "sibareg.h"
 #include "sibavar.h"
 
@@ -473,8 +475,8 @@ siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
  * the bus.
  * 
  * @param dev The siba bus device.
- * @param chipid The chip identifier, if known or if the device
- * does not provide a ChipCommon core. May be NULL otherwise.
+ * @param chipid The chip identifier, if the device does not provide a
+ * ChipCommon core. Should o NULL otherwise.
  */
 int
 siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
@@ -483,46 +485,94 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 	struct bhnd_core_info	*cores;
 	struct siba_devinfo	*dinfo;
 	struct resource		*r;
-	u_int			 ncores;
 	int			 rid;
 	int			 error;
 
 	dinfo = NULL;
 	cores = NULL;
 	r = NULL;
-
-	/* If not provided by our caller, read the chip ID now. */
+	
+	/*
+	 * Try to determine the number of device cores via the ChipCommon
+	 * identification registers.
+	 * 
+	 * A small number of very early devices do not include a ChipCommon
+	 * core, in which case our caller must supply the chip identification
+	 * information via a non-NULL chipid parameter.
+	 */
 	if (chipid == NULL) {
-		struct resource_spec rs = {
-			.rid = 0,
-			.type = SYS_RES_MEMORY,
-			.flags = RF_ACTIVE,
-		};
+		uint32_t	idhigh, ccreg;
+		uint16_t	vendor, device;
+		uint8_t		ccrev;
 
-		error = bhnd_read_chipid(dev, &rs, SIBA_ENUM_ADDR, &ccid);
-		if (error) {
-			device_printf(dev, "failed to read bus chipid\n");
-			return (error);
+		/* Map the first core's register block. If the ChipCommon core
+		 * exists, it will always be the first core. */
+		rid = 0;
+		r = bus_alloc_resource(dev, SYS_RES_MEMORY, &rid,
+		    SIBA_CORE_ADDR(0), SIBA_CORE_SIZE, 
+		    SIBA_CORE_ADDR(0) + SIBA_CORE_SIZE - 1,
+		    RF_ACTIVE);
+
+		/* Identify the core */
+		idhigh = bus_read_4(r, SB0_REG_ABS(SIBA_CFG0_IDHIGH));
+		vendor = SIBA_REG_GET(idhigh, IDH_VENDOR);
+		device = SIBA_REG_GET(idhigh, IDH_DEVICE);
+		ccrev = SIBA_IDH_CORE_REV(idhigh);
+
+		if (vendor != OCP_VENDOR_BCM || device != BHND_COREID_CC) {
+			device_printf(dev,
+			    "cannot identify device: no chipcommon core "
+			    "found\n");
+			error = ENXIO;
+			goto cleanup;
+		}
+
+		/* Identify the chipset */
+		ccreg = bus_read_4(r, CHIPC_ID);
+		ccid = bhnd_parse_chipid(ccreg, SIBA_ENUM_ADDR);
+
+		if (!CHIPC_NCORES_MIN_HWREV(ccrev)) {
+			switch (device) {
+			case BHND_CHIPID_BCM4306:
+				ccid.ncores = 6;
+				break;
+			case BHND_CHIPID_BCM4704:
+				ccid.ncores = 9;
+				break;
+			case BHND_CHIPID_BCM5365:
+				/*
+				* BCM5365 does support ID_NUMCORE in at least
+				* some of its revisions, but for unknown
+				* reasons, Broadcom's drivers always exclude
+				* the ChipCommon revision (0x5) used by BCM5365
+				* from the set of revisions supporting
+				* ID_NUMCORE, and instead supply a fixed value.
+				* 
+				* Presumably, at least some of these devices
+				* shipped with a broken ID_NUMCORE value.
+				*/
+				ccid.ncores = 7;
+				break;
+			default:
+				device_printf(dev, "unable to determine core "
+				    "count for unrecognized chipset 0x%hx\n",
+				    ccid.chip_id);
+				error = ENXIO;
+				goto cleanup;
+			}
 		}
 
 		chipid = &ccid;
-	}
-	
-	/* Determine the core count */
-	ncores = siba_get_ncores(chipid);
-	if (ncores == 0) {
-		device_printf(dev, "core count unknown for chip ID 0x%hx\n",
-		    chipid->chip_id);
-		return (ENXIO);
+		bus_release_resource(dev, SYS_RES_MEMORY, rid, r);
 	}
 
 	/* Allocate our temporary core table and enumerate all cores */
-	cores = malloc(sizeof(*cores) * ncores, M_BHND, M_WAITOK);
+	cores = malloc(sizeof(*cores) * chipid->ncores, M_BHND, M_WAITOK);
 	if (cores == NULL)
 		return (ENOMEM);
 
 	/* Add all cores. */
-	for (u_int i = 0; i < ncores; i++) {
+	for (u_int i = 0; i < chipid->ncores; i++) {
 		struct siba_core_id	 cid;
 		device_t		 child;
 		uint32_t		 idhigh, idlow;

@@ -258,7 +258,7 @@
 #define	SIBA_IDH_VENDOR_MASK	0xffff0000	/* vendor code */
 #define	SIBA_IDH_VENDOR_SHIFT	16
 
-#define	SIBA_CORE_REV(sbidh) \
+#define	SIBA_IDH_CORE_REV(sbidh) \
 	(SIBA_REG_GET((sbidh), IDH_RCE) | ((sbidh) & SIBA_IDH_RC_MASK))
 
 #define	SIBA_COMMIT		0xfd8		/* update buffered registers value */

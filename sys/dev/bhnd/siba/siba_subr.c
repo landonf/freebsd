@@ -63,55 +63,6 @@ siba_get_bhnd_mfgid(uint16_t ocp_vendor)
 	}
 }
 
-
-/**
- * Determine the number of cores available on the bus.
- * 
- * Some devices require a hardcoded core count:
- * - Earlier ChipCommon revisions (chip_rev <= 4) did not include a core count.
- * - Earlier siba(4) devices did not include a ChipCommon core at all.
- */
-uint8_t
-siba_get_ncores(const struct bhnd_chipid *chipid)
-{
-	/* Use the real count if available. */
-	if (chipid->ncores > 0)
-		return (chipid->ncores);
-
-	/*
-	 * The magic constants below were copied from the previous
-	 * siba driver implementation; their correctness has
-	 * not been verified.
-	 */
-	switch (chipid->chip_id) {
-		case 0x4401:	/* BCM4401 PCI ID? */
-		case BHND_CHIPID_BCM4402:
-			return (3);
-
-		case 0x4301:	/* BCM4031 PCI ID? */
-		case 0x4307:	/* BCM4307 PCI ID? */
-			return (5);
-			
-		case BHND_CHIPID_BCM4306:
-			return (6);
-			
-		case BHND_CHIPID_BCM5365:
-			return (7);
-
-		case 0x4310:	/* ??? */
-			return (8);
-
-		case 0x4610:	/* BCM4610 Sentry5 PCI Card? */
-		case BHND_CHIPID_BCM4704:
-		case BHND_CHIPID_BCM4710:
-			return (9);
-
-		default:
-			return (0);
-	}
-}
-
-
 /**
  * Parse the SIBA_IDH_* fields from the per-core identification
  * registers, returning a siba_core_id representation.
@@ -143,7 +94,7 @@ siba_parse_core_id(uint32_t idhigh, uint32_t idlow, u_int core_idx, int unit)
 		.core_info	= {
 			.vendor	= siba_get_bhnd_mfgid(ocp_vendor),
 			.device	= SIBA_REG_GET(idhigh, IDH_DEVICE),
-			.hwrev	= SIBA_CORE_REV(idhigh),
+			.hwrev	= SIBA_IDH_CORE_REV(idhigh),
 			.core_idx = core_idx,
 			.unit	= unit
 		},

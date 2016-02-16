@@ -29,7 +29,9 @@
 					     containing the chip
 					     identification registers. */
 
-#define	CHIPC_NCORES_MINREV	4	/**< chipid num_core requires rev >= 4 */
+/** Evaluates to true if the given ChipCommon core revision provides
+ *  the core count via the chip identification register. */
+#define	CHIPC_NCORES_MIN_HWREV(hwrev)	((hwrev) == 4 || (hwrev) >= 6)
 
 #define	CHIPC_GET_ATTR(_entry, _attr) \
 	((_entry & CHIPC_ ## _attr ## _MASK) >> CHIPC_ ## _attr ## _SHIFT)
