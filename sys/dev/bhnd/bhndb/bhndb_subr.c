@@ -238,7 +238,7 @@ bhndb_alloc_resources(device_t dev, device_t parent_dev,
 
 	free_parent_res = false;
 
-	r = malloc(sizeof(*r), M_BHND, M_WAITOK|M_ZERO);
+	r = malloc(sizeof(*r), M_BHND, M_NOWAIT|M_ZERO);
 	if (r == NULL)
 		return (NULL);
 
@@ -258,7 +258,7 @@ bhndb_alloc_resources(device_t dev, device_t parent_dev,
 	 * table; this will be updated with the RIDs assigned by
 	 * bus_alloc_resources. */
 	r->res_spec = malloc(sizeof(r->res_spec[0]) * (res_num + 1), M_BHND,
-	    M_WAITOK);
+	    M_NOWAIT);
 	if (r->res_spec == NULL)
 		goto failed;
 
@@ -269,7 +269,7 @@ bhndb_alloc_resources(device_t dev, device_t parent_dev,
 	r->res_spec[res_num].type = -1;
 
 	/* Allocate space for our resource references */
-	r->res = malloc(sizeof(r->res[0]) * res_num, M_BHND, M_WAITOK);
+	r->res = malloc(sizeof(r->res[0]) * res_num, M_BHND, M_NOWAIT);
 	if (r->res == NULL)
 		goto failed;
 
@@ -295,7 +295,7 @@ bhndb_alloc_resources(device_t dev, device_t parent_dev,
 	
 	/* Allocate the dynamic window allocation table. */
 	r->dw_alloc = malloc(sizeof(r->dw_alloc[0]) * r->dwa_count, M_BHND,
-	    M_WAITOK);
+	    M_NOWAIT);
 	if (r->dw_alloc == NULL)
 		goto failed;
 
@@ -451,7 +451,7 @@ bhndb_add_resource_region(struct bhndb_resources *br, bhnd_addr_t addr,
 	struct bhndb_region	*reg;
 
 	/* Insert in the bus resource list */
-	reg = malloc(sizeof(*reg), M_BHND, M_WAITOK);
+	reg = malloc(sizeof(*reg), M_BHND, M_NOWAIT);
 	if (reg == NULL)
 		return (ENOMEM);
 

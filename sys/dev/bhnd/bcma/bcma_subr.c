@@ -58,7 +58,7 @@ bcma_alloc_corecfg(u_int core_index, int core_unit, uint16_t vendor,
 {
 	struct bcma_corecfg *cfg;
 
-	cfg = malloc(sizeof(*cfg), M_BHND, M_WAITOK);
+	cfg = malloc(sizeof(*cfg), M_BHND, M_NOWAIT);
 	if (cfg == NULL)
 		return NULL;
 
@@ -196,7 +196,7 @@ bcma_alloc_dinfo(device_t bus, struct bcma_corecfg *corecfg)
 {
 	struct bcma_devinfo *dinfo;
 	
-	dinfo = malloc(sizeof(struct bcma_devinfo), M_BHND, M_WAITOK);
+	dinfo = malloc(sizeof(struct bcma_devinfo), M_BHND, M_NOWAIT);
 	if (dinfo == NULL)
 		return NULL;
 
@@ -249,7 +249,7 @@ bcma_alloc_sport(bcma_pid_t port_num, bhnd_port_type port_type)
 {
 	struct bcma_sport *sport;
 	
-	sport = malloc(sizeof(struct bcma_sport), M_BHND, M_WAITOK);
+	sport = malloc(sizeof(struct bcma_sport), M_BHND, M_NOWAIT);
 	if (sport == NULL)
 		return NULL;
 	

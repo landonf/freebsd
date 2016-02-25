@@ -536,7 +536,7 @@ bcma_erom_get_core_info(struct bcma_erom *erom,
 
 	/* Allocate our output buffer */
 	buffer = malloc(sizeof(struct bhnd_core_info) * count, M_BHND,
-	    M_WAITOK);
+	    M_NOWAIT);
 	if (buffer == NULL) {
 		error = ENOMEM;
 		goto cleanup;
@@ -687,7 +687,7 @@ erom_corecfg_fill_port_regions(struct bcma_erom *erom,
 		/*
 		 * Create the map entry. 
 		 */
-		map = malloc(sizeof(struct bcma_map), M_BHND, M_WAITOK);
+		map = malloc(sizeof(struct bcma_map), M_BHND, M_NOWAIT);
 		if (map == NULL) {
 			error = ENOMEM;
 			goto cleanup;
@@ -812,7 +812,7 @@ bcma_erom_parse_corecfg(struct bcma_erom *erom, struct bcma_corecfg **result)
 			goto failed;
 
 		/* Initialize a new bus mport structure */
-		mport = malloc(sizeof(struct bcma_mport), M_BHND, M_WAITOK);
+		mport = malloc(sizeof(struct bcma_mport), M_BHND, M_NOWAIT);
 		if (mport == NULL) {
 			error = ENOMEM;
 			goto failed;
