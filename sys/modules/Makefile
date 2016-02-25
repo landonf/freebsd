@@ -52,7 +52,6 @@ SUBDIR=	\
 	${_bce} \
 	bfe \
 	bge \
-	bhnd \
 	${_bxe} \
 	${_bios} \
 	${_bktr} \
@@ -328,6 +327,7 @@ SUBDIR=	\
 	${_sfxge} \
 	sge \
 	${_si} \
+	siba_bwn \
 	siftr \
 	siis \
 	sis \
