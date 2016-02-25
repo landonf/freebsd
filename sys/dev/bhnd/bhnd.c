@@ -689,7 +689,7 @@ bhnd_generic_alloc_bhnd_resource(device_t dev, device_t child, int type,
 	}
 
 	/* If this is the bus root, use a real bus-allocated resource */
-	r = malloc(sizeof(struct bhnd_resource), M_BHND, M_WAITOK);
+	r = malloc(sizeof(struct bhnd_resource), M_BHND, M_NOWAIT);
 	if (r == NULL)
 		return NULL;
 

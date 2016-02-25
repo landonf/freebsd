@@ -146,7 +146,7 @@ siba_alloc_dinfo(device_t bus, const struct siba_core_id *core_id)
 {
 	struct siba_devinfo *dinfo;
 	
-	dinfo = malloc(sizeof(struct siba_devinfo), M_BHND, M_WAITOK);
+	dinfo = malloc(sizeof(struct siba_devinfo), M_BHND, M_NOWAIT);
 	if (dinfo == NULL)
 		return NULL;
 
@@ -253,7 +253,7 @@ siba_append_dinfo_region(struct siba_devinfo *dinfo, bhnd_port_type port_type,
 		return (EINVAL);
 
 	/* Allocate new addrspace entry */
-	sa = malloc(sizeof(*sa), M_BHND, M_WAITOK|M_ZERO);
+	sa = malloc(sizeof(*sa), M_BHND, M_NOWAIT|M_ZERO);
 	if (sa == NULL)
 		return (ENOMEM);
 

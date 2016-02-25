@@ -859,7 +859,7 @@ bhndb_add_child(device_t dev, u_int order, const char *name, int unit)
 	if (child == NULL)
 		return (NULL);
 
-	dinfo = malloc(sizeof(struct bhndb_devinfo), M_BHND, M_WAITOK);
+	dinfo = malloc(sizeof(struct bhndb_devinfo), M_BHND, M_NOWAIT);
 	if (dinfo == NULL) {
 		device_delete_child(dev, child);
 		return (NULL);
@@ -1471,7 +1471,7 @@ bhndb_alloc_bhnd_resource(device_t dev, device_t child, int type,
 	sc = device_get_softc(dev);
 
 	/* Allocate resource wrapper */
-	br = malloc(sizeof(struct bhnd_resource), M_BHND, M_WAITOK|M_ZERO);
+	br = malloc(sizeof(struct bhnd_resource), M_BHND, M_NOWAIT|M_ZERO);
 	if (br == NULL)
 		return (NULL);
 

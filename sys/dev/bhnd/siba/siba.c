@@ -567,7 +567,7 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 	}
 
 	/* Allocate our temporary core table and enumerate all cores */
-	cores = malloc(sizeof(*cores) * chipid->ncores, M_BHND, M_WAITOK);
+	cores = malloc(sizeof(*cores) * chipid->ncores, M_BHND, M_NOWAIT);
 	if (cores == NULL)
 		return (ENOMEM);
 
