@@ -414,6 +414,8 @@ struct sysentvec null_sysvec = {
 	.sv_fetch_syscall_args = null_fetch_syscall_args,
 	.sv_syscallnames = NULL,
 	.sv_schedtail	= NULL,
+	.sv_thread_detach = NULL,
+	.sv_trap	= NULL,
 };
 
 /*
@@ -477,7 +479,7 @@ proc0_init(void *dummy __unused)
 	session0.s_leader = p;
 
 	p->p_sysent = &null_sysvec;
-	p->p_flag = P_SYSTEM | P_INMEM;
+	p->p_flag = P_SYSTEM | P_INMEM | P_KTHREAD;
 	p->p_flag2 = 0;
 	p->p_state = PRS_NORMAL;
 	knlist_init_mtx(&p->p_klist, &p->p_mtx);
@@ -608,9 +610,9 @@ proc0_post(void *dummy __unused)
 	sx_slock(&allproc_lock);
 	FOREACH_PROC_IN_SYSTEM(p) {
 		microuptime(&p->p_stats->p_start);
-		PROC_SLOCK(p);
+		PROC_STATLOCK(p);
 		rufetch(p, &ru);	/* Clears thread stats */
-		PROC_SUNLOCK(p);
+		PROC_STATUNLOCK(p);
 		p->p_rux.rux_runtime = 0;
 		p->p_rux.rux_uticks = 0;
 		p->p_rux.rux_sticks = 0;

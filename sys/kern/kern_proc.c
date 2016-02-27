@@ -139,6 +139,21 @@ struct sx proctree_lock;
 struct mtx ppeers_lock;
 uma_zone_t proc_zone;
 
+/*
+ * The offset of various fields in struct proc and struct thread.
+ * These are used by kernel debuggers to enumerate kernel threads and
+ * processes.
+ */
+const int proc_off_p_pid = offsetof(struct proc, p_pid);
+const int proc_off_p_comm = offsetof(struct proc, p_comm);
+const int proc_off_p_list = offsetof(struct proc, p_list);
+const int proc_off_p_threads = offsetof(struct proc, p_threads);
+const int thread_off_td_tid = offsetof(struct thread, td_tid);
+const int thread_off_td_name = offsetof(struct thread, td_name);
+const int thread_off_td_oncpu = offsetof(struct thread, td_oncpu);
+const int thread_off_td_pcb = offsetof(struct thread, td_pcb);
+const int thread_off_td_plist = offsetof(struct thread, td_plist);
+
 int kstack_pages = KSTACK_PAGES;
 SYSCTL_INT(_kern, OID_AUTO, kstack_pages, CTLFLAG_RD, &kstack_pages, 0,
     "Kernel stack size in pages");
@@ -234,6 +249,7 @@ proc_init(void *mem, int size, int flags)
 	TAILQ_INIT(&p->p_threads);	     /* all threads in proc */
 	EVENTHANDLER_INVOKE(process_init, p);
 	p->p_stats = pstats_alloc();
+	p->p_pgrp = NULL;
 	SDT_PROBE3(proc, kernel, init, return, p, size, flags);
 	return (0);
 }
@@ -871,11 +887,11 @@ fill_kinfo_proc_only(struct proc *p, struct kinfo_proc *kp)
 	kp->ki_fibnum = p->p_fibnum;
 	kp->ki_start = p->p_stats->p_start;
 	timevaladd(&kp->ki_start, &boottime);
-	PROC_SLOCK(p);
+	PROC_STATLOCK(p);
 	rufetch(p, &kp->ki_rusage);
 	kp->ki_runtime = cputick2usec(p->p_rux.rux_runtime);
 	calcru(p, &kp->ki_rusage.ru_utime, &kp->ki_rusage.ru_stime);
-	PROC_SUNLOCK(p);
+	PROC_STATUNLOCK(p);
 	calccru(p, &kp->ki_childutime, &kp->ki_childstime);
 	/* Some callers want child times in a single value. */
 	kp->ki_childtime = kp->ki_childstime;
@@ -940,7 +956,7 @@ fill_kinfo_thread(struct thread *td, struct kinfo_proc *kp, int preferthread)
 	PROC_LOCK_ASSERT(p, MA_OWNED);
 
 	if (preferthread)
-		PROC_SLOCK(p);
+		PROC_STATLOCK(p);
 	thread_lock(td);
 	if (td->td_wmesg != NULL)
 		strlcpy(kp->ki_wmesg, td->td_wmesg, sizeof(kp->ki_wmesg));
@@ -1007,7 +1023,7 @@ fill_kinfo_thread(struct thread *td, struct kinfo_proc *kp, int preferthread)
 	kp->ki_sigmask = td->td_sigmask;
 	thread_unlock(td);
 	if (preferthread)
-		PROC_SUNLOCK(p);
+		PROC_STATUNLOCK(p);
 }
 
 /*
@@ -2212,7 +2228,7 @@ next:;
  * Must be called with the process locked and will return unlocked.
  */
 int
-kern_proc_vmmap_out(struct proc *p, struct sbuf *sb)
+kern_proc_vmmap_out(struct proc *p, struct sbuf *sb, ssize_t maxlen, int flags)
 {
 	vm_map_entry_t entry, tmp_entry;
 	struct vattr va;
@@ -2236,7 +2252,7 @@ kern_proc_vmmap_out(struct proc *p, struct sbuf *sb)
 		PRELE(p);
 		return (ESRCH);
 	}
-	kve = malloc(sizeof(*kve), M_TEMP, M_WAITOK);
+	kve = malloc(sizeof(*kve), M_TEMP, M_WAITOK | M_ZERO);
 
 	error = 0;
 	map = &vm->vm_map;
@@ -2371,10 +2387,23 @@ kern_proc_vmmap_out(struct proc *p, struct sbuf *sb)
 			free(freepath, M_TEMP);
 
 		/* Pack record size down */
-		kve->kve_structsize = offsetof(struct kinfo_vmentry, kve_path) +
-		    strlen(kve->kve_path) + 1;
+		if ((flags & KERN_VMMAP_PACK_KINFO) != 0)
+			kve->kve_structsize =
+			    offsetof(struct kinfo_vmentry, kve_path) +
+			    strlen(kve->kve_path) + 1;
+		else
+			kve->kve_structsize = sizeof(*kve);
 		kve->kve_structsize = roundup(kve->kve_structsize,
 		    sizeof(uint64_t));
+
+		/* Halt filling and truncate rather than exceeding maxlen */
+		if (maxlen != -1 && maxlen < kve->kve_structsize) {
+			error = 0;
+			vm_map_lock_read(map);
+			break;
+		} else if (maxlen != -1)
+			maxlen -= kve->kve_structsize;
+
 		if (sbuf_bcat(sb, kve, kve->kve_structsize) != 0)
 			error = ENOMEM;
 		vm_map_lock_read(map);
@@ -2406,7 +2435,7 @@ sysctl_kern_proc_vmmap(SYSCTL_HANDLER_ARGS)
 		sbuf_delete(&sb);
 		return (error);
 	}
-	error = kern_proc_vmmap_out(p, &sb);
+	error = kern_proc_vmmap_out(p, &sb, -1, KERN_VMMAP_PACK_KINFO);
 	error2 = sbuf_finish(&sb);
 	sbuf_delete(&sb);
 	return (error != 0 ? error : error2);

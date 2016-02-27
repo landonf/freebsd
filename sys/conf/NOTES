@@ -2493,6 +2493,7 @@ device		sdhci
 # amdsmb	AMD 8111 SMBus 2.0 Controller
 # nfpm		NVIDIA nForce Power Management Unit
 # nfsmb		NVIDIA nForce2/3/4 MCP SMBus 2.0 Controller
+# ismt		Intel SMBus 2.0 controller chips (on Atom S1200, C2000)
 #
 device		smbus		# Bus support, required for smb below.
 
@@ -2504,6 +2505,7 @@ device		amdpm
 device		amdsmb
 device		nfpm
 device		nfsmb
+device		ismt
 
 device		smb
 
@@ -2705,6 +2707,8 @@ device		uvisor
 # USB serial support for DDI pocket's PHS
 device		uvscom
 #
+# USB ethernet support
+device		uether
 # ADMtek USB ethernet. Supports the LinkSys USB100TX,
 # the Billionton USB100, the Melco LU-ATX, the D-Link DSB-650TX
 # and the SMC 2202USB. Also works with the ADMtek AN986 Pegasus

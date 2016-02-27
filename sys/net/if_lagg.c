@@ -1051,21 +1051,38 @@ lagg_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 				break;
 			}
 		}
-		if (proto->ti_proto == LAGG_PROTO_NONE) {
+		if (proto->ti_proto >= LAGG_PROTO_MAX) {
 			error = EPROTONOSUPPORT;
 			break;
 		}
 		/* Set to LAGG_PROTO_NONE during the attach. */
 		LAGG_WLOCK(sc);
 		if (sc->sc_proto != LAGG_PROTO_NONE) {
+			int (*sc_detach)(struct lagg_softc *sc);
+
+			/* Reset protocol and pointers */
 			sc->sc_proto = LAGG_PROTO_NONE;
-			if (sc->sc_detach != NULL)
-				sc->sc_detach(sc);
+			sc_detach = sc->sc_detach;
+			sc->sc_detach = NULL;
+			sc->sc_start = NULL;
+			sc->sc_input = NULL;
+			sc->sc_port_create = NULL;
+			sc->sc_port_destroy = NULL;
+			sc->sc_linkstate = NULL;
+			sc->sc_init = NULL;
+			sc->sc_stop = NULL;
+			sc->sc_lladdr = NULL;
+			sc->sc_req = NULL;
+			sc->sc_portreq = NULL;
+
+			if (sc_detach != NULL)
+				sc_detach(sc);
 			else
 				LAGG_WUNLOCK(sc);
 		} else
 			LAGG_WUNLOCK(sc);
-		proto->ti_attach(sc);
+		if (proto->ti_proto != LAGG_PROTO_NONE)
+			proto->ti_attach(sc);
 		LAGG_WLOCK(sc);
 		sc->sc_proto = proto->ti_proto;
 		LAGG_WUNLOCK(sc);

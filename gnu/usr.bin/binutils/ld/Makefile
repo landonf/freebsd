@@ -52,9 +52,10 @@ CLEANFILES+=	ldemul-list.h stringify.sed
 
 FILES=		${LDSCRIPTS:S|^|ldscripts/|}
 FILESDIR=	${SCRIPTDIR}
+LINKS=		${BINDIR}/ld ${BINDIR}/ld.bfd
 
 HOST=		${TARGET_TUPLE}
-LIBSEARCHPATH=	\"${TOOLS_PREFIX}/lib\":\"${TOOLS_PREFIX}/usr/lib\"
+LIBSEARCHPATH=	\"=/lib\":\"=/usr/lib\"
 .for ext in ${ELF_SCR_EXT}
 LDSCRIPTS+=	${NATIVE_EMULATION}.${ext}
 ldscripts/${NATIVE_EMULATION}.${ext}: e${NATIVE_EMULATION}.c

@@ -208,6 +208,8 @@ static char *pr_allow_names[] = {
 	"allow.mount.procfs",
 	"allow.mount.tmpfs",
 	"allow.mount.fdescfs",
+	"allow.mount.linprocfs",
+	"allow.mount.linsysfs",
 };
 const size_t pr_allow_names_size = sizeof(pr_allow_names);
 
@@ -225,6 +227,8 @@ static char *pr_allow_nonames[] = {
 	"allow.mount.noprocfs",
 	"allow.mount.notmpfs",
 	"allow.mount.nofdescfs",
+	"allow.mount.nolinprocfs",
+	"allow.mount.nolinsysfs",
 };
 const size_t pr_allow_nonames_size = sizeof(pr_allow_nonames);
 
@@ -1585,11 +1589,14 @@ kern_jail_set(struct thread *td, struct uio *optuio, int flags)
 #endif
 	onamelen = namelen = 0;
 	if (name != NULL) {
-		/* Give a default name of the jid. */
+		/* Give a default name of the jid.  Also allow the name to be
+		 * explicitly the jid - but not any other number, and only in
+		 * normal form (no leading zero/etc).
+		 */
 		if (name[0] == '\0')
 			snprintf(name = numbuf, sizeof(numbuf), "%d", jid);
-		else if (*namelc == '0' || (strtoul(namelc, &p, 10) != jid &&
-		    *p == '\0')) {
+		else if ((strtoul(namelc, &p, 10) != jid ||
+			  namelc[0] < '1' || namelc[0] > '9') && *p == '\0') {
 			error = EINVAL;
 			vfs_opterror(opts,
 			    "name cannot be numeric (unless it is the jid)");
@@ -4312,6 +4319,14 @@ SYSCTL_PROC(_security_jail, OID_AUTO, mount_procfs_allowed,
     CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE,
     NULL, PR_ALLOW_MOUNT_PROCFS, sysctl_jail_default_allow, "I",
     "Processes in jail can mount the procfs file system");
+SYSCTL_PROC(_security_jail, OID_AUTO, mount_linprocfs_allowed,
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE,
+    NULL, PR_ALLOW_MOUNT_LINPROCFS, sysctl_jail_default_allow, "I",
+    "Processes in jail can mount the linprocfs file system");
+SYSCTL_PROC(_security_jail, OID_AUTO, mount_linsysfs_allowed,
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE,
+    NULL, PR_ALLOW_MOUNT_LINSYSFS, sysctl_jail_default_allow, "I",
+    "Processes in jail can mount the linsysfs file system");
 SYSCTL_PROC(_security_jail, OID_AUTO, mount_tmpfs_allowed,
     CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE,
     NULL, PR_ALLOW_MOUNT_TMPFS, sysctl_jail_default_allow, "I",
@@ -4478,6 +4493,10 @@ SYSCTL_JAIL_PARAM(_allow_mount, nullfs, CTLTYPE_INT | CTLFLAG_RW,
     "B", "Jail may mount the nullfs file system");
 SYSCTL_JAIL_PARAM(_allow_mount, procfs, CTLTYPE_INT | CTLFLAG_RW,
     "B", "Jail may mount the procfs file system");
+SYSCTL_JAIL_PARAM(_allow_mount, linprocfs, CTLTYPE_INT | CTLFLAG_RW,
+    "B", "Jail may mount the linprocfs file system");
+SYSCTL_JAIL_PARAM(_allow_mount, linsysfs, CTLTYPE_INT | CTLFLAG_RW,
+    "B", "Jail may mount the linsysfs file system");
 SYSCTL_JAIL_PARAM(_allow_mount, tmpfs, CTLTYPE_INT | CTLFLAG_RW,
     "B", "Jail may mount the tmpfs file system");
 SYSCTL_JAIL_PARAM(_allow_mount, zfs, CTLTYPE_INT | CTLFLAG_RW,
