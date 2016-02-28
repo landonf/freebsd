@@ -50,8 +50,8 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_pcireg.h"
 
-#include "mdio_pciereg.h"
-#include "mdio_pcievar.h"
+#include "bhnd_pcie_mdioreg.h"
+#include "bhnd_pcie_mdiovar.h"
 
 #define	BHND_MDIO_CTL_DELAY	10	/**< usec delay required between
 					  *  MDIO_CTL/MDIO_DATA accesses. */

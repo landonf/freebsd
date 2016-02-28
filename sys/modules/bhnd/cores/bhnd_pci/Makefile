@@ -4,7 +4,7 @@
 
 KMOD=	bhnd_pci
 SRCS=	bhnd_pci.c \
-	mdio_pcie.c
+	bhnd_pcie_mdio.c
 SRCS+=	device_if.h bus_if.h bhnd_bus_if.h \
 	mdio_if.h
 

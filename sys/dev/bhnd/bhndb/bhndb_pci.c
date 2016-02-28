@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2015 Landon Fuller <landon@landonf.org>
+ * Copyright (c) 2015-2016 Landon Fuller <landon@landonf.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -72,7 +72,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhnd.h>
 
 #include <dev/bhnd/cores/pci/bhnd_pcireg.h>
-#include <dev/bhnd/cores/pci/mdio_pcievar.h>
+#include <dev/bhnd/cores/pci/bhnd_pcie_mdiovar.h>
 
 #include "bhndb_pcireg.h"
 #include "bhndb_pcivar.h"
@@ -371,7 +371,7 @@ bhndb_pci_init_full_config(device_t dev, device_t child,
 	};
 
 	/*
-	 * Attach MMIO device (if this is a PCIe device), which is used for
+	 * Attach MDIO device (if this is a PCIe device), which is used for
 	 * access to the PCIe SerDes required by the quirk workarounds.
 	 */
 	if (sc->pci_devclass == BHND_DEVCLASS_PCIE) {
