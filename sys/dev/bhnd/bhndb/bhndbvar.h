@@ -96,7 +96,8 @@ struct bhndb_softc {
 							     if the @p bus_dev has not yet
 							     called BHNDB_INIT_FULL_CONFIG() */
 
-	struct rman			 mem_rman;	/**< bridged bus memory manager */
+	struct rman			 h_mem_rman;	/**< host memory manager */
+	struct rman			 b_mem_rman;	/**< bridged memory manager */
 	struct mtx			 sc_mtx;	/**< resource lock. */
 
 	struct bhndb_resources		*bus_res;	/**< bus resource state */
