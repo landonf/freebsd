@@ -86,7 +86,7 @@ static int			 bhndb_read_chipid(struct bhndb_softc *sc,
 				     struct bhnd_chipid *result);
 
 static struct rman		*bhndb_get_rman(struct bhndb_softc *sc,
-				     int type);
+				     device_t child, int type);
 
 static int			 bhndb_init_child_resource(struct resource *r,
 				     struct resource *parent,
@@ -509,6 +509,7 @@ bhndb_read_chipid(struct bhndb_softc *sc, const struct bhndb_hwcfg *cfg,
 int
 bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass)
 {
+	struct bhndb_devinfo		*dinfo;
 	struct bhndb_softc		*sc;
 	const struct bhndb_hwcfg	*cfg;
 	int				 error;
@@ -525,7 +526,7 @@ bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass)
 	if ((error = bhndb_read_chipid(sc, cfg, &sc->chipid)))
 		return (error);
 
-	/* Set up a resource manager for the device's address space. */
+	/* Set up a resource manager for the bridged address space. */
 	sc->mem_rman.rm_start = 0;
 	sc->mem_rman.rm_end = BUS_SPACE_MAXADDR_32BIT;
 	sc->mem_rman.rm_type = RMAN_ARRAY;
@@ -550,13 +551,18 @@ bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass)
 	}
 
 	/* Attach our bridged bus device */
-	sc->bus_dev = device_add_child(dev, devclass_get_name(bhnd_devclass),
+	sc->bus_dev = BUS_ADD_CHILD(dev, 0, devclass_get_name(bhnd_devclass),
 	    -1);
 	if (sc->bus_dev == NULL) {
 		error = ENXIO;
 		goto failed;
 	}
 
+	/* Configure address space */
+	dinfo = device_get_ivars(sc->bus_dev);
+	dinfo->addrspace = BHNDB_ADDRSPACE_BRIDGED;
+
+	/* Finish attach */
 	return (bus_generic_attach(dev));
 
 failed:
@@ -829,14 +835,35 @@ bhndb_write_ivar(device_t dev, device_t child, int index,
  * Return the rman instance for a given resource @p type, if any.
  * 
  * @param sc The bhndb device state.
+ * @param child The requesting child.
  * @param type The resource type (e.g. SYS_RES_MEMORY, SYS_RES_IRQ, ...)
  */
 static struct rman *
-bhndb_get_rman(struct bhndb_softc *sc, int type)
+bhndb_get_rman(struct bhndb_softc *sc, device_t child, int type)
 {
+	struct bhndb_devinfo	*dinfo;
+	device_t		 imd_dev;
+
+	/* Find the directly attached parent of the requesting device */
+	imd_dev = child;
+	while (imd_dev != NULL && device_get_parent(imd_dev) != sc->dev)
+		imd_dev = device_get_parent(imd_dev);
+
+	if (imd_dev == NULL) {
+		device_printf(sc->dev,
+		    "invalid resource request from non-child device %s\n",
+		     device_get_nameunit(child));
+		return (NULL);
+	}
+
+	/* We don't maintain a resource manager for non-bridged address space */
+	dinfo = device_get_ivars(imd_dev);
+	if (dinfo->addrspace != BHNDB_ADDRSPACE_BRIDGED)
+		return (NULL);
+
 	switch (type) {
 	case SYS_RES_MEMORY:
-		return &sc->mem_rman;
+		return (&sc->mem_rman);
 	case SYS_RES_IRQ:
 		// TODO
 		// return &sc->irq_rman;
@@ -865,6 +892,7 @@ bhndb_add_child(device_t dev, u_int order, const char *name, int unit)
 		return (NULL);
 	}
 
+	dinfo->addrspace = BHNDB_ADDRSPACE_NATIVE;
 	resource_list_init(&dinfo->resources);
 
 	device_set_ivars(child, dinfo);
@@ -1062,7 +1090,7 @@ bhndb_alloc_resource(device_t dev, device_t child, int type,
 		return (NULL);
 	
 	/* Fetch the resource manager */
-	rm = bhndb_get_rman(sc, type);
+	rm = bhndb_get_rman(sc, child, type);
 	if (rm == NULL)
 		return (NULL);
 
@@ -1137,7 +1165,7 @@ bhndb_adjust_resource(device_t dev, device_t child, int type,
 	error = 0;
 
 	/* Fetch resource manager */
-	rm = bhndb_get_rman(sc, type);
+	rm = bhndb_get_rman(sc, child, type);
 	if (rm == NULL)
 		return (ENXIO);
 
@@ -1431,7 +1459,7 @@ bhndb_deactivate_resource(device_t dev, device_t child, int type,
 
 	sc = device_get_softc(dev);
 
-	if ((rm = bhndb_get_rman(sc, type)) == NULL)
+	if ((rm = bhndb_get_rman(sc, child, type)) == NULL)
 		return (EINVAL);
 
 	/* Mark inactive */
