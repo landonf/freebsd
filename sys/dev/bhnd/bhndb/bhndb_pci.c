@@ -375,7 +375,7 @@ bhndb_pci_init_full_config(device_t dev, device_t child,
 	 * access to the PCIe SerDes required by the quirk workarounds.
 	 */
 	if (sc->pci_devclass == BHND_DEVCLASS_PCIE) {
-		sc->mdio = device_add_child(dev, 
+		sc->mdio = BUS_ADD_CHILD(dev, 0,
 		    devclass_get_name(bhnd_mdio_pci_devclass), 0);
 		if (sc->mdio == NULL)
 			return (ENXIO);
