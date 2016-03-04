@@ -1105,8 +1105,8 @@ bhndb_alloc_resource(device_t dev, device_t child, int type,
 		if (error) {
 			device_printf(dev,
 			    "failed to activate entry %#x type %d for "
-				"child %s\n",
-			     *rid, type, device_get_nameunit(child));
+				"child %s: %d\n",
+			     *rid, type, device_get_nameunit(child), error);
 
 			rman_release_resource(rv);
 
@@ -1438,6 +1438,10 @@ bhndb_activate_resource(device_t dev, device_t child, int type, int rid,
     struct resource *r)
 {
 	struct bhndb_softc *sc = device_get_softc(dev);
+	
+	/* Native address space resources can always be active. */
+	if (bhndb_get_addrspace(sc, child) != BHNDB_ADDRSPACE_BRIDGED)
+		return (rman_activate_resource(r));
 
 	return (bhndb_try_activate_resource(sc, child, type, rid, r, NULL));
 }

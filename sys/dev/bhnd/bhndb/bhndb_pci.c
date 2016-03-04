@@ -379,6 +379,14 @@ bhndb_pci_init_full_config(device_t dev, device_t child,
 		    devclass_get_name(bhnd_mdio_pci_devclass), 0);
 		if (sc->mdio == NULL)
 			return (ENXIO);
+		
+		error = bus_set_resource(sc->mdio, SYS_RES_MEMORY, 0,
+		    rman_get_start(sc->mem_res) + sc->mem_off +
+		    BHND_PCIE_MDIO_CTL, sizeof(uint32_t)*2);
+		if (error) {
+			device_printf(dev, "failed to set MDIO resource\n");
+			return (error);
+		}
 
 		if ((error = device_probe_and_attach(sc->mdio))) {
 			device_printf(dev, "failed to attach MDIO device\n");

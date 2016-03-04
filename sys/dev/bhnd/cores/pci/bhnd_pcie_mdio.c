@@ -95,6 +95,14 @@ int bhnd_mdio_pcie_attach(device_t dev, struct bhnd_resource *mem_res,
 {
 	struct bhnd_mdio_pcie_softc *sc = device_get_softc(dev);
 
+	// XXX TODO: proof-of-concept allocation of resource in
+	// BHNDB_ADDRSPACE_NATIVE.
+	int rid = 0;
+	struct resource *r = bus_alloc_resource_any(dev, SYS_RES_MEMORY, &rid, RF_ACTIVE);
+	device_printf(dev, "allocated resource %p with rid %d\n", r, rid);
+	if (r != NULL)
+		bus_release_resource(dev, SYS_RES_MEMORY, rid, r);
+
 	sc->dev = dev;
 	sc->mem_res = mem_res;
 	sc->mem_rid = mem_rid;
