@@ -167,6 +167,9 @@ struct bhndb_resources {
 	device_t			 parent_dev;	/**< parent device */
 	struct resource_spec		*res_spec;	/**< parent bus resource specs */
 	struct resource			**res;		/**< parent bus resources */
+	
+	struct rman			 ht_mem_rman;	/**< host memory manager */
+	struct rman			 br_mem_rman;	/**< bridged memory manager */
 
 	STAILQ_HEAD(, bhndb_region) 	 bus_regions;	/**< bus region descriptors */
 
