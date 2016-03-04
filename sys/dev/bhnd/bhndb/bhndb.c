@@ -532,7 +532,7 @@ bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass)
 	/* Populate generic resource allocation state. */
 	sc->bus_res = bhndb_alloc_resources(dev, sc->parent_dev, cfg);
 	if (sc->bus_res == NULL) {
-		return (error);
+		return (ENXIO);
 	}
 
 	/* Attach our bridged bus device */
@@ -1598,8 +1598,8 @@ bhndb_activate_bhnd_resource(device_t dev, device_t child,
 	r_start = rman_get_start(r->res);
 	r_size = rman_get_size(r->res);
 
-	/* Verify bridged address range's resource priority, and
-	 * skip direct allocation if the priority is too low. */
+	/* Verify bridged address range's resource priority, and skip direct
+	 * allocation if the priority is too low. */
 	if (bhndb_get_addrspace(sc, child) == BHNDB_ADDRSPACE_BRIDGED) {
 		bhndb_priority_t r_prio;
 
@@ -1627,7 +1627,9 @@ bhndb_activate_bhnd_resource(device_t dev, device_t child,
 		r->direct = false;
 	}
 
-	if (BHNDB_DEBUG(PRIO)) {
+	if (BHNDB_DEBUG(PRIO) &&
+	    bhndb_get_addrspace(sc, child) == BHNDB_ADDRSPACE_BRIDGED)
+	{
 		device_printf(child, "activated 0x%llx-0x%llx as %s "
 		    "resource\n",
 		    (unsigned long long) r_start, 
