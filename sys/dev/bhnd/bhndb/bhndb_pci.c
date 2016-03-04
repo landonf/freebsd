@@ -1029,25 +1029,6 @@ bhndb_pci_discover_quirks(struct bhndb_pci_softc *sc,
 static int
 bhndb_mdio_pcie_probe(device_t dev)
 {
-	struct bhndb_softc	*psc;
-	device_t		 parent;
-
-	/* Parent must be a bhndb_pcie instance */
-	parent = device_get_parent(dev);
-	if (device_get_driver(parent) != &bhndb_pci_driver)
-		return (ENXIO);
-
-	/* Parent must have PCIe-Gen1 hostb device */
-	psc = device_get_softc(parent);
-	if (psc->hostb_dev == NULL)
-		return (ENXIO);
-
-	if (bhnd_get_vendor(psc->hostb_dev) != BHND_MFGID_BCM ||
-	    bhnd_get_device(psc->hostb_dev) != BHND_COREID_PCIE)
-	{
-		return (ENXIO);
-	}
-
 	device_quiet(dev);
 	return (BUS_PROBE_NOWILDCARD);
 }
@@ -1056,15 +1037,9 @@ static int
 bhndb_mdio_pcie_attach(device_t dev)
 {
 	struct bhndb_pci_softc	*psc;
-	
 	psc = device_get_softc(device_get_parent(dev));
-
 	return (bhnd_mdio_pcie_attach(dev,
-	    &psc->bhnd_mem_res, -1,
-	    psc->mem_off + BHND_PCIE_MDIO_CTL,
 	    (psc->quirks & BHNDB_PCIE_QUIRK_SD_C22_EXTADDR) != 0));
-
-	return (ENXIO);
 }
 
 static device_method_t bhnd_mdio_pcie_methods[] = {
