@@ -183,6 +183,39 @@ bhnd_generic_br_resume_child(device_t dev, device_t child)
 }
 
 /**
+ * Find a SYS_RES_MEMORY resource containing the given address range.
+ * 
+ * @param br The bhndb resource state to search.
+ * @param start The start address of the range to search for.
+ * @param count The size of the range to search for.
+ * 
+ * @retval resource the host resource containing the requested range.
+ * @retval NULL if no resource containing the requested range can be found.
+ */
+struct resource *
+bhndb_find_resource_range(struct bhndb_resources *br, rman_res_t start,
+     rman_res_t count)
+{
+	for (u_int i = 0; br->res_spec[i].type != -1; i++) {
+		struct resource *r = br->res[i];
+
+		if (br->res_spec->type != SYS_RES_MEMORY)
+			continue;
+
+		/* Verify range */
+		if (rman_get_start(r) > start)
+			continue;
+		
+		if (rman_get_end(r) < (start + count - 1))
+			continue;
+
+		return (r);
+	}
+
+	return (NULL);
+}
+
+/**
  * Find the resource containing @p win.
  * 
  * @param br The bhndb resource state to search.
