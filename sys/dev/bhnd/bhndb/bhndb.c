@@ -1360,13 +1360,39 @@ bhndb_try_activate_resource(struct bhndb_softc *sc, device_t child, int type,
 	
 	if (indirect)
 		*indirect = false;
+	
+	r_start = rman_get_start(r);
+	r_size = rman_get_size(r);
+
+	/* Activate native addrspace resources using the host address space */
+	if (bhndb_get_addrspace(sc, child) == BHNDB_ADDRSPACE_NATIVE) {
+		struct resource *parent;
+
+		/* Find the bridge resource referenced by the child */
+		parent = bhndb_find_resource_range(sc->bus_res, r_start,
+		    r_size);
+		if (parent == NULL) {
+			device_printf(sc->dev, "host resource not found "
+			     "for 0x%llx-0x%llx\n",
+			     (unsigned long long) r_start,
+			     (unsigned long long) r_start + r_size - 1);
+			return (ENOENT);
+		}
+
+		/* Initialize child resource with the real bus values */
+		error = bhndb_init_child_resource(r, parent,
+		    r_start - rman_get_start(parent), r_size);
+		if (error)
+			return (error);
+
+		/* Try to activate child resource */
+		return (rman_activate_resource(r));
+	}
 
 	/* Default to low priority */
 	dw_priority = BHNDB_PRIORITY_LOW;
 
 	/* Look for a bus region matching the resource's address range */
-	r_start = rman_get_start(r);
-	r_size = rman_get_size(r);
 	region = bhndb_find_resource_region(sc->bus_res, r_start, r_size);
 	if (region != NULL)
 		dw_priority = region->priority;
@@ -1438,10 +1464,6 @@ bhndb_activate_resource(device_t dev, device_t child, int type, int rid,
     struct resource *r)
 {
 	struct bhndb_softc *sc = device_get_softc(dev);
-	
-	/* Native address space resources can always be active. */
-	if (bhndb_get_addrspace(sc, child) != BHNDB_ADDRSPACE_BRIDGED)
-		return (rman_activate_resource(r));
 
 	return (bhndb_try_activate_resource(sc, child, type, rid, r, NULL));
 }
@@ -1561,7 +1583,6 @@ bhndb_activate_bhnd_resource(device_t dev, device_t child,
 {
 	struct bhndb_softc	*sc;
 	struct bhndb_region	*region;
-	bhndb_priority_t	 r_prio;
 	rman_res_t		 r_start, r_size;
 	int 			 error;
 	bool			 indirect;
@@ -1574,23 +1595,25 @@ bhndb_activate_bhnd_resource(device_t dev, device_t child,
 
 	sc = device_get_softc(dev);
 
-	/* Native address space resources can always be active. */
-	if (bhndb_get_addrspace(sc, child) != BHNDB_ADDRSPACE_BRIDGED)
-		return (rman_activate_resource(r->res));
-
-	/* Fetch the address range's resource priority */
 	r_start = rman_get_start(r->res);
 	r_size = rman_get_size(r->res);
-	r_prio = BHNDB_PRIORITY_NONE;
 
-	region = bhndb_find_resource_region(sc->bus_res, r_start, r_size);
-	if (region != NULL)
-		r_prio = region->priority;
-	
-	/* If less than the minimum dynamic window priority, this
-	 * resource should always be indirect. */
-	if (r_prio < sc->bus_res->min_prio)
-		return (0);
+	/* Verify bridged address range's resource priority, and
+	 * skip direct allocation if the priority is too low. */
+	if (bhndb_get_addrspace(sc, child) == BHNDB_ADDRSPACE_BRIDGED) {
+		bhndb_priority_t r_prio;
+
+		region = bhndb_find_resource_region(sc->bus_res, r_start, r_size);
+		if (region != NULL)
+			r_prio = region->priority;
+		else
+			r_prio = BHNDB_PRIORITY_NONE;
+
+		/* If less than the minimum dynamic window priority, this
+		 * resource should always be indirect. */
+		if (r_prio < sc->bus_res->min_prio)
+			return (0);
+	}
 
 	/* Attempt direct activation */
 	error = bhndb_try_activate_resource(sc, child, type, rid, r->res,

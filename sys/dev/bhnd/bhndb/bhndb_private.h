@@ -50,6 +50,10 @@ struct bhndb_dw_alloc;
 struct bhndb_region;
 struct bhndb_resources;
 
+struct resource			*bhndb_find_resource_range(
+				     struct bhndb_resources *br,
+				     rman_res_t start, rman_res_t count);
+
 struct resource			*bhndb_find_regwin_resource(
 				     struct bhndb_resources *br,
 				     const struct bhndb_regwin *win);
