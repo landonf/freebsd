@@ -512,16 +512,12 @@ bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass)
 	struct bhndb_devinfo		*dinfo;
 	struct bhndb_softc		*sc;
 	const struct bhndb_hwcfg	*cfg;
-	bool				 init_hmem, init_bmem;
 	int				 error;
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
 	sc->parent_dev = device_get_parent(dev);
 	sc->bridge_class = bridge_devclass;
-
-	init_hmem = false;
-	init_bmem = false;
 
 	BHNDB_LOCK_INIT(sc);
 	
@@ -535,40 +531,6 @@ bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass)
 	if (sc->bus_res == NULL) {
 		return (error);
 	}
-
-
-	/* Initialize resource manager for the host address space. */
-	sc->h_mem_rman.rm_start = 0;
-	sc->h_mem_rman.rm_end = ~0;
-	sc->h_mem_rman.rm_type = RMAN_ARRAY;
-	sc->h_mem_rman.rm_descr = "BHNDB host memory";
-	if ((error = rman_init(&sc->h_mem_rman))) {
-		device_printf(dev, "could not initialize h_mem_rman\n");
-		goto failed;
-	}
-
-	init_hmem = true;
-
-
-	/* Initialize resource manager for the bridged address space. */
-	sc->b_mem_rman.rm_start = 0;
-	sc->b_mem_rman.rm_end = BUS_SPACE_MAXADDR_32BIT;
-	sc->b_mem_rman.rm_type = RMAN_ARRAY;
-	sc->b_mem_rman.rm_descr = "BHNDB bridged memory";
-
-	if ((error = rman_init(&sc->b_mem_rman))) {
-		device_printf(dev, "could not initialize b_mem_rman\n");
-		goto failed;
-	}
-
-	init_bmem = true;
-
-	error = rman_manage_region(&sc->b_mem_rman, 0, BUS_SPACE_MAXADDR_32BIT);
-	if (error) {
-		device_printf(dev, "could not configure mem_rman\n");
-		goto failed;
-	}
-
 
 	/* Attach our bridged bus device */
 	sc->bus_dev = BUS_ADD_CHILD(dev, 0, devclass_get_name(bhnd_devclass),
@@ -587,12 +549,6 @@ bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass)
 
 failed:
 	BHNDB_LOCK_DESTROY(sc);
-
-	if (init_hmem)
-		rman_fini(&sc->h_mem_rman);
-
-	if (init_bmem)
-		rman_fini(&sc->b_mem_rman);
 
 	if (sc->bus_res != NULL)
 		bhndb_free_resources(sc->bus_res);
@@ -680,22 +636,6 @@ bhndb_generic_init_full_config(device_t dev, device_t child,
 		goto cleanup;
 	}
 
-	/* Set up our host memory resource ranges */
-	for (u_int i = 0; r->res_spec[i].type != -1; i++) {
-		struct resource *res;
-		
-		/* skip non-memory resources */
-		if (r->res_spec[i].type != SYS_RES_MEMORY)
-			continue;
-
-		/* add host resource to set of managed regions */
-		res = r->res[i];
-		error = rman_manage_region(&sc->h_mem_rman, rman_get_start(res),
-		    rman_get_end(res));
-		if (error)
-			goto cleanup;
-	}
-
 	/* Update our bridge state */
 	BHNDB_LOCK(sc);
 	sc->bus_res = r;
@@ -726,8 +666,6 @@ bhndb_generic_detach(device_t dev)
 		return (error);
 
 	/* Clean up our driver state. */
-	rman_fini(&sc->h_mem_rman);
-	rman_fini(&sc->b_mem_rman);
 	bhndb_free_resources(sc->bus_res);
 	
 	BHNDB_LOCK_DESTROY(sc);
@@ -904,7 +842,7 @@ bhndb_get_rman(struct bhndb_softc *sc, device_t child, int type)
 	case BHNDB_ADDRSPACE_NATIVE:
 		switch (type) {
 		case SYS_RES_MEMORY:
-			return (&sc->h_mem_rman);
+			return (&sc->bus_res->ht_mem_rman);
 		case SYS_RES_IRQ:
 			return (NULL);
 		default:
@@ -914,7 +852,7 @@ bhndb_get_rman(struct bhndb_softc *sc, device_t child, int type)
 	case BHNDB_ADDRSPACE_BRIDGED:
 		switch (type) {
 		case SYS_RES_MEMORY:
-			return (&sc->b_mem_rman);
+			return (&sc->bus_res->br_mem_rman);
 		case SYS_RES_IRQ:
 			// TODO
 			// return &sc->irq_rman;
