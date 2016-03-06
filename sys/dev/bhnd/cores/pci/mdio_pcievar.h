@@ -35,12 +35,10 @@
 #include <dev/mdio/mdio.h>
 #include "mdio_if.h"
 
-DECLARE_CLASS(bhnd_mdio_pcie_driver);
+DECLARE_CLASS(bhnd_pcie_mdio_driver);
+extern devclass_t bhnd_pcie_mdio_devclass;
 
-int bhnd_mdio_pcie_attach(device_t dev, struct bhnd_resource *mem_res,
-    int mem_rid, bus_size_t offset, bool c22ext);
-
-struct bhnd_mdio_pcie_softc {
+struct bhnd_pcie_mdio_softc {
 	device_t		 dev;		/**< mdio device */
 	struct mtx		 sc_mtx;	/**< mdio register lock */
 
@@ -58,12 +56,12 @@ struct bhnd_mdio_pcie_softc {
 						     mechanism. */
 };
 
-#define	BHND_MDIO_PCIE_LOCK_INIT(sc) \
+#define	BHND_PCIE_MDIO_LOCK_INIT(sc) \
 	mtx_init(&(sc)->sc_mtx, device_get_nameunit((sc)->dev), \
 	    "bhnd_pci_mdio register lock", MTX_DEF)
-#define	BHND_MDIO_PCIE_LOCK(sc)			mtx_lock(&(sc)->sc_mtx)
-#define	BHND_MDIO_PCIE_UNLOCK(sc)		mtx_unlock(&(sc)->sc_mtx)
-#define	BHND_MDIO_PCIE_LOCK_ASSERT(sc, what)	mtx_assert(&(sc)->sc_mtx, what)
-#define	BHND_MDIO_PCIE_LOCK_DESTROY(sc)		mtx_destroy(&(sc)->sc_mtx)
+#define	BHND_PCIE_MDIO_LOCK(sc)			mtx_lock(&(sc)->sc_mtx)
+#define	BHND_PCIE_MDIO_UNLOCK(sc)		mtx_unlock(&(sc)->sc_mtx)
+#define	BHND_PCIE_MDIO_LOCK_ASSERT(sc, what)	mtx_assert(&(sc)->sc_mtx, what)
+#define	BHND_PCIE_MDIO_LOCK_DESTROY(sc)		mtx_destroy(&(sc)->sc_mtx)
 
 #endif /* _BHND_CORES_PCI_MDIO_PCIEVAR_H_ */
