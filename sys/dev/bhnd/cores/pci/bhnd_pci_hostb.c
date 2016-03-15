@@ -60,18 +60,6 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_pcireg.h"
 #include "bhnd_pci_hostbvar.h"
 
-struct bhnd_pci_device;
-
-
-static const struct bhnd_pci_device	*bhnd_pci_device_find(
-					     struct bhnd_core_info *core);
-static uint32_t				 bhnd_pcie_read_proto_reg(
-					     struct bhnd_pcihb_softc *sc,
-					     uint32_t addr);
-static void				 bhnd_pcie_write_proto_reg(
-					     struct bhnd_pcihb_softc *sc,
-					     uint32_t addr, uint32_t val);
-
 /* quirk convenience macros */
 #define	BHND_PCI_QUIRK(_sc, _name)	\
     ((_sc)->quirks & BHND_PCI_QUIRK_ ## _name)
@@ -85,38 +73,32 @@ static void				 bhnd_pcie_write_proto_reg(
 
 /* Declare a bhnd_pci_device entry */
 #define	BHND_PCI_DEV(_device, _desc, ...)	{	\
-	BHND_COREID_ ## _device, 			\
-	BHND_PCI_REGFMT_ ## _device,			\
+	(_device), 			\
 	(struct bhnd_device_quirk[]) {			\
 		__VA_ARGS__				\
 	}						\
 }
 
-static const struct resource_spec bhnd_pci_rspec[BHND_PCIHB_MAX_RSPEC] = {
-	{ SYS_RES_MEMORY,	0,	RF_ACTIVE },
-	{ -1, -1, 0 }
-};
-
+#if 0 // TODO: Pending quirk refactor
 /*
- * Supported PCI bridge cores.
+ * Device quirks table
  *
  * This table defines quirks specific to core hwrev ranges; see also
  * bhndb_pci_discover_quirks() for additional quirk detection.
  */
-static const struct bhnd_pci_device {
+static const struct bhnd_pci_quirk {
 	uint16_t			 device;	/**< bhnd device ID */
-	bhnd_pci_regfmt_t		 regfmt;	/**< register format */
 	struct bhnd_device_quirk	*quirks;	/**< quirks table */
 } bhnd_pci_devices[] = {
 	/* PCI */
-	BHND_PCI_DEV(PCI,
+	BHND_PCI_DEV(BHND_COREID_PCI,
 		BHND_QUIRK_HWREV_GTE	(11,	BHND_PCI_QUIRK_SBTOPCI2_READMULTI |
 						BHND_PCI_QUIRK_CLKRUN_DSBL),
 		BHND_QUIRK_HWREV_END
 	),
 
 	/* PCI Gen 1 */
-	BHND_PCI_DEV(PCIE,
+	BHND_PCI_DEV(BHND_COREID_PCIE,
 		BHND_QUIRK_HWREV_EQ	(0,	BHND_PCIE_QUIRK_SDR9_L0s_HANG),
 		BHND_QUIRK_HWREV_RANGE	(0, 1,	BHND_PCIE_QUIRK_UR_STATUS_FIX),
 		BHND_QUIRK_HWREV_EQ	(1,	BHND_PCIE_QUIRK_PCIPM_REQEN),
@@ -133,6 +115,7 @@ static const struct bhnd_pci_device {
 
 	{ BHND_COREID_INVALID, BHND_PCI_REGFMT_PCI, NULL }
 };
+#endif
 
 #if 0 // TODO
 
@@ -159,174 +142,39 @@ static uint32_t	bhndb_pci_discover_quirks(struct bhnd_pcihb_softc *,
 static int
 bhnd_pci_hostb_probe(device_t dev)
 {
-	struct bhnd_core_info	cid;
-	int			error;
-
-	cid = bhnd_get_core_info(dev);
-
-	/* Look for a device table entry */
-	if (bhnd_pci_device_find(&cid) == NULL)
-		return (ENXIO);
-
 	/* Core must be the host bridge device */
 	if (!bhnd_is_hostb_device(dev))
 		return (ENXIO);
 
-	/* Identify children */
-	if ((error = bus_generic_probe(dev)))
-		return (error);
-
-	bhnd_set_generic_core_desc(dev);
-	return (BUS_PROBE_DEFAULT);
+	/* Delegate to common driver */
+	return (bhnd_pci_generic_probe(dev));
 }
 
 static int
 bhnd_pci_hostb_attach(device_t dev)
 {
-	struct bhnd_pcihb_softc	*sc;
-	int			 error;
-
-	sc = device_get_softc(dev);
-	sc->dev = dev;
-
-	/* Allocate bus resources */
-	memcpy(sc->rspec, bhnd_pci_rspec, sizeof(sc->rspec));
-	if ((error = bhnd_alloc_resources(dev, sc->rspec, sc->res)))
-		return (error);
-
-	sc->core = sc->res[0];
-
-	BHND_PCI_LOCK_INIT(sc);
-
-	if ((error = bus_generic_attach(dev)))
-		goto cleanup;
-
-	sc->mdio = device_find_child(dev,
-	    devclass_get_name(bhnd_pcie_mdio_devclass), 0);
-	if (bhnd_get_class(dev) == BHND_DEVCLASS_PCIE && sc->mdio == NULL) {
-		device_printf(dev, "failed to attach MDIO device\n");
-		error = ENXIO;
-		goto cleanup;
-	}
-
-cleanup:
-	BHND_PCI_LOCK_DESTROY(sc);
-	bhnd_release_resources(dev, sc->rspec, sc->res);
-
-	return (error);
-#if 0
-	
-	/*
-	 * Attach MDIO device (if this is a PCIe device), which is used for
-	 * access to the PCIe SerDes required by the quirk workarounds.
-	 */
-	if (sc->pci_devclass == BHND_DEVCLASS_PCIE) {
-		sc->mdio = BUS_ADD_CHILD(dev, 0,
-		    devclass_get_name(bhnd_mdio_pci_devclass), 0);
-		if (sc->mdio == NULL)
-			return (ENXIO);
-		
-		error = bus_set_resource(sc->mdio, SYS_RES_MEMORY, 0,
-		    rman_get_start(sc->mem_res) + sc->mem_off +
-		    BHND_PCIE_MDIO_CTL, sizeof(uint32_t)*2);
-		if (error) {
-			device_printf(dev, "failed to set MDIO resource\n");
-			return (error);
-		}
-
-		if ((error = device_probe_and_attach(sc->mdio))) {
-			device_printf(dev, "failed to attach MDIO device\n");
-			return (error);
-		}
-	}
-#endif
+	return (bhnd_pci_generic_attach(dev));
 }
 
 static int
 bhnd_pci_hostb_detach(device_t dev)
 {
-	return (bus_generic_detach(dev));
+	return (bhnd_pci_generic_detach(dev));
 }
 
 static int
 bhnd_pci_hostb_suspend(device_t dev)
 {
-	return (bus_generic_suspend(dev));
+	return (bhnd_pci_generic_suspend(dev));
 }
 
 static int
 bhnd_pci_hostb_resume(device_t dev)
 {
-	return (bus_generic_resume(dev));
+	return (bhnd_pci_generic_resume(dev));
 }
 
-static struct resource_list *
-bhnd_pci_get_resource_list(device_t dev, device_t child)
-{
-	struct bhnd_pci_devinfo *dinfo;
 
-	if (device_get_parent(child) != dev)
-		return (NULL);
-
-	dinfo = device_get_ivars(child);
-	return (&dinfo->resources);
-}
-
-static device_t
-bhnd_pci_add_child(device_t dev, u_int order, const char *name, int unit)
-{
-	struct bhnd_pci_devinfo	*dinfo;
-	device_t		 child;
-	
-	child = device_add_child_ordered(dev, order, name, unit);
-	if (child == NULL)
-		return (NULL);
-
-	dinfo = malloc(sizeof(struct bhnd_pci_devinfo), M_DEVBUF, M_NOWAIT);
-	if (dinfo == NULL) {
-		device_delete_child(dev, child);
-		return (NULL);
-	}
-
-	resource_list_init(&dinfo->resources);
-	
-	device_set_ivars(child, dinfo);
-	return (child);
-}
-
-static void
-bhnd_pci_child_deleted(device_t dev, device_t child)
-{
-	struct bhnd_pci_devinfo *dinfo;
-
-	if (device_get_parent(child) != dev)
-		return;
-
-	dinfo = device_get_ivars(child);
-	if (dinfo != NULL) {
-		resource_list_free(&dinfo->resources);
-		free(dinfo, M_DEVBUF);
-	}
-
-	device_set_ivars(child, NULL);
-}
-
-/**
- * Find the identification table entry for a core descriptor.
- */
-static const struct bhnd_pci_device *
-bhnd_pci_device_find(struct bhnd_core_info *core)
-{
-	const struct bhnd_pci_device *id;
-
-	for (id = bhnd_pci_devices; id->device != BHND_COREID_INVALID; id++) {
-		if (core->vendor == BHND_MFGID_BCM && 
-		    core->device == id->device)
-			return (id);
-	}
-
-	return (NULL);
-}
 
 // Quirk TODO
 // WARs for the following are not yet implemented:
@@ -572,48 +420,6 @@ bhndb_pci_wars_hwdown(struct bhnd_pcihb_softc *sc)
 }
 #endif
 
-/**
- * Read a 32-bit PCIe TLP/DLLP/PLP protocol register.
- * 
- * @param sc The bhndb_pci driver state.
- * @param addr The protocol register offset.
- */
-static uint32_t
-bhnd_pcie_read_proto_reg(struct bhnd_pcihb_softc *sc, uint32_t addr)
-{
-	uint32_t val;
-
-	KASSERT(bhnd_get_class(sc->dev) == BHND_DEVCLASS_PCIE,
-	    ("not a pcie device!"));
-
-	BHND_PCI_LOCK(sc);
-	bhnd_bus_write_4(sc->core, BHND_PCIE_IND_ADDR, addr);
-	val = bhnd_bus_read_4(sc->core, BHND_PCIE_IND_DATA);
-	BHND_PCI_UNLOCK(sc);
-
-	return (val);
-}
-
-/**
- * Write a 32-bit PCIe TLP/DLLP/PLP protocol register value.
- * 
- * @param sc The bhndb_pci driver state.
- * @param addr The protocol register offset.
- * @param val The value to write to @p addr.
- */
-static void
-bhnd_pcie_write_proto_reg(struct bhnd_pcihb_softc *sc, uint32_t addr,
-    uint32_t val)
-{
-	KASSERT(bhnd_get_class(sc->dev) == BHND_DEVCLASS_PCIE,
-	    ("not a pcie device!"));
-
-	BHND_PCI_LOCK(sc);
-	bhnd_bus_write_4(sc->core, BHND_PCIE_IND_ADDR, addr);
-	bhnd_bus_write_4(sc->core, BHND_PCIE_IND_DATA, val);
-	BHND_PCI_UNLOCK(sc);
-}
-
 #if 0
 
 /**
@@ -631,7 +437,7 @@ bhnd_pcie_write_proto_reg(struct bhnd_pcihb_softc *sc, uint32_t addr,
  * @return Returns the set of quirks applicable to the current hardware.
  */
 static uint32_t 
-bhndb_pci_discover_quirks(struct bhnd_pcihb_softc *sc,
+bhnd_pci_discover_quirks(struct bhnd_pcihb_softc *sc,
     const struct bhndb_pci_id *id)
 {
 	struct bhnd_device_quirk	*qt;
@@ -672,26 +478,15 @@ static device_method_t bhnd_pci_hostb_methods[] = {
 	DEVMETHOD(device_attach,		bhnd_pci_hostb_attach),
 	DEVMETHOD(device_detach,		bhnd_pci_hostb_detach),
 	DEVMETHOD(device_suspend,		bhnd_pci_hostb_suspend),
-	DEVMETHOD(device_resume,		bhnd_pci_hostb_resume),
-
-	/* Bus interface */
-	DEVMETHOD(bus_add_child,		bhnd_pci_add_child),
-	DEVMETHOD(bus_child_deleted,		bhnd_pci_child_deleted),
-	DEVMETHOD(bus_print_child,		bus_generic_print_child),
-	DEVMETHOD(bus_get_resource_list,	bhnd_pci_get_resource_list),
-	DEVMETHOD(bus_get_resource,		bus_generic_rl_get_resource),
-	DEVMETHOD(bus_set_resource,		bus_generic_rl_set_resource),
-	DEVMETHOD(bus_delete_resource,		bus_generic_rl_delete_resource),
-
+	DEVMETHOD(device_resume,		bhnd_pci_hostb_resume),	
 
 	DEVMETHOD_END
 };
 
-DEFINE_CLASS_0(bhnd_pci_hostb, bhnd_pci_hostb_driver, bhnd_pci_hostb_methods, 
-    sizeof(struct bhnd_pcihb_softc));
+DEFINE_CLASS_1(bhnd_pci_hostb, bhnd_pci_hostb_driver, bhnd_pci_hostb_methods, 
+    sizeof(struct bhnd_pcihb_softc), bhnd_pci_driver);
 
 DRIVER_MODULE(bhnd_hostb, bhnd, bhnd_pci_hostb_driver, bhnd_hostb_devclass, 0, 0);
 
 MODULE_VERSION(bhnd_pci_hostb, 1);
-MODULE_DEPEND(bhnd_pci_hostb, pci, 1, 1, 1);
 MODULE_DEPEND(bhnd_pci_hostb, bhnd_pci, 1, 1, 1);

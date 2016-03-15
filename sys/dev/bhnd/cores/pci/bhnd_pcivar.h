@@ -39,13 +39,63 @@
  * Shared PCI Bridge/PCI Host Bridge definitions.
  */
 
-extern devclass_t bhnd_mdio_pci_devclass;
+DECLARE_CLASS(bhnd_pci_driver);
+struct bhnd_pci_softc;
+
+int		bhnd_pci_generic_probe(device_t dev);
+int		bhnd_pci_generic_attach(device_t dev);
+int		bhnd_pci_generic_detach(device_t dev);
+int		bhnd_pci_generic_suspend(device_t dev);
+int		bhnd_pci_generic_resume(device_t dev);
+
+uint32_t	bhnd_pci_read_pcie_proto_reg(struct bhnd_pci_softc *sc,
+		    uint32_t addr);
+void		bhnd_pci_write_pcie_proto_reg(struct bhnd_pci_softc *sc,
+		    uint32_t addr, uint32_t val);
 
 /* Device register families. */
 typedef enum {
 	BHND_PCI_REGFMT_PCI	= 0,	/* PCI register definitions */
 	BHND_PCI_REGFMT_PCIE	= 1,	/* PCIe-Gen1 register definitions */
 } bhnd_pci_regfmt_t;
+
+/**
+ * bhnd_pci child device info
+ */
+struct bhnd_pci_devinfo {
+	struct resource_list	resources;
+};
+
+#define	BHND_PCI_MAX_RES	1
+#define	BHND_PCI_MAX_RSPEC	(BHND_PCI_MAX_RES+1)
+
+/*
+ * Generic PCI bridge/end-point driver state.
+ * 
+ * Must be first member of all subclass softc structures.
+ */
+struct bhnd_pci_softc {
+	device_t		 dev;		/**< pci device */
+
+	struct resource_spec	 rspec[BHND_PCI_MAX_RSPEC];
+	struct bhnd_resource	*res[BHND_PCI_MAX_RES];
+
+	uint32_t		 quirks;	/**< quirk flags */
+	struct bhnd_resource	*core;		/**< core registers. */
+	bhnd_pci_regfmt_t	 regfmt;	/**< register format */	
+	device_t		 mdio;		/**< child mdio device (PCIe-only) */
+
+	struct mtx		 mtx;		/**< state mutex */
+};
+
+
+#define	BHND_PCI_LOCK_INIT(sc) \
+	mtx_init(&(sc)->mtx, device_get_nameunit((sc)->dev), \
+	    "driver state lock", MTX_DEF)
+#define	BHND_PCI_LOCK(sc)			mtx_lock(&(sc)->mtx)
+#define	BHND_PCI_UNLOCK(sc)			mtx_unlock(&(sc)->mtx)
+#define	BHND_PCI_LOCK_ASSERT(sc, what)	mtx_assert(&(sc)->mtx, what)
+#define	BHND_PCI_LOCK_DESTROY(sc)		mtx_destroy(&(sc)->mtx)
 
 /* Common BHND_PCI_*_REG_(EXTRACT|INSERT) implementation */
 #define	_BHND_PCI_REG_EXTRACT(_regval, _mask, _shift)		\

@@ -49,7 +49,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhnd.h>
 
 #include "bhnd_pcireg.h"
-
 #include "bhnd_pcibvar.h"
 
 static const struct bhnd_pcib_device {
@@ -71,42 +70,34 @@ bhnd_pcib_probe(device_t dev)
 	if (bhnd_is_hostb_device(dev))
 		return (ENXIO);
 
-	for (id = bhnd_pcib_devs; id->device != BHND_COREID_INVALID; id++) {
-		if (bhnd_get_vendor(dev) != id->vendor)
-			continue;
-
-		if (bhnd_get_device(dev) != id->device)
-			continue;
-
-		device_set_desc(dev, id->desc);
-		return (BUS_PROBE_SPECIFIC);
-	}
-
-	return (ENXIO);
+	/* Delegate to common driver */
+	return (bhnd_pci_generic_probe(dev));
 }
 
 static int
 bhnd_pcib_attach(device_t dev)
 {
-	return (ENXIO);
+	// TODO
+	return (bhnd_pci_generic_attach(dev));
 }
 
 static int
 bhnd_pcib_detach(device_t dev)
 {
-	return (ENXIO);
+	// TODO
+	return (bhnd_pci_generic_detach(dev));
 }
 
 static int
 bhnd_pcib_suspend(device_t dev)
 {
-	return (ENXIO);
+	return (bhnd_pci_generic_suspend(dev));
 }
 
 static int
 bhnd_pcib_resume(device_t dev)
 {
-	return (ENXIO);
+	return (bhnd_pci_generic_resume(dev));
 }
 
 static device_method_t bhnd_pcib_methods[] = {
@@ -119,7 +110,7 @@ static device_method_t bhnd_pcib_methods[] = {
 	DEVMETHOD_END
 };
 
-DEFINE_CLASS_0(bhnd_pcib, bhnd_pcib_driver, bhnd_pcib_methods, sizeof(struct bhnd_pcib_softc));
+DEFINE_CLASS_1(bhnd_pcib, bhnd_pcib_driver, bhnd_pcib_methods, sizeof(struct bhnd_pcib_softc), bhnd_pci_driver);
 DRIVER_MODULE(bhnd_pcib, bhnd, bhnd_pcib_driver, bhnd_hostb_devclass, 0, 0);
 
 MODULE_VERSION(bhnd_pcib, 1);
