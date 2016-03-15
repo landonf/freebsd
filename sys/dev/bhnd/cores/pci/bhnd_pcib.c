@@ -51,21 +51,9 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_pcireg.h"
 #include "bhnd_pcibvar.h"
 
-static const struct bhnd_pcib_device {
-	uint16_t	 vendor;
-	uint16_t	 device;
-	const char	*desc;
-} bhnd_pcib_devs[] = {
-	{ BHND_MFGID_BCM,	BHND_COREID_PCI,	"BHND Host-PCI bridge" },
-	{ BHND_MFGID_BCM,	BHND_COREID_PCIE,	"BHND Host-PCI bridge (PCIe Gen1)" },
-	{ BHND_MFGID_INVALID,	BHND_COREID_INVALID,	NULL }
-};
-
 static int
 bhnd_pcib_probe(device_t dev)
 {
-	const struct bhnd_pcib_device *id;
-
 	/* Ignore PCI cores configured in host bridge mode */
 	if (bhnd_is_hostb_device(dev))
 		return (ENXIO);
