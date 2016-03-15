@@ -31,9 +31,9 @@
 __FBSDID("$FreeBSD$");
 
 /*
- * Broadcom BHND PCI/PCIe-Gen1 Host Bridge.
+ * Broadcom BHND PCI/PCIe-Gen1 PCI-Host Bridge.
  * 
- * This driver handles all interactions with the PCI bridge core operating in
+ * This driver handles all interactions with PCI bridge cores operating in
  * endpoint mode.
  * 
  * Host-level PCI operations are handled at the bhndb bridge level by the
