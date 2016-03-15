@@ -49,23 +49,26 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhnd.h>
 
 #include "bhnd_pcireg.h"
-
-#include "mdio_pciereg.h"
-#include "mdio_pcievar.h"
+#include "bhnd_pcie_mdioreg.h"
+#include "bhnd_pcie_mdiovar.h"
+#include "bhnd_pci_hostbvar.h"
 
 devclass_t bhnd_pcie_mdio_devclass;
 
 /* Supported device identifiers */
-static const struct bhnd_pcie_mdio_device {
-	uint16_t	vendor;
-	uint16_t	device;
+static const struct bhnd_pci_device {
+	uint16_t	 vendor;
+	uint16_t	 device;
+	const char	*desc;
 } mdio_devices[] = {
-	{ BHND_MFGID_BCM,	BHND_COREID_PCIE },
+	{ BHND_MFGID_BCM,	BHND_COREID_PCIE,
+	    "Broadcom PCIe-Gen1 MDIO bus" },
 
 	// TODO: PCIe-Gen2 Support
-	// { BHND_MFGID_BCM,	BHND_COREID_PCIE2 }, 
+	// { BHND_MFGID_BCM,	BHND_COREID_PCIE2,
+	//  "Broadcom PCIe-Gen2 MDIO bus" },
 
-	{ BHND_MFGID_INVALID, BHND_COREID_INVALID }
+	{ BHND_MFGID_INVALID, BHND_COREID_INVALID, NULL }
 };
 
 #define	BHND_MDIO_CTL_DELAY	10	/**< usec delay required between
@@ -84,36 +87,36 @@ static const struct bhnd_pcie_mdio_device {
 static int
 bhnd_pcie_mdio_probe(device_t dev)
 {
-	device_set_desc(dev, "Broadcom PCIe-G1 MDIO");
-	// device_quiet(dev); TODO
+	const struct bhnd_pci_device	*id;
+	device_t			 parent;
 
-	return (BUS_PROBE_NOWILDCARD);
-}
+	parent = device_get_parent(dev);
+	if (device_get_driver(parent) != &bhnd_pci_hostb_driver)
+		return (ENXIO);
 
-static void
-bhnd_pcie_mdio_identify(driver_t *drv, device_t parent)
-{
-	const struct bhnd_pcie_mdio_device	*id;
-	const char				*name;
-	device_t				 child;
-
-	name = devclass_get_name(bhnd_pcie_mdio_devclass);
-	if (device_find_child(parent, name, -1) != NULL)
-		return;
-
-	// TODO: bus_set_resource()
+	/* We attach once, and will always the first device probed/attached */
+	if (device_find_child(parent,
+		devclass_get_name(bhnd_pcie_mdio_devclass), 0) != dev)
+	{
+		return (ENXIO);
+	}
 
 	for (id = mdio_devices; id->device != BHND_COREID_INVALID; id++)
 	{
-		if (bhnd_get_vendor(parent) != id->vendor ||
-		    bhnd_get_device(parent) != id->device)
+		if (bhnd_get_vendor(parent) != id->vendor)
+			continue;
+		
+		if (bhnd_get_device(parent) != id->device)
 			continue;
 
-		if ((child = BUS_ADD_CHILD(parent, 0, name, 0)) == NULL)
-			return;
+		device_set_desc(dev, id->desc);
+		// device_quiet(dev); TODO
 
-		device_set_driver(child, drv);
+		return (BUS_PROBE_SPECIFIC);
 	}
+
+	/* Unsupported PCI core */
+	return (ENXIO);
 }
 
 static int
@@ -138,48 +141,6 @@ bhnd_pcie_mdio_attach(device_t dev)
 	BHND_PCIE_MDIO_LOCK_INIT(sc);
 	return (bus_generic_attach(dev));
 }
-
-// TODO
-#if 0
-/**
- * Helper function that must be called by subclass BHND MDIO drivers
- * when implementing DEVICE_ATTACH().
- * 
- * @param dev The bhnd_mdio device.
- * @param mem_res A memory resource containing the device resources; this
- * @param mem_rid The @p mem_res resource ID, or -1 if this is a borrowed
- * reference that the device should not assume ownership of.
- * @param offset The offset within @p mem_res at which the MMIO register
- * block is defined.
- * @param c22ext If true, the MDIO driver will automatically use the PCIe
- * SerDes' non-standard extended address mechanism when handling C45 register
- * accesses to the PCIe SerDes device (BHND_PCIE_PHYADDR_SD / 
- * BHND_PCIE_DEVAD_SD).
- */
-int bhnd_pcie_mdio_attach(device_t dev, bool c22ext)
-{
-	struct bhnd_pcie_mdio_softc *sc = device_get_softc(dev);
-
-	sc->dev = dev;
-	sc->mem_res = mem_res;
-	sc->mem_rid = mem_rid;
-	sc->mem_off = offset;
-	sc->c22ext = c22ext;
-
-	/* Allocate our MDIO register block */
-	sc->rid = 0;
-	sc->res = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY, &sc->rid,
-	    RF_ACTIVE);
-	if (sc->res == NULL) {
-		device_printf(dev, "could not allocate MDIO register block\n");
-		return (ENXIO);
-	}
-
-	BHND_PCIE_MDIO_LOCK_INIT(sc);
-
-	return (bus_generic_attach(dev));
-}
-#endif
 
 static int
 bhnd_pcie_mdio_detach(device_t dev)
@@ -445,8 +406,8 @@ cleanup:
 
 static device_method_t bhnd_pcie_mdio_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_identify,	bhnd_pcie_mdio_identify),
 	DEVMETHOD(device_probe,		bhnd_pcie_mdio_probe),
+	DEVMETHOD(device_attach,	bhnd_pcie_mdio_attach),
 	DEVMETHOD(device_detach,	bhnd_pcie_mdio_detach),
 
 	/* MDIO interface */
@@ -459,4 +420,5 @@ static device_method_t bhnd_pcie_mdio_methods[] = {
 };
 
 DEFINE_CLASS_0(bhnd_pcie_mdio, bhnd_pcie_mdio_driver, bhnd_pcie_mdio_methods, sizeof(struct bhnd_pcie_mdio_softc));
+DRIVER_MODULE(bhnd_pcie_mdio, pcib, bhnd_pcie_mdio_driver, bhnd_pcie_mdio_devclass, 0, 0);
 DRIVER_MODULE(bhnd_pcie_mdio, bhnd_pci_hostb, bhnd_pcie_mdio_driver, bhnd_pcie_mdio_devclass, 0, 0);

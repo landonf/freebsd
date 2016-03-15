@@ -41,6 +41,8 @@
 
 #include "bhnd_pcivar.h"
 
+DECLARE_CLASS(bhnd_pci_hostb_driver);
+
 /* 
  * PCI/PCIe-Gen1 endpoint-mode device quirks
  */
@@ -163,31 +165,11 @@ enum {
 	BHND_PCIE_QUIRK_SDR9_NO_FREQRETRY	= (1<<13),
 };
 
-#define	BHND_PCIHB_MAX_RES	1
-#define	BHND_PCIHB_MAX_RSPEC	(BHND_PCIHB_MAX_RES+1)
-
-/**
- * bhnd_pci_hostb child device info
- */
-struct bhnd_pci_devinfo {
-	struct resource_list	resources;
-};
-
 /**
  * bhnd_pci_hostb driver instance state.
  */
 struct bhnd_pcihb_softc {
-	device_t		 dev;	/**< device */
-
-	struct resource_spec	 rspec[BHND_PCIHB_MAX_RSPEC];
-	struct bhnd_resource	*res[BHND_PCIHB_MAX_RES];
-
-	uint32_t		 quirks;	/**< quirk flags */
-	struct bhnd_resource	*core;		/**< core registers. */
-	bhnd_pci_regfmt_t	 regfmt;	/**< register format */	
-	device_t		 mdio;		/**< child mdio device (PCIe-only) */
-
-	struct mtx		 mtx;		/**< state mutex */
+	struct bhnd_pci_softc	sc_common;
 
 	/** BHND_PCIE_QUIRK_SDR9_POLARITY state. */
 	struct {
@@ -201,12 +183,5 @@ struct bhnd_pcihb_softc {
 	} sdr9_quirk_polarity;
 };
 
-#define	BHND_PCI_LOCK_INIT(sc) \
-	mtx_init(&(sc)->mtx, device_get_nameunit((sc)->dev), \
-	    "driver state lock", MTX_DEF)
-#define	BHND_PCI_LOCK(sc)			mtx_lock(&(sc)->mtx)
-#define	BHND_PCI_UNLOCK(sc)			mtx_unlock(&(sc)->mtx)
-#define	BHND_PCI_LOCK_ASSERT(sc, what)	mtx_assert(&(sc)->mtx, what)
-#define	BHND_PCI_LOCK_DESTROY(sc)		mtx_destroy(&(sc)->mtx)
 
 #endif /* _BHND_CORES_PCI_BHND_PCI_HOSTBVAR_H_ */
