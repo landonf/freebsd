@@ -305,11 +305,11 @@ bhnd_pci_write_pcie_proto_reg(struct bhnd_pci_softc *sc, uint32_t addr,
 
 static device_method_t bhnd_pci_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_probe,		bhnd_pci_generic_probe),
-	DEVMETHOD(device_attach,	bhnd_pci_generic_attach),
-	DEVMETHOD(device_detach,	bhnd_pci_generic_detach),
-	DEVMETHOD(device_suspend,	bhnd_pci_generic_suspend),
-	DEVMETHOD(device_resume,	bhnd_pci_generic_resume),
+	DEVMETHOD(device_probe,			bhnd_pci_generic_probe),
+	DEVMETHOD(device_attach,		bhnd_pci_generic_attach),
+	DEVMETHOD(device_detach,		bhnd_pci_generic_detach),
+	DEVMETHOD(device_suspend,		bhnd_pci_generic_suspend),
+	DEVMETHOD(device_resume,		bhnd_pci_generic_resume),
 	
 	/* Bus interface */
 	DEVMETHOD(bus_add_child,		bhnd_pci_add_child),
