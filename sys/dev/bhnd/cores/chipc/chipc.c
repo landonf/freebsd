@@ -102,7 +102,7 @@ chipc_probe(device_t dev)
 		if (bhnd_get_vendor(dev) == BHND_MFGID_BCM &&
 		    bhnd_get_device(dev) == id->device)
 		{
-			bhnd_set_generic_core_desc(dev);
+			bhnd_set_default_core_desc(dev);
 			return (BUS_PROBE_DEFAULT);
 		}
 	}
