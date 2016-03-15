@@ -66,9 +66,6 @@ struct bhnd_pci_devinfo {
 	struct resource_list	resources;
 };
 
-#define	BHND_PCI_MAX_RES	1
-#define	BHND_PCI_MAX_RSPEC	(BHND_PCI_MAX_RES+1)
-
 /*
  * Generic PCI bridge/end-point driver state.
  * 
@@ -76,22 +73,20 @@ struct bhnd_pci_devinfo {
  */
 struct bhnd_pci_softc {
 	device_t		 dev;		/**< pci device */
-
-	struct resource_spec	 rspec[BHND_PCI_MAX_RSPEC];
-	struct bhnd_resource	*res[BHND_PCI_MAX_RES];
-
 	uint32_t		 quirks;	/**< quirk flags */
-	struct bhnd_resource	*core;		/**< core registers. */
 	bhnd_pci_regfmt_t	 regfmt;	/**< register format */	
-	device_t		 mdio;		/**< child mdio device (PCIe-only) */
+	device_t		 mdio_dev;	/**< child mdio device (PCIe-only) */
 
 	struct mtx		 mtx;		/**< state mutex */
+	struct bhnd_resource	*mem_res;	/**< device register block. */
+	int			 mem_rid;	/**< register block RID */
+	struct rman		 mem_rman;	/**< memory manager */
 };
 
 
 #define	BHND_PCI_LOCK_INIT(sc) \
 	mtx_init(&(sc)->mtx, device_get_nameunit((sc)->dev), \
-	    "driver state lock", MTX_DEF)
+	    "BHND PCI driver lock", MTX_DEF)
 #define	BHND_PCI_LOCK(sc)			mtx_lock(&(sc)->mtx)
 #define	BHND_PCI_UNLOCK(sc)			mtx_unlock(&(sc)->mtx)
 #define	BHND_PCI_LOCK_ASSERT(sc, what)	mtx_assert(&(sc)->mtx, what)
