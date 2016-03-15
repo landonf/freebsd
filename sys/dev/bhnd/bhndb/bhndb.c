@@ -1048,15 +1048,15 @@ bhndb_alloc_resource(device_t dev, device_t child, int type,
 	struct resource			*rv;
 	struct rman			*rm;
 	int				 error;
-	bool				 immed_child, defaults;
+	bool				 passthrough, isdefault;
 
 	sc = device_get_softc(dev);
-	immed_child = (device_get_parent(child) == dev);
-	defaults = (start == 0UL && end == ~0UL);
+	passthrough = (device_get_parent(child) != dev);
+	isdefault = RMAN_IS_DEFAULT_RANGE(start, end);
 	rle = NULL;
 
 	/* Populate defaults */
-	if (immed_child && defaults) {
+	if (!passthrough && isdefault) {
 		/* Fetch the resource list entry. */
 		rle = resource_list_find(BUS_GET_RESOURCE_LIST(dev, child),
 		    type, *rid);
