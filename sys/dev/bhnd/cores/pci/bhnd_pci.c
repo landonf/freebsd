@@ -59,11 +59,6 @@ struct bhnd_pci_device;
 static const struct bhnd_pci_device	*bhnd_pci_device_find(
 					     const struct bhnd_core_info *core);
 
-static const struct resource_spec bhnd_pci_rspec[BHND_PCI_MAX_RSPEC] = {
-	{ SYS_RES_MEMORY,	0,	RF_ACTIVE },
-	{ -1, -1, 0 }
-};
-
 static const struct bhnd_pci_device {
 	uint16_t		 vendor;
 	uint16_t	 	 device;
@@ -130,14 +125,13 @@ bhnd_pci_generic_attach(device_t dev)
 	sc->dev = dev;
 
 	/* Allocate bus resources */
-	memcpy(sc->rspec, bhnd_pci_rspec, sizeof(sc->rspec));
-	if ((error = bhnd_alloc_resources(dev, sc->rspec, sc->res)))
-		return (error);
-
-	sc->core = sc->res[0];
+	sc->mem_res = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY, &sc->mem_rid,
+	    RF_ACTIVE);
+	if (sc->mem_res == NULL)
+		return (ENXIO);
 
 	BHND_PCI_LOCK_INIT(sc);
-	
+
 	/*
 	 * Attach MDIO device used to access to PCIe PHY registers.
 	 * 
@@ -145,22 +139,22 @@ bhnd_pci_generic_attach(device_t dev)
 	 * children.
 	 */
 	if (bhnd_get_class(dev) == BHND_DEVCLASS_PCIE) {
-		sc->mdio = BUS_ADD_CHILD(dev, 0,
+		sc->mdio_dev = BUS_ADD_CHILD(dev, 0,
 		    devclass_get_name(bhnd_pcie_mdio_devclass), 0);
-		if (sc->mdio == NULL) {
+		if (sc->mdio_dev == NULL) {
 			error = ENXIO;
 			goto cleanup;
 		}
 
-		error = bus_set_resource(sc->mdio, SYS_RES_MEMORY, 0,
-		    rman_get_start(sc->core->res) + BHND_PCIE_MDIO_CTL,
+		error = bus_set_resource(sc->mdio_dev, SYS_RES_MEMORY, 0,
+		    rman_get_start(sc->mem_res->res) + BHND_PCIE_MDIO_CTL,
 		    sizeof(uint32_t)*2);
 		if (error) {
 			device_printf(dev, "failed to set MDIO resource\n");
 			goto cleanup;
 		}
 
-		if ((error = device_probe_and_attach(sc->mdio))) {
+		if ((error = device_probe_and_attach(sc->mdio_dev))) {
 			device_printf(dev, "failed to attach MDIO device\n");
 			goto cleanup;
 		}
@@ -173,11 +167,12 @@ bhnd_pci_generic_attach(device_t dev)
 	return (0);
 
 cleanup:
-	if (sc->mdio != NULL)
-		device_delete_child(dev, sc->mdio);
+	if (sc->mdio_dev != NULL)
+		device_delete_child(dev, sc->mdio_dev);
+
+	bhnd_release_resource(dev, SYS_RES_MEMORY, sc->mem_rid, sc->mem_res);
 
 	BHND_PCI_LOCK_DESTROY(sc);
-	bhnd_release_resources(dev, sc->rspec, sc->res);
 
 	return (error);
 }
@@ -193,8 +188,10 @@ bhnd_pci_generic_detach(device_t dev)
 	if ((error = bus_generic_detach(dev)))
 		return (error);
 
+	bhnd_release_resource(dev, SYS_RES_MEMORY, sc->mem_rid, sc->mem_res);
+	
 	BHND_PCI_LOCK_DESTROY(sc);
-	bhnd_release_resources(dev, sc->rspec, sc->res);
+
 	return (0);
 }
 
@@ -276,8 +273,8 @@ bhnd_pci_read_pcie_proto_reg(struct bhnd_pci_softc *sc, uint32_t addr)
 	    ("not a pcie device!"));
 
 	BHND_PCI_LOCK(sc);
-	bhnd_bus_write_4(sc->core, BHND_PCIE_IND_ADDR, addr);
-	val = bhnd_bus_read_4(sc->core, BHND_PCIE_IND_DATA);
+	bhnd_bus_write_4(sc->mem_res, BHND_PCIE_IND_ADDR, addr);
+	val = bhnd_bus_read_4(sc->mem_res, BHND_PCIE_IND_DATA);
 	BHND_PCI_UNLOCK(sc);
 
 	return (val);
@@ -298,8 +295,8 @@ bhnd_pci_write_pcie_proto_reg(struct bhnd_pci_softc *sc, uint32_t addr,
 	    ("not a pcie device!"));
 
 	BHND_PCI_LOCK(sc);
-	bhnd_bus_write_4(sc->core, BHND_PCIE_IND_ADDR, addr);
-	bhnd_bus_write_4(sc->core, BHND_PCIE_IND_DATA, val);
+	bhnd_bus_write_4(sc->mem_res, BHND_PCIE_IND_ADDR, addr);
+	bhnd_bus_write_4(sc->mem_res, BHND_PCIE_IND_DATA, val);
 	BHND_PCI_UNLOCK(sc);
 }
 
