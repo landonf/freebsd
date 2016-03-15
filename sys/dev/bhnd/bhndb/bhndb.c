@@ -1083,7 +1083,7 @@ bhndb_alloc_resource(device_t dev, device_t child, int type,
 	}
 
 	/* Validate resource addresses */
-	if (start > end || end < start || count > ((end - start) + 1))
+	if (start > end || count > ((end - start) + 1))
 		return (NULL);
 	
 	/* Fetch the resource manager */
