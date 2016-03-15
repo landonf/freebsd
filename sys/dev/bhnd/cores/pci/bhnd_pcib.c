@@ -31,10 +31,10 @@
 __FBSDID("$FreeBSD$");
 
 /*
- * Broadcom PCI-BHND Host Bridge.
+ * Broadcom PCI/PCIe-Gen1 Host-PCI bridge.
  * 
- * This driver is used to "eat" PCI(e) cores operating in endpoint mode when
- * they're attached to a bhndb_pci driver on the host side.
+ * This driver handles all interactions with PCI bridge cores operating in
+ * root complex mode.
  */
 
 #include <sys/param.h>
