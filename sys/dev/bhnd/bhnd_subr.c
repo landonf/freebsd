@@ -619,13 +619,14 @@ cleanup:
 }
 
 /**
- * Using the bhnd(4) bus-level core information, populate @p dev's device
- * description.
+ * Using the bhnd(4) bus-level core information and a custom core name,
+ * populate @p dev's device description.
  * 
  * @param dev A bhnd-bus attached device.
+ * @param name The core's name (e.g. "SDIO Device Core").
  */
 void
-bhnd_set_generic_core_desc(device_t dev)
+bhnd_set_custom_core_desc(device_t dev, const char *name)
 {
 	const char *dev_name;
 	const char *vendor_name;
@@ -645,6 +646,18 @@ bhnd_set_generic_core_desc(device_t dev)
 	} else {
 		device_set_desc(dev, dev_name);
 	}
+}
+
+/**
+ * Using the bhnd(4) bus-level core information, populate @p dev's device
+ * description.
+ * 
+ * @param dev A bhnd-bus attached device.
+ */
+void
+bhnd_set_default_core_desc(device_t dev)
+{
+	bhnd_set_custom_core_desc(dev, bhnd_get_device_name(dev));
 }
 
 /**

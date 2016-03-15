@@ -280,9 +280,9 @@ int				 bhnd_read_chipid(device_t dev,
 				     bus_size_t chipc_offset,
 				     struct bhnd_chipid *result);
 
-void				 bhnd_set_generic_core_desc(device_t dev);
-
-
+void				 bhnd_set_custom_core_desc(device_t dev,
+				     const char *name);
+void				 bhnd_set_default_core_desc(device_t dev);
 
 
 bool				 bhnd_bus_generic_is_hostb_device(device_t dev,
