@@ -48,16 +48,33 @@ int		bhnd_pci_generic_detach(device_t dev);
 int		bhnd_pci_generic_suspend(device_t dev);
 int		bhnd_pci_generic_resume(device_t dev);
 
-uint32_t	bhnd_pci_read_pcie_proto_reg(struct bhnd_pci_softc *sc,
+uint32_t	bhnd_pcie_read_proto_reg(struct bhnd_pci_softc *sc,
 		    uint32_t addr);
-void		bhnd_pci_write_pcie_proto_reg(struct bhnd_pci_softc *sc,
+void		bhnd_pcie_write_proto_reg(struct bhnd_pci_softc *sc,
 		    uint32_t addr, uint32_t val);
+int		bhnd_pcie_mdio_read(struct bhnd_pci_softc *sc, int phy,
+		    int reg);
+int		bhnd_pcie_mdio_write(struct bhnd_pci_softc *sc, int phy,
+		    int reg, int val);
+int		bhnd_pcie_mdio_read_ext(struct bhnd_pci_softc *sc, int phy,
+		    int devaddr, int reg);
+int		bhnd_pcie_mdio_write_ext(struct bhnd_pci_softc *sc, int phy,
+		    int devaddr, int reg, int val);
 
-/* Device register families. */
+/** PCI register block layouts. */
 typedef enum {
 	BHND_PCI_REGFMT_PCI	= 0,	/* PCI register definitions */
 	BHND_PCI_REGFMT_PCIE	= 1,	/* PCIe-Gen1 register definitions */
 } bhnd_pci_regfmt_t;
+
+/** PCI device quirks */ 
+enum {
+	/**
+	 * The PCIe SerDes requires use of a non-standard Clause 22
+	 * address extension mechanism to access extended MDIO registers.
+	 */
+	BHND_PCI_QUIRK_SD_C22_EXTADDR          = (1<<12),
+};
 
 /**
  * bhnd_pci child device info
@@ -75,12 +92,13 @@ struct bhnd_pci_softc {
 	device_t		 dev;		/**< pci device */
 	uint32_t		 quirks;	/**< quirk flags */
 	bhnd_pci_regfmt_t	 regfmt;	/**< register format */	
-	device_t		 mdio_dev;	/**< child mdio device (PCIe-only) */
 
-	struct mtx		 mtx;		/**< state mutex */
+	struct mtx		 mtx;		/**< state mutex used to protect
+						     interdependent register
+						     accesses. */
+
 	struct bhnd_resource	*mem_res;	/**< device register block. */
 	int			 mem_rid;	/**< register block RID */
-	struct rman		 mem_rman;	/**< memory manager */
 };
 
 
