@@ -56,7 +56,6 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/bhnd.h>
 
-#include "bhnd_pcie_mdiovar.h"
 #include "bhnd_pcireg.h"
 #include "bhnd_pci_hostbvar.h"
 
