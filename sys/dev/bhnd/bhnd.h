@@ -192,47 +192,37 @@ struct bhnd_device_quirk {
 };
 
 /**
- * Define a bhnd_device_quirk over a range of hardware revisions.
+ * Define a bhnd_hwrev_match over a range of hardware revisions.
  * 
  * @param _start The first applicable hardware revision.
  * @param _end The last applicable hardware revision, or BHND_HWREV_INVALID
  * to match on any revision.
- * @param _quirks Quirk flags applicable to this revision range.
  */
-#define	BHND_QUIRK_HWREV_RANGE(_start, _end, _quirks)	\
-	{ .hwrev = { _start, _end }, .quirks = _quirks }
+#define	BHND_HWREV_RANGE(_start, _end)	{ _start, _end }
 
 /**
- * Define a bhnd_device_quirk for a specific hardware revision.
+ * Define a bhnd_hwrev_match for a specific hardware revision.
  * 
  * @param _hwrev The hardware revision to match on.
- * @param _quirks Quirk flags applicable to this revision.
  */
-#define	BHND_QUIRK_HWREV_EQ(_hwrev, _quirks)	\
-	BHND_QUIRK_HWREV_RANGE(_hwrev, _hwrev, _quirks)
+#define	BHND_HWREV_EQ(_hwrev)	BHND_HWREV_RANGE(_hwrev, _hwrev)
 
 /**
- * Define a bhnd_device_quirk for any hardware revision equal or greater
+ * Define a bhnd_hwrev_match for any hardware revision equal or greater
  * than @p _start.
  * 
  * @param _start The first hardware revision to match on.
- * @param _quirks Quirk flags applicable to this revision.
  */
-#define	BHND_QUIRK_HWREV_GTE(_start, _quirks)	\
-	BHND_QUIRK_HWREV_RANGE(_start, BHND_HWREV_INVALID, _quirks)
+#define	BHND_HWREV_GTE(_start)	BHND_HWREV_RANGE(_start, BHND_HWREV_INVALID)
 
 /**
- * Define a bhnd_device_quirk for any hardware revision equal or less
+ * Define a bhnd_hwrev_match for any hardware revision equal or less
  * than @p _end.
  * 
  * @param _end The last hardware revision to match on.
- * @param _quirks Quirk flags applicable to this revision.
  */
-#define	BHND_QUIRK_HWREV_LTE(_end, _quirks)	\
-	BHND_QUIRK_HWREV_RANGE(0, _end, _quirks)
+#define	BHND_HWREV_LTE(_end)	BHND_HWREV_RANGE(0, _end)
 
-/** Mark the end of a bhnd_device_quirk table. */
-#define	BHND_QUIRK_HWREV_END	{ BHND_HWREV_MATCH_ANY, 0 }
 
 const char			*bhnd_vendor_name(uint16_t vendor);
 const char			*bhnd_port_type_name(bhnd_port_type port_type);
