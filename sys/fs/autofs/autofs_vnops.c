@@ -371,7 +371,7 @@ autofs_dirent_reclen(const char *name)
 {
 	size_t reclen;
 
-	autofs_readdir_one(NULL, name, -1, &reclen);
+	(void)autofs_readdir_one(NULL, name, -1, &reclen);
 
 	return (reclen);
 }
