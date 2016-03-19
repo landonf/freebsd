@@ -167,7 +167,39 @@ struct bhnd_hwrev_match {
 /** 
  * Wildcard hardware revision match descriptor.
  */
-#define	BHND_HWREV_MATCH_ANY	{ BHND_HWREV_INVALID, BHND_HWREV_INVALID }
+#define	BHND_HWREV_ANY	{ BHND_HWREV_INVALID, BHND_HWREV_INVALID }
+
+/**
+ * Hardware revision match descriptor for an inclusive range.
+ * 
+ * @param _start The first applicable hardware revision.
+ * @param _end The last applicable hardware revision, or BHND_HWREV_INVALID
+ * to match on any revision.
+ */
+#define	BHND_HWREV_RANGE(_start, _end)	{ _start, _end }
+
+/**
+ * Hardware revision match descriptor for a single revision.
+ * 
+ * @param _hwrev The hardware revision to match on.
+ */
+#define	BHND_HWREV_EQ(_hwrev)	BHND_HWREV_RANGE(_hwrev, _hwrev)
+
+/**
+ * Hardware revision match descriptor for any revision equal to or greater
+ * than @p _start.
+ * 
+ * @param _start The first hardware revision to match on.
+ */
+#define	BHND_HWREV_GTE(_start)	BHND_HWREV_RANGE(_start, BHND_HWREV_INVALID)
+
+/**
+ * Hardware revision match descriptor for any revision equal to or less
+ * than @p _end.
+ * 
+ * @param _end The last hardware revision to match on.
+ */
+#define	BHND_HWREV_LTE(_end)	BHND_HWREV_RANGE(0, _end)
 
 
 /** A core match descriptor. */
@@ -179,50 +211,56 @@ struct bhnd_core_match {
 	int			unit;	/**< required core unit, or -1 */
 };
 
+/**
+ * Core match descriptor matching against the given @p _vendor, @p _device,
+ * and @p _hwrev match descriptors.
+ */
+#define BHND_CORE_MATCH(_vendor, _device, _hwrev)	\
+	{ _vendor, _device, _hwrev, BHND_DEVCLASS_INVALID, -1 }
+
+/** 
+ * Wildcard core match descriptor.
+ */
+#define	BHND_CORE_MATCH_ANY			\
+	{					\
+		.vendor = BHND_MFGID_INVALID,	\
+		.device = BHND_COREID_INVALID,	\
+		.hwrev = BHND_HWREV_ANY,	\
+		.class = BHND_DEVCLASS_INVALID,	\
+		.unit = -1			\
+	}
 
 /**
- * Revision-specific hardware quirk descriptor.
- * 
- * Defines a set of quirk flags applicable to a range of hardware
- * revisions.
+ * Device quirk table descriptor.
  */
 struct bhnd_device_quirk {
 	struct bhnd_hwrev_match	 hwrev;		/**< applicable hardware revisions */
-	uint32_t		 quirks;	/**< applicable quirk flags */
+	uint32_t		 quirks;	/**< quirk flags */
+};
+#define	BHND_DEVICE_QUIRK_END	{ BHND_HWREV_ANY, 0 }
+
+enum {
+	BHND_DEVICE_ANY		= 0,
+	BHND_DEVICE_HOSTB	= (1<<0)	/**< core is serving as the bus'
+						  *  host bridge */
 };
 
-/**
- * Define a bhnd_hwrev_match over a range of hardware revisions.
- * 
- * @param _start The first applicable hardware revision.
- * @param _end The last applicable hardware revision, or BHND_HWREV_INVALID
- * to match on any revision.
- */
-#define	BHND_HWREV_RANGE(_start, _end)	{ _start, _end }
+/** Device probe table descriptor */
+struct bhnd_device {
+	struct bhnd_core_match		 core;			/**< core match descriptor */ 
+	const char			*desc;			/**< device description, or NULL. */
+	uint32_t			 device_flags;		/**< required BHND_DEVICE_MF_* flags */
+	struct bhnd_device_quirk	*quirks_table;		/**< quirks table for this device, or NULL */
+};
 
-/**
- * Define a bhnd_hwrev_match for a specific hardware revision.
- * 
- * @param _hwrev The hardware revision to match on.
- */
-#define	BHND_HWREV_EQ(_hwrev)	BHND_HWREV_RANGE(_hwrev, _hwrev)
+#define	_BHND_DEVICE_IMPL(_device, _desc, _flags, _quirks, ...)	\
+	{ BHND_CORE_MATCH(BHND_MFGID_BCM, BHND_COREID_ ## _device, \
+	    BHND_HWREV_ANY), _desc, _flags, _quirks }
 
-/**
- * Define a bhnd_hwrev_match for any hardware revision equal or greater
- * than @p _start.
- * 
- * @param _start The first hardware revision to match on.
- */
-#define	BHND_HWREV_GTE(_start)	BHND_HWREV_RANGE(_start, BHND_HWREV_INVALID)
+#define	BHND_DEVICE(_device, _desc, ...)	\
+	_BHND_DEVICE_IMPL(_device, _desc, ## __VA_ARGS__, 0, NULL)
 
-/**
- * Define a bhnd_hwrev_match for any hardware revision equal or less
- * than @p _end.
- * 
- * @param _end The last hardware revision to match on.
- */
-#define	BHND_HWREV_LTE(_end)	BHND_HWREV_RANGE(0, _end)
-
+#define	BHND_DEVICE_END			{ BHND_CORE_MATCH_ANY, NULL, 0, NULL }
 
 const char			*bhnd_vendor_name(uint16_t vendor);
 const char			*bhnd_port_type_name(bhnd_port_type port_type);
@@ -260,6 +298,10 @@ bool				 bhnd_hwrev_matches(uint16_t hwrev,
 
 bool				 bhnd_device_matches(device_t dev,
 				     const struct bhnd_core_match *desc);
+
+const struct bhnd_device	*bhnd_device_lookup(device_t dev,
+				     const struct bhnd_device *table,
+				     size_t entry_size);
 
 struct bhnd_core_info		 bhnd_get_core_info(device_t dev);
 
