@@ -63,12 +63,11 @@ static const struct resource_spec chipc_rspec[CHIPC_MAX_RSPEC] = {
 };
 
 /* Supported device identifiers */
-static const struct chipc_device {
-	uint16_t	 device;
-} chipc_devices[] = {
-	{ BHND_COREID_CC },
-	{ BHND_COREID_INVALID }
+static const struct bhnd_device chipc_devices[] = {
+	BHND_DEVICE(CC, NULL),
+	BHND_DEVICE_END
 };
+
 
 /* Device quirks table */
 static struct bhnd_device_quirk chipc_quirks[] = {
@@ -95,19 +94,14 @@ static struct bhnd_device_quirk chipc_quirks[] = {
 static int
 chipc_probe(device_t dev)
 {
-	const struct chipc_device	*id;
+	const struct bhnd_device *id;
 
-	for (id = chipc_devices; id->device != BHND_COREID_INVALID; id++)
-	{
-		if (bhnd_get_vendor(dev) == BHND_MFGID_BCM &&
-		    bhnd_get_device(dev) == id->device)
-		{
-			bhnd_set_default_core_desc(dev);
-			return (BUS_PROBE_DEFAULT);
-		}
-	}
+	id = bhnd_device_lookup(dev, chipc_devices, sizeof(chipc_devices[0]));
+	if (id == NULL)
+		return (ENXIO);
 
-	return (ENXIO);
+	bhnd_set_default_core_desc(dev);
+	return (BUS_PROBE_DEFAULT);
 }
 
 static int
