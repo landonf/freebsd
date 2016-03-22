@@ -49,13 +49,19 @@ DECLARE_CLASS(bhnd_pci_hostb_driver);
 enum {
 	/** No quirks */
 	BHND_PCI_QUIRK_NONE			= 0,
+	
+	/**
+	 * SBTOPCI_PREF and SBTOPCI_BURST must be set on the
+	 * SSB_PCICORE_SBTOPCI2 register.
+	 */
+	BHND_PCI_QUIRK_SBTOPCI2_PREF_BURST	= (1<<1),
 
 
 	/**
 	 * SBTOPCI_RC_READMULTI must be set on the SSB_PCICORE_SBTOPCI2
 	 * register.
 	 */
-	BHND_PCI_QUIRK_SBTOPCI2_READMULTI	= (1<<1),
+	BHND_PCI_QUIRK_SBTOPCI2_READMULTI	= (1<<2),
 
 	/**
 	 * PCI CLKRUN# should be disabled on attach (via CLKRUN_DSBL).
@@ -65,7 +71,7 @@ enum {
 	 * a "force CLKRUN#" *enable* registry key for use on mobile
 	 * hardware.
 	 */
-	BHND_PCI_QUIRK_CLKRUN_DSBL		= (1<<2),
+	BHND_PCI_QUIRK_CLKRUN_DSBL		= (1<<3),
 
 	/**
 	 * TLP workaround for unmatched address handling is required.
@@ -73,13 +79,13 @@ enum {
 	 * This TLP workaround will enable setting of the PCIe UR status bit
 	 * on memory access to an unmatched address.
 	 */
-	BHND_PCIE_QUIRK_UR_STATUS_FIX		= (1<<3),
+	BHND_PCIE_QUIRK_UR_STATUS_FIX		= (1<<4),
 
 	/**
 	 * PCI-PM power management must be explicitly enabled via
 	 * the data link control register.
 	 */
-	BHND_PCIE_QUIRK_PCIPM_REQEN		= (1<<4),
+	BHND_PCIE_QUIRK_PCIPM_REQEN		= (1<<5),
 
 	/**
 	 * Fix L0s to L0 exit transition on SerDes <= rev9 devices.
@@ -92,19 +98,19 @@ enum {
 	 * filters must be tweaked to ensure the CDR has fully stabilized
 	 * before asserting receive sequencer completion.
 	 */
-	BHND_PCIE_QUIRK_SDR9_L0s_HANG		= (1<<5),
+	BHND_PCIE_QUIRK_SDR9_L0s_HANG		= (1<<6),
 
 	/**
 	 * The idle time for entering L1 low-power state must be
 	 * explicitly set (to 114ns) to fix slow L1->L0 transition issues.
 	 */
-	BHND_PCIE_QUIRK_L1_IDLE_THRESH		= (1<<6),
+	BHND_PCIE_QUIRK_L1_IDLE_THRESH		= (1<<7),
 	
 	/**
 	 * The ASPM L1 entry timer should be extended for better performance,
 	 * and restored for better power savings.
 	 */
-	BHND_PCIE_QUIRK_L1_TIMER_PERF		= (1<<7),
+	BHND_PCIE_QUIRK_L1_TIMER_PERF		= (1<<8),
 
 	/**
 	 * ASPM and ECPM settings must be overridden manually.
@@ -124,7 +130,7 @@ enum {
 	 * - When the device enters D3 state, or system enters S3/S4 state,
 	 *   clear ASPM L1 in the PCIER_LINK_CTL register.
 	 */
-	BHND_PCIE_QUIRK_ASPM_OVR		= (1<<8),
+	BHND_PCIE_QUIRK_ASPM_OVR		= (1<<9),
 	
 	/**
 	 * Fix SerDes polarity on SerDes <= rev9 devices.
@@ -132,13 +138,13 @@ enum {
 	 * The SerDes polarity must be saved at device attachment, and
 	 * restored on suspend/resume.
 	 */
-	BHND_PCIE_QUIRK_SDR9_POLARITY		= (1<<9),
+	BHND_PCIE_QUIRK_SDR9_POLARITY		= (1<<10),
 
 	/**
 	 * SerDes PLL down flag must be manually disabled (by ChipCommon) on
 	 * resume.
 	 */
-	BHND_PCIE_QUIRK_SERDES_NOPLLDOWN	= (1<<10),
+	BHND_PCIE_QUIRK_SERDES_NOPLLDOWN	= (1<<11),
 
         /**
 	 * On attach and resume, consult the SPROM to determine whether
@@ -146,7 +152,7 @@ enum {
 	 *
 	 * If L23READY_EXIT_NOPRST is not already set in the SPROM, set it
 	 */
-	BHND_PCIE_QUIRK_SPROM_L23_PCI_RESET	= (1<<11),
+	BHND_PCIE_QUIRK_SPROM_L23_PCI_RESET	= (1<<12),
 	
 	/**
 	 * The PCIe SerDes supports non-standard extended MDIO register access.
@@ -154,7 +160,7 @@ enum {
 	 * The PCIe SerDes supports access to extended MDIO registers via
 	 * a non-standard Clause 22 address extension mechanism.
 	 */
-	BHND_PCIE_QUIRK_SD_C22_EXTADDR		= (1<<12),
+	BHND_PCIE_QUIRK_SD_C22_EXTADDR		= (1<<13),
 	
 	/**
 	 * The PCIe SerDes PLL must be configured to not retry the startup
@@ -162,14 +168,15 @@ enum {
 	 * 
 	 * The issue this workaround resolves has not be determined.
 	 */
-	BHND_PCIE_QUIRK_SDR9_NO_FREQRETRY	= (1<<13),
+	BHND_PCIE_QUIRK_SDR9_NO_FREQRETRY	= (1<<14),
 };
 
 /**
  * bhnd_pci_hostb driver instance state.
  */
 struct bhnd_pcihb_softc {
-	struct bhnd_pci_softc	sc_common;
+	struct bhnd_pci_softc	common;	/**< common bhnd_pci state */
+	uint32_t		quirks;	/**< hostb device quirks */
 
 	/** BHND_PCIE_QUIRK_SDR9_POLARITY state. */
 	struct {
