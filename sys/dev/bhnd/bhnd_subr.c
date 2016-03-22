@@ -702,22 +702,17 @@ cleanup:
  * populate @p dev's device description.
  * 
  * @param dev A bhnd-bus attached device.
- * @param name The core's name (e.g. "SDIO Device Core").
+ * @param dev_name The core's name (e.g. "SDIO Device Core")
  */
 void
-bhnd_set_custom_core_desc(device_t dev, const char *name)
+bhnd_set_custom_core_desc(device_t dev, const char *dev_name)
 {
-	const char *dev_name;
 	const char *vendor_name;
 	char *desc;
 
 	vendor_name = bhnd_get_vendor_name(dev);
-	dev_name = bhnd_get_device_name(dev);
-
-	asprintf(&desc, M_BHND, "%s %s, rev %hhu",
-		bhnd_get_vendor_name(dev),
-		bhnd_get_device_name(dev),
-		bhnd_get_hwrev(dev));
+	asprintf(&desc, M_BHND, "%s %s, rev %hhu", vendor_name, dev_name,
+	    bhnd_get_hwrev(dev));
 
 	if (desc != NULL) {
 		device_set_desc_copy(dev, desc);
