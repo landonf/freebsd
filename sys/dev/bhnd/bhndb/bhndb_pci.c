@@ -72,10 +72,6 @@ static int	bhndb_pci_fast_setregwin(struct bhndb_pci_softc *,
 static void	bhndb_init_sromless_pci_config(struct bhndb_pci_softc *sc);
 
 #if 0 // TODO!
-	// This gets applied to all PCI devices, without fail
-
-	BHND_PCI_QUIRK_EXT_CLOCK_GATING		= (1<<1),
-
 	// This should only apply to siba(4) BCM4303 devices (devices with
 	// PCI cores rev < 6)
 	// Ideally, we can handle this in the siba_bhndb code itself, and
