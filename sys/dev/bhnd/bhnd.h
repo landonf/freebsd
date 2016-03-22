@@ -167,7 +167,9 @@ struct bhnd_hwrev_match {
 /** 
  * Wildcard hardware revision match descriptor.
  */
-#define	BHND_HWREV_ANY	{ BHND_HWREV_INVALID, BHND_HWREV_INVALID }
+#define	BHND_HWREV_ANY		{ BHND_HWREV_INVALID, BHND_HWREV_INVALID }
+#define	BHND_HWREV_IS_ANY(_m)	\
+	((_m)->start == BHND_HWREV_INVALID && (_m)->end == BHND_HWREV_INVALID)
 
 /**
  * Hardware revision match descriptor for an inclusive range.
@@ -237,30 +239,32 @@ struct bhnd_device_quirk {
 	struct bhnd_hwrev_match	 hwrev;		/**< applicable hardware revisions */
 	uint32_t		 quirks;	/**< quirk flags */
 };
-#define	BHND_DEVICE_QUIRK_END	{ BHND_HWREV_ANY, 0 }
+#define	BHND_DEVICE_QUIRK_END		{ BHND_HWREV_ANY, 0 }
+#define	BHND_DEVICE_QUIRK_IS_END(_q)	\
+	(BHND_HWREV_IS_ANY(&(_q)->hwrev) && (_q)->quirks == 0)
 
 enum {
-	BHND_DEVICE_ANY		= 0,
-	BHND_DEVICE_HOSTB	= (1<<0)	/**< core is serving as the bus'
-						  *  host bridge */
+	BHND_DF_ANY	= 0,
+	BHND_DF_HOSTB	= (1<<0)	/**< core is serving as the bus'
+					  *  host bridge */
 };
 
 /** Device probe table descriptor */
 struct bhnd_device {
 	struct bhnd_core_match		 core;			/**< core match descriptor */ 
 	const char			*desc;			/**< device description, or NULL. */
-	uint32_t			 device_flags;		/**< required BHND_DEVICE_MF_* flags */
 	struct bhnd_device_quirk	*quirks_table;		/**< quirks table for this device, or NULL */
+	uint32_t			 device_flags;		/**< required BHND_DF_* flags */
 };
 
-#define	_BHND_DEVICE_IMPL(_device, _desc, _flags, _quirks, ...)	\
+#define	_BHND_DEVICE(_device, _desc, _quirks, _flags, ...)	\
 	{ BHND_CORE_MATCH(BHND_MFGID_BCM, BHND_COREID_ ## _device, \
-	    BHND_HWREV_ANY), _desc, _flags, _quirks }
+	    BHND_HWREV_ANY), _desc, _quirks, _flags }
 
-#define	BHND_DEVICE(_device, _desc, ...)	\
-	_BHND_DEVICE_IMPL(_device, _desc, ## __VA_ARGS__, 0, NULL)
+#define	BHND_DEVICE(_device, _desc, _quirks, ...)	\
+	_BHND_DEVICE(_device, _desc, _quirks, ## __VA_ARGS__, 0)
 
-#define	BHND_DEVICE_END			{ BHND_CORE_MATCH_ANY, NULL, 0, NULL }
+#define	BHND_DEVICE_END			{ BHND_CORE_MATCH_ANY, NULL, NULL, 0 }
 
 const char			*bhnd_vendor_name(uint16_t vendor);
 const char			*bhnd_port_type_name(bhnd_port_type port_type);
@@ -300,6 +304,10 @@ bool				 bhnd_device_matches(device_t dev,
 				     const struct bhnd_core_match *desc);
 
 const struct bhnd_device	*bhnd_device_lookup(device_t dev,
+				     const struct bhnd_device *table,
+				     size_t entry_size);
+
+uint32_t			 bhnd_device_quirks(device_t dev,
 				     const struct bhnd_device *table,
 				     size_t entry_size);
 

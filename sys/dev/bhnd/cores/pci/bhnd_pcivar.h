@@ -67,13 +67,13 @@ typedef enum {
 	BHND_PCI_REGFMT_PCIE	= 1,	/* PCIe-Gen1 register definitions */
 } bhnd_pci_regfmt_t;
 
-/** PCI device quirks */ 
+/** PCI (base driver) quirks */ 
 enum {
 	/**
 	 * The PCIe SerDes requires use of a non-standard Clause 22
 	 * address extension mechanism to access extended MDIO registers.
 	 */
-	BHND_PCI_QUIRK_SD_C22_EXTADDR          = (1<<12),
+	BHND_PCI_QUIRK_SD_C22_EXTADDR          = (1<<0),
 };
 
 /**

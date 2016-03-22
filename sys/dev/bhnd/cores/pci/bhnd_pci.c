@@ -63,16 +63,32 @@ static int	bhnd_pcie_mdio_cmd_write(struct bhnd_pci_softc *sc,
 static int	bhnd_pcie_mdio_cmd_read(struct bhnd_pci_softc *sc, uint32_t cmd,
 		    uint16_t *data_read);
 
+static struct bhnd_device_quirk bhnd_pci_quirks[];
+static struct bhnd_device_quirk bhnd_pcie_quirks[];
+
+#define BHND_PCI_QUIRKS		bhnd_pci_quirks
+#define BHND_PCIE_QUIRKS	bhnd_pcie_quirks
+#define BHND_PCI_DEV(_core, _desc, ...)				\
+	{ BHND_DEVICE(_core, _desc, BHND_ ## _core ## _QUIRKS,	\
+	    ## __VA_ARGS__), BHND_PCI_REGFMT_ ## _core }
+
 static const struct bhnd_pci_device {
 	struct bhnd_device	device;
 	bhnd_pci_regfmt_t	regfmt;	/**< register format */
 } bhnd_pci_devs[] = {
-	{ BHND_DEVICE(PCI,	"Host-PCI bridge",		BHND_DEVICE_HOSTB),	BHND_PCI_REGFMT_PCI },
-	{ BHND_DEVICE(PCI,	"PCI-BHND bridge"),					BHND_PCI_REGFMT_PCI },
-	{ BHND_DEVICE(PCIE,	"Host-PCI bridge (PCIe-G1)",	BHND_DEVICE_HOSTB),	BHND_PCI_REGFMT_PCIE },
-	{ BHND_DEVICE(PCIE,	"PCI-BHND bridge (PCIe-G1)"),				BHND_PCI_REGFMT_PCIE },
+	BHND_PCI_DEV(PCI,	"Host-PCI bridge",		BHND_DF_HOSTB),	     
+	BHND_PCI_DEV(PCI,	"PCI-BHND bridge"),
+	BHND_PCI_DEV(PCIE,	"Host-PCI bridge (PCIe-G1)",	BHND_DF_HOSTB),
+	BHND_PCI_DEV(PCIE,	"PCI-BHND bridge (PCIe-G1)"),
 
 	{ BHND_DEVICE_END, 0 }
+};
+
+/* Device quirks tables */
+static struct bhnd_device_quirk bhnd_pci_quirks[] = { BHND_DEVICE_QUIRK_END };
+static struct bhnd_device_quirk bhnd_pcie_quirks[] = {
+	{ BHND_HWREV_GTE	(10),	BHND_PCI_QUIRK_SD_C22_EXTADDR },
+	BHND_DEVICE_QUIRK_END
 };
 
 #define	BHND_PCIE_MDIO_CTL_DELAY	10	/**< usec delay required between
@@ -113,8 +129,8 @@ bhnd_pci_generic_attach(device_t dev)
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
-	
-	// TODO: Quirk matching
+	sc->quirks = bhnd_device_quirks(dev, &bhnd_pci_devs[0].device,
+	    sizeof(bhnd_pci_devs[0]));
 
 	/* Allocate bus resources */
 	sc->mem_res = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY, &sc->mem_rid,
