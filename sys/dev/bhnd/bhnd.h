@@ -217,7 +217,7 @@ struct bhnd_core_match {
  * Core match descriptor matching against the given @p _vendor, @p _device,
  * and @p _hwrev match descriptors.
  */
-#define BHND_CORE_MATCH(_vendor, _device, _hwrev)	\
+#define	BHND_CORE_MATCH(_vendor, _device, _hwrev)	\
 	{ _vendor, _device, _hwrev, BHND_DEVCLASS_INVALID, -1 }
 
 /** 

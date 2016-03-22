@@ -66,9 +66,9 @@ static int	bhnd_pcie_mdio_cmd_read(struct bhnd_pci_softc *sc, uint32_t cmd,
 static struct bhnd_device_quirk bhnd_pci_quirks[];
 static struct bhnd_device_quirk bhnd_pcie_quirks[];
 
-#define BHND_PCI_QUIRKS		bhnd_pci_quirks
-#define BHND_PCIE_QUIRKS	bhnd_pcie_quirks
-#define BHND_PCI_DEV(_core, _desc, ...)				\
+#define	BHND_PCI_QUIRKS		bhnd_pci_quirks
+#define	BHND_PCIE_QUIRKS	bhnd_pcie_quirks
+#define	BHND_PCI_DEV(_core, _desc, ...)				\
 	{ BHND_DEVICE(_core, _desc, BHND_ ## _core ## _QUIRKS,	\
 	    ## __VA_ARGS__), BHND_PCI_REGFMT_ ## _core }
 
