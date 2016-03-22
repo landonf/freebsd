@@ -62,9 +62,11 @@ static const struct resource_spec chipc_rspec[CHIPC_MAX_RSPEC] = {
 	{ -1, -1, 0 }
 };
 
+static struct bhnd_device_quirk chipc_quirks[];
+
 /* Supported device identifiers */
 static const struct bhnd_device chipc_devices[] = {
-	BHND_DEVICE(CC, NULL),
+	BHND_DEVICE(CC, NULL, chipc_quirks),
 	BHND_DEVICE_END
 };
 
@@ -75,7 +77,7 @@ static struct bhnd_device_quirk chipc_quirks[] = {
 	{ BHND_HWREV_EQ		(22),		CHIPC_QUIRK_SPROM_CHECK_CST_R22 },
 	{ BHND_HWREV_RANGE	(23,	31),	CHIPC_QUIRK_SPROM_CHECK_CST_R23 },
 	{ BHND_HWREV_GTE	(35),		CHIPC_QUIRK_SUPPORTS_NFLASH },
-	{ { 0, BHND_HWREV_INVALID }, 0 }
+	BHND_DEVICE_QUIRK_END
 };
 
 /* quirk and capability flag convenience macros */
@@ -107,7 +109,6 @@ chipc_probe(device_t dev)
 static int
 chipc_attach(device_t dev)
 {
-	struct bhnd_device_quirk	*dq;
 	struct chipc_softc		*sc;
 	bhnd_addr_t			 enum_addr;
 	uint32_t			 ccid_reg;
@@ -116,6 +117,8 @@ chipc_attach(device_t dev)
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
+	sc->quirks = bhnd_device_quirks(dev, chipc_devices,
+	    sizeof(chipc_devices[0]));
 
 	/* Allocate bus resources */
 	memcpy(sc->rspec, chipc_rspec, sizeof(sc->rspec));
@@ -148,13 +151,6 @@ chipc_attach(device_t dev)
 	/* Fetch capability and status register values */
 	sc->caps = bhnd_bus_read_4(sc->core, CHIPC_CAPABILITIES);
 	sc->cst = bhnd_bus_read_4(sc->core, CHIPC_CHIPST);
-
-	/* Populate the set of applicable quirk flags */
-	sc->quirks = 0;
-	for (dq = chipc_quirks; dq->quirks != 0; dq++) {
-		if (bhnd_hwrev_matches(bhnd_get_hwrev(dev), &dq->hwrev))
-			sc->quirks |= dq->quirks;
-	};
 
 	// TODO
 	switch (bhnd_chipc_nvram_src(dev)) {

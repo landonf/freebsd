@@ -493,7 +493,7 @@ bhnd_device_lookup(device_t dev, const struct bhnd_device *table,
 			continue;
 
 		/* match device flags */
-		if (entry->device_flags & BHND_DEVICE_HOSTB) {
+		if (entry->device_flags & BHND_DF_HOSTB) {
 			if (!bhnd_is_hostb_device(dev))
 				continue;
 		}
@@ -504,6 +504,47 @@ bhnd_device_lookup(device_t dev, const struct bhnd_device *table,
 
 	/* not found */
 	return (NULL);
+}
+
+/**
+ * Scan @p table for all quirk flags applicable to @p dev.
+ * 
+ * @param dev A bhnd device to match against @p table.
+ * @param table The device table to search.
+ * @param entry_size The @p table entry size, in bytes.
+ * 
+ * @return returns all matching quirk flags.
+ */
+uint32_t
+bhnd_device_quirks(device_t dev, const struct bhnd_device *table,
+    size_t entry_size)
+{
+	const struct bhnd_device	*dent;
+	const struct bhnd_device_quirk	*qtable, *qent;
+	uint32_t			 quirks;
+	uint16_t			 hwrev;
+
+	hwrev = bhnd_get_hwrev(dev);
+	quirks = 0;
+
+	/* Find the quirk table */
+	if ((dent = bhnd_device_lookup(dev, table, entry_size)) == NULL) {
+		/* This is almost certainly a (caller) implementation bug */
+		device_printf(dev, "quirk lookup did not match any device\n");
+		return (0);
+	}
+
+	/* Quirks aren't a mandatory field */
+	if ((qtable = dent->quirks_table) == NULL)
+		return (0);
+
+	/* Collect matching quirk entries */
+	for (qent = qtable; !BHND_DEVICE_QUIRK_IS_END(qent); qent++) {
+		if (bhnd_hwrev_matches(hwrev, &qent->hwrev))
+			quirks |= qent->quirks;
+	}
+
+	return (quirks);
 }
 
 
