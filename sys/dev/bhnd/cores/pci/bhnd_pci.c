@@ -78,8 +78,8 @@ static const struct bhnd_pci_device {
 } bhnd_pci_devs[] = {
 	BHND_PCI_DEV(PCI,	"Host-PCI bridge",		BHND_DF_HOSTB),	     
 	BHND_PCI_DEV(PCI,	"PCI-BHND bridge"),
-	BHND_PCI_DEV(PCIE,	"Host-PCI bridge (PCIe-G1)",	BHND_DF_HOSTB),
-	BHND_PCI_DEV(PCIE,	"PCI-BHND bridge (PCIe-G1)"),
+	BHND_PCI_DEV(PCIE,	"PCIe-G1 Host-PCI bridge",	BHND_DF_HOSTB),
+	BHND_PCI_DEV(PCIE,	"PCIe-G1 PCI-BHND bridge"),
 
 	{ BHND_DEVICE_END, 0 }
 };
