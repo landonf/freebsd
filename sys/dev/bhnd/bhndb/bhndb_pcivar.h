@@ -76,7 +76,10 @@ struct bhndb_pci_softc {
 	bhnd_pci_regfmt_t	 regfmt;	/**< device register format */
 
 	struct resource		*mem_res;	/**< pci core's registers (borrowed reference) */
-	bus_size_t		 mem_off;	/**< offset to the PCI core's registers within `mem_res`. */
+	bus_size_t		 mem_off;	/**< offset to the PCI core's registers within `mem_res` . */
+
+	struct bhnd_resource	 bhnd_mem_res;	/**< bhnd resource representation of mem_res.
+						     this is a simple 'direct' resource mapping */
 
 	uint32_t		 quirks;	/**< BHNDB_PCI(E)_QUIRK flags */
 

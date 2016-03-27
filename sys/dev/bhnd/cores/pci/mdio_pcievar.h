@@ -37,14 +37,18 @@
 
 DECLARE_CLASS(bhnd_mdio_pcie_driver);
 
-int bhnd_mdio_pcie_attach(device_t dev, bool c22ext);
+int bhnd_mdio_pcie_attach(device_t dev, struct bhnd_resource *mem_res,
+    int mem_rid, bus_size_t offset, bool c22ext);
 
 struct bhnd_mdio_pcie_softc {
 	device_t		 dev;		/**< mdio device */
 	struct mtx		 sc_mtx;	/**< mdio register lock */
 
-	struct bhnd_resource	*res;		/**< MDIO register block */
-	int			 rid;		/**< MDIO register block RID */
+	struct bhnd_resource	*mem_res;	/**< parent pcie registers */
+	int			 mem_rid;	/**< MDIO register resID, or
+						     -1 if mem_res reference is
+						     borrowed. */
+	bus_size_t		 mem_off;	/**< mdio register offset */
 
 	bool			 c22ext;	/**< automatically rewrite C45
 						     register requests made

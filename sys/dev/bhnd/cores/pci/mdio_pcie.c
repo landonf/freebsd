@@ -61,10 +61,10 @@ __FBSDID("$FreeBSD$");
 					  *  for BHND_MDIOCTL_DONE. */
 
 #define	BHND_MDIO_READ_4(_sc, _reg)	\
-	bhnd_bus_read_4((_sc)->res, (_reg))
+	bhnd_bus_read_4((_sc)->mem_res, (_sc)->mem_off + (_reg))
 
 #define	BHND_MDIO_WRITE_4(_sc, _reg, _val)		\
-	bhnd_bus_write_4((_sc)->res, (_reg), (_val))
+	bhnd_bus_write_4((_sc)->mem_res, (_sc)->mem_off + (_reg), (_val))
 
 static int
 bhnd_mdio_pcie_probe(device_t dev)
@@ -76,30 +76,30 @@ bhnd_mdio_pcie_probe(device_t dev)
 }
 
 /**
- * Initialization function that must be called by subclass BHND MDIO drivers
+ * Helper function that must be called by subclass BHND MDIO drivers
  * when implementing DEVICE_ATTACH().
  * 
  * @param dev The bhnd_mdio device.
+ * @param mem_res A memory resource containing the device resources; this
+ * @param mem_rid The @p mem_res resource ID, or -1 if this is a borrowed
+ * reference that the device should not assume ownership of.
+ * @param offset The offset within @p mem_res at which the MMIO register
+ * block is defined.
  * @param c22ext If true, the MDIO driver will automatically use the PCIe
  * SerDes' non-standard extended address mechanism when handling C45 register
  * accesses to the PCIe SerDes device (BHND_PCIE_PHYADDR_SD / 
  * BHND_PCIE_DEVAD_SD).
  */
-int bhnd_mdio_pcie_attach(device_t dev, bool c22ext)
+int bhnd_mdio_pcie_attach(device_t dev, struct bhnd_resource *mem_res,
+    int mem_rid, bus_size_t offset, bool c22ext)
 {
 	struct bhnd_mdio_pcie_softc *sc = device_get_softc(dev);
 
 	sc->dev = dev;
+	sc->mem_res = mem_res;
+	sc->mem_rid = mem_rid;
+	sc->mem_off = offset;
 	sc->c22ext = c22ext;
-
-	/* Allocate our MDIO register block */
-	sc->rid = 0;
-	sc->res = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY, &sc->rid,
-	    RF_ACTIVE);
-	if (sc->res == NULL) {
-		device_printf(dev, "could not allocate MDIO register block\n");
-		return (ENXIO);
-	}
 
 	BHND_MDIO_PCIE_LOCK_INIT(sc);
 
@@ -112,7 +112,6 @@ bhnd_mdio_pcie_detach(device_t dev)
 	struct bhnd_mdio_pcie_softc *sc = device_get_softc(dev);
 	
 	BHND_MDIO_PCIE_LOCK_DESTROY(sc);
-	bhnd_release_resource(dev, SYS_RES_MEMORY, sc->rid, sc->res);
 
 	return (0);
 }

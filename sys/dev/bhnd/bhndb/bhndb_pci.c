@@ -363,6 +363,13 @@ bhndb_pci_init_full_config(device_t dev, device_t child,
 		return (ENXIO);
 	}
 
+	/* Configure a direct bhnd_resource wrapper that we can pass to
+	 * bhnd_resource APIs */
+	sc->bhnd_mem_res = (struct bhnd_resource) {
+		.res = sc->mem_res,
+		.direct = true
+	};
+
 	/*
 	 * Attach MMIO device (if this is a PCIe device), which is used for
 	 * access to the PCIe SerDes required by the quirk workarounds.
@@ -1032,6 +1039,8 @@ bhndb_mdio_pcie_attach(device_t dev)
 	struct bhndb_pci_softc	*psc;
 	psc = device_get_softc(device_get_parent(dev));
 	return (bhnd_mdio_pcie_attach(dev,
+	    &psc->bhnd_mem_res, -1,
+	    psc->mem_off + BHND_PCIE_MDIO_CTL,
 	    (psc->quirks & BHNDB_PCIE_QUIRK_SD_C22_EXTADDR) != 0));
 }
 
