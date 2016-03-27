@@ -71,24 +71,6 @@ static int	bhndb_pci_fast_setregwin(struct bhndb_pci_softc *,
 
 static void	bhndb_init_sromless_pci_config(struct bhndb_pci_softc *sc);
 
-#if 0 // TODO!
-	// This should only apply to siba(4) BCM4303 devices (devices with
-	// PCI cores rev < 6)
-	// Ideally, we can handle this in the siba_bhndb code itself, and
-	// avoid making a mess of the common code by adding legacy work-arounds.
-	//
-	// Quoth the Broadcom sources: "PCI rev 2.3 support was added in pci
-	// core rev 6 and things changed."
-	//
-	// We may also be able to look at the PCI revision (?)
-	/**
-	 * Interrupt masking is handled via the interconnect configuration
-	 * registers (SBINTVEC on siba), rather than the PCI_INT_MASK
-	 * config register.
-	 */
-	BHND_PCI_QUIRK_SBINTVEC			= (1<<4),
-#endif
-
 /** 
  * Default bhndb_pci implementation of device_probe().
  * 
