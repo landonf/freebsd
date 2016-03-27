@@ -134,9 +134,6 @@ bhndb_pci_attach(device_t dev)
 	/* Enable clocks (if supported by this hardware) */
 	if ((error = bhndb_enable_pci_clocks(sc)))
 		return (error);
-	
-	/* Perform SROMless initialization */
-	bhndb_init_sromless_pci_config(sc);
 
 	/* Use siba(4)-compatible regwin handling until we know
 	 * what kind of bus is attached */
@@ -158,16 +155,34 @@ bhndb_pci_attach(device_t dev)
 	return (0);
 }
 
+static int
+bhndb_pci_init_full_config(device_t dev, device_t child,
+    const struct bhndb_hw_priority *hw_prio_table)
+{
+	struct bhndb_pci_softc	*sc;
+	int			 error;
+
+	sc = device_get_softc(dev);
+
+	/* Let our parent perform standard initialization first */
+	if ((error = bhndb_generic_init_full_config(dev, child, hw_prio_table)))
+		return (error);
+
+	/* Fix-up power on defaults for SROM-less devices. */
+	bhndb_init_sromless_pci_config(sc);
+
+	return (0);
+}
+
 /*
  * On devices without a SROM, the PCI(e) cores will be initialized with
- * their Power-on-Reset defaults; this can leave the the BAR0 PCI windows
- * potentially mapped to the wrong core index.
+ * their Power-on-Reset defaults; this can leave two of the BAR0 PCI windows
+ * mapped to the wrong core.
  * 
- * This function updates the PCI core's BAR0 PCI configuration to point at the
+ * This function updates the SROM shadow to point the BAR0 windows at the
  * current PCI core.
  * 
- * Applies to all PCI/PCIe revisions. Must be applied before bus devices
- * are probed/attached or the SPROM is parsed.
+ * Applies to all PCI/PCIe revisions.
  */
 static void
 bhndb_init_sromless_pci_config(struct bhndb_pci_softc *sc)
@@ -176,16 +191,25 @@ bhndb_init_sromless_pci_config(struct bhndb_pci_softc *sc)
 	const struct bhndb_hwcfg	*cfg;
 	const struct bhndb_regwin	*win;
 	struct resource			*core_regs;
-	u_int				 sprom_cidx;
-	u_int				 pci_cidx;
+	bus_size_t			 srom_offset;
+	u_int				 pci_cidx, sprom_cidx;
 	uint16_t			 val;
 
-	/* We execute before bhndb_generic_attach and must ask our parent
-	 * for the generic hwcfg/register window set. */
-	cfg = BHNDB_BUS_GET_GENERIC_HWCFG(device_get_parent(sc->dev), sc->dev);
-	bres = bhndb_alloc_resources(sc->dev, device_get_parent(sc->dev), cfg);
-	if (bres == NULL) {
-		device_printf(sc->dev, "could not allocate bridge resources\n");
+	bres = sc->bhndb.bus_res;
+	cfg = bres->cfg;
+
+	if (bhnd_get_vendor(sc->bhndb.hostb_dev) != BHND_MFGID_BCM)
+		return;
+
+	switch (bhnd_get_device(sc->bhndb.hostb_dev)) {
+	case BHND_COREID_PCI:
+		srom_offset = BHND_PCI_SRSH_PI_OFFSET;
+		break;
+	case BHND_COREID_PCIE:
+		srom_offset = BHND_PCIE_SRSH_PI_OFFSET;
+		break;
+	default:
+		device_printf(sc->dev, "unsupported PCI host bridge device\n");
 		return;
 	}
 
@@ -194,18 +218,18 @@ bhndb_init_sromless_pci_config(struct bhndb_pci_softc *sc)
 	    0, BHND_PORT_DEVICE, 0, 0);
 	if (win == NULL) {
 		device_printf(sc->dev, "missing PCI core register window\n");
-		goto cleanup;
+		return;
 	}
 
 	/* Fetch the resource containing the register window */
 	core_regs = bhndb_find_regwin_resource(bres, win);
 	if (core_regs == NULL) {
 		device_printf(sc->dev, "missing PCI core register resource\n");
-		goto cleanup;
+		return;
 	}
 
 	/* Fetch the SPROM's configured core index */
-	val = bus_read_2(core_regs, win->win_offset + BHND_PCI_SRSH_PI_OFFSET);
+	val = bus_read_2(core_regs, win->win_offset + srom_offset);
 	sprom_cidx = (val & BHND_PCI_SRSH_PI_MASK) >> BHND_PCI_SRSH_PI_SHIFT;
 
 	/* If it doesn't match host bridge's core index, update the index
@@ -215,11 +239,8 @@ bhndb_init_sromless_pci_config(struct bhndb_pci_softc *sc)
 		val &= ~BHND_PCI_SRSH_PI_MASK;
 		val |= (pci_cidx << BHND_PCI_SRSH_PI_SHIFT);
 		bus_write_2(core_regs,
-		    win->win_offset + BHND_PCI_SRSH_PI_OFFSET, val);
+		    win->win_offset + srom_offset, val);
 	}
-
-cleanup:
-	bhndb_free_resources(bres);
 }
 
 static int
@@ -451,6 +472,7 @@ static device_method_t bhndb_pci_methods[] = {
 	DEVMETHOD(device_detach,		bhndb_pci_detach),
 
 	/* BHNDB interface */
+	DEVMETHOD(bhndb_init_full_config,	bhndb_pci_init_full_config),
 	DEVMETHOD(bhndb_set_window_addr,	bhndb_pci_set_window_addr),
 
 	DEVMETHOD_END
