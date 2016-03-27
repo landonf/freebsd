@@ -134,6 +134,9 @@ bhndb_pci_attach(device_t dev)
 	/* Enable clocks (if supported by this hardware) */
 	if ((error = bhndb_enable_pci_clocks(sc)))
 		return (error);
+	
+	/* Perform SROMless initialization */
+	bhndb_init_sromless_pci_config(sc);
 
 	/* Use siba(4)-compatible regwin handling until we know
 	 * what kind of bus is attached */
@@ -169,27 +172,45 @@ bhndb_pci_attach(device_t dev)
 static void
 bhndb_init_sromless_pci_config(struct bhndb_pci_softc *sc)
 {
-	// TODO: Generic register API? Call a bhnd_pci_hostb function?
-#if 0
-	bus_size_t	sprom_addr;
-	u_int		sprom_core_idx;
-	u_int		pci_core_idx;
-	uint16_t	val;
+	const struct bhndb_hwcfg	*cfg;
+	const struct bhndb_regwin	*win;
+	struct resource			*core_regs;
+	u_int				 sprom_cidx;
+	u_int				 pci_cidx;
+	uint16_t			 val;
+
+	/* We xecute before bhndb_generic_attach and must ask our parent
+	 * for the generic hwcfg/register window set. */
+	cfg = BHNDB_BUS_GET_GENERIC_HWCFG(device_get_parent(sc->dev), sc->dev);
+
+	/* Locate the static register window mapping the PCI core */
+	win = bhndb_regwin_find_core(cfg->register_windows, sc->pci_devclass,
+	    0, BHND_PORT_DEVICE, 0, 0);
+	if (win == NULL) {
+		device_printf(sc->dev, "missing PCI core register window\n");
+		return;
+	}
+
+	/* Fetch the resource containing the register window */
+	core_regs = bhndb_find_regwin_resource(sc->bhndb.bus_res, win);
+	if (core_regs == NULL) {
+		device_printf(sc->dev, "missing PCI core register resource\n");
+		return;
+	}
 
 	/* Fetch the SPROM's configured core index */
-	sprom_addr = BPCI_COMMON_REG_OFFSET(SPROM_SHADOW, SRSH_PI_OFFSET);
-	val = BHNDB_PCI_READ_2(sc, sprom_addr);
+	val = bus_read_2(core_regs, win->win_offset + BHND_PCI_SRSH_PI_OFFSET);
+	sprom_cidx = (val & BHND_PCI_SRSH_PI_MASK) >> BHND_PCI_SRSH_PI_SHIFT;
 
 	/* If it doesn't match host bridge's core index, update the index
 	 * value */
-	sprom_core_idx = BPCI_COMMON_REG_EXTRACT(val, SRSH_PI);
-	pci_core_idx = bhnd_get_core_index(sc->bhndb.hostb_dev);
-
-	if (sprom_core_idx != pci_core_idx) {
-		val = BPCI_COMMON_REG_INSERT(val, SRSH_PI, pci_core_idx);
-		BHNDB_PCI_WRITE_2(sc, sprom_addr, val);
+	pci_cidx = bhnd_get_core_index(sc->bhndb.hostb_dev);
+	if (sprom_cidx != pci_cidx) {
+		val &= ~BHND_PCI_SRSH_PI_MASK;
+		val |= (pci_cidx << BHND_PCI_SRSH_PI_SHIFT);
+		bus_write_2(core_regs,
+		    win->win_offset + BHND_PCI_SRSH_PI_OFFSET, val);
 	}
-#endif
 }
 
 static int
