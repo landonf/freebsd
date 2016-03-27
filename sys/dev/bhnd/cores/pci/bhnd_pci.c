@@ -66,26 +66,22 @@ static int	bhnd_pcie_mdio_cmd_read(struct bhnd_pci_softc *sc, uint32_t cmd,
 static struct bhnd_device_quirk bhnd_pci_quirks[];
 static struct bhnd_device_quirk bhnd_pcie_quirks[];
 
-#define BHND_PCI_QUIRKS		bhnd_pci_quirks
-#define BHND_PCIE_QUIRKS	bhnd_pcie_quirks
-#define BHND_PCI_DEV(_core, _desc, ...)				\
+#define	BHND_PCI_QUIRKS		bhnd_pci_quirks
+#define	BHND_PCIE_QUIRKS	bhnd_pcie_quirks
+#define	BHND_PCI_DEV(_core, _desc, ...)				\
 	{ BHND_DEVICE(_core, _desc, BHND_ ## _core ## _QUIRKS,	\
 	    ## __VA_ARGS__), BHND_PCI_REGFMT_ ## _core }
 
 static const struct bhnd_pci_device {
-	uint16_t		 vendor;
-	uint16_t	 	 device;
-	bhnd_pci_regfmt_t	 regfmt;	/**< register format */
-	const char		*pcib_desc;
-	const char		*hostb_desc;
+	struct bhnd_device	device;
+	bhnd_pci_regfmt_t	regfmt;	/**< register format */
 } bhnd_pci_devs[] = {
 	BHND_PCI_DEV(PCI,	"Host-PCI bridge",		BHND_DF_HOSTB),	     
 	BHND_PCI_DEV(PCI,	"PCI-BHND bridge"),
 	BHND_PCI_DEV(PCIE,	"PCIe-G1 Host-PCI bridge",	BHND_DF_HOSTB),
 	BHND_PCI_DEV(PCIE,	"PCIe-G1 PCI-BHND bridge"),
 
-	{ BHND_MFGID_INVALID, BHND_COREID_INVALID, BHND_PCI_REGFMT_PCI,
-	    NULL, NULL }
+	{ BHND_DEVICE_END, 0 }
 };
 
 /* Device quirks tables */
@@ -111,41 +107,17 @@ static struct bhnd_device_quirk bhnd_pcie_quirks[] = {
 	KASSERT(bhnd_get_class(sc->dev) == BHND_DEVCLASS_PCIE,	\
 	    ("not a pcie device!"));
 
-
-/**
- * Find the identification table entry for a core descriptor.
- */
-static const struct bhnd_pci_device *
-bhnd_pci_device_find(const struct bhnd_core_info *core)
-{
-	const struct bhnd_pci_device *id;
-
-	for (id = bhnd_pci_devs; id->device != BHND_COREID_INVALID; id++) {
-		if (core->vendor == id->vendor && core->device == id->device)
-			return (id);
-	}
-
-	return (NULL);
-}
-
 int
 bhnd_pci_generic_probe(device_t dev)
 {
-	const struct bhnd_pci_device	*id;
-	struct bhnd_core_info		 cid;
-	const char			*desc;
-	bool				 hostb;
+	const struct bhnd_device	*id;
 
-	cid = bhnd_get_core_info(dev);
-	id = bhnd_pci_device_find(&cid);
+	id = bhnd_device_lookup(dev, &bhnd_pci_devs[0].device,
+	    sizeof(bhnd_pci_devs[0]));
 	if (id == NULL)
 		return (ENXIO);
 
-	/* Select the appropriate description based on the bridge mode */
-	hostb = bhnd_is_hostb_device(dev);
-	desc = hostb ? id->hostb_desc : id->pcib_desc;
-	bhnd_set_custom_core_desc(dev, desc);
-
+	bhnd_set_custom_core_desc(dev, id->desc);
 	return (BUS_PROBE_DEFAULT);
 }
 
