@@ -161,17 +161,6 @@ static const struct bhnd_device_quirk bhnd_pcie_quirks[] = {
 	    BHND_ ## _attr)
 
 static int
-bhnd_pci_hostb_probe(device_t dev)
-{
-	/* Core must be the host bridge device */
-	if (!bhnd_is_hostb_device(dev))
-		return (ENXIO);
-
-	/* Delegate to common driver */
-	return (bhnd_pci_generic_probe(dev));
-}
-
-static int
 bhnd_pci_hostb_attach(device_t dev)
 {
 	struct bhnd_pcihb_softc	*sc;
@@ -446,7 +435,6 @@ bhnd_pci_wars_hwdown(struct bhnd_pcihb_softc *sc)
 
 static device_method_t bhnd_pci_hostb_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_probe,			bhnd_pci_hostb_probe),
 	DEVMETHOD(device_attach,		bhnd_pci_hostb_attach),
 	DEVMETHOD(device_detach,		bhnd_pci_hostb_detach),
 	DEVMETHOD(device_suspend,		bhnd_pci_hostb_suspend),

@@ -52,17 +52,6 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_pcibvar.h"
 
 static int
-bhnd_pcib_probe(device_t dev)
-{
-	/* Ignore PCI cores configured in host bridge mode */
-	if (bhnd_is_hostb_device(dev))
-		return (ENXIO);
-
-	/* Delegate to common driver */
-	return (bhnd_pci_generic_probe(dev));
-}
-
-static int
 bhnd_pcib_attach(device_t dev)
 {
 	// TODO
@@ -90,7 +79,6 @@ bhnd_pcib_resume(device_t dev)
 
 static device_method_t bhnd_pcib_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_probe,		bhnd_pcib_probe),
 	DEVMETHOD(device_attach,	bhnd_pcib_attach),
 	DEVMETHOD(device_detach,	bhnd_pcib_detach),
 	DEVMETHOD(device_suspend,	bhnd_pcib_suspend),
