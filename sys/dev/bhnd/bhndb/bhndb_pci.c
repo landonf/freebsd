@@ -179,7 +179,7 @@ bhndb_init_sromless_pci_config(struct bhndb_pci_softc *sc)
 	u_int				 pci_cidx;
 	uint16_t			 val;
 
-	/* We xecute before bhndb_generic_attach and must ask our parent
+	/* We execute before bhndb_generic_attach and must ask our parent
 	 * for the generic hwcfg/register window set. */
 	cfg = BHNDB_BUS_GET_GENERIC_HWCFG(device_get_parent(sc->dev), sc->dev);
 
