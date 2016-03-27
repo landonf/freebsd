@@ -29,6 +29,7 @@
  * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 2012, 2014 by Delphix. All rights reserved.
  * Copyright (c) 2013, Joyent, Inc. All rights reserved.
+ * Copyright (c) 2014 Integros [integros.com]
  */
 
 /* Portions Copyright 2011 Martin Matuska <mm@FreeBSD.org> */
@@ -2853,7 +2854,8 @@ zvol_create_snapshots(objset_t *os, const char *name)
 			break;
 		}
 
-		if ((error = zvol_create_minor(sname)) != 0) {
+		error = zvol_create_minor(sname);
+		if (error != 0 && error != EEXIST) {
 			printf("ZFS WARNING: Unable to create ZVOL %s (error=%d).\n",
 			    sname, error);
 			break;
