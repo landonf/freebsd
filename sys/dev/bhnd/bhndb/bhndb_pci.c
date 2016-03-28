@@ -69,6 +69,7 @@ static int	bhndb_pci_compat_setregwin(struct bhndb_pci_softc *,
 static int	bhndb_pci_fast_setregwin(struct bhndb_pci_softc *,
 		    const struct bhndb_regwin *, bhnd_addr_t);
 
+static size_t	bhndb_pci_sprom_size(struct bhndb_pci_softc *sc);
 static void	bhndb_init_sromless_pci_config(struct bhndb_pci_softc *sc);
 
 /** 
@@ -104,13 +105,14 @@ bhndb_pci_attach(device_t dev)
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
+	sc->parent = device_get_parent(dev);
 
 	/* Enable PCI bus mastering */
-	pci_enable_busmaster(device_get_parent(dev));
+	pci_enable_busmaster(sc->parent);
 
 	/* Determine our bridge device class */
 	sc->pci_devclass = BHND_DEVCLASS_PCI;
-	if (pci_find_cap(device_get_parent(dev), PCIY_EXPRESS, &reg) == 0)
+	if (pci_find_cap(sc->parent, PCIY_EXPRESS, &reg) == 0)
 		sc->pci_devclass = BHND_DEVCLASS_PCIE;
 
 	/* Enable clocks (if supported by this hardware) */
@@ -146,13 +148,63 @@ bhndb_pci_init_full_config(device_t dev, device_t child,
 
 	sc = device_get_softc(dev);
 
-	/* Let our parent perform standard initialization first */
+	/* Let bhndb perform standard initialization first */
 	if ((error = bhndb_generic_init_full_config(dev, child, hw_prio_table)))
 		return (error);
 
 	/* Fix-up power on defaults for SROM-less devices. */
 	bhndb_init_sromless_pci_config(sc);
 
+	/* Early devices mapped SPROM directly into BAR0 */
+	if (bhndb_pci_sprom_size(sc)) {
+		// TODO: attach sprom device
+		device_printf(sc->dev, "found SPROM (%zu bytes)\n",
+		    bhndb_pci_sprom_size(sc)); 
+	}
+
+	return (0);
+}
+
+static size_t
+bhndb_pci_sprom_size(struct bhndb_pci_softc *sc)
+{
+	struct bhndb_resources		*bres;
+	const struct bhndb_hwcfg	*cfg;
+	const struct bhndb_regwin	*sprom_win;
+	uint32_t			 sctl;
+
+	bres = sc->bhndb.bus_res;
+	cfg = bres->cfg;
+
+	/* Look for a SPROM register window */
+	sprom_win = bhndb_regwin_find_type(cfg->register_windows,
+	    BHNDB_REGWIN_T_SPROM, BHNDB_PCI_V0_BAR0_SPROM_SIZE);
+
+	/* Later PCI(e) cores map the SPROM via ChipCommon */
+	if (sprom_win == NULL)
+		return (0);
+
+	/* Determine SPROM size */
+	sctl = pci_read_config(sc->parent, BHNDB_PCI_SPROM_CONTROL, 4);
+	if (sctl & BHNDB_PCI_SPROM_BLANK)
+		return (0);
+
+	switch (sctl & BHNDB_PCI_SPROM_SZ_MASK) {
+	case BHNDB_PCI_SPROM_SZ_1KB:
+		return (1 * 1024);
+
+	case BHNDB_PCI_SPROM_SZ_4KB:
+		return (4 * 1024);
+
+	case BHNDB_PCI_SPROM_SZ_16KB:
+		return (16 * 1024);
+
+	case BHNDB_PCI_SPROM_SZ_RESERVED:
+		device_printf(sc->dev, "invalid PCI sprom size 0x%x\n", sctl);
+		return (0);
+	}
+
+	/* Unreachable */
 	return (0);
 }
 
@@ -274,7 +326,7 @@ bhndb_pci_detach(device_t dev)
 		return (error);
 
 	/* Disable PCI bus mastering */
-	pci_disable_busmaster(device_get_parent(dev));
+	pci_disable_busmaster(sc->parent);
 
 	return (0);
 }
@@ -301,10 +353,7 @@ static int
 bhndb_pci_compat_setregwin(struct bhndb_pci_softc *sc,
     const struct bhndb_regwin *rw, bhnd_addr_t addr)
 {
-	device_t	parent;
 	int		error;
-
-	parent = sc->bhndb.parent_dev;
 
 	if (rw->win_type != BHNDB_REGWIN_T_DYN)
 		return (ENODEV);
@@ -313,7 +362,7 @@ bhndb_pci_compat_setregwin(struct bhndb_pci_softc *sc,
 		if ((error = bhndb_pci_fast_setregwin(sc, rw, addr)))
 			return (error);
 
-		if (pci_read_config(parent, rw->dyn.cfg_offset, 4) == addr)
+		if (pci_read_config(sc->parent, rw->dyn.cfg_offset, 4) == addr)
 			return (0);
 
 		DELAY(10);
@@ -330,8 +379,6 @@ static int
 bhndb_pci_fast_setregwin(struct bhndb_pci_softc *sc,
     const struct bhndb_regwin *rw, bhnd_addr_t addr)
 {
-	device_t parent = sc->bhndb.parent_dev;
-
 	/* The PCI bridge core only supports 32-bit addressing, regardless
 	 * of the bus' support for 64-bit addressing */
 	if (addr > UINT32_MAX)
@@ -343,7 +390,7 @@ bhndb_pci_fast_setregwin(struct bhndb_pci_softc *sc,
 		if (addr % rw->win_size != 0)
 			return (EINVAL);
 
-		pci_write_config(parent, rw->dyn.cfg_offset, addr, 4);
+		pci_write_config(sc->parent, rw->dyn.cfg_offset, addr, 4);
 		break;
 	default:
 		return (ENODEV);
@@ -366,7 +413,6 @@ bhndb_pci_fast_setregwin(struct bhndb_pci_softc *sc,
 static int
 bhndb_enable_pci_clocks(struct bhndb_pci_softc *sc)
 {
-	device_t		pci_parent;
 	uint32_t		gpio_in, gpio_out, gpio_en;
 	uint32_t		gpio_flags;
 	uint16_t		pci_status;
@@ -375,35 +421,33 @@ bhndb_enable_pci_clocks(struct bhndb_pci_softc *sc)
 	if (sc->pci_devclass != BHND_DEVCLASS_PCI)
 		return (0);
 
-	pci_parent = device_get_parent(sc->dev);
-
 	/* Read state of XTAL pin */
-	gpio_in = pci_read_config(pci_parent, BHNDB_PCI_GPIO_IN, 4);
+	gpio_in = pci_read_config(sc->parent, BHNDB_PCI_GPIO_IN, 4);
 	if (gpio_in & BHNDB_PCI_GPIO_XTAL_ON)
 		return (0); /* already enabled */
 
 	/* Fetch current config */
-	gpio_out = pci_read_config(pci_parent, BHNDB_PCI_GPIO_OUT, 4);
-	gpio_en = pci_read_config(pci_parent, BHNDB_PCI_GPIO_OUTEN, 4);
+	gpio_out = pci_read_config(sc->parent, BHNDB_PCI_GPIO_OUT, 4);
+	gpio_en = pci_read_config(sc->parent, BHNDB_PCI_GPIO_OUTEN, 4);
 
 	/* Set PLL_OFF/XTAL_ON pins to HIGH and enable both pins */
 	gpio_flags = (BHNDB_PCI_GPIO_PLL_OFF|BHNDB_PCI_GPIO_XTAL_ON);
 	gpio_out |= gpio_flags;
 	gpio_en |= gpio_flags;
 
-	pci_write_config(pci_parent, BHNDB_PCI_GPIO_OUT, gpio_out, 4);
-	pci_write_config(pci_parent, BHNDB_PCI_GPIO_OUTEN, gpio_en, 4);
+	pci_write_config(sc->parent, BHNDB_PCI_GPIO_OUT, gpio_out, 4);
+	pci_write_config(sc->parent, BHNDB_PCI_GPIO_OUTEN, gpio_en, 4);
 	DELAY(1000);
 
 	/* Reset PLL_OFF */
 	gpio_out &= ~BHNDB_PCI_GPIO_PLL_OFF;
-	pci_write_config(pci_parent, BHNDB_PCI_GPIO_OUT, gpio_out, 4);
+	pci_write_config(sc->parent, BHNDB_PCI_GPIO_OUT, gpio_out, 4);
 	DELAY(5000);
 
 	/* Clear any PCI 'sent target-abort' flag. */
-	pci_status = pci_read_config(pci_parent, PCIR_STATUS, 2);
+	pci_status = pci_read_config(sc->parent, PCIR_STATUS, 2);
 	pci_status &= ~PCIM_STATUS_STABORT;
-	pci_write_config(pci_parent, PCIR_STATUS, pci_status, 2);
+	pci_write_config(sc->parent, PCIR_STATUS, pci_status, 2);
 
 	return (0);
 }
@@ -416,31 +460,28 @@ bhndb_enable_pci_clocks(struct bhndb_pci_softc *sc)
 static int
 bhndb_disable_pci_clocks(struct bhndb_pci_softc *sc)
 {
-	device_t	parent_dev;
 	uint32_t	gpio_out, gpio_en;
 
 	/* Only supported and required on PCI devices */
 	if (sc->pci_devclass != BHND_DEVCLASS_PCI)
 		return (0);
 
-	parent_dev = device_get_parent(sc->dev);
-
 	// TODO: Check board flags for BFL2_XTALBUFOUTEN?
 	// TODO: Check PCI core revision?
 	// TODO: Switch to 'slow' clock?
 
 	/* Fetch current config */
-	gpio_out = pci_read_config(parent_dev, BHNDB_PCI_GPIO_OUT, 4);
-	gpio_en = pci_read_config(parent_dev, BHNDB_PCI_GPIO_OUTEN, 4);
+	gpio_out = pci_read_config(sc->parent, BHNDB_PCI_GPIO_OUT, 4);
+	gpio_en = pci_read_config(sc->parent, BHNDB_PCI_GPIO_OUTEN, 4);
 
 	/* Set PLL_OFF to HIGH, XTAL_ON to LOW. */
 	gpio_out &= ~BHNDB_PCI_GPIO_XTAL_ON;
 	gpio_out |= BHNDB_PCI_GPIO_PLL_OFF;
-	pci_write_config(parent_dev, BHNDB_PCI_GPIO_OUT, gpio_out, 4);
+	pci_write_config(sc->parent, BHNDB_PCI_GPIO_OUT, gpio_out, 4);
 
 	/* Enable both output pins */
 	gpio_en |= (BHNDB_PCI_GPIO_PLL_OFF|BHNDB_PCI_GPIO_XTAL_ON);
-	pci_write_config(parent_dev, BHNDB_PCI_GPIO_OUTEN, gpio_en, 4);
+	pci_write_config(sc->parent, BHNDB_PCI_GPIO_OUTEN, gpio_en, 4);
 
 	return (0);
 }
