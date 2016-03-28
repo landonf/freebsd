@@ -249,22 +249,39 @@ enum {
 					  *  host bridge */
 };
 
+/* bhnd_device PNP field match flags; the values must match the field
+ * positions */
+enum {
+	BHND_DMF_VENDOR		= (1<<0),
+	BHND_DMF_DEVICE		= (1<<1),
+	BHND_DMF_HWREV_START	= (1<<2),
+	BHND_DMF_HWREV_END	= (1<<3),
+	BHND_DMF_DEVCLASS	= (1<<4),
+	BHND_DMF_UNIT		= (1<<5)
+};
+
 /** Device probe table descriptor */
 struct bhnd_device {
+	uint16_t			 match_flags;		/**< field match flags (BHND_DMF_*) */
 	const struct bhnd_core_match	 core;			/**< core match descriptor */ 
 	const char			*desc;			/**< device description, or NULL. */
 	const struct bhnd_device_quirk	*quirks_table;		/**< quirks table for this device, or NULL */
 	uint32_t			 device_flags;		/**< required BHND_DF_* flags */
 };
 
-#define	_BHND_DEVICE(_device, _desc, _quirks, _flags, ...)	\
-	{ BHND_CORE_MATCH(BHND_MFGID_BCM, BHND_COREID_ ## _device, \
-	    BHND_HWREV_ANY), _desc, _quirks, _flags }
+#define	_BHND_DEVICE(_vendor, _device, _desc, _quirks, _flags, ...) {	\
+	(_vendor != BHND_MFGID_INVALID ? BHND_DMF_VENDOR : 0) |		\
+	(_device != BHND_COREID_INVALID ? BHND_DMF_DEVICE : 0),		\
+	BHND_CORE_MATCH(_vendor, _device, BHND_HWREV_ANY), 		\
+	_desc,								\
+	_quirks,							\
+	_flags								\
+}
 
-#define	BHND_DEVICE(_device, _desc, _quirks, ...)	\
-	_BHND_DEVICE(_device, _desc, _quirks, ## __VA_ARGS__, 0)
+#define	BHND_DEVICE(_vendor, _device, _desc, _quirks, ...)		\
+	_BHND_DEVICE(_vendor, _device, _desc,  _quirks, ## __VA_ARGS__, 0)
 
-#define	BHND_DEVICE_END			{ BHND_CORE_MATCH_ANY, NULL, NULL, 0 }
+#define	BHND_DEVICE_END	{ 0, BHND_CORE_MATCH_ANY, NULL, NULL, 0 }
 
 const char			*bhnd_vendor_name(uint16_t vendor);
 const char			*bhnd_port_type_name(bhnd_port_type port_type);

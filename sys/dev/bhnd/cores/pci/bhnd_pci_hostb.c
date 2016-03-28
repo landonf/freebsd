@@ -63,7 +63,8 @@ __FBSDID("$FreeBSD$");
     KASSERT((_sc)->quirks & (_name), ("quirk " __STRING(_name) " not set"))
 
 #define	BHND_PCI_DEV(_core, _quirks)				\
-	BHND_DEVICE(_core, "", _quirks, BHND_DF_HOSTB)
+	BHND_DEVICE(BHND_MFGID_BCM, BHND_COREID_ ## _core, NULL, _quirks, \
+	    BHND_DF_HOSTB)
 
 static const struct bhnd_device_quirk bhnd_pci_quirks[];
 static const struct bhnd_device_quirk bhnd_pcie_quirks[];
