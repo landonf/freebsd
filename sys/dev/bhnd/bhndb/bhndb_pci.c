@@ -61,16 +61,19 @@ __FBSDID("$FreeBSD$");
 #include "bhndb_pcivar.h"
 #include "bhndb_private.h"
 
-static int	bhndb_enable_pci_clocks(struct bhndb_pci_softc *sc);
-static int	bhndb_disable_pci_clocks(struct bhndb_pci_softc *sc);
+static int		bhndb_enable_pci_clocks(struct bhndb_pci_softc *sc);
+static int		bhndb_disable_pci_clocks(struct bhndb_pci_softc *sc);
 
-static int	bhndb_pci_compat_setregwin(struct bhndb_pci_softc *,
-		    const struct bhndb_regwin *, bhnd_addr_t);
-static int	bhndb_pci_fast_setregwin(struct bhndb_pci_softc *,
-		    const struct bhndb_regwin *, bhnd_addr_t);
+static int		bhndb_pci_compat_setregwin(struct bhndb_pci_softc *,
+			    const struct bhndb_regwin *, bhnd_addr_t);
+static int		bhndb_pci_fast_setregwin(struct bhndb_pci_softc *,
+			    const struct bhndb_regwin *, bhnd_addr_t);
 
-static size_t	bhndb_pci_sprom_size(struct bhndb_pci_softc *sc);
-static void	bhndb_init_sromless_pci_config(struct bhndb_pci_softc *sc);
+static void		bhndb_init_sromless_pci_config(
+			    struct bhndb_pci_softc *sc);
+
+static bus_addr_t	bhndb_pci_sprom_addr(struct bhndb_pci_softc *sc);
+static size_t		bhndb_pci_sprom_size(struct bhndb_pci_softc *sc);
 
 /** 
  * Default bhndb_pci implementation of device_probe().
@@ -144,6 +147,8 @@ bhndb_pci_init_full_config(device_t dev, device_t child,
     const struct bhndb_hw_priority *hw_prio_table)
 {
 	struct bhndb_pci_softc	*sc;
+	device_t		 nv_dev;
+	bus_size_t		 nv_sz;
 	int			 error;
 
 	sc = device_get_softc(dev);
@@ -155,32 +160,89 @@ bhndb_pci_init_full_config(device_t dev, device_t child,
 	/* Fix-up power on defaults for SROM-less devices. */
 	bhndb_init_sromless_pci_config(sc);
 
-	/* Early devices mapped SPROM directly into BAR0 */
-	if (bhndb_pci_sprom_size(sc)) {
-		// TODO: attach sprom device
-		device_printf(sc->dev, "found SPROM (%zu bytes)\n",
-		    bhndb_pci_sprom_size(sc)); 
+	/* If SPROM is mapped directly into BAR0, add NVRAM device. */
+	nv_sz = bhndb_pci_sprom_size(sc);
+	if (nv_sz > 0) {
+		struct bhndb_devinfo	*dinfo;
+		const char		*dname;
+
+		if (bootverbose) {
+			device_printf(dev, "found SPROM (%zu bytes)\n", nv_sz);
+		}
+
+		/* Add sprom device */
+		dname = devclass_get_name(bhnd_nvram_devclass);
+		if ((nv_dev = BUS_ADD_CHILD(dev, 0, dname, -1)) == NULL) {
+			device_printf(dev, "failed to add sprom device\n");
+			return (ENXIO);
+		}
+
+		/* Initialize device address space and resource covering the
+		 * BAR0 SPROM shadow. */
+		dinfo = device_get_ivars(nv_dev);
+		dinfo->addrspace = BHNDB_ADDRSPACE_NATIVE;
+		error = bus_set_resource(nv_dev, SYS_RES_MEMORY, 0,
+		    bhndb_pci_sprom_addr(sc), nv_sz);
+
+		if (error) {
+			device_printf(dev,
+			    "failed to register sprom resources\n");
+			return (error);
+		}
+
+		/* Attach the device */
+		if ((error = device_probe_and_attach(nv_dev))) {
+			device_printf(dev, "sprom attach failed\n");
+			return (error);
+		}
 	}
 
 	return (0);
 }
 
-static size_t
-bhndb_pci_sprom_size(struct bhndb_pci_softc *sc)
+static const struct bhndb_regwin *
+bhndb_pci_sprom_regwin(struct bhndb_pci_softc *sc)
 {
 	struct bhndb_resources		*bres;
 	const struct bhndb_hwcfg	*cfg;
 	const struct bhndb_regwin	*sprom_win;
-	uint32_t			 sctl;
 
 	bres = sc->bhndb.bus_res;
 	cfg = bres->cfg;
 
-	/* Look for a SPROM register window */
 	sprom_win = bhndb_regwin_find_type(cfg->register_windows,
 	    BHNDB_REGWIN_T_SPROM, BHNDB_PCI_V0_BAR0_SPROM_SIZE);
 
-	/* Later PCI(e) cores map the SPROM via ChipCommon */
+	return (sprom_win);
+}
+
+static bus_addr_t
+bhndb_pci_sprom_addr(struct bhndb_pci_softc *sc)
+{
+	const struct bhndb_regwin	*sprom_win;
+	struct resource			*r;
+
+	/* Fetch the SPROM register window */
+	sprom_win = bhndb_pci_sprom_regwin(sc);
+	KASSERT(sprom_win != NULL, ("requested sprom address on PCI_V2+"));
+
+	/* Fetch the associated resource */
+	r = bhndb_find_regwin_resource(sc->bhndb.bus_res, sprom_win);
+	KASSERT(r != NULL, ("missing resource for sprom window\n"));
+
+	return (rman_get_start(r) + sprom_win->win_offset);
+}
+
+static bus_size_t
+bhndb_pci_sprom_size(struct bhndb_pci_softc *sc)
+{
+	const struct bhndb_regwin	*sprom_win;
+	uint32_t			 sctl;
+	bus_size_t			 sprom_sz;
+
+	sprom_win = bhndb_pci_sprom_regwin(sc);
+
+	/* PCI_V2 and later devices map SPROM/OTP via ChipCommon */
 	if (sprom_win == NULL)
 		return (0);
 
@@ -191,21 +253,31 @@ bhndb_pci_sprom_size(struct bhndb_pci_softc *sc)
 
 	switch (sctl & BHNDB_PCI_SPROM_SZ_MASK) {
 	case BHNDB_PCI_SPROM_SZ_1KB:
-		return (1 * 1024);
+		sprom_sz = (1 * 1024);
+		break;
 
 	case BHNDB_PCI_SPROM_SZ_4KB:
-		return (4 * 1024);
+		sprom_sz = (4 * 1024);
+		break;
 
 	case BHNDB_PCI_SPROM_SZ_16KB:
-		return (16 * 1024);
+		sprom_sz = (16 * 1024);
+		break;
 
 	case BHNDB_PCI_SPROM_SZ_RESERVED:
+	default:
 		device_printf(sc->dev, "invalid PCI sprom size 0x%x\n", sctl);
 		return (0);
 	}
 
-	/* Unreachable */
-	return (0);
+	if (sprom_sz > sprom_win->win_size) {
+		device_printf(sc->dev,
+		    "PCI sprom size (0x%x) overruns defined register window\n",
+		    sctl);
+		return (0);
+	}
+
+	return (sprom_sz);
 }
 
 /*
@@ -505,6 +577,6 @@ DEFINE_CLASS_1(bhndb, bhndb_pci_driver, bhndb_pci_methods,
     sizeof(struct bhndb_pci_softc), bhndb_driver);
 
 MODULE_VERSION(bhndb_pci, 1);
-MODULE_DEPEND(bhndb_pci, bhnd_pci, 1, 1, 1);
+MODULE_DEPEND(bhndb_pci, bhnd_pci_hostb, 1, 1, 1);
 MODULE_DEPEND(bhndb_pci, pci, 1, 1, 1);
 MODULE_DEPEND(bhndb_pci, bhndb, 1, 1, 1);

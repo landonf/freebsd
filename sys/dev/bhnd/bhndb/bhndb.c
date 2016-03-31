@@ -590,7 +590,7 @@ bhndb_generic_init_full_config(device_t dev, device_t child,
 	sc = device_get_softc(dev);
 	hostb = NULL;
 
-	/* Fetch the full set of attached devices */
+	/* Fetch the full set of bhnd-attached cores */
 	if ((error = device_get_children(sc->bus_dev, &devs, &ndevs)))
 		return (error);
 
@@ -610,7 +610,7 @@ bhndb_generic_init_full_config(device_t dev, device_t child,
 		goto cleanup;
 	}
 
-	if (bootverbose)
+	if (bootverbose || BHNDB_DEBUG(PRIO))
 		device_printf(sc->dev, "%s resource configuration\n", hw->name);
 
 	/* Release existing resource state */
