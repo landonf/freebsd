@@ -48,34 +48,16 @@ enum {
 	CHIPC_QUIRK_NONE		= 0,
 	
 	/**
-	 * The device always provides an external SROM.
+	 * ChipCommon-controlled SPROM/OTP is supported, along with the
+	 * CHIPC_CAP_SPROM capability flag.
 	 */
-	CHIPC_QUIRK_ALWAYS_HAS_SPROM	= (1<<1),
-	
-	
-	/**
-	 * SROM availability must be determined through chip-specific
-	 * ChipStatus flags.
-	 */
-	CHIPC_QUIRK_SPROM_CHECK_CHIPST	= (1<<3),
-
-	/**
-	 * Use the rev22 chipstatus register format when determining SPROM
-	 * availability.
-	 */
-	CHIPC_QUIRK_SPROM_CHECK_CST_R22	= (1<<4)|CHIPC_QUIRK_SPROM_CHECK_CHIPST,
-	
-	/**
-	 * Use the rev23 chipstatus register format when determining SPROM
-	 * availability.
-	 */
-	CHIPC_QUIRK_SPROM_CHECK_CST_R23	= (1<<5)|CHIPC_QUIRK_SPROM_CHECK_CHIPST,
+	CHIPC_QUIRK_SUPPORTS_SPROM	= (1<<1),
 
 	/**
 	 * External NAND NVRAM is supported, along with the CHIPC_CAP_NFLASH
 	 * capability flag.
 	 */
-	CHIPC_QUIRK_SUPPORTS_NFLASH	= (1<<6),
+	CHIPC_QUIRK_SUPPORTS_NFLASH	= (1<<2),
 };
 
 struct chipc_softc {
