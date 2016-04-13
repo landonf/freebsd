@@ -115,27 +115,14 @@ vdev_geom_attrchanged(struct g_consumer *cp, const char *attr)
 	if (error == 0) {
 		char *old_physpath;
 
+		/* g_topology lock ensures that vdev has not been closed */
+		g_topology_assert();
 		old_physpath = vd->vdev_physpath;
 		vd->vdev_physpath = spa_strdup(physpath);
 		spa_async_request(spa, SPA_ASYNC_CONFIG_UPDATE);
 
-		if (old_physpath != NULL) {
-			int held_lock;
-
-			held_lock = spa_config_held(spa, SCL_STATE, RW_WRITER);
-			if (held_lock == 0) {
-				g_topology_unlock();
-				spa_config_enter(spa, SCL_STATE, FTAG,
-				    RW_WRITER);
-			}
-
+		if (old_physpath != NULL)
 			spa_strfree(old_physpath);
-
-			if (held_lock == 0) {
-				spa_config_exit(spa, SCL_STATE, FTAG);
-				g_topology_lock();
-			}
-		}
 	}
 	g_free(physpath);
 }
@@ -679,7 +666,15 @@ vdev_geom_open_by_path(vdev_t *vd, int check_guid)
 			g_topology_unlock();
 			vdev_geom_read_guids(cp, &pguid, &vguid);
 			g_topology_lock();
-			if (pguid != spa_guid(vd->vdev_spa) ||
+			/*
+			 * Check that the label's vdev guid matches the
+			 * desired guid.  If the label has a pool guid,
+			 * check that it matches too. (Inactive spares
+			 * and L2ARCs do not have any pool guid in the
+			 * label.)
+			 */
+			if ((pguid != 0 &&
+			    pguid != spa_guid(vd->vdev_spa)) ||
 			    vguid != vd->vdev_guid) {
 				vdev_geom_close_locked(vd);
 				cp = NULL;

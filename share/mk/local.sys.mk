@@ -23,13 +23,18 @@ MAKE_PRINT_VAR_ON_ERROR += .MAKE.MAKEFILES .PATH
 .endif
 .endif
 
+.if !empty(.OBJDIR)
+OBJTOP?= ${.OBJDIR:S,${.CURDIR},,}${SRCTOP}
+.endif
+
 .include "src.sys.mk"
 
 .if ${.MAKE.MODE:Mmeta*} != ""
 # we can afford to use cookies to prevent some targets
 # re-running needlessly but only when using filemon.
 .if ${.MAKE.MODE:Mnofilemon} == ""
-META_COOKIE=		${COOKIE.${.TARGET}:U${.OBJDIR}/${.TARGET}}
+META_COOKIE_COND=	empty(.TARGET:M${.OBJDIR})
+META_COOKIE=		${COOKIE.${.TARGET}:U${${META_COOKIE_COND}:?${.OBJDIR}/${.TARGET}:${.TARGET}}}
 META_COOKIE_RM=		@rm -f ${META_COOKIE}
 META_COOKIE_TOUCH=	@touch ${META_COOKIE}
 CLEANFILES+=		${META_TARGETS}

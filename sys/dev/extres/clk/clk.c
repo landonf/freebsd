@@ -487,10 +487,10 @@ clkdom_dump(struct clkdom * clkdom)
 	CLK_TOPO_SLOCK();
 	TAILQ_FOREACH(clknode, &clkdom->clknode_list, clkdom_link) {
 		rv = clknode_get_freq(clknode, &freq);
-		printf("Clock: %s, parent: %s(%d), freq: %llu\n", clknode->name,
+		printf("Clock: %s, parent: %s(%d), freq: %ju\n", clknode->name,
 		    clknode->parent == NULL ? "(NULL)" : clknode->parent->name,
 		    clknode->parent_idx,
-		    ((rv == 0) ? freq: rv));
+		    (uintmax_t)((rv == 0) ? freq: rv));
 	}
 	CLK_TOPO_UNLOCK();
 }
@@ -817,6 +817,10 @@ clknode_set_freq(struct clknode *clknode, uint64_t freq, int flags,
 
 	/* We have exclusive topology lock, node lock is not needed. */
 	CLK_TOPO_XASSERT();
+
+	/* Check for no change */
+	if (clknode->freq == freq)
+		return (0);
 
 	parent_freq = 0;
 

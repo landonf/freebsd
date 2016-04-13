@@ -457,6 +457,7 @@
 #define	MSR_DRAM_ENERGY_STATUS	0x619
 #define	MSR_PP0_ENERGY_STATUS	0x639
 #define	MSR_PP1_ENERGY_STATUS	0x641
+#define	MSR_TSC_DEADLINE	0x6e0	/* Writes are not serializing */
 
 /*
  * VMX MSRs
@@ -478,7 +479,8 @@
 #define	MSR_VMX_TRUE_ENTRY_CTLS	0x490
 
 /*
- * X2APIC MSRs
+ * X2APIC MSRs.
+ * Writes are not serializing.
  */
 #define	MSR_APIC_000		0x800
 #define	MSR_APIC_ID		0x802
@@ -814,6 +816,7 @@
 #define	MSR_P_STATE_CONFIG(n) (0xc0010064 + (n)) /* P-state Config */
 #define	MSR_SMM_ADDR	0xc0010112	/* SMM TSEG base address */
 #define	MSR_SMM_MASK	0xc0010113	/* SMM TSEG address mask */
+#define	MSR_EXTFEATURES	0xc0011005	/* Extended CPUID Features override */
 #define	MSR_IC_CFG	0xc0011021	/* Instruction Cache Configuration */
 #define	MSR_K8_UCODE_UPDATE	0xc0010020	/* update microcode */
 #define	MSR_MC0_CTL_MASK	0xc0010044
