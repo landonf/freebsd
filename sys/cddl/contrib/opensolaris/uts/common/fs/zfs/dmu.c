@@ -47,6 +47,7 @@
 #include <sys/sa.h>
 #include <sys/zfeature.h>
 #ifdef _KERNEL
+#include <sys/racct.h>
 #include <sys/vm.h>
 #include <sys/zfs_znode.h>
 #endif
@@ -427,6 +428,15 @@ dmu_buf_hold_array_by_dnode(dnode_t *dn, uint64_t offset, uint64_t length,
 	}
 	dbp = kmem_zalloc(sizeof (dmu_buf_t *) * nblks, KM_SLEEP);
 
+#if defined(_KERNEL) && defined(RACCT)
+	if (racct_enable && !read) {
+		PROC_LOCK(curproc);
+		racct_add_force(curproc, RACCT_WRITEBPS, length);
+		racct_add_force(curproc, RACCT_WRITEIOPS, nblks);
+		PROC_UNLOCK(curproc);
+	}
+#endif
+
 	zio = zio_root(dn->dn_objset->os_spa, NULL, NULL, ZIO_FLAG_CANFAIL);
 	blkid = dbuf_whichblock(dn, 0, offset);
 	for (i = 0; i < nblks; i++) {
@@ -448,9 +458,10 @@ dmu_buf_hold_array_by_dnode(dnode_t *dn, uint64_t offset, uint64_t length,
 		dbp[i] = &db->db;
 	}
 
-	if ((flags & DMU_READ_NO_PREFETCH) == 0 && read &&
-	    length <= zfetch_array_rd_sz) {
-		dmu_zfetch(&dn->dn_zfetch, blkid, nblks);
+	if ((flags & DMU_READ_NO_PREFETCH) == 0 &&
+	    DNODE_META_IS_CACHEABLE(dn) && length <= zfetch_array_rd_sz) {
+		dmu_zfetch(&dn->dn_zfetch, blkid, nblks,
+		    read && DNODE_IS_CACHEABLE(dn));
 	}
 	rw_exit(&dn->dn_struct_rwlock);
 
@@ -1422,7 +1433,15 @@ dmu_assign_arcbuf(dmu_buf_t *handle, uint64_t offset, arc_buf_t *buf,
 	    DBUF_GET_BUFC_TYPE(db) == ARC_BUFC_DATA) {
 #ifdef _KERNEL
 		curthread->td_ru.ru_oublock++;
-#endif
+#ifdef RACCT
+		if (racct_enable) {
+			PROC_LOCK(curproc);
+			racct_add_force(curproc, RACCT_WRITEBPS, blksz);
+			racct_add_force(curproc, RACCT_WRITEIOPS, 1);
+			PROC_UNLOCK(curproc);
+		}
+#endif /* RACCT */
+#endif /* _KERNEL */
 		dbuf_assign_arcbuf(db, buf, tx);
 		dbuf_rele(db, FTAG);
 	} else {
