@@ -102,7 +102,12 @@ static struct bhnd_chip_quirk chipc_chip_quirks[] = {
     KASSERT(CHIPC_QUIRK((_sc), name), ("quirk " __STRING(_name) " not set"))
 
 #define	CHIPC_ASSERT_CAP(_sc, name)	\
-    KASSERT(CHIPC_CAP((_sc), name), ("capability " __STRING(_name) " not set"))    
+    KASSERT(CHIPC_CAP((_sc), name), ("capability " __STRING(_name) " not set"))
+
+static int	chipc_sprom_init(struct chipc_softc *);
+static int	chipc_enable_sprom_pins(struct chipc_softc *);
+static int	chipc_disable_sprom_pins(struct chipc_softc *);
+
 
 static int
 chipc_probe(device_t dev)
@@ -164,24 +169,9 @@ chipc_attach(device_t dev)
 	sc->caps = bhnd_bus_read_4(sc->core, CHIPC_CAPABILITIES);
 	sc->cst = bhnd_bus_read_4(sc->core, CHIPC_CHIPST);
 
-	// TODO
-	switch (bhnd_chipc_nvram_src(dev)) {
-	case BHND_NVRAM_SRC_UNKNOWN:
-		device_printf(dev, "NVRAM source: External\n");
-		break;
-	case BHND_NVRAM_SRC_SPROM:
-		device_printf(dev, "NVRAM source: CC-SPROM\n");
-		break;
-	case BHND_NVRAM_SRC_OTP:
-		device_printf(dev, "NVRAM source: CC-OTP\n");
-		break;
-	case BHND_NVRAM_SRC_NFLASH:
-		device_printf(dev, "NVRAM source: CC-NFLASH\n");
-		break;
-	}
-
-	if (CHIPC_QUIRK(sc, MUXED_SPROM))
-		device_printf(dev, "sprom pins are muxed\n");
+	/* Read SPROM data */
+	if ((error = chipc_sprom_init(sc)))
+		goto cleanup;
 
 	return (0);
 	
@@ -197,6 +187,7 @@ chipc_detach(device_t dev)
 
 	sc = device_get_softc(dev);
 	bhnd_release_resources(dev, sc->rspec, sc->res);
+	bhnd_sprom_fini(&sc->sprom);
 
 	return (0);
 }
@@ -211,6 +202,102 @@ static int
 chipc_resume(device_t dev)
 {
 	return (0);
+}
+
+/**
+ * Initialize local SPROM shadow, if required.
+ * 
+ * @param sc chipc driver state.
+ */
+static int
+chipc_sprom_init(struct chipc_softc *sc)
+{
+	int	error;
+
+	/* Verify NVRAM source is supported. */
+	switch (bhnd_chipc_nvram_src(sc->dev)) {
+	case BHND_NVRAM_SRC_UNKNOWN:
+		/* SPROM is handled externally */
+		return (0);
+
+	case BHND_NVRAM_SRC_NFLASH:
+		/* Implementation requires access to this hardware */
+		device_printf(sc->dev, "Flash NVRAM unsupported\n");
+		return (ENXIO);
+		
+	case BHND_NVRAM_SRC_OTP:
+		/* Implementation requires access to this hardware */
+		device_printf(sc->dev, "OTP NVRAM unsupported\n");
+		return (ENXIO);
+
+	case BHND_NVRAM_SRC_SPROM:
+		break;
+	}
+
+	/* Enable access to the SPROM */
+	if ((error = chipc_enable_sprom_pins(sc)))
+		return (error);
+
+	/* Initialize SPROM parser */
+	error = bhnd_sprom_init(&sc->sprom, sc->core, CHIPC_SPROM_OTP);
+	if (error) {
+		device_printf(sc->dev, "SPROM identification failed: %d\n",
+			error);
+
+		chipc_disable_sprom_pins(sc);
+		return (error);
+	}
+
+	/* Drop access to the SPROM lines */
+	if ((error = chipc_disable_sprom_pins(sc))) {
+		bhnd_sprom_fini(&sc->sprom);
+		return (error);
+	}
+
+	return (0);
+}
+
+/**
+ * If required by this device, enable access to the SPROM.
+ * 
+ * @param sc chipc driver state.
+ */
+static int
+chipc_enable_sprom_pins(struct chipc_softc *sc)
+{
+	uint32_t cctrl;
+
+	if (!CHIPC_QUIRK(sc, MUXED_SPROM))
+		return (0);
+
+	cctrl = bhnd_bus_read_4(sc->core, CHIPC_CHIPCTRL);
+
+	if (CHIPC_QUIRK(sc, 4331_MUXED_SPROM)) {
+		// TODO
+	}
+
+	device_printf(sc->dev, "muxed sprom lines on unrecognized device\n");
+	return (ENXIO);
+}
+
+/**
+ * If required by this device, revert any GPIO/pin configuration applied
+ * to allow SPROM access.
+ * 
+ * @param sc chipc driver state.
+ */
+static int
+chipc_disable_sprom_pins(struct chipc_softc *sc)
+{
+	if (!CHIPC_QUIRK(sc, MUXED_SPROM))
+		return (0);
+
+	if (CHIPC_QUIRK(sc, 4331_MUXED_SPROM)) {
+		// TODO
+	}
+
+	device_printf(sc->dev, "muxed sprom lines on unrecognized device\n");
+	return (ENXIO);
 }
 
 /**

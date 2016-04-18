@@ -32,6 +32,8 @@
 #ifndef _BHND_CORES_CHIPC_CHIPCVAR_H_
 #define _BHND_CORES_CHIPC_CHIPCVAR_H_
 
+#include <dev/bhnd/nvram/bhnd_spromvar.h>
+
 #include "chipc.h"
 
 DECLARE_CLASS(bhnd_chipc);
@@ -91,6 +93,8 @@ struct chipc_softc {
 	uint32_t		 quirks;	/**< CHIPC_QUIRK_* quirk flags */
 	uint32_t		 caps;		/**< CHIPC_CAP_* capability register flags */
 	uint32_t		 cst;		/**< CHIPC_CST* status register flags */
+
+	struct bhnd_sprom	 sprom;		/**< OTP/SPROM shadow, if any */
 };
 
 #endif /* _BHND_CORES_CHIPC_CHIPCVAR_H_ */
