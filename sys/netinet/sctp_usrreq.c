@@ -143,7 +143,7 @@ sctp_pathmtu_adjustment(struct sctp_tcb *stcb, uint16_t nxtsz)
 }
 
 #ifdef INET
-static void
+void
 sctp_notify(struct sctp_inpcb *inp,
     struct sctp_tcb *stcb,
     struct sctp_nets *net,
@@ -171,13 +171,7 @@ sctp_notify(struct sctp_inpcb *inp,
 	    (icmp_code == ICMP_UNREACH_NET_PROHIB) ||
 	    (icmp_code == ICMP_UNREACH_HOST_PROHIB) ||
 	    (icmp_code == ICMP_UNREACH_FILTER_PROHIB)) {
-
-		/*
-		 * Hmm reachablity problems we must examine closely. If its
-		 * not reachable, we may have lost a network. Or if there is
-		 * NO protocol at the other end named SCTP. well we consider
-		 * it a OOTB abort.
-		 */
+		/* Mark the net unreachable. */
 		if (net->dest_state & SCTP_ADDR_REACHABLE) {
 			/* OK, that destination is NOT reachable. */
 			net->dest_state &= ~SCTP_ADDR_REACHABLE;
@@ -189,13 +183,7 @@ sctp_notify(struct sctp_inpcb *inp,
 		SCTP_TCB_UNLOCK(stcb);
 	} else if ((icmp_code == ICMP_UNREACH_PROTOCOL) ||
 	    (icmp_code == ICMP_UNREACH_PORT)) {
-		/*
-		 * Here the peer is either playing tricks on us, including
-		 * an address that belongs to someone who does not support
-		 * SCTP OR was a userland implementation that shutdown and
-		 * now is dead. In either case treat it like a OOTB abort
-		 * with no TCB
-		 */
+		/* Treat it like an ABORT. */
 		sctp_abort_notification(stcb, 1, 0, NULL, SCTP_SO_NOT_LOCKED);
 #if defined(__APPLE__) || defined(SCTP_SO_LOCK_TESTING)
 		so = SCTP_INP_SO(inp);
@@ -254,48 +242,51 @@ sctp_notify(struct sctp_inpcb *inp,
 void
 sctp_ctlinput(int cmd, struct sockaddr *sa, void *vip)
 {
-	struct ip *ip = vip;
+	struct ip *outer_ip, *inner_ip;
 	struct sctphdr *sh;
-	struct icmp *icmph;
-	uint32_t vrf_id;
+	struct icmp *icmp;
+	struct sctp_inpcb *inp;
+	struct sctp_tcb *stcb;
+	struct sctp_nets *net;
+	struct sctp_init_chunk *ch;
+	struct sockaddr_in src, dst;
 
-	/* FIX, for non-bsd is this right? */
-	vrf_id = SCTP_DEFAULT_VRFID;
 	if (sa->sa_family != AF_INET ||
 	    ((struct sockaddr_in *)sa)->sin_addr.s_addr == INADDR_ANY) {
 		return;
 	}
 	if (PRC_IS_REDIRECT(cmd)) {
-		ip = 0;
+		vip = NULL;
 	} else if ((unsigned)cmd >= PRC_NCMDS || inetctlerrmap[cmd] == 0) {
 		return;
 	}
-	if (ip) {
-		struct sctp_inpcb *inp = NULL;
-		struct sctp_tcb *stcb = NULL;
-		struct sctp_nets *net = NULL;
-		struct sockaddr_in to, from;
-
-		icmph = (struct icmp *)((caddr_t)ip - (sizeof(struct icmp) -
-		    sizeof(struct ip)));
-
-		sh = (struct sctphdr *)((caddr_t)ip + (ip->ip_hl << 2));
-		bzero(&to, sizeof(to));
-		bzero(&from, sizeof(from));
-		from.sin_family = to.sin_family = AF_INET;
-		from.sin_len = to.sin_len = sizeof(to);
-		from.sin_port = sh->src_port;
-		from.sin_addr = ip->ip_src;
-		to.sin_port = sh->dest_port;
-		to.sin_addr = ip->ip_dst;
+	if (vip != NULL) {
+		inner_ip = (struct ip *)vip;
+		icmp = (struct icmp *)((caddr_t)inner_ip -
+		    (sizeof(struct icmp) - sizeof(struct ip)));
+		outer_ip = (struct ip *)((caddr_t)icmp - sizeof(struct ip));
+		sh = (struct sctphdr *)((caddr_t)inner_ip + (inner_ip->ip_hl << 2));
+		memset(&src, 0, sizeof(struct sockaddr_in));
+		src.sin_family = AF_INET;
+		src.sin_len = sizeof(struct sockaddr_in);
+		src.sin_port = sh->src_port;
+		src.sin_addr = inner_ip->ip_src;
+		memset(&dst, 0, sizeof(struct sockaddr_in));
+		dst.sin_family = AF_INET;
+		dst.sin_len = sizeof(struct sockaddr_in);
+		dst.sin_port = sh->dest_port;
+		dst.sin_addr = inner_ip->ip_dst;
 		/*
-		 * 'to' holds the dest of the packet that failed to be sent.
-		 * 'from' holds our local endpoint address. Thus we reverse
-		 * the to and the from in the lookup.
+		 * 'dst' holds the dest of the packet that failed to be
+		 * sent. 'src' holds our local endpoint address. Thus we
+		 * reverse the dst and the src in the lookup.
 		 */
-		stcb = sctp_findassociation_addr_sa((struct sockaddr *)&to,
-		    (struct sockaddr *)&from,
-		    &inp, &net, 1, vrf_id);
+		inp = NULL;
+		net = NULL;
+		stcb = sctp_findassociation_addr_sa((struct sockaddr *)&dst,
+		    (struct sockaddr *)&src,
+		    &inp, &net, 1,
+		    SCTP_DEFAULT_VRFID);
 		if ((stcb != NULL) &&
 		    (net != NULL) &&
 		    (inp != NULL) &&
@@ -313,19 +304,30 @@ sctp_ctlinput(int cmd, struct sockaddr *sa, void *vip)
 					return;
 				}
 			} else {
-				/*
-				 * In this case we could check if we got an
-				 * INIT chunk and if the initiate tag
-				 * matches. But this is not there yet...
-				 */
-				SCTP_TCB_UNLOCK(stcb);
-				return;
+				if (ntohs(outer_ip->ip_len) >=
+				    sizeof(struct ip) +
+				    8 + (inner_ip->ip_hl << 2) + 20) {
+					/*
+					 * In this case we can check if we
+					 * got an INIT chunk and if the
+					 * initiate tag matches.
+					 */
+					ch = (struct sctp_init_chunk *)(sh + 1);
+					if ((ch->ch.chunk_type != SCTP_INITIATION) ||
+					    (ntohl(ch->init.initiate_tag) != stcb->asoc.my_vtag)) {
+						SCTP_TCB_UNLOCK(stcb);
+						return;
+					}
+				} else {
+					SCTP_TCB_UNLOCK(stcb);
+					return;
+				}
 			}
 			sctp_notify(inp, stcb, net,
-			    icmph->icmp_type,
-			    icmph->icmp_code,
-			    ntohs(ip->ip_len),
-			    ntohs(icmph->icmp_nextmtu));
+			    icmp->icmp_type,
+			    icmp->icmp_code,
+			    ntohs(inner_ip->ip_len),
+			    ntohs(icmp->icmp_nextmtu));
 		} else {
 			if ((stcb == NULL) && (inp != NULL)) {
 				/* reduce ref-count */
@@ -457,7 +459,7 @@ sctp_attach(struct socket *so, int proto SCTP_UNUSED, struct thread *p SCTP_UNUS
 	uint32_t vrf_id = SCTP_DEFAULT_VRFID;
 
 	inp = (struct sctp_inpcb *)so->so_pcb;
-	if (inp != 0) {
+	if (inp != NULL) {
 		SCTP_LTRACE_ERR_RET(inp, NULL, NULL, SCTP_FROM_SCTP_USRREQ, EINVAL);
 		return (EINVAL);
 	}

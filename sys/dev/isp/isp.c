@@ -3011,7 +3011,6 @@ isp_fclink_test(ispsoftc_t *isp, int chan, int usdelay)
 		return (0);
 
 	isp_prt(isp, ISP_LOG_SANCFG, "Chan %d FC link test", chan);
-	fcp->isp_loopstate = LOOP_TESTING_LINK;
 
 	/*
 	 * Wait up to N microseconds for F/W to go to a ready state.
@@ -3022,7 +3021,7 @@ isp_fclink_test(ispsoftc_t *isp, int chan, int usdelay)
 		if (fcp->isp_fwstate == FW_READY) {
 			break;
 		}
-		if (fcp->isp_loopstate < LOOP_TESTING_LINK)
+		if (fcp->isp_loopstate < LOOP_HAVE_LINK)
 			goto abort;
 		GET_NANOTIME(&hrb);
 		if ((NANOTIME_SUB(&hrb, &hra) / 1000 + 1000 >= usdelay))
@@ -3076,6 +3075,11 @@ isp_fclink_test(ispsoftc_t *isp, int chan, int usdelay)
 		if (alpa_map[i])
 			fcp->isp_loopid = i;
 	}
+
+#if 0
+	fcp->isp_loopstate = LOOP_HAVE_ADDR;
+#endif
+	fcp->isp_loopstate = LOOP_TESTING_LINK;
 
 	if (fcp->isp_topo == TOPO_F_PORT || fcp->isp_topo == TOPO_FL_PORT) {
 		nphdl = IS_24XX(isp) ? NPH_FL_ID : FL_ID;
@@ -3461,18 +3465,13 @@ abort:
  *
  * Use the GID_FT command to get all Port IDs for FC4 SCSI devices it knows.
  *
- * For 2100-23XX cards, we can use the SNS mailbox command to pass simple
- * name server commands to the switch management server via the QLogic f/w.
+ * For 2100-23XX cards, we use the SNS mailbox command to pass simple name
+ * server commands to the switch management server via the QLogic f/w.
  *
- * For the 24XX card, we have to use CT-Pass through run via the Execute IOCB
- * mailbox command.
+ * For the 24XX and above card, we use CT Pass-through IOCB.
  */
-#define	GIDLEN	(ISP_FC_SCRLEN - (3 * QENTRY_LEN))
+#define	GIDLEN	ISP_FC_SCRLEN
 #define	NGENT	((GIDLEN - 16) >> 2)
-
-#define	XTXOFF	(ISP_FC_SCRLEN - (3 * QENTRY_LEN))	/* CT request */
-#define	CTXOFF	(ISP_FC_SCRLEN - (2 * QENTRY_LEN))	/* Request IOCB */
-#define	ZTXOFF	(ISP_FC_SCRLEN - (1 * QENTRY_LEN))	/* Response IOCB */
 
 static int
 isp_gid_ft_sns(ispsoftc_t *isp, int chan)
@@ -3503,16 +3502,16 @@ isp_gid_ft_sns(ispsoftc_t *isp, int chan)
 	rq->snscb_mword_div_2 = NGENT;
 	rq->snscb_fc4_type = FC4_SCSI;
 
-	isp_put_gid_ft_request(isp, rq, (sns_gid_ft_req_t *)&scp[CTXOFF]);
-	MEMORYBARRIER(isp, SYNC_SFORDEV, CTXOFF, SNS_GID_FT_REQ_SIZE, chan);
+	isp_put_gid_ft_request(isp, rq, (sns_gid_ft_req_t *)scp);
+	MEMORYBARRIER(isp, SYNC_SFORDEV, 0, SNS_GID_FT_REQ_SIZE, chan);
 
 	MBSINIT(&mbs, MBOX_SEND_SNS, MBLOGALL, 10000000);
 	mbs.param[0] = MBOX_SEND_SNS;
 	mbs.param[1] = SNS_GID_FT_REQ_SIZE >> 1;
-	mbs.param[2] = DMA_WD1(fcp->isp_scdma + CTXOFF);
-	mbs.param[3] = DMA_WD0(fcp->isp_scdma + CTXOFF);
-	mbs.param[6] = DMA_WD3(fcp->isp_scdma + CTXOFF);
-	mbs.param[7] = DMA_WD2(fcp->isp_scdma + CTXOFF);
+	mbs.param[2] = DMA_WD1(fcp->isp_scdma);
+	mbs.param[3] = DMA_WD0(fcp->isp_scdma);
+	mbs.param[6] = DMA_WD3(fcp->isp_scdma);
+	mbs.param[7] = DMA_WD2(fcp->isp_scdma);
 	isp_mboxcmd(isp, &mbs);
 	if (mbs.param[0] != MBOX_COMMAND_COMPLETE) {
 		if (mbs.param[0] == MBOX_INVALID_COMMAND) {
@@ -3551,8 +3550,8 @@ isp_ct_passthru(ispsoftc_t *isp, int chan, uint32_t cmd_bcnt, uint32_t rsp_bcnt)
 	pt.ctp_rsp_cnt = 1;
 	pt.ctp_rsp_bcnt = rsp_bcnt;
 	pt.ctp_cmd_bcnt = cmd_bcnt;
-	pt.ctp_dataseg[0].ds_base = DMA_LO32(fcp->isp_scdma+XTXOFF);
-	pt.ctp_dataseg[0].ds_basehi = DMA_HI32(fcp->isp_scdma+XTXOFF);
+	pt.ctp_dataseg[0].ds_base = DMA_LO32(fcp->isp_scdma);
+	pt.ctp_dataseg[0].ds_basehi = DMA_HI32(fcp->isp_scdma);
 	pt.ctp_dataseg[0].ds_count = cmd_bcnt;
 	pt.ctp_dataseg[1].ds_base = DMA_LO32(fcp->isp_scdma);
 	pt.ctp_dataseg[1].ds_basehi = DMA_HI32(fcp->isp_scdma);
@@ -3622,12 +3621,12 @@ isp_gid_ft_ct_passthru(ispsoftc_t *isp, int chan)
 	ct.ct_fcs_subtype = CT_FC_SUBTYPE_NS;
 	ct.ct_cmd_resp = SNS_GID_FT;
 	ct.ct_bcnt_resid = (GIDLEN - 16) >> 2;
-	isp_put_ct_hdr(isp, &ct, (ct_hdr_t *) &scp[XTXOFF]);
-	rp = (uint32_t *) &scp[XTXOFF + sizeof(ct)];
+	isp_put_ct_hdr(isp, &ct, (ct_hdr_t *)scp);
+	rp = (uint32_t *) &scp[sizeof(ct)];
 	ISP_IOZPUT_32(isp, FC4_SCSI, rp);
 	if (isp->isp_dblev & ISP_LOGDEBUG1) {
 		isp_print_bytes(isp, "CT request",
-		    sizeof(ct) + sizeof(uint32_t), &scp[XTXOFF]);
+		    sizeof(ct) + sizeof(uint32_t), scp);
 	}
 
 	if (isp_ct_passthru(isp, chan, sizeof(ct) + sizeof(uint32_t), GIDLEN)) {
@@ -4038,9 +4037,9 @@ isp_register_fc4_type_24xx(ispsoftc_t *isp, int chan)
 	rp.rftid_portid[1] = fcp->isp_portid >> 8;
 	rp.rftid_portid[2] = fcp->isp_portid;
 	rp.rftid_fc4types[FC4_SCSI >> 5] = 1 << (FC4_SCSI & 0x1f);
-	isp_put_rft_id(isp, &rp, (rft_id_t *)&scp[XTXOFF]);
+	isp_put_rft_id(isp, &rp, (rft_id_t *)scp);
 	if (isp->isp_dblev & ISP_LOGDEBUG1)
-		isp_print_bytes(isp, "CT request", sizeof(rft_id_t), &scp[XTXOFF]);
+		isp_print_bytes(isp, "CT request", sizeof(rft_id_t), scp);
 
 	if (isp_ct_passthru(isp, chan, sizeof(rft_id_t), sizeof(ct_hdr_t))) {
 		FC_SCRATCH_RELEASE(isp, chan);
@@ -4093,9 +4092,9 @@ isp_register_fc4_features_24xx(ispsoftc_t *isp, int chan)
 	if (fcp->role & ISP_ROLE_INITIATOR)
 		rp.rffid_fc4features |= 2;
 	rp.rffid_fc4type = FC4_SCSI;
-	isp_put_rff_id(isp, &rp, (rff_id_t *)&scp[XTXOFF]);
+	isp_put_rff_id(isp, &rp, (rff_id_t *)scp);
 	if (isp->isp_dblev & ISP_LOGDEBUG1)
-		isp_print_bytes(isp, "CT request", sizeof(rft_id_t), &scp[XTXOFF]);
+		isp_print_bytes(isp, "CT request", sizeof(rft_id_t), scp);
 
 	if (isp_ct_passthru(isp, chan, sizeof(rft_id_t), sizeof(ct_hdr_t))) {
 		FC_SCRATCH_RELEASE(isp, chan);
@@ -4148,20 +4147,20 @@ isp_register_port_name_24xx(ispsoftc_t *isp, int chan)
 	rp.rspnid_length = 0;
 	len = offsetof(rspn_id_t, rspnid_name);
 	mtx_lock(&prison0.pr_mtx);
-	rp.rspnid_length += sprintf(&scp[XTXOFF + len + rp.rspnid_length],
+	rp.rspnid_length += sprintf(&scp[len + rp.rspnid_length],
 	    "%s", prison0.pr_hostname[0] ? prison0.pr_hostname : "FreeBSD");
 	mtx_unlock(&prison0.pr_mtx);
-	rp.rspnid_length += sprintf(&scp[XTXOFF + len + rp.rspnid_length],
+	rp.rspnid_length += sprintf(&scp[len + rp.rspnid_length],
 	    ":%s", device_get_nameunit(isp->isp_dev));
 	if (chan != 0) {
-		rp.rspnid_length += sprintf(&scp[XTXOFF + len +
-		    rp.rspnid_length], "/%d", chan);
+		rp.rspnid_length += sprintf(&scp[len + rp.rspnid_length],
+		    "/%d", chan);
 	}
 	len += rp.rspnid_length;
 	ct->ct_bcnt_resid = (len - sizeof(ct_hdr_t)) >> 2;
-	isp_put_rspn_id(isp, &rp, (rspn_id_t *)&scp[XTXOFF]);
+	isp_put_rspn_id(isp, &rp, (rspn_id_t *)scp);
 	if (isp->isp_dblev & ISP_LOGDEBUG1)
-		isp_print_bytes(isp, "CT request", len, &scp[XTXOFF]);
+		isp_print_bytes(isp, "CT request", len, scp);
 
 	if (isp_ct_passthru(isp, chan, len, sizeof(ct_hdr_t))) {
 		FC_SCRATCH_RELEASE(isp, chan);
@@ -4212,14 +4211,14 @@ isp_register_node_name_24xx(ispsoftc_t *isp, int chan)
 	rp.rsnnnn_length = 0;
 	len = offsetof(rsnn_nn_t, rsnnnn_name);
 	mtx_lock(&prison0.pr_mtx);
-	rp.rsnnnn_length += sprintf(&scp[XTXOFF + len + rp.rsnnnn_length],
+	rp.rsnnnn_length += sprintf(&scp[len + rp.rsnnnn_length],
 	    "%s", prison0.pr_hostname[0] ? prison0.pr_hostname : "FreeBSD");
 	mtx_unlock(&prison0.pr_mtx);
 	len += rp.rsnnnn_length;
 	ct->ct_bcnt_resid = (len - sizeof(ct_hdr_t)) >> 2;
-	isp_put_rsnn_nn(isp, &rp, (rsnn_nn_t *)&scp[XTXOFF]);
+	isp_put_rsnn_nn(isp, &rp, (rsnn_nn_t *)scp);
 	if (isp->isp_dblev & ISP_LOGDEBUG1)
-		isp_print_bytes(isp, "CT request", len, &scp[XTXOFF]);
+		isp_print_bytes(isp, "CT request", len, scp);
 
 	if (isp_ct_passthru(isp, chan, len, sizeof(ct_hdr_t))) {
 		FC_SCRATCH_RELEASE(isp, chan);
@@ -6138,7 +6137,7 @@ isp_handle_other_response(ispsoftc_t *isp, int type, isphdr_t *hp, uint32_t *opt
 {
 	isp_ridacq_t rid;
 	int chan, c;
-	uint32_t hdl;
+	uint32_t hdl, portid;
 	void *ptr;
 
 	switch (type) {
@@ -6150,6 +6149,8 @@ isp_handle_other_response(ispsoftc_t *isp, int type, isphdr_t *hp, uint32_t *opt
 		return (1);
 	case RQSTYPE_RPT_ID_ACQ:
 		isp_get_ridacq(isp, (isp_ridacq_t *)hp, &rid);
+		portid = (uint32_t)rid.ridacq_vp_port_hi << 16 |
+		    rid.ridacq_vp_port_lo;
 		if (rid.ridacq_format == 0) {
 			for (chan = 0; chan < isp->isp_nchan; chan++) {
 				fcparam *fcp = FCPARAM(isp, chan);
@@ -6171,7 +6172,9 @@ isp_handle_other_response(ispsoftc_t *isp, int type, isphdr_t *hp, uint32_t *opt
 			fcparam *fcp = FCPARAM(isp, rid.ridacq_vp_index);
 			if (rid.ridacq_vp_status == RIDACQ_STS_COMPLETE ||
 			    rid.ridacq_vp_status == RIDACQ_STS_CHANGED) {
-				fcp->isp_loopstate = LOOP_HAVE_LINK;
+				fcp->isp_topo = (rid.ridacq_map[0] >> 9) & 0x7;
+				fcp->isp_portid = portid;
+				fcp->isp_loopstate = LOOP_HAVE_ADDR;
 				isp_async(isp, ISPASYNC_CHANGE_NOTIFY,
 				    rid.ridacq_vp_index, ISPASYNC_CHANGE_OTHER);
 			} else {
