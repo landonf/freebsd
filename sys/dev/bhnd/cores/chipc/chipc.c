@@ -78,6 +78,19 @@ static struct bhnd_device_quirk chipc_quirks[] = {
 	BHND_DEVICE_QUIRK_END
 };
 
+/* Chip quirks table */
+static struct bhnd_chip_quirk chipc_chip_quirks[] = {
+	BHND_CHIP_QUIRK(BCM4331,	CHIPC_QUIRK_4331_MUXED_SPROM),
+	BHND_CHIP_QUIRK(BCM43431,	CHIPC_QUIRK_4331_MUXED_SPROM),
+
+	BHND_CHIP_REV_QUIRK(BCM4352,	BHND_HWREV_LTE(2),	CHIPC_QUIRK_4360_MUXED_SPROM),
+	BHND_CHIP_REV_QUIRK(BCM43460,	BHND_HWREV_LTE(2),	CHIPC_QUIRK_4360_MUXED_SPROM),
+	BHND_CHIP_REV_QUIRK(BCM43462,	BHND_HWREV_LTE(2),	CHIPC_QUIRK_4360_MUXED_SPROM),
+	BHND_CHIP_REV_QUIRK(BCM43602,	BHND_HWREV_LTE(2),	CHIPC_QUIRK_4360_MUXED_SPROM),
+
+	BHND_CHIP_QUIRK_END
+};
+
 /* quirk and capability flag convenience macros */
 #define	CHIPC_QUIRK(_sc, _name)	\
     ((_sc)->quirks & CHIPC_QUIRK_ ## _name)
@@ -117,6 +130,7 @@ chipc_attach(device_t dev)
 	sc->dev = dev;
 	sc->quirks = bhnd_device_quirks(dev, chipc_devices,
 	    sizeof(chipc_devices[0]));
+	sc->quirks |= bhnd_chip_quirks(dev, chipc_chip_quirks);
 
 	/* Allocate bus resources */
 	memcpy(sc->rspec, chipc_rspec, sizeof(sc->rspec));
@@ -165,6 +179,9 @@ chipc_attach(device_t dev)
 		device_printf(dev, "NVRAM source: CC-NFLASH\n");
 		break;
 	}
+
+	if (CHIPC_QUIRK(sc, MUXED_SPROM))
+		device_printf(dev, "sprom pins are muxed\n");
 
 	return (0);
 	

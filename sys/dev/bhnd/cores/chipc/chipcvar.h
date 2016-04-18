@@ -58,6 +58,26 @@ enum {
 	 * capability flag.
 	 */
 	CHIPC_QUIRK_SUPPORTS_NFLASH	= (1<<2),
+
+	/**
+	 * The SPROM is attached via muxed pins. The pins must be switched
+	 * to allow reading/writing.
+	 */
+	CHIPC_QUIRK_MUXED_SPROM		= (1<<3),
+
+	/**
+	 * SPROM pins are muxed with the external PA lines on this 4331-family
+	 * device. The external PA lines must be disabled to allow
+	 * reading/writing the SPROM.
+	 */
+	CHIPC_QUIRK_4331_MUXED_SPROM	= (1<<4) | CHIPC_QUIRK_MUXED_SPROM,
+
+	/**
+	 * SPROM pins are muxed with the FEM control lines on this 4360-family
+	 * device. The muxed pins must be switched to allow reading/writing
+	 * the SPROM.
+	 */
+	CHIPC_QUIRK_4360_MUXED_SPROM	= (1<<5) | CHIPC_QUIRK_MUXED_SPROM
 };
 
 struct chipc_softc {

@@ -412,16 +412,37 @@ bhnd_core_matches(const struct bhnd_core_info *core,
 
 	if (!bhnd_hwrev_matches(core->hwrev, &desc->hwrev))
 		return (false);
-		
-	if (desc->hwrev.end != BHND_HWREV_INVALID &&
-	    desc->hwrev.end < core->hwrev)
-		return (false);
 
 	if (desc->class != BHND_DEVCLASS_INVALID &&
 	    desc->class != bhnd_core_class(core))
 		return (false);
 
 	return true;
+}
+
+/**
+ * Return true if the @p chip matches @p desc.
+ * 
+ * @param chip A bhnd chip identifier.
+ * @param desc A match descriptor to compare against @p chip.
+ * 
+ * @retval true if @p chip matches @p match
+ * @retval false if @p chip does not match @p match.
+ */
+bool
+bhnd_chip_matches(const struct bhnd_chipid *chip,
+    const struct bhnd_chip_match *desc)
+{
+	if (chip->chip_id != desc->id)
+		return (false);
+
+	if (desc->pkg != BHND_PKGID_INVALID && chip->chip_pkg != desc->pkg)
+		return (false);
+
+	if (!bhnd_hwrev_matches(chip->chip_rev, &desc->rev))
+		return (false);
+
+	return (true);
 }
 
 /**
@@ -508,6 +529,33 @@ bhnd_device_lookup(device_t dev, const struct bhnd_device *table,
 
 	/* not found */
 	return (NULL);
+}
+
+/**
+ * Scan @p table for all quirk flags applicable to @p dev's chip identifier
+ * (as returned by bhnd_get_chipid).
+ * 
+ * @param dev A bhnd device.
+ * @param table The chip quirk table to search.
+ * 
+ * @return returns all matching quirk flags.
+ */
+uint32_t
+bhnd_chip_quirks(device_t dev, const struct bhnd_chip_quirk *table)
+{
+	const struct bhnd_chipid	*cid;
+	const struct bhnd_chip_quirk	*qent;
+	uint32_t			 quirks;
+	
+	cid = bhnd_get_chipid(dev);
+	quirks = 0;
+
+	for (qent = table; qent->chip.id != BHND_CHIPID_INVALID; qent++) {
+		if (bhnd_chip_matches(cid, &qent->chip))
+			quirks |= qent->quirks;
+	}
+
+	return (quirks);
 }
 
 /**

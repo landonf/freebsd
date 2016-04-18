@@ -232,6 +232,29 @@ struct bhnd_core_match {
 		.unit = -1			\
 	}
 
+/** A chipset match descriptor. */
+struct bhnd_chip_match {
+	uint16_t		id;	/**< required chip id */
+	struct bhnd_hwrev_match	rev;	/**< matching chip revisions */
+	uint8_t			pkg;	/**< required package or BHND_PKGID_INVALID */
+};
+
+/**
+ * Chipset quirk table descriptor.
+ */
+struct bhnd_chip_quirk {
+	const struct bhnd_chip_match	 chip;		/**< chip match descriptor */ 
+	uint32_t			 quirks;	/**< quirk flags */
+};
+
+#define	BHND_CHIP_QUIRK(_id, _quirks)	\
+	{ { BHND_CHIPID_ ## _id, BHND_HWREV_ANY, BHND_PKGID_INVALID }, _quirks }
+
+#define	BHND_CHIP_REV_QUIRK(_id, _revs, _quirks)	\
+	{ { BHND_CHIPID_ ## _id, _revs, BHND_PKGID_INVALID }, _quirks }
+
+#define	BHND_CHIP_QUIRK_END	BHND_CHIP_QUIRK(INVALID, 0)
+
 /**
  * Device quirk table descriptor.
  */
@@ -297,8 +320,19 @@ bool				 bhnd_core_matches(
 				     const struct bhnd_core_info *core,
 				     const struct bhnd_core_match *desc);
 
+bool				 bhnd_chip_matches(
+				     const struct bhnd_chipid *chipid,
+				     const struct bhnd_chip_match *desc);
+
 bool				 bhnd_hwrev_matches(uint16_t hwrev,
 				     const struct bhnd_hwrev_match *desc);
+
+uint32_t			 bhnd_chip_quirks(device_t dev,
+				     const struct bhnd_chip_quirk *table);
+
+uint32_t			 bhnd_device_quirks(device_t dev,
+				     const struct bhnd_device *table,
+				     size_t entry_size);
 
 bool				 bhnd_device_matches(device_t dev,
 				     const struct bhnd_core_match *desc);
@@ -387,6 +421,16 @@ static inline bool
 bhnd_is_hw_disabled(device_t dev) {
 	return (BHND_BUS_IS_HW_DISABLED(device_get_parent(dev), dev));
 }
+
+/**
+ * Return the BHND chip identification info for the bhnd bus.
+ *
+ * @param dev A bhnd bus child device.
+ */
+static inline const struct bhnd_chipid *
+bhnd_get_chipid(device_t dev) {
+	return (BHND_BUS_GET_CHIPID(device_get_parent(dev), dev));
+};
 
 /**
  * Allocate a resource from a device's parent bhnd(4) bus.
