@@ -156,6 +156,8 @@ chipc_attach(device_t dev)
 	sc->quirks = bhnd_device_quirks(dev, chipc_devices,
 	    sizeof(chipc_devices[0]));
 	sc->quirks |= bhnd_chip_quirks(dev, chipc_chip_quirks);
+	
+	CHIPC_LOCK_INIT(sc);
 
 	/* Allocate bus resources */
 	memcpy(sc->rspec, chipc_rspec, sizeof(sc->rspec));
@@ -197,6 +199,7 @@ chipc_attach(device_t dev)
 	
 cleanup:
 	bhnd_release_resources(dev, sc->rspec, sc->res);
+	CHIPC_LOCK_DESTROY(sc);
 	return (error);
 }
 
@@ -208,6 +211,8 @@ chipc_detach(device_t dev)
 	sc = device_get_softc(dev);
 	bhnd_release_resources(dev, sc->rspec, sc->res);
 	bhnd_sprom_fini(&sc->sprom);
+
+	CHIPC_LOCK_DESTROY(sc);
 
 	return (0);
 }
@@ -255,8 +260,9 @@ chipc_sprom_init(struct chipc_softc *sc)
 	}
 
 	/* Enable access to the SPROM */
+	CHIPC_LOCK(sc);
 	if ((error = chipc_enable_sprom_pins(sc)))
-		return (error);
+		goto failed;
 
 	/* Initialize SPROM parser */
 	error = bhnd_sprom_init(&sc->sprom, sc->core, CHIPC_SPROM_OTP);
@@ -265,16 +271,21 @@ chipc_sprom_init(struct chipc_softc *sc)
 			error);
 
 		chipc_disable_sprom_pins(sc);
-		return (error);
+		goto failed;
 	}
 
 	/* Drop access to the SPROM lines */
 	if ((error = chipc_disable_sprom_pins(sc))) {
 		bhnd_sprom_fini(&sc->sprom);
-		return (error);
+		goto failed;
 	}
+	CHIPC_UNLOCK(sc);
 
 	return (0);
+
+failed:
+	CHIPC_UNLOCK(sc);
+	return (error);
 }
 
 /**
@@ -286,6 +297,8 @@ static int
 chipc_enable_sprom_pins(struct chipc_softc *sc)
 {
 	uint32_t cctrl;
+	
+	CHIPC_LOCK_ASSERT(sc, MA_OWNED);
 
 	/* Nothing to do? */
 	if (!CHIPC_QUIRK(sc, MUX_SPROM))
@@ -327,6 +340,8 @@ static int
 chipc_disable_sprom_pins(struct chipc_softc *sc)
 {
 	uint32_t cctrl;
+
+	CHIPC_LOCK_ASSERT(sc, MA_OWNED);
 
 	/* Nothing to do? */
 	if (!CHIPC_QUIRK(sc, MUX_SPROM))

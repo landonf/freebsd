@@ -118,8 +118,18 @@ struct chipc_softc {
 	uint32_t		 quirks;	/**< CHIPC_QUIRK_* quirk flags */
 	uint32_t		 caps;		/**< CHIPC_CAP_* capability register flags */
 	uint32_t		 cst;		/**< CHIPC_CST* status register flags */
+	
+	struct mtx		 mtx;		/**< state mutex. */
 
 	struct bhnd_sprom	 sprom;		/**< OTP/SPROM shadow, if any */
 };
+
+#define	CHIPC_LOCK_INIT(sc) \
+	mtx_init(&(sc)->mtx, device_get_nameunit((sc)->dev), \
+	    "BHND chipc driver lock", MTX_DEF)
+#define	CHIPC_LOCK(sc)				mtx_lock(&(sc)->mtx)
+#define	CHIPC_UNLOCK(sc)			mtx_unlock(&(sc)->mtx)
+#define	CHIPC_LOCK_ASSERT(sc, what)		mtx_assert(&(sc)->mtx, what)
+#define	CHIPC_LOCK_DESTROY(sc)			mtx_destroy(&(sc)->mtx)
 
 #endif /* _BHND_CORES_CHIPC_CHIPCVAR_H_ */
