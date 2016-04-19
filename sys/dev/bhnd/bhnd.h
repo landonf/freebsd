@@ -234,10 +234,49 @@ struct bhnd_core_match {
 
 /** A chipset match descriptor. */
 struct bhnd_chip_match {
-	uint16_t		id;	/**< required chip id */
-	struct bhnd_hwrev_match	rev;	/**< matching chip revisions */
-	uint8_t			pkg;	/**< required package or BHND_PKGID_INVALID */
+	/** Select fields to be matched */
+	uint8_t
+		match_id:1,
+		match_rev:1,
+		match_pkg:1,
+		match_flags_unused:5;
+
+	uint16_t		chip_id;	/**< required chip id */
+	struct bhnd_hwrev_match	chip_rev;	/**< matching chip revisions */
+	uint8_t			chip_pkg;	/**< required package */
 };
+
+#define	BHND_CHIP_MATCH_ANY		\
+	{ .match_id = 0, .match_rev = 0, .match_pkg = 0 }
+
+#define	BHND_CHIP_MATCH_IS_ANY(_m)	\
+	((_m)->match_id == 0 && (_m)->match_rev == 0 && (_m)->match_pkg == 0)
+
+/** Set the required chip ID within a bhnd_chip_match instance */
+#define	BHND_CHIP_ID(_cid)		\
+	.match_id = 1, .chip_id = BHND_CHIPID_BCM ## _cid
+
+/** Set the required revision range within a bhnd_chip_match instance */
+#define	BHND_CHIP_REV(_rev)		\
+	.match_rev = 1, .chip_rev = BHND_ ## _rev
+
+/** Set the required package ID within a bhnd_chip_match instance */
+#define	BHND_CHIP_PKG(_pkg)		\
+	.match_pkg = 1, .chip_pkg = BHND_PKGID_BCM ## _pkg
+
+/** Set the required chip and package ID within a bhnd_chip_match instance */
+#define	BHND_CHIP_IP(_cid, _pkg)	\
+	BHND_CHIP_ID(_cid), BHND_CHIP_PKG(_pkg)
+
+/** Set the required chip ID, package ID, and revision within a bhnd_chip_match
+ *  instance */
+#define	BHND_CHIP_IPR(_cid, _pkg, _rev)	\
+	BHND_CHIP_ID(_cid), BHND_CHIP_PKG(_pkg), BHND_CHIP_REV(_rev)
+
+/** Set the required chip ID and revision within a bhnd_chip_match
+ *  instance */
+#define	BHND_CHIP_IR(_cid, _rev)	\
+	BHND_CHIP_ID(_cid), BHND_CHIP_REV(_rev)
 
 /**
  * Chipset quirk table descriptor.
@@ -247,13 +286,10 @@ struct bhnd_chip_quirk {
 	uint32_t			 quirks;	/**< quirk flags */
 };
 
-#define	BHND_CHIP_QUIRK(_id, _quirks)	\
-	{ { BHND_CHIPID_ ## _id, BHND_HWREV_ANY, BHND_PKGID_INVALID }, _quirks }
+#define	BHND_CHIP_QUIRK_END	{ BHND_CHIP_MATCH_ANY, 0 }
 
-#define	BHND_CHIP_REV_QUIRK(_id, _revs, _quirks)	\
-	{ { BHND_CHIPID_ ## _id, _revs, BHND_PKGID_INVALID }, _quirks }
-
-#define	BHND_CHIP_QUIRK_END	BHND_CHIP_QUIRK(INVALID, 0)
+#define	BHND_CHIP_QUIRK_IS_END(_q)	\
+	(BHND_CHIP_MATCH_IS_ANY(&(_q)->chip) && (_q)->quirks == 0)
 
 /**
  * Device quirk table descriptor.

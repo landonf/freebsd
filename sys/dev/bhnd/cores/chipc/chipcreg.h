@@ -1125,6 +1125,7 @@ enum {
 #define	CHIPC_CCTRL4331_OVR_PIPEAUXPWRDOWN	(1<<9)	/* override core control on pipe_AuxPowerDown */
 #define	CHIPC_CCTRL4331_PCIE_AUXCLKEN		(1<<10)	/* pcie_auxclkenable */
 #define	CHIPC_CCTRL4331_PCIE_PIPE_PLLDOWN	(1<<11)	/* pcie_pipe_pllpowerdown */
+#define	CHIPC_CCTRL4331_EXTPA_EN2		(1<<12)	/* 0 ext pa2 disable, 1 ext pa2 enabled */
 #define	CHIPC_CCTRL4331_BT_SHD0_ON_GPIO4	(1<<16)	/* enable bt_shd0 at gpio4 */
 #define	CHIPC_CCTRL4331_BT_SHD1_ON_GPIO5	(1<<17)	/* enable bt_shd1 at gpio5 */
 

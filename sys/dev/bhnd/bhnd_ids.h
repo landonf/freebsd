@@ -378,8 +378,6 @@
 #define	BHND_CHIPID_BCM5357		0x5357		/* 5357 chipcommon chipid */
 #define	BHND_CHIPID_BCM53572		53572		/* 53572 chipcommon chipid */
 
-#define	BHND_CHIPID_INVALID		0x0		/* Invalid chip identifier */
-
 
 /* Broadcom ChipCommon Package IDs */
 #define	BHND_PKGID_BCM4303		2		/* 4303 package id */
@@ -436,8 +434,6 @@
 #define	BHND_PKGID_BCM4335_WLBGA	(0x2)		/* WLBGA COB/Mobile SDIO/HSIC. */
 #define	BHND_PKGID_BCM4335_FCBGAD	(0x3)		/* FCBGA Debug Debug/Dev All if's. */
 #define	BHND_PKGID_PKG_MASK_BCM4335	(0x3)
-
-#define	BHND_PKGID_INVALID		0xFF		/* Invalid package identifier */
 
 /* Broadcom Core IDs */
 #define	BHND_COREID_INVALID		0x700		/* Invalid coreid */

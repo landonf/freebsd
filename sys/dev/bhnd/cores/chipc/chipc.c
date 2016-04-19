@@ -78,15 +78,35 @@ static struct bhnd_device_quirk chipc_quirks[] = {
 	BHND_DEVICE_QUIRK_END
 };
 
-/* Chip quirks table */
+/* Chip-specific quirks table */
 static struct bhnd_chip_quirk chipc_chip_quirks[] = {
-	BHND_CHIP_QUIRK(BCM4331,	CHIPC_QUIRK_4331_MUXED_SPROM),
-	BHND_CHIP_QUIRK(BCM43431,	CHIPC_QUIRK_4331_MUXED_SPROM),
+	/* 4331 12x9 packages */
+	{{ BHND_CHIP_IP(4331, 4331TN) },
+		CHIPC_QUIRK_4331_GPIO2_5_MUX_SPROM
+	},
+	{{ BHND_CHIP_IP(4331, 4331TNA0) },
+		CHIPC_QUIRK_4331_GPIO2_5_MUX_SPROM
+	},
 
-	BHND_CHIP_REV_QUIRK(BCM4352,	BHND_HWREV_LTE(2),	CHIPC_QUIRK_4360_MUXED_SPROM),
-	BHND_CHIP_REV_QUIRK(BCM43460,	BHND_HWREV_LTE(2),	CHIPC_QUIRK_4360_MUXED_SPROM),
-	BHND_CHIP_REV_QUIRK(BCM43462,	BHND_HWREV_LTE(2),	CHIPC_QUIRK_4360_MUXED_SPROM),
-	BHND_CHIP_REV_QUIRK(BCM43602,	BHND_HWREV_LTE(2),	CHIPC_QUIRK_4360_MUXED_SPROM),
+	/* 4331 12x12 packages */
+	{{ BHND_CHIP_IPR(4331, 4331TT, HWREV_GTE(1)) },
+		CHIPC_QUIRK_4331_EXTPA2_MUX_SPROM
+	},
+
+	/* 4331 (all packages/revisions) */
+	{{ BHND_CHIP_ID(4331) },
+		CHIPC_QUIRK_4331_EXTPA_MUX_SPROM
+	},
+
+	/* 4360 family (all revs <= 2) */
+	{{ BHND_CHIP_IR(4352, HWREV_LTE(2)) },
+		CHIPC_QUIRK_4360_FEM_MUX_SPROM },
+	{{ BHND_CHIP_IR(43460, HWREV_LTE(2)) },
+		CHIPC_QUIRK_4360_FEM_MUX_SPROM },
+	{{ BHND_CHIP_IR(43462, HWREV_LTE(2)) },
+		CHIPC_QUIRK_4360_FEM_MUX_SPROM },
+	{{ BHND_CHIP_IR(43602, HWREV_LTE(2)) },
+		CHIPC_QUIRK_4360_FEM_MUX_SPROM },
 
 	BHND_CHIP_QUIRK_END
 };
@@ -267,15 +287,32 @@ chipc_enable_sprom_pins(struct chipc_softc *sc)
 {
 	uint32_t cctrl;
 
-	if (!CHIPC_QUIRK(sc, MUXED_SPROM))
+	/* Nothing to do? */
+	if (!CHIPC_QUIRK(sc, MUX_SPROM))
 		return (0);
 
 	cctrl = bhnd_bus_read_4(sc->core, CHIPC_CHIPCTRL);
 
-	if (CHIPC_QUIRK(sc, 4331_MUXED_SPROM)) {
-		// TODO
+	/* 4331 devices */
+	if (CHIPC_QUIRK(sc, 4331_EXTPA_MUX_SPROM)) {
+		cctrl &= ~CHIPC_CCTRL4331_EXTPA_EN;
+
+		if (CHIPC_QUIRK(sc, 4331_GPIO2_5_MUX_SPROM))
+			cctrl &= ~CHIPC_CCTRL4331_EXTPA_ON_GPIO2_5;
+
+		if (CHIPC_QUIRK(sc, 4331_EXTPA2_MUX_SPROM))
+			cctrl &= ~CHIPC_CCTRL4331_EXTPA_EN2;
+
+		bhnd_bus_write_4(sc->core, CHIPC_CHIPCTRL, cctrl);
+		return (0);
 	}
 
+	/* 4360 devices */
+	if (CHIPC_QUIRK(sc, 4360_FEM_MUX_SPROM)) {
+		/* Unimplemented */
+	}
+
+	/* Refuse to proceed on unsupported devices with muxed SPROM pins */
 	device_printf(sc->dev, "muxed sprom lines on unrecognized device\n");
 	return (ENXIO);
 }
@@ -289,13 +326,34 @@ chipc_enable_sprom_pins(struct chipc_softc *sc)
 static int
 chipc_disable_sprom_pins(struct chipc_softc *sc)
 {
-	if (!CHIPC_QUIRK(sc, MUXED_SPROM))
+	uint32_t cctrl;
+
+	/* Nothing to do? */
+	if (!CHIPC_QUIRK(sc, MUX_SPROM))
 		return (0);
 
-	if (CHIPC_QUIRK(sc, 4331_MUXED_SPROM)) {
-		// TODO
+	cctrl = bhnd_bus_read_4(sc->core, CHIPC_CHIPCTRL);
+
+	/* 4331 devices */
+	if (CHIPC_QUIRK(sc, 4331_EXTPA_MUX_SPROM)) {
+		cctrl |= CHIPC_CCTRL4331_EXTPA_EN;
+
+		if (CHIPC_QUIRK(sc, 4331_GPIO2_5_MUX_SPROM))
+			cctrl |= CHIPC_CCTRL4331_EXTPA_ON_GPIO2_5;
+
+		if (CHIPC_QUIRK(sc, 4331_EXTPA2_MUX_SPROM))
+			cctrl |= ~CHIPC_CCTRL4331_EXTPA_EN2;
+
+		bhnd_bus_write_4(sc->core, CHIPC_CHIPCTRL, cctrl);
+		return (0);
 	}
 
+	/* 4360 devices */
+	if (CHIPC_QUIRK(sc, 4360_FEM_MUX_SPROM)) {
+		/* Unimplemented */
+	}
+	
+	/* Refuse to proceed on unsupported devices with muxed SPROM pins */
 	device_printf(sc->dev, "muxed sprom lines on unrecognized device\n");
 	return (ENXIO);
 }

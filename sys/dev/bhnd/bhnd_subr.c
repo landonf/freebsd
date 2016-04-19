@@ -433,13 +433,14 @@ bool
 bhnd_chip_matches(const struct bhnd_chipid *chip,
     const struct bhnd_chip_match *desc)
 {
-	if (chip->chip_id != desc->id)
+	if (desc->match_id && chip->chip_id != desc->chip_id)
 		return (false);
 
-	if (desc->pkg != BHND_PKGID_INVALID && chip->chip_pkg != desc->pkg)
+	if (desc->match_pkg && chip->chip_pkg != desc->chip_pkg)
 		return (false);
 
-	if (!bhnd_hwrev_matches(chip->chip_rev, &desc->rev))
+	if (desc->match_rev &&
+	    !bhnd_hwrev_matches(chip->chip_rev, &desc->chip_rev))
 		return (false);
 
 	return (true);
@@ -550,7 +551,7 @@ bhnd_chip_quirks(device_t dev, const struct bhnd_chip_quirk *table)
 	cid = bhnd_get_chipid(dev);
 	quirks = 0;
 
-	for (qent = table; qent->chip.id != BHND_CHIPID_INVALID; qent++) {
+	for (qent = table; !BHND_CHIP_QUIRK_IS_END(qent); qent++) {
 		if (bhnd_chip_matches(cid, &qent->chip))
 			quirks |= qent->quirks;
 	}

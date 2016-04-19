@@ -47,39 +47,64 @@ extern devclass_t bhnd_chipc_devclass;
  */
 enum {
 	/** No quirks */
-	CHIPC_QUIRK_NONE		= 0,
+	CHIPC_QUIRK_NONE			= 0,
 	
 	/**
 	 * ChipCommon-controlled SPROM/OTP is supported, along with the
 	 * CHIPC_CAP_SPROM capability flag.
 	 */
-	CHIPC_QUIRK_SUPPORTS_SPROM	= (1<<1),
+	CHIPC_QUIRK_SUPPORTS_SPROM		= (1<<1),
 
 	/**
 	 * External NAND NVRAM is supported, along with the CHIPC_CAP_NFLASH
 	 * capability flag.
 	 */
-	CHIPC_QUIRK_SUPPORTS_NFLASH	= (1<<2),
+	CHIPC_QUIRK_SUPPORTS_NFLASH		= (1<<2),
 
 	/**
 	 * The SPROM is attached via muxed pins. The pins must be switched
 	 * to allow reading/writing.
 	 */
-	CHIPC_QUIRK_MUXED_SPROM		= (1<<3),
+	CHIPC_QUIRK_MUX_SPROM			= (1<<3),
+	
+	/**
+	 * Access to the SPROM uses pins shared with the 802.11a external PA.
+	 * 
+	 * On modules using these 4331 packages, the CCTRL4331_EXTPA_EN flag
+	 * must be cleared to allow SPROM access.
+	 */
+	CHIPC_QUIRK_4331_EXTPA_MUX_SPROM	= (1<<4) |
+	    CHIPC_QUIRK_MUX_SPROM,
 
 	/**
-	 * SPROM pins are muxed with the external PA lines on this 4331-family
-	 * device. The external PA lines must be disabled to allow
-	 * reading/writing the SPROM.
+	 * Access to the SPROM uses pins shared with the 802.11a external PA.
+	 * 
+	 * On modules using these 4331 chip packages, the external PA is
+	 * attached via GPIO 2, 5, and sprom_dout pins.
+	 * 
+	 * When enabling and disabling EXTPA to allow SPROM access, the
+	 * CCTRL4331_EXTPA_ON_GPIO2_5 flag must also be set or cleared,
+	 * respectively.
 	 */
-	CHIPC_QUIRK_4331_MUXED_SPROM	= (1<<4) | CHIPC_QUIRK_MUXED_SPROM,
+	CHIPC_QUIRK_4331_GPIO2_5_MUX_SPROM	= (1<<5) |
+	    CHIPC_QUIRK_4331_EXTPA_MUX_SPROM,
+
+	/**
+	 * Access to the SPROM uses pins shared with two 802.11a external PAs.
+	 * 
+	 * When enabling and disabling EXTPA, the CCTRL4331_EXTPA_EN2 must also
+	 * be cleared to allow SPROM access.
+	 */
+	CHIPC_QUIRK_4331_EXTPA2_MUX_SPROM	= (1<<6) |
+	    CHIPC_QUIRK_4331_EXTPA_MUX_SPROM,
+	
 
 	/**
 	 * SPROM pins are muxed with the FEM control lines on this 4360-family
 	 * device. The muxed pins must be switched to allow reading/writing
 	 * the SPROM.
 	 */
-	CHIPC_QUIRK_4360_MUXED_SPROM	= (1<<5) | CHIPC_QUIRK_MUXED_SPROM
+	CHIPC_QUIRK_4360_FEM_MUX_SPROM	= (1<<5) | CHIPC_QUIRK_MUX_SPROM
 };
 
 struct chipc_softc {
