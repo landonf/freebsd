@@ -185,7 +185,6 @@ bhnd_pci_hostb_attach(device_t dev)
 		return (error);
 	}
 
-
 	return (0);
 }
 
