@@ -4,7 +4,7 @@
 
 KMOD=	bhnd_nvram
 SRCS=	bhnd_nvram_if.c bhnd_nvram_if.h
-SRCS+=	bhnd_sprom.c
+SRCS+=	bhnd_sprom.c nvram_subr.c
 SRCS+=	bhnd_nvram_map.h
 
 SRCS+=	device_if.h bus_if.h

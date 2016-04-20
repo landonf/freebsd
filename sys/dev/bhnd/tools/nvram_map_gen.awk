@@ -145,7 +145,7 @@ NR == 1 {
 	print " * generated from", FILENAME
 	print " */"
 	print ""
-	print "#include <dev/bhnd/nvram/nvram_fmt.h>"
+	print "#include <dev/bhnd/nvram/nvramvar.h>"
 }
 
 # return the flag definition for variable `v`

@@ -29,8 +29,16 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_NVRAM_BHND_NVRAM_FMT_H_
-#define _BHND_NVRAM_BHND_NVRAM_FMT_H_
+#ifndef _BHND_NVRAM_BHND_NVRAMVAR_H_
+#define _BHND_NVRAM_BHND_NVRAMVAR_H_
+
+extern const uint8_t bhnd_nvram_crc8_tab[];
+
+/** Initial bhnd_nvram_crc8 value */
+#define	BHND_NVRAM_CRC8_INITIAL	0xFF
+
+/** Valid CRC-8 checksum */
+#define	BHND_NVRAM_CRC8_VALID	0x9F	
 
 /** NVRAM Primitive data types */
 typedef enum {
@@ -90,4 +98,22 @@ struct bhnd_nvram_var {
 	size_t				 num_sp_descs;	/**< number of sprom descriptors */
 };
 
-#endif /* _BHND_NVRAM_BHND_NVRAM_FMT_H_ */
+/**
+ * Calculate CRC-8 over @p buf.
+ * 
+ * @param buf input buffer
+ * @param size buffer size
+ * @param crc last computed crc, or BHND_NVRAM_CRC8_INITIAL
+ */
+static inline uint8_t
+bhnd_nvram_crc8(const void *buf, size_t size, uint8_t crc)
+{
+	const uint8_t *p = (const uint8_t *)buf;
+	while (size--)
+		crc = bhnd_nvram_crc8_tab[(crc ^ *p++)];
+
+	return (crc);
+}
+
+
+#endif /* _BHND_NVRAM_BHND_NVRAMVAR_H_ */
