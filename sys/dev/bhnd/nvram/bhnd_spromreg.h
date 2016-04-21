@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2015-2016 Landon Fuller <landon@landonf.org>
+ * Copyright (c) 2016 Landon Fuller <landon@landonf.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,25 +29,32 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_NVRAM_BHND_SPROM_H_
-#define _BHND_NVRAM_BHND_SPROM_H_
+#ifndef	_BHND_NVRAM_SPROMREG_H_
+#define	_BHND_NVRAM_SPROMREG_H_
 
-struct bhnd_sprom {
-	device_t		 dev;		/**< sprom parent device */
+#define	BHND_SPROMSZ_R1_3	128	/**< SPROM image size (rev 1-3) */
+#define	BHND_SPROMSZ_R4_8_9	440	/**< SPROM image size (rev 4, 8-9) */
+#define	BHND_SPROMSZ_R10	460	/**< SPROM image size (rev 10) */ 
+#define	BHND_SPROMSZ_R11	468	/**< SPROM image size (rev 11) */
 
-	uint8_t			 sp_rev;	/**< sprom revision */
-	
-	struct bhnd_resource	*sp_res;	/**< sprom resource. */
-	bus_size_t		 sp_res_off;	/**< offset to sprom image */
+/** Maximum supported SPROM image size */
+#define	BHND_SPROMSZ_MAX	BHND_SPROMSZ_R11
 
-	uint8_t			*sp_shadow;	/**< sprom shadow */
-	bus_size_t		 sp_size_max;	/**< maximum possible sprom length */
-	size_t			 sp_size;	/**< shadow size */
-	size_t			 sp_capacity;	/**< shadow buffer capacity */
-};
+/** SPROM signature (rev 4) */
+#define	BHND_SPROMSIG_R4	0x5372			
+#define	BHND_SPROMSIG_R4_OFF	64	/**< SPROM signature offset (rev 4) */
 
-int	bhnd_sprom_init(struct bhnd_sprom *sprom, struct bhnd_resource *r,
-	    bus_size_t offset);
-void	bhnd_sprom_fini(struct bhnd_sprom *sprom);
+/** SPROM signature (rev 8, 9) */
+#define	BHND_SPROMSIG_R8_9	BHND_SPROMSIG_R4
+#define	BHND_SPROMSIG_R8_9_OFF	128	/**< SPROM signature offset (rev 8-9) */
 
-#endif /* _BHND_NVRAM_BHND_SPROM_H_ */
+/** SPROM signature (rev 10) */
+#define	BHND_SPROMSIG_R10	BHND_SPROMSIG_R4
+#define	BHND_SPROMSIG_R10_OFF	438	/**< SPROM signature offset (rev 10) */
+
+/** SPROM signature (rev 11) */
+#define	BHND_SPROMSIG_R11	0x0634
+#define	BHND_SPROMSIG_R11_OFF	128	/**< SPROM signature offset (rev 11) */
+
+
+#endif /* _BHND_NVRAM_SPROMREG_H_ */
