@@ -57,12 +57,16 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/cores/pci/bhnd_pci_hostbvar.h>
 
+#include <dev/bhnd/nvram/bhnd_spromvar.h>
+
 #include "bhndb_pcireg.h"
 #include "bhndb_pcivar.h"
 
 #include "bhnd_nvram_map.h"
 
-struct bhndb_pci_sprom_softc {};
+struct bhndb_pci_sprom_softc {
+	struct bhnd_sprom	sprom;
+};
 
 static int
 bhndb_pci_sprom_probe(device_t dev)
@@ -90,22 +94,28 @@ bhndb_pci_sprom_probe(device_t dev)
 static int
 bhndb_pci_sprom_attach(device_t dev)
 {
-	// TODO
-	struct resource *r;
-	int rid;
+	struct bhndb_pci_sprom_softc	*sc;
+	struct bhnd_resource		*r;
+	int				 error;
+	int				 rid;
+	
+	sc = device_get_softc(dev);
 
+	/* Allocate SPROM resource */
 	rid = 0;
-	r = bus_alloc_resource_any(dev, SYS_RES_MEMORY, &rid, RF_ACTIVE);
+	r = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY, &rid, RF_ACTIVE);
 	if (r == NULL) {
 		device_printf(dev, "failed to allocate resources\n");
 		return (ENXIO);
 	}
 
-	device_printf(dev, "%ju byte SROM\n",
-	    rman_get_size(r));
-	bus_release_resource(dev, SYS_RES_MEMORY, rid, r);
+	/* Initialize SPROM shadow */
+	if ((error = bhnd_sprom_init(&sc->sprom, r, 0)))
+		device_printf(dev, "unrecognized SPROM\n");
 
-	return (0);
+	/* Clean up */
+	bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
+	return (error);
 }
 
 static int
@@ -123,6 +133,11 @@ bhndb_pci_sprom_suspend(device_t dev)
 static int
 bhndb_pci_sprom_detach(device_t dev)
 {
+	struct bhndb_pci_sprom_softc	*sc;
+	
+	sc = device_get_softc(dev);
+
+	bhnd_sprom_fini(&sc->sprom);
 	return (0);
 }
 
