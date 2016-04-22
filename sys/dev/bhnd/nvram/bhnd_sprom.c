@@ -258,8 +258,8 @@ sprom_direct_read(struct bhnd_sprom *sc, size_t offset, void *buf,
 	size_t		 nread;
 	uint16_t	*p;
 
-	KASSERT(nbytes % 2 == 0, ("unaligned sprom read size"));
-	KASSERT(offset % 2 == 0, ("unaligned sprom read offset"));
+	KASSERT(nbytes % sizeof(uint16_t) == 0, ("unaligned sprom size"));
+	KASSERT(offset % sizeof(uint16_t) == 0, ("unaligned sprom offset"));
 
 	/* Check for read overrun */
 	if (offset >= sc->sp_size_max || sc->sp_size_max - offset < nbytes) {
@@ -272,7 +272,6 @@ sprom_direct_read(struct bhnd_sprom *sc, size_t offset, void *buf,
 
 	/* Perform read */
 	for (nread = 0; nread < nbytes; nread += 2) {
-		// TODO: read_multi
 		*p = bhnd_bus_read_stream_2(sc->sp_res, res_offset+nread);
 		*crc = bhnd_nvram_crc8(p, sizeof(*p), *crc);
 		p++;
