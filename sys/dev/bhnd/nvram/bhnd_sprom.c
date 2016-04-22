@@ -218,7 +218,7 @@ sprom_read(struct bhnd_sprom *sc, off_t offset, void *buf, size_t nbytes,
 		uint16_t	val;
 		uint8_t		cval;
 
-		val = bhnd_bus_read_2(sc->sp_res, res_offset+nread);
+		val = bhnd_bus_read_stream_2(sc->sp_res, res_offset+nread);
 
 		/* Update CRC */
 		cval = (val & 0xFF);
