@@ -32,29 +32,32 @@
 #ifndef	_BHND_NVRAM_SPROMREG_H_
 #define	_BHND_NVRAM_SPROMREG_H_
 
-#define	BHND_SPROMSZ_R1_3	128	/**< SPROM image size (rev 1-3) */
-#define	BHND_SPROMSZ_R4_8_9	440	/**< SPROM image size (rev 4, 8-9) */
-#define	BHND_SPROMSZ_R10	460	/**< SPROM image size (rev 10) */ 
-#define	BHND_SPROMSZ_R11	468	/**< SPROM image size (rev 11) */
+#define	SPROM_SZ_R1_3		128	/**< SPROM image size (rev 1-3) */
+#define	SPROM_SZ_R4_8_9		440	/**< SPROM image size (rev 4, 8-9) */
+#define	SPROM_SZ_R10		460	/**< SPROM image size (rev 10) */ 
+#define	SPROM_SZ_R11		468	/**< SPROM image size (rev 11) */
 
 /** Maximum supported SPROM image size */
-#define	BHND_SPROMSZ_MAX	BHND_SPROMSZ_R11
+#define	SPROM_SZ_MAX		SPROM_SZ_R11
+
+#define	SPROM_SIG_NONE		0x0
+#define	SPROM_SIG_NONE_OFF	0x0
 
 /** SPROM signature (rev 4) */
-#define	BHND_SPROMSIG_R4	0x5372			
-#define	BHND_SPROMSIG_R4_OFF	64	/**< SPROM signature offset (rev 4) */
+#define	SPROM_SIG_R4		0x5372			
+#define	SPROM_SIG_R4_OFF	64	/**< SPROM signature offset (rev 4) */
 
 /** SPROM signature (rev 8, 9) */
-#define	BHND_SPROMSIG_R8_9	BHND_SPROMSIG_R4
-#define	BHND_SPROMSIG_R8_9_OFF	128	/**< SPROM signature offset (rev 8-9) */
+#define	SPROM_SIG_R8_9		SPROM_SIG_R4
+#define	SPROM_SIG_R8_9_OFF	128	/**< SPROM signature offset (rev 8-9) */
 
 /** SPROM signature (rev 10) */
-#define	BHND_SPROMSIG_R10	BHND_SPROMSIG_R4
-#define	BHND_SPROMSIG_R10_OFF	438	/**< SPROM signature offset (rev 10) */
+#define	SPROM_SIG_R10		SPROM_SIG_R4
+#define	SPROM_SIG_R10_OFF	438	/**< SPROM signature offset (rev 10) */
 
 /** SPROM signature (rev 11) */
-#define	BHND_SPROMSIG_R11	0x0634
-#define	BHND_SPROMSIG_R11_OFF	128	/**< SPROM signature offset (rev 11) */
+#define	SPROM_SIG_R11		0x0634
+#define	SPROM_SIG_R11_OFF	128	/**< SPROM signature offset (rev 11) */
 
 
 #endif /* _BHND_NVRAM_SPROMREG_H_ */
