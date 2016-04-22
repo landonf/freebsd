@@ -21,6 +21,7 @@
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2011, 2014 by Delphix. All rights reserved.
+ * Copyright (c) 2014 Integros [integros.com]
  */
 
 /* Portions Copyright 2010 Robert Milkowski */
@@ -2092,7 +2093,6 @@ zil_replay(objset_t *os, void *arg, zil_replay_func_t *replay_func[TX_MAX_TYPE])
 		zil_destroy(zilog, B_TRUE);
 		return;
 	}
-	//printf("ZFS: Replaying ZIL on %s...\n", os->os->os_spa->spa_name);
 
 	zr.zr_replay = replay_func;
 	zr.zr_arg = arg;
@@ -2114,7 +2114,6 @@ zil_replay(objset_t *os, void *arg, zil_replay_func_t *replay_func[TX_MAX_TYPE])
 	zil_destroy(zilog, B_FALSE);
 	txg_wait_synced(zilog->zl_dmu_pool, zilog->zl_destroy_txg);
 	zilog->zl_replay = B_FALSE;
-	//printf("ZFS: Replay of ZIL on %s finished.\n", os->os->os_spa->spa_name);
 }
 
 boolean_t

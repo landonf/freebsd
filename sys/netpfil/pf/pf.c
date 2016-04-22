@@ -440,6 +440,20 @@ pf_hashsrc(struct pf_addr *addr, sa_family_t af)
 	return (h & pf_srchashmask);
 }
 
+#ifdef ALTQ
+static int
+pf_state_hash(struct pf_state *s)
+{
+	u_int32_t hv = (intptr_t)s / sizeof(*s);
+
+	hv ^= crc32(&s->src, sizeof(s->src));
+	hv ^= crc32(&s->dst, sizeof(s->dst));
+	if (hv == 0)
+		hv = 1;
+	return (hv);
+}
+#endif
+
 #ifdef INET6
 void
 pf_addrcpy(struct pf_addr *dst, struct pf_addr *src, sa_family_t af)
@@ -5970,6 +5984,8 @@ done:
 			action = PF_DROP;
 			REASON_SET(&reason, PFRES_MEMORY);
 		} else {
+			if (s != NULL)
+				pd.pf_mtag->qid_hash = pf_state_hash(s);
 			if (pqid || (pd.tos & IPTOS_LOWDELAY))
 				pd.pf_mtag->qid = r->pqid;
 			else
@@ -6145,11 +6161,13 @@ pf_test6(int dir, struct ifnet *ifp, struct mbuf **m0, struct inpcb *inp)
 	 * We do need to be careful about bridges. If the
 	 * net.link.bridge.pfil_bridge sysctl is set we can be filtering on a
 	 * bridge, so if the input interface is a bridge member and the output
-	 * interface is its bridge we're not actually forwarding but bridging.
+	 * interface is its bridge or a member of the same bridge we're not
+	 * actually forwarding but bridging.
 	 */
-	if (dir == PF_OUT && m->m_pkthdr.rcvif && ifp != m->m_pkthdr.rcvif
-	    && (m->m_pkthdr.rcvif->if_bridge == NULL
-	        || m->m_pkthdr.rcvif->if_bridge != ifp->if_softc))
+	if (dir == PF_OUT && m->m_pkthdr.rcvif && ifp != m->m_pkthdr.rcvif &&
+	    (m->m_pkthdr.rcvif->if_bridge == NULL ||
+	    (m->m_pkthdr.rcvif->if_bridge != ifp->if_softc &&
+	    m->m_pkthdr.rcvif->if_bridge != ifp->if_bridge)))
 		fwdir = PF_FWD;
 
 	if (!V_pf_status.running)
@@ -6412,6 +6430,8 @@ done:
 			action = PF_DROP;
 			REASON_SET(&reason, PFRES_MEMORY);
 		} else {
+			if (s != NULL)
+				pd.pf_mtag->qid_hash = pf_state_hash(s);
 			if (pd.tos & IPTOS_LOWDELAY)
 				pd.pf_mtag->qid = r->pqid;
 			else
