@@ -73,12 +73,12 @@ do
 	for s in "" stream_
 	do
 		macro read_$s$w o
-#		macro read_multi_$s$w o d c
+		macro read_multi_$s$w o d c
 #		macro read_region_$s$w o d c
 #		macro set_multi_$s$w o v c
 #		macro set_region_$s$w o v c
 		macro write_$s$w o v
-#		macro write_multi_$s$w o d c
+		macro write_multi_$s$w o d c
 #		macro write_region_$s$w o d c
 	done
 done

@@ -514,6 +514,132 @@ METHOD void write_stream_4 {
 	uint32_t value;
 }
 
+/** An implementation of bus_read_multi_1() compatible with bhnd_resource */
+METHOD void read_multi_1 {
+	device_t dev;
+	device_t child;
+	struct bhnd_resource *r;
+	bus_size_t offset;
+	uint8_t *datap;
+	bus_size_t count;
+}
+
+/** An implementation of bus_read_multi_2() compatible with bhnd_resource */
+METHOD void read_multi_2 {
+	device_t dev;
+	device_t child;
+	struct bhnd_resource *r;
+	bus_size_t offset;
+	uint16_t *datap;
+	bus_size_t count;
+}
+
+/** An implementation of bus_read_multi_4() compatible with bhnd_resource */
+METHOD void read_multi_4 {
+	device_t dev;
+	device_t child;
+	struct bhnd_resource *r;
+	bus_size_t offset;
+	uint32_t *datap;
+	bus_size_t count;
+}
+
+/** An implementation of bus_write_multi_1() compatible with bhnd_resource */
+METHOD void write_multi_1 {
+	device_t dev;
+	device_t child;
+	struct bhnd_resource *r;
+	bus_size_t offset;
+	uint8_t *datap;
+	bus_size_t count;
+}
+
+/** An implementation of bus_write_multi_2() compatible with bhnd_resource */
+METHOD void write_multi_2 {
+	device_t dev;
+	device_t child;
+	struct bhnd_resource *r;
+	bus_size_t offset;
+	uint16_t *datap;
+	bus_size_t count;
+}
+
+/** An implementation of bus_write_multi_4() compatible with bhnd_resource */
+METHOD void write_multi_4 {
+	device_t dev;
+	device_t child;
+	struct bhnd_resource *r;
+	bus_size_t offset;
+	uint32_t *datap;
+	bus_size_t count;
+}
+
+/** An implementation of bus_read_multi_stream_1() compatible
+ *  bhnd_resource */
+METHOD void read_multi_stream_1 {
+	device_t dev;
+	device_t child;
+	struct bhnd_resource *r;
+	bus_size_t offset;
+	uint8_t *datap;
+	bus_size_t count;
+}
+
+/** An implementation of bus_read_multi_stream_2() compatible
+ *  bhnd_resource */
+METHOD void read_multi_stream_2 {
+	device_t dev;
+	device_t child;
+	struct bhnd_resource *r;
+	bus_size_t offset;
+	uint16_t *datap;
+	bus_size_t count;
+}
+
+/** An implementation of bus_read_multi_stream_4() compatible
+ *  bhnd_resource */
+METHOD void read_multi_stream_4 {
+	device_t dev;
+	device_t child;
+	struct bhnd_resource *r;
+	bus_size_t offset;
+	uint32_t *datap;
+	bus_size_t count;
+}
+
+/** An implementation of bus_write_multi_stream_1() compatible
+ *  bhnd_resource */
+METHOD void write_multi_stream_1 {
+	device_t dev;
+	device_t child;
+	struct bhnd_resource *r;
+	bus_size_t offset;
+	uint8_t *datap;
+	bus_size_t count;
+}
+
+/** An implementation of bus_write_multi_stream_2() compatible with
+ *  bhnd_resource */
+METHOD void write_multi_stream_2 {
+	device_t dev;
+	device_t child;
+	struct bhnd_resource *r;
+	bus_size_t offset;
+	uint16_t *datap;
+	bus_size_t count;
+}
+
+/** An implementation of bus_write_multi_stream_4() compatible with
+ *  bhnd_resource */
+METHOD void write_multi_stream_4 {
+	device_t dev;
+	device_t child;
+	struct bhnd_resource *r;
+	bus_size_t offset;
+	uint32_t *datap;
+	bus_size_t count;
+}
+
 /** An implementation of bus_barrier() compatible with bhnd_resource */
 METHOD void barrier {
 	device_t dev;

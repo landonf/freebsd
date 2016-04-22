@@ -1759,12 +1759,32 @@ bhndb_bus_write_ ## _name (device_t dev, device_t child,	\
 	BHNDB_IO_COMMON_TEARDOWN();				\
 }
 
+/* Defines a bhndb_bus_(read|write)_multi_* method implementation */
+#define	BHNDB_IO_MULTI(_type, _rw, _name)			\
+static void							\
+bhndb_bus_ ## _rw ## _multi_ ## _name (device_t dev,		\
+    device_t child, struct bhnd_resource *r, bus_size_t offset,	\
+    _type *datap, bus_size_t count)				\
+{								\
+	BHNDB_IO_COMMON_SETUP(sizeof(_type) * count);		\
+	bus_ ## _rw ## _multi_ ## _name (io_res, io_offset,	\
+	    datap, count);					\
+	BHNDB_IO_COMMON_TEARDOWN();				\
+}
+
 /* Defines a complete set of read/write methods */
 #define	BHNDB_IO_METHODS(_type, _size)				\
 	BHNDB_IO_READ(_type, _size)				\
 	BHNDB_IO_WRITE(_type, _size)				\
+								\
 	BHNDB_IO_READ(_type, stream_ ## _size)			\
-	BHNDB_IO_WRITE(_type, stream_ ## _size)
+	BHNDB_IO_WRITE(_type, stream_ ## _size)			\
+								\
+	BHNDB_IO_MULTI(_type, read, _size)			\
+	BHNDB_IO_MULTI(_type, write, _size)			\
+								\
+	BHNDB_IO_MULTI(_type, read, stream_ ## _size)		\
+	BHNDB_IO_MULTI(_type, write, stream_ ## _size)
 
 BHNDB_IO_METHODS(uint8_t, 1);
 BHNDB_IO_METHODS(uint16_t, 2);
@@ -1926,6 +1946,21 @@ static device_method_t bhndb_methods[] = {
 	DEVMETHOD(bhnd_bus_write_stream_1,	bhndb_bus_write_stream_1),
 	DEVMETHOD(bhnd_bus_write_stream_2,	bhndb_bus_write_stream_2),
 	DEVMETHOD(bhnd_bus_write_stream_4,	bhndb_bus_write_stream_4),
+
+	DEVMETHOD(bhnd_bus_read_multi_1,	bhndb_bus_read_multi_1),
+	DEVMETHOD(bhnd_bus_read_multi_2,	bhndb_bus_read_multi_2),
+	DEVMETHOD(bhnd_bus_read_multi_4,	bhndb_bus_read_multi_4),
+	DEVMETHOD(bhnd_bus_write_multi_1,	bhndb_bus_write_multi_1),
+	DEVMETHOD(bhnd_bus_write_multi_2,	bhndb_bus_write_multi_2),
+	DEVMETHOD(bhnd_bus_write_multi_4,	bhndb_bus_write_multi_4),
+	
+	DEVMETHOD(bhnd_bus_read_multi_stream_1,	bhndb_bus_read_multi_stream_1),
+	DEVMETHOD(bhnd_bus_read_multi_stream_2,	bhndb_bus_read_multi_stream_2),
+	DEVMETHOD(bhnd_bus_read_multi_stream_4,	bhndb_bus_read_multi_stream_4),
+	DEVMETHOD(bhnd_bus_write_multi_stream_1,bhndb_bus_write_multi_stream_1),
+	DEVMETHOD(bhnd_bus_write_multi_stream_2,bhndb_bus_write_multi_stream_2),
+	DEVMETHOD(bhnd_bus_write_multi_stream_4,bhndb_bus_write_multi_stream_4),
+	
 	DEVMETHOD(bhnd_bus_barrier,		bhndb_bus_barrier),
 
 	DEVMETHOD_END

@@ -604,11 +604,30 @@ bhnd_write_ ## _name (device_t dev, device_t child,		\
 		    value));	\
 }
 
-#define	BHND_IO_METHODS(_type, _size)				\
-	BHND_IO_READ(_type, _size, _size)			\
-	BHND_IO_WRITE(_type, _size, _size)			\
-	BHND_IO_READ(_type, stream_ ## _size, STREAM_ ## _size)	\
-	BHND_IO_WRITE(_type, stream_ ## _size, STREAM_ ## _size)
+#define	BHND_IO_MULTI(_type, _rw, _name, _method)			\
+static void								\
+bhnd_ ## _rw ## _multi_ ## _name (device_t dev, device_t child,	\
+    struct bhnd_resource *r, bus_size_t offset, _type *datap,		\
+    bus_size_t count)							\
+{									\
+	BHND_BUS_ ## _method(device_get_parent(dev), child, r,		\
+	    offset, datap, count);					\
+}
+
+#define	BHND_IO_METHODS(_type, _size)					\
+	BHND_IO_READ(_type, _size, _size)				\
+	BHND_IO_WRITE(_type, _size, _size)				\
+									\
+	BHND_IO_READ(_type, stream_ ## _size, STREAM_ ## _size)		\
+	BHND_IO_WRITE(_type, stream_ ## _size, STREAM_ ## _size)	\
+									\
+	BHND_IO_MULTI(_type, read, _size, READ_MULTI_ ## _size)		\
+	BHND_IO_MULTI(_type, write, _size, WRITE_MULTI_ ## _size)	\
+									\
+	BHND_IO_MULTI(_type, read, stream_ ## _size,			\
+	   READ_MULTI_STREAM_ ## _size)					\
+	BHND_IO_MULTI(_type, write, stream_ ## _size,			\
+	   WRITE_MULTI_STREAM_ ## _size)				\
 
 BHND_IO_METHODS(uint8_t, 1);
 BHND_IO_METHODS(uint16_t, 2);
@@ -674,6 +693,21 @@ static device_method_t bhnd_methods[] = {
 	DEVMETHOD(bhnd_bus_write_stream_1,	bhnd_write_stream_1),
 	DEVMETHOD(bhnd_bus_write_stream_2,	bhnd_write_stream_2),
 	DEVMETHOD(bhnd_bus_write_stream_4,	bhnd_write_stream_4),
+
+	DEVMETHOD(bhnd_bus_read_multi_1,	bhnd_read_multi_1),
+	DEVMETHOD(bhnd_bus_read_multi_2,	bhnd_read_multi_2),
+	DEVMETHOD(bhnd_bus_read_multi_4,	bhnd_read_multi_4),
+	DEVMETHOD(bhnd_bus_write_multi_1,	bhnd_write_multi_1),
+	DEVMETHOD(bhnd_bus_write_multi_2,	bhnd_write_multi_2),
+	DEVMETHOD(bhnd_bus_write_multi_4,	bhnd_write_multi_4),
+	
+	DEVMETHOD(bhnd_bus_read_multi_stream_1,	bhnd_read_multi_stream_1),
+	DEVMETHOD(bhnd_bus_read_multi_stream_2,	bhnd_read_multi_stream_2),
+	DEVMETHOD(bhnd_bus_read_multi_stream_4,	bhnd_read_multi_stream_4),
+	DEVMETHOD(bhnd_bus_write_multi_stream_1,bhnd_write_multi_stream_1),
+	DEVMETHOD(bhnd_bus_write_multi_stream_2,bhnd_write_multi_stream_2),
+	DEVMETHOD(bhnd_bus_write_multi_stream_4,bhnd_write_multi_stream_4),
+
 	DEVMETHOD(bhnd_bus_barrier,		bhnd_barrier),
 
 	DEVMETHOD_END
