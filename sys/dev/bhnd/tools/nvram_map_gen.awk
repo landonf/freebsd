@@ -319,7 +319,7 @@ END {
 	}
 
 	# generate output
-	printf("const struct bhnd_nvram_var nvram_vars[] = {\n")
+	printf("static const struct bhnd_nvram_var bhnd_nvram_vars[] = {\n")
 	output_depth = 1
 	for (v in var_names) {
 		if (vars[v,VAR_STRUCT] != null) {

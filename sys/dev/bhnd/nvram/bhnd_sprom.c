@@ -41,10 +41,10 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/bhndvar.h>
 
+#include "nvramvar.h"
+
 #include "bhnd_spromreg.h"
 #include "bhnd_spromvar.h"
-
-#include "nvramvar.h"
 
 /*
  * BHND SPROM Parsing
@@ -57,6 +57,10 @@ static int	sprom_direct_read(struct bhnd_sprom *sc, size_t offset,
 static int	sprom_extend_shadow(struct bhnd_sprom *sc, size_t image_size,
 		    uint8_t *crc);
 static int	sprom_populate_shadow(struct bhnd_sprom *sc);
+
+static int	sprom_var_defn(struct bhnd_sprom *sc, const char *name,
+		    const struct bhnd_nvram_var **var,
+		    const struct bhnd_sprom_var **sprom);
 
 /* SPROM revision is always located at the second-to-last byte */
 #define	SPROM_REV(_sc)	SPROM_READ_1((_sc), (_sc)->sp_size - 2)
@@ -140,6 +144,13 @@ bhnd_sprom_init(struct bhnd_sprom *sprom, struct bhnd_resource *r,
 
 	// TODO
 	device_printf(sprom->dev, "spromrev %hhu\n", sprom->sp_rev);
+	const struct bhnd_nvram_var *v;
+	const struct bhnd_sprom_var *sv;
+
+	if ((error = sprom_var_defn(sprom, "macaddr", &v, &sv)))
+		return (error);
+
+	device_printf(sprom->dev, "macaddr has %zu offsets\n", sv->num_offsets);
 
 	return (0);
 }
@@ -153,6 +164,40 @@ void
 bhnd_sprom_fini(struct bhnd_sprom *sprom)
 {
 	free(sprom->sp_shadow, M_BHND);
+}
+
+/**
+ * Read a SPROM variable, performing conversion to host byte order.
+ *
+ * @param		sc	The SPROM parser state.
+ * @param		name	The SPROM variable name.
+ * @param[out]		buf	On success, the requested value will be written
+ *				to this buffer. This argment may be NULL if
+ *				the value is not desired.
+ * @param[in,out]	size	The capacity of @p buf. On success, will be set
+ *				to the actual size of the requested value.
+ *
+ * @retval 0		success
+ * @retval ENOENT	The requested variable was not found.
+ * @retval ENOMEM	If @p buf is non-NULL and a buffer of @p size is too
+ *			small to hold the requested value.
+ * @retval non-zero	If reading @p name otherwise fails, a regular unix
+ *			error code will be returned.
+ */
+int
+bhnd_sprom_getvar(struct bhnd_sprom *sc, const char *name, void *buf,
+    size_t *size)
+{
+	const struct bhnd_nvram_var	*nv;
+	const struct bhnd_sprom_var	*sv;
+	int				 error;
+
+	if ((error = sprom_var_defn(sc, name, &nv, &sv)))
+		return (error);
+
+	// TODO
+	
+	return (ENOENT);
 }
 
 /* Read and identify the SPROM image by incrementally performing
@@ -278,4 +323,38 @@ sprom_direct_read(struct bhnd_sprom *sc, size_t offset, void *buf,
 	};
 
 	return (0);
+}
+
+
+/**
+ * Locate the variable and SPROM revision-specific definitions
+ * for variable with @p name.
+ */
+static int
+sprom_var_defn(struct bhnd_sprom *sc, const char *name,
+    const struct bhnd_nvram_var **var,
+    const struct bhnd_sprom_var **sprom)
+{
+	/* Find variable definition */
+	*var = bhnd_nvram_var_defn(name);
+	if (*var == NULL)
+		return (ENOENT);
+
+	/* Find revision-specific SPROM definition */
+	for (size_t i = 0; i < (*var)->num_sp_descs; i++) {
+		const struct bhnd_sprom_var *sp = &(*var)->sprom_descs[i];
+
+		if (sc->sp_rev < sp->compat.first)
+			continue;
+		
+		if (sc->sp_rev > sp->compat.last)
+			continue;
+
+		/* Found */
+		*sprom = sp;
+		return (0);
+	}
+
+	/* Not supported by this SPROM revision */
+	return (ENOENT);
 }

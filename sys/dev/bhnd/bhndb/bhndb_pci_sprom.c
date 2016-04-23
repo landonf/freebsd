@@ -57,8 +57,6 @@ __FBSDID("$FreeBSD$");
 #include "bhndb_pcireg.h"
 #include "bhndb_pcivar.h"
 
-#include "bhnd_nvram_map.h"
-
 struct bhndb_pci_sprom_softc {
 	struct bhnd_sprom	sprom;
 };

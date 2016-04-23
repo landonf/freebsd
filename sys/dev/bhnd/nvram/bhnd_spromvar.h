@@ -50,4 +50,7 @@ int	bhnd_sprom_init(struct bhnd_sprom *sprom, struct bhnd_resource *r,
 	    bus_size_t offset);
 void	bhnd_sprom_fini(struct bhnd_sprom *sprom);
 
+int	bhnd_sprom_getvar(struct bhnd_sprom *sc, const char *name, void *buf,
+	    size_t *size);
+
 #endif /* _BHND_NVRAM_BHND_SPROM_H_ */

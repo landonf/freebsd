@@ -32,14 +32,6 @@
 #ifndef _BHND_NVRAM_BHND_NVRAMVAR_H_
 #define _BHND_NVRAM_BHND_NVRAMVAR_H_
 
-extern const uint8_t bhnd_nvram_crc8_tab[];
-
-/** Initial bhnd_nvram_crc8 value */
-#define	BHND_NVRAM_CRC8_INITIAL	0xFF
-
-/** Valid CRC-8 checksum */
-#define	BHND_NVRAM_CRC8_VALID	0x9F	
-
 /** NVRAM Primitive data types */
 typedef enum {
 	BHND_NVRAM_DT_UINT,	/**< unsigned integer */
@@ -97,6 +89,16 @@ struct bhnd_nvram_var {
 	const struct bhnd_sprom_var	*sprom_descs;	/**< SPROM-specific variable descriptors */
 	size_t				 num_sp_descs;	/**< number of sprom descriptors */
 };
+
+const struct bhnd_nvram_var	*bhnd_nvram_var_defn(const char *varname);
+
+/** Initial bhnd_nvram_crc8 value */
+#define	BHND_NVRAM_CRC8_INITIAL	0xFF
+
+/** Valid CRC-8 checksum */
+#define	BHND_NVRAM_CRC8_VALID	0x9F
+
+extern const uint8_t bhnd_nvram_crc8_tab[];
 
 /**
  * Calculate CRC-8 over @p buf.

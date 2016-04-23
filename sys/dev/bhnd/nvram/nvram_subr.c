@@ -30,7 +30,11 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include <sys/param.h>
 #include <sys/types.h>
+#include <sys/systm.h>
+
+#include "bhnd_nvram_map.h"
 
 /*
  * CRC-8 lookup table used to checksum SPROM and NVRAM data via
@@ -67,3 +71,25 @@ const uint8_t bhnd_nvram_crc8_tab[] = {
 	0x07, 0xf0, 0x9b, 0x6c, 0x22, 0xd5, 0xf4, 0x03, 0x4d, 0xba, 0xd1,
 	0x26, 0x68, 0x9f
 };
+
+
+/**
+ * Return the variable definition for @p varname, if any.
+ * 
+ * @param varname variable name
+ * 
+ * @retval bhnd_nvram_var If a valid definition for @p varname is found.
+ * @retval NULL If no definition for @p varname is found. 
+ */
+const struct bhnd_nvram_var *
+bhnd_nvram_var_defn(const char *varname)
+{
+	/* Search the definition table */
+	for (size_t i = 0; i < nitems(bhnd_nvram_vars); i++) {
+		if (strcmp(varname, bhnd_nvram_vars[i].name) == 0)
+			return (&bhnd_nvram_vars[i]);
+	}
+
+	/* Not found */
+	return (NULL);
+}
