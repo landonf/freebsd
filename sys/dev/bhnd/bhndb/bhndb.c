@@ -1933,7 +1933,7 @@ static device_method_t bhndb_methods[] = {
 	DEVMETHOD(bhnd_bus_is_hw_disabled,	bhndb_is_hw_disabled),
 	DEVMETHOD(bhnd_bus_get_chipid,		bhndb_get_chipid),
 	DEVMETHOD(bhnd_bus_activate_resource,	bhndb_activate_bhnd_resource),
-	DEVMETHOD(bhnd_bus_activate_resource,	bhndb_deactivate_bhnd_resource),
+	DEVMETHOD(bhnd_bus_deactivate_resource,	bhndb_deactivate_bhnd_resource),
 	DEVMETHOD(bhnd_bus_read_1,		bhndb_bus_read_1),
 	DEVMETHOD(bhnd_bus_read_2,		bhndb_bus_read_2),
 	DEVMETHOD(bhnd_bus_read_4,		bhndb_bus_read_4),

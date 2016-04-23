@@ -153,7 +153,7 @@ bhndb_pci_init_full_config(device_t dev, device_t child,
 
 	sc = device_get_softc(dev);
 
-	/* Let bhndb perform standard initialization first */
+	/* Let our parent perform standard initialization first */
 	if ((error = bhndb_generic_init_full_config(dev, child, hw_prio_table)))
 		return (error);
 
