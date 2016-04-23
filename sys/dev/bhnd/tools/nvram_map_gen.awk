@@ -206,7 +206,7 @@ function gen_var_rev_body (v, revk, base_addr)
 			printf("{%s, %s, %s, %s},\n",
 			    base_addr vars[segk,SEG_ADDR],
 			    vars[segk,SEG_WIDTH],
-    			    vars[segk,SEG_SHIFT],
+			    vars[segk,SEG_SHIFT],
 			    vars[segk,SEG_MASK])
 			num_offs_written++
 		}
