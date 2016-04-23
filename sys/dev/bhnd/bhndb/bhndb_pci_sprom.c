@@ -31,15 +31,10 @@
 __FBSDID("$FreeBSD$");
 
 /*
- * PCI-specific implementation for the BHNDB bridge driver.
+ * BHNDB PCI SPROM driver.
  * 
- * Provides support for bridging from a PCI parent bus to a BHND-compatible
- * bus (e.g. bcma or siba) via a Broadcom PCI core configured in end-point
- * mode.
- * 
- * This driver handles all host-level PCI interactions with a PCI/PCIe bridge
- * core operating in endpoint mode. On the bridged bhnd bus, the PCI core
- * device will be managed by a bhnd_pci_hostb driver.
+ * Provides support for early PCI bridge cores that vend SPROM CSRs
+ * via PCI configuration space.
  */
 
 #include <sys/param.h>
