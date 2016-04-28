@@ -212,19 +212,6 @@ function gen_var_rev_body (v, revk, base_addr)
 		}
 	}
 
-	# Check for overflow of the variable's declared type
-	if (vars[v,VAR_ARRAY])
-		max_elem_count = type_array_len(vars[v,VAR_TYPE])
-	else
-		max_elem_count = 1
-
-	if (TODO && vars[revk,REV_NUM_ELEMS] > max_elem_count) {
-		_err_line = vars[revk,DEF_LINE]
-		errorx(vars[v,VAR_NAME] " srom definition of " vars[revk,REV_NUM_ELEMS] \
-		    " elements on line " _err_line " overflows type " \
-		    vars[v,VAR_TYPE])
-	}
-
 	output_depth--
 	printi("}, " num_offs_written "},\n")
 }
@@ -282,7 +269,7 @@ function gen_struct_var (v)
 				s_start = structs[srevk,REV_START]
 				s_end = structs[srevk,REV_END]
 
-				# XXX we don't support computing the union
+				# We don't support computing the union
 				# of partially overlapping ranges
 				if ((v_start < s_start && v_end >= s_start) ||
 				    (v_start <= s_end && v_end > s_end))
