@@ -60,18 +60,18 @@ static int	sprom_populate_shadow(struct bhnd_sprom *sc);
 
 static int	sprom_var_defn(struct bhnd_sprom *sc, const char *name,
 		    const struct bhnd_nvram_var **var,
-		    const struct bhnd_sprom_var **sprom);
+		    const struct bhnd_sprom_var **sprom, size_t *size);
 
 /* SPROM revision is always located at the second-to-last byte */
 #define	SPROM_REV(_sc)	SPROM_READ_1((_sc), (_sc)->sp_size - 2)
 
 /* SPROM shadow I/O (with byte-order translation) */
-#define	SPROM_READ_1(_sc, _off)	((_sc)->sp_shadow[_off])
+#define	SPROM_READ_1(_sc, _off)	(*(uint8_t *)((_sc)->sp_shadow + _off))
 #define	SPROM_READ_2(_sc, _off)	le16toh(*(uint16_t *)((_sc)->sp_shadow + _off))
 #define	SPROM_READ_4(_sc, _off)	le32toh(*(uint32_t *)((_sc)->sp_shadow + _off))
 
 #define	SPROM_WRITE_1(_sc, _off, _v)	\
-	(_sc[_off]) = (_v)
+	*((uint8_t *)((_sc)->sp_shadow + _off)) = (_v)
 #define	SPROM_WRITE_2(_sc, _off, _v)	\
 	*((uint16_t *)((_sc)->sp_shadow + _off)) = htole16(_v)
 #define	SPROM_WRITE_4(_sc, _off, _v)	\
@@ -146,11 +146,20 @@ bhnd_sprom_init(struct bhnd_sprom *sprom, struct bhnd_resource *r,
 	device_printf(sprom->dev, "spromrev %hhu\n", sprom->sp_rev);
 	const struct bhnd_nvram_var *v;
 	const struct bhnd_sprom_var *sv;
+	size_t mac_size;
 
-	if ((error = sprom_var_defn(sprom, "macaddr", &v, &sv)))
+	if ((error = sprom_var_defn(sprom, "macaddr", &v, &sv, &mac_size)))
 		return (error);
 
-	device_printf(sprom->dev, "macaddr has %zu offsets\n", sv->num_offsets);
+	device_printf(sprom->dev, "macaddr has %zu offsets (sz=%zu)\n",
+	    sv->num_offsets, mac_size);
+	
+	uint8_t macaddr[6];
+	mac_size = sizeof(macaddr);
+	if ((error = bhnd_sprom_getvar(sprom, "macaddr", &macaddr, &mac_size)))
+		return (error);
+
+	device_printf(sprom->dev, "macaddr=%6D\n", macaddr, ":");
 
 	return (0);
 }
@@ -165,6 +174,23 @@ bhnd_sprom_fini(struct bhnd_sprom *sprom)
 {
 	free(sprom->sp_shadow, M_BHND);
 }
+
+/* Perform a read using a SPROM offset descriptor */
+#define	SPROM_GET_VAR_OFF(_sc, _type, _width, _off, _dest) do {	\
+	_type v = SPROM_READ_ ## _width(_sc, _off->offset);	\
+	device_printf(_sc->dev, "read=0x%X\n", (uint32_t)v);	\
+	if (_off->shift > 0) {					\
+		v >>= _off->shift;				\
+	} else if (off->shift < 0) {				\
+		v <<= -_off->shift;				\
+	}							\
+	v &= (_type)_off->mask;					\
+								\
+	if (_off->cont)						\
+		v |= *((_type *)_dest);				\
+								\
+	*((_type *)_dest) = v;					\
+} while(0)
 
 /**
  * Read a SPROM variable, performing conversion to host byte order.
@@ -190,14 +216,53 @@ bhnd_sprom_getvar(struct bhnd_sprom *sc, const char *name, void *buf,
 {
 	const struct bhnd_nvram_var	*nv;
 	const struct bhnd_sprom_var	*sv;
+	size_t				 req_size;
 	int				 error;
 
-	if ((error = sprom_var_defn(sc, name, &nv, &sv)))
+	if ((error = sprom_var_defn(sc, name, &nv, &sv, &req_size)))
 		return (error);
 
-	// TODO
-	
-	return (ENOENT);
+	/* Provide required size */
+	if (buf == NULL) {
+		*size = req_size;
+		return (0);
+	}
+
+	/* Check target buffer size */
+	if (*size < req_size)
+		return (ENOMEM);
+
+	/* Read data */
+	for (size_t i = 0; i < sv->num_offsets; i++) {
+		const struct bhnd_sprom_offset *off = &sv->offsets[i];
+		
+		KASSERT(!off->cont || i > 0, ("cont marked on first offset"));
+		
+		/* If not a continuation, advance the output buffer */
+		if (i > 0 && !off->cont)
+			buf = ((uint8_t *)buf) + sv->offsets[i-1].width;
+		
+		device_printf(sc->dev, "off=%hu dest=%p\n", off->offset, buf);
+
+		switch (off->width) {
+		case 1:
+			SPROM_GET_VAR_OFF(sc, uint8_t, 1, off, buf);
+			break;
+		case 2:
+			SPROM_GET_VAR_OFF(sc, uint16_t, 2, off, buf);
+			break;
+		case 4:
+			SPROM_GET_VAR_OFF(sc, uint16_t, 4, off, buf);
+			break;
+		default:
+			device_printf(sc->dev, "invalid sprom variable '%s' "
+			    "definition, offset width %hhu at %hu\n",
+			    name, off->width, off->offset);
+			return (ENODEV);
+		}
+	}
+
+	return (0);
 }
 
 /* Read and identify the SPROM image by incrementally performing
@@ -333,7 +398,8 @@ sprom_direct_read(struct bhnd_sprom *sc, size_t offset, void *buf,
 static int
 sprom_var_defn(struct bhnd_sprom *sc, const char *name,
     const struct bhnd_nvram_var **var,
-    const struct bhnd_sprom_var **sprom)
+    const struct bhnd_sprom_var **sprom,
+    size_t *size)
 {
 	/* Find variable definition */
 	*var = bhnd_nvram_var_defn(name);
@@ -352,6 +418,15 @@ sprom_var_defn(struct bhnd_sprom *sc, const char *name,
 
 		/* Found */
 		*sprom = sp;
+		
+		/* Calculate size in bytes */
+		*size = 0;
+		for (size_t i = 0; i < sp->num_offsets; i++) {
+			if (sp->offsets[i].cont)
+				continue;
+			*size += sp->offsets[i].width;
+		}
+
 		return (0);
 	}
 

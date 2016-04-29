@@ -68,6 +68,7 @@ BEGIN {
 	TMASK["i8"]	= TMASK["u8"]
 	TMASK["i16"]	= TMASK["u16"]
 	TMASK["i32"]	= TMASK["u32"]
+	TMASK["char"]	= TMASK["u8"]
 
 	# Byte sizes for standard types
 	TSIZE["u8"]	= "1"
@@ -123,6 +124,7 @@ BEGIN {
 
 	# Segment array keys
 	SEG_ADDR	= "seg_addr"
+	SEG_COUNT	= "seg_count"
 	SEG_WIDTH	= "seg_width"
 	SEG_MASK	= "seg_mask"
 	SEG_SHIFT	= "seg_shift"
@@ -202,13 +204,19 @@ function gen_var_rev_body (v, revk, base_addr)
 		for (seg = 0; seg < num_segs; seg++) {
 			segk = subkey(offk, OFF_SEG, seg"")
 
-			printi()
-			printf("{%s, %s, %s, %s},\n",
-			    base_addr vars[segk,SEG_ADDR],
-			    vars[segk,SEG_WIDTH],
-			    vars[segk,SEG_SHIFT],
-			    vars[segk,SEG_MASK])
-			num_offs_written++
+			for (seg_n = 0; seg_n < vars[segk,SEG_COUNT]; seg_n++) {
+				seg_addr = vars[segk,SEG_ADDR]
+				seg_addr += vars[segk,SEG_WIDTH] * seg_n
+
+				printi()
+				printf("{%s, %s, %s, %s, %s},\n",
+				base_addr seg_addr,
+				(seg > 0) ? "true" : "false",
+				vars[segk,SEG_WIDTH],
+				vars[segk,SEG_SHIFT],
+				vars[segk,SEG_MASK])
+				num_offs_written++
+			}
 		}
 	}
 
@@ -780,9 +788,6 @@ function parse_offset_segment (revk, offk)
 	offset = $1
 	if (offset !~ HEX_REGEX)
 		error("invalid offset value '" offset "'")
-	shiftf(1)
-
-
 
 	# extract byte count[] and width
 	if (match(type, ARRAY_REGEX"$") > 0) {
@@ -825,21 +830,19 @@ function parse_offset_segment (revk, offk)
 		}
 	}
 
-	for (_oi = 0; _oi < count; _oi++) {
-		# assign segment id
-		seg = vars[offk,OFF_NUM_SEGS] ""
-		segk = subkey(offk, OFF_SEG, seg)
-		vars[offk,OFF_NUM_SEGS]++
+	# assign segment id
+	seg = vars[offk,OFF_NUM_SEGS] ""
+	segk = subkey(offk, OFF_SEG, seg)
+	vars[offk,OFF_NUM_SEGS]++
 
-		vars[segk,SEG_ADDR]	= offset + (width * _oi)
-		vars[segk,SEG_WIDTH]	= width
-		vars[segk,SEG_MASK]	= mask
-		vars[segk,SEG_SHIFT]	= shift
+	vars[segk,SEG_ADDR]	= offset + (width * _oi)
+	vars[segk,SEG_COUNT]	= count
+	vars[segk,SEG_WIDTH]	= width
+	vars[segk,SEG_MASK]	= mask
+	vars[segk,SEG_SHIFT]	= shift
 
-		debug("{"vars[segk,SEG_ADDR]", "width", "mask", "shift"}" \
-		   _comma)
-	}
-
+	debug("{"vars[segk,SEG_ADDR]", "width", "mask", "shift"}" \
+		_comma)
 }
 
 # revision offset definition

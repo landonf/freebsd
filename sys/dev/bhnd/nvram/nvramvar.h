@@ -67,8 +67,10 @@ struct bhnd_sprom_compat {
 /** SPROM value descriptor */
 struct bhnd_sprom_offset {
 	uint16_t	offset;	/**< byte offset within SPROM */
-	uint8_t		width;	/**< 1, 2, or 4 bytes */
-	uint8_t		shift;	/**< shift to be applied to the value */
+	bool		cont:1;	/**< value should be bitwise OR'd with the
+				  *  previous offset descriptor */
+	uint8_t		width:7;/**< 1, 2, or 4 bytes */
+	int8_t		shift;	/**< shift to be applied to the value */
 	uint32_t	mask;	/**< mask to be applied to the value(s) */
 };
 
