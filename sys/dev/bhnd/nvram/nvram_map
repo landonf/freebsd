@@ -463,7 +463,7 @@ u32 legofdmbw20ul5ghpo {
 }
 
 # mac addr override for the standard CIS LAN_NID
-u8[48] macaddr {
+u8[6] macaddr {
 	sfmt	macaddr
 	srom 3		0x4A
 	srom 4		0x4C
@@ -1173,7 +1173,7 @@ u8 txpid5gla3 {
 u16 cckPwrOffset {
 	srom 10	0x1B4
 }
-u8[48] et1macaddr {
+u8[6] et1macaddr {
 	sfmt	macaddr
 	srom 0-2	0x54
 }
@@ -1195,7 +1195,7 @@ u8 freqoffset_corr {
 u8 hw_iqcal_en {
 	srom 8-10	0xB9 (&0x20, >>5)
 }
-u8[48] il0macaddr {
+u8[6] il0macaddr {
 	sfmt	macaddr
 	srom 0-2	0x48
 }
