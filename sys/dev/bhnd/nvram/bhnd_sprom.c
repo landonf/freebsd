@@ -193,37 +193,6 @@ bhnd_sprom_init(struct bhnd_sprom *sprom, struct bhnd_resource *r,
 	if ((error = sprom_populate_shadow(sprom)))
 		return (error);
 
-	// TODO
-	device_printf(sprom->dev, "spromrev %hhu\n", sprom->sp_rev);
-	const struct bhnd_nvram_var *v;
-	const struct bhnd_sprom_var *sv;
-	size_t mac_size;
-
-	if ((error = sprom_var_defn(sprom, "macaddr", &v, &sv, &mac_size)))
-		return (error);
-
-	device_printf(sprom->dev, "macaddr has %zu offsets (sz=%zu)\n",
-	    sv->num_offsets, mac_size);
-	
-	uint8_t macaddr[6];
-	mac_size = sizeof(macaddr);
-	if ((error = bhnd_sprom_getvar(sprom, "macaddr", macaddr, &mac_size)))
-		return (error);
-
-	device_printf(sprom->dev, "macaddr=%6D\n", macaddr, ":");
-	
-	// try setting the macaddr
-	macaddr[0] = 0xCA;
-	macaddr[1] = 0xFE;
-
-	if ((error = bhnd_sprom_setvar(sprom, "macaddr", macaddr, mac_size)))
-		return (error);
-	
-	if ((error = bhnd_sprom_getvar(sprom, "macaddr", macaddr, &mac_size)))
-		return (error);
-
-	device_printf(sprom->dev, "new_macaddr=%6D\n", macaddr, ":");
-
 	return (0);
 }
 
