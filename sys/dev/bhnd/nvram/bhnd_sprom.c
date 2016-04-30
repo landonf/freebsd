@@ -63,27 +63,75 @@ static int	sprom_var_defn(struct bhnd_sprom *sc, const char *name,
 		    const struct bhnd_sprom_var **sprom, size_t *size);
 
 /* SPROM revision is always located at the second-to-last byte */
-#define	SPROM_REV(_sc)	SPROM_READ_1((_sc), (_sc)->sp_size - 2)
+#define	SPROM_REV(_sc)		SPROM_READ_1((_sc), (_sc)->sp_size - 2)
+
+/* SPROM CRC is always located at the last byte */
+#define	SPROM_CRC_OFF(_sc)	SPROM_CRC_LEN(_sc)
+
+/* SPROM CRC covers all but the final CRC byte */
+#define	SPROM_CRC_LEN(_sc)	((_sc)->sp_size - 1)
 
 /* SPROM shadow I/O (with byte-order translation) */
-#define	SPROM_READ_1(_sc, _off)	\
-	(*(uint8_t *)((_sc)->sp_shadow + _off))
-#define	SPROM_READ_2(_sc, _off)	\
-	le16toh(*(uint16_t *)((_sc)->sp_shadow + _off))
-#define	SPROM_READ_4(_sc, _off)	\
-	le32toh(*(uint32_t *)((_sc)->sp_shadow + _off))
+#define	SPROM_READ_1(_sc, _off)		SPROM_READ_ENC_1(_sc, _off)
+#define	SPROM_READ_2(_sc, _off)		le16toh(SPROM_READ_ENC_2(_sc, _off))
+#define	SPROM_READ_4(_sc, _off)		le32toh(SPROM_READ_ENC_4(_sc, _off))
 
-#define	SPROM_WRITE_1(_sc, _off, _v)	\
+#define	SPROM_WRITE_1(_sc, _off, _v)	SPROM_WRITE_ENC_1(_sc, _off, (_v))
+#define	SPROM_WRITE_2(_sc, _off, _v)	SPROM_WRITE_ENC_2(_sc, _off,	\
+    htole16(_v))
+#define	SPROM_WRITE_4(_sc, _off, _v)	SPROM_WRITE_ENC_4(_sc, _off,	\
+    htole32(_v))
+
+/* SPROM shadow I/O (without byte-order translation) */
+#define	SPROM_READ_ENC_1(_sc, _off)	(*(uint8_t *)((_sc)->sp_shadow + _off))
+#define	SPROM_READ_ENC_2(_sc, _off)	(*(uint16_t *)((_sc)->sp_shadow + _off))
+#define	SPROM_READ_ENC_4(_sc, _off)	(*(uint32_t *)((_sc)->sp_shadow + _off))
+
+#define	SPROM_WRITE_ENC_1(_sc, _off, _v)	\
 	*((uint8_t *)((_sc)->sp_shadow + _off)) = (_v)
-#define	SPROM_WRITE_2(_sc, _off, _v)	\
-	*((uint16_t *)((_sc)->sp_shadow + _off)) = htole16(_v)
-#define	SPROM_WRITE_4(_sc, _off, _v)	\
-	*((uint32_t *)((_sc)->sp_shadow + _off)) = htole32(_v)
+#define	SPROM_WRITE_ENC_2(_sc, _off, _v)	\
+	*((uint16_t *)((_sc)->sp_shadow + _off)) = (_v)
+#define	SPROM_WRITE_ENC_4(_sc, _off, _v)	\
+	*((uint32_t *)((_sc)->sp_shadow + _off)) = (_v)
 	
+/* Call @p _next macro with the C type, widened (signed or unsigned) C
+ * type, and width associated with @p _dtype */
+#define	SPROM_SWITCH_TYPE(_dtype, _next, ...)				\
+do {									\
+	switch (_dtype) {						\
+	case BHND_NVRAM_DT_UINT8:					\
+		_next (uint8_t,		uint32_t,	1,		\
+		    ## __VA_ARGS__);					\
+		break;							\
+	case BHND_NVRAM_DT_UINT16:					\
+		_next (uint16_t,	uint32_t,	2,		\
+		    ## __VA_ARGS__);					\
+		break;							\
+	case BHND_NVRAM_DT_UINT32:					\
+		_next (uint32_t,	uint32_t,	4,		\
+		    ## __VA_ARGS__);					\
+		break;							\
+	case BHND_NVRAM_DT_INT8:					\
+		_next (int8_t,		int32_t,	1,		\
+		    ## __VA_ARGS__);					\
+		break;							\
+	case BHND_NVRAM_DT_INT16:					\
+		_next (int16_t,		int32_t,	2,		\
+		    ## __VA_ARGS__);					\
+		break;							\
+	case BHND_NVRAM_DT_INT32:					\
+		_next (int32_t,		int32_t,	4,		\
+		    ## __VA_ARGS__);					\
+		break;							\
+	case BHND_NVRAM_DT_CHAR:					\
+		_next (uint8_t,		uint32_t,	1,		\
+		    ## __VA_ARGS__);					\
+		break;							\
+	}								\
+} while (0)
 
 /*
- * Supported SPROM image formats ordered by image size, from smallest to
- * largest.
+ * Table of supported SPROM image formats, sorted by image size, ascending.
  */
 #define	SPROM_FMT(_sz, _revmin, _revmax, _sig)	\
 	{ SPROM_SZ_ ## _sz, _revmin, _revmax,	\
@@ -159,10 +207,22 @@ bhnd_sprom_init(struct bhnd_sprom *sprom, struct bhnd_resource *r,
 	
 	uint8_t macaddr[6];
 	mac_size = sizeof(macaddr);
-	if ((error = bhnd_sprom_getvar(sprom, "macaddr", &macaddr, &mac_size)))
+	if ((error = bhnd_sprom_getvar(sprom, "macaddr", macaddr, &mac_size)))
 		return (error);
 
 	device_printf(sprom->dev, "macaddr=%6D\n", macaddr, ":");
+	
+	// try setting the macaddr
+	macaddr[0] = 0xCA;
+	macaddr[1] = 0xFE;
+
+	if ((error = bhnd_sprom_setvar(sprom, "macaddr", macaddr, mac_size)))
+		return (error);
+	
+	if ((error = bhnd_sprom_getvar(sprom, "macaddr", macaddr, &mac_size)))
+		return (error);
+
+	device_printf(sprom->dev, "new_macaddr=%6D\n", macaddr, ":");
 
 	return (0);
 }
@@ -178,10 +238,9 @@ bhnd_sprom_fini(struct bhnd_sprom *sprom)
 	free(sprom->sp_shadow, M_BHND);
 }
 
-/* Perform a read using a SPROM offset descriptor, safely widening the result
- * to its 32-bit two's-complement representation before assigning it to
- * @p _dest. */
-#define	_SPROM_READ_OFF(_type, _widen, _width, _sc, _off, _dest)	\
+/* Perform a read using a SPROM offset descriptor, safely widening the
+ * result to its 32-bit representation before assigning it to @p _dest. */
+#define	SPROM_GETVAR_READ(_type, _widen, _width, _sc, _off, _dest)	\
 do {									\
 	_type _v = (_type)SPROM_READ_ ## _width(_sc, _off->offset);	\
 	if (_off->shift > 0) {						\
@@ -195,49 +254,13 @@ do {									\
 /* Emit a value read using a SPROM offset descriptor, narrowing the
  * result output representation and, if necessary, OR'ing it with the
  * previously read value from @p _buf. */
-#define	_SPROM_EMIT_OFF(_type, _widen, _width, _off, _src, _buf)	\
+#define	SPROM_GETVAR_WRITE(_type, _widen, _width, _off, _src, _buf)	\
 do {									\
 	_type _v = (_type) (_widen) _src;				\
 	if (_off->cont)							\
 		_v |= *((_type *)_buf);					\
 	*((_type *)_buf) = _v;						\
 } while(0)
-
-/* Call @p _next macro with the C type, widened (signed or unsigned) C
- * type, and width associated with @p _dtype */
-#define	SPROM_SWITCH_TYPE(_dtype, _next, ...)				\
-do {									\
-	switch (_dtype) {						\
-	case BHND_NVRAM_DT_UINT8:					\
-		_next (uint8_t,		uint32_t,	1,		\
-		    ## __VA_ARGS__);					\
-		break;							\
-	case BHND_NVRAM_DT_UINT16:					\
-		_next (uint16_t,	uint32_t,	2,		\
-		    ## __VA_ARGS__);					\
-		break;							\
-	case BHND_NVRAM_DT_UINT32:					\
-		_next (uint32_t,	uint32_t,	4,		\
-		    ## __VA_ARGS__);					\
-		break;							\
-	case BHND_NVRAM_DT_INT8:					\
-		_next (int8_t,		int32_t,	1,		\
-		    ## __VA_ARGS__);					\
-		break;							\
-	case BHND_NVRAM_DT_INT16:					\
-		_next (int16_t,		int32_t,	2,		\
-		    ## __VA_ARGS__);					\
-		break;							\
-	case BHND_NVRAM_DT_INT32:					\
-		_next (int32_t,		int32_t,	4,		\
-		    ## __VA_ARGS__);					\
-		break;							\
-	case BHND_NVRAM_DT_CHAR:					\
-		_next (uint8_t,		uint32_t,	1,		\
-		    ## __VA_ARGS__);					\
-		break;							\
-	}								\
-} while (0)
 
 /**
  * Read a SPROM variable, performing conversion to host byte order.
@@ -259,7 +282,7 @@ do {									\
  */
 int
 bhnd_sprom_getvar(struct bhnd_sprom *sc, const char *name, void *buf,
-    size_t *size)
+    size_t *len)
 {
 	const struct bhnd_nvram_var	*nv;
 	const struct bhnd_sprom_var	*sv;
@@ -272,13 +295,15 @@ bhnd_sprom_getvar(struct bhnd_sprom *sc, const char *name, void *buf,
 
 	/* Provide required size */
 	if (buf == NULL) {
-		*size = req_size;
+		*len = req_size;
 		return (0);
 	}
 
-	/* Check target buffer size */
-	if (*size < req_size)
+	/* Check (and update) target buffer len */
+	if (*len < req_size)
 		return (ENOMEM);
+	else
+		*len = req_size;
 
 	/* Read data */
 	all1_offs = 0;
@@ -297,7 +322,7 @@ bhnd_sprom_getvar(struct bhnd_sprom *sc, const char *name, void *buf,
 
 		/* Read the value, widening to a common uint32
 		 * representation */
-		SPROM_SWITCH_TYPE(off->type, _SPROM_READ_OFF, sc, off, val);
+		SPROM_SWITCH_TYPE(off->type, SPROM_GETVAR_READ, sc, off, val);
 
 		/* If IGNALL1, record whether value has all bits set. */
 		if (nv->flags & BHND_NVRAM_VF_IGNALL1) {
@@ -315,12 +340,101 @@ bhnd_sprom_getvar(struct bhnd_sprom *sc, const char *name, void *buf,
 
 		/* Write the value, narrowing to the appropriate output
 		 * width. */
-		SPROM_SWITCH_TYPE(nv->type, _SPROM_EMIT_OFF, off, val, buf);
+		SPROM_SWITCH_TYPE(nv->type, SPROM_GETVAR_WRITE, off, val, buf);
 	}
 
 	/* Should value should be treated as uninitialized? */
 	if (nv->flags & BHND_NVRAM_VF_IGNALL1 && all1_offs == sv->num_offsets)
 		return (ENOENT);
+
+	return (0);
+}
+
+/* Perform a read of a variable offset from _src, safely widening the result
+ * to its 32-bit representation before assigning it to @p
+ * _dest. */
+#define	SPROM_SETVAR_READ(_type, _widen, _width, _off, _src, _dest)	\
+do {									\
+	_type _v = *(const _type *)_src;				\
+	if (_off->shift > 0) {						\
+		_v <<= _off->shift;					\
+	} else if (off->shift < 0) {					\
+		_v >>= -_off->shift;					\
+	}								\
+	_dest = ((uint32_t) (_widen) _v) & _off->mask;			\
+} while(0)
+
+
+/* Emit a value read using a SPROM offset descriptor, narrowing the
+ * result output representation and, if necessary, OR'ing it with the
+ * previously read value from @p _buf. */
+#define	SPROM_SETVAR_WRITE(_type, _widen, _width, _sc, _off, _src)	\
+do {									\
+	_type _v = (_type) (_widen) _src;				\
+	if (_off->cont)							\
+		_v |= SPROM_READ_ ## _width(_sc, _off->offset);		\
+	SPROM_WRITE_ ## _width(_sc, _off->offset, _v);			\
+} while(0)
+
+/**
+ * Set a local value for a SPROM variable, performing conversion to SPROM byte
+ * order.
+ * 
+ * The new value will be written to the backing SPROM shadow.
+ * 
+ * @param		sc	The SPROM parser state.
+ * @param		name	The SPROM variable name.
+ * @param[out]		buf	The new value.
+ * @param[in,out]	size	The size of @p buf.
+ *
+ * @retval 0		success
+ * @retval ENOENT	The requested variable was not found.
+ * @retval EINVAL	If @p size does not match the expected variable size.
+ */
+int
+bhnd_sprom_setvar(struct bhnd_sprom *sc, const char *name, const void *buf,
+    size_t len)
+{
+	const struct bhnd_nvram_var	*nv;
+	const struct bhnd_sprom_var	*sv;
+	size_t				 req_size;
+	int				 error;
+	uint8_t				 crc;
+
+	if ((error = sprom_var_defn(sc, name, &nv, &sv, &req_size)))
+		return (error);
+
+	/* Provide required size */
+	if (len != req_size)
+		return (EINVAL);
+
+	/* Write data */
+	for (size_t i = 0; i < sv->num_offsets; i++) {
+		const struct bhnd_sprom_offset	*off;
+		uint32_t			 val;
+		
+		off = &sv->offsets[i];		
+		KASSERT(!off->cont || i > 0, ("cont marked on first offset"));
+
+		/* If not a continuation, advance the input pointer */
+		if (i > 0 && !off->cont) {
+			buf = ((const uint8_t *)buf) +
+			    bhnd_nvram_type_width(sv->offsets[i-1].type);
+		}
+
+		/* Read the value, widening to a common uint32
+		 * representation */
+		SPROM_SWITCH_TYPE(nv->type, SPROM_SETVAR_READ, off, buf, val);
+
+		/* Write the value, narrowing to the appropriate output
+		 * width. */
+		SPROM_SWITCH_TYPE(off->type, SPROM_SETVAR_WRITE, sc, off, val);
+	}
+
+	/* Update CRC */
+	crc = ~bhnd_nvram_crc8(sc->sp_shadow, SPROM_CRC_LEN(sc),
+	    BHND_NVRAM_CRC8_INITIAL);
+	SPROM_WRITE_1(sc, SPROM_CRC_OFF(sc), crc);
 
 	return (0);
 }

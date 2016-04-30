@@ -51,6 +51,8 @@ int	bhnd_sprom_init(struct bhnd_sprom *sprom, struct bhnd_resource *r,
 void	bhnd_sprom_fini(struct bhnd_sprom *sprom);
 
 int	bhnd_sprom_getvar(struct bhnd_sprom *sc, const char *name, void *buf,
-	    size_t *size);
+	    size_t *len);
+int	bhnd_sprom_setvar(struct bhnd_sprom *sc, const char *name,
+	    const void *buf, size_t len);
 
 #endif /* _BHND_NVRAM_BHND_SPROM_H_ */
