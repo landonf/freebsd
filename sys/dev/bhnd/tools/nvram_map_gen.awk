@@ -53,12 +53,12 @@ BEGIN {
 	FMT["led_dc"]	= "BHND_NVRAM_VFMT_LEDDC"
 
 	# Data Type Constants
-	DTYPE["u8"]	= "BHND_NVRAM_DT_UINT"
-	DTYPE["u16"]	= "BHND_NVRAM_DT_UINT"
-	DTYPE["u32"]	= "BHND_NVRAM_DT_UINT"
-	DTYPE["i8"]	= "BHND_NVRAM_DT_SINT"
-	DTYPE["i16"]	= "BHND_NVRAM_DT_SINT"
-	DTYPE["i32"]	= "BHND_NVRAM_DT_SINT"
+	DTYPE["u8"]	= "BHND_NVRAM_DT_UINT8"
+	DTYPE["u16"]	= "BHND_NVRAM_DT_UINT16"
+	DTYPE["u32"]	= "BHND_NVRAM_DT_UINT32"
+	DTYPE["i8"]	= "BHND_NVRAM_DT_INT8"
+	DTYPE["i16"]	= "BHND_NVRAM_DT_INT16"
+	DTYPE["i32"]	= "BHND_NVRAM_DT_INT32"
 	DTYPE["char"]	= "BHND_NVRAM_DT_CHAR"
 
 	# Default masking for standard types
@@ -125,7 +125,7 @@ BEGIN {
 	# Segment array keys
 	SEG_ADDR	= "seg_addr"
 	SEG_COUNT	= "seg_count"
-	SEG_WIDTH	= "seg_width"
+	SEG_TYPE	= "seg_type"
 	SEG_MASK	= "seg_mask"
 	SEG_SHIFT	= "seg_shift"
 
@@ -206,13 +206,13 @@ function gen_var_rev_body (v, revk, base_addr)
 
 			for (seg_n = 0; seg_n < vars[segk,SEG_COUNT]; seg_n++) {
 				seg_addr = vars[segk,SEG_ADDR]
-				seg_addr += vars[segk,SEG_WIDTH] * seg_n
+				seg_addr += TSIZE[vars[segk,SEG_TYPE]] * seg_n
 
 				printi()
 				printf("{%s, %s, %s, %s, %s},\n",
 				base_addr seg_addr,
 				(seg > 0) ? "true" : "false",
-				vars[segk,SEG_WIDTH],
+				DTYPE[vars[segk,SEG_TYPE]],
 				vars[segk,SEG_SHIFT],
 				vars[segk,SEG_MASK])
 				num_offs_written++
@@ -789,7 +789,7 @@ function parse_offset_segment (revk, offk)
 	if (offset !~ HEX_REGEX)
 		error("invalid offset value '" offset "'")
 
-	# extract byte count[] and width
+	# extract byte count[], base type, and width
 	if (match(type, ARRAY_REGEX"$") > 0) {
 		count = int(substr(type, RSTART+1, RLENGTH-2))
 		type = substr(type, 1, RSTART-1)
@@ -837,11 +837,11 @@ function parse_offset_segment (revk, offk)
 
 	vars[segk,SEG_ADDR]	= offset + (width * _oi)
 	vars[segk,SEG_COUNT]	= count
-	vars[segk,SEG_WIDTH]	= width
+	vars[segk,SEG_TYPE]	= type
 	vars[segk,SEG_MASK]	= mask
 	vars[segk,SEG_SHIFT]	= shift
 
-	debug("{"vars[segk,SEG_ADDR]", "width", "mask", "shift"}" \
+	debug("{"vars[segk,SEG_ADDR]", "type", "mask", "shift"}" \
 		_comma)
 }
 

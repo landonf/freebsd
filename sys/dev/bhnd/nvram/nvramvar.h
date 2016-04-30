@@ -34,19 +34,23 @@
 
 /** NVRAM Primitive data types */
 typedef enum {
-	BHND_NVRAM_DT_UINT,	/**< unsigned integer */
-	BHND_NVRAM_DT_SINT,	/**< signed integer */
-	BHND_NVRAM_DT_CHAR,	/**< ASCII char */
+	BHND_NVRAM_DT_UINT8	= 0,	/**< unsigned 8-bit integer */
+	BHND_NVRAM_DT_UINT16	= 1,	/**< unsigned 16-bit integer */
+	BHND_NVRAM_DT_UINT32	= 2,	/**< unsigned 32-bit integer */
+	BHND_NVRAM_DT_INT8	= 3,	/**< signed 8-bit integer */
+	BHND_NVRAM_DT_INT16	= 4,	/**< signed 16-bit integer */
+	BHND_NVRAM_DT_INT32	= 5,	/**< signed 32-bit integer */
+	BHND_NVRAM_DT_CHAR	= 6,	/**< ASCII char */
 } bhnd_nvram_dt;
 
 /** NVRAM data type string representations */
 typedef enum {
-	BHND_NVRAM_VFMT_HEX,		/**< hex format */
-	BHND_NVRAM_VFMT_DEC,		/**< decimal format */
-	BHND_NVRAM_VFMT_MACADDR,	/**< mac address (canonical form, hex octets,
+	BHND_NVRAM_VFMT_HEX	= 1,	/**< hex format */
+	BHND_NVRAM_VFMT_DEC	= 2,	/**< decimal format */
+	BHND_NVRAM_VFMT_MACADDR	= 3,	/**< mac address (canonical form, hex octets,
 					     seperated with ':') */
-	BHND_NVRAM_VFMT_LEDDC,		/**< LED PWM duty-cycle (2 bytes -- on/off) */
-	BHND_NVRAM_VFMT_CCODE		/**< count code format (2-3 ASCII chars, or hex string) */
+	BHND_NVRAM_VFMT_LEDDC	= 4,	/**< LED PWM duty-cycle (2 bytes -- on/off) */
+	BHND_NVRAM_VFMT_CCODE	= 5	/**< count code format (2-3 ASCII chars, or hex string) */
 } bhnd_nvram_fmt;
 
 /** NVRAM variable flags */
@@ -69,7 +73,7 @@ struct bhnd_sprom_offset {
 	uint16_t	offset;	/**< byte offset within SPROM */
 	bool		cont:1;	/**< value should be bitwise OR'd with the
 				  *  previous offset descriptor */
-	uint8_t		width:7;/**< 1, 2, or 4 bytes */
+	bhnd_nvram_dt	type:7;	/**< data type */
 	int8_t		shift;	/**< shift to be applied to the value */
 	uint32_t	mask;	/**< mask to be applied to the value(s) */
 };
@@ -92,6 +96,7 @@ struct bhnd_nvram_var {
 	size_t				 num_sp_descs;	/**< number of sprom descriptors */
 };
 
+size_t				 bhnd_nvram_type_width(bhnd_nvram_dt dt);
 const struct bhnd_nvram_var	*bhnd_nvram_var_defn(const char *varname);
 
 /** Initial bhnd_nvram_crc8 value */

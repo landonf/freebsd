@@ -74,6 +74,32 @@ const uint8_t bhnd_nvram_crc8_tab[] = {
 
 
 /**
+ * Return the size of type @p dt.
+ * 
+ * @param dt NVRAM data type.
+ * @result the byte width of @p dt.
+ */
+size_t
+bhnd_nvram_type_width(bhnd_nvram_dt dt)
+{
+	switch (dt) {
+	case BHND_NVRAM_DT_INT8:
+	case BHND_NVRAM_DT_UINT8:
+	case BHND_NVRAM_DT_CHAR:
+		return (sizeof(uint8_t));
+
+	case BHND_NVRAM_DT_INT16:
+	case BHND_NVRAM_DT_UINT16:
+		return (sizeof(uint16_t));
+
+	case BHND_NVRAM_DT_INT32:
+	case BHND_NVRAM_DT_UINT32:
+		return (sizeof(uint32_t));
+	}
+}
+
+
+/**
  * Return the variable definition for @p varname, if any.
  * 
  * @param varname variable name
