@@ -1300,9 +1300,10 @@ bhndb_retain_dynamic_window(struct bhndb_softc *sc, struct resource *r)
 	    rman_get_size(r));
 	if (error) {
 		device_printf(sc->dev, "dynamic window initialization "
-			"for 0x%llx-0x%llx failed\n",
+			"for 0x%llx-0x%llx failed: %d\n",
 			(unsigned long long) r_start,
-			(unsigned long long) r_start + r_size - 1);
+			(unsigned long long) r_start + r_size - 1,
+			error);
 		return (NULL);
 	}
 
