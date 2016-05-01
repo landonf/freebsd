@@ -359,7 +359,7 @@ chipc_disable_sprom_pins(struct chipc_softc *sc)
 			cctrl |= CHIPC_CCTRL4331_EXTPA_ON_GPIO2_5;
 
 		if (CHIPC_QUIRK(sc, 4331_EXTPA2_MUX_SPROM))
-			cctrl |= ~CHIPC_CCTRL4331_EXTPA_EN2;
+			cctrl |= CHIPC_CCTRL4331_EXTPA_EN2;
 
 		bhnd_bus_write_4(sc->core, CHIPC_CHIPCTRL, cctrl);
 		return (0);
