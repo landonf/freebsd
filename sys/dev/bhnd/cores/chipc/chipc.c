@@ -52,6 +52,8 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/bhnd.h>
 
+#include "bhnd_nvram_if.h"
+
 #include "chipcreg.h"
 #include "chipcvar.h"
 
@@ -417,6 +419,45 @@ chipc_nvram_src(device_t dev)
 	return (BHND_NVRAM_SRC_UNKNOWN);
 }
 
+static int
+chipc_nvram_getvar(device_t dev, const char *name, void *buf, size_t *len)
+{
+	struct chipc_softc *sc = device_get_softc(dev);
+
+	switch (chipc_nvram_src(dev)) {
+	case BHND_NVRAM_SRC_SPROM:
+		return (bhnd_sprom_getvar(&sc->sprom, name, buf, len));
+
+	case BHND_NVRAM_SRC_OTP:
+	case BHND_NVRAM_SRC_NFLASH:
+		/* Currently unsupported */
+		return (ENXIO);
+
+	case BHND_NVRAM_SRC_UNKNOWN:
+		return (ENODEV);
+	}
+}
+
+static int
+chipc_nvram_setvar(device_t dev, const char *name, const void *buf,
+    size_t len)
+{
+	struct chipc_softc *sc = device_get_softc(dev);
+
+	switch (chipc_nvram_src(dev)) {
+	case BHND_NVRAM_SRC_SPROM:
+		return (bhnd_sprom_setvar(&sc->sprom, name, buf, len));
+
+	case BHND_NVRAM_SRC_OTP:
+	case BHND_NVRAM_SRC_NFLASH:
+		/* Currently unsupported */
+		return (ENXIO);
+
+	case BHND_NVRAM_SRC_UNKNOWN:
+		return (ENODEV);
+	}
+}
+
 static device_method_t chipc_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,		chipc_probe),
@@ -427,6 +468,10 @@ static device_method_t chipc_methods[] = {
 	
 	/* ChipCommon interface */
 	DEVMETHOD(bhnd_chipc_nvram_src,	chipc_nvram_src),
+
+	/* NVRAM interface */
+	DEVMETHOD(bhnd_nvram_getvar,	chipc_nvram_getvar),
+	DEVMETHOD(bhnd_nvram_setvar,	chipc_nvram_setvar),
 
 	DEVMETHOD_END
 };

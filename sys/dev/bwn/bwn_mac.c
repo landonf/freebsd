@@ -97,6 +97,12 @@ bwn_attach(device_t dev)
 	r = sc->res[0];
 	device_printf(dev, "got rid=%d res=%p\n", sc->rspec[0].rid, r);
 
+	uint8_t	macaddr[6];
+	if ((error = bhnd_get_nvram_var(dev, "macaddr", macaddr, sizeof(macaddr))))
+		return (error);
+	
+	device_printf(dev, "got macaddr %6D\n", macaddr, ":");
+
 	return (0);
 }
 

@@ -49,11 +49,10 @@ __FBSDID("$FreeBSD$");
 #include <dev/pci/pcivar.h>
 
 #include <dev/bhnd/bhnd.h>
-
 #include <dev/bhnd/cores/pci/bhnd_pci_hostbvar.h>
-
 #include <dev/bhnd/nvram/bhnd_spromvar.h>
 
+#include "bhnd_nvram_if.h"
 #include "bhndb_pcireg.h"
 #include "bhndb_pcivar.h"
 
@@ -134,6 +133,20 @@ bhndb_pci_sprom_detach(device_t dev)
 	return (0);
 }
 
+static int
+bhndb_pci_sprom_getvar(device_t dev, const char *name, void *buf, size_t *len)
+{
+	struct bhndb_pci_sprom_softc *sc = device_get_softc(dev);
+	return (bhnd_sprom_getvar(&sc->sprom, name, buf, len));
+}
+
+static int
+bhndb_pci_sprom_setvar(device_t dev, const char *name, const void *buf,
+    size_t len)
+{
+	struct bhndb_pci_sprom_softc *sc = device_get_softc(dev);
+	return (bhnd_sprom_setvar(&sc->sprom, name, buf, len));
+}
 
 static device_method_t bhndb_pci_sprom_methods[] = {
 	/* Device interface */
@@ -144,7 +157,8 @@ static device_method_t bhndb_pci_sprom_methods[] = {
 	DEVMETHOD(device_detach,		bhndb_pci_sprom_detach),
 
 	/* NVRAM interface */
-	// TODO
+	DEVMETHOD(bhnd_nvram_getvar,		bhndb_pci_sprom_getvar),
+	DEVMETHOD(bhnd_nvram_setvar,		bhndb_pci_sprom_setvar),
 
 	DEVMETHOD_END
 };

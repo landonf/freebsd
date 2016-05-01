@@ -5,6 +5,7 @@
 KMOD=	bhnd_chipc
 SRCS=	chipc.c	\
 	bhnd_chipc_if.c bhnd_chipc_if.h
-SRCS+=	device_if.h bus_if.h bhnd_bus_if.h
+SRCS+=	device_if.h bus_if.h bhnd_bus_if.h \
+	bhnd_nvram_if.h
 
 .include <bsd.kmod.mk>

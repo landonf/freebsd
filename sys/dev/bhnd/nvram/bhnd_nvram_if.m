@@ -54,6 +54,8 @@ INTERFACE bhnd_nvram;
  * @retval ENOENT	The requested variable was not found.
  * @retval ENOMEM	If @p buf is non-NULL and a buffer of @p len is too
  *			small to hold the requested value.
+ * @retval ENODEV	If no supported NVRAM hardware is accessible via this
+ *			device.
  * @retval non-zero	If reading @p name otherwise fails, a regular unix
  *			error code will be returned.
  */
@@ -77,6 +79,8 @@ METHOD int getvar {
  * @retval 0		success
  * @retval ENOENT	The specified variable name is not recognized.
  * @retval EINVAL	If @p len does not match the expected variable size.
+ * @retval ENODEV	If no supported NVRAM hardware is accessible via this
+ *			device.
  * @retval non-zero	If reading @p name otherwise fails, a regular unix
  *			error code will be returned.
  */

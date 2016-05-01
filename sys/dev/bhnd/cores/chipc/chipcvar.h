@@ -118,6 +118,7 @@ struct chipc_softc {
 	uint32_t		 quirks;	/**< CHIPC_QUIRK_* quirk flags */
 	uint32_t		 caps;		/**< CHIPC_CAP_* capability register flags */
 	uint32_t		 cst;		/**< CHIPC_CST* status register flags */
+	bhnd_nvram_src_t	 nvram_src;	/**< NVRAM source */
 	
 	struct mtx		 mtx;		/**< state mutex. */
 

@@ -71,5 +71,12 @@ typedef enum {
 				  */
 } bhnd_nvram_src_t;
 
+/**
+ * Evaluates to true if the given NVRAM data source is accessible via
+ * ChipCommon.
+ */
+#define	BHND_NVRAM_SRC_CC(_src)	\
+	((_src) == BHND_NVRAM_SRC_OTP || (_src) == BHND_NVRAM_SRC_SPROM)
+
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_H_ */
