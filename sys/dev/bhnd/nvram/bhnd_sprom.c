@@ -239,12 +239,12 @@ do {									\
  * @param[out]		buf	On success, the requested value will be written
  *				to this buffer. This argment may be NULL if
  *				the value is not desired.
- * @param[in,out]	size	The capacity of @p buf. On success, will be set
+ * @param[in,out]	len	The capacity of @p buf. On success, will be set
  *				to the actual size of the requested value.
  *
  * @retval 0		success
  * @retval ENOENT	The requested variable was not found.
- * @retval ENOMEM	If @p buf is non-NULL and a buffer of @p size is too
+ * @retval ENOMEM	If @p buf is non-NULL and a buffer of @p len is too
  *			small to hold the requested value.
  * @retval non-zero	If reading @p name otherwise fails, a regular unix
  *			error code will be returned.
@@ -354,11 +354,11 @@ do {									\
  * @param		sc	The SPROM parser state.
  * @param		name	The SPROM variable name.
  * @param[out]		buf	The new value.
- * @param[in,out]	size	The size of @p buf.
+ * @param[in,out]	len	The size of @p buf.
  *
  * @retval 0		success
  * @retval ENOENT	The requested variable was not found.
- * @retval EINVAL	If @p size does not match the expected variable size.
+ * @retval EINVAL	If @p len does not match the expected variable size.
  */
 int
 bhnd_sprom_setvar(struct bhnd_sprom *sc, const char *name, const void *buf,
