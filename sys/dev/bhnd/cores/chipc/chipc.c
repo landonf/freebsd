@@ -422,11 +422,17 @@ chipc_nvram_src(device_t dev)
 static int
 chipc_nvram_getvar(device_t dev, const char *name, void *buf, size_t *len)
 {
-	struct chipc_softc *sc = device_get_softc(dev);
+	struct chipc_softc	*sc;
+	int			 error;
+
+	sc = device_get_softc(dev);
 
 	switch (chipc_nvram_src(dev)) {
 	case BHND_NVRAM_SRC_SPROM:
-		return (bhnd_sprom_getvar(&sc->sprom, name, buf, len));
+		CHIPC_LOCK(sc);
+		error = bhnd_sprom_getvar(&sc->sprom, name, buf, len);
+		CHIPC_UNLOCK(sc);
+		return (error);
 
 	case BHND_NVRAM_SRC_OTP:
 	case BHND_NVRAM_SRC_NFLASH:
@@ -442,11 +448,17 @@ static int
 chipc_nvram_setvar(device_t dev, const char *name, const void *buf,
     size_t len)
 {
-	struct chipc_softc *sc = device_get_softc(dev);
+	struct chipc_softc	*sc;
+	int			 error;
+
+	sc = device_get_softc(dev);
 
 	switch (chipc_nvram_src(dev)) {
 	case BHND_NVRAM_SRC_SPROM:
-		return (bhnd_sprom_setvar(&sc->sprom, name, buf, len));
+		CHIPC_LOCK(sc);
+		error = bhnd_sprom_setvar(&sc->sprom, name, buf, len);
+		CHIPC_UNLOCK(sc);
+		return (error);
 
 	case BHND_NVRAM_SRC_OTP:
 	case BHND_NVRAM_SRC_NFLASH:
