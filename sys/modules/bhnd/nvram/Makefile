@@ -3,7 +3,7 @@
 .PATH: ${.CURDIR}/../../../dev/bhnd/nvram
 
 KMOD=	bhnd_nvram
-SRCS=	bhnd_nvram_if.c bhnd_nvram_if.h
+SRCS=	bhnd_nvram_if.c bhnd_nvram_if.h bhnd_bus_if.h
 SRCS+=	bhnd_sprom.c nvram_subr.c
 SRCS+=	bhnd_nvram_map.h
 
