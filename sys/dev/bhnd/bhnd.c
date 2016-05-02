@@ -392,8 +392,8 @@ find_nvram_child(device_t dev)
 	/* Look for a directly-attached NVRAM child */
 	nvram = device_find_child(dev, devclass_get_name(bhnd_nvram_devclass),
 	    0);
-	if (nvram == NULL)
-		return (NULL);
+	if (nvram != NULL)
+		return (nvram);
 
 	/* Remaining checks are only applicable when searching a bhnd(4)
 	 * bus. */
