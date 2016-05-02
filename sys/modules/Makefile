@@ -328,6 +328,7 @@ SUBDIR=	\
 	${_sfxge} \
 	sge \
 	${_si} \
+	siba_bwn \
 	siftr \
 	siis \
 	sis \
