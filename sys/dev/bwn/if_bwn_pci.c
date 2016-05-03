@@ -48,8 +48,12 @@ __FBSDID("$FreeBSD$");
 #include "if_bwn_pcivar.h"
 
 /* If non-zero, enable attachment of BWN_QUIRK_UNTESTED devices */
-static u_int attach_untested = 0; 
+static int attach_untested = 0; 
 TUNABLE_INT("hw.bwn_pci.attach_untested", &attach_untested);
+
+/* If non-zero, probe at a higher priority than the stable if_bwn driver. */
+static int prefer_new_driver = 0; 
+TUNABLE_INT("hw.bwn_pci.preferred", &prefer_new_driver);
 
 /* SIBA Devices */
 static const struct bwn_pci_device siba_devices[] = {
@@ -158,7 +162,15 @@ bwn_pci_probe(device_t dev)
 		return (ENXIO);
 
 	device_set_desc(dev, ident->desc);
-	return (BUS_PROBE_DEFAULT);
+
+	/* Until this driver is complete, require explicit opt-in before
+	 * superceding if_bwn/siba_bwn. */
+	if (prefer_new_driver)
+		return (BUS_PROBE_DEFAULT+1);
+	else
+		return (BUS_PROBE_LOW_PRIORITY);
+
+	// return (BUS_PROBE_DEFAULT);
 }
 
 static int
@@ -265,10 +277,12 @@ static device_method_t bwn_pci_methods[] = {
 
 static devclass_t bwn_pci_devclass;
 
-DEFINE_CLASS_0(bwn_pci, bwn_pci_driver, bwn_pci_methods, sizeof(struct bwn_pci_softc));
-DRIVER_MODULE(bwn_pci, pci, bwn_pci_driver, bwn_pci_devclass, NULL, NULL);
-DRIVER_MODULE(bwn_bcmab, bwn_pci, bhndb_pci_driver, bhndb_devclass, NULL, NULL);
+DEFINE_CLASS_0(if_bwn_pci, bwn_pci_driver, bwn_pci_methods, sizeof(struct bwn_pci_softc));
+DRIVER_MODULE(if_bwn_pci, pci, bwn_pci_driver, bwn_pci_devclass, NULL, NULL);
+DRIVER_MODULE(bhndb, if_bwn_pci, bhndb_pci_driver, bhndb_devclass, NULL, NULL);
 
-MODULE_DEPEND(bwn_pci, bhndb_pci, 1, 1, 1);
-MODULE_DEPEND(bwn_pci, siba, 1, 1, 1);
-MODULE_DEPEND(bwn_pci, bcma, 1, 1, 1);
+MODULE_DEPEND(if_bwn_pci, if_bwn, 1, 1, 1);
+MODULE_DEPEND(if_bwn_pci, bhndb, 1, 1, 1);
+MODULE_DEPEND(if_bwn_pci, bhndb_pci, 1, 1, 1);
+MODULE_DEPEND(if_bwn_pci, bcma_bhndb, 1, 1, 1);
+MODULE_DEPEND(if_bwn_pci, siba_bhndb, 1, 1, 1);

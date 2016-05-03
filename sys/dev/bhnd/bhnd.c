@@ -390,8 +390,7 @@ find_nvram_child(device_t dev)
 	device_t	chipc, nvram;
 
 	/* Look for a directly-attached NVRAM child */
-	nvram = device_find_child(dev, devclass_get_name(bhnd_nvram_devclass),
-	    0);
+	nvram = device_find_child(dev, "bhnd_nvram", 0);
 	if (nvram != NULL)
 		return (nvram);
 

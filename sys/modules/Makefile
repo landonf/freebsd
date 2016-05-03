@@ -59,6 +59,7 @@ SUBDIR=	\
 	bridgestp \
 	bwi \
 	bwn \
+	bwn_pci \
 	cam \
 	${_canbepm} \
 	${_canbus} \

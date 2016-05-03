@@ -142,4 +142,6 @@ static device_method_t bwn_methods[] = {
 static devclass_t bwn_devclass;
 
 DEFINE_CLASS_0(bwn, bwn_driver, bwn_methods, sizeof(struct bwn_softc));
-DRIVER_MODULE(bwn, bhnd, bwn_driver, bwn_devclass, 0, 0);
+DRIVER_MODULE(bwn_mac, bhnd, bwn_driver, bwn_devclass, 0, 0);
+MODULE_DEPEND(bwn_mac, bhnd, 1, 1, 1);
+MODULE_VERSION(bwn_mac, 1);

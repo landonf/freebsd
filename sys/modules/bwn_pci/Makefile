@@ -1,0 +1,10 @@
+# $FreeBSD$
+
+.PATH: ${.CURDIR}/../../dev/bwn
+
+KMOD=	if_bwn_pci
+SRCS=	if_bwn_pci.c bwn_mac.c
+SRCS+=	device_if.h bus_if.h pci_if.h \
+	bhndb_bus_if.h
+
+.include <bsd.kmod.mk>

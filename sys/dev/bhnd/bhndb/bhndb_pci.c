@@ -171,7 +171,7 @@ bhndb_pci_init_full_config(device_t dev, device_t child,
 		}
 
 		/* Add sprom device */
-		dname = devclass_get_name(bhnd_nvram_devclass);
+		dname = "bhnd_nvram";
 		if ((nv_dev = BUS_ADD_CHILD(dev, 0, dname, -1)) == NULL) {
 			device_printf(dev, "failed to add sprom device\n");
 			return (ENXIO);
@@ -580,3 +580,4 @@ MODULE_VERSION(bhndb_pci, 1);
 MODULE_DEPEND(bhndb_pci, bhnd_pci_hostb, 1, 1, 1);
 MODULE_DEPEND(bhndb_pci, pci, 1, 1, 1);
 MODULE_DEPEND(bhndb_pci, bhndb, 1, 1, 1);
+MODULE_DEPEND(bhndb_pci, bhnd, 1, 1, 1);
