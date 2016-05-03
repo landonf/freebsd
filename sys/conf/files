@@ -2438,8 +2438,7 @@ dev/si/si_pci.c			optional si pci
 dev/siba/siba.c			optional siba !bhnd !bhndbus
 dev/siba/siba_bwn.c		optional siba_bwn pci
 dev/siba/siba_cc.c		optional siba !bhnd !bhndbus
-dev/siba/siba_core.c		optional siba !bhnd !bhndbus | \
-					 siba_bwn pci !bhnd !bhndbus
+dev/siba/siba_core.c		optional siba | siba_bwn pci
 dev/siba/siba_pcib.c		optional siba pci !bhnd !bhndbus
 dev/siis/siis.c			optional siis pci
 dev/sis/if_sis.c		optional sis pci
