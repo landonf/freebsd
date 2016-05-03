@@ -59,7 +59,7 @@ static const struct bwn_device {
 	uint16_t	 device;
 } bwn_devices[] = {
 	{ BHND_MFGID_BCM,	BHND_COREID_D11 },
-	{ BHND_COREID_INVALID }
+	{ BHND_MFGID_INVALID,	BHND_COREID_INVALID }
 };
 
 static int
