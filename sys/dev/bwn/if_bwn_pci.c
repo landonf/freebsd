@@ -277,12 +277,12 @@ static device_method_t bwn_pci_methods[] = {
 
 static devclass_t bwn_pci_devclass;
 
-DEFINE_CLASS_0(if_bwn_pci, bwn_pci_driver, bwn_pci_methods, sizeof(struct bwn_pci_softc));
-DRIVER_MODULE(if_bwn_pci, pci, bwn_pci_driver, bwn_pci_devclass, NULL, NULL);
-DRIVER_MODULE(bhndb, if_bwn_pci, bhndb_pci_driver, bhndb_devclass, NULL, NULL);
+DEFINE_CLASS_0(bwn_pci, bwn_pci_driver, bwn_pci_methods, sizeof(struct bwn_pci_softc));
+DRIVER_MODULE(bwn_pci, pci, bwn_pci_driver, bwn_pci_devclass, NULL, NULL);
+DRIVER_MODULE(bhndb, bwn_pci, bhndb_pci_driver, bhndb_devclass, NULL, NULL);
 
-MODULE_DEPEND(if_bwn_pci, if_bwn, 1, 1, 1);
-MODULE_DEPEND(if_bwn_pci, bhndb, 1, 1, 1);
-MODULE_DEPEND(if_bwn_pci, bhndb_pci, 1, 1, 1);
-MODULE_DEPEND(if_bwn_pci, bcma_bhndb, 1, 1, 1);
-MODULE_DEPEND(if_bwn_pci, siba_bhndb, 1, 1, 1);
+MODULE_DEPEND(bwn_pci, bwn, 1, 1, 1);
+MODULE_DEPEND(bwn_pci, bhndb, 1, 1, 1);
+MODULE_DEPEND(bwn_pci, bhndb_pci, 1, 1, 1);
+MODULE_DEPEND(bwn_pci, bcma_bhndb, 1, 1, 1);
+MODULE_DEPEND(bwn_pci, siba_bhndb, 1, 1, 1);

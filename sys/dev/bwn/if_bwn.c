@@ -6881,9 +6881,9 @@ static driver_t bwn_driver = {
 	sizeof(struct bwn_softc)
 };
 static devclass_t bwn_devclass;
-DRIVER_MODULE(if_bwn, siba_bwn, bwn_driver, bwn_devclass, 0, 0);
-MODULE_DEPEND(if_bwn, siba_bwn, 1, 1, 1);
-MODULE_DEPEND(if_bwn, wlan, 1, 1, 1);		/* 802.11 media layer */
-MODULE_DEPEND(if_bwn, firmware, 1, 1, 1);		/* firmware support */
-MODULE_DEPEND(if_bwn, wlan_amrr, 1, 1, 1);
-MODULE_VERSION(if_bwn, 1);
+DRIVER_MODULE(bwn, siba_bwn, bwn_driver, bwn_devclass, 0, 0);
+MODULE_DEPEND(bwn, siba_bwn, 1, 1, 1);
+MODULE_DEPEND(bwn, wlan, 1, 1, 1);		/* 802.11 media layer */
+MODULE_DEPEND(bwn, firmware, 1, 1, 1);		/* firmware support */
+MODULE_DEPEND(bwn, wlan_amrr, 1, 1, 1);
+MODULE_VERSION(bwn, 1);

@@ -185,6 +185,7 @@ bhnd_pci_hostb_attach(device_t dev)
 		return (error);
 	}
 
+
 	return (0);
 }
 
@@ -444,7 +445,9 @@ static device_method_t bhnd_pci_hostb_methods[] = {
 
 DEFINE_CLASS_1(bhnd_pci_hostb, bhnd_pci_hostb_driver, bhnd_pci_hostb_methods, 
     sizeof(struct bhnd_pcihb_softc), bhnd_pci_driver);
-DRIVER_MODULE(bhnd_pci_hostb, bhnd, bhnd_pci_hostb_driver, bhnd_hostb_devclass, 0, 0);
-MODULE_DEPEND(bhnd_pci_hostb, bhnd_pci, 1, 1, 1);
-MODULE_DEPEND(bhnd_pci_hostb, bhnd, 1, 1, 1);
+
+DRIVER_MODULE(bhnd_hostb, bhnd, bhnd_pci_hostb_driver, bhnd_hostb_devclass, 0, 0);
+
 MODULE_VERSION(bhnd_pci_hostb, 1);
+MODULE_DEPEND(bhnd_pci_hostb, bhnd, 1, 1, 1);
+MODULE_DEPEND(bhnd_pci_hostb, bhnd_pci, 1, 1, 1);

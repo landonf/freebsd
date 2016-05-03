@@ -54,7 +54,7 @@ enum {
 
 	/**
 	 * Early dual-band devices did not support accessing multiple PHYs
-	 * from a single WLAN core, and instead used seperate 2GHz and 5GHz
+	 * from a single WLAN core, and instead used separate 2GHz and 5GHz
 	 * WLAN cores.
 	 * 
 	 * However, not all cards with two WLAN cores are fully populated;
