@@ -48,7 +48,7 @@ typedef enum {
 	BHND_NVRAM_VFMT_HEX	= 1,	/**< hex format */
 	BHND_NVRAM_VFMT_DEC	= 2,	/**< decimal format */
 	BHND_NVRAM_VFMT_MACADDR	= 3,	/**< mac address (canonical form, hex octets,
-					     seperated with ':') */
+					     separated with ':') */
 	BHND_NVRAM_VFMT_LEDDC	= 4,	/**< LED PWM duty-cycle (2 bytes -- on/off) */
 	BHND_NVRAM_VFMT_CCODE	= 5	/**< count code format (2-3 ASCII chars, or hex string) */
 } bhnd_nvram_fmt;
