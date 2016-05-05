@@ -5643,6 +5643,11 @@ pci_cfg_restore(device_t dev, struct pci_devinfo *dinfo)
 		pci_resume_msi(dev);
 	if (dinfo->cfg.msix.msix_location != 0)
 		pci_resume_msix(dev);
+
+#ifdef PCI_IOV
+	if (dinfo->cfg.iov != NULL)
+		pci_iov_cfg_restore(dev, dinfo);
+#endif
 }
 
 static void
@@ -5754,6 +5759,11 @@ pci_cfg_save(device_t dev, struct pci_devinfo *dinfo, int setstate)
 
 	if (dinfo->cfg.pcix.pcix_location != 0)
 		pci_cfg_save_pcix(dev, dinfo);
+
+#ifdef PCI_IOV
+	if (dinfo->cfg.iov != NULL)
+		pci_iov_cfg_save(dev, dinfo);
+#endif
 
 	/*
 	 * don't set the state for display devices, base peripherals and
