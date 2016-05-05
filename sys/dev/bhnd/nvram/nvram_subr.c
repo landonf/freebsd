@@ -110,10 +110,35 @@ bhnd_nvram_type_width(bhnd_nvram_dt dt)
 const struct bhnd_nvram_var *
 bhnd_nvram_var_defn(const char *varname)
 {
-	/* Search the definition table */
-	for (size_t i = 0; i < nitems(bhnd_nvram_vars); i++) {
-		if (strcmp(varname, bhnd_nvram_vars[i].name) == 0)
-			return (&bhnd_nvram_vars[i]);
+	size_t	min, mid, max;
+	int	order;
+
+	/*
+	 * Locate the requested variable using a binary search.
+	 * 
+	 * The variable table is guaranteed to be sorted in lexicographical
+	 * order (using the 'C' locale for collation rules)
+	 */
+	min = 0;
+	mid = 0;
+	max = nitems(bhnd_nvram_vars) - 1;
+
+	while (max >= min) {
+		/* Select midpoint */
+		mid = (min + max) / 2;
+
+		/* Determine which side of the partition to search */
+		order = strcmp(bhnd_nvram_vars[mid].name, varname);
+		if (order < 0) {
+			/* Search upper partition */
+			min = mid + 1;
+		} else if (order > 0) {
+			/* Search lower partition */
+			max = mid - 1;
+		} else if (order == 0) {
+			/* Match found */
+			return (&bhnd_nvram_vars[mid]);
+		}
 	}
 
 	/* Not found */
