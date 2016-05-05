@@ -423,8 +423,6 @@ function _qsort (array, first, last)
 	if (first >= last)
 		return
 
-	printf("qsort: %u %u\n", first, last);
-
 	# select pivot element
 	_qpivot = int(first + int((last-first+1) * rand()))
 	_qleft = first
