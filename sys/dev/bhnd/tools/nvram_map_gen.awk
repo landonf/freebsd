@@ -40,6 +40,9 @@ BEGIN {
 	symbols[depth,"_file"] = FILENAME
 	num_output_vars = 0
 
+	# Seed rand()
+	srand()
+
 	# Enable debug output
 	DEBUG = 0
 
@@ -340,17 +343,17 @@ function gen_struct_vars (st_vid)
 
 
 END {
-	# skip completion handling if exiting from an error
+	# Skip completion handling if exiting from an error
 	if (_EARLY_EXIT)
 		exit 1
 
-	# check for complete block closure
+	# Check for complete block closure
 	if (depth > 0) {
 		block_start = g(STATE_LINENO)
 		errorx("missing '}' for block opened on line " block_start "")
 	}
 
-	# generate concrete variable definitions for all struct variables
+	# Generate concrete variable definitions for all struct variables
 	for (v in var_names) {
 		if (vars[v,VAR_STRUCT] != null) {
 			gen_struct_vars(v)
@@ -358,6 +361,10 @@ END {
 			output_vars[num_output_vars++] = v
 		}
 	}
+
+	# Apply lexicographical sorting. To support more effecient table
+	# searching, we guarantee a stable sort order (using C collation).
+	sort(output_vars)
 
 	printf("static const struct bhnd_nvram_var bhnd_nvram_vars[] = {\n")
 	output_depth = 1
@@ -391,6 +398,64 @@ function join (array, sep, count)
 		_result = _result sep array[_ji]
 
 	return (_result)
+}
+
+#
+# Sort a contiguous integer-indexed array, using standard awk comparison
+# operators over its values.
+#
+function sort (array) {
+	# determine array size
+	_sort_alen = 0
+
+	for (_ssort_key in array)
+		_sort_alen++
+
+	if (_sort_alen <= 1)
+		return
+
+	# perform sort
+	_qsort(array, 0, _sort_alen-1)
+}
+
+function _qsort (array, first, last)
+{
+	if (first >= last)
+		return
+
+	printf("qsort: %u %u\n", first, last);
+
+	# select pivot element
+	_qpivot = int(first + int((last-first+1) * rand()))
+	_qleft = first
+	_qright = last
+
+	_qpivot_val = array[_qpivot]
+
+	# partition
+	while (_qleft <= _qright) {
+		while (array[_qleft] < _qpivot_val)
+			_qleft++
+
+		while (array[_qright] > _qpivot_val)
+			_qright--
+
+		# swap
+		if (_qleft <= _qright) {
+			_qleft_val = array[_qleft]
+			_qright_val = array[_qright]
+			
+			array[_qleft] = _qright_val
+			array[_qright] = _qleft_val
+
+			_qleft++
+			_qright--
+		}
+	}
+
+	# sort the partitions
+	_qsort(array, first, _qright)
+	_qsort(array, _qleft, last)
 }
 
 #
