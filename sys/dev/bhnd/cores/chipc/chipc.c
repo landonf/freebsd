@@ -126,9 +126,10 @@ static struct bhnd_chip_quirk chipc_chip_quirks[] = {
 #define	CHIPC_ASSERT_CAP(_sc, name)	\
     KASSERT(CHIPC_CAP((_sc), name), ("capability " __STRING(_name) " not set"))
 
-static int	chipc_sprom_init(struct chipc_softc *);
-static int	chipc_enable_sprom_pins(struct chipc_softc *);
-static int	chipc_disable_sprom_pins(struct chipc_softc *);
+static bhnd_nvram_src_t	chipc_nvram_identify(struct chipc_softc *sc);
+static int		chipc_sprom_init(struct chipc_softc *);
+static int		chipc_enable_sprom_pins(struct chipc_softc *);
+static int		chipc_disable_sprom_pins(struct chipc_softc *);
 
 
 static int
@@ -193,9 +194,30 @@ chipc_attach(device_t dev)
 	sc->caps = bhnd_bus_read_4(sc->core, CHIPC_CAPABILITIES);
 	sc->cst = bhnd_bus_read_4(sc->core, CHIPC_CHIPST);
 
-	/* Read SPROM data */
-	if ((error = chipc_sprom_init(sc)))
-		goto cleanup;
+	/* Identify NVRAM source */
+	sc->nvram_src = chipc_nvram_identify(sc);
+
+	/* Read NVRAM data */
+	switch (sc->nvram_src) {
+	case BHND_NVRAM_SRC_OTP:
+		// TODO (requires access to OTP hardware)
+		device_printf(sc->dev, "NVRAM-OTP unsupported\n");
+		break;
+
+	case BHND_NVRAM_SRC_NFLASH:
+		// TODO (requires access to NFLASH hardware)
+		device_printf(sc->dev, "NVRAM-NFLASH unsupported\n");
+		break;
+
+	case BHND_NVRAM_SRC_SPROM:
+		if ((error = chipc_sprom_init(sc)))
+			goto cleanup;
+		break;
+
+	case BHND_NVRAM_SRC_UNKNOWN:
+		/* Handled externally */
+		break;
+	}
 
 	return (0);
 	
@@ -241,25 +263,8 @@ chipc_sprom_init(struct chipc_softc *sc)
 {
 	int	error;
 
-	/* Verify NVRAM source is supported. */
-	switch (bhnd_chipc_nvram_src(sc->dev)) {
-	case BHND_NVRAM_SRC_UNKNOWN:
-		/* SPROM is handled externally */
-		return (0);
-
-	case BHND_NVRAM_SRC_NFLASH:
-		/* Implementation requires access to this hardware */
-		device_printf(sc->dev, "Flash NVRAM unsupported\n");
-		return (ENXIO);
-		
-	case BHND_NVRAM_SRC_OTP:
-		/* Implementation requires access to this hardware */
-		device_printf(sc->dev, "OTP NVRAM unsupported\n");
-		return (ENXIO);
-
-	case BHND_NVRAM_SRC_SPROM:
-		break;
-	}
+	KASSERT(sc->nvram_src == BHND_NVRAM_SRC_SPROM,
+	    ("non-SPROM source (%u)\n", sc->nvram_src));
 
 	/* Enable access to the SPROM */
 	CHIPC_LOCK(sc);
@@ -289,6 +294,50 @@ failed:
 	CHIPC_UNLOCK(sc);
 	return (error);
 }
+
+/**
+ * Determine the NVRAM data source for this device.
+ *
+ * @param sc chipc driver state.
+ */
+static bhnd_nvram_src_t
+chipc_nvram_identify(struct chipc_softc *sc)
+{
+	uint32_t		 srom_ctrl;
+
+	/* Very early devices vend SPROM/OTP/CIS (if at all) via the
+	 * host bridge interface instead of ChipCommon. */
+	if (!CHIPC_QUIRK(sc, SUPPORTS_SPROM))
+		return (BHND_NVRAM_SRC_UNKNOWN);
+
+	/*
+	 * Later chipset revisions standardized the SPROM capability flags and
+	 * register interfaces.
+	 * 
+	 * We check for hardware presence in order of precedence. For example,
+	 * SPROM is is always used in preference to internal OTP if found.
+	 */
+	if (CHIPC_CAP(sc, CAP_SPROM)) {
+		srom_ctrl = bhnd_bus_read_4(sc->core, CHIPC_SPROM_CTRL);
+		if (srom_ctrl & CHIPC_SRC_PRESENT)
+			return (BHND_NVRAM_SRC_SPROM);
+	}
+
+	/* Check for OTP */
+	if (CHIPC_CAP(sc, CAP_OTP_SIZE))
+		return (BHND_NVRAM_SRC_OTP);
+
+	/*
+	 * Finally, Northstar chipsets (and possibly other chipsets?) support
+	 * external NAND flash. 
+	 */
+	if (CHIPC_QUIRK(sc, SUPPORTS_NFLASH) && CHIPC_CAP(sc, CAP_NFLASH))
+		return (BHND_NVRAM_SRC_NFLASH);
+
+	/* No NVRAM hardware capability declared */
+	return (BHND_NVRAM_SRC_UNKNOWN);
+}
+
 
 /**
  * If required by this device, enable access to the SPROM.
@@ -375,48 +424,11 @@ chipc_disable_sprom_pins(struct chipc_softc *sc)
 	return (ENXIO);
 }
 
-/**
- * Determine the preferred NVRAM data source.
- */
 static bhnd_nvram_src_t
 chipc_nvram_src(device_t dev)
 {
-	struct chipc_softc	*sc;
-	uint32_t		 srom_ctrl;
-
-	sc = device_get_softc(dev);
-
-	/* Very early devices vend SPROM/OTP/CIS (if at all) via the
-	 * host bridge interface instead of ChipCommon. */
-	if (!CHIPC_QUIRK(sc, SUPPORTS_SPROM))
-		return (BHND_NVRAM_SRC_UNKNOWN);
-
-	/*
-	 * Later chipset revisions standardized the SPROM capability flags and
-	 * register interfaces.
-	 * 
-	 * We check for hardware presence in order of precedence. For example,
-	 * SPROM is is always used in preference to internal OTP if found.
-	 */
-	if (CHIPC_CAP(sc, CAP_SPROM)) {
-		srom_ctrl = bhnd_bus_read_4(sc->core, CHIPC_SPROM_CTRL);
-		if (srom_ctrl & CHIPC_SRC_PRESENT)
-			return (BHND_NVRAM_SRC_SPROM);
-	}
-
-	/* Check for OTP */
-	if (CHIPC_CAP(sc, CAP_OTP_SIZE))
-		return (BHND_NVRAM_SRC_OTP);
-
-	/*
-	 * Finally, Northstar chipsets (and possibly other chipsets?) support
-	 * external NAND flash. 
-	 */
-	if (CHIPC_QUIRK(sc, SUPPORTS_NFLASH) && CHIPC_CAP(sc, CAP_NFLASH))
-		return (BHND_NVRAM_SRC_NFLASH);
-
-	/* No NVRAM hardware capability declared */
-	return (BHND_NVRAM_SRC_UNKNOWN);
+	struct chipc_softc *sc = device_get_softc(dev);
+	return (sc->nvram_src);
 }
 
 static int
@@ -427,7 +439,7 @@ chipc_nvram_getvar(device_t dev, const char *name, void *buf, size_t *len)
 
 	sc = device_get_softc(dev);
 
-	switch (chipc_nvram_src(dev)) {
+	switch (sc->nvram_src) {
 	case BHND_NVRAM_SRC_SPROM:
 		CHIPC_LOCK(sc);
 		error = bhnd_sprom_getvar(&sc->sprom, name, buf, len);
@@ -453,7 +465,7 @@ chipc_nvram_setvar(device_t dev, const char *name, const void *buf,
 
 	sc = device_get_softc(dev);
 
-	switch (chipc_nvram_src(dev)) {
+	switch (sc->nvram_src) {
 	case BHND_NVRAM_SRC_SPROM:
 		CHIPC_LOCK(sc);
 		error = bhnd_sprom_setvar(&sc->sprom, name, buf, len);
