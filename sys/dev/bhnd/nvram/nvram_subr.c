@@ -34,7 +34,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/types.h>
 #include <sys/systm.h>
 
-#include "bhnd_nvram_map.h"
+#include "bhnd_nvram_map_data.h"
 
 /*
  * CRC-8 lookup table used to checksum SPROM and NVRAM data via
