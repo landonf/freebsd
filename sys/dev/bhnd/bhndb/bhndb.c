@@ -1942,6 +1942,28 @@ static device_method_t bhndb_methods[] = {
 	DEVMETHOD(bhnd_bus_write_1,		bhndb_bus_write_1),
 	DEVMETHOD(bhnd_bus_write_2,		bhndb_bus_write_2),
 	DEVMETHOD(bhnd_bus_write_4,		bhndb_bus_write_4),
+
+	DEVMETHOD(bhnd_bus_read_stream_1,	bhndb_bus_read_stream_1),
+	DEVMETHOD(bhnd_bus_read_stream_2,	bhndb_bus_read_stream_2),
+	DEVMETHOD(bhnd_bus_read_stream_4,	bhndb_bus_read_stream_4),
+	DEVMETHOD(bhnd_bus_write_stream_1,	bhndb_bus_write_stream_1),
+	DEVMETHOD(bhnd_bus_write_stream_2,	bhndb_bus_write_stream_2),
+	DEVMETHOD(bhnd_bus_write_stream_4,	bhndb_bus_write_stream_4),
+
+	DEVMETHOD(bhnd_bus_read_multi_1,	bhndb_bus_read_multi_1),
+	DEVMETHOD(bhnd_bus_read_multi_2,	bhndb_bus_read_multi_2),
+	DEVMETHOD(bhnd_bus_read_multi_4,	bhndb_bus_read_multi_4),
+	DEVMETHOD(bhnd_bus_write_multi_1,	bhndb_bus_write_multi_1),
+	DEVMETHOD(bhnd_bus_write_multi_2,	bhndb_bus_write_multi_2),
+	DEVMETHOD(bhnd_bus_write_multi_4,	bhndb_bus_write_multi_4),
+	
+	DEVMETHOD(bhnd_bus_read_multi_stream_1,	bhndb_bus_read_multi_stream_1),
+	DEVMETHOD(bhnd_bus_read_multi_stream_2,	bhndb_bus_read_multi_stream_2),
+	DEVMETHOD(bhnd_bus_read_multi_stream_4,	bhndb_bus_read_multi_stream_4),
+	DEVMETHOD(bhnd_bus_write_multi_stream_1,bhndb_bus_write_multi_stream_1),
+	DEVMETHOD(bhnd_bus_write_multi_stream_2,bhndb_bus_write_multi_stream_2),
+	DEVMETHOD(bhnd_bus_write_multi_stream_4,bhndb_bus_write_multi_stream_4),
+
 	DEVMETHOD(bhnd_bus_barrier,		bhndb_bus_barrier),
 
 	DEVMETHOD_END
