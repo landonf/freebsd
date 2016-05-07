@@ -128,6 +128,8 @@ struct bhnd_board_info {
 					  *  NVRAM.
 					  */
 	uint16_t	board_rev;	/**< Board revision. */
+	uint8_t		board_srom_rev;	/**< Board SROM format revision */
+
 	uint32_t	board_flags;	/**< Board flags (see BHND_BFL_*) */
 	uint32_t	board_flags2;	/**< Board flags 2 (see BHND_BFL2_*) */
 	uint32_t	board_flags3;	/**< Board flags 3 (see BHND_BFL3_*) */
@@ -261,20 +263,21 @@ struct bhnd_core_match {
 /**
  * A chipset match descriptor.
  * 
- * @warning Matching on board attributes relies on NVRAM access, and will fail
- * if a valid NVRAM device cannot be found, or is not yet attached.
+ * @warning Matching on board/nvram attributes relies on NVRAM access, and will
+ * fail if a valid NVRAM device cannot be found, or is not yet attached.
  */
 struct bhnd_chip_match {
 	/** Select fields to be matched */
-	uint8_t
+	uint16_t
 		match_id:1,
 		match_rev:1,
 		match_pkg:1,
 		match_bvendor:1,
 		match_btype:1,
 		match_brev:1,
+		match_srom_rev:1,
 		match_any:1,
-		match_flags_unused:1;
+		match_flags_unused:8;
 
 	uint16_t		chip_id;	/**< required chip id */
 	struct bhnd_hwrev_match	chip_rev;	/**< matching chip revisions */
@@ -283,6 +286,8 @@ struct bhnd_chip_match {
 	uint16_t		board_vendor;	/**< required board vendor */
 	uint16_t		board_type;	/**< required board type */
 	struct bhnd_hwrev_match	board_rev;	/**< matching board revisions */
+
+	struct bhnd_hwrev_match	board_srom_rev;	/**< matching board srom revisions */
 };
 
 #define	BHND_CHIP_MATCH_ANY		\
@@ -291,8 +296,9 @@ struct bhnd_chip_match {
 #define	BHND_CHIP_MATCH_IS_ANY(_m)	\
 	((_m)->match_any == 1)
 
-#define	BHND_CHIP_MATCH_REQ_BOARD_INFO(_m)	\
-	((_m)->match_bvendor || (_m)->match_btype || (_m)->match_brev)
+#define	BHND_CHIP_MATCH_REQ_BOARD_INFO(_m)		\
+	((_m)->match_srom_rev || (_m)->match_bvendor ||	\
+	    (_m)->match_btype || (_m)->match_brev)
 
 /** Set the required chip ID within a bhnd_chip_match instance */
 #define	BHND_CHIP_ID(_cid)		\
@@ -313,6 +319,10 @@ struct bhnd_chip_match {
 /** Set the required board type within a bhnd_chip_match instance */
 #define	BHND_CHIP_BTYPE(_btype)		\
 	.match_btype = 1, .board_type = BHND_BOARD_BCM ## _btype
+
+/** Set the required SROM revision range within a bhnd_chip_match instance */
+#define	BHND_CHIP_SROMREV(_rev)		\
+	.match_srom_rev = 1, .srom_rev = BHND_ ## _rev
 
 /** Set the required board revision range within a bhnd_chip_match instance */
 #define	BHND_CHIP_BREV(_rev)		\

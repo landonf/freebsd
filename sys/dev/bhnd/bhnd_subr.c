@@ -447,13 +447,14 @@ bhnd_chip_matches(const struct bhnd_chipid *chip,
     const struct bhnd_board_info *board,
     const struct bhnd_chip_match *desc)
 {
-	/* Wildcard match */
+	/* Explicit wildcard match */
 	if (desc->match_any)
 		return (true);
 
-	/* Board match with missing board info */
+	/* If board_info is missing, but required, we cannot match. */
 	if (BHND_CHIP_MATCH_REQ_BOARD_INFO(desc) && board == NULL)
 		return (false);
+
 
 	/* Chip matching */
 	if (desc->match_id && chip->chip_id != desc->chip_id)
@@ -466,7 +467,12 @@ bhnd_chip_matches(const struct bhnd_chipid *chip,
 	    !bhnd_hwrev_matches(chip->chip_rev, &desc->chip_rev))
 		return (false);
 
-	/* Board matching */
+
+	/* Board info matching */
+	if (desc->match_srom_rev &&
+	    !bhnd_hwrev_matches(board->board_srom_rev, &desc->board_srom_rev))
+		return (false);
+
 	if (desc->match_bvendor && board->board_vendor != desc->board_vendor)
 		return (false);
 
@@ -476,6 +482,7 @@ bhnd_chip_matches(const struct bhnd_chipid *chip,
 	if (desc->match_brev &&
 	    !bhnd_hwrev_matches(board->board_rev, &desc->board_rev))
 		return (false);
+
 
 	return (true);
 }
@@ -583,19 +590,36 @@ bhnd_chip_quirks(device_t dev, const struct bhnd_chip_quirk *table)
 	const struct bhnd_chip_quirk	*qent;
 	uint32_t			 quirks;
 	int				 error;
-	
+	bool				 need_boardinfo;
+
 	cid = bhnd_get_chipid(dev);
 	quirks = 0;
+	need_boardinfo = 0;
+	board = NULL;
 
-	/* Try to fetch board info */
-	board = &bi;
-	if ((error = bhnd_read_board_info(dev, &bi))) {
-		if (error != ENODEV)
-			device_printf(dev, "failed reading board info during "
-			    "quirk matching: %d\n", error);
-		board = NULL;
+	/* Determine whether quirk matching requires board_info; we want to
+	 * avoid fetching board_info for early devices (e.g. ChipCommon)
+	 * that are brought up prior to NVRAM being readable. */
+	for (qent = table; !BHND_CHIP_QUIRK_IS_END(qent); qent++) {
+		if (!BHND_CHIP_MATCH_REQ_BOARD_INFO(&qent->chip))
+			continue;
+
+		need_boardinfo = true;
+		break;
 	}
 
+	/* If required, fetch board info */
+	if (need_boardinfo) {
+		error = bhnd_read_board_info(dev, &bi);
+		if (!error) {
+			board = &bi;
+		} else {
+			device_printf(dev, "failed to read required board info "
+			    "during quirk matching: %d\n", error);
+		}
+	}
+
+	/* Apply all matching quirk flags */
 	for (qent = table; !BHND_CHIP_QUIRK_IS_END(qent); qent++) {
 		if (bhnd_chip_matches(cid, board, &qent->chip))
 			quirks |= qent->quirks;
@@ -912,6 +936,7 @@ bhnd_bus_generic_read_board_info(device_t dev, device_t child,
 	OPT_BHND_GV(info->board_vendor,	BOARDVENDOR,	0);
 	OPT_BHND_GV(info->board_type,	BOARDTYPE,	0);	/* srom >= 2 */
 	REQ_BHND_GV(info->board_rev,	BOARDREV);
+	REQ_BHND_GV(info->board_srom_rev,SROMREV);
 	REQ_BHND_GV(info->board_flags,	BOARDFLAGS);
 	OPT_BHND_GV(info->board_flags2,	BOARDFLAGS2,	0);	/* srom >= 4 */
 	OPT_BHND_GV(info->board_flags3,	BOARDFLAGS3,	0);	/* srom >= 11 */
