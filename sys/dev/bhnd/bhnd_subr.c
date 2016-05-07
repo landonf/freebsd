@@ -655,6 +655,78 @@ bhnd_device_quirks(device_t dev, const struct bhnd_device *table,
 
 
 /**
+ * Read an one byte NVRAM variable.
+ * 
+ * If the given variable cannot be read, an error will be printed
+ * and UINT8_MAX will be returned.
+ *
+ * @param 	dev	A bhnd bus child device.
+ * @param	name	The NVRAM variable name.
+ */
+uint8_t
+bhnd_nvram_getvar_1(device_t dev, const char *name)
+{
+	int	error;
+	uint8_t	v;
+
+	if ((error = bhnd_nvram_getvar(dev, name, &v, sizeof(v)))) {
+		device_printf(dev,
+		    "bhnd_nvram_getvar_1('%s') failed: %d\n", name, error);
+		return (UINT8_MAX);
+	}
+
+	return (v);
+}
+
+/**
+ * Read a two byte NVRAM variable.
+ * 
+ * If the given variable cannot be read, an error will be printed
+ * and UINT16_MAX will be returned.
+ *
+ * @param 	dev	A bhnd bus child device.
+ * @param	name	The NVRAM variable name.
+ */
+uint16_t
+bhnd_nvram_getvar_2(device_t dev, const char *name)
+{
+	int		error;
+	uint16_t	v;
+
+	if ((error = bhnd_nvram_getvar(dev, name, &v, sizeof(v)))) {
+		device_printf(dev,
+		    "bhnd_nvram_getvar_2('%s') failed: %d\n", name, error);
+		return (UINT16_MAX);
+	}
+
+	return (v);
+}
+
+/**
+ * Read a four byte NVRAM variable.
+ * 
+ * If the given variable cannot be read, an error will be printed
+ * and UINT32_MAX will be returned.
+ *
+ * @param 	dev	A bhnd bus child device.
+ * @param	name	The NVRAM variable name.
+ */
+uint32_t
+bhnd_nvram_getvar_4(device_t dev, const char *name)
+{
+	int		error;
+	uint32_t	v;
+
+	if ((error = bhnd_nvram_getvar(dev, name, &v, sizeof(v)))) {
+		device_printf(dev,
+		    "bhnd_nvram_getvar_4('%s') failed: %d\n", name, error);
+		return (UINT32_MAX);
+	}
+
+	return (v);
+}
+
+/**
  * Allocate bhnd(4) resources defined in @p rs from a parent bus.
  * 
  * @param dev The device requesting ownership of the resources.

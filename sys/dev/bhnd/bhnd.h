@@ -383,6 +383,13 @@ uint32_t			 bhnd_device_quirks(device_t dev,
 struct bhnd_core_info		 bhnd_get_core_info(device_t dev);
 
 
+uint8_t				 bhnd_nvram_getvar_1(device_t dev,
+				     const char *name);
+uint16_t			 bhnd_nvram_getvar_2(device_t dev,
+				     const char *name);
+uint32_t			 bhnd_nvram_getvar_4(device_t dev,
+				     const char *name);
+
 int				 bhnd_alloc_resources(device_t dev,
 				     struct resource_spec *rs,
 				     struct bhnd_resource **res);
