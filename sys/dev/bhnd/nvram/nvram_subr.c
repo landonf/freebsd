@@ -96,6 +96,9 @@ bhnd_nvram_type_width(bhnd_nvram_dt dt)
 	case BHND_NVRAM_DT_UINT32:
 		return (sizeof(uint32_t));
 	}
+
+	/* Quiesce gcc4.2 */
+	panic("bhnd nvram data type %u unknown", dt);
 }
 
 

@@ -454,6 +454,9 @@ chipc_nvram_getvar(device_t dev, const char *name, void *buf, size_t *len)
 	case BHND_NVRAM_SRC_UNKNOWN:
 		return (ENODEV);
 	}
+
+	/* Unknown NVRAM source */
+	return (ENODEV);
 }
 
 static int
@@ -478,8 +481,12 @@ chipc_nvram_setvar(device_t dev, const char *name, const void *buf,
 		return (ENXIO);
 
 	case BHND_NVRAM_SRC_UNKNOWN:
+	default:
 		return (ENODEV);
 	}
+
+	/* Unknown NVRAM source */
+	return (ENODEV);
 }
 
 static device_method_t chipc_methods[] = {
