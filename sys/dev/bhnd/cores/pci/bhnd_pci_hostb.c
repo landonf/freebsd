@@ -56,6 +56,8 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/bhnd.h>
 
+#include <dev/pci/pcivar.h>
+
 #include "bhnd_pcireg.h"
 #include "bhnd_pci_hostbvar.h"
 
@@ -170,23 +172,33 @@ bhnd_pci_hostb_attach(device_t dev)
 	sc->quirks = bhnd_device_quirks(dev, bhnd_pci_devs,
 	    sizeof(bhnd_pci_devs[0]));
 
+	/* Find the host PCI bridge device */
+	sc->pci_root = bhnd_find_bridge_root(dev, devclass_find("pci"));
+	if (sc->pci_root == NULL) {
+		device_printf(dev, "parent pci bridge device not found\n");
+		return (ENXIO);
+	}
+
+	/* Common setup */
 	if ((error = bhnd_pci_generic_attach(dev)))
 		return (error);
 
+
 	/* Apply early single-shot work-arounds */
-	if ((error = bhnd_pci_wars_early_once(sc))) {
-		bhnd_pci_generic_detach(dev);
-		return (error);
-	}
+	if ((error = bhnd_pci_wars_early_once(sc)))
+		goto failed;
+
 
 	/* Apply attach/resume work-arounds */
-	if ((error = bhnd_pci_wars_hwup(sc))) {
-		bhnd_pci_generic_detach(dev);
-		return (error);
-	}
+	if ((error = bhnd_pci_wars_hwup(sc)))
+		goto failed;
 
 
 	return (0);
+	
+failed:
+	bhnd_pci_generic_detach(dev);
+	return (error);
 }
 
 static int

@@ -343,6 +343,9 @@ device_t			 bhnd_match_child(device_t dev,
 device_t			 bhnd_find_child(device_t dev,
 				     bhnd_devclass_t class, int unit);
 
+device_t			 bhnd_find_bridge_root(device_t dev,
+				     devclass_t bus_class);
+
 const struct bhnd_core_info	*bhnd_match_core(
 				     const struct bhnd_core_info *cores,
 				     u_int num_cores,

@@ -175,8 +175,9 @@ enum {
  * bhnd_pci_hostb driver instance state.
  */
 struct bhnd_pcihb_softc {
-	struct bhnd_pci_softc	common;	/**< common bhnd_pci state */
-	uint32_t		quirks;	/**< hostb device quirks */
+	struct bhnd_pci_softc	common;		/**< common bhnd_pci state */
+	device_t		pci_root;	/**< host PCI device */
+	uint32_t		quirks;		/**< hostb device quirks */
 
 	/** BHND_PCIE_QUIRK_SDR9_POLARITY state. */
 	struct {
