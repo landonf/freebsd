@@ -477,7 +477,7 @@ bhnd_get_chipid(device_t dev) {
  *			error code will be returned.
  */
 static inline int
-bhnd_get_nvram_varlen(device_t dev, const char *name, size_t *len)
+bhnd_nvram_getvarlen(device_t dev, const char *name, size_t *len)
 {
 	return (BHND_BUS_GET_NVRAM_VAR(device_get_parent(dev), dev, name, NULL,
 	    len));
@@ -499,12 +499,12 @@ bhnd_get_nvram_varlen(device_t dev, const char *name, size_t *len)
  *			error code will be returned.
  */
 static inline int
-bhnd_get_nvram_var(device_t dev, const char *name, void *buf, size_t len)
+bhnd_nvram_getvar(device_t dev, const char *name, void *buf, size_t len)
 {
 	size_t	var_len;
 	int	error;
 
-	if ((error = bhnd_get_nvram_varlen(dev, name, &var_len)))
+	if ((error = bhnd_nvram_getvarlen(dev, name, &var_len)))
 		return (error);
 
 	if (len != var_len)
