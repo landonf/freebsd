@@ -176,8 +176,20 @@ enum {
  */
 struct bhnd_pcihb_softc {
 	struct bhnd_pci_softc	common;		/**< common bhnd_pci state */
+	device_t		dev;
 	device_t		pci_root;	/**< host PCI device */
 	uint32_t		quirks;		/**< hostb device quirks */
+
+	/** BHND_PCIE_QUIRK_ASPM_OVR state. */
+	struct {
+		/**
+		 * ASPM/CLKREQ override setting.
+		 * 
+		 * If true, ASPM/CLKREQ should be overriden as enabled.
+		 * If false, ASPM/CLKREQ should be overriden as disabled.
+		 */
+		bool aspm_en;
+	} aspm_quirk_override;
 
 	/** BHND_PCIE_QUIRK_SDR9_POLARITY state. */
 	struct {

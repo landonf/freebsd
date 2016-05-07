@@ -58,6 +58,8 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/pci/pcivar.h>
 
+#include "bhnd_nvram_map.h"
+
 #include "bhnd_pcireg.h"
 #include "bhnd_pci_hostbvar.h"
 
@@ -169,6 +171,7 @@ bhnd_pci_hostb_attach(device_t dev)
 	int			 error;
 
 	sc = device_get_softc(dev);
+	sc->dev = dev;
 	sc->quirks = bhnd_device_quirks(dev, bhnd_pci_devs,
 	    sizeof(bhnd_pci_devs[0]));
 
@@ -262,13 +265,24 @@ bhnd_pci_hostb_resume(device_t dev)
 static int
 bhnd_pci_wars_early_once(struct bhnd_pcihb_softc *sc)
 {
+	/* Determine whether ASPM/CLKREQ should be forced on, or forced off. */
+	if (sc->quirks & BHND_PCIE_QUIRK_ASPM_OVR) {
+		uint32_t	bflags;
+		bool		aspm_en;
+
+		bflags = bhnd_nvram_getvar_4(sc->dev, BHND_NVAR_BOARDFLAGS2);
+		aspm_en = false;
+
+		if (bflags & BHND_BFL2_PCIEWAR_OVR)
+			aspm_en = true;
+	}
+
 	/* Determine correct polarity by observing the attach-time PCIe PHY
 	 * link status. This is used later to reset/force the SerDes
 	 * polarity */
 	if (sc->quirks & BHND_PCIE_QUIRK_SDR9_POLARITY) {
 		uint32_t st;
 		bool inv;
-
 
 		st = BHND_PCI_PROTO_READ_4(sc, BHND_PCIE_PLP_STATUSREG);
 		inv = ((st & BHND_PCIE_PLP_POLARITY_INV) != 0);
