@@ -366,10 +366,6 @@ bool				 bhnd_hwrev_matches(uint16_t hwrev,
 uint32_t			 bhnd_chip_quirks(device_t dev,
 				     const struct bhnd_chip_quirk *table);
 
-uint32_t			 bhnd_device_quirks(device_t dev,
-				     const struct bhnd_device *table,
-				     size_t entry_size);
-
 bool				 bhnd_device_matches(device_t dev,
 				     const struct bhnd_core_match *desc);
 
