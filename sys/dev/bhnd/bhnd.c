@@ -314,7 +314,9 @@ bhnd_generic_get_probe_order(device_t dev, device_t child)
 {
 	switch (bhnd_get_class(child)) {
 	case BHND_DEVCLASS_CC:
-		return (BHND_PROBE_BUS + BHND_PROBE_ORDER_FIRST);
+		/* Must be early enough to provide NVRAM access to the
+		 * host bridge */
+		return (BHND_PROBE_ROOT + BHND_PROBE_ORDER_FIRST);
 
 	case BHND_DEVCLASS_CC_B:
 		/* fall through */
