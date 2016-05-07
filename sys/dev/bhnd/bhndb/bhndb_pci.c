@@ -540,10 +540,6 @@ bhndb_disable_pci_clocks(struct bhndb_pci_softc *sc)
 	if (sc->pci_devclass != BHND_DEVCLASS_PCI)
 		return (0);
 
-	// TODO: Check board flags for BFL2_XTALBUFOUTEN?
-	// TODO: Check PCI core revision?
-	// TODO: Switch to 'slow' clock?
-
 	/* Fetch current config */
 	gpio_out = pci_read_config(sc->parent, BHNDB_PCI_GPIO_OUT, 4);
 	gpio_en = pci_read_config(sc->parent, BHNDB_PCI_GPIO_OUTEN, 4);
