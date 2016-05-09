@@ -181,7 +181,7 @@ enum {
 struct bhnd_pcihb_softc {
 	struct bhnd_pci_softc	common;		/**< common bhnd_pci state */
 	device_t		dev;
-	device_t		pci_root;	/**< host PCI device */
+	device_t		pci_dev;	/**< host PCI device */
 	uint32_t		quirks;		/**< hostb device quirks */
 
 	/** BHND_PCIE_QUIRK_ASPM_OVR state. */

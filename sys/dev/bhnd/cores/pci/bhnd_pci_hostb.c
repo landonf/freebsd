@@ -176,8 +176,8 @@ bhnd_pci_hostb_attach(device_t dev)
 	    sizeof(bhnd_pci_devs[0]));
 
 	/* Find the host PCI bridge device */
-	sc->pci_root = bhnd_find_bridge_root(dev, devclass_find("pci"));
-	if (sc->pci_root == NULL) {
+	sc->pci_dev = bhnd_find_bridge_root(dev, devclass_find("pci"));
+	if (sc->pci_dev == NULL) {
 		device_printf(dev, "parent pci bridge device not found\n");
 		return (ENXIO);
 	}
@@ -270,11 +270,22 @@ bhnd_pci_wars_early_once(struct bhnd_pcihb_softc *sc)
 		uint32_t	bflags;
 		bool		aspm_en;
 
+		/* Fetch board flags */
 		bflags = bhnd_nvram_getvar_4(sc->dev, BHND_NVAR_BOARDFLAGS2);
-		aspm_en = false;
 
+		/* Check board flags */
+		aspm_en = true;
 		if (bflags & BHND_BFL2_PCIEWAR_OVR)
-			aspm_en = true;
+			aspm_en = false;
+
+		/* Early Apple BCM4321-based devices did not (but should have)
+		 * set BHND_BFL2_PCIEWAR_OVR in SPROM. */
+		if (pci_get_subvendor(sc->pci_dev) == PCI_VENDOR_APPLE &&
+		    bhnd_nvram_getvar_1(sc->dev, BHND_NVAR_SROMREV) == 4 &&
+		    bhnd_nvram_getvar_1(sc->dev, BHND_NVAR_SROMREV) <= 0x71)
+			aspm_en = false;
+
+		sc->aspm_quirk_override.aspm_en = aspm_en;
 	}
 
 	/* Determine correct polarity by observing the attach-time PCIe PHY
