@@ -114,21 +114,25 @@ enum {
 
 	/**
 	 * ASPM and ECPM settings must be overridden manually.
+	 * Applies to 4311B0/4321B1 chipset revisions.
 	 * 
 	 * The override behavior is controlled by the BHND_BFL2_PCIEWAR_OVR
-	 * flag. If this flag is set, ASPM/CLKREQ should be overridden as
-	 * enabled; otherwise, they should be overridden as disabled.
+	 * flag; if set, ASPM and CLKREQ should be explicitly disabled. If not
+	 * set, they should be explicitly enabled.
 	 * 
 	 * Attach/Resume:
-	 *   - Set SRSH_ASPM_ENB flag in the SPROM ASPM register.
-	 *   - Set ASPM L0S/L1 in the PCIER_LINK_CTL register.
-	 *   - Set SRSH_CLKREQ_ENB flag in the SPROM CLKREQ_REV5 register.
-	 *   - Clear ECPM in the PCIER_LINK_CTL register.
+	 *   - Update SRSH_ASPM_ENB flag in the SPROM ASPM register.
+	 *   - Update SRSH_CLKREQ_ENB flag in the SPROM CLKREQ_REV5
+	 *     register.
+	 *   - Update ASPM L0S/L1 flags in PCIER_LINK_CTL register.
+	 *   - Clear CLKREQ (ECPM) flag in PCIER_LINK_CTL register.
 	 * 
-	 * Detach/Suspend:
-	 * - 
-	 * - When the device enters D3 state, or system enters S3/S4 state,
-	 *   clear ASPM L1 in the PCIER_LINK_CTL register.
+	 * Suspend:
+	 *   - Clear ASPM L1 flag in the PCIER_LINK_CTL register.
+	 *   - Set CLKREQ (ECPM) flag in the PCIER_LINK_CTL register.
+	 * 
+	 * Detach:
+	 *   - Set CLKREQ (ECPM) flag in the PCIER_LINK_CTL register.
 	 */
 	BHND_PCIE_QUIRK_ASPM_OVR		= (1<<9),
 	
