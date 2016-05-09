@@ -37,9 +37,10 @@ __FBSDID("$FreeBSD$");
  * bus (e.g. bcma or siba) via a Broadcom PCI core configured in end-point
  * mode.
  * 
- * This driver handles all host-level PCI interactions with a PCI/PCIe bridge
- * core operating in endpoint mode. On the bridged bhnd bus, the PCI core
- * device will be managed by a bhnd_pci_hostb driver.
+ * This driver handles all initial generic host-level PCI interactions with a
+ * PCI/PCIe bridge core operating in endpoint mode. Once the bridged bhnd(4)
+ * bus has been enumerated, this driver works in tandem with a core-specific
+ * bhnd_pci_hostb driver to manage the PCI core.
  */
 
 #include <sys/param.h>
