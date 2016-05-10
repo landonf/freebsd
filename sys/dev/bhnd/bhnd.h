@@ -143,10 +143,36 @@ struct bhnd_resource {
 };
 
 /**
+ * A bhnd(4) board descriptor.
+ */
+struct bhnd_board_info {
+	uint16_t	board_vendor;	/**< PCI-SIG vendor ID (even on non-PCI
+					  *  devices).
+					  *
+					  *  On PCI devices, this will generally
+					  *  be the subsystem vendor ID, but the
+					  *  value may be overridden in device
+					  *  NVRAM.
+					  */
+	uint16_t	board_type;	/**< Board type (See BHND_BOARD_*)
+					  *
+					  *  On PCI devices, this will generally
+					  *  be the subsystem device ID, but the
+					  *  value may be overridden in device
+					  *  NVRAM.
+					  */
+	uint16_t	board_rev;	/**< Board revision. */
+	uint32_t	board_flags;	/**< Board flags (see BHND_BFL_*) */
+	uint32_t	board_flags2;	/**< Board flags 2 (see BHND_BFL2_*) */
+	uint32_t	board_flags3;	/**< Board flags 3 (see BHND_BFL3_*) */
+	
+};
+
+/**
  * A bhnd(4) core descriptor.
  */
 struct bhnd_core_info {
-	uint16_t	vendor;		/**< vendor */
+	uint16_t	vendor;		/**< JEP-106 vendor (BHND_MFGID_*) */
 	uint16_t	device;		/**< device */
 	uint16_t	hwrev;		/**< hardware revision */
 	u_int		core_idx;	/**< bus-assigned core index */
