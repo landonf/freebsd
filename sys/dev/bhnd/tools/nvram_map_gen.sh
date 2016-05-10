@@ -7,6 +7,10 @@
 
 BHND_TOOLDIR="$(dirname $0)/"
 
+if [ -z "$AWK" ]; then
+    AWK=/usr/bin/awk
+fi
+
 LC_ALL=C; export LC_ALL
 
-"$BHND_TOOLDIR/nvram_map_gen.awk" $@
+"$AWK" -f "$BHND_TOOLDIR/nvram_map_gen.awk" $@
