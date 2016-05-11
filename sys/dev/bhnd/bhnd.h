@@ -109,40 +109,6 @@ BHND_ACCESSOR(core_unit,	CORE_UNIT,	int);
 #undef	BHND_ACCESSOR
 
 /**
- * Chip Identification
- * 
- * This is read from the ChipCommon ID register; on earlier bhnd(4) devices
- * where ChipCommon is unavailable, known values must be supplied.
- */
-struct bhnd_chipid {
-	uint16_t	chip_id;	/**< chip id (BHND_CHIPID_*) */
-	uint8_t		chip_rev;	/**< chip revision */
-	uint8_t		chip_pkg;	/**< chip package (BHND_PKGID_*) */
-	uint8_t		chip_type;	/**< chip type (BHND_CHIPTYPE_*) */
-
-	bhnd_addr_t	enum_addr;	/**< chip_type-specific enumeration
-					  *  address; either the siba(4) base
-					  *  core register block, or the bcma(4)
-					  *  EROM core address. */
-
-	uint8_t		ncores;		/**< number of cores, if known. 0 if
-					  *  not available. */
-};
-
-/**
-* A bhnd(4) bus resource.
-* 
-* This provides an abstract interface to per-core resources that may require
-* bus-level remapping of address windows prior to access.
-*/
-struct bhnd_resource {
-	struct resource	*res;		/**< the system resource. */
-	bool		 direct;	/**< false if the resource requires
-					 *   bus window remapping before it
-					 *   is MMIO accessible. */
-};
-
-/**
  * A bhnd(4) board descriptor.
  */
 struct bhnd_board_info {
@@ -165,7 +131,28 @@ struct bhnd_board_info {
 	uint32_t	board_flags;	/**< Board flags (see BHND_BFL_*) */
 	uint32_t	board_flags2;	/**< Board flags 2 (see BHND_BFL2_*) */
 	uint32_t	board_flags3;	/**< Board flags 3 (see BHND_BFL3_*) */
-	
+};
+
+
+/**
+ * Chip Identification
+ * 
+ * This is read from the ChipCommon ID register; on earlier bhnd(4) devices
+ * where ChipCommon is unavailable, known values must be supplied.
+ */
+struct bhnd_chipid {
+	uint16_t	chip_id;	/**< chip id (BHND_CHIPID_*) */
+	uint8_t		chip_rev;	/**< chip revision */
+	uint8_t		chip_pkg;	/**< chip package (BHND_PKGID_*) */
+	uint8_t		chip_type;	/**< chip type (BHND_CHIPTYPE_*) */
+
+	bhnd_addr_t	enum_addr;	/**< chip_type-specific enumeration
+					  *  address; either the siba(4) base
+					  *  core register block, or the bcma(4)
+					  *  EROM core address. */
+
+	uint8_t		ncores;		/**< number of cores, if known. 0 if
+					  *  not available. */
 };
 
 /**
@@ -188,6 +175,19 @@ struct bhnd_hwrev_match {
 					     to match on any revision. */
 	uint16_t	end;	/**< last revision, or BHND_HWREV_INVALID
 					     to match on any revision. */
+};
+
+/**
+* A bhnd(4) bus resource.
+* 
+* This provides an abstract interface to per-core resources that may require
+* bus-level remapping of address windows prior to access.
+*/
+struct bhnd_resource {
+	struct resource	*res;		/**< the system resource. */
+	bool		 direct;	/**< false if the resource requires
+					 *   bus window remapping before it
+					 *   is MMIO accessible. */
 };
 
 /** 
