@@ -41,6 +41,8 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/cores/chipc/chipcreg.h>
 
+#include "bhnd_nvram_map.h"
+
 #include "bhndreg.h"
 #include "bhndvar.h"
 
@@ -823,6 +825,54 @@ bhnd_bus_generic_get_chipid(device_t dev, device_t child)
 
 	panic("missing BHND_BUS_GET_CHIPID()");
 }
+
+/* nvram board_info population macros for bhnd_bus_generic_read_boardinfo() */
+#define	BHND_GV(_dest, _name)	\
+	bhnd_nvram_getvar(child, BHND_NVAR_ ## _name, &_dest, sizeof(_dest))
+
+#define	REQ_BHND_GV(_dest, _name)		do {	\
+	if ((error = BHND_GV(_dest, _name)))		\
+		return (error);				\
+} while(0)
+
+#define	OPT_BHND_GV(_dest, _name, _default)	do {	\
+	if ((error = BHND_GV(_dest, _name))) {		\
+		if (error != ENOENT)			\
+			return (error);			\
+		_dest = _default;			\
+	}						\
+} while(0)
+
+/**
+ * Helper function for implementing BHND_BUS_READ_BOARDINFO().
+ * 
+ * This implementation populates @p info with information from NVRAM,
+ * defaulting board_vendor and board_type fields to 0 if the
+ * requested variables cannot be found.
+ * 
+ * This behavior is correct for most SoCs, but must be overridden on
+ * bridged (PCI, PCMCIA, etc) devices to produce a complete bhnd_board_info
+ * result.
+ */
+int
+bhnd_bus_generic_read_boardinfo(device_t dev, device_t child,
+    struct bhnd_board_info *info)
+{
+	int	error;
+
+	OPT_BHND_GV(info->board_vendor,	BOARDVENDOR,	0);
+	OPT_BHND_GV(info->board_type,	BOARDTYPE,	0);	/* srom >= 2 */
+	REQ_BHND_GV(info->board_rev,	BOARDREV);
+	REQ_BHND_GV(info->board_flags,	BOARDFLAGS);
+	OPT_BHND_GV(info->board_flags2,	BOARDFLAGS2,	0);	/* srom >= 4 */
+	OPT_BHND_GV(info->board_flags3,	BOARDFLAGS3,	0);	/* srom >= 11 */
+
+	return (0);
+}
+
+#undef	BHND_GV
+#undef	BHND_GV_REQ
+#undef	BHND_GV_OPT
 
 /**
  * Helper function for implementing BHND_BUS_ALLOC_RESOURCE().

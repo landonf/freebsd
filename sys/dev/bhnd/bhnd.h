@@ -437,6 +437,9 @@ int				 bhnd_bus_generic_read_nvram_var(device_t dev,
 				     void *buf, size_t *size);
 const struct bhnd_chipid	*bhnd_bus_generic_get_chipid(device_t dev,
 				     device_t child);
+int				 bhnd_bus_generic_read_boardinfo(device_t dev,
+				     device_t child,
+				     struct bhnd_board_info *info);
 struct bhnd_resource		*bhnd_bus_generic_alloc_resource (device_t dev,
 				     device_t child, int type, int *rid,
 				     rman_res_t start, rman_res_t end,
@@ -491,6 +494,28 @@ bhnd_get_chipid(device_t dev) {
 };
 
 /**
+ * Attempt to read the BHND board identification from the bhnd bus.
+ *
+ * This relies on NVRAM access, and will fail if a valid NVRAM device cannot
+ * be found, or is not yet attached.
+ *
+ * @param dev The parent of @p child.
+ * @param child The bhnd device requesting board info.
+ * @param[out] info On success, will be populated with the bhnd(4) device's
+ * board information.
+ *
+ * @retval 0 success
+ * @retval ENXIO	No valid NVRAM source could be found.
+ * @retval non-zero	If reading @p name otherwise fails, a regular unix
+ *			error code will be returned.
+ */
+static inline int
+bhnd_read_board_info(device_t dev, struct bhnd_board_info *info)
+{
+	return (BHND_BUS_READ_BOARD_INFO(device_get_parent(dev), dev, info));
+}
+
+/**
  * Determine an NVRAM variable's expected size.
  *
  * @param 	dev	A bhnd bus child device.
@@ -499,6 +524,7 @@ bhnd_get_chipid(device_t dev) {
  *
  * @retval 0		success
  * @retval ENOENT	The requested variable was not found.
+ * @retval ENXIO	No valid NVRAM source could be found.
  * @retval non-zero	If reading @p name otherwise fails, a regular unix
  *			error code will be returned.
  */
@@ -521,6 +547,7 @@ bhnd_nvram_getvarlen(device_t dev, const char *name, size_t *len)
  * @retval 0		success
  * @retval ENOENT	The requested variable was not found.
  * @retval EINVAL	If @p len does not match the actual variable size.
+ * @retval ENXIO	No valid NVRAM source could be found.
  * @retval non-zero	If reading @p name otherwise fails, a regular unix
  *			error code will be returned.
  */
