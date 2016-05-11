@@ -195,7 +195,7 @@ METHOD const struct bhnd_chipid * get_chipid {
  * board information.
  *
  * @retval 0 success
- * @retval ENXIO	No valid NVRAM source could be found.
+ * @retval ENODEV	No valid NVRAM source could be found.
  * @retval non-zero	If reading @p name otherwise fails, a regular unix
  *			error code will be returned.
  */
@@ -429,7 +429,7 @@ METHOD int get_region_addr {
  * @retval ENOENT	The requested variable was not found.
  * @retval ENOMEM	If @p buf is non-NULL and a buffer of @p size is too
  *			small to hold the requested value.
- * @retval ENXIO	No valid NVRAM source could be found.
+ * @retval ENODEV	No valid NVRAM source could be found.
  * @retval non-zero	If reading @p name otherwise fails, a regular unix
  *			error code will be returned.
  */

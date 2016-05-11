@@ -440,6 +440,9 @@ const struct bhnd_chipid	*bhnd_bus_generic_get_chipid(device_t dev,
 int				 bhnd_bus_generic_read_boardinfo(device_t dev,
 				     device_t child,
 				     struct bhnd_board_info *info);
+int				 bhnd_bus_generic_get_nvram_var(device_t dev,
+				    device_t child, const char *name,
+				    void *buf, size_t *size);
 struct bhnd_resource		*bhnd_bus_generic_alloc_resource (device_t dev,
 				     device_t child, int type, int *rid,
 				     rman_res_t start, rman_res_t end,
@@ -505,7 +508,7 @@ bhnd_get_chipid(device_t dev) {
  * board information.
  *
  * @retval 0 success
- * @retval ENXIO	No valid NVRAM source could be found.
+ * @retval ENODEV	No valid NVRAM source could be found.
  * @retval non-zero	If reading @p name otherwise fails, a regular unix
  *			error code will be returned.
  */
@@ -524,7 +527,7 @@ bhnd_read_board_info(device_t dev, struct bhnd_board_info *info)
  *
  * @retval 0		success
  * @retval ENOENT	The requested variable was not found.
- * @retval ENXIO	No valid NVRAM source could be found.
+ * @retval ENODEV	No valid NVRAM source could be found.
  * @retval non-zero	If reading @p name otherwise fails, a regular unix
  *			error code will be returned.
  */
@@ -547,7 +550,7 @@ bhnd_nvram_getvarlen(device_t dev, const char *name, size_t *len)
  * @retval 0		success
  * @retval ENOENT	The requested variable was not found.
  * @retval EINVAL	If @p len does not match the actual variable size.
- * @retval ENXIO	No valid NVRAM source could be found.
+ * @retval ENODEV	No valid NVRAM source could be found.
  * @retval non-zero	If reading @p name otherwise fails, a regular unix
  *			error code will be returned.
  */

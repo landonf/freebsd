@@ -41,10 +41,17 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/cores/chipc/chipcreg.h>
 
+#include "nvram/bhnd_nvram.h"
+
+#include "bhnd_chipc_if.h"
+
+#include "bhnd_nvram_if.h"
 #include "bhnd_nvram_map.h"
 
 #include "bhndreg.h"
 #include "bhndvar.h"
+
+static device_t		find_nvram_child(device_t dev);
 
 /* BHND core device description table. */
 static const struct bhnd_core_desc {
@@ -873,6 +880,76 @@ bhnd_bus_generic_read_boardinfo(device_t dev, device_t child,
 #undef	BHND_GV
 #undef	BHND_GV_REQ
 #undef	BHND_GV_OPT
+
+
+/**
+ * Find an NVRAM child device on @p dev, if any.
+ * 
+ * @retval device_t An NVRAM device.
+ * @retval NULL If no NVRAM device is found.
+ */
+static device_t
+find_nvram_child(device_t dev)
+{
+	device_t	chipc, nvram;
+
+	/* Look for a directly-attached NVRAM child */
+	nvram = device_find_child(dev, "bhnd_nvram", 0);
+	if (nvram != NULL)
+		return (nvram);
+
+	/* Remaining checks are only applicable when searching a bhnd(4)
+	 * bus. */
+	if (device_get_devclass(dev) != bhnd_devclass)
+		return (NULL);
+
+	/* Look for a ChipCommon device */
+	if ((chipc = bhnd_find_child(dev, BHND_DEVCLASS_CC, -1)) != NULL) {
+		bhnd_nvram_src_t src;
+
+		/* Query the NVRAM source and determine whether it's
+		 * accessible via the ChipCommon device */
+		src = BHND_CHIPC_NVRAM_SRC(chipc);
+		if (BHND_NVRAM_SRC_CC(src))
+			return (chipc);
+	}
+
+	/* Not found */
+	return (NULL);
+}
+
+/**
+ * Helper function for implementing BHND_BUS_GET_NVRAM_VAR().
+ * 
+ * This implementation searches @p dev for a usable NVRAM child device:
+ * - The first child device implementing the bhnd_nvram devclass is
+ *   returned, otherwise
+ * - If @p dev is a bhnd(4) bus, a ChipCommon core that advertises an
+ *   attached NVRAM source.
+ * 
+ * If no usable child device is found on @p dev, the request is delegated to
+ * the BHND_BUS_GET_NVRAM_VAR() method on the parent of @p dev.
+ */
+int
+bhnd_bus_generic_get_nvram_var(device_t dev, device_t child, const char *name,
+    void *buf, size_t *size)
+{
+	device_t	nvram;
+	device_t	parent;
+
+	/* Try to find an NVRAM device applicable to @p child */
+	if ((nvram = find_nvram_child(dev)) == NULL) {
+		/* Try to delegate to parent */
+		if ((parent = device_get_parent(dev)) == NULL)
+			return (ENODEV);
+
+		return (BHND_BUS_GET_NVRAM_VAR(device_get_parent(dev), child,
+		    name, buf, size));
+	}
+
+	return BHND_NVRAM_GETVAR(nvram, name, buf, size);
+}
+
 
 /**
  * Helper function for implementing BHND_BUS_ALLOC_RESOURCE().
