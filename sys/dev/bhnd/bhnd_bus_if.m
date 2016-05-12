@@ -106,7 +106,7 @@ CODE {
 	bhnd_bus_null_get_nvram_var(device_t dev, device_t child,
 	    const char *name, void *buf, size_t *size)
 	{
-		return (ENOENT);
+		return (ENODEV);
 	}
 
 }
