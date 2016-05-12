@@ -833,21 +833,28 @@ bhnd_bus_generic_get_chipid(device_t dev, device_t child)
 	panic("missing BHND_BUS_GET_CHIPID()");
 }
 
-/* nvram board_info population macros for bhnd_bus_generic_read_boardinfo() */
+/* nvram board_info population macros for bhnd_bus_generic_read_board_info() */
 #define	BHND_GV(_dest, _name)	\
 	bhnd_nvram_getvar(child, BHND_NVAR_ ## _name, &_dest, sizeof(_dest))
 
-#define	REQ_BHND_GV(_dest, _name)		do {	\
-	if ((error = BHND_GV(_dest, _name)))		\
-		return (error);				\
+#define	REQ_BHND_GV(_dest, _name)		do {			\
+	if ((error = BHND_GV(_dest, _name))) {				\
+		device_printf(dev,					\
+		    "error reading " __STRING(_name) ": %d\n", error);	\
+		return (error);						\
+	}								\
 } while(0)
 
-#define	OPT_BHND_GV(_dest, _name, _default)	do {	\
-	if ((error = BHND_GV(_dest, _name))) {		\
-		if (error != ENOENT)			\
-			return (error);			\
-		_dest = _default;			\
-	}						\
+#define	OPT_BHND_GV(_dest, _name, _default)	do {			\
+	if ((error = BHND_GV(_dest, _name))) {				\
+		if (error != ENOENT) {					\
+			device_printf(dev,				\
+			    "error reading "				\
+			       __STRING(_name) ": %d\n", error);	\
+			return (error);					\
+		}							\
+		_dest = _default;					\
+	}								\
 } while(0)
 
 /**
@@ -862,7 +869,7 @@ bhnd_bus_generic_get_chipid(device_t dev, device_t child)
  * result.
  */
 int
-bhnd_bus_generic_read_boardinfo(device_t dev, device_t child,
+bhnd_bus_generic_read_board_info(device_t dev, device_t child,
     struct bhnd_board_info *info)
 {
 	int	error;
@@ -938,18 +945,16 @@ bhnd_bus_generic_get_nvram_var(device_t dev, device_t child, const char *name,
 	device_t	parent;
 
 	/* Try to find an NVRAM device applicable to @p child */
-	if ((nvram = find_nvram_child(dev)) == NULL) {
-		/* Try to delegate to parent */
-		if ((parent = device_get_parent(dev)) == NULL)
-			return (ENODEV);
+	if ((nvram = find_nvram_child(dev)) != NULL)
+		return BHND_NVRAM_GETVAR(nvram, name, buf, size);
 
-		return (BHND_BUS_GET_NVRAM_VAR(device_get_parent(dev), child,
-		    name, buf, size));
-	}
+	/* Try to delegate to parent */
+	if ((parent = device_get_parent(dev)) == NULL)
+		return (ENODEV);
 
-	return BHND_NVRAM_GETVAR(nvram, name, buf, size);
+	return (BHND_BUS_GET_NVRAM_VAR(device_get_parent(dev), child,
+	    name, buf, size));
 }
-
 
 /**
  * Helper function for implementing BHND_BUS_ALLOC_RESOURCE().

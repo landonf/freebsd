@@ -437,7 +437,7 @@ int				 bhnd_bus_generic_read_nvram_var(device_t dev,
 				     void *buf, size_t *size);
 const struct bhnd_chipid	*bhnd_bus_generic_get_chipid(device_t dev,
 				     device_t child);
-int				 bhnd_bus_generic_read_boardinfo(device_t dev,
+int				 bhnd_bus_generic_read_board_info(device_t dev,
 				     device_t child,
 				     struct bhnd_board_info *info);
 int				 bhnd_bus_generic_get_nvram_var(device_t dev,

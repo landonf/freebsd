@@ -170,6 +170,15 @@ bhnd_pci_hostb_attach(device_t dev)
 	sc->quirks = bhnd_device_quirks(dev, bhnd_pci_devs,
 	    sizeof(bhnd_pci_devs[0]));
 
+	// TODO: integrate board info into quirk matching?
+	struct bhnd_board_info bi;
+	if ((error = bhnd_read_board_info(dev, &bi)))
+		device_printf(dev, "reading board info failed: %d\n", error);
+
+	device_printf(dev, "vendor=0x%hx type=0x%hx rev=0x%hx, flags=0x%x, flags2=0x%x, flags3=0x%x\n",
+		bi.board_vendor, bi.board_type, bi.board_rev, bi.board_flags, bi.board_flags2, bi.board_flags3
+	);
+
 	if ((error = bhnd_pci_generic_attach(dev)))
 		return (error);
 
