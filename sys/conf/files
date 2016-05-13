@@ -10,13 +10,13 @@ acpi_quirks.h			optional acpi				   \
 	no-obj no-implicit-rule before-depend				   \
 	clean		"acpi_quirks.h"
 bhnd_nvram_map.h		optional bhndbus | bhnd			   \
-	dependency	"$S/dev/bhnd/tools/nvram_map_gen.sh $S/dev/bhnd/tools/nvram_map_gen.awk $S/dev/bhnd/nvram/nvram_map" \
-	compile-with	"$S/dev/bhnd/tools/nvram_map_gen.sh $S/dev/bhnd/nvram/nvram_map -h" \
+	dependency	"sh $S/dev/bhnd/tools/nvram_map_gen.sh $S/dev/bhnd/tools/nvram_map_gen.awk $S/dev/bhnd/nvram/nvram_map" \
+	compile-with	"sh $S/dev/bhnd/tools/nvram_map_gen.sh $S/dev/bhnd/nvram/nvram_map -h" \
 	no-obj no-implicit-rule before-depend				   \
 	clean		"bhnd_nvram_map.h"
 bhnd_nvram_map_data.h		optional bhndbus | bhnd			   \
-	dependency	"$S/dev/bhnd/tools/nvram_map_gen.sh $S/dev/bhnd/tools/nvram_map_gen.awk $S/dev/bhnd/nvram/nvram_map" \
-	compile-with	"$S/dev/bhnd/tools/nvram_map_gen.sh $S/dev/bhnd/nvram/nvram_map -d" \
+	dependency	"sh $S/dev/bhnd/tools/nvram_map_gen.sh $S/dev/bhnd/tools/nvram_map_gen.awk $S/dev/bhnd/nvram/nvram_map" \
+	compile-with	"sh $S/dev/bhnd/tools/nvram_map_gen.sh $S/dev/bhnd/nvram/nvram_map -d" \
 	no-obj no-implicit-rule before-depend				   \
 	clean		"bhnd_nvram_map_data.h"
 #
@@ -1263,7 +1263,7 @@ t4fw.fwo		optional cxgbe					\
 	no-implicit-rule						\
 	clean		"t4fw.fwo"
 t4fw.fw			optional cxgbe					\
-	dependency	"$S/dev/cxgbe/firmware/t4fw-1.15.28.0.bin.uu"	\
+	dependency	"$S/dev/cxgbe/firmware/t4fw-1.15.37.0.bin.uu"	\
 	compile-with	"${NORMAL_FW}"					\
 	no-obj no-implicit-rule						\
 	clean		"t4fw.fw"
@@ -1287,7 +1287,7 @@ t5fw.fwo		optional cxgbe					\
 	no-implicit-rule						\
 	clean		"t5fw.fwo"
 t5fw.fw			optional cxgbe					\
-	dependency	"$S/dev/cxgbe/firmware/t5fw-1.15.28.0.bin.uu"	\
+	dependency	"$S/dev/cxgbe/firmware/t5fw-1.15.37.0.bin.uu"	\
 	compile-with	"${NORMAL_FW}"					\
 	no-obj no-implicit-rule						\
 	clean		"t5fw.fw"
@@ -1513,6 +1513,8 @@ dev/gem/if_gem.c		optional gem
 dev/gem/if_gem_pci.c		optional gem pci
 dev/gem/if_gem_sbus.c		optional gem sbus
 dev/gpio/gpiobacklight.c	optional gpiobacklight fdt
+dev/gpio/gpiokeys.c		optional gpiokeys fdt
+dev/gpio/gpiokeys_codes.c	optional gpiokeys fdt
 dev/gpio/gpiobus.c		optional gpio				\
 	dependency	"gpiobus_if.h"
 dev/gpio/gpioc.c		optional gpio				\
@@ -2440,11 +2442,11 @@ dev/si/si3_t225.c		optional si
 dev/si/si_eisa.c		optional si eisa
 dev/si/si_isa.c			optional si isa
 dev/si/si_pci.c			optional si pci
-dev/siba/siba.c			optional siba !bhnd !bhndbus
 dev/siba/siba_bwn.c		optional siba_bwn pci
-dev/siba/siba_cc.c		optional siba !bhnd !bhndbus
-dev/siba/siba_core.c		optional siba | siba_bwn pci
-dev/siba/siba_pcib.c		optional siba pci !bhnd !bhndbus
+dev/siba/siba_cc.c		optional siba_s5 !bhnd !bhndbus
+dev/siba/siba_core.c		optional siba_s5 | siba_bwn pci
+dev/siba/siba_mips.c		optional siba_s5 !bhnd !bhndbus
+dev/siba/siba_pcib.c		optional siba_s5 pci !bhnd !bhndbus
 dev/siis/siis.c			optional siis pci
 dev/sis/if_sis.c		optional sis pci
 dev/sk/if_sk.c			optional sk pci
