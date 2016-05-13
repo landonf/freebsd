@@ -284,16 +284,14 @@ bhnd_pci_wars_early_once(struct bhnd_pcihb_softc *sc)
 		/* Fetch board flags */
 		bflags = bhnd_nvram_getvar_4(sc->dev, BHND_NVAR_BOARDFLAGS2);
 
+		/* Early Apple BCM4321-based devices did not (but should have)
+		 * set BHND_BFL2_PCIEWAR_OVR in SPROM. */
+		if (sc->quirks & BHND_PCIE_QUIRK_BFL2_PCIEWAR_EN)
+			bflags |= BHND_BFL2_PCIEWAR_OVR;
+		
 		/* Check board flags */
 		aspm_en = true;
 		if (bflags & BHND_BFL2_PCIEWAR_OVR)
-			aspm_en = false;
-
-		/* Early Apple BCM4321-based devices did not (but should have)
-		 * set BHND_BFL2_PCIEWAR_OVR in SPROM. */
-		if (pci_get_subvendor(sc->pci_dev) == PCI_VENDOR_APPLE &&
-		    bhnd_nvram_getvar_1(sc->dev, BHND_NVAR_SROMREV) == 4 &&
-		    bhnd_nvram_getvar_1(sc->dev, BHND_NVAR_SROMREV) <= 0x71)
 			aspm_en = false;
 
 		sc->aspm_quirk_override.aspm_en = aspm_en;
