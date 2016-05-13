@@ -376,23 +376,29 @@ struct bhnd_device {
 	const struct bhnd_core_match	 core;			/**< core match descriptor */ 
 	const char			*desc;			/**< device description, or NULL. */
 	const struct bhnd_device_quirk	*quirks_table;		/**< quirks table for this device, or NULL */
+	const struct bhnd_chip_quirk	*chip_quirks_table;	/**< chipset-specific quirks for this device, or NULL */
 	uint32_t			 device_flags;		/**< required BHND_DF_* flags */
 };
 
-#define	_BHND_DEVICE(_vendor, _device, _desc, _quirks, _flags, ...)	\
-	{ BHND_CORE_MATCH(BHND_MFGID_ ## _vendor, BHND_COREID_ ## _device, \
-	    BHND_HWREV_ANY), _desc, _quirks, _flags }
+#define	_BHND_DEVICE(_vendor, _device, _desc, _quirks, _chip_quirks,	\
+     _flags, ...)							\
+	{ BHND_CORE_MATCH(BHND_MFGID_ ## _vendor,			\
+	    BHND_COREID_ ## _device, BHND_HWREV_ANY), _desc, _quirks,	\
+	    _chip_quirks, _flags }
 
-#define	BHND_MIPS_DEVICE(_device, _desc, _quirks, ...)	\
-	_BHND_DEVICE(MIPS, _device, _desc, _quirks, ## __VA_ARGS__, 0)
+#define	BHND_MIPS_DEVICE(_device, _desc, _quirks, _chip_quirks, ...)	\
+	_BHND_DEVICE(MIPS, _device, _desc, _quirks, _chip_quirks,	\
+	    ## __VA_ARGS__, 0)
 
-#define	BHND_ARM_DEVICE(_device, _desc, _quirks, ...)	\
-	_BHND_DEVICE(ARM, _device, _desc, _quirks, ## __VA_ARGS__, 0)
+#define	BHND_ARM_DEVICE(_device, _desc, _quirks, _chip_quirks, ...)	\
+	_BHND_DEVICE(ARM, _device, _desc, _quirks, _chip_quirks,	\
+	    ## __VA_ARGS__, 0)
 
-#define	BHND_DEVICE(_device, _desc, _quirks, ...)	\
-	_BHND_DEVICE(BCM, _device, _desc, _quirks, ## __VA_ARGS__, 0)
+#define	BHND_DEVICE(_device, _desc, _quirks, _chip_quirks, ...)		\
+	_BHND_DEVICE(BCM, _device, _desc, _quirks, _chip_quirks,	\
+	    ## __VA_ARGS__, 0)
 
-#define	BHND_DEVICE_END			{ BHND_CORE_MATCH_ANY, NULL, NULL, 0 }
+#define	BHND_DEVICE_END	{ BHND_CORE_MATCH_ANY, NULL, NULL, NULL, 0 }
 
 const char			*bhnd_vendor_name(uint16_t vendor);
 const char			*bhnd_port_type_name(bhnd_port_type port_type);

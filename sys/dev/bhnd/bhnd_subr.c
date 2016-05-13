@@ -632,15 +632,17 @@ bhnd_device_quirks(device_t dev, const struct bhnd_device *table,
 		return (0);
 	}
 
-	/* Quirks aren't a mandatory field */
-	if ((qtable = dent->quirks_table) == NULL)
-		return (0);
-
-	/* Collect matching quirk entries */
-	for (qent = qtable; !BHND_DEVICE_QUIRK_IS_END(qent); qent++) {
-		if (bhnd_hwrev_matches(hwrev, &qent->hwrev))
-			quirks |= qent->quirks;
+	/* Collect matching device quirk entries */
+	if ((qtable = dent->quirks_table) != NULL) {
+		for (qent = qtable; !BHND_DEVICE_QUIRK_IS_END(qent); qent++) {
+			if (bhnd_hwrev_matches(hwrev, &qent->hwrev))
+				quirks |= qent->quirks;
+		}
 	}
+
+	/* Collect matching chip quirk entries */
+	if (dent->chip_quirks_table != NULL)
+		quirks |= bhnd_chip_quirks(dev, dent->chip_quirks_table);
 
 	return (quirks);
 }
