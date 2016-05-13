@@ -313,19 +313,19 @@ struct bhnd_chip_match {
 	.match_pkg = 1, .chip_pkg = BHND_PKGID_BCM ## _pkg
 
 /** Set the required board vendor within a bhnd_chip_match instance */
-#define	BHND_CHIP_BVEND(_vend)		\
+#define	BHND_CHIP_BVENDOR(_vend)		\
 	.match_bvendor = 1, .board_vendor = _vend
 
 /** Set the required board type within a bhnd_chip_match instance */
-#define	BHND_CHIP_BTYPE(_btype)		\
+#define	BHND_CHIP_BT(_btype)		\
 	.match_btype = 1, .board_type = BHND_BOARD_BCM ## _btype
 
 /** Set the required SROM revision range within a bhnd_chip_match instance */
 #define	BHND_CHIP_SROMREV(_rev)		\
-	.match_srom_rev = 1, .srom_rev = BHND_ ## _rev
+	.match_srom_rev = 1, .board_srom_rev = BHND_ ## _rev
 
 /** Set the required board revision range within a bhnd_chip_match instance */
-#define	BHND_CHIP_BREV(_rev)		\
+#define	BHND_CHIP_BREV(_rev)	\
 	.match_brev = 1, .board_rev = BHND_ ## _rev
 
 /** Set the required board vendor and type within a bhnd_chip_match instance */
