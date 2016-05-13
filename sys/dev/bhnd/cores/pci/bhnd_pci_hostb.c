@@ -112,7 +112,9 @@ static const struct bhnd_chip_quirk bhnd_pcie_chip_quirks[] = {
 	{{ BHND_CHIP_BVENDOR		(PCI_VENDOR_APPLE),
 	   BHND_CHIP_SROMREV		(HWREV_EQ(4)),
 	   BHND_CHIP_BREV		(HWREV_LTE(0x71)) },
-	   BHND_PCIE_QUIRK_BFL2_PCIEWAR_EN }
+	   BHND_PCIE_QUIRK_BFL2_PCIEWAR_EN },
+
+	BHND_CHIP_QUIRK_END
 };
 
 // Quirk handling TODO
