@@ -436,6 +436,7 @@ bhnd_core_matches(const struct bhnd_core_info *core,
  * Return true if the @p chip matches @p desc.
  * 
  * @param chip A bhnd chip identifier.
+ * @param board The bhnd board info, or NULL if unavailable.
  * @param desc A match descriptor to compare against @p chip.
  * 
  * @retval true if @p chip matches @p match
@@ -443,8 +444,18 @@ bhnd_core_matches(const struct bhnd_core_info *core,
  */
 bool
 bhnd_chip_matches(const struct bhnd_chipid *chip,
+    const struct bhnd_board_info *board,
     const struct bhnd_chip_match *desc)
 {
+	/* Wildcard match */
+	if (desc->match_any)
+		return (true);
+
+	/* Board match with missing board info */
+	if (BHND_CHIP_MATCH_REQ_BOARD_INFO(desc) && board == NULL)
+		return (false);
+
+	/* Chip matching */
 	if (desc->match_id && chip->chip_id != desc->chip_id)
 		return (false);
 
@@ -453,6 +464,17 @@ bhnd_chip_matches(const struct bhnd_chipid *chip,
 
 	if (desc->match_rev &&
 	    !bhnd_hwrev_matches(chip->chip_rev, &desc->chip_rev))
+		return (false);
+
+	/* Board matching */
+	if (desc->match_bvendor && board->board_vendor != desc->board_vendor)
+		return (false);
+
+	if (desc->match_btype && board->board_type != desc->board_type)
+		return (false);
+
+	if (desc->match_brev &&
+	    !bhnd_hwrev_matches(board->board_rev, &desc->board_rev))
 		return (false);
 
 	return (true);
@@ -556,15 +578,26 @@ bhnd_device_lookup(device_t dev, const struct bhnd_device *table,
 uint32_t
 bhnd_chip_quirks(device_t dev, const struct bhnd_chip_quirk *table)
 {
+	struct bhnd_board_info		 bi, *board;
 	const struct bhnd_chipid	*cid;
 	const struct bhnd_chip_quirk	*qent;
 	uint32_t			 quirks;
+	int				 error;
 	
 	cid = bhnd_get_chipid(dev);
 	quirks = 0;
 
+	/* Try to fetch board info */
+	board = &bi;
+	if ((error = bhnd_read_board_info(dev, &bi))) {
+		if (error != ENODEV)
+			device_printf(dev, "failed reading board info during "
+			    "quirk matching: %d\n", error);
+		board = NULL;
+	}
+
 	for (qent = table; !BHND_CHIP_QUIRK_IS_END(qent); qent++) {
-		if (bhnd_chip_matches(cid, &qent->chip))
+		if (bhnd_chip_matches(cid, board, &qent->chip))
 			quirks |= qent->quirks;
 	}
 
