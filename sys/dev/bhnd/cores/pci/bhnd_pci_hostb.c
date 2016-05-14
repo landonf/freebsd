@@ -82,11 +82,6 @@ static int	bhnd_pci_wars_hwup(struct bhnd_pcihb_softc *sc,
 static int	bhnd_pci_wars_hwdown(struct bhnd_pcihb_softc *sc,
 		    bhnd_pci_war_state state);
 
-static int	bhnd_pcie_read_cap(struct bhnd_pcihb_softc *sc, int reg,
-		    uint16_t *value);
-static int	bhnd_pcie_write_cap(struct bhnd_pcihb_softc *sc, int reg,
-		    uint16_t value);
-
 /*
  * device/quirk tables
  */
@@ -333,8 +328,6 @@ bhnd_pci_wars_early_once(struct bhnd_pcihb_softc *sc)
 static int
 bhnd_pci_wars_hwup(struct bhnd_pcihb_softc *sc, bhnd_pci_war_state state)
 {
-	int	error;
-
 	/* Note that the order here matters; these work-arounds
 	 * should not be re-ordered without careful review of their
 	 * interdependencies */
@@ -474,8 +467,7 @@ bhnd_pci_wars_hwup(struct bhnd_pcihb_softc *sc, bhnd_pci_war_state state)
 
 
 		/* Set ASPM/ECPM (CLKREQ) flags in PCIe link control register */
-		if ((error = bhnd_pcie_read_cap(sc, PCIER_LINK_CTL, &cfg)))
-			return (error);
+		cfg = pcie_read_config(sc->pci_dev, PCIER_LINK_CTL, 2);
 
 		if (sc->aspm_quirk_override.aspm_en)
 			cfg |= PCIEM_LINK_CTL_ASPMC;
@@ -484,9 +476,7 @@ bhnd_pci_wars_hwup(struct bhnd_pcihb_softc *sc, bhnd_pci_war_state state)
 
 		cfg &= ~PCIEM_LINK_CTL_ECPM;		/* CLKREQ# */
 
-		if ((error = bhnd_pcie_write_cap(sc, PCIER_LINK_CTL, cfg)))
-			return (error);
-
+		pcie_write_config(sc->pci_dev, PCIER_LINK_CTL, cfg, 2); 
 
 		/* Set CLKREQ (ECPM) flags in SPROM shadow */
 		reg = BHND_PCIE_SPROM_SHADOW + BHND_PCIE_SRSH_CLKREQ_OFFSET_R5;
@@ -526,8 +516,6 @@ bhnd_pci_wars_hwup(struct bhnd_pcihb_softc *sc, bhnd_pci_war_state state)
 static int
 bhnd_pci_wars_hwdown(struct bhnd_pcihb_softc *sc, bhnd_pci_war_state state)
 {
-	int	error;
-
 	/* Reduce L1 timer for better power savings.
 	 * TODO: We could enable/disable this on demand for better power
 	 * savings if we tie this to HT clock request handling */
@@ -542,70 +530,15 @@ bhnd_pci_wars_hwdown(struct bhnd_pcihb_softc *sc, bhnd_pci_war_state state)
 	if (sc->quirks & BHND_PCIE_QUIRK_ASPM_OVR) {
 		uint16_t	lcreg;
 
-		if ((error = bhnd_pcie_read_cap(sc, PCIER_LINK_CTL, &lcreg)))
-			return (error);
+		lcreg = pcie_read_config(sc->pci_dev, PCIER_LINK_CTL, 2);
 
 		lcreg |= PCIEM_LINK_CTL_ECPM;	/* CLKREQ# */
 		if (state == BHND_PCI_WAR_SUSPEND)
 			lcreg &= ~PCIEM_LINK_CTL_ASPMC_L1;
 
-		if ((error = bhnd_pcie_write_cap(sc, PCIER_LINK_CTL, lcreg)))
-			return (error);
+		pcie_write_config(sc->pci_dev, PCIER_LINK_CTL, lcreg, 2);
 	}
 
-	return (0);
-}
-
-/**
- * Read a PCIe PCIY_EXPRESS register from the host PCI bridge device's
- * configuration space
- *
- * @param sc Driver state.
- * @param reg The register offset (relative to PCIY_EXPRESS).
- * @param[out] value On success, the register's value.
- */
-int
-bhnd_pcie_read_cap(struct bhnd_pcihb_softc *sc, int reg, uint16_t *value)
-{
-	int	error;
-	int	offset;
-
-	if ((error = pci_find_cap(sc->pci_dev, PCIY_EXPRESS, &offset))) {
-		device_printf(sc->dev,
-		    "error locating PCIY_EXPRESS cap in %s: %d\n",
-		    device_get_nameunit(sc->pci_dev), error);
-
-		return (error);
-	}
-
-	*value = pci_read_config(sc->pci_dev, offset + reg, 2);
-	return (0);
-}
-
-/**
- * Write a PCIe PCIY_EXPRESS register to the host PCI bridge device's
- * configuration space.
- *
- * @param sc Driver state.
- * @param reg The register offset (relative to PCIY_EXPRESS).
- * @param[out] value On success, the register's value.
- */
-int
-bhnd_pcie_write_cap(struct bhnd_pcihb_softc *sc, int reg, uint16_t value)
-{
-	int	error;
-	int	offset;
-
-	if ((error = pci_find_cap(sc->pci_dev, PCIY_EXPRESS, &offset))) {
-		device_printf(sc->dev,
-		    "error locating PCIY_EXPRESS cap in %s: %d\n",
-		    device_get_nameunit(sc->pci_dev), error);
-
-		return (error);
-	}
-
-	pci_find_cap(sc->pci_dev, PCIY_EXPRESS, &offset);
-	pci_write_config(sc->pci_dev, offset + reg, value, 2);
 	return (0);
 }
 
