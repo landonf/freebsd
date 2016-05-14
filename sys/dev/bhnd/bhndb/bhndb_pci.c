@@ -483,6 +483,35 @@ bhndb_pci_populate_board_info(device_t dev, device_t child,
 
 	sc = device_get_softc(dev);
 
+	/* 
+	 * On a subset of Apple BCM4360 modules, always prefer the
+	 * PCI subdevice to the SPROM-supplied boardtype.
+	 * 
+	 * TODO:
+	 * 
+	 * Broadcom's own drivers implement this override, and then later use
+	 * the remapped BCM4360 board type to determine the required
+	 * board-specific workarounds.
+	 * 
+	 * Without access to this hardware, it's unclear why this mapping
+	 * is done, and we must do the same. If we can survey the hardware
+	 * in question, it may be possible to replace this behavior with
+	 * explicit references to the SPROM-supplied boardtype(s) in our
+	 * quirk definitions.
+	 */
+	if (pci_get_subvendor(sc->parent) == PCI_VENDOR_APPLE) {
+		switch (info->board_type) {
+		case BHND_BOARD_BCM94360X29C:
+		case BHND_BOARD_BCM94360X29CP2:
+		case BHND_BOARD_BCM94360X51:
+		case BHND_BOARD_BCM94360X51P2:
+			info->board_type = 0;	/* allow override below */
+			break;
+		default:
+			break;
+		}
+	}
+
 	/* If NVRAM did not supply vendor/type info, provide the PCI
 	 * subvendor/subdevice values. */
 	if (info->board_vendor == 0)
