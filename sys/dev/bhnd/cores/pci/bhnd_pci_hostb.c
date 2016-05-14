@@ -133,8 +133,6 @@ static const struct bhnd_chip_quirk bhnd_pcie_chip_quirks[] = {
 
 // TODO
 // Quirks (and WARs) for the following are not yet defined:
-// - Power savings via MDIO BLK1/PWR_MGMT3 on PCIe hwrev 15-20, 21-22
-// - WOWL PME enable/disable
 // - 4360 PCIe SerDes Tx amplitude/deemphasis (vendor Apple, boards
 //   BCM94360X51P2, BCM94360X51A).
 // - PCI latency timer (boards CB2_4321_BOARD, CB2_4321_AG_BOARD)
