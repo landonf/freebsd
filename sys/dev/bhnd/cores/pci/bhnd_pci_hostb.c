@@ -56,15 +56,13 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/bhnd.h>
 
+#include <dev/pci/pcireg.h>
 #include <dev/pci/pcivar.h>
 
 #include "bhnd_nvram_map.h"
 
 #include "bhnd_pcireg.h"
 #include "bhnd_pci_hostbvar.h"
-
-#define	BHND_PCI_ASSERT_QUIRK(_sc, _name)	\
-    KASSERT((_sc)->quirks & (_name), ("quirk " __STRING(_name) " not set"))
 
 #define	BHND_PCI_DEV(_core, _quirks, _chip_quirks)		\
 	BHND_DEVICE(_core, "", _quirks, _chip_quirks, BHND_DF_HOSTB)
@@ -73,9 +71,24 @@ static const struct bhnd_device_quirk bhnd_pci_quirks[];
 static const struct bhnd_device_quirk bhnd_pcie_quirks[];
 static const struct bhnd_chip_quirk bhnd_pcie_chip_quirks[];
 
+/* Device driver work-around variations */
+typedef enum {
+	BHND_PCI_WAR_ATTACH,	/**< apply attach workarounds */
+	BHND_PCI_WAR_RESUME,	/**< apply resume workarounds */
+	BHND_PCI_WAR_SUSPEND,	/**< apply suspend workarounds */
+	BHND_PCI_WAR_DETACH	/**< apply detach workarounds */
+} bhnd_pci_war_state;
+
 static int	bhnd_pci_wars_early_once(struct bhnd_pcihb_softc *sc);
-static int	bhnd_pci_wars_hwup(struct bhnd_pcihb_softc *sc);
-static int	bhnd_pci_wars_hwdown(struct bhnd_pcihb_softc *sc);
+static int	bhnd_pci_wars_hwup(struct bhnd_pcihb_softc *sc,
+		    bhnd_pci_war_state state);
+static int	bhnd_pci_wars_hwdown(struct bhnd_pcihb_softc *sc,
+		    bhnd_pci_war_state state);
+
+static int	bhnd_pcie_read_cap(struct bhnd_pcihb_softc *sc, int reg,
+		    uint16_t *value);
+static int	bhnd_pcie_write_cap(struct bhnd_pcihb_softc *sc, int reg,
+		    uint16_t value);
 
 /*
  * device/quirk tables
@@ -123,8 +136,6 @@ static const struct bhnd_chip_quirk bhnd_pcie_chip_quirks[] = {
 
 // Quirk handling TODO
 // WARs for the following are not yet implemented:
-// - BHND_PCIE_QUIRK_ASPM_OVR
-// - BHND_PCIE_QUIRK_BFL2_PCIEWAR_EN
 // - BHND_PCIE_QUIRK_SERDES_NOPLLDOWN
 // Quirks (and WARs) for the following are not yet defined:
 // - Power savings via MDIO BLK1/PWR_MGMT3 on PCIe hwrev 15-20, 21-22
@@ -206,7 +217,7 @@ bhnd_pci_hostb_attach(device_t dev)
 
 
 	/* Apply attach/resume work-arounds */
-	if ((error = bhnd_pci_wars_hwup(sc)))
+	if ((error = bhnd_pci_wars_hwup(sc, BHND_PCI_WAR_ATTACH)))
 		goto failed;
 
 
@@ -226,7 +237,7 @@ bhnd_pci_hostb_detach(device_t dev)
 	sc = device_get_softc(dev);
 
 	/* Apply suspend/detach work-arounds */
-	if ((error = bhnd_pci_wars_hwdown(sc)))
+	if ((error = bhnd_pci_wars_hwdown(sc, BHND_PCI_WAR_DETACH)))
 		return (error);
 
 	return (bhnd_pci_generic_detach(dev));
@@ -241,7 +252,7 @@ bhnd_pci_hostb_suspend(device_t dev)
 	sc = device_get_softc(dev);
 
 	/* Apply suspend/detach work-arounds */
-	if ((error = bhnd_pci_wars_hwdown(sc)))
+	if ((error = bhnd_pci_wars_hwdown(sc, BHND_PCI_WAR_SUSPEND)))
 		return (error);
 
 	return (bhnd_pci_generic_suspend(dev));
@@ -259,7 +270,7 @@ bhnd_pci_hostb_resume(device_t dev)
 		return (error);
 
 	/* Apply attach/resume work-arounds */
-	if ((error = bhnd_pci_wars_hwup(sc))) {
+	if ((error = bhnd_pci_wars_hwup(sc, BHND_PCI_WAR_RESUME))) {
 		bhnd_pci_generic_detach(dev);
 		return (error);
 	}
@@ -285,15 +296,15 @@ bhnd_pci_wars_early_once(struct bhnd_pcihb_softc *sc)
 
 		/* Fetch board flags */
 		bflags = bhnd_nvram_getvar_4(sc->dev, BHND_NVAR_BOARDFLAGS2);
-
-		/* Early Apple BCM4321-based devices did not (but should have)
-		 * set BHND_BFL2_PCIEWAR_OVR in SPROM. */
-		if (sc->quirks & BHND_PCIE_QUIRK_BFL2_PCIEWAR_EN)
-			bflags |= BHND_BFL2_PCIEWAR_OVR;
 		
 		/* Check board flags */
 		aspm_en = true;
 		if (bflags & BHND_BFL2_PCIEWAR_OVR)
+			aspm_en = false;
+
+		/* Early Apple devices did not (but should have) set
+		 * BHND_BFL2_PCIEWAR_OVR in SPROM. */
+		if (sc->quirks & BHND_PCIE_QUIRK_BFL2_PCIEWAR_EN)
 			aspm_en = false;
 
 		sc->aspm_quirk_override.aspm_en = aspm_en;
@@ -319,8 +330,10 @@ bhnd_pci_wars_early_once(struct bhnd_pcihb_softc *sc)
  * of the bridge device.
  */
 static int
-bhnd_pci_wars_hwup(struct bhnd_pcihb_softc *sc)
+bhnd_pci_wars_hwup(struct bhnd_pcihb_softc *sc, bhnd_pci_war_state state)
 {
+	int	error;
+
 	/* Note that the order here matters; these work-arounds
 	 * should not be re-ordered without careful review of their
 	 * interdependencies */
@@ -442,6 +455,50 @@ bhnd_pci_wars_hwup(struct bhnd_pcihb_softc *sc)
 		BHND_PCI_PROTO_WRITE_4(sc, BHND_PCIE_DLLP_PMTHRESHREG, pmt);
 	}
 
+	/* Override ASPM/ECPM settings in SPROM shadow and PCIER_LINK_CTL */
+	if (sc->quirks & BHND_PCIE_QUIRK_ASPM_OVR) {
+		bus_size_t	reg;
+		uint16_t	cfg;
+
+		/* Set ASPM L1/L0s flags in SPROM shadow */
+		reg = BHND_PCIE_SPROM_SHADOW + BHND_PCIE_SRSH_ASPM_OFFSET;
+		cfg = BHND_PCI_READ_2(sc, reg);
+
+		if (sc->aspm_quirk_override.aspm_en)
+			cfg |= BHND_PCIE_SRSH_ASPM_ENB;
+		else
+			cfg &= ~BHND_PCIE_SRSH_ASPM_ENB;
+		
+		BHND_PCI_WRITE_2(sc, reg, cfg);
+
+
+		/* Set ASPM/ECPM (CLKREQ) flags in PCIe link control register */
+		if ((error = bhnd_pcie_read_cap(sc, PCIER_LINK_CTL, &cfg)))
+			return (error);
+
+		if (sc->aspm_quirk_override.aspm_en)
+			cfg |= PCIEM_LINK_CTL_ASPMC;
+		else
+			cfg &= ~PCIEM_LINK_CTL_ASPMC;
+
+		cfg &= ~PCIEM_LINK_CTL_ECPM;		/* CLKREQ# */
+
+		if ((error = bhnd_pcie_write_cap(sc, PCIER_LINK_CTL, cfg)))
+			return (error);
+
+
+		/* Set CLKREQ (ECPM) flags in SPROM shadow */
+		reg = BHND_PCIE_SPROM_SHADOW + BHND_PCIE_SRSH_CLKREQ_OFFSET_R5;
+		cfg = BHND_PCI_READ_2(sc, reg);
+		
+		if (sc->aspm_quirk_override.aspm_en)
+			cfg |= BHND_PCIE_SRSH_CLKREQ_ENB;
+		else
+			cfg &= ~BHND_PCIE_SRSH_CLKREQ_ENB;
+
+		BHND_PCI_WRITE_2(sc, reg, cfg);
+	}
+
 	/* Enable L23READY_EXIT_NOPRST if not already set in SPROM. */
 	if (sc->quirks & BHND_PCIE_QUIRK_SPROM_L23_PCI_RESET) {
 		bus_size_t	reg;
@@ -466,8 +523,10 @@ bhnd_pci_wars_hwup(struct bhnd_pcihb_softc *sc)
  * of the bridge device.
  */
 static int
-bhnd_pci_wars_hwdown(struct bhnd_pcihb_softc *sc)
-{	
+bhnd_pci_wars_hwdown(struct bhnd_pcihb_softc *sc, bhnd_pci_war_state state)
+{
+	int	error;
+
 	/* Reduce L1 timer for better power savings.
 	 * TODO: We could enable/disable this on demand for better power
 	 * savings if we tie this to HT clock request handling */
@@ -478,6 +537,74 @@ bhnd_pci_wars_hwdown(struct bhnd_pcihb_softc *sc)
 		BHND_PCI_PROTO_WRITE_4(sc, BHND_PCIE_DLLP_PMTHRESHREG, pmt);
 	}
 
+	/* Enable CLKREQ (ECPM). If suspending, also disable ASPM L1 entry */
+	if (sc->quirks & BHND_PCIE_QUIRK_ASPM_OVR) {
+		uint16_t	lcreg;
+
+		if ((error = bhnd_pcie_read_cap(sc, PCIER_LINK_CTL, &lcreg)))
+			return (error);
+
+		lcreg |= PCIEM_LINK_CTL_ECPM;	/* CLKREQ# */
+		if (state == BHND_PCI_WAR_SUSPEND)
+			lcreg &= ~PCIEM_LINK_CTL_ASPMC_L1;
+
+		if ((error = bhnd_pcie_write_cap(sc, PCIER_LINK_CTL, lcreg)))
+			return (error);
+	}
+
+	return (0);
+}
+
+/**
+ * Read a PCIe PCIY_EXPRESS register from the host PCI bridge device's
+ * configuration space
+ *
+ * @param sc Driver state.
+ * @param reg The register offset (relative to PCIY_EXPRESS).
+ * @param[out] value On success, the register's value.
+ */
+int
+bhnd_pcie_read_cap(struct bhnd_pcihb_softc *sc, int reg, uint16_t *value)
+{
+	int	error;
+	int	offset;
+
+	if ((error = pci_find_cap(sc->pci_dev, PCIY_EXPRESS, &offset))) {
+		device_printf(sc->dev,
+		    "error locating PCIY_EXPRESS cap in %s: %d\n",
+		    device_get_nameunit(sc->pci_dev), error);
+
+		return (error);
+	}
+
+	*value = pci_read_config(sc->pci_dev, offset + reg, 2);
+	return (0);
+}
+
+/**
+ * Write a PCIe PCIY_EXPRESS register to the host PCI bridge device's
+ * configuration space.
+ *
+ * @param sc Driver state.
+ * @param reg The register offset (relative to PCIY_EXPRESS).
+ * @param[out] value On success, the register's value.
+ */
+int
+bhnd_pcie_write_cap(struct bhnd_pcihb_softc *sc, int reg, uint16_t value)
+{
+	int	error;
+	int	offset;
+
+	if ((error = pci_find_cap(sc->pci_dev, PCIY_EXPRESS, &offset))) {
+		device_printf(sc->dev,
+		    "error locating PCIY_EXPRESS cap in %s: %d\n",
+		    device_get_nameunit(sc->pci_dev), error);
+
+		return (error);
+	}
+
+	pci_find_cap(sc->pci_dev, PCIY_EXPRESS, &offset);
+	pci_write_config(sc->pci_dev, offset + reg, value, 2);
 	return (0);
 }
 
