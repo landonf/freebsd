@@ -177,9 +177,18 @@ enum {
 	 * The PCIe SerDes PLL must be configured to not retry the startup
 	 * sequence upon frequency detection failure on SerDes <= rev9 devices
 	 * 
-	 * The issue this workaround resolves has not be determined.
+	 * The issue this workaround resolves is unknown.
 	 */
 	BHND_PCIE_QUIRK_SDR9_NO_FREQRETRY	= (1<<15),
+
+	/**
+	 * The PCIe SerDes output should be configured with an amplitude of
+	 * 1214mVpp and a differential output de-emphasis of -8.46dB
+	 * (to fix attenuation issues?).
+	 *
+	 * The exact issue this workaround resolves is unknown.
+	 */
+	BHND_PCIE_QUIRK_SERDES_TX_AMP_DEMPH	= (1<<16)
 };
 
 /**

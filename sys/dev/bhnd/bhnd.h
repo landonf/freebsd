@@ -317,7 +317,7 @@ struct bhnd_chip_match {
 	.match_bvendor = 1, .board_vendor = _vend
 
 /** Set the required board type within a bhnd_chip_match instance */
-#define	BHND_CHIP_BT(_btype)		\
+#define	BHND_CHIP_BTYPE(_btype)		\
 	.match_btype = 1, .board_type = BHND_BOARD_BCM ## _btype
 
 /** Set the required SROM revision range within a bhnd_chip_match instance */
@@ -330,7 +330,7 @@ struct bhnd_chip_match {
 
 /** Set the required board vendor and type within a bhnd_chip_match instance */
 #define	BHND_CHIP_BVT(_vend, _type)	\
-	BHND_CHIP_BVEND(_vend), BHND_CHIP_BTYPE(_type)
+	BHND_CHIP_BVENDOR(_vend), BHND_CHIP_BTYPE(_type)
 
 /** Set the required board vendor, type, and revision within a bhnd_chip_match
  *  instance */

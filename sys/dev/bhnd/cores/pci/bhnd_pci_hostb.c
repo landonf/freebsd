@@ -123,10 +123,17 @@ static const struct bhnd_device_quirk bhnd_pcie_quirks[] = {
 static const struct bhnd_chip_quirk bhnd_pcie_chip_quirks[] = {
 	/* Apple boards on which BHND_BFL2_PCIEWAR_OVR should be assumed
 	 * to be set. */
-	{{ BHND_CHIP_BVENDOR		(PCI_VENDOR_APPLE),
-	   BHND_CHIP_SROMREV		(HWREV_EQ(4)),
-	   BHND_CHIP_BREV		(HWREV_LTE(0x71)) },
-	   BHND_PCIE_QUIRK_BFL2_PCIEWAR_EN },
+	{{ BHND_CHIP_BVENDOR	(PCI_VENDOR_APPLE),
+	   BHND_CHIP_SROMREV	(HWREV_EQ(4)),
+	   BHND_CHIP_BREV	(HWREV_LTE(0x71)) },
+		BHND_PCIE_QUIRK_BFL2_PCIEWAR_EN },
+
+	/* Apple BCM4360 boards that require adjusting Tx amplitude and
+	 * differential output de-emphasis of the PCIe SerDes */
+	{{ BHND_CHIP_BVT	(PCI_VENDOR_APPLE,	94360X51P2) },
+		BHND_PCIE_QUIRK_SERDES_TX_AMP_DEMPH },
+	{{ BHND_CHIP_BVT	(PCI_VENDOR_APPLE,	94360X51A) },
+		BHND_PCIE_QUIRK_SERDES_TX_AMP_DEMPH },
 
 	BHND_CHIP_QUIRK_END
 };
