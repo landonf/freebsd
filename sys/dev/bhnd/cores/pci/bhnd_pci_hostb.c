@@ -67,6 +67,7 @@ __FBSDID("$FreeBSD$");
 
 static const struct bhnd_device_quirk bhnd_pci_quirks[];
 static const struct bhnd_device_quirk bhnd_pcie_quirks[];
+static const struct bhnd_chip_quirk bhnd_pci_chip_quirks[];
 static const struct bhnd_chip_quirk bhnd_pcie_chip_quirks[];
 
 /* Device driver work-around variations */
@@ -91,7 +92,7 @@ static int	bhnd_pci_wars_hwdown(struct bhnd_pcihb_softc *sc,
 	BHND_DEVICE(_core, "", _quirks, _chip_quirks, BHND_DF_HOSTB)
 
 static const struct bhnd_device bhnd_pci_devs[] = {
-	BHND_PCI_DEV(PCI,	bhnd_pci_quirks,	NULL),
+	BHND_PCI_DEV(PCI,	bhnd_pci_quirks,	bhnd_pci_chip_quirks),
 	BHND_PCI_DEV(PCIE,	bhnd_pcie_quirks,	bhnd_pcie_chip_quirks),
 	BHND_DEVICE_END
 };
@@ -101,6 +102,16 @@ static const struct bhnd_device_quirk bhnd_pci_quirks[] = {
 	{ BHND_HWREV_GTE(11),	BHND_PCI_QUIRK_SBTOPCI2_READMULTI |
 				BHND_PCI_QUIRK_CLKRUN_DSBL },
 	BHND_DEVICE_QUIRK_END
+};
+
+static const struct bhnd_chip_quirk bhnd_pci_chip_quirks[] = {
+	/* BCM4321CB2 boards that require 960ns latency timer override */
+	{{ BHND_CHIP_BTYPE(4321CB2) },
+		BHND_PCI_QUIRK_960NS_LATTIM_OVR },
+	{{ BHND_CHIP_BTYPE(4321CB2_AG) },
+		BHND_PCI_QUIRK_960NS_LATTIM_OVR },
+
+	BHND_CHIP_QUIRK_END
 };
 
 static const struct bhnd_device_quirk bhnd_pcie_quirks[] = {

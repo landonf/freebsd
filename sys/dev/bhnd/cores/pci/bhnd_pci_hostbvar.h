@@ -74,18 +74,24 @@ enum {
 	BHND_PCI_QUIRK_CLKRUN_DSBL		= (1<<3),
 
 	/**
+	 * On these BCM4321 devices, the PCI latency timer must be set
+	 * to 960ns on initial attach.
+	 */
+	BHND_PCI_QUIRK_960NS_LATTIM_OVR		= (1<<4),
+
+	/**
 	 * TLP workaround for unmatched address handling is required.
 	 * 
 	 * This TLP workaround will enable setting of the PCIe UR status bit
 	 * on memory access to an unmatched address.
 	 */
-	BHND_PCIE_QUIRK_UR_STATUS_FIX		= (1<<4),
+	BHND_PCIE_QUIRK_UR_STATUS_FIX		= (1<<5),
 
 	/**
 	 * PCI-PM power management must be explicitly enabled via
 	 * the data link control register.
 	 */
-	BHND_PCIE_QUIRK_PCIPM_REQEN		= (1<<5),
+	BHND_PCIE_QUIRK_PCIPM_REQEN		= (1<<6),
 
 	/**
 	 * Fix L0s to L0 exit transition on SerDes <= rev9 devices.
@@ -98,19 +104,19 @@ enum {
 	 * filters must be tweaked to ensure the CDR has fully stabilized
 	 * before asserting receive sequencer completion.
 	 */
-	BHND_PCIE_QUIRK_SDR9_L0s_HANG		= (1<<6),
+	BHND_PCIE_QUIRK_SDR9_L0s_HANG		= (1<<7),
 
 	/**
 	 * The idle time for entering L1 low-power state must be
 	 * explicitly set (to 114ns) to fix slow L1->L0 transition issues.
 	 */
-	BHND_PCIE_QUIRK_L1_IDLE_THRESH		= (1<<7),
+	BHND_PCIE_QUIRK_L1_IDLE_THRESH		= (1<<8),
 	
 	/**
 	 * The ASPM L1 entry timer should be extended for better performance,
 	 * and restored for better power savings.
 	 */
-	BHND_PCIE_QUIRK_L1_TIMER_PERF		= (1<<8),
+	BHND_PCIE_QUIRK_L1_TIMER_PERF		= (1<<9),
 
 	/**
 	 * ASPM and ECPM settings must be overridden manually.
@@ -134,14 +140,14 @@ enum {
 	 * Detach:
 	 *   - Set CLKREQ (ECPM) flag in the PCIER_LINK_CTL register.
 	 */
-	BHND_PCIE_QUIRK_ASPM_OVR		= (1<<9),
+	BHND_PCIE_QUIRK_ASPM_OVR		= (1<<10),
 
 	/**
 	 * A subset of Apple devices did not set the BHND_BFL2_PCIEWAR_OVR
 	 * flag in SPROM; on these devices, the BHND_BFL2_PCIEWAR_OVR flag
 	 * should always be treated as if set.
 	 */
-	BHND_PCIE_QUIRK_BFL2_PCIEWAR_EN		= (1<<10),
+	BHND_PCIE_QUIRK_BFL2_PCIEWAR_EN		= (1<<11),
 
 	/**
 	 * Fix SerDes polarity on SerDes <= rev9 devices.
@@ -149,13 +155,13 @@ enum {
 	 * The SerDes polarity must be saved at device attachment, and
 	 * restored on suspend/resume.
 	 */
-	BHND_PCIE_QUIRK_SDR9_POLARITY		= (1<<11),
+	BHND_PCIE_QUIRK_SDR9_POLARITY		= (1<<12),
 
 	/**
 	 * SerDes PLL down flag must be manually disabled (by ChipCommon) on
 	 * resume.
 	 */
-	BHND_PCIE_QUIRK_SERDES_NOPLLDOWN	= (1<<12),
+	BHND_PCIE_QUIRK_SERDES_NOPLLDOWN	= (1<<13),
 
         /**
 	 * On attach and resume, consult the SPROM to determine whether
@@ -163,7 +169,7 @@ enum {
 	 *
 	 * If L23READY_EXIT_NOPRST is not already set in the SPROM, set it
 	 */
-	BHND_PCIE_QUIRK_SPROM_L23_PCI_RESET	= (1<<13),
+	BHND_PCIE_QUIRK_SPROM_L23_PCI_RESET	= (1<<14),
 	
 	/**
 	 * The PCIe SerDes supports non-standard extended MDIO register access.
@@ -171,7 +177,7 @@ enum {
 	 * The PCIe SerDes supports access to extended MDIO registers via
 	 * a non-standard Clause 22 address extension mechanism.
 	 */
-	BHND_PCIE_QUIRK_SD_C22_EXTADDR		= (1<<14),
+	BHND_PCIE_QUIRK_SD_C22_EXTADDR		= (1<<15),
 	
 	/**
 	 * The PCIe SerDes PLL must be configured to not retry the startup
@@ -179,7 +185,7 @@ enum {
 	 * 
 	 * The issue this workaround resolves is unknown.
 	 */
-	BHND_PCIE_QUIRK_SDR9_NO_FREQRETRY	= (1<<15),
+	BHND_PCIE_QUIRK_SDR9_NO_FREQRETRY	= (1<<16),
 
 	/**
 	 * The PCIe SerDes output should be configured with an amplitude of
@@ -188,7 +194,7 @@ enum {
 	 *
 	 * The exact issue this workaround resolves is unknown.
 	 */
-	BHND_PCIE_QUIRK_SERDES_TX_AMP_DEMPH	= (1<<16)
+	BHND_PCIE_QUIRK_SERDES_TX_AMP_DEMPH	= (1<<17)
 };
 
 /**
