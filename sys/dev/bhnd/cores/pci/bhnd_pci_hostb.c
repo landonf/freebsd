@@ -59,7 +59,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/pci/pcireg.h>
 #include <dev/pci/pcivar.h>
 
-#include "bhnd_nvram_map.h"
+#include <dev/bhnd/cores/chipc/chipc.h>
+#include <dev/bhnd/cores/chipc/chipcreg.h>
 
 #include "bhnd_pcireg.h"
 #include "bhnd_pci_hostbvar.h"
@@ -130,9 +131,7 @@ static const struct bhnd_chip_quirk bhnd_pcie_chip_quirks[] = {
 	BHND_CHIP_QUIRK_END
 };
 
-// Quirk handling TODO
-// WARs for the following are not yet implemented:
-// - BHND_PCIE_QUIRK_SERDES_NOPLLDOWN
+// TODO
 // Quirks (and WARs) for the following are not yet defined:
 // - Power savings via MDIO BLK1/PWR_MGMT3 on PCIe hwrev 15-20, 21-22
 // - WOWL PME enable/disable
@@ -285,17 +284,20 @@ bhnd_pci_hostb_resume(device_t dev)
 static int
 bhnd_pci_wars_early_once(struct bhnd_pcihb_softc *sc)
 {
+	int error;
+
 	/* Determine whether ASPM/CLKREQ should be forced on, or forced off. */
 	if (sc->quirks & BHND_PCIE_QUIRK_ASPM_OVR) {
-		uint32_t	bflags;
-		bool		aspm_en;
+		struct bhnd_board_info	board;
+		bool			aspm_en;
 
-		/* Fetch board flags */
-		bflags = bhnd_nvram_getvar_4(sc->dev, BHND_NVAR_BOARDFLAGS2);
+		/* Fetch board info */
+		if ((error = bhnd_read_board_info(sc->dev, &board)))
+			return (error);
 		
 		/* Check board flags */
 		aspm_en = true;
-		if (bflags & BHND_BFL2_PCIEWAR_OVR)
+		if (board.board_flags2 & BHND_BFL2_PCIEWAR_OVR)
 			aspm_en = false;
 
 		/* Early Apple devices did not (but should have) set
@@ -504,6 +506,24 @@ bhnd_pci_wars_hwup(struct bhnd_pcihb_softc *sc, bhnd_pci_war_state state)
 			cfg |= BHND_PCIE_SRSH_L23READY_EXIT_NOPRST;
 			BHND_PCI_WRITE_2(sc, reg, cfg);
 		}
+	}
+
+	/* Disable SerDes PLL down */
+	if (sc->quirks & BHND_PCIE_QUIRK_SERDES_NOPLLDOWN) {
+		device_t	bhnd, chipc;
+		bus_size_t	reg;
+		
+		bhnd = device_get_parent(sc->dev);
+		chipc = bhnd_find_child(bhnd, BHND_DEVCLASS_CC, 0);
+		KASSERT(chipc != NULL, ("missing chipcommon device"));
+
+		/* Write SerDes PLL disable flag to the ChipCommon core */
+		BHND_CHIPC_WRITE_CHIPCTRL(chipc, CHIPCTRL_4321_PLL_DOWN,
+		    CHIPCTRL_4321_PLL_DOWN);
+
+		/* Clear SPROM shadow backdoor register */
+		reg = BHND_PCIE_SPROM_SHADOW + BHND_PCIE_SRSH_BD_OFFSET;
+		BHND_PCI_WRITE_2(sc, reg, 0);
 	}
 
 	return (0);
