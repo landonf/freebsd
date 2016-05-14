@@ -64,9 +64,6 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_pcireg.h"
 #include "bhnd_pci_hostbvar.h"
 
-#define	BHND_PCI_DEV(_core, _quirks, _chip_quirks)		\
-	BHND_DEVICE(_core, "", _quirks, _chip_quirks, BHND_DF_HOSTB)
-
 static const struct bhnd_device_quirk bhnd_pci_quirks[];
 static const struct bhnd_device_quirk bhnd_pcie_quirks[];
 static const struct bhnd_chip_quirk bhnd_pcie_chip_quirks[];
@@ -93,6 +90,10 @@ static int	bhnd_pcie_write_cap(struct bhnd_pcihb_softc *sc, int reg,
 /*
  * device/quirk tables
  */
+
+#define	BHND_PCI_DEV(_core, _quirks, _chip_quirks)		\
+	BHND_DEVICE(_core, "", _quirks, _chip_quirks, BHND_DF_HOSTB)
+
 static const struct bhnd_device bhnd_pci_devs[] = {
 	BHND_PCI_DEV(PCI,	bhnd_pci_quirks,	NULL),
 	BHND_PCI_DEV(PCIE,	bhnd_pcie_quirks,	bhnd_pcie_chip_quirks),
@@ -618,10 +619,9 @@ static device_method_t bhnd_pci_hostb_methods[] = {
 	DEVMETHOD_END
 };
 
-DEFINE_CLASS_1(bhnd_pci_hostb, bhnd_pci_hostb_driver, bhnd_pci_hostb_methods, 
+DEFINE_CLASS_1(bhnd_hostb, bhnd_pci_hostb_driver, bhnd_pci_hostb_methods, 
     sizeof(struct bhnd_pcihb_softc), bhnd_pci_driver);
-
-DRIVER_MODULE(bhnd_hostb, bhnd, bhnd_pci_hostb_driver, bhnd_hostb_devclass, 0, 0);
+DRIVER_MODULE(bhnd_pci_hostb, bhnd, bhnd_pci_hostb_driver, bhnd_hostb_devclass, 0, 0);
 
 MODULE_VERSION(bhnd_pci_hostb, 1);
 MODULE_DEPEND(bhnd_pci_hostb, bhnd, 1, 1, 1);

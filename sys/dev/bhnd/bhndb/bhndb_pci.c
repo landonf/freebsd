@@ -598,6 +598,7 @@ DEFINE_CLASS_1(bhndb, bhndb_pci_driver, bhndb_pci_methods,
 
 MODULE_VERSION(bhndb_pci, 1);
 MODULE_DEPEND(bhndb_pci, bhnd_pci_hostb, 1, 1, 1);
+MODULE_DEPEND(bhndb_pci, bhnd_pcie2_hostb, 1, 1, 1);
 MODULE_DEPEND(bhndb_pci, pci, 1, 1, 1);
 MODULE_DEPEND(bhndb_pci, bhndb, 1, 1, 1);
 MODULE_DEPEND(bhndb_pci, bhnd, 1, 1, 1);
