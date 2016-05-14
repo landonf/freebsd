@@ -395,17 +395,6 @@
 #define	BHND_PCIE_SRSH_BD_OFFSET		12	/* word 6 */
 #define	BHND_PCIE_SRSH_AUTOINIT_OFFSET		36	/* auto initialization enable */
 
-/* Linkcontrol reg offset in PCIE Cap */
-#define	BHND_PCIE_CAP_LINKCTRL_OFFSET		16	/* linkctrl offset in pcie cap */
-#define	BHND_PCIE_CAP_LCREG_ASPML0s		0x01	/* ASPM L0s in linkctrl */
-#define	BHND_PCIE_CAP_LCREG_ASPML1		0x02	/* ASPM L1 in linkctrl */
-#define	BHND_PCIE_CLKREQ_ENAB			0x100	/* CLKREQ Enab in linkctrl */
-
-#define	BHND_PCIE_ASPM_ENAB			3	/* ASPM L0s & L1 in linkctrl */
-#define	BHND_PCIE_ASPM_L1_ENAB			2	/* ASPM L0s & L1 in linkctrl */
-#define	BHND_PCIE_ASPM_L0s_ENAB			1	/* ASPM L0s & L1 in linkctrl */
-#define	BHND_PCIE_ASPM_DISAB			0	/* ASPM L0s & L1 in linkctrl */
-
 /* Status reg PCIE_PLP_STATUSREG */
 #define	BHND_PCIE_PLP_POLARITY_INV		0x10	/* lane polarity is inverted */
 
