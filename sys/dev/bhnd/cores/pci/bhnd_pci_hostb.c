@@ -104,16 +104,6 @@ static const struct bhnd_device_quirk bhnd_pci_quirks[] = {
 	BHND_DEVICE_QUIRK_END
 };
 
-static const struct bhnd_chip_quirk bhnd_pci_chip_quirks[] = {
-	/* BCM4321CB2 boards that require 960ns latency timer override */
-	{{ BHND_CHIP_BTYPE(4321CB2) },
-		BHND_PCI_QUIRK_960NS_LATTIM_OVR },
-	{{ BHND_CHIP_BTYPE(4321CB2_AG) },
-		BHND_PCI_QUIRK_960NS_LATTIM_OVR },
-
-	BHND_CHIP_QUIRK_END
-};
-
 static const struct bhnd_device_quirk bhnd_pcie_quirks[] = {
 	{ BHND_HWREV_EQ		(0),	BHND_PCIE_QUIRK_SDR9_L0s_HANG },
 	{ BHND_HWREV_RANGE	(0, 1),	BHND_PCIE_QUIRK_UR_STATUS_FIX },
@@ -137,20 +127,38 @@ static const struct bhnd_chip_quirk bhnd_pcie_chip_quirks[] = {
 	{{ BHND_CHIP_BVENDOR	(PCI_VENDOR_APPLE),
 	   BHND_CHIP_SROMREV	(HWREV_EQ(4)),
 	   BHND_CHIP_BREV	(HWREV_LTE(0x71)) },
-		BHND_PCIE_QUIRK_BFL2_PCIEWAR_EN },
+		BHND_PCIE_QUIRK_BFL2_PCIEWAR_EN		},
 
 	/* Apple BCM4360 boards that require adjusting Tx amplitude and
 	 * differential output de-emphasis of the PCIe SerDes */
-	{{ BHND_CHIP_BVT	(PCI_VENDOR_APPLE,	94360X51P2) },
-		BHND_PCIE_QUIRK_SERDES_TX_AMP_DEMPH },
-	{{ BHND_CHIP_BVT	(PCI_VENDOR_APPLE,	94360X51A) },
-		BHND_PCIE_QUIRK_SERDES_TX_AMP_DEMPH },
+	{{ BHND_CHIP_BVT	(PCI_VENDOR_APPLE,	94360X51P2)	},
+		BHND_PCIE_QUIRK_SERDES_TX_AMP_DEMPH	},
+	{{ BHND_CHIP_BVT	(PCI_VENDOR_APPLE,	94360X51A)	},
+		BHND_PCIE_QUIRK_SERDES_TX_AMP_DEMPH	},
+
+
+	/* Apple BCM94322 boards that require 700mV SerDes TX drive strength. */
+	{{ BHND_CHIP_BVT	(PCI_VENDOR_APPLE,	94322X9)	},
+		BHND_PCIE_QUIRK_SERDES_TXDS_700MV	},
+
+	/* Apple BCM4331 boards that require max SerDes TX drive strength. */
+#define	BHND_APPLE_TXDS_MAX_QUIRK(board)				\
+	{{ BHND_CHIP_ID		(4331)					\
+	   BHND_CHIP_BVT	(PCI_VENDOR_APPLE,	_board), },	\
+		BHND_PCIE_QUIRK_SERDES_TXDS_MAX		}
+
+	BHND_APPLE_TXDS_MAX_QUIRK(94331X19),
+	BHND_APPLE_TXDS_MAX_QUIRK(94331X28),
+	BHND_APPLE_TXDS_MAX_QUIRK(94331X29B),
+	BHND_APPLE_TXDS_MAX_QUIRK(94331X19C),
+
+#undef BHND_APPLE_TXDS_MAX_QUIRK
 
 	BHND_CHIP_QUIRK_END
 };
 
 // TODO
-// Quirks (and WARs) for the following are not yet defined:
+// Work-arounds for the following are not yet implemented:
 // - 4360 PCIe SerDes Tx amplitude/deemphasis (vendor Apple, boards
 //   BCM94360X51P2, BCM94360X51A).
 // - PCI latency timer (boards CB2_4321_BOARD, CB2_4321_AG_BOARD)
@@ -158,6 +166,19 @@ static const struct bhnd_chip_quirk bhnd_pcie_chip_quirks[] = {
 //   board BCM94322X9)
 // - 700mV SerDes TX drive strength (chipid BCM4331, boards BCM94331X19,
 //   BCM94331X28, BCM94331X29B, BCM94331X19C)
+//
+// Quirk flags the following are not yet defined:
+// [MRRS Handling]
+// - On all PCIe devices (unless otherwise specified in the following quirks),
+//   the MRRS should always be explicitly set to 128B.
+// - pcie <= rev17 should cap all MRRS settings at 128B (larger MRRS values are
+//   not supported).
+// - On BCM4331 chips (pcie >= rev18), MRRS should be explicitly set to 512B,
+//   except where otherwise specified by the following MRRS quirks.
+// - pcie rev18 should always use a MRSS of 128B
+// - pcie rev19 devices should alway use a MRSS of 128B if NOT vendor
+//   APPLE, boards BCM94331X19, BCM94331X28, BCM94331X28B, BCM94331X29B,
+//   BCM94331X29D, BCM94331X19C, or BCM94331X33)
 
 #define	BHND_PCI_SOFTC(_sc)	(&((_sc)->common))
 

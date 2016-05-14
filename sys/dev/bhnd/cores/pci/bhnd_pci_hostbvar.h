@@ -194,7 +194,24 @@ enum {
 	 *
 	 * The exact issue this workaround resolves is unknown.
 	 */
-	BHND_PCIE_QUIRK_SERDES_TX_AMP_DEMPH	= (1<<17)
+	BHND_PCIE_QUIRK_SERDES_TX_AMP_DEMPH	= (1<<17),
+
+	/**
+	 * On Apple BCM94322X9 devices, the PCIe SerDes TX drive strength
+	 * should be set to 700mV.
+	 * 
+	 * The exact issue this workaround resolves is unknown.
+	 */
+	BHND_PCIE_QUIRK_SERDES_TXDS_700MV	= (1<<18),
+
+	/**
+	 * On some Apple BCM4331-based devices, the PCIe SerDes TX drive
+	 * strength should be set to its maximum.
+	 * 
+	 * The exact issue this workaround resolves is unknown.
+	 */
+	BHND_PCIE_QUIRK_SERDES_TXDS_MAX		= (1<<18),
+	
 };
 
 /**
