@@ -215,8 +215,7 @@ enum {
 	BHND_PCIE_QUIRK_MAX_MRRS_128		= (1<<19),
 
 	/**
-	 * The PCIe core should be configured with an MRRS of 512 bytes
-	 * by default.
+	 * The PCIe core should be configured with an MRRS of 512 bytes.
 	 */
 	BHND_PCIE_QUIRK_DEFAULT_MRRS_512	= (1<<20),
 };

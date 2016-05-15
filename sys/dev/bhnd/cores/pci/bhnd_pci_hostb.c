@@ -248,7 +248,6 @@ bhnd_pci_hostb_attach(device_t dev)
 	if ((error = bhnd_pci_wars_hwup(sc, BHND_PCI_WAR_ATTACH)))
 		goto failed;
 
-
 	return (0);
 	
 failed:
@@ -357,6 +356,18 @@ bhnd_pci_wars_early_once(struct bhnd_pcihb_softc *sc)
 		st = BHND_PCI_PROTO_READ_4(sc, BHND_PCIE_PLP_STATUSREG);
 		inv = ((st & BHND_PCIE_PLP_POLARITY_INV) != 0);
 		sc->sdr9_quirk_polarity.inv = inv;
+	}
+
+	/* Override maximum read request size */
+	if (bhnd_get_class(sc->dev) == BHND_DEVCLASS_PCIE) {
+		int	msize;
+
+		msize = 128; /* compatible with all PCIe-G1 core revisions */
+		if (sc->quirks & BHND_PCIE_QUIRK_DEFAULT_MRRS_512)
+			msize = 512;
+
+		if (pci_set_max_read_req(sc->pci_dev, msize) == 0)
+			panic("set mrrs on non-PCIe device");
 	}
 
 	return (0);
