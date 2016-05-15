@@ -40,6 +40,15 @@ __FBSDID("$FreeBSD$");
  * bhndb_pci driver.
  */
 
+// TODO
+//
+// A full survey of known quirks/work-arounds has not been completed.
+//
+// Work-arounds for the following are not yet implemented:
+// - BHND_PCIE2_QUIRK_SERDES_TXDRV_DEEMPH
+//   4360 PCIe SerDes Tx amplitude/deemphasis (vendor Apple, boards
+//   BCM94360X51P2, BCM94360X51A)
+
 #include <sys/param.h>
 #include <sys/kernel.h>
 
@@ -70,11 +79,6 @@ static int	bhnd_pcie2_wars_early_once(struct bhnd_pcie2hb_softc *sc);
 static int	bhnd_pcie2_wars_hwup(struct bhnd_pcie2hb_softc *sc);
 static int	bhnd_pcie2_wars_hwdown(struct bhnd_pcie2hb_softc *sc);
 
-static int	bhnd_pcie2_read_cap(struct bhnd_pcie2hb_softc *sc, int reg,
-		    uint16_t *value);
-static int	bhnd_pcie2_write_cap(struct bhnd_pcie2hb_softc *sc, int reg,
-		    uint16_t value);
-
 /*
  * device/quirk tables
  */
@@ -92,6 +96,13 @@ static const struct bhnd_device_quirk bhnd_pcie2_quirks[] = {
 };
 
 static const struct bhnd_chip_quirk bhnd_pcie2_chip_quirks[] = {
+	/* Apple BCM4360 boards that require adjusting TX amplitude and
+	 * differential output de-emphasis of the PCIe SerDes */
+	{{ BHND_CHIP_BVT	(PCI_VENDOR_APPLE,	94360X51P2)	},
+		BHND_PCIE2_QUIRK_SERDES_TXDRV_DEEMPH	},
+	{{ BHND_CHIP_BVT	(PCI_VENDOR_APPLE,	94360X51A)	},
+		BHND_PCIE2_QUIRK_SERDES_TXDRV_DEEMPH	},
+
 	BHND_CHIP_QUIRK_END
 };
 
@@ -220,59 +231,6 @@ bhnd_pcie2_wars_hwdown(struct bhnd_pcie2hb_softc *sc)
 {
 	// TODO
 	return (ENXIO);
-}
-
-/**
- * Read a PCIe PCIY_EXPRESS register from the host PCI bridge device's
- * configuration space
- *
- * @param sc Driver state.
- * @param reg The register offset (relative to PCIY_EXPRESS).
- * @param[out] value On success, the register's value.
- */
-int
-bhnd_pcie2_read_cap(struct bhnd_pcie2hb_softc *sc, int reg, uint16_t *value)
-{
-	int	error;
-	int	offset;
-
-	if ((error = pci_find_cap(sc->pci_dev, PCIY_EXPRESS, &offset))) {
-		device_printf(sc->dev,
-		    "error locating PCIY_EXPRESS cap in %s: %d\n",
-		    device_get_nameunit(sc->pci_dev), error);
-
-		return (error);
-	}
-
-	*value = pci_read_config(sc->pci_dev, offset + reg, 2);
-	return (0);
-}
-
-/**
- * Write a PCIe PCIY_EXPRESS register to the host PCI bridge device's
- * configuration space.
- *
- * @param sc Driver state.
- * @param reg The register offset (relative to PCIY_EXPRESS).
- * @param[out] value On success, the register's value.
- */
-int
-bhnd_pcie2_write_cap(struct bhnd_pcie2hb_softc *sc, int reg, uint16_t value)
-{
-	int	error;
-	int	offset;
-
-	if ((error = pci_find_cap(sc->pci_dev, PCIY_EXPRESS, &offset))) {
-		device_printf(sc->dev,
-		    "error locating PCIY_EXPRESS cap in %s: %d\n",
-		    device_get_nameunit(sc->pci_dev), error);
-
-		return (error);
-	}
-
-	pci_find_cap(sc->pci_dev, PCIY_EXPRESS, &offset);
-	pci_write_config(sc->pci_dev, offset + reg, value, 2);
-	return (0);
 }
 
 static device_method_t bhnd_pcie2_hostb_methods[] = {

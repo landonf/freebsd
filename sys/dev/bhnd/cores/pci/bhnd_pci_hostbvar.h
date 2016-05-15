@@ -43,7 +43,7 @@
 
 DECLARE_CLASS(bhnd_pci_hostb_driver);
 
-/* 
+/**
  * PCI/PCIe-Gen1 endpoint-mode device quirks
  */
 enum {
@@ -180,23 +180,12 @@ enum {
 	BHND_PCIE_QUIRK_SDR9_NO_FREQRETRY	= (1<<15),
 
 	/**
-	 * The PCIe SerDes output should be configured with an amplitude of
-	 * 1214mVpp and a differential output de-emphasis of -8.46dB
-	 * (to fix attenuation issues?).
-	 *
-	 * The exact issue this workaround resolves is unknown.
-	 * 
-	 * Only applies to PCIe 2 >= rev10 devices.
-	 */
-	BHND_PCIE_QUIRK_SERDES_TX_AMP_DEMPH	= (1<<16),
-
-	/**
 	 * Common flag for quirks that require PCIe SerDes TX
 	 * drive strength adjustment.
 	 * 
-	 * Only applies to PCIe 2 >= rev10 devices.
+	 * Only applies to PCIe >= rev10 devices.
 	 */
-	BHND_PCIE_QUIRK_SERDES_TXDRV_ADJUST	= (1<<17),
+	BHND_PCIE_QUIRK_SERDES_TXDRV_ADJUST	= (1<<16),
 
 	/**
 	 * On Apple BCM94322X9 devices, the PCIe SerDes TX drive strength
@@ -205,9 +194,9 @@ enum {
 	 * The exact issue is unknown, but presumably this workaround
 	 * resolves signal integrity issues with these devices.
 	 * 
-	 * Only applies to PCIe 2 >= rev10 devices.
+	 * Only applies to PCIe >= rev10 devices.
 	 */
-	BHND_PCIE_QUIRK_SERDES_TXDRV_700MV	= (1<<18) |
+	BHND_PCIE_QUIRK_SERDES_TXDRV_700MV	= (1<<17) |
 	    BHND_PCIE_QUIRK_SERDES_TXDRV_ADJUST,
 
 	/**
@@ -218,7 +207,7 @@ enum {
 	 * The exact issue is unknown, but presumably this workaround
 	 * resolves signal integrity issues with these devices.
 	 */
-	BHND_PCIE_QUIRK_SERDES_TXDRV_MAX	= (1<<19) |
+	BHND_PCIE_QUIRK_SERDES_TXDRV_MAX	= (1<<18) |
 	    BHND_PCIE_QUIRK_SERDES_TXDRV_ADJUST
 };
 

@@ -139,14 +139,6 @@ static const struct bhnd_chip_quirk bhnd_pcie_chip_quirks[] = {
 	   BHND_CHIP_BREV	(HWREV_LTE(0x71)) },
 		BHND_PCIE_QUIRK_BFL2_PCIEWAR_EN		},
 
-	/* Apple BCM4360 boards that require adjusting Tx amplitude and
-	 * differential output de-emphasis of the PCIe SerDes */
-	{{ BHND_CHIP_BVT	(PCI_VENDOR_APPLE,	94360X51P2)	},
-		BHND_PCIE_QUIRK_SERDES_TX_AMP_DEMPH	},
-	{{ BHND_CHIP_BVT	(PCI_VENDOR_APPLE,	94360X51A)	},
-		BHND_PCIE_QUIRK_SERDES_TX_AMP_DEMPH	},
-
-
 	/* Apple BCM4322 boards that require 700mV SerDes TX drive strength. */
 	{{ BHND_CHIP_BVT	(PCI_VENDOR_APPLE,	94322X9)	},
 		BHND_PCIE_QUIRK_SERDES_TXDRV_700MV	},
@@ -168,10 +160,6 @@ static const struct bhnd_chip_quirk bhnd_pcie_chip_quirks[] = {
 };
 
 // TODO
-// Work-arounds for the following are not yet implemented:
-// - 4360 PCIe SerDes Tx amplitude/deemphasis (vendor Apple, boards
-//   BCM94360X51P2, BCM94360X51A).
-//
 // Quirk flags the following are not yet defined:
 // [MRRS Handling]
 // - On all PCIe devices (unless otherwise specified in the following quirks),

@@ -43,6 +43,21 @@
 
 DECLARE_CLASS(bhnd_pcie2_hostb_driver);
 
+
+/* 
+ * PCIe-Gen2 endpoint-mode device quirks
+ */
+enum {
+	/**
+	 * The PCIe SerDes output should be configured with an amplitude of
+	 * 1214mVpp and a differential output de-emphasis of -8.46dB.
+	 *
+	 * The exact issue this workaround resolves is unknown.
+	 */
+	BHND_PCIE2_QUIRK_SERDES_TXDRV_DEEMPH	= (1<<0),
+};
+
+
 /**
  * bhnd_pci_hostb driver instance state.
  */
