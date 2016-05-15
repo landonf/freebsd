@@ -234,8 +234,8 @@ struct bhnd_pcihb_softc {
 		/**
 		 * ASPM/CLKREQ override setting.
 		 * 
-		 * If true, ASPM/CLKREQ should be overriden as enabled.
-		 * If false, ASPM/CLKREQ should be overriden as disabled.
+		 * If true, ASPM/CLKREQ should be overridden as enabled.
+		 * If false, ASPM/CLKREQ should be overridden as disabled.
 		 */
 		bool aspm_en;
 	} aspm_quirk_override;
