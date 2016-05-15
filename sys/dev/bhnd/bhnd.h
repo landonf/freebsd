@@ -318,7 +318,7 @@ struct bhnd_chip_match {
 
 /** Set the required board type within a bhnd_chip_match instance */
 #define	BHND_CHIP_BTYPE(_btype)		\
-	.match_btype = 1, .board_type = BHND_BOARD_BCM ## _btype
+	.match_btype = 1, .board_type = BHND_BOARD_ ## _btype
 
 /** Set the required SROM revision range within a bhnd_chip_match instance */
 #define	BHND_CHIP_SROMREV(_rev)		\

@@ -56,7 +56,6 @@ enum {
 	 */
 	BHND_PCI_QUIRK_SBTOPCI2_PREF_BURST	= (1<<1),
 
-
 	/**
 	 * SBTOPCI_RC_READMULTI must be set on the SSB_PCICORE_SBTOPCI2
 	 * register.
@@ -202,13 +201,24 @@ enum {
 	/**
 	 * On some Apple BCM4331-based devices, the PCIe SerDes TX drive
 	 * strength should be set to its maximum.
-	 * 
 	 *
 	 * The exact issue is unknown, but presumably this workaround
 	 * resolves signal integrity issues with these devices.
 	 */
 	BHND_PCIE_QUIRK_SERDES_TXDRV_MAX	= (1<<18) |
-	    BHND_PCIE_QUIRK_SERDES_TXDRV_ADJUST
+	    BHND_PCIE_QUIRK_SERDES_TXDRV_ADJUST,
+
+	/**
+	 * PCIe cores prior to rev18 do not support an MRRS larger than
+	 * 128 bytes.
+	 */
+	BHND_PCIE_QUIRK_MAX_MRRS_128		= (1<<19),
+
+	/**
+	 * The PCIe core should be configured with an MRRS of 512 bytes
+	 * by default.
+	 */
+	BHND_PCIE_QUIRK_DEFAULT_MRRS_512	= (1<<20),
 };
 
 /**

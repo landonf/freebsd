@@ -106,9 +106,9 @@ static const struct bhnd_device_quirk bhnd_pci_quirks[] = {
 
 static const struct bhnd_chip_quirk bhnd_pci_chip_quirks[] = {
 	/* BCM4321CB2 boards that require 960ns latency timer override */
-	{{ BHND_CHIP_BTYPE(4321CB2) },
+	{{ BHND_CHIP_BTYPE(BCM4321CB2) },
 		BHND_PCI_QUIRK_960NS_LATTIM_OVR },
-	{{ BHND_CHIP_BTYPE(4321CB2_AG) },
+	{{ BHND_CHIP_BTYPE(BCM4321CB2_AG) },
 		BHND_PCI_QUIRK_960NS_LATTIM_OVR },
 
 	BHND_CHIP_QUIRK_END
@@ -116,10 +116,10 @@ static const struct bhnd_chip_quirk bhnd_pci_chip_quirks[] = {
 
 static const struct bhnd_device_quirk bhnd_pcie_quirks[] = {
 	{ BHND_HWREV_EQ		(0),	BHND_PCIE_QUIRK_SDR9_L0s_HANG },
-	{ BHND_HWREV_RANGE	(0, 1),	BHND_PCIE_QUIRK_UR_STATUS_FIX },
+	{ BHND_HWREV_RANGE	(0,1),	BHND_PCIE_QUIRK_UR_STATUS_FIX },
 	{ BHND_HWREV_EQ		(1),	BHND_PCIE_QUIRK_PCIPM_REQEN },
 
-	{ BHND_HWREV_RANGE	(3, 5),	BHND_PCIE_QUIRK_ASPM_OVR |
+	{ BHND_HWREV_RANGE	(3,5),	BHND_PCIE_QUIRK_ASPM_OVR |
 					BHND_PCIE_QUIRK_SDR9_POLARITY |
 					BHND_PCIE_QUIRK_SDR9_NO_FREQRETRY },
 
@@ -127,6 +127,8 @@ static const struct bhnd_device_quirk bhnd_pcie_quirks[] = {
 	{ BHND_HWREV_GTE	(6),	BHND_PCIE_QUIRK_SPROM_L23_PCI_RESET },
 	{ BHND_HWREV_EQ		(7),	BHND_PCIE_QUIRK_SERDES_NOPLLDOWN },
 	{ BHND_HWREV_GTE	(8),	BHND_PCIE_QUIRK_L1_TIMER_PERF },
+
+	{ BHND_HWREV_LTE	(17),	BHND_PCIE_QUIRK_MAX_MRRS_128 },
 
 	BHND_DEVICE_QUIRK_END
 };
@@ -140,38 +142,34 @@ static const struct bhnd_chip_quirk bhnd_pcie_chip_quirks[] = {
 		BHND_PCIE_QUIRK_BFL2_PCIEWAR_EN		},
 
 	/* Apple BCM4322 boards that require 700mV SerDes TX drive strength. */
-	{{ BHND_CHIP_BVT	(PCI_VENDOR_APPLE,	94322X9)	},
+	{{ BHND_CHIP_BVT	(PCI_VENDOR_APPLE,	BCM94322X9)	},
 		BHND_PCIE_QUIRK_SERDES_TXDRV_700MV	},
 
-	/* Apple BCM4331 boards that require max SerDes TX drive strength. */
-#define	BHND_APPLE_TXDRV_MAX_QUIRK(_board)				\
+	/* Apple BCM4331 board-specific quirks */
+#define	BHND_APPLE_4331_QUIRK(_board, ...)				\
 	{{ BHND_CHIP_ID		(4331),					\
 	   BHND_CHIP_BVT	(PCI_VENDOR_APPLE,	_board), },	\
-		BHND_PCIE_QUIRK_SERDES_TXDRV_MAX		}
+		__VA_ARGS__ }
 
-	BHND_APPLE_TXDRV_MAX_QUIRK(94331X19),
-	BHND_APPLE_TXDRV_MAX_QUIRK(94331X28),
-	BHND_APPLE_TXDRV_MAX_QUIRK(94331X29B),
-	BHND_APPLE_TXDRV_MAX_QUIRK(94331X19C),
+	BHND_APPLE_4331_QUIRK(BCM94331X19,
+	    BHND_PCIE_QUIRK_SERDES_TXDRV_MAX|BHND_PCIE_QUIRK_DEFAULT_MRRS_512),
 
-#undef BHND_APPLE_TXDRV_MAX_QUIRK
+	BHND_APPLE_4331_QUIRK(BCM94331X28,
+	    BHND_PCIE_QUIRK_SERDES_TXDRV_MAX|BHND_PCIE_QUIRK_DEFAULT_MRRS_512),
+	BHND_APPLE_4331_QUIRK(BCM94331X28B, BHND_PCIE_QUIRK_DEFAULT_MRRS_512),
+	  
+	BHND_APPLE_4331_QUIRK(BCM94331X29B,
+	    BHND_PCIE_QUIRK_SERDES_TXDRV_MAX|BHND_PCIE_QUIRK_DEFAULT_MRRS_512),
+
+	BHND_APPLE_4331_QUIRK(BCM94331X19C,
+	    BHND_PCIE_QUIRK_SERDES_TXDRV_MAX|BHND_PCIE_QUIRK_DEFAULT_MRRS_512),
+	    
+	BHND_APPLE_4331_QUIRK(BCM94331X29D, BHND_PCIE_QUIRK_DEFAULT_MRRS_512),
+	BHND_APPLE_4331_QUIRK(BCM94331X33, BHND_PCIE_QUIRK_DEFAULT_MRRS_512),
+#undef BHND_APPLE_4331_QUIRK
 
 	BHND_CHIP_QUIRK_END
 };
-
-// TODO
-// Quirk flags the following are not yet defined:
-// [MRRS Handling]
-// - On all PCIe devices (unless otherwise specified in the following quirks),
-//   the MRRS should always be explicitly set to 128B.
-// - pcie <= rev17 should cap all MRRS settings at 128B (larger MRRS values are
-//   not supported).
-// - On BCM4331 chips (pcie >= rev18), MRRS should be explicitly set to 512B,
-//   except where otherwise specified by the following MRRS quirks.
-// - pcie rev18 should always use a MRSS of 128B
-// - pcie rev19 devices should alway use a MRSS of 128B if NOT vendor
-//   APPLE, boards BCM94331X19, BCM94331X28, BCM94331X28B, BCM94331X29B,
-//   BCM94331X29D, BCM94331X19C, or BCM94331X33)
 
 #define	BHND_PCI_SOFTC(_sc)	(&((_sc)->common))
 
