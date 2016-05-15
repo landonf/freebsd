@@ -74,7 +74,7 @@ enum {
 	BHND_PCI_QUIRK_CLKRUN_DSBL		= (1<<3),
 
 	/**
-	 * On these BCM4321 devices, the PCI latency timer must be set
+	 * On PCI-attached BCM4321CB* boards, the PCI latency timer must be set
 	 * to 960ns on initial attach.
 	 */
 	BHND_PCI_QUIRK_960NS_LATTIM_OVR		= (1<<4),
@@ -172,20 +172,12 @@ enum {
 	BHND_PCIE_QUIRK_SPROM_L23_PCI_RESET	= (1<<14),
 	
 	/**
-	 * The PCIe SerDes supports non-standard extended MDIO register access.
-	 * 
-	 * The PCIe SerDes supports access to extended MDIO registers via
-	 * a non-standard Clause 22 address extension mechanism.
-	 */
-	BHND_PCIE_QUIRK_SD_C22_EXTADDR		= (1<<15),
-	
-	/**
 	 * The PCIe SerDes PLL must be configured to not retry the startup
 	 * sequence upon frequency detection failure on SerDes <= rev9 devices
 	 * 
 	 * The issue this workaround resolves is unknown.
 	 */
-	BHND_PCIE_QUIRK_SDR9_NO_FREQRETRY	= (1<<16),
+	BHND_PCIE_QUIRK_SDR9_NO_FREQRETRY	= (1<<15),
 
 	/**
 	 * The PCIe SerDes output should be configured with an amplitude of
@@ -193,25 +185,41 @@ enum {
 	 * (to fix attenuation issues?).
 	 *
 	 * The exact issue this workaround resolves is unknown.
+	 * 
+	 * Only applies to PCIe 2 >= rev10 devices.
 	 */
-	BHND_PCIE_QUIRK_SERDES_TX_AMP_DEMPH	= (1<<17),
+	BHND_PCIE_QUIRK_SERDES_TX_AMP_DEMPH	= (1<<16),
+
+	/**
+	 * Common flag for quirks that require PCIe SerDes TX
+	 * drive strength adjustment.
+	 * 
+	 * Only applies to PCIe 2 >= rev10 devices.
+	 */
+	BHND_PCIE_QUIRK_SERDES_TXDRV_ADJUST	= (1<<17),
 
 	/**
 	 * On Apple BCM94322X9 devices, the PCIe SerDes TX drive strength
 	 * should be set to 700mV.
+	 *
+	 * The exact issue is unknown, but presumably this workaround
+	 * resolves signal integrity issues with these devices.
 	 * 
-	 * The exact issue this workaround resolves is unknown.
+	 * Only applies to PCIe 2 >= rev10 devices.
 	 */
-	BHND_PCIE_QUIRK_SERDES_TXDS_700MV	= (1<<18),
+	BHND_PCIE_QUIRK_SERDES_TXDRV_700MV	= (1<<18) |
+	    BHND_PCIE_QUIRK_SERDES_TXDRV_ADJUST,
 
 	/**
 	 * On some Apple BCM4331-based devices, the PCIe SerDes TX drive
 	 * strength should be set to its maximum.
 	 * 
-	 * The exact issue this workaround resolves is unknown.
+	 *
+	 * The exact issue is unknown, but presumably this workaround
+	 * resolves signal integrity issues with these devices.
 	 */
-	BHND_PCIE_QUIRK_SERDES_TXDS_MAX		= (1<<18),
-	
+	BHND_PCIE_QUIRK_SERDES_TXDRV_MAX	= (1<<19) |
+	    BHND_PCIE_QUIRK_SERDES_TXDRV_ADJUST
 };
 
 /**

@@ -104,6 +104,16 @@ static const struct bhnd_device_quirk bhnd_pci_quirks[] = {
 	BHND_DEVICE_QUIRK_END
 };
 
+static const struct bhnd_chip_quirk bhnd_pci_chip_quirks[] = {
+	/* BCM4321CB2 boards that require 960ns latency timer override */
+	{{ BHND_CHIP_BTYPE(4321CB2) },
+		BHND_PCI_QUIRK_960NS_LATTIM_OVR },
+	{{ BHND_CHIP_BTYPE(4321CB2_AG) },
+		BHND_PCI_QUIRK_960NS_LATTIM_OVR },
+
+	BHND_CHIP_QUIRK_END
+};
+
 static const struct bhnd_device_quirk bhnd_pcie_quirks[] = {
 	{ BHND_HWREV_EQ		(0),	BHND_PCIE_QUIRK_SDR9_L0s_HANG },
 	{ BHND_HWREV_RANGE	(0, 1),	BHND_PCIE_QUIRK_UR_STATUS_FIX },
@@ -117,7 +127,7 @@ static const struct bhnd_device_quirk bhnd_pcie_quirks[] = {
 	{ BHND_HWREV_GTE	(6),	BHND_PCIE_QUIRK_SPROM_L23_PCI_RESET },
 	{ BHND_HWREV_EQ		(7),	BHND_PCIE_QUIRK_SERDES_NOPLLDOWN },
 	{ BHND_HWREV_GTE	(8),	BHND_PCIE_QUIRK_L1_TIMER_PERF },
-	{ BHND_HWREV_GTE	(10),	BHND_PCIE_QUIRK_SD_C22_EXTADDR },
+
 	BHND_DEVICE_QUIRK_END
 };
 
@@ -137,22 +147,22 @@ static const struct bhnd_chip_quirk bhnd_pcie_chip_quirks[] = {
 		BHND_PCIE_QUIRK_SERDES_TX_AMP_DEMPH	},
 
 
-	/* Apple BCM94322 boards that require 700mV SerDes TX drive strength. */
+	/* Apple BCM4322 boards that require 700mV SerDes TX drive strength. */
 	{{ BHND_CHIP_BVT	(PCI_VENDOR_APPLE,	94322X9)	},
-		BHND_PCIE_QUIRK_SERDES_TXDS_700MV	},
+		BHND_PCIE_QUIRK_SERDES_TXDRV_700MV	},
 
 	/* Apple BCM4331 boards that require max SerDes TX drive strength. */
-#define	BHND_APPLE_TXDS_MAX_QUIRK(board)				\
-	{{ BHND_CHIP_ID		(4331)					\
+#define	BHND_APPLE_TXDRV_MAX_QUIRK(_board)				\
+	{{ BHND_CHIP_ID		(4331),					\
 	   BHND_CHIP_BVT	(PCI_VENDOR_APPLE,	_board), },	\
-		BHND_PCIE_QUIRK_SERDES_TXDS_MAX		}
+		BHND_PCIE_QUIRK_SERDES_TXDRV_MAX		}
 
-	BHND_APPLE_TXDS_MAX_QUIRK(94331X19),
-	BHND_APPLE_TXDS_MAX_QUIRK(94331X28),
-	BHND_APPLE_TXDS_MAX_QUIRK(94331X29B),
-	BHND_APPLE_TXDS_MAX_QUIRK(94331X19C),
+	BHND_APPLE_TXDRV_MAX_QUIRK(94331X19),
+	BHND_APPLE_TXDRV_MAX_QUIRK(94331X28),
+	BHND_APPLE_TXDRV_MAX_QUIRK(94331X29B),
+	BHND_APPLE_TXDRV_MAX_QUIRK(94331X19C),
 
-#undef BHND_APPLE_TXDS_MAX_QUIRK
+#undef BHND_APPLE_TXDRV_MAX_QUIRK
 
 	BHND_CHIP_QUIRK_END
 };
@@ -161,11 +171,6 @@ static const struct bhnd_chip_quirk bhnd_pcie_chip_quirks[] = {
 // Work-arounds for the following are not yet implemented:
 // - 4360 PCIe SerDes Tx amplitude/deemphasis (vendor Apple, boards
 //   BCM94360X51P2, BCM94360X51A).
-// - PCI latency timer (boards CB2_4321_BOARD, CB2_4321_AG_BOARD)
-// - Max SerDes TX drive strength (vendor Apple, pcie >= rev10,
-//   board BCM94322X9)
-// - 700mV SerDes TX drive strength (chipid BCM4331, boards BCM94331X19,
-//   BCM94331X28, BCM94331X29B, BCM94331X19C)
 //
 // Quirk flags the following are not yet defined:
 // [MRRS Handling]
@@ -206,6 +211,13 @@ static const struct bhnd_chip_quirk bhnd_pcie_chip_quirks[] = {
 #define	BHND_PCI_MDIO_WRITE(_sc, _phy, _reg, _val)		\
 	bhnd_pcie_mdio_write(BHND_PCI_SOFTC(_sc), (_phy), (_reg), (_val))
 
+#define	BHND_PCI_MDIO_READ_EXT(_sc, _phy, _devaddr, _reg)		\
+	bhnd_pcie_mdio_read_ext(BHND_PCI_SOFTC(_sc), (_phy), (_devaddr), (_reg))
+
+#define	BHND_PCI_MDIO_WRITE_EXT(_sc, _phy, _devaddr, _reg, _val)	\
+	bhnd_pcie_mdio_write_ext(BHND_PCI_SOFTC(_sc), (_phy),		\
+	    (_devaddr), (_reg), (_val))
+
 #define	BPCI_REG_SET(_regv, _attr, _val)	\
 	BHND_PCI_REG_SET((_regv), BHND_ ## _attr, (_val))
 
@@ -242,11 +254,9 @@ bhnd_pci_hostb_attach(device_t dev)
 	if ((error = bhnd_pci_generic_attach(dev)))
 		return (error);
 
-
 	/* Apply early single-shot work-arounds */
 	if ((error = bhnd_pci_wars_early_once(sc)))
 		goto failed;
-
 
 	/* Apply attach/resume work-arounds */
 	if ((error = bhnd_pci_wars_hwup(sc, BHND_PCI_WAR_ATTACH)))
@@ -322,6 +332,12 @@ static int
 bhnd_pci_wars_early_once(struct bhnd_pcihb_softc *sc)
 {
 	int error;
+
+	/* Set PCI latency timer */
+	if (sc->quirks & BHND_PCI_QUIRK_960NS_LATTIM_OVR) {
+		pci_write_config(sc->pci_dev, PCIR_LATTIMER, 0x20 /* 960ns */,
+		    1); 
+	}
 
 	/* Determine whether ASPM/CLKREQ should be forced on, or forced off. */
 	if (sc->quirks & BHND_PCIE_QUIRK_ASPM_OVR) {
@@ -561,6 +577,36 @@ bhnd_pci_wars_hwup(struct bhnd_pcihb_softc *sc, bhnd_pci_war_state state)
 		/* Clear SPROM shadow backdoor register */
 		reg = BHND_PCIE_SPROM_SHADOW + BHND_PCIE_SRSH_BD_OFFSET;
 		BHND_PCI_WRITE_2(sc, reg, 0);
+	}
+
+	/* Adjust TX drive strength and pre-emphasis coefficient */
+	if (sc->quirks & BHND_PCIE_QUIRK_SERDES_TXDRV_ADJUST) {
+		uint16_t txdrv;
+
+		/* Fetch current TX driver parameters */
+		txdrv = BHND_PCI_MDIO_READ_EXT(sc, BHND_PCIE_PHYADDR_SD,
+		    BHND_PCIE_SD_REGS_TX0, BHND_PCIE_SD_TX_DRIVER);
+
+		/* Set 700mV drive strength */
+		if (sc->quirks & BHND_PCIE_QUIRK_SERDES_TXDRV_700MV) {
+			txdrv = BPCI_REG_SET(txdrv, PCIE_SD_TX_DRIVER_P2_COEFF,
+			    BHND_PCIE_APPLE_TX_P2_COEFF_700MV);
+
+			txdrv = BPCI_REG_SET(txdrv, PCIE_SD_TX_DRIVER_IDRIVER,
+			    BHND_PCIE_APPLE_TX_IDRIVER_700MV);
+		}
+
+		/* ... or, set max drive strength */
+		if (sc->quirks & BHND_PCIE_QUIRK_SERDES_TXDRV_MAX) {
+			txdrv = BPCI_REG_SET(txdrv, PCIE_SD_TX_DRIVER_P2_COEFF,
+			    BHND_PCIE_APPLE_TX_P2_COEFF_MAX);
+			
+			txdrv = BPCI_REG_SET(txdrv, PCIE_SD_TX_DRIVER_IDRIVER,
+			    BHND_PCIE_APPLE_TX_IDRIVER_MAX);
+		}
+
+		BHND_PCI_MDIO_WRITE_EXT(sc, BHND_PCIE_PHYADDR_SD,
+		    BHND_PCIE_SD_REGS_TX0, BHND_PCIE_SD_TX_DRIVER, txdrv);
 	}
 
 	return (0);
