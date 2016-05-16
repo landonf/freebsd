@@ -665,28 +665,121 @@ chipc_get_rman(struct chipc_softc *sc, int type)
 	};
 }
 
+static struct resource *
+chipc_alloc_resource(device_t dev, device_t child, int type, int *rid,
+    rman_res_t start, rman_res_t end, rman_res_t count, u_int flags)
+{
+	// TODO
+	return (NULL);
+}
+
+static int
+chipc_activate_mem_child_resource(struct chipc_softc *sc, device_t child,
+    struct resource *r)
+{
+	bus_space_handle_t	bh, child_bh;
+	bus_space_tag_t		bt;
+	bus_size_t		offset;
+	uintptr_t		vaddr;
+	int			error;
+	
+	/* If our own resource is indirect (and thus, not active), we
+	 * can't activate a child resource. */
+	if (!sc->core->direct)
+		return (ENOMEM);
+
+	KASSERT(rman_get_start(r) >= rman_get_start(sc->core->res),
+	    ("invalid child resource start address"));
+
+	KASSERT(rman_get_end(r) <= rman_get_end(sc->core->res),
+	    ("invalid child resource size"));
+
+	/* Fetch our core resource's real bus values */
+	vaddr = (uintptr_t) rman_get_virtual(sc->core->res);
+	bt = rman_get_bustag(sc->core->res);
+	bh = rman_get_bushandle(sc->core->res);
+
+	/* Configure child resource with window-adjusted real bus values */
+	offset = rman_get_start(r) - rman_get_start(sc->core->res);
+	vaddr += offset;
+	error = bus_space_subregion(bt, bh, offset, rman_get_size(r),
+	    &child_bh);
+	if (error)
+		return (error);
+
+	rman_set_virtual(r, (void *) vaddr);
+	rman_set_bustag(r, bt);
+	rman_set_bushandle(r, child_bh);
+
+	return (rman_activate_resource(r));
+}
+
 static int
 chipc_activate_resource(device_t dev, device_t child, int type, int rid,
     struct resource *r)
 {
-	// TODO
-	return (EINVAL);
+	struct chipc_softc	*sc;
+	struct rman		*rm;
+
+	sc = device_get_softc(dev);
+
+	if ((rm = chipc_get_rman(sc, type)) == NULL)
+		return (EINVAL);
+
+	if (!rman_is_region_manager(r, rm))
+		return (EINVAL);
+
+	switch (type) {
+	case SYS_RES_MEMORY:
+		return (chipc_activate_mem_child_resource(sc, child, r));
+	case SYS_RES_IRQ:
+		// TODO
+		return (EINVAL);
+	default:
+		return (EINVAL);
+	}
 }
 
 static int
 chipc_deactivate_resource(device_t dev, device_t child, int type,
     int rid, struct resource *r)
 {
-	// TODO
-	return (EINVAL);
+	struct chipc_softc	*sc;
+	struct rman		*rm;
+
+	sc = device_get_softc(dev);
+
+	if ((rm = chipc_get_rman(sc, type)) == NULL)
+		return (EINVAL);
+
+	if (!rman_is_region_manager(r, rm))
+		return (EINVAL);
+
+	KASSERT(rman_get_flags(r) & RF_ACTIVE,
+	    ("deactivate of inactive resource"));
+
+	return (rman_deactivate_resource(r));
 }
 
 static int
 chipc_activate_bhnd_resource(device_t dev, device_t child, int type, int rid,
     struct bhnd_resource *r)
 {
-	// TODO
-	return (EINVAL);
+	struct chipc_softc	*sc;
+	int			 error;
+
+	sc = device_get_softc(dev);
+
+	/* If our own resource is indirect, child resource must be indirect,
+	 * too. */
+	if (!sc->core->direct)
+		return (0);
+
+	if ((error = BUS_ACTIVATE_RESOURCE(dev, child, type, rid, r->res)))
+		return (error);
+	r->direct = true;
+
+	return (0);
 }
 
 static int
@@ -718,7 +811,7 @@ static device_method_t chipc_methods[] = {
 	DEVMETHOD(bus_set_resource,		bus_generic_rl_set_resource),
 	DEVMETHOD(bus_get_resource,		bus_generic_rl_get_resource),
 	DEVMETHOD(bus_delete_resource,		bus_generic_rl_delete_resource),
-	DEVMETHOD(bus_alloc_resource,		bus_generic_rl_alloc_resource),
+	DEVMETHOD(bus_alloc_resource,		chipc_alloc_resource),
 	DEVMETHOD(bus_adjust_resource,		bus_generic_adjust_resource),
 	DEVMETHOD(bus_release_resource,		bus_generic_rl_release_resource),
 	DEVMETHOD(bus_activate_resource,	chipc_activate_resource),
