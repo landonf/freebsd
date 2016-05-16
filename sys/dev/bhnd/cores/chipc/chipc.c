@@ -153,6 +153,7 @@ chipc_attach(device_t dev)
 	bhnd_addr_t			 enum_addr;
 	uint32_t			 ccid_reg;
 	uint8_t				 chip_type;
+	bool				 fini_mem_rman, fini_irq_rman;
 	int				 error;
 
 	sc = device_get_softc(dev);
@@ -161,6 +162,8 @@ chipc_attach(device_t dev)
 	    sizeof(chipc_devices[0]));
 	
 	CHIPC_LOCK_INIT(sc);
+	fini_mem_rman = false;
+	fini_irq_rman = false;
 
 	/* Allocate bus resources */
 	memcpy(sc->rspec, chipc_rspec, sizeof(sc->rspec));
@@ -168,7 +171,7 @@ chipc_attach(device_t dev)
 		return (error);
 
 	sc->core = sc->res[0];
-	
+
 	/* Fetch our chipset identification data */
 	ccid_reg = bhnd_bus_read_4(sc->core, CHIPC_ID);
 	chip_type = CHIPC_GET_ATTR(ccid_reg, ID_BUS);
@@ -185,7 +188,7 @@ chipc_attach(device_t dev)
 	default:
 		device_printf(dev, "unsupported chip type %hhu\n", chip_type);
 		error = ENODEV;
-		goto cleanup;
+		goto failed;
 	}
 
 	sc->ccid = bhnd_parse_chipid(ccid_reg, enum_addr);
@@ -211,7 +214,7 @@ chipc_attach(device_t dev)
 
 	case BHND_NVRAM_SRC_SPROM:
 		if ((error = chipc_sprom_init(sc)))
-			goto cleanup;
+			goto failed;
 		break;
 
 	case BHND_NVRAM_SRC_UNKNOWN:
@@ -219,9 +222,31 @@ chipc_attach(device_t dev)
 		break;
 	}
 
+	/* Initialize resource managers */
+	sc->mem_rman.rm_start = 0;
+	sc->mem_rman.rm_end = BUS_SPACE_MAXADDR_32BIT;
+	sc->mem_rman.rm_type = RMAN_ARRAY;
+	sc->mem_rman.rm_descr = "ChipCommon Registers";
+
+	sc->irq_rman.rm_start = 0;
+	sc->irq_rman.rm_end = BUS_SPACE_MAXADDR_32BIT;
+	sc->irq_rman.rm_type = RMAN_ARRAY;
+	sc->irq_rman.rm_descr = "ChipCommon IRQs";
+
+	if ((error = rman_init_from_resource(&sc->mem_rman, sc->core->res)))
+		goto failed;
+	fini_mem_rman = true;
+
+	if ((error = rman_init(&sc->irq_rman)))
+		goto failed;
+	fini_irq_rman = true;
+
+	if ((error = bus_generic_attach(dev)))
+		goto failed;
+
 	return (0);
-	
-cleanup:
+
+failed:
 	bhnd_release_resources(dev, sc->rspec, sc->res);
 	CHIPC_LOCK_DESTROY(sc);
 	return (error);
@@ -231,10 +256,17 @@ static int
 chipc_detach(device_t dev)
 {
 	struct chipc_softc	*sc;
+	int			 error;
+
+	if ((error = bus_generic_detach(dev)))
+		return (error);
 
 	sc = device_get_softc(dev);
 	bhnd_release_resources(dev, sc->rspec, sc->res);
 	bhnd_sprom_fini(&sc->sprom);
+
+	rman_fini(&sc->mem_rman);
+	rman_fini(&sc->irq_rman);
 
 	CHIPC_LOCK_DESTROY(sc);
 
@@ -244,13 +276,13 @@ chipc_detach(device_t dev)
 static int
 chipc_suspend(device_t dev)
 {
-	return (0);
+	return (bus_generic_suspend(dev));
 }
 
 static int
 chipc_resume(device_t dev)
 {
-	return (0);
+	return (bus_generic_resume(dev));
 }
 
 /**
@@ -506,6 +538,80 @@ chipc_write_chipctrl(device_t dev, uint32_t value, uint32_t mask)
 	CHIPC_UNLOCK(sc);
 }
 
+static void
+chipc_probe_nomatch(device_t dev, device_t child)
+{
+	// TODO
+}
+
+static int
+chipc_child_pnpinfo_str(device_t dev, device_t child, char *buf,
+    size_t buflen)
+{
+	// TODO
+	return (ENXIO);
+}
+
+static int
+chipc_child_location_str(device_t dev, device_t child, char *buf,
+    size_t buflen)
+{
+	// TODO
+	return (ENXIO);
+}
+
+static device_t
+chipc_add_child(device_t dev, u_int order, const char *name, int unit)
+{
+	// TODO
+	return (NULL);
+}
+
+static void
+chipc_child_deleted(device_t dev, device_t child)
+{
+	// TODO
+}
+
+static struct resource_list *
+chipc_get_resource_list(device_t dev, device_t child)
+{
+	// TODO
+	return (NULL);
+}
+
+static int
+chipc_activate_resource(device_t dev, device_t child, int type, int rid,
+    struct resource *r)
+{
+	// TODO
+	return (EINVAL);
+}
+
+static int
+chipc_deactivate_resource(device_t dev, device_t child, int type,
+    int rid, struct resource *r)
+{
+	// TODO
+	return (EINVAL);
+}
+
+static int
+chipc_activate_bhnd_resource(device_t dev, device_t child, int type, int rid,
+    struct bhnd_resource *r)
+{
+	// TODO
+	return (EINVAL);
+}
+
+static int
+chipc_deactivate_bhnd_resource(device_t dev, device_t child, int type, int rid,
+    struct bhnd_resource *r)
+{
+	// TODO
+	return (EINVAL);
+}
+
 static device_method_t chipc_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,			chipc_probe),
@@ -513,7 +619,36 @@ static device_method_t chipc_methods[] = {
 	DEVMETHOD(device_detach,		chipc_detach),
 	DEVMETHOD(device_suspend,		chipc_suspend),
 	DEVMETHOD(device_resume,		chipc_resume),
-	
+
+	/* Bus interface */
+	DEVMETHOD(bus_probe_nomatch,		chipc_probe_nomatch),
+	DEVMETHOD(bus_print_child,		bus_generic_print_child),
+	DEVMETHOD(bus_child_pnpinfo_str,	chipc_child_pnpinfo_str),
+	DEVMETHOD(bus_child_location_str,	chipc_child_location_str),
+
+	DEVMETHOD(bus_add_child,		chipc_add_child),
+	DEVMETHOD(bus_child_deleted,		chipc_child_deleted),
+
+	DEVMETHOD(bus_set_resource,		bus_generic_rl_set_resource),
+	DEVMETHOD(bus_get_resource,		bus_generic_rl_get_resource),
+	DEVMETHOD(bus_delete_resource,		bus_generic_rl_delete_resource),
+	DEVMETHOD(bus_alloc_resource,		bus_generic_rl_alloc_resource),
+	DEVMETHOD(bus_adjust_resource,		bus_generic_adjust_resource),
+	DEVMETHOD(bus_release_resource,		bus_generic_rl_release_resource),
+	DEVMETHOD(bus_activate_resource,	chipc_activate_resource),
+	DEVMETHOD(bus_deactivate_resource,	chipc_deactivate_resource),
+	DEVMETHOD(bus_get_resource_list,	chipc_get_resource_list),
+
+	DEVMETHOD(bus_setup_intr,		bus_generic_setup_intr),
+	DEVMETHOD(bus_teardown_intr,		bus_generic_teardown_intr),
+	DEVMETHOD(bus_config_intr,		bus_generic_config_intr),
+	DEVMETHOD(bus_bind_intr,		bus_generic_bind_intr),
+	DEVMETHOD(bus_describe_intr,		bus_generic_describe_intr),
+
+	/* BHND interface */
+	DEVMETHOD(bhnd_bus_activate_resource,	chipc_activate_bhnd_resource),
+	DEVMETHOD(bhnd_bus_deactivate_resource,	chipc_deactivate_bhnd_resource),
+
 	/* ChipCommon interface */
 	DEVMETHOD(bhnd_chipc_nvram_src,		chipc_nvram_src),
 	DEVMETHOD(bhnd_chipc_write_chipctrl,	chipc_write_chipctrl),

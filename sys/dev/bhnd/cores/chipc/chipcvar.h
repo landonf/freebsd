@@ -114,6 +114,10 @@ struct chipc_softc {
 	struct bhnd_resource	*res[CHIPC_MAX_RES];
 
 	struct bhnd_resource	*core;		/**< core registers. */
+
+	struct rman		 mem_rman;	/**< memory manager */
+	struct rman		 irq_rman;	/**< irq manager */
+
 	struct bhnd_chipid	 ccid;		/**< chip identification */
 	uint32_t		 quirks;	/**< CHIPC_QUIRK_* quirk flags */
 	uint32_t		 caps;		/**< CHIPC_CAP_* capability register flags */
