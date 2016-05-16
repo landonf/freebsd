@@ -43,6 +43,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/kernel.h>
 #include <sys/bus.h>
+#include <sys/malloc.h>
 #include <sys/module.h>
 #include <sys/systm.h>
 
@@ -127,11 +128,11 @@ static struct bhnd_chip_quirk chipc_chip_quirks[] = {
 #define	CHIPC_ASSERT_CAP(_sc, name)	\
     KASSERT(CHIPC_CAP((_sc), name), ("capability " __STRING(_name) " not set"))
 
-static bhnd_nvram_src_t	chipc_nvram_identify(struct chipc_softc *sc);
-static int		chipc_sprom_init(struct chipc_softc *);
-static int		chipc_enable_sprom_pins(struct chipc_softc *);
-static int		chipc_disable_sprom_pins(struct chipc_softc *);
-
+static bhnd_nvram_src_t	 chipc_nvram_identify(struct chipc_softc *sc);
+static int		 chipc_sprom_init(struct chipc_softc *);
+static int		 chipc_enable_sprom_pins(struct chipc_softc *);
+static int		 chipc_disable_sprom_pins(struct chipc_softc *);
+static struct rman	*chipc_get_rman(struct chipc_softc *sc, int type);
 
 static int
 chipc_probe(device_t dev)
@@ -541,43 +542,127 @@ chipc_write_chipctrl(device_t dev, uint32_t value, uint32_t mask)
 static void
 chipc_probe_nomatch(device_t dev, device_t child)
 {
-	// TODO
+	struct resource_list	*rl;
+	const char		*name;
+
+	name = device_get_name(child);
+	if (name == NULL)
+		name = "unknown device";
+
+	device_printf(dev, "<%s> at", name);
+
+	rl = BUS_GET_RESOURCE_LIST(dev, child);
+	if (rl != NULL) {
+		resource_list_print_type(rl, "mem", SYS_RES_MEMORY, "%#jx");
+		resource_list_print_type(rl, "irq", SYS_RES_IRQ, "%jd");
+	}
+
+	device_printf(dev, " (no driver attached)\n");
+}
+
+static int
+chipc_print_child(device_t dev, device_t child)
+{
+	struct resource_list	*rl;
+	int			 retval = 0;
+
+	retval += bus_print_child_header(dev, child);
+
+	rl = BUS_GET_RESOURCE_LIST(dev, child);
+	if (rl != NULL) {
+		retval += resource_list_print_type(rl, "mem", SYS_RES_MEMORY,
+		    "%#jx");
+		retval += resource_list_print_type(rl, "irq", SYS_RES_IRQ,
+		    "%jd");
+	}
+
+	retval += bus_print_child_domain(dev, child);
+	retval += bus_print_child_footer(dev, child);
+
+	return (retval);
 }
 
 static int
 chipc_child_pnpinfo_str(device_t dev, device_t child, char *buf,
     size_t buflen)
 {
-	// TODO
-	return (ENXIO);
+	if (buflen == 0)
+		return (EOVERFLOW);
+
+	*buf = '\0';
+	return (0);
 }
 
 static int
 chipc_child_location_str(device_t dev, device_t child, char *buf,
     size_t buflen)
 {
-	// TODO
+	if (buflen == 0)
+		return (EOVERFLOW);
+
+	*buf = '\0';
 	return (ENXIO);
 }
 
 static device_t
 chipc_add_child(device_t dev, u_int order, const char *name, int unit)
 {
-	// TODO
-	return (NULL);
+	struct chipc_devinfo	*dinfo;
+	device_t		 child;
+
+	child = device_add_child_ordered(dev, order, name, unit);
+	if (child == NULL)
+		return (NULL);
+
+	dinfo = malloc(sizeof(struct chipc_devinfo), M_DEVBUF, M_NOWAIT);
+	if (dinfo == NULL) {
+		device_delete_child(dev, child);
+		return (NULL);
+	}
+
+	resource_list_init(&dinfo->resources);
+
+	device_set_ivars(child, dinfo);
+
+	return (child);
 }
 
 static void
 chipc_child_deleted(device_t dev, device_t child)
 {
-	// TODO
+	struct chipc_devinfo *dinfo = device_get_ivars(child);
+	if (dinfo != NULL) {
+		resource_list_free(&dinfo->resources);
+		free(dinfo, M_DEVBUF);
+	}
+
+	device_set_ivars(child, NULL);
 }
 
 static struct resource_list *
 chipc_get_resource_list(device_t dev, device_t child)
 {
-	// TODO
-	return (NULL);
+	struct chipc_devinfo *dinfo = device_get_ivars(child);
+	return (&dinfo->resources);
+}
+
+/**
+ * Return the rman instance for a given resource @p type, if any.
+ * 
+ * @param sc The chipc device state.
+ * @param type The resource type (e.g. SYS_RES_MEMORY, SYS_RES_IRQ, ...)
+ */
+static struct rman *
+chipc_get_rman(struct chipc_softc *sc, int type)
+{	
+	switch (type) {
+	case SYS_RES_MEMORY:
+		return (&sc->mem_rman);
+	case SYS_RES_IRQ:
+		return (&sc->irq_rman);
+	default:
+		return (NULL);
+	};
 }
 
 static int
@@ -622,6 +707,7 @@ static device_method_t chipc_methods[] = {
 
 	/* Bus interface */
 	DEVMETHOD(bus_probe_nomatch,		chipc_probe_nomatch),
+	DEVMETHOD(bus_print_child,		chipc_print_child),
 	DEVMETHOD(bus_print_child,		bus_generic_print_child),
 	DEVMETHOD(bus_child_pnpinfo_str,	chipc_child_pnpinfo_str),
 	DEVMETHOD(bus_child_location_str,	chipc_child_location_str),

@@ -107,6 +107,16 @@ enum {
 	CHIPC_QUIRK_4360_FEM_MUX_SPROM	= (1<<5) | CHIPC_QUIRK_MUX_SPROM
 };
 
+/**
+ * chipc child device info
+ */
+struct chipc_devinfo {
+	struct resource_list	resources;	/**< child resources */
+};
+
+/**
+ * chipc driver instance state.
+ */
 struct chipc_softc {
 	device_t		dev;
 
