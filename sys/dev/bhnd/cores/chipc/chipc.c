@@ -87,10 +87,11 @@ static const struct resource_spec chipc_rspec[CHIPC_MAX_RSPEC] = {
 };
 
 static struct bhnd_device_quirk chipc_quirks[];
+static struct bhnd_chip_quirk chipc_chip_quirks[];
 
 /* Supported device identifiers */
 static const struct bhnd_device chipc_devices[] = {
-	BHND_DEVICE(CC, "CC", chipc_quirks),
+	BHND_DEVICE(CC, "CC", chipc_quirks, chipc_chip_quirks),
 	BHND_DEVICE_END
 };
 
@@ -214,7 +215,6 @@ chipc_attach(device_t dev)
 	sc->dev = dev;
 	sc->quirks = bhnd_device_quirks(dev, chipc_devices,
 	    sizeof(chipc_devices[0]));
-	sc->quirks |= bhnd_chip_quirks(dev, chipc_chip_quirks);
 	
 	CHIPC_LOCK_INIT(sc);
 
@@ -842,13 +842,30 @@ chipc_release_resource(device_t dev, device_t child, int type, int rid,
 	return (rman_release_resource(r));
 }
 
+static void
+chipc_write_chipctrl(device_t dev, uint32_t value, uint32_t mask)
+{
+	struct chipc_softc	*sc;
+	uint32_t		 cctrl;
+
+	sc = device_get_softc(dev);
+
+	CHIPC_LOCK(sc);
+
+	cctrl = bhnd_bus_read_4(sc->core, CHIPC_CHIPCTRL);
+	cctrl = (cctrl & ~mask) | (value | mask);
+	bhnd_bus_write_4(sc->core, CHIPC_CHIPCTRL, cctrl);
+
+	CHIPC_UNLOCK(sc);
+}
+
 static device_method_t chipc_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_probe,		chipc_probe),
-	DEVMETHOD(device_attach,	chipc_attach),
-	DEVMETHOD(device_detach,	chipc_detach),
-	DEVMETHOD(device_suspend,	chipc_suspend),
-	DEVMETHOD(device_resume,	chipc_resume),
+	DEVMETHOD(device_probe,			chipc_probe),
+	DEVMETHOD(device_attach,		chipc_attach),
+	DEVMETHOD(device_detach,		chipc_detach),
+	DEVMETHOD(device_suspend,		chipc_suspend),
+	DEVMETHOD(device_resume,		chipc_resume),
 
 	/* Bus interface */
 	DEVMETHOD(bus_add_child,		bus_generic_add_child),
@@ -870,10 +887,11 @@ static device_method_t chipc_methods[] = {
 	DEVMETHOD(bhnd_chipc_nvram_src,		chipc_nvram_src),
 	DEVMETHOD(bhnd_chipc_get_capabilities, 	chipc_get_caps),
 	DEVMETHOD(bhnd_chipc_get_flash_cfg,	chipc_get_flash_cfg),
+	DEVMETHOD(bhnd_chipc_write_chipctrl,	chipc_write_chipctrl),
 
 	/* NVRAM interface */
-	DEVMETHOD(bhnd_nvram_getvar,	chipc_nvram_getvar),
-	DEVMETHOD(bhnd_nvram_setvar,	chipc_nvram_setvar),
+	DEVMETHOD(bhnd_nvram_getvar,		chipc_nvram_getvar),
+	DEVMETHOD(bhnd_nvram_setvar,		chipc_nvram_setvar),
 
 	/*
 	 * TODO: Add

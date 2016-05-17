@@ -69,3 +69,21 @@ METHOD uint32_t get_flash_cfg {
 METHOD struct chipc_capabilities* get_capabilities {
 	device_t dev;
 }
+=
+ * Write @p value with @p mask directly to the chipctrl register.
+ *
+ * @param dev A bhnd(4) ChipCommon device.
+ * @param value The value to write.
+ * @param mask The mask of bits to be written from @p value.
+ *
+ * Drivers should only use function for functionality that is not
+ * available via another bhnd_chipc() function.
+ *
+ * Currently, the only known valid use-case is in implementing a hardware
+ * work-around for the BCM4321 PCIe rev7 core revision.
+ */
+METHOD void write_chipctrl {
+	device_t dev;
+	uint32_t value;
+	uint32_t mask;
+}

@@ -84,6 +84,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/bwn/if_bwn_phy_common.h>
 #include <dev/bwn/if_bwn_phy_g.h>
 #include <dev/bwn/if_bwn_phy_lp.h>
+#include <dev/bwn/if_bwn_phy_n.h>
 
 static SYSCTL_NODE(_hw, OID_AUTO, bwn, CTLFLAG_RD, 0,
     "Broadcom driver parameters");
@@ -562,6 +563,11 @@ bwn_attach(device_t dev)
 		    mac->mac_method.dma.dmatype);
 	else
 		device_printf(sc->sc_dev, "PIO\n");
+
+#ifdef	BWN_GPL_PHY
+	device_printf(sc->sc_dev,
+	    "Note: compiled with BWN_GPL_PHY; includes GPLv2 code\n");
+#endif
 
 	/*
 	 * setup PCI resources and interrupt.
@@ -1223,6 +1229,8 @@ bwn_attach_core(struct bwn_mac *mac)
 		have_bg = 1;
 	}
 
+	mac->mac_phy.phy_n = NULL;
+
 	if (mac->mac_phy.type == BWN_PHYTYPE_G) {
 		mac->mac_phy.attach = bwn_phy_g_attach;
 		mac->mac_phy.detach = bwn_phy_g_detach;
@@ -1259,6 +1267,28 @@ bwn_attach_core(struct bwn_mac *mac)
 		mac->mac_phy.get_default_chan = bwn_phy_lp_get_default_chan;
 		mac->mac_phy.set_antenna = bwn_phy_lp_set_antenna;
 		mac->mac_phy.task_60s = bwn_phy_lp_task_60s;
+	} else if (mac->mac_phy.type == BWN_PHYTYPE_N) {
+		mac->mac_phy.attach = bwn_phy_n_attach;
+		mac->mac_phy.detach = bwn_phy_n_detach;
+		mac->mac_phy.prepare_hw = bwn_phy_n_prepare_hw;
+		mac->mac_phy.init_pre = bwn_phy_n_init_pre;
+		mac->mac_phy.init = bwn_phy_n_init;
+		mac->mac_phy.exit = bwn_phy_n_exit;
+		mac->mac_phy.phy_read = bwn_phy_n_read;
+		mac->mac_phy.phy_write = bwn_phy_n_write;
+		mac->mac_phy.rf_read = bwn_phy_n_rf_read;
+		mac->mac_phy.rf_write = bwn_phy_n_rf_write;
+		mac->mac_phy.use_hwpctl = bwn_phy_n_hwpctl;
+		mac->mac_phy.rf_onoff = bwn_phy_n_rf_onoff;
+		mac->mac_phy.switch_analog = bwn_phy_n_switch_analog;
+		mac->mac_phy.switch_channel = bwn_phy_n_switch_channel;
+		mac->mac_phy.get_default_chan = bwn_phy_n_get_default_chan;
+		mac->mac_phy.set_antenna = bwn_phy_n_set_antenna;
+		mac->mac_phy.set_im = bwn_phy_n_im;
+		mac->mac_phy.recalc_txpwr = bwn_phy_n_recalc_txpwr;
+		mac->mac_phy.set_txpwr = bwn_phy_n_set_txpwr;
+		mac->mac_phy.task_15s = bwn_phy_n_task_15s;
+		mac->mac_phy.task_60s = bwn_phy_n_task_60s;
 	} else {
 		device_printf(sc->sc_dev, "unsupported PHY type (%d)\n",
 		    mac->mac_phy.type);
@@ -2631,8 +2661,21 @@ bwn_dma_ringsetup(struct bwn_mac *mac, int controller_index,
 		dr->dr_curslot = -1;
 	} else {
 		if (dr->dr_index == 0) {
-			dr->dr_rx_bufsize = BWN_DMA0_RX_BUFFERSIZE;
-			dr->dr_frameoffset = BWN_DMA0_RX_FRAMEOFFSET;
+			switch (mac->mac_fw.fw_hdr_format) {
+			case BWN_FW_HDR_351:
+			case BWN_FW_HDR_410:
+				dr->dr_rx_bufsize =
+				    BWN_DMA0_RX_BUFFERSIZE_FW351;
+				dr->dr_frameoffset =
+				    BWN_DMA0_RX_FRAMEOFFSET_FW351;
+				break;
+			case BWN_FW_HDR_598:
+				dr->dr_rx_bufsize =
+				    BWN_DMA0_RX_BUFFERSIZE_FW598;
+				dr->dr_frameoffset =
+				    BWN_DMA0_RX_FRAMEOFFSET_FW598;
+				break;
+			}
 		} else
 			KASSERT(0 == 1, ("%s:%d: fail", __func__, __LINE__));
 	}
@@ -2651,7 +2694,7 @@ bwn_dma_ringsetup(struct bwn_mac *mac, int controller_index,
 
 		dr->dr_txhdr_cache = contigmalloc(
 		    (dr->dr_numslots / BWN_TX_SLOTS_PER_FRAME) *
-		    BWN_HDRSIZE(mac), M_DEVBUF, M_ZERO,
+		    BWN_MAXTXHDRSIZE, M_DEVBUF, M_ZERO,
 		    0, BUS_SPACE_MAXADDR, 8, 0);
 		if (dr->dr_txhdr_cache == NULL) {
 			device_printf(sc->sc_dev,
@@ -2748,7 +2791,7 @@ fail2:
 	if (dr->dr_txhdr_cache != NULL) {
 		contigfree(dr->dr_txhdr_cache,
 		    (dr->dr_numslots / BWN_TX_SLOTS_PER_FRAME) *
-		    BWN_HDRSIZE(mac), M_DEVBUF);
+		    BWN_MAXTXHDRSIZE, M_DEVBUF);
 	}
 fail1:
 	free(dr->dr_meta, M_DEVBUF);
@@ -2770,7 +2813,7 @@ bwn_dma_ringfree(struct bwn_dma_ring **dr)
 	if ((*dr)->dr_txhdr_cache != NULL) {
 		contigfree((*dr)->dr_txhdr_cache,
 		    ((*dr)->dr_numslots / BWN_TX_SLOTS_PER_FRAME) *
-		    BWN_HDRSIZE((*dr)->dr_mac), M_DEVBUF);
+		    BWN_MAXTXHDRSIZE, M_DEVBUF);
 	}
 	free((*dr)->dr_meta, M_DEVBUF);
 	free(*dr, M_DEVBUF);
