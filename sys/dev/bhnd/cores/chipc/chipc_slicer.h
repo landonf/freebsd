@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2015-2016 Landon Fuller <landon@landonf.org>
+ * Copyright (c) 2016 Michael Zhilin <mizhka@gmail.com>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -25,31 +25,20 @@
  * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGES.
- * 
- * $FreeBSD$
  */
 
-#ifndef _BHND_CORES_CHIPC_CHIPC_H_
-#define _BHND_CORES_CHIPC_CHIPC_H_
+#ifndef _BHND_CORES_CHIPC_CHIPC_SLICER_H_
+#define _BHND_CORES_CHIPC_CHIPC_SLICER_H_
 
-#include <dev/bhnd/bhnd.h>
-#include <dev/bhnd/nvram/bhnd_nvram.h>
+#include <sys/slicer.h>
 
-#include "bhnd_chipc_if.h"
-#include "chipcvar.h"
+#define	TRX_MAGIC 	0x30524448
+#define	CFE_MAGIC 	0x43464531
+#define	NVRAM_MAGIC	0x48534C46
 
-/**
- * Query a ChipCommon device and return the preferred NVRAM data source.
- *
- * @param dev A bhnd(4) ChipCommon device.
- */
-static inline bhnd_nvram_src_t
-bhnd_chipc_nvram_src(device_t dev)
-{
-	return (BHND_CHIPC_NVRAM_SRC(dev));
-}
+int		chipc_slicer_spi(device_t dev, struct flash_slice *slices,
+		    int *nslices);
+int		chipc_slicer_cfi(device_t dev, struct flash_slice *slices,
+		    int *nslices);
 
-void	chipc_parse_capabilities(struct chipc_capabilities* capabilities,
-		uint32_t caps);
-
-#endif /* _BHND_CORES_CHIPC_CHIPC_H_ */
+#endif /* _BHND_CORES_CHIPC_CHIPC_SLICER_H_ */

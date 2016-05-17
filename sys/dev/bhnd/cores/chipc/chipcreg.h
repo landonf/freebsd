@@ -25,6 +25,8 @@
 #ifndef _BHND_CORES_CHIPC_CHIPCREG_H_
 #define	_BHND_CORES_CHIPC_CHIPCREG_H_
 
+#define GET_BITS(value,field)		(value & field) >> field##_SHIFT;
+
 #define	CHIPC_CHIPID_SIZE	0x100	/**< size of the register block
 					     containing the chip
 					     identification registers. */
@@ -46,6 +48,8 @@
 #define	CHIPC_JTAGIR			0x34
 #define	CHIPC_JTAGDR			0x38
 #define	CHIPC_JTAGCTRL			0x3c
+#define	CHIPC_FLASHBASE			0x40
+#define	CHIPC_FLASHREGSZ		12
 #define	CHIPC_GPIOPU			0x58
 #define	CHIPC_GPIOPD			0x5c
 #define	CHIPC_GPIOIN			0x60
@@ -64,10 +68,14 @@
 #define	CHIPC_SYS_CLK_CTL		0xc0
 #define	CHIPC_EROMPTR			0xfc	/**< 32-bit EROM base address
 						  *  on BCMA devices */
+#define	CHIPC_FLASH_CFG			0x128
+#define	CHIPC_FLASH_WAIT_CNT		0x12C
 #define	CHIPC_SPROM_CTRL		0x190	/**< SPROM interface (rev >= 32) */
 #define	CHIPC_SPROM_ADDR		0x194
 #define	CHIPC_SPROM_DATA		0x198
 #define	CHIPC_CLK_CTL_ST		SI_CLK_CTL_ST
+#define	CHIPC_UART_BASE			0x300
+#define	CHIPC_UART_SIZE			0x100
 #define	CHIPC_PMU_CTL			0x600
 #define	CHIPC_PMU_CAP			0x604
 #define	CHIPC_PMU_ST			0x608
@@ -97,27 +105,43 @@
 #define	CHIPC_ID_BUS_SHIFT	28
 
 /* capabilities */
-#define	CHIPC_CAP_UARTS_MASK		0x00000003	/* Number of UARTs */
-#define	CHIPC_CAP_MIPSEB		0x00000004	/* MIPS is in big-endian mode */
-#define	CHIPC_CAP_UCLKSEL		0x00000018	/* UARTs clock select */
-#define	CHIPC_CAP_UINTCLK		0x00000008	/* UARTs are driven by internal divided clock */
-#define	CHIPC_CAP_UARTGPIO		0x00000020	/* UARTs own GPIOs 15:12 */
-#define	CHIPC_CAP_EXTBUS_MASK		0x000000c0	/* External bus mask */
-#define	CHIPC_CAP_EXTBUS_NONE		0x00000000	/* No ExtBus present */
-#define	CHIPC_CAP_EXTBUS_FULL		0x00000040	/* ExtBus: PCMCIA, IDE & Prog */
-#define	CHIPC_CAP_EXTBUS_PROG		0x00000080	/* ExtBus: ProgIf only */
-#define	CHIPC_CAP_FLASH_MASK		0x00000700	/* Type of flash */
-#define	CHIPC_CAP_PLL_MASK		0x00038000	/* Type of PLL */
-#define	CHIPC_CAP_PWR_CTL		0x00040000	/* Power control */
-#define	CHIPC_CAP_OTP_SIZE		0x00380000	/* OTP Size (0 = none) */
-#define	CHIPC_CAP_OTP_SIZE_SHIFT	19		/* OTP Size shift */
-#define	CHIPC_CAP_OTP_SIZE_BASE		5		/* OTP Size base */
-#define	CHIPC_CAP_JTAGP			0x00400000	/* JTAG Master Present */
-#define	CHIPC_CAP_ROM			0x00800000	/* Internal boot rom active */
-#define	CHIPC_CAP_BKPLN64		0x08000000	/* 64-bit backplane */
-#define	CHIPC_CAP_PMU			0x10000000	/* PMU Present, rev >= 20 */
-#define	CHIPC_CAP_SPROM			0x40000000	/* SPROM Present, rev >= 32 */
-#define	CHIPC_CAP_NFLASH		0x80000000	/* Nand flash present, rev >= 35 */
+#define	CHIPC_CAP_UARTS				0x00000003	/* Number of UARTs */
+#define		CHIPC_CAP_UARTS_SHIFT 		0
+#define	CHIPC_CAP_MIPSEB			0x00000004	/* MIPS is in big-endian mode */
+#define		CHIPC_CAP_MIPSEB_SHIFT		2
+#define	CHIPC_CAP_UCLKSEL			0x00000018	/* UARTs clock select */
+#define		CHIPC_CAP_UCLKSEL_SHIFT		3
+#define		CHIPC_CAP_UCLKSEL_UINTCLK	0x00000001	/* UARTs are driven by internal divided clock */
+#define	CHIPC_CAP_UARTGPIO			0x00000020	/* UARTs own GPIOs 15:12 */
+#define		CHIPC_CAP_UARTGPIO_SHIFT	5
+#define	CHIPC_CAP_EXTBUS			0x000000c0	/* External bus mask */
+#define		CHIPC_CAP_EXTBUS_SHIFT		6
+#define		CHIPC_CAP_EXTBUS_NONE		0x00000000	/* No ExtBus present */
+#define		CHIPC_CAP_EXTBUS_FULL		0x00000001	/* ExtBus: PCMCIA, IDE & Prog */
+#define		CHIPC_CAP_EXTBUS_PROG		0x00000002	/* ExtBus: ProgIf only */
+#define	CHIPC_CAP_FLASH				0x00000700	/* Type of flash */
+#define		CHIPC_CAP_FLASH_SHIFT		8
+#define	CHIPC_CAP_PLL				0x00038000	/* Type of PLL */
+#define		CHIPC_CAP_PLL_SHIFT		15
+#define	CHIPC_CAP_PWR_CTL			0x00040000	/* Power control */
+#define		CHIPC_CAP_PWR_CTL_SHIFT		18
+#define	CHIPC_CAP_OTP_SIZE			0x00380000	/* OTP Size (0 = none) */
+#define		CHIPC_CAP_OTP_SIZE_SHIFT	19		/* OTP Size shift */
+#define		CHIPC_CAP_OTP_SIZE_BASE		5		/* OTP Size base */
+#define	CHIPC_CAP_JTAGP				0x00400000	/* JTAG Master Present */
+#define		CHIPC_CAP_JTAGP_SHIFT		22
+#define	CHIPC_CAP_ROM				0x00800000	/* Internal boot rom active */
+#define		CHIPC_CAP_ROM_SHIFT		23
+#define	CHIPC_CAP_BKPLN64			0x08000000	/* 64-bit backplane */
+#define		CHIPC_CAP_BKPLN64_SHIFT		27
+#define	CHIPC_CAP_PMU				0x10000000	/* PMU Present, rev >= 20 */
+#define		CHIPC_CAP_PMU_SHIFT		28
+#define	CHIPC_CAP_ECI				0x20000000 /*Enhanced Coexistence Interface */
+#define		CHIPC_CAP_ECI_SHIFT		29
+#define	CHIPC_CAP_SPROM				0x40000000	/* SPROM Present, rev >= 32 */
+#define		CHIPC_CAP_SPROM_SHIFT		30
+#define	CHIPC_CAP_NFLASH			0x80000000	/* Nand flash present, rev >= 35 */
+#define		CHIPC_CAP_NFLASH_SHIFT		31
 
 #define	CHIPC_CAP2_SECI			0x00000001	/* SECI Present, rev >= 36 */
 #define	CHIPC_CAP2_GSIO			0x00000002	/* GSIO (spi/i2c) present, rev >= 37 */
@@ -489,10 +513,10 @@ enum {
 #define	CHIPC_CLKC_5350_M	0x04020009
 
 /* Flash types in the chipcommon capabilities register */
-#define	CHIPC_FLASH_NONE	0x000	/* No flash */
-#define	CHIPC_SFLASH_ST		0x100	/* ST serial flash */
-#define	CHIPC_SFLASH_AT		0x200	/* Atmel serial flash */
-#define	CHIPC_PFLASH		0x700	/* Parallel flash */
+#define	CHIPC_FLASH_NONE	0x0	/* No flash */
+#define	CHIPC_SFLASH_ST		0x1	/* ST serial flash */
+#define	CHIPC_SFLASH_AT		0x2	/* Atmel serial flash */
+#define	CHIPC_PFLASH		0x7	/* Parallel flash */
 
 /* Bits in the ExtBus config registers */
 #define	CHIPC_CFG_EN		0x0001	/* Enable */

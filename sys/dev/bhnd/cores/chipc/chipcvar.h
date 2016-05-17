@@ -32,15 +32,20 @@
 #ifndef _BHND_CORES_CHIPC_CHIPCVAR_H_
 #define _BHND_CORES_CHIPC_CHIPCVAR_H_
 
+#include <sys/types.h>
+#include <sys/rman.h>
+#include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/nvram/bhnd_nvram.h>
 #include <dev/bhnd/nvram/bhnd_spromvar.h>
-
-#include "chipc.h"
 
 DECLARE_CLASS(bhnd_chipc);
 extern devclass_t bhnd_chipc_devclass;
 
 #define	CHIPC_MAX_RES	1
 #define	CHIPC_MAX_RSPEC	(CHIPC_MAX_RES+1)
+
+/* FIXME: MIPS-specific */
+#define	NUM_IRQS	6
 
 /* 
  * ChipCommon device quirks / features
@@ -107,6 +112,25 @@ enum {
 	CHIPC_QUIRK_4360_FEM_MUX_SPROM	= (1<<5) | CHIPC_QUIRK_MUX_SPROM
 };
 
+struct chipc_capabilities {
+	uint8_t	num_uarts;
+	uint8_t	is_bigend;
+	uint8_t	uart_clock;
+	uint8_t	uart_gpio;
+	uint8_t	external_buses;
+	uint8_t	flash_type;
+	uint8_t	pll_type;
+	uint8_t	power_control;
+	uint8_t	otp_size;
+	uint8_t	jtag_master;
+	uint8_t	boot_rom;
+	uint8_t	is_64bit;
+	uint8_t	pmu;
+	uint8_t	eci;
+	uint8_t	sprom;
+	uint8_t	nflash;
+};
+
 struct chipc_softc {
 	device_t		dev;
 
@@ -116,13 +140,34 @@ struct chipc_softc {
 	struct bhnd_resource	*core;		/**< core registers. */
 	struct bhnd_chipid	 ccid;		/**< chip identification */
 	uint32_t		 quirks;	/**< CHIPC_QUIRK_* quirk flags */
-	uint32_t		 caps;		/**< CHIPC_CAP_* capability register flags */
 	uint32_t		 cst;		/**< CHIPC_CST* status register flags */
 	bhnd_nvram_src_t	 nvram_src;	/**< NVRAM source */
 	
 	struct mtx		 mtx;		/**< state mutex. */
 
 	struct bhnd_sprom	 sprom;		/**< OTP/SPROM shadow, if any */
+	struct chipc_capabilities capabilities;
+
+	struct rman 		 chipc_mem;
+	struct rman 		 chipc_irq;
+};
+
+/*
+ * This is specificaiton of resource assignment for subdevices
+ */
+struct chipc_spec {
+	char		*name;
+	int 		 type, rid;
+	int 		 port, reg;
+	rman_res_t 	 start;
+	rman_res_t	 size;
+};
+
+/*
+ * ChipCommon devinfo is used by subdevices for correct resource assignment
+ */
+struct chipc_devinfo {
+	struct resource_list resources;
 };
 
 #define	CHIPC_LOCK_INIT(sc) \

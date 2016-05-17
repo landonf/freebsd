@@ -28,7 +28,14 @@
 #include <sys/bus.h>
 
 #include <dev/bhnd/bhnd.h>
-#include <dev/bhnd/nvram/bhnd_nvram.h>
+
+#
+# Header includes used struct declarations
+#
+HEADER {
+	#include <dev/bhnd/nvram/bhnd_nvram.h>
+	#include <dev/bhnd/cores/chipc/chipcvar.h>
+}
 
 INTERFACE bhnd_chipc;
 
@@ -42,5 +49,23 @@ INTERFACE bhnd_chipc;
  * @param dev A bhnd(4) ChipCommon device.
  */
 METHOD bhnd_nvram_src_t nvram_src {
+	device_t dev;
+}
+
+/**
+ * Return the flash configuration register value
+ *
+ * @param dev A bhnd(4) ChipCommon device
+ */
+METHOD uint32_t get_flash_cfg {
+	device_t dev;
+}
+
+/**
+ * Return the ChipCommon capabilities
+ *
+ * @param dev A bhnd(4) ChipCommon device
+ */
+METHOD struct chipc_capabilities* get_capabilities {
 	device_t dev;
 }
