@@ -895,6 +895,35 @@ disk_resize(struct disk *dp, int flag)
 	return (g_post_event(g_disk_resize, dp, flag, NULL));
 }
 
+/*
+ * This method finds disk by driver softc. For instance, it can be used
+ * in geom_flashmap callback to calculate end of memory-mapped region.
+ */
+struct disk
+*disk_fetch_by_driver(void* sc)
+{
+	struct g_geom		*gp;
+	struct g_disk_softc	*g_sc;
+	struct disk		*disk;
+
+	/*
+	 * Iterate over disks and compare d_drv with input parameter @sc
+	 */
+	LIST_FOREACH(gp, &g_disk_class.geom, geom) {
+		g_sc = (struct g_disk_softc*)gp->softc;
+		if (g_sc == NULL)
+			continue;
+		disk = g_sc->dp;
+		if (disk == NULL)
+			continue;
+		if(disk->d_drv1 == sc) {
+			return (disk);
+		}
+	}
+
+	return (NULL);
+}
+
 static void
 g_kern_disks(void *p, int flag __unused)
 {
