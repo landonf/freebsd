@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Copyright (c) 2015 Landon Fuller <landon@landonf.org>
+# Copyright (c) 2015-2016 Landon Fuller <landon@landonf.org>
 # Copyright (c) 2004-2005 Poul-Henning Kamp.
 # All rights reserved.
 #
@@ -63,8 +63,6 @@ macro () {
 
 macro barrier o l f
 
-# We only support a subset of the bus I/O methods; this may 
-# be expanded when/if additional functions are required.
 for w in 1 2 4 #8
 do
 	# macro copy_region_$w so dh do c
@@ -74,11 +72,11 @@ do
 	do
 		macro read_$s$w o
 		macro read_multi_$s$w o d c
-#		macro read_region_$s$w o d c
-#		macro set_multi_$s$w o v c
-#		macro set_region_$s$w o v c
+		macro read_region_$s$w o d c
+		macro set_multi_$s$w o v c
+		macro set_region_$s$w o v c
 		macro write_$s$w o v
 		macro write_multi_$s$w o d c
-#		macro write_region_$s$w o d c
+		macro write_region_$s$w o d c
 	done
 done
