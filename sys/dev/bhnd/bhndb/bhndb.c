@@ -1766,7 +1766,7 @@ bhndb_bus_write_ ## _name (device_t dev, device_t child,	\
 	BHNDB_IO_COMMON_TEARDOWN();				\
 }
 
-/* Defines a bhndb_bus_(read|write)_(multi|region)_* method implementation */
+/* Defines a bhndb_bus_(read|write|set)_(multi|region)_* method */
 #define	BHNDB_IO_MISC(_type, _ptr, _op, _size)			\
 static void							\
 bhndb_bus_ ## _op ## _ ## _size (device_t dev,			\
@@ -1794,16 +1794,12 @@ bhndb_bus_ ## _op ## _ ## _size (device_t dev,			\
 	BHNDB_IO_MISC(_type, *, write_multi_stream, _size)	\
 								\
 	BHNDB_IO_MISC(_type,  , set_multi, _size)		\
-	BHNDB_IO_MISC(_type,  , set_multi_stream, _size)	\
-								\
 	BHNDB_IO_MISC(_type,  , set_region, _size)		\
-	BHNDB_IO_MISC(_type,  , set_region_stream, _size)	\
-								\
 	BHNDB_IO_MISC(_type, *, read_region, _size)		\
 	BHNDB_IO_MISC(_type, *, write_region, _size)		\
 								\
 	BHNDB_IO_MISC(_type, *, read_region_stream, _size)	\
-	BHNDB_IO_MISC(_type, *, write_region_stream, _size)	\
+	BHNDB_IO_MISC(_type, *, write_region_stream, _size)
 
 BHNDB_IO_METHODS(uint8_t, 1);
 BHNDB_IO_METHODS(uint16_t, 2);
@@ -1970,16 +1966,9 @@ static device_method_t bhndb_methods[] = {
 	DEVMETHOD(bhnd_bus_set_multi_1,		bhndb_bus_set_multi_1),
 	DEVMETHOD(bhnd_bus_set_multi_2,		bhndb_bus_set_multi_2),
 	DEVMETHOD(bhnd_bus_set_multi_4,		bhndb_bus_set_multi_4),
-	DEVMETHOD(bhnd_bus_set_multi_stream_1,	bhndb_bus_set_multi_stream_1),
-	DEVMETHOD(bhnd_bus_set_multi_stream_2,	bhndb_bus_set_multi_stream_2),
-	DEVMETHOD(bhnd_bus_set_multi_stream_4,	bhndb_bus_set_multi_stream_4),
-
 	DEVMETHOD(bhnd_bus_set_region_1,	bhndb_bus_set_region_1),
 	DEVMETHOD(bhnd_bus_set_region_2,	bhndb_bus_set_region_2),
 	DEVMETHOD(bhnd_bus_set_region_4,	bhndb_bus_set_region_4),
-	DEVMETHOD(bhnd_bus_set_region_stream_1,	bhndb_bus_set_region_stream_1),
-	DEVMETHOD(bhnd_bus_set_region_stream_2,	bhndb_bus_set_region_stream_2),
-	DEVMETHOD(bhnd_bus_set_region_stream_4,	bhndb_bus_set_region_stream_4),
 
 	DEVMETHOD(bhnd_bus_read_region_1,	bhndb_bus_read_region_1),
 	DEVMETHOD(bhnd_bus_read_region_2,	bhndb_bus_read_region_2),

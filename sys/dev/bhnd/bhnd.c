@@ -578,12 +578,7 @@ bhnd_ ## _op (device_t dev, device_t child,				\
 	   WRITE_MULTI_STREAM_ ## _size)				\
 									\
 	BHND_IO_MISC(_type, set_multi_ ## _size, SET_MULTI_ ## _size)	\
-	BHND_IO_MISC(_type, set_multi_stream_ ## _size,			\
-	    SET_MULTI_STREAM_ ## _size)					\
-									\
 	BHND_IO_MISC(_type, set_region_ ## _size, SET_REGION_ ## _size)	\
-	BHND_IO_MISC(_type, set_region_stream_ ## _size,		\
-	    SET_REGION_STREAM_ ## _size)				\
 									\
 	BHND_IO_MISC(_type*, read_region_ ## _size,			\
 	    READ_REGION_ ## _size)					\
@@ -680,16 +675,10 @@ static device_method_t bhnd_methods[] = {
 	DEVMETHOD(bhnd_bus_set_multi_1,		bhnd_set_multi_1),
 	DEVMETHOD(bhnd_bus_set_multi_2,		bhnd_set_multi_2),
 	DEVMETHOD(bhnd_bus_set_multi_4,		bhnd_set_multi_4),
-	DEVMETHOD(bhnd_bus_set_multi_stream_1,	bhnd_set_multi_stream_1),
-	DEVMETHOD(bhnd_bus_set_multi_stream_2,	bhnd_set_multi_stream_2),
-	DEVMETHOD(bhnd_bus_set_multi_stream_4,	bhnd_set_multi_stream_4),
 
 	DEVMETHOD(bhnd_bus_set_region_1,	bhnd_set_region_1),
 	DEVMETHOD(bhnd_bus_set_region_2,	bhnd_set_region_2),
 	DEVMETHOD(bhnd_bus_set_region_4,	bhnd_set_region_4),
-	DEVMETHOD(bhnd_bus_set_region_stream_1,	bhnd_set_region_stream_1),
-	DEVMETHOD(bhnd_bus_set_region_stream_2,	bhnd_set_region_stream_2),
-	DEVMETHOD(bhnd_bus_set_region_stream_4,	bhnd_set_region_stream_4),
 
 	DEVMETHOD(bhnd_bus_read_region_1,	bhnd_read_region_1),
 	DEVMETHOD(bhnd_bus_read_region_2,	bhnd_read_region_2),
