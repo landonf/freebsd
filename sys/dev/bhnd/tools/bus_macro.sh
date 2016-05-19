@@ -73,10 +73,19 @@ do
 		macro read_$s$w o
 		macro read_multi_$s$w o d c
 		macro read_region_$s$w o d c
-		macro set_multi_$s$w o v c
-		macro set_region_$s$w o v c
 		macro write_$s$w o v
 		macro write_multi_$s$w o d c
 		macro write_region_$s$w o d c
+	done
+	
+	# set_(multi_)?_stream is not supported on ARM/ARM64, and so for
+	# simplicity, we don't support their use with bhnd resources.
+	# 
+	# if that changes, these can be merged back into the stream-eanbled
+	# loop above.
+	for s in ""
+	do
+		macro set_multi_$s$w o v c
+		macro set_region_$s$w o v c
 	done
 done
