@@ -1147,6 +1147,7 @@ dev/bhnd/cores/pcie2/bhnd_pcie2_hostb.c	optional bhndbus pci | bhndb pci
 dev/bhnd/cores/pcie2/bhnd_pcie2b.c	optional bhnd_pcie2b bhnd pci
 dev/bhnd/nvram/bhnd_nvram_if.m		optional bhndbus | bhnd
 dev/bhnd/nvram/bhnd_sprom.c		optional bhndbus | bhnd
+dev/bhnd/nvram/bhnd_sprom_subr.c	optional bhndbus | bhnd
 dev/bhnd/nvram/nvram_subr.c		optional bhndbus | bhnd
 dev/bhnd/siba/siba.c			optional bhndbus | siba
 dev/bhnd/siba/siba_bhndb.c		optional bhndbus | siba bhndb
