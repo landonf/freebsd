@@ -263,6 +263,7 @@ bhndb_alloc_resources(device_t dev, device_t parent_dev,
 	struct bhndb_resources		*r;
 	const struct bhndb_regwin	*win;
 	bus_size_t			 last_window_size;
+	char				*rdescr;
 	size_t				 res_num;
 	u_int				 rnid;
 	int				 error;
@@ -283,12 +284,24 @@ bhndb_alloc_resources(device_t dev, device_t parent_dev,
 	r->cfg = cfg;
 	r->min_prio = BHNDB_PRIORITY_NONE;
 	STAILQ_INIT(&r->bus_regions);
-	
+
+	/* Initialize rman descriptions */
+	r->ht_mem_rman.rm_descr = NULL;
+	r->br_mem_rman.rm_descr = NULL;
+
+	asprintf(&rdescr, M_BHND, "%s host memory", device_get_nameunit(dev));
+	if ((r->ht_mem_rman.rm_descr = rdescr) == NULL)
+		goto failed;
+
+	asprintf(&rdescr, M_BHND, "%s bridged memory",
+	    device_get_nameunit(dev));
+	if ((r->br_mem_rman.rm_descr = rdescr) == NULL)
+		goto failed;
+
 	/* Initialize host address space resource manager. */
 	r->ht_mem_rman.rm_start = 0;
 	r->ht_mem_rman.rm_end = ~0;
 	r->ht_mem_rman.rm_type = RMAN_ARRAY;
-	r->ht_mem_rman.rm_descr = "BHNDB host memory";
 	if ((error = rman_init(&r->ht_mem_rman))) {
 		device_printf(r->dev, "could not initialize ht_mem_rman\n");
 		goto failed;
@@ -300,8 +313,6 @@ bhndb_alloc_resources(device_t dev, device_t parent_dev,
 	r->br_mem_rman.rm_start = 0;
 	r->br_mem_rman.rm_end = BUS_SPACE_MAXADDR_32BIT;
 	r->br_mem_rman.rm_type = RMAN_ARRAY;
-	r->br_mem_rman.rm_descr = "BHNDB bridged memory";
-
 	if ((error = rman_init(&r->br_mem_rman))) {
 		device_printf(r->dev, "could not initialize br_mem_rman\n");
 		goto failed;
@@ -458,6 +469,12 @@ failed:
 	if (free_parent_res)
 		bus_release_resources(r->parent_dev, r->res_spec, r->res);
 	
+	if (r->ht_mem_rman.rm_descr != NULL)
+		free((void *)r->ht_mem_rman.rm_descr, M_BHND);
+	
+	if (r->br_mem_rman.rm_descr != NULL)
+		free((void *)r->br_mem_rman.rm_descr, M_BHND);
+
 	if (free_ht_mem)
 		rman_fini(&r->ht_mem_rman);
 
@@ -514,6 +531,10 @@ bhndb_free_resources(struct bhndb_resources *br)
 		STAILQ_REMOVE(&br->bus_regions, region, bhndb_region, link);
 		free(region, M_BHND);
 	}
+
+	/* Free our allocated resource manager descriptions */
+	free((void *)br->ht_mem_rman.rm_descr, M_BHND);
+	free((void *)br->br_mem_rman.rm_descr, M_BHND);
 
 	/* Release our resource managers */
 	rman_fini(&br->ht_mem_rman);
