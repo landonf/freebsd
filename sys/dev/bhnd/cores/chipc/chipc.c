@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2015 Landon Fuller <landon@landonf.org>
+ * Copyright (c) 2015-2016 Landon Fuller <landon@landonf.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -42,8 +42,11 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/kernel.h>
+#include <sys/lock.h>
 #include <sys/bus.h>
+#include <sys/malloc.h>
 #include <sys/module.h>
+#include <sys/mutex.h>
 #include <sys/systm.h>
 
 #include <machine/bus.h>
@@ -114,6 +117,10 @@ static struct bhnd_chip_quirk chipc_chip_quirks[] = {
 	BHND_CHIP_QUIRK_END
 };
 
+static bhnd_nvram_src_t	chipc_nvram_identify(struct chipc_softc *sc);
+static int		chipc_sprom_init(struct chipc_softc *);
+static bool		chipc_should_enable_sprom(struct chipc_softc *sc);
+
 /* quirk and capability flag convenience macros */
 #define	CHIPC_QUIRK(_sc, _name)	\
     ((_sc)->quirks & CHIPC_QUIRK_ ## _name)
@@ -126,12 +133,6 @@ static struct bhnd_chip_quirk chipc_chip_quirks[] = {
 
 #define	CHIPC_ASSERT_CAP(_sc, name)	\
     KASSERT(CHIPC_CAP((_sc), name), ("capability " __STRING(_name) " not set"))
-
-static bhnd_nvram_src_t	chipc_nvram_identify(struct chipc_softc *sc);
-static int		chipc_sprom_init(struct chipc_softc *);
-static int		chipc_enable_sprom_pins(struct chipc_softc *);
-static int		chipc_disable_sprom_pins(struct chipc_softc *);
-
 
 static int
 chipc_probe(device_t dev)
@@ -159,7 +160,8 @@ chipc_attach(device_t dev)
 	sc->dev = dev;
 	sc->quirks = bhnd_device_quirks(dev, chipc_devices,
 	    sizeof(chipc_devices[0]));
-	
+	sc->sprom_refcnt = 0;
+
 	CHIPC_LOCK_INIT(sc);
 
 	/* Allocate bus resources */
@@ -267,9 +269,8 @@ chipc_sprom_init(struct chipc_softc *sc)
 	    ("non-SPROM source (%u)\n", sc->nvram_src));
 
 	/* Enable access to the SPROM */
-	CHIPC_LOCK(sc);
-	if ((error = chipc_enable_sprom_pins(sc)))
-		goto failed;
+	if ((error = BHND_CHIPC_ENABLE_SPROM(sc->dev)))
+		return (error);
 
 	/* Initialize SPROM parser */
 	error = bhnd_sprom_init(&sc->sprom, sc->core, CHIPC_SPROM_OTP);
@@ -277,22 +278,14 @@ chipc_sprom_init(struct chipc_softc *sc)
 		device_printf(sc->dev, "SPROM identification failed: %d\n",
 			error);
 
-		chipc_disable_sprom_pins(sc);
-		goto failed;
+		BHND_CHIPC_DISABLE_SPROM(sc->dev);
+		return (error);
 	}
 
 	/* Drop access to the SPROM lines */
-	if ((error = chipc_disable_sprom_pins(sc))) {
-		bhnd_sprom_fini(&sc->sprom);
-		goto failed;
-	}
-	CHIPC_UNLOCK(sc);
+	BHND_CHIPC_DISABLE_SPROM(sc->dev);
 
 	return (0);
-
-failed:
-	CHIPC_UNLOCK(sc);
-	return (error);
 }
 
 /**
@@ -338,6 +331,57 @@ chipc_nvram_identify(struct chipc_softc *sc)
 	return (BHND_NVRAM_SRC_UNKNOWN);
 }
 
+/**
+ * Eexamine bus state and make a best effort determination of whether it's
+ * likely safe to enable the muxed SPROM pins.
+ * 
+ * On devices that do not use SPROM pin muxing, always returns true.
+ * 
+ * @param sc chipc driver state.
+ */
+static bool
+chipc_should_enable_sprom(struct chipc_softc *sc)
+{
+	device_t	*devs;
+	device_t	 hostb;
+	device_t	 parent;
+	int		 devcount;
+	int		 error;
+	bool		 result;
+
+	mtx_assert(&Giant, MA_OWNED);	/* for newbus */
+
+	/* Nothing to do? */
+	if (!CHIPC_QUIRK(sc, MUX_SPROM))
+		return (true);
+
+	parent = device_get_parent(sc->dev);
+	hostb = bhnd_find_hostb_device(parent);
+
+	if ((error = device_get_children(parent, &devs, &devcount)))
+		return (false);
+
+	/* Reject any active devices other than ChipCommon, or the
+	 * host bridge (if any). */
+	result = true;
+	for (int i = 0; i < devcount; i++) {
+		if (devs[i] == hostb || devs[i] == sc->dev)
+			continue;
+
+		if (!device_is_attached(devs[i]))
+			continue;
+
+		if (device_is_suspended(devs[i]))
+			continue;
+
+		/* Active device; assume SPROM is busy */
+		result = false;
+		break;
+	}
+
+	free(devs, M_TEMP);
+	return (result);
+}
 
 /**
  * If required by this device, enable access to the SPROM.
@@ -345,15 +389,33 @@ chipc_nvram_identify(struct chipc_softc *sc)
  * @param sc chipc driver state.
  */
 static int
-chipc_enable_sprom_pins(struct chipc_softc *sc)
+chipc_enable_sprom_pins(device_t dev)
 {
-	uint32_t cctrl;
-	
-	CHIPC_LOCK_ASSERT(sc, MA_OWNED);
+	struct chipc_softc	*sc;
+	uint32_t		 cctrl;
+	int			 error;
+
+	sc = device_get_softc(dev);
 
 	/* Nothing to do? */
 	if (!CHIPC_QUIRK(sc, MUX_SPROM))
 		return (0);
+
+	/* Make sure we're holding Giant for newbus */
+	mtx_lock(&Giant);
+	CHIPC_LOCK(sc);
+
+	/* Already enabled? */
+	if (sc->sprom_refcnt >= 1) {
+		error = 0;
+		goto finished;
+	}
+
+	/* Check whether bus is busy */
+	if (!chipc_should_enable_sprom(sc)) {
+		error = EBUSY;
+		goto finished;
+	}
 
 	cctrl = bhnd_bus_read_4(sc->core, CHIPC_CHIPCTRL);
 
@@ -368,7 +430,8 @@ chipc_enable_sprom_pins(struct chipc_softc *sc)
 			cctrl &= ~CHIPC_CCTRL4331_EXTPA_EN2;
 
 		bhnd_bus_write_4(sc->core, CHIPC_CHIPCTRL, cctrl);
-		return (0);
+		error = 0;
+		goto finished;
 	}
 
 	/* 4360 devices */
@@ -378,7 +441,17 @@ chipc_enable_sprom_pins(struct chipc_softc *sc)
 
 	/* Refuse to proceed on unsupported devices with muxed SPROM pins */
 	device_printf(sc->dev, "muxed sprom lines on unrecognized device\n");
-	return (ENXIO);
+	error = ENXIO;
+
+finished:
+	/* Bump the reference count */
+	if (error == 0)
+		sc->sprom_refcnt++;
+
+	CHIPC_UNLOCK(sc);
+	mtx_unlock(&Giant);
+
+	return (error);
 }
 
 /**
@@ -387,16 +460,25 @@ chipc_enable_sprom_pins(struct chipc_softc *sc)
  * 
  * @param sc chipc driver state.
  */
-static int
-chipc_disable_sprom_pins(struct chipc_softc *sc)
+static void
+chipc_disable_sprom_pins(device_t dev)
 {
-	uint32_t cctrl;
+	struct chipc_softc	*sc;
+	uint32_t		 cctrl;
 
-	CHIPC_LOCK_ASSERT(sc, MA_OWNED);
+	sc = device_get_softc(dev);
 
 	/* Nothing to do? */
 	if (!CHIPC_QUIRK(sc, MUX_SPROM))
-		return (0);
+		return;
+
+	CHIPC_LOCK(sc);
+
+	/* Check reference count, skip disable if in-use. */
+	KASSERT(sc->sprom_refcnt > 0, ("sprom refcnt overrelease"));
+	sc->sprom_refcnt--;
+	if (sc->sprom_refcnt > 0)
+		goto finished;
 
 	cctrl = bhnd_bus_read_4(sc->core, CHIPC_CHIPCTRL);
 
@@ -411,17 +493,16 @@ chipc_disable_sprom_pins(struct chipc_softc *sc)
 			cctrl |= CHIPC_CCTRL4331_EXTPA_EN2;
 
 		bhnd_bus_write_4(sc->core, CHIPC_CHIPCTRL, cctrl);
-		return (0);
+		goto finished;
 	}
 
 	/* 4360 devices */
 	if (CHIPC_QUIRK(sc, 4360_FEM_MUX_SPROM)) {
 		/* Unimplemented */
 	}
-	
-	/* Refuse to proceed on unsupported devices with muxed SPROM pins */
-	device_printf(sc->dev, "muxed sprom lines on unrecognized device\n");
-	return (ENXIO);
+
+finished:
+	CHIPC_UNLOCK(sc);
 }
 
 static bhnd_nvram_src_t
@@ -517,6 +598,8 @@ static device_method_t chipc_methods[] = {
 	/* ChipCommon interface */
 	DEVMETHOD(bhnd_chipc_nvram_src,		chipc_nvram_src),
 	DEVMETHOD(bhnd_chipc_write_chipctrl,	chipc_write_chipctrl),
+	DEVMETHOD(bhnd_chipc_enable_sprom,	chipc_enable_sprom_pins),
+	DEVMETHOD(bhnd_chipc_disable_sprom,	chipc_disable_sprom_pins),
 
 	/* NVRAM interface */
 	DEVMETHOD(bhnd_nvram_getvar,		chipc_nvram_getvar),

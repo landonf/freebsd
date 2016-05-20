@@ -123,6 +123,7 @@ struct chipc_softc {
 	struct mtx		 mtx;		/**< state mutex. */
 
 	struct bhnd_sprom	 sprom;		/**< OTP/SPROM shadow, if any */
+	size_t			 sprom_refcnt;	/**< SPROM hardware refcount */
 };
 
 #define	CHIPC_LOCK_INIT(sc) \

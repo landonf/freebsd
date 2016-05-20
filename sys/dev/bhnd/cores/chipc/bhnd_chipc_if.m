@@ -63,3 +63,25 @@ METHOD void write_chipctrl {
 	uint32_t value;
 	uint32_t mask;
 }
+
+/**
+ * Enable hardware access to the SPROM.
+ * 
+ * @param sc chipc driver state.
+ *
+ * @retval 0		success
+ * @retval EBUSY	If enabling the hardware may conflict with
+ *			other active devices.
+ */
+METHOD int enable_sprom {
+	device_t dev;
+}
+
+/**
+ * Release hardware access to the SPROM.
+ * 
+ * @param sc chipc driver state.
+ */
+METHOD void disable_sprom {
+	device_t dev;
+}
