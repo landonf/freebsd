@@ -368,7 +368,7 @@ static int
 chipc_nvram_attach(struct chipc_softc *sc)
 {
 	device_t	 nvram_dev;
-	rman_res_t	 start, end;
+	rman_res_t	 start;
 	int		 error;
 
 	switch (sc->nvram_src) {
@@ -382,9 +382,8 @@ chipc_nvram_attach(struct chipc_softc *sc)
 		}
 
 		start = rman_get_start(sc->core->res) + CHIPC_SPROM_OTP;
-		end = start + CHIPC_SPROM_OTP_SIZE - 1;
 		error = bus_set_resource(nvram_dev, SYS_RES_MEMORY, 0, start,
-		    end);
+		    CHIPC_SPROM_OTP_SIZE);
 		return (error);
 		
 	case BHND_NVRAM_SRC_NFLASH:
