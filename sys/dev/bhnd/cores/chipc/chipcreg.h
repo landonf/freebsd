@@ -25,10 +25,6 @@
 #ifndef _BHND_CORES_CHIPC_CHIPCREG_H_
 #define	_BHND_CORES_CHIPC_CHIPCREG_H_
 
-#define	CHIPC_CHIPID_SIZE	0x100	/**< size of the register block
-					     containing the chip
-					     identification registers. */
-
 /** Evaluates to true if the given ChipCommon core revision provides
  *  the core count via the chip identification register. */
 #define	CHIPC_NCORES_MIN_HWREV(hwrev)	((hwrev) == 4 || (hwrev) >= 6)
@@ -64,6 +60,10 @@
 #define	CHIPC_SYS_CLK_CTL		0xc0
 #define	CHIPC_EROMPTR			0xfc	/**< 32-bit EROM base address
 						  *  on BCMA devices */
+#define	CHIPC_CHIPID_SIZE		0x100	/**< size of the register block
+						     containing the chip
+						     identification registers. */  
+
 #define	CHIPC_SPROM_CTRL		0x190	/**< SPROM interface (rev >= 32) */
 #define	CHIPC_SPROM_ADDR		0x194
 #define	CHIPC_SPROM_DATA		0x198
@@ -82,6 +82,7 @@
 #define	CHIPC_PMU_PLL_CONTROL_ADDR 	0x660
 #define	CHIPC_PMU_PLL_CONTROL_DATA 	0x664
 #define	CHIPC_SPROM_OTP			0x800	/* SPROM/OTP address space */
+#define	CHIPC_SPROM_OTP_SIZE		0x400
 
 /** chipid */
 #define	CHIPC_ID		0x0		/**< identification register */

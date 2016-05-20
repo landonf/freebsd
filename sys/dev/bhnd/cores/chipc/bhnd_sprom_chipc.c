@@ -52,7 +52,14 @@ __FBSDID("$FreeBSD$");
 static int
 chipc_sprom_probe(device_t dev)
 {
-	int	error;
+	device_t	chipc;
+	int		error;
+
+	chipc = device_get_parent(dev);
+
+	/* Only match on SPROM devices */
+	if (BHND_CHIPC_NVRAM_SRC(chipc) != BHND_NVRAM_SRC_SPROM)
+		return (ENXIO);
 
 	/* Defer to default driver implementation */
 	if ((error = bhnd_sprom_probe(dev)) > 0)

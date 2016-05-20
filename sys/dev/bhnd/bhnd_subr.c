@@ -1020,15 +1020,11 @@ find_nvram_child(device_t dev)
 	if (device_get_devclass(dev) != bhnd_devclass)
 		return (NULL);
 
-	/* Look for a ChipCommon device */
+	/* Look for a ChipCommon-attached NVRAM device */
 	if ((chipc = bhnd_find_child(dev, BHND_DEVCLASS_CC, -1)) != NULL) {
-		bhnd_nvram_src_t src;
-
-		/* Query the NVRAM source and determine whether it's
-		 * accessible via the ChipCommon device */
-		src = BHND_CHIPC_NVRAM_SRC(chipc);
-		if (BHND_NVRAM_SRC_CC(src))
-			return (chipc);
+		nvram = device_find_child(chipc, "bhnd_nvram", 0);
+		if (nvram != NULL)
+			return (nvram);
 	}
 
 	/* Not found */

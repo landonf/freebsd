@@ -55,8 +55,6 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/bhnd.h>
 
-#include "bhnd_nvram_if.h"
-
 #include "chipcreg.h"
 #include "chipcvar.h"
 
@@ -117,8 +115,9 @@ static struct bhnd_chip_quirk chipc_chip_quirks[] = {
 	BHND_CHIP_QUIRK_END
 };
 
+static int		chipc_nvram_attach(struct chipc_softc *sc);
 static bhnd_nvram_src_t	chipc_nvram_identify(struct chipc_softc *sc);
-static int		chipc_sprom_init(struct chipc_softc *);
+
 static bool		chipc_should_enable_sprom(struct chipc_softc *sc);
 
 /* quirk and capability flag convenience macros */
@@ -170,7 +169,18 @@ chipc_attach(device_t dev)
 		return (error);
 
 	sc->core = sc->res[0];
-	
+
+	/* Map just the primary ChipCommon register block, leaving the
+	 * remainder for our children */
+	error = bus_adjust_resource(dev, SYS_RES_MEMORY, sc->core->res,
+	    rman_get_start(sc->core->res), 
+	    rman_get_start(sc->core->res) + CHIPC_CHIPID_SIZE - 1);
+	if (error) {
+		device_printf(dev, "failed to resize register block: %d\n",
+		    error);
+		goto cleanup;
+	}
+
 	/* Fetch our chipset identification data */
 	ccid_reg = bhnd_bus_read_4(sc->core, CHIPC_ID);
 	chip_type = CHIPC_GET_ATTR(ccid_reg, ID_BUS);
@@ -196,30 +206,14 @@ chipc_attach(device_t dev)
 	sc->caps = bhnd_bus_read_4(sc->core, CHIPC_CAPABILITIES);
 	sc->cst = bhnd_bus_read_4(sc->core, CHIPC_CHIPST);
 
-	/* Identify NVRAM source */
+	/* Identify NVRAM source and add child device. */
 	sc->nvram_src = chipc_nvram_identify(sc);
+	if ((error = chipc_nvram_attach(sc)))
+		goto cleanup;
 
-	/* Read NVRAM data */
-	switch (sc->nvram_src) {
-	case BHND_NVRAM_SRC_OTP:
-		// TODO (requires access to OTP hardware)
-		device_printf(sc->dev, "NVRAM-OTP unsupported\n");
-		break;
-
-	case BHND_NVRAM_SRC_NFLASH:
-		// TODO (requires access to NFLASH hardware)
-		device_printf(sc->dev, "NVRAM-NFLASH unsupported\n");
-		break;
-
-	case BHND_NVRAM_SRC_SPROM:
-		if ((error = chipc_sprom_init(sc)))
-			goto cleanup;
-		break;
-
-	case BHND_NVRAM_SRC_UNKNOWN:
-		/* Handled externally */
-		break;
-	}
+	/* Standard bus probe */
+	if ((error = bus_generic_attach(dev)))
+		goto cleanup;
 
 	return (0);
 	
@@ -233,6 +227,10 @@ static int
 chipc_detach(device_t dev)
 {
 	struct chipc_softc	*sc;
+	int			 error;
+
+	if ((error = bus_generic_detach(dev)))
+		return (error);
 
 	sc = device_get_softc(dev);
 	bhnd_release_resources(dev, sc->rspec, sc->res);
@@ -246,46 +244,163 @@ chipc_detach(device_t dev)
 static int
 chipc_suspend(device_t dev)
 {
-	return (0);
+	return (bus_generic_suspend(dev));
 }
 
 static int
 chipc_resume(device_t dev)
 {
+	return (bus_generic_resume(dev));
+}
+
+static void
+chipc_probe_nomatch(device_t dev, device_t child)
+{
+	struct resource_list	*rl;
+	const char		*name;
+
+	name = device_get_name(child);
+	if (name == NULL)
+		name = "unknown device";
+
+	device_printf(dev, "<%s> at", name);
+
+	rl = BUS_GET_RESOURCE_LIST(dev, child);
+	if (rl != NULL) {
+		resource_list_print_type(rl, "mem", SYS_RES_MEMORY, "%#jx");
+		resource_list_print_type(rl, "irq", SYS_RES_IRQ, "%jd");
+	}
+
+	printf(" (no driver attached)\n");
+}
+
+static int
+chipc_print_child(device_t dev, device_t child)
+{
+	struct resource_list	*rl;
+	int			 retval = 0;
+
+	retval += bus_print_child_header(dev, child);
+
+	rl = BUS_GET_RESOURCE_LIST(dev, child);
+	if (rl != NULL) {
+		retval += resource_list_print_type(rl, "mem", SYS_RES_MEMORY,
+		    "%#jx");
+		retval += resource_list_print_type(rl, "irq", SYS_RES_IRQ,
+		    "%jd");
+	}
+
+	retval += bus_print_child_domain(dev, child);
+	retval += bus_print_child_footer(dev, child);
+
+	return (retval);
+}
+
+static int
+chipc_child_pnpinfo_str(device_t dev, device_t child, char *buf,
+    size_t buflen)
+{
+	if (buflen == 0)
+		return (EOVERFLOW);
+
+	*buf = '\0';
 	return (0);
 }
 
-/**
- * Initialize local SPROM shadow, if required.
- * 
- * @param sc chipc driver state.
- */
 static int
-chipc_sprom_init(struct chipc_softc *sc)
+chipc_child_location_str(device_t dev, device_t child, char *buf,
+    size_t buflen)
 {
-	int	error;
+	if (buflen == 0)
+		return (EOVERFLOW);
 
-	KASSERT(sc->nvram_src == BHND_NVRAM_SRC_SPROM,
-	    ("non-SPROM source (%u)\n", sc->nvram_src));
+	*buf = '\0';
+	return (ENXIO);
+}
 
-	/* Enable access to the SPROM */
-	if ((error = BHND_CHIPC_ENABLE_SPROM(sc->dev)))
-		return (error);
+static device_t
+chipc_add_child(device_t dev, u_int order, const char *name, int unit)
+{
+	struct chipc_devinfo	*dinfo;
+	device_t		 child;
 
-	/* Initialize SPROM parser */
-	error = bhnd_sprom_init(&sc->sprom, sc->core, CHIPC_SPROM_OTP);
-	if (error) {
-		device_printf(sc->dev, "SPROM identification failed: %d\n",
-			error);
+	child = device_add_child_ordered(dev, order, name, unit);
+	if (child == NULL)
+		return (NULL);
 
-		BHND_CHIPC_DISABLE_SPROM(sc->dev);
-		return (error);
+	dinfo = malloc(sizeof(struct chipc_devinfo), M_DEVBUF, M_NOWAIT);
+	if (dinfo == NULL) {
+		device_delete_child(dev, child);
+		return (NULL);
 	}
 
-	/* Drop access to the SPROM lines */
-	BHND_CHIPC_DISABLE_SPROM(sc->dev);
+	resource_list_init(&dinfo->resources);
 
-	return (0);
+	device_set_ivars(child, dinfo);
+
+	return (child);
+}
+
+static void
+chipc_child_deleted(device_t dev, device_t child)
+{
+	struct chipc_devinfo *dinfo = device_get_ivars(child);
+
+	if (dinfo != NULL) {
+		resource_list_free(&dinfo->resources);
+		free(dinfo, M_DEVBUF);
+	}
+
+	device_set_ivars(child, NULL);
+}
+
+static struct resource_list *
+chipc_get_resource_list(device_t dev, device_t child)
+{
+	struct chipc_devinfo *dinfo = device_get_ivars(child);
+	return (&dinfo->resources);
+}
+
+/**
+ * If supported, add an appropriate NVRAM child device.
+ */
+static int
+chipc_nvram_attach(struct chipc_softc *sc)
+{
+	device_t	 nvram_dev;
+	rman_res_t	 start, end;
+	int		 error;
+
+	switch (sc->nvram_src) {
+	case BHND_NVRAM_SRC_OTP:
+	case BHND_NVRAM_SRC_SPROM:
+		/* Add OTP/SPROM device */
+		nvram_dev = BUS_ADD_CHILD(sc->dev, 0, "bhnd_nvram", -1);
+		if (nvram_dev == NULL) {
+			device_printf(sc->dev, "failed to add NVRAM device\n");
+			return (ENXIO);
+		}
+
+		start = rman_get_start(sc->core->res) + CHIPC_SPROM_OTP;
+		end = start + CHIPC_SPROM_OTP_SIZE - 1;
+		error = bus_set_resource(nvram_dev, SYS_RES_MEMORY, 0, start,
+		    end);
+		return (error);
+		
+	case BHND_NVRAM_SRC_NFLASH:
+		// TODO (requires access to NFLASH hardware)
+		device_printf(sc->dev, "NVRAM-NFLASH unsupported\n");
+		return (0);
+
+	case BHND_NVRAM_SRC_UNKNOWN:
+		/* Handled externally */
+		return (0);
+
+	default:
+		device_printf(sc->dev, "invalid nvram source: %u\n",
+		     sc->nvram_src);
+		return (ENXIO);
+	}
 }
 
 /**
@@ -512,64 +627,6 @@ chipc_nvram_src(device_t dev)
 	return (sc->nvram_src);
 }
 
-static int
-chipc_nvram_getvar(device_t dev, const char *name, void *buf, size_t *len)
-{
-	struct chipc_softc	*sc;
-	int			 error;
-
-	sc = device_get_softc(dev);
-
-	switch (sc->nvram_src) {
-	case BHND_NVRAM_SRC_SPROM:
-		CHIPC_LOCK(sc);
-		error = bhnd_sprom_getvar(&sc->sprom, name, buf, len);
-		CHIPC_UNLOCK(sc);
-		return (error);
-
-	case BHND_NVRAM_SRC_OTP:
-	case BHND_NVRAM_SRC_NFLASH:
-		/* Currently unsupported */
-		return (ENXIO);
-
-	case BHND_NVRAM_SRC_UNKNOWN:
-		return (ENODEV);
-	}
-
-	/* Unknown NVRAM source */
-	return (ENODEV);
-}
-
-static int
-chipc_nvram_setvar(device_t dev, const char *name, const void *buf,
-    size_t len)
-{
-	struct chipc_softc	*sc;
-	int			 error;
-
-	sc = device_get_softc(dev);
-
-	switch (sc->nvram_src) {
-	case BHND_NVRAM_SRC_SPROM:
-		CHIPC_LOCK(sc);
-		error = bhnd_sprom_setvar(&sc->sprom, name, buf, len);
-		CHIPC_UNLOCK(sc);
-		return (error);
-
-	case BHND_NVRAM_SRC_OTP:
-	case BHND_NVRAM_SRC_NFLASH:
-		/* Currently unsupported */
-		return (ENXIO);
-
-	case BHND_NVRAM_SRC_UNKNOWN:
-	default:
-		return (ENODEV);
-	}
-
-	/* Unknown NVRAM source */
-	return (ENODEV);
-}
-
 static void
 chipc_write_chipctrl(device_t dev, uint32_t value, uint32_t mask)
 {
@@ -594,16 +651,38 @@ static device_method_t chipc_methods[] = {
 	DEVMETHOD(device_detach,		chipc_detach),
 	DEVMETHOD(device_suspend,		chipc_suspend),
 	DEVMETHOD(device_resume,		chipc_resume),
-	
+
+	/* Bus interface */
+	DEVMETHOD(bus_probe_nomatch,		chipc_probe_nomatch),
+	DEVMETHOD(bus_print_child,		chipc_print_child),
+	DEVMETHOD(bus_child_pnpinfo_str,	chipc_child_pnpinfo_str),
+	DEVMETHOD(bus_child_location_str,	chipc_child_location_str),
+
+	DEVMETHOD(bus_add_child,		chipc_add_child),
+	DEVMETHOD(bus_child_deleted,		chipc_child_deleted),
+
+	DEVMETHOD(bus_set_resource,		bus_generic_rl_set_resource),
+	DEVMETHOD(bus_get_resource,		bus_generic_rl_get_resource),
+	DEVMETHOD(bus_delete_resource,		bus_generic_rl_delete_resource),
+	DEVMETHOD(bus_alloc_resource,		bus_generic_rl_alloc_resource),
+	DEVMETHOD(bus_release_resource,		bus_generic_rl_release_resource),
+	DEVMETHOD(bus_adjust_resource,		bus_generic_adjust_resource),
+	DEVMETHOD(bus_release_resource,		bus_generic_rl_release_resource),
+	DEVMETHOD(bus_activate_resource,	bus_generic_activate_resource),
+	DEVMETHOD(bus_deactivate_resource,	bus_generic_deactivate_resource),
+	DEVMETHOD(bus_get_resource_list,	chipc_get_resource_list),
+
+	DEVMETHOD(bus_setup_intr,		bus_generic_setup_intr),
+	DEVMETHOD(bus_teardown_intr,		bus_generic_teardown_intr),
+	DEVMETHOD(bus_config_intr,		bus_generic_config_intr),
+	DEVMETHOD(bus_bind_intr,		bus_generic_bind_intr),
+	DEVMETHOD(bus_describe_intr,		bus_generic_describe_intr),
+
 	/* ChipCommon interface */
 	DEVMETHOD(bhnd_chipc_nvram_src,		chipc_nvram_src),
 	DEVMETHOD(bhnd_chipc_write_chipctrl,	chipc_write_chipctrl),
 	DEVMETHOD(bhnd_chipc_enable_sprom,	chipc_enable_sprom_pins),
 	DEVMETHOD(bhnd_chipc_disable_sprom,	chipc_disable_sprom_pins),
-
-	/* NVRAM interface */
-	DEVMETHOD(bhnd_nvram_getvar,		chipc_nvram_getvar),
-	DEVMETHOD(bhnd_nvram_setvar,		chipc_nvram_setvar),
 
 	DEVMETHOD_END
 };
