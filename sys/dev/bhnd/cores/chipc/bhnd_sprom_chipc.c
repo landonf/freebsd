@@ -67,6 +67,8 @@ chipc_sprom_attach(device_t dev)
 	device_t	chipc;
 	int		error;
 
+	/* Request that ChipCommon enable access to SPROM hardware before
+	 * delegating attachment (and SPROM parsing) to the common driver */
 	chipc = device_get_parent(dev);
 	if ((error = BHND_CHIPC_ENABLE_SPROM(chipc)))
 		return (error);
