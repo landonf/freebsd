@@ -39,9 +39,6 @@
 DECLARE_CLASS(bhnd_chipc);
 extern devclass_t bhnd_chipc_devclass;
 
-#define	CHIPC_MAX_RES	1
-#define	CHIPC_MAX_RSPEC	(CHIPC_MAX_RES+1)
-
 /* 
  * ChipCommon device quirks / features
  */
@@ -115,15 +112,36 @@ struct chipc_devinfo {
 };
 
 /**
+ * chipc SYS_RES_MEMORY region allocation record.
+ */
+struct chipc_region {
+	bhnd_port_type		 cr_port_type;	/**< bhnd port type */
+	u_int			 cr_port_num;	/**< bhnd port number */
+	u_int			 cr_region_num;	/**< bhnd region number */
+
+	bhnd_addr_t		 cr_addr;	/**< region base address */
+	bhnd_addr_t		 cr_end;	/**< region end address */
+	bhnd_size_t		 cr_count;	/**< region count */
+	int			 cr_rid;	/**< rid, or -1 if no rid
+						  *  is allocated by the bus for
+						  *  this region */
+
+	struct bhnd_resource	*cr_res;	/**< bus resource, or NULL */
+	u_int			 cr_refs;	/**< RF_ALLOCATED refcount */
+	u_int			 cr_act_refs;	/**< RF_ACTIVE refcount */
+
+	STAILQ_ENTRY(chipc_region) cr_link;
+};
+
+/**
  * chipc driver instance state.
  */
 struct chipc_softc {
 	device_t		dev;
 
-	struct resource_spec	 rspec[CHIPC_MAX_RSPEC];
-	struct bhnd_resource	*res[CHIPC_MAX_RES];
-
 	struct bhnd_resource	*core;		/**< core registers. */
+	struct chipc_region	*core_region;	/**< region containing core registers */
+
 	struct bhnd_chipid	 ccid;		/**< chip identification */
 	uint32_t		 quirks;	/**< CHIPC_QUIRK_* quirk flags */
 	uint32_t		 caps;		/**< CHIPC_CAP_* capability register flags */
@@ -134,6 +152,10 @@ struct chipc_softc {
 
 	struct bhnd_sprom	 sprom;		/**< OTP/SPROM shadow, if any */
 	size_t			 sprom_refcnt;	/**< SPROM hardware refcount */
+
+	struct rman		 mem_rman;	/**< port memory manager */
+
+	STAILQ_HEAD(, chipc_region) mem_regions;/**< memory allocation records */
 };
 
 #define	CHIPC_LOCK_INIT(sc) \

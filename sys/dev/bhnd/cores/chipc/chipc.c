@@ -1,5 +1,6 @@
 /*-
  * Copyright (c) 2015-2016 Landon Fuller <landon@landonf.org>
+ * Copyright (c) 2016 Michael Zhilin <mizhka@gmail.com>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -54,16 +55,12 @@ __FBSDID("$FreeBSD$");
 #include <machine/resource.h>
 
 #include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/bhndvar.h>
 
 #include "chipcreg.h"
 #include "chipcvar.h"
 
 devclass_t bhnd_chipc_devclass;	/**< bhnd(4) chipcommon device class */
-
-static const struct resource_spec chipc_rspec[CHIPC_MAX_RSPEC] = {
-	{ SYS_RES_MEMORY,	0,	RF_ACTIVE },
-	{ -1, -1, 0 }
-};
 
 static struct bhnd_device_quirk chipc_quirks[];
 static struct bhnd_chip_quirk chipc_chip_quirks[];
@@ -115,10 +112,35 @@ static struct bhnd_chip_quirk chipc_chip_quirks[] = {
 	BHND_CHIP_QUIRK_END
 };
 
-static int		chipc_nvram_attach(struct chipc_softc *sc);
-static bhnd_nvram_src_t	chipc_nvram_identify(struct chipc_softc *sc);
+static struct chipc_region	*chipc_alloc_region(struct chipc_softc *sc,
+				     bhnd_port_type type, u_int port,
+				     u_int region);
+static void			 chipc_free_region(struct chipc_softc *sc,
+				     struct chipc_region *cr);
+static struct chipc_region	*chipc_find_region(struct chipc_softc *sc,
+				     rman_res_t start, rman_res_t end);
+static struct chipc_region	*chipc_find_region_by_rid(struct chipc_softc *sc,
+				     int rid);
 
-static bool		chipc_should_enable_sprom(struct chipc_softc *sc);
+int				 chipc_retain_region(struct chipc_softc *sc,
+				     struct chipc_region *cr, int flags);
+int				 chipc_release_region(struct chipc_softc *sc,
+				     struct chipc_region *cr, int flags);
+
+static int			 chipc_try_activate_resource(
+				    struct chipc_softc *sc, device_t child,
+				    int type, int rid, struct resource *r,
+				    bool req_direct);
+
+static int			 chipc_init_rman(struct chipc_softc *sc);
+static void			 chipc_free_rman(struct chipc_softc *sc);
+static struct rman		*chipc_get_rman(struct chipc_softc *sc,
+				     int type);
+
+static int			 chipc_nvram_attach(struct chipc_softc *sc);
+static bhnd_nvram_src_t		 chipc_nvram_identify(struct chipc_softc *sc);
+static bool			 chipc_should_enable_sprom(
+				     struct chipc_softc *sc);
 
 /* quirk and capability flag convenience macros */
 #define	CHIPC_QUIRK(_sc, _name)	\
@@ -146,6 +168,128 @@ chipc_probe(device_t dev)
 	return (BUS_PROBE_DEFAULT);
 }
 
+/* Allocate region records for the given port, and add the port's memory
+ * range to the mem_rman */
+static int
+chipc_rman_init_regions (struct chipc_softc *sc, bhnd_port_type type,
+    u_int port)
+{
+	struct	chipc_region	*cr;
+	rman_res_t		 start, end;
+	u_int			 num_regions;
+	int			 error;
+
+	num_regions = bhnd_get_region_count(sc->dev, port, port);
+	for (u_int region = 0; region < num_regions; region++) {
+		/* Allocate new region record */
+		cr = chipc_alloc_region(sc, type, port, region);
+		if (cr == NULL)
+			return (ENODEV);
+
+		/* Can't manage regions that cannot be allocated */
+		if (cr->cr_rid < 0) {
+			BHND_DEBUG_DEV(sc->dev, "no rid for chipc region "
+			    "%s%u.%u", bhnd_port_type_name(type), port, region);
+			chipc_free_region(sc, cr);
+			continue;
+		}
+
+		/* Add to rman's managed range */
+		start = cr->cr_addr;
+		end = cr->cr_end;
+		if ((error = rman_manage_region(&sc->mem_rman, start, end))) {
+			chipc_free_region(sc, cr);
+			return (error);
+		}
+
+		/* Add to region list */
+		STAILQ_INSERT_TAIL(&sc->mem_regions, cr, cr_link);
+	}
+
+	return (0);
+}
+
+/* Initialize memory state for all chipc port regions */
+static int
+chipc_init_rman(struct chipc_softc *sc)
+{
+	u_int	num_ports;
+	int	error;
+
+	/* Port types for which we'll register chipc_region mappings */
+	bhnd_port_type types[] = {
+	    BHND_PORT_DEVICE
+	};
+
+	/* Initialize resource manager */
+	sc->mem_rman.rm_start = 0;
+	sc->mem_rman.rm_end = BUS_SPACE_MAXADDR;
+	sc->mem_rman.rm_type = RMAN_ARRAY;
+	sc->mem_rman.rm_descr = "ChipCommon Device Memory";
+	if ((error = rman_init(&sc->mem_rman))) {
+		device_printf(sc->dev, "could not initialize mem_rman: %d\n",
+		    error);
+		return (error);
+	}
+
+	/* Populate per-port-region state */
+	for (u_int i = 0; i < nitems(types); i++) {
+		num_ports = bhnd_get_port_count(sc->dev, types[i]);
+		for (u_int port = 0; port < num_ports; port++) {
+			error = chipc_rman_init_regions(sc, types[i], port);
+			if (error) {
+				device_printf(sc->dev,
+				    "region init failed for %s%u: %d\n",
+				     bhnd_port_type_name(types[i]), port,
+				     error);
+
+				goto failed;
+			}
+		}
+	}
+
+	return (0);
+
+failed:
+	chipc_free_rman(sc);
+	return (error);
+}
+
+/* Free memory management state */
+static void
+chipc_free_rman(struct chipc_softc *sc)
+{
+	struct chipc_region *cr, *cr_next;
+
+	STAILQ_FOREACH_SAFE(cr, &sc->mem_regions, cr_link, cr_next)
+		chipc_free_region(sc, cr);
+
+	rman_fini(&sc->mem_rman);
+}
+
+/**
+ * Return the rman instance for a given resource @p type, if any.
+ * 
+ * @param sc The chipc device state.
+ * @param type The resource type (e.g. SYS_RES_MEMORY, SYS_RES_IRQ, ...)
+ */
+static struct rman *
+chipc_get_rman(struct chipc_softc *sc, int type)
+{	
+	switch (type) {
+	case SYS_RES_MEMORY:
+		return (&sc->mem_rman);
+
+	case SYS_RES_IRQ:
+		/* IRQs can be used with RF_SHAREABLE, so we don't perform
+		 * any local proxying of resource requests. */
+		return (NULL);
+
+	default:
+		return (NULL);
+	};
+}
+
 static int
 chipc_attach(device_t dev)
 {
@@ -162,23 +306,28 @@ chipc_attach(device_t dev)
 	sc->sprom_refcnt = 0;
 
 	CHIPC_LOCK_INIT(sc);
+	STAILQ_INIT(&sc->mem_regions);
 
-	/* Allocate bus resources */
-	memcpy(sc->rspec, chipc_rspec, sizeof(sc->rspec));
-	if ((error = bhnd_alloc_resources(dev, sc->rspec, sc->res)))
-		return (error);
+	/* Set up resource management */
+	if ((error = chipc_init_rman(sc))) {
+		device_printf(sc->dev,
+		    "failed to initialize chipc resource state: %d\n", error);
+		goto failed;
+	}
 
-	sc->core = sc->res[0];
+	/* Allocate the region containing our core registers */
+	if ((sc->core_region = chipc_find_region_by_rid(sc, 0)) == NULL) {
+		error = ENXIO;
+		goto failed;
+	}
 
-	/* Map just the primary ChipCommon register block, leaving the
-	 * remainder for our children */
-	error = bus_adjust_resource(dev, SYS_RES_MEMORY, sc->core->res,
-	    rman_get_start(sc->core->res), 
-	    rman_get_start(sc->core->res) + CHIPC_CHIPID_SIZE - 1);
+	error = chipc_retain_region(sc, sc->core_region,
+	    RF_ALLOCATED|RF_ACTIVE);
 	if (error) {
-		device_printf(dev, "failed to resize register block: %d\n",
-		    error);
-		goto cleanup;
+		sc->core_region = NULL;
+		goto failed;
+	} else {
+		sc->core = sc->core_region->cr_res;
 	}
 
 	/* Fetch our chipset identification data */
@@ -197,7 +346,7 @@ chipc_attach(device_t dev)
 	default:
 		device_printf(dev, "unsupported chip type %hhu\n", chip_type);
 		error = ENODEV;
-		goto cleanup;
+		goto failed;
 	}
 
 	sc->ccid = bhnd_parse_chipid(ccid_reg, enum_addr);
@@ -209,16 +358,21 @@ chipc_attach(device_t dev)
 	/* Identify NVRAM source and add child device. */
 	sc->nvram_src = chipc_nvram_identify(sc);
 	if ((error = chipc_nvram_attach(sc)))
-		goto cleanup;
+		goto failed;
 
 	/* Standard bus probe */
 	if ((error = bus_generic_attach(dev)))
-		goto cleanup;
+		goto failed;
 
 	return (0);
 	
-cleanup:
-	bhnd_release_resources(dev, sc->rspec, sc->res);
+failed:
+	if (sc->core_region != NULL) {
+		chipc_release_region(sc, sc->core_region,
+		    RF_ALLOCATED|RF_ACTIVE);
+	}
+
+	chipc_free_rman(sc);
 	CHIPC_LOCK_DESTROY(sc);
 	return (error);
 }
@@ -229,11 +383,13 @@ chipc_detach(device_t dev)
 	struct chipc_softc	*sc;
 	int			 error;
 
+	sc = device_get_softc(dev);
+
 	if ((error = bus_generic_detach(dev)))
 		return (error);
 
-	sc = device_get_softc(dev);
-	bhnd_release_resources(dev, sc->rspec, sc->res);
+	chipc_release_region(sc, sc->core_region, RF_ALLOCATED|RF_ACTIVE);
+	chipc_free_rman(sc);
 	bhnd_sprom_fini(&sc->sprom);
 
 	CHIPC_LOCK_DESTROY(sc);
@@ -328,7 +484,7 @@ chipc_add_child(device_t dev, u_int order, const char *name, int unit)
 	if (child == NULL)
 		return (NULL);
 
-	dinfo = malloc(sizeof(struct chipc_devinfo), M_DEVBUF, M_NOWAIT);
+	dinfo = malloc(sizeof(struct chipc_devinfo), M_BHND, M_NOWAIT);
 	if (dinfo == NULL) {
 		device_delete_child(dev, child);
 		return (NULL);
@@ -348,7 +504,7 @@ chipc_child_deleted(device_t dev, device_t child)
 
 	if (dinfo != NULL) {
 		resource_list_free(&dinfo->resources);
-		free(dinfo, M_DEVBUF);
+		free(dinfo, M_BHND);
 	}
 
 	device_set_ivars(child, NULL);
@@ -359,6 +515,609 @@ chipc_get_resource_list(device_t dev, device_t child)
 {
 	struct chipc_devinfo *dinfo = device_get_ivars(child);
 	return (&dinfo->resources);
+}
+
+/**
+ * Allocate and initialize new region record.
+ * 
+ * @param sc Driver instance state.
+ * @param type The port type to query.
+ * @param port The port number to query.
+ * @param region The region number to query.
+ */
+static struct chipc_region *
+chipc_alloc_region(struct chipc_softc *sc, bhnd_port_type type,
+    u_int port, u_int region)
+{
+	struct chipc_region	*cr;
+	int			 error;
+
+	/* Don't bother allocating a chipc_region if init will fail */
+	if (!bhnd_is_region_valid(sc->dev, type, port, region))
+		return (NULL);
+
+	/* Allocate and initialize region info */
+	cr = malloc(sizeof(*cr), M_BHND, M_NOWAIT);
+	if (cr == NULL)
+		return (NULL);
+
+	cr->cr_port_type = type;
+	cr->cr_port_num = port;
+	cr->cr_region_num = region;
+	cr->cr_res = NULL;
+	cr->cr_refs = 0;
+	cr->cr_act_refs = 0;
+
+	error = bhnd_get_region_addr(sc->dev, type, port, region, &cr->cr_addr,
+	    &cr->cr_count);
+	if (error) {
+		device_printf(sc->dev,
+		    "fetching chipc region address failed: %d\n", error);
+		goto failed;
+	}
+
+	cr->cr_end = cr->cr_addr + cr->cr_count - 1;
+
+	/* Note that not all regions have an assigned rid, in which case
+	 * this will return -1 */
+	cr->cr_rid = bhnd_get_port_rid(sc->dev, type, port, region);
+	return (cr);
+
+failed:
+	device_printf(sc->dev, "chipc region alloc failed for %s%u.%u\n",
+	    bhnd_port_type_name(type), port, region);
+	free(cr, M_BHND);
+	return (NULL);
+}
+
+/**
+ * Deallocate the given region record and its associated resource, if any.
+ *
+ * @param sc Driver instance state.
+ * @param cr Region record to be deallocated.
+ */
+static void
+chipc_free_region(struct chipc_softc *sc, struct chipc_region *cr)
+{
+	KASSERT(cr->cr_refs == 0,
+	    ("chipc %s%u.%u region has %u active references",
+	     bhnd_port_type_name(cr->cr_port_type), cr->cr_port_num,
+	     cr->cr_region_num, cr->cr_refs));
+
+	if (cr->cr_res != NULL) {
+		bhnd_release_resource(sc->dev, SYS_RES_MEMORY, cr->cr_rid,
+		    cr->cr_res);
+	}
+
+	free(cr, M_BHND);
+}
+
+/**
+ * Locate the region mapping the given range, if any. Returns NULL if no
+ * valid region is found.
+ * 
+ * @param sc Driver instance state.
+ * @param start start of address range.
+ * @param end end of address range.
+ */
+static struct chipc_region *
+chipc_find_region(struct chipc_softc *sc, rman_res_t start, rman_res_t end)
+{
+	struct chipc_region *cr;
+
+	if (start > end)
+		return (NULL);
+
+	STAILQ_FOREACH(cr, &sc->mem_regions, cr_link) {
+		if (start < cr->cr_addr || end > cr->cr_end)
+			continue;
+
+		/* Found */
+		return (cr);
+	}
+
+	/* Not found */
+	return (NULL);
+}
+
+/**
+ * Locate a region mapping by its bhnd-assigned resource id (as returned by
+ * bhnd_get_port_rid).
+ * 
+ * @param sc Driver instance state.
+ * @param rid Resource ID to query for.
+ */
+static struct chipc_region *
+chipc_find_region_by_rid(struct chipc_softc *sc, int rid)
+{
+	struct chipc_region	*cr;
+	int			 port_rid;
+
+	STAILQ_FOREACH(cr, &sc->mem_regions, cr_link) {
+		port_rid = bhnd_get_port_rid(sc->dev, cr->cr_port_type,
+		    cr->cr_port_num, cr->cr_region_num);
+		if (port_rid == -1 || port_rid != rid)
+			continue;
+
+		/* Found */
+		return (cr);
+	}
+
+	/* Not found */
+	return (NULL);
+}
+
+/* Retain a reference to the region, allocating/activating if necessary */
+int
+chipc_retain_region(struct chipc_softc *sc, struct chipc_region *cr, int flags)
+{
+	int error;
+
+	KASSERT(!(flags &~ (RF_ACTIVE|RF_ALLOCATED)), ("unsupported flags"));
+
+	CHIPC_LOCK(sc);
+
+	/* Handle allocation */
+	if (flags & RF_ALLOCATED) {
+		/* If this is the first reference, allocate the resource */
+		if (cr->cr_refs == 0) {
+			KASSERT(cr->cr_res == NULL,
+			    ("non-NULL resource has refcount"));
+
+			cr->cr_res = bhnd_alloc_resource(sc->dev,
+			    SYS_RES_MEMORY, &cr->cr_rid, cr->cr_addr,
+			    cr->cr_end, cr->cr_count, 0);
+
+			if (cr->cr_res == NULL) {
+				CHIPC_UNLOCK(sc);
+				return (ENXIO);
+			}
+		}
+		
+		/* Increment allocation refcount */
+		cr->cr_refs++;
+	}
+
+
+	/* Handle activation */
+	if (flags & RF_ACTIVE) {
+		KASSERT(cr->cr_refs > 0,
+		    ("cannot activate unallocated resource"));
+
+		/* If this is the first reference, activate the resource */
+		if (cr->cr_act_refs == 0) {
+			error = bhnd_activate_resource(sc->dev, SYS_RES_MEMORY,
+			    cr->cr_rid, cr->cr_res);
+			if (error) {
+				/* Drop any allocation reference acquired
+				 * above */
+				CHIPC_UNLOCK(sc);
+				chipc_release_region(sc, cr,
+				    flags &~ RF_ACTIVE);
+				return (error);
+			}
+		}
+
+		/* Increment activation refcount */
+		cr->cr_act_refs++;
+	}
+
+	CHIPC_UNLOCK(sc);
+	return (0);
+}
+
+int
+chipc_release_region(struct chipc_softc *sc, struct chipc_region *cr,
+    int flags)
+{
+	int	error;
+
+	CHIPC_LOCK(sc);
+	error = 0;
+
+	if (flags & RF_ACTIVE) {
+		KASSERT(cr->cr_act_refs > 0, ("RF_ACTIVE over-released"));
+		KASSERT(cr->cr_act_refs <= cr->cr_refs,
+		     ("RF_ALLOCATED released with RF_ACTIVE held"));
+
+		/* If this is the last reference, deactivate the resource */
+		if (cr->cr_act_refs == 1) {
+			error = bhnd_deactivate_resource(sc->dev,
+			    SYS_RES_MEMORY, cr->cr_rid, cr->cr_res);
+			if (error)
+				goto done;
+		}
+
+		/* Drop our activation refcount */
+		cr->cr_act_refs--;
+	}
+
+	if (flags & RF_ALLOCATED) {
+		KASSERT(cr->cr_refs > 0, ("overrelease of refs"));
+
+		/* If this is the last reference, release the resource */
+		if (cr->cr_refs == 1) {
+			error = bhnd_release_resource(sc->dev,
+			    SYS_RES_MEMORY, cr->cr_rid, cr->cr_res);
+			if (error)
+				goto done;
+
+			cr->cr_res = NULL;
+			cr->cr_rid = -1;
+		}
+
+		/* Drop our allocation refcount */
+		cr->cr_refs--;
+	}
+
+done:
+	CHIPC_UNLOCK(sc);
+	return (error);
+}
+
+static struct resource *
+chipc_alloc_resource(device_t dev, device_t child, int type,
+    int *rid, rman_res_t start, rman_res_t end, rman_res_t count, u_int flags)
+{
+	struct chipc_softc		*sc;
+	struct chipc_region		*cr;
+	struct resource_list_entry	*rle;
+	struct resource			*rv;
+	struct rman			*rm;
+	int				 error;
+	bool				 passthrough, isdefault;
+
+	sc = device_get_softc(dev);
+	passthrough = (device_get_parent(child) != dev);
+	isdefault = RMAN_IS_DEFAULT_RANGE(start, end);
+	rle = NULL;
+
+	/* Fetch the resource manager, delegate request if necessary */
+	rm = chipc_get_rman(sc, type);
+	if (rm == NULL) {
+		/* Requested resource type is delegated to our parent */
+		rv = bus_generic_rl_alloc_resource(dev, child, type, rid,
+		    start, end, count, flags);
+		return (rv);
+	}
+
+	/* Populate defaults */
+	if (!passthrough && isdefault) {
+		/* Fetch the resource list entry. */
+		rle = resource_list_find(BUS_GET_RESOURCE_LIST(dev, child),
+		    type, *rid);
+		if (rle == NULL) {
+			device_printf(dev,
+			    "default resource %#x type %d for child %s "
+			    "not found\n", *rid, type,
+			    device_get_nameunit(child));			
+			return (NULL);
+		}
+		
+		if (rle->res != NULL) {
+			device_printf(dev,
+			    "resource entry %#x type %d for child %s is busy\n",
+			    *rid, type, device_get_nameunit(child));
+			
+			return (NULL);
+		}
+
+		start = rle->start;
+		end = rle->end;
+		count = ulmax(count, rle->count);
+	}
+
+	/* Locate a mapping region */
+	if ((cr = chipc_find_region(sc, start, end)) == NULL) {
+		device_printf(dev,
+		    "no mapping region found for %#x type %d for "
+		    "child %s\n",
+		    *rid, type, device_get_nameunit(child));
+
+		return (NULL);
+	}
+
+	/* Try to retain a region reference */
+	if ((error = chipc_retain_region(sc, cr, RF_ALLOCATED))) {
+		CHIPC_UNLOCK(sc);
+		return (NULL);
+	}
+
+	/* Make our rman reservation */
+	rv = rman_reserve_resource(rm, start, end, count, flags & ~RF_ACTIVE,
+	    child);
+	if (rv == NULL) {
+		chipc_release_region(sc, cr, RF_ALLOCATED);
+		return (NULL);
+	}
+
+	rman_set_rid(rv, *rid);
+
+	/* Activate */
+	if (flags & RF_ACTIVE) {
+		error = bus_activate_resource(child, type, *rid, rv);
+		if (error) {
+			device_printf(dev,
+			    "failed to activate entry %#x type %d for "
+				"child %s: %d\n",
+			     *rid, type, device_get_nameunit(child), error);
+
+			chipc_release_region(sc, cr, RF_ALLOCATED);
+			rman_release_resource(rv);
+
+			return (NULL);
+		}
+	}
+
+	/* Update child's resource list entry */
+	if (rle != NULL) {
+		rle->res = rv;
+		rle->start = rman_get_start(rv);
+		rle->end = rman_get_end(rv);
+		rle->count = rman_get_size(rv);
+	}
+
+	return (rv);
+}
+
+static int
+chipc_release_resource(device_t dev, device_t child, int type, int rid,
+    struct resource *r)
+{
+	struct chipc_softc	*sc;
+	struct chipc_region	*cr;
+	struct rman		*rm;
+	int			 error;
+
+	sc = device_get_softc(dev);
+
+	/* Handled by parent bus? */
+	rm = chipc_get_rman(sc, type);
+	if (rm == NULL || !rman_is_region_manager(r, rm)) {
+		return (bus_generic_rl_release_resource(dev, child, type, rid,
+		    r));
+	}
+
+	/* Locate the mapping region */
+	cr = chipc_find_region(sc, rman_get_start(r), rman_get_end(r));
+	if (cr == NULL)
+		return (EINVAL);
+
+	/* Deactivate resources */
+	if (rman_get_flags(r) & RF_ACTIVE) {
+		error = BUS_DEACTIVATE_RESOURCE(dev, child, type, rid, r);
+		if (error)
+			return (error);
+	}
+
+	if ((error = rman_release_resource(r)))
+		return (error);
+
+	/* Drop allocation reference */
+	chipc_release_region(sc, cr, RF_ALLOCATED);
+
+	return (0);
+}
+
+static int
+chipc_adjust_resource(device_t dev, device_t child, int type,
+    struct resource *r, rman_res_t start, rman_res_t end)
+{
+	struct chipc_softc		*sc;
+	struct chipc_region		*cr;
+	struct rman			*rm;
+	
+	sc = device_get_softc(dev);
+
+	/* Handled by parent bus? */
+	rm = chipc_get_rman(sc, type);
+	if (rm == NULL || !rman_is_region_manager(r, rm)) {
+		return (bus_generic_adjust_resource(dev, child, type, r, start,
+		    end));
+	}
+
+	/* The range is limited to the existing region mapping */
+	cr = chipc_find_region(sc, rman_get_start(r), rman_get_end(r));
+	if (cr == NULL)
+		return (EINVAL);
+	
+	if (end <= start)
+		return (EINVAL);
+
+	if (start < cr->cr_addr || end > cr->cr_end)
+		return (EINVAL);
+
+	/* Range falls within the existing region */
+	return (rman_adjust_resource(r, start, end));
+}
+
+/**
+ * Initialize child resource @p r with a virtual address, tag, and handle
+ * copied from @p parent, adjusted to contain only the range defined by
+ * @p offsize and @p size.
+ * 
+ * @param r The register to be initialized.
+ * @param parent The parent bus resource that fully contains the subregion.
+ * @param offset The subregion offset within @p parent.
+ * @param size The subregion size.
+ */
+static int
+chipc_init_child_resource(struct resource *r,
+    struct resource *parent, bhnd_size_t offset, bhnd_size_t size)
+{
+	bus_space_handle_t	bh, child_bh;
+	bus_space_tag_t		bt;
+	uintptr_t		vaddr;
+	int			error;
+
+	/* Fetch the parent resource's bus values */
+	vaddr = (uintptr_t) rman_get_virtual(parent);
+	bt = rman_get_bustag(parent);
+	bh = rman_get_bushandle(parent);
+
+	/* Configure child resource with offset-adjusted values */
+	vaddr += offset;
+	error = bus_space_subregion(bt, bh, offset, size, &child_bh);
+	if (error)
+		return (error);
+
+	rman_set_virtual(r, (void *) vaddr);
+	rman_set_bustag(r, bt);
+	rman_set_bushandle(r, child_bh);
+
+	return (0);
+}
+
+/**
+ * Retain an RF_ACTIVE reference to the region mapping @p r, and
+ * configure @p r with its subregion values.
+ *
+ * @param sc Driver instance state.
+ * @param child Requesting child device.
+ * @param type resource type of @p r.
+ * @param rid resource id of @p r
+ * @param r resource to be activated.
+ * @param req_direct If true, failure to allocate a direct bhnd resource
+ * will be treated as an error. If false, the resource will not be marked
+ * as RF_ACTIVE if bhnd direct resource allocation fails.
+ */
+static int
+chipc_try_activate_resource(struct chipc_softc *sc, device_t child, int type,
+    int rid, struct resource *r, bool req_direct)
+{
+	struct rman		*rm;
+	struct chipc_region	*cr;
+	bhnd_size_t		 cr_offset;
+	rman_res_t		 r_start, r_end, r_size;
+	int			 error;
+
+	rm = chipc_get_rman(sc, type);
+	if (rm == NULL || !rman_is_region_manager(r, rm))
+		(EINVAL);
+
+	r_start = rman_get_start(r);
+	r_end = rman_get_end(r);
+	r_size = rman_get_size(r);
+
+	/* Find the corresponding chipc region */
+	cr = chipc_find_region(sc, r_start, r_end);
+	if (cr == NULL)
+		return (EINVAL);
+	
+	/* Calculate subregion offset within the chipc region */
+	cr_offset = r_start - cr->cr_addr;
+
+	/* Retain (and activate, if necessary) the chipc region */
+	if ((error = chipc_retain_region(sc, cr, RF_ACTIVE)))
+		return (error);
+
+	/* Configure child resource with its subregion values. */
+	if (cr->cr_res->direct) {
+		error = chipc_init_child_resource(r, cr->cr_res->res,
+		    cr_offset, r_size);
+		if (error)
+			goto cleanup;
+
+		/* Mark active */
+		if ((error = rman_activate_resource(r)))
+			goto cleanup;
+	} else if (req_direct) {
+		error = ENOMEM;
+		goto cleanup;
+	}
+
+	return (0);
+
+cleanup:
+	chipc_release_region(sc, cr, RF_ACTIVE);
+	return (error);
+}
+
+static int
+chipc_activate_bhnd_resource(device_t dev, device_t child, int type,
+    int rid, struct bhnd_resource *r)
+{
+	struct chipc_softc	*sc;
+	struct rman		*rm;
+	int			 error;
+
+	sc = device_get_softc(dev);
+	
+	/* Delegate non-locally managed resources to parent */
+	rm = chipc_get_rman(sc, type);
+	if (rm == NULL || !rman_is_region_manager(r->res, rm)) {
+		return (bhnd_bus_generic_activate_resource(dev, child, type,
+		    rid, r));
+	}
+
+	/* Try activating the chipc region resource */
+	error = chipc_try_activate_resource(sc, child, type, rid, r->res,
+	    false);
+	if (error)
+		return (error);
+
+	/* Mark the child resource as direct according to the returned resource
+	 * state */
+	if (rman_get_flags(r->res) & RF_ACTIVE)
+		r->direct = true;
+
+	return (0);
+}
+
+static int
+chipc_activate_resource(device_t dev, device_t child, int type, int rid,
+    struct resource *r)
+{
+	struct chipc_softc	*sc;
+	struct rman		*rm;
+
+	sc = device_get_softc(dev);
+
+	/* Delegate non-locally managed resources to parent */
+	rm = chipc_get_rman(sc, type);
+	if (rm == NULL || !rman_is_region_manager(r, rm)) {
+		return (bus_generic_activate_resource(dev, child, type, rid,
+		    r));
+	}
+
+	/* Try activating the chipc region-based resource */
+	return (chipc_try_activate_resource(sc, child, type, rid, r, true));
+}
+
+/**
+ * Default bhndb(4) implementation of BUS_DEACTIVATE_RESOURCE().
+ */
+static int
+chipc_deactivate_resource(device_t dev, device_t child, int type,
+    int rid, struct resource *r)
+{
+	struct chipc_softc	*sc;
+	struct chipc_region	*cr;
+	struct rman		*rm;
+	int			 error;
+
+	sc = device_get_softc(dev);
+
+	/* Handled by parent bus? */
+	rm = chipc_get_rman(sc, type);
+	if (rm == NULL || !rman_is_region_manager(r, rm)) {
+		return (bus_generic_deactivate_resource(dev, child, type, rid,
+		    r));
+	}
+
+	/* Find the corresponding chipc region */
+	cr = chipc_find_region(sc, rman_get_start(r), rman_get_end(r));
+	if (cr == NULL)
+		return (EINVAL);
+
+	/* Mark inactive */
+	if ((error = rman_deactivate_resource(r)))
+		return (error);
+
+	/* Drop associated RF_ACTIVE reference */
+	chipc_release_region(sc, cr, RF_ACTIVE);
+
+	return (0);
 }
 
 /**
@@ -385,7 +1144,7 @@ chipc_nvram_attach(struct chipc_softc *sc)
 		error = bus_set_resource(nvram_dev, SYS_RES_MEMORY, 0, start,
 		    CHIPC_SPROM_OTP_SIZE);
 		return (error);
-		
+
 	case BHND_NVRAM_SRC_NFLASH:
 		// TODO (requires access to NFLASH hardware)
 		device_printf(sc->dev, "NVRAM-NFLASH unsupported\n");
@@ -663,12 +1422,11 @@ static device_method_t chipc_methods[] = {
 	DEVMETHOD(bus_set_resource,		bus_generic_rl_set_resource),
 	DEVMETHOD(bus_get_resource,		bus_generic_rl_get_resource),
 	DEVMETHOD(bus_delete_resource,		bus_generic_rl_delete_resource),
-	DEVMETHOD(bus_alloc_resource,		bus_generic_rl_alloc_resource),
-	DEVMETHOD(bus_release_resource,		bus_generic_rl_release_resource),
-	DEVMETHOD(bus_adjust_resource,		bus_generic_adjust_resource),
-	DEVMETHOD(bus_release_resource,		bus_generic_rl_release_resource),
-	DEVMETHOD(bus_activate_resource,	bus_generic_activate_resource),
-	DEVMETHOD(bus_deactivate_resource,	bus_generic_deactivate_resource),
+	DEVMETHOD(bus_alloc_resource,		chipc_alloc_resource),
+	DEVMETHOD(bus_release_resource,		chipc_release_resource),
+	DEVMETHOD(bus_adjust_resource,		chipc_adjust_resource),
+	DEVMETHOD(bus_activate_resource,	chipc_activate_resource),
+	DEVMETHOD(bus_deactivate_resource,	chipc_deactivate_resource),
 	DEVMETHOD(bus_get_resource_list,	chipc_get_resource_list),
 
 	DEVMETHOD(bus_setup_intr,		bus_generic_setup_intr),
@@ -676,6 +1434,9 @@ static device_method_t chipc_methods[] = {
 	DEVMETHOD(bus_config_intr,		bus_generic_config_intr),
 	DEVMETHOD(bus_bind_intr,		bus_generic_bind_intr),
 	DEVMETHOD(bus_describe_intr,		bus_generic_describe_intr),
+
+	/* BHND bus inteface */
+	DEVMETHOD(bhnd_bus_activate_resource,	chipc_activate_bhnd_resource),
 
 	/* ChipCommon interface */
 	DEVMETHOD(bhnd_chipc_nvram_src,		chipc_nvram_src),
