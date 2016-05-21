@@ -446,7 +446,7 @@ chipc_nvram_identify(struct chipc_softc *sc)
 }
 
 /**
- * Eexamine bus state and make a best effort determination of whether it's
+ * Examine bus state and make a best effort determination of whether it's
  * likely safe to enable the muxed SPROM pins.
  * 
  * On devices that do not use SPROM pin muxing, always returns true.
