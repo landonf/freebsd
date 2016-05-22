@@ -236,19 +236,28 @@ struct bhnd_resource {
 /** A core match descriptor. */
 struct bhnd_core_match {
 	/** Select fields to be matched */
-	uint8_t
+	uint16_t
 		match_core_vendor:1,
 		match_core_id:1,
 		match_core_rev:1,
 		match_core_class:1,
 		match_core_unit:1,
-		match_flags_unused:3;
+		match_chip_id:1,
+		match_chip_rev:1,
+		match_chip_pkg:1,
+		match_board_vendor:1,
+		match_board_type:1,
+		match_board_rev:1,
+		match_board_srom_rev:1,
+		match_flags_unused:2;
 	
 	uint16_t		core_vendor;	/**< required JEP106 device vendor */
 	uint16_t		core_id;	/**< required core ID */
 	struct bhnd_hwrev_match	core_rev;	/**< matching core revisions. */
 	bhnd_devclass_t		core_class;	/**< required bhnd class */
 	int			core_unit;	/**< required core unit */
+
+	
 };
 
 #define	BHND_MATCH_CORE_VENDOR(_vendor)	\
@@ -288,14 +297,14 @@ struct bhnd_core_match {
 struct bhnd_chip_match {
 	/** Select fields to be matched */
 	uint16_t
-		match_id:1,
-		match_rev:1,
-		match_pkg:1,
-		match_bvendor:1,
-		match_btype:1,
-		match_brev:1,
-		match_srom_rev:1,
-		match_any:1,
+		match_chip_id:1,
+		match_chip_rev:1,
+		match_chip_pkg:1,
+		match_board_vendor:1,
+		match_board_type:1,
+		match_board_rev:1,
+		match_board_srom_rev:1,
+		match_chip_any:1,
 		match_flags_unused:8;
 
 	uint16_t		chip_id;	/**< required chip id */
@@ -310,42 +319,42 @@ struct bhnd_chip_match {
 };
 
 #define	BHND_CHIP_MATCH_ANY		\
-	{ .match_any = 1 }
+	.match_chip_any = 1
 
 #define	BHND_CHIP_MATCH_IS_ANY(_m)	\
-	((_m)->match_any == 1)
+	((_m)->match_chip_any == 1)
 
-#define	BHND_CHIP_MATCH_REQ_BOARD_INFO(_m)		\
-	((_m)->match_srom_rev || (_m)->match_bvendor ||	\
-	    (_m)->match_btype || (_m)->match_brev)
+#define	BHND_CHIP_MATCH_REQ_BOARD_INFO(_m)				\
+	((_m)->match_board_srom_rev || (_m)->match_board_vendor ||	\
+	    (_m)->match_board_type || (_m)->match_board_rev)
 
 /** Set the required chip ID within a bhnd_chip_match instance */
 #define	BHND_CHIP_ID(_cid)		\
-	.match_id = 1, .chip_id = BHND_CHIPID_BCM ## _cid
+	.match_chip_id = 1, .chip_id = BHND_CHIPID_BCM ## _cid
 
 /** Set the required chip revision range within a bhnd_chip_match instance */
 #define	BHND_CHIP_REV(_rev)		\
-	.match_rev = 1, .chip_rev = BHND_ ## _rev
+	.match_chip_rev = 1, .chip_rev = BHND_ ## _rev
 
 /** Set the required package ID within a bhnd_chip_match instance */
 #define	BHND_CHIP_PKG(_pkg)		\
-	.match_pkg = 1, .chip_pkg = BHND_PKGID_BCM ## _pkg
+	.match_chip_pkg = 1, .chip_pkg = BHND_PKGID_BCM ## _pkg
 
 /** Set the required board vendor within a bhnd_chip_match instance */
 #define	BHND_CHIP_BVENDOR(_vend)		\
-	.match_bvendor = 1, .board_vendor = _vend
+	.match_board_vendor = 1, .board_vendor = _vend
 
 /** Set the required board type within a bhnd_chip_match instance */
 #define	BHND_CHIP_BTYPE(_btype)		\
-	.match_btype = 1, .board_type = BHND_BOARD_ ## _btype
+	.match_board_type = 1, .board_type = BHND_BOARD_ ## _btype
 
 /** Set the required SROM revision range within a bhnd_chip_match instance */
 #define	BHND_CHIP_SROMREV(_rev)		\
-	.match_srom_rev = 1, .board_srom_rev = BHND_ ## _rev
+	.match_board_srom_rev = 1, .board_srom_rev = BHND_ ## _rev
 
 /** Set the required board revision range within a bhnd_chip_match instance */
 #define	BHND_CHIP_BREV(_rev)	\
-	.match_brev = 1, .board_rev = BHND_ ## _rev
+	.match_board_rev = 1, .board_rev = BHND_ ## _rev
 
 /** Set the required board vendor and type within a bhnd_chip_match instance */
 #define	BHND_CHIP_BVT(_vend, _type)	\
@@ -378,7 +387,7 @@ struct bhnd_chip_quirk {
 	uint32_t			 quirks;	/**< quirk flags */
 };
 
-#define	BHND_CHIP_QUIRK_END	{ BHND_CHIP_MATCH_ANY, 0 }
+#define	BHND_CHIP_QUIRK_END	{ { BHND_CHIP_MATCH_ANY }, 0 }
 
 #define	BHND_CHIP_QUIRK_IS_END(_q)	\
 	(BHND_CHIP_MATCH_IS_ANY(&(_q)->chip) && (_q)->quirks == 0)

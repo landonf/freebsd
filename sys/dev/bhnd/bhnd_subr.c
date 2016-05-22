@@ -490,7 +490,7 @@ bhnd_chip_matches(const struct bhnd_chipid *chip,
     const struct bhnd_chip_match *desc)
 {
 	/* Explicit wildcard match */
-	if (desc->match_any)
+	if (desc->match_chip_any)
 		return (true);
 
 	/* If board_info is missing, but required, we cannot match. */
@@ -499,32 +499,32 @@ bhnd_chip_matches(const struct bhnd_chipid *chip,
 
 
 	/* Chip matching */
-	if (desc->match_id && chip->chip_id != desc->chip_id)
+	if (desc->match_chip_id && chip->chip_id != desc->chip_id)
 		return (false);
 
-	if (desc->match_pkg && chip->chip_pkg != desc->chip_pkg)
+	if (desc->match_chip_pkg && chip->chip_pkg != desc->chip_pkg)
 		return (false);
 
-	if (desc->match_rev &&
+	if (desc->match_chip_rev &&
 	    !bhnd_hwrev_matches(chip->chip_rev, &desc->chip_rev))
 		return (false);
 
 
 	/* Board info matching */
-	if (desc->match_srom_rev &&
+	if (desc->match_board_srom_rev &&
 	    !bhnd_hwrev_matches(board->board_srom_rev, &desc->board_srom_rev))
 		return (false);
 
-	if (desc->match_bvendor && board->board_vendor != desc->board_vendor)
+	if (desc->match_board_vendor &&
+	    board->board_vendor != desc->board_vendor)
 		return (false);
 
-	if (desc->match_btype && board->board_type != desc->board_type)
+	if (desc->match_board_type && board->board_type != desc->board_type)
 		return (false);
 
-	if (desc->match_brev &&
+	if (desc->match_board_rev &&
 	    !bhnd_hwrev_matches(board->board_rev, &desc->board_rev))
 		return (false);
-
 
 	return (true);
 }
