@@ -993,7 +993,7 @@ chipc_try_activate_resource(struct chipc_softc *sc, device_t child, int type,
 
 	rm = chipc_get_rman(sc, type);
 	if (rm == NULL || !rman_is_region_manager(r, rm))
-		(EINVAL);
+		return (EINVAL);
 
 	r_start = rman_get_start(r);
 	r_end = rman_get_end(r);
