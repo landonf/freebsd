@@ -35,8 +35,9 @@
  *  the core count via the chip identification register. */
 #define	CHIPC_NCORES_MIN_HWREV(hwrev)	((hwrev) == 4 || (hwrev) >= 6)
 
-#define	CHIPC_GET_ATTR(_entry, _attr) \
-	((_entry & CHIPC_ ## _attr ## _MASK) >> CHIPC_ ## _attr ## _SHIFT)
+#define CHIPC_GET_FLAG(_value, _flag)	(((_value) & _flag) != 0)
+#define	CHIPC_GET_BITS(_value, _field)	\
+	((_value & _field ## _MASK) >> _field ## _SHIFT)
 
 
 #define	CHIPC_ID			0x00
@@ -47,7 +48,7 @@
 #define	CHIPC_OTPST			0x10	/**< otp status */
 #define	CHIPC_OTPCTRL			0x14	/**< otp control */
 #define	CHIPC_OTPPROG			0x18
-#define	CHIPC_OTPLAYOUT			0x1C	/**< otp layout */
+#define	CHIPC_OTPLAYOUT			0x1C	/**< otp layout (rev >= 23) */
 
 #define	CHIPC_INTST			0x20	/**< interrupt status */
 #define	CHIPC_INTM			0x24	/**< interrupt mask */
@@ -174,6 +175,7 @@
 #define	CHIPC_UART1			0x400
 
 /* PMU registers (rev >= 20) */
+#define	CHIPC_PMU_BASE			0x600
 #define	CHIPC_PMU_CTRL			0x600
 #define	CHIPC_PMU_CAP			0x604
 #define	CHIPC_PMU_ST			0x608
@@ -218,30 +220,44 @@
 #define	CHIPC_ID_BUS_SHIFT	28
 
 /* capabilities */
-#define	CHIPC_CAP_UARTS_MASK		0x00000003	/* Number of UARTs */
+#define	CHIPC_CAP_NUM_UART_MASK		0x00000003	/* Number of UARTs (1-3) */
+#define	CHIPC_CAP_NUM_UART_SHIFT 	0
 #define	CHIPC_CAP_MIPSEB		0x00000004	/* MIPS is in big-endian mode */
-#define	CHIPC_CAP_UCLKSEL		0x00000018	/* UARTs clock select */
-#define	CHIPC_CAP_UINTCLK		0x00000008	/* UARTs are driven by internal divided clock */
+#define	CHIPC_CAP_UCLKSEL_MASK		0x00000018	/* UARTs clock select */
+#define	CHIPC_CAP_UCLKSEL_SHIFT		3
+#define	  CHIPC_CAP_UCLKSEL_UINTCLK	0x1		/* UARTs are driven by internal divided clock */
 #define	CHIPC_CAP_UARTGPIO		0x00000020	/* UARTs own GPIOs 15:12 */
 #define	CHIPC_CAP_EXTBUS_MASK		0x000000c0	/* External bus mask */
-#define	CHIPC_CAP_EXTBUS_NONE		0x00000000	/* No ExtBus present */
-#define	CHIPC_CAP_EXTBUS_FULL		0x00000040	/* ExtBus: PCMCIA, IDE & Prog */
-#define	CHIPC_CAP_EXTBUS_PROG		0x00000080	/* ExtBus: ProgIf only */
+#define	CHIPC_CAP_EXTBUS_SHIFT		6
+#define	  CHIPC_CAP_EXTBUS_NONE		0x00000000	/* No ExtBus present */
+#define	  CHIPC_CAP_EXTBUS_FULL		0x00000001	/* ExtBus: PCMCIA, IDE & Prog */
+#define	  CHIPC_CAP_EXTBUS_PROG		0x00000002	/* ExtBus: ProgIf only */
 #define	CHIPC_CAP_FLASH_MASK		0x00000700	/* Type of flash */
+#define	CHIPC_CAP_FLASH_SHIFT		8
 #define	CHIPC_CAP_PLL_MASK		0x00038000	/* Type of PLL */
+#define	CHIPC_CAP_PLL_SHIFT		15
 #define	CHIPC_CAP_PWR_CTL		0x00040000	/* Power control */
-#define	CHIPC_CAP_OTP_SIZE		0x00380000	/* OTP Size (0 = none) */
+#define	CHIPC_CAP_OTP_SIZE_MASK		0x00380000	/* OTP Size (0 = none) */
 #define	CHIPC_CAP_OTP_SIZE_SHIFT	19		/* OTP Size shift */
 #define	CHIPC_CAP_OTP_SIZE_BASE		5		/* OTP Size base */
 #define	CHIPC_CAP_JTAGP			0x00400000	/* JTAG Master Present */
 #define	CHIPC_CAP_ROM			0x00800000	/* Internal boot rom active */
 #define	CHIPC_CAP_BKPLN64		0x08000000	/* 64-bit backplane */
 #define	CHIPC_CAP_PMU			0x10000000	/* PMU Present, rev >= 20 */
+#define	CHIPC_CAP_ECI			0x20000000	/* Enhanced Coexistence Interface */
 #define	CHIPC_CAP_SPROM			0x40000000	/* SPROM Present, rev >= 32 */
 #define	CHIPC_CAP_NFLASH		0x80000000	/* Nand flash present, rev >= 35 */
 
 #define	CHIPC_CAP2_SECI			0x00000001	/* SECI Present, rev >= 36 */
 #define	CHIPC_CAP2_GSIO			0x00000002	/* GSIO (spi/i2c) present, rev >= 37 */
+#define	CHIPC_CAP2_GCI			0x00000004	/* GCI present (rev >= ??) */
+#define	CHIPC_CAP2_AOB			0x00000040	/* Always on Bus present (rev >= 49)
+							 *
+							 * If set, PMU and GCI registers
+							 * are found in dedicated cores.
+							 *
+							 * This appears to be a lower power
+							 * APB bus, bridged via ARM APB IP. */
 
 /*
  * ChipStatus (Common)
@@ -336,8 +352,10 @@ enum {
 #define	CHIPC_OTPP_START_BUSY		0x80000000
 #define	CHIPC_OTPP_READ			0x40000000	/* HND OTP */
 
-/* otplayout reg corerev >= 36 */
-#define	CHIPC_OTP_CISFORMAT_NEW	0x80000000
+/* otplayout */
+#define	CHIPC_OTPL_SIZE_MASK		0x0000f000	/* rev >= 49 */
+#define	CHIPC_OTPL_SIZE_SHIFT		12
+#define	CHIPC_OTPL_CISFORMAT_NEW	0x80000000	/* rev >= 36 */
 
 /* Opcodes for OTPP_OC field */
 #define	CHIPC_OTPPOC_READ		0

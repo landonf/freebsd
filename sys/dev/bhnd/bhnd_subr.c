@@ -797,11 +797,11 @@ bhnd_parse_chipid(uint32_t idreg, bhnd_addr_t enum_addr)
 	struct bhnd_chipid result;
 
 	/* Fetch the basic chip info */
-	result.chip_id = CHIPC_GET_ATTR(idreg, ID_CHIP);
-	result.chip_pkg = CHIPC_GET_ATTR(idreg, ID_PKG);
-	result.chip_rev = CHIPC_GET_ATTR(idreg, ID_REV);
-	result.chip_type = CHIPC_GET_ATTR(idreg, ID_BUS);
-	result.ncores = CHIPC_GET_ATTR(idreg, ID_NUMCORE);
+	result.chip_id = CHIPC_GET_BITS(idreg, CHIPC_ID_CHIP);
+	result.chip_pkg = CHIPC_GET_BITS(idreg, CHIPC_ID_PKG);
+	result.chip_rev = CHIPC_GET_BITS(idreg, CHIPC_ID_REV);
+	result.chip_type = CHIPC_GET_BITS(idreg, CHIPC_ID_BUS);
+	result.ncores = CHIPC_GET_BITS(idreg, CHIPC_ID_NUMCORE);
 
 	result.enum_addr = enum_addr;
 

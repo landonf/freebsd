@@ -75,7 +75,10 @@ static const struct bhnd_device chipc_devices[] = {
 /* Device quirks table */
 static struct bhnd_device_quirk chipc_quirks[] = {
 	{ BHND_HWREV_GTE	(32),	CHIPC_QUIRK_SUPPORTS_SPROM },
-	{ BHND_HWREV_GTE	(35),	CHIPC_QUIRK_SUPPORTS_NFLASH },
+	{ BHND_HWREV_GTE	(35),	CHIPC_QUIRK_SUPPORTS_NFLASH |
+					    CHIPC_QUIRK_SUPPORTS_CAP_EXT },
+	{ BHND_HWREV_GTE	(49),	CHIPC_QUIRK_IPX_OTPLAYOUT_SIZE },
+
 	BHND_DEVICE_QUIRK_END
 };
 
@@ -112,6 +115,11 @@ static struct bhnd_chip_quirk chipc_chip_quirks[] = {
 	BHND_CHIP_QUIRK_END
 };
 
+static int			 chipc_read_caps(struct chipc_softc *sc,
+				     struct chipc_caps* caps);
+static void			 chipc_print_caps(device_t dev,
+				     struct chipc_caps* caps);
+
 static struct chipc_region	*chipc_alloc_region(struct chipc_softc *sc,
 				     bhnd_port_type type, u_int port,
 				     u_int region);
@@ -147,7 +155,7 @@ static bool			 chipc_should_enable_sprom(
     ((_sc)->quirks & CHIPC_QUIRK_ ## _name)
     
 #define CHIPC_CAP(_sc, _name)	\
-    ((_sc)->caps & CHIPC_ ## _name)
+    ((_sc)->caps._name)
 
 #define	CHIPC_ASSERT_QUIRK(_sc, name)	\
     KASSERT(CHIPC_QUIRK((_sc), name), ("quirk " __STRING(_name) " not set"))
@@ -168,126 +176,80 @@ chipc_probe(device_t dev)
 	return (BUS_PROBE_DEFAULT);
 }
 
-/* Allocate region records for the given port, and add the port's memory
- * range to the mem_rman */
-static int
-chipc_rman_init_regions (struct chipc_softc *sc, bhnd_port_type type,
-    u_int port)
-{
-	struct	chipc_region	*cr;
-	rman_res_t		 start, end;
-	u_int			 num_regions;
-	int			 error;
-
-	num_regions = bhnd_get_region_count(sc->dev, port, port);
-	for (u_int region = 0; region < num_regions; region++) {
-		/* Allocate new region record */
-		cr = chipc_alloc_region(sc, type, port, region);
-		if (cr == NULL)
-			return (ENODEV);
-
-		/* Can't manage regions that cannot be allocated */
-		if (cr->cr_rid < 0) {
-			BHND_DEBUG_DEV(sc->dev, "no rid for chipc region "
-			    "%s%u.%u", bhnd_port_type_name(type), port, region);
-			chipc_free_region(sc, cr);
-			continue;
-		}
-
-		/* Add to rman's managed range */
-		start = cr->cr_addr;
-		end = cr->cr_end;
-		if ((error = rman_manage_region(&sc->mem_rman, start, end))) {
-			chipc_free_region(sc, cr);
-			return (error);
-		}
-
-		/* Add to region list */
-		STAILQ_INSERT_TAIL(&sc->mem_regions, cr, cr_link);
-	}
-
-	return (0);
-}
-
-/* Initialize memory state for all chipc port regions */
-static int
-chipc_init_rman(struct chipc_softc *sc)
-{
-	u_int	num_ports;
-	int	error;
-
-	/* Port types for which we'll register chipc_region mappings */
-	bhnd_port_type types[] = {
-	    BHND_PORT_DEVICE
-	};
-
-	/* Initialize resource manager */
-	sc->mem_rman.rm_start = 0;
-	sc->mem_rman.rm_end = BUS_SPACE_MAXADDR;
-	sc->mem_rman.rm_type = RMAN_ARRAY;
-	sc->mem_rman.rm_descr = "ChipCommon Device Memory";
-	if ((error = rman_init(&sc->mem_rman))) {
-		device_printf(sc->dev, "could not initialize mem_rman: %d\n",
-		    error);
-		return (error);
-	}
-
-	/* Populate per-port-region state */
-	for (u_int i = 0; i < nitems(types); i++) {
-		num_ports = bhnd_get_port_count(sc->dev, types[i]);
-		for (u_int port = 0; port < num_ports; port++) {
-			error = chipc_rman_init_regions(sc, types[i], port);
-			if (error) {
-				device_printf(sc->dev,
-				    "region init failed for %s%u: %d\n",
-				     bhnd_port_type_name(types[i]), port,
-				     error);
-
-				goto failed;
-			}
-		}
-	}
-
-	return (0);
-
-failed:
-	chipc_free_rman(sc);
-	return (error);
-}
-
-/* Free memory management state */
 static void
-chipc_free_rman(struct chipc_softc *sc)
+chipc_print_caps(device_t dev, struct chipc_caps *caps)
 {
-	struct chipc_region *cr, *cr_next;
+#define CC_TFS(_flag) (caps->_flag ? "yes" : "no")
 
-	STAILQ_FOREACH_SAFE(cr, &sc->mem_regions, cr_link, cr_next)
-		chipc_free_region(sc, cr);
+	device_printf(dev, "MIPSEB:  %-3s   | BP64:  %s\n",
+	    CC_TFS(mipseb), CC_TFS(backplane_64));
+	device_printf(dev, "UARTs:   %-3hhu   | UGPIO: %s\n",
+	    caps->num_uarts, CC_TFS(uart_gpio));
+	// XXX: hitting a kvprintf bug with '%#02x' not prefixing '0x' in
+	// some cases, and not apply the field width in others
+	device_printf(dev, "UARTClk: 0x%02x  | Flash: %#x\n",
+	    caps->uart_clock, caps->flash_type);
+	device_printf(dev, "ExtBus:  0x%02x  | PwCtl: %s\n",
+	    caps->extbus_type, CC_TFS(power_control));
+	device_printf(dev, "PLL:     0x%02x  | JTAGM: %s\n",
+	    caps->pll_type, CC_TFS(jtag_master));
+	device_printf(dev, "BootROM: %-3s   | OtpSz: 0x%02x\n",
+	    CC_TFS(boot_rom), caps->otp_size);
+	device_printf(dev, "PMU:     %-3s   | ECI:   %s\n",
+	    CC_TFS(pmu), CC_TFS(eci));
+	device_printf(dev, "SPROM:   %-3s   | NAND:  %s\n",
+	    CC_TFS(sprom), CC_TFS(sprom));
+	device_printf(dev, "AOB:     %-3s\n", CC_TFS(aob));
 
-	rman_fini(&sc->mem_rman);
+#undef CC_TFS
 }
 
-/**
- * Return the rman instance for a given resource @p type, if any.
- * 
- * @param sc The chipc device state.
- * @param type The resource type (e.g. SYS_RES_MEMORY, SYS_RES_IRQ, ...)
- */
-static struct rman *
-chipc_get_rman(struct chipc_softc *sc, int type)
-{	
-	switch (type) {
-	case SYS_RES_MEMORY:
-		return (&sc->mem_rman);
+/* Read and parse chipc capabilities */
+int
+chipc_read_caps(struct chipc_softc *sc, struct chipc_caps *caps)
+{
+	uint32_t	cap_reg;
+	uint32_t	cap_ext_reg;
 
-	case SYS_RES_IRQ:
-		/* IRQs can be used with RF_SHAREABLE, so we don't perform
-		 * any local proxying of resource requests. */
-		return (NULL);
+	/* Fetch cap registers */
+	cap_reg = bhnd_bus_read_4(sc->core, CHIPC_CAPABILITIES);
+	cap_ext_reg = 0;
+	if (CHIPC_QUIRK(sc, SUPPORTS_CAP_EXT))
+		cap_ext_reg = bhnd_bus_read_4(sc->core, CHIPC_CAPABILITIES_EXT);
 
-	default:
-		return (NULL);
-	};
+	/* Extract values */
+	caps->num_uarts		= CHIPC_GET_BITS(cap_reg, CHIPC_CAP_NUM_UART);
+	caps->mipseb		= CHIPC_GET_FLAG(cap_reg, CHIPC_CAP_MIPSEB);
+	caps->uart_gpio		= CHIPC_GET_FLAG(cap_reg, CHIPC_CAP_UARTGPIO);
+	caps->uart_clock	= CHIPC_GET_BITS(cap_reg, CHIPC_CAP_UCLKSEL);
+	caps->flash_type	= CHIPC_GET_BITS(cap_reg, CHIPC_CAP_FLASH);
+
+	caps->extbus_type	= CHIPC_GET_BITS(cap_reg, CHIPC_CAP_EXTBUS);
+	caps->power_control	= CHIPC_GET_FLAG(cap_reg, CHIPC_CAP_PWR_CTL);
+	caps->jtag_master	= CHIPC_GET_FLAG(cap_reg, CHIPC_CAP_JTAGP);
+
+	caps->pll_type		= CHIPC_GET_BITS(cap_reg, CHIPC_CAP_PLL);
+	caps->backplane_64	= CHIPC_GET_FLAG(cap_reg, CHIPC_CAP_BKPLN64);
+	caps->boot_rom		= CHIPC_GET_FLAG(cap_reg, CHIPC_CAP_ROM);
+	caps->pmu		= CHIPC_GET_FLAG(cap_reg, CHIPC_CAP_PMU);
+	caps->eci		= CHIPC_GET_FLAG(cap_reg, CHIPC_CAP_ECI);
+	caps->sprom		= CHIPC_GET_FLAG(cap_reg, CHIPC_CAP_SPROM);
+	caps->nflash		= CHIPC_GET_FLAG(cap_reg, CHIPC_CAP_NFLASH);
+	caps->otp_size		= CHIPC_GET_BITS(cap_reg, CHIPC_CAP_OTP_SIZE);
+
+	caps->seci		= CHIPC_GET_FLAG(cap_ext_reg, CHIPC_CAP2_SECI);
+	caps->gsio		= CHIPC_GET_FLAG(cap_ext_reg, CHIPC_CAP2_GSIO);
+	caps->aob		= CHIPC_GET_FLAG(cap_ext_reg, CHIPC_CAP2_AOB);
+
+	/* Fetch OTP size for later IPX controller revisions */
+	if (CHIPC_QUIRK(sc, IPX_OTPLAYOUT_SIZE)) {
+		uint32_t	otpl;
+
+		otpl = bhnd_bus_read_4(sc->core, CHIPC_OTPLAYOUT);
+		caps->otp_size = CHIPC_GET_BITS(otpl, CHIPC_OTPL_SIZE);
+	}
+
+	return (0);
 }
 
 static int
@@ -332,7 +294,7 @@ chipc_attach(device_t dev)
 
 	/* Fetch our chipset identification data */
 	ccid_reg = bhnd_bus_read_4(sc->core, CHIPC_ID);
-	chip_type = CHIPC_GET_ATTR(ccid_reg, ID_BUS);
+	chip_type = CHIPC_GET_BITS(ccid_reg, CHIPC_ID_BUS);
 
 	switch (chip_type) {
 	case BHND_CHIPTYPE_SIBA:
@@ -351,9 +313,12 @@ chipc_attach(device_t dev)
 
 	sc->ccid = bhnd_parse_chipid(ccid_reg, enum_addr);
 
-	/* Fetch capability and status register values */
-	sc->caps = bhnd_bus_read_4(sc->core, CHIPC_CAPABILITIES);
-	sc->cst = bhnd_bus_read_4(sc->core, CHIPC_CHIPST);
+	/* Fetch and parse capability register(s) */
+	if ((error = chipc_read_caps(sc, &sc->caps)))
+		goto failed;
+
+	if (bootverbose)
+		chipc_print_caps(sc->dev, &sc->caps);
 
 	/* Identify NVRAM source and add child device. */
 	sc->nvram_src = chipc_nvram_identify(sc);
@@ -515,6 +480,129 @@ chipc_get_resource_list(device_t dev, device_t child)
 {
 	struct chipc_devinfo *dinfo = device_get_ivars(child);
 	return (&dinfo->resources);
+}
+
+
+/* Allocate region records for the given port, and add the port's memory
+ * range to the mem_rman */
+static int
+chipc_rman_init_regions (struct chipc_softc *sc, bhnd_port_type type,
+    u_int port)
+{
+	struct	chipc_region	*cr;
+	rman_res_t		 start, end;
+	u_int			 num_regions;
+	int			 error;
+
+	num_regions = bhnd_get_region_count(sc->dev, port, port);
+	for (u_int region = 0; region < num_regions; region++) {
+		/* Allocate new region record */
+		cr = chipc_alloc_region(sc, type, port, region);
+		if (cr == NULL)
+			return (ENODEV);
+
+		/* Can't manage regions that cannot be allocated */
+		if (cr->cr_rid < 0) {
+			BHND_DEBUG_DEV(sc->dev, "no rid for chipc region "
+			    "%s%u.%u", bhnd_port_type_name(type), port, region);
+			chipc_free_region(sc, cr);
+			continue;
+		}
+
+		/* Add to rman's managed range */
+		start = cr->cr_addr;
+		end = cr->cr_end;
+		if ((error = rman_manage_region(&sc->mem_rman, start, end))) {
+			chipc_free_region(sc, cr);
+			return (error);
+		}
+
+		/* Add to region list */
+		STAILQ_INSERT_TAIL(&sc->mem_regions, cr, cr_link);
+	}
+
+	return (0);
+}
+
+/* Initialize memory state for all chipc port regions */
+static int
+chipc_init_rman(struct chipc_softc *sc)
+{
+	u_int	num_ports;
+	int	error;
+
+	/* Port types for which we'll register chipc_region mappings */
+	bhnd_port_type types[] = {
+	    BHND_PORT_DEVICE
+	};
+
+	/* Initialize resource manager */
+	sc->mem_rman.rm_start = 0;
+	sc->mem_rman.rm_end = BUS_SPACE_MAXADDR;
+	sc->mem_rman.rm_type = RMAN_ARRAY;
+	sc->mem_rman.rm_descr = "ChipCommon Device Memory";
+	if ((error = rman_init(&sc->mem_rman))) {
+		device_printf(sc->dev, "could not initialize mem_rman: %d\n",
+		    error);
+		return (error);
+	}
+
+	/* Populate per-port-region state */
+	for (u_int i = 0; i < nitems(types); i++) {
+		num_ports = bhnd_get_port_count(sc->dev, types[i]);
+		for (u_int port = 0; port < num_ports; port++) {
+			error = chipc_rman_init_regions(sc, types[i], port);
+			if (error) {
+				device_printf(sc->dev,
+				    "region init failed for %s%u: %d\n",
+				     bhnd_port_type_name(types[i]), port,
+				     error);
+
+				goto failed;
+			}
+		}
+	}
+
+	return (0);
+
+failed:
+	chipc_free_rman(sc);
+	return (error);
+}
+
+/* Free memory management state */
+static void
+chipc_free_rman(struct chipc_softc *sc)
+{
+	struct chipc_region *cr, *cr_next;
+
+	STAILQ_FOREACH_SAFE(cr, &sc->mem_regions, cr_link, cr_next)
+		chipc_free_region(sc, cr);
+
+	rman_fini(&sc->mem_rman);
+}
+
+/**
+ * Return the rman instance for a given resource @p type, if any.
+ * 
+ * @param sc The chipc device state.
+ * @param type The resource type (e.g. SYS_RES_MEMORY, SYS_RES_IRQ, ...)
+ */
+static struct rman *
+chipc_get_rman(struct chipc_softc *sc, int type)
+{	
+	switch (type) {
+	case SYS_RES_MEMORY:
+		return (&sc->mem_rman);
+
+	case SYS_RES_IRQ:
+		/* IRQs can be used with RF_SHAREABLE, so we don't perform
+		 * any local proxying of resource requests. */
+		return (NULL);
+
+	default:
+		return (NULL);
+	};
 }
 
 /**
@@ -1183,21 +1271,21 @@ chipc_nvram_identify(struct chipc_softc *sc)
 	 * We check for hardware presence in order of precedence. For example,
 	 * SPROM is is always used in preference to internal OTP if found.
 	 */
-	if (CHIPC_CAP(sc, CAP_SPROM)) {
+	if (CHIPC_CAP(sc, sprom)) {
 		srom_ctrl = bhnd_bus_read_4(sc->core, CHIPC_SPROM_CTRL);
 		if (srom_ctrl & CHIPC_SRC_PRESENT)
 			return (BHND_NVRAM_SRC_SPROM);
 	}
 
 	/* Check for OTP */
-	if (CHIPC_CAP(sc, CAP_OTP_SIZE))
+	if (CHIPC_CAP(sc, otp_size) != 0)
 		return (BHND_NVRAM_SRC_OTP);
 
 	/*
 	 * Finally, Northstar chipsets (and possibly other chipsets?) support
 	 * external NAND flash. 
 	 */
-	if (CHIPC_QUIRK(sc, SUPPORTS_NFLASH) && CHIPC_CAP(sc, CAP_NFLASH))
+	if (CHIPC_QUIRK(sc, SUPPORTS_NFLASH) && CHIPC_CAP(sc, nflash))
 		return (BHND_NVRAM_SRC_NFLASH);
 
 	/* No NVRAM hardware capability declared */

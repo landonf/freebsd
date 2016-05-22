@@ -101,7 +101,15 @@ enum {
 	 * device. The muxed pins must be switched to allow reading/writing
 	 * the SPROM.
 	 */
-	CHIPC_QUIRK_4360_FEM_MUX_SPROM	= (1<<5) | CHIPC_QUIRK_MUX_SPROM
+	CHIPC_QUIRK_4360_FEM_MUX_SPROM		= (1<<5) |
+	    CHIPC_QUIRK_MUX_SPROM,
+
+	/** Supports CHIPC_CAPABILITIES_EXT register */
+	CHIPC_QUIRK_SUPPORTS_CAP_EXT		= (1<<6),
+
+	/** OTP size is defined via CHIPC_OTPLAYOUT register in later
+	 *  ChipCommon revisions using the 'IPX' OTP controller. */
+	CHIPC_QUIRK_IPX_OTPLAYOUT_SIZE		= (1<<7),
 };
 
 /**
@@ -143,11 +151,11 @@ struct chipc_softc {
 	struct chipc_region	*core_region;	/**< region containing core registers */
 
 	struct bhnd_chipid	 ccid;		/**< chip identification */
-	uint32_t		 quirks;	/**< CHIPC_QUIRK_* quirk flags */
-	uint32_t		 caps;		/**< CHIPC_CAP_* capability register flags */
-	uint32_t		 cst;		/**< CHIPC_CST* status register flags */
-	bhnd_nvram_src_t	 nvram_src;	/**< NVRAM source */
-	
+	uint32_t		 quirks;	/**< chipc quirk flags */
+	struct chipc_caps	 caps;		/**< chipc capabilities */
+
+	bhnd_nvram_src_t	 nvram_src;	/**< identified NVRAM source */
+
 	struct mtx		 mtx;		/**< state mutex. */
 
 	struct bhnd_sprom	 sprom;		/**< OTP/SPROM shadow, if any */
