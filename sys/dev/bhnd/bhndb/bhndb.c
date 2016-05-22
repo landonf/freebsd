@@ -993,13 +993,10 @@ bhndb_find_hostb_device(device_t dev, device_t child)
 
 	sc = device_get_softc(dev);
 
-	/* Determine required device class and set up a match descriptor. */
+	/* Set up a match descriptor for the required device class. */
 	md = (struct bhnd_core_match) {
-		.vendor = BHND_MFGID_BCM,
-		.device = BHND_COREID_INVALID,
-		.hwrev = { BHND_HWREV_INVALID, BHND_HWREV_INVALID },
-		.class = sc->bridge_class,
-		.unit = 0
+		BHND_MATCH_CORE_CLASS(sc->bridge_class),
+		BHND_MATCH_CORE_UNIT(0)
 	};
 	
 	/* Must be the absolute first matching device on the bus. */

@@ -218,12 +218,9 @@ siba_bhndb_wars_pcie_clear_d11_timeout(struct siba_softc *sc)
 		return (0);
 
 	/* Only applies if there's a D11 core */
-	d11 = bhnd_match_child(sc->dev, &(struct bhnd_core_match){
-		.vendor	= BHND_MFGID_BCM,
-		.device	= BHND_COREID_D11,
-		.hwrev	= BHND_HWREV_ANY,
-		.class	= BHND_DEVCLASS_INVALID,
-		.unit	= 0
+	d11 = bhnd_match_child(sc->dev, &(struct bhnd_core_match) {
+		BHND_MATCH_CORE(BHND_MFGID_BCM, BHND_COREID_D11),
+		BHND_MATCH_CORE_UNIT(0)
 	});
 	if (d11 == NULL)
 		return (0);

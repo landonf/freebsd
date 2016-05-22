@@ -303,13 +303,12 @@ device_t
 bhnd_find_child(device_t dev, bhnd_devclass_t class, int unit)
 {
 	struct bhnd_core_match md = {
-		.vendor = BHND_MFGID_INVALID,
-		.device = BHND_COREID_INVALID,
-		.hwrev.start = BHND_HWREV_INVALID,
-		.hwrev.end = BHND_HWREV_INVALID,
-		.class = class,
-		.unit = unit
+		BHND_MATCH_CORE_CLASS(class),
+		BHND_MATCH_CORE_UNIT(unit)
 	};
+
+	if (unit == -1)
+		md.match_core_unit = 0;
 
 	return bhnd_match_child(dev, &md);
 }
@@ -437,12 +436,7 @@ bhnd_find_core(const struct bhnd_core_info *cores, u_int num_cores,
     bhnd_devclass_t class)
 {
 	struct bhnd_core_match md = {
-		.vendor = BHND_MFGID_INVALID,
-		.device = BHND_COREID_INVALID,
-		.hwrev.start = BHND_HWREV_INVALID,
-		.hwrev.end = BHND_HWREV_INVALID,
-		.class = class,
-		.unit = -1
+		BHND_MATCH_CORE_CLASS(class)
 	};
 
 	return bhnd_match_core(cores, num_cores, &md);
@@ -461,22 +455,20 @@ bool
 bhnd_core_matches(const struct bhnd_core_info *core,
     const struct bhnd_core_match *desc)
 {
-	if (desc->vendor != BHND_MFGID_INVALID &&
-	    desc->vendor != core->vendor)
+	if (desc->match_core_vendor && desc->core_vendor != core->vendor)
 		return (false);
 
-	if (desc->device != BHND_COREID_INVALID &&
-	    desc->device != core->device)
+	if (desc->match_core_id && desc->core_id != core->device)
 		return (false);
 
-	if (desc->unit != -1 && desc->unit != core->unit)
+	if (desc->match_core_unit && desc->core_unit != core->unit)
 		return (false);
 
-	if (!bhnd_hwrev_matches(core->hwrev, &desc->hwrev))
+	if (desc->match_core_rev && 
+	    !bhnd_hwrev_matches(core->hwrev, &desc->core_rev))
 		return (false);
 
-	if (desc->class != BHND_DEVCLASS_INVALID &&
-	    desc->class != bhnd_core_class(core))
+	if (desc->match_core_class && desc->core_class != bhnd_core_class(core))
 		return (false);
 
 	return true;

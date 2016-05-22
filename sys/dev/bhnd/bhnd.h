@@ -235,31 +235,49 @@ struct bhnd_resource {
 
 /** A core match descriptor. */
 struct bhnd_core_match {
-	uint16_t		vendor;	/**< required JEP106 device vendor or BHND_MFGID_INVALID. */
-	uint16_t		device;	/**< required core ID or BHND_COREID_INVALID */
-	struct bhnd_hwrev_match	hwrev;	/**< matching revisions. */
-	bhnd_devclass_t		class;	/**< required class or BHND_DEVCLASS_INVALID */
-	int			unit;	/**< required core unit, or -1 */
+	/** Select fields to be matched */
+	uint8_t
+		match_core_vendor:1,
+		match_core_id:1,
+		match_core_rev:1,
+		match_core_class:1,
+		match_core_unit:1,
+		match_flags_unused:3;
+	
+	uint16_t		core_vendor;	/**< required JEP106 device vendor */
+	uint16_t		core_id;	/**< required core ID */
+	struct bhnd_hwrev_match	core_rev;	/**< matching core revisions. */
+	bhnd_devclass_t		core_class;	/**< required bhnd class */
+	int			core_unit;	/**< required core unit */
 };
 
+#define	BHND_MATCH_CORE_VENDOR(_vendor)	\
+	.match_core_vendor = 1, .core_vendor = (_vendor)
+
+#define	BHND_MATCH_CORE_ID(_id)		\
+	.match_core_id = 1, .core_id = (_id)
+
+#define	BHND_MATCH_CORE_REV(_rev)	\
+	.match_core_rev = 1, .core_rev = BHND_HWREV_ ## _rev
+
+#define	BHND_MATCH_CORE_CLASS(_cls)	\
+	.match_core_class = 1, .core_class = (_cls)
+
+#define	BHND_MATCH_CORE_UNIT(_unit)	\
+	.match_core_unit = 1, .core_unit = (_unit)
+
 /**
- * Core match descriptor matching against the given @p _vendor, @p _device,
- * and @p _hwrev match descriptors.
+ * Core match descriptor matching against the given @p _vendor and
+ * @p _id,
  */
-#define	BHND_CORE_MATCH(_vendor, _device, _hwrev)	\
-	{ _vendor, _device, _hwrev, BHND_DEVCLASS_INVALID, -1 }
+#define	BHND_MATCH_CORE(_vendor, _id)		\
+	BHND_MATCH_CORE_VENDOR(_vendor),	\
+	BHND_MATCH_CORE_ID(_id)
 
 /** 
  * Wildcard core match descriptor.
  */
-#define	BHND_CORE_MATCH_ANY			\
-	{					\
-		.vendor = BHND_MFGID_INVALID,	\
-		.device = BHND_COREID_INVALID,	\
-		.hwrev = BHND_HWREV_ANY,	\
-		.class = BHND_DEVCLASS_INVALID,	\
-		.unit = -1			\
-	}
+#define	BHND_MATCH_CORE_ANY	0
 
 /**
  * A chipset match descriptor.
@@ -393,8 +411,8 @@ struct bhnd_device {
 
 #define	_BHND_DEVICE(_vendor, _device, _desc, _quirks, _chip_quirks,	\
      _flags, ...)							\
-	{ BHND_CORE_MATCH(BHND_MFGID_ ## _vendor,			\
-	    BHND_COREID_ ## _device, BHND_HWREV_ANY), _desc, _quirks,	\
+	{ { BHND_MATCH_CORE(BHND_MFGID_ ## _vendor,			\
+	    BHND_COREID_ ## _device) }, _desc, _quirks,			\
 	    _chip_quirks, _flags }
 
 #define	BHND_MIPS_DEVICE(_device, _desc, _quirks, _chip_quirks, ...)	\
@@ -409,7 +427,7 @@ struct bhnd_device {
 	_BHND_DEVICE(BCM, _device, _desc, _quirks, _chip_quirks,	\
 	    ## __VA_ARGS__, 0)
 
-#define	BHND_DEVICE_END	{ BHND_CORE_MATCH_ANY, NULL, NULL, NULL, 0 }
+#define	BHND_DEVICE_END	{ { BHND_MATCH_CORE_ANY }, NULL, NULL, NULL, 0 }
 
 const char			*bhnd_vendor_name(uint16_t vendor);
 const char			*bhnd_port_type_name(bhnd_port_type port_type);
