@@ -38,39 +38,6 @@
 #include "bhnd_chipc_if.h"
 
 /**
- * ChipCommon capability flags;
- */
-struct chipc_caps {
-	uint8_t		num_uarts;	/**< Number of attached UARTS (1-3) */
-	bool		mipseb;		/**< MIPS is big-endian */
-	uint8_t		uart_clock;	/**< UART clock source (see CHIPC_CAP_UCLKSEL_*) */
-	uint8_t		uart_gpio;	/**< UARTs own GPIO pins 12-15 */
-	uint8_t		extbus_type;	/**< ExtBus type (CHIPC_CAP_EXTBUS_*) */
-	uint8_t		flash_type;	/**< Flash type */
-	uint8_t		pll_type;	/**< PLL type */
-	bool		power_control;	/**< Power control available */
-	uint8_t		otp_size;	/**< OTP (row?) size, or 0 if not present */
-	bool		jtag_master;	/**< JTAG Master present */
-	bool		boot_rom;	/**< Internal boot ROM is active */
-	uint8_t		backplane_64;	/**< Backplane supports 64-bit addressing.
-					     Note that this does not gaurantee
-					     the CPU itself supports 64-bit
-					     addressing. */
-	bool		pmu;		/**< PMU is present. */
-	bool		eci;		/**< ECI (enhanced coexistence inteface)
-					     is present. */
-	bool		seci;		/**< SECI (serial ECI) is present */
-	bool		sprom;		/**< SPROM is present */
-	bool		nflash;		/**< NAND flash is present */
-	bool		gsio;		/**< GSIO (SPI/I2C) present */
-	bool		aob;		/**< AOB (always on bus) present.
-					     If set, PMU and GCI registers are
-					     not accessible via ChipCommon,
-					     and are instead accessible via
-					     dedicated cores on the bhnd bus */
-};
-
-/**
  * Query a ChipCommon device and return the preferred NVRAM data source.
  *
  * @param dev A bhnd(4) ChipCommon device.

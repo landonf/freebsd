@@ -75,8 +75,8 @@ static const struct bhnd_device chipc_devices[] = {
 /* Device quirks table */
 static struct bhnd_device_quirk chipc_quirks[] = {
 	{ BHND_HWREV_GTE	(32),	CHIPC_QUIRK_SUPPORTS_SPROM },
-	{ BHND_HWREV_GTE	(35),	CHIPC_QUIRK_SUPPORTS_NFLASH |
-					    CHIPC_QUIRK_SUPPORTS_CAP_EXT },
+	{ BHND_HWREV_GTE	(35),	CHIPC_QUIRK_SUPPORTS_CAP_EXT },
+	{ BHND_HWREV_EQ		(38),	CHIPC_QUIRK_4706_NFLASH }, /*BCM5357 ?*/
 	{ BHND_HWREV_GTE	(49),	CHIPC_QUIRK_IPX_OTPLAYOUT_SIZE },
 
 	BHND_DEVICE_QUIRK_END
@@ -112,13 +112,17 @@ static struct bhnd_chip_quirk chipc_chip_quirks[] = {
 	{{ BHND_CHIP_IR(43602, HWREV_LTE(2)) },
 		CHIPC_QUIRK_4360_FEM_MUX_SPROM },
 
+	/* BCM4706 */
+	{{ BHND_CHIP_ID(4306) },
+		CHIPC_QUIRK_4706_NFLASH },
+
 	BHND_CHIP_QUIRK_END
 };
 
 static int			 chipc_read_caps(struct chipc_softc *sc,
-				     struct chipc_caps* caps);
+				     struct chipc_caps *caps);
 static void			 chipc_print_caps(device_t dev,
-				     struct chipc_caps* caps);
+				     struct chipc_caps *caps);
 
 static struct chipc_region	*chipc_alloc_region(struct chipc_softc *sc,
 				     bhnd_port_type type, u_int port,
@@ -187,19 +191,22 @@ chipc_print_caps(device_t dev, struct chipc_caps *caps)
 	    caps->num_uarts, CC_TFS(uart_gpio));
 	// XXX: hitting a kvprintf bug with '%#02x' not prefixing '0x' in
 	// some cases, and not apply the field width in others
-	device_printf(dev, "UARTClk: 0x%02x  | Flash: %#x\n",
+	device_printf(dev, "UARTClk: 0x%02x  | Flash: %u\n",
 	    caps->uart_clock, caps->flash_type);
+	device_printf(dev, "SPROM:   %-3s   | OTP:   %s\n",
+	    CC_TFS(sprom), CC_TFS(otp_size));
+	device_printf(dev, "CFIsz:   0x%02x  | OTPsz: 0x%02x\n",
+	    caps->cfi_width, caps->otp_size);
 	device_printf(dev, "ExtBus:  0x%02x  | PwCtl: %s\n",
 	    caps->extbus_type, CC_TFS(power_control));
 	device_printf(dev, "PLL:     0x%02x  | JTAGM: %s\n",
 	    caps->pll_type, CC_TFS(jtag_master));
-	device_printf(dev, "BootROM: %-3s   | OtpSz: 0x%02x\n",
-	    CC_TFS(boot_rom), caps->otp_size);
 	device_printf(dev, "PMU:     %-3s   | ECI:   %s\n",
 	    CC_TFS(pmu), CC_TFS(eci));
-	device_printf(dev, "SPROM:   %-3s   | NAND:  %s\n",
-	    CC_TFS(sprom), CC_TFS(sprom));
-	device_printf(dev, "AOB:     %-3s\n", CC_TFS(aob));
+	device_printf(dev, "SECI:    %-3s   | GSIO:  %s\n",
+	    CC_TFS(seci), CC_TFS(gsio));
+	device_printf(dev, "AOB:     %-3s   | BootROM: %s\n",
+	    CC_TFS(aob), CC_TFS(boot_rom));
 
 #undef CC_TFS
 }
@@ -210,6 +217,7 @@ chipc_read_caps(struct chipc_softc *sc, struct chipc_caps *caps)
 {
 	uint32_t	cap_reg;
 	uint32_t	cap_ext_reg;
+	uint32_t	regval;
 
 	/* Fetch cap registers */
 	cap_reg = bhnd_bus_read_4(sc->core, CHIPC_CAPABILITIES);
@@ -222,7 +230,6 @@ chipc_read_caps(struct chipc_softc *sc, struct chipc_caps *caps)
 	caps->mipseb		= CHIPC_GET_FLAG(cap_reg, CHIPC_CAP_MIPSEB);
 	caps->uart_gpio		= CHIPC_GET_FLAG(cap_reg, CHIPC_CAP_UARTGPIO);
 	caps->uart_clock	= CHIPC_GET_BITS(cap_reg, CHIPC_CAP_UCLKSEL);
-	caps->flash_type	= CHIPC_GET_BITS(cap_reg, CHIPC_CAP_FLASH);
 
 	caps->extbus_type	= CHIPC_GET_BITS(cap_reg, CHIPC_CAP_EXTBUS);
 	caps->power_control	= CHIPC_GET_FLAG(cap_reg, CHIPC_CAP_PWR_CTL);
@@ -234,7 +241,6 @@ chipc_read_caps(struct chipc_softc *sc, struct chipc_caps *caps)
 	caps->pmu		= CHIPC_GET_FLAG(cap_reg, CHIPC_CAP_PMU);
 	caps->eci		= CHIPC_GET_FLAG(cap_reg, CHIPC_CAP_ECI);
 	caps->sprom		= CHIPC_GET_FLAG(cap_reg, CHIPC_CAP_SPROM);
-	caps->nflash		= CHIPC_GET_FLAG(cap_reg, CHIPC_CAP_NFLASH);
 	caps->otp_size		= CHIPC_GET_BITS(cap_reg, CHIPC_CAP_OTP_SIZE);
 
 	caps->seci		= CHIPC_GET_FLAG(cap_ext_reg, CHIPC_CAP2_SECI);
@@ -243,10 +249,45 @@ chipc_read_caps(struct chipc_softc *sc, struct chipc_caps *caps)
 
 	/* Fetch OTP size for later IPX controller revisions */
 	if (CHIPC_QUIRK(sc, IPX_OTPLAYOUT_SIZE)) {
-		uint32_t	otpl;
+		regval = bhnd_bus_read_4(sc->core, CHIPC_OTPLAYOUT);
+		caps->otp_size = CHIPC_GET_BITS(regval, CHIPC_OTPL_SIZE);
+	}
 
-		otpl = bhnd_bus_read_4(sc->core, CHIPC_OTPLAYOUT);
-		caps->otp_size = CHIPC_GET_BITS(otpl, CHIPC_OTPL_SIZE);
+	/* Determine flash type and paramters */
+	caps->cfi_width = 0;
+
+	switch (CHIPC_GET_BITS(cap_reg, CHIPC_CAP_FLASH)) {
+	case CHIPC_CAP_SFLASH_ST:
+		caps->flash_type = CHIPC_SFLASH_ST;
+		break;
+	case CHIPC_CAP_SFLASH_AT:
+		caps->flash_type = CHIPC_SFLASH_AT;
+		break;
+	case CHIPC_CAP_NFLASH:
+		caps->flash_type = CHIPC_NFLASH;
+		break;
+	case CHIPC_CAP_PFLASH:
+		caps->flash_type = CHIPC_PFLASH_CFI;
+
+		/* determine cfi width */
+		regval = bhnd_bus_read_4(sc->core, CHIPC_FLASH_CFG);
+		if (CHIPC_GET_FLAG(regval, CHIPC_FLASH_CFG_DS))
+			caps->cfi_width = 2;
+		else
+			caps->cfi_width = 1;
+
+		break;
+	case CHIPC_CAP_FLASH_NONE:
+		caps->flash_type = CHIPC_FLASH_NONE;
+		break;
+			
+	}
+
+	/* Handle 4706_NFLASH fallback */
+	if (CHIPC_QUIRK(sc, 4706_NFLASH) &&
+	    CHIPC_GET_FLAG(cap_reg, CHIPC_CAP_4706_NFLASH))
+	{
+		caps->flash_type = CHIPC_NFLASH_4706;
 	}
 
 	return (0);
@@ -317,7 +358,7 @@ chipc_attach(device_t dev)
 	if ((error = chipc_read_caps(sc, &sc->caps)))
 		goto failed;
 
-	if (bootverbose)
+	if (1 || bootverbose)
 		chipc_print_caps(sc->dev, &sc->caps);
 
 	/* Identify NVRAM source and add child device. */
@@ -1220,6 +1261,10 @@ chipc_nvram_attach(struct chipc_softc *sc)
 
 	switch (sc->nvram_src) {
 	case BHND_NVRAM_SRC_OTP:
+		// TODO OTP support
+		device_printf(sc->dev, "OTP nvram source unsupported\n");
+		return (0);
+
 	case BHND_NVRAM_SRC_SPROM:
 		/* Add OTP/SPROM device */
 		nvram_dev = BUS_ADD_CHILD(sc->dev, 0, "bhnd_nvram", -1);
@@ -1233,9 +1278,9 @@ chipc_nvram_attach(struct chipc_softc *sc)
 		    CHIPC_SPROM_OTP_SIZE);
 		return (error);
 
-	case BHND_NVRAM_SRC_NFLASH:
-		// TODO (requires access to NFLASH hardware)
-		device_printf(sc->dev, "NVRAM-NFLASH unsupported\n");
+	case BHND_NVRAM_SRC_FLASH:
+		// TODO flash support
+		device_printf(sc->dev, "flash nvram source unsupported\n");
 		return (0);
 
 	case BHND_NVRAM_SRC_UNKNOWN:
@@ -1281,12 +1326,9 @@ chipc_nvram_identify(struct chipc_softc *sc)
 	if (CHIPC_CAP(sc, otp_size) != 0)
 		return (BHND_NVRAM_SRC_OTP);
 
-	/*
-	 * Finally, Northstar chipsets (and possibly other chipsets?) support
-	 * external NAND flash. 
-	 */
-	if (CHIPC_QUIRK(sc, SUPPORTS_NFLASH) && CHIPC_CAP(sc, nflash))
-		return (BHND_NVRAM_SRC_NFLASH);
+	/* Check for flash */
+	if (CHIPC_CAP(sc, flash_type) != CHIPC_FLASH_NONE)
+		return (BHND_NVRAM_SRC_FLASH);
 
 	/* No NVRAM hardware capability declared */
 	return (BHND_NVRAM_SRC_UNKNOWN);

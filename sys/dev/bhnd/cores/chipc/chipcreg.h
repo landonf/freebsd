@@ -229,11 +229,16 @@
 #define	CHIPC_CAP_UARTGPIO		0x00000020	/* UARTs own GPIOs 15:12 */
 #define	CHIPC_CAP_EXTBUS_MASK		0x000000c0	/* External bus mask */
 #define	CHIPC_CAP_EXTBUS_SHIFT		6
-#define	  CHIPC_CAP_EXTBUS_NONE		0x00000000	/* No ExtBus present */
-#define	  CHIPC_CAP_EXTBUS_FULL		0x00000001	/* ExtBus: PCMCIA, IDE & Prog */
-#define	  CHIPC_CAP_EXTBUS_PROG		0x00000002	/* ExtBus: ProgIf only */
+#define	  CHIPC_CAP_EXTBUS_NONE		0x0		/* No ExtBus present */
+#define	  CHIPC_CAP_EXTBUS_FULL		0x1		/* ExtBus: PCMCIA, IDE & Prog */
+#define	  CHIPC_CAP_EXTBUS_PROG		0x2		/* ExtBus: ProgIf only */
 #define	CHIPC_CAP_FLASH_MASK		0x00000700	/* Type of flash */
 #define	CHIPC_CAP_FLASH_SHIFT		8
+#define	  CHIPC_CAP_FLASH_NONE		0x000		/* No flash */
+#define	  CHIPC_CAP_SFLASH_ST		0x100		/* ST serial flash */
+#define	  CHIPC_CAP_SFLASH_AT		0x200		/* Atmel serial flash */
+#define	  CHIPC_CAP_NFLASH		0x300		/* NAND flash */
+#define	  CHIPC_CAP_PFLASH		0x700		/* Parallel flash */
 #define	CHIPC_CAP_PLL_MASK		0x00038000	/* Type of PLL */
 #define	CHIPC_CAP_PLL_SHIFT		15
 #define	CHIPC_CAP_PWR_CTL		0x00040000	/* Power control */
@@ -246,7 +251,7 @@
 #define	CHIPC_CAP_PMU			0x10000000	/* PMU Present, rev >= 20 */
 #define	CHIPC_CAP_ECI			0x20000000	/* Enhanced Coexistence Interface */
 #define	CHIPC_CAP_SPROM			0x40000000	/* SPROM Present, rev >= 32 */
-#define	CHIPC_CAP_NFLASH		0x80000000	/* Nand flash present, rev >= 35 */
+#define	CHIPC_CAP_4706_NFLASH		0x80000000	/* NAND flash present, BCM4706 or chipc rev38 (BCM5357)? */
 
 #define	CHIPC_CAP2_SECI			0x00000001	/* SECI Present, rev >= 36 */
 #define	CHIPC_CAP2_GSIO			0x00000002	/* GSIO (spi/i2c) present, rev >= 37 */
@@ -627,12 +632,6 @@ enum {
 #define	CHIPC_CLKC_5350_N	0x0311
 #define	CHIPC_CLKC_5350_M	0x04020009
 
-/* Flash types in the chipcommon capabilities register */
-#define	CHIPC_FLASH_NONE	0x000	/* No flash */
-#define	CHIPC_SFLASH_ST		0x100	/* ST serial flash */
-#define	CHIPC_SFLASH_AT		0x200	/* Atmel serial flash */
-#define	CHIPC_PFLASH		0x700	/* Parallel flash */
-
 /* Bits in the ExtBus config registers */
 #define	CHIPC_CFG_EN		0x0001	/* Enable */
 #define	CHIPC_CFG_EM_MASK	0x000e	/* Extif Mode */
@@ -640,11 +639,11 @@ enum {
 #define	CHIPC_CFG_EM_SYNC	0x0002	/*   Synchronous */
 #define	CHIPC_CFG_EM_PCMCIA	0x0004	/*   PCMCIA */
 #define	CHIPC_CFG_EM_IDE	0x0006	/*   IDE */
-#define	CHIPC_CFG_DS		0x0010	/* Data size, 0=8bit, 1=16bit */
-#define	CHIPC_CFG_CD_MASK	0x00e0	/* Sync: Clock divisor, rev >= 20 */
-#define	CHIPC_CFG_CE		0x0100	/* Sync: Clock enable, rev >= 20 */
-#define	CHIPC_CFG_SB		0x0200	/* Sync: Size/Bytestrobe, rev >= 20 */
-#define	CHIPC_CFG_IS		0x0400	/* Extif Sync Clk Select, rev >= 20 */
+#define	CHIPC_FLASH_CFG_DS	0x0010	/* Data size, 0=8bit, 1=16bit */
+#define	CHIPC_FLASH_CFG_CD_MASK	0x00e0	/* Sync: Clock divisor, rev >= 20 */
+#define	CHIPC_FLASH_CFG_CE	0x0100	/* Sync: Clock enable, rev >= 20 */
+#define	CHIPC_FLASH_CFG_SB	0x0200	/* Sync: Size/Bytestrobe, rev >= 20 */
+#define	CHIPC_FLASH_CFG_IS	0x0400	/* Extif Sync Clk Select, rev >= 20 */
 
 /* ExtBus address space */
 #define	CHIPC_EB_BASE		0x1a000000	/* Chipc ExtBus base address */
