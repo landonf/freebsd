@@ -358,7 +358,7 @@ chipc_attach(device_t dev)
 	if ((error = chipc_read_caps(sc, &sc->caps)))
 		goto failed;
 
-	if (1 || bootverbose)
+	if (bootverbose)
 		chipc_print_caps(sc->dev, &sc->caps);
 
 	/* Identify NVRAM source and add child device. */
