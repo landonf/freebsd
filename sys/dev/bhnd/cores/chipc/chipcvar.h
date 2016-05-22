@@ -39,6 +39,7 @@
 DECLARE_CLASS(bhnd_chipc);
 extern devclass_t bhnd_chipc_devclass;
 
+struct chipc_region;
 
 /**
  * Supported ChipCommon flash types.
@@ -167,28 +168,6 @@ enum {
  */
 struct chipc_devinfo {
 	struct resource_list	resources;	/**< child resources */
-};
-
-/**
- * chipc SYS_RES_MEMORY region allocation record.
- */
-struct chipc_region {
-	bhnd_port_type		 cr_port_type;	/**< bhnd port type */
-	u_int			 cr_port_num;	/**< bhnd port number */
-	u_int			 cr_region_num;	/**< bhnd region number */
-
-	bhnd_addr_t		 cr_addr;	/**< region base address */
-	bhnd_addr_t		 cr_end;	/**< region end address */
-	bhnd_size_t		 cr_count;	/**< region count */
-	int			 cr_rid;	/**< rid, or -1 if no rid
-						  *  is allocated by the bus for
-						  *  this region */
-
-	struct bhnd_resource	*cr_res;	/**< bus resource, or NULL */
-	u_int			 cr_refs;	/**< RF_ALLOCATED refcount */
-	u_int			 cr_act_refs;	/**< RF_ACTIVE refcount */
-
-	STAILQ_ENTRY(chipc_region) cr_link;
 };
 
 /**
