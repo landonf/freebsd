@@ -938,12 +938,11 @@ chipc_alloc_resource(device_t dev, device_t child, int type,
 
 	/* Locate a mapping region */
 	if ((cr = chipc_find_region(sc, start, end)) == NULL) {
-		device_printf(dev,
-		    "no mapping region found for %#x type %d for "
-		    "child %s\n",
-		    *rid, type, device_get_nameunit(child));
-
-		return (NULL);
+		/* Resource requests outside our shared port regions can be
+		 * delegated to our parent. */
+		rv = bus_generic_rl_alloc_resource(dev, child, type, rid,
+		    start, end, count, flags);
+		return (rv);
 	}
 
 	/* Try to retain a region reference */
