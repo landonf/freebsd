@@ -316,7 +316,7 @@ chipc_read_caps(struct chipc_softc *sc, struct chipc_caps *caps)
 		caps->otp_size = CHIPC_GET_BITS(regval, CHIPC_OTPL_SIZE);
 	}
 
-	/* Determine flash type and paramters */
+	/* Determine flash type and parameters */
 	caps->cfi_width = 0;
 
 	switch (CHIPC_GET_BITS(cap_reg, CHIPC_CAP_FLASH)) {
