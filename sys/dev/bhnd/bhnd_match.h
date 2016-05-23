@@ -284,7 +284,8 @@ struct bhnd_device_match {
 };
 
 /** Define a wildcard match requirement (matches on any device). */
-#define	BHND_MATCH_ANY	.m.match_flags = 0
-
+#define	BHND_MATCH_ANY		.m.match_flags = 0
+#define	BHND_MATCH_IS_ANY(_m)	\
+	((_m)->m.match_flags == 0)
 
 #endif /* _BHND_BHND_MATCH_H_ */

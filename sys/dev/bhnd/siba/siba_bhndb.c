@@ -74,7 +74,7 @@ static struct bhnd_device_quirk bridge_quirks[] = {
 };
 
 static struct bhnd_device bridge_devs[] = {
-	BHND_DEVICE(PCI,	"",	bridge_quirks),
+	BHND_DEVICE(PCI, NULL, bridge_quirks),
 };
 
 static int

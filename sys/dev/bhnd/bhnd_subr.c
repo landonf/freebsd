@@ -644,7 +644,7 @@ bhnd_device_lookup(device_t dev, const struct bhnd_device *table,
 	hostb = bhnd_find_hostb_device(parent);
 	attach_type = bhnd_get_attach_type(dev);
 
-	for (entry = table; entry->desc != NULL; entry =
+	for (entry = table; !BHND_DEVICE_IS_END(entry); entry =
 	    (const struct bhnd_device *) ((const char *) entry + entry_size))
 	{
 		/* match core info */

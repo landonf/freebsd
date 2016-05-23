@@ -244,7 +244,9 @@ struct bhnd_device {
 	_BHND_DEVICE(BCM, _device, _desc, _quirks,	\
 	    ## __VA_ARGS__, 0)
 
-#define	BHND_DEVICE_END	{ { BHND_MATCH_ANY }, NULL, NULL, 0 }
+#define	BHND_DEVICE_END		{ { BHND_MATCH_ANY }, NULL, NULL, 0 }
+#define	BHND_DEVICE_IS_END(_d)	\
+	(BHND_MATCH_IS_ANY(&(_d)->core) && (_d)->desc == NULL)
 
 const char			*bhnd_vendor_name(uint16_t vendor);
 const char			*bhnd_port_type_name(bhnd_port_type port_type);
