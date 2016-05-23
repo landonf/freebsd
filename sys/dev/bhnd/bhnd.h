@@ -216,10 +216,10 @@ enum {
 
 /** Device probe table descriptor */
 struct bhnd_device {
-	const struct bhnd_device_match	 core;			/**< core match descriptor */ 
-	const char			*desc;			/**< device description, or NULL. */
-	const struct bhnd_device_quirk	*quirks_table;		/**< quirks table for this device, or NULL */
-	uint32_t			 device_flags;		/**< required BHND_DF_* flags */
+	const struct bhnd_device_match	 core;		/**< core match descriptor */ 
+	const char			*desc;		/**< device description, or NULL. */
+	const struct bhnd_device_quirk	*quirks_table;	/**< quirks table for this device, or NULL */
+	uint32_t			 device_flags;	/**< required BHND_DF_* flags */
 };
 
 #define	_BHND_DEVICE(_vendor, _device, _desc, _quirks,		\
