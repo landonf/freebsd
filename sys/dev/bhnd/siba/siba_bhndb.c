@@ -60,6 +60,7 @@ __FBSDID("$FreeBSD$");
 
 static int	siba_bhndb_wars_hwup(struct siba_softc *sc);
 
+/* Bridge-specific core device quirks */
 enum {
 	/** When PCIe-bridged, the D11 core's initiator request
 	 *  timeout must be disabled to prevent D11 from entering a
@@ -70,6 +71,10 @@ enum {
 static struct bhnd_device_quirk bridge_quirks[] = {
 	BHND_CHIP_QUIRK(4311, HWREV_EQ(2), SIBA_QUIRK_PCIE_D11_SB_TIMEOUT),
 	BHND_CHIP_QUIRK(4312, HWREV_EQ(0), SIBA_QUIRK_PCIE_D11_SB_TIMEOUT),
+};
+
+static struct bhnd_device bridge_devs[] = {
+	BHND_DEVICE(PCI,	"",	bridge_quirks),
 };
 
 static int
@@ -247,8 +252,8 @@ siba_bhndb_wars_hwup(struct siba_softc *sc)
 	uint32_t		 quirks;
 	int			 error;
 
-	quirks = bhnd_device_quirks(sc->hostb_dev, bridge_quirks,
-	    sizeof(bridge_quirks[0]));
+	quirks = bhnd_device_quirks(sc->hostb_dev, bridge_devs,
+	    sizeof(bridge_devs[0]));
 
 	if (quirks & SIBA_QUIRK_PCIE_D11_SB_TIMEOUT) {
 		if ((error = siba_bhndb_wars_pcie_clear_d11_timeout(sc)))
