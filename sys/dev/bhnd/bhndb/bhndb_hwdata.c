@@ -70,7 +70,7 @@ __FBSDID("$FreeBSD$");
  */
 #define	BHNDB_DEFAULT_PRIO(...) {		\
 	.match	= {				\
-		BHND_MATCH_CORE_ANY,		\
+		BHND_MATCH_ANY	,		\
 	},					\
 	.priority = (BHNDB_PRIORITY_DEFAULT),	\
 	BHNDB_PORTS(__VA_ARGS__)		\

@@ -68,8 +68,8 @@ static struct bhnd_device_quirk bhnd_pcie_quirks[];
 
 #define	BHND_PCI_QUIRKS		bhnd_pci_quirks
 #define	BHND_PCIE_QUIRKS	bhnd_pcie_quirks
-#define	BHND_PCI_DEV(_core, _desc, ...)					\
-	{ BHND_DEVICE(_core, _desc, BHND_ ## _core ## _QUIRKS, NULL,	\
+#define	BHND_PCI_DEV(_core, _desc, ...)				\
+	{ BHND_DEVICE(_core, _desc, BHND_ ## _core ## _QUIRKS,	\
 	    ## __VA_ARGS__), BHND_PCI_REGFMT_ ## _core }
 
 static const struct bhnd_pci_device {
@@ -87,7 +87,9 @@ static const struct bhnd_pci_device {
 /* Device quirks tables */
 static struct bhnd_device_quirk bhnd_pci_quirks[] = { BHND_DEVICE_QUIRK_END };
 static struct bhnd_device_quirk bhnd_pcie_quirks[] = {
+#ifdef TODO
 	{ BHND_HWREV_GTE	(10),	BHND_PCI_QUIRK_SD_C22_EXTADDR },
+#endif
 	BHND_DEVICE_QUIRK_END
 };
 

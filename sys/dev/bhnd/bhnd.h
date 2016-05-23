@@ -41,6 +41,7 @@
 #include "bhnd_types.h"
 #include "bhnd_debug.h"
 #include "bhnd_bus_if.h"
+#include "bhnd_match.h"
 
 extern devclass_t bhnd_devclass;
 extern devclass_t bhnd_hostb_devclass;
@@ -169,17 +170,6 @@ struct bhnd_core_info {
 	int		unit;		/**< bus-assigned core unit */
 };
 
-
-/**
- * A hardware revision match descriptor.
- */
-struct bhnd_hwrev_match {
-	uint16_t	start;	/**< first revision, or BHND_HWREV_INVALID
-					     to match on any revision. */
-	uint16_t	end;	/**< last revision, or BHND_HWREV_INVALID
-					     to match on any revision. */
-};
-
 /**
 * A bhnd(4) bus resource.
 * 
@@ -193,215 +183,16 @@ struct bhnd_resource {
 					 *   is MMIO accessible. */
 };
 
-/** 
- * Wildcard hardware revision match descriptor.
- */
-#define	BHND_HWREV_ANY		{ BHND_HWREV_INVALID, BHND_HWREV_INVALID }
-#define	BHND_HWREV_IS_ANY(_m)	\
-	((_m)->start == BHND_HWREV_INVALID && (_m)->end == BHND_HWREV_INVALID)
-
-/**
- * Hardware revision match descriptor for an inclusive range.
- * 
- * @param _start The first applicable hardware revision.
- * @param _end The last applicable hardware revision, or BHND_HWREV_INVALID
- * to match on any revision.
- */
-#define	BHND_HWREV_RANGE(_start, _end)	{ _start, _end }
-
-/**
- * Hardware revision match descriptor for a single revision.
- * 
- * @param _hwrev The hardware revision to match on.
- */
-#define	BHND_HWREV_EQ(_hwrev)	BHND_HWREV_RANGE(_hwrev, _hwrev)
-
-/**
- * Hardware revision match descriptor for any revision equal to or greater
- * than @p _start.
- * 
- * @param _start The first hardware revision to match on.
- */
-#define	BHND_HWREV_GTE(_start)	BHND_HWREV_RANGE(_start, BHND_HWREV_INVALID)
-
-/**
- * Hardware revision match descriptor for any revision equal to or less
- * than @p _end.
- * 
- * @param _end The last hardware revision to match on.
- */
-#define	BHND_HWREV_LTE(_end)	BHND_HWREV_RANGE(0, _end)
-
-
-/** A core match descriptor. */
-struct bhnd_core_match {
-	/** Select fields to be matched */
-	uint16_t
-		match_core_vendor:1,
-		match_core_id:1,
-		match_core_rev:1,
-		match_core_class:1,
-		match_core_unit:1,
-		match_chip_id:1,
-		match_chip_rev:1,
-		match_chip_pkg:1,
-		match_board_vendor:1,
-		match_board_type:1,
-		match_board_rev:1,
-		match_board_srom_rev:1,
-		match_flags_unused:2;
-	
-	uint16_t		core_vendor;	/**< required JEP106 device vendor */
-	uint16_t		core_id;	/**< required core ID */
-	struct bhnd_hwrev_match	core_rev;	/**< matching core revisions. */
-	bhnd_devclass_t		core_class;	/**< required bhnd class */
-	int			core_unit;	/**< required core unit */
-
-	
-};
-
-#define	BHND_MATCH_CORE_VENDOR(_vendor)	\
-	.match_core_vendor = 1, .core_vendor = (_vendor)
-
-#define	BHND_MATCH_CORE_ID(_id)		\
-	.match_core_id = 1, .core_id = (_id)
-
-#define	BHND_MATCH_CORE_REV(_rev)	\
-	.match_core_rev = 1, .core_rev = BHND_HWREV_ ## _rev
-
-#define	BHND_MATCH_CORE_CLASS(_cls)	\
-	.match_core_class = 1, .core_class = (_cls)
-
-#define	BHND_MATCH_CORE_UNIT(_unit)	\
-	.match_core_unit = 1, .core_unit = (_unit)
-
-/**
- * Core match descriptor matching against the given @p _vendor and
- * @p _id,
- */
-#define	BHND_MATCH_CORE(_vendor, _id)		\
-	BHND_MATCH_CORE_VENDOR(_vendor),	\
-	BHND_MATCH_CORE_ID(_id)
-
-/** 
- * Wildcard core match descriptor.
- */
-#define	BHND_MATCH_CORE_ANY	0
-
-/**
- * A chipset match descriptor.
- * 
- * @warning Matching on board/nvram attributes relies on NVRAM access, and will
- * fail if a valid NVRAM device cannot be found, or is not yet attached.
- */
-struct bhnd_chip_match {
-	/** Select fields to be matched */
-	uint16_t
-		match_chip_id:1,
-		match_chip_rev:1,
-		match_chip_pkg:1,
-		match_board_vendor:1,
-		match_board_type:1,
-		match_board_rev:1,
-		match_board_srom_rev:1,
-		match_chip_any:1,
-		match_flags_unused:8;
-
-	uint16_t		chip_id;	/**< required chip id */
-	struct bhnd_hwrev_match	chip_rev;	/**< matching chip revisions */
-	uint8_t			chip_pkg;	/**< required package */
-
-	uint16_t		board_vendor;	/**< required board vendor */
-	uint16_t		board_type;	/**< required board type */
-	struct bhnd_hwrev_match	board_rev;	/**< matching board revisions */
-
-	struct bhnd_hwrev_match	board_srom_rev;	/**< matching board srom revisions */
-};
-
-#define	BHND_CHIP_MATCH_ANY		\
-	.match_chip_any = 1
-
-#define	BHND_CHIP_MATCH_IS_ANY(_m)	\
-	((_m)->match_chip_any == 1)
-
-#define	BHND_CHIP_MATCH_REQ_BOARD_INFO(_m)				\
-	((_m)->match_board_srom_rev || (_m)->match_board_vendor ||	\
-	    (_m)->match_board_type || (_m)->match_board_rev)
-
-/** Set the required chip ID within a bhnd_chip_match instance */
-#define	BHND_CHIP_ID(_cid)		\
-	.match_chip_id = 1, .chip_id = BHND_CHIPID_BCM ## _cid
-
-/** Set the required chip revision range within a bhnd_chip_match instance */
-#define	BHND_CHIP_REV(_rev)		\
-	.match_chip_rev = 1, .chip_rev = BHND_ ## _rev
-
-/** Set the required package ID within a bhnd_chip_match instance */
-#define	BHND_CHIP_PKG(_pkg)		\
-	.match_chip_pkg = 1, .chip_pkg = BHND_PKGID_BCM ## _pkg
-
-/** Set the required board vendor within a bhnd_chip_match instance */
-#define	BHND_CHIP_BVENDOR(_vend)		\
-	.match_board_vendor = 1, .board_vendor = _vend
-
-/** Set the required board type within a bhnd_chip_match instance */
-#define	BHND_CHIP_BTYPE(_btype)		\
-	.match_board_type = 1, .board_type = BHND_BOARD_ ## _btype
-
-/** Set the required SROM revision range within a bhnd_chip_match instance */
-#define	BHND_CHIP_SROMREV(_rev)		\
-	.match_board_srom_rev = 1, .board_srom_rev = BHND_ ## _rev
-
-/** Set the required board revision range within a bhnd_chip_match instance */
-#define	BHND_CHIP_BREV(_rev)	\
-	.match_board_rev = 1, .board_rev = BHND_ ## _rev
-
-/** Set the required board vendor and type within a bhnd_chip_match instance */
-#define	BHND_CHIP_BVT(_vend, _type)	\
-	BHND_CHIP_BVENDOR(_vend), BHND_CHIP_BTYPE(_type)
-
-/** Set the required board vendor, type, and revision within a bhnd_chip_match
- *  instance */
-#define	BHND_CHIP_BVTR(_vend, _type, _rev)	\
-	BHND_CHIP_BVT(_vend, _type), BHND_CHIP_BREV(_rev)
-
-/** Set the required chip and package ID within a bhnd_chip_match instance */
-#define	BHND_CHIP_IP(_cid, _pkg)	\
-	BHND_CHIP_ID(_cid), BHND_CHIP_PKG(_pkg)
-
-/** Set the required chip ID, package ID, and revision within a bhnd_chip_match
- *  instance */
-#define	BHND_CHIP_IPR(_cid, _pkg, _rev)	\
-	BHND_CHIP_ID(_cid), BHND_CHIP_PKG(_pkg), BHND_CHIP_REV(_rev)
-
-/** Set the required chip ID and revision within a bhnd_chip_match
- *  instance */
-#define	BHND_CHIP_IR(_cid, _rev)	\
-	BHND_CHIP_ID(_cid), BHND_CHIP_REV(_rev)
-
-/**
- * Chipset quirk table descriptor.
- */
-struct bhnd_chip_quirk {
-	const struct bhnd_chip_match	 chip;		/**< chip match descriptor */ 
-	uint32_t			 quirks;	/**< quirk flags */
-};
-
-#define	BHND_CHIP_QUIRK_END	{ { BHND_CHIP_MATCH_ANY }, 0 }
-
-#define	BHND_CHIP_QUIRK_IS_END(_q)	\
-	(BHND_CHIP_MATCH_IS_ANY(&(_q)->chip) && (_q)->quirks == 0)
-
 /**
  * Device quirk table descriptor.
  */
 struct bhnd_device_quirk {
-	struct bhnd_hwrev_match	 hwrev;		/**< applicable hardware revisions */
+	struct bhnd_device_match desc;		/**< device match descriptor */
 	uint32_t		 quirks;	/**< quirk flags */
 };
-#define	BHND_DEVICE_QUIRK_END		{ BHND_HWREV_ANY, 0 }
+#define	BHND_DEVICE_QUIRK_END		{ { BHND_MATCH_ANY }, 0 }
 #define	BHND_DEVICE_QUIRK_IS_END(_q)	\
-	(BHND_HWREV_IS_ANY(&(_q)->hwrev) && (_q)->quirks == 0)
+	(((_q)->desc.m.match_flags == 0) && (_q)->quirks == 0)
 
 enum {
 	BHND_DF_ANY	= 0,
@@ -411,32 +202,31 @@ enum {
 
 /** Device probe table descriptor */
 struct bhnd_device {
-	const struct bhnd_core_match	 core;			/**< core match descriptor */ 
+	const struct bhnd_device_match	 core;			/**< core match descriptor */ 
 	const char			*desc;			/**< device description, or NULL. */
 	const struct bhnd_device_quirk	*quirks_table;		/**< quirks table for this device, or NULL */
-	const struct bhnd_chip_quirk	*chip_quirks_table;	/**< chipset-specific quirks for this device, or NULL */
 	uint32_t			 device_flags;		/**< required BHND_DF_* flags */
 };
 
-#define	_BHND_DEVICE(_vendor, _device, _desc, _quirks, _chip_quirks,	\
-     _flags, ...)							\
-	{ { BHND_MATCH_CORE(BHND_MFGID_ ## _vendor,			\
-	    BHND_COREID_ ## _device) }, _desc, _quirks,			\
-	    _chip_quirks, _flags }
+#define	_BHND_DEVICE(_vendor, _device, _desc, _quirks,		\
+     _flags, ...)						\
+	{ { BHND_MATCH_CORE(BHND_MFGID_ ## _vendor,		\
+	    BHND_COREID_ ## _device) }, _desc, _quirks,		\
+	    _flags }
 
-#define	BHND_MIPS_DEVICE(_device, _desc, _quirks, _chip_quirks, ...)	\
-	_BHND_DEVICE(MIPS, _device, _desc, _quirks, _chip_quirks,	\
+#define	BHND_MIPS_DEVICE(_device, _desc, _quirks, ...)	\
+	_BHND_DEVICE(MIPS, _device, _desc, _quirks,	\
 	    ## __VA_ARGS__, 0)
 
-#define	BHND_ARM_DEVICE(_device, _desc, _quirks, _chip_quirks, ...)	\
-	_BHND_DEVICE(ARM, _device, _desc, _quirks, _chip_quirks,	\
+#define	BHND_ARM_DEVICE(_device, _desc, _quirks, ...)	\
+	_BHND_DEVICE(ARM, _device, _desc, _quirks,	\
 	    ## __VA_ARGS__, 0)
 
-#define	BHND_DEVICE(_device, _desc, _quirks, _chip_quirks, ...)		\
-	_BHND_DEVICE(BCM, _device, _desc, _quirks, _chip_quirks,	\
+#define	BHND_DEVICE(_device, _desc, _quirks, ...)		\
+	_BHND_DEVICE(BCM, _device, _desc, _quirks,	\
 	    ## __VA_ARGS__, 0)
 
-#define	BHND_DEVICE_END	{ { BHND_MATCH_CORE_ANY }, NULL, NULL, NULL, 0 }
+#define	BHND_DEVICE_END	{ { BHND_MATCH_ANY }, NULL, NULL, 0 }
 
 const char			*bhnd_vendor_name(uint16_t vendor);
 const char			*bhnd_port_type_name(bhnd_port_type port_type);
@@ -474,17 +264,17 @@ bool				 bhnd_core_matches(
 
 bool				 bhnd_chip_matches(
 				     const struct bhnd_chipid *chipid,
-				     const struct bhnd_board_info *binfo,
 				     const struct bhnd_chip_match *desc);
+
+bool				 bhnd_board_matches(
+				     const struct bhnd_board_info *info,
+				     const struct bhnd_board_match *desc);
 
 bool				 bhnd_hwrev_matches(uint16_t hwrev,
 				     const struct bhnd_hwrev_match *desc);
 
-uint32_t			 bhnd_chip_quirks(device_t dev,
-				     const struct bhnd_chip_quirk *table);
-
 bool				 bhnd_device_matches(device_t dev,
-				     const struct bhnd_core_match *desc);
+				     const struct bhnd_device_match *desc);
 
 const struct bhnd_device	*bhnd_device_lookup(device_t dev,
 				     const struct bhnd_device *table,
@@ -495,7 +285,6 @@ uint32_t			 bhnd_device_quirks(device_t dev,
 				     size_t entry_size);
 
 struct bhnd_core_info		 bhnd_get_core_info(device_t dev);
-
 
 int				 bhnd_alloc_resources(device_t dev,
 				     struct resource_spec *rs,

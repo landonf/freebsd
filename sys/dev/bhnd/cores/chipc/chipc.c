@@ -65,24 +65,28 @@ static const struct resource_spec chipc_rspec[CHIPC_MAX_RSPEC] = {
 };
 
 static struct bhnd_device_quirk chipc_quirks[];
-static struct bhnd_chip_quirk chipc_chip_quirks[];
+//static struct bhnd_chip_quirk chipc_chip_quirks[];
 
 /* Supported device identifiers */
 static const struct bhnd_device chipc_devices[] = {
-	BHND_DEVICE(CC, "CC", chipc_quirks, chipc_chip_quirks),
+	BHND_DEVICE(CC, "CC", chipc_quirks),
 	BHND_DEVICE_END
 };
 
 
 /* Device quirks table */
 static struct bhnd_device_quirk chipc_quirks[] = {
+#ifdef TODO_MATCH
 	{ BHND_HWREV_GTE	(32),	CHIPC_QUIRK_SUPPORTS_SPROM },
 	{ BHND_HWREV_GTE	(35),	CHIPC_QUIRK_SUPPORTS_NFLASH },
+#endif
 	BHND_DEVICE_QUIRK_END
 };
 
+#ifdef TODO_MATCH
 /* Chip-specific quirks table */
-static struct bhnd_chip_quirk chipc_chip_quirks[] = {
+static struct bhnd_chip_quirk chipc_quirks[] = {
+	
 	/* 4331 12x9 packages */
 	{{ BHND_CHIP_IP(4331, 4331TN) },
 		CHIPC_QUIRK_4331_GPIO2_5_MUX_SPROM
@@ -113,6 +117,7 @@ static struct bhnd_chip_quirk chipc_chip_quirks[] = {
 
 	BHND_CHIP_QUIRK_END
 };
+#endif
 
 /* quirk and capability flag convenience macros */
 #define	CHIPC_QUIRK(_sc, _name)	\

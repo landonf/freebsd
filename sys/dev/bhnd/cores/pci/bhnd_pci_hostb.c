@@ -67,8 +67,11 @@ __FBSDID("$FreeBSD$");
 
 static const struct bhnd_device_quirk bhnd_pci_quirks[];
 static const struct bhnd_device_quirk bhnd_pcie_quirks[];
+
+#ifdef TODO
 static const struct bhnd_chip_quirk bhnd_pci_chip_quirks[];
 static const struct bhnd_chip_quirk bhnd_pcie_chip_quirks[];
+#endif
 
 /* Device driver work-around variations */
 typedef enum {
@@ -88,22 +91,25 @@ static int	bhnd_pci_wars_hwdown(struct bhnd_pcihb_softc *sc,
  * device/quirk tables
  */
 
-#define	BHND_PCI_DEV(_core, _quirks, _chip_quirks)		\
-	BHND_DEVICE(_core, "", _quirks, _chip_quirks, BHND_DF_HOSTB)
+#define	BHND_PCI_DEV(_core, _quirks)		\
+	BHND_DEVICE(_core, "", _quirks, BHND_DF_HOSTB)
 
 static const struct bhnd_device bhnd_pci_devs[] = {
-	BHND_PCI_DEV(PCI,	bhnd_pci_quirks,	bhnd_pci_chip_quirks),
-	BHND_PCI_DEV(PCIE,	bhnd_pcie_quirks,	bhnd_pcie_chip_quirks),
+	BHND_PCI_DEV(PCI,	bhnd_pci_quirks),
+	BHND_PCI_DEV(PCIE,	bhnd_pcie_quirks),
 	BHND_DEVICE_END
 };
 
 static const struct bhnd_device_quirk bhnd_pci_quirks[] = {
+#ifdef TODO
 	{ BHND_HWREV_ANY,	BHND_PCI_QUIRK_SBTOPCI2_PREF_BURST },
 	{ BHND_HWREV_GTE(11),	BHND_PCI_QUIRK_SBTOPCI2_READMULTI |
 				BHND_PCI_QUIRK_CLKRUN_DSBL },
+#endif
 	BHND_DEVICE_QUIRK_END
 };
 
+#ifdef TODO
 static const struct bhnd_chip_quirk bhnd_pci_chip_quirks[] = {
 	/* BCM4321CB2 boards that require 960ns latency timer override */
 	{{ BHND_CHIP_BTYPE(BCM4321CB2) },
@@ -113,8 +119,10 @@ static const struct bhnd_chip_quirk bhnd_pci_chip_quirks[] = {
 
 	BHND_CHIP_QUIRK_END
 };
+#endif
 
 static const struct bhnd_device_quirk bhnd_pcie_quirks[] = {
+#ifdef TODO
 	{ BHND_HWREV_EQ		(0),	BHND_PCIE_QUIRK_SDR9_L0s_HANG },
 	{ BHND_HWREV_RANGE	(0,1),	BHND_PCIE_QUIRK_UR_STATUS_FIX },
 	{ BHND_HWREV_EQ		(1),	BHND_PCIE_QUIRK_PCIPM_REQEN },
@@ -129,10 +137,12 @@ static const struct bhnd_device_quirk bhnd_pcie_quirks[] = {
 	{ BHND_HWREV_GTE	(8),	BHND_PCIE_QUIRK_L1_TIMER_PERF },
 
 	{ BHND_HWREV_LTE	(17),	BHND_PCIE_QUIRK_MAX_MRRS_128 },
+#endif
 
 	BHND_DEVICE_QUIRK_END
 };
 
+#ifdef TODO
 static const struct bhnd_chip_quirk bhnd_pcie_chip_quirks[] = {
 	/* Apple boards on which BHND_BFL2_PCIEWAR_OVR should be assumed
 	 * to be set. */
@@ -170,6 +180,7 @@ static const struct bhnd_chip_quirk bhnd_pcie_chip_quirks[] = {
 
 	BHND_CHIP_QUIRK_END
 };
+#endif
 
 #define	BHND_PCI_SOFTC(_sc)	(&((_sc)->common))
 

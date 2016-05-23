@@ -308,7 +308,7 @@ bhnd_find_child(device_t dev, bhnd_devclass_t class, int unit)
 	};
 
 	if (unit == -1)
-		md.match_core_unit = 0;
+		md.m.match.core_unit = 0;
 
 	return bhnd_match_child(dev, &md);
 }
@@ -336,9 +336,10 @@ bhnd_match_child(device_t dev, const struct bhnd_core_match *desc)
 
 	match = NULL;
 	for (int i = 0; i < devcnt; i++) {
-		device_t dev = devlistp[i];
-		if (bhnd_device_matches(dev, desc)) {
-			match = dev;
+		struct bhnd_core_info ci = bhnd_get_core_info(devlistp[i]);
+
+		if (bhnd_core_matches(&ci, desc)) {
+			match = devlistp[i];
 			goto done;
 		}
 	}
@@ -455,20 +456,21 @@ bool
 bhnd_core_matches(const struct bhnd_core_info *core,
     const struct bhnd_core_match *desc)
 {
-	if (desc->match_core_vendor && desc->core_vendor != core->vendor)
+	if (desc->m.match.core_vendor && desc->core_vendor != core->vendor)
 		return (false);
 
-	if (desc->match_core_id && desc->core_id != core->device)
+	if (desc->m.match.core_id && desc->core_id != core->device)
 		return (false);
 
-	if (desc->match_core_unit && desc->core_unit != core->unit)
+	if (desc->m.match.core_unit && desc->core_unit != core->unit)
 		return (false);
 
-	if (desc->match_core_rev && 
+	if (desc->m.match.core_rev && 
 	    !bhnd_hwrev_matches(core->hwrev, &desc->core_rev))
 		return (false);
 
-	if (desc->match_core_class && desc->core_class != bhnd_core_class(core))
+	if (desc->m.match.core_class &&
+	    desc->core_class != bhnd_core_class(core))
 		return (false);
 
 	return true;
@@ -478,7 +480,6 @@ bhnd_core_matches(const struct bhnd_core_info *core,
  * Return true if the @p chip matches @p desc.
  * 
  * @param chip A bhnd chip identifier.
- * @param board The bhnd board info, or NULL if unavailable.
  * @param desc A match descriptor to compare against @p chip.
  * 
  * @retval true if @p chip matches @p match
@@ -486,43 +487,46 @@ bhnd_core_matches(const struct bhnd_core_info *core,
  */
 bool
 bhnd_chip_matches(const struct bhnd_chipid *chip,
-    const struct bhnd_board_info *board,
     const struct bhnd_chip_match *desc)
 {
-	/* Explicit wildcard match */
-	if (desc->match_chip_any)
-		return (true);
-
-	/* If board_info is missing, but required, we cannot match. */
-	if (BHND_CHIP_MATCH_REQ_BOARD_INFO(desc) && board == NULL)
+	if (desc->m.match.chip_id && chip->chip_id != desc->chip_id)
 		return (false);
 
-
-	/* Chip matching */
-	if (desc->match_chip_id && chip->chip_id != desc->chip_id)
+	if (desc->m.match.chip_pkg && chip->chip_pkg != desc->chip_pkg)
 		return (false);
 
-	if (desc->match_chip_pkg && chip->chip_pkg != desc->chip_pkg)
-		return (false);
-
-	if (desc->match_chip_rev &&
+	if (desc->m.match.chip_rev &&
 	    !bhnd_hwrev_matches(chip->chip_rev, &desc->chip_rev))
 		return (false);
 
+	return (true);
+}
 
-	/* Board info matching */
-	if (desc->match_board_srom_rev &&
+/**
+ * Return true if the @p board matches @p desc.
+ * 
+ * @param board The bhnd board info.
+ * @param desc A match descriptor to compare against @p board.
+ * 
+ * @retval true if @p chip matches @p match
+ * @retval false if @p chip does not match @p match.
+ */
+bool
+bhnd_board_matches(const struct bhnd_board_info *board,
+    const struct bhnd_board_match *desc)
+{
+	if (desc->m.match.board_srom_rev &&
 	    !bhnd_hwrev_matches(board->board_srom_rev, &desc->board_srom_rev))
 		return (false);
 
-	if (desc->match_board_vendor &&
+	if (desc->m.match.board_vendor &&
 	    board->board_vendor != desc->board_vendor)
 		return (false);
 
-	if (desc->match_board_type && board->board_type != desc->board_type)
+	if (desc->m.match.board_type && board->board_type != desc->board_type)
 		return (false);
 
-	if (desc->match_board_rev &&
+	if (desc->m.match.board_rev &&
 	    !bhnd_hwrev_matches(board->board_rev, &desc->board_rev))
 		return (false);
 
@@ -562,16 +566,56 @@ bhnd_hwrev_matches(uint16_t hwrev, const struct bhnd_hwrev_match *desc)
  * @retval false if @p dev does not match @p match.
  */
 bool
-bhnd_device_matches(device_t dev, const struct bhnd_core_match *desc)
+bhnd_device_matches(device_t dev, const struct bhnd_device_match *desc)
 {
-	struct bhnd_core_info ci = {
-		.vendor = bhnd_get_vendor(dev),
-		.device = bhnd_get_device(dev),
-		.unit = bhnd_get_core_unit(dev),
-		.hwrev = bhnd_get_hwrev(dev)
-	};
+	struct bhnd_core_info		 core;
+	const struct bhnd_chipid	*chip;
+	struct bhnd_board_info		 board;
+	device_t			 parent;
+	int				 error;
 
-	return bhnd_core_matches(&ci, desc);
+	/* Construct individual match descriptors */
+	struct bhnd_core_match	m_core	= { _BHND_CORE_MATCH_COPY(desc) };
+	struct bhnd_chip_match	m_chip	= { _BHND_CHIP_MATCH_COPY(desc) };
+	struct bhnd_board_match	m_board	= { _BHND_BOARD_MATCH_COPY(desc) };
+
+	/* Fetch and match core info */
+	if (m_core.m.match_flags) {
+		/* Only applicable to bhnd-attached cores */
+		parent = device_get_parent(dev);
+		if (device_get_devclass(parent) != bhnd_devclass) {
+			device_printf(dev, "attempting to match core "
+			    "attributes against non-core device\n");
+			return (false);
+		}
+
+		core = bhnd_get_core_info(dev);
+		if (!bhnd_core_matches(&core, &m_core))
+			return (false);
+	}
+
+	/* Fetch and match chip info */
+	if (m_chip.m.match_flags) {
+		chip = bhnd_get_chipid(dev);
+
+		if (!bhnd_chip_matches(chip, &m_chip))
+			return (false);
+	}
+
+	/* Fetch and match board info.
+	 *
+	 * This is not available until  after NVRAM is up; earlier device
+	 * matches should not include board requirements */
+	if (m_board.m.match_flags) {
+		if ((error = bhnd_read_board_info(dev, &board))) {
+			device_printf(dev, "failed to read required board info "
+			    "during device matching: %d\n", error);
+			return (false);
+		}
+	}
+
+	/* All matched */
+	return (true);
 }
 
 /**
@@ -616,61 +660,6 @@ bhnd_device_lookup(device_t dev, const struct bhnd_device *table,
 }
 
 /**
- * Scan @p table for all quirk flags applicable to @p dev's chip identifier
- * (as returned by bhnd_get_chipid).
- * 
- * @param dev A bhnd device.
- * @param table The chip quirk table to search.
- * 
- * @return returns all matching quirk flags.
- */
-uint32_t
-bhnd_chip_quirks(device_t dev, const struct bhnd_chip_quirk *table)
-{
-	struct bhnd_board_info		 bi, *board;
-	const struct bhnd_chipid	*cid;
-	const struct bhnd_chip_quirk	*qent;
-	uint32_t			 quirks;
-	int				 error;
-	bool				 need_boardinfo;
-
-	cid = bhnd_get_chipid(dev);
-	quirks = 0;
-	need_boardinfo = 0;
-	board = NULL;
-
-	/* Determine whether quirk matching requires board_info; we want to
-	 * avoid fetching board_info for early devices (e.g. ChipCommon)
-	 * that are brought up prior to NVRAM being readable. */
-	for (qent = table; !BHND_CHIP_QUIRK_IS_END(qent); qent++) {
-		if (!BHND_CHIP_MATCH_REQ_BOARD_INFO(&qent->chip))
-			continue;
-
-		need_boardinfo = true;
-		break;
-	}
-
-	/* If required, fetch board info */
-	if (need_boardinfo) {
-		error = bhnd_read_board_info(dev, &bi);
-		if (!error) {
-			board = &bi;
-		} else {
-			device_printf(dev, "failed to read required board info "
-			    "during quirk matching: %d\n", error);
-		}
-	}
-
-	/* Apply all matching quirk flags */
-	for (qent = table; !BHND_CHIP_QUIRK_IS_END(qent); qent++) {
-		if (bhnd_chip_matches(cid, board, &qent->chip))
-			quirks |= qent->quirks;
-	}
-
-	return (quirks);
-}
-
-/**
  * Scan @p table for all quirk flags applicable to @p dev.
  * 
  * @param dev A bhnd device to match against @p table.
@@ -701,14 +690,10 @@ bhnd_device_quirks(device_t dev, const struct bhnd_device *table,
 	/* Collect matching device quirk entries */
 	if ((qtable = dent->quirks_table) != NULL) {
 		for (qent = qtable; !BHND_DEVICE_QUIRK_IS_END(qent); qent++) {
-			if (bhnd_hwrev_matches(hwrev, &qent->hwrev))
+			if (bhnd_device_matches(dev, &qent->desc))
 				quirks |= qent->quirks;
 		}
 	}
-
-	/* Collect matching chip quirk entries */
-	if (dent->chip_quirks_table != NULL)
-		quirks |= bhnd_chip_quirks(dev, dent->chip_quirks_table);
 
 	return (quirks);
 }
