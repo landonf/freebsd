@@ -637,9 +637,12 @@ bhnd_device_lookup(device_t dev, const struct bhnd_device *table,
 {
 	const struct bhnd_device	*entry;
 	device_t			 hostb, parent;
+	bhnd_attach_type		 attach_type;
+	uint32_t			 dflags;
 
 	parent = device_get_parent(dev);
 	hostb = bhnd_find_hostb_device(parent);
+	attach_type = bhnd_get_attach_type(dev);
 
 	for (entry = table; entry->desc != NULL; entry =
 	    (const struct bhnd_device *) ((const char *) entry + entry_size))
@@ -649,10 +652,23 @@ bhnd_device_lookup(device_t dev, const struct bhnd_device *table,
 			continue;
 
 		/* match device flags */
-		if (entry->device_flags & BHND_DF_HOSTB) {			
+		dflags = entry->device_flags;
+
+		/* hostb implies BHND_ATTACH_ADAPTER requirement */
+		if (dflags & BHND_DF_HOSTB)
+			dflags |= BHND_DF_ADAPTER;
+	
+		if (dflags & BHND_DF_ADAPTER)
+			if (attach_type != BHND_ATTACH_ADAPTER)
+				continue;
+
+		if (dflags & BHND_DF_HOSTB)
 			if (dev != hostb)
 				continue;
-		}
+
+		if (dflags & BHND_DF_SOC)
+			if (attach_type != BHND_ATTACH_NATIVE)
+				continue;
 
 		/* device found */
 		return (entry);

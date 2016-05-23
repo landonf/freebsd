@@ -210,8 +210,12 @@ struct bhnd_device_quirk {
 
 enum {
 	BHND_DF_ANY	= 0,
-	BHND_DF_HOSTB	= (1<<0)	/**< core is serving as the bus'
-					  *  host bridge */
+	BHND_DF_HOSTB	= (1<<0),	/**< core is serving as the bus' host
+					  *  bridge. implies BHND_DF_ADAPTER */
+	BHND_DF_SOC	= (1<<1),	/**< core is attached to a native
+					     bus (BHND_ATTACH_NATIVE) */
+	BHND_DF_ADAPTER	= (1<<2),	/**< core is attached to a bridged
+					  *  adapter (BHND_ATTACH_ADAPTER) */
 };
 
 /** Device probe table descriptor */
