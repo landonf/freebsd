@@ -190,6 +190,20 @@ struct bhnd_device_quirk {
 	struct bhnd_device_match desc;		/**< device match descriptor */
 	uint32_t		 quirks;	/**< quirk flags */
 };
+
+#define	BHND_CORE_QUIRK(_rev, _flags)		\
+	{{ BHND_MATCH_CORE_REV(_rev) }, (_flags) }
+
+#define	BHND_CHIP_QUIRK(_chip, _rev, _flags)	\
+	{{ BHND_CHIP_IR(BCM ## _chip, _rev) }, (_flags) }
+
+#define	BHND_PKG_QUIRK(_chip, _pkg, _flags)	\
+	{{ BHND_CHIP_IP(BCM ## _chip, BCM ## _chip ## _pkg) }, (_flags) }
+
+#define	BHND_BOARD_QUIRK(_board, _flags)	\
+	{{ BHND_MATCH_BOARD_TYPE(_board) },	\
+	    (_flags) }
+
 #define	BHND_DEVICE_QUIRK_END		{ { BHND_MATCH_ANY }, 0 }
 #define	BHND_DEVICE_QUIRK_IS_END(_q)	\
 	(((_q)->desc.m.match_flags == 0) && (_q)->quirks == 0)

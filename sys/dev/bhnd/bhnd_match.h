@@ -127,7 +127,7 @@ struct bhnd_core_match {
 #define	BHND_MATCH_CORE_VENDOR(_v)	_BHND_SET_MATCH_FIELD(core_vendor, _v)
 #define	BHND_MATCH_CORE_ID(_id)		_BHND_SET_MATCH_FIELD(core_id, _id)
 #define	BHND_MATCH_CORE_REV(_rev)	_BHND_SET_MATCH_FIELD(core_rev,	\
-					    BHND_HWREV_ ## _rev)
+					    BHND_ ## _rev)
 #define	BHND_MATCH_CORE_CLASS(_cls)	_BHND_SET_MATCH_FIELD(core_class, _cls)
 #define	BHND_MATCH_CORE_UNIT(_unit)	_BHND_SET_MATCH_FIELD(core_unit, _unit)
 
@@ -171,7 +171,7 @@ struct bhnd_chip_match {
 
 /** Set the required chip revision range within a bhnd match descriptor */
 #define	BHND_CHIP_REV(_rev)	_BHND_SET_MATCH_FIELD(chip_rev,	\
-					    BHND_HWREV_ ## _rev)
+					    BHND_ ## _rev)
 
 /** Set the required package ID within a bhnd match descriptor */
 #define	BHND_CHIP_PKG(_pkg)	_BHND_SET_MATCH_FIELD(chip_pkg,	\
@@ -179,17 +179,17 @@ struct bhnd_chip_match {
 
 /** Set the required chip and package ID within a bhnd match descriptor */
 #define	BHND_CHIP_IP(_cid, _pkg)	\
-    BHND_CHIP_ID(_cid), BHND_MATCH_CHIP_PKG(_pkg)
+    BHND_CHIP_ID(_cid), BHND_CHIP_PKG(_pkg)
 
 /** Set the required chip ID, package ID, and revision within a bhnd_device_match
  *  instance */
 #define	BHND_CHIP_IPR(_cid, _pkg, _rev)	\
-    BHND_CHIP_ID(_cid), BHND_CHIP_M_PKG(_pkg), BHND_CHIP_M_REV(_rev)
+    BHND_CHIP_ID(_cid), BHND_CHIP_PKG(_pkg), BHND_CHIP_REV(_rev)
 
 /** Set the required chip ID and revision within a bhnd_device_match
  *  instance */
 #define	BHND_CHIP_IR(_cid, _rev)	\
-    BHND_CHIP_ID(_cid), BHND_MATCH_CHIP_REV(_rev)
+    BHND_CHIP_ID(_cid), BHND_CHIP_REV(_rev)
 
 /**
  * A bhnd(4) board match descriptor.
@@ -225,14 +225,14 @@ struct bhnd_board_match {
 
 /** Set the required board type within a bhnd match descriptor */
 #define	BHND_MATCH_BOARD_TYPE(_type)	_BHND_SET_MATCH_FIELD(board_type, \
-					    BHND_BOARD_ ## _t)
+					    BHND_BOARD_ ## _type)
 /** Set the required SROM revision range within a bhnd match descriptor */
 #define	BHND_MATCH_SROMREV(_rev)	_BHND_SET_MATCH_FIELD(board_srom_rev, \
 					    BHND_HWREV_ ## _rev)
 
 /** Set the required board revision range within a bhnd match descriptor */
 #define	BHND_MATCH_BOARD_REV(_rev)	_BHND_SET_MATCH_FIELD(board_rev, \
-					    BHND_HWREV_ ## _rev)
+					    BHND_ ## _rev)
 
 /** Set the required board vendor and type within a bhnd match descriptor */
 #define	BHND_MATCH_BOARD(_vend, _type)	\

@@ -65,7 +65,6 @@ static const struct resource_spec chipc_rspec[CHIPC_MAX_RSPEC] = {
 };
 
 static struct bhnd_device_quirk chipc_quirks[];
-//static struct bhnd_chip_quirk chipc_chip_quirks[];
 
 /* Supported device identifiers */
 static const struct bhnd_device chipc_devices[] = {
@@ -76,48 +75,24 @@ static const struct bhnd_device chipc_devices[] = {
 
 /* Device quirks table */
 static struct bhnd_device_quirk chipc_quirks[] = {
-#ifdef TODO_MATCH
-	{ BHND_HWREV_GTE	(32),	CHIPC_QUIRK_SUPPORTS_SPROM },
-	{ BHND_HWREV_GTE	(35),	CHIPC_QUIRK_SUPPORTS_NFLASH },
-#endif
+	/* core revision quirks */
+	BHND_CORE_QUIRK	(HWREV_GTE(32),		CHIPC_QUIRK_SUPPORTS_SPROM),
+	BHND_CORE_QUIRK	(HWREV_GTE(35),		CHIPC_QUIRK_SUPPORTS_NFLASH),
+
+	/* 4331 quirks*/
+	BHND_CHIP_QUIRK	(4331,	HWREV_ANY,	CHIPC_QUIRK_4331_EXTPA_MUX_SPROM),
+	BHND_PKG_QUIRK	(4331,	TN,		CHIPC_QUIRK_4331_GPIO2_5_MUX_SPROM),
+	BHND_PKG_QUIRK	(4331,	TNA0,		CHIPC_QUIRK_4331_GPIO2_5_MUX_SPROM),
+	BHND_PKG_QUIRK	(4331,	TT,		CHIPC_QUIRK_4331_EXTPA2_MUX_SPROM),
+
+	/* 4360 quirks */
+	BHND_CHIP_QUIRK	(4352,	HWREV_LTE(2),	CHIPC_QUIRK_4360_FEM_MUX_SPROM),
+	BHND_CHIP_QUIRK	(43460,	HWREV_LTE(2),	CHIPC_QUIRK_4360_FEM_MUX_SPROM),
+	BHND_CHIP_QUIRK	(43462,	HWREV_LTE(2),	CHIPC_QUIRK_4360_FEM_MUX_SPROM),
+	BHND_CHIP_QUIRK	(43602,	HWREV_LTE(2),	CHIPC_QUIRK_4360_FEM_MUX_SPROM),
+
 	BHND_DEVICE_QUIRK_END
 };
-
-#ifdef TODO_MATCH
-/* Chip-specific quirks table */
-static struct bhnd_chip_quirk chipc_quirks[] = {
-	
-	/* 4331 12x9 packages */
-	{{ BHND_CHIP_IP(4331, 4331TN) },
-		CHIPC_QUIRK_4331_GPIO2_5_MUX_SPROM
-	},
-	{{ BHND_CHIP_IP(4331, 4331TNA0) },
-		CHIPC_QUIRK_4331_GPIO2_5_MUX_SPROM
-	},
-
-	/* 4331 12x12 packages */
-	{{ BHND_CHIP_IPR(4331, 4331TT, HWREV_GTE(1)) },
-		CHIPC_QUIRK_4331_EXTPA2_MUX_SPROM
-	},
-
-	/* 4331 (all packages/revisions) */
-	{{ BHND_CHIP_ID(4331) },
-		CHIPC_QUIRK_4331_EXTPA_MUX_SPROM
-	},
-
-	/* 4360 family (all revs <= 2) */
-	{{ BHND_CHIP_IR(4352, HWREV_LTE(2)) },
-		CHIPC_QUIRK_4360_FEM_MUX_SPROM },
-	{{ BHND_CHIP_IR(43460, HWREV_LTE(2)) },
-		CHIPC_QUIRK_4360_FEM_MUX_SPROM },
-	{{ BHND_CHIP_IR(43462, HWREV_LTE(2)) },
-		CHIPC_QUIRK_4360_FEM_MUX_SPROM },
-	{{ BHND_CHIP_IR(43602, HWREV_LTE(2)) },
-		CHIPC_QUIRK_4360_FEM_MUX_SPROM },
-
-	BHND_CHIP_QUIRK_END
-};
-#endif
 
 /* quirk and capability flag convenience macros */
 #define	CHIPC_QUIRK(_sc, _name)	\

@@ -67,12 +67,10 @@ enum {
 	SIBA_QUIRK_PCIE_D11_SB_TIMEOUT	= (1<<0)
 };
 
-#ifdef TODO
-static struct bhnd_chip_quirk chip_quirks[] = {
-	{{ BHND_CHIP_IR(4311, HWREV_EQ(2)) }, SIBA_QUIRK_PCIE_D11_SB_TIMEOUT },
-	{{ BHND_CHIP_IR(4312, HWREV_EQ(0)) }, SIBA_QUIRK_PCIE_D11_SB_TIMEOUT },
+static struct bhnd_device_quirk bridge_quirks[] = {
+	BHND_CHIP_QUIRK(4311, HWREV_EQ(2), SIBA_QUIRK_PCIE_D11_SB_TIMEOUT),
+	BHND_CHIP_QUIRK(4312, HWREV_EQ(0), SIBA_QUIRK_PCIE_D11_SB_TIMEOUT),
 };
-#endif
 
 static int
 siba_bhndb_probe(device_t dev)
@@ -246,17 +244,16 @@ siba_bhndb_wars_pcie_clear_d11_timeout(struct siba_softc *sc)
 static int
 siba_bhndb_wars_hwup(struct siba_softc *sc)
 {
-#ifdef TODO
 	uint32_t		 quirks;
 	int			 error;
 
-	quirks = bhnd_chip_quirks(sc->hostb_dev, chip_quirks);
+	quirks = bhnd_device_quirks(sc->hostb_dev, bridge_quirks,
+	    sizeof(bridge_quirks[0]));
 
 	if (quirks & SIBA_QUIRK_PCIE_D11_SB_TIMEOUT) {
 		if ((error = siba_bhndb_wars_pcie_clear_d11_timeout(sc)))
 			return (error);
 	}
-#endif
 
 	return (0);
 }

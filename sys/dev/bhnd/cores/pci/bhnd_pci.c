@@ -87,9 +87,8 @@ static const struct bhnd_pci_device {
 /* Device quirks tables */
 static struct bhnd_device_quirk bhnd_pci_quirks[] = { BHND_DEVICE_QUIRK_END };
 static struct bhnd_device_quirk bhnd_pcie_quirks[] = {
-#ifdef TODO
-	{ BHND_HWREV_GTE	(10),	BHND_PCI_QUIRK_SD_C22_EXTADDR },
-#endif
+	BHND_CORE_QUIRK(HWREV_GTE(10),	BHND_PCI_QUIRK_SD_C22_EXTADDR),
+
 	BHND_DEVICE_QUIRK_END
 };
 
