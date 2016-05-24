@@ -80,7 +80,7 @@ static struct bhnd_device_quirk chipc_quirks[] = {
 	BHND_CORE_QUIRK	(HWREV_GTE(49),		CHIPC_QUIRK_IPX_OTPLAYOUT_SIZE),
 
 	/* 4706 variant quirks */
-	BHND_CORE_QUIRK	(HWREV_EQ (35),		CHIPC_QUIRK_4706_NFLASH), /* BCM5357? */
+	BHND_CORE_QUIRK	(HWREV_EQ (38),		CHIPC_QUIRK_4706_NFLASH), /* BCM5357? */
 	BHND_CHIP_QUIRK	(4706,	HWREV_ANY,	CHIPC_QUIRK_4706_NFLASH),
 
 	/* 4331 quirks*/
@@ -122,7 +122,6 @@ static const struct chipc_hint {
 	{ "cfi",	0, SYS_RES_MEMORY, 	1,	CHIPC_SFLASH_BASE,	CHIPC_SFLASH_SIZE,	0,0 },
 	{ NULL }
 };
-
 
 
 static int			 chipc_try_activate_resource(

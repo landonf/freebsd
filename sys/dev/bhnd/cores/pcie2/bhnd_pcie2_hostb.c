@@ -91,21 +91,15 @@ static const struct bhnd_device bhnd_pcie2_devs[] = {
 };
 
 static const struct bhnd_device_quirk bhnd_pcie2_quirks[] = {
-	BHND_DEVICE_QUIRK_END
-};
-
-#ifdef TODO
-static const struct bhnd_chip_quirk bhnd_pcie2_chip_quirks[] = {
 	/* Apple BCM4360 boards that require adjusting TX amplitude and
 	 * differential output de-emphasis of the PCIe SerDes */
-	{{ BHND_CHIP_BVT	(PCI_VENDOR_APPLE,	BCM94360X51P2)	},
-		BHND_PCIE2_QUIRK_SERDES_TXDRV_DEEMPH	},
-	{{ BHND_CHIP_BVT	(PCI_VENDOR_APPLE,	BCM94360X51A)	},
-		BHND_PCIE2_QUIRK_SERDES_TXDRV_DEEMPH	},
+	{{ BHND_MATCH_BOARD(PCI_VENDOR_APPLE, BCM94360X51P2), },
+		BHND_PCIE2_QUIRK_SERDES_TXDRV_DEEMPH },
+	{{ BHND_MATCH_BOARD(PCI_VENDOR_APPLE, BCM94360X51A), },
+		BHND_PCIE2_QUIRK_SERDES_TXDRV_DEEMPH },
 
-	BHND_CHIP_QUIRK_END
+	BHND_DEVICE_QUIRK_END
 };
-#endif
 
 static int
 bhnd_pcie2_hostb_attach(device_t dev)
