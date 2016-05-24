@@ -150,8 +150,7 @@ struct bhnd_chip_match {
 			    chip_id:1,
 			    chip_rev:1,
 			    chip_pkg:1,
-			    chip_type:1,
-			    flags_unused:4;
+			    flags_unused:5;
 		} match;
 
 	} m;
@@ -159,14 +158,12 @@ struct bhnd_chip_match {
 	uint16_t		chip_id;	/**< required chip id */
 	struct bhnd_hwrev_match	chip_rev;	/**< matching chip revisions */
 	uint8_t			chip_pkg;	/**< required package */
-	uint8_t			chip_type;	/**< required chip type */
 };
 
 #define	_BHND_CHIP_MATCH_COPY(_src)		\
 	_BHND_COPY_MATCH_FIELD(_src, chip_id),	\
 	_BHND_COPY_MATCH_FIELD(_src, chip_rev),	\
-	_BHND_COPY_MATCH_FIELD(_src, chip_pkg),	\
-	_BHND_COPY_MATCH_FIELD(_src, chip_type)
+	_BHND_COPY_MATCH_FIELD(_src, chip_pkg)	\
 
 /** Set the required chip ID within a bhnd match descriptor */
 #define	BHND_CHIP_ID(_cid)	_BHND_SET_MATCH_FIELD(chip_id,	\
@@ -179,11 +176,6 @@ struct bhnd_chip_match {
 /** Set the required package ID within a bhnd match descriptor */
 #define	BHND_CHIP_PKG(_pkg)	_BHND_SET_MATCH_FIELD(chip_pkg,	\
 					    BHND_PKGID_ ## _pkg)
-		    
-/** Set the required chip type within a bhnd match descriptor. */
-#define	BHND_CHIP_TYPE(_type)	_BHND_SET_MATCH_FIELD(chip_type,\
-					    BHND_CHIPTYPE_ ## _type)
-
 
 /** Set the required chip and package ID within a bhnd match descriptor */
 #define	BHND_CHIP_IP(_cid, _pkg)	\
@@ -267,12 +259,11 @@ struct bhnd_device_match {
 			chip_id:1,
 			chip_rev:1,
 			chip_pkg:1,
-			chip_type:1,
 			board_vendor:1,
 			board_type:1,
 			board_rev:1,
 			board_srom_rev:1,
-			flags_unused:1;
+			flags_unused:2;
 		} match;
 	} m;
 	
@@ -285,7 +276,6 @@ struct bhnd_device_match {
 	uint16_t		chip_id;	/**< required chip id */
 	struct bhnd_hwrev_match	chip_rev;	/**< matching chip revisions */
 	uint8_t			chip_pkg;	/**< required package */
-	uint8_t			chip_type;	/**< required chip type */
 
 	uint16_t		board_vendor;	/**< required board vendor */
 	uint16_t		board_type;	/**< required board type */

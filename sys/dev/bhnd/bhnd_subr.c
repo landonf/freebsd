@@ -499,10 +499,6 @@ bhnd_chip_matches(const struct bhnd_chipid *chip,
 	    !bhnd_hwrev_matches(chip->chip_rev, &desc->chip_rev))
 		return (false);
 
-	/* TODO: should we treat BMCA_ALT as equiv to BCMA? */
-	if (desc->m.match.chip_type && chip->chip_type != desc->chip_type)
-		return (false);
-
 	return (true);
 }
 
