@@ -52,7 +52,7 @@ __FBSDID("$FreeBSD$");
  */
 
 #ifndef MIPS_MEM_RID
-#define MIPS_MEM_RID 0x20
+#define MIPS_MEM_RID 0x0
 #endif
 
 extern int rman_debug;

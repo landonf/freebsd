@@ -93,7 +93,7 @@ siba_cc_attach(device_t dev)
 	 * determined for us.
 	 * TODO: interrupt routing
 	 */
-#define MIPS_MEM_RID 0x20
+#define MIPS_MEM_RID 0x0
 	rid = MIPS_MEM_RID;
 	mem = bus_alloc_resource_any(dev, SYS_RES_MEMORY, &rid, RF_ACTIVE);
 	if (mem == NULL) {

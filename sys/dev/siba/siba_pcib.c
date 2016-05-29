@@ -60,7 +60,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/siba/siba_pcibvar.h>
 
 #ifndef MIPS_MEM_RID
-#define MIPS_MEM_RID 0x20
+#define MIPS_MEM_RID 0x0
 #endif
 
 #define SBPCI_SLOTMAX 15
