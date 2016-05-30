@@ -458,10 +458,6 @@ siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
 		/* Fetch the address match register value */
 		adm = bus_read_4(r, adm_offset);
 
-		/* Skip disabled entries */
-		if (adm & SIBA_AM_ADEN)
-			continue;
-			
 		/* Parse the value */
 		if ((error = siba_parse_admatch(adm, &addr, &size))) {
 			device_printf(dev, "failed to decode address "
