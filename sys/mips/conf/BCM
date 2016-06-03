@@ -57,10 +57,14 @@ options 	INVARIANT_SUPPORT
 #options	VERBOSE_SYSINIT
 #makeoptions	VERBOSE_SYSINIT
 
+# bhnd(4)
+device		bhnd
+device		bcma			# bcma backplane
+
 device		pci
+device		bhnd_pcib		# PCIe-G1 core
 
 #device		bgmac			# Broadcom GMAC - not yet
-device		bhnd
 
 device		mdio
 
