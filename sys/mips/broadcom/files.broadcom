@@ -19,7 +19,3 @@ mips/broadcom/bcm_mipscore.c		standard
 
 # TODO: Replace with BCM47xx/57xx/etc-aware geom_map
 geom/geom_flashmap.c			standard
-
-# TODO: Replace with bcma_nexus
-dev/bhnd/soc/bhnd_soc.c			standard
-#
