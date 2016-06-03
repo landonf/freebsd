@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2016 Landon Fuller <landon@landonf.org>
+ * Copyright (c) 2015-2016 Landon Fuller <landon@freebsd.org>
  * Copyright (c) 2007 Bruce M. Simpson.
  * All rights reserved.
  *

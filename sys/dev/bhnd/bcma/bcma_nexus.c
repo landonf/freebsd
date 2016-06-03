@@ -1,5 +1,6 @@
 /*-
- * Copyright (c) 2015-2016 Landon Fuller <landon@landonf.org>
+ * Copyright (c) 2016 Michael Zhilin <mizhka@gmail.com>
+ * Copyright (c) 2015-2016 Landon Fuller <landon@freebsd.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
