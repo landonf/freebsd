@@ -39,6 +39,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/bus.h>
 
 #include <dev/bhnd/bhnd_ids.h>
+#include <dev/bhnd/bhnd_nexusvar.h>
 #include <dev/bhnd/cores/chipc/chipcreg.h>
 
 #include "sibareg.h"
@@ -49,16 +50,6 @@ __FBSDID("$FreeBSD$");
  * 
  * Derived from Bruce M. Simpson' original siba(4) driver.
  */
-
-static int siba_debug = 1;
-
-static int	siba_nexus_attach(device_t);
-static int	siba_nexus_probe(device_t);
-
-static struct resource_spec siba_nexus_res_spec[] = {
-	{ SYS_RES_MEMORY,	0,	RF_ACTIVE },
-	{ -1,			0,	0 }
-};
 
 struct siba_nexus_softc {
 	struct siba_softc		parent_sc;
@@ -71,18 +62,12 @@ siba_nexus_probe(device_t dev)
 	struct siba_nexus_softc	*sc;
 	int			 error;
 
-	if (siba_debug)
-		printf("%s: entry\n", __func__);
-
 	sc = device_get_softc(dev);
 
 	/* Read the ChipCommon info using the hints the kernel
 	 * was compiled with. */
-	error = bhnd_read_chipid(dev, siba_nexus_res_spec, 0, &sc->siba_cid);
-	if (error) {
-		device_printf(dev, "error %d reading chip ID\n", error);
+	if ((error = bhnd_nexus_read_chipid(dev, &sc->siba_cid)))
 		return (error);
-	}
 
 	if (sc->siba_cid.chip_type != BHND_CHIPTYPE_SIBA)
 		return (ENXIO);
@@ -101,9 +86,6 @@ siba_nexus_attach(device_t dev)
 	struct siba_nexus_softc	*sc;
 	int error;
 
-	if (siba_debug)
-		printf("%s: entry\n", __func__);
-
 	sc = device_get_softc(dev);
 
 	/* Enumerate the bus. */
@@ -115,38 +97,11 @@ siba_nexus_attach(device_t dev)
 	return (siba_attach(dev));
 }
 
-static bool
-siba_nexus_is_hw_disabled(device_t dev, device_t child)
-{
-	return false;
-}
-
 static const struct bhnd_chipid *
 siba_nexus_get_chipid(device_t dev, device_t child) {
 	struct siba_nexus_softc	*sc = device_get_softc(dev);
 	return (&sc->siba_cid);
 }
-
-static bhnd_attach_type
-siba_nexus_get_attach_type(device_t dev, device_t child)
-{
-	return (BHND_ATTACH_NATIVE);
-}
-
-static int
-siba_nexus_activate_resource(device_t dev, device_t child, int type, int rid,
-    struct bhnd_resource *r)
-{
-	int error;
-
-	/* Always direct */
-	if ((error = bus_activate_resource(child, type, rid, r->res)))
-		return (error);
-
-	r->direct = true;
-	return (0);
-}
-
 
 static device_method_t siba_nexus_methods[] = {
 	/* Device interface */
@@ -155,14 +110,11 @@ static device_method_t siba_nexus_methods[] = {
 
 	/* bhnd interface */
 	DEVMETHOD(bhnd_bus_get_chipid,		siba_nexus_get_chipid),
-	DEVMETHOD(bhnd_bus_activate_resource,	siba_nexus_activate_resource),
-	DEVMETHOD(bhnd_bus_is_hw_disabled,	siba_nexus_is_hw_disabled),
-	DEVMETHOD(bhnd_bus_get_attach_type,	siba_nexus_get_attach_type),
 
 	DEVMETHOD_END
 };
 
-DEFINE_CLASS_1(bhnd, siba_nexus_driver, siba_nexus_methods,
-    sizeof(struct siba_nexus_softc), siba_driver);
+DEFINE_CLASS_2(bhnd, siba_nexus_driver, siba_nexus_methods,
+    sizeof(struct siba_nexus_softc), bhnd_nexus_driver, siba_driver);
 
 DRIVER_MODULE(siba_nexus, nexus, siba_nexus_driver, bhnd_devclass, 0, 0);

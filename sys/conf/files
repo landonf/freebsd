@@ -1128,6 +1128,8 @@ dev/bce/if_bce.c			optional bce
 dev/bfe/if_bfe.c			optional bfe
 dev/bge/if_bge.c			optional bge
 dev/bhnd/bhnd.c				optional bhnd
+dev/bhnd/bhnd_nexus.c			optional bhnd siba_nexus | \
+						 bhnd bcma_nexus
 dev/bhnd/bhnd_subr.c			optional bhnd
 dev/bhnd/bhnd_bus_if.m			optional bhnd
 dev/bhnd/bhndb/bhnd_bhndb.c		optional bhndb bhnd
