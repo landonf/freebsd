@@ -33,16 +33,16 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
-#include <sys/systm.h>
-#include <sys/bus.h>
 #include <sys/kernel.h>
+#include <sys/bus.h>
 #include <sys/module.h>
-#include <sys/rman.h>
-#include <sys/malloc.h>
 
 #include <machine/bus.h>
+#include <sys/rman.h>
+#include <machine/resource.h>
 
 #include <dev/bhnd/bhnd_ids.h>
+#include <dev/bhnd/bhnd_nexusvar.h>
 #include <dev/bhnd/cores/chipc/chipcreg.h>
 
 #include "bcmavar.h"
