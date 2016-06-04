@@ -58,6 +58,7 @@ options 	INVARIANT_SUPPORT
 # bhnd(4)
 device		bhnd
 device		bcma			# bcma backplane
+device		bcma_nexus
 
 device		pci
 device		bhnd_pcib		# PCIe-G1 core
