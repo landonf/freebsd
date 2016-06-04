@@ -101,10 +101,8 @@ bhnd_sprom_attach(device_t dev)
 	}
 
 	/* Initialize SPROM shadow */
-	if ((error = bhnd_sprom_init(&sc->shadow, sc->sprom_res, 0))) {
-		device_printf(dev, "unrecognized SPROM format\n");
+	if ((error = bhnd_sprom_init(&sc->shadow, sc->sprom_res, 0)))
 		goto failed;
-	}
 
 	/* Initialize mutex */
 	SPROM_LOCK_INIT(sc);
