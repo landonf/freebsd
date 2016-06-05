@@ -108,7 +108,7 @@ static const struct bhnd_core_desc {
 	BHND_CDESC(BCM, SDIOD,		OTHER,		"SDIO Device Core"),
 	BHND_CDESC(BCM, ARMCM3,		CPU,		"ARM Cortex-M3 CPU"),
 	BHND_CDESC(BCM, HTPHY,		WLAN_PHY,	"802.11n 4x4 PHY"),
-	BHND_CDESC(BCM, MIPS74K,	CPU,		"MIPS74k CPU"),
+	BHND_CDESC(MIPS,MIPS74K,	CPU,		"MIPS74k CPU"),
 	BHND_CDESC(BCM, GMAC,		ENET_MAC,	"Gigabit MAC core"),
 	BHND_CDESC(BCM, DMEMC,		MEMC,		"DDR1/DDR2 Memory Controller"),
 	BHND_CDESC(BCM, PCIERC,		OTHER,		"PCIe Root Complex"),
