@@ -1163,6 +1163,8 @@ dev/bhnd/nvram/bhnd_nvram_if.m		optional bhnd
 dev/bhnd/nvram/bhnd_sprom.c		optional bhnd
 dev/bhnd/nvram/bhnd_sprom_subr.c	optional bhnd
 dev/bhnd/nvram/nvram_subr.c		optional bhnd
+dev/bhnd/pmu/bhnd_pmu.c			optional bhnd
+dev/bhnd/pmu/bhnd_pmu_if.m		optional bhnd
 dev/bhnd/siba/siba.c			optional siba bhnd
 dev/bhnd/siba/siba_bhndb.c		optional siba bhnd bhndb
 dev/bhnd/siba/siba_nexus.c		optional siba_nexus siba bhnd
