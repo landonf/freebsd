@@ -56,7 +56,7 @@ static struct bhnd_device_quirk bhnd_pmu_quirks[];
 
 /* Supported device identifiers */
 static const struct bhnd_device bhnd_pmu_devices[] = {
-	BHND_DEVICE(PMU,	NULL,	bhnd_pmu_quirks),
+	BHND_DEVICE(BCM, PMU, NULL, bhnd_pmu_quirks),
 	BHND_DEVICE_END
 };
 
