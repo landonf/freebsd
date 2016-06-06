@@ -54,13 +54,12 @@ static const struct resource_spec mipscore_rspec[MIPSCORE_MAX_RSPEC] = {
 };
 
 #define	MIPSCORE_DEV(_vendor, _core)	\
-	_BHND_DEVICE(_vendor, _core, NULL, NULL, BHND_DF_SOC)
+	BHND_DEVICE(_vendor, _core, NULL, NULL, BHND_DF_SOC)
 
 struct bhnd_device mipscore_match[] = {
 	MIPSCORE_DEV(BCM, MIPS),
 	MIPSCORE_DEV(BCM, MIPS33),
 	MIPSCORE_DEV(MIPS, MIPS74K),
-
 	BHND_DEVICE_END
 };
 
