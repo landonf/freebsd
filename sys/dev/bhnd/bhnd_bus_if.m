@@ -252,8 +252,7 @@ METHOD int suspend_core {
 }
 
 /**
- * Allocate and enable per-core clock request handling for
- * @p child.
+ * Allocate and enable per-core clock request handling for @p child.
  *
  * The region containing the core's clkreq block (if any) must be
  * allocated via bus_alloc_resource(9) (or bhnd_alloc_resource) before
