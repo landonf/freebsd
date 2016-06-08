@@ -1,12 +1,13 @@
 /*-
- * Copyright 2001 Mark R V Murray
+ * Copyright (c) 2007 Alexander Motin <mav@freebsd.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
  * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
+ *    notice unmodified, this list of conditions, and the following
+ *    disclaimer.
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
@@ -22,41 +23,40 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
+ *
+ * $FreeBSD$
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
-#include <libgen.h>
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-#include <security/pam_appl.h>
-#include <security/openpam.h>
-#include <security/pam_mod_misc.h>
-
-/* Print a verbose error, including the function name and a
- * cleaned up filename.
+/*
+ * MPPC decompression library.
+ * Version 1.0
+ *
+ * Note that Hi/Fn (later acquired by Exar Corporation) held US patents
+ * on some implementation-critical aspects of MPPC compression.
+ * These patents lapsed due to non-payment of fees in 2007 and by 2015
+ * expired altogether.
  */
-void
-_pam_verbose_error(pam_handle_t *pamh, int flags,
-    const char *file, const char *function, const char *format, ...)
-{
-	va_list ap;
-	char *fmtbuf, *modname, *period;
 
-	if (!(flags & PAM_SILENT) && !openpam_get_option(pamh, "no_warn")) {
-		modname = basename(file);
-		period = strchr(modname, '.');
-		if (period == NULL)
-			period = strchr(modname, '\0');
-		va_start(ap, format);
-		asprintf(&fmtbuf, "%.*s: %s: %s\n", (int)(period - modname),
-		    modname, function, format);
-		pam_verror(pamh, fmtbuf, ap);
-		free(fmtbuf);
-		va_end(ap);
-	}
-}
+#ifndef _NET_MPPC_H_
+#define	_NET_MPPC_H_
+
+#define	MPPC_MANDATORY_COMPRESS_FLAGS 0
+#define	MPPC_MANDATORY_DECOMPRESS_FLAGS 0
+
+#define	MPPC_SAVE_HISTORY 1
+
+#define	MPPC_OK 5
+#define	MPPC_EXPANDED 8
+#define	MPPC_RESTART_HISTORY 16
+#define	MPPC_DEST_EXHAUSTED 32
+
+extern size_t MPPC_SizeOfCompressionHistory(void);
+extern size_t MPPC_SizeOfDecompressionHistory(void);
+
+extern void MPPC_InitCompressionHistory(char *history);
+extern void MPPC_InitDecompressionHistory(char *history);
+
+extern int MPPC_Compress(u_char **src, u_char **dst, u_long *srcCnt, u_long *dstCnt, char *history, int flags, int undef);
+extern int MPPC_Decompress(u_char **src, u_char **dst, u_long *srcCnt, u_long *dstCnt, char *history, int flags);
+
+#endif
