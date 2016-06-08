@@ -83,6 +83,39 @@ typedef enum {
 					  *  SoC */
 } bhnd_attach_type;
 
+/**
+ * bhnd(4) clock types.
+ */
+typedef enum {
+	/**
+	 * Dynamically select an appropriate clock source based on all
+	 * outstanding clock requests.
+	 */
+	BHND_CLOCK_DYN		= 0,
+
+	/**
+	 * Idle Low-Power (ILP).
+	 * 
+	 * No register access is required, or long request latency is
+	 * acceptable.
+	 */
+	BHND_CLOCK_ILP		= 1,
+	
+	/**
+	 * Active Low-Power (ALP).
+	 * 
+	 * Low-latency register access and low-rate DMA.
+	 */
+	BHND_CLOCK_ALP		= 2,
+	
+	/**
+	 * High Throughput (HT).
+	 * 
+	 * High bus throughput and lowest-latency register access.
+	 */
+	BHND_CLOCK_HT		= 3
+} bhnd_clock;
+
 /** Evaluates to true if @p cls is a device class that can be configured
  *  as a host bridge device. */
 #define	BHND_DEVCLASS_SUPPORTS_HOSTB(cls)					\
