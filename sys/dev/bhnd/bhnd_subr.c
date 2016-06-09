@@ -51,8 +51,6 @@ __FBSDID("$FreeBSD$");
 #include "bhndreg.h"
 #include "bhndvar.h"
 
-static device_t		find_nvram_child(device_t dev);
-
 /* BHND core device description table. */
 static const struct bhnd_core_desc {
 	uint16_t	 vendor;
