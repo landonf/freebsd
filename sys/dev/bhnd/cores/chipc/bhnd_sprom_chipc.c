@@ -63,10 +63,10 @@ chipc_sprom_identify(driver_t *driver, device_t parent)
 	if (!CHIPC_VALID_SPROM_SRC(caps->nvram_src))
 		return;
 
-	if (device_find_child(parent, "bhnd_nvram", 0) != NULL)
+	if (device_find_child(parent, "bhnd_nvram", -1) != NULL)
 		return;
 
-	if (BUS_ADD_CHILD(parent, 0, "bhnd_nvram", 0) == NULL)
+	if (BUS_ADD_CHILD(parent, 0, "bhnd_nvram", -1) == NULL)
 		device_printf(parent, "add bhnd_nvram failed\n");
 }
 
