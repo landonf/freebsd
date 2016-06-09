@@ -61,7 +61,6 @@ enum bhnd_device_vars {
 	BHND_IVAR_CORE_UNIT,	/**< Bus-assigned core unit number,
 				     assigned sequentially (starting at 0) for
 				     each vendor/device pair. */
-	BHND_IVAR_CLKREQ_ST,	/**< Private bhnd(4) clkreq state. */
 };
 
 /**
@@ -108,7 +107,6 @@ BHND_ACCESSOR(vendor_name,	VENDOR_NAME,	const char *);
 BHND_ACCESSOR(device_name,	DEVICE_NAME,	const char *);
 BHND_ACCESSOR(core_index,	CORE_INDEX,	u_int);
 BHND_ACCESSOR(core_unit,	CORE_UNIT,	int);
-BHND_ACCESSOR(clkreq_st,	CLKREQ_ST,	void *);
 
 #undef	BHND_ACCESSOR
 
