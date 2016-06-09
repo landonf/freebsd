@@ -990,47 +990,10 @@ bhnd_bus_generic_read_board_info(device_t dev, device_t child,
 #undef	BHND_GV_REQ
 #undef	BHND_GV_OPT
 
-
-/**
- * Find an NVRAM child device on @p dev, if any.
- * 
- * @retval device_t An NVRAM device.
- * @retval NULL If no NVRAM device is found.
- */
-static device_t
-find_nvram_child(device_t dev)
-{
-	device_t	chipc, nvram;
-
-	/* Look for a directly-attached NVRAM child */
-	nvram = device_find_child(dev, "bhnd_nvram", 0);
-	if (nvram != NULL)
-		return (nvram);
-
-	/* Remaining checks are only applicable when searching a bhnd(4)
-	 * bus. */
-	if (device_get_devclass(dev) != bhnd_devclass)
-		return (NULL);
-
-	/* Look for a ChipCommon-attached NVRAM device */
-	if ((chipc = bhnd_find_child(dev, BHND_DEVCLASS_CC, -1)) != NULL) {
-		nvram = device_find_child(chipc, "bhnd_nvram", 0);
-		if (nvram != NULL)
-			return (nvram);
-	}
-
-	/* Not found */
-	return (NULL);
-}
-
 /**
  * Helper function for implementing BHND_BUS_GET_NVRAM_VAR().
  * 
- * This implementation searches @p dev for a usable NVRAM child device:
- * - The first child device implementing the bhnd_nvram devclass is
- *   returned, otherwise
- * - If @p dev is a bhnd(4) bus, a ChipCommon core that advertises an
- *   attached NVRAM source.
+ * This implementation searches @p dev for a usable NVRAM child device.
  * 
  * If no usable child device is found on @p dev, the request is delegated to
  * the BHND_BUS_GET_NVRAM_VAR() method on the parent of @p dev.
@@ -1042,8 +1005,11 @@ bhnd_bus_generic_get_nvram_var(device_t dev, device_t child, const char *name,
 	device_t	nvram;
 	device_t	parent;
 
-	/* Try to find an NVRAM device applicable to @p child */
-	if ((nvram = find_nvram_child(dev)) != NULL)
+        /* Make sure we're holding Giant for newbus */
+	GIANT_REQUIRED;
+
+	/* Look for a directly-attached NVRAM child */
+	if ((nvram = device_find_child(dev, "bhnd_nvram", -1)) != NULL)
 		return BHND_NVRAM_GETVAR(nvram, name, buf, size);
 
 	/* Try to delegate to parent */
