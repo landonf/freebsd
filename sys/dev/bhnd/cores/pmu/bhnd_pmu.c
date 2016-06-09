@@ -30,10 +30,6 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-/*
- * Broadcom PMU driver.
- */
-
 #include <sys/param.h>
 #include <sys/kernel.h>
 #include <sys/lock.h>
@@ -49,6 +45,13 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_pmureg.h"
 #include "bhnd_pmuvar.h"
+
+/*
+ * Broadcom PMU driver.
+ * 
+ * Abstract driver for Broadcom PMU devices attached either via
+ * a distinct core on the Always-on-Bus, or as a child of ChipCommon.
+ */
 
 devclass_t bhnd_pmu_devclass;	/**< bhnd(4) PMU device class */
 
