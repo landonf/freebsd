@@ -2,17 +2,20 @@
 
 .PATH: ${.CURDIR}/../../dev/bhnd
 .PATH: ${.CURDIR}/../../dev/bhnd/nvram
-.PATH: ${.CURDIR}/../../dev/bhnd/pmu
+.PATH: ${.CURDIR}/../../dev/bhnd/cores/pmu
 
 KMOD=	bhnd
 SRCS=	bhnd.c bhnd_subr.c
 SRCS+=	bhnd_bus_if.c bhnd_bus_if.h
 
+# ChipCommon
 SRCS+=	bhnd_chipc_if.c bhnd_chipc_if.h
 
-SRCS+=	bhnd_pmu.c
+# PMU
+SRCS+=	bhnd_pmu.c bhnd_pmu_chipc.c
 SRCS+=	bhnd_pmu_if.c bhnd_pmu_if.h
 
+# NVRAM
 SRCS+=	nvram_subr.c
 SRCS+=	bhnd_sprom.c bhnd_sprom_subr.c
 SRCS+=	bhnd_nvram_map.h bhnd_nvram_map_data.h

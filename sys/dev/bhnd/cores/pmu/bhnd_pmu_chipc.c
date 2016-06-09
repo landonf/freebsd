@@ -43,16 +43,15 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 
 #include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/cores/chipc/chipc.h>
 
-#include <dev/bhnd/pmu/bhnd_pmureg.h>
-#include <dev/bhnd/pmu/bhnd_pmuvar.h>
-
+#include "bhnd_chipc_if.h"
 #include "bhnd_pmu_if.h"
 
-#include "chipcvar.h"
+#include "bhnd_pmuvar.h"
 
 static void
-chipc_pmu_identify(driver_t *driver, device_t parent)
+bhnd_pmu_chipc_identify(driver_t *driver, device_t parent)
 {
 	struct chipc_caps *caps;
 	
@@ -71,7 +70,7 @@ chipc_pmu_identify(driver_t *driver, device_t parent)
 }
 
 static int
-chipc_pmu_probe(device_t dev)
+bhnd_pmu_chipc_probe(device_t dev)
 {
 	struct chipc_caps	*caps;
 	device_t		 chipc;
@@ -91,25 +90,23 @@ chipc_pmu_probe(device_t dev)
 }
 
 static int
-chipc_pmu_attach(device_t dev)
+bhnd_pmu_chipc_attach(device_t dev)
 {
 	// TODO
 	return (0);
 }
 
-static device_method_t chipc_pmu_methods[] = {
+static device_method_t bhnd_pmu_chipc_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_identify,		chipc_pmu_identify),
-	DEVMETHOD(device_probe,			chipc_pmu_probe),
-	DEVMETHOD(device_attach,		chipc_pmu_attach),
+	DEVMETHOD(device_identify,		bhnd_pmu_chipc_identify),
+	DEVMETHOD(device_probe,			bhnd_pmu_chipc_probe),
+	DEVMETHOD(device_attach,		bhnd_pmu_chipc_attach),
 	DEVMETHOD_END
 };
 
-DEFINE_CLASS_1(bhnd_pmu, chipc_pmu_driver, chipc_pmu_methods, sizeof(struct bhnd_pmu_softc), bhnd_pmu_driver);
-EARLY_DRIVER_MODULE(bhnd_chipc_pmu, bhnd_chipc, chipc_pmu_driver, bhnd_pmu_devclass, NULL, NULL,
+DEFINE_CLASS_1(bhnd_pmu, bhnd_pmu_chipc_driver, bhnd_pmu_chipc_methods, sizeof(struct bhnd_pmu_softc), bhnd_pmu_driver);
+EARLY_DRIVER_MODULE(bhnd_pmu_chipc, bhnd_chipc, bhnd_pmu_chipc_driver, bhnd_pmu_devclass, NULL, NULL,
     BUS_PASS_TIMER + BUS_PASS_ORDER_MIDDLE);
 
-MODULE_DEPEND(bhnd_chipc_pmu, bhnd, 1, 1, 1);
-MODULE_DEPEND(bhnd_chipc_pmu, bhnd_chipc, 1, 1, 1);
-MODULE_DEPEND(bhnd_chipc_pmu, bhnd_sprom, 1, 1, 1);
-MODULE_VERSION(bhnd_chipc_pmu, 1);
+MODULE_DEPEND(bhnd_pmu_chipc, bhnd, 1, 1, 1);
+MODULE_VERSION(bhnd_pmu_chipc, 1);
