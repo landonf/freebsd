@@ -58,6 +58,13 @@ struct bhnd_devinfo {
  */
 struct bhnd_softc {
 	device_t	dev;		/**< bus device */
+
+	bool		have_devs;	/**< true if initialization of the
+					  *  platform devices has been
+					  *  performed complete */
+	device_t	chipc_dev;	/**< bhnd_chipc device */ 
+	device_t	nvram_dev;	/**< bhnd_nvram device, if any */
+	device_t	pmu_dev;	/**< bhnd_pmu device, if any */
 };
 
 int			 bhnd_generic_attach(device_t dev);
