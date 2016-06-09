@@ -69,9 +69,7 @@ int			 bcma_add_children(device_t bus,
 struct bcma_sport_list	*bcma_corecfg_get_port_list(struct bcma_corecfg *cfg,
 			     bhnd_port_type type);
 
-struct bcma_devinfo	*bcma_alloc_dinfo(device_t bus);
-int			 bcma_init_dinfo(device_t bus,
-			     struct bcma_devinfo *dinfo,
+struct bcma_devinfo	*bcma_alloc_dinfo(device_t bus,
 			     struct bcma_corecfg *corecfg);
 void			 bcma_free_dinfo(device_t bus,
 			     struct bcma_devinfo *dinfo);
