@@ -293,7 +293,7 @@ bhnd_get_core_info(device_t dev) {
  * 
  * @param parent The bhnd-compatible bus to be searched.
  * @param class The device class to match on.
- * @param unit The device unit number; specify -1 to return the first match
+ * @param unit The core unit number; specify -1 to return the first match
  * regardless of unit number.
  * 
  * @retval device_t if a matching child device is found.

@@ -58,6 +58,9 @@ __FBSDID("$FreeBSD$");
 #include <sys/rman.h>
 #include <machine/resource.h>
 
+#include <dev/bhnd/cores/chipc/chipcvar.h>
+
+#include "bhnd_chipc_if.h"
 #include "bhnd_nvram_if.h"
 
 #include "bhnd.h"
@@ -82,13 +85,20 @@ static const struct bhnd_nomatch {
 	{ BHND_MFGID_INVALID,	BHND_COREID_INVALID,		false	}
 };
 
-static int	compare_ascending_probe_order(const void *lhs,
-		    const void *rhs);
-static int	compare_descending_probe_order(const void *lhs,
-		    const void *rhs);
 
-static device_t	bhnd_find_platform_dev(struct bhnd_softc *sc,
-    const char *classname);
+static int			 bhnd_delete_children(struct bhnd_softc *sc);
+
+static device_t			 bhnd_find_chipc(struct bhnd_softc *sc);
+static struct chipc_caps	*bhnd_find_chipc_caps(struct bhnd_softc *sc);
+static device_t			 bhnd_find_platform_dev(struct bhnd_softc *sc,
+				     const char *classname);
+static device_t			 bhnd_find_pmu(struct bhnd_softc *sc);
+static device_t			 bhnd_find_nvram(struct bhnd_softc *sc);
+
+static int			 compare_ascending_probe_order(const void *lhs,
+				     const void *rhs);
+static int			 compare_descending_probe_order(const void *lhs,
+				     const void *rhs);
 
 /**
  * Default bhnd(4) bus driver implementation of DEVICE_ATTACH().
@@ -100,6 +110,7 @@ int
 bhnd_generic_attach(device_t dev)
 {
 	struct bhnd_softc	*sc;
+	struct chipc_caps	*ccaps;
 	device_t		*devs;
 	int			 ndevs;
 	int			 error;
@@ -113,14 +124,81 @@ bhnd_generic_attach(device_t dev)
 	if ((error = device_get_children(dev, &devs, &ndevs)))
 		return (error);
 
+	/* Probe and attach all children */
 	qsort(devs, ndevs, sizeof(*devs), compare_ascending_probe_order);
 	for (int i = 0; i < ndevs; i++) {
 		device_t child = devs[i];
 		device_probe_and_attach(child);
 	}
 
+	/*
+	 * Locate bus-required platform hardware 
+	 */
+	if ((sc->chipc_dev = bhnd_find_chipc(sc)) == NULL) {
+		device_printf(sc->dev, "error: ChipCommon device not found\n");
+		error = ENXIO;
+		goto cleanup;
+	}
+
+	ccaps = BHND_CHIPC_GET_CAPS(sc->chipc_dev);
+
+	/* Look for NVRAM device */
+	if (ccaps->nvram_src != BHND_NVRAM_SRC_UNKNOWN) {
+		if ((sc->nvram_dev = bhnd_find_nvram(sc)) == NULL) {
+			device_printf(sc->dev,
+			    "error: NVRAM device not found\n");
+			error = ENXIO;
+			goto cleanup;
+		}
+	}
+
+	/* Look for a PMU  */
+	if (ccaps->pmu) {
+		if ((sc->pmu_dev = bhnd_find_pmu(sc)) == NULL) {
+			device_printf(sc->dev, "error: PMU device not found\n");
+			error = ENXIO;
+			goto cleanup;
+		}
+	}
+
+	/* Mark child platform hardware discovery as complete. */
+	sc->have_devs = true;
+
+cleanup:
 	free(devs, M_TEMP);
-	return (0);
+
+	if (error)
+		bhnd_delete_children(sc);
+
+	return (error);
+}
+
+/**
+ * Detach and delete all children, in reverse of their attach order.
+ */
+static int
+bhnd_delete_children(struct bhnd_softc *sc)
+{
+	device_t		*devs;
+	int			 ndevs;
+	int			 error;
+
+	if ((error = device_get_children(sc->dev, &devs, &ndevs)))
+		return (error);
+
+	/* Detach in the reverse of attach order */
+	qsort(devs, ndevs, sizeof(*devs), compare_descending_probe_order);
+	for (int i = 0; i < ndevs; i++) {
+		device_t child = devs[i];
+
+		/* Terminate on first error */
+		if ((error = device_delete_child(sc->dev, child)))
+			goto cleanup;
+	}
+
+cleanup:
+	free(devs, M_TEMP);
+	return (error);
 }
 
 /**
@@ -134,31 +212,12 @@ int
 bhnd_generic_detach(device_t dev)
 {
 	struct bhnd_softc	*sc;
-	device_t		*devs;
-	int			 ndevs;
-	int			 error;
 
 	if (!device_is_attached(dev))
 		return (EBUSY);
 
 	sc = device_get_softc(dev);
-
-	if ((error = device_get_children(dev, &devs, &ndevs)))
-		return (error);
-
-	/* Detach in the reverse of attach order */
-	qsort(devs, ndevs, sizeof(*devs), compare_descending_probe_order);
-	for (int i = 0; i < ndevs; i++) {
-		device_t child = devs[i];
-
-		/* Terminate on first error */
-		if ((error = device_detach(child)))
-			goto cleanup;
-	}
-
-cleanup:
-	free(devs, M_TEMP);
-	return (error);
+	return (bhnd_delete_children(sc));
 }
 
 /**
@@ -274,12 +333,54 @@ cleanup:
 	return (error);
 }
 
+/* Locate the ChipCommon core. */
+static device_t
+bhnd_find_chipc(struct bhnd_softc *sc)
+{
+	device_t chipc;
+
+        /* Make sure we're holding Giant for newbus */
+	GIANT_REQUIRED;
+
+	/* This will be available after attachment */
+	if (sc->have_devs)
+		return (sc->chipc_dev);
+
+	/* Locate chipc core with a core unit of 0 */
+	chipc = bhnd_find_child(sc->dev, BHND_DEVCLASS_CC, 0);
+	if (chipc == NULL)
+		return (NULL);
+
+	if (!device_is_attached(chipc)) {
+		device_printf(sc->dev, "chipc found, but did not attach\n");
+		return (NULL);
+	}
+
+	return (chipc);
+}
+
+/* Locate the ChipCommon core and return the device capabilities  */
+static struct chipc_caps *
+bhnd_find_chipc_caps(struct bhnd_softc *sc)
+{
+	device_t chipc;
+
+	if ((chipc = bhnd_find_chipc(sc)) == NULL) {
+		device_printf(sc->dev, 
+		    "chipc unavailable; cannot fetch capabilities\n");
+		return (NULL);
+	}
+
+	return (BHND_CHIPC_GET_CAPS(chipc));
+}
+
 /**
- * Find a platform device on @p dev, searching first for cores matching
- * @p classname, and if not found, searching the children of the first
+ * Find an attached platform device on @p dev, searching first for cores
+ * matching @p classname, and if not found, searching the children of the first
  * bhnd_chipc device on the bus.
  * 
  * @param sc Driver state.
+ * @param chipc Attached ChipCommon device.
  * @param classname Device class to search for.
  * 
  * @retval device_t A matching device.
@@ -288,7 +389,7 @@ cleanup:
 static device_t	bhnd_find_platform_dev(struct bhnd_softc *sc,
     const char *classname)
 {
-	device_t	chipc, child;
+	device_t chipc, child;
 
         /* Make sure we're holding Giant for newbus */
 	GIANT_REQUIRED;
@@ -296,17 +397,69 @@ static device_t	bhnd_find_platform_dev(struct bhnd_softc *sc,
 	/* Look for a directly-attached child */
 	child = device_find_child(sc->dev, classname, -1);
 	if (child != NULL)
-		return (child);
+		goto found;
 
-	/* Look for a ChipCommon-attached child */
-	if ((chipc = bhnd_find_child(sc->dev, BHND_DEVCLASS_CC, -1)) != NULL) {
-		child = device_find_child(chipc, classname, -1);
-		if (child != NULL)
-			return (child);
+	/* Look for the first matching ChipCommon child */
+	if ((chipc = bhnd_find_chipc(sc)) == NULL) {
+		device_printf(sc->dev, 
+		    "chipc unavailable; cannot locate %s\n", classname);
+		return (NULL);
 	}
 
-	/* Not found */
-	return (NULL);
+	child = device_find_child(chipc, classname, -1);
+	if (child == NULL)
+		return (NULL);
+
+found:
+	if (!device_is_attached(child))
+		return (NULL);
+
+	return (child);
+}
+
+/* Locate the PMU device, if any */
+static device_t
+bhnd_find_pmu(struct bhnd_softc *sc)
+{
+	struct chipc_caps	*ccaps;
+
+        /* Make sure we're holding Giant for newbus */
+	GIANT_REQUIRED;
+
+	/* This will be available after attachment */
+	if (sc->have_devs)
+		return (sc->pmu_dev);
+
+	if ((ccaps = bhnd_find_chipc_caps(sc)) == NULL)
+		return (NULL);
+
+	if (!ccaps->pmu)
+		return (NULL);
+
+	return (bhnd_find_platform_dev(sc, "bhnd_pmu"));
+}
+
+/* Locate the NVRAM device, if any */
+static device_t
+bhnd_find_nvram(struct bhnd_softc *sc)
+{
+	struct chipc_caps *ccaps;
+
+        /* Make sure we're holding Giant for newbus */
+	GIANT_REQUIRED;
+
+
+	/* This will be available after attachment */
+	if (sc->have_devs)
+		return (sc->nvram_dev);
+
+	if ((ccaps = bhnd_find_chipc_caps(sc)) == NULL)
+		return (NULL);
+
+	if (ccaps->nvram_src == BHND_NVRAM_SRC_UNKNOWN)
+		return (NULL);
+
+	return (bhnd_find_platform_dev(sc, "bhnd_nvram"));
 }
 
 /*
@@ -435,17 +588,15 @@ bhnd_generic_get_nvram_var(device_t dev, device_t child, const char *name,
     void *buf, size_t *size)
 {
 	struct bhnd_softc	*sc;
-	device_t		 nvram;
-	device_t		 parent;
+	device_t		 nvram, parent;
 
 	sc = device_get_softc(dev);
 
-	/* Locate the NVRAM device, if any */
-	nvram = bhnd_find_platform_dev(sc, "bhnd_nvram");
-	if (nvram != NULL)
+	/* If a NVRAM device is available, consult it first */
+	if ((nvram = bhnd_find_nvram(sc)) != NULL)
 		return BHND_NVRAM_GETVAR(nvram, name, buf, size);
 
-	/* Try to delegate to parent */
+	/* Otherwise, try to delegate to parent */
 	if ((parent = device_get_parent(dev)) == NULL)
 		return (ENODEV);
 
