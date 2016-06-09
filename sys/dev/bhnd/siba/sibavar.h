@@ -137,6 +137,8 @@ struct siba_devinfo {
 	struct siba_port	 device_port;	/**< device port holding ownership
 						 *   of all siba address space
 						 *   entries for this core. */
+	void			*clkreq_st;	/**< clkreq state managed by
+						     bhnd(4) */
 
 	/** SIBA_CFG* register blocks */
 	struct bhnd_resource	*cfg[SIBA_CFG_NUM_MAX];

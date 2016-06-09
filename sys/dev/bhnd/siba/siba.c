@@ -160,7 +160,9 @@ siba_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 	const struct siba_devinfo *dinfo;
 	const struct bhnd_core_info *cfg;
 	
-	dinfo = device_get_ivars(child);
+	if ((dinfo = device_get_ivars(child)) == NULL)
+		return (ENXIO);
+
 	cfg = &dinfo->core_id.core_info;
 	
 	switch (index) {
@@ -188,6 +190,9 @@ siba_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 	case BHND_IVAR_CORE_UNIT:
 		*result = cfg->unit;
 		return (0);
+	case BHND_IVAR_CLKREQ_ST:
+		*result = (uintptr_t) dinfo->clkreq_st;
+		return (0);
 	default:
 		return (ENOENT);
 	}
@@ -196,6 +201,11 @@ siba_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 static int
 siba_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
 {
+	struct siba_devinfo *dinfo;
+	
+	if ((dinfo = device_get_ivars(child)) == NULL)
+		return (ENXIO);
+
 	switch (index) {
 	case BHND_IVAR_VENDOR:
 	case BHND_IVAR_DEVICE:
@@ -206,6 +216,9 @@ siba_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
 	case BHND_IVAR_CORE_INDEX:
 	case BHND_IVAR_CORE_UNIT:
 		return (EINVAL);
+	case BHND_IVAR_CLKREQ_ST:
+		dinfo->clkreq_st = (void *) value;
+		return (0);
 	default:
 		return (ENOENT);
 	}
@@ -214,12 +227,16 @@ siba_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
 static void
 siba_child_deleted(device_t dev, device_t child)
 {
-	struct siba_devinfo *dinfo = device_get_ivars(child);
-	if (dinfo != NULL)
-		siba_free_dinfo(dev, dinfo);
+	struct siba_devinfo *dinfo;
 
-	/* Call superclass implementation */
+	/* Call superclass implementation before discarding ivars */
 	bhnd_generic_child_deleted(dev, child);
+
+	dinfo = device_get_ivars(child);
+	if (dinfo != NULL) {
+		siba_free_dinfo(dev, dinfo);
+		device_set_ivars(child, NULL);
+	}
 }
 
 static struct resource_list *
