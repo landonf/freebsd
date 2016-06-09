@@ -105,8 +105,10 @@ bwn_attach(device_t dev)
 	uint8_t	macaddr[6];
 	error = bhnd_nvram_getvar(dev, BHND_NVAR_MACADDR, macaddr,
 	    sizeof(macaddr));
-	if (error)
+	if (error) {
+		bhnd_release_resources(dev, sc->rspec, sc->res);
 		return (error);
+	}
 
 	device_printf(dev, "got macaddr %6D\n", macaddr, ":");
 
