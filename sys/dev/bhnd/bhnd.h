@@ -432,8 +432,8 @@ bhnd_read_board_info(device_t dev, struct bhnd_board_info *info)
  *
  * The region containing the core's clkreq block (if any) must be
  * allocated via bus_alloc_resource(9) (or bhnd_alloc_resource) before
- * calling BHND_BUS_ALLOC_CLKREQ(), and must not be released until after
- * calling BHND_BUS_RELEASE_CLKREQ().
+ * calling bhnd_alloc_clkreq(), and must not be released until after
+ * calling bhnd_release_clkreq().
  *
  * @param dev The parent of @p child.
  * @param child The requesting bhnd device.
