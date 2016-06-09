@@ -217,6 +217,9 @@ siba_child_deleted(device_t dev, device_t child)
 	struct siba_devinfo *dinfo = device_get_ivars(child);
 	if (dinfo != NULL)
 		siba_free_dinfo(dev, dinfo);
+
+	/* Call superclass implementation */
+	bhnd_generic_child_deleted(dev, child);
 }
 
 static struct resource_list *
