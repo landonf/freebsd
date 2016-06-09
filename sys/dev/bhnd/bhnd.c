@@ -58,6 +58,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/rman.h>
 #include <machine/resource.h>
 
+#include "bhnd_nvram_if.h"
+
 #include "bhnd.h"
 #include "bhndvar.h"
 
@@ -85,6 +87,9 @@ static int	compare_ascending_probe_order(const void *lhs,
 static int	compare_descending_probe_order(const void *lhs,
 		    const void *rhs);
 
+static device_t	bhnd_find_platform_dev(struct bhnd_softc *sc,
+    const char *classname);
+
 /**
  * Default bhnd(4) bus driver implementation of DEVICE_ATTACH().
  *
@@ -94,12 +99,16 @@ static int	compare_descending_probe_order(const void *lhs,
 int
 bhnd_generic_attach(device_t dev)
 {
-	device_t	*devs;
-	int		 ndevs;
-	int		 error;
+	struct bhnd_softc	*sc;
+	device_t		*devs;
+	int			 ndevs;
+	int			 error;
 
 	if (device_is_attached(dev))
 		return (EBUSY);
+
+	sc = device_get_softc(dev);
+	sc->dev = dev;
 
 	if ((error = device_get_children(dev, &devs, &ndevs)))
 		return (error);
@@ -124,12 +133,15 @@ bhnd_generic_attach(device_t dev)
 int
 bhnd_generic_detach(device_t dev)
 {
-	device_t	*devs;
-	int		 ndevs;
-	int		 error;
+	struct bhnd_softc	*sc;
+	device_t		*devs;
+	int			 ndevs;
+	int			 error;
 
 	if (!device_is_attached(dev))
 		return (EBUSY);
+
+	sc = device_get_softc(dev);
 
 	if ((error = device_get_children(dev, &devs, &ndevs)))
 		return (error);
@@ -262,6 +274,41 @@ cleanup:
 	return (error);
 }
 
+/**
+ * Find a platform device on @p dev, searching first for cores matching
+ * @p classname, and if not found, searching the children of the first
+ * bhnd_chipc device on the bus.
+ * 
+ * @param sc Driver state.
+ * @param classname Device class to search for.
+ * 
+ * @retval device_t A matching device.
+ * @retval NULL If no matching device is found.
+ */
+static device_t	bhnd_find_platform_dev(struct bhnd_softc *sc,
+    const char *classname)
+{
+	device_t	chipc, child;
+
+        /* Make sure we're holding Giant for newbus */
+	GIANT_REQUIRED;
+
+	/* Look for a directly-attached child */
+	child = device_find_child(sc->dev, classname, -1);
+	if (child != NULL)
+		return (child);
+
+	/* Look for a ChipCommon-attached child */
+	if ((chipc = bhnd_find_child(sc->dev, BHND_DEVCLASS_CC, -1)) != NULL) {
+		child = device_find_child(chipc, classname, -1);
+		if (child != NULL)
+			return (child);
+	}
+
+	/* Not found */
+	return (NULL);
+}
+
 /*
  * Ascending comparison of bhnd device's probe order.
  */
@@ -373,6 +420,37 @@ bhnd_generic_is_region_valid(device_t dev, device_t child,
 		return (false);
 
 	return (true);
+}
+
+/**
+ * Default bhnd(4) bus driver implementation of BHND_BUS_GET_NVRAM_VAR().
+ * 
+ * This implementation searches @p dev for a usable NVRAM child device.
+ * 
+ * If no usable child device is found on @p dev, the request is delegated to
+ * the BHND_BUS_GET_NVRAM_VAR() method on the parent of @p dev.
+ */
+int
+bhnd_generic_get_nvram_var(device_t dev, device_t child, const char *name,
+    void *buf, size_t *size)
+{
+	struct bhnd_softc	*sc;
+	device_t		 nvram;
+	device_t		 parent;
+
+	sc = device_get_softc(dev);
+
+	/* Locate the NVRAM device, if any */
+	nvram = bhnd_find_platform_dev(sc, "bhnd_nvram");
+	if (nvram != NULL)
+		return BHND_NVRAM_GETVAR(nvram, name, buf, size);
+
+	/* Try to delegate to parent */
+	if ((parent = device_get_parent(dev)) == NULL)
+		return (ENODEV);
+
+	return (BHND_BUS_GET_NVRAM_VAR(device_get_parent(dev), child,
+	    name, buf, size));
 }
 
 /**
@@ -641,7 +719,7 @@ static device_method_t bhnd_methods[] = {
 	DEVMETHOD(bhnd_bus_get_probe_order,	bhnd_generic_get_probe_order),
 	DEVMETHOD(bhnd_bus_is_region_valid,	bhnd_generic_is_region_valid),
 	DEVMETHOD(bhnd_bus_is_hw_disabled,	bhnd_bus_generic_is_hw_disabled),
-	DEVMETHOD(bhnd_bus_get_nvram_var,	bhnd_bus_generic_get_nvram_var),
+	DEVMETHOD(bhnd_bus_get_nvram_var,	bhnd_generic_get_nvram_var),
 
 	/* BHND interface (bus I/O) */
 	DEVMETHOD(bhnd_bus_read_1,		bhnd_read_1),
