@@ -342,15 +342,20 @@ bhnd_find_chipc(struct bhnd_softc *sc)
         /* Make sure we're holding Giant for newbus */
 	GIANT_REQUIRED;
 
-	/* This will be available after attachment */
-	if (sc->have_devs)
-		return (sc->chipc_dev);
+	/* chipc_dev is initialized during attachment */
+	if (sc->have_devs) {
+		if ((chipc = sc->chipc_dev) == NULL)
+			return (NULL);
+
+		goto found;
+	}
 
 	/* Locate chipc core with a core unit of 0 */
 	chipc = bhnd_find_child(sc->dev, BHND_DEVCLASS_CC, 0);
 	if (chipc == NULL)
 		return (NULL);
 
+found:
 	if (!device_is_attached(chipc)) {
 		device_printf(sc->dev, "chipc found, but did not attach\n");
 		return (NULL);
@@ -426,9 +431,16 @@ bhnd_find_pmu(struct bhnd_softc *sc)
         /* Make sure we're holding Giant for newbus */
 	GIANT_REQUIRED;
 
-	/* This will be available after attachment */
-	if (sc->have_devs)
+	/* pmu_dev is initialized during attachment */
+	if (sc->have_devs) {
+		if (sc->pmu_dev == NULL)
+			return (NULL);
+
+		if (!device_is_attached(sc->pmu_dev))
+			return (NULL);
+
 		return (sc->pmu_dev);
+	}
 
 	if ((ccaps = bhnd_find_chipc_caps(sc)) == NULL)
 		return (NULL);
@@ -449,9 +461,16 @@ bhnd_find_nvram(struct bhnd_softc *sc)
 	GIANT_REQUIRED;
 
 
-	/* This will be available after attachment */
-	if (sc->have_devs)
+	/* nvram_dev is initialized during attachment */
+	if (sc->have_devs) {
+		if (sc->nvram_dev == NULL)
+			return (NULL);
+
+		if (!device_is_attached(sc->nvram_dev))
+			return (NULL);
+
 		return (sc->nvram_dev);
+	}
 
 	if ((ccaps = bhnd_find_chipc_caps(sc)) == NULL)
 		return (NULL);
@@ -767,6 +786,15 @@ bhnd_generic_child_deleted(device_t dev, device_t child)
 	/* Free device info */
 	if ((dinfo = device_get_ivars(child)) != NULL)
 		BHND_BUS_FREE_DEVINFO(dev, dinfo);
+
+	/* Clean up platform device references */
+	if (sc->chipc_dev == child) {
+		sc->chipc_dev = NULL;
+	} else if (sc->nvram_dev == child) {
+		sc->nvram_dev = NULL;
+	} else if (sc->pmu_dev == child) {
+		sc->pmu_dev = NULL;
+	}
 }
 
 /**
