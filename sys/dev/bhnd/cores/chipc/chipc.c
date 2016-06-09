@@ -149,6 +149,7 @@ static const struct chipc_hint {
 	// FIXME: cfg/spi port1.1 mapping on siba(4) SoCs
 	// FIXME: IRQ shouldn't be hardcoded
 	/* device	unit	type		rid	base			size			port,region */
+	{ "bhnd_pmu",	0, SYS_RES_MEMORY,	0,	CHIPC_PMU_BASE,		CHIPC_PMU_SIZE,		0,0 },
 	{ "bhnd_nvram",	0, SYS_RES_MEMORY,	0,	CHIPC_SPROM_OTP,	CHIPC_SPROM_OTP_SIZE,	0,0 },
 	{ "uart",	0, SYS_RES_MEMORY,	0,	CHIPC_UART0_BASE,	CHIPC_UART_SIZE,	0,0 },
 	{ "uart",	0, SYS_RES_IRQ,		0,	2,			1 },
