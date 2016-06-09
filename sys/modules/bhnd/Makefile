@@ -1,23 +1,28 @@
 # $FreeBSD$
 
 .PATH: ${.CURDIR}/../../dev/bhnd
-.PATH: ${.CURDIR}/../../dev/bhnd/nvram
+.PATH: ${.CURDIR}/../../dev/bhnd/cores/chipc
 .PATH: ${.CURDIR}/../../dev/bhnd/cores/pmu
+.PATH: ${.CURDIR}/../../dev/bhnd/nvram
 
 KMOD=	bhnd
 SRCS=	bhnd.c bhnd_subr.c
 SRCS+=	bhnd_bus_if.c bhnd_bus_if.h
 
 # ChipCommon
+SRCS+=	chipc.c chipc_subr.c
 SRCS+=	bhnd_chipc_if.c bhnd_chipc_if.h
 
 # PMU
-SRCS+=	bhnd_pmu.c bhnd_pmu_chipc.c
+SRCS+=	bhnd_pmu.c \
+	bhnd_pmu_chipc.c
 SRCS+=	bhnd_pmu_if.c bhnd_pmu_if.h
 
-# NVRAM
+# NVRAM/SPROM
 SRCS+=	nvram_subr.c
-SRCS+=	bhnd_sprom.c bhnd_sprom_subr.c
+SRCS+=	bhnd_sprom.c \
+	bhnd_sprom_chipc.c \
+	bhnd_sprom_subr.c
 SRCS+=	bhnd_nvram_map.h bhnd_nvram_map_data.h
 SRCS+=	bhnd_nvram_if.c bhnd_nvram_if.h
 
