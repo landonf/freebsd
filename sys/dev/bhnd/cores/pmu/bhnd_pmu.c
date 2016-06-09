@@ -49,57 +49,41 @@ __FBSDID("$FreeBSD$");
 /*
  * Broadcom PMU driver.
  * 
- * Abstract driver for Broadcom PMU devices attached either via
- * a distinct core on the Always-on-Bus, or as a child of ChipCommon.
+ * Abstract driver for Broadcom PMU devices.
  */
 
 devclass_t bhnd_pmu_devclass;	/**< bhnd(4) PMU device class */
 
-static struct bhnd_device_quirk bhnd_pmu_quirks[];
-
-/* Supported device identifiers */
-static const struct bhnd_device bhnd_pmu_devices[] = {
-	BHND_DEVICE(BCM, PMU, NULL, bhnd_pmu_quirks),
-	BHND_DEVICE_END
-};
-
-
-/* Device quirks table */
-static struct bhnd_device_quirk bhnd_pmu_quirks[] = {
-	BHND_DEVICE_QUIRK_END
-};
-
-
-static int
+/**
+ * Default bhnd_pmu driver implementation of DEVICE_PROBE().
+ */
+int
 bhnd_pmu_probe(device_t dev)
 {
-	const struct bhnd_device *id;
-
-	id = bhnd_device_lookup(dev, bhnd_pmu_devices,
-	     sizeof(bhnd_pmu_devices[0]));
-	if (id == NULL)
-		return (ENXIO);
-
-	bhnd_set_default_core_desc(dev);
 	return (BUS_PROBE_DEFAULT);
 }
 
-static int
+/**
+ * Default bhnd_pmu driver implementation of DEVICE_ATTACH().
+ */
+int
 bhnd_pmu_attach(device_t dev)
 {
 	struct bhnd_pmu_softc		*sc;
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
-	sc->quirks = bhnd_device_quirks(dev, bhnd_pmu_devices,
-	    sizeof(bhnd_pmu_devices[0]));
+	sc->quirks = 0;
 
 	BPMU_LOCK_INIT(sc);
 
 	return (0);
 }
 
-static int
+/**
+ * Default bhnd_pmu driver implementation of DEVICE_DETACH().
+ */
+int
 bhnd_pmu_detach(device_t dev)
 {
 	struct bhnd_pmu_softc	*sc;
@@ -110,13 +94,19 @@ bhnd_pmu_detach(device_t dev)
 	return (0);
 }
 
-static int
+/**
+ * Default bhnd_pmu driver implementation of DEVICE_SUSPEND().
+ */
+int
 bhnd_pmu_suspend(device_t dev)
 {
 	return (0);
 }
 
-static int
+/**
+ * Default bhnd_pmu driver implementation of DEVICE_RESUME().
+ */
+int
 bhnd_pmu_resume(device_t dev)
 {
 	return (0);
@@ -137,6 +127,4 @@ static device_method_t bhnd_pmu_methods[] = {
 };
 
 DEFINE_CLASS_0(bhnd_pmu, bhnd_pmu_driver, bhnd_pmu_methods, sizeof(struct bhnd_pmu_softc));
-DRIVER_MODULE(bhnd_pmu, bhnd, bhnd_pmu_driver, bhnd_pmu_devclass, 0, 0);
-MODULE_DEPEND(bhnd_pmu, bhnd, 1, 1, 1);
 MODULE_VERSION(bhnd_pmu, 1);
