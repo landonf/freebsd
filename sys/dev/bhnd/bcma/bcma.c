@@ -393,6 +393,25 @@ bcma_get_region_addr(device_t dev, device_t child, bhnd_port_type port_type,
 	return (ENOENT);
 }
 
+static device_t
+bcma_add_child(device_t dev, u_int order, const char *name, int unit)
+{
+	struct bcma_devinfo	*dinfo;
+	device_t		 child;
+	
+	child = device_add_child_ordered(dev, order, name, unit);
+	if (child == NULL)
+		return (NULL);
+
+	if ((dinfo = bcma_alloc_dinfo(dev)) == NULL) {
+		device_delete_child(dev, child);
+		return (NULL);
+	}
+
+	device_set_ivars(child, dinfo);
+	return (child);
+}
+
 /**
  * Scan a device enumeration ROM table, adding all valid discovered cores to
  * the bus.
@@ -409,8 +428,7 @@ bcma_add_children(device_t bus, struct resource *erom_res, bus_size_t erom_offse
 	struct bcma_devinfo	*dinfo;
 	device_t		 child;
 	int			 error;
-	
-	dinfo = NULL;
+
 	corecfg = NULL;
 
 	/* Initialize our reader */
@@ -428,26 +446,20 @@ bcma_add_children(device_t bus, struct resource *erom_res, bus_size_t erom_offse
 			goto failed;
 		}
 
-		/* Allocate per-device bus info */
-		dinfo = bcma_alloc_dinfo(bus, corecfg);
-		if (dinfo == NULL) {
-			error = ENXIO;
-			goto failed;
-		}
-
-		/* The dinfo instance now owns the corecfg value */
-		corecfg = NULL;
-
 		/* Add the child device */
-		child = device_add_child(bus, NULL, -1);
+		child = BUS_ADD_CHILD(bus, 0, NULL, -1);
 		if (child == NULL) {
 			error = ENXIO;
 			goto failed;
 		}
 
-		/* The child device now owns the dinfo pointer */
-		device_set_ivars(child, dinfo);
-		dinfo = NULL;
+		/* Initialize device ivars */
+		dinfo = device_get_ivars(child);
+		if ((error = bcma_init_dinfo(bus, dinfo, corecfg)))
+			goto failed;
+
+		/* The dinfo instance now owns the corecfg value */
+		corecfg = NULL;
 
 		/* If pins are floating or the hardware is otherwise
 		 * unpopulated, the device shouldn't be used. */
@@ -460,9 +472,6 @@ bcma_add_children(device_t bus, struct resource *erom_res, bus_size_t erom_offse
 		return (0);
 	
 failed:
-	if (dinfo != NULL)
-		bcma_free_dinfo(bus, dinfo);
-
 	if (corecfg != NULL)
 		bcma_free_corecfg(corecfg);
 
@@ -477,6 +486,7 @@ static device_method_t bcma_methods[] = {
 	DEVMETHOD(device_detach,		bcma_detach),
 	
 	/* Bus interface */
+	DEVMETHOD(bus_add_child,		bcma_add_child),
 	DEVMETHOD(bus_child_deleted,		bcma_child_deleted),
 	DEVMETHOD(bus_read_ivar,		bcma_read_ivar),
 	DEVMETHOD(bus_write_ivar,		bcma_write_ivar),
