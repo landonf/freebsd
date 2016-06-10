@@ -425,49 +425,10 @@ bhnd_read_board_info(device_t dev, struct bhnd_board_info *info)
 }
 
 /**
- * Allocate and enable per-core clock request handling for @p child.
- *
- * The region containing the core's clkreq block (if any) must be
- * allocated via bus_alloc_resource(9) (or bhnd_alloc_resource) before
- * calling bhnd_alloc_clkreq(), and must not be released until after
- * calling bhnd_release_clkreq().
- *
- * @param dev The parent of @p child.
- * @param child The requesting bhnd device.
- * 
- * @retval 0		success
- * @retval non-zero	If allocating clock request state otherwise fails, a
- * 			regular unix error code will be returned.
- */
-static inline int
-bhnd_alloc_clkreq(device_t dev)
-{
-	return (BHND_BUS_ALLOC_CLKREQ(device_get_parent(dev), dev));
-}
-
-/**
- * Release any clock resources allocated for @p child. Any outstanding
- * clock requests are are discarded.
- *
- * @param dev The parent of @p child.
- * @param child The requesting bhnd device.
- * 
- * @retval 0		success
- * @retval non-zero	If releasing clock request state otherwise fails, a
- * 			regular unix error code will be returned, and
- * 			the core state will be left unmodified.
- */
-static inline int
-bhnd_release_clkreq(device_t dev)
-{
-	return (BHND_BUS_RELEASE_CLKREQ(device_get_parent(dev), dev));
-}
-
-/**
  * Request that @p clock be routed to @p child.
  * 
- * A driver must ask the bhnd bus to allocate its clkreq block using
- * bhnd_alloc_clkreq() before it can request clock resources.
+ * The @p child's core registers must be allocated via bus_alloc_resource(9)
+ * (or bhnd_alloc_resource) and activated before calling bhnd_request_clock().
  *
  * @param dev The parent of @p child.
  * @param child The bhnd device requesting @p clock.

@@ -93,18 +93,6 @@ CODE {
 	}
 
 	static int
-	bhnd_bus_null_alloc_clkreq(device_t dev, device_t child)
-	{
-		panic("bhnd_bus_alloc_clkreq unimplemented");
-	}
-
-	static int
-	bhnd_bus_null_release_clkreq(device_t dev, device_t child)
-	{
-		panic("bhnd_bus_release_clkreq unimplemented");
-	}
-
-	static int
 	bhnd_bus_null_request_clock(device_t dev, device_t child,
 	    bhnd_clock clock)
 	{
@@ -362,38 +350,11 @@ METHOD int suspend_core {
 } DEFAULT bhnd_bus_null_suspend_core;
 
 /**
- * Allocate and enable per-core clock request handling for @p child.
- *
- * The region containing the core's clkreq block (if any) must be
- * allocated via bus_alloc_resource(9) (or bhnd_alloc_resource) before
- * calling BHND_BUS_ALLOC_CLKREQ(), and must not be released until after
- * calling BHND_BUS_RELEASE_CLKREQ().
- *
- * @param dev The parent of @p child.
- * @param child The requesting bhnd device.
- */
-METHOD int alloc_clkreq {
-	device_t dev;
-	device_t child;
-} DEFAULT bhnd_bus_null_alloc_clkreq;
-
-/**
- * Release any clock resources allocated for @p child. Any outstanding
- * clock requests are are discarded.
- *
- * @param dev The parent of @p child.
- * @param child The requesting bhnd device.
- */
-METHOD int release_clkreq {
-	device_t dev;
-	device_t child;
-} DEFAULT bhnd_bus_null_release_clkreq;
-
-/**
  * Request that @p clock be routed to @p child.
  *
- * A driver must ask the bhnd bus to allocate its clkreq block using
- * BHND_BUS_ALLOC_CLKREQ() before it can request clock resources.
+ * The core's register block must be allocated via bus_alloc_resource(9)
+ * (or bhnd_alloc_resource) and activated before calling
+ * BHND_BUS_REQUEST_CLOCK().
  *
  * @param dev The parent of @p child.
  * @param child The bhnd device requesting @p clock.
