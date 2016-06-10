@@ -111,7 +111,8 @@ typedef enum {
 	/**
 	 * High Throughput (HT).
 	 * 
-	 * High bus throughput and lowest-latency register access.
+	 * High bus throughput and lowest-latency register access. Usually
+	 * supplied by PLL.
 	 */
 	BHND_CLOCK_HT		= 3
 } bhnd_clock;
