@@ -68,6 +68,8 @@ __FBSDID("$FreeBSD$");
 
 MALLOC_DEFINE(M_BHND, "bhnd", "bhnd bus data structures");
 
+#define	BHND_INIT_PLATFORM_PASS	BUS_PASS_DEFAULT
+
 /**
  * bhnd_generic_probe_nomatch() reporting configuration.
  */
@@ -87,6 +89,8 @@ static const struct bhnd_nomatch {
 
 
 static int			 bhnd_delete_children(struct bhnd_softc *sc);
+
+static int			 bhnd_init_platform_devs(struct bhnd_softc *sc);
 
 static device_t			 bhnd_find_chipc(struct bhnd_softc *sc);
 static struct chipc_caps	*bhnd_find_chipc_caps(struct bhnd_softc *sc);
@@ -110,7 +114,6 @@ int
 bhnd_generic_attach(device_t dev)
 {
 	struct bhnd_softc	*sc;
-	struct chipc_caps	*ccaps;
 	device_t		*devs;
 	int			 ndevs;
 	int			 error;
@@ -131,38 +134,11 @@ bhnd_generic_attach(device_t dev)
 		device_probe_and_attach(child);
 	}
 
-	/*
-	 * Locate bus-required platform hardware 
-	 */
-	if ((sc->chipc_dev = bhnd_find_chipc(sc)) == NULL) {
-		device_printf(sc->dev, "error: ChipCommon device not found\n");
-		error = ENXIO;
-		goto cleanup;
-	}
-
-	ccaps = BHND_CHIPC_GET_CAPS(sc->chipc_dev);
-
-	/* Look for NVRAM device */
-	if (ccaps->nvram_src != BHND_NVRAM_SRC_UNKNOWN) {
-		if ((sc->nvram_dev = bhnd_find_nvram(sc)) == NULL) {
-			device_printf(sc->dev,
-			    "error: NVRAM device not found\n");
-			error = ENXIO;
+	/* Locate bus-required child devices  */
+	if (bus_current_pass >= BHND_INIT_PLATFORM_PASS) {
+		if ((error = bhnd_init_platform_devs(sc)))
 			goto cleanup;
-		}
 	}
-
-	/* Look for a PMU  */
-	if (ccaps->pmu) {
-		if ((sc->pmu_dev = bhnd_find_pmu(sc)) == NULL) {
-			device_printf(sc->dev, "error: PMU device not found\n");
-			error = ENXIO;
-			goto cleanup;
-		}
-	}
-
-	/* Mark child platform hardware discovery as complete. */
-	sc->have_devs = true;
 
 cleanup:
 	free(devs, M_TEMP);
@@ -333,6 +309,82 @@ cleanup:
 	return (error);
 }
 
+static void
+bhnd_new_pass(device_t dev)
+{
+	struct bhnd_softc	*sc;
+	int			 error;
+
+	sc = device_get_softc(dev);
+
+	/* Attach any permissible children */ 
+	bus_generic_new_pass(dev);
+
+	/* Finalize attachment */
+	if (!sc->attach_done && bus_current_pass >= BHND_INIT_PLATFORM_PASS) {
+		error = bhnd_init_platform_devs(sc);
+
+		/* If managing a SoC's root bus, treat any errors as fatal */
+		if (error &&
+		    BHND_BUS_GET_ATTACH_TYPE(dev, dev) == BHND_ATTACH_NATIVE)
+		{
+			panic("bhnd_init_platform_devs() failed: %d", error);
+		}
+	}
+}
+
+/*
+ * Locate all required platform devices (chipc, nvram, pmu, etc).
+ *
+ * When attached as a SoC root bus (as opposed to a bridged WiFi device), our
+ * platform devices may not be attached until later bus passes, necessitating
+ * delayed initialization on our part.
+ */
+static int
+bhnd_init_platform_devs(struct bhnd_softc *sc)
+{
+	struct chipc_caps	*ccaps;
+
+	GIANT_REQUIRED;	/* newbus */
+
+	KASSERT(bus_current_pass >= BHND_INIT_PLATFORM_PASS,
+	    ("bhnd_init_platform_devs() called in pass %d",
+		bus_current_pass));
+
+	KASSERT(!sc->attach_done,
+	    ("bhnd_init_platform_devs() called twice"));
+
+	/* Locate chipc device */
+	if ((sc->chipc_dev = bhnd_find_chipc(sc)) == NULL) {
+		device_printf(sc->dev, "error: ChipCommon device not found\n");
+		return (ENXIO);
+	}
+
+	ccaps = BHND_CHIPC_GET_CAPS(sc->chipc_dev);
+
+	/* Look for NVRAM device */
+	if (ccaps->nvram_src != BHND_NVRAM_SRC_UNKNOWN) {
+		if ((sc->nvram_dev = bhnd_find_nvram(sc)) == NULL) {
+			device_printf(sc->dev,
+			    "error: NVRAM device not found\n");
+			return (ENXIO);
+		}
+	}
+
+	/* Look for a PMU  */
+	if (ccaps->pmu) {
+		if ((sc->pmu_dev = bhnd_find_pmu(sc)) == NULL) {
+			device_printf(sc->dev, "error: PMU device not found\n");
+			return (ENXIO);
+		}
+	}
+
+	/* Mark attach as completed */
+	sc->attach_done = true;
+
+	return (0);
+}
+
 /* Locate the ChipCommon core. */
 static device_t
 bhnd_find_chipc(struct bhnd_softc *sc)
@@ -343,7 +395,7 @@ bhnd_find_chipc(struct bhnd_softc *sc)
 	GIANT_REQUIRED;
 
 	/* chipc_dev is initialized during attachment */
-	if (sc->have_devs) {
+	if (sc->attach_done) {
 		if ((chipc = sc->chipc_dev) == NULL)
 			return (NULL);
 
@@ -432,7 +484,7 @@ bhnd_find_pmu(struct bhnd_softc *sc)
 	GIANT_REQUIRED;
 
 	/* pmu_dev is initialized during attachment */
-	if (sc->have_devs) {
+	if (sc->attach_done) {
 		if (sc->pmu_dev == NULL)
 			return (NULL);
 
@@ -462,7 +514,7 @@ bhnd_find_nvram(struct bhnd_softc *sc)
 
 
 	/* nvram_dev is initialized during attachment */
-	if (sc->have_devs) {
+	if (sc->attach_done) {
 		if (sc->nvram_dev == NULL)
 			return (NULL);
 
@@ -916,6 +968,7 @@ static device_method_t bhnd_methods[] = {
 	DEVMETHOD(device_resume,		bhnd_generic_resume),
 
 	/* Bus interface */
+	DEVMETHOD(bus_new_pass,			bhnd_new_pass),
 	DEVMETHOD(bus_add_child,		bhnd_generic_add_child),
 	DEVMETHOD(bus_child_deleted,		bhnd_generic_child_deleted),
 	DEVMETHOD(bus_probe_nomatch,		bhnd_generic_probe_nomatch),
