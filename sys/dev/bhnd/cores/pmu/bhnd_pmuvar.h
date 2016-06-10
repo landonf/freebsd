@@ -58,8 +58,11 @@ enum {
 struct bhnd_pmu_softc {
 	device_t		 dev;
 	uint32_t		 quirks;	/**< device quirk flags */
-	struct bhnd_resource	*core;		/**< core registers. */
-	struct mtx		 mtx;		/**< state mutex. */
+
+	struct bhnd_resource	*pmu;		/**< pmu register block. */
+	int			 pmu_rid;	/**< pmu register RID */
+
+	struct mtx		 mtx;		/**< state mutex */
 };
 
 #define	BPMU_LOCK_INIT(sc) \

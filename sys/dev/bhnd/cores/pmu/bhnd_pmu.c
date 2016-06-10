@@ -65,6 +65,9 @@ bhnd_pmu_probe(device_t dev)
 
 /**
  * Default bhnd_pmu driver implementation of DEVICE_ATTACH().
+ * 
+ * Assumes the PMU register block is mapped via SYS_RES_MEMORY resource
+ * with RID 0.
  */
 int
 bhnd_pmu_attach(device_t dev)
@@ -74,6 +77,15 @@ bhnd_pmu_attach(device_t dev)
 	sc = device_get_softc(dev);
 	sc->dev = dev;
 	sc->quirks = 0;
+	
+	/* Allocate register block resource */
+	sc->pmu_rid = 0;
+	sc->pmu = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY, &sc->pmu_rid,
+	    RF_ACTIVE);
+	if (sc->pmu == NULL) {
+		device_printf(dev, "failed to allocate resources\n");
+		return (ENXIO);
+	}
 
 	BPMU_LOCK_INIT(sc);
 
@@ -89,6 +101,9 @@ bhnd_pmu_detach(device_t dev)
 	struct bhnd_pmu_softc	*sc;
 
 	sc = device_get_softc(dev);
+
+	bhnd_release_resource(dev, SYS_RES_MEMORY, sc->pmu_rid,
+	    sc->pmu);
 	BPMU_LOCK_DESTROY(sc);
 
 	return (0);
