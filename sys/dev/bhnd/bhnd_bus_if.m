@@ -62,10 +62,74 @@ CODE {
 	{
 		panic("bhnd_bus_read_boardinfo unimplemented");
 	}
-	
+
+	static struct bhnd_devinfo *
+	bhnd_bus_null_alloc_devinfo(device_t dev)
+	{
+		panic("bhnd_bus_alloc_devinfo unimplemented");
+	}
+
+	static void
+	bhnd_bus_null_free_devinfo(device_t dev, struct bhnd_devinfo *dinfo)
+	{
+		panic("bhnd_bus_release_devinfo unimplemented");
+	}
+
 	static void
 	bhnd_bus_null_child_added(device_t dev, device_t child)
 	{
+	}
+
+	static int
+	bhnd_bus_null_reset_core(device_t dev, device_t child, uint16_t flags)
+	{
+		panic("bhnd_bus_reset_core unimplemented");
+	}
+
+	static int
+	bhnd_bus_null_suspend_core(device_t dev, device_t child)
+	{
+		panic("bhnd_bus_suspend_core unimplemented");
+	}
+
+	static int
+	bhnd_bus_null_alloc_clkreq(device_t dev, device_t child)
+	{
+		panic("bhnd_bus_alloc_clkreq unimplemented");
+	}
+
+	static int
+	bhnd_bus_null_release_clkreq(device_t dev, device_t child)
+	{
+		panic("bhnd_bus_release_clkreq unimplemented");
+	}
+
+	static int
+	bhnd_bus_null_request_clock(device_t dev, device_t child,
+	    bhnd_clock clock)
+	{
+		panic("bhnd_bus_request_clock unimplemented");
+	}
+
+	static bool
+	bhnd_bus_null_is_region_valid(device_t dev, device_t child,
+	    bhnd_port_type type, u_int port_num, u_int region_num)
+	{
+		panic("bhnd_bus_is_region_valid unimplemented");
+	}
+
+	static u_int
+	bhnd_bus_null_get_port_count(device_t dev, device_t child,
+	    bhnd_port_type type)
+	{
+		panic("bhnd_bus_get_port_count unimplemented");
+	}
+
+	static u_int
+	bhnd_bus_null_get_region_count(device_t dev, device_t child,
+	    bhnd_port_type type, u_int port)
+	{
+		panic("bhnd_bus_get_region_count unimplemented");
 	}
 
 	static device_t
@@ -238,7 +302,7 @@ METHOD int read_board_info {
  */
 METHOD struct bhnd_devinfo * alloc_devinfo {
 	device_t dev;
-};
+} DEFAULT bhnd_bus_null_alloc_devinfo;
 
 /**
  * Release memory previously allocated for @p devinfo.
@@ -250,7 +314,7 @@ METHOD struct bhnd_devinfo * alloc_devinfo {
 METHOD void free_devinfo {
 	device_t dev;
 	struct bhnd_devinfo *dinfo;
-};
+} DEFAULT bhnd_bus_null_free_devinfo;
 
 /**
  * Notify a bhnd bus that a child was added.
@@ -281,7 +345,7 @@ METHOD int reset_core {
 	device_t dev;
 	device_t child;
 	uint16_t flags;
-}
+} DEFAULT bhnd_bus_null_reset_core;
 
 /**
  * Suspend a device hardware core.
@@ -295,7 +359,7 @@ METHOD int reset_core {
 METHOD int suspend_core {
 	device_t dev;
 	device_t child;
-}
+} DEFAULT bhnd_bus_null_suspend_core;
 
 /**
  * Allocate and enable per-core clock request handling for @p child.
@@ -311,7 +375,7 @@ METHOD int suspend_core {
 METHOD int alloc_clkreq {
 	device_t dev;
 	device_t child;
-}
+} DEFAULT bhnd_bus_null_alloc_clkreq;
 
 /**
  * Release any clock resources allocated for @p child. Any outstanding
@@ -323,7 +387,7 @@ METHOD int alloc_clkreq {
 METHOD int release_clkreq {
 	device_t dev;
 	device_t child;
-}
+} DEFAULT bhnd_bus_null_release_clkreq;
 
 /**
  * Request that @p clock be routed to @p child.
@@ -339,7 +403,7 @@ METHOD int request_clock {
 	device_t dev;
 	device_t child;
 	bhnd_clock clock;
-}
+} DEFAULT bhnd_bus_null_request_clock;
 
 /**
  * Allocate a bhnd resource.
@@ -416,7 +480,7 @@ METHOD bool is_region_valid {
 	bhnd_port_type type;
 	u_int port_num;
 	u_int region_num;
-};
+} DEFAULT bhnd_bus_null_is_region_valid;
 
 /**
  * Return the number of ports of type @p type attached to @p child.
@@ -429,7 +493,7 @@ METHOD u_int get_port_count {
 	device_t dev;
 	device_t child;
 	bhnd_port_type type;
-};
+} DEFAULT bhnd_bus_null_get_port_count;
 
 /**
  * Return the number of memory regions mapped to @p child @p port of
@@ -445,7 +509,7 @@ METHOD u_int get_region_count {
 	device_t child;
 	bhnd_port_type type;
 	u_int port;
-};
+} DEFAULT bhnd_bus_null_get_region_count;
 
 /**
  * Return the SYS_RES_MEMORY resource-ID for a port/region pair attached to
