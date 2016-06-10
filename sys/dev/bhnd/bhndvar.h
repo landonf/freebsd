@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2015 Landon Fuller <landon@landonf.org>
+ * Copyright (c) 2015-2016 Landon Fuller <landonf@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -45,11 +45,14 @@
 MALLOC_DECLARE(M_BHND);
 DECLARE_CLASS(bhnd_driver);
 
+struct bhnd_clkreq_st;
+
 /**
  * bhnd per-device info.  Must be first member of all subclass
  * devinfo structures.
  */
 struct bhnd_devinfo {
+	struct bhnd_clkreq_st	*clkreq;	/**< clkreq state, or NULL */
 };
 
 /**
@@ -75,6 +78,13 @@ int			 bhnd_generic_suspend(device_t dev);
 
 int			 bhnd_generic_get_probe_order(device_t dev,
 			     device_t child);
+
+int			 bhnd_generic_alloc_clkreq(device_t dev,
+			     device_t child);
+int			 bhnd_generic_release_clkreq(device_t dev,
+			     device_t child);
+int			 bhnd_generic_request_clock(device_t dev,
+			     device_t child, bhnd_clock clock);
 
 int			 bhnd_generic_print_child(device_t dev,
 			     device_t child);

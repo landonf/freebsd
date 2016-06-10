@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2015 Landon Fuller <landon@landonf.org>
+ * Copyright (c) 2015-2016 Landon Fuller <landonf@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -626,6 +626,36 @@ bhnd_generic_get_probe_order(device_t dev, device_t child)
 }
 
 /**
+ * Default bhnd(4) bus driver implementation of BHND_BUS_ALLOC_CLKREQ().
+ */
+int
+bhnd_generic_alloc_clkreq(device_t dev, device_t child)
+{
+	// TODO
+	return (ENXIO);
+}
+
+/**
+ * Default bhnd(4) bus driver implementation of BHND_BUS_RELEASE_CLKREQ().
+ */
+int
+bhnd_generic_release_clkreq(device_t dev, device_t child)
+{
+	// TODO
+	panic("unimplemented");
+}
+
+/**
+ * Default bhnd(4) bus driver implementation of BHND_BUS_REQUEST_CLOCK().
+ */
+int
+bhnd_generic_request_clock(device_t dev, device_t child, bhnd_clock clock)
+{
+	// TODO
+	return (ENXIO);
+}
+
+/**
  * Default bhnd(4) bus driver implementation of BHND_BUS_IS_REGION_VALID().
  * 
  * This implementation assumes that port and region numbers are 0-indexed and
@@ -845,8 +875,13 @@ bhnd_generic_child_deleted(device_t dev, device_t child)
 	}
 
 	/* Free device info */
-	if ((dinfo = device_get_ivars(child)) != NULL)
+	if ((dinfo = device_get_ivars(child)) != NULL) {
+		if (dinfo->clkreq != NULL)
+			panic("%s leaking device clkreq\n",
+			    device_get_nameunit(child));
+
 		BHND_BUS_FREE_DEVINFO(dev, dinfo);
+	}
 }
 
 /**
@@ -999,6 +1034,9 @@ static device_method_t bhnd_methods[] = {
 	/* BHND interface */
 	DEVMETHOD(bhnd_bus_get_chipid,		bhnd_bus_generic_get_chipid),
 	DEVMETHOD(bhnd_bus_get_probe_order,	bhnd_generic_get_probe_order),
+	DEVMETHOD(bhnd_bus_alloc_clkreq,	bhnd_generic_alloc_clkreq),
+	DEVMETHOD(bhnd_bus_release_clkreq,	bhnd_generic_release_clkreq),
+	DEVMETHOD(bhnd_bus_request_clock,	bhnd_generic_request_clock),
 	DEVMETHOD(bhnd_bus_is_region_valid,	bhnd_generic_is_region_valid),
 	DEVMETHOD(bhnd_bus_is_hw_disabled,	bhnd_bus_generic_is_hw_disabled),
 	DEVMETHOD(bhnd_bus_get_nvram_var,	bhnd_generic_get_nvram_var),
