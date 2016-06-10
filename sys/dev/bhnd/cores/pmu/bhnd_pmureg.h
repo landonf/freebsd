@@ -640,4 +640,4 @@
 /* PMU resource up transition time in ILP cycles */
 #define	BHND_PMU_PMURES_UP_TRANSITION		2
 
-#endif /* _BHND_CORES_BHND_PMU_CHIPCREG_H_ */
+#endif /* _BHND_CORES_PMU_BHND_PMUREG_H_ */

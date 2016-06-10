@@ -29,8 +29,8 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_CORES_BPMU_CHIPCVAR_H_
-#define _BHND_CORES_BPMU_CHIPCVAR_H_
+#ifndef _BHND_CORES_PMU_BHND_PMUVAR_H_
+#define _BHND_CORES_PMU_BHND_PMUVAR_H_
 
 #include <sys/types.h>
 #include <sys/rman.h>
@@ -73,4 +73,4 @@ struct bhnd_pmu_softc {
 #define	BPMU_LOCK_ASSERT(sc, what)		mtx_assert(&(sc)->mtx, what)
 #define	BPMU_LOCK_DESTROY(sc)			mtx_destroy(&(sc)->mtx)
 
-#endif /* _BHND_CORES_BPMU_CHIPCVAR_H_ */
+#endif /* _BHND_CORES_PMU_BHND_PMUVAR_H_ */
