@@ -741,6 +741,35 @@ bhnd_child_location_str(device_t dev, device_t child, char *buf,
 }
 
 /**
+ * Default bhnd(4) bus driver implementation of BUS_ADD_CHILD().
+ * 
+ * This implementation manages internal bhnd(4) state, and must be called
+ * by subclassing drivers.
+ */
+device_t
+bhnd_generic_add_child(device_t dev, u_int order, const char *name, int unit)
+{
+	struct bhnd_devinfo	*dinfo;
+	device_t		 child;
+
+	child = device_add_child_ordered(dev, order, name, unit);
+	if (child == NULL)
+		return (NULL);
+
+	if ((dinfo = BHND_BUS_ALLOC_DEVINFO(dev)) == NULL) {
+		device_delete_child(dev, child);
+		return (NULL);
+	}
+
+	device_set_ivars(child, dinfo);
+
+	/* Inform concrete bus driver. */
+	BHND_BUS_CHILD_ADDED(dev, child);
+
+	return (child);
+}
+
+/**
  * Default bhnd(4) bus driver implementation of BUS_CHILD_DELETED().
  * 
  * This implementation manages internal bhnd(4) state, and must be called
@@ -749,7 +778,10 @@ bhnd_child_location_str(device_t dev, device_t child, char *buf,
 void
 bhnd_generic_child_deleted(device_t dev, device_t child)
 {
-	struct bhnd_softc *sc = device_get_softc(dev);
+	struct bhnd_softc	*sc;
+	struct bhnd_devinfo	*dinfo;
+
+	sc = device_get_softc(dev);
 
 	/* Clean up platform device references */
 	if (sc->chipc_dev == child) {
@@ -759,6 +791,10 @@ bhnd_generic_child_deleted(device_t dev, device_t child)
 	} else if (sc->pmu_dev == child) {
 		sc->pmu_dev = NULL;
 	}
+
+	/* Free device info */
+	if ((dinfo = device_get_ivars(child)) != NULL)
+		BHND_BUS_FREE_DEVINFO(dev, dinfo);
 }
 
 /**
@@ -880,6 +916,7 @@ static device_method_t bhnd_methods[] = {
 	DEVMETHOD(device_resume,		bhnd_generic_resume),
 
 	/* Bus interface */
+	DEVMETHOD(bus_add_child,		bhnd_generic_add_child),
 	DEVMETHOD(bus_child_deleted,		bhnd_generic_child_deleted),
 	DEVMETHOD(bus_probe_nomatch,		bhnd_generic_probe_nomatch),
 	DEVMETHOD(bus_print_child,		bhnd_generic_print_child),

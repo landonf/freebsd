@@ -64,7 +64,9 @@ struct siba_core_id	 siba_parse_core_id(uint32_t idhigh, uint32_t idlow,
 int			 siba_add_children(device_t bus,
 			     const struct bhnd_chipid *chipid);
 
-struct siba_devinfo	*siba_alloc_dinfo(device_t dev,
+struct siba_devinfo	*siba_alloc_dinfo(device_t dev);
+int			 siba_init_dinfo(device_t dev,
+			     struct siba_devinfo *dinfo,
 			     const struct siba_core_id *core_id);
 void			 siba_free_dinfo(device_t dev,
 			     struct siba_devinfo *dinfo);
@@ -131,6 +133,8 @@ struct siba_core_id {
  * siba(4) per-device info
  */
 struct siba_devinfo {
+	struct bhnd_devinfo	 bhnd_dinfo;	/**< superclass device info. */
+
 	struct resource_list	 resources;	/**< per-core memory regions. */
 	struct siba_core_id	 core_id;	/**< core identification info */
 

@@ -134,7 +134,9 @@ struct bcma_corecfg {
  * BCMA per-device info
  */
 struct bcma_devinfo {
-	struct resource_list	resources;	/**< Slave port memory regions. */
+	struct bhnd_devinfo	 bhnd_dinfo;	/**< superclass device info. */
+
+	struct resource_list	 resources;	/**< Slave port memory regions. */
 	struct bcma_corecfg	*corecfg;	/**< IP core/block config */
 
 	struct bhnd_resource	*res_agent;	/**< Agent (wrapper) resource, or NULL. Not
