@@ -68,6 +68,11 @@ CODE {
 	{
 		panic("bhnd_bus_read_boardinfo unimplemented");
 	}
+	
+	static void
+	bhnd_bus_null_child_added(device_t dev, device_t child)
+	{
+	}
 
 	static device_t
 	bhnd_bus_null_find_hostb_device(device_t dev)
@@ -257,7 +262,8 @@ METHOD void free_devinfo {
  * Notify a bhnd bus that a child was added.
  *
  * Called at the end of BUS_ADD_CHILD() to allow the concrete bhnd(4)
- * driver instance to set up any driver-specific state for the child.
+ * driver instance to initialize any additional driver-specific state for the
+ * child.
  *
  * @param dev The bhnd bus whose child is being added.
  * @param child The child added to @p dev.
@@ -265,7 +271,7 @@ METHOD void free_devinfo {
 METHOD void child_added {
 	device_t dev;
 	device_t child;
-};
+} DEFAULT bhnd_bus_null_child_added;
 
 /**
  * Reset the device's hardware core.

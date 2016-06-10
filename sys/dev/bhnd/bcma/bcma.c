@@ -390,23 +390,17 @@ bcma_get_region_addr(device_t dev, device_t child, bhnd_port_type port_type,
 	return (ENOENT);
 }
 
-static device_t
-bcma_add_child(device_t dev, u_int order, const char *name, int unit)
+static struct bhnd_devinfo *
+bcma_alloc_bhnd_dinfo(device_t dev)
 {
-	struct bcma_devinfo	*dinfo;
-	device_t		 child;
-	
-	child = device_add_child_ordered(dev, order, name, unit);
-	if (child == NULL)
-		return (NULL);
+	struct bcma_devinfo *dinfo = bcma_alloc_dinfo(dev);
+	return ((struct bhnd_devinfo *)dinfo);
+}
 
-	if ((dinfo = bcma_alloc_dinfo(dev)) == NULL) {
-		device_delete_child(dev, child);
-		return (NULL);
-	}
-
-	device_set_ivars(child, dinfo);
-	return (child);
+static void
+bcma_free_bhnd_dinfo(device_t dev, struct bhnd_devinfo *dinfo)
+{
+	bcma_free_dinfo(dev, (struct bcma_devinfo *)dinfo);
 }
 
 /**
@@ -483,7 +477,6 @@ static device_method_t bcma_methods[] = {
 	DEVMETHOD(device_detach,		bcma_detach),
 	
 	/* Bus interface */
-	DEVMETHOD(bus_add_child,		bcma_add_child),
 	DEVMETHOD(bus_child_deleted,		bcma_child_deleted),
 	DEVMETHOD(bus_read_ivar,		bcma_read_ivar),
 	DEVMETHOD(bus_write_ivar,		bcma_write_ivar),
@@ -491,6 +484,8 @@ static device_method_t bcma_methods[] = {
 
 	/* BHND interface */
 	DEVMETHOD(bhnd_bus_find_hostb_device,	bcma_find_hostb_device),
+	DEVMETHOD(bhnd_bus_alloc_devinfo,	bcma_alloc_bhnd_dinfo),
+	DEVMETHOD(bhnd_bus_free_devinfo,	bcma_free_bhnd_dinfo),
 	DEVMETHOD(bhnd_bus_reset_core,		bcma_reset_core),
 	DEVMETHOD(bhnd_bus_suspend_core,	bcma_suspend_core),
 	DEVMETHOD(bhnd_bus_get_port_count,	bcma_get_port_count),

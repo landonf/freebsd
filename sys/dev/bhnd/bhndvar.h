@@ -73,6 +73,10 @@ int			 bhnd_generic_print_child(device_t dev,
 void			 bhnd_generic_probe_nomatch(device_t dev,
 			     device_t child);
 
+device_t		 bhnd_generic_add_child(device_t dev, u_int order,
+			     const char *name, int unit);
+void			 bhnd_generic_child_deleted(device_t dev,
+			     device_t child);
 int			 bhnd_generic_suspend_child(device_t dev,
 			     device_t child);
 int			 bhnd_generic_resume_child(device_t dev,
