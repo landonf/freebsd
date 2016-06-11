@@ -162,7 +162,7 @@ chipc_print_caps(device_t dev, struct chipc_caps *caps)
 	device_printf(dev, "CFIsz:   0x%02x  | OTPsz: 0x%02x\n",
 	    caps->cfi_width, caps->otp_size);
 	device_printf(dev, "ExtBus:  0x%02x  | PwCtl: %s\n",
-	    caps->extbus_type, CC_TFS(power_control));
+	    caps->extbus_type, CC_TFS(pwr_ctl));
 	device_printf(dev, "PLL:     0x%02x  | JTAGM: %s\n",
 	    caps->pll_type, CC_TFS(jtag_master));
 	device_printf(dev, "PMU:     %-3s   | ECI:   %s\n",
@@ -171,7 +171,6 @@ chipc_print_caps(device_t dev, struct chipc_caps *caps)
 	    CC_TFS(seci), CC_TFS(gsio));
 	device_printf(dev, "AOB:     %-3s   | BootROM: %s\n",
 	    CC_TFS(aob), CC_TFS(boot_rom));
-
 #undef CC_TFS
 }
 

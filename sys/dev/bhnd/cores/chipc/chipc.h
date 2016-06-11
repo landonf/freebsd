@@ -77,7 +77,7 @@ struct chipc_caps {
 					     not present */
 
 	uint8_t		pll_type;	/**< PLL type */
-	bool		power_control;	/**< Power control available */
+	bool		pwr_ctl;	/**< PWR_CTL or PWR_CTL_INSTACLK available */
 	bool		jtag_master;	/**< JTAG Master present */
 	bool		boot_rom;	/**< Internal boot ROM is active */
 	uint8_t		backplane_64;	/**< Backplane supports 64-bit addressing.
