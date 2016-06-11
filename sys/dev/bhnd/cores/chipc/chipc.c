@@ -667,12 +667,15 @@ chipc_child_location_str(device_t dev, device_t child, char *buf,
 static device_t
 chipc_add_child(device_t dev, u_int order, const char *name, int unit)
 {
+	struct chipc_softc	*sc;
 	struct chipc_devinfo	*dinfo;
 	const struct chipc_hint	*hint;
 	device_t		 child;
 	devclass_t		 child_dc;
 	int			 error;
 	int 			 busrel_unit;
+
+	sc = device_get_softc(dev);
 
 	child = device_add_child_ordered(dev, order, name, unit);
 	if (child == NULL)
@@ -709,9 +712,6 @@ chipc_add_child(device_t dev, u_int order, const char *name, int unit)
 
 	/* Use hint table to set child resources */
 	for (hint = chipc_hints; hint->name != NULL; hint++) {
-		bhnd_addr_t	region_addr;
-		bhnd_size_t	region_size;
-
 		/* Check device name */
 		if (strcmp(hint->name, name) != 0)
 			continue;
@@ -720,68 +720,14 @@ chipc_add_child(device_t dev, u_int order, const char *name, int unit)
 		if (hint->unit >= 0 && unit != hint->unit)
 			continue;
 
-		switch (hint->type) {
-		case SYS_RES_IRQ:
-			/* Add child resource */
-			error = bus_set_resource(child, hint->type, hint->rid,
-			    hint->base, hint->size);
-			if (error) {
-				device_printf(dev,
-				    "bus_set_resource() failed for %s: %d\n",
-				    device_get_nameunit(child), error);
-				goto failed;
-			}
-			break;
-
-		case SYS_RES_MEMORY:
-			/* Fetch region address and size */
-			error = bhnd_get_region_addr(dev, BHND_PORT_DEVICE,
-			    hint->port, hint->region, &region_addr,
-			    &region_size);
-			if (error) {
-				device_printf(dev,
-				    "lookup of %s%u.%u failed: %d\n",
-				    bhnd_port_type_name(BHND_PORT_DEVICE),
-				    hint->port, hint->region, error);
-				goto failed;
-			}
-
-			/* Verify requested range is mappable */
-			if (hint->base > region_size ||
-			    (hint->size != RM_MAX_END &&
-				(hint->size > region_size ||
-				 region_size - hint->base < hint->size )))
-			{
-				device_printf(dev,
-				    "%s%u.%u region cannot map requested range "
-				        "%#jx+%#jx\n",
-				    bhnd_port_type_name(BHND_PORT_DEVICE),
-				    hint->port, hint->region, hint->base,
-				    hint->size);
-			}
-
-			/*
-			 * Add child resource. If hint doesn't define the end
-			 * of resource window (RX_MAX_END), use end of region.
-			 */
-
-			error = bus_set_resource(child,
-				    hint->type,
-				    hint->rid, region_addr + hint->base,
-				    (hint->size == RM_MAX_END) ?
-					    region_size - hint->base :
-					    hint->size);
-			if (error) {
-				device_printf(dev,
-				    "bus_set_resource() failed for %s: %d\n",
-				    device_get_nameunit(child), error);
-				goto failed;
-			}
-			break;
-		default:
-			device_printf(child, "unknown hint resource type: %d\n",
-			    hint->type);
-			break;
+		/* Define resource */
+		error = chipc_set_resource(sc, child, hint->type, hint->rid,
+		    hint->base, hint->size, hint->port, hint->region);
+		if (error) {
+			device_printf(dev,
+			    "chipc_set_resource() failed for %s: %d\n",
+			    device_get_nameunit(child), error);
+			goto failed;
 		}
 	}
 
