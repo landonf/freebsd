@@ -102,10 +102,11 @@ chipc_cfi_probe(device_t dev)
 	    enabled, byteswap);
 
 	sc->sc_width = 0;
-	error = cfi_probe(dev);
-	if (error == 0)
-		device_set_desc(dev, "ChipCommon CFI");
-	return (error);
+	if ((error = cfi_probe(dev)) > 0)
+		return (error);
+
+	device_set_desc(dev, "ChipCommon CFI");
+	return (BUS_PROBE_NOWILDCARD);
 }
 
 static int

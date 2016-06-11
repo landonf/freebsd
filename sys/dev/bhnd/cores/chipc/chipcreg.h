@@ -90,30 +90,46 @@
 #define	CHIPC_GPIOTIMERVAL		0x88	/**< gpio-based LED duty cycle (rev >= 16) */
 #define	CHIPC_GPIOTIMEROUTMASK		0x8C
 
-/* clock control block */
+/* clock control registers (non-PMU devices) */
 #define	CHIPC_CLKC_N			0x90
 #define	CHIPC_CLKC_SB			0x94	/* m0 (backplane) */
 #define	CHIPC_CLKC_PCI			0x98	/* m1 */
 #define	CHIPC_CLKC_M2			0x9C	/* mii/uart/mipsref */
 #define	CHIPC_CLKC_M3			0xA0	/* cpu */
 #define	CHIPC_CLKDIV			0xA4	/* rev >= 3 */
+
 #define	CHIPC_GPIODEBUGSEL		0xA8	/* rev >= 28 */
 #define	CHIPC_CAPABILITIES_EXT		0xAC
 
-/* pll delay (registers rev >= 4) */
-#define	CHIPC_PLL_ON_DELAY		0xB0
-#define	CHIPC_PLL_FREFSEL_DELAY		0xB4
-#define	CHIPC_PLL_SLOWCLK_CTL		0xB8	/* revs 6-9 */
+/* pll/slowclk registers (rev >= 4) */
+#define	CHIPC_PLL_ON_DELAY		0xB0	/* rev >= 4 */
+#define	CHIPC_PLL_FREFSEL_DELAY		0xB4	/* rev >= 4 */
+#define	CHIPC_PLL_SLOWCLK_CTL		0xB8	/* "slowclock" (rev 6-9) */
 
 /* "instaclock" registers */
-#define	CHIPC_SYS_CLK_CTL		0xC0	/* rev >= 10 */
-#define	CHIPC_SYS_CLKSTATESTRETCH	0xC4	/* rev >= 10 */
+#define	CHIPC_SYS_CLK_CTL		0xC0	/* "instaclock" (rev >= 10) */
+#define	CHIPC_SYS_CLK_ST_STRETCH	0xC4	/* state strech (?) rev >= 10 */
 
 /* indirect backplane access (rev >= 10) */
 #define	CHIPC_BP_ADDRLOW		0xD0
 #define	CHIPC_BP_ADDRHIGH		0xD4
 #define	CHIPC_BP_DATA			0xD8
 #define	CHIPC_BP_INDACCESS		0xE0
+
+/* PWR_CTL register block (relative definitions of CLKC, PLL, and SYS_CLK
+ * register blocks) */
+#define	CHIPC_PWRCTL			0x90
+#define	CHIPC_PWRCTL_SIZE		0x38
+#define	CHIPC_PWRCTL_CLKC_N		CHIPC_CLKC_N - CHIPC_PWRCTL
+#define	CHIPC_PWRCTL_CLKC_SB		CHIPC_CLKC_SB - CHIPC_PWRCTL
+#define	CHIPC_PWRCTL_CLKC_PCI		CHIPC_CLKC_PCI - CHIPC_PWRCTL
+#define	CHIPC_PWRCTL_CLKC_M2		CHIPC_CLKC_M2 - CHIPC_PWRCTL
+#define	CHIPC_PWRCTL_CLKDIV		CHIPC_CLKDIV - CHIPC_PWRCTL
+#define	CHIPC_PWRCTL_PLL_ON_DELAY	CHIPC_PLL_ON_DELAY - CHIPC_PWRCTL
+#define	CHIPC_PWRCTL_PLL_FREFSEL_DELAY	CHIPC_PLL_FREFSEL_DELAY - CHIPC_PWRCTL
+#define	CHIPC_PWRCTL_PLL_SLOWCLK_CTL	CHIPC_PLL_SLOWCLK_CTL - CHIPC_PWRCTL
+#define	CHIPC_PWRCTL_SYS_CLK_CTL	CHIPC_SYS_CLK_CTL - CHIPC_PWRCTL
+#define	CHIPC_PWRCTL_SYS_CLK_ST_STRETCH	CHIPC_SYS_CLK_ST_STRETCH - CHIPC_PWRCTL
 
 /* SPI/I2C (rev >= 37) */
 #define	CHIPC_GSIO_CTRL			0xE4
@@ -175,11 +191,12 @@
 
 #define	CHIPC_UART_BASE			0x300
 #define	CHIPC_UART_SIZE			0x100
+#define	CHIPC_UART_MAX			3
 #define	CHIPC_UART0_BASE		CHIPC_UART_BASE
 #define	CHIPC_UART1_BASE		(CHIPC_UART_BASE + CHIPC_UART_SIZE)
 
 /* PMU register block (rev >= 20) */
-#define	CHIPC_PMU_BASE			0x600
+#define	CHIPC_PMU			0x600
 #define	CHIPC_PMU_SIZE			0x70
 
 #define	CHIPC_SPROM_OTP			0x800	/* SPROM/OTP address space */

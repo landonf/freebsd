@@ -41,135 +41,73 @@ __FBSDID("$FreeBSD$");
 #include <machine/bus.h>
 
 #include <dev/bhnd/bhndvar.h>
-/*
- * SPI BUS interface
- */
+
 #include <dev/spibus/spi.h>
+
+#include "bhnd_chipc_if.h"
 
 #include "spibus_if.h"
 
 #include "chipcreg.h"
 #include "chipcvar.h"
-#include "chipc_spi.h"
-#include "bhnd_chipc_if.h"
-
-/*
- * Flash slicer
- */
 #include "chipc_slicer.h"
 
-/*
- * **************************** PROTOTYPES ****************************
- */
+#include "chipc_spi.h"
 
 static void	chipc_spi_identify(driver_t *driver, device_t parent);
 static int	chipc_spi_probe(device_t dev);
 static int	chipc_spi_attach(device_t dev);
+static int	chipc_spi_detach(device_t dev);
 static int	chipc_spi_transfer(device_t dev, device_t child,
 		    struct spi_command *cmd);
 static int	chipc_spi_txrx(struct chipc_spi_softc *sc, uint8_t in,
 		    uint8_t* out);
 static int	chipc_spi_wait(struct chipc_spi_softc *sc);
 
-/*
- * **************************** IMPLEMENTATION ************************
- */
-
-static void
-chipc_spi_identify(driver_t *driver, device_t parent)
-{
-	struct chipc_caps	*caps;
-	device_t	 	 spidev;
-	device_t	 	 spibus;
-	device_t 		 flash;
-	char*		 	 flash_name;
-	int		 	 err;
-
-	flash_name = NULL;
-
-	if (device_find_child(parent, "spi", -1) != NULL)
-		return;
-
-	caps = BHND_CHIPC_GET_CAPS(parent);
-	if (caps == NULL) {
-		BHND_ERROR_DEV(parent, "can't retrieve ChipCommon capabilities");
-		return;
-	}
-
-	switch (caps->flash_type) {
-	case CHIPC_SFLASH_AT:
-		flash_name = "at45d";
-		break;
-	case CHIPC_SFLASH_ST:
-		flash_name = "mx25l";
-		break;
-	default:
-		return;
-	}
-
-	spidev = BUS_ADD_CHILD(parent, 0, "spi", -1);
-	if (spidev == NULL) {
-		BHND_ERROR_DEV(parent, "can't add chipc_spi to ChipCommon");
-		return;
-	}
-
-	err = device_probe_and_attach(spidev);
-	if (err) {
-		BHND_ERROR_DEV(spidev, "failed attach chipc_spi: %d", err);
-		return;
-	}
-
-	spibus = device_find_child(spidev, "spibus", -1);
-	if (spibus == NULL) {
-		BHND_ERROR_DEV(spidev, "can't find spibus under chipc_spi");
-		return;
-	}
-
-	flash = BUS_ADD_CHILD(spibus, 0, flash_name, -1);
-	if (flash == NULL) {
-		BHND_ERROR_DEV(spibus, "can't add %s to spibus", flash_name);
-		return;
-	}
-
-	err = device_probe_and_attach(flash);
-	if (err)
-		BHND_ERROR_DEV(flash, "failed attach flash %s: %d", flash_name,
-		    err);
-
-	return;
-}
-
 static int
 chipc_spi_probe(device_t dev)
 {
-	device_set_desc(dev, "ChipCommon SPI");
-	return (BUS_PROBE_DEFAULT);
+	device_set_desc(dev, "Broadcom ChipCommon SPI Controller");
+	return (BUS_PROBE_NOWILDCARD);
 }
-
-struct resource_spec	spec_mem[] = {
-		{SYS_RES_MEMORY, 0, RF_ACTIVE},
-		{SYS_RES_MEMORY, 1, RF_ACTIVE},
-		{ -1, -1, 0 }
-	};
 
 static int
 chipc_spi_attach(device_t dev)
 {
-	int 			 err;
 	struct chipc_spi_softc	*sc;
-	struct resource		*mem[2];
+	int 			 error;
 
 	sc = device_get_softc(dev);
-	err = bus_alloc_resources(dev, spec_mem, mem);
-	if (err != 0)
+
+	/* Allocate SPI controller registers */
+	sc->sc_rid = 0;
+	sc->sc_res = bus_alloc_resource_any(dev, SYS_RES_MEMORY, &sc->sc_rid,
+	    RF_ACTIVE);
+	if (sc->sc_res == NULL) {
+		device_printf(dev, "failed to allocate device registers\n");
 		return (ENXIO);
+	}
 
-	sc->sc_res = mem[0];
-	sc->sc_mem_res = mem[1];
-
-	flash_register_slicer(chipc_slicer_spi);
-	device_add_child(dev, "spibus", 0);
 	return (bus_generic_attach(dev));
+
+failed:
+	device_delete_children(dev);
+	return (error);
+}
+
+static int
+chipc_spi_detach(device_t dev)
+{
+	struct chipc_spi_softc	*sc;
+	int			 error;
+
+	sc = device_get_softc(dev);
+
+	if ((error = bus_generic_detach(dev)))
+		return (error);
+
+	bus_release_resource(dev, SYS_RES_MEMORY, sc->sc_rid, sc->sc_res);
+	return (0);
 }
 
 static int
@@ -263,6 +201,8 @@ static device_method_t chipc_spi_methods[] = {
 		DEVMETHOD(device_identify,	chipc_spi_identify),
 		DEVMETHOD(device_probe,		chipc_spi_probe),
 		DEVMETHOD(device_attach,	chipc_spi_attach),
+		DEVMETHOD(device_detach,	chipc_spi_detach),
+
 		/* SPI */
 		DEVMETHOD(spibus_transfer,	chipc_spi_transfer),
 		DEVMETHOD_END

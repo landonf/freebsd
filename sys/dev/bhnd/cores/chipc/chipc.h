@@ -52,6 +52,9 @@ typedef enum {
 	CHIPC_NFLASH_4706	= 7	/**< BCM4706 NAND flash */
 } chipc_flash;
 
+#define	CHIPC_SFLASH(_type)		((_type) == CHIPC_SFLASH_ST ||	\
+					 (_type) == CHIPC_SFLASH_AT)
+
 /**
  * ChipCommon capability flags;
  */
@@ -63,6 +66,7 @@ struct chipc_caps {
 
 	uint8_t		extbus_type;	/**< ExtBus type (CHIPC_CAP_EXTBUS_*) */
 	chipc_flash 	flash_type;	/**< Flash type */
+	
 	bhnd_nvram_src	nvram_src;	/**< identified NVRAM source */
 
 	bus_size_t	sprom_offset;	/**< Offset to SPROM data within

@@ -62,13 +62,9 @@
 #define	CHIPC_SPI_FLASHDATA			0x08
 
 struct chipc_spi_softc {
-	device_t		 dev;
-
-	/* SPI registers */
-	struct resource		*sc_mem_res;
-
-	/* MMIO flash */
-	struct resource		*sc_res;
+	device_t		 sc_dev;
+	struct resource		*sc_res;	/**< SPI registers */
+	int			 sc_rid;
 };
 
 /* register space access macros */
