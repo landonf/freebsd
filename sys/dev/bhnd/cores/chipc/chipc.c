@@ -213,9 +213,6 @@ static int
 chipc_attach(device_t dev)
 {
 	struct chipc_softc		*sc;
-	bhnd_addr_t			 enum_addr;
-	uint32_t			 ccid_reg;
-	uint8_t				 chip_type;
 	int				 error;
 
 	sc = device_get_softc(dev);
@@ -234,7 +231,7 @@ chipc_attach(device_t dev)
 		goto failed;
 	}
 
-	/* Allocate the region containing our core registers */
+	/* Allocate the region containing the chipc register block */
 	if ((sc->core_region = chipc_find_region_by_rid(sc, 0)) == NULL) {
 		error = ENXIO;
 		goto failed;
@@ -245,30 +242,10 @@ chipc_attach(device_t dev)
 	if (error) {
 		sc->core_region = NULL;
 		goto failed;
-	} else {
-		sc->core = sc->core_region->cr_res;
 	}
 
-	/* Fetch our chipset identification data */
-	ccid_reg = bhnd_bus_read_4(sc->core, CHIPC_ID);
-	chip_type = CHIPC_GET_BITS(ccid_reg, CHIPC_ID_BUS);
-
-	switch (chip_type) {
-	case BHND_CHIPTYPE_SIBA:
-		/* enumeration space starts at the ChipCommon register base. */
-		enum_addr = rman_get_start(sc->core->res);
-		break;
-	case BHND_CHIPTYPE_BCMA:
-	case BHND_CHIPTYPE_BCMA_ALT:
-		enum_addr = bhnd_bus_read_4(sc->core, CHIPC_EROMPTR);
-		break;
-	default:
-		device_printf(dev, "unsupported chip type %hhu\n", chip_type);
-		error = ENODEV;
-		goto failed;
-	}
-
-	sc->ccid = bhnd_parse_chipid(ccid_reg, enum_addr);
+	/* Save a direct reference to our chipc registers */
+	sc->core = sc->core_region->cr_res;
 
 	/* Fetch and parse capability register(s) */
 	if ((error = chipc_read_caps(sc, &sc->caps)))

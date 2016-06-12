@@ -200,7 +200,6 @@ struct chipc_softc {
 	struct bhnd_resource	*core;		/**< core registers. */
 	struct chipc_region	*core_region;	/**< region containing core registers */
 
-	struct bhnd_chipid	 ccid;		/**< chip identification */
 	uint32_t		 quirks;	/**< chipc quirk flags */
 	struct chipc_caps	 caps;		/**< chipc capabilities */
 
