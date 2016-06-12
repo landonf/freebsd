@@ -162,10 +162,8 @@ static const struct chipc_hint {
 };
 
 
-static int			 chipc_try_activate_resource(
-				    struct chipc_softc *sc, device_t child,
-				    int type, int rid, struct resource *r,
-				    bool req_direct);
+
+static int			 chipc_add_children(struct chipc_softc *sc);
 
 static bhnd_nvram_src		 chipc_find_nvram_src(struct chipc_softc *sc,
 				     struct chipc_caps *caps);
@@ -174,6 +172,11 @@ static int			 chipc_read_caps(struct chipc_softc *sc,
 
 static bool			 chipc_should_enable_sprom(
 				     struct chipc_softc *sc);
+
+static int			 chipc_try_activate_resource(
+				    struct chipc_softc *sc, device_t child,
+				    int type, int rid, struct resource *r,
+				    bool req_direct);
 
 static int			 chipc_init_rman(struct chipc_softc *sc);
 static void			 chipc_free_rman(struct chipc_softc *sc);
@@ -274,7 +277,10 @@ chipc_attach(device_t dev)
 	if (bootverbose)
 		chipc_print_caps(sc->dev, &sc->caps);
 
-	/* Probe and attach children */
+	/* Attach all supported child devices */
+	if ((error = chipc_add_children(sc)))
+		goto failed;
+
 	bus_generic_probe(dev);
 	if ((error = bus_generic_attach(dev)))
 		goto failed;
@@ -308,6 +314,143 @@ chipc_detach(device_t dev)
 
 	CHIPC_LOCK_DESTROY(sc);
 
+	return (0);
+}
+
+static int
+chipc_add_children(struct chipc_softc *sc)
+{
+	device_t	 child;
+//	const char	*flash_bus;
+	int		 error;
+
+	/* SPROM/OTP */
+	if (sc->caps.nvram_src == BHND_NVRAM_SRC_SPROM ||
+	    sc->caps.nvram_src == BHND_NVRAM_SRC_OTP)
+	{
+		child = BUS_ADD_CHILD(sc->dev, 0, "bhnd_nvram", -1);
+		if (child == NULL) {
+			device_printf(sc->dev, "failed to add nvram device\n");
+			return (ENXIO);
+		}
+
+		/* Both OTP and external SPROM are mapped at CHIPC_SPROM_OTP */
+		error = chipc_set_resource(sc, child, SYS_RES_MEMORY, 0,
+		    CHIPC_SPROM_OTP, CHIPC_SPROM_OTP_SIZE, 0, 0);
+		if (error)
+			return (error);
+	}
+
+#ifdef notyet
+	/*
+	 * PMU/SLOWCLK/INSTACLK
+	 * 
+	 * On AOB ("Always on Bus") devices, a PMU core (if it exists) is
+	 * enumerated directly by the bhnd(4) bus -- not chipc.
+	 * 
+	 * Otherwise, we always add a PMU child device, and let the
+	 * chipc bhnd_pmu drivers probe for it. If the core supports an
+	 * earlier non-PMU clock/power register interface, one of the instaclk,
+	 * powerctl, or null bhnd_pmu drivers will claim the device.
+	 */
+	if (!sc->caps.aob || (sc->caps.aob && !sc->pmu)) {
+		child = BUS_ADD_CHILD(sc->dev, 0, "bhnd_pmu", -1);
+		if (child == NULL) {
+			device_printf(sc->dev, "failed to add pmu\n");
+			return (ENXIO);
+		}
+
+		/* Associate the applicable register block */
+		error = 0;
+		if (sc->pmu) {
+			error = chipc_set_resource(sc, child, SYS_RES_MEMORY, 0,
+			    CHIPC_PMU, CHIPC_PMU_SIZE, 0, 0);
+		} else if (sc->power_control) {
+			error = chipc_set_resource(sc, child, SYS_RES_MEMORY, 0,
+			    CHIPC_PWRCTL, CHIPC_PWRCTL_SIZE, 0, 0);
+		}
+
+		if (error)
+			return (error);
+		
+	}
+
+	/* All remaining devices are SoC-only */
+	if (bhnd_get_attach_type(sc->dev) != BHND_ATTACH_NATIVE)
+		return (0);
+
+	/* UARTs */
+	for (u_int i = 0; i < min(sc->caps.num_uarts, CHIPC_UART_MAX); i++) {
+		child = BUS_ADD_CHILD(sc->dev, 0, "bhnd_pmu", -1);
+		if (child == NULL) {
+			device_printf(sc->dev, "failed to add uart%u\n", i);
+			return (ENXIO);
+		}
+
+		/* Shared IRQ */
+		error = bus_set_resource(child, SYS_RES_IRQ, 0, CHIPC_MIPS_IRQ,
+		    1);
+		if (error) {
+			device_printf(sc->dev, "failed to set uart%u irq %ju\n",
+			    i, CHIPC_MIPS_IRQ);
+			return (error);
+		}
+
+		/* UART registers are mapped sequentially */
+		error = chipc_set_resource(sc, child, SYS_RES_MEMORY, 0,
+		    CHIPC_UART_BASE + (i * CHIPC_UART_SIZE), CHIPC_UART_SIZE,
+		    0, 0);
+		if (error)
+			return (error);
+	}
+
+	/* Flash */
+	flash_bus = NULL;
+	switch (sc->caps.flash_type) {
+		case CHIPC_FLASH_NONE:
+			break;
+		case CHIPC_PFLASH_CFI:	/* cfi */
+			flash_bus = "cfi";
+			break;
+
+		case CHIPC_SFLASH_AT:	/* spi */
+		case CHIPC_SFLASH_ST:
+			flash_bus = "spi";
+			break;
+
+		case CHIPC_QSFLASH_ST:	/* qspi */
+		case CHIPC_QSFLASH_AT:
+		case CHIPC_NFLASH:	/* nand */
+		case CHIPC_NFLASH_4706:
+			/* fallthrough (unimplemented) */
+		default:
+			device_printf(sc->dev, "unsupported flash type %u\n",
+			    (u_int)sc->caps.flash_type);
+			break;
+	}
+
+	if (flash_bus != NULL) {
+		child = BUS_ADD_CHILD(sc->dev, 0, flash_bus, -1);
+		if (child == NULL) {
+			device_printf(sc->dev,
+			    "failed to add %s flash device\n", flash_bus);
+			return (ENXIO);
+		}
+
+		/* flash memory mapping */
+		// FIXME: port1.1 mapping on siba(4) SoCs
+		error = chipc_set_resource(sc, child, SYS_RES_MEMORY, 0,
+		    0, RMAN_MAX_END, 1, 1);
+		if (error)
+			return (error);
+
+		/* flashctrl registers */
+		error = chipc_set_resource(sc, child, SYS_RES_MEMORY, 1,
+		    CHIPC_SFLASH_BASE, CHIPC_SFLASH_SIZE, 0, 0);
+		if (error)
+			return (error);
+	}
+#endif /* notyet */
 	return (0);
 }
 
