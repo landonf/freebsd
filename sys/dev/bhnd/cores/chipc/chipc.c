@@ -824,7 +824,7 @@ chipc_rman_init_regions (struct chipc_softc *sc, bhnd_port_type type,
 	u_int			 num_regions;
 	int			 error;
 
-	num_regions = bhnd_get_region_count(sc->dev, port, port);
+	num_regions = bhnd_get_region_count(sc->dev, type, port);
 	for (u_int region = 0; region < num_regions; region++) {
 		/* Allocate new region record */
 		cr = chipc_alloc_region(sc, type, port, region);
