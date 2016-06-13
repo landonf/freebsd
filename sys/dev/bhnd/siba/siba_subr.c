@@ -260,7 +260,7 @@ siba_find_addrspace(struct siba_devinfo *dinfo, bhnd_port_type type, u_int port,
 	else if (port == 1)
 		addridx = region + 1;
 	else
-		return (0);
+		return (NULL);
 
 	/* Out of range? */
 	if (addridx >= dinfo->core_id.num_addrspace)
