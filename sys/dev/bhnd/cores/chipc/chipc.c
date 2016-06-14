@@ -945,10 +945,8 @@ chipc_alloc_resource(device_t dev, device_t child, int type,
 	}
 
 	/* Try to retain a region reference */
-	if ((error = chipc_retain_region(sc, cr, RF_ALLOCATED))) {
-		CHIPC_UNLOCK(sc);
+	if ((error = chipc_retain_region(sc, cr, RF_ALLOCATED)))
 		return (NULL);
-	}
 
 	/* Make our rman reservation */
 	rv = rman_reserve_resource(rm, start, end, count, flags & ~RF_ACTIVE,
