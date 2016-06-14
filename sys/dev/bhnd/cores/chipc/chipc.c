@@ -264,6 +264,8 @@ chipc_attach(device_t dev)
 	return (0);
 	
 failed:
+	device_delete_children(sc->dev);
+
 	if (sc->core_region != NULL) {
 		chipc_release_region(sc, sc->core_region,
 		    RF_ALLOCATED|RF_ACTIVE);
