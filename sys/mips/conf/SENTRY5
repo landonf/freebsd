@@ -78,8 +78,8 @@ device		usb			# USB Bus (required)
 device		uhci			# UHCI PCI->USB interface
 device		ehci			# EHCI PCI->USB interface (USB 2.0)
 
-# need to teach the code to ignore the bridge....
-
+device		cfi
+device		cfid
 
 # XXX notyet; need to be auto probed children of siba_cc.
 #device		uart

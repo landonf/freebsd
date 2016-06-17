@@ -7,3 +7,6 @@
 mips/sentry5/s5_machdep.c		standard
 mips/mips/intr_machdep.c		standard
 mips/mips/tick.c			standard
+
+# TODO: Replace with BCM47xx/57xx/etc-aware geom_map
+geom/geom_flashmap.c			standard
