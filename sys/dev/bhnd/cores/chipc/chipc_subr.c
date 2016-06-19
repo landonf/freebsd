@@ -38,6 +38,93 @@ __FBSDID("$FreeBSD$");
 #include "chipcvar.h"
 
 /**
+ * Return a human-readable name for the given flash @p type.
+ */
+const char *
+chipc_flash_name(chipc_flash type)
+{
+	switch (type) {
+	case CHIPC_PFLASH_CFI:
+		return ("CFI Flash");
+
+	case CHIPC_SFLASH_ST:
+	case CHIPC_SFLASH_AT:
+		return ("SPI Flash");
+
+	case CHIPC_QSFLASH_ST:
+	case CHIPC_QSFLASH_AT:
+		return ("QSPI Flash");
+
+	case CHIPC_NFLASH:
+	case CHIPC_NFLASH_4706:
+		return ("NAND");
+
+	case CHIPC_FLASH_NONE:
+	default:
+		return ("unknown");
+	}
+}
+
+/**
+ * Return the name of the bus device class used by flash @p type,
+ * or NULL if @p type is unsupported.
+ */
+const char *
+chipc_flash_bus_name(chipc_flash type)
+{
+	switch (type) {
+	case CHIPC_PFLASH_CFI:
+		return ("cfi");
+
+	case CHIPC_SFLASH_ST:
+	case CHIPC_SFLASH_AT:
+		return ("spi");
+
+	case CHIPC_QSFLASH_ST:
+	case CHIPC_QSFLASH_AT:
+		/* unimplemented; spi? */
+		return (NULL);
+
+	case CHIPC_NFLASH:
+	case CHIPC_NFLASH_4706:
+		/* unimplemented; nandbus? */
+		return (NULL);
+
+	case CHIPC_FLASH_NONE:
+	default:
+		return (NULL);
+	}
+}
+
+/**
+ * Return the name of the flash device class for SPI flash @p type,
+ * or NULL if @p type does not use SPI, or is unsupported.
+ */
+const char *
+chipc_sflash_device_name(chipc_flash type)
+{
+	switch (type) {
+	case CHIPC_SFLASH_ST:
+		return ("mx25l");
+
+	case CHIPC_SFLASH_AT:
+		return ("at45d");
+
+	case CHIPC_QSFLASH_ST:
+	case CHIPC_QSFLASH_AT:
+		/* unimplemented */
+		return (NULL);
+
+	case CHIPC_PFLASH_CFI:
+	case CHIPC_NFLASH:
+	case CHIPC_NFLASH_4706:
+	case CHIPC_FLASH_NONE:
+	default:
+		return (NULL);
+	}
+}
+
+/**
  * Initialize child resource @p r with a virtual address, tag, and handle
  * copied from @p parent, adjusted to contain only the range defined by
  * @p offsize and @p size.

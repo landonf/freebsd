@@ -37,25 +37,8 @@ __FBSDID("$FreeBSD$");
  * With the exception of some very early chipsets, the ChipCommon core
  * has been included in all HND SoCs and chipsets based on the siba(4) 
  * and bcma(4) interconnects, providing a common interface to chipset 
- * identification, bus enumeration, UARTs, clocks, watchdog interrupts, GPIO, 
- * flash, etc.
- *
- * The purpose of this driver is memory resource management for ChipCommon drivers
- * like UART, PMU, flash. ChipCommon core has several memory regions.
- *
- * ChipCommon driver has memory resource manager. Driver
- * gets information about BHND core ports/regions and map them
- * into drivers' resources.
- *
- * Here is overview of mapping:
- *
- * ------------------------------------------------------
- * | Port.Region| Purpose				|
- * ------------------------------------------------------
- * |	0.0	| PMU, SPI(0x40), UART(0x300)           |
- * |	1.0	| ?					|
- * |	1.1	| MMIO flash (SPI & CFI)		|
- * ------------------------------------------------------
+ * identification, bus enumeration, UARTs, clocks, watchdog interrupts,
+ * GPIO, flash, etc.
  */
 
 #include <sys/param.h>
@@ -123,44 +106,8 @@ static struct bhnd_device_quirk chipc_quirks[] = {
 	BHND_DEVICE_QUIRK_END
 };
 
-
-/*
- * Here is resource configuration hints for child devices
- *
- * [Flash] There are 2 flash resources:
- *  - resource ID (rid) = 0: memory-mapped flash memory
- *  - resource ID (rid) = 1: memory-mapped flash registers (i.e for SPI)
- *
- * [UART] Uses IRQ and memory resources:
- *  - resource ID (rid) = 0: memory-mapped registers
- *  - IRQ resource ID (rid) = 0: shared IRQ line for Tx/Rx.
- */
-
-static const struct chipc_hint {
-	const char	*name;
-	int		 unit;
-	int		 type;
-	int		 rid;
-	rman_res_t	 base;		/* relative to parent resource */
-	rman_res_t	 size;
-	u_int		 port;		/* ignored if SYS_RES_IRQ */
-	u_int		 region;
-} chipc_hints[] = {
-	// FIXME: cfg/spi port1.1 mapping on siba(4) SoCs
-	// FIXME: IRQ shouldn't be hardcoded
-	/* device	unit	type		rid	base			size			port,region */
-	{ "uart",	0, SYS_RES_MEMORY,	0,	CHIPC_UART0_BASE,	CHIPC_UART_SIZE,	0,0 },
-	{ "uart",	0, SYS_RES_IRQ,		0,	2,			1 },
-	{ "uart",	1, SYS_RES_MEMORY,	0,	CHIPC_UART1_BASE,	CHIPC_UART_SIZE,	0,0 },
-	{ "uart",	1, SYS_RES_IRQ,		0,	2,			1 },
-	{ "spi",	0, SYS_RES_MEMORY,	0,	0,			RM_MAX_END,		1,1 },
-	{ "spi",	0, SYS_RES_MEMORY,	1,	CHIPC_SFLASH_BASE,	CHIPC_SFLASH_SIZE,	0,0 },
-	{ "cfi",	0, SYS_RES_MEMORY,	0,	0,			RM_MAX_END,		1,1},
-	{ "cfi",	0, SYS_RES_MEMORY, 	1,	CHIPC_SFLASH_BASE,	CHIPC_SFLASH_SIZE,	0,0 },
-	{ NULL }
-};
-
-
+// FIXME: IRQ shouldn't be hard-coded
+#define	CHIPC_MIPS_IRQ	2
 
 static int			 chipc_add_children(struct chipc_softc *sc);
 
@@ -257,7 +204,6 @@ chipc_attach(device_t dev)
 	if ((error = chipc_add_children(sc)))
 		goto failed;
 
-	bus_generic_probe(dev);
 	if ((error = bus_generic_attach(dev)))
 		goto failed;
 
@@ -299,7 +245,7 @@ static int
 chipc_add_children(struct chipc_softc *sc)
 {
 	device_t	 child;
-//	const char	*flash_bus;
+	const char	*flash_bus;
 	int		 error;
 
 	/* SPROM/OTP */
@@ -331,7 +277,7 @@ chipc_add_children(struct chipc_softc *sc)
 	 * earlier non-PMU clock/power register interface, one of the instaclk,
 	 * powerctl, or null bhnd_pmu drivers will claim the device.
 	 */
-	if (!sc->caps.aob || (sc->caps.aob && !sc->pmu)) {
+	if (!sc->caps.aob || (sc->caps.aob && !sc->caps.pmu)) {
 		child = BUS_ADD_CHILD(sc->dev, 0, "bhnd_pmu", -1);
 		if (child == NULL) {
 			device_printf(sc->dev, "failed to add pmu\n");
@@ -340,10 +286,10 @@ chipc_add_children(struct chipc_softc *sc)
 
 		/* Associate the applicable register block */
 		error = 0;
-		if (sc->pmu) {
+		if (sc->caps.pmu) {
 			error = chipc_set_resource(sc, child, SYS_RES_MEMORY, 0,
 			    CHIPC_PMU, CHIPC_PMU_SIZE, 0, 0);
-		} else if (sc->power_control) {
+		} else if (sc->caps.power_control) {
 			error = chipc_set_resource(sc, child, SYS_RES_MEMORY, 0,
 			    CHIPC_PWRCTL, CHIPC_PWRCTL_SIZE, 0, 0);
 		}
@@ -352,6 +298,7 @@ chipc_add_children(struct chipc_softc *sc)
 			return (error);
 		
 	}
+#endif /* notyet */
 
 	/* All remaining devices are SoC-only */
 	if (bhnd_get_attach_type(sc->dev) != BHND_ATTACH_NATIVE)
@@ -359,7 +306,7 @@ chipc_add_children(struct chipc_softc *sc)
 
 	/* UARTs */
 	for (u_int i = 0; i < min(sc->caps.num_uarts, CHIPC_UART_MAX); i++) {
-		child = BUS_ADD_CHILD(sc->dev, 0, "bhnd_pmu", -1);
+		child = BUS_ADD_CHILD(sc->dev, 0, "uart", -1);
 		if (child == NULL) {
 			device_printf(sc->dev, "failed to add uart%u\n", i);
 			return (ENXIO);
@@ -369,56 +316,31 @@ chipc_add_children(struct chipc_softc *sc)
 		error = bus_set_resource(child, SYS_RES_IRQ, 0, CHIPC_MIPS_IRQ,
 		    1);
 		if (error) {
-			device_printf(sc->dev, "failed to set uart%u irq %ju\n",
+			device_printf(sc->dev, "failed to set uart%u irq %u\n",
 			    i, CHIPC_MIPS_IRQ);
 			return (error);
 		}
 
 		/* UART registers are mapped sequentially */
 		error = chipc_set_resource(sc, child, SYS_RES_MEMORY, 0,
-		    CHIPC_UART_BASE + (i * CHIPC_UART_SIZE), CHIPC_UART_SIZE,
-		    0, 0);
+		    CHIPC_UART(i), CHIPC_UART_SIZE, 0, 0);
 		if (error)
 			return (error);
 	}
 
 	/* Flash */
-	flash_bus = NULL;
-	switch (sc->caps.flash_type) {
-		case CHIPC_FLASH_NONE:
-			break;
-		case CHIPC_PFLASH_CFI:	/* cfi */
-			flash_bus = "cfi";
-			break;
-
-		case CHIPC_SFLASH_AT:	/* spi */
-		case CHIPC_SFLASH_ST:
-			flash_bus = "spi";
-			break;
-
-		case CHIPC_QSFLASH_ST:	/* qspi */
-		case CHIPC_QSFLASH_AT:
-		case CHIPC_NFLASH:	/* nand */
-		case CHIPC_NFLASH_4706:
-			/* fallthrough (unimplemented) */
-		default:
-			device_printf(sc->dev, "unsupported flash type %u\n",
-			    (u_int)sc->caps.flash_type);
-			break;
-	}
-
+	flash_bus = chipc_flash_bus_name(sc->caps.flash_type);
 	if (flash_bus != NULL) {
 		child = BUS_ADD_CHILD(sc->dev, 0, flash_bus, -1);
 		if (child == NULL) {
-			device_printf(sc->dev,
-			    "failed to add %s flash device\n", flash_bus);
+			device_printf(sc->dev, "failed to add %s device\n",
+			    flash_bus);
 			return (ENXIO);
 		}
 
 		/* flash memory mapping */
-		// FIXME: port1.1 mapping on siba(4) SoCs
 		error = chipc_set_resource(sc, child, SYS_RES_MEMORY, 0,
-		    0, RMAN_MAX_END, 1, 1);
+		    0, RM_MAX_END, 1, 1);
 		if (error)
 			return (error);
 
@@ -428,7 +350,7 @@ chipc_add_children(struct chipc_softc *sc)
 		if (error)
 			return (error);
 	}
-#endif /* notyet */
+
 	return (0);
 }
 
@@ -530,7 +452,6 @@ chipc_read_caps(struct chipc_softc *sc, struct chipc_caps *caps)
 
 	/* Determine flash type and parameters */
 	caps->cfi_width = 0;
-
 	switch (CHIPC_GET_BITS(cap_reg, CHIPC_CAP_FLASH)) {
 	case CHIPC_CAP_SFLASH_ST:
 		caps->flash_type = CHIPC_SFLASH_ST;
@@ -539,6 +460,7 @@ chipc_read_caps(struct chipc_softc *sc, struct chipc_caps *caps)
 		caps->flash_type = CHIPC_SFLASH_AT;
 		break;
 	case CHIPC_CAP_NFLASH:
+		/* unimplemented */
 		caps->flash_type = CHIPC_NFLASH;
 		break;
 	case CHIPC_CAP_PFLASH:
@@ -669,33 +591,13 @@ chipc_add_child(device_t dev, u_int order, const char *name, int unit)
 {
 	struct chipc_softc	*sc;
 	struct chipc_devinfo	*dinfo;
-	const struct chipc_hint	*hint;
 	device_t		 child;
-	devclass_t		 child_dc;
-	int			 error;
-	int 			 busrel_unit;
 
 	sc = device_get_softc(dev);
 
 	child = device_add_child_ordered(dev, order, name, unit);
 	if (child == NULL)
 		return (NULL);
-
-	/* system-wide device unit */
-	unit = device_get_unit(child);
-	child_dc = device_get_devclass(child);
-
-	busrel_unit = 0;
-	for (int i = 0; i < unit; i++) {
-		device_t	tmp;
-
-		tmp = devclass_get_device(child_dc, i);
-		if (tmp != NULL && (device_get_parent(tmp) == dev))
-	                busrel_unit++;
-	}
-
-	/* bus-wide device unit (override unit for further hint matching) */
-	unit = busrel_unit;
 
 	dinfo = malloc(sizeof(struct chipc_devinfo), M_BHND, M_NOWAIT);
 	if (dinfo == NULL) {
@@ -706,36 +608,7 @@ chipc_add_child(device_t dev, u_int order, const char *name, int unit)
 	resource_list_init(&dinfo->resources);
 	device_set_ivars(child, dinfo);
 
-	/* Hint matching requires a device name */
-	if (name == NULL)
-		return (child);
-
-	/* Use hint table to set child resources */
-	for (hint = chipc_hints; hint->name != NULL; hint++) {
-		/* Check device name */
-		if (strcmp(hint->name, name) != 0)
-			continue;
-
-		/* Check device unit */
-		if (hint->unit >= 0 && unit != hint->unit)
-			continue;
-
-		/* Define resource */
-		error = chipc_set_resource(sc, child, hint->type, hint->rid,
-		    hint->base, hint->size, hint->port, hint->region);
-		if (error) {
-			device_printf(dev,
-			    "chipc_set_resource() failed for %s: %d\n",
-			    device_get_nameunit(child), error);
-			goto failed;
-		}
-	}
-
 	return (child);
-
-failed:
-	device_delete_child(dev, child);
-	return (NULL);
 }
 
 static void
@@ -1414,15 +1287,6 @@ chipc_get_caps(device_t dev)
 	return (&sc->caps);
 }
 
-static uint32_t
-chipc_get_flash_cfg(device_t dev)
-{
-	struct chipc_softc	*sc;
-
-	sc = device_get_softc(dev);
-	return (bhnd_bus_read_4(sc->core, CHIPC_FLASH_CFG));
-}
-
 static device_method_t chipc_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,			chipc_probe),
@@ -1464,7 +1328,6 @@ static device_method_t chipc_methods[] = {
 	DEVMETHOD(bhnd_chipc_enable_sprom,	chipc_enable_sprom_pins),
 	DEVMETHOD(bhnd_chipc_disable_sprom,	chipc_disable_sprom_pins),
 	DEVMETHOD(bhnd_chipc_get_caps,		chipc_get_caps),
-	DEVMETHOD(bhnd_chipc_get_flash_cfg,	chipc_get_flash_cfg),
 
 	DEVMETHOD_END
 };
