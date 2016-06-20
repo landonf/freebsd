@@ -71,15 +71,10 @@ __FBSDID("$FreeBSD$");
 #include <machine/trap.h>
 #include <machine/vmparam.h>
 
-#include <mips/sentry5/s5reg.h>
 #include "bcm_socinfo.h"
 
 #ifdef CFE
 #include <dev/cfe/cfe_api.h>
-#endif
-
-#if 0
-#define BROADCOM_TRACE 0
 #endif
 
 extern int *edata;
@@ -109,18 +104,11 @@ mips_init(void)
 
 		result = cfe_enummem(i / 2, 0, &addr, &len, &type);
 		if (result < 0) {
-#ifdef BROADCOM_TRACE
-			printf("There is no phys memory for: %d\n", i);
-#endif
 			phys_avail[i] = phys_avail[i + 1] = 0;
 			break;
 		}
-		if (type != CFE_MI_AVAILABLE){
-#ifdef BROADCOM_TRACE
-			printf("phys memory is not available: %d\n", i);
-#endif
+		if (type != CFE_MI_AVAILABLE)
 			continue;
-		}
 
 		phys_avail[i] = addr;
 		if (i == 0 && addr == 0) {
@@ -131,18 +119,9 @@ mips_init(void)
 			 */
 			phys_avail[i] += MIPS_KSEG0_TO_PHYS(kernel_kseg0_end);
 		}
-#ifdef BROADCOM_TRACE
-		printf("phys memory is available for: %d\n", i);
-		printf(" => addr =  %jx\n", addr);
-		printf(" => len =  %jd\n", len);
-#endif
 		phys_avail[i + 1] = addr + len;
 		physmem += len;
 	}
-
-#ifdef BROADCOM_TRACE
-	printf("Total phys memory is : %ld\n", physmem);
-#endif
 
 	realmem = btoc(physmem);
 #endif
@@ -165,15 +144,21 @@ mips_init(void)
 #endif
 }
 
-#define	BCM_REG_CHIPC				0x18000000
-
-
 void
 platform_reset(void)
 {
 	printf("bcm::platform_reset()\n");
 	intr_disable();
+
+#if defined(CFE)
+	cfe_exit(0, 0);
+#else
 	BCM_WRITE_REG32(BCM_REG_CHIPC_PMUWD_OFFS, 2); /* PMU watchdog */
+
+	// TODO: non-PMU reset
+	// *((volatile uint8_t *)MIPS_PHYS_TO_KSEG1(SENTRY5_EXTIFADR)) = 0x80;
+#endif
+
 	for (;;);
 }
 
@@ -194,6 +179,37 @@ platform_start(__register_t a0, __register_t a1, __register_t a2,
 	/* Initialize pcpu stuff */
 	mips_pcpu0_init();
 
+#if 0
+	/*
+	 * Probe the Broadcom on-chip PLL clock registers
+	 * and discover the CPU pipeline clock and bus clock
+	 * multipliers from this.
+	 * XXX: Wrong place. You have to ask the ChipCommon
+	 * or External Interface cores on the SiBa.
+	 */
+	uint32_t busmult, cpumult, refclock, clkcfg1;
+#define S5_CLKCFG1_REFCLOCK_MASK	0x0000001F
+#define S5_CLKCFG1_BUSMULT_MASK		0x000003E0
+#define S5_CLKCFG1_BUSMULT_SHIFT	5
+#define S5_CLKCFG1_CPUMULT_MASK		0xFFFFFC00
+#define S5_CLKCFG1_CPUMULT_SHIFT	10
+
+	counter_freq = 100000000;	/* XXX */
+
+	clkcfg1 = s5_rd_clkcfg1();
+	printf("clkcfg1 = 0x%08x\n", clkcfg1);
+
+	refclock = clkcfg1 & 0x1F;
+	busmult = ((clkcfg1 & 0x000003E0) >> 5) + 1;
+	cpumult = ((clkcfg1 & 0xFFFFFC00) >> 10) + 1;
+
+	printf("refclock = %u\n", refclock);
+	printf("busmult = %u\n", busmult);
+	printf("cpumult = %u\n", cpumult);
+
+	counter_freq = cpumult * refclock;
+#endif
+
 	socinfo = bcm_get_socinfo();
 	platform_counter_freq = socinfo->cpurate * 1000 * 1000; /* BCM4718 is 480MHz */
 
@@ -212,10 +228,10 @@ platform_start(__register_t a0, __register_t a1, __register_t a2,
 	if (a3 == CFE_EPTSEAL)
 		cfe_init(a0, a2);
 #endif
+
 	cninit();
 
 	mips_init();
 
-	/* BCM471x timer is 1/2 of Clk */
-	mips_timer_init_params(platform_counter_freq, 1);
+	mips_timer_init_params(platform_counter_freq, socinfo->double_count);
 }

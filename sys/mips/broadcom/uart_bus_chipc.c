@@ -50,6 +50,7 @@ __FBSDID("$FreeBSD$");
 #include "uart_if.h"
 #include "bhnd_chipc_if.h"
 
+#include "bcm_socinfo.h"
 
 static int	uart_chipc_probe(device_t dev);
 
@@ -84,40 +85,15 @@ static int
 uart_chipc_probe(device_t dev)
 {
 	struct uart_softc 	*sc;
-	struct resource		*res;
-	int			 rid;
-	int			 err;
+	struct bcm_socinfo	*socinfo;
 
-	rid = 0;
-	res = bus_alloc_resource_any(dev, SYS_RES_MEMORY, &rid, RF_ACTIVE);
-	if (res == NULL) {
-		device_printf(dev, "can't allocate main resource\n");
-		return (ENXIO);
-	}
+	socinfo = bcm_get_socinfo();
 
 	sc = device_get_softc(dev);
 	sc->sc_class = &uart_ns8250_class;
-	sc->sc_sysdev = SLIST_FIRST(&uart_sysdevs);
-	if (sc->sc_sysdev == NULL) {
-		device_printf(dev, "missing sysdev\n");
-		return (EINVAL);
-	}
-
-	bcopy(&sc->sc_sysdev->bas, &sc->sc_bas, sizeof(sc->sc_bas));
-
-	sc->sc_sysdev->bas.bst = rman_get_bustag(res);
-	sc->sc_sysdev->bas.bsh = rman_get_bushandle(res);
-	sc->sc_bas.bst = sc->sc_sysdev->bas.bst;
-	sc->sc_bas.bsh = sc->sc_sysdev->bas.bsh;
-
-	err = bus_release_resource(dev, SYS_RES_MEMORY, rid, res);
-	if (err) {
-		device_printf(dev, "can't release resource [%d]\n", rid);
-		return (ENXIO);
-	}
 
 	/* We use internal SoC clock generator with non-standart freq MHz */
-	return (uart_bus_probe(dev, 0, sc->sc_sysdev->bas.rclk, 0, 0));
+	return (uart_bus_probe(dev, 0, socinfo->uartrate, 0, 0));
 }
 
 static device_method_t uart_chipc_methods[] = {

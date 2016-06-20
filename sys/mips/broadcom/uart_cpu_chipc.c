@@ -59,20 +59,53 @@ uart_cpu_getdev(int devtype, struct uart_devinfo *di)
 {
 	struct uart_class	*class;
 	struct bcm_socinfo	*socinfo;
+	int			 ivar, maddr;
 
-	socinfo = bcm_get_socinfo();
 	class = &uart_ns8250_class;
-	di->ops = uart_getops(class);
-	di->bas.chan = 0;
-	di->bas.bst = mips_bus_space_generic;
-	di->bas.bsh = (bus_space_handle_t)BCM_SOCREG(BCM_REG_CHIPC_UART);
-	di->bas.regshft = 0;
-	di->bas.rclk = socinfo->uartrate;  /* in Hz */
-	di->baudrate = 115200;
-	di->databits = 8;
-	di->stopbits = 1;
-	di->parity = UART_PARITY_NONE;
 	uart_bus_space_io = NULL;
 	uart_bus_space_mem = mips_bus_space_generic;
-	return (0);
+
+	/* Check the environment. */
+	if (uart_getenv(devtype, di, class) == 0)
+		return (0);
+
+	/* Scan the device hints for the first matching device */
+	for (int i = 0; i < 3; i++) {	// TODO: Fetch max uart from chipc
+		if (resource_int_value("uart", i, "flags", &ivar))
+			continue;
+
+		/* Check usability */
+		if (devtype == UART_DEV_CONSOLE && !UART_FLAGS_CONSOLE(ivar))
+			continue;
+
+		if (devtype == UART_DEV_DBGPORT && !UART_FLAGS_DBGPORT(ivar))
+			continue;
+
+		if (resource_int_value("uart", i, "disabled", &ivar) == 0 &&
+		    ivar == 0)
+			continue;
+
+		if (resource_int_value("uart", i, "maddr", &maddr) != 0 ||
+		    maddr == 0)
+			continue;
+
+		/* Found */
+		socinfo = bcm_get_socinfo();
+		di->ops = uart_getops(class);
+		di->bas.chan = 0;
+		di->bas.bst = uart_bus_space_mem;
+		di->bas.bsh = (bus_space_handle_t)MIPS_PHYS_TO_KSEG1(maddr);
+		di->bas.regshft = 0;
+		di->bas.rclk = socinfo->uartrate;  /* in Hz */
+		if (resource_int_value("uart", i, "baud", &ivar) != 0)
+			ivar = 115200;
+		di->baudrate = ivar;
+		di->databits = 8;
+		di->stopbits = 1;
+		di->parity = UART_PARITY_NONE;
+
+		return (0);
+	}
+
+	return (ENXIO);
 }
