@@ -168,12 +168,16 @@ platform_reset(void)
 #if defined(CFE)
 	cfe_exit(0, 0);
 #else
+	/* PMU watchdog reset */
 	BCM_WRITE_REG32(BCM_REG_CHIPC_PMUWD_OFFS, 2); /* PMU watchdog */
-
-	// TODO: non-PMU reset
-	// *((volatile uint8_t *)MIPS_PHYS_TO_KSEG1(SENTRY5_EXTIFADR)) = 0x80;
 #endif
 
+#if 0
+	/* Non-PMU reset 
+	 * XXX: Need chipc capability flags */
+	*((volatile uint8_t *)MIPS_PHYS_TO_KSEG1(SENTRY5_EXTIFADR)) = 0x80;
+#endif
+	
 	for (;;);
 }
 
