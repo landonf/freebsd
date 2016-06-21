@@ -1,6 +1,0 @@
-# $FreeBSD$
-
-# uart0 console
-hint.uart.0.flags="0x10"
-hint.uart.0.maddr="0x18000300"
-hint.uart.0.size="0x100"

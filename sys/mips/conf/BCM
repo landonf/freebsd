@@ -1,19 +1,14 @@
 #
-# BCM_BASE -- Kernel configuration base file for the 47xx/53xx/63xx family
-# of Broadcom SoCs using a bhnd(4)-compatible bus interconnect.
-#
-# This file (and the hints file accompanying it) are not designed to be
-# used by themselves. Instead, users of this file should create a kernel
-# config file which includes this file (which gets the basic hints), then
-# override the default options (adding devices as needed) and adding
-# hints as needed.
-#
 # $FreeBSD$
 #
+# The Broadcom 470x/471x/535x series of processors and boards is very commonly
+# used in COTS hardware including the ASUS RT-N12, RT-N16, RT-N53.
+#
 
-ident		BCM_BASE
+ident		BCM
+cpu		CPU_MIPS74K
 
-hints		"BCM_BASE.hints"
+hints		"BCM.hints"
 include		"../broadcom/std.broadcom"
 
 # ships with cfe firmware
@@ -22,9 +17,7 @@ options 	ALT_BREAK_TO_DEBUGGER
 options 	BREAK_TO_DEBUGGER
 options		BOOTVERBOSE=0
 
-makeoptions	INTRNG
-options		INTRNG
-
+makeoptions	TRAMPLOADADDR=0x80800000
 makeoptions	DEBUG="-g3"		#Build kernel with gdb(1) debug symbols
 makeoptions	MODULES_OVERRIDE=""
 
@@ -45,9 +38,9 @@ options         UFS_DIRHASH             #Improve performance on big directories
 
 device		geom_uzip
 options		GEOM_UZIP
-options		GEOM_LABEL			# Providers labelization.
+options		GEOM_LABEL		# Providers labelization.
 options		ROOTDEVNAME=\"ufs:ufs/FBSD\"	# assumes FW built by 
-						# freebsd-build-wifi
+					# freebsd-build-wifi
 
 # Debugging for use in -current
 #options 	DEADLKRES
@@ -57,36 +50,49 @@ options 	INVARIANT_SUPPORT
 #options	BHND_LOGLEVEL=BHND_DEBUG_LEVEL
 #options 	BUS_DEBUG
 #makeoptions	BUS_DEBUG
-
-# PMC
-#options 	HWPMC_HOOKS
-#device		hwpmc
-#device		hwpmc_mips24k
+#options	VERBOSE_SYSINIT
+#makeoptions	VERBOSE_SYSINIT
 
 # bhnd(4)
 device		bhnd
+device		bcma			# bcma backplane
+device		bcma_nexus
 
-# wireless
-options 	IEEE80211_DEBUG
-options 	IEEE80211_SUPPORT_MESH
-options 	IEEE80211_SUPPORT_TDMA
-options 	IEEE80211_SUPPORT_SUPERG
-options 	IEEE80211_ALQ	# 802.11 ALQ logging support
-options		ALQ
-device		wlan            # 802.11 support
-device		wlan_wep        # 802.11 WEP support
-device		wlan_ccmp       # 802.11 CCMP support
-device		wlan_tkip       # 802.11 TKIP support
-device		wlan_xauth	# 802.11 hostap support
+device		pci
+device		bhnd_pcib		# PCIe-G1 core
 
-options 	USB_DEBUG		# enable debug msgs
-device		usb			# USB Bus (required)
-device		uhci			# UHCI PCI->USB interface
-device		ehci			# EHCI PCI->USB interface (USB 2.0)
+#device		bgmac			# Broadcom GMAC - not yet
 
+device		mdio
+
+#Flash
+device		spibus
+device		mx25l			# Serial Flash
+device		cfi			# Parallel Flash
+device		cfid
+
+#UART
 device		uart
 
+#Base
 device		loop
 device		ether
 device 		random
 device		md
+
+#Performance
+#options 	HWPMC_HOOKS
+#device		hwpmc
+#device	 	hwpmc_mips74k
+
+#Ethernet
+# device 	bfe			# XXX will build both pci and siba
+device 		miibus			# attachments
+
+# pci devices
+
+# USB is not yet ready
+#options 	USB_DEBUG		# enable debug msgs
+#device		usb			# USB Bus (required)
+#device		uhci			# UHCI PCI->USB interface
+#device		ehci			# EHCI PCI->USB interface (USB 2.0)
