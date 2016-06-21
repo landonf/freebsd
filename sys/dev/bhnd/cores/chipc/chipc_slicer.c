@@ -54,10 +54,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/cfi/cfi_var.h>
 #include "chipc_spi.h"
 
-#define	CHIPC_FLASH_RID	0
-
-static int	chipc_slicer_walk(device_t dev, struct flash_slice *slices,
-		    int *nslices);
+static int	chipc_slicer_walk(device_t dev, struct resource *res,
+		    struct flash_slice *slices, int *nslices);
 
 void
 chipc_register_slicer(chipc_flash flash_type)
@@ -79,7 +77,8 @@ chipc_register_slicer(chipc_flash flash_type)
 int
 chipc_slicer_cfi(device_t dev, struct flash_slice *slices, int *nslices)
 {
-	device_t	parent;
+	struct cfi_softc	*sc;
+	device_t		 parent;
 
 	/* must be CFI flash */
 	if (device_get_devclass(dev) != devclass_find("cfi"))
@@ -96,13 +95,15 @@ chipc_slicer_cfi(device_t dev, struct flash_slice *slices, int *nslices)
 		return (ENXIO);
 	}
 
-	return (chipc_slicer_walk(dev, slices, nslices));
+	sc = device_get_softc(dev);
+	return (chipc_slicer_walk(dev, sc->sc_res, slices, nslices));
 }
 
 int
 chipc_slicer_spi(device_t dev, struct flash_slice *slices, int *nslices)
 {
-	device_t	chipc, spi, spibus;
+	struct chipc_spi_softc	*sc;
+	device_t		 chipc, spi, spibus;
 
 	BHND_DEBUG_DEV(dev, "initting SPI slicer: %s", device_get_name(dev));
 
@@ -125,32 +126,24 @@ chipc_slicer_spi(device_t dev, struct flash_slice *slices, int *nslices)
 		return (ENXIO);
 	}
 
-	return (chipc_slicer_walk(spi, slices, nslices));
+	sc = device_get_softc(spi);
+	return (chipc_slicer_walk(dev, sc->sc_flash_res, slices, nslices));
 }
 
 /*
  * Main processing part
  */
 static int
-chipc_slicer_walk(device_t dev, struct flash_slice *slices,
-    int *nslices)
+chipc_slicer_walk(device_t dev, struct resource *res,
+    struct flash_slice *slices, int *nslices)
 {
-	struct resource	*res;
 	uint32_t	 fw_len;
 	uint32_t	 fs_ofs;
 	uint32_t	 val;
 	uint32_t	 ofs_trx;
 	int		 flash_size;
-	int		 rid;
 
 	*nslices = 0;
-
-	rid = CHIPC_FLASH_RID;
-	res = bus_alloc_resource_any(dev, SYS_RES_MEMORY, &rid, RF_ACTIVE);
-	if (res == NULL) {
-		device_printf(dev, "failure allocating flash shadow\n");
-		return (ENXIO);
-	}
 
 	flash_size = rman_get_size(res);
 	ofs_trx = flash_size;
@@ -205,6 +198,5 @@ chipc_slicer_walk(device_t dev, struct flash_slice *slices,
 	}
 
 	BHND_TRACE("slicer: done");
-	bus_release_resource(dev, SYS_RES_MEMORY, rid, res);
 	return (0);
 }

@@ -92,6 +92,16 @@ chipc_spi_attach(device_t dev)
 		return (ENXIO);
 	}
 
+	/* Allocate flash shadow region */
+	sc->sc_flash_rid = 0;
+	sc->sc_flash_res = bus_alloc_resource_any(dev, SYS_RES_MEMORY,
+	    &sc->sc_flash_rid, RF_ACTIVE);
+	if (sc->sc_flash_res == NULL) {
+		device_printf(dev, "failed to allocate flash region\n");
+		error = ENXIO;
+		goto failed;
+	}
+
 	/* 
 	 * Add flash device
 	 * 
@@ -133,7 +143,15 @@ chipc_spi_attach(device_t dev)
 
 failed:
 	device_delete_children(dev);
-	bus_release_resource(dev, SYS_RES_MEMORY, sc->sc_rid, sc->sc_res);
+
+	if (sc->sc_res != NULL)
+		bus_release_resource(dev, SYS_RES_MEMORY, sc->sc_rid,
+		    sc->sc_res);
+
+	if (sc->sc_flash_res != NULL)
+		bus_release_resource(dev, SYS_RES_MEMORY, sc->sc_flash_rid,
+		    sc->sc_flash_res);
+
 	return (error);
 }
 
@@ -149,6 +167,8 @@ chipc_spi_detach(device_t dev)
 		return (error);
 
 	bus_release_resource(dev, SYS_RES_MEMORY, sc->sc_rid, sc->sc_res);
+	bus_release_resource(dev, SYS_RES_MEMORY, sc->sc_flash_rid,
+	    sc->sc_flash_res);
 	return (0);
 }
 
@@ -164,7 +184,7 @@ chipc_spi_wait(struct chipc_spi_softc *sc)
 	if (i > 0)
 		return (0);
 
-	BHND_DEBUG_DEV(sc->dev, "busy");
+	BHND_DEBUG_DEV(sc->sc_dev, "busy");
 	return (-1);
 }
 
