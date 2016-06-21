@@ -43,8 +43,10 @@ __FBSDID("$FreeBSD$");
 #include <dev/cfi/cfi_var.h>
 
 #include "bhnd_chipc_if.h"
+
 #include "chipcreg.h"
 #include "chipcvar.h"
+#include "chipc_slicer.h"
 
 static int
 chipc_cfi_probe(device_t dev)
@@ -62,10 +64,17 @@ chipc_cfi_probe(device_t dev)
 	return (error);
 }
 
+static int
+chipc_cfi_attach(device_t dev)
+{
+	chipc_register_slicer(CHIPC_PFLASH_CFI);
+	return (cfi_attach(dev));
+}
+
 static device_method_t chipc_cfi_methods[] = {
 	/* device interface */
 	DEVMETHOD(device_probe,		chipc_cfi_probe),
-	DEVMETHOD(device_attach,	cfi_attach),
+	DEVMETHOD(device_attach,	chipc_cfi_attach),
 	DEVMETHOD(device_detach,	cfi_detach),
 
 	{0, 0}
