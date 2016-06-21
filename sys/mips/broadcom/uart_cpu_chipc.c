@@ -39,6 +39,8 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/bus.h>
 
+#include <dev/bhnd/cores/chipc/chipcreg.h>
+
 #include <dev/uart/uart.h>
 #include <dev/uart/uart_bus.h>
 #include <dev/uart/uart_cpu.h>
@@ -48,29 +50,53 @@ __FBSDID("$FreeBSD$");
 bus_space_tag_t uart_bus_space_io;
 bus_space_tag_t uart_bus_space_mem;
 
+static struct uart_class *chipc_uart_class = &uart_ns8250_class;
+
+#define	CHIPC_UART_BAUDRATE	115200
+
 int
 uart_cpu_eqres(struct uart_bas *b1, struct uart_bas *b2)
 {
 	return ((b1->bsh == b2->bsh && b1->bst == b2->bst) ? 1 : 0);
 }
 
+static int
+uart_cpu_init(struct uart_devinfo *di, int uart, int baudrate)
+{
+	struct bcm_socinfo	*socinfo;
+
+	if (uart >= CHIPC_UART_MAX)
+		return (EINVAL);
+
+	socinfo = bcm_get_socinfo();
+	di->ops = uart_getops(chipc_uart_class);
+	di->bas.chan = 0;
+	di->bas.bst = uart_bus_space_mem;
+	di->bas.bsh = (bus_space_handle_t) BCM_SOCREG(CHIPC_UART(uart));
+	di->bas.regshft = 0;
+	di->bas.rclk = socinfo->uartrate;  /* in Hz */
+	di->baudrate = baudrate;
+	di->databits = 8;
+	di->stopbits = 1;
+	di->parity = UART_PARITY_NONE;
+
+	return (0);
+}
+
 int
 uart_cpu_getdev(int devtype, struct uart_devinfo *di)
 {
-	struct uart_class	*class;
-	struct bcm_socinfo	*socinfo;
-	int			 ivar, maddr;
+	int			 ivar;
 
-	class = &uart_ns8250_class;
 	uart_bus_space_io = NULL;
 	uart_bus_space_mem = mips_bus_space_generic;
 
 	/* Check the environment. */
-	if (uart_getenv(devtype, di, class) == 0)
+	if (uart_getenv(devtype, di, chipc_uart_class) == 0)
 		return (0);
 
 	/* Scan the device hints for the first matching device */
-	for (int i = 0; i < 3; i++) {	// TODO: Fetch max uart from chipc
+	for (int i = 0; i < CHIPC_UART_MAX; i++) {
 		if (resource_int_value("uart", i, "flags", &ivar))
 			continue;
 
@@ -85,27 +111,13 @@ uart_cpu_getdev(int devtype, struct uart_devinfo *di)
 		    ivar == 0)
 			continue;
 
-		if (resource_int_value("uart", i, "maddr", &maddr) != 0 ||
-		    maddr == 0)
-			continue;
-
 		/* Found */
-		socinfo = bcm_get_socinfo();
-		di->ops = uart_getops(class);
-		di->bas.chan = 0;
-		di->bas.bst = uart_bus_space_mem;
-		di->bas.bsh = (bus_space_handle_t)MIPS_PHYS_TO_KSEG1(maddr);
-		di->bas.regshft = 0;
-		di->bas.rclk = socinfo->uartrate;  /* in Hz */
 		if (resource_int_value("uart", i, "baud", &ivar) != 0)
-			ivar = 115200;
-		di->baudrate = ivar;
-		di->databits = 8;
-		di->stopbits = 1;
-		di->parity = UART_PARITY_NONE;
-
-		return (0);
+			ivar = CHIPC_UART_BAUDRATE;
+		
+		return (uart_cpu_init(di, i, ivar));
 	}
 
-	return (ENXIO);
+	/* Default to uart0/115200 */
+	return (uart_cpu_init(di, 0, CHIPC_UART_BAUDRATE));
 }
