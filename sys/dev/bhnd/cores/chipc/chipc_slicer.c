@@ -54,7 +54,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/cfi/cfi_var.h>
 #include "chipc_spi.h"
 
-#define	CHIPC_FLASH_RID	0
+#define	CHIPC_FLASH_RID	1
 
 static int	chipc_slicer_walk(device_t dev, struct flash_slice *slices,
 		    int *nslices);
