@@ -77,6 +77,12 @@ __FBSDID("$FreeBSD$");
 #include <dev/cfe/cfe_api.h>
 #endif
 
+#if 0
+#define	BCM_TRACE(_fmt, ...)	printf(_fmt, ##__VA_ARGS__)
+#else
+#define	BCM_TRACE(_fmt, ...)
+#endif
+
 extern int *edata;
 extern int *end;
 
@@ -104,11 +110,14 @@ mips_init(void)
 
 		result = cfe_enummem(i / 2, 0, &addr, &len, &type);
 		if (result < 0) {
+			BCM_TRACE("There is no phys memory for: %d\n", i);
 			phys_avail[i] = phys_avail[i + 1] = 0;
 			break;
 		}
-		if (type != CFE_MI_AVAILABLE)
+		if (type != CFE_MI_AVAILABLE) {
+			BCM_TRACE("phys memory is not available: %d\n", i);
 			continue;
+		}
 
 		phys_avail[i] = addr;
 		if (i == 0 && addr == 0) {
@@ -119,10 +128,16 @@ mips_init(void)
 			 */
 			phys_avail[i] += MIPS_KSEG0_TO_PHYS(kernel_kseg0_end);
 		}
+		
+		BCM_TRACE("phys memory is available for: %d\n", i);
+		BCM_TRACE(" => addr =  %jx\n", addr);
+		BCM_TRACE(" => len =  %jd\n", len);
+
 		phys_avail[i + 1] = addr + len;
 		physmem += len;
 	}
 
+	BCM_TRACE("Total phys memory is : %ld\n", physmem);
 	realmem = btoc(physmem);
 #endif
 
