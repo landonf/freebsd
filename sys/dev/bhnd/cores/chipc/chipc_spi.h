@@ -65,6 +65,9 @@ struct chipc_spi_softc {
 	device_t		 sc_dev;
 	struct resource		*sc_res;	/**< SPI registers */
 	int			 sc_rid;
+
+	struct resource		*sc_flash_res;	/**< flash shadow */
+	int			 sc_flash_rid;
 };
 
 /* register space access macros */
