@@ -68,6 +68,8 @@ __FBSDID("$FreeBSD$");
 
 MALLOC_DEFINE(M_BHND, "bhnd", "bhnd bus data structures");
 
+/* Bus pass at which all bus-required children must be available, and
+ * attachment may be finalized. */
 #define	BHND_INIT_PLATFORM_PASS	BUS_PASS_DEFAULT
 
 /**
