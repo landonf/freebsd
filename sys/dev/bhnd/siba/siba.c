@@ -206,14 +206,6 @@ siba_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
 	}
 }
 
-static void
-siba_child_deleted(device_t dev, device_t child)
-{
-	struct siba_devinfo *dinfo = device_get_ivars(child);
-	if (dinfo != NULL)
-		siba_free_dinfo(dev, dinfo);
-}
-
 static struct resource_list *
 siba_get_resource_list(device_t dev, device_t child)
 {
@@ -632,7 +624,6 @@ static device_method_t siba_methods[] = {
 	DEVMETHOD(device_suspend,		siba_suspend),
 	
 	/* Bus interface */
-	DEVMETHOD(bus_child_deleted,		siba_child_deleted),
 	DEVMETHOD(bus_read_ivar,		siba_read_ivar),
 	DEVMETHOD(bus_write_ivar,		siba_write_ivar),
 	DEVMETHOD(bus_get_resource_list,	siba_get_resource_list),
