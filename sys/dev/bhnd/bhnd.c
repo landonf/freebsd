@@ -70,7 +70,7 @@ MALLOC_DEFINE(M_BHND, "bhnd", "bhnd bus data structures");
 
 /* Bus pass at which all bus-required children must be available, and
  * attachment may be finalized. */
-#define	BHND_INIT_PLATFORM_PASS	BUS_PASS_DEFAULT
+#define	BHND_FINISH_ATTACH_PASS	BUS_PASS_DEFAULT
 
 /**
  * bhnd_generic_probe_nomatch() reporting configuration.
@@ -92,7 +92,7 @@ static const struct bhnd_nomatch {
 
 static int			 bhnd_delete_children(struct bhnd_softc *sc);
 
-static int			 bhnd_init_platform_devs(struct bhnd_softc *sc);
+static int			 bhnd_finish_attach(struct bhnd_softc *sc);
 
 static device_t			 bhnd_find_chipc(struct bhnd_softc *sc);
 static struct chipc_caps	*bhnd_find_chipc_caps(struct bhnd_softc *sc);
@@ -136,9 +136,9 @@ bhnd_generic_attach(device_t dev)
 		device_probe_and_attach(child);
 	}
 
-	/* Locate bus-required child devices  */
-	if (bus_current_pass >= BHND_INIT_PLATFORM_PASS) {
-		if ((error = bhnd_init_platform_devs(sc)))
+	/* Try to finalize attachment */
+	if (bus_current_pass >= BHND_FINISH_ATTACH_PASS) {
+		if ((error = bhnd_finish_attach(sc)))
 			goto cleanup;
 	}
 
@@ -323,38 +323,31 @@ bhnd_new_pass(device_t dev)
 	bus_generic_new_pass(dev);
 
 	/* Finalize attachment */
-	if (!sc->attach_done && bus_current_pass >= BHND_INIT_PLATFORM_PASS) {
-		error = bhnd_init_platform_devs(sc);
-
-		/* If managing a SoC's root bus, treat any errors as fatal */
-		if (error &&
-		    BHND_BUS_GET_ATTACH_TYPE(dev, dev) == BHND_ATTACH_NATIVE)
-		{
-			panic("bhnd_init_platform_devs() failed: %d", error);
+	if (!sc->attach_done && bus_current_pass >= BHND_FINISH_ATTACH_PASS) {
+		if ((error = bhnd_finish_attach(sc))) {
+			panic("bhnd_finish_attach() failed: %d", error);
 		}
 	}
 }
 
 /*
- * Locate all required platform devices (chipc, nvram, pmu, etc).
+ * Finish any pending bus attachment operations.
  *
- * When attached as a SoC root bus (as opposed to a bridged WiFi device), our
+ * When attached as a SoC bus (as opposed to a bridged WiFi device), our
  * platform devices may not be attached until later bus passes, necessitating
  * delayed initialization on our part.
  */
 static int
-bhnd_init_platform_devs(struct bhnd_softc *sc)
+bhnd_finish_attach(struct bhnd_softc *sc)
 {
 	struct chipc_caps	*ccaps;
 
 	GIANT_REQUIRED;	/* newbus */
 
-	KASSERT(bus_current_pass >= BHND_INIT_PLATFORM_PASS,
-	    ("bhnd_init_platform_devs() called in pass %d",
-		bus_current_pass));
+	KASSERT(bus_current_pass >= BHND_FINISH_ATTACH_PASS,
+	    ("bhnd_finish_attach() called in pass %d", bus_current_pass));
 
-	KASSERT(!sc->attach_done,
-	    ("bhnd_init_platform_devs() called twice"));
+	KASSERT(!sc->attach_done, ("duplicate call to bhnd_finish_attach()"));
 
 	/* Locate chipc device */
 	if ((sc->chipc_dev = bhnd_find_chipc(sc)) == NULL) {
