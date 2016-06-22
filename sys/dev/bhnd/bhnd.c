@@ -438,8 +438,8 @@ bhnd_find_chipc_caps(struct bhnd_softc *sc)
  * @retval device_t A matching device.
  * @retval NULL If no matching device is found.
  */
-static device_t	bhnd_find_platform_dev(struct bhnd_softc *sc,
-    const char *classname)
+static device_t
+bhnd_find_platform_dev(struct bhnd_softc *sc, const char *classname)
 {
 	device_t chipc, child;
 
