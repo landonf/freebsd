@@ -369,10 +369,8 @@ bhnd_finish_attach(struct bhnd_softc *sc)
 	/* Look for a PMU  */
 	if (ccaps->pmu) {
 		if ((sc->pmu_dev = bhnd_find_pmu(sc)) == NULL) {
-#ifdef notyet
 			device_printf(sc->dev, "error: PMU device not found\n");
 			return (ENXIO);
-#endif
 		}
 	}
 
