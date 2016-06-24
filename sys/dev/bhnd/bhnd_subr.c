@@ -196,6 +196,25 @@ bhnd_port_type_name(bhnd_port_type port_type)
 	}
 }
 
+/**
+ * Return the name of an NVRAM source.
+ */
+const char *
+bhnd_nvram_src_name(bhnd_nvram_src nvram_src)
+{
+	switch (nvram_src) {
+	case BHND_NVRAM_SRC_FLASH:
+		return ("flash");
+	case BHND_NVRAM_SRC_OTP:
+		return ("OTP");
+	case BHND_NVRAM_SRC_SPROM:
+		return ("SPROM");
+	case BHND_NVRAM_SRC_UNKNOWN:
+		return ("none");
+	default:
+		return ("unknown");
+	}
+}
 
 static const struct bhnd_core_desc *
 bhnd_find_core_desc(uint16_t vendor, uint16_t device)

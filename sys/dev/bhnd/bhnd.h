@@ -43,6 +43,8 @@
 #include "bhnd_bus_if.h"
 #include "bhnd_match.h"
 
+#include "nvram/bhnd_nvram.h"
+
 extern devclass_t bhnd_devclass;
 extern devclass_t bhnd_hostb_devclass;
 extern devclass_t bhnd_nvram_devclass;
@@ -242,6 +244,7 @@ struct bhnd_device {
 
 const char			*bhnd_vendor_name(uint16_t vendor);
 const char			*bhnd_port_type_name(bhnd_port_type port_type);
+const char			*bhnd_nvram_src_name(bhnd_nvram_src nvram_src);
 
 const char 			*bhnd_find_core_name(uint16_t vendor,
 				     uint16_t device);
