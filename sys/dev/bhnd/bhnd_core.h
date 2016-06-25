@@ -46,11 +46,9 @@
 
 #define	BHND_RESET_SF		0x0804
 
-/* 
- * A register that is common to all cores to
- * communicate w/PMU regarding clock control.
- * 
- * TODO: Determine when this register first appeared.
+/**
+ * Common per-core clock control/status register available on PMU-equipped
+ * devices.
  */
 #define BHND_CLK_CTL_ST			0x1e0		/**< clock control and status */
 
