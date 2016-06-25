@@ -106,8 +106,7 @@ siba_parse_core_id(uint32_t idhigh, uint32_t idlow, u_int core_idx, int unit)
 }
 
 /**
- * Allocate and initialize new device info structure, copying the
- * provided core id.
+ * Allocate and return a new empty device info structure.
  * 
  * @param bus The requesting bus device.
  * 
@@ -133,7 +132,25 @@ siba_alloc_dinfo(device_t bus)
 }
 
 /**
- * Return the @p dinfo port instance for @p type, or NULL.
+ * Initialize a device info structure previously allocated via
+ * siba_alloc_dinfo, copying the provided core id.
+ * 
+ * @param dev The requesting bus device.
+ * @param dinfo The device info instance.
+ * @param core Device core info.
+ * 
+ * @retval 0 success
+ * @retval non-zero initialization failed.
+ */
+int
+siba_init_dinfo(device_t dev, struct siba_devinfo *dinfo,
+    const struct siba_core_id *core_id)
+{
+	dinfo->core_id = *core_id;
+	return (0);
+}
+
+/**
  * Map an addrspace index to its corresponding bhnd(4) port number.
  * 
  * @param addrspace Address space index.

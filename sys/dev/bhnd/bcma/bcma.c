@@ -43,6 +43,7 @@ __FBSDID("$FreeBSD$");
 
 #include "bcma_eromreg.h"
 #include "bcma_eromvar.h"
+#include <dev/bhnd/bhnd_core.h>
 
 int
 bcma_probe(device_t dev)
@@ -180,17 +181,6 @@ bcma_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
 	}
 }
 
-static void
-bcma_child_deleted(device_t dev, device_t child)
-{
-	struct bcma_devinfo *dinfo = device_get_ivars(child);
-	if (dinfo != NULL)
-		bcma_free_dinfo(dev, dinfo);
-
-	/* Call superclass implementation */
-	bhnd_generic_child_deleted(dev, child);
-}
-
 static struct resource_list *
 bcma_get_resource_list(device_t dev, device_t child)
 {
@@ -221,9 +211,33 @@ bcma_reset_core(device_t dev, device_t child, uint16_t flags)
 	if (dinfo->res_agent == NULL)
 		return (ENODEV);
 
-	// TODO - perform reset
+	/* Start reset */
+	bhnd_bus_write_4(dinfo->res_agent, BHND_RESET_CF, BHND_RESET_CF_ENABLE);
+	bhnd_bus_read_4(dinfo->res_agent, BHND_RESET_CF);
+	DELAY(10);
 
-	return (ENXIO);
+	/* Disable clock */
+	bhnd_bus_write_4(dinfo->res_agent, BHND_CF, flags);
+	bhnd_bus_read_4(dinfo->res_agent, BHND_CF);
+	DELAY(10);
+
+	/* Enable clocks & force clock gating */
+	bhnd_bus_write_4(dinfo->res_agent, BHND_CF, BHND_CF_CLOCK_EN |
+	    BHND_CF_FGC | flags);
+	bhnd_bus_read_4(dinfo->res_agent, BHND_CF);
+	DELAY(10);
+
+	/* Complete reset */
+	bhnd_bus_write_4(dinfo->res_agent, BHND_RESET_CF, 0);
+	bhnd_bus_read_4(dinfo->res_agent, BHND_RESET_CF);
+	DELAY(10);
+
+	/* Release force clock gating */
+	bhnd_bus_write_4(dinfo->res_agent, BHND_CF, BHND_CF_CLOCK_EN | flags);
+	bhnd_bus_read_4(dinfo->res_agent, BHND_CF);
+	DELAY(10);
+
+	return (0);
 }
 
 static int
@@ -480,7 +494,6 @@ static device_method_t bcma_methods[] = {
 	DEVMETHOD(device_detach,		bcma_detach),
 	
 	/* Bus interface */
-	DEVMETHOD(bus_child_deleted,		bcma_child_deleted),
 	DEVMETHOD(bus_read_ivar,		bcma_read_ivar),
 	DEVMETHOD(bus_write_ivar,		bcma_write_ivar),
 	DEVMETHOD(bus_get_resource_list,	bcma_get_resource_list),

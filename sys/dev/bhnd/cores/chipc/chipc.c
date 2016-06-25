@@ -596,8 +596,6 @@ chipc_add_child(device_t dev, u_int order, const char *name, int unit)
 
 	sc = device_get_softc(dev);
 
-	sc = device_get_softc(dev);
-
 	child = device_add_child_ordered(dev, order, name, unit);
 	if (child == NULL)
 		return (NULL);

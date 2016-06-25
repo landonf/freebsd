@@ -68,6 +68,11 @@ CODE {
 	{
 		panic("bhnd_bus_read_boardinfo unimplemented");
 	}
+	
+	static void
+	bhnd_bus_null_child_added(device_t dev, device_t child)
+	{
+	}
 
 	static struct bhnd_devinfo *
 	bhnd_bus_null_alloc_devinfo(device_t dev)

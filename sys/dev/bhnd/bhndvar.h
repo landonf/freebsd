@@ -56,6 +56,13 @@ struct bhnd_devinfo {
 };
 
 /**
+ * bhnd per-device info.  Must be first member of all subclass
+ * devinfo structures.
+ */
+struct bhnd_devinfo {
+};
+
+/**
  * bhnd driver instance state. Must be first member of all subclass
  * softc structures.
  */
