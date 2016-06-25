@@ -361,17 +361,16 @@ bhnd_finish_attach(struct bhnd_softc *sc)
 	if (ccaps->nvram_src != BHND_NVRAM_SRC_UNKNOWN) {
 		if ((sc->nvram_dev = bhnd_find_nvram(sc)) == NULL) {
 			device_printf(sc->dev,
-			    "error: %s NVRAM device not found\n",
+			    "warning: %s NVRAM device not found\n",
 			    bhnd_nvram_src_name(ccaps->nvram_src));
-			return (ENXIO);
 		}
 	}
 
 	/* Look for a PMU  */
 	if (ccaps->pmu) {
 		if ((sc->pmu_dev = bhnd_find_pmu(sc)) == NULL) {
-			device_printf(sc->dev, "error: PMU device not found\n");
-			return (ENXIO);
+			device_printf(sc->dev,
+			    "warning: PMU device not found\n");
 		}
 	}
 
