@@ -60,8 +60,8 @@ chipc_cfi_probe(device_t dev)
 	if ((error = cfi_probe(dev)) > 0)
 		return (error);
 
-	device_set_desc(dev, "ChipCommon CFI");
-	return (BUS_PROBE_NOWILDCARD);
+	device_set_desc(dev, "Broadcom ChipCommon CFI");
+	return (error);
 }
 
 static int

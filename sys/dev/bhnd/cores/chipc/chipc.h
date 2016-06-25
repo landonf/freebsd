@@ -66,7 +66,6 @@ struct chipc_caps {
 
 	uint8_t		extbus_type;	/**< ExtBus type (CHIPC_CAP_EXTBUS_*) */
 	chipc_flash 	flash_type;	/**< Flash type */
-	
 	bhnd_nvram_src	nvram_src;	/**< identified NVRAM source */
 
 	bus_size_t	sprom_offset;	/**< Offset to SPROM data within

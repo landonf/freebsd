@@ -604,8 +604,8 @@ chipc_add_child(device_t dev, u_int order, const char *name, int unit)
 		return (NULL);
 	}
 
-	device_set_ivars(child, dinfo);
 	resource_list_init(&dinfo->resources);
+	device_set_ivars(child, dinfo);
 
 	return (child);
 }
