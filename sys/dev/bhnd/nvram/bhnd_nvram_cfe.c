@@ -50,7 +50,20 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/bhnd.h>
 
+#include <dev/cfe/cfe_api.h>
+#include <dev/cfe/cfe_error.h>
+
 #include "bhnd_nvram_if.h"
+#include "bhnd_nvram_map.h"
+
+#include "nvramvar.h"
+
+#include <sys/kenv.h>
+
+struct bhnd_nvcfe_softc {
+	device_t		 dev;
+	struct mtx		 mtx;		/**< nvram mutex */
+};
 
 #define	NVCFE_LOCK_INIT(sc) \
 	mtx_init(&(sc)->mtx, device_get_nameunit((sc)->dev), \
@@ -60,10 +73,7 @@ __FBSDID("$FreeBSD$");
 #define	NVCFE_LOCK_ASSERT(sc, what)	mtx_assert(&(sc)->mtx, what)
 #define	NVCFE_LOCK_DESTROY(sc)		mtx_destroy(&(sc)->mtx)
 
-struct bhnd_nvcfe_softc {
-	device_t		 dev;
-	struct mtx		 mtx;		/**< nvram mutex */
-};
+#define	NVCFE_VARSIZE_MAX	64
 
 static int
 bhnd_nvram_cfe_probe(device_t dev)
@@ -78,12 +88,37 @@ static int
 bhnd_nvram_cfe_attach(device_t dev)
 {
 	struct bhnd_nvcfe_softc	*sc;
+	uint8_t			 sromrev;
+	int			 error;
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
 
 	/* Initialize mutex */
 	NVCFE_LOCK_INIT(sc);
+	
+	int idx;
+	char name[KENV_MNAMELEN], val[KENV_MVALLEN];
+
+        idx = 0;
+        while (1) {
+                if (cfe_enumenv(idx, name, sizeof(name), val, sizeof(val)) != 0)
+                        break;
+		
+		device_printf(dev, "%s=%s\n", name, val);
+
+                ++idx;
+        }
+
+
+	error = bhnd_nvram_getvar(dev, BHND_NVAR_SROMREV, &sromrev,
+	    sizeof(sromrev));
+	if (error) {
+		device_printf(dev, "error fetching sromrev: %d\n", error);
+		return (error);
+	}
+
+	device_printf(dev, "sromrev %u\n", sromrev);
 
 	return (0);
 }
@@ -115,17 +150,106 @@ bhnd_nvram_cfe_detach(device_t dev)
 static int
 bhnd_nvram_cfe_getvar(device_t dev, const char *name, void *buf, size_t *len)
 {
-	struct bhnd_nvcfe_softc	*sc;
-	int			 error;
+	struct bhnd_nvcfe_softc		*sc;
+	const struct bhnd_nvram_var	*var;
+	char				 sbuf[NVCFE_VARSIZE_MAX];
+	size_t				 nitems;
+	size_t				 output_len;
+	int				 cfe_err;
+	int				 error;
 
 	sc = device_get_softc(dev);
 
+	/* Lookup variable definition */
+	if ((var = bhnd_nvram_var_defn(name)) == NULL)
+		return (ENOENT);
+
+	/* Skip mfg-internal variables */
+	if (var->flags & BHND_NVRAM_VF_MFGINT)
+		return (ENOENT);
+
+	/* TODO: Support all data types and vfmts. */
+	switch (var->type) {
+	case BHND_NVRAM_DT_UINT8:
+		break;
+	default:
+		device_printf(dev, "%s: unsupported type: %u\n", name,
+		    var->type);
+		return (ENODEV);
+	}
+
+	switch (var->fmt) {
+	case BHND_NVRAM_VFMT_DEC:
+		break;
+	default:
+		device_printf(dev, "%s: unsupported format: %u\n", name,
+		    var->fmt);
+		return (ENODEV);
+	}
+
+	/* Perform fetch */
 	NVCFE_LOCK(sc);
-	// TODO
-	error = ENXIO;
+
+	char *n = strdup(name, M_DEVBUF);
+	cfe_err = cfe_getenv(n, sbuf, sizeof(sbuf));
+	free(n, M_DEVBUF);
+
+	switch (cfe_err) {
+	case CFE_ERR_ENVNOTFOUND:
+		error = ENOENT;
+		break;
+	case CFE_OK:
+		error = 0;
+		break;
+	default:
+		device_printf(dev, "cfe_getenv() failed with %d\n", cfe_err);
+		error = ENXIO;
+		break;
+	}
+
 	NVCFE_UNLOCK(sc);
 
-	return (error);
+	/* If fetch failed, nothing to do */
+	if (error)
+		return (error);
+
+	/* Verify NULL termination within NVCFE_VARSIZE_MAX */
+	if (strnlen(sbuf, sizeof(sbuf)) == sizeof(sbuf)) {
+		device_printf(dev, "%s exceeds max buflen %#zx\n", name,
+		     sizeof(sbuf));
+		return (ENXIO);
+	}
+	
+	/* TODO: Parse array elements sequentially */
+	if (var->flags & BHND_NVRAM_VF_ARRAY) {
+		device_printf(dev, "%s: array unsupported\n", name);
+		return (ENODEV);
+	} else {
+		nitems = 1;
+	}
+
+	/* Provide required size */
+	output_len = bhnd_nvram_type_width(var->type) * nitems;
+	if (buf == NULL) {
+		*len = output_len * nitems;
+		return (0);
+	}
+
+	/* Check (and update) target buffer len */
+	if (*len < output_len)
+		return (ENOMEM);
+	else
+		*len = output_len;
+
+	/* Parse the value */
+	KASSERT(var->type == BHND_NVRAM_DT_UINT8 &&
+		var->fmt == BHND_NVRAM_VFMT_DEC, ("unsupported type/fmt"));
+	if (sscanf(sbuf, "%u", buf) != 1) {
+		device_printf(dev, "%s: could not parse '%s'\n", name, sbuf);
+		return (EINVAL);
+	}
+
+	return (0);
 }
 
 /**
@@ -142,7 +266,7 @@ bhnd_nvram_cfe_setvar(device_t dev, const char *name, const void *buf,
 
 	NVCFE_LOCK(sc);
 	// TODO
-	error = ENXIO;
+	error = ENODEV;
 	NVCFE_UNLOCK(sc);
 
 	return (error);
