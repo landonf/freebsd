@@ -38,6 +38,93 @@ __FBSDID("$FreeBSD$");
 #include "chipcvar.h"
 
 /**
+ * Return a human-readable name for the given flash @p type.
+ */
+const char *
+chipc_flash_name(chipc_flash type)
+{
+	switch (type) {
+	case CHIPC_PFLASH_CFI:
+		return ("CFI Flash");
+
+	case CHIPC_SFLASH_ST:
+	case CHIPC_SFLASH_AT:
+		return ("SPI Flash");
+
+	case CHIPC_QSFLASH_ST:
+	case CHIPC_QSFLASH_AT:
+		return ("QSPI Flash");
+
+	case CHIPC_NFLASH:
+	case CHIPC_NFLASH_4706:
+		return ("NAND");
+
+	case CHIPC_FLASH_NONE:
+	default:
+		return ("unknown");
+	}
+}
+
+/**
+ * Return the name of the bus device class used by flash @p type,
+ * or NULL if @p type is unsupported.
+ */
+const char *
+chipc_flash_bus_name(chipc_flash type)
+{
+	switch (type) {
+	case CHIPC_PFLASH_CFI:
+		return ("cfi");
+
+	case CHIPC_SFLASH_ST:
+	case CHIPC_SFLASH_AT:
+		return ("spi");
+
+	case CHIPC_QSFLASH_ST:
+	case CHIPC_QSFLASH_AT:
+		/* unimplemented; spi? */
+		return (NULL);
+
+	case CHIPC_NFLASH:
+	case CHIPC_NFLASH_4706:
+		/* unimplemented; nandbus? */
+		return (NULL);
+
+	case CHIPC_FLASH_NONE:
+	default:
+		return (NULL);
+	}
+}
+
+/**
+ * Return the name of the flash device class for SPI flash @p type,
+ * or NULL if @p type does not use SPI, or is unsupported.
+ */
+const char *
+chipc_sflash_device_name(chipc_flash type)
+{
+	switch (type) {
+	case CHIPC_SFLASH_ST:
+		return ("mx25l");
+
+	case CHIPC_SFLASH_AT:
+		return ("at45d");
+
+	case CHIPC_QSFLASH_ST:
+	case CHIPC_QSFLASH_AT:
+		/* unimplemented */
+		return (NULL);
+
+	case CHIPC_PFLASH_CFI:
+	case CHIPC_NFLASH:
+	case CHIPC_NFLASH_4706:
+	case CHIPC_FLASH_NONE:
+	default:
+		return (NULL);
+	}
+}
+
+/**
  * Initialize child resource @p r with a virtual address, tag, and handle
  * copied from @p parent, adjusted to contain only the range defined by
  * @p offsize and @p size.
@@ -215,9 +302,10 @@ chipc_alloc_region(struct chipc_softc *sc, bhnd_port_type type,
 
 	cr->cr_end = cr->cr_addr + cr->cr_count - 1;
 
-	/* Note that not all regions have an assigned rid, in which case
-	 * this will return -1 */
+	/* Fetch default resource ID for this region. Not all regions have an
+	 * assigned rid, in which case this will return -1 */
 	cr->cr_rid = bhnd_get_port_rid(sc->dev, type, port, region);
+
 	return (cr);
 
 failed:
@@ -242,7 +330,7 @@ chipc_free_region(struct chipc_softc *sc, struct chipc_region *cr)
 	     cr->cr_region_num, cr->cr_refs));
 
 	if (cr->cr_res != NULL) {
-		bhnd_release_resource(sc->dev, SYS_RES_MEMORY, cr->cr_rid,
+		bhnd_release_resource(sc->dev, SYS_RES_MEMORY, cr->cr_res_rid,
 		    cr->cr_res);
 	}
 
@@ -329,10 +417,16 @@ chipc_retain_region(struct chipc_softc *sc, struct chipc_region *cr, int flags)
 			KASSERT(cr->cr_res == NULL,
 			    ("non-NULL resource has refcount"));
 
-			cr->cr_res = bhnd_alloc_resource(sc->dev,
-			    SYS_RES_MEMORY, &cr->cr_rid, cr->cr_addr,
-			    cr->cr_end, cr->cr_count, 0);
+			/* Fetch initial resource ID */			
+			if ((cr->cr_res_rid = cr->cr_rid) == -1) {
+				CHIPC_UNLOCK(sc);
+				return (EINVAL);
+			}
 
+			/* Allocate resource */
+			cr->cr_res = bhnd_alloc_resource(sc->dev,
+			    SYS_RES_MEMORY, &cr->cr_res_rid, cr->cr_addr,
+			    cr->cr_end, cr->cr_count, 0);
 			if (cr->cr_res == NULL) {
 				CHIPC_UNLOCK(sc);
 				return (ENXIO);
@@ -352,7 +446,7 @@ chipc_retain_region(struct chipc_softc *sc, struct chipc_region *cr, int flags)
 		/* If this is the first reference, activate the resource */
 		if (cr->cr_act_refs == 0) {
 			error = bhnd_activate_resource(sc->dev, SYS_RES_MEMORY,
-			    cr->cr_rid, cr->cr_res);
+			    cr->cr_res_rid, cr->cr_res);
 			if (error) {
 				/* Drop any allocation reference acquired
 				 * above */
@@ -389,6 +483,8 @@ chipc_release_region(struct chipc_softc *sc, struct chipc_region *cr,
 	CHIPC_LOCK(sc);
 	error = 0;
 
+	KASSERT(cr->cr_res != NULL, ("release on NULL region resource"));
+
 	if (flags & RF_ACTIVE) {
 		KASSERT(cr->cr_act_refs > 0, ("RF_ACTIVE over-released"));
 		KASSERT(cr->cr_act_refs <= cr->cr_refs,
@@ -397,7 +493,7 @@ chipc_release_region(struct chipc_softc *sc, struct chipc_region *cr,
 		/* If this is the last reference, deactivate the resource */
 		if (cr->cr_act_refs == 1) {
 			error = bhnd_deactivate_resource(sc->dev,
-			    SYS_RES_MEMORY, cr->cr_rid, cr->cr_res);
+			    SYS_RES_MEMORY, cr->cr_res_rid, cr->cr_res);
 			if (error)
 				goto done;
 		}
@@ -408,16 +504,14 @@ chipc_release_region(struct chipc_softc *sc, struct chipc_region *cr,
 
 	if (flags & RF_ALLOCATED) {
 		KASSERT(cr->cr_refs > 0, ("overrelease of refs"));
-
 		/* If this is the last reference, release the resource */
 		if (cr->cr_refs == 1) {
-			error = bhnd_release_resource(sc->dev,
-			    SYS_RES_MEMORY, cr->cr_rid, cr->cr_res);
+			error = bhnd_release_resource(sc->dev, SYS_RES_MEMORY,
+			    cr->cr_res_rid, cr->cr_res);
 			if (error)
 				goto done;
 
 			cr->cr_res = NULL;
-			cr->cr_rid = -1;
 		}
 
 		/* Drop our allocation refcount */

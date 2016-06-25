@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2006 Wojciech A. Koszek <wkoszek@FreeBSD.org>
+ * Copyright (c) 2005-2006,2016 John H. Baldwin <jhb@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -22,61 +22,73 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $Id$
  */
-/*
- * Skeleton of this file was based on respective code for ARM
- * code written by Olivier Houchard.
- */
-/*
- * XXXMIPS: This file is hacked from arm/... . XXXMIPS here means this file is
- * experimental and was written for MIPS32 port.
- */
-#include "opt_uart.h"
 
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include <sys/param.h>
-#include <sys/systm.h>
-#include <sys/bus.h>
-#include <sys/cons.h>
+#include <sys/ioccom.h>
+#include <ctype.h>
+#include <errno.h>
+#include <limits.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sysdecode.h>
 
-#include <machine/bus.h>
-
-#include <dev/uart/uart.h>
-#include <dev/uart/uart_cpu.h>
-
-#include <mips/sentry5/sentry5reg.h>
-
-bus_space_tag_t uart_bus_space_io;
-bus_space_tag_t uart_bus_space_mem;
-
-extern struct uart_ops malta_usart_ops;
-extern struct bus_space malta_bs_tag;
-
-int
-uart_cpu_eqres(struct uart_bas *b1, struct uart_bas *b2)
+static void
+usage(char **av)
 {
-	return ((b1->bsh == b2->bsh && b1->bst == b2->bst) ? 1 : 0);
+	fprintf(stderr, "%s: <ioctl> [ ... ]\n", av[0]);
+	exit(1);
 }
 
 int
-uart_cpu_getdev(int devtype, struct uart_devinfo *di)
+main(int ac, char **av)
 {
-	di->ops = uart_getops(&uart_ns8250_class);
-	di->bas.chan = 0;
-	di->bas.bst = 0;
-	di->bas.regshft = 0;
-	di->bas.rclk = 0;
-	di->baudrate = 115200;
-	di->databits = 8;
-	di->stopbits = 1;
-	di->parity = UART_PARITY_NONE;
+	unsigned long cmd;
+	const char *name;
+	char *cp;
+	int group, i;
 
-	uart_bus_space_io = MIPS_PHYS_TO_KSEG1(SENTRY5_UART1ADR);
-	uart_bus_space_mem = mips_bus_space_generic;
-	di->bas.bsh = MIPS_PHYS_TO_KSEG1(SENTRY5_UART1ADR);
+	if (ac < 2)
+		usage(av);
+	printf("  command :  dir  group num  len name\n");
+	for (i = 1; i < ac; i++) {
+		errno = 0;
+		cmd = strtoul(av[i], &cp, 0);
+		if (*cp != '\0' || errno != 0) {
+			fprintf(stderr, "Invalid integer: %s\n", av[i]);
+			usage(av);
+		}
+		printf("0x%08lx: ", cmd);
+		switch (cmd & IOC_DIRMASK) {
+		case IOC_VOID:
+			printf("VOID ");
+			break;
+		case IOC_OUT:
+			printf("OUT  ");
+			break;
+		case IOC_IN:
+			printf("IN   ");
+			break;
+		case IOC_INOUT:
+			printf("INOUT");
+			break;
+		default:
+			printf("%01lx ???", (cmd & IOC_DIRMASK) >> 29);
+			break;
+		}
+		printf(" ");
+		group = IOCGROUP(cmd);
+		if (isprint(group))
+			printf(" '%c' ", group);
+		else
+			printf(" 0x%02x", group);
+		printf(" %3lu %4lu", cmd & 0xff, IOCPARM_LEN(cmd));
+		name = sysdecode_ioctlname(cmd);
+		if (name != NULL)
+			printf(" %s", name);
+		printf("\n");
+	}
 	return (0);
 }

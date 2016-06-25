@@ -37,25 +37,8 @@ __FBSDID("$FreeBSD$");
  * With the exception of some very early chipsets, the ChipCommon core
  * has been included in all HND SoCs and chipsets based on the siba(4) 
  * and bcma(4) interconnects, providing a common interface to chipset 
- * identification, bus enumeration, UARTs, clocks, watchdog interrupts, GPIO, 
- * flash, etc.
- *
- * The purpose of this driver is memory resource management for ChipCommon drivers
- * like UART, PMU, flash. ChipCommon core has several memory regions.
- *
- * ChipCommon driver has memory resource manager. Driver
- * gets information about BHND core ports/regions and map them
- * into drivers' resources.
- *
- * Here is overview of mapping:
- *
- * ------------------------------------------------------
- * | Port.Region| Purpose				|
- * ------------------------------------------------------
- * |	0.0	| PMU, SPI(0x40), UART(0x300)           |
- * |	1.0	| ?					|
- * |	1.1	| MMIO flash (SPI & CFI)		|
- * ------------------------------------------------------
+ * identification, bus enumeration, UARTs, clocks, watchdog interrupts,
+ * GPIO, flash, etc.
  */
 
 #include <sys/param.h>
@@ -76,6 +59,7 @@ __FBSDID("$FreeBSD$");
 
 #include "chipcreg.h"
 #include "chipcvar.h"
+
 #include "chipc_private.h"
 
 devclass_t bhnd_chipc_devclass;	/**< bhnd(4) chipcommon device class */
@@ -126,10 +110,7 @@ static struct bhnd_device_quirk chipc_quirks[] = {
 // FIXME: IRQ shouldn't be hard-coded
 #define	CHIPC_MIPS_IRQ	2
 
-static int			 chipc_try_activate_resource(
-				    struct chipc_softc *sc, device_t child,
-				    int type, int rid, struct resource *r,
-				    bool req_direct);
+static int			 chipc_add_children(struct chipc_softc *sc);
 
 static bhnd_nvram_src		 chipc_find_nvram_src(struct chipc_softc *sc,
 				     struct chipc_caps *caps);
@@ -138,6 +119,11 @@ static int			 chipc_read_caps(struct chipc_softc *sc,
 
 static bool			 chipc_should_enable_sprom(
 				     struct chipc_softc *sc);
+
+static int			 chipc_try_activate_resource(
+				    struct chipc_softc *sc, device_t child,
+				    int type, int rid, struct resource *r,
+				    bool req_direct);
 
 static int			 chipc_init_rman(struct chipc_softc *sc);
 static void			 chipc_free_rman(struct chipc_softc *sc);
@@ -174,9 +160,6 @@ static int
 chipc_attach(device_t dev)
 {
 	struct chipc_softc		*sc;
-	bhnd_addr_t			 enum_addr;
-	uint32_t			 ccid_reg;
-	uint8_t				 chip_type;
 	int				 error;
 
 	sc = device_get_softc(dev);
@@ -195,7 +178,7 @@ chipc_attach(device_t dev)
 		goto failed;
 	}
 
-	/* Allocate the region containing our core registers */
+	/* Allocate the region containing the chipc register block */
 	if ((sc->core_region = chipc_find_region_by_rid(sc, 0)) == NULL) {
 		error = ENXIO;
 		goto failed;
@@ -206,30 +189,10 @@ chipc_attach(device_t dev)
 	if (error) {
 		sc->core_region = NULL;
 		goto failed;
-	} else {
-		sc->core = sc->core_region->cr_res;
 	}
 
-	/* Fetch our chipset identification data */
-	ccid_reg = bhnd_bus_read_4(sc->core, CHIPC_ID);
-	chip_type = CHIPC_GET_BITS(ccid_reg, CHIPC_ID_BUS);
-
-	switch (chip_type) {
-	case BHND_CHIPTYPE_SIBA:
-		/* enumeration space starts at the ChipCommon register base. */
-		enum_addr = rman_get_start(sc->core->res);
-		break;
-	case BHND_CHIPTYPE_BCMA:
-	case BHND_CHIPTYPE_BCMA_ALT:
-		enum_addr = bhnd_bus_read_4(sc->core, CHIPC_EROMPTR);
-		break;
-	default:
-		device_printf(dev, "unsupported chip type %hhu\n", chip_type);
-		error = ENODEV;
-		goto failed;
-	}
-
-	sc->ccid = bhnd_parse_chipid(ccid_reg, enum_addr);
+	/* Save a direct reference to our chipc registers */
+	sc->core = sc->core_region->cr_res;
 
 	/* Fetch and parse capability register(s) */
 	if ((error = chipc_read_caps(sc, &sc->caps)))
@@ -238,14 +201,18 @@ chipc_attach(device_t dev)
 	if (bootverbose)
 		chipc_print_caps(sc->dev, &sc->caps);
 
-	/* Probe and attach children */
-	bus_generic_probe(dev);
+	/* Attach all supported child devices */
+	if ((error = chipc_add_children(sc)))
+		goto failed;
+
 	if ((error = bus_generic_attach(dev)))
 		goto failed;
 
 	return (0);
 	
 failed:
+	device_delete_children(sc->dev);
+
 	if (sc->core_region != NULL) {
 		chipc_release_region(sc, sc->core_region,
 		    RF_ALLOCATED|RF_ACTIVE);
@@ -310,7 +277,7 @@ chipc_add_children(struct chipc_softc *sc)
 	 * earlier non-PMU clock/power register interface, one of the instaclk,
 	 * powerctl, or null bhnd_pmu drivers will claim the device.
 	 */
-	if (!sc->caps.aob || (sc->caps.aob && !sc->pmu)) {
+	if (!sc->caps.aob || (sc->caps.aob && !sc->caps.pmu)) {
 		child = BUS_ADD_CHILD(sc->dev, 0, "bhnd_pmu", -1);
 		if (child == NULL) {
 			device_printf(sc->dev, "failed to add pmu\n");
@@ -319,10 +286,10 @@ chipc_add_children(struct chipc_softc *sc)
 
 		/* Associate the applicable register block */
 		error = 0;
-		if (sc->pmu) {
+		if (sc->caps.pmu) {
 			error = chipc_set_resource(sc, child, SYS_RES_MEMORY, 0,
 			    CHIPC_PMU, CHIPC_PMU_SIZE, 0, 0);
-		} else if (sc->power_control) {
+		} else if (sc->caps.power_control) {
 			error = chipc_set_resource(sc, child, SYS_RES_MEMORY, 0,
 			    CHIPC_PWRCTL, CHIPC_PWRCTL_SIZE, 0, 0);
 		}
@@ -338,7 +305,7 @@ chipc_add_children(struct chipc_softc *sc)
 
 	/* UARTs */
 	for (u_int i = 0; i < min(sc->caps.num_uarts, CHIPC_UART_MAX); i++) {
-		child = BUS_ADD_CHILD(sc->dev, 0, "bhnd_pmu", -1);
+		child = BUS_ADD_CHILD(sc->dev, 0, "uart", -1);
 		if (child == NULL) {
 			device_printf(sc->dev, "failed to add uart%u\n", i);
 			return (ENXIO);
@@ -348,56 +315,31 @@ chipc_add_children(struct chipc_softc *sc)
 		error = bus_set_resource(child, SYS_RES_IRQ, 0, CHIPC_MIPS_IRQ,
 		    1);
 		if (error) {
-			device_printf(sc->dev, "failed to set uart%u irq %ju\n",
+			device_printf(sc->dev, "failed to set uart%u irq %u\n",
 			    i, CHIPC_MIPS_IRQ);
 			return (error);
 		}
 
 		/* UART registers are mapped sequentially */
 		error = chipc_set_resource(sc, child, SYS_RES_MEMORY, 0,
-		    CHIPC_UART_BASE + (i * CHIPC_UART_SIZE), CHIPC_UART_SIZE,
-		    0, 0);
+		    CHIPC_UART(i), CHIPC_UART_SIZE, 0, 0);
 		if (error)
 			return (error);
 	}
 
 	/* Flash */
-	flash_bus = NULL;
-	switch (sc->caps.flash_type) {
-		case CHIPC_FLASH_NONE:
-			break;
-		case CHIPC_PFLASH_CFI:	/* cfi */
-			flash_bus = "cfi";
-			break;
-
-		case CHIPC_SFLASH_AT:	/* spi */
-		case CHIPC_SFLASH_ST:
-			flash_bus = "spi";
-			break;
-
-		case CHIPC_QSFLASH_ST:	/* qspi */
-		case CHIPC_QSFLASH_AT:
-		case CHIPC_NFLASH:	/* nand */
-		case CHIPC_NFLASH_4706:
-			/* fallthrough (unimplemented) */
-		default:
-			device_printf(sc->dev, "unsupported flash type %u\n",
-			    (u_int)sc->caps.flash_type);
-			break;
-	}
-
+	flash_bus = chipc_flash_bus_name(sc->caps.flash_type);
 	if (flash_bus != NULL) {
 		child = BUS_ADD_CHILD(sc->dev, 0, flash_bus, -1);
 		if (child == NULL) {
-			device_printf(sc->dev,
-			    "failed to add %s flash device\n", flash_bus);
+			device_printf(sc->dev, "failed to add %s device\n",
+			    flash_bus);
 			return (ENXIO);
 		}
 
 		/* flash memory mapping */
-		// FIXME: port1.1 mapping on siba(4) SoCs
 		error = chipc_set_resource(sc, child, SYS_RES_MEMORY, 0,
-		    0, RMAN_MAX_END, 1, 1);
+		    0, RM_MAX_END, 1, 1);
 		if (error)
 			return (error);
 
@@ -509,7 +451,6 @@ chipc_read_caps(struct chipc_softc *sc, struct chipc_caps *caps)
 
 	/* Determine flash type and parameters */
 	caps->cfi_width = 0;
-
 	switch (CHIPC_GET_BITS(cap_reg, CHIPC_CAP_FLASH)) {
 	case CHIPC_CAP_SFLASH_ST:
 		caps->flash_type = CHIPC_SFLASH_ST;
@@ -518,6 +459,7 @@ chipc_read_caps(struct chipc_softc *sc, struct chipc_caps *caps)
 		caps->flash_type = CHIPC_SFLASH_AT;
 		break;
 	case CHIPC_CAP_NFLASH:
+		/* unimplemented */
 		caps->flash_type = CHIPC_NFLASH;
 		break;
 	case CHIPC_CAP_PFLASH:
@@ -700,7 +642,7 @@ chipc_rman_init_regions (struct chipc_softc *sc, bhnd_port_type type,
 	u_int			 num_regions;
 	int			 error;
 
-	num_regions = bhnd_get_region_count(sc->dev, port, port);
+	num_regions = bhnd_get_region_count(sc->dev, type, port);
 	for (u_int region = 0; region < num_regions; region++) {
 		/* Allocate new region record */
 		cr = chipc_alloc_region(sc, type, port, region);
@@ -875,10 +817,8 @@ chipc_alloc_resource(device_t dev, device_t child, int type,
 	}
 
 	/* Try to retain a region reference */
-	if ((error = chipc_retain_region(sc, cr, RF_ALLOCATED))) {
-		CHIPC_UNLOCK(sc);
+	if ((error = chipc_retain_region(sc, cr, RF_ALLOCATED)))
 		return (NULL);
-	}
 
 	/* Make our rman reservation */
 	rv = rman_reserve_resource(rm, start, end, count, flags & ~RF_ACTIVE,
@@ -1346,15 +1286,6 @@ chipc_get_caps(device_t dev)
 	return (&sc->caps);
 }
 
-static uint32_t
-chipc_get_flash_cfg(device_t dev)
-{
-	struct chipc_softc	*sc;
-
-	sc = device_get_softc(dev);
-	return (bhnd_bus_read_4(sc->core, CHIPC_FLASH_CFG));
-}
-
 static device_method_t chipc_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,			chipc_probe),
@@ -1396,7 +1327,6 @@ static device_method_t chipc_methods[] = {
 	DEVMETHOD(bhnd_chipc_enable_sprom,	chipc_enable_sprom_pins),
 	DEVMETHOD(bhnd_chipc_disable_sprom,	chipc_disable_sprom_pins),
 	DEVMETHOD(bhnd_chipc_get_caps,		chipc_get_caps),
-	DEVMETHOD(bhnd_chipc_get_flash_cfg,	chipc_get_flash_cfg),
 
 	DEVMETHOD_END
 };

@@ -1,9 +1,9 @@
-/*-
- * Copyright (c) 2014 The FreeBSD Foundation
+/*
+ * Copyright (C) 2016 Cavium Inc.
  * All rights reserved.
  *
- * This software was developed by Andrew Turner under
- * sponsorship from the FreeBSD Foundation.
+ * Developed by Semihalf.
+ * Based on work by Nathan Whitehorn.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,28 +25,80 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
+ *
+ * $FreeBSD$
  */
 
-#include <machine/asm.h>
-__FBSDID("$FreeBSD$");
+#include <sys/types.h>
+#include <string.h>
 
-#include "SYS.h"
+#include "partedit.h"
 
-ENTRY(__sys_pipe)
-	WEAK_REFERENCE(__sys_pipe, pipe)
+/* EFI partition size in KB */
+#define	EFI_BOOTPART_SIZE	(50 * 1024)
+#define	EFI_BOOTPART_PATH	"/boot/boot1.efifat"
 
-	/* Backup the pointer passed to us */
-	mov	x2, x0
+const char *
+default_scheme(void)
+{
 
-	/* Make the syscall */
-	_SYSCALL(pipe)
-	b.cs	cerror
+	return ("GPT");
+}
 
-	/* Store the result */
-	str	w0, [x2, #0]
-	str	w1, [x2, #4]
+int
+is_scheme_bootable(const char *part_type)
+{
 
-	/* Return */
-	mov	x0, #0
-	ret
-END(__sys_pipe)
+	if (strcmp(part_type, "GPT") == 0)
+		return (1);
+
+	return (0);
+}
+
+int
+is_fs_bootable(const char *part_type, const char *fs)
+{
+
+	if (strcmp(fs, "freebsd-ufs") == 0)
+		return (1);
+
+	return (0);
+}
+
+size_t
+bootpart_size(const char *scheme)
+{
+
+	/* We only support GPT with EFI */
+	if (strcmp(scheme, "GPT") != 0)
+		return (0);
+
+	return ((EFI_BOOTPART_SIZE) * 1024);
+}
+
+const char *
+bootpart_type(const char *scheme)
+{
+
+	/* Only EFI is supported as boot partition */
+	return ("efi");
+}
+
+const char *
+bootcode_path(const char *part_type)
+{
+
+	return (NULL);
+}
+
+const char *
+partcode_path(const char *part_type, const char *fs_type)
+{
+
+	if (strcmp(part_type, "GPT") == 0)
+		return (EFI_BOOTPART_PATH);
+
+	/* No boot partition data for non-GPT */
+	return (NULL);
+}
+

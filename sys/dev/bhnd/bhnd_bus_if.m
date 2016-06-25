@@ -56,11 +56,22 @@ CODE {
 		panic("bhnd_bus_get_chipid unimplemented");
 	}
 
+	static bhnd_attach_type
+	bhnd_bus_null_get_attach_type(device_t dev, device_t child)
+	{
+		panic("bhnd_bus_get_attach_type unimplemented");
+	}
+
 	static int
 	bhnd_bus_null_read_board_info(device_t dev, device_t child,
 	    struct bhnd_board_info *info)
 	{
 		panic("bhnd_bus_read_boardinfo unimplemented");
+	}
+	
+	static void
+	bhnd_bus_null_child_added(device_t dev, device_t child)
+	{
 	}
 
 	static struct bhnd_devinfo *
@@ -255,7 +266,7 @@ METHOD const struct bhnd_chipid * get_chipid {
 METHOD bhnd_attach_type get_attach_type {
 	device_t dev;
 	device_t child;
-} DEFAULT bhnd_bus_generic_get_attach_type;
+} DEFAULT bhnd_bus_null_get_attach_type;
 
 /**
  * Attempt to read the BHND board identification from the parent bus.

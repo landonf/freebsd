@@ -191,9 +191,8 @@
 
 #define	CHIPC_UART_BASE			0x300
 #define	CHIPC_UART_SIZE			0x100
-#define	CHIPC_UART_MAX			3
-#define	CHIPC_UART0_BASE		CHIPC_UART_BASE
-#define	CHIPC_UART1_BASE		(CHIPC_UART_BASE + CHIPC_UART_SIZE)
+#define	CHIPC_UART_MAX			3	/**< max UART blocks */
+#define	CHIPC_UART(_n)			(CHIPC_UART_BASE + (CHIPC_UART_SIZE*_n))
 
 /* PMU register block (rev >= 20) */
 #define	CHIPC_PMU			0x600
