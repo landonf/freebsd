@@ -31,7 +31,11 @@
 __FBSDID("$FreeBSD$");
 
 /*
- * ChipCommon PMU driver.
+ * ChipCommon attachment support for the bhnd(4) PMU driver.
+ * 
+ * Supports non-AOB ("Always-on Bus") devices that map the PMU register block
+ * via the ChipCommon core, rather than vending a distinct PMU core on the
+ * bhnd bus.
  */
 
 #include <sys/param.h>
@@ -43,30 +47,12 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 
 #include <dev/bhnd/bhnd.h>
-#include <dev/bhnd/cores/chipc/chipc.h>
+#include <dev/bhnd/cores/pmu/bhnd_pmuvar.h>
 
 #include "bhnd_chipc_if.h"
 #include "bhnd_pmu_if.h"
 
-#include "bhnd_pmuvar.h"
-
-static void
-bhnd_pmu_chipc_identify(driver_t *driver, device_t parent)
-{
-	struct chipc_caps *caps;
-
-	/* PMU must be supported by the chipset, and this must not be an
-	 * Always-on-Bus device that provides the PMU as a distinct core */
-	caps = BHND_CHIPC_GET_CAPS(parent);
-	if (!caps->pmu || caps->aob)
-		return;
-
-	if (device_find_child(parent, "bhnd_pmu", -1) != NULL)
-		return;
-
-	if (BUS_ADD_CHILD(parent, 0, "bhnd_pmu", -1) == NULL)
-		device_printf(parent, "add bhnd_pmu failed\n");
-}
+#include "chipc.h"
 
 static int
 bhnd_pmu_chipc_probe(device_t dev)
@@ -80,7 +66,12 @@ bhnd_pmu_chipc_probe(device_t dev)
 	if (device_get_devclass(chipc) != devclass_find("bhnd_chipc"))
 		return (ENXIO);
 
-	/* Verify chipc capability flags */
+	/*
+	 * Verify chipc capability flags:
+	 * - PMU must be supported by the chipset,
+	 * - This must not be an Always-on-Bus device that provides the PMU
+	 *   as a distinct core 
+	 */
 	caps = BHND_CHIPC_GET_CAPS(chipc);
 	if (!caps->pmu || caps->aob)
 		return (ENXIO);
@@ -89,15 +80,11 @@ bhnd_pmu_chipc_probe(device_t dev)
 	if ((error = bhnd_pmu_probe(dev)) > 0)
 		return (error);
 
-	// TODO: include PMU revision?
-	device_set_desc(dev, "Broadcom ChipCommon PMU");
-
 	return (BUS_PROBE_NOWILDCARD);
 }
 
 static device_method_t bhnd_pmu_chipc_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_identify,		bhnd_pmu_chipc_identify),
 	DEVMETHOD(device_probe,			bhnd_pmu_chipc_probe),
 	DEVMETHOD_END
 };

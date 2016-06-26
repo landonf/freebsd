@@ -266,19 +266,17 @@ chipc_add_children(struct chipc_softc *sc)
 			return (error);
 	}
 
-#ifdef notyet
 	/*
-	 * PMU/SLOWCLK/INSTACLK
+	 * PMU/SLOWCLK/INSTACLK/NULLCLK
 	 * 
-	 * On AOB ("Always on Bus") devices, a PMU core (if it exists) is
-	 * enumerated directly by the bhnd(4) bus -- not chipc.
+	 * We always add a PMU child device, *unless* this is a PMU-equipped
+	 * AOB chipset; On AOB ("Always on Bus") devices, a PMU core
+	 * (if it exists) is attached directly to the bhnd(4) bus -- not chipc.
 	 * 
-	 * Otherwise, we always add a PMU child device, and let the
-	 * chipc bhnd_pmu drivers probe for it. If the core supports an
-	 * earlier non-PMU clock/power register interface, one of the instaclk,
-	 * powerctl, or null bhnd_pmu drivers will claim the device.
+	 * Otherwise, we let the bhnd_pmu chipc drivers probe for
+	 * the appropriate driver.
 	 */
-	if (!sc->caps.aob || (sc->caps.aob && !sc->caps.pmu)) {
+	if (!sc->caps.aob || !sc->caps.pmu) {
 		child = BUS_ADD_CHILD(sc->dev, 0, "bhnd_pmu", -1);
 		if (child == NULL) {
 			device_printf(sc->dev, "failed to add pmu\n");
@@ -289,17 +287,13 @@ chipc_add_children(struct chipc_softc *sc)
 		error = 0;
 		if (sc->caps.pmu) {
 			error = chipc_set_resource(sc, child, SYS_RES_MEMORY, 0,
-			    CHIPC_PMU, CHIPC_PMU_SIZE, 0, 0);
-		} else if (sc->caps.power_control) {
-			error = chipc_set_resource(sc, child, SYS_RES_MEMORY, 0,
-			    CHIPC_PWRCTL, CHIPC_PWRCTL_SIZE, 0, 0);
+			    CHIPC_PMU_BASE, CHIPC_PMU_SIZE, 0, 0);
 		}
 
 		if (error)
 			return (error);
 		
 	}
-#endif /* notyet */
 
 	/* All remaining devices are SoC-only */
 	if (bhnd_get_attach_type(sc->dev) != BHND_ATTACH_NATIVE)
@@ -430,7 +424,7 @@ chipc_read_caps(struct chipc_softc *sc, struct chipc_caps *caps)
 	caps->uart_clock	= CHIPC_GET_BITS(cap_reg, CHIPC_CAP_UCLKSEL);
 
 	caps->extbus_type	= CHIPC_GET_BITS(cap_reg, CHIPC_CAP_EXTBUS);
-	caps->power_control	= CHIPC_GET_FLAG(cap_reg, CHIPC_CAP_PWR_CTL);
+	caps->clock_control	= CHIPC_GET_FLAG(cap_reg, CHIPC_CAP_CLK_CTL);
 	caps->jtag_master	= CHIPC_GET_FLAG(cap_reg, CHIPC_CAP_JTAGP);
 
 	caps->pll_type		= CHIPC_GET_BITS(cap_reg, CHIPC_CAP_PLL);

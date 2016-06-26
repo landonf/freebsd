@@ -74,7 +74,7 @@ struct chipc_caps {
 	uint8_t		otp_size;	/**< OTP (row?) size, 0 if not present */
 
 	uint8_t		pll_type;	/**< PLL type */
-	bool		power_control;	/**< Power control available */
+	bool		clock_control;	/**< Clock control available */
 	bool		jtag_master;	/**< JTAG Master present */
 	bool		boot_rom;	/**< Internal boot ROM is active */
 	uint8_t		backplane_64;	/**< Backplane supports 64-bit addressing.

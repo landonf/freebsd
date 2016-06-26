@@ -1149,14 +1149,16 @@ dev/bhnd/bcma/bcma_bhndb.c		optional bcma bhnd bhndb
 dev/bhnd/bcma/bcma_erom.c		optional bcma bhnd
 dev/bhnd/bcma/bcma_nexus.c		optional bcma_nexus bcma bhnd
 dev/bhnd/bcma/bcma_subr.c		optional bcma bhnd
+dev/bhnd/cores/chipc/bhnd_chipc_if.m	optional bhnd
+dev/bhnd/cores/chipc/bhnd_sprom_chipc.c	optional bhnd
 dev/bhnd/cores/chipc/chipc.c		optional bhnd
 dev/bhnd/cores/chipc/chipc_cfi.c	optional bhnd cfi 
 dev/bhnd/cores/chipc/chipc_slicer.c	optional bhnd cfi | bhnd spibus
 dev/bhnd/cores/chipc/chipc_spi.c	optional bhnd spibus
 dev/bhnd/cores/chipc/chipc_subr.c	optional bhnd
-dev/bhnd/cores/chipc/bhnd_chipc_if.m	optional bhnd
-dev/bhnd/cores/chipc/bhnd_pmu_chipc.c	optional bhnd
-dev/bhnd/cores/chipc/bhnd_sprom_chipc.c	optional bhnd
+dev/bhnd/cores/chipc/chipc_pmu.c	optional bhnd
+dev/bhnd/cores/chipc/chipc_pmu_null.c	optional bhnd siba
+dev/bhnd/cores/chipc/chipc_pmu_clkctl.c	optional bhnd
 dev/bhnd/cores/pci/bhnd_pci.c		optional bhnd pci
 dev/bhnd/cores/pci/bhnd_pci_hostb.c	optional bhndb bhnd pci
 dev/bhnd/cores/pci/bhnd_pcib.c		optional bhnd_pcib bhnd pci

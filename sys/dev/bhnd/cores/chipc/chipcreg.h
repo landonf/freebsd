@@ -90,24 +90,25 @@
 #define	CHIPC_GPIOTIMERVAL		0x88	/**< gpio-based LED duty cycle (rev >= 16) */
 #define	CHIPC_GPIOTIMEROUTMASK		0x8C
 
-/* clock control block */
+/* clock control registers (non-PMU devices) */
 #define	CHIPC_CLKC_N			0x90
 #define	CHIPC_CLKC_SB			0x94	/* m0 (backplane) */
 #define	CHIPC_CLKC_PCI			0x98	/* m1 */
 #define	CHIPC_CLKC_M2			0x9C	/* mii/uart/mipsref */
 #define	CHIPC_CLKC_M3			0xA0	/* cpu */
 #define	CHIPC_CLKDIV			0xA4	/* rev >= 3 */
+
 #define	CHIPC_GPIODEBUGSEL		0xA8	/* rev >= 28 */
 #define	CHIPC_CAPABILITIES_EXT		0xAC
 
-/* pll delay (registers rev >= 4) */
-#define	CHIPC_PLL_ON_DELAY		0xB0
-#define	CHIPC_PLL_FREFSEL_DELAY		0xB4
-#define	CHIPC_PLL_SLOWCLK_CTL		0xB8	/* revs 6-9 */
-
-/* "instaclock" registers */
-#define	CHIPC_SYS_CLK_CTL		0xC0	/* rev >= 10 */
-#define	CHIPC_SYS_CLKSTATESTRETCH	0xC4	/* rev >= 10 */
+/* pll/slowclk clock control registers (rev >= 4) */
+#define	CHIPC_PLL_ON_DELAY		0xB0	/* rev >= 4 */
+#define	CHIPC_PLL_FREFSEL_DELAY		0xB4	/* rev >= 4 */
+#define	CHIPC_PLL_SLOWCLK_CTL		0xB8	/* "slowclock" (rev 6-9) */
+ 
+ /* "instaclock" clock control registers */
+#define	CHIPC_SYS_CLK_CTL		0xC0	/* "instaclock" (rev >= 10) */
+#define	CHIPC_SYS_CLK_ST_STRETCH	0xC4	/* state strech (?) rev >= 10 */
 
 /* indirect backplane access (rev >= 10) */
 #define	CHIPC_BP_ADDRLOW		0xD0
@@ -125,7 +126,7 @@
 
 #define	CHIPC_EROMPTR			0xFC	/**< 32-bit EROM base address
 						  *  on BCMA devices */
-
+						  
 /* ExtBus control registers (rev >= 3) */
 #define	CHIPC_PCMCIA_CFG		0x100
 #define	CHIPC_PCMCIA_MEMWAIT		0x104
@@ -219,7 +220,7 @@
 #define	  CHIPC_CAP_PFLASH		0x7		/* Parallel flash */
 #define	CHIPC_CAP_PLL_MASK		0x00038000	/* Type of PLL */
 #define	CHIPC_CAP_PLL_SHIFT		15
-#define	CHIPC_CAP_PWR_CTL		0x00040000	/* Power control */
+#define	CHIPC_CAP_CLK_CTL		0x00040000	/* Clock control */
 #define	CHIPC_CAP_OTP_SIZE_MASK		0x00380000	/* OTP Size (0 = none) */
 #define	CHIPC_CAP_OTP_SIZE_SHIFT	19		/* OTP Size shift */
 #define	CHIPC_CAP_OTP_SIZE_BASE		5		/* OTP Size base */
