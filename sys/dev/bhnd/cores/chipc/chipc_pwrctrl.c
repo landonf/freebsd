@@ -31,7 +31,7 @@
 __FBSDID("$FreeBSD$");
 
 /*
- * ChipCommon Control Control driver.
+ * ChipCommon Power/Clock Control driver.
  * 
  * Provides a bhnd_pmu_if-compatible interface to device clocking and
  * power management on non-PMU chipsets.
@@ -52,14 +52,14 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_chipc_if.h"
 #include "bhnd_pmu_if.h"
 
-struct chipc_clkctl_softc {
+struct chipc_pwrctrl_softc {
 	device_t	dev;
 };
 
 static int
-chipc_clkctl_probe(device_t dev)
+chipc_pwrctrl_probe(device_t dev)
 {
-	struct chipc_caps	*caps;
+	struct chipc_caps	*ccaps;
 	device_t		 chipc;
 
 	/* Look for chipc parent */
@@ -68,57 +68,57 @@ chipc_clkctl_probe(device_t dev)
 		return (ENXIO);
 
 	/* Verify chipc capability flags */
-	caps = BHND_CHIPC_GET_CAPS(chipc);
-	if (!caps->clock_control || caps->pmu)
+	ccaps = BHND_CHIPC_GET_CAPS(chipc);
+	if (ccaps->pmu || !ccaps->pwr_ctrl)
 		return (ENXIO);
 
-	device_set_desc(dev, "Broadcom ChipCommon Clock Control");
+	device_set_desc(dev, "Broadcom ChipCommon Power Control");
 	return (BUS_PROBE_NOWILDCARD);
 }
 
 static int
-chipc_clkctl_attach(device_t dev)
+chipc_pwrctrl_attach(device_t dev)
 {
 	// TODO
 	return (ENXIO);
 }
 
 static int
-chipc_clkctl_detach(device_t dev)
+chipc_pwrctrl_detach(device_t dev)
 {
 	// TODO
 	return (ENXIO);
 }
 
 static int
-chipc_clkctl_suspend(device_t dev)
+chipc_pwrctrl_suspend(device_t dev)
 {
 	// TODO
 	return (ENXIO);
 }
 
 static int
-chipc_clkctl_resume(device_t dev)
+chipc_pwrctrl_resume(device_t dev)
 {
 	// TODO
 	return (ENXIO);
 }
 
-static device_method_t chipc_clkctl_methods[] = {
+static device_method_t chipc_pwrctrl_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_probe,		chipc_clkctl_probe),
-	DEVMETHOD(device_attach,	chipc_clkctl_attach),
-	DEVMETHOD(device_detach,	chipc_clkctl_detach),
-	DEVMETHOD(device_suspend,	chipc_clkctl_suspend),
-	DEVMETHOD(device_resume,	chipc_clkctl_resume),
+	DEVMETHOD(device_probe,		chipc_pwrctrl_probe),
+	DEVMETHOD(device_attach,	chipc_pwrctrl_attach),
+	DEVMETHOD(device_detach,	chipc_pwrctrl_detach),
+	DEVMETHOD(device_suspend,	chipc_pwrctrl_suspend),
+	DEVMETHOD(device_resume,	chipc_pwrctrl_resume),
 
 	DEVMETHOD_END
 };
 
-DEFINE_CLASS_0(bhnd_pmu, chipc_clkctl_driver, chipc_clkctl_methods,
-    sizeof(struct chipc_clkctl_softc));
-EARLY_DRIVER_MODULE(chipc_clkctl, bhnd_chipc, chipc_clkctl_driver,
+DEFINE_CLASS_0(bhnd_pmu, chipc_pwrctrl_driver, chipc_pwrctrl_methods,
+    sizeof(struct chipc_pwrctrl_softc));
+EARLY_DRIVER_MODULE(chipc_pwrctrl, bhnd_chipc, chipc_pwrctrl_driver,
     bhnd_pmu_devclass, NULL, NULL, BUS_PASS_TIMER + BUS_PASS_ORDER_MIDDLE);
 
-MODULE_DEPEND(chipc_clkctl, bhnd, 1, 1, 1);
-MODULE_VERSION(chipc_clkctl, 1);
+MODULE_DEPEND(chipc_pwrctrl, bhnd, 1, 1, 1);
+MODULE_VERSION(chipc_pwrctrl, 1);

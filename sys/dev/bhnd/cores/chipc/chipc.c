@@ -267,16 +267,12 @@ chipc_add_children(struct chipc_softc *sc)
 	}
 
 	/*
-	 * PMU/SLOWCLK/INSTACLK/NULLCLK
+	 * PMU/PWR_CTRL
 	 * 
-	 * We always add a PMU child device, *unless* this is a PMU-equipped
-	 * AOB chipset; On AOB ("Always on Bus") devices, a PMU core
-	 * (if it exists) is attached directly to the bhnd(4) bus -- not chipc.
-	 * 
-	 * Otherwise, we let the bhnd_pmu chipc drivers probe for
-	 * the appropriate driver.
+	 * On AOB ("Always on Bus") devices, the PMU core (if it exists) is
+	 * attached directly to the bhnd(4) bus -- not chipc.
 	 */
-	if (!sc->caps.aob || !sc->caps.pmu) {
+	if (sc->caps.pwr_ctrl || (sc->caps.pmu && !sc->caps.aob)) {
 		child = BUS_ADD_CHILD(sc->dev, 0, "bhnd_pmu", -1);
 		if (child == NULL) {
 			device_printf(sc->dev, "failed to add pmu\n");
@@ -424,7 +420,7 @@ chipc_read_caps(struct chipc_softc *sc, struct chipc_caps *caps)
 	caps->uart_clock	= CHIPC_GET_BITS(cap_reg, CHIPC_CAP_UCLKSEL);
 
 	caps->extbus_type	= CHIPC_GET_BITS(cap_reg, CHIPC_CAP_EXTBUS);
-	caps->clock_control	= CHIPC_GET_FLAG(cap_reg, CHIPC_CAP_CLK_CTL);
+	caps->pwr_ctrl		= CHIPC_GET_FLAG(cap_reg, CHIPC_CAP_PWR_CTL);
 	caps->jtag_master	= CHIPC_GET_FLAG(cap_reg, CHIPC_CAP_JTAGP);
 
 	caps->pll_type		= CHIPC_GET_BITS(cap_reg, CHIPC_CAP_PLL);

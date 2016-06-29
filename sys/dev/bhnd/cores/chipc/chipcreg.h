@@ -220,7 +220,7 @@
 #define	  CHIPC_CAP_PFLASH		0x7		/* Parallel flash */
 #define	CHIPC_CAP_PLL_MASK		0x00038000	/* Type of PLL */
 #define	CHIPC_CAP_PLL_SHIFT		15
-#define	CHIPC_CAP_CLK_CTL		0x00040000	/* Clock control */
+#define	CHIPC_CAP_PWR_CTL		0x00040000	/* Power/clock control */
 #define	CHIPC_CAP_OTP_SIZE_MASK		0x00380000	/* OTP Size (0 = none) */
 #define	CHIPC_CAP_OTP_SIZE_SHIFT	19		/* OTP Size shift */
 #define	CHIPC_CAP_OTP_SIZE_BASE		5		/* OTP Size base */

@@ -10,11 +10,10 @@ SRCS=	bhnd.c bhnd_subr.c
 SRCS+=	bhnd_bus_if.c bhnd_bus_if.h
 
 # ChipCommon
-SRCS+=	chipc.c chipc_subr.c \
-	chipc_pmu.c \
-	chipc_pmu_clkctl.c \
-	chipc_pmu_null.c \
-	bhnd_sprom_chipc.c
+SRCS+=	chipc.c chipc_subr.c
+SRCS+=	bhnd_sprom_chipc.c \
+	bhnd_pmu_chipc.c \
+	chipc_pwrctrl.c
 SRCS+=	bhnd_chipc_if.c bhnd_chipc_if.h
 
 # PMU
