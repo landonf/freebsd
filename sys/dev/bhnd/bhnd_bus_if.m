@@ -325,7 +325,7 @@ METHOD int request_clock {
 	device_t dev;
 	device_t child;
 	bhnd_clock clock;
-}
+} DEFAULT bhnd_bus_null_request_clock;
 
 /**
  * Allocate a bhnd resource.
