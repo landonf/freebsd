@@ -34,6 +34,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/lock.h>
 #include <sys/bus.h>
+#include <sys/malloc.h>
 #include <sys/module.h>
 #include <sys/mutex.h>
 #include <sys/systm.h>
@@ -56,10 +57,31 @@ devclass_t bhnd_pmu_devclass;	/**< bhnd(4) PMU device class */
 
 /**
  * Default bhnd_pmu driver implementation of DEVICE_PROBE().
+ * 
+ * This implementation will read the PMU capability flags, initializing
+ * the caps field in bhnd_pmu_softc.
  */
 int
 bhnd_pmu_probe(device_t dev)
 {
+	struct bhnd_pmu_softc	*sc;
+
+	sc = device_get_softc(dev);
+
+	/* Allocate register block */
+	sc->rid = 0;
+	sc->res = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY, &sc->rid,
+	    RF_ACTIVE);
+	if (sc->res == NULL) {
+		device_printf(dev, "failed to allocate resource\n");
+		return (ENXIO);
+	}
+
+	/* Fetch capability flags for use by subclassing drivers */
+	sc->caps = bhnd_bus_read_4(sc->res, BHND_PMU_CAP);
+
+	/* Clean up */
+	bhnd_release_resource(dev, SYS_RES_MEMORY, sc->rid, sc->res);
 	return (BUS_PROBE_DEFAULT);
 }
 
@@ -79,10 +101,10 @@ bhnd_pmu_attach(device_t dev)
 	sc->quirks = 0;
 	
 	/* Allocate register block resource */
-	sc->pmu_rid = 0;
-	sc->pmu = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY, &sc->pmu_rid,
+	sc->rid = 0;
+	sc->res = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY, &sc->rid,
 	    RF_ACTIVE);
-	if (sc->pmu == NULL) {
+	if (sc->res == NULL) {
 		device_printf(dev, "failed to allocate resources\n");
 		return (ENXIO);
 	}
@@ -102,8 +124,7 @@ bhnd_pmu_detach(device_t dev)
 
 	sc = device_get_softc(dev);
 
-	bhnd_release_resource(dev, SYS_RES_MEMORY, sc->pmu_rid,
-	    sc->pmu);
+	bhnd_release_resource(dev, SYS_RES_MEMORY, sc->rid, sc->res);
 	BPMU_LOCK_DESTROY(sc);
 
 	return (0);

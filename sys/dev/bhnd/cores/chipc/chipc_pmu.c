@@ -47,7 +47,9 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 
 #include <dev/bhnd/bhnd.h>
+
 #include <dev/bhnd/cores/pmu/bhnd_pmuvar.h>
+#include <dev/bhnd/cores/pmu/bhnd_pmureg.h>
 
 #include "bhnd_chipc_if.h"
 #include "bhnd_pmu_if.h"
@@ -57,28 +59,33 @@ __FBSDID("$FreeBSD$");
 static int
 bhnd_pmu_chipc_probe(device_t dev)
 {
-	struct chipc_caps	*caps;
+	struct bhnd_pmu_softc	*sc;
+	struct chipc_caps	*ccaps;
 	device_t		 chipc;
+	char			 desc[34];
 	int			 error;
+	uint8_t			 rev;
+
+	sc = device_get_softc(dev);
 
 	/* Look for chipc parent */
 	chipc = device_get_parent(dev);
 	if (device_get_devclass(chipc) != devclass_find("bhnd_chipc"))
 		return (ENXIO);
 
-	/*
-	 * Verify chipc capability flags:
-	 * - PMU must be supported by the chipset,
-	 * - This must not be an Always-on-Bus device that provides the PMU
-	 *   as a distinct core 
-	 */
-	caps = BHND_CHIPC_GET_CAPS(chipc);
-	if (!caps->pmu || caps->aob)
+	/* Check the chipc PMU capability flag. */
+	ccaps = BHND_CHIPC_GET_CAPS(chipc);
+	if (!ccaps->pmu)
 		return (ENXIO);
 
-	/* Defer to default driver implementation */
+	/* Defer to default driver implementation to fetch capabilities */
 	if ((error = bhnd_pmu_probe(dev)) > 0)
 		return (error);
+
+	/* Set description */
+	rev = BHND_PMU_GET_BITS(sc->caps, BHND_PMU_CAP_REV);
+	snprintf(desc, sizeof(desc), "Broadcom ChipCommon PMU, rev %hhu", rev);
+	device_set_desc_copy(dev, desc);
 
 	return (BUS_PROBE_NOWILDCARD);
 }

@@ -25,6 +25,11 @@
 #ifndef _BHND_CORES_PMU_BHND_PMUREG_H_
 #define	_BHND_CORES_PMU_BHND_PMUREG_H_
 
+#define BHND_PMU_GET_FLAG(_value, _flag)	\
+	(((_value) & _flag) != 0)
+#define	BHND_PMU_GET_BITS(_value, _field)	\
+	((_value & _field ## _MASK) >> _field ## _SHIFT)
+
 /* PMU registers */
 #define	BHND_PMU_CTRL			0x00
 #define	  BHND_PMU_CTRL_ILP_DIV_MASK	0xffff0000
@@ -39,6 +44,7 @@
 #define	  BHND_PMU_CTRL_LPO_SEL		0x00000001
 #define	BHND_PMU_CAP			0x04
 #define	  BHND_PMU_CAP_REV_MASK		0x000000ff
+#define	  BHND_PMU_CAP_REV_SHIFT	0
 #define	  BHND_PMU_CAP_RC_MASK		0x00001f00
 #define	  BHND_PMU_CAP_RC_SHIFT		8
 #define	  BHND_PMU_CAP_TC_MASK		0x0001e000

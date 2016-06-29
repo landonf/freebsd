@@ -59,8 +59,10 @@ struct bhnd_pmu_softc {
 	device_t		 dev;
 	uint32_t		 quirks;	/**< device quirk flags */
 
-	struct bhnd_resource	*pmu;		/**< pmu register block. */
-	int			 pmu_rid;	/**< pmu register RID */
+	uint32_t		 caps;		/**< pmu capability flags. */
+
+	struct bhnd_resource	*res;		/**< pmu register block. */
+	int			 rid;		/**< pmu register RID */
 
 	struct mtx		 mtx;		/**< state mutex */
 };
