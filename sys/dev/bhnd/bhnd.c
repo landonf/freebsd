@@ -367,10 +367,11 @@ bhnd_finish_attach(struct bhnd_softc *sc)
 	}
 
 	/* Look for a PMU  */
-	if (ccaps->pmu) {
+	if (ccaps->pmu || ccaps->pwr_ctrl) {
 		if ((sc->pmu_dev = bhnd_find_pmu(sc)) == NULL) {
 			device_printf(sc->dev,
-			    "warning: PMU device not found\n");
+			    "attach failed: supported PMU not found\n");
+			return (ENXIO);
 		}
 	}
 
