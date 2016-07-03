@@ -1561,7 +1561,8 @@ bhnd_pmu1_cpuclk0(struct bhnd_pmu_softc *sc)
 	fvco /= 1000;
 	fvco *= 1000;
 
-	PMU_MSG(("bhnd_pmu1_cpuclk0: ndiv_int %u ndiv_frac %u p2div %u p1div %u fvco %u\n", ndiv_int, ndiv_frac, p2div, p1div, fvco));
+	PMU_MSG(("bhnd_pmu1_cpuclk0: ndiv_int %u ndiv_frac %u p2div %u "
+	    "p1div %u fvco %u\n", ndiv_int, ndiv_frac, p2div, p1div, fvco));
 
 	FVCO = fvco;
 #endif				/* BCMDBG */
@@ -1571,26 +1572,18 @@ bhnd_pmu1_cpuclk0(struct bhnd_pmu_softc *sc)
 }
 
 /* initialize PLL */
-void bhnd_pmu_pll_init(struct bhnd_pmu_softc *sc, u_int xtalfreq)
+void 
+bhnd_pmu_pll_init(struct bhnd_pmu_softc *sc, u_int xtalfreq)
 {
-	chipcregs_t *cc;
-	u_int origidx;
-#ifdef BCMDBG
-	char chn[8];
-#endif
+	const struct bhnd_chipid	*cid;
 
-	ASSERT(sih->cccaps & CC_CAP_PMU);
+	cid = bhnd_get_chipid(sc->dev);
 
-	/* Remember original core before switch to chipc */
-	origidx = si_coreidx(sih);
-	cc = si_setcoreidx(sih, SI_CC_IDX);
-	ASSERT(cc != NULL);
-
-	switch (sih->chip) {
+	switch (cid->chip_id) {
 	case BHND_CHIPID_BCM4329:
 		if (xtalfreq == 0)
 			xtalfreq = 38400;
-		bhnd_pmu1_pllinit0(sih, cc, xtalfreq);
+		bhnd_pmu1_pllinit0(sc, xtalfreq);
 		break;
 	case BHND_CHIPID_BCM4313:
 	case BHND_CHIPID_BCM43224:
@@ -1606,41 +1599,27 @@ void bhnd_pmu_pll_init(struct bhnd_pmu_softc *sc, u_int xtalfreq)
 	case BHND_CHIPID_BCM4319:
 	case BHND_CHIPID_BCM4336:
 	case BHND_CHIPID_BCM4330:
-		bhnd_pmu1_pllinit0(sih, cc, xtalfreq);
+		bhnd_pmu1_pllinit0(sc, xtalfreq);
 		break;
 	default:
-		PMU_MSG(("No PLL init done for chip %s rev %d pmurev %d\n",
-			 bcm_chipname(sih->chip, chn, 8), sih->chiprev,
-			 sih->pmurev));
+		PMU_MSG(("No PLL init done for chip %#hx rev %d pmurev %d\n",
+		    cid->chip_id, cid->chip_rev,
+		    BHND_PMU_GET_BITS(sc->caps, BHND_PMU_CAP_REV)));
 		break;
 	}
-
-#ifdef BCMDBG_FORCEHT
-	OR_REG(&cc->clk_ctl_st, CCS_FORCEHT);
-#endif
-
-	/* Return to original core */
-	si_setcoreidx(sih, origidx);
 }
 
 /* query alp/xtal clock frequency */
-uint32_t bhnd_pmu_alp_clock(struct bhnd_pmu_softc *sc)
+uint32_t
+bhnd_pmu_alp_clock(struct bhnd_pmu_softc *sc)
 {
-	chipcregs_t *cc;
-	u_int origidx;
-	uint32_t clock = ALP_CLOCK;
-#ifdef BCMDBG
-	char chn[8];
-#endif
+	const struct bhnd_chipid	*cid;
+	uint32_t			 clock;
 
-	ASSERT(sih->cccaps & CC_CAP_PMU);
+	clock = BHND_PMU_ALP_CLOCK;
+	cid = bhnd_get_chipid(sc->dev);
 
-	/* Remember original core before switch to chipc */
-	origidx = si_coreidx(sih);
-	cc = si_setcoreidx(sih, SI_CC_IDX);
-	ASSERT(cc != NULL);
-
-	switch (sih->chip) {
+	switch (cid->chip_id) {
 	case BHND_CHIPID_BCM43224:
 	case BHND_CHIPID_BCM43225:
 	case BHND_CHIPID_BCM43421:
@@ -1661,8 +1640,7 @@ uint32_t bhnd_pmu_alp_clock(struct bhnd_pmu_softc *sc)
 	case BHND_CHIPID_BCM4319:
 	case BHND_CHIPID_BCM4336:
 	case BHND_CHIPID_BCM4330:
-
-		clock = bhnd_pmu1_alpclk0(sih, cc);
+		clock = bhnd_pmu1_alpclk0(sc);
 		break;
 	case BHND_CHIPID_BCM5356:
 		/* always 25Mhz */
@@ -1676,19 +1654,25 @@ uint32_t bhnd_pmu_alp_clock(struct bhnd_pmu_softc *sc)
 		break;
 	}
 
-	/* Return to original core */
-	si_setcoreidx(sih, origidx);
-	return clock;
+	return (clock);
 }
 
 /* Find the output of the "m" pll divider given pll controls that start with
  * pllreg "pll0" i.e. 12 for main 6 for phy, 0 for misc.
  */
 static uint32_t
-si_pmu5_clock(struct bhnd_pmu_softc *sc, u_int pll0, u_int m) {
-	uint32_t tmp, div, ndiv, p1, p2, fc;
+bhnd_pmu5_clock(struct bhnd_pmu_softc *sc, u_int pll0, u_int m)
+{
+	const struct bhnd_chipid	*cid;
+	uint32_t			 div;
+	uint32_t			 fc;
+	uint32_t			 ndiv;
+	uint32_t			 p1, p2;
+	uint32_t			 tmp;
 
-	if ((pll0 & 3) || (pll0 > PMU4716_MAINPLL_PLL0)) {
+	cid = bhnd_get_chipid(sc->dev);
+
+	if ((pll0 & 3) || (pll0 > BHND_PMU4716_MAINPLL_PLL0)) {
 		PMU_ERROR(("%s: Bad pll0: %d\n", __func__, pll0));
 		return 0;
 	}
@@ -1699,12 +1683,16 @@ si_pmu5_clock(struct bhnd_pmu_softc *sc, u_int pll0, u_int m) {
 		return 0;
 	}
 
-	if (sih->chip == BHND_CHIPID_BCM5357) {
+	if (cid->chip_id == BHND_CHIPID_BCM5357) {
+		// XXX TODO - need access to chipc chipstatus
+#ifdef notyet
 		/* Detect failure in clock setting */
 		if ((R_REG(&cc->chipstatus) & 0x40000) != 0)
 			return 133 * 1000000;
+#endif
 	}
 
+	// XXX TODO: ILP clock issues?
 	W_REG(&cc->pllcontrol_addr, pll0 + PMU5_PLL_P1P2_OFF);
 	(void)R_REG(&cc->pllcontrol_addr);
 	tmp = R_REG(&cc->pllcontrol_data);
@@ -1765,7 +1753,7 @@ uint32_t bhnd_pmu_si_clock(struct bhnd_pmu_softc *sc)
 	case BHND_CHIPID_BCM4748:
 	case BHND_CHIPID_BCM47162:
 		clock =
-		    si_pmu5_clock(sih, cc, PMU4716_MAINPLL_PLL0,
+		    bhnd_pmu5_clock(sih, cc, PMU4716_MAINPLL_PLL0,
 				  PMU5_MAINPLL_SI);
 		break;
 	case BHND_CHIPID_BCM4329:
@@ -1793,12 +1781,12 @@ uint32_t bhnd_pmu_si_clock(struct bhnd_pmu_softc *sc)
 		break;
 	case BHND_CHIPID_BCM5356:
 		clock =
-		    si_pmu5_clock(sih, cc, PMU5356_MAINPLL_PLL0,
+		    bhnd_pmu5_clock(sih, cc, PMU5356_MAINPLL_PLL0,
 				  PMU5_MAINPLL_SI);
 		break;
 	case BHND_CHIPID_BCM5357:
 		clock =
-		    si_pmu5_clock(sih, cc, PMU5357_MAINPLL_PLL0,
+		    bhnd_pmu5_clock(sih, cc, PMU5357_MAINPLL_PLL0,
 				  PMU5_MAINPLL_SI);
 		break;
 	default:
@@ -1848,7 +1836,7 @@ uint32_t bhnd_pmu_cpu_clock(struct bhnd_pmu_softc *sc)
 		cc = si_setcoreidx(sih, SI_CC_IDX);
 		ASSERT(cc != NULL);
 
-		clock = si_pmu5_clock(sih, cc, pll, PMU5_MAINPLL_CPU);
+		clock = bhnd_pmu5_clock(sih, cc, pll, PMU5_MAINPLL_CPU);
 
 		/* Return to original core */
 		si_setcoreidx(sih, origidx);
@@ -1892,7 +1880,7 @@ uint32_t bhnd_pmu_mem_clock(struct bhnd_pmu_softc *sc)
 		cc = si_setcoreidx(sih, SI_CC_IDX);
 		ASSERT(cc != NULL);
 
-		clock = si_pmu5_clock(sih, cc, pll, PMU5_MAINPLL_MEM);
+		clock = bhnd_pmu5_clock(sih, cc, pll, PMU5_MAINPLL_MEM);
 
 		/* Return to original core */
 		si_setcoreidx(sih, origidx);

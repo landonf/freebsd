@@ -277,15 +277,6 @@ enum {
 #define	CHIPC_PLL_TYPE6		0x00028000	/* 100/200 or 120/240 only */
 #define	CHIPC_PLL_TYPE7		0x00038000	/* 25MHz, 4 dividers */
 
-/* ILP clock */
-#define	CHIPC_ILP_CLOCK		32000
-
-/* ALP clock on pre-PMU chips */
-#define	CHIPC_ALP_CLOCK		20000000
-
-/* HT clock */
-#define	CHIPC_HT_CLOCK		80000000
-
 /* corecontrol */
 #define	CHIPC_UARTCLKO		0x00000001	/* Drive UART with internal clock */
 #define	CHIPC_SE		0x00000002	/* sync clk out enable (corerev >= 3) */
