@@ -78,17 +78,11 @@ extern void bhnd_pmu_set_switcher_voltage(struct bhnd_pmu_softc *sih,
 extern void bhnd_pmu_set_ldo_voltage(struct bhnd_pmu_softc *sih, uint8_t ldo, uint8_t voltage);
 extern uint16_t bhnd_pmu_fast_pwrup_delay(struct bhnd_pmu_softc *sih);
 extern void bhnd_pmu_rcal(struct bhnd_pmu_softc *sih);
-extern void bhnd_pmu_pllupd(struct bhnd_pmu_softc *sih);
 extern void bhnd_pmu_spuravoid(struct bhnd_pmu_softc *sih, uint8_t spuravoid);
 
 extern bool bhnd_pmu_is_otp_powered(struct bhnd_pmu_softc *sih);
 extern uint32_t bhnd_pmu_measure_alpclk(struct bhnd_pmu_softc *sih);
 
-extern uint32_t bhnd_pmu_chipcontrol(struct bhnd_pmu_softc *sih, u_int reg, uint32_t mask, uint32_t val);
-extern uint32_t bhnd_pmu_regcontrol(struct bhnd_pmu_softc *sih, u_int reg, uint32_t mask, uint32_t val);
-extern uint32_t bhnd_pmu_pllcontrol(struct bhnd_pmu_softc *sih, u_int reg, uint32_t mask, uint32_t val);
-
-extern void bhnd_pmu_pllupd(struct bhnd_pmu_softc *sih);
 extern void bhnd_pmu_sprom_enable(struct bhnd_pmu_softc *sih, bool enable);
 
 extern void bhnd_pmu_radio_enable(struct bhnd_pmu_softc *sih, bool enable);
