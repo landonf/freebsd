@@ -2095,15 +2095,6 @@ bhnd_pmu_otp_power(struct bhnd_pmu_softc *sc, bool on)
 	uint32_t min_mask;
 	uint32_t rsrcs;
 
-// XXX TODO: This belongs in ChipCommon, not in the PMU
-#ifdef notyet
-	/* Don't do anything if OTP is disabled */
-	if (si_is_otp_disabled(sc)) {
-		PMU_MSG(("bhnd_pmu_otp_power: OTP is disabled\n"));
-		return (ENODEV);
-	}
-#endif
-
 	/* Determine rsrcs to turn on/off OTP power */
 	switch (sc->cid.chip_id) {
 	case BHND_CHIPID_BCM4329:
@@ -2157,16 +2148,6 @@ bhnd_pmu_otp_power(struct bhnd_pmu_softc *sc, bool on)
 		    rsrcs | deps));
 		BHND_PMU_AND_4(sc, BHND_PMU_MIN_RES_MASK, ~(rsrcs|deps));
 	}
-
-	// XXX TODO: This belongs in ChipCommon, not in the PMU
-#ifdef notyet
-	SPINWAIT((((otps = R_REG(&cc->otpstatus)) & OTPS_READY) !=
-			(on ? OTPS_READY : 0)), 100);
-	ASSERT((otps & OTPS_READY) == (on ? OTPS_READY : 0));
-	if ((otps & OTPS_READY) != (on ? OTPS_READY : 0))
-		PMU_MSG(("OTP ready bit not %s after wait\n",
-				(on ? "ON" : "OFF")));
-#endif
 
 	return (0);
 }
