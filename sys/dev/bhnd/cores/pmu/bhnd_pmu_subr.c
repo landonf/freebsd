@@ -43,12 +43,6 @@ __FBSDID("$FreeBSD$");
 #endif
 
 // XXX TODO: implement or import
-static uint32_t
-si_ilp_clock(struct bhnd_pmu_softc *sc)
-{
-	return (0);
-}
-
 static bool
 si_is_otp_disabled(struct bhnd_pmu_softc *sc)
 {
@@ -298,7 +292,7 @@ bhnd_pmu_fast_pwrup_delay(struct bhnd_pmu_softc *sc)
 		delay = 3700;
 		break;
 	case BHND_CHIPID_BCM4329:
-		ilp = si_ilp_clock(sc);
+		ilp = bhnd_pmu_ilp_clock(sc);
 		delay =
 			(bhnd_pmu_res_uptime(sc, BHND_PMU_RES4329_HT_AVAIL) +
 			D11SCC_SLOW2FAST_TRANSITION) * ((1000000 + ilp -
@@ -309,7 +303,7 @@ bhnd_pmu_fast_pwrup_delay(struct bhnd_pmu_softc *sc)
 		delay = 3700;
 		break;
 	case BHND_CHIPID_BCM4336:
-		ilp = si_ilp_clock(sc);
+		ilp = bhnd_pmu_ilp_clock(sc);
 		delay =
 			(bhnd_pmu_res_uptime(sc, BHND_PMU_RES4336_HT_AVAIL) +
 			D11SCC_SLOW2FAST_TRANSITION) * ((1000000 + ilp -
@@ -317,7 +311,7 @@ bhnd_pmu_fast_pwrup_delay(struct bhnd_pmu_softc *sc)
 		delay = (11 * delay) / 10;
 		break;
 	case BHND_CHIPID_BCM4330:
-		ilp = si_ilp_clock(sc);
+		ilp = bhnd_pmu_ilp_clock(sc);
 		delay =
 			(bhnd_pmu_res_uptime(sc, BHND_PMU_RES4330_HT_AVAIL) +
 			D11SCC_SLOW2FAST_TRANSITION) * ((1000000 + ilp -
