@@ -1878,7 +1878,7 @@ bhnd_pmu_mem_clock(struct bhnd_pmu_softc *sc)
 		clock = bhnd_pmu_si_clock(sc);
 	}
 
-	return clock;
+	return (clock);
 }
 
 /* Measure ILP clock frequency */
@@ -2058,7 +2058,7 @@ bhnd_pmu_res_uptime(struct bhnd_pmu_softc *sc, uint8_t rsrc)
 	PMU_MSG(("bhnd_pmu_res_uptime: rsrc %hhu uptime %u(deps 0x%08x "
 	    "uptime %u)\n", rsrc, up, deps, dmax));
 
-	return up + dmax + BHND_PMURES_UP_TRANSITION;
+	return (up + dmax + BHND_PMURES_UP_TRANSITION);
 }
 
 /* Return dependancies (direct or all/indirect) for the given resources */
