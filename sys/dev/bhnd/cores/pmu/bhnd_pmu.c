@@ -95,11 +95,37 @@ int
 bhnd_pmu_attach(device_t dev)
 {
 	struct bhnd_pmu_softc		*sc;
+	devclass_t			 bhnd_class;
+	device_t			 core, bus;
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
 	sc->quirks = 0;
-	
+
+	/* Find the bus-attached core */
+	bhnd_class = devclass_find("bhnd");
+	core = sc->dev;
+	while ((bus = device_get_parent(core)) != NULL) {
+		if (device_get_devclass(bus) == bhnd_class)
+			break;
+
+		core = bus;
+	}
+
+	if (core == NULL) {
+		device_printf(sc->dev, "bhnd bus not found\n");
+		return (ENXIO);
+	}
+
+	/* Initialize bus-dependent state */
+	sc->cid = *bhnd_get_chipid(core);
+	sc->chipc_dev = bhnd_find_child(bus, BHND_DEVCLASS_CC, 0);
+
+	if (sc->chipc_dev == NULL) {
+		device_printf(sc->dev, "chipcommon device not found\n");
+		return (ENXIO);
+	}
+
 	/* Allocate register block resource */
 	sc->rid = 0;
 	sc->res = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY, &sc->rid,
