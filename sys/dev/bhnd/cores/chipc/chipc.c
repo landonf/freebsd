@@ -1252,6 +1252,13 @@ finished:
 	CHIPC_UNLOCK(sc);
 }
 
+static uint32_t
+chipc_read_chipst(device_t dev)
+{
+	struct chipc_softc *sc = device_get_softc(dev);
+	return (bhnd_bus_read_4(sc->core, CHIPC_CHIPST));
+}
+
 static void
 chipc_write_chipctrl(device_t dev, uint32_t value, uint32_t mask)
 {
@@ -1315,6 +1322,7 @@ static device_method_t chipc_methods[] = {
 	DEVMETHOD(bhnd_bus_activate_resource,	chipc_activate_bhnd_resource),
 
 	/* ChipCommon interface */
+	DEVMETHOD(bhnd_chipc_read_chipst,	chipc_read_chipst),
 	DEVMETHOD(bhnd_chipc_write_chipctrl,	chipc_write_chipctrl),
 	DEVMETHOD(bhnd_chipc_enable_sprom,	chipc_enable_sprom_pins),
 	DEVMETHOD(bhnd_chipc_disable_sprom,	chipc_disable_sprom_pins),
