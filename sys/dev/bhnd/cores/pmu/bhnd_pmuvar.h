@@ -88,7 +88,7 @@ extern void bhnd_pmu_sprom_enable(struct bhnd_pmu_softc *sih, bool enable);
 extern void bhnd_pmu_radio_enable(struct bhnd_pmu_softc *sih, bool enable);
 extern uint32_t bhnd_pmu_waitforclk_on_backplane(struct bhnd_pmu_softc *sih, uint32_t clk, uint32_t delay);
 
-extern void bhnd_pmu_otp_power(struct bhnd_pmu_softc *sih, bool on);
+extern int bhnd_pmu_otp_power(struct bhnd_pmu_softc *sih, bool on);
 extern void si_sdiod_drive_strength_init(struct bhnd_pmu_softc *sih, uint32_t drivestrength);
 
 // XXX end needs cleanup
@@ -114,6 +114,9 @@ struct bhnd_pmu_softc {
 	int			 rid;		/**< pmu register RID */
 
 	struct mtx		 mtx;		/**< state mutex */
+
+	uint32_t		 ilp_cps;	/**< measured ILP cycles per
+						     second, or 0 */
 };
 
 #define	BPMU_LOCK_INIT(sc) \

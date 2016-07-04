@@ -88,6 +88,8 @@
 #define	BHND_PMU_RES_TABLE_SEL		0x20
 #define	BHND_PMU_RES_DEP_MASK		0x24
 #define	BHND_PMU_RES_UPDN_TIMER		0x28
+#define	  BHND_PMU_RES_UPDN_UPTME_MASK	0xFF
+#define	  BHND_PMU_RES_UPDN_UPTME_SHIFT	8
 #define	BHND_PMU_RES_TIMER		0x2C
 #define	BHND_PMU_CLKSTRETCH		0x30
 #define	  BHND_PMU_CSTRETCH_HT		0xffff0000
@@ -113,10 +115,10 @@
 #define	BHND_PMU_XTALFREQ		0x6C		/* pmu rev >= 10 */
 
 /* PMU resource bit position */
-#define	BHND_PMU_PMURES_BIT(bit)	(1 << (bit))
+#define	BHND_PMURES_BIT(bit)		(1 << (bit))
 
 /* PMU resource number limit */
-#define	BHND_PMU_PMURES_MAX_RESNUM	30
+#define	BHND_PMU_RESNUM_MAX		30
 
 /* PMU chip control0 register */
 #define	BHND_PMU_CHIPCTL0		0
@@ -306,6 +308,7 @@
 
 /* pmu XtalFreqRatio */
 #define	BHND_PMU_XTALFREQ_REG_ILPCTR_MASK	0x00001FFF
+#define	BHND_PMU_XTALFREQ_REG_ILPCTR_SHIFT	0
 #define	BHND_PMU_XTALFREQ_REG_MEASURE_MASK	0x80000000
 #define	BHND_PMU_XTALFREQ_REG_MEASURE_SHIFT	31
 
@@ -652,6 +655,6 @@
 #define	BHND_PMU_MAX_TRANSITION_DLY		15000
 
 /* PMU resource up transition time in ILP cycles */
-#define	BHND_PMU_PMURES_UP_TRANSITION		2
+#define	BHND_PMURES_UP_TRANSITION		2
 
 #endif /* _BHND_CORES_PMU_BHND_PMUREG_H_ */
