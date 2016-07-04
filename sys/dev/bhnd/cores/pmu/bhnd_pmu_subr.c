@@ -43,12 +43,6 @@ __FBSDID("$FreeBSD$");
 #endif
 
 // XXX TODO: implement or import
-static bool
-si_is_otp_disabled(struct bhnd_pmu_softc *sc)
-{
-	return (true);
-}
-
 static void
 si_write_wrapperreg(struct bhnd_pmu_softc *sc, bus_size_t offset,
     uint32_t value)
@@ -2160,11 +2154,14 @@ bhnd_pmu_otp_power(struct bhnd_pmu_softc *sc, bool on)
 
 	cid = bhnd_get_chipid(sc->dev);
 
+// XXX TODO: This belongs in ChipCommon, not in the PMU
+#ifdef notyet
 	/* Don't do anything if OTP is disabled */
 	if (si_is_otp_disabled(sc)) {
 		PMU_MSG(("bhnd_pmu_otp_power: OTP is disabled\n"));
 		return (ENODEV);
 	}
+#endif
 
 	/* Determine rsrcs to turn on/off OTP power */
 	switch (cid->chip_id) {
