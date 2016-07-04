@@ -24,6 +24,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/types.h>
 
 #include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/cores/chipc/chipc.h>
+#include <dev/bhnd/cores/chipc/chipcreg.h>
 
 #include <dev/bhnd/bcma/bcma_dmp.h>
 
@@ -49,14 +51,6 @@ si_write_wrapperreg(struct bhnd_pmu_softc *sc, bus_size_t offset,
 {
 	panic("unimplemented");
 }
-
-static inline bool
-cst4330_chipmode_sdiod(void)
-{
-	panic("CST4330_CHIPMODE_SDIOD() unimplemented\n");
-	return (false);
-}
-#define	CST4330_CHIPMODE_SDIOD(...)	cst4330_chipmode_sdiod()
 
 /* PLL controls/clocks */
 static void	bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal);
@@ -113,6 +107,9 @@ static void	bhnd_pmu_set_4330_plldivs(struct bhnd_pmu_softc *sc);
 
 #define	PMURES_BIT(_bit)			\
 	(1 << (BHND_PMU_ ## _bit))
+
+#define	PMU_CST4330_SDIOD_CHIPMODE(_sc)		\
+	CHIPC_CST4330_CHIPMODE_SDIOD(BHND_CHIPC_READ_CHIPST((_sc)->chipc_dev))
 
 /* Perform an indirect register read */
 static uint32_t
@@ -1173,7 +1170,7 @@ bhnd_pmu1_xtaltab0(struct bhnd_pmu_softc *sc)
 	case BHND_CHIPID_BCM4336:
 		return (pmu1_xtaltab0_960);
 	case BHND_CHIPID_BCM4330:
-		if (CST4330_CHIPMODE_SDIOD(sih->chipst))
+		if (PMU_CST4330_SDIOD_CHIPMODE(sc))
 			return (pmu1_xtaltab0_960);
 		else
 			return (pmu1_xtaltab0_1440);
@@ -1206,7 +1203,7 @@ bhnd_pmu1_xtaldef0(struct bhnd_pmu_softc *sc)
 		return (&pmu1_xtaltab0_960[PMU1_XTALTAB0_960_26000K]);
 	case BHND_CHIPID_BCM4330:
 		/* Default to 37400Khz */
-		if (CST4330_CHIPMODE_SDIOD(sih->chipst))
+		if (PMU_CST4330_SDIOD_CHIPMODE(sc))
 			return (&pmu1_xtaltab0_960[PMU1_XTALTAB0_960_37400K]);
 		else
 			return (&pmu1_xtaltab0_1440[PMU1_XTALTAB0_1440_37400K]);
@@ -1229,7 +1226,7 @@ bhnd_pmu1_pllfvco0(struct bhnd_pmu_softc *sc)
 	case BHND_CHIPID_BCM4336:
 		return (FVCO_960);
 	case BHND_CHIPID_BCM4330:
-		if (CST4330_CHIPMODE_SDIOD(sih->chipst))
+		if (PMU_CST4330_SDIOD_CHIPMODE(sc))
 			return (FVCO_960);
 		else
 			return (FVCO_1440);
@@ -1686,22 +1683,20 @@ bhnd_pmu5_clock(struct bhnd_pmu_softc *sc, u_int pll0, u_int m)
 
 	if ((pll0 & 3) || (pll0 > BHND_PMU4716_MAINPLL_PLL0)) {
 		PMU_ERROR(("%s: Bad pll0: %d\n", __func__, pll0));
-		return 0;
+		return (0);
 	}
 
 	/* Strictly there is an m5 divider, but I'm not sure we use it */
 	if ((m == 0) || (m > 4)) {
 		PMU_ERROR(("%s: Bad m divider: %d\n", __func__, m));
-		return 0;
+		return (0);
 	}
 
 	if (sc->cid.chip_id == BHND_CHIPID_BCM5357) {
-		// XXX TODO - need access to chipc chipstatus
-#ifdef notyet
 		/* Detect failure in clock setting */
-		if ((R_REG(&cc->chipstatus) & 0x40000) != 0)
-			return 133 * 1000000;
-#endif
+		tmp = BHND_CHIPC_READ_CHIPST(sc->chipc_dev);
+		if ((tmp & 0x40000) != 0)
+			return (133 * 1000000);
 	}
 
 
@@ -1749,6 +1744,7 @@ bhnd_pmu5_clock(struct bhnd_pmu_softc *sc, u_int pll0, u_int m)
 uint32_t
 bhnd_pmu_si_clock(struct bhnd_pmu_softc *sc)
 {
+	uint32_t chipst;
 	uint32_t clock;
 
 	clock = BHND_PMU_HT_CLOCK;
@@ -1791,13 +1787,11 @@ bhnd_pmu_si_clock(struct bhnd_pmu_softc *sc)
 	case BHND_CHIPID_BCM43235:
 	case BHND_CHIPID_BCM43236:
 	case BHND_CHIPID_BCM43238:
-		// XXX TODO expose chip status
-#ifdef notyet
-		clock =
-		    (cc->chipstatus & CST43236_BP_CLK) ? (120000 *
-							  1000) : (96000 *
-								   1000);
-#endif
+		chipst = BHND_CHIPC_READ_CHIPST(sc->chipc_dev);
+		if (chipst & CHIPC_CST43236_BP_CLK)
+			clock = 120000 * 1000;
+		else
+			clock = 96000 * 1000;
 		break;
 	case BHND_CHIPID_BCM5356:
 		clock = bhnd_pmu5_clock(sc, BHND_PMU5356_MAINPLL_PLL0,
@@ -2180,8 +2174,9 @@ bhnd_pmu_otp_power(struct bhnd_pmu_softc *sc, bool on)
 void 
 bhnd_pmu_rcal(struct bhnd_pmu_softc *sc)
 {
-	uint32_t	 val;
-	uint8_t		 rcal_code;
+	uint32_t	chipst;
+	uint32_t	val;
+	uint8_t		rcal_code;
 
 	switch (sc->cid.chip_id) {
 	case BHND_CHIPID_BCM4329:
@@ -2194,22 +2189,22 @@ bhnd_pmu_rcal(struct bhnd_pmu_softc *sc)
 		/* Power Up RCAL block */
 		BHND_PMU_AND_4(sc, BHND_PMU_CHIPCTL_DATA, 0x04);
 
-		// XXX TODO - need access to chipc chipstatus
-#ifdef notyet
 		/* Wait for completion */
-		SPINWAIT(0 == (R_REG(&cc->chipstatus) & 0x08),
-				10 * 1000 * 1000);
-		ASSERT(R_REG(&cc->chipstatus) & 0x08);
+		for (int i = 0; i < (10 * 1000 * 1000); i++) {
+			chipst = BHND_CHIPC_READ_CHIPST(sc->chipc_dev);
+
+			if (chipst & 0x08)
+				break;
+
+			DELAY(10);
+		}
+		KASSERT((chipst & 0x08) != 0, ("rcal completion timeout"));
 
 		/* Drop the LSB to convert from 5 bit code to 4 bit code */
-		rcal_code =
-			(uint8_t) (R_REG(&cc->chipstatus) >> 5) & 0x0f;
+		rcal_code = (uint8_t) (chipst >> 5) & 0x0f;
 
 		PMU_MSG(("RCal completed, status 0x%x, code 0x%x\n",
 				R_REG(&cc->chipstatus), rcal_code));
-#else
-		rcal_code = 0;
-#endif
 
 		/* Write RCal code into pmu_vreg_ctrl[32:29] */
 		BHND_PMU_WRITE_4(sc, BHND_PMU_REG_CONTROL_ADDR, 0);
@@ -2648,7 +2643,7 @@ bhnd_pmu_set_4330_plldivs(struct bhnd_pmu_softc *sc)
 	m2div = m3div = m4div = m6div = FVCO / 80;
 	m5div = FVCO / 160;
 
-	if (CST4330_CHIPMODE_SDIOD(sih->chipst))
+	if (PMU_CST4330_SDIOD_CHIPMODE(sc))
 		m1div = FVCO / 80;
 	else
 		m1div = FVCO / 90;
