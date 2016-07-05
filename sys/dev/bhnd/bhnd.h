@@ -449,6 +449,47 @@ bhnd_request_clock(device_t dev, bhnd_clock clock)
 }
 
 /**
+ * Read @p width bytes at @p offset from the bus-specific agent/config
+ * space of @p dev.
+ *
+ * @param dev The bhnd device for which @p offset should be read.
+ * @param offset The offset to be read.
+ * @param width The size of the access. Must be 1, 2 or 4 bytes.
+ *
+ * The exact behavior of this method is bus-specific. In the case of
+ * bcma(4), this method provides access to the first agent port of @p child.
+ *
+ * @note Device drivers should only use this API for functionality
+ * that is not available via another bhnd(4) function.
+ */
+static inline uint32_t
+bhnd_read_config(device_t dev, bus_size_t offset, u_int width)
+{
+	return (BHND_BUS_READ_CONFIG(device_get_parent(dev), dev, offset,
+	    width));
+}
+
+/**
+ * Read @p width bytes at @p offset from the bus-specific agent/config
+ * space of @p dev.
+ *
+ * @param dev The bhnd device for which @p offset should be read.
+ * @param offset The offset to be written.
+ * @param width The size of the access. Must be 1, 2 or 4 bytes.
+ *
+ * The exact behavior of this method is bus-specific. In the case of
+ * bcma(4), this method provides access to the first agent port of @p child.
+ *
+ * @note Device drivers should only use this API for functionality
+ * that is not available via another bhnd(4) function.
+ */
+static inline void
+bhnd_write_config(device_t dev, bus_size_t offset, uint32_t val, u_int width)
+{
+	BHND_BUS_WRITE_CONFIG(device_get_parent(dev), dev, offset, val, width);
+}
+
+/**
  * Determine an NVRAM variable's expected size.
  *
  * @param 	dev	A bhnd bus child device.
