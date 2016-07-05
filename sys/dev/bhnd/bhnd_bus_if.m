@@ -81,6 +81,20 @@ CODE {
 		panic("bhnd_bus_request_clock unimplemented");
 	}
 
+	static uint32_t
+	bhnd_bus_null_read_config(device_t dev, device_t child,
+	    bus_size_t offset, u_int width)
+	{
+		panic("bhnd_bus_null_read_config unimplemented");
+	}
+
+	static void
+	bhnd_bus_null_write_config(device_t dev, device_t child,
+	    bus_size_t offset, uint32_t val, u_int width)
+	{
+		panic("bhnd_bus_null_write_config unimplemented");
+	}
+
 	static device_t
 	bhnd_bus_null_find_hostb_device(device_t dev)
 	{
@@ -326,6 +340,51 @@ METHOD int request_clock {
 	device_t child;
 	bhnd_clock clock;
 } DEFAULT bhnd_bus_null_request_clock;
+
+/**
+ * Read @p width bytes at @p offset from the bus-specific agent/config
+ * space of @p child.
+ *
+ * @param dev The parent of @p child.
+ * @param child The bhnd device for which @p offset should be read.
+ * @param offset The offset to be read.
+ * @param width The size of the access. Must be 1, 2 or 4 bytes.
+ *
+ * The exact behavior of this method is bus-specific. In the case of
+ * bcma(4), this method provides access to the first agent port of @p child.
+ *
+ * @note Device drivers should only use this API for functionality
+ * that is not available via another bhnd(4) function.
+ */
+METHOD uint32_t read_config {
+	device_t dev;
+	device_t child;
+	bus_size_t offset;
+	u_int width;
+} DEFAULT bhnd_bus_null_read_config;
+
+/**
+ * Read @p width bytes at @p offset from the bus-specific agent/config
+ * space of @p child.
+ *
+ * @param dev The parent of @p child.
+ * @param child The bhnd device for which @p offset should be read.
+ * @param offset The offset to be written.
+ * @param width The size of the access. Must be 1, 2 or 4 bytes.
+ *
+ * The exact behavior of this method is bus-specific. In the case of
+ * bcma(4), this method provides access to the first agent port of @p child.
+ *
+ * @note Device drivers should only use this API for functionality
+ * that is not available via another bhnd(4) function.
+ */
+METHOD void write_config {
+	device_t dev;
+	device_t child;
+	bus_size_t offset;
+	uint32_t val;
+	u_int width;
+} DEFAULT bhnd_bus_null_write_config;
 
 /**
  * Allocate a bhnd resource.
