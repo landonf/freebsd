@@ -50,18 +50,6 @@ static uint32_t	bhnd_pmu_ind_read(struct bhnd_pmu_softc *sc, bus_size_t addr,
 static void	bhnd_pmu_ind_write(struct bhnd_pmu_softc *sc, bus_size_t addr,
 		    bus_size_t data, uint32_t reg, uint32_t val, uint32_t mask);
 
-static uint32_t	bhnd_pmu_cctrl_read(struct bhnd_pmu_softc *sc, uint32_t reg);
-static void	bhnd_pmu_cctrl_write(struct bhnd_pmu_softc *sc, uint32_t reg,
-		    uint32_t val, uint32_t mask);
-static uint32_t	bhnd_pmu_regctrl_read(struct bhnd_pmu_softc *sc, uint32_t reg);
-static void	bhnd_pmu_regctrl_write(struct bhnd_pmu_softc *sc, uint32_t reg,
-		    uint32_t val, uint32_t mask);
-static uint32_t	bhnd_pmu_pll_read(struct bhnd_pmu_softc *sc, uint32_t reg);
-static void	bhnd_pmu_pll_write(struct bhnd_pmu_softc *sc, uint32_t reg,
-		    uint32_t val, uint32_t mask);
-
-static void	bhnd_pmu_pllupd(struct bhnd_pmu_softc *sc);
-
 static bool	bhnd_pmu_wait_clkst(struct bhnd_pmu_softc *sc, uint32_t value,
 		    uint32_t mask);
 
@@ -108,12 +96,31 @@ static void	bhnd_pmu_set_4330_plldivs(struct bhnd_pmu_softc *sc);
 	BHND_PMU_WRITE_4((_sc), (_reg),		\
 	    BHND_PMU_READ_4((_sc), (_reg)) | (_val))
 
+/* Indirect register support */
 #define	BHND_PMU_IND_READ(_sc, _src, _reg)			\
 	bhnd_pmu_ind_read((_sc), BHND_PMU_ ## _src ## _ADDR,	\
 	    BHND_PMU_ ## _src ## _DATA, (_reg))
 #define	BHND_PMU_IND_WRITE(_sc, _src, _reg, _val, _mask)	\
 	bhnd_pmu_ind_write(sc, BHND_PMU_ ## _src ## _ADDR,	\
 	    BHND_PMU_ ## _src ## _DATA, (_reg), (_val), (_mask))
+
+/* Chip Control indirect registers */
+#define	BHND_PMU_CCTRL_READ(_sc, _reg)			\
+	BHND_PMU_IND_READ((_sc), CHIPCTL, (_reg))
+#define	BHND_PMU_CCTRL_WRITE(_sc, _reg, _val, _mask)	\
+	BHND_PMU_IND_WRITE((_sc), CHIPCTL, (_reg), (_val), (_mask))
+
+/* Register Control indirect registers */
+#define	BHND_PMU_REGCTRL_READ(_sc, _reg)			\
+	BHND_PMU_IND_READ((_sc), REG_CONTROL, (_reg))
+#define	BHND_PMU_REGCTRL_WRITE(_sc, _reg, _val, _mask)	\
+	BHND_PMU_IND_WRITE((_sc), REG_CONTROL, (_reg), (_val), (_mask))
+
+/* PLL Control indirect registers */
+#define	BHND_PMU_PLL_READ(_sc, _reg)			\
+	BHND_PMU_IND_READ((_sc), PLL_CONTROL, (_reg))
+#define	BHND_PMU_PLL_WRITE(_sc, _reg, _val, _mask)	\
+	BHND_PMU_IND_WRITE((_sc), PLL_CONTROL, (_reg), (_val), (_mask))
 
 #define	BHND_PMU_REV(_sc)			\
 	((uint8_t)BHND_PMU_GET_BITS((_sc)->caps, BHND_PMU_CAP_REV))
@@ -152,58 +159,6 @@ bhnd_pmu_ind_write(struct bhnd_pmu_softc *sc, bus_size_t addr,
 	BHND_PMU_WRITE_4(sc, data, rval);
 }
 
-/* Read a chipcontrol register. */
-static uint32_t
-bhnd_pmu_cctrl_read(struct bhnd_pmu_softc *sc, uint32_t reg)
-{
-	return (BHND_PMU_IND_READ(sc, CHIPCTL, reg));
-}
-
-/* Write a chipcontrol register. */
-static void
-bhnd_pmu_cctrl_write(struct bhnd_pmu_softc *sc, uint32_t reg, uint32_t val,
-    uint32_t mask)
-{
-	BHND_PMU_IND_WRITE(sc, CHIPCTL, reg, val, mask);
-}
-
-/* Read a regcontrol register */
-static uint32_t
-bhnd_pmu_regctrl_read(struct bhnd_pmu_softc *sc, uint32_t reg) 
-{
-	return (BHND_PMU_IND_READ(sc, REG_CONTROL, reg));
-}
-
-/* Write a regcontrol register */
-static void
-bhnd_pmu_regctrl_write(struct bhnd_pmu_softc *sc, uint32_t reg, uint32_t val,
-    uint32_t mask)
-{
-	BHND_PMU_IND_WRITE(sc, REG_CONTROL, reg, val, mask);
-}
-
-/* Read a PLL control register */
-static uint32_t
-bhnd_pmu_pll_read(struct bhnd_pmu_softc *sc, uint32_t reg)
-{
-	return (BHND_PMU_IND_READ(sc, PLL_CONTROL, reg));
-}
-
-/* Write a pllcontrol reg */
-static void
-bhnd_pmu_pll_write(struct bhnd_pmu_softc *sc, uint32_t reg, uint32_t val,
-    uint32_t mask)
-{
-	BHND_PMU_IND_WRITE(sc, PLL_CONTROL, reg, val, mask);
-}
-
-/* Flush any deferred PMU PLL control register writes */
-static void
-bhnd_pmu_pllupd(struct bhnd_pmu_softc *sc)
-{
-	BHND_PMU_OR_4(sc, BHND_PMU_CTRL, BHND_PMU_CTRL_PLL_PLLCTL_UPD);
-}
-
 /**
  * Wait for up to BHND_PMU_MAX_TRANSITION_DLY microseconds for the per-core
  * clock status to be equal to @p value after applying @p mask.
@@ -232,8 +187,8 @@ void
 bhnd_pmu_set_switcher_voltage(struct bhnd_pmu_softc *sc, uint8_t bb_voltage,
     uint8_t rf_voltage)
 {
-	bhnd_pmu_regctrl_write(sc, 0x01, (bb_voltage & 0x1f) << 22, ~0);
-	bhnd_pmu_regctrl_write(sc, 0x00, (rf_voltage & 0x1f) << 14, ~0);
+	BHND_PMU_REGCTRL_WRITE(sc, 0x01, (bb_voltage & 0x1f) << 22, ~0);
+	BHND_PMU_REGCTRL_WRITE(sc, 0x00, (rf_voltage & 0x1f) << 14, ~0);
 }
 
 void
@@ -287,7 +242,7 @@ bhnd_pmu_set_ldo_voltage(struct bhnd_pmu_softc *sc, uint8_t ldo,
 	}
 
 	regctrl = (voltage & mask) << shift;
-	bhnd_pmu_regctrl_write(sc, addr, regctrl, mask << shift);
+	BHND_PMU_REGCTRL_WRITE(sc, addr, regctrl, mask << shift);
 }
 
 /* d11 slow to fast clock transition time in slow clock cycles */
@@ -1385,12 +1340,12 @@ bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 		else
 			plldata = 0x200005C0;	/* Chip Dflt Settings */
 
-		bhnd_pmu_pll_write(sc, plladdr, plldata, ~0);
+		BHND_PMU_PLL_WRITE(sc, plladdr, plldata, ~0);
 
 		/* Initialize PLL5 */
 		plladdr = BHND_PMU1_PLL0_PLLCTL5;
 
-		plldata = bhnd_pmu_pll_read(sc, plladdr);
+		plldata = BHND_PMU_PLL_READ(sc, plladdr);
 		plldata &= BHND_PMU1_PLL0_PC5_CLK_DRV_MASK;
 
 		if (xt->fref == 38400 ||
@@ -1401,7 +1356,7 @@ bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 			plldata |= 0x25;	/* Chip Dflt Settings */
 		}
 
-		bhnd_pmu_pll_write(sc, plladdr, plldata, ~0);
+		BHND_PMU_PLL_WRITE(sc, plladdr, plldata, ~0);
 		break;
 
 	case BHND_CHIPID_BCM4319:
@@ -1430,7 +1385,7 @@ bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 		bhnd_pmu_wait_clkst(sc, 0, BHND_CCS_HTAVAIL);
 
 		plldata = 0x200005c0;
-		bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL4, plldata, ~0);
+		BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL4, plldata, ~0);
 		break;
 
 	case BHND_CHIPID_BCM4336:
@@ -1468,7 +1423,7 @@ bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 	PMU_MSG(("Done masking\n"));
 
 	/* Write p1div and p2div to pllcontrol[0] */	
-	bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL0,
+	BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL0,
 	    BHND_PMU_SET_BITS(xt->p1div, BHND_PMU1_PLL0_PC0_P1DIV) |
 	    BHND_PMU_SET_BITS(xt->p2div, BHND_PMU1_PLL0_PC0_P2DIV),
 	    BHND_PMU1_PLL0_PC0_P1DIV_MASK |
@@ -1478,7 +1433,7 @@ bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 		bhnd_pmu_set_4330_plldivs(sc);
 
 	if (sc->cid.chip_id == BHND_CHIPID_BCM4329 && sc->cid.chip_rev == 0) {
-		bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL1,
+		BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL1,
 		    BHND_PMU_DOT11MAC_880MHZ_CLK_DIVISOR_VAL,
 		    BHND_PMU_DOT11MAC_880MHZ_CLK_DIVISOR_MASK);
 	}
@@ -1491,14 +1446,14 @@ bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 	else
 		ndiv_mode = BHND_PMU1_PLL0_PC2_NDIV_MODE_MASH;
 
-	bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL2,
+	BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL2,
 	    BHND_PMU_SET_BITS(xt->ndiv_int, BHND_PMU1_PLL0_PC2_NDIV_INT) |
 	    BHND_PMU_SET_BITS(ndiv_mode, BHND_PMU1_PLL0_PC2_NDIV_MODE),
 	    BHND_PMU1_PLL0_PC2_NDIV_INT_MASK |
 	    BHND_PMU1_PLL0_PC2_NDIV_MODE_MASK);
 
 	/* Write ndiv_frac to pllcontrol[3] */
-	bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL3,
+	BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL3,
 	    BHND_PMU_SET_BITS(xt->ndiv_frac, BHND_PMU1_PLL0_PC3_NDIV_FRAC),
 	    BHND_PMU1_PLL0_PC3_NDIV_FRAC_MASK);
 
@@ -1510,7 +1465,7 @@ bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 		plldata = BHND_PMU_SET_BITS(buf_strength,
 		    BHND_PMU1_PLL0_PC5_CLK_DRV);
 
-		bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL5, plldata,
+		BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL5, plldata,
 		    BHND_PMU1_PLL0_PC5_CLK_DRV_MASK);
 	}
 
@@ -1536,14 +1491,14 @@ bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 			    xt->fref);
 		}
 
-		bhnd_pmu_cctrl_write(sc, BHND_PMU1_PLL0_CHIPCTL2,
+		BHND_PMU_CCTRL_WRITE(sc, BHND_PMU1_PLL0_CHIPCTL2,
 		    BHND_PMU_SET_BITS(pll_sel, BHND_PMU_CCTL_4319USB_XTAL_SEL),
 		    BHND_PMU_CCTL_4319USB_XTAL_SEL_MASK);
 	}
 
 	/* Flush deferred pll control registers writes */
 	if (BHND_PMU_REV(sc) >= 2)
-		bhnd_pmu_pllupd(sc);
+		BHND_PMU_OR_4(sc, BHND_PMU_CTRL, BHND_PMU_CTRL_PLL_PLLCTL_UPD);
 
 	/* Write XtalFreq. Set the divisor also. */
 	pmuctrl = BHND_PMU_READ_4(sc, BHND_PMU_CTRL);
@@ -1573,20 +1528,20 @@ bhnd_pmu1_cpuclk0(struct bhnd_pmu_softc *sc)
 	uint32_t FVCO = bhnd_pmu1_pllfvco0(sc);
 
 	/* Read m1div from pllcontrol[1] */
-	tmp = bhnd_pmu_pll_read(sc, BHND_PMU1_PLL0_PLLCTL1);
+	tmp = BHND_PMU_PLL_READ(sc, BHND_PMU1_PLL0_PLLCTL1);
 	m1div = BHND_PMU_GET_BITS(tmp, BHND_PMU1_PLL0_PC1_M1DIV);
 
 #ifdef BCMDBG
 	/* Read p2div/p1div from pllcontrol[0] */
-	tmp = bhnd_pmu_pll_read(sc, BHND_PMU1_PLL0_PLLCTL0);
+	tmp = BHND_PMU_PLL_READ(sc, BHND_PMU1_PLL0_PLLCTL0);
 	p2div = BHND_PMU_GET_BITS(tmp, BHND_PMU1_PLL0_PC0_P2DIV);
 	p1div = BHND_PMU_GET_BITS(tmp, BHND_PMU1_PLL0_PC0_P1DIV);
 
 	/* Calculate fvco based on xtal freq and ndiv and pdiv */
-	tmp = bhnd_pmu_pll_read(sc, BHND_PMU1_PLL0_PLLCTL2);
+	tmp = BHND_PMU_PLL_READ(sc, BHND_PMU1_PLL0_PLLCTL2);
 	ndiv_int = BHND_PMU_GET_BITS(tmp, BHND_PMU1_PLL0_PC2_NDIV_INT);
 
-	tmp = bhnd_pmu_pll_read(sc, BHND_PMU1_PLL0_PLLCTL3);
+	tmp = BHND_PMU_PLL_READ(sc, BHND_PMU1_PLL0_PLLCTL3);
 	ndiv_frac = BHND_PMU_GET_BITS(tmp, BHND_PMU1_PLL0_PC3_NDIV_FRAC);
 
 	fref = bhnd_pmu1_alpclk0(sc) / 1000;
@@ -2010,11 +1965,11 @@ si_sdiod_drive_strength_init(struct bhnd_pmu_softc *sc, uint32_t drivestrength)
 			}
 		}
 
-		cc_data_temp = bhnd_pmu_cctrl_read(sc, 1);
+		cc_data_temp = BHND_PMU_CCTRL_READ(sc, 1);
 		cc_data_temp &= ~str_mask;
 		drivestrength_sel <<= str_shift;
 		cc_data_temp |= drivestrength_sel;
-		bhnd_pmu_cctrl_write(sc, 1, cc_data_temp, ~0);
+		BHND_PMU_CCTRL_WRITE(sc, 1, cc_data_temp, ~0);
 
 		PMU_MSG(("SDIO: %dmA drive strength selected, set to 0x%08x\n",
 			 drivestrength, cc_data_temp));
@@ -2033,8 +1988,8 @@ bhnd_pmu_init(struct bhnd_pmu_softc *sc)
 
 	if (sc->cid.chip_id == BHND_CHIPID_BCM4329 && sc->cid.chip_rev == 2) {
 		/* Fix for 4329b0 bad LPOM state. */
-		bhnd_pmu_regctrl_write(sc, 2, 0x100, ~0);
-		bhnd_pmu_regctrl_write(sc, 3, 0x4, ~0);
+		BHND_PMU_REGCTRL_WRITE(sc, 2, 0x100, ~0);
+		BHND_PMU_REGCTRL_WRITE(sc, 3, 0x4, ~0);
 	}
 }
 
@@ -2297,13 +2252,13 @@ bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc, uint8_t spuravoid)
 		/* RMW only the P1 divider */
 		tmp = BHND_PMU_SET_BITS(bcm5357_bcm43236_p1div[spuravoid],
 		    BHND_PMU1_PLL0_PC0_P1DIV);
-		bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL0 + phypll_offset,
+		BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL0 + phypll_offset,
 		    tmp, BHND_PMU1_PLL0_PC0_P1DIV_MASK);
 
 		/* RMW only the int feedback divider */
 		tmp = BHND_PMU_SET_BITS(bcm5357_bcm43236_ndiv[spuravoid],
 		    BHND_PMU1_PLL0_PC2_NDIV_INT);
-		bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL2 + phypll_offset,
+		BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL2 + phypll_offset,
 		    tmp, BHND_PMU1_PLL0_PC0_P1DIV_MASK);
 
 		pmuctrl = BHND_PMU_CTRL_PLL_PLLCTL_UPD;
@@ -2311,19 +2266,19 @@ bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc, uint8_t spuravoid)
 
 	case BHND_CHIPID_BCM4331:
 		if (spuravoid == 2) {
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL0,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL0,
 			    0x11500014, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL2,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL2,
 			    0x0FC00a08, ~0);
 		} else if (spuravoid == 1) {
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL0,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL0,
 			    0x11500014, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL2,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL2,
 			    0x0F600a08, ~0);
 		} else {
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL0,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL0,
 			    0x11100014, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL2,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL2,
 			    0x03000a08, ~0);
 		}
 		pmuctrl = BHND_PMU_CTRL_PLL_PLLCTL_UPD;
@@ -2334,30 +2289,30 @@ bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc, uint8_t spuravoid)
 	case BHND_CHIPID_BCM43421:
 	case BHND_CHIPID_BCM6362:
 		if (spuravoid == 1) {
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL0,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL0,
 			    0x11500010, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL1,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL1,
 			    0x000C0C06, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL2,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL2,
 			    0x0F600a08, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL3,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL3,
 			    0x00000000, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL4,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL4,
 			    0x2001E920, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL5,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL5,
 			    0x88888815, ~0);
 		} else {
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL0,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL0,
 			    0x11100010, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL1,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL1,
 			    0x000c0c06, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL2,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL2,
 			    0x03000a08, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL3,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL3,
 			    0x00000000, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL4,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL4,
 			    0x200005c0, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL5,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL5,
 			    0x88888815, ~0);
 		}
 		pmuctrl = BHND_PMU_CTRL_PLL_PLLCTL_UPD;
@@ -2368,30 +2323,30 @@ bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc, uint8_t spuravoid)
 	case BHND_CHIPID_BCM43222:
 	case BHND_CHIPID_BCM43420:
 		if (spuravoid == 1) {
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL0,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL0,
 			    0x11500008, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL1,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL1,
 			    0x0c000c06, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL2,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL2,
 			    0x0f600a08, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL3,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL3,
 			    0x00000000, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL4,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL4,
 			    0x2001e920, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL5,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL5,
 			    0x88888815, ~0);
 		} else {
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL0,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL0,
 			    0x11100008, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL1,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL1,
 			    0x0c000c06, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL2,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL2,
 			    0x03000a08, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL3,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL3,
 			    0x00000000, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL4,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL4,
 			    0x200005c0, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL5,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL5,
 			    0x88888855, ~0);
 		}
 
@@ -2402,30 +2357,30 @@ bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc, uint8_t spuravoid)
 	case BHND_CHIPID_BCM4748:
 	case BHND_CHIPID_BCM47162:
 		if (spuravoid == 1) {
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL0,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL0,
 			    0x11500060, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL1,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL1,
 			    0x080C0C06, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL2,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL2,
 			    0x0F600000, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL3,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL3,
 			    0x00000000, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL4,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL4,
 			    0x2001E924, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL5,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL5,
 			    0x88888815, ~0);
 		} else {
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL0,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL0,
 			    0x11100060, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL1,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL1,
 			    0x080c0c06, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL2,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL2,
 			    0x03000000, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL3,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL3,
 			    0x00000000, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL4,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL4,
 			    0x200005c0, ~0);
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL5,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL5,
 			    0x88888815, ~0);
 		}
 
@@ -2434,17 +2389,17 @@ bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc, uint8_t spuravoid)
 		break;
 
 	case BHND_CHIPID_BCM4319:
-		bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL0, 0x11100070, ~0);
-		bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL1, 0x1014140a, ~0);
-		bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL5, 0x88888854, ~0);
+		BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL0, 0x11100070, ~0);
+		BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL1, 0x1014140a, ~0);
+		BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL5, 0x88888854, ~0);
 
 		if (spuravoid == 1) {
 			/* spur_avoid ON, enable 41/82/164Mhz clock mode */
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL2,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL2,
 			    0x05201828, ~0);
 		} else {
 			/* enable 40/80/160Mhz clock mode */
-			bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL2,
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL2,
 			    0x05001828, ~0);
 		}
 
@@ -2453,18 +2408,18 @@ bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc, uint8_t spuravoid)
 
 	case BHND_CHIPID_BCM4336:
 		/* Looks like these are only for default xtal freq 26MHz */
-		bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL0, 0x02100020, ~0);
-		bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL1, 0x0C0C0C0C, ~0);
-		bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL2, 0x01240C0C, ~0);
-		bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL4, 0x202C2820, ~0);
-		bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL5, 0x88888825, ~0);
+		BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL0, 0x02100020, ~0);
+		BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL1, 0x0C0C0C0C, ~0);
+		BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL2, 0x01240C0C, ~0);
+		BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL4, 0x202C2820, ~0);
+		BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL5, 0x88888825, ~0);
 
 		if (spuravoid == 1) {
 			tmp = 0x00EC4EC4;
 		} else {
 			tmp = 0x00762762;
 		}
-		bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL3, tmp, ~0);
+		BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL3, tmp, ~0);
 
 
 		pmuctrl = BHND_PMU_CTRL_PLL_PLLCTL_UPD;
@@ -2534,7 +2489,7 @@ bhnd_pmu_swreg_init(struct bhnd_pmu_softc *sc)
 		/* Reduce LNLDO1 output voltage to 1.2V */
 		bhnd_pmu_set_ldo_voltage(sc, SET_LDO_VOLTAGE_LNLDO1, 0xe);
 		if (sc->cid.chip_rev == 0)
-			bhnd_pmu_regctrl_write(sc, 2, 0x400000, 0x400000);
+			BHND_PMU_REGCTRL_WRITE(sc, 2, 0x400000, 0x400000);
 		break;
 
 	case BHND_CHIPID_BCM4330:
@@ -2662,12 +2617,12 @@ bhnd_pmu_set_4330_plldivs(struct bhnd_pmu_softc *sc)
 	pllc1 |= BHND_PMU_SET_BITS(m3div, BHND_PMU1_PLL0_PC1_M3DIV);
 	pllc1 |= BHND_PMU_SET_BITS(m4div, BHND_PMU1_PLL0_PC1_M4DIV);
 
-	bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL1, pllc1, ~0);
+	BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL1, pllc1, ~0);
 
 	pllc2 = 0;
 	pllc2 |= BHND_PMU_SET_BITS(m5div, BHND_PMU1_PLL0_PC2_M5DIV);
 	pllc2 |= BHND_PMU_SET_BITS(m6div, BHND_PMU1_PLL0_PC2_M6DIV);
 
-	bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL2, pllc2,
+	BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL2, pllc2,
 	    BHND_PMU1_PLL0_PC2_M5DIV_MASK | BHND_PMU1_PLL0_PC2_M6DIV_MASK);
 }
