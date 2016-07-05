@@ -88,6 +88,9 @@ bhnd_pmu_attach(device_t dev, struct bhnd_resource *res)
 	sc->quirks = 0;
 	sc->res = res;
 
+	/* Fetch capability flags */
+	sc->caps = bhnd_bus_read_4(sc->res, BHND_PMU_CAP);
+
 	/* Find the bus-attached core */
 	bhnd_class = devclass_find("bhnd");
 	core = sc->dev;
