@@ -39,7 +39,8 @@ DECLARE_CLASS(bhnd_pmu_driver);
 extern devclass_t bhnd_pmu_devclass;
 
 int	bhnd_pmu_probe(device_t dev);
-int	bhnd_pmu_attach(device_t dev);
+
+int	bhnd_pmu_attach(device_t dev, struct bhnd_resource *res);
 int	bhnd_pmu_detach(device_t dev);
 int	bhnd_pmu_suspend(device_t dev);
 int	bhnd_pmu_resume(device_t dev);

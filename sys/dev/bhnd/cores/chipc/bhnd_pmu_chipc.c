@@ -33,7 +33,7 @@ __FBSDID("$FreeBSD$");
 /*
  * ChipCommon attachment support for the bhnd(4) PMU driver.
  * 
- * Supports non-AOB ("Always-on Bus") devices that map the PMU register block
+ * Supports non-AOB ("Always-on Bus") devices that map the PMU register blocks
  * via the ChipCommon core, rather than vending a distinct PMU core on the
  * bhnd bus.
  */
@@ -54,16 +54,18 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_chipc_if.h"
 #include "bhnd_pmu_if.h"
 
-#include "chipc.h"
+#include "chipcvar.h"
 
 static int
 bhnd_pmu_chipc_probe(device_t dev)
 {
 	struct bhnd_pmu_softc	*sc;
 	struct chipc_caps	*ccaps;
+	struct chipc_softc	*chipc_sc;
 	device_t		 chipc;
 	char			 desc[34];
 	int			 error;
+	uint32_t		 pcaps;
 	uint8_t			 rev;
 
 	sc = device_get_softc(dev);
@@ -78,21 +80,40 @@ bhnd_pmu_chipc_probe(device_t dev)
 	if (!ccaps->pmu)
 		return (ENXIO);
 
-	/* Defer to default driver implementation to fetch capabilities */
+	/* Delegate to common driver implementation */
 	if ((error = bhnd_pmu_probe(dev)) > 0)
 		return (error);
 
+	/* Fetch PMU capability flags */
+	chipc_sc = device_get_softc(chipc);
+	pcaps = bhnd_bus_read_4(chipc_sc->core, BHND_PMU_CAP);
+
 	/* Set description */
-	rev = BHND_PMU_GET_BITS(sc->caps, BHND_PMU_CAP_REV);
+	rev = BHND_PMU_GET_BITS(pcaps, BHND_PMU_CAP_REV);
 	snprintf(desc, sizeof(desc), "Broadcom ChipCommon PMU, rev %hhu", rev);
 	device_set_desc_copy(dev, desc);
 
 	return (BUS_PROBE_NOWILDCARD);
 }
 
+static int
+bhnd_pmu_chipc_attach(device_t dev)
+{
+	struct chipc_softc	*chipc_sc;
+	struct bhnd_resource	*r;
+
+	/* Fetch core registers from ChipCommon parent */
+	chipc_sc = device_get_softc(device_get_parent(dev));
+	r = chipc_sc->core;
+
+	return (bhnd_pmu_attach(dev, r));
+}
+
 static device_method_t bhnd_pmu_chipc_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,			bhnd_pmu_chipc_probe),
+	DEVMETHOD(device_attach,		bhnd_pmu_chipc_attach),
+
 	DEVMETHOD_END
 };
 

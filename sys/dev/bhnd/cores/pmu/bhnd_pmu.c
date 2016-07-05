@@ -50,49 +50,34 @@ __FBSDID("$FreeBSD$");
 /*
  * Broadcom PMU driver.
  * 
- * Abstract driver for Broadcom PMU devices.
+ * On modern BHND chipsets, the PMU, GCI, and SRENG (Save/Restore Engine?)
+ * register blocks are found within a dedicated PMU core (attached via
+ * the AHB 'always on bus').
+ * 
+ * On earlier chipsets, these register blocks are found at the same
+ * offsets within the ChipCommon core.
  */
 
 devclass_t bhnd_pmu_devclass;	/**< bhnd(4) PMU device class */
 
 /**
  * Default bhnd_pmu driver implementation of DEVICE_PROBE().
- * 
- * This implementation will read the PMU capability flags, initializing
- * the caps field in bhnd_pmu_softc.
  */
 int
 bhnd_pmu_probe(device_t dev)
 {
-	struct bhnd_pmu_softc	*sc;
-
-	sc = device_get_softc(dev);
-
-	/* Allocate register block */
-	sc->rid = 0;
-	sc->res = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY, &sc->rid,
-	    RF_ACTIVE);
-	if (sc->res == NULL) {
-		device_printf(dev, "failed to allocate resource\n");
-		return (ENXIO);
-	}
-
-	/* Fetch capability flags for use by subclassing drivers */
-	sc->caps = bhnd_bus_read_4(sc->res, BHND_PMU_CAP);
-
-	/* Clean up */
-	bhnd_release_resource(dev, SYS_RES_MEMORY, sc->rid, sc->res);
 	return (BUS_PROBE_DEFAULT);
 }
 
 /**
  * Default bhnd_pmu driver implementation of DEVICE_ATTACH().
  * 
- * Assumes the PMU register block is mapped via SYS_RES_MEMORY resource
- * with RID 0.
+ * @param dev PMU device.
+ * @param res The PMU device registers. The driver will maintain a borrowed
+ * reference to this resource for the lifetime of the device.
  */
 int
-bhnd_pmu_attach(device_t dev)
+bhnd_pmu_attach(device_t dev, struct bhnd_resource *res)
 {
 	struct bhnd_pmu_softc		*sc;
 	devclass_t			 bhnd_class;
@@ -101,6 +86,7 @@ bhnd_pmu_attach(device_t dev)
 	sc = device_get_softc(dev);
 	sc->dev = dev;
 	sc->quirks = 0;
+	sc->res = res;
 
 	/* Find the bus-attached core */
 	bhnd_class = devclass_find("bhnd");
@@ -126,15 +112,6 @@ bhnd_pmu_attach(device_t dev)
 		return (ENXIO);
 	}
 
-	/* Allocate register block resource */
-	sc->rid = 0;
-	sc->res = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY, &sc->rid,
-	    RF_ACTIVE);
-	if (sc->res == NULL) {
-		device_printf(dev, "failed to allocate resources\n");
-		return (ENXIO);
-	}
-
 	BPMU_LOCK_INIT(sc);
 
 	return (0);
@@ -150,7 +127,6 @@ bhnd_pmu_detach(device_t dev)
 
 	sc = device_get_softc(dev);
 
-	bhnd_release_resource(dev, SYS_RES_MEMORY, sc->rid, sc->res);
 	BPMU_LOCK_DESTROY(sc);
 
 	return (0);
@@ -177,7 +153,6 @@ bhnd_pmu_resume(device_t dev)
 static device_method_t bhnd_pmu_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,		bhnd_pmu_probe),
-	DEVMETHOD(device_attach,	bhnd_pmu_attach),
 	DEVMETHOD(device_detach,	bhnd_pmu_detach),
 	DEVMETHOD(device_suspend,	bhnd_pmu_suspend),
 	DEVMETHOD(device_resume,	bhnd_pmu_resume),

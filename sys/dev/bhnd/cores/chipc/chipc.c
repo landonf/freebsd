@@ -280,17 +280,6 @@ chipc_add_children(struct chipc_softc *sc)
 			device_printf(sc->dev, "failed to add pmu\n");
 			return (ENXIO);
 		}
-
-		/* Associate the applicable register block */
-		error = 0;
-		if (sc->caps.pmu) {
-			error = chipc_set_resource(sc, child, SYS_RES_MEMORY, 0,
-			    CHIPC_PMU_BASE, CHIPC_PMU_SIZE, 0, 0);
-		}
-
-		if (error)
-			return (error);
-		
 	}
 
 	/* All remaining devices are SoC-only */
