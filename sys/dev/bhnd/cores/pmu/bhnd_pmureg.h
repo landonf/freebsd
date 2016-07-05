@@ -28,9 +28,9 @@
 #define BHND_PMU_GET_FLAG(_value, _flag)	\
 	(((_value) & _flag) != 0)
 #define	BHND_PMU_GET_BITS(_value, _field)	\
-	((_value & _field ## _MASK) >> _field ## _SHIFT)
+	(((_value) & _field ## _MASK) >> _field ## _SHIFT)
 #define	BHND_PMU_SET_BITS(_value, _field)	\
-	((_value & _field ## _MASK) >> _field ## _SHIFT)
+	(((_value) & _field ## _MASK) >> _field ## _SHIFT)
 
 #define	BHND_PMU_ILP_CLOCK	32000		/**< default ILP freq */
 #define	BHND_PMU_ALP_CLOCK	20000000	/**< default ALP freq */
