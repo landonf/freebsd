@@ -83,9 +83,8 @@ extern void bhnd_pmu_spuravoid(struct bhnd_pmu_softc *sih, uint8_t spuravoid);
 extern bool bhnd_pmu_is_otp_powered(struct bhnd_pmu_softc *sih);
 extern uint32_t bhnd_pmu_measure_alpclk(struct bhnd_pmu_softc *sih);
 
-extern void bhnd_pmu_sprom_enable(struct bhnd_pmu_softc *sih, bool enable);
+extern void bhnd_pmu_radio_enable(struct bhnd_pmu_softc *sc, device_t d11core, bool enable);
 
-extern void bhnd_pmu_radio_enable(struct bhnd_pmu_softc *sih, bool enable);
 extern uint32_t bhnd_pmu_waitforclk_on_backplane(struct bhnd_pmu_softc *sih, uint32_t clk, uint32_t delay);
 
 extern int bhnd_pmu_otp_power(struct bhnd_pmu_softc *sih, bool on);

@@ -44,14 +44,6 @@ __FBSDID("$FreeBSD$");
 #define	PMU_ERROR(args)	printf args
 #endif
 
-// XXX TODO: implement or import
-static void
-si_write_wrapperreg(struct bhnd_pmu_softc *sc, bus_size_t offset,
-    uint32_t value)
-{
-	panic("unimplemented");
-}
-
 /* PLL controls/clocks */
 static void	bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal);
 static uint32_t	bhnd_pmu1_cpuclk0(struct bhnd_pmu_softc *sc);
@@ -2534,16 +2526,30 @@ bhnd_pmu_swreg_init(struct bhnd_pmu_softc *sc)
 }
 
 void
-bhnd_pmu_radio_enable(struct bhnd_pmu_softc *sc, bool enable)
+bhnd_pmu_radio_enable(struct bhnd_pmu_softc *sc, device_t d11core, bool enable)
 {
+	uint32_t oobsel;
+
+	if (bhnd_get_device(d11core) != BHND_COREID_D11)
+		panic("bhnd_pmu_radio_enable() called on non-D11 core");
+
 	switch (sc->cid.chip_id) {
 	case BHND_CHIPID_BCM4319:
-		if (enable)
-			si_write_wrapperreg(sc, BCMA_DMP_OOBSELOUTB74,
-			    0x868584);
-		else
-			si_write_wrapperreg(sc, BCMA_DMP_OOBSELOUTB74,
-			    0x060584);
+		oobsel = bhnd_read_config(d11core, BCMA_DMP_OOBSELOUTB74, 4);
+
+		if (enable) {
+			oobsel |= BHND_PMU_SET_BITS(BCMA_DMP_OOBSEL_EN,
+			    BCMA_DMP_OOBSEL_1);
+			oobsel |= BHND_PMU_SET_BITS(BCMA_DMP_OOBSEL_EN,
+			    BCMA_DMP_OOBSEL_2);
+		} else {
+			oobsel &= ~BHND_PMU_SET_BITS(BCMA_DMP_OOBSEL_EN,
+			    BCMA_DMP_OOBSEL_1);
+			oobsel &= ~BHND_PMU_SET_BITS(BCMA_DMP_OOBSEL_EN,
+			    BCMA_DMP_OOBSEL_2);
+		}
+
+		bhnd_write_config(d11core, BCMA_DMP_OOBSELOUTB74, oobsel, 4);
 		break;
 	}
 }
