@@ -288,6 +288,9 @@ bool				 bhnd_board_matches(
 bool				 bhnd_hwrev_matches(uint16_t hwrev,
 				     const struct bhnd_hwrev_match *desc);
 
+bool				 bhnd_flags_matches(uint32_t value,
+				     const struct bhnd_flags_match *desc);
+
 bool				 bhnd_device_matches(device_t dev,
 				     const struct bhnd_device_match *desc);
 

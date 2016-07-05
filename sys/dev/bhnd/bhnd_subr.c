@@ -547,6 +547,18 @@ bhnd_board_matches(const struct bhnd_board_info *board,
 	    !bhnd_hwrev_matches(board->board_rev, &desc->board_rev))
 		return (false);
 
+	if (desc->m.match.board_flags &&
+	    !bhnd_flags_matches(board->board_flags, &desc->board_flags))
+		return (false);
+
+	if (desc->m.match.board_flags2 &&
+	    !bhnd_flags_matches(board->board_flags2, &desc->board_flags2))
+		return (false);
+
+	if (desc->m.match.board_flags3 &&
+	    !bhnd_flags_matches(board->board_flags3, &desc->board_flags3))
+		return (false);
+
 	return (true);
 }
 
@@ -571,6 +583,24 @@ bhnd_hwrev_matches(uint16_t hwrev, const struct bhnd_hwrev_match *desc)
 		return false;
 
 	return true;
+}
+
+/**
+ * Return true if @p value match @p desc.
+ * 
+ * @param value Flags to match against.
+ * @param desc A match descriptor to compare against @p value.
+ * 
+ * @retval true if @p value matches @p desc
+ * @retval false if @p value does not match @p desc.
+ */
+bool
+bhnd_flags_matches(uint32_t value, const struct bhnd_flags_match *desc)
+{
+	if ((value & desc->mask) == (desc->value & desc->mask))
+		return (true);
+
+	return false;
 }
 
 /**

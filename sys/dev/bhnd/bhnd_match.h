@@ -92,6 +92,15 @@ struct bhnd_hwrev_match {
  */
 #define	BHND_HWREV_LTE(_end)	BHND_HWREV_RANGE(0, _end)
 
+
+/**
+ * A bit flag match descriptor.
+ */
+struct bhnd_flags_match {
+	uint32_t	value;	/**< required flag values */
+	uint32_t	mask;	/**< mask of flags to be compared. */
+};
+
 /**
  * A bhnd(4) core match descriptor.
  */
@@ -204,7 +213,10 @@ struct bhnd_board_match {
 			    board_type:1,
 			    board_rev:1,
 			    board_srom_rev:1,
-			    flags_unused:4;
+			    board_flags:1,
+			    board_flags2:1,
+			    board_flags3:1,
+			    flags_unused:1;
 		} match;
 	} m;
 
@@ -212,13 +224,19 @@ struct bhnd_board_match {
 	uint16_t		board_type;	/**< required board type */
 	struct bhnd_hwrev_match	board_rev;	/**< matching board revisions */
 	struct bhnd_hwrev_match	board_srom_rev;	/**< matching board srom revisions */
+	struct bhnd_flags_match	board_flags;	/**< matching board flags */
+	struct bhnd_flags_match	board_flags2;	/**< matching board flags 2 */
+	struct bhnd_flags_match	board_flags3;	/**< matching board flags 3 */
 };
 
 #define	_BHND_BOARD_MATCH_COPY(_src)			\
 	_BHND_COPY_MATCH_FIELD(_src, board_vendor),	\
 	_BHND_COPY_MATCH_FIELD(_src, board_type),	\
 	_BHND_COPY_MATCH_FIELD(_src, board_rev),	\
-	_BHND_COPY_MATCH_FIELD(_src, board_srom_rev)
+	_BHND_COPY_MATCH_FIELD(_src, board_srom_rev),	\
+	_BHND_COPY_MATCH_FIELD(_src, board_flags),	\
+	_BHND_COPY_MATCH_FIELD(_src, board_flags2),	\
+	_BHND_COPY_MATCH_FIELD(_src, board_flags3)
 
 /** Set the required board vendor within a bhnd match descriptor */
 #define	BHND_MATCH_BOARD_VENDOR(_v)	_BHND_SET_MATCH_FIELD(board_vendor, _v)
@@ -234,10 +252,21 @@ struct bhnd_board_match {
 #define	BHND_MATCH_BOARD_REV(_rev)	_BHND_SET_MATCH_FIELD(board_rev, \
 					    BHND_ ## _rev)
 
+/** Set the required board flags within a bhnd match descriptor */
+#define	BHND_MATCH_BOARD_FLAGS(_flags, _mask)	\
+	_BHND_SET_MATCH_FIELD(board_flags, { (_flags), (_mask) }
+
+/** Set the required board flags2 within a bhnd match descriptor */
+#define	BHND_MATCH_BOARD_FLAGS2(_flags, _mask)	\
+	_BHND_SET_MATCH_FIELD(board_flags2, { (_flags), (_mask) }
+
+/** Set the required board flags3 within a bhnd match descriptor */
+#define	BHND_MATCH_BOARD_FLAGS3(_flags, _mask)	\
+	_BHND_SET_MATCH_FIELD(board_flags3, { (_flags), (_mask) }
+
 /** Set the required board vendor and type within a bhnd match descriptor */
 #define	BHND_MATCH_BOARD(_vend, _type)	\
 	BHND_MATCH_BOARD_VENDOR(_vend), BHND_MATCH_BOARD_TYPE(_type)
-
 
 /**
  * A bhnd(4) device match descriptor.
@@ -248,9 +277,9 @@ struct bhnd_board_match {
 struct bhnd_device_match {
 	/** Select fields to be matched */
 	union {
-		uint16_t match_flags;
+		uint32_t match_flags;
 		struct {
-			uint16_t
+			uint32_t
 			core_vendor:1,
 			core_id:1,
 			core_rev:1,
@@ -263,7 +292,10 @@ struct bhnd_device_match {
 			board_type:1,
 			board_rev:1,
 			board_srom_rev:1,
-			flags_unused:2;
+			board_flags:1,
+			board_flags2:1,
+			board_flags3:1,
+			flags_unused:16;
 		} match;
 	} m;
 	
@@ -281,6 +313,9 @@ struct bhnd_device_match {
 	uint16_t		board_type;	/**< required board type */
 	struct bhnd_hwrev_match	board_rev;	/**< matching board revisions */
 	struct bhnd_hwrev_match	board_srom_rev;	/**< matching board srom revisions */
+	struct bhnd_flags_match	board_flags;	/**< matching board flags */
+	struct bhnd_flags_match	board_flags2;	/**< matching board flags2 */
+	struct bhnd_flags_match	board_flags3;	/**< matching board flags3 */
 };
 
 /** Define a wildcard match requirement (matches on any device). */
