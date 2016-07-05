@@ -24,6 +24,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/types.h>
 
 #include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/bhnd_core.h>
 #include <dev/bhnd/cores/chipc/chipc.h>
 #include <dev/bhnd/cores/chipc/chipcreg.h>
 
@@ -43,6 +44,26 @@ __FBSDID("$FreeBSD$");
 #define	PMU_MSG(args)
 #define	PMU_ERROR(args)	printf args
 #endif
+
+static uint32_t	bhnd_pmu_ind_read(struct bhnd_pmu_softc *sc, bus_size_t addr,
+		    bus_size_t data, uint32_t reg);
+static void	bhnd_pmu_ind_write(struct bhnd_pmu_softc *sc, bus_size_t addr,
+		    bus_size_t data, uint32_t reg, uint32_t val, uint32_t mask);
+
+static uint32_t	bhnd_pmu_cctrl_read(struct bhnd_pmu_softc *sc, uint32_t reg);
+static void	bhnd_pmu_cctrl_write(struct bhnd_pmu_softc *sc, uint32_t reg,
+		    uint32_t val, uint32_t mask);
+static uint32_t	bhnd_pmu_regctrl_read(struct bhnd_pmu_softc *sc, uint32_t reg);
+static void	bhnd_pmu_regctrl_write(struct bhnd_pmu_softc *sc, uint32_t reg,
+		    uint32_t val, uint32_t mask);
+static uint32_t	bhnd_pmu_pll_read(struct bhnd_pmu_softc *sc, uint32_t reg);
+static void	bhnd_pmu_pll_write(struct bhnd_pmu_softc *sc, uint32_t reg,
+		    uint32_t val, uint32_t mask);
+
+static void	bhnd_pmu_pllupd(struct bhnd_pmu_softc *sc);
+
+static bool	bhnd_pmu_wait_clkst(struct bhnd_pmu_softc *sc, uint32_t value,
+		    uint32_t mask);
 
 /* PLL controls/clocks */
 static void	bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal);
@@ -181,6 +202,29 @@ static void
 bhnd_pmu_pllupd(struct bhnd_pmu_softc *sc)
 {
 	BHND_PMU_OR_4(sc, BHND_PMU_CTRL, BHND_PMU_CTRL_PLL_PLLCTL_UPD);
+}
+
+/**
+ * Wait for up to BHND_PMU_MAX_TRANSITION_DLY microseconds for the per-core
+ * clock status to be equal to @p value after applying @p mask.
+ */
+static bool
+bhnd_pmu_wait_clkst(struct bhnd_pmu_softc *sc, uint32_t value, uint32_t mask)
+{
+	uint32_t clkst;
+
+	for (uint32_t i = 0; i < BHND_PMU_MAX_TRANSITION_DLY; i += 10) {
+		clkst = BHND_PMU_READ_4(sc, BHND_CLK_CTL_ST);
+		if ((clkst & mask) == value)
+			return (true);
+		
+		DELAY(10);
+	}
+
+	device_printf(sc->dev, "clkst wait timeout (value=%#x, "
+	    "mask=%#x)\n", value, mask);
+
+	return (false);
 }
 
 /* Setup switcher voltage */
@@ -1327,14 +1371,8 @@ bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 			~(PMURES_BIT(RES4329_BBPLL_PWRSW_PU) |
 			  PMURES_BIT(RES4329_HT_AVAIL)));
 
-		// XXX: need access to per-core clk_ctl_st register, or
-		// bhnd-level API for HT availability.
-#ifdef notyet
-		SPINWAIT(R_REG(&cc->clk_ctl_st) & CCS_HTAVAIL,
-			 PMU_MAX_TRANSITION_DLY);
-
-		ASSERT(!(R_REG(&cc->clk_ctl_st) & CCS_HTAVAIL));
-#endif
+		/* Wait for HT clock to shutdown. */
+		bhnd_pmu_wait_clkst(sc, 0, BHND_CCS_HTAVAIL);
 
 		/* Initialize PLL4 */
 		plladdr = BHND_PMU1_PLL0_PLLCTL4;
@@ -1388,13 +1426,8 @@ bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 
 		DELAY(100);
 
-		// XXX: need access to per-core clk_ctl_st register, or
-		// bhnd-level API for HT availability.
-#ifdef notyet
-		SPINWAIT(R_REG(&cc->clk_ctl_st) & CCS_HTAVAIL,
-			 PMU_MAX_TRANSITION_DLY);
-		ASSERT(!(R_REG(&cc->clk_ctl_st) & CCS_HTAVAIL));
-#endif
+		/* Wait for HT clock to shutdown. */
+		bhnd_pmu_wait_clkst(sc, 0, BHND_CCS_HTAVAIL);
 
 		plldata = 0x200005c0;
 		bhnd_pmu_pll_write(sc, BHND_PMU1_PLL0_PLLCTL4, plldata, ~0);
@@ -1408,13 +1441,10 @@ bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 			~(PMURES_BIT(RES4336_HT_AVAIL) |
 			  PMURES_BIT(RES4336_MACPHY_CLKAVAIL)));
 		DELAY(100);
-		// XXX: need access to per-core clk_ctl_st register, or
-		// bhnd-level API for HT availability.
-#ifdef notyet
-		SPINWAIT(R_REG(&cc->clk_ctl_st) & CCS_HTAVAIL,
-			 PMU_MAX_TRANSITION_DLY);
-		ASSERT(!(R_REG(&cc->clk_ctl_st) & CCS_HTAVAIL));
-#endif
+
+		/* Wait for HT clock to shutdown. */
+		bhnd_pmu_wait_clkst(sc, 0, BHND_CCS_HTAVAIL);
+
 		break;
 
 	case BHND_CHIPID_BCM4330:
@@ -1425,13 +1455,10 @@ bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 			~(PMURES_BIT(RES4330_HT_AVAIL) |
 			  PMURES_BIT(RES4330_MACPHY_CLKAVAIL)));
 		DELAY(100);
-		// XXX: need access to per-core clk_ctl_st register, or
-		// bhnd-level API for HT availability.
-#ifdef notyet
-		SPINWAIT(R_REG(&cc->clk_ctl_st) & CCS_HTAVAIL,
-			 PMU_MAX_TRANSITION_DLY);
-		ASSERT(!(R_REG(&cc->clk_ctl_st) & CCS_HTAVAIL));
-#endif
+
+		/* Wait for HT clock to shutdown. */
+		bhnd_pmu_wait_clkst(sc, 0, BHND_CCS_HTAVAIL);
+
 		break;
 
 	default:
@@ -2226,14 +2253,8 @@ bhnd_pmu_spuravoid(struct bhnd_pmu_softc *sc, uint8_t spuravoid)
 		BHND_PMU_AND_4(sc, BHND_PMU_MAX_RES_MASK,
 		    ~BHND_PMU_RES4336_HT_AVAIL);
 
-		// XXX: need access to per-core clk_ctl_st register, or
-		// bhnd-level API for HT availability.
-#ifdef notyet
 		/* wait for the ht to really go away */
-		SPINWAIT(((R_REG(&cc->clk_ctl_st) & CCS_HTAVAIL) == 0),
-			 10000);
-		ASSERT((R_REG(&cc->clk_ctl_st) & CCS_HTAVAIL) == 0);
-#endif
+		bhnd_pmu_wait_clkst(sc, 0, BHND_CCS_HTAVAIL);
 	}
 
 	/* update the pll changes */
