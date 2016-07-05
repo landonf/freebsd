@@ -117,6 +117,10 @@ bhnd_pmu_attach(device_t dev, struct bhnd_resource *res)
 
 	BPMU_LOCK_INIT(sc);
 
+	// XXX
+	bhnd_pmu_init(sc);
+	device_printf(sc->dev, "clk=%u\n", bhnd_pmu_cpu_clock(sc));
+
 	return (0);
 }
 
