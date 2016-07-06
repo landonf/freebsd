@@ -574,6 +574,9 @@ bhnd_pmu_res_depfltr_ncb(struct bhnd_pmu_softc *sc)
 {
 	struct bhnd_board_info	board;
 
+	if (sc->cid.chip_id == BHND_CHIPID_BCM4325 && sc->cid.chip_rev <= 1)
+		return (false);
+
 	if (bhnd_pmu_resfltr_board_info(sc, &board) != 0)
 		return (false);
 
