@@ -35,6 +35,8 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_pmureg.h"
 #include "bhnd_pmuvar.h"
 
+#include "bhnd_pmu_hwdata.h"
+
 #ifdef BCMDBG
 #define	PMU_MSG(args)	printf args
 #define	PMU_ERROR(args)	do {	\
@@ -321,7 +323,7 @@ bhnd_pmu_force_ilp(struct bhnd_pmu_softc *sc, bool force)
 	return (orig);
 }
 
-/* Setup resource up/down timers */
+/* Resource up/down timers */
 typedef struct {
 	uint8_t		resnum;
 	uint16_t	updown;
@@ -331,16 +333,11 @@ typedef bool (*pmu_res_filter) (struct bhnd_pmu_softc *sc);
 
 /* Change resource dependancies masks */
 typedef struct {
-	uint32_t	res_mask;	/* resources (chip specific) */
-	int8_t		action;		/* action */
-	uint32_t	depend_mask;	/* changes to the dependancies mask */
-	pmu_res_filter	filter;		/* action is taken when filter is NULL or returns true */
+	uint32_t		res_mask;	/* resources (chip specific) */
+	bhnd_pmu_res_depend_op	action;		/* action */
+	uint32_t		depend_mask;	/* changes to the dependancies mask */
+	pmu_res_filter		filter;		/* action is taken when filter is NULL or returns true */
 } pmu_res_depend_t;
-
-/* Resource dependancies mask change action */
-#define	RES_DEPEND_SET		0	/* Override the dependancies mask */
-#define	RES_DEPEND_ADD		1	/* Add to the  dependancies mask */
-#define	RES_DEPEND_REMOVE	-1	/* Remove from the dependancies mask */
 
 static const pmu_res_updown_t bcm4328a0_res_updown[] = {
 	{
@@ -370,7 +367,7 @@ static const pmu_res_depend_t bcm4328a0_res_depend[] = {
 	/* Adjust ILP request resource not to force ext/BB switchers into burst mode */
 	{
 	PMURES_BIT(RES4328_ILP_REQUEST),
-		    RES_DEPEND_SET,
+		    BHND_PMU_DEPEND_SET,
 		    PMURES_BIT(RES4328_EXT_SWITCHER_PWM) |
 		    PMURES_BIT(RES4328_BB_SWITCHER_PWM), NULL}
 };
@@ -384,18 +381,18 @@ static const pmu_res_depend_t bcm4325a0_res_depend[] = {
 	/* Adjust OTP PU resource dependencies - remove BB BURST */
 	{
 	PMURES_BIT(RES4325_OTP_PU),
-		    RES_DEPEND_REMOVE,
+		    BHND_PMU_DEPEND_REMOVE,
 		    PMURES_BIT(RES4325_BUCK_BOOST_BURST), NULL},
 	/* Adjust ALP/HT Avail resource dependencies - bring up BB along if it is used. */
 	{
 	PMURES_BIT(RES4325_ALP_AVAIL) | PMURES_BIT(RES4325_HT_AVAIL),
-		    RES_DEPEND_ADD,
+		    BHND_PMU_DEPEND_ADD,
 		    PMURES_BIT(RES4325_BUCK_BOOST_BURST) |
 		    PMURES_BIT(RES4325_BUCK_BOOST_PWM), bhnd_pmu_res_depfltr_bb},
 	/* Adjust HT Avail resource dependencies - bring up RF switches along with HT. */
 	{
 	PMURES_BIT(RES4325_HT_AVAIL),
-		    RES_DEPEND_ADD,
+		    BHND_PMU_DEPEND_ADD,
 		    PMURES_BIT(RES4325_RX_PWRSW_PU) |
 		    PMURES_BIT(RES4325_TX_PWRSW_PU) |
 		    PMURES_BIT(RES4325_LOGEN_PWRSW_PU) |
@@ -415,7 +412,7 @@ static const pmu_res_depend_t bcm4325a0_res_depend[] = {
 		    PMURES_BIT(RES4325_LOGEN_PWRSW_PU) |
 		    PMURES_BIT(RES4325_AFE_PWRSW_PU) |
 		    PMURES_BIT(RES4325_BBPLL_PWRSW_PU) |
-		    PMURES_BIT(RES4325_HT_AVAIL), RES_DEPEND_REMOVE,
+		    PMURES_BIT(RES4325_HT_AVAIL), BHND_PMU_DEPEND_REMOVE,
 		    PMURES_BIT(RES4325B0_CBUCK_LPOM) |
 		    PMURES_BIT(RES4325B0_CBUCK_BURST) |
 		    PMURES_BIT(RES4325B0_CBUCK_PWM), bhnd_pmu_res_depfltr_ncb}
@@ -430,17 +427,17 @@ static const pmu_res_depend_t bcm4315a0_res_depend[] = {
 	/* Adjust OTP PU resource dependencies - not need PALDO unless write */
 	{
 	PMURES_BIT(RES4315_OTP_PU),
-		    RES_DEPEND_REMOVE,
+		    BHND_PMU_DEPEND_REMOVE,
 		    PMURES_BIT(RES4315_PALDO_PU), bhnd_pmu_res_depfltr_npaldo},
 	/* Adjust ALP/HT Avail resource dependencies - bring up PALDO along if it is used. */
 	{
 	PMURES_BIT(RES4315_ALP_AVAIL) | PMURES_BIT(RES4315_HT_AVAIL),
-		    RES_DEPEND_ADD,
+		    BHND_PMU_DEPEND_ADD,
 		    PMURES_BIT(RES4315_PALDO_PU), bhnd_pmu_res_depfltr_paldo},
 	/* Adjust HT Avail resource dependencies - bring up RF switches along with HT. */
 	{
 	PMURES_BIT(RES4315_HT_AVAIL),
-		    RES_DEPEND_ADD,
+		    BHND_PMU_DEPEND_ADD,
 		    PMURES_BIT(RES4315_RX_PWRSW_PU) |
 		    PMURES_BIT(RES4315_TX_PWRSW_PU) |
 		    PMURES_BIT(RES4315_LOGEN_PWRSW_PU) |
@@ -459,7 +456,7 @@ static const pmu_res_depend_t bcm4315a0_res_depend[] = {
 		    PMURES_BIT(RES4315_LOGEN_PWRSW_PU) |
 		    PMURES_BIT(RES4315_AFE_PWRSW_PU) |
 		    PMURES_BIT(RES4315_BBPLL_PWRSW_PU) |
-		    PMURES_BIT(RES4315_HT_AVAIL), RES_DEPEND_REMOVE,
+		    PMURES_BIT(RES4315_HT_AVAIL), BHND_PMU_DEPEND_REMOVE,
 		    PMURES_BIT(RES4315_CBUCK_LPOM) |
 		    PMURES_BIT(RES4315_CBUCK_BURST) |
 		    PMURES_BIT(RES4315_CBUCK_PWM), bhnd_pmu_res_depfltr_ncb}
@@ -475,7 +472,7 @@ static const pmu_res_depend_t bcm4329_res_depend[] = {
 	/* Adjust HT Avail resource dependencies */
 	{
 	PMURES_BIT(RES4329_HT_AVAIL),
-		    RES_DEPEND_ADD,
+		    BHND_PMU_DEPEND_ADD,
 		    PMURES_BIT(RES4329_CBUCK_LPOM) |
 		    PMURES_BIT(RES4329_CBUCK_BURST) |
 		    PMURES_BIT(RES4329_CBUCK_PWM) |
@@ -501,17 +498,17 @@ static const pmu_res_depend_t bcm4319a0_res_depend[] = {
 	/* Adjust OTP PU resource dependencies - not need PALDO unless write */
 	{
 	PMURES_BIT(RES4319_OTP_PU),
-		    RES_DEPEND_REMOVE,
+		    BHND_PMU_DEPEND_REMOVE,
 		    PMURES_BIT(RES4319_PALDO_PU), bhnd_pmu_res_depfltr_npaldo},
 	    /* Adjust HT Avail resource dependencies - bring up PALDO along if it is used. */
 	{
 	PMURES_BIT(RES4319_HT_AVAIL),
-		    RES_DEPEND_ADD,
+		    BHND_PMU_DEPEND_ADD,
 		    PMURES_BIT(RES4319_PALDO_PU), bhnd_pmu_res_depfltr_paldo},
 	    /* Adjust HT Avail resource dependencies - bring up RF switches along with HT. */
 	{
 	PMURES_BIT(RES4319_HT_AVAIL),
-		    RES_DEPEND_ADD,
+		    BHND_PMU_DEPEND_ADD,
 		    PMURES_BIT(RES4319_RX_PWRSW_PU) |
 		    PMURES_BIT(RES4319_TX_PWRSW_PU) |
 		    PMURES_BIT(RES4319_RFPLL_PWRSW_PU) |
@@ -527,7 +524,7 @@ static const pmu_res_updown_t bcm4336a0_res_updown[] = {
 static const pmu_res_depend_t bcm4336a0_res_depend[] = {
 	/* Just a dummy entry for now */
 	{
-	PMURES_BIT(RES4336_RSVD), RES_DEPEND_ADD, 0, NULL}
+	PMURES_BIT(RES4336_RSVD), BHND_PMU_DEPEND_ADD, 0, NULL}
 };
 
 static const pmu_res_updown_t bcm4330a0_res_updown[] = {
@@ -538,7 +535,7 @@ static const pmu_res_updown_t bcm4330a0_res_updown[] = {
 static const pmu_res_depend_t bcm4330a0_res_depend[] = {
 	/* Just a dummy entry for now */
 	{
-	PMURES_BIT(RES4330_HT_AVAIL), RES_DEPEND_ADD, 0, NULL}
+	PMURES_BIT(RES4330_HT_AVAIL), BHND_PMU_DEPEND_ADD, 0, NULL}
 };
 
 static int
@@ -850,20 +847,20 @@ void bhnd_pmu_res_init(struct bhnd_pmu_softc *sc)
 			depend_mask = BHND_PMU_READ_4(sc,
 			    BHND_PMU_RES_DEP_MASK);
 			switch (rdep->action) {
-			case RES_DEPEND_SET:
+			case BHND_PMU_DEPEND_SET:
 				PMU_MSG(("Changing rsrc %hhu res_dep_mask to "
 				    "%#x\n", i, table->depend_mask));
 				depend_mask = rdep->depend_mask;
 				break;
 
-			case RES_DEPEND_ADD:
+			case BHND_PMU_DEPEND_ADD:
 				PMU_MSG(("Adding %#x to rsrc %hhu "
 				    "res_dep_mask\n", table->depend_mask, i));
 
 				depend_mask |= rdep->depend_mask;
 				break;
 
-			case RES_DEPEND_REMOVE:
+			case BHND_PMU_DEPEND_REMOVE:
 				PMU_MSG(("Removing %#x from rsrc %hhu "
 				    "res_dep_mask\n", table->depend_mask, i));
 
