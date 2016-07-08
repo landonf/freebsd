@@ -79,9 +79,10 @@ bhnd_pmu_probe(device_t dev)
 int
 bhnd_pmu_attach(device_t dev, struct bhnd_resource *res)
 {
-	struct bhnd_pmu_softc		*sc;
-	devclass_t			 bhnd_class;
-	device_t			 core, bus;
+	struct bhnd_pmu_softc	*sc;
+	devclass_t		 bhnd_class;
+	device_t		 core, bus;
+	int			 error;
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
@@ -106,10 +107,17 @@ bhnd_pmu_attach(device_t dev, struct bhnd_resource *res)
 		return (ENXIO);
 	}
 
-	/* Initialize bus-dependent state */
+	/* Fetch chip and board info */
 	sc->cid = *bhnd_get_chipid(core);
-	sc->chipc_dev = bhnd_find_child(bus, BHND_DEVCLASS_CC, 0);
 
+	if ((error = bhnd_read_board_info(core, &sc->board))) {
+		device_printf(sc->dev, "error fetching board info: %d\n",
+		    error);
+		return (ENXIO);
+	}
+
+	/* Locate ChipCommon device */
+	sc->chipc_dev = bhnd_find_child(bus, BHND_DEVCLASS_CC, 0);
 	if (sc->chipc_dev == NULL) {
 		device_printf(sc->dev, "chipcommon device not found\n");
 		return (ENXIO);

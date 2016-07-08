@@ -110,6 +110,7 @@ struct bhnd_pmu_softc {
 	uint32_t		 caps;		/**< pmu capability flags. */
 
 	struct bhnd_chipid	 cid;		/**< chip identification */
+	struct bhnd_board_info	 board;		/**< board identification */
 	device_t		 chipc_dev;	/**< chipcommon device */
 
 	struct bhnd_resource	*res;		/**< pmu register block. */

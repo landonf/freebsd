@@ -541,33 +541,12 @@ static const pmu_res_depend_t bcm4330a0_res_depend[] = {
 	PMURES_BIT(RES4330_HT_AVAIL), RES_DEPEND_ADD, 0, NULL}
 };
 
-static int
-bhnd_pmu_resfltr_board_info(struct bhnd_pmu_softc *sc,
-    struct bhnd_board_info *board)
-{
-	int error;
-
-	/* Fetch board info */
-	if ((error = bhnd_read_board_info(sc->dev, board))) {
-		device_printf(sc->dev, "error fetching board flags, PMU "
-		    "configuration will likely be incorrect: %d\n", error);
-		return (error);
-	}
-
-	return (0);
-}
-
 /* true if the power topology uses the buck boost to provide 3.3V to VDDIO_RF
  * and WLAN PA */
 static bool
 bhnd_pmu_res_depfltr_bb(struct bhnd_pmu_softc *sc)
 {	
-	struct bhnd_board_info	board;
-
-	if (bhnd_pmu_resfltr_board_info(sc, &board) != 0)
-		return (false);
-
-	return (BHND_PMU_GET_FLAG(board.board_flags, BHND_BFL_BUCKBOOST));
+	return (BHND_PMU_GET_FLAG(sc->board.board_flags, BHND_BFL_BUCKBOOST));
 }
 
 /* true if the power topology doesn't use the cbuck. Key on chiprev also if
@@ -575,39 +554,24 @@ bhnd_pmu_res_depfltr_bb(struct bhnd_pmu_softc *sc)
 static bool
 bhnd_pmu_res_depfltr_ncb(struct bhnd_pmu_softc *sc)
 {
-	struct bhnd_board_info	board;
-
 	if (sc->cid.chip_id == BHND_CHIPID_BCM4325 && sc->cid.chip_rev <= 1)
 		return (false);
 
-	if (bhnd_pmu_resfltr_board_info(sc, &board) != 0)
-		return (false);
-
-	return (BHND_PMU_GET_FLAG(board.board_flags, BHND_BFL_NOCBUCK));
+	return (BHND_PMU_GET_FLAG(sc->board.board_flags, BHND_BFL_NOCBUCK));
 }
 
 /* true if the power topology uses the PALDO */
 static bool
 bhnd_pmu_res_depfltr_paldo(struct bhnd_pmu_softc *sc)
 {
-	struct bhnd_board_info	board;
-
-	if (bhnd_pmu_resfltr_board_info(sc, &board) != 0)
-		return (false);
-
-	return (BHND_PMU_GET_FLAG(board.board_flags, BHND_BFL_PALDO));
+	return (BHND_PMU_GET_FLAG(sc->board.board_flags, BHND_BFL_PALDO));
 }
 
 /* true if the power topology doesn't use the PALDO */
 static bool
 bhnd_pmu_res_depfltr_npaldo(struct bhnd_pmu_softc *sc)
 {
-	struct bhnd_board_info	board;
-
-	if (bhnd_pmu_resfltr_board_info(sc, &board) != 0)
-		return (false);
-
-	return (!BHND_PMU_GET_FLAG(board.board_flags, BHND_BFL_PALDO));	
+	return (!BHND_PMU_GET_FLAG(sc->board.board_flags, BHND_BFL_PALDO));	
 }
 
 /* Determine min/max rsrc masks. Value 0 leaves hardware at default. */
