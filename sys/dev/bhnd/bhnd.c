@@ -403,7 +403,7 @@ bhnd_find_chipc(struct bhnd_softc *sc)
 		return (NULL);
 
 found:
-	if (!device_is_attached(chipc)) {
+	if (device_get_state(chipc) < DS_ATTACHING) {
 		device_printf(sc->dev, "chipc found, but did not attach\n");
 		return (NULL);
 	}
@@ -463,7 +463,7 @@ bhnd_find_platform_dev(struct bhnd_softc *sc, const char *classname)
 		return (NULL);
 
 found:
-	if (!device_is_attached(child))
+	if (device_get_state(child) < DS_ATTACHING)
 		return (NULL);
 
 	return (child);
@@ -483,7 +483,7 @@ bhnd_find_pmu(struct bhnd_softc *sc)
 		if (sc->pmu_dev == NULL)
 			return (NULL);
 
-		if (!device_is_attached(sc->pmu_dev))
+		if (!device_get_state(sc->pmu_dev) < DS_ATTACHING)
 			return (NULL);
 
 		return (sc->pmu_dev);
@@ -513,7 +513,7 @@ bhnd_find_nvram(struct bhnd_softc *sc)
 		if (sc->nvram_dev == NULL)
 			return (NULL);
 
-		if (!device_is_attached(sc->nvram_dev))
+		if (!device_get_state(sc->nvram_dev) < DS_ATTACHING)
 			return (NULL);
 
 		return (sc->nvram_dev);
