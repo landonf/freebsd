@@ -134,5 +134,5 @@ DEFINE_CLASS_1(bhnd_pmu, bhnd_pmucore_driver, bhnd_pmucore_methods,
 EARLY_DRIVER_MODULE(bhnd_pmu, bhnd, bhnd_pmucore_driver, bhnd_pmu_devclass,
     NULL, NULL, BUS_PASS_TIMER + BUS_PASS_ORDER_MIDDLE);
 
-MODULE_DEPEND(bhnd_pmu, bhnd, 1, 1, 1);
-MODULE_VERSION(bhnd_pmu, 1);
+MODULE_DEPEND(bhnd_pmu_core, bhnd_pmu, 1, 1, 1);
+MODULE_VERSION(bhnd_pmu_core, 1);
