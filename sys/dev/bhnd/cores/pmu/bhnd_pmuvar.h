@@ -45,56 +45,6 @@ int	bhnd_pmu_detach(device_t dev);
 int	bhnd_pmu_suspend(device_t dev);
 int	bhnd_pmu_resume(device_t dev);
 
-// XXX begin needs cleanup
-
-struct bhnd_pmu_softc;
-
-#define SET_LDO_VOLTAGE_LDO1	1
-#define SET_LDO_VOLTAGE_LDO2	2
-#define SET_LDO_VOLTAGE_LDO3	3
-#define SET_LDO_VOLTAGE_PAREF	4
-#define SET_LDO_VOLTAGE_CLDO_PWM	5
-#define SET_LDO_VOLTAGE_CLDO_BURST	6
-#define SET_LDO_VOLTAGE_CBUCK_PWM	7
-#define SET_LDO_VOLTAGE_CBUCK_BURST	8
-#define SET_LDO_VOLTAGE_LNLDO1	9
-#define SET_LDO_VOLTAGE_LNLDO2_SEL	10
-
-extern void bhnd_pmu_init(struct bhnd_pmu_softc *sih);
-extern void bhnd_pmu_chip_init(struct bhnd_pmu_softc *sih);
-extern void bhnd_pmu_pll_init(struct bhnd_pmu_softc *sih, uint32_t xtalfreq);
-extern void bhnd_pmu_res_init(struct bhnd_pmu_softc *sih);
-extern void bhnd_pmu_swreg_init(struct bhnd_pmu_softc *sih);
-
-extern uint32_t bhnd_pmu_force_ilp(struct bhnd_pmu_softc *sih, bool force);
-
-extern uint32_t bhnd_pmu_si_clock(struct bhnd_pmu_softc *sih);
-extern uint32_t bhnd_pmu_cpu_clock(struct bhnd_pmu_softc *sih);
-extern uint32_t bhnd_pmu_mem_clock(struct bhnd_pmu_softc *sih);
-extern uint32_t bhnd_pmu_alp_clock(struct bhnd_pmu_softc *sih);
-extern uint32_t bhnd_pmu_ilp_clock(struct bhnd_pmu_softc *sih);
-
-extern void bhnd_pmu_set_switcher_voltage(struct bhnd_pmu_softc *sih,
-					uint8_t bb_voltage, uint8_t rf_voltage);
-extern void bhnd_pmu_set_ldo_voltage(struct bhnd_pmu_softc *sih, uint8_t ldo, uint8_t voltage);
-extern uint16_t bhnd_pmu_fast_pwrup_delay(struct bhnd_pmu_softc *sih);
-extern void bhnd_pmu_rcal(struct bhnd_pmu_softc *sih);
-extern void bhnd_pmu_spuravoid(struct bhnd_pmu_softc *sih, uint8_t spuravoid);
-
-extern bool bhnd_pmu_is_otp_powered(struct bhnd_pmu_softc *sih);
-extern uint32_t bhnd_pmu_measure_alpclk(struct bhnd_pmu_softc *sih);
-
-extern void bhnd_pmu_radio_enable(struct bhnd_pmu_softc *sc, device_t d11core, bool enable);
-
-extern uint32_t bhnd_pmu_waitforclk_on_backplane(struct bhnd_pmu_softc *sih, uint32_t clk, uint32_t delay);
-
-extern int bhnd_pmu_otp_power(struct bhnd_pmu_softc *sih, bool on);
-extern void bhnd_pmu_sdiod_drive_strength_init(struct bhnd_pmu_softc *sih, uint32_t drivestrength);
-
-extern void bhnd_pmu_paref_ldo_enable(struct bhnd_pmu_softc *sc, bool enable);
-
-// XXX end needs cleanup
-
 /* 
  * BHND PMU device quirks / features
  */

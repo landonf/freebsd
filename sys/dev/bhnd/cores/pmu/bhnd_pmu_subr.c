@@ -1,4 +1,4 @@
-/*
+/*-
  * Copyright (c) 2016 Landon Fuller <landonf@FreeBSD.org>
  * Copyright (C) 2010, Broadcom Corporation.
  * All rights reserved.
@@ -36,6 +36,8 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_pmureg.h"
 #include "bhnd_pmuvar.h"
+
+#include "bhnd_pmu_private.h"
 
 #ifdef BCMDBG
 #define	PMU_MSG(args)	printf args
@@ -78,12 +80,6 @@ static void	bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc,
 		    uint8_t spuravoid);
 
 static void	bhnd_pmu_set_4330_plldivs(struct bhnd_pmu_softc *sc);
-
-/* FVCO frequency */
-#define	FVCO_880	880000	/* 880MHz */
-#define	FVCO_1760	1760000	/* 1760MHz */
-#define	FVCO_1440	1440000	/* 1440MHz */
-#define	FVCO_960	960000	/* 960MHz */
 
 #define	BHND_PMU_READ_1(_sc, _reg)	bhnd_bus_read_1((_sc)->res, (_reg))
 #define	BHND_PMU_READ_2(_sc, _reg)	bhnd_bus_read_2((_sc)->res, (_reg))

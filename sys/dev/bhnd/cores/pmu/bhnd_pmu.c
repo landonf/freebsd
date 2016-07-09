@@ -47,6 +47,8 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_pmureg.h"
 #include "bhnd_pmuvar.h"
 
+#include "bhnd_pmu_private.h"
+
 /*
  * Broadcom PMU driver.
  * 
