@@ -3291,7 +3291,7 @@ bhnd_pmu_measure_alpclk(struct bhnd_pmu_softc *sc)
 	if (pmu_st & BHND_PMU_ST_EXTLPOAVAIL) {
 		uint32_t alp_hz, ilp_ctr;
 
-		/* Enable the reg to measure the freq, in case disabled before */
+		/* Enable frequency measurement */
 		BHND_PMU_WRITE_4(sc, BHND_PMU_XTALFREQ, 1U <<
 		    BHND_PMU_XTALFREQ_REG_MEASURE_SHIFT);
 
@@ -3303,13 +3303,13 @@ bhnd_pmu_measure_alpclk(struct bhnd_pmu_softc *sc)
 		ilp_ctr = BHND_PMU_GET_BITS(ilp_ctr,
 		    BHND_PMU_XTALFREQ_REG_ILPCTR);
 
-		/* Turn off the PMU_XTALFREQ_REG_MEASURE_SHIFT bit to save power */
+		/* Turn off PMU_XTALFREQ_REG_MEASURE to save power */
 		BHND_PMU_WRITE_4(sc, BHND_PMU_XTALFREQ, 0);
 
 		/* Calculate ALP frequency */
 		alp_hz = (ilp_ctr * EXT_ILP_HZ) / 4;
 
-		/* Round to nearest 100KHz, and at the same time convert to KHz */
+		/* Round to nearest 100KHz and convert to KHz */
 		alp_khz = (alp_hz + 50000) / 100000 * 100;
 	} else {
 		alp_khz = 0;
