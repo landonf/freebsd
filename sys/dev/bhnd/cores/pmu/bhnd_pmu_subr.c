@@ -1,14 +1,16 @@
 /*
  * Copyright (c) 2016 Landon Fuller <landonf@FreeBSD.org>
- * Copyright (c) 2010 Broadcom Corporation
- * 
- * This file was initially derived from Broadcom's initial brcm80211 Linux
- * driver release of hndpmu.c, as contributed to the Linux staging repository.
+ * Copyright (C) 2010, Broadcom Corporation.
+ * All rights reserved.
+ *
+ * This file is derived from the hndpmu.c source contributed by Broadcom 
+ * to to the Linux staging repository, as well as later revisions of hndpmu.c
+ * distributed with the Asus RT-N16 firmware source code release.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
  * copyright notice and this permission notice appear in all copies.
- *
+ * 
  * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
  * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
  * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
@@ -54,6 +56,10 @@ static bool	bhnd_pmu_wait_clkst(struct bhnd_pmu_softc *sc, uint32_t value,
 		    uint32_t mask);
 
 /* PLL controls/clocks */
+static void	bhnd_pmu0_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal);
+static uint32_t	bhnd_pmu0_cpuclk0(struct bhnd_pmu_softc *sc);
+static uint32_t	bhnd_pmu0_alpclk0(struct bhnd_pmu_softc *sc);
+
 static void	bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal);
 static uint32_t	bhnd_pmu1_cpuclk0(struct bhnd_pmu_softc *sc);
 static uint32_t	bhnd_pmu1_alpclk0(struct bhnd_pmu_softc *sc);
@@ -195,12 +201,95 @@ void
 bhnd_pmu_set_ldo_voltage(struct bhnd_pmu_softc *sc, uint8_t ldo,
     uint8_t voltage)
 {
+	uint32_t	chipst;
 	uint32_t	regctrl;
 	uint8_t		shift;
 	uint8_t		mask;
 	uint8_t		addr;
 
 	switch (sc->cid.chip_id) {
+	case BHND_CHIPID_BCM4328:
+	case BHND_CHIPID_BCM5354:
+		switch (ldo) {
+		case SET_LDO_VOLTAGE_LDO1:
+			addr = 2;
+			shift = 17 + 8;
+			mask = 0xf;
+			break;
+		case SET_LDO_VOLTAGE_LDO2:
+			addr = 3;
+			shift = 1;
+			mask = 0xf;
+			break;
+		case SET_LDO_VOLTAGE_LDO3:
+			addr = 3;
+			shift = 9;
+			mask = 0xf;
+			break;
+		case SET_LDO_VOLTAGE_PAREF:
+			addr = 3;
+			shift = 17;
+			mask = 0x3f;
+			break;
+		default:
+			panic("unknown BCM4328/BCM5354 LDO %hhu\n", ldo);
+		}
+		break;
+	case BHND_CHIPID_BCM4312:
+		switch (ldo) {
+		case SET_LDO_VOLTAGE_PAREF:
+			addr = 0;
+			shift = 21;
+			mask = 0x3f;
+			break;
+		default:
+			panic("unknown BCM4312 LDO %hhu\n", ldo);
+		}
+		break;
+	case BHND_CHIPID_BCM4325:
+		switch (ldo) {
+		case SET_LDO_VOLTAGE_CLDO_PWM:
+			addr = 5;
+			shift = 9;
+			mask = 0xf;
+			break;
+		case SET_LDO_VOLTAGE_CLDO_BURST:
+			addr = 5;
+			shift = 13;
+			mask = 0xf;
+			break;
+		case SET_LDO_VOLTAGE_CBUCK_PWM:
+			addr = 3;
+			shift = 20;
+			mask = 0x1f;
+			/* Bit 116 & 119 are inverted in CLB for opt 2b */
+			chipst = BHND_CHIPC_READ_CHIPST(sc->chipc_dev);
+			if (BHND_PMU_GET_BITS(chipst, CHIPC_CST4325_PMUTOP_2B))
+				voltage ^= 0x9;
+			break;
+		case SET_LDO_VOLTAGE_CBUCK_BURST:
+			addr = 3;
+			shift = 25;
+			mask = 0x1f;
+			/* Bit 121 & 124 are inverted in CLB for opt 2b */
+			chipst = BHND_CHIPC_READ_CHIPST(sc->chipc_dev);
+			if (BHND_PMU_GET_BITS(chipst, CHIPC_CST4325_PMUTOP_2B))
+				voltage ^= 0x9;
+			break;
+		case SET_LDO_VOLTAGE_LNLDO1:
+			addr = 5;
+			shift = 17;
+			mask = 0x1f;
+			break;
+		case SET_LDO_VOLTAGE_LNLDO2_SEL:
+			addr = 6;
+			shift = 0;
+			mask = 0x1;
+			break;
+		default:
+			panic("unknown BCM4325 LDO %hhu\n", ldo);
+		}
+		break;
 	case BHND_CHIPID_BCM4336:
 		switch (ldo) {
 		case SET_LDO_VOLTAGE_CLDO_PWM:
@@ -220,7 +309,6 @@ bhnd_pmu_set_ldo_voltage(struct bhnd_pmu_softc *sc, uint8_t ldo,
 			break;
 		default:
 			panic("unknown BCM4336 LDO %hhu\n", ldo);
-			return;
 		}
 		break;
 	case BHND_CHIPID_BCM4330:
@@ -232,7 +320,17 @@ bhnd_pmu_set_ldo_voltage(struct bhnd_pmu_softc *sc, uint8_t ldo,
 			break;
 		default:
 			panic("unknown BCM4330 LDO %hhu\n", ldo);
+		}
+		break;
+	case BHND_CHIPID_BCM4331:
+		switch (ldo) {
+		case  SET_LDO_VOLTAGE_PAREF:
+			addr = 1;
+			shift = 0;
+			mask = 0xf;
 			break;
+		default:
+			panic("unknown BCM4331 LDO %hhu\n", ldo);
 		}
 		break;
 	default:
@@ -267,6 +365,14 @@ bhnd_pmu_fast_pwrup_delay(struct bhnd_pmu_softc *sc)
 	case BHND_CHIPID_BCM6362:
 	case BHND_CHIPID_BCM4313:
 		delay = 3700;
+		break;
+	case BHND_CHIPID_BCM4325:
+		ilp = bhnd_pmu_ilp_clock(sc);
+		delay =
+			(bhnd_pmu_res_uptime(sc, BHND_PMU_RES4325_HT_AVAIL) +
+			D11SCC_SLOW2FAST_TRANSITION) * ((1000000 + ilp -
+							1) / ilp);
+		delay = (11 * delay) / 10;
 		break;
 	case BHND_CHIPID_BCM4329:
 		ilp = bhnd_pmu_ilp_clock(sc);
@@ -579,7 +685,8 @@ static void
 bhnd_pmu_res_masks(struct bhnd_pmu_softc *sc, uint32_t *pmin, uint32_t *pmax)
 {
 	uint32_t	max_mask, min_mask;
-	uint32_t	val;
+	uint32_t	chipst, otpsel;
+	uint32_t	nval;
 	uint8_t		rsrcs;
 	int		error;
 
@@ -591,26 +698,123 @@ bhnd_pmu_res_masks(struct bhnd_pmu_softc *sc, uint32_t *pmin, uint32_t *pmax)
 
 	/* determine min/max rsrc masks */
 	switch (sc->cid.chip_id) {
+	case BHND_CHIPID_BCM4325:		
+		/* If used by this device, enable the CBUCK */
+		if (!bhnd_pmu_res_depfltr_ncb(sc))
+			min_mask |= PMURES_BIT(RES4325B0_CBUCK_LPOM);
+		
+		chipst = BHND_CHIPC_READ_CHIPST(sc->chipc_dev);
+		if (BHND_PMU_GET_BITS(chipst, CHIPC_CST4325_PMUTOP_2B))
+			min_mask |= PMURES_BIT(RES4325B0_CLDO_PU);
+
+		/* Is OTP required? */
+		otpsel = BHND_PMU_GET_BITS(chipst, CHIPC_CST4325_SPROM_OTP_SEL);
+		if (otpsel != CHIPC_CST_OTP_PWRDN)
+			min_mask |= PMURES_BIT(RES4325_OTP_PU);
+
+		/* Leave buck boost on in burst mode for certain boards */
+		if (sc->board.board_flags & BHND_BFL_BUCKBOOST) {
+			switch (sc->board.board_type) {
+			case BHND_BOARD_BCM94325DEVBU:
+			case BHND_BOARD_BCM94325BGABU:
+				min_mask |= PMURES_BIT(
+				    RES4325_BUCK_BOOST_BURST);
+				break;
+			}
+		}
+		
+		/* Allow all resources to be turned on upon requests */
+		max_mask = ~(~0 << rsrcs);
+		break;
+
+	case BHND_CHIPID_BCM4312:
+		/* default min_mask = 0x80000cbb is wrong */
+		min_mask = 0xcbb;
+		/*
+		 * max_mask = 0x7fff;
+		 * pmu_res_updown_table_sz = 0;
+		 * pmu_res_depend_table_sz = 0;
+		 */
+		break;
+
+	case BHND_CHIPID_BCM4322:
+	case BHND_CHIPID_BCM43221:
+	case BHND_CHIPID_BCM43231:
+	case BHND_CHIPID_BCM4342:
+		if (sc->cid.chip_rev >= 2)
+			break;
+	
+		/* request ALP(can skip for A1) */
+		min_mask = PMURES_BIT(RES4322_RF_LDO) |
+			   PMURES_BIT(RES4322_XTAL_PU) |
+			   PMURES_BIT(RES4322_ALP_AVAIL);
+
+		if (bhnd_get_attach_type(sc->chipc_dev) == BHND_ATTACH_NATIVE) {
+			min_mask |=
+			    PMURES_BIT(RES4322_SI_PLL_ON) |
+			    PMURES_BIT(RES4322_HT_SI_AVAIL) |
+			    PMURES_BIT(RES4322_PHY_PLL_ON) |
+			    PMURES_BIT(RES4322_OTP_PU) |
+			    PMURES_BIT(RES4322_HT_PHY_AVAIL);
+			max_mask = 0x1ff;
+		}
+		break;
+
+	case BHND_CHIPID_BCM43222:
+	case BHND_CHIPID_BCM43111:
+	case BHND_CHIPID_BCM43112:
 	case BHND_CHIPID_BCM43224:
 	case BHND_CHIPID_BCM43225:
 	case BHND_CHIPID_BCM43421:
+	case BHND_CHIPID_BCM43226:
+	case BHND_CHIPID_BCM43420:
 	case BHND_CHIPID_BCM43235:
 	case BHND_CHIPID_BCM43236:
 	case BHND_CHIPID_BCM43238:
+	case BHND_CHIPID_BCM43234:
+	case BHND_CHIPID_BCM43237:
 	case BHND_CHIPID_BCM4331:
+	case BHND_CHIPID_BCM43431:
 	case BHND_CHIPID_BCM6362:
-		/* ??? */
+		/* use chip default */
+		break;
+
+	case BHND_CHIPID_BCM4328:
+		min_mask =
+		    PMURES_BIT(RES4328_BB_SWITCHER_PWM) |
+		    PMURES_BIT(RES4328_EXT_SWITCHER_PWM) |
+		    PMURES_BIT(RES4328_XTAL_EN);
+		max_mask = 0xfffffff;
+		break;
+
+	case BHND_CHIPID_BCM5354:
+		/* Allow (but don't require) PLL to turn on */
+		max_mask = 0xfffffff;
 		break;
 
 	case BHND_CHIPID_BCM4329:
-		/* 4329 spedific issue. Needs to come back this issue later */
 		/* Down to save the power. */
-		min_mask =
-		    PMURES_BIT(RES4329_CBUCK_LPOM) |
-		    PMURES_BIT(RES4329_CLDO_PU);
+		if (sc->cid.chip_rev >= 0x2) {
+			min_mask =
+			    PMURES_BIT(RES4329_CBUCK_LPOM) |
+			    PMURES_BIT(RES4329_LNLDO1_PU) | 
+			    PMURES_BIT(RES4329_CLDO_PU);
+		} else {
+			min_mask =
+			    PMURES_BIT(RES4329_CBUCK_LPOM) |
+			    PMURES_BIT(RES4329_CLDO_PU);
+		}
+
+		/* Is OTP required? */
+		chipst = BHND_CHIPC_READ_CHIPST(sc->chipc_dev);
+		otpsel = BHND_PMU_GET_BITS(chipst, CHIPC_CST4329_SPROM_OTP_SEL);
+		if (otpsel != CHIPC_CST_OTP_PWRDN)
+			min_mask |= PMURES_BIT(RES4329_OTP_PU);
+
 		/* Allow (but don't require) PLL to turn on */
 		max_mask = 0x3ff63e;
 		break;
+
 	case BHND_CHIPID_BCM4319:
 		/* We only need a few resources to be kept on all the time */
 		min_mask = PMURES_BIT(RES4319_CBUCK_LPOM) |
@@ -619,12 +823,15 @@ bhnd_pmu_res_masks(struct bhnd_pmu_softc *sc, uint32_t *pmin, uint32_t *pmax)
 		/* Allow everything else to be turned on upon requests */
 		max_mask = ~(~0 << rsrcs);
 		break;
+
 	case BHND_CHIPID_BCM4336:
 		/* Down to save the power. */
 		min_mask =
-		    PMURES_BIT(RES4336_CBUCK_LPOM) | PMURES_BIT(RES4336_CLDO_PU)
-		    | PMURES_BIT(RES4336_LDO3P3_PU) | PMURES_BIT(RES4336_OTP_PU)
-		    | PMURES_BIT(RES4336_DIS_INT_RESET_PD);
+		    PMURES_BIT(RES4336_CBUCK_LPOM) |
+		    PMURES_BIT(RES4336_CLDO_PU) |
+		    PMURES_BIT(RES4336_LDO3P3_PU) |
+		    PMURES_BIT(RES4336_OTP_PU) |
+		    PMURES_BIT(RES4336_DIS_INT_RESET_PD);
 		/* Allow (but don't require) PLL to turn on */
 		max_mask = 0x1ffffff;
 		break;
@@ -651,17 +858,17 @@ bhnd_pmu_res_masks(struct bhnd_pmu_softc *sc, uint32_t *pmin, uint32_t *pmax)
 	}
 
 	/* Apply nvram override to min mask */
-	error = bhnd_nvram_getvar(sc->dev, BHND_NVAR_RMIN, &val, sizeof(val));
+	error = bhnd_nvram_getvar(sc->dev, BHND_NVAR_RMIN, &nval, sizeof(nval));
 	if (error == 0) {
-		PMU_MSG(("Applying rmin=%#x to min_mask\n", val));
-		min_mask = val;
+		PMU_MSG(("Applying rmin=%#x to min_mask\n", nval));
+		min_mask = nval;
 	}
 
 	/* Apply nvram override to max mask */
-	error = bhnd_nvram_getvar(sc->dev, BHND_NVAR_RMAX, &val, sizeof(val));
+	error = bhnd_nvram_getvar(sc->dev, BHND_NVAR_RMAX, &nval, sizeof(nval));
 	if (error == 0) {
-		PMU_MSG(("Applying rmax=%#x to max_mask\n", val));
-		min_mask = val;
+		PMU_MSG(("Applying rmax=%#x to max_mask\n", nval));
+		min_mask = nval;
 	}
 
 	if (pmin != NULL)
@@ -884,10 +1091,6 @@ void bhnd_pmu_res_init(struct bhnd_pmu_softc *sc)
 	DELAY(2000);
 }
 
-/* Requires missing implementation of PMU0 PLL initialization
- * for these devices */
-#if defined(BHND_PMU0_BCM4328) || defined(BHND_PMU0_BCM5354)
-
 /* setup pll and query clock speed */
 typedef struct {
 	uint16_t	freq;
@@ -917,8 +1120,6 @@ static const pmu0_xtaltab0_t pmu0_xtaltab0[] = {
 };
 
 #define	PMU0_XTAL0_DEFAULT	8
-
-#endif /* BHND_PMU0_BCM4328 || BHND_PMU0_BCM5354 */
 
 /* setup pll and query clock speed */
 typedef struct {
@@ -1224,22 +1425,207 @@ bhnd_pmu1_alpclk0(struct bhnd_pmu_softc *sc)
 	return (xt->fref * 1000);
 }
 
-/* Set up PLL registers in the PMU as per the crystal speed.
- * XtalFreq field in pmucontrol register being 0 indicates the PLL
- * is not programmed and the h/w default is assumed to work, in which
- * case the xtal frequency is unknown to the s/w so we need to call
- * bhnd_pmu1_xtaldef0() wherever it is needed to return a default value.
- */
+/* Set up PLL registers in the PMU as per the crystal speed. */
+static void
+bhnd_pmu0_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
+{
+	const pmu0_xtaltab0_t	*xt;
+	uint32_t		 pll_data, pll_mask;
+	uint32_t		 pll_res;
+	uint32_t		 pmu_ctrl;
+	uint32_t		 xf;
+
+	/* Use h/w default PLL config */
+	if (xtal == 0) {
+		PMU_MSG(("Unspecified xtal frequency, skipping PLL "
+		    "configuration\n"));
+		return;
+	}
+
+	/* Find the frequency in the table */
+	for (xt = pmu0_xtaltab0; xt->freq; xt ++) {
+		if (xt->freq == xtal)
+			break;
+	}
+
+	if (xt->freq == 0)
+		xt = &pmu0_xtaltab0[PMU0_XTAL0_DEFAULT];
+
+	PMU_MSG(("XTAL %d.%d MHz (%d)\n", xtal / 1000, xtal % 1000, xt->xf));
+
+	/* Check current PLL state */
+	pmu_ctrl = BHND_PMU_READ_4(sc, BHND_PMU_CTRL);
+	xf = BHND_PMU_GET_BITS(pmu_ctrl, BHND_PMU_CTRL_XTALFREQ);
+	if (xf == xt->xf) {
+#ifdef BCMUSBDEV
+		if (sc->cid.chip_id == BHND_CHIPID_BCM4328) {
+			bhnd_pmu0_sbclk4328(sc,
+			    BHND_PMU0_PLL0_PC0_DIV_ARM_88MHZ);
+			return;
+		}
+#endif	/* BCMUSBDEV */
+
+		PMU_MSG(("PLL already programmed for %d.%d MHz\n",
+		         xt->freq / 1000, xt->freq % 1000));
+		return;
+	}
+
+	if (xf != 0) {
+		PMU_MSG(("Reprogramming PLL for %d.%d MHz (was %d.%dMHz)\n",
+		    xt->freq / 1000, xt->freq % 1000,
+		    pmu0_xtaltab0[tmp-1].freq / 1000, 
+		    pmu0_xtaltab0[tmp-1].freq % 1000));
+	} else {
+		PMU_MSG(("Programming PLL for %d.%d MHz\n",
+		    xt->freq / 1000, xt->freq % 1000));
+	}
+
+	/* Make sure the PLL is off */
+	switch (sc->cid.chip_id) {
+	case BHND_CHIPID_BCM4328:
+		pll_res = PMURES_BIT(RES4328_BB_PLL_PU);
+		break;
+	case BHND_CHIPID_BCM5354:
+		pll_res = PMURES_BIT(RES5354_BB_PLL_PU);
+		break;
+	default:
+		panic("unsupported chipid %#hx\n", sc->cid.chip_id);
+	}
+	BHND_PMU_AND_4(sc, BHND_PMU_MIN_RES_MASK, ~pll_res);
+	BHND_PMU_AND_4(sc, BHND_PMU_MAX_RES_MASK, ~pll_res);
+
+	/* Wait for HT clock to shutdown. */
+	bhnd_pmu_wait_clkst(sc, 0, BHND_CCS0_HTAVAIL);
+
+	PMU_MSG(("Done masking\n"));
+
+	/* Write PDIV in pllcontrol[0] */
+	if (xt->freq >= BHND_PMU0_PLL0_PC0_PDIV_FREQ) {
+		BHND_PMU_PLL_WRITE(sc, BHND_PMU0_PLL0_PLLCTL0,
+		    BHND_PMU0_PLL0_PC0_PDIV_MASK, BHND_PMU0_PLL0_PC0_PDIV_MASK);
+	} else {
+		BHND_PMU_PLL_WRITE(sc, BHND_PMU0_PLL0_PLLCTL0, 0,
+		    BHND_PMU0_PLL0_PC0_PDIV_MASK);
+	}
+
+	/* Write WILD in pllcontrol[1] */
+	pll_data =
+	    BHND_PMU_SET_BITS(xt->wbint, BHND_PMU0_PLL0_PC1_WILD_INT) |
+	    BHND_PMU_SET_BITS(xt->wbfrac, BHND_PMU0_PLL0_PC1_WILD_FRAC);
+
+	if (xt->wbfrac == 0) {
+		pll_data |= BHND_PMU0_PLL0_PC1_STOP_MOD;
+	} else {
+		pll_data &= ~BHND_PMU0_PLL0_PC1_STOP_MOD;
+	}
+	
+	pll_mask = 
+	    BHND_PMU0_PLL0_PC1_WILD_INT_MASK |
+	    BHND_PMU0_PLL0_PC1_WILD_FRAC_MASK;
+
+	BHND_PMU_PLL_WRITE(sc, BHND_PMU0_PLL0_PLLCTL1, pll_data, pll_mask);
+
+	/* Write WILD in pllcontrol[2] */
+	pll_data = BHND_PMU_SET_BITS(xt->wbint, BHND_PMU0_PLL0_PC2_WILD_INT);
+	pll_mask = BHND_PMU0_PLL0_PC2_WILD_INT_MASK;
+	BHND_PMU_PLL_WRITE(sc, BHND_PMU0_PLL0_PLLCTL2, pll_data, pll_mask);
+
+	PMU_MSG(("Done pll\n"));
+
+	/* Write XtalFreq. Set the divisor also. */
+	pmu_ctrl = BHND_PMU_READ_4(sc, BHND_PMU_CTRL);
+	pmu_ctrl &= ~(BHND_PMU_CTRL_ILP_DIV_MASK|BHND_PMU_CTRL_XTALFREQ_MASK);
+
+	pmu_ctrl |= BHND_PMU_SET_BITS(((xt->freq + 127) / 128) - 1,
+	    BHND_PMU_CTRL_ILP_DIV);
+	pmu_ctrl |= BHND_PMU_SET_BITS(xt->xf, BHND_PMU_CTRL_XTALFREQ);
+
+	BHND_PMU_WRITE_4(sc, BHND_PMU_CTRL, pmu_ctrl);
+}
+
+/* query alp/xtal clock frequency */
+static uint32_t
+bhnd_pmu0_alpclk0(struct bhnd_pmu_softc *sc)
+{
+	const pmu0_xtaltab0_t	*xt;
+	uint32_t		 xf;
+
+	/* Find the frequency in the table */
+	xf = BHND_PMU_READ_4(sc, BHND_PMU_CTRL);
+	xf = BHND_PMU_GET_BITS(xf, BHND_PMU_CTRL_XTALFREQ);
+	for (xt = pmu0_xtaltab0; xt->freq; xt++)
+		if (xt->xf == xf)
+			break;
+
+	/* PLL must be configured before */
+	if (xt == NULL || xt->freq == 0)
+		panic("unsupported frequency: %u", xf);
+
+	return (xt->freq * 1000);
+}
+
+/* query CPU clock frequency */
+static uint32_t
+bhnd_pmu0_cpuclk0(struct bhnd_pmu_softc *sc)
+{
+	uint32_t tmp, divarm;
+	uint32_t FVCO;
+#ifdef BCMDBG
+	uint32_t pdiv, wbint, wbfrac, fvco;
+	uint32_t freq;
+#endif
+
+	FVCO = FVCO_880;
+
+	/* Read divarm from pllcontrol[0] */
+	tmp = BHND_PMU_PLL_READ(sc, BHND_PMU0_PLL0_PLLCTL0);
+	divarm = BHND_PMU_GET_BITS(tmp, BHND_PMU0_PLL0_PC0_DIV_ARM);
+
+#ifdef BCMDBG
+	/* Calculate fvco based on xtal freq, pdiv, and wild */
+	pdiv = tmp & BHND_PMU0_PLL0_PC0_PDIV_MASK;
+
+	tmp = BHND_PMU_PLL_READ(sc, BHND_PMU0_PLL0_PLLCTL1);
+	wbfrac = BHND_PMU_GET_BITS(tmp, BHND_PMU0_PLL0_PC1_WILD_FRAC);
+	wbint = BHND_PMU_GET_BITS(tmp, PMU0_PLL0_PC1_WILD_INT);
+
+	tmp = BHND_PMU_PLL_READ(sc, BHND_PMU0_PLL0_PLLCTL2);
+	wbint += BHND_PMU_GET_BITS(tmp, BHND_PMU0_PLL0_PC2_WILD_INT);
+
+	freq = bhnd_pmu0_alpclk0(sih, osh, cc) / 1000;
+
+	fvco = (freq * wbint) << 8;
+	fvco += (freq * (wbfrac >> 10)) >> 2;
+	fvco += (freq * (wbfrac & 0x3ff)) >> 10;
+	fvco >>= 8;
+	fvco >>= pdiv;
+	fvco /= 1000;
+	fvco *= 1000;
+
+	PMU_MSG(("bhnd_pmu0_cpuclk0: wbint %u wbfrac %u fvco %u\n",
+	         wbint, wbfrac, fvco));
+
+	FVCO = fvco;
+#endif	/* BCMDBG */
+
+	/* Return ARM/SB clock */
+	return FVCO / (divarm + BHND_PMU0_PLL0_PC0_DIV_ARM_BASE) * 1000;
+}
+
+
+
+/* Set up PLL registers in the PMU as per the crystal speed. */
 static void
 bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 {
 	const pmu1_xtaltab0_t		*xt;
 	uint32_t			 buf_strength;
-	uint32_t			 plladdr, plldata;
+	uint32_t			 plladdr, plldata, pllmask;
 	uint32_t			 pmuctrl;
+	uint32_t			 FVCO;
 	uint8_t				 ndiv_mode;
-	
 
+	FVCO = bhnd_pmu1_pllfvco0(sc) / 1000;
 	buf_strength = 0;
 	ndiv_mode = 1;
 
@@ -1282,6 +1668,21 @@ bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 		 xt->fref % 1000));
 
 	switch (sc->cid.chip_id) {
+	case BHND_CHIPID_BCM4325:
+		/* Change the BBPLL drive strength to 2 for all channels */
+		buf_strength = 0x222222;
+
+		BHND_PMU_AND_4(sc, BHND_PMU_MIN_RES_MASK,
+			~(PMURES_BIT(RES4325_BBPLL_PWRSW_PU) |
+			  PMURES_BIT(RES4325_HT_AVAIL)));
+		BHND_PMU_AND_4(sc, BHND_PMU_MAX_RES_MASK,
+			~(PMURES_BIT(RES4325_BBPLL_PWRSW_PU) |
+			  PMURES_BIT(RES4325_HT_AVAIL)));
+
+		/* Wait for HT clock to shutdown. */
+		bhnd_pmu_wait_clkst(sc, 0, BHND_CCS_HTAVAIL);
+		break;
+
 	case BHND_CHIPID_BCM4329:
 		/* Change the BBPLL drive strength to 8 for all channels */
 		buf_strength = 0x888888;
@@ -1389,12 +1790,23 @@ bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 
 	PMU_MSG(("Done masking\n"));
 
-	/* Write p1div and p2div to pllcontrol[0] */	
-	BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL0,
+	/* Write p1div and p2div to pllcontrol[0] */
+	plldata = 
 	    BHND_PMU_SET_BITS(xt->p1div, BHND_PMU1_PLL0_PC0_P1DIV) |
-	    BHND_PMU_SET_BITS(xt->p2div, BHND_PMU1_PLL0_PC0_P2DIV),
-	    BHND_PMU1_PLL0_PC0_P1DIV_MASK |
-	    BHND_PMU1_PLL0_PC0_P2DIV_MASK);
+	    BHND_PMU_SET_BITS(xt->p2div, BHND_PMU1_PLL0_PC0_P2DIV);
+	pllmask = BHND_PMU1_PLL0_PC0_P1DIV_MASK|BHND_PMU1_PLL0_PC0_P2DIV_MASK;
+
+	if (sc->cid.chip_id == BHND_CHIPID_BCM4319) {
+		plldata &= ~(BHND_PMU1_PLL0_PC0_BYPASS_SDMOD_MASK);
+		pllmask |= BHND_PMU1_PLL0_PC0_BYPASS_SDMOD_MASK;
+		if (!xt->ndiv_frac) {
+			plldata |= BHND_PMU_SET_BITS(1,
+			    BHND_PMU1_PLL0_PC0_BYPASS_SDMOD);
+		}
+	}
+
+	BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL0, plldata, pllmask);
+
 
 	if (sc->cid.chip_id == BHND_CHIPID_BCM4330)
 		bhnd_pmu_set_4330_plldivs(sc);
@@ -1406,12 +1818,19 @@ bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 	}
 
 	/* Write ndiv_int and ndiv_mode to pllcontrol[2] */
-	if (sc->cid.chip_id == BHND_CHIPID_BCM4319 ||
-	    sc->cid.chip_id == BHND_CHIPID_BCM4336 ||
+	if (sc->cid.chip_id == BHND_CHIPID_BCM4336 ||
 	    sc->cid.chip_id == BHND_CHIPID_BCM4330)
+	{
 		ndiv_mode = BHND_PMU1_PLL0_PC2_NDIV_MODE_MFB;
-	else
+	} else if (sc->cid.chip_id == BHND_CHIPID_BCM4319) {
+		if (!(xt->ndiv_frac))
+			ndiv_mode = BHND_PMU1_PLL0_PC2_NDIV_MODE_INT;
+		else
+			ndiv_mode = BHND_PMU1_PLL0_PC2_NDIV_MODE_MFB;
+	} else {
 		ndiv_mode = BHND_PMU1_PLL0_PC2_NDIV_MODE_MASH;
+	}
+	
 
 	BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL2,
 	    BHND_PMU_SET_BITS(xt->ndiv_int, BHND_PMU1_PLL0_PC2_NDIV_INT) |
@@ -1424,6 +1843,25 @@ bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 	    BHND_PMU_SET_BITS(xt->ndiv_frac, BHND_PMU1_PLL0_PC3_NDIV_FRAC),
 	    BHND_PMU1_PLL0_PC3_NDIV_FRAC_MASK);
 
+	/* Writing to pllcontrol[4]  */
+	if (sc->cid.chip_id == BHND_CHIPID_BCM4319) {
+		uint8_t xs;
+
+		if (!xt->ndiv_frac)
+		        plldata = 0x200005c0;
+		else
+		        plldata = 0x202C2820;
+
+		if (FVCO < 1600)
+			xs = 4;
+		else
+		        xs = 7;
+
+		plldata &= ~(BHND_PMU1_PLL0_PC4_KVCO_XS_MASK);
+		plldata |= BHND_PMU_SET_BITS(xs, BHND_PMU1_PLL0_PC4_KVCO_XS);
+		BHND_PMU_WRITE_4(sc, BHND_PMU1_PLL0_PLLCTL4, plldata);
+	}
+
 	/* Write clock driving strength to pllcontrol[5] */
 	if (buf_strength) {
 		PMU_MSG(("Adjusting PLL buffer drive strength: %x\n",
@@ -1431,9 +1869,29 @@ bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 
 		plldata = BHND_PMU_SET_BITS(buf_strength,
 		    BHND_PMU1_PLL0_PC5_CLK_DRV);
+		pllmask = BHND_PMU1_PLL0_PC5_CLK_DRV_MASK;
+
+		if (sc->cid.chip_id == BHND_CHIPID_BCM4319) {
+			pllmask |=
+			    BHND_PMU1_PLL0_PC5_VCO_RNG_MASK |
+			    BHND_PMU1_PLL0_PC5_PLL_CTRL_37_32_MASK;
+
+			if (!xt->ndiv_frac) {
+				plldata |= BHND_PMU_SET_BITS(0x25,
+				    BHND_PMU1_PLL0_PC5_PLL_CTRL_37_32);
+			} else {
+				plldata |= BHND_PMU_SET_BITS(0x15,
+				    BHND_PMU1_PLL0_PC5_PLL_CTRL_37_32);
+			}
+
+			if (FVCO >= 1600) {
+				plldata |= BHND_PMU_SET_BITS(0x1,
+				    BHND_PMU1_PLL0_PC5_VCO_RNG);
+			}
+		}
 
 		BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL5, plldata,
-		    BHND_PMU1_PLL0_PC5_CLK_DRV_MASK);
+		    pllmask);
 	}
 
 	PMU_MSG(("Done pll\n"));
@@ -1536,23 +1994,88 @@ bhnd_pmu1_cpuclk0(struct bhnd_pmu_softc *sc)
 void 
 bhnd_pmu_pll_init(struct bhnd_pmu_softc *sc, u_int xtalfreq)
 {
+	uint32_t max_mask, min_mask;
+	uint32_t res_ht, res_pll;
+
 	switch (sc->cid.chip_id) {
+	case BHND_CHIPID_BCM4312:
+		/* assume default works */
+		break;
+	case BHND_CHIPID_BCM4322:
+	case BHND_CHIPID_BCM43221:
+	case BHND_CHIPID_BCM43231:
+	case BHND_CHIPID_BCM4342:
+		if (sc->cid.chip_rev != 0)
+			break;
+
+		min_mask = BHND_PMU_READ_4(sc, BHND_PMU_MIN_RES_MASK);
+		max_mask = BHND_PMU_READ_4(sc, BHND_PMU_MIN_RES_MASK);
+		res_ht = PMURES_BIT(RES4322_HT_SI_AVAIL);
+		res_pll = PMURES_BIT(RES4322_SI_PLL_ON);
+
+		/* Have to remove HT Avail request before powering off PLL */
+		BHND_PMU_AND_4(sc, BHND_PMU_MIN_RES_MASK, ~res_ht);
+		BHND_PMU_AND_4(sc, BHND_PMU_MAX_RES_MASK, ~res_ht);
+		bhnd_pmu_wait_clkst(sc, 0, BHND_CCS_HTAVAIL);
+
+		/* Make sure the PLL is off */
+		BHND_PMU_AND_4(sc, BHND_PMU_MIN_RES_MASK, ~res_pll);
+		BHND_PMU_AND_4(sc, BHND_PMU_MAX_RES_MASK, ~res_pll);
+		bhnd_pmu_wait_clkst(sc, 0, BHND_CCS_HTAVAIL);
+
+		DELAY(1000);
+
+		BHND_PMU_PLL_WRITE(sc, BHND_PMU2_SI_PLL_PLLCTL, 0x380005c0, ~0);
+		DELAY(100);
+
+		BHND_PMU_WRITE_4(sc, BHND_PMU_MAX_RES_MASK, max_mask);
+		DELAY(100);
+		BHND_PMU_WRITE_4(sc, BHND_PMU_MIN_RES_MASK, min_mask);
+		DELAY(100);
+
+		break;
+	case BHND_CHIPID_BCM4325:
+		bhnd_pmu1_pllinit0(sc, xtalfreq);
+		break;
+	case BHND_CHIPID_BCM4328:
+		bhnd_pmu0_pllinit0(sc, xtalfreq);
+		break;
+	case BHND_CHIPID_BCM5354:
+		if (xtalfreq == 0)
+			xtalfreq = 25000;
+		bhnd_pmu0_pllinit0(sc, xtalfreq);
+		break;
 	case BHND_CHIPID_BCM4329:
 		if (xtalfreq == 0)
 			xtalfreq = 38400;
 		bhnd_pmu1_pllinit0(sc, xtalfreq);
 		break;
+
 	case BHND_CHIPID_BCM4313:
+	case BHND_CHIPID_BCM43222:
+	case BHND_CHIPID_BCM43111:
+	case BHND_CHIPID_BCM43112:
 	case BHND_CHIPID_BCM43224:
 	case BHND_CHIPID_BCM43225:
+	case BHND_CHIPID_BCM43420:
 	case BHND_CHIPID_BCM43421:
+	case BHND_CHIPID_BCM43226:
 	case BHND_CHIPID_BCM43235:
 	case BHND_CHIPID_BCM43236:
 	case BHND_CHIPID_BCM43238:
+	case BHND_CHIPID_BCM43234:
+	case BHND_CHIPID_BCM43237:
 	case BHND_CHIPID_BCM4331:
+	case BHND_CHIPID_BCM43431:
+	case BHND_CHIPID_BCM43131:
+	case BHND_CHIPID_BCM43227:
+	case BHND_CHIPID_BCM43228:
+	case BHND_CHIPID_BCM43428:
 	case BHND_CHIPID_BCM6362:
-		/* ??? */
+		/* assume default works */
 		break;
+
+	case BHND_CHIPID_BCM4315:
 	case BHND_CHIPID_BCM4319:
 	case BHND_CHIPID_BCM4336:
 	case BHND_CHIPID_BCM4330:
@@ -1573,29 +2096,51 @@ bhnd_pmu_alp_clock(struct bhnd_pmu_softc *sc)
 
 	clock = BHND_PMU_ALP_CLOCK;
 	switch (sc->cid.chip_id) {
+	case BHND_CHIPID_BCM4315:
+	case BHND_CHIPID_BCM4319:
+	case BHND_CHIPID_BCM4325:
+	case BHND_CHIPID_BCM4329:
+	case BHND_CHIPID_BCM4330:
+	case BHND_CHIPID_BCM4336:
+		clock = bhnd_pmu1_alpclk0(sc);
+		break;
+	case BHND_CHIPID_BCM4312:
+	case BHND_CHIPID_BCM4322:
+	case BHND_CHIPID_BCM43221:
+	case BHND_CHIPID_BCM43231:
+	case BHND_CHIPID_BCM43222:
+	case BHND_CHIPID_BCM43111:
+	case BHND_CHIPID_BCM43112:
 	case BHND_CHIPID_BCM43224:
 	case BHND_CHIPID_BCM43225:
+	case BHND_CHIPID_BCM43420:
 	case BHND_CHIPID_BCM43421:
+	case BHND_CHIPID_BCM43226:
 	case BHND_CHIPID_BCM43235:
 	case BHND_CHIPID_BCM43236:
 	case BHND_CHIPID_BCM43238:
+	case BHND_CHIPID_BCM43234:
+	case BHND_CHIPID_BCM43237:
 	case BHND_CHIPID_BCM4331:
+	case BHND_CHIPID_BCM43431:
+	case BHND_CHIPID_BCM43131:
+	case BHND_CHIPID_BCM43227:
+	case BHND_CHIPID_BCM43228:
+	case BHND_CHIPID_BCM43428:
 	case BHND_CHIPID_BCM6362:
+	case BHND_CHIPID_BCM4342:
 	case BHND_CHIPID_BCM4716:
 	case BHND_CHIPID_BCM4748:
 	case BHND_CHIPID_BCM47162:
 	case BHND_CHIPID_BCM4313:
 	case BHND_CHIPID_BCM5357:
+	case BHND_CHIPID_BCM4749:
+	case BHND_CHIPID_BCM53572:
 		/* always 20Mhz */
 		clock = 20000 * 1000;
 		break;
-	case BHND_CHIPID_BCM4329:
-	case BHND_CHIPID_BCM4319:
-	case BHND_CHIPID_BCM4336:
-	case BHND_CHIPID_BCM4330:
-		clock = bhnd_pmu1_alpclk0(sc);
-		break;
 	case BHND_CHIPID_BCM5356:
+	case BHND_CHIPID_BCM4706:
 		/* always 25Mhz */
 		clock = 25000 * 1000;
 		break;
@@ -1633,7 +2178,9 @@ bhnd_pmu5_clock(struct bhnd_pmu_softc *sc, u_int pll0, u_int m)
 		return (0);
 	}
 
-	if (sc->cid.chip_id == BHND_CHIPID_BCM5357) {
+	if (sc->cid.chip_id == BHND_CHIPID_BCM5357 ||
+	    sc->cid.chip_id == BHND_CHIPID_BCM4749)
+	{
 		/* Detect failure in clock setting */
 		tmp = BHND_CHIPC_READ_CHIPST(sc->chipc_dev);
 		if ((tmp & 0x40000) != 0)
@@ -1691,11 +2238,21 @@ bhnd_pmu_si_clock(struct bhnd_pmu_softc *sc)
 	clock = BHND_PMU_HT_CLOCK;
 
 	switch (sc->cid.chip_id) {
+	case BHND_CHIPID_BCM4322:
+	case BHND_CHIPID_BCM43221:
+	case BHND_CHIPID_BCM43231:
+	case BHND_CHIPID_BCM43222:
+	case BHND_CHIPID_BCM43111:
+	case BHND_CHIPID_BCM43112:
 	case BHND_CHIPID_BCM43224:
+	case BHND_CHIPID_BCM43420:
 	case BHND_CHIPID_BCM43225:
 	case BHND_CHIPID_BCM43421:
+	case BHND_CHIPID_BCM43226:
 	case BHND_CHIPID_BCM4331:
+	case BHND_CHIPID_BCM43431:
 	case BHND_CHIPID_BCM6362:
+	case BHND_CHIPID_BCM4342:
 		/* 96MHz backplane clock */
 		clock = 96000 * 1000;
 		break;
@@ -1707,6 +2264,14 @@ bhnd_pmu_si_clock(struct bhnd_pmu_softc *sc)
 		    BHND_PMU5_MAINPLL_SI);
 		break;
 
+	case BHND_CHIPID_BCM4325:
+		clock = bhnd_pmu1_cpuclk0(sc);
+		break;
+
+	case BHND_CHIPID_BCM4328:
+		clock = bhnd_pmu0_cpuclk0(sc);
+		break;
+
 	case BHND_CHIPID_BCM4329:
 		if (sc->cid.chip_rev == 0)
 			clock = 38400 * 1000;
@@ -1714,6 +2279,7 @@ bhnd_pmu_si_clock(struct bhnd_pmu_softc *sc)
 			clock = bhnd_pmu1_cpuclk0(sc);
 		break;
 
+	case BHND_CHIPID_BCM4315:
 	case BHND_CHIPID_BCM4319:
 	case BHND_CHIPID_BCM4336:
 	case BHND_CHIPID_BCM4330:
@@ -1725,6 +2291,7 @@ bhnd_pmu_si_clock(struct bhnd_pmu_softc *sc)
 		clock = 80000 * 1000;
 		break;
 
+	case BHND_CHIPID_BCM43234:
 	case BHND_CHIPID_BCM43235:
 	case BHND_CHIPID_BCM43236:
 	case BHND_CHIPID_BCM43238:
@@ -1734,13 +2301,24 @@ bhnd_pmu_si_clock(struct bhnd_pmu_softc *sc)
 		else
 			clock = 96000 * 1000;
 		break;
+	case BHND_CHIPID_BCM43237:
+		chipst = BHND_CHIPC_READ_CHIPST(sc->chipc_dev);
+		if (chipst & CHIPC_CST43237_BP_CLK)
+			clock = 96000 * 1000;
+		else
+			clock = 80000 * 1000;
+		break;
 	case BHND_CHIPID_BCM5356:
 		clock = bhnd_pmu5_clock(sc, BHND_PMU5356_MAINPLL_PLL0,
 		    BHND_PMU5_MAINPLL_SI);
 		break;
 	case BHND_CHIPID_BCM5357:
+	case BHND_CHIPID_BCM4749:
 		clock = bhnd_pmu5_clock(sc, BHND_PMU5357_MAINPLL_PLL0,
 		    BHND_PMU5_MAINPLL_SI);
+		break;
+	case BHND_CHIPID_BCM53572:
+		clock = 75000000;
 		break;
 	default:
 		device_printf(sc->dev, "No backplane clock specified for chip "
@@ -1758,12 +2336,26 @@ bhnd_pmu_cpu_clock(struct bhnd_pmu_softc *sc)
 {
 	uint32_t			 clock;
 
+	if (sc->cid.chip_id == BHND_CHIPID_BCM5354)
+		return (240 * 1000 * 1000); /* 240MHz */
+		
+	/* 5354 chip uses a non programmable PLL of frequency 240MHz */
+	if (sc->cid.chip_id == BHND_CHIPID_BCM5354)
+		return (240000000);
+
+	if (sc->cid.chip_id == BHND_CHIPID_BCM53572)
+		return (300000000);
+
 	if (BHND_PMU_REV(sc) >= 5 &&
 	    sc->cid.chip_id != BHND_CHIPID_BCM4329 &&
 	    sc->cid.chip_id != BHND_CHIPID_BCM4319 &&
+	    sc->cid.chip_id != BHND_CHIPID_BCM43234 &&
+    	    sc->cid.chip_id != BHND_CHIPID_BCM43235 &&
+	    sc->cid.chip_id != BHND_CHIPID_BCM43236 &&
+	    sc->cid.chip_id != BHND_CHIPID_BCM43237 &&
+	    sc->cid.chip_id != BHND_CHIPID_BCM43238 &&
 	    sc->cid.chip_id != BHND_CHIPID_BCM4336 &&
-	    sc->cid.chip_id != BHND_CHIPID_BCM4330 &&
-	    sc->cid.chip_id != BHND_CHIPID_BCM43236)
+	    sc->cid.chip_id != BHND_CHIPID_BCM4330)
 	{
 		u_int pll;
 
@@ -1772,6 +2364,7 @@ bhnd_pmu_cpu_clock(struct bhnd_pmu_softc *sc)
 			pll = BHND_PMU5356_MAINPLL_PLL0;
 			break;
 		case BHND_CHIPID_BCM5357:
+		case BHND_CHIPID_BCM4749:
 			pll = BHND_PMU5357_MAINPLL_PLL0;
 			break;
 		default:
@@ -1796,9 +2389,13 @@ bhnd_pmu_mem_clock(struct bhnd_pmu_softc *sc)
 	if (BHND_PMU_REV(sc) >= 5 &&
 	    sc->cid.chip_id != BHND_CHIPID_BCM4329 &&
 	    sc->cid.chip_id != BHND_CHIPID_BCM4319 &&
+	    sc->cid.chip_id != BHND_CHIPID_BCM43234 &&
+    	    sc->cid.chip_id != BHND_CHIPID_BCM43235 &&
+	    sc->cid.chip_id != BHND_CHIPID_BCM43236 &&
+	    sc->cid.chip_id != BHND_CHIPID_BCM43237 &&
+	    sc->cid.chip_id != BHND_CHIPID_BCM43238 &&
 	    sc->cid.chip_id != BHND_CHIPID_BCM4336 &&
-	    sc->cid.chip_id != BHND_CHIPID_BCM4330 &&
-	    sc->cid.chip_id != BHND_CHIPID_BCM43236)
+	    sc->cid.chip_id != BHND_CHIPID_BCM4330)
 	{
 		u_int pll;
 
@@ -1807,6 +2404,7 @@ bhnd_pmu_mem_clock(struct bhnd_pmu_softc *sc)
 			pll = BHND_PMU5356_MAINPLL_PLL0;
 			break;
 		case BHND_CHIPID_BCM5357:
+		case BHND_CHIPID_BCM4749:
 			pll = BHND_PMU5357_MAINPLL_PLL0;
 			break;
 		default:
@@ -1904,6 +2502,8 @@ si_sdiod_drive_strength_init(struct bhnd_pmu_softc *sc, uint32_t drivestrength)
 		break;
 	case SDIOD_DRVSTR_KEY(BHND_CHIPID_BCM4325, 2):
 	case SDIOD_DRVSTR_KEY(BHND_CHIPID_BCM4325, 3):
+	case SDIOD_DRVSTR_KEY(BHND_CHIPID_BCM4315, 4):
+	case SDIOD_DRVSTR_KEY(BHND_CHIPID_BCM4319, 7):
 		str_tab = (sdiod_drive_str_t *)&sdiod_drive_strength_tab2;
 		str_mask = 0x00003800;
 		str_shift = 11;
@@ -1957,6 +2557,11 @@ bhnd_pmu_init(struct bhnd_pmu_softc *sc)
 		/* Fix for 4329b0 bad LPOM state. */
 		BHND_PMU_REGCTRL_WRITE(sc, 2, 0x100, ~0);
 		BHND_PMU_REGCTRL_WRITE(sc, 3, 0x4, ~0);
+	}
+
+	if (sc->cid.chip_id == BHND_CHIPID_BCM4319) {
+		/* Limiting the PALDO spike during init time */
+		BHND_PMU_REGCTRL_WRITE(sc, 2, 0x00000005, 0x00000007);
 	}
 }
 
@@ -2038,6 +2643,18 @@ bhnd_pmu_otp_power(struct bhnd_pmu_softc *sc, bool on)
 
 	/* Determine rsrcs to turn on/off OTP power */
 	switch (sc->cid.chip_id) {
+	case BHND_CHIPID_BCM4322:
+	case BHND_CHIPID_BCM43221:
+	case BHND_CHIPID_BCM43231:
+	case BHND_CHIPID_BCM4342:
+		rsrcs = PMURES_BIT(RES4322_OTP_PU);
+		break;
+	case BHND_CHIPID_BCM4315:
+		rsrcs = PMURES_BIT(RES4315_OTP_PU);
+		break;
+	case BHND_CHIPID_BCM4325:
+		rsrcs = PMURES_BIT(RES4325_OTP_PU);
+		break;
 	case BHND_CHIPID_BCM4329:
 		rsrcs = PMURES_BIT(RES4329_OTP_PU);
 		break;
@@ -2099,14 +2716,25 @@ bhnd_pmu_rcal(struct bhnd_pmu_softc *sc)
 	uint32_t	chipst;
 	uint32_t	val;
 	uint8_t		rcal_code;
+	bool		bluetooth_rcal;
+
+
+	bluetooth_rcal = false;
 
 	switch (sc->cid.chip_id) {
+	case BHND_CHIPID_BCM4325:
 	case BHND_CHIPID_BCM4329:
 		/* Kick RCal */
 		BHND_PMU_WRITE_4(sc, BHND_PMU_CHIPCTL_ADDR, 1);
 
 		/* Power Down RCAL Block */
 		BHND_PMU_AND_4(sc, BHND_PMU_CHIPCTL_DATA, ~0x04);
+
+		if (sc->cid.chip_id == BHND_CHIPID_BCM4325) {
+			chipst = BHND_CHIPC_READ_CHIPST(sc->chipc_dev);
+			if (BHND_PMU_GET_BITS(chipst, CHIPC_CST4325_RCAL_VALID))
+				bluetooth_rcal = true;
+		}
 
 		/* Power Up RCAL block */
 		BHND_PMU_AND_4(sc, BHND_PMU_CHIPCTL_DATA, 0x04);
@@ -2122,8 +2750,12 @@ bhnd_pmu_rcal(struct bhnd_pmu_softc *sc)
 		}
 		KASSERT((chipst & 0x08) != 0, ("rcal completion timeout"));
 
-		/* Drop the LSB to convert from 5 bit code to 4 bit code */
-		rcal_code = (uint8_t) (chipst >> 5) & 0x0f;
+		if (bluetooth_rcal) {
+			rcal_code = 0x6;
+		} else {
+			/* Drop LSB to convert from 5 bit code to 4 bit code */
+			rcal_code = (uint8_t) (chipst >> 5) & 0x0f;
+		}
 
 		PMU_MSG(("RCal completed, status 0x%x, code 0x%x\n",
 				R_REG(&cc->chipstatus), rcal_code));
@@ -2192,6 +2824,7 @@ bhnd_pmu_spuravoid(struct bhnd_pmu_softc *sc, uint8_t spuravoid)
 static void
 bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc, uint8_t spuravoid)
 {
+	uint16_t	chip_id;
 	uint32_t	tmp;
 	uint32_t	pmuctrl;
 	uint8_t		phypll_offset;
@@ -2199,11 +2832,24 @@ bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc, uint8_t spuravoid)
 	uint8_t bcm5357_bcm43236_p1div[] = { 0x1, 0x5, 0x5 };
 	uint8_t bcm5357_bcm43236_ndiv[] = { 0x30, 0xf6, 0xfc };
 
-	switch (sc->cid.chip_id) {
+	/* 6362a0 has same clks as 4322[4-6] */
+	chip_id = sc->cid.chip_id;
+	if (chip_id == BHND_CHIPID_BCM6362 && sc->cid.chip_rev == 0) {
+		chip_id = BHND_CHIPID_BCM43224;
+	}
+
+	switch (chip_id) {
+	case BHND_CHIPID_BCM6362:
+		KASSERT(sc->cid.chip_rev != 0, ("invalid clock config"));
+		/* fallthrough */
 	case BHND_CHIPID_BCM5357:
+	case BHND_CHIPID_BCM4749:
 	case BHND_CHIPID_BCM43235:
 	case BHND_CHIPID_BCM43236:
 	case BHND_CHIPID_BCM43238:
+	case BHND_CHIPID_BCM43234:
+	case BHND_CHIPID_BCM43237:
+	case BHND_CHIPID_BCM53572:
 		KASSERT(spuravoid < nitems(bcm5357_bcm43236_p1div),
 		    ("spuravoid %hhu outside p1div table\n", spuravoid));
 
@@ -2253,8 +2899,8 @@ bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc, uint8_t spuravoid)
 
 	case BHND_CHIPID_BCM43224:
 	case BHND_CHIPID_BCM43225:
+	case BHND_CHIPID_BCM43226:
 	case BHND_CHIPID_BCM43421:
-	case BHND_CHIPID_BCM6362:
 		if (spuravoid == 1) {
 			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL0,
 			    0x11500010, ~0);
@@ -2356,6 +3002,12 @@ bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc, uint8_t spuravoid)
 		break;
 
 	case BHND_CHIPID_BCM4319:
+		break;
+		
+	case BHND_CHIPID_BCM4322:
+	case BHND_CHIPID_BCM43221:
+	case BHND_CHIPID_BCM43231:
+	case BHND_CHIPID_BCM4342:
 		BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL0, 0x11100070, ~0);
 		BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL1, 0x1014140a, ~0);
 		BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL5, 0x88888854, ~0);
@@ -2370,7 +3022,7 @@ bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc, uint8_t spuravoid)
 			    0x05001828, ~0);
 		}
 
-		pmuctrl = 0;
+		pmuctrl = BHND_PMU_CTRL_PLL_PLLCTL_UPD;
 		break;
 
 	case BHND_CHIPID_BCM4336:
@@ -2391,7 +3043,42 @@ bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc, uint8_t spuravoid)
 
 		pmuctrl = BHND_PMU_CTRL_PLL_PLLCTL_UPD;
 		break;
-
+	case BHND_CHIPID_BCM43131:
+	case BHND_CHIPID_BCM43227:
+	case BHND_CHIPID_BCM43228:
+	case BHND_CHIPID_BCM43428:
+		/* LCNXN */
+		/* PLL Settings for spur avoidance on/off mode, no on2 support
+		 * for 43228A0 */
+		if (spuravoid == 1) {
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL0,
+			    0x01100014, ~0);
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL1,
+			    0x040C0C06, ~0);
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL2,
+			    0x03140A08, ~0);
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL3,
+			    0x00333333, ~0);
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL4,
+			    0x202C2820, ~0);
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL5,
+			    0x88888815, ~0);
+		} else {
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL0,
+			    0x11100014, ~0);
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL1,
+			    0x040c0c06, ~0);
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL2,
+			    0x03000a08, ~0);
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL3,
+			    0x00000000, ~0);
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL4,
+			    0x200005c0, ~0);
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL5,
+			    0x88888815, ~0);
+		}
+		pmuctrl = BHND_PMU_CTRL_PLL_PLLCTL_UPD;
+		break;
 	default:
 		PMU_ERROR(("%s: unknown spuravoidance settings for chip %#hx, "
 		    "not changing PLL\n", __func__, sc->cid.chip_id));
@@ -2443,11 +3130,61 @@ bhnd_pmu_is_otp_powered(struct bhnd_pmu_softc *sc)
 	return (true);
 }
 
+void
+bhnd_pmu_paref_ldo_enable(struct bhnd_pmu_softc *sc, bool enable)
+{
+	uint32_t ldo;
+
+	switch (sc->cid.chip_id) {
+	case BHND_CHIPID_BCM4328:
+		ldo = PMURES_BIT(RES4328_PA_REF_LDO);
+		break;
+	case BHND_CHIPID_BCM5354:
+		ldo = PMURES_BIT(RES5354_PA_REF_LDO);
+		break;
+	case BHND_CHIPID_BCM4312:
+		ldo = PMURES_BIT(RES4312_PA_REF_LDO);
+		break;
+	default:
+		return;
+	}
+
+	if (enable) {
+		BHND_PMU_OR_4(sc, BHND_PMU_MIN_RES_MASK, ldo);
+	} else {
+		BHND_PMU_AND_4(sc, BHND_PMU_MIN_RES_MASK, ~ldo);
+	}
+}
+
 /* initialize PMU switch/regulators */
 void
 bhnd_pmu_swreg_init(struct bhnd_pmu_softc *sc)
 {
+	uint32_t chipst;
+
 	switch (sc->cid.chip_id) {
+	case BHND_CHIPID_BCM4325:
+		if (sc->cid.chip_rev <= 2)
+			break;
+
+		chipst = BHND_CHIPC_READ_CHIPST(sc->chipc_dev);
+		if (BHND_PMU_GET_BITS(chipst, CHIPC_CST4325_PMUTOP_2B)) {
+			bhnd_pmu_set_ldo_voltage(sc, SET_LDO_VOLTAGE_CLDO_PWM,
+			    0xf);
+			bhnd_pmu_set_ldo_voltage(sc, SET_LDO_VOLTAGE_CLDO_BURST,
+			    0xf);
+		}
+
+		bhnd_pmu_set_ldo_voltage(sc, SET_LDO_VOLTAGE_CBUCK_PWM, 0xb);
+		bhnd_pmu_set_ldo_voltage(sc, SET_LDO_VOLTAGE_CBUCK_BURST, 0xb);
+
+		bhnd_pmu_set_ldo_voltage(sc, SET_LDO_VOLTAGE_LNLDO1, 0x1);
+		if (sc->board.board_flags & BHND_BFL_LNLDO2_2P5) {
+			bhnd_pmu_set_ldo_voltage(sc, SET_LDO_VOLTAGE_LNLDO2_SEL,
+			    0x1);
+		}
+
+		break;
 	case BHND_CHIPID_BCM4336:
 		/* Reduce CLDO PWM output voltage to 1.2V */
 		bhnd_pmu_set_ldo_voltage(sc, SET_LDO_VOLTAGE_CLDO_PWM, 0xe);
@@ -2472,11 +3209,29 @@ void
 bhnd_pmu_radio_enable(struct bhnd_pmu_softc *sc, device_t d11core, bool enable)
 {
 	uint32_t oobsel;
+	uint32_t rsrcs;
 
 	if (bhnd_get_device(d11core) != BHND_COREID_D11)
 		panic("bhnd_pmu_radio_enable() called on non-D11 core");
 
 	switch (sc->cid.chip_id) {
+	case BHND_CHIPID_BCM4325:
+		if (sc->board.board_flags & BHND_BFL_FASTPWR)
+			break;
+
+		if ((sc->board.board_flags & BHND_BFL_BUCKBOOST) == 0)
+			break;
+
+		rsrcs = PMURES_BIT(RES4325_BUCK_BOOST_BURST);
+
+		if (enable) {
+			BHND_PMU_OR_4(sc, BHND_PMU_MIN_RES_MASK, rsrcs);
+			DELAY(100 * 1000); /* 100ms */
+		} else {
+			BHND_PMU_AND_4(sc, BHND_PMU_MIN_RES_MASK, ~rsrcs);
+		}
+
+		break;
 	case BHND_CHIPID_BCM4319:
 		oobsel = bhnd_read_config(d11core, BCMA_DMP_OOBSELOUTB74, 4);
 

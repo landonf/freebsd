@@ -789,6 +789,9 @@ enum {
 #define	CHIPC_CST43236_BOOT_FROM_FLASH		2	/* boot from FLASH */
 #define	CHIPC_CST43236_BOOT_FROM_INVALID	3
 
+/* 43237 Chip specific ChipStatus register bits */
+#define	CHIPC_CST43237_BP_CLK			0x00000200	/* 96/80Mbps */
+
 /* 4331 Chip specific ChipStatus register bits */
 #define	CHIPC_CST4331_XTAL_FREQ			0x00000001	/* crystal frequency 20/40Mhz */
 #define	CHIPC_CST4331_SPROM_PRESENT		0x00000002

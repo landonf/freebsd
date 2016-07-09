@@ -3,9 +3,9 @@
  * Copyright (c) 2010 Broadcom Corporation
  * All rights reserved.
  *
- * This file is derived from the sbchipc.h header distributed with
- * Broadcom's initial brcm80211 Linux driver release, as
- * contributed to the Linux staging repository.
+ * This file is derived from the sbchipc.h header contributed by Broadcom 
+ * to to the Linux staging repository, as well as later revisions of sbchipc.h
+ * distributed with the Asus RT-N16 firmware source code release.
  * 
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -178,10 +178,12 @@
 /* pllcontrol registers */
 /* ndiv_pwrdn, pwrdn_ch<x>, refcomp_pwrdn, dly_ch<x>, p1div, p2div, _bypass_sdmod */
 #define	BHND_PMU1_PLL0_PLLCTL0		0
-#define	BHND_PMU1_PLL0_PC0_P1DIV_MASK	0x00f00000
-#define	BHND_PMU1_PLL0_PC0_P1DIV_SHIFT	20
-#define	BHND_PMU1_PLL0_PC0_P2DIV_MASK	0x0f000000
-#define	BHND_PMU1_PLL0_PC0_P2DIV_SHIFT	24
+#define	BHND_PMU1_PLL0_PC0_P1DIV_MASK		0x00f00000
+#define	BHND_PMU1_PLL0_PC0_P1DIV_SHIFT		20
+#define	BHND_PMU1_PLL0_PC0_P2DIV_MASK		0x0f000000
+#define	BHND_PMU1_PLL0_PC0_P2DIV_SHIFT		24
+#define	BHND_PMU1_PLL0_PC0_BYPASS_SDMOD_MASK	0x10000000
+#define	BHND_PMU1_PLL0_PC0_BYPASS_SDMOD_SHIFT	28
 
 /* m<x>div */
 #define	BHND_PMU1_PLL0_PLLCTL1		1
@@ -206,6 +208,7 @@
 #define	BHND_PMU1_PLL0_PC2_M6DIV_SHIFT	8
 #define	BHND_PMU1_PLL0_PC2_NDIV_MODE_MASK	0x000e0000
 #define	BHND_PMU1_PLL0_PC2_NDIV_MODE_SHIFT	17
+#define	BHND_PMU1_PLL0_PC2_NDIV_MODE_INT	0
 #define	BHND_PMU1_PLL0_PC2_NDIV_MODE_MASH	1
 #define	BHND_PMU1_PLL0_PC2_NDIV_MODE_MFB	2	/* recommended for 4319 */
 #define	BHND_PMU1_PLL0_PC2_NDIV_INT_MASK	0x1ff00000
@@ -217,12 +220,18 @@
 #define	BHND_PMU1_PLL0_PC3_NDIV_FRAC_SHIFT	0
 
 /* pll_ctrl */
-#define	BHND_PMU1_PLL0_PLLCTL4		4
+#define	BHND_PMU1_PLL0_PLLCTL4			4
+#define	BHND_PMU1_PLL0_PC4_KVCO_XS_MASK		0x38000000
+#define	BHND_PMU1_PLL0_PC4_KVCO_XS_SHIFT	27
 
 /* pll_ctrl, vco_rng, clkdrive_ch<x> */
-#define	BHND_PMU1_PLL0_PLLCTL5		5
-#define	BHND_PMU1_PLL0_PC5_CLK_DRV_MASK	0xffffff00
+#define	BHND_PMU1_PLL0_PLLCTL5			5
+#define	BHND_PMU1_PLL0_PC5_CLK_DRV_MASK		0xffffff00
 #define	BHND_PMU1_PLL0_PC5_CLK_DRV_SHIFT	8
+#define	BHND_PMU1_PLL0_PC5_PLL_CTRL_37_32_MASK	0x0000003f
+#define	BHND_PMU1_PLL0_PC5_PLL_CTRL_37_32_SHIFT	0
+#define	BHND_PMU1_PLL0_PC5_VCO_RNG_MASK		0x000000C0
+#define	BHND_PMU1_PLL0_PC5_VCO_RNG_SHIFT	6
 
 /* PMU rev 2 control words */
 #define	BHND_PMU2_PHY_PLL_PLLCTL		4
