@@ -113,7 +113,7 @@ bhnd_pmu_core_detach(device_t dev)
 	sc = device_get_softc(dev);
 	
 	/* Delegate to common driver implementation */
-	if ((error = bhnd_pmu_detach(dev, res)))
+	if ((error = bhnd_pmu_detach(dev)))
 		return (error);
 
 	bhnd_release_resource(dev, SYS_RES_MEMORY, sc->rid, sc->res);
