@@ -89,7 +89,7 @@ extern void bhnd_pmu_radio_enable(struct bhnd_pmu_softc *sc, device_t d11core, b
 extern uint32_t bhnd_pmu_waitforclk_on_backplane(struct bhnd_pmu_softc *sih, uint32_t clk, uint32_t delay);
 
 extern int bhnd_pmu_otp_power(struct bhnd_pmu_softc *sih, bool on);
-extern void si_sdiod_drive_strength_init(struct bhnd_pmu_softc *sih, uint32_t drivestrength);
+extern void bhnd_pmu_sdiod_drive_strength_init(struct bhnd_pmu_softc *sih, uint32_t drivestrength);
 
 extern void bhnd_pmu_paref_ldo_enable(struct bhnd_pmu_softc *sc, bool enable);
 

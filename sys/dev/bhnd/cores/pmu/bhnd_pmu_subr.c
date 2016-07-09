@@ -2482,7 +2482,8 @@ static const sdiod_drive_str_t sdiod_drive_strength_tab3[] = {
 #define	SDIOD_DRVSTR_KEY(chip, pmu)	(((chip) << 16) | (pmu))
 
 void
-si_sdiod_drive_strength_init(struct bhnd_pmu_softc *sc, uint32_t drivestrength) 
+bhnd_pmu_sdiod_drive_strength_init(struct bhnd_pmu_softc *sc,
+    uint32_t drivestrength) 
 {
 	sdiod_drive_str_t	*str_tab;
 	uint32_t		 str_mask;
