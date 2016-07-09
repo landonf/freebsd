@@ -49,6 +49,9 @@ __FBSDID("$FreeBSD$");
 #define	PMU_ERROR(args)	printf args
 #endif
 
+typedef struct pmu0_xtaltab0 pmu0_xtaltab0_t;
+typedef struct pmu1_xtaltab0 pmu1_xtaltab0_t;
+
 static uint32_t	bhnd_pmu_ind_read(struct bhnd_pmu_softc *sc, bus_size_t addr,
 		    bus_size_t data, uint32_t reg);
 static void	bhnd_pmu_ind_write(struct bhnd_pmu_softc *sc, bus_size_t addr,
@@ -58,13 +61,19 @@ static bool	bhnd_pmu_wait_clkst(struct bhnd_pmu_softc *sc, uint32_t value,
 		    uint32_t mask);
 
 /* PLL controls/clocks */
+static const pmu1_xtaltab0_t *bhnd_pmu1_xtaltab0(struct bhnd_pmu_softc *sc);
+static const pmu1_xtaltab0_t *bhnd_pmu1_xtaldef0(struct bhnd_pmu_softc *sc);
+
 static void	bhnd_pmu0_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal);
 static uint32_t	bhnd_pmu0_cpuclk0(struct bhnd_pmu_softc *sc);
 static uint32_t	bhnd_pmu0_alpclk0(struct bhnd_pmu_softc *sc);
 
 static void	bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal);
+static uint32_t	bhnd_pmu1_pllfvco0(struct bhnd_pmu_softc *sc);
 static uint32_t	bhnd_pmu1_cpuclk0(struct bhnd_pmu_softc *sc);
 static uint32_t	bhnd_pmu1_alpclk0(struct bhnd_pmu_softc *sc);
+
+static uint32_t	bhnd_pmu5_clock(struct bhnd_pmu_softc *sc, u_int pll0, u_int m);
 
 /* PMU resources */
 static bool	bhnd_pmu_res_depfltr_bb(struct bhnd_pmu_softc *sc);
@@ -76,9 +85,9 @@ static uint32_t	bhnd_pmu_res_deps(struct bhnd_pmu_softc *sc, uint32_t rsrcs,
 static u_int	bhnd_pmu_res_uptime(struct bhnd_pmu_softc *sc, uint8_t rsrc);
 static void	bhnd_pmu_res_masks(struct bhnd_pmu_softc *sc, uint32_t *pmin,
 		    uint32_t *pmax);
+
 static void	bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc,
 		    uint8_t spuravoid);
-
 static void	bhnd_pmu_set_4330_plldivs(struct bhnd_pmu_softc *sc);
 
 #define	BHND_PMU_READ_1(_sc, _reg)	bhnd_bus_read_1((_sc)->res, (_reg))
@@ -1088,12 +1097,12 @@ void bhnd_pmu_res_init(struct bhnd_pmu_softc *sc)
 }
 
 /* setup pll and query clock speed */
-typedef struct {
+struct pmu0_xtaltab0 {
 	uint16_t	freq;
 	uint8_t		xf;
 	uint8_t		wbint;
 	uint32_t	wbfrac;
-} pmu0_xtaltab0_t;
+};
 
 /* the following table is based on 880Mhz fvco */
 static const pmu0_xtaltab0_t pmu0_xtaltab0[] = {
@@ -1118,14 +1127,14 @@ static const pmu0_xtaltab0_t pmu0_xtaltab0[] = {
 #define	PMU0_XTAL0_DEFAULT	8
 
 /* setup pll and query clock speed */
-typedef struct {
+struct pmu1_xtaltab0 {
 	uint16_t	fref;
 	uint8_t		xf;
 	uint8_t		p1div;
 	uint8_t		p2div;
 	uint8_t		ndiv_int;
 	uint32_t	ndiv_frac;
-} pmu1_xtaltab0_t;
+};
 
 static const pmu1_xtaltab0_t pmu1_xtaltab0_880_4329[] = {
 	{
