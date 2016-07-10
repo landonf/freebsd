@@ -52,11 +52,6 @@ __FBSDID("$FreeBSD$");
 typedef struct pmu0_xtaltab0 pmu0_xtaltab0_t;
 typedef struct pmu1_xtaltab0 pmu1_xtaltab0_t;
 
-static uint32_t	bhnd_pmu_ind_read(struct bhnd_pmu_softc *sc, bus_size_t addr,
-		    bus_size_t data, uint32_t reg);
-static void	bhnd_pmu_ind_write(struct bhnd_pmu_softc *sc, bus_size_t addr,
-		    bus_size_t data, uint32_t reg, uint32_t val, uint32_t mask);
-
 static bool	bhnd_pmu_wait_clkst(struct bhnd_pmu_softc *sc, uint32_t value,
 		    uint32_t mask);
 
@@ -90,49 +85,6 @@ static void	bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc,
 		    uint8_t spuravoid);
 static void	bhnd_pmu_set_4330_plldivs(struct bhnd_pmu_softc *sc);
 
-#define	BHND_PMU_READ_1(_sc, _reg)	bhnd_bus_read_1((_sc)->res, (_reg))
-#define	BHND_PMU_READ_2(_sc, _reg)	bhnd_bus_read_2((_sc)->res, (_reg))
-#define	BHND_PMU_READ_4(_sc, _reg)	bhnd_bus_read_4((_sc)->res, (_reg))
-#define	BHND_PMU_WRITE_1(_sc, _reg, _val)	\
-	bhnd_bus_write_1((_sc)->res, (_reg), (_val))
-#define	BHND_PMU_WRITE_2(_sc, _reg, _val)	\
-	bhnd_bus_write_2((_sc)->res, (_reg), (_val))
-#define	BHND_PMU_WRITE_4(_sc, _reg, _val)	\
-	bhnd_bus_write_4((_sc)->res, (_reg), (_val))
-
-#define	BHND_PMU_AND_4(_sc, _reg, _val)		\
-	BHND_PMU_WRITE_4((_sc), (_reg),		\
-	    BHND_PMU_READ_4((_sc), (_reg)) & (_val))
-#define	BHND_PMU_OR_4(_sc, _reg, _val)		\
-	BHND_PMU_WRITE_4((_sc), (_reg),		\
-	    BHND_PMU_READ_4((_sc), (_reg)) | (_val))
-
-/* Indirect register support */
-#define	BHND_PMU_IND_READ(_sc, _src, _reg)			\
-	bhnd_pmu_ind_read((_sc), BHND_PMU_ ## _src ## _ADDR,	\
-	    BHND_PMU_ ## _src ## _DATA, (_reg))
-#define	BHND_PMU_IND_WRITE(_sc, _src, _reg, _val, _mask)	\
-	bhnd_pmu_ind_write(sc, BHND_PMU_ ## _src ## _ADDR,	\
-	    BHND_PMU_ ## _src ## _DATA, (_reg), (_val), (_mask))
-
-/* Chip Control indirect registers */
-#define	BHND_PMU_CCTRL_READ(_sc, _reg)			\
-	BHND_PMU_IND_READ((_sc), CHIPCTL, (_reg))
-#define	BHND_PMU_CCTRL_WRITE(_sc, _reg, _val, _mask)	\
-	BHND_PMU_IND_WRITE((_sc), CHIPCTL, (_reg), (_val), (_mask))
-
-/* Register Control indirect registers */
-#define	BHND_PMU_REGCTRL_READ(_sc, _reg)			\
-	BHND_PMU_IND_READ((_sc), REG_CONTROL, (_reg))
-#define	BHND_PMU_REGCTRL_WRITE(_sc, _reg, _val, _mask)	\
-	BHND_PMU_IND_WRITE((_sc), REG_CONTROL, (_reg), (_val), (_mask))
-
-/* PLL Control indirect registers */
-#define	BHND_PMU_PLL_READ(_sc, _reg)			\
-	BHND_PMU_IND_READ((_sc), PLL_CONTROL, (_reg))
-#define	BHND_PMU_PLL_WRITE(_sc, _reg, _val, _mask)	\
-	BHND_PMU_IND_WRITE((_sc), PLL_CONTROL, (_reg), (_val), (_mask))
-
 #define	BHND_PMU_REV(_sc)			\
 	((uint8_t)BHND_PMU_GET_BITS((_sc)->caps, BHND_PMU_CAP_REV))
 
@@ -142,8 +94,14 @@ static void	bhnd_pmu_set_4330_plldivs(struct bhnd_pmu_softc *sc);
 #define	PMU_CST4330_SDIOD_CHIPMODE(_sc)		\
 	CHIPC_CST4330_CHIPMODE_SDIOD(BHND_CHIPC_READ_CHIPST((_sc)->chipc_dev))
 
-/* Perform an indirect register read */
-static uint32_t
+/**
+ * Perform an indirect register read.
+ * 
+ * @param addr Offset of the address register.
+ * @param data Offset of the data register.
+ * @param reg Indirect register to be read.
+ */
+uint32_t
 bhnd_pmu_ind_read(struct bhnd_pmu_softc *sc, bus_size_t addr, bus_size_t data,
     uint32_t reg)
 {
@@ -151,8 +109,16 @@ bhnd_pmu_ind_read(struct bhnd_pmu_softc *sc, bus_size_t addr, bus_size_t data,
 	return (BHND_PMU_READ_4(sc, data));
 }
 
-/* Perform an indirect register write */
-static void
+/**
+ * Perform an indirect register write.
+ * 
+ * @param addr Offset of the address register.
+ * @param data Offset of the data register.
+ * @param reg Indirect register to be written.
+ * @param val Value to be written to @p reg.
+ * @param mask Only the bits defined by @p mask will be updated from @p val.
+ */
+void
 bhnd_pmu_ind_write(struct bhnd_pmu_softc *sc, bus_size_t addr,
     bus_size_t data, uint32_t reg, uint32_t val, uint32_t mask)
 {

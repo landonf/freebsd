@@ -29,6 +29,50 @@
 
 #include "bhnd_pmuvar.h"
 
+/* Register I/O */
+#define	BHND_PMU_READ_1(_sc, _reg)	bhnd_bus_read_1((_sc)->res, (_reg))
+#define	BHND_PMU_READ_2(_sc, _reg)	bhnd_bus_read_2((_sc)->res, (_reg))
+#define	BHND_PMU_READ_4(_sc, _reg)	bhnd_bus_read_4((_sc)->res, (_reg))
+#define	BHND_PMU_WRITE_1(_sc, _reg, _val)	\
+	bhnd_bus_write_1((_sc)->res, (_reg), (_val))
+#define	BHND_PMU_WRITE_2(_sc, _reg, _val)	\
+	bhnd_bus_write_2((_sc)->res, (_reg), (_val))
+#define	BHND_PMU_WRITE_4(_sc, _reg, _val)	\
+	bhnd_bus_write_4((_sc)->res, (_reg), (_val))
+
+#define	BHND_PMU_AND_4(_sc, _reg, _val)		\
+	BHND_PMU_WRITE_4((_sc), (_reg),		\
+	    BHND_PMU_READ_4((_sc), (_reg)) & (_val))
+#define	BHND_PMU_OR_4(_sc, _reg, _val)		\
+	BHND_PMU_WRITE_4((_sc), (_reg),		\
+	    BHND_PMU_READ_4((_sc), (_reg)) | (_val))
+
+/* Indirect register support */
+#define	BHND_PMU_IND_READ(_sc, _src, _reg)			\
+	bhnd_pmu_ind_read((_sc), BHND_PMU_ ## _src ## _ADDR,	\
+	    BHND_PMU_ ## _src ## _DATA, (_reg))
+#define	BHND_PMU_IND_WRITE(_sc, _src, _reg, _val, _mask)	\
+	bhnd_pmu_ind_write(sc, BHND_PMU_ ## _src ## _ADDR,	\
+	    BHND_PMU_ ## _src ## _DATA, (_reg), (_val), (_mask))
+
+/* Chip Control indirect registers */
+#define	BHND_PMU_CCTRL_READ(_sc, _reg)			\
+	BHND_PMU_IND_READ((_sc), CHIPCTL, (_reg))
+#define	BHND_PMU_CCTRL_WRITE(_sc, _reg, _val, _mask)	\
+	BHND_PMU_IND_WRITE((_sc), CHIPCTL, (_reg), (_val), (_mask))
+
+/* Register Control indirect registers */
+#define	BHND_PMU_REGCTRL_READ(_sc, _reg)			\
+	BHND_PMU_IND_READ((_sc), REG_CONTROL, (_reg))
+#define	BHND_PMU_REGCTRL_WRITE(_sc, _reg, _val, _mask)	\
+	BHND_PMU_IND_WRITE((_sc), REG_CONTROL, (_reg), (_val), (_mask))
+
+/* PLL Control indirect registers */
+#define	BHND_PMU_PLL_READ(_sc, _reg)			\
+	BHND_PMU_IND_READ((_sc), PLL_CONTROL, (_reg))
+#define	BHND_PMU_PLL_WRITE(_sc, _reg, _val, _mask)	\
+	BHND_PMU_IND_WRITE((_sc), PLL_CONTROL, (_reg), (_val), (_mask))
+
 
 /* FVCO frequencies, in Hz */
 enum {
@@ -50,6 +94,12 @@ enum {
 	SET_LDO_VOLTAGE_LNLDO1		= 9,
 	SET_LDO_VOLTAGE_LNLDO2_SEL	= 10,
 };
+
+
+uint32_t	bhnd_pmu_ind_read(struct bhnd_pmu_softc *sc, bus_size_t addr,
+		    bus_size_t data, uint32_t reg);
+void		bhnd_pmu_ind_write(struct bhnd_pmu_softc *sc, bus_size_t addr,
+		    bus_size_t data, uint32_t reg, uint32_t val, uint32_t mask);
 
 void		bhnd_pmu_init(struct bhnd_pmu_softc *sc);
 void		bhnd_pmu_pll_init(struct bhnd_pmu_softc *sc, uint32_t xtalfreq);
