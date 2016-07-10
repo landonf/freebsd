@@ -74,7 +74,7 @@
 	BHND_PMU_IND_WRITE((_sc), PLL_CONTROL, (_reg), (_val), (_mask))
 
 
-/* FVCO frequencies, in Hz */
+/** FVCO frequencies, in Hz */
 enum {
 	FVCO_880	= 880	* 1000,	/**< 880MHz */
 	FVCO_1760	= 1760	* 1000,	/**< 1760MHz */
@@ -82,6 +82,7 @@ enum {
 	FVCO_960	= 960	* 1000,	/**< 960MHz */
 };
 
+/** LDO voltage tunables */
 enum {
 	SET_LDO_VOLTAGE_LDO1		= 1,
 	SET_LDO_VOLTAGE_LDO2		= 2,
@@ -94,7 +95,6 @@ enum {
 	SET_LDO_VOLTAGE_LNLDO1		= 9,
 	SET_LDO_VOLTAGE_LNLDO2_SEL	= 10,
 };
-
 
 uint32_t	bhnd_pmu_ind_read(struct bhnd_pmu_softc *sc, bus_size_t addr,
 		    bus_size_t data, uint32_t reg);
