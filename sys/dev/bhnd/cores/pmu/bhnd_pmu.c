@@ -37,6 +37,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/malloc.h>
 #include <sys/module.h>
 #include <sys/mutex.h>
+#include <sys/sysctl.h>
 #include <sys/systm.h>
 
 #include <machine/bus.h>
@@ -64,6 +65,10 @@ __FBSDID("$FreeBSD$");
 
 devclass_t bhnd_pmu_devclass;	/**< bhnd(4) PMU device class */
 
+static int	bhnd_pmu_sysctl_bus_freq(SYSCTL_HANDLER_ARGS);
+static int	bhnd_pmu_sysctl_cpu_freq(SYSCTL_HANDLER_ARGS);
+static int	bhnd_pmu_sysctl_mem_freq(SYSCTL_HANDLER_ARGS);
+
 /**
  * Default bhnd_pmu driver implementation of DEVICE_PROBE().
  */
@@ -84,9 +89,10 @@ int
 bhnd_pmu_attach(device_t dev, struct bhnd_resource *res)
 {
 	struct bhnd_pmu_softc	*sc;
+	struct sysctl_ctx_list	*ctx;
+	struct sysctl_oid	*tree;
 	devclass_t		 bhnd_class;
 	device_t		 core, bus;
-	uint32_t		 bus_freq, cpu_freq, mem_freq;
 	int			 error;
 
 	sc = device_get_softc(dev);
@@ -136,18 +142,21 @@ bhnd_pmu_attach(device_t dev, struct bhnd_resource *res)
 		goto failed;
 	}
 
-	/* Report clock settings */
-	bus_freq = bhnd_pmu_si_clock(sc);
-	cpu_freq = bhnd_pmu_cpu_clock(sc);
-	mem_freq = bhnd_pmu_mem_clock(sc);
+	/* Set up sysctl nodes */
+	ctx = device_get_sysctl_ctx(dev);
+	tree = device_get_sysctl_tree(dev);
 
-	if (mem_freq == cpu_freq || mem_freq == 0) {
-		device_printf(sc->dev, "%uMHz/%uMHz clock\n",
-		    cpu_freq / 1000000, bus_freq / 1000000);
-	} else {
-		device_printf(sc->dev, "%uMHz/%uMHz/%uMHz clock\n",
-		    cpu_freq / 1000000, bus_freq / 1000000, mem_freq / 1000000);
-	}
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
+	    "bus_freq", CTLTYPE_UINT | CTLFLAG_RD, sc, 0,
+	    bhnd_pmu_sysctl_bus_freq, "IU", "Bus clock frequency");
+
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
+	    "cpu_freq", CTLTYPE_UINT | CTLFLAG_RD, sc, 0,
+	    bhnd_pmu_sysctl_cpu_freq, "IU", "CPU clock frequency");
+	
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
+	    "mem_freq", CTLTYPE_UINT | CTLFLAG_RD, sc, 0,
+	    bhnd_pmu_sysctl_mem_freq, "IU", "Memory clock frequency");
 
 	return (0);
 
@@ -198,6 +207,51 @@ bhnd_pmu_resume(device_t dev)
 	}
 
 	return (0);
+}
+
+static int
+bhnd_pmu_sysctl_bus_freq(SYSCTL_HANDLER_ARGS)
+{
+	struct bhnd_pmu_softc	*sc;
+	uint32_t		 freq;
+	
+	sc = arg1;
+
+	BPMU_LOCK(sc);
+	freq = bhnd_pmu_si_clock(sc);
+	BPMU_UNLOCK(sc);
+
+	return (sysctl_handle_32(oidp, NULL, freq, req));
+}
+
+static int
+bhnd_pmu_sysctl_cpu_freq(SYSCTL_HANDLER_ARGS)
+{
+	struct bhnd_pmu_softc	*sc;
+	uint32_t		 freq;
+	
+	sc = arg1;
+
+	BPMU_LOCK(sc);
+	freq = bhnd_pmu_cpu_clock(sc);
+	BPMU_UNLOCK(sc);
+
+	return (sysctl_handle_32(oidp, NULL, freq, req));
+}
+
+static int
+bhnd_pmu_sysctl_mem_freq(SYSCTL_HANDLER_ARGS)
+{
+	struct bhnd_pmu_softc	*sc;
+	uint32_t		 freq;
+	
+	sc = arg1;
+
+	BPMU_LOCK(sc);
+	freq = bhnd_pmu_mem_clock(sc);
+	BPMU_UNLOCK(sc);
+
+	return (sysctl_handle_32(oidp, NULL, freq, req));
 }
 
 static device_method_t bhnd_pmu_methods[] = {
