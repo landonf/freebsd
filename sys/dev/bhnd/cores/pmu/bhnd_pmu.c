@@ -44,6 +44,8 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/bhnd.h>
 
+#include "bhnd_nvram_map.h"
+
 #include "bhnd_pmureg.h"
 #include "bhnd_pmuvar.h"
 
@@ -84,6 +86,7 @@ bhnd_pmu_attach(device_t dev, struct bhnd_resource *res)
 	struct bhnd_pmu_softc	*sc;
 	devclass_t		 bhnd_class;
 	device_t		 core, bus;
+	uint32_t		 bus_freq, cpu_freq, mem_freq;
 	int			 error;
 
 	sc = device_get_softc(dev);
@@ -127,11 +130,30 @@ bhnd_pmu_attach(device_t dev, struct bhnd_resource *res)
 
 	BPMU_LOCK_INIT(sc);
 
-	// XXX
-	bhnd_pmu_init(sc);
-	device_printf(sc->dev, "clk=%u\n", bhnd_pmu_cpu_clock(sc));
+	/* Initialize PMU */
+	if ((error = bhnd_pmu_init(sc))) {
+		device_printf(sc->dev, "PMU init failed: %d\n", error);
+		goto failed;
+	}
+
+	/* Report clock settings */
+	bus_freq = bhnd_pmu_si_clock(sc);
+	cpu_freq = bhnd_pmu_cpu_clock(sc);
+	mem_freq = bhnd_pmu_mem_clock(sc);
+
+	if (mem_freq == cpu_freq || mem_freq == 0) {
+		device_printf(sc->dev, "%uMHz/%uMHz clock\n",
+		    cpu_freq / 1000000, bus_freq / 1000000);
+	} else {
+		device_printf(sc->dev, "%uMHz/%uMHz/%uMHz clock\n",
+		    cpu_freq / 1000000, bus_freq / 1000000, mem_freq / 1000000);
+	}
 
 	return (0);
+
+failed:
+	BPMU_LOCK_DESTROY(sc);
+	return (error);
 }
 
 /**
@@ -164,6 +186,17 @@ bhnd_pmu_suspend(device_t dev)
 int
 bhnd_pmu_resume(device_t dev)
 {
+	struct bhnd_pmu_softc	*sc;
+	int			 error;
+
+	sc = device_get_softc(dev);
+
+	/* Re-initialize PMU */
+	if ((error = bhnd_pmu_init(sc))) {
+		device_printf(sc->dev, "PMU init failed: %d\n", error);
+		return (error);;
+	}
+
 	return (0);
 }
 

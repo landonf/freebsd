@@ -829,14 +829,16 @@ bhnd_pmu_res_masks(struct bhnd_pmu_softc *sc, uint32_t *pmin, uint32_t *pmax)
 	}
 
 	/* Apply nvram override to min mask */
-	error = bhnd_nvram_getvar(sc->dev, BHND_NVAR_RMIN, &nval, sizeof(nval));
+	error = bhnd_nvram_getvar(sc->chipc_dev, BHND_NVAR_RMIN, &nval,
+	    sizeof(nval));
 	if (error == 0) {
 		PMU_MSG(("Applying rmin=%#x to min_mask\n", nval));
 		min_mask = nval;
 	}
 
 	/* Apply nvram override to max mask */
-	error = bhnd_nvram_getvar(sc->dev, BHND_NVAR_RMAX, &nval, sizeof(nval));
+	error = bhnd_nvram_getvar(sc->chipc_dev, BHND_NVAR_RMAX, &nval,
+	    sizeof(nval));
 	if (error == 0) {
 		PMU_MSG(("Applying rmax=%#x to max_mask\n", nval));
 		min_mask = nval;
@@ -850,7 +852,8 @@ bhnd_pmu_res_masks(struct bhnd_pmu_softc *sc, uint32_t *pmin, uint32_t *pmax)
 }
 
 /* initialize PMU resources */
-void bhnd_pmu_res_init(struct bhnd_pmu_softc *sc)
+void
+bhnd_pmu_res_init(struct bhnd_pmu_softc *sc)
 {
 	const pmu_res_updown_t		*pmu_res_updown_table;
 	const pmu_res_depend_t		*pmu_res_depend_table;
@@ -858,6 +861,7 @@ void bhnd_pmu_res_init(struct bhnd_pmu_softc *sc)
 	size_t				 pmu_res_depend_table_sz;
 	uint32_t			 max_mask, min_mask;
 	uint8_t				 rsrcs;
+	int				 error;
 
 	pmu_res_depend_table = NULL;
 	pmu_res_depend_table_sz = 0;
@@ -963,7 +967,10 @@ void bhnd_pmu_res_init(struct bhnd_pmu_softc *sc)
 		uint32_t	val;
 
 		snprintf(name, sizeof(name), "r%dt", i);
-		if (bhnd_nvram_getvar(sc->dev, name, &val, sizeof(val)) != 0)
+		error = bhnd_nvram_getvar(sc->chipc_dev, name, &val,
+		    sizeof(val));
+
+		if (error)
 			continue;
 
 		PMU_MSG(("Applying %s=%s to rsrc %d res_updn_timer\n", name,
@@ -1031,8 +1038,12 @@ void bhnd_pmu_res_init(struct bhnd_pmu_softc *sc)
 		uint32_t	val;
 
 		snprintf(name, sizeof(name), "r%dd", i);
-		if (bhnd_nvram_getvar(sc->dev, name, &val, sizeof(val)) != 0)
+		error = bhnd_nvram_getvar(sc->chipc_dev, name, &val,
+		    sizeof(val));
+
+		if (error)
 			continue;
+
 		PMU_MSG(("Applying %s=%s to rsrc %d res_dep_mask\n", name, val,
 			 i));
 
@@ -2515,10 +2526,15 @@ bhnd_pmu_sdiod_drive_strength_init(struct bhnd_pmu_softc *sc,
 	}
 }
 
-/* initialize PMU */
-void 
+/**
+ * Initialize the PMU.
+ */
+int 
 bhnd_pmu_init(struct bhnd_pmu_softc *sc)
 {
+	uint32_t	xtalfreq;
+	int		error;
+
 	if (BHND_PMU_REV(sc) == 1) {
 		BHND_PMU_AND_4(sc, BHND_PMU_CTRL, ~BHND_PMU_CTRL_NOILP_ON_WAIT);
 	} else if (BHND_PMU_REV(sc) >= 2) {
@@ -2535,6 +2551,26 @@ bhnd_pmu_init(struct bhnd_pmu_softc *sc)
 		/* Limiting the PALDO spike during init time */
 		BHND_PMU_REGCTRL_WRITE(sc, 2, 0x00000005, 0x00000007);
 	}
+
+
+	/* Fetch target xtalfreq, in KHz */
+	error = bhnd_nvram_getvar(sc->chipc_dev, BHND_NVAR_XTALFREQ, &xtalfreq,
+	    sizeof(xtalfreq));
+
+	/* If not available, log any real errors, and then try to measure it */
+	if (error != ENOENT)
+		device_printf(sc->dev, "error fetching xtalfreq: %d\n", error);
+
+	if (error)
+		xtalfreq = bhnd_pmu_measure_alpclk(sc);
+
+
+	/* Perform PLL initialization */
+	bhnd_pmu_pll_init(sc, xtalfreq);
+	bhnd_pmu_res_init(sc);
+	bhnd_pmu_swreg_init(sc);
+
+	return (0);
 }
 
 /* Return up time in ILP cycles for the given resource. */

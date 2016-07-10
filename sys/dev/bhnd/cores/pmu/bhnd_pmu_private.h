@@ -101,7 +101,7 @@ uint32_t	bhnd_pmu_ind_read(struct bhnd_pmu_softc *sc, bus_size_t addr,
 void		bhnd_pmu_ind_write(struct bhnd_pmu_softc *sc, bus_size_t addr,
 		    bus_size_t data, uint32_t reg, uint32_t val, uint32_t mask);
 
-void		bhnd_pmu_init(struct bhnd_pmu_softc *sc);
+int		bhnd_pmu_init(struct bhnd_pmu_softc *sc);
 void		bhnd_pmu_pll_init(struct bhnd_pmu_softc *sc, uint32_t xtalfreq);
 void		bhnd_pmu_res_init(struct bhnd_pmu_softc *sc);
 void		bhnd_pmu_swreg_init(struct bhnd_pmu_softc *sc);
