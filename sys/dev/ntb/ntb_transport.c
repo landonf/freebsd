@@ -394,7 +394,6 @@ ntb_transport_attach(device_t dev)
 	nt->link_is_up = false;
 	NTB_LINK_ENABLE(ntb, NTB_SPEED_AUTO, NTB_WIDTH_AUTO);
 
-	callout_reset(&nt->link_work, 0, ntb_transport_link_work, nt);
 	if (enable_xeon_watchdog != 0)
 		callout_reset(&nt->link_watchdog, 0, xeon_link_watchdog_hb, nt);
 
@@ -883,7 +882,7 @@ ntb_memcpy_rx(struct ntb_transport_qp *qp, struct ntb_queue_entry *entry,
 	/* Ensure that the data is globally visible before clearing the flag */
 	wmb();
 
-	CTR2(KTR_NTB, "RX: copied entry %p to mbuf %p.", entry, m);
+	CTR2(KTR_NTB, "RX: copied entry %p to mbuf %p.", entry, entry->buf);
 	ntb_rx_copy_callback(qp, entry);
 }
 

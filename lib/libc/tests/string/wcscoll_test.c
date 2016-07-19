@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2011 Nathan Whitehorn
+ * Copyright (c) 2016 Baptiste Daroussin <bapt@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -22,53 +22,42 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
-#ifndef POWERPC_OFW_OFW_PCI_H
-#define POWERPC_OFW_OFW_PCI_H
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
 
-/*
- * Export class definition for inheritance purposes
- */
-DECLARE_CLASS(ofw_pci_driver);
+#include <wchar.h>
+#include <locale.h>
+#include <stdlib.h>
 
-struct ofw_pci_range {
-	uint32_t	pci_hi;
-	uint64_t	pci;
-	uint64_t	host;
-	uint64_t	size;
-};
+#include <atf-c.h>
 
-/*
- * Quirks for some adapters
- */
-enum {
-	OFW_PCI_QUIRK_RANGES_ON_CHILDREN = 1,
-};
+static int
+cmp(const void *a, const void *b)
+{
+	const wchar_t wa[2] = { *(const wchar_t *)a, 0 };
+	const wchar_t wb[2] = { *(const wchar_t *)b, 0 };
 
-struct ofw_pci_softc {
-	device_t		sc_dev;
-	phandle_t		sc_node;
-	int			sc_bus;
-	int			sc_initialized;
+	return (wcscoll(wa, wb));
+}
 
-	int			sc_quirks;
+ATF_TC_WITHOUT_HEAD(russian_collation);
+ATF_TC_BODY(russian_collation, tc)
+{
+	wchar_t c[] = L"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzЁАБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдежзийклмнопрстуфхцчшщъыьэюяё";
+	wchar_t res[] = L"aAbBcCdDeEfFgGhHiIjJkKlLmMnNoOpPqQrRsStTuUvVwWxXyYzZаАбБвВгГдДеЕёЁжЖзЗиИйЙкКлЛмМнНоОпПрРсСтТуУфФхХцЦчЧшШщЩъЪыЫьЬэЭюЮяЯ";
 
-	struct ofw_pci_range	*sc_range;
-	int			sc_nrange;
+	ATF_CHECK_MSG(setlocale(LC_ALL, "ru_RU.UTF-8") != NULL,
+	    "Fail to set locale to \"ru_RU.UTF-8\"");
+	qsort(c, wcslen(c), sizeof(wchar_t), cmp);
+	ATF_CHECK_MSG(wcscmp(c, res) == 0,
+	    "Bad collation, expected: '%ls' got '%ls'", res, c);
+}
 
-	struct rman		sc_io_rman;
-	struct rman		sc_mem_rman;
-	bus_space_tag_t		sc_memt;
-	bus_dma_tag_t		sc_dmat;
+ATF_TP_ADD_TCS(tp)
+{
+	ATF_TP_ADD_TC(tp, russian_collation);
 
-	struct ofw_bus_iinfo    sc_pci_iinfo;
-};
-
-int ofw_pci_init(device_t dev);
-int ofw_pci_attach(device_t dev);
-
-#endif // POWERPC_OFW_OFW_PCI_H
-
+	return (atf_no_error());
+}
