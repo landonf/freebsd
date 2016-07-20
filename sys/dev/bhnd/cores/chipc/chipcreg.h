@@ -268,14 +268,31 @@ enum {
 #define	CHIPC_CST_SPROM_OTP_SEL_R23_SHIFT	6
 
 /* PLL type */
-#define	CHIPC_PLL_NONE		0x00000000
-#define	CHIPC_PLL_TYPE1		0x00010000	/* 48MHz base, 3 dividers */
-#define	CHIPC_PLL_TYPE2		0x00020000	/* 48MHz, 4 dividers */
-#define	CHIPC_PLL_TYPE3		0x00030000	/* 25MHz, 2 dividers */
-#define	CHIPC_PLL_TYPE4		0x00008000	/* 48MHz, 4 dividers */
-#define	CHIPC_PLL_TYPE5		0x00018000	/* 25MHz, 4 dividers */
-#define	CHIPC_PLL_TYPE6		0x00028000	/* 100/200 or 120/240 only */
-#define	CHIPC_PLL_TYPE7		0x00038000	/* 25MHz, 4 dividers */
+#define	CHIPC_PLL_NONE		0x00
+#define	CHIPC_PLL_TYPE1		0x10	/* 48MHz base, 3 dividers */
+#define	CHIPC_PLL_TYPE2		0x20	/* 48MHz, 4 dividers */
+#define	CHIPC_PLL_TYPE3		0x30	/* 25MHz, 2 dividers */
+#define	CHIPC_PLL_TYPE4		0x08	/* 48MHz, 4 dividers */
+#define	CHIPC_PLL_TYPE5		0x18	/* 25MHz, 4 dividers */
+#define	CHIPC_PLL_TYPE6		0x28	/* 100/200 or 120/240 only */
+#define	CHIPC_PLL_TYPE7		0x38	/* 25MHz, 4 dividers */
+
+/* dynamic clock control defines */
+#define	CHIPC_LPOMINFREQ	25000		/* low power oscillator min */
+#define	CHIPC_LPOMAXFREQ	43000		/* low power oscillator max */
+#define	CHIPC_XTALMINFREQ	19800000	/* 20 MHz - 1% */
+#define	CHIPC_XTALMAXFREQ	20200000	/* 20 MHz + 1% */
+#define	CHIPC_PCIMINFREQ	25000000	/* 25 MHz */
+#define	CHIPC_PCIMAXFREQ	34000000	/* 33 MHz + fudge */
+
+#define	CHIPC_ILP_DIV_5MHZ	0		/* ILP = 5 MHz */
+#define	CHIPC_ILP_DIV_1MHZ	4		/* ILP = 1 MHz */
+
+/* Power Control Defines */
+#define	CHIPC_PLL_DELAY		150	/* us pll on delay */
+#define	CHIPC_FREF_DELAY	200	/* us fref change delay */
+#define	CHIPC_MIN_SLOW_CLK	32	/* us Slow clock period */
+#define	CHIPC_XTAL_ON_DELAY	1000	/* us crystal power-on delay */
 
 /* corecontrol */
 #define	CHIPC_UARTCLKO		0x00000001	/* Drive UART with internal clock */
@@ -536,6 +553,7 @@ enum {
 
 /* clockcontrol_n */
 #define	CHIPC_CN_N1_MASK		0x3f	/* n1 control */
+#define	CHIPC_CN_N1_SHIFT		0
 #define	CHIPC_CN_N2_MASK		0x3f00	/* n2 control */
 #define	CHIPC_CN_N2_SHIFT		8
 #define	CHIPC_CN_PLLC_MASK		0xf0000	/* pll control */
@@ -543,6 +561,7 @@ enum {
 
 /* clockcontrol_sb/pci/uart */
 #define	CHIPC_M1_MASK		0x3f	/* m1 control */
+#define	CHIPC_M1_SHIFT		0
 #define	CHIPC_M2_MASK		0x3f00	/* m2 control */
 #define	CHIPC_M2_SHIFT		8
 #define	CHIPC_M3_MASK		0x3f0000	/* m3 control */
