@@ -218,7 +218,7 @@ bhnd_pmu_sysctl_bus_freq(SYSCTL_HANDLER_ARGS)
 	sc = arg1;
 
 	BPMU_LOCK(sc);
-	freq = bhnd_pmu_si_clock(sc);
+	freq = bhnd_pmu_clock(sc);
 	BPMU_UNLOCK(sc);
 
 	return (sysctl_handle_32(oidp, NULL, freq, req));

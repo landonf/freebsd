@@ -4,6 +4,7 @@
 .PATH: ${.CURDIR}/../../dev/bhnd/cores/chipc
 .PATH: ${.CURDIR}/../../dev/bhnd/cores/extif
 .PATH: ${.CURDIR}/../../dev/bhnd/cores/pmu
+.PATH: ${.CURDIR}/../../dev/bhnd/pwrctl
 .PATH: ${.CURDIR}/../../dev/bhnd/nvram
 
 KMOD=	bhnd
@@ -13,8 +14,7 @@ SRCS+=	bhnd_bus_if.c bhnd_bus_if.h
 # ChipCommon
 SRCS+=	chipc.c chipc_subr.c
 SRCS+=	bhnd_sprom_chipc.c \
-	bhnd_pmu_chipc.c \
-	chipc_pwrctrl.c
+	bhnd_pmu_chipc.c
 SRCS+=	bhnd_chipc_if.c bhnd_chipc_if.h
 
 # EXTIF
@@ -25,6 +25,10 @@ SRCS+=	bhnd_pmu.c \
 	bhnd_pmu_core.c \
 	bhnd_pmu_subr.c
 SRCS+=	bhnd_pmu_if.c bhnd_pmu_if.h
+
+# PWRCTL
+SRCS+=	bhnd_pwrctl.c \
+	bhnd_pwrctl_subr.c
 
 # NVRAM/SPROM
 SRCS+=	nvram_subr.c
