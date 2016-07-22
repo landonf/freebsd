@@ -277,6 +277,6 @@ static device_method_t bhnd_extif_methods[] = {
 };
 
 DEFINE_CLASS_0(bhnd_chipc, bhnd_extif_driver, bhnd_extif_methods, sizeof(struct bhnd_extif_softc));
-EARLY_DRIVER_MODULE(bhnd_chipc, bhnd, bhnd_extif_driver, bhnd_chipc_devclass, 0, 0, BUS_PASS_BUS + BUS_PASS_ORDER_MIDDLE);
+EARLY_DRIVER_MODULE(bhnd_extif, bhnd, bhnd_extif_driver, bhnd_chipc_devclass, 0, 0, BUS_PASS_BUS + BUS_PASS_ORDER_MIDDLE);
 MODULE_DEPEND(bhnd_extif, bhnd, 1, 1, 1);
 MODULE_VERSION(bhnd_extif, 1);
