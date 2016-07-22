@@ -2212,7 +2212,7 @@ bhnd_pmu5_clock(struct bhnd_pmu_softc *sc, u_int pll0, u_int m)
  * and CPU just return the CPU clock speed.
  */
 uint32_t
-bhnd_pmu_clock(struct bhnd_pmu_softc *sc)
+bhnd_pmu_si_clock(struct bhnd_pmu_softc *sc)
 {
 	uint32_t chipst;
 	uint32_t clock;
@@ -2356,7 +2356,7 @@ bhnd_pmu_cpu_clock(struct bhnd_pmu_softc *sc)
 
 		clock = bhnd_pmu5_clock(sc, pll, BHND_PMU5_MAINPLL_CPU);
 	} else {
-		clock = bhnd_pmu_clock(sc);
+		clock = bhnd_pmu_si_clock(sc);
 	}
 
 	return (clock);
@@ -2396,7 +2396,7 @@ bhnd_pmu_mem_clock(struct bhnd_pmu_softc *sc)
 
 		clock = bhnd_pmu5_clock(sc, pll, BHND_PMU5_MAINPLL_MEM);
 	} else {
-		clock = bhnd_pmu_clock(sc);
+		clock = bhnd_pmu_si_clock(sc);
 	}
 
 	return (clock);

@@ -108,7 +108,7 @@ void		bhnd_pmu_swreg_init(struct bhnd_pmu_softc *sc);
 
 uint32_t	bhnd_pmu_force_ilp(struct bhnd_pmu_softc *sc, bool force);
 
-uint32_t	bhnd_pmu_clock(struct bhnd_pmu_softc *sc);
+uint32_t	bhnd_pmu_si_clock(struct bhnd_pmu_softc *sc);
 uint32_t	bhnd_pmu_cpu_clock(struct bhnd_pmu_softc *sc);
 uint32_t	bhnd_pmu_mem_clock(struct bhnd_pmu_softc *sc);
 uint32_t	bhnd_pmu_alp_clock(struct bhnd_pmu_softc *sc);
