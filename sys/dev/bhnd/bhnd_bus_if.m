@@ -66,21 +66,21 @@ CODE {
 	bhnd_bus_null_pwrctl_get_clksrc(device_t dev, device_t child,
 	    bhnd_clock clock)
 	{
-		panic("bhnd_bus_pwrctl_get_clksrc unimplemented");
+		return (BHND_CLKSRC_UNKNOWN);
 	}
 
 	static int
 	bhnd_bus_null_pwrctl_gate_clock(device_t dev, device_t child,
 	    bhnd_clock clock)
 	{
-		panic("bhnd_bus_pwrctl_gate_clock unimplemented");
+		return (ENODEV);
 	}
 
 	static int
 	bhnd_bus_null_pwrctl_ungate_clock(device_t dev, device_t child,
 	    bhnd_clock clock)
 	{
-		panic("bhnd_bus_pwrctl_ungate_clock unimplemented");
+		return (ENODEV);
 	}
 
 	static int
