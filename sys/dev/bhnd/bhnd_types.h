@@ -116,6 +116,25 @@ typedef enum {
 	BHND_CLOCK_HT		= 3
 } bhnd_clock;
 
+/**
+ * bhnd(4) clock sources.
+ */
+typedef enum {
+	/**
+	 * Clock is provided by the PCI bus clock
+	 */
+	BHND_CLKSRC_PCI		= 0,
+
+	/** Clock is provided by a crystal. */
+	BHND_CLKSRC_XTAL	= 1,
+
+	/** Clock is provided by a low power oscillator. */
+	BHND_CLKSRC_LPO		= 2,
+
+	/** Clock source is unknown */
+	BHND_CLKSRC_UNKNOWN	= 3
+} bhnd_clksrc;
+
 /** Evaluates to true if @p cls is a device class that can be configured
  *  as a host bridge device. */
 #define	BHND_DEVCLASS_SUPPORTS_HOSTB(cls)					\

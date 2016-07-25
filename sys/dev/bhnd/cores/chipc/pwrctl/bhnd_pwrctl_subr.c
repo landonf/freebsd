@@ -232,26 +232,40 @@ bhnd_pwrctl_clock(struct bhnd_pwrctl_softc *sc)
 	return (rate);
 }
 
-/* return the slow clock source - (CHIPC_SCC_SS_*)  */
-static uint32_t
+/* return the slow clock source */
+static bhnd_clksrc
 bhnd_pwrctl_slowclk_src(struct bhnd_pwrctl_softc *sc)
 {
 	uint32_t clkreg;
+	uint32_t clksrc;
 
+	/* Fetch clock source */
 	if (PWRCTL_QUIRK(sc, PCICLK_CTL)) {
 		KASSERT(sc->pci_dev != NULL, ("missing PCI bridge"));
 
 		clkreg = pci_read_config(sc->pci_dev, BHNDB_PCI_GPIO_OUT, 4);
 		if (clkreg & BHNDB_PCI_GPIO_SCS)
-			return (CHIPC_SCC_SS_PCI);
+			clksrc = CHIPC_SCC_SS_PCI;
 		else
-			return (CHIPC_SCC_SS_XTAL);
+			clksrc = CHIPC_SCC_SS_XTAL;
 	} else if (PWRCTL_QUIRK(sc, SLOWCLK_CTL)) {
 		clkreg = bhnd_bus_read_4(sc->res, CHIPC_PLL_SLOWCLK_CTL);
-		return (clkreg & CHIPC_SCC_SS_MASK);
+		clksrc = clkreg & CHIPC_SCC_SS_MASK;
 	} else {
 		/* Instaclock */
-		return (CHIPC_SCC_SS_XTAL);
+		clksrc = CHIPC_SCC_SS_XTAL;
+	}
+
+	/* Map to bhnd_clksrc */
+	switch (clksrc) {
+	case CHIPC_SCC_SS_PCI:
+		return (BHND_CLKSRC_PCI);
+	case CHIPC_SCC_SS_LPO:
+		return (BHND_CLKSRC_LPO);
+	case CHIPC_SCC_SS_XTAL:
+		return (BHND_CLKSRC_XTAL);
+	default:
+		return (BHND_CLKSRC_UNKNOWN);
 	}
 }
 
@@ -259,15 +273,15 @@ bhnd_pwrctl_slowclk_src(struct bhnd_pwrctl_softc *sc)
 static uint32_t
 bhnd_pwrctl_slowclk_freq(struct bhnd_pwrctl_softc *sc, bool max_freq)
 {
-	uint32_t slowclk;
-	uint32_t div;
-	uint32_t hz;
+	bhnd_clksrc	slowclk;
+	uint32_t	div;
+	uint32_t	hz;
 
 	slowclk = bhnd_pwrctl_slowclk_src(sc);
 
 	/* Determine clock divisor */
 	if (PWRCTL_QUIRK(sc, PCICLK_CTL)) {
-		if (slowclk == CHIPC_SCC_SS_PCI)
+		if (slowclk == BHND_CLKSRC_PCI)
 			div = 64;
 		else
 			div = 32;
@@ -290,13 +304,13 @@ bhnd_pwrctl_slowclk_freq(struct bhnd_pwrctl_softc *sc, bool max_freq)
 
 	/* Determine clock frequency */
 	switch (slowclk) {
-	case CHIPC_SCC_SS_LPO:
+	case BHND_CLKSRC_LPO:
 		hz = max_freq ? CHIPC_LPOMAXFREQ : CHIPC_LPOMINFREQ;
 		break;
-	case CHIPC_SCC_SS_XTAL:
+	case BHND_CLKSRC_XTAL:
 		hz = max_freq ? CHIPC_XTALMAXFREQ : CHIPC_XTALMINFREQ;
 		break;
-	case CHIPC_SCC_SS_PCI:
+	case BHND_CLKSRC_PCI:
 		hz = max_freq ? CHIPC_PCIMAXFREQ : CHIPC_PCIMINFREQ;
 		break;
 	default:
