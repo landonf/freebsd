@@ -65,6 +65,9 @@ __FBSDID("$FreeBSD$");
 static int		bhndb_enable_pci_clocks(struct bhndb_pci_softc *sc);
 static int		bhndb_disable_pci_clocks(struct bhndb_pci_softc *sc);
 
+static int		bhndb_pci_is_pwrctl_supported(
+			    struct bhndb_pci_softc *sc, bhnd_clock clock);
+
 static int		bhndb_pci_compat_setregwin(struct bhndb_pci_softc *,
 			    const struct bhndb_regwin *, bhnd_addr_t);
 static int		bhndb_pci_fast_setregwin(struct bhndb_pci_softc *,
@@ -606,6 +609,71 @@ bhndb_disable_pci_clocks(struct bhndb_pci_softc *sc)
 	return (0);
 }
 
+/* Verify that bus-level pwrctl operations on @p clock are supported */
+static int
+bhndb_pci_is_pwrctl_supported(struct bhndb_pci_softc *sc, bhnd_clock clock)
+{
+	/* Only supported on PCI devices */
+	if (sc->pci_devclass != BHND_DEVCLASS_PCI)
+		return (ENODEV);
+
+	/* Only ILP is supported */
+	if (clock != BHND_CLOCK_ILP)
+		return (ENXIO);
+
+	return (0);
+}
+
+static bhnd_clksrc
+bhndb_pci_pwrctl_get_clksrc(device_t dev, device_t child,
+	bhnd_clock clock)
+{
+	struct bhndb_pci_softc	*sc;
+	uint32_t		 gpio_out;
+	int			 error;
+
+	sc = device_get_softc(dev);
+
+	if ((error = bhndb_pci_is_pwrctl_supported(sc, clock)))
+		return (error);
+
+	gpio_out = pci_read_config(sc->parent, BHNDB_PCI_GPIO_OUT, 4);
+	if (gpio_out & BHNDB_PCI_GPIO_SCS)
+		return (BHND_CLKSRC_PCI);
+	else
+		return (BHND_CLKSRC_XTAL);
+}
+
+static int
+bhndb_pci_pwrctl_gate_clock(device_t dev, device_t child,
+	bhnd_clock clock)
+{
+	struct bhndb_pci_softc	*sc;
+	int			 error;
+
+	sc = device_get_softc(dev);
+
+	if ((error = bhndb_pci_is_pwrctl_supported(sc, clock)))
+		return (error);
+
+	return (bhndb_disable_pci_clocks(sc));
+}
+
+static int
+bhndb_pci_pwrctl_ungate_clock(device_t dev, device_t child,
+	bhnd_clock clock)
+{
+	struct bhndb_pci_softc	*sc;
+	int			 error;
+
+	sc = device_get_softc(dev);
+
+	if ((error = bhndb_pci_is_pwrctl_supported(sc, clock)))
+		return (error);
+
+	return (bhndb_enable_pci_clocks(sc));
+}
+
 static device_method_t bhndb_pci_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,			bhndb_pci_probe),
@@ -613,6 +681,11 @@ static device_method_t bhndb_pci_methods[] = {
 	DEVMETHOD(device_resume,		bhndb_pci_resume),
 	DEVMETHOD(device_suspend,		bhndb_pci_suspend),
 	DEVMETHOD(device_detach,		bhndb_pci_detach),
+
+	/* BHND interface */
+	DEVMETHOD(bhnd_bus_pwrctl_get_clksrc,	bhndb_pci_pwrctl_get_clksrc),
+	DEVMETHOD(bhnd_bus_pwrctl_gate_clock,	bhndb_pci_pwrctl_gate_clock),
+	DEVMETHOD(bhnd_bus_pwrctl_ungate_clock,	bhndb_pci_pwrctl_ungate_clock),
 
 	/* BHNDB interface */
 	DEVMETHOD(bhndb_init_full_config,	bhndb_pci_init_full_config),
