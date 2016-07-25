@@ -54,12 +54,12 @@ enum {
 	PWRCTL_QUIRK_PCICLK_CTL		= (1 << 1) | PWRCTL_QUIRK_FIXED_CLK,
 
 	/**
-	 * ChipCommon revisions 6-9 use the 'slowclk' register layout.
+	 * ChipCommon revisions 6-9 use the slowclk register layout.
 	 */
 	PWRCTL_QUIRK_SLOWCLK_CTL	= (1 << 2),
 	
 	/**
-	 * ChipCommon revisions 10-19 support 'instaclk'.
+	 * ChipCommon revisions 10-19 support the instaclk register layout.
 	 */
 	PWRCTL_QUIRK_INSTACLK_CTL	= (1 << 2),
 
