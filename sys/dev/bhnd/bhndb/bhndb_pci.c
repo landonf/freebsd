@@ -609,10 +609,15 @@ bhndb_disable_pci_clocks(struct bhndb_pci_softc *sc)
 	return (0);
 }
 
-/* Verify that bus-level pwrctl operations on @p clock are supported */
-static int
-bhndb_pci_is_pwrctl_supported(struct bhndb_pci_softc *sc, bhnd_clock clock)
+static bhnd_clksrc
+bhndb_pci_pwrctl_get_clksrc(device_t dev, device_t child,
+	bhnd_clock clock)
 {
+	struct bhndb_pci_softc	*sc;
+	uint32_t		 gpio_out;
+
+	sc = device_get_softc(dev);
+
 	/* Only supported on PCI devices */
 	if (sc->pci_devclass != BHND_DEVCLASS_PCI)
 		return (ENODEV);
@@ -620,22 +625,6 @@ bhndb_pci_is_pwrctl_supported(struct bhndb_pci_softc *sc, bhnd_clock clock)
 	/* Only ILP is supported */
 	if (clock != BHND_CLOCK_ILP)
 		return (ENXIO);
-
-	return (0);
-}
-
-static bhnd_clksrc
-bhndb_pci_pwrctl_get_clksrc(device_t dev, device_t child,
-	bhnd_clock clock)
-{
-	struct bhndb_pci_softc	*sc;
-	uint32_t		 gpio_out;
-	int			 error;
-
-	sc = device_get_softc(dev);
-
-	if ((error = bhndb_pci_is_pwrctl_supported(sc, clock)))
-		return (error);
 
 	gpio_out = pci_read_config(sc->parent, BHNDB_PCI_GPIO_OUT, 4);
 	if (gpio_out & BHNDB_PCI_GPIO_SCS)
@@ -648,13 +637,15 @@ static int
 bhndb_pci_pwrctl_gate_clock(device_t dev, device_t child,
 	bhnd_clock clock)
 {
-	struct bhndb_pci_softc	*sc;
-	int			 error;
+	struct bhndb_pci_softc *sc = device_get_softc(dev);
 
-	sc = device_get_softc(dev);
+	/* Only supported on PCI devices */
+	if (sc->pci_devclass != BHND_DEVCLASS_PCI)
+		return (ENODEV);
 
-	if ((error = bhndb_pci_is_pwrctl_supported(sc, clock)))
-		return (error);
+	/* Only HT is supported */
+	if (clock != BHND_CLOCK_HT)
+		return (ENXIO);
 
 	return (bhndb_disable_pci_clocks(sc));
 }
@@ -663,13 +654,15 @@ static int
 bhndb_pci_pwrctl_ungate_clock(device_t dev, device_t child,
 	bhnd_clock clock)
 {
-	struct bhndb_pci_softc	*sc;
-	int			 error;
+	struct bhndb_pci_softc *sc = device_get_softc(dev);
 
-	sc = device_get_softc(dev);
+	/* Only supported on PCI devices */
+	if (sc->pci_devclass != BHND_DEVCLASS_PCI)
+		return (ENODEV);
 
-	if ((error = bhndb_pci_is_pwrctl_supported(sc, clock)))
-		return (error);
+	/* Only HT is supported */
+	if (clock != BHND_CLOCK_HT)
+		return (ENXIO);
 
 	return (bhndb_enable_pci_clocks(sc));
 }

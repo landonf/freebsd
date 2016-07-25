@@ -405,8 +405,7 @@ bhnd_get_chipid(device_t dev) {
  *					clock source is not known to the bus.
  */
 static inline bhnd_clksrc
-bhnd_pwrctl_get_clksrc(device_t dev, device_t child,
-	bhnd_clock clock)
+bhnd_pwrctl_get_clksrc(device_t dev, bhnd_clock clock)
 {
 	return (BHND_BUS_PWRCTL_GET_CLKSRC(device_get_parent(dev), dev, clock));
 }
@@ -426,8 +425,7 @@ bhnd_pwrctl_get_clksrc(device_t dev, device_t child,
  * @retval ENXIO If bus-level management of @p clock is not supported.
  */
 static inline int
-bhnd_pwrctl_gate_clock(device_t dev, device_t child,
-	bhnd_clock clock)
+bhnd_pwrctl_gate_clock(device_t dev, bhnd_clock clock)
 {
 	return (BHND_BUS_PWRCTL_GATE_CLOCK(device_get_parent(dev), dev, clock));
 }
@@ -447,8 +445,7 @@ bhnd_pwrctl_gate_clock(device_t dev, device_t child,
  * @retval ENXIO If bus-level management of @p clock is not supported.
  */
 static inline int
-bhnd_pwrctl_ungate_clock(device_t dev, device_t child,
-	bhnd_clock clock)
+bhnd_pwrctl_ungate_clock(device_t dev, bhnd_clock clock)
 {
 	return (BHND_BUS_PWRCTL_UNGATE_CLOCK(device_get_parent(dev), dev,
 	    clock));

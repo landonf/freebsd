@@ -32,9 +32,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/module.h>
 #include <sys/systm.h>
 
-#include <dev/pci/pcireg.h>
-#include <dev/pci/pcivar.h>
-
 #include <dev/bhnd/bhnd.h>
 #include <dev/bhnd/bhndb/bhndb_pcireg.h>
 
@@ -241,13 +238,7 @@ bhnd_pwrctl_slowclk_src(struct bhnd_pwrctl_softc *sc)
 
 	/* Fetch clock source */
 	if (PWRCTL_QUIRK(sc, PCICLK_CTL)) {
-		KASSERT(sc->pci_dev != NULL, ("missing PCI bridge"));
-
-		clkreg = pci_read_config(sc->pci_dev, BHNDB_PCI_GPIO_OUT, 4);
-		if (clkreg & BHNDB_PCI_GPIO_SCS)
-			clksrc = CHIPC_SCC_SS_PCI;
-		else
-			clksrc = CHIPC_SCC_SS_XTAL;
+		return (bhnd_pwrctl_get_clksrc(sc->chipc_dev, BHND_CLOCK_ILP));
 	} else if (PWRCTL_QUIRK(sc, SLOWCLK_CTL)) {
 		clkreg = bhnd_bus_read_4(sc->res, CHIPC_PLL_SLOWCLK_CTL);
 		clksrc = clkreg & CHIPC_SCC_SS_MASK;
@@ -449,18 +440,6 @@ bhnd_pwrctl_cc(struct bhnd_pwrctl_softc *sc, bhnd_clock clock)
 	return (bhnd_pwrctl_setclk(sc, clock));
 }
 
-static void
-bhnd_pwrctl_xtal(struct bhnd_pwrctl_softc *sc, bool enable)
-{
-	/* Only supported on revisions 6-9 */
-	PWRCTL_ASSERT_QUIRK(sc, SLOWCLK_CTL);
-
-	if (sc->pci_dev == NULL)
-		return;
-
-	// TODO: We need to force the XTAL on/off via PCI config space.
-}
-
 /* clk control mechanism through chipcommon, no policy checking */
 static bool
 bhnd_pwrctl_setclk(struct bhnd_pwrctl_softc *sc, bhnd_clock clock)
@@ -484,7 +463,7 @@ bhnd_pwrctl_setclk(struct bhnd_pwrctl_softc *sc, bhnd_clock clock)
 			scc |= CHIPC_SCC_IP;
 
 			/* force xtal back on before clearing SCC_DYN_XTAL.. */
-			bhnd_pwrctl_xtal(sc, true);
+			bhnd_pwrctl_ungate_clock(sc->chipc_dev, BHND_CLOCK_HT);
 		} else if (PWRCTL_QUIRK(sc, INSTACLK_CTL)) {
 			scc |= CHIPC_SYCC_HR;
 		} else {
@@ -506,8 +485,10 @@ bhnd_pwrctl_setclk(struct bhnd_pwrctl_softc *sc, bhnd_clock clock)
 
 			/* for dynamic control, we have to release our xtal_pu
 			 * "force on" */
-			if (scc & CHIPC_SCC_XC)
-				bhnd_pwrctl_xtal(sc, false);
+			if (scc & CHIPC_SCC_XC) {
+				bhnd_pwrctl_gate_clock(sc->chipc_dev,
+				    BHND_CLOCK_HT);
+			}
 		} else if (PWRCTL_QUIRK(sc, INSTACLK_CTL)) {
 			/* Instaclock */
 			scc &= ~CHIPC_SYCC_HR;

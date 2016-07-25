@@ -72,8 +72,6 @@ struct bhnd_pwrctl_softc {
 	device_t		 dev;
 	uint32_t		 quirks;
 
-	device_t		 pci_dev;	/**< host PCI device, or NULL */
-
 	device_t		 chipc_dev;	/**< core device */
 	struct bhnd_resource	*res;		/**< core register block. */
 

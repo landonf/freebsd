@@ -119,10 +119,6 @@ bhnd_pwrctl_attach(device_t dev)
 	chipc_sc = device_get_softc(sc->chipc_dev);
 	sc->res = chipc_sc->core;
 
-	/* On early PCI devices, the slowclk registers are mapped via PCI
-	 * config space */
-	sc->pci_dev = bhnd_find_bridge_root(dev, devclass_find("pci"));
-
 	PWRCTL_LOCK_INIT(sc);
 	return (0);
 }
