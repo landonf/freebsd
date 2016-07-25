@@ -258,7 +258,7 @@ METHOD bhnd_attach_type get_attach_type {
  *
  * This function is only supported on early PWRCTL-equipped chipsets
  * that expose clock management via their host bridge interface. Currently,
- * this includes PCI (not PCIe) devices, with ChipCommon core revisions 6-9.
+ * this includes PCI (not PCIe) devices, with ChipCommon core revisions 0-9.
  *
  * @param dev The parent of @p child.
  * @param child The bhnd device requesting a clock source.
@@ -279,7 +279,7 @@ METHOD bhnd_clksrc pwrctl_get_clksrc {
  *
  * This function is only supported on early PWRCTL-equipped chipsets
  * that expose clock management via their host bridge interface. Currently,
- * this includes PCI (not PCIe) devices, with ChipCommon core revisions 6-9.
+ * this includes PCI (not PCIe) devices, with ChipCommon core revisions 0-9.
  *
  * @param dev The parent of @p child.
  * @param child The bhnd device requesting clock gating.
@@ -300,7 +300,7 @@ METHOD int pwrctl_gate_clock {
  *
  * This function is only supported on early PWRCTL-equipped chipsets
  * that expose clock management via their host bridge interface. Currently,
- * this includes PCI (not PCIe) devices, with ChipCommon core revisions 6-9.
+ * this includes PCI (not PCIe) devices, with ChipCommon core revisions 0-9.
  *
  * @param dev The parent of @p child.
  * @param child The bhnd device requesting clock gating.

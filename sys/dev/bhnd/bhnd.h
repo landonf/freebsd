@@ -395,7 +395,7 @@ bhnd_get_chipid(device_t dev) {
  *
  * This function is only supported on early PWRCTL-equipped chipsets
  * that expose clock management via their host bridge interface. Currently,
- * this includes PCI (not PCIe) devices, with ChipCommon core revisions 6-9.
+ * this includes PCI (not PCIe) devices, with ChipCommon core revisions 0-9.
  *
  * @param dev A bhnd bus child device.
  * @param clock The clock for which a clock source will be returned.
@@ -416,7 +416,7 @@ bhnd_pwrctl_get_clksrc(device_t dev, device_t child,
  *
  * This function is only supported on early PWRCTL-equipped chipsets
  * that expose clock management via their host bridge interface. Currently,
- * this includes PCI (not PCIe) devices, with ChipCommon core revisions 6-9.
+ * this includes PCI (not PCIe) devices, with ChipCommon core revisions 0-9.
  *
  * @param dev A bhnd bus child device.
  * @param clock The clock to be disabled.
@@ -437,7 +437,7 @@ bhnd_pwrctl_gate_clock(device_t dev, device_t child,
  *
  * This function is only supported on early PWRCTL-equipped chipsets
  * that expose clock management via their host bridge interface. Currently,
- * this includes PCI (not PCIe) devices, with ChipCommon core revisions 6-9.
+ * this includes PCI (not PCIe) devices, with ChipCommon core revisions 0-9.
  *
  * @param dev A bhnd bus child device.
  * @param clock The clock to be enabled.
