@@ -38,104 +38,28 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhnd.h>
 #include <dev/bhnd/bhndb/bhndb_pcireg.h>
 
+#include <dev/bhnd/cores/chipc/chipc.h>
+#include <dev/bhnd/cores/chipc/chipcreg.h>
+
 #include <dev/bhnd/cores/pmu/bhnd_pmuvar.h>
 #include <dev/bhnd/cores/pmu/bhnd_pmureg.h>
 
 #include "bhnd_chipc_if.h"
-#include "bhnd_pmu_if.h"
 
-#include "chipcreg.h"
-#include "chipcvar.h"
+#include "bhnd_pwrctl_private.h"
 
-/*
- * ChipCommon Power/Clock Control driver.
- * 
- * Provides a bhnd_pmu_if-compatible interface to device clocking and
- * power management on non-PMU chipsets.
+static uint32_t	bhnd_pwrctl_factor6(uint32_t x);
+static uint32_t	bhnd_pwrctl_clock_rate(uint32_t pll_type, uint32_t n,
+		    uint32_t m);
+static bool	bhnd_pwrctl_setclk(struct bhnd_pwrctl_softc *sc,
+		    bhnd_clock clock);
+
+/**
+ * Return the factor value corresponding to a given N3M clock control magic
+ * field value (CHIPC_F6_*).
  */
-
-struct chipc_pwrctrl_softc {
-	device_t		 dev;
-	device_t		 chipc_dev;	/**< chipc device */
-	device_t		 pci_dev;	/**< host PCI device, or NULL */
-
-	uint16_t		 chipc_rev;	/**< chipc core revision */
-	struct bhnd_resource	*res;		/**< chipc register block. */
-};
-
-static int
-chipc_pwrctrl_probe(device_t dev)
-{
-	struct chipc_caps	*ccaps;
-	device_t		 chipc;
-
-	/* Look for chipc parent */
-	chipc = device_get_parent(dev);
-	if (device_get_devclass(chipc) != devclass_find("bhnd_chipc"))
-		return (ENXIO);
-
-	/* Verify chipc capability flags */
-	ccaps = BHND_CHIPC_GET_CAPS(chipc);
-	if (ccaps->pmu || !ccaps->pwr_ctrl)
-		return (ENXIO);
-
-	device_set_desc(dev, "Broadcom ChipCommon Power Control");
-	return (BUS_PROBE_NOWILDCARD);
-}
-
-static int
-chipc_pwrctrl_attach(device_t dev)
-{
-	struct chipc_pwrctrl_softc	*sc;
-	struct chipc_softc		*chipc_sc;
-
-	sc = device_get_softc(dev);
-
-	sc->dev = dev;
-	sc->chipc_dev = device_get_parent(dev);
-	sc->chipc_rev = bhnd_get_hwrev(sc->chipc_dev);
-
-	/* Fetch core register block from ChipCommon parent */
-	chipc_sc = device_get_softc(sc->chipc_dev);
-	sc->res = chipc_sc->core;
-
-	/* On early PCI devices, the slowclk registers are mapped via PCI
-	 * config space */
-	if (sc->chipc_rev < 6) {
-		sc->pci_dev = bhnd_find_bridge_root(dev, devclass_find("pci"));
-		if (sc->pci_dev == NULL) {
-			device_printf(dev,
-			    "parent pci bridge device not found\n");
-			return (ENXIO);
-		}
-	}
-
-	return (0);
-}
-
-static int
-chipc_pwrctrl_detach(device_t dev)
-{
-	// TODO
-	return (0);
-}
-
-static int
-chipc_pwrctrl_suspend(device_t dev)
-{
-	// TODO
-	return (0);
-}
-
-static int
-chipc_pwrctrl_resume(device_t dev)
-{
-	// TODO
-	return (0);
-}
-
 static uint32_t
-chipc_pwrctrl_factor6(uint32_t x)
+bhnd_pwrctl_factor6(uint32_t x)
 {
 	switch (x) {
 	case CHIPC_F6_2:	
@@ -155,9 +79,16 @@ chipc_pwrctrl_factor6(uint32_t x)
 	}
 }
 
-/* Calculate the clock speed given a set of clockcontrol values */
+/**
+ * Calculate the clock speed (in Hz) for a given a set of clockcontrol
+ * values.
+ * 
+ * @param pll_type PLL type (CHIPC_PLL_TYPE*)
+ * @param n clock control N register value.
+ * @param m clock control N register value.
+ */
 static uint32_t
-si_clock_rate(uint32_t pll_type, uint32_t n, uint32_t m)
+bhnd_pwrctl_clock_rate(uint32_t pll_type, uint32_t n, uint32_t m)
 {
 	uint32_t clk_base;
 	uint32_t n1, n2, clock, m1, m2, m3, mc;
@@ -170,7 +101,7 @@ si_clock_rate(uint32_t pll_type, uint32_t n, uint32_t m)
 	case CHIPC_PLL_TYPE3:
 	case CHIPC_PLL_TYPE4:
 	case CHIPC_PLL_TYPE7:
-		n1 = chipc_pwrctrl_factor6(n1);
+		n1 = bhnd_pwrctl_factor6(n1);
 		n2 += CHIPC_F5_BIAS;
 		break;
 
@@ -217,13 +148,13 @@ si_clock_rate(uint32_t pll_type, uint32_t n, uint32_t m)
 	case CHIPC_PLL_TYPE3:
 	case CHIPC_PLL_TYPE4:
 	case CHIPC_PLL_TYPE7:
-		m1 = chipc_pwrctrl_factor6(m1);
+		m1 = bhnd_pwrctl_factor6(m1);
 		if (pll_type == CHIPC_PLL_TYPE1 || pll_type == CHIPC_PLL_TYPE3)
 			m2 += CHIPC_F5_BIAS;
 		else
-			m2 = chipc_pwrctrl_factor6(m2);
+			m2 = bhnd_pwrctl_factor6(m2);
 
-		m3 = chipc_pwrctrl_factor6(m3);
+		m3 = bhnd_pwrctl_factor6(m3);
 
 		switch (mc) {
 		case CHIPC_MC_BYPASS:	
@@ -261,30 +192,39 @@ si_clock_rate(uint32_t pll_type, uint32_t n, uint32_t m)
 	}
 }
 
-static uint32_t
-si_clock(struct chipc_pwrctrl_softc *sc)
+/**
+ * Return the backplane clock speed in Hz.
+ * 
+ * @param sc driver instance state.
+ */
+uint32_t
+bhnd_pwrctl_clock(struct bhnd_pwrctl_softc *sc)
 {
 	struct chipc_caps	*ccaps;
+	bus_size_t		 creg;
 	uint32_t 		 n, m;
 	uint32_t 		 rate;
 
 	ccaps = BHND_CHIPC_GET_CAPS(sc->chipc_dev);
 
 	n = bhnd_bus_read_4(sc->res, CHIPC_CLKC_N);
+
 	switch (ccaps->pll_type) {
 	case CHIPC_PLL_TYPE6:
-		m = bhnd_bus_read_4(sc->res, CHIPC_CLKC_M3);
+		creg = CHIPC_CLKC_M3; /* non-extif regster */
 		break;
 	case CHIPC_PLL_TYPE3:
-		m = bhnd_bus_read_4(sc->res, CHIPC_CLKC_M2);
+		creg = CHIPC_CLKC_M2;
 		break;
 	default:
-		m = bhnd_bus_read_4(sc->res, CHIPC_CLKC_SB);
+		creg = CHIPC_CLKC_SB;
 		break;
 	}
 
+	m = bhnd_bus_read_4(sc->res, creg);
+
 	/* calculate rate */
-	rate = si_clock_rate(ccaps->pll_type, n, m);
+	rate = bhnd_pwrctl_clock_rate(ccaps->pll_type, n, m);
 
 	if (ccaps->pll_type == CHIPC_PLL_TYPE3)
 		rate /= 2;
@@ -292,26 +232,13 @@ si_clock(struct chipc_pwrctrl_softc *sc)
 	return (rate);
 }
 
-static uint32_t
-si_alp_clock(struct chipc_pwrctrl_softc *sc)
-{
-	return (BHND_PMU_ALP_CLOCK);
-}
-
-static uint32_t
-si_ilp_clock(struct chipc_pwrctrl_softc *sc)
-{
-	return (BHND_PMU_ILP_CLOCK);
-}
-
-
 /* return the slow clock source - (CHIPC_SCC_SS_*)  */
 static uint32_t
-si_slowclk_src(struct chipc_pwrctrl_softc *sc)
+bhnd_pwrctl_slowclk_src(struct bhnd_pwrctl_softc *sc)
 {
 	uint32_t clkreg;
 
-	if (sc->chipc_rev < 6) {
+	if (PWRCTL_QUIRK(sc, PCICLK_CTL)) {
 		KASSERT(sc->pci_dev != NULL, ("missing PCI bridge"));
 
 		clkreg = pci_read_config(sc->pci_dev, BHNDB_PCI_GPIO_OUT, 4);
@@ -319,7 +246,7 @@ si_slowclk_src(struct chipc_pwrctrl_softc *sc)
 			return (CHIPC_SCC_SS_PCI);
 		else
 			return (CHIPC_SCC_SS_XTAL);
-	} else if (sc->chipc_rev < 10) {
+	} else if (PWRCTL_QUIRK(sc, SLOWCLK_CTL)) {
 		clkreg = bhnd_bus_read_4(sc->res, CHIPC_PLL_SLOWCLK_CTL);
 		return (clkreg & CHIPC_SCC_SS_MASK);
 	} else {
@@ -330,26 +257,25 @@ si_slowclk_src(struct chipc_pwrctrl_softc *sc)
 
 /* return the ILP (slowclock) min or max frequency */
 static uint32_t
-si_slowclk_freq(struct chipc_pwrctrl_softc *sc, bool max_freq)
+bhnd_pwrctl_slowclk_freq(struct bhnd_pwrctl_softc *sc, bool max_freq)
 {
 	uint32_t slowclk;
 	uint32_t div;
 	uint32_t hz;
 
-	slowclk = si_slowclk_src(sc);
+	slowclk = bhnd_pwrctl_slowclk_src(sc);
 
 	/* Determine clock divisor */
-	if (sc->chipc_rev < 6) {
+	if (PWRCTL_QUIRK(sc, PCICLK_CTL)) {
 		if (slowclk == CHIPC_SCC_SS_PCI)
 			div = 64;
 		else
 			div = 32;
-	} else if (sc->chipc_rev < 10) {
+	} else if (PWRCTL_QUIRK(sc, SLOWCLK_CTL)) {
 		div = bhnd_bus_read_4(sc->res, CHIPC_PLL_SLOWCLK_CTL);
 		div = CHIPC_GET_BITS(div, CHIPC_SCC_CD);
 		div *= 4;
-	} else {
-		/* Chipc rev 10 is InstaClock */
+	} else if (PWRCTL_QUIRK(sc, INSTACLK_CTL)) {
 		if (max_freq) {
 			div = 1;
 		} else {
@@ -357,6 +283,9 @@ si_slowclk_freq(struct chipc_pwrctrl_softc *sc, bool max_freq)
 			div = CHIPC_GET_BITS(div, CHIPC_SYCC_CD);
 			div = 4 * (div + 1);
 		}
+	} else {
+		device_printf(sc->dev, "unknown device type\n");
+		return (0);
 	}
 
 	/* Determine clock frequency */
@@ -380,7 +309,7 @@ si_slowclk_freq(struct chipc_pwrctrl_softc *sc, bool max_freq)
 
 /* initialize power control delay registers */
 static void
-si_clkctl_init(struct chipc_pwrctrl_softc *sc)
+bhnd_pwrctl_clkctl_init(struct bhnd_pwrctl_softc *sc)
 {
 	uint32_t clkctl;
 	uint32_t pll_delay, slowclk, slowmaxfreq;
@@ -389,7 +318,7 @@ si_clkctl_init(struct chipc_pwrctrl_softc *sc)
 	pll_delay = CHIPC_PLL_DELAY;
 
 	/* set all Instaclk chip ILP to 1 MHz */
-	if (sc->chipc_rev >= 10) {
+	if (PWRCTL_QUIRK(sc, INSTACLK_CTL)) {
 		clkctl = (CHIPC_ILP_DIV_1MHZ << CHIPC_SYCC_CD_SHIFT);
 		clkctl &= CHIPC_SYCC_CD_MASK;
 		bhnd_bus_write_4(sc->res, CHIPC_SYS_CLK_CTL, clkctl);
@@ -402,12 +331,17 @@ si_clkctl_init(struct chipc_pwrctrl_softc *sc)
 	 * If the slow clock is not sourced by the xtal, include the
 	 * delay required to bring it up.
 	 */
-	slowclk = si_slowclk_src(sc);
+	slowclk = bhnd_pwrctl_slowclk_src(sc);
 	if (slowclk != CHIPC_SCC_SS_XTAL)
 		pll_delay += CHIPC_XTAL_ON_DELAY;
 
 	/* Starting with 4318 it is ILP that is used for the delays */
-	slowmaxfreq = si_slowclk_freq(sc, (sc->chipc_rev >= 10) ? false : true);
+	if (PWRCTL_QUIRK(sc, INSTACLK_CTL)) {
+		slowmaxfreq = bhnd_pwrctl_slowclk_freq(sc, false);
+	} else {
+		slowmaxfreq = bhnd_pwrctl_slowclk_freq(sc, true);
+	}
+
 
 	pll_on_delay = ((slowmaxfreq * pll_delay) + 999999) / 1000000;
 	fref_sel_delay = ((slowmaxfreq * CHIPC_FREF_DELAY) + 999999) / 1000000;
@@ -419,14 +353,14 @@ si_clkctl_init(struct chipc_pwrctrl_softc *sc)
 /* return the value suitable for writing to the dot11 core
  * FAST_PWRUP_DELAY register */
 static uint16_t
-si_clkctl_fast_pwrup_delay(struct chipc_pwrctrl_softc *sc)
+bhnd_pwrctl_fast_pwrup_delay(struct bhnd_pwrctl_softc *sc)
 {
 	uint32_t pll_on_delay, slowminfreq;
 	uint16_t fpdelay;
 
 	fpdelay = 0;
 
-	slowminfreq = si_slowclk_freq(sc, false);
+	slowminfreq = bhnd_pwrctl_slowclk_freq(sc, false);
 
 	pll_on_delay = bhnd_bus_read_4(sc->res, CHIPC_PLL_ON_DELAY) + 2;
 	pll_on_delay *= 1000000;
@@ -435,8 +369,6 @@ si_clkctl_fast_pwrup_delay(struct chipc_pwrctrl_softc *sc)
 
 	return (fpdelay);
 }
-
-static bool	_si_clkctl_cc(struct chipc_pwrctrl_softc *sc, bhnd_clock clock);
 
 /*
  *  clock control policy function throught chipcommon
@@ -447,7 +379,7 @@ static bool	_si_clkctl_cc(struct chipc_pwrctrl_softc *sc, bhnd_clock clock);
  *      to allow flexible policy settings for outside caller
  */
 static bool
-si_clkctl_cc(struct chipc_pwrctrl_softc *sc, bhnd_clock clock)
+bhnd_pwrctl_cc(struct bhnd_pwrctl_softc *sc, bhnd_clock clock)
 {
 	const struct bhnd_chipid	*cid;
 	bhnd_devclass_t			 hostb_class;
@@ -456,8 +388,8 @@ si_clkctl_cc(struct chipc_pwrctrl_softc *sc, bhnd_clock clock)
 
 	cid = bhnd_get_chipid(sc->chipc_dev);
 
-	/* chipcommon cores prior to rev6 don't support dynamic clock control */
-	if (sc->chipc_rev < 6)
+	/* Is dynamic clock control supported? */
+	if (PWRCTL_QUIRK(sc, FIXED_CLK))
 		return (false);
 
 	hostb_class = BHND_DEVCLASS_INVALID;
@@ -471,6 +403,7 @@ si_clkctl_cc(struct chipc_pwrctrl_softc *sc, bhnd_clock clock)
 	case BHND_CHIPID_BCM4311:
 		if (cid->chip_rev > 1)
 			break;
+
 		if (hostb_class != BHND_DEVCLASS_PCIE)
 			break;
 
@@ -481,12 +414,14 @@ si_clkctl_cc(struct chipc_pwrctrl_softc *sc, bhnd_clock clock)
 		if (hostb_class != BHND_DEVCLASS_PCIE ||
 		    hostb_class != BHND_DEVCLASS_PCI)
 			break;
+
 		force_ht = true;
 		break;
 
 	case BHND_CHIPID_BCM4716:
 		if (hostb_class != BHND_DEVCLASS_PCIE)
 			break;
+
 		force_ht = true;
 		break;
 
@@ -497,14 +432,14 @@ si_clkctl_cc(struct chipc_pwrctrl_softc *sc, bhnd_clock clock)
 	if (force_ht)
 		return (clock == BHND_CLOCK_HT);
 
-	return (_si_clkctl_cc(sc, clock));
+	return (bhnd_pwrctl_setclk(sc, clock));
 }
 
 static void
-si_clkctl_xtal(struct chipc_pwrctrl_softc *sc, bool enable)
+bhnd_pwrctl_xtal(struct bhnd_pwrctl_softc *sc, bool enable)
 {
-	KASSERT(sc->chipc_rev >= 6 && sc->chipc_rev <= 9,
-	    ("force_xtal unsupported on rev %hu", sc->chipc_rev));
+	/* Only supported on revisions 6-9 */
+	PWRCTL_ASSERT_QUIRK(sc, SLOWCLK_CTL);
 
 	if (sc->pci_dev == NULL)
 		return;
@@ -514,30 +449,33 @@ si_clkctl_xtal(struct chipc_pwrctrl_softc *sc, bool enable)
 
 /* clk control mechanism through chipcommon, no policy checking */
 static bool
-_si_clkctl_cc(struct chipc_pwrctrl_softc *sc, bhnd_clock clock)
+bhnd_pwrctl_setclk(struct bhnd_pwrctl_softc *sc, bhnd_clock clock)
 {
 	uint32_t	scc;
 
-	/* chipcommon cores prior to rev6 don't support dynamic clock control */
-	if (sc->chipc_rev < 6)
+	/* Is dynamic clock control supported? */
+	if (PWRCTL_QUIRK(sc, FIXED_CLK))
 		return (false);
 
 	/* Chips with ccrev 10 are EOL and they don't have SYCC_HR used below */
-	if (sc->chipc_rev == 10)
+	if (bhnd_get_hwrev(sc->chipc_dev) == 10)
 		return (false);
 
 	scc = bhnd_bus_read_4(sc->res, CHIPC_PLL_SLOWCLK_CTL);
 
 	switch (clock) {
 	case BHND_CLOCK_HT:	/* FORCEHT, fast (pll) clock */
-		if (sc->chipc_rev >= 6 && sc->chipc_rev <= 9) {
+		if (PWRCTL_QUIRK(sc, SLOWCLK_CTL)) {
 			scc &= ~(CHIPC_SCC_XC | CHIPC_SCC_FS | CHIPC_SCC_IP);
 			scc |= CHIPC_SCC_IP;
 
 			/* force xtal back on before clearing SCC_DYN_XTAL.. */
-			si_clkctl_xtal(sc, true);
-		} else if (sc->chipc_rev >= 10) {
+			bhnd_pwrctl_xtal(sc, true);
+		} else if (PWRCTL_QUIRK(sc, INSTACLK_CTL)) {
 			scc |= CHIPC_SYCC_HR;
+		} else {
+			// TODO: return real error values
+			panic("unsupported request");
 		}
 
 		bhnd_bus_write_4(sc->res, CHIPC_PLL_SLOWCLK_CTL, scc);
@@ -545,7 +483,7 @@ _si_clkctl_cc(struct chipc_pwrctrl_softc *sc, bhnd_clock clock)
 		break;
 
 	case BHND_CLOCK_DYN:	/* enable dynamic clock control */
-		if (sc->chipc_rev >= 6 && sc->chipc_rev <= 9) {
+		if (PWRCTL_QUIRK(sc, SLOWCLK_CTL)) {
 			scc &= ~(CHIPC_SCC_FS | CHIPC_SCC_IP | CHIPC_SCC_XC);
 			if ((scc & CHIPC_SCC_SS_MASK) != CHIPC_SCC_SS_XTAL)
 				scc |= CHIPC_SCC_XC;
@@ -555,11 +493,14 @@ _si_clkctl_cc(struct chipc_pwrctrl_softc *sc, bhnd_clock clock)
 			/* for dynamic control, we have to release our xtal_pu
 			 * "force on" */
 			if (scc & CHIPC_SCC_XC)
-				si_clkctl_xtal(sc, false);
-		} else if (sc->chipc_rev >= 10) {
+				bhnd_pwrctl_xtal(sc, false);
+		} else if (PWRCTL_QUIRK(sc, INSTACLK_CTL)) {
 			/* Instaclock */
 			scc &= ~CHIPC_SYCC_HR;
 			bhnd_bus_write_4(sc->res, CHIPC_SYS_CLK_CTL, scc);
+		} else {
+			// TODO: return real error values
+			panic("unsupported request");
 		}
 
 		break;
@@ -571,22 +512,3 @@ _si_clkctl_cc(struct chipc_pwrctrl_softc *sc, bhnd_clock clock)
 
 	return (clock == BHND_CLOCK_HT);
 }
-
-static device_method_t chipc_pwrctrl_methods[] = {
-	/* Device interface */
-	DEVMETHOD(device_probe,		chipc_pwrctrl_probe),
-	DEVMETHOD(device_attach,	chipc_pwrctrl_attach),
-	DEVMETHOD(device_detach,	chipc_pwrctrl_detach),
-	DEVMETHOD(device_suspend,	chipc_pwrctrl_suspend),
-	DEVMETHOD(device_resume,	chipc_pwrctrl_resume),
-
-	DEVMETHOD_END
-};
-
-DEFINE_CLASS_0(bhnd_pmu, chipc_pwrctrl_driver, chipc_pwrctrl_methods,
-    sizeof(struct chipc_pwrctrl_softc));
-EARLY_DRIVER_MODULE(chipc_pwrctrl, bhnd_chipc, chipc_pwrctrl_driver,
-    bhnd_pmu_devclass, NULL, NULL, BUS_PASS_TIMER + BUS_PASS_ORDER_MIDDLE);
-
-MODULE_DEPEND(chipc_pwrctrl, bhnd, 1, 1, 1);
-MODULE_VERSION(chipc_pwrctrl, 1);

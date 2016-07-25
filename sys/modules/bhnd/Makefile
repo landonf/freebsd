@@ -2,6 +2,7 @@
 
 .PATH: ${.CURDIR}/../../dev/bhnd
 .PATH: ${.CURDIR}/../../dev/bhnd/cores/chipc
+.PATH: ${.CURDIR}/../../dev/bhnd/cores/chipc/pwrctl
 .PATH: ${.CURDIR}/../../dev/bhnd/cores/pmu
 .PATH: ${.CURDIR}/../../dev/bhnd/nvram
 
@@ -13,7 +14,7 @@ SRCS+=	bhnd_bus_if.c bhnd_bus_if.h
 SRCS+=	chipc.c chipc_subr.c
 SRCS+=	bhnd_sprom_chipc.c \
 	bhnd_pmu_chipc.c \
-	chipc_pwrctrl.c
+	bhnd_pwrctl.c bhnd_pwrctl_subr.c
 SRCS+=	bhnd_chipc_if.c bhnd_chipc_if.h
 
 # PMU
