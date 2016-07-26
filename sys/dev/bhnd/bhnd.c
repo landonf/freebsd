@@ -833,11 +833,6 @@ bhnd_generic_add_child(device_t dev, u_int order, const char *name, int unit)
 void
 bhnd_generic_child_added(device_t dev, device_t child)
 {
-	struct bhnd_devinfo	*dinfo;
-
-	dinfo = device_get_ivars(child);
-
-	// TODO - generic initialization?
 }
 
 /**
