@@ -50,8 +50,13 @@
  * Per-core clock request state.
  */
 struct bhnd_clkreq_st {
-	struct bhnd_resource	*clkreq;	/**< clkreq registers */
-	bus_size_t		 clkreq_off;	/**< clkreq register offset */
+	device_t	 cr_dev;	/**< device instance */
+	struct resource	*cr_res;	/**< register block containing the
+					     clkctl_st register. NULL on
+					     non-PMU devices. */
+	bhnd_clock	 cr_req;	/**< clock request level */
+
+	STAILQ_ENTRY(bhnd_clkreq_st) cr_link;
 };
 
 #endif /* _BHND_BHND_PRIVATE_H_ */

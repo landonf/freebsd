@@ -47,29 +47,6 @@ DECLARE_CLASS(bhnd_driver);
 
 struct bhnd_clkreq_st;
 
-/**
- * bhnd per-device info.  Must be first member of all subclass
- * devinfo structures.
- */
-struct bhnd_devinfo {
-	struct bhnd_clkreq_st	*clkreq;	/**< clkreq state, or NULL */
-};
-
-/**
- * bhnd driver instance state. Must be first member of all subclass
- * softc structures.
- */
-struct bhnd_softc {
-	device_t	dev;		/**< bus device */
-
-	bool		attach_done;	/**< true if initialization of all
-					  *  platform devices has been
-					  *  completed */
-	device_t	chipc_dev;	/**< bhnd_chipc device */ 
-	device_t	nvram_dev;	/**< bhnd_nvram device, if any */
-	device_t	pmu_dev;	/**< bhnd_pmu device, if any */
-};
-
 int			 bhnd_generic_attach(device_t dev);
 int			 bhnd_generic_detach(device_t dev);
 int			 bhnd_generic_shutdown(device_t dev);
@@ -104,5 +81,41 @@ int			 bhnd_generic_resume_child(device_t dev,
 int			 bhnd_generic_get_nvram_var(device_t dev,
 			     device_t child, const char *name, void *buf,
 			     size_t *size);
+
+
+/**
+ * bhnd per-device info.  Must be first member of all subclass
+ * devinfo structures.
+ */
+struct bhnd_devinfo {
+	struct bhnd_clkreq_st	*clkreq;	/**< clkreq state, or NULL */
+};
+
+/**
+ * bhnd driver instance state. Must be first member of all subclass
+ * softc structures.
+ */
+struct bhnd_softc {
+	device_t	dev;			/**< bus device */
+
+	bool		attach_done;		/**< true if initialization of 
+						  *  all platform devices has
+						  *  been completed */
+	device_t	chipc_dev;		/**< bhnd_chipc device */ 
+	device_t	nvram_dev;		/**< bhnd_nvram device, if any */
+	device_t	pmu_dev;		/**< bhnd_pmu device, if any */
+
+	struct mtx	mtx;			/**< state mutex. */
+	STAILQ_HEAD(, bhnd_clkreq_st) clkreqs;	/**< allocated clock request
+						     states. */
+};
+
+#define	BHND_LOCK_INIT(sc) \
+	mtx_init(&(sc)->mtx, device_get_nameunit((sc)->dev), \
+	    "bhnd bus driver lock", MTX_DEF)
+#define	BHND_LOCK(sc)				mtx_lock(&(sc)->mtx)
+#define	BHND_UNLOCK(sc)			mtx_unlock(&(sc)->mtx)
+#define	BHND_LOCK_ASSERT(sc, what)		mtx_assert(&(sc)->mtx, what)
+#define	BHND_LOCK_DESTROY(sc)			mtx_destroy(&(sc)->mtx)
 
 #endif /* _BHND_BHNDVAR_H_ */

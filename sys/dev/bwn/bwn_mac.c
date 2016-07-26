@@ -106,11 +106,24 @@ bwn_attach(device_t dev)
 	error = bhnd_nvram_getvar(dev, BHND_NVAR_MACADDR, macaddr,
 	    sizeof(macaddr));
 	if (error)
-		return (error);
+		goto cleanup;
 
 	device_printf(dev, "got macaddr %6D\n", macaddr, ":");
 
+	if ((error = bhnd_alloc_clkreq(dev))) {
+		device_printf(dev, "alloc_clkreq error: %d\n", error);
+	} else {
+		if ((error = bhnd_request_clock(dev, BHND_CLOCK_HT)))
+			device_printf(dev, "request_clock error: %d\n", error);
+		else
+			device_printf(dev, "requested HT clock\n");
+	}
+
 	return (0);
+
+cleanup:
+	bhnd_release_resources(dev, sc->rspec, sc->res);
+	return (error);
 }
 
 static int
@@ -119,6 +132,8 @@ bwn_detach(device_t dev)
 	struct bwn_softc	*sc;
 
 	sc = device_get_softc(dev);
+
+	bhnd_release_clkreq(dev);
 	bhnd_release_resources(dev, sc->rspec, sc->res);
 
 	return (0);

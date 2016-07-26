@@ -65,6 +65,7 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd.h"
 #include "bhndvar.h"
+#include "bhnd_private.h"
 
 MALLOC_DEFINE(M_BHND, "bhnd", "bhnd bus data structures");
 
@@ -111,6 +112,9 @@ static int			 compare_descending_probe_order(const void *lhs,
  *
  * This implementation calls device_probe_and_attach() for each of the device's
  * children, in bhnd probe order.
+ * 
+ * This function manages internal bhnd(4) state, and must be called by
+ * subclassing drivers.
  */
 int
 bhnd_generic_attach(device_t dev)
@@ -129,6 +133,9 @@ bhnd_generic_attach(device_t dev)
 	if ((error = device_get_children(dev, &devs, &ndevs)))
 		return (error);
 
+	BHND_LOCK_INIT(sc);
+	STAILQ_INIT(&sc->clkreqs);
+
 	/* Probe and attach all children */
 	qsort(devs, ndevs, sizeof(*devs), compare_ascending_probe_order);
 	for (int i = 0; i < ndevs; i++) {
@@ -145,8 +152,10 @@ bhnd_generic_attach(device_t dev)
 cleanup:
 	free(devs, M_TEMP);
 
-	if (error)
+	if (error) {
 		bhnd_delete_children(sc);
+		BHND_LOCK_DESTROY(sc);
+	}
 
 	return (error);
 }
@@ -185,17 +194,29 @@ cleanup:
  * This implementation calls device_detach() for each of the device's
  * children, in reverse bhnd probe order, terminating if any call to
  * device_detach() fails.
+ * 
+ * This function manages internal bhnd(4) state, and must be called by
+ * subclassing drivers.
  */
 int
 bhnd_generic_detach(device_t dev)
 {
 	struct bhnd_softc	*sc;
+	int			 error;
 
 	if (!device_is_attached(dev))
 		return (EBUSY);
 
 	sc = device_get_softc(dev);
-	return (bhnd_delete_children(sc));
+
+	if ((error = bhnd_delete_children(sc)))
+		return (error);
+
+	/* All clkreq records should now be removed */
+	KASSERT(STAILQ_EMPTY(&sc->clkreqs), ("leaking active clkreq state"));
+
+	BHND_LOCK_DESTROY(sc);
+	return (0);
 }
 
 /**
@@ -342,7 +363,7 @@ bhnd_finish_attach(struct bhnd_softc *sc)
 {
 	struct chipc_caps	*ccaps;
 
-	GIANT_REQUIRED;	/* newbus */
+	GIANT_REQUIRED;	/* for newbus */
 
 	KASSERT(bus_current_pass >= BHND_FINISH_ATTACH_PASS,
 	    ("bhnd_finish_attach() called in pass %d", bus_current_pass));
@@ -474,8 +495,6 @@ found:
 static device_t
 bhnd_find_pmu(struct bhnd_softc *sc)
 {
-	struct chipc_caps	*ccaps;
-
         /* Make sure we're holding Giant for newbus */
 	GIANT_REQUIRED;
 
@@ -490,11 +509,6 @@ bhnd_find_pmu(struct bhnd_softc *sc)
 		return (sc->pmu_dev);
 	}
 
-	if ((ccaps = bhnd_find_chipc_caps(sc)) == NULL)
-		return (NULL);
-
-	if (!ccaps->pmu)
-		return (NULL);
 
 	return (bhnd_find_platform_dev(sc, "bhnd_pmu"));
 }
@@ -627,8 +641,86 @@ bhnd_generic_get_probe_order(device_t dev, device_t child)
 int
 bhnd_generic_alloc_clkreq(device_t dev, device_t child)
 {
-	// TODO
-	return (ENXIO);
+	struct bhnd_softc		*sc;
+	struct bhnd_devinfo		*dinfo;
+	struct bhnd_clkreq_st		*cr;
+	struct chipc_caps		*ccaps;
+	struct resource_list		*rl;
+	struct resource_list_entry	*rle;
+	int				 error;
+
+	GIANT_REQUIRED;	/* for newbus */
+	
+	sc = device_get_softc(dev);
+	dinfo = device_get_ivars(child);
+
+	if ((ccaps = bhnd_find_chipc_caps(sc)) == NULL) {
+		device_printf(sc->dev, "alloc_clkreq failed: chipc "
+		    "capabilities unavailable\n");
+		return (ENXIO);
+	}
+
+	BHND_LOCK(sc);
+
+	/* already allocated? */
+	if (dinfo->clkreq != NULL)
+		panic("duplicate clkreq allocation for %s",
+		    device_get_nameunit(child));
+
+	/* allocate and initialize clkreq state */
+	cr = malloc(sizeof(*dinfo->clkreq), M_BHND, M_NOWAIT);
+	if (cr == NULL) {
+		BHND_UNLOCK(sc);
+		return (ENOMEM);
+	}
+
+	dinfo->clkreq = cr;
+	cr->cr_dev = child;
+	cr->cr_res = NULL;
+	cr->cr_req = BHND_CLOCK_DYN;
+
+	/* If non-PMU device, nothing left to do */
+	if (!ccaps->pmu) {
+		error = 0;
+		goto done;
+	}
+
+	/* Locate core registers */
+	if ((rl = BUS_GET_RESOURCE_LIST(dev, child)) == NULL) {
+		device_printf(dev, "NULL resource list returned for %s\n",
+		    device_get_nameunit(child));
+		error = ENXIO;
+		goto done;
+	}
+
+	if ((rle = resource_list_find(rl, SYS_RES_MEMORY, 0)) == NULL) {
+		device_printf(dev, "cannot locate core register resource "
+		    "for %s\n", device_get_nameunit(child));
+		error = ENXIO;
+		goto done;
+	}
+
+	if (rle->res == NULL) {
+		device_printf(dev, "core register resource unallocated for "
+		    "%s\n", device_get_nameunit(child));
+		error = ENXIO;
+		goto done;
+	}
+
+	cr->cr_res = rle->res;
+	error = 0;
+
+done:
+	if (error != 0) {
+		free(cr, M_BHND);
+		dinfo->clkreq = NULL;
+	} else {
+		STAILQ_INSERT_TAIL(&sc->clkreqs, cr, cr_link);
+	}
+
+	BHND_UNLOCK(sc);
+
+	return (error);
 }
 
 /**
@@ -637,8 +729,29 @@ bhnd_generic_alloc_clkreq(device_t dev, device_t child)
 int
 bhnd_generic_release_clkreq(device_t dev, device_t child)
 {
-	// TODO
-	panic("unimplemented");
+	struct bhnd_softc		*sc;
+	struct bhnd_devinfo		*dinfo;
+
+	GIANT_REQUIRED;	/* for newbus */
+	
+	sc = device_get_softc(dev);
+	dinfo = device_get_ivars(child);
+
+	BHND_LOCK(sc);
+
+	/* is clkreq allocated? */
+	if (dinfo->clkreq == NULL)
+		panic("clkreq over-release for %s",
+		    device_get_nameunit(child));
+
+	STAILQ_REMOVE(&sc->clkreqs, dinfo->clkreq, bhnd_clkreq_st, cr_link);
+	free(dinfo->clkreq, M_BHND);
+	dinfo->clkreq = NULL;
+
+	// TODO: update clock state */
+
+	BHND_UNLOCK(sc);
+	return (0);
 }
 
 /**
@@ -647,8 +760,25 @@ bhnd_generic_release_clkreq(device_t dev, device_t child)
 int
 bhnd_generic_request_clock(device_t dev, device_t child, bhnd_clock clock)
 {
-	// TODO
-	return (ENXIO);
+	struct bhnd_softc		*sc;
+	struct bhnd_devinfo		*dinfo;
+	
+	sc = device_get_softc(dev);
+	dinfo = device_get_ivars(child);
+
+	BHND_LOCK(sc);
+
+	/* is clkreq allocated? */
+	if (dinfo->clkreq == NULL)
+		return (ENXIO);
+
+	dinfo->clkreq->cr_req = clock;
+
+	// TODO: update clock state */
+
+	BHND_UNLOCK(sc);
+
+	return (0);
 }
 
 /**
@@ -871,9 +1001,10 @@ bhnd_generic_child_deleted(device_t dev, device_t child)
 
 	/* Free device info */
 	if ((dinfo = device_get_ivars(child)) != NULL) {
-		if (dinfo->clkreq != NULL)
+		if (dinfo->clkreq != NULL) {
 			panic("%s leaking device clkreq\n",
 			    device_get_nameunit(child));
+		}
 
 		BHND_BUS_FREE_DEVINFO(dev, dinfo);
 	}
