@@ -2467,7 +2467,7 @@ void
 bhnd_pmu_sdiod_drive_strength_init(struct bhnd_pmu_softc *sc,
     uint32_t drivestrength) 
 {
-	sdiod_drive_str_t	*str_tab;
+	const sdiod_drive_str_t	*str_tab;
 	uint32_t		 str_mask;
 	uint32_t		 str_shift;
 	u_int			 intr_val;
@@ -2479,7 +2479,7 @@ bhnd_pmu_sdiod_drive_strength_init(struct bhnd_pmu_softc *sc,
 
 	switch (SDIOD_DRVSTR_KEY(sc->cid.chip_id, BHND_PMU_REV(sc))) {
 	case SDIOD_DRVSTR_KEY(BHND_CHIPID_BCM4325, 1):
-		str_tab = (sdiod_drive_str_t *)&sdiod_drive_strength_tab1;
+		str_tab = sdiod_drive_strength_tab1;
 		str_mask = 0x30000000;
 		str_shift = 28;
 		break;
@@ -2487,12 +2487,12 @@ bhnd_pmu_sdiod_drive_strength_init(struct bhnd_pmu_softc *sc,
 	case SDIOD_DRVSTR_KEY(BHND_CHIPID_BCM4325, 3):
 	case SDIOD_DRVSTR_KEY(BHND_CHIPID_BCM4315, 4):
 	case SDIOD_DRVSTR_KEY(BHND_CHIPID_BCM4319, 7):
-		str_tab = (sdiod_drive_str_t *)&sdiod_drive_strength_tab2;
+		str_tab = sdiod_drive_strength_tab2;
 		str_mask = 0x00003800;
 		str_shift = 11;
 		break;
 	case SDIOD_DRVSTR_KEY(BHND_CHIPID_BCM4336, 8):
-		str_tab = (sdiod_drive_str_t *) &sdiod_drive_strength_tab3;
+		str_tab = sdiod_drive_strength_tab3;
 		str_mask = 0x00003800;
 		str_shift = 11;
 		break;
