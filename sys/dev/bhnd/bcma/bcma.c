@@ -545,6 +545,9 @@ bcma_add_children(device_t bus, struct resource *erom_res, bus_size_t erom_offse
 		 * unpopulated, the device shouldn't be used. */
 		if (bhnd_is_hw_disabled(child))
 			device_disable(child);
+
+		/* Issue bus callback for fully initialized child. */
+		BHND_BUS_CHILD_ADDED(bus, child);
 	}
 
 	/* Hit EOF parsing cores? */

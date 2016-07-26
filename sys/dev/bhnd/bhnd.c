@@ -821,10 +821,23 @@ bhnd_generic_add_child(device_t dev, u_int order, const char *name, int unit)
 
 	device_set_ivars(child, dinfo);
 
-	/* Inform concrete bus driver. */
-	BHND_BUS_CHILD_ADDED(dev, child);
-
 	return (child);
+}
+
+/**
+ * Default bhnd(4) bus driver implementation of BHND_BUS_CHILD_ADDED().
+ * 
+ * This implementation manages internal bhnd(4) state, and must be called
+ * by subclassing drivers.
+ */
+void
+bhnd_generic_child_added(device_t dev, device_t child)
+{
+	struct bhnd_devinfo	*dinfo;
+
+	dinfo = device_get_ivars(child);
+
+	// TODO - generic initialization?
 }
 
 /**
@@ -1010,6 +1023,7 @@ static device_method_t bhnd_methods[] = {
 	/* BHND interface */
 	DEVMETHOD(bhnd_bus_get_chipid,		bhnd_bus_generic_get_chipid),
 	DEVMETHOD(bhnd_bus_get_probe_order,	bhnd_generic_get_probe_order),
+	DEVMETHOD(bhnd_bus_child_added,		bhnd_generic_child_added),
 	DEVMETHOD(bhnd_bus_request_clock,	bhnd_generic_request_clock),
 	DEVMETHOD(bhnd_bus_is_region_valid,	bhnd_generic_is_region_valid),
 	DEVMETHOD(bhnd_bus_is_hw_disabled,	bhnd_bus_generic_is_hw_disabled),

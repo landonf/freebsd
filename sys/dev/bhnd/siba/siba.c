@@ -617,6 +617,9 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 		/* Release our resource */
 		bus_release_resource(dev, SYS_RES_MEMORY, rid, r);
 		r = NULL;
+
+		/* Issue bus callback for fully initialized child. */
+		BHND_BUS_CHILD_ADDED(dev, child);
 	}
 	
 cleanup:
