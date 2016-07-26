@@ -408,11 +408,39 @@ METHOD int suspend_core {
 }
 
 /**
+ * Allocate and enable per-core clock request handling for @p child.
+ *
+ * The region containing the core's clkreq block (if any) must be
+ * allocated via bus_alloc_resource(9) (or bhnd_alloc_resource) before
+ * calling BHND_BUS_ALLOC_CLKREQ(), and must not be released until after
+ * calling BHND_BUS_RELEASE_CLKREQ().
+ *
+ * @param dev The parent of @p child.
+ * @param child The requesting bhnd device.
+ */
+METHOD int alloc_clkreq {
+	device_t dev;
+	device_t child;
+}
+
+/**
+ * Release any clock resources allocated for @p child. Any outstanding
+ * clock requests are are discarded.
+ *
+ * @param dev The parent of @p child.
+ * @param child The requesting bhnd device.
+ */
+METHOD int release_clkreq {
+	device_t dev;
+	device_t child;
+}
+
+/**
  * Request that @p clock be routed to @p child.
  *
- * The core's register block must be allocated via bus_alloc_resource(9)
- * (or bhnd_alloc_resource) and activated before calling
- * BHND_BUS_REQUEST_CLOCK().
+ * 
+ * A driver must ask the bhnd bus to allocate clock request state
+ * via BHND_BUS_ALLOC_CLKREQ() before it can request clock resources.
  *
  * @param dev The parent of @p child.
  * @param child The bhnd device requesting @p clock.

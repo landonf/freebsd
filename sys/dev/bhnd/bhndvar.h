@@ -79,6 +79,10 @@ int			 bhnd_generic_suspend(device_t dev);
 int			 bhnd_generic_get_probe_order(device_t dev,
 			     device_t child);
 
+int			 bhnd_generic_alloc_clkreq(device_t dev,
+			     device_t child);
+int			 bhnd_generic_release_clkreq(device_t dev,
+			     device_t child);
 int			 bhnd_generic_request_clock(device_t dev,
 			     device_t child, bhnd_clock clock);
 
