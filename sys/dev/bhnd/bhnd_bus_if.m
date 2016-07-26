@@ -366,9 +366,8 @@ METHOD void free_devinfo {
 /**
  * Notify a bhnd bus that a child was added.
  *
- * Called at the end of BUS_ADD_CHILD() to allow the concrete bhnd(4)
- * driver instance to initialize any additional driver-specific state for the
- * child.
+ * This method must be called by concrete bhnd(4) driver impementations
+ * after @p child's bus state is fully initialized.
  *
  * @param dev The bhnd bus whose child is being added.
  * @param child The child added to @p dev.
