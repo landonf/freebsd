@@ -91,7 +91,7 @@ typedef enum {
 	 * Dynamically select an appropriate clock source based on all
 	 * outstanding clock requests.
 	 */
-	BHND_CLOCK_DYN		= 0,
+	BHND_CLOCK_DYN		= (1 << 0),
 
 	/**
 	 * Idle Low-Power (ILP).
@@ -99,21 +99,21 @@ typedef enum {
 	 * No register access is required, or long request latency is
 	 * acceptable.
 	 */
-	BHND_CLOCK_ILP		= 1,
+	BHND_CLOCK_ILP		= (1 << 1),
 	
 	/**
 	 * Active Low-Power (ALP).
 	 * 
 	 * Low-latency register access and low-rate DMA.
 	 */
-	BHND_CLOCK_ALP		= 2,
+	BHND_CLOCK_ALP		= (1 << 2),
 	
 	/**
 	 * High Throughput (HT).
 	 * 
 	 * High bus throughput and lowest-latency register access.
 	 */
-	BHND_CLOCK_HT		= 3
+	BHND_CLOCK_HT		= (1 << 3)
 } bhnd_clock;
 
 /**

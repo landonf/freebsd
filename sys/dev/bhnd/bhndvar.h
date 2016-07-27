@@ -62,6 +62,8 @@ int			 bhnd_generic_release_clkreq(device_t dev,
 			     device_t child);
 int			 bhnd_generic_request_clock(device_t dev,
 			     device_t child, bhnd_clock clock);
+int			 bhnd_generic_enable_clocks(device_t dev,
+			     device_t child, uint32_t clocks);
 
 int			 bhnd_generic_print_child(device_t dev,
 			     device_t child);

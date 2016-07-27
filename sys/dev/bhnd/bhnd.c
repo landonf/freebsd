@@ -782,6 +782,31 @@ bhnd_generic_request_clock(device_t dev, device_t child, bhnd_clock clock)
 }
 
 /**
+ * Default bhnd(4) bus driver implementation of BHND_BUS_ENABLE_CLOCKS().
+ */
+int
+bhnd_generic_enable_clocks(device_t dev, device_t child, uint32_t clocks)
+{
+	struct bhnd_softc		*sc;
+	struct bhnd_devinfo		*dinfo;
+	
+	sc = device_get_softc(dev);
+	dinfo = device_get_ivars(child);
+
+	BHND_LOCK(sc);
+
+	/* is clkreq allocated? */
+	if (dinfo->clkreq == NULL)
+		return (ENXIO);
+
+	// TODO: update clock state */
+
+	BHND_UNLOCK(sc);
+
+	return (0);
+}
+
+/**
  * Default bhnd(4) bus driver implementation of BHND_BUS_IS_REGION_VALID().
  * 
  * This implementation assumes that port and region numbers are 0-indexed and
@@ -1168,13 +1193,17 @@ static device_method_t bhnd_methods[] = {
 
 	/* BHND interface */
 	DEVMETHOD(bhnd_bus_get_chipid,		bhnd_bus_generic_get_chipid),
+	DEVMETHOD(bhnd_bus_is_hw_disabled,	bhnd_bus_generic_is_hw_disabled),
+
 	DEVMETHOD(bhnd_bus_get_probe_order,	bhnd_generic_get_probe_order),
-	DEVMETHOD(bhnd_bus_child_added,		bhnd_generic_child_added),
+
 	DEVMETHOD(bhnd_bus_alloc_clkreq,	bhnd_generic_alloc_clkreq),
 	DEVMETHOD(bhnd_bus_release_clkreq,	bhnd_generic_release_clkreq),
 	DEVMETHOD(bhnd_bus_request_clock,	bhnd_generic_request_clock),
+	DEVMETHOD(bhnd_bus_enable_clocks,	bhnd_generic_enable_clocks),
+
+	DEVMETHOD(bhnd_bus_child_added,		bhnd_generic_child_added),
 	DEVMETHOD(bhnd_bus_is_region_valid,	bhnd_generic_is_region_valid),
-	DEVMETHOD(bhnd_bus_is_hw_disabled,	bhnd_bus_generic_is_hw_disabled),
 	DEVMETHOD(bhnd_bus_get_nvram_var,	bhnd_generic_get_nvram_var),
 
 	/* BHND interface (bus I/O) */

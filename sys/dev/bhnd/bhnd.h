@@ -527,25 +527,50 @@ bhnd_release_clkreq(device_t dev)
 	return (BHND_BUS_RELEASE_CLKREQ(device_get_parent(dev), dev));
 }
 
-/**
- * Request that @p clock be routed to @p child.
+/** 
+ * Request that @p clock (or faster) be routed to @p dev.
  * 
  * A driver must ask the bhnd bus to allocate clock request state
  * via bhnd_alloc_clkreq() before it can request clock resources.
+ * 
+ * Request multiplexing is managed by the bus.
  *
- * @param dev The parent of @p child.
- * @param child The bhnd device requesting @p clock.
- * @param clock The requested clock source.
+ * @param dev The bhnd(4) device to which @p clock should be routed.
+ * @param clock The requested clock source. 
  *
- * @retval 0		success
- * @retval ENODEV	The requested clock is not supported by this device.
- * @retval non-zero	If the requested clock cannot otherwise be enabled, a
- * 			regular unix error code will be returned.
+ * @retval 0 success
+ * @retval ENODEV If an unsupported clock was requested.
+ * @retval ENXIO If the PMU has not been initialized or is otherwise unvailable.
  */
 static inline int
 bhnd_request_clock(device_t dev, bhnd_clock clock)
 {
 	return (BHND_BUS_REQUEST_CLOCK(device_get_parent(dev), dev, clock));
+}
+
+/**
+ * Request that @p clocks be powered on behalf of @p dev.
+ *
+ * This will power any clock sources (e.g. XTAL, PLL, etc) required for
+ * @p clocks and wait until they are ready, discarding any previous
+ * requests by @p dev.
+ *
+ * Request multiplexing is managed by the bus.
+ * 
+ * A driver must ask the bhnd bus to allocate clock request state
+ * via BHND_BUS_ALLOC_CLKREQ() before it can request clock resources.
+ *
+ * @param dev The requesting bhnd(4) device.
+ * @param clocks The clock(s) to be enabled.
+ *
+ * @retval 0 success
+ * @retval ENODEV If an unsupported clock was requested.
+ * @retval ENXIO If the PMU has not been initialized or is otherwise unvailable.
+ */
+static inline int
+bhnd_enable_clocks(device_t dev, uint32_t clocks)
+{
+	return (BHND_BUS_ENABLE_CLOCKS(device_get_parent(dev), dev, clocks));
 }
 
 /**

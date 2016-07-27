@@ -102,6 +102,13 @@ CODE {
 		panic("bhnd_bus_request_clock unimplemented");
 	}
 
+	static int
+	bhnd_bus_null_enable_clocks(device_t dev, device_t child,
+	    uint32_t clocks)
+	{
+		panic("bhnd_bus_enable_clocks unimplemented");
+	}
+
 	static uint32_t
 	bhnd_bus_null_read_config(device_t dev, device_t child,
 	    bus_size_t offset, u_int width)
@@ -435,9 +442,36 @@ METHOD int release_clkreq {
 	device_t child;
 }
 
-/**
- * Request that @p clock be routed to @p child.
+/** 
+ * Request that @p clock (or faster) be routed to @p child.
+ * 
+ * A driver must ask the bhnd bus to allocate clock request state
+ * via BHND_BUS_ALLOC_CLKREQ() before it can request clock resources.
+ * 
+ * Request multiplexing is managed by the bus.
  *
+ * @param dev The parent of @p child.
+ * @param child The bhnd device requesting @p clock.
+ * @param clock The requested clock source. 
+ *
+ * @retval 0 success
+ * @retval ENODEV If an unsupported clock was requested.
+ * @retval ENXIO If the PMU has not been initialized or is otherwise unvailable.
+ */
+METHOD int request_clock {
+	device_t dev;
+	device_t child;
+	bhnd_clock clock;
+} DEFAULT bhnd_bus_null_request_clock;
+
+/**
+ * Request that @p clocks be powered on behalf of @p child.
+ *
+ * This will power on clock sources (e.g. XTAL, PLL, etc) required for
+ * @p clocks and wait until they are ready, discarding any previous
+ * requests by @p child.
+ *
+ * Request multiplexing is managed by the bus.
  * 
  * A driver must ask the bhnd bus to allocate clock request state
  * via BHND_BUS_ALLOC_CLKREQ() before it can request clock resources.
@@ -445,12 +479,16 @@ METHOD int release_clkreq {
  * @param dev The parent of @p child.
  * @param child The bhnd device requesting @p clock.
  * @param clock The requested clock source.
+ *
+ * @retval 0 success
+ * @retval ENODEV If an unsupported clock was requested.
+ * @retval ENXIO If the PMU has not been initialized or is otherwise unvailable.
  */
-METHOD int request_clock {
+METHOD int enable_clocks {
 	device_t dev;
 	device_t child;
-	bhnd_clock clock;
-} DEFAULT bhnd_bus_null_request_clock;
+	uint32_t clocks;
+} DEFAULT bhnd_bus_null_enable_clocks;
 
 /**
  * Read @p width bytes at @p offset from the bus-specific agent/config
