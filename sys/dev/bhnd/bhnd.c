@@ -60,12 +60,15 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/cores/chipc/chipcvar.h>
 
+#include <dev/bhnd/cores/pmu/bhnd_pmu.h>
+
 #include "bhnd_chipc_if.h"
 #include "bhnd_nvram_if.h"
 
+#include "bhnd_core.h"
+
 #include "bhnd.h"
 #include "bhndvar.h"
-#include "bhnd_private.h"
 
 MALLOC_DEFINE(M_BHND, "bhnd", "bhnd bus data structures");
 
@@ -112,9 +115,6 @@ static int			 compare_descending_probe_order(const void *lhs,
  *
  * This implementation calls device_probe_and_attach() for each of the device's
  * children, in bhnd probe order.
- * 
- * This function manages internal bhnd(4) state, and must be called by
- * subclassing drivers.
  */
 int
 bhnd_generic_attach(device_t dev)
@@ -133,9 +133,6 @@ bhnd_generic_attach(device_t dev)
 	if ((error = device_get_children(dev, &devs, &ndevs)))
 		return (error);
 
-	BHND_LOCK_INIT(sc);
-	STAILQ_INIT(&sc->clkreqs);
-
 	/* Probe and attach all children */
 	qsort(devs, ndevs, sizeof(*devs), compare_ascending_probe_order);
 	for (int i = 0; i < ndevs; i++) {
@@ -152,10 +149,8 @@ bhnd_generic_attach(device_t dev)
 cleanup:
 	free(devs, M_TEMP);
 
-	if (error) {
+	if (error)
 		bhnd_delete_children(sc);
-		BHND_LOCK_DESTROY(sc);
-	}
 
 	return (error);
 }
@@ -212,10 +207,6 @@ bhnd_generic_detach(device_t dev)
 	if ((error = bhnd_delete_children(sc)))
 		return (error);
 
-	/* All clkreq records should now be removed */
-	KASSERT(STAILQ_EMPTY(&sc->clkreqs), ("leaking active clkreq state"));
-
-	BHND_LOCK_DESTROY(sc);
 	return (0);
 }
 
@@ -636,98 +627,118 @@ bhnd_generic_get_probe_order(device_t dev, device_t child)
 }
 
 /**
- * Default bhnd(4) bus driver implementation of BHND_BUS_ALLOC_CLKREQ().
+ * Default bhnd(4) bus driver implementation of BHND_BUS_ALLOC_PMUREG().
  */
 int
-bhnd_generic_alloc_clkreq(device_t dev, device_t child)
+bhnd_generic_alloc_pmu(device_t dev, device_t child)
 {
 	struct bhnd_softc		*sc;
+	struct bhnd_core_pmu_info	*pinfo;
 	struct bhnd_devinfo		*dinfo;
-	struct bhnd_clkreq_st		*cr;
+	struct bhnd_resource		*br;
 	struct chipc_caps		*ccaps;
 	struct resource_list		*rl;
 	struct resource_list_entry	*rle;
+	bhnd_addr_t			 r_addr;
+	bhnd_size_t			 r_size;
+	bus_size_t			 pmu_regs;
 	int				 error;
 
 	GIANT_REQUIRED;	/* for newbus */
 	
 	sc = device_get_softc(dev);
 	dinfo = device_get_ivars(child);
+	pmu_regs = BHND_CLK_CTL_ST;
 
 	if ((ccaps = bhnd_find_chipc_caps(sc)) == NULL) {
-		device_printf(sc->dev, "alloc_clkreq failed: chipc "
+		device_printf(sc->dev, "alloc_pmu failed: chipc "
 		    "capabilities unavailable\n");
 		return (ENXIO);
 	}
 
-	BHND_LOCK(sc);
-
 	/* already allocated? */
-	if (dinfo->clkreq != NULL)
-		panic("duplicate clkreq allocation for %s",
+	if (dinfo->pmu_info != NULL) {
+		panic("duplicate PMU allocation for %s",
 		    device_get_nameunit(child));
-
-	/* allocate and initialize clkreq state */
-	cr = malloc(sizeof(*dinfo->clkreq), M_BHND, M_NOWAIT);
-	if (cr == NULL) {
-		BHND_UNLOCK(sc);
-		return (ENOMEM);
 	}
 
-	dinfo->clkreq = cr;
-	cr->cr_dev = child;
-	cr->cr_res = NULL;
-	cr->cr_req = BHND_CLOCK_DYN;
-
-	/* If non-PMU device, nothing left to do */
-	if (!ccaps->pmu) {
-		error = 0;
-		goto done;
+	/* Determine address+size of the core's PMU register block */
+	error = bhnd_get_region_addr(child, BHND_PORT_DEVICE, 0, 0, &r_addr,
+	    &r_size);
+	if (error) {
+		device_printf(sc->dev, "error fetching register block info for "
+		    "%s: %d\n", device_get_nameunit(child), error);
+		return (error);
 	}
 
-	/* Locate core registers */
+	if (r_size < (pmu_regs + sizeof(uint32_t))) {
+		device_printf(sc->dev, "pmu offset %#jx would overrun %s "
+		    "register block\n", (uintmax_t)pmu_regs,
+		    device_get_nameunit(child));
+		return (ENODEV);
+	}
+
+	r_addr += pmu_regs;
+	r_size = sizeof(uint32_t);
+
+	/* Locate actual resource containing the core's register block */
 	if ((rl = BUS_GET_RESOURCE_LIST(dev, child)) == NULL) {
 		device_printf(dev, "NULL resource list returned for %s\n",
 		    device_get_nameunit(child));
-		error = ENXIO;
-		goto done;
+		return (ENXIO);
 	}
 
 	if ((rle = resource_list_find(rl, SYS_RES_MEMORY, 0)) == NULL) {
 		device_printf(dev, "cannot locate core register resource "
 		    "for %s\n", device_get_nameunit(child));
-		error = ENXIO;
-		goto done;
+		return (ENXIO);
 	}
 
 	if (rle->res == NULL) {
 		device_printf(dev, "core register resource unallocated for "
 		    "%s\n", device_get_nameunit(child));
-		error = ENXIO;
-		goto done;
+		return (ENXIO);
 	}
 
-	cr->cr_res = rle->res;
-	error = 0;
-
-done:
-	if (error != 0) {
-		free(cr, M_BHND);
-		dinfo->clkreq = NULL;
-	} else {
-		STAILQ_INSERT_TAIL(&sc->clkreqs, cr, cr_link);
+	if (r_addr < rman_get_start(rle->res) ||
+	    r_addr+r_size >= rman_get_end(rle->res))
+	{
+		device_printf(dev, "core register resource does not map PMU "
+		    "registers at %#jx+%ju\n for %s\n", r_addr, r_size,
+		    device_get_nameunit(child));
+		return (ENXIO);
 	}
 
-	BHND_UNLOCK(sc);
+	/* Adjust PMU register offset relative to the actual start address
+	 * of the core's register block allocation. */
+	pmu_regs -= (rman_get_start(rle->res) - r_addr);
 
-	return (error);
+	/* Allocate and initialize PMU info */
+	br = malloc(sizeof(struct bhnd_resource), M_BHND, M_NOWAIT);
+	if (br == NULL)
+		return (ENOMEM);
+
+	br->res = rle->res;
+	br->direct = ((rman_get_flags(rle->res) & RF_ACTIVE) != 0);
+
+	pinfo = malloc(sizeof(*dinfo->pmu_info), M_BHND, M_NOWAIT);
+	if (pinfo == NULL) {
+		free(br, M_BHND);
+		return (ENOMEM);
+	}
+	pinfo->pm_dev = child;
+	pinfo->pm_res = br;
+	pinfo->pm_regs = pmu_regs;
+
+	dinfo->pmu_info = pinfo;
+	return (0);
 }
 
 /**
- * Default bhnd(4) bus driver implementation of BHND_BUS_RELEASE_CLKREQ().
+ * Default bhnd(4) bus driver implementation of BHND_BUS_RELEASE_PMUREG().
  */
 int
-bhnd_generic_release_clkreq(device_t dev, device_t child)
+bhnd_generic_release_pmu(device_t dev, device_t child)
 {
 	struct bhnd_softc		*sc;
 	struct bhnd_devinfo		*dinfo;
@@ -737,20 +748,16 @@ bhnd_generic_release_clkreq(device_t dev, device_t child)
 	sc = device_get_softc(dev);
 	dinfo = device_get_ivars(child);
 
-	BHND_LOCK(sc);
+	/* is pmu info allocated? */
+	if (dinfo->pmu_info == NULL)
+		panic("pmu over-release for %s", device_get_nameunit(child));
 
-	/* is clkreq allocated? */
-	if (dinfo->clkreq == NULL)
-		panic("clkreq over-release for %s",
-		    device_get_nameunit(child));
+	// TODO: inform PMU device */
 
-	STAILQ_REMOVE(&sc->clkreqs, dinfo->clkreq, bhnd_clkreq_st, cr_link);
-	free(dinfo->clkreq, M_BHND);
-	dinfo->clkreq = NULL;
+	free(dinfo->pmu_info->pm_res, M_BHND);
+	free(dinfo->pmu_info, M_BHND);
+	dinfo->pmu_info = NULL;
 
-	// TODO: update clock state */
-
-	BHND_UNLOCK(sc);
 	return (0);
 }
 
@@ -766,17 +773,9 @@ bhnd_generic_request_clock(device_t dev, device_t child, bhnd_clock clock)
 	sc = device_get_softc(dev);
 	dinfo = device_get_ivars(child);
 
-	BHND_LOCK(sc);
+	KASSERT(dinfo->pmu_info != NULL, ("no active PMU request state"));
 
-	/* is clkreq allocated? */
-	if (dinfo->clkreq == NULL)
-		return (ENXIO);
-
-	dinfo->clkreq->cr_req = clock;
-
-	// TODO: update clock state */
-
-	BHND_UNLOCK(sc);
+	// TODO: submit PMU request */
 
 	return (0);
 }
@@ -793,15 +792,9 @@ bhnd_generic_enable_clocks(device_t dev, device_t child, uint32_t clocks)
 	sc = device_get_softc(dev);
 	dinfo = device_get_ivars(child);
 
-	BHND_LOCK(sc);
+	KASSERT(dinfo->pmu_info != NULL, ("no active PMU request state"));
 
-	/* is clkreq allocated? */
-	if (dinfo->clkreq == NULL)
-		return (ENXIO);
-
-	// TODO: update clock state */
-
-	BHND_UNLOCK(sc);
+	// TODO: submit PMU request */
 
 	return (0);
 }
@@ -1026,8 +1019,9 @@ bhnd_generic_child_deleted(device_t dev, device_t child)
 
 	/* Free device info */
 	if ((dinfo = device_get_ivars(child)) != NULL) {
-		if (dinfo->clkreq != NULL) {
-			panic("%s leaking device clkreq\n",
+		if (dinfo->pmu_info != NULL) {
+			// TODO: Clean up automatically?
+			panic("%s leaking device pmu state\n",
 			    device_get_nameunit(child));
 		}
 
@@ -1197,8 +1191,8 @@ static device_method_t bhnd_methods[] = {
 
 	DEVMETHOD(bhnd_bus_get_probe_order,	bhnd_generic_get_probe_order),
 
-	DEVMETHOD(bhnd_bus_alloc_clkreq,	bhnd_generic_alloc_clkreq),
-	DEVMETHOD(bhnd_bus_release_clkreq,	bhnd_generic_release_clkreq),
+	DEVMETHOD(bhnd_bus_alloc_pmu,		bhnd_generic_alloc_pmu),
+	DEVMETHOD(bhnd_bus_release_pmu,		bhnd_generic_release_pmu),
 	DEVMETHOD(bhnd_bus_request_clock,	bhnd_generic_request_clock),
 	DEVMETHOD(bhnd_bus_enable_clocks,	bhnd_generic_enable_clocks),
 

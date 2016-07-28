@@ -36,3 +36,46 @@ INTERFACE bhnd_pmu;
 #
 # Provides a common PMU and clock control interface.
 #
+
+HEADER {
+	struct bhnd_core_pmu_info;
+}
+
+/** 
+ * Enabling routing of @p clock (or faster) to a requesting device.
+ *
+ * @param pmu PMU device.
+ * @param pinfo PMU info for requesting device.
+ * @param clock Clock requested.
+ *
+ * @retval 0 success
+ * @retval ENODEV If an unsupported clock was requested.
+ */
+METHOD int request_clock {
+	device_t			 pmu;
+	struct bhnd_core_pmu_info	*pinfo;
+	bhnd_clock			 clock;
+};
+
+
+/** 
+ * Request that @p clocks be powered on behalf of a requesting device.
+ *
+ * This will power any clock sources (XTAL, PLL, etc,) required by
+ * @p clocks and wait until they are ready, discarding any previous
+ * requests from the @p pinfo device.
+ *
+ * Requests from multiple devices are aggregated by the PMU.
+ *
+ * @param pmu PMU device.
+ * @param pinfo PMU info for requesting device.
+ * @param clocks Clocks requested.
+ *
+ * @retval 0 success
+ * @retval ENODEV If an unsupported clock was requested.
+ */
+METHOD int enable_clocks {
+	device_t			 pmu;
+	struct bhnd_core_pmu_info	*pinfo;
+	uint32_t			 clocks;
+};

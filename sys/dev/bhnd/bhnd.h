@@ -489,49 +489,49 @@ bhnd_read_board_info(device_t dev, struct bhnd_board_info *info)
 }
 
 /**
- * Allocate and enable per-core clock request handling for @p child.
+ * Allocate and enable per-core PMU request handling for @p child.
  *
- * The region containing the core's clkreq block (if any) must be
+ * The region containing the core's PMU register block (if any) must be
  * allocated via bus_alloc_resource(9) (or bhnd_alloc_resource) before
- * calling bhnd_alloc_clkreq(), and must not be released until after
- * calling bhnd_release_clkreq().
+ * calling bhnd_alloc_pmu(), and must not be released until after
+ * calling bhnd_release_pmu().
  *
  * @param dev The parent of @p child.
  * @param child The requesting bhnd device.
  * 
  * @retval 0           success
- * @retval non-zero    If allocating clock request state otherwise fails, a
+ * @retval non-zero    If allocating PMU request state otherwise fails, a
  *                     regular unix error code will be returned.
  */
 static inline int
-bhnd_alloc_clkreq(device_t dev)
+bhnd_alloc_pmu(device_t dev)
 {
-	return (BHND_BUS_ALLOC_CLKREQ(device_get_parent(dev), dev));
+	return (BHND_BUS_ALLOC_PMU(device_get_parent(dev), dev));
 }
 
 /**
- * Release any clock resources allocated for @p child. Any outstanding
- * clock requests are are discarded.
+ * Release any per-core PMU resources allocated for @p child. Any outstanding
+ * PMU requests are are discarded.
  *
  * @param dev The parent of @p child.
  * @param child The requesting bhnd device.
  * 
  * @retval 0           success
- * @retval non-zero    If releasing clock request state otherwise fails, a
+ * @retval non-zero    If releasing PMU request state otherwise fails, a
  *                     regular unix error code will be returned, and
  *                     the core state will be left unmodified.
  */
 static inline int
-bhnd_release_clkreq(device_t dev)
+bhnd_release_pmu(device_t dev)
 {
-	return (BHND_BUS_RELEASE_CLKREQ(device_get_parent(dev), dev));
+	return (BHND_BUS_RELEASE_PMU(device_get_parent(dev), dev));
 }
 
 /** 
  * Request that @p clock (or faster) be routed to @p dev.
  * 
  * A driver must ask the bhnd bus to allocate clock request state
- * via bhnd_alloc_clkreq() before it can request clock resources.
+ * via bhnd_alloc_pmu() before it can request clock resources.
  * 
  * Request multiplexing is managed by the bus.
  *
@@ -558,7 +558,7 @@ bhnd_request_clock(device_t dev, bhnd_clock clock)
  * Request multiplexing is managed by the bus.
  * 
  * A driver must ask the bhnd bus to allocate clock request state
- * via BHND_BUS_ALLOC_CLKREQ() before it can request clock resources.
+ * via bhnd_alloc_pmu() before it can request clock resources.
  *
  * @param dev The requesting bhnd(4) device.
  * @param clocks The clock(s) to be enabled.

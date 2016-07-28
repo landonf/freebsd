@@ -96,6 +96,18 @@ CODE {
 	}
 
 	static int
+	bhnd_bus_null_alloc_pmu(device_t dev, device_t child)
+	{
+		panic("bhnd_bus_alloc_pmu unimplemented");
+	}
+
+	static int
+	bhnd_bus_null_release_pmu(device_t dev, device_t child)
+	{
+		panic("bhnd_bus_release_pmu unimplemented");
+	}
+
+	static int
 	bhnd_bus_null_request_clock(device_t dev, device_t child,
 	    bhnd_clock clock)
 	{
@@ -261,69 +273,6 @@ METHOD bhnd_attach_type get_attach_type {
 } DEFAULT bhnd_bus_null_get_attach_type;
 
 /**
- * If supported by the chipset, return the clock source for the given clock.
- *
- * This function is only supported on early PWRCTL-equipped chipsets
- * that expose clock management via their host bridge interface. Currently,
- * this includes PCI (not PCIe) devices, with ChipCommon core revisions 0-9.
- *
- * @param dev The parent of @p child.
- * @param child The bhnd device requesting a clock source.
- * @param clock The clock for which a clock source will be returned.
- *
- * @retval	bhnd_clksrc		The clock source for @p clock.
- * @retval	BHND_CLKSRC_UNKNOWN	If @p clock is unsupported, or its
- *					clock source is not known to the bus.
- */
-METHOD bhnd_clksrc pwrctl_get_clksrc {
-	device_t dev;
-	device_t child;
-	bhnd_clock clock;
-} DEFAULT bhnd_bus_null_pwrctl_get_clksrc;
-
-/**
- * If supported by the chipset, gate the clock source for @p clock
- *
- * This function is only supported on early PWRCTL-equipped chipsets
- * that expose clock management via their host bridge interface. Currently,
- * this includes PCI (not PCIe) devices, with ChipCommon core revisions 0-9.
- *
- * @param dev The parent of @p child.
- * @param child The bhnd device requesting clock gating.
- * @param clock The clock to be disabled.
- *
- * @retval 0 success
- * @retval ENODEV If bus-level clock source management is not supported.
- * @retval ENXIO If bus-level management of @p clock is not supported.
- */
-METHOD int pwrctl_gate_clock {
-	device_t dev;
-	device_t child;
-	bhnd_clock clock;
-} DEFAULT bhnd_bus_null_pwrctl_gate_clock;
-
-/**
- * If supported by the chipset, ungate the clock source for @p clock
- *
- * This function is only supported on early PWRCTL-equipped chipsets
- * that expose clock management via their host bridge interface. Currently,
- * this includes PCI (not PCIe) devices, with ChipCommon core revisions 0-9.
- *
- * @param dev The parent of @p child.
- * @param child The bhnd device requesting clock gating.
- * @param clock The clock to be enabled.
- *
- * @retval 0 success
- * @retval ENODEV If bus-level clock source management is not supported.
- * @retval ENXIO If bus-level management of @p clock is not supported.
- */
-METHOD int pwrctl_ungate_clock {
-	device_t dev;
-	device_t child;
-	bhnd_clock clock;
-} DEFAULT bhnd_bus_null_pwrctl_ungate_clock;
-
-/**
  * Attempt to read the BHND board identification from the parent bus.
  *
  * This relies on NVRAM access, and will fail if a valid NVRAM device cannot
@@ -415,38 +364,101 @@ METHOD int suspend_core {
 }
 
 /**
- * Allocate and enable per-core clock request handling for @p child.
+ * If supported by the chipset, return the clock source for the given clock.
  *
- * The region containing the core's clkreq block (if any) must be
- * allocated via bus_alloc_resource(9) (or bhnd_alloc_resource) before
- * calling BHND_BUS_ALLOC_CLKREQ(), and must not be released until after
- * calling BHND_BUS_RELEASE_CLKREQ().
+ * This function is only supported on early PWRCTL-equipped chipsets
+ * that expose clock management via their host bridge interface. Currently,
+ * this includes PCI (not PCIe) devices, with ChipCommon core revisions 0-9.
  *
  * @param dev The parent of @p child.
- * @param child The requesting bhnd device.
+ * @param child The bhnd device requesting a clock source.
+ * @param clock The clock for which a clock source will be returned.
+ *
+ * @retval	bhnd_clksrc		The clock source for @p clock.
+ * @retval	BHND_CLKSRC_UNKNOWN	If @p clock is unsupported, or its
+ *					clock source is not known to the bus.
  */
-METHOD int alloc_clkreq {
+METHOD bhnd_clksrc pwrctl_get_clksrc {
 	device_t dev;
 	device_t child;
-}
+	bhnd_clock clock;
+} DEFAULT bhnd_bus_null_pwrctl_get_clksrc;
 
 /**
- * Release any clock resources allocated for @p child. Any outstanding
- * clock requests are are discarded.
+ * If supported by the chipset, gate the clock source for @p clock
+ *
+ * This function is only supported on early PWRCTL-equipped chipsets
+ * that expose clock management via their host bridge interface. Currently,
+ * this includes PCI (not PCIe) devices, with ChipCommon core revisions 0-9.
+ *
+ * @param dev The parent of @p child.
+ * @param child The bhnd device requesting clock gating.
+ * @param clock The clock to be disabled.
+ *
+ * @retval 0 success
+ * @retval ENODEV If bus-level clock source management is not supported.
+ * @retval ENXIO If bus-level management of @p clock is not supported.
+ */
+METHOD int pwrctl_gate_clock {
+	device_t dev;
+	device_t child;
+	bhnd_clock clock;
+} DEFAULT bhnd_bus_null_pwrctl_gate_clock;
+
+/**
+ * If supported by the chipset, ungate the clock source for @p clock
+ *
+ * This function is only supported on early PWRCTL-equipped chipsets
+ * that expose clock management via their host bridge interface. Currently,
+ * this includes PCI (not PCIe) devices, with ChipCommon core revisions 0-9.
+ *
+ * @param dev The parent of @p child.
+ * @param child The bhnd device requesting clock gating.
+ * @param clock The clock to be enabled.
+ *
+ * @retval 0 success
+ * @retval ENODEV If bus-level clock source management is not supported.
+ * @retval ENXIO If bus-level management of @p clock is not supported.
+ */
+METHOD int pwrctl_ungate_clock {
+	device_t dev;
+	device_t child;
+	bhnd_clock clock;
+} DEFAULT bhnd_bus_null_pwrctl_ungate_clock;
+
+/**
+ * Allocate and enable per-core PMU request handling for @p child.
+ *
+ * The region containing the core's PMU register block (if any) must be
+ * allocated via bus_alloc_resource(9) (or bhnd_alloc_resource) before
+ * calling BHND_BUS_ALLOC_PMU(), and must not be released until after
+ * calling BHND_BUS_RELEASE_PMU().
  *
  * @param dev The parent of @p child.
  * @param child The requesting bhnd device.
  */
-METHOD int release_clkreq {
+METHOD int alloc_pmu {
 	device_t dev;
 	device_t child;
-}
+} DEFAULT bhnd_bus_null_alloc_pmu;
+
+/**
+ * Release per-core PMU resources allocated for @p child. Any
+ * outstanding PMU requests are discarded.
+ *
+ * @param dev The parent of @p child.
+ * @param child The requesting bhnd device.
+ */
+METHOD int release_pmu {
+	device_t dev;
+	device_t child;
+} DEFAULT bhnd_bus_null_release_pmu;
 
 /** 
  * Request that @p clock (or faster) be routed to @p child.
  * 
- * A driver must ask the bhnd bus to allocate clock request state
- * via BHND_BUS_ALLOC_CLKREQ() before it can request clock resources.
+ * A driver must ask the bhnd bus to allocate PMU request state
+ * via BHND_BUS_ALLOC_PMU() before it can request clock resources.
  * 
  * Request multiplexing is managed by the bus.
  *
@@ -473,8 +485,8 @@ METHOD int request_clock {
  *
  * Request multiplexing is managed by the bus.
  * 
- * A driver must ask the bhnd bus to allocate clock request state
- * via BHND_BUS_ALLOC_CLKREQ() before it can request clock resources.
+ * A driver must ask the bhnd bus to allocate PMU request state
+ * via BHND_BUS_ALLOC_PMU() before it can request clock resources.
  *
  * @param dev The parent of @p child.
  * @param child The bhnd device requesting @p clock.

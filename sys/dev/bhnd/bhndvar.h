@@ -45,7 +45,7 @@
 MALLOC_DECLARE(M_BHND);
 DECLARE_CLASS(bhnd_driver);
 
-struct bhnd_clkreq_st;
+struct bhnd_core_pmu_info;
 
 int			 bhnd_generic_attach(device_t dev);
 int			 bhnd_generic_detach(device_t dev);
@@ -56,9 +56,9 @@ int			 bhnd_generic_suspend(device_t dev);
 int			 bhnd_generic_get_probe_order(device_t dev,
 			     device_t child);
 
-int			 bhnd_generic_alloc_clkreq(device_t dev,
+int			 bhnd_generic_alloc_pmu(device_t dev,
 			     device_t child);
-int			 bhnd_generic_release_clkreq(device_t dev,
+int			 bhnd_generic_release_pmu(device_t dev,
 			     device_t child);
 int			 bhnd_generic_request_clock(device_t dev,
 			     device_t child, bhnd_clock clock);
@@ -90,7 +90,7 @@ int			 bhnd_generic_get_nvram_var(device_t dev,
  * devinfo structures.
  */
 struct bhnd_devinfo {
-	struct bhnd_clkreq_st	*clkreq;	/**< clkreq state, or NULL */
+	struct bhnd_core_pmu_info *pmu_info;	/**< PMU info, or NULL */
 };
 
 /**
@@ -106,18 +106,6 @@ struct bhnd_softc {
 	device_t	chipc_dev;		/**< bhnd_chipc device */ 
 	device_t	nvram_dev;		/**< bhnd_nvram device, if any */
 	device_t	pmu_dev;		/**< bhnd_pmu device, if any */
-
-	struct mtx	mtx;			/**< state mutex. */
-	STAILQ_HEAD(, bhnd_clkreq_st) clkreqs;	/**< allocated clock request
-						     states. */
 };
-
-#define	BHND_LOCK_INIT(sc) \
-	mtx_init(&(sc)->mtx, device_get_nameunit((sc)->dev), \
-	    "bhnd bus driver lock", MTX_DEF)
-#define	BHND_LOCK(sc)				mtx_lock(&(sc)->mtx)
-#define	BHND_UNLOCK(sc)			mtx_unlock(&(sc)->mtx)
-#define	BHND_LOCK_ASSERT(sc, what)		mtx_assert(&(sc)->mtx, what)
-#define	BHND_LOCK_DESTROY(sc)			mtx_destroy(&(sc)->mtx)
 
 #endif /* _BHND_BHNDVAR_H_ */
