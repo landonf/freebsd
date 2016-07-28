@@ -42,16 +42,16 @@ HEADER {
 }
 
 /** 
- * Enabling routing of @p clock (or faster) to a requesting device.
+ * Enabling routing of @p clock (or faster) to a requesting core.
  *
  * @param pmu PMU device.
- * @param pinfo PMU info for requesting device.
+ * @param pinfo PMU info for requesting core.
  * @param clock Clock requested.
  *
  * @retval 0 success
  * @retval ENODEV If an unsupported clock was requested.
  */
-METHOD int request_clock {
+METHOD int core_req_clock {
 	device_t			 pmu;
 	struct bhnd_core_pmu_info	*pinfo;
 	bhnd_clock			 clock;
@@ -59,7 +59,7 @@ METHOD int request_clock {
 
 
 /** 
- * Request that @p clocks be powered on behalf of a requesting device.
+ * Request that @p clocks be powered on behalf of a requesting core.
  *
  * This will power any clock sources (XTAL, PLL, etc,) required by
  * @p clocks and wait until they are ready, discarding any previous
@@ -68,14 +68,31 @@ METHOD int request_clock {
  * Requests from multiple devices are aggregated by the PMU.
  *
  * @param pmu PMU device.
- * @param pinfo PMU info for requesting device.
+ * @param pinfo PMU info for requesting core.
  * @param clocks Clocks requested.
  *
  * @retval 0 success
  * @retval ENODEV If an unsupported clock was requested.
  */
-METHOD int enable_clocks {
+METHOD int core_en_clocks {
 	device_t			 pmu;
 	struct bhnd_core_pmu_info	*pinfo;
 	uint32_t			 clocks;
+};
+
+/** 
+ * Release all outstanding requests (clocks, resources, etc) associated with
+ * @p pinfo.
+ *
+ * @param pmu PMU device.
+ * @param pinfo PMU info for requesting core.
+ *
+ * @retval 0		success
+ * @retval non-zero    If releasing PMU request state fails, a
+ *                     regular unix error code will be returned, and
+ *                     the request state will be left unmodified.
+ */
+METHOD int core_release {
+	device_t			 pmu;
+	struct bhnd_core_pmu_info	*pinfo;
 };

@@ -633,12 +633,13 @@ int
 bhnd_generic_alloc_pmu(device_t dev, device_t child)
 {
 	struct bhnd_softc		*sc;
-	struct bhnd_core_pmu_info	*pinfo;
-	struct bhnd_devinfo		*dinfo;
 	struct bhnd_resource		*br;
 	struct chipc_caps		*ccaps;
+	struct bhnd_devinfo		*dinfo;	
+	struct bhnd_core_pmu_info	*pm;
 	struct resource_list		*rl;
 	struct resource_list_entry	*rle;
+	device_t			 pmu_dev;
 	bhnd_addr_t			 r_addr;
 	bhnd_size_t			 r_size;
 	bus_size_t			 pmu_regs;
@@ -653,6 +654,12 @@ bhnd_generic_alloc_pmu(device_t dev, device_t child)
 	if ((ccaps = bhnd_find_chipc_caps(sc)) == NULL) {
 		device_printf(sc->dev, "alloc_pmu failed: chipc "
 		    "capabilities unavailable\n");
+		return (ENXIO);
+	}
+	
+	if ((pmu_dev = bhnd_find_pmu(sc)) == NULL) {
+		device_printf(sc->dev, 
+		    "pmu unavailable; cannot allocate request state\n");
 		return (ENXIO);
 	}
 
@@ -721,16 +728,17 @@ bhnd_generic_alloc_pmu(device_t dev, device_t child)
 	br->res = rle->res;
 	br->direct = ((rman_get_flags(rle->res) & RF_ACTIVE) != 0);
 
-	pinfo = malloc(sizeof(*dinfo->pmu_info), M_BHND, M_NOWAIT);
-	if (pinfo == NULL) {
+	pm = malloc(sizeof(*dinfo->pmu_info), M_BHND, M_NOWAIT);
+	if (pm == NULL) {
 		free(br, M_BHND);
 		return (ENOMEM);
 	}
-	pinfo->pm_dev = child;
-	pinfo->pm_res = br;
-	pinfo->pm_regs = pmu_regs;
+	pm->pm_dev = child;
+	pm->pm_pmu = pmu_dev;
+	pm->pm_res = br;
+	pm->pm_regs = pmu_regs;
 
-	dinfo->pmu_info = pinfo;
+	dinfo->pmu_info = pm;
 	return (0);
 }
 
@@ -742,18 +750,28 @@ bhnd_generic_release_pmu(device_t dev, device_t child)
 {
 	struct bhnd_softc		*sc;
 	struct bhnd_devinfo		*dinfo;
+	device_t			 pmu;
+	int				 error;
 
 	GIANT_REQUIRED;	/* for newbus */
 	
 	sc = device_get_softc(dev);
 	dinfo = device_get_ivars(child);
 
-	/* is pmu info allocated? */
+	if ((pmu = bhnd_find_pmu(sc)) == NULL) {
+		device_printf(sc->dev, 
+		    "pmu unavailable; cannot release request state\n");
+		return (ENXIO);
+	}
+
+	/* dispatch release request */
 	if (dinfo->pmu_info == NULL)
 		panic("pmu over-release for %s", device_get_nameunit(child));
 
-	// TODO: inform PMU device */
+	if ((error = BHND_PMU_CORE_RELEASE(pmu, dinfo->pmu_info)))
+		return (error);
 
+	/* free PMU info */
 	free(dinfo->pmu_info->pm_res, M_BHND);
 	free(dinfo->pmu_info, M_BHND);
 	dinfo->pmu_info = NULL;
@@ -769,15 +787,16 @@ bhnd_generic_request_clock(device_t dev, device_t child, bhnd_clock clock)
 {
 	struct bhnd_softc		*sc;
 	struct bhnd_devinfo		*dinfo;
-	
+	struct bhnd_core_pmu_info	*pm;
+
 	sc = device_get_softc(dev);
 	dinfo = device_get_ivars(child);
 
-	KASSERT(dinfo->pmu_info != NULL, ("no active PMU request state"));
+	if ((pm = dinfo->pmu_info) == NULL)
+		panic("no active PMU request state");
 
-	// TODO: submit PMU request */
-
-	return (0);
+	/* dispatch request to PMU */
+	return (BHND_PMU_CORE_REQ_CLOCK(pm->pm_pmu, pm, clock));
 }
 
 /**
@@ -788,15 +807,16 @@ bhnd_generic_enable_clocks(device_t dev, device_t child, uint32_t clocks)
 {
 	struct bhnd_softc		*sc;
 	struct bhnd_devinfo		*dinfo;
-	
+	struct bhnd_core_pmu_info	*pm;
+
 	sc = device_get_softc(dev);
 	dinfo = device_get_ivars(child);
 
-	KASSERT(dinfo->pmu_info != NULL, ("no active PMU request state"));
+	if ((pm = dinfo->pmu_info) == NULL)
+		panic("no active PMU request state");
 
-	// TODO: submit PMU request */
-
-	return (0);
+	/* dispatch request to PMU */
+	return (BHND_PMU_CORE_EN_CLOCKS(pm->pm_pmu, pm, clocks));
 }
 
 /**

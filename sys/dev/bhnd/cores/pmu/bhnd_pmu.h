@@ -40,7 +40,8 @@
  * Per-core PMU register information.
  */
 struct bhnd_core_pmu_info {
-	device_t		 pm_dev;	/**< bhnd device */
+	device_t		 pm_dev;	/**< core device */
+	device_t		 pm_pmu;	/**< PMU device */
 	struct bhnd_resource	*pm_res;	/**< Resource containing PMU
 						     register block for this
 						     device, or NULL if non-PMU
