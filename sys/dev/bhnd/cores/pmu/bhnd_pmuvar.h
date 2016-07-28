@@ -35,6 +35,8 @@
 #include <sys/types.h>
 #include <sys/rman.h>
 
+#include "bhnd_pmu.h"
+
 DECLARE_CLASS(bhnd_pmu_driver);
 extern devclass_t bhnd_pmu_devclass;
 

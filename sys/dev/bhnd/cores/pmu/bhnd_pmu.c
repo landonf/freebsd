@@ -254,15 +254,40 @@ bhnd_pmu_sysctl_mem_freq(SYSCTL_HANDLER_ARGS)
 	return (sysctl_handle_32(oidp, NULL, freq, req));
 }
 
+static int
+bhnd_pmu_core_req_clock(device_t pmu, struct bhnd_core_pmu_info *pinfo,
+    bhnd_clock clock)
+{
+	// TODO
+	return (0);
+}
+
+static int
+bhnd_pmu_core_en_clocks(device_t pmu, struct bhnd_core_pmu_info *pinfo,
+    uint32_t clocks)
+{
+	// TODO
+	return (0);
+}
+
+static int
+bhnd_pmu_core_release(device_t pmu, struct bhnd_core_pmu_info *pinfo)
+{
+	// TODO
+	return (0);
+}
+
 static device_method_t bhnd_pmu_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_probe,		bhnd_pmu_probe),
-	DEVMETHOD(device_detach,	bhnd_pmu_detach),
-	DEVMETHOD(device_suspend,	bhnd_pmu_suspend),
-	DEVMETHOD(device_resume,	bhnd_pmu_resume),
+	DEVMETHOD(device_probe,			bhnd_pmu_probe),
+	DEVMETHOD(device_detach,		bhnd_pmu_detach),
+	DEVMETHOD(device_suspend,		bhnd_pmu_suspend),
+	DEVMETHOD(device_resume,		bhnd_pmu_resume),
 
 	/* BHND PMU interface */
-	// TODO
+	DEVMETHOD(bhnd_pmu_core_req_clock,	bhnd_pmu_core_req_clock),
+	DEVMETHOD(bhnd_pmu_core_en_clocks,	bhnd_pmu_core_en_clocks),
+	DEVMETHOD(bhnd_pmu_core_release,	bhnd_pmu_core_release),
 
 	DEVMETHOD_END
 };

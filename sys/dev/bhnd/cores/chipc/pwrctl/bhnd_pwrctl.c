@@ -36,7 +36,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/pci/pcivar.h>
 
 #include <dev/bhnd/bhnd.h>
-#include <dev/bhnd/bhndb/bhndb_pcireg.h>
 
 #include <dev/bhnd/cores/chipc/chipcreg.h>
 #include <dev/bhnd/cores/chipc/chipcvar.h>
@@ -45,7 +44,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/cores/pmu/bhnd_pmureg.h>
 
 #include "bhnd_chipc_if.h"
-#include "bhnd_pmu_if.h"
 
 #include "bhnd_pwrctl_private.h"
 
@@ -146,16 +144,41 @@ bhnd_pwrctl_resume(device_t dev)
 	return (0);
 }
 
+static int
+bhnd_pwrctl_core_req_clock(device_t pmu, struct bhnd_core_pmu_info *pinfo,
+    bhnd_clock clock)
+{
+	// TODO
+	return (ENODEV);
+}
+
+static int
+bhnd_pwrctl_core_en_clocks(device_t pmu, struct bhnd_core_pmu_info *pinfo,
+    uint32_t clocks)
+{
+	// TODO
+	return (ENODEV);
+}
+
+static int
+bhnd_pwrctl_core_release(device_t pmu, struct bhnd_core_pmu_info *pinfo)
+{
+	// TODO
+	return (ENODEV);
+}
+
 static device_method_t bhnd_pwrctl_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_probe,		bhnd_pwrctl_probe),
-	DEVMETHOD(device_attach,	bhnd_pwrctl_attach),
-	DEVMETHOD(device_detach,	bhnd_pwrctl_detach),
-	DEVMETHOD(device_suspend,	bhnd_pwrctl_suspend),
-	DEVMETHOD(device_resume,	bhnd_pwrctl_resume),
+	DEVMETHOD(device_probe,			bhnd_pwrctl_probe),
+	DEVMETHOD(device_attach,		bhnd_pwrctl_attach),
+	DEVMETHOD(device_detach,		bhnd_pwrctl_detach),
+	DEVMETHOD(device_suspend,		bhnd_pwrctl_suspend),
+	DEVMETHOD(device_resume,		bhnd_pwrctl_resume),
 
 	/* BHND PMU interface */
-	// TODO
+	DEVMETHOD(bhnd_pmu_core_req_clock,	bhnd_pwrctl_core_req_clock),
+	DEVMETHOD(bhnd_pmu_core_en_clocks,	bhnd_pwrctl_core_en_clocks),
+	DEVMETHOD(bhnd_pmu_core_release,	bhnd_pwrctl_core_release),
 
 	DEVMETHOD_END
 };
