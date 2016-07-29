@@ -32,9 +32,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/module.h>
 #include <sys/systm.h>
 
-#include <dev/pci/pcireg.h>
-#include <dev/pci/pcivar.h>
-
 #include <dev/bhnd/bhnd.h>
 
 #include <dev/bhnd/cores/chipc/chipcreg.h>
