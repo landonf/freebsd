@@ -207,6 +207,7 @@ bhnd_pmu_detach(device_t dev)
 int
 bhnd_pmu_suspend(device_t dev)
 {
+	// TODO
 	return (0);
 }
 
@@ -224,7 +225,7 @@ bhnd_pmu_resume(device_t dev)
 	/* Re-initialize PMU */
 	if ((error = bhnd_pmu_init(sc))) {
 		device_printf(sc->dev, "PMU init failed: %d\n", error);
-		return (error);;
+		return (error);
 	}
 
 	return (0);
