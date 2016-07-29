@@ -52,7 +52,7 @@ struct vmbus_channel {
 	/*
 	 * RX bufring; immediately following ch_txbr.
 	 */
-	hv_vmbus_ring_buffer_info	ch_rxbr;
+	struct vmbus_rxbr		ch_rxbr;
 
 	struct taskqueue		*ch_tq;
 	struct task			ch_task;
@@ -71,7 +71,7 @@ struct vmbus_channel {
 	 * TX bufring and following MNF/evtflags do _not_ fit in
 	 * one 64B cacheline.
 	 */
-	hv_vmbus_ring_buffer_info	ch_txbr __aligned(CACHE_LINE_SIZE);
+	struct vmbus_txbr		ch_txbr __aligned(CACHE_LINE_SIZE);
 	uint32_t			ch_txflags;	/* VMBUS_CHAN_TXF_ */
 
 	/*
@@ -155,9 +155,10 @@ struct vmbus_channel {
 struct vmbus_softc;
 struct vmbus_message;
 
-void	vmbus_event_proc(struct vmbus_softc *, int);
-void	vmbus_event_proc_compat(struct vmbus_softc *, int);
-void	vmbus_chan_msgproc(struct vmbus_softc *, const struct vmbus_message *);
-void	vmbus_chan_destroy_all(struct vmbus_softc *);
+void		vmbus_event_proc(struct vmbus_softc *, int);
+void		vmbus_event_proc_compat(struct vmbus_softc *, int);
+void		vmbus_chan_msgproc(struct vmbus_softc *,
+		    const struct vmbus_message *);
+void		vmbus_chan_destroy_all(struct vmbus_softc *);
 
 #endif	/* !_VMBUS_CHANVAR_H_ */
