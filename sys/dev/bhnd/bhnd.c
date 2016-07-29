@@ -1084,8 +1084,10 @@ bhnd_generic_child_deleted(device_t dev, device_t child)
 	/* Free device info */
 	if ((dinfo = device_get_ivars(child)) != NULL) {
 		if (dinfo->pmu_info != NULL) {
-			// TODO: Clean up automatically?
-			panic("%s leaking device pmu state\n",
+			/* Releasing PMU requests automatically would be nice,
+			 * but we can't reference per-core PMU register
+			 * resource after driver detach */
+			panic("%s leaked device pmu state\n",
 			    device_get_nameunit(child));
 		}
 
