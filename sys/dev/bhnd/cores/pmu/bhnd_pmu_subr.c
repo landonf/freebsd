@@ -2108,6 +2108,10 @@ bhnd_pmu_alp_clock(struct bhnd_pmu_softc *sc)
 
 	clock = BHND_PMU_ALP_CLOCK;
 	switch (sc->cid.chip_id) {
+	case BHND_CHIPID_BCM4328:
+	case BHND_CHIPID_BCM5354:
+		clock = bhnd_pmu0_alpclk0(sc);
+		break;
 	case BHND_CHIPID_BCM4315:
 	case BHND_CHIPID_BCM4319:
 	case BHND_CHIPID_BCM4325:
