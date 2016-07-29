@@ -436,18 +436,18 @@ typedef struct {
 
 typedef bool (*pmu_res_filter) (struct bhnd_pmu_softc *sc);
 
-/* Change resource dependancies masks */
+/* Change resource dependencies masks */
 typedef struct {
 	uint32_t	res_mask;	/* resources (chip specific) */
 	int8_t		action;		/* action */
-	uint32_t	depend_mask;	/* changes to the dependancies mask */
+	uint32_t	depend_mask;	/* changes to the dependencies mask */
 	pmu_res_filter	filter;		/* action is taken when filter is NULL or returns true */
 } pmu_res_depend_t;
 
-/* Resource dependancies mask change action */
-#define	RES_DEPEND_SET		0	/* Override the dependancies mask */
-#define	RES_DEPEND_ADD		1	/* Add to the  dependancies mask */
-#define	RES_DEPEND_REMOVE	-1	/* Remove from the dependancies mask */
+/* Resource dependencies mask change action */
+#define	RES_DEPEND_SET		0	/* Override the dependencies mask */
+#define	RES_DEPEND_ADD		1	/* Add to the  dependencies mask */
+#define	RES_DEPEND_REMOVE	-1	/* Remove from the dependencies mask */
 
 static const pmu_res_updown_t bcm4328a0_res_updown[] = {
 	{
@@ -507,7 +507,7 @@ static const pmu_res_depend_t bcm4325a0_res_depend[] = {
 		    PMURES_BIT(RES4325_TX_PWRSW_PU) |
 		    PMURES_BIT(RES4325_LOGEN_PWRSW_PU) |
 		    PMURES_BIT(RES4325_AFE_PWRSW_PU), NULL},
-	/* Adjust ALL resource dependencies - remove CBUCK dependancies if it is not used. */
+	/* Adjust ALL resource dependencies - remove CBUCK dependencies if it is not used. */
 	{
 	PMURES_BIT(RES4325_ILP_REQUEST) |
 		    PMURES_BIT(RES4325_ABUCK_BURST) |
@@ -552,7 +552,7 @@ static const pmu_res_depend_t bcm4315a0_res_depend[] = {
 		    PMURES_BIT(RES4315_TX_PWRSW_PU) |
 		    PMURES_BIT(RES4315_LOGEN_PWRSW_PU) |
 		    PMURES_BIT(RES4315_AFE_PWRSW_PU), NULL},
-	/* Adjust ALL resource dependencies - remove CBUCK dependancies if it is not used. */
+	/* Adjust ALL resource dependencies - remove CBUCK dependencies if it is not used. */
 	{
 	PMURES_BIT(RES4315_CLDO_PU) | PMURES_BIT(RES4315_ILP_REQUEST) |
 		    PMURES_BIT(RES4315_LNLDO1_PU) |
@@ -945,7 +945,7 @@ bhnd_pmu_res_init(struct bhnd_pmu_softc *sc)
 		pmu_res_updown_table = bcm4319a0_res_updown;
 		pmu_res_updown_table_sz = nitems(bcm4319a0_res_updown);
 		
-		/* Optimize resources dependancies masks */
+		/* Optimize resources dependencies masks */
 		pmu_res_depend_table = bcm4319a0_res_depend;
 		pmu_res_depend_table_sz = nitems(bcm4319a0_res_depend);
 		break;
@@ -955,7 +955,7 @@ bhnd_pmu_res_init(struct bhnd_pmu_softc *sc)
 		pmu_res_updown_table = bcm4336a0_res_updown;
 		pmu_res_updown_table_sz = nitems(bcm4336a0_res_updown);
 
-		/* Optimize resources dependancies masks */
+		/* Optimize resources dependencies masks */
 		pmu_res_depend_table = bcm4336a0_res_depend;
 		pmu_res_depend_table_sz = nitems(bcm4336a0_res_depend);
 		break;
@@ -965,7 +965,7 @@ bhnd_pmu_res_init(struct bhnd_pmu_softc *sc)
 		pmu_res_updown_table = bcm4330a0_res_updown;
 		pmu_res_updown_table_sz = nitems(bcm4330a0_res_updown);
 
-		/* Optimize resources dependancies masks */
+		/* Optimize resources dependencies masks */
 		pmu_res_depend_table = bcm4330a0_res_depend;
 		pmu_res_depend_table_sz = nitems(bcm4330a0_res_depend);
 		break;
@@ -1062,7 +1062,7 @@ bhnd_pmu_res_init(struct bhnd_pmu_softc *sc)
 		}
 	}
 
-	/* Apply nvram overrides to dependancies masks */
+	/* Apply nvram overrides to dependencies masks */
 	for (uint8_t i = 0; i < rsrcs; i++) {
 		char		name[6];
 		uint32_t	val;
@@ -2616,7 +2616,7 @@ bhnd_pmu_res_uptime(struct bhnd_pmu_softc *sc, uint8_t rsrc)
 	up = BHND_PMU_READ_4(sc, BHND_PMU_RES_UPDN_TIMER);
 	up = BHND_PMU_GET_BITS(up, BHND_PMU_RES_UPDN_UPTME);
 
-	/* Find direct dependancies of resource 'rsrc' */
+	/* Find direct dependencies of resource 'rsrc' */
 	deps = bhnd_pmu_res_deps(sc, BHND_PMURES_BIT(rsrc), false);
 	for (uint8_t i = 0; i <= BHND_PMU_RESNUM_MAX; i++) {
 		if (!(deps & BHND_PMURES_BIT(i)))
@@ -2628,7 +2628,7 @@ bhnd_pmu_res_uptime(struct bhnd_pmu_softc *sc, uint8_t rsrc)
 	bhnd_pmu_res_masks(sc, &min_mask, NULL);
 	deps &= ~min_mask;
 
-	/* max uptime of direct dependancies */
+	/* max uptime of direct dependencies */
 	dmax = 0;
 	for (uint8_t i = 0; i <= BHND_PMU_RESNUM_MAX; i++) {
 		if (!(deps & BHND_PMURES_BIT(i)))
@@ -2645,7 +2645,7 @@ bhnd_pmu_res_uptime(struct bhnd_pmu_softc *sc, uint8_t rsrc)
 	return (up + dmax + BHND_PMURES_UP_TRANSITION);
 }
 
-/* Return dependancies (direct or all/indirect) for the given resources */
+/* Return dependencies (direct or all/indirect) for the given resources */
 static uint32_t
 bhnd_pmu_res_deps(struct bhnd_pmu_softc *sc, uint32_t rsrcs, bool all)
 {
