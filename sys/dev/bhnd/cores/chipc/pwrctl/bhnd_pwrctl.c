@@ -51,9 +51,17 @@ __FBSDID("$FreeBSD$");
  * power management on non-PMU chipsets.
  */
 
-static int	bhnd_pwrctl_updateclk(struct bhnd_pwrctl_softc *sc);
+typedef enum {
+	BHND_PWRCTL_WAR_UP,	/**< apply attach/resume workarounds */
+	BHND_PWRCTL_WAR_RUN,	/**< apply running workarounds */
+	BHND_PWRCTL_WAR_DOWN,	/**< apply detach/suspend workarounds */
+} bhnd_pwrctl_wars;
+
+static int	bhnd_pwrctl_updateclk(struct bhnd_pwrctl_softc *sc,
+		    bhnd_pwrctl_wars wars);
 
 static struct bhnd_device_quirk pwrctl_quirks[];
+
 
 /* Supported parent core device identifiers */
 static const struct bhnd_device pwrctl_devices[] = {
@@ -153,6 +161,9 @@ bhnd_pwrctl_attach(device_t dev)
 	if ((error = bhnd_pwrctl_init(sc)))
 		goto cleanup;
 
+	/* Apply default clock transitions */
+	return (bhnd_pwrctl_updateclk(sc, BHND_PWRCTL_WAR_UP));
+
 	return (0);
 
 cleanup:
@@ -165,8 +176,12 @@ bhnd_pwrctl_detach(device_t dev)
 {
 	struct bhnd_pwrctl_softc	*sc;
 	struct bhnd_pwrctl_clkres	*clkres, *crnext;
+	int				 error;
 
 	sc = device_get_softc(dev);
+
+	if ((error = bhnd_pwrctl_setclk(sc, BHND_CLOCK_DYN)))
+		return (error);
 
 	STAILQ_FOREACH_SAFE(clkres, &sc->clkres_list, cr_link, crnext)
 		free(clkres, M_DEVBUF);
@@ -182,8 +197,8 @@ bhnd_pwrctl_suspend(device_t dev)
 
 	sc = device_get_softc(dev);
 
-	// TODO
-	return (0);
+	/* Update clock state */
+	return (bhnd_pwrctl_updateclk(sc, BHND_PWRCTL_WAR_DOWN));
 }
 
 static int
@@ -201,7 +216,7 @@ bhnd_pwrctl_resume(device_t dev)
 	}
 
 	/* Restore clock state */
-	if ((error = bhnd_pwrctl_updateclk(sc))) {
+	if ((error = bhnd_pwrctl_updateclk(sc, BHND_PWRCTL_WAR_UP))) {
 		device_printf(sc->dev, "clock state restore failed: %d\n",
 		    error);
 		return (error);
@@ -238,21 +253,40 @@ bhnd_pwrctl_find_res(struct bhnd_pwrctl_softc *sc,
  * and issue any required clock transition.
  * 
  * @param sc Driver instance state.
+ * @param wars Work-around state.
  */
 static int
-bhnd_pwrctl_updateclk(struct bhnd_pwrctl_softc *sc)
+bhnd_pwrctl_updateclk(struct bhnd_pwrctl_softc *sc, bhnd_pwrctl_wars wars)
 {
 	struct bhnd_pwrctl_clkres	*clkres;
 	bhnd_clock			 clock;
 
 	PWRCTL_LOCK_ASSERT(sc, MA_OWNED);
 
-	/* Cannot transition clock if FORCE_HT */
-	if (PWRCTL_QUIRK(sc, FORCE_HT))
-		return (0);
+	/* Default clock target */
+	clock = BHND_CLOCK_DYN;
+
+	/* Apply quirk-specific overrides to the clock target */
+	switch (wars) {
+	case BHND_PWRCTL_WAR_UP:
+		/* Force HT clock */
+		if (PWRCTL_QUIRK(sc, FORCE_HT))
+			clock = BHND_CLOCK_HT;
+		break;
+
+	case BHND_PWRCTL_WAR_RUN:
+		/* Cannot transition clock if FORCE_HT */
+		if (PWRCTL_QUIRK(sc, FORCE_HT))
+			return (0);
+		break;
+
+	case BHND_PWRCTL_WAR_DOWN:
+		/* Leave default clock unmodified to permit
+		 * transition back to BHND_CLOCK_DYN on FORCE_HT devices. */
+		break;
+	}
 
 	/* Determine required clock */
-	clock = BHND_CLOCK_DYN;
 	STAILQ_FOREACH(clkres, &sc->clkres_list, cr_link)
 		clock = bhnd_clock_max(clock, clkres->clock);
 
@@ -307,7 +341,7 @@ bhnd_pwrctl_core_req_clock(device_t dev, struct bhnd_core_pmu_info *pinfo,
 		STAILQ_REMOVE(&sc->clkres_list, clkres,
 		    bhnd_pwrctl_clkres, cr_link);
 
-		if ((error = bhnd_pwrctl_updateclk(sc))) {
+		if ((error = bhnd_pwrctl_updateclk(sc, BHND_PWRCTL_WAR_RUN))) {
 			device_printf(dev, "clock transition failed: %d\n",
 			    error);
 
@@ -342,7 +376,7 @@ bhnd_pwrctl_core_req_clock(device_t dev, struct bhnd_core_pmu_info *pinfo,
 	}
 
 	/* apply clock transition */
-	error = bhnd_pwrctl_updateclk(sc);
+	error = bhnd_pwrctl_updateclk(sc, BHND_PWRCTL_WAR_RUN);
 	if (error) {
 		STAILQ_REMOVE(&sc->clkres_list, clkres, bhnd_pwrctl_clkres,
 		    cr_link);
