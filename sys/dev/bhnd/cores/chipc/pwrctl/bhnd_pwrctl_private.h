@@ -38,5 +38,6 @@ int		bhnd_pwrctl_init(struct bhnd_pwrctl_softc *sc);
 int		bhnd_pwrctl_setclk(struct bhnd_pwrctl_softc *sc,
 		    bhnd_clock clock);
 uint32_t	bhnd_pwrctl_getclk_speed(struct bhnd_pwrctl_softc *sc);
+uint16_t	bhnd_pwrctl_fast_pwrup_delay(struct bhnd_pwrctl_softc *sc);
 
 #endif /* _BHND_PWRCTL_BHND_PWRCTL_PRIVATE_H_ */

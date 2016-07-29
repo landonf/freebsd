@@ -365,7 +365,7 @@ bhnd_pwrctl_init(struct bhnd_pwrctl_softc *sc)
 
 /* return the value suitable for writing to the dot11 core
  * FAST_PWRUP_DELAY register */
-static uint16_t
+uint16_t
 bhnd_pwrctl_fast_pwrup_delay(struct bhnd_pwrctl_softc *sc)
 {
 	uint32_t pll_on_delay, slowminfreq;
