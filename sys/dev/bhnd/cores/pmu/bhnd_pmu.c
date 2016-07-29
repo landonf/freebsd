@@ -207,7 +207,6 @@ bhnd_pmu_detach(device_t dev)
 int
 bhnd_pmu_suspend(device_t dev)
 {
-	// TODO
 	return (0);
 }
 
