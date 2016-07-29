@@ -51,6 +51,8 @@ __FBSDID("$FreeBSD$");
  * power management on non-PMU chipsets.
  */
 
+static int	bhnd_pwrctl_updateclk(struct bhnd_pwrctl_softc *sc);
+
 static struct bhnd_device_quirk pwrctl_quirks[];
 
 /* Supported parent core device identifiers */
@@ -101,7 +103,11 @@ static int
 bhnd_pwrctl_attach(device_t dev)
 {
 	struct bhnd_pwrctl_softc	*sc;
+	const struct bhnd_chipid	*cid;
 	struct chipc_softc		*chipc_sc;
+	bhnd_devclass_t			 hostb_class;
+	device_t			 hostb_dev;
+	int				 error;
 
 	sc = device_get_softc(dev);
 
@@ -110,6 +116,32 @@ bhnd_pwrctl_attach(device_t dev)
 	sc->quirks = bhnd_device_quirks(sc->chipc_dev, pwrctl_devices,
 	    sizeof(pwrctl_devices[0]));
 
+	/* On devices that lack a slow clock source, HT must always be
+	 * enabled. */
+	hostb_class = BHND_DEVCLASS_INVALID;
+	hostb_dev = bhnd_find_hostb_device(device_get_parent(sc->chipc_dev));
+	if (hostb_dev != NULL)
+		hostb_class = bhnd_get_class(hostb_dev);
+
+	cid = bhnd_get_chipid(sc->chipc_dev);
+	switch (cid->chip_id) {
+	case BHND_CHIPID_BCM4311:
+		if (cid->chip_rev <= 1 && hostb_class == BHND_DEVCLASS_PCI)
+			sc->quirks |= PWRCTL_QUIRK_FORCE_HT;
+		break;
+
+	case BHND_CHIPID_BCM4321:
+		if (hostb_class == BHND_DEVCLASS_PCIE ||
+		    hostb_class == BHND_DEVCLASS_PCI)
+			sc->quirks |= PWRCTL_QUIRK_FORCE_HT;
+		break;
+
+	case BHND_CHIPID_BCM4716:
+		if (hostb_class == BHND_DEVCLASS_PCIE)
+			sc->quirks |= PWRCTL_QUIRK_FORCE_HT;
+		break;
+	}
+
 	/* Fetch core register block from ChipCommon parent */
 	chipc_sc = device_get_softc(sc->chipc_dev);
 	sc->res = chipc_sc->core;
@@ -117,7 +149,15 @@ bhnd_pwrctl_attach(device_t dev)
 	PWRCTL_LOCK_INIT(sc);
 	STAILQ_INIT(&sc->clkres_list);
 
+	/* Initialize power control */
+	if ((error = bhnd_pwrctl_init(sc)))
+		goto cleanup;
+
 	return (0);
+
+cleanup:
+	PWRCTL_LOCK_DESTROY(sc);
+	return (error);
 }
 
 static int
@@ -138,6 +178,10 @@ bhnd_pwrctl_detach(device_t dev)
 static int
 bhnd_pwrctl_suspend(device_t dev)
 {
+	struct bhnd_pwrctl_softc *sc;
+
+	sc = device_get_softc(dev);
+
 	// TODO
 	return (0);
 }
@@ -145,7 +189,24 @@ bhnd_pwrctl_suspend(device_t dev)
 static int
 bhnd_pwrctl_resume(device_t dev)
 {
-	// TODO
+	struct bhnd_pwrctl_softc	*sc;
+	int				 error;
+
+	sc = device_get_softc(dev);
+
+	/* Re-initialize power control registers */
+	if ((error = bhnd_pwrctl_init(sc))) {
+		device_printf(sc->dev, "PWRCTL init failed: %d\n", error);
+		return (error);
+	}
+
+	/* Restore clock state */
+	if ((error = bhnd_pwrctl_updateclk(sc))) {
+		device_printf(sc->dev, "clock state restore failed: %d\n",
+		    error);
+		return (error);
+	}
+
 	return (0);
 }
 
@@ -179,36 +240,44 @@ bhnd_pwrctl_find_res(struct bhnd_pwrctl_softc *sc,
  * @param sc Driver instance state.
  */
 static int
-bhnd_pwrctl_clkupdate(struct bhnd_pwrctl_softc *sc)
+bhnd_pwrctl_updateclk(struct bhnd_pwrctl_softc *sc)
 {
 	struct bhnd_pwrctl_clkres	*clkres;
 	bhnd_clock			 clock;
 
 	PWRCTL_LOCK_ASSERT(sc, MA_OWNED);
 
+	/* Cannot transition clock if FORCE_HT */
+	if (PWRCTL_QUIRK(sc, FORCE_HT))
+		return (0);
+
+	/* Determine required clock */
 	clock = BHND_CLOCK_DYN;
 	STAILQ_FOREACH(clkres, &sc->clkres_list, cr_link)
 		clock = bhnd_clock_max(clock, clkres->clock);
 
+	/* Map to supported clock setting */
 	switch (clock) {
 	case BHND_CLOCK_DYN:
-		// TODO
-		break;
 	case BHND_CLOCK_ILP:
-		// TODO
+		clock = BHND_CLOCK_DYN;
 		break;
 	case BHND_CLOCK_ALP:
-		// TODO
+		/* In theory FORCE_ALP is supported by the hardware, but
+		 * there are currently no known use-cases for it; mapping
+		 * to HT is still valid, and allows us to punt on determing
+		 * where FORCE_ALP is supported and functional */
+		clock = BHND_CLOCK_HT;
 		break;
 	case BHND_CLOCK_HT:
-		// TODO
 		break;
 	default:
 		device_printf(sc->dev, "unknown clock: %#x\n", clock);
 		return (ENODEV);
 	}
 
-	return (0);
+	/* Issue transition */
+	return (bhnd_pwrctl_setclk(sc, clock));
 }
 
 static int
@@ -238,7 +307,7 @@ bhnd_pwrctl_core_req_clock(device_t dev, struct bhnd_core_pmu_info *pinfo,
 		STAILQ_REMOVE(&sc->clkres_list, clkres,
 		    bhnd_pwrctl_clkres, cr_link);
 
-		if ((error = bhnd_pwrctl_clkupdate(sc))) {
+		if ((error = bhnd_pwrctl_updateclk(sc))) {
 			device_printf(dev, "clock transition failed: %d\n",
 			    error);
 
@@ -273,7 +342,7 @@ bhnd_pwrctl_core_req_clock(device_t dev, struct bhnd_core_pmu_info *pinfo,
 	}
 
 	/* apply clock transition */
-	error = bhnd_pwrctl_clkupdate(sc);
+	error = bhnd_pwrctl_updateclk(sc);
 	if (error) {
 		STAILQ_REMOVE(&sc->clkres_list, clkres, bhnd_pwrctl_clkres,
 		    cr_link);
@@ -288,15 +357,27 @@ static int
 bhnd_pwrctl_core_en_clocks(device_t dev, struct bhnd_core_pmu_info *pinfo,
     uint32_t clocks)
 {
-	// TODO
-	return (ENODEV);
+	/* All supported clocks are already enabled by default (?) */
+	clocks &= ~(BHND_CLOCK_DYN |
+		    BHND_CLOCK_ILP |
+		    BHND_CLOCK_ALP |
+		    BHND_CLOCK_HT);
+
+	if (clocks != 0) {
+		device_printf(dev, "%s requested unknown clocks: %#x\n",
+		    device_get_nameunit(pinfo->pm_dev), clocks);
+		return (ENODEV);
+	}
+
+	return (0);
 }
 
 static int
 bhnd_pwrctl_core_release(device_t dev, struct bhnd_core_pmu_info *pinfo)
 {
-	// TODO
-	return (ENODEV);
+	/* Requesting BHND_CLOCK_DYN releases any outstanding clock
+	 * reservations */
+	return (bhnd_pwrctl_core_req_clock(dev, pinfo, BHND_CLOCK_DYN));
 }
 
 static device_method_t bhnd_pwrctl_methods[] = {

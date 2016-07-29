@@ -48,8 +48,6 @@ __FBSDID("$FreeBSD$");
 static uint32_t	bhnd_pwrctl_factor6(uint32_t x);
 static uint32_t	bhnd_pwrctl_clock_rate(uint32_t pll_type, uint32_t n,
 		    uint32_t m);
-static bool	bhnd_pwrctl_setclk(struct bhnd_pwrctl_softc *sc,
-		    bhnd_clock clock);
 
 /**
  * Return the factor value corresponding to a given N3M clock control magic
@@ -195,12 +193,14 @@ bhnd_pwrctl_clock_rate(uint32_t pll_type, uint32_t n, uint32_t m)
  * @param sc driver instance state.
  */
 uint32_t
-bhnd_pwrctl_clock(struct bhnd_pwrctl_softc *sc)
+bhnd_pwrctl_getclk_speed(struct bhnd_pwrctl_softc *sc)
 {
 	struct chipc_caps	*ccaps;
 	bus_size_t		 creg;
 	uint32_t 		 n, m;
 	uint32_t 		 rate;
+
+	PWRCTL_LOCK_ASSERT(sc, MA_OWNED);
 
 	ccaps = BHND_CHIPC_GET_CAPS(sc->chipc_dev);
 
@@ -312,13 +312,16 @@ bhnd_pwrctl_slowclk_freq(struct bhnd_pwrctl_softc *sc, bool max_freq)
 	return (hz / div);
 }
 
-/* initialize power control delay registers */
-static void
-bhnd_pwrctl_clkctl_init(struct bhnd_pwrctl_softc *sc)
+/**
+ * Initialize power control registers.
+ */
+int
+bhnd_pwrctl_init(struct bhnd_pwrctl_softc *sc)
 {
-	uint32_t clkctl;
-	uint32_t pll_delay, slowclk, slowmaxfreq;
-	uint32_t pll_on_delay, fref_sel_delay;
+	uint32_t	clkctl;
+	uint32_t	pll_delay, slowclk, slowmaxfreq;
+	uint32_t 	pll_on_delay, fref_sel_delay;
+	int		error;
 
 	pll_delay = CHIPC_PLL_DELAY;
 
@@ -328,7 +331,6 @@ bhnd_pwrctl_clkctl_init(struct bhnd_pwrctl_softc *sc)
 		clkctl &= CHIPC_SYCC_CD_MASK;
 		bhnd_bus_write_4(sc->res, CHIPC_SYS_CLK_CTL, clkctl);
 	}
-
 
 	/* 
 	 * Initialize PLL/FREF delays.
@@ -341,18 +343,24 @@ bhnd_pwrctl_clkctl_init(struct bhnd_pwrctl_softc *sc)
 		pll_delay += CHIPC_XTAL_ON_DELAY;
 
 	/* Starting with 4318 it is ILP that is used for the delays */
-	if (PWRCTL_QUIRK(sc, INSTACLK_CTL)) {
+	if (PWRCTL_QUIRK(sc, INSTACLK_CTL))
 		slowmaxfreq = bhnd_pwrctl_slowclk_freq(sc, false);
-	} else {
+	else
 		slowmaxfreq = bhnd_pwrctl_slowclk_freq(sc, true);
-	}
-
 
 	pll_on_delay = ((slowmaxfreq * pll_delay) + 999999) / 1000000;
 	fref_sel_delay = ((slowmaxfreq * CHIPC_FREF_DELAY) + 999999) / 1000000;
 
 	bhnd_bus_write_4(sc->res, CHIPC_PLL_ON_DELAY, pll_on_delay);
 	bhnd_bus_write_4(sc->res, CHIPC_PLL_FREFSEL_DELAY, fref_sel_delay);
+
+	/* If required, force HT */
+	if (PWRCTL_QUIRK(sc, FORCE_HT)) {
+		if ((error = bhnd_pwrctl_setclk(sc, BHND_CLOCK_HT)))
+			return (error);
+	}
+
+	return (0);
 }
 
 /* return the value suitable for writing to the dot11 core
@@ -375,89 +383,36 @@ bhnd_pwrctl_fast_pwrup_delay(struct bhnd_pwrctl_softc *sc)
 	return (fpdelay);
 }
 
-/*
- *  clock control policy function throught chipcommon
- *
- *    set dynamic clk control mode (forceslow, forcefast, dynamic)
- *    returns true if we are forcing fast clock
- *    this is a wrapper over the next internal function
- *      to allow flexible policy settings for outside caller
+/**
+ * Distribute @p clock on backplane.
+ * 
+ * @param sc Driver instance state.
+ * @param clock Clock to enable.
+ * 
+ * @retval 0 success
+ * @retval ENODEV If @p clock is unsupported, or if the device does not
+ * 		  support dynamic clock control.
  */
-static bool
-bhnd_pwrctl_cc(struct bhnd_pwrctl_softc *sc, bhnd_clock clock)
-{
-	const struct bhnd_chipid	*cid;
-	bhnd_devclass_t			 hostb_class;
-	device_t			 hostb_dev;
-	bool				 force_ht;
-
-	cid = bhnd_get_chipid(sc->chipc_dev);
-
-	/* Is dynamic clock control supported? */
-	if (PWRCTL_QUIRK(sc, FIXED_CLK))
-		return (false);
-
-	hostb_class = BHND_DEVCLASS_INVALID;
-	hostb_dev = bhnd_find_hostb_device(device_get_parent(sc->chipc_dev));
-	if (hostb_dev != NULL)
-		hostb_class = bhnd_get_class(hostb_dev);
-
-	/* Ignore requests for non-HT clocking? */
-	force_ht = false;
-	switch (cid->chip_id) {
-	case BHND_CHIPID_BCM4311:
-		if (cid->chip_rev > 1)
-			break;
-
-		if (hostb_class != BHND_DEVCLASS_PCIE)
-			break;
-
-		force_ht = true;
-		break;
-
-	case BHND_CHIPID_BCM4321:
-		if (hostb_class != BHND_DEVCLASS_PCIE ||
-		    hostb_class != BHND_DEVCLASS_PCI)
-			break;
-
-		force_ht = true;
-		break;
-
-	case BHND_CHIPID_BCM4716:
-		if (hostb_class != BHND_DEVCLASS_PCIE)
-			break;
-
-		force_ht = true;
-		break;
-
-	default:
-		break;
-	}
-		
-	if (force_ht)
-		return (clock == BHND_CLOCK_HT);
-
-	return (bhnd_pwrctl_setclk(sc, clock));
-}
-
-/* clk control mechanism through chipcommon, no policy checking */
-static bool
+int
 bhnd_pwrctl_setclk(struct bhnd_pwrctl_softc *sc, bhnd_clock clock)
 {
 	uint32_t	scc;
 
+	PWRCTL_LOCK_ASSERT(sc, MA_OWNED);
+
 	/* Is dynamic clock control supported? */
 	if (PWRCTL_QUIRK(sc, FIXED_CLK))
-		return (false);
+		return (ENODEV);
 
 	/* Chips with ccrev 10 are EOL and they don't have SYCC_HR used below */
 	if (bhnd_get_hwrev(sc->chipc_dev) == 10)
-		return (false);
+		return (ENODEV);
 
 	scc = bhnd_bus_read_4(sc->res, CHIPC_PLL_SLOWCLK_CTL);
 
 	switch (clock) {
-	case BHND_CLOCK_HT:	/* FORCEHT, fast (pll) clock */
+	case BHND_CLOCK_HT:
+		/* fast (pll) clock */
 		if (PWRCTL_QUIRK(sc, SLOWCLK_CTL)) {
 			scc &= ~(CHIPC_SCC_XC | CHIPC_SCC_FS | CHIPC_SCC_IP);
 			scc |= CHIPC_SCC_IP;
@@ -467,15 +422,16 @@ bhnd_pwrctl_setclk(struct bhnd_pwrctl_softc *sc, bhnd_clock clock)
 		} else if (PWRCTL_QUIRK(sc, INSTACLK_CTL)) {
 			scc |= CHIPC_SYCC_HR;
 		} else {
-			// TODO: return real error values
-			panic("unsupported request");
+			return (ENODEV);
 		}
 
 		bhnd_bus_write_4(sc->res, CHIPC_PLL_SLOWCLK_CTL, scc);
 		DELAY(CHIPC_PLL_DELAY);
-		break;
 
-	case BHND_CLOCK_DYN:	/* enable dynamic clock control */
+		break;		
+
+	case BHND_CLOCK_DYN:
+		/* enable dynamic clock control */
 		if (PWRCTL_QUIRK(sc, SLOWCLK_CTL)) {
 			scc &= ~(CHIPC_SCC_FS | CHIPC_SCC_IP | CHIPC_SCC_XC);
 			if ((scc & CHIPC_SCC_SS_MASK) != CHIPC_SCC_SS_XTAL)
@@ -494,16 +450,14 @@ bhnd_pwrctl_setclk(struct bhnd_pwrctl_softc *sc, bhnd_clock clock)
 			scc &= ~CHIPC_SYCC_HR;
 			bhnd_bus_write_4(sc->res, CHIPC_SYS_CLK_CTL, scc);
 		} else {
-			// TODO: return real error values
-			panic("unsupported request");
+			return (ENODEV);
 		}
 
 		break;
 
 	default:
-		// TODO: return real error values
-		panic("unsupported request");
+		return (ENODEV);
 	}
 
-	return (clock == BHND_CLOCK_HT);
+	return (0);
 }

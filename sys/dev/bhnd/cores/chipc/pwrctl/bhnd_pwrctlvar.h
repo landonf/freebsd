@@ -56,16 +56,23 @@ enum {
 	 * Dynamic clock control is not supported on these devices.
 	 */
 	PWRCTL_QUIRK_PCICLK_CTL		= (1 << 1) | PWRCTL_QUIRK_FIXED_CLK,
+	
+	
+	/**
+	 * On earliy BCM4311, BCM4321, and BCM4716 PCI(e) devices, no ALP
+	 * clock is available, and the HT clock must be enabled.
+	 */
+	PWRCTL_QUIRK_FORCE_HT		= (1 << 2),
 
 	/**
 	 * ChipCommon revisions 6-9 use the slowclk register layout.
 	 */
-	PWRCTL_QUIRK_SLOWCLK_CTL	= (1 << 2),
+	PWRCTL_QUIRK_SLOWCLK_CTL	= (1 << 3),
 	
 	/**
 	 * ChipCommon revisions 10-19 support the instaclk register layout.
 	 */
-	PWRCTL_QUIRK_INSTACLK_CTL	= (1 << 2),
+	PWRCTL_QUIRK_INSTACLK_CTL	= (1 << 4),
 
 };
 
