@@ -44,8 +44,7 @@ struct bhnd_core_pmu_info {
 	device_t		 pm_pmu;	/**< PMU device */
 	struct bhnd_resource	*pm_res;	/**< Resource containing PMU
 						     register block for this
-						     device, or NULL if non-PMU
-						     hardware. */
+						     device (if any). */
 	bus_size_t		 pm_regs;	/**< Offset to PMU register
 						  *  block in @p pm_res */
 };

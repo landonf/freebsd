@@ -145,7 +145,7 @@ bhnd_pwrctl_resume(device_t dev)
 }
 
 static int
-bhnd_pwrctl_core_req_clock(device_t pmu, struct bhnd_core_pmu_info *pinfo,
+bhnd_pwrctl_core_req_clock(device_t dev, struct bhnd_core_pmu_info *pinfo,
     bhnd_clock clock)
 {
 	// TODO
@@ -153,7 +153,7 @@ bhnd_pwrctl_core_req_clock(device_t pmu, struct bhnd_core_pmu_info *pinfo,
 }
 
 static int
-bhnd_pwrctl_core_en_clocks(device_t pmu, struct bhnd_core_pmu_info *pinfo,
+bhnd_pwrctl_core_en_clocks(device_t dev, struct bhnd_core_pmu_info *pinfo,
     uint32_t clocks)
 {
 	// TODO
@@ -161,7 +161,7 @@ bhnd_pwrctl_core_en_clocks(device_t pmu, struct bhnd_core_pmu_info *pinfo,
 }
 
 static int
-bhnd_pwrctl_core_release(device_t pmu, struct bhnd_core_pmu_info *pinfo)
+bhnd_pwrctl_core_release(device_t dev, struct bhnd_core_pmu_info *pinfo)
 {
 	// TODO
 	return (ENODEV);

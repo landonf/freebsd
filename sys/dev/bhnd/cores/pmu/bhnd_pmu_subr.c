@@ -26,7 +26,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/types.h>
 
 #include <dev/bhnd/bhnd.h>
-#include <dev/bhnd/bhnd_core.h>
 #include <dev/bhnd/cores/chipc/chipc.h>
 #include <dev/bhnd/cores/chipc/chipcreg.h>
 
@@ -51,9 +50,6 @@ __FBSDID("$FreeBSD$");
 
 typedef struct pmu0_xtaltab0 pmu0_xtaltab0_t;
 typedef struct pmu1_xtaltab0 pmu1_xtaltab0_t;
-
-static bool	bhnd_pmu_wait_clkst(struct bhnd_pmu_softc *sc, uint32_t value,
-		    uint32_t mask);
 
 /* PLL controls/clocks */
 static const pmu1_xtaltab0_t *bhnd_pmu1_xtaltab0(struct bhnd_pmu_softc *sc);
@@ -87,6 +83,10 @@ static void	bhnd_pmu_set_4330_plldivs(struct bhnd_pmu_softc *sc);
 
 #define	BHND_PMU_REV(_sc)			\
 	((uint8_t)BHND_PMU_GET_BITS((_sc)->caps, BHND_PMU_CAP_REV))
+
+#define	PMU_WAIT_CLKST(_sc, _val, _mask)			\
+	bhnd_pmu_wait_clkst((_sc), (_sc)->dev, (_sc)->res,	\
+	    BHND_CLK_CTL_ST, (_val), (_mask))
 
 #define	PMURES_BIT(_bit)			\
 	(1 << (BHND_PMU_ ## _bit))
@@ -139,21 +139,51 @@ bhnd_pmu_ind_write(struct bhnd_pmu_softc *sc, bus_size_t addr,
 /**
  * Wait for up to BHND_PMU_MAX_TRANSITION_DLY microseconds for the per-core
  * clock status to be equal to @p value after applying @p mask.
+ * 
+ * @param sc PMU driver state.
+ * @param dev Requesting device.
+ * @param r An active resource mapping the clock status register.
+ * @param clkst_reg Offset to the CLK_CTL_ST register.
+ * @param value Value to wait for.
+ * @param mask Mask to apply prior to value comparison.
  */
-static bool
-bhnd_pmu_wait_clkst(struct bhnd_pmu_softc *sc, uint32_t value, uint32_t mask)
+bool
+bhnd_pmu_wait_clkst(struct bhnd_pmu_softc *sc, device_t dev,
+    struct bhnd_resource *r, bus_size_t clkst_reg, uint32_t value,
+    uint32_t mask)
 {
-	uint32_t clkst;
+	uint32_t	clkst;
+
+	/* Bitswapped HTAVAIL/ALPAVAIL work-around */
+	if (sc->quirks & BPMU_QUIRK_CLKCTL_CCS0) {
+		uint32_t fmask, fval;
+
+		fmask = mask & ~(BHND_CCS_HTAVAIL | BHND_CCS_ALPAVAIL);
+		fval = value & ~(BHND_CCS_HTAVAIL | BHND_CCS_ALPAVAIL);
+
+		if (mask & BHND_CCS_HTAVAIL)
+			fmask |= BHND_CCS0_HTAVAIL;
+		if (value & BHND_CCS_HTAVAIL)
+			fval |= BHND_CCS0_HTAVAIL;
+
+		if (mask & BHND_CCS_ALPAVAIL) 
+			fmask |= BHND_CCS0_ALPAVAIL;
+		if (value & BHND_CCS_ALPAVAIL)
+			fval |= BHND_CCS0_ALPAVAIL;
+
+		mask = fmask;
+		value = fval;
+	}
 
 	for (uint32_t i = 0; i < BHND_PMU_MAX_TRANSITION_DLY; i += 10) {
-		clkst = BHND_PMU_READ_4(sc, BHND_CLK_CTL_ST);
-		if ((clkst & mask) == value)
+		clkst = bhnd_bus_read_4(r, clkst_reg);
+		if ((clkst & mask) == (value & mask))
 			return (true);
-		
+
 		DELAY(10);
 	}
 
-	device_printf(sc->dev, "clkst wait timeout (value=%#x, "
+	device_printf(dev, "clkst wait timeout (value=%#x, "
 	    "mask=%#x)\n", value, mask);
 
 	return (false);
@@ -1477,7 +1507,7 @@ bhnd_pmu0_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 	BHND_PMU_AND_4(sc, BHND_PMU_MAX_RES_MASK, ~pll_res);
 
 	/* Wait for HT clock to shutdown. */
-	bhnd_pmu_wait_clkst(sc, 0, BHND_CCS0_HTAVAIL);
+	PMU_WAIT_CLKST(sc, 0, BHND_CCS_HTAVAIL);
 
 	PMU_MSG(("Done masking\n"));
 
@@ -1662,7 +1692,7 @@ bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 			  PMURES_BIT(RES4325_HT_AVAIL)));
 
 		/* Wait for HT clock to shutdown. */
-		bhnd_pmu_wait_clkst(sc, 0, BHND_CCS_HTAVAIL);
+		PMU_WAIT_CLKST(sc, 0, BHND_CCS_HTAVAIL);
 		break;
 
 	case BHND_CHIPID_BCM4329:
@@ -1677,7 +1707,7 @@ bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 			  PMURES_BIT(RES4329_HT_AVAIL)));
 
 		/* Wait for HT clock to shutdown. */
-		bhnd_pmu_wait_clkst(sc, 0, BHND_CCS_HTAVAIL);
+		PMU_WAIT_CLKST(sc, 0, BHND_CCS_HTAVAIL);
 
 		/* Initialize PLL4 */
 		plladdr = BHND_PMU1_PLL0_PLLCTL4;
@@ -1732,7 +1762,7 @@ bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 		DELAY(100);
 
 		/* Wait for HT clock to shutdown. */
-		bhnd_pmu_wait_clkst(sc, 0, BHND_CCS_HTAVAIL);
+		PMU_WAIT_CLKST(sc, 0, BHND_CCS_HTAVAIL);
 
 		plldata = 0x200005c0;
 		BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL4, plldata, ~0);
@@ -1748,7 +1778,7 @@ bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 		DELAY(100);
 
 		/* Wait for HT clock to shutdown. */
-		bhnd_pmu_wait_clkst(sc, 0, BHND_CCS_HTAVAIL);
+		PMU_WAIT_CLKST(sc, 0, BHND_CCS_HTAVAIL);
 
 		break;
 
@@ -1762,7 +1792,7 @@ bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 		DELAY(100);
 
 		/* Wait for HT clock to shutdown. */
-		bhnd_pmu_wait_clkst(sc, 0, BHND_CCS_HTAVAIL);
+		PMU_WAIT_CLKST(sc, 0, BHND_CCS_HTAVAIL);
 
 		break;
 
@@ -1998,12 +2028,12 @@ bhnd_pmu_pll_init(struct bhnd_pmu_softc *sc, u_int xtalfreq)
 		/* Have to remove HT Avail request before powering off PLL */
 		BHND_PMU_AND_4(sc, BHND_PMU_MIN_RES_MASK, ~res_ht);
 		BHND_PMU_AND_4(sc, BHND_PMU_MAX_RES_MASK, ~res_ht);
-		bhnd_pmu_wait_clkst(sc, 0, BHND_CCS_HTAVAIL);
+		PMU_WAIT_CLKST(sc, 0, BHND_CCS_HTAVAIL);
 
 		/* Make sure the PLL is off */
 		BHND_PMU_AND_4(sc, BHND_PMU_MIN_RES_MASK, ~res_pll);
 		BHND_PMU_AND_4(sc, BHND_PMU_MAX_RES_MASK, ~res_pll);
-		bhnd_pmu_wait_clkst(sc, 0, BHND_CCS_HTAVAIL);
+		PMU_WAIT_CLKST(sc, 0, BHND_CCS_HTAVAIL);
 
 		DELAY(1000);
 
@@ -2816,7 +2846,7 @@ bhnd_pmu_spuravoid(struct bhnd_pmu_softc *sc, uint8_t spuravoid)
 		    ~BHND_PMU_RES4336_HT_AVAIL);
 
 		/* wait for the ht to really go away */
-		bhnd_pmu_wait_clkst(sc, 0, BHND_CCS_HTAVAIL);
+		PMU_WAIT_CLKST(sc, 0, BHND_CCS_HTAVAIL);
 	}
 
 	/* update the pll changes */

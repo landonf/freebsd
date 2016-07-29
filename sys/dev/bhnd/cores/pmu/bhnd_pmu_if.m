@@ -44,7 +44,7 @@ HEADER {
 /** 
  * Enabling routing of @p clock (or faster) to a requesting core.
  *
- * @param pmu PMU device.
+ * @param dev PMU device.
  * @param pinfo PMU info for requesting core.
  * @param clock Clock requested.
  *
@@ -52,7 +52,7 @@ HEADER {
  * @retval ENODEV If an unsupported clock was requested.
  */
 METHOD int core_req_clock {
-	device_t			 pmu;
+	device_t			 dev;
 	struct bhnd_core_pmu_info	*pinfo;
 	bhnd_clock			 clock;
 };
@@ -67,7 +67,7 @@ METHOD int core_req_clock {
  *
  * Requests from multiple devices are aggregated by the PMU.
  *
- * @param pmu PMU device.
+ * @param dev PMU device.
  * @param pinfo PMU info for requesting core.
  * @param clocks Clocks requested.
  *
@@ -75,7 +75,7 @@ METHOD int core_req_clock {
  * @retval ENODEV If an unsupported clock was requested.
  */
 METHOD int core_en_clocks {
-	device_t			 pmu;
+	device_t			 dev;
 	struct bhnd_core_pmu_info	*pinfo;
 	uint32_t			 clocks;
 };
@@ -84,7 +84,7 @@ METHOD int core_en_clocks {
  * Release all outstanding requests (clocks, resources, etc) associated with
  * @p pinfo.
  *
- * @param pmu PMU device.
+ * @param dev PMU device.
  * @param pinfo PMU info for requesting core.
  *
  * @retval 0		success
@@ -93,6 +93,6 @@ METHOD int core_en_clocks {
  *                     the request state will be left unmodified.
  */
 METHOD int core_release {
-	device_t			 pmu;
+	device_t			 dev;
 	struct bhnd_core_pmu_info	*pinfo;
 };

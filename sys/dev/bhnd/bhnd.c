@@ -61,11 +61,10 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/cores/chipc/chipcvar.h>
 
 #include <dev/bhnd/cores/pmu/bhnd_pmu.h>
+#include <dev/bhnd/cores/pmu/bhnd_pmureg.h>
 
 #include "bhnd_chipc_if.h"
 #include "bhnd_nvram_if.h"
-
-#include "bhnd_core.h"
 
 #include "bhnd.h"
 #include "bhndvar.h"
@@ -685,9 +684,6 @@ bhnd_generic_alloc_pmu(device_t dev, device_t child)
 		return (ENODEV);
 	}
 
-	r_addr += pmu_regs;
-	r_size = sizeof(uint32_t);
-
 	/* Locate actual resource containing the core's register block */
 	if ((rl = BUS_GET_RESOURCE_LIST(dev, child)) == NULL) {
 		device_printf(dev, "NULL resource list returned for %s\n",
@@ -707,18 +703,21 @@ bhnd_generic_alloc_pmu(device_t dev, device_t child)
 		return (ENXIO);
 	}
 
-	if (r_addr < rman_get_start(rle->res) ||
-	    r_addr+r_size >= rman_get_end(rle->res))
+	if (r_addr+pmu_regs < rman_get_start(rle->res) ||
+	    r_addr+pmu_regs >= rman_get_end(rle->res))
 	{
 		device_printf(dev, "core register resource does not map PMU "
-		    "registers at %#jx+%ju\n for %s\n", r_addr, r_size,
+		    "registers at %#jx\n for %s\n", r_addr+pmu_regs,
 		    device_get_nameunit(child));
 		return (ENXIO);
 	}
 
 	/* Adjust PMU register offset relative to the actual start address
 	 * of the core's register block allocation. */
-	pmu_regs -= (rman_get_start(rle->res) - r_addr);
+	if (rman_get_start(rle->res) > r_addr)
+		pmu_regs -= rman_get_start(rle->res) - r_addr;
+	else
+		pmu_regs -= r_addr - rman_get_start(rle->res);
 
 	/* Allocate and initialize PMU info */
 	br = malloc(sizeof(struct bhnd_resource), M_BHND, M_NOWAIT);

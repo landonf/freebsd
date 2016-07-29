@@ -53,6 +53,11 @@ int	bhnd_pmu_resume(device_t dev);
 enum {
 	/** No quirks */
 	BPMU_QUIRK_NONE			= 0,
+
+	/** On BCM4328-derived chipsets, the CLK_CTL_ST register CCS_HTAVAIL
+	 *  and CCS_ALPAVAIL bits are swapped; the BHND_CCS0_* constants should
+	 *  be used. */
+	BPMU_QUIRK_CLKCTL_CCS0	= 1
 };
 
 /**

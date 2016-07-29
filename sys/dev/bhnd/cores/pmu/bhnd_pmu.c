@@ -69,6 +69,16 @@ static int	bhnd_pmu_sysctl_bus_freq(SYSCTL_HANDLER_ARGS);
 static int	bhnd_pmu_sysctl_cpu_freq(SYSCTL_HANDLER_ARGS);
 static int	bhnd_pmu_sysctl_mem_freq(SYSCTL_HANDLER_ARGS);
 
+#define	BPMU_CLKCTL_READ_4(_pinfo)		\
+	bhnd_bus_read_4((_pinfo)->pm_res, (_pinfo)->pm_regs)
+
+#define	BPMU_CLKCTL_WRITE_4(_pinfo, _val)	\
+	bhnd_bus_write_4((_pinfo)->pm_res, (_pinfo)->pm_regs, (_val))
+	
+#define	BPMU_CLKCTL_SET_4(_pinfo, _val, _mask)	\
+	BPMU_CLKCTL_WRITE_4((_pinfo),		\
+	    ((_val) & (_mask)) | (BPMU_CLKCTL_READ_4(_pinfo) & ~(_mask)))
+
 /**
  * Default bhnd_pmu driver implementation of DEVICE_PROBE().
  */
@@ -135,6 +145,17 @@ bhnd_pmu_attach(device_t dev, struct bhnd_resource *res)
 	}
 
 	BPMU_LOCK_INIT(sc);
+
+	/* Set quirk flags */
+	switch (sc->cid.chip_id) {
+	case BHND_CHIPID_BCM4328:
+	case BHND_CHIPID_BCM5354:
+		/* HTAVAIL/ALPAVAIL are bitswapped in CLKCTL */
+		sc->quirks |= BPMU_QUIRK_CLKCTL_CCS0;
+		break;
+	default:
+		break;
+	}
 
 	/* Initialize PMU */
 	if ((error = bhnd_pmu_init(sc))) {
@@ -255,25 +276,119 @@ bhnd_pmu_sysctl_mem_freq(SYSCTL_HANDLER_ARGS)
 }
 
 static int
-bhnd_pmu_core_req_clock(device_t pmu, struct bhnd_core_pmu_info *pinfo,
+bhnd_pmu_core_req_clock(device_t dev, struct bhnd_core_pmu_info *pinfo,
     bhnd_clock clock)
 {
-	// TODO
+	struct bhnd_pmu_softc	*sc;
+	uint32_t		 avail;
+	uint32_t		 req;
+
+	sc = device_get_softc(dev);
+
+	avail = 0x0;
+	req = 0x0;
+
+	switch (clock) {
+	case BHND_CLOCK_DYN:
+		break;
+	case BHND_CLOCK_ILP:
+		req |= BHND_CCS_FORCEILP;
+		break;
+	case BHND_CLOCK_ALP:
+		req |= BHND_CCS_FORCEALP;
+		avail |= BHND_CCS_ALPAVAIL;
+		break;
+	case BHND_CLOCK_HT:
+		req |= BHND_CCS_FORCEHT;
+		avail |= BHND_CCS_HTAVAIL;
+		break;
+	default:
+		device_printf(dev, "%s requested unknown clock: %#x\n",
+		    device_get_nameunit(pinfo->pm_dev), clock);
+		return (ENODEV);
+	}
+
+	BPMU_LOCK(sc);
+
+	/* Issue request */
+	BPMU_CLKCTL_SET_4(pinfo, req, BHND_CCS_FORCE_MASK);
+
+	/* Wait for clock availability */
+	bhnd_pmu_wait_clkst(sc, pinfo->pm_dev, pinfo->pm_res, pinfo->pm_regs,
+	    avail, avail);
+
+	BPMU_UNLOCK(sc);
+
 	return (0);
 }
 
 static int
-bhnd_pmu_core_en_clocks(device_t pmu, struct bhnd_core_pmu_info *pinfo,
+bhnd_pmu_core_en_clocks(device_t dev, struct bhnd_core_pmu_info *pinfo,
     uint32_t clocks)
 {
-	// TODO
+	struct bhnd_pmu_softc	*sc;
+	uint32_t		 avail;
+	uint32_t		 req;
+
+	sc = device_get_softc(dev);
+
+	avail = 0x0;
+	req = 0x0;
+
+	/* Build clock request flags */
+	if (clocks & BHND_CLOCK_DYN)		/* nothing to enable */
+		clocks &= ~BHND_CLOCK_DYN;
+
+	if (clocks & BHND_CLOCK_ILP)		/* nothing to enable */
+		clocks &= ~BHND_CLOCK_ILP;
+
+	if (clocks & BHND_CLOCK_ALP) {
+		req |= BHND_CCS_ALPAREQ;
+		avail |= BHND_CCS_ALPAVAIL;
+		clocks &= ~BHND_CLOCK_ALP;
+	}
+
+	if (clocks & BHND_CLOCK_HT) {
+		req |= BHND_CCS_HTAREQ;
+		avail |= BHND_CCS_HTAVAIL;
+		clocks &= ~BHND_CLOCK_HT;
+	}
+
+	/* Check for unknown clock values */
+	if (clocks != 0x0) {
+		device_printf(dev, "%s requested unknown clocks: %#x\n",
+		    device_get_nameunit(pinfo->pm_dev), clocks);
+		return (ENODEV);
+	}
+
+	BPMU_LOCK(sc);
+
+	/* Issue request */
+	BPMU_CLKCTL_SET_4(pinfo, req, BHND_CCS_AREQ_MASK);
+
+	/* Wait for clock availability */
+	bhnd_pmu_wait_clkst(sc, pinfo->pm_dev, pinfo->pm_res, pinfo->pm_regs,
+	    avail, avail);
+
+	BPMU_UNLOCK(sc);
+
 	return (0);
 }
 
 static int
-bhnd_pmu_core_release(device_t pmu, struct bhnd_core_pmu_info *pinfo)
+bhnd_pmu_core_release(device_t dev, struct bhnd_core_pmu_info *pinfo)
 {
-	// TODO
+	struct bhnd_pmu_softc	*sc;
+
+	sc = device_get_softc(dev);
+
+	BPMU_LOCK(sc);
+
+	/* Clear all FORCE and AREQ flags */
+	BPMU_CLKCTL_SET_4(pinfo, 0x0, BHND_CCS_FORCE_MASK | BHND_CCS_AREQ_MASK);
+
+	BPMU_UNLOCK(sc);
+
 	return (0);
 }
 
