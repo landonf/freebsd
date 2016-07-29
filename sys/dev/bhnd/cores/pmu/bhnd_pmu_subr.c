@@ -2362,7 +2362,7 @@ bhnd_pmu_cpu_clock(struct bhnd_pmu_softc *sc)
 	    sc->cid.chip_id != BHND_CHIPID_BCM4329 &&
 	    sc->cid.chip_id != BHND_CHIPID_BCM4319 &&
 	    sc->cid.chip_id != BHND_CHIPID_BCM43234 &&
-    	    sc->cid.chip_id != BHND_CHIPID_BCM43235 &&
+	    sc->cid.chip_id != BHND_CHIPID_BCM43235 &&
 	    sc->cid.chip_id != BHND_CHIPID_BCM43236 &&
 	    sc->cid.chip_id != BHND_CHIPID_BCM43237 &&
 	    sc->cid.chip_id != BHND_CHIPID_BCM43238 &&
@@ -2402,7 +2402,7 @@ bhnd_pmu_mem_clock(struct bhnd_pmu_softc *sc)
 	    sc->cid.chip_id != BHND_CHIPID_BCM4329 &&
 	    sc->cid.chip_id != BHND_CHIPID_BCM4319 &&
 	    sc->cid.chip_id != BHND_CHIPID_BCM43234 &&
-    	    sc->cid.chip_id != BHND_CHIPID_BCM43235 &&
+	    sc->cid.chip_id != BHND_CHIPID_BCM43235 &&
 	    sc->cid.chip_id != BHND_CHIPID_BCM43236 &&
 	    sc->cid.chip_id != BHND_CHIPID_BCM43237 &&
 	    sc->cid.chip_id != BHND_CHIPID_BCM43238 &&
