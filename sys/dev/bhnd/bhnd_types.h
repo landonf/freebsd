@@ -117,6 +117,14 @@ typedef enum {
 } bhnd_clock;
 
 /**
+ * Given two clock types, return the type with the highest precedence. 
+ */
+static inline bhnd_clock
+bhnd_clock_max(bhnd_clock a, bhnd_clock b) {
+	return (a > b ? a : b);
+}
+
+/**
  * bhnd(4) clock sources.
  */
 typedef enum {

@@ -32,8 +32,12 @@
 #ifndef _BHND_PWRCTL_BHND_PWRCTLVAR_H_
 #define _BHND_PWRCTL_BHND_PWRCTLVAR_H_
 
-/* 
- * bhnd pwrctl device quirks / features
+#include <sys/param.h>
+#include <sys/bus.h>
+#include <sys/queue.h>
+
+/**
+ * bhnd pwrctl device quirks.
  */
 enum {
 	/** No quirks */
@@ -64,10 +68,20 @@ enum {
 	PWRCTL_QUIRK_INSTACLK_CTL	= (1 << 2),
 
 };
+
+/**
+ * device clock reservation.
+ */
+struct bhnd_pwrctl_clkres {
+	device_t	owner;	/**< bhnd(4) device holding this reservation */
+	bhnd_clock	clock;	/**< requested clock */
+	STAILQ_ENTRY(bhnd_pwrctl_clkres) cr_link;
+};
+
+
 /**
  * bhnd pwrctl driver instance state.
  */
-
 struct bhnd_pwrctl_softc {
 	device_t		 dev;
 	uint32_t		 quirks;
@@ -76,6 +90,9 @@ struct bhnd_pwrctl_softc {
 	struct bhnd_resource	*res;		/**< core register block. */
 
 	struct mtx		 mtx;		/**< state mutex */
+
+	/** active clock reservations */
+	STAILQ_HEAD(, bhnd_pwrctl_clkres) clkres_list;
 };
 
 #define	PWRCTL_LOCK_INIT(sc) \

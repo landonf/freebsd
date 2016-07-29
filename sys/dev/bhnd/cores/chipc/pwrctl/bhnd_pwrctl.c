@@ -115,13 +115,21 @@ bhnd_pwrctl_attach(device_t dev)
 	sc->res = chipc_sc->core;
 
 	PWRCTL_LOCK_INIT(sc);
+	STAILQ_INIT(&sc->clkres_list);
+
 	return (0);
 }
 
 static int
 bhnd_pwrctl_detach(device_t dev)
 {
-	struct bhnd_pwrctl_softc *sc = device_get_softc(dev);
+	struct bhnd_pwrctl_softc	*sc;
+	struct bhnd_pwrctl_clkres	*clkres, *crnext;
+
+	sc = device_get_softc(dev);
+
+	STAILQ_FOREACH_SAFE(clkres, &sc->clkres_list, cr_link, crnext)
+		free(clkres, M_DEVBUF);
 
 	PWRCTL_LOCK_DESTROY(sc);
 	return (0);
@@ -141,12 +149,139 @@ bhnd_pwrctl_resume(device_t dev)
 	return (0);
 }
 
+/**
+ * Find the clock reservation associated with @p pinfo, if any.
+ * 
+ * @param sc Driver instance state.
+ * @param pinfo PMU info for device.
+ */
+static struct bhnd_pwrctl_clkres *
+bhnd_pwrctl_find_res(struct bhnd_pwrctl_softc *sc, 
+    struct bhnd_core_pmu_info *pinfo)
+{
+	struct bhnd_pwrctl_clkres *clkres;
+
+	PWRCTL_LOCK_ASSERT(sc, MA_OWNED);
+
+	STAILQ_FOREACH(clkres, &sc->clkres_list, cr_link) {
+		if (clkres->owner == pinfo->pm_dev)
+			return (clkres);
+	}
+
+	/* not found */
+	return (NULL);
+}
+
+/**
+ * Enumerate all active clock requests, compute the minimum required clock,
+ * and issue any required clock transition.
+ * 
+ * @param sc Driver instance state.
+ */
+static int
+bhnd_pwrctl_clkupdate(struct bhnd_pwrctl_softc *sc)
+{
+	struct bhnd_pwrctl_clkres	*clkres;
+	bhnd_clock			 clock;
+
+	PWRCTL_LOCK_ASSERT(sc, MA_OWNED);
+
+	clock = BHND_CLOCK_DYN;
+	STAILQ_FOREACH(clkres, &sc->clkres_list, cr_link)
+		clock = bhnd_clock_max(clock, clkres->clock);
+
+	switch (clock) {
+	case BHND_CLOCK_DYN:
+		// TODO
+		break;
+	case BHND_CLOCK_ILP:
+		// TODO
+		break;
+	case BHND_CLOCK_ALP:
+		// TODO
+		break;
+	case BHND_CLOCK_HT:
+		// TODO
+		break;
+	default:
+		device_printf(sc->dev, "unknown clock: %#x\n", clock);
+		return (ENODEV);
+	}
+
+	return (0);
+}
+
 static int
 bhnd_pwrctl_core_req_clock(device_t dev, struct bhnd_core_pmu_info *pinfo,
     bhnd_clock clock)
 {
-	// TODO
-	return (ENODEV);
+	struct bhnd_pwrctl_softc	*sc;
+	struct bhnd_pwrctl_clkres	*clkres;
+	int				 error;
+
+	sc = device_get_softc(dev);
+	error = 0;
+
+	PWRCTL_LOCK(sc);
+
+	clkres = bhnd_pwrctl_find_res(sc, pinfo);
+
+	/* BHND_CLOCK_DYN discards the clock reservation entirely */
+	if (clock == BHND_CLOCK_DYN) {
+		/* nothing to clean up? */
+		if (clkres == NULL) {
+			PWRCTL_UNLOCK(sc);
+			return (0);
+		}
+
+		/* drop reservation and apply clock transition */
+		STAILQ_REMOVE(&sc->clkres_list, clkres,
+		    bhnd_pwrctl_clkres, cr_link);
+
+		if ((error = bhnd_pwrctl_clkupdate(sc))) {
+			device_printf(dev, "clock transition failed: %d\n",
+			    error);
+
+			/* restore reservation */
+			STAILQ_INSERT_TAIL(&sc->clkres_list, clkres, cr_link);
+
+			PWRCTL_UNLOCK(sc);
+			return (error);
+		}
+
+		/* deallocate orphaned reservation */
+		free(clkres, M_DEVBUF);
+
+		PWRCTL_UNLOCK(sc);
+		return (0);
+	}
+
+	/* create (or update) reservation */
+	if (clkres == NULL) {
+		clkres = malloc(sizeof(struct bhnd_pwrctl_clkres), M_DEVBUF,
+		    M_NOWAIT);
+		if (clkres == NULL)
+			return (ENOMEM);
+
+		clkres->owner = pinfo->pm_dev;
+		clkres->clock = clock;
+
+		STAILQ_INSERT_TAIL(&sc->clkres_list, clkres, cr_link);
+	} else {
+		KASSERT(clkres->owner == pinfo->pm_dev, ("invalid owner"));
+		clkres->clock = clock;
+	}
+
+	/* apply clock transition */
+	error = bhnd_pwrctl_clkupdate(sc);
+	if (error) {
+		STAILQ_REMOVE(&sc->clkres_list, clkres, bhnd_pwrctl_clkres,
+		    cr_link);
+		free(clkres, M_DEVBUF);
+	}
+
+	PWRCTL_UNLOCK(sc);
+	return (error);
 }
 
 static int
