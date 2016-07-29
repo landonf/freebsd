@@ -377,6 +377,58 @@ bhnd_pmu_core_en_clocks(device_t dev, struct bhnd_core_pmu_info *pinfo,
 }
 
 static int
+bhnd_pmu_core_req_ext_rsrc(device_t dev, struct bhnd_core_pmu_info *pinfo,
+    u_int rsrc)
+{
+	struct bhnd_pmu_softc	*sc;
+	uint32_t		 req;
+	uint32_t		 avail;
+
+	sc = device_get_softc(dev);
+
+	if (rsrc > BHND_CCS_ERSRC_MAX)
+		return (EINVAL);
+
+	req = BHND_PMU_SET_BITS((1<<rsrc), BHND_CCS_ERSRC_REQ);
+	avail = BHND_PMU_SET_BITS((1<<rsrc), BHND_CCS_ERSRC_STS);
+
+	BPMU_LOCK(sc);
+
+	/* Write request */
+	BPMU_CLKCTL_SET_4(pinfo, req, req);
+
+	/* Wait for resource availability */
+	bhnd_pmu_wait_clkst(sc, pinfo->pm_dev, pinfo->pm_res, pinfo->pm_regs,
+	    avail, avail);
+
+	BPMU_UNLOCK(sc);
+
+	return (0);	
+}
+
+static int
+bhnd_pmu_core_release_ext_rsrc(device_t dev, struct bhnd_core_pmu_info *pinfo,
+    u_int rsrc)
+{
+	struct bhnd_pmu_softc	*sc;
+	uint32_t		 mask;
+
+	sc = device_get_softc(dev);
+
+	if (rsrc > BHND_CCS_ERSRC_MAX)
+		return (EINVAL);
+
+	mask = BHND_PMU_SET_BITS((1<<rsrc), BHND_CCS_ERSRC_REQ);
+
+	/* Clear request */
+	BPMU_LOCK(sc);
+	BPMU_CLKCTL_SET_4(pinfo, 0x0, mask);
+	BPMU_UNLOCK(sc);
+
+	return (0);	
+}
+
+static int
 bhnd_pmu_core_release(device_t dev, struct bhnd_core_pmu_info *pinfo)
 {
 	struct bhnd_pmu_softc	*sc;
@@ -385,8 +437,9 @@ bhnd_pmu_core_release(device_t dev, struct bhnd_core_pmu_info *pinfo)
 
 	BPMU_LOCK(sc);
 
-	/* Clear all FORCE and AREQ flags */
-	BPMU_CLKCTL_SET_4(pinfo, 0x0, BHND_CCS_FORCE_MASK | BHND_CCS_AREQ_MASK);
+	/* Clear all FORCE, AREQ, and ERSRC flags */
+	BPMU_CLKCTL_SET_4(pinfo, 0x0,
+	    BHND_CCS_FORCE_MASK | BHND_CCS_AREQ_MASK | BHND_CCS_ERSRC_REQ_MASK);
 
 	BPMU_UNLOCK(sc);
 
@@ -403,6 +456,8 @@ static device_method_t bhnd_pmu_methods[] = {
 	/* BHND PMU interface */
 	DEVMETHOD(bhnd_pmu_core_req_clock,	bhnd_pmu_core_req_clock),
 	DEVMETHOD(bhnd_pmu_core_en_clocks,	bhnd_pmu_core_en_clocks),
+	DEVMETHOD(bhnd_pmu_core_req_ext_rsrc,	bhnd_pmu_core_req_ext_rsrc),
+	DEVMETHOD(bhnd_pmu_core_release_ext_rsrc, bhnd_pmu_core_release_ext_rsrc),
 	DEVMETHOD(bhnd_pmu_core_release,	bhnd_pmu_core_release),
 
 	DEVMETHOD_END

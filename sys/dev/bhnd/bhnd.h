@@ -574,6 +574,45 @@ bhnd_enable_clocks(device_t dev, uint32_t clocks)
 }
 
 /**
+ * Power up an external PMU-managed resource assigned to @p dev.
+ * 
+ * A driver must ask the bhnd bus to allocate PMU request state
+ * via bhnd_alloc_pmu() before it can request PMU resources.
+ *
+ * @param dev The requesting bhnd(4) device.
+ * @param rsrc The core-specific external resource identifier.
+ *
+ * @retval 0 success
+ * @retval ENODEV If the PMU does not support @p rsrc.
+ * @retval ENXIO If the PMU has not been initialized or is otherwise unvailable.
+ */
+static inline int
+bhnd_request_ext_rsrc(device_t dev, u_int rsrc)
+{
+	return (BHND_BUS_REQUEST_EXT_RSRC(device_get_parent(dev), dev, rsrc));
+}
+
+/**
+ * Power down an external PMU-managed resource assigned to @p dev.
+ * 
+ * A driver must ask the bhnd bus to allocate PMU request state
+ * via bhnd_alloc_pmu() before it can request PMU resources.
+ *
+ * @param dev The requesting bhnd(4) device.
+ * @param rsrc The core-specific external resource identifier.
+ *
+ * @retval 0 success
+ * @retval ENODEV If the PMU does not support @p rsrc.
+ * @retval ENXIO If the PMU has not been initialized or is otherwise unvailable.
+ */
+static inline int
+bhnd_release_ext_rsrc(device_t dev, u_int rsrc)
+{
+	return (BHND_BUS_RELEASE_EXT_RSRC(device_get_parent(dev), dev, rsrc));
+}
+
+
+/**
  * Read @p width bytes at @p offset from the bus-specific agent/config
  * space of @p dev.
  *

@@ -62,8 +62,10 @@
 #define	BHND_CCS_AREQ_MASK		0x00000018
 
 #define	BHND_CCS_FORCEHWREQOFF		0x00000020	/**< Force HW Clock Request Off */
+
 #define	BHND_CCS_ERSRC_REQ_MASK		0x00000700	/**< external resource requests */
 #define	BHND_CCS_ERSRC_REQ_SHIFT	8
+#define	BHND_CCS_ERSRC_MAX		2		/**< maximum ERSRC value (corresponding to bits 0-2) */
 
 #define	BHND_CCS_ALPAVAIL		0x00010000	/**< ALP is available */
 #define	BHND_CCS_HTAVAIL		0x00020000	/**< HT is available */

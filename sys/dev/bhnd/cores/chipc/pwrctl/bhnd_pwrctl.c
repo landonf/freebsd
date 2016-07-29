@@ -354,6 +354,22 @@ bhnd_pwrctl_core_req_clock(device_t dev, struct bhnd_core_pmu_info *pinfo,
 }
 
 static int
+bhnd_pwrctl_core_req_ext_rsrc(device_t dev, struct bhnd_core_pmu_info *pinfo,
+    u_int rsrc)
+{
+	/* HW does not support per-core external resources */
+	return (ENODEV);
+}
+
+static int
+bhnd_pwrctl_core_release_ext_rsrc(device_t dev,
+    struct bhnd_core_pmu_info *pinfo, u_int rsrc)
+{
+	/* HW does not support per-core external resources */
+	return (ENODEV);
+}
+
+static int
 bhnd_pwrctl_core_en_clocks(device_t dev, struct bhnd_core_pmu_info *pinfo,
     uint32_t clocks)
 {
@@ -391,6 +407,8 @@ static device_method_t bhnd_pwrctl_methods[] = {
 	/* BHND PMU interface */
 	DEVMETHOD(bhnd_pmu_core_req_clock,	bhnd_pwrctl_core_req_clock),
 	DEVMETHOD(bhnd_pmu_core_en_clocks,	bhnd_pwrctl_core_en_clocks),
+	DEVMETHOD(bhnd_pmu_core_req_ext_rsrc,	bhnd_pwrctl_core_req_ext_rsrc),
+	DEVMETHOD(bhnd_pmu_core_release_ext_rsrc, bhnd_pwrctl_core_release_ext_rsrc),
 	DEVMETHOD(bhnd_pmu_core_release,	bhnd_pwrctl_core_release),
 
 	DEVMETHOD_END

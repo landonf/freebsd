@@ -626,7 +626,7 @@ bhnd_generic_get_probe_order(device_t dev, device_t child)
 }
 
 /**
- * Default bhnd(4) bus driver implementation of BHND_BUS_ALLOC_PMUREG().
+ * Default bhnd(4) bus driver implementation of BHND_BUS_ALLOC_PMU().
  */
 int
 bhnd_generic_alloc_pmu(device_t dev, device_t child)
@@ -713,7 +713,11 @@ bhnd_generic_alloc_pmu(device_t dev, device_t child)
 	}
 
 	/* Adjust PMU register offset relative to the actual start address
-	 * of the core's register block allocation. */
+	 * of the core's register block allocation.
+	 * 
+	 * XXX: The saved offset will be invalid if bus_adjust_resource is
+	 * used to modify the resource's start address.
+	 */
 	if (rman_get_start(rle->res) > r_addr)
 		pmu_regs -= rman_get_start(rle->res) - r_addr;
 	else
@@ -742,7 +746,7 @@ bhnd_generic_alloc_pmu(device_t dev, device_t child)
 }
 
 /**
- * Default bhnd(4) bus driver implementation of BHND_BUS_RELEASE_PMUREG().
+ * Default bhnd(4) bus driver implementation of BHND_BUS_RELEASE_PMU().
  */
 int
 bhnd_generic_release_pmu(device_t dev, device_t child)
@@ -817,6 +821,47 @@ bhnd_generic_enable_clocks(device_t dev, device_t child, uint32_t clocks)
 	/* dispatch request to PMU */
 	return (BHND_PMU_CORE_EN_CLOCKS(pm->pm_pmu, pm, clocks));
 }
+
+/**
+ * Default bhnd(4) bus driver implementation of BHND_BUS_REQUEST_EXT_RSRC().
+ */
+int
+bhnd_generic_request_ext_rsrc(device_t dev, device_t child, u_int rsrc)
+{
+	struct bhnd_softc		*sc;
+	struct bhnd_devinfo		*dinfo;
+	struct bhnd_core_pmu_info	*pm;
+
+	sc = device_get_softc(dev);
+	dinfo = device_get_ivars(child);
+
+	if ((pm = dinfo->pmu_info) == NULL)
+		panic("no active PMU request state");
+
+	/* dispatch request to PMU */
+	return (BHND_PMU_CORE_REQ_EXT_RSRC(pm->pm_pmu, pm, rsrc));
+}
+
+/**
+ * Default bhnd(4) bus driver implementation of BHND_BUS_RELEASE_EXT_RSRC().
+ */
+int
+bhnd_generic_release_ext_rsrc(device_t dev, device_t child, u_int rsrc)
+{
+	struct bhnd_softc		*sc;
+	struct bhnd_devinfo		*dinfo;
+	struct bhnd_core_pmu_info	*pm;
+
+	sc = device_get_softc(dev);
+	dinfo = device_get_ivars(child);
+
+	if ((pm = dinfo->pmu_info) == NULL)
+		panic("no active PMU request state");
+
+	/* dispatch request to PMU */
+	return (BHND_PMU_CORE_RELEASE_EXT_RSRC(pm->pm_pmu, pm, rsrc));
+}
+
 
 /**
  * Default bhnd(4) bus driver implementation of BHND_BUS_IS_REGION_VALID().
@@ -1214,6 +1259,8 @@ static device_method_t bhnd_methods[] = {
 	DEVMETHOD(bhnd_bus_release_pmu,		bhnd_generic_release_pmu),
 	DEVMETHOD(bhnd_bus_request_clock,	bhnd_generic_request_clock),
 	DEVMETHOD(bhnd_bus_enable_clocks,	bhnd_generic_enable_clocks),
+	DEVMETHOD(bhnd_bus_request_ext_rsrc,	bhnd_generic_request_ext_rsrc),
+	DEVMETHOD(bhnd_bus_release_ext_rsrc,	bhnd_generic_release_ext_rsrc),
 
 	DEVMETHOD(bhnd_bus_child_added,		bhnd_generic_child_added),
 	DEVMETHOD(bhnd_bus_is_region_valid,	bhnd_generic_is_region_valid),

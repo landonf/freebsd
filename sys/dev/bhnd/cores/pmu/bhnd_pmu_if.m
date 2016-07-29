@@ -80,6 +80,38 @@ METHOD int core_en_clocks {
 	uint32_t			 clocks;
 };
 
+/**
+ * Power up a core-specific external resource.
+ *
+ * @param dev The parent of @p child.
+ * @param pinfo PMU info for requesting core.
+ * @param rsrc The core-specific external resource identifier.
+ *
+ * @retval 0 success
+ * @retval ENODEV If @p rsrc is not supported by this PMU driver.
+ */
+METHOD int core_req_ext_rsrc {
+	device_t			 dev;
+	struct bhnd_core_pmu_info	*pinfo;
+	u_int				 rsrc;
+};
+
+/**
+ * Power down a core-specific external resource.
+ *
+ * @param dev The parent of @p child.
+ * @param pinfo PMU info for requesting core.
+ * @param rsrc The core-specific external resource identifier.
+ *
+ * @retval 0 success
+ * @retval ENODEV If @p rsrc is not supported by this PMU driver.
+ */
+METHOD int core_release_ext_rsrc {
+	device_t			 dev;
+	struct bhnd_core_pmu_info	*pinfo;
+	u_int				 rsrc;
+};
+
 /** 
  * Release all outstanding requests (clocks, resources, etc) associated with
  * @p pinfo.

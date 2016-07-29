@@ -120,6 +120,20 @@ CODE {
 	{
 		panic("bhnd_bus_enable_clocks unimplemented");
 	}
+	
+	static int
+	bhnd_bus_null_request_ext_rsrc(device_t dev, device_t child,
+	    u_int rsrc)
+	{
+		panic("bhnd_bus_request_ext_rsrc unimplemented");
+	}
+
+	static int
+	bhnd_bus_null_release_ext_rsrc(device_t dev, device_t child,
+	    u_int rsrc)
+	{
+		panic("bhnd_bus_release_ext_rsrc unimplemented");
+	}
 
 	static uint32_t
 	bhnd_bus_null_read_config(device_t dev, device_t child,
@@ -501,6 +515,46 @@ METHOD int enable_clocks {
 	device_t child;
 	uint32_t clocks;
 } DEFAULT bhnd_bus_null_enable_clocks;
+
+/**
+ * Power up an external PMU-managed resource assigned to @p child.
+ * 
+ * A driver must ask the bhnd bus to allocate PMU request state
+ * via BHND_BUS_ALLOC_PMU() before it can request PMU resources.
+ *
+ * @param dev The parent of @p child.
+ * @param child The bhnd device requesting @p rsrc.
+ * @param rsrc The core-specific external resource identifier.
+ *
+ * @retval 0 success
+ * @retval ENODEV If the PMU does not support @p rsrc.
+ * @retval ENXIO If the PMU has not been initialized or is otherwise unvailable.
+ */
+METHOD int request_ext_rsrc {
+	device_t dev;
+	device_t child;
+	u_int rsrc;
+} DEFAULT bhnd_bus_null_request_ext_rsrc;
+
+/**
+ * Power down an external PMU-managed resource assigned to @p child.
+ * 
+ * A driver must ask the bhnd bus to allocate PMU request state
+ * via BHND_BUS_ALLOC_PMU() before it can request PMU resources.
+ *
+ * @param dev The parent of @p child.
+ * @param child The bhnd device requesting @p rsrc.
+ * @param rsrc The core-specific external resource number.
+ *
+ * @retval 0 success
+ * @retval ENODEV If the PMU does not support @p rsrc.
+ * @retval ENXIO If the PMU has not been initialized or is otherwise unvailable.
+ */
+METHOD int release_ext_rsrc {
+	device_t dev;
+	device_t child;
+	u_int rsrc;
+} DEFAULT bhnd_bus_null_release_ext_rsrc;
 
 /**
  * Read @p width bytes at @p offset from the bus-specific agent/config
