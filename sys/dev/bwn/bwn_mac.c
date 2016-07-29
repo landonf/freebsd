@@ -106,15 +106,11 @@ bwn_attach(device_t dev)
 	error = bhnd_nvram_getvar(dev, BHND_NVAR_MACADDR, macaddr,
 	    sizeof(macaddr));
 	if (error)
-		goto cleanup;
+		return (error);
 
 	device_printf(dev, "got macaddr %6D\n", macaddr, ":");
 
 	return (0);
-
-cleanup:
-	bhnd_release_resources(dev, sc->rspec, sc->res);
-	return (error);
 }
 
 static int

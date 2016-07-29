@@ -188,25 +188,17 @@ cleanup:
  * This implementation calls device_detach() for each of the device's
  * children, in reverse bhnd probe order, terminating if any call to
  * device_detach() fails.
- * 
- * This function manages internal bhnd(4) state, and must be called by
- * subclassing drivers.
  */
 int
 bhnd_generic_detach(device_t dev)
 {
 	struct bhnd_softc	*sc;
-	int			 error;
 
 	if (!device_is_attached(dev))
 		return (EBUSY);
 
 	sc = device_get_softc(dev);
-
-	if ((error = bhnd_delete_children(sc)))
-		return (error);
-
-	return (0);
+	return (bhnd_delete_children(sc));
 }
 
 /**
