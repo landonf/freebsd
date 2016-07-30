@@ -76,15 +76,21 @@ __FBSDID("$FreeBSD$");
 #include "t4_ioctl.h"
 #include "t4_l2t.h"
 #include "t4_mp_ring.h"
+#include "t4_if.h"
 
 /* T4 bus driver interface */
 static int t4_probe(device_t);
 static int t4_attach(device_t);
 static int t4_detach(device_t);
+static int t4_ready(device_t);
+static int t4_read_port_unit(device_t, int, int *);
 static device_method_t t4_methods[] = {
 	DEVMETHOD(device_probe,		t4_probe),
 	DEVMETHOD(device_attach,	t4_attach),
 	DEVMETHOD(device_detach,	t4_detach),
+
+	DEVMETHOD(t4_is_main_ready,	t4_ready),
+	DEVMETHOD(t4_read_port_unit,	t4_read_port_unit),
 
 	DEVMETHOD_END
 };
@@ -128,14 +134,9 @@ static driver_t vcxgbe_driver = {
 };
 
 static d_ioctl_t t4_ioctl;
-static d_open_t t4_open;
-static d_close_t t4_close;
 
 static struct cdevsw t4_cdevsw = {
        .d_version = D_VERSION,
-       .d_flags = 0,
-       .d_open = t4_open,
-       .d_close = t4_close,
        .d_ioctl = t4_ioctl,
        .d_name = "t4nex",
 };
@@ -146,6 +147,9 @@ static device_method_t t5_methods[] = {
 	DEVMETHOD(device_probe,		t5_probe),
 	DEVMETHOD(device_attach,	t4_attach),
 	DEVMETHOD(device_detach,	t4_detach),
+
+	DEVMETHOD(t4_is_main_ready,	t4_ready),
+	DEVMETHOD(t4_read_port_unit,	t4_read_port_unit),
 
 	DEVMETHOD_END
 };
@@ -168,15 +172,6 @@ static driver_t vcxl_driver = {
 	"vcxl",
 	vcxgbe_methods,
 	sizeof(struct vi_info)
-};
-
-static struct cdevsw t5_cdevsw = {
-       .d_version = D_VERSION,
-       .d_flags = 0,
-       .d_open = t4_open,
-       .d_close = t4_close,
-       .d_ioctl = t4_ioctl,
-       .d_name = "t5nex",
 };
 
 /* ifnet + media interface */
@@ -458,10 +453,6 @@ static void vi_refresh_stats(struct adapter *, struct vi_info *);
 static void cxgbe_refresh_stats(struct adapter *, struct port_info *);
 static void cxgbe_tick(void *);
 static void cxgbe_vlan_config(void *, struct ifnet *, uint16_t);
-static int cpl_not_handled(struct sge_iq *, const struct rss_header *,
-    struct mbuf *);
-static int an_not_handled(struct sge_iq *, const struct rsp_ctrl *);
-static int fw_msg_not_handled(struct adapter *, const __be64 *);
 static void t4_sysctls(struct adapter *);
 static void cxgbe_sysctls(struct port_info *);
 static int sysctl_int_array(SYSCTL_HANDLER_ARGS);
@@ -525,6 +516,8 @@ static int del_filter(struct adapter *, struct t4_filter *);
 static void clear_filter(struct filter_entry *);
 static int set_filter_wr(struct adapter *, int);
 static int del_filter_wr(struct adapter *, int);
+static int set_tcb_rpl(struct sge_iq *, const struct rss_header *,
+    struct mbuf *);
 static int get_sge_context(struct adapter *, struct t4_sge_context *);
 static int load_fw(struct adapter *, struct t4_data *);
 static int read_card_mem(struct adapter *, int, struct t4_mem_range *);
@@ -535,6 +528,7 @@ static int set_sched_queue(struct adapter *, struct t4_sched_queue *);
 static int toe_capability(struct vi_info *, int);
 #endif
 static int mod_event(module_t, int, void *);
+static int notify_siblings(device_t, int);
 
 struct {
 	uint16_t device;
@@ -589,11 +583,6 @@ struct {
 CTASSERT(offsetof(struct sge_ofld_rxq, iq) == offsetof(struct sge_rxq, iq));
 CTASSERT(offsetof(struct sge_ofld_rxq, fl) == offsetof(struct sge_rxq, fl));
 #endif
-
-/* No easy way to include t4_msg.h before adapter.h so we check this way */
-CTASSERT(nitems(((struct adapter *)0)->cpl_handler) == NUM_CPL_CMDS);
-CTASSERT(nitems(((struct adapter *)0)->fw_msg_handler) == NUM_FW6_TYPES);
-
 CTASSERT(sizeof(struct cluster_metadata) <= CL_METADATA_SIZE);
 
 static int
@@ -678,6 +667,7 @@ t4_attach(device_t dev)
 {
 	struct adapter *sc;
 	int rc = 0, i, j, n10g, n1g, rqidx, tqidx;
+	struct make_dev_args mda;
 	struct intrs_and_queues iaq;
 	struct sge *s;
 	uint8_t *buf;
@@ -739,15 +729,6 @@ t4_attach(device_t dev)
 	sc->mbox = sc->pf;
 
 	memset(sc->chan_map, 0xff, sizeof(sc->chan_map));
-	sc->an_handler = an_not_handled;
-	for (i = 0; i < nitems(sc->cpl_handler); i++)
-		sc->cpl_handler[i] = cpl_not_handled;
-	for (i = 0; i < nitems(sc->fw_msg_handler); i++)
-		sc->fw_msg_handler[i] = fw_msg_not_handled;
-	t4_register_cpl_handler(sc, CPL_SET_TCB_RPL, t4_filter_rpl);
-	t4_register_cpl_handler(sc, CPL_TRACE_PKT, t4_trace_pkt);
-	t4_register_cpl_handler(sc, CPL_T5_TRACE_PKT, t5_trace_pkt);
-	t4_init_sge_cpl_handlers(sc);
 
 	/* Prepare the adapter for operation. */
 	buf = malloc(PAGE_SIZE, M_CXGBE, M_ZERO | M_WAITOK);
@@ -766,13 +747,16 @@ t4_attach(device_t dev)
 	setup_memwin(sc);
 	if (t4_init_devlog_params(sc, 0) == 0)
 		fixup_devlog_params(sc);
-	sc->cdev = make_dev(is_t4(sc) ? &t4_cdevsw : &t5_cdevsw,
-	    device_get_unit(dev), UID_ROOT, GID_WHEEL, 0600, "%s",
-	    device_get_nameunit(dev));
-	if (sc->cdev == NULL)
-		device_printf(dev, "failed to create nexus char device.\n");
-	else
-		sc->cdev->si_drv1 = sc;
+	make_dev_args_init(&mda);
+	mda.mda_devsw = &t4_cdevsw;
+	mda.mda_uid = UID_ROOT;
+	mda.mda_gid = GID_WHEEL;
+	mda.mda_mode = 0600;
+	mda.mda_si_drv1 = sc;
+	rc = make_dev_s(&mda, &sc->cdev, "%s", device_get_nameunit(dev));
+	if (rc != 0)
+		device_printf(dev, "failed to create nexus char device: %d.\n",
+		    rc);
 
 	/* Go no further if recovery mode has been requested. */
 	if (TUNABLE_INT_FETCH("hw.cxgbe.sos", &i) && i != 0) {
@@ -1078,6 +1062,8 @@ t4_attach(device_t dev)
 
 	t4_set_desc(sc);
 
+	notify_siblings(dev, 0);
+
 done:
 	if (rc != 0 && sc->cdev) {
 		/* cdev was created and so cxgbetool works; recover that way. */
@@ -1094,6 +1080,57 @@ done:
 	return (rc);
 }
 
+static int
+t4_ready(device_t dev)
+{
+	struct adapter *sc;
+
+	sc = device_get_softc(dev);
+	if (sc->flags & FW_OK)
+		return (0);
+	return (ENXIO);
+}
+
+static int
+t4_read_port_unit(device_t dev, int port, int *unit)
+{
+	struct adapter *sc;
+	struct port_info *pi;
+
+	sc = device_get_softc(dev);
+	if (port < 0 || port >= MAX_NPORTS)
+		return (EINVAL);
+	pi = sc->port[port];
+	if (pi == NULL || pi->dev == NULL)
+		return (ENXIO);
+	*unit = device_get_unit(pi->dev);
+	return (0);
+}
+
+static int
+notify_siblings(device_t dev, int detaching)
+{
+	device_t sibling;
+	int error, i;
+
+	error = 0;
+	for (i = 0; i < PCI_FUNCMAX; i++) {
+		if (i == pci_get_function(dev))
+			continue;
+		sibling = pci_find_dbsf(pci_get_domain(dev), pci_get_bus(dev),
+		    pci_get_slot(dev), i);
+		if (sibling == NULL || !device_is_attached(sibling))
+			continue;
+		if (detaching)
+			error = T4_DETACH_CHILD(sibling);
+		else
+			(void)T4_ATTACH_CHILD(sibling);
+		if (error)
+			break;
+	}
+	return (error);
+}
+
 /*
  * Idempotent
  */
@@ -1105,6 +1142,13 @@ t4_detach(device_t dev)
 	int i, rc;
 
 	sc = device_get_softc(dev);
+
+	rc = notify_siblings(dev, 1);
+	if (rc) {
+		device_printf(dev,
+		    "failed to detach sibling devices: %d\n", rc);
+		return (rc);
+	}
 
 	if (sc->flags & FULL_INIT_DONE)
 		t4_intr_disable(sc);
@@ -4500,98 +4544,6 @@ cxgbe_vlan_config(void *arg, struct ifnet *ifp, uint16_t vid)
 	VLAN_SETCOOKIE(vlan, ifp);
 }
 
-static int
-cpl_not_handled(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
-{
-
-#ifdef INVARIANTS
-	panic("%s: opcode 0x%02x on iq %p with payload %p",
-	    __func__, rss->opcode, iq, m);
-#else
-	log(LOG_ERR, "%s: opcode 0x%02x on iq %p with payload %p\n",
-	    __func__, rss->opcode, iq, m);
-	m_freem(m);
-#endif
-	return (EDOOFUS);
-}
-
-int
-t4_register_cpl_handler(struct adapter *sc, int opcode, cpl_handler_t h)
-{
-	uintptr_t *loc, new;
-
-	if (opcode >= nitems(sc->cpl_handler))
-		return (EINVAL);
-
-	new = h ? (uintptr_t)h : (uintptr_t)cpl_not_handled;
-	loc = (uintptr_t *) &sc->cpl_handler[opcode];
-	atomic_store_rel_ptr(loc, new);
-
-	return (0);
-}
-
-static int
-an_not_handled(struct sge_iq *iq, const struct rsp_ctrl *ctrl)
-{
-
-#ifdef INVARIANTS
-	panic("%s: async notification on iq %p (ctrl %p)", __func__, iq, ctrl);
-#else
-	log(LOG_ERR, "%s: async notification on iq %p (ctrl %p)\n",
-	    __func__, iq, ctrl);
-#endif
-	return (EDOOFUS);
-}
-
-int
-t4_register_an_handler(struct adapter *sc, an_handler_t h)
-{
-	uintptr_t *loc, new;
-
-	new = h ? (uintptr_t)h : (uintptr_t)an_not_handled;
-	loc = (uintptr_t *) &sc->an_handler;
-	atomic_store_rel_ptr(loc, new);
-
-	return (0);
-}
-
-static int
-fw_msg_not_handled(struct adapter *sc, const __be64 *rpl)
-{
-	const struct cpl_fw6_msg *cpl =
-	    __containerof(rpl, struct cpl_fw6_msg, data[0]);
-
-#ifdef INVARIANTS
-	panic("%s: fw_msg type %d", __func__, cpl->type);
-#else
-	log(LOG_ERR, "%s: fw_msg type %d\n", __func__, cpl->type);
-#endif
-	return (EDOOFUS);
-}
-
-int
-t4_register_fw_msg_handler(struct adapter *sc, int type, fw_msg_handler_t h)
-{
-	uintptr_t *loc, new;
-
-	if (type >= nitems(sc->fw_msg_handler))
-		return (EINVAL);
-
-	/*
-	 * These are dispatched by the handler for FW{4|6}_CPL_MSG using the CPL
-	 * handler dispatch table.  Reject any attempt to install a handler for
-	 * this subtype.
-	 */
-	if (type == FW_TYPE_RSSCPL || type == FW6_TYPE_RSSCPL)
-		return (EINVAL);
-
-	new = h ? (uintptr_t)h : (uintptr_t)fw_msg_not_handled;
-	loc = (uintptr_t *) &sc->fw_msg_handler[type];
-	atomic_store_rel_ptr(loc, new);
-
-	return (0);
-}
-
 /*
  * Should match fw_caps_config_<foo> enums in t4fw_interface.h
  */
@@ -4902,6 +4854,11 @@ t4_sysctls(struct adapter *sc)
 		SYSCTL_ADD_INT(ctx, children, OID_AUTO, "tx_align",
 		    CTLFLAG_RW, &sc->tt.tx_align, 0, "chop and align payload");
 
+		sc->tt.tx_zcopy = 0;
+		SYSCTL_ADD_INT(ctx, children, OID_AUTO, "tx_zcopy",
+		    CTLFLAG_RW, &sc->tt.tx_zcopy, 0,
+		    "Enable zero-copy aio_write(2)");
+
 		SYSCTL_ADD_PROC(ctx, children, OID_AUTO, "timer_tick",
 		    CTLTYPE_STRING | CTLFLAG_RD, sc, 0, sysctl_tp_tick, "A",
 		    "TP timer tick (us)");
@@ -4978,6 +4935,8 @@ vi_sysctls(struct vi_info *vi)
 	    &vi->first_rxq, 0, "index of first rx queue");
 	SYSCTL_ADD_INT(ctx, children, OID_AUTO, "first_txq", CTLFLAG_RD,
 	    &vi->first_txq, 0, "index of first tx queue");
+	SYSCTL_ADD_UINT(ctx, children, OID_AUTO, "rss_size", CTLFLAG_RD, NULL,
+	    vi->rss_size, "size of RSS indirection table");
 
 	if (IS_MAIN_VI(vi)) {
 		SYSCTL_ADD_PROC(ctx, children, OID_AUTO, "rsrv_noflowq",
@@ -7945,11 +7904,6 @@ set_filter(struct adapter *sc, struct t4_filter *t)
 		goto done;
 	}
 
-	if (!(sc->flags & FULL_INIT_DONE)) {
-		rc = EAGAIN;
-		goto done;
-	}
-
 	if (t->idx >= nfilters) {
 		rc = EINVAL;
 		goto done;
@@ -7982,6 +7936,10 @@ set_filter(struct adapter *sc, struct t4_filter *t)
 		rc = EINVAL;
 		goto done;
 	}
+
+	if (!(sc->flags & FULL_INIT_DONE) &&
+	    ((rc = adapter_full_init(sc)) != 0))
+		goto done;
 
 	if (sc->tids.ftid_tab == NULL) {
 		KASSERT(sc->tids.ftids_in_use == 0,
@@ -8262,36 +8220,51 @@ t4_filter_rpl(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 
 	KASSERT(m == NULL, ("%s: payload with opcode %02x", __func__,
 	    rss->opcode));
+	MPASS(iq == &sc->sge.fwq);
+	MPASS(is_ftid(sc, idx));
 
-	if (is_ftid(sc, idx)) {
+	idx -= sc->tids.ftid_base;
+	f = &sc->tids.ftid_tab[idx];
+	rc = G_COOKIE(rpl->cookie);
 
-		idx -= sc->tids.ftid_base;
-		f = &sc->tids.ftid_tab[idx];
-		rc = G_COOKIE(rpl->cookie);
-
-		mtx_lock(&sc->tids.ftid_lock);
-		if (rc == FW_FILTER_WR_FLT_ADDED) {
-			KASSERT(f->pending, ("%s: filter[%u] isn't pending.",
-			    __func__, idx));
-			f->smtidx = (be64toh(rpl->oldval) >> 24) & 0xff;
-			f->pending = 0;  /* asynchronous setup completed */
-			f->valid = 1;
-		} else {
-			if (rc != FW_FILTER_WR_FLT_DELETED) {
-				/* Add or delete failed, display an error */
-				log(LOG_ERR,
-				    "filter %u setup failed with error %u\n",
-				    idx, rc);
-			}
-
-			clear_filter(f);
-			sc->tids.ftids_in_use--;
+	mtx_lock(&sc->tids.ftid_lock);
+	if (rc == FW_FILTER_WR_FLT_ADDED) {
+		KASSERT(f->pending, ("%s: filter[%u] isn't pending.",
+		    __func__, idx));
+		f->smtidx = (be64toh(rpl->oldval) >> 24) & 0xff;
+		f->pending = 0;  /* asynchronous setup completed */
+		f->valid = 1;
+	} else {
+		if (rc != FW_FILTER_WR_FLT_DELETED) {
+			/* Add or delete failed, display an error */
+			log(LOG_ERR,
+			    "filter %u setup failed with error %u\n",
+			    idx, rc);
 		}
-		wakeup(&sc->tids.ftid_tab);
-		mtx_unlock(&sc->tids.ftid_lock);
+
+		clear_filter(f);
+		sc->tids.ftids_in_use--;
 	}
+	wakeup(&sc->tids.ftid_tab);
+	mtx_unlock(&sc->tids.ftid_lock);
 
 	return (0);
+}
+
+static int
+set_tcb_rpl(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
+{
+
+	MPASS(iq->set_tcb_rpl != NULL);
+	return (iq->set_tcb_rpl(iq, rss, m));
+}
+
+static int
+l2t_write_rpl(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
+{
+
+	MPASS(iq->l2t_write_rpl != NULL);
+	return (iq->l2t_write_rpl(iq, rss, m));
 }
 
 static int
@@ -8744,18 +8717,6 @@ t4_iterate(void (*func)(struct adapter *, void *), void *arg)
 }
 
 static int
-t4_open(struct cdev *dev, int flags, int type, struct thread *td)
-{
-       return (0);
-}
-
-static int
-t4_close(struct cdev *dev, int flags, int type, struct thread *td)
-{
-       return (0);
-}
-
-static int
 t4_ioctl(struct cdev *dev, unsigned long cmd, caddr_t data, int fflag,
     struct thread *td)
 {
@@ -8926,7 +8887,7 @@ t4_ioctl(struct cdev *dev, unsigned long cmd, caddr_t data, int fflag,
 		rc = t4_set_tracer(sc, (struct t4_tracer *)data);
 		break;
 	default:
-		rc = EINVAL;
+		rc = ENOTTY;
 	}
 
 	return (rc);
@@ -8981,12 +8942,12 @@ toe_capability(struct vi_info *vi, int enable)
 		 * port has never been UP'd administratively.
 		 */
 		if (!(vi->flags & VI_INIT_DONE)) {
-			rc = cxgbe_init_synchronized(vi);
+			rc = vi_full_init(vi);
 			if (rc)
 				return (rc);
 		}
 		if (!(pi->vi[0].flags & VI_INIT_DONE)) {
-			rc = cxgbe_init_synchronized(&pi->vi[0]);
+			rc = vi_full_init(&pi->vi[0]);
 			if (rc)
 				return (rc);
 		}
@@ -9469,6 +9430,10 @@ mod_event(module_t mod, int cmd, void *arg)
 		sx_xlock(&mlu);
 		if (loaded++ == 0) {
 			t4_sge_modload();
+			t4_register_cpl_handler(CPL_SET_TCB_RPL, set_tcb_rpl);
+			t4_register_cpl_handler(CPL_L2T_WRITE_RPL, l2t_write_rpl);
+			t4_register_cpl_handler(CPL_TRACE_PKT, t4_trace_pkt);
+			t4_register_cpl_handler(CPL_T5_TRACE_PKT, t5_trace_pkt);
 			sx_init(&t4_list_lock, "T4/T5 adapters");
 			SLIST_INIT(&t4_list);
 #ifdef TCP_OFFLOAD

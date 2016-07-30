@@ -62,9 +62,9 @@
 1	AUE_EXIT	STD	{ void sys_exit(int rval); } exit \
 				    sys_exit_args void
 2	AUE_FORK	STD	{ int fork(void); }
-3	AUE_NULL	STD	{ ssize_t read(int fd, void *buf, \
+3	AUE_READ	STD	{ ssize_t read(int fd, void *buf, \
 				    size_t nbyte); }
-4	AUE_NULL	STD	{ ssize_t write(int fd, const void *buf, \
+4	AUE_WRITE	STD	{ ssize_t write(int fd, const void *buf, \
 				    size_t nbyte); }
 5	AUE_OPEN_RWTC	STD	{ int open(char *path, int flags, int mode); }
 ; XXX should be		{ int open(const char *path, int flags, ...); }
@@ -428,7 +428,7 @@
 225	AUE_MSGGET	NOSTD	{ int msgget(key_t key, int msgflg); }
 226	AUE_MSGSND	NOSTD	{ int msgsnd(int msqid, const void *msgp, \
 				    size_t msgsz, int msgflg); }
-227	AUE_MSGRCV	NOSTD	{ int msgrcv(int msqid, void *msgp, \
+227	AUE_MSGRCV	NOSTD	{ ssize_t msgrcv(int msqid, void *msgp, \
 				    size_t msgsz, long msgtyp, int msgflg); }
 228	AUE_SHMAT	NOSTD	{ int shmat(int shmid, const void *shmaddr, \
 				    int shmflg); }
