@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2015-2016 Landon Fuller <landon@landonf.org>
+ * Copyright (c) 2015-2016 Landon Fuller <landonf@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,8 +29,8 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_NVRAM_BHND_NVRAMVAR_H_
-#define _BHND_NVRAM_BHND_NVRAMVAR_H_
+#ifndef _BHND_NVRAM_BHND_NVRAM_PRIVATE_H_
+#define _BHND_NVRAM_BHND_NVRAM_PRIVATE_H_
 
 /** NVRAM Primitive data types */
 typedef enum {
@@ -125,4 +125,4 @@ bhnd_nvram_crc8(const void *buf, size_t size, uint8_t crc)
 }
 
 
-#endif /* _BHND_NVRAM_BHND_NVRAMVAR_H_ */
+#endif /* _BHND_NVRAM_BHND_NVRAM_PRIVATE_H_ */

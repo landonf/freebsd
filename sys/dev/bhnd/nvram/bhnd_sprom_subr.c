@@ -41,7 +41,7 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/bhndvar.h>
 
-#include "nvramvar.h"
+#include "bhnd_nvram_private.h"
 
 #include "bhnd_spromreg.h"
 #include "bhnd_spromvar.h"

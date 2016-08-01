@@ -56,7 +56,7 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_nvram_if.h"
 #include "bhnd_nvram_map.h"
 
-#include "nvramvar.h"
+#include "bhnd_nvram_private.h"
 
 /**
  * Known CFE NVRAM device names, in probe order.
