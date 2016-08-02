@@ -43,6 +43,7 @@
 struct bhnd_nvram_nexus_softc {
 	device_t		 	dev;
 	struct mtx		 	mtx;	/**< nvram mutex */
+	struct bhnd_nvram		nvram;	/**< nvram shadow */
 };
 
 

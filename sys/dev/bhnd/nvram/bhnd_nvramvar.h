@@ -61,6 +61,14 @@ union bhnd_nvram_ident {
 };
 
 /**
+ * NVRAM parser input buffer.
+ */
+struct bhnd_nvram_input {
+	const void	*buffer;
+	size_t		 size;
+};
+
+/**
  * Supported NVRAM encodings.
  */
 typedef enum {
@@ -80,8 +88,8 @@ struct bhnd_nvram {
 int		bhnd_nvram_identify(union bhnd_nvram_ident *ident,
 		    bhnd_nvram_format expected);
 
-int		bhnd_nvram_init(struct bhnd_nvram *nv, const void *input,
-		    size_t len);
-void		bhnd_nvram_fini(struct bhnd_nvram *nv);
+int		bhnd_nvram_init(struct bhnd_nvram *nvram,
+		    struct bhnd_nvram_input *input, bhnd_nvram_format fmt);
+void		bhnd_nvram_fini(struct bhnd_nvram *nvam);
 
 #endif /* _BHND_NVRAM_BHND_NVRAMVAR_H_ */

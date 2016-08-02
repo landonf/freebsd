@@ -118,13 +118,20 @@ bhnd_nvram_nexus_attach(device_t dev)
 {
 	struct bhnd_nvram_nexus_softc	*sc;
 	char				*devname;
+	unsigned char			*buffer;
+	struct bhnd_nvram_input		 input;
 	bhnd_nvram_format		 fmt;
 	int64_t				 offset;
 	uint32_t			 size;
+	int				 error;
 	int				 fd;
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
+
+	error = 0;
+	buffer = NULL;
+	fd = CFE_ERR;
 
 	/* Locate NVRAM device via CFE */
 	devname = nvram_find_cfedev(dev, &fd, &offset, &size, &fmt);
@@ -133,14 +140,60 @@ bhnd_nvram_nexus_attach(device_t dev)
 		return (ENXIO);
 	}
 
-	// TODO
-	device_printf(sc->dev, "CFE NVRAM device: %s (%lld+%u)\n",
-	    devname, offset, size);
+	/* Copy out NVRAM buffer */
+	buffer = malloc(size, M_TEMP, M_WAITOK);
+	for (size_t remain = size; remain > 0;) {
+		int nr, req;
+		
+		req = ulmin(INT_MAX, remain);
+		nr = cfe_readblk(fd, size-remain, buffer+(size-remain),
+		    req);
+		if (nr < 0) {
+			device_printf(dev, "%s: cfe_readblk() failed: %d\n",
+			    devname, fd);
+
+			error = ENXIO;
+			goto done;
+		}
+
+		remain -= nr;
+
+		if (nr == 0 && remain > 0) {
+			device_printf(dev, "%s: cfe_readblk() unexpected EOF: "
+			    "%zu of %zu pending\n", devname, remain, size);
+
+			error = ENXIO;
+			goto done;
+		}
+	}
+
+	device_printf(dev, "CFE NVRAM device: %s (%#jx+%#jx)\n",
+	    devname, (uintmax_t)offset, (uintmax_t)size);
+
+	/* Initialize NVRAM parser */
+	input = (struct bhnd_nvram_input) {
+		.buffer = buffer,
+		.size = size
+	};
+
+	if ((error = bhnd_nvram_init(&sc->nvram, &input, fmt))) {
+		device_printf(dev, "%s: parse failed: %d\n", devname, error);
+		goto done;
+	}
 
 	/* Initialize mutex */
 	BHND_NVRAM_LOCK_INIT(sc);
 
-	return (0);
+	error = 0;
+
+done:
+	if (buffer != NULL)
+		free(buffer, M_TEMP);
+
+	if (fd >= 0)
+		cfe_close(fd);
+
+	return (error);
 }
 
 static int
@@ -162,6 +215,7 @@ bhnd_nvram_nexus_detach(device_t dev)
 
 	sc = device_get_softc(dev);
 
+	bhnd_nvram_fini(&sc->nvram);
 	BHND_NVRAM_LOCK_DESTROY(sc);
 
 	return (0);

@@ -48,19 +48,21 @@ __FBSDID("$FreeBSD$");
  * BHND NVRAM support.
  */
 
-struct bhnd_nvram_input {
-	const void	*buffer;
-	size_t		 size;
-};
-
+static int	bhnd_nvram_init_bcm(struct bhnd_nvram *sc,
+		    struct bhnd_nvram_input *input);
 static int	bhnd_nvram_init_tlv(struct bhnd_nvram *sc,
 		    struct bhnd_nvram_input *input);
-
 static int	bhnd_nvram_read(struct bhnd_nvram_input *input, size_t offset,
 		    void *output, size_t nbytes);
 
 /**
- * Identify @p ident, returning 0 if it matches @p expected.
+ * Identify @p ident.
+ * 
+ * @param ident Initial header data to be used for identification.
+ * @param expected Expected format against which @p ident will be tested.
+ * 
+ * @retval 0 If @p ident has the @p expected format.
+ * @retval ENODEV If @p ident does not match @p expected.
  */
 int
 bhnd_nvram_identify(union bhnd_nvram_ident *ident, bhnd_nvram_format expected)
@@ -69,7 +71,7 @@ bhnd_nvram_identify(union bhnd_nvram_ident *ident, bhnd_nvram_format expected)
 	case BHND_NVRAM_FMT_BCM:
 		if (ident->bcm.magic == NVRAM_MAGIC)
 			return (0);
-		
+
 		return (ENODEV);
 	case BHND_NVRAM_FMT_TLV:
 		if (ident->bcm.magic == NVRAM_MAGIC)
@@ -81,36 +83,70 @@ bhnd_nvram_identify(union bhnd_nvram_ident *ident, bhnd_nvram_format expected)
 		return (0);
 	default:
 		printf("%s: unknown format: %d\n", __FUNCTION__, expected);
+		return (ENODEV);
+	}
+}
+
+/**
+ * Identify the NVRAM format at @p offset within @p r, verify the CRC (if applicable),
+ * and allocate a local shadow copy of the NVRAM data.
+ * 
+ * After initialization, no reference to @p input will be held by the
+ * NVRAM parser, and @p input may be safely deallocated.
+ * 
+ * @param[out] nvram On success, will be initialized with shadow of the NVRAM
+ * data. 
+ * @param input NVRAM data to be parsed.
+ * @param fmt Required format of @p input.
+ * 
+ * @retval 0 success
+ * @retval ENOMEM If internal allocation of NVRAM state fails.
+ * @retval EINVAL If @p input parsing fails.
+ */
+int
+bhnd_nvram_init(struct bhnd_nvram *nvram, struct bhnd_nvram_input *input,
+    bhnd_nvram_format fmt)
+{
+	union bhnd_nvram_ident	ident;
+	int			error;
+
+
+	/* Read NVRAM ident data */
+	if ((error = bhnd_nvram_read(input, 0, &ident, sizeof(ident))))
+		return (error);
+
+	/* Verify expected format */
+	if ((error = bhnd_nvram_identify(&ident, fmt)))
+		return (error);
+
+	switch (fmt) {
+	case BHND_NVRAM_FMT_BCM:
+		nvram->header = ident.bcm;
+		nvram->fmt = fmt;
+		return (bhnd_nvram_init_bcm(nvram, input));
+	case BHND_NVRAM_FMT_TLV:
+		nvram->fmt = fmt;
+		return (bhnd_nvram_init_tlv(nvram, input));
+	default:
 		return (EINVAL);
 	}
 }
 
-int
-bhnd_nvram_init(struct bhnd_nvram *sc, const void *input, size_t len)
+static int
+bhnd_nvram_init_bcm(struct bhnd_nvram *sc, struct bhnd_nvram_input *input)
 {
-	struct bhnd_nvram_input	ni = { input, len };
-	int			error;
-
-	/* Read standard NVRAM header */
-	if ((error = bhnd_nvram_read(&ni, 0, &sc->header, sizeof(sc->header))))
-		return (error);
-
-	/* If not BCM NVRAM, fall back on TLV (WGT634U) format */
-	if (sc->header.magic != NVRAM_MAGIC)
-		return (bhnd_nvram_init_tlv(sc, &ni));
-
-	sc->fmt = BHND_NVRAM_FMT_BCM;
-
+	// TODO
 	return (0);
 }
+
 
 static int
 bhnd_nvram_init_tlv(struct bhnd_nvram *sc, struct bhnd_nvram_input *input)
 {
-
 	// TODO
 	return (0);
 }
+
 
 static int
 bhnd_nvram_read(struct bhnd_nvram_input *input, size_t offset, void *output,
@@ -123,8 +159,13 @@ bhnd_nvram_read(struct bhnd_nvram_input *input, size_t offset, void *output,
 	return (0);
 }
 
+/**
+ * Release all resources held by @p nvram.
+ * 
+ * @param nvram A NVRAM instance previously initialized via bhnd_nvram_init().
+ */
 void
-bhnd_nvram_fini(struct bhnd_nvram *sc)
+bhnd_nvram_fini(struct bhnd_nvram *nvram)
 {
 	// TODO
 }
