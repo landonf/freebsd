@@ -316,7 +316,12 @@ nvram_open_cfedev(device_t dev, char *devname, int fd, int64_t *offset,
 		return (ENXIO);
 	}
 
-	/* Fall back on flash info */
+	/* Fall back on flash info.
+	 * 
+	 * This is known to be required on the Asus RT-N53 (CFE 5.70.55.33, 
+	 * BBP 1.0.37, BCM5358UB0), where IOCTL_NVRAM_GETINFO returns
+	 * CFE_ERR_INV_COMMAND.
+	 */
 	if (cerr == CFE_ERR_INV_COMMAND) {
 		flash_info_t fi;
 
@@ -324,8 +329,8 @@ nvram_open_cfedev(device_t dev, char *devname, int fd, int64_t *offset,
 		    sizeof(fi), &rlen, 0);
 
 		if (cerr != CFE_OK) {
-			device_printf(dev, "%s: IOCTL_FLASH_GETINFO failed: %d\n",
-			    devname, cerr);
+			device_printf(dev, "%s: IOCTL_FLASH_GETINFO failed: "
+			    "%d\n", devname, cerr);
 			return (ENXIO);
 		}
 
@@ -335,7 +340,7 @@ nvram_open_cfedev(device_t dev, char *devname, int fd, int64_t *offset,
 		nvram_info.nvram_size		= fi.flash_size;
 	}
 
-	/* Try to read NVRAM identification */
+	/* Try to read NVRAM header/format identification */
 	cerr = cfe_readblk(fd, 0, (unsigned char *)&ident, sizeof(ident));
 	if (cerr < 0) {
 		device_printf(dev, "%s: cfe_readblk() failed: %d\n",
