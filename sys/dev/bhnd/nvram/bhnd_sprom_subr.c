@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2015 Landon Fuller <landon@landonf.org>
+ * Copyright (c) 2015-2016 Landon Fuller <landonf@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -38,8 +38,6 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/bus.h>
 #include <machine/resource.h>
-
-#include <dev/bhnd/bhndvar.h>
 
 #include "bhnd_nvram_private.h"
 
@@ -185,7 +183,7 @@ bhnd_sprom_init(struct bhnd_sprom *sprom, struct bhnd_resource *r,
 	/* Allocate and populate SPROM shadow */
 	sprom->sp_size = 0;
 	sprom->sp_capacity = sprom->sp_size_max;
-	sprom->sp_shadow = malloc(sprom->sp_capacity, M_BHND, M_NOWAIT);
+	sprom->sp_shadow = malloc(sprom->sp_capacity, M_BHND_NVRAM, M_NOWAIT);
 	if (sprom->sp_shadow == NULL)
 		return (ENOMEM);
 
@@ -204,7 +202,7 @@ bhnd_sprom_init(struct bhnd_sprom *sprom, struct bhnd_resource *r,
 void
 bhnd_sprom_fini(struct bhnd_sprom *sprom)
 {
-	free(sprom->sp_shadow, M_BHND);
+	free(sprom->sp_shadow, M_BHND_NVRAM);
 }
 
 /* Perform a read using a SPROM offset descriptor, safely widening the

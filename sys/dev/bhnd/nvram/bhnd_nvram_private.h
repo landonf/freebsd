@@ -32,6 +32,11 @@
 #ifndef _BHND_NVRAM_BHND_NVRAM_PRIVATE_H_
 #define _BHND_NVRAM_BHND_NVRAM_PRIVATE_H_
 
+#include <sys/param.h>
+#include <sys/malloc.h>
+
+MALLOC_DECLARE(M_BHND_NVRAM);
+
 /** NVRAM Primitive data types */
 typedef enum {
 	BHND_NVRAM_DT_UINT8	= 0,	/**< unsigned 8-bit integer */

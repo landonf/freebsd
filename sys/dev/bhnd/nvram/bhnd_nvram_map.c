@@ -31,14 +31,19 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
-#include <sys/types.h>
+#include <sys/malloc.h>
+#include <sys/kernel.h>
 #include <sys/systm.h>
+
+#include "bhnd_nvram_private.h"
 
 #include "bhnd_nvram_map_data.h"
 
 /*
  * NVRAM map subroutines.
  */
+
+MALLOC_DEFINE(M_BHND_NVRAM, "bhnd_nvram", "bhnd nvram data");
 
 /**
  * Return the size of type @p dt.
