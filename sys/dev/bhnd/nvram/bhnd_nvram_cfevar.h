@@ -29,8 +29,8 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_NVRAM_BHND_NVRAM_NEXUSVAR_H_
-#define _BHND_NVRAM_BHND_NVRAM_NEXUSVAR_H_
+#ifndef _BHND_NVRAM_BHND_NVRAM_CFEVAR_H_
+#define _BHND_NVRAM_BHND_NVRAM_CFEVAR_H_
 
 #include <sys/param.h>
 #include <sys/bus.h>
@@ -38,9 +38,9 @@
 #include "bhnd_nvramvar.h"
 
 /**
- * bhnd_nvram_nexus driver instance state.
+ * bhnd_nvram_cfe driver instance state.
  */
-struct bhnd_nvram_nexus_softc {
+struct bhnd_nvram_cfe_softc {
 	device_t		 	dev;
 	struct mtx		 	mtx;	/**< nvram mutex */
 	struct bhnd_nvram		nvram;	/**< nvram shadow */
@@ -55,4 +55,4 @@ struct bhnd_nvram_nexus_softc {
 #define	BHND_NVRAM_LOCK_ASSERT(sc, what)	mtx_assert(&(sc)->mtx, what)
 #define	BHND_NVRAM_LOCK_DESTROY(sc)		mtx_destroy(&(sc)->mtx)
 
-#endif /* _BHND_NVRAM_BHND_NVRAM_NEXUSVAR_H_ */
+#endif /* _BHND_NVRAM_BHND_NVRAM_CFEVAR_H_ */

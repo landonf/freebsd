@@ -61,7 +61,7 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_nvramreg.h"
 
-#include "bhnd_nvram_nexusvar.h"
+#include "bhnd_nvram_cfevar.h"
 
 static int	 nvram_open_cfedev(device_t dev, char *devname, int fd,
 		     int64_t *offset, uint32_t *size, bhnd_nvram_format fmt);
@@ -85,7 +85,7 @@ bhnd_nvram_format nvram_cfe_fmts[] = {
 
 
 static int
-bhnd_nvram_nexus_probe(device_t dev)
+bhnd_nvram_cfe_probe(device_t dev)
 {
 	char				*devname;
 	bhnd_nvram_format		 fmt;
@@ -117,9 +117,9 @@ bhnd_nvram_nexus_probe(device_t dev)
 
 
 static int
-bhnd_nvram_nexus_attach(device_t dev)
+bhnd_nvram_cfe_attach(device_t dev)
 {
-	struct bhnd_nvram_nexus_softc	*sc;
+	struct bhnd_nvram_cfe_softc	*sc;
 	char				*devname;
 	unsigned char			*buffer;
 	struct bhnd_nvram_input		 input;
@@ -200,21 +200,21 @@ done:
 }
 
 static int
-bhnd_nvram_nexus_resume(device_t dev)
+bhnd_nvram_cfe_resume(device_t dev)
 {
 	return (0);
 }
 
 static int
-bhnd_nvram_nexus_suspend(device_t dev)
+bhnd_nvram_cfe_suspend(device_t dev)
 {
 	return (0);
 }
 
 static int
-bhnd_nvram_nexus_detach(device_t dev)
+bhnd_nvram_cfe_detach(device_t dev)
 {
-	struct bhnd_nvram_nexus_softc	*sc;
+	struct bhnd_nvram_cfe_softc	*sc;
 
 	sc = device_get_softc(dev);
 
@@ -225,9 +225,9 @@ bhnd_nvram_nexus_detach(device_t dev)
 }
 
 static int
-bhnd_nvram_nexus_getvar(device_t dev, const char *name, void *buf, size_t *len)
+bhnd_nvram_cfe_getvar(device_t dev, const char *name, void *buf, size_t *len)
 {
-	struct bhnd_nvram_nexus_softc	*sc;
+	struct bhnd_nvram_cfe_softc	*sc;
 	int				 error;
 
 	sc = device_get_softc(dev);
@@ -244,10 +244,10 @@ bhnd_nvram_nexus_getvar(device_t dev, const char *name, void *buf, size_t *len)
  * Default bhnd sprom driver implementation of BHND_NVRAM_SETVAR().
  */
 static int
-bhnd_nvram_nexus_setvar(device_t dev, const char *name, const void *buf,
+bhnd_nvram_cfe_setvar(device_t dev, const char *name, const void *buf,
     size_t len)
 {
-	struct bhnd_nvram_nexus_softc	*sc;
+	struct bhnd_nvram_cfe_softc	*sc;
 	int				 error;
 
 	sc = device_get_softc(dev);
@@ -264,7 +264,7 @@ bhnd_nvram_nexus_setvar(device_t dev, const char *name, const void *buf,
 /**
  * Identify and open a CFE NVRAM device.
  * 
- * @param	dev	bhnd_nvram_nexus device.
+ * @param	dev	bhnd_nvram_cfe device.
  * @param	devname	The name of the CFE device to be probed.
  * @param	fd	An open CFE file descriptor for @p devname.
  * @param[out]	offset	On success, the NVRAM data offset within @p @fd.
@@ -388,7 +388,7 @@ nvram_open_cfedev(device_t dev, char *devname, int fd, int64_t *offset,
 /**
  * Find (and open) a CFE NVRAM device.
  * 
- * @param	dev	bhnd_nvram_nexus device.
+ * @param	dev	bhnd_nvram_cfe device.
  * @param[out]	fd	On success, a valid CFE file descriptor. The callee
  *			is responsible for closing this file descriptor via
  *			cfe_close().
@@ -437,23 +437,23 @@ nvram_find_cfedev(device_t dev, int *fd, int64_t *offset,
 	return (NULL);
 }
 
-static device_method_t bhnd_nvram_nexus_methods[] = {
+static device_method_t bhnd_nvram_cfe_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_probe,			bhnd_nvram_nexus_probe),
-	DEVMETHOD(device_attach,		bhnd_nvram_nexus_attach),
-	DEVMETHOD(device_resume,		bhnd_nvram_nexus_resume),
-	DEVMETHOD(device_suspend,		bhnd_nvram_nexus_suspend),
-	DEVMETHOD(device_detach,		bhnd_nvram_nexus_detach),
+	DEVMETHOD(device_probe,			bhnd_nvram_cfe_probe),
+	DEVMETHOD(device_attach,		bhnd_nvram_cfe_attach),
+	DEVMETHOD(device_resume,		bhnd_nvram_cfe_resume),
+	DEVMETHOD(device_suspend,		bhnd_nvram_cfe_suspend),
+	DEVMETHOD(device_detach,		bhnd_nvram_cfe_detach),
 
 	/* NVRAM interface */
-	DEVMETHOD(bhnd_nvram_getvar,		bhnd_nvram_nexus_getvar),
-	DEVMETHOD(bhnd_nvram_setvar,		bhnd_nvram_nexus_setvar),
+	DEVMETHOD(bhnd_nvram_getvar,		bhnd_nvram_cfe_getvar),
+	DEVMETHOD(bhnd_nvram_setvar,		bhnd_nvram_cfe_setvar),
 
 	DEVMETHOD_END
 };
 
-DEFINE_CLASS_0(bhnd_nvram, bhnd_nvram_nexus, bhnd_nvram_nexus_methods, 
-    sizeof(struct bhnd_nvram_nexus_softc));
-EARLY_DRIVER_MODULE(bhnd_nvram_nexus, nexus, bhnd_nvram_nexus,
+DEFINE_CLASS_0(bhnd_nvram, bhnd_nvram_cfe, bhnd_nvram_cfe_methods, 
+    sizeof(struct bhnd_nvram_cfe_softc));
+EARLY_DRIVER_MODULE(bhnd_nvram_cfe, nexus, bhnd_nvram_cfe,
     bhnd_nvram_devclass, NULL, NULL, BUS_PASS_BUS + BUS_PASS_ORDER_EARLY);
 
