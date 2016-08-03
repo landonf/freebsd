@@ -60,8 +60,7 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_nvram_private.h"
 
 #include "bhnd_nvramreg.h"
-
-#include "bhnd_nvram_cfevar.h"
+#include "bhnd_nvramvar.h"
 
 static int	 nvram_open_cfedev(device_t dev, char *devname, int fd,
 		     int64_t *offset, uint32_t *size, bhnd_nvram_format fmt);
@@ -119,15 +118,15 @@ bhnd_nvram_cfe_probe(device_t dev)
 static int
 bhnd_nvram_cfe_attach(device_t dev)
 {
-	struct bhnd_nvram_cfe_softc	*sc;
-	char				*devname;
-	unsigned char			*buffer;
-	struct bhnd_nvram_input		 input;
-	bhnd_nvram_format		 fmt;
-	int64_t				 offset;
-	uint32_t			 size;
-	int				 error;
-	int				 fd;
+	struct bhnd_nvram_softc	*sc;
+	char			*devname;
+	unsigned char		*buffer;
+	struct bhnd_nvram_input	 input;
+	bhnd_nvram_format	 fmt;
+	int64_t			 offset;
+	uint32_t		 size;
+	int			 error;
+	int			 fd;
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
@@ -214,7 +213,7 @@ bhnd_nvram_cfe_suspend(device_t dev)
 static int
 bhnd_nvram_cfe_detach(device_t dev)
 {
-	struct bhnd_nvram_cfe_softc	*sc;
+	struct bhnd_nvram_softc	*sc;
 
 	sc = device_get_softc(dev);
 
@@ -227,8 +226,8 @@ bhnd_nvram_cfe_detach(device_t dev)
 static int
 bhnd_nvram_cfe_getvar(device_t dev, const char *name, void *buf, size_t *len)
 {
-	struct bhnd_nvram_cfe_softc	*sc;
-	int				 error;
+	struct bhnd_nvram_softc	*sc;
+	int			 error;
 
 	sc = device_get_softc(dev);
 
@@ -247,8 +246,8 @@ static int
 bhnd_nvram_cfe_setvar(device_t dev, const char *name, const void *buf,
     size_t len)
 {
-	struct bhnd_nvram_cfe_softc	*sc;
-	int				 error;
+	struct bhnd_nvram_softc	*sc;
+	int			 error;
 
 	sc = device_get_softc(dev);
 
@@ -453,7 +452,7 @@ static device_method_t bhnd_nvram_cfe_methods[] = {
 };
 
 DEFINE_CLASS_0(bhnd_nvram, bhnd_nvram_cfe, bhnd_nvram_cfe_methods, 
-    sizeof(struct bhnd_nvram_cfe_softc));
+    sizeof(struct bhnd_nvram_softc));
 EARLY_DRIVER_MODULE(bhnd_nvram_cfe, nexus, bhnd_nvram_cfe,
     bhnd_nvram_devclass, NULL, NULL, BUS_PASS_BUS + BUS_PASS_ORDER_EARLY);
 

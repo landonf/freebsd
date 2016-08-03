@@ -32,6 +32,9 @@
 #ifndef _BHND_NVRAM_BHND_NVRAMREG_H_
 #define _BHND_NVRAM_BHND_NVRAMREG_H_
 
+#define	NVRAM_KEY_MAX	64	/** maximum key length (not incl. NUL) */
+#define	NVRAM_VAL_MAX	255	/** maximum value length (not incl. NUL) */
+
 /* NVRAM header fields */
 #define	NVRAM_MAGIC			0x48534C46	/* 'FLSH' */
 #define	NVRAM_VERSION			1

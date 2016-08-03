@@ -32,14 +32,27 @@
 #ifndef _BHND_NVRAM_BHND_NVRAMVAR_H_
 #define _BHND_NVRAM_BHND_NVRAMVAR_H_
 
-#include <sys/types.h>
+#include <sys/param.h>
+#include <sys/bus.h>
 
-#define	BHND_NVRAM_KEY_MAX	64	/** maximum key length (not incl. NUL) */
-#define	BHND_NVRAM_VAL_MAX	255	/** maximum value length (not incl. NUL) */
+union bhnd_nvram_ident;
+struct bhnd_nvram_input;
+struct bhnd_nvram;
 
-/**
- * NVRAM header
- */
+/** Supported NVRAM formats. */
+typedef enum {
+	BHND_NVRAM_FMT_BCM	= 0,	/**< Broadcom NUL-delimited key=value pairs */
+	BHND_NVRAM_FMT_TLV	= 1,	/**< CFE TLV encoding, as used on WGT634U */
+} bhnd_nvram_format;
+
+int		bhnd_nvram_identify(union bhnd_nvram_ident *ident,
+		    bhnd_nvram_format expected);
+
+int		bhnd_nvram_init(struct bhnd_nvram *nvram,
+		    struct bhnd_nvram_input *input, bhnd_nvram_format fmt);
+void		bhnd_nvram_fini(struct bhnd_nvram *nvam);
+
+/** BCM NVRAM header */
 struct bhnd_nvram_header {
 	uint32_t magic;
 	uint32_t size;
@@ -48,9 +61,7 @@ struct bhnd_nvram_header {
 	uint32_t memc_ncdl;	/**< sdram_ncdl */
 };
 
-/**
- * NVRAM magic or TLV identification
- */
+/** BCM/TLV NVRAM identification */
 union bhnd_nvram_ident {
 	struct bhnd_nvram_header	bcm;
 	struct bhnd_tlv_ident {
@@ -60,36 +71,37 @@ union bhnd_nvram_ident {
 	} tlv;
 };
 
-/**
- * NVRAM parser input buffer.
- */
+/** NVRAM parser input buffer */
 struct bhnd_nvram_input {
 	const void	*buffer;
 	size_t		 size;
 };
 
-/**
- * Supported NVRAM encodings.
- */
-typedef enum {
-	BHND_NVRAM_FMT_BCM	= 0,	/**< Broadcom NUL-delimited key=value pairs */
-	BHND_NVRAM_FMT_TLV	= 1,	/**< CFE TLV encoding, as used on WGT634U */
-} bhnd_nvram_format;
-
-/**
- * bhnd nvram parser instance state.
- */
+/** bhnd nvram parser instance state */
 struct bhnd_nvram {
 	device_t			dev;	/**< nvram device */
 	bhnd_nvram_format		fmt;	/**< nvram format */
 	struct bhnd_nvram_header	header;	/**< header (if BHND_NVRAM_FMT_BCM) */
 };
 
-int		bhnd_nvram_identify(union bhnd_nvram_ident *ident,
-		    bhnd_nvram_format expected);
 
-int		bhnd_nvram_init(struct bhnd_nvram *nvram,
-		    struct bhnd_nvram_input *input, bhnd_nvram_format fmt);
-void		bhnd_nvram_fini(struct bhnd_nvram *nvam);
+/**
+ * bhnd_nvram_cfe driver instance state. Must be first member of all subclass
+ * softc structures.
+ */
+struct bhnd_nvram_softc {
+	device_t		 	dev;
+	struct mtx		 	mtx;	/**< nvram mutex */
+	struct bhnd_nvram		nvram;	/**< nvram shadow */
+};
+
+
+#define	BHND_NVRAM_LOCK_INIT(sc) \
+	mtx_init(&(sc)->mtx, device_get_nameunit((sc)->dev), \
+	    "bhnd_nvram lock", MTX_DEF)
+#define	BHND_NVRAM_LOCK(sc)			mtx_lock(&(sc)->mtx)
+#define	BHND_NVRAM_UNLOCK(sc)			mtx_unlock(&(sc)->mtx)
+#define	BHND_NVRAM_LOCK_ASSERT(sc, what)	mtx_assert(&(sc)->mtx, what)
+#define	BHND_NVRAM_LOCK_DESTROY(sc)		mtx_destroy(&(sc)->mtx)
 
 #endif /* _BHND_NVRAM_BHND_NVRAMVAR_H_ */
