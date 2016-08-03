@@ -459,6 +459,11 @@ bhnd_find_platform_dev(struct bhnd_softc *sc, const char *classname)
 	}
 
 	child = device_find_child(chipc, classname, -1);
+	if (child != NULL)
+		goto found;
+
+	/* Look for a parent-attached device (e.g. nexus0 -> bhnd_nvram) */
+	child = device_find_child(device_get_parent(sc->dev), classname, -1);
 	if (child == NULL)
 		return (NULL);
 
