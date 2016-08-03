@@ -50,12 +50,27 @@ __FBSDID("$FreeBSD$");
  * Provides identification, decoding, and encoding of BHND NVRAM data.
  */
 
-static int	bhnd_nvram_init_bcm(struct bhnd_nvram *sc,
-		    struct bhnd_nvram_input *input);
-static int	bhnd_nvram_init_tlv(struct bhnd_nvram *sc,
-		    struct bhnd_nvram_input *input);
-static int	bhnd_nvram_read(struct bhnd_nvram_input *input, size_t offset,
-		    void *output, size_t nbytes);
+static int	bhnd_nvram_init_bcm(struct bhnd_nvram *nvram);
+static int	bhnd_nvram_init_tlv(struct bhnd_nvram *nvram);
+
+typedef int	(*bhnd_nvram_op_init)(struct bhnd_nvram *nvram);
+
+typedef int	(*bhnd_nvram_cb_enum_var)(struct bhnd_nvram *, const char *ptr,
+		    size_t len, bool *stop, void *ctx);
+typedef int	(*bhnd_nvram_op_enum_vars)(struct bhnd_nvram *nvram,
+		    bhnd_nvram_cb_enum_var *fn, void *ctx);
+
+/* Format-specific operations */
+struct bhnd_nvram_ops {
+	bhnd_nvram_format	fmt;		/**< nvram format */
+	bhnd_nvram_op_init	init;
+	bhnd_nvram_op_enum_vars	enum_vars;
+};
+
+static const struct bhnd_nvram_ops bhnd_nvram_ops_table[] = {
+	{ BHND_NVRAM_FMT_BCM, bhnd_nvram_init_bcm, NULL },
+	{ BHND_NVRAM_FMT_TLV, bhnd_nvram_init_tlv, NULL },
+};
 
 /**
  * Identify @p ident.
@@ -67,11 +82,12 @@ static int	bhnd_nvram_read(struct bhnd_nvram_input *input, size_t offset,
  * @retval ENODEV If @p ident does not match @p expected.
  */
 int
-bhnd_nvram_identify(union bhnd_nvram_ident *ident, bhnd_nvram_format expected)
+bhnd_nvram_identify(const union bhnd_nvram_ident *ident,
+    bhnd_nvram_format expected)
 {
 	switch (expected) {
 	case BHND_NVRAM_FMT_BCM:
-		if (ident->bcm.magic == NVRAM_MAGIC)
+		if (le32toh(ident->bcm.magic) == NVRAM_MAGIC)
 			return (0);
 
 		return (ENODEV);
@@ -109,47 +125,69 @@ int
 bhnd_nvram_init(struct bhnd_nvram *nvram, struct bhnd_nvram_input *input,
     bhnd_nvram_format fmt)
 {
-	union bhnd_nvram_ident	ident;
-	int			error;
-
-
-	/* Read NVRAM ident data */
-	if ((error = bhnd_nvram_read(input, 0, &ident, sizeof(ident))))
-		return (error);
+	int error;
 
 	/* Verify expected format */
-	if ((error = bhnd_nvram_identify(&ident, fmt)))
+	if (input->size < sizeof(union bhnd_nvram_ident))
+		return (EINVAL);
+
+	error = bhnd_nvram_identify(
+	    (const union bhnd_nvram_ident *)input->buffer, fmt);
+	if (error)
 		return (error);
 
-	switch (fmt) {
-	case BHND_NVRAM_FMT_BCM:
-		nvram->header = ident.bcm;
-		nvram->fmt = fmt;
-		return (bhnd_nvram_init_bcm(nvram, input));
-	case BHND_NVRAM_FMT_TLV:
-		nvram->fmt = fmt;
-		return (bhnd_nvram_init_tlv(nvram, input));
-	default:
+	/* Allocate backing buffer */
+	nvram->buf_len = input->size;
+	nvram->buf = malloc(input->size, M_BHND_NVRAM, M_NOWAIT);
+	if (nvram->buf == NULL)
+		return (ENOMEM);
+	memcpy(nvram->buf, input->buffer, input->size);
+
+	/* Fetch format-specific operation callbacks */
+	for (size_t i = 0; i < nitems(bhnd_nvram_ops_table); i++) {
+		const struct bhnd_nvram_ops *ops = &bhnd_nvram_ops_table[i];
+
+		if (ops->fmt != fmt)
+			continue;
+
+		/* found */
+		nvram->ops = ops;
+		break;
+	}
+
+	if (nvram->ops == NULL) {
+		free(nvram->buf, M_BHND_NVRAM);
 		return (EINVAL);
 	}
+
+	/* Perform format-specific initialization */
+	if ((error = nvram->ops->init(nvram))) {
+		free(nvram->buf, M_BHND_NVRAM);
+		return (error);
+	}
+
+	return (0);
 }
 
 static int
-bhnd_nvram_init_bcm(struct bhnd_nvram *nvram, struct bhnd_nvram_input *input)
+bhnd_nvram_init_bcm(struct bhnd_nvram *nvram)
 {
 	const uint8_t	*p;
+	uint32_t	 cfg0;
 	uint8_t		 crc, valid;
 
 	/* Validate CRC */
-	if (input->size < NVRAM_CRC_SKIP)
+	if (nvram->buf_len < NVRAM_CRC_SKIP)
 		return (EINVAL);
 
-	p = input->buffer;
-	p += NVRAM_CRC_SKIP;
+	if (nvram->buf_len < sizeof(struct bhnd_nvram_header))
+		return (EINVAL);
 
-	valid = (nvram->header.cfg0 & NVRAM_CFG0_CRC_MASK) >>
-	    NVRAM_CFG0_CRC_SHIFT;
-	crc = bhnd_nvram_crc8(p, input->size-NVRAM_CRC_SKIP,
+	cfg0 = ((struct bhnd_nvram_header *)nvram->buf)->cfg0;
+	valid = (cfg0 & NVRAM_CFG0_CRC_MASK) >> NVRAM_CFG0_CRC_SHIFT;
+
+	p = nvram->buf;
+	crc = bhnd_nvram_crc8(p + NVRAM_CRC_SKIP, nvram->buf_len-NVRAM_CRC_SKIP,
 	    BHND_NVRAM_CRC8_INITIAL);
 
 	if (crc != valid) {
@@ -158,7 +196,7 @@ bhnd_nvram_init_bcm(struct bhnd_nvram *nvram, struct bhnd_nvram_input *input)
 	}
 
 	// TODO
-	p = input->buffer;
+	p = nvram->buf;
 	p += sizeof(struct bhnd_nvram_header);
 	printf("first key=%s\n", p);
 	return (0);
@@ -166,21 +204,9 @@ bhnd_nvram_init_bcm(struct bhnd_nvram *nvram, struct bhnd_nvram_input *input)
 
 
 static int
-bhnd_nvram_init_tlv(struct bhnd_nvram *nvram, struct bhnd_nvram_input *input)
+bhnd_nvram_init_tlv(struct bhnd_nvram *nvram)
 {
 	// TODO
-	return (0);
-}
-
-
-static int
-bhnd_nvram_read(struct bhnd_nvram_input *input, size_t offset, void *output,
-    size_t nbytes)
-{
-	if (offset > input->size || input->size - offset < nbytes)
-		return (ENXIO);
-
-	memcpy(output, ((const uint8_t *)input->buffer) + offset, nbytes);
 	return (0);
 }
 
@@ -192,5 +218,5 @@ bhnd_nvram_read(struct bhnd_nvram_input *input, size_t offset, void *output,
 void
 bhnd_nvram_fini(struct bhnd_nvram *nvram)
 {
-	// TODO
+	free(nvram->buf, M_BHND_NVRAM);
 }

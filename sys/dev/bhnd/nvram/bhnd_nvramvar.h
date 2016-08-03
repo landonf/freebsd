@@ -40,6 +40,7 @@ DECLARE_CLASS(bhnd_nvram_driver);
 
 union bhnd_nvram_ident;
 struct bhnd_nvram_input;
+struct bhnd_nvram_ops;
 struct bhnd_nvram;
 
 /** Supported NVRAM formats. */
@@ -54,7 +55,7 @@ int	bhnd_nvram_resume(device_t dev);
 int	bhnd_nvram_suspend(device_t dev);
 int	bhnd_nvram_detach(device_t dev);
 
-int	bhnd_nvram_identify(union bhnd_nvram_ident *ident,
+int	bhnd_nvram_identify(const union bhnd_nvram_ident *ident,
 	    bhnd_nvram_format expected);
 int	bhnd_nvram_init(struct bhnd_nvram *nvram,
 	    struct bhnd_nvram_input *input, bhnd_nvram_format fmt);
@@ -87,9 +88,12 @@ struct bhnd_nvram_input {
 
 /** bhnd nvram parser instance state */
 struct bhnd_nvram {
-	device_t			dev;	/**< nvram device */
-	bhnd_nvram_format		fmt;	/**< nvram format */
-	struct bhnd_nvram_header	header;	/**< header (if BHND_NVRAM_FMT_BCM) */
+	device_t			 dev;		/**< nvram device */
+	const struct bhnd_nvram_ops	*ops;
+
+	struct bhnd_nvram_header	 header;	/**< header (if BHND_NVRAM_FMT_BCM) */
+	uint8_t				*buf;		/**< nvram shadow */
+	size_t				 buf_len;
 };
 
 
