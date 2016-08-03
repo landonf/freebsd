@@ -50,13 +50,13 @@ typedef enum {
 
 /** NVRAM data type string representations */
 typedef enum {
-	BHND_NVRAM_VFMT_HEX	= 1,	/**< hex format */
-	BHND_NVRAM_VFMT_DEC	= 2,	/**< decimal format */
-	BHND_NVRAM_VFMT_MACADDR	= 3,	/**< mac address (canonical form, hex octets,
+	BHND_NVRAM_SFMT_HEX	= 1,	/**< hex format */
+	BHND_NVRAM_SFMT_DEC	= 2,	/**< decimal format */
+	BHND_NVRAM_SFMT_MACADDR	= 3,	/**< mac address (canonical form, hex octets,
 					     separated with ':') */
-	BHND_NVRAM_VFMT_LEDDC	= 4,	/**< LED PWM duty-cycle (2 bytes -- on/off) */
-	BHND_NVRAM_VFMT_CCODE	= 5	/**< count code format (2-3 ASCII chars, or hex string) */
-} bhnd_nvram_fmt;
+	BHND_NVRAM_SFMT_LEDDC	= 4,	/**< LED PWM duty-cycle (2 bytes -- on/off) */
+	BHND_NVRAM_SFMT_CCODE	= 5	/**< count code format (2-3 ASCII chars, or hex string) */
+} bhnd_nvram_sfmt;
 
 /** NVRAM variable flags */
 enum {
@@ -94,7 +94,7 @@ struct bhnd_sprom_var {
 struct bhnd_nvram_var {
 	const char			*name;	  	/**< variable name */
 	bhnd_nvram_dt			 type;	 	/**< base data type */
-	bhnd_nvram_fmt			 fmt;		/**< string format */
+	bhnd_nvram_sfmt			 sfmt;		/**< string format */
 	uint32_t			 flags;		/**< BHND_NVRAM_VF_* flags */
 
 	const struct bhnd_sprom_var	*sprom_descs;	/**< SPROM-specific variable descriptors */

@@ -108,11 +108,11 @@ BEGIN {
 	}
 
 	# Format Constants
-	FMT["hex"]	= "BHND_NVRAM_VFMT_HEX"
-	FMT["decimal"]	= "BHND_NVRAM_VFMT_DEC"
-	FMT["ccode"]	= "BHND_NVRAM_VFMT_CCODE"
-	FMT["macaddr"]	= "BHND_NVRAM_VFMT_MACADDR"
-	FMT["led_dc"]	= "BHND_NVRAM_VFMT_LEDDC"
+	FMT["hex"]	= "BHND_NVRAM_SFMT_HEX"
+	FMT["decimal"]	= "BHND_NVRAM_SFMT_DEC"
+	FMT["ccode"]	= "BHND_NVRAM_SFMT_CCODE"
+	FMT["macaddr"]	= "BHND_NVRAM_SFMT_MACADDR"
+	FMT["led_dc"]	= "BHND_NVRAM_SFMT_LEDDC"
 
 	# Data Type Constants
 	DTYPE["u8"]	= "BHND_NVRAM_DT_UINT8"
