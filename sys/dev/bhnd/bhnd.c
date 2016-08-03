@@ -361,7 +361,7 @@ bhnd_finish_attach(struct bhnd_softc *sc)
 	if (ccaps->nvram_src != BHND_NVRAM_SRC_UNKNOWN) {
 		if ((sc->nvram_dev = bhnd_find_nvram(sc)) == NULL) {
 			device_printf(sc->dev,
-			    "warning: %s NVRAM device not found\n",
+			    "warning: NVRAM %s device not found\n",
 			    bhnd_nvram_src_name(ccaps->nvram_src));
 		}
 	}

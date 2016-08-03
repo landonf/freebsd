@@ -71,7 +71,10 @@ static char	*nvram_find_cfedev(device_t dev, int *fd, int64_t *offset,
 /** Known CFE NVRAM device names, in probe order. */
 static char *nvram_cfe_devs[] = {
 	"nflash0.nvram",	/* NAND */
+	"nflash1.nvram",
+
 	"flash0.nvram",
+	"flash1.nvram",
 };
 
 /** Supported NVRAM formats, in probe order. */
@@ -277,7 +280,7 @@ nvram_open_cfedev(device_t dev, char *devname, int fd, int64_t *offset,
     uint32_t *size, bhnd_nvram_format fmt)
 {
 	union bhnd_nvram_ident	ident;
-	nvram_info_t		ninfo;
+	nvram_info_t		nvram_info;
 	int			cerr, devinfo, dtype, rlen;
 	int			error;
 
@@ -304,19 +307,32 @@ nvram_open_cfedev(device_t dev, char *devname, int fd, int64_t *offset,
 		return (ENXIO);
 	}
 
-	/* Fetch NVRAM info from CFE */
-	cerr = cfe_ioctl(fd, IOCTL_NVRAM_GETINFO, (unsigned char *)&ninfo,
-	    sizeof(ninfo), &rlen, 0);
-	if (cerr != CFE_OK) {
+	/* Try to fetch nvram info from CFE */
+	cerr = cfe_ioctl(fd, IOCTL_NVRAM_GETINFO, (unsigned char *)&nvram_info,
+	    sizeof(nvram_info), &rlen, 0);
+	if (cerr != CFE_OK && cerr != CFE_ERR_INV_COMMAND) {
 		device_printf(dev, "%s: IOCTL_NVRAM_GETINFO failed: %d\n",
 		    devname, cerr);
 		return (ENXIO);
 	}
 
-	if (rlen != sizeof(ninfo)) {
-		device_printf(dev,
-		    "%s: IOCTL_NVRAM_GETINFO short read: %d\n", devname, cerr);
-		return (ENXIO);
+	/* Fall back on flash info */
+	if (cerr == CFE_ERR_INV_COMMAND) {
+		flash_info_t fi;
+
+		cerr = cfe_ioctl(fd, IOCTL_FLASH_GETINFO, (unsigned char *)&fi,
+		    sizeof(fi), &rlen, 0);
+
+		if (cerr != CFE_OK) {
+			device_printf(dev, "%s: IOCTL_FLASH_GETINFO failed: %d\n",
+			    devname, cerr);
+			return (ENXIO);
+		}
+
+		nvram_info.nvram_eraseflg	=
+		    !(fi.flash_flags & FLASH_FLAG_NOERASE);
+		nvram_info.nvram_offset		= 0x0;
+		nvram_info.nvram_size		= fi.flash_size;
 	}
 
 	/* Try to read NVRAM identification */
@@ -343,11 +359,18 @@ nvram_open_cfedev(device_t dev, char *devname, int fd, int64_t *offset,
 	case BHND_NVRAM_FMT_TLV:
 		/* No size field is available; must assume the NVRAM data
 		 * consumes up to the full CFE NVRAM range */
-		*offset = ninfo.nvram_offset;
-		*size = ninfo.nvram_size;
+		*offset = nvram_info.nvram_offset;
+		*size = nvram_info.nvram_size;
 		break;
 	case BHND_NVRAM_FMT_BCM:
-		*offset = ninfo.nvram_offset;
+		if (ident.bcm.size > nvram_info.nvram_size) {
+			device_printf(dev, "%s: NVRAM size %#x overruns %#x "
+			    "device limit\n", devname, ident.bcm.size,
+			    nvram_info.nvram_size);
+			return (ENODEV);
+		}
+
+		*offset = nvram_info.nvram_offset;
 		*size = ident.bcm.size;
 		break;
 	default:

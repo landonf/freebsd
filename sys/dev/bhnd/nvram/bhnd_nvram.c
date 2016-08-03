@@ -133,15 +133,38 @@ bhnd_nvram_init(struct bhnd_nvram *nvram, struct bhnd_nvram_input *input,
 }
 
 static int
-bhnd_nvram_init_bcm(struct bhnd_nvram *sc, struct bhnd_nvram_input *input)
+bhnd_nvram_init_bcm(struct bhnd_nvram *nvram, struct bhnd_nvram_input *input)
 {
+	const uint8_t	*p;
+	uint8_t		 crc, valid;
+
+	/* Validate CRC */
+	if (input->size < NVRAM_CRC_SKIP)
+		return (EINVAL);
+
+	p = input->buffer;
+	p += NVRAM_CRC_SKIP;
+
+	valid = (nvram->header.cfg0 & NVRAM_CFG0_CRC_MASK) >>
+	    NVRAM_CFG0_CRC_SHIFT;
+	crc = bhnd_nvram_crc8(p, input->size-NVRAM_CRC_SKIP,
+	    BHND_NVRAM_CRC8_INITIAL);
+
+	if (crc != valid) {
+		printf("warning: NVRAM CRC error (crc=%#hhx, expected=%hhx)\n",
+		    crc, valid);
+	}
+
 	// TODO
+	p = input->buffer;
+	p += sizeof(struct bhnd_nvram_header);
+	printf("first key=%s\n", p);
 	return (0);
 }
 
 
 static int
-bhnd_nvram_init_tlv(struct bhnd_nvram *sc, struct bhnd_nvram_input *input)
+bhnd_nvram_init_tlv(struct bhnd_nvram *nvram, struct bhnd_nvram_input *input)
 {
 	// TODO
 	return (0);
