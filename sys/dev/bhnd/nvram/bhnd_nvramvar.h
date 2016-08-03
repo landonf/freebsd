@@ -34,6 +34,9 @@
 
 #include <sys/param.h>
 #include <sys/bus.h>
+#include <sys/kobj.h>
+
+DECLARE_CLASS(bhnd_nvram_driver);
 
 union bhnd_nvram_ident;
 struct bhnd_nvram_input;
@@ -45,12 +48,17 @@ typedef enum {
 	BHND_NVRAM_FMT_TLV	= 1,	/**< CFE TLV encoding, as used on WGT634U */
 } bhnd_nvram_format;
 
-int		bhnd_nvram_identify(union bhnd_nvram_ident *ident,
-		    bhnd_nvram_format expected);
+int	bhnd_nvram_probe(device_t dev);
+int	bhnd_nvram_attach(device_t dev);
+int	bhnd_nvram_resume(device_t dev);
+int	bhnd_nvram_suspend(device_t dev);
+int	bhnd_nvram_detach(device_t dev);
 
-int		bhnd_nvram_init(struct bhnd_nvram *nvram,
-		    struct bhnd_nvram_input *input, bhnd_nvram_format fmt);
-void		bhnd_nvram_fini(struct bhnd_nvram *nvam);
+int	bhnd_nvram_identify(union bhnd_nvram_ident *ident,
+	    bhnd_nvram_format expected);
+int	bhnd_nvram_init(struct bhnd_nvram *nvram,
+	    struct bhnd_nvram_input *input, bhnd_nvram_format fmt);
+void	bhnd_nvram_fini(struct bhnd_nvram *nvam);
 
 /** BCM NVRAM header */
 struct bhnd_nvram_header {

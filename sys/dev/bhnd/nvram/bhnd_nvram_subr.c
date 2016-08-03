@@ -45,7 +45,9 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_nvramreg.h"
 
 /*
- * BHND NVRAM support.
+ * BHND NVRAM Parser
+ * 
+ * Provides identification, decoding, and encoding of BHND NVRAM data.
  */
 
 static int	bhnd_nvram_init_bcm(struct bhnd_nvram *sc,

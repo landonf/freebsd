@@ -55,7 +55,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/cfe/cfe_ioctl.h>
 
 #include "bhnd_nvram_if.h"
-#include "bhnd_nvram_map.h"
 
 #include "bhnd_nvram_private.h"
 
@@ -71,7 +70,6 @@ static char	*nvram_find_cfedev(device_t dev, int *fd, int64_t *offset,
 static char *nvram_cfe_devs[] = {
 	"nflash0.nvram",	/* NAND */
 	"nflash1.nvram",
-
 	"flash0.nvram",
 	"flash1.nvram",
 };
@@ -90,7 +88,12 @@ bhnd_nvram_cfe_probe(device_t dev)
 	bhnd_nvram_format		 fmt;
 	int64_t				 offset;
 	uint32_t			 size;
+	int				 error;
 	int				 fd;
+
+	/* Defer to default driver implementation */
+	if ((error = bhnd_nvram_probe(dev)) > 0)
+		return (error);
 
 	/* Locate a usable CFE device */
 	devname = nvram_find_cfedev(dev, &fd, &offset, &size, &fmt);
@@ -169,8 +172,8 @@ bhnd_nvram_cfe_attach(device_t dev)
 		}
 	}
 
-	device_printf(dev, "CFE NVRAM device: %s (%#jx+%#jx)\n",
-	    devname, (uintmax_t)offset, (uintmax_t)size);
+	device_printf(dev, "CFE %s (%#jx+%#jx)\n", devname, (uintmax_t)offset,
+	    (uintmax_t)size);
 
 	/* Initialize NVRAM parser */
 	input = (struct bhnd_nvram_input) {
@@ -186,6 +189,10 @@ bhnd_nvram_cfe_attach(device_t dev)
 	/* Initialize mutex */
 	BHND_NVRAM_LOCK_INIT(sc);
 
+	/* Defer to default driver implementation */
+	if ((error = bhnd_nvram_attach(dev)))
+		goto done;
+
 	error = 0;
 
 done:
@@ -199,66 +206,22 @@ done:
 }
 
 static int
-bhnd_nvram_cfe_resume(device_t dev)
-{
-	return (0);
-}
-
-static int
-bhnd_nvram_cfe_suspend(device_t dev)
-{
-	return (0);
-}
-
-static int
 bhnd_nvram_cfe_detach(device_t dev)
 {
 	struct bhnd_nvram_softc	*sc;
+	int			 error;
 
 	sc = device_get_softc(dev);
+
+	/* Defer to default driver implementation */
+	if ((error = bhnd_nvram_detach(dev)))
+		return (error);
 
 	bhnd_nvram_fini(&sc->nvram);
 	BHND_NVRAM_LOCK_DESTROY(sc);
 
 	return (0);
 }
-
-static int
-bhnd_nvram_cfe_getvar(device_t dev, const char *name, void *buf, size_t *len)
-{
-	struct bhnd_nvram_softc	*sc;
-	int			 error;
-
-	sc = device_get_softc(dev);
-
-	BHND_NVRAM_LOCK(sc);
-	// TODO
-	error = ENODEV;
-	BHND_NVRAM_UNLOCK(sc);
-
-	return (error);
-}
-
-/**
- * Default bhnd sprom driver implementation of BHND_NVRAM_SETVAR().
- */
-static int
-bhnd_nvram_cfe_setvar(device_t dev, const char *name, const void *buf,
-    size_t len)
-{
-	struct bhnd_nvram_softc	*sc;
-	int			 error;
-
-	sc = device_get_softc(dev);
-
-	BHND_NVRAM_LOCK(sc);
-	// TODO
-	error = ENODEV;
-	BHND_NVRAM_UNLOCK(sc);
-
-	return (error);
-}
-
 
 /**
  * Identify and open a CFE NVRAM device.
@@ -440,19 +403,13 @@ static device_method_t bhnd_nvram_cfe_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,			bhnd_nvram_cfe_probe),
 	DEVMETHOD(device_attach,		bhnd_nvram_cfe_attach),
-	DEVMETHOD(device_resume,		bhnd_nvram_cfe_resume),
-	DEVMETHOD(device_suspend,		bhnd_nvram_cfe_suspend),
 	DEVMETHOD(device_detach,		bhnd_nvram_cfe_detach),
-
-	/* NVRAM interface */
-	DEVMETHOD(bhnd_nvram_getvar,		bhnd_nvram_cfe_getvar),
-	DEVMETHOD(bhnd_nvram_setvar,		bhnd_nvram_cfe_setvar),
 
 	DEVMETHOD_END
 };
 
-DEFINE_CLASS_0(bhnd_nvram, bhnd_nvram_cfe, bhnd_nvram_cfe_methods, 
-    sizeof(struct bhnd_nvram_softc));
+DEFINE_CLASS_1(bhnd_nvram, bhnd_nvram_cfe, bhnd_nvram_cfe_methods, 
+    sizeof(struct bhnd_nvram_softc), bhnd_nvram_driver);
 EARLY_DRIVER_MODULE(bhnd_nvram_cfe, nexus, bhnd_nvram_cfe,
     bhnd_nvram_devclass, NULL, NULL, BUS_PASS_BUS + BUS_PASS_ORDER_EARLY);
 
