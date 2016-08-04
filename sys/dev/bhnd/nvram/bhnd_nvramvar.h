@@ -57,8 +57,8 @@ int	bhnd_nvram_detach(device_t dev);
 
 int	bhnd_nvram_identify(const union bhnd_nvram_ident *ident,
 	    bhnd_nvram_format expected);
-int	bhnd_nvram_init(struct bhnd_nvram *nvram,
-	    struct bhnd_nvram_input *input, bhnd_nvram_format fmt);
+int	bhnd_nvram_init(struct bhnd_nvram *nvram, const void *data, size_t len,
+	    bhnd_nvram_format fmt);
 void	bhnd_nvram_fini(struct bhnd_nvram *nvam);
 
 /** BCM NVRAM header */
@@ -80,12 +80,6 @@ union bhnd_nvram_ident {
 	} tlv;
 };
 
-/** NVRAM parser input buffer */
-struct bhnd_nvram_input {
-	const void	*buffer;
-	size_t		 size;
-};
-
 /** bhnd nvram parser instance state */
 struct bhnd_nvram {
 	device_t			 dev;		/**< nvram device */
@@ -93,7 +87,7 @@ struct bhnd_nvram {
 
 	struct bhnd_nvram_header	 header;	/**< header (if BHND_NVRAM_FMT_BCM) */
 	uint8_t				*buf;		/**< nvram shadow */
-	size_t				 buf_len;
+	size_t				 buf_size;
 };
 
 

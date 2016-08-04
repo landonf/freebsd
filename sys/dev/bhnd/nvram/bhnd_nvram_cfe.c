@@ -124,7 +124,6 @@ bhnd_nvram_cfe_attach(device_t dev)
 	struct bhnd_nvram_softc	*sc;
 	char			*devname;
 	unsigned char		*buffer;
-	struct bhnd_nvram_input	 input;
 	bhnd_nvram_format	 fmt;
 	int64_t			 offset;
 	uint32_t		 size;
@@ -176,12 +175,7 @@ bhnd_nvram_cfe_attach(device_t dev)
 	    (uintmax_t)size);
 
 	/* Initialize NVRAM parser */
-	input = (struct bhnd_nvram_input) {
-		.buffer = buffer,
-		.size = size
-	};
-
-	if ((error = bhnd_nvram_init(&sc->nvram, &input, fmt))) {
+	if ((error = bhnd_nvram_init(&sc->nvram, buffer, size, fmt))) {
 		device_printf(dev, "%s: parse failed: %d\n", devname, error);
 		goto done;
 	}

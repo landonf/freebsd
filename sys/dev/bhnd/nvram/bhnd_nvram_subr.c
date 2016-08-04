@@ -140,7 +140,8 @@ bhnd_nvram_log_var(struct bhnd_nvram *nvram, const char *env, size_t len,
  * 
  * @param[out] nvram On success, will be initialized with shadow of the NVRAM
  * data. 
- * @param input NVRAM data to be parsed.
+ * @param data NVRAM data to be parsed.
+ * @param size Size of @p data.
  * @param fmt Required format of @p input.
  * 
  * @retval 0 success
@@ -148,26 +149,26 @@ bhnd_nvram_log_var(struct bhnd_nvram *nvram, const char *env, size_t len,
  * @retval EINVAL If @p input parsing fails.
  */
 int
-bhnd_nvram_init(struct bhnd_nvram *nvram, struct bhnd_nvram_input *input,
+bhnd_nvram_init(struct bhnd_nvram *nvram, const void *data, size_t size,
     bhnd_nvram_format fmt)
 {
 	int error;
 
-	/* Verify expected format */
-	if (input->size < sizeof(union bhnd_nvram_ident))
+	/* Check for specified data format */
+	if (size < sizeof(union bhnd_nvram_ident))
 		return (EINVAL);
 
 	error = bhnd_nvram_identify(
-	    (const union bhnd_nvram_ident *)input->buffer, fmt);
+	    (const union bhnd_nvram_ident *)data, fmt);
 	if (error)
 		return (error);
 
 	/* Allocate backing buffer */
-	nvram->buf_len = input->size;
-	nvram->buf = malloc(input->size, M_BHND_NVRAM, M_NOWAIT);
+	nvram->buf_size = size;
+	nvram->buf = malloc(nvram->buf_size, M_BHND_NVRAM, M_NOWAIT);
 	if (nvram->buf == NULL)
 		return (ENOMEM);
-	memcpy(nvram->buf, input->buffer, input->size);
+	memcpy(nvram->buf, data, nvram->buf_size);
 
 	/* Fetch format-specific operation callbacks */
 	for (size_t i = 0; i < nitems(bhnd_nvram_ops_table); i++) {
@@ -211,17 +212,17 @@ bhnd_nvram_bufptr_valid(struct bhnd_nvram *nvram, const void *ptr,
 	if (p < nvram->buf)
 		goto failed;
 
-	if (nbytes > nvram->buf_len)
+	if (nbytes > nvram->buf_size)
 		goto failed;
 
-	if (p > nvram->buf + (nvram->buf_len - nbytes))
+	if (p > nvram->buf + (nvram->buf_size - nbytes))
 		goto failed;
 
 	return (true);
 	
 failed:
 	printf("NVRAM record not readable at %p+%#zx (base=%p, len=%zu)\n",
-	    p, nbytes, nvram->buf, nvram->buf_len);
+	    p, nbytes, nvram->buf, nvram->buf_size);
 	return (false);
 }
 
@@ -234,17 +235,17 @@ bhnd_nvram_init_bcm(struct bhnd_nvram *nvram)
 	uint8_t		 crc, valid;
 
 	/* Validate CRC */
-	if (nvram->buf_len < NVRAM_CRC_SKIP)
+	if (nvram->buf_size < NVRAM_CRC_SKIP)
 		return (EINVAL);
 
-	if (nvram->buf_len < sizeof(struct bhnd_nvram_header))
+	if (nvram->buf_size < sizeof(struct bhnd_nvram_header))
 		return (EINVAL);
 
 	cfg0 = ((struct bhnd_nvram_header *)nvram->buf)->cfg0;
 	valid = (cfg0 & NVRAM_CFG0_CRC_MASK) >> NVRAM_CFG0_CRC_SHIFT;
 
 	p = nvram->buf;
-	crc = bhnd_nvram_crc8(p + NVRAM_CRC_SKIP, nvram->buf_len-NVRAM_CRC_SKIP,
+	crc = bhnd_nvram_crc8(p + NVRAM_CRC_SKIP, nvram->buf_size-NVRAM_CRC_SKIP,
 	    BHND_NVRAM_CRC8_INITIAL);
 
 	if (crc != valid) {
@@ -297,7 +298,7 @@ bhnd_nvram_enum_vars_bcm(struct bhnd_nvram *nvram, bhnd_nvram_cb_enum_var cb,
 	pos = sizeof(struct bhnd_nvram_header);
 
 	/* Iterate over all variables in the backing buffer */
-	while (pos < nvram->buf_len) {
+	while (pos < nvram->buf_size) {
 		p = nvram->buf + pos;
 
 		/* EOF */
@@ -305,7 +306,7 @@ bhnd_nvram_enum_vars_bcm(struct bhnd_nvram *nvram, bhnd_nvram_cb_enum_var cb,
 			return (0);
 
 		/* Issue callback */
-		len = strnlen(p, nvram->buf_len - pos);
+		len = strnlen(p, nvram->buf_size - pos);
 		if ((error = cb(nvram, p, len, &stop, ctx)))
 			return (error);
 
@@ -316,7 +317,7 @@ bhnd_nvram_enum_vars_bcm(struct bhnd_nvram *nvram, bhnd_nvram_cb_enum_var cb,
 		pos += len;
 
 		/* Skip trailing NUL */
-		if (pos >= nvram->buf_len) {
+		if (pos >= nvram->buf_size) {
 			printf("warning: missing NVRAM termination record");
 			return (0);
 		}
@@ -346,7 +347,7 @@ bhnd_nvram_enum_vars_tlv(struct bhnd_nvram *nvram, bhnd_nvram_cb_enum_var cb,
 
 	/* Iterate over all TLV records in the backing buffer */
 	p = nvram->buf;
-	for (p = nvram->buf; (p - nvram->buf) < nvram->buf_len; p += rlen)
+	for (p = nvram->buf; (p - nvram->buf) < nvram->buf_size; p += rlen)
 	{
 		uint8_t type;
 		
