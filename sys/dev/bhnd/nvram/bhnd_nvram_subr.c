@@ -50,37 +50,52 @@ __FBSDID("$FreeBSD$");
  * Provides identification, decoding, and encoding of BHND NVRAM data.
  */
 
+typedef struct bhnd_nvram_ctx bhnd_nvram_ctx;
+
 static bool	bhnd_nvram_bufptr_valid(struct bhnd_nvram *nvram,
 		    const void *ptr, size_t nbytes);
 
+#if 0
 static int	bhnd_nvram_parse_env(struct bhnd_nvram *nvram, const char *env,
 		    size_t len, const char **key, size_t *key_len,
 		    const char **val, size_t *val_len);
+#endif
 
+/* NVRAM format-specific operations */
 typedef int	(*bhnd_nvram_op_init)(struct bhnd_nvram *nvram);
-typedef int	(*bhnd_nvram_cb_enum_var)(struct bhnd_nvram *nvram,
-		    const char *env, size_t len, bool *stop, void *ctx);
-typedef int	(*bhnd_nvram_op_enum_vars)(struct bhnd_nvram *nvram,
-		    bhnd_nvram_cb_enum_var cb, void *ctx);
+typedef int	(*bhnd_nvram_enum_buf_cb)(struct bhnd_nvram *nvram,
+		    const char *env, size_t len, bool *stop,
+		    bhnd_nvram_ctx *ctx);
+typedef int	(*bhnd_nvram_enum_buf)(struct bhnd_nvram *nvram,
+		    bhnd_nvram_enum_buf_cb cb, bhnd_nvram_ctx *ctx);
 
+/* FMT_BCM ops */
 static int	bhnd_nvram_init_bcm(struct bhnd_nvram *nvram);
-static int	bhnd_nvram_enum_vars_bcm(struct bhnd_nvram *nvram,
-		    bhnd_nvram_cb_enum_var cb, void *ctx);
+static int	bhnd_nvram_enum_buf_bcm(struct bhnd_nvram *nvram,
+		    bhnd_nvram_enum_buf_cb cb, bhnd_nvram_ctx *ctx);
 
+/* FMT_TLV ops */
 static int	bhnd_nvram_init_tlv(struct bhnd_nvram *nvram);
-static int	bhnd_nvram_enum_vars_tlv(struct bhnd_nvram *nvram,
-		    bhnd_nvram_cb_enum_var cb, void *ctx);
+static int	bhnd_nvram_enum_buf_tlv(struct bhnd_nvram *nvram,
+		    bhnd_nvram_enum_buf_cb cb, bhnd_nvram_ctx *ctx);
 
-/* Format-specific operations */
 struct bhnd_nvram_ops {
 	bhnd_nvram_format	fmt;		/**< nvram format */
 	bhnd_nvram_op_init	init;
-	bhnd_nvram_op_enum_vars	enum_vars;
+	bhnd_nvram_enum_buf	enum_buf;
 };
 
 static const struct bhnd_nvram_ops bhnd_nvram_ops_table[] = {
-	{ BHND_NVRAM_FMT_BCM, bhnd_nvram_init_bcm, bhnd_nvram_enum_vars_bcm },
-	{ BHND_NVRAM_FMT_TLV, bhnd_nvram_init_tlv, bhnd_nvram_enum_vars_tlv },
+	{ BHND_NVRAM_FMT_BCM, bhnd_nvram_init_bcm, bhnd_nvram_enum_buf_bcm },
+	{ BHND_NVRAM_FMT_TLV, bhnd_nvram_init_tlv, bhnd_nvram_enum_buf_tlv },
+};
+
+
+/* standard callback context */
+struct bhnd_nvram_ctx {
+	const uint8_t	*iobuf;
+	size_t		 iolen;
+	int		 ioerr;
 };
 
 #define	NVRAM_LOG(nvram, fmt, ...)	do {			\
@@ -124,20 +139,59 @@ bhnd_nvram_identify(const union bhnd_nvram_ident *ident,
 }
 
 static int
-bhnd_nvram_log_var(struct bhnd_nvram *nvram, const char *env, size_t len,
-    bool *stop, void *ctx)
+bhnd_nvram_find_bufvar_cb(struct bhnd_nvram *nvram, const char *env, size_t len,
+    bool *stop, bhnd_nvram_ctx *ctx)
 {
-	const char	*key, *val;
-	size_t		 key_len, val_len;
-	int		 error;
+	const char	*key;
+	size_t		 key_len;
 
-	error = bhnd_nvram_parse_env(nvram, env, len, &key, &key_len, &val,
-	    &val_len);
+	key = ctx->iobuf;
+	key_len = ctx->iolen;
+
+	// TODO: devpath aliases
+
+	/* Skip string comparison if len < strlen(key + '=') */
+	if (len < key_len + 1)
+		return (0);
+
+	/* Skip string comparison if delimiter isn't found at
+	 * expected position */
+	if (*(env + key_len) != '=')
+		return (0);
+
+	/* Check for match */
+	if (strncmp(env, key, key_len) == 0) {
+		/* Return matching value */
+		ctx->ioerr = 0;
+		ctx->iobuf = env + key_len + 1;
+		ctx->iolen = len - key_len - 1;
+
+		*stop = true;
+		return (0);
+	};
+
+	/* No match; continue enumeration */
+	return (0);
+}
+
+static int
+bhnd_nvram_find_var(struct bhnd_nvram *nvram, const char *name,
+    const char **value, size_t *len)
+{
+	bhnd_nvram_ctx	ctx;
+	int		error;
+
+	ctx.iobuf = name;
+	ctx.iolen = strlen(name);
+	ctx.ioerr = ENOENT;
+
+	error = nvram->ops->enum_buf(nvram, bhnd_nvram_find_bufvar_cb, &ctx);
 	if (error)
 		return (error);
 
-	NVRAM_LOG(nvram, "%.*s='%.*s'\n", key_len, key, val_len, val);
-	return (0);
+	*value = ctx.iobuf;
+	*len = ctx.iolen;
+	return (ctx.ioerr);
 }
 
 /**
@@ -204,7 +258,20 @@ bhnd_nvram_init(struct bhnd_nvram *nvram, device_t dev, const void *data,
 	}
 
 	// TODO
-	nvram->ops->enum_vars(nvram, bhnd_nvram_log_var, NULL);
+	const char *val;
+	size_t val_len;
+
+	if ((error = bhnd_nvram_find_var(nvram, "boardflags", &val, &val_len))) {
+		NVRAM_LOG(nvram, "boardflags not found: %d\n", error);
+	} else {
+		NVRAM_LOG(nvram, "got boardflags: %.*s\n", val_len, val);
+	}
+
+	if ((error = bhnd_nvram_find_var(nvram, "boardtype", &val, &val_len))) {
+		NVRAM_LOG(nvram, "boardtype not found: %d\n", error);
+	} else {
+		NVRAM_LOG(nvram, "got boardtype: %.*s\n", val_len, val);
+	}
 
 	return (0);
 }
@@ -266,6 +333,7 @@ bhnd_nvram_init_bcm(struct bhnd_nvram *nvram)
 	return (0);
 }
 
+#if 0
 /**
  * Parse a 'key=value' env string.
  */
@@ -293,10 +361,11 @@ bhnd_nvram_parse_env(struct bhnd_nvram *nvram, const char *env, size_t len,
 
 	return (0);
 }
+#endif
 
 static int
-bhnd_nvram_enum_vars_bcm(struct bhnd_nvram *nvram, bhnd_nvram_cb_enum_var cb,
-    void *ctx)
+bhnd_nvram_enum_buf_bcm(struct bhnd_nvram *nvram, bhnd_nvram_enum_buf_cb cb,
+    bhnd_nvram_ctx *ctx)
 {
 	const char	*p;
 	size_t		 pos, len;
@@ -346,8 +415,8 @@ bhnd_nvram_init_tlv(struct bhnd_nvram *nvram)
 }
 
 static int
-bhnd_nvram_enum_vars_tlv(struct bhnd_nvram *nvram, bhnd_nvram_cb_enum_var cb,
-    void *ctx)
+bhnd_nvram_enum_buf_tlv(struct bhnd_nvram *nvram, bhnd_nvram_enum_buf_cb cb,
+    bhnd_nvram_ctx *ctx)
 {
 	const uint8_t	*p, *env;
 	size_t		 env_len, rlen;
