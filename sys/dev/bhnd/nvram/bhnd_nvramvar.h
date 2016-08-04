@@ -101,6 +101,7 @@ struct bhnd_nvram_idx {
 	uint8_t		val_len;	/**< value length */
 };
 
+#define	BHND_NVRAM_IDX_VAR_THRESH	15		/**< index is generated if minimum variable count is met */
 #define	BHND_NVRAM_IDX_OFFSET_MAX	UINT16_MAX	/**< maximum indexable offset */
 #define	BHND_NVRAM_IDX_LEN_MAX		UINT8_MAX	/**< maximum indexable key/value length */
 

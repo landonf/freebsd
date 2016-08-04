@@ -369,6 +369,10 @@ bhnd_nvram_generate_index(struct bhnd_nvram *nvram)
 	/* Save record count */
 	nvram->num_buf_vars = num_records;
 
+	/* Skip generating variable index if threshold is not met */
+	if (nvram->num_buf_vars < BHND_NVRAM_IDX_VAR_THRESH)
+		return (0);
+
 	/* Allocate and populate variable index */
 	idx_bytes = sizeof(nvram->idx[0]) * nvram->num_buf_vars;
 	nvram->idx = malloc(idx_bytes, M_BHND_NVRAM, M_NOWAIT);
@@ -378,7 +382,7 @@ bhnd_nvram_generate_index(struct bhnd_nvram *nvram)
 		goto bad_index;
 	}
 
-	if (bootverbose || /* TODO */ 1) {
+	if (bootverbose) {
 		NVRAM_LOG(nvram, "allocated %zu byte index for %zu variables "
 		    "in %zu bytes\n", idx_bytes, nvram->num_buf_vars,
 		    nvram->buf_size);
@@ -443,8 +447,10 @@ bhnd_nvram_generate_index(struct bhnd_nvram *nvram)
 bad_index:
 	/* Fall back on non-indexed access */
 	NVRAM_LOG(nvram, "reverting to non-indexed variable lookup\n");
-	free(nvram->idx, M_BHND_NVRAM);
-	nvram->idx = NULL;
+	if (nvram->idx != NULL) {
+		free(nvram->idx, M_BHND_NVRAM);
+		nvram->idx = NULL;
+	}
 
 	return (0);
 }
@@ -916,5 +922,7 @@ bhnd_nvram_enum_buf_txt(struct bhnd_nvram *nvram, const char **env,
 void
 bhnd_nvram_fini(struct bhnd_nvram *nvram)
 {
+	if (nvram->idx != NULL)
+		free(nvram->idx, M_BHND_NVRAM);
 	free(nvram->buf, M_BHND_NVRAM);
 }
