@@ -158,6 +158,21 @@ bhnd_nvram_identify(const union bhnd_nvram_ident *ident,
 	}
 }
 
+/**
+ * Fetch a string pointer to @p name's value, if any.
+ * 
+ * @param	nvram		The NVRAM parser state.
+ * @param	name		The NVRAM variable name.
+ * @param[out]	value		On success, a pointer to the variable's value
+ *				string. The string may not be NUL terminated.
+ * @param[out]	value_len	On success, the length of @p value, not
+ *				including a terminating NUL (if any exists).
+ *
+ * @retval 0		success
+ * @retval ENOENT	The requested variable was not found.
+ * @retval non-zero	If reading @p name otherwise fails, a regular unix
+ *			error code will be returned.
+ */
 static int
 bhnd_nvram_find_var(struct bhnd_nvram *nvram, const char *name,
     const char **value, size_t *value_len)
@@ -211,8 +226,17 @@ bhnd_nvram_find_var(struct bhnd_nvram *nvram, const char *name,
 	return (ENOENT);
 }
 
+/**
+ * Generate all indices for the NVRAM data backing @p nvram.
+ * 
+ * @param	nvram		The NVRAM parser state.
+ *
+ * @retval 0		success
+ * @retval non-zero	If indexing @p nvram fails, a regular unix
+ *			error code will be returned.
+ */
 static int
-bhnd_nvram_init_devpaths(struct bhnd_nvram *nvram)
+bhnd_nvram_generate_index(struct bhnd_nvram *nvram)
 {
 	bhnd_nvram_enum_buf	 enum_fn;
 	const char		*key, *val;
@@ -304,6 +328,10 @@ bhnd_nvram_init(struct bhnd_nvram *nvram, device_t dev, const void *data,
 {
 	int error;
 
+	/* Initialize NVRAM state */
+	memset(nvram, 0, sizeof(*nvram));
+	nvram->dev = dev;
+
 	/* Check for specified data format */
 	if (size < sizeof(union bhnd_nvram_ident))
 		return (EINVAL);
@@ -339,9 +367,15 @@ bhnd_nvram_init(struct bhnd_nvram *nvram, device_t dev, const void *data,
 	if ((error = nvram->ops->init(nvram)))
 		goto cleanup;
 
-	/* Parse device path aliases */
-	if ((error = bhnd_nvram_init_devpaths(nvram)))
+	/* Generate all indices */
+	if ((error = bhnd_nvram_generate_index(nvram)))
 		goto cleanup;
+
+	// TODO
+	const char *val;
+	size_t val_len;
+	if ((error = bhnd_nvram_find_var(nvram, "boardtype", &val, &val_len)))
+		return (error);
 
 	return (0);
 

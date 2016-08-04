@@ -74,7 +74,12 @@ struct bhnd_nvram_header {
 	uint32_t memc_ncdl;	/**< sdram_ncdl */
 };
 
-/** BCM/TLV NVRAM identification */
+/** 
+ * BCM/TLV/BTXT NVRAM format identification.
+ * 
+ * To perform identification of the NVRAM format using bhnd_nvram_identify(),
+ * read `sizeof(bhnd_nvram_indent)` bytes from the head of the NVRAM data.
+ */
 union bhnd_nvram_ident {
 	struct bhnd_nvram_header	bcm;
 	char				btxt[4];
@@ -85,14 +90,28 @@ union bhnd_nvram_ident {
 	} tlv;
 };
 
+/**
+ * NVRAM index record.
+ * 
+ * Provides a compact index into the backing NVRAM buffer.
+ */
+struct bhnd_nvram_idx {
+	uint16_t	env_offset;	/**< offset to env string */
+	uint16_t	env_len;	/**< env length */
+};
+
 /** bhnd nvram parser instance state */
 struct bhnd_nvram {
 	device_t			 dev;		/**< parent device, or NULL */
 	const struct bhnd_nvram_ops	*ops;
 	uint8_t				*buf;		/**< nvram data */
 	size_t				 buf_size;
+
+	struct bhnd_nvram_idx		*idx;		/**< sorted key index into nvram buf */
+	size_t				 num_idx;	/**< number of index records */
+
 	char				**devpaths;	/**< device path aliases */
-	size_t				 num_devpaths;
+	size_t				 num_devpaths;	/**< number of device path alias records */
 };
 
 
