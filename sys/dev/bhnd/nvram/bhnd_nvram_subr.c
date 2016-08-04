@@ -53,11 +53,17 @@ __FBSDID("$FreeBSD$");
 
 typedef struct bhnd_nvram_ctx bhnd_nvram_ctx;
 
-static bool	bhnd_nvram_bufptr_valid(struct bhnd_nvram *nvram,
-		    const void *ptr, size_t nbytes);
-
 static int	bhnd_nvram_find_var(struct bhnd_nvram *nvram, const char *name,
 		    const char **value, size_t *value_len);
+
+static int	bhnd_nvram_keycmp(const char *lhs, size_t lhs_len,
+		    const char *rhs, size_t rhs_len);
+static int	bhnd_nvram_sort_idx(void *ctx, const void *lhs,
+		    const void *rhs);
+static int	bhnd_nvram_generate_index(struct bhnd_nvram *nvram);
+
+static bool	bhnd_nvram_bufptr_valid(struct bhnd_nvram *nvram,
+		    const void *ptr, size_t nbytes);
 
 static int	bhnd_nvram_parse_env(struct bhnd_nvram *nvram, const char *env,
 		    size_t len, const char **key, size_t *key_len,
@@ -226,6 +232,48 @@ bhnd_nvram_find_var(struct bhnd_nvram *nvram, const char *name,
 	return (ENOENT);
 }
 
+/*
+ * An strcmp()-compatible  lexical comparison implementation that
+ * handles non-NUL-terminated strings.
+ */
+static int
+bhnd_nvram_keycmp(const char *lhs, size_t lhs_len, const char *rhs,
+    size_t rhs_len)
+{
+	int order;
+
+	if ((order = strncmp(lhs, rhs, ulmin(lhs_len, rhs_len))) == 0)
+		return (order);
+
+	if (lhs_len < rhs_len)
+		return (-1);
+	else if (lhs_len > rhs_len)
+		return (1);
+	else
+		return (0);
+}
+
+/* bhnd_nvram_idx qsort_r sort function */
+static int
+bhnd_nvram_sort_idx(void *ctx, const void *lhs, const void *rhs)
+{
+	struct bhnd_nvram		*nvram;
+	const struct bhnd_nvram_idx	*l_idx, *r_idx;
+	const char			*l_str, *r_str;
+
+	nvram = ctx;
+	l_idx = lhs;
+	r_idx = rhs;
+
+	/* Fetch string pointers */
+	l_str = (char *)(nvram->buf + l_idx->env_offset);
+	r_str = (char *)(nvram->buf + l_idx->env_offset);
+
+	/* Perform comparison */
+	return (bhnd_nvram_keycmp(l_str, l_idx->key_len, r_str,
+	    r_idx->key_len));
+}
+
 /**
  * Generate all indices for the NVRAM data backing @p nvram.
  * 
@@ -243,13 +291,16 @@ bhnd_nvram_generate_index(struct bhnd_nvram *nvram)
 	const char		*env;
 	const uint8_t		*p;
 	size_t			 env_len;
+	size_t			 idx_bytes;
 	size_t			 key_len, val_len;
+	size_t			 num_records;
 	int			 error;
 
 	enum_fn = nvram->ops->enum_buf;
-	p = NULL;
+	num_records = 0;
 
 	/* Parse and register all device path aliases */
+	p = NULL;
 	while ((error = enum_fn(nvram, &env, &env_len, p, &p)) == 0) {
 		char	*eptr;
 		char	 suffix[NVRAM_KEY_MAX+1];
@@ -258,7 +309,9 @@ bhnd_nvram_generate_index(struct bhnd_nvram *nvram)
 
 		/* Hit EOF */
 		if (env == NULL)
-			return (0);
+			break;
+
+		num_records++;
 
 		/* Skip string comparison if env_len < strlen(devpath) */
 		if (env_len < NVRAM_DEVPATH_LEN)
@@ -301,6 +354,90 @@ bhnd_nvram_generate_index(struct bhnd_nvram *nvram)
 		NVRAM_LOG(nvram, "got devpath %lu = '%.*s'\n", index, val_len,
 		    val);
 	}
+
+	if (error)
+		return (error);
+
+	/* Save record count */
+	nvram->num_buf_vars = num_records;
+
+	/* Allocate and populate variable index */
+	idx_bytes = sizeof(nvram->idx[0]) * nvram->num_buf_vars;
+	nvram->idx = malloc(idx_bytes, M_BHND_NVRAM, M_NOWAIT);
+	if (nvram->idx == NULL) {
+		NVRAM_LOG(nvram, "error allocating %zu byte index\n",
+		    idx_bytes);
+		goto bad_index;
+	}
+
+	if (bootverbose || /* TODO */ 1) {
+		NVRAM_LOG(nvram, "allocated %zu byte index for %zu variables "
+		    "in %zu bytes\n", idx_bytes, nvram->num_buf_vars,
+		    nvram->buf_size);
+	}
+
+	p = NULL;
+	for (size_t i = 0; i < num_records; i++) {
+		struct bhnd_nvram_idx	*idx;
+		size_t			 env_offset;
+		size_t			 key_len, val_len;
+
+		/* Fetch next record */
+		if ((error = enum_fn(nvram, &env, &env_len, p, &p)))
+			return (error);
+
+		/* Early EOF */
+		if (env == NULL) {
+			NVRAM_LOG(nvram, "indexing failed, expected "
+			    "%zu records (got %zu)\n", num_records, i+1);
+			goto bad_index;
+		}
+	
+		/* Calculate env offset */
+		env_offset = (const uint8_t *)env - (const uint8_t *)nvram->buf;
+		if (env_offset > BHND_NVRAM_IDX_OFFSET_MAX) {
+			NVRAM_LOG(nvram, "'%.*s' offset %#zx exceeds maximum "
+			    "indexable value\n", env_len, env, env_offset);
+			goto bad_index;
+		}
+
+		/* Split key and value */
+		error = bhnd_nvram_parse_env(nvram, env, env_len, &key,
+		    &key_len, &val, &val_len);
+		if (error)
+			return (error);
+
+		if (key_len > BHND_NVRAM_IDX_LEN_MAX) {
+			NVRAM_LOG(nvram, "key length %#zx at %#zx exceeds "
+			"maximum indexable value\n", key_len, env_offset);
+			goto bad_index;
+		}
+
+		if (val_len > BHND_NVRAM_IDX_LEN_MAX) {
+			NVRAM_LOG(nvram, "value length %#zx for key '%.*s' "
+			    "exceeds maximum indexable value\n", val_len,
+			    key_len, key);
+			goto bad_index;
+		}
+
+		idx = &nvram->idx[i];
+		idx->env_offset = env_offset;
+		idx->key_len = key_len;
+		idx->val_len = val_len;
+	}
+
+	/* Sort the index table */
+	qsort_r(nvram->idx, nvram->num_buf_vars, sizeof(nvram->idx[0]), nvram,
+	    bhnd_nvram_sort_idx);
+
+	return (0);
+
+bad_index:
+	/* Fall back on non-indexed access */
+	NVRAM_LOG(nvram, "reverting to non-indexed variable lookup\n");
+	free(nvram->idx, M_BHND_NVRAM);
+	nvram->idx = NULL;
+
 	return (0);
 }
 

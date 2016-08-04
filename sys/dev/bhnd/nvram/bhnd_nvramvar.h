@@ -97,8 +97,12 @@ union bhnd_nvram_ident {
  */
 struct bhnd_nvram_idx {
 	uint16_t	env_offset;	/**< offset to env string */
-	uint16_t	env_len;	/**< env length */
+	uint8_t		key_len;	/**< key length */
+	uint8_t		val_len;	/**< value length */
 };
+
+#define	BHND_NVRAM_IDX_OFFSET_MAX	UINT16_MAX	/**< maximum indexable offset */
+#define	BHND_NVRAM_IDX_LEN_MAX		UINT8_MAX	/**< maximum indexable key/value length */
 
 /** bhnd nvram parser instance state */
 struct bhnd_nvram {
@@ -106,9 +110,9 @@ struct bhnd_nvram {
 	const struct bhnd_nvram_ops	*ops;
 	uint8_t				*buf;		/**< nvram data */
 	size_t				 buf_size;
+	size_t				 num_buf_vars;	/**< number of records in @p buf (0 if not yet calculated) */
 
 	struct bhnd_nvram_idx		*idx;		/**< sorted key index into nvram buf */
-	size_t				 num_idx;	/**< number of index records */
 
 	char				**devpaths;	/**< device path aliases */
 	size_t				 num_devpaths;	/**< number of device path alias records */
