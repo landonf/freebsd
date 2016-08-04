@@ -52,9 +52,10 @@ __FBSDID("$FreeBSD$");
 
 static bool	bhnd_nvram_bufptr_valid(struct bhnd_nvram *nvram,
 		    const void *ptr, size_t nbytes);
-static int	bhnd_nvram_parse_env(const char *env, size_t len,
-		    const char **key, size_t *key_len, const char **val,
-		    size_t *val_len);
+
+static int	bhnd_nvram_parse_env(struct bhnd_nvram *nvram, const char *env,
+		    size_t len, const char **key, size_t *key_len,
+		    const char **val, size_t *val_len);
 
 typedef int	(*bhnd_nvram_op_init)(struct bhnd_nvram *nvram);
 typedef int	(*bhnd_nvram_cb_enum_var)(struct bhnd_nvram *nvram,
@@ -81,6 +82,13 @@ static const struct bhnd_nvram_ops bhnd_nvram_ops_table[] = {
 	{ BHND_NVRAM_FMT_BCM, bhnd_nvram_init_bcm, bhnd_nvram_enum_vars_bcm },
 	{ BHND_NVRAM_FMT_TLV, bhnd_nvram_init_tlv, bhnd_nvram_enum_vars_tlv },
 };
+
+#define	NVRAM_LOG(nvram, fmt, ...)	do {			\
+	if (nvram->dev != NULL)					\
+		device_printf(nvram->dev, fmt, ##__VA_ARGS__);	\
+	else							\
+		printf("bhnd_nvram: " fmt, ##__VA_ARGS__);	\
+} while (0)
 
 /**
  * Identify @p ident.
@@ -123,11 +131,12 @@ bhnd_nvram_log_var(struct bhnd_nvram *nvram, const char *env, size_t len,
 	size_t		 key_len, val_len;
 	int		 error;
 
-	error = bhnd_nvram_parse_env(env, len, &key, &key_len, &val, &val_len);
+	error = bhnd_nvram_parse_env(nvram, env, len, &key, &key_len, &val,
+	    &val_len);
 	if (error)
 		return (error);
-	
-	printf("%.*s='%.*s'\n", key_len, key, val_len, val);
+
+	NVRAM_LOG(nvram, "%.*s='%.*s'\n", key_len, key, val_len, val);
 	return (0);
 }
 
@@ -139,7 +148,8 @@ bhnd_nvram_log_var(struct bhnd_nvram *nvram, const char *env, size_t len,
  * NVRAM parser, and @p input may be safely deallocated.
  * 
  * @param[out] nvram On success, will be initialized with shadow of the NVRAM
- * data. 
+ * data.
+ * @param dev The parser's parent device, or NULL if none.
  * @param data NVRAM data to be parsed.
  * @param size Size of @p data.
  * @param fmt Required format of @p input.
@@ -149,8 +159,8 @@ bhnd_nvram_log_var(struct bhnd_nvram *nvram, const char *env, size_t len,
  * @retval EINVAL If @p input parsing fails.
  */
 int
-bhnd_nvram_init(struct bhnd_nvram *nvram, const void *data, size_t size,
-    bhnd_nvram_format fmt)
+bhnd_nvram_init(struct bhnd_nvram *nvram, device_t dev, const void *data,
+    size_t size, bhnd_nvram_format fmt)
 {
 	int error;
 
@@ -221,8 +231,8 @@ bhnd_nvram_bufptr_valid(struct bhnd_nvram *nvram, const void *ptr,
 	return (true);
 	
 failed:
-	printf("NVRAM record not readable at %p+%#zx (base=%p, len=%zu)\n",
-	    p, nbytes, nvram->buf, nvram->buf_size);
+	NVRAM_LOG(nvram, "NVRAM record not readable at %p+%#zx (base=%p, "
+	    "len=%zu)\n", p, nbytes, nvram->buf, nvram->buf_size);
 	return (false);
 }
 
@@ -249,8 +259,8 @@ bhnd_nvram_init_bcm(struct bhnd_nvram *nvram)
 	    BHND_NVRAM_CRC8_INITIAL);
 
 	if (crc != valid) {
-		printf("warning: NVRAM CRC error (crc=%#hhx, expected=%hhx)\n",
-		    crc, valid);
+		NVRAM_LOG(nvram, "warning: NVRAM CRC error (crc=%#hhx, "
+		    "expected=%hhx)\n", crc, valid);
 	}
 
 	return (0);
@@ -260,14 +270,14 @@ bhnd_nvram_init_bcm(struct bhnd_nvram *nvram)
  * Parse a 'key=value' env string.
  */
 static int
-bhnd_nvram_parse_env(const char *env, size_t len, const char **key,
-    size_t *key_len, const char **val, size_t *val_len)
+bhnd_nvram_parse_env(struct bhnd_nvram *nvram, const char *env, size_t len,
+    const char **key, size_t *key_len, const char **val, size_t *val_len)
 {
 	const char	*p;
 
 	/* Key */
 	if ((p = memchr(env, '=', len)) == NULL) {
-		printf("missing delim in '%.*s'\n", len, env);
+		NVRAM_LOG(nvram, "missing delim in '%.*s'\n", len, env);
 		return (EINVAL);
 	}
 
@@ -318,7 +328,8 @@ bhnd_nvram_enum_vars_bcm(struct bhnd_nvram *nvram, bhnd_nvram_cb_enum_var cb,
 
 		/* Skip trailing NUL */
 		if (pos >= nvram->buf_size) {
-			printf("warning: missing NVRAM termination record");
+			NVRAM_LOG(nvram, "warning: missing NVRAM termination "
+			    "record");
 			return (0);
 		}
 		pos++;
@@ -379,7 +390,8 @@ bhnd_nvram_enum_vars_tlv(struct bhnd_nvram *nvram, bhnd_nvram_cb_enum_var cb,
 
 		/* Error on non-env records */
 		if (type != NVRAM_TLV_TYPE_ENV) {
-			printf("unsupported NVRAM TLV tag: %#hhx\n", type);
+			NVRAM_LOG(nvram, "unsupported NVRAM TLV tag: %#hhx\n",
+			    type);
 			return (EINVAL);
 		}
 

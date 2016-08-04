@@ -175,7 +175,7 @@ bhnd_nvram_cfe_attach(device_t dev)
 	    (uintmax_t)size);
 
 	/* Initialize NVRAM parser */
-	if ((error = bhnd_nvram_init(&sc->nvram, buffer, size, fmt))) {
+	if ((error = bhnd_nvram_init(&sc->nvram, dev, buffer, size, fmt))) {
 		device_printf(dev, "%s: parse failed: %d\n", devname, error);
 		goto done;
 	}
