@@ -86,6 +86,8 @@ struct bhnd_nvram {
 	const struct bhnd_nvram_ops	*ops;
 	uint8_t				*buf;		/**< nvram data */
 	size_t				 buf_size;
+	char				**devpaths;	/**< device path aliases */
+	size_t				 num_devpaths;
 };
 
 

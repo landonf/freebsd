@@ -32,6 +32,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/bus.h>
+#include <sys/ctype.h>
 #include <sys/endian.h>
 #include <sys/rman.h>
 #include <sys/systm.h>
@@ -58,11 +59,9 @@ static bool	bhnd_nvram_bufptr_valid(struct bhnd_nvram *nvram,
 static int	bhnd_nvram_find_var(struct bhnd_nvram *nvram, const char *name,
 		    const char **value, size_t *value_len);
 
-#if 0
 static int	bhnd_nvram_parse_env(struct bhnd_nvram *nvram, const char *env,
 		    size_t len, const char **key, size_t *key_len,
 		    const char **val, size_t *val_len);
-#endif
 
 /* NVRAM format-specific operations */
 typedef int	(*bhnd_nvram_op_init)(struct bhnd_nvram *nvram);
@@ -197,6 +196,75 @@ bhnd_nvram_find_var(struct bhnd_nvram *nvram, const char *name,
 	return (ENOENT);
 }
 
+static int
+bhnd_nvram_init_devpaths(struct bhnd_nvram *nvram)
+{
+	bhnd_nvram_enum_buf	 enum_fn;
+	const char		*key, *val;
+	const char		*env;
+	const uint8_t		*p;
+	size_t			 env_len;
+	size_t			 key_len, val_len;
+	int			 error;
+
+	enum_fn = nvram->ops->enum_buf;
+	p = NULL;
+
+	/* Parse and register all device path aliases */
+	while ((error = enum_fn(nvram, &env, &env_len, p, &p)) == 0) {
+		char	*eptr;
+		char	 suffix[NVRAM_KEY_MAX+1];
+		size_t	 suffix_len;
+		u_long	 index;
+
+		/* Hit EOF */
+		if (env == NULL)
+			return (0);
+
+		/* Skip string comparison if env_len < strlen(devpath) */
+		if (env_len < NVRAM_DEVPATH_LEN)
+			continue;
+
+		/* Check for devpath prefix */
+		if (strncmp(env, NVRAM_DEVPATH_STR, NVRAM_DEVPATH_LEN) != 0)
+			continue;
+
+		/* Split key and value */
+		error = bhnd_nvram_parse_env(nvram, env, env_len, &key,
+		    &key_len, &val, &val_len);
+		if (error)
+			return (error);
+
+		/* NUL terminate the devpath's suffix */
+		if (key_len >= sizeof(suffix)) {
+			NVRAM_LOG(nvram, "variable '%.*s' exceeds "
+			    "NVRAM_KEY_MAX, skipping devpath parsing\n",
+			    key_len, key);
+			continue;
+		} else {
+			suffix_len = key_len - NVRAM_DEVPATH_LEN;
+			if (suffix_len == 0)
+				continue;
+
+			strcpy(suffix, key+NVRAM_DEVPATH_LEN);
+			suffix[suffix_len] = '\0';
+		}
+
+		/* Parse the index value */
+		index = strtoul(suffix, &eptr, 10);
+		if (eptr == suffix || *eptr != '\0') {
+			NVRAM_LOG(nvram, "invalid devpath variable '%.*s'\n",
+			    key_len, key);
+			continue;
+		}
+
+		// TODO: register alias
+		NVRAM_LOG(nvram, "got devpath %lu = '%.*s'\n", index, val_len,
+		    val);
+	}
+	return (0);
+}
+
 /**
  * Identify the NVRAM format at @p offset within @p r, verify the CRC (if applicable),
  * and allocate a local shadow copy of the NVRAM data.
@@ -249,34 +317,22 @@ bhnd_nvram_init(struct bhnd_nvram *nvram, device_t dev, const void *data,
 		break;
 	}
 
-	if (nvram->ops == NULL) {
-		free(nvram->buf, M_BHND_NVRAM);
-		return (EINVAL);
-	}
+	if (nvram->ops == NULL)
+		goto cleanup;
 
 	/* Perform format-specific initialization */
-	if ((error = nvram->ops->init(nvram))) {
-		free(nvram->buf, M_BHND_NVRAM);
-		return (error);
-	}
+	if ((error = nvram->ops->init(nvram)))
+		goto cleanup;
 
-	// TODO
-	const char *val;
-	size_t val_len;
-
-	if ((error = bhnd_nvram_find_var(nvram, "boardflags", &val, &val_len))) {
-		NVRAM_LOG(nvram, "boardflags not found: %d\n", error);
-	} else {
-		NVRAM_LOG(nvram, "got boardflags: %.*s\n", val_len, val);
-	}
-
-	if ((error = bhnd_nvram_find_var(nvram, "boardtype", &val, &val_len))) {
-		NVRAM_LOG(nvram, "boardtype not found: %d\n", error);
-	} else {
-		NVRAM_LOG(nvram, "got boardtype: %.*s\n", val_len, val);
-	}
+	/* Parse device path aliases */
+	if ((error = bhnd_nvram_init_devpaths(nvram)))
+		goto cleanup;
 
 	return (0);
+
+cleanup:
+	free(nvram->buf, M_BHND_NVRAM);
+	return (error);
 }
 
 /**
@@ -336,7 +392,6 @@ bhnd_nvram_init_bcm(struct bhnd_nvram *nvram)
 	return (0);
 }
 
-#if 0
 /**
  * Parse a 'key=value' env string.
  */
@@ -364,7 +419,6 @@ bhnd_nvram_parse_env(struct bhnd_nvram *nvram, const char *env, size_t len,
 
 	return (0);
 }
-#endif
 
 static int
 bhnd_nvram_enum_buf_bcm(struct bhnd_nvram *nvram, const char **env,

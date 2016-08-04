@@ -35,6 +35,10 @@
 #define	NVRAM_KEY_MAX	64	/** maximum key length (not incl. NUL) */
 #define	NVRAM_VAL_MAX	255	/** maximum value length (not incl. NUL) */
 
+#define	NVRAM_DEVPATH_STR	"devpath"	/**< name prefix of device path
+						  *  aliases */
+#define	NVRAM_DEVPATH_LEN	(sizeof(NVRAM_DEVPATH_STR) - 1)
+
 /* NVRAM header fields */
 #define	NVRAM_MAGIC			0x48534C46	/* 'FLSH' */
 #define	NVRAM_VERSION			1
