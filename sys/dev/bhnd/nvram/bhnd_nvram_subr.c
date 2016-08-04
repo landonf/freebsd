@@ -63,7 +63,7 @@ static int	bhnd_nvram_sort_idx(void *ctx, const void *lhs,
 static int	bhnd_nvram_generate_index(struct bhnd_nvram *nvram);
 
 static bool	bhnd_nvram_bufptr_valid(struct bhnd_nvram *nvram,
-		    const void *ptr, size_t nbytes);
+		    const void *ptr, size_t nbytes, bool log_error);
 
 static int	bhnd_nvram_parse_env(struct bhnd_nvram *nvram, const char *env,
 		    size_t len, const char **key, size_t *key_len,
@@ -527,7 +527,7 @@ cleanup:
  */
 static bool
 bhnd_nvram_bufptr_valid(struct bhnd_nvram *nvram, const void *ptr,
-    size_t nbytes)
+    size_t nbytes, bool log_error)
 {
 	const uint8_t *p = ptr;
 
@@ -537,14 +537,16 @@ bhnd_nvram_bufptr_valid(struct bhnd_nvram *nvram, const void *ptr,
 	if (nbytes > nvram->buf_size)
 		goto failed;
 
-	if (p > nvram->buf + (nvram->buf_size - nbytes))
+	if (p >= nvram->buf + (nvram->buf_size - nbytes))
 		goto failed;
 
 	return (true);
 	
 failed:
-	NVRAM_LOG(nvram, "NVRAM record not readable at %p+%#zx (base=%p, "
-	    "len=%zu)\n", p, nbytes, nvram->buf, nvram->buf_size);
+	if (log_error)
+		NVRAM_LOG(nvram, "NVRAM record not readable at %p+%#zx "
+		    "(base=%p, len=%zu)\n", p, nbytes, nvram->buf,
+		    nvram->buf_size);
 	return (false);
 }
 
@@ -614,7 +616,7 @@ bhnd_nvram_enum_buf_bcm(struct bhnd_nvram *nvram, const char **env,
 	if (p == NULL)
 		p = nvram->buf + sizeof(struct bhnd_nvram_header);
 
-	if (!bhnd_nvram_bufptr_valid(nvram, p, 1))
+	if (!bhnd_nvram_bufptr_valid(nvram, p, 1, true))
 		return (EINVAL);
 
 	/* EOF */
@@ -631,7 +633,7 @@ bhnd_nvram_enum_buf_bcm(struct bhnd_nvram *nvram, const char **env,
 
 	/* Advance to next entry and skip terminating NUL */
 	p += *len;
-	if (bhnd_nvram_bufptr_valid(nvram, p, 1)) {
+	if (bhnd_nvram_bufptr_valid(nvram, p, 1, false)) {
 		p++;
 	} else {
 		NVRAM_LOG(nvram, "warning: missing NVRAM termination record");
@@ -659,7 +661,7 @@ bhnd_nvram_enum_buf_tlv(struct bhnd_nvram *nvram, const char **env,
 		p = nvram->buf;
 
 	/* Fetch type */
-	if (!bhnd_nvram_bufptr_valid(nvram, p, 1))
+	if (!bhnd_nvram_bufptr_valid(nvram, p, 1, true))
 		return (EINVAL);
 
 	type = *p;
@@ -675,20 +677,20 @@ bhnd_nvram_enum_buf_tlv(struct bhnd_nvram *nvram, const char **env,
 	/* Determine record length */
 	p++;
 	if (type & NVRAM_TLV_TF_U8_LEN) {
-		if (!bhnd_nvram_bufptr_valid(nvram, p, 1))
+		if (!bhnd_nvram_bufptr_valid(nvram, p, 1, true))
 			return (EINVAL);
 	
 		rlen = *p;
 		p += 1;
 	} else {
-		if (!bhnd_nvram_bufptr_valid(nvram, p, 2))
+		if (!bhnd_nvram_bufptr_valid(nvram, p, 2, true))
 			return (EINVAL);
 		rlen = (p[0] << 8) | (p[1]);
 		p += 2;
 	}
 
 	/* Verify record readability */
-	if (!bhnd_nvram_bufptr_valid(nvram, p, rlen))
+	if (!bhnd_nvram_bufptr_valid(nvram, p, rlen, true))
 		return (EINVAL);
 
 	/* Error on non-env records */
@@ -728,7 +730,7 @@ bhnd_nvram_txt_seek_eol(struct bhnd_nvram *nvram, const uint8_t *p)
 		switch (*p) {
 		case '\r':
 			/* \r\n */
-			if (bhnd_nvram_bufptr_valid(nvram, p, 1)) {
+			if (bhnd_nvram_bufptr_valid(nvram, p, 1, false)) {
 				if (*(p+1) == '\n')
 					p++;
 			}
@@ -781,7 +783,7 @@ bhnd_nvram_enum_buf_txt(struct bhnd_nvram *nvram, const char **env,
 	p = bhnd_nvram_txt_seek_nextline(nvram, p);
 
 	/* EOF? */
-	if (!bhnd_nvram_bufptr_valid(nvram, p, 1)) {
+	if (!bhnd_nvram_bufptr_valid(nvram, p, 1, false)) {
 		*env = NULL;
 		*len = 0;
 		*next = p;
@@ -799,7 +801,7 @@ bhnd_nvram_enum_buf_txt(struct bhnd_nvram *nvram, const char **env,
 
 	/* Calculate line length, check for EOF */
 	line_len = p - startp;
-	if (!bhnd_nvram_bufptr_valid(nvram, p, 1)) {
+	if (!bhnd_nvram_bufptr_valid(nvram, p, 1, false)) {
 		*env = NULL;
 		*len = 0;
 		*next = p;
