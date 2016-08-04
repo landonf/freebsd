@@ -84,9 +84,7 @@ union bhnd_nvram_ident {
 struct bhnd_nvram {
 	device_t			 dev;		/**< parent device, or NULL */
 	const struct bhnd_nvram_ops	*ops;
-
-	struct bhnd_nvram_header	 header;	/**< header (if BHND_NVRAM_FMT_BCM) */
-	uint8_t				*buf;		/**< nvram shadow */
+	uint8_t				*buf;		/**< nvram data */
 	size_t				 buf_size;
 };
 
