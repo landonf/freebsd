@@ -61,6 +61,9 @@ static int	bhnd_nvram_keycmp(const char *lhs, size_t lhs_len,
 static int	bhnd_nvram_sort_idx(void *ctx, const void *lhs,
 		    const void *rhs);
 static int	bhnd_nvram_generate_index(struct bhnd_nvram *nvram);
+static int	bhnd_nvram_index_lookup(struct bhnd_nvram *nvram,
+		    const char *name, const char **env, size_t *len,
+		    const char **value, size_t *value_len);
 
 static bool	bhnd_nvram_bufptr_valid(struct bhnd_nvram *nvram,
 		    const void *ptr, size_t nbytes, bool log_error);
@@ -192,15 +195,20 @@ bhnd_nvram_find_var(struct bhnd_nvram *nvram, const char *name,
 
 	enum_fn = nvram->ops->enum_buf;
 	name_len = strlen(name);
-	p = NULL;
+
+	// TODO: search dirty records
+
+	/* Prefer the index */
+	if (nvram->idx != NULL)
+		return (bhnd_nvram_index_lookup(nvram, name, &env, &env_len,
+		    value, value_len));
 
 	/* Iterate over all records */
+	p = NULL;
 	while ((error = enum_fn(nvram, &env, &env_len, p, &p)) == 0) {
 		/* Hit EOF, not found */
 		if (env == NULL)
 			break;
-
-		// TODO: devpath alias matching
 
 		/* Skip string comparison if env_len < strlen(key + '=') */
 		if (env_len < name_len + 1)
@@ -242,15 +250,15 @@ bhnd_nvram_keycmp(const char *lhs, size_t lhs_len, const char *rhs,
 {
 	int order;
 
-	if ((order = strncmp(lhs, rhs, ulmin(lhs_len, rhs_len))) == 0)
-		return (order);
+	order = strncmp(lhs, rhs, ulmin(lhs_len, rhs_len));
+	if (order == 0) {
+		if (lhs_len < rhs_len)
+			order = -1;
+		else if (lhs_len > rhs_len)
+			order = 1;
+	}
 
-	if (lhs_len < rhs_len)
-		return (-1);
-	else if (lhs_len > rhs_len)
-		return (1);
-	else
-		return (0);
+	return (order);
 }
 
 /* bhnd_nvram_idx qsort_r sort function */
@@ -267,7 +275,7 @@ bhnd_nvram_sort_idx(void *ctx, const void *lhs, const void *rhs)
 
 	/* Fetch string pointers */
 	l_str = (char *)(nvram->buf + l_idx->env_offset);
-	r_str = (char *)(nvram->buf + l_idx->env_offset);
+	r_str = (char *)(nvram->buf + r_idx->env_offset);
 
 	/* Perform comparison */
 	return (bhnd_nvram_keycmp(l_str, l_idx->key_len, r_str,
@@ -277,7 +285,7 @@ bhnd_nvram_sort_idx(void *ctx, const void *lhs, const void *rhs)
 /**
  * Generate all indices for the NVRAM data backing @p nvram.
  * 
- * @param	nvram		The NVRAM parser state.
+ * @param nvram		The NVRAM parser state.
  *
  * @retval 0		success
  * @retval non-zero	If indexing @p nvram fails, a regular unix
@@ -513,6 +521,7 @@ bhnd_nvram_init(struct bhnd_nvram *nvram, device_t dev, const void *data,
 	size_t val_len;
 	if ((error = bhnd_nvram_find_var(nvram, "boardtype", &val, &val_len)))
 		return (error);
+	NVRAM_LOG(nvram, "boardtype='%.*s'\n", val_len, val);
 
 	return (0);
 
@@ -606,6 +615,78 @@ bhnd_nvram_parse_env(struct bhnd_nvram *nvram, const char *env, size_t len,
 	*val_len = len - (p - env);
 
 	return (0);
+}
+
+/**
+ * Perform an index lookup of @p name.
+ *
+ * @param	nvram		The NVRAM parser state.
+ * @param	name		The variable to search for.
+ * @param[out]	env		On success, the pointer to @p name within the
+ *				backing buffer.
+ * @param[out]	env_len		On success, the length of @p env.
+ * @param[out]	value		On success, the pointer to @p name's value
+ *				within the backing buffer.
+ * @param[out]	value_len	On success, the length of @p value.
+ * 
+ * @retval 0 If @p name was found in the index.
+ * @retval ENOENT If @p name was not found in the index.
+ * @retval ENODEV If no index has been generated.
+ */
+static int
+bhnd_nvram_index_lookup(struct bhnd_nvram *nvram, const char *name,
+    const char **env, size_t *env_len, const char **value, size_t *value_len)
+{
+	struct bhnd_nvram_idx	*idx;
+	const char		*idx_key;
+	size_t			 min, mid, max;
+	size_t			 name_len;
+	int			 order;
+
+	if (nvram->idx == NULL)
+		return (ENODEV);
+
+	if (nvram->num_buf_vars == 0)
+		return (ENOENT);
+
+	/*
+	 * Locate the requested variable using a binary search.
+	 */
+	min = 0;
+	mid = 0;
+	max = nvram->num_buf_vars - 1;
+	name_len = strlen(name);
+
+	while (max >= min) {
+		/* Select midpoint */
+		mid = (min + max) / 2;
+		idx = &nvram->idx[mid];
+
+		/* Determine which side of the partition to search */
+		idx_key = (const char *) (nvram->buf + idx->env_offset);
+		order = bhnd_nvram_keycmp(idx_key, idx->key_len, name,
+		    name_len);
+
+		if (order < 0) {
+			/* Search upper partition */
+			min = mid + 1;
+		} else if (order > 0) {
+			/* Search lower partition */
+			max = mid - 1;
+		} else if (order == 0) {
+			/* Match found */
+			*env = nvram->buf + idx->env_offset;
+			*env_len = idx->key_len + idx->val_len + 1 /* '=' */;
+
+			*value = *env + idx->key_len + 1 /* '=' */;
+			*value_len = idx->val_len;
+
+			return (0);
+		}
+	}
+
+	/* Not found */
+	return (ENOENT);
 }
 
 static int
