@@ -52,12 +52,13 @@ __FBSDID("$FreeBSD$");
 
 static bool	bhnd_nvram_bufptr_valid(struct bhnd_nvram *nvram,
 		    const void *ptr, size_t nbytes);
+static int	bhnd_nvram_parse_env(const char *env, size_t len,
+		    const char **key, size_t *key_len, const char **val,
+		    size_t *val_len);
 
 typedef int	(*bhnd_nvram_op_init)(struct bhnd_nvram *nvram);
-
 typedef int	(*bhnd_nvram_cb_enum_var)(struct bhnd_nvram *nvram,
-		    const char *name, size_t nlen, const char *value,
-		    size_t vlen, bool *stop, void *ctx);
+		    const char *env, size_t len, bool *stop, void *ctx);
 typedef int	(*bhnd_nvram_op_enum_vars)(struct bhnd_nvram *nvram,
 		    bhnd_nvram_cb_enum_var cb, void *ctx);
 
@@ -115,10 +116,18 @@ bhnd_nvram_identify(const union bhnd_nvram_ident *ident,
 }
 
 static int
-bhnd_nvram_log_var(struct bhnd_nvram *nvram, const char *name, size_t nlen,
-    const char *value, size_t vlen, bool *stop, void *ctx)
+bhnd_nvram_log_var(struct bhnd_nvram *nvram, const char *env, size_t len,
+    bool *stop, void *ctx)
 {
-	printf("%.*s='%.*s'\n", nlen, name, vlen, value);
+	const char	*key, *val;
+	size_t		 key_len, val_len;
+	int		 error;
+
+	error = bhnd_nvram_parse_env(env, len, &key, &key_len, &val, &val_len);
+	if (error)
+		return (error);
+	
+	printf("%.*s='%.*s'\n", key_len, key, val_len, val);
 	return (0);
 }
 
@@ -246,27 +255,30 @@ bhnd_nvram_init_bcm(struct bhnd_nvram *nvram)
 	return (0);
 }
 
+/**
+ * Parse a 'key=value' env string.
+ */
 static int
-bhnd_nvram_parse_entry(const char *ptr, size_t len, const char **key,
+bhnd_nvram_parse_env(const char *env, size_t len, const char **key,
     size_t *key_len, const char **val, size_t *val_len)
 {
 	const char	*p;
 
 	/* Key */
-	if ((p = memchr(ptr, '=', len)) == NULL) {
-		printf("missing delim in '%.*s'\n", len, ptr);
+	if ((p = memchr(env, '=', len)) == NULL) {
+		printf("missing delim in '%.*s'\n", len, env);
 		return (EINVAL);
 	}
 
-	*key = ptr;
-	*key_len = p - ptr;
+	*key = env;
+	*key_len = p - env;
 
 	/* Skip '=' */
 	p++;
 
 	/* Vaue */
 	*val = p;
-	*val_len = len - (p - ptr);
+	*val_len = len - (p - env);
 
 	return (0);
 }
@@ -276,8 +288,6 @@ bhnd_nvram_enum_vars_bcm(struct bhnd_nvram *nvram, bhnd_nvram_cb_enum_var cb,
     void *ctx)
 {
 	const char	*p;
-	const char	*key, *val;
-	size_t		 key_len, val_len;
 	size_t		 pos, len;
 	bool		 stop;
 	int		 error;
@@ -294,15 +304,9 @@ bhnd_nvram_enum_vars_bcm(struct bhnd_nvram *nvram, bhnd_nvram_cb_enum_var cb,
 		if (*p == '\0')
 			return (0);
 
-		/* Parse */
-		len = strnlen(p, nvram->buf_len - pos);
-		error = bhnd_nvram_parse_entry(p, len, &key, &key_len, &val,
-		    &val_len);
-		if (error)
-			return (error);
-
 		/* Issue callback */
-		if ((error = cb(nvram, key, key_len, val, val_len, &stop, ctx)))
+		len = strnlen(p, nvram->buf_len - pos);
+		if ((error = cb(nvram, p, len, &stop, ctx)))
 			return (error);
 
 		if (stop)
@@ -333,10 +337,8 @@ static int
 bhnd_nvram_enum_vars_tlv(struct bhnd_nvram *nvram, bhnd_nvram_cb_enum_var cb,
     void *ctx)
 {
-	const uint8_t	*p, *envp;
-	const char	*key, *val;
-	size_t		 key_len, val_len;
-	size_t		 envp_len, rlen;
+	const uint8_t	*p, *env;
+	size_t		 env_len, rlen;
 	bool		 stop;
 	int		 error;
 
@@ -386,20 +388,12 @@ bhnd_nvram_enum_vars_tlv(struct bhnd_nvram *nvram, bhnd_nvram_cb_enum_var cb,
 		p++;
 		rlen--;
 
-		/* Determine envp string length */
-		envp = p;
-		envp_len = strnlen(envp, rlen);
-
-		/* Parse */
-		error = bhnd_nvram_parse_entry(envp, envp_len, &key, &key_len,
-		    &val, &val_len);
-		if (error) {
-			printf("invalid entry at  fail\n");
-			return (error);
-		}
+		/* Determine env string length */
+		env = p;
+		env_len = strnlen(env, rlen);
 
 		/* Issue callback */
-		if ((error = cb(nvram, key, key_len, val, val_len, &stop, ctx)))
+		if ((error = cb(nvram, env, env_len, &stop, ctx)))
 			return (error);
 
 		if (stop)
