@@ -59,7 +59,7 @@
 #define	NVRAM_SDRAM_NCDL_VAR		"sdram_ncdl"
 
 /* WGT634U-specific TLV encoding */
-#define	NVRAM_TLV_TF_LEN2		0x01	/**< type has u16 length */
+#define	NVRAM_TLV_TF_U8_LEN		0x01	/**< type has 8-bit length */
 #define	NVRAM_TLV_TYPE_END		0x00	/**< end of table */
 #define	NVRAM_TLV_TYPE_ENV		0x01	/**< variable record */
 
