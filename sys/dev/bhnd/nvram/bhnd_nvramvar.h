@@ -47,6 +47,10 @@ struct bhnd_nvram;
 typedef enum {
 	BHND_NVRAM_FMT_BCM	= 0,	/**< Broadcom NUL-delimited key=value pairs */
 	BHND_NVRAM_FMT_TLV	= 1,	/**< CFE TLV encoding, as used on WGT634U */
+	BHND_NVRAM_FMT_BTXT	= 2,	/**< Broadcom board text file. This is used
+					     to provide external NVRAM data for some
+					     fullmac WiFi devices. */
+
 } bhnd_nvram_format;
 
 int	bhnd_nvram_probe(device_t dev);
@@ -73,6 +77,7 @@ struct bhnd_nvram_header {
 /** BCM/TLV NVRAM identification */
 union bhnd_nvram_ident {
 	struct bhnd_nvram_header	bcm;
+	char				btxt[4];
 	struct bhnd_tlv_ident {
 		uint8_t		tag;
 		uint8_t		size[2];

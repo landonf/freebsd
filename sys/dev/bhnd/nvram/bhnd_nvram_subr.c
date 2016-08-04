@@ -81,6 +81,12 @@ static int	bhnd_nvram_enum_buf_tlv(struct bhnd_nvram *nvram,
 		    const char **env, size_t *len, const uint8_t *p,
 		    uint8_t const **next);
 
+/* FMT_TXT ops */
+static int	bhnd_nvram_init_txt(struct bhnd_nvram *nvram);
+static int	bhnd_nvram_enum_buf_txt(struct bhnd_nvram *nvram,
+		    const char **env, size_t *len, const uint8_t *p,
+		    uint8_t const **next);
+
 struct bhnd_nvram_ops {
 	bhnd_nvram_format	fmt;		/**< nvram format */
 	bhnd_nvram_op_init	init;
@@ -90,6 +96,7 @@ struct bhnd_nvram_ops {
 static const struct bhnd_nvram_ops bhnd_nvram_ops_table[] = {
 	{ BHND_NVRAM_FMT_BCM, bhnd_nvram_init_bcm, bhnd_nvram_enum_buf_bcm },
 	{ BHND_NVRAM_FMT_TLV, bhnd_nvram_init_tlv, bhnd_nvram_enum_buf_tlv },
+	{ BHND_NVRAM_FMT_BTXT, bhnd_nvram_init_txt, bhnd_nvram_enum_buf_txt },
 };
 
 
@@ -137,6 +144,14 @@ bhnd_nvram_identify(const union bhnd_nvram_ident *ident,
 			return (ENODEV);
 
 		return (0);
+	case BHND_NVRAM_FMT_BTXT:
+		for (size_t i = 0; i < nitems(ident->btxt); i++) {
+			char c = ident->btxt[i];
+			if (!isprint(c) && !isspace(c))
+				return (ENODEV);
+		}
+		return (0);
+		break;
 	default:
 		printf("%s: unknown format: %d\n", __FUNCTION__, expected);
 		return (ENODEV);
@@ -528,6 +543,116 @@ bhnd_nvram_enum_buf_tlv(struct bhnd_nvram *nvram, const char **env,
 	return (0);
 }
 
+static int
+bhnd_nvram_init_txt(struct bhnd_nvram *nvram)
+{
+	return (0);
+}
+
+/* Seek past the next line ending (\r, \r\n, or \n) */
+static const uint8_t *
+bhnd_nvram_txt_seek_eol(struct bhnd_nvram *nvram, const uint8_t *p)
+{
+	while (p < nvram->buf + nvram->buf_size) {
+		switch (*p) {
+		case '\r':
+			/* \r\n */
+			if (bhnd_nvram_bufptr_valid(nvram, p, 1)) {
+				if (*(p+1) == '\n')
+					p++;
+			}
+
+			return (p+1);
+		case '\n':
+			return (p+1);
+		default:
+			p++;
+			break;
+		}
+	}
+
+	return (p);
+}
+
+/* Seek to the next valid key=value entry (or EOF) */
+static const uint8_t *
+bhnd_nvram_txt_seek_nextline(struct bhnd_nvram *nvram, const uint8_t *p)
+{
+	/* Skip leading whitespace and comments */
+	while (p < nvram->buf + nvram->buf_size) {
+		if (isspace(*p)) {
+			p++;
+			continue;
+		}
+		
+		if (*p == '#') {
+			p = bhnd_nvram_txt_seek_eol(nvram, p);
+			continue;
+		}
+		
+		break;
+	}
+
+	return (p);
+}
+
+static int
+bhnd_nvram_enum_buf_txt(struct bhnd_nvram *nvram, const char **env,
+    size_t *len, const uint8_t *p, uint8_t const **next)
+{
+	const uint8_t	*startp;
+	size_t		 line_len;
+
+	if (p == NULL)
+		p = nvram->buf;
+
+	/* Skip any leading whitespace and comments */
+	p = bhnd_nvram_txt_seek_nextline(nvram, p);
+
+	/* EOF? */
+	if (!bhnd_nvram_bufptr_valid(nvram, p, 1)) {
+		*env = NULL;
+		*len = 0;
+		*next = p;
+		return (0);
+	}
+
+	/* Find record termination (EOL, or '#') */
+	startp = p;
+	while (p < nvram->buf + nvram->buf_size) {
+		if (*p == '#' || *p == '\n' || *p == '\r')
+			break;
+
+		p++;
+	}
+
+	/* Calculate line length, check for EOF */
+	line_len = p - startp;
+	if (!bhnd_nvram_bufptr_valid(nvram, p, 1)) {
+		*env = NULL;
+		*len = 0;
+		*next = p;
+		return (0);
+	}
+
+	/* Got env data; trim any tailing whitespace */
+	*env = startp;
+	*len = line_len;
+
+	for (size_t i = 0; i < line_len && line_len > 0; i++) {
+		char c = startp[line_len - i - 1];
+		if (!isspace(c))
+			break;
+
+		*len -= 1;
+	}
+
+	/* Advance to next entry */
+	p = bhnd_nvram_txt_seek_nextline(nvram, p);
+	
+	*next = p;
+	return (0);
+}
 
 /**
  * Release all resources held by @p nvram.
