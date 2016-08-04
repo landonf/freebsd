@@ -55,6 +55,9 @@ typedef struct bhnd_nvram_ctx bhnd_nvram_ctx;
 static bool	bhnd_nvram_bufptr_valid(struct bhnd_nvram *nvram,
 		    const void *ptr, size_t nbytes);
 
+static int	bhnd_nvram_find_var(struct bhnd_nvram *nvram, const char *name,
+		    const char **value, size_t *value_len);
+
 #if 0
 static int	bhnd_nvram_parse_env(struct bhnd_nvram *nvram, const char *env,
 		    size_t len, const char **key, size_t *key_len,
@@ -63,21 +66,21 @@ static int	bhnd_nvram_parse_env(struct bhnd_nvram *nvram, const char *env,
 
 /* NVRAM format-specific operations */
 typedef int	(*bhnd_nvram_op_init)(struct bhnd_nvram *nvram);
-typedef int	(*bhnd_nvram_enum_buf_cb)(struct bhnd_nvram *nvram,
-		    const char *env, size_t len, bool *stop,
-		    bhnd_nvram_ctx *ctx);
 typedef int	(*bhnd_nvram_enum_buf)(struct bhnd_nvram *nvram,
-		    bhnd_nvram_enum_buf_cb cb, bhnd_nvram_ctx *ctx);
+		    const char **env, size_t *len, const uint8_t *p,
+		    uint8_t const **next);
 
 /* FMT_BCM ops */
 static int	bhnd_nvram_init_bcm(struct bhnd_nvram *nvram);
 static int	bhnd_nvram_enum_buf_bcm(struct bhnd_nvram *nvram,
-		    bhnd_nvram_enum_buf_cb cb, bhnd_nvram_ctx *ctx);
+		    const char **env, size_t *len, const uint8_t *p,
+		    uint8_t const **next);
 
 /* FMT_TLV ops */
 static int	bhnd_nvram_init_tlv(struct bhnd_nvram *nvram);
 static int	bhnd_nvram_enum_buf_tlv(struct bhnd_nvram *nvram,
-		    bhnd_nvram_enum_buf_cb cb, bhnd_nvram_ctx *ctx);
+		    const char **env, size_t *len, const uint8_t *p,
+		    uint8_t const **next);
 
 struct bhnd_nvram_ops {
 	bhnd_nvram_format	fmt;		/**< nvram format */
@@ -95,6 +98,7 @@ static const struct bhnd_nvram_ops bhnd_nvram_ops_table[] = {
 struct bhnd_nvram_ctx {
 	const uint8_t	*iobuf;
 	size_t		 iolen;
+	void		*iomisc;
 	int		 ioerr;
 };
 
@@ -118,14 +122,16 @@ int
 bhnd_nvram_identify(const union bhnd_nvram_ident *ident,
     bhnd_nvram_format expected)
 {
+	uint32_t bcm_magic = le32toh(ident->bcm.magic);
+
 	switch (expected) {
 	case BHND_NVRAM_FMT_BCM:
-		if (le32toh(ident->bcm.magic) == NVRAM_MAGIC)
+		if (bcm_magic == NVRAM_MAGIC)
 			return (0);
 
 		return (ENODEV);
 	case BHND_NVRAM_FMT_TLV:
-		if (ident->bcm.magic == NVRAM_MAGIC)
+		if (bcm_magic == NVRAM_MAGIC)
 			return (ENODEV);
 
 		if (ident->tlv.tag != NVRAM_TLV_TYPE_ENV)
@@ -139,59 +145,56 @@ bhnd_nvram_identify(const union bhnd_nvram_ident *ident,
 }
 
 static int
-bhnd_nvram_find_bufvar_cb(struct bhnd_nvram *nvram, const char *env, size_t len,
-    bool *stop, bhnd_nvram_ctx *ctx)
-{
-	const char	*key;
-	size_t		 key_len;
-
-	key = ctx->iobuf;
-	key_len = ctx->iolen;
-
-	// TODO: devpath aliases
-
-	/* Skip string comparison if len < strlen(key + '=') */
-	if (len < key_len + 1)
-		return (0);
-
-	/* Skip string comparison if delimiter isn't found at
-	 * expected position */
-	if (*(env + key_len) != '=')
-		return (0);
-
-	/* Check for match */
-	if (strncmp(env, key, key_len) == 0) {
-		/* Return matching value */
-		ctx->ioerr = 0;
-		ctx->iobuf = env + key_len + 1;
-		ctx->iolen = len - key_len - 1;
-
-		*stop = true;
-		return (0);
-	};
-
-	/* No match; continue enumeration */
-	return (0);
-}
-
-static int
 bhnd_nvram_find_var(struct bhnd_nvram *nvram, const char *name,
-    const char **value, size_t *len)
+    const char **value, size_t *value_len)
 {
-	bhnd_nvram_ctx	ctx;
-	int		error;
+	bhnd_nvram_enum_buf	 enum_fn;
+	const char		*env;
+	const uint8_t		*p;
+	size_t			 env_len;
+	size_t			 name_len;
+	int			 error;
 
-	ctx.iobuf = name;
-	ctx.iolen = strlen(name);
-	ctx.ioerr = ENOENT;
+	enum_fn = nvram->ops->enum_buf;
+	name_len = strlen(name);
+	p = NULL;
 
-	error = nvram->ops->enum_buf(nvram, bhnd_nvram_find_bufvar_cb, &ctx);
+	/* Iterate over all records */
+	while ((error = enum_fn(nvram, &env, &env_len, p, &p)) == 0) {
+		/* Hit EOF, not found */
+		if (env == NULL)
+			break;
+
+		// TODO: devpath alias matching
+
+		/* Skip string comparison if env_len < strlen(key + '=') */
+		if (env_len < name_len + 1)
+			continue;
+
+		/* Skip string comparison if delimiter isn't found at
+		 * expected position */
+		if (*(env + name_len) != '=')
+			continue;
+
+		/* Check for match */
+		if (strncmp(env, name, name_len) == 0) {
+			/* Found */
+			*value = env + name_len + 1;
+			*value_len = env_len - name_len - 1;
+			return (0);
+		};
+	}
+
+	/* Parse error */
 	if (error)
 		return (error);
 
-	*value = ctx.iobuf;
-	*len = ctx.iolen;
-	return (ctx.ioerr);
+	/* Not found */
+	if (env == NULL)
+		return (ENOENT);
+
+	// TODO: fallback to defaults
+	return (ENOENT);
 }
 
 /**
@@ -364,46 +367,37 @@ bhnd_nvram_parse_env(struct bhnd_nvram *nvram, const char *env, size_t len,
 #endif
 
 static int
-bhnd_nvram_enum_buf_bcm(struct bhnd_nvram *nvram, bhnd_nvram_enum_buf_cb cb,
-    bhnd_nvram_ctx *ctx)
+bhnd_nvram_enum_buf_bcm(struct bhnd_nvram *nvram, const char **env,
+    size_t *len, const uint8_t *p, uint8_t const **next)
 {
-	const char	*p;
-	size_t		 pos, len;
-	bool		 stop;
-	int		 error;
+	/* First record is found following the NVRAM header */
+	if (p == NULL)
+		p = nvram->buf + sizeof(struct bhnd_nvram_header);
 
-	stop = false;
-	len = 0;
-	pos = sizeof(struct bhnd_nvram_header);
+	if (!bhnd_nvram_bufptr_valid(nvram, p, 1))
+		return (EINVAL);
 
-	/* Iterate over all variables in the backing buffer */
-	while (pos < nvram->buf_size) {
-		p = nvram->buf + pos;
-
-		/* EOF */
-		if (*p == '\0')
-			return (0);
-
-		/* Issue callback */
-		len = strnlen(p, nvram->buf_size - pos);
-		if ((error = cb(nvram, p, len, &stop, ctx)))
-			return (error);
-
-		if (stop)
-			break;
-
-		/* Advance past current variable */
-		pos += len;
-
-		/* Skip trailing NUL */
-		if (pos >= nvram->buf_size) {
-			NVRAM_LOG(nvram, "warning: missing NVRAM termination "
-			    "record");
-			return (0);
-		}
-		pos++;
+	/* EOF */
+	if (*p == '\0') {
+		*env = NULL;
+		*len = 0;
+		*next = p;
+		return (0);
 	}
 
+	/* Provide pointer to env data */
+	*env = p;
+	*len = strnlen(p, nvram->buf_size - (p - nvram->buf));
+
+	/* Advance to next entry and skip terminating NUL */
+	p += *len;
+	if (bhnd_nvram_bufptr_valid(nvram, p, 1)) {
+		p++;
+	} else {
+		NVRAM_LOG(nvram, "warning: missing NVRAM termination record");
+	}
+
+	*next = p;
 	return (0);
 }
 
@@ -415,72 +409,67 @@ bhnd_nvram_init_tlv(struct bhnd_nvram *nvram)
 }
 
 static int
-bhnd_nvram_enum_buf_tlv(struct bhnd_nvram *nvram, bhnd_nvram_enum_buf_cb cb,
-    bhnd_nvram_ctx *ctx)
+bhnd_nvram_enum_buf_tlv(struct bhnd_nvram *nvram, const char **env,
+    size_t *len, const uint8_t *p, uint8_t const **next)
 {
-	const uint8_t	*p, *env;
-	size_t		 env_len, rlen;
-	bool		 stop;
-	int		 error;
+	size_t		 rlen;
+	uint8_t		 type;
 
-	stop = false;
+	if (p == NULL)
+		p = nvram->buf;
 
-	/* Iterate over all TLV records in the backing buffer */
-	p = nvram->buf;
-	for (p = nvram->buf; (p - nvram->buf) < nvram->buf_size; p += rlen)
-	{
-		uint8_t type;
-		
-		type = *p;
-		rlen = 1;
+	/* Fetch type */
+	if (!bhnd_nvram_bufptr_valid(nvram, p, 1))
+		return (EINVAL);
 
-		/* EOF */
-		if (type == NVRAM_TLV_TYPE_END)
-			return (0);
+	type = *p;
 
-		/* Determine record length */
-		p++;
-		if (type & NVRAM_TLV_TF_U8_LEN) {
-			if (!bhnd_nvram_bufptr_valid(nvram, p, 1))
-				return (EINVAL);
-	
-			rlen = *p;
-			p += 1;
-		} else {
-			if (!bhnd_nvram_bufptr_valid(nvram, p, 2))
-				return (EINVAL);
-			rlen = (p[0] << 8) | (p[1]);
-			p += 2;
-		}
-
-		/* Verify record readability */
-		if (!bhnd_nvram_bufptr_valid(nvram, p, rlen))
-			return (EINVAL);
-
-		/* Error on non-env records */
-		if (type != NVRAM_TLV_TYPE_ENV) {
-			NVRAM_LOG(nvram, "unsupported NVRAM TLV tag: %#hhx\n",
-			    type);
-			return (EINVAL);
-		}
-
-		/* Skip flag field */
-		if (rlen < 1)
-			return (EINVAL);
-		p++;
-		rlen--;
-
-		/* Determine env string length */
-		env = p;
-		env_len = strnlen(env, rlen);
-
-		/* Issue callback */
-		if ((error = cb(nvram, env, env_len, &stop, ctx)))
-			return (error);
-
-		if (stop)
-			break;
+	/* EOF */
+	if (type == NVRAM_TLV_TYPE_END) {
+		*env = NULL;
+		*len = 0;
+		*next = p;
+		return (0);
 	}
+
+	/* Determine record length */
+	p++;
+	if (type & NVRAM_TLV_TF_U8_LEN) {
+		if (!bhnd_nvram_bufptr_valid(nvram, p, 1))
+			return (EINVAL);
+	
+		rlen = *p;
+		p += 1;
+	} else {
+		if (!bhnd_nvram_bufptr_valid(nvram, p, 2))
+			return (EINVAL);
+		rlen = (p[0] << 8) | (p[1]);
+		p += 2;
+	}
+
+	/* Verify record readability */
+	if (!bhnd_nvram_bufptr_valid(nvram, p, rlen))
+		return (EINVAL);
+
+	/* Error on non-env records */
+	if (type != NVRAM_TLV_TYPE_ENV) {
+		NVRAM_LOG(nvram, "unsupported NVRAM TLV tag: %#hhx\n",
+		    type);
+		return (EINVAL);
+	}
+
+	/* Skip flag field */
+	if (rlen < 1)
+		return (EINVAL);
+	p++;
+	rlen--;
+
+	/* Provide pointer to env data */
+	*env = p;
+	*len = strnlen(*env, rlen);
+
+	/* Advance to next entry */
+	*next = p + rlen;
 
 	return (0);
 }
