@@ -58,6 +58,12 @@ static int	bhnd_nvram_contains_var(struct bhnd_nvram *nvram,
 static int	bhnd_nvram_find_var(struct bhnd_nvram *nvram, const char *name,
 		    const char **value, size_t *value_len);
 
+static struct bhnd_nvram_tuple	*bhnd_nvram_find_tuple(
+				    struct bhnd_nvram_tuples *tuples,
+				    const char *name, size_t name_len);
+
+static int	bhnd_nvram_add_tuple(struct bhnd_nvram_tuples *tuples,
+		    const char *name, const char *value);
 static void	bhnd_nvram_tuple_free(struct bhnd_nvram_tuple *tuple);
 
 static int	bhnd_nvram_keycmp(const char *lhs, size_t lhs_len,
@@ -65,8 +71,12 @@ static int	bhnd_nvram_keycmp(const char *lhs, size_t lhs_len,
 static int	bhnd_nvram_sort_idx(void *ctx, const void *lhs,
 		    const void *rhs);
 static int	bhnd_nvram_generate_index(struct bhnd_nvram *nvram);
+
 static int	bhnd_nvram_index_lookup(struct bhnd_nvram *nvram,
 		    const char *name, const char **env, size_t *len,
+		    const char **value, size_t *value_len);
+static int	bhnd_nvram_buffer_lookup(struct bhnd_nvram *nvram,
+		    const char *name, const char **env, size_t *env_len,
 		    const char **value, size_t *value_len);
 
 static bool	bhnd_nvram_bufptr_valid(struct bhnd_nvram *nvram,
@@ -269,14 +279,14 @@ bhnd_nvram_init(struct bhnd_nvram *nvram, device_t dev, const void *data,
 	/* Add any format-specific default values */
 	if (nvram->ops->init_defaults != NULL) {
 		if ((error = nvram->ops->init_defaults(nvram)))
-			return (error);
+			goto cleanup;
 	}
 
 	// TODO
 	const char *val;
 	size_t val_len;
 	if ((error = bhnd_nvram_find_var(nvram, "boardtype", &val, &val_len)))
-		return (error);
+		goto cleanup;
 	NVRAM_LOG(nvram, "boardtype='%.*s'\n",
 	    NVRAM_PRINT_WIDTH(val_len), val);
 
@@ -293,7 +303,7 @@ bhnd_nvram_init(struct bhnd_nvram *nvram, device_t dev, const void *data,
 	return (0);
 
 cleanup:
-	free(nvram->buf, M_BHND_NVRAM);
+	bhnd_nvram_fini(nvram);
 	return (error);
 }
 
@@ -323,7 +333,8 @@ bhnd_nvram_fini(struct bhnd_nvram *nvram)
 	if (nvram->idx != NULL)
 		free(nvram->idx, M_BHND_NVRAM);
 
-	free(nvram->buf, M_BHND_NVRAM);
+	if (nvram->buf != NULL)
+		free(nvram->buf, M_BHND_NVRAM);
 
 }
 
@@ -424,9 +435,9 @@ static int
 bhnd_nvram_find_var(struct bhnd_nvram *nvram, const char *name,
     const char **value, size_t *value_len)
 {
+	struct bhnd_nvram_tuple	*t;
 	bhnd_nvram_op_enum_buf	 enum_fn;
 	const char		*env;
-	const uint8_t		*p;
 	size_t			 env_len;
 	size_t			 name_len;
 	int			 error;
@@ -434,47 +445,54 @@ bhnd_nvram_find_var(struct bhnd_nvram *nvram, const char *name,
 	enum_fn = nvram->ops->enum_buf;
 	name_len = strlen(name);
 
-	// TODO: search dirty records
+	/*
+	 * Search path:
+	 * 
+	 * - uncommitted changes
+	 * - index lookup OR buffer scan
+	 * - registered defaults
+	 */
 
-	/* Prefer the index */
-	if (nvram->idx != NULL)
-		return (bhnd_nvram_index_lookup(nvram, name, &env, &env_len,
-		    value, value_len));
-
-	/* Iterate over all records */
-	p = NULL;
-	while ((error = enum_fn(nvram, &env, &env_len, p, &p)) == 0) {
-		/* Hit EOF, not found */
-		if (env == NULL)
-			break;
-
-		/* Skip string comparison if env_len < strlen(key + '=') */
-		if (env_len < name_len + 1)
-			continue;
-
-		/* Skip string comparison if delimiter isn't found at
-		 * expected position */
-		if (*(env + name_len) != '=')
-			continue;
-
-		/* Check for match */
-		if (strncmp(env, name, name_len) == 0) {
-			/* Found */
-			*value = env + name_len + 1;
-			*value_len = env_len - name_len - 1;
+	/* Search uncommitted changes */
+	t = bhnd_nvram_find_tuple(&nvram->pending, name, name_len);
+	if (t != NULL) {
+		if (t->value != NULL) {
+			/* Uncommited value exists, is not a deletion */
+			*value = t->value;
+			*value_len = t->value_len;
 			return (0);
-		};
+		} else {
+			/* Value is marked for deletion. */
+			error = ENOENT;
+			goto failed;
+		}
 	}
 
-	/* Parse error */
-	if (error)
+	/* Search backing buffer. We the index if available; otherwise,
+	 * perform a buffer scan */
+	if (nvram->idx != NULL) {
+		error = bhnd_nvram_index_lookup(nvram, name, &env, &env_len,
+		    value, value_len);
+	} else {
+		error = bhnd_nvram_buffer_lookup(nvram, name, &env, &env_len,
+		    value, value_len);
+	}
+
+failed:
+	/* If a parse error occured, we don't want to hide the issue by
+	 * returning a default NVRAM value. Otherwise, look for a matching
+	 * default. */
+	if (error != ENOENT)
 		return (error);
 
-	/* Not found */
-	if (env == NULL)
-		return (ENOENT);
+	t = bhnd_nvram_find_tuple(&nvram->defaults, name, name_len);
+	if (t != NULL) {
+		*value = t->value;
+		*value_len = t->value_len;
+		return (0);
+	}
 
-	// TODO: fallback to defaults
+	/* Not found, and no default value available */
 	return (ENOENT);
 }
 
@@ -772,6 +790,64 @@ bhnd_nvram_index_lookup(struct bhnd_nvram *nvram, const char *name,
 
 	/* Not found */
 	return (ENOENT);
+}
+
+
+/**
+ * Perform a unindexed search for an entry matching @p name in the backing
+ * NVRAM data buffer.
+ *
+ * @param	nvram		The NVRAM parser state.
+ * @param	name		The variable to search for.
+ * @param[out]	env		On success, the pointer to @p name within the
+ *				backing buffer.
+ * @param[out]	env_len		On success, the length of @p env.
+ * @param[out]	value		On success, the pointer to @p name's value
+ *				within the backing buffer.
+ * @param[out]	value_len	On success, the length of @p value.
+ * 
+ * @retval 0 If @p name was found in the index.
+ * @retval ENOENT If @p name was not found in the index.
+ * @retval ENODEV If no index has been generated.
+ */
+static int
+bhnd_nvram_buffer_lookup(struct bhnd_nvram *nvram, const char *name,
+    const char **env, size_t *env_len, const char **value, size_t *value_len)
+{
+	bhnd_nvram_op_enum_buf	 enum_fn;
+	const uint8_t		*p;
+	size_t			 name_len;
+	int			 error;
+
+	enum_fn = nvram->ops->enum_buf;
+	name_len = strlen(name);
+
+	/* Iterate over all records in the backing buffer */
+	p = NULL;
+	while ((error = enum_fn(nvram, env, env_len, p, &p)) == 0) {
+		/* Hit EOF, not found */
+		if (*env == NULL)
+			return (ENOENT);
+
+		/* Skip string comparison if env_len < strlen('key=') */
+		if (*env_len < name_len + 1)
+			continue;
+
+		/* Skip string comparison if delimiter isn't found at
+		* expected position */
+		if (*(*env + name_len) != '=')
+			continue;
+
+		/* Check for match */
+		if (strncmp(*env, name, name_len) == 0) {
+			/* Found */
+			*value = *env + name_len + 1;
+			*value_len = *env_len - name_len - 1;
+			return (0);
+		};
+	}
+
+	return (error);
 }
 
 /* FMT_BCM-specific parser initialization */
