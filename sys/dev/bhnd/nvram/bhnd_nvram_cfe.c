@@ -56,9 +56,6 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_nvram_if.h"
 
-#include "bhnd_nvram_private.h"
-
-#include "bhnd_nvramreg.h"
 #include "bhnd_nvramvar.h"
 
 static int	 nvram_open_cfedev(device_t dev, char *devname, int fd,

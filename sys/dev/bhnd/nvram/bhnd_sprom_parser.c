@@ -41,8 +41,7 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_nvram_common.h"
 
-#include "bhnd_spromreg.h"
-#include "bhnd_spromvar.h"
+#include "bhnd_sprom_parservar.h"
 
 /*
  * BHND SPROM Parser

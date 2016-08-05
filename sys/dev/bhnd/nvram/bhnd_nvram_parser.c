@@ -40,18 +40,13 @@ __FBSDID("$FreeBSD$");
 #include <machine/bus.h>
 #include <machine/resource.h>
 
-#include "bhnd_nvram_common.h"
-
-#include "bhnd_nvramvar.h"
-#include "bhnd_nvramreg.h"
+#include "bhnd_nvram_parservar.h"
 
 /*
  * BHND NVRAM Parser
  * 
  * Provides identification, decoding, and encoding of BHND NVRAM data.
  */
-
-typedef struct bhnd_nvram_ctx bhnd_nvram_ctx;
 
 static int	bhnd_nvram_contains_var(struct bhnd_nvram *nvram,
 		    const char *name);
@@ -633,7 +628,7 @@ bhnd_nvram_generate_index(struct bhnd_nvram *nvram)
 	nvram->num_buf_vars = num_records;
 
 	/* Skip generating variable index if threshold is not met */
-	if (nvram->num_buf_vars < BHND_NVRAM_IDX_VAR_THRESH)
+	if (nvram->num_buf_vars < NVRAM_IDX_VAR_THRESH)
 		return (0);
 
 	/* Allocate and populate variable index */
@@ -670,7 +665,7 @@ bhnd_nvram_generate_index(struct bhnd_nvram *nvram)
 	
 		/* Calculate env offset */
 		env_offset = (const uint8_t *)env - (const uint8_t *)nvram->buf;
-		if (env_offset > BHND_NVRAM_IDX_OFFSET_MAX) {
+		if (env_offset > NVRAM_IDX_OFFSET_MAX) {
 			NVRAM_LOG(nvram, "'%.*s' offset %#zx exceeds maximum "
 			    "indexable value\n", NVRAM_PRINT_WIDTH(env_len),
 			    env, env_offset);
@@ -683,13 +678,13 @@ bhnd_nvram_generate_index(struct bhnd_nvram *nvram)
 		if (error)
 			return (error);
 
-		if (key_len > BHND_NVRAM_IDX_LEN_MAX) {
+		if (key_len > NVRAM_IDX_LEN_MAX) {
 			NVRAM_LOG(nvram, "key length %#zx at %#zx exceeds "
 			"maximum indexable value\n", key_len, env_offset);
 			goto bad_index;
 		}
 
-		if (val_len > BHND_NVRAM_IDX_LEN_MAX) {
+		if (val_len > NVRAM_IDX_LEN_MAX) {
 			NVRAM_LOG(nvram, "value length %#zx for key '%.*s' "
 			    "exceeds maximum indexable value\n", val_len,
 			    NVRAM_PRINT_WIDTH(key_len), key);

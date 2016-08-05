@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2015-2016 Landon Fuller <landonf@FreeBSD.org>
+ * Copyright (c) 2015-2016 Landon Fuller <landon@landonf.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,39 +29,36 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_NVRAM_BHND_NVRAMVAR_H_
-#define _BHND_NVRAM_BHND_NVRAMVAR_H_
+#ifndef _BHND_NVRAM_BHND_SPROM_PARSER_H_
+#define _BHND_NVRAM_BHND_SPROM_PARSER_H_
 
-#include <sys/param.h>
-#include <sys/bus.h>
+#include <dev/bhnd/bhnd.h>
 
-#include "bhnd_nvram_parser.h"
+struct bhnd_sprom;
 
-DECLARE_CLASS(bhnd_nvram_driver);
-
-int	bhnd_nvram_probe(device_t dev);
-int	bhnd_nvram_attach(device_t dev);
-int	bhnd_nvram_resume(device_t dev);
-int	bhnd_nvram_suspend(device_t dev);
-int	bhnd_nvram_detach(device_t dev);
+int	bhnd_sprom_init(struct bhnd_sprom *sprom, struct bhnd_resource *r,
+	    bus_size_t offset);
+void	bhnd_sprom_fini(struct bhnd_sprom *sprom);
+int	bhnd_sprom_getvar(struct bhnd_sprom *sc, const char *name, void *buf,
+	    size_t *len);
+int	bhnd_sprom_setvar(struct bhnd_sprom *sc, const char *name,
+	    const void *buf, size_t len);
 
 /**
- * bhnd_nvram driver instance state. Must be first member of all subclass
- * softc structures.
+ * bhnd sprom parser instance state.
  */
-struct bhnd_nvram_softc {
-	device_t		 	dev;
-	struct mtx		 	mtx;	/**< nvram mutex */
-	struct bhnd_nvram		nvram;	/**< nvram shadow */
+struct bhnd_sprom {
+	device_t		 dev;		/**< sprom parent device */
+
+	uint8_t			 sp_rev;	/**< sprom revision */
+	
+	struct bhnd_resource	*sp_res;	/**< sprom resource. */
+	bus_size_t		 sp_res_off;	/**< offset to sprom image */
+
+	uint8_t			*sp_shadow;	/**< sprom shadow */
+	bus_size_t		 sp_size_max;	/**< maximum possible sprom length */
+	size_t			 sp_size;	/**< shadow size */
+	size_t			 sp_capacity;	/**< shadow buffer capacity */
 };
 
-
-#define	BHND_NVRAM_LOCK_INIT(sc) \
-	mtx_init(&(sc)->mtx, device_get_nameunit((sc)->dev), \
-	    "bhnd_nvram lock", MTX_DEF)
-#define	BHND_NVRAM_LOCK(sc)			mtx_lock(&(sc)->mtx)
-#define	BHND_NVRAM_UNLOCK(sc)			mtx_unlock(&(sc)->mtx)
-#define	BHND_NVRAM_LOCK_ASSERT(sc, what)	mtx_assert(&(sc)->mtx, what)
-#define	BHND_NVRAM_LOCK_DESTROY(sc)		mtx_destroy(&(sc)->mtx)
-
-#endif /* _BHND_NVRAM_BHND_NVRAMVAR_H_ */
+#endif /* _BHND_NVRAM_BHND_SPROM_PARSER_H_ */

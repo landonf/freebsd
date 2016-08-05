@@ -169,7 +169,7 @@ bhnd_sprom_detach(device_t dev)
  * Default bhnd sprom driver implementation of BHND_NVRAM_GETVAR().
  */
 static int
-bhnd_sprom_getvar_meth(device_t dev, const char *name, void *buf, size_t *len)
+bhnd_sprom_getvar_method(device_t dev, const char *name, void *buf, size_t *len)
 {
 	struct bhnd_sprom_softc	*sc;
 	int				 error;
@@ -187,7 +187,7 @@ bhnd_sprom_getvar_meth(device_t dev, const char *name, void *buf, size_t *len)
  * Default bhnd sprom driver implementation of BHND_NVRAM_SETVAR().
  */
 static int
-bhnd_sprom_setvar_meth(device_t dev, const char *name, const void *buf,
+bhnd_sprom_setvar_method(device_t dev, const char *name, const void *buf,
     size_t len)
 {
 	struct bhnd_sprom_softc	*sc;
@@ -211,8 +211,8 @@ static device_method_t bhnd_sprom_methods[] = {
 	DEVMETHOD(device_detach,		bhnd_sprom_detach),
 
 	/* NVRAM interface */
-	DEVMETHOD(bhnd_nvram_getvar,		bhnd_sprom_getvar_meth),
-	DEVMETHOD(bhnd_nvram_setvar,		bhnd_sprom_setvar_meth),
+	DEVMETHOD(bhnd_nvram_getvar,		bhnd_sprom_getvar_method),
+	DEVMETHOD(bhnd_nvram_setvar,		bhnd_sprom_setvar_method),
 
 	DEVMETHOD_END
 };

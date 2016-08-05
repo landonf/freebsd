@@ -56,7 +56,6 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_nvram_if.h"
 
-#include "bhnd_nvramreg.h"
 #include "bhnd_nvramvar.h"
 
 /**

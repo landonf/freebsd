@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2016 Landon Fuller <landonf@FreeBSD.org>
+ * Copyright (c) 2015-2016 Landon Fuller <landonf@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,11 +29,18 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_NVRAM_BHND_NVRAMREG_H_
-#define _BHND_NVRAM_BHND_NVRAMREG_H_
+#ifndef _BHND_NVRAM_BHND_NVRAM_PARSERVAR_H_
+#define _BHND_NVRAM_BHND_NVRAM_PARSERVAR_H_
 
-#define NVRAM_GET_BITS(_value, _field)  \
-        ((_value & _field ## _MASK) >> _field ## _SHIFT)
+#include <sys/types.h>
+
+#include "bhnd_nvram_common.h"
+
+#include "bhnd_nvram_parser.h"
+
+#define	NVRAM_IDX_VAR_THRESH	15		/**< index is generated if minimum variable count is met */
+#define	NVRAM_IDX_OFFSET_MAX	UINT16_MAX	/**< maximum indexable offset */
+#define	NVRAM_IDX_LEN_MAX	UINT8_MAX	/**< maximum indexable key/value length */
 
 /* key/value limits and constants */
 #define	NVRAM_KEY_MAX	64	/** maximum key length (not incl. NUL) */
@@ -42,6 +49,10 @@
 #define	NVRAM_DEVPATH_STR	"devpath"	/**< name prefix of device path
 						  *  aliases */
 #define	NVRAM_DEVPATH_LEN	(sizeof(NVRAM_DEVPATH_STR) - 1)
+
+
+#define NVRAM_GET_BITS(_value, _field)  \
+        ((_value & _field ## _MASK) >> _field ## _SHIFT)
 
 /* NVRAM header fields */
 #define	NVRAM_MAGIC			0x48534C46	/* 'FLSH' */
@@ -78,4 +89,15 @@
 #define	NVRAM_TLV_TYPE_END		0x00	/**< end of table */
 #define	NVRAM_TLV_TYPE_ENV		0x01	/**< variable record */
 
-#endif /* _BHND_NVRAM_BHND_NVRAMREG_H_ */
+/**
+ * NVRAM index record.
+ * 
+ * Provides a compact index into the backing NVRAM buffer.
+ */
+struct bhnd_nvram_idx {
+	uint16_t	env_offset;	/**< offset to env string */
+	uint8_t		key_len;	/**< key length */
+	uint8_t		val_len;	/**< value length */
+};
+
+#endif /* _BHND_NVRAM_BHND_NVRAM_PARSERVAR_H_ */

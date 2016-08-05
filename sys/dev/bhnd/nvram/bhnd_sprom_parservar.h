@@ -29,8 +29,10 @@
  * $FreeBSD$
  */
 
-#ifndef	_BHND_NVRAM_SPROMREG_H_
-#define	_BHND_NVRAM_SPROMREG_H_
+#ifndef	_BHND_NVRAM_SPROM_PARSERVAR_H_
+#define	_BHND_NVRAM_SPROM_PARSERVAR_H_
+
+#include "bhnd_sprom_parser.h"
 
 #define	SPROM_SZ_R1_3		128	/**< SPROM image size (rev 1-3) */
 #define	SPROM_SZ_R4_8_9		440	/**< SPROM image size (rev 4, 8-9) */
@@ -59,5 +61,4 @@
 #define	SPROM_SIG_R11		0x0634
 #define	SPROM_SIG_R11_OFF	128	/**< SPROM signature offset (rev 11) */
 
-
-#endif /* _BHND_NVRAM_SPROMREG_H_ */
+#endif /* _BHND_NVRAM_SPROM_PARSERVAR_H_ */

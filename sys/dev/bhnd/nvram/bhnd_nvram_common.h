@@ -35,7 +35,15 @@
 #include <sys/param.h>
 #include <sys/malloc.h>
 
+#include "bhnd_nvram.h"
+
 MALLOC_DECLARE(M_BHND_NVRAM);
+extern const uint8_t bhnd_nvram_crc8_tab[];
+
+#define	BHND_NVRAM_CRC8_INITIAL	0xFF	/**< Initial bhnd_nvram_crc8 value */
+#define	BHND_NVRAM_CRC8_VALID	0x9F	/**< Valid CRC-8 checksum */
+
+#define	BHND_SPROMREV_MAX	UINT8_MAX	/**< maximum supported SPROM revision */
 
 /** NVRAM Primitive data types */
 typedef enum {
@@ -64,8 +72,6 @@ enum {
 	BHND_NVRAM_VF_MFGINT	= (1<<1),	/**< mfg-internal variable; should not be externally visible */
 	BHND_NVRAM_VF_IGNALL1	= (1<<2)	/**< hide variable if its value has all bits set. */
 };
-
-#define	BHND_SPROMREV_MAX	UINT8_MAX	/**< maximum supported SPROM revision */
 
 /** SPROM revision compatibility declaration */
 struct bhnd_sprom_compat {
@@ -101,16 +107,24 @@ struct bhnd_nvram_var {
 	size_t				 num_sp_descs;	/**< number of sprom descriptors */
 };
 
+/**
+ * NVRAM value tuple.
+ */
+struct bhnd_nvram_tuple {
+	char	*name;		/**< variable name. */
+	size_t	 name_len;	/**< variable length. */
+	char	*value;		/**< value, or NULL if this tuple represents variable
+				     deletion */
+	size_t	 value_len;	/**< value length. */
+
+	STAILQ_ENTRY(bhnd_nvram_tuple) t_link;
+};
+
+/** A list of NVRAM tuples */
+STAILQ_HEAD(bhnd_nvram_tuples, bhnd_nvram_tuple);
+
 size_t				 bhnd_nvram_type_width(bhnd_nvram_dt dt);
 const struct bhnd_nvram_var	*bhnd_nvram_var_defn(const char *varname);
-
-/** Initial bhnd_nvram_crc8 value */
-#define	BHND_NVRAM_CRC8_INITIAL	0xFF
-
-/** Valid CRC-8 checksum */
-#define	BHND_NVRAM_CRC8_VALID	0x9F
-
-extern const uint8_t bhnd_nvram_crc8_tab[];
 
 /**
  * Calculate CRC-8 over @p buf.
