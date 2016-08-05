@@ -32,6 +32,10 @@
 #ifndef _BHND_NVRAM_BHND_NVRAMREG_H_
 #define _BHND_NVRAM_BHND_NVRAMREG_H_
 
+#define NVRAM_GET_BITS(_value, _field)  \
+        ((_value & _field ## _MASK) >> _field ## _SHIFT)
+
+/* key/value limits and constants */
 #define	NVRAM_KEY_MAX	64	/** maximum key length (not incl. NUL) */
 #define	NVRAM_VAL_MAX	255	/** maximum value length (not incl. NUL) */
 
@@ -52,15 +56,22 @@
 #define	NVRAM_CFG0_SDRAM_INIT_MASK	0xFFFF0000
 #define	NVRAM_CFG0_SDRAM_INIT_SHIFT	16
 #define	NVRAM_CFG0_SDRAM_INIT_VAR	"sdram_init"
+#define	NVRAM_CFG0_SDRAM_INIT_FMT	"0x%04x"
 
 #define	NVRAM_CFG1_SDRAM_CFG_MASK	0x0000FFFF
-#define	NVRAM_CFG0_SDRAM_CFG_SHIFT	0
-#define	NVRAM_CFG0_SDRAM_CFG_VAR	"sdram_config"
+#define	NVRAM_CFG1_SDRAM_CFG_SHIFT	0
+#define	NVRAM_CFG1_SDRAM_CFG_VAR	"sdram_config"
+#define	NVRAM_CFG1_SDRAM_CFG_FMT	"0x%04x"
+
 #define	NVRAM_CFG1_SDRAM_REFRESH_MASK	0xFFFF0000
 #define	NVRAM_CFG1_SDRAM_REFRESH_SHIFT	16
 #define	NVRAM_CFG1_SDRAM_REFRESH_VAR	"sdram_refresh"
+#define	NVRAM_CFG1_SDRAM_REFRESH_FMT	"0x%04x"
 
+#define	NVRAM_SDRAM_NCDL_MASK		UINT32_MAX
+#define	NVRAM_SDRAM_NCDL_SHIFT		0
 #define	NVRAM_SDRAM_NCDL_VAR		"sdram_ncdl"
+#define	NVRAM_SDRAM_NCDL_FMT		"0x%08x"
 
 /* WGT634U-specific TLV encoding */
 #define	NVRAM_TLV_TF_U8_LEN		0x01	/**< type has 8-bit length */

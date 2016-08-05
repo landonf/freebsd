@@ -50,7 +50,6 @@ typedef enum {
 	BHND_NVRAM_FMT_BTXT	= 2,	/**< Broadcom board text file. This is used
 					     to provide external NVRAM data for some
 					     fullmac WiFi devices. */
-
 } bhnd_nvram_format;
 
 int	bhnd_nvram_probe(device_t dev);
@@ -71,8 +70,8 @@ struct bhnd_nvram_header {
 	uint32_t size;
 	uint32_t cfg0;		/**< crc:8, version:8, sdram_init:16 */
 	uint32_t cfg1;		/**< sdram_config:16, sdram_refresh:16 */
-	uint32_t memc_ncdl;	/**< sdram_ncdl */
-};
+	uint32_t sdram_ncdl;	/**< sdram_ncdl */
+} __packed;
 
 /** 
  * BCM/TLV/BTXT NVRAM format identification.
@@ -87,7 +86,7 @@ union bhnd_nvram_ident {
 		uint8_t		tag;
 		uint8_t		size[2];
 		uint8_t		flags;
-	} tlv;
+	} __packed tlv;
 };
 
 /**
@@ -117,6 +116,22 @@ struct bhnd_nvram_devpath {
 	STAILQ_ENTRY(bhnd_nvram_devpath) dp_link;
 };
 
+/**
+ * NVRAM variable tuple.
+ */
+struct bhnd_nvram_tuple {
+	char	*name;		/**< variable name. */
+	size_t	 name_len;	/**< variable length. */
+	char	*value;		/**< value, or NULL if this tuple represents variable
+				     deletion */
+	size_t	 value_len;	/**< value length. */
+
+	STAILQ_ENTRY(bhnd_nvram_tuple) t_link;
+};
+
+STAILQ_HEAD(bhnd_nvram_devpaths, bhnd_nvram_devpath);
+STAILQ_HEAD(bhnd_nvram_tuples, bhnd_nvram_tuple);
+
 /** bhnd nvram parser instance state */
 struct bhnd_nvram {
 	device_t			 dev;		/**< parent device, or NULL */
@@ -127,9 +142,10 @@ struct bhnd_nvram {
 
 	struct bhnd_nvram_idx		*idx;		/**< sorted key index into nvram buf */
 
-	STAILQ_HEAD(,bhnd_nvram_devpath) devpaths;	/**< device path aliases */
+	struct bhnd_nvram_devpaths	 devpaths;	/**< device path aliases */
+	struct bhnd_nvram_tuples	 defaults;	/**< default values */
+	struct bhnd_nvram_tuples	 pending;	/**< uncommitted writes */
 };
-
 
 /**
  * bhnd_nvram_cfe driver instance state. Must be first member of all subclass
