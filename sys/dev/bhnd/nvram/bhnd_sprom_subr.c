@@ -39,7 +39,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/bus.h>
 #include <machine/resource.h>
 
-#include "bhnd_nvram_private.h"
+#include "bhnd_nvram_common.h"
 
 #include "bhnd_spromreg.h"
 #include "bhnd_spromvar.h"

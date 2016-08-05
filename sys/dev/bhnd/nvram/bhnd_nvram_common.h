@@ -29,8 +29,8 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_NVRAM_BHND_NVRAM_PRIVATE_H_
-#define _BHND_NVRAM_BHND_NVRAM_PRIVATE_H_
+#ifndef _BHND_NVRAM_BHND_NVRAM_COMMON_H_
+#define _BHND_NVRAM_BHND_NVRAM_COMMON_H_
 
 #include <sys/param.h>
 #include <sys/malloc.h>
@@ -129,5 +129,4 @@ bhnd_nvram_crc8(const void *buf, size_t size, uint8_t crc)
 	return (crc);
 }
 
-
-#endif /* _BHND_NVRAM_BHND_NVRAM_PRIVATE_H_ */
+#endif /* _BHND_NVRAM_BHND_NVRAM_COMMON_H_ */

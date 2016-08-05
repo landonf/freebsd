@@ -1164,13 +1164,11 @@ dev/bhnd/cores/pcie2/bhnd_pcie2_hostb.c	optional bhndb bhnd pci
 dev/bhnd/cores/pcie2/bhnd_pcie2b.c	optional bhnd_pcie2b bhnd pci
 dev/bhnd/nvram/bhnd_nvram.c		optional bhnd siba_nexus | \
 						 bhnd bcma_nexus
-dev/bhnd/nvram/bhnd_nvram_subr.c	optional bhnd siba_nexus | \
-						 bhnd bcma_nexus
+dev/bhnd/nvram/bhnd_nvram_common.c	optional bhnd
 dev/bhnd/nvram/bhnd_nvram_if.m		optional bhnd
 dev/bhnd/nvram/bhnd_nvram_cfe.c		optional bhnd siba_nexus cfe | \
 						 bhnd bcma_nexus cfe
-dev/bhnd/nvram/bhnd_nvram_crc.c		optional bhnd
-dev/bhnd/nvram/bhnd_nvram_map.c		optional bhnd
+dev/bhnd/nvram/bhnd_nvram_subr.c	optional bhnd
 dev/bhnd/nvram/bhnd_sprom.c		optional bhnd
 dev/bhnd/nvram/bhnd_sprom_subr.c	optional bhnd
 dev/bhnd/siba/siba.c			optional siba bhnd
