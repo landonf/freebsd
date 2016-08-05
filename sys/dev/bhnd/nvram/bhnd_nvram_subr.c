@@ -168,300 +168,6 @@ bhnd_nvram_identify(const union bhnd_nvram_ident *ident,
 }
 
 /**
- * Fetch a string pointer to @p name's value, if any.
- * 
- * @param	nvram		The NVRAM parser state.
- * @param	name		The NVRAM variable name.
- * @param[out]	value		On success, a pointer to the variable's value
- *				string. The string may not be NUL terminated.
- * @param[out]	value_len	On success, the length of @p value, not
- *				including a terminating NUL (if any exists).
- *
- * @retval 0		success
- * @retval ENOENT	The requested variable was not found.
- * @retval non-zero	If reading @p name otherwise fails, a regular unix
- *			error code will be returned.
- */
-static int
-bhnd_nvram_find_var(struct bhnd_nvram *nvram, const char *name,
-    const char **value, size_t *value_len)
-{
-	bhnd_nvram_enum_buf	 enum_fn;
-	const char		*env;
-	const uint8_t		*p;
-	size_t			 env_len;
-	size_t			 name_len;
-	int			 error;
-
-	enum_fn = nvram->ops->enum_buf;
-	name_len = strlen(name);
-
-	// TODO: search dirty records
-
-	/* Prefer the index */
-	if (nvram->idx != NULL)
-		return (bhnd_nvram_index_lookup(nvram, name, &env, &env_len,
-		    value, value_len));
-
-	/* Iterate over all records */
-	p = NULL;
-	while ((error = enum_fn(nvram, &env, &env_len, p, &p)) == 0) {
-		/* Hit EOF, not found */
-		if (env == NULL)
-			break;
-
-		/* Skip string comparison if env_len < strlen(key + '=') */
-		if (env_len < name_len + 1)
-			continue;
-
-		/* Skip string comparison if delimiter isn't found at
-		 * expected position */
-		if (*(env + name_len) != '=')
-			continue;
-
-		/* Check for match */
-		if (strncmp(env, name, name_len) == 0) {
-			/* Found */
-			*value = env + name_len + 1;
-			*value_len = env_len - name_len - 1;
-			return (0);
-		};
-	}
-
-	/* Parse error */
-	if (error)
-		return (error);
-
-	/* Not found */
-	if (env == NULL)
-		return (ENOENT);
-
-	// TODO: fallback to defaults
-	return (ENOENT);
-}
-
-/*
- * An strcmp()-compatible  lexical comparison implementation that
- * handles non-NUL-terminated strings.
- */
-static int
-bhnd_nvram_keycmp(const char *lhs, size_t lhs_len, const char *rhs,
-    size_t rhs_len)
-{
-	int order;
-
-	order = strncmp(lhs, rhs, ulmin(lhs_len, rhs_len));
-	if (order == 0) {
-		if (lhs_len < rhs_len)
-			order = -1;
-		else if (lhs_len > rhs_len)
-			order = 1;
-	}
-
-	return (order);
-}
-
-/* bhnd_nvram_idx qsort_r sort function */
-static int
-bhnd_nvram_sort_idx(void *ctx, const void *lhs, const void *rhs)
-{
-	struct bhnd_nvram		*nvram;
-	const struct bhnd_nvram_idx	*l_idx, *r_idx;
-	const char			*l_str, *r_str;
-
-	nvram = ctx;
-	l_idx = lhs;
-	r_idx = rhs;
-
-	/* Fetch string pointers */
-	l_str = (char *)(nvram->buf + l_idx->env_offset);
-	r_str = (char *)(nvram->buf + r_idx->env_offset);
-
-	/* Perform comparison */
-	return (bhnd_nvram_keycmp(l_str, l_idx->key_len, r_str,
-	    r_idx->key_len));
-}
-
-/**
- * Generate all indices for the NVRAM data backing @p nvram.
- * 
- * @param nvram		The NVRAM parser state.
- *
- * @retval 0		success
- * @retval non-zero	If indexing @p nvram fails, a regular unix
- *			error code will be returned.
- */
-static int
-bhnd_nvram_generate_index(struct bhnd_nvram *nvram)
-{
-	bhnd_nvram_enum_buf	 enum_fn;
-	const char		*key, *val;
-	const char		*env;
-	const uint8_t		*p;
-	size_t			 env_len;
-	size_t			 idx_bytes;
-	size_t			 key_len, val_len;
-	size_t			 num_records;
-	int			 error;
-
-	enum_fn = nvram->ops->enum_buf;
-	num_records = 0;
-
-	/* Parse and register all device path aliases */
-	p = NULL;
-	while ((error = enum_fn(nvram, &env, &env_len, p, &p)) == 0) {
-		struct bhnd_nvram_devpath	*devpath;
-		char				*eptr;
-		char				 suffix[NVRAM_KEY_MAX+1];
-		size_t				 suffix_len;
-		u_long				 index;
-
-		/* Hit EOF */
-		if (env == NULL)
-			break;
-
-		num_records++;
-
-		/* Skip string comparison if env_len < strlen(devpath) */
-		if (env_len < NVRAM_DEVPATH_LEN)
-			continue;
-
-		/* Check for devpath prefix */
-		if (strncmp(env, NVRAM_DEVPATH_STR, NVRAM_DEVPATH_LEN) != 0)
-			continue;
-
-		/* Split key and value */
-		error = bhnd_nvram_parse_env(nvram, env, env_len, &key,
-		    &key_len, &val, &val_len);
-		if (error)
-			return (error);
-
-		/* NUL terminate the devpath's suffix */
-		if (key_len >= sizeof(suffix)) {
-			NVRAM_LOG(nvram, "variable '%.*s' exceeds "
-			    "NVRAM_KEY_MAX, skipping devpath parsing\n",
-			    key_len, key);
-			continue;
-		} else {
-			suffix_len = key_len - NVRAM_DEVPATH_LEN;
-			if (suffix_len == 0)
-				continue;
-
-			strcpy(suffix, key+NVRAM_DEVPATH_LEN);
-			suffix[suffix_len] = '\0';
-		}
-
-		/* Parse the index value */
-		index = strtoul(suffix, &eptr, 10);
-		if (eptr == suffix || *eptr != '\0') {
-			NVRAM_LOG(nvram, "invalid devpath variable '%.*s'\n",
-			    key_len, key);
-			continue;
-		}
-
-		/* Register path alias */
-		devpath = malloc(sizeof(*devpath), M_BHND_NVRAM, M_NOWAIT);
-		if (devpath == NULL)
-			return (ENOMEM);
-
-		devpath->index = index;
-		devpath->path = strndup(val, val_len, M_BHND_NVRAM);
-		STAILQ_INSERT_TAIL(&nvram->devpaths, devpath, dp_link);
-	}
-
-	if (error)
-		return (error);
-
-	/* Save record count */
-	nvram->num_buf_vars = num_records;
-
-	/* Skip generating variable index if threshold is not met */
-	if (nvram->num_buf_vars < BHND_NVRAM_IDX_VAR_THRESH)
-		return (0);
-
-	/* Allocate and populate variable index */
-	idx_bytes = sizeof(nvram->idx[0]) * nvram->num_buf_vars;
-	nvram->idx = malloc(idx_bytes, M_BHND_NVRAM, M_NOWAIT);
-	if (nvram->idx == NULL) {
-		NVRAM_LOG(nvram, "error allocating %zu byte index\n",
-		    idx_bytes);
-		goto bad_index;
-	}
-
-	if (bootverbose) {
-		NVRAM_LOG(nvram, "allocated %zu byte index for %zu variables "
-		    "in %zu bytes\n", idx_bytes, nvram->num_buf_vars,
-		    nvram->buf_size);
-	}
-
-	p = NULL;
-	for (size_t i = 0; i < num_records; i++) {
-		struct bhnd_nvram_idx	*idx;
-		size_t			 env_offset;
-		size_t			 key_len, val_len;
-
-		/* Fetch next record */
-		if ((error = enum_fn(nvram, &env, &env_len, p, &p)))
-			return (error);
-
-		/* Early EOF */
-		if (env == NULL) {
-			NVRAM_LOG(nvram, "indexing failed, expected "
-			    "%zu records (got %zu)\n", num_records, i+1);
-			goto bad_index;
-		}
-	
-		/* Calculate env offset */
-		env_offset = (const uint8_t *)env - (const uint8_t *)nvram->buf;
-		if (env_offset > BHND_NVRAM_IDX_OFFSET_MAX) {
-			NVRAM_LOG(nvram, "'%.*s' offset %#zx exceeds maximum "
-			    "indexable value\n", env_len, env, env_offset);
-			goto bad_index;
-		}
-
-		/* Split key and value */
-		error = bhnd_nvram_parse_env(nvram, env, env_len, &key,
-		    &key_len, &val, &val_len);
-		if (error)
-			return (error);
-
-		if (key_len > BHND_NVRAM_IDX_LEN_MAX) {
-			NVRAM_LOG(nvram, "key length %#zx at %#zx exceeds "
-			"maximum indexable value\n", key_len, env_offset);
-			goto bad_index;
-		}
-
-		if (val_len > BHND_NVRAM_IDX_LEN_MAX) {
-			NVRAM_LOG(nvram, "value length %#zx for key '%.*s' "
-			    "exceeds maximum indexable value\n", val_len,
-			    key_len, key);
-			goto bad_index;
-		}
-
-		idx = &nvram->idx[i];
-		idx->env_offset = env_offset;
-		idx->key_len = key_len;
-		idx->val_len = val_len;
-	}
-
-	/* Sort the index table */
-	qsort_r(nvram->idx, nvram->num_buf_vars, sizeof(nvram->idx[0]), nvram,
-	    bhnd_nvram_sort_idx);
-
-	return (0);
-
-bad_index:
-	/* Fall back on non-indexed access */
-	NVRAM_LOG(nvram, "reverting to non-indexed variable lookup\n");
-	if (nvram->idx != NULL) {
-		free(nvram->idx, M_BHND_NVRAM);
-		nvram->idx = NULL;
-	}
-
-	return (0);
-}
-
-/**
  * Identify the NVRAM format at @p offset within @p r, verify the CRC (if applicable),
  * and allocate a local shadow copy of the NVRAM data.
  * 
@@ -658,6 +364,303 @@ bhnd_nvram_parse_env(struct bhnd_nvram *nvram, const char *env, size_t len,
 
 	return (0);
 }
+
+
+/**
+ * Fetch a string pointer to @p name's value, if any.
+ * 
+ * @param	nvram		The NVRAM parser state.
+ * @param	name		The NVRAM variable name.
+ * @param[out]	value		On success, a pointer to the variable's value
+ *				string. The string may not be NUL terminated.
+ * @param[out]	value_len	On success, the length of @p value, not
+ *				including a terminating NUL (if any exists).
+ *
+ * @retval 0		success
+ * @retval ENOENT	The requested variable was not found.
+ * @retval non-zero	If reading @p name otherwise fails, a regular unix
+ *			error code will be returned.
+ */
+static int
+bhnd_nvram_find_var(struct bhnd_nvram *nvram, const char *name,
+    const char **value, size_t *value_len)
+{
+	bhnd_nvram_enum_buf	 enum_fn;
+	const char		*env;
+	const uint8_t		*p;
+	size_t			 env_len;
+	size_t			 name_len;
+	int			 error;
+
+	enum_fn = nvram->ops->enum_buf;
+	name_len = strlen(name);
+
+	// TODO: search dirty records
+
+	/* Prefer the index */
+	if (nvram->idx != NULL)
+		return (bhnd_nvram_index_lookup(nvram, name, &env, &env_len,
+		    value, value_len));
+
+	/* Iterate over all records */
+	p = NULL;
+	while ((error = enum_fn(nvram, &env, &env_len, p, &p)) == 0) {
+		/* Hit EOF, not found */
+		if (env == NULL)
+			break;
+
+		/* Skip string comparison if env_len < strlen(key + '=') */
+		if (env_len < name_len + 1)
+			continue;
+
+		/* Skip string comparison if delimiter isn't found at
+		 * expected position */
+		if (*(env + name_len) != '=')
+			continue;
+
+		/* Check for match */
+		if (strncmp(env, name, name_len) == 0) {
+			/* Found */
+			*value = env + name_len + 1;
+			*value_len = env_len - name_len - 1;
+			return (0);
+		};
+	}
+
+	/* Parse error */
+	if (error)
+		return (error);
+
+	/* Not found */
+	if (env == NULL)
+		return (ENOENT);
+
+	// TODO: fallback to defaults
+	return (ENOENT);
+}
+
+/*
+ * An strcmp()-compatible  lexical comparison implementation that
+ * handles non-NUL-terminated strings.
+ */
+static int
+bhnd_nvram_keycmp(const char *lhs, size_t lhs_len, const char *rhs,
+    size_t rhs_len)
+{
+	int order;
+
+	order = strncmp(lhs, rhs, ulmin(lhs_len, rhs_len));
+	if (order == 0) {
+		if (lhs_len < rhs_len)
+			order = -1;
+		else if (lhs_len > rhs_len)
+			order = 1;
+	}
+
+	return (order);
+}
+
+/* bhnd_nvram_idx qsort_r sort function */
+static int
+bhnd_nvram_sort_idx(void *ctx, const void *lhs, const void *rhs)
+{
+	struct bhnd_nvram		*nvram;
+	const struct bhnd_nvram_idx	*l_idx, *r_idx;
+	const char			*l_str, *r_str;
+
+	nvram = ctx;
+	l_idx = lhs;
+	r_idx = rhs;
+
+	/* Fetch string pointers */
+	l_str = (char *)(nvram->buf + l_idx->env_offset);
+	r_str = (char *)(nvram->buf + r_idx->env_offset);
+
+	/* Perform comparison */
+	return (bhnd_nvram_keycmp(l_str, l_idx->key_len, r_str,
+	    r_idx->key_len));
+}
+
+
+/**
+ * Generate all indices for the NVRAM data backing @p nvram.
+ * 
+ * @param nvram		The NVRAM parser state.
+ *
+ * @retval 0		success
+ * @retval non-zero	If indexing @p nvram fails, a regular unix
+ *			error code will be returned.
+ */
+static int
+bhnd_nvram_generate_index(struct bhnd_nvram *nvram)
+{
+	bhnd_nvram_enum_buf	 enum_fn;
+	const char		*key, *val;
+	const char		*env;
+	const uint8_t		*p;
+	size_t			 env_len;
+	size_t			 idx_bytes;
+	size_t			 key_len, val_len;
+	size_t			 num_records;
+	int			 error;
+
+	enum_fn = nvram->ops->enum_buf;
+	num_records = 0;
+
+	/* Parse and register all device path aliases */
+	p = NULL;
+	while ((error = enum_fn(nvram, &env, &env_len, p, &p)) == 0) {
+		struct bhnd_nvram_devpath	*devpath;
+		char				*eptr;
+		char				 suffix[NVRAM_KEY_MAX+1];
+		size_t				 suffix_len;
+		u_long				 index;
+
+		/* Hit EOF */
+		if (env == NULL)
+			break;
+
+		num_records++;
+
+		/* Skip string comparison if env_len < strlen(devpath) */
+		if (env_len < NVRAM_DEVPATH_LEN)
+			continue;
+
+		/* Check for devpath prefix */
+		if (strncmp(env, NVRAM_DEVPATH_STR, NVRAM_DEVPATH_LEN) != 0)
+			continue;
+
+		/* Split key and value */
+		error = bhnd_nvram_parse_env(nvram, env, env_len, &key,
+		    &key_len, &val, &val_len);
+		if (error)
+			return (error);
+
+		/* NUL terminate the devpath's suffix */
+		if (key_len >= sizeof(suffix)) {
+			NVRAM_LOG(nvram, "variable '%.*s' exceeds "
+			    "NVRAM_KEY_MAX, skipping devpath parsing\n",
+			    key_len, key);
+			continue;
+		} else {
+			suffix_len = key_len - NVRAM_DEVPATH_LEN;
+			if (suffix_len == 0)
+				continue;
+
+			strcpy(suffix, key+NVRAM_DEVPATH_LEN);
+			suffix[suffix_len] = '\0';
+		}
+
+		/* Parse the index value */
+		index = strtoul(suffix, &eptr, 10);
+		if (eptr == suffix || *eptr != '\0') {
+			NVRAM_LOG(nvram, "invalid devpath variable '%.*s'\n",
+			    key_len, key);
+			continue;
+		}
+
+		/* Register path alias */
+		devpath = malloc(sizeof(*devpath), M_BHND_NVRAM, M_NOWAIT);
+		if (devpath == NULL)
+			return (ENOMEM);
+
+		devpath->index = index;
+		devpath->path = strndup(val, val_len, M_BHND_NVRAM);
+		STAILQ_INSERT_TAIL(&nvram->devpaths, devpath, dp_link);
+	}
+
+	if (error)
+		return (error);
+
+	/* Save record count */
+	nvram->num_buf_vars = num_records;
+
+	/* Skip generating variable index if threshold is not met */
+	if (nvram->num_buf_vars < BHND_NVRAM_IDX_VAR_THRESH)
+		return (0);
+
+	/* Allocate and populate variable index */
+	idx_bytes = sizeof(nvram->idx[0]) * nvram->num_buf_vars;
+	nvram->idx = malloc(idx_bytes, M_BHND_NVRAM, M_NOWAIT);
+	if (nvram->idx == NULL) {
+		NVRAM_LOG(nvram, "error allocating %zu byte index\n",
+		    idx_bytes);
+		goto bad_index;
+	}
+
+	if (bootverbose) {
+		NVRAM_LOG(nvram, "allocated %zu byte index for %zu variables "
+		    "in %zu bytes\n", idx_bytes, nvram->num_buf_vars,
+		    nvram->buf_size);
+	}
+
+	p = NULL;
+	for (size_t i = 0; i < num_records; i++) {
+		struct bhnd_nvram_idx	*idx;
+		size_t			 env_offset;
+		size_t			 key_len, val_len;
+
+		/* Fetch next record */
+		if ((error = enum_fn(nvram, &env, &env_len, p, &p)))
+			return (error);
+
+		/* Early EOF */
+		if (env == NULL) {
+			NVRAM_LOG(nvram, "indexing failed, expected "
+			    "%zu records (got %zu)\n", num_records, i+1);
+			goto bad_index;
+		}
+	
+		/* Calculate env offset */
+		env_offset = (const uint8_t *)env - (const uint8_t *)nvram->buf;
+		if (env_offset > BHND_NVRAM_IDX_OFFSET_MAX) {
+			NVRAM_LOG(nvram, "'%.*s' offset %#zx exceeds maximum "
+			    "indexable value\n", env_len, env, env_offset);
+			goto bad_index;
+		}
+
+		/* Split key and value */
+		error = bhnd_nvram_parse_env(nvram, env, env_len, &key,
+		    &key_len, &val, &val_len);
+		if (error)
+			return (error);
+
+		if (key_len > BHND_NVRAM_IDX_LEN_MAX) {
+			NVRAM_LOG(nvram, "key length %#zx at %#zx exceeds "
+			"maximum indexable value\n", key_len, env_offset);
+			goto bad_index;
+		}
+
+		if (val_len > BHND_NVRAM_IDX_LEN_MAX) {
+			NVRAM_LOG(nvram, "value length %#zx for key '%.*s' "
+			    "exceeds maximum indexable value\n", val_len,
+			    key_len, key);
+			goto bad_index;
+		}
+
+		idx = &nvram->idx[i];
+		idx->env_offset = env_offset;
+		idx->key_len = key_len;
+		idx->val_len = val_len;
+	}
+
+	/* Sort the index table */
+	qsort_r(nvram->idx, nvram->num_buf_vars, sizeof(nvram->idx[0]), nvram,
+	    bhnd_nvram_sort_idx);
+
+	return (0);
+
+bad_index:
+	/* Fall back on non-indexed access */
+	NVRAM_LOG(nvram, "reverting to non-indexed variable lookup\n");
+	if (nvram->idx != NULL) {
+		free(nvram->idx, M_BHND_NVRAM);
+		nvram->idx = NULL;
+	}
+
+	return (0);
+}
+
 
 /**
  * Perform an index lookup of @p name.
