@@ -148,7 +148,7 @@ struct bhnd_nvram {
 };
 
 /**
- * bhnd_nvram_cfe driver instance state. Must be first member of all subclass
+ * bhnd_nvram driver instance state. Must be first member of all subclass
  * softc structures.
  */
 struct bhnd_nvram_softc {
