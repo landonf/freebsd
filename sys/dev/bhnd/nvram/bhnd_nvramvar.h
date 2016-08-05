@@ -105,6 +105,18 @@ struct bhnd_nvram_idx {
 #define	BHND_NVRAM_IDX_OFFSET_MAX	UINT16_MAX	/**< maximum indexable offset */
 #define	BHND_NVRAM_IDX_LEN_MAX		UINT8_MAX	/**< maximum indexable key/value length */
 
+/**
+ * NVRAM devpath record.
+ * 
+ * Aliases index values to full device paths.
+ */
+struct bhnd_nvram_devpath {
+	u_long	 index;	/** alias index */
+	char	*path;	/** aliased path */
+
+	STAILQ_ENTRY(bhnd_nvram_devpath) dp_link;
+};
+
 /** bhnd nvram parser instance state */
 struct bhnd_nvram {
 	device_t			 dev;		/**< parent device, or NULL */
@@ -115,8 +127,7 @@ struct bhnd_nvram {
 
 	struct bhnd_nvram_idx		*idx;		/**< sorted key index into nvram buf */
 
-	char				**devpaths;	/**< device path aliases */
-	size_t				 num_devpaths;	/**< number of device path alias records */
+	STAILQ_HEAD(,bhnd_nvram_devpath) devpaths;	/**< device path aliases */
 };
 
 

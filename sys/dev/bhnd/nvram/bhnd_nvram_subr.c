@@ -310,10 +310,11 @@ bhnd_nvram_generate_index(struct bhnd_nvram *nvram)
 	/* Parse and register all device path aliases */
 	p = NULL;
 	while ((error = enum_fn(nvram, &env, &env_len, p, &p)) == 0) {
-		char	*eptr;
-		char	 suffix[NVRAM_KEY_MAX+1];
-		size_t	 suffix_len;
-		u_long	 index;
+		struct bhnd_nvram_devpath	*devpath;
+		char				*eptr;
+		char				 suffix[NVRAM_KEY_MAX+1];
+		size_t				 suffix_len;
+		u_long				 index;
 
 		/* Hit EOF */
 		if (env == NULL)
@@ -358,9 +359,14 @@ bhnd_nvram_generate_index(struct bhnd_nvram *nvram)
 			continue;
 		}
 
-		// TODO: register alias
-		NVRAM_LOG(nvram, "got devpath %lu = '%.*s'\n", index, val_len,
-		    val);
+		/* Register path alias */
+		devpath = malloc(sizeof(*devpath), M_BHND_NVRAM, M_NOWAIT);
+		if (devpath == NULL)
+			return (ENOMEM);
+
+		devpath->index = index;
+		devpath->path = strndup(val, val_len, M_BHND_NVRAM);
+		STAILQ_INSERT_TAIL(&nvram->devpaths, devpath, dp_link);
 	}
 
 	if (error)
@@ -481,7 +487,9 @@ bhnd_nvram_init(struct bhnd_nvram *nvram, device_t dev, const void *data,
 
 	/* Initialize NVRAM state */
 	memset(nvram, 0, sizeof(*nvram));
+
 	nvram->dev = dev;
+	STAILQ_INIT(&nvram->devpaths);
 
 	/* Check for specified data format */
 	if (size < sizeof(union bhnd_nvram_ident))
@@ -529,11 +537,39 @@ bhnd_nvram_init(struct bhnd_nvram *nvram, device_t dev, const void *data,
 		return (error);
 	NVRAM_LOG(nvram, "boardtype='%.*s'\n", val_len, val);
 
+	struct bhnd_nvram_devpath *dp;
+	STAILQ_FOREACH(dp, &nvram->devpaths, dp_link) {
+		NVRAM_LOG(nvram, "alias %lu to '%s'\n", dp->index, dp->path);
+	}
+
 	return (0);
 
 cleanup:
 	free(nvram->buf, M_BHND_NVRAM);
 	return (error);
+}
+
+
+/**
+ * Release all resources held by @p nvram.
+ * 
+ * @param nvram A NVRAM instance previously initialized via bhnd_nvram_init().
+ */
+void
+bhnd_nvram_fini(struct bhnd_nvram *nvram)
+{
+	struct bhnd_nvram_devpath *dpath, *dnext;
+
+	if (nvram->idx != NULL)
+		free(nvram->idx, M_BHND_NVRAM);
+
+	free(nvram->buf, M_BHND_NVRAM);
+
+        STAILQ_FOREACH_SAFE(dpath, &nvram->devpaths, dp_link, dnext) {
+		free(dpath->path, M_BHND_NVRAM);
+                free(dpath, M_BHND_NVRAM);
+        }
+
 }
 
 /**
@@ -912,17 +948,4 @@ bhnd_nvram_enum_buf_txt(struct bhnd_nvram *nvram, const char **env,
 	
 	*next = p;
 	return (0);
-}
-
-/**
- * Release all resources held by @p nvram.
- * 
- * @param nvram A NVRAM instance previously initialized via bhnd_nvram_init().
- */
-void
-bhnd_nvram_fini(struct bhnd_nvram *nvram)
-{
-	if (nvram->idx != NULL)
-		free(nvram->idx, M_BHND_NVRAM);
-	free(nvram->buf, M_BHND_NVRAM);
 }
