@@ -136,15 +136,6 @@ static const struct bhnd_nvram_ops bhnd_nvram_ops_table[] = {
 	},
 };
 
-
-/* standard callback context */
-struct bhnd_nvram_ctx {
-	const uint8_t	*iobuf;
-	size_t		 iolen;
-	void		*iomisc;
-	int		 ioerr;
-};
-
 #define	NVRAM_LOG(nvram, fmt, ...)	do {			\
 	if (nvram->dev != NULL)					\
 		device_printf(nvram->dev, fmt, ##__VA_ARGS__);	\
