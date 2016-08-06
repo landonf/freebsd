@@ -107,12 +107,14 @@ static int	bhnd_nvram_txt_enum_buf(struct bhnd_nvram *nvram,
 		    const char **env, size_t *len, const uint8_t *p,
 		    uint8_t const **next);
 
+/**
+ * Format-specific operations.
+ */
 struct bhnd_nvram_ops {
 	bhnd_nvram_format		fmt;		/**< nvram format */
-	bhnd_nvram_op_init		init;
-	bhnd_nvram_op_enum_buf		enum_buf;
-	bhnd_nvram_op_init_defaults	init_defaults;
-	
+	bhnd_nvram_op_init		init;		/**< format-specific initialization */
+	bhnd_nvram_op_enum_buf		enum_buf;	/**< enumerate backing buffer */
+	bhnd_nvram_op_init_defaults	init_defaults;	/**< populate any default values */
 };
 
 static const struct bhnd_nvram_ops bhnd_nvram_ops_table[] = {
