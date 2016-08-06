@@ -48,6 +48,8 @@ __FBSDID("$FreeBSD$");
  * Provides identification, decoding, and encoding of BHND NVRAM data.
  */
 
+static const struct bhnd_nvram_ops *bhnd_nvram_find_ops(bhnd_nvram_format fmt);
+
 static int	bhnd_nvram_contains_var(struct bhnd_nvram *nvram,
 		    const char *name);
 static int	bhnd_nvram_find_var(struct bhnd_nvram *nvram, const char *name,
@@ -81,14 +83,27 @@ static int	bhnd_nvram_parse_env(struct bhnd_nvram *nvram, const char *env,
 		    size_t len, const char **key, size_t *key_len,
 		    const char **val, size_t *val_len);
 
-/* NVRAM format-specific operations */
+/**
+ * Calculate the size of the NVRAM data in @p data.
+ * 
+ * @param		data	Pointer to NVRAM data to be parsed.
+ * @param[in,out]	size	On input, the total size of @p data. On
+ *				successful parsing of @p data, will be set to
+ *				the parsed size (which may be larger).
+ */
+typedef int	(*bhnd_nvram_op_getsize)(const void *data, size_t *size);
+
+/** Perform format-specific initialization. */
 typedef int	(*bhnd_nvram_op_init)(struct bhnd_nvram *nvram);
+
+/** Initialize any format-specific default values. */
 typedef int	(*bhnd_nvram_op_init_defaults)(struct bhnd_nvram *nvram);
 typedef int	(*bhnd_nvram_op_enum_buf)(struct bhnd_nvram *nvram,
 		    const char **env, size_t *len, const uint8_t *p,
 		    uint8_t const **next);
 
 /* FMT_BCM ops */
+static int	bhnd_nvram_bcm_getsize(const void *data, size_t *size);
 static int	bhnd_nvram_bcm_init(struct bhnd_nvram *nvram);
 static int	bhnd_nvram_bcm_init_defaults(struct bhnd_nvram *nvram);
 static int	bhnd_nvram_bcm_enum_buf(struct bhnd_nvram *nvram,
@@ -96,12 +111,14 @@ static int	bhnd_nvram_bcm_enum_buf(struct bhnd_nvram *nvram,
 		    uint8_t const **next);
 
 /* FMT_TLV ops */
+static int	bhnd_nvram_tlv_getsize(const void *data, size_t *size);
 static int	bhnd_nvram_tlv_init(struct bhnd_nvram *nvram);
 static int	bhnd_nvram_tlv_enum_buf(struct bhnd_nvram *nvram,
 		    const char **env, size_t *len, const uint8_t *p,
 		    uint8_t const **next);
 
 /* FMT_TXT ops */
+static int	bhnd_nvram_txt_getsize(const void *data, size_t *size);
 static int	bhnd_nvram_txt_init(struct bhnd_nvram *nvram);
 static int	bhnd_nvram_txt_enum_buf(struct bhnd_nvram *nvram,
 		    const char **env, size_t *len, const uint8_t *p,
@@ -111,27 +128,31 @@ static int	bhnd_nvram_txt_enum_buf(struct bhnd_nvram *nvram,
  * Format-specific operations.
  */
 struct bhnd_nvram_ops {
-	bhnd_nvram_format		fmt;		/**< nvram format */
-	bhnd_nvram_op_init		init;		/**< format-specific initialization */
-	bhnd_nvram_op_enum_buf		enum_buf;	/**< enumerate backing buffer */
-	bhnd_nvram_op_init_defaults	init_defaults;	/**< populate any default values */
+	bhnd_nvram_format		 fmt;		/**< nvram format */
+	bhnd_nvram_op_getsize		 getsize;	/**< determine actual NVRAM size */
+	bhnd_nvram_op_init		 init;		/**< format-specific initialization */
+	bhnd_nvram_op_enum_buf		 enum_buf;	/**< enumerate backing buffer */
+	bhnd_nvram_op_init_defaults	 init_defaults;	/**< populate any default values */
 };
 
 static const struct bhnd_nvram_ops bhnd_nvram_ops_table[] = {
 	{ 
 		BHND_NVRAM_FMT_BCM,
+		bhnd_nvram_bcm_getsize,
 		bhnd_nvram_bcm_init, 
 		bhnd_nvram_bcm_enum_buf,
 		bhnd_nvram_bcm_init_defaults
 	},
 	{
 		BHND_NVRAM_FMT_TLV,
+		bhnd_nvram_tlv_getsize,
 		bhnd_nvram_tlv_init,
 		bhnd_nvram_tlv_enum_buf,
 		NULL
 	},
 	{
 		BHND_NVRAM_FMT_BTXT,
+		bhnd_nvram_txt_getsize,
 		bhnd_nvram_txt_init,
 		bhnd_nvram_txt_enum_buf,
 		NULL
@@ -193,6 +214,26 @@ bhnd_nvram_identify(const union bhnd_nvram_ident *ident,
 	}
 }
 
+/** Return the set of operations for @p fmt, if any */
+static const struct bhnd_nvram_ops *
+bhnd_nvram_find_ops(bhnd_nvram_format fmt)
+{
+	const struct bhnd_nvram_ops *ops;
+
+	/* Fetch format-specific operation callbacks */
+	for (size_t i = 0; i < nitems(bhnd_nvram_ops_table); i++) {
+		ops = &bhnd_nvram_ops_table[i];
+
+		if (ops->fmt != fmt)
+			continue;
+
+		/* found */
+		return (ops);
+	}
+
+	return (NULL);
+}
+
 /**
  * Identify the NVRAM format at @p offset within @p r, verify the
  * CRC (if applicable), and allocate a local shadow copy of the NVRAM data.
@@ -225,7 +266,7 @@ bhnd_nvram_init(struct bhnd_nvram *nvram, device_t dev, const void *data,
 	STAILQ_INIT(&nvram->defaults);
 	STAILQ_INIT(&nvram->pending);
 
-	/* Check for specified data format */
+	/* Verify data format and init operation callbacks */
 	if (size < sizeof(union bhnd_nvram_ident))
 		return (EINVAL);
 
@@ -234,27 +275,27 @@ bhnd_nvram_init(struct bhnd_nvram *nvram, device_t dev, const void *data,
 	if (error)
 		return (error);
 
-	/* Allocate backing buffer */
+	if ((nvram->ops = bhnd_nvram_find_ops(fmt)) == NULL) {
+		NVRAM_LOG(nvram, "unsupported format: %d\n", fmt);
+		return (error);
+	}
+
+	/* Determine appropiate size for backing buffer */
 	nvram->buf_size = size;
+	if ((error = nvram->ops->getsize(data, &nvram->buf_size)))
+		return (error);
+
+	if (nvram->buf_size > size) {
+		NVRAM_LOG(nvram, "cannot parse %zu NVRAM bytes, would overrun "
+		    "%zu byte input buffer\n", nvram->buf_size, size);
+		return (EINVAL);
+	}
+
+	/* Allocate and populate backing buffer */
 	nvram->buf = malloc(nvram->buf_size, M_BHND_NVRAM, M_NOWAIT);
 	if (nvram->buf == NULL)
 		return (ENOMEM);
 	memcpy(nvram->buf, data, nvram->buf_size);
-
-	/* Fetch format-specific operation callbacks */
-	for (size_t i = 0; i < nitems(bhnd_nvram_ops_table); i++) {
-		const struct bhnd_nvram_ops *ops = &bhnd_nvram_ops_table[i];
-
-		if (ops->fmt != fmt)
-			continue;
-
-		/* found */
-		nvram->ops = ops;
-		break;
-	}
-
-	if (nvram->ops == NULL)
-		goto cleanup;
 
 	/* Perform format-specific initialization */
 	if ((error = nvram->ops->init(nvram)))
@@ -342,7 +383,7 @@ bhnd_nvram_bufptr_valid(struct bhnd_nvram *nvram, const void *ptr,
 	if (nbytes > nvram->buf_size)
 		goto failed;
 
-	if (p >= nvram->buf + (nvram->buf_size - nbytes))
+	if (p - nvram->buf > nvram->buf_size - nbytes)
 		goto failed;
 
 	return (true);
@@ -838,6 +879,20 @@ bhnd_nvram_buffer_lookup(struct bhnd_nvram *nvram, const char *name,
 	return (error);
 }
 
+/* FMT_BCM NVRAM data size calculation */
+static int
+bhnd_nvram_bcm_getsize(const void *data, size_t *size)
+{
+	const struct bhnd_nvram_header *hdr;
+
+	if (*size < sizeof(*hdr))
+		return (EINVAL);
+
+	hdr = (const struct bhnd_nvram_header *) data;
+	*size = le32toh(hdr->size);
+	return (0);
+}
+
 /* FMT_BCM-specific parser initialization */
 static int
 bhnd_nvram_bcm_init(struct bhnd_nvram *nvram)
@@ -1021,6 +1076,54 @@ bhnd_nvram_bcm_enum_buf(struct bhnd_nvram *nvram, const char **env,
 	return (0);
 }
 
+/* FMT_TLV NVRAM data size calculation */
+static int
+bhnd_nvram_tlv_getsize(const void *data, size_t *size)
+{
+	const uint8_t	*const start = data;
+	size_t		 offset;
+	uint16_t	 rlen;
+
+	offset = 0;
+	while (offset < *size) {
+		uint8_t type;
+
+		/* Fetch type */
+		type = *(start+offset);
+
+		/* EOF */
+		if (type == NVRAM_TLV_TYPE_END) {
+			*size = offset + 1;
+			return (0);
+		}
+
+		if ((offset++) == *size)
+			return (EINVAL);
+
+		/* Determine record length */
+		if (type & NVRAM_TLV_TF_U8_LEN) {
+			rlen = *(start+offset);
+		} else {
+			rlen = *(start+offset) << 8;
+			if ((offset++) == *size)
+				return (EINVAL);
+			rlen |= *(start+offset);
+		}
+
+		if ((offset++) >= *size)
+			return (EINVAL);
+
+		/* Advance to next entry */
+		if (rlen > *size || *size - rlen < offset)
+			return (EINVAL);
+
+		offset += rlen;
+	}
+
+	/* EOF not found */
+	return (EINVAL);
+}
+
 /* FMT_TLV-specific parser initialization */
 static int
 bhnd_nvram_tlv_init(struct bhnd_nvram *nvram)
@@ -1092,6 +1195,14 @@ bhnd_nvram_tlv_enum_buf(struct bhnd_nvram *nvram, const char **env,
 	/* Advance to next entry */
 	*next = p + rlen;
 
+	return (0);
+}
+
+/* FMT_BTXT NVRAM data size calculation */
+static int
+bhnd_nvram_txt_getsize(const void *data, size_t *size)
+{
+	*size = (strnlen(data, *size));
 	return (0);
 }
 
