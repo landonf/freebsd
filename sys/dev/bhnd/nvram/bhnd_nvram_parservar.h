@@ -92,12 +92,22 @@
 /**
  * NVRAM index record.
  * 
- * Provides a compact index into the backing NVRAM buffer.
+ * Provides entry offsets into a backing NVRAM buffer.
  */
-struct bhnd_nvram_idx {
+struct bhnd_nvram_idx_entry {
 	uint16_t	env_offset;	/**< offset to env string */
 	uint8_t		key_len;	/**< key length */
 	uint8_t		val_len;	/**< value length */
+};
+
+/**
+ * NVRAM index.
+ * 
+ * Provides a compact binary search index into the backing NVRAM buffer.
+ */
+struct bhnd_nvram_idx {
+	size_t				num_entries;	/**< entry count */
+	struct bhnd_nvram_idx_entry	entries[];	/**< index entries */
 };
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_PARSERVAR_H_ */

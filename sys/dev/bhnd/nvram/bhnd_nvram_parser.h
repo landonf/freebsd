@@ -95,9 +95,9 @@ struct bhnd_nvram {
 	size_t				 buf_size;
 	size_t				 num_buf_vars;	/**< number of records in @p buf (0 if not yet calculated) */
 
-	struct bhnd_nvram_idx		*idx;		/**< sorted key index into nvram buf */
+	struct bhnd_nvram_idx		*idx;		/**< key index */
 
-	struct bhnd_nvram_devpaths	 devpaths;	/**< device path aliases */
+	struct bhnd_nvram_devpaths	 devpaths;	/**< device paths */
 	struct bhnd_nvram_tuples	 defaults;	/**< default values */
 	struct bhnd_nvram_tuples	 pending;	/**< uncommitted writes */
 };

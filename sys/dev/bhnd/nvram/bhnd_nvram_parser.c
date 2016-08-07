@@ -70,8 +70,9 @@ static int	bhnd_nvram_sort_idx(void *ctx, const void *lhs,
 static int	bhnd_nvram_generate_index(struct bhnd_nvram *nvram);
 
 static int	bhnd_nvram_index_lookup(struct bhnd_nvram *nvram,
-		    const char *name, const char **env, size_t *len,
-		    const char **value, size_t *value_len);
+		    struct bhnd_nvram_idx *idx, const char *name,
+		    const char **env, size_t *len, const char **value,
+		    size_t *value_len);
 static int	bhnd_nvram_buffer_lookup(struct bhnd_nvram *nvram,
 		    const char *name, const char **env, size_t *env_len,
 		    const char **value, size_t *value_len);
@@ -500,8 +501,8 @@ bhnd_nvram_find_var(struct bhnd_nvram *nvram, const char *name,
 	/* Search backing buffer. We the index if available; otherwise,
 	 * perform a buffer scan */
 	if (nvram->idx != NULL) {
-		error = bhnd_nvram_index_lookup(nvram, name, &env, &env_len,
-		    value, value_len);
+		error = bhnd_nvram_index_lookup(nvram, nvram->idx, name, &env,
+		    &env_len, value, value_len);
 	} else {
 		error = bhnd_nvram_buffer_lookup(nvram, name, &env, &env_len,
 		    value, value_len);
@@ -546,13 +547,13 @@ bhnd_nvram_keycmp(const char *lhs, size_t lhs_len, const char *rhs,
 	return (order);
 }
 
-/* bhnd_nvram_idx qsort_r sort function */
+/* sort function for bhnd_nvram_idx_entry values */
 static int
 bhnd_nvram_sort_idx(void *ctx, const void *lhs, const void *rhs)
 {
-	struct bhnd_nvram		*nvram;
-	const struct bhnd_nvram_idx	*l_idx, *r_idx;
-	const char			*l_str, *r_str;
+	struct bhnd_nvram			*nvram;
+	const struct bhnd_nvram_idx_entry	*l_idx, *r_idx;
+	const char				*l_str, *r_str;
 
 	nvram = ctx;
 	l_idx = lhs;
@@ -666,13 +667,16 @@ bhnd_nvram_generate_index(struct bhnd_nvram *nvram)
 		return (0);
 
 	/* Allocate and populate variable index */
-	idx_bytes = sizeof(nvram->idx[0]) * nvram->num_buf_vars;
+	idx_bytes = sizeof(struct bhnd_nvram_idx) +
+	    (sizeof(struct bhnd_nvram_idx_entry) * nvram->num_buf_vars);
 	nvram->idx = malloc(idx_bytes, M_BHND_NVRAM, M_NOWAIT);
 	if (nvram->idx == NULL) {
 		NVRAM_LOG(nvram, "error allocating %zu byte index\n",
 		    idx_bytes);
 		goto bad_index;
 	}
+
+	nvram->idx->num_entries = nvram->num_buf_vars;
 
 	if (bootverbose) {
 		NVRAM_LOG(nvram, "allocated %zu byte index for %zu variables "
@@ -681,10 +685,10 @@ bhnd_nvram_generate_index(struct bhnd_nvram *nvram)
 	}
 
 	p = NULL;
-	for (size_t i = 0; i < num_records; i++) {
-		struct bhnd_nvram_idx	*idx;
-		size_t			 env_offset;
-		size_t			 key_len, val_len;
+	for (size_t i = 0; i < nvram->idx->num_entries; i++) {
+		struct bhnd_nvram_idx_entry	*idx;
+		size_t				 env_offset;
+		size_t				 key_len, val_len;
 
 		/* Fetch next record */
 		if ((error = enum_fn(nvram, &env, &env_len, p, &p)))
@@ -692,8 +696,8 @@ bhnd_nvram_generate_index(struct bhnd_nvram *nvram)
 
 		/* Early EOF */
 		if (env == NULL) {
-			NVRAM_LOG(nvram, "indexing failed, expected "
-			    "%zu records (got %zu)\n", num_records, i+1);
+			NVRAM_LOG(nvram, "indexing failed, expected %zu records"
+			" (got %zu)\n", nvram->idx->num_entries, i+1);
 			goto bad_index;
 		}
 	
@@ -725,15 +729,15 @@ bhnd_nvram_generate_index(struct bhnd_nvram *nvram)
 			goto bad_index;
 		}
 
-		idx = &nvram->idx[i];
+		idx = &nvram->idx->entries[i];
 		idx->env_offset = env_offset;
 		idx->key_len = key_len;
 		idx->val_len = val_len;
 	}
 
 	/* Sort the index table */
-	qsort_r(nvram->idx, nvram->num_buf_vars, sizeof(nvram->idx[0]), nvram,
-	    bhnd_nvram_sort_idx);
+	qsort_r(nvram->idx->entries, nvram->idx->num_entries,
+	    sizeof(nvram->idx->entries[0]), nvram, bhnd_nvram_sort_idx);
 
 	return (0);
 
@@ -753,6 +757,7 @@ bad_index:
  * Perform an index lookup of @p name.
  *
  * @param	nvram		The NVRAM parser state.
+ * @param	idx		The index to search.
  * @param	name		The variable to search for.
  * @param[out]	env		On success, the pointer to @p name within the
  *				backing buffer.
@@ -766,19 +771,17 @@ bad_index:
  * @retval ENODEV If no index has been generated.
  */
 static int
-bhnd_nvram_index_lookup(struct bhnd_nvram *nvram, const char *name,
-    const char **env, size_t *env_len, const char **value, size_t *value_len)
+bhnd_nvram_index_lookup(struct bhnd_nvram *nvram, struct bhnd_nvram_idx *idx,
+    const char *name, const char **env, size_t *env_len, const char **value,
+    size_t *value_len)
 {
-	struct bhnd_nvram_idx	*idx;
-	const char		*idx_key;
-	size_t			 min, mid, max;
-	size_t			 name_len;
-	int			 order;
+	struct bhnd_nvram_idx_entry	*idxe;
+	const char			*idxe_key;
+	size_t				 min, mid, max;
+	size_t				 name_len;
+	int				 order;
 
-	if (nvram->idx == NULL)
-		return (ENODEV);
-
-	if (nvram->num_buf_vars == 0)
+	if (idx->num_entries == 0)
 		return (ENOENT);
 
 	/*
@@ -786,17 +789,17 @@ bhnd_nvram_index_lookup(struct bhnd_nvram *nvram, const char *name,
 	 */
 	min = 0;
 	mid = 0;
-	max = nvram->num_buf_vars - 1;
+	max = idx->num_entries - 1;
 	name_len = strlen(name);
 
 	while (max >= min) {
 		/* Select midpoint */
 		mid = (min + max) / 2;
-		idx = &nvram->idx[mid];
+		idxe = &idx->entries[mid];
 
 		/* Determine which side of the partition to search */
-		idx_key = (const char *) (nvram->buf + idx->env_offset);
-		order = bhnd_nvram_keycmp(idx_key, idx->key_len, name,
+		idxe_key = (const char *) (nvram->buf + idxe->env_offset);
+		order = bhnd_nvram_keycmp(idxe_key, idxe->key_len, name,
 		    name_len);
 
 		if (order < 0) {
@@ -807,11 +810,11 @@ bhnd_nvram_index_lookup(struct bhnd_nvram *nvram, const char *name,
 			max = mid - 1;
 		} else if (order == 0) {
 			/* Match found */
-			*env = nvram->buf + idx->env_offset;
-			*env_len = idx->key_len + idx->val_len + 1 /* '=' */;
+			*env = nvram->buf + idxe->env_offset;
+			*env_len = idxe->key_len + idxe->val_len + 1 /* '=' */;
 
-			*value = *env + idx->key_len + 1 /* '=' */;
-			*value_len = idx->val_len;
+			*value = *env + idxe->key_len + 1 /* '=' */;
+			*value_len = idxe->val_len;
 
 			return (0);
 		}
