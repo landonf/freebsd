@@ -56,8 +56,8 @@ static int	sprom_extend_shadow(struct bhnd_sprom *sc, size_t image_size,
 static int	sprom_populate_shadow(struct bhnd_sprom *sc);
 
 static int	sprom_var_defn(struct bhnd_sprom *sc, const char *name,
-		    const struct bhnd_nvram_var **var,
-		    const struct bhnd_sprom_var **sprom, size_t *size);
+		    const struct bhnd_nvram_vardefn **var,
+		    const struct bhnd_sprom_vardefn **sprom, size_t *size);
 
 /* SPROM revision is always located at the second-to-last byte */
 #define	SPROM_REV(_sc)		SPROM_READ_1((_sc), (_sc)->sp_size - 2)
@@ -250,8 +250,8 @@ int
 bhnd_sprom_getvar(struct bhnd_sprom *sc, const char *name, void *buf,
     size_t *len)
 {
-	const struct bhnd_nvram_var	*nv;
-	const struct bhnd_sprom_var	*sv;
+	const struct bhnd_nvram_vardefn	*nv;
+	const struct bhnd_sprom_vardefn	*sv;
 	size_t				 all1_offs;
 	size_t				 req_size;
 	int				 error;
@@ -361,8 +361,8 @@ int
 bhnd_sprom_setvar(struct bhnd_sprom *sc, const char *name, const void *buf,
     size_t len)
 {
-	const struct bhnd_nvram_var	*nv;
-	const struct bhnd_sprom_var	*sv;
+	const struct bhnd_nvram_vardefn	*nv;
+	const struct bhnd_sprom_vardefn	*sv;
 	size_t				 req_size;
 	int				 error;
 	uint8_t				 crc;
@@ -534,18 +534,18 @@ sprom_direct_read(struct bhnd_sprom *sc, size_t offset, void *buf,
  */
 static int
 sprom_var_defn(struct bhnd_sprom *sc, const char *name,
-    const struct bhnd_nvram_var **var,
-    const struct bhnd_sprom_var **sprom,
+    const struct bhnd_nvram_vardefn **var,
+    const struct bhnd_sprom_vardefn **sprom,
     size_t *size)
 {
 	/* Find variable definition */
-	*var = bhnd_nvram_var_defn(name);
+	*var = bhnd_nvram_find_vardefn(name);
 	if (*var == NULL)
 		return (ENOENT);
 
 	/* Find revision-specific SPROM definition */
-	for (size_t i = 0; i < (*var)->num_sp_descs; i++) {
-		const struct bhnd_sprom_var *sp = &(*var)->sprom_descs[i];
+	for (size_t i = 0; i < (*var)->num_sp_defs; i++) {
+		const struct bhnd_sprom_vardefn *sp = &(*var)->sp_defs[i];
 
 		if (sc->sp_rev < sp->compat.first)
 			continue;

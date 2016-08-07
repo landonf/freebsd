@@ -259,10 +259,10 @@ function emit_var_sprom_offsets (v, revk)
 	emit("}, " num_offs_written "},\n")
 }
 
-# emit the bhnd_nvram_var definition for variable name `v`
-function emit_var_defn (v)
+# emit a bhnd_nvram_vardef for variable name `v`
+function emit_nvram_vardef (v)
 {
-	emit(sprintf("{\"%s\", %s, %s, %s, (struct bhnd_sprom_var[]) {\n",
+	emit(sprintf("{\"%s\", %s, %s, %s, (struct bhnd_sprom_vardefn[]) {\n",
 		    v suffix,
 		    DTYPE[vars[v,VAR_BASE_TYPE]],
 		    FMT[vars[v,VAR_FMT]],
@@ -431,11 +431,11 @@ END {
 	# Emit all variable definitions
 	if (OUT_T == OUT_T_DATA) {
 		emit("#include <dev/bhnd/nvram/bhnd_nvram_common.h>\n")
-		emit("static const struct bhnd_nvram_var bhnd_nvram_vars[] = "\
-		    "{\n")
+		emit("static const struct bhnd_nvram_vardefn "\
+		    "bhnd_nvram_vardefs[] = {\n")
 		output_depth++
 		for (i = 0; i < num_output_vars; i++)
-			emit_var_defn(output_vars[i])
+			emit_nvram_vardef(output_vars[i])
 		output_depth--
 		emit("};\n")
 	} else if (OUT_T == OUT_T_HEADER) {

@@ -112,15 +112,15 @@ bhnd_nvram_type_width(bhnd_nvram_dt dt)
 
 
 /**
- * Return the variable definition for @p varname, if any.
+ * Find and return the variable definition for @p varname, if any.
  * 
  * @param varname variable name
  * 
- * @retval bhnd_nvram_var If a valid definition for @p varname is found.
+ * @retval bhnd_nvram_vardefn If a valid definition for @p varname is found.
  * @retval NULL If no definition for @p varname is found. 
  */
-const struct bhnd_nvram_var *
-bhnd_nvram_var_defn(const char *varname)
+const struct bhnd_nvram_vardefn *
+bhnd_nvram_find_vardefn(const char *varname)
 {
 	size_t	min, mid, max;
 	int	order;
@@ -133,14 +133,14 @@ bhnd_nvram_var_defn(const char *varname)
 	 */
 	min = 0;
 	mid = 0;
-	max = nitems(bhnd_nvram_vars) - 1;
+	max = nitems(bhnd_nvram_vardefs) - 1;
 
 	while (max >= min) {
 		/* Select midpoint */
 		mid = (min + max) / 2;
 
 		/* Determine which side of the partition to search */
-		order = strcmp(bhnd_nvram_vars[mid].name, varname);
+		order = strcmp(bhnd_nvram_vardefs[mid].name, varname);
 		if (order < 0) {
 			/* Search upper partition */
 			min = mid + 1;
@@ -149,7 +149,7 @@ bhnd_nvram_var_defn(const char *varname)
 			max = mid - 1;
 		} else if (order == 0) {
 			/* Match found */
-			return (&bhnd_nvram_vars[mid]);
+			return (&bhnd_nvram_vardefs[mid]);
 		}
 	}
 

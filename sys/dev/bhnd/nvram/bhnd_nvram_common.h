@@ -90,21 +90,21 @@ struct bhnd_sprom_offset {
 };
 
 /** SPROM-specific variable definition */
-struct bhnd_sprom_var {
+struct bhnd_sprom_vardefn {
 	struct bhnd_sprom_compat	 compat;	/**< sprom compatibility declaration */
 	const struct bhnd_sprom_offset	*offsets;	/**< offset descriptors */
 	size_t				 num_offsets;	/**< number of offset descriptors */
 };
 
 /** NVRAM variable definition */
-struct bhnd_nvram_var {
+struct bhnd_nvram_vardefn {
 	const char			*name;	  	/**< variable name */
 	bhnd_nvram_dt			 type;	 	/**< base data type */
 	bhnd_nvram_sfmt			 sfmt;		/**< string format */
 	uint32_t			 flags;		/**< BHND_NVRAM_VF_* flags */
 
-	const struct bhnd_sprom_var	*sprom_descs;	/**< SPROM-specific variable descriptors */
-	size_t				 num_sp_descs;	/**< number of sprom descriptors */
+	const struct bhnd_sprom_vardefn	*sp_defs;	/**< SPROM-specific variable definitions */
+	size_t				 num_sp_defs;	/**< number of sprom definitions */
 };
 
 /**
@@ -124,7 +124,7 @@ struct bhnd_nvram_tuple {
 STAILQ_HEAD(bhnd_nvram_tuples, bhnd_nvram_tuple);
 
 size_t				 bhnd_nvram_type_width(bhnd_nvram_dt dt);
-const struct bhnd_nvram_var	*bhnd_nvram_var_defn(const char *varname);
+const struct bhnd_nvram_vardefn	*bhnd_nvram_find_vardefn(const char *varname);
 
 /**
  * Calculate CRC-8 over @p buf.
