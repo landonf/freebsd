@@ -107,7 +107,7 @@ bhnd_nvram_detach(device_t dev)
 
 	sc = device_get_softc(dev);
 
-	bhnd_nvram_fini(&sc->nvram);
+	bhnd_nvram_parser_fini(&sc->nvram);
 	BHND_NVRAM_LOCK_DESTROY(sc);
 
 	return (0);

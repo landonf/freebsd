@@ -172,7 +172,8 @@ bhnd_nvram_cfe_attach(device_t dev)
 	    (uintmax_t)size);
 
 	/* Initialize NVRAM parser */
-	if ((error = bhnd_nvram_init(&sc->nvram, dev, buffer, size, fmt))) {
+	error = bhnd_nvram_parser_init(&sc->nvram, dev, buffer, size, fmt);
+	if (error) {
 		device_printf(dev, "%s: parse failed: %d\n", devname, error);
 		goto done;
 	}
@@ -181,8 +182,22 @@ bhnd_nvram_cfe_attach(device_t dev)
 	BHND_NVRAM_LOCK_INIT(sc);
 
 	/* Defer to default driver implementation */
-	if ((error = bhnd_nvram_attach(dev)))
+	if ((error = bhnd_nvram_attach(dev))) {
+		bhnd_nvram_parser_fini(&sc->nvram);
 		goto done;
+	}
+
+	// TODO
+	char	boardtype[256];
+	size_t	boardtype_len = sizeof(boardtype);
+
+	error = bhnd_nvram_parser_getvar_str(&sc->nvram, "boardtype", boardtype,
+	     &boardtype_len);
+	if (error)
+		goto done;
+
+	device_printf(dev, "got boardtype='%s'\n", boardtype);
+
 
 	error = 0;
 
@@ -208,7 +223,7 @@ bhnd_nvram_cfe_detach(device_t dev)
 	if ((error = bhnd_nvram_detach(dev)))
 		return (error);
 
-	bhnd_nvram_fini(&sc->nvram);
+	bhnd_nvram_parser_fini(&sc->nvram);
 	BHND_NVRAM_LOCK_DESTROY(sc);
 
 	return (0);
@@ -309,7 +324,7 @@ nvram_open_cfedev(device_t dev, char *devname, int fd, int64_t *offset,
 	}
 
 	/* Verify expected format */
-	if ((error = bhnd_nvram_identify(&ident, fmt)))
+	if ((error = bhnd_nvram_parser_identify(&ident, fmt)))
 		return (error);
 
 	/* Provide offset and size */

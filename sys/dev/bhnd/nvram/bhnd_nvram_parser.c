@@ -53,27 +53,27 @@ __FBSDID("$FreeBSD$");
 
 static const struct bhnd_nvram_ops *bhnd_nvram_find_ops(bhnd_nvram_format fmt);
 
-static int	bhnd_nvram_find_var(struct bhnd_nvram *nvram, const char *name,
+static int	bhnd_nvram_find_var(struct bhnd_nvram *sc, const char *name,
 		    const char **value, size_t *value_len);
 
 static int	bhnd_nvram_keycmp(const char *lhs, size_t lhs_len,
 		    const char *rhs, size_t rhs_len);
 static int	bhnd_nvram_sort_idx(void *ctx, const void *lhs,
 		    const void *rhs);
-static int	bhnd_nvram_generate_index(struct bhnd_nvram *nvram);
+static int	bhnd_nvram_generate_index(struct bhnd_nvram *sc);
 
-static int	bhnd_nvram_index_lookup(struct bhnd_nvram *nvram,
+static int	bhnd_nvram_index_lookup(struct bhnd_nvram *sc,
 		    struct bhnd_nvram_idx *idx, const char *name,
 		    const char **env, size_t *len, const char **value,
 		    size_t *value_len);
-static int	bhnd_nvram_buffer_lookup(struct bhnd_nvram *nvram,
+static int	bhnd_nvram_buffer_lookup(struct bhnd_nvram *sc,
 		    const char *name, const char **env, size_t *env_len,
 		    const char **value, size_t *value_len);
 
-static bool	bhnd_nvram_bufptr_valid(struct bhnd_nvram *nvram,
-		    const void *ptr, size_t nbytes, bool log_error);
+static bool	bhnd_nvram_bufptr_valid(struct bhnd_nvram *sc, const void *ptr,
+		    size_t nbytes, bool log_error);
 
-static int	bhnd_nvram_parse_env(struct bhnd_nvram *nvram, const char *env,
+static int	bhnd_nvram_parse_env(struct bhnd_nvram *sc, const char *env,
 		    size_t len, const char **key, size_t *key_len,
 		    const char **val, size_t *val_len);
 
@@ -88,35 +88,31 @@ static int	bhnd_nvram_parse_env(struct bhnd_nvram *nvram, const char *env,
 typedef int	(*bhnd_nvram_op_getsize)(const void *data, size_t *size);
 
 /** Perform format-specific initialization. */
-typedef int	(*bhnd_nvram_op_init)(struct bhnd_nvram *nvram);
+typedef int	(*bhnd_nvram_op_init)(struct bhnd_nvram *sc);
 
 /** Initialize any format-specific default values. */
-typedef int	(*bhnd_nvram_op_init_defaults)(struct bhnd_nvram *nvram);
-typedef int	(*bhnd_nvram_op_enum_buf)(struct bhnd_nvram *nvram,
+typedef int	(*bhnd_nvram_op_init_defaults)(struct bhnd_nvram *sc);
+typedef int	(*bhnd_nvram_op_enum_buf)(struct bhnd_nvram *sc,
 		    const char **env, size_t *len, const uint8_t *p,
 		    uint8_t const **next);
 
 /* FMT_BCM ops */
 static int	bhnd_nvram_bcm_getsize(const void *data, size_t *size);
-static int	bhnd_nvram_bcm_init(struct bhnd_nvram *nvram);
-static int	bhnd_nvram_bcm_init_defaults(struct bhnd_nvram *nvram);
-static int	bhnd_nvram_bcm_enum_buf(struct bhnd_nvram *nvram,
-		    const char **env, size_t *len, const uint8_t *p,
-		    uint8_t const **next);
+static int	bhnd_nvram_bcm_init(struct bhnd_nvram *sc);
+static int	bhnd_nvram_bcm_init_defaults(struct bhnd_nvram *sc);
+static int	bhnd_nvram_bcm_enum_buf(struct bhnd_nvram *sc, const char **env,
+		    size_t *len, const uint8_t *p, uint8_t const **next);
 
 /* FMT_TLV ops */
 static int	bhnd_nvram_tlv_getsize(const void *data, size_t *size);
-static int	bhnd_nvram_tlv_init(struct bhnd_nvram *nvram);
-static int	bhnd_nvram_tlv_enum_buf(struct bhnd_nvram *nvram,
-		    const char **env, size_t *len, const uint8_t *p,
-		    uint8_t const **next);
-
+static int	bhnd_nvram_tlv_init(struct bhnd_nvram *sc);
+static int	bhnd_nvram_tlv_enum_buf(struct bhnd_nvram *sc, const char **env,
+		    size_t *len, const uint8_t *p, uint8_t const **next);
 /* FMT_TXT ops */
 static int	bhnd_nvram_txt_getsize(const void *data, size_t *size);
-static int	bhnd_nvram_txt_init(struct bhnd_nvram *nvram);
-static int	bhnd_nvram_txt_enum_buf(struct bhnd_nvram *nvram,
-		    const char **env, size_t *len, const uint8_t *p,
-		    uint8_t const **next);
+static int	bhnd_nvram_txt_init(struct bhnd_nvram *sc);
+static int	bhnd_nvram_txt_enum_buf(struct bhnd_nvram *sc, const char **env,
+		    size_t *len, const uint8_t *p, uint8_t const **next);
 
 /**
  * Format-specific operations.
@@ -153,9 +149,9 @@ static const struct bhnd_nvram_ops bhnd_nvram_ops_table[] = {
 	},
 };
 
-#define	NVRAM_LOG(nvram, fmt, ...)	do {			\
-	if (nvram->dev != NULL)					\
-		device_printf(nvram->dev, fmt, ##__VA_ARGS__);	\
+#define	NVRAM_LOG(sc, fmt, ...)	do {			\
+	if (sc->dev != NULL)					\
+		device_printf(sc->dev, fmt, ##__VA_ARGS__);	\
 	else							\
 		printf("bhnd_nvram: " fmt, ##__VA_ARGS__);	\
 } while (0)
@@ -175,7 +171,7 @@ static const struct bhnd_nvram_ops bhnd_nvram_ops_table[] = {
  * @retval ENODEV If @p ident does not match @p expected.
  */
 int
-bhnd_nvram_identify(const union bhnd_nvram_ident *ident,
+bhnd_nvram_parser_identify(const union bhnd_nvram_ident *ident,
     bhnd_nvram_format expected)
 {
 	uint32_t bcm_magic = le32toh(ident->bcm.magic);
@@ -235,8 +231,7 @@ bhnd_nvram_find_ops(bhnd_nvram_format fmt)
  * After initialization, no reference to @p input will be held by the
  * NVRAM parser, and @p input may be safely deallocated.
  * 
- * @param[out] nvram On success, will be initialized with shadow of the NVRAM
- * data.
+ * @param[out] sc The NVRAM parser state to be initialized.
  * @param dev The parser's parent device, or NULL if none.
  * @param data NVRAM data to be parsed.
  * @param size Size of @p data.
@@ -247,128 +242,227 @@ bhnd_nvram_find_ops(bhnd_nvram_format fmt)
  * @retval EINVAL If @p input parsing fails.
  */
 int
-bhnd_nvram_init(struct bhnd_nvram *nvram, device_t dev, const void *data,
+bhnd_nvram_parser_init(struct bhnd_nvram *sc, device_t dev, const void *data,
     size_t size, bhnd_nvram_format fmt)
 {
 	int error;
 
 	/* Initialize NVRAM state */
-	memset(nvram, 0, sizeof(*nvram));
+	memset(sc, 0, sizeof(*sc));
 
-	nvram->dev = dev;
-	LIST_INIT(&nvram->devpaths);
+	sc->dev = dev;
+	LIST_INIT(&sc->devpaths);
 
 	/* Verify data format and init operation callbacks */
 	if (size < sizeof(union bhnd_nvram_ident))
 		return (EINVAL);
 
-	error = bhnd_nvram_identify(
+	error = bhnd_nvram_parser_identify(
 	    (const union bhnd_nvram_ident *)data, fmt);
 	if (error)
 		return (error);
 
-	if ((nvram->ops = bhnd_nvram_find_ops(fmt)) == NULL) {
-		NVRAM_LOG(nvram, "unsupported format: %d\n", fmt);
+	if ((sc->ops = bhnd_nvram_find_ops(fmt)) == NULL) {
+		NVRAM_LOG(sc, "unsupported format: %d\n", fmt);
 		return (error);
 	}
 
 	/* Determine appropiate size for backing buffer */
-	nvram->buf_size = size;
-	if ((error = nvram->ops->getsize(data, &nvram->buf_size)))
+	sc->buf_size = size;
+	if ((error = sc->ops->getsize(data, &sc->buf_size)))
 		return (error);
 
-	if (nvram->buf_size > size) {
-		NVRAM_LOG(nvram, "cannot parse %zu NVRAM bytes, would overrun "
-		    "%zu byte input buffer\n", nvram->buf_size, size);
+	if (sc->buf_size > size) {
+		NVRAM_LOG(sc, "cannot parse %zu NVRAM bytes, would overrun "
+		    "%zu byte input buffer\n", sc->buf_size, size);
 		return (EINVAL);
 	}
 
 	/* Allocate and populate backing buffer */
-	nvram->buf = malloc(nvram->buf_size, M_BHND_NVRAM, M_NOWAIT);
-	if (nvram->buf == NULL)
+	sc->buf = malloc(sc->buf_size, M_BHND_NVRAM, M_NOWAIT);
+	if (sc->buf == NULL)
 		return (ENOMEM);
-	memcpy(nvram->buf, data, nvram->buf_size);
+	memcpy(sc->buf, data, sc->buf_size);
 
 	/* Allocate default/pending variable hash tables */
-	error = bhnd_nvram_varmap_init(&nvram->defaults, NVRAM_SMALL_HASH_SIZE,
+	error = bhnd_nvram_varmap_init(&sc->defaults, NVRAM_SMALL_HASH_SIZE,
 	    M_NOWAIT);
 	if (error)
 		goto cleanup;
 
-	error = bhnd_nvram_varmap_init(&nvram->pending, NVRAM_SMALL_HASH_SIZE,
+	error = bhnd_nvram_varmap_init(&sc->pending, NVRAM_SMALL_HASH_SIZE,
 	    M_NOWAIT);
 	if (error)
 		goto cleanup;
 
 	/* Perform format-specific initialization */
-	if ((error = nvram->ops->init(nvram)))
+	if ((error = sc->ops->init(sc)))
 		goto cleanup;
 
 	/* Generate all indices */
-	if ((error = bhnd_nvram_generate_index(nvram)))
+	if ((error = bhnd_nvram_generate_index(sc)))
 		goto cleanup;
 
 	/* Add any format-specific default values */
-	if (nvram->ops->init_defaults != NULL) {
-		if ((error = nvram->ops->init_defaults(nvram)))
+	if (sc->ops->init_defaults != NULL) {
+		if ((error = sc->ops->init_defaults(sc)))
 			goto cleanup;
 	}
 
 	// TODO
-	const char *val;
-	size_t val_len;
-	if ((error = bhnd_nvram_find_var(nvram, "boardtype", &val, &val_len)))
-		goto cleanup;
-	NVRAM_LOG(nvram, "boardtype='%.*s'\n",
-	    NVRAM_PRINT_WIDTH(val_len), val);
-
 	struct bhnd_nvram_devpath *dp;
-	LIST_FOREACH(dp, &nvram->devpaths, dp_link) {
-		NVRAM_LOG(nvram, "alias %lu to '%s'\n", dp->index, dp->path);
-	}
-
-	struct bhnd_nvram_tuple		*t;
-	for (size_t i = 0; i <= nvram->defaults.mask; i++) {
-		LIST_FOREACH(t, &nvram->defaults.table[i], t_link) {
-			NVRAM_LOG(nvram, "default %s='%s'\n", t->name, t->value);
-		}
+	LIST_FOREACH(dp, &sc->devpaths, dp_link) {
+		NVRAM_LOG(sc, "alias %lu to '%s'\n", dp->index, dp->path);
 	}
 
 	return (0);
 
 cleanup:
-	bhnd_nvram_fini(nvram);
+	bhnd_nvram_parser_fini(sc);
 	return (error);
 }
 
 
 /**
- * Release all resources held by @p nvram.
+ * Release all resources held by @p sc.
  * 
- * @param nvram A NVRAM instance previously initialized via bhnd_nvram_init().
+ * @param sc A NVRAM instance previously initialized via
+ * bhnd_nvram_parser_init().
  */
 void
-bhnd_nvram_fini(struct bhnd_nvram *nvram)
+bhnd_nvram_parser_fini(struct bhnd_nvram *sc)
 {
 	struct bhnd_nvram_devpath	*dpath, *dnext;
 
-        LIST_FOREACH_SAFE(dpath, &nvram->devpaths, dp_link, dnext) {
+        LIST_FOREACH_SAFE(dpath, &sc->devpaths, dp_link, dnext) {
 		free(dpath->path, M_BHND_NVRAM);
                 free(dpath, M_BHND_NVRAM);
         }
 
-        if (nvram->defaults.table != NULL)
-		bhnd_nvram_varmap_free(&nvram->defaults);
+        if (sc->defaults.table != NULL)
+		bhnd_nvram_varmap_free(&sc->defaults);
 
-	if (nvram->pending.table != NULL)
-		bhnd_nvram_varmap_free(&nvram->pending);
+	if (sc->pending.table != NULL)
+		bhnd_nvram_varmap_free(&sc->pending);
 
-	if (nvram->idx != NULL)
-		free(nvram->idx, M_BHND_NVRAM);
+	if (sc->idx != NULL)
+		free(sc->idx, M_BHND_NVRAM);
 
-	if (nvram->buf != NULL)
-		free(nvram->buf, M_BHND_NVRAM);
+	if (sc->buf != NULL)
+		free(sc->buf, M_BHND_NVRAM);
 
+}
+
+/**
+ * Read an NVRAM variable's string value.
+ *
+ * @param		sc	The NVRAM parser state.
+ * @param		name	The NVRAM variable name.
+ * @param[out]		value	On success, the requested value will be written
+ *				to this buffer. This argment may be NULL if
+ *				the value is not desired.
+ * @param[in,out]	len	The capacity of @p buf. On success, will be set
+ *				to the actual length of the requested value,
+ *				including a trailing NUL byte.
+ *
+ * @retval 0		success
+ * @retval ENOENT	The requested variable was not found.
+ * @retval ENOMEM	If @p value is non-NULL and a buffer of @p len is too
+ *			small to hold the requested value.
+ * @retval non-zero	If reading @p name otherwise fails, a regular unix
+ *			error code will be returned.
+ */
+int
+bhnd_nvram_parser_getvar_str(struct bhnd_nvram *sc, const char *name,
+    char *value, size_t *len)
+{
+	const char	*p;
+	size_t		 plen;
+	int		 error;
+
+	if ((error = bhnd_nvram_find_var(sc, name, &p, &plen)))
+		return (error);
+
+	/* Either return or check the length. */
+	if (value == NULL) {
+		*len = plen+1;
+		return (0);
+	} else if (*len < plen+1) {
+		return (ENOMEM);
+	}
+
+	/* Provide actual length */
+	*len = plen+1;
+
+	/* Copy and NUL terminate */
+	memcpy(value, p, plen);
+	value[plen] = '\0';
+
+	return (0);
+}
+
+/**
+ * Set the string value for an NVRAM variable.
+ * 
+ * @param		sc	The NVRAM parser state.
+ * @param		name	The NVRAM variable name.
+ * @param[out]		value	The new value.
+ *
+ * @retval 0		success
+ * @retval non-zero	If setting @p name otherwise fails, a regular unix
+ *			error code will be returned.
+ */
+int
+bhnd_nvram_parser_setvar_str(struct bhnd_nvram *sc, const char *name,
+    const char *value)
+{
+	return (bhnd_nvram_varmap_add(&sc->pending, name, value));
+}
+
+/**
+ * Read an NVRAM variable.
+ *
+ * @param		sc	The NVRAM parser state.
+ * @param		name	The NVRAM variable name.
+ * @param[out]		buf	On success, the requested value will be written
+ *				to this buffer. This argment may be NULL if
+ *				the value is not desired.
+ * @param[in,out]	len	The capacity of @p buf. On success, will be set
+ *				to the actual size of the requested value.
+ *
+ * @retval 0		success
+ * @retval ENOENT	The requested variable was not found.
+ * @retval ENOMEM	If @p buf is non-NULL and a buffer of @p len is too
+ *			small to hold the requested value.
+ * @retval non-zero	If reading @p name otherwise fails, a regular unix
+ *			error code will be returned.
+ */
+int
+bhnd_nvram_parser_getvar(struct bhnd_nvram *sc, const char *name, void *buf,
+    size_t *len)
+{
+	// TODO
+	return (ENODEV);
+}
+
+/**
+ * Set an NVRAM variable.
+ * 
+ * @param		sc	The NVRAM parser state.
+ * @param		name	The NVRAM variable name.
+ * @param[out]		buf	The new value.
+ * @param[in,out]	len	The size of @p buf.
+ *
+ * @retval 0		success
+ * @retval ENOENT	The requested variable was not found.
+ * @retval EINVAL	If @p len does not match the expected variable size.
+ */
+int
+bhnd_nvram_parser_setvar(struct bhnd_nvram *sc, const char *name,
+    const void *buf, size_t len)
+{
+	// TODO
+	return (ENODEV);
 }
 
 /**
@@ -376,27 +470,26 @@ bhnd_nvram_fini(struct bhnd_nvram *nvram)
  * otherwise.
  */
 static bool
-bhnd_nvram_bufptr_valid(struct bhnd_nvram *nvram, const void *ptr,
-    size_t nbytes, bool log_error)
+bhnd_nvram_bufptr_valid(struct bhnd_nvram *sc, const void *ptr, size_t nbytes,
+    bool log_error)
 {
 	const uint8_t *p = ptr;
 
-	if (p < nvram->buf)
+	if (p < sc->buf)
 		goto failed;
 
-	if (nbytes > nvram->buf_size)
+	if (nbytes > sc->buf_size)
 		goto failed;
 
-	if (p - nvram->buf > nvram->buf_size - nbytes)
+	if (p - sc->buf > sc->buf_size - nbytes)
 		goto failed;
 
 	return (true);
 	
 failed:
 	if (log_error)
-		NVRAM_LOG(nvram, "NVRAM record not readable at %p+%#zx "
-		    "(base=%p, len=%zu)\n", p, nbytes, nvram->buf,
-		    nvram->buf_size);
+		NVRAM_LOG(sc, "NVRAM record not readable at %p+%#zx (base=%p, "
+		    "len=%zu)\n", p, nbytes, sc->buf, sc->buf_size);
 	return (false);
 }
 
@@ -404,14 +497,14 @@ failed:
  * Parse a 'key=value' env string.
  */
 static int
-bhnd_nvram_parse_env(struct bhnd_nvram *nvram, const char *env, size_t len,
+bhnd_nvram_parse_env(struct bhnd_nvram *sc, const char *env, size_t len,
     const char **key, size_t *key_len, const char **val, size_t *val_len)
 {
 	const char	*p;
 
 	/* Key */
 	if ((p = memchr(env, '=', len)) == NULL) {
-		NVRAM_LOG(nvram, "missing delim in '%.*s'\n",
+		NVRAM_LOG(sc, "missing delim in '%.*s'\n",
 		    NVRAM_PRINT_WIDTH(len), env);
 		return (EINVAL);
 	}
@@ -432,7 +525,7 @@ bhnd_nvram_parse_env(struct bhnd_nvram *nvram, const char *env, size_t len,
 /**
  * Fetch a string pointer to @p name's value, if any.
  * 
- * @param	nvram		The NVRAM parser state.
+ * @param	sc		The NVRAM parser state.
  * @param	name		The NVRAM variable name.
  * @param[out]	value		On success, a pointer to the variable's value
  *				string. The string may not be NUL terminated.
@@ -445,8 +538,8 @@ bhnd_nvram_parse_env(struct bhnd_nvram *nvram, const char *env, size_t len,
  *			error code will be returned.
  */
 static int
-bhnd_nvram_find_var(struct bhnd_nvram *nvram, const char *name,
-    const char **value, size_t *value_len)
+bhnd_nvram_find_var(struct bhnd_nvram *sc, const char *name, const char **value,
+    size_t *value_len)
 {
 	struct bhnd_nvram_tuple	*t;
 	bhnd_nvram_op_enum_buf	 enum_fn;
@@ -455,7 +548,7 @@ bhnd_nvram_find_var(struct bhnd_nvram *nvram, const char *name,
 	size_t			 name_len;
 	int			 error;
 
-	enum_fn = nvram->ops->enum_buf;
+	enum_fn = sc->ops->enum_buf;
 	name_len = strlen(name);
 
 	/*
@@ -467,7 +560,7 @@ bhnd_nvram_find_var(struct bhnd_nvram *nvram, const char *name,
 	 */
 
 	/* Search uncommitted changes */
-	t = bhnd_nvram_varmap_find(&nvram->pending, name, name_len);
+	t = bhnd_nvram_varmap_find(&sc->pending, name, name_len);
 	if (t != NULL) {
 		if (t->value != NULL) {
 			/* Uncommited value exists, is not a deletion */
@@ -483,11 +576,11 @@ bhnd_nvram_find_var(struct bhnd_nvram *nvram, const char *name,
 
 	/* Search backing buffer. We the index if available; otherwise,
 	 * perform a buffer scan */
-	if (nvram->idx != NULL) {
-		error = bhnd_nvram_index_lookup(nvram, nvram->idx, name, &env,
+	if (sc->idx != NULL) {
+		error = bhnd_nvram_index_lookup(sc, sc->idx, name, &env,
 		    &env_len, value, value_len);
 	} else {
-		error = bhnd_nvram_buffer_lookup(nvram, name, &env, &env_len,
+		error = bhnd_nvram_buffer_lookup(sc, name, &env, &env_len,
 		    value, value_len);
 	}
 
@@ -498,7 +591,7 @@ failed:
 	if (error != ENOENT)
 		return (error);
 
-	t = bhnd_nvram_varmap_find(&nvram->defaults, name, name_len);
+	t = bhnd_nvram_varmap_find(&sc->defaults, name, name_len);
 	if (t != NULL) {
 		*value = t->value;
 		*value_len = t->value_len;
@@ -534,17 +627,17 @@ bhnd_nvram_keycmp(const char *lhs, size_t lhs_len, const char *rhs,
 static int
 bhnd_nvram_sort_idx(void *ctx, const void *lhs, const void *rhs)
 {
-	struct bhnd_nvram			*nvram;
+	struct bhnd_nvram			*sc;
 	const struct bhnd_nvram_idx_entry	*l_idx, *r_idx;
 	const char				*l_str, *r_str;
 
-	nvram = ctx;
+	sc = ctx;
 	l_idx = lhs;
 	r_idx = rhs;
 
 	/* Fetch string pointers */
-	l_str = (char *)(nvram->buf + l_idx->env_offset);
-	r_str = (char *)(nvram->buf + r_idx->env_offset);
+	l_str = (char *)(sc->buf + l_idx->env_offset);
+	r_str = (char *)(sc->buf + r_idx->env_offset);
 
 	/* Perform comparison */
 	return (bhnd_nvram_keycmp(l_str, l_idx->key_len, r_str,
@@ -555,14 +648,14 @@ bhnd_nvram_sort_idx(void *ctx, const void *lhs, const void *rhs)
 /**
  * Generate all indices for the NVRAM data backing @p nvram.
  * 
- * @param nvram		The NVRAM parser state.
+ * @param sc		The NVRAM parser state.
  *
  * @retval 0		success
  * @retval non-zero	If indexing @p nvram fails, a regular unix
  *			error code will be returned.
  */
 static int
-bhnd_nvram_generate_index(struct bhnd_nvram *nvram)
+bhnd_nvram_generate_index(struct bhnd_nvram *sc)
 {
 	bhnd_nvram_op_enum_buf	 enum_fn;
 	const char		*key, *val;
@@ -574,12 +667,12 @@ bhnd_nvram_generate_index(struct bhnd_nvram *nvram)
 	size_t			 num_records;
 	int			 error;
 
-	enum_fn = nvram->ops->enum_buf;
+	enum_fn = sc->ops->enum_buf;
 	num_records = 0;
 
 	/* Parse and register all device path aliases */
 	p = NULL;
-	while ((error = enum_fn(nvram, &env, &env_len, p, &p)) == 0) {
+	while ((error = enum_fn(sc, &env, &env_len, p, &p)) == 0) {
 		struct bhnd_nvram_devpath	*devpath;
 		char				*eptr;
 		char				 suffix[NVRAM_KEY_MAX+1];
@@ -601,15 +694,15 @@ bhnd_nvram_generate_index(struct bhnd_nvram *nvram)
 			continue;
 
 		/* Split key and value */
-		error = bhnd_nvram_parse_env(nvram, env, env_len, &key,
+		error = bhnd_nvram_parse_env(sc, env, env_len, &key,
 		    &key_len, &val, &val_len);
 		if (error)
 			return (error);
 
 		/* NUL terminate the devpath's suffix */
 		if (key_len >= sizeof(suffix)) {
-			NVRAM_LOG(nvram, "variable '%.*s' exceeds "
-			    "NVRAM_KEY_MAX, skipping devpath parsing\n",
+			NVRAM_LOG(sc, "variable '%.*s' exceeds NVRAM_KEY_MAX, "
+			    "skipping devpath parsing\n",
 			    NVRAM_PRINT_WIDTH(key_len), key);
 			continue;
 		} else {
@@ -624,7 +717,7 @@ bhnd_nvram_generate_index(struct bhnd_nvram *nvram)
 		/* Parse the index value */
 		index = strtoul(suffix, &eptr, 10);
 		if (eptr == suffix || *eptr != '\0') {
-			NVRAM_LOG(nvram, "invalid devpath variable '%.*s'\n",
+			NVRAM_LOG(sc, "invalid devpath variable '%.*s'\n",
 			    NVRAM_PRINT_WIDTH(key_len), key);
 			continue;
 		}
@@ -636,100 +729,99 @@ bhnd_nvram_generate_index(struct bhnd_nvram *nvram)
 
 		devpath->index = index;
 		devpath->path = strndup(val, val_len, M_BHND_NVRAM);
-		LIST_INSERT_HEAD(&nvram->devpaths, devpath, dp_link);
+		LIST_INSERT_HEAD(&sc->devpaths, devpath, dp_link);
 	}
 
 	if (error)
 		return (error);
 
 	/* Save record count */
-	nvram->num_buf_vars = num_records;
+	sc->num_buf_vars = num_records;
 
 	/* Skip generating variable index if threshold is not met */
-	if (nvram->num_buf_vars < NVRAM_IDX_VAR_THRESH)
+	if (sc->num_buf_vars < NVRAM_IDX_VAR_THRESH)
 		return (0);
 
 	/* Allocate and populate variable index */
 	idx_bytes = sizeof(struct bhnd_nvram_idx) +
-	    (sizeof(struct bhnd_nvram_idx_entry) * nvram->num_buf_vars);
-	nvram->idx = malloc(idx_bytes, M_BHND_NVRAM, M_NOWAIT);
-	if (nvram->idx == NULL) {
-		NVRAM_LOG(nvram, "error allocating %zu byte index\n",
-		    idx_bytes);
+	    (sizeof(struct bhnd_nvram_idx_entry) * sc->num_buf_vars);
+	sc->idx = malloc(idx_bytes, M_BHND_NVRAM, M_NOWAIT);
+	if (sc->idx == NULL) {
+		NVRAM_LOG(sc, "error allocating %zu byte index\n", idx_bytes);
 		goto bad_index;
 	}
 
-	nvram->idx->num_entries = nvram->num_buf_vars;
+	sc->idx->num_entries = sc->num_buf_vars;
 
 	if (bootverbose) {
-		NVRAM_LOG(nvram, "allocated %zu byte index for %zu variables "
-		    "in %zu bytes\n", idx_bytes, nvram->num_buf_vars,
-		    nvram->buf_size);
+		NVRAM_LOG(sc, "allocated %zu byte index for %zu variables "
+		    "in %zu bytes\n", idx_bytes, sc->num_buf_vars,
+		    sc->buf_size);
 	}
 
 	p = NULL;
-	for (size_t i = 0; i < nvram->idx->num_entries; i++) {
+	for (size_t i = 0; i < sc->idx->num_entries; i++) {
 		struct bhnd_nvram_idx_entry	*idx;
 		size_t				 env_offset;
 		size_t				 key_len, val_len;
 
 		/* Fetch next record */
-		if ((error = enum_fn(nvram, &env, &env_len, p, &p)))
+		if ((error = enum_fn(sc, &env, &env_len, p, &p)))
 			return (error);
 
 		/* Early EOF */
 		if (env == NULL) {
-			NVRAM_LOG(nvram, "indexing failed, expected %zu records"
-			" (got %zu)\n", nvram->idx->num_entries, i+1);
+			NVRAM_LOG(sc, "indexing failed, expected %zu records "
+			    "(got %zu)\n", sc->idx->num_entries, i+1);
 			goto bad_index;
 		}
 	
 		/* Calculate env offset */
-		env_offset = (const uint8_t *)env - (const uint8_t *)nvram->buf;
+		env_offset = (const uint8_t *)env - (const uint8_t *)sc->buf;
 		if (env_offset > NVRAM_IDX_OFFSET_MAX) {
-			NVRAM_LOG(nvram, "'%.*s' offset %#zx exceeds maximum "
+			NVRAM_LOG(sc, "'%.*s' offset %#zx exceeds maximum "
 			    "indexable value\n", NVRAM_PRINT_WIDTH(env_len),
 			    env, env_offset);
 			goto bad_index;
 		}
 
 		/* Split key and value */
-		error = bhnd_nvram_parse_env(nvram, env, env_len, &key,
-		    &key_len, &val, &val_len);
+		error = bhnd_nvram_parse_env(sc, env, env_len, &key, &key_len,
+		    &val, &val_len);
 		if (error)
 			return (error);
 
 		if (key_len > NVRAM_IDX_LEN_MAX) {
-			NVRAM_LOG(nvram, "key length %#zx at %#zx exceeds "
-			"maximum indexable value\n", key_len, env_offset);
+			NVRAM_LOG(sc, "key length %#zx at %#zx exceeds maximum "
+			    "indexable value\n", key_len, env_offset);
 			goto bad_index;
 		}
 
 		if (val_len > NVRAM_IDX_LEN_MAX) {
-			NVRAM_LOG(nvram, "value length %#zx for key '%.*s' "
+			NVRAM_LOG(sc, "value length %#zx for key '%.*s' "
 			    "exceeds maximum indexable value\n", val_len,
 			    NVRAM_PRINT_WIDTH(key_len), key);
 			goto bad_index;
 		}
 
-		idx = &nvram->idx->entries[i];
+		idx = &sc->idx->entries[i];
 		idx->env_offset = env_offset;
 		idx->key_len = key_len;
 		idx->val_len = val_len;
 	}
 
 	/* Sort the index table */
-	qsort_r(nvram->idx->entries, nvram->idx->num_entries,
-	    sizeof(nvram->idx->entries[0]), nvram, bhnd_nvram_sort_idx);
+	qsort_r(sc->idx->entries, sc->idx->num_entries,
+	    sizeof(sc->idx->entries[0]), sc, bhnd_nvram_sort_idx);
 
 	return (0);
 
 bad_index:
 	/* Fall back on non-indexed access */
-	NVRAM_LOG(nvram, "reverting to non-indexed variable lookup\n");
-	if (nvram->idx != NULL) {
-		free(nvram->idx, M_BHND_NVRAM);
-		nvram->idx = NULL;
+	NVRAM_LOG(sc, "reverting to non-indexed variable lookup\n");
+	if (sc->idx != NULL) {
+		free(sc->idx, M_BHND_NVRAM);
+		sc->idx = NULL;
 	}
 
 	return (0);
@@ -739,7 +831,7 @@ bad_index:
 /**
  * Perform an index lookup of @p name.
  *
- * @param	nvram		The NVRAM parser state.
+ * @param	sc		The NVRAM parser state.
  * @param	idx		The index to search.
  * @param	name		The variable to search for.
  * @param[out]	env		On success, the pointer to @p name within the
@@ -754,7 +846,7 @@ bad_index:
  * @retval ENODEV If no index has been generated.
  */
 static int
-bhnd_nvram_index_lookup(struct bhnd_nvram *nvram, struct bhnd_nvram_idx *idx,
+bhnd_nvram_index_lookup(struct bhnd_nvram *sc, struct bhnd_nvram_idx *idx,
     const char *name, const char **env, size_t *env_len, const char **value,
     size_t *value_len)
 {
@@ -781,7 +873,7 @@ bhnd_nvram_index_lookup(struct bhnd_nvram *nvram, struct bhnd_nvram_idx *idx,
 		idxe = &idx->entries[mid];
 
 		/* Determine which side of the partition to search */
-		idxe_key = (const char *) (nvram->buf + idxe->env_offset);
+		idxe_key = (const char *) (sc->buf + idxe->env_offset);
 		order = bhnd_nvram_keycmp(idxe_key, idxe->key_len, name,
 		    name_len);
 
@@ -793,7 +885,7 @@ bhnd_nvram_index_lookup(struct bhnd_nvram *nvram, struct bhnd_nvram_idx *idx,
 			max = mid - 1;
 		} else if (order == 0) {
 			/* Match found */
-			*env = nvram->buf + idxe->env_offset;
+			*env = sc->buf + idxe->env_offset;
 			*env_len = idxe->key_len + idxe->val_len + 1 /* '=' */;
 
 			*value = *env + idxe->key_len + 1 /* '=' */;
@@ -812,7 +904,7 @@ bhnd_nvram_index_lookup(struct bhnd_nvram *nvram, struct bhnd_nvram_idx *idx,
  * Perform a unindexed search for an entry matching @p name in the backing
  * NVRAM data buffer.
  *
- * @param	nvram		The NVRAM parser state.
+ * @param	sc		The NVRAM parser state.
  * @param	name		The variable to search for.
  * @param[out]	env		On success, the pointer to @p name within the
  *				backing buffer.
@@ -826,7 +918,7 @@ bhnd_nvram_index_lookup(struct bhnd_nvram *nvram, struct bhnd_nvram_idx *idx,
  * @retval ENODEV If no index has been generated.
  */
 static int
-bhnd_nvram_buffer_lookup(struct bhnd_nvram *nvram, const char *name,
+bhnd_nvram_buffer_lookup(struct bhnd_nvram *sc, const char *name,
     const char **env, size_t *env_len, const char **value, size_t *value_len)
 {
 	bhnd_nvram_op_enum_buf	 enum_fn;
@@ -834,12 +926,12 @@ bhnd_nvram_buffer_lookup(struct bhnd_nvram *nvram, const char *name,
 	size_t			 name_len;
 	int			 error;
 
-	enum_fn = nvram->ops->enum_buf;
+	enum_fn = sc->ops->enum_buf;
 	name_len = strlen(name);
 
 	/* Iterate over all records in the backing buffer */
 	p = NULL;
-	while ((error = enum_fn(nvram, env, env_len, p, &p)) == 0) {
+	while ((error = enum_fn(sc, env, env_len, p, &p)) == 0) {
 		/* Hit EOF, not found */
 		if (*env == NULL)
 			return (ENOENT);
@@ -881,28 +973,28 @@ bhnd_nvram_bcm_getsize(const void *data, size_t *size)
 
 /* FMT_BCM-specific parser initialization */
 static int
-bhnd_nvram_bcm_init(struct bhnd_nvram *nvram)
+bhnd_nvram_bcm_init(struct bhnd_nvram *sc)
 {
 	const uint8_t	*p;
 	uint32_t	 cfg0;
 	uint8_t		 crc, valid;
 
 	/* Validate CRC */
-	if (nvram->buf_size < NVRAM_CRC_SKIP)
+	if (sc->buf_size < NVRAM_CRC_SKIP)
 		return (EINVAL);
 
-	if (nvram->buf_size < sizeof(struct bhnd_nvram_header))
+	if (sc->buf_size < sizeof(struct bhnd_nvram_header))
 		return (EINVAL);
 
-	cfg0 = ((struct bhnd_nvram_header *)nvram->buf)->cfg0;
+	cfg0 = ((struct bhnd_nvram_header *)sc->buf)->cfg0;
 	valid = (cfg0 & NVRAM_CFG0_CRC_MASK) >> NVRAM_CFG0_CRC_SHIFT;
 
-	p = nvram->buf;
-	crc = bhnd_nvram_crc8(p + NVRAM_CRC_SKIP, nvram->buf_size-NVRAM_CRC_SKIP,
+	p = sc->buf;
+	crc = bhnd_nvram_crc8(p + NVRAM_CRC_SKIP, sc->buf_size-NVRAM_CRC_SKIP,
 	    BHND_NVRAM_CRC8_INITIAL);
 
 	if (crc != valid) {
-		NVRAM_LOG(nvram, "warning: NVRAM CRC error (crc=%#hhx, "
+		NVRAM_LOG(sc, "warning: NVRAM CRC error (crc=%#hhx, "
 		    "expected=%hhx)\n", crc, valid);
 	}
 
@@ -911,7 +1003,7 @@ bhnd_nvram_bcm_init(struct bhnd_nvram *nvram)
 
 /* Populate FMT_BCM-specific default values */
 static int
-bhnd_nvram_bcm_init_defaults(struct bhnd_nvram *nvram)
+bhnd_nvram_bcm_init_defaults(struct bhnd_nvram *sc)
 {
 	struct bhnd_nvram_header	*header;
 	char				 vbuf[NVRAM_VAL_MAX];
@@ -919,8 +1011,8 @@ bhnd_nvram_bcm_init_defaults(struct bhnd_nvram *nvram)
 	int				 error;
 
 	/* Verify that our header is readable */
-	header = (struct bhnd_nvram_header *) nvram->buf;
-	if (!bhnd_nvram_bufptr_valid(nvram, header, sizeof(*header), true))
+	header = (struct bhnd_nvram_header *) sc->buf;
+	if (!bhnd_nvram_bufptr_valid(sc, header, sizeof(*header), true))
 		return (EINVAL);
 
 	/* If the given header-shadowed variable does not in the NVRAM
@@ -929,7 +1021,7 @@ bhnd_nvram_bcm_init_defaults(struct bhnd_nvram *nvram)
 #define	NVRAM_BCM_HEADER_DEFAULT(_field, _name)	do {		\
 	value = NVRAM_GET_BITS(le32toh(header->_field), _name);	\
 	snprintf(vbuf, sizeof(vbuf), _name ##_FMT, value);	\
-	error = bhnd_nvram_varmap_add(&nvram->defaults,		\
+	error = bhnd_nvram_varmap_add(&sc->defaults,		\
 		_name ##_VAR, vbuf);				\
 								\
 	if (error)						\
@@ -949,14 +1041,14 @@ bhnd_nvram_bcm_init_defaults(struct bhnd_nvram *nvram)
 
 /* FMT_BCM record parsing */
 static int
-bhnd_nvram_bcm_enum_buf(struct bhnd_nvram *nvram, const char **env,
-    size_t *len, const uint8_t *p, uint8_t const **next)
+bhnd_nvram_bcm_enum_buf(struct bhnd_nvram *sc, const char **env, size_t *len,
+    const uint8_t *p, uint8_t const **next)
 {
 	/* First record is found following the NVRAM header */
 	if (p == NULL)
-		p = nvram->buf + sizeof(struct bhnd_nvram_header);
+		p = sc->buf + sizeof(struct bhnd_nvram_header);
 
-	if (!bhnd_nvram_bufptr_valid(nvram, p, 1, true))
+	if (!bhnd_nvram_bufptr_valid(sc, p, 1, true))
 		return (EINVAL);
 
 	/* EOF */
@@ -969,14 +1061,14 @@ bhnd_nvram_bcm_enum_buf(struct bhnd_nvram *nvram, const char **env,
 
 	/* Provide pointer to env data */
 	*env = p;
-	*len = strnlen(p, nvram->buf_size - (p - nvram->buf));
+	*len = strnlen(p, sc->buf_size - (p - sc->buf));
 
 	/* Advance to next entry and skip terminating NUL */
 	p += *len;
-	if (bhnd_nvram_bufptr_valid(nvram, p, 1, false)) {
+	if (bhnd_nvram_bufptr_valid(sc, p, 1, false)) {
 		p++;
 	} else {
-		NVRAM_LOG(nvram, "warning: missing NVRAM termination record");
+		NVRAM_LOG(sc, "warning: missing NVRAM termination record");
 	}
 
 	*next = p;
@@ -1033,24 +1125,24 @@ bhnd_nvram_tlv_getsize(const void *data, size_t *size)
 
 /* FMT_TLV-specific parser initialization */
 static int
-bhnd_nvram_tlv_init(struct bhnd_nvram *nvram)
+bhnd_nvram_tlv_init(struct bhnd_nvram *sc)
 {
 	return (0);
 }
 
 /* FMT_TLV record parsing */
 static int
-bhnd_nvram_tlv_enum_buf(struct bhnd_nvram *nvram, const char **env,
-    size_t *len, const uint8_t *p, uint8_t const **next)
+bhnd_nvram_tlv_enum_buf(struct bhnd_nvram *sc, const char **env, size_t *len,
+    const uint8_t *p, uint8_t const **next)
 {
 	size_t		 rlen;
 	uint8_t		 type;
 
 	if (p == NULL)
-		p = nvram->buf;
+		p = sc->buf;
 
 	/* Fetch type */
-	if (!bhnd_nvram_bufptr_valid(nvram, p, 1, true))
+	if (!bhnd_nvram_bufptr_valid(sc, p, 1, true))
 		return (EINVAL);
 
 	type = *p;
@@ -1066,26 +1158,25 @@ bhnd_nvram_tlv_enum_buf(struct bhnd_nvram *nvram, const char **env,
 	/* Determine record length */
 	p++;
 	if (type & NVRAM_TLV_TF_U8_LEN) {
-		if (!bhnd_nvram_bufptr_valid(nvram, p, 1, true))
+		if (!bhnd_nvram_bufptr_valid(sc, p, 1, true))
 			return (EINVAL);
 	
 		rlen = *p;
 		p += 1;
 	} else {
-		if (!bhnd_nvram_bufptr_valid(nvram, p, 2, true))
+		if (!bhnd_nvram_bufptr_valid(sc, p, 2, true))
 			return (EINVAL);
 		rlen = (p[0] << 8) | (p[1]);
 		p += 2;
 	}
 
 	/* Verify record readability */
-	if (!bhnd_nvram_bufptr_valid(nvram, p, rlen, true))
+	if (!bhnd_nvram_bufptr_valid(sc, p, rlen, true))
 		return (EINVAL);
 
 	/* Error on non-env records */
 	if (type != NVRAM_TLV_TYPE_ENV) {
-		NVRAM_LOG(nvram, "unsupported NVRAM TLV tag: %#hhx\n",
-		    type);
+		NVRAM_LOG(sc, "unsupported NVRAM TLV tag: %#hhx\n", type);
 		return (EINVAL);
 	}
 
@@ -1115,20 +1206,20 @@ bhnd_nvram_txt_getsize(const void *data, size_t *size)
 
 /* FMT_BTXT-specific parser initialization */
 static int
-bhnd_nvram_txt_init(struct bhnd_nvram *nvram)
+bhnd_nvram_txt_init(struct bhnd_nvram *sc)
 {
 	return (0);
 }
 
 /* Seek past the next line ending (\r, \r\n, or \n) */
 static const uint8_t *
-bhnd_nvram_txt_seek_eol(struct bhnd_nvram *nvram, const uint8_t *p)
+bhnd_nvram_txt_seek_eol(struct bhnd_nvram *sc, const uint8_t *p)
 {
-	while (p < nvram->buf + nvram->buf_size) {
+	while (p < sc->buf + sc->buf_size) {
 		switch (*p) {
 		case '\r':
 			/* \r\n */
-			if (bhnd_nvram_bufptr_valid(nvram, p, 1, false)) {
+			if (bhnd_nvram_bufptr_valid(sc, p, 1, false)) {
 				if (*(p+1) == '\n')
 					p++;
 			}
@@ -1147,17 +1238,17 @@ bhnd_nvram_txt_seek_eol(struct bhnd_nvram *nvram, const uint8_t *p)
 
 /* Seek to the next valid key=value entry (or EOF) */
 static const uint8_t *
-bhnd_nvram_txt_seek_nextline(struct bhnd_nvram *nvram, const uint8_t *p)
+bhnd_nvram_txt_seek_nextline(struct bhnd_nvram *sc, const uint8_t *p)
 {
 	/* Skip leading whitespace and comments */
-	while (p < nvram->buf + nvram->buf_size) {
+	while (p < sc->buf + sc->buf_size) {
 		if (isspace(*p)) {
 			p++;
 			continue;
 		}
 		
 		if (*p == '#') {
-			p = bhnd_nvram_txt_seek_eol(nvram, p);
+			p = bhnd_nvram_txt_seek_eol(sc, p);
 			continue;
 		}
 		
@@ -1169,20 +1260,20 @@ bhnd_nvram_txt_seek_nextline(struct bhnd_nvram *nvram, const uint8_t *p)
 
 /* FMT_BTXT record parsing */
 static int
-bhnd_nvram_txt_enum_buf(struct bhnd_nvram *nvram, const char **env,
-    size_t *len, const uint8_t *p, uint8_t const **next)
+bhnd_nvram_txt_enum_buf(struct bhnd_nvram *sc, const char **env, size_t *len,
+    const uint8_t *p, uint8_t const **next)
 {
 	const uint8_t	*startp;
 	size_t		 line_len;
 
 	if (p == NULL)
-		p = nvram->buf;
+		p = sc->buf;
 
 	/* Skip any leading whitespace and comments */
-	p = bhnd_nvram_txt_seek_nextline(nvram, p);
+	p = bhnd_nvram_txt_seek_nextline(sc, p);
 
 	/* EOF? */
-	if (!bhnd_nvram_bufptr_valid(nvram, p, 1, false)) {
+	if (!bhnd_nvram_bufptr_valid(sc, p, 1, false)) {
 		*env = NULL;
 		*len = 0;
 		*next = p;
@@ -1191,7 +1282,7 @@ bhnd_nvram_txt_enum_buf(struct bhnd_nvram *nvram, const char **env,
 
 	/* Find record termination (EOL, or '#') */
 	startp = p;
-	while (p < nvram->buf + nvram->buf_size) {
+	while (p < sc->buf + sc->buf_size) {
 		if (*p == '#' || *p == '\n' || *p == '\r')
 			break;
 
@@ -1200,7 +1291,7 @@ bhnd_nvram_txt_enum_buf(struct bhnd_nvram *nvram, const char **env,
 
 	/* Calculate line length, check for EOF */
 	line_len = p - startp;
-	if (!bhnd_nvram_bufptr_valid(nvram, p, 1, false)) {
+	if (!bhnd_nvram_bufptr_valid(sc, p, 1, false)) {
 		*env = NULL;
 		*len = 0;
 		*next = p;
@@ -1220,7 +1311,7 @@ bhnd_nvram_txt_enum_buf(struct bhnd_nvram *nvram, const char **env,
 	}
 
 	/* Advance to next entry */
-	p = bhnd_nvram_txt_seek_nextline(nvram, p);
+	p = bhnd_nvram_txt_seek_nextline(sc, p);
 	
 	*next = p;
 	return (0);
