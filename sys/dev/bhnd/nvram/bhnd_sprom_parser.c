@@ -96,31 +96,31 @@ static int	sprom_var_defn(struct bhnd_sprom *sc, const char *name,
 #define	SPROM_SWITCH_TYPE(_dtype, _next, ...)				\
 do {									\
 	switch (_dtype) {						\
-	case BHND_NVRAM_DT_UINT8:					\
+	case BHND_NVRAM_TYPE_UINT8:					\
 		_next (uint8_t,		uint32_t,	1,		\
 		    ## __VA_ARGS__);					\
 		break;							\
-	case BHND_NVRAM_DT_UINT16:					\
+	case BHND_NVRAM_TYPE_UINT16:					\
 		_next (uint16_t,	uint32_t,	2,		\
 		    ## __VA_ARGS__);					\
 		break;							\
-	case BHND_NVRAM_DT_UINT32:					\
+	case BHND_NVRAM_TYPE_UINT32:					\
 		_next (uint32_t,	uint32_t,	4,		\
 		    ## __VA_ARGS__);					\
 		break;							\
-	case BHND_NVRAM_DT_INT8:					\
+	case BHND_NVRAM_TYPE_INT8:					\
 		_next (int8_t,		int32_t,	1,		\
 		    ## __VA_ARGS__);					\
 		break;							\
-	case BHND_NVRAM_DT_INT16:					\
+	case BHND_NVRAM_TYPE_INT16:					\
 		_next (int16_t,		int32_t,	2,		\
 		    ## __VA_ARGS__);					\
 		break;							\
-	case BHND_NVRAM_DT_INT32:					\
+	case BHND_NVRAM_TYPE_INT32:					\
 		_next (int32_t,		int32_t,	4,		\
 		    ## __VA_ARGS__);					\
 		break;							\
-	case BHND_NVRAM_DT_CHAR:					\
+	case BHND_NVRAM_TYPE_CHAR:					\
 		_next (uint8_t,		uint32_t,	1,		\
 		    ## __VA_ARGS__);					\
 		break;							\

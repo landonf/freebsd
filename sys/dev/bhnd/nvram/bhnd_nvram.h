@@ -82,15 +82,15 @@ typedef enum {
 } bhnd_nvram_format;
 
 
-/** NVRAM Primitive data types */
+/** Supported NVRAM data types */
 typedef enum {
-	BHND_NVRAM_DT_UINT8	= 0,	/**< unsigned 8-bit integer */
-	BHND_NVRAM_DT_UINT16	= 1,	/**< unsigned 16-bit integer */
-	BHND_NVRAM_DT_UINT32	= 2,	/**< unsigned 32-bit integer */
-	BHND_NVRAM_DT_INT8	= 3,	/**< signed 8-bit integer */
-	BHND_NVRAM_DT_INT16	= 4,	/**< signed 16-bit integer */
-	BHND_NVRAM_DT_INT32	= 5,	/**< signed 32-bit integer */
-	BHND_NVRAM_DT_CHAR	= 6,	/**< ASCII char */
-} bhnd_nvram_dt;
+	BHND_NVRAM_TYPE_UINT8	= 0,	/**< unsigned 8-bit integer */
+	BHND_NVRAM_TYPE_UINT16	= 1,	/**< unsigned 16-bit integer */
+	BHND_NVRAM_TYPE_UINT32	= 2,	/**< unsigned 32-bit integer */
+	BHND_NVRAM_TYPE_INT8	= 3,	/**< signed 8-bit integer */
+	BHND_NVRAM_TYPE_INT16	= 4,	/**< signed 16-bit integer */
+	BHND_NVRAM_TYPE_INT32	= 5,	/**< signed 32-bit integer */
+	BHND_NVRAM_TYPE_CHAR	= 6,	/**< ASCII character(s) */
+} bhnd_nvram_datatype;
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_H_ */

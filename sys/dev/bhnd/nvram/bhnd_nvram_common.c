@@ -90,20 +90,20 @@ const uint8_t bhnd_nvram_crc8_tab[] = {
  * @result the byte width of @p dt.
  */
 size_t
-bhnd_nvram_type_width(bhnd_nvram_dt dt)
+bhnd_nvram_type_width(bhnd_nvram_datatype dt)
 {
 	switch (dt) {
-	case BHND_NVRAM_DT_INT8:
-	case BHND_NVRAM_DT_UINT8:
-	case BHND_NVRAM_DT_CHAR:
+	case BHND_NVRAM_TYPE_INT8:
+	case BHND_NVRAM_TYPE_UINT8:
+	case BHND_NVRAM_TYPE_CHAR:
 		return (sizeof(uint8_t));
 
-	case BHND_NVRAM_DT_INT16:
-	case BHND_NVRAM_DT_UINT16:
+	case BHND_NVRAM_TYPE_INT16:
+	case BHND_NVRAM_TYPE_UINT16:
 		return (sizeof(uint16_t));
 
-	case BHND_NVRAM_DT_INT32:
-	case BHND_NVRAM_DT_UINT32:
+	case BHND_NVRAM_TYPE_INT32:
+	case BHND_NVRAM_TYPE_UINT32:
 		return (sizeof(uint32_t));
 	}
 
