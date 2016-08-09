@@ -38,9 +38,14 @@
 #include "bhnd_nvram_common.h"
 
 union bhnd_nvram_ident;
+
 struct bhnd_nvram_idx;
 struct bhnd_nvram_ops;
+struct bhnd_nvram_devpath;
+
 struct bhnd_nvram;
+
+LIST_HEAD(bhnd_nvram_devpaths, bhnd_nvram_devpath);
 
 int	bhnd_nvram_identify(const union bhnd_nvram_ident *ident,
 	    bhnd_nvram_format expected);
@@ -73,20 +78,6 @@ union bhnd_nvram_ident {
 	} __packed tlv;
 };
 
-/**
- * NVRAM devpath record.
- * 
- * Aliases index values to full device paths.
- */
-struct bhnd_nvram_devpath {
-	u_long	 index;	/** alias index */
-	char	*path;	/** aliased path */
-
-	STAILQ_ENTRY(bhnd_nvram_devpath) dp_link;
-};
-
-STAILQ_HEAD(bhnd_nvram_devpaths, bhnd_nvram_devpath);
-
 /** bhnd nvram parser instance state */
 struct bhnd_nvram {
 	device_t			 dev;		/**< parent device, or NULL */
@@ -98,8 +89,8 @@ struct bhnd_nvram {
 	struct bhnd_nvram_idx		*idx;		/**< key index */
 
 	struct bhnd_nvram_devpaths	 devpaths;	/**< device paths */
-	struct bhnd_nvram_tuples	 defaults;	/**< default values */
-	struct bhnd_nvram_tuples	 pending;	/**< uncommitted writes */
+	struct bhnd_nvram_varmap	 defaults;	/**< default values */
+	struct bhnd_nvram_varmap	 pending;	/**< uncommitted writes */
 };
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_PARSER_H_ */

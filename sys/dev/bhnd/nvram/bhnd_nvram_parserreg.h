@@ -29,58 +29,47 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_NVRAM_BHND_NVRAM_PARSERVAR_H_
-#define _BHND_NVRAM_BHND_NVRAM_PARSERVAR_H_
+#ifndef _BHND_NVRAM_BHND_NVRAM_PARSERREG_H_
+#define _BHND_NVRAM_BHND_NVRAM_PARSERREG_H_
 
-#include <sys/types.h>
 
-#include "bhnd_nvram_common.h"
 
-#include "bhnd_nvram_parser.h"
+#define NVRAM_GET_BITS(_value, _field)  \
+        ((_value & _field ## _MASK) >> _field ## _SHIFT)
 
-#define	NVRAM_IDX_VAR_THRESH	15		/**< index is generated if minimum variable count is met */
-#define	NVRAM_IDX_OFFSET_MAX	UINT16_MAX	/**< maximum indexable offset */
-#define	NVRAM_IDX_LEN_MAX	UINT8_MAX	/**< maximum indexable key/value length */
+/* NVRAM header fields */
+#define	NVRAM_MAGIC			0x48534C46	/* 'FLSH' */
+#define	NVRAM_VERSION			1
 
-#define	NVRAM_KEY_MAX		64		/**< maximum key length (not incl. NUL) */
-#define	NVRAM_VAL_MAX		255		/**< maximum value length (not incl. NUL) */
+#define	NVRAM_CRC_SKIP			9	/* skip magic, size, and crc8 */
 
-#define	NVRAM_DEVPATH_STR	"devpath"	/**< name prefix of device path aliases */
-#define	NVRAM_DEVPATH_LEN	(sizeof(NVRAM_DEVPATH_STR) - 1)
+#define	NVRAM_CFG0_CRC_MASK		0x000000FF
+#define	NVRAM_CFG0_CRC_SHIFT		0
+#define	NVRAM_CFG0_VER_MASK		0x0000FF00
+#define	NVRAM_CFG0_VER_SHIFT		8
+#define	NVRAM_CFG0_SDRAM_INIT_MASK	0xFFFF0000
+#define	NVRAM_CFG0_SDRAM_INIT_SHIFT	16
+#define	NVRAM_CFG0_SDRAM_INIT_VAR	"sdram_init"
+#define	NVRAM_CFG0_SDRAM_INIT_FMT	"0x%04x"
 
-#define	NVRAM_SMALL_HASH_SIZE	16		/**< hash table size for pending/default tuples */
+#define	NVRAM_CFG1_SDRAM_CFG_MASK	0x0000FFFF
+#define	NVRAM_CFG1_SDRAM_CFG_SHIFT	0
+#define	NVRAM_CFG1_SDRAM_CFG_VAR	"sdram_config"
+#define	NVRAM_CFG1_SDRAM_CFG_FMT	"0x%04x"
 
-/**
- * NVRAM devpath record.
- * 
- * Aliases index values to full device paths.
- */
-struct bhnd_nvram_devpath {
-	u_long	 index;	/** alias index */
-	char	*path;	/** aliased path */
+#define	NVRAM_CFG1_SDRAM_REFRESH_MASK	0xFFFF0000
+#define	NVRAM_CFG1_SDRAM_REFRESH_SHIFT	16
+#define	NVRAM_CFG1_SDRAM_REFRESH_VAR	"sdram_refresh"
+#define	NVRAM_CFG1_SDRAM_REFRESH_FMT	"0x%04x"
 
-	LIST_ENTRY(bhnd_nvram_devpath) dp_link;
-};
+#define	NVRAM_SDRAM_NCDL_MASK		UINT32_MAX
+#define	NVRAM_SDRAM_NCDL_SHIFT		0
+#define	NVRAM_SDRAM_NCDL_VAR		"sdram_ncdl"
+#define	NVRAM_SDRAM_NCDL_FMT		"0x%08x"
 
-/**
- * NVRAM index record.
- * 
- * Provides entry offsets into a backing NVRAM buffer.
- */
-struct bhnd_nvram_idx_entry {
-	uint16_t	env_offset;	/**< offset to env string */
-	uint8_t		key_len;	/**< key length */
-	uint8_t		val_len;	/**< value length */
-};
-
-/**
- * NVRAM index.
- * 
- * Provides a compact binary search index into the backing NVRAM buffer.
- */
-struct bhnd_nvram_idx {
-	size_t				num_entries;	/**< entry count */
-	struct bhnd_nvram_idx_entry	entries[];	/**< index entries */
-};
+/* WGT634U-specific TLV encoding */
+#define	NVRAM_TLV_TF_U8_LEN		0x01	/**< type has 8-bit length */
+#define	NVRAM_TLV_TYPE_END		0x00	/**< end of table */
+#define	NVRAM_TLV_TYPE_ENV		0x01	/**< variable record */
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_PARSERVAR_H_ */

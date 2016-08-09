@@ -37,24 +37,44 @@
 
 #include "bhnd_nvram.h"
 
+struct bhnd_nvram_tuple;
+struct bhnd_nvram_varmap;
+
+struct bhnd_nvram_vardefn;
+
 MALLOC_DECLARE(M_BHND_NVRAM);
+
 extern const uint8_t bhnd_nvram_crc8_tab[];
 
-#define	BHND_NVRAM_CRC8_INITIAL	0xFF	/**< Initial bhnd_nvram_crc8 value */
-#define	BHND_NVRAM_CRC8_VALID	0x9F	/**< Valid CRC-8 checksum */
-
+#define	BHND_NVRAM_CRC8_INITIAL	0xFF		/**< Initial bhnd_nvram_crc8 value */
+#define	BHND_NVRAM_CRC8_VALID	0x9F		/**< Valid CRC-8 checksum */
 #define	BHND_SPROMREV_MAX	UINT8_MAX	/**< maximum supported SPROM revision */
 
-/** NVRAM Primitive data types */
-typedef enum {
-	BHND_NVRAM_DT_UINT8	= 0,	/**< unsigned 8-bit integer */
-	BHND_NVRAM_DT_UINT16	= 1,	/**< unsigned 16-bit integer */
-	BHND_NVRAM_DT_UINT32	= 2,	/**< unsigned 32-bit integer */
-	BHND_NVRAM_DT_INT8	= 3,	/**< signed 8-bit integer */
-	BHND_NVRAM_DT_INT16	= 4,	/**< signed 16-bit integer */
-	BHND_NVRAM_DT_INT32	= 5,	/**< signed 32-bit integer */
-	BHND_NVRAM_DT_CHAR	= 6,	/**< ASCII char */
-} bhnd_nvram_dt;
+size_t				 bhnd_nvram_type_width(bhnd_nvram_dt dt);
+const struct bhnd_nvram_vardefn	*bhnd_nvram_find_vardefn(const char *varname);
+
+int				 bhnd_nvram_varmap_init(
+				     struct bhnd_nvram_varmap *map,
+				     size_t nelements, int flags);
+void				 bhnd_nvram_varmap_free(
+				     struct bhnd_nvram_varmap *map);
+int				 bhnd_nvram_varmap_add(
+				     struct bhnd_nvram_varmap *map,
+				     const char *name, const char *value);
+int				 bhnd_nvram_varmap_remove(
+				     struct bhnd_nvram_varmap *map,
+				     const char *name);
+struct bhnd_nvram_tuple		*bhnd_nvram_varmap_find(
+				    struct bhnd_nvram_varmap *map,
+				    const char *name, size_t name_len);
+bool				 bhnd_nvram_varmap_contains(
+				    struct bhnd_nvram_varmap *map,
+				    const char *name, size_t name_len);
+
+struct bhnd_nvram_tuple		*bhnd_nvram_tuple_alloc(const char *name,
+				     const char *value);
+void				 bhnd_nvram_tuple_free(
+				     struct bhnd_nvram_tuple *tuple);
 
 /** NVRAM data type string representations */
 typedef enum {
@@ -117,14 +137,16 @@ struct bhnd_nvram_tuple {
 				     deletion */
 	size_t	 value_len;	/**< value length. */
 
-	STAILQ_ENTRY(bhnd_nvram_tuple) t_link;
+	LIST_ENTRY(bhnd_nvram_tuple) t_link;
 };
 
-/** A list of NVRAM tuples */
-STAILQ_HEAD(bhnd_nvram_tuples, bhnd_nvram_tuple);
+LIST_HEAD(bhnd_nvram_tuples, bhnd_nvram_tuple);
 
-size_t				 bhnd_nvram_type_width(bhnd_nvram_dt dt);
-const struct bhnd_nvram_vardefn	*bhnd_nvram_find_vardefn(const char *varname);
+/** NVRAM tuple hash table */
+struct bhnd_nvram_varmap {
+	struct bhnd_nvram_tuples	*table;		/**< hash buckets */
+	u_long				 mask;		/**< hash index mask */
+};
 
 /**
  * Calculate CRC-8 over @p buf.

@@ -34,12 +34,15 @@ __FBSDID("$FreeBSD$");
 #include <sys/bus.h>
 #include <sys/ctype.h>
 #include <sys/endian.h>
+#include <sys/malloc.h>
+#include <sys/queue.h>
 #include <sys/rman.h>
 #include <sys/systm.h>
 
 #include <machine/bus.h>
 #include <machine/resource.h>
 
+#include "bhnd_nvram_parserreg.h"
 #include "bhnd_nvram_parservar.h"
 
 /*
@@ -50,18 +53,8 @@ __FBSDID("$FreeBSD$");
 
 static const struct bhnd_nvram_ops *bhnd_nvram_find_ops(bhnd_nvram_format fmt);
 
-static int	bhnd_nvram_contains_var(struct bhnd_nvram *nvram,
-		    const char *name);
 static int	bhnd_nvram_find_var(struct bhnd_nvram *nvram, const char *name,
 		    const char **value, size_t *value_len);
-
-static struct bhnd_nvram_tuple	*bhnd_nvram_find_tuple(
-				    struct bhnd_nvram_tuples *tuples,
-				    const char *name, size_t name_len);
-
-static int	bhnd_nvram_add_tuple(struct bhnd_nvram_tuples *tuples,
-		    const char *name, const char *value);
-static void	bhnd_nvram_tuple_free(struct bhnd_nvram_tuple *tuple);
 
 static int	bhnd_nvram_keycmp(const char *lhs, size_t lhs_len,
 		    const char *rhs, size_t rhs_len);
@@ -263,9 +256,7 @@ bhnd_nvram_init(struct bhnd_nvram *nvram, device_t dev, const void *data,
 	memset(nvram, 0, sizeof(*nvram));
 
 	nvram->dev = dev;
-	STAILQ_INIT(&nvram->devpaths);
-	STAILQ_INIT(&nvram->defaults);
-	STAILQ_INIT(&nvram->pending);
+	LIST_INIT(&nvram->devpaths);
 
 	/* Verify data format and init operation callbacks */
 	if (size < sizeof(union bhnd_nvram_ident))
@@ -298,6 +289,17 @@ bhnd_nvram_init(struct bhnd_nvram *nvram, device_t dev, const void *data,
 		return (ENOMEM);
 	memcpy(nvram->buf, data, nvram->buf_size);
 
+	/* Allocate default/pending variable hash tables */
+	error = bhnd_nvram_varmap_init(&nvram->defaults, NVRAM_SMALL_HASH_SIZE,
+	    M_NOWAIT);
+	if (error)
+		goto cleanup;
+
+	error = bhnd_nvram_varmap_init(&nvram->pending, NVRAM_SMALL_HASH_SIZE,
+	    M_NOWAIT);
+	if (error)
+		goto cleanup;
+
 	/* Perform format-specific initialization */
 	if ((error = nvram->ops->init(nvram)))
 		goto cleanup;
@@ -321,13 +323,15 @@ bhnd_nvram_init(struct bhnd_nvram *nvram, device_t dev, const void *data,
 	    NVRAM_PRINT_WIDTH(val_len), val);
 
 	struct bhnd_nvram_devpath *dp;
-	STAILQ_FOREACH(dp, &nvram->devpaths, dp_link) {
+	LIST_FOREACH(dp, &nvram->devpaths, dp_link) {
 		NVRAM_LOG(nvram, "alias %lu to '%s'\n", dp->index, dp->path);
 	}
-	
-	struct bhnd_nvram_tuple *t;
-	STAILQ_FOREACH(t, &nvram->defaults, t_link) {
-		NVRAM_LOG(nvram, "default %s='%s'\n", t->name, t->value);
+
+	struct bhnd_nvram_tuple		*t;
+	for (size_t i = 0; i <= nvram->defaults.mask; i++) {
+		LIST_FOREACH(t, &nvram->defaults.table[i], t_link) {
+			NVRAM_LOG(nvram, "default %s='%s'\n", t->name, t->value);
+		}
 	}
 
 	return (0);
@@ -347,18 +351,17 @@ void
 bhnd_nvram_fini(struct bhnd_nvram *nvram)
 {
 	struct bhnd_nvram_devpath	*dpath, *dnext;
-	struct bhnd_nvram_tuple		*tuple, *tnext;
 
-        STAILQ_FOREACH_SAFE(dpath, &nvram->devpaths, dp_link, dnext) {
+        LIST_FOREACH_SAFE(dpath, &nvram->devpaths, dp_link, dnext) {
 		free(dpath->path, M_BHND_NVRAM);
                 free(dpath, M_BHND_NVRAM);
         }
 
-	STAILQ_FOREACH_SAFE(tuple, &nvram->defaults, t_link, tnext)
-		bhnd_nvram_tuple_free(tuple);
+        if (nvram->defaults.table != NULL)
+		bhnd_nvram_varmap_free(&nvram->defaults);
 
-	STAILQ_FOREACH_SAFE(tuple, &nvram->pending, t_link, tnext)
-		bhnd_nvram_tuple_free(tuple);
+	if (nvram->pending.table != NULL)
+		bhnd_nvram_varmap_free(&nvram->pending);
 
 	if (nvram->idx != NULL)
 		free(nvram->idx, M_BHND_NVRAM);
@@ -427,26 +430,6 @@ bhnd_nvram_parse_env(struct bhnd_nvram *nvram, const char *env, size_t len,
 }
 
 /**
- * Test if @p name exists.
- * 
- * @param	nvram		The NVRAM parser state.
- * @param	name		The NVRAM variable name to search for.
- * 
- * @retval 0		success
- * @retval ENOENT	The requested variable was not found.
- * @retval non-zero	If reading @p name otherwise fails, a regular unix
- *			error code will be returned.
- */
-static int
-bhnd_nvram_contains_var(struct bhnd_nvram *nvram, const char *name)
-{
-	const char	*val;
-	size_t		 val_len;
-
-	return (bhnd_nvram_find_var(nvram, name, &val, &val_len));
-}
-
-/**
  * Fetch a string pointer to @p name's value, if any.
  * 
  * @param	nvram		The NVRAM parser state.
@@ -484,7 +467,7 @@ bhnd_nvram_find_var(struct bhnd_nvram *nvram, const char *name,
 	 */
 
 	/* Search uncommitted changes */
-	t = bhnd_nvram_find_tuple(&nvram->pending, name, name_len);
+	t = bhnd_nvram_varmap_find(&nvram->pending, name, name_len);
 	if (t != NULL) {
 		if (t->value != NULL) {
 			/* Uncommited value exists, is not a deletion */
@@ -515,7 +498,7 @@ failed:
 	if (error != ENOENT)
 		return (error);
 
-	t = bhnd_nvram_find_tuple(&nvram->defaults, name, name_len);
+	t = bhnd_nvram_varmap_find(&nvram->defaults, name, name_len);
 	if (t != NULL) {
 		*value = t->value;
 		*value_len = t->value_len;
@@ -653,7 +636,7 @@ bhnd_nvram_generate_index(struct bhnd_nvram *nvram)
 
 		devpath->index = index;
 		devpath->path = strndup(val, val_len, M_BHND_NVRAM);
-		STAILQ_INSERT_TAIL(&nvram->devpaths, devpath, dp_link);
+		LIST_INSERT_HEAD(&nvram->devpaths, devpath, dp_link);
 	}
 
 	if (error)
@@ -926,84 +909,13 @@ bhnd_nvram_bcm_init(struct bhnd_nvram *nvram)
 	return (0);
 }
 
-/**
- * Release all resources held by @p tuple.
- */
-static void
-bhnd_nvram_tuple_free(struct bhnd_nvram_tuple *tuple)
-{
-	free(tuple->name, M_BHND_NVRAM);
-	free(tuple->value, M_BHND_NVRAM);
-	free(tuple, M_BHND_NVRAM);
-}
-
-/**
- * Find a tuple with @p name in @p tuples, if any.
- */
-static struct bhnd_nvram_tuple *
-bhnd_nvram_find_tuple(struct bhnd_nvram_tuples *tuples, const char *name,
-    size_t name_len)
-{
-	struct bhnd_nvram_tuple *t;
-
-	STAILQ_FOREACH(t, tuples, t_link) {
-		if (t->name_len != name_len)
-			continue;
-
-		if (strncmp(t->name, name, name_len) == 0)
-			return (t);
-	}
-
-	/* Not found */
-	return (NULL);
-}
-
-/**
- * Add (or replace) a tuple with @p name and @p value in @p tuples.
- */
-static int
-bhnd_nvram_add_tuple(struct bhnd_nvram_tuples *tuples, const char *name,
-    const char *value)
-{
-	struct bhnd_nvram_tuple	*t;
-	size_t			 name_len;
-
-	/* Fetch an existing tuple, or allocate a new one. */
-	name_len = strlen(name);
-	if ((t = bhnd_nvram_find_tuple(tuples, name, name_len)) != NULL) {
-		STAILQ_REMOVE(tuples, t, bhnd_nvram_tuple, t_link);
-
-		/* Drop value data */
-		if (t->value != NULL)
-			free(t->value, M_BHND_NVRAM);
-		t->value_len = 0;
-	} else {
-		t = malloc(sizeof(*t), M_BHND_NVRAM, M_NOWAIT);
-		if (t == NULL)
-			return (ENOMEM);
-		t->name = strdup(name, M_BHND_NVRAM);
-		t->name_len = name_len;
-	}
-
-	if (value != NULL) {
-		t->value = strdup(value, M_BHND_NVRAM);
-		t->value_len = strlen(value);
-	} else {
-		t->value = NULL;
-		t->value_len = 0;
-	}
-
-	/* Append to list */
-	STAILQ_INSERT_TAIL(tuples, t, t_link);
-	return (0);
-}
-
 /* Populate FMT_BCM-specific default values */
 static int
 bhnd_nvram_bcm_init_defaults(struct bhnd_nvram *nvram)
 {
 	struct bhnd_nvram_header	*header;
 	char				 vbuf[NVRAM_VAL_MAX];
+	uint32_t			 value;
 	int				 error;
 
 	/* Verify that our header is readable */
@@ -1014,22 +926,14 @@ bhnd_nvram_bcm_init_defaults(struct bhnd_nvram *nvram)
 	/* If the given header-shadowed variable does not in the NVRAM
 	 * buffer, extract its value from the header, format it, and register
 	 * a new default variable tuple */
-#define	NVRAM_BCM_HEADER_DEFAULT(_field, _name)	do {	\
-	error = bhnd_nvram_contains_var(nvram, _name ##_VAR);	\
-	if (error == ENOENT) {					\
-		uint32_t value;					\
-		value = le32toh(header->_field);		\
-		value = NVRAM_GET_BITS(value, _name);		\
+#define	NVRAM_BCM_HEADER_DEFAULT(_field, _name)	do {		\
+	value = NVRAM_GET_BITS(le32toh(header->_field), _name);	\
+	snprintf(vbuf, sizeof(vbuf), _name ##_FMT, value);	\
+	error = bhnd_nvram_varmap_add(&nvram->defaults,		\
+		_name ##_VAR, vbuf);				\
 								\
-		snprintf(vbuf, sizeof(vbuf), _name ##_FMT,	\
-		    value);					\
-		error = bhnd_nvram_add_tuple(&nvram->defaults,	\
-		    _name ##_VAR, vbuf);			\
-	}							\
-								\
-	if (error) {						\
+	if (error)						\
 		return (error);					\
-	}							\
 } while(0)
 
 	NVRAM_BCM_HEADER_DEFAULT(cfg0,		NVRAM_CFG0_SDRAM_INIT);
