@@ -50,7 +50,8 @@ extern const uint8_t bhnd_nvram_crc8_tab[];
 #define	BHND_NVRAM_CRC8_VALID	0x9F		/**< Valid CRC-8 checksum */
 #define	BHND_SPROMREV_MAX	UINT8_MAX	/**< maximum supported SPROM revision */
 
-size_t				 bhnd_nvram_type_width(bhnd_nvram_datatype dt);
+size_t				 bhnd_nvram_type_width(bhnd_nvram_type type);
+
 const struct bhnd_nvram_vardefn	*bhnd_nvram_find_vardefn(const char *varname);
 
 int				 bhnd_nvram_varmap_init(
@@ -101,12 +102,12 @@ struct bhnd_sprom_compat {
 
 /** SPROM value descriptor */
 struct bhnd_sprom_offset {
-	uint16_t		offset;	/**< byte offset within SPROM */
-	bool			cont:1;	/**< value should be bitwise OR'd with the
+	uint16_t	offset;	/**< byte offset within SPROM */
+	bool		cont:1;	/**< value should be bitwise OR'd with the
 					  *  previous offset descriptor */
-	bhnd_nvram_datatype	type:7;	/**< data type */
-	int8_t			shift;	/**< shift to be applied to the value */
-	uint32_t		mask;	/**< mask to be applied to the value(s) */
+	bhnd_nvram_type	type:7;	/**< data type */
+	int8_t		shift;	/**< shift to be applied to the value */
+	uint32_t	mask;	/**< mask to be applied to the value(s) */
 };
 
 /** SPROM-specific variable definition */
@@ -118,10 +119,10 @@ struct bhnd_sprom_vardefn {
 
 /** NVRAM variable definition */
 struct bhnd_nvram_vardefn {
-	const char			*name;	  	/**< variable name */
-	bhnd_nvram_datatype		 type;	 	/**< base data type */
-	bhnd_nvram_sfmt			 sfmt;		/**< string format */
-	uint32_t			 flags;		/**< BHND_NVRAM_VF_* flags */
+	const char		*name;	  	/**< variable name */
+	bhnd_nvram_type		 type;	 	/**< base data type */
+	bhnd_nvram_sfmt		 sfmt;		/**< string format */
+	uint32_t		 flags;		/**< BHND_NVRAM_VF_* flags */
 
 	const struct bhnd_sprom_vardefn	*sp_defs;	/**< SPROM-specific variable definitions */
 	size_t				 num_sp_defs;	/**< number of sprom definitions */

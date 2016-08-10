@@ -40,9 +40,9 @@ int	bhnd_sprom_init(struct bhnd_sprom *sprom, struct bhnd_resource *r,
 	    bus_size_t offset);
 void	bhnd_sprom_fini(struct bhnd_sprom *sprom);
 int	bhnd_sprom_getvar(struct bhnd_sprom *sc, const char *name, void *buf,
-	    size_t *len);
+	    size_t *len, bhnd_nvram_type type);
 int	bhnd_sprom_setvar(struct bhnd_sprom *sc, const char *name,
-	    const void *buf, size_t len);
+	    const void *buf, size_t len, bhnd_nvram_type type);
 
 /**
  * bhnd sprom parser instance state.

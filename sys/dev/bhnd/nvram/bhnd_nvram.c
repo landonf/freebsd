@@ -117,7 +117,8 @@ bhnd_nvram_detach(device_t dev)
  * Default bhnd_nvram driver implementation of BHND_NVRAM_GETVAR().
  */
 static int
-bhnd_nvram_getvar_method(device_t dev, const char *name, void *buf, size_t *len)
+bhnd_nvram_getvar_method(device_t dev, const char *name, void *buf, size_t *len,
+    bhnd_nvram_type type)
 {
 	struct bhnd_nvram_softc	*sc;
 	int			 error;
@@ -137,7 +138,7 @@ bhnd_nvram_getvar_method(device_t dev, const char *name, void *buf, size_t *len)
  */
 static int
 bhnd_nvram_setvar_method(device_t dev, const char *name, const void *buf,
-    size_t len)
+    size_t len, bhnd_nvram_type type)
 {
 	struct bhnd_nvram_softc	*sc;
 	int			 error;

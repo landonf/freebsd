@@ -30,7 +30,6 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include <sys/types.h>
 #include <sys/param.h>
 #include <sys/bus.h>
 #include <sys/systm.h>
@@ -881,6 +880,161 @@ cleanup:
 }
 
 /**
+ * Read an NVRAM variable's string value.
+ *
+ * @param 	dev	A bhnd bus child device.
+ * @param	name	The NVRAM variable name.
+ * @param[out]	buf	A buffer large enough to hold @p len bytes. On
+ *			success, the NUL-terminated string value will be
+ *			written to this buffer. This argment may be NULL if
+ *			the value is not desired.
+ * @param	len	The maximum capacity of @p buf.
+ * 
+ * @retval 0		success
+ * @retval ENOENT	The requested variable was not found.
+ * @retval ENODEV	No valid NVRAM source could be found.
+ * @retval EOPNOTSUPP	If the value cannot be coerced to a string representation.
+ * @retval ERANGE	If value coercion would overflow @p type.
+ * @retval non-zero	If reading @p name otherwise fails, a regular unix
+ *			error code will be returned.
+ */
+int
+bhnd_nvram_getstrvar(device_t dev, const char *name, char *buf, size_t len)
+{
+	return (bhnd_nvram_getvar(dev, name, buf, &len, BHND_NVRAM_TYPE_CHAR));
+}
+
+/**
+ * Read an NVRAM variable, coerced to its unsigned integer representation(s).
+ *
+ * @param 		dev	A bhnd bus child device.
+ * @param		name	The NVRAM variable name.
+ * @param[out]		value	A buffer large enough to hold @p count elements. On
+ *				success, the requested value will be written to
+ *				this buffer. This argment may be NULL if
+ *				the value is not desired.
+ * @param		width	Output integer width (1, 2, or 4).
+ * @param[in,out]	count	The maximum number of elements to write
+ *				to @p value. On success (and if not NULL), will
+ *				be set to the number of array elements written
+ *				to @p value (or the expected number of elements,
+ *				if @p value is NULL).
+ * 
+ * @retval 0		success
+ * @retval ENOENT	The requested variable was not found.
+ * @retval ENODEV	No valid NVRAM source could be found.
+ * @retval EOPNOTSUPP	If a value cannot be coerced to an unsigned
+ *			representation of @p width.
+ * @retval ERANGE	If value coercion would overflow an unsigned
+ *			representation of @p width.
+ * @retval non-zero	If reading @p name otherwise fails, a regular unix
+ *			error code will be returned.
+ */
+int
+bhnd_nvram_getuintvar(device_t dev, const char *name, void *buf, size_t width,
+    size_t *count)
+{
+	bhnd_nvram_type	type;
+	size_t		len;
+	int		error;
+
+	/* Determine the target type */
+	switch (width) {
+	case 1:
+		type = BHND_NVRAM_TYPE_UINT8;
+		break;
+	case 2:
+		type = BHND_NVRAM_TYPE_UINT16;
+		break;
+	case 4:
+		type = BHND_NVRAM_TYPE_UINT32;
+		break;
+	default:
+		device_printf(dev, "%s: invalid type width: %zu\n",
+		    __FUNCTION__, width);
+		return (EOPNOTSUPP);
+	}
+
+	/* Determine total buffer size */
+	len = width * *count;
+
+	error = (BHND_BUS_GET_NVRAM_VAR(device_get_parent(dev), dev, name, buf,
+	    &len, type));
+
+	/* Provide element count */
+	KASSERT(len % width == 0, ("misaligned length %zu for width %zu\n", len,
+	    width));
+	*count = len / width;
+
+	return (error);
+}
+
+/**
+ * Read an NVRAM variable, coerced to its signed integer representation(s).
+ *
+ * @param 		dev	A bhnd bus child device.
+ * @param		name	The NVRAM variable name.
+ * @param[out]		value	A buffer large enough to hold @p count elements. On
+ *				success, the requested value will be written to
+ *				this buffer. This argment may be NULL if
+ *				the value is not desired.
+ * @param		width	Output integer width (1, 2, 4, or 8 bytes).
+ * @param[in,out]	count	The maximum number of elements to write
+ *				to @p value. On success (and if not NULL), will
+ *				be set to the number of array elements written
+ *				to @p value (or the expected number of elements,
+ *				if @p value is NULL).
+ * 
+ * @retval 0		success
+ * @retval ENOENT	The requested variable was not found.
+ * @retval ENODEV	No valid NVRAM source could be found.
+ * @retval EOPNOTSUPP	If a value cannot be coerced to a signed representation
+ *			of @p width.
+ * @retval ERANGE	If value coercion would overflow a signed representation
+ *			of @p width.
+ * @retval non-zero	If reading @p name otherwise fails, a regular unix
+ *			error code will be returned.
+ */
+int
+bhnd_nvram_getintvar(device_t dev, const char *name, void *buf, size_t width,
+    size_t *count)
+{
+	bhnd_nvram_type	type;
+	size_t		len;
+	int		error;
+
+	/* Determine the target type */
+	switch (width) {
+	case 1:
+		type = BHND_NVRAM_TYPE_INT8;
+		break;
+	case 2:
+		type = BHND_NVRAM_TYPE_INT16;
+		break;
+	case 4:
+		type = BHND_NVRAM_TYPE_INT32;
+		break;
+	default:
+		device_printf(dev, "%s: invalid type width: %zu\n",
+		    __FUNCTION__, width);
+		return (EINVAL);
+	}
+
+	/* Determine total buffer size */
+	len = width * *count;
+
+	error = (BHND_BUS_GET_NVRAM_VAR(device_get_parent(dev), dev, name, buf,
+	    &len, type));
+
+	/* Provide element count */
+	KASSERT(len % width == 0, ("misaligned length %zu for width %zu\n", len,
+	    width));
+	*count = len / width;
+
+	return (error);
+}
+
+/**
  * Using the bhnd(4) bus-level core information and a custom core name,
  * populate @p dev's device description.
  * 
@@ -952,19 +1106,27 @@ bhnd_bus_generic_get_chipid(device_t dev, device_t child)
 }
 
 /* nvram board_info population macros for bhnd_bus_generic_read_board_info() */
-#define	BHND_GV(_dest, _name)	\
-	bhnd_nvram_getvar(child, BHND_NVAR_ ## _name, &_dest, sizeof(_dest))
+#define	BHND_GV(_dest, _name, _count)	\
+	bhnd_nvram_getuintvar(child, BHND_NVAR_ ## _name, &_dest,	\
+	    sizeof(_dest), &_count)
 
 #define	REQ_BHND_GV(_dest, _name)		do {			\
-	if ((error = BHND_GV(_dest, _name))) {				\
+	size_t count = 1;						\
+	if ((error = BHND_GV(_dest, _name, count))) {		\
 		device_printf(dev,					\
 		    "error reading " __STRING(_name) ": %d\n", error);	\
 		return (error);						\
 	}								\
+	if (count != 1) {						\
+		device_printf(dev, "error reading " __STRING(_name)	\
+		        ": no elements returned\n");			\
+		return (ENODEV);					\
+	}								\
 } while(0)
 
 #define	OPT_BHND_GV(_dest, _name, _default)	do {			\
-	if ((error = BHND_GV(_dest, _name))) {				\
+	size_t count = 1;						\
+	if ((error = BHND_GV(_dest, _name, count)) || count != 1) {	\
 		if (error != ENOENT) {					\
 			device_printf(dev,				\
 			    "error reading "				\
@@ -1017,7 +1179,7 @@ bhnd_bus_generic_read_board_info(device_t dev, device_t child,
  */
 int
 bhnd_bus_generic_get_nvram_var(device_t dev, device_t child, const char *name,
-    void *buf, size_t *size)
+    void *buf, size_t *size, bhnd_nvram_type type)
 {
 	device_t	nvram;
 	device_t	parent;
@@ -1027,14 +1189,14 @@ bhnd_bus_generic_get_nvram_var(device_t dev, device_t child, const char *name,
 
 	/* Look for a directly-attached NVRAM child */
 	if ((nvram = device_find_child(dev, "bhnd_nvram", -1)) != NULL)
-		return BHND_NVRAM_GETVAR(nvram, name, buf, size);
+		return BHND_NVRAM_GETVAR(nvram, name, buf, size, type);
 
 	/* Try to delegate to parent */
 	if ((parent = device_get_parent(dev)) == NULL)
 		return (ENODEV);
 
 	return (BHND_BUS_GET_NVRAM_VAR(device_get_parent(dev), child,
-	    name, buf, size));
+	    name, buf, size, type));
 }
 
 /**

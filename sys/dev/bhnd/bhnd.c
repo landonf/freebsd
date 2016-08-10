@@ -656,7 +656,7 @@ bhnd_generic_is_region_valid(device_t dev, device_t child,
  */
 int
 bhnd_generic_get_nvram_var(device_t dev, device_t child, const char *name,
-    void *buf, size_t *size)
+    void *buf, size_t *size, bhnd_nvram_type type)
 {
 	struct bhnd_softc	*sc;
 	device_t		 nvram, parent;
@@ -665,14 +665,14 @@ bhnd_generic_get_nvram_var(device_t dev, device_t child, const char *name,
 
 	/* If a NVRAM device is available, consult it first */
 	if ((nvram = bhnd_find_nvram(sc)) != NULL)
-		return BHND_NVRAM_GETVAR(nvram, name, buf, size);
+		return BHND_NVRAM_GETVAR(nvram, name, buf, size, type);
 
 	/* Otherwise, try to delegate to parent */
 	if ((parent = device_get_parent(dev)) == NULL)
 		return (ENODEV);
 
 	return (BHND_BUS_GET_NVRAM_VAR(device_get_parent(dev), child,
-	    name, buf, size));
+	    name, buf, size, type));
 }
 
 /**

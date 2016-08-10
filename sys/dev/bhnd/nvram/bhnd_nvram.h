@@ -82,15 +82,34 @@ typedef enum {
 } bhnd_nvram_format;
 
 
+/** bhnd_nvram_type bit flags */
+enum {
+	BHND_NVRAM_TF_SIGNED	= (1<<7),
+};
+
+#define	BHND_NVRAM_TYPE_ID_MASK		0xF
+#define	BHND_NVRAM_TYPE_FLAGS_MASK	0x70
+
+#define	BHND_NVRAM_TYPE_ID(_id, _flags)		\
+	(((_id) & BHND_NVRAM_TYPE_ID_MASK) |	\
+	    ((_flags) & BHND_NVRAM_TYPE_FLAGS_MASK))
+
 /** Supported NVRAM data types */
 typedef enum {
-	BHND_NVRAM_TYPE_UINT8	= 0,	/**< unsigned 8-bit integer */
-	BHND_NVRAM_TYPE_UINT16	= 1,	/**< unsigned 16-bit integer */
-	BHND_NVRAM_TYPE_UINT32	= 2,	/**< unsigned 32-bit integer */
-	BHND_NVRAM_TYPE_INT8	= 3,	/**< signed 8-bit integer */
-	BHND_NVRAM_TYPE_INT16	= 4,	/**< signed 16-bit integer */
-	BHND_NVRAM_TYPE_INT32	= 5,	/**< signed 32-bit integer */
-	BHND_NVRAM_TYPE_CHAR	= 6,	/**< ASCII character(s) */
-} bhnd_nvram_datatype;
+	BHND_NVRAM_TYPE_UINT8	= BHND_NVRAM_TYPE_ID(0, 0),			/**< unsigned 8-bit integer */
+	BHND_NVRAM_TYPE_UINT16	= BHND_NVRAM_TYPE_ID(1, 0),			/**< unsigned 16-bit integer */
+	BHND_NVRAM_TYPE_UINT32	= BHND_NVRAM_TYPE_ID(2, 0),			/**< unsigned 32-bit integer */
+	BHND_NVRAM_TYPE_INT8	= BHND_NVRAM_TYPE_ID(4, BHND_NVRAM_TF_SIGNED),	/**< signed 8-bit integer */
+	BHND_NVRAM_TYPE_INT16	= BHND_NVRAM_TYPE_ID(5, BHND_NVRAM_TF_SIGNED),	/**< signed 16-bit integer */
+	BHND_NVRAM_TYPE_INT32	= BHND_NVRAM_TYPE_ID(6, BHND_NVRAM_TF_SIGNED),	/**< signed 32-bit integer */
+	BHND_NVRAM_TYPE_CHAR	= BHND_NVRAM_TYPE_ID(7, BHND_NVRAM_TF_SIGNED),	/**< ASCII character */
+} bhnd_nvram_type;
+
+#undef	BHND_NVRAM_TYPE_ID_MASK
+#undef	BHND_NVRAM_TYPE_FLAGS_MASK
+#undef	BHND_NVRAM_TYPE_ID
+
+#define	BHND_NVRAM_SIGNED_TYPE(_type)	\
+	(((_type) & BHND_NVRAM_TF_SIGNED) == BHND_NVRAM_TF_SIGNED)
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_H_ */

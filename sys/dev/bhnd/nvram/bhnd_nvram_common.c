@@ -32,6 +32,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/hash.h>
 #include <sys/param.h>
+#include <sys/limits.h>
 #include <sys/malloc.h>
 #include <sys/kernel.h>
 #include <sys/systm.h>
@@ -84,15 +85,15 @@ const uint8_t bhnd_nvram_crc8_tab[] = {
 };
 
 /**
- * Return the size of type @p dt.
+ * Return the size of type @p type.
  * 
- * @param dt NVRAM data type.
- * @result the byte width of @p dt.
+ * @param type NVRAM data type.
+ * @result the byte width of @p type.
  */
 size_t
-bhnd_nvram_type_width(bhnd_nvram_datatype dt)
+bhnd_nvram_type_width(bhnd_nvram_type type)
 {
-	switch (dt) {
+	switch (type) {
 	case BHND_NVRAM_TYPE_INT8:
 	case BHND_NVRAM_TYPE_UINT8:
 	case BHND_NVRAM_TYPE_CHAR:
@@ -108,9 +109,8 @@ bhnd_nvram_type_width(bhnd_nvram_datatype dt)
 	}
 
 	/* Quiesce gcc4.2 */
-	panic("bhnd nvram data type %u unknown", dt);
+	panic("bhnd nvram type %u unknown", type);
 }
-
 
 /**
  * Find and return the variable definition for @p varname, if any.
