@@ -85,7 +85,8 @@ const uint8_t bhnd_nvram_crc8_tab[] = {
 };
 
 /**
- * Return the size of type @p type.
+ * Return the size of type @p type, or 0 if @p type has a variable width
+ * (e.g. a C string).
  * 
  * @param type NVRAM data type.
  * @result the byte width of @p type.
@@ -106,6 +107,9 @@ bhnd_nvram_type_width(bhnd_nvram_type type)
 	case BHND_NVRAM_TYPE_INT32:
 	case BHND_NVRAM_TYPE_UINT32:
 		return (sizeof(uint32_t));
+
+	case BHND_NVRAM_TYPE_CSTR:
+		return (0);
 	}
 
 	/* Quiesce gcc4.2 */

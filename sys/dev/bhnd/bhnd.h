@@ -322,7 +322,8 @@ void				 bhnd_set_custom_core_desc(device_t dev,
 void				 bhnd_set_default_core_desc(device_t dev);
 
 int				 bhnd_nvram_getvar_str(device_t dev,
-				     const char *name, char *buf, size_t len);
+				     const char *name, char *buf, size_t len,
+				     size_t *rlen);
 
 int				 bhnd_nvram_getvar_uint(device_t dev,
 				     const char *name, void *value, int width);

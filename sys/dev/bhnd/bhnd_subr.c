@@ -880,7 +880,7 @@ cleanup:
 }
 
 /**
- * Read an NVRAM variable's string value.
+ * Read an NVRAM variable's NUL-terminated string value.
  *
  * @param 	dev	A bhnd bus child device.
  * @param	name	The NVRAM variable name.
@@ -889,19 +889,36 @@ cleanup:
  *			written to this buffer. This argment may be NULL if
  *			the value is not desired.
  * @param	len	The maximum capacity of @p buf.
- * 
+ * @param[out]	rlen	On success, will be set to the actual size of
+ *			the requested value (including NUL termination). This
+ *			argment may be NULL if the size is not desired.
+ *
  * @retval 0		success
  * @retval ENOENT	The requested variable was not found.
  * @retval ENODEV	No valid NVRAM source could be found.
+ * @retval ENOMEM	If @p buf is non-NULL and a buffer of @p len is too
+ *			small to hold the requested value.
  * @retval EOPNOTSUPP	If the value cannot be coerced to a string representation.
  * @retval ERANGE	If value coercion would overflow @p type.
  * @retval non-zero	If reading @p name otherwise fails, a regular unix
  *			error code will be returned.
  */
 int
-bhnd_nvram_getvar_str(device_t dev, const char *name, char *buf, size_t len)
+bhnd_nvram_getvar_str(device_t dev, const char *name, char *buf, size_t len,
+    size_t *rlen)
 {
-	return (bhnd_nvram_getvar(dev, name, buf, &len, BHND_NVRAM_TYPE_CHAR));
+	size_t	larg;
+	int	error;
+
+	larg = len;
+	error = bhnd_nvram_getvar(dev, name, buf, &larg, BHND_NVRAM_TYPE_CSTR);
+	if (error)
+		return (error);
+
+	if (rlen != NULL)
+		*rlen = larg;
+
+	return (0);
 }
 
 /**

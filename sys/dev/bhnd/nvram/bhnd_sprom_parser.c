@@ -126,6 +126,10 @@ do {									\
 		_next (char,		int32_t,	1,		\
 		    CHAR_MIN,	CHAR_MAX, ## __VA_ARGS__);		\
 		break;							\
+	case BHND_NVRAM_TYPE_CSTR:					\
+		panic("%s: BHND_NVRAM_TYPE_CSTR unhandled",		\
+		    __FUNCTION__);					\
+		break;							\
 	}								\
 } while (0)
 

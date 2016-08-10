@@ -103,6 +103,7 @@ typedef enum {
 	BHND_NVRAM_TYPE_INT16	= BHND_NVRAM_TYPE_ID(5, BHND_NVRAM_TF_SIGNED),	/**< signed 16-bit integer */
 	BHND_NVRAM_TYPE_INT32	= BHND_NVRAM_TYPE_ID(6, BHND_NVRAM_TF_SIGNED),	/**< signed 32-bit integer */
 	BHND_NVRAM_TYPE_CHAR	= BHND_NVRAM_TYPE_ID(7, BHND_NVRAM_TF_SIGNED),	/**< ASCII character */
+	BHND_NVRAM_TYPE_CSTR	= BHND_NVRAM_TYPE_ID(8,	0),			/**< NUL-terminated C string */
 } bhnd_nvram_type;
 
 #undef	BHND_NVRAM_TYPE_ID_MASK
