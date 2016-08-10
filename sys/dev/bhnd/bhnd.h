@@ -321,14 +321,30 @@ void				 bhnd_set_custom_core_desc(device_t dev,
 				     const char *name);
 void				 bhnd_set_default_core_desc(device_t dev);
 
-int				 bhnd_nvram_getstrvar(device_t dev,
+int				 bhnd_nvram_getvar_str(device_t dev,
 				     const char *name, char *buf, size_t len);
-int				 bhnd_nvram_getuintvar(device_t dev,
-				     const char *name, void *buf, size_t width,
-				     size_t *count);
-int				 bhnd_nvram_getintvar(device_t dev,
-				     const char *name, void *buf, size_t width,
-				     size_t *count);
+
+int				 bhnd_nvram_getvar_uint(device_t dev,
+				     const char *name, void *value, int width);
+int				 bhnd_nvram_getvar_uint8(device_t dev,
+				     const char *name, uint8_t *value);
+int				 bhnd_nvram_getvar_uint16(device_t dev,
+				     const char *name, uint16_t *value);
+int				 bhnd_nvram_getvar_uint32(device_t dev,
+				     const char *name, uint32_t *value);
+
+int				 bhnd_nvram_getvar_int(device_t dev,
+				     const char *name, void *value, int width);
+int				 bhnd_nvram_getvar_int8(device_t dev,
+				     const char *name, int8_t *value);
+int				 bhnd_nvram_getvar_int16(device_t dev,
+				     const char *name, int16_t *value);
+int				 bhnd_nvram_getvar_int32(device_t dev,
+				     const char *name, int32_t *value);
+
+int				 bhnd_nvram_getvar_array(device_t dev,
+				     const char *name, void *buf, size_t count,
+				     bhnd_nvram_type type);
 
 bool				 bhnd_bus_generic_is_hw_disabled(device_t dev,
 				     device_t child);
@@ -454,6 +470,8 @@ bhnd_read_board_info(device_t dev, struct bhnd_board_info *info)
  * @retval 0		success
  * @retval ENOENT	The requested variable was not found.
  * @retval ENODEV	No valid NVRAM source could be found.
+ * @retval ENOMEM	If a buffer of @p size is too small to hold the
+ *			requested value.
  * @retval EOPNOTSUPP	If the value cannot be coerced to @p type.
  * @retval ERANGE	If value coercion would overflow @p type.
  * @retval non-zero	If reading @p name otherwise fails, a regular unix

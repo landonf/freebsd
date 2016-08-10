@@ -103,9 +103,8 @@ bwn_attach(device_t dev)
 	device_printf(dev, "got rid=%d res=%p\n", sc->rspec[0].rid, r);
 
 	uint8_t	macaddr[6];
-	size_t	count = nitems(macaddr);
-	error = bhnd_nvram_getuintvar(dev, BHND_NVAR_MACADDR, macaddr,
-	    sizeof(macaddr[0]), &count);
+	error = bhnd_nvram_getvar_array(dev, BHND_NVAR_MACADDR, macaddr,
+	    sizeof(macaddr), BHND_NVRAM_TYPE_UINT8);
 	if (error)
 		return (error);
 
