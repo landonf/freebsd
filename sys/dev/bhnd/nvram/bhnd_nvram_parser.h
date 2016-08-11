@@ -54,14 +54,9 @@ int	bhnd_nvram_parser_init(struct bhnd_nvram *sc, device_t owner,
 void	bhnd_nvram_parser_fini(struct bhnd_nvram *sc);
 
 int	bhnd_nvram_parser_getvar(struct bhnd_nvram *sc, const char *name,
-	    void *buf, size_t *len);
+	    void *buf, size_t *len, bhnd_nvram_type type);
 int	bhnd_nvram_parser_setvar(struct bhnd_nvram *sc, const char *name,
-	    const void *buf, size_t len);
-
-int	bhnd_nvram_parser_getvar_str(struct bhnd_nvram *sc, const char *name,
-	    char *value, size_t *len);
-int	bhnd_nvram_parser_setvar_str(struct bhnd_nvram *sc, const char *name,
-	    const char *value);
+	    const void *buf, size_t len, bhnd_nvram_type type);
 
 /** BCM NVRAM header */
 struct bhnd_nvram_header {

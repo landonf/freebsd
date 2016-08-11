@@ -187,18 +187,6 @@ bhnd_nvram_cfe_attach(device_t dev)
 		goto done;
 	}
 
-	// TODO
-	char	boardtype[256];
-	size_t	boardtype_len = sizeof(boardtype);
-
-	error = bhnd_nvram_parser_getvar_str(&sc->nvram, "boardtype", boardtype,
-	     &boardtype_len);
-	if (error)
-		goto done;
-
-	device_printf(dev, "got boardtype='%s'\n", boardtype);
-
-
 	error = 0;
 
 done:

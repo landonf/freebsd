@@ -354,72 +354,6 @@ bhnd_nvram_parser_fini(struct bhnd_nvram *sc)
 }
 
 /**
- * Read an NVRAM variable's string value.
- *
- * @param		sc	The NVRAM parser state.
- * @param		name	The NVRAM variable name.
- * @param[out]		value	On success, the requested value will be written
- *				to this buffer. This argment may be NULL if
- *				the value is not desired.
- * @param[in,out]	len	The capacity of @p buf. On success, will be set
- *				to the actual length of the requested value,
- *				including a trailing NUL byte.
- *
- * @retval 0		success
- * @retval ENOENT	The requested variable was not found.
- * @retval ENOMEM	If @p value is non-NULL and a buffer of @p len is too
- *			small to hold the requested value.
- * @retval non-zero	If reading @p name otherwise fails, a regular unix
- *			error code will be returned.
- */
-int
-bhnd_nvram_parser_getvar_str(struct bhnd_nvram *sc, const char *name,
-    char *value, size_t *len)
-{
-	const char	*p;
-	size_t		 plen;
-	int		 error;
-
-	if ((error = bhnd_nvram_find_var(sc, name, &p, &plen)))
-		return (error);
-
-	/* Either return or check the length. */
-	if (value == NULL) {
-		*len = plen+1;
-		return (0);
-	} else if (*len < plen+1) {
-		return (ENOMEM);
-	}
-
-	/* Provide actual length */
-	*len = plen+1;
-
-	/* Copy and NUL terminate */
-	memcpy(value, p, plen);
-	value[plen] = '\0';
-
-	return (0);
-}
-
-/**
- * Set the string value for an NVRAM variable.
- * 
- * @param		sc	The NVRAM parser state.
- * @param		name	The NVRAM variable name.
- * @param[out]		value	The new value.
- *
- * @retval 0		success
- * @retval non-zero	If setting @p name otherwise fails, a regular unix
- *			error code will be returned.
- */
-int
-bhnd_nvram_parser_setvar_str(struct bhnd_nvram *sc, const char *name,
-    const char *value)
-{
-	return (bhnd_nvram_varmap_add(&sc->pending, name, value));
-}
-
-/**
  * Read an NVRAM variable.
  *
  * @param		sc	The NVRAM parser state.
@@ -429,6 +363,7 @@ bhnd_nvram_parser_setvar_str(struct bhnd_nvram *sc, const char *name,
  *				the value is not desired.
  * @param[in,out]	len	The capacity of @p buf. On success, will be set
  *				to the actual size of the requested value.
+ * @param		type	The requested data type to be written to @p buf.
  *
  * @retval 0		success
  * @retval ENOENT	The requested variable was not found.
@@ -439,10 +374,44 @@ bhnd_nvram_parser_setvar_str(struct bhnd_nvram *sc, const char *name,
  */
 int
 bhnd_nvram_parser_getvar(struct bhnd_nvram *sc, const char *name, void *buf,
-    size_t *len)
+    size_t *len, bhnd_nvram_type type)
 {
-	// TODO
-	return (ENODEV);
+	const char	*p;
+	size_t		 plen;
+	int		 error;
+
+	if ((error = bhnd_nvram_find_var(sc, name, &p, &plen)))
+		return (error);
+
+	switch (type) {
+	case BHND_NVRAM_TYPE_CHAR:
+	case BHND_NVRAM_TYPE_UINT8:
+	case BHND_NVRAM_TYPE_UINT16:
+	case BHND_NVRAM_TYPE_UINT32:
+	case BHND_NVRAM_TYPE_INT8:
+	case BHND_NVRAM_TYPE_INT16:
+	case BHND_NVRAM_TYPE_INT32:
+		// TODO
+		return (EOPNOTSUPP);
+	case BHND_NVRAM_TYPE_CSTR:
+		/* Either return or check the length. */
+		if (buf == NULL) {
+			*len = plen+1;
+			return (0);
+		} else if (*len < plen+1) {
+			return (ENOMEM);
+		}
+
+		/* Provide actual length */
+		*len = plen+1;
+
+		/* Copy and NUL terminate */
+		memcpy(buf, p, plen);
+		*((char *)buf + plen) = '\0';
+		break;
+	}
+
+	return (0);
 }
 
 /**
@@ -452,6 +421,7 @@ bhnd_nvram_parser_getvar(struct bhnd_nvram *sc, const char *name, void *buf,
  * @param		name	The NVRAM variable name.
  * @param[out]		buf	The new value.
  * @param[in,out]	len	The size of @p buf.
+ * @param		type	The data type of @p buf.
  *
  * @retval 0		success
  * @retval ENOENT	The requested variable was not found.
@@ -459,10 +429,24 @@ bhnd_nvram_parser_getvar(struct bhnd_nvram *sc, const char *name, void *buf,
  */
 int
 bhnd_nvram_parser_setvar(struct bhnd_nvram *sc, const char *name,
-    const void *buf, size_t len)
+    const void *buf, size_t len, bhnd_nvram_type type)
 {
-	// TODO
-	return (ENODEV);
+	switch (type) {
+	case BHND_NVRAM_TYPE_CHAR:
+	case BHND_NVRAM_TYPE_UINT8:
+	case BHND_NVRAM_TYPE_UINT16:
+	case BHND_NVRAM_TYPE_UINT32:
+	case BHND_NVRAM_TYPE_INT8:
+	case BHND_NVRAM_TYPE_INT16:
+	case BHND_NVRAM_TYPE_INT32:
+		// TODO
+		return (EOPNOTSUPP);
+	case BHND_NVRAM_TYPE_CSTR:
+		// TODO: respect `len` here
+		return (bhnd_nvram_varmap_add(&sc->pending, name, buf));
+	}
+
+	return (0);
 }
 
 /**

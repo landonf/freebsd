@@ -126,8 +126,7 @@ bhnd_nvram_getvar_method(device_t dev, const char *name, void *buf, size_t *len,
 	sc = device_get_softc(dev);
 
 	BHND_NVRAM_LOCK(sc);
-	// TODO
-	error = ENODEV;
+	return (bhnd_nvram_parser_getvar(&sc->nvram, name, buf, len, type));
 	BHND_NVRAM_UNLOCK(sc);
 
 	return (error);
@@ -146,8 +145,7 @@ bhnd_nvram_setvar_method(device_t dev, const char *name, const void *buf,
 	sc = device_get_softc(dev);
 
 	BHND_NVRAM_LOCK(sc);
-	// TODO
-	error = ENODEV;
+	return (bhnd_nvram_parser_setvar(&sc->nvram, name, buf, len, type));
 	BHND_NVRAM_UNLOCK(sc);
 
 	return (error);
