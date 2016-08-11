@@ -104,7 +104,7 @@ struct bhnd_sprom_compat {
 struct bhnd_sprom_offset {
 	uint16_t	offset;	/**< byte offset within SPROM */
 	bool		cont:1;	/**< value should be bitwise OR'd with the
-					  *  previous offset descriptor */
+				  *  previous offset descriptor */
 	bhnd_nvram_type	type:7;	/**< data type */
 	int8_t		shift;	/**< shift to be applied to the value */
 	uint32_t	mask;	/**< mask to be applied to the value(s) */

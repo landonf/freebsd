@@ -912,13 +912,10 @@ bhnd_nvram_getvar_str(device_t dev, const char *name, char *buf, size_t len,
 
 	larg = len;
 	error = bhnd_nvram_getvar(dev, name, buf, &larg, BHND_NVRAM_TYPE_CSTR);
-	if (error)
-		return (error);
-
 	if (rlen != NULL)
 		*rlen = larg;
 
-	return (0);
+	return (error);
 }
 
 /**
