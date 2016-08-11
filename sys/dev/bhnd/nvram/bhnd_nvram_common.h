@@ -54,6 +54,11 @@ size_t				 bhnd_nvram_type_width(bhnd_nvram_type type);
 
 const struct bhnd_nvram_vardefn	*bhnd_nvram_find_vardefn(const char *varname);
 
+int				 bhnd_nvram_parse_octet_string(
+				     const char *value, size_t value_len,
+				     void *buf, size_t *len,
+				     bhnd_nvram_type type);
+
 int				 bhnd_nvram_varmap_init(
 				     struct bhnd_nvram_varmap *map,
 				     size_t nelements, int flags);

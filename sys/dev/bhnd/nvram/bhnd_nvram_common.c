@@ -30,7 +30,9 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include <sys/ctype.h>
 #include <sys/hash.h>
+
 #include <sys/param.h>
 #include <sys/limits.h>
 #include <sys/malloc.h>
@@ -161,6 +163,144 @@ bhnd_nvram_find_vardefn(const char *varname)
 	/* Not found */
 	return (NULL);
 }
+
+
+/**
+ * Parse an octet string, such as a MAC address, consisting of hex octets
+ * separated with ':' or '-'.
+ * 
+ * @param value The octet string to parse.
+ * @param value_len The length of @p value, in bytes.
+ * @param buf The output buffer to which parsed octets will be written. May be
+ * NULL.
+ * @param[in,out] len The capacity of @p buf. On success, will be set
+ * to the actual size of the requested value.
+ * @param type 
+ */
+int
+bhnd_nvram_parse_octet_string(const char *value, size_t value_len, void *buf,
+    size_t *len, bhnd_nvram_type type)
+{
+	size_t	limit, nbytes, width;
+	size_t	slen;
+	uint8_t	octet;
+	char	delim;
+
+	slen = strnlen(value, value_len);
+
+	nbytes = 0;
+	if (buf != NULL)
+		limit = *len;
+	else
+		limit = 0;
+
+	/* Type must have a fixed width */
+	if ((width = bhnd_nvram_type_width(type)) == 0)
+		return (EINVAL);
+
+	/* String length (not including NUL) must be aligned on an octet
+	 * boundary ('AA:BB', not 'AA:B', etc), and must be large enough
+	 * to contain at least two octet entries. */
+	if (slen % 3 != 2 || slen < sizeof("AA:BB") - 1)
+		return (EINVAL);
+
+	/* Identify the delimiter used. The standard delimiter for
+	 * MAC addresses is ':', but some earlier NVRAM formats may use
+	 * '-' */
+	switch ((delim = value[2])) {
+	case ':':
+	case '-':
+		break;
+	default:
+		return (EINVAL);
+	}
+
+	/* Parse octets */ 
+	for (const char *p = value; p - value < value_len; p++) {
+		size_t		 pos;
+		unsigned char	 c;
+
+		pos = (p - value);
+
+		/* Skip delimiter after each octet */
+		if (pos % 3 == 2) {
+			if (*p == delim)
+				continue;
+
+			if (*p == '\0')
+				return (0);
+
+			/* No delimiter? */
+			return (EINVAL);
+		}
+
+		c = *(const unsigned char *)p;
+		if (isdigit(c))
+			c -= '0';
+		else if (isxdigit(c))
+			c -= islower(c) ? 'a' - 10 : 'A' - 10;
+		else
+			return (EINVAL);
+
+		/* First 4 bits of octet */
+		if (pos % 2) {
+			octet = (c << 4);
+			continue;
+		}
+
+		/* Last 4 bits of octet */
+		octet |= (c & 0xF);
+
+		/* Skip writing? */
+		if (limit < width || limit - width < nbytes) {
+			nbytes += width;
+			continue;
+		}
+
+		/* Write output */
+		switch (type) {
+		case BHND_NVRAM_TYPE_UINT8:
+			*(uint8_t *)buf = octet;
+			break;
+
+		case BHND_NVRAM_TYPE_UINT16:
+			*(uint16_t *)buf = octet;
+			break;
+
+		case BHND_NVRAM_TYPE_UINT32:
+			*(uint32_t *)buf = octet;
+			break;
+
+		case BHND_NVRAM_TYPE_INT8:
+			if (octet > INT8_MAX)
+				return (ERANGE);
+			*(int8_t *)buf = (int8_t)octet;
+			break;
+
+		case BHND_NVRAM_TYPE_INT16:
+			*(int16_t *)buf = (int8_t)octet;
+			break;
+
+		case BHND_NVRAM_TYPE_INT32:
+			*(int32_t *)buf = (int8_t)octet;
+			break;
+
+		case BHND_NVRAM_TYPE_CHAR:
+			if (octet > CHAR_MAX)
+				return (ERANGE);
+			*(char *)buf = (char)octet;
+			break;
+		default:
+			printf("unknown type %d\n", type);
+			return (EINVAL);
+		}
+
+		nbytes += width;
+	}
+
+	return (0);
+}
+
 
 /**
  * Initialize a new variable hash table with @p nelements.
