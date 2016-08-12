@@ -577,8 +577,8 @@ bhnd_nvram_parser_getvar(struct bhnd_nvram *sc, const char *name, void *buf,
 		/* Empty field values cannot be parsed as a fixed
 		 * data type */
 		if (field_len == 0) {
-			device_printf(sc->dev, "error: cannot parse empty "
-			    "string in '%s'\n", cstr);
+			NVRAM_LOG(sc, "error: cannot parse empty string in "
+			    "'%s'\n", cstr);
 			return (EFTYPE);
 		}
 
@@ -655,8 +655,7 @@ bhnd_nvram_parser_getvar(struct bhnd_nvram *sc, const char *name, void *buf,
 		case BHND_NVRAM_TYPE_CSTR:	/* Must be handled above */
 			/* fallthrough */
 		default:
-			device_printf(sc->dev, "unhandled NVRAM type: %d\n",
-			    type);
+			NVRAM_LOG(sc, "unhandled NVRAM type: %d\n", type);
 			error = ENXIO;
 			goto finished;
 		}
@@ -1278,8 +1277,8 @@ bhnd_nvram_bcm_init_defaults(struct bhnd_nvram *sc)
 	value = NVRAM_GET_BITS(le32toh(header->_field), _name);		\
 	nwrite = snprintf(vbuf, sizeof(vbuf), _name ##_FMT, value);	\
 	if (nwrite < 0 || nwrite >= sizeof(vbuf)) {			\
-		device_printf(sc->dev, "%s: formatting '%s' failed: "	\
-		    "%d\n", __FUNCTION__, _name ## _VAR, nwrite);	\
+		NVRAM_LOG(sc, "%s: formatting '%s' failed: %d\n",	\
+		    __FUNCTION__, _name ## _VAR, nwrite);		\
 		return (ENXIO);						\
 	}								\
 	error = bhnd_nvram_varmap_add(&sc->defaults,			\
