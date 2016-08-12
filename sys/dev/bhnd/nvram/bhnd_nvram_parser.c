@@ -161,6 +161,12 @@ static const struct bhnd_nvram_ops bhnd_nvram_ops_table[] = {
 #define	NVRAM_PRINT_WIDTH(_len)	\
 	((_len) > NVRAM_VAL_MAX ? NVRAM_VAL_MAX : (int)(_len))
 
+/* Is _c a field terminating/delimiting character? */
+#define	nvram_is_ftermc(_c)	((_c) == '\0' || nvram_is_fdelim(_c))
+
+/* Is _c a field delimiting character? */
+#define	nvram_is_fdelim(_c)	((_c) == ',')
+
 /**
  * Identify @p ident.
  * 
@@ -354,6 +360,136 @@ bhnd_nvram_parser_fini(struct bhnd_nvram *sc)
 }
 
 /**
+ * Identify the integer format of @p field.
+ *
+ * @param field Field to be identified.
+ * @param field_len Length of @p field.
+ * @param[out] base Integer base, or 0 if integer format unrecognized.
+ * @param[out] negated True if integer is prefixed with negation sign.
+ * 
+ * @retval true if parsed successfully
+ * @retval false if the format of @p field cannot be determined.
+ */
+static bool
+bhnd_nvram_identify_intfmt(const char *field, size_t field_len, int *base,
+    bool *negated)
+{
+	const char *p;
+
+	/* Hex? */
+	p = field;
+	if (field_len > 2 && p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) {
+		bool valid;
+
+		/* Check all field characters */
+		valid = true;
+		for (p = field + 2; p - field < field_len; p++) {
+			if (isxdigit(*p))
+				continue;
+
+			valid = false;
+			break;
+		}
+
+		if (valid) {
+			*base = 16;
+			*negated = false;
+			return (true);
+		}
+	}
+
+	/* Decimal? */
+	p = field;
+	if (field_len >= 1 && (*p == '-' || isdigit(*p))) {
+		bool		 valid;
+
+		valid = true;
+		*negated = false;
+		for (p = field; p - field < field_len; p++) {
+			if (p == field && *p == '-') {
+				*negated = true;
+				continue;
+			}
+
+			if (isdigit(*p))
+				continue;
+
+			valid = false;
+			break;
+		}
+
+		if (valid) {
+			*base = 10;
+			return (true);
+		}
+	}
+
+	/* No match */
+	*base = 0;
+	*negated = false;
+	return (false);
+}
+
+/**
+ * Search for a field delimiter or '\0' in @p value, returning the
+ * size of the first field (not including its terminating character).
+ * 
+ * If no terminating character is found, @p value_len is returned.
+ * 
+ * @param value The value to be searched.
+ * @param value_size The size of @p value.
+ */
+static size_t
+bhnd_nvram_parse_field_len(const char *value, size_t value_size)
+{
+	for (const char *p = value; p - value < value_size; p++) {
+		if (nvram_is_ftermc(*p))
+			return (p - value);
+	}
+
+	return (value_size);
+}
+
+/* Parse a string NVRAM variable, writing the NUL-terminated result
+ * to buf (if non-NULL). */
+static int
+bhnd_nvram_parse_strvar(const char *value, size_t value_len, char *buf,
+    size_t *size)
+{
+	size_t str_len;
+	size_t req_size;
+	size_t max_size;
+
+	if (buf != NULL)
+		max_size = *size;
+	else
+		max_size = 0;
+
+
+	/* Determine input and output sizes, including whether additional space
+	 * is required for a trailing NUL */
+	str_len = strnlen(value, value_len);
+	if (str_len == value_len)
+		req_size = str_len + 1;
+	else
+		req_size = value_len;
+
+	/* Provide actual size to caller */
+	*size = req_size;
+	if (max_size < req_size) {
+		if (buf != NULL)
+			return (ENOMEM);
+		else
+			return (0);
+	}
+
+	/* Copy and NUL terminate output */
+	memcpy(buf, value, str_len);
+	buf[str_len] = '\0';
+	return (0);
+}
+
+/**
  * Read an NVRAM variable.
  *
  * @param		sc	The NVRAM parser state.
@@ -376,42 +512,183 @@ int
 bhnd_nvram_parser_getvar(struct bhnd_nvram *sc, const char *name, void *buf,
     size_t *len, bhnd_nvram_type type)
 {
-	const char	*p;
-	size_t		 plen;
+	char		*cstr, cstr_buf[NVRAM_VAL_MAX+1];
+	const char	*val;
+	size_t		 cstr_size;
+	size_t		 limit, nbytes;
+	size_t		 field_len, val_len;
 	int		 error;
 
-	if ((error = bhnd_nvram_find_var(sc, name, &p, &plen)))
+	/* Fetch variable's string value */
+	if ((error = bhnd_nvram_find_var(sc, name, &val, &val_len)))
 		return (error);
 
-	switch (type) {
-	case BHND_NVRAM_TYPE_CHAR:
-	case BHND_NVRAM_TYPE_UINT8:
-	case BHND_NVRAM_TYPE_UINT16:
-	case BHND_NVRAM_TYPE_UINT32:
-	case BHND_NVRAM_TYPE_INT8:
-	case BHND_NVRAM_TYPE_INT16:
-	case BHND_NVRAM_TYPE_INT32:
-		// TODO
-		return (EOPNOTSUPP);
-	case BHND_NVRAM_TYPE_CSTR:
-		/* Either return or check the length. */
-		if (buf == NULL) {
-			*len = plen+1;
-			return (0);
-		} else if (*len < plen+1) {
-			return (ENOMEM);
-		}
+	nbytes = 0;	
+	if (buf != NULL)
+		limit = *len;
+	else
+		limit = 0;
 
-		/* Provide actual length */
-		*len = plen+1;
+	/* Populate C string requests directly from the fetched value */
+	if (type == BHND_NVRAM_TYPE_CSTR)
+		return (bhnd_nvram_parse_strvar(val, val_len, buf, len));
 
-		/* Copy and NUL terminate */
-		memcpy(buf, p, plen);
-		*((char *)buf + plen) = '\0';
-		break;
+	/* Determine actual string length. */
+	val_len = strnlen(val, val_len);
+
+	/* Try parsing as an octet string value (e.g. a MAC address) */
+	if (bhnd_nvram_parse_octet_string(val, val_len, buf, len, type) == 0)
+		return (0);
+
+	/* Otherwise, we need a NUL-terminated copy of the string value
+	 * for parsing */
+	cstr_size = val_len + 1;
+	if (cstr_size <= sizeof(cstr)) {
+		/* prefer stack allocated buffer */
+		cstr = cstr_buf;
+	} else {
+		cstr = malloc(cstr_size, M_BHND_NVRAM, M_NOWAIT);
+		if (cstr == NULL)
+			return (EFBIG);
 	}
 
-	return (0);
+	/* Copy and NUL terminate */
+	strncpy(cstr, val, val_len);
+	cstr[val_len] = '\0';
+
+	device_printf(sc->dev, "parsing %s\n", cstr);
+
+	/* Parse */
+	for (char *p = cstr; *p != '\0';) {
+		char		*endp;
+		int		 base;
+		bool		 is_int, is_negated;
+		union {
+			unsigned long	u32;
+			long		s32;
+		} intv;
+
+		/* Determine the field length */
+		field_len = val_len - (p - cstr);
+		field_len = bhnd_nvram_parse_field_len(p, field_len);
+
+		/* Skip any leading whitespace */
+		while (field_len > 0 && isspace(*p)) {
+			p++;
+			field_len--;
+		}
+
+		/* Empty field values cannot be parsed as a fixed
+		 * data type */
+		if (field_len == 0) {
+			device_printf(sc->dev, "error: cannot parse empty "
+			    "string in '%s'\n", cstr);
+			return (EFTYPE);
+		}
+
+		/* Attempt to identify the integer format */
+		is_int = bhnd_nvram_identify_intfmt(p, field_len, &base,
+		    &is_negated);
+
+		/* Extract the field data */
+#define	NV_READ_INT(_ctype, _max, _min, _dest, _strto)	do {		\
+	if (!is_int) {							\
+		error = EFTYPE;						\
+		goto finished;						\
+	}								\
+									\
+	if (is_negated && _min == 0) {					\
+		error = ERANGE;						\
+		goto finished;						\
+	}								\
+									\
+	_dest = _strto(p, &endp, base);					\
+	if (endp == p || !nvram_is_ftermc(*endp)) {			\
+		error = ERANGE;						\
+		goto finished;						\
+	}								\
+									\
+	if (_dest > _max || _dest < _min) {				\
+		error = ERANGE;						\
+		goto finished;						\
+	}								\
+									\
+	if (limit > nbytes && limit - nbytes >= sizeof(_ctype))		\
+		*((_ctype *)((uint8_t *)buf + nbytes)) = _dest;		\
+									\
+	nbytes += sizeof(_ctype);					\
+} while(0)
+
+		switch (type) {
+		case BHND_NVRAM_TYPE_CHAR:
+			/* Some NVRAM formats encode 8-bit ASCII ccode
+			 * values as 16-bit hex strings */
+			if (is_int && base == 16) {
+				// TODO
+				error = EFTYPE;
+				goto finished;
+			} else if (is_int) {
+				error = EFTYPE;
+				goto finished;
+			}
+
+			/* Copy out the characters directly */
+			for (size_t i = 0; i < field_len; i++) {
+				if (limit > nbytes)
+					*((char *)buf + nbytes) = p[i];
+				nbytes++;
+			}
+			break;
+
+		case BHND_NVRAM_TYPE_UINT8:
+			NV_READ_INT(uint8_t, UINT8_MAX, 0, intv.u32, strtoul);
+			break;
+
+		case BHND_NVRAM_TYPE_UINT16:
+			NV_READ_INT(uint16_t, UINT16_MAX, 0, intv.u32, strtoul);
+			break;
+
+		case BHND_NVRAM_TYPE_UINT32:
+			NV_READ_INT(uint32_t, UINT32_MAX, 0, intv.u32, strtoul);
+			break;
+
+		case BHND_NVRAM_TYPE_INT8:
+			NV_READ_INT(int8_t, INT8_MAX, INT8_MIN, intv.s32,
+			    strtol);
+			break;
+
+		case BHND_NVRAM_TYPE_INT16:
+			NV_READ_INT(int16_t, INT16_MAX, INT16_MIN, intv.s32,
+			    strtol);
+			break;
+
+		case BHND_NVRAM_TYPE_INT32:
+			NV_READ_INT(int32_t, INT32_MAX, INT32_MIN, intv.s32,
+			    strtol);
+			break;
+
+		case BHND_NVRAM_TYPE_CSTR:	/* Must be handled above */
+			/* fallthrough */
+		default:
+			device_printf(sc->dev, "unhandled NVRAM type: %d\n",
+			    type);
+			error = ENXIO;
+			goto finished;
+		}
+
+		/* Advance to next field, skip any trailing delimiter */
+		p += field_len;
+		if (nvram_is_fdelim(*p))
+			p++;
+	}
+
+	error = 0;
+
+finished:
+	if (cstr != cstr_buf)
+		free(cstr, M_BHND_NVRAM);
+
+	return (error);
 }
 
 /**
