@@ -519,6 +519,10 @@ bhnd_nvram_parser_getvar(struct bhnd_nvram *sc, const char *name, void *buf,
 	size_t		 field_len, val_len;
 	int		 error;
 
+	/* Verify name validity */
+	if (!bhnd_nvram_validate_name(name, strlen(name)))
+		return (EINVAL);
+
 	/* Fetch variable's string value */
 	if ((error = bhnd_nvram_find_var(sc, name, &val, &val_len)))
 		return (error);
@@ -555,8 +559,6 @@ bhnd_nvram_parser_getvar(struct bhnd_nvram *sc, const char *name, void *buf,
 	/* Copy and NUL terminate */
 	strncpy(cstr, val, val_len);
 	cstr[val_len] = '\0';
-
-	device_printf(sc->dev, "parsing %s\n", cstr);
 
 	/* Parse */
 	for (char *p = cstr; *p != '\0';) {
@@ -708,6 +710,16 @@ int
 bhnd_nvram_parser_setvar(struct bhnd_nvram *sc, const char *name,
     const void *buf, size_t len, bhnd_nvram_type type)
 {
+	/* Verify name validity */
+	if (!bhnd_nvram_validate_name(name, strlen(name)))
+		return (EINVAL);
+
+	/* Verify buffer size alignment for the given type. If this is a
+	 * variable width type, a width of 0 will always pass this check */
+	if (len % bhnd_nvram_type_width(type) != 0)
+		return (EINVAL);
+
+	/* Determine string format (or directly add variable, if a C string) */
 	switch (type) {
 	case BHND_NVRAM_TYPE_CHAR:
 	case BHND_NVRAM_TYPE_UINT8:
@@ -719,7 +731,6 @@ bhnd_nvram_parser_setvar(struct bhnd_nvram *sc, const char *name,
 		// TODO
 		return (EOPNOTSUPP);
 	case BHND_NVRAM_TYPE_CSTR:
-		// TODO: validate name
 		return (bhnd_nvram_varmap_add(&sc->pending, name, buf, len));
 	}
 

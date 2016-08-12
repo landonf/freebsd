@@ -164,6 +164,55 @@ bhnd_nvram_find_vardefn(const char *varname)
 	return (NULL);
 }
 
+/**
+ * Validate an NVRAM variable name.
+ * 
+ * Scans for special characters (path delimiters, value delimiters, path
+ * alias prefixes), returning false if the given name cannot be used
+ * as a relative NVRAM key.
+ * 
+ * @param name A relative NVRAM variable name to validate.
+ * @param name_len The length of @p name, in bytes.
+ * 
+ * @retval true If @p name is a valid relative NVRAM key.
+ * @retval false If @p name should not be used as a relative NVRAM key.
+ */
+bool
+bhnd_nvram_validate_name(const char *name, size_t name_len)
+{
+	size_t limit;
+
+	limit = strnlen(name, name_len);
+	if (limit == 0)
+		return (false);
+
+	/* Disallow path alias prefixes ([0-9]+:.*) */
+	if (limit >= 2 && isdigit(*name)) {
+		for (const char *p = name; p - name < limit; p++) {
+			if (isdigit(*p))
+				continue;
+			else if (*p == ':')
+				return (false);
+			else
+				break;
+		}
+	}
+
+	/* Scan for special characters */
+	for (const char *p = name; p - name < limit; p++) {
+		switch (*p) {
+		case '/':	/* path delimiter */
+		case '=':	/* key=value delimiter */
+			return (false);
+
+		default:
+			if (isspace(*p) || !isascii(*p))
+				return (false);
+		}
+	}
+
+	return (true);
+}
 
 /**
  * Parse an octet string, such as a MAC address, consisting of hex octets
