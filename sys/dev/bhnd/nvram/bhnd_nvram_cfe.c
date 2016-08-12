@@ -71,7 +71,7 @@ static char *nvram_cfe_devs[] = {
 	"flash1.nvram",
 };
 
-/** Supported NVRAM formats, in probe order. */
+/** Supported CFE NVRAM formats, in probe order. */
 bhnd_nvram_format nvram_cfe_fmts[] = {
 	BHND_NVRAM_FMT_BCM,
 	BHND_NVRAM_FMT_TLV
@@ -118,7 +118,6 @@ bhnd_nvram_cfe_probe(device_t dev)
 static int
 bhnd_nvram_cfe_attach(device_t dev)
 {
-	struct bhnd_nvram_softc	*sc;
 	char			*devname;
 	unsigned char		*buffer;
 	bhnd_nvram_format	 fmt;
@@ -126,9 +125,6 @@ bhnd_nvram_cfe_attach(device_t dev)
 	uint32_t		 size;
 	int			 error;
 	int			 fd;
-
-	sc = device_get_softc(dev);
-	sc->dev = dev;
 
 	error = 0;
 	buffer = NULL;
@@ -154,7 +150,7 @@ bhnd_nvram_cfe_attach(device_t dev)
 			    devname, fd);
 
 			error = ENXIO;
-			goto done;
+			goto cleanup;
 		}
 
 		remain -= nr;
@@ -164,32 +160,17 @@ bhnd_nvram_cfe_attach(device_t dev)
 			    "%zu of %zu pending\n", devname, remain, size);
 
 			error = ENXIO;
-			goto done;
+			goto cleanup;
 		}
 	}
 
 	device_printf(dev, "CFE %s (%#jx+%#jx)\n", devname, (uintmax_t)offset,
 	    (uintmax_t)size);
 
-	/* Initialize NVRAM parser */
-	error = bhnd_nvram_parser_init(&sc->nvram, dev, buffer, size, fmt);
-	if (error) {
-		device_printf(dev, "%s: parse failed: %d\n", devname, error);
-		goto done;
-	}
+	/* Delegate to default driver implementation */
+	error = bhnd_nvram_attach(dev, buffer, size, fmt);
 
-	/* Initialize mutex */
-	BHND_NVRAM_LOCK_INIT(sc);
-
-	/* Defer to default driver implementation */
-	if ((error = bhnd_nvram_attach(dev))) {
-		bhnd_nvram_parser_fini(&sc->nvram);
-		goto done;
-	}
-
-	error = 0;
-
-done:
+cleanup:
 	if (buffer != NULL)
 		free(buffer, M_TEMP);
 
@@ -197,24 +178,6 @@ done:
 		cfe_close(fd);
 
 	return (error);
-}
-
-static int
-bhnd_nvram_cfe_detach(device_t dev)
-{
-	struct bhnd_nvram_softc	*sc;
-	int			 error;
-
-	sc = device_get_softc(dev);
-
-	/* Defer to default driver implementation */
-	if ((error = bhnd_nvram_detach(dev)))
-		return (error);
-
-	bhnd_nvram_parser_fini(&sc->nvram);
-	BHND_NVRAM_LOCK_DESTROY(sc);
-
-	return (0);
 }
 
 /**
@@ -397,7 +360,6 @@ static device_method_t bhnd_nvram_cfe_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,			bhnd_nvram_cfe_probe),
 	DEVMETHOD(device_attach,		bhnd_nvram_cfe_attach),
-	DEVMETHOD(device_detach,		bhnd_nvram_cfe_detach),
 
 	DEVMETHOD_END
 };
@@ -406,4 +368,3 @@ DEFINE_CLASS_1(bhnd_nvram, bhnd_nvram_cfe, bhnd_nvram_cfe_methods,
     sizeof(struct bhnd_nvram_softc), bhnd_nvram_driver);
 EARLY_DRIVER_MODULE(bhnd_nvram_cfe, nexus, bhnd_nvram_cfe,
     bhnd_nvram_devclass, NULL, NULL, BUS_PASS_BUS + BUS_PASS_ORDER_EARLY);
-

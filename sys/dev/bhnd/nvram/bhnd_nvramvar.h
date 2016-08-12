@@ -40,7 +40,8 @@
 DECLARE_CLASS(bhnd_nvram_driver);
 
 int	bhnd_nvram_probe(device_t dev);
-int	bhnd_nvram_attach(device_t dev);
+int	bhnd_nvram_attach(device_t dev, void *data, size_t size,
+	    bhnd_nvram_format fmt);
 int	bhnd_nvram_resume(device_t dev);
 int	bhnd_nvram_suspend(device_t dev);
 int	bhnd_nvram_detach(device_t dev);

@@ -71,11 +71,32 @@ bhnd_nvram_probe(device_t dev)
 }
 
 /**
- * Default bhnd_nvram driver implementation of DEVICE_ATTACH().
+ * Call from subclass DEVICE_ATTACH() implementations to handle
+ * device attachment.
+ * 
+ * @param dev BHND NVRAM device.
+ * @param data NVRAM data to be copied and parsed. No reference to data
+ * will be held after return.
+ * @param size Size of @p data, in bytes.
+ * @param fmt NVRAM format.
  */
 int
-bhnd_nvram_attach(device_t dev)
+bhnd_nvram_attach(device_t dev, void *data, size_t size, bhnd_nvram_format fmt)
 {
+	struct bhnd_nvram_softc	*sc;
+	int			 error;
+
+	sc = device_get_softc(dev);
+	sc->dev = dev;
+
+	/* Initialize NVRAM parser */
+	error = bhnd_nvram_parser_init(&sc->nvram, dev, data, size, fmt);
+	if (error)
+		return (error);
+
+	/* Initialize mutex */
+	BHND_NVRAM_LOCK_INIT(sc);
+
 	return (0);
 }
 
@@ -154,7 +175,6 @@ bhnd_nvram_setvar_method(device_t dev, const char *name, const void *buf,
 static device_method_t bhnd_nvram_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,		bhnd_nvram_probe),
-	DEVMETHOD(device_attach,	bhnd_nvram_attach),
 	DEVMETHOD(device_resume,	bhnd_nvram_resume),
 	DEVMETHOD(device_suspend,	bhnd_nvram_suspend),
 	DEVMETHOD(device_detach,	bhnd_nvram_detach),
