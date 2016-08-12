@@ -1309,7 +1309,7 @@ int
 bhnd_bus_generic_read_board_info(device_t dev, device_t child,
     struct bhnd_board_info *info)
 {
-	int error;
+	int	error;
 
 	OPT_BHND_GV(info->board_vendor,	BOARDVENDOR,	0);
 	OPT_BHND_GV(info->board_type,	BOARDTYPE,	0);	/* srom >= 2 */
