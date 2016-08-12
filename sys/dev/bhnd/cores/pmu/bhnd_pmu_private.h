@@ -107,7 +107,7 @@ bool		bhnd_pmu_wait_clkst(struct bhnd_pmu_softc *sc, device_t dev,
 
 int		bhnd_pmu_init(struct bhnd_pmu_softc *sc);
 void		bhnd_pmu_pll_init(struct bhnd_pmu_softc *sc, uint32_t xtalfreq);
-void		bhnd_pmu_res_init(struct bhnd_pmu_softc *sc);
+int		bhnd_pmu_res_init(struct bhnd_pmu_softc *sc);
 void		bhnd_pmu_swreg_init(struct bhnd_pmu_softc *sc);
 
 uint32_t	bhnd_pmu_force_ilp(struct bhnd_pmu_softc *sc, bool force);
@@ -122,7 +122,8 @@ void		bhnd_pmu_set_switcher_voltage(struct bhnd_pmu_softc *sc,
 		    uint8_t bb_voltage, uint8_t rf_voltage);
 void		bhnd_pmu_set_ldo_voltage(struct bhnd_pmu_softc *sc,
 		    uint8_t ldo, uint8_t voltage);
-uint16_t	bhnd_pmu_fast_pwrup_delay(struct bhnd_pmu_softc *sc);
+int		bhnd_pmu_fast_pwrup_delay(struct bhnd_pmu_softc *sc,
+		    uint16_t *pwrup_delay);
 void		bhnd_pmu_rcal(struct bhnd_pmu_softc *sc);
 void		bhnd_pmu_spuravoid(struct bhnd_pmu_softc *sc,
 		    uint8_t spuravoid);

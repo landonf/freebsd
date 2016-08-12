@@ -73,8 +73,9 @@ static bool	bhnd_pmu_res_depfltr_paldo(struct bhnd_pmu_softc *sc);
 static bool	bhnd_pmu_res_depfltr_npaldo(struct bhnd_pmu_softc *sc);
 static uint32_t	bhnd_pmu_res_deps(struct bhnd_pmu_softc *sc, uint32_t rsrcs,
 		    bool all);
-static u_int	bhnd_pmu_res_uptime(struct bhnd_pmu_softc *sc, uint8_t rsrc);
-static void	bhnd_pmu_res_masks(struct bhnd_pmu_softc *sc, uint32_t *pmin,
+static int	bhnd_pmu_res_uptime(struct bhnd_pmu_softc *sc, uint8_t rsrc,
+		    uint32_t *uptime);
+static int	bhnd_pmu_res_masks(struct bhnd_pmu_softc *sc, uint32_t *pmin,
 		    uint32_t *pmax);
 
 static void	bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc,
@@ -347,13 +348,13 @@ bhnd_pmu_set_ldo_voltage(struct bhnd_pmu_softc *sc, uint8_t ldo,
 /* d11 slow to fast clock transition time in slow clock cycles */
 #define	D11SCC_SLOW2FAST_TRANSITION	2
 
-uint16_t
-bhnd_pmu_fast_pwrup_delay(struct bhnd_pmu_softc *sc)
+int
+bhnd_pmu_fast_pwrup_delay(struct bhnd_pmu_softc *sc, uint16_t *pwrup_delay)
 {
 	uint32_t	ilp;
+	uint32_t	uptime;
 	u_int		delay;
-	
-	delay = BHND_PMU_MAX_TRANSITION_DLY;
+	int		error;
 
 	switch (sc->cid.chip_id) {
 	case BHND_CHIPID_BCM43224:
@@ -367,46 +368,66 @@ bhnd_pmu_fast_pwrup_delay(struct bhnd_pmu_softc *sc)
 	case BHND_CHIPID_BCM4313:
 		delay = 3700;
 		break;
+
 	case BHND_CHIPID_BCM4325:
+		error = bhnd_pmu_res_uptime(sc, BHND_PMU_RES4325_HT_AVAIL,
+		    &uptime);
+		if (error)
+			return (error);
+
 		ilp = bhnd_pmu_ilp_clock(sc);
-		delay =
-			(bhnd_pmu_res_uptime(sc, BHND_PMU_RES4325_HT_AVAIL) +
-			D11SCC_SLOW2FAST_TRANSITION) * ((1000000 + ilp -
-							1) / ilp);
+		delay = (uptime + D11SCC_SLOW2FAST_TRANSITION) *
+		    ((1000000 + ilp - 1) / ilp);
 		delay = (11 * delay) / 10;
 		break;
+
 	case BHND_CHIPID_BCM4329:
+		error = bhnd_pmu_res_uptime(sc, BHND_PMU_RES4329_HT_AVAIL,
+		    &uptime);
+		if (error)
+			return (error);
+
 		ilp = bhnd_pmu_ilp_clock(sc);
-		delay =
-			(bhnd_pmu_res_uptime(sc, BHND_PMU_RES4329_HT_AVAIL) +
-			D11SCC_SLOW2FAST_TRANSITION) * ((1000000 + ilp -
-							1) / ilp);
+		delay = (uptime + D11SCC_SLOW2FAST_TRANSITION) *
+		    ((1000000 + ilp - 1) / ilp);
 		delay = (11 * delay) / 10;
 		break;
+
 	case BHND_CHIPID_BCM4319:
 		delay = 3700;
 		break;
+
 	case BHND_CHIPID_BCM4336:
+		error = bhnd_pmu_res_uptime(sc, BHND_PMU_RES4336_HT_AVAIL,
+		    &uptime);
+		if (error)
+			return (error);
+
 		ilp = bhnd_pmu_ilp_clock(sc);
-		delay =
-			(bhnd_pmu_res_uptime(sc, BHND_PMU_RES4336_HT_AVAIL) +
-			D11SCC_SLOW2FAST_TRANSITION) * ((1000000 + ilp -
-							1) / ilp);
+		delay = (uptime + D11SCC_SLOW2FAST_TRANSITION) *
+		    ((1000000 + ilp - 1) / ilp);
 		delay = (11 * delay) / 10;
 		break;
+
 	case BHND_CHIPID_BCM4330:
+		error = bhnd_pmu_res_uptime(sc, BHND_PMU_RES4330_HT_AVAIL,
+		    &uptime);
+		if (error)
+			return (error);
+
 		ilp = bhnd_pmu_ilp_clock(sc);
-		delay =
-			(bhnd_pmu_res_uptime(sc, BHND_PMU_RES4330_HT_AVAIL) +
-			D11SCC_SLOW2FAST_TRANSITION) * ((1000000 + ilp -
-							1) / ilp);
+		delay = (uptime + D11SCC_SLOW2FAST_TRANSITION) *
+		    ((1000000 + ilp - 1) / ilp);
 		delay = (11 * delay) / 10;
 		break;
+
 	default:
+		delay = BHND_PMU_MAX_TRANSITION_DLY;
 		break;
 	}
 
-	return ((uint16_t)delay);
+	*pwrup_delay = (uint16_t)delay;
+	return (0);
 }
 
 uint32_t
@@ -682,7 +703,7 @@ bhnd_pmu_res_depfltr_npaldo(struct bhnd_pmu_softc *sc)
 }
 
 /* Determine min/max rsrc masks. Value 0 leaves hardware at default. */
-static void
+static int
 bhnd_pmu_res_masks(struct bhnd_pmu_softc *sc, uint32_t *pmin, uint32_t *pmax)
 {
 	uint32_t	max_mask, min_mask;
@@ -859,17 +880,23 @@ bhnd_pmu_res_masks(struct bhnd_pmu_softc *sc, uint32_t *pmin, uint32_t *pmax)
 	}
 
 	/* Apply nvram override to min mask */
-	error = bhnd_nvram_getvar(sc->chipc_dev, BHND_NVAR_RMIN, &nval,
-	    sizeof(nval));
-	if (error == 0) {
+	error = bhnd_nvram_getvar_uint32(sc->chipc_dev, BHND_NVAR_RMIN, &nval);
+	if (error && error != ENOENT) {
+		device_printf(sc->dev, "NVRAM error reading %s: %d\n",
+		    BHND_NVAR_RMIN, error);
+		return (error);
+	} else if (!error) {
 		PMU_MSG(("Applying rmin=%#x to min_mask\n", nval));
 		min_mask = nval;
 	}
 
 	/* Apply nvram override to max mask */
-	error = bhnd_nvram_getvar(sc->chipc_dev, BHND_NVAR_RMAX, &nval,
-	    sizeof(nval));
-	if (error == 0) {
+	error = bhnd_nvram_getvar_uint32(sc->chipc_dev, BHND_NVAR_RMAX, &nval);
+	if (error && error != ENOENT) {
+		device_printf(sc->dev, "NVRAM error reading %s: %d\n",
+		    BHND_NVAR_RMAX, error);
+		return (error);
+	} else if (!error) {
 		PMU_MSG(("Applying rmax=%#x to max_mask\n", nval));
 		min_mask = nval;
 	}
@@ -879,10 +906,12 @@ bhnd_pmu_res_masks(struct bhnd_pmu_softc *sc, uint32_t *pmin, uint32_t *pmax)
 
 	if (pmax != NULL)
 		*pmax = max_mask;
+
+	return (0);
 }
 
 /* initialize PMU resources */
-void
+int
 bhnd_pmu_res_init(struct bhnd_pmu_softc *sc)
 {
 	const pmu_res_updown_t		*pmu_res_updown_table;
@@ -997,11 +1026,15 @@ bhnd_pmu_res_init(struct bhnd_pmu_softc *sc)
 		uint32_t	val;
 
 		snprintf(name, sizeof(name), "r%dt", i);
-		error = bhnd_nvram_getvar(sc->chipc_dev, name, &val,
-		    sizeof(val));
+		error = bhnd_nvram_getvar_uint32(sc->chipc_dev, name, &val);
 
-		if (error)
+		if (error == ENOENT) {
 			continue;
+		} else if (error) {
+			device_printf(sc->dev, "NVRAM error reading %s: %d\n",
+			    name, error);
+			return (error);
+		}
 
 		PMU_MSG(("Applying %s=%s to rsrc %d res_updn_timer\n", name,
 			 val, i));
@@ -1068,11 +1101,15 @@ bhnd_pmu_res_init(struct bhnd_pmu_softc *sc)
 		uint32_t	val;
 
 		snprintf(name, sizeof(name), "r%dd", i);
-		error = bhnd_nvram_getvar(sc->chipc_dev, name, &val,
-		    sizeof(val));
+		error = bhnd_nvram_getvar_uint32(sc->chipc_dev, name, &val);
 
-		if (error)
+		if (error == ENOENT) {
 			continue;
+		} else if (error) {
+			device_printf(sc->dev, "NVRAM error reading %s: %d\n",
+			    name, error);
+			return (error);
+		}
 
 		PMU_MSG(("Applying %s=%s to rsrc %d res_dep_mask\n", name, val,
 			 i));
@@ -1082,7 +1119,8 @@ bhnd_pmu_res_init(struct bhnd_pmu_softc *sc)
 	}
 
 	/* Determine min/max rsrc masks */
-	bhnd_pmu_res_masks(sc, &min_mask, &max_mask);
+	if ((error = bhnd_pmu_res_masks(sc, &min_mask, &max_mask)))
+		return (error);
 
 	/* It is required to program max_mask first and then min_mask */
 
@@ -1101,6 +1139,8 @@ bhnd_pmu_res_init(struct bhnd_pmu_softc *sc)
 
 	/* Add some delay; allow resources to come up and settle. */
 	DELAY(2000);
+
+	return (0);
 }
 
 /* setup pll and query clock speed */
@@ -2588,32 +2628,38 @@ bhnd_pmu_init(struct bhnd_pmu_softc *sc)
 
 
 	/* Fetch target xtalfreq, in KHz */
-	error = bhnd_nvram_getvar(sc->chipc_dev, BHND_NVAR_XTALFREQ, &xtalfreq,
-	    sizeof(xtalfreq));
+	error = bhnd_nvram_getvar_uint32(sc->chipc_dev, BHND_NVAR_XTALFREQ,
+	    &xtalfreq);
 
 	/* If not available, log any real errors, and then try to measure it */
-	if (error != ENOENT)
-		device_printf(sc->dev, "error fetching xtalfreq: %d\n", error);
+	if (error) {
+		if (error != ENOENT) {
+			device_printf(sc->dev, "error fetching xtalfreq: %d\n",
+			    error);
+		}
 
-	if (error)
 		xtalfreq = bhnd_pmu_measure_alpclk(sc);
-
+	}
 
 	/* Perform PLL initialization */
 	bhnd_pmu_pll_init(sc, xtalfreq);
-	bhnd_pmu_res_init(sc);
+
+	if ((error = bhnd_pmu_res_init(sc)))
+		return (error);
+
 	bhnd_pmu_swreg_init(sc);
 
 	return (0);
 }
 
 /* Return up time in ILP cycles for the given resource. */
-static uint32_t
-bhnd_pmu_res_uptime(struct bhnd_pmu_softc *sc, uint8_t rsrc)
+static int
+bhnd_pmu_res_uptime(struct bhnd_pmu_softc *sc, uint8_t rsrc, uint32_t *uptime)
 {
-	uint32_t deps;
-	uint32_t up, dup, dmax;
-	uint32_t min_mask;
+	uint32_t	deps;
+	uint32_t	up, dup, dmax;
+	uint32_t	min_mask;
+	int		error;
 
 	/* uptime of resource 'rsrc' */
 	BHND_PMU_WRITE_4(sc, BHND_PMU_RES_TABLE_SEL, rsrc);
@@ -2629,7 +2675,9 @@ bhnd_pmu_res_uptime(struct bhnd_pmu_softc *sc, uint8_t rsrc)
 	}
 
 	/* Exclude the minimum resource set */
-	bhnd_pmu_res_masks(sc, &min_mask, NULL);
+	if ((error = bhnd_pmu_res_masks(sc, &min_mask, NULL)))
+		return (error);
+
 	deps &= ~min_mask;
 
 	/* max uptime of direct dependencies */
@@ -2638,7 +2686,9 @@ bhnd_pmu_res_uptime(struct bhnd_pmu_softc *sc, uint8_t rsrc)
 		if (!(deps & BHND_PMURES_BIT(i)))
 			continue;
 
-		dup = bhnd_pmu_res_uptime(sc, i);
+		if ((error = bhnd_pmu_res_uptime(sc, i, &dup)))
+			return (error);
+
 		if (dmax < dup)
 			dmax = dup;
 	}
@@ -2646,7 +2696,8 @@ bhnd_pmu_res_uptime(struct bhnd_pmu_softc *sc, uint8_t rsrc)
 	PMU_MSG(("bhnd_pmu_res_uptime: rsrc %hhu uptime %u(deps 0x%08x "
 	    "uptime %u)\n", rsrc, up, deps, dmax));
 
-	return (up + dmax + BHND_PMURES_UP_TRANSITION);
+	*uptime = (up + dmax + BHND_PMURES_UP_TRANSITION);
+	return (0);
 }
 
 /* Return dependencies (direct or all/indirect) for the given resources */
@@ -2679,9 +2730,10 @@ bhnd_pmu_res_deps(struct bhnd_pmu_softc *sc, uint32_t rsrcs, bool all)
 int
 bhnd_pmu_otp_power(struct bhnd_pmu_softc *sc, bool on)
 {
-	uint32_t deps;
-	uint32_t min_mask;
-	uint32_t rsrcs;
+	uint32_t	deps;
+	uint32_t	min_mask;
+	uint32_t	rsrcs;
+	int		error;
 
 	/* Determine rsrcs to turn on/off OTP power */
 	switch (sc->cid.chip_id) {
@@ -2718,7 +2770,9 @@ bhnd_pmu_otp_power(struct bhnd_pmu_softc *sc, bool on)
 	deps = bhnd_pmu_res_deps(sc, rsrcs, true);
 
 	/* Exclude the minimum resource set */
-	bhnd_pmu_res_masks(sc, &min_mask, NULL);
+	if ((error = bhnd_pmu_res_masks(sc, &min_mask, NULL)))
+		return (error);
+
 	deps &= ~min_mask;
 
 	/* Turn on/off the power */
