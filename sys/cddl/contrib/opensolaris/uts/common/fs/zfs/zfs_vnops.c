@@ -1605,6 +1605,39 @@ zfs_lookup(vnode_t *dvp, char *nm, vnode_t **vpp, struct componentname *cnp,
 		return (SET_ERROR(EILSEQ));
 	}
 
+
+	/*
+	 * First handle the special cases.
+	 */
+	if ((cnp->cn_flags & ISDOTDOT) != 0) {
+		/*
+		 * If we are a snapshot mounted under .zfs, return
+		 * the vp for the snapshot directory.
+		 */
+		if (zdp->z_id == zfsvfs->z_root && zfsvfs->z_parent != zfsvfs) {
+			error = zfsctl_root_lookup(zfsvfs->z_parent->z_ctldir,
+			    "snapshot", vpp, NULL, 0, NULL, kcred,
+			    NULL, NULL, NULL);
+			ZFS_EXIT(zfsvfs);
+			if (error == 0) {
+				error = zfs_lookup_lock(dvp, *vpp, nm,
+				    cnp->cn_lkflags);
+			}
+			goto out;
+		}
+	}
+	if (zfs_has_ctldir(zdp) && strcmp(nm, ZFS_CTLDIR_NAME) == 0) {
+		error = 0;
+		if ((cnp->cn_flags & ISLASTCN) != 0 && nameiop != LOOKUP)
+			error = SET_ERROR(ENOTSUP);
+		else
+			*vpp = zfsctl_root(zdp);
+		ZFS_EXIT(zfsvfs);
+		if (error == 0)
+			error = zfs_lookup_lock(dvp, *vpp, nm, cnp->cn_lkflags);
+		goto out;
+	}
+
 	/*
 	 * The loop is retry the lookup if the parent-child relationship
 	 * changes during the dot-dot locking complexities.
@@ -1653,6 +1686,7 @@ zfs_lookup(vnode_t *dvp, char *nm, vnode_t **vpp, struct componentname *cnp,
 		vput(ZTOV(zp));
 	}
 
+out:
 	if (error != 0)
 		*vpp = NULL;
 
@@ -3922,7 +3956,7 @@ unlockout:			/* all 4 vnodes are locked, ZFS_ENTER called */
 	VOP_UNLOCK(sdvp, 0);
 
 out:				/* original two vnodes are locked */
-	if (zfsvfs->z_os->os_sync == ZFS_SYNC_ALWAYS && error == 0)
+	if (error == 0 && zfsvfs->z_os->os_sync == ZFS_SYNC_ALWAYS)
 		zil_commit(zilog, 0);
 
 	if (*tvpp != NULL)
