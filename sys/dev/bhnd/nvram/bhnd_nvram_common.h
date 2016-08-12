@@ -50,13 +50,25 @@ extern const uint8_t bhnd_nvram_crc8_tab[];
 #define	BHND_NVRAM_CRC8_VALID	0x9F		/**< Valid CRC-8 checksum */
 #define	BHND_SPROMREV_MAX	UINT8_MAX	/**< maximum supported SPROM revision */
 
+
+/** NVRAM data type string representations */
+typedef enum {
+	BHND_NVRAM_SFMT_HEX	= 1,	/**< hex format */
+	BHND_NVRAM_SFMT_DEC	= 2,	/**< decimal format */
+	BHND_NVRAM_SFMT_MACADDR	= 3,	/**< mac address (canonical form, hex octets,
+					     separated with ':') */
+	BHND_NVRAM_SFMT_LEDDC	= 4,	/**< LED PWM duty-cycle (2 bytes -- on/off) */
+	BHND_NVRAM_SFMT_CCODE	= 5	/**< count code format (2-3 ASCII chars, or hex string) */
+} bhnd_nvram_sfmt;
+
 size_t				 bhnd_nvram_type_width(bhnd_nvram_type type);
+const char			*bhnd_nvram_type_fmt(bhnd_nvram_type type,
+				     bhnd_nvram_sfmt sfmt, size_t elem_num);
 
 const struct bhnd_nvram_vardefn	*bhnd_nvram_find_vardefn(const char *varname);
 
 bool				 bhnd_nvram_validate_name(const char *name,
 				     size_t name_len);
-
 int				 bhnd_nvram_parse_octet_string(
 				     const char *value, size_t value_len,
 				     void *buf, size_t *len,
@@ -85,16 +97,6 @@ struct bhnd_nvram_tuple		*bhnd_nvram_tuple_alloc(const char *name,
 				     const char *value);
 void				 bhnd_nvram_tuple_free(
 				     struct bhnd_nvram_tuple *tuple);
-
-/** NVRAM data type string representations */
-typedef enum {
-	BHND_NVRAM_SFMT_HEX	= 1,	/**< hex format */
-	BHND_NVRAM_SFMT_DEC	= 2,	/**< decimal format */
-	BHND_NVRAM_SFMT_MACADDR	= 3,	/**< mac address (canonical form, hex octets,
-					     separated with ':') */
-	BHND_NVRAM_SFMT_LEDDC	= 4,	/**< LED PWM duty-cycle (2 bytes -- on/off) */
-	BHND_NVRAM_SFMT_CCODE	= 5	/**< count code format (2-3 ASCII chars, or hex string) */
-} bhnd_nvram_sfmt;
 
 /** NVRAM variable flags */
 enum {

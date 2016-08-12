@@ -39,7 +39,6 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/bus.h>
 #include <machine/resource.h>
-#include <machine/_inttypes.h>
 
 #include "bhnd_nvram_common.h"
 
@@ -64,10 +63,6 @@ static int		 sprom_get_var_defn(struct bhnd_sprom *sc,
 			     size_t *size, size_t *nelem,
 			     bhnd_nvram_type req_type);
 
-static const char	*sprom_get_fmtstr(struct bhnd_sprom *sc,
-			     const struct bhnd_nvram_vardefn *nv,
-			     const struct bhnd_sprom_offset *off,
-			     size_t off_idx);
 static char		 sprom_get_delim_char(struct bhnd_sprom *sc,
 			     bhnd_nvram_sfmt sfmt);
 
@@ -406,9 +401,12 @@ bhnd_sprom_getvar(struct bhnd_sprom *sc, const char *name, void *buf,
 			const char	*fmtstr;
 			int		 written;
 
-			fmtstr = sprom_get_fmtstr(sc, nv, off, i);
-			if (fmtstr == NULL)
+			fmtstr = bhnd_nvram_type_fmt(off->type, nv->sfmt, i);
+			if (fmtstr == NULL) {
+		                device_printf(sc->dev, "no NVRAM format string "
+				    "for '%s' (type=%d)\n", name, off->type);
 				return (EOPNOTSUPP);
+			}
 
 			SPROM_SWITCH_TYPE(off->type, SPROM_GETVAR_SNPRINTF, val,
 			    outp, str_remain, fmtstr, written);
@@ -730,93 +728,6 @@ sprom_get_var_defn(struct bhnd_sprom *sc, const char *name,
 
 	/* Not supported by this SPROM revision */
 	return (ENOENT);
-}
-
-/*
- * Return the format string to use when printing @p off.
- * 
- * Returns NULL if no format string is supported.
- */
-static const char *
-sprom_get_fmtstr(struct bhnd_sprom *sc, const struct bhnd_nvram_vardefn *nv,
-     const struct bhnd_sprom_offset *off, size_t off_idx)
-{
-	bhnd_nvram_sfmt	sfmt;
-	size_t		width;
-
-	sfmt = nv->sfmt;
-	width = bhnd_nvram_type_width(off->type);
-
-	/* Sanity-check the type width */
-	switch (width) {
-	case 1:
-	case 2:
-	case 4:
-		break;
-	default:
-		device_printf(sc->dev, "no NVRAM format string for type %d "
-		"(width %zu)\n", off->type, width);
-		return (NULL);
-	}
-
-	/* Special-cased string formats */
-	switch (sfmt) {
-	case BHND_NVRAM_SFMT_LEDDC:
-		/* If this is the first offset, use the 0x-prefixed
-		 * SFMT_HEX */
-		if (off_idx == 0)
-			sfmt = BHND_NVRAM_SFMT_HEX;
-		break;
-	default:
-		break;
-	}
-
-	/* Return the format string */
-	switch (sfmt) {
-	case BHND_NVRAM_SFMT_MACADDR:
-		switch (width) {
-		case 1:	return ("%02" PRIx8);
-		}
-		break;
-
-	case BHND_NVRAM_SFMT_HEX:
-		switch (width) {
-		case 1:	return ("0x%02" PRIx8);
-		case 2:	return ("0x%04" PRIx16);
-		case 4:	return ("0x%08" PRIx32);
-		}
-		break;
-	case BHND_NVRAM_SFMT_DEC:
-		if (BHND_NVRAM_SIGNED_TYPE(off->type)) {
-			switch (width) {
-			case 1:	return ("%" PRId8);
-			case 2:	return ("%" PRId16);
-			case 4:	return ("%" PRId32);
-			}
-		} else {
-			switch (width) {
-			case 1:	return ("%" PRIu8);
-			case 2:	return ("%" PRIu16);
-			case 4:	return ("%" PRIu32);
-			}
-		}
-		break;
-	case BHND_NVRAM_SFMT_LEDDC:
-		switch (width) {
-		case 1:	return ("%02" PRIx8);
-		case 2:	return ("%04" PRIx16);
-		case 4:	return ("%08" PRIx32);
-		}
-		break;
-
-	case BHND_NVRAM_SFMT_CCODE:
-		switch (width) {
-		case 1:	return ("%c");
-		}
-		break;
-	}
-
-	return (NULL);
 }
 
 /**

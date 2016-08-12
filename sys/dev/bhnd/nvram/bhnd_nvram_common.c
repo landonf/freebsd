@@ -39,6 +39,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/systm.h>
 
+#include <machine/_inttypes.h>
+
 #include "bhnd_nvram_common.h"
 
 #include "bhnd_nvram_map_data.h"
@@ -116,6 +118,96 @@ bhnd_nvram_type_width(bhnd_nvram_type type)
 
 	/* Quiesce gcc4.2 */
 	panic("bhnd nvram type %u unknown", type);
+}
+
+/**
+ * Return the format string to use when printing @p type with @p sfmt
+ * 
+ * @param type The value type being printed.
+ * @param sfmt The string format required for @p type.
+ * @param elem_num The element index being printed. If this is the first
+ * value in an array of elements, the index would be 0, the next would be 1,
+ * and so on.
+ * 
+ * @retval non-NULL A valid printf format string.
+ * @retval NULL If no format string is available for @p type and @p sfmt.
+ */
+const char *
+bhnd_nvram_type_fmt(bhnd_nvram_type type, bhnd_nvram_sfmt sfmt,
+    size_t elem_num)
+{
+	size_t width;
+
+	width = bhnd_nvram_type_width(type);
+
+	/* Sanity-check the type width */
+	switch (width) {
+	case 1:
+	case 2:
+	case 4:
+		break;
+	default:
+		return (NULL);
+	}
+
+	/* Special-cased string formats */
+	switch (sfmt) {
+	case BHND_NVRAM_SFMT_LEDDC:
+		/* If this is the first element, use the 0x-prefixed
+		 * SFMT_HEX */
+		if (elem_num == 0)
+			sfmt = BHND_NVRAM_SFMT_HEX;
+		break;
+	default:
+		break;
+	}
+
+	/* Return the format string */
+	switch (sfmt) {
+	case BHND_NVRAM_SFMT_MACADDR:
+		switch (width) {
+		case 1:	return ("%02" PRIx8);
+		}
+		break;
+
+	case BHND_NVRAM_SFMT_HEX:
+		switch (width) {
+		case 1:	return ("0x%02" PRIx8);
+		case 2:	return ("0x%04" PRIx16);
+		case 4:	return ("0x%08" PRIx32);
+		}
+		break;
+	case BHND_NVRAM_SFMT_DEC:
+		if (BHND_NVRAM_SIGNED_TYPE(type)) {
+			switch (width) {
+			case 1:	return ("%" PRId8);
+			case 2:	return ("%" PRId16);
+			case 4:	return ("%" PRId32);
+			}
+		} else {
+			switch (width) {
+			case 1:	return ("%" PRIu8);
+			case 2:	return ("%" PRIu16);
+			case 4:	return ("%" PRIu32);
+			}
+		}
+		break;
+	case BHND_NVRAM_SFMT_LEDDC:
+		switch (width) {
+		case 1:	return ("%02" PRIx8);
+		case 2:	return ("%04" PRIx16);
+		case 4:	return ("%08" PRIx32);
+		}
+		break;
+
+	case BHND_NVRAM_SFMT_CCODE:
+		switch (width) {
+		case 1:	return ("%c");
+		}
+		break;
+	}
+
+	return (NULL);
 }
 
 /**
