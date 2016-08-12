@@ -315,12 +315,6 @@ bhnd_nvram_parser_init(struct bhnd_nvram *sc, device_t dev, const void *data,
 			goto cleanup;
 	}
 
-	// TODO
-	struct bhnd_nvram_devpath *dp;
-	LIST_FOREACH(dp, &sc->devpaths, dp_link) {
-		NVRAM_LOG(sc, "alias %lu to '%s'\n", dp->index, dp->path);
-	}
-
 	return (0);
 
 cleanup:
@@ -623,17 +617,6 @@ bhnd_nvram_parser_getvar(struct bhnd_nvram *sc, const char *name, void *buf,
 
 		switch (type) {
 		case BHND_NVRAM_TYPE_CHAR:
-			/* Some NVRAM formats encode 8-bit ASCII ccode
-			 * values as 16-bit hex strings */
-			if (is_int && base == 16) {
-				// TODO
-				error = EFTYPE;
-				goto finished;
-			} else if (is_int) {
-				error = EFTYPE;
-				goto finished;
-			}
-
 			/* Copy out the characters directly */
 			for (size_t i = 0; i < field_len; i++) {
 				if (limit > nbytes)
@@ -721,15 +704,16 @@ bhnd_nvram_parser_setvar(struct bhnd_nvram *sc, const char *name,
 
 	/* Determine string format (or directly add variable, if a C string) */
 	switch (type) {
-	case BHND_NVRAM_TYPE_CHAR:
 	case BHND_NVRAM_TYPE_UINT8:
 	case BHND_NVRAM_TYPE_UINT16:
 	case BHND_NVRAM_TYPE_UINT32:
 	case BHND_NVRAM_TYPE_INT8:
 	case BHND_NVRAM_TYPE_INT16:
 	case BHND_NVRAM_TYPE_INT32:
-		// TODO
+		// TODO: primitive type value support
 		return (EOPNOTSUPP);
+
+	case BHND_NVRAM_TYPE_CHAR:
 	case BHND_NVRAM_TYPE_CSTR:
 		return (bhnd_nvram_varmap_add(&sc->pending, name, buf, len));
 	}
