@@ -57,7 +57,8 @@ INTERFACE bhnd_nvram;
  *			small to hold the requested value.
  * @retval ENODEV	If no supported NVRAM hardware is accessible via this
  *			device.
- * @retval EOPNOTSUPP	If the value cannot be coerced to @p type.
+ * @retval EOPNOTSUPP	If any coercion to @p type is unsupported.
+ * @retval EFTYPE	If the @p name's data type cannot be coerced to @p type.
  * @retval ERANGE	If value coercion would overflow @p type.
  * @retval non-zero	If reading @p name otherwise fails, a regular unix
  *			error code will be returned.
@@ -86,8 +87,8 @@ METHOD int getvar {
  * @retval ENOENT	The specified variable name is not recognized.
  * @retval ENODEV	If no supported NVRAM hardware is accessible via this
  *			device.
- * @retval EOPNOTSUPP	If @p type cannot be coerced to the variable's
- *			storage type.
+ * @retval EOPNOTSUPP	If any coercion to @p type is unsupported.
+ * @retval EFTYPE	If the @p name's data type cannot be coerced to @p type.
  * @retval ERANGE	If value coercion from  @p type would overflow.
  * @retval non-zero	If reading @p name otherwise fails, a regular unix
  *			error code will be returned.

@@ -898,7 +898,8 @@ cleanup:
  * @retval ENODEV	No valid NVRAM source could be found.
  * @retval ENOMEM	If @p buf is non-NULL and a buffer of @p len is too
  *			small to hold the requested value.
- * @retval EOPNOTSUPP	If the value cannot be coerced to a string representation.
+ * @retval EFTYPE	If the variable data cannot be coerced to a valid
+ *			string representation.
  * @retval ERANGE	If value coercion would overflow @p type.
  * @retval non-zero	If reading @p name otherwise fails, a regular unix
  *			error code will be returned.
@@ -931,8 +932,8 @@ bhnd_nvram_getvar_str(device_t dev, const char *name, char *buf, size_t len,
  * @retval 0		success
  * @retval ENOENT	The requested variable was not found.
  * @retval ENODEV	No valid NVRAM source could be found.
- * @retval EOPNOTSUPP	If the variable cannot be coerced to an unsigned
- *			representation of the given @p width
+ * @retval EFTYPE	If the variable data cannot be coerced to a
+ *			a valid unsigned integer representation.
  * @retval ERANGE	If value coercion would overflow (or underflow) an
  *			unsigned representation of the given @p width.
  * @retval non-zero	If reading @p name otherwise fails, a regular unix
@@ -975,8 +976,8 @@ bhnd_nvram_getvar_uint(device_t dev, const char *name, void *value, int width)
  * @retval 0		success
  * @retval ENOENT	The requested variable was not found.
  * @retval ENODEV	No valid NVRAM source could be found.
- * @retval EOPNOTSUPP	If the variable cannot be coerced to uint8_t
- *			representation.
+ * @retval EFTYPE	If the variable data cannot be coerced to a
+ *			a valid unsigned integer representation.
  * @retval ERANGE	If value coercion would overflow (or underflow) uint8_t.
  * @retval non-zero	If reading @p name otherwise fails, a regular unix
  *			error code will be returned.
@@ -998,8 +999,8 @@ bhnd_nvram_getvar_uint8(device_t dev, const char *name, uint8_t *value)
  * @retval 0		success
  * @retval ENOENT	The requested variable was not found.
  * @retval ENODEV	No valid NVRAM source could be found.
- * @retval EOPNOTSUPP	If the variable cannot be coerced to a uint16_t
- *			representation.
+ * @retval EFTYPE	If the variable data cannot be coerced to a
+ *			a valid unsigned integer representation.
  * @retval ERANGE	If value coercion would overflow (or underflow)
  *			uint16_t.
  * @retval non-zero	If reading @p name otherwise fails, a regular unix
@@ -1022,8 +1023,8 @@ bhnd_nvram_getvar_uint16(device_t dev, const char *name, uint16_t *value)
  * @retval 0		success
  * @retval ENOENT	The requested variable was not found.
  * @retval ENODEV	No valid NVRAM source could be found.
- * @retval EOPNOTSUPP	If the variable cannot be coerced to a uint32_t
- *			representation.
+ * @retval EFTYPE	If the variable data cannot be coerced to a
+ *			a valid unsigned integer representation.
  * @retval ERANGE	If value coercion would overflow (or underflow)
  *			uint32_t.
  * @retval non-zero	If reading @p name otherwise fails, a regular unix
@@ -1048,8 +1049,8 @@ bhnd_nvram_getvar_uint32(device_t dev, const char *name, uint32_t *value)
  * @retval 0		success
  * @retval ENOENT	The requested variable was not found.
  * @retval ENODEV	No valid NVRAM source could be found.
- * @retval EOPNOTSUPP	If the variable cannot be coerced to a signed
- *			representation of the given @p width
+ * @retval EFTYPE	If the variable data cannot be coerced to a
+ *			a valid integer representation.
  * @retval ERANGE	If value coercion would overflow (or underflow) an
  *			signed representation of the given @p width.
  * @retval non-zero	If reading @p name otherwise fails, a regular unix
@@ -1092,8 +1093,8 @@ bhnd_nvram_getvar_int(device_t dev, const char *name, void *value, int width)
  * @retval 0		success
  * @retval ENOENT	The requested variable was not found.
  * @retval ENODEV	No valid NVRAM source could be found.
- * @retval EOPNOTSUPP	If the variable cannot be coerced to int8_t
- *			representation.
+ * @retval EFTYPE	If the variable data cannot be coerced to a
+ *			a valid integer representation.
  * @retval ERANGE	If value coercion would overflow (or underflow) int8_t.
  * @retval non-zero	If reading @p name otherwise fails, a regular unix
  *			error code will be returned.
@@ -1115,8 +1116,8 @@ bhnd_nvram_getvar_int8(device_t dev, const char *name, int8_t *value)
  * @retval 0		success
  * @retval ENOENT	The requested variable was not found.
  * @retval ENODEV	No valid NVRAM source could be found.
- * @retval EOPNOTSUPP	If the variable cannot be coerced to a int16_t
- *			representation.
+ * @retval EFTYPE	If the variable data cannot be coerced to a
+ *			a valid integer representation.
  * @retval ERANGE	If value coercion would overflow (or underflow)
  *			int16_t.
  * @retval non-zero	If reading @p name otherwise fails, a regular unix
@@ -1139,8 +1140,8 @@ bhnd_nvram_getvar_int16(device_t dev, const char *name, int16_t *value)
  * @retval 0		success
  * @retval ENOENT	The requested variable was not found.
  * @retval ENODEV	No valid NVRAM source could be found.
- * @retval EOPNOTSUPP	If the variable cannot be coerced to a int32_t
- *			representation.
+ * @retval EFTYPE	If the variable data cannot be coerced to a
+ *			a valid integer representation.
  * @retval ERANGE	If value coercion would overflow (or underflow)
  *			int32_t.
  * @retval non-zero	If reading @p name otherwise fails, a regular unix
@@ -1171,7 +1172,8 @@ bhnd_nvram_getvar_int32(device_t dev, const char *name, int32_t *value)
  * @retval ENXIO	If less than @p size bytes are available.
  * @retval ENOMEM	If a buffer of @p size is too small to hold the
  *			requested value.
- * @retval EOPNOTSUPP	If the value cannot be coerced to @p type.
+ * @retval EFTYPE	If the variable data cannot be coerced to a
+ *			a valid instance of @p type.
  * @retval ERANGE	If value coercion would overflow (or underflow) a
  *			representation of @p type.
  * @retval non-zero	If reading @p name otherwise fails, a regular unix

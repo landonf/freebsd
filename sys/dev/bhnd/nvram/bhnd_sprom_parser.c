@@ -369,7 +369,7 @@ bhnd_sprom_getvar(struct bhnd_sprom *sc, const char *name, void *buf,
 				}
 
 				if (SIZE_MAX - 1 < req_size)
-					return (EOPNOTSUPP); /* too long */
+					return (EFTYPE); /* too long */
 				req_size++;
 			}
 		}
@@ -412,7 +412,7 @@ bhnd_sprom_getvar(struct bhnd_sprom *sc, const char *name, void *buf,
 			    outp, str_remain, fmtstr, written);
 
 			if (written <= 0)
-				return (EOPNOTSUPP);
+				return (EFTYPE);
 
 			/* Calculate remaining capacity, drop outp reference
 			 * if we hit 0 -- otherwise, advance the buffer
@@ -428,7 +428,7 @@ bhnd_sprom_getvar(struct bhnd_sprom *sc, const char *name, void *buf,
 
 			/* Add additional bytes to total length */
 			if (SIZE_MAX - written < req_size)
-				return (EOPNOTSUPP); /* string too long */
+				return (EFTYPE); /* string too long */
 			req_size += written;
 		} else {
 			/* Verify range */
@@ -451,7 +451,7 @@ bhnd_sprom_getvar(struct bhnd_sprom *sc, const char *name, void *buf,
 	if (type == BHND_NVRAM_TYPE_CSTR) {
 		/* Account for final trailing NUL */
 		if (SIZE_MAX - 1 < req_size)
-			return (EOPNOTSUPP); /* string too long */
+			return (EFTYPE); /* string too long */
 		req_size++;
 
 		/* Return an error if a too-small output buffer was provided */

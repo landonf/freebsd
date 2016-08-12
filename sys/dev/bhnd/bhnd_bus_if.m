@@ -499,7 +499,7 @@ METHOD int get_region_addr {
  * @retval ENOMEM	If @p buf is non-NULL and a buffer of @p size is too
  *			small to hold the requested value.
  * @retval ENODEV	No valid NVRAM source could be found.
- * @retval EOPNOTSUPP	If the value cannot be coerced to @p type.
+ * @retval EFTYPE	If the @p name's data type cannot be coerced to @p type.
  * @retval ERANGE	If value coercion would overflow @p type.
  * @retval non-zero	If reading @p name otherwise fails, a regular unix
  *			error code will be returned.
