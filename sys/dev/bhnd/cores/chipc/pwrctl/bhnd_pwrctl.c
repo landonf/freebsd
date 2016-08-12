@@ -95,11 +95,12 @@ bhnd_pwrctl_probe(device_t dev)
 
 	/* Verify chipc capability flags */
 	ccaps = BHND_CHIPC_GET_CAPS(chipc);
-	if (ccaps->pmu || !ccaps->pwr_ctrl)
+	if (ccaps->pmu)
 		return (ENXIO);
 
-	/* Check for device match */
-	id = bhnd_device_lookup(dev, pwrctl_devices, sizeof(pwrctl_devices[0]));
+	/* Check for chipc device match */
+	id = bhnd_device_lookup(chipc, pwrctl_devices,
+	    sizeof(pwrctl_devices[0]));
 	if (id == NULL)
 		return (ENXIO);
 
