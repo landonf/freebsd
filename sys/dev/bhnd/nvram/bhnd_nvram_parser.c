@@ -273,7 +273,7 @@ bhnd_nvram_parser_init(struct bhnd_nvram *sc, device_t dev, const void *data,
 		return (error);
 	}
 
-	/* Determine appropiate size for backing buffer */
+	/* Determine appropriate size for backing buffer */
 	sc->buf_size = size;
 	if ((error = sc->ops->getsize(data, &sc->buf_size)))
 		return (error);
