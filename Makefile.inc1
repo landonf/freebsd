@@ -1013,7 +1013,7 @@ distributeworld installworld stageworld: _installcheck_world .PHONY
 	    ${IMAKEENV} rm -rf ${INSTALLTMP}
 .if make(distributeworld)
 .for dist in ${EXTRA_DISTRIBUTIONS}
-	find ${DESTDIR}/${DISTDIR}/${dist} -mindepth 1 -empty -delete
+	find ${DESTDIR}/${DISTDIR}/${dist} -mindepth 1 -type d -empty -delete
 .endfor
 .if defined(NO_ROOT)
 .for dist in base ${EXTRA_DISTRIBUTIONS}
@@ -2095,7 +2095,10 @@ cddl/lib/libctf__L: lib/libz__L
 # cddl/lib/libdtrace requires lib/libproc and lib/librtld_db; it's only built
 # on select architectures though (see cddl/lib/Makefile)
 .if ${MACHINE_CPUARCH} != "sparc64"
-_prebuild_libs+=	lib/libproc lib/librtld_db
+_prebuild_libs+=	lib/libprocstat lib/libproc lib/librtld_db
+lib/libprocstat__L: lib/libelf__L lib/libkvm__L lib/libutil__L
+lib/libproc__L: lib/libprocstat__L
+lib/librtld_db__L: lib/libprocstat__L
 .endif
 
 .if ${MK_CRYPT} != "no"
@@ -2375,11 +2378,11 @@ check-old-dirs: .PHONY
 	done
 
 delete-old: delete-old-files delete-old-dirs .PHONY
-	@echo "To remove old libraries run '${MAKE} delete-old-libs'."
+	@echo "To remove old libraries run '${MAKE_CMD} delete-old-libs'."
 
 check-old: check-old-files check-old-libs check-old-dirs .PHONY
-	@echo "To remove old files and directories run '${MAKE} delete-old'."
-	@echo "To remove old libraries run '${MAKE} delete-old-libs'."
+	@echo "To remove old files and directories run '${MAKE_CMD} delete-old'."
+	@echo "To remove old libraries run '${MAKE_CMD} delete-old-libs'."
 
 .endif
 

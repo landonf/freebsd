@@ -86,7 +86,7 @@ int			 bhnd_generic_resume_child(device_t dev,
 
 int			 bhnd_generic_get_nvram_var(device_t dev,
 			     device_t child, const char *name, void *buf,
-			     size_t *size);
+			     size_t *size, bhnd_nvram_type type);
 
 
 /**
