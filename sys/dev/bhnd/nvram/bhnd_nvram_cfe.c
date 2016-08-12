@@ -138,7 +138,10 @@ bhnd_nvram_cfe_attach(device_t dev)
 	}
 
 	/* Copy out NVRAM buffer */
-	buffer = malloc(size, M_TEMP, M_WAITOK);
+	buffer = malloc(size, M_TEMP, M_NOWAIT);
+	if (buffer == NULL)
+		return (ENOMEM);
+
 	for (size_t remain = size; remain > 0;) {
 		int nr, req;
 		
