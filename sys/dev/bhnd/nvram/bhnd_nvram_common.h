@@ -66,7 +66,8 @@ void				 bhnd_nvram_varmap_free(
 				     struct bhnd_nvram_varmap *map);
 int				 bhnd_nvram_varmap_add(
 				     struct bhnd_nvram_varmap *map,
-				     const char *name, const char *value);
+				     const char *name, const char *value,
+				     size_t value_len);
 int				 bhnd_nvram_varmap_remove(
 				     struct bhnd_nvram_varmap *map,
 				     const char *name);

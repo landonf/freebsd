@@ -719,8 +719,8 @@ bhnd_nvram_parser_setvar(struct bhnd_nvram *sc, const char *name,
 		// TODO
 		return (EOPNOTSUPP);
 	case BHND_NVRAM_TYPE_CSTR:
-		// TODO: respect `len` here
-		return (bhnd_nvram_varmap_add(&sc->pending, name, buf));
+		// TODO: validate name
+		return (bhnd_nvram_varmap_add(&sc->pending, name, buf, len));
 	}
 
 	return (0);
@@ -1283,7 +1283,7 @@ bhnd_nvram_bcm_init_defaults(struct bhnd_nvram *sc)
 	value = NVRAM_GET_BITS(le32toh(header->_field), _name);	\
 	snprintf(vbuf, sizeof(vbuf), _name ##_FMT, value);	\
 	error = bhnd_nvram_varmap_add(&sc->defaults,		\
-		_name ##_VAR, vbuf);				\
+		_name ##_VAR, vbuf, strlen(vbuf));		\
 								\
 	if (error)						\
 		return (error);					\

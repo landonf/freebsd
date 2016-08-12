@@ -352,13 +352,14 @@ bhnd_nvram_varmap_free(struct bhnd_nvram_varmap *map)
  * @param map Hash table to modify.
  * @param name Variable name.
  * @param value Variable value.
- * 
+ * @param value_len The length of @p value, in bytes.
+ *
  * @retval 0 success
  * @retval ENOMEM unable to allocate new entry
  */
 int
 bhnd_nvram_varmap_add(struct bhnd_nvram_varmap *map, const char *name,
-    const char *value)
+    const char *value, size_t value_len)
 {
 	struct bhnd_nvram_tuples	*head;
 	struct bhnd_nvram_tuple		*t;
