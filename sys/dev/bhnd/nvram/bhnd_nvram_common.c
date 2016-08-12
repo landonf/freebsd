@@ -217,6 +217,7 @@ bhnd_nvram_parse_octet_string(const char *value, size_t value_len, void *buf,
 
 	/* Parse octets */ 
 	for (const char *p = value; p - value < value_len; p++) {
+		void		*outp;
 		size_t		 pos;
 		unsigned char	 c;
 
@@ -235,6 +236,7 @@ bhnd_nvram_parse_octet_string(const char *value, size_t value_len, void *buf,
 		}
 
 		c = *(const unsigned char *)p;
+
 		if (isdigit(c))
 			c -= '0';
 		else if (isxdigit(c))
@@ -242,14 +244,14 @@ bhnd_nvram_parse_octet_string(const char *value, size_t value_len, void *buf,
 		else
 			return (EINVAL);
 
-		/* First 4 bits of octet */
-		if (pos % 2) {
+		if (pos % 3 == 0) {
+			/* MSB */
 			octet = (c << 4);
 			continue;
+		} else if (pos % 3 == 1) {
+			/* LSB */
+			octet |= (c & 0xF);
 		}
-
-		/* Last 4 bits of octet */
-		octet |= (c & 0xF);
 
 		/* Skip writing? */
 		if (limit < width || limit - width < nbytes) {
@@ -258,37 +260,38 @@ bhnd_nvram_parse_octet_string(const char *value, size_t value_len, void *buf,
 		}
 
 		/* Write output */
+		outp = ((uint8_t *)buf) + nbytes;
 		switch (type) {
 		case BHND_NVRAM_TYPE_UINT8:
-			*(uint8_t *)buf = octet;
+			*(uint8_t *)outp = octet;
 			break;
 
 		case BHND_NVRAM_TYPE_UINT16:
-			*(uint16_t *)buf = octet;
+			*(uint16_t *)outp = octet;
 			break;
 
 		case BHND_NVRAM_TYPE_UINT32:
-			*(uint32_t *)buf = octet;
+			*(uint32_t *)outp = octet;
 			break;
 
 		case BHND_NVRAM_TYPE_INT8:
 			if (octet > INT8_MAX)
 				return (ERANGE);
-			*(int8_t *)buf = (int8_t)octet;
+			*(int8_t *)outp = (int8_t)octet;
 			break;
 
 		case BHND_NVRAM_TYPE_INT16:
-			*(int16_t *)buf = (int8_t)octet;
+			*(int16_t *)outp = (int8_t)octet;
 			break;
 
 		case BHND_NVRAM_TYPE_INT32:
-			*(int32_t *)buf = (int8_t)octet;
+			*(int32_t *)outp = (int8_t)octet;
 			break;
 
 		case BHND_NVRAM_TYPE_CHAR:
 			if (octet > CHAR_MAX)
 				return (ERANGE);
-			*(char *)buf = (char)octet;
+			*(char *)outp = (char)octet;
 			break;
 		default:
 			printf("unknown type %d\n", type);
