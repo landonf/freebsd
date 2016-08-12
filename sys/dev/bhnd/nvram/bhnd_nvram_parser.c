@@ -1265,23 +1265,28 @@ bhnd_nvram_bcm_init_defaults(struct bhnd_nvram *sc)
 	char				 vbuf[NVRAM_VAL_MAX];
 	uint32_t			 value;
 	int				 error;
+	int				 nwrite;
 
 	/* Verify that our header is readable */
 	header = (struct bhnd_nvram_header *) sc->buf;
 	if (!bhnd_nvram_bufptr_valid(sc, header, sizeof(*header), true))
 		return (EINVAL);
 
-	/* If the given header-shadowed variable does not in the NVRAM
-	 * buffer, extract its value from the header, format it, and register
-	 * a new default variable tuple */
-#define	NVRAM_BCM_HEADER_DEFAULT(_field, _name)	do {		\
-	value = NVRAM_GET_BITS(le32toh(header->_field), _name);	\
-	snprintf(vbuf, sizeof(vbuf), _name ##_FMT, value);	\
-	error = bhnd_nvram_varmap_add(&sc->defaults,		\
-		_name ##_VAR, vbuf, strlen(vbuf));		\
-								\
-	if (error)						\
-		return (error);					\
+	/* Extract a value value from the NVRAM header, format it, and
+	 * register a new default variable tuple */
+#define	NVRAM_BCM_HEADER_DEFAULT(_field, _name)	do {			\
+	value = NVRAM_GET_BITS(le32toh(header->_field), _name);		\
+	nwrite = snprintf(vbuf, sizeof(vbuf), _name ##_FMT, value);	\
+	if (nwrite < 0 || nwrite >= sizeof(vbuf)) {			\
+		device_printf(sc->dev, "%s: formatting '%s' failed: "	\
+		    "%d\n", __FUNCTION__, _name ## _VAR, nwrite);	\
+		return (ENXIO);						\
+	}								\
+	error = bhnd_nvram_varmap_add(&sc->defaults,			\
+		_name ##_VAR, vbuf, strlen(vbuf));			\
+									\
+	if (error)							\
+		return (error);						\
 } while(0)
 
 	NVRAM_BCM_HEADER_DEFAULT(cfg0,		NVRAM_CFG0_SDRAM_INIT);
