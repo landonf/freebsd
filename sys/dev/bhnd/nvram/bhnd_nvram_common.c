@@ -430,8 +430,10 @@ bhnd_nvram_parse_octet_string(const char *value, size_t value_len, void *buf,
 			break;
 
 		case BHND_NVRAM_TYPE_CHAR:
+#if (CHAR_MAX < UINT8_MAX)
 			if (octet > CHAR_MAX)
 				return (ERANGE);
+#endif
 			*(char *)outp = (char)octet;
 			break;
 		default:
