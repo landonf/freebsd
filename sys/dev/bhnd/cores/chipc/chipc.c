@@ -274,7 +274,7 @@ chipc_add_children(struct chipc_softc *sc)
 	 * On AOB ("Always on Bus") devices, the PMU core (if it exists) is
 	 * attached directly to the bhnd(4) bus -- not chipc.
 	 */
-	if (!(sc->caps.pmu && sc->caps.aob)) {
+	if (sc->caps.pwr_ctrl || (sc->caps.pmu && !sc->caps.aob)) {
 		child = BUS_ADD_CHILD(sc->dev, 0, "bhnd_pmu", -1);
 		if (child == NULL) {
 			device_printf(sc->dev, "failed to add pmu\n");

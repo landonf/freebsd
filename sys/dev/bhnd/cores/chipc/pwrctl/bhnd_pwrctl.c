@@ -95,7 +95,7 @@ bhnd_pwrctl_probe(device_t dev)
 
 	/* Verify chipc capability flags */
 	ccaps = BHND_CHIPC_GET_CAPS(chipc);
-	if (ccaps->pmu)
+	if (ccaps->pmu || !ccaps->pwr_ctrl)
 		return (ENXIO);
 
 	/* Check for chipc device match */
@@ -159,11 +159,20 @@ bhnd_pwrctl_attach(device_t dev)
 	STAILQ_INIT(&sc->clkres_list);
 
 	/* Initialize power control */
-	if ((error = bhnd_pwrctl_init(sc)))
+	PWRCTL_LOCK(sc);
+
+	if ((error = bhnd_pwrctl_init(sc))) {
+		PWRCTL_UNLOCK(sc);
 		goto cleanup;
+	}
 
 	/* Apply default clock transitions */
-	return (bhnd_pwrctl_updateclk(sc, BHND_PWRCTL_WAR_UP));
+	if ((error = bhnd_pwrctl_updateclk(sc, BHND_PWRCTL_WAR_UP))) {
+		PWRCTL_UNLOCK(sc);
+		goto cleanup;
+	}
+
+	PWRCTL_UNLOCK(sc);
 
 	return (0);
 
@@ -194,12 +203,17 @@ bhnd_pwrctl_detach(device_t dev)
 static int
 bhnd_pwrctl_suspend(device_t dev)
 {
-	struct bhnd_pwrctl_softc *sc;
+	struct bhnd_pwrctl_softc	*sc;
+	int				 error;
 
 	sc = device_get_softc(dev);
 
 	/* Update clock state */
-	return (bhnd_pwrctl_updateclk(sc, BHND_PWRCTL_WAR_DOWN));
+	PWRCTL_LOCK(sc);
+	error = bhnd_pwrctl_updateclk(sc, BHND_PWRCTL_WAR_DOWN);
+	PWRCTL_UNLOCK(sc);
+
+	return (error);
 }
 
 static int
@@ -210,20 +224,24 @@ bhnd_pwrctl_resume(device_t dev)
 
 	sc = device_get_softc(dev);
 
+	PWRCTL_LOCK(sc);
+
 	/* Re-initialize power control registers */
 	if ((error = bhnd_pwrctl_init(sc))) {
 		device_printf(sc->dev, "PWRCTL init failed: %d\n", error);
-		return (error);
+		goto cleanup;
 	}
 
 	/* Restore clock state */
 	if ((error = bhnd_pwrctl_updateclk(sc, BHND_PWRCTL_WAR_UP))) {
 		device_printf(sc->dev, "clock state restore failed: %d\n",
 		    error);
-		return (error);
+		goto cleanup;
 	}
 
-	return (0);
+cleanup:
+	PWRCTL_UNLOCK(sc);
+	return (error);
 }
 
 /**
