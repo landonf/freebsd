@@ -680,26 +680,6 @@ bhnd_write_config(device_t dev, bus_size_t offset, uint32_t val, u_int width)
 }
 
 /**
- * Determine an NVRAM variable's expected size.
- *
- * @param 	dev	A bhnd bus child device.
- * @param	name	The variable name.
- * @param[out]	len	On success, the variable's size, in bytes.
- *
- * @retval 0		success
- * @retval ENOENT	The requested variable was not found.
- * @retval ENODEV	No valid NVRAM source could be found.
- * @retval non-zero	If reading @p name otherwise fails, a regular unix
- *			error code will be returned.
- */
-static inline int
-bhnd_nvram_getvarlen(device_t dev, const char *name, size_t *len)
-{
-	return (BHND_BUS_GET_NVRAM_VAR(device_get_parent(dev), dev, name, NULL,
-	    len));
-}
-
-/**
  * Read an NVRAM variable, coerced to the requested @p type.
  *
  * @param 		dev	A bhnd bus child device.
