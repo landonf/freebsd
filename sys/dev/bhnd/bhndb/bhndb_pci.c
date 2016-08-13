@@ -65,9 +65,6 @@ __FBSDID("$FreeBSD$");
 static int		bhndb_enable_pci_clocks(struct bhndb_pci_softc *sc);
 static int		bhndb_disable_pci_clocks(struct bhndb_pci_softc *sc);
 
-static int		bhndb_pci_is_pwrctl_supported(
-			    struct bhndb_pci_softc *sc, bhnd_clock clock);
-
 static int		bhndb_pci_compat_setregwin(struct bhndb_pci_softc *,
 			    const struct bhndb_regwin *, bhnd_addr_t);
 static int		bhndb_pci_fast_setregwin(struct bhndb_pci_softc *,
