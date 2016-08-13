@@ -61,6 +61,7 @@ device		bcma_nexus
 device		pci
 device		bhnd_pcib		# PCIe-G1 core
 
+device		bwn			# Broadcom WLAN
 #device		bgmac			# Broadcom GMAC - not yet
 
 device		mdio
