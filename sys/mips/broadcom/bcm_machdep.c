@@ -200,7 +200,9 @@ platform_start(__register_t a0, __register_t a1, __register_t a2,
 
 #ifdef CFE
 	/*
-	 * Initialize CFE firmware trampolines.
+	 * Initialize CFE firmware trampolines. This must be done
+	 * before any CFE APIs are called, including writing
+	 * to the CFE console.
 	 *
 	 * CFE passes the following values in registers:
 	 * a0: firmware handle
@@ -210,8 +212,6 @@ platform_start(__register_t a0, __register_t a1, __register_t a2,
 	if (a3 == CFE_EPTSEAL)
 		cfe_init(a0, a2);
 #endif
-
-	printf("very early printf\n");
 
 #if 0
 	/*
@@ -249,8 +249,6 @@ platform_start(__register_t a0, __register_t a1, __register_t a2,
 
 	mips_timer_early_init(platform_counter_freq);
 
-	DELAY(100);
-
 	cninit();
 
 	mips_init();
@@ -269,19 +267,21 @@ platform_start(__register_t a0, __register_t a1, __register_t a2,
 static void
 bcm_cfe_eputc(int c)
 {
-	unsigned char	buf;
 	static int	fd = -1;
+	unsigned char	ch;
+
+	ch = (unsigned char) c;
 
 	if (fd == -1) {
 		if ((fd = cfe_getstdhandle(CFE_STDHANDLE_CONSOLE)) < 0)
 			return;
 	}
 
-	if (c == '\n')
+	if (ch == '\n')
 		early_putc('\r');
 
-	buf = c;
-	cfe_write(fd, &buf, 1);
+	while ((cfe_write(fd, &ch, 1)) == 0)
+		continue;
 }
 
 early_putc_t *early_putc = bcm_cfe_eputc;
