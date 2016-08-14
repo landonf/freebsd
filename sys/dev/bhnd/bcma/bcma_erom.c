@@ -66,9 +66,15 @@ static int		 erom_skip_sport_region(struct bcma_erom *erom);
 
 static int		 erom_seek_next(struct bcma_erom *erom, uint8_t etype);
 
-#define	EROM_LOG(erom, fmt, ...)	\
-	device_printf(erom->dev, "erom[0x%llx]: " fmt, \
-	    (unsigned long long) (erom->offset), ##__VA_ARGS__);
+#define	EROM_LOG(erom, fmt, ...)	do {				\
+	if (erom->dev != NULL) {					\
+		device_printf(erom->dev, "erom[0x%llx]: " fmt,		\
+		    (unsigned long long) (erom->offset), ##__VA_ARGS__);\
+	} else {							\
+		printf("erom[0x%llx]: " fmt,				\
+		    (unsigned long long) (erom->offset), ##__VA_ARGS__);\
+	}								\
+} while(0)
 
 /**
  * Open an EROM table for reading.
@@ -82,11 +88,37 @@ static int		 erom_seek_next(struct bcma_erom *erom, uint8_t etype);
  * @retval non-zero if the erom table could not be opened.
  */
 int
-bcma_erom_open(struct bcma_erom *erom, struct resource *r, bus_size_t offset)
+bcma_erom_open(struct bcma_erom *erom, struct resource *r,
+    bus_size_t offset)
+{
+	return (bhnd_erom_bus_space_open(erom, rman_get_device(r),
+	    rman_get_bustag(r), rman_get_bushandle(r), offset));
+
+	return (0);
+}
+
+/**
+ * Open an EROM table for reading using the provided bus space tag and
+ * handle.
+ * 
+ * @param[out] erom On success, will be populated with a valid EROM
+ * read state.
+ * @param dev The owning device, or NULL if none.
+ * @param bst EROM table bus space tag.
+ * @param bsh EROM table bus space handle.
+ * @param offset Offset of the EROM core from @p resource.
+ *
+ * @retval 0 success
+ * @retval non-zero if the erom table could not be opened.
+ */
+int
+bhnd_erom_bus_space_open(struct bcma_erom *erom, device_t dev,
+    bus_space_tag_t bst, bus_space_handle_t bsh, bus_size_t offset)
 {
 	/* Initialize the EROM reader */
-	erom->dev = rman_get_device(r);
-	erom->r = r;
+	erom->dev = dev;
+	erom->bst = bst;
+	erom->bsh = bsh;
 	erom->start = offset + BCMA_EROM_TABLE_START;
 	erom->offset = 0;
 
@@ -145,7 +177,8 @@ bcma_erom_peek32(struct bcma_erom *erom, uint32_t *entry)
 		return (EINVAL);
 	}
 
-	*entry = bus_read_4(erom->r, erom->start + erom->offset);
+	*entry = bus_space_read_4(erom->bst, erom->bsh,
+	    erom->start + erom->offset);
 	return (0);
 }
 
