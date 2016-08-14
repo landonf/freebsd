@@ -198,6 +198,21 @@ platform_start(__register_t a0, __register_t a1, __register_t a2,
 	/* Initialize pcpu stuff */
 	mips_pcpu0_init();
 
+#ifdef CFE
+	/*
+	 * Initialize CFE firmware trampolines.
+	 *
+	 * CFE passes the following values in registers:
+	 * a0: firmware handle
+	 * a2: firmware entry point
+	 * a3: entry point seal
+	 */
+	if (a3 == CFE_EPTSEAL)
+		cfe_init(a0, a2);
+#endif
+
+	printf("very early printf\n");
+
 #if 0
 	/*
 	 * Probe the Broadcom on-chip PLL clock registers
@@ -234,19 +249,7 @@ platform_start(__register_t a0, __register_t a1, __register_t a2,
 
 	mips_timer_early_init(platform_counter_freq);
 
-#ifdef CFE
-	/*
-	 * Initialize CFE firmware trampolines before
-	 * we initialize the low-level console.
-	 *
-	 * CFE passes the following values in registers:
-	 * a0: firmware handle
-	 * a2: firmware entry point
-	 * a3: entry point seal
-	 */
-	if (a3 == CFE_EPTSEAL)
-		cfe_init(a0, a2);
-#endif
+	DELAY(100);
 
 	cninit();
 
@@ -254,3 +257,32 @@ platform_start(__register_t a0, __register_t a1, __register_t a2,
 
 	mips_timer_init_params(platform_counter_freq, socinfo->double_count);
 }
+
+/*
+ * CFE-based EARLY_PRINTF support. To use, add the following to the kernel
+ * config:
+ *	option EARLY_PRINTF
+ *	option CFE
+ *	device cfe
+ */
+#if defined(EARLY_PRINTF) && defined(CFE)
+static void
+bcm_cfe_eputc(int c)
+{
+	unsigned char	buf;
+	static int	fd = -1;
+
+	if (fd == -1) {
+		if ((fd = cfe_getstdhandle(CFE_STDHANDLE_CONSOLE)) < 0)
+			return;
+	}
+
+	if (c == '\n')
+		early_putc('\r');
+
+	buf = c;
+	cfe_write(fd, &buf, 1);
+}
+
+early_putc_t *early_putc = bcm_cfe_eputc;
+#endif /* EARLY_PRINTF */
