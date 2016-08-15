@@ -840,9 +840,11 @@ bhnd_read_chipid(device_t dev, struct resource_spec *rs,
 	uint8_t				 chip_type;
 	int				 error, rid, rtype;
 
-	/* Allocate the ChipCommon window resource and fetch the chipid data */
 	rid = rs->rid;
 	rtype = rs->type;
+	error = 0;
+
+	/* Allocate the ChipCommon window resource and fetch the chipid data */
 	res = bus_alloc_resource_any(dev, rtype, &rid, RF_ACTIVE);
 	if (res == NULL) {
 		device_printf(dev,
