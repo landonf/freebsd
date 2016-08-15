@@ -226,6 +226,8 @@ platform_start(__register_t a0, __register_t a1, __register_t a2,
 	vm_offset_t 		 kernend;
 	uint64_t		 platform_counter_freq;
 	struct bcm_socinfo	*socinfo;
+	struct bhnd_chipid	 chipid;
+	uint32_t		 caps, caps_ext;
 
 	/* clear the BSS and SBSS segments */
 	kernend = (vm_offset_t)&end;
@@ -250,6 +252,14 @@ platform_start(__register_t a0, __register_t a1, __register_t a2,
 	if (a3 == CFE_EPTSEAL)
 		cfe_init(a0, a2);
 #endif
+
+	// TODO
+	chipid = bcm_soc_chipid();
+	caps = BCM_CHIPC_READ_4(CHIPC_CAPABILITIES);
+	caps_ext = 0x0;
+	
+	bool has_pmu = CHIPC_GET_FLAG(caps, CHIPC_CAP_PMU);
+	printf("PMU: %s\n", has_pmu ? "true" : "false");
 
 #if 0
 	/*

@@ -35,6 +35,10 @@
  *  the core count via the chip identification register. */
 #define	CHIPC_NCORES_MIN_HWREV(hwrev)	((hwrev) == 4 || (hwrev) >= 6)
 
+/** Evaluates to true if the given ChipCommon core revision supports
+ *  the CHIPC_CAPABILITIES_EXT register */
+#define	CHIPC_HWREV_HAS_CAP_EXT(hwrev)	((hwrev) >= 35)
+
 /** Evaluates to true if the chipcommon core (determined from the provided
  * @p _chipid (CHIPC_ID) register value) provides a pointer to the enumeration
  * table via CHIPC_EROMPTR */
