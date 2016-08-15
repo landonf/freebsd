@@ -41,6 +41,7 @@
 	MIPS_PHYS_TO_KSEG1(bcm_soc_chipc_maddr() + (_reg))
 
 #define	BCM_CHIPC_READ_4(_reg)		readl(BCM_CHIPC_REG(_reg))
+#define	BCM_CHIPC_WRITE_4(_reg, _val)	writel(BCM_CHIPC_REG(_reg), (_val))
 
 uintptr_t		bcm_soc_chipc_maddr(void);
 struct bhnd_chipid	bcm_soc_chipid(void);

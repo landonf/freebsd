@@ -78,6 +78,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/cores/chipc/chipcreg.h>
 
 #include "bcm_machdep.h"
+#include "bcm_mips_exts.h"
 #include "bcm_socinfo.h"
 
 #ifdef CFE
@@ -90,8 +91,10 @@ __FBSDID("$FreeBSD$");
 #define	BCM_TRACE(_fmt, ...)
 #endif
 
-extern int *edata;
-extern int *end;
+static uint32_t		 chipc_caps[2];
+
+extern int		*edata;
+extern int		*end;
 
 /* Return the ChipCommon/EXTIF phys base address */
 uintptr_t
@@ -200,23 +203,36 @@ mips_init(void)
 void
 platform_reset(void)
 {
+	bool bcm4785war;
+
 	printf("bcm::platform_reset()\n");
 	intr_disable();
 
-#if defined(CFE)
-	cfe_exit(0, 0);
-#else
-	/* PMU watchdog reset */
-	BCM_WRITE_REG32(BCM_REG_CHIPC_PMUWD_OFFS, 2); /* PMU watchdog */
-#endif
+	/* Handle BCM4785-specific behavior */
+	bcm4785war = false;
+	if (bcm_soc_chipid().chip_id == BHND_CHIPID_BCM4785) {
+		bcm4785war = true;
 
-#if 0
-	/* Non-PMU reset 
-	 * XXX: Need chipc capability flags */
-	*((volatile uint8_t *)MIPS_PHYS_TO_KSEG1(SENTRY5_EXTIFADR)) = 0x80;
-#endif
-	
-	for (;;);
+		/* Switch to async mode */
+		bcm_mips_wr_pllcfg3(MIPS_BCMCFG_PLLCFG3_SM);
+	}
+
+	/* Set watchdog (PMU or ChipCommon) */
+	if (CHIPC_GET_FLAG(chipc_caps[0], CHIPC_CAP_PMU)) {
+		if (CHIPC_GET_FLAG(chipc_caps[1], CHIPC_CAP2_AOB))
+			panic("XXX TODO: Need PMU core address");
+
+		BCM_CHIPC_WRITE_4(CHIPC_PMU_WATCHDOG, 1);
+	} else
+		BCM_CHIPC_WRITE_4(CHIPC_WATCHDOG, 1);
+
+	/* BCM4785 */
+	if (bcm4785war) {
+		mips_sync();
+		__asm __volatile("wait");
+	}
+
+	while (1);
 }
 
 void
@@ -227,7 +243,6 @@ platform_start(__register_t a0, __register_t a1, __register_t a2,
 	uint64_t		 platform_counter_freq;
 	struct bcm_socinfo	*socinfo;
 	struct bhnd_chipid	 chipid;
-	uint32_t		 caps, caps_ext;
 
 	/* clear the BSS and SBSS segments */
 	kernend = (vm_offset_t)&end;
@@ -253,13 +268,14 @@ platform_start(__register_t a0, __register_t a1, __register_t a2,
 		cfe_init(a0, a2);
 #endif
 
-	// TODO
+	/* Fetch ChipCommon capability flags */
 	chipid = bcm_soc_chipid();
-	caps = BCM_CHIPC_READ_4(CHIPC_CAPABILITIES);
-	caps_ext = 0x0;
-	
-	bool has_pmu = CHIPC_GET_FLAG(caps, CHIPC_CAP_PMU);
-	printf("PMU: %s\n", has_pmu ? "true" : "false");
+	chipc_caps[0] = BCM_CHIPC_READ_4(CHIPC_CAPABILITIES);
+	chipc_caps[1] = 0x0;	
+
+	// TODO: need core enumeration to fetch chipc hwrev
+	if (CHIPC_HWREV_HAS_CAP_EXT(0))
+		chipc_caps[1] = BCM_CHIPC_READ_4(CHIPC_CAPABILITIES_EXT);
 
 #if 0
 	/*
