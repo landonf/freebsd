@@ -852,18 +852,17 @@ bhnd_read_chipid(device_t dev, struct resource_spec *rs,
 
 	/* Fetch the basic chip info */
 	reg = bus_read_4(res, chipc_offset + CHIPC_ID);
-	chip_type = CHIPC_GET_BITS(chip_type, CHIPC_ID_BUS);
+	chip_type = CHIPC_GET_BITS(reg, CHIPC_ID_BUS);
 
 	/* Fetch the EROMPTR */
 	if (BHND_CHIPTYPE_HAS_EROM(chip_type)) {
 		enum_addr = bus_read_4(res, chipc_offset + CHIPC_EROMPTR);
 	} else if (chip_type == BHND_CHIPTYPE_SIBA) {
-		/* siba(4) sses the ChipCommon base address as the enumeration
+		/* siba(4) uses the ChipCommon base address as the enumeration
 		 * address */
 		enum_addr = rman_get_start(res) + chipc_offset;
 	} else {
-		device_printf(dev, "unknown chip type %hhu\n",
-		    result->chip_type);
+		device_printf(dev, "unknown chip type %hhu\n", chip_type);
 		error = ENODEV;
 		goto cleanup;
 	}
