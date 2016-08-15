@@ -835,7 +835,9 @@ bhnd_read_chipid(device_t dev, struct resource_spec *rs,
     bus_size_t chipc_offset, struct bhnd_chipid *result)
 {
 	struct resource			*res;
+	bhnd_addr_t			 enum_addr;
 	uint32_t			 reg;
+	uint8_t				 chip_type;
 	int				 error, rid, rtype;
 
 	/* Allocate the ChipCommon window resource and fetch the chipid data */
@@ -850,29 +852,23 @@ bhnd_read_chipid(device_t dev, struct resource_spec *rs,
 
 	/* Fetch the basic chip info */
 	reg = bus_read_4(res, chipc_offset + CHIPC_ID);
-	*result = bhnd_parse_chipid(reg, 0x0);
+	chip_type = CHIPC_GET_BITS(chip_type, CHIPC_ID_BUS);
 
-	/* Fetch the enum base address */
-	error = 0;
-	switch (result->chip_type) {
-	case BHND_CHIPTYPE_SIBA:
-		result->enum_addr = rman_get_start(res) + chipc_offset;
-		break;
-	case BHND_CHIPTYPE_BCMA:
-	case BHND_CHIPTYPE_BCMA_ALT:
-		result->enum_addr = bus_read_4(res, chipc_offset +
-		    CHIPC_EROMPTR);
-		break;
-	case BHND_CHIPTYPE_UBUS:
-		device_printf(dev, "unsupported ubus/bcm63xx chip type");
-		error = ENODEV;
-		goto cleanup;
-	default:
+	/* Fetch the EROMPTR */
+	if (BHND_CHIPTYPE_HAS_EROM(chip_type)) {
+		enum_addr = bus_read_4(res, chipc_offset + CHIPC_EROMPTR);
+	} else if (chip_type == BHND_CHIPTYPE_SIBA) {
+		/* siba(4) sses the ChipCommon base address as the enumeration
+		 * address */
+		enum_addr = rman_get_start(res) + chipc_offset;
+	} else {
 		device_printf(dev, "unknown chip type %hhu\n",
 		    result->chip_type);
 		error = ENODEV;
 		goto cleanup;
 	}
+
+	*result = bhnd_parse_chipid(reg, enum_addr);
 
 cleanup:
 	/* Clean up */

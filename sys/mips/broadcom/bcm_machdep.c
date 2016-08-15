@@ -72,6 +72,11 @@ __FBSDID("$FreeBSD$");
 #include <machine/trap.h>
 #include <machine/vmparam.h>
 
+#include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/bhndreg.h>
+
+#include <dev/bhnd/cores/chipc/chipcreg.h>
+
 #include "bcm_machdep.h"
 #include "bcm_socinfo.h"
 
@@ -90,7 +95,7 @@ extern int *end;
 
 /* Return the ChipCommon/EXTIF phys base address */
 uintptr_t
-bcm_chipc_maddr(void)
+bcm_soc_chipc_maddr(void)
 {
 	long maddr;
 
@@ -98,6 +103,25 @@ bcm_chipc_maddr(void)
 		return (BHND_DEFAULT_CHIPC_ADDR);
 
 	return ((u_long)maddr);
+}
+
+struct bhnd_chipid
+bcm_soc_chipid(void)
+{
+	uint32_t		reg;
+	bhnd_addr_t		enum_addr;
+	uint8_t			chip_type;
+
+	reg = BCM_CHIPC_READ_4(CHIPC_ID);
+	chip_type = CHIPC_GET_BITS(chip_type, CHIPC_ID_BUS);
+
+	if (BHND_CHIPTYPE_HAS_EROM(chip_type)) {
+		enum_addr = BCM_CHIPC_READ_4(CHIPC_EROMPTR);
+	} else {
+		enum_addr = bcm_soc_chipc_maddr();
+	}
+
+	return (bhnd_parse_chipid(reg, enum_addr));
 }
 
 void

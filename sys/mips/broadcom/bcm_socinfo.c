@@ -35,9 +35,6 @@ __FBSDID("$FreeBSD$");
 #include "bcm_machdep.h"
 #include "bcm_socinfo.h"
 
-#define BCM_CHIPC_READ_4(reg)		readl(BCM_CHIPC_REG(reg))
-#define BCM_CHIPC_WRITE_4(reg, value)	writel(BCM_CHIPC_REG(reg), value);
-
 /* found on https://wireless.wiki.kernel.org/en/users/drivers/b43/soc */
 struct bcm_socinfo bcm_socinfos[] = {
 		{0x00005300, 600, 25000000, 1}, /* BCM4706 to check */

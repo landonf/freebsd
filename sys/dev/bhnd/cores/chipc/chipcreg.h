@@ -35,6 +35,12 @@
  *  the core count via the chip identification register. */
 #define	CHIPC_NCORES_MIN_HWREV(hwrev)	((hwrev) == 4 || (hwrev) >= 6)
 
+/** Evaluates to true if the chipcommon core (determined from the provided
+ * @p _chipid (CHIPC_ID) register value) provides a pointer to the enumeration
+ * table via CHIPC_EROMPTR */
+#define	CHIPC_HAS_EROMPTR(_chipid)	\
+	(CHIPC_GET_BITS((_chipid), CHIPC_ID_BUS) != BHND_CHIPTYPE_SIBA)
+
 #define CHIPC_GET_FLAG(_value, _flag)	(((_value) & _flag) != 0)
 #define	CHIPC_GET_BITS(_value, _field)	\
 	((_value & _field ## _MASK) >> _field ## _SHIFT)

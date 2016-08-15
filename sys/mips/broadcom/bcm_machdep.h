@@ -32,14 +32,17 @@
 #ifndef	_MIPS_BROADCOM_BCM_MACHDEP_H_
 #define	_MIPS_BROADCOM_BCM_MACHDEP_H_
 
+#include <machine/cpufunc.h>
 #include <machine/cpuregs.h>
 
 #include <dev/bhnd/bhnd.h>
-#include <dev/bhnd/bhndreg.h>
 
-#define	BCM_CHIPC_REG(_offset)	\
-	MIPS_PHYS_TO_KSEG1(bcm_chipc_maddr() + (_offset))
+#define	BCM_CHIPC_REG(_reg)	\
+	MIPS_PHYS_TO_KSEG1(bcm_soc_chipc_maddr() + (_reg))
 
-uintptr_t	bcm_chipc_maddr(void);
+#define	BCM_CHIPC_READ_4(_reg)		readl(BCM_CHIPC_REG(_reg))
+
+uintptr_t		bcm_soc_chipc_maddr(void);
+struct bhnd_chipid	bcm_soc_chipid(void);
 
 #endif /* _MIPS_BROADCOM_BCM_MACHDEP_H_ */
