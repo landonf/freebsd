@@ -1,6 +1,7 @@
 /*-
  * Copyright (c) 2007 Bruce M. Simpson.
  * Copyright (c) 2016 Michael Zhilin <mizhka@gmail.com>
+ * Copyright (c) 2016 Landon Fuller <landonf@FreeBSD.org>
  *
  * All rights reserved.
  *
@@ -71,6 +72,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/trap.h>
 #include <machine/vmparam.h>
 
+#include "bcm_machdep.h"
 #include "bcm_socinfo.h"
 
 #ifdef CFE
@@ -85,6 +87,18 @@ __FBSDID("$FreeBSD$");
 
 extern int *edata;
 extern int *end;
+
+/* Return the ChipCommon/EXTIF phys base address */
+uintptr_t
+bcm_chipc_maddr(void)
+{
+	long maddr;
+
+	if (resource_long_value("bhnd", 0, "maddr", &maddr) != 0)
+		return (BHND_DEFAULT_CHIPC_ADDR);
+
+	return ((u_long)maddr);
+}
 
 void
 platform_cpu_init()

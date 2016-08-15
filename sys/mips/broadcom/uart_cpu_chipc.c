@@ -45,6 +45,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/uart/uart_bus.h>
 #include <dev/uart/uart_cpu.h>
 
+#include "bcm_machdep.h"
 #include "bcm_socinfo.h"
 
 #ifdef CFE
@@ -78,7 +79,7 @@ uart_cpu_init(struct uart_devinfo *di, u_int uart, int baudrate)
 	di->ops = uart_getops(chipc_uart_class);
 	di->bas.chan = 0;
 	di->bas.bst = uart_bus_space_mem;
-	di->bas.bsh = (bus_space_handle_t) BCM_SOCREG(CHIPC_UART(uart));
+	di->bas.bsh = (bus_space_handle_t) BCM_CHIPC_REG(CHIPC_UART(uart));
 	di->bas.regshft = 0;
 	di->bas.rclk = socinfo->uartrate;  /* in Hz */
 	di->baudrate = baudrate;

@@ -29,7 +29,14 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
+
+#include <dev/bhnd/cores/chipc/chipcreg.h>
+
+#include "bcm_machdep.h"
 #include "bcm_socinfo.h"
+
+#define BCM_CHIPC_READ_4(reg)		readl(BCM_CHIPC_REG(reg))
+#define BCM_CHIPC_WRITE_4(reg, value)	writel(BCM_CHIPC_REG(reg), value);
 
 /* found on https://wireless.wiki.kernel.org/en/users/drivers/b43/soc */
 struct bcm_socinfo bcm_socinfos[] = {
@@ -85,7 +92,7 @@ bcm_get_socinfo(void)
 	 * --------------------------------------------------------------
 	 */
 
-	socid = BCM_READ_REG32(BCM_REG_CHIPC_ID) & 0x00FFFFFF;
+	socid = BCM_CHIPC_READ_4(CHIPC_ID) & 0x00FFFFFF;
 	socinfo = bcm_get_socinfo_by_socid(socid);
 	return (socinfo != NULL) ? socinfo : &BCM_DEFAULT_SOCINFO;
 }
