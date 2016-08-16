@@ -55,7 +55,16 @@ struct bcm_platform {
 #endif
 };
 
+
+typedef int (bcm_bus_find_core)(struct bhnd_chipid *chipid,
+    bhnd_devclass_t devclass, int unit, struct bhnd_core_info *info,
+    uintptr_t *addr);
+
 struct bcm_platform	*bcm_get_platform(void);
+
+bcm_bus_find_core	 bcm_find_core_default;
+bcm_bus_find_core	 bcm_find_core_bcma;
+bcm_bus_find_core	 bcm_find_core_siba;
 
 #define	BCM_SOC_ADDR(_addr, _offset)	\
 	MIPS_PHYS_TO_KSEG1((_addr) + (_offset))
