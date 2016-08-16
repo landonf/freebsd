@@ -34,6 +34,7 @@ include		"../broadcom/std.broadcom"
 # sentry5 normally ships with cfe firmware
 options 	CFE
 options 	ALT_BREAK_TO_DEBUGGER
+device		cfe
 
 makeoptions	DEBUG=-g		#Build kernel with gdb(1) debug symbols
 makeoptions	MODULES_OVERRIDE=""
