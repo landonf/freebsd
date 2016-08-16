@@ -91,40 +91,62 @@ __FBSDID("$FreeBSD$");
 #define	BCM_TRACE(_fmt, ...)
 #endif
 
-static uint32_t		 chipc_caps[2];
+extern int	*edata;
+extern int	*end;
 
-extern int		*edata;
-extern int		*end;
+static struct bcm_platform	 bcm_platform_data;
 
-/* Return the ChipCommon/EXTIF phys base address */
-uintptr_t
-bcm_soc_chipc_maddr(void)
+struct bcm_platform *
+bcm_get_platform(void)
 {
-	long maddr;
-
-	if (resource_long_value("bhnd", 0, "maddr", &maddr) != 0)
-		return (BHND_DEFAULT_CHIPC_ADDR);
-
-	return ((u_long)maddr);
+	return (&bcm_platform_data);
 }
 
-struct bhnd_chipid
-bcm_soc_chipid(void)
+static int
+bcm_init_platform_data(struct bcm_platform *pdata)
 {
 	uint32_t		reg;
 	bhnd_addr_t		enum_addr;
+	long			maddr;
 	uint8_t			chip_type;
 
-	reg = BCM_CHIPC_READ_4(CHIPC_ID);
+	/* Fetch CFE console handle (if any) */
+#ifdef CFE
+	if ((pdata->cfe_console = cfe_getstdhandle(CFE_STDHANDLE_CONSOLE)) < 0)
+		pdata->cfe_console = -1;
+#endif
+
+	/* Fetch bhnd/chipc address */ 
+	if (resource_long_value("bhnd", 0, "maddr", &maddr) == 0)
+		pdata->cc_addr = (u_long)maddr;
+	else
+		pdata->cc_addr = BHND_DEFAULT_CHIPC_ADDR;
+
+	/* Read chip identifier from ChipCommon */
+	reg = BCM_SOC_READ_4(pdata->cc_addr, CHIPC_ID);
 	chip_type = CHIPC_GET_BITS(chip_type, CHIPC_ID_BUS);
 
-	if (BHND_CHIPTYPE_HAS_EROM(chip_type)) {
-		enum_addr = BCM_CHIPC_READ_4(CHIPC_EROMPTR);
+	if (BHND_CHIPTYPE_HAS_EROM(chip_type))
+		enum_addr = BCM_SOC_READ_4(pdata->cc_addr, CHIPC_EROMPTR);
+	else
+		enum_addr = pdata->cc_addr;
+
+	pdata->id = bhnd_parse_chipid(reg, enum_addr);
+
+	/* Fetch core identifiers */
+	// XXX TODO
+
+	/* Fetch ChipCommon capabilities */
+	pdata->cc_caps = BCM_SOC_READ_4(pdata->cc_addr, CHIPC_CAPABILITIES);
+
+	if (CHIPC_HWREV_HAS_CAP_EXT(pdata->cc_id.hwrev)) {
+		pdata->cc_caps_ext = BCM_SOC_READ_4(pdata->cc_addr,
+		    CHIPC_CAPABILITIES_EXT);
 	} else {
-		enum_addr = bcm_soc_chipc_maddr();
+		pdata->cc_caps_ext = 0x0;	
 	}
 
-	return (bhnd_parse_chipid(reg, enum_addr));
+	return (0);
 }
 
 void
@@ -210,7 +232,7 @@ platform_reset(void)
 
 	/* Handle BCM4785-specific behavior */
 	bcm4785war = false;
-	if (bcm_soc_chipid().chip_id == BHND_CHIPID_BCM4785) {
+	if (bcm_get_platform()->id.chip_id == BHND_CHIPID_BCM4785) {
 		bcm4785war = true;
 
 		/* Switch to async mode */
@@ -218,10 +240,7 @@ platform_reset(void)
 	}
 
 	/* Set watchdog (PMU or ChipCommon) */
-	if (CHIPC_GET_FLAG(chipc_caps[0], CHIPC_CAP_PMU)) {
-		if (CHIPC_GET_FLAG(chipc_caps[1], CHIPC_CAP2_AOB))
-			panic("XXX TODO: Need PMU core address");
-
+	if (bcm_get_platform()->pmu_addr != 0x0) {
 		BCM_CHIPC_WRITE_4(CHIPC_PMU_WATCHDOG, 1);
 	} else
 		BCM_CHIPC_WRITE_4(CHIPC_WATCHDOG, 1);
@@ -242,7 +261,7 @@ platform_start(__register_t a0, __register_t a1, __register_t a2,
 	vm_offset_t 		 kernend;
 	uint64_t		 platform_counter_freq;
 	struct bcm_socinfo	*socinfo;
-	struct bhnd_chipid	 chipid;
+	int			 error;
 
 	/* clear the BSS and SBSS segments */
 	kernend = (vm_offset_t)&end;
@@ -268,14 +287,9 @@ platform_start(__register_t a0, __register_t a1, __register_t a2,
 		cfe_init(a0, a2);
 #endif
 
-	/* Fetch ChipCommon capability flags */
-	chipid = bcm_soc_chipid();
-	chipc_caps[0] = BCM_CHIPC_READ_4(CHIPC_CAPABILITIES);
-	chipc_caps[1] = 0x0;	
-
-	// TODO: need core enumeration to fetch chipc hwrev
-	if (CHIPC_HWREV_HAS_CAP_EXT(0))
-		chipc_caps[1] = BCM_CHIPC_READ_4(CHIPC_CAPABILITIES_EXT);
+	/* Init BCM platform data */
+	if ((error = bcm_init_platform_data(&bcm_platform_data)))
+		panic("bcm_init_platform_data() failed: %d\n", error);
 
 #if 0
 	/*
@@ -331,15 +345,11 @@ platform_start(__register_t a0, __register_t a1, __register_t a2,
 static void
 bcm_cfe_eputc(int c)
 {
-	static int	fd = -1;
+	static int	fd;
 	unsigned char	ch;
 
 	ch = (unsigned char) c;
-
-	if (fd == -1) {
-		if ((fd = cfe_getstdhandle(CFE_STDHANDLE_CONSOLE)) < 0)
-			return;
-	}
+	fd = bcm_get_platform()->cfe_console;
 
 	if (ch == '\n')
 		early_putc('\r');

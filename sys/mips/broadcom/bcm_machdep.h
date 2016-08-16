@@ -37,13 +37,48 @@
 
 #include <dev/bhnd/bhnd.h>
 
-#define	BCM_CHIPC_REG(_reg)	\
-	MIPS_PHYS_TO_KSEG1(bcm_soc_chipc_maddr() + (_reg))
+struct bcm_platform {
+	struct bhnd_chipid	id;		/**< chip id */
+	struct bhnd_core_info	cc_id;		/**< chipc core info */
+	uintptr_t		cc_addr;	/**< chipc core phys address */
+	uint32_t		cc_caps;	/**< chipc capabilities */
+	uint32_t		cc_caps_ext;	/**< chipc extended capabilies */
 
-#define	BCM_CHIPC_READ_4(_reg)		readl(BCM_CHIPC_REG(_reg))
-#define	BCM_CHIPC_WRITE_4(_reg, _val)	writel(BCM_CHIPC_REG(_reg), (_val))
+	/* On non-AOB devices, the PMU register block is mapped to chipc;
+	 * the pmu_id and pmu_addr values will be copied from cc_id
+	 * and cc_addr. */
+	struct bhnd_core_info	pmu_id;		/**< PMU core info */
+	uintptr_t		pmu_addr;	/**< PMU core phys address. */
 
-uintptr_t		bcm_soc_chipc_maddr(void);
-struct bhnd_chipid	bcm_soc_chipid(void);
+#ifdef CFE
+	int			cfe_console;	/**< Console handle, or -1 */
+#endif
+};
+
+struct bcm_platform	*bcm_get_platform(void);
+
+#define	BCM_SOC_ADDR(_addr, _offset)	\
+	MIPS_PHYS_TO_KSEG1((_addr) + (_offset))
+
+#define	BCM_SOC_READ_4(_addr, _offset)		\
+	readl(BCM_SOC_ADDR((_addr), (_offset)))
+#define	BCM_SOC_WRITE_4(_addr, _reg, _val)	\
+	writel(BCM_SOC_ADDR((_addr), (_offset)), (_val))
+
+#define	BCM_CORE_ADDR(_name, _reg)	\
+	BCM_SOC_ADDR(bcm_get_platform()->_name, (_reg))
+
+#define	BCM_CORE_READ_4(_name, _reg)		\
+	readl(BCM_CORE_ADDR(_name, (_reg)))
+#define	BCM_CORE_WRITE_4(_name, _reg, _val)	\
+	writel(BCM_CORE_ADDR(_name, (_reg)), (_val))
+
+#define	BCM_CHIPC_READ_4(_reg)		BCM_CORE_READ_4(cc_addr, (_reg))
+#define	BCM_CHIPC_WRITE_4(_reg, _val)	\
+	BCM_CORE_WRITE_4(cc_addr, (_reg), (_val))
+
+#define	BCM_PMU_READ_4(_reg)		BCM_CORE_READ_4(pmu_addr, (_reg))
+#define	BCM_PMU_WRITE_4(_reg, _val)	\
+	BCM_CORE_WRITE_4(pmu_addr, (_reg), (_val))
 
 #endif /* _MIPS_BROADCOM_BCM_MACHDEP_H_ */
