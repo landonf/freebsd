@@ -291,37 +291,6 @@ platform_start(__register_t a0, __register_t a1, __register_t a2,
 	if ((error = bcm_init_platform_data(&bcm_platform_data)))
 		panic("bcm_init_platform_data() failed: %d\n", error);
 
-#if 0
-	/*
-	 * Probe the Broadcom on-chip PLL clock registers
-	 * and discover the CPU pipeline clock and bus clock
-	 * multipliers from this.
-	 * XXX: Wrong place. You have to ask the ChipCommon
-	 * or External Interface cores on the SiBa.
-	 */
-	uint32_t busmult, cpumult, refclock, clkcfg1;
-#define S5_CLKCFG1_REFCLOCK_MASK	0x0000001F
-#define S5_CLKCFG1_BUSMULT_MASK		0x000003E0
-#define S5_CLKCFG1_BUSMULT_SHIFT	5
-#define S5_CLKCFG1_CPUMULT_MASK		0xFFFFFC00
-#define S5_CLKCFG1_CPUMULT_SHIFT	10
-
-	counter_freq = 100000000;	/* XXX */
-
-	clkcfg1 = s5_rd_clkcfg1();
-	printf("clkcfg1 = 0x%08x\n", clkcfg1);
-
-	refclock = clkcfg1 & 0x1F;
-	busmult = ((clkcfg1 & 0x000003E0) >> 5) + 1;
-	cpumult = ((clkcfg1 & 0xFFFFFC00) >> 10) + 1;
-
-	printf("refclock = %u\n", refclock);
-	printf("busmult = %u\n", busmult);
-	printf("cpumult = %u\n", cpumult);
-
-	counter_freq = cpumult * refclock;
-#endif
-
 	socinfo = bcm_get_socinfo();
 	platform_counter_freq = socinfo->cpurate * 1000 * 1000; /* BCM4718 is 480MHz */
 
