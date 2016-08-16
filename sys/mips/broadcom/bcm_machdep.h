@@ -48,7 +48,8 @@ struct bcm_platform {
 	 * the pmu_id and pmu_addr values will be copied from cc_id
 	 * and cc_addr. */
 	struct bhnd_core_info	pmu_id;		/**< PMU core info */
-	uintptr_t		pmu_addr;	/**< PMU core phys address. */
+	uintptr_t		pmu_addr;	/**< PMU core phys address, or
+						     0x0 if no PMU */
 
 #ifdef CFE
 	int			cfe_console;	/**< Console handle, or -1 */
@@ -61,6 +62,7 @@ typedef int (bcm_bus_find_core)(struct bhnd_chipid *chipid,
     uintptr_t *addr);
 
 struct bcm_platform	*bcm_get_platform(void);
+uint64_t		 bcm_get_cpufreq(void);
 
 bcm_bus_find_core	 bcm_find_core_default;
 bcm_bus_find_core	 bcm_find_core_bcma;
