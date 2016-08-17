@@ -107,8 +107,10 @@ struct bhnd_pmu_softc {
 	device_t			 dev;
 	uint32_t			 quirks;	/**< device quirk flags */
 	uint32_t			 caps;		/**< pmu capability flags. */
-
 	struct bhnd_chipid		 cid;		/**< chip identification */
+
+	struct bhnd_pmu_query		 query;		/**< query instance */
+
 	struct bhnd_board_info		 board;		/**< board identification */
 	device_t			 chipc_dev;	/**< chipcommon device */
 
@@ -119,7 +121,6 @@ struct bhnd_pmu_softc {
 
 	/* For compatibility with bhnd_pmu_query APIs and the shared
 	 * BHND_PMU_(READ|WRITE) macros. */
-	struct bhnd_pmu_query		 query;
 	const struct bhnd_pmu_io	*io;
 	void				*io_ctx;
 
