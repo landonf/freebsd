@@ -31,6 +31,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhnd.h>
 
 #include <dev/bhnd/cores/chipc/chipcreg.h>
+#include <dev/bhnd/cores/chipc/pwrctl/bhnd_pwrctlvar.h>
 
 #include <dev/bhnd/cores/pmu/bhnd_pmuvar.h>
 
@@ -49,10 +50,21 @@ static const struct bhnd_pmu_io bcm_pmu_soc_io = {
 static uint64_t
 bcm_get_cpufreq_pwrctl(void)
 {
-	// TODO
-	return (0);
-}
+	struct bcm_platform	*bp;
+	uint8_t			 pll_type;
+	bus_size_t		 mreg;
+	uint32_t		 n, m;
 
+	bp = bcm_get_platform();
+
+	pll_type = CHIPC_GET_BITS(bp->cc_caps, CHIPC_CAP_PLL);
+	mreg = bhnd_pwrctl_cpu_clkreg_m(pll_type);
+
+	n = BCM_CHIPC_READ_4(CHIPC_CLKC_N);
+	m = BCM_CHIPC_READ_4(mreg);
+
+	return (bhnd_pwrctl_cpu_clock_rate(&bp->id, pll_type, n, m));
+}
 
 static uint64_t 
 bcm_get_cpufreq_pmu(void)

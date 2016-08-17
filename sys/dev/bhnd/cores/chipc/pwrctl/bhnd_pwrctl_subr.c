@@ -46,8 +46,6 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_pwrctl_private.h"
 
 static uint32_t	bhnd_pwrctl_factor6(uint32_t x);
-static uint32_t	bhnd_pwrctl_clock_rate(uint32_t pll_type, uint32_t n,
-		    uint32_t m);
 
 /**
  * Return the factor value corresponding to a given N3M clock control magic
@@ -75,14 +73,63 @@ bhnd_pwrctl_factor6(uint32_t x)
 }
 
 /**
+ * Return the "M" ChipCommon register offset for a given PLL type.
+ * 
+ * @param pll_type PLL type as fetched from the ChipCommon capability
+ * register.
+ */
+bus_size_t
+bhnd_pwrctl_cpu_clkreg_m(uint8_t pll_type)
+{
+	switch (pll_type) {
+	case CHIPC_PLL_TYPE6:
+		return (CHIPC_CLKC_M3);
+	case CHIPC_PLL_TYPE3:
+		return (CHIPC_CLKC_M2);
+	default:
+		return (CHIPC_CLKC_SB);
+	}
+}
+
+/**
+ * Calculate the CPU clock speed (in Hz) for a given a set of clock control
+ * values.
+ * 
+ * @param cid Chip identification.
+ * @param pll_type PLL type (CHIPC_PLL_TYPE*)
+ * @param n clock control N register value.
+ * @param m clock control M register value.
+ */
+uint32_t
+bhnd_pwrctl_cpu_clock_rate(const struct bhnd_chipid *cid,
+    uint32_t pll_type, uint32_t n, uint32_t m)
+{
+	switch (pll_type) {
+	case CHIPC_PLL_TYPE3:
+		if (cid->chip_id == BHND_CHIPID_BCM5365)
+			return (200 * 1000 * 1000); /* fixed 200MHz */
+		break;
+
+	case CHIPC_PLL_TYPE5:
+		/* fixed 200MHz */
+		return (200 * 1000 * 1000);
+
+	default:
+		break;
+	}
+
+	return (bhnd_pwrctl_clock_rate(pll_type, n, m));
+}
+
+/**
  * Calculate the clock speed (in Hz) for a given a set of clockcontrol
  * values.
  * 
  * @param pll_type PLL type (CHIPC_PLL_TYPE*)
  * @param n clock control N register value.
- * @param m clock control N register value.
+ * @param m clock control M register value.
  */
-static uint32_t
+uint32_t
 bhnd_pwrctl_clock_rate(uint32_t pll_type, uint32_t n, uint32_t m)
 {
 	uint32_t clk_base;
@@ -206,18 +253,7 @@ bhnd_pwrctl_getclk_speed(struct bhnd_pwrctl_softc *sc)
 
 	n = bhnd_bus_read_4(sc->res, CHIPC_CLKC_N);
 
-	switch (ccaps->pll_type) {
-	case CHIPC_PLL_TYPE6:
-		creg = CHIPC_CLKC_M3; /* non-extif regster */
-		break;
-	case CHIPC_PLL_TYPE3:
-		creg = CHIPC_CLKC_M2;
-		break;
-	default:
-		creg = CHIPC_CLKC_SB;
-		break;
-	}
-
+	creg = bhnd_pwrctl_cpu_clkreg_m(ccaps->pll_type);
 	m = bhnd_bus_read_4(sc->res, creg);
 
 	/* calculate rate */
