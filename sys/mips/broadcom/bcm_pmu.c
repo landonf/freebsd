@@ -30,26 +30,49 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/bhnd.h>
 
+#include <dev/bhnd/cores/chipc/chipcreg.h>
+
+#include <dev/bhnd/cores/pmu/bhnd_pmuvar.h>
+#include <dev/bhnd/cores/pmu/bhnd_pmu_private.h>
+
 #include "bcm_machdep.h"
 
+static uint32_t	bcm_pmu_read4(bus_size_t reg, void *ctx);
+static void	bcm_pmu_write4(bus_size_t reg, uint32_t val, void *ctx);
+static uint32_t	bcm_pmu_read_chipst(void *ctx);
 
-/*
- * - Need the PMU rev
- * - Use the chip ID + PMU rev to determine which bhnd_pmu function to call.
- * - ...
- */
-static uint64_t 
-bcm_get_cpufreq_pmu(void)
-{
-	// TODO
-	return (ENXIO);
-}
+static const struct bhnd_pmu_io bcm_pmu_soc_io = {
+	.rd4		= bcm_pmu_read4,
+	.wr4		= bcm_pmu_write4,
+	.rd_chipst	= bcm_pmu_read_chipst
+};
 
 static uint64_t
 bcm_get_cpufreq_pwrctl(void)
 {
 	// TODO
-	return (ENXIO);
+	return (0);
+}
+
+
+static uint64_t 
+bcm_get_cpufreq_pmu(void)
+{
+	struct bhnd_pmu_query	pq;
+	uint64_t		cpufreq;
+	int			error;
+
+	error = bhnd_pmu_query_init(&pq, NULL, bcm_get_platform()->id,
+	    &bcm_pmu_soc_io, NULL);
+	if (error)
+		panic("%s: bhnd_pmu_query_init() failed: %d\n", __FUNCTION__,
+		    error);
+
+	cpufreq = bhnd_pmu_cpu_clock(&pq);
+
+	bhnd_pmu_query_fini(&pq);
+
+	return (cpufreq);
 }
 
 uint64_t
@@ -59,4 +82,20 @@ bcm_get_cpufreq(void)
 		return (bcm_get_cpufreq_pmu());
 	else
 		return (bcm_get_cpufreq_pwrctl());
+}
+
+static uint32_t
+bcm_pmu_read4(bus_size_t reg, void *ctx) {
+	return (BCM_PMU_READ_4(reg));
+}
+
+static void
+bcm_pmu_write4(bus_size_t reg, uint32_t val, void *ctx) {
+	BCM_PMU_WRITE_4(reg, val);
+}
+
+static uint32_t
+bcm_pmu_read_chipst(void *ctx)
+{
+	return (BCM_CHIPC_READ_4(CHIPC_CHIPST));
 }

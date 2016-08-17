@@ -81,6 +81,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/siba/sibavar.h>
 
 #include <dev/bhnd/cores/chipc/chipcreg.h>
+#include <dev/bhnd/cores/pmu/bhnd_pmureg.h>
 
 #include "bcm_machdep.h"
 #include "bcm_mips_exts.h"
@@ -342,7 +343,7 @@ platform_reset(void)
 
 	/* Set watchdog (PMU or ChipCommon) */
 	if (bcm_get_platform()->pmu_addr != 0x0) {
-		BCM_CHIPC_WRITE_4(CHIPC_PMU_WATCHDOG, 1);
+		BCM_CHIPC_WRITE_4(BHND_PMU_WATCHDOG, 1);
 	} else
 		BCM_CHIPC_WRITE_4(CHIPC_WATCHDOG, 1);
 
@@ -361,7 +362,6 @@ platform_start(__register_t a0, __register_t a1, __register_t a2,
 {
 	vm_offset_t 		 kernend;
 	uint64_t		 platform_counter_freq;
-	struct bcm_socinfo	*socinfo;
 	int			 error;
 
 	/* clear the BSS and SBSS segments */
@@ -392,16 +392,16 @@ platform_start(__register_t a0, __register_t a1, __register_t a2,
 	if ((error = bcm_init_platform_data(&bcm_platform_data)))
 		panic("bcm_init_platform_data() failed: %d", error);
 
-	socinfo = bcm_get_socinfo();
-	platform_counter_freq = socinfo->cpurate * 1000 * 1000; /* BCM4718 is 480MHz */
+	platform_counter_freq = bcm_get_cpufreq();
 
-	mips_timer_early_init(platform_counter_freq);
+	/* CP0 ticks every two cycles */
+	mips_timer_early_init(platform_counter_freq / 2);
 
 	cninit();
 
 	mips_init();
 
-	mips_timer_init_params(platform_counter_freq, socinfo->double_count);
+	mips_timer_init_params(platform_counter_freq, 1);
 }
 
 /*
