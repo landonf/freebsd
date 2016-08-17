@@ -2448,12 +2448,9 @@ bhnd_pmu_cpu_clock(struct bhnd_pmu_query *sc)
 {
 	uint32_t clock;
 
-	if (sc->cid.chip_id == BHND_CHIPID_BCM5354)
-		return (240 * 1000 * 1000); /* 240MHz */
-		
 	/* 5354 chip uses a non programmable PLL of frequency 240MHz */
 	if (sc->cid.chip_id == BHND_CHIPID_BCM5354)
-		return (240000000);
+		return (240 * 1000 * 1000); /* 240MHz */
 
 	if (sc->cid.chip_id == BHND_CHIPID_BCM53572)
 		return (300000000);
