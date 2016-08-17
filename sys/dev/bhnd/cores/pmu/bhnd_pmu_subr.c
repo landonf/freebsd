@@ -52,19 +52,19 @@ typedef struct pmu0_xtaltab0 pmu0_xtaltab0_t;
 typedef struct pmu1_xtaltab0 pmu1_xtaltab0_t;
 
 /* PLL controls/clocks */
-static const pmu1_xtaltab0_t *bhnd_pmu1_xtaltab0(struct bhnd_pmu_softc *sc);
-static const pmu1_xtaltab0_t *bhnd_pmu1_xtaldef0(struct bhnd_pmu_softc *sc);
+static const pmu1_xtaltab0_t *bhnd_pmu1_xtaltab0(struct bhnd_pmu_query *sc);
+static const pmu1_xtaltab0_t *bhnd_pmu1_xtaldef0(struct bhnd_pmu_query *sc);
 
 static void	bhnd_pmu0_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal);
-static uint32_t	bhnd_pmu0_cpuclk0(struct bhnd_pmu_softc *sc);
-static uint32_t	bhnd_pmu0_alpclk0(struct bhnd_pmu_softc *sc);
+static uint32_t	bhnd_pmu0_cpuclk0(struct bhnd_pmu_query *sc);
+static uint32_t	bhnd_pmu0_alpclk0(struct bhnd_pmu_query *sc);
 
 static void	bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal);
-static uint32_t	bhnd_pmu1_pllfvco0(struct bhnd_pmu_softc *sc);
-static uint32_t	bhnd_pmu1_cpuclk0(struct bhnd_pmu_softc *sc);
-static uint32_t	bhnd_pmu1_alpclk0(struct bhnd_pmu_softc *sc);
+static uint32_t	bhnd_pmu1_pllfvco0(struct bhnd_pmu_query *sc);
+static uint32_t	bhnd_pmu1_cpuclk0(struct bhnd_pmu_query *sc);
+static uint32_t	bhnd_pmu1_alpclk0(struct bhnd_pmu_query *sc);
 
-static uint32_t	bhnd_pmu5_clock(struct bhnd_pmu_softc *sc, u_int pll0, u_int m);
+static uint32_t	bhnd_pmu5_clock(struct bhnd_pmu_query *sc, u_int pll0, u_int m);
 
 /* PMU resources */
 static bool	bhnd_pmu_res_depfltr_bb(struct bhnd_pmu_softc *sc);
@@ -93,7 +93,33 @@ static void	bhnd_pmu_set_4330_plldivs(struct bhnd_pmu_softc *sc);
 	(1 << (BHND_PMU_ ## _bit))
 
 #define	PMU_CST4330_SDIOD_CHIPMODE(_sc)		\
-	CHIPC_CST4330_CHIPMODE_SDIOD(BHND_CHIPC_READ_CHIPST((_sc)->chipc_dev))
+	CHIPC_CST4330_CHIPMODE_SDIOD((_sc)->io->rd_chipst((_sc)->io_ctx))
+	
+int	
+bhnd_pmu_query_init(struct bhnd_pmu_query *query, device_t dev,
+    struct bhnd_chipid id, const struct bhnd_pmu_io *io, void *ctx)
+{
+	query->dev = dev;
+	query->io = io;
+	query->io_ctx = ctx;
+	query->cid = id;
+	query->caps = BHND_PMU_READ_4(query, BHND_PMU_CAP);
+
+	return (0);
+}
+
+int
+bhnd_pmu_query_cpufreq(const struct bhnd_pmu_query *query, uint32_t *mhz)
+{
+	// TODO
+	return (ENXIO);
+}
+
+void
+bhnd_pmu_query_fini(struct bhnd_pmu_query *query)
+{
+	/* nothing to do */
+}
 
 /**
  * Perform an indirect register read.
@@ -103,11 +129,11 @@ static void	bhnd_pmu_set_4330_plldivs(struct bhnd_pmu_softc *sc);
  * @param reg Indirect register to be read.
  */
 uint32_t
-bhnd_pmu_ind_read(struct bhnd_pmu_softc *sc, bus_size_t addr, bus_size_t data,
-    uint32_t reg)
+bhnd_pmu_ind_read(const struct bhnd_pmu_io *io, void *io_ctx, bus_size_t addr,
+    bus_size_t data, uint32_t reg)
 {
-	BHND_PMU_WRITE_4(sc, addr, reg);
-	return (BHND_PMU_READ_4(sc, data));
+	io->wr4(addr, reg, io_ctx);
+	return (io->rd4(data, io_ctx));
 }
 
 /**
@@ -120,21 +146,21 @@ bhnd_pmu_ind_read(struct bhnd_pmu_softc *sc, bus_size_t addr, bus_size_t data,
  * @param mask Only the bits defined by @p mask will be updated from @p val.
  */
 void
-bhnd_pmu_ind_write(struct bhnd_pmu_softc *sc, bus_size_t addr,
+bhnd_pmu_ind_write(const struct bhnd_pmu_io *io, void *io_ctx, bus_size_t addr,
     bus_size_t data, uint32_t reg, uint32_t val, uint32_t mask)
 {
 	uint32_t rval;
 
-	BHND_PMU_WRITE_4(sc, addr, reg);
+	io->wr4(addr, reg, io_ctx);
 
 	if (mask != UINT32_MAX) {
-		rval = BHND_PMU_READ_4(sc, data);
+		rval = io->rd4(data, io_ctx);
 		rval &= ~mask | (val & mask);
 	} else {
 		rval = val;
 	}
 
-	BHND_PMU_WRITE_4(sc, data, rval);
+	io->wr4(data, rval, io_ctx);
 }
 
 /**
@@ -375,7 +401,7 @@ bhnd_pmu_fast_pwrup_delay(struct bhnd_pmu_softc *sc, uint16_t *pwrup_delay)
 		if (error)
 			return (error);
 
-		ilp = bhnd_pmu_ilp_clock(sc);
+		ilp = bhnd_pmu_ilp_clock(&sc->query);
 		delay = (uptime + D11SCC_SLOW2FAST_TRANSITION) *
 		    ((1000000 + ilp - 1) / ilp);
 		delay = (11 * delay) / 10;
@@ -387,7 +413,7 @@ bhnd_pmu_fast_pwrup_delay(struct bhnd_pmu_softc *sc, uint16_t *pwrup_delay)
 		if (error)
 			return (error);
 
-		ilp = bhnd_pmu_ilp_clock(sc);
+		ilp = bhnd_pmu_ilp_clock(&sc->query);
 		delay = (uptime + D11SCC_SLOW2FAST_TRANSITION) *
 		    ((1000000 + ilp - 1) / ilp);
 		delay = (11 * delay) / 10;
@@ -403,7 +429,7 @@ bhnd_pmu_fast_pwrup_delay(struct bhnd_pmu_softc *sc, uint16_t *pwrup_delay)
 		if (error)
 			return (error);
 
-		ilp = bhnd_pmu_ilp_clock(sc);
+		ilp = bhnd_pmu_ilp_clock(&sc->query);
 		delay = (uptime + D11SCC_SLOW2FAST_TRANSITION) *
 		    ((1000000 + ilp - 1) / ilp);
 		delay = (11 * delay) / 10;
@@ -415,7 +441,7 @@ bhnd_pmu_fast_pwrup_delay(struct bhnd_pmu_softc *sc, uint16_t *pwrup_delay)
 		if (error)
 			return (error);
 
-		ilp = bhnd_pmu_ilp_clock(sc);
+		ilp = bhnd_pmu_ilp_clock(&sc->query);
 		delay = (uptime + D11SCC_SLOW2FAST_TRANSITION) *
 		    ((1000000 + ilp - 1) / ilp);
 		delay = (11 * delay) / 10;
@@ -1367,7 +1393,7 @@ static const pmu1_xtaltab0_t pmu1_xtaltab0_960[] = {
 
 /* select xtal table for each chip */
 static const pmu1_xtaltab0_t *
-bhnd_pmu1_xtaltab0(struct bhnd_pmu_softc *sc)
+bhnd_pmu1_xtaltab0(struct bhnd_pmu_query *sc)
 {
 	switch (sc->cid.chip_id) {
 	case BHND_CHIPID_BCM4315:
@@ -1394,7 +1420,7 @@ bhnd_pmu1_xtaltab0(struct bhnd_pmu_softc *sc)
 
 /* select default xtal frequency for each chip */
 static const pmu1_xtaltab0_t *
-bhnd_pmu1_xtaldef0(struct bhnd_pmu_softc *sc)
+bhnd_pmu1_xtaldef0(struct bhnd_pmu_query *sc)
 {
 	switch (sc->cid.chip_id) {
 	case BHND_CHIPID_BCM4315:
@@ -1427,7 +1453,7 @@ bhnd_pmu1_xtaldef0(struct bhnd_pmu_softc *sc)
 
 /* select default pll fvco for each chip */
 static uint32_t
-bhnd_pmu1_pllfvco0(struct bhnd_pmu_softc *sc)
+bhnd_pmu1_pllfvco0(struct bhnd_pmu_query *sc)
 {
 	switch (sc->cid.chip_id) {
 	case BHND_CHIPID_BCM4329:
@@ -1450,7 +1476,7 @@ bhnd_pmu1_pllfvco0(struct bhnd_pmu_softc *sc)
 
 /* query alp/xtal clock frequency */
 static uint32_t
-bhnd_pmu1_alpclk0(struct bhnd_pmu_softc *sc)
+bhnd_pmu1_alpclk0(struct bhnd_pmu_query *sc)
 {
 	const pmu1_xtaltab0_t	*xt;
 	uint32_t		 xf;
@@ -1597,7 +1623,7 @@ bhnd_pmu0_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 
 /* query alp/xtal clock frequency */
 static uint32_t
-bhnd_pmu0_alpclk0(struct bhnd_pmu_softc *sc)
+bhnd_pmu0_alpclk0(struct bhnd_pmu_query *sc)
 {
 	const pmu0_xtaltab0_t	*xt;
 	uint32_t		 xf;
@@ -1618,7 +1644,7 @@ bhnd_pmu0_alpclk0(struct bhnd_pmu_softc *sc)
 
 /* query CPU clock frequency */
 static uint32_t
-bhnd_pmu0_cpuclk0(struct bhnd_pmu_softc *sc)
+bhnd_pmu0_cpuclk0(struct bhnd_pmu_query *sc)
 {
 	uint32_t tmp, divarm;
 	uint32_t FVCO;
@@ -1677,7 +1703,7 @@ bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 	uint32_t			 FVCO;
 	uint8_t				 ndiv_mode;
 
-	FVCO = bhnd_pmu1_pllfvco0(sc) / 1000;
+	FVCO = bhnd_pmu1_pllfvco0(&sc->query) / 1000;
 	buf_strength = 0;
 	ndiv_mode = 1;
 
@@ -1689,7 +1715,9 @@ bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 	}
 
 	/* Find the frequency in the table */
-	for (xt = bhnd_pmu1_xtaltab0(sc); xt != NULL && xt->fref != 0; xt++) {
+	for (xt = bhnd_pmu1_xtaltab0(&sc->query); xt != NULL && xt->fref != 0;
+	    xt++)
+	{
 		if (xt->fref == xtal)
 			break;
 	}
@@ -1995,7 +2023,7 @@ bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 
 /* query the CPU clock frequency */
 static uint32_t
-bhnd_pmu1_cpuclk0(struct bhnd_pmu_softc *sc)
+bhnd_pmu1_cpuclk0(struct bhnd_pmu_query *sc)
 {
 	uint32_t tmp, m1div;
 #ifdef BCMDBG
@@ -2142,7 +2170,7 @@ bhnd_pmu_pll_init(struct bhnd_pmu_softc *sc, u_int xtalfreq)
 
 /* query alp/xtal clock frequency */
 uint32_t
-bhnd_pmu_alp_clock(struct bhnd_pmu_softc *sc)
+bhnd_pmu_alp_clock(struct bhnd_pmu_query *sc)
 {
 	uint32_t clock;
 
@@ -2215,7 +2243,7 @@ bhnd_pmu_alp_clock(struct bhnd_pmu_softc *sc)
  * pllreg "pll0" i.e. 12 for main 6 for phy, 0 for misc.
  */
 static uint32_t
-bhnd_pmu5_clock(struct bhnd_pmu_softc *sc, u_int pll0, u_int m)
+bhnd_pmu5_clock(struct bhnd_pmu_query *sc, u_int pll0, u_int m)
 {
 	uint32_t div;
 	uint32_t fc;
@@ -2238,7 +2266,7 @@ bhnd_pmu5_clock(struct bhnd_pmu_softc *sc, u_int pll0, u_int m)
 	    sc->cid.chip_id == BHND_CHIPID_BCM4749)
 	{
 		/* Detect failure in clock setting */
-		tmp = BHND_CHIPC_READ_CHIPST(sc->chipc_dev);
+		tmp = sc->io->rd_chipst(sc->io_ctx);
 		if ((tmp & 0x40000) != 0)
 			return (133 * 1000000);
 	}
@@ -2286,7 +2314,7 @@ bhnd_pmu5_clock(struct bhnd_pmu_softc *sc, u_int pll0, u_int m)
  * and CPU just return the CPU clock speed.
  */
 uint32_t
-bhnd_pmu_si_clock(struct bhnd_pmu_softc *sc)
+bhnd_pmu_si_clock(struct bhnd_pmu_query *sc)
 {
 	uint32_t chipst;
 	uint32_t clock;
@@ -2351,14 +2379,14 @@ bhnd_pmu_si_clock(struct bhnd_pmu_softc *sc)
 	case BHND_CHIPID_BCM43235:
 	case BHND_CHIPID_BCM43236:
 	case BHND_CHIPID_BCM43238:
-		chipst = BHND_CHIPC_READ_CHIPST(sc->chipc_dev);
+		chipst = sc->io->rd_chipst(sc->io_ctx);
 		if (chipst & CHIPC_CST43236_BP_CLK)
 			clock = 120000 * 1000;
 		else
 			clock = 96000 * 1000;
 		break;
 	case BHND_CHIPID_BCM43237:
-		chipst = BHND_CHIPC_READ_CHIPST(sc->chipc_dev);
+		chipst = sc->io->rd_chipst(sc->io_ctx);
 		if (chipst & CHIPC_CST43237_BP_CLK)
 			clock = 96000 * 1000;
 		else
@@ -2388,9 +2416,9 @@ bhnd_pmu_si_clock(struct bhnd_pmu_softc *sc)
 
 /* query CPU clock frequency */
 uint32_t 
-bhnd_pmu_cpu_clock(struct bhnd_pmu_softc *sc)
+bhnd_pmu_cpu_clock(struct bhnd_pmu_query *sc)
 {
-	uint32_t			 clock;
+	uint32_t clock;
 
 	if (sc->cid.chip_id == BHND_CHIPID_BCM5354)
 		return (240 * 1000 * 1000); /* 240MHz */
@@ -2438,7 +2466,7 @@ bhnd_pmu_cpu_clock(struct bhnd_pmu_softc *sc)
 
 /* query memory clock frequency */
 uint32_t
-bhnd_pmu_mem_clock(struct bhnd_pmu_softc *sc)
+bhnd_pmu_mem_clock(struct bhnd_pmu_query *sc)
 {
 	uint32_t clock;
 
@@ -2480,7 +2508,7 @@ bhnd_pmu_mem_clock(struct bhnd_pmu_softc *sc)
 #define	ILP_CALC_DUR	10	/* ms, make sure 1000 can be divided by it. */
 
 uint32_t
-bhnd_pmu_ilp_clock(struct bhnd_pmu_softc *sc)
+bhnd_pmu_ilp_clock(struct bhnd_pmu_query *sc)
 {
 	uint32_t start, end, delta;
 
@@ -3098,6 +3126,7 @@ bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc, uint8_t spuravoid)
 		break;
 
 	case BHND_CHIPID_BCM4319:
+		pmuctrl = 0;
 		break;
 		
 	case BHND_CHIPID_BCM4322:
@@ -3135,7 +3164,6 @@ bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc, uint8_t spuravoid)
 			tmp = 0x00762762;
 		}
 		BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL3, tmp, ~0);
-
 
 		pmuctrl = BHND_PMU_CTRL_PLL_PLLCTL_UPD;
 		break;
@@ -3178,10 +3206,12 @@ bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc, uint8_t spuravoid)
 	default:
 		PMU_ERROR(("%s: unknown spuravoidance settings for chip %#hx, "
 		    "not changing PLL\n", __func__, sc->cid.chip_id));
+		pmuctrl = 0;
 		break;
 	}
 
-	BHND_PMU_OR_4(sc, BHND_PMU_CTRL, pmuctrl);
+	if (pmuctrl != 0)
+		BHND_PMU_OR_4(sc, BHND_PMU_CTRL, pmuctrl);
 }
 
 bool
@@ -3417,7 +3447,7 @@ bhnd_pmu_measure_alpclk(struct bhnd_pmu_softc *sc)
 static void 
 bhnd_pmu_set_4330_plldivs(struct bhnd_pmu_softc *sc)
 {
-	uint32_t FVCO = bhnd_pmu1_pllfvco0(sc) / 1000;
+	uint32_t FVCO = bhnd_pmu1_pllfvco0(&sc->query) / 1000;
 	uint32_t m1div, m2div, m3div, m4div, m5div, m6div;
 	uint32_t pllc1, pllc2;
 
