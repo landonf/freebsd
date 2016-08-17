@@ -428,7 +428,7 @@ bcm_cfe_eputc(int c)
 	if (ch == '\n')
 		early_putc('\r');
 
-	while ((cfe_write(bcm_platform_data.cfe_console, &ch, 1)) == 0)
+	while ((cfe_write(handle, &ch, 1)) == 0)
 		continue;
 }
 
