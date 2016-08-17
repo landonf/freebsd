@@ -97,7 +97,20 @@ static void	bhnd_pmu_set_4330_plldivs(struct bhnd_pmu_softc *sc);
 
 #define	PMU_CST4330_SDIOD_CHIPMODE(_sc)		\
 	CHIPC_CST4330_CHIPMODE_SDIOD((_sc)->io->rd_chipst((_sc)->io_ctx))
-	
+
+/**
+ * Initialize @p query state.
+ * 
+ * @param[out] query On success, will be populated with a valid query instance
+ * state.
+ * @param dev The device owning @p query, or NULL.
+ * @param id The bhnd chip identification.
+ * @param io I/O callback functions.
+ * @param ctx I/O callback context.
+ *
+ * @retval 0 success
+ * @retval non-zero if the query state could not be initialized.
+ */
 int	
 bhnd_pmu_query_init(struct bhnd_pmu_query *query, device_t dev,
     struct bhnd_chipid id, const struct bhnd_pmu_io *io, void *ctx)
@@ -111,13 +124,12 @@ bhnd_pmu_query_init(struct bhnd_pmu_query *query, device_t dev,
 	return (0);
 }
 
-int
-bhnd_pmu_query_cpufreq(const struct bhnd_pmu_query *query, uint32_t *mhz)
-{
-	// TODO
-	return (ENXIO);
-}
-
+/**
+ * Release any resources held by @p query.
+ * 
+ * @param query A query instance previously initialized via
+ * bhnd_pmu_query_init().
+ */
 void
 bhnd_pmu_query_fini(struct bhnd_pmu_query *query)
 {

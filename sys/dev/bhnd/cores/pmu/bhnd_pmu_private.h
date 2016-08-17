@@ -109,12 +109,6 @@ void		bhnd_pmu_swreg_init(struct bhnd_pmu_softc *sc);
 
 uint32_t	bhnd_pmu_force_ilp(struct bhnd_pmu_softc *sc, bool force);
 
-uint32_t	bhnd_pmu_si_clock(struct bhnd_pmu_query *sc);
-uint32_t	bhnd_pmu_cpu_clock(struct bhnd_pmu_query *sc);
-uint32_t	bhnd_pmu_mem_clock(struct bhnd_pmu_query *sc);
-uint32_t	bhnd_pmu_alp_clock(struct bhnd_pmu_query *sc);
-uint32_t	bhnd_pmu_ilp_clock(struct bhnd_pmu_query *sc);
-
 void		bhnd_pmu_set_switcher_voltage(struct bhnd_pmu_softc *sc,
 		    uint8_t bb_voltage, uint8_t rf_voltage);
 void		bhnd_pmu_set_ldo_voltage(struct bhnd_pmu_softc *sc,

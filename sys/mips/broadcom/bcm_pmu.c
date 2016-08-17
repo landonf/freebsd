@@ -33,7 +33,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/cores/chipc/chipcreg.h>
 
 #include <dev/bhnd/cores/pmu/bhnd_pmuvar.h>
-#include <dev/bhnd/cores/pmu/bhnd_pmu_private.h>
 
 #include "bcm_machdep.h"
 
