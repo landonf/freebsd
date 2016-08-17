@@ -2172,7 +2172,11 @@ bhnd_pmu_pll_init(struct bhnd_pmu_softc *sc, u_int xtalfreq)
 	}
 }
 
-/* query alp/xtal clock frequency */
+/**
+ * Return the ALP/XTAL clock frequency, in Hz.
+ * 
+ * @param sc PMU query instance.
+ */
 uint32_t
 bhnd_pmu_alp_clock(struct bhnd_pmu_query *sc)
 {
@@ -2313,9 +2317,13 @@ bhnd_pmu5_clock(struct bhnd_pmu_query *sc, u_int pll0, u_int m)
 	return ((fc / div) * 1000000);
 }
 
-/* query backplane clock frequency */
-/* For designs that feed the same clock to both backplane
- * and CPU just return the CPU clock speed.
+/**
+ * Return the backplane clock frequency, in Hz.
+ * 
+ * On designs that feed the same clock to both backplane
+ * and CPU, this returns the CPU clock speed.
+ * 
+ * @param sc PMU query instance.
  */
 uint32_t
 bhnd_pmu_si_clock(struct bhnd_pmu_query *sc)
@@ -2418,7 +2426,11 @@ bhnd_pmu_si_clock(struct bhnd_pmu_query *sc)
 	return (clock);
 }
 
-/* query CPU clock frequency */
+/**
+ * Return the CPU clock frequency, in Hz.
+ * 
+ * @param sc PMU query instance.
+ */
 uint32_t 
 bhnd_pmu_cpu_clock(struct bhnd_pmu_query *sc)
 {
@@ -2468,7 +2480,11 @@ bhnd_pmu_cpu_clock(struct bhnd_pmu_query *sc)
 	return (clock);
 }
 
-/* query memory clock frequency */
+/**
+ * Return the memory clock frequency, in Hz.
+ * 
+ * @param sc PMU query instance.
+ */
 uint32_t
 bhnd_pmu_mem_clock(struct bhnd_pmu_query *sc)
 {
@@ -2511,6 +2527,11 @@ bhnd_pmu_mem_clock(struct bhnd_pmu_query *sc)
 /* Measure ILP clock frequency */
 #define	ILP_CALC_DUR	10	/* ms, make sure 1000 can be divided by it. */
 
+/**
+ * Measure and return the ILP clock frequency, in Hz.
+ * 
+ * @param sc PMU query instance.
+ */
 uint32_t
 bhnd_pmu_ilp_clock(struct bhnd_pmu_query *sc)
 {

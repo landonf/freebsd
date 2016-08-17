@@ -37,17 +37,28 @@
 
 #include "bhnd_pmu.h"
 
+struct bhnd_pmu_query;
 struct bhnd_pmu_io;
 
 DECLARE_CLASS(bhnd_pmu_driver);
 extern devclass_t bhnd_pmu_devclass;
 
-int	bhnd_pmu_probe(device_t dev);
+int		bhnd_pmu_probe(device_t dev);
+int		bhnd_pmu_attach(device_t dev, struct bhnd_resource *res);
+int		bhnd_pmu_detach(device_t dev);
+int		bhnd_pmu_suspend(device_t dev);
+int		bhnd_pmu_resume(device_t dev);
 
-int	bhnd_pmu_attach(device_t dev, struct bhnd_resource *res);
-int	bhnd_pmu_detach(device_t dev);
-int	bhnd_pmu_suspend(device_t dev);
-int	bhnd_pmu_resume(device_t dev);
+int		bhnd_pmu_query_init(struct bhnd_pmu_query *query, device_t dev,
+		    struct bhnd_chipid id, const struct bhnd_pmu_io *io,
+		    void *ctx);
+void		bhnd_pmu_query_fini(struct bhnd_pmu_query *query);
+
+uint32_t	bhnd_pmu_si_clock(struct bhnd_pmu_query *sc);
+uint32_t	bhnd_pmu_cpu_clock(struct bhnd_pmu_query *sc);
+uint32_t	bhnd_pmu_mem_clock(struct bhnd_pmu_query *sc);
+uint32_t	bhnd_pmu_alp_clock(struct bhnd_pmu_query *sc);
+uint32_t	bhnd_pmu_ilp_clock(struct bhnd_pmu_query *sc);
 
 /* 
  * BHND PMU device quirks / features
@@ -93,12 +104,6 @@ struct bhnd_pmu_io {
 	/* Read ChipCommon's CHIP_ST register */
 	uint32_t	(*rd_chipst)(void *ctx);
 };
-
-int	bhnd_pmu_query_init(struct bhnd_pmu_query *query, device_t dev,
-	    struct bhnd_chipid id, const struct bhnd_pmu_io *io, void *ctx);
-int	bhnd_pmu_query_cpufreq(const struct bhnd_pmu_query *query,
-	    uint32_t *mhz);
-void	bhnd_pmu_query_fini(struct bhnd_pmu_query *query);
 
 /**
  * bhnd_pmu driver instance state.
