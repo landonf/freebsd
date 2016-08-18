@@ -62,6 +62,8 @@ __FBSDID("$FreeBSD$");
 #include "bhndb_pcivar.h"
 #include "bhndb_private.h"
 
+static int		bhndb_pci_setup_msi(struct bhndb_pci_softc *sc);
+
 static int		bhndb_enable_pci_clocks(struct bhndb_pci_softc *sc);
 static int		bhndb_disable_pci_clocks(struct bhndb_pci_softc *sc);
 
@@ -75,6 +77,8 @@ static void		bhndb_init_sromless_pci_config(
 
 static bus_addr_t	bhndb_pci_sprom_addr(struct bhndb_pci_softc *sc);
 static bus_size_t	bhndb_pci_sprom_size(struct bhndb_pci_softc *sc);
+
+#define	BHNDB_PCI_MSI_COUNT	1
 
 /** 
  * Default bhndb_pci implementation of device_probe().
@@ -101,6 +105,32 @@ bhndb_pci_probe(device_t dev)
 	return (BUS_PROBE_DEFAULT);
 }
 
+/* Setup MSI interrupts */
+static int
+bhndb_pci_setup_msi(struct bhndb_pci_softc *sc)
+{
+	int error;
+
+	/* Is MSI available? */
+	if (pci_msi_count(sc->parent) < BHNDB_PCI_MSI_COUNT)
+		return (ENXIO);
+
+	/* Allocate expected message count */
+	sc->intr.msi_count = BHNDB_PCI_MSI_COUNT;
+	if ((error = pci_alloc_msi(sc->parent, &sc->intr.msi_count))) {
+		device_printf(sc->dev, "failed to allocate MSI interrupts: "
+		    "%d\n", error);
+		return (error);
+	}
+
+	if (sc->intr.msi_count < BHNDB_PCI_MSI_COUNT)
+		return (ENXIO);
+
+	/* MSI uses resource IDs starting at 1 */
+	sc->intr.intr_rid = 1;
+	return (0);
+}
+
 static int
 bhndb_pci_attach(device_t dev)
 {
@@ -113,6 +143,16 @@ bhndb_pci_attach(device_t dev)
 
 	/* Enable PCI bus mastering */
 	pci_enable_busmaster(sc->parent);
+
+	/* Set up interrupt handling */
+	if (bhndb_pci_setup_msi(sc) == 0) {
+		device_printf(dev, "Using MSI interrupts on %s\n",
+		    device_get_nameunit(sc->parent));
+	} else {
+		device_printf(dev, "Using INTx interrupts on %s\n",
+		    device_get_nameunit(sc->parent));
+		sc->intr.intr_rid = 0;
+	}
 
 	/* Determine our bridge device class */
 	sc->pci_devclass = BHND_DEVCLASS_PCI;
@@ -401,6 +441,10 @@ bhndb_pci_detach(device_t dev)
 
 	/* Disable PCI bus mastering */
 	pci_disable_busmaster(sc->parent);
+
+	/* Release any MSI resources */
+	if (sc->intr.msi_count > 0)
+		pci_release_msi(sc->parent);
 
 	return (0);
 }
