@@ -75,8 +75,8 @@ uart_cpu_init(struct uart_devinfo *di, u_int uart, int baudrate)
 	di->ops = uart_getops(chipc_uart_class);
 	di->bas.chan = 0;
 	di->bas.bst = uart_bus_space_mem;
-	di->bas.bsh = (bus_space_handle_t) BCM_CORE_ADDR(cc_addr,
-	    CHIPC_UART(uart));
+	di->bas.bsh = (bus_space_handle_t) BCM_CORE_ADDR(bcm_get_platform(),
+	    cc_addr, CHIPC_UART(uart));
 	di->bas.regshft = 0;
 	di->bas.rclk = bcm_get_uart_rclk(bcm_get_platform());
 	di->baudrate = baudrate;

@@ -327,7 +327,8 @@ mips_init(void)
 void
 platform_reset(void)
 {
-	bool bcm4785war;
+	struct bcm_platform	*bp;
+	bool			 bcm4785war;
 
 	printf("bcm::platform_reset()\n");
 	intr_disable();
@@ -341,9 +342,11 @@ platform_reset(void)
 	}
 #endif
 
-	/* Handle BCM4785-specific behavior */
+	bp = bcm_get_platform();
 	bcm4785war = false;
-	if (bcm_get_platform()->id.chip_id == BHND_CHIPID_BCM4785) {
+
+	/* Handle BCM4785-specific behavior */
+	if (bp->id.chip_id == BHND_CHIPID_BCM4785) {
 		bcm4785war = true;
 
 		/* Switch to async mode */
@@ -351,10 +354,10 @@ platform_reset(void)
 	}
 
 	/* Set watchdog (PMU or ChipCommon) */
-	if (bcm_get_platform()->pmu_addr != 0x0) {
-		BCM_CHIPC_WRITE_4(BHND_PMU_WATCHDOG, 1);
+	if (bp->pmu_addr != 0x0) {
+		BCM_PMU_WRITE_4(bp, BHND_PMU_WATCHDOG, 1);
 	} else
-		BCM_CHIPC_WRITE_4(CHIPC_WATCHDOG, 1);
+		BCM_CHIPC_WRITE_4(bp, CHIPC_WATCHDOG, 1);
 
 	/* BCM4785 */
 	if (bcm4785war) {

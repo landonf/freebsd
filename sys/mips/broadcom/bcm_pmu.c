@@ -122,8 +122,8 @@ bcm_get_uart_clkcfg(struct bcm_platform *bp)
 	if (!bcm_has_pmu(bp) && BCM_PMU_PLL_TYPE(bp) == CHIPC_PLL_TYPE1) {
 		uint32_t n, m;
 	
-		n = BCM_CHIPC_READ_4(CHIPC_CLKC_N);
-		m = BCM_CHIPC_READ_4(CHIPC_CLKC_M2);
+		n = BCM_CHIPC_READ_4(bp, CHIPC_CLKC_N);
+		m = BCM_CHIPC_READ_4(bp, CHIPC_CLKC_M2);
 
 		cfg = (struct bcm_uart_clkcfg) {
 			BCM_UART_RCLK_PLL_T1,
@@ -153,7 +153,7 @@ bcm_get_uart_clkcfg(struct bcm_platform *bp)
 		uclksel = CHIPC_GET_BITS(bp->cc_caps, CHIPC_CAP_UCLKSEL);
 
 		/* Is UART using internal clock? */
-		corectrl = BCM_CHIPC_READ_4(CHIPC_CORECTRL);
+		corectrl = BCM_CHIPC_READ_4(bp, CHIPC_CORECTRL);
 		uintclk0 = CHIPC_GET_FLAG(corectrl, CHIPC_UARTCLKO);
 
 		if (uintclk0 && uclksel == CHIPC_CAP_UCLKSEL_UINTCLK) {
@@ -170,7 +170,7 @@ bcm_get_uart_clkcfg(struct bcm_platform *bp)
 	if (cc_id->hwrev == 15 || (cc_id->hwrev >= 3 && cc_id->hwrev <= 10)) {
 		cfg = (struct bcm_uart_clkcfg) {
 			BCM_UART_RCLK_SI,
-			BCM_CHIPC_READ_4(CHIPC_CLKDIV & CHIPC_CLKD_UART),
+			BCM_CHIPC_READ_4(bp, CHIPC_CLKDIV) & CHIPC_CLKD_UART,
 			bcm_get_sifreq(bp)
 		};
 
@@ -243,8 +243,8 @@ bcm_get_cpufreq(struct bcm_platform *bp)
 	if (mreg == 0)
 		return (fixed_hz);
 
-	n = BCM_CHIPC_READ_4(CHIPC_CLKC_N);
-	m = BCM_CHIPC_READ_4(mreg);
+	n = BCM_CHIPC_READ_4(bp, CHIPC_CLKC_N);
+	m = BCM_CHIPC_READ_4(bp, mreg);
 
 	return (bhnd_pwrctl_cpu_clock_rate(&bp->id, pll_type, n, m));
 	
@@ -271,8 +271,8 @@ bcm_get_sifreq(struct bcm_platform *bp)
 	if (mreg == 0)
 		return (fixed_hz);
 
-	n = BCM_CHIPC_READ_4(CHIPC_CLKC_N);
-	m = BCM_CHIPC_READ_4(mreg);
+	n = BCM_CHIPC_READ_4(bp, CHIPC_CLKC_N);
+	m = BCM_CHIPC_READ_4(bp, mreg);
 
 	return (bhnd_pwrctl_si_clock_rate(&bp->id, pll_type, n, m));
 }
