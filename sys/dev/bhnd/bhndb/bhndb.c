@@ -1852,61 +1852,6 @@ bhndb_bus_barrier(device_t dev, device_t child, struct bhnd_resource *r,
 }
 
 /**
- * Default bhndb(4) implementation of BUS_SETUP_INTR().
- */
-static int
-bhndb_setup_intr(device_t dev, device_t child, struct resource *r,
-    int flags, driver_filter_t filter, driver_intr_t handler, void *arg,
-    void **cookiep)
-{
-	// TODO
-	return (EOPNOTSUPP);
-}
-
-/**
- * Default bhndb(4) implementation of BUS_TEARDOWN_INTR().
- */
-static int
-bhndb_teardown_intr(device_t dev, device_t child, struct resource *r,
-    void *cookie)
-{
-	// TODO
-	return (EOPNOTSUPP);
-}
-
-/**
- * Default bhndb(4) implementation of BUS_CONFIG_INTR().
- */
-static int
-bhndb_config_intr(device_t dev, int irq, enum intr_trigger trig,
-    enum intr_polarity pol)
-{
-	// TODO
-	return (EOPNOTSUPP);
-}
-
-/**
- * Default bhndb(4) implementation of BUS_BIND_INTR().
- */
-static int
-bhndb_bind_intr(device_t dev, device_t child, struct resource *r, int cpu)
-{
-	// TODO
-	return (EOPNOTSUPP);
-}
-
-/**
- * Default bhndb(4) implementation of BUS_DESCRIBE_INTR().
- */
-static int
-bhndb_describe_intr(device_t dev, device_t child, struct resource *irq, void *cookie,
-    const char *descr)
-{
-	// TODO
-	return (EOPNOTSUPP);
-}
-
-/**
  * Default bhndb(4) implementation of BUS_GET_DMA_TAG().
  */
 static bus_dma_tag_t
@@ -1937,11 +1882,11 @@ static device_method_t bhndb_methods[] = {
 	DEVMETHOD(bus_activate_resource,	bhndb_activate_resource),
 	DEVMETHOD(bus_deactivate_resource,	bhndb_deactivate_resource),
 
-	DEVMETHOD(bus_setup_intr,		bhndb_setup_intr),
-	DEVMETHOD(bus_teardown_intr,		bhndb_teardown_intr),
-	DEVMETHOD(bus_config_intr,		bhndb_config_intr),
-	DEVMETHOD(bus_bind_intr,		bhndb_bind_intr),
-	DEVMETHOD(bus_describe_intr,		bhndb_describe_intr),
+	DEVMETHOD(bus_setup_intr,		bus_generic_setup_intr),
+	DEVMETHOD(bus_teardown_intr,		bus_generic_teardown_intr),
+	DEVMETHOD(bus_config_intr,		bus_generic_config_intr),
+	DEVMETHOD(bus_bind_intr,		bus_generic_bind_intr),
+	DEVMETHOD(bus_describe_intr,		bus_generic_describe_intr),
 
 	DEVMETHOD(bus_get_dma_tag,		bhndb_get_dma_tag),
 
