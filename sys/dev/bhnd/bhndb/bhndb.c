@@ -746,7 +746,7 @@ bhndb_suspend_resource(device_t dev, device_t child, int type,
 
 	sc = device_get_softc(dev);
 
-	// TODO: IRQs?
+	/* Non-MMIO resources (e.g. IRQs) are handled solely by our parent */
 	if (type != SYS_RES_MEMORY)
 		return;
 
@@ -777,7 +777,7 @@ bhndb_resume_resource(device_t dev, device_t child, int type,
 
 	sc = device_get_softc(dev);
 
-	// TODO: IRQs?
+	/* Non-MMIO resources (e.g. IRQs) are handled solely by our parent */
 	if (type != SYS_RES_MEMORY)
 		return (0);
 
@@ -862,8 +862,6 @@ bhndb_get_rman(struct bhndb_softc *sc, device_t child, int type)
 		case SYS_RES_MEMORY:
 			return (&sc->bus_res->br_mem_rman);
 		case SYS_RES_IRQ:
-			// TODO
-			// return &sc->irq_rman;
 			return (NULL);
 		default:
 			return (NULL);
@@ -1044,6 +1042,15 @@ bhndb_alloc_resource(device_t dev, device_t child, int type,
 	isdefault = RMAN_IS_DEFAULT_RANGE(start, end);
 	rle = NULL;
 
+	/* Fetch the resource manager */
+	rm = bhndb_get_rman(sc, child, type);
+	if (rm == NULL) {
+		/* Delegate to our parent device; the requested resource type
+		 * isn't handled locally. */
+		return (BUS_ALLOC_RESOURCE(sc->parent_dev, child, type, rid,
+		    start, end, count, flags));
+	}
+
 	/* Populate defaults */
 	if (!passthrough && isdefault) {
 		/* Fetch the resource list entry. */
@@ -1073,11 +1080,6 @@ bhndb_alloc_resource(device_t dev, device_t child, int type,
 
 	/* Validate resource addresses */
 	if (start > end || count > ((end - start) + 1))
-		return (NULL);
-	
-	/* Fetch the resource manager */
-	rm = bhndb_get_rman(sc, child, type);
-	if (rm == NULL)
 		return (NULL);
 
 	/* Make our reservation */
@@ -1121,11 +1123,20 @@ static int
 bhndb_release_resource(device_t dev, device_t child, int type, int rid,
     struct resource *r)
 {
+	struct bhndb_softc		*sc;
 	struct resource_list_entry	*rle;
 	bool				 passthrough;
 	int				 error;
-	
+
+	sc = device_get_softc(dev);
 	passthrough = (device_get_parent(child) != dev);
+
+	/* Delegate to our parent device if the requested resource type
+	 * isn't handled locally. */
+	if (bhndb_get_rman(sc, child, type) == NULL) {
+		return (BUS_RELEASE_RESOURCE(sc->parent_dev, child, type, rid,
+		    r));
+	}
 
 	/* Deactivate resources */
 	if (rman_get_flags(r) & RF_ACTIVE) {
@@ -1163,14 +1174,17 @@ bhndb_adjust_resource(device_t dev, device_t child, int type,
 	sc = device_get_softc(dev);
 	error = 0;
 
+	/* Delegate to our parent device if the requested resource type
+	 * isn't handled locally. */
+	rm = bhndb_get_rman(sc, child, type);
+	if (rm == NULL) {
+		return (BUS_ADJUST_RESOURCE(sc->parent_dev, child, type, r,
+		    start, end));
+	}
+
 	/* Verify basic constraints */
 	if (end <= start)
 		return (EINVAL);
-
-	/* Fetch resource manager */
-	rm = bhndb_get_rman(sc, child, type);
-	if (rm == NULL)
-		return (ENXIO);
 
 	if (!rman_is_region_manager(r, rm))
 		return (ENXIO);
@@ -1374,7 +1388,7 @@ bhndb_try_activate_resource(struct bhndb_softc *sc, device_t child, int type,
 
 	BHNDB_LOCK_ASSERT(sc, MA_NOTOWNED);
 
-	// TODO - IRQs
+	/* Only MMIO resources can be mapped via register windows */
 	if (type != SYS_RES_MEMORY)
 		return (ENXIO);
 	
@@ -1485,6 +1499,13 @@ bhndb_activate_resource(device_t dev, device_t child, int type, int rid,
 {
 	struct bhndb_softc *sc = device_get_softc(dev);
 
+	/* Delegate directly to our parent device if the requested
+	 * resource type isn't handled locally. */
+	if (bhndb_get_rman(sc, child, type) == NULL) {
+		return (BUS_ACTIVATE_RESOURCE(sc->parent_dev, child, type, rid,
+		    r));
+	}
+
 	return (bhndb_try_activate_resource(sc, child, type, rid, r, NULL));
 }
 
@@ -1502,8 +1523,13 @@ bhndb_deactivate_resource(device_t dev, device_t child, int type,
 
 	sc = device_get_softc(dev);
 
-	if ((rm = bhndb_get_rman(sc, child, type)) == NULL)
-		return (EINVAL);
+	/* Delegate directly to our parent device if the requested
+	 * resource type isn't handled locally. */
+	rm = bhndb_get_rman(sc, child, type);
+	if (rm == NULL) {
+		return (BUS_DEACTIVATE_RESOURCE(sc->parent_dev, child, type,
+		    rid, r));
+	}
 
 	/* Mark inactive */
 	if ((error = rman_deactivate_resource(r)))
@@ -1558,6 +1584,15 @@ bhndb_activate_bhnd_resource(device_t dev, device_t child,
 	    ("RF_ACTIVE set on inactive resource"));
 
 	sc = device_get_softc(dev);
+
+	/* Delegate directly to BUS_ACTIVATE_RESOURCE() if the requested
+	 * resource type isn't handled locally. */
+	if (bhndb_get_rman(sc, child, type) == NULL) {
+		error = BUS_ACTIVATE_RESOURCE(dev, child, type, rid, r->res);
+		if (error == 0)
+			r->direct = true;
+		return (error);
+	}
 
 	r_start = rman_get_start(r->res);
 	r_size = rman_get_size(r->res);
@@ -1622,7 +1657,7 @@ bhndb_deactivate_bhnd_resource(device_t dev, device_t child,
 	    ("RF_ACTIVE not set on direct resource"));
 
 	/* Perform deactivation */
-	error = bus_deactivate_resource(child, type, rid, r->res);
+	error = BUS_DEACTIVATE_RESOURCE(dev, child, type, rid, r->res);
 	if (!error)
 		r->direct = false;
 
