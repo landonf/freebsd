@@ -31,6 +31,10 @@
 						     required during bus
 						     enumeration */
 
+/** Evaluates to true if the given ChipCommon core revision supports
+ *  the CHIPC_CORECTRL register */
+#define	CHIPC_HWREV_HAS_CORECTRL(hwrev)	((hwrev) >= 1)
+
 /** Evaluates to true if the given ChipCommon core revision provides
  *  the core count via the chip identification register. */
 #define	CHIPC_NCORES_MIN_HWREV(hwrev)	((hwrev) == 4 || (hwrev) >= 6)

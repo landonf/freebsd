@@ -85,7 +85,6 @@ __FBSDID("$FreeBSD$");
 
 #include "bcm_machdep.h"
 #include "bcm_mips_exts.h"
-#include "bcm_socinfo.h"
 
 #ifdef CFE
 #include <dev/cfe/cfe_api.h>
@@ -236,6 +235,16 @@ bcm_init_platform_data(struct bcm_platform *pdata)
 		/* No PMU */
 		pdata->pmu_addr = 0x0;
 		memset(&pdata->pmu_id, 0, sizeof(pdata->pmu_id));
+	}
+
+	if (pmu) {
+		error = bhnd_pmu_query_init(&pdata->pmu, NULL, pdata->id,
+		    &bcm_pmu_soc_io, pdata);
+		if (error) {
+			printf("%s: bhnd_pmu_query_init() failed: %d\n",
+			    __FUNCTION__, error);
+			return (error);
+		}
 	}
 
 	bcm_platform_data_avail = true;
@@ -392,7 +401,7 @@ platform_start(__register_t a0, __register_t a1, __register_t a2,
 	if ((error = bcm_init_platform_data(&bcm_platform_data)))
 		panic("bcm_init_platform_data() failed: %d", error);
 
-	platform_counter_freq = bcm_get_cpufreq();
+	platform_counter_freq = bcm_get_cpufreq(bcm_get_platform());
 
 	/* CP0 ticks every two cycles */
 	mips_timer_early_init(platform_counter_freq / 2);

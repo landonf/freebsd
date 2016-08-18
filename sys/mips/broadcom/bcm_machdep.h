@@ -36,6 +36,13 @@
 #include <machine/cpuregs.h>
 
 #include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/cores/pmu/bhnd_pmuvar.h>
+
+extern const struct bhnd_pmu_io	bcm_pmu_soc_io;
+
+typedef int (bcm_bus_find_core)(struct bhnd_chipid *chipid,
+    bhnd_devclass_t devclass, int unit, struct bhnd_core_info *info,
+    uintptr_t *addr);
 
 struct bcm_platform {
 	struct bhnd_chipid	id;		/**< chip id */
@@ -51,18 +58,21 @@ struct bcm_platform {
 	uintptr_t		pmu_addr;	/**< PMU core phys address, or
 						     0x0 if no PMU */
 
+	struct bhnd_pmu_query	pmu;		/**< PMU query instance */
+
 #ifdef CFE
 	int			cfe_console;	/**< Console handle, or -1 */
 #endif
 };
 
-
-typedef int (bcm_bus_find_core)(struct bhnd_chipid *chipid,
-    bhnd_devclass_t devclass, int unit, struct bhnd_core_info *info,
-    uintptr_t *addr);
-
 struct bcm_platform	*bcm_get_platform(void);
-uint64_t		 bcm_get_cpufreq(void);
+
+uint64_t		 bcm_get_cpufreq(struct bcm_platform *bp);
+uint64_t		 bcm_get_sifreq(struct bcm_platform *bp);
+uint64_t		 bcm_get_alpfreq(struct bcm_platform *bp);
+uint64_t		 bcm_get_ilpfreq(struct bcm_platform *bp);
+
+u_int			 bcm_get_uart_rclk(struct bcm_platform *bp);
 
 bcm_bus_find_core	 bcm_find_core_default;
 bcm_bus_find_core	 bcm_find_core_bcma;
