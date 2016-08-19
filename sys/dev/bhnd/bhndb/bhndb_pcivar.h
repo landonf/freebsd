@@ -50,8 +50,8 @@ typedef int (*bhndb_pci_set_regwin_t)(struct bhndb_pci_softc *sc,
 
 /* bhndb_pci interrupt state */
 struct bhndb_pci_intr {
-	int	msi_count;	/**< MSI count, or 0 */
-	int	intr_rid;	/**< interrupt resource ID.*/
+	int		msi_count;	/**< MSI count, or 0 */
+	int		intr_rid;	/**< interrupt resource ID.*/
 };
 
 struct bhndb_pci_softc {

@@ -56,6 +56,11 @@ int			 bhnd_generic_suspend(device_t dev);
 int			 bhnd_generic_get_probe_order(device_t dev,
 			     device_t child);
 
+struct resource		*bhnd_generic_alloc_resource(device_t dev,
+			     device_t child, int type, int *rid,
+			     rman_res_t start, rman_res_t end,
+			     rman_res_t count, u_int flags);
+
 int			 bhnd_generic_alloc_pmu(device_t dev,
 			     device_t child);
 int			 bhnd_generic_release_pmu(device_t dev,

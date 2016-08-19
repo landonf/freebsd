@@ -89,7 +89,13 @@ CODE {
 	{
 		panic("bhnd_bus_read_boardinfo unimplemented");
 	}
-	
+
+	static int bhnd_bus_null_assign_interrupt(device_t dev, device_t child,
+	    int *rid, rman_res_t *startp, rman_res_t *countp)
+	{
+		panic("bhnd_bus_assign_interrupt unimplemented");
+	}
+
 	static void
 	bhnd_bus_null_child_added(device_t dev, device_t child)
 	{
@@ -307,6 +313,32 @@ METHOD int read_board_info {
 	device_t child;
 	struct bhnd_board_info *info;
 } DEFAULT bhnd_bus_null_read_board_info;
+
+/**
+ * Assign an IRQ to @p child.
+ * 
+ * @param dev The parent of @p child.
+ * @param child The bhnd device to which an IRQ should be assigned.
+ * @param[in,out] rid The rid requested by @p child; On success, will be set to
+ * the assigned rid.
+ * @param[out] startp On success, the assigned resource address.
+ * @param[out] countp On success, the assigned resource count.
+ *
+ * On bhnd(4) devices, SYS_RES_IRQ resource IDs are assumed to be assigned
+ * sequentially, starting at rid 0.
+ *
+ * @retval 0		If an IRQ was assigned, or a valid assignment
+ *			for the given resource ID already exists.
+ * @retval non-zero	If assigning an IRQ otherwise fails, a regular unix
+ *			error code will be returned.
+ */
+METHOD int assign_interrupt {
+	device_t dev;
+	device_t child;
+	int *rid;
+	rman_res_t *startp;
+	rman_res_t *countp;
+} DEFAULT bhnd_bus_null_assign_interrupt;
 
 /**
  * Allocate and zero-initialize a buffer suitably sized and aligned for a

@@ -623,6 +623,54 @@ bhnd_generic_get_probe_order(device_t dev, device_t child)
 }
 
 /**
+ * Default bhnd(4) bus driver implementation of BUS_ALLOC_RESOURCE().
+ *
+ * This implementation delegates most requests directly to
+ * bus_generic_rl_alloc_resource().
+ * 
+ * To allow concrete bhnd(4) driver implementations to provide
+ * hardware/platform-specific IRQ assignment, SYS_RES_IRQ requests made
+ * by direct children for unknown resource IDs are first passed to the
+ * BHND_BUS_ASSIGN_INTERRUPT() method.
+ */
+struct resource *
+bhnd_generic_alloc_resource(device_t dev, device_t child, int type,
+    int *rid, rman_res_t start, rman_res_t end, rman_res_t count, u_int flags)
+{
+	struct resource_list	*rl;
+	rman_res_t		 intr_start, intr_count, intr_end;
+	bool			 passthrough;
+	int			 error;
+
+	passthrough = (device_get_parent(child) != dev);
+
+	/* Skip indirect children and non-IRQ requests */
+	if (passthrough || type != SYS_RES_IRQ) {
+		return (bus_generic_rl_alloc_resource(dev, child, type, rid,
+		    start, end, count, flags));
+	}
+
+	/* Map request to platform-defined values */
+	error = BHND_BUS_ASSIGN_INTERRUPT(dev, child, rid, &intr_start,
+	    &intr_count);
+	if (error)
+		return (NULL);
+
+	if (intr_count == 0)
+		return (NULL);
+	intr_end = intr_start + intr_count - 1;
+
+	/* Add to (or update) resource list */
+	rl = BUS_GET_RESOURCE_LIST(dev, child);
+
+	resource_list_add(rl, type, *rid, intr_start, intr_end, intr_count);
+
+	/* Success */
+	return (bus_generic_rl_alloc_resource(dev, child, type, rid, start,
+	    end, count, flags));
+}
+
+/**
  * Default bhnd(4) bus driver implementation of BHND_BUS_ALLOC_PMU().
  */
 int
@@ -1234,7 +1282,7 @@ static device_method_t bhnd_methods[] = {
 	DEVMETHOD(bus_set_resource,		bus_generic_rl_set_resource),
 	DEVMETHOD(bus_get_resource,		bus_generic_rl_get_resource),
 	DEVMETHOD(bus_delete_resource,		bus_generic_rl_delete_resource),
-	DEVMETHOD(bus_alloc_resource,		bus_generic_rl_alloc_resource),
+	DEVMETHOD(bus_alloc_resource,		bhnd_generic_alloc_resource),
 	DEVMETHOD(bus_adjust_resource,		bus_generic_adjust_resource),
 	DEVMETHOD(bus_release_resource,		bus_generic_rl_release_resource),
 	DEVMETHOD(bus_activate_resource,	bus_generic_activate_resource),

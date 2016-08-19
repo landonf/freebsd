@@ -1045,10 +1045,10 @@ bhndb_alloc_resource(device_t dev, device_t child, int type,
 	/* Fetch the resource manager */
 	rm = bhndb_get_rman(sc, child, type);
 	if (rm == NULL) {
-		/* Delegate to our parent device; the requested resource type
-		 * isn't handled locally. */
-		return (BUS_ALLOC_RESOURCE(sc->parent_dev, child, type, rid,
-		    start, end, count, flags));
+		/* Delegate to our parent device's bus; the requested
+		 * resource type isn't handled locally. */
+		return (BUS_ALLOC_RESOURCE(device_get_parent(sc->parent_dev),
+		    child, type, rid,  start, end, count, flags));
 	}
 
 	/* Populate defaults */
@@ -1131,11 +1131,11 @@ bhndb_release_resource(device_t dev, device_t child, int type, int rid,
 	sc = device_get_softc(dev);
 	passthrough = (device_get_parent(child) != dev);
 
-	/* Delegate to our parent device if the requested resource type
+	/* Delegate to our parent device's bus if the requested resource type
 	 * isn't handled locally. */
 	if (bhndb_get_rman(sc, child, type) == NULL) {
-		return (BUS_RELEASE_RESOURCE(sc->parent_dev, child, type, rid,
-		    r));
+		return (BUS_RELEASE_RESOURCE(device_get_parent(sc->parent_dev),
+		    child, type, rid, r));
 	}
 
 	/* Deactivate resources */
@@ -1174,12 +1174,12 @@ bhndb_adjust_resource(device_t dev, device_t child, int type,
 	sc = device_get_softc(dev);
 	error = 0;
 
-	/* Delegate to our parent device if the requested resource type
+	/* Delegate to our parent device's bus if the requested resource type
 	 * isn't handled locally. */
 	rm = bhndb_get_rman(sc, child, type);
 	if (rm == NULL) {
-		return (BUS_ADJUST_RESOURCE(sc->parent_dev, child, type, r,
-		    start, end));
+		return (BUS_ADJUST_RESOURCE(device_get_parent(sc->parent_dev),
+		    child, type, r, start, end));
 	}
 
 	/* Verify basic constraints */
@@ -1499,11 +1499,11 @@ bhndb_activate_resource(device_t dev, device_t child, int type, int rid,
 {
 	struct bhndb_softc *sc = device_get_softc(dev);
 
-	/* Delegate directly to our parent device if the requested
+	/* Delegate directly to our parent device's bus if the requested
 	 * resource type isn't handled locally. */
 	if (bhndb_get_rman(sc, child, type) == NULL) {
-		return (BUS_ACTIVATE_RESOURCE(sc->parent_dev, child, type, rid,
-		    r));
+		return (BUS_ACTIVATE_RESOURCE(device_get_parent(sc->parent_dev),
+		    child, type, rid, r));
 	}
 
 	return (bhndb_try_activate_resource(sc, child, type, rid, r, NULL));
@@ -1523,12 +1523,12 @@ bhndb_deactivate_resource(device_t dev, device_t child, int type,
 
 	sc = device_get_softc(dev);
 
-	/* Delegate directly to our parent device if the requested
+	/* Delegate directly to our parent device's bus if the requested
 	 * resource type isn't handled locally. */
 	rm = bhndb_get_rman(sc, child, type);
 	if (rm == NULL) {
-		return (BUS_DEACTIVATE_RESOURCE(sc->parent_dev, child, type,
-		    rid, r));
+		return (BUS_DEACTIVATE_RESOURCE(
+		    device_get_parent(sc->parent_dev), child, type, rid, r));
 	}
 
 	/* Mark inactive */
