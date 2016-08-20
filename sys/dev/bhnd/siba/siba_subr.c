@@ -40,6 +40,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/resource.h>
 
 #include <dev/bhnd/bhndvar.h>
+#include <dev/bhnd/cores/chipc/chipcreg.h>
 
 #include "sibareg.h"
 #include "sibavar.h"
@@ -103,6 +104,56 @@ siba_parse_core_id(uint32_t idhigh, uint32_t idlow, u_int core_idx, int unit)
 		.num_addrspace	= num_addrspace,
 		.num_cfg_blocks	= num_cfg
 	};	
+}
+
+/**
+ * Fix the core count in @p cid, if required.
+ * 
+ * On early siba(4) devices, the ChipCommon core does not provide a valid
+ * CHIPC_ID_NUMCORE field (see CHIPC_NCORES_MIN_HWREV()). This function writes
+ * the correct count to @p cid, if known.
+ * 
+ * @param[in,out] cid The bhnd_chipid structure to be modified.
+ * @param chipc_hwrev The hardware revision of the ChipCommon core from which
+ * @p cid was parsed.
+ * 
+ * @retval 0 If the core count is already correct, or was mapped to a
+ * a correct value.
+ * @retval EINVAL If the core count is incorrect, but the chip was not
+ * recognized.
+ */
+int
+siba_fix_num_cores(struct bhnd_chipid *cid, uint16_t chipc_hwrev)
+{
+	if (CHIPC_NCORES_MIN_HWREV(chipc_hwrev))
+		return (0);
+
+	switch (cid->chip_id) {
+	case BHND_CHIPID_BCM4306:
+		cid->ncores = 6;
+		break;
+	case BHND_CHIPID_BCM4704:
+		cid->ncores = 9;
+		break;
+	case BHND_CHIPID_BCM5365:
+		/*
+		* BCM5365 does support ID_NUMCORE in at least
+		* some of its revisions, but for unknown
+		* reasons, Broadcom's drivers always exclude
+		* the ChipCommon revision (0x5) used by BCM5365
+		* from the set of revisions supporting
+		* ID_NUMCORE, and instead supply a fixed value.
+		* 
+		* Presumably, at least some of these devices
+		* shipped with a broken ID_NUMCORE value.
+		*/
+		cid->ncores = 7;
+		break;
+	default:
+		return (EINVAL);
+	}
+
+	return (0);
 }
 
 /**
