@@ -38,92 +38,30 @@
 #include <dev/bhnd/bhnd.h>
 #include <dev/bhnd/cores/pmu/bhnd_pmuvar.h>
 
-struct bcm_bus_ops;
+extern const struct bhnd_pmu_io	bcm_pmu_soc_io;
 
-extern const struct bhnd_pmu_io		bcm_pmu_soc_io;
-extern const struct bcm_bus_ops		bcm_siba_ops __weak_symbol;
-extern const struct bcm_bus_ops		bcm_bcma_ops __weak_symbol;
+typedef int (bcm_bus_find_core)(struct bhnd_chipid *chipid,
+    bhnd_devclass_t devclass, int unit, struct bhnd_core_info *info,
+    uintptr_t *addr);
 
-/**
- * Search @p chipid's enumeration table for a core with @p devclass and
- * @p unit, returning the corresponding core @p info and register
- * block @p addr.
- * 
- * @param	chipid		Chip identification data, including the address
- *				of the enumeration table to be searched.
- * @param	devclass	Search for a core matching this device class.
- * @param	unit		The core's required unit number.
- * @param[out]	info		On success, will be populated with the core
- *				info.
- */
-typedef int	(bcm_bus_find_core)(struct bhnd_chipid *chipid,
-		    bhnd_devclass_t devclass, int unit,
-		    struct bhnd_core_info *info, uintptr_t *addr);
-
-/**
- * Fix the core count in @p cid, if required.
- * 
- * This is currently only necessary on early siba(4) devices, where
- * early hardware may provide an invalid core count.
- * 
- * @param	cid		The chipid data.
- * @param	chipc_hwrev	The revision of the ChipCommon core from which
- *				@p cid was parsed.
- */
-typedef int	(bcm_bus_fix_num_cores)(struct bhnd_chipid *cid,
-		    uint16_t chipc_hwrev);
-
-/**
- * Parse all core descriptors in @p chipid's enumeration table and write the
- * result to @p cores, and the count in @p ncores.
- * 
- * @param		chipid	Chip identification data, including the address
- *				of the enumeration table to be searched.
- * @param[out]		cores	The array to which core descriptors will be
- *				written. If NULL, the actual number of cores
- *				will be returned via @p num_cores.
- * @param[in,out]	ncores	The maximum number of core info entries to be
- *				written to @p cores. On success, will be set
- *				to the actual number of core
- *				records written.
- * 
- * @retval 0		success
- * @retval non-zero	If parsing the core table otherwise fails, a regular
- *			unix error code will be returned.
- */
-typedef int	(bcm_bus_read_core_table)(struct bhnd_chipid *chipid,
-		    struct bhnd_core_info *cores, u_int *ncores);
-
-/**
- * Bus-specific operations.
- */
-struct bcm_bus_ops {
-	bcm_bus_find_core	*find_core;
-	bcm_bus_read_core_table	*read_core_table;
-	bcm_bus_fix_num_cores	*fix_num_cores;
-};
-
-/**
- * Platform configuration.
- */
 struct bcm_platform {
-	struct bhnd_chipid		 id;		/**< chip id */
-	struct bhnd_core_info		 cc_id;		/**< chipc core info */
-	uintptr_t			 cc_addr;	/**< chipc core phys address */
-	uint32_t			 cc_caps;	/**< chipc capabilities */
-	uint32_t			 cc_caps_ext;	/**< chipc extended capabilies */
-	const struct bcm_bus_ops	*bus_ops;	/**< bus-specific operations */
+	struct bhnd_chipid	id;		/**< chip id */
+	struct bhnd_core_info	cc_id;		/**< chipc core info */
+	uintptr_t		cc_addr;	/**< chipc core phys address */
+	uint32_t		cc_caps;	/**< chipc capabilities */
+	uint32_t		cc_caps_ext;	/**< chipc extended capabilies */
 
 	/* On non-AOB devices, the PMU register block is mapped to chipc;
 	 * the pmu_id and pmu_addr values will be copied from cc_id
 	 * and cc_addr. */
-	struct bhnd_core_info		 pmu_id;	/**< PMU core info */
-	uintptr_t			 pmu_addr;	/**< PMU core phys address, or
-							     0x0 if no PMU */
-	struct bhnd_pmu_query		 pmu;		/**< PMU query instance */
+	struct bhnd_core_info	pmu_id;		/**< PMU core info */
+	uintptr_t		pmu_addr;	/**< PMU core phys address, or
+						     0x0 if no PMU */
+
+	struct bhnd_pmu_query	pmu;		/**< PMU query instance */
 
 #ifdef CFE
-	int				 cfe_console;	/**< Console handle, or -1 */
+	int			cfe_console;	/**< Console handle, or -1 */
 #endif
 };
 
@@ -136,47 +74,9 @@ uint64_t		 bcm_get_ilpfreq(struct bcm_platform *bp);
 
 u_int			 bcm_get_uart_rclk(struct bcm_platform *bp);
 
-/**
- * Search @p bp's enumeration table for a core with @p devclass and
- * @p unit, returning the corresponding core @p info and register
- * block @p addr.
- * 
- * @param	bp		Platform data.
- * @param	devclass	Search for a core matching this device class.
- * @param	unit		The core's required unit number.
- * @param[out]	info		On success, will be populated with the core
- *				info.
- */
-static inline int
-bcm_find_core(struct bcm_platform *bp, bhnd_devclass_t devclass, int unit,
-    struct bhnd_core_info *info, uintptr_t *addr)
-{
-	return (bp->bus_ops->find_core(&bp->id, devclass, unit, info, addr));
-}
-
-/**
- * Parse all core descriptors in @p bp's enumeration table and write the
- * result to @p cores, and the count in @p ncores.
- * 
- * @param		bp	Platform data.
- * @param[out]		cores	The array to which core descriptors will be
- *				written. If NULL, the actual number of cores
- *				will be returned via @p num_cores.
- * @param[in,out]	ncores	The maximum number of core info entries to be
- *				written to @p cores. On success, will be set
- *				to the actual number of core
- *				records written.
- * 
- * @retval 0		success
- * @retval non-zero	If parsing the core table otherwise fails, a regular
- *			unix error code will be returned.
- */
-static inline int
-bcm_read_core_table(struct bcm_platform *bp, struct bhnd_core_info *cores,
-    u_int *ncores)
-{
-	return (bp->bus_ops->read_core_table(&bp->id, cores, ncores));
-}
+bcm_bus_find_core	 bcm_find_core_default;
+bcm_bus_find_core	 bcm_find_core_bcma;
+bcm_bus_find_core	 bcm_find_core_siba;
 
 #define	BCM_SOC_ADDR(_addr, _offset)			\
 	MIPS_PHYS_TO_KSEG1((_addr) + (_offset))

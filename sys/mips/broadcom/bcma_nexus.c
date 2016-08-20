@@ -37,19 +37,11 @@ __FBSDID("$FreeBSD$");
 #include "bcm_machdep.h"
 #include "bhnd_nexusvar.h"
 
-static bcm_bus_find_core	bcm_bcma_find_core;
-
-const struct bcm_bus_ops bcm_bcma_ops = {
-	bcm_bcma_find_core,
-	NULL,	/* TODO */
-	NULL	/* not required */
-};
-
 #define	BCMFC_ERR(fmt, ...)	printf("%s: " fmt, __FUNCTION__, ##__VA_ARGS__)
 
 /* bcma-specific implementation of bcm_find_core() */
 int
-bcm_bcma_find_core(struct bhnd_chipid *chipid, bhnd_devclass_t devclass,
+bcm_find_core_bcma(struct bhnd_chipid *chipid, bhnd_devclass_t devclass,
     int unit, struct bhnd_core_info *info, uintptr_t *addr)
 {
 	struct bcma_erom		erom;

@@ -38,17 +38,9 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_nexusvar.h"
 
-static bcm_bus_find_core	bcm_siba_find_core;
-
-const struct bcm_bus_ops bcm_siba_ops = {
-	bcm_siba_find_core,
-	NULL,	/* TODO */
-	siba_fix_num_cores
-};
-
 /* siba-specific implementation of bcm_find_core() */
-static int
-bcm_siba_find_core(struct bhnd_chipid *chipid, bhnd_devclass_t devclass,
+int
+bcm_find_core_siba(struct bhnd_chipid *chipid, bhnd_devclass_t devclass,
     int unit, struct bhnd_core_info *info, uintptr_t *addr)
 {
 	struct siba_core_id	scid;
