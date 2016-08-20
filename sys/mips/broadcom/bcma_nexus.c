@@ -1,6 +1,5 @@
 /*-
  * Copyright (c) 2016 Landon Fuller <landonf@FreeBSD.org>
- *
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -28,17 +27,19 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include <sys/types.h>
+#include <sys/param.h>
+#include <sys/kernel.h>
+#include <sys/module.h>
 
-#include <machine/bus.h>
-
-#include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/bcma/bcma_eromreg.h>
 #include <dev/bhnd/bcma/bcma_eromvar.h>
 
 #include "bcm_machdep.h"
+#include "bhnd_nexusvar.h"
 
 #define	BCMFC_ERR(fmt, ...)	printf("%s: " fmt, __FUNCTION__, ##__VA_ARGS__)
 
+/* bcma-specific implementation of bcm_find_core() */
 int
 bcm_find_core_bcma(struct bhnd_chipid *chipid, bhnd_devclass_t devclass,
     int unit, struct bhnd_core_info *info, uintptr_t *addr)
@@ -98,3 +99,69 @@ bcm_find_core_bcma(struct bhnd_chipid *chipid, bhnd_devclass_t devclass,
 	/* Not found */
 	return (ENOENT);
 }
+
+static int
+bcma_nexus_probe(device_t dev)
+{
+	int error;
+
+	switch (bcm_get_platform()->id.chip_type) {
+	case BHND_CHIPTYPE_BCMA:
+	case BHND_CHIPTYPE_BCMA_ALT:
+	case BHND_CHIPTYPE_UBUS:
+		break;
+	default:
+		return (ENXIO);
+	}
+
+	if ((error = bcma_probe(dev)) > 0)
+		return (error);
+
+	/* Set device description */
+	bhnd_set_default_bus_desc(dev, &bcm_get_platform()->id);
+
+	return (BUS_PROBE_SPECIFIC);
+}
+
+static int
+bcma_nexus_attach(device_t dev)
+{
+	struct bcm_platform	*bp;
+	struct resource		*erom_res;
+	int			 error;
+	int			 rid;
+
+	bp = bcm_get_platform();
+
+	/* Map the EROM resource and enumerate the bus. */
+	rid = 0;
+	erom_res = bus_alloc_resource(dev, SYS_RES_MEMORY, &rid,
+	    bp->id.enum_addr, bp->id.enum_addr + BCMA_EROM_TABLE_SIZE,
+	    BCMA_EROM_TABLE_SIZE, RF_ACTIVE);
+	if (erom_res == NULL) {
+		device_printf(dev, "failed to allocate EROM resource\n");
+		return (ENXIO);
+	}
+
+	error = bcma_add_children(dev, erom_res, BCMA_EROM_TABLE_START);
+	bus_release_resource(dev, SYS_RES_MEMORY, rid, erom_res);
+
+	if (error)
+		return (error);
+
+	return (bcma_attach(dev));
+}
+
+static device_method_t bcma_nexus_methods[] = {
+	/* Device interface */
+	DEVMETHOD(device_probe,			bcma_nexus_probe),
+	DEVMETHOD(device_attach,		bcma_nexus_attach),
+
+	DEVMETHOD_END
+};
+
+DEFINE_CLASS_2(bhnd, bcma_nexus_driver, bcma_nexus_methods,
+    sizeof(struct bhnd_softc), bhnd_nexus_driver, bcma_driver);
+
+EARLY_DRIVER_MODULE(bcma_nexus, nexus, bcma_nexus_driver, bhnd_devclass, 0, 0,
+    BUS_PASS_BUS + BUS_PASS_ORDER_MIDDLE);
