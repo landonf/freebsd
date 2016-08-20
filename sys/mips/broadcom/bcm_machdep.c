@@ -96,15 +96,8 @@ __FBSDID("$FreeBSD$");
 #define	BCM_TRACE(_fmt, ...)
 #endif
 
-static int	bcm_find_core(struct bhnd_chipid *chipid,
-		    bhnd_devclass_t devclass, int unit,
-		    struct bhnd_core_info *info, uintptr_t *addr);
-static int	bcm_init_platform_data(struct bcm_platform *pdata);
-
-/* Allow bus-specific implementations to override bcm_find_core_(bcma|siba)
- * symbols, if included in the kernel build */
-__weak_reference(bcm_find_core_default, bcm_find_core_bcma);
-__weak_reference(bcm_find_core_default, bcm_find_core_siba);
+static int			 bcm_init_platform_data(struct bcm_platform *);
+static const struct bcm_bus_ops	*bcm_get_bus_ops(struct bhnd_chipid *);
 
 extern int	*edata;
 extern int	*end;
@@ -121,106 +114,100 @@ bcm_get_platform(void)
 	return (&bcm_platform_data);
 }
 
-/* Default (no-op) bcm_find_core() implementation. */
-int
-bcm_find_core_default(struct bhnd_chipid *chipid, bhnd_devclass_t devclass,
-    int unit, struct bhnd_core_info *info, uintptr_t *addr)
+/* Fetch the bus operations for @p chipid, returning NULL if unsupported
+ * or unavailable. */
+static const struct bcm_bus_ops *
+bcm_get_bus_ops(struct bhnd_chipid *cid)
 {
-	return (ENODEV);
-}
-
-/**
- * Search @p chipid's enumeration table for a core with @p devclass and
- * @p unit.
- * 
- * @param	chipid		Chip identification data, including the address
- *				of the enumeration table to be searched.
- * @param	devclass	Search for a core matching this device class.
- * @param	unit		The core's required unit number.
- * @param[out]	info		On success, will be populated with the core
- *				info.
- */
-static int
-bcm_find_core(struct bhnd_chipid *chipid, bhnd_devclass_t devclass, int unit,
-    struct bhnd_core_info *info, uintptr_t *addr)
-{
-	switch (chipid->chip_type) {
+	switch (cid->chip_type) {
 	case BHND_CHIPTYPE_SIBA:
-		return (bcm_find_core_siba(chipid, devclass, unit, info, addr));
-		break;
+		return (&bcm_siba_ops);
 	default:
-		if (!BHND_CHIPTYPE_HAS_EROM(chipid->chip_type)) {
-			printf("%s: unsupported chip type: %d\n", __FUNCTION__,
-			    chipid->chip_type);
-			return (ENXIO);
-		}
-		return (bcm_find_core_bcma(chipid, devclass, unit, info, addr));
+		if (BHND_CHIPTYPE_HAS_EROM(cid->chip_type))
+			return (&bcm_bcma_ops);
+		break;
 	}
+
+	printf("%s: unsupported chip type: %d\n", __FUNCTION__, cid->chip_type);
+	return (NULL);
 }
 
 /**
  * Populate platform configuration data.
  */
 static int
-bcm_init_platform_data(struct bcm_platform *pdata)
+bcm_init_platform_data(struct bcm_platform *bp)
 {
-	uint32_t		reg;
-	bhnd_addr_t		enum_addr;
-	long			maddr;
-	uint8_t			chip_type;
-	bool			aob, pmu;
-	int			error;
+	uint32_t	reg;
+	bhnd_addr_t	enum_addr;
+	long		maddr;
+	uint8_t		chip_type;
+	bool		aob, pmu;
+	int		error;
 
 	/* Fetch CFE console handle (if any). Must be initialized before
 	 * any calls to printf/early_putc. */
 #ifdef CFE
-	if ((pdata->cfe_console = cfe_getstdhandle(CFE_STDHANDLE_CONSOLE)) < 0)
-		pdata->cfe_console = -1;
+	if ((bp->cfe_console = cfe_getstdhandle(CFE_STDHANDLE_CONSOLE)) < 0)
+		bp->cfe_console = -1;
 #endif
 
 	/* Fetch bhnd/chipc address */ 
 	if (resource_long_value("bhnd", 0, "maddr", &maddr) == 0)
-		pdata->cc_addr = (u_long)maddr;
+		bp->cc_addr = (u_long)maddr;
 	else
-		pdata->cc_addr = BHND_DEFAULT_CHIPC_ADDR;
+		bp->cc_addr = BHND_DEFAULT_CHIPC_ADDR;
+
 
 	/* Read chip identifier from ChipCommon */
-	reg = BCM_SOC_READ_4(pdata->cc_addr, CHIPC_ID);
+	reg = BCM_SOC_READ_4(bp->cc_addr, CHIPC_ID);
 	chip_type = CHIPC_GET_BITS(reg, CHIPC_ID_BUS);
 
 	if (BHND_CHIPTYPE_HAS_EROM(chip_type))
-		enum_addr = BCM_SOC_READ_4(pdata->cc_addr, CHIPC_EROMPTR);
+		enum_addr = BCM_SOC_READ_4(bp->cc_addr, CHIPC_EROMPTR);
 	else
-		enum_addr = pdata->cc_addr;
+		enum_addr = bp->cc_addr;
 
-	pdata->id = bhnd_parse_chipid(reg, enum_addr);
+	bp->id = bhnd_parse_chipid(reg, enum_addr);
+
+
+	/* Use chip identifier to fetch our bus-specific platform operations */
+	if ((bp->bus_ops = bcm_get_bus_ops(&bp->id)) == NULL)
+		return (ENXIO);
 
 	/* Fetch chipc core info and capabilities */
-	pdata->cc_caps = BCM_SOC_READ_4(pdata->cc_addr, CHIPC_CAPABILITIES);
+	bp->cc_caps = BCM_SOC_READ_4(bp->cc_addr, CHIPC_CAPABILITIES);
 
-	error = bcm_find_core(&pdata->id, BHND_DEVCLASS_CC, 0, &pdata->cc_id,
-	    NULL);
+	error = bcm_find_core(bp, BHND_DEVCLASS_CC, 0, &bp->cc_id, NULL);
 	if (error) {
 		printf("%s: error locating chipc core: %d", __FUNCTION__,
 		    error);
 		return (error);
 	}
 
-	if (CHIPC_HWREV_HAS_CAP_EXT(pdata->cc_id.hwrev)) {
-		pdata->cc_caps_ext = BCM_SOC_READ_4(pdata->cc_addr,
+	if (CHIPC_HWREV_HAS_CAP_EXT(bp->cc_id.hwrev)) {
+		bp->cc_caps_ext = BCM_SOC_READ_4(bp->cc_addr,
 		    CHIPC_CAPABILITIES_EXT);
 	} else {
-		pdata->cc_caps_ext = 0x0;	
+		bp->cc_caps_ext = 0x0;	
 	}
 
-	/* Fetch PMU info */
-	pmu = CHIPC_GET_FLAG(pdata->cc_caps, CHIPC_CAP_PMU);
-	aob = CHIPC_GET_FLAG(pdata->cc_caps_ext, CHIPC_CAP2_AOB);
+	/* Now that we have ChipCommon core info, we can apply core count
+	 * fixups */
+	if (bp->bus_ops->fix_num_cores != NULL) {
+		error = bp->bus_ops->fix_num_cores(&bp->id, bp->cc_id.hwrev);
+		if (error)
+			return (error);
+	}
+
+	/* Use the ChipCommon capabilities to fetch our PMU info */
+	pmu = CHIPC_GET_FLAG(bp->cc_caps, CHIPC_CAP_PMU);
+	aob = CHIPC_GET_FLAG(bp->cc_caps_ext, CHIPC_CAP2_AOB);
 
 	if (pmu && aob) {
 		/* PMU block mapped to a PMU core on the Always-on-Bus (aob) */
-		error = bcm_find_core(&pdata->id, BHND_DEVCLASS_PMU, 0,
-		    &pdata->pmu_id,  &pdata->pmu_addr);
+		error = bcm_find_core(bp, BHND_DEVCLASS_PMU, 0, &bp->pmu_id,
+		    &bp->pmu_addr);
 
 		if (error) {
 			printf("%s: error locating pmu core: %d", __FUNCTION__,
@@ -229,17 +216,17 @@ bcm_init_platform_data(struct bcm_platform *pdata)
 		}
 	} else if (pmu) {
 		/* PMU block mapped to chipc */
-		pdata->pmu_addr = pdata->cc_addr;
-		pdata->pmu_id = pdata->cc_id;
+		bp->pmu_addr = bp->cc_addr;
+		bp->pmu_id = bp->cc_id;
 	} else {
 		/* No PMU */
-		pdata->pmu_addr = 0x0;
-		memset(&pdata->pmu_id, 0, sizeof(pdata->pmu_id));
+		bp->pmu_addr = 0x0;
+		memset(&bp->pmu_id, 0, sizeof(bp->pmu_id));
 	}
 
 	if (pmu) {
-		error = bhnd_pmu_query_init(&pdata->pmu, NULL, pdata->id,
-		    &bcm_pmu_soc_io, pdata);
+		error = bhnd_pmu_query_init(&bp->pmu, NULL, bp->id,
+		    &bcm_pmu_soc_io, bp);
 		if (error) {
 			printf("%s: bhnd_pmu_query_init() failed: %d\n",
 			    __FUNCTION__, error);
