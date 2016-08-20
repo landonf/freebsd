@@ -90,10 +90,16 @@ CODE {
 		panic("bhnd_bus_read_boardinfo unimplemented");
 	}
 
-	static int bhnd_bus_null_assign_interrupt(device_t dev, device_t child,
-	    int *rid, rman_res_t *startp, rman_res_t *countp)
+	static int
+	bhnd_bus_null_get_intr_count(device_t dev, device_t child)
 	{
-		panic("bhnd_bus_assign_interrupt unimplemented");
+		panic("bhnd_bus_get_intr_count unimplemented");
+	}
+
+	static int
+	bhnd_bus_null_assign_intr(device_t dev, device_t child, int rid)
+	{
+		panic("bhnd_bus_assign_intr unimplemented");
 	}
 
 	static void
@@ -315,30 +321,41 @@ METHOD int read_board_info {
 } DEFAULT bhnd_bus_null_read_board_info;
 
 /**
- * Assign an IRQ to @p child.
+ * Return the number of interrupts to be assigned to @p child via
+ * BHND_BUS_ASSIGN_INTR().
  * 
- * @param dev The parent of @p child.
- * @param child The bhnd device to which an IRQ should be assigned.
- * @param[in,out] rid The rid requested by @p child; On success, will be set to
- * the assigned rid.
- * @param[out] startp On success, the assigned resource address.
- * @param[out] countp On success, the assigned resource count.
+ * @param dev The bhnd bus parent of @p child.
+ * @param child The bhnd device for which a count should be returned.
  *
- * On bhnd(4) devices, SYS_RES_IRQ resource IDs are assumed to be assigned
- * sequentially, starting at rid 0.
- *
- * @retval 0		If an IRQ was assigned, or a valid assignment
- *			for the given resource ID already exists.
- * @retval non-zero	If assigning an IRQ otherwise fails, a regular unix
- *			error code will be returned.
+ * @retval 0		If no interrupts should be assigned.
+ * @retval non-zero	The count of interrupt resource IDs to be assigned,
+ *			starting at rid 0.
  */
-METHOD int assign_interrupt {
+METHOD int get_intr_count {
 	device_t dev;
 	device_t child;
-	int *rid;
-	rman_res_t *startp;
-	rman_res_t *countp;
-} DEFAULT bhnd_bus_null_assign_interrupt;
+} DEFAULT bhnd_bus_null_get_intr_count;
+
+/**
+ * Assign an interrupt to @p child, enabling future SYS_RES_IRQ
+ * resource allocations allocations for @p rid by @p child.
+ * 
+ * @param dev The bhnd bus parent of @p child.
+ * @param child The bhnd device to which an interrupt should be assigned.
+ * @param rid The requested interrupt resource ID.
+ *
+ * On bhnd(4) devices, SYS_RES_IRQ resource IDs are allocated sequentially,
+ * starting at rid 0.
+ *
+ * @retval 0		If an interrupt was assigned.
+ * @retval non-zero	If assigning an interrupt otherwise fails, a regular
+ *			unix error code will be returned.
+ */
+METHOD int assign_intr {
+	device_t dev;
+	device_t child;
+	int rid;
+} DEFAULT bhnd_bus_null_assign_intr;
 
 /**
  * Allocate and zero-initialize a buffer suitably sized and aligned for a

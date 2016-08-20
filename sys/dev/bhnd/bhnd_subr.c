@@ -1426,6 +1426,47 @@ bhnd_bus_generic_get_nvram_var(device_t dev, device_t child, const char *name,
 }
 
 /**
+ * Helper function for implementing BHND_BUS_GET_INTR_COUNT().
+ * 
+ * 
+ * This implementation of BHND_BUS_GET_INTR_COUNT() simply calls the
+ * BHND_BUS_GET_INTR_COUNT() method of the parent of @p dev.
+ * 
+ * If no parent device is available (i.e. on a the bus root), 0 is
+ * returned.
+ */
+int
+bhnd_bus_generic_get_intr_count(device_t dev, device_t child)
+{
+	device_t parent;
+
+	if ((parent = device_get_parent(dev)) == NULL)
+		return (0);
+
+	return (BHND_BUS_GET_INTR_COUNT(parent, child));
+}
+
+/**
+ * Helper function for implementing BHND_BUS_ASSIGN_INTR().
+ * 
+ * This implementation of BHND_BUS_ASSIGN_INTR() simply calls the
+ * BHND_BUS_ASSIGN_INTR() method of the parent of @p dev.
+ * 
+ * If no parent device is available (i.e. on a the bus root), ENODEV is
+ * returned.
+ */
+int
+bhnd_bus_generic_assign_intr(device_t dev, device_t child, int rid)
+{
+	device_t parent;
+
+	if ((parent = device_get_parent(dev)) == NULL)
+		return (ENODEV);
+
+	return (BHND_BUS_ASSIGN_INTR(parent, child, rid));
+}
+
+/**
  * Helper function for implementing BHND_BUS_ALLOC_RESOURCE().
  * 
  * This implementation of BHND_BUS_ALLOC_RESOURCE() delegates allocation

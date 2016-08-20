@@ -518,6 +518,8 @@ bcma_add_children(device_t bus, struct resource *erom_res, bus_size_t erom_offse
 
 	/* Add all cores. */
 	while (!error) {
+		int intr_count;
+
 		/* Parse next core */
 		error = bcma_erom_parse_corecfg(&erom, &corecfg);
 		if (error && error == ENOENT) {
@@ -545,6 +547,20 @@ bcma_add_children(device_t bus, struct resource *erom_res, bus_size_t erom_offse
 		 * unpopulated, the device shouldn't be used. */
 		if (bhnd_is_hw_disabled(child))
 			device_disable(child);
+
+		/* Attempt to assign interrupts */
+		intr_count = 0;
+		if (device_is_enabled(child))
+			intr_count = BHND_BUS_GET_INTR_COUNT(bus, child);
+
+		for (int rid = 0; rid < intr_count; rid++) {
+			error = BHND_BUS_ASSIGN_INTR(bus, child, rid);
+			if (!error)
+				continue;
+
+			device_printf(bus, "failed to assign interrupt %d to "
+			    "%s: %d\n", rid, device_get_nameunit(child), error);
+		}
 
 		/* Issue bus callback for fully initialized child. */
 		BHND_BUS_CHILD_ADDED(bus, child);

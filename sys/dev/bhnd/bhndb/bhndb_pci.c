@@ -451,26 +451,32 @@ bhndb_pci_detach(device_t dev)
 }
 
 static int
-bhndb_pci_assign_interrupt(device_t dev, device_t child, int *rid,
-    rman_res_t *startp, rman_res_t *countp)
+bhndb_pci_get_intr_count(device_t dev, device_t child)
+{
+	return (1);
+}
+
+static int
+bhndb_pci_assign_intr(device_t dev, device_t child, int rid)
 {
 	struct bhndb_pci_softc	*sc;
+	rman_res_t		 start, count;
 	int			 error;
 
 	sc = device_get_softc(dev);
  
 	/* We only support a single interrupt per device */
-	if (*rid != 0)
+	if (rid != 0)
 		return (ENXIO);
 
-	/* Fetch resource start/count */
+	/* Fetch our PCI interrupt start/count */
 	error = bus_get_resource(sc->parent, SYS_RES_IRQ, sc->intr.intr_rid,
-	    startp, countp);
+	    &start, &count);
 	if (error)
 		return (error);
 
-	*rid = sc->intr.intr_rid;
-	return (0);
+	/* Add to child's resource list */
+        return (bus_set_resource(child, SYS_RES_IRQ, rid, start, count));
 }
 
 static int
@@ -741,7 +747,8 @@ static device_method_t bhndb_pci_methods[] = {
 	DEVMETHOD(device_detach,		bhndb_pci_detach),
 
 	/* BHND interface */
-	DEVMETHOD(bhnd_bus_assign_interrupt,	bhndb_pci_assign_interrupt),
+	DEVMETHOD(bhnd_bus_get_intr_count,	bhndb_pci_get_intr_count),
+	DEVMETHOD(bhnd_bus_assign_intr,		bhndb_pci_assign_intr),
 	DEVMETHOD(bhnd_bus_pwrctl_get_clksrc,	bhndb_pci_pwrctl_get_clksrc),
 	DEVMETHOD(bhnd_bus_pwrctl_gate_clock,	bhndb_pci_pwrctl_gate_clock),
 	DEVMETHOD(bhnd_bus_pwrctl_ungate_clock,	bhndb_pci_pwrctl_ungate_clock),

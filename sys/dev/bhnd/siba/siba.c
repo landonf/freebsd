@@ -562,6 +562,7 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 		device_t		 child;
 		uint32_t		 idhigh, idlow;
 		rman_res_t		 r_count, r_end, r_start;
+		int			 intr_count;
 
 		/* Map the core's register block */
 		rid = 0;
@@ -613,10 +614,24 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 		 * unpopulated, the device shouldn't be used. */
 		if (bhnd_is_hw_disabled(child))
 			device_disable(child);
-				
+	
 		/* Release our resource */
 		bus_release_resource(dev, SYS_RES_MEMORY, rid, r);
 		r = NULL;
+
+		/* Attempt to assign interrupts */
+		intr_count = 0;
+		if (device_is_enabled(child))
+			intr_count = BHND_BUS_GET_INTR_COUNT(dev, child);
+
+		for (int rid = 0; rid < intr_count; rid++) {
+			error = BHND_BUS_ASSIGN_INTR(dev, child, rid);
+			if (!error)
+				continue;
+
+			device_printf(dev, "failed to assign interrupt %d to "
+			    "%s: %d\n", rid, device_get_nameunit(child), error);
+		}
 
 		/* Issue bus callback for fully initialized child. */
 		BHND_BUS_CHILD_ADDED(dev, child);

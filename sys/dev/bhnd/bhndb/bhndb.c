@@ -793,7 +793,6 @@ bhndb_resume_resource(device_t dev, device_t child, int type,
 	    rman_get_rid(r), r, NULL));
 }
 
-
 /**
  * Default bhndb(4) implementation of BUS_READ_IVAR().
  */

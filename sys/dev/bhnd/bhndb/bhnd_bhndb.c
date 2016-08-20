@@ -66,16 +66,6 @@ bhnd_bhndb_get_attach_type(device_t dev, device_t child)
 	return (BHND_ATTACH_ADAPTER);
 }
 
-
-static int
-bhnd_bhndb_assign_interrupt(device_t dev, device_t child, int *rid,
-    rman_res_t *startp, rman_res_t *countp)
-{
-	/* Delegate to parent bridge */
-	return (BHND_BUS_ASSIGN_INTERRUPT(device_get_parent(dev), child, rid,
-	    startp, countp));
-}
-
 static bhnd_clksrc
 bhnd_bhndb_pwrctl_get_clksrc(device_t dev, device_t child,
 	bhnd_clock clock)
@@ -106,7 +96,8 @@ bhnd_bhndb_pwrctl_ungate_clock(device_t dev, device_t child,
 static device_method_t bhnd_bhndb_methods[] = {
 	/* BHND interface */
 	DEVMETHOD(bhnd_bus_get_attach_type,	bhnd_bhndb_get_attach_type),
-	DEVMETHOD(bhnd_bus_assign_interrupt,	bhnd_bhndb_assign_interrupt),
+	DEVMETHOD(bhnd_bus_get_intr_count,	bhnd_bus_generic_get_intr_count),
+	DEVMETHOD(bhnd_bus_assign_intr,		bhnd_bus_generic_assign_intr),
 	DEVMETHOD(bhnd_bus_read_board_info,	bhnd_bhndb_read_board_info),
 
 	DEVMETHOD(bhnd_bus_pwrctl_get_clksrc,	bhnd_bhndb_pwrctl_get_clksrc),
