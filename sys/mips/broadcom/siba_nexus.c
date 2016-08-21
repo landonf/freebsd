@@ -40,7 +40,7 @@ __FBSDID("$FreeBSD$");
 
 /* siba-specific implementation of bcm_find_core() */
 int
-bcm_find_core_siba(struct bhnd_chipid *chipid, bhnd_devclass_t devclass,
+bcm_siba_find_core(struct bhnd_chipid *chipid, bhnd_devclass_t devclass,
     int unit, struct bhnd_core_info *info, uintptr_t *addr)
 {
 	struct siba_core_id	scid;
@@ -64,6 +64,13 @@ bcm_find_core_siba(struct bhnd_chipid *chipid, bhnd_devclass_t devclass,
 		*addr = cc_addr;
 
 	return (0);
+}
+
+/* siba-specific implementation of bcm_fix_ncores(). */
+int
+bcm_siba_fix_ncores(struct bhnd_chipid *chipid, uint16_t chipc_hwrev)
+{
+	return (siba_fix_num_cores(chipid, chipc_hwrev));
 }
 
 static int

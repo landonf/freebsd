@@ -41,7 +41,7 @@ __FBSDID("$FreeBSD$");
 
 /* bcma-specific implementation of bcm_find_core() */
 int
-bcm_find_core_bcma(struct bhnd_chipid *chipid, bhnd_devclass_t devclass,
+bcm_bcma_find_core(struct bhnd_chipid *chipid, bhnd_devclass_t devclass,
     int unit, struct bhnd_core_info *info, uintptr_t *addr)
 {
 	struct bcma_erom		erom;

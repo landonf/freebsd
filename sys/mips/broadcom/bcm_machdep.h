@@ -40,9 +40,11 @@
 
 extern const struct bhnd_pmu_io	bcm_pmu_soc_io;
 
-typedef int (bcm_bus_find_core)(struct bhnd_chipid *chipid,
-    bhnd_devclass_t devclass, int unit, struct bhnd_core_info *info,
-    uintptr_t *addr);
+typedef int	(bcm_bus_find_core)(struct bhnd_chipid *chipid,
+		    bhnd_devclass_t devclass, int unit,
+		    struct bhnd_core_info *info, uintptr_t *addr);
+
+
 
 struct bcm_platform {
 	struct bhnd_chipid	id;		/**< chip id */
@@ -74,9 +76,10 @@ uint64_t		 bcm_get_ilpfreq(struct bcm_platform *bp);
 
 u_int			 bcm_get_uart_rclk(struct bcm_platform *bp);
 
-bcm_bus_find_core	 bcm_find_core_default;
-bcm_bus_find_core	 bcm_find_core_bcma;
-bcm_bus_find_core	 bcm_find_core_siba;
+bcm_bus_find_core	 bcm_bcma_find_core __weak_symbol;
+bcm_bus_find_core	 bcm_siba_find_core __weak_symbol;
+int			 bcm_siba_fix_ncores(struct bhnd_chipid *chipid,
+			     uint16_t chipc_hwrev) __weak_symbol;
 
 #define	BCM_SOC_ADDR(_addr, _offset)			\
 	MIPS_PHYS_TO_KSEG1((_addr) + (_offset))
