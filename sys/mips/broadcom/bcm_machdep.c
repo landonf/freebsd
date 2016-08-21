@@ -101,16 +101,11 @@ static int	bcm_find_core(struct bhnd_chipid *chipid,
 		    struct bhnd_core_info *info, uintptr_t *addr);
 static int	bcm_init_platform_data(struct bcm_platform *pdata);
 
-/* Allow bus-specific implementations to override bcm_find_core_(bcma|siba)
- * symbols, if included in the kernel build */
-__weak_reference(bcm_find_core_default, bcm_find_core_bcma);
-__weak_reference(bcm_find_core_default, bcm_find_core_siba);
-
-extern int	*edata;
-extern int	*end;
-
 static struct bcm_platform	 bcm_platform_data;
 static bool			 bcm_platform_data_avail = false;
+
+extern int			*edata;
+extern int			*end;
 
 struct bcm_platform *
 bcm_get_platform(void)
@@ -121,12 +116,22 @@ bcm_get_platform(void)
 	return (&bcm_platform_data);
 }
 
-/* Default (no-op) bcm_find_core() implementation. */
-int
-bcm_find_core_default(struct bhnd_chipid *chipid, bhnd_devclass_t devclass,
-    int unit, struct bhnd_core_info *info, uintptr_t *addr)
+/**
+ * Fix the core count in @p cid, if required.
+ * 
+ * On early siba(4) devices, the ChipCommon core does not provide a valid
+ * CHIPC_ID_NUMCORE field (see CHIPC_NCORES_MIN_HWREV()). This function writes
+ * the correct count to @p cid, if known.
+ */
+static int
+bcm_fix_ncores(struct bhnd_chipid *cid, uint32_t chipc_hwrev)
 {
-	return (ENODEV);
+	if (cid->chip_type != BHND_CHIPTYPE_SIBA)
+		return (0);
+	else if (bcm_siba_fix_ncores == NULL)
+		return (ENXIO);
+	else
+		return (bcm_siba_fix_ncores(cid, chipc_hwrev));
 }
 
 /**
@@ -146,7 +151,10 @@ bcm_find_core(struct bhnd_chipid *chipid, bhnd_devclass_t devclass, int unit,
 {
 	switch (chipid->chip_type) {
 	case BHND_CHIPTYPE_SIBA:
-		return (bcm_find_core_siba(chipid, devclass, unit, info, addr));
+		if (bcm_siba_find_core == NULL)
+			return (ENODEV);
+		
+		return (bcm_siba_find_core(chipid, devclass, unit, info, addr));
 		break;
 	default:
 		if (!BHND_CHIPTYPE_HAS_EROM(chipid->chip_type)) {
@@ -154,7 +162,11 @@ bcm_find_core(struct bhnd_chipid *chipid, bhnd_devclass_t devclass, int unit,
 			    chipid->chip_type);
 			return (ENXIO);
 		}
-		return (bcm_find_core_bcma(chipid, devclass, unit, info, addr));
+
+		if (bcm_bcma_find_core == NULL)
+			return (ENODEV);
+
+		return (bcm_bcma_find_core(chipid, devclass, unit, info, addr));
 	}
 }
 
@@ -211,6 +223,14 @@ bcm_init_platform_data(struct bcm_platform *pdata)
 		    CHIPC_CAPABILITIES_EXT);
 	} else {
 		pdata->cc_caps_ext = 0x0;	
+	}
+
+	/* Now that we have the ChipCommon core info, we can try to fix up the
+	 * core count */
+	if ((error = bcm_fix_ncores(&pdata->id, pdata->cc_id.hwrev))) {
+		printf("%s: failed to determine core count: %d", __FUNCTION__,
+		    error);
+		return (error);
 	}
 
 	/* Fetch PMU info */
