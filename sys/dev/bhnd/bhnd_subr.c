@@ -304,8 +304,8 @@ bhnd_core_class(const struct bhnd_core_info *ci)
 int
 bhnd_format_chip_id(char *buffer, size_t size, uint16_t chip_id)
 {
-	/* All hex formatted IDs are within the range of 0x4000-0x9FFF */
-	if (chip_id >= 0x4000 && chip_id <= 0x9FFF)
+	/* All hex formatted IDs are within the range of 0x4000-0x9C3F (40000-1) */
+	if (chip_id >= 0x4000 && chip_id <= 0x9C3F)
 		return (snprintf(buffer, size, "BCM%hX", chip_id));
 	else
 		return (snprintf(buffer, size, "BCM%hu", chip_id));
