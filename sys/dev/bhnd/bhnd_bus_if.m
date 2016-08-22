@@ -1,5 +1,5 @@
 #-
-# Copyright (c) 2015 Landon Fuller <landon@landonf.org>
+# Copyright (c) 2015-2016 Landon Fuller <landonf@FreeBSD.org>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -89,7 +89,19 @@ CODE {
 	{
 		panic("bhnd_bus_read_boardinfo unimplemented");
 	}
-	
+
+	static int
+	bhnd_bus_null_get_intr_count(device_t dev, device_t child)
+	{
+		panic("bhnd_bus_get_intr_count unimplemented");
+	}
+
+	static int
+	bhnd_bus_null_assign_intr(device_t dev, device_t child, int rid)
+	{
+		panic("bhnd_bus_assign_intr unimplemented");
+	}
+
 	static void
 	bhnd_bus_null_child_added(device_t dev, device_t child)
 	{
@@ -332,6 +344,50 @@ METHOD void free_devinfo {
 	device_t dev;
 	struct bhnd_devinfo *dinfo;
 };
+
+
+/**
+ * Return the number of interrupts to be assigned to @p child via
+ * BHND_BUS_ASSIGN_INTR().
+ * 
+ * @param dev The bhnd bus parent of @p child.
+ * @param child The bhnd device for which a count should be returned.
+ *
+ * @retval 0		If no interrupts should be assigned.
+ * @retval non-zero	The count of interrupt resource IDs to be
+ *			assigned, starting at rid 0.
+ */
+METHOD int get_intr_count {
+	device_t dev;
+	device_t child;
+} DEFAULT bhnd_bus_null_get_intr_count;
+
+/**
+ * Assign an interrupt to @p child via bus_set_resource().
+ *
+ * The default bus implementation of this method should assign backplane
+ * interrupt values to @p child.
+ *
+ * Bridge-attached bus implementations may instead override standard
+ * interconnect IRQ assignment, providing IRQs inherited from the parent bus.
+ *
+ * TODO: Once we can depend on INTRNG, we can replace this with a bridge-level
+ * interrupt controller.
+ * 
+ * @param dev The bhnd bus parent of @p child.
+ * @param child The bhnd device to which an interrupt should be
+ * assigned.
+ * @param rid The interrupt resource ID to be assigned.
+ *
+ * @retval 0		If an interrupt was assigned.
+ * @retval non-zero	If assigning an interrupt otherwise fails, a regular
+ *			unix error code will be returned.
+ */
+METHOD int assign_intr {
+	device_t dev;
+	device_t child;
+	int rid;
+} DEFAULT bhnd_bus_null_assign_intr;
 
 /**
  * Notify a bhnd bus that a child was added.

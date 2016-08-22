@@ -925,9 +925,14 @@ bhnd_generic_print_child(device_t dev, device_t child)
 	retval += bus_print_child_header(dev, child);
 
 	rl = BUS_GET_RESOURCE_LIST(dev, child);
+	
+	
 	if (rl != NULL) {
 		retval += resource_list_print_type(rl, "mem", SYS_RES_MEMORY,
 		    "%#jx");
+
+		retval += resource_list_print_type(rl, "irq", SYS_RES_IRQ,
+		    "%#jd");
 	}
 
 	retval += printf(" at core %u", bhnd_get_core_index(child));

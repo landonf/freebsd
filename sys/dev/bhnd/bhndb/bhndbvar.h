@@ -62,6 +62,9 @@ int	bhndb_generic_resume(device_t dev);
 int	bhndb_generic_init_full_config(device_t dev, device_t child,
 	    const struct bhndb_hw_priority *hw_prio_table);
 
+int	bhnd_generic_br_get_intr_count(device_t dev, device_t child);
+int	bhnd_generic_br_assign_intr(device_t dev, device_t child, int rid);
+
 int	bhnd_generic_br_suspend_child(device_t dev, device_t child);
 int	bhnd_generic_br_resume_child(device_t dev, device_t child);
 

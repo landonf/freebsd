@@ -86,6 +86,36 @@ bhndb_do_suspend_resources(device_t dev, struct resource_list *rl)
 }
 
 /**
+ * Helper function for implementing BHND_BUS_GET_INTR_COUNT() on bridged
+ * bhnd(4) buses.
+ * 
+ * This implementation of BHND_BUS_GET_INTR_COUNT() simply calls the
+ * BHND_BUS_GET_INTR_COUNT() method of the parent of @p dev.
+ */
+int
+bhnd_generic_br_get_intr_count(device_t dev, device_t child)
+{
+	KASSERT(device_get_parent(dev) != NULL, ("missing parent bridge"));
+
+	return (BHND_BUS_GET_INTR_COUNT(device_get_parent(dev), child));
+}
+
+/**
+ * Helper function for implementing BHND_BUS_ASSIGN_INTR() on bridged
+ * bhnd(4) buses.
+ * 
+ * This implementation of BHND_BUS_ASSIGN_INTR() simply calls the
+ * BHND_BUS_ASSIGN_INTR() method of the parent of @p dev.
+ */
+int
+bhnd_generic_br_assign_intr(device_t dev, device_t child, int rid)
+{
+	KASSERT(device_get_parent(dev) != NULL, ("missing parent bridge"));
+
+	return (BHND_BUS_ASSIGN_INTR(device_get_parent(dev), child, rid));
+}
+
+/**
  * Helper function for implementing BUS_RESUME_CHILD() on bridged
  * bhnd(4) buses.
  * 
