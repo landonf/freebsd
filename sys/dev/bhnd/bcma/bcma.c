@@ -518,6 +518,8 @@ bcma_add_children(device_t bus, struct resource *erom_res, bus_size_t erom_offse
 
 	/* Add all cores. */
 	while (!error) {
+		int nintr;
+
 		/* Parse next core */
 		error = bcma_erom_parse_corecfg(&erom, &corecfg);
 		if (error && error == ENOENT) {
@@ -540,6 +542,17 @@ bcma_add_children(device_t bus, struct resource *erom_res, bus_size_t erom_offse
 
 		/* The dinfo instance now owns the corecfg value */
 		corecfg = NULL;
+
+		/* Assign interrupts */
+		nintr = BHND_BUS_GET_INTR_COUNT(bus, child);
+		for (int rid = 0; rid < nintr; rid++) {
+			error = BHND_BUS_ASSIGN_INTR(bus, child, rid);
+			if (error) {
+				device_printf(bus, "failed to assign interrupt "
+				    "%d to %s: %d\n", rid,
+				     device_get_nameunit(child), error);
+			}
+		}
 
 		/* If pins are floating or the hardware is otherwise
 		 * unpopulated, the device shouldn't be used. */

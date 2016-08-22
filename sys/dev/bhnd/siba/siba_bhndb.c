@@ -270,7 +270,6 @@ siba_bhndb_wars_hwup(struct siba_softc *sc)
 	return (0);
 }
 
-
 static device_method_t siba_bhndb_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,			siba_bhndb_probe),
@@ -280,6 +279,10 @@ static device_method_t siba_bhndb_methods[] = {
 	/* Bus interface */
 	DEVMETHOD(bus_suspend_child,		siba_bhndb_suspend_child),
 	DEVMETHOD(bus_resume_child,		siba_bhndb_resume_child),
+
+	/* BHND interface */
+	DEVMETHOD(bhnd_bus_get_intr_count,	bhnd_generic_br_get_intr_count),
+	DEVMETHOD(bhnd_bus_assign_intr,		bhnd_generic_br_assign_intr),
 
 	DEVMETHOD_END
 };
