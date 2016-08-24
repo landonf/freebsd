@@ -63,6 +63,16 @@
 #define	BCMA_DMP_OOBSELOUTC74	0x144	/**< C4-C7 output selectors */
 #define	BCMA_DMP_OOBSELOUTD30	0x160	/**< D0-D3 output selectors */
 #define	BCMA_DMP_OOBSELOUTD74	0x164	/**< D4-D7 output selectors */
+
+#define	BCMA_DMP_OOBSEL(_base, _bank, _sel)	\
+    (_base + (_bank * 8) + (_sel >= 4 ? 4 : 0))
+
+#define	BCMA_DMP_OOBSELIN(_bank, _sel)		\
+    BCMA_DMP_OOBSEL(BCMA_DMP_OOBSELINA30, _bank, _sel)
+    
+#define	BCMA_DMP_OOBSELOUT(_bank, _sel)		\
+    BCMA_DMP_OOBSEL(BCMA_DMP_OOBSELOUTA30, _bank, _sel)
+
 #define	BCMA_DMP_OOBSYNCA	0x200
 #define	BCMA_DMP_OOBSELOUTAEN	0x204
 #define	BCMA_DMP_OOBSYNCB	0x220
@@ -71,6 +81,13 @@
 #define	BCMA_DMP_OOBSELOUTCEN	0x244
 #define	BCMA_DMP_OOBSYNCD	0x260
 #define	BCMA_DMP_OOBSELOUTDEN	0x264
+
+#define	BCMA_DMP_OOBSYNC(_bank)	\
+    (BCMA_DMP_OOBSYNCA + (_bank * 8))
+
+#define	BCMA_DMP_OOBSELOUT_EN(_bank)	\
+    (BCMA_DMP_OOBSELOUTAEN + (_bank * 8))
+
 #define	BCMA_DMP_OOBAEXTWIDTH	0x300
 #define	BCMA_DMP_OOBAINWIDTH	0x304
 #define	BCMA_DMP_OOBAOUTWIDTH	0x308
@@ -83,6 +100,18 @@
 #define	BCMA_DMP_OOBDEXTWIDTH	0x360
 #define	BCMA_DMP_OOBDINWIDTH	0x364
 #define	BCMA_DMP_OOBDOUTWIDTH	0x368
+
+#define	BCMA_DMP_OOB_EXTWIDTH(_bank)		\
+    (BCMA_DMP_OOBAEXTWIDTH + (_bank * 12))
+
+#define	BCMA_DMP_OOB_INWIDTH(_bank)		\
+    (BCMA_DMP_OOBAINWIDTH + (_bank * 12))
+
+#define	BCMA_DMP_OOB_OUTWIDTH(_bank)		\
+    (BCMA_DMP_OOBAOUTWIDTH + (_bank * 12))
+
+
+
 
 // This was inherited from Broadcom's aidmp.h header
 // Is it required for any of our use-cases?
@@ -156,9 +185,10 @@
 
 
 /* OOBSEL(IN|OUT) */
+
 #define	BCMA_DMP_OOBSEL_MASK		0xFF		/**< OOB selector mask */
 #define	BCMA_DMP_OOBSEL_EN		(1<<7)		/**< OOB selector enable bit */
-#define	BCMA_DMP_OOBSEL_SHIFT(_sel)	((_sel) * 8)
+#define	BCMA_DMP_OOBSEL_SHIFT(_sel)	((_sel % BCMA_OOB_NUM_SEL) * 8)
 #define	BCMA_DMP_OOBSEL_MSG_MASK	0x7F		/**< OOB selector message mask */
 #define	BCMA_DMP_OOBSEL_MSG_SHIFT	0		/**< OOB selector message mask */
 

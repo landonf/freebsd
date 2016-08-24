@@ -43,6 +43,9 @@ __FBSDID("$FreeBSD$");
 
 #include "bcma_eromreg.h"
 #include "bcma_eromvar.h"
+
+#include "bcma_dmp.h"
+
 #include <dev/bhnd/bhnd_core.h>
 
 int
@@ -107,6 +110,43 @@ bcma_attach(device_t dev)
 			    "block for core %d\n", i);
 			error = ENXIO;
 			goto cleanup;
+		}
+
+		printf("%s %s:\n", bhnd_get_vendor_name(child), bhnd_get_device_name(child));
+		printf("  Inputs:\n");
+		for (u_int bank = 0; bank < BCMA_OOB_NUM_BANKS; bank ++) {
+			char ch = 'A' + bank;
+			uint32_t iw = bhnd_bus_read_4(dinfo->res_agent, BCMA_DMP_OOB_INWIDTH(bank));
+			uint32_t ew = bhnd_bus_read_4(dinfo->res_agent, BCMA_DMP_OOB_EXTWIDTH(bank));
+
+			if (iw != 0 || ew != 0)
+				printf("   Bank %c (width=%#x, ext_width=%#x)\n", ch, iw, ew);
+
+			for (u_int sel = 0; sel < BCMA_OOB_NUM_SEL; sel++) {
+				uint32_t in = bhnd_bus_read_4(dinfo->res_agent, BCMA_DMP_OOBSELIN(bank, sel));
+				uint32_t sv = (in >> BCMA_DMP_OOBSEL_SHIFT(sel)) & BCMA_DMP_OOBSEL_MASK;
+				if (sv != 0) {
+					printf("\t%c%u: 0x%02x (%s)\n", ch, sel, (sv & BCMA_DMP_OOBSEL_MSG_MASK), ((sv & BCMA_DMP_OOBSEL_EN) ? "enabled" : "disabled"));
+				}
+			}
+		}
+
+		printf("  Outputs:\n");
+		for (u_int bank = 0; bank < BCMA_OOB_NUM_BANKS; bank ++) {
+			char ch = 'A' + bank;
+			
+			uint32_t w = bhnd_bus_read_4(dinfo->res_agent, BCMA_DMP_OOB_OUTWIDTH(bank));
+
+			if (w != 0)
+				printf("   Bank %c (width=%#x)\n", ch, w);
+			
+			for (u_int sel = 0; sel < BCMA_OOB_NUM_SEL; sel++) {
+				uint32_t in = bhnd_bus_read_4(dinfo->res_agent, BCMA_DMP_OOBSELOUT(bank, sel));
+				uint32_t sv = (in >> BCMA_DMP_OOBSEL_SHIFT(sel)) & BCMA_DMP_OOBSEL_MASK;
+				if (sv != 0) {
+					printf("\t%c%u: 0x%02x (%s)\n", ch, sel, (sv & BCMA_DMP_OOBSEL_MSG_MASK), ((sv & BCMA_DMP_OOBSEL_EN) ? "enabled" : "disabled"));
+				}
+			}
 		}
 	}
 

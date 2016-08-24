@@ -93,7 +93,8 @@ CODE {
 	static int
 	bhnd_bus_null_get_intr_count(device_t dev, device_t child)
 	{
-		panic("bhnd_bus_get_intr_count unimplemented");
+		//panic("bhnd_bus_get_intr_count unimplemented");
+		return (0);
 	}
 
 	static int

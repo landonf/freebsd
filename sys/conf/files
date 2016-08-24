@@ -1156,6 +1156,7 @@ dev/bhnd/bcma/bcma.c			optional bcma bhnd
 dev/bhnd/bcma/bcma_bhndb.c		optional bcma bhnd bhndb
 dev/bhnd/bcma/bcma_erom.c		optional bcma bhnd
 dev/bhnd/bcma/bcma_nexus.c		optional bcma_nexus bcma bhnd
+dev/bhnd/bcma/bcma_pl367.c		optional bcma bhnd
 dev/bhnd/bcma/bcma_subr.c		optional bcma bhnd
 dev/bhnd/cores/chipc/bhnd_chipc_if.m	optional bhnd
 dev/bhnd/cores/chipc/bhnd_sprom_chipc.c	optional bhnd

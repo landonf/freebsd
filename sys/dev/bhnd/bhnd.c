@@ -83,10 +83,10 @@ static const struct bhnd_nomatch {
 	uint16_t	device;		/**< core id */
 	bool		if_verbose;	/**< print when bootverbose is set. */
 } bhnd_nomatch_table[] = {
-	{ BHND_MFGID_ARM,	BHND_COREID_OOB_ROUTER,		true	},
-	{ BHND_MFGID_ARM,	BHND_COREID_EROM,		true	},
-	{ BHND_MFGID_ARM,	BHND_COREID_PL301,		true	},
-	{ BHND_MFGID_ARM,	BHND_COREID_APB_BRIDGE,		true	},
+//	{ BHND_MFGID_ARM,	BHND_COREID_OOB_ROUTER,		true	},
+//	{ BHND_MFGID_ARM,	BHND_COREID_EROM,		true	},
+//	{ BHND_MFGID_ARM,	BHND_COREID_PL301,		true	},
+//	{ BHND_MFGID_ARM,	BHND_COREID_APB_BRIDGE,		true	},
 	{ BHND_MFGID_ARM,	BHND_COREID_AXI_UNMAPPED,	false	},
 
 	{ BHND_MFGID_INVALID,	BHND_COREID_INVALID,		false	}
