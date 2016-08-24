@@ -42,6 +42,13 @@
  * unconfirmed, and may be incorrect.
  */
 
+#define	BCMA_DMP_GET_FLAG(_value, _flag)	\
+	(((_value) & _flag) != 0)
+#define	BCMA_DMP_GET_BITS(_value, _field)	\
+        ((_value & _field ## _MASK) >> _field ## _SHIFT)
+#define	BHND_PMU_SET_BITS(_value, _field)	\
+        (((_value) & _field ## _MASK) >> _field ## _SHIFT)
+
 /* Out-of-band Router registers */
 #define	BCMA_OOB_BUSCONFIG	0x020
 #define	BCMA_OOB_STATUSA	0x100
