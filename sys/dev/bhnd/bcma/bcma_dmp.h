@@ -77,6 +77,7 @@
 /* Common definitions */
 #define	BCMA_OOB_NUM_BANKS	4	/**< number of OOB banks (A, B, C, D) */
 #define	BCMA_OOB_NUM_SEL	8	/**< number of OOB selectors per bank */
+#define	BCMA_OOB_NUM_BUSLINES	32	/**< number of bus lines managed by OOB core */
 
 /* DMP agent registers */
 #define	BCMA_DMP_OOBSELINA30	0x000	/**< A0-A3 input selectors */
@@ -191,8 +192,8 @@
 #define	BCMA_DMP_OOBSEL_MASK		0xFF		/**< OOB selector mask */
 #define	BCMA_DMP_OOBSEL_EN		(1<<7)		/**< OOB selector enable bit */
 #define	BCMA_DMP_OOBSEL_SHIFT(_sel)	((_sel) * 8)
-#define	BCMA_DMP_OOBSEL_MSG_MASK	0x7F		/**< OOB selector message mask */
-#define	BCMA_DMP_OOBSEL_MSG_SHIFT	0		/**< OOB selector message mask */
+#define	BCMA_DMP_OOBSEL_BUSLINE_MASK	0x7F		/**< OOB selector bus line mask */
+#define	BCMA_DMP_OOBSEL_BUSLINE_SHIFT	0
 
 #define	BCMA_DMP_OOBSEL_0_MASK	BCMA_DMP_OOBSEL_MASK
 #define	BCMA_DMP_OOBSEL_1_MASK	BCMA_DMP_OOBSEL_MASK
