@@ -122,12 +122,11 @@ bcma_attach(device_t dev)
 			if (iw != 0 || ew != 0)
 				printf("   Bank %c (width=%#x, ext_width=%#x)\n", ch, iw, ew);
 
-			for (u_int sel = 0; sel < BCMA_OOB_NUM_SEL; sel++) {
+			for (u_int sel = 0; sel < min(iw, BCMA_OOB_NUM_SEL); sel++) {
 				uint32_t in = bhnd_bus_read_4(dinfo->res_agent, BCMA_DMP_OOBSELIN(bank, sel));
 				uint32_t sv = (in >> BCMA_DMP_OOBSEL_SHIFT(sel)) & BCMA_DMP_OOBSEL_MASK;
-				if (sv != 0) {
-					printf("\t%c%u: 0x%02x (%s)\n", ch, sel, (sv & BCMA_DMP_OOBSEL_MSG_MASK), ((sv & BCMA_DMP_OOBSEL_EN) ? "enabled" : "disabled"));
-				}
+
+				printf("\t%c%u: 0x%02x (%s)\n", ch, sel, (sv & BCMA_DMP_OOBSEL_MSG_MASK), ((sv & BCMA_DMP_OOBSEL_EN) ? "enabled" : "disabled"));
 			}
 		}
 
@@ -140,12 +139,11 @@ bcma_attach(device_t dev)
 			if (w != 0)
 				printf("   Bank %c (width=%#x)\n", ch, w);
 			
-			for (u_int sel = 0; sel < BCMA_OOB_NUM_SEL; sel++) {
+			for (u_int sel = 0; sel < min(w, BCMA_OOB_NUM_SEL); sel++) {
 				uint32_t in = bhnd_bus_read_4(dinfo->res_agent, BCMA_DMP_OOBSELOUT(bank, sel));
 				uint32_t sv = (in >> BCMA_DMP_OOBSEL_SHIFT(sel)) & BCMA_DMP_OOBSEL_MASK;
-				if (sv != 0) {
-					printf("\t%c%u: 0x%02x (%s)\n", ch, sel, (sv & BCMA_DMP_OOBSEL_MSG_MASK), ((sv & BCMA_DMP_OOBSEL_EN) ? "enabled" : "disabled"));
-				}
+
+				printf("\t%c%u: 0x%02x (%s)\n", ch, sel, (sv & BCMA_DMP_OOBSEL_MSG_MASK), ((sv & BCMA_DMP_OOBSEL_EN) ? "enabled" : "disabled"));
 			}
 		}
 	}
