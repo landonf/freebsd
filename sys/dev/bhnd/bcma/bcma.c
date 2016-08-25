@@ -41,8 +41,11 @@ __FBSDID("$FreeBSD$");
 
 #include "bcmavar.h"
 
+#include "bcma_dmp.h"
+
 #include "bcma_eromreg.h"
 #include "bcma_eromvar.h"
+
 #include <dev/bhnd/bhnd_core.h>
 
 int
@@ -479,6 +482,36 @@ bcma_get_region_addr(device_t dev, device_t child, bhnd_port_type port_type,
 	return (ENOENT);
 }
 
+static int
+bcma_get_intrvec(device_t dev, device_t child, u_int intr, uint32_t *ivec)
+{
+	struct bcma_devinfo	*dinfo;
+	uint32_t		 dmpcfg, oobsel;
+
+	dinfo = device_get_ivars(child);
+
+	/* Agent block must be mapped */
+	if (dinfo->res_agent == NULL)
+		return (ENODEV);
+
+	/* Agent must support OOB */
+	dmpcfg = bhnd_bus_read_4(dinfo->res_agent, BCMA_DMP_CONFIG);
+	if (!BCMA_DMP_GET_FLAG(dmpcfg, BCMA_DMP_CFG_OOB))
+		return (ENXIO);
+
+	/* Interrupt ID must be valid. We only assign interrupts out of
+	 * a single bank. */
+	if (intr >= BCMA_OOB_NUM_SEL)
+		return (ENXIO);
+
+	oobsel = bhnd_bus_read_4(dinfo->res_agent, BCMA_DMP_OOBSELOUT(
+	    BCMA_OOB_BANKA, intr));
+	*ivec = (oobsel >> BCMA_DMP_OOBSEL_SHIFT(intr)) &
+	    BCMA_DMP_OOBSEL_BUSLINE_MASK;
+
+	return (0);
+}
+
 static struct bhnd_devinfo *
 bcma_alloc_bhnd_dinfo(device_t dev)
 {
@@ -599,6 +632,7 @@ static device_method_t bcma_methods[] = {
 	DEVMETHOD(bhnd_bus_get_port_rid,	bcma_get_port_rid),
 	DEVMETHOD(bhnd_bus_decode_port_rid,	bcma_decode_port_rid),
 	DEVMETHOD(bhnd_bus_get_region_addr,	bcma_get_region_addr),
+	DEVMETHOD(bhnd_bus_get_intrvec,		bcma_get_intrvec),
 
 	DEVMETHOD_END
 };
