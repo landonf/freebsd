@@ -86,6 +86,11 @@
 #define	BCMA_OOB_NUM_SEL	8	/**< number of OOB selectors per bank */
 #define	BCMA_OOB_NUM_BUSLINES	32	/**< number of bus lines managed by OOB core */
 
+#define	BCMA_OOB_BANKA		0	/**< bank A index */
+#define	BCMA_OOB_BANKB		1	/**< bank B index */
+#define	BCMA_OOB_BANKC		2	/**< bank C index */
+#define	BCMA_OOB_BANKD		3	/**< bank D index */
+
 /* DMP agent registers */
 #define	BCMA_DMP_OOBSELINA30	0x000	/**< A0-A3 input selectors */
 #define	BCMA_DMP_OOBSELINA74	0x004	/**< A4-A7 input selectors */
@@ -123,6 +128,21 @@
 #define	BCMA_DMP_OOBDEXTWIDTH	0x360
 #define	BCMA_DMP_OOBDINWIDTH	0x364
 #define	BCMA_DMP_OOBDOUTWIDTH	0x368
+
+#define	BCMA_DMP_OOBSEL(_base, _bank, _sel)	\
+    (_base + (_bank * 8) + (_sel >= 4 ? 4 : 0))
+
+#define	BCMA_DMP_OOBSELIN(_bank, _sel)		\
+	BCMA_DMP_OOBSEL(BCMA_DMP_OOBSELINA30, _bank, _sel)
+
+#define	BCMA_DMP_OOBSELOUT(_bank, _sel)		\
+	BCMA_DMP_OOBSEL(BCMA_DMP_OOBSELOUTA30, _bank, _sel)
+
+#define	BCMA_DMP_OOBSYNC(_bank)		(BCMA_DMP_OOBSYNCA + (_bank * 8))
+#define	BCMA_DMP_OOBSELOUT_EN(_bank)	(BCMA_DMP_OOBSELOUTAEN + (_bank * 8))
+#define	BCMA_DMP_OOB_EXTWIDTH(_bank)	(BCMA_DMP_OOBAEXTWIDTH + (_bank * 12))
+#define	BCMA_DMP_OOB_INWIDTH(_bank)	(BCMA_DMP_OOBAINWIDTH + (_bank * 12))
+#define	BCMA_DMP_OOB_OUTWIDTH(_bank)	(BCMA_DMP_OOBAOUTWIDTH + (_bank * 12))
 
 // This was inherited from Broadcom's aidmp.h header
 // Is it required for any of our use-cases?
@@ -198,7 +218,7 @@
 /* OOBSEL(IN|OUT) */
 #define	BCMA_DMP_OOBSEL_MASK		0xFF		/**< OOB selector mask */
 #define	BCMA_DMP_OOBSEL_EN		(1<<7)		/**< OOB selector enable bit */
-#define	BCMA_DMP_OOBSEL_SHIFT(_sel)	((_sel) * 8)
+#define	BCMA_DMP_OOBSEL_SHIFT(_sel)	((_sel % BCMA_OOB_NUM_SEL) * 8)
 #define	BCMA_DMP_OOBSEL_BUSLINE_MASK	0x7F		/**< OOB selector bus line mask */
 #define	BCMA_DMP_OOBSEL_BUSLINE_SHIFT	0
 
@@ -217,10 +237,10 @@
 #define	BCMA_DMP_OOBSEL_2_SHIFT	BCMA_DMP_OOBSEL_SHIFT(2)
 #define	BCMA_DMP_OOBSEL_3_SHIFT	BCMA_DMP_OOBSEL_SHIFT(3)
 
-#define	BCMA_DMP_OOBSEL_4_SHIFT	BCMA_DMP_OOBSEL_SHIFT(0)
-#define	BCMA_DMP_OOBSEL_5_SHIFT	BCMA_DMP_OOBSEL_SHIFT(1)
-#define	BCMA_DMP_OOBSEL_6_SHIFT	BCMA_DMP_OOBSEL_SHIFT(2)
-#define	BCMA_DMP_OOBSEL_7_SHIFT	BCMA_DMP_OOBSEL_SHIFT(3)
+#define	BCMA_DMP_OOBSEL_4_SHIFT	BCMA_DMP_OOBSEL_0_SHIFT
+#define	BCMA_DMP_OOBSEL_5_SHIFT	BCMA_DMP_OOBSEL_1_SHIFT
+#define	BCMA_DMP_OOBSEL_6_SHIFT	BCMA_DMP_OOBSEL_2_SHIFT
+#define	BCMA_DMP_OOBSEL_7_SHIFT	BCMA_DMP_OOBSEL_3_SHIFT
 
 /* resetctrl */
 #define	BMCA_DMP_RC_RESET	1

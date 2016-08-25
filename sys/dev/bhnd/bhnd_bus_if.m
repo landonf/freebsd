@@ -390,6 +390,29 @@ METHOD int assign_intr {
 } DEFAULT bhnd_bus_null_assign_intr;
 
 /**
+ * Return the hardware-specific backplane vector corresponding to @p child's
+ * given @p intr.
+ * 
+ * @param dev The bhnd bus parent of @p child.
+ * @param child The bhnd device for which the assigned interrupt should be
+ * queried.
+ * @param intr The interrupt number being queried. This is equivalent to the
+ * bus resource ID for the interrupt.
+ * @param[out] line On success, the assigned hardware interrupt line will be
+ * written to this pointer.
+ *
+ * @retval 0		success
+ * @retval ENXIO	If @p intr exceeds the number of interrupts available
+ *			to @p child.
+ */
+METHOD int get_intrvec {
+	device_t dev;
+	device_t child;
+	u_int intr;
+	uint32_t *ivec;
+}
+
+/**
  * Notify a bhnd bus that a child was added.
  *
  * This method must be called by concrete bhnd(4) driver impementations

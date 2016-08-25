@@ -381,6 +381,33 @@ siba_get_region_addr(device_t dev, device_t child, bhnd_port_type port_type,
 	return (0);
 }
 
+static int
+siba_get_intrvec(device_t dev, device_t child, u_int intr, uint32_t *ivec)
+{
+	struct siba_devinfo	*dinfo;
+	uint32_t		 tpsflag;
+
+	/* delegate non-bus-attached devices to our parent */
+	if (device_get_parent(child) != dev)
+		return (BHND_BUS_GET_INTRVEC(device_get_parent(dev), child,
+		    intr, ivec));
+
+	dinfo = device_get_ivars(child);
+
+	/* CFG0 must be mapped */
+	if (dinfo->cfg[0] == NULL)
+		return (ENODEV);
+
+	/* Must be a valid interrupt ID (and we only support one) */
+	if (intr != SIBA_CORE_INTR)
+		return (ENXIO);
+
+	/* Fetch sbflag number */
+	tpsflag = bhnd_bus_read_4(dinfo->cfg[0], SIBA_CFG0_TPSFLAG);
+	*ivec = SIBA_REG_GET(tpsflag, TPS_NUM0);
+
+	return (0);
+}
 
 /**
  * Register all address space mappings for @p di.
@@ -670,6 +697,7 @@ static device_method_t siba_methods[] = {
 	DEVMETHOD(bhnd_bus_get_port_rid,	siba_get_port_rid),
 	DEVMETHOD(bhnd_bus_decode_port_rid,	siba_decode_port_rid),
 	DEVMETHOD(bhnd_bus_get_region_addr,	siba_get_region_addr),
+	DEVMETHOD(bhnd_bus_get_intrvec,		siba_get_intrvec),
 
 	DEVMETHOD_END
 };
