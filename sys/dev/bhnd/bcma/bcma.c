@@ -483,10 +483,13 @@ bcma_get_region_addr(device_t dev, device_t child, bhnd_port_type port_type,
 }
 
 static int
-bcma_get_intrvec(device_t dev, device_t child, u_int intr, uint32_t *ivec)
+bcma_get_intrvec(device_t dev, device_t child, bhnd_intr_port port, u_int pin,
+    bhnd_intrvec_set_t *ivecs)
 {
 	struct bcma_devinfo	*dinfo;
-	uint32_t		 dmpcfg, oobsel;
+	bus_size_t		 sel_reg, width_reg;
+	uint32_t		 dmpcfg, oobsel, oobwidth;
+	uint8_t			 ivec;
 
 	dinfo = device_get_ivars(child);
 
@@ -499,16 +502,38 @@ bcma_get_intrvec(device_t dev, device_t child, u_int intr, uint32_t *ivec)
 	if (!BCMA_DMP_GET_FLAG(dmpcfg, BCMA_DMP_CFG_OOB))
 		return (ENXIO);
 
-	/* Interrupt ID must be valid. We only assign interrupts out of
+	/* Interrupt selector must be valid. We only assign interrupts out of
 	 * a single bank. */
-	if (intr >= BCMA_OOB_NUM_SEL)
+	if (pin >= BCMA_OOB_NUM_SEL)
 		return (ENXIO);
 
-	oobsel = bhnd_bus_read_4(dinfo->res_agent, BCMA_DMP_OOBSELOUT(
-	    BCMA_OOB_BANKA, intr));
-	*ivec = (oobsel >> BCMA_DMP_OOBSEL_SHIFT(intr)) &
+	/* Determine OOB register offsets */
+	switch (port) {
+	case BHND_INTR_INPUT:
+		width_reg = BCMA_DMP_OOB_INWIDTH(BCMA_OOB_BANKA);
+		sel_reg = BCMA_DMP_OOBSELIN(BCMA_OOB_BANKA, pin);
+		break;
+	case BHND_INTR_OUTPUT:
+		width_reg = BCMA_DMP_OOB_OUTWIDTH(BCMA_OOB_BANKA);
+		sel_reg = BCMA_DMP_OOBSELOUT(BCMA_OOB_BANKA, pin);
+		break;
+	default:
+		return (EINVAL);
+	}
+
+	/* Is the requested interrupt selector mapped? */
+	oobwidth = bhnd_bus_read_4(dinfo->res_agent, width_reg);
+	if (pin >= oobwidth) {
+		BHND_IVECSET_ZERO(ivecs);
+		return (0);
+	}
+
+	/* Fetch assigned vector */
+	oobsel = bhnd_bus_read_4(dinfo->res_agent, sel_reg);
+	ivec = (oobsel >> BCMA_DMP_OOBSEL_SHIFT(pin)) &
 	    BCMA_DMP_OOBSEL_BUSLINE_MASK;
 
+	BHND_IVECSET_SETOF(ivec, ivecs);
 	return (0);
 }
 
