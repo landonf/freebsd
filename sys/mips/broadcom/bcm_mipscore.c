@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2016 Landon Fuller <landonf@FreeBSD.org>
+ * Copyright (c) 2016 Michael Zhilin <mizhka@gmail.com>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -34,37 +34,41 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/bus.h>
 #include <sys/module.h>
+#include <sys/systm.h>
+#include <sys/errno.h>
+#include <sys/rman.h>
+#include <sys/stddef.h>
 
 #include <machine/bus.h>
-#include <sys/rman.h>
 #include <machine/resource.h>
 
 #include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/bhndvar.h>
+#include <dev/bhnd/bhnd_ids.h>
 
-/*
- * BMIPS74K Core
- *
- * Only found on bcma(4) devices.
- */
+#include "bcm_mipscore.h"
 
-static const struct bhnd_device bcm_mips74k_devs[] = {
-	BHND_DEVICE(MIPS, MIPS74K, NULL, NULL, BHND_DF_SOC),
+static const struct resource_spec mipscore_rspec[MIPSCORE_MAX_RSPEC] = {
+	{ SYS_RES_MEMORY,	0,	RF_ACTIVE },
+	{ -1, -1, 0 }
+};
+
+#define	MIPSCORE_DEV(_vendor, _core)	\
+	BHND_DEVICE(_vendor, _core, NULL, NULL, BHND_DF_SOC)
+
+struct bhnd_device mipscore_match[] = {
+	MIPSCORE_DEV(BCM, MIPS),
+	MIPSCORE_DEV(BCM, MIPS33),
+	MIPSCORE_DEV(MIPS, MIPS74K),
 	BHND_DEVICE_END
 };
 
-struct bcm_mips74k_softc {
-	device_t		 dev;
-	struct resource		*mem_res;
-	int			 mem_rid;
-};
-
 static int
-bcm_mips74k_probe(device_t dev)
+mipscore_probe(device_t dev)
 {
-	const struct bhnd_device	*id;
+	const struct bhnd_device *id;
 
-	id = bhnd_device_lookup(dev, bcm_mips74k_devs,
-	    sizeof(bcm_mips74k_devs[0]));
+	id = bhnd_device_lookup(dev, mipscore_match, sizeof(mipscore_match[0]));
 	if (id == NULL)
 		return (ENXIO);
 
@@ -73,50 +77,50 @@ bcm_mips74k_probe(device_t dev)
 }
 
 static int
-bcm_mips74k_attach(device_t dev)
+mipscore_attach(device_t dev)
 {
-	struct bcm_mips74k_softc *sc;
+	struct mipscore_softc 	*sc;
+	struct resource 	*res;
+	uint32_t		 intmask;
+	uint16_t		 devid;
+	int			 error;
 
 	sc = device_get_softc(dev);
+	devid = bhnd_get_device(dev);
+
+	sc->devid = devid;
 	sc->dev = dev;
 
 	/* Allocate bus resources */
-	sc->mem_rid = 0;
-	sc->mem_res = bus_alloc_resource_any(dev, SYS_RES_MEMORY, &sc->mem_rid,
-	    RF_ACTIVE);
-	if (sc->mem_res == NULL)
+	memcpy(sc->rspec, mipscore_rspec, sizeof(sc->rspec));
+	error = bhnd_alloc_resources(dev, sc->rspec, sc->res);
+	if (error)
+		return (error);
+
+	res = sc->res[0]->res;
+	if (res == NULL)
 		return (ENXIO);
 
-	/* Route timer interrupt */
-	// TODO
+	if (devid == BHND_COREID_MIPS74K) {
+		intmask = (1 << 31);
+		/* Use intmask5 register to route the timer interrupt */
+		bus_write_4(res, offsetof(struct mipscore_regs, intmask[5]),
+				intmask);
+	}
 
 	return (0);
 }
 
-static int
-bcm_mips74k_detach(device_t dev)
-{
-	struct bcm_mips74k_softc	*sc;
-
-	sc = device_get_softc(dev);
-
-	bus_release_resource(dev, SYS_RES_MEMORY, sc->mem_rid, sc->mem_res);
-
-	return (0);
-}
-
-static device_method_t bcm_mips74k_methods[] = {
-	/* Device interface */
-	DEVMETHOD(device_probe,			bcm_mips74k_probe),
-	DEVMETHOD(device_attach,		bcm_mips74k_attach),
-	DEVMETHOD(device_detach,		bcm_mips74k_detach),
-	
-	DEVMETHOD_END
+static device_method_t mipscore_methods[] = {
+		DEVMETHOD(device_probe, 	mipscore_probe),
+		DEVMETHOD(device_attach,	mipscore_attach),
+		DEVMETHOD_END
 };
 
-static devclass_t bhnd_mips74k_devclass;
+devclass_t bhnd_mipscore_devclass;
 
-DEFINE_CLASS_0(bhnd_mips74k, bcm_mips74k_driver, bcm_mips74k_methods, sizeof(struct bcm_mips74k_softc));
-EARLY_DRIVER_MODULE(bhnd_mips74k, bhnd, bcm_mips74k_driver, bhnd_mips74k_devclass, 0, 0, BUS_PASS_CPU + BUS_PASS_ORDER_EARLY);
-
-MODULE_VERSION(bcm_mips74k, 1);
+DEFINE_CLASS_0(bhnd_mips, mipscore_driver, mipscore_methods,
+    sizeof(struct mipscore_softc));
+EARLY_DRIVER_MODULE(bhnd_mips, bhnd, mipscore_driver,
+    bhnd_mipscore_devclass, 0, 0, BUS_PASS_CPU + BUS_PASS_ORDER_EARLY);
+MODULE_VERSION(bhnd_mips, 1);

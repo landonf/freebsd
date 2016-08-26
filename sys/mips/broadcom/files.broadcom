@@ -5,8 +5,6 @@
 # which are believed to be devices we have drivers for
 # which just need to be tweaked for attachment to an BHND system bus.
 mips/broadcom/bcm_machdep.c		standard
-mips/broadcom/bcm_mips33k.c		optional siba_nexus siba
-mips/broadcom/bcm_mips74k.c		optional bcma_nexus bcma
 mips/broadcom/bcm_pmu.c			standard
 
 mips/broadcom/bhnd_nexus.c		standard
@@ -22,6 +20,7 @@ kern/msi_if.m				optional intrng
 
 mips/broadcom/uart_cpu_chipc.c		optional uart
 mips/broadcom/uart_bus_chipc.c		optional uart
+mips/broadcom/bcm_mipscore.c		standard
 
 # TODO: Replace with BCM47xx/57xx/etc-aware geom_map
 geom/geom_flashmap.c			standard
