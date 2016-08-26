@@ -483,58 +483,112 @@ bcma_get_region_addr(device_t dev, device_t child, bhnd_port_type port_type,
 }
 
 static int
-bcma_get_intrvec(device_t dev, device_t child, bhnd_intr_port port, u_int pin,
+bcma_get_output_intrvec(device_t dev, device_t child, u_int iline,
+    bhnd_intrvec_t *ivec)
+{
+	uint8_t	value;
+	int	error;
+
+	/* Fetch current OOB selector value */
+	error = bcma_agent_read_oobsel(dev, child, BCMA_OOB_PORTOUT,
+	    BCMA_OOB_BANKA, iline, &value);
+	if (error)
+		return (error);
+
+	value &= BCMA_DMP_OOBSEL_BUSLINE_MASK;
+
+	/* Representable as intrvec? */
+	if (value > BHND_INTRVEC_MAX)
+		return (ERANGE);
+
+	*ivec = value;
+	return (0);
+}
+
+static int
+bcma_set_output_intrvec(device_t dev, device_t child, u_int iline,
+    bhnd_intrvec_t ivec)
+{
+	uint8_t	value;
+	int	error;
+
+	/* Must be representable as OOB selector value */
+	if (ivec > BCMA_DMP_OOBSEL_BUSLINE_MASK)
+		return (EINVAL);
+
+	/* Fetch current OOB selector value */
+	error = bcma_agent_read_oobsel(dev, child, BCMA_OOB_PORTIN,
+	    BCMA_OOB_BANKA, iline, &value);
+	if (error)
+		return (error);
+
+	/* Write the new OOB selector value, preserving the
+	 * BCMA_DMP_OOBSEL_EN flag */
+	value &= ~BCMA_DMP_OOBSEL_BUSLINE_MASK;
+	value |= ivec;
+
+	return (bcma_agent_write_oobsel(dev, child, BCMA_OOB_PORTOUT,
+	    BCMA_OOB_BANKA, iline, value));
+}
+
+static int
+bcma_get_input_intrvecs(device_t dev, device_t child, u_int iline,
     bhnd_intrvec_set_t *ivecs)
 {
-	struct bcma_devinfo	*dinfo;
-	bus_size_t		 sel_reg, width_reg;
-	uint32_t		 dmpcfg, oobsel, oobwidth;
-	uint8_t			 ivec;
+	uint8_t	value;
+	int	error;
 
-	dinfo = device_get_ivars(child);
+	/* Fetch current OOB selector value */
+	error = bcma_agent_read_oobsel(dev, child, BCMA_OOB_PORTIN,
+	    BCMA_OOB_BANKA, iline, &value);
+	if (error)
+		return (error);
 
-	/* Agent block must be mapped */
-	if (dinfo->res_agent == NULL)
-		return (ENODEV);
+	value &= BCMA_DMP_OOBSEL_BUSLINE_MASK;
 
-	/* Agent must support OOB */
-	dmpcfg = bhnd_bus_read_4(dinfo->res_agent, BCMA_DMP_CONFIG);
-	if (!BCMA_DMP_GET_FLAG(dmpcfg, BCMA_DMP_CFG_OOB))
-		return (ENXIO);
+	/* Representable as intrvec? */
+	if (value > BHND_INTRVEC_MAX)
+		return (ERANGE);
 
-	/* Interrupt selector must be valid. We only assign interrupts out of
-	 * a single bank. */
-	if (pin >= BCMA_OOB_NUM_SEL)
-		return (ENXIO);
-
-	/* Determine OOB register offsets */
-	switch (port) {
-	case BHND_INTR_INPUT:
-		width_reg = BCMA_DMP_OOB_INWIDTH(BCMA_OOB_BANKA);
-		sel_reg = BCMA_DMP_OOBSELIN(BCMA_OOB_BANKA, pin);
-		break;
-	case BHND_INTR_OUTPUT:
-		width_reg = BCMA_DMP_OOB_OUTWIDTH(BCMA_OOB_BANKA);
-		sel_reg = BCMA_DMP_OOBSELOUT(BCMA_OOB_BANKA, pin);
-		break;
-	default:
-		return (EINVAL);
-	}
-
-	/* Is the requested interrupt selector mapped? */
-	oobwidth = bhnd_bus_read_4(dinfo->res_agent, width_reg);
-	if (pin >= oobwidth) {
-		BHND_IVECSET_ZERO(ivecs);
-		return (0);
-	}
-
-	/* Fetch assigned vector */
-	oobsel = bhnd_bus_read_4(dinfo->res_agent, sel_reg);
-	ivec = (oobsel >> BCMA_DMP_OOBSEL_SHIFT(pin)) &
-	    BCMA_DMP_OOBSEL_BUSLINE_MASK;
-
-	BHND_IVECSET_SETOF(ivec, ivecs);
+	BHND_IVECSET_SETOF(value, ivecs);
 	return (0);
+}
+
+static int
+bcma_set_input_intrvecs(device_t dev, device_t child, u_int iline,
+    bhnd_intrvec_set_t *ivecs, bhnd_intrvec_set_t *mask)
+{
+	size_t		mask_count;
+	bhnd_intrvec_t	ivec;
+	uint8_t		value;
+	int		error;
+
+	/* Only one (or zero) values can be set for a given OOB selector */
+	mask_count = BHND_IVECSET_COUNT(mask);
+	if (mask_count == 0)
+		return (0);
+
+	if (mask_count != 1)
+		return (EINVAL);
+
+	/* Extract the single ivec value */
+	ivec = BHND_IVECSET_FFS(mask) - 1; /* zero-indexed */
+	if (ivec > BCMA_DMP_OOBSEL_BUSLINE_MASK)
+		return (EINVAL);
+
+	/* Fetch current OOB selector value */
+	error = bcma_agent_read_oobsel(dev, child, BCMA_OOB_PORTIN,
+	    BCMA_OOB_BANKA, iline, &value);
+	if (error)
+		return (error);
+
+	/* Write the new OOB selector value, preserving the
+	 * BCMA_DMP_OOBSEL_EN flag */
+	value &= ~BCMA_DMP_OOBSEL_BUSLINE_MASK;
+	value |= ivec;
+
+	return (bcma_agent_write_oobsel(dev, child, BCMA_OOB_PORTIN,
+	    BCMA_OOB_BANKA, iline, value));
 }
 
 static struct bhnd_devinfo *
@@ -657,7 +711,10 @@ static device_method_t bcma_methods[] = {
 	DEVMETHOD(bhnd_bus_get_port_rid,	bcma_get_port_rid),
 	DEVMETHOD(bhnd_bus_decode_port_rid,	bcma_decode_port_rid),
 	DEVMETHOD(bhnd_bus_get_region_addr,	bcma_get_region_addr),
-	DEVMETHOD(bhnd_bus_get_intrvec,		bcma_get_intrvec),
+	DEVMETHOD(bhnd_bus_get_output_intrvec,	bcma_get_output_intrvec),
+	DEVMETHOD(bhnd_bus_set_output_intrvec,	bcma_set_output_intrvec),
+	DEVMETHOD(bhnd_bus_get_input_intrvecs,	bcma_get_input_intrvecs),
+	DEVMETHOD(bhnd_bus_set_input_intrvecs,	bcma_set_input_intrvecs),
 
 	DEVMETHOD_END
 };

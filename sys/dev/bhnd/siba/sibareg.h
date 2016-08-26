@@ -51,8 +51,9 @@
 #define	SIBA_MAX_CORES	\
     (SIBA_ENUM_SIZE/SIBA_CORE_SIZE)			/**< Maximum number of cores */
     
-#define	SIBA_MAX_INTR		4	/**< maximum assignable interrupt line */
-#define	SIBA_MAX_INTRVEC	7	/**< maximum assignable interrupt vector */
+#define	SIBA_INTR_MAX		4	/**< maximum assignable interrupt line */
+#define	SIBA_INTRVEC_MAX	7	/**< maximum assignable interrupt vector */
+#define	SIBA_INTRVEC_INVALID	8	/**< unassigned interrupt vector */
 
 #define	SIBA_IRQ0	0
 #define	SIBA_IRQ1	1

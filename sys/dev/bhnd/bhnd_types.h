@@ -32,11 +32,11 @@
 #ifndef _BHND_BHND_TYPES_H_
 #define _BHND_BHND_TYPES_H_
 
+#include <sys/_bitset.h>
+#include <sys/bitset.h>
 #include <sys/types.h>
 
 #include "nvram/bhnd_nvram.h"
-
-#include "bhnd_intr.h"
 
 /** bhnd(4) device classes. */
 typedef enum {
@@ -159,12 +159,51 @@ typedef enum {
  * @note While the interconnect may support 64-bit addressing, not
  * all bridges and SoC CPUs will.
  */
-typedef uint64_t	bhnd_addr_t;
-#define	BHND_ADDR_MAX	UINT64_MAX	/**< Maximum bhnd_addr_t value */
+typedef uint64_t		bhnd_addr_t;
+#define	BHND_ADDR_MAX		UINT64_MAX	/**< Maximum bhnd_addr_t value */
 
 /** BHND bus size. */
-typedef uint64_t	bhnd_size_t;
-#define	BHND_SIZE_MAX	UINT64_MAX	/**< Maximum bhnd_size_t value */
+typedef uint64_t		bhnd_size_t;
+#define	BHND_SIZE_MAX		UINT64_MAX	/**< Maximum bhnd_size_t value */
 
+/** BHND backplane interrupt vector. */
+typedef uint8_t			bhnd_intrvec_t;
+#define	BHND_INTRVEC_MAX	32		/**< Maximum bhnd_intrvec_t value */
+
+/** BHND interrupt vector set size. */
+#define	BHND_IVECSET_SIZE	BHND_INTRVEC_MAX
+
+/** BHND interrupt vector set. */
+typedef BITSET_DEFINE(bhnd_intrvec_set, BHND_IVECSET_SIZE) bhnd_intrvec_set_t;
+
+/* BHND interrupt vector macros. Refer to bitset(9) for documentation */
+#define	BHND_IVECSET_INITIALIZER	BITSET_T_INITIALIZER
+#define	BHND_IVECSET_CLR(n, p)		BIT_CLR(BHND_IVECSET_SIZE, n, p)
+#define	BHND_IVECSET_COPY(f, t)		BIT_COPY(BHND_IVECSET_SIZE, f, t)
+#define	BHND_IVECSET_ISSET(n, p)	BIT_ISSET(BHND_IVECSET_SIZE, n, p)
+#define	BHND_IVECSET_SET(n, p)		BIT_SET(BHND_IVECSET_SIZE, n, p)
+#define	BHND_IVECSET_ZERO(p) 		BIT_ZERO(BHND_IVECSET_SIZE, p)
+#define	BHND_IVECSET_FILL(p) 		BIT_FILL(BHND_IVECSET_SIZE, p)
+#define	BHND_IVECSET_SETOF(n, p)	BIT_SETOF(BHND_IVECSET_SIZE, n, p)
+#define	BHND_IVECSET_EMPTY(p)		BIT_EMPTY(BHND_IVECSET_SIZE, p)
+#define	BHND_IVECSET_ISFULLSET(p)	BIT_ISFULLSET(BHND_IVECSET_SIZE, p)
+#define	BHND_IVECSET_SUBSET(p, c)	BIT_SUBSET(BHND_IVECSET_SIZE, p, c)
+#define	BHND_IVECSET_OVERLAP(p, c)	BIT_OVERLAP(BHND_IVECSET_SIZE, p, c)
+#define	BHND_IVECSET_CMP(p, c)		BIT_CMP(BHND_IVECSET_SIZE, p, c)
+#define	BHND_IVECSET_OR(d, s)		BIT_OR(BHND_IVECSET_SIZE, d, s)
+#define	BHND_IVECSET_AND(d, s)		BIT_AND(BHND_IVECSET_SIZE, d, s)
+#define	BHND_IVECSET_NAND(d, s)		BIT_NAND(BHND_IVECSET_SIZE, d, s)
+#define	BHND_IVECSET_CLR_ATOMIC(n, p)	BIT_CLR_ATOMIC(BHND_IVECSET_SIZE, n, p)
+#define	BHND_IVECSET_SET_ATOMIC(n, p)	BIT_SET_ATOMIC(BHND_IVECSET_SIZE, n, p)
+#define	BHND_IVECSET_SET_ATOMIC_ACQ(n, p)	\
+	BIT_SET_ATOMIC_ACQ(BHND_IVECSET_SIZE, n, p)
+#define	BHND_IVECSET_AND_ATOMIC(n, p)	BIT_AND_ATOMIC(BHND_IVECSET_SIZE, n, p)
+#define	BHND_IVECSET_OR_ATOMIC(d, s)	BIT_OR_ATOMIC(BHND_IVECSET_SIZE, d, s)
+#define	BHND_IVECSET_COPY_STORE_REL(f, t)	\
+	BIT_COPY_STORE_REL(BHND_IVECSET_SIZE, f, t)
+#define	BHND_IVECSET_FFS(p)		BIT_FFS(BHND_IVECSET_SIZE, p)
+#define	BHND_IVECSET_COUNT(p)		BIT_COUNT(BHND_IVECSET_SIZE, p)
+#define	BHND_IVECSET_FULL			\
+	BITSET_FSET(__bitset_words(BHND_IVECSET_SIZE))
 
 #endif /* _BHND_BHND_TYPES_H_ */

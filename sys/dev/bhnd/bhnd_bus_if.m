@@ -102,21 +102,6 @@ CODE {
 		panic("bhnd_bus_assign_intr unimplemented");
 	}
 
-	static int
-	bhnd_bus_null_get_intrvec(device_t dev, device_t child,
-	    bhnd_intr_port port, u_int pin, bhnd_intrvec_set_t *ivec)
-	{
-		panic("bhnd_bus_get_intrvec unimplemented");
-	}
-
-	static int
-	bhnd_bus_null_set_intrvec(device_t dev, device_t child,
-	    bhnd_intr_port port, u_int pin, bhnd_intrvec_set_t *ivecs,
-	    bhnd_intrvec_set_t *mask)
-	{
-		panic("bhnd_bus_set_intrvec unimplemented");
-	}
-
 	static void
 	bhnd_bus_null_child_added(device_t dev, device_t child)
 	{
@@ -405,64 +390,102 @@ METHOD int assign_intr {
 } DEFAULT bhnd_bus_null_assign_intr;
 
 /**
- * Return the set of hardware-specific backplane interrupt vectors
- * assigned to @p pin on @p port of @p child.
+ * Fetch the hardware-specific backplane interrupt vector assigned to output
+ * @p iline on @p child.
  * 
  * @param		dev	The bhnd bus parent of @p child.
  * @param		child	The bhnd core being queried.
  * @param		port	The interrupt port being queried.
- * @param		pin	The interrupt pin being queried. On
- *				BHND_INTR_INPUT ports, this is equivalent to
- *				the bus resource ID for the interrupt.
+ * @param		iline	The interrupt line being queried. This is
+ *				equivalent to the bus resource ID for the
+ *				interrupt.
+ * @param[out]		ivec	On success, the assigned backplane interrupt
+ *				vector will be written to this pointer.
+ *
+ * @retval 0		success
+ * @retval ENXIO	If @p iline exceeds the number of interrupt lines
+ *			assigned to @p child.
+ */
+METHOD int get_output_intrvec {
+	device_t	 dev;
+	device_t	 child;
+	u_int		 iline;
+	bhnd_intrvec_t	*ivec;
+};
+
+/**
+ * Set the hardware-specific backplane interrupt vector assigned to output
+ * @p iline on @p child.
+ * 
+ * @param	dev	The bhnd bus parent of @p child.
+ * @param	child	The bhnd core being queried.
+ * @param	port	The interrupt port being queried.
+ * @param	iline	The interrupt line being configured. This is
+ *			equivalent the bus resource ID for the
+ *			interrupt.
+ * @param	ivec	The new backplane interrupt vector to be
+ *			assigned to @p iline on @p core.
+ *
+ * @retval 0		success
+ * @retval ENXIO	If @p iline exceeds the number of interrupt lines
+ *			assigned to @p child.
+ */
+METHOD int set_output_intrvec {
+	device_t	dev;
+	device_t	child;
+	u_int		iline;
+	bhnd_intrvec_t	ivec;
+};
+
+/**
+ * Return the set of hardware-specific backplane interrupt vectors
+ * assigned to input @p iline on @p child.
+ * 
+ * @param		dev	The bhnd bus parent of @p child.
+ * @param		child	The bhnd core being queried.
+ * @param		iline	The interrupt line being configured. 
  * @param[out]		ivec	On success, the assigned backplane interrupt
  *				vector(s) will be written to this set.
  *
  * @retval 0		success
- * @retval ENXIO	If @p pin exceeds the number of interrupt lines assigned
- *			to @p port.
- * @retval ENODEV	If reading the interrupt vector assignment for @p port
- *			is not supported for the given core.
+ * @retval ENXIO	If @p iline exceeds the number of interrupt lines
+ *			assigned to @p child.
+ * @retval ENODEV	If reading the interrupt vector assignments for
+ *			@p core is not supported by this chip revision.
  */
-METHOD int get_intrvec {
+METHOD int get_input_intrvecs {
 	device_t		 dev;
 	device_t		 child;
-	bhnd_intr_port		 port;
-	u_int			 pin;
+	u_int			 iline;
 	bhnd_intrvec_set_t	*ivecs;
-} DEFAULT bhnd_bus_null_get_intrvec;
+};
 
 /**
- * Update the set of hardware-specific backplane interrupt vectors assigned to
- * @p pin on @p port of @p child.
+ * Update the set of hardware-specific backplane interrupt vectors
+ * assigned to input @p iline on @p child.
  * 
  * @param	dev	The bhnd bus parent of @p child.
- * @param	child	The bhnd core being configured.
- * @param	port	The interrupt port being configured.
- * @param	pin	The interrupt pin being configured. On BHND_INTR_INPUT
- *			ports, this is equivalent to the bus resource ID for
- *			the interrupt.
- * @param	ivecs	The backplane interrupt vectors to be updated.
+ * @param	child	The bhnd core being queried.
+ * @param	iline	The interrupt line being configured. 
+ * @param	ivecs	The set of backplane interrupt vectors to be assigned
+ *			(or cleared).
  * @param	mask	Only the bits defined by @p mask will be updated from
  *			@p ivecs.
  *
  * @retval 0		success
- * @retval ENXIO	If @p pin exceeds the number of interrupt lines assigned
- *			to @p port.
- * @retval EINVAL	If @p ivecs contains more than the maximum number of
- *			interrupt vectors assignable to @p pin.
- * @retval EINVAL	If @p ivecs contains a ivec larger than the maximum
- *			maximum interrupt vector assignable to @p pin.
- * @retval ENODEV	If modifying interrupt vectors for @p port is not
- *			supported for the given core.
+ * @retval ENXIO	If @p iline exceeds the number of interrupt lines
+ *			assigned to @p child.
+ * @retval ENODEV	If accessing the interrupt vector assignments for
+ *			@p core is not supported by this chip revision.
+ * @retval EINVAL	If an invalid @p ivecs argument is provided.
  */
-METHOD int set_intrvec {
+METHOD int set_input_intrvecs {
 	device_t		 dev;
 	device_t		 child;
-	bhnd_intr_port		 port;
-	u_int			 pin;
+	u_int			 iline;
 	bhnd_intrvec_set_t	*ivecs;
 	bhnd_intrvec_set_t	*mask;
-} DEFAULT bhnd_bus_null_set_intrvec;
+};
 
 /**
  * Notify a bhnd bus that a child was added.

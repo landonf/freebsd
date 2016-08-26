@@ -381,12 +381,72 @@ siba_get_region_addr(device_t dev, device_t child, bhnd_port_type port_type,
 	return (0);
 }
 
-
-/**
- * BHND_INTR_INPUT-specific implementation of BHND_BUS_GET_INTRVEC().
- */
 static int
-siba_get_input_intrvec(struct siba_softc *sc, device_t child, u_int pin,
+siba_get_output_intrvec(device_t dev, device_t child, u_int iline,
+    bhnd_intrvec_t *ivec)
+{
+	struct siba_devinfo	*dinfo;
+	uint32_t		 ipsflag;
+	uint8_t			 sbflag;
+
+	/* Must be a direct child */
+	if (device_get_parent(child) != dev)
+		return (EINVAL);
+
+	/* CFG0 must be mapped */
+	dinfo = device_get_ivars(child);
+	if (dinfo->cfg[0] == NULL)
+		return (ENODEV);
+
+	/* Only one output IRQ */
+	if (iline != SIBA_IRQ0)
+		return (ENXIO);
+
+	/* Fetch sbflag number */
+	ipsflag = bhnd_bus_read_4(dinfo->cfg[0], SIBA_CFG0_TPSFLAG);
+	sbflag = SIBA_REG_GET(ipsflag, TPS_NUM0);
+
+	if (sbflag > BHND_INTRVEC_MAX)
+		return (ERANGE);
+
+	*ivec = sbflag;
+	return (0);
+}
+
+static int
+siba_set_output_intrvec(device_t dev, device_t child, u_int iline,
+    bhnd_intrvec_t ivec)
+{
+	struct siba_devinfo	*dinfo;
+	uint32_t		 ipsflag;
+
+	/* Must be a direct child */
+	if (device_get_parent(child) != dev)
+		return (EINVAL);
+
+	/* CFG0 must be mapped */
+	dinfo = device_get_ivars(child);
+	if (dinfo->cfg[0] == NULL)
+		return (ENODEV);
+
+	/* Only one output IRQ */
+	if (iline != SIBA_IRQ0)
+		return (ENXIO);
+
+	/* Must be within representable range */
+	if (ivec > SIBA_TPS_NUM0_MASK)
+		return (EINVAL);
+
+	/* Fetch and update assigned sbflag */
+	ipsflag = bhnd_bus_read_4(dinfo->cfg[0], SIBA_CFG0_TPSFLAG);
+	ipsflag = ivec | (ipsflag & ~SIBA_TPS_NUM0_MASK);
+
+	bhnd_bus_write_4(dinfo->cfg[0], SIBA_CFG0_TPSFLAG, ipsflag);
+	return (0);
+}
+
+static int
+siba_get_input_intrvecs(device_t dev, device_t child, u_int iline,
     bhnd_intrvec_set_t *ivecs)
 {
 	struct siba_devinfo	*dinfo;
@@ -394,18 +454,24 @@ siba_get_input_intrvec(struct siba_softc *sc, device_t child, u_int pin,
 	uint32_t		 ipsflag;
 	uint8_t			 sbflag;
 
+	/* Must be a direct child */
+	if (device_get_parent(child) != dev)
+		return (EINVAL);
+
+	/* CFG0 must be mapped */
 	dinfo = device_get_ivars(child);
-	KASSERT(dinfo->cfg[0] != NULL, ("NULL CFG0 mapping"));
+	if (dinfo->cfg[0] == NULL)
+		return (ENODEV);
 
 	/* Interrupt inputs are mapped either M:1 to IRQ0,
 	 * or 1:1 to IRQs 1-4 */
-	switch (pin) {
+	switch (iline) {
 	/* IRQ0 1:M mapping */
 	case SIBA_IRQ0:
 		intvec = bhnd_bus_read_4(dinfo->cfg[0], SIBA_CFG0_INTVEC);
 
 		BHND_IVECSET_ZERO(ivecs);
-		for (u_int ivec = 0; ivec < SIBA_MAX_INTRVEC; ivec++) {
+		for (u_int ivec = 0; ivec < SIBA_INTRVEC_MAX; ivec++) {
 			if (intvec & (1<<ivec))
 				BHND_IVECSET_SET(ivec, ivecs);
 		}
@@ -418,7 +484,7 @@ siba_get_input_intrvec(struct siba_softc *sc, device_t child, u_int pin,
 	case SIBA_IRQ3:
 	case SIBA_IRQ4:
 		ipsflag = bhnd_bus_read_4(dinfo->cfg[0], SIBA_CFG0_IPSFLAG);
-		sbflag = (ipsflag >> SIBA_IPS_INT_SHIFT(pin)) &
+		sbflag = (ipsflag >> SIBA_IPS_INT_SHIFT(iline)) &
 		    SIBA_IPS_INT_MASK;
 
 		BHND_IVECSET_SETOF(sbflag, ivecs);
@@ -430,144 +496,95 @@ siba_get_input_intrvec(struct siba_softc *sc, device_t child, u_int pin,
 	}
 }
 
-/*
- * siba(4) implementation of BHND_BUS_GET_INTRVEC().
- */
 static int
-siba_get_intrvec(device_t dev, device_t child, bhnd_intr_port port, u_int pin,
-    bhnd_intrvec_set_t *ivecs)
-{
-	struct siba_softc	*sc;
-	struct siba_devinfo	*dinfo;
-	uint32_t		 ipsflag;
-	uint8_t			 sbflag;
-
-	/* must be a directly attached core */
-	if (device_get_parent(child) != dev)
-		panic("%s not a siba core\n", device_get_nameunit(child));
-
-	sc = device_get_softc(dev);
-	dinfo = device_get_ivars(child);
-
-	/* CFG0 must be mapped */
-	if (dinfo->cfg[0] == NULL)
-		return (ENODEV);
-
-	switch (port) {
-	case BHND_INTR_INPUT:
-		return (siba_get_input_intrvec(sc, child, pin, ivecs));
-
-	case BHND_INTR_OUTPUT:
-		/* Siba defines only one output IRQ */
-		if (pin != SIBA_IRQ0)
-			return (ENXIO);
-
-		/* Fetch sbflag number */
-		ipsflag = bhnd_bus_read_4(dinfo->cfg[0], SIBA_CFG0_TPSFLAG);
-		sbflag = SIBA_REG_GET(ipsflag, TPS_NUM0);
-
-		BHND_IVECSET_SETOF(sbflag, ivecs);
-		return (0);
-	default:
-		return (EINVAL);
-	}
-}
-
-/**
- * BHND_INTR_OUTPUT-specific implementation of BHND_BUS_SET_INTRVEC().
- */
-static int
-siba_set_output_intrvec(struct siba_softc *sc, device_t child, u_int pin,
+siba_set_input_intrvecs(device_t dev, device_t child, u_int iline,
     bhnd_intrvec_set_t *ivecs, bhnd_intrvec_set_t *mask)
 {
 	struct siba_devinfo	*dinfo;
-	size_t			 num_masked;
-	uint32_t		 ipsflag;
-	uint8_t			 sbflag;
+	size_t			 mask_count;
 
-	dinfo = device_get_ivars(child);
-	KASSERT(dinfo->cfg[0] != NULL, ("NULL CFG0 mapping"));
-
-	/* Siba defines only one output IRQ */
-	if (pin != SIBA_IRQ0)
-		return (ENXIO);
-
-	/* The output mapping is 1:1; we can only assign one ivec. */
-	num_masked = BHND_IVECSET_COUNT(mask);
-	if (num_masked == 0)
-		return (0);	/* nothing to do */
-
-	if (num_masked != 1)
+	/* Must be a direct child */
+	if (device_get_parent(child) != dev)
 		return (EINVAL);
 
-	/* Fetch current IPS flag */
-	ipsflag = bhnd_bus_read_4(dinfo->cfg[0], SIBA_CFG0_TPSFLAG);
-	ipsflag &= ~SIBA_TPS_NUM0_MASK;
+	/* CFG0 must be mapped */
+	dinfo = device_get_ivars(child);
+	if (dinfo->cfg[0] == NULL)
+		return (ENODEV);
 
-	/* Either clear, or set. */
-	sbflag = BHND_IVECSET_FFS(ivecs);
+	/* Skip empty requests */
+	if ((mask_count = BHND_IVECSET_COUNT(mask)) == 0)
+		return (0);
 
-	if (sbflag == 0) {
-		/* Disable interrupt */
-		ipsflag &= ~SIBA_TPS_F0EN0;
-	} else {
-		/* FFS() result is 1-indexed */
-		sbflag--;
+	/* Interrupt inputs are mapped either M:1 to IRQ0,
+	 * or 1:1 to IRQs 1-4 */
+	switch (iline) {
+	/* IRQ0 1:M mapping */
+	case SIBA_IRQ0: {
+		uint32_t intvec;
 
-		/* Must be within representable range */
-		if (sbflag > SIBA_TPS_NUM0_MASK)
+		/* Fetch current interrupt vector */
+		intvec = bhnd_bus_read_4(dinfo->cfg[0], SIBA_CFG0_INTVEC);
+
+		/* Update all bits */
+		for (uint8_t vecbit = 0; vecbit < BHND_INTRVEC_MAX; vecbit++) {
+			if (!BHND_IVECSET_ISSET(vecbit, mask))
+				continue;
+
+			/* Must fall within valid siba intrvec range */
+			if (vecbit > SIBA_INTRVEC_MAX)
+				return (EINVAL);
+
+			/* Set or clear */
+			if (BHND_IVECSET_ISSET(vecbit, ivecs))
+				intvec |= (1 << vecbit);
+			else
+				intvec &= ~(1 << vecbit);
+		}
+
+		/* Write updated intvec value */
+		bhnd_bus_write_4(dinfo->cfg[0], SIBA_CFG0_INTVEC, intvec);
+		return (0);
+	}
+
+	/* IRQ1-4 1:1 mapping */
+	case SIBA_IRQ1:
+	case SIBA_IRQ2:
+	case SIBA_IRQ3:
+	case SIBA_IRQ4: {
+		uint32_t	ipsflag;
+		uint8_t		sbflag, vecbit;
+
+		/* Only one vector may be mapped to a given IRQ1-4 input */
+		if (mask_count != 1)
 			return (EINVAL);
 
-		ipsflag |= (sbflag | SIBA_TPS_F0EN0);
+		/* Fetch the bit position from our mask */
+		vecbit = BHND_IVECSET_FFS(mask) - 1 /* 1-indexed */;
+		/* Must fall within valid siba intrvec range */
+		if (vecbit > SIBA_INTRVEC_MAX)
+			return (EINVAL);
+		
+		/* Determine new sbflag value. */
+		if (BHND_IVECSET_ISSET(vecbit, ivecs)) {
+			sbflag = vecbit;		/* set */
+		} else {
+			sbflag = SIBA_INTRVEC_INVALID;	/* clear */
+		}
+
+		/* Update ipsflag */
+		ipsflag = bhnd_bus_read_4(dinfo->cfg[0], SIBA_CFG0_IPSFLAG);
+
+		ipsflag &= ~(SIBA_IPS_INT_MASK << SIBA_IPS_INT_SHIFT(iline));
+		ipsflag |= (sbflag << SIBA_IPS_INT_SHIFT(iline));
+
+		bhnd_bus_write_4(dinfo->cfg[0], SIBA_CFG0_IPSFLAG, ipsflag);
+		return (0);
 	}
 
-	/* Write new register value */
-	bhnd_bus_write_4(dinfo->cfg[0], SIBA_CFG0_TPSFLAG, ipsflag);
-
-	return (0);
-}
-
-/**
- * BHND_INTR_INPUT-specific implementation of BHND_BUS_SET_INTRVEC().
- */
-static int
-siba_set_input_intrvec(struct siba_softc *sc, device_t child, u_int pin,
-    bhnd_intrvec_set_t *ivecs, bhnd_intrvec_set_t *mask)
-{
-	// TODO
-	return (ENXIO);
-}
-
-/*
- * siba(4) implementation of BHND_BUS_SET_INTRVEC().
- */
-static int
-siba_set_intrvec(device_t dev, device_t child, bhnd_intr_port port, u_int pin,
-    bhnd_intrvec_set_t *ivecs, bhnd_intrvec_set_t *mask)
-{
-	struct siba_softc	*sc;
-	struct siba_devinfo	*dinfo;
-
-	/* must be a directly attached core */
-	if (device_get_parent(child) != dev)
-		panic("%s not a siba core\n", device_get_nameunit(child));
-
-	sc = device_get_softc(dev);
-	dinfo = device_get_ivars(child);
-
-	/* CFG0 must be mapped */
-	if (dinfo->cfg[0] == NULL)
-		return (ENODEV);
-
-	switch (port) {
-	case BHND_INTR_INPUT:
-		return (siba_set_input_intrvec(sc, child, pin, ivecs, mask));
-
-	case BHND_INTR_OUTPUT:
-		return (siba_set_output_intrvec(sc, child, pin, ivecs, mask));
-
+	/* Unsupported */
 	default:
-		return (EINVAL);
+		return (ENXIO);
 	}
 }
 
@@ -859,8 +876,11 @@ static device_method_t siba_methods[] = {
 	DEVMETHOD(bhnd_bus_get_port_rid,	siba_get_port_rid),
 	DEVMETHOD(bhnd_bus_decode_port_rid,	siba_decode_port_rid),
 	DEVMETHOD(bhnd_bus_get_region_addr,	siba_get_region_addr),
-	DEVMETHOD(bhnd_bus_get_intrvec,		siba_get_intrvec),
-	DEVMETHOD(bhnd_bus_set_intrvec,		siba_set_intrvec),
+
+	DEVMETHOD(bhnd_bus_get_output_intrvec,	siba_get_output_intrvec),
+	DEVMETHOD(bhnd_bus_set_output_intrvec,	siba_set_output_intrvec),
+	DEVMETHOD(bhnd_bus_get_input_intrvecs,	siba_get_input_intrvecs),
+	DEVMETHOD(bhnd_bus_set_input_intrvecs,	siba_set_input_intrvecs),
 
 	DEVMETHOD_END
 };

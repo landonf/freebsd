@@ -38,7 +38,6 @@
 #include <machine/bus.h>
 
 #include "bhnd_ids.h"
-#include "bhnd_intr.h"
 #include "bhnd_types.h"
 #include "bhnd_debug.h"
 #include "bhnd_bus_if.h"

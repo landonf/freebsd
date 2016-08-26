@@ -41,6 +41,8 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/bhndvar.h>
 
+#include "bcma_dmp.h"
+
 #include "bcmavar.h"
 
  /**
@@ -307,3 +309,131 @@ bcma_free_sport(struct bcma_sport *sport) {
 	free(sport, M_BHND);
 }
 
+
+/**
+ * Return the agent resource and register offsets for a given OOBSEL port, bank,
+ * and selector assigned to @p child, if any.
+ * 
+ * @param dev The bcma bus device.
+ * @param child The directly attached child core.
+ * @param port The port type (BCMA_OOB_PORTIN or BCMA_OOB_PORTOUT).
+ * @param bank The bank number (see BCMA_BANK*)
+ * @param[out] res_agent On success, will be set to a borrowed reference
+ * to the core's agent resource.
+ * @param[out] sel_reg On success, will be set to the selector register offset.
+ * @param[out] width_reg On success, will be set to the width register offset.
+ */
+static int
+bcma_agent_map_oobres(device_t dev, device_t child, u_int port, u_int bank,
+    u_int sel, struct bhnd_resource **res_agent, bus_size_t *sel_reg)
+{
+	struct bcma_devinfo	*dinfo;
+	bus_size_t		 width_reg;
+	uint32_t		 dmpcfg, width;
+
+	/* Must be a direct child */
+	if (device_get_parent(child) != dev)
+		return (EINVAL);
+
+	dinfo = device_get_ivars(child);
+
+	/* Agent block must be mapped */
+	if ((*res_agent = dinfo->res_agent) == NULL)
+		return (ENODEV);
+
+	/* Agent must support OOB */
+	dmpcfg = bhnd_bus_read_4(dinfo->res_agent, BCMA_DMP_CONFIG);
+	if (!BCMA_DMP_GET_FLAG(dmpcfg, BCMA_DMP_CFG_OOB))
+		return (ENXIO);
+
+	/* bank and selector must be valid.  */
+	if (bank >= BCMA_OOB_NUM_BANK || sel >= BCMA_OOB_NUM_SEL)
+		return (ENXIO);
+
+	switch (port) {
+	case BCMA_OOB_PORTIN:
+		width_reg = BCMA_DMP_OOB_INWIDTH(bank);
+		*sel_reg = BCMA_DMP_OOBSELIN(bank, sel);
+		break;
+	case BCMA_OOB_PORTOUT:
+		width_reg = BCMA_DMP_OOB_OUTWIDTH(bank);
+		*sel_reg = BCMA_DMP_OOBSELOUT(bank, sel);
+		break;
+	default:
+		return (EINVAL);
+	}
+
+	/* Is the requested interrupt selector mapped? */
+	width = bhnd_bus_read_4(dinfo->res_agent, width_reg);
+	if (sel >= width)
+		return (ENXIO);
+
+	return (0);
+}
+
+/**
+ * Read the current value assigned to a given OOBSEL @p port, @p bank,
+ * and @p sel on @p child, if any.
+ * 
+ * @param dev The bcma bus device.
+ * @param child The directly attached child core.
+ * @param port The port type (BCMA_OOB_PORTIN or BCMA_OOB_PORTOUT).
+ * @param bank The bank number (see BCMA_BANK*)
+ * @param sel The selector index.
+ * @param[out] value On success, will be set to the current OOBSEL value.
+ */
+int
+bcma_agent_read_oobsel(device_t dev, device_t child, u_int port, 
+    u_int bank, u_int sel, uint8_t *value)
+{
+	struct bhnd_resource	*r;
+	bus_size_t		 sel_reg;
+	uint32_t		 oobsel;
+	int			 error;
+
+	/* Map request to agent resource + register offset */
+	error = bcma_agent_map_oobres(dev, child, port, bank, sel, &r,
+	    &sel_reg);
+	if (error)
+		return (error);
+
+	/* Fetch current value */
+	oobsel = bhnd_bus_read_4(r, sel_reg);
+	*value = BCMA_DMP_OOBSEL_GET(oobsel, sel);
+
+	return (0);
+}
+
+/**
+ * Write a new value to a given OOBSEL @p port, @p bank, and @p sel on
+ * @p child.
+ * 
+ * @param dev The bcma bus device.
+ * @param child The directly attached child core.
+ * @param port The port type (BCMA_OOB_PORTIN or BCMA_OOB_PORTOUT).
+ * @param bank The bank number (see BCMA_BANK*)
+ * @param sel The selector index.
+ * @param value The value to be written.
+ */
+int
+bcma_agent_write_oobsel(device_t dev, device_t child, u_int port, 
+    u_int bank, u_int sel, uint8_t value)
+{
+	struct bhnd_resource	*r;
+	bus_size_t		 sel_reg;
+	uint32_t		 oobsel;
+	int			 error;
+
+	/* Map request to agent resource + register offset */
+	error = bcma_agent_map_oobres(dev, child, port, bank, sel, &r,
+	    &sel_reg);
+	if (error)
+		return (error);
+
+	/* Fetch and update OOBSEL register */
+	oobsel = bhnd_bus_read_4(r, sel_reg);
+	oobsel = BCMA_DMP_OOBSEL_SET(oobsel, sel, value);
+	bhnd_bus_write_4(r, sel_reg, oobsel);
+
+	return (0);
+}

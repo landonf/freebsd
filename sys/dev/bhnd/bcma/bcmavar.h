@@ -83,6 +83,11 @@ void			 bcma_free_corecfg(struct bcma_corecfg *corecfg);
 struct bcma_sport	*bcma_alloc_sport(bcma_pid_t port_num, bhnd_port_type port_type);
 void			 bcma_free_sport(struct bcma_sport *sport);
 
+int			 bcma_agent_read_oobsel(device_t dev, device_t child,
+			     u_int port, u_int bank, u_int sel, uint8_t *value);
+int			 bcma_agent_write_oobsel(device_t dev, device_t child,
+			     u_int port, u_int bank, u_int sel, uint8_t value);
+
 /** BCMA master port descriptor */
 struct bcma_mport {
 	bcma_pid_t	mp_num;		/**< AXI port identifier (bus-unique) */
