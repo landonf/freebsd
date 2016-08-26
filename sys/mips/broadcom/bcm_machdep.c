@@ -343,11 +343,7 @@ platform_reset(void)
 
 	/* Set watchdog (PMU or ChipCommon) */
 	if (bcm_get_platform()->pmu_addr != 0x0) {
-<<<<<<< HEAD
 		BCM_CHIPC_WRITE_4(BHND_PMU_WATCHDOG, 1);
-=======
-		BCM_CHIPC_WRITE_4(CHIPC_PMU_WATCHDOG, 1);
->>>>>>> master
 	} else
 		BCM_CHIPC_WRITE_4(CHIPC_WATCHDOG, 1);
 
