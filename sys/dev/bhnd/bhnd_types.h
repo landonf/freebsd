@@ -36,8 +36,6 @@
 
 #include "nvram/bhnd_nvram.h"
 
-#include "bhnd_intr.h"
-
 /** bhnd(4) device classes. */
 typedef enum {
 	BHND_DEVCLASS_CC,		/**< chipcommon i/o controller */

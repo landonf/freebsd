@@ -381,194 +381,32 @@ siba_get_region_addr(device_t dev, device_t child, bhnd_port_type port_type,
 	return (0);
 }
 
-
-/**
- * BHND_INTR_INPUT-specific implementation of BHND_BUS_GET_INTRVEC().
- */
 static int
-siba_get_input_intrvec(struct siba_softc *sc, device_t child, u_int pin,
-    bhnd_intrvec_set_t *ivecs)
+siba_get_intrvec(device_t dev, device_t child, u_int intr, uint32_t *ivec)
 {
 	struct siba_devinfo	*dinfo;
-	uint32_t		 intvec;
-	uint32_t		 ipsflag;
-	uint8_t			 sbflag;
+	uint32_t		 tpsflag;
 
-	dinfo = device_get_ivars(child);
-	KASSERT(dinfo->cfg[0] != NULL, ("NULL CFG0 mapping"));
-
-	/* Interrupt inputs are mapped either M:1 to IRQ0,
-	 * or 1:1 to IRQs 1-4 */
-	switch (pin) {
-	/* IRQ0 1:M mapping */
-	case SIBA_IRQ0:
-		intvec = bhnd_bus_read_4(dinfo->cfg[0], SIBA_CFG0_INTVEC);
-
-		BHND_IVECSET_ZERO(ivecs);
-		for (u_int ivec = 0; ivec < SIBA_MAX_INTRVEC; ivec++) {
-			if (intvec & (1<<ivec))
-				BHND_IVECSET_SET(ivec, ivecs);
-		}
-
-		return (0);
-
-	/* IRQ1-4 1:1 mapping */
-	case SIBA_IRQ1:
-	case SIBA_IRQ2:
-	case SIBA_IRQ3:
-	case SIBA_IRQ4:
-		ipsflag = bhnd_bus_read_4(dinfo->cfg[0], SIBA_CFG0_IPSFLAG);
-		sbflag = (ipsflag >> SIBA_IPS_INT_SHIFT(pin)) &
-		    SIBA_IPS_INT_MASK;
-
-		BHND_IVECSET_SETOF(sbflag, ivecs);
-		return (0);
-
-	/* Unsupported */
-	default:
-		return (ENXIO);
-	}
-}
-
-/*
- * siba(4) implementation of BHND_BUS_GET_INTRVEC().
- */
-static int
-siba_get_intrvec(device_t dev, device_t child, bhnd_intr_port port, u_int pin,
-    bhnd_intrvec_set_t *ivecs)
-{
-	struct siba_softc	*sc;
-	struct siba_devinfo	*dinfo;
-	uint32_t		 ipsflag;
-	uint8_t			 sbflag;
-
-	/* must be a directly attached core */
+	/* delegate non-bus-attached devices to our parent */
 	if (device_get_parent(child) != dev)
-		panic("%s not a siba core\n", device_get_nameunit(child));
+		return (BHND_BUS_GET_INTRVEC(device_get_parent(dev), child,
+		    intr, ivec));
 
-	sc = device_get_softc(dev);
 	dinfo = device_get_ivars(child);
 
 	/* CFG0 must be mapped */
 	if (dinfo->cfg[0] == NULL)
 		return (ENODEV);
 
-	switch (port) {
-	case BHND_INTR_INPUT:
-		return (siba_get_input_intrvec(sc, child, pin, ivecs));
-
-	case BHND_INTR_OUTPUT:
-		/* Siba defines only one output IRQ */
-		if (pin != SIBA_IRQ0)
-			return (ENXIO);
-
-		/* Fetch sbflag number */
-		ipsflag = bhnd_bus_read_4(dinfo->cfg[0], SIBA_CFG0_TPSFLAG);
-		sbflag = SIBA_REG_GET(ipsflag, TPS_NUM0);
-
-		BHND_IVECSET_SETOF(sbflag, ivecs);
-		return (0);
-	default:
-		return (EINVAL);
-	}
-}
-
-/**
- * BHND_INTR_OUTPUT-specific implementation of BHND_BUS_SET_INTRVEC().
- */
-static int
-siba_set_output_intrvec(struct siba_softc *sc, device_t child, u_int pin,
-    bhnd_intrvec_set_t *ivecs, bhnd_intrvec_set_t *mask)
-{
-	struct siba_devinfo	*dinfo;
-	size_t			 num_masked;
-	uint32_t		 ipsflag;
-	uint8_t			 sbflag;
-
-	dinfo = device_get_ivars(child);
-	KASSERT(dinfo->cfg[0] != NULL, ("NULL CFG0 mapping"));
-
-	/* Siba defines only one output IRQ */
-	if (pin != SIBA_IRQ0)
+	/* Must be a valid interrupt ID (and we only support one) */
+	if (intr != SIBA_CORE_INTR)
 		return (ENXIO);
 
-	/* The output mapping is 1:1; we can only assign one ivec. */
-	num_masked = BHND_IVECSET_COUNT(mask);
-	if (num_masked == 0)
-		return (0);	/* nothing to do */
-
-	if (num_masked != 1)
-		return (EINVAL);
-
-	/* Fetch current IPS flag */
-	ipsflag = bhnd_bus_read_4(dinfo->cfg[0], SIBA_CFG0_TPSFLAG);
-	ipsflag &= ~SIBA_TPS_NUM0_MASK;
-
-	/* Either clear, or set. */
-	sbflag = BHND_IVECSET_FFS(ivecs);
-
-	if (sbflag == 0) {
-		/* Disable interrupt */
-		ipsflag &= ~SIBA_TPS_F0EN0;
-	} else {
-		/* FFS() result is 1-indexed */
-		sbflag--;
-
-		/* Must be within representable range */
-		if (sbflag > SIBA_TPS_NUM0_MASK)
-			return (EINVAL);
-
-		ipsflag |= (sbflag | SIBA_TPS_F0EN0);
-	}
-
-	/* Write new register value */
-	bhnd_bus_write_4(dinfo->cfg[0], SIBA_CFG0_TPSFLAG, ipsflag);
+	/* Fetch sbflag number */
+	tpsflag = bhnd_bus_read_4(dinfo->cfg[0], SIBA_CFG0_TPSFLAG);
+	*ivec = SIBA_REG_GET(tpsflag, TPS_NUM0);
 
 	return (0);
-}
-
-/**
- * BHND_INTR_INPUT-specific implementation of BHND_BUS_SET_INTRVEC().
- */
-static int
-siba_set_input_intrvec(struct siba_softc *sc, device_t child, u_int pin,
-    bhnd_intrvec_set_t *ivecs, bhnd_intrvec_set_t *mask)
-{
-	// TODO
-	return (ENXIO);
-}
-
-/*
- * siba(4) implementation of BHND_BUS_SET_INTRVEC().
- */
-static int
-siba_set_intrvec(device_t dev, device_t child, bhnd_intr_port port, u_int pin,
-    bhnd_intrvec_set_t *ivecs, bhnd_intrvec_set_t *mask)
-{
-	struct siba_softc	*sc;
-	struct siba_devinfo	*dinfo;
-
-	/* must be a directly attached core */
-	if (device_get_parent(child) != dev)
-		panic("%s not a siba core\n", device_get_nameunit(child));
-
-	sc = device_get_softc(dev);
-	dinfo = device_get_ivars(child);
-
-	/* CFG0 must be mapped */
-	if (dinfo->cfg[0] == NULL)
-		return (ENODEV);
-
-	switch (port) {
-	case BHND_INTR_INPUT:
-		return (siba_set_input_intrvec(sc, child, pin, ivecs, mask));
-
-	case BHND_INTR_OUTPUT:
-		return (siba_set_output_intrvec(sc, child, pin, ivecs, mask));
-
-	default:
-		return (EINVAL);
-	}
 }
 
 /**
@@ -860,7 +698,6 @@ static device_method_t siba_methods[] = {
 	DEVMETHOD(bhnd_bus_decode_port_rid,	siba_decode_port_rid),
 	DEVMETHOD(bhnd_bus_get_region_addr,	siba_get_region_addr),
 	DEVMETHOD(bhnd_bus_get_intrvec,		siba_get_intrvec),
-	DEVMETHOD(bhnd_bus_set_intrvec,		siba_set_intrvec),
 
 	DEVMETHOD_END
 };
