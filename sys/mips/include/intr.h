@@ -55,6 +55,13 @@
 #define	NIRQ			MIPS_NIRQ
 #endif
 
+/* MIPS intr map data for non-FDT configurations */
+#define	INTR_MAP_DATA_MIPS	INTR_MAP_DATA_PLAT_1
+struct intr_map_data_mips {
+	struct intr_map_data	hdr;
+	u_int			irq;
+};
+
 #define INTR_IRQ_NSPC_SWI	4
 
 /* MIPS compatibility for legacy mips code */

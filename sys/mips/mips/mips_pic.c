@@ -147,10 +147,11 @@ pic_xref(device_t dev)
 static int
 mips_pic_register_isrcs(struct mips_pic_softc *sc)
 {
-	int error;
-	uint32_t irq, i, tmpirq;
-	struct intr_irqsrc *isrc;
-	char *name;
+	struct intr_irqsrc	*isrc;
+	char			*name;
+	uint32_t		 irq, i, tmpirq;
+	intptr_t		 xref = pic_xref(sc->pic_dev);
+	int			 error;
 
 	for (irq = 0; irq < sc->nirqs; irq++) {
 		sc->pic_irqs[irq].irq = irq;
@@ -180,6 +181,23 @@ mips_pic_register_isrcs(struct mips_pic_softc *sc)
 			return (error);
 		}
 	}
+
+#ifndef FDT
+	for (irq = 0; irq < sc->nirqs; irq++) {
+		struct intr_map_data_mips	*idata;
+		u_int				 nirq;
+
+		idata = (struct intr_map_data_mips *)intr_alloc_map_data(
+		    INTR_MAP_DATA_MIPS, sizeof(struct intr_map_data_mips),
+		    M_WAITOK|M_ZERO);
+		idata->irq = irq;
+
+		nirq = intr_map_irq(sc->pic_dev, xref,
+		    (struct intr_map_data *)idata);
+		if (nirq != irq)
+			panic("mapped mips irq %u to %u", irq, nirq);
+	}
+#endif
 
 	return (0);
 }
@@ -304,24 +322,34 @@ static int
 mips_pic_map_intr(device_t dev, struct intr_map_data *data,
     struct intr_irqsrc **isrcp)
 {
+	struct mips_pic_softc		*sc;
+	struct intr_map_data_mips	*dam;
 #ifdef FDT
-	struct intr_map_data_fdt *daf;
-	struct mips_pic_softc *sc;
-
-	if (data->type != INTR_MAP_DATA_FDT)
-		return (ENOTSUP);
+	struct intr_map_data_fdt	*daf;
+#endif
 
 	sc = device_get_softc(dev);
-	daf = (struct intr_map_data_fdt *)data;
 
-	if (daf->ncells != 1 || daf->cells[0] >= sc->nirqs)
-		return (EINVAL);
+	switch (data->type) {
+#ifdef FDT
+	case INTR_MAP_DATA_FDT:
+		daf = (struct intr_map_data_fdt *)data;
 
-	*isrcp = PIC_INTR_ISRC(sc, daf->cells[0]);
-	return (0);
-#else
-	return (ENOTSUP);
+		if (daf->ncells != 1 || daf->cells[0] >= sc->nirqs)
+			return (EINVAL);
+
+		*isrcp = PIC_INTR_ISRC(sc, daf->cells[0]);
+		return (0);
 #endif
+
+	case INTR_MAP_DATA_MIPS:
+		dam = (struct intr_map_data_mips *)data;
+		*isrcp = PIC_INTR_ISRC(sc, dam->irq);
+		return (0);
+
+	default:
+		return (ENOTSUP);
+	}
 }
 
 static void
@@ -396,8 +424,14 @@ cpu_establish_hardintr(const char *name, driver_filter_t *filt,
 		panic("%s called for unknown hard intr %d", __func__, irq);
 
 	KASSERT(pic_sc != NULL, ("%s: no pic", __func__));
-
 	irq += NSOFT_IRQS;
+
+#if 1
+	res = intr_activate_irq(pic_sc->pic_dev, pic_sc->pic_irqs[irq].res);
+	if (res != 0)
+		panic("Unable to activate hard IRQ %d handler: %d", irq, res);
+#endif
+	
 	res = intr_setup_irq(pic_sc->pic_dev, pic_sc->pic_irqs[irq].res, filt,
 	    handler, arg, flags, cookiep);
 	if (res != 0) panic("Unable to add hard IRQ %d handler", irq);

@@ -935,6 +935,8 @@ intr_activate_irq(device_t dev, struct resource *res)
 	u_int res_id;
 	int error;
 
+	printf("ACTIVATE IRQ!\n");
+
 	KASSERT(rman_get_start(res) == rman_get_end(res),
 	    ("%s: more interrupts in resource", __func__));
 
@@ -950,6 +952,7 @@ intr_activate_irq(device_t dev, struct resource *res)
 		/* if (error == EINVAL) return(0); */
 		return (error);
 	}
+	printf("SET ISRC for %u to %p\n", res_id, isrc);
 	intr_map_set_isrc(res_id, isrc);
 	rman_set_virtual(res, data);
 	return (PIC_ACTIVATE_INTR(isrc->isrc_dev, isrc, res, data));
@@ -996,6 +999,7 @@ intr_setup_irq(device_t dev, struct resource *res, driver_filter_t filt,
 	res_id = (u_int)rman_get_start(res);
 	isrc = intr_map_get_isrc(res_id);
 	if (isrc == NULL) {
+		printf("NO ISRC\n");
 		/* XXX TODO DISCONECTED PICs */
 		return (EINVAL);
 	}
@@ -1029,6 +1033,7 @@ intr_setup_irq(device_t dev, struct resource *res, driver_filter_t filt,
 		{
 		error = isrc_add_handler(isrc, name, filt, hand, arg, flags,
 		    cookiep);
+		printf("isrc_add: %d\n", error);
 		debugf("irq %u add handler error %d on %s\n", irq, error, name);
 	}
 	if (error != 0)
@@ -1041,6 +1046,7 @@ intr_setup_irq(device_t dev, struct resource *res, driver_filter_t filt,
 		if (isrc->isrc_handlers == 1)
 			PIC_ENABLE_INTR(isrc->isrc_dev, isrc);
 	}
+	printf("PIC_SETUP: %d\n", error);
 	mtx_unlock(&isrc_table_lock);
 	if (error != 0)
 		intr_event_remove_handler(*cookiep);
@@ -1526,6 +1532,7 @@ intr_map_copy_map_data(u_int res_id, device_t *map_dev, intptr_t *map_xref,
 	mtx_lock(&irq_map_lock);
 	if (res_id >= irq_map_count || irq_map[res_id] == NULL)
 		panic("Attempt to copy invalid resource id: %u\n", res_id);
+	printf("map data=%p\n", irq_map[res_id]->map_data);
 	if (irq_map[res_id]->map_data != NULL)
 		len = irq_map[res_id]->map_data->len;
 	mtx_unlock(&irq_map_lock);
