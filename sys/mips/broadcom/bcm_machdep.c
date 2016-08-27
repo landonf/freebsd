@@ -155,7 +155,6 @@ bcm_find_core(struct bhnd_chipid *chipid, bhnd_devclass_t devclass, int unit,
 			return (ENODEV);
 		
 		return (bcm_siba_find_core(chipid, devclass, unit, info, addr));
-		break;
 	default:
 		if (!BHND_CHIPTYPE_HAS_EROM(chipid->chip_type)) {
 			printf("%s: unsupported chip type: %d\n", __FUNCTION__,
