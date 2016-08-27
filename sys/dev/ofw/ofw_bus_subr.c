@@ -516,6 +516,7 @@ ofw_bus_find_iparent(phandle_t node)
 	return (iparent);
 }
 
+#ifndef INTRNG
 int
 ofw_bus_intr_to_rl(device_t dev, phandle_t node,
     struct resource_list *rl, int *rlen)
@@ -581,6 +582,7 @@ ofw_bus_intr_to_rl(device_t dev, phandle_t node,
 	free(intr, M_OFWPROP);
 	return (err);
 }
+#endif
 
 int
 ofw_bus_intr_by_rid(device_t dev, phandle_t node, int wanted_rid,
