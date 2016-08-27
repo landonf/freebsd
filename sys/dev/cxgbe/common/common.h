@@ -280,19 +280,62 @@ struct chip_params {
 	u16 mps_tcam_size;
 };
 
+/* VF-only parameters. */
+
+/*
+ * Global Receive Side Scaling (RSS) parameters in host-native format.
+ */
+struct rss_params {
+	unsigned int mode;		/* RSS mode */
+	union {
+	    struct {
+		u_int synmapen:1;	/* SYN Map Enable */
+		u_int syn4tupenipv6:1;	/* enable hashing 4-tuple IPv6 SYNs */
+		u_int syn2tupenipv6:1;	/* enable hashing 2-tuple IPv6 SYNs */
+		u_int syn4tupenipv4:1;	/* enable hashing 4-tuple IPv4 SYNs */
+		u_int syn2tupenipv4:1;	/* enable hashing 2-tuple IPv4 SYNs */
+		u_int ofdmapen:1;	/* Offload Map Enable */
+		u_int tnlmapen:1;	/* Tunnel Map Enable */
+		u_int tnlalllookup:1;	/* Tunnel All Lookup */
+		u_int hashtoeplitz:1;	/* use Toeplitz hash */
+	    } basicvirtual;
+	} u;
+};
+
+/*
+ * Maximum resources provisioned for a PCI VF.
+ */
+struct vf_resources {
+	unsigned int nvi;		/* N virtual interfaces */
+	unsigned int neq;		/* N egress Qs */
+	unsigned int nethctrl;		/* N egress ETH or CTRL Qs */
+	unsigned int niqflint;		/* N ingress Qs/w free list(s) & intr */
+	unsigned int niq;		/* N ingress Qs */
+	unsigned int tc;		/* PCI-E traffic class */
+	unsigned int pmask;		/* port access rights mask */
+	unsigned int nexactf;		/* N exact MPS filters */
+	unsigned int r_caps;		/* read capabilities */
+	unsigned int wx_caps;		/* write/execute capabilities */
+};
+
 struct adapter_params {
 	struct sge_params sge;
-	struct tp_params  tp;
+	struct tp_params  tp;		/* PF-only */
 	struct vpd_params vpd;
 	struct pci_params pci;
-	struct devlog_params devlog;
+	struct devlog_params devlog;	/* PF-only */
+	struct rss_params rss;		/* VF-only */
+	struct vf_resources vfres;	/* VF-only */
 
 	unsigned int sf_size;             /* serial flash size in bytes */
 	unsigned int sf_nsec;             /* # of flash sectors */
 
-	unsigned int fw_vers;
-	unsigned int tp_vers;
-	unsigned int exprom_vers;
+	unsigned int fw_vers;		/* firmware version */
+	unsigned int bs_vers;		/* bootstrap version */
+	unsigned int tp_vers;		/* TP microcode version */
+	unsigned int er_vers;		/* expansion ROM version */
+	unsigned int scfg_vers;		/* Serial Configuration version */
+	unsigned int vpd_vers;		/* VPD version */
 
 	unsigned short mtus[NMTUS];
 	unsigned short a_wnd[NCCTRL_WIN];
@@ -508,8 +551,12 @@ int t4_flash_erase_sectors(struct adapter *adapter, int start, int end);
 int t4_flash_cfg_addr(struct adapter *adapter);
 int t4_load_cfg(struct adapter *adapter, const u8 *cfg_data, unsigned int size);
 int t4_get_fw_version(struct adapter *adapter, u32 *vers);
+int t4_get_bs_version(struct adapter *adapter, u32 *vers);
 int t4_get_tp_version(struct adapter *adapter, u32 *vers);
 int t4_get_exprom_version(struct adapter *adapter, u32 *vers);
+int t4_get_scfg_version(struct adapter *adapter, u32 *vers);
+int t4_get_vpd_version(struct adapter *adapter, u32 *vers);
+int t4_get_version_info(struct adapter *adapter);
 int t4_init_hw(struct adapter *adapter, u32 fw_params);
 int t4_prep_adapter(struct adapter *adapter, u8 *buf);
 int t4_shutdown_adapter(struct adapter *adapter);

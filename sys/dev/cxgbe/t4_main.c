@@ -2882,32 +2882,6 @@ prep_firmware(struct adapter *sc)
 		goto done;
 	}
 
-	/* We're using whatever's on the card and it's known to be good. */
-	sc->params.fw_vers = ntohl(card_fw->fw_ver);
-	snprintf(sc->fw_version, sizeof(sc->fw_version), "%u.%u.%u.%u",
-	    G_FW_HDR_FW_VER_MAJOR(sc->params.fw_vers),
-	    G_FW_HDR_FW_VER_MINOR(sc->params.fw_vers),
-	    G_FW_HDR_FW_VER_MICRO(sc->params.fw_vers),
-	    G_FW_HDR_FW_VER_BUILD(sc->params.fw_vers));
-
-	t4_get_tp_version(sc, &sc->params.tp_vers);
-	snprintf(sc->tp_version, sizeof(sc->tp_version), "%u.%u.%u.%u",
-	    G_FW_HDR_FW_VER_MAJOR(sc->params.tp_vers),
-	    G_FW_HDR_FW_VER_MINOR(sc->params.tp_vers),
-	    G_FW_HDR_FW_VER_MICRO(sc->params.tp_vers),
-	    G_FW_HDR_FW_VER_BUILD(sc->params.tp_vers));
-
-	if (t4_get_exprom_version(sc, &sc->params.exprom_vers) != 0)
-		sc->params.exprom_vers = 0;
-	else {
-		snprintf(sc->exprom_version, sizeof(sc->exprom_version),
-		    "%u.%u.%u.%u",
-		    G_FW_HDR_FW_VER_MAJOR(sc->params.exprom_vers),
-		    G_FW_HDR_FW_VER_MINOR(sc->params.exprom_vers),
-		    G_FW_HDR_FW_VER_MICRO(sc->params.exprom_vers),
-		    G_FW_HDR_FW_VER_BUILD(sc->params.exprom_vers));
-	}
-
 	/* Reset device */
 	if (need_fw_reset &&
 	    (rc = -t4_fw_reset(sc, sc->mbox, F_PIORSTMODE | F_PIORST)) != 0) {
@@ -3152,6 +3126,32 @@ get_params__pre_init(struct adapter *sc)
 	int rc;
 	uint32_t param[2], val[2];
 
+	t4_get_version_info(sc);
+
+	snprintf(sc->fw_version, sizeof(sc->fw_version), "%u.%u.%u.%u",
+	    G_FW_HDR_FW_VER_MAJOR(sc->params.fw_vers),
+	    G_FW_HDR_FW_VER_MINOR(sc->params.fw_vers),
+	    G_FW_HDR_FW_VER_MICRO(sc->params.fw_vers),
+	    G_FW_HDR_FW_VER_BUILD(sc->params.fw_vers));
+
+	snprintf(sc->bs_version, sizeof(sc->bs_version), "%u.%u.%u.%u",
+	    G_FW_HDR_FW_VER_MAJOR(sc->params.bs_vers),
+	    G_FW_HDR_FW_VER_MINOR(sc->params.bs_vers),
+	    G_FW_HDR_FW_VER_MICRO(sc->params.bs_vers),
+	    G_FW_HDR_FW_VER_BUILD(sc->params.bs_vers));
+
+	snprintf(sc->tp_version, sizeof(sc->tp_version), "%u.%u.%u.%u",
+	    G_FW_HDR_FW_VER_MAJOR(sc->params.tp_vers),
+	    G_FW_HDR_FW_VER_MINOR(sc->params.tp_vers),
+	    G_FW_HDR_FW_VER_MICRO(sc->params.tp_vers),
+	    G_FW_HDR_FW_VER_BUILD(sc->params.tp_vers));
+
+	snprintf(sc->er_version, sizeof(sc->er_version), "%u.%u.%u.%u",
+	    G_FW_HDR_FW_VER_MAJOR(sc->params.er_vers),
+	    G_FW_HDR_FW_VER_MINOR(sc->params.er_vers),
+	    G_FW_HDR_FW_VER_MICRO(sc->params.er_vers),
+	    G_FW_HDR_FW_VER_BUILD(sc->params.er_vers));
+
 	param[0] = FW_PARAM_DEV(PORTVEC);
 	param[1] = FW_PARAM_DEV(CCLK);
 	rc = -t4_query_params(sc, sc->mbox, sc->pf, 0, 2, param, val);
@@ -3365,9 +3365,7 @@ t4_set_desc(struct adapter *sc)
 	char buf[128];
 	struct adapter_params *p = &sc->params;
 
-	snprintf(buf, sizeof(buf), "Chelsio %s %sNIC (rev %d), S/N:%s, "
-	    "P/N:%s, E/C:%s", p->vpd.id, is_offload(sc) ? "R" : "",
-	    chip_rev(sc), p->vpd.sn, p->vpd.pn, p->vpd.ec);
+	snprintf(buf, sizeof(buf), "Chelsio %s", p->vpd.id);
 
 	device_set_desc_copy(sc->dev, buf);
 }
@@ -4592,45 +4590,9 @@ t4_sysctls(struct adapter *sc)
 	SYSCTL_ADD_INT(ctx, children, OID_AUTO, "nports", CTLFLAG_RD, NULL,
 	    sc->params.nports, "# of ports");
 
-	SYSCTL_ADD_INT(ctx, children, OID_AUTO, "hw_revision", CTLFLAG_RD,
-	    NULL, chip_rev(sc), "chip hardware revision");
-
-	SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "tp_version",
-	    CTLFLAG_RD, sc->tp_version, 0, "TP microcode version");
-
-	if (sc->params.exprom_vers != 0) {
-		SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "exprom_version",
-		    CTLFLAG_RD, sc->exprom_version, 0, "expansion ROM version");
-	}
-
-	SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "firmware_version",
-	    CTLFLAG_RD, sc->fw_version, 0, "firmware version");
-
-	SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "cf",
-	    CTLFLAG_RD, sc->cfg_file, 0, "configuration file");
-
-	SYSCTL_ADD_UINT(ctx, children, OID_AUTO, "cfcsum", CTLFLAG_RD, NULL,
-	    sc->cfcsum, "config file checksum");
-
 	SYSCTL_ADD_PROC(ctx, children, OID_AUTO, "doorbells",
 	    CTLTYPE_STRING | CTLFLAG_RD, doorbells, sc->doorbells,
 	    sysctl_bitfield, "A", "available doorbells");
-
-#define SYSCTL_CAP(name, n, text) \
-	SYSCTL_ADD_PROC(ctx, children, OID_AUTO, #name, \
-	    CTLTYPE_STRING | CTLFLAG_RD, caps_decoder[n], sc->name, \
-	    sysctl_bitfield, "A", "available " text "capabilities")
-
-	SYSCTL_CAP(nbmcaps, 0, "NBM");
-	SYSCTL_CAP(linkcaps, 1, "link");
-	SYSCTL_CAP(switchcaps, 2, "switch");
-	SYSCTL_CAP(niccaps, 3, "NIC");
-	SYSCTL_CAP(toecaps, 4, "TCP offload");
-	SYSCTL_CAP(rdmacaps, 5, "RDMA");
-	SYSCTL_CAP(iscsicaps, 6, "iSCSI");
-	SYSCTL_CAP(tlscaps, 7, "TLS");
-	SYSCTL_CAP(fcoecaps, 8, "FCoE");
-#undef SYSCTL_CAP
 
 	SYSCTL_ADD_INT(ctx, children, OID_AUTO, "core_clock", CTLFLAG_RD, NULL,
 	    sc->params.vpd.cclk, "core clock frequency (in KHz)");
@@ -4645,13 +4607,6 @@ t4_sysctls(struct adapter *sc)
 	    sizeof(sc->params.sge.counter_val), sysctl_int_array, "A",
 	    "interrupt holdoff packet counter values");
 
-	SYSCTL_ADD_INT(ctx, children, OID_AUTO, "nfilters", CTLFLAG_RD,
-	    NULL, sc->tids.nftids, "number of filters");
-
-	SYSCTL_ADD_PROC(ctx, children, OID_AUTO, "temperature", CTLTYPE_INT |
-	    CTLFLAG_RD, sc, 0, sysctl_temperature, "I",
-	    "chip temperature (in Celsius)");
-
 	t4_sge_sysctls(sc, ctx, children);
 
 	sc->lro_timeout = 100;
@@ -4660,6 +4615,68 @@ t4_sysctls(struct adapter *sc)
 
 	SYSCTL_ADD_INT(ctx, children, OID_AUTO, "debug_flags", CTLFLAG_RW,
 	    &sc->debug_flags, 0, "flags to enable runtime debugging");
+
+	SYSCTL_ADD_INT(ctx, children, OID_AUTO, "hw_revision", CTLFLAG_RD,
+	    NULL, chip_rev(sc), "chip hardware revision");
+
+	SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "sn",
+	    CTLFLAG_RD, sc->params.vpd.sn, 0, "serial number");
+
+	SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "pn",
+	    CTLFLAG_RD, sc->params.vpd.pn, 0, "part number");
+
+	SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "ec",
+	    CTLFLAG_RD, sc->params.vpd.ec, 0, "engineering change");
+
+	SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "na",
+	    CTLFLAG_RD, sc->params.vpd.na, 0, "network address");
+
+	SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "tp_version",
+	    CTLFLAG_RD, sc->tp_version, 0, "TP microcode version");
+
+	SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "er_version", CTLFLAG_RD,
+	    sc->er_version, 0, "expansion ROM version");
+
+	SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "firmware_version",
+	    CTLFLAG_RD, sc->fw_version, 0, "firmware version");
+
+	SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "bs_version", CTLFLAG_RD,
+	    sc->bs_version, 0, "bootstrap firmware version");
+
+	SYSCTL_ADD_UINT(ctx, children, OID_AUTO, "scfg_version", CTLFLAG_RD,
+	    NULL, sc->params.scfg_vers, "serial config version");
+
+	SYSCTL_ADD_UINT(ctx, children, OID_AUTO, "vpd_version", CTLFLAG_RD,
+	    NULL, sc->params.vpd_vers, "VPD version");
+
+	SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "cf",
+	    CTLFLAG_RD, sc->cfg_file, 0, "configuration file");
+
+	SYSCTL_ADD_UINT(ctx, children, OID_AUTO, "cfcsum", CTLFLAG_RD, NULL,
+	    sc->cfcsum, "config file checksum");
+
+#define SYSCTL_CAP(name, n, text) \
+	SYSCTL_ADD_PROC(ctx, children, OID_AUTO, #name, \
+	    CTLTYPE_STRING | CTLFLAG_RD, caps_decoder[n], sc->name, \
+	    sysctl_bitfield, "A", "available " text " capabilities")
+
+	SYSCTL_CAP(nbmcaps, 0, "NBM");
+	SYSCTL_CAP(linkcaps, 1, "link");
+	SYSCTL_CAP(switchcaps, 2, "switch");
+	SYSCTL_CAP(niccaps, 3, "NIC");
+	SYSCTL_CAP(toecaps, 4, "TCP offload");
+	SYSCTL_CAP(rdmacaps, 5, "RDMA");
+	SYSCTL_CAP(iscsicaps, 6, "iSCSI");
+	SYSCTL_CAP(tlscaps, 7, "TLS");
+	SYSCTL_CAP(fcoecaps, 8, "FCoE");
+#undef SYSCTL_CAP
+
+	SYSCTL_ADD_INT(ctx, children, OID_AUTO, "nfilters", CTLFLAG_RD,
+	    NULL, sc->tids.nftids, "number of filters");
+
+	SYSCTL_ADD_PROC(ctx, children, OID_AUTO, "temperature", CTLTYPE_INT |
+	    CTLFLAG_RD, sc, 0, sysctl_temperature, "I",
+	    "chip temperature (in Celsius)");
 
 #ifdef SBUF_DRAIN
 	/*
