@@ -111,8 +111,10 @@ static device_method_t bcm_mips33k_methods[] = {
 	DEVMETHOD_END
 };
 
-static devclass_t bhnd_mips33k_devclass;
+static devclass_t bmips33k_cpu_devclass;
 
-DEFINE_CLASS_0(bhnd_mips33k, bcm_mips33k_driver, bcm_mips33k_methods, sizeof(struct bcm_mips33k_softc));
-EARLY_DRIVER_MODULE(bhnd_mips33k, bhnd, bcm_mips33k_driver, bhnd_mips33k_devclass, 0, 0, BUS_PASS_CPU + BUS_PASS_ORDER_EARLY);
+DEFINE_CLASS_0(bcm_mips33k, bcm_mips33k_driver, bcm_mips33k_methods, sizeof(struct bcm_mips33k_softc));
+EARLY_DRIVER_MODULE(bmips33k_cpu, bhnd, bcm_mips74k_driver, bmips33k_cpu_devclass, 0, 0, BUS_PASS_CPU + BUS_PASS_ORDER_EARLY);
+
 MODULE_VERSION(bcm_mips33k, 1);
+MODULE_DEPEND(bcm_mips33k, bhnd, 1, 1, 1);

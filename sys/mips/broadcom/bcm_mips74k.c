@@ -41,6 +41,8 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/bhnd.h>
 
+#include "bcm_mips74kreg.h"
+
 /*
  * BMIPS74K Core
  *
@@ -87,8 +89,9 @@ bcm_mips74k_attach(device_t dev)
 	if (sc->mem_res == NULL)
 		return (ENXIO);
 
-	/* Route timer interrupt */
-	// TODO
+	/* Route MIPS timer to IRQ5 */
+	bus_write_4(sc->mem_res, BCM_MIPS74K_INTR5_SEL,
+	    (1<<BCM_MIPS74K_TIMER_IVEC));
 
 	return (0);
 }
@@ -114,9 +117,9 @@ static device_method_t bcm_mips74k_methods[] = {
 	DEVMETHOD_END
 };
 
-static devclass_t bhnd_mips74k_devclass;
+static devclass_t mips74k_cpu_devclass;
 
-DEFINE_CLASS_0(bhnd_mips74k, bcm_mips74k_driver, bcm_mips74k_methods, sizeof(struct bcm_mips74k_softc));
-EARLY_DRIVER_MODULE(bhnd_mips74k, bhnd, bcm_mips74k_driver, bhnd_mips74k_devclass, 0, 0, BUS_PASS_CPU + BUS_PASS_ORDER_EARLY);
-
+DEFINE_CLASS_0(bcm_mips74k, bcm_mips74k_driver, bcm_mips74k_methods, sizeof(struct bcm_mips74k_softc));
+EARLY_DRIVER_MODULE(mips74k_cpu, bhnd, bcm_mips74k_driver, mips74k_cpu_devclass, 0, 0, BUS_PASS_CPU + BUS_PASS_ORDER_EARLY);
 MODULE_VERSION(bcm_mips74k, 1);
+MODULE_DEPEND(bcm_mips74k, bhnd, 1, 1, 1);
