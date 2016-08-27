@@ -979,8 +979,10 @@ bhnd_generic_probe_nomatch(device_t dev, device_t child)
 		bhnd_get_device_name(child));
 
 	rl = BUS_GET_RESOURCE_LIST(dev, child);
-	if (rl != NULL)
+	if (rl != NULL) {
 		resource_list_print_type(rl, "mem", SYS_RES_MEMORY, "%#jx");
+		resource_list_print_type(rl, "irq", SYS_RES_IRQ, "%#jd");
+	}
 
 	printf(" at core %u (no driver attached)\n",
 	    bhnd_get_core_index(child));
