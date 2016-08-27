@@ -120,12 +120,9 @@ bhnd_pwrctl_attach(device_t dev)
 
 	sc = device_get_softc(dev);
 
-<<<<<<< HEAD
-=======
 	/* TODO: Need further testing on actual PWRCTL hardware */
 	device_printf(dev, "WARNING: Using untested PWRCTL support\n");
 
->>>>>>> master
 	sc->dev = dev;
 	sc->chipc_dev = device_get_parent(dev);
 	sc->quirks = bhnd_device_quirks(sc->chipc_dev, pwrctl_devices,
