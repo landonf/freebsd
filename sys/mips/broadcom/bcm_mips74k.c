@@ -46,7 +46,8 @@ __FBSDID("$FreeBSD$");
 /*
  * BMIPS74K Core
  *
- * Only found on bcma(4) devices.
+ * These cores are only found on bcma(4) chipsets, allowing
+ * us to assume the availability of bcma interrupt registers.
  */
 
 static const struct bhnd_device bcm_mips74k_devs[] = {
@@ -117,9 +118,9 @@ static device_method_t bcm_mips74k_methods[] = {
 	DEVMETHOD_END
 };
 
-static devclass_t mips74k_cpu_devclass;
+static devclass_t bmips_cpu_devclass;
 
 DEFINE_CLASS_0(bcm_mips74k, bcm_mips74k_driver, bcm_mips74k_methods, sizeof(struct bcm_mips74k_softc));
-EARLY_DRIVER_MODULE(mips74k_cpu, bhnd, bcm_mips74k_driver, mips74k_cpu_devclass, 0, 0, BUS_PASS_CPU + BUS_PASS_ORDER_EARLY);
+EARLY_DRIVER_MODULE(bmips_cpu, bhnd, bcm_mips74k_driver, bmips_cpu_devclass, 0, 0, BUS_PASS_CPU + BUS_PASS_ORDER_EARLY);
 MODULE_VERSION(bcm_mips74k, 1);
 MODULE_DEPEND(bcm_mips74k, bhnd, 1, 1, 1);

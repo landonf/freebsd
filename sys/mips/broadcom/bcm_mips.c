@@ -42,29 +42,30 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhnd.h>
 
 /*
- * BMIPS3300 Core
+ * BMIPS32 and BMIPS3300 core driver.
  *
- * Only found on siba(4) devices.
+ * These cores are only found on siba(4) chipsets, allowing
+ * us to assume the availability of siba interrupt registers.
  */
 
-static const struct bhnd_device bcm_mips33k_devs[] = {
+static const struct bhnd_device bcm_mips_devs[] = {
 	BHND_DEVICE(BCM, MIPS33, NULL, NULL, BHND_DF_SOC),
 	BHND_DEVICE_END
 };
 
-struct bcm_mips33k_softc {
+struct bcm_mips_softc {
 	device_t		 dev;
 	struct resource		*mem_res;
 	int			 mem_rid;
 };
 
 static int
-bcm_mips33k_probe(device_t dev)
+bcm_mips_probe(device_t dev)
 {
 	const struct bhnd_device	*id;
 
-	id = bhnd_device_lookup(dev, bcm_mips33k_devs,
-	    sizeof(bcm_mips33k_devs[0]));
+	id = bhnd_device_lookup(dev, bcm_mips_devs,
+	    sizeof(bcm_mips_devs[0]));
 	if (id == NULL)
 		return (ENXIO);
 
@@ -73,9 +74,9 @@ bcm_mips33k_probe(device_t dev)
 }
 
 static int
-bcm_mips33k_attach(device_t dev)
+bcm_mips_attach(device_t dev)
 {
-	struct bcm_mips33k_softc *sc;
+	struct bcm_mips_softc *sc;
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
@@ -91,9 +92,9 @@ bcm_mips33k_attach(device_t dev)
 }
 
 static int
-bcm_mips33k_detach(device_t dev)
+bcm_mips_detach(device_t dev)
 {
-	struct bcm_mips33k_softc *sc;
+	struct bcm_mips_softc *sc;
 
 	sc = device_get_softc(dev);
 
@@ -102,19 +103,19 @@ bcm_mips33k_detach(device_t dev)
 	return (0);
 }
 
-static device_method_t bcm_mips33k_methods[] = {
+static device_method_t bcm_mips_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_probe,			bcm_mips33k_probe),
-	DEVMETHOD(device_attach,		bcm_mips33k_attach),
-	DEVMETHOD(device_detach,		bcm_mips33k_detach),
+	DEVMETHOD(device_probe,			bcm_mips_probe),
+	DEVMETHOD(device_attach,		bcm_mips_attach),
+	DEVMETHOD(device_detach,		bcm_mips_detach),
 	
 	DEVMETHOD_END
 };
 
-static devclass_t bmips33k_cpu_devclass;
+static devclass_t bmips_cpu_devclass;
 
-DEFINE_CLASS_0(bcm_mips33k, bcm_mips33k_driver, bcm_mips33k_methods, sizeof(struct bcm_mips33k_softc));
-EARLY_DRIVER_MODULE(bmips33k_cpu, bhnd, bcm_mips74k_driver, bmips33k_cpu_devclass, 0, 0, BUS_PASS_CPU + BUS_PASS_ORDER_EARLY);
+DEFINE_CLASS_0(bcm_mips, bcm_mips_driver, bcm_mips_methods, sizeof(struct bcm_mips_softc));
+EARLY_DRIVER_MODULE(bmips_cpu, bhnd, bcm_mips_driver, bmips_cpu_devclass, 0, 0, BUS_PASS_CPU + BUS_PASS_ORDER_EARLY);
 
-MODULE_VERSION(bcm_mips33k, 1);
-MODULE_DEPEND(bcm_mips33k, bhnd, 1, 1, 1);
+MODULE_VERSION(bcm_mips, 1);
+MODULE_DEPEND(bcm_mips, bhnd, 1, 1, 1);
