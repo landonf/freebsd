@@ -483,7 +483,7 @@ bcma_get_region_addr(device_t dev, device_t child, bhnd_port_type port_type,
 }
 
 static int
-bcma_get_intrvec(device_t dev, device_t child, u_int intr, uint32_t *ivec)
+bcma_get_core_ivec(device_t dev, device_t child, u_int intr, uint32_t *ivec)
 {
 	struct bcma_devinfo	*dinfo;
 	uint32_t		 dmpcfg, oobsel;
@@ -632,7 +632,7 @@ static device_method_t bcma_methods[] = {
 	DEVMETHOD(bhnd_bus_get_port_rid,	bcma_get_port_rid),
 	DEVMETHOD(bhnd_bus_decode_port_rid,	bcma_decode_port_rid),
 	DEVMETHOD(bhnd_bus_get_region_addr,	bcma_get_region_addr),
-	DEVMETHOD(bhnd_bus_get_intrvec,		bcma_get_intrvec),
+	DEVMETHOD(bhnd_bus_get_core_ivec,	bcma_get_core_ivec),
 
 	DEVMETHOD_END
 };

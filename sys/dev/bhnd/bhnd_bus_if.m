@@ -102,6 +102,13 @@ CODE {
 		panic("bhnd_bus_assign_intr unimplemented");
 	}
 
+	static int
+	bhnd_bus_null_get_core_ivec(device_t dev, device_t child, u_int intr,
+	    uint32_t *ivec)
+	{
+		panic("bhnd_bus_get_core_ivec unimplemented");
+	}
+
 	static void
 	bhnd_bus_null_child_added(device_t dev, device_t child)
 	{
@@ -390,27 +397,33 @@ METHOD int assign_intr {
 } DEFAULT bhnd_bus_null_assign_intr;
 
 /**
- * Return the hardware-specific backplane vector corresponding to @p child's
- * given @p intr.
+ * Return the backplane interrupt vector corresponding to @p child's given
+ * @p intr number.
  * 
  * @param dev The bhnd bus parent of @p child.
- * @param child The bhnd device for which the assigned interrupt should be
- * queried.
+ * @param child The bhnd device for which the assigned interrupt vector should
+ * be queried.
  * @param intr The interrupt number being queried. This is equivalent to the
  * bus resource ID for the interrupt.
- * @param[out] line On success, the assigned hardware interrupt line will be
+ * @param[out] ivec On success, the assigned hardware interrupt vector be
  * written to this pointer.
+ *
+ * On bcma(4) devices, this returns the OOB bus line assigned to the
+ * interrupt.
+ *
+ * On siba(4) devices, this returns the target OCP slave flag number assigned
+ * to the interrupt.
  *
  * @retval 0		success
  * @retval ENXIO	If @p intr exceeds the number of interrupts available
  *			to @p child.
  */
-METHOD int get_intrvec {
+METHOD int get_core_ivec {
 	device_t dev;
 	device_t child;
 	u_int intr;
 	uint32_t *ivec;
-}
+} DEFAULT bhnd_bus_null_get_core_ivec;
 
 /**
  * Notify a bhnd bus that a child was added.

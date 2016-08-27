@@ -382,14 +382,14 @@ siba_get_region_addr(device_t dev, device_t child, bhnd_port_type port_type,
 }
 
 static int
-siba_get_intrvec(device_t dev, device_t child, u_int intr, uint32_t *ivec)
+siba_get_core_ivec(device_t dev, device_t child, u_int intr, uint32_t *ivec)
 {
 	struct siba_devinfo	*dinfo;
 	uint32_t		 tpsflag;
 
 	/* delegate non-bus-attached devices to our parent */
 	if (device_get_parent(child) != dev)
-		return (BHND_BUS_GET_INTRVEC(device_get_parent(dev), child,
+		return (BHND_BUS_GET_CORE_IVEC(device_get_parent(dev), child,
 		    intr, ivec));
 
 	dinfo = device_get_ivars(child);
@@ -697,7 +697,7 @@ static device_method_t siba_methods[] = {
 	DEVMETHOD(bhnd_bus_get_port_rid,	siba_get_port_rid),
 	DEVMETHOD(bhnd_bus_decode_port_rid,	siba_decode_port_rid),
 	DEVMETHOD(bhnd_bus_get_region_addr,	siba_get_region_addr),
-	DEVMETHOD(bhnd_bus_get_intrvec,		siba_get_intrvec),
+	DEVMETHOD(bhnd_bus_get_core_ivec,	siba_get_core_ivec),
 
 	DEVMETHOD_END
 };
