@@ -515,15 +515,15 @@ siba_get_core_table(device_t dev, device_t child, struct bhnd_core_info **cores,
 	int				 error;
 	int				 rid;
 
-	/* Map the EROM table. */
+	/* Fetch the core count from our chip identification */
 	chipid = BHND_BUS_GET_CHIPID(dev, dev);
 
-	/* Allocate our core table and enumerate all cores */
+	/* Allocate our local core table */
 	table = malloc(sizeof(*table) * chipid->ncores, M_BHND, M_NOWAIT);
 	if (table == NULL)
 		return (ENOMEM);
 
-	/* Add all cores. */
+	/* Enumerate all cores. */
 	for (u_int i = 0; i < chipid->ncores; i++) {
 		struct siba_core_id	 cid;
 		uint32_t		 idhigh, idlow;
@@ -557,6 +557,8 @@ siba_get_core_table(device_t dev, device_t child, struct bhnd_core_info **cores,
 		r = NULL;
 	}
 
+	/* Provide the result values (performed last to avoid modifying
+	 * cores/num_cores if enumeration failed). */
 	*cores = table;
 	*num_cores = chipid->ncores;
 
