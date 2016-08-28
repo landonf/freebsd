@@ -56,6 +56,13 @@ CODE {
 		panic("bhnd_bus_get_chipid unimplemented");
 	}
 
+	static int
+	bhnd_bus_null_get_core_table(device_t dev, device_t child,
+	    struct bhnd_core_info **cores, u_int *num_cores)
+	{
+		panic("bhnd_bus_get_core_table unimplemented");
+	}
+
 	static bhnd_attach_type
 	bhnd_bus_null_get_attach_type(device_t dev, device_t child)
 	{
@@ -288,6 +295,32 @@ METHOD const struct bhnd_chipid * get_chipid {
 	device_t dev;
 	device_t child;
 } DEFAULT bhnd_bus_null_get_chipid;
+
+/**
+ * Get a list of all cores discoverable on @p dev.
+ *
+ * Enumerates all cores discoverable on @p dev, returning the list in
+ * @p cores and the count in @p num_cores.
+ * 
+ * The memory allocated for the list should be freed using
+ * `free(*cores, M_BHND)`. @p cores and @p num_cores are not changed
+ * when an error is returned.
+ * 
+ * @param	dev		The bhnd bus device.
+ * @param	child		The requesting bhnd bus child.
+ * @param[out]	cores		The table of core descriptors.
+ * @param[out]	num_cores	The number of core descriptors in @p cores.
+ * 
+ * @retval 0		success
+ * @retval non-zero	if an error occurs enumerating @p dev, a regular UNIX
+ *			error code should be returned.
+ */
+METHOD int get_core_table {
+	device_t			 dev;
+	device_t			 child;
+	struct bhnd_core_info		**cores;
+	u_int				*num_cores;
+} DEFAULT bhnd_bus_null_get_core_table;
 
 /**
  * Return the BHND attachment type of the parent bus.
@@ -657,8 +690,9 @@ METHOD int release_ext_rsrc {
  * @param offset The offset to be read.
  * @param width The size of the access. Must be 1, 2 or 4 bytes.
  *
- * The exact behavior of this method is bus-specific. In the case of
- * bcma(4), this method provides access to the first agent port of @p child.
+ * The exact behavior of this method is bus-specific. On a bcma(4) bus, this
+ * method provides access to the first agent port of @p child; on a siba(4) bus,
+ * this method provides access to the core's CFG0 register block.
  *
  * @note Device drivers should only use this API for functionality
  * that is not available via another bhnd(4) function.
