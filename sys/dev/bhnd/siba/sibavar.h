@@ -57,6 +57,8 @@ int			 siba_suspend(device_t dev);
 
 uint16_t		 siba_get_bhnd_mfgid(uint16_t ocp_vendor);
 
+struct siba_core_id	 siba_read_core_id(struct bhnd_resource *r,
+			     bus_size_t offset, u_int core_idx, int unit);
 struct siba_core_id	 siba_parse_core_id(uint32_t idhigh, uint32_t idlow,
 			     u_int core_idx, int unit);
 
@@ -70,14 +72,16 @@ int			 siba_init_dinfo(device_t dev,
 void			 siba_free_dinfo(device_t dev,
 			     struct siba_devinfo *dinfo);
 
-u_int			 siba_addrspace_port_count(struct siba_devinfo *dinfo);
-u_int			 siba_addrspace_region_count(struct siba_devinfo *dinfo,
+u_int			 siba_addrspace_port_count(u_int num_addrspace);
+u_int			 siba_addrspace_region_count(u_int num_addrspace,
 			     u_int port);
 
 u_int			 siba_addrspace_port(u_int addrspace);
 u_int			 siba_addrspace_region(u_int addrspace);
-
-bool			 siba_is_port_valid(struct siba_devinfo *dinfo,
+int			 siba_addrspace_index(u_int num_addrspace,
+			     bhnd_port_type type, u_int port, u_int region,
+			     u_int *addridx);
+bool			 siba_is_port_valid(u_int num_addrspace,
 			     bhnd_port_type type, u_int port);
 
 struct siba_addrspace	*siba_find_addrspace(struct siba_devinfo *dinfo,
@@ -88,6 +92,10 @@ int			 siba_append_dinfo_region(struct siba_devinfo *dinfo,
 			     uint32_t bus_reserved);
 
 u_int			 siba_admatch_offset(uint8_t addrspace);
+
+int			 siba_read_admatch(struct bhnd_resource *res,
+			     bus_size_t offset, u_int addrspace, uint32_t *addr,
+			     uint32_t *size);
 int			 siba_parse_admatch(uint32_t am, uint32_t *addr,
 			     uint32_t *size);
 
