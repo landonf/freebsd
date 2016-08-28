@@ -60,6 +60,7 @@ bcma_attach(device_t dev)
 	int			 ndevs;
 	int			 error;
 
+
 	if ((error = device_get_children(dev, &devs, &ndevs)))
 		return (error);
 
