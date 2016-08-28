@@ -455,6 +455,32 @@ bhnd_get_core_table(device_t dev, struct bhnd_core_info **cores,
 }
 
 /**
+ * Get the address and size of @p region on @p port of @p core_idx on
+ * the bhnd bus.
+ *
+ * @param	dev		A bhnd bus child device.
+ * @param	core_idx	The core index to look up.
+ * @param	port_type	The port type on @p core_idx.
+ * @param	port		The port identifier.
+ * @param	region		The identifier of the memory region on @p port.
+ * @param[out]	region_addr	The region's base address.
+ * @param[out]	region_size	The region's size.
+ *
+ * @retval 0		success
+ * @retval ENOENT	No matching core, port, or region found.
+ * @retval non-zero	if an error occurs enumerating @p dev, a regular UNIX
+ *			error code should be returned.
+ */
+static inline int
+bhnd_get_core_region(device_t dev, u_int core_idx, bhnd_port_type port_type,
+    u_int port, u_int region, bhnd_addr_t *region_addr,
+    bhnd_size_t *region_size)
+{
+	return (BHND_BUS_GET_CORE_REGION(device_get_parent(dev), dev, core_idx,
+	    port_type, port, region, region_addr, region_size));
+}
+
+/**
  * If supported by the chipset, return the clock source for the given clock.
  *
  * This function is only supported on early PWRCTL-equipped chipsets
