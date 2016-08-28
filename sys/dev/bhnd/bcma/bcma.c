@@ -512,7 +512,6 @@ bcma_get_core_table(device_t dev, device_t child, struct bhnd_core_info **cores,
 	    cid->enum_addr + BCMA_EROM_TABLE_SIZE, BCMA_EROM_TABLE_SIZE,
 	    RF_ACTIVE);
 	if (r == NULL) {
-		device_printf(dev, "ENUM ADDR=%zx\n", cid->enum_addr);
 		device_printf(dev, "failed to allocate EROM resource\n");
 		return (ENXIO);
 	}
