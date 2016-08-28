@@ -55,6 +55,7 @@ typedef u_int		bcma_rmid_t;
 
 struct bcma_devinfo;
 struct bcma_corecfg;
+struct bcma_erom;
 struct bcma_map;
 struct bcma_mport;
 struct bcma_sport;
@@ -68,6 +69,10 @@ int			 bcma_add_children(device_t bus,
 
 struct bcma_sport_list	*bcma_corecfg_get_port_list(struct bcma_corecfg *cfg,
 			     bhnd_port_type type);
+
+int			 bcma_alloc_erom_reader(device_t bus,
+			     struct bcma_erom *erom, struct resource **res,
+			     int *rid);
 
 struct bcma_devinfo	*bcma_alloc_dinfo(device_t bus);
 int			 bcma_init_dinfo(device_t bus,
