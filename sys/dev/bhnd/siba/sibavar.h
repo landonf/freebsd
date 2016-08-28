@@ -54,6 +54,9 @@ int			 siba_attach(device_t dev);
 int			 siba_detach(device_t dev);
 int			 siba_resume(device_t dev);
 int			 siba_suspend(device_t dev);
+int			 siba_get_intr_count(device_t dev, device_t child);
+int			 siba_get_core_ivec(device_t dev, device_t child,
+			     u_int intr, uint32_t *ivec);
 
 uint16_t		 siba_get_bhnd_mfgid(uint16_t ocp_vendor);
 
@@ -100,6 +103,11 @@ int			 siba_parse_admatch(uint32_t am, uint32_t *addr,
 #define	SIBA_CFG_NUM_2_3	2			/**< sonics <= 2.3 maps SIBA_CFG0 and SIBA_CFG1 */
 #define	SIBA_MAX_CFG		SIBA_CFG_NUM_2_3	/**< maximum number of supported config
 							     register blocks */
+
+#define	SIBA_CFG_RID_BASE	100			/**< base resource ID for SIBA_CFG* register allocations */
+#define	SIBA_CFG_RID(_dinfo, _cfg)	\
+	(SIBA_CFG_RID_BASE + (_cfg) +	\
+	    (_dinfo->core_id.core_info.core_idx * SIBA_MAX_CFG))
 
 /* Sonics/OCP address space mappings */
 #define	SIBA_CORE_ADDRSPACE	0	/**< Address space mapping the primary

@@ -97,6 +97,7 @@ static device_method_t bhnd_bhndb_methods[] = {
 	/* BHND interface */
 	DEVMETHOD(bhnd_bus_get_attach_type,	bhnd_bhndb_get_attach_type),
 	DEVMETHOD(bhnd_bus_read_board_info,	bhnd_bhndb_read_board_info),
+	DEVMETHOD(bhnd_bus_assign_intr,		bhnd_generic_br_assign_intr),
 
 	DEVMETHOD(bhnd_bus_pwrctl_get_clksrc,	bhnd_bhndb_pwrctl_get_clksrc),
 	DEVMETHOD(bhnd_bus_pwrctl_gate_clock,	bhnd_bhndb_pwrctl_gate_clock),

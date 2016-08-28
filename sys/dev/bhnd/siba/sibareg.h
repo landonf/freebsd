@@ -48,7 +48,7 @@
 #define	SIBA_ENUM_ADDR		BHND_DEFAULT_CHIPC_ADDR	/**< enumeration space */
 #define	SIBA_ENUM_SIZE		0x00100000		/**< size of the enumeration space */ 
 #define	SIBA_CORE_SIZE		BHND_DEFAULT_CORE_SIZE	/**< per-core register block size */
-#define	SIBA_CORE_INTR		1			/**< single supported interrupt ID */
+#define	SIBA_CORE_NUM_INTR	1			/**< number of per-core interrupt lines */
 #define	SIBA_MAX_CORES	\
     (SIBA_ENUM_SIZE/SIBA_CORE_SIZE)			/**< Maximum number of cores */
 

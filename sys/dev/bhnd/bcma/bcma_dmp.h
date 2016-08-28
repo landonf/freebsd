@@ -91,6 +91,9 @@
 #define	BCMA_OOB_BANKC		2	/**< bank C index */
 #define	BCMA_OOB_BANKD		3	/**< bank D index */
 
+/** OOB bank used for interrupt lines */
+#define	BCMA_OOB_BANK_INTR	BCMA_OOB_BANKA
+
 /* DMP agent registers */
 #define	BCMA_DMP_OOBSELINA30	0x000	/**< A0-A3 input selectors */
 #define	BCMA_DMP_OOBSELINA74	0x004	/**< A4-A7 input selectors */
