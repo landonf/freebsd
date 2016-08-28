@@ -45,6 +45,18 @@
  * Internal definitions shared by bcma(4) driver implementations.
  */
 
+/** Base resource ID for per-core agent register allocations */
+#define	BCMA_AGENT_RID_BASE	100
+
+/**
+ * Return the device's core index.
+ * 
+ * @param _dinfo The bcma_devinfo instance to query.
+ */
+#define	BCMA_DINFO_COREIDX(_dinfo)	\
+	((_dinfo)->corecfg->core_info.core_idx)
+
+
 /** BCMA port identifier. */
 typedef u_int		bcma_pid_t;
 #define BCMA_PID_MAX	UINT_MAX	/**< Maximum bcma_pid_t value */
@@ -62,6 +74,9 @@ struct bcma_sport;
 int			 bcma_probe(device_t dev);
 int			 bcma_attach(device_t dev);
 int			 bcma_detach(device_t dev);
+int			 bcma_get_intr_count(device_t dev, device_t child);
+int			 bcma_get_core_ivec(device_t dev, device_t child,
+			     u_int intr, uint32_t *ivec);
 
 int			 bcma_add_children(device_t bus,
 			     struct resource *erom_res, bus_size_t erom_offset);
@@ -73,6 +88,8 @@ struct bcma_devinfo	*bcma_alloc_dinfo(device_t bus);
 int			 bcma_init_dinfo(device_t bus,
 			     struct bcma_devinfo *dinfo,
 			     struct bcma_corecfg *corecfg);
+int			 bcma_dinfo_alloc_agent(device_t bus, device_t child,
+			     struct bcma_devinfo *dinfo);
 void			 bcma_free_dinfo(device_t bus,
 			     struct bcma_devinfo *dinfo);
 
