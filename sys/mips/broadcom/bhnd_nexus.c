@@ -126,23 +126,18 @@ bhnd_nexus_get_chipid(device_t dev, device_t child)
 }
 
 /**
- * Default bhnd_nexus implementation of BHND_BUS_GET_INTR_COUNT().
- */
-static int
-bhnd_nexus_get_intr_count(device_t dev, device_t child)
-{
-	// TODO
-	return (0);
-}
-
-/**
  * Default bhnd_nexus implementation of BHND_BUS_ASSIGN_INTR().
  */
 static int
 bhnd_nexus_assign_intr(device_t dev, device_t child, int rid)
 {
-	// TODO
-	return (ENXIO);
+	uint32_t	ivec;
+	int		error;
+
+	if ((error = bhnd_get_core_ivec(child, rid, &ivec)))
+		return (error);
+
+	return (bus_set_resource(child, SYS_RES_IRQ, rid, ivec, 1));
 }
 
 static device_method_t bhnd_nexus_methods[] = {
@@ -152,7 +147,6 @@ static device_method_t bhnd_nexus_methods[] = {
 	DEVMETHOD(bhnd_bus_is_hw_disabled,	bhnd_nexus_is_hw_disabled),
 	DEVMETHOD(bhnd_bus_get_attach_type,	bhnd_nexus_get_attach_type),
 	DEVMETHOD(bhnd_bus_get_chipid,		bhnd_nexus_get_chipid),
-	DEVMETHOD(bhnd_bus_get_intr_count,	bhnd_nexus_get_intr_count),
 	DEVMETHOD(bhnd_bus_assign_intr,		bhnd_nexus_assign_intr),
 
 	DEVMETHOD_END
