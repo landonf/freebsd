@@ -63,6 +63,14 @@ CODE {
 		panic("bhnd_bus_get_core_table unimplemented");
 	}
 
+	static int
+	bhnd_bus_null_get_core_region(device_t dev, device_t child,
+	    u_int core_idx, bhnd_port_type type, u_int port, u_int region,
+	    bhnd_addr_t *addr, bhnd_size_t *size)
+	{
+		panic("bhnd_bus_get_core_region unimplemented");
+	}
+
 	static bhnd_attach_type
 	bhnd_bus_null_get_attach_type(device_t dev, device_t child)
 	{
@@ -302,6 +310,34 @@ METHOD int get_core_table {
 	struct bhnd_core_info		**cores;
 	u_int				*num_cores;
 } DEFAULT bhnd_bus_null_get_core_table;
+
+/**
+ * Get the address and size of @p region on @p port of @p core_idx
+ *
+ * @param	dev		The bus device.
+ * @param	child		The requesting bhnd bus child.
+ * @param	core_idx	The core index to look up.
+ * @param	port_type	The port type on @p core_idx.
+ * @param	port		The port identifier.
+ * @param	region		The identifier of the memory region on @p port.
+ * @param[out]	region_addr	The region's base address.
+ * @param[out]	region_size	The region's size.
+ *
+ * @retval 0		success
+ * @retval ENOENT	No matching core, port, or region found.
+ * @retval non-zero	if an error occurs enumerating @p dev, a regular UNIX
+ *			error code should be returned.
+ */
+METHOD int get_core_region {
+	device_t	 dev;
+	device_t	 child;
+	u_int		 core_idx;
+	bhnd_port_type	 port_type;
+	u_int		 port;
+	u_int		 region;
+	bhnd_addr_t	*region_addr;
+	bhnd_size_t	*region_size;
+} DEFAULT bhnd_bus_null_get_core_region;
 
 /**
  * Return the BHND attachment type of the parent bus.

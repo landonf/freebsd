@@ -64,6 +64,28 @@ siba_get_bhnd_mfgid(uint16_t ocp_vendor)
 }
 
 /**
+ * Read and parse the SIBA_IDH_* fields from the per-core identification
+ * registers mapped by @p res, returning a siba_core_id representation.
+ * 
+ * @param res A bus resource mapping the core register block.
+ * @param offset Offset to the core registers within @p res.
+ * @param core_id The core id (index) to include in the result.
+ * @param unit The unit number to include in the result.
+ */
+struct siba_core_id
+siba_read_core_id(struct bhnd_resource *r, bus_size_t offset, u_int core_idx,
+    int unit)
+{
+	uint32_t idhigh, idlow;
+
+	/* Read the core info */
+	idhigh = bhnd_bus_read_4(r, offset + SB0_REG_ABS(SIBA_CFG0_IDHIGH));
+	idlow = bhnd_bus_read_4(r, offset + SB0_REG_ABS(SIBA_CFG0_IDLOW));
+
+	return (siba_parse_core_id(idhigh, idlow, core_idx, unit));
+}
+
+/**
  * Parse the SIBA_IDH_* fields from the per-core identification
  * registers, returning a siba_core_id representation.
  * 
@@ -184,15 +206,15 @@ siba_addrspace_region(u_int addrspace)
 
 /**
  * Return the number of bhnd(4) ports to advertise for the given
- * @p dinfo.
+ * @p num_addrspace.
  * 
- * @param dinfo The device info to query.
+ * @param num_addrspace The number of siba address spaces.
  */
 u_int
-siba_addrspace_port_count(struct siba_devinfo *dinfo)
+siba_addrspace_port_count(u_int num_addrspace)
 {
 	/* 0, 1, or 2 ports */
-	return min(dinfo->core_id.num_addrspace, 2);
+	return min(num_addrspace, 2);
 }
 
 /**
@@ -203,10 +225,8 @@ siba_addrspace_port_count(struct siba_devinfo *dinfo)
  * spaces.
  */
 u_int
-siba_addrspace_region_count(struct siba_devinfo *dinfo, u_int port) 
+siba_addrspace_region_count(u_int num_addrspace, u_int port) 
 {
-	u_int num_addrspace = dinfo->core_id.num_addrspace;
-
 	/* The first address space, if any, is mapped to device0.0 */
 	if (port == 0)
 		return (min(num_addrspace, 1));
@@ -220,32 +240,33 @@ siba_addrspace_region_count(struct siba_devinfo *dinfo, u_int port)
 }
 
 /**
- * Return true if @p port is defined on @p dinfo, false otherwise.
+ * Return true if @p port is defined given an address space count
+ * of @p num_addrspace, false otherwise.
  *
  * Refer to the siba_find_addrspace() function for information on siba's
  * mapping of bhnd(4) port and region identifiers.
  * 
- * @param dinfo The device info to verify the port against.
+ * @param num_addrspace The number of address spaces to verify the port against.
  * @param type The bhnd(4) port type.
  * @param port The bhnd(4) port number.
  */
 bool
-siba_is_port_valid(struct siba_devinfo *dinfo, bhnd_port_type type, u_int port)
+siba_is_port_valid(u_int num_addrspace, bhnd_port_type type, u_int port)
 {
 	/* Only device ports are supported */
 	if (type != BHND_PORT_DEVICE)
 		return (false);
 
 	/* Verify the index against the port count */
-	if (siba_addrspace_port_count(dinfo) <= port)
+	if (siba_addrspace_port_count(num_addrspace) <= port)
 		return (false);
 
 	return (true);
 }
 
 /**
- * Map an bhnd(4) type/port/region triplet to its associated address space
- * entry, if any.
+ * Map a bhnd(4) type/port/region triplet to its associated address space
+ * index, if any.
  * 
  * For compatibility with bcma(4), we map address spaces to port/region
  * identifiers as follows:
@@ -258,6 +279,46 @@ siba_is_port_valid(struct siba_devinfo *dinfo, bhnd_port_type type, u_int port)
  * 
  * The only supported port type is BHND_PORT_DEVICE.
  * 
+ * @param num_addrspace The number of available siba address spaces.
+ * @param type The bhnd(4) port type.
+ * @param port The bhnd(4) port number.
+ * @param region The bhnd(4) port region.
+ * @param addridx On success, the corresponding addrspace index.
+ * 
+ * @retval 0 success
+ * @retval ENOENT if the given type/port/region cannot be mapped to a
+ * siba address space.
+ */
+int
+siba_addrspace_index(u_int num_addrspace, bhnd_port_type type, u_int port,
+    u_int region, u_int *addridx)
+{
+	u_int idx;
+
+	if (!siba_is_port_valid(num_addrspace, type, port))
+		return (ENOENT);
+	
+	if (port == 0)
+		idx = region;
+	else if (port == 1)
+		idx = region + 1;
+	else
+		return (ENOENT);
+
+	if (idx >= num_addrspace)
+		return (ENOENT);
+
+	/* Found */
+	*addridx = idx;
+	return (0);
+}
+
+/**
+ * Map an bhnd(4) type/port/region triplet to its associated address space
+ * entry, if any.
+ *
+ * The only supported port type is BHND_PORT_DEVICE.
+ * 
  * @param dinfo The device info to search for a matching address space.
  * @param type The bhnd(4) port type.
  * @param port The bhnd(4) port number.
@@ -267,23 +328,19 @@ struct siba_addrspace *
 siba_find_addrspace(struct siba_devinfo *dinfo, bhnd_port_type type, u_int port,
     u_int region)
 {
-	u_int			 addridx;
+	u_int	addridx;
+	int	error;
 
-	if (!siba_is_port_valid(dinfo, type, port))
-		return (NULL);
-
-	if (port == 0)
-		addridx = region;
-	else if (port == 1)
-		addridx = region + 1;
-	else
-		return (NULL);
-
-	/* Out of range? */
-	if (addridx >= dinfo->core_id.num_addrspace)
+	/* Map to addrspace index */
+	error = siba_addrspace_index(dinfo->core_id.num_addrspace, type, port,
+	    region, &addridx);
+	if (error)
 		return (NULL);
 
 	/* Found */
+	if (addridx >= SIBA_MAX_ADDRSPACE)
+		return (NULL);
+
 	return (&dinfo->addrspace[addridx]);
 }
 
@@ -388,6 +445,47 @@ siba_admatch_offset(uint8_t addrspace)
 	default:
 		return (0);
 	}
+}
+
+/**
+ * Read and parse a SIBA_R0_ADMATCH* register from the core registers mapped by
+ * @p res.
+ * 
+ * @param res A bus resource mapping the core registers.
+ * @param offset Offset to the core registers within @p res.
+ * @param addrspace The admatch register number to be fetched.
+ * @param[out] addr The parsed address.
+ * @param[out] size The parsed size.
+ * 
+ * @retval 0 success
+ * @retval non-zero an error occurred reading or parsing the admatch register.
+ */
+int
+siba_read_admatch(struct bhnd_resource *res, bus_size_t offset, u_int addrspace,
+    uint32_t *addr, uint32_t *size)
+{
+	uint32_t	adm;
+	u_int		adm_offset;
+	int		error;
+
+	/* Determine the register offset */
+	adm_offset = siba_admatch_offset(addrspace);
+	if (adm_offset == 0) {
+		printf("addrspace %u is unsupported", addrspace);
+		return (ENODEV);
+	}
+
+	/* Fetch the address match register value */
+	adm = bhnd_bus_read_4(res, offset + adm_offset);
+
+	/* Parse the value */
+	if ((error = siba_parse_admatch(adm, addr, size))) {
+		printf("failed to decode address match register value 0x%x\n",
+		    adm);
+		return (error);
+	}
+
+	return (0);
 }
 
 /**

@@ -41,7 +41,54 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/bhndvar.h>
 
+#include "bcma_eromreg.h"
+#include "bcma_eromvar.h"
+
 #include "bcmavar.h"
+
+/**
+ * Allocate a new bus resource covering our BCMA EROM table, and
+ * open a new @p erom reader instance for the allocated resource.
+ * 
+ * @param bus The bcma bus device.
+ * @param erom EROM reader state to be initialized.
+ * @param res On success, the allocated EROM resource. The caller inherits
+ * ownership of this resource and is responsible for its deallocation.
+ * @param rid On success, the allocated EROM resource's rid.
+ * 
+ * @retval 0 success
+ * @retval non-zero if allocating the EROM table or initializing the EROM reader
+ * fails.
+ */
+int
+bcma_alloc_erom_reader(device_t bus, struct bcma_erom *erom,
+    struct resource **res, int *rid)
+{
+	struct bcma_softc		*sc;
+	const struct bhnd_chipid	*cid;
+	int				 error;
+
+	sc = device_get_softc(bus);
+
+	/* Map the EROM table. */
+	cid = BHND_BUS_GET_CHIPID(bus, bus);
+	*rid = 0;
+	*res = bus_alloc_resource(bus, SYS_RES_MEMORY, rid, cid->enum_addr,
+	    cid->enum_addr + BCMA_EROM_TABLE_SIZE, BCMA_EROM_TABLE_SIZE,
+	    RF_ACTIVE);
+	if (*res == NULL) {
+		device_printf(bus, "failed to allocate EROM resource\n");
+		return (ENOMEM);
+	}
+
+	/* Open the EROM for reading */
+	if ((error = bcma_erom_open(erom, *res, BCMA_EROM_TABLE_START))) {
+		bus_release_resource(bus, SYS_RES_MEMORY, *rid, *res);
+		return (error);
+	}
+
+	return (0);
+}
 
  /**
  * Allocate and initialize new core config structure.
