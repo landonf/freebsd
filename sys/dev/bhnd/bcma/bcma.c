@@ -497,7 +497,7 @@ bcma_get_core_table(device_t dev, device_t child, struct bhnd_core_info **cores,
     u_int *num_cores)
 {
 	struct bcma_erom		 erom;
-	struct resource			*r;
+	struct bhnd_resource		*r;
 	int				 error;
 	int				 rid;
 
@@ -509,7 +509,7 @@ bcma_get_core_table(device_t dev, device_t child, struct bhnd_core_info **cores,
 	error = bcma_erom_get_core_info(&erom, cores, num_cores);
 
 	/* Clean up our allocated EROM resource */
-	bus_release_resource(dev, SYS_RES_MEMORY, rid, r);
+	bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
 	return (error);
 }
 
@@ -520,7 +520,7 @@ bcma_get_core_region(device_t dev, device_t child, u_int core_idx,
 {
 	struct bcma_erom		 erom;
 	struct bcma_erom_sport_region	 sp_region;
-	struct resource			*r;
+	struct bhnd_resource		*r;
 	int				 error;
 	int				 rid;
 
@@ -543,7 +543,7 @@ bcma_get_core_region(device_t dev, device_t child, u_int core_idx,
 
 finished:
 	/* Clean up our allocated EROM resource */
-	bus_release_resource(dev, SYS_RES_MEMORY, rid, r);
+	bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
 
 	return (error);
 }
@@ -557,7 +557,8 @@ finished:
  * @param erom_offset Base offset of the EROM core's register mapping.
  */
 int
-bcma_add_children(device_t bus, struct resource *erom_res, bus_size_t erom_offset)
+bcma_add_children(device_t bus, struct bhnd_resource *erom_res,
+    bus_size_t erom_offset)
 {
 	struct bcma_erom	 erom;
 	struct bcma_corecfg	*corecfg;

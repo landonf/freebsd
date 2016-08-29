@@ -74,7 +74,7 @@ bcma_bhndb_attach(device_t dev)
 {
 	struct bcma_softc		*sc;
 	const struct bhnd_chipid	*cid;
-	struct resource			*erom_res;
+	struct bhnd_resource		*erom_res;
 	int				 error;
 	int				 rid;
 
@@ -83,7 +83,7 @@ bcma_bhndb_attach(device_t dev)
 	/* Map the EROM resource and enumerate our children. */
 	cid = BHNDB_GET_CHIPID(device_get_parent(dev), dev);
 	rid = 0;
-	erom_res = bus_alloc_resource(dev, SYS_RES_MEMORY, &rid, cid->enum_addr,
+	erom_res = bhnd_alloc_resource(dev, SYS_RES_MEMORY, &rid, cid->enum_addr,
 		cid->enum_addr + BCMA_EROM_TABLE_SIZE, BCMA_EROM_TABLE_SIZE,
 		RF_ACTIVE);
 	if (erom_res == NULL) {
@@ -94,7 +94,7 @@ bcma_bhndb_attach(device_t dev)
 	error = bcma_add_children(dev, erom_res, BCMA_EROM_TABLE_START);
 
 	/* Clean up */
-	bus_release_resource(dev, SYS_RES_MEMORY, rid, erom_res);
+	bhnd_release_resource(dev, SYS_RES_MEMORY, rid, erom_res);
 	if (error)
 		return (error);
 

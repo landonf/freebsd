@@ -90,11 +90,14 @@ static int		 erom_region_to_port_type(struct bcma_erom *erom,
  * @retval non-zero if the erom table could not be opened.
  */
 int
-bcma_erom_open(struct bcma_erom *erom, struct resource *r,
+bcma_erom_open(struct bcma_erom *erom, struct bhnd_resource *r,
     bus_size_t offset)
 {
-	return (bhnd_erom_bus_space_open(erom, rman_get_device(r),
-	    rman_get_bustag(r), rman_get_bushandle(r), offset));
+	/* Initialize the EROM reader */
+	erom->dev = rman_get_device(r->res);
+	erom->r = r;
+	erom->start = offset + BCMA_EROM_TABLE_START;
+	erom->offset = 0;
 
 	return (0);
 }
@@ -119,6 +122,7 @@ bhnd_erom_bus_space_open(struct bcma_erom *erom, device_t dev,
 {
 	/* Initialize the EROM reader */
 	erom->dev = dev;
+	erom->r = NULL;
 	erom->bst = bst;
 	erom->bsh = bsh;
 	erom->start = offset + BCMA_EROM_TABLE_START;
@@ -174,13 +178,19 @@ bcma_erom_seek(struct bcma_erom *erom, bus_size_t offset)
 int
 bcma_erom_peek32(struct bcma_erom *erom, uint32_t *entry)
 {
+	bus_size_t off;
+
 	if (erom->offset >= BCMA_EROM_TABLE_SIZE) {
 		EROM_LOG(erom, "BCMA EROM table missing terminating EOF\n");
 		return (EINVAL);
 	}
 
-	*entry = bus_space_read_4(erom->bst, erom->bsh,
-	    erom->start + erom->offset);
+	off = erom->start + erom->offset;
+	if (erom->r != NULL)
+		*entry = bhnd_bus_read_4(erom->r, off);
+	else
+		*entry = bus_space_read_4(erom->bst, erom->bsh, off);
+
 	return (0);
 }
 

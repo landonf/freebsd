@@ -65,13 +65,14 @@ int			 bcma_attach(device_t dev);
 int			 bcma_detach(device_t dev);
 
 int			 bcma_add_children(device_t bus,
-			     struct resource *erom_res, bus_size_t erom_offset);
+			     struct bhnd_resource *erom_res,
+			     bus_size_t erom_offset);
 
 struct bcma_sport_list	*bcma_corecfg_get_port_list(struct bcma_corecfg *cfg,
 			     bhnd_port_type type);
 
 int			 bcma_alloc_erom_reader(device_t bus,
-			     struct bcma_erom *erom, struct resource **res,
+			     struct bcma_erom *erom, struct bhnd_resource **res,
 			     int *rid);
 
 struct bcma_devinfo	*bcma_alloc_dinfo(device_t bus);
