@@ -407,7 +407,7 @@ bhndb_initialize_region_cfg(struct bhndb_softc *sc,
 		prio_min = br->min_prio;
 		device_printf(sc->dev, "min_prio: %d\n", prio_min);
 
-		STAILQ_FOREACH(region, &r->bus_regions, link) {
+		STAILQ_FOREACH(region, &br->bus_regions, link) {
 			prio = region->priority;
 
 			direct_msg = prio >= prio_min ? "direct" : "indirect";
