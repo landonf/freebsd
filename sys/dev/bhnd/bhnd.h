@@ -278,6 +278,13 @@ const struct bhnd_core_info	*bhnd_find_core(
 				     const struct bhnd_core_info *cores,
 				     u_int num_cores, bhnd_devclass_t class);
 
+struct bhnd_core_match		 bhnd_core_get_match_desc(
+				     const struct bhnd_core_info *core);
+
+bool				 bhnd_cores_equal(
+				     const struct bhnd_core_info *lhs,
+				     const struct bhnd_core_info *rhs);
+
 bool				 bhnd_core_matches(
 				     const struct bhnd_core_info *core,
 				     const struct bhnd_core_match *desc);
