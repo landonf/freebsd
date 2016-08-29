@@ -1427,19 +1427,21 @@ bhnd_set_default_bus_desc(device_t dev, const struct bhnd_chipid *chip_id)
 }
 
 /**
- * Helper function for implementing BHND_BUS_IS_HW_DISABLED().
+ * Helper function for implementing BHND_BUS_IS_CORE_DISABLED().
  * 
  * If a parent device is available, this implementation delegates the
- * request to the BHND_BUS_IS_HW_DISABLED() method on the parent of @p dev.
+ * request to the BHND_BUS_IS_CORE_DISABLED() method on the parent of @p dev.
  * 
  * If no parent device is available (i.e. on a the bus root), the hardware
  * is assumed to be usable and false is returned.
  */
 bool
-bhnd_bus_generic_is_hw_disabled(device_t dev, device_t child)
+bhnd_bus_generic_is_core_disabled(device_t dev, device_t child,
+    struct bhnd_core_info *core)
 {
 	if (device_get_parent(dev) != NULL)
-		return (BHND_BUS_IS_HW_DISABLED(device_get_parent(dev), child));
+		return (BHND_BUS_IS_CORE_DISABLED(device_get_parent(dev),
+		    child, core));
 
 	return (false);
 }

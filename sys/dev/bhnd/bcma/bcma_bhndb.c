@@ -69,46 +69,48 @@ bcma_bhndb_probe(device_t dev)
 	return (error);
 }
 
+
 static int
 bcma_bhndb_attach(device_t dev)
 {
-	struct bcma_softc		*sc;
-	const struct bhnd_chipid	*cid;
-	struct bhnd_resource		*erom_res;
-	int				 error;
-	int				 rid;
+	struct bcma_softc	*sc;
+	struct bhnd_core_info	 hostb_core;
+	struct bhnd_core_match	 md;
+	int			 error;
 
 	sc = device_get_softc(dev);
 
-	/* Map the EROM resource and enumerate our children. */
-	cid = BHNDB_GET_CHIPID(device_get_parent(dev), dev);
-	rid = 0;
-	erom_res = bhnd_alloc_resource(dev, SYS_RES_MEMORY, &rid, cid->enum_addr,
-		cid->enum_addr + BCMA_EROM_TABLE_SIZE, BCMA_EROM_TABLE_SIZE,
-		RF_ACTIVE);
-	if (erom_res == NULL) {
-		device_printf(dev, "failed to allocate EROM resource\n");
-		return (ENXIO);
-	}
-
-	error = bcma_add_children(dev, erom_res, BCMA_EROM_TABLE_START);
-
-	/* Clean up */
-	bhnd_release_resource(dev, SYS_RES_MEMORY, rid, erom_res);
-	if (error)
-		return (error);
-
-	/* Initialize full bridge configuration */
+	/* Perform bridge initialization, giving us a complete set of
+	 * register windows to work with. */
 	error = BHNDB_INIT_FULL_CONFIG(device_get_parent(dev), dev,
 	    bhndb_bcma_priority_table);
 	if (error)
 		return (error);
 
-	/* Ask our parent bridge to find the corresponding bridge core */
-	sc->hostb_dev = BHNDB_FIND_HOSTB_DEVICE(device_get_parent(dev), dev);
+	/* Enumerate our children */
+	if ((error = bcma_add_children(dev)))
+		return (error);
+
+	/* Ask our bridge to locate the bridge core */
+	error = BHNDB_FIND_HOSTB_CORE(device_get_parent(dev), dev, &hostb_core);
+	if (error)
+		goto failed;
+
+	md = bhnd_core_get_match_desc(&hostb_core);
+	if ((sc->hostb_dev = bhnd_match_child(dev, &md)) == NULL) {
+		error = ENXIO;
+		goto failed;
+	}
 
 	/* Call our superclass' implementation */
-	return (bcma_attach(dev));
+	if ((error = bcma_attach(dev)))
+		goto failed;
+
+	return (0);
+
+failed:
+	device_delete_children(dev);
+	return (error);
 }
 
 static int

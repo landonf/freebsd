@@ -103,14 +103,11 @@ siba_bhndb_attach(device_t dev)
 {
 	struct siba_softc		*sc;
 	const struct bhnd_chipid	*chipid;
+	struct bhnd_core_info		 hostb_core;
+	struct bhnd_core_match		 md;
 	int				 error;
 
 	sc = device_get_softc(dev);
-
-	/* Enumerate our children. */
-	chipid = BHNDB_GET_CHIPID(device_get_parent(dev), dev);
-	if ((error = siba_add_children(dev, chipid)))
-		return (error);
 
 	/* Initialize full bridge configuration */
 	error = BHNDB_INIT_FULL_CONFIG(device_get_parent(dev), dev,
@@ -118,18 +115,35 @@ siba_bhndb_attach(device_t dev)
 	if (error)
 		return (error);
 
+	/* Enumerate our children. */
+	chipid = BHNDB_GET_CHIPID(device_get_parent(dev), dev);
+	if ((error = siba_add_children(dev, chipid)))
+		goto failed;
+
 	/* Ask our parent bridge to find the corresponding bridge core */
-	sc->hostb_dev = BHNDB_FIND_HOSTB_DEVICE(device_get_parent(dev), dev);
+	error = BHNDB_FIND_HOSTB_CORE(device_get_parent(dev), dev, &hostb_core);
+	if (error)
+		goto failed;
+
+	md = bhnd_core_get_match_desc(&hostb_core);
+	if ((sc->hostb_dev = bhnd_match_child(dev, &md)) == NULL) {
+		error = ENXIO;
+		goto failed;
+	}
 
 	/* Call our superclass' implementation */
 	if ((error = siba_attach(dev)))
-		return (error);
+		goto failed;
 
 	/* Apply attach/resume work-arounds */
 	if ((error = siba_bhndb_wars_hwup(sc)))
-		return (error);
+		goto failed;
 
 	return (0);
+
+failed:
+	device_delete_children(dev);
+	return (error);
 }
 
 static int

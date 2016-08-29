@@ -92,9 +92,6 @@ struct bhndb_softc {
 
 	device_t			 parent_dev;	/**< parent device */
 	device_t			 bus_dev;	/**< child bhnd(4) bus */
-	device_t			 hostb_dev;	/**< child host bridge device, or NULL
-							     if the @p bus_dev has not yet
-							     called BHNDB_INIT_FULL_CONFIG() */
 
 	struct mtx			 sc_mtx;	/**< resource lock. */
 	struct bhndb_resources		*bus_res;	/**< bus resource state */

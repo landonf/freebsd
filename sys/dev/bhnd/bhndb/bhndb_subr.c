@@ -988,33 +988,27 @@ bhndb_regwin_find_best(const struct bhndb_regwin *table,
 }
 
 /**
- * Return true if @p regw defines a static port register window, and
- * the mapped port is actually defined on @p dev.
+ * Return true if @p regw defines a BHNDB_REGWIN_T_CORE register window
+ * that matches against @p core.
  * 
  * @param regw A register window to match against.
- * @param dev A bhnd(4) bus device.
+ * @param core The bhnd(4) core info to match against @p regw.
  */
 bool
-bhndb_regwin_matches_device(const struct bhndb_regwin *regw, device_t dev)
+bhndb_regwin_match_core(const struct bhndb_regwin *regw,
+    struct bhnd_core_info *core)
 {
 	/* Only core windows are supported */
 	if (regw->win_type != BHNDB_REGWIN_T_CORE)
 		return (false);
 
 	/* Device class must match */
-	if (bhnd_get_class(dev) != regw->d.core.class)
+	if (bhnd_core_class(core) != regw->d.core.class)
 		return (false);
 
 	/* Device unit must match */
-	if (bhnd_get_core_unit(dev) != regw->d.core.unit)
+	if (core->unit != regw->d.core.unit)
 		return (false);
-	
-	/* The regwin port/region must be defined. */
-	if (!bhnd_is_region_valid(dev, regw->d.core.port_type, regw->d.core.port,
-	    regw->d.core.region))
-	{
-		return (false);
-	}
 
 	/* Matches */
 	return (true);
@@ -1022,22 +1016,19 @@ bhndb_regwin_matches_device(const struct bhndb_regwin *regw, device_t dev)
 
 /**
  * Search for a core resource priority descriptor in @p table that matches
- * @p device.
+ * @p core.
  * 
  * @param table The table to search.
- * @param device A bhnd(4) bus device.
+ * @param core The core to match against @p table.
  */
 const struct bhndb_hw_priority *
-bhndb_hw_priority_find_device(const struct bhndb_hw_priority *table,
-    device_t device)
+bhndb_hw_priority_find_core(const struct bhndb_hw_priority *table,
+    struct bhnd_core_info *core)
 {
 	const struct bhndb_hw_priority	*hp;
-	struct bhnd_core_info		 ci;
-
-	ci = bhnd_get_core_info(device);
 
 	for (hp = table; hp->ports != NULL; hp++) {
-		if (bhnd_core_matches(&ci, &hp->match))
+		if (bhnd_core_matches(core, &hp->match))
 			return (hp);
 	}
 

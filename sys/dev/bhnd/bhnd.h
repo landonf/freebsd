@@ -366,8 +366,9 @@ int				 bhnd_nvram_getvar_array(device_t dev,
 				     const char *name, void *buf, size_t count,
 				     bhnd_nvram_type type);
 
-bool				 bhnd_bus_generic_is_hw_disabled(device_t dev,
-				     device_t child);
+bool				 bhnd_bus_generic_is_core_disabled(device_t dev,
+				     device_t child,
+				     struct bhnd_core_info *core);
 bool				 bhnd_bus_generic_is_region_valid(device_t dev,
 				     device_t child, bhnd_port_type type,
 				     u_int port, u_int region);
@@ -407,22 +408,6 @@ bhnd_attach_type		 bhnd_bus_generic_get_attach_type(device_t dev,
 static inline device_t
 bhnd_find_hostb_device(device_t dev) {
 	return (BHND_BUS_FIND_HOSTB_DEVICE(dev));
-}
-
-/**
- * Return true if the hardware components required by @p dev are known to be
- * unpopulated or otherwise unusable.
- *
- * In some cases, enumerated devices may have pins that are left floating, or
- * the hardware may otherwise be non-functional; this method allows a parent
- * device to explicitly specify if a successfully enumerated @p dev should
- * be disabled.
- *
- * @param dev A bhnd bus child device.
- */
-static inline bool
-bhnd_is_hw_disabled(device_t dev) {
-	return (BHND_BUS_IS_HW_DISABLED(device_get_parent(dev), dev));
 }
 
 /**
@@ -485,6 +470,23 @@ bhnd_get_core_region(device_t dev, u_int core_idx, bhnd_port_type port_type,
 {
 	return (BHND_BUS_GET_CORE_REGION(device_get_parent(dev), dev, core_idx,
 	    port_type, port, region, region_addr, region_size));
+}
+
+/**
+ * Return true if the hardware components required by @p core are known to be
+ * unpopulated or otherwise unusable.
+ *
+ * In some cases, enumerated devices may have pins that are left floating, or
+ * the hardware may otherwise be non-functional; this method allows a parent
+ * device to explicitly specify if a successfully enumerated @p core should
+ * be disabled.
+ *
+ * @param dev A bhnd bus child device.
+ * @param core The core for which disabled state should be returned.
+ */
+static inline bool
+bhnd_is_core_disabled(device_t dev, struct bhnd_core_info *core) {
+	return (BHND_BUS_IS_CORE_DISABLED(device_get_parent(dev), dev, core));
 }
 
 /**

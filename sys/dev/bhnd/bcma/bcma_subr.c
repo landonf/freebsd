@@ -47,6 +47,36 @@ __FBSDID("$FreeBSD$");
 #include "bcmavar.h"
 
 /**
+ * Allocate and return a SYS_RES_MEMORY resource covering our BCMA EROM table.
+ * 
+ * The caller inherits ownership of this resource and is responsible for its
+ * deallocation.
+ * 
+ * @param bus The bcma bus device.
+ * @param[out] rid On success, the allocated EROM resource's rid.
+ * 
+ * @retval non-NULL The allocated EROM resource.
+ * @retval NULL if allocating the EROM resource failed.
+ */
+struct bhnd_resource *
+bcma_alloc_erom_resource(device_t bus, int *rid)
+{
+	const struct bhnd_chipid	*cid;
+	struct bhnd_resource		*res;
+
+	/* Map the EROM table. */
+	cid = BHND_BUS_GET_CHIPID(bus, bus);
+	*rid = 0;
+	res = bhnd_alloc_resource(bus, SYS_RES_MEMORY,
+	    rid,
+	    cid->enum_addr,
+	    cid->enum_addr + BCMA_EROM_TABLE_SIZE,
+	    BCMA_EROM_TABLE_SIZE,
+	    RF_ACTIVE|RF_SHAREABLE);
+	return (res);
+}
+
+/**
  * Allocate a new bus resource covering our BCMA EROM table, and
  * open a new @p erom reader instance for the allocated resource.
  * 
@@ -54,7 +84,7 @@ __FBSDID("$FreeBSD$");
  * @param erom EROM reader state to be initialized.
  * @param res On success, the allocated EROM resource. The caller inherits
  * ownership of this resource and is responsible for its deallocation.
- * @param rid On success, the allocated EROM resource's rid.
+ * @param[out] rid On success, the allocated EROM resource's rid.
  * 
  * @retval 0 success
  * @retval non-zero if allocating the EROM table or initializing the EROM reader
@@ -64,18 +94,10 @@ int
 bcma_alloc_erom_reader(device_t bus, struct bcma_erom *erom,
     struct bhnd_resource **res, int *rid)
 {
-	struct bcma_softc		*sc;
-	const struct bhnd_chipid	*cid;
-	int				 error;
-
-	sc = device_get_softc(bus);
+	int error;
 
 	/* Map the EROM table. */
-	cid = BHND_BUS_GET_CHIPID(bus, bus);
-	*rid = 0;
-	*res = bhnd_alloc_resource(bus, SYS_RES_MEMORY, rid, cid->enum_addr,
-	    cid->enum_addr + BCMA_EROM_TABLE_SIZE, BCMA_EROM_TABLE_SIZE,
-	    RF_ACTIVE);
+	*res = bcma_alloc_erom_resource(bus, rid);
 	if (*res == NULL) {
 		device_printf(bus, "failed to allocate EROM resource\n");
 		return (ENOMEM);

@@ -60,7 +60,6 @@ bcma_attach(device_t dev)
 	int			 ndevs;
 	int			 error;
 
-
 	if ((error = device_get_children(dev, &devs, &ndevs)))
 		return (error);
 
@@ -549,71 +548,70 @@ finished:
 }
 
 /**
- * Scan a device enumeration ROM table, adding all valid discovered cores to
- * the bus.
+ * Scan the bcma device enumeration ROM table, adding all valid discovered
+ * cores to the bus.
  * 
  * @param bus The bcma bus.
- * @param erom_res An active resource mapping the EROM core.
- * @param erom_offset Base offset of the EROM core's register mapping.
  */
 int
-bcma_add_children(device_t bus, struct bhnd_resource *erom_res,
-    bus_size_t erom_offset)
+bcma_add_children(device_t bus)
 {
+	struct bhnd_resource	*eres;
 	struct bcma_erom	 erom;
 	struct bcma_corecfg	*corecfg;
 	struct bcma_devinfo	*dinfo;
 	device_t		 child;
+	int			 erid;
 	int			 error;
 
 	corecfg = NULL;
 
-	/* Initialize our reader */
-	error = bcma_erom_open(&erom, erom_res, erom_offset);
+	/* Allocate our EROM resource and initialize our reader */
+	error = bcma_alloc_erom_reader(bus, &erom, &eres, &erid);
 	if (error)
 		return (error);
 
 	/* Add all cores. */
-	while (!error) {
-		/* Parse next core */
-		error = bcma_erom_parse_corecfg(&erom, &corecfg);
-		if (error && error == ENOENT) {
-			return (0);
-		} else if (error) {
-			goto failed;
-		}
+	while ((error = bcma_erom_parse_corecfg(&erom, &corecfg)) == 0) {
+		struct bhnd_core_info *core;
 
 		/* Add the child device */
 		child = BUS_ADD_CHILD(bus, 0, NULL, -1);
 		if (child == NULL) {
 			error = ENXIO;
-			goto failed;
+			goto cleanup;
 		}
 
 		/* Initialize device ivars */
 		dinfo = device_get_ivars(child);
 		if ((error = bcma_init_dinfo(bus, dinfo, corecfg)))
-			goto failed;
+			goto cleanup;
 
 		/* The dinfo instance now owns the corecfg value */
 		corecfg = NULL;
 
 		/* If pins are floating or the hardware is otherwise
 		 * unpopulated, the device shouldn't be used. */
-		if (bhnd_is_hw_disabled(child))
+		core = &dinfo->corecfg->core_info;
+		if (BHND_BUS_IS_CORE_DISABLED(bus, bus, core))
 			device_disable(child);
 
 		/* Issue bus callback for fully initialized child. */
 		BHND_BUS_CHILD_ADDED(bus, child);
 	}
 
-	/* Hit EOF parsing cores? */
+	/* EOF while parsing cores is expected */
 	if (error == ENOENT)
-		return (0);
+		error = 0;
 	
-failed:
+cleanup:
+	bhnd_release_resource(bus, SYS_RES_MEMORY, erid, eres);
+
 	if (corecfg != NULL)
 		bcma_free_corecfg(corecfg);
+
+	if (error)
+		device_delete_children(bus);
 
 	return (error);
 }

@@ -64,13 +64,12 @@ int			 bcma_probe(device_t dev);
 int			 bcma_attach(device_t dev);
 int			 bcma_detach(device_t dev);
 
-int			 bcma_add_children(device_t bus,
-			     struct bhnd_resource *erom_res,
-			     bus_size_t erom_offset);
+int			 bcma_add_children(device_t bus);
 
 struct bcma_sport_list	*bcma_corecfg_get_port_list(struct bcma_corecfg *cfg,
 			     bhnd_port_type type);
 
+struct bhnd_resource	*bcma_alloc_erom_resource(device_t bus, int *rid);
 int			 bcma_alloc_erom_reader(device_t bus,
 			     struct bcma_erom *erom, struct bhnd_resource **res,
 			     int *rid);

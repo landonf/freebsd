@@ -298,18 +298,27 @@ bhndb_init_sromless_pci_config(struct bhndb_pci_softc *sc)
 	struct bhndb_resources		*bres;
 	const struct bhndb_hwcfg	*cfg;
 	const struct bhndb_regwin	*win;
+	struct bhnd_core_info		 hostb_core;
 	struct resource			*core_regs;
 	bus_size_t			 srom_offset;
 	u_int				 pci_cidx, sprom_cidx;
 	uint16_t			 val;
+	int				 error;
 
 	bres = sc->bhndb.bus_res;
 	cfg = bres->cfg;
 
-	if (bhnd_get_vendor(sc->bhndb.hostb_dev) != BHND_MFGID_BCM)
+	/* Find our hostb core */
+	error = BHNDB_FIND_HOSTB_CORE(sc->dev, sc->bhndb.bus_dev, &hostb_core);
+	if (error) {
+		device_printf(sc->dev, "no host bridge device found\n");
+		return;
+	}
+
+	if (hostb_core.vendor != BHND_MFGID_BCM)
 		return;
 
-	switch (bhnd_get_device(sc->bhndb.hostb_dev)) {
+	switch (hostb_core.device) {
 	case BHND_COREID_PCI:
 		srom_offset = BHND_PCI_SRSH_PI_OFFSET;
 		break;
@@ -342,7 +351,7 @@ bhndb_init_sromless_pci_config(struct bhndb_pci_softc *sc)
 
 	/* If it doesn't match host bridge's core index, update the index
 	 * value */
-	pci_cidx = bhnd_get_core_index(sc->bhndb.hostb_dev);
+	pci_cidx = hostb_core.core_idx;
 	if (sprom_cidx != pci_cidx) {
 		val &= ~BHND_PCI_SRSH_PI_MASK;
 		val |= (pci_cidx << BHND_PCI_SRSH_PI_SHIFT);

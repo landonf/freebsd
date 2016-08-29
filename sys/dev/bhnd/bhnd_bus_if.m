@@ -71,6 +71,13 @@ CODE {
 		panic("bhnd_bus_get_core_region unimplemented");
 	}
 
+	static bool
+	bhnd_bus_null_is_core_disabled(device_t dev, device_t child,
+	    struct bhnd_core_info *core)
+	{
+		panic("bhnd_bus_is_core_disabled unimplemented");
+	}
+
 	static bhnd_attach_type
 	bhnd_bus_null_get_attach_type(device_t dev, device_t child)
 	{
@@ -169,12 +176,6 @@ CODE {
 	{
 		panic("bhnd_bus_find_hostb_device unimplemented");
 	}
-
-	static bool
-	bhnd_bus_null_is_hw_disabled(device_t dev, device_t child)
-	{
-		panic("bhnd_bus_is_hw_disabled unimplemented");
-	}
 	
 	static int
 	bhnd_bus_null_get_probe_order(device_t dev, device_t child)
@@ -224,23 +225,6 @@ CODE {
 METHOD device_t find_hostb_device {
 	device_t dev;
 } DEFAULT bhnd_bus_null_find_hostb_device;
-
-/**
- * Return true if the hardware components required by @p child are unpopulated
- * or otherwise unusable.
- *
- * In some cases, enumerated devices may have pins that are left floating, or
- * the hardware may otherwise be non-functional; this method allows a parent
- * device to explicitly specify if a successfully enumerated @p child should
- * be disabled.
- *
- * @param dev The device whose child is being examined.
- * @param child The child device.
- */
-METHOD bool is_hw_disabled {
-	device_t dev;
-	device_t child;
-} DEFAULT bhnd_bus_null_is_hw_disabled;
 
 /**
  * Return the probe (and attach) order for @p child. 
@@ -338,6 +322,28 @@ METHOD int get_core_region {
 	bhnd_addr_t	*region_addr;
 	bhnd_size_t	*region_size;
 } DEFAULT bhnd_bus_null_get_core_region;
+
+
+/**
+ * Return true if the hardware components required by @p core are unpopulated
+ * or otherwise unusable.
+ *
+ * In some cases, enumerated cores may have pins that are left floating, or
+ * the hardware may otherwise be non-functional; this method allows a parent
+ * device to explicitly specify if a successfully enumerated @p core should
+ * be disabled.
+ *
+ * @param	dev		The bus device.
+ * @param	child		The requesting bhnd bus child.
+ * @param	core		The core for which disabled state should be
+ *				returned.
+ */
+METHOD bool is_core_disabled {
+	device_t		 dev;
+	device_t		 child;
+	struct bhnd_core_info	*core;
+} DEFAULT bhnd_bus_null_is_core_disabled;
+
 
 /**
  * Return the BHND attachment type of the parent bus.
