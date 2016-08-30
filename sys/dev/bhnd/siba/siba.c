@@ -335,7 +335,7 @@ siba_get_port_count(device_t dev, device_t child, bhnd_port_type type)
 		    type));
 
 	dinfo = device_get_ivars(child);
-	return (siba_addrspace_port_count(dinfo));
+	return (siba_addrspace_port_count(dinfo->core_id.num_addrspace));
 }
 
 static u_int
@@ -350,10 +350,11 @@ siba_get_region_count(device_t dev, device_t child, bhnd_port_type type,
 		    type, port));
 
 	dinfo = device_get_ivars(child);
-	if (!siba_is_port_valid(dinfo, type, port))
+	if (!siba_is_port_valid(dinfo->core_id.num_addrspace, type, port))
 		return (0);
 
-	return (siba_addrspace_region_count(dinfo, port));
+	return (siba_addrspace_region_count(dinfo->core_id.num_addrspace,
+	    port));
 }
 
 static int
@@ -441,7 +442,7 @@ siba_get_region_addr(device_t dev, device_t child, bhnd_port_type port_type,
  */
 static int
 siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
-    struct resource *r)
+    struct bhnd_resource *r)
 {
 	struct siba_core_id	*cid;
 	uint32_t		 addr;
@@ -450,29 +451,13 @@ siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
 
 	cid = &di->core_id;
 
-
 	/* Register the device address space entries */
 	for (uint8_t i = 0; i < di->core_id.num_addrspace; i++) {
-		uint32_t	adm;
-		u_int		adm_offset;
 		uint32_t	bus_reserved;
 
-		/* Determine the register offset */
-		adm_offset = siba_admatch_offset(i);
-		if (adm_offset == 0) {
-		    device_printf(dev, "addrspace %hhu is unsupported", i);
-		    return (ENODEV);
-		}
-
-		/* Fetch the address match register value */
-		adm = bus_read_4(r, adm_offset);
-
-		/* Parse the value */
-		if ((error = siba_parse_admatch(adm, &addr, &size))) {
-			device_printf(dev, "failed to decode address "
-			    " match register value 0x%x\n", adm);
+		/* Fetch the base address and size */
+		if ((error = siba_read_admatch(r, 0x0, i, &addr, &size)))
 			return (error);
-		}
 
 		/* If this is the device's core/enumeration addrespace,
 		 * reserve the Sonics configuration register blocks for the
@@ -526,7 +511,6 @@ siba_get_core_table(device_t dev, device_t child, struct bhnd_core_info **cores,
 	/* Enumerate all cores. */
 	for (u_int i = 0; i < chipid->ncores; i++) {
 		struct siba_core_id	 cid;
-		uint32_t		 idhigh, idlow;
 
 		/* Map the core's register block */
 		rid = 0;
@@ -539,10 +523,7 @@ siba_get_core_table(device_t dev, device_t child, struct bhnd_core_info **cores,
 		}
 
 		/* Read the core info */
-		idhigh = bhnd_bus_read_4(r, SB0_REG_ABS(SIBA_CFG0_IDHIGH));
-		idlow = bhnd_bus_read_4(r, SB0_REG_ABS(SIBA_CFG0_IDLOW));
-
-		cid = siba_parse_core_id(idhigh, idlow, i, 0);
+		cid = siba_read_core_id(r, 0x0, i, 0);
 		table[i] = cid.core_info;
 
 		/* Determine unit number */
@@ -588,7 +569,7 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 	struct bhnd_chipid	 ccid;
 	struct bhnd_core_info	*cores;
 	struct siba_devinfo	*dinfo;
-	struct resource		*r;
+	struct bhnd_resource	*r;
 	int			 rid;
 	int			 error;
 
@@ -612,13 +593,13 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 		/* Map the first core's register block. If the ChipCommon core
 		 * exists, it will always be the first core. */
 		rid = 0;
-		r = bus_alloc_resource(dev, SYS_RES_MEMORY, &rid,
+		r = bhnd_alloc_resource(dev, SYS_RES_MEMORY, &rid,
 		    SIBA_CORE_ADDR(0), SIBA_CORE_SIZE, 
 		    SIBA_CORE_ADDR(0) + SIBA_CORE_SIZE - 1,
 		    RF_ACTIVE);
 
 		/* Identify the core */
-		idhigh = bus_read_4(r, SB0_REG_ABS(SIBA_CFG0_IDHIGH));
+		idhigh = bhnd_bus_read_4(r, SB0_REG_ABS(SIBA_CFG0_IDHIGH));
 		vendor = SIBA_REG_GET(idhigh, IDH_VENDOR);
 		device = SIBA_REG_GET(idhigh, IDH_DEVICE);
 		ccrev = SIBA_IDH_CORE_REV(idhigh);
@@ -632,7 +613,7 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 		}
 
 		/* Identify the chipset */
-		ccreg = bus_read_4(r, CHIPC_ID);
+		ccreg = bhnd_bus_read_4(r, CHIPC_ID);
 		ccid = bhnd_parse_chipid(ccreg, SIBA_ENUM_ADDR);
 
 		/* Fix up the core count */
@@ -644,7 +625,7 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 		}
 
 		chipid = &ccid;
-		bus_release_resource(dev, SYS_RES_MEMORY, rid, r);
+		bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
 	}
 
 	/* Allocate our temporary core table and enumerate all cores */
@@ -656,7 +637,6 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 	for (u_int i = 0; i < chipid->ncores; i++) {
 		struct siba_core_id	 cid;
 		device_t		 child;
-		uint32_t		 idhigh, idlow;
 		rman_res_t		 r_count, r_end, r_start;
 
 		/* Map the core's register block */
@@ -664,7 +644,7 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 		r_start = SIBA_CORE_ADDR(i);
 		r_count = SIBA_CORE_SIZE;
 		r_end = r_start + SIBA_CORE_SIZE - 1;
-		r = bus_alloc_resource(dev, SYS_RES_MEMORY, &rid, r_start,
+		r = bhnd_alloc_resource(dev, SYS_RES_MEMORY, &rid, r_start,
 		    r_end, r_count, RF_ACTIVE);
 		if (r == NULL) {
 			error = ENXIO;
@@ -679,10 +659,7 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 		}
 		
 		/* Read the core info */
-		idhigh = bus_read_4(r, SB0_REG_ABS(SIBA_CFG0_IDHIGH));
-		idlow = bus_read_4(r, SB0_REG_ABS(SIBA_CFG0_IDLOW));
-
-		cid = siba_parse_core_id(idhigh, idlow, i, 0);
+		cid = siba_read_core_id(r, 0x0, i, 0);
 		cores[i] = cid.core_info;
 
 		/* Determine unit number */
@@ -711,7 +688,7 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 			device_disable(child);
 				
 		/* Release our resource */
-		bus_release_resource(dev, SYS_RES_MEMORY, rid, r);
+		bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
 		r = NULL;
 
 		/* Issue bus callback for fully initialized child. */
@@ -723,7 +700,7 @@ cleanup:
 		free(cores, M_BHND);
 
 	if (r != NULL)
-		bus_release_resource(dev, SYS_RES_MEMORY, rid, r);
+		bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
 
 	return (error);
 }
