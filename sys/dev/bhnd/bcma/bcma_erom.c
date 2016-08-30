@@ -93,9 +93,6 @@ static void		 erom_to_core_info(const struct bcma_erom_core *core,
 			     u_int core_idx, int core_unit,
 			     struct bhnd_core_info *info);
 
-static int		 erom_get_core_info(struct bcma_erom *erom,
-			     struct bhnd_core_info **cores, u_int *num_cores);
-
 #define	EROM_LOG(erom, fmt, ...)	do {				\
 	if (erom->dev != NULL) {					\
 		device_printf(erom->dev, "erom[0x%llx]: " fmt,		\
@@ -185,7 +182,7 @@ bcma_erom_lookup_core(bhnd_erom_t erom, const struct bhnd_core_match *desc,
 	struct bhnd_core_match	cm;
 
 	/* Disable core unit matching for the initial match; we can't
-	 * calculate the core unit u
+	 * calculate the core unit */
 	cm = *desc;
 	cm.m.match.core_unit = 0;
 
@@ -210,8 +207,81 @@ static int
 bcma_erom_get_core_table(bhnd_erom_t erom, struct bhnd_core_info **cores,
     u_int *num_cores)
 {
-	// TODO
-	return (ENXIO);
+	struct bcma_erom	*sc;
+	struct bhnd_core_info	*buffer;
+	bus_size_t		 initial_offset;
+	u_int			 count;
+	int			 error;
+
+	sc = (struct bcma_erom *)erom;
+
+	buffer = NULL;
+	initial_offset = erom_tell(sc);
+
+	/* Determine the core count */
+	erom_reset(sc);
+	for (count = 0, error = 0; !error; count++) {
+		struct bcma_erom_core core;
+
+		/* Seek to the first readable core entry */
+		error = erom_seek_next(sc, BCMA_EROM_ENTRY_TYPE_CORE);
+		if (error == ENOENT)
+			break;
+		else if (error)
+			goto cleanup;
+		
+		/* Read past the core descriptor */
+		if ((error = erom_parse_core(sc, &core)))
+			goto cleanup;
+	}
+
+	/* Allocate our output buffer */
+	buffer = malloc(sizeof(struct bhnd_core_info) * count, M_BHND,
+	    M_NOWAIT);
+	if (buffer == NULL) {
+		error = ENOMEM;
+		goto cleanup;
+	}
+
+	/* Parse all core descriptors */
+	erom_reset(sc);
+	for (u_int i = 0; i < count; i++) {
+		struct bcma_erom_core	core;
+		int			unit;
+
+		/* Parse the core */
+		error = erom_seek_next(sc, BCMA_EROM_ENTRY_TYPE_CORE);
+		if (error)
+			goto cleanup;
+
+		error = erom_parse_core(sc, &core);
+		if (error)
+			goto cleanup;
+
+		/* Determine the unit number */
+		unit = 0;
+		for (u_int j = 0; j < i; j++) {
+			if (buffer[i].vendor == buffer[j].vendor &&
+			    buffer[i].device == buffer[j].device)
+				unit++;
+		}
+
+		/* Convert to a bhnd info record */
+		erom_to_core_info(&core, i, unit, &buffer[i]);
+	}
+
+cleanup:
+	if (!error) {
+		*cores = buffer;
+		*num_cores = count;
+	} else {
+		if (buffer != NULL)
+			free(buffer, M_BHND);
+	}
+
+	/* Restore the initial position */
+	erom_seek(sc, initial_offset);
+	return (error);
 }
 
 /**
@@ -781,97 +851,6 @@ erom_to_core_info(const struct bcma_erom_core *core, u_int core_idx,
 	info->hwrev = core->rev;
 	info->core_idx = core_idx;
 	info->unit = core_unit;
-}
-
-/**
- * Parse all cores descriptors from @p erom and return the array
- * in @p cores and the count in @p num_cores. The current EROM read position
- * is left unmodified.
- * 
- * The memory allocated for the table should be freed using
- * `free(*cores, M_BHND)`. @p cores and @p num_cores are not changed
- * when an error is returned.
- * 
- * @param erom EROM read state.
- * @param[out] cores the table of parsed core descriptors.
- * @param[out] num_cores the number of core records in @p cores.
- */
-static int
-erom_get_core_info(struct bcma_erom *erom, struct bhnd_core_info **cores,
-    u_int *num_cores)
-{
-	struct bhnd_core_info	*buffer;
-	bus_size_t		 initial_offset;
-	u_int			 count;
-	int			 error;
-
-	buffer = NULL;
-	initial_offset = erom_tell(erom);
-
-	/* Determine the core count */
-	erom_reset(erom);
-	for (count = 0, error = 0; !error; count++) {
-		struct bcma_erom_core core;
-
-		/* Seek to the first readable core entry */
-		error = erom_seek_next(erom, BCMA_EROM_ENTRY_TYPE_CORE);
-		if (error == ENOENT)
-			break;
-		else if (error)
-			goto cleanup;
-		
-		/* Read past the core descriptor */
-		if ((error = erom_parse_core(erom, &core)))
-			goto cleanup;
-	}
-
-	/* Allocate our output buffer */
-	buffer = malloc(sizeof(struct bhnd_core_info) * count, M_BHND,
-	    M_NOWAIT);
-	if (buffer == NULL) {
-		error = ENOMEM;
-		goto cleanup;
-	}
-
-	/* Parse all core descriptors */
-	erom_reset(erom);
-	for (u_int i = 0; i < count; i++) {
-		struct bcma_erom_core	core;
-		int			unit;
-
-		/* Parse the core */
-		error = erom_seek_next(erom, BCMA_EROM_ENTRY_TYPE_CORE);
-		if (error)
-			goto cleanup;
-
-		error = erom_parse_core(erom, &core);
-		if (error)
-			goto cleanup;
-
-		/* Determine the unit number */
-		unit = 0;
-		for (u_int j = 0; j < i; j++) {
-			if (buffer[i].vendor == buffer[j].vendor &&
-			    buffer[i].device == buffer[j].device)
-				unit++;
-		}
-
-		/* Convert to a bhnd info record */
-		erom_to_core_info(&core, i, unit, &buffer[i]);
-	}
-
-cleanup:
-	if (!error) {
-		*cores = buffer;
-		*num_cores = count;
-	} else {
-		if (buffer != NULL)
-			free(buffer, M_BHND);
-	}
-
-	/* Restore the initial position */
-	erom_seek(erom, initial_offset);
-	return (error);
 }
 
 /**
