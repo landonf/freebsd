@@ -25,6 +25,7 @@ SRCS+=	bhnd_pmu.c \
 SRCS+=	bhnd_pmu_if.c bhnd_pmu_if.h
 
 # EROM
+SRCS+=	bhnd_erom.c
 SRCS+=	bhnd_erom_if.c bhnd_erom_if.h
 
 # NVRAM/SPROM

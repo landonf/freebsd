@@ -24,16 +24,9 @@
 #
 # $FreeBSD$
 
-#include <sys/types.h>
-
-#include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/erom/bhnd_erom.h>
 
 INTERFACE bhnd_erom;
-
-HEADER {
-	/* forward declarations */
-	typedef struct bhnd_erom *bhnd_erom_t;
-}
 
 #
 # bhnd(4) device enumeration.
@@ -76,7 +69,7 @@ METHOD int init {
 METHOD int init_static {
 	bhnd_erom_t		erom;
 	bus_space_tag_t 	bst;
-	bus_space_handle_t	bsh
+	bus_space_handle_t	bsh;
 };
 
 /**

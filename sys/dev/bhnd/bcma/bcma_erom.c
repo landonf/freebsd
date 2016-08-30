@@ -1140,3 +1140,52 @@ failed:
 
 	return error;
 }
+
+static int
+bcma_erom_init(bhnd_erom_t erom, device_t parent, bus_addr_t chipc_addr)
+{
+	// TODO
+	return (ENXIO);
+}
+
+static int
+bcma_erom_init_static(bhnd_erom_t erom, bus_space_tag_t bst,
+     bus_space_handle_t bsh)
+{
+	// TODO
+	return (ENXIO);
+}
+
+static int
+bcma_erom_lookup_core(bhnd_erom_t erom, const struct bhnd_core_match *desc,
+    struct bhnd_core_info *core)
+{
+	// TODO
+	return (ENXIO);
+}
+
+static void
+bcma_erom_fini(bhnd_erom_t erom)
+{
+}
+
+static int
+bcma_erom_lookup_core_addr(bhnd_erom_t erom, const struct bhnd_core_match *desc,
+    bhnd_port_type type, u_int port, u_int region, bhnd_addr_t *addr,
+    bhnd_size_t *size)
+{
+	// TODO
+	return (ENXIO);
+};
+
+static kobj_method_t bcma_erom_methods[] = {
+	KOBJMETHOD(bhnd_erom_init,		bcma_erom_init),
+	KOBJMETHOD(bhnd_erom_init_static,	bcma_erom_init_static),
+	KOBJMETHOD(bhnd_erom_fini,		bcma_erom_fini),
+	KOBJMETHOD(bhnd_erom_lookup_core,	bcma_erom_lookup_core),
+	KOBJMETHOD(bhnd_erom_lookup_core_addr,	bcma_erom_lookup_core_addr),
+
+	KOBJMETHOD_END
+};
+
+DEFINE_CLASS(bcma_erom_parser, bcma_erom_methods, sizeof(struct bcma_erom));

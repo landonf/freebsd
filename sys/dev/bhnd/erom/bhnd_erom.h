@@ -35,10 +35,16 @@
 #include <sys/param.h>
 #include <sys/kobj.h>
 
+#include <dev/bhnd/bhnd.h>
+
+typedef kobj_class_t		 bhnd_erom_class_t;	/**< bhnd erom parser class */
+typedef struct bhnd_erom	*bhnd_erom_t;		/**< bhnd erom parser instance */
+
 #include "bhnd_erom_if.h"
 
-typedef struct kobj_class_t	 bhnd_erom_class_t;	/**< bhnd erom parser class */
-typedef struct bhnd_erom	*bhnd_erom_t;		/**< bhnd erom parser instance */
+bhnd_erom_t			 bhnd_erom_alloc(bhnd_erom_class_t cls,
+				     device_t parent, bus_addr_t chipc_addr);
+void				 bhnd_erom_free(bhnd_erom_t erom);
 
 /**
  * Abstract bhnd_erom instance state. Must be first member of all subclass
@@ -47,56 +53,6 @@ typedef struct bhnd_erom	*bhnd_erom_t;		/**< bhnd erom parser instance */
 struct bhnd_erom {
 	KOBJ_FIELDS;
 };
-
-/**
- * Initialize a device enumeration table parser.
- * 
- * @param erom		The erom parser to initialize.
- * @param parent	The parent device from which EROM resources should
- *			be allocated.
- * @param chipc_addr	The base address of the ChipCommon core.
- *
- * @retval 0		success
- * @retval non-zero	if an error occurs initializing the EROM parser,
- *			a regular unix error code should be returned.
- */
-static inline int
-bhnd_erom_init(bhnd_erom_t erom, device_t parent, bus_addr_t chipc_addr)
-{
-	return (BHND_EROM_INIT(erom, parent, chipc_addr));
-}
-
-/**
- * Initialize an device enumeration table parser using the provided bus space
- * tag and handle.
- * 
- * @param erom		The erom parser to initialize.
- * @param bst		Bus space tag.
- * @param bsh		Bus space handle mapping the device enumeration
- *			space.
- *
- * @retval 0		success
- * @retval non-zero	if an error occurs initializing the EROM parser,
- *			a regular unix error code should be returned.
- */
-static inline int
-bhnd_erom_init_static(bhnd_erom_t erom, bus_space_tag_t bst,
-    bus_space_handle_t bsh)
-{
-	return (BHND_EROM_INIT_STATIC(erom, bst, bsh));
-}
-
-/**
- * Release all resources held by @p erom.
- * 
- * @param	erom	An erom parser instance previously initialized via
- *			BHND_EROM_INIT() or BHND_EROM_INIT_STATIC().
- */
-static inline void
-bhnd_erom_fini(bhnd_erom_t erom)
-{
-	return (BHND_EROM_FINI(erom));
-}
 
 /**
  * Locate the first core table entry in @p erom that matches @p desc.
@@ -110,7 +66,7 @@ bhnd_erom_fini(bhnd_erom_t erom)
  * @retval non-zero	Reading or parsing failed.
  */
 static inline int
-bhnd_erom_lookup_core(bhnd_erom_t, erom, const struct bhnd_core_match *desc,
+bhnd_erom_lookup_core(bhnd_erom_t erom, const struct bhnd_core_match *desc,
     struct bhnd_core_info *core)
 {
 	return (BHND_EROM_LOOKUP_CORE(erom, desc, core));

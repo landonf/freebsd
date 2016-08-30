@@ -33,13 +33,17 @@
 #define	_BCMA_BCMA_EROMVAR_H_
 
 #include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/erom/bhnd_erom.h>
 
 #include "bcmavar.h"
+
+DECLARE_CLASS(bcma_erom_parser);
 
 /**
  * EROM read context.
  */
 struct bcma_erom {
+	struct bhnd_erom	obj;
 	device_t	 	dev;		/**< EROM parent device */
 	bus_space_tag_t		bst;		/**< EROM table bus space */
 	bus_space_handle_t	bsh;		/**< EROM table bus handle */
