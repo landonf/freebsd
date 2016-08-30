@@ -74,6 +74,10 @@ static void		 erom_seek(struct bcma_erom *erom, bus_size_t offset);
 static void		 erom_reset(struct bcma_erom *erom);
 
 static int		 erom_seek_next_core(struct bcma_erom *erom);
+static int		 erom_seek_matching_core(struct bcma_erom *sc,
+			     const struct bhnd_core_match *desc,
+			     struct bhnd_core_info *core);
+
 static int		 erom_seek_core_index(struct bcma_erom *erom,
 			     u_int core_index);
 static int		 erom_parse_core(struct bcma_erom *erom,
@@ -179,17 +183,21 @@ static int
 bcma_erom_lookup_core(bhnd_erom_t erom, const struct bhnd_core_match *desc,
     struct bhnd_core_info *core)
 {
-	struct bhnd_core_match	cm;
+	struct bcma_erom	*sc;
+	bus_size_t		 initial_offset;
+	int			 error;
 
-	/* Disable core unit matching for the initial match; we can't
-	 * calculate the core unit */
-	cm = *desc;
-	cm.m.match.core_unit = 0;
+	sc = (struct bcma_erom *)erom;
 
-	
+	/* Save initial position */
+	initial_offset = erom_tell(sc);
 
-	// TODO
-	return (ENXIO);
+	/* Search for the first matching core */
+	error = erom_seek_matching_core(sc, desc, core);
+
+	/* Restore position and return */
+	erom_seek(sc, initial_offset);
+	return (error);
 }
 
 /* BHND_EROM_LOOKUP_CORE_ADDR */
@@ -494,6 +502,93 @@ erom_seek_next_core(struct bcma_erom *erom)
 {
 	return (erom_seek_next(erom, BCMA_EROM_ENTRY_TYPE_CORE));
 }
+
+/**
+ * Seek to the first core entry matching @p desc.
+ * 
+ * @param erom EROM read state.
+ * @param desc The core match descriptor.
+ * @param[out] core On success, the matching core info. If the core info
+ * is not desired, a NULL pointer may be provided.
+ * @retval 0 success
+ * @retval ENOENT The end of the EROM table was reached before @p index was
+ * found.
+ * @retval non-zero Reading or parsing failed.
+ */
+static int
+erom_seek_matching_core(struct bcma_erom *sc,
+    const struct bhnd_core_match *desc, struct bhnd_core_info *core)
+{
+	struct bhnd_core_match	 imatch;
+	bus_size_t		 core_offset, next_offset;
+	int			 error;
+
+	/* Seek to table start. */
+	erom_reset(sc);
+
+	/* We can't determine a core's unit number during the initial scan. */
+	imatch = *desc;
+	imatch.m.match.core_unit = 0;
+
+	/* Locate the first matching core */
+	for (u_int i = 0; i < UINT_MAX; i++) {
+		struct bcma_erom_core	ec;
+		struct bhnd_core_info	ci;
+
+		/* Seek to the next core */
+		if ((error = erom_seek_next(sc, BCMA_EROM_ENTRY_TYPE_CORE)))
+			return (error);
+
+		/* Save the core offset */
+		core_offset = erom_tell(sc);
+	
+		/* Parse the core */
+		if ((error = erom_parse_core(sc, &ec)))
+			return (error);
+
+		erom_to_core_info(&ec, i, 0, &ci);
+
+		/* Check for initial match */
+		if (!bhnd_core_matches(&ci, &imatch))
+			continue;
+
+		/* Re-scan preceding cores to determine the unit number. */
+		next_offset = erom_tell(sc);
+		erom_reset(sc);
+		for (u_int j = 0; j < i; j++) {
+			/* Parse the core */
+			error = erom_seek_next(sc, BCMA_EROM_ENTRY_TYPE_CORE);
+			if (error)
+				return (error);
+			
+			if ((error = erom_parse_core(sc, &ec)))
+				return (error);
+
+			/* Bump the unit number? */
+			if (ec.vendor == ci.vendor && ec.device == ci.device)
+				ci.unit++;
+		}
+
+		/* Check for full match against now-valid unit number */
+		if (!bhnd_core_matches(&ci, desc)) {
+			/* Reposition to allow reading the next core */
+			erom_seek(sc, next_offset);
+			continue;
+		}
+
+		/* Found; seek to the core's initial offset and provide
+		 * the core info to the caller */
+		erom_seek(sc, core_offset);
+		if (core != NULL)
+			*core = ci;
+
+		return (0);
+	}
+
+	/* Not found, or a parse error occured */
+	return (error);
+}
+
 
 /**
  * Seek to the requested core entry.
