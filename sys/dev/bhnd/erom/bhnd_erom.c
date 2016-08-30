@@ -64,7 +64,8 @@ bhnd_erom_alloc(bhnd_erom_class_t cls, device_t parent, int rid,
 
 	if ((error = BHND_EROM_INIT(erom, parent, rid, enum_addr))) {
 		printf("error initializing %s parser at %#jx with "
-		    "rid %d: %d\n", cls->name, enum_addr, rid, error);
+		    "rid %d: %d\n", cls->name, (uintmax_t)enum_addr, rid,
+		     error);
 
 		kobj_delete((kobj_t)erom, M_BHND);
 		return (NULL);
