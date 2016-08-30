@@ -41,7 +41,9 @@ INTERFACE bhnd_erom;
  * @param erom		The erom parser to initialize.
  * @param parent	The parent device from which EROM resources should
  *			be allocated.
- * @param chipc_addr	The base address of the ChipCommon core.
+ * @param rid		The resource id to be used when allocating the
+ *			enumeration table.
+ * @param enum_addr	The base address of the device enumeration table.
  *
  * @retval 0		success
  * @retval non-zero	if an error occurs initializing the EROM parser,
@@ -50,7 +52,8 @@ INTERFACE bhnd_erom;
 METHOD int init {
 	bhnd_erom_t	erom;
 	device_t	parent;
-	bus_addr_t	chipc_addr;
+	int		rid;
+	bus_addr_t	enum_addr;
 };
 
 /**
@@ -100,8 +103,8 @@ METHOD void fini {
  */
 METHOD int get_core_table {
 	bhnd_erom_t		 erom;
-	struct bhnd_core_info	*cores;
-	u_int			 num_cores;
+	struct bhnd_core_info	**cores;
+	u_int			*num_cores;
 };
 
 

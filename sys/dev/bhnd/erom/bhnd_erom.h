@@ -43,7 +43,8 @@ typedef struct bhnd_erom	*bhnd_erom_t;		/**< bhnd erom parser instance */
 #include "bhnd_erom_if.h"
 
 bhnd_erom_t			 bhnd_erom_alloc(bhnd_erom_class_t cls,
-				     device_t parent, bus_addr_t chipc_addr);
+				     device_t parent, int rid,
+				     bus_addr_t enum_addr);
 void				 bhnd_erom_free(bhnd_erom_t erom);
 
 /**
@@ -71,8 +72,8 @@ struct bhnd_erom {
  *			be returned.
  */
 static inline int
-bhnd_erom_get_core_table(bhnd_erom_t erom, struct bhnd_core_info *cores,
-    u_int num_cores)
+bhnd_erom_get_core_table(bhnd_erom_t erom, struct bhnd_core_info **cores,
+    u_int *num_cores)
 {
 	return (BHND_EROM_GET_CORE_TABLE(erom, cores, num_cores));
 }

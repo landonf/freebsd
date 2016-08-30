@@ -44,14 +44,17 @@ __FBSDID("$FreeBSD$");
  *			allocated.
  * @param parent	The parent device from which EROM resources should
  *			be allocated.
- * @param chipc_addr	The base address of the ChipCommon core.
+ * @param rid		The resource ID to be used when allocating EROM
+ *			resources.
+ * @param enum_addr	The base address of the device enumeration table.
  *
  * @retval non-NULL	success
  * @retval NULL		if an error occured allocating or initializing the
  *			EROM parser.
  */
 bhnd_erom_t
-bhnd_erom_alloc(bhnd_erom_class_t cls, device_t parent, bus_addr_t chipc_addr)
+bhnd_erom_alloc(bhnd_erom_class_t cls, device_t parent, int rid,
+    bus_addr_t enum_addr)
 {
 	bhnd_erom_t	erom;
 	int		error;
@@ -59,8 +62,9 @@ bhnd_erom_alloc(bhnd_erom_class_t cls, device_t parent, bus_addr_t chipc_addr)
 	erom = (bhnd_erom_t)kobj_create((kobj_class_t)cls, M_BHND,
 	    M_WAITOK|M_ZERO);
 
-	if ((error = BHND_EROM_INIT(erom, parent, chipc_addr))) {
-		printf("EROM init error: %d\n", error);
+	if ((error = BHND_EROM_INIT(erom, parent, rid, enum_addr))) {
+		printf("error initializing %s parser at %#jx with "
+		    "rid %d: %d\n", cls->name, enum_addr, rid, error);
 
 		kobj_delete((kobj_t)erom, M_BHND);
 		return (NULL);

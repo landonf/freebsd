@@ -45,6 +45,9 @@ __FBSDID("$FreeBSD$");
 #include "bcma_eromvar.h"
 #include <dev/bhnd/bhnd_core.h>
 
+/* RID used when allocating EROM table */
+#define	BCMA_EROM_RID	0
+
 int
 bcma_probe(device_t dev)
 {
@@ -497,71 +500,54 @@ static int
 bcma_get_core_table(device_t dev, device_t child, struct bhnd_core_info **cores,
     u_int *num_cores)
 {
-	struct bcma_softc		*sc;
-	struct bcma_erom		 erom;
+	bhnd_erom_t			 erom;
 	const struct bhnd_chipid	*cid;
-	struct resource			*r;
 	int				 error;
-	int				 rid;
 
-	sc = device_get_softc(dev);
-
-	/* Map the EROM table. */
 	cid = BHND_BUS_GET_CHIPID(dev, dev);
-	rid = 0;
-	r = bus_alloc_resource(dev, SYS_RES_MEMORY, &rid, cid->enum_addr,
-	    cid->enum_addr + BCMA_EROM_TABLE_SIZE, BCMA_EROM_TABLE_SIZE,
-	    RF_ACTIVE);
-	if (r == NULL) {
-		device_printf(dev, "failed to allocate EROM resource\n");
-		return (ENXIO);
-	}
+
+	/* Allocate an EROM parser instance */
+	erom = bhnd_erom_alloc(&bcma_erom_parser, dev, BCMA_EROM_RID,
+	    cid->enum_addr);
+	if (erom == NULL)
+		return (ENODEV);
 
 	/* Enumerate all declared cores */
-	if ((error = bcma_erom_open(&erom, r, BCMA_EROM_TABLE_START)))
-		goto cleanup;
+	error = bhnd_erom_get_core_table(erom, cores, num_cores);
 
-	error = bcma_erom_get_core_info(&erom, cores, num_cores);
-
-cleanup:
-	bus_release_resource(dev, SYS_RES_MEMORY, rid, r);
+	bhnd_erom_free(erom);
 	return (error);
 }
 
 /**
- * Scan a device enumeration ROM table, adding all valid discovered cores to
+ * Scan the device enumeration ROM table, adding all valid discovered cores to
  * the bus.
  * 
  * @param bus The bcma bus.
- * @param erom_res An active resource mapping the EROM core.
- * @param erom_offset Base offset of the EROM core's register mapping.
  */
 int
-bcma_add_children(device_t bus, struct resource *erom_res, bus_size_t erom_offset)
+bcma_add_children(device_t bus)
 {
-	struct bcma_erom	 erom;
-	struct bcma_corecfg	*corecfg;
-	struct bcma_devinfo	*dinfo;
-	device_t		 child;
-	int			 error;
+	bhnd_erom_t			 erom;
+	struct bcma_erom		*bcma_erom;
+	const struct bhnd_chipid	*cid;
+	struct bcma_corecfg		*corecfg;
+	struct bcma_devinfo		*dinfo;
+	device_t			 child;
+	int				 error;
 
+	cid = BHND_BUS_GET_CHIPID(bus, bus);
 	corecfg = NULL;
 
-	/* Initialize our reader */
-	error = bcma_erom_open(&erom, erom_res, erom_offset);
-	if (error)
-		return (error);
+	/* Allocate our EROM parser */
+	erom = bhnd_erom_alloc(&bcma_erom_parser, bus, BCMA_EROM_RID,
+	    cid->enum_addr);
+	if (erom == NULL)
+		return (ENODEV);
 
 	/* Add all cores. */
-	while (!error) {
-		/* Parse next core */
-		error = bcma_erom_parse_corecfg(&erom, &corecfg);
-		if (error && error == ENOENT) {
-			return (0);
-		} else if (error) {
-			goto failed;
-		}
-
+	bcma_erom = (struct bcma_erom *)erom;
+	while ((error = bcma_erom_next_corecfg(bcma_erom, &corecfg)) == 0) {
 		/* Add the child device */
 		child = BUS_ADD_CHILD(bus, 0, NULL, -1);
 		if (child == NULL) {
@@ -588,9 +574,11 @@ bcma_add_children(device_t bus, struct resource *erom_res, bus_size_t erom_offse
 
 	/* Hit EOF parsing cores? */
 	if (error == ENOENT)
-		return (0);
+		error = 0;
 	
 failed:
+	bhnd_erom_free(erom);
+
 	if (corecfg != NULL)
 		bcma_free_corecfg(corecfg);
 
