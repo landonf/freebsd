@@ -78,14 +78,8 @@ static int		 erom_seek_matching_core(struct bcma_erom *sc,
 			     const struct bhnd_core_match *desc,
 			     struct bhnd_core_info *core);
 
-static int		 erom_seek_core_index(struct bcma_erom *erom,
-			     u_int core_index);
 static int		 erom_parse_core(struct bcma_erom *erom,
 			     struct bcma_erom_core *core);
-
-static int		 erom_seek_core_sport_region(struct bcma_erom *erom,
-			     u_int core_index, bhnd_port_type port_type,
-			     u_int port_num, u_int region_num);
 
 static int		 erom_parse_mport(struct bcma_erom *erom,
 			     struct bcma_erom_mport *mport);
@@ -183,31 +177,158 @@ static int
 bcma_erom_lookup_core(bhnd_erom_t erom, const struct bhnd_core_match *desc,
     struct bhnd_core_info *core)
 {
-	struct bcma_erom	*sc;
-	bus_size_t		 initial_offset;
-	int			 error;
-
-	sc = (struct bcma_erom *)erom;
-
-	/* Save initial position */
-	initial_offset = erom_tell(sc);
+	struct bcma_erom *sc = (struct bcma_erom *)erom;
 
 	/* Search for the first matching core */
-	error = erom_seek_matching_core(sc, desc, core);
-
-	/* Restore position and return */
-	erom_seek(sc, initial_offset);
-	return (error);
+	return (erom_seek_matching_core(sc, desc, core));
 }
 
 /* BHND_EROM_LOOKUP_CORE_ADDR */
 static int
 bcma_erom_lookup_core_addr(bhnd_erom_t erom, const struct bhnd_core_match *desc,
-    bhnd_port_type type, u_int port, u_int region, bhnd_addr_t *addr,
-    bhnd_size_t *size)
+    bhnd_port_type port_type, u_int port_num, u_int region_num,
+    bhnd_addr_t *addr, bhnd_size_t *size)
 {
-	// TODO
-	return (ENXIO);
+	struct bcma_erom	*sc;
+	struct bcma_erom_core	 ec;
+	uint32_t		 entry;
+	uint8_t			 region_port, region_type;
+	bool			 found;
+	int			 error;
+
+	sc = (struct bcma_erom *)erom;
+
+	/* Seek to the first matching core */
+	if ((error = erom_seek_matching_core(sc, desc, NULL)))
+		return (error);
+
+	if ((error = erom_parse_core(sc, &ec)))
+		return (error);
+
+	/* Skip master ports */
+	for (u_long i = 0; i < ec.num_mport; i++) {
+		if ((error = erom_skip_mport(sc)))
+			return (error);
+	}
+
+	/* Seek to the region block for the given port type */
+	found = false;
+	while (1) {
+		bhnd_port_type	p_type;
+		uint8_t		r_type;
+
+		if ((error = erom_peek32(sc, &entry)))
+			return (error);
+
+		if (!BCMA_EROM_ENTRY_IS(entry, REGION))
+			return (ENOENT);
+
+		/* Expected region type? */
+		r_type = BCMA_EROM_GET_ATTR(entry, REGION_TYPE);
+		if ((error = erom_region_to_port_type(sc, r_type, &p_type)))
+			return (error);
+
+		if (p_type == port_type) {
+			found = true;
+			break;
+		}
+
+		/* Skip to next entry */
+		if ((error = erom_skip_sport_region(sc)))
+			return (error);
+	}
+
+	if (!found)
+		return (ENOENT);
+
+	/* Found the appropriate port type block; now find the region records
+	 * for the given port number */
+	found = false;
+	for (u_int i = 0; i <= port_num; i++) {
+		bhnd_port_type	p_type;
+
+		if ((error = erom_peek32(sc, &entry)))
+			return (error);
+		
+		if (!BCMA_EROM_ENTRY_IS(entry, REGION))
+			return (ENOENT);
+
+		/* Fetch the type/port of the first region entry */
+		region_type = BCMA_EROM_GET_ATTR(entry, REGION_TYPE);
+		region_port = BCMA_EROM_GET_ATTR(entry, REGION_PORT);
+
+		/* Have we found the region entries for the desired port? */
+		if (i == port_num) {
+			error = erom_region_to_port_type(sc, region_type,
+			    &p_type);
+			if (error)
+				return (error);
+
+			if (p_type == port_type)
+				found = true;
+
+			break;
+		}
+
+		/* Otherwise, seek to next block of region records */
+		while (1) {
+			uint8_t	next_type, next_port;
+	
+			if ((error = erom_skip_sport_region(sc)))
+				return (error);
+
+			if ((error = erom_peek32(sc, &entry)))
+				return (error);
+
+			if (!BCMA_EROM_ENTRY_IS(entry, REGION))
+				return (ENOENT);
+
+			next_type = BCMA_EROM_GET_ATTR(entry, REGION_TYPE);
+			next_port = BCMA_EROM_GET_ATTR(entry, REGION_PORT);
+
+			if (next_type != region_type ||
+			    next_port != region_port)
+				break;
+		}
+	}
+
+	if (!found)
+		return (ENOENT);
+
+	/* Finally, search for the requested region number */
+	for (u_int i = 0; i <= region_num; i++) {
+		struct bcma_erom_sport_region	region;
+		uint8_t				next_port, next_type;
+
+		if ((error = erom_peek32(sc, &entry)))
+			return (error);
+		
+		if (!BCMA_EROM_ENTRY_IS(entry, REGION))
+			return (ENOENT);
+
+		/* Check for the end of the region block */
+		next_type = BCMA_EROM_GET_ATTR(entry, REGION_TYPE);
+		next_port = BCMA_EROM_GET_ATTR(entry, REGION_PORT);
+
+		if (next_type != region_type ||
+		    next_port != region_port)
+			break;
+
+		/* Parse the region */
+		if ((error = erom_parse_sport_region(sc, &region)))
+			return (error);
+
+		/* Is this our target region_num? */
+		if (i == region_num) {
+			/* Found */
+			*addr = region.base_addr;
+			*size = region.size;
+			return (0);
+		}
+	}
+
+	/* Not found */
+	return (ENOENT);
 };
 
 /* BHND_EROM_GET_CORE_TABLE() */
@@ -675,153 +796,6 @@ erom_parse_core(struct bcma_erom *erom, struct bcma_erom_core *core)
 	core->num_swrap = BCMA_EROM_GET_ATTR(entry, COREB_NUM_WSP);
 
 	return (0);
-}
-
-/**
- * Seek to a region record associated with @p core_index.
- * 
- * @param erom EROM read state.
- * @param core_index The index of the core record to be searched.
- * @param port_type The port type to search for.
- * @param port_num The port number to search for.
- * @param region_num The region number to search for.
- * @retval 0 success
- * @retval ENOENT The requested region was not found.
- * @retval non-zero Reading or parsing failed.
- */
-static int
-erom_seek_core_sport_region(struct bcma_erom *erom, u_int core_index,
-    bhnd_port_type port_type, u_int port_num, u_int region_num)
-{
-	struct bcma_erom_core	core;
-	uint32_t		entry;
-	uint8_t			region_port, region_type;
-	bool			found;
-	int			error;
-
-	if ((error = erom_seek_core_index(erom, core_index)))
-		return (error);
-
-	if ((error = erom_parse_core(erom, &core)))
-		return (error);
-
-	/* Skip master ports */
-	for (u_long i = 0; i < core.num_mport; i++) {
-		if ((error = erom_skip_mport(erom)))
-			return (error);
-	}
-
-	/* Seek to the region block for the given port type */
-	found = false;
-	while (1) {
-		bhnd_port_type	p_type;
-		uint8_t		r_type;
-
-		if ((error = erom_peek32(erom, &entry)))
-			return (error);
-
-		if (!BCMA_EROM_ENTRY_IS(entry, REGION))
-			return (ENOENT);
-
-		/* Expected region type? */
-		r_type = BCMA_EROM_GET_ATTR(entry, REGION_TYPE);
-		if ((error = erom_region_to_port_type(erom, r_type, &p_type)))
-			return (error);
-
-		if (p_type == port_type) {
-			found = true;
-			break;
-		}
-
-		/* Skip to next entry */
-		if ((error = erom_skip_sport_region(erom)))
-			return (error);
-	}
-
-	if (!found)
-		return (ENOENT);
-
-	/* Found the appropriate port type block; now find the region records
-	 * for the given port number */
-	found = false;
-	for (u_int i = 0; i <= port_num; i++) {
-		bhnd_port_type	p_type;
-
-		if ((error = erom_peek32(erom, &entry)))
-			return (error);
-		
-		if (!BCMA_EROM_ENTRY_IS(entry, REGION))
-			return (ENOENT);
-
-		/* Fetch the type/port of the first region entry */
-		region_type = BCMA_EROM_GET_ATTR(entry, REGION_TYPE);
-		region_port = BCMA_EROM_GET_ATTR(entry, REGION_PORT);
-
-		/* Have we found the region entries for the desired port? */
-		if (i == port_num) {
-			error = erom_region_to_port_type(erom, region_type,
-			    &p_type);
-			if (error)
-				return (error);
-
-			if (p_type == port_type)
-				found = true;
-
-			break;
-		}
-
-		/* Otherwise, seek to next block of region records */
-		while (1) {
-			uint8_t	next_type, next_port;
-	
-			if ((error = erom_skip_sport_region(erom)))
-				return (error);
-
-			if ((error = erom_peek32(erom, &entry)))
-				return (error);
-
-			if (!BCMA_EROM_ENTRY_IS(entry, REGION))
-				return (ENOENT);
-
-			next_type = BCMA_EROM_GET_ATTR(entry, REGION_TYPE);
-			next_port = BCMA_EROM_GET_ATTR(entry, REGION_PORT);
-
-			if (next_type != region_type ||
-			    next_port != region_port)
-				break;
-		}
-	}
-
-	if (!found)
-		return (ENOENT);
-
-	/* Finally, search for the requested region number */
-	for (u_int i = 0; i <= region_num; i++) {
-		uint8_t	next_port, next_type;
-
-		if ((error = erom_peek32(erom, &entry)))
-			return (error);
-		
-		if (!BCMA_EROM_ENTRY_IS(entry, REGION))
-			return (ENOENT);
-
-		/* Check for the end of the region block */
-		next_type = BCMA_EROM_GET_ATTR(entry, REGION_TYPE);
-		next_port = BCMA_EROM_GET_ATTR(entry, REGION_PORT);
-
-		if (next_type != region_type ||
-		    next_port != region_port)
-			break;
-
-		if (i == region_num)
-			return (0);
-
-		if ((error = erom_skip_sport_region(erom)))
-			return (error);
-	}
-
-	/* Not found */
-	return (ENOENT);
 }
 
 /**
