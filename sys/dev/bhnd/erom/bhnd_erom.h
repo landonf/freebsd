@@ -59,9 +59,8 @@ struct bhnd_erom {
  * Parse all cores descriptors in @p erom, returning the array in @p cores and
  * the count in @p num_cores.
  * 
- * The memory allocated for the table should be freed using
- * `free(*cores, M_BHND)`. @p cores and @p num_cores are not changed
- * when an error is returned.
+ * The memory allocated for the table must be freed via
+ * bhnd_erom_free_core_table().
  * 
  * @param	erom		The erom parser to be queried.
  * @param[out]	cores		The table of parsed core descriptors.
@@ -77,6 +76,18 @@ bhnd_erom_get_core_table(bhnd_erom_t erom, struct bhnd_core_info **cores,
 {
 	return (BHND_EROM_GET_CORE_TABLE(erom, cores, num_cores));
 }
+
+/**
+ * Free any memory allocated in a previous call to BHND_EROM_GET_CORE_TABLE().
+ *
+ * @param	erom		The erom parser instance.
+ * @param	cores		A core table allocated by @p erom. 
+ */
+static inline void
+bhnd_erom_free_core_table(bhnd_erom_t erom, struct bhnd_core_info *cores)
+{
+	return (BHND_EROM_FREE_CORE_TABLE(erom, cores));
+};
 
 /**
  * Locate the first core table entry in @p erom that matches @p desc.

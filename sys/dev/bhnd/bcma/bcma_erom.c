@@ -413,6 +413,13 @@ cleanup:
 	return (error);
 }
 
+/* BHND_EROM_FREE_CORE_TABLE() */
+static void
+bcma_erom_free_core_table(bhnd_erom_t erom, struct bhnd_core_info *cores)
+{
+	free(cores, M_BHND);
+}
+
 /**
  * Return the current read position.
  */
@@ -1270,6 +1277,7 @@ static kobj_method_t bcma_erom_methods[] = {
 	KOBJMETHOD(bhnd_erom_init_static,	bcma_erom_init_static),
 	KOBJMETHOD(bhnd_erom_fini,		bcma_erom_fini),
 	KOBJMETHOD(bhnd_erom_get_core_table,	bcma_erom_get_core_table),
+	KOBJMETHOD(bhnd_erom_free_core_table,	bcma_erom_free_core_table),
 	KOBJMETHOD(bhnd_erom_lookup_core,	bcma_erom_lookup_core),
 	KOBJMETHOD(bhnd_erom_lookup_core_addr,	bcma_erom_lookup_core_addr),
 
