@@ -37,9 +37,7 @@
 
 #include "bcmavar.h"
 
-DECLARE_CLASS(bcma_erom_parser);
 struct bcma_erom;
-
 
 int	bcma_erom_next_corecfg(struct bcma_erom *sc,
 	    struct bcma_corecfg **result);
