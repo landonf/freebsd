@@ -1157,6 +1157,14 @@ bcma_erom_init_static(bhnd_erom_t erom, bus_space_tag_t bst,
 }
 
 static int
+bcma_erom_get_core_table(bhnd_erom_t erom, struct bhnd_core_info *cores,
+    u_int num_cores)
+{
+	// TODO
+	return (ENXIO);
+}
+
+static int
 bcma_erom_lookup_core(bhnd_erom_t erom, const struct bhnd_core_match *desc,
     struct bhnd_core_info *core)
 {
@@ -1182,6 +1190,7 @@ static kobj_method_t bcma_erom_methods[] = {
 	KOBJMETHOD(bhnd_erom_init,		bcma_erom_init),
 	KOBJMETHOD(bhnd_erom_init_static,	bcma_erom_init_static),
 	KOBJMETHOD(bhnd_erom_fini,		bcma_erom_fini),
+	KOBJMETHOD(bhnd_erom_get_core_table,	bcma_erom_get_core_table),
 	KOBJMETHOD(bhnd_erom_lookup_core,	bcma_erom_lookup_core),
 	KOBJMETHOD(bhnd_erom_lookup_core_addr,	bcma_erom_lookup_core_addr),
 
