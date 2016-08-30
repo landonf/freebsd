@@ -73,7 +73,6 @@ static bus_size_t	 erom_tell(struct bcma_erom *erom);
 static void		 erom_seek(struct bcma_erom *erom, bus_size_t offset);
 static void		 erom_reset(struct bcma_erom *erom);
 
-static int		 erom_seek_next_core(struct bcma_erom *erom);
 static int		 erom_seek_matching_core(struct bcma_erom *sc,
 			     const struct bhnd_core_match *desc,
 			     struct bhnd_core_info *core);
@@ -618,20 +617,6 @@ erom_reset(struct bcma_erom *erom)
 }
 
 /**
- * Seek to the next core entry.
- * 
- * @param erom EROM read state.
- * @retval 0 success
- * @retval ENOENT The end of the EROM table was reached.
- * @retval non-zero Reading or parsing failed.
- */
-static int
-erom_seek_next_core(struct bcma_erom *erom)
-{
-	return (erom_seek_next(erom, BCMA_EROM_ENTRY_TYPE_CORE));
-}
-
-/**
  * Seek to the first core entry matching @p desc.
  * 
  * @param erom EROM read state.
@@ -716,43 +701,6 @@ erom_seek_matching_core(struct bcma_erom *sc,
 	/* Not found, or a parse error occured */
 	return (error);
 }
-
-
-/**
- * Seek to the requested core entry.
- * 
- * @param erom EROM read state.
- * @param core_index Index of the core to seek to.
- * @retval 0 success
- * @retval ENOENT The end of the EROM table was reached before @p index was
- * found.
- * @retval non-zero Reading or parsing failed.
- */
-static int
-erom_seek_core_index(struct bcma_erom *erom, u_int core_index)
-{
-	int error;
-
-	/* Start search at top of EROM */
-	erom_reset(erom);
-
-	/* Skip core descriptors till we hit the requested entry */
-	for (u_int i = 0; i < core_index; i++) {
-		struct bcma_erom_core core;
-
-		/* Read past the core descriptor */
-		if ((error = erom_parse_core(erom, &core)))
-			return (error);
-
-		/* Seek to the next readable core entry */
-		error = erom_seek_next(erom, BCMA_EROM_ENTRY_TYPE_CORE);
-		if (error)
-			return (error);
-	}
-
-	return (0);
-}
-
 
 /**
  * Read the next core descriptor from the EROM table.
