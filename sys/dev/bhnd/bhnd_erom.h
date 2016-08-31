@@ -40,6 +40,7 @@
 
 typedef struct kobj_class	bhnd_erom_class_t;	/**< bhnd_erom parser class */
 typedef struct bhnd_erom	bhnd_erom_t;		/**< bhnd_erom parser instance */
+typedef struct bhnd_erom_static	bhnd_erom_static_t;	/**< bhnd_erom parser static instance data */
 
 #include "bhnd_erom_if.h"
 
@@ -69,12 +70,30 @@ struct bhnd_erom {
 };
 
 
+/** Number of additional bytes to reserve for statically allocated
+ *  bhnd_erom instances. */
+#define	BHND_EROM_STATIC_BYTES	32
+
+/**
+ * A bhnd_erom instance structure large enough to statically allocate
+ * any known bhnd_erom subclass.
+ * 
+ * The maximum size of subclasses is verified statically in
+ * BHND_EROM_DEFINE_CLASS(), and at runtime in bhnd_erom_init_static().
+ */
+struct bhnd_erom_static {
+	struct bhnd_erom	base;
+	uint8_t			idata[BHND_EROM_STATIC_BYTES];
+};
+
 /** Registered EROM parser class instances. */
 SET_DECLARE(bhnd_erom_class_set, bhnd_erom_class_t);
 
 #define	BHND_EROM_DEFINE_CLASS(name, classvar, methods, size)	\
 	DEFINE_CLASS_0(name, classvar, methods, size);		\
-	BHND_EROM_CLASS_DEF(classvar)
+	BHND_EROM_CLASS_DEF(classvar);				\
+	_Static_assert(size <= sizeof(struct bhnd_erom_static),	\
+	    "cannot statically allocate instance data");
 
 #define	BHND_EROM_CLASS_DEF(classvar)	DATA_SET(bhnd_erom_class_set, classvar)
 
