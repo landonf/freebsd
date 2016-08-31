@@ -38,12 +38,12 @@
 
 #include <dev/bhnd/bhnd.h>
 
-typedef struct kobj_class	 bhnd_erom_class_t;	/**< bhnd_erom parser class */
-typedef struct bhnd_erom	*bhnd_erom_t;		/**< bhnd_erom parser instance */
+typedef struct kobj_class	bhnd_erom_class_t;	/**< bhnd_erom parser class */
+typedef struct bhnd_erom	bhnd_erom_t;		/**< bhnd_erom parser instance */
 
 #include "bhnd_erom_if.h"
 
-bhnd_erom_t			 bhnd_erom_alloc(bhnd_erom_class_t *cls,
+bhnd_erom_t			*bhnd_erom_alloc(bhnd_erom_class_t *cls,
 				     device_t parent, int rid,
 				     bus_addr_t enum_addr);
 
@@ -52,13 +52,13 @@ int				 bhnd_erom_probe_static(bhnd_erom_class_t *cls,
 				     bus_space_handle_t bsh);
 
 int				 bhnd_erom_init_static(bhnd_erom_class_t *cls,
-				     bhnd_erom_t erom, size_t esize,
+				     bhnd_erom_t *erom, size_t esize,
 				     bus_space_tag_t bst,
 				     bus_space_handle_t bsh);
 
-void				 bhnd_erom_fini_static(bhnd_erom_t erom);
+void				 bhnd_erom_fini_static(bhnd_erom_t *erom);
 
-void				 bhnd_erom_free(bhnd_erom_t erom);
+void				 bhnd_erom_free(bhnd_erom_t *erom);
 
 /**
  * Abstract bhnd_erom instance state. Must be first member of all subclass
@@ -94,7 +94,7 @@ SET_DECLARE(bhnd_erom_class_set, bhnd_erom_class_t);
  *			be returned.
  */
 static inline int
-bhnd_erom_get_core_table(bhnd_erom_t erom, struct bhnd_core_info **cores,
+bhnd_erom_get_core_table(bhnd_erom_t *erom, struct bhnd_core_info **cores,
     u_int *num_cores)
 {
 	return (BHND_EROM_GET_CORE_TABLE(erom, cores, num_cores));
@@ -107,7 +107,7 @@ bhnd_erom_get_core_table(bhnd_erom_t erom, struct bhnd_core_info **cores,
  * @param	cores		A core table allocated by @p erom. 
  */
 static inline void
-bhnd_erom_free_core_table(bhnd_erom_t erom, struct bhnd_core_info *cores)
+bhnd_erom_free_core_table(bhnd_erom_t *erom, struct bhnd_core_info *cores)
 {
 	return (BHND_EROM_FREE_CORE_TABLE(erom, cores));
 };
@@ -124,7 +124,7 @@ bhnd_erom_free_core_table(bhnd_erom_t erom, struct bhnd_core_info *cores)
  * @retval non-zero	Reading or parsing failed.
  */
 static inline int
-bhnd_erom_lookup_core(bhnd_erom_t erom, const struct bhnd_core_match *desc,
+bhnd_erom_lookup_core(bhnd_erom_t *erom, const struct bhnd_core_match *desc,
     struct bhnd_core_info *core)
 {
 	return (BHND_EROM_LOOKUP_CORE(erom, desc, core));
@@ -152,7 +152,7 @@ bhnd_erom_lookup_core(bhnd_erom_t erom, const struct bhnd_core_match *desc,
  * @retval non-zero	Reading or parsing failed.
  */
 static inline int
-bhnd_erom_lookup_core_addr(bhnd_erom_t erom, const struct bhnd_core_match *desc,
+bhnd_erom_lookup_core_addr(bhnd_erom_t *erom, const struct bhnd_core_match *desc,
     bhnd_port_type type, u_int port, u_int region, bhnd_addr_t *addr,
     bhnd_size_t *size)
 {

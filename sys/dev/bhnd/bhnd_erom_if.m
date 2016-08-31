@@ -73,10 +73,10 @@ STATICMETHOD int probe_static {
  *			a regular unix error code will be returned.
  */
 METHOD int init {
-	bhnd_erom_t	erom;
-	device_t	parent;
-	int		rid;
-	bus_addr_t	enum_addr;
+	bhnd_erom_t	*erom;
+	device_t	 parent;
+	int		 rid;
+	bus_addr_t	 enum_addr;
 };
 
 /**
@@ -93,9 +93,9 @@ METHOD int init {
  *			a regular unix error code will be returned.
  */
 METHOD int init_static {
-	bhnd_erom_t		erom;
-	bus_space_tag_t 	bst;
-	bus_space_handle_t	bsh;
+	bhnd_erom_t		*erom;
+	bus_space_tag_t 	 bst;
+	bus_space_handle_t	 bsh;
 };
 
 /**
@@ -105,7 +105,7 @@ METHOD int init_static {
  *			BHND_EROM_INIT() or BHND_EROM_INIT_STATIC().
  */
 METHOD void fini {
-	bhnd_erom_t	erom;
+	bhnd_erom_t	*erom;
 };
 
 /**
@@ -136,7 +136,7 @@ METHOD int get_core_table {
  * @param	cores		A core table allocated by @p erom. 
  */
 METHOD void free_core_table {
-	bhnd_erom_t		 erom;
+	bhnd_erom_t		*erom;
 	struct bhnd_core_info	*cores;
 };
 
@@ -152,7 +152,7 @@ METHOD void free_core_table {
  * @retval non-zero	Reading or parsing failed.
  */
 METHOD int lookup_core {
-	bhnd_erom_t			 erom;
+	bhnd_erom_t			*erom;
 	const struct bhnd_core_match	*desc;
 	struct bhnd_core_info		*core;
 };
@@ -179,7 +179,7 @@ METHOD int lookup_core {
  * @retval non-zero	Reading or parsing failed.
  */
 METHOD int lookup_core_addr {
-	bhnd_erom_t			 erom;
+	bhnd_erom_t			*erom;
 	const struct bhnd_core_match	*desc;
 	bhnd_port_type			 type;
 	u_int				 port;

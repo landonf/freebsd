@@ -148,7 +148,7 @@ siba_erom_init_common(struct siba_erom *sc)
 }
 
 static int
-siba_erom_init(bhnd_erom_t erom, device_t parent, int rid, bus_addr_t enum_addr)
+siba_erom_init(bhnd_erom_t *erom, device_t parent, int rid, bus_addr_t enum_addr)
 {
 	struct siba_erom *sc = (struct siba_erom *)erom;
 
@@ -181,7 +181,7 @@ siba_erom_probe_static(bhnd_erom_class_t *cls, bus_space_tag_t bst,
 }
 
 static int
-siba_erom_init_static(bhnd_erom_t erom, bus_space_tag_t bst,
+siba_erom_init_static(bhnd_erom_t *erom, bus_space_tag_t bst,
      bus_space_handle_t bsh)
 {
 	struct siba_erom *sc = (struct siba_erom *)erom;
@@ -196,7 +196,7 @@ siba_erom_init_static(bhnd_erom_t erom, bus_space_tag_t bst,
 }
 
 static void
-siba_erom_fini(bhnd_erom_t erom)
+siba_erom_fini(bhnd_erom_t *erom)
 {
 	struct siba_erom *sc = (struct siba_erom *)erom;
 
@@ -210,7 +210,7 @@ siba_erom_fini(bhnd_erom_t erom)
 }
 
 static int
-siba_erom_lookup_core(bhnd_erom_t erom, const struct bhnd_core_match *desc,
+siba_erom_lookup_core(bhnd_erom_t *erom, const struct bhnd_core_match *desc,
     struct bhnd_core_info *core)
 {
 	struct siba_erom	*sc;
@@ -259,7 +259,7 @@ siba_erom_lookup_core(bhnd_erom_t erom, const struct bhnd_core_match *desc,
 }
 
 static int
-siba_erom_lookup_core_addr(bhnd_erom_t erom, const struct bhnd_core_match *desc,
+siba_erom_lookup_core_addr(bhnd_erom_t *erom, const struct bhnd_core_match *desc,
     bhnd_port_type type, u_int port, u_int region, bhnd_addr_t *addr,
     bhnd_size_t *size)
 {
@@ -318,7 +318,7 @@ siba_erom_lookup_core_addr(bhnd_erom_t erom, const struct bhnd_core_match *desc,
 
 /* BHND_EROM_GET_CORE_TABLE() */
 static int
-siba_erom_get_core_table(bhnd_erom_t erom, struct bhnd_core_info **cores,
+siba_erom_get_core_table(bhnd_erom_t *erom, struct bhnd_core_info **cores,
     u_int *num_cores)
 {
 	struct siba_erom	*sc;
@@ -355,7 +355,7 @@ siba_erom_get_core_table(bhnd_erom_t erom, struct bhnd_core_info **cores,
 
 /* BHND_EROM_FREE_CORE_TABLE() */
 static void
-siba_erom_free_core_table(bhnd_erom_t erom, struct bhnd_core_info *cores)
+siba_erom_free_core_table(bhnd_erom_t *erom, struct bhnd_core_info *cores)
 {
 	free(cores, M_BHND);
 }

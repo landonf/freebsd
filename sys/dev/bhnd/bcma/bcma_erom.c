@@ -121,7 +121,7 @@ erom_entry_type_name (uint8_t entry)
 
 /* BHND_EROM_INIT() */
 static int
-bcma_erom_init(bhnd_erom_t erom, device_t parent, int rid, bus_addr_t enum_addr)
+bcma_erom_init(bhnd_erom_t *erom, device_t parent, int rid, bus_addr_t enum_addr)
 {
 	struct bcma_erom *sc = (struct bcma_erom *)erom;
 
@@ -166,7 +166,7 @@ bcma_erom_probe_static(bhnd_erom_class_t *cls, bus_space_tag_t bst,
 
 /* BHND_EROM_INIT_STATIC() */
 static int
-bcma_erom_init_static(bhnd_erom_t erom, bus_space_tag_t bst,
+bcma_erom_init_static(bhnd_erom_t *erom, bus_space_tag_t bst,
      bus_space_handle_t bsh)
 {
 	struct bcma_erom *sc = (struct bcma_erom *)erom;
@@ -184,7 +184,7 @@ bcma_erom_init_static(bhnd_erom_t erom, bus_space_tag_t bst,
 
 /* BHND_EROM_FINI */
 static void
-bcma_erom_fini(bhnd_erom_t erom)
+bcma_erom_fini(bhnd_erom_t *erom)
 {
 	struct bcma_erom *sc = (struct bcma_erom *)erom;
 
@@ -199,7 +199,7 @@ bcma_erom_fini(bhnd_erom_t erom)
 
 /* BHND_EROM_LOOKUP_CORE */
 static int
-bcma_erom_lookup_core(bhnd_erom_t erom, const struct bhnd_core_match *desc,
+bcma_erom_lookup_core(bhnd_erom_t *erom, const struct bhnd_core_match *desc,
     struct bhnd_core_info *core)
 {
 	struct bcma_erom *sc = (struct bcma_erom *)erom;
@@ -210,7 +210,7 @@ bcma_erom_lookup_core(bhnd_erom_t erom, const struct bhnd_core_match *desc,
 
 /* BHND_EROM_LOOKUP_CORE_ADDR */
 static int
-bcma_erom_lookup_core_addr(bhnd_erom_t erom, const struct bhnd_core_match *desc,
+bcma_erom_lookup_core_addr(bhnd_erom_t *erom, const struct bhnd_core_match *desc,
     bhnd_port_type port_type, u_int port_num, u_int region_num,
     bhnd_addr_t *addr, bhnd_size_t *size)
 {
@@ -358,7 +358,7 @@ bcma_erom_lookup_core_addr(bhnd_erom_t erom, const struct bhnd_core_match *desc,
 
 /* BHND_EROM_GET_CORE_TABLE() */
 static int
-bcma_erom_get_core_table(bhnd_erom_t erom, struct bhnd_core_info **cores,
+bcma_erom_get_core_table(bhnd_erom_t *erom, struct bhnd_core_info **cores,
     u_int *num_cores)
 {
 	struct bcma_erom	*sc;
@@ -440,7 +440,7 @@ cleanup:
 
 /* BHND_EROM_FREE_CORE_TABLE() */
 static void
-bcma_erom_free_core_table(bhnd_erom_t erom, struct bhnd_core_info *cores)
+bcma_erom_free_core_table(bhnd_erom_t *erom, struct bhnd_core_info *cores)
 {
 	free(cores, M_BHND);
 }
