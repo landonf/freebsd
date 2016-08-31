@@ -1140,6 +1140,8 @@ dev/bce/if_bce.c			optional bce
 dev/bfe/if_bfe.c			optional bfe
 dev/bge/if_bge.c			optional bge
 dev/bhnd/bhnd.c				optional bhnd
+dev/bhnd/bhnd_erom.c			optional bhnd
+dev/bhnd/bhnd_erom_if.m			optional bhnd
 dev/bhnd/bhnd_nexus.c			optional bhnd siba_nexus | \
 						 bhnd bcma_nexus
 dev/bhnd/bhnd_subr.c			optional bhnd
@@ -1178,8 +1180,6 @@ dev/bhnd/cores/pmu/bhnd_pmu.c		optional bhnd
 dev/bhnd/cores/pmu/bhnd_pmu_core.c	optional bhnd
 dev/bhnd/cores/pmu/bhnd_pmu_if.m	optional bhnd
 dev/bhnd/cores/pmu/bhnd_pmu_subr.c	optional bhnd
-dev/bhnd/erom/bhnd_erom.c		optional bhnd
-dev/bhnd/erom/bhnd_erom_if.m		optional bhnd
 dev/bhnd/nvram/bhnd_nvram.c		optional bhnd
 dev/bhnd/nvram/bhnd_nvram_common.c	optional bhnd
 dev/bhnd/nvram/bhnd_nvram_cfe.c		optional bhnd siba_nexus cfe | \

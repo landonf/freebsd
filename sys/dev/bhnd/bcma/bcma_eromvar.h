@@ -33,7 +33,7 @@
 #define	_BCMA_BCMA_EROMVAR_H_
 
 #include <dev/bhnd/bhnd.h>
-#include <dev/bhnd/erom/bhnd_erom.h>
+#include <dev/bhnd/bhnd_erom.h>
 
 #include "bcmavar.h"
 

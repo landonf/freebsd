@@ -4,12 +4,14 @@
 .PATH: ${.CURDIR}/../../dev/bhnd/cores/chipc
 .PATH: ${.CURDIR}/../../dev/bhnd/cores/chipc/pwrctl
 .PATH: ${.CURDIR}/../../dev/bhnd/cores/pmu
-.PATH: ${.CURDIR}/../../dev/bhnd/erom
 .PATH: ${.CURDIR}/../../dev/bhnd/nvram
 
 KMOD=	bhnd
 SRCS=	bhnd.c bhnd_subr.c
 SRCS+=	bhnd_bus_if.c bhnd_bus_if.h
+
+SRCS+=	bhnd_erom.c
+SRCS+=	bhnd_erom_if.c bhnd_erom_if.h
 
 # ChipCommon
 SRCS+=	chipc.c chipc_subr.c
@@ -23,10 +25,6 @@ SRCS+=	bhnd_pmu.c \
 	bhnd_pmu_core.c \
 	bhnd_pmu_subr.c
 SRCS+=	bhnd_pmu_if.c bhnd_pmu_if.h
-
-# EROM
-SRCS+=	bhnd_erom.c
-SRCS+=	bhnd_erom_if.c bhnd_erom_if.h
 
 # NVRAM/SPROM
 SRCS+=	bhnd_nvram.c \

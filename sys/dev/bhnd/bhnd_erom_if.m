@@ -24,7 +24,7 @@
 #
 # $FreeBSD$
 
-#include <dev/bhnd/erom/bhnd_erom.h>
+#include <dev/bhnd/bhnd_erom.h>
 
 INTERFACE bhnd_erom;
 
