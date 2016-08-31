@@ -143,15 +143,22 @@ bcma_erom_init(bhnd_erom_t *erom, device_t parent, int rid, bus_addr_t enum_addr
 /* BHND_EROM_PROBE_STATIC() */
 static int
 bcma_erom_probe_static(bhnd_erom_class_t *cls, bus_space_tag_t bst,
-     bus_space_handle_t bsh)
+     bus_space_handle_t bsh, bus_addr_t paddr, bus_addr_t *eaddr)
 {
-	struct bhnd_chipid	cid;
-	uint32_t		idreg;
+	uint32_t	idreg;
+	uint8_t		chip_type;
 
 	idreg = bus_space_read_4(bst, bsh, CHIPC_ID);
-	cid = bhnd_parse_chipid(idreg, 0x0);
+	chip_type = CHIPC_GET_BITS(idreg, CHIPC_ID_BUS);
 
-	switch (cid.chip_type) {
+	/* Fetch EROM physical address */
+	if (!BHND_CHIPTYPE_HAS_EROM(chip_type))
+		return (ENXIO);
+
+	*eaddr = bus_space_read_4(bst, bsh, CHIPC_EROMPTR);
+
+	/* Verify chip type */
+	switch (chip_type) {
 		case BHND_CHIPTYPE_BCMA:
 			return (BUS_PROBE_DEFAULT);
 

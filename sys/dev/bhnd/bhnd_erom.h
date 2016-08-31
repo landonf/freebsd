@@ -48,10 +48,6 @@ bhnd_erom_t			*bhnd_erom_alloc(bhnd_erom_class_t *cls,
 				     device_t parent, int rid,
 				     bus_addr_t enum_addr);
 
-int				 bhnd_erom_probe_static(bhnd_erom_class_t *cls,
-				     bus_space_tag_t bst,
-				     bus_space_handle_t bsh);
-
 int				 bhnd_erom_init_static(bhnd_erom_class_t *cls,
 				     bhnd_erom_t *erom, size_t esize,
 				     bus_space_tag_t bst,
@@ -82,7 +78,7 @@ struct bhnd_erom {
  * BHND_EROM_DEFINE_CLASS(), and at runtime in bhnd_erom_init_static().
  */
 struct bhnd_erom_static {
-	struct bhnd_erom	base;
+	struct bhnd_erom	obj;
 	uint8_t			idata[BHND_EROM_STATIC_BYTES];
 };
 
@@ -93,9 +89,41 @@ SET_DECLARE(bhnd_erom_class_set, bhnd_erom_class_t);
 	DEFINE_CLASS_0(name, classvar, methods, size);		\
 	BHND_EROM_CLASS_DEF(classvar);				\
 	_Static_assert(size <= sizeof(struct bhnd_erom_static),	\
-	    "cannot statically allocate instance data");
+	    "cannot statically allocate instance data; "	\
+	        "increase BHND_EROM_STATIC_BYTES");
 
 #define	BHND_EROM_CLASS_DEF(classvar)	DATA_SET(bhnd_erom_class_set, classvar)
+
+
+/**
+ * Probe to see if this device enumeration class supports the bhnd bus
+ * mapped at the given bus space tag and handle, returning a standard
+ * newbus device probe result (see BUS_PROBE_*) and the probed enumeration
+ * table address.
+ *
+ * @param	cls	The parser class to be probed.
+ * @param	bst	Bus space tag.
+ * @param	bsh	Bus space handle mapping the EXTIF or ChipCommon core.
+ * @param	paddr	The physical address of the core mapped by @p bst and
+ *			@p bsh.
+ * @param[out]	eaddr	On success, the physical address of the device
+ *			enumeration table.
+ *
+ * @retval 0		if this is the only possible device enumeration
+ *			parser for the probed bus.
+ * @retval negative	if the probe succeeds, a negative value should be
+ *			returned; the parser returning the lowest value will
+ *			be selected to handle device enumeration.
+ * @retval ENXIO	If the bhnd bus type is not handled by this parser.
+ * @retval positive	if an error occurs during probing, a regular unix error
+ *			code should be returned.
+ */
+static inline int
+bhnd_erom_probe_static(bhnd_erom_class_t *cls, bus_space_tag_t bst,
+    bus_space_handle_t bsh, bus_addr_t paddr, bus_addr_t *eaddr)
+{
+	return (BHND_EROM_PROBE_STATIC(cls, bst, bsh, paddr, eaddr));
+}
 
 /**
  * Parse all cores descriptors in @p erom, returning the array in @p cores and

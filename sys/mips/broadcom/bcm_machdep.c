@@ -158,6 +158,99 @@ bcm_find_core(struct bhnd_chipid *chipid, bhnd_devclass_t devclass, int unit,
 	}
 }
 
+static bus_addr_t
+bcm_get_bus_addr(void)
+{
+	long maddr;
+
+	if (resource_long_value("bhnd", 0, "maddr", &maddr) == 0)
+		return ((u_long)maddr);
+
+	return (BHND_DEFAULT_CHIPC_ADDR);
+}
+
+/**
+ * Probe and attach a bhnd_erom parser instance for the bhnd bus.
+ * 
+ * @param[out]	erom_cls	The probed EROM class.
+ * @param[out]	erom_ops	The storage to be used when compiling
+ *				@p erom_cls.
+ * @param[out]	erom		The storage to be used when initializing the
+ *				static instance of @p erom_cls.
+ * @param	esize		The total available number of bytes allocated
+ *				for @p erom. If this is less than is required
+ *				by @p erom_cls ENOMEM will be returned.
+ */
+static int
+bcm_erom_probe_and_attach(bhnd_erom_class_t **erom_cls, kobj_ops_t erom_ops,
+    bhnd_erom_t *erom, size_t esize)
+{
+	bhnd_erom_class_t	**clsp;
+	bhnd_erom_class_t	 *matched;
+	bus_space_tag_t		  bst;
+	bus_space_handle_t	  bsh;
+	bus_addr_t		  bus_addr, enum_addr;
+	int			  error, prio, result;
+
+	bus_addr = bcm_get_bus_addr();
+	enum_addr = 0x0;
+	matched = NULL;
+	prio = 0;
+
+	bst = mips_bus_space_generic;
+	bsh = BCM_SOC_BSH(bus_addr, 0);
+
+	SET_FOREACH(clsp, bhnd_erom_class_set) {
+		bhnd_erom_class_t	*cls;
+		struct kobj_ops		 kops;
+		bus_addr_t		 ea;
+
+		cls = *clsp;
+
+		/* Compile the class' ops table */
+		kobj_class_compile_static(cls, &kops);
+
+		/* Probe the bus address */
+		result = bhnd_erom_probe_static(cls, bst, bsh, bus_addr, &ea);
+
+		/* Drop pointer to stack allocated ops table */
+		cls->ops = NULL;
+
+		/* The parser did not match if an error was returned */
+		if (result > 0)
+			continue;
+
+		/* Check for a new highest priority match */
+		if (matched == NULL || result > prio) {
+			prio = result;
+			matched = cls;
+			enum_addr = ea;
+		}
+
+		/* Terminate immediately on BUS_PROBE_SPECIFIC */
+		if (result == BUS_PROBE_SPECIFIC)
+			break;
+	}
+
+	/* Valid EROM class probed? */
+	if (matched == NULL) {
+		printf("%s: no erom parser found for root bus at %#jx\n",
+		    __FUNCTION__, (uintmax_t)bus_addr);
+		return (ENOENT);
+	}
+
+	/* Using the provided storage, recompile the erom class ... */
+	*erom_cls = matched;
+	kobj_class_compile_static(*erom_cls, erom_ops);
+
+	/* ... and initialize the erom parser instance */
+	bsh = BCM_SOC_BSH(enum_addr, 0);
+	error = bhnd_erom_init_static(*erom_cls, erom, esize,
+	    mips_bus_space_generic, bsh);
+
+	return (error);
+}
+
 /**
  * Populate platform configuration data.
  */
@@ -166,7 +259,6 @@ bcm_init_platform_data(struct bcm_platform *pdata)
 {
 	uint32_t		reg;
 	bhnd_addr_t		enum_addr;
-	long			maddr;
 	uint8_t			chip_type;
 	bool			aob, pmu;
 	int			error;
@@ -178,11 +270,18 @@ bcm_init_platform_data(struct bcm_platform *pdata)
 		pdata->cfe_console = -1;
 #endif
 
-	/* Fetch bhnd/chipc address */ 
-	if (resource_long_value("bhnd", 0, "maddr", &maddr) == 0)
-		pdata->cc_addr = (u_long)maddr;
-	else
-		pdata->cc_addr = BHND_DEFAULT_CHIPC_ADDR;
+	/* Probe and attach our EROM parser */
+	error = bcm_erom_probe_and_attach(&pdata->erom_impl, &pdata->erom_ops,
+	    &pdata->erom.obj, sizeof(pdata->erom));
+	if (error) {
+		printf("%s: error attaching erom parser: %d\n", __FUNCTION__,
+		    error);
+		return (error);
+	}
+
+	/* Fetch bhnd/chipc address */
+	// TODO
+	pdata->cc_addr = bcm_get_bus_addr();
 
 	/* Read chip identifier from ChipCommon */
 	reg = BCM_SOC_READ_4(pdata->cc_addr, CHIPC_ID);

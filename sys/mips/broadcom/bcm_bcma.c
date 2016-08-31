@@ -48,12 +48,12 @@ int
 bcm_find_core_bcma(struct bhnd_chipid *chipid, bhnd_devclass_t devclass,
     int unit, struct bhnd_core_info *info, uintptr_t *addr)
 {
-	bhnd_erom_t		erom;
-	struct bcma_erom	bcma_erom_sc;
-	struct bhnd_core_match	m;
-	bhnd_addr_t		b_addr;
-	bhnd_size_t		b_size;
-	int			error;
+	bhnd_erom_t		*erom;
+	struct bcma_erom	 bcma_erom_sc;
+	struct bhnd_core_match	 m;
+	bhnd_addr_t		 b_addr;
+	bhnd_size_t		 b_size;
+	int			 error;
 
 	if (!bcma_erom_kops_compiled) {
 		kobj_class_compile_static(&bcma_erom_parser, &bcma_erom_kops);

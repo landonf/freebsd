@@ -148,7 +148,8 @@ siba_erom_init_common(struct siba_erom *sc)
 }
 
 static int
-siba_erom_init(bhnd_erom_t *erom, device_t parent, int rid, bus_addr_t enum_addr)
+siba_erom_init(bhnd_erom_t *erom, device_t parent, int rid,
+    bus_addr_t enum_addr)
 {
 	struct siba_erom *sc = (struct siba_erom *)erom;
 
@@ -166,16 +167,20 @@ siba_erom_init(bhnd_erom_t *erom, device_t parent, int rid, bus_addr_t enum_addr
 
 static int
 siba_erom_probe_static(bhnd_erom_class_t *cls, bus_space_tag_t bst,
-     bus_space_handle_t bsh)
+     bus_space_handle_t bsh, bus_addr_t paddr, bus_addr_t *eaddr)
 {
-	struct bhnd_chipid	cid;
 	uint32_t		idreg;
+	uint8_t			chip_type;
 
 	idreg = bus_space_read_4(bst, bsh, CHIPC_ID);
-	cid = bhnd_parse_chipid(idreg, 0x0);
+	chip_type = CHIPC_GET_BITS(idreg, CHIPC_ID_BUS);
 
-	if (cid.chip_type != BHND_CHIPTYPE_SIBA)
+	if (chip_type != BHND_CHIPTYPE_SIBA)
 		return (ENXIO);
+
+	/* Enumeration table address is simply the base address of the
+	 * core enumeration space */
+	*eaddr = paddr;
 
 	return (BUS_PROBE_DEFAULT);
 }
