@@ -944,7 +944,7 @@ bhnd_read_chipid(device_t dev, struct resource_spec *rs,
 	} else if (chip_type == BHND_CHIPTYPE_SIBA) {
 		/* siba(4) uses the ChipCommon base address as the enumeration
 		 * address */
-		enum_addr = rman_get_start(res) + chipc_offset;
+		enum_addr = BHND_DEFAULT_CHIPC_ADDR;
 	} else {
 		device_printf(dev, "unknown chip type %hhu\n", chip_type);
 		error = ENODEV;
