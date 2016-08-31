@@ -91,7 +91,7 @@ siba_erom_read_4(struct siba_erom *sc, u_int core_idx, bus_size_t offset)
 }
 
 static struct siba_core_id
-siba_erom_read_core_info(struct siba_erom *sc, u_int core_idx, int unit)
+siba_erom_parse_core_id(struct siba_erom *sc, u_int core_idx, int unit)
 {
 	uint32_t idhigh, idlow;
 
@@ -113,7 +113,7 @@ siba_erom_init_common(struct siba_erom *sc)
 	sc->ncores = 1;
 
 	/* Identify the chipcommon core */
-	ccid = siba_erom_read_core_info(sc, 0, 0);
+	ccid = siba_erom_parse_core_id(sc, 0, 0);
 	if (ccid.core_info.vendor != BHND_MFGID_BCM ||
 	    ccid.core_info.device != BHND_COREID_CC)
 	{
@@ -131,7 +131,7 @@ siba_erom_init_common(struct siba_erom *sc)
 	error = bhnd_chipid_fixed_ncores(&chipid, ccid.core_info.hwrev,
 	    &chipid.ncores);
 
-	if (chipid.ncores > SIBA_MAX_CORES)
+	if ((u_int)chipid.ncores > SIBA_MAX_CORES)
 		return (EINVAL);
 
 	/* Update our core count */
@@ -190,18 +190,108 @@ static int
 siba_erom_lookup_core(bhnd_erom_t erom, const struct bhnd_core_match *desc,
     struct bhnd_core_info *core)
 {
-	// TODO
-	return (ENXIO);
+	struct siba_erom	*sc;
+	struct bhnd_core_match	 imatch;
+
+	sc = (struct siba_erom *)erom;
+
+	/* We can't determine a core's unit number during the initial scan. */
+	imatch = *desc;
+	imatch.m.match.core_unit = 0;
+
+	/* Locate the first matching core */
+	for (u_int i = 0; i < sc->ncores; i++) {
+		struct siba_core_id	sid;
+		struct bhnd_core_info	ci;
+
+		/* Read the core info */
+		sid = siba_erom_parse_core_id(sc, i, 0);
+		ci = sid.core_info;
+
+		/* Check for initial match */
+		if (!bhnd_core_matches(&ci, &imatch))
+			continue;
+
+		/* Re-scan preceding cores to determine the unit number. */
+		for (u_int j = 0; j < i; j++) {
+			sid = siba_erom_parse_core_id(sc, i, 0);
+
+			/* Bump the unit number? */
+			if (sid.core_info.vendor == ci.vendor &&
+			    sid.core_info.device == ci.device)
+				ci.unit++;
+		}
+
+		/* Check for full match against now-valid unit number */
+		if (!bhnd_core_matches(&ci, desc))
+			continue;
+
+		/* Matching core found */
+		*core = ci;
+		return (0);
+	}
+
+	/* Not found */
+	return (ENOENT);
 }
 
 static int
 siba_erom_lookup_core_addr(bhnd_erom_t erom, const struct bhnd_core_match *desc,
-    bhnd_port_type port_type, u_int port_num, u_int region_num,
-    bhnd_addr_t *addr, bhnd_size_t *size)
+    bhnd_port_type type, u_int port, u_int region, bhnd_addr_t *addr,
+    bhnd_size_t *size)
 {
-	// TODO
-	return (ENXIO);
-};
+	struct siba_erom	*sc;
+	struct bhnd_core_info	 core;
+	struct siba_core_id	 sid;
+	uint32_t		 am, am_addr, am_size;
+	u_int			 am_offset;
+	u_int			 addrspace;
+	int			 error;
+
+	sc = (struct siba_erom *)erom;
+
+	/* Locate the requested core */
+	if ((error = siba_erom_lookup_core(erom, desc, &core)))
+		return (error);
+
+	/* Fetch full siba core ident */
+	sid = siba_erom_parse_core_id(sc, core.core_idx, core.unit);
+
+	/* Is port valid? */
+	if (!siba_is_port_valid(sid.num_addrspace, type, port))
+		return (ENOENT);
+
+	/* Is region valid? */
+	if (region >= siba_addrspace_region_count(sid.num_addrspace, port))
+		return (ENOENT);
+
+	/* Map the bhnd port values to a siba addrspace index */
+	error = siba_addrspace_index(sid.num_addrspace, type, port, region,
+	   &addrspace);
+	if (error)
+		return (error);
+
+	/* Determine the register offset */
+	am_offset = siba_admatch_offset(addrspace);
+	if (am_offset == 0) {
+		printf("addrspace %u is unsupported", addrspace);
+		return (ENODEV);
+	}
+
+	/* Read and parse the address match register */
+	am = siba_erom_read_4(sc, core.core_idx, am_offset);
+
+	if ((error = siba_parse_admatch(am, &am_addr, &am_size))) {
+		printf("failed to decode address match register value 0x%x\n",
+		    am);
+		return (error);
+	}
+
+	*addr = am_addr;
+	*size = am_size;
+
+	return (0);
+}
 
 /* BHND_EROM_GET_CORE_TABLE() */
 static int
