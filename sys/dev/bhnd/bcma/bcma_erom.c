@@ -1232,4 +1232,4 @@ static kobj_method_t bcma_erom_methods[] = {
 	KOBJMETHOD_END
 };
 
-DEFINE_CLASS_0(bcma_erom, bcma_erom_parser, bcma_erom_methods, sizeof(struct bcma_erom));
+BHND_EROM_DEFINE_CLASS(bcma_erom, bcma_erom_parser, bcma_erom_methods, sizeof(struct bcma_erom));

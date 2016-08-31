@@ -356,4 +356,4 @@ static kobj_method_t siba_erom_methods[] = {
 	KOBJMETHOD_END
 };
 
-DEFINE_CLASS_0(siba_erom, siba_erom_parser, siba_erom_methods, sizeof(struct siba_erom));
+BHND_EROM_DEFINE_CLASS(siba_erom, siba_erom_parser, siba_erom_methods, sizeof(struct siba_erom));

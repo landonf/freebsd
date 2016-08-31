@@ -34,19 +34,20 @@
 
 #include <sys/param.h>
 #include <sys/kobj.h>
+#include <sys/linker_set.h>
 
 #include <dev/bhnd/bhnd.h>
 
-typedef kobj_class_t		 bhnd_erom_class_t;	/**< bhnd erom parser class */
-typedef struct bhnd_erom	*bhnd_erom_t;		/**< bhnd erom parser instance */
+typedef struct kobj_class	 bhnd_erom_class_t;	/**< bhnd_erom parser class */
+typedef struct bhnd_erom	*bhnd_erom_t;		/**< bhnd_erom parser instance */
 
 #include "bhnd_erom_if.h"
 
-bhnd_erom_t			 bhnd_erom_alloc(bhnd_erom_class_t cls,
+bhnd_erom_t			 bhnd_erom_alloc(bhnd_erom_class_t *cls,
 				     device_t parent, int rid,
 				     bus_addr_t enum_addr);
 
-int				 bhnd_erom_init_static(bhnd_erom_class_t cls,
+int				 bhnd_erom_init_static(bhnd_erom_class_t *cls,
 				     bhnd_erom_t erom, size_t esize,
 				     bus_space_tag_t bst,
 				     bus_space_handle_t bsh);
@@ -62,6 +63,16 @@ void				 bhnd_erom_free(bhnd_erom_t erom);
 struct bhnd_erom {
 	KOBJ_FIELDS;
 };
+
+
+/** Registered EROM parser class instances. */
+SET_DECLARE(bhnd_erom_class_set, bhnd_erom_class_t);
+
+#define	BHND_EROM_DEFINE_CLASS(name, classvar, methods, size)	\
+	DEFINE_CLASS_0(name, classvar, methods, size);		\
+	BHND_EROM_CLASS_DEF(classvar)
+
+#define	BHND_EROM_CLASS_DEF(classvar)	DATA_SET(bhnd_erom_class_set, classvar)
 
 /**
  * Parse all cores descriptors in @p erom, returning the array in @p cores and
