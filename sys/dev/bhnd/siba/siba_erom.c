@@ -298,8 +298,36 @@ static int
 siba_erom_get_core_table(bhnd_erom_t erom, struct bhnd_core_info **cores,
     u_int *num_cores)
 {
-	// TODO
-	return (ENXIO);
+	struct siba_erom	*sc;
+	struct bhnd_core_info	*out;
+
+	sc = (struct siba_erom *)erom;
+
+	/* Allocate our core array */
+	out = malloc(sizeof(*out) * sc->ncores, M_BHND, M_NOWAIT);
+	if (out == NULL)
+		return (ENOMEM);
+
+	*cores = out;
+	*num_cores = sc->ncores;
+
+	/* Enumerate all cores. */
+	for (u_int i = 0; i < sc->ncores; i++) {
+		struct siba_core_id sid;
+
+		/* Read the core info */
+		sid = siba_erom_parse_core_id(sc, i, 0);
+		out[i] = sid.core_info;
+
+		/* Determine unit number */
+		for (u_int j = 0; j < i; j++) {
+			if (out[j].vendor == out[i].vendor &&
+			    out[j].device == out[i].device)
+				out[i].unit++;
+		}
+	}
+
+	return (0);
 }
 
 /* BHND_EROM_FREE_CORE_TABLE() */
