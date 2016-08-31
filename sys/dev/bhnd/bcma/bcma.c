@@ -504,7 +504,7 @@ bcma_free_bhnd_dinfo(device_t dev, struct bhnd_devinfo *dinfo)
 int
 bcma_add_children(device_t bus)
 {
-	bhnd_erom_t			 erom;
+	bhnd_erom_t			*erom;
 	struct bcma_erom		*bcma_erom;
 	const struct bhnd_chipid	*cid;
 	struct bcma_corecfg		*corecfg;

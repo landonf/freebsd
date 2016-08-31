@@ -124,7 +124,7 @@ METHOD void fini {
  *			be returned.
  */
 METHOD int get_core_table {
-	bhnd_erom_t		 erom;
+	bhnd_erom_t		*erom;
 	struct bhnd_core_info	**cores;
 	u_int			*num_cores;
 };

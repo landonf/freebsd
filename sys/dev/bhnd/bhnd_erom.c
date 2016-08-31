@@ -52,14 +52,14 @@ __FBSDID("$FreeBSD$");
  * @retval NULL		if an error occured allocating or initializing the
  *			EROM parser.
  */
-bhnd_erom_t
+bhnd_erom_t *
 bhnd_erom_alloc(bhnd_erom_class_t *cls, device_t parent, int rid,
     bus_addr_t enum_addr)
 {
-	bhnd_erom_t	erom;
-	int		error;
+	bhnd_erom_t	*erom;
+	int		 error;
 
-	erom = (bhnd_erom_t)kobj_create((kobj_class_t)cls, M_BHND,
+	erom = (bhnd_erom_t *)kobj_create((kobj_class_t)cls, M_BHND,
 	    M_WAITOK|M_ZERO);
 
 	if ((error = BHND_EROM_INIT(erom, parent, rid, enum_addr))) {
@@ -122,7 +122,7 @@ bhnd_erom_probe_static(bhnd_erom_class_t *cls, bus_space_tag_t bst,
  *			a regular unix error code will be returned.
  */
 int
-bhnd_erom_init_static(bhnd_erom_class_t *cls, bhnd_erom_t erom, size_t esize,
+bhnd_erom_init_static(bhnd_erom_class_t *cls, bhnd_erom_t *erom, size_t esize,
     bus_space_tag_t bst, bus_space_handle_t bsh)
 {
 	kobj_class_t	kcls;
@@ -146,7 +146,7 @@ bhnd_erom_init_static(bhnd_erom_class_t *cls, bhnd_erom_t erom, size_t esize,
  *			bhnd_erom_init_static().
  */
 void
-bhnd_erom_fini_static(bhnd_erom_t erom)
+bhnd_erom_fini_static(bhnd_erom_t *erom)
 {
 	return (BHND_EROM_FINI(erom));
 }
@@ -159,7 +159,7 @@ bhnd_erom_fini_static(bhnd_erom_t erom)
  *			bhnd_erom_alloc().
  */
 void
-bhnd_erom_free(bhnd_erom_t erom)
+bhnd_erom_free(bhnd_erom_t *erom)
 {
 	BHND_EROM_FINI(erom);
 	kobj_delete((kobj_t)erom, M_BHND);
