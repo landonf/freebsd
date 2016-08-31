@@ -495,30 +495,6 @@ bcma_free_bhnd_dinfo(device_t dev, struct bhnd_devinfo *dinfo)
 	bcma_free_dinfo(dev, (struct bcma_devinfo *)dinfo);
 }
 
-
-static int
-bcma_get_core_table(device_t dev, device_t child, struct bhnd_core_info **cores,
-    u_int *num_cores)
-{
-	bhnd_erom_t			 erom;
-	const struct bhnd_chipid	*cid;
-	int				 error;
-
-	cid = BHND_BUS_GET_CHIPID(dev, dev);
-
-	/* Allocate an EROM parser instance */
-	erom = bhnd_erom_alloc(&bcma_erom_parser, dev, BCMA_EROM_RID,
-	    cid->enum_addr);
-	if (erom == NULL)
-		return (ENODEV);
-
-	/* Enumerate all declared cores */
-	error = bhnd_erom_get_core_table(erom, cores, num_cores);
-
-	bhnd_erom_free(erom);
-	return (error);
-}
-
 /**
  * Scan the device enumeration ROM table, adding all valid discovered cores to
  * the bus.
@@ -601,7 +577,6 @@ static device_method_t bcma_methods[] = {
 	DEVMETHOD(bhnd_bus_find_hostb_device,	bcma_find_hostb_device),
 	DEVMETHOD(bhnd_bus_alloc_devinfo,	bcma_alloc_bhnd_dinfo),
 	DEVMETHOD(bhnd_bus_free_devinfo,	bcma_free_bhnd_dinfo),
-	DEVMETHOD(bhnd_bus_get_core_table,	bcma_get_core_table),
 	DEVMETHOD(bhnd_bus_reset_core,		bcma_reset_core),
 	DEVMETHOD(bhnd_bus_suspend_core,	bcma_suspend_core),
 	DEVMETHOD(bhnd_bus_read_config,		bcma_read_config),
