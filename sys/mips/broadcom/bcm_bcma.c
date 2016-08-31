@@ -33,7 +33,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/bus.h>
 
 #include <dev/bhnd/bhnd.h>
-#include <dev/bhnd/erom/bhnd_erom.h>
+#include <dev/bhnd/bhnd_erom.h>
 
 #include <dev/bhnd/bcma/bcma_eromvar.h>
 
