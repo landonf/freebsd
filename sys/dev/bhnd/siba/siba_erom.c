@@ -133,7 +133,7 @@ siba_erom_init_common(struct siba_erom *sc)
 
 	/*
 	 * gcc hack: ensure ncores cannot exceed SIBA_MAX_CORES without
-	 * triggering build failure due to -Wno-type-limits
+	 * triggering build failure due to -Wtype-limits
 	 *
 	 * if (chipid.ncores > SIBA_MAX_CORES)
 	 *      return (EINVAL)
