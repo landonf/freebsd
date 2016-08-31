@@ -45,6 +45,14 @@ typedef struct bhnd_erom	*bhnd_erom_t;		/**< bhnd erom parser instance */
 bhnd_erom_t			 bhnd_erom_alloc(bhnd_erom_class_t cls,
 				     device_t parent, int rid,
 				     bus_addr_t enum_addr);
+
+int				 bhnd_erom_init_static(bhnd_erom_class_t cls,
+				     bhnd_erom_t erom, size_t esize,
+				     bus_space_tag_t bst,
+				     bus_space_handle_t bsh);
+
+void				 bhnd_erom_fini_static(bhnd_erom_t erom);
+
 void				 bhnd_erom_free(bhnd_erom_t erom);
 
 /**

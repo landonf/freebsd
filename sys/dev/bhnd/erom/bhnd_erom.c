@@ -75,6 +75,58 @@ bhnd_erom_alloc(bhnd_erom_class_t cls, device_t parent, int rid,
 }
 
 /**
+ * Perform static initialization of aa device enumeration table parser using
+ * the provided bus space tag and handle.
+ * 
+ * This may be used to initialize a caller-allocated erom instance state
+ * during early boot, prior to malloc availability.
+ * 
+ * @param cls		The parser class for which an instance will be
+ *			allocated.
+ * @param erom		The erom parser instance to initialize.
+ * @param esize		The total available number of bytes allocated for
+ *			@p erom. If this is less than is required by @p cls,
+ *			ENOMEM will be returned.
+ * @param bst		Bus space tag.
+ * @param bsh		Bus space handle mapping the device enumeration
+ *			space.
+ *
+ * @retval 0		success
+ * @retval ENOMEM	if @p esize is smaller than required by @p cls.
+ * @retval non-zero	if an error occurs initializing the EROM parser,
+ *			a regular unix error code will be returned.
+ */
+int
+bhnd_erom_init_static(bhnd_erom_class_t cls, bhnd_erom_t erom, size_t esize,
+    bus_space_tag_t bst, bus_space_handle_t bsh)
+{
+	kobj_class_t	kcls;
+
+	kcls = (kobj_class_t)cls;
+
+	/* Verify allocation size */
+	if (kcls->size > esize)
+		return (ENOMEM);
+
+	/* Perform instance initialization */
+	kobj_init_static((kobj_t)erom, kcls);
+	return (BHND_EROM_INIT_STATIC(erom, bst, bsh)); 
+}
+
+/**
+ * Release any resources held by a @p erom parser previously
+ * initialized via bhnd_erom_init_static().
+ * 
+ * @param	erom	An erom parser instance previously initialized via
+ *			bhnd_erom_init_static().
+ */
+void
+bhnd_erom_fini_static(bhnd_erom_t erom)
+{
+	return (BHND_EROM_FINI(erom));
+}
+
+/**
  * Release all resources held by a @p erom parser previously
  * allocated via bhnd_erom_alloc().
  * 

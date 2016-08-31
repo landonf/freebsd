@@ -33,68 +33,69 @@ __FBSDID("$FreeBSD$");
 #include <machine/bus.h>
 
 #include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/erom/bhnd_erom.h>
+
 #include <dev/bhnd/bcma/bcma_eromvar.h>
 
 #include "bcm_machdep.h"
 
 #define	BCMFC_ERR(fmt, ...)	printf("%s: " fmt, __FUNCTION__, ##__VA_ARGS__)
 
+static struct kobj_ops		bcma_erom_kops;
+static bool			bcma_erom_kops_compiled = false;
+
 int
 bcm_find_core_bcma(struct bhnd_chipid *chipid, bhnd_devclass_t devclass,
     int unit, struct bhnd_core_info *info, uintptr_t *addr)
 {
-	struct bcma_erom		erom;
-	struct bcma_erom_core		core;
-	struct bcma_erom_sport_region	region;
-	bhnd_devclass_t			core_class;
-	int				error;
+	bhnd_erom_t		erom;
+	struct bcma_erom	bcma_erom_sc;
+	struct bhnd_core_match	m;
+	bhnd_addr_t		b_addr;
+	bhnd_size_t		b_size;
+	int			error;
 
-	error = bhnd_erom_bus_space_open(&erom, NULL, mips_bus_space_generic,
-	    (bus_space_handle_t) BCM_SOC_ADDR(chipid->enum_addr, 0), 0);
+	if (!bcma_erom_kops_compiled) {
+		kobj_class_compile_static(&bcma_erom_parser, &bcma_erom_kops);
+		bcma_erom_kops_compiled = true;
+	}
+
+	/* Initialize EROM parser */
+	erom = &bcma_erom_sc.obj;
+	error = bhnd_erom_init_static(&bcma_erom_parser, erom,
+	    sizeof(bcma_erom_sc), mips_bus_space_generic,
+	    (bus_space_handle_t)BCM_SOC_ADDR(chipid->enum_addr, 0));
 	if (error) {
-		BCMFC_ERR("erom open failed: %d\n", error);
+		BCMFC_ERR("erom init failed: %d\n", error);
 		return (error);
 	}
 
-	for (u_long core_index = 0; core_index < ULONG_MAX; core_index++) {
-		/* Fetch next core record */
-		if ((error = bcma_erom_seek_next_core(&erom)))
-			return (error);
+	/* Fetch core info */
+	m = (struct bhnd_core_match) {
+		BHND_MATCH_CORE_CLASS(devclass),
+		BHND_MATCH_CORE_UNIT(unit)
+	};
 
-		if ((error = bcma_erom_parse_core(&erom, &core))) {
-			BCMFC_ERR("core parse failed: %d\n", error);
-			return (error);
-		}
+	if ((error = bhnd_erom_lookup_core(erom, &m, info)))
+		goto cleanup;
 
-		/* Check for match */
-		core_class = bhnd_find_core_class(core.vendor,
-		    core.device);
-		if (core_class != devclass)
-			continue;
+	/* Fetch port address mapping */
+	error = bhnd_erom_lookup_core_addr(erom, &m, BHND_PORT_DEVICE, 0, 0,
+	    &b_addr, &b_size);
+	if (error)
+		goto cleanup;
 
-		/* Provide the basic core info */
-		if (info != NULL)
-			bcma_erom_to_core_info(&core, core_index, 0, info);
-
-		/* Provide the core's device0.0 port address */
-		error = bcma_erom_seek_core_sport_region(&erom, core_index,
-		    BHND_PORT_DEVICE, 0, 0);
-		if (error) {
-			BCMFC_ERR("sport not found: %d\n", error);
-			return (error);
-		}
-
-		if ((error = bcma_erom_parse_sport_region(&erom, &region))) {
-			BCMFC_ERR("sport parse failed: %d\n", error);
-			return (error);
-		}
-
-		if (addr != NULL)
-			*addr = region.base_addr;
-
-		return (0);
+	if (b_addr > UINTPTR_MAX) {
+		BCMFC_ERR("core address %#jx overflows native address width\n",
+		    (uintmax_t)b_addr);
+		error = ERANGE;
+		goto cleanup;
 	}
 
-	/* Not found */
-	return (ENOENT);
+	if (addr != NULL)
+		*addr = b_addr;
+
+cleanup:
+	bhnd_erom_fini_static(erom);
+	return (error);
 }
