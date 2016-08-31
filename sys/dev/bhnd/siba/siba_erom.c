@@ -40,26 +40,102 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/erom/bhnd_erom.h>
 
+#include <dev/bhnd/cores/chipc/chipcreg.h>
+
 #include "sibareg.h"
 #include "sibavar.h"
 
 struct siba_erom {
 	struct bhnd_erom	obj;
+	u_int			ncores;	/**< core count */
 
-	device_t	 	 dev;		/**< parent dev to use for resource allocations,
-						     or NULL if initialized with bst/bsh */
-	struct bhnd_resource	*res;		/**< siba bus mapping, or NULL */
-	int			 rid;		/**< siba bus maping resource ID */
+	/* resource state */
+	device_t	 	 dev;	/**< parent dev to use for resource allocations,
+					     or NULL if initialized with bst/bsh */
+	struct bhnd_resource	*res;	/**< siba bus mapping, or NULL */
+	int			 rid;	/**< siba bus maping resource ID */
 
 	/* bus tag state */
-	bus_space_tag_t		 bst;		/**< chipc bus tag */
-	bus_space_handle_t	 bsh;		/**< chipc bus handle */
+	bus_space_tag_t		 bst;	/**< chipc bus tag */
+	bus_space_handle_t	 bsh;	/**< chipc bus handle */
 };
+
+#define	EROM_LOG(sc, fmt, ...)	do {					\
+	if (sc->dev != NULL) {						\
+		device_printf(sc->dev, "%s: " fmt, __FUNCTION__,	\
+		    ##__VA_ARGS__);					\
+	} else {							\
+		printf("%s: " fmt, __FUNCTION__, ##__VA_ARGS__);	\
+	}								\
+} while(0)
+
+static inline uint32_t
+siba_erom_read_4(struct siba_erom *sc, u_int core_idx, bus_size_t offset)
+{
+	bus_size_t core_offset;
+
+	/* Sanity check core index and offset */
+	if (core_idx >= sc->ncores)
+		panic("core index %u out of range (ncores=%u)", core_idx,
+		    sc->ncores);
+
+	if (offset > SIBA_CORE_SIZE - sizeof(uint32_t))
+		panic("invalid core offset %#jx", (uintmax_t)offset);
+
+	/* Perform read */
+	core_offset = SIBA_CORE_OFFSET(core_idx) + offset;
+	if (sc->res != NULL)
+		return (bhnd_bus_read_4(sc->res, core_offset));
+	else
+		return (bus_space_read_4(sc->bst, sc->bsh, core_offset));
+}
+
+static struct siba_core_id
+siba_erom_read_core_info(struct siba_erom *sc, u_int core_idx, int unit)
+{
+	uint32_t idhigh, idlow;
+
+	idhigh = siba_erom_read_4(sc, core_idx, SB0_REG_ABS(SIBA_CFG0_IDHIGH));
+	idlow = siba_erom_read_4(sc, core_idx, SB0_REG_ABS(SIBA_CFG0_IDLOW));
+
+	return (siba_parse_core_id(idhigh, idlow, core_idx, unit));
+}
 
 static int
 siba_erom_init_common(struct siba_erom *sc)
 {
-	// TODO: need core count
+	struct siba_core_id	ccid;
+	struct bhnd_chipid	chipid;
+	uint32_t		idreg;
+	int			error;
+
+	/* There's always at least one core */
+	sc->ncores = 1;
+
+	/* Identify the chipcommon core */
+	ccid = siba_erom_read_core_info(sc, 0, 0);
+	if (ccid.core_info.vendor != BHND_MFGID_BCM ||
+	    ccid.core_info.device != BHND_COREID_CC)
+	{
+		EROM_LOG(sc,
+		    "first core not chipcommon (vendor=%#hx, core=%#hx)\n",
+		    ccid.core_info.vendor, ccid.core_info.device);
+		return (ENXIO);
+	}
+
+	/* Identify the chipset */
+	idreg = siba_erom_read_4(sc, 0, CHIPC_ID);
+	chipid = bhnd_parse_chipid(idreg, SIBA_ENUM_ADDR);
+
+	/* Fix up the core count, if required */
+	error = bhnd_chipid_fixed_ncores(&chipid, ccid.core_info.hwrev,
+	    &chipid.ncores);
+
+	if (chipid.ncores > SIBA_MAX_CORES)
+		return (EINVAL);
+
+	/* Update our core count */
+	sc->ncores = chipid.ncores;
 
 	return (0);
 }
