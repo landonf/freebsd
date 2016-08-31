@@ -36,6 +36,29 @@ INTERFACE bhnd_erom;
 #
 
 /**
+ * Probe to see if this device enumeration class supports the bhnd bus
+ * mapped at the given bus space tag and handle, returning a standard
+ * newbus device probe result (see BUS_PROBE_*).
+ *
+ * @param bst		bus space tag.
+ * @param bsh		bus space handle mapping the EXTIF or ChipCommon core.
+ *
+ * @retval 0		if this is the only possible device enumeration
+ *			parser for the probed bus.
+ * @retval negative	if the probe succeeds, a negative value should be
+ *			returned; the parser returning the highest negative
+ *			value will be selected to handle device enumeration.
+ * @retval ENXIO	If the bhnd bus type is not handled by this parser.
+ * @retval positive	if an error occurs during probing, a regular unix error
+ *			code should be returned.
+ */
+STATICMETHOD int probe_static {
+	bhnd_erom_class_t	*cls;
+	bus_space_tag_t 	 bst;
+	bus_space_handle_t	 bsh;
+};
+
+/**
  * Initialize a device enumeration table parser.
  * 
  * @param erom		The erom parser to initialize.
@@ -62,7 +85,7 @@ METHOD int init {
  * 
  * @param erom		The erom parser to initialize.
  * @param bst		Bus space tag.
- * @param bsh		Bus space handle mapping the device enumeration
+ * @param bsh		bus space handle mapping the full bus enumeration
  *			space.
  *
  * @retval 0		success

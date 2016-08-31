@@ -39,6 +39,8 @@ __FBSDID("$FreeBSD$");
 #include <machine/bus.h>
 #include <machine/resource.h>
 
+#include <dev/bhnd/cores/chipc/chipcreg.h>
+
 #include "bcma_eromreg.h"
 #include "bcma_eromvar.h"
 
@@ -136,6 +138,30 @@ bcma_erom_init(bhnd_erom_t erom, device_t parent, int rid, bus_addr_t enum_addr)
 	sc->offset = 0;
 
 	return (0);
+}
+
+/* BHND_EROM_PROBE_STATIC() */
+static int
+bcma_erom_probe_static(bhnd_erom_class_t *cls, bus_space_tag_t bst,
+     bus_space_handle_t bsh)
+{
+	struct bhnd_chipid	cid;
+	uint32_t		idreg;
+
+	idreg = bus_space_read_4(bst, bsh, CHIPC_ID);
+	cid = bhnd_parse_chipid(idreg, 0x0);
+
+	switch (cid.chip_type) {
+		case BHND_CHIPTYPE_BCMA:
+			return (BUS_PROBE_DEFAULT);
+
+		case BHND_CHIPTYPE_BCMA_ALT:
+		case BHND_CHIPTYPE_UBUS:
+			return (BUS_PROBE_GENERIC);
+
+		default:
+			return (ENXIO);
+	}
 }
 
 /* BHND_EROM_INIT_STATIC() */
@@ -1221,6 +1247,7 @@ failed:
 }
 
 static kobj_method_t bcma_erom_methods[] = {
+	KOBJMETHOD(bhnd_erom_probe_static,	bcma_erom_probe_static),
 	KOBJMETHOD(bhnd_erom_init,		bcma_erom_init),
 	KOBJMETHOD(bhnd_erom_init_static,	bcma_erom_init_static),
 	KOBJMETHOD(bhnd_erom_fini,		bcma_erom_fini),

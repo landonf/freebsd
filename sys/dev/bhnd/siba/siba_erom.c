@@ -165,6 +165,22 @@ siba_erom_init(bhnd_erom_t erom, device_t parent, int rid, bus_addr_t enum_addr)
 }
 
 static int
+siba_erom_probe_static(bhnd_erom_class_t *cls, bus_space_tag_t bst,
+     bus_space_handle_t bsh)
+{
+	struct bhnd_chipid	cid;
+	uint32_t		idreg;
+
+	idreg = bus_space_read_4(bst, bsh, CHIPC_ID);
+	cid = bhnd_parse_chipid(idreg, 0x0);
+
+	if (cid.chip_type != BHND_CHIPTYPE_SIBA)
+		return (ENXIO);
+
+	return (BUS_PROBE_DEFAULT);
+}
+
+static int
 siba_erom_init_static(bhnd_erom_t erom, bus_space_tag_t bst,
      bus_space_handle_t bsh)
 {
@@ -345,6 +361,7 @@ siba_erom_free_core_table(bhnd_erom_t erom, struct bhnd_core_info *cores)
 }
 
 static kobj_method_t siba_erom_methods[] = {
+	KOBJMETHOD(bhnd_erom_probe_static,	siba_erom_probe_static),
 	KOBJMETHOD(bhnd_erom_init,		siba_erom_init),
 	KOBJMETHOD(bhnd_erom_init_static,	siba_erom_init_static),
 	KOBJMETHOD(bhnd_erom_fini,		siba_erom_fini),
