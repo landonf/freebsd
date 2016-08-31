@@ -131,8 +131,15 @@ siba_erom_init_common(struct siba_erom *sc)
 	error = bhnd_chipid_fixed_ncores(&chipid, ccid.core_info.hwrev,
 	    &chipid.ncores);
 
-	if ((u_int)chipid.ncores > SIBA_MAX_CORES)
-		return (EINVAL);
+	/*
+	 * gcc hack: ensure ncores cannot exceed SIBA_MAX_CORES without
+	 * triggering build failure due to -Wno-type-limits
+	 *
+	 * if (chipid.ncores > SIBA_MAX_CORES)
+	 *      return (EINVAL)
+	 */
+	_Static_assert((2^sizeof(chipid.ncores)) <= SIBA_MAX_CORES,
+	    "ncores could result in over-read of backing resource");
 
 	/* Update our core count */
 	sc->ncores = chipid.ncores;
