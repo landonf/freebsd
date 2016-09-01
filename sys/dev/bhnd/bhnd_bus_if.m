@@ -56,21 +56,6 @@ CODE {
 		panic("bhnd_bus_get_chipid unimplemented");
 	}
 
-	static int
-	bhnd_bus_null_get_core_table(device_t dev, device_t child,
-	    struct bhnd_core_info **cores, u_int *num_cores)
-	{
-		panic("bhnd_bus_get_core_table unimplemented");
-	}
-
-	static int
-	bhnd_bus_null_get_core_region(device_t dev, device_t child,
-	    u_int core_idx, bhnd_port_type type, u_int port, u_int region,
-	    bhnd_addr_t *addr, bhnd_size_t *size)
-	{
-		panic("bhnd_bus_get_core_region unimplemented");
-	}
-
 	static bool
 	bhnd_bus_null_is_core_disabled(device_t dev, device_t child,
 	    struct bhnd_core_info *core)
@@ -268,61 +253,6 @@ METHOD const struct bhnd_chipid * get_chipid {
 	device_t dev;
 	device_t child;
 } DEFAULT bhnd_bus_null_get_chipid;
-
-/**
- * Get a list of all cores discoverable on @p dev.
- *
- * Enumerates all cores discoverable on @p dev, returning the list in
- * @p cores and the count in @p num_cores.
- * 
- * The memory allocated for the list should be freed using
- * `free(*cores, M_BHND)`. @p cores and @p num_cores are not changed
- * when an error is returned.
- * 
- * @param	dev		The bhnd bus device.
- * @param	child		The requesting bhnd bus child.
- * @param[out]	cores		The table of core descriptors.
- * @param[out]	num_cores	The number of core descriptors in @p cores.
- * 
- * @retval 0		success
- * @retval non-zero	if an error occurs enumerating @p dev, a regular UNIX
- *			error code should be returned.
- */
-METHOD int get_core_table {
-	device_t			 dev;
-	device_t			 child;
-	struct bhnd_core_info		**cores;
-	u_int				*num_cores;
-} DEFAULT bhnd_bus_null_get_core_table;
-
-/**
- * Get the address and size of @p region on @p port of @p core_idx
- *
- * @param	dev		The bus device.
- * @param	child		The requesting bhnd bus child.
- * @param	core_idx	The core index to look up.
- * @param	port_type	The port type on @p core_idx.
- * @param	port		The port identifier.
- * @param	region		The identifier of the memory region on @p port.
- * @param[out]	region_addr	The region's base address.
- * @param[out]	region_size	The region's size.
- *
- * @retval 0		success
- * @retval ENOENT	No matching core, port, or region found.
- * @retval non-zero	if an error occurs enumerating @p dev, a regular UNIX
- *			error code should be returned.
- */
-METHOD int get_core_region {
-	device_t	 dev;
-	device_t	 child;
-	u_int		 core_idx;
-	bhnd_port_type	 port_type;
-	u_int		 port;
-	u_int		 region;
-	bhnd_addr_t	*region_addr;
-	bhnd_size_t	*region_size;
-} DEFAULT bhnd_bus_null_get_core_region;
-
 
 /**
  * Return true if the hardware components required by @p core are unpopulated

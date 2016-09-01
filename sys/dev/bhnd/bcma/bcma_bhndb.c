@@ -69,7 +69,6 @@ bcma_bhndb_probe(device_t dev)
 	return (error);
 }
 
-
 static int
 bcma_bhndb_attach(device_t dev)
 {

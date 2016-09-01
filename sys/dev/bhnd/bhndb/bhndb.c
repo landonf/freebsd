@@ -837,7 +837,7 @@ bhndb_get_addrspace(struct bhndb_softc *sc, device_t child)
  */
 static struct rman *
 bhndb_get_rman(struct bhndb_softc *sc, device_t child, int type)
-{
+{	
 	switch (bhndb_get_addrspace(sc, child)) {
 	case BHNDB_ADDRSPACE_NATIVE:
 		switch (type) {
@@ -1325,6 +1325,10 @@ bhndb_retain_dynamic_window(struct bhndb_softc *sc, struct resource *r)
 		/* No free windows */
 		return (NULL);
 	}
+
+	/* Window must be large enough to map the entire resource */
+	if (dwa->win->win_size < rman_get_size(r))
+		return (NULL);
 
 	/* Set the window target */
 	error = bhndb_dw_set_addr(sc->dev, sc->bus_res, dwa, rman_get_start(r),

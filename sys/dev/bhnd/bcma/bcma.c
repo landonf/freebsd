@@ -41,9 +41,12 @@ __FBSDID("$FreeBSD$");
 
 #include "bcmavar.h"
 
+#include "bcma_eromreg.h"
 #include "bcma_eromvar.h"
-
 #include <dev/bhnd/bhnd_core.h>
+
+/* RID used when allocating EROM table */
+#define	BCMA_EROM_RID	0
 
 int
 bcma_probe(device_t dev)
@@ -59,6 +62,7 @@ bcma_attach(device_t dev)
 	device_t		*devs, child;
 	int			 ndevs;
 	int			 error;
+
 
 	if ((error = device_get_children(dev, &devs, &ndevs)))
 		return (error);
@@ -491,90 +495,35 @@ bcma_free_bhnd_dinfo(device_t dev, struct bhnd_devinfo *dinfo)
 	bcma_free_dinfo(dev, (struct bcma_devinfo *)dinfo);
 }
 
-static int
-bcma_get_core_table(device_t dev, device_t child, struct bhnd_core_info **cores,
-    u_int *num_cores)
-{
-	struct bcma_erom		 erom;
-	struct bhnd_resource		*r;
-	int				 error;
-	int				 rid;
-
-	/* Allocate EROM read state. */
-	if ((error = bcma_alloc_erom_reader(dev, &erom, &r, &rid)))
-		return (error);
-
-	/* Enumerate all declared cores */
-	error = bcma_erom_get_core_info(&erom, cores, num_cores);
-
-	/* Clean up our allocated EROM resource */
-	bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
-	return (error);
-}
-
-static int
-bcma_get_core_region(device_t dev, device_t child, u_int core_idx,
-    bhnd_port_type port_type, u_int port, u_int region,
-    bhnd_addr_t *region_addr, bhnd_size_t *region_size)
-{
-	struct bcma_erom		 erom;
-	struct bcma_erom_sport_region	 sp_region;
-	struct bhnd_resource		*r;
-	int				 error;
-	int				 rid;
-
-	/* Allocate EROM read state. */
-	if ((error = bcma_alloc_erom_reader(dev, &erom, &r, &rid)))
-		return (error);
-
-	/* Locate requested core slave port region */
-	error = bcma_erom_seek_core_sport_region(&erom, core_idx, port_type,
-	    port, region);
-	if (error)
-		goto finished;
-
-	/* Parse the region record */
-	if ((error = bcma_erom_parse_sport_region(&erom, &sp_region)))
-		goto finished;
-
-	*region_addr = sp_region.base_addr;
-	*region_size = sp_region.size;
-
-finished:
-	/* Clean up our allocated EROM resource */
-	bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
-
-	return (error);
-}
-
 /**
- * Scan the bcma device enumeration ROM table, adding all valid discovered
- * cores to the bus.
+ * Scan the device enumeration ROM table, adding all valid discovered cores to
+ * the bus.
  * 
  * @param bus The bcma bus.
  */
 int
 bcma_add_children(device_t bus)
 {
-	struct bhnd_resource	*eres;
-	struct bcma_erom	 erom;
-	struct bcma_corecfg	*corecfg;
-	struct bcma_devinfo	*dinfo;
-	device_t		 child;
-	int			 erid;
-	int			 error;
+	bhnd_erom_t			*erom;
+	struct bcma_erom		*bcma_erom;
+	const struct bhnd_chipid	*cid;
+	struct bcma_corecfg		*corecfg;
+	struct bcma_devinfo		*dinfo;
+	device_t			 child;
+	int				 error;
 
+	cid = BHND_BUS_GET_CHIPID(bus, bus);
 	corecfg = NULL;
 
-	/* Allocate our EROM resource and initialize our reader */
-	error = bcma_alloc_erom_reader(bus, &erom, &eres, &erid);
-	if (error)
-		return (error);
+	/* Allocate our EROM parser */
+	erom = bhnd_erom_alloc(&bcma_erom_parser, bus, BCMA_EROM_RID,
+	    cid->enum_addr);
+	if (erom == NULL)
+		return (ENODEV);
 
 	/* Add all cores. */
-	while ((error = bcma_erom_parse_corecfg(&erom, &corecfg)) == 0) {
-		struct bhnd_core_info *core;
-
+	bcma_erom = (struct bcma_erom *)erom;
+	while ((error = bcma_erom_next_corecfg(bcma_erom, &corecfg)) == 0) {
 		/* Add the child device */
 		child = BUS_ADD_CHILD(bus, 0, NULL, -1);
 		if (child == NULL) {
@@ -604,8 +553,8 @@ bcma_add_children(device_t bus)
 	if (error == ENOENT)
 		error = 0;
 	
-cleanup:
-	bhnd_release_resource(bus, SYS_RES_MEMORY, erid, eres);
+failed:
+	bhnd_erom_free(erom);
 
 	if (corecfg != NULL)
 		bcma_free_corecfg(corecfg);
@@ -632,8 +581,6 @@ static device_method_t bcma_methods[] = {
 	DEVMETHOD(bhnd_bus_find_hostb_device,	bcma_find_hostb_device),
 	DEVMETHOD(bhnd_bus_alloc_devinfo,	bcma_alloc_bhnd_dinfo),
 	DEVMETHOD(bhnd_bus_free_devinfo,	bcma_free_bhnd_dinfo),
-	DEVMETHOD(bhnd_bus_get_core_table,	bcma_get_core_table),
-	DEVMETHOD(bhnd_bus_get_core_region,	bcma_get_core_region),
 	DEVMETHOD(bhnd_bus_reset_core,		bcma_reset_core),
 	DEVMETHOD(bhnd_bus_suspend_core,	bcma_suspend_core),
 	DEVMETHOD(bhnd_bus_read_config,		bcma_read_config),
