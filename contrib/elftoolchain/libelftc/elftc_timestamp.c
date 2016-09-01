@@ -1,9 +1,9 @@
 /*-
- * Copyright (c) 1990 The Regents of the University of California.
+ * Copyright (c) 2016 The FreeBSD Foundation
  * All rights reserved.
  *
- * This code is derived from software contributed to Berkeley by
- * William Jolitz.
+ * This software was developed by Ed Maste under sponsorship
+ * of the FreeBSD Foundation.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -13,14 +13,11 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
- *    may be used to endorse or promote products derived from this software
- *    without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
  * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
  * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
@@ -30,38 +27,29 @@
  * SUCH DAMAGE.
  */
 
-#if defined(SYSLIBC_SCCS) && !defined(lint)
-	.asciz "@(#)ptrace.s	5.1 (Berkeley) 4/23/90"
-#endif /* SYSLIBC_SCCS and not lint */
-#include <machine/asm.h>
-__FBSDID("$FreeBSD$");
+#include <errno.h>
+#include <stdlib.h>
+#include <time.h>
+#include <libelftc.h>
 
-#include "SYS.h"
+int
+elftc_timestamp(time_t *timestamp)
+{
+	long long source_date_epoch;
+	char *env, *eptr;
 
-	.globl	CNAME(__error)
-	.type	CNAME(__error),@function
-
-ENTRY(ptrace)
-	pushq	%rdi	/* align stack */
-	pushq	%rdi
-	pushq	%rsi
-	pushq	%rdx
-	pushq	%rcx
-#ifdef PIC
-	callq	PIC_PLT(CNAME(__error))
-#else
-	callq	CNAME(__error)
-#endif
-	popq	%rcx
-	popq	%rdx
-	popq	%rsi
-	popq	%rdi
-	popq	%rdi
-	movl	$0,(%rax)
-	mov	$SYS_ptrace,%eax
-	KERNCALL
-	jb	HIDENAME(cerror)
-	ret
-END(ptrace)
-
-	.section .note.GNU-stack,"",%progbits
+	if ((env = getenv("SOURCE_DATE_EPOCH")) != NULL) {
+		errno = 0;
+		source_date_epoch = strtoll(env, &eptr, 10);
+		if (*eptr != '\0')
+			errno = EINVAL;
+		if (source_date_epoch < 0)
+			errno = ERANGE;
+		if (errno != 0)
+			return (-1);
+		*timestamp = source_date_epoch;
+		return (0);
+	}
+	*timestamp = time(NULL);
+	return (0);
+}
