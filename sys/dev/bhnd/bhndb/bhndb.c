@@ -690,18 +690,17 @@ static bhnd_erom_class_t *
 bhndb_find_erom_class(struct bhndb_softc *sc)
 {
 	bhnd_erom_class_t	*cls;
-	devclass_t		 bhnd_devclass;
+	devclass_t		 bhndb_devclass;
 	driver_t		**drivers;
 	int			 drv_count;
 
-	if ((bhnd_devclass = devclass_find("bhnd")) == NULL)
-		return (NULL);
-
-	if (devclass_get_drivers(bhnd_devclass, &drivers, &drv_count) != 0)
+	bhndb_devclass = device_get_devclass(sc->dev);
+	if (devclass_get_drivers(bhndb_devclass, &drivers, &drv_count) != 0)
 		return (NULL);
 
 	cls = NULL;
 	for (int i = 0; i < drv_count; i++) {
+		printf("search driver\n");
 		cls = bhnd_driver_get_erom_class(drivers[i], &sc->chipid);
 		if (cls != NULL)
 			break;
@@ -738,9 +737,9 @@ bhndb_init_full_config(struct bhndb_softc *sc)
 	/* Look for a usable EROM class for our bridged bhnd(4) bus */
 	erom_cls = bhndb_find_erom_class(sc);
 	if (erom_cls == NULL) {
-		device_printf(sc->dev, "no bhnd_erom implementation found, "
-		    "using generic bridge resource definitions\n");
-		return (0);
+		device_printf(sc->dev, "device enumeration unsupported; no "
+		    "compatible driver found\n");
+		return (ENXIO);
 	}
 
 	/* Allocate EROM parser instance */
