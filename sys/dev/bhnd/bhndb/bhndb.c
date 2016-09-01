@@ -50,6 +50,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhndvar.h>
 #include <dev/bhnd/bhndreg.h>
 
+#include <dev/bhnd/bhnd_erom.h>
+
 #include <dev/bhnd/cores/chipc/chipcreg.h>
 #include <dev/bhnd/nvram/bhnd_nvram.h>
 
@@ -70,6 +72,8 @@ enum {
 };
 
 #define	BHNDB_DEBUG(_type)	(BHNDB_DEBUG_ ## _type & bhndb_debug)
+
+static int			 bhndb_init_full_config(struct bhndb_softc *sc);
 
 static bool			 bhndb_hw_matches(struct bhnd_core_info *cores,
 				     u_int ncores, const struct bhndb_hw *hw);
@@ -423,6 +427,7 @@ bhndb_initialize_region_cfg(struct bhndb_softc *sc,
 
 	return (0);
 }
+#endif
 
 /**
  * Find a hardware specification for @p dev.
@@ -455,7 +460,6 @@ bhndb_find_hwspec(struct bhndb_softc *sc, struct bhnd_core_info *cores,
 
 	return (ENOENT);
 }
-#endif
 
 /**
  * Read the ChipCommon identification data for this device.
@@ -540,8 +544,6 @@ bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass)
 	struct bhndb_devinfo		*dinfo;
 	struct bhndb_softc		*sc;
 	const struct bhndb_hwcfg	*cfg;
-	bhnd_erom_class_t		*erom_cls;
-	driver_t			*driver;
 	int				 error;
 
 	sc = device_get_softc(dev);
@@ -569,22 +571,13 @@ bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass)
 		goto failed;
 	}
 
-	/* Configure address space */
 	dinfo = device_get_ivars(sc->bus_dev);
 	dinfo->addrspace = BHNDB_ADDRSPACE_BRIDGED;
 
-	/* Look for a usable bridge driver */
-	if ((error = device_probe(sc->bus_dev)))
+	/* Enumerate the bridged device and fully initialize our bridged
+	 * resource configuration */
+	if ((error = bhndb_init_full_config(sc)))
 		goto failed;
-
-	driver = device_get_driver(sc->bus_dev);
-	erom_cls = bhnd_driver_get_erom_class(driver);
-	if (erom_cls == NULL) {
-		device_printf(dev, "%s driver does not provide a bhnd_erom "
-		    "implementation\n", driver->name);
-		error = ENXIO;
-		goto failed;
-	}
 
 	return (0);
 
@@ -597,76 +590,106 @@ failed:
 	return (error);
 }
 
-#ifdef XXX_EROM
 /**
- * Default bhndb(4) implementation of BHNDB_INIT_FULL_CONFIG().
+ * Identify the bridged device and perform final bridge resource configuration
+ * based on capabilities of the enumerated device.
  * 
- * This function provides the default bhndb implementation of
- * BHNDB_INIT_FULL_CONFIG(), and must be called by any subclass driver
- * overriding BHNDB_INIT_FULL_CONFIG().
- * 
- * As documented by BHNDB_INIT_FULL_CONFIG, this function performs final
- * bridge configuration based on the hardware information enumerated by the
- * child bus, and will reset all resource allocation state on the bridge.
- * 
- * When calling this method, any bus resources previously allocated by
- * @p child must be deallocated.
+ * Any bridged resources allocated using the generic brige hardware
+ * configuration must be released prior to calling this function.
  */
-int
-bhndb_generic_init_full_config(device_t dev, device_t child,
-    const struct bhndb_hw_priority *hw_prio_table)
+static int
+bhndb_init_full_config(struct bhndb_softc *sc)
 {
-	struct bhndb_softc		*sc;
-	const struct bhndb_hw		*hw;
-	struct bhndb_resources		*br;
 	struct bhnd_core_info		*cores;
+	bhnd_erom_t			*erom;
+	bhnd_erom_class_t		*erom_cls;
+	const struct bhndb_hw		*hw;
+	driver_t			*driver;
 	u_int				 ncores;
 	int				 error;
 
-	sc = device_get_softc(dev);
+	erom = NULL;
+	cores = NULL;
+
+	/* Look for a usable driver for our bridged bhnd(4) bus */
+	if ((error = device_probe(sc->bus_dev)))
+		return (error);
+
+	/* Fetch the driver's EROM device enumeration class */
+	driver = device_get_driver(sc->bus_dev);
+	erom_cls = bhnd_driver_get_erom_class(driver);
+	if (erom_cls == NULL) {
+		device_printf(sc->dev, "bridged driver does not provide a "
+		    "bhnd_erom implementation, using generic bridge resource "
+		    "definitions\n");
+		return (0);
+	}
+
+	/* Allocate EROM parser instance */
+	erom = bhnd_erom_alloc(erom_cls, sc->bus_dev, 0, sc->chipid.enum_addr);
+	if (erom == NULL)
+		return (ENXIO);
+
 
 	/* Fetch the bridged device's core table */
-	error = BHND_BUS_GET_CORE_TABLE(sc->bus_dev, sc->bus_dev, &cores,
-	    &ncores);
-	if (error) {
+	if ((error = bhnd_erom_get_core_table(erom, &cores, &ncores))) {
 		device_printf(sc->dev, "error fetching core table: %d\n",
 		    error);
-		return (error);
+		goto cleanup;
 	}
 
 	/* Find our full register window configuration */
 	if ((error = bhndb_find_hwspec(sc, cores, ncores, &hw))) {
 		device_printf(sc->dev, "unable to identify device, "
-			" using generic bridge resource definitions\n");
+		    " using generic bridge resource definitions\n");
 		error = 0;
 		goto cleanup;
 	}
 
 	if (bootverbose || BHNDB_DEBUG(PRIO))
 		device_printf(sc->dev, "%s resource configuration\n", hw->name);
-	
+
+	/* Free EROM parser. The parser holds references to the resource state
+	 * about to be reset */
+	bhnd_erom_free_core_table(erom, cores);
+	bhnd_erom_free(erom);
+	erom = NULL;
+	cores = NULL;
+
 	/* Replace existing resource state */
-	BHNDB_LOCK(sc);
 	bhndb_free_resources(sc->bus_res);
-	br = sc->bus_res = bhndb_alloc_resources(dev, sc->parent_dev, hw->cfg);
-	BHNDB_UNLOCK(sc);
-	
-	/* Allocate new resource state */
-	if (br == NULL) {
+	sc->bus_res = bhndb_alloc_resources(sc->dev, sc->parent_dev, hw->cfg);
+	if (sc->bus_res == NULL) {
+		error = ENXIO;
+		goto cleanup;
+	}
+
+	/* Re-allocate EROM parser using our full register window
+	 * configuration */
+	erom = bhnd_erom_alloc(erom_cls, sc->bus_dev, 0, sc->chipid.enum_addr);
+	if (erom == NULL) {
 		error = ENXIO;
 		goto cleanup;
 	}
 
 	/* Populate our resource priority configuration */
+#ifdef XXX_EROM
 	error = bhndb_initialize_region_cfg(sc, cores, ncores, hw_prio_table,
-	    br);
+	    sc->bus_res);
+#else
+	error = 0;
+#endif
 
 cleanup:
-	free(cores, M_BHND);
+	if (erom != NULL) {
+		if (cores != NULL)
+			bhnd_erom_free_core_table(erom, cores);
+
+		bhnd_erom_free(erom);
+	}
+
 	return (error);
 }
-
-#endif
 
 /**
  * Default bhndb(4) implementation of DEVICE_DETACH().
