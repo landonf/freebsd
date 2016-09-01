@@ -550,9 +550,6 @@ bhndb_read_chipid(struct bhndb_softc *sc, const struct bhndb_hwcfg *cfg,
  * priority bands to add additional devices that will be attached in
  * their preferred order relative to the bridged bhnd(4) bus.
  * 
- * Note, however, that the bridged bhnd(4) device will be immediately probed
- * prior to bhndb_attach() returning.
- * 
  * @param dev The bridge device to attach.
  * @param bridge_devclass The device class of the bridging core. This is used
  * to automatically detect the bridge core, and to disable additional bridge
@@ -689,6 +686,32 @@ bhndb_find_hostb_core(struct bhndb_softc *sc, bhnd_erom_t *erom,
 	return (error);
 }
 
+static bhnd_erom_class_t *
+bhndb_find_erom_class(struct bhndb_softc *sc)
+{
+	bhnd_erom_class_t	*cls;
+	devclass_t		 bhnd_devclass;
+	driver_t		**drivers;
+	int			 drv_count;
+
+	if ((bhnd_devclass = devclass_find("bhnd")) == NULL)
+		return (NULL);
+
+	if (devclass_get_drivers(bhnd_devclass, &drivers, &drv_count) != 0)
+		return (NULL);
+
+	cls = NULL;
+	for (int i = 0; i < drv_count; i++) {
+		cls = bhnd_driver_get_erom_class(drivers[i], &sc->chipid);
+		if (cls != NULL)
+			break;
+	}
+
+	free(drivers, M_TEMP);
+	return (cls);
+	
+}
+
 /**
  * Identify the bridged device and perform final bridge resource configuration
  * based on capabilities of the enumerated device.
@@ -705,7 +728,6 @@ bhndb_init_full_config(struct bhndb_softc *sc)
 	bhnd_erom_t			*erom;
 	bhnd_erom_class_t		*erom_cls;
 	const struct bhndb_hw		*hw;
-	driver_t			*driver;
 	u_int				 ncores;
 	int				 error;
 
@@ -713,17 +735,11 @@ bhndb_init_full_config(struct bhndb_softc *sc)
 	cores = NULL;
 	br = NULL;
 
-	/* Look for a usable driver for our bridged bhnd(4) bus */
-	if ((error = device_probe(sc->bus_dev)))
-		return (error);
-
-	/* Fetch the driver's EROM device enumeration class */
-	driver = device_get_driver(sc->bus_dev);
-	erom_cls = bhnd_driver_get_erom_class(driver);
+	/* Look for a usable EROM class for our bridged bhnd(4) bus */
+	erom_cls = bhndb_find_erom_class(sc);
 	if (erom_cls == NULL) {
-		device_printf(sc->dev, "bridged driver does not provide a "
-		    "bhnd_erom implementation, using generic bridge resource "
-		    "definitions\n");
+		device_printf(sc->dev, "no bhnd_erom implementation found, "
+		    "using generic bridge resource definitions\n");
 		return (0);
 	}
 
@@ -792,7 +808,6 @@ bhndb_init_full_config(struct bhndb_softc *sc)
 	return (0);
 
 cleanup:
-printf("cleanup with error=%d\n", error);
 	if (cores != NULL)
 		bhnd_erom_free_core_table(erom, cores);
 

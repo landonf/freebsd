@@ -44,6 +44,15 @@ __FBSDID("$FreeBSD$");
 #include "sibareg.h"
 #include "sibavar.h"
 
+static bhnd_erom_class_t *
+siba_get_erom_class(driver_t *driver, const struct bhnd_chipid *cid)
+{
+	if (cid->chip_type != BHND_CHIPTYPE_SIBA)
+		return (NULL);
+
+	return (&siba_erom_parser);
+}
+
 int
 siba_probe(device_t dev)
 {
@@ -211,12 +220,6 @@ siba_get_resource_list(device_t dev, device_t child)
 {
 	struct siba_devinfo *dinfo = device_get_ivars(child);
 	return (&dinfo->resources);
-}
-
-static bhnd_erom_class_t *
-siba_get_erom_class(driver_t *driver)
-{
-	return (&siba_erom_parser);
 }
 
 static int

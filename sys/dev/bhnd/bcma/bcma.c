@@ -48,6 +48,15 @@ __FBSDID("$FreeBSD$");
 /* RID used when allocating EROM table */
 #define	BCMA_EROM_RID	0
 
+static bhnd_erom_class_t *
+bcma_get_erom_class(driver_t *driver, const struct bhnd_chipid *cid)
+{
+	if (!BHND_CHIPTYPE_HAS_EROM(cid->chip_type))
+		return (NULL);
+
+	return (&bcma_erom_parser);
+}
+
 int
 bcma_probe(device_t dev)
 {
@@ -189,12 +198,6 @@ bcma_get_resource_list(device_t dev, device_t child)
 {
 	struct bcma_devinfo *dinfo = device_get_ivars(child);
 	return (&dinfo->resources);
-}
-
-static bhnd_erom_class_t *
-bcma_get_erom_class(driver_t *driver)
-{
-	return (&bcma_erom_parser);
 }
 
 static int

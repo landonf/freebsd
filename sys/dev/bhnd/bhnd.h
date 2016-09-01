@@ -399,14 +399,16 @@ bhnd_attach_type		 bhnd_bus_generic_get_attach_type(device_t dev,
 				     device_t child);
 
 /**
- * Return the bhnd(4) bus driver's device enumeration parser class
+ * Return a class capable of parsing the device enumeration table for
+ * @p chipid, or NULL if not supported by this bhnd(4) bus driver.
  *
- * @param driver A bhnd bus driver instance.
+ * @param driver	A bhnd bus driver instance.
+ * @param chipid	The bhnd chip identification.
  */
 static inline bhnd_erom_class_t *
-bhnd_driver_get_erom_class(driver_t *driver)
+bhnd_driver_get_erom_class(driver_t *driver, const struct bhnd_chipid *chipid)
 {
-	return (BHND_BUS_GET_EROM_CLASS(driver));
+	return (BHND_BUS_GET_EROM_CLASS(driver, chipid));
 }
 
 /**
