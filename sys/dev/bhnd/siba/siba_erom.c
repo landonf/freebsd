@@ -45,19 +45,30 @@ __FBSDID("$FreeBSD$");
 #include "sibareg.h"
 #include "sibavar.h"
 
+struct siba_erom;
+
+static int	siba_erom_init_static(bhnd_erom_t *erom, bus_space_tag_t bst,
+		    bus_space_handle_t bsh);
+static void	siba_erom_fini(bhnd_erom_t *erom);
+
+static uint32_t	siba_erom_read_4(struct siba_erom *sc, u_int core_idx,
+		    bus_size_t offset);
+static int	siba_erom_read_chipid(struct siba_erom *sc,
+		    bus_addr_t enum_addr, struct bhnd_chipid *cid);
+
 struct siba_erom {
-	struct bhnd_erom	obj;
-	u_int			ncores;	/**< core count */
+	struct bhnd_erom	 obj;
+	u_int			 ncores;	/**< core count */
 
 	/* resource state */
-	device_t	 	 dev;	/**< parent dev to use for resource allocations,
-					     or NULL if initialized with bst/bsh */
-	struct bhnd_resource	*res;	/**< siba bus mapping, or NULL */
-	int			 rid;	/**< siba bus maping resource ID */
+	device_t	 	 dev;		/**< parent dev to use for resource allocations,
+						     or NULL if initialized with bst/bsh */
+	struct bhnd_resource	*res;		/**< siba bus mapping, or NULL */
+	int			 rid;		/**< siba bus maping resource ID */
 
 	/* bus tag state */
-	bus_space_tag_t		 bst;	/**< chipc bus tag */
-	bus_space_handle_t	 bsh;	/**< chipc bus handle */
+	bus_space_tag_t		 bst;		/**< chipc bus tag */
+	bus_space_handle_t	 bsh;		/**< chipc bus handle */
 };
 
 #define	EROM_LOG(sc, fmt, ...)	do {					\
@@ -69,7 +80,7 @@ struct siba_erom {
 	}								\
 } while(0)
 
-static inline uint32_t
+static uint32_t
 siba_erom_read_4(struct siba_erom *sc, u_int core_idx, bus_size_t offset)
 {
 	bus_size_t core_offset;
@@ -90,6 +101,7 @@ siba_erom_read_4(struct siba_erom *sc, u_int core_idx, bus_size_t offset)
 		return (bus_space_read_4(sc->bst, sc->bsh, core_offset));
 }
 
+/** Fetch and parse a siba core's identification registers */
 static struct siba_core_id
 siba_erom_parse_core_id(struct siba_erom *sc, u_int core_idx, int unit)
 {
@@ -101,16 +113,13 @@ siba_erom_parse_core_id(struct siba_erom *sc, u_int core_idx, int unit)
 	return (siba_parse_core_id(idhigh, idlow, core_idx, unit));
 }
 
+/** Fetch and parse the chip identification register */
 static int
-siba_erom_init_common(struct siba_erom *sc)
+siba_erom_read_chipid(struct siba_erom *sc, bus_addr_t enum_addr,
+    struct bhnd_chipid *cid)
 {
 	struct siba_core_id	ccid;
-	struct bhnd_chipid	chipid;
 	uint32_t		idreg;
-	int			error;
-
-	/* There's always at least one core */
-	sc->ncores = 1;
 
 	/* Identify the chipcommon core */
 	ccid = siba_erom_parse_core_id(sc, 0, 0);
@@ -125,24 +134,42 @@ siba_erom_init_common(struct siba_erom *sc)
 
 	/* Identify the chipset */
 	idreg = siba_erom_read_4(sc, 0, CHIPC_ID);
-	chipid = bhnd_parse_chipid(idreg, SIBA_ENUM_ADDR);
+	*cid = bhnd_parse_chipid(idreg, enum_addr);
 
-	/* Fix up the core count, if required */
-	error = bhnd_chipid_fixed_ncores(&chipid, ccid.core_info.hwrev,
-	    &chipid.ncores);
+	/* Fix up the core count in-place */
+	return (bhnd_chipid_fixed_ncores(cid, ccid.core_info.hwrev,
+	    &cid->ncores));
+}
+
+static int
+siba_erom_init_common(struct siba_erom *sc)
+{
+	struct bhnd_chipid	cid;
+	int			error;
+
+	/* There's always at least one core */
+	sc->ncores = 1;
+
+	/* Identify the chipset */
+	if ((error = siba_erom_read_chipid(sc, SIBA_ENUM_ADDR, &cid)))
+		return (error);
+
+	/* Verify the chip type */
+	if (cid.chip_type != BHND_CHIPTYPE_SIBA)
+		return (ENXIO);
 
 	/*
-	 * gcc hack: ensure ncores cannot exceed SIBA_MAX_CORES without
-	 * triggering build failure due to -Wtype-limits
+	 * gcc hack: ensure bhnd_chipid.ncores cannot exceed SIBA_MAX_CORES
+	 * without triggering build failure due to -Wtype-limits
 	 *
-	 * if (chipid.ncores > SIBA_MAX_CORES)
+	 * if (cid.ncores > SIBA_MAX_CORES)
 	 *      return (EINVAL)
 	 */
-	_Static_assert((2^sizeof(chipid.ncores)) <= SIBA_MAX_CORES,
+	_Static_assert((2^sizeof(cid.ncores)) <= SIBA_MAX_CORES,
 	    "ncores could result in over-read of backing resource");
 
 	/* Update our core count */
-	sc->ncores = chipid.ncores;
+	sc->ncores = cid.ncores;
 
 	return (0);
 }
@@ -167,10 +194,12 @@ siba_erom_init(bhnd_erom_t *erom, device_t parent, int rid,
 
 static int
 siba_erom_probe_static(bhnd_erom_class_t *cls, bus_space_tag_t bst,
-     bus_space_handle_t bsh, bus_addr_t paddr, bus_addr_t *eaddr)
+     bus_space_handle_t bsh, bus_addr_t paddr, struct bhnd_chipid *cid)
 {
+	struct siba_erom 	sc;
 	uint32_t		idreg;
 	uint8_t			chip_type;
+	int			error;
 
 	idreg = bus_space_read_4(bst, bsh, CHIPC_ID);
 	chip_type = CHIPC_GET_BITS(idreg, CHIPC_ID_BUS);
@@ -178,9 +207,16 @@ siba_erom_probe_static(bhnd_erom_class_t *cls, bus_space_tag_t bst,
 	if (chip_type != BHND_CHIPTYPE_SIBA)
 		return (ENXIO);
 
-	/* Enumeration table address is simply the base address of the
-	 * core enumeration space */
-	*eaddr = paddr;
+	/* Initialize a static EROM instance that we can use to fetch
+	 * the chip identifier */
+	if ((error = siba_erom_init_static((bhnd_erom_t *)&sc, bst, bsh)))
+		return (error);
+
+	/* Try to read the chip ID, clean up the static instance */
+	error = siba_erom_read_chipid(&sc, paddr, cid);
+	siba_erom_fini((bhnd_erom_t *)&sc);
+	if (error)
+		return (error);
 
 	return (BUS_PROBE_DEFAULT);
 }

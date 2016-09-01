@@ -98,16 +98,15 @@ SET_DECLARE(bhnd_erom_class_set, bhnd_erom_class_t);
 /**
  * Probe to see if this device enumeration class supports the bhnd bus
  * mapped at the given bus space tag and handle, returning a standard
- * newbus device probe result (see BUS_PROBE_*) and the probed enumeration
- * table address.
+ * newbus device probe result (see BUS_PROBE_*) and the probed
+ * chip identification.
  *
  * @param	cls	The parser class to be probed.
  * @param	bst	Bus space tag.
  * @param	bsh	Bus space handle mapping the EXTIF or ChipCommon core.
  * @param	paddr	The physical address of the core mapped by @p bst and
  *			@p bsh.
- * @param[out]	eaddr	On success, the physical address of the device
- *			enumeration table.
+ * @param[out]	cid	On success, the probed chip identifier.
  *
  * @retval 0		if this is the only possible device enumeration
  *			parser for the probed bus.
@@ -120,9 +119,9 @@ SET_DECLARE(bhnd_erom_class_set, bhnd_erom_class_t);
  */
 static inline int
 bhnd_erom_probe_static(bhnd_erom_class_t *cls, bus_space_tag_t bst,
-    bus_space_handle_t bsh, bus_addr_t paddr, bus_addr_t *eaddr)
+    bus_space_handle_t bsh, bus_addr_t paddr, struct bhnd_chipid *cid)
 {
-	return (BHND_EROM_PROBE_STATIC(cls, bst, bsh, paddr, eaddr));
+	return (BHND_EROM_PROBE_STATIC(cls, bst, bsh, paddr, cid));
 }
 
 /**

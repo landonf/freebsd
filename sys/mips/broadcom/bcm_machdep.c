@@ -180,30 +180,29 @@ bcm_get_bus_addr(void)
  * @param	esize		The total available number of bytes allocated
  *				for @p erom. If this is less than is required
  *				by @p erom_cls ENOMEM will be returned.
+ * @param[out]	cid		On success, the probed chip identification.
  */
 static int
 bcm_erom_probe_and_attach(bhnd_erom_class_t **erom_cls, kobj_ops_t erom_ops,
-    bhnd_erom_t *erom, size_t esize)
+    bhnd_erom_t *erom, size_t esize, struct bhnd_chipid *cid)
 {
 	bhnd_erom_class_t	**clsp;
-	bhnd_erom_class_t	 *matched;
 	bus_space_tag_t		  bst;
 	bus_space_handle_t	  bsh;
-	bus_addr_t		  bus_addr, enum_addr;
+	bus_addr_t		  bus_addr;
 	int			  error, prio, result;
 
 	bus_addr = bcm_get_bus_addr();
-	enum_addr = 0x0;
-	matched = NULL;
+	*erom_cls = NULL;
 	prio = 0;
 
 	bst = mips_bus_space_generic;
 	bsh = BCM_SOC_BSH(bus_addr, 0);
 
 	SET_FOREACH(clsp, bhnd_erom_class_set) {
+		struct bhnd_chipid	 pcid;
 		bhnd_erom_class_t	*cls;
 		struct kobj_ops		 kops;
-		bus_addr_t		 ea;
 
 		cls = *clsp;
 
@@ -211,7 +210,7 @@ bcm_erom_probe_and_attach(bhnd_erom_class_t **erom_cls, kobj_ops_t erom_ops,
 		kobj_class_compile_static(cls, &kops);
 
 		/* Probe the bus address */
-		result = bhnd_erom_probe_static(cls, bst, bsh, bus_addr, &ea);
+		result = bhnd_erom_probe_static(cls, bst, bsh, bus_addr, &pcid);
 
 		/* Drop pointer to stack allocated ops table */
 		cls->ops = NULL;
@@ -221,10 +220,11 @@ bcm_erom_probe_and_attach(bhnd_erom_class_t **erom_cls, kobj_ops_t erom_ops,
 			continue;
 
 		/* Check for a new highest priority match */
-		if (matched == NULL || result > prio) {
+		if (*erom_cls == NULL || result > prio) {
 			prio = result;
-			matched = cls;
-			enum_addr = ea;
+
+			*cid = pcid;
+			*erom_cls = cls;
 		}
 
 		/* Terminate immediately on BUS_PROBE_SPECIFIC */
@@ -233,18 +233,17 @@ bcm_erom_probe_and_attach(bhnd_erom_class_t **erom_cls, kobj_ops_t erom_ops,
 	}
 
 	/* Valid EROM class probed? */
-	if (matched == NULL) {
+	if (*erom_cls == NULL) {
 		printf("%s: no erom parser found for root bus at %#jx\n",
 		    __FUNCTION__, (uintmax_t)bus_addr);
 		return (ENOENT);
 	}
 
 	/* Using the provided storage, recompile the erom class ... */
-	*erom_cls = matched;
 	kobj_class_compile_static(*erom_cls, erom_ops);
 
 	/* ... and initialize the erom parser instance */
-	bsh = BCM_SOC_BSH(enum_addr, 0);
+	bsh = BCM_SOC_BSH(cid->enum_addr, 0);
 	error = bhnd_erom_init_static(*erom_cls, erom, esize,
 	    mips_bus_space_generic, bsh);
 
@@ -270,16 +269,16 @@ bcm_init_platform_data(struct bcm_platform *pdata)
 		pdata->cfe_console = -1;
 #endif
 
-	/* Probe and attach our EROM parser */
+	/* Probe and attach device table provider */
 	error = bcm_erom_probe_and_attach(&pdata->erom_impl, &pdata->erom_ops,
-	    &pdata->erom.obj, sizeof(pdata->erom));
+	    &pdata->erom.obj, sizeof(pdata->erom), &pdata->cid);
 	if (error) {
 		printf("%s: error attaching erom parser: %d\n", __FUNCTION__,
 		    error);
 		return (error);
 	}
 
-	/* Fetch bhnd/chipc address */
+	/* Fetch chipc address */
 	// TODO
 	pdata->cc_addr = bcm_get_bus_addr();
 
@@ -292,12 +291,12 @@ bcm_init_platform_data(struct bcm_platform *pdata)
 	else
 		enum_addr = pdata->cc_addr;
 
-	pdata->id = bhnd_parse_chipid(reg, enum_addr);
+	pdata->cid = bhnd_parse_chipid(reg, enum_addr);
 
 	/* Fetch chipc core info and capabilities */
 	pdata->cc_caps = BCM_SOC_READ_4(pdata->cc_addr, CHIPC_CAPABILITIES);
 
-	error = bcm_find_core(&pdata->id, BHND_DEVCLASS_CC, 0, &pdata->cc_id,
+	error = bcm_find_core(&pdata->cid, BHND_DEVCLASS_CC, 0, &pdata->cc_id,
 	    NULL);
 	if (error) {
 		printf("%s: error locating chipc core: %d", __FUNCTION__,
@@ -318,7 +317,7 @@ bcm_init_platform_data(struct bcm_platform *pdata)
 
 	if (pmu && aob) {
 		/* PMU block mapped to a PMU core on the Always-on-Bus (aob) */
-		error = bcm_find_core(&pdata->id, BHND_DEVCLASS_PMU, 0,
+		error = bcm_find_core(&pdata->cid, BHND_DEVCLASS_PMU, 0,
 		    &pdata->pmu_id,  &pdata->pmu_addr);
 
 		if (error) {
@@ -337,7 +336,7 @@ bcm_init_platform_data(struct bcm_platform *pdata)
 	}
 
 	if (pmu) {
-		error = bhnd_pmu_query_init(&pdata->pmu, NULL, pdata->id,
+		error = bhnd_pmu_query_init(&pdata->pmu, NULL, pdata->cid,
 		    &bcm_pmu_soc_io, pdata);
 		if (error) {
 			printf("%s: bhnd_pmu_query_init() failed: %d\n",
@@ -445,7 +444,7 @@ platform_reset(void)
 	bcm4785war = false;
 
 	/* Handle BCM4785-specific behavior */
-	if (bp->id.chip_id == BHND_CHIPID_BCM4785) {
+	if (bp->cid.chip_id == BHND_CHIPID_BCM4785) {
 		bcm4785war = true;
 
 		/* Switch to async mode */

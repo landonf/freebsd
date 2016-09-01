@@ -47,7 +47,7 @@ typedef int (bcm_bus_find_core)(struct bhnd_chipid *chipid,
     uintptr_t *addr);
 
 struct bcm_platform {
-	struct bhnd_chipid	 id;		/**< chip id */
+	struct bhnd_chipid	 cid;		/**< chip id */
 	struct bhnd_core_info	 cc_id;		/**< chipc core info */
 	uintptr_t		 cc_addr;	/**< chipc core phys address */
 	uint32_t		 cc_caps;	/**< chipc capabilities */

@@ -46,8 +46,7 @@ INTERFACE bhnd_erom;
  * @param	bsh	Bus space handle mapping the EXTIF or ChipCommon core.
  * @param	paddr	The physical address of the core mapped by @p bst and
  *			@p bsh.
- * @param[out]	eaddr	On success, the physical address of the device
- *			enumeration table.
+ * @param[out]	cid	On success, the probed chip identifier.
  *
  * @retval 0		if this is the only possible device enumeration
  *			parser for the probed bus.
@@ -63,7 +62,7 @@ STATICMETHOD int probe_static {
 	bus_space_tag_t 	 bst;
 	bus_space_handle_t	 bsh;
 	bus_addr_t		 paddr;
-	bus_addr_t		*eaddr;
+	struct bhnd_chipid	*cid;
 };
 
 /**
