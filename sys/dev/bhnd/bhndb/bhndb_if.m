@@ -61,13 +61,6 @@ CODE {
 	{
 		panic("bhndb_populate_board_info unimplemented");
 	}
-
-	static int
-	bhndb_null_init_full_config(device_t dev, device_t child,
-	    const struct bhndb_hw_priority *priority_table)
-	{
-		panic("bhndb_init_full_config unimplemented");
-	}
 	
 	static int
 	bhndb_null_find_hostb_core(device_t dev, device_t child,
@@ -123,27 +116,6 @@ METHOD int populate_board_info {
 	device_t child;
 	struct bhnd_board_info *info;
 } DEFAULT bhndb_null_populate_board_info;
-
-/**
- * Perform bridge hardware configuration.
- *
- * This must be called by any bhndb-attached bus device; this allows the
- * bridge to perform final configuration based on the hardware information
- * enumerated by the child bus' BHND_BUS_GET_CORE_TABLE() method.
- *
- * Before calling this method, any bus resources previously allocated by
- * @p child must be deallocated.
- *
- * @param dev The bridge device.
- * @param child The bhnd bus device attached to @p dev.
- * @param hw_priority The hardware priority table to be used when determining
- * the bridge resource allocation strategy.
- */
-METHOD int init_full_config {
-	device_t dev;
-	device_t child;
-	const struct bhndb_hw_priority *priority_table;
-} DEFAULT bhndb_null_init_full_config;
 
 /**
  * Find the host bridge core for the attached bhnd bus.

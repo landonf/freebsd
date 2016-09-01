@@ -109,12 +109,6 @@ siba_bhndb_attach(device_t dev)
 
 	sc = device_get_softc(dev);
 
-	/* Initialize full bridge configuration */
-	error = BHNDB_INIT_FULL_CONFIG(device_get_parent(dev), dev,
-	    bhndb_siba_priority_table);
-	if (error)
-		return (error);
-
 	/* Enumerate our children. */
 	chipid = BHNDB_GET_CHIPID(device_get_parent(dev), dev);
 	if ((error = siba_add_children(dev, chipid)))

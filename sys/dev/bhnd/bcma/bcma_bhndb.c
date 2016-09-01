@@ -79,13 +79,6 @@ bcma_bhndb_attach(device_t dev)
 
 	sc = device_get_softc(dev);
 
-	/* Perform bridge initialization, giving us a complete set of
-	 * register windows to work with. */
-	error = BHNDB_INIT_FULL_CONFIG(device_get_parent(dev), dev,
-	    bhndb_bcma_priority_table);
-	if (error)
-		return (error);
-
 	/* Enumerate our children */
 	if ((error = bcma_add_children(dev)))
 		return (error);

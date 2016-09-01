@@ -214,6 +214,7 @@ bhndb_hw_matches(struct bhnd_core_info *cores, u_int ncores,
 	return (true);
 }
 
+#ifdef XXX_EROM
 /**
  * Initialize the region maps and priority configuration in @p r using
  * the provided priority @p table and the set of devices attached to
@@ -236,8 +237,6 @@ bhndb_initialize_region_cfg(struct bhndb_softc *sc,
 	bhnd_size_t			 size;
 	size_t				 prio_low, prio_default, prio_high;
 	int				 error;
-
-	// XXX TODO: Locking
 
 	/* The number of port regions per priority band that must be accessible
 	 * via dynamic register windows */
@@ -456,6 +455,7 @@ bhndb_find_hwspec(struct bhndb_softc *sc, struct bhnd_core_info *cores,
 
 	return (ENOENT);
 }
+#endif
 
 /**
  * Read the ChipCommon identification data for this device.
@@ -521,6 +521,14 @@ bhndb_read_chipid(struct bhndb_softc *sc, const struct bhndb_hwcfg *cfg,
  * when implementing DEVICE_ATTACH() before calling any bhnd(4) or bhndb(4)
  * APIs on the bridge device.
  * 
+ * This function will add a bridged bhnd(4) child device with a device order of
+ * BHND_PROBE_BUS. Any subclass bhndb(4) driver may use the BHND_PROBE_*
+ * priority bands to add additional devices that will be attached in
+ * their preferred order relative to the bridged bhnd(4) bus.
+ * 
+ * Note, however, that the bridged bhnd(4) device will be immediately probed
+ * prior to bhndb_attach() returning.
+ * 
  * @param dev The bridge device to attach.
  * @param bridge_devclass The device class of the bridging core. This is used
  * to automatically detect the bridge core, and to disable additional bridge
@@ -532,6 +540,8 @@ bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass)
 	struct bhndb_devinfo		*dinfo;
 	struct bhndb_softc		*sc;
 	const struct bhndb_hwcfg	*cfg;
+	bhnd_erom_class_t		*erom_cls;
+	driver_t			*driver;
 	int				 error;
 
 	sc = device_get_softc(dev);
@@ -552,8 +562,8 @@ bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass)
 		return (ENXIO);
 	}
 
-	/* Attach our bridged bus device */
-	sc->bus_dev = BUS_ADD_CHILD(dev, 0, "bhnd", -1);
+	/* Add our bridged bus device */
+	sc->bus_dev = BUS_ADD_CHILD(dev, BHND_PROBE_BUS, "bhnd", -1);
 	if (sc->bus_dev == NULL) {
 		error = ENXIO;
 		goto failed;
@@ -563,8 +573,20 @@ bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass)
 	dinfo = device_get_ivars(sc->bus_dev);
 	dinfo->addrspace = BHNDB_ADDRSPACE_BRIDGED;
 
-	/* Finish attach */
-	return (bus_generic_attach(dev));
+	/* Look for a usable bridge driver */
+	if ((error = device_probe(sc->bus_dev)))
+		goto failed;
+
+	driver = device_get_driver(sc->bus_dev);
+	erom_cls = bhnd_driver_get_erom_class(driver);
+	if (erom_cls == NULL) {
+		device_printf(dev, "%s driver does not provide a bhnd_erom "
+		    "implementation\n", driver->name);
+		error = ENXIO;
+		goto failed;
+	}
+
+	return (0);
 
 failed:
 	BHNDB_LOCK_DESTROY(sc);
@@ -575,6 +597,7 @@ failed:
 	return (error);
 }
 
+#ifdef XXX_EROM
 /**
  * Default bhndb(4) implementation of BHNDB_INIT_FULL_CONFIG().
  * 
@@ -642,6 +665,8 @@ cleanup:
 	free(cores, M_BHND);
 	return (error);
 }
+
+#endif
 
 /**
  * Default bhndb(4) implementation of DEVICE_DETACH().
@@ -985,6 +1010,8 @@ compare_core_index(const void *lhs, const void *rhs)
 static int
 bhndb_find_hostb_core(device_t dev, device_t child, struct bhnd_core_info *core)
 {
+	return (ENXIO);
+#ifdef XXX_EROM
 	struct bhndb_softc		*sc;
 	struct bhnd_core_match		 md;
 	struct bhnd_core_info		*cores;
@@ -1021,6 +1048,7 @@ bhndb_find_hostb_core(device_t dev, device_t child, struct bhnd_core_info *core)
 	free(cores, M_BHND);
 
 	return (error);
+#endif
 }
 
 /**
@@ -1959,7 +1987,6 @@ static device_method_t bhndb_methods[] = {
 
 	/* BHNDB interface */
 	DEVMETHOD(bhndb_get_chipid,		bhndb_get_chipid),
-	DEVMETHOD(bhndb_init_full_config,	bhndb_generic_init_full_config),
 	DEVMETHOD(bhndb_find_hostb_core,	bhndb_find_hostb_core),
 	DEVMETHOD(bhndb_suspend_resource,	bhndb_suspend_resource),
 	DEVMETHOD(bhndb_resume_resource,	bhndb_resume_resource),

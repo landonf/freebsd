@@ -398,7 +398,16 @@ int				 bhnd_bus_generic_deactivate_resource (device_t dev,
 bhnd_attach_type		 bhnd_bus_generic_get_attach_type(device_t dev,
 				     device_t child);
 
-
+/**
+ * Return the bhnd(4) bus driver's device enumeration parser class
+ *
+ * @param driver A bhnd bus driver instance.
+ */
+static inline bhnd_erom_class_t *
+bhnd_driver_get_erom_class(driver_t *driver)
+{
+	return (BHND_BUS_DRIVER_GET_EROM_CLASS(driver));
+}
 
 /**
  * Return the active host bridge core for the bhnd bus, if any, or NULL if

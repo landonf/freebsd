@@ -52,7 +52,7 @@ CODE {
 	#include <dev/bhnd/bhndvar.h>
 
 	static bhnd_erom_class_t *
-	bhnd_bus_null_driver_erom_class(driver_t *driver)
+	bhnd_bus_null_driver_get_erom_class(driver_t *driver)
 	{
 		return (NULL);
 	}
@@ -212,9 +212,9 @@ CODE {
  *
  * @param driver The bhnd bus driver instance.
  */
-STATICMETHOD bhnd_erom_class_t * driver_erom_class {
+STATICMETHOD bhnd_erom_class_t * driver_get_erom_class {
 	driver_t *driver;
-} DEFAULT bhnd_bus_null_driver_erom_class;
+} DEFAULT bhnd_bus_null_driver_get_erom_class;
 
 /**
  * Return the active host bridge core for the bhnd bus, if any.
