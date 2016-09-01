@@ -214,7 +214,7 @@ siba_get_resource_list(device_t dev, device_t child)
 }
 
 static bhnd_erom_class_t *
-siba_driver_get_erom_class(driver_t *driver)
+siba_get_erom_class(driver_t *driver)
 {
 	return (&siba_erom_parser);
 }
@@ -679,7 +679,7 @@ static device_method_t siba_methods[] = {
 	DEVMETHOD(bus_get_resource_list,	siba_get_resource_list),
 
 	/* BHND interface */
-	DEVMETHOD(bhnd_bus_driver_get_erom_class,siba_driver_get_erom_class),
+	DEVMETHOD(bhnd_bus_get_erom_class,	siba_get_erom_class),
 	DEVMETHOD(bhnd_bus_find_hostb_device,	siba_find_hostb_device),
 	DEVMETHOD(bhnd_bus_alloc_devinfo,	siba_alloc_bhnd_dinfo),
 	DEVMETHOD(bhnd_bus_free_devinfo,	siba_free_bhnd_dinfo),

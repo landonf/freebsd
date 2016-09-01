@@ -192,7 +192,7 @@ bcma_get_resource_list(device_t dev, device_t child)
 }
 
 static bhnd_erom_class_t *
-bcma_driver_get_erom_class(driver_t *driver)
+bcma_get_erom_class(driver_t *driver)
 {
 	return (&bcma_erom_parser);
 }
@@ -586,7 +586,7 @@ static device_method_t bcma_methods[] = {
 	DEVMETHOD(bus_get_resource_list,	bcma_get_resource_list),
 
 	/* BHND interface */
-	DEVMETHOD(bhnd_bus_driver_get_erom_class,bcma_driver_get_erom_class),
+	DEVMETHOD(bhnd_bus_get_erom_class,	bcma_get_erom_class),
 	DEVMETHOD(bhnd_bus_find_hostb_device,	bcma_find_hostb_device),
 	DEVMETHOD(bhnd_bus_alloc_devinfo,	bcma_alloc_bhnd_dinfo),
 	DEVMETHOD(bhnd_bus_free_devinfo,	bcma_free_bhnd_dinfo),

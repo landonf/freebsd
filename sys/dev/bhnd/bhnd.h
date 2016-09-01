@@ -406,7 +406,7 @@ bhnd_attach_type		 bhnd_bus_generic_get_attach_type(device_t dev,
 static inline bhnd_erom_class_t *
 bhnd_driver_get_erom_class(driver_t *driver)
 {
-	return (BHND_BUS_DRIVER_GET_EROM_CLASS(driver));
+	return (BHND_BUS_GET_EROM_CLASS(driver));
 }
 
 /**
