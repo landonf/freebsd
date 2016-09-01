@@ -38,11 +38,8 @@
 
 #include <dev/bhnd/bhnd.h>
 
-typedef struct kobj_class	bhnd_erom_class_t;	/**< bhnd_erom parser class */
-typedef struct bhnd_erom	bhnd_erom_t;		/**< bhnd_erom parser instance */
-typedef struct bhnd_erom_static	bhnd_erom_static_t;	/**< bhnd_erom parser static instance data */
-
 #include "bhnd_erom_if.h"
+#include "bhnd_erom_types.h"
 
 bhnd_erom_t			*bhnd_erom_alloc(bhnd_erom_class_t *cls,
 				     device_t parent, int rid,

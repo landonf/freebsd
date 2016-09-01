@@ -39,6 +39,7 @@
 
 #include "bhnd_ids.h"
 #include "bhnd_types.h"
+#include "bhnd_erom_types.h"
 #include "bhnd_debug.h"
 #include "bhnd_bus_if.h"
 #include "bhnd_match.h"
