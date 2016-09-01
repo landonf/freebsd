@@ -68,7 +68,7 @@ struct bhnd_erom {
 
 /** Number of additional bytes to reserve for statically allocated
  *  bhnd_erom instances. */
-#define	BHND_EROM_STATIC_BYTES	32
+#define	BHND_EROM_STATIC_BYTES	64
 
 /**
  * A bhnd_erom instance structure large enough to statically allocate
