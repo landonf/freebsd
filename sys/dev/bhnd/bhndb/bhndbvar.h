@@ -89,6 +89,9 @@ struct bhndb_softc {
 	device_t			 dev;		/**< bridge device */
 	struct bhnd_chipid		 chipid;	/**< chip identification */
 	bhnd_devclass_t			 bridge_class;	/**< bridge core type */
+	struct bhnd_core_info		 bridge_core;	/**< bridge core. not populated until
+							  *  full bridge config is initialized */
+	bool				 have_br_core;	/**< false if not yet available */
 
 	device_t			 parent_dev;	/**< parent device */
 	device_t			 bus_dev;	/**< child bhnd(4) bus */

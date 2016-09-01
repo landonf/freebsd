@@ -197,15 +197,6 @@ bcma_get_erom_class(driver_t *driver)
 	return (&bcma_erom_parser);
 }
 
-static device_t
-bcma_find_hostb_device(device_t dev)
-{
-	struct bcma_softc *sc = device_get_softc(dev);
-
-	/* This is set (or not) by the concrete bcma driver subclass. */
-	return (sc->hostb_dev);
-}
-
 static int
 bcma_reset_core(device_t dev, device_t child, uint16_t flags)
 {
@@ -587,7 +578,6 @@ static device_method_t bcma_methods[] = {
 
 	/* BHND interface */
 	DEVMETHOD(bhnd_bus_get_erom_class,	bcma_get_erom_class),
-	DEVMETHOD(bhnd_bus_find_hostb_device,	bcma_find_hostb_device),
 	DEVMETHOD(bhnd_bus_alloc_devinfo,	bcma_alloc_bhnd_dinfo),
 	DEVMETHOD(bhnd_bus_free_devinfo,	bcma_free_bhnd_dinfo),
 	DEVMETHOD(bhnd_bus_reset_core,		bcma_reset_core),

@@ -337,7 +337,7 @@ bhndb_init_sromless_pci_config(struct bhndb_pci_softc *sc)
 	cfg = bres->cfg;
 
 	/* Find our hostb core */
-	error = BHNDB_FIND_HOSTB_CORE(sc->dev, sc->bhndb.bus_dev, &hostb_core);
+	error = BHNDB_GET_HOSTB_CORE(sc->dev, sc->bhndb.bus_dev, &hostb_core);
 	if (error) {
 		device_printf(sc->dev, "no host bridge device found\n");
 		return;

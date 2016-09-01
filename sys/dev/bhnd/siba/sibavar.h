@@ -155,7 +155,6 @@ struct siba_devinfo {
 struct siba_softc {
 	struct bhnd_softc	bhnd_sc;	/**< bhnd state */
 	device_t		dev;		/**< siba device */
-	device_t		hostb_dev;	/**< host bridge core, or NULL */
 };
 
 #endif /* _SIBA_SIBAVAR_H_ */

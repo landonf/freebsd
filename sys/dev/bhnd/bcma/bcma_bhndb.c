@@ -72,27 +72,11 @@ bcma_bhndb_probe(device_t dev)
 static int
 bcma_bhndb_attach(device_t dev)
 {
-	struct bcma_softc	*sc;
-	struct bhnd_core_info	 hostb_core;
-	struct bhnd_core_match	 md;
-	int			 error;
-
-	sc = device_get_softc(dev);
+	int error;
 
 	/* Enumerate our children */
 	if ((error = bcma_add_children(dev)))
 		return (error);
-
-	/* Ask our bridge to locate the bridge core */
-	error = BHNDB_FIND_HOSTB_CORE(device_get_parent(dev), dev, &hostb_core);
-	if (error)
-		goto failed;
-
-	md = bhnd_core_get_match_desc(&hostb_core);
-	if ((sc->hostb_dev = bhnd_match_child(dev, &md)) == NULL) {
-		error = ENXIO;
-		goto failed;
-	}
 
 	/* Call our superclass' implementation */
 	if ((error = bcma_attach(dev)))

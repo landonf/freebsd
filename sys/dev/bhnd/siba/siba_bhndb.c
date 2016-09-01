@@ -103,8 +103,6 @@ siba_bhndb_attach(device_t dev)
 {
 	struct siba_softc		*sc;
 	const struct bhnd_chipid	*chipid;
-	struct bhnd_core_info		 hostb_core;
-	struct bhnd_core_match		 md;
 	int				 error;
 
 	sc = device_get_softc(dev);
@@ -113,17 +111,6 @@ siba_bhndb_attach(device_t dev)
 	chipid = BHNDB_GET_CHIPID(device_get_parent(dev), dev);
 	if ((error = siba_add_children(dev, chipid)))
 		goto failed;
-
-	/* Ask our parent bridge to find the corresponding bridge core */
-	error = BHNDB_FIND_HOSTB_CORE(device_get_parent(dev), dev, &hostb_core);
-	if (error)
-		goto failed;
-
-	md = bhnd_core_get_match_desc(&hostb_core);
-	if ((sc->hostb_dev = bhnd_match_child(dev, &md)) == NULL) {
-		error = ENXIO;
-		goto failed;
-	}
 
 	/* Call our superclass' implementation */
 	if ((error = siba_attach(dev)))
@@ -230,11 +217,15 @@ static int
 siba_bhndb_wars_pcie_clear_d11_timeout(struct siba_softc *sc)
 {
 	struct siba_devinfo	*dinfo;
+	device_t		 hostb_dev;
 	device_t		 d11;
 	uint32_t		 imcfg;
 
 	/* Only applies when bridged by PCIe */
-	if (bhnd_get_class(sc->hostb_dev) != BHND_DEVCLASS_PCIE)
+	if ((hostb_dev = bhnd_find_hostb_device(sc->dev)) == NULL)
+		return (ENXIO);
+
+	if (bhnd_get_class(hostb_dev) != BHND_DEVCLASS_PCIE)
 		return (0);
 
 	/* Only applies if there's a D11 core */
@@ -264,10 +255,14 @@ siba_bhndb_wars_pcie_clear_d11_timeout(struct siba_softc *sc)
 static int
 siba_bhndb_wars_hwup(struct siba_softc *sc)
 {
+	device_t		 hostb_dev;
 	uint32_t		 quirks;
 	int			 error;
 
-	quirks = bhnd_device_quirks(sc->hostb_dev, bridge_devs,
+	if ((hostb_dev = bhnd_find_hostb_device(sc->dev)) == NULL)
+		return (ENXIO);
+
+	quirks = bhnd_device_quirks(hostb_dev, bridge_devs,
 	    sizeof(bridge_devs[0]));
 
 	if (quirks & SIBA_QUIRK_PCIE_D11_SB_TIMEOUT) {

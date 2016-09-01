@@ -219,15 +219,6 @@ siba_get_erom_class(driver_t *driver)
 	return (&siba_erom_parser);
 }
 
-static device_t
-siba_find_hostb_device(device_t dev)
-{
-	struct siba_softc *sc = device_get_softc(dev);
-
-	/* This is set (or not) by the concrete siba driver subclass. */
-	return (sc->hostb_dev);
-}
-
 static int
 siba_reset_core(device_t dev, device_t child, uint16_t flags)
 {
@@ -680,7 +671,6 @@ static device_method_t siba_methods[] = {
 
 	/* BHND interface */
 	DEVMETHOD(bhnd_bus_get_erom_class,	siba_get_erom_class),
-	DEVMETHOD(bhnd_bus_find_hostb_device,	siba_find_hostb_device),
 	DEVMETHOD(bhnd_bus_alloc_devinfo,	siba_alloc_bhnd_dinfo),
 	DEVMETHOD(bhnd_bus_free_devinfo,	siba_free_bhnd_dinfo),
 	DEVMETHOD(bhnd_bus_reset_core,		siba_reset_core),

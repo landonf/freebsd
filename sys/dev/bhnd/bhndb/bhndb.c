@@ -73,10 +73,15 @@ enum {
 
 #define	BHNDB_DEBUG(_type)	(BHNDB_DEBUG_ ## _type & bhndb_debug)
 
+static int			 bhndb_find_hostb_core(struct bhndb_softc *sc,
+				     bhnd_erom_t *erom,
+				     struct bhnd_core_info *core);
 static int			 bhndb_init_full_config(struct bhndb_softc *sc);
 
 static bool			 bhndb_hw_matches(struct bhnd_core_info *cores,
 				     u_int ncores, const struct bhndb_hw *hw);
+
+static struct bhnd_core_info	*bhndb_get_bridge_core_info(struct bhndb_softc *sc);
 
 static int			 bhndb_init_region_cfg(struct bhndb_softc *sc,
 				     bhnd_erom_t *erom,
@@ -183,6 +188,21 @@ bhndb_child_location_str(device_t dev, device_t child, char *buf,
 	snprintf(buf, buflen, "base=0x%llx",
 	    (unsigned long long) sc->chipid.enum_addr);
 	return (0);
+}
+
+/**
+ * Return the bridge core info. Will panic if the bridge core info has not yet
+ * been populated during full bridge configuration.
+ * 
+ * @param sc BHNDB device state.
+ */
+static struct bhnd_core_info *
+bhndb_get_bridge_core_info(struct bhndb_softc *sc)
+{
+	if (!sc->have_br_core)
+		panic("bridge not yet fully configured; no bridge core!");
+
+	return (&sc->bridge_core);
 }
 
 /**
@@ -594,6 +614,81 @@ failed:
 	return (error);
 }
 
+/* ascending core index comparison used by bhndb_find_hostb_core() */ 
+static int
+compare_core_index(const void *lhs, const void *rhs)
+{
+	u_int left = ((const struct bhnd_core_info *)lhs)->core_idx;
+	u_int right = ((const struct bhnd_core_info *)rhs)->core_idx;
+
+	if (left < right)
+		return (-1);
+	else if (left > right)
+		return (1);
+	else
+		return (0);
+}
+
+/**
+ * Search @p erom for the core serving as the bhnd host bridge.
+ * 
+ * This function uses a heuristic valid on all known PCI/PCIe/PCMCIA-bridged
+ * bhnd(4) devices to determine the hostb core:
+ * 
+ * - The core must have a Broadcom vendor ID.
+ * - The core devclass must match the bridge type.
+ * - The core must be the first device on the bus with the bridged device
+ *   class.
+ * 
+ * @param sc BHNDB device state.
+ * @param erom The device enumeration table parser to be used to fetch
+ * core info.
+ * @param[out] core If found, the matching core info.
+ * 
+ * @retval 0 success
+ * @retval ENOENT not found
+ * @retval non-zero if an error occured fetching core info.
+ */
+static int
+bhndb_find_hostb_core(struct bhndb_softc *sc, bhnd_erom_t *erom,
+    struct bhnd_core_info *core)
+{
+	struct bhnd_core_match	 md;
+	struct bhnd_core_info	*cores;
+	u_int			 ncores;
+	int			 error;
+
+	if ((error = bhnd_erom_get_core_table(erom, &cores, &ncores)))
+		return (error);
+
+	/* Set up a match descriptor for the required device class. */
+	md = (struct bhnd_core_match) {
+		BHND_MATCH_CORE_CLASS(sc->bridge_class),
+		BHND_MATCH_CORE_UNIT(0)
+	};
+
+	/* Ensure the table is sorted by core index value, ascending;
+	 * the host bridge must be the absolute first matching device on the
+	 * bus. */
+	qsort(cores, ncores, sizeof(*cores), compare_core_index);
+
+	/* Find the hostb core */
+	error = ENOENT;
+	for (u_int i = 0; i < ncores; i++) {
+		if (bhnd_core_matches(&cores[i], &md)) {
+			/* Found! */
+			*core = cores[i];
+			error = 0;
+			break;
+		}
+	}
+
+	/* Clean up */
+	bhnd_erom_free_core_table(erom, cores);
+
+	return (error);
+}
+
 /**
  * Identify the bridged device and perform final bridge resource configuration
  * based on capabilities of the enumerated device.
@@ -637,6 +732,11 @@ bhndb_init_full_config(struct bhndb_softc *sc)
 	if (erom == NULL)
 		return (ENXIO);
 
+	/* Look for our host bridge core */
+	if ((error = bhndb_find_hostb_core(sc, erom, &sc->bridge_core)))
+		goto cleanup;
+	else
+		sc->have_br_core = true;
 
 	/* Fetch the bridged device's core table */
 	if ((error = bhnd_erom_get_core_table(erom, &cores, &ncores))) {
@@ -692,6 +792,7 @@ bhndb_init_full_config(struct bhndb_softc *sc)
 	return (0);
 
 cleanup:
+printf("cleanup with error=%d\n", error);
 	if (cores != NULL)
 		bhnd_erom_free_core_table(erom, cores);
 
@@ -988,8 +1089,7 @@ bhndb_is_core_disabled(device_t dev, device_t child,
     struct bhnd_core_info *core)
 {
 	struct bhndb_softc	*sc;
-	struct bhnd_core_info	 hostb_core;
-	int			 error;
+	struct bhnd_core_info	*bridge_core;
 
 	sc = device_get_softc(dev);
 
@@ -999,92 +1099,27 @@ bhndb_is_core_disabled(device_t dev, device_t child,
 
 	/* Otherwise, we treat bridge-capable cores as unpopulated if they're
 	 * not the configured host bridge */
-	error = BHNDB_FIND_HOSTB_CORE(dev, sc->bus_dev, &hostb_core);
-	if (!error && BHND_DEVCLASS_SUPPORTS_HOSTB(bhnd_core_class(core)))
-		return (!bhnd_cores_equal(core, &hostb_core));
+	bridge_core = bhndb_get_bridge_core_info(sc);
+	if (BHND_DEVCLASS_SUPPORTS_HOSTB(bhnd_core_class(bridge_core)))
+		return (!bhnd_cores_equal(core, bridge_core));
 
-	/* Otherwise, assume the core is populated */
+	/* Assume the core is populated */
 	return (false);
 }
 
-/* ascending core index comparison used by bhndb_find_hostb_core() */ 
-static int
-compare_core_index(const void *lhs, const void *rhs)
-{
-	u_int left = ((const struct bhnd_core_info *)lhs)->core_idx;
-	u_int right = ((const struct bhnd_core_info *)rhs)->core_idx;
-
-	if (left < right)
-		return (-1);
-	else if (left > right)
-		return (1);
-	else
-		return (0);
-}
-
 /**
- * Default bhndb(4) implementation of BHNDB_FIND_HOSTB_CORE().
+ * Default bhndb(4) implementation of BHNDB_GET_HOSTB_CORE().
  * 
  * This function uses a heuristic valid on all known PCI/PCIe/PCMCIA-bridged
- * bhnd(4) devices to determine the hostb core:
- * 
- * - The core must have a Broadcom vendor ID.
- * - The core devclass must match the bridge type.
- * - The core must be the first device on the bus with the bridged device
- *   class.
- * 
- * @param	dev	The bridge device.
- * @param	child	The bhnd bus device attached to @p dev.
- * @param[out]	core	Will be populated with the host bridge core info, if
- *			found.
- *
- * @retval 0		success
- * @retval ENOENT	No host bridge core found.
- * @retval non-zero	If locating the host bridge core otherwise fails, a
- *			regular UNIX error code should be returned.
+ * bhnd(4) devices.
  */
 static int
-bhndb_find_hostb_core(device_t dev, device_t child, struct bhnd_core_info *core)
+bhndb_get_hostb_core(device_t dev, device_t child, struct bhnd_core_info *core)
 {
-	return (ENXIO);
-#ifdef XXX_EROM
-	struct bhndb_softc		*sc;
-	struct bhnd_core_match		 md;
-	struct bhnd_core_info		*cores;
-	u_int				 ncores;
-	int				 error;
+	struct bhndb_softc *sc = device_get_softc(dev);
 
-	sc = device_get_softc(dev);
-
-	/* Set up a match descriptor for the required device class. */
-	md = (struct bhnd_core_match) {
-		BHND_MATCH_CORE_CLASS(sc->bridge_class),
-		BHND_MATCH_CORE_UNIT(0)
-	};
-
-	/* Must be the absolute first matching device on the bus. */
-	if ((error = BHND_BUS_GET_CORE_TABLE(child, child, &cores, &ncores)))
-		return (error);
-
-	/* Sort by core index value, ascending */
-	qsort(cores, ncores, sizeof(*cores), compare_core_index);
-
-	/* Find the hostb device */
-	error = ENOENT;
-	for (u_int i = 0; i < ncores; i++) {
-		if (bhnd_core_matches(&cores[i], &md)) {
-			/* Found! */
-			*core = cores[i];
-			error = 0;
-			break;
-		}
-	}
-
-	/* Clean up */
-	free(cores, M_BHND);
-
-	return (error);
-#endif
+	*core = *bhndb_get_bridge_core_info(sc);
+	return (0);
 }
 
 /**
@@ -2023,7 +2058,7 @@ static device_method_t bhndb_methods[] = {
 
 	/* BHNDB interface */
 	DEVMETHOD(bhndb_get_chipid,		bhndb_get_chipid),
-	DEVMETHOD(bhndb_find_hostb_core,	bhndb_find_hostb_core),
+	DEVMETHOD(bhndb_get_hostb_core,		bhndb_get_hostb_core),
 	DEVMETHOD(bhndb_suspend_resource,	bhndb_suspend_resource),
 	DEVMETHOD(bhndb_resume_resource,	bhndb_resume_resource),
 

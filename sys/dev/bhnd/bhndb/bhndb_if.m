@@ -63,10 +63,10 @@ CODE {
 	}
 	
 	static int
-	bhndb_null_find_hostb_core(device_t dev, device_t child,
+	bhndb_null_get_hostb_core(device_t dev, device_t child,
 	    struct bhnd_core_info *core)
 	{
-		panic("bhndb_find_hostb_core unimplemented");
+		panic("bhndb_get_hostb_core unimplemented");
 	}
 	
 	static void
@@ -118,7 +118,7 @@ METHOD int populate_board_info {
 } DEFAULT bhndb_null_populate_board_info;
 
 /**
- * Find the host bridge core for the attached bhnd bus.
+ * Get the host bridge core info for the attached bhnd bus.
  *
  * @param	dev	The bridge device.
  * @param	child	The bhnd bus device attached to @p dev.
@@ -130,11 +130,11 @@ METHOD int populate_board_info {
  * @retval non-zero	If locating the host bridge core otherwise fails, a
  *			regular UNIX error code should be returned.
  */
-METHOD int find_hostb_core {
+METHOD int get_hostb_core {
 	device_t dev;
 	device_t child;
 	struct bhnd_core_info *core;
-} DEFAULT bhndb_null_find_hostb_core;
+} DEFAULT bhndb_null_get_hostb_core;
 
 /**
  * Mark a resource as 'suspended', gauranteeing to the bridge that no

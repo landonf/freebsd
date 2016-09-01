@@ -147,7 +147,6 @@ struct bcma_devinfo {
 /** BMCA per-instance state */
 struct bcma_softc {
 	struct bhnd_softc	bhnd_sc;	/**< bhnd state */
-	device_t		hostb_dev;	/**< host bridge core, or NULL */
 };
 
 #endif /* _BCMA_BCMAVAR_H_ */
