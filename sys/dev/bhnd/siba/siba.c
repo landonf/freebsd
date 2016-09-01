@@ -451,13 +451,29 @@ siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
 
 	cid = &di->core_id;
 
+
 	/* Register the device address space entries */
 	for (uint8_t i = 0; i < di->core_id.num_addrspace; i++) {
+		uint32_t	adm;
+		u_int		adm_offset;
 		uint32_t	bus_reserved;
 
-		/* Fetch the base address and size */
-		if ((error = siba_read_admatch(r, 0x0, i, &addr, &size)))
+		/* Determine the register offset */
+		adm_offset = siba_admatch_offset(i);
+		if (adm_offset == 0) {
+		    device_printf(dev, "addrspace %hhu is unsupported", i);
+		    return (ENODEV);
+		}
+
+		/* Fetch the address match register value */
+		adm = bhnd_bus_read_4(r, adm_offset);
+
+		/* Parse the value */
+		if ((error = siba_parse_admatch(adm, &addr, &size))) {
+			device_printf(dev, "failed to decode address "
+			    " match register value 0x%x\n", adm);
 			return (error);
+		}
 
 		/* If this is the device's core/enumeration addrespace,
 		 * reserve the Sonics configuration register blocks for the
@@ -571,6 +587,7 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 	for (u_int i = 0; i < chipid->ncores; i++) {
 		struct siba_core_id	 cid;
 		device_t		 child;
+		uint32_t		 idhigh, idlow;
 		rman_res_t		 r_count, r_end, r_start;
 
 		/* Map the core's register block */
@@ -593,7 +610,10 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 		}
 		
 		/* Read the core info */
-		cid = siba_read_core_id(r, 0x0, i, 0);
+		idhigh = bhnd_bus_read_4(r, SB0_REG_ABS(SIBA_CFG0_IDHIGH));
+		idlow = bhnd_bus_read_4(r, SB0_REG_ABS(SIBA_CFG0_IDLOW));
+
+		cid = siba_parse_core_id(idhigh, idlow, i, 0);
 		cores[i] = cid.core_info;
 
 		/* Determine unit number */

@@ -57,8 +57,6 @@ int			 siba_suspend(device_t dev);
 
 uint16_t		 siba_get_bhnd_mfgid(uint16_t ocp_vendor);
 
-struct siba_core_id	 siba_read_core_id(struct bhnd_resource *r,
-			     bus_size_t offset, u_int core_idx, int unit);
 struct siba_core_id	 siba_parse_core_id(uint32_t idhigh, uint32_t idlow,
 			     u_int core_idx, int unit);
 
@@ -92,10 +90,6 @@ int			 siba_append_dinfo_region(struct siba_devinfo *dinfo,
 			     uint32_t bus_reserved);
 
 u_int			 siba_admatch_offset(uint8_t addrspace);
-
-int			 siba_read_admatch(struct bhnd_resource *res,
-			     bus_size_t offset, u_int addrspace, uint32_t *addr,
-			     uint32_t *size);
 int			 siba_parse_admatch(uint32_t am, uint32_t *addr,
 			     uint32_t *size);
 
