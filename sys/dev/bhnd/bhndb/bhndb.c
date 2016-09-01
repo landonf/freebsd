@@ -78,11 +78,11 @@ static int			 bhndb_init_full_config(struct bhndb_softc *sc);
 static bool			 bhndb_hw_matches(struct bhnd_core_info *cores,
 				     u_int ncores, const struct bhndb_hw *hw);
 
-static int			 bhndb_initialize_region_cfg(
-				     struct bhndb_softc *sc,
+static int			 bhndb_init_region_cfg(struct bhndb_softc *sc,
+				     bhnd_erom_t *erom,
+				     struct bhndb_resources *r,
 				     struct bhnd_core_info *cores, u_int ncores,
-				     const struct bhndb_hw_priority *table, 
-				     struct bhndb_resources *r);
+				     const struct bhndb_hw_priority *table);
 
 static int			 bhndb_find_hwspec(struct bhndb_softc *sc,
 				     struct bhnd_core_info *cores, u_int ncores,
@@ -218,23 +218,22 @@ bhndb_hw_matches(struct bhnd_core_info *cores, u_int ncores,
 	return (true);
 }
 
-#ifdef XXX_EROM
 /**
- * Initialize the region maps and priority configuration in @p r using
- * the provided priority @p table and the set of devices attached to
- * the bridged @p bus_dev .
+ * Initialize the region maps and priority configuration in @p br using
+ * the priority @p table and the set of cores enumerated by @p erom.
  * 
  * @param sc The bhndb device state.
+ * @param br The resource state to be configured.
+ * @param erom EROM parser used to enumerate @p cores.
  * @param cores All cores enumerated on the bridged bhnd bus.
  * @param ncores The length of @p cores.
  * @param table Hardware priority table to be used to determine the relative
  * priorities of per-core port resources.
- * @param r The resource state to be configured.
  */
 static int
-bhndb_initialize_region_cfg(struct bhndb_softc *sc,
-    struct bhnd_core_info *cores, u_int ncores,
-    const struct bhndb_hw_priority *table, struct bhndb_resources *br)
+bhndb_init_region_cfg(struct bhndb_softc *sc, bhnd_erom_t *erom,
+    struct bhndb_resources *br, struct bhnd_core_info *cores, u_int ncores,
+    const struct bhndb_hw_priority *table)
 {
 	const struct bhndb_hw_priority	*hp;
 	bhnd_addr_t			 addr;
@@ -254,8 +253,10 @@ bhndb_initialize_region_cfg(struct bhndb_softc *sc,
 	for (u_int i = 0; i < ncores; i++) {
 		const struct bhndb_regwin	*regw;
 		struct bhnd_core_info		*core;
+		struct bhnd_core_match		 md;
 
 		core = &cores[i];
+		md = bhnd_core_get_match_desc(core);
 
 		for (regw = br->cfg->register_windows;
 		    regw->win_type != BHNDB_REGWIN_T_INVALID; regw++)
@@ -269,12 +270,11 @@ bhndb_initialize_region_cfg(struct bhndb_softc *sc,
 				continue;
 
 			/* Fetch the base address of the mapped port */
-			error = BHND_BUS_GET_CORE_REGION(
-			    sc->bus_dev, sc->bus_dev,
-			    core->core_idx, 
+			error = bhnd_erom_lookup_core_addr(erom, &md,
 			    regw->d.core.port_type,
 			    regw->d.core.port,
 			    regw->d.core.region,
+			    NULL,
 			    &addr,
 			    &size);
 			if (error) {
@@ -318,8 +318,10 @@ bhndb_initialize_region_cfg(struct bhndb_softc *sc,
 	for (u_int i = 0; i < ncores; i++) {
 		struct bhndb_region	*region;
 		struct bhnd_core_info	*core;
+		struct bhnd_core_match	 md;
 
 		core = &cores[i];
+		md = bhnd_core_get_match_desc(core);
 
 		/* 
 		 * Skip priority accounting for cores that ...
@@ -346,10 +348,9 @@ bhndb_initialize_region_cfg(struct bhndb_softc *sc,
 			pp = &hp->ports[i];
 
 			/* Fetch the address+size of the mapped port. */
-			error = BHND_BUS_GET_CORE_REGION(sc->bus_dev,
-			    sc->bus_dev,
-			    core->core_idx, pp->type, pp->port, pp->region,
-			    &addr, &size);
+			error = bhnd_erom_lookup_core_addr(erom, &md,
+			    pp->type, pp->port, pp->region,
+			    NULL, &addr, &size);
 			if (error) {
 				/* Skip ports not defined on this device */
 				if (error == ENOENT)
@@ -427,7 +428,6 @@ bhndb_initialize_region_cfg(struct bhndb_softc *sc,
 
 	return (0);
 }
-#endif
 
 /**
  * Find a hardware specification for @p dev.
@@ -564,6 +564,10 @@ bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass)
 		return (ENXIO);
 	}
 
+	/* Allocate our host resources */
+	if ((error = bhndb_alloc_host_resources(sc->bus_res)))
+		goto failed;
+
 	/* Add our bridged bus device */
 	sc->bus_dev = BUS_ADD_CHILD(dev, BHND_PROBE_BUS, "bhnd", -1);
 	if (sc->bus_dev == NULL) {
@@ -601,6 +605,8 @@ static int
 bhndb_init_full_config(struct bhndb_softc *sc)
 {
 	struct bhnd_core_info		*cores;
+	struct bhndb_resources		*br;
+	const struct bhndb_hw_priority	*hwprio;
 	bhnd_erom_t			*erom;
 	bhnd_erom_class_t		*erom_cls;
 	const struct bhndb_hw		*hw;
@@ -610,6 +616,7 @@ bhndb_init_full_config(struct bhndb_softc *sc)
 
 	erom = NULL;
 	cores = NULL;
+	br = NULL;
 
 	/* Look for a usable driver for our bridged bhnd(4) bus */
 	if ((error = device_probe(sc->bus_dev)))
@@ -649,44 +656,50 @@ bhndb_init_full_config(struct bhndb_softc *sc)
 	if (bootverbose || BHNDB_DEBUG(PRIO))
 		device_printf(sc->dev, "%s resource configuration\n", hw->name);
 
-	/* Free EROM parser. The parser holds references to the resource state
-	 * about to be reset */
-	bhnd_erom_free_core_table(erom, cores);
-	bhnd_erom_free(erom);
-	erom = NULL;
-	cores = NULL;
-
-	/* Replace existing resource state */
-	bhndb_free_resources(sc->bus_res);
-	sc->bus_res = bhndb_alloc_resources(sc->dev, sc->parent_dev, hw->cfg);
-	if (sc->bus_res == NULL) {
-		error = ENXIO;
-		goto cleanup;
-	}
-
-	/* Re-allocate EROM parser using our full register window
+	/* Allocate new bridge resource state using the discovered hardware
 	 * configuration */
-	erom = bhnd_erom_alloc(erom_cls, sc->bus_dev, 0, sc->chipid.enum_addr);
-	if (erom == NULL) {
+	br = bhndb_alloc_resources(sc->dev, sc->parent_dev, hw->cfg);
+	if (br == NULL) {
 		error = ENXIO;
 		goto cleanup;
 	}
 
 	/* Populate our resource priority configuration */
-#ifdef XXX_EROM
-	error = bhndb_initialize_region_cfg(sc, cores, ncores, hw_prio_table,
-	    sc->bus_res);
-#else
-	error = 0;
-#endif
+	hwprio = BHNDB_BUS_GET_HARDWARE_PRIO(sc->parent_dev, sc->dev);
+	error = bhndb_init_region_cfg(sc, erom, br, cores, ncores, hwprio);
+	if (error)
+		goto cleanup;
+
+	/* The EROM parser holds a reference to the resource state we're
+	 * about to invalidate */
+	bhnd_erom_free_core_table(erom, cores);
+	bhnd_erom_free(erom);
+
+	cores = NULL;
+	erom = NULL;
+
+	/* Replace existing resource state */
+	bhndb_free_resources(sc->bus_res);
+	sc->bus_res = br;
+
+	/* Pointer is now owned by sc->bus_res */
+	br = NULL;
+
+	/* Re-allocate host resources */
+	if ((error = bhndb_alloc_host_resources(sc->bus_res)))
+		goto cleanup;
+
+	return (0);
 
 cleanup:
-	if (erom != NULL) {
-		if (cores != NULL)
-			bhnd_erom_free_core_table(erom, cores);
+	if (cores != NULL)
+		bhnd_erom_free_core_table(erom, cores);
 
+	if (erom != NULL)
 		bhnd_erom_free(erom);
-	}
+
+	if (br != NULL)
+		bhndb_free_resources(br);
 
 	return (error);
 }
