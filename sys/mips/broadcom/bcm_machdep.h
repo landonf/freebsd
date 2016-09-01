@@ -42,10 +42,6 @@
 
 extern const struct bhnd_pmu_io	bcm_pmu_soc_io;
 
-typedef int (bcm_bus_find_core)(struct bhnd_chipid *chipid,
-    bhnd_devclass_t devclass, int unit, struct bhnd_core_info *info,
-    uintptr_t *addr);
-
 struct bcm_platform {
 	struct bhnd_chipid	 cid;		/**< chip id */
 	struct bhnd_core_info	 cc_id;		/**< chipc core info */
@@ -83,9 +79,8 @@ uint64_t		 bcm_get_ilpfreq(struct bcm_platform *bp);
 
 u_int			 bcm_get_uart_rclk(struct bcm_platform *bp);
 
-bcm_bus_find_core	 bcm_find_core_default;
-bcm_bus_find_core	 bcm_find_core_bcma;
-bcm_bus_find_core	 bcm_find_core_siba;
+#define	BCM_ERR(fmt, ...)	\
+	printf("%s: " fmt, __FUNCTION__, ##__VA_ARGS__)
 
 #define	BCM_SOC_BSH(_addr, _offset)			\
 	((bus_space_handle_t)BCM_SOC_ADDR((_addr), (_offset)))
