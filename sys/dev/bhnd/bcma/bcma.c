@@ -524,6 +524,8 @@ bcma_add_children(device_t bus)
 	/* Add all cores. */
 	bcma_erom = (struct bcma_erom *)erom;
 	while ((error = bcma_erom_next_corecfg(bcma_erom, &corecfg)) == 0) {
+		struct bhnd_core_info *core;
+
 		/* Add the child device */
 		child = BUS_ADD_CHILD(bus, 0, NULL, -1);
 		if (child == NULL) {
@@ -553,7 +555,7 @@ bcma_add_children(device_t bus)
 	if (error == ENOENT)
 		error = 0;
 	
-failed:
+cleanup:
 	bhnd_erom_free(erom);
 
 	if (corecfg != NULL)
