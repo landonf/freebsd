@@ -301,8 +301,8 @@ siba_erom_lookup_core(bhnd_erom_t *erom, const struct bhnd_core_match *desc,
 
 static int
 siba_erom_lookup_core_addr(bhnd_erom_t *erom, const struct bhnd_core_match *desc,
-    bhnd_port_type type, u_int port, u_int region, bhnd_addr_t *addr,
-    bhnd_size_t *size)
+    bhnd_port_type type, u_int port, u_int region, struct bhnd_core_info *info,
+    bhnd_addr_t *addr, bhnd_size_t *size)
 {
 	struct siba_erom	*sc;
 	struct bhnd_core_info	 core;
@@ -350,6 +350,9 @@ siba_erom_lookup_core_addr(bhnd_erom_t *erom, const struct bhnd_core_match *desc
 		    am);
 		return (error);
 	}
+
+	if (info != NULL)
+		*info = core;
 
 	*addr = am_addr;
 	*size = am_size;

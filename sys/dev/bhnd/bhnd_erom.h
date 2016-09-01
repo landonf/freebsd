@@ -188,9 +188,11 @@ bhnd_erom_lookup_core(bhnd_erom_t *erom, const struct bhnd_core_match *desc,
  * @param	type	The port type to search for.
  * @param	port	The port to search for.
  * @param	region	The port region to search for.
+ * @param[out]	core	If not NULL, will be populated with the matched core
+ *			info record on success.
  * @param[out]	addr	On success, the base address of the port region.
  * @param[out]	size	On success, the total size of the port region.
- *
+ * 
  * @retval 0		success
  * @retval ENOENT	No core matching @p desc was found.
  * @retval ENOENT	No port region matching @p type, @p port, and @p region
@@ -199,11 +201,11 @@ bhnd_erom_lookup_core(bhnd_erom_t *erom, const struct bhnd_core_match *desc,
  */
 static inline int
 bhnd_erom_lookup_core_addr(bhnd_erom_t *erom, const struct bhnd_core_match *desc,
-    bhnd_port_type type, u_int port, u_int region, bhnd_addr_t *addr,
-    bhnd_size_t *size)
+    bhnd_port_type type, u_int port, u_int region, struct bhnd_core_info *core,
+    bhnd_addr_t *addr, bhnd_size_t *size)
 {
 	return (BHND_EROM_LOOKUP_CORE_ADDR(erom, desc, type, port, region,
-	    addr, size));
+	    core, addr, size));
 };
 
 #endif /* _BHND_EROM_BHND_EROM_H_ */

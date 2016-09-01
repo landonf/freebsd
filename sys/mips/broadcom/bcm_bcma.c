@@ -70,18 +70,14 @@ bcm_find_core_bcma(struct bhnd_chipid *chipid, bhnd_devclass_t devclass,
 		return (error);
 	}
 
-	/* Fetch core info */
+	/* Fetch core info and port address mapping */
 	m = (struct bhnd_core_match) {
 		BHND_MATCH_CORE_CLASS(devclass),
 		BHND_MATCH_CORE_UNIT(unit)
 	};
 
-	if ((error = bhnd_erom_lookup_core(erom, &m, info)))
-		goto cleanup;
-
-	/* Fetch port address mapping */
 	error = bhnd_erom_lookup_core_addr(erom, &m, BHND_PORT_DEVICE, 0, 0,
-	    &b_addr, &b_size);
+	    info, &b_addr, &b_size);
 	if (error)
 		goto cleanup;
 

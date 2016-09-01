@@ -176,6 +176,8 @@ METHOD int lookup_core {
  * @param	type	The port type to search for.
  * @param	port	The port to search for.
  * @param	region	The port region to search for.
+ * @param[out]	core	If not NULL, will be populated with the matched core
+ *			info record on success.
  * @param[out]	addr	On success, the base address of the port region.
  * @param[out]	size	On success, the total size of the port region.
  *
@@ -191,6 +193,7 @@ METHOD int lookup_core_addr {
 	bhnd_port_type			 type;
 	u_int				 port;
 	u_int				 region;
+	struct bhnd_core_info		*core;
 	bhnd_addr_t			*addr;
 	bhnd_size_t			*size;
 };

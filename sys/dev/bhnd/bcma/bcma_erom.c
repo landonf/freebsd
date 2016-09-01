@@ -222,7 +222,7 @@ bcma_erom_lookup_core(bhnd_erom_t *erom, const struct bhnd_core_match *desc,
 static int
 bcma_erom_lookup_core_addr(bhnd_erom_t *erom, const struct bhnd_core_match *desc,
     bhnd_port_type port_type, u_int port_num, u_int region_num,
-    bhnd_addr_t *addr, bhnd_size_t *size)
+    struct bhnd_core_info *core, bhnd_addr_t *addr, bhnd_size_t *size)
 {
 	struct bcma_erom	*sc;
 	struct bcma_erom_core	 ec;
@@ -233,8 +233,9 @@ bcma_erom_lookup_core_addr(bhnd_erom_t *erom, const struct bhnd_core_match *desc
 
 	sc = (struct bcma_erom *)erom;
 
-	/* Seek to the first matching core */
-	if ((error = erom_seek_matching_core(sc, desc, NULL)))
+	/* Seek to the first matching core and provide the core info
+	 * to the caller */
+	if ((error = erom_seek_matching_core(sc, desc, core)))
 		return (error);
 
 	if ((error = erom_parse_core(sc, &ec)))
