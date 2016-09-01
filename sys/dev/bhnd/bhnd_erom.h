@@ -37,9 +37,9 @@
 #include <sys/linker_set.h>
 
 #include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/bhnd_erom_types.h>
 
 #include "bhnd_erom_if.h"
-#include "bhnd_erom_types.h"
 
 bhnd_erom_t			*bhnd_erom_alloc(bhnd_erom_class_t *cls,
 				     device_t parent, int rid,

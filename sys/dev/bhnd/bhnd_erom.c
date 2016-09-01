@@ -34,8 +34,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/kobj.h>
 
 #include <dev/bhnd/bhndvar.h>
-
-#include "bhnd_erom.h"
+#include <dev/bhnd/bhnd_erom.h>
 
 /**
  * Allocate and return a new device enumeration table parser.

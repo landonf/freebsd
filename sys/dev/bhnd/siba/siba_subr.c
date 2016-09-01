@@ -64,28 +64,6 @@ siba_get_bhnd_mfgid(uint16_t ocp_vendor)
 }
 
 /**
- * Read and parse the SIBA_IDH_* fields from the per-core identification
- * registers mapped by @p res, returning a siba_core_id representation.
- * 
- * @param res A bus resource mapping the core register block.
- * @param offset Offset to the core registers within @p res.
- * @param core_id The core id (index) to include in the result.
- * @param unit The unit number to include in the result.
- */
-struct siba_core_id
-siba_read_core_id(struct bhnd_resource *r, bus_size_t offset, u_int core_idx,
-    int unit)
-{
-	uint32_t idhigh, idlow;
-
-	/* Read the core info */
-	idhigh = bhnd_bus_read_4(r, offset + SB0_REG_ABS(SIBA_CFG0_IDHIGH));
-	idlow = bhnd_bus_read_4(r, offset + SB0_REG_ABS(SIBA_CFG0_IDLOW));
-
-	return (siba_parse_core_id(idhigh, idlow, core_idx, unit));
-}
-
-/**
  * Parse the SIBA_IDH_* fields from the per-core identification
  * registers, returning a siba_core_id representation.
  * 
@@ -445,47 +423,6 @@ siba_admatch_offset(uint8_t addrspace)
 	default:
 		return (0);
 	}
-}
-
-/**
- * Read and parse a SIBA_R0_ADMATCH* register from the core registers mapped by
- * @p res.
- * 
- * @param res A bus resource mapping the core registers.
- * @param offset Offset to the core registers within @p res.
- * @param addrspace The admatch register number to be fetched.
- * @param[out] addr The parsed address.
- * @param[out] size The parsed size.
- * 
- * @retval 0 success
- * @retval non-zero an error occurred reading or parsing the admatch register.
- */
-int
-siba_read_admatch(struct bhnd_resource *res, bus_size_t offset, u_int addrspace,
-    uint32_t *addr, uint32_t *size)
-{
-	uint32_t	adm;
-	u_int		adm_offset;
-	int		error;
-
-	/* Determine the register offset */
-	adm_offset = siba_admatch_offset(addrspace);
-	if (adm_offset == 0) {
-		printf("addrspace %u is unsupported", addrspace);
-		return (ENODEV);
-	}
-
-	/* Fetch the address match register value */
-	adm = bhnd_bus_read_4(res, offset + adm_offset);
-
-	/* Parse the value */
-	if ((error = siba_parse_admatch(adm, addr, size))) {
-		printf("failed to decode address match register value 0x%x\n",
-		    adm);
-		return (error);
-	}
-
-	return (0);
 }
 
 /**
