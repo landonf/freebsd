@@ -39,6 +39,7 @@
 
 #include "bhnd_ids.h"
 #include "bhnd_types.h"
+#include "bhnd_erom_types.h"
 #include "bhnd_debug.h"
 #include "bhnd_bus_if.h"
 #include "bhnd_match.h"
@@ -278,6 +279,13 @@ const struct bhnd_core_info	*bhnd_find_core(
 				     const struct bhnd_core_info *cores,
 				     u_int num_cores, bhnd_devclass_t class);
 
+struct bhnd_core_match		 bhnd_core_get_match_desc(
+				     const struct bhnd_core_info *core);
+
+bool				 bhnd_cores_equal(
+				     const struct bhnd_core_info *lhs,
+				     const struct bhnd_core_info *rhs);
+
 bool				 bhnd_core_matches(
 				     const struct bhnd_core_info *core,
 				     const struct bhnd_core_match *desc);
@@ -359,8 +367,9 @@ int				 bhnd_nvram_getvar_array(device_t dev,
 				     const char *name, void *buf, size_t count,
 				     bhnd_nvram_type type);
 
-bool				 bhnd_bus_generic_is_hw_disabled(device_t dev,
-				     device_t child);
+bool				 bhnd_bus_generic_is_core_disabled(device_t dev,
+				     device_t child,
+				     struct bhnd_core_info *core);
 bool				 bhnd_bus_generic_is_region_valid(device_t dev,
 				     device_t child, bhnd_port_type type,
 				     u_int port, u_int region);
@@ -389,7 +398,18 @@ int				 bhnd_bus_generic_deactivate_resource (device_t dev,
 bhnd_attach_type		 bhnd_bus_generic_get_attach_type(device_t dev,
 				     device_t child);
 
-
+/**
+ * Return a class capable of parsing the device enumeration table for
+ * @p chipid, or NULL if not supported by this bhnd(4) bus driver.
+ *
+ * @param driver	A bhnd bus driver instance.
+ * @param chipid	The bhnd chip identification.
+ */
+static inline bhnd_erom_class_t *
+bhnd_driver_get_erom_class(driver_t *driver, const struct bhnd_chipid *chipid)
+{
+	return (BHND_BUS_GET_EROM_CLASS(driver, chipid));
+}
 
 /**
  * Return the active host bridge core for the bhnd bus, if any, or NULL if
@@ -403,22 +423,6 @@ bhnd_find_hostb_device(device_t dev) {
 }
 
 /**
- * Return true if the hardware components required by @p dev are known to be
- * unpopulated or otherwise unusable.
- *
- * In some cases, enumerated devices may have pins that are left floating, or
- * the hardware may otherwise be non-functional; this method allows a parent
- * device to explicitly specify if a successfully enumerated @p dev should
- * be disabled.
- *
- * @param dev A bhnd bus child device.
- */
-static inline bool
-bhnd_is_hw_disabled(device_t dev) {
-	return (BHND_BUS_IS_HW_DISABLED(device_get_parent(dev), dev));
-}
-
-/**
  * Return the BHND chip identification info for the bhnd bus.
  *
  * @param dev A bhnd bus child device.
@@ -427,32 +431,6 @@ static inline const struct bhnd_chipid *
 bhnd_get_chipid(device_t dev) {
 	return (BHND_BUS_GET_CHIPID(device_get_parent(dev), dev));
 };
-
-/**
- * Get a list of all cores discoverable on the bhnd bus.
- *
- * Enumerates all cores discoverable on @p dev, returning the list in
- * @p cores and the count in @p num_cores.
- * 
- * The memory allocated for the list should be freed using
- * `free(*cores, M_BHND)`. @p cores and @p num_cores are not changed
- * when an error is returned.
- * 
- * @param	dev		A bhnd bus child device.
- * @param[out]	cores		The table of core descriptors.
- * @param[out]	num_cores	The number of core descriptors in @p cores.
- * 
- * @retval 0		success
- * @retval non-zero	if an error occurs enumerating @p dev, a regular UNIX
- *			error code should be returned.
- */
-static inline int
-bhnd_get_core_table(device_t dev, struct bhnd_core_info **cores,
-    u_int *num_cores)
-{
-	return (BHND_BUS_GET_CORE_TABLE(device_get_parent(dev), dev, cores,
-	    num_cores));
-}
 
 /**
  * If supported by the chipset, return the clock source for the given clock.

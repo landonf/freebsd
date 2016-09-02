@@ -50,6 +50,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhndvar.h>
 #include <dev/bhnd/bhndreg.h>
 
+#include <dev/bhnd/bhnd_erom.h>
+
 #include <dev/bhnd/cores/chipc/chipcreg.h>
 #include <dev/bhnd/nvram/bhnd_nvram.h>
 
@@ -71,18 +73,24 @@ enum {
 
 #define	BHNDB_DEBUG(_type)	(BHNDB_DEBUG_ ## _type & bhndb_debug)
 
-static bool			 bhndb_hw_matches(device_t *devlist,
-				     int num_devs,
-				     const struct bhndb_hw *hw);
+static int			 bhndb_find_hostb_core(struct bhndb_softc *sc,
+				     bhnd_erom_t *erom,
+				     struct bhnd_core_info *core);
+static int			 bhndb_init_full_config(struct bhndb_softc *sc);
 
-static int			 bhndb_initialize_region_cfg(
-				     struct bhndb_softc *sc, device_t *devs,
-				     int ndevs,
-				     const struct bhndb_hw_priority *table, 
-				     struct bhndb_resources *r);
+static bool			 bhndb_hw_matches(struct bhnd_core_info *cores,
+				     u_int ncores, const struct bhndb_hw *hw);
+
+static struct bhnd_core_info	*bhndb_get_bridge_core_info(struct bhndb_softc *sc);
+
+static int			 bhndb_init_region_cfg(struct bhndb_softc *sc,
+				     bhnd_erom_t *erom,
+				     struct bhndb_resources *r,
+				     struct bhnd_core_info *cores, u_int ncores,
+				     const struct bhndb_hw_priority *table);
 
 static int			 bhndb_find_hwspec(struct bhndb_softc *sc,
-				     device_t *devs, int ndevs,
+				     struct bhnd_core_info *cores, u_int ncores,
 				     const struct bhndb_hw **hw);
 
 static int			 bhndb_read_chipid(struct bhndb_softc *sc,
@@ -183,26 +191,40 @@ bhndb_child_location_str(device_t dev, device_t child, char *buf,
 }
 
 /**
- * Return true if @p devlist matches the @p hw specification.
+ * Return the bridge core info. Will panic if the bridge core info has not yet
+ * been populated during full bridge configuration.
  * 
- * @param devlist A device table to match against.
- * @param num_devs The number of devices in @p devlist.
+ * @param sc BHNDB device state.
+ */
+static struct bhnd_core_info *
+bhndb_get_bridge_core_info(struct bhndb_softc *sc)
+{
+	if (!sc->have_br_core)
+		panic("bridge not yet fully configured; no bridge core!");
+
+	return (&sc->bridge_core);
+}
+
+/**
+ * Return true if @p cores matches the @p hw specification.
+ * 
+ * @param cores A device table to match against.
+ * @param ncores The number of cores in @p cores.
  * @param hw The hardware description to be matched against.
  */
 static bool
-bhndb_hw_matches(device_t *devlist, int num_devs, const struct bhndb_hw *hw)
+bhndb_hw_matches(struct bhnd_core_info *cores, u_int ncores,
+    const struct bhndb_hw *hw)
 {
 	for (u_int i = 0; i < hw->num_hw_reqs; i++) {
 		const struct bhnd_core_match	*match;
-		struct bhnd_core_info		 ci;
 		bool				 found;
 
 		match =  &hw->hw_reqs[i];
 		found = false;
 
-		for (int d = 0; d < num_devs; d++) {
-			ci = bhnd_get_core_info(devlist[d]);
-			if (!bhnd_core_matches(&ci, match))
+		for (u_int d = 0; d < ncores; d++) {
+			if (!bhnd_core_matches(&cores[d], match))
 				continue;
 
 			found = true;
@@ -217,20 +239,21 @@ bhndb_hw_matches(device_t *devlist, int num_devs, const struct bhndb_hw *hw)
 }
 
 /**
- * Initialize the region maps and priority configuration in @p r using
- * the provided priority @p table and the set of devices attached to
- * the bridged @p bus_dev .
+ * Initialize the region maps and priority configuration in @p br using
+ * the priority @p table and the set of cores enumerated by @p erom.
  * 
  * @param sc The bhndb device state.
- * @param devs All devices enumerated on the bridged bhnd bus.
- * @param ndevs The length of @p devs.
+ * @param br The resource state to be configured.
+ * @param erom EROM parser used to enumerate @p cores.
+ * @param cores All cores enumerated on the bridged bhnd bus.
+ * @param ncores The length of @p cores.
  * @param table Hardware priority table to be used to determine the relative
  * priorities of per-core port resources.
- * @param r The resource state to be configured.
  */
 static int
-bhndb_initialize_region_cfg(struct bhndb_softc *sc, device_t *devs, int ndevs,
-    const struct bhndb_hw_priority *table, struct bhndb_resources *r)
+bhndb_init_region_cfg(struct bhndb_softc *sc, bhnd_erom_t *erom,
+    struct bhndb_resources *br, struct bhnd_core_info *cores, u_int ncores,
+    const struct bhndb_hw_priority *table)
 {
 	const struct bhndb_hw_priority	*hp;
 	bhnd_addr_t			 addr;
@@ -247,29 +270,40 @@ bhndb_initialize_region_cfg(struct bhndb_softc *sc, device_t *devs, int ndevs,
 	/* 
 	 * Register bridge regions covering all statically mapped ports.
 	 */
-	for (int i = 0; i < ndevs; i++) {
+	for (u_int i = 0; i < ncores; i++) {
 		const struct bhndb_regwin	*regw;
-		device_t			 child;
+		struct bhnd_core_info		*core;
+		struct bhnd_core_match		 md;
 
-		child = devs[i];
+		core = &cores[i];
+		md = bhnd_core_get_match_desc(core);
 
-		for (regw = r->cfg->register_windows;
+		for (regw = br->cfg->register_windows;
 		    regw->win_type != BHNDB_REGWIN_T_INVALID; regw++)
 		{
 			/* Only core windows are supported */
 			if (regw->win_type != BHNDB_REGWIN_T_CORE)
 				continue;
 
-			/* Skip non-applicable register windows. */
-			if (!bhndb_regwin_matches_device(regw, child))
+			/* Skip non-matching cores. */
+			if (!bhndb_regwin_match_core(regw, core))
 				continue;
-			
-			/* Fetch the base address of the mapped port. */
-			error = bhnd_get_region_addr(child,
-			    regw->d.core.port_type, regw->d.core.port,
-			    regw->d.core.region, &addr, &size);
-			if (error)
-			    return (error);
+
+			/* Fetch the base address of the mapped port */
+			error = bhnd_erom_lookup_core_addr(erom, &md,
+			    regw->d.core.port_type,
+			    regw->d.core.port,
+			    regw->d.core.region,
+			    NULL,
+			    &addr,
+			    &size);
+			if (error) {
+				/* Skip non-applicable register windows */
+				if (error == ENOENT)
+					continue;
+
+				return (error);
+			}
 
 			/*
 			 * Always defer to the register window's size.
@@ -290,7 +324,7 @@ bhndb_initialize_region_cfg(struct bhndb_softc *sc, device_t *devs, int ndevs,
 			 * The window priority for a statically mapped
 			 * region is always HIGH.
 			 */
-			error = bhndb_add_resource_region(r, addr, size,
+			error = bhndb_add_resource_region(br, addr, size,
 			    BHNDB_PRIORITY_HIGH, regw);
 			if (error)
 				return (error);
@@ -301,22 +335,24 @@ bhndb_initialize_region_cfg(struct bhndb_softc *sc, device_t *devs, int ndevs,
 	 * Perform priority accounting and register bridge regions for all
 	 * ports defined in the priority table
 	 */
-	for (int i = 0; i < ndevs; i++) {
+	for (u_int i = 0; i < ncores; i++) {
 		struct bhndb_region	*region;
-		device_t		 child;
+		struct bhnd_core_info	*core;
+		struct bhnd_core_match	 md;
 
-		child = devs[i];
+		core = &cores[i];
+		md = bhnd_core_get_match_desc(core);
 
 		/* 
 		 * Skip priority accounting for cores that ...
 		 */
 		
 		/* ... do not require bridge resources */
-		if (bhnd_is_hw_disabled(child) || !device_is_enabled(child))
+		if (BHND_BUS_IS_CORE_DISABLED(sc->dev, sc->dev, core))
 			continue;
 
 		/* ... do not have a priority table entry */
-		hp = bhndb_hw_priority_find_device(table, child);
+		hp = bhndb_hw_priority_find_core(table, core);
 		if (hp == NULL)
 			continue;
 
@@ -330,27 +366,26 @@ bhndb_initialize_region_cfg(struct bhndb_softc *sc, device_t *devs, int ndevs,
 			const struct bhndb_port_priority *pp;
 
 			pp = &hp->ports[i];
-			
-			/* Skip ports not defined on this device */
-			if (!bhnd_is_region_valid(child, pp->type, pp->port,
-			    pp->region))
-			{
-				continue;
-			}
 
 			/* Fetch the address+size of the mapped port. */
-			error = bhnd_get_region_addr(child, pp->type, pp->port,
-			    pp->region, &addr, &size);
-			if (error)
-			    return (error);
+			error = bhnd_erom_lookup_core_addr(erom, &md,
+			    pp->type, pp->port, pp->region,
+			    NULL, &addr, &size);
+			if (error) {
+				/* Skip ports not defined on this device */
+				if (error == ENOENT)
+					continue;
+
+				return (error);
+			}
 
 			/* Skip ports with an existing static mapping */
-			region = bhndb_find_resource_region(r, addr, size);
+			region = bhndb_find_resource_region(br, addr, size);
 			if (region != NULL && region->static_regwin != NULL)
 				continue;
 
 			/* Define a dynamic region for this port */
-			error = bhndb_add_resource_region(r, addr, size,
+			error = bhndb_add_resource_region(br, addr, size,
 			    pp->priority, NULL);
 			if (error)
 				return (error);
@@ -375,17 +410,17 @@ bhndb_initialize_region_cfg(struct bhndb_softc *sc, device_t *devs, int ndevs,
 	/* Determine the minimum priority at which we'll allocate direct
 	 * register windows from our dynamic pool */
 	size_t prio_total = prio_low + prio_default + prio_high;
-	if (prio_total <= r->dwa_count) {
+	if (prio_total <= br->dwa_count) {
 		/* low+default+high priority regions get windows */
-		r->min_prio = BHNDB_PRIORITY_LOW;
+		br->min_prio = BHNDB_PRIORITY_LOW;
 
-	} else if (prio_default + prio_high <= r->dwa_count) {
+	} else if (prio_default + prio_high <= br->dwa_count) {
 		/* default+high priority regions get windows */
-		r->min_prio = BHNDB_PRIORITY_DEFAULT;
+		br->min_prio = BHNDB_PRIORITY_DEFAULT;
 
 	} else {
 		/* high priority regions get windows */
-		r->min_prio = BHNDB_PRIORITY_HIGH;
+		br->min_prio = BHNDB_PRIORITY_HIGH;
 	}
 
 	if (BHNDB_DEBUG(PRIO)) {
@@ -393,10 +428,10 @@ bhndb_initialize_region_cfg(struct bhndb_softc *sc, device_t *devs, int ndevs,
 		const char		*direct_msg, *type_msg;
 		bhndb_priority_t	 prio, prio_min;
 
-		prio_min = r->min_prio;
+		prio_min = br->min_prio;
 		device_printf(sc->dev, "min_prio: %d\n", prio_min);
 
-		STAILQ_FOREACH(region, &r->bus_regions, link) {
+		STAILQ_FOREACH(region, &br->bus_regions, link) {
 			prio = region->priority;
 
 			direct_msg = prio >= prio_min ? "direct" : "indirect";
@@ -418,8 +453,8 @@ bhndb_initialize_region_cfg(struct bhndb_softc *sc, device_t *devs, int ndevs,
  * Find a hardware specification for @p dev.
  * 
  * @param sc The bhndb device state.
- * @param devs All devices enumerated on the bridged bhnd bus.
- * @param ndevs The length of @p devs.
+ * @param cores All cores enumerated on the bridged bhnd bus.
+ * @param ncores The length of @p cores.
  * @param[out] hw On success, the matched hardware specification.
  * with @p dev.
  * 
@@ -427,15 +462,15 @@ bhndb_initialize_region_cfg(struct bhndb_softc *sc, device_t *devs, int ndevs,
  * @retval non-zero if an error occurs fetching device info for comparison.
  */
 static int
-bhndb_find_hwspec(struct bhndb_softc *sc, device_t *devs, int ndevs,
-    const struct bhndb_hw **hw)
+bhndb_find_hwspec(struct bhndb_softc *sc, struct bhnd_core_info *cores,
+    u_int ncores, const struct bhndb_hw **hw)
 {
 	const struct bhndb_hw	*next, *hw_table;
 
 	/* Search for the first matching hardware config. */
 	hw_table = BHNDB_BUS_GET_HARDWARE_TABLE(sc->parent_dev, sc->dev);
 	for (next = hw_table; next->hw_reqs != NULL; next++) {
-		if (!bhndb_hw_matches(devs, ndevs, next))
+		if (!bhndb_hw_matches(cores, ncores, next))
 			continue;
 
 		/* Found */
@@ -510,6 +545,11 @@ bhndb_read_chipid(struct bhndb_softc *sc, const struct bhndb_hwcfg *cfg,
  * when implementing DEVICE_ATTACH() before calling any bhnd(4) or bhndb(4)
  * APIs on the bridge device.
  * 
+ * This function will add a bridged bhnd(4) child device with a device order of
+ * BHND_PROBE_BUS. Any subclass bhndb(4) driver may use the BHND_PROBE_*
+ * priority bands to add additional devices that will be attached in
+ * their preferred order relative to the bridged bhnd(4) bus.
+ * 
  * @param dev The bridge device to attach.
  * @param bridge_devclass The device class of the bridging core. This is used
  * to automatically detect the bridge core, and to disable additional bridge
@@ -541,19 +581,26 @@ bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass)
 		return (ENXIO);
 	}
 
-	/* Attach our bridged bus device */
-	sc->bus_dev = BUS_ADD_CHILD(dev, 0, "bhnd", -1);
+	/* Allocate our host resources */
+	if ((error = bhndb_alloc_host_resources(sc->bus_res)))
+		goto failed;
+
+	/* Add our bridged bus device */
+	sc->bus_dev = BUS_ADD_CHILD(dev, BHND_PROBE_BUS, "bhnd", -1);
 	if (sc->bus_dev == NULL) {
 		error = ENXIO;
 		goto failed;
 	}
 
-	/* Configure address space */
 	dinfo = device_get_ivars(sc->bus_dev);
 	dinfo->addrspace = BHNDB_ADDRSPACE_BRIDGED;
 
-	/* Finish attach */
-	return (bus_generic_attach(dev));
+	/* Enumerate the bridged device and fully initialize our bridged
+	 * resource configuration */
+	if ((error = bhndb_init_full_config(sc)))
+		goto failed;
+
+	return (0);
 
 failed:
 	BHNDB_LOCK_DESTROY(sc);
@@ -564,55 +611,158 @@ failed:
 	return (error);
 }
 
-/**
- * Default bhndb(4) implementation of BHNDB_INIT_FULL_CONFIG().
- * 
- * This function provides the default bhndb implementation of
- * BHNDB_INIT_FULL_CONFIG(), and must be called by any subclass driver
- * overriding BHNDB_INIT_FULL_CONFIG().
- * 
- * As documented by BHNDB_INIT_FULL_CONFIG, this function performs final
- * bridge configuration based on the hardware information enumerated by the
- * child bus, and will reset all resource allocation state on the bridge.
- * 
- * When calling this method:
- * - Any bus resources previously allocated by @p child must be deallocated.
- * - The @p child bus must have performed initial enumeration -- but not
- *   probe or attachment -- of its children.
- */
-int
-bhndb_generic_init_full_config(device_t dev, device_t child,
-    const struct bhndb_hw_priority *hw_prio_table)
+/* ascending core index comparison used by bhndb_find_hostb_core() */ 
+static int
+compare_core_index(const void *lhs, const void *rhs)
 {
-	struct bhndb_softc		*sc;
-	const struct bhndb_hw		*hw;
-	struct bhndb_resources		*r;
-	device_t			*devs;
-	device_t			 hostb;
-	int				 ndevs;
-	int				 error;
+	u_int left = ((const struct bhnd_core_info *)lhs)->core_idx;
+	u_int right = ((const struct bhnd_core_info *)rhs)->core_idx;
 
-	sc = device_get_softc(dev);
-	hostb = NULL;
+	if (left < right)
+		return (-1);
+	else if (left > right)
+		return (1);
+	else
+		return (0);
+}
 
-	/* Fetch the full set of bhnd-attached cores */
-	if ((error = device_get_children(sc->bus_dev, &devs, &ndevs))) {
-		device_printf(sc->dev, "unable to get children\n");
+/**
+ * Search @p erom for the core serving as the bhnd host bridge.
+ * 
+ * This function uses a heuristic valid on all known PCI/PCIe/PCMCIA-bridged
+ * bhnd(4) devices to determine the hostb core:
+ * 
+ * - The core must have a Broadcom vendor ID.
+ * - The core devclass must match the bridge type.
+ * - The core must be the first device on the bus with the bridged device
+ *   class.
+ * 
+ * @param sc BHNDB device state.
+ * @param erom The device enumeration table parser to be used to fetch
+ * core info.
+ * @param[out] core If found, the matching core info.
+ * 
+ * @retval 0 success
+ * @retval ENOENT not found
+ * @retval non-zero if an error occured fetching core info.
+ */
+static int
+bhndb_find_hostb_core(struct bhndb_softc *sc, bhnd_erom_t *erom,
+    struct bhnd_core_info *core)
+{
+	struct bhnd_core_match	 md;
+	struct bhnd_core_info	*cores;
+	u_int			 ncores;
+	int			 error;
+
+	if ((error = bhnd_erom_get_core_table(erom, &cores, &ncores)))
 		return (error);
+
+	/* Set up a match descriptor for the required device class. */
+	md = (struct bhnd_core_match) {
+		BHND_MATCH_CORE_CLASS(sc->bridge_class),
+		BHND_MATCH_CORE_UNIT(0)
+	};
+
+	/* Ensure the table is sorted by core index value, ascending;
+	 * the host bridge must be the absolute first matching device on the
+	 * bus. */
+	qsort(cores, ncores, sizeof(*cores), compare_core_index);
+
+	/* Find the hostb core */
+	error = ENOENT;
+	for (u_int i = 0; i < ncores; i++) {
+		if (bhnd_core_matches(&cores[i], &md)) {
+			/* Found! */
+			*core = cores[i];
+			error = 0;
+			break;
+		}
 	}
 
-	/* Find our host bridge device */
-	hostb = BHNDB_FIND_HOSTB_DEVICE(dev, child);
-	if (hostb == NULL) {
-		device_printf(sc->dev, "no host bridge core found\n");
-		error = ENODEV;
+	/* Clean up */
+	bhnd_erom_free_core_table(erom, cores);
+
+	return (error);
+}
+
+static bhnd_erom_class_t *
+bhndb_find_erom_class(struct bhndb_softc *sc)
+{
+	bhnd_erom_class_t	*cls;
+	devclass_t		 bhndb_devclass;
+	driver_t		**drivers;
+	int			 drv_count;
+
+	bhndb_devclass = device_get_devclass(sc->dev);
+	if (devclass_get_drivers(bhndb_devclass, &drivers, &drv_count) != 0)
+		return (NULL);
+
+	cls = NULL;
+	for (int i = 0; i < drv_count; i++) {
+		cls = bhnd_driver_get_erom_class(drivers[i], &sc->chipid);
+		if (cls != NULL)
+			break;
+	}
+
+	free(drivers, M_TEMP);
+	return (cls);
+	
+}
+
+/**
+ * Identify the bridged device and perform final bridge resource configuration
+ * based on capabilities of the enumerated device.
+ * 
+ * Any bridged resources allocated using the generic brige hardware
+ * configuration must be released prior to calling this function.
+ */
+static int
+bhndb_init_full_config(struct bhndb_softc *sc)
+{
+	struct bhnd_core_info		*cores;
+	struct bhndb_resources		*br;
+	const struct bhndb_hw_priority	*hwprio;
+	bhnd_erom_t			*erom;
+	bhnd_erom_class_t		*erom_cls;
+	const struct bhndb_hw		*hw;
+	u_int				 ncores;
+	int				 error;
+
+	erom = NULL;
+	cores = NULL;
+	br = NULL;
+
+	/* Look for a usable EROM class for our bridged bhnd(4) bus */
+	erom_cls = bhndb_find_erom_class(sc);
+	if (erom_cls == NULL) {
+		device_printf(sc->dev, "device enumeration unsupported; no "
+		    "compatible driver found\n");
+		return (ENXIO);
+	}
+
+	/* Allocate EROM parser instance */
+	erom = bhnd_erom_alloc(erom_cls, sc->bus_dev, 0, sc->chipid.enum_addr);
+	if (erom == NULL)
+		return (ENXIO);
+
+	/* Look for our host bridge core */
+	if ((error = bhndb_find_hostb_core(sc, erom, &sc->bridge_core)))
+		goto cleanup;
+	else
+		sc->have_br_core = true;
+
+	/* Fetch the bridged device's core table */
+	if ((error = bhnd_erom_get_core_table(erom, &cores, &ncores))) {
+		device_printf(sc->dev, "error fetching core table: %d\n",
+		    error);
 		goto cleanup;
 	}
 
 	/* Find our full register window configuration */
-	if ((error = bhndb_find_hwspec(sc, devs, ndevs, &hw))) {
+	if ((error = bhndb_find_hwspec(sc, cores, ncores, &hw))) {
 		device_printf(sc->dev, "unable to identify device, "
-			" using generic bridge resource definitions\n");
+		    " using generic bridge resource definitions\n");
 		error = 0;
 		goto cleanup;
 	}
@@ -620,34 +770,51 @@ bhndb_generic_init_full_config(device_t dev, device_t child,
 	if (bootverbose || BHNDB_DEBUG(PRIO))
 		device_printf(sc->dev, "%s resource configuration\n", hw->name);
 
-	/* Release existing resource state */
-	BHNDB_LOCK(sc);
-	bhndb_free_resources(sc->bus_res);
-	sc->bus_res = NULL;
-	BHNDB_UNLOCK(sc);
-
-	/* Allocate new resource state */
-	r = bhndb_alloc_resources(dev, sc->parent_dev, hw->cfg);
-	if (r == NULL) {
+	/* Allocate new bridge resource state using the discovered hardware
+	 * configuration */
+	br = bhndb_alloc_resources(sc->dev, sc->parent_dev, hw->cfg);
+	if (br == NULL) {
 		error = ENXIO;
 		goto cleanup;
 	}
 
-	/* Initialize our resource priority configuration */
-	error = bhndb_initialize_region_cfg(sc, devs, ndevs, hw_prio_table, r);
-	if (error) {
-		bhndb_free_resources(r);
+	/* Populate our resource priority configuration */
+	hwprio = BHNDB_BUS_GET_HARDWARE_PRIO(sc->parent_dev, sc->dev);
+	error = bhndb_init_region_cfg(sc, erom, br, cores, ncores, hwprio);
+	if (error)
 		goto cleanup;
-	}
 
-	/* Update our bridge state */
-	BHNDB_LOCK(sc);
-	sc->bus_res = r;
-	sc->hostb_dev = hostb;
-	BHNDB_UNLOCK(sc);
+	/* The EROM parser holds a reference to the resource state we're
+	 * about to invalidate */
+	bhnd_erom_free_core_table(erom, cores);
+	bhnd_erom_free(erom);
+
+	cores = NULL;
+	erom = NULL;
+
+	/* Replace existing resource state */
+	bhndb_free_resources(sc->bus_res);
+	sc->bus_res = br;
+
+	/* Pointer is now owned by sc->bus_res */
+	br = NULL;
+
+	/* Re-allocate host resources */
+	if ((error = bhndb_alloc_host_resources(sc->bus_res)))
+		goto cleanup;
+
+	return (0);
 
 cleanup:
-	free(devs, M_TEMP);
+	if (cores != NULL)
+		bhnd_erom_free_core_table(erom, cores);
+
+	if (erom != NULL)
+		bhnd_erom_free(erom);
+
+	if (br != NULL)
+		bhndb_free_resources(br);
+
 	return (error);
 }
 
@@ -925,101 +1092,44 @@ bhndb_get_chipid(device_t dev, device_t child)
 
 
 /**
- * Default implementation of BHNDB_IS_HW_DISABLED().
+ * Default implementation of BHND_BUS_IS_CORE_DISABLED().
  */
 static bool
-bhndb_is_hw_disabled(device_t dev, device_t child) {
+bhndb_is_core_disabled(device_t dev, device_t child,
+    struct bhnd_core_info *core)
+{
 	struct bhndb_softc	*sc;
-	struct bhnd_core_info	 core;
+	struct bhnd_core_info	*bridge_core;
 
 	sc = device_get_softc(dev);
 
-	/* Requestor must be attached to the bhnd bus */
-	if (device_get_parent(child) != sc->bus_dev) {
-		return (BHND_BUS_IS_HW_DISABLED(device_get_parent(dev), child));
-	}
-
-	/* Fetch core info */
-	core = bhnd_get_core_info(child);
-
 	/* Try to defer to the bhndb bus parent */
-	if (BHNDB_BUS_IS_CORE_DISABLED(sc->parent_dev, dev, &core))
+	if (BHNDB_BUS_IS_CORE_DISABLED(sc->parent_dev, dev, core))
 		return (true);
 
 	/* Otherwise, we treat bridge-capable cores as unpopulated if they're
 	 * not the configured host bridge */
-	if (BHND_DEVCLASS_SUPPORTS_HOSTB(bhnd_core_class(&core)))
-		return (BHNDB_FIND_HOSTB_DEVICE(dev, sc->bus_dev) != child);
+	bridge_core = bhndb_get_bridge_core_info(sc);
+	if (BHND_DEVCLASS_SUPPORTS_HOSTB(bhnd_core_class(core)))
+		return (!bhnd_cores_equal(core, bridge_core));
 
-	/* Otherwise, assume the core is populated */
+	/* Assume the core is populated */
 	return (false);
 }
 
-/* ascending core index comparison used by bhndb_find_hostb_device() */ 
-static int
-compare_core_index(const void *lhs, const void *rhs)
-{
-	u_int left = bhnd_get_core_index(*(const device_t *) lhs);
-	u_int right = bhnd_get_core_index(*(const device_t *) rhs);
-
-	if (left < right)
-		return (-1);
-	else if (left > right)
-		return (1);
-	else
-		return (0);
-}
-
 /**
- * Default bhndb(4) implementation of BHND_BUS_FIND_HOSTB_DEVICE().
+ * Default bhndb(4) implementation of BHNDB_GET_HOSTB_CORE().
  * 
  * This function uses a heuristic valid on all known PCI/PCIe/PCMCIA-bridged
- * bhnd(4) devices to determine the hostb core:
- * 
- * - The core must have a Broadcom vendor ID.
- * - The core devclass must match the bridge type.
- * - The core must be the first device on the bus with the bridged device
- *   class.
- * 
- * @param dev The bhndb device
- * @param child The requesting bhnd bus.
+ * bhnd(4) devices.
  */
-static device_t
-bhndb_find_hostb_device(device_t dev, device_t child)
+static int
+bhndb_get_hostb_core(device_t dev, device_t child, struct bhnd_core_info *core)
 {
-	struct bhndb_softc		*sc;
-	struct bhnd_device_match	 md;
-	device_t			 hostb_dev, *devlist;
-	int				 devcnt, error;
+	struct bhndb_softc *sc = device_get_softc(dev);
 
-	sc = device_get_softc(dev);
-
-	/* Set up a match descriptor for the required device class. */
-	md = (struct bhnd_device_match) {
-		BHND_MATCH_CORE_CLASS(sc->bridge_class),
-		BHND_MATCH_CORE_UNIT(0)
-	};
-	
-	/* Must be the absolute first matching device on the bus. */
-	if ((error = device_get_children(child, &devlist, &devcnt)))
-		return (false);
-
-	/* Sort by core index value, ascending */
-	qsort(devlist, devcnt, sizeof(*devlist), compare_core_index);
-
-	/* Find the hostb device */
-	hostb_dev = NULL;
-	for (int i = 0; i < devcnt; i++) {
-		if (bhnd_device_matches(devlist[i], &md)) {
-			hostb_dev = devlist[i];
-			break;
-		}
-	}
-
-	/* Clean up */
-	free(devlist, M_TEMP);
-
-	return (hostb_dev);
+	*core = *bhndb_get_bridge_core_info(sc);
+	return (0);
 }
 
 /**
@@ -1340,6 +1450,10 @@ bhndb_retain_dynamic_window(struct bhndb_softc *sc, struct resource *r)
 		/* No free windows */
 		return (NULL);
 	}
+
+	/* Window must be large enough to map the entire resource */
+	if (dwa->win->win_size < rman_get_size(r))
+		return (NULL);
 
 	/* Set the window target */
 	error = bhndb_dw_set_addr(sc->dev, sc->bus_res, dwa, rman_get_start(r),
@@ -1936,13 +2050,12 @@ static device_method_t bhndb_methods[] = {
 
 	/* BHNDB interface */
 	DEVMETHOD(bhndb_get_chipid,		bhndb_get_chipid),
-	DEVMETHOD(bhndb_init_full_config,	bhndb_generic_init_full_config),
-	DEVMETHOD(bhndb_find_hostb_device,	bhndb_find_hostb_device),
+	DEVMETHOD(bhndb_get_hostb_core,		bhndb_get_hostb_core),
 	DEVMETHOD(bhndb_suspend_resource,	bhndb_suspend_resource),
 	DEVMETHOD(bhndb_resume_resource,	bhndb_resume_resource),
 
 	/* BHND interface */
-	DEVMETHOD(bhnd_bus_is_hw_disabled,	bhndb_is_hw_disabled),
+	DEVMETHOD(bhnd_bus_is_core_disabled,	bhndb_is_core_disabled),
 	DEVMETHOD(bhnd_bus_get_chipid,		bhndb_get_chipid),
 	DEVMETHOD(bhnd_bus_activate_resource,	bhndb_activate_bhnd_resource),
 	DEVMETHOD(bhnd_bus_deactivate_resource,	bhndb_deactivate_bhnd_resource),

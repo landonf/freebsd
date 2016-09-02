@@ -78,8 +78,7 @@ int			 bcma_get_intr_count(device_t dev, device_t child);
 int			 bcma_get_core_ivec(device_t dev, device_t child,
 			     u_int intr, uint32_t *ivec);
 
-int			 bcma_add_children(device_t bus,
-			     struct resource *erom_res, bus_size_t erom_offset);
+int			 bcma_add_children(device_t bus);
 
 struct bcma_sport_list	*bcma_corecfg_get_port_list(struct bcma_corecfg *cfg,
 			     bhnd_port_type type);
@@ -165,7 +164,6 @@ struct bcma_devinfo {
 /** BMCA per-instance state */
 struct bcma_softc {
 	struct bhnd_softc	bhnd_sc;	/**< bhnd state */
-	device_t		hostb_dev;	/**< host bridge core, or NULL */
 };
 
 #endif /* _BCMA_BCMAVAR_H_ */
