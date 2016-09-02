@@ -83,7 +83,7 @@ static bhnd_erom_class_t	*bhndb_probe_erom_class(struct bhndb_softc *sc,
 static int			 bhndb_init_full_config(struct bhndb_softc *sc,
 				     bhnd_erom_class_t *eromcls);
 
-static struct bhnd_core_info	*bhndb_get_bridge_core_info(struct bhndb_softc *sc);
+static struct bhnd_core_info	*bhndb_get_bridge_core(struct bhndb_softc *sc);
 
 static bool			 bhndb_hw_matches(struct bhnd_core_info *cores,
 				     u_int ncores, const struct bhndb_hw *hw);
@@ -202,7 +202,7 @@ bhndb_child_location_str(device_t dev, device_t child, char *buf,
  * @param sc BHNDB device state.
  */
 static struct bhnd_core_info *
-bhndb_get_bridge_core_info(struct bhndb_softc *sc)
+bhndb_get_bridge_core(struct bhndb_softc *sc)
 {
 	if (!sc->have_br_core)
 		panic("bridge not yet fully configured; no bridge core!");
@@ -1190,7 +1190,7 @@ bhndb_is_core_disabled(device_t dev, device_t child,
 
 	/* Otherwise, we treat bridge-capable cores as unpopulated if they're
 	 * not the configured host bridge */
-	bridge_core = bhndb_get_bridge_core_info(sc);
+	bridge_core = bhndb_get_bridge_core(sc);
 	if (BHND_DEVCLASS_SUPPORTS_HOSTB(bhnd_core_class(core)))
 		return (!bhnd_cores_equal(core, bridge_core));
 
@@ -1209,7 +1209,7 @@ bhndb_get_hostb_core(device_t dev, device_t child, struct bhnd_core_info *core)
 {
 	struct bhndb_softc *sc = device_get_softc(dev);
 
-	*core = *bhndb_get_bridge_core_info(sc);
+	*core = *bhndb_get_bridge_core(sc);
 	return (0);
 }
 
