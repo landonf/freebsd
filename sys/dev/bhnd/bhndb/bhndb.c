@@ -1113,7 +1113,7 @@ bhndb_is_core_disabled(device_t dev, device_t child,
 	/* Otherwise, we treat bridge-capable cores as unpopulated if they're
 	 * not the configured host bridge */
 	bridge_core = bhndb_get_bridge_core_info(sc);
-	if (BHND_DEVCLASS_SUPPORTS_HOSTB(bhnd_core_class(bridge_core)))
+	if (BHND_DEVCLASS_SUPPORTS_HOSTB(bhnd_core_class(core)))
 		return (!bhnd_cores_equal(core, bridge_core));
 
 	/* Assume the core is populated */
