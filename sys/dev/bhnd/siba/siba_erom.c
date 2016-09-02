@@ -99,7 +99,6 @@ struct siba_erom_io {
  */
 struct siba_erom {
 	struct bhnd_erom	obj;
-	u_int			ncores;	/**< core count */
 	struct siba_erom_io	io;	/**< i/o context */
 };
 
@@ -379,7 +378,7 @@ siba_erom_lookup_core(bhnd_erom_t *erom, const struct bhnd_core_match *desc,
 	imatch.m.match.core_unit = 0;
 
 	/* Locate the first matching core */
-	for (u_int i = 0; i < sc->ncores; i++) {
+	for (u_int i = 0; i < sc->io.ncores; i++) {
 		struct siba_core_id	sid;
 		struct bhnd_core_info	ci;
 
@@ -486,15 +485,15 @@ siba_erom_get_core_table(bhnd_erom_t *erom, struct bhnd_core_info **cores,
 	sc = (struct siba_erom *)erom;
 
 	/* Allocate our core array */
-	out = malloc(sizeof(*out) * sc->ncores, M_BHND, M_NOWAIT);
+	out = malloc(sizeof(*out) * sc->io.ncores, M_BHND, M_NOWAIT);
 	if (out == NULL)
 		return (ENOMEM);
 
 	*cores = out;
-	*num_cores = sc->ncores;
+	*num_cores = sc->io.ncores;
 
 	/* Enumerate all cores. */
-	for (u_int i = 0; i < sc->ncores; i++) {
+	for (u_int i = 0; i < sc->io.ncores; i++) {
 		struct siba_core_id sid;
 
 		/* Read the core info */
