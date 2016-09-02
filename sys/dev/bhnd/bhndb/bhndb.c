@@ -348,7 +348,7 @@ bhndb_init_region_cfg(struct bhndb_softc *sc, bhnd_erom_t *erom,
 		 */
 		
 		/* ... do not require bridge resources */
-		if (BHND_BUS_IS_CORE_DISABLED(sc->bus_dev, sc->bus_dev, core))
+		if (BHND_BUS_IS_CORE_DISABLED(sc->dev, sc->dev, core))
 			continue;
 
 		/* ... do not have a priority table entry */
@@ -700,7 +700,6 @@ bhndb_find_erom_class(struct bhndb_softc *sc)
 
 	cls = NULL;
 	for (int i = 0; i < drv_count; i++) {
-		printf("search driver\n");
 		cls = bhnd_driver_get_erom_class(drivers[i], &sc->chipid);
 		if (cls != NULL)
 			break;
