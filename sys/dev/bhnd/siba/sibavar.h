@@ -100,6 +100,11 @@ int			 siba_parse_admatch(uint32_t am, uint32_t *addr,
 #define	SIBA_MAX_CFG		SIBA_CFG_NUM_2_3	/**< maximum number of supported config
 							     register blocks */
 
+#define	SIBA_CFG_RID_BASE	100			/**< base resource ID for SIBA_CFG* register allocations */
+#define	SIBA_CFG_RID(_dinfo, _cfg)	\
+	(SIBA_CFG_RID_BASE + (_cfg) +	\
+	    (_dinfo->core_id.core_info.core_idx * SIBA_MAX_CFG))
+
 /* Sonics/OCP address space mappings */
 #define	SIBA_CORE_ADDRSPACE	0	/**< Address space mapping the primary
 					     device registers */
