@@ -48,33 +48,30 @@ __FBSDID("$FreeBSD$");
 struct siba_erom;
 struct siba_erom_io;
 
-static int	siba_erom_probe(bhnd_erom_class_t *cls,
-		    struct bhnd_resource *res, bus_size_t offset,
-		    struct bhnd_chipid *cid);
-static int	siba_erom_probe_static(bhnd_erom_class_t *cls,
-		    bus_space_tag_t bst, bus_space_handle_t bsh,
-		    bus_addr_t paddr, struct bhnd_chipid *cid);
-static int	siba_erom_probe_common(struct siba_erom_io *io,
-		    bus_addr_t paddr, struct bhnd_chipid *cid);
 
-static int	siba_erom_init(bhnd_erom_t *erom, device_t parent, int rid,
-		    bus_addr_t enum_addr);
-static int	siba_erom_init_static(bhnd_erom_t *erom, bus_space_tag_t bst,
-		    bus_space_handle_t bsh);
+static int			siba_erom_probe_common(struct siba_erom_io *io,
+				    bus_addr_t paddr,
+				    const struct bhnd_chipid *hint,
+				    struct bhnd_chipid *cid);
 
-static void	siba_erom_fini(bhnd_erom_t *erom);
+static int			siba_eio_init(struct siba_erom_io *io,
+				    device_t parent, struct bhnd_resource *res,
+				    int rid, bus_size_t offset);
 
-static int	siba_eio_init(struct siba_erom_io *io, device_t parent,
-		    struct bhnd_resource *res, int rid, bus_size_t offset);
-static int	siba_eio_init_static(struct siba_erom_io *io,
-		    bus_space_tag_t bst, bus_space_handle_t bsh,
-		    bus_size_t offset);
-static int	siba_eio_init_common(struct siba_erom_io *io);
+static int			siba_eio_init_static(struct siba_erom_io *io,
+				    bus_space_tag_t bst, bus_space_handle_t bsh,
+				    bus_size_t offset);
+static int			siba_eio_init_common(struct siba_erom_io *io);
 
-static uint32_t	siba_eio_read_4(struct siba_erom_io *io, u_int core_idx,
-		    bus_size_t offset);
-static int	siba_eio_read_chipid(struct siba_erom_io *io,
-		    bus_addr_t enum_addr, struct bhnd_chipid *cid);
+static uint32_t			siba_eio_read_4(struct siba_erom_io *io,
+				    u_int core_idx, bus_size_t offset);
+
+static struct siba_core_id	siba_eio_read_core_id(struct siba_erom_io *io,
+				    u_int core_idx, int unit);
+
+static int			siba_eio_read_chipid(struct siba_erom_io *io,
+				    bus_addr_t enum_addr,
+				    struct bhnd_chipid *cid);
 
 /**
  * SIBA EROM generic I/O context
@@ -114,7 +111,8 @@ struct siba_erom {
 /* SIBA implementation of BHND_EROM_PROBE() */
 static int
 siba_erom_probe(bhnd_erom_class_t *cls, struct bhnd_resource *res,
-    bus_size_t offset, struct bhnd_chipid *cid)
+    bus_size_t offset, const struct bhnd_chipid *hint,
+    struct bhnd_chipid *cid)
 {
 	struct siba_erom_io	io;
 	device_t		dev;
@@ -127,13 +125,14 @@ siba_erom_probe(bhnd_erom_class_t *cls, struct bhnd_resource *res,
 		return (error);
 
 	/* Perform probe */
-	return (siba_erom_probe_common(&io, SIBA_ENUM_ADDR, cid));
+	return (siba_erom_probe_common(&io, SIBA_ENUM_ADDR, hint, cid));
 }
 
 /* SIBA implementation of BHND_EROM_PROBE_STATIC() */
 static int
 siba_erom_probe_static(bhnd_erom_class_t *cls, bus_space_tag_t bst,
-     bus_space_handle_t bsh, bus_addr_t paddr, struct bhnd_chipid *cid)
+     bus_space_handle_t bsh, bus_addr_t paddr, const struct bhnd_chipid *hint,
+     struct bhnd_chipid *cid)
 {
 	struct siba_erom_io	io;
 	int			error;
@@ -143,16 +142,46 @@ siba_erom_probe_static(bhnd_erom_class_t *cls, bus_space_tag_t bst,
 		return (error);
 
 	/* Perform probe */
-	return (siba_erom_probe_common(&io, SIBA_ENUM_ADDR, cid));
+	return (siba_erom_probe_common(&io, SIBA_ENUM_ADDR, hint, cid));
 }
 
 static int
 siba_erom_probe_common(struct siba_erom_io *io, bus_addr_t paddr,
-    struct bhnd_chipid *cid)
+    const struct bhnd_chipid *hint, struct bhnd_chipid *cid)
 {
 	uint32_t	idreg;
 	uint8_t		chip_type;
 	int		error;
+
+	/* Try using the provided hint. */
+	if (hint != NULL) {
+		struct siba_core_id sid;
+
+		if (hint->chip_type != BHND_CHIPTYPE_SIBA)
+			return (ENXIO);
+
+		/*
+		 * Verify the first core's IDHIGH/IDLOW identification.
+		 * 
+		 * The core must be a Broadocm core, but must *not* be
+		 * a chipcommon core; those shouldn't be hinted.
+		 *
+		 * The first core on EXTIF-equipped devices varies, but on the
+		 * BCM4710, it's a SDRAM core (0x803).
+		 */
+
+		sid = siba_eio_read_core_id(io, 0, 0);
+
+		if (sid.core_info.vendor != BHND_MFGID_BCM)
+			return (ENXIO);
+
+		if (sid.core_info.device == BHND_COREID_CC)
+			return (EINVAL);
+
+		/* Return the hint unmodified */
+		*cid = *hint;
+		return (BUS_PROBE_DEFAULT);
+	}
 
 	/* Validate bus type */
 	idreg = siba_eio_read_4(io, 0, CHIPC_ID);

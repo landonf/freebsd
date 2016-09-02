@@ -101,6 +101,9 @@ SET_DECLARE(bhnd_erom_class_set, bhnd_erom_class_t);
  * @param	res	A resource mapping the first bus core (EXTIF or
  *			ChipCommon)
  * @param	offset	Offset to the first bus core within @p res.
+ * @param	hint	Identification hint used to identify the device. If
+ *			chipset supports standard chip identification registers
+ *			within the first core, this parameter should be NULL.
  * @param[out]	cid	On success, the probed chip identifier.
  *
  * @retval 0		if this is the only possible device enumeration
@@ -114,9 +117,9 @@ SET_DECLARE(bhnd_erom_class_set, bhnd_erom_class_t);
  */
 static inline int
 bhnd_erom_probe(bhnd_erom_class_t *cls, struct bhnd_resource *res,
-    bus_size_t offset, struct bhnd_chipid *cid)
+    bus_size_t offset, const struct bhnd_chipid *hint, struct bhnd_chipid *cid)
 {
-	return (BHND_EROM_PROBE(cls, res, offset, cid));
+	return (BHND_EROM_PROBE(cls, res, offset, hint, cid));
 }
 
 /**
@@ -130,6 +133,9 @@ bhnd_erom_probe(bhnd_erom_class_t *cls, struct bhnd_resource *res,
  * @param	bsh	Bus space handle mapping the EXTIF or ChipCommon core.
  * @param	paddr	The physical address of the core mapped by @p bst and
  *			@p bsh.
+ * @param	hint	Identification hint used to identify the device. If
+ *			chipset supports standard chip identification registers
+ *			within the first core, this parameter should be NULL.
  * @param[out]	cid	On success, the probed chip identifier.
  *
  * @retval 0		if this is the only possible device enumeration
@@ -143,9 +149,10 @@ bhnd_erom_probe(bhnd_erom_class_t *cls, struct bhnd_resource *res,
  */
 static inline int
 bhnd_erom_probe_static(bhnd_erom_class_t *cls, bus_space_tag_t bst,
-    bus_space_handle_t bsh, bus_addr_t paddr, struct bhnd_chipid *cid)
+    bus_space_handle_t bsh, bus_addr_t paddr, const struct bhnd_chipid *hint,
+    struct bhnd_chipid *cid)
 {
-	return (BHND_EROM_PROBE_STATIC(cls, bst, bsh, paddr, cid));
+	return (BHND_EROM_PROBE_STATIC(cls, bst, bsh, paddr, hint, cid));
 }
 
 /**

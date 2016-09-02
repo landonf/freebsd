@@ -49,9 +49,11 @@ INTERFACE bhnd_erom;
  * result (see BUS_PROBE_*) and the probed chip identification.
  *
  * @param	cls	The erom class to probe.
- * @param	res	A resource mapping the first bus core (EXTIF or
- *			ChipCommon)
+ * @param	res	A resource mapping the first bus core.
  * @param	offset	Offset to the first bus core within @p res.
+ * @param	hint	Identification hint used to identify the device. If
+ *			chipset supports standard chip identification registers
+ *			within the first core, this parameter should be NULL.
  * @param[out]	cid	On success, the probed chip identifier.
  *
  * @retval 0		if this is the only possible device enumeration
@@ -67,6 +69,7 @@ STATICMETHOD int probe {
 	bhnd_erom_class_t		*cls;
 	struct bhnd_resource		*res;
 	bus_size_t			 offset;
+	const struct bhnd_chipid	*hint;
 	struct bhnd_chipid		*cid;
 };
 
@@ -78,9 +81,12 @@ STATICMETHOD int probe {
  *
  * @param	cls	The erom class to probe.
  * @param	bst	Bus space tag.
- * @param	bsh	Bus space handle mapping the EXTIF or ChipCommon core.
+ * @param	bsh	Bus space handle mapping the first bus core.
  * @param	paddr	The physical address of the core mapped by @p bst and
  *			@p bsh.
+ * @param	hint	Identification hint used to identify the device. If
+ *			chipset supports standard chip identification registers
+ *			within the first core, this parameter should be NULL.
  * @param[out]	cid	On success, the probed chip identifier.
  *
  * @retval 0		if this is the only possible device enumeration
@@ -93,11 +99,12 @@ STATICMETHOD int probe {
  *			code should be returned.
  */
 STATICMETHOD int probe_static {
-	bhnd_erom_class_t	*cls;
-	bus_space_tag_t 	 bst;
-	bus_space_handle_t	 bsh;
-	bus_addr_t		 paddr;
-	struct bhnd_chipid	*cid;
+	bhnd_erom_class_t		*cls;
+	bus_space_tag_t 		 bst;
+	bus_space_handle_t		 bsh;
+	bus_addr_t			 paddr;
+	const struct bhnd_chipid	*hint;
+	struct bhnd_chipid		*cid;
 };
 
 /**

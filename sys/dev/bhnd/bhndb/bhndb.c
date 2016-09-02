@@ -643,26 +643,21 @@ static bhnd_erom_class_t *
 bhndb_probe_erom_class(struct bhndb_softc *sc, struct bhnd_chipid *cid)
 {
 	devclass_t			 bhndb_devclass;
+	const struct bhnd_chipid	*hint;
 	struct resource			*res;
 	bus_size_t			 res_offset;
 	driver_t			**drivers;
-	bhnd_erom_class_t		*erom_cls;
 	int				 drv_count;
+	bhnd_erom_class_t		*erom_cls;
 	int				 prio, result;
 
 	BHNDB_LOCK_ASSERT(sc, MA_OWNED);
 
-#ifdef TODO_EROM
-	/* Let our parent device override the discovery process */
-	parent_cid = BHNDB_BUS_GET_CHIPID(sc->parent_dev, sc->dev);
-	if (parent_cid != NULL) {
-		*result = *parent_cid;
-		return (0);
-	}
-#endif
-
 	erom_cls = NULL;
 	prio = 0;
+
+	/* Let our parent device provide a chipid hint */
+	hint = BHNDB_BUS_GET_CHIPID(sc->parent_dev, sc->dev);
 
 	/* Fetch a borrowed reference to the resource mapping ChipCommon. */
 	res = bhndb_erom_chipc_resource(sc, &res_offset);
@@ -687,7 +682,7 @@ bhndb_probe_erom_class(struct bhndb_softc *sc, struct bhnd_chipid *cid)
 
 		/* Probe the bus */
 		result = bhnd_erom_probe(cls, &BHND_DIRECT_RESOURCE(res),
-		    res_offset, &pcid);
+		    res_offset, hint, &pcid);
 
 		/* The parser did not match if an error was returned */
 		if (result > 0)

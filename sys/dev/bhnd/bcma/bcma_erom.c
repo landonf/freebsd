@@ -237,9 +237,15 @@ bcma_erom_init_static(bhnd_erom_t *erom, bus_space_tag_t bst,
 
 /* Common implementation of BHND_EROM_PROBE/BHND_EROM_PROBE_STATIC */
 static int
-bcma_erom_probe_common(struct bcma_erom_io *io, struct bhnd_chipid *cid)
+bcma_erom_probe_common(struct bcma_erom_io *io, const struct bhnd_chipid *hint,
+    struct bhnd_chipid *cid)
 {
 	uint32_t	idreg, eromptr;
+
+	/* Hints aren't supported; all BCMA devices have a ChipCommon
+	 * core */
+	if (hint != NULL)
+		return (EINVAL);
 
 	/* Confirm CHIPC_EROMPTR availability */
 	idreg = bcma_eio_read4(io, CHIPC_ID);
@@ -268,24 +274,25 @@ bcma_erom_probe_common(struct bcma_erom_io *io, struct bhnd_chipid *cid)
 
 static int
 bcma_erom_probe(bhnd_erom_class_t *cls, struct bhnd_resource *res,
-    bus_size_t offset, struct bhnd_chipid *cid)
+    bus_size_t offset, const struct bhnd_chipid *hint, struct bhnd_chipid *cid)
 {
 	struct bcma_erom_io io;
 
 	bcma_eio_init(&io, res, rman_get_rid(res->res),
 	    offset + BCMA_EROM_TABLE_START);
 
-	return (bcma_erom_probe_common(&io, cid));
+	return (bcma_erom_probe_common(&io, hint, cid));
 }
 
 static int
 bcma_erom_probe_static(bhnd_erom_class_t *cls, bus_space_tag_t bst,
-     bus_space_handle_t bsh, bus_addr_t paddr, struct bhnd_chipid *cid)
+     bus_space_handle_t bsh, bus_addr_t paddr, const struct bhnd_chipid *hint,
+     struct bhnd_chipid *cid)
 {
 	struct bcma_erom_io io;
 
 	bcma_eio_init_static(&io, bst, bsh, BCMA_EROM_TABLE_START);
-	return (bcma_erom_probe_common(&io, cid));
+	return (bcma_erom_probe_common(&io, hint, cid));
 }
 
 
