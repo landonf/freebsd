@@ -167,7 +167,7 @@ CODE {
 	static device_t
 	bhnd_bus_null_find_hostb_device(device_t dev)
 	{
-		panic("bhnd_bus_find_hostb_device unimplemented");
+		return (NULL);
 	}
 	
 	static int
