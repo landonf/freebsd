@@ -552,8 +552,11 @@ bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass)
 
 	/* Enumerate the bridged device and fully initialize our bridged
 	 * resource configuration */
-	if ((error = bhndb_init_full_config(sc, eromcls)))
+	if ((error = bhndb_init_full_config(sc, eromcls))) {
+		device_printf(sc->dev, "error initializing bridge "
+		    "configuration: %d\n", error);
 		goto failed;
+	}
 
 	return (0);
 
