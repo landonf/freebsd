@@ -94,11 +94,38 @@ SET_DECLARE(bhnd_erom_class_set, bhnd_erom_class_t);
 
 /**
  * Probe to see if this device enumeration class supports the bhnd bus
+ * mapped by the given resource, returning a standard newbus device probe
+ * result (see BUS_PROBE_*) and the probed chip identification.
+ *
+ * @param	cls	The erom class to probe.
+ * @param	res	A resource mapping the first bus core (EXTIF or
+ *			ChipCommon)
+ * @param	offset	Offset to the first bus core within @p res.
+ * @param[out]	cid	On success, the probed chip identifier.
+ *
+ * @retval 0		if this is the only possible device enumeration
+ *			parser for the probed bus.
+ * @retval negative	if the probe succeeds, a negative value should be
+ *			returned; the parser returning the highest negative
+ *			value will be selected to handle device enumeration.
+ * @retval ENXIO	If the bhnd bus type is not handled by this parser.
+ * @retval positive	if an error occurs during probing, a regular unix error
+ *			code should be returned.
+ */
+static inline int
+bhnd_erom_probe(bhnd_erom_class_t *cls, struct bhnd_resource *res,
+    bus_size_t offset, struct bhnd_chipid *cid)
+{
+	return (BHND_EROM_PROBE(cls, res, offset, cid));
+}
+
+/**
+ * Probe to see if this device enumeration class supports the bhnd bus
  * mapped at the given bus space tag and handle, returning a standard
  * newbus device probe result (see BUS_PROBE_*) and the probed
  * chip identification.
  *
- * @param	cls	The parser class to be probed.
+ * @param	cls	The erom class to probe.
  * @param	bst	Bus space tag.
  * @param	bsh	Bus space handle mapping the EXTIF or ChipCommon core.
  * @param	paddr	The physical address of the core mapped by @p bst and
