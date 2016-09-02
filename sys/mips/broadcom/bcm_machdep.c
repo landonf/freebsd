@@ -219,7 +219,8 @@ bcm_erom_probe_and_attach(bhnd_erom_class_t **erom_cls, kobj_ops_t erom_ops,
 		kobj_class_compile_static(cls, &kops);
 
 		/* Probe the bus address */
-		result = bhnd_erom_probe_static(cls, bst, bsh, bus_addr, &pcid);
+		result = bhnd_erom_probe_static(cls, bst, bsh, bus_addr, NULL,
+		    &pcid);
 
 		/* Drop pointer to stack allocated ops table */
 		cls->ops = NULL;
