@@ -808,14 +808,19 @@ bhndb_init_full_config(struct bhndb_softc *sc, bhnd_erom_class_t *eromcls)
 
 	/* Allocate EROM parser instance */
 	erom = bhnd_erom_alloc(eromcls, sc->bus_dev, 0, sc->chipid.enum_addr);
-	if (erom == NULL)
+	if (erom == NULL) {
+		device_printf(sc->dev, "failed to allocate device enumeration "
+		    "table parser\n");
 		return (ENXIO);
+	}
 
 	/* Look for our host bridge core */
-	if ((error = bhndb_find_hostb_core(sc, erom, &sc->bridge_core)))
+	if ((error = bhndb_find_hostb_core(sc, erom, &sc->bridge_core))) {
+		device_printf(sc->dev, "no host bridge core found\n");
 		goto cleanup;
-	else
+	} else {
 		sc->have_br_core = true;
+	}
 
 	/* Fetch the bridged device's core table */
 	if ((error = bhnd_erom_get_core_table(erom, &cores, &ncores))) {
@@ -839,15 +844,20 @@ bhndb_init_full_config(struct bhndb_softc *sc, bhnd_erom_class_t *eromcls)
 	 * configuration */
 	br = bhndb_alloc_resources(sc->dev, sc->parent_dev, hw->cfg);
 	if (br == NULL) {
-		error = ENXIO;
+		device_printf(sc->dev,
+		    "failed to allocate new resource state\n");
+		error = ENOMEM;
 		goto cleanup;
 	}
 
 	/* Populate our resource priority configuration */
 	hwprio = BHNDB_BUS_GET_HARDWARE_PRIO(sc->parent_dev, sc->dev);
 	error = bhndb_init_region_cfg(sc, erom, br, cores, ncores, hwprio);
-	if (error)
+	if (error) {
+		device_printf(sc->dev, "failed to initialize resource "
+		    "priority configuration: %d\n", error);
 		goto cleanup;
+	}
 
 	/* The EROM parser holds a reference to the resource state we're
 	 * about to invalidate */
@@ -865,8 +875,11 @@ bhndb_init_full_config(struct bhndb_softc *sc, bhnd_erom_class_t *eromcls)
 	br = NULL;
 
 	/* Re-allocate host resources */
-	if ((error = bhndb_alloc_host_resources(sc->bus_res)))
+	if ((error = bhndb_alloc_host_resources(sc->bus_res))) {
+		device_printf(sc->dev, "failed to reallocate bridge host "
+		    "resources: %d\n", error);
 		goto cleanup;
+	}
 
 	return (0);
 
