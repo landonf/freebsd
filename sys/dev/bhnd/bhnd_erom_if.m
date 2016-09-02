@@ -49,7 +49,8 @@ INTERFACE bhnd_erom;
  * result (see BUS_PROBE_*) and the probed chip identification.
  *
  * @param	cls	The erom class to probe.
- * @param	res	A resource mapping the first bus core.
+ * @param	res	A resource mapping the first bus core (EXTIF or
+ *			ChipCommon)
  * @param	offset	Offset to the first bus core within @p res.
  * @param[out]	cid	On success, the probed chip identifier.
  *

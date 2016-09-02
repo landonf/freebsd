@@ -144,26 +144,14 @@ bcma_erom_init(bhnd_erom_t *erom, device_t parent, int rid, bus_addr_t enum_addr
 }
 
 static int
-bcma_erom_probe_static(bhnd_erom_class_t *cls, bus_space_tag_t bst,
-     bus_space_handle_t bsh, bus_addr_t paddr, struct bhnd_chipid *cid)
+bcma_erom_probe_common(uint32_t idreg, uint32_t eromptr,
+    struct bhnd_chipid *cid)
 {
-	uint32_t	idreg, eaddr;
-	uint8_t		chip_type;
-
-	idreg = bus_space_read_4(bst, bsh, CHIPC_ID);
-	chip_type = CHIPC_GET_BITS(idreg, CHIPC_ID_BUS);
-
-	/* Fetch EROM physical address */
-	if (!BHND_CHIPTYPE_HAS_EROM(chip_type))
-		return (ENXIO);
-
-	eaddr = bus_space_read_4(bst, bsh, CHIPC_EROMPTR);
-
 	/* Parse chip identifier */
-	*cid = bhnd_parse_chipid(idreg, eaddr);
+	*cid = bhnd_parse_chipid(idreg, eromptr);
 
 	/* Verify chip type */
-	switch (chip_type) {
+	switch (cid->chip_type) {
 		case BHND_CHIPTYPE_BCMA:
 			return (BUS_PROBE_DEFAULT);
 
@@ -173,7 +161,37 @@ bcma_erom_probe_static(bhnd_erom_class_t *cls, bus_space_tag_t bst,
 
 		default:
 			return (ENXIO);
-	}
+	}	
+}
+
+static int
+bcma_erom_probe(bhnd_erom_class_t *cls, struct bhnd_resource *res,
+    bus_size_t offset, struct bhnd_chipid *cid)
+{
+	uint32_t	idreg, eromptr;
+
+	idreg = bhnd_bus_read_4(res, offset + CHIPC_ID);
+	if (!BHND_CHIPTYPE_HAS_EROM(CHIPC_GET_BITS(idreg, CHIPC_ID_BUS)))
+		return (ENXIO);
+	
+	eromptr = bhnd_bus_read_4(res, offset + CHIPC_EROMPTR);
+
+	return (bcma_erom_probe_common(idreg, eromptr, cid));
+}
+
+static int
+bcma_erom_probe_static(bhnd_erom_class_t *cls, bus_space_tag_t bst,
+     bus_space_handle_t bsh, bus_addr_t paddr, struct bhnd_chipid *cid)
+{
+	uint32_t	idreg, eromptr;
+
+	idreg = bus_space_read_4(bst, bsh, CHIPC_ID);
+	if (!BHND_CHIPTYPE_HAS_EROM(CHIPC_GET_BITS(idreg, CHIPC_ID_BUS)))
+		return (ENXIO);
+	
+	eromptr = bus_space_read_4(bst, bsh, CHIPC_EROMPTR);
+
+	return (bcma_erom_probe_common(idreg, eromptr, cid));
 }
 
 static int
@@ -1259,6 +1277,7 @@ failed:
 }
 
 static kobj_method_t bcma_erom_methods[] = {
+	KOBJMETHOD(bhnd_erom_probe,		bcma_erom_probe),
 	KOBJMETHOD(bhnd_erom_probe_static,	bcma_erom_probe_static),
 	KOBJMETHOD(bhnd_erom_init,		bcma_erom_init),
 	KOBJMETHOD(bhnd_erom_init_static,	bcma_erom_init_static),

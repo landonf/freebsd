@@ -59,6 +59,7 @@ static int	siba_erom_read_chipid(struct siba_erom *sc,
 struct siba_erom {
 	struct bhnd_erom	 obj;
 	u_int			 ncores;	/**< core count */
+	bus_size_t		 offset;	/**< offset to enumeration space */
 
 	/* resource state */
 	device_t	 	 dev;		/**< parent dev to use for resource allocations,
@@ -94,7 +95,7 @@ siba_erom_read_4(struct siba_erom *sc, u_int core_idx, bus_size_t offset)
 		panic("invalid core offset %#jx", (uintmax_t)offset);
 
 	/* Perform read */
-	core_offset = SIBA_CORE_OFFSET(core_idx) + offset;
+	core_offset = sc->offset + SIBA_CORE_OFFSET(core_idx) + offset;
 	if (sc->res != NULL)
 		return (bhnd_bus_read_4(sc->res, core_offset));
 	else
@@ -175,21 +176,71 @@ siba_erom_init_common(struct siba_erom *sc)
 }
 
 static int
+siba_erom_init_res(struct siba_erom *sc, device_t parent, int rid,
+    struct bhnd_resource *res, bus_size_t offset)
+{
+	sc->dev = parent;
+	sc->rid = rid;
+	sc->res = res;
+	sc->offset = offset;
+	return (siba_erom_init_common(sc));
+}
+
+static int
 siba_erom_init(bhnd_erom_t *erom, device_t parent, int rid,
     bus_addr_t enum_addr)
 {
-	struct siba_erom *sc = (struct siba_erom *)erom;
+	struct siba_erom	*sc;
+	struct bhnd_resource	*res;
+	
+	sc = (struct siba_erom *)erom;
 
-	sc->dev = parent;
-	sc->rid = rid;
-
-	sc->res = bhnd_alloc_resource(sc->dev, SYS_RES_MEMORY, &sc->rid,
+	res = bhnd_alloc_resource(parent, SYS_RES_MEMORY, &rid,
 	    enum_addr, enum_addr + SIBA_ENUM_SIZE -1, SIBA_ENUM_SIZE,
 	    RF_ACTIVE|RF_SHAREABLE);
-	if (sc->res == NULL)
+	if (res == NULL)
 		return (ENOMEM);
 
-	return (siba_erom_init_common(sc));
+	return (siba_erom_init_res(sc, parent, rid, res, 0x0));
+}
+
+static int
+siba_erom_probe_common(struct siba_erom *sc, bus_addr_t paddr,
+    struct bhnd_chipid *cid)
+{
+	int error;
+	
+	/* Try to read the chip ID */
+	if ((error = siba_erom_read_chipid(sc, paddr, cid)))
+		return (error);
+
+	return (BUS_PROBE_DEFAULT);
+}
+
+static int
+siba_erom_probe(bhnd_erom_class_t *cls, struct bhnd_resource *res,
+    bus_size_t offset, struct bhnd_chipid *cid)
+{
+	struct siba_erom 	sc;
+	uint32_t		idreg;
+	uint8_t			chip_type;
+	int			error;
+
+	idreg = bhnd_bus_read_4(res, offset + CHIPC_ID);
+	chip_type = CHIPC_GET_BITS(idreg, CHIPC_ID_BUS);
+
+	if (chip_type != BHND_CHIPTYPE_SIBA)
+		return (ENXIO);
+
+	/* Initialize static EROM instance state that we can use to fetch
+	 * the chip identifier */
+	error = siba_erom_init_res(&sc, rman_get_device(res->res),
+	    rman_get_rid(res->res), res, offset);
+	if (error)
+		return (error);
+
+	/* Perform probe and return (nothing to clean up) */
+	return (siba_erom_probe_common(&sc, SIBA_ENUM_ADDR, cid));
 }
 
 static int
@@ -212,13 +263,13 @@ siba_erom_probe_static(bhnd_erom_class_t *cls, bus_space_tag_t bst,
 	if ((error = siba_erom_init_static((bhnd_erom_t *)&sc, bst, bsh)))
 		return (error);
 
-	/* Try to read the chip ID, clean up the static instance */
-	error = siba_erom_read_chipid(&sc, paddr, cid);
-	siba_erom_fini((bhnd_erom_t *)&sc);
-	if (error)
-		return (error);
+	/* Perform the probe */
+	error = siba_erom_probe_common(&sc, paddr, cid);
 
-	return (BUS_PROBE_DEFAULT);
+	/* Clean up the static instance */
+	siba_erom_fini((bhnd_erom_t *)&sc);
+
+	return (error);
 }
 
 static int
@@ -405,6 +456,7 @@ siba_erom_free_core_table(bhnd_erom_t *erom, struct bhnd_core_info *cores)
 }
 
 static kobj_method_t siba_erom_methods[] = {
+	KOBJMETHOD(bhnd_erom_probe,		siba_erom_probe),
 	KOBJMETHOD(bhnd_erom_probe_static,	siba_erom_probe_static),
 	KOBJMETHOD(bhnd_erom_init,		siba_erom_init),
 	KOBJMETHOD(bhnd_erom_init_static,	siba_erom_init_static),
