@@ -45,11 +45,8 @@ __FBSDID("$FreeBSD$");
 #include "sibavar.h"
 
 static bhnd_erom_class_t *
-siba_get_erom_class(driver_t *driver, const struct bhnd_chipid *cid)
+siba_get_erom_class(driver_t *driver)
 {
-	if (cid->chip_type != BHND_CHIPTYPE_SIBA)
-		return (NULL);
-
 	return (&siba_erom_parser);
 }
 

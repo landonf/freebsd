@@ -52,8 +52,7 @@ CODE {
 	#include <dev/bhnd/bhndvar.h>
 
 	static bhnd_erom_class_t *
-	bhnd_bus_null_get_erom_class(driver_t *driver,
-	    const struct bhnd_chipid *chipid)
+	bhnd_bus_null_get_erom_class(driver_t *driver)
 	{
 		return (NULL);
 	}
@@ -208,15 +207,12 @@ CODE {
 }
 
 /**
- * Return a class capable of parsing the device enumeration table for
- * @p chipid, or NULL if not supported by this driver.
+ * Return the bhnd(4) bus driver's device enumeration parser class.
  *
  * @param driver	The bhnd bus driver instance.
- * @param chipid	The bhnd chip identification.
  */
 STATICMETHOD bhnd_erom_class_t * get_erom_class {
 	driver_t			*driver;
-	const struct bhnd_chipid	*chipid;
 } DEFAULT bhnd_bus_null_get_erom_class;
 
 /**

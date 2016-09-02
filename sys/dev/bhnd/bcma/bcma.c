@@ -49,11 +49,8 @@ __FBSDID("$FreeBSD$");
 #define	BCMA_EROM_RID	0
 
 static bhnd_erom_class_t *
-bcma_get_erom_class(driver_t *driver, const struct bhnd_chipid *cid)
+bcma_get_erom_class(driver_t *driver)
 {
-	if (!BHND_CHIPTYPE_HAS_EROM(cid->chip_type))
-		return (NULL);
-
 	return (&bcma_erom_parser);
 }
 
