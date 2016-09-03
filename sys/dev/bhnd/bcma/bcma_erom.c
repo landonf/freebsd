@@ -197,8 +197,8 @@ bcma_eio_init_static(struct bcma_erom_io *io, bus_space_tag_t bst,
 
 /* BCMA implementation of BHND_EROM_INIT() */
 static int
-bcma_erom_init(bhnd_erom_t *erom, device_t parent, int rid,
-    bus_addr_t enum_addr)
+bcma_erom_init(bhnd_erom_t *erom, const struct bhnd_chipid *cid,
+    device_t parent, int rid)
 {
 	struct bcma_erom	*sc;
 	struct bhnd_resource	*res;
@@ -207,8 +207,8 @@ bcma_erom_init(bhnd_erom_t *erom, device_t parent, int rid,
 	sc->dev = parent;
 	sc->offset = 0;
 
-	res = bhnd_alloc_resource(parent, SYS_RES_MEMORY, &rid, enum_addr,
-	    enum_addr + BCMA_EROM_TABLE_SIZE - 1, BCMA_EROM_TABLE_SIZE,
+	res = bhnd_alloc_resource(parent, SYS_RES_MEMORY, &rid, cid->enum_addr,
+	    cid->enum_addr + BCMA_EROM_TABLE_SIZE - 1, BCMA_EROM_TABLE_SIZE,
 	    RF_ACTIVE|RF_SHAREABLE);
 
 	if (res == NULL)
@@ -221,8 +221,8 @@ bcma_erom_init(bhnd_erom_t *erom, device_t parent, int rid,
 
 /* BCMA implementation of BHND_EROM_INIT_STATIC() */
 static int
-bcma_erom_init_static(bhnd_erom_t *erom, bus_space_tag_t bst,
-     bus_space_handle_t bsh)
+bcma_erom_init_static(bhnd_erom_t *erom, const struct bhnd_chipid *cid,
+    bus_space_tag_t bst, bus_space_handle_t bsh)
 {
 	struct bcma_erom	*sc;
 

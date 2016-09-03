@@ -51,9 +51,9 @@ INTERFACE bhnd_erom;
  * @param	cls	The erom class to probe.
  * @param	res	A resource mapping the first bus core.
  * @param	offset	Offset to the first bus core within @p res.
- * @param	hint	Identification hint used to identify the device. If
- *			chipset supports standard chip identification registers
- *			within the first core, this parameter should be NULL.
+ * @param	hint	Hint used to identify the device. If chipset supports
+ *			standard chip identification registers within the first 
+ *			core, this parameter should be NULL.
  * @param[out]	cid	On success, the probed chip identifier.
  *
  * @retval 0		if this is the only possible device enumeration
@@ -84,9 +84,9 @@ STATICMETHOD int probe {
  * @param	bsh	Bus space handle mapping the first bus core.
  * @param	paddr	The physical address of the core mapped by @p bst and
  *			@p bsh.
- * @param	hint	Identification hint used to identify the device. If
- *			chipset supports standard chip identification registers
- *			within the first core, this parameter should be NULL.
+ * @param	hint	Hint used to identify the device. If chipset supports
+ *			standard chip identification registers within the first 
+ *			core, this parameter should be NULL.
  * @param[out]	cid	On success, the probed chip identifier.
  *
  * @retval 0		if this is the only possible device enumeration
@@ -111,40 +111,42 @@ STATICMETHOD int probe_static {
  * Initialize a device enumeration table parser.
  * 
  * @param erom		The erom parser to initialize.
+ * @param cid		The device's chip identifier.
  * @param parent	The parent device from which EROM resources should
  *			be allocated.
  * @param rid		The resource id to be used when allocating the
  *			enumeration table.
- * @param enum_addr	The base address of the device enumeration table.
  *
  * @retval 0		success
  * @retval non-zero	if an error occurs initializing the EROM parser,
  *			a regular unix error code will be returned.
  */
 METHOD int init {
-	bhnd_erom_t	*erom;
-	device_t	 parent;
-	int		 rid;
-	bus_addr_t	 enum_addr;
+	bhnd_erom_t			*erom;
+	const struct bhnd_chipid	*cid;
+	device_t			 parent;
+	int				 rid;
 };
 
 /**
  * Initialize an device enumeration table parser using the provided bus space
  * tag and handle.
  * 
- * @param erom		The erom parser to initialize.
- * @param bst		Bus space tag.
- * @param bsh		bus space handle mapping the full bus enumeration
- *			space.
+ * @param erom	The erom parser to initialize.
+ * @param cid	The device's chip identifier.
+ * @param bst	Bus space tag.
+ * @param bsh	Bus space handle mapping the full bus enumeration
+ *		space.
  *
  * @retval 0		success
  * @retval non-zero	if an error occurs initializing the EROM parser,
  *			a regular unix error code will be returned.
  */
 METHOD int init_static {
-	bhnd_erom_t		*erom;
-	bus_space_tag_t 	 bst;
-	bus_space_handle_t	 bsh;
+	bhnd_erom_t			*erom;
+	const struct bhnd_chipid	*cid;
+	bus_space_tag_t 		 bst;
+	bus_space_handle_t		 bsh;
 };
 
 /**

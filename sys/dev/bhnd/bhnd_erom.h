@@ -42,11 +42,12 @@
 #include "bhnd_erom_if.h"
 
 bhnd_erom_t			*bhnd_erom_alloc(bhnd_erom_class_t *cls,
-				     device_t parent, int rid,
-				     bus_addr_t enum_addr);
+				     const struct bhnd_chipid *cid,
+				     device_t parent, int rid);
 
 int				 bhnd_erom_init_static(bhnd_erom_class_t *cls,
 				     bhnd_erom_t *erom, size_t esize,
+				     const struct bhnd_chipid *cid,
 				     bus_space_tag_t bst,
 				     bus_space_handle_t bsh);
 

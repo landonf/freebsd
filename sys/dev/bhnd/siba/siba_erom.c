@@ -49,19 +49,13 @@ struct siba_erom;
 struct siba_erom_io;
 
 
-static int			siba_erom_probe_common(struct siba_erom_io *io,
-				    bus_addr_t paddr,
-				    const struct bhnd_chipid *hint,
-				    struct bhnd_chipid *cid);
-
 static int			siba_eio_init(struct siba_erom_io *io,
 				    device_t parent, struct bhnd_resource *res,
-				    int rid, bus_size_t offset);
+				    int rid, bus_size_t offset, u_int ncores);
 
 static int			siba_eio_init_static(struct siba_erom_io *io,
 				    bus_space_tag_t bst, bus_space_handle_t bsh,
-				    bus_size_t offset);
-static int			siba_eio_init_common(struct siba_erom_io *io);
+				    bus_size_t offset, u_int ncores);
 
 static uint32_t			siba_eio_read_4(struct siba_erom_io *io,
 				    u_int core_idx, bus_size_t offset);
@@ -108,61 +102,25 @@ struct siba_erom {
 	}								\
 } while(0)
 
-/* SIBA implementation of BHND_EROM_PROBE() */
 static int
-siba_erom_probe(bhnd_erom_class_t *cls, struct bhnd_resource *res,
-    bus_size_t offset, const struct bhnd_chipid *hint,
+siba_erom_probe_common(struct siba_erom_io *io, const struct bhnd_chipid *hint,
     struct bhnd_chipid *cid)
 {
-	struct siba_erom_io	io;
-	device_t		dev;
-	int			error, rid;
-
-	/* Initialize I/O context */
-	rid = rman_get_rid(res->res);
-	if ((error = siba_eio_init(&io, NULL, res, rid, offset)))
-		return (error);
-
-	/* Perform probe */
-	return (siba_erom_probe_common(&io, SIBA_ENUM_ADDR, hint, cid));
-}
-
-/* SIBA implementation of BHND_EROM_PROBE_STATIC() */
-static int
-siba_erom_probe_static(bhnd_erom_class_t *cls, bus_space_tag_t bst,
-     bus_space_handle_t bsh, bus_addr_t paddr, const struct bhnd_chipid *hint,
-     struct bhnd_chipid *cid)
-{
-	struct siba_erom_io	io;
+	uint32_t		idreg;
 	int			error;
-
-	/* Initialize I/O context */
-	if ((error = siba_eio_init_static(&io, bst, bsh, 0)))
-		return (error);
-
-	/* Perform probe */
-	return (siba_erom_probe_common(&io, SIBA_ENUM_ADDR, hint, cid));
-}
-
-static int
-siba_erom_probe_common(struct siba_erom_io *io, bus_addr_t paddr,
-    const struct bhnd_chipid *hint, struct bhnd_chipid *cid)
-{
-	uint32_t	idreg;
-	uint8_t		chip_type;
-	int		error;
 
 	/* Try using the provided hint. */
 	if (hint != NULL) {
 		struct siba_core_id sid;
 
+		/* Validate bus type */
 		if (hint->chip_type != BHND_CHIPTYPE_SIBA)
 			return (ENXIO);
 
 		/*
 		 * Verify the first core's IDHIGH/IDLOW identification.
 		 * 
-		 * The core must be a Broadocm core, but must *not* be
+		 * The core must be a Broadcom core, but must *not* be
 		 * a chipcommon core; those shouldn't be hinted.
 		 *
 		 * The first core on EXTIF-equipped devices varies, but on the
@@ -177,29 +135,73 @@ siba_erom_probe_common(struct siba_erom_io *io, bus_addr_t paddr,
 		if (sid.core_info.device == BHND_COREID_CC)
 			return (EINVAL);
 
-		/* Return the hint unmodified */
 		*cid = *hint;
-		return (BUS_PROBE_DEFAULT);
+	} else {
+		/* Validate bus type */
+		idreg = siba_eio_read_4(io, 0, CHIPC_ID);
+		if (CHIPC_GET_BITS(idreg, CHIPC_ID_BUS) != BHND_CHIPTYPE_SIBA)
+			return (ENXIO);	
+
+		/* Identify the chipset */
+		if ((error = siba_eio_read_chipid(io, SIBA_ENUM_ADDR, cid)))
+			return (error);
+
+		/* Verify the chip type */
+		if (cid->chip_type != BHND_CHIPTYPE_SIBA)
+			return (ENXIO);
 	}
 
-	/* Validate bus type */
-	idreg = siba_eio_read_4(io, 0, CHIPC_ID);
-	chip_type = CHIPC_GET_BITS(idreg, CHIPC_ID_BUS);
+	/*
+	 * gcc hack: ensure bhnd_chipid.ncores cannot exceed SIBA_MAX_CORES
+	 * without triggering build failure due to -Wtype-limits
+	 *
+	 * if (cid.ncores > SIBA_MAX_CORES)
+	 *      return (EINVAL)
+	 */
+	_Static_assert((2^sizeof(cid->ncores)) <= SIBA_MAX_CORES,
+	    "ncores could result in over-read of backing resource");
 
-	if (chip_type != BHND_CHIPTYPE_SIBA)
-		return (ENXIO);
-	
-	/* Try to read the chip ID */
-	if ((error = siba_eio_read_chipid(io, paddr, cid)))
+	return (0);
+}
+
+/* SIBA implementation of BHND_EROM_PROBE() */
+static int
+siba_erom_probe(bhnd_erom_class_t *cls, struct bhnd_resource *res,
+    bus_size_t offset, const struct bhnd_chipid *hint,
+    struct bhnd_chipid *cid)
+{
+	struct siba_erom_io	io;
+	int			error, rid;
+
+	rid = rman_get_rid(res->res);
+
+	/* Initialize I/O context, assuming at least 1 core exists.  */
+	if ((error = siba_eio_init(&io, NULL, res, rid, offset, 1)))
 		return (error);
 
-	return (BUS_PROBE_DEFAULT);
+	return (siba_erom_probe_common(&io, hint, cid));
+}
+
+/* SIBA implementation of BHND_EROM_PROBE_STATIC() */
+static int
+siba_erom_probe_static(bhnd_erom_class_t *cls, bus_space_tag_t bst,
+     bus_space_handle_t bsh, bus_addr_t paddr, const struct bhnd_chipid *hint,
+     struct bhnd_chipid *cid)
+{
+	struct siba_erom_io	io;
+	int			error;
+
+	/* Initialize I/O context, assuming at least 1 core exists.  */
+	if ((error = siba_eio_init_static(&io, bst, bsh, 0, 1)))
+		return (error);
+
+	return (siba_erom_probe_common(&io, hint, cid));
 }
 
 /* SIBA implementation of BHND_EROM_INIT() */
 static int
-siba_erom_init(bhnd_erom_t *erom, device_t parent, int rid,
-    bus_addr_t enum_addr)
+siba_erom_init(bhnd_erom_t *erom, const struct bhnd_chipid *cid,
+    device_t parent, int rid)
 {
 	struct siba_erom	*sc;
 	struct bhnd_resource	*res;
@@ -209,13 +211,14 @@ siba_erom_init(bhnd_erom_t *erom, device_t parent, int rid,
 
 	/* Allocate backing resource */
 	res = bhnd_alloc_resource(parent, SYS_RES_MEMORY, &rid,
-	    enum_addr, enum_addr + SIBA_ENUM_SIZE -1, SIBA_ENUM_SIZE,
+	    cid->enum_addr, cid->enum_addr + SIBA_ENUM_SIZE -1, SIBA_ENUM_SIZE,
 	    RF_ACTIVE|RF_SHAREABLE);
 	if (res == NULL)
 		return (ENOMEM);
 
 	/* Initialize I/O context */
-	if ((error = siba_eio_init(&sc->io, parent, res, rid, 0x0)))
+	error = siba_eio_init(&sc->io, parent, res, rid, 0x0, cid->ncores);
+	if (error)
 		bhnd_release_resource(parent, SYS_RES_MEMORY, rid, res);
 
 	return (error);
@@ -223,15 +226,15 @@ siba_erom_init(bhnd_erom_t *erom, device_t parent, int rid,
 
 /* SIBA implementation of BHND_EROM_INIT_STATIC() */
 static int
-siba_erom_init_static(bhnd_erom_t *erom, bus_space_tag_t bst,
-     bus_space_handle_t bsh)
+siba_erom_init_static(bhnd_erom_t *erom, const struct bhnd_chipid *cid,
+    bus_space_tag_t bst, bus_space_handle_t bsh)
 {
 	struct siba_erom	*sc;
 	
 	sc = (struct siba_erom *)erom;
 
 	/* Initialize I/O context */
-	return (siba_eio_init_static(&sc->io, bst, bsh, 0));
+	return (siba_eio_init_static(&sc->io, bst, bsh, 0x0, cid->ncores));
 }
 
 /* SIBA implementation of BHND_EROM_FINI() */
@@ -252,66 +255,28 @@ siba_erom_fini(bhnd_erom_t *erom)
 /* Initialize siba_erom resource I/O context */
 static int
 siba_eio_init(struct siba_erom_io *io, device_t parent,
-    struct bhnd_resource *res, int rid, bus_size_t offset)
+    struct bhnd_resource *res, int rid, bus_size_t offset, u_int ncores)
 {
 	io->dev = parent;
 	io->res = res;
 	io->rid = rid;
 	io->offset = offset;
+	io->ncores = ncores;
 
-	return (siba_eio_init_common(io));
+	return (0);
 }
 
 /* Initialize siba_erom bus space I/O context */
 static int
 siba_eio_init_static(struct siba_erom_io *io, bus_space_tag_t bst,
-    bus_space_handle_t bsh, bus_size_t offset)
+    bus_space_handle_t bsh, bus_size_t offset, u_int ncores)
 {
 	io->res = NULL;
 	io->rid = -1;
 	io->bst = bst;
 	io->bsh = bsh;
 	io->offset = offset;
-
-	return (siba_eio_init_common(io));
-}
-
-/* Common siba_erom I/O context initialization */
-static int
-siba_eio_init_common(struct siba_erom_io *io)
-{
-	struct bhnd_chipid	cid;
-	uint32_t		idreg;
-	int			error;
-
-	/* Validate bus type */
-	idreg = siba_eio_read_4(io, 0, CHIPC_ID);
-	if (CHIPC_GET_BITS(idreg, CHIPC_ID_BUS) != BHND_CHIPTYPE_SIBA)
-		return (ENXIO);	
-
-	/* There's always at least one core */
-	io->ncores = 1;
-
-	/* Identify the chipset */
-	if ((error = siba_eio_read_chipid(io, SIBA_ENUM_ADDR, &cid)))
-		return (error);
-
-	/* Verify the chip type */
-	if (cid.chip_type != BHND_CHIPTYPE_SIBA)
-		return (ENXIO);
-
-	/*
-	 * gcc hack: ensure bhnd_chipid.ncores cannot exceed SIBA_MAX_CORES
-	 * without triggering build failure due to -Wtype-limits
-	 *
-	 * if (cid.ncores > SIBA_MAX_CORES)
-	 *      return (EINVAL)
-	 */
-	_Static_assert((2^sizeof(cid.ncores)) <= SIBA_MAX_CORES,
-	    "ncores could result in over-read of backing resource");
-
-	/* Update our core count */
-	io->ncores = cid.ncores;
+	io->ncores = ncores;
 
 	return (0);
 }
@@ -385,7 +350,7 @@ siba_eio_read_chipid(struct siba_erom_io *io, bus_addr_t enum_addr,
 	{
 		if (bootverbose) {
 			EROM_LOG(io, "first core not chipcommon "
-			    "(vendor=%#hx, core=%#hx)\n", ccid.core_infovendor,
+			    "(vendor=%#hx, core=%#hx)\n", ccid.core_info.vendor,
 			    ccid.core_info.device);
 		}
 		return (ENXIO);

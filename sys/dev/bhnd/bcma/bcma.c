@@ -468,8 +468,7 @@ bcma_add_children(device_t bus)
 	corecfg = NULL;
 
 	/* Allocate our EROM parser */
-	erom = bhnd_erom_alloc(&bcma_erom_parser, bus, BCMA_EROM_RID,
-	    cid->enum_addr);
+	erom = bhnd_erom_alloc(&bcma_erom_parser, cid, bus, BCMA_EROM_RID);
 	if (erom == NULL)
 		return (ENODEV);
 

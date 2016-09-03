@@ -802,7 +802,7 @@ bhndb_init_full_config(struct bhndb_softc *sc, bhnd_erom_class_t *eromcls)
 	br = NULL;
 
 	/* Allocate EROM parser instance */
-	erom = bhnd_erom_alloc(eromcls, sc->bus_dev, 0, sc->chipid.enum_addr);
+	erom = bhnd_erom_alloc(eromcls, &sc->chipid, sc->bus_dev, 0);
 	if (erom == NULL) {
 		device_printf(sc->dev, "failed to allocate device enumeration "
 		    "table parser\n");
