@@ -198,6 +198,9 @@ bhndb_pci_attach(device_t dev)
 cleanup:
 	device_delete_children(dev);
 	bhndb_disable_pci_clocks(sc);
+	if (sc->intr.msi_count > 0)
+		pci_release_msi(dev);
+
 	pci_disable_busmaster(sc->parent);
 
 	return (error);
@@ -222,6 +225,10 @@ bhndb_pci_detach(device_t dev)
 	/* Disable clocks (if required by this hardware) */
 	if ((error = bhndb_disable_pci_clocks(sc)))
 		return (error);
+
+	/* Release MSI interrupts */
+	if (sc->intr.msi_count > 0)
+		pci_release_msi(dev);
 
 	/* Disable PCI bus mastering */
 	pci_disable_busmaster(sc->parent);
