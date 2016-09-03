@@ -281,10 +281,6 @@ static device_method_t siba_bhndb_methods[] = {
 	DEVMETHOD(bus_suspend_child,		siba_bhndb_suspend_child),
 	DEVMETHOD(bus_resume_child,		siba_bhndb_resume_child),
 
-	/* BHND interface */
-	DEVMETHOD(bhnd_bus_get_intr_count,	bhnd_generic_br_get_intr_count),
-	DEVMETHOD(bhnd_bus_assign_intr,		bhnd_generic_br_assign_intr),
-
 	DEVMETHOD_END
 };
 
