@@ -61,10 +61,25 @@ bcma_probe(device_t dev)
 	return (BUS_PROBE_DEFAULT);
 }
 
+/**
+ * Default bcma(4) bus driver implementation of DEVICE_ATTACH().
+ * 
+ * This implementation initializes internal bcma(4) state and performs
+ * bus enumeration, and must be called by subclassing drivers in
+ * DEVICE_ATTACH() before any other bus methods.
+ */
 int
 bcma_attach(device_t dev)
-{	
-	return (bhnd_generic_attach(dev));
+{
+	int error;
+
+	/* Enumerate children */
+	if ((error = bcma_add_children(dev))) {
+		device_delete_children(dev);
+		return (error);
+	}
+
+	return (0);
 }
 
 int

@@ -101,23 +101,21 @@ siba_bhndb_probe(device_t dev)
 static int
 siba_bhndb_attach(device_t dev)
 {
-	struct siba_softc		*sc;
-	const struct bhnd_chipid	*chipid;
-	int				 error;
+	struct siba_softc	*sc;
+	int			 error;
 
 	sc = device_get_softc(dev);
 
-	/* Enumerate our children. */
-	chipid = BHNDB_GET_CHIPID(device_get_parent(dev), dev);
-	if ((error = siba_add_children(dev, chipid)))
-		goto failed;
-
-	/* Call our superclass' implementation */
+	/* Perform initial attach and enumerate our children. */
 	if ((error = siba_attach(dev)))
 		goto failed;
 
-	/* Apply attach/resume work-arounds */
+	/* Apply attach/resume workarounds before any child drivers attach */
 	if ((error = siba_bhndb_wars_hwup(sc)))
+		goto failed;
+
+	/* Delegate remainder to standard bhnd method implementation */
+	if ((error = bhnd_generic_attach(dev)))
 		goto failed;
 
 	return (0);

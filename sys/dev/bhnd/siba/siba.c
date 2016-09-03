@@ -57,16 +57,29 @@ siba_probe(device_t dev)
 	return (BUS_PROBE_DEFAULT);
 }
 
+/**
+ * Default siba(4) bus driver implementation of DEVICE_ATTACH().
+ * 
+ * This implementation initializes internal siba(4) state and performs
+ * bus enumeration, and must be called by subclassing drivers in
+ * DEVICE_ATTACH() before any other bus methods.
+ */
 int
 siba_attach(device_t dev)
 {
 	struct siba_softc	*sc;
-	
+	int			 error;
+
 	sc = device_get_softc(dev);
 	sc->dev = dev;
 
-	/* Delegate remainder to standard bhnd method implementation */
-	return (bhnd_generic_attach(dev));
+	/* Enumerate children */
+	if ((error = siba_add_children(dev))) {
+		device_delete_children(dev);
+		return (error);
+	}
+
+	return (0);
 }
 
 int
@@ -497,73 +510,22 @@ siba_free_bhnd_dinfo(device_t dev, struct bhnd_devinfo *dinfo)
  * the bus.
  * 
  * @param dev The siba bus device.
- * @param chipid The chip identifier, if the device does not provide a
- * ChipCommon core. Should o NULL otherwise.
  */
 int
-siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
+siba_add_children(device_t dev)
 {
-	struct bhnd_chipid	 ccid;
-	struct bhnd_core_info	*cores;
-	struct siba_devinfo	*dinfo;
-	struct bhnd_resource	*r;
-	int			 rid;
-	int			 error;
+	const struct bhnd_chipid	*chipid;
+	struct bhnd_core_info		*cores;
+	struct siba_devinfo		*dinfo;
+	struct bhnd_resource		*r;
+	int				 rid;
+	int				 error;
 
 	dinfo = NULL;
 	cores = NULL;
 	r = NULL;
-	
-	/*
-	 * Try to determine the number of device cores via the ChipCommon
-	 * identification registers.
-	 * 
-	 * A small number of very early devices do not include a ChipCommon
-	 * core, in which case our caller must supply the chip identification
-	 * information via a non-NULL chipid parameter.
-	 */
-	if (chipid == NULL) {
-		uint32_t	idhigh, ccreg;
-		uint16_t	vendor, device;
-		uint8_t		ccrev;
 
-		/* Map the first core's register block. If the ChipCommon core
-		 * exists, it will always be the first core. */
-		rid = 0;
-		r = bhnd_alloc_resource(dev, SYS_RES_MEMORY, &rid,
-		    SIBA_CORE_ADDR(0), SIBA_CORE_SIZE, 
-		    SIBA_CORE_ADDR(0) + SIBA_CORE_SIZE - 1,
-		    RF_ACTIVE);
-
-		/* Identify the core */
-		idhigh = bhnd_bus_read_4(r, SB0_REG_ABS(SIBA_CFG0_IDHIGH));
-		vendor = SIBA_REG_GET(idhigh, IDH_VENDOR);
-		device = SIBA_REG_GET(idhigh, IDH_DEVICE);
-		ccrev = SIBA_IDH_CORE_REV(idhigh);
-
-		if (vendor != OCP_VENDOR_BCM || device != BHND_COREID_CC) {
-			device_printf(dev,
-			    "cannot identify device: no chipcommon core "
-			    "found\n");
-			error = ENXIO;
-			goto cleanup;
-		}
-
-		/* Identify the chipset */
-		ccreg = bhnd_bus_read_4(r, CHIPC_ID);
-		ccid = bhnd_parse_chipid(ccreg, SIBA_ENUM_ADDR);
-
-		/* Fix up the core count */
-		error = bhnd_chipid_fixed_ncores(&ccid, ccrev, &ccid.ncores);
-		if (error) {
-			device_printf(dev, "unable to determine core count for "
-			    "chipset 0x%hx\n", ccid.chip_id);
-			goto cleanup;
-		}
-
-		chipid = &ccid;
-		bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
-	}
+	chipid = BHND_BUS_GET_CHIPID(dev, dev);
 
 	/* Allocate our temporary core table and enumerate all cores */
 	cores = malloc(sizeof(*cores) * chipid->ncores, M_BHND, M_NOWAIT);

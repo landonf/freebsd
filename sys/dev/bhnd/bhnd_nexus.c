@@ -81,10 +81,9 @@ bhnd_nexus_read_chipid(device_t dev, struct bhnd_chipid *chipid)
 }
 
 static bool
-bhnd_nexus_is_core_disabled(device_t dev, device_t child,
-    struct bhnd_core_info *core)
+bhnd_nexus_is_hw_disabled(device_t dev, device_t child)
 {
-	return false;
+	return (false);
 }
 
 static bhnd_attach_type
@@ -127,7 +126,7 @@ static device_method_t bhnd_nexus_methods[] = {
 	/* bhnd interface */
 	DEVMETHOD(bhnd_bus_activate_resource,	bhnd_nexus_activate_resource),
 	DEVMETHOD(bhnd_bus_deactivate_resource, bhnd_nexus_deactivate_resource),
-	DEVMETHOD(bhnd_bus_is_core_disabled,	bhnd_nexus_is_core_disabled),
+	DEVMETHOD(bhnd_bus_is_hw_disabled,	bhnd_nexus_is_hw_disabled),
 	DEVMETHOD(bhnd_bus_get_attach_type,	bhnd_nexus_get_attach_type),
 
 	DEVMETHOD_END
