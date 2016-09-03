@@ -71,10 +71,12 @@ enum {
 static struct bhnd_device_quirk bridge_quirks[] = {
 	BHND_CHIP_QUIRK(4311, HWREV_EQ(2), SIBA_QUIRK_PCIE_D11_SB_TIMEOUT),
 	BHND_CHIP_QUIRK(4312, HWREV_EQ(0), SIBA_QUIRK_PCIE_D11_SB_TIMEOUT),
+	BHND_DEVICE_QUIRK_END
 };
 
 static struct bhnd_device bridge_devs[] = {
 	BHND_DEVICE(BCM, PCI, NULL, bridge_quirks),
+	BHND_DEVICE_END
 };
 
 static int
@@ -226,7 +228,6 @@ siba_bhndb_wars_pcie_clear_d11_timeout(struct siba_softc *sc)
 	if (bhnd_get_class(hostb_dev) != BHND_DEVCLASS_PCIE)
 		return (0);
 
-	/* Only applies if there's a D11 core */
 	d11 = bhnd_match_child(sc->dev, &(struct bhnd_core_match) {
 		BHND_MATCH_CORE(BHND_MFGID_BCM, BHND_COREID_D11),
 		BHND_MATCH_CORE_UNIT(0)
