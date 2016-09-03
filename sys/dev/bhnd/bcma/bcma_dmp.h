@@ -46,8 +46,8 @@
 	(((_value) & _flag) != 0)
 #define	BCMA_DMP_GET_BITS(_value, _field)	\
         ((_value & _field ## _MASK) >> _field ## _SHIFT)
-#define	BHND_PMU_SET_BITS(_value, _field)	\
-        (((_value) & _field ## _MASK) >> _field ## _SHIFT)
+#define	BHND_DMP_SET_BITS(_value, _field)	\
+	(((_value) << _field ## _SHIFT) & _field ## _MASK)
 
 /* Out-of-band Router registers */
 #define	BCMA_OOB_BUSCONFIG	0x020

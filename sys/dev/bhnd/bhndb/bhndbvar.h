@@ -62,9 +62,6 @@ int	bhndb_generic_resume(device_t dev);
 int	bhndb_generic_init_full_config(device_t dev, device_t child,
 	    const struct bhndb_hw_priority *hw_prio_table);
 
-int	bhnd_generic_br_get_intr_count(device_t dev, device_t child);
-int	bhnd_generic_br_assign_intr(device_t dev, device_t child, int rid);
-
 int	bhnd_generic_br_suspend_child(device_t dev, device_t child);
 int	bhnd_generic_br_resume_child(device_t dev, device_t child);
 
@@ -92,12 +89,12 @@ struct bhndb_softc {
 	device_t			 dev;		/**< bridge device */
 	struct bhnd_chipid		 chipid;	/**< chip identification */
 	bhnd_devclass_t			 bridge_class;	/**< bridge core type */
+	struct bhnd_core_info		 bridge_core;	/**< bridge core. not populated until
+							  *  full bridge config is initialized */
+	bool				 have_br_core;	/**< false if not yet available */
 
 	device_t			 parent_dev;	/**< parent device */
 	device_t			 bus_dev;	/**< child bhnd(4) bus */
-	device_t			 hostb_dev;	/**< child host bridge device, or NULL
-							     if the @p bus_dev has not yet
-							     called BHNDB_INIT_FULL_CONFIG() */
 
 	struct mtx			 sc_mtx;	/**< resource lock. */
 	struct bhndb_resources		*bus_res;	/**< bus resource state */

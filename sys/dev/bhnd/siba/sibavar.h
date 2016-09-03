@@ -63,11 +63,7 @@ uint16_t		 siba_get_bhnd_mfgid(uint16_t ocp_vendor);
 struct siba_core_id	 siba_parse_core_id(uint32_t idhigh, uint32_t idlow,
 			     u_int core_idx, int unit);
 
-int			 siba_fix_num_cores(struct bhnd_chipid *cid,
-			     uint16_t chipc_hwrev);
-
-int			 siba_add_children(device_t bus,
-			     const struct bhnd_chipid *chipid);
+int			 siba_add_children(device_t bus);
 
 struct siba_devinfo	*siba_alloc_dinfo(device_t dev);
 int			 siba_init_dinfo(device_t dev,
@@ -76,14 +72,16 @@ int			 siba_init_dinfo(device_t dev,
 void			 siba_free_dinfo(device_t dev,
 			     struct siba_devinfo *dinfo);
 
-u_int			 siba_addrspace_port_count(struct siba_devinfo *dinfo);
-u_int			 siba_addrspace_region_count(struct siba_devinfo *dinfo,
+u_int			 siba_addrspace_port_count(u_int num_addrspace);
+u_int			 siba_addrspace_region_count(u_int num_addrspace,
 			     u_int port);
 
 u_int			 siba_addrspace_port(u_int addrspace);
 u_int			 siba_addrspace_region(u_int addrspace);
-
-bool			 siba_is_port_valid(struct siba_devinfo *dinfo,
+int			 siba_addrspace_index(u_int num_addrspace,
+			     bhnd_port_type type, u_int port, u_int region,
+			     u_int *addridx);
+bool			 siba_is_port_valid(u_int num_addrspace,
 			     bhnd_port_type type, u_int port);
 
 struct siba_addrspace	*siba_find_addrspace(struct siba_devinfo *dinfo,
@@ -164,7 +162,6 @@ struct siba_devinfo {
 struct siba_softc {
 	struct bhnd_softc	bhnd_sc;	/**< bhnd state */
 	device_t		dev;		/**< siba device */
-	device_t		hostb_dev;	/**< host bridge core, or NULL */
 };
 
 #endif /* _SIBA_SIBAVAR_H_ */

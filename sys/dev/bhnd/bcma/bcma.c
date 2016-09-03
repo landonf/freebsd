@@ -48,6 +48,15 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/bhnd_core.h>
 
+/* RID used when allocating EROM table */
+#define	BCMA_EROM_RID	0
+
+static bhnd_erom_class_t *
+bcma_get_erom_class(driver_t *driver)
+{
+	return (&bcma_erom_parser);
+}
+
 int
 bcma_probe(device_t dev)
 {
@@ -55,10 +64,25 @@ bcma_probe(device_t dev)
 	return (BUS_PROBE_DEFAULT);
 }
 
+/**
+ * Default bcma(4) bus driver implementation of DEVICE_ATTACH().
+ * 
+ * This implementation initializes internal bcma(4) state and performs
+ * bus enumeration, and must be called by subclassing drivers in
+ * DEVICE_ATTACH() before any other bus methods.
+ */
 int
 bcma_attach(device_t dev)
-{	
-	return (bhnd_generic_attach(dev));
+{
+	int error;
+
+	/* Enumerate children */
+	if ((error = bcma_add_children(dev))) {
+		device_delete_children(dev);
+		return (error);
+	}
+
+	return (0);
 }
 
 int
@@ -129,15 +153,6 @@ bcma_get_resource_list(device_t dev, device_t child)
 {
 	struct bcma_devinfo *dinfo = device_get_ivars(child);
 	return (&dinfo->resources);
-}
-
-static device_t
-bcma_find_hostb_device(device_t dev)
-{
-	struct bcma_softc *sc = device_get_softc(dev);
-
-	/* This is set (or not) by the concrete bcma driver subclass. */
-	return (sc->hostb_dev);
 }
 
 static int
@@ -500,59 +515,53 @@ bcma_free_bhnd_dinfo(device_t dev, struct bhnd_devinfo *dinfo)
 }
 
 /**
- * Scan a device enumeration ROM table, adding all valid discovered cores to
+ * Scan the device enumeration ROM table, adding all valid discovered cores to
  * the bus.
  * 
  * @param bus The bcma bus.
- * @param erom_res An active resource mapping the EROM core.
- * @param erom_offset Base offset of the EROM core's register mapping.
  */
 int
-bcma_add_children(device_t bus, struct resource *erom_res, bus_size_t erom_offset)
+bcma_add_children(device_t bus)
 {
-	struct bcma_erom	 erom;
-	struct bcma_corecfg	*corecfg;
-	struct bcma_devinfo	*dinfo;
-	device_t		 child;
-	int			 error;
+	bhnd_erom_t			*erom;
+	struct bcma_erom		*bcma_erom;
+	const struct bhnd_chipid	*cid;
+	struct bcma_corecfg		*corecfg;
+	struct bcma_devinfo		*dinfo;
+	device_t			 child;
+	int				 error;
 
+	cid = BHND_BUS_GET_CHIPID(bus, bus);
 	corecfg = NULL;
 
-	/* Initialize our reader */
-	error = bcma_erom_open(&erom, erom_res, erom_offset);
-	if (error)
-		return (error);
+	/* Allocate our EROM parser */
+	erom = bhnd_erom_alloc(&bcma_erom_parser, cid, bus, BCMA_EROM_RID);
+	if (erom == NULL)
+		return (ENODEV);
 
 	/* Add all cores. */
-	while (!error) {
+	bcma_erom = (struct bcma_erom *)erom;
+	while ((error = bcma_erom_next_corecfg(bcma_erom, &corecfg)) == 0) {
 		int nintr;
-
-		/* Parse next core */
-		error = bcma_erom_parse_corecfg(&erom, &corecfg);
-		if (error && error == ENOENT) {
-			return (0);
-		} else if (error) {
-			goto failed;
-		}
 
 		/* Add the child device */
 		child = BUS_ADD_CHILD(bus, 0, NULL, -1);
 		if (child == NULL) {
 			error = ENXIO;
-			goto failed;
+			goto cleanup;
 		}
 
 		/* Initialize device ivars */
 		dinfo = device_get_ivars(child);
 		if ((error = bcma_init_dinfo(bus, dinfo, corecfg)))
-			goto failed;
+			goto cleanup;
 
 		/* The dinfo instance now owns the corecfg value */
 		corecfg = NULL;
 
 		/* Allocate device's agent registers, if any */
 		if ((error = bcma_dinfo_alloc_agent(bus, child, dinfo)))
-			goto failed;
+			goto cleanup;
 
 		/* Assign interrupts */
 		nintr = bhnd_get_intr_count(child);
@@ -574,13 +583,18 @@ bcma_add_children(device_t bus, struct resource *erom_res, bus_size_t erom_offse
 		BHND_BUS_CHILD_ADDED(bus, child);
 	}
 
-	/* Hit EOF parsing cores? */
+	/* EOF while parsing cores is expected */
 	if (error == ENOENT)
-		return (0);
+		error = 0;
 	
-failed:
+cleanup:
+	bhnd_erom_free(erom);
+
 	if (corecfg != NULL)
 		bcma_free_corecfg(corecfg);
+
+	if (error)
+		device_delete_children(bus);
 
 	return (error);
 }
@@ -598,7 +612,7 @@ static device_method_t bcma_methods[] = {
 	DEVMETHOD(bus_get_resource_list,	bcma_get_resource_list),
 
 	/* BHND interface */
-	DEVMETHOD(bhnd_bus_find_hostb_device,	bcma_find_hostb_device),
+	DEVMETHOD(bhnd_bus_get_erom_class,	bcma_get_erom_class),
 	DEVMETHOD(bhnd_bus_alloc_devinfo,	bcma_alloc_bhnd_dinfo),
 	DEVMETHOD(bhnd_bus_free_devinfo,	bcma_free_bhnd_dinfo),
 	DEVMETHOD(bhnd_bus_reset_core,		bcma_reset_core),

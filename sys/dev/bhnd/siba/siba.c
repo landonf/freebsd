@@ -44,6 +44,12 @@ __FBSDID("$FreeBSD$");
 #include "sibareg.h"
 #include "sibavar.h"
 
+static bhnd_erom_class_t *
+siba_get_erom_class(driver_t *driver)
+{
+	return (&siba_erom_parser);
+}
+
 int
 siba_probe(device_t dev)
 {
@@ -51,16 +57,29 @@ siba_probe(device_t dev)
 	return (BUS_PROBE_DEFAULT);
 }
 
+/**
+ * Default siba(4) bus driver implementation of DEVICE_ATTACH().
+ * 
+ * This implementation initializes internal siba(4) state and performs
+ * bus enumeration, and must be called by subclassing drivers in
+ * DEVICE_ATTACH() before any other bus methods.
+ */
 int
 siba_attach(device_t dev)
 {
 	struct siba_softc	*sc;
-	
+	int			 error;
+
 	sc = device_get_softc(dev);
 	sc->dev = dev;
 
-	/* Delegate remainder to standard bhnd method implementation */
-	return (bhnd_generic_attach(dev));
+	/* Enumerate children */
+	if ((error = siba_add_children(dev))) {
+		device_delete_children(dev);
+		return (error);
+	}
+
+	return (0);
 }
 
 int
@@ -145,15 +164,6 @@ siba_get_resource_list(device_t dev, device_t child)
 	return (&dinfo->resources);
 }
 
-static device_t
-siba_find_hostb_device(device_t dev)
-{
-	struct siba_softc *sc = device_get_softc(dev);
-
-	/* This is set (or not) by the concrete siba driver subclass. */
-	return (sc->hostb_dev);
-}
-
 static int
 siba_reset_core(device_t dev, device_t child, uint16_t flags)
 {
@@ -195,6 +205,32 @@ siba_suspend_core(device_t dev, device_t child)
 static uint32_t
 siba_read_config(device_t dev, device_t child, bus_size_t offset, u_int width)
 {
+	struct siba_devinfo	*dinfo;
+	rman_res_t		 r_size;
+
+	/* Must be directly attached */
+	if (device_get_parent(child) != dev)
+		return (UINT32_MAX);
+
+	/* CFG0 registers must be available */
+	dinfo = device_get_ivars(child);
+	if (dinfo->cfg[0] == NULL)
+		return (UINT32_MAX);
+
+	/* Offset must fall within CFG0 */
+	r_size = rman_get_size(dinfo->cfg[0]->res);
+	if (r_size < offset || r_size - offset < width)
+		return (UINT32_MAX);
+
+	switch (width) {
+	case 1:
+		return (bhnd_bus_read_1(dinfo->cfg[0], offset));
+	case 2:
+		return (bhnd_bus_read_2(dinfo->cfg[0], offset));
+	case 4:
+		return (bhnd_bus_read_4(dinfo->cfg[0], offset));
+	}
+	
 	/* Unsuported */
 	return (UINT32_MAX);
 }
@@ -203,8 +239,31 @@ static void
 siba_write_config(device_t dev, device_t child, bus_size_t offset, uint32_t val,
     u_int width)
 {
-	/* Unsuported */
-	return;
+	struct siba_devinfo	*dinfo;
+	rman_res_t		 r_size;
+
+	/* Must be directly attached */
+	if (device_get_parent(child) != dev)
+		return;
+
+	/* CFG0 registers must be available */
+	dinfo = device_get_ivars(child);
+	if (dinfo->cfg[0] == NULL)
+		return;
+
+	/* Offset must fall within CFG0 */
+	r_size = rman_get_size(dinfo->cfg[0]->res);
+	if (r_size < offset || r_size - offset < width)
+		return;
+
+	switch (width) {
+	case 1:
+		bhnd_bus_write_1(dinfo->cfg[0], offset, val);
+	case 2:
+		bhnd_bus_write_2(dinfo->cfg[0], offset, val);
+	case 4:
+		bhnd_bus_write_4(dinfo->cfg[0], offset, val);
+	}
 }
 
 static u_int
@@ -218,7 +277,7 @@ siba_get_port_count(device_t dev, device_t child, bhnd_port_type type)
 		    type));
 
 	dinfo = device_get_ivars(child);
-	return (siba_addrspace_port_count(dinfo));
+	return (siba_addrspace_port_count(dinfo->core_id.num_addrspace));
 }
 
 static u_int
@@ -233,10 +292,11 @@ siba_get_region_count(device_t dev, device_t child, bhnd_port_type type,
 		    type, port));
 
 	dinfo = device_get_ivars(child);
-	if (!siba_is_port_valid(dinfo, type, port))
+	if (!siba_is_port_valid(dinfo->core_id.num_addrspace, type, port))
 		return (0);
 
-	return (siba_addrspace_region_count(dinfo, port));
+	return (siba_addrspace_region_count(dinfo->core_id.num_addrspace,
+	    port));
 }
 
 static int
@@ -378,7 +438,7 @@ siba_get_core_ivec(device_t dev, device_t child, u_int intr, uint32_t *ivec)
  */
 static int
 siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
-    struct resource *r)
+    struct bhnd_resource *r)
 {
 	struct siba_core_id	*cid;
 	uint32_t		 addr;
@@ -402,7 +462,7 @@ siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
 		}
 
 		/* Fetch the address match register value */
-		adm = bus_read_4(r, adm_offset);
+		adm = bhnd_bus_read_4(r, adm_offset);
 
 		/* Parse the value */
 		if ((error = siba_parse_admatch(adm, &addr, &size))) {
@@ -504,73 +564,22 @@ siba_free_bhnd_dinfo(device_t dev, struct bhnd_devinfo *dinfo)
  * the bus.
  * 
  * @param dev The siba bus device.
- * @param chipid The chip identifier, if the device does not provide a
- * ChipCommon core. Should o NULL otherwise.
  */
 int
-siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
+siba_add_children(device_t dev)
 {
-	struct bhnd_chipid	 ccid;
-	struct bhnd_core_info	*cores;
-	struct siba_devinfo	*dinfo;
-	struct resource		*r;
-	int			 rid;
-	int			 error;
+	const struct bhnd_chipid	*chipid;
+	struct bhnd_core_info		*cores;
+	struct siba_devinfo		*dinfo;
+	struct bhnd_resource		*r;
+	int				 rid;
+	int				 error;
 
 	dinfo = NULL;
 	cores = NULL;
 	r = NULL;
-	
-	/*
-	 * Try to determine the number of device cores via the ChipCommon
-	 * identification registers.
-	 * 
-	 * A small number of very early devices do not include a ChipCommon
-	 * core, in which case our caller must supply the chip identification
-	 * information via a non-NULL chipid parameter.
-	 */
-	if (chipid == NULL) {
-		uint32_t	idhigh, ccreg;
-		uint16_t	vendor, device;
-		uint8_t		ccrev;
 
-		/* Map the first core's register block. If the ChipCommon core
-		 * exists, it will always be the first core. */
-		rid = 0;
-		r = bus_alloc_resource(dev, SYS_RES_MEMORY, &rid,
-		    SIBA_CORE_ADDR(0), SIBA_CORE_SIZE, 
-		    SIBA_CORE_ADDR(0) + SIBA_CORE_SIZE - 1,
-		    RF_ACTIVE);
-
-		/* Identify the core */
-		idhigh = bus_read_4(r, SB0_REG_ABS(SIBA_CFG0_IDHIGH));
-		vendor = SIBA_REG_GET(idhigh, IDH_VENDOR);
-		device = SIBA_REG_GET(idhigh, IDH_DEVICE);
-		ccrev = SIBA_IDH_CORE_REV(idhigh);
-
-		if (vendor != OCP_VENDOR_BCM || device != BHND_COREID_CC) {
-			device_printf(dev,
-			    "cannot identify device: no chipcommon core "
-			    "found\n");
-			error = ENXIO;
-			goto cleanup;
-		}
-
-		/* Identify the chipset */
-		ccreg = bus_read_4(r, CHIPC_ID);
-		ccid = bhnd_parse_chipid(ccreg, SIBA_ENUM_ADDR);
-
-		/* Fix (or supply) a valid ncore value, if required */
-		if ((error = siba_fix_num_cores(&ccid, ccrev))) {
-			device_printf(dev, "unable to determine core count for "
-			    "chipset 0x%hx\n", ccid.chip_id);
-			error = ENXIO;
-			goto cleanup;
-		}
-
-		chipid = &ccid;
-		bus_release_resource(dev, SYS_RES_MEMORY, rid, r);
-	}
+	chipid = BHND_BUS_GET_CHIPID(dev, dev);
 
 	/* Allocate our temporary core table and enumerate all cores */
 	cores = malloc(sizeof(*cores) * chipid->ncores, M_BHND, M_NOWAIT);
@@ -590,7 +599,7 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 		r_start = SIBA_CORE_ADDR(i);
 		r_count = SIBA_CORE_SIZE;
 		r_end = r_start + SIBA_CORE_SIZE - 1;
-		r = bus_alloc_resource(dev, SYS_RES_MEMORY, &rid, r_start,
+		r = bhnd_alloc_resource(dev, SYS_RES_MEMORY, &rid, r_start,
 		    r_end, r_count, RF_ACTIVE);
 		if (r == NULL) {
 			error = ENXIO;
@@ -605,8 +614,8 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 		}
 		
 		/* Read the core info */
-		idhigh = bus_read_4(r, SB0_REG_ABS(SIBA_CFG0_IDHIGH));
-		idlow = bus_read_4(r, SB0_REG_ABS(SIBA_CFG0_IDLOW));
+		idhigh = bhnd_bus_read_4(r, SB0_REG_ABS(SIBA_CFG0_IDHIGH));
+		idlow = bhnd_bus_read_4(r, SB0_REG_ABS(SIBA_CFG0_IDLOW));
 
 		cid = siba_parse_core_id(idhigh, idlow, i, 0);
 		cores[i] = cid.core_info;
@@ -633,7 +642,7 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 
 		/* Release our resource covering the register blocks
 		 * we're about to map */
-		bus_release_resource(dev, SYS_RES_MEMORY, rid, r);
+		bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
 		r = NULL;
 
 		/* Map the core's config blocks */
@@ -664,7 +673,7 @@ cleanup:
 		free(cores, M_BHND);
 
 	if (r != NULL)
-		bus_release_resource(dev, SYS_RES_MEMORY, rid, r);
+		bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
 
 	return (error);
 }
@@ -683,7 +692,7 @@ static device_method_t siba_methods[] = {
 	DEVMETHOD(bus_get_resource_list,	siba_get_resource_list),
 
 	/* BHND interface */
-	DEVMETHOD(bhnd_bus_find_hostb_device,	siba_find_hostb_device),
+	DEVMETHOD(bhnd_bus_get_erom_class,	siba_get_erom_class),
 	DEVMETHOD(bhnd_bus_alloc_devinfo,	siba_alloc_bhnd_dinfo),
 	DEVMETHOD(bhnd_bus_free_devinfo,	siba_free_bhnd_dinfo),
 	DEVMETHOD(bhnd_bus_reset_core,		siba_reset_core),

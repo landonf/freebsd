@@ -29,6 +29,7 @@
 #include <sys/rman.h>
 
 #include <dev/bhnd/bhnd_types.h>
+#include <dev/bhnd/bhnd_erom_types.h>
 
 INTERFACE bhnd_bus;
 
@@ -49,7 +50,13 @@ CODE {
 	#include <sys/systm.h>
 
 	#include <dev/bhnd/bhndvar.h>
-	
+
+	static bhnd_erom_class_t *
+	bhnd_bus_null_get_erom_class(driver_t *driver)
+	{
+		return (NULL);
+	}
+
 	static struct bhnd_chipid *
 	bhnd_bus_null_get_chipid(device_t dev, device_t child)
 	{
@@ -171,7 +178,7 @@ CODE {
 	static device_t
 	bhnd_bus_null_find_hostb_device(device_t dev)
 	{
-		panic("bhnd_bus_find_hostb_device unimplemented");
+		return (NULL);
 	}
 
 	static bool
@@ -216,6 +223,15 @@ CODE {
 	}
 
 }
+
+/**
+ * Return the bhnd(4) bus driver's device enumeration parser class.
+ *
+ * @param driver	The bhnd bus driver instance.
+ */
+STATICMETHOD bhnd_erom_class_t * get_erom_class {
+	driver_t			*driver;
+} DEFAULT bhnd_bus_null_get_erom_class;
 
 /**
  * Return the active host bridge core for the bhnd bus, if any.
@@ -378,12 +394,11 @@ METHOD int get_intr_count {
  * Bridge-attached bus implementations may instead override standard
  * interconnect IRQ assignment, providing IRQs inherited from the parent bus.
  *
- * TODO: Once we can depend on INTRNG, we can replace this with a bridge-level
- * interrupt controller.
+ * TODO: Once we can depend on INTRNG, investigate replacing this with a
+ * bridge-level interrupt controller.
  * 
  * @param dev The bhnd bus parent of @p child.
- * @param child The bhnd device to which an interrupt should be
- * assigned.
+ * @param child The bhnd device to which an interrupt should be assigned.
  * @param rid The interrupt resource ID to be assigned.
  *
  * @retval 0		If an interrupt was assigned.
@@ -657,8 +672,9 @@ METHOD int release_ext_rsrc {
  * @param offset The offset to be read.
  * @param width The size of the access. Must be 1, 2 or 4 bytes.
  *
- * The exact behavior of this method is bus-specific. In the case of
- * bcma(4), this method provides access to the first agent port of @p child.
+ * The exact behavior of this method is bus-specific. On a bcma(4) bus, this
+ * method provides access to the first agent port of @p child; on a siba(4) bus,
+ * this method provides access to the core's CFG0 register block.
  *
  * @note Device drivers should only use this API for functionality
  * that is not available via another bhnd(4) function.

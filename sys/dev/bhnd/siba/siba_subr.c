@@ -40,7 +40,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/resource.h>
 
 #include <dev/bhnd/bhndvar.h>
-#include <dev/bhnd/cores/chipc/chipcreg.h>
 
 #include "sibareg.h"
 #include "sibavar.h"
@@ -104,56 +103,6 @@ siba_parse_core_id(uint32_t idhigh, uint32_t idlow, u_int core_idx, int unit)
 		.num_addrspace	= num_addrspace,
 		.num_cfg_blocks	= num_cfg
 	};	
-}
-
-/**
- * Fix the core count in @p cid, if required.
- * 
- * On early siba(4) devices, the ChipCommon core does not provide a valid
- * CHIPC_ID_NUMCORE field (see CHIPC_NCORES_MIN_HWREV()). This function writes
- * the correct count to @p cid, if known.
- * 
- * @param[in,out] cid The bhnd_chipid structure to be modified.
- * @param chipc_hwrev The hardware revision of the ChipCommon core from which
- * @p cid was parsed.
- * 
- * @retval 0 If the core count is already correct, or was mapped to a
- * a correct value.
- * @retval EINVAL If the core count is incorrect, but the chip was not
- * recognized.
- */
-int
-siba_fix_num_cores(struct bhnd_chipid *cid, uint16_t chipc_hwrev)
-{
-	if (CHIPC_NCORES_MIN_HWREV(chipc_hwrev))
-		return (0);
-
-	switch (cid->chip_id) {
-	case BHND_CHIPID_BCM4306:
-		cid->ncores = 6;
-		break;
-	case BHND_CHIPID_BCM4704:
-		cid->ncores = 9;
-		break;
-	case BHND_CHIPID_BCM5365:
-		/*
-		* BCM5365 does support ID_NUMCORE in at least
-		* some of its revisions, but for unknown
-		* reasons, Broadcom's drivers always exclude
-		* the ChipCommon revision (0x5) used by BCM5365
-		* from the set of revisions supporting
-		* ID_NUMCORE, and instead supply a fixed value.
-		* 
-		* Presumably, at least some of these devices
-		* shipped with a broken ID_NUMCORE value.
-		*/
-		cid->ncores = 7;
-		break;
-	default:
-		return (EINVAL);
-	}
-
-	return (0);
 }
 
 /**
@@ -235,15 +184,15 @@ siba_addrspace_region(u_int addrspace)
 
 /**
  * Return the number of bhnd(4) ports to advertise for the given
- * @p dinfo.
+ * @p num_addrspace.
  * 
- * @param dinfo The device info to query.
+ * @param num_addrspace The number of siba address spaces.
  */
 u_int
-siba_addrspace_port_count(struct siba_devinfo *dinfo)
+siba_addrspace_port_count(u_int num_addrspace)
 {
 	/* 0, 1, or 2 ports */
-	return min(dinfo->core_id.num_addrspace, 2);
+	return min(num_addrspace, 2);
 }
 
 /**
@@ -254,10 +203,8 @@ siba_addrspace_port_count(struct siba_devinfo *dinfo)
  * spaces.
  */
 u_int
-siba_addrspace_region_count(struct siba_devinfo *dinfo, u_int port) 
+siba_addrspace_region_count(u_int num_addrspace, u_int port) 
 {
-	u_int num_addrspace = dinfo->core_id.num_addrspace;
-
 	/* The first address space, if any, is mapped to device0.0 */
 	if (port == 0)
 		return (min(num_addrspace, 1));
@@ -271,32 +218,33 @@ siba_addrspace_region_count(struct siba_devinfo *dinfo, u_int port)
 }
 
 /**
- * Return true if @p port is defined on @p dinfo, false otherwise.
+ * Return true if @p port is defined given an address space count
+ * of @p num_addrspace, false otherwise.
  *
  * Refer to the siba_find_addrspace() function for information on siba's
  * mapping of bhnd(4) port and region identifiers.
  * 
- * @param dinfo The device info to verify the port against.
+ * @param num_addrspace The number of address spaces to verify the port against.
  * @param type The bhnd(4) port type.
  * @param port The bhnd(4) port number.
  */
 bool
-siba_is_port_valid(struct siba_devinfo *dinfo, bhnd_port_type type, u_int port)
+siba_is_port_valid(u_int num_addrspace, bhnd_port_type type, u_int port)
 {
 	/* Only device ports are supported */
 	if (type != BHND_PORT_DEVICE)
 		return (false);
 
 	/* Verify the index against the port count */
-	if (siba_addrspace_port_count(dinfo) <= port)
+	if (siba_addrspace_port_count(num_addrspace) <= port)
 		return (false);
 
 	return (true);
 }
 
 /**
- * Map an bhnd(4) type/port/region triplet to its associated address space
- * entry, if any.
+ * Map a bhnd(4) type/port/region triplet to its associated address space
+ * index, if any.
  * 
  * For compatibility with bcma(4), we map address spaces to port/region
  * identifiers as follows:
@@ -309,6 +257,46 @@ siba_is_port_valid(struct siba_devinfo *dinfo, bhnd_port_type type, u_int port)
  * 
  * The only supported port type is BHND_PORT_DEVICE.
  * 
+ * @param num_addrspace The number of available siba address spaces.
+ * @param type The bhnd(4) port type.
+ * @param port The bhnd(4) port number.
+ * @param region The bhnd(4) port region.
+ * @param addridx On success, the corresponding addrspace index.
+ * 
+ * @retval 0 success
+ * @retval ENOENT if the given type/port/region cannot be mapped to a
+ * siba address space.
+ */
+int
+siba_addrspace_index(u_int num_addrspace, bhnd_port_type type, u_int port,
+    u_int region, u_int *addridx)
+{
+	u_int idx;
+
+	if (!siba_is_port_valid(num_addrspace, type, port))
+		return (ENOENT);
+	
+	if (port == 0)
+		idx = region;
+	else if (port == 1)
+		idx = region + 1;
+	else
+		return (ENOENT);
+
+	if (idx >= num_addrspace)
+		return (ENOENT);
+
+	/* Found */
+	*addridx = idx;
+	return (0);
+}
+
+/**
+ * Map an bhnd(4) type/port/region triplet to its associated address space
+ * entry, if any.
+ *
+ * The only supported port type is BHND_PORT_DEVICE.
+ * 
  * @param dinfo The device info to search for a matching address space.
  * @param type The bhnd(4) port type.
  * @param port The bhnd(4) port number.
@@ -318,23 +306,19 @@ struct siba_addrspace *
 siba_find_addrspace(struct siba_devinfo *dinfo, bhnd_port_type type, u_int port,
     u_int region)
 {
-	u_int			 addridx;
+	u_int	addridx;
+	int	error;
 
-	if (!siba_is_port_valid(dinfo, type, port))
-		return (NULL);
-
-	if (port == 0)
-		addridx = region;
-	else if (port == 1)
-		addridx = region + 1;
-	else
-		return (NULL);
-
-	/* Out of range? */
-	if (addridx >= dinfo->core_id.num_addrspace)
+	/* Map to addrspace index */
+	error = siba_addrspace_index(dinfo->core_id.num_addrspace, type, port,
+	    region, &addridx);
+	if (error)
 		return (NULL);
 
 	/* Found */
+	if (addridx >= SIBA_MAX_ADDRSPACE)
+		return (NULL);
+
 	return (&dinfo->addrspace[addridx]);
 }
 
