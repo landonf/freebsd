@@ -52,11 +52,8 @@ __FBSDID("$FreeBSD$");
 #define	BCMA_EROM_RID	0
 
 static bhnd_erom_class_t *
-bcma_get_erom_class(driver_t *driver, const struct bhnd_chipid *cid)
+bcma_get_erom_class(driver_t *driver)
 {
-	if (!BHND_CHIPTYPE_HAS_EROM(cid->chip_type))
-		return (NULL);
-
 	return (&bcma_erom_parser);
 }
 
@@ -67,10 +64,25 @@ bcma_probe(device_t dev)
 	return (BUS_PROBE_DEFAULT);
 }
 
+/**
+ * Default bcma(4) bus driver implementation of DEVICE_ATTACH().
+ * 
+ * This implementation initializes internal bcma(4) state and performs
+ * bus enumeration, and must be called by subclassing drivers in
+ * DEVICE_ATTACH() before any other bus methods.
+ */
 int
 bcma_attach(device_t dev)
-{	
-	return (bhnd_generic_attach(dev));
+{
+	int error;
+
+	/* Enumerate children */
+	if ((error = bcma_add_children(dev))) {
+		device_delete_children(dev);
+		return (error);
+	}
+
+	return (0);
 }
 
 int
@@ -523,16 +535,14 @@ bcma_add_children(device_t bus)
 	corecfg = NULL;
 
 	/* Allocate our EROM parser */
-	erom = bhnd_erom_alloc(&bcma_erom_parser, bus, BCMA_EROM_RID,
-	    cid->enum_addr);
+	erom = bhnd_erom_alloc(&bcma_erom_parser, cid, bus, BCMA_EROM_RID);
 	if (erom == NULL)
 		return (ENODEV);
 
 	/* Add all cores. */
 	bcma_erom = (struct bcma_erom *)erom;
 	while ((error = bcma_erom_next_corecfg(bcma_erom, &corecfg)) == 0) {
-		struct bhnd_core_info	*core;
-		int			 nintr;
+		int nintr;
 
 		/* Add the child device */
 		child = BUS_ADD_CHILD(bus, 0, NULL, -1);
@@ -566,8 +576,7 @@ bcma_add_children(device_t bus)
 
 		/* If pins are floating or the hardware is otherwise
 		 * unpopulated, the device shouldn't be used. */
-		core = &dinfo->corecfg->core_info;
-		if (BHND_BUS_IS_CORE_DISABLED(bus, bus, core))
+		if (bhnd_is_hw_disabled(child))
 			device_disable(child);
 
 		/* Issue bus callback for fully initialized child. */

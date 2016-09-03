@@ -189,6 +189,12 @@ struct bhnd_resource {
 					 *   is MMIO accessible. */
 };
 
+/** Wrap the active resource @p _r in a bhnd_resource structure */
+#define	BHND_DIRECT_RESOURCE(_r)	((struct bhnd_resource) {	\
+	.res = (_r),							\
+	.direct = true,							\
+})
+
 /**
  * Device quirk table descriptor.
  */
@@ -367,9 +373,8 @@ int				 bhnd_nvram_getvar_array(device_t dev,
 				     const char *name, void *buf, size_t count,
 				     bhnd_nvram_type type);
 
-bool				 bhnd_bus_generic_is_core_disabled(device_t dev,
-				     device_t child,
-				     struct bhnd_core_info *core);
+bool				 bhnd_bus_generic_is_hw_disabled(device_t dev,
+				     device_t child);
 bool				 bhnd_bus_generic_is_region_valid(device_t dev,
 				     device_t child, bhnd_port_type type,
 				     u_int port, u_int region);
@@ -399,16 +404,14 @@ bhnd_attach_type		 bhnd_bus_generic_get_attach_type(device_t dev,
 				     device_t child);
 
 /**
- * Return a class capable of parsing the device enumeration table for
- * @p chipid, or NULL if not supported by this bhnd(4) bus driver.
+ * Return the bhnd(4) bus driver's device enumeration parser class
  *
- * @param driver	A bhnd bus driver instance.
- * @param chipid	The bhnd chip identification.
+ * @param driver A bhnd bus driver instance.
  */
 static inline bhnd_erom_class_t *
-bhnd_driver_get_erom_class(driver_t *driver, const struct bhnd_chipid *chipid)
+bhnd_driver_get_erom_class(driver_t *driver)
 {
-	return (BHND_BUS_GET_EROM_CLASS(driver, chipid));
+	return (BHND_BUS_GET_EROM_CLASS(driver));
 }
 
 /**
@@ -420,6 +423,22 @@ bhnd_driver_get_erom_class(driver_t *driver, const struct bhnd_chipid *chipid)
 static inline device_t
 bhnd_find_hostb_device(device_t dev) {
 	return (BHND_BUS_FIND_HOSTB_DEVICE(dev));
+}
+
+/**
+ * Return true if the hardware components required by @p dev are known to be
+ * unpopulated or otherwise unusable.
+ *
+ * In some cases, enumerated devices may have pins that are left floating, or
+ * the hardware may otherwise be non-functional; this method allows a parent
+ * device to explicitly specify if a successfully enumerated @p dev should
+ * be disabled.
+ *
+ * @param dev A bhnd bus child device.
+ */
+static inline bool
+bhnd_is_hw_disabled(device_t dev) {
+	return (BHND_BUS_IS_HW_DISABLED(device_get_parent(dev), dev));
 }
 
 /**

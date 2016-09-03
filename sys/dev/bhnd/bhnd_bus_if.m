@@ -52,8 +52,7 @@ CODE {
 	#include <dev/bhnd/bhndvar.h>
 
 	static bhnd_erom_class_t *
-	bhnd_bus_null_get_erom_class(driver_t *driver,
-	    const struct bhnd_chipid *chipid)
+	bhnd_bus_null_get_erom_class(driver_t *driver)
 	{
 		return (NULL);
 	}
@@ -62,13 +61,6 @@ CODE {
 	bhnd_bus_null_get_chipid(device_t dev, device_t child)
 	{
 		panic("bhnd_bus_get_chipid unimplemented");
-	}
-
-	static bool
-	bhnd_bus_null_is_core_disabled(device_t dev, device_t child,
-	    struct bhnd_core_info *core)
-	{
-		panic("bhnd_bus_is_core_disabled unimplemented");
 	}
 
 	static bhnd_attach_type
@@ -188,6 +180,12 @@ CODE {
 	{
 		return (NULL);
 	}
+
+	static bool
+	bhnd_bus_null_is_hw_disabled(device_t dev, device_t child)
+	{
+		panic("bhnd_bus_is_hw_disabled unimplemented");
+	}
 	
 	static int
 	bhnd_bus_null_get_probe_order(device_t dev, device_t child)
@@ -227,15 +225,12 @@ CODE {
 }
 
 /**
- * Return a class capable of parsing the device enumeration table for
- * @p chipid, or NULL if not supported by this driver.
+ * Return the bhnd(4) bus driver's device enumeration parser class.
  *
  * @param driver	The bhnd bus driver instance.
- * @param chipid	The bhnd chip identification.
  */
 STATICMETHOD bhnd_erom_class_t * get_erom_class {
 	driver_t			*driver;
-	const struct bhnd_chipid	*chipid;
 } DEFAULT bhnd_bus_null_get_erom_class;
 
 /**
@@ -249,6 +244,23 @@ STATICMETHOD bhnd_erom_class_t * get_erom_class {
 METHOD device_t find_hostb_device {
 	device_t dev;
 } DEFAULT bhnd_bus_null_find_hostb_device;
+
+/**
+ * Return true if the hardware components required by @p child are unpopulated
+ * or otherwise unusable.
+ *
+ * In some cases, enumerated devices may have pins that are left floating, or
+ * the hardware may otherwise be non-functional; this method allows a parent
+ * device to explicitly specify if a successfully enumerated @p child should
+ * be disabled.
+ *
+ * @param dev The device whose child is being examined.
+ * @param child The child device.
+ */
+METHOD bool is_hw_disabled {
+	device_t dev;
+	device_t child;
+} DEFAULT bhnd_bus_null_is_hw_disabled;
 
 /**
  * Return the probe (and attach) order for @p child. 
@@ -292,27 +304,6 @@ METHOD const struct bhnd_chipid * get_chipid {
 	device_t dev;
 	device_t child;
 } DEFAULT bhnd_bus_null_get_chipid;
-
-/**
- * Return true if the hardware components required by @p core are unpopulated
- * or otherwise unusable.
- *
- * In some cases, enumerated cores may have pins that are left floating, or
- * the hardware may otherwise be non-functional; this method allows a parent
- * device to explicitly specify if a successfully enumerated @p core should
- * be disabled.
- *
- * @param	dev		The bus device.
- * @param	child		The requesting bhnd bus child.
- * @param	core		The core for which disabled state should be
- *				returned.
- */
-METHOD bool is_core_disabled {
-	device_t		 dev;
-	device_t		 child;
-	struct bhnd_core_info	*core;
-} DEFAULT bhnd_bus_null_is_core_disabled;
-
 
 /**
  * Return the BHND attachment type of the parent bus.

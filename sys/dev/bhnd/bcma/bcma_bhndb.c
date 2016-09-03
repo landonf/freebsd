@@ -74,12 +74,12 @@ bcma_bhndb_attach(device_t dev)
 {
 	int error;
 
-	/* Enumerate our children */
-	if ((error = bcma_add_children(dev)))
-		return (error);
-
-	/* Call our superclass' implementation */
+	/* Perform initial attach and enumerate our children. */
 	if ((error = bcma_attach(dev)))
+		goto failed;
+
+	/* Delegate remainder to standard bhnd method implementation */
+	if ((error = bhnd_generic_attach(dev)))
 		goto failed;
 
 	return (0);

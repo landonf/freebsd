@@ -76,12 +76,17 @@ enum {
 static int			 bhndb_find_hostb_core(struct bhndb_softc *sc,
 				     bhnd_erom_t *erom,
 				     struct bhnd_core_info *core);
-static int			 bhndb_init_full_config(struct bhndb_softc *sc);
+
+static bhnd_erom_class_t	*bhndb_probe_erom_class(struct bhndb_softc *sc,
+				    struct bhnd_chipid *cid);
+
+static int			 bhndb_init_full_config(struct bhndb_softc *sc,
+				     bhnd_erom_class_t *eromcls);
+
+static struct bhnd_core_info	*bhndb_get_bridge_core(struct bhndb_softc *sc);
 
 static bool			 bhndb_hw_matches(struct bhnd_core_info *cores,
 				     u_int ncores, const struct bhndb_hw *hw);
-
-static struct bhnd_core_info	*bhndb_get_bridge_core_info(struct bhndb_softc *sc);
 
 static int			 bhndb_init_region_cfg(struct bhndb_softc *sc,
 				     bhnd_erom_t *erom,
@@ -92,10 +97,6 @@ static int			 bhndb_init_region_cfg(struct bhndb_softc *sc,
 static int			 bhndb_find_hwspec(struct bhndb_softc *sc,
 				     struct bhnd_core_info *cores, u_int ncores,
 				     const struct bhndb_hw **hw);
-
-static int			 bhndb_read_chipid(struct bhndb_softc *sc,
-				     const struct bhndb_hwcfg *cfg,
-				     struct bhnd_chipid *result);
 
 bhndb_addrspace			 bhndb_get_addrspace(struct bhndb_softc *sc,
 				     device_t child);
@@ -118,6 +119,10 @@ static int			 bhndb_try_activate_resource(
 				     struct bhndb_softc *sc, device_t child,
 				     int type, int rid, struct resource *r,
 				     bool *indirect);
+
+static inline struct bhndb_dw_alloc *bhndb_io_resource(struct bhndb_softc *sc,
+					bus_addr_t addr, bus_size_t size,
+					bus_size_t *offset);
 
 
 /**
@@ -197,7 +202,7 @@ bhndb_child_location_str(device_t dev, device_t child, char *buf,
  * @param sc BHNDB device state.
  */
 static struct bhnd_core_info *
-bhndb_get_bridge_core_info(struct bhndb_softc *sc)
+bhndb_get_bridge_core(struct bhndb_softc *sc)
 {
 	if (!sc->have_br_core)
 		panic("bridge not yet fully configured; no bridge core!");
@@ -348,7 +353,7 @@ bhndb_init_region_cfg(struct bhndb_softc *sc, bhnd_erom_t *erom,
 		 */
 		
 		/* ... do not require bridge resources */
-		if (BHND_BUS_IS_CORE_DISABLED(sc->dev, sc->dev, core))
+		if (BHNDB_BUS_IS_CORE_DISABLED(sc->parent_dev, sc->dev, core))
 			continue;
 
 		/* ... do not have a priority table entry */
@@ -482,65 +487,6 @@ bhndb_find_hwspec(struct bhndb_softc *sc, struct bhnd_core_info *cores,
 }
 
 /**
- * Read the ChipCommon identification data for this device.
- * 
- * @param sc bhndb device state.
- * @param cfg The hardware configuration to use when mapping the ChipCommon
- * registers.
- * @param[out] result the chip identification data.
- * 
- * @retval 0 success
- * @retval non-zero if the ChipCommon identification data could not be read.
- */
-static int
-bhndb_read_chipid(struct bhndb_softc *sc, const struct bhndb_hwcfg *cfg,
-    struct bhnd_chipid *result)
-{
-	const struct bhnd_chipid	*parent_cid;
-	const struct bhndb_regwin	*cc_win;
-	struct resource_spec		 rs;
-	int				 error;
-
-	/* Let our parent device override the discovery process */
-	parent_cid = BHNDB_BUS_GET_CHIPID(sc->parent_dev, sc->dev);
-	if (parent_cid != NULL) {
-		*result = *parent_cid;
-		return (0);
-	}
-
-	/* Find a register window we can use to map the first CHIPC_CHIPID_SIZE
-	 * of ChipCommon registers. */
-	cc_win = bhndb_regwin_find_best(cfg->register_windows,
-	    BHND_DEVCLASS_CC, 0, BHND_PORT_DEVICE, 0, 0, CHIPC_CHIPID_SIZE);
-	if (cc_win == NULL) {
-		device_printf(sc->dev, "no chipcommon register window\n");
-		return (0);
-	}
-
-	/* We can assume a device without a static ChipCommon window uses the
-	 * default ChipCommon address. */
-	if (cc_win->win_type == BHNDB_REGWIN_T_DYN) {
-		error = BHNDB_SET_WINDOW_ADDR(sc->dev, cc_win,
-		    BHND_DEFAULT_CHIPC_ADDR);
-
-		if (error) {
-			device_printf(sc->dev, "failed to set chipcommon "
-			    "register window\n");
-			return (error);
-		}
-	}
-
-	/* Let the default bhnd implemenation alloc/release the resource and
-	 * perform the read */
-	rs.type = cc_win->res.type;
-	rs.rid = cc_win->res.rid;
-	rs.flags = RF_ACTIVE;
-
-	return (bhnd_read_chipid(sc->parent_dev, &rs, cc_win->win_offset,
-	    result));
-}
-
-/**
  * Helper function that must be called by subclass bhndb(4) drivers
  * when implementing DEVICE_ATTACH() before calling any bhnd(4) or bhndb(4)
  * APIs on the bridge device.
@@ -561,6 +507,7 @@ bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass)
 	struct bhndb_devinfo		*dinfo;
 	struct bhndb_softc		*sc;
 	const struct bhndb_hwcfg	*cfg;
+	bhnd_erom_class_t		*eromcls;
 	int				 error;
 
 	sc = device_get_softc(dev);
@@ -570,12 +517,8 @@ bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass)
 
 	BHNDB_LOCK_INIT(sc);
 	
-	/* Read our chip identification data */
-	cfg = BHNDB_BUS_GET_GENERIC_HWCFG(sc->parent_dev, sc->dev);
-	if ((error = bhndb_read_chipid(sc, cfg, &sc->chipid)))
-		return (error);
-
 	/* Populate generic resource allocation state. */
+	cfg = BHNDB_BUS_GET_GENERIC_HWCFG(sc->parent_dev, sc->dev);
 	sc->bus_res = bhndb_alloc_resources(dev, sc->parent_dev, cfg);
 	if (sc->bus_res == NULL) {
 		return (ENXIO);
@@ -584,6 +527,18 @@ bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass)
 	/* Allocate our host resources */
 	if ((error = bhndb_alloc_host_resources(sc->bus_res)))
 		goto failed;
+
+	/* Probe for a usable EROM class for our bridged bhnd(4) bus and
+	 * populate our chip identifier. */
+	BHNDB_LOCK(sc);
+	if ((eromcls = bhndb_probe_erom_class(sc, &sc->chipid)) == NULL) {
+		BHNDB_UNLOCK(sc);
+
+		device_printf(sc->dev, "device enumeration unsupported; no "
+		    "compatible driver found\n");
+		return (ENXIO);
+	}
+	BHNDB_UNLOCK(sc);
 
 	/* Add our bridged bus device */
 	sc->bus_dev = BUS_ADD_CHILD(dev, BHND_PROBE_BUS, "bhnd", -1);
@@ -597,8 +552,11 @@ bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass)
 
 	/* Enumerate the bridged device and fully initialize our bridged
 	 * resource configuration */
-	if ((error = bhndb_init_full_config(sc)))
+	if ((error = bhndb_init_full_config(sc, eromcls))) {
+		device_printf(sc->dev, "initializing full bridge "
+		    "configuration failed: %d\n", error);
 		goto failed;
+	}
 
 	return (0);
 
@@ -609,6 +567,141 @@ failed:
 		bhndb_free_resources(sc->bus_res);
 
 	return (error);
+}
+
+
+/**
+ * Return a borrowed reference to the host resource mapping at least
+ * BHND_DEFAULT_CORE_SIZE bytes at the first bus core, for use with
+ * bhnd_erom_probe().
+ * 
+ * This may return a borrowed reference to a bhndb_dw_alloc-managed
+ * resource; any additional resource mapping requests may invalidate this
+ * borrowed reference.
+ * 
+ * @param sc BHNDB driver state.
+ * @param[out] offset On success, the offset within the returned resource
+ * at which the first bus core can be found.
+ * 
+ * @retval non-NULL success.
+ * @retval NULL If no usable mapping could be found.
+ */
+static struct resource *
+bhndb_erom_chipc_resource(struct bhndb_softc *sc, bus_size_t *offset)
+{
+	const struct bhndb_hwcfg	*cfg;
+	struct bhndb_dw_alloc		*dwa;
+	struct resource			*res;
+	const struct bhndb_regwin	*win;
+
+	BHNDB_LOCK_ASSERT(sc, MA_OWNED);
+
+	cfg = sc->bus_res->cfg;
+
+	/* Find a static register window mapping ChipCommon. */
+	win = bhndb_regwin_find_core(cfg->register_windows, BHND_DEVCLASS_CC,
+	    0, BHND_PORT_DEVICE, 0, 0);
+	if (win != NULL) {
+		if (win->win_size < BHND_DEFAULT_CORE_SIZE) {
+			device_printf(sc->dev,
+			    "chipcommon register window too small\n");
+			return (NULL);
+		}
+
+		res = bhndb_find_regwin_resource(sc->bus_res, win);
+		if (res == NULL) {
+			device_printf(sc->dev,
+			    "chipcommon register window not allocated\n");
+			return (NULL);
+		}
+
+		*offset = win->win_offset;
+		return (res);
+	}
+	
+	/* We'll need to fetch and configure a dynamic window. We can assume a
+	 * device without a static ChipCommon mapping uses the default siba(4)
+	 * base address. */
+	dwa = bhndb_io_resource(sc, BHND_DEFAULT_CHIPC_ADDR,
+	    BHND_DEFAULT_CORE_SIZE, offset);
+	if (dwa != NULL)
+		return (dwa->parent_res);
+
+	device_printf(sc->dev, "unable to map chipcommon registers; no usable "
+	    "register window found\n");
+	return (NULL);
+}
+
+/**
+ * Probe all supported EROM classes, returning the best matching class
+ * (or NULL if not found), writing the probed chip identifier to @p cid.
+ * 
+ * @param sc BHNDB driver state.
+ * @param cid On success, the bridged chipset's chip identifier.
+ */
+static bhnd_erom_class_t *
+bhndb_probe_erom_class(struct bhndb_softc *sc, struct bhnd_chipid *cid)
+{
+	devclass_t			 bhndb_devclass;
+	const struct bhnd_chipid	*hint;
+	struct resource			*res;
+	bus_size_t			 res_offset;
+	driver_t			**drivers;
+	int				 drv_count;
+	bhnd_erom_class_t		*erom_cls;
+	int				 prio, result;
+
+	BHNDB_LOCK_ASSERT(sc, MA_OWNED);
+
+	erom_cls = NULL;
+	prio = 0;
+
+	/* Let our parent device provide a chipid hint */
+	hint = BHNDB_BUS_GET_CHIPID(sc->parent_dev, sc->dev);
+
+	/* Fetch a borrowed reference to the resource mapping ChipCommon. */
+	res = bhndb_erom_chipc_resource(sc, &res_offset);
+	if (res == NULL)
+		return (NULL);
+
+	/* Fetch all available drivers */
+	bhndb_devclass = device_get_devclass(sc->dev);
+	if (devclass_get_drivers(bhndb_devclass, &drivers, &drv_count) != 0)
+		return (NULL);
+
+	/* Enumerate the drivers looking for the best available EROM class */
+	for (int i = 0; i < drv_count; i++) {
+		struct bhnd_chipid	 pcid;
+		bhnd_erom_class_t	*cls;
+
+		cls = bhnd_driver_get_erom_class(drivers[i]);
+		if (cls == NULL)
+			continue;
+
+		kobj_class_compile(cls);
+
+		/* Probe the bus */
+		result = bhnd_erom_probe(cls, &BHND_DIRECT_RESOURCE(res),
+		    res_offset, hint, &pcid);
+
+		/* The parser did not match if an error was returned */
+		if (result > 0)
+			continue;
+		
+		/* Check for a new highest priority match */
+		if (erom_cls == NULL || result > prio) {
+			prio = result;
+
+			*cid = pcid;
+			erom_cls = cls;
+		}
+
+		/* Terminate immediately on BUS_PROBE_SPECIFIC */
+		if (result == BUS_PROBE_SPECIFIC)
+			break;
+	}
+
+	return (erom_cls);
 }
 
 /* ascending core index comparison used by bhndb_find_hostb_core() */ 
@@ -686,30 +779,6 @@ bhndb_find_hostb_core(struct bhndb_softc *sc, bhnd_erom_t *erom,
 	return (error);
 }
 
-static bhnd_erom_class_t *
-bhndb_find_erom_class(struct bhndb_softc *sc)
-{
-	bhnd_erom_class_t	*cls;
-	devclass_t		 bhndb_devclass;
-	driver_t		**drivers;
-	int			 drv_count;
-
-	bhndb_devclass = device_get_devclass(sc->dev);
-	if (devclass_get_drivers(bhndb_devclass, &drivers, &drv_count) != 0)
-		return (NULL);
-
-	cls = NULL;
-	for (int i = 0; i < drv_count; i++) {
-		cls = bhnd_driver_get_erom_class(drivers[i], &sc->chipid);
-		if (cls != NULL)
-			break;
-	}
-
-	free(drivers, M_TEMP);
-	return (cls);
-	
-}
-
 /**
  * Identify the bridged device and perform final bridge resource configuration
  * based on capabilities of the enumerated device.
@@ -718,13 +787,12 @@ bhndb_find_erom_class(struct bhndb_softc *sc)
  * configuration must be released prior to calling this function.
  */
 static int
-bhndb_init_full_config(struct bhndb_softc *sc)
+bhndb_init_full_config(struct bhndb_softc *sc, bhnd_erom_class_t *eromcls)
 {
 	struct bhnd_core_info		*cores;
 	struct bhndb_resources		*br;
 	const struct bhndb_hw_priority	*hwprio;
 	bhnd_erom_t			*erom;
-	bhnd_erom_class_t		*erom_cls;
 	const struct bhndb_hw		*hw;
 	u_int				 ncores;
 	int				 error;
@@ -733,24 +801,21 @@ bhndb_init_full_config(struct bhndb_softc *sc)
 	cores = NULL;
 	br = NULL;
 
-	/* Look for a usable EROM class for our bridged bhnd(4) bus */
-	erom_cls = bhndb_find_erom_class(sc);
-	if (erom_cls == NULL) {
-		device_printf(sc->dev, "device enumeration unsupported; no "
-		    "compatible driver found\n");
+	/* Allocate EROM parser instance */
+	erom = bhnd_erom_alloc(eromcls, &sc->chipid, sc->bus_dev, 0);
+	if (erom == NULL) {
+		device_printf(sc->dev, "failed to allocate device enumeration "
+		    "table parser\n");
 		return (ENXIO);
 	}
 
-	/* Allocate EROM parser instance */
-	erom = bhnd_erom_alloc(erom_cls, sc->bus_dev, 0, sc->chipid.enum_addr);
-	if (erom == NULL)
-		return (ENXIO);
-
 	/* Look for our host bridge core */
-	if ((error = bhndb_find_hostb_core(sc, erom, &sc->bridge_core)))
+	if ((error = bhndb_find_hostb_core(sc, erom, &sc->bridge_core))) {
+		device_printf(sc->dev, "no host bridge core found\n");
 		goto cleanup;
-	else
+	} else {
 		sc->have_br_core = true;
+	}
 
 	/* Fetch the bridged device's core table */
 	if ((error = bhnd_erom_get_core_table(erom, &cores, &ncores))) {
@@ -774,15 +839,20 @@ bhndb_init_full_config(struct bhndb_softc *sc)
 	 * configuration */
 	br = bhndb_alloc_resources(sc->dev, sc->parent_dev, hw->cfg);
 	if (br == NULL) {
-		error = ENXIO;
+		device_printf(sc->dev,
+		    "failed to allocate new resource state\n");
+		error = ENOMEM;
 		goto cleanup;
 	}
 
 	/* Populate our resource priority configuration */
 	hwprio = BHNDB_BUS_GET_HARDWARE_PRIO(sc->parent_dev, sc->dev);
 	error = bhndb_init_region_cfg(sc, erom, br, cores, ncores, hwprio);
-	if (error)
+	if (error) {
+		device_printf(sc->dev, "failed to initialize resource "
+		    "priority configuration: %d\n", error);
 		goto cleanup;
+	}
 
 	/* The EROM parser holds a reference to the resource state we're
 	 * about to invalidate */
@@ -800,8 +870,11 @@ bhndb_init_full_config(struct bhndb_softc *sc)
 	br = NULL;
 
 	/* Re-allocate host resources */
-	if ((error = bhndb_alloc_host_resources(sc->bus_res)))
+	if ((error = bhndb_alloc_host_resources(sc->bus_res))) {
+		device_printf(sc->dev, "failed to reallocate bridge host "
+		    "resources: %d\n", error);
 		goto cleanup;
+	}
 
 	return (0);
 
@@ -1092,26 +1165,28 @@ bhndb_get_chipid(device_t dev, device_t child)
 
 
 /**
- * Default implementation of BHND_BUS_IS_CORE_DISABLED().
+ * Default implementation of BHND_BUS_IS_HW_DISABLED().
  */
 static bool
-bhndb_is_core_disabled(device_t dev, device_t child,
-    struct bhnd_core_info *core)
+bhndb_is_hw_disabled(device_t dev, device_t child)
 {
 	struct bhndb_softc	*sc;
 	struct bhnd_core_info	*bridge_core;
+	struct bhnd_core_info	 core;
 
 	sc = device_get_softc(dev);
 
+	core = bhnd_get_core_info(child);
+
 	/* Try to defer to the bhndb bus parent */
-	if (BHNDB_BUS_IS_CORE_DISABLED(sc->parent_dev, dev, core))
+	if (BHNDB_BUS_IS_CORE_DISABLED(sc->parent_dev, dev, &core))
 		return (true);
 
 	/* Otherwise, we treat bridge-capable cores as unpopulated if they're
 	 * not the configured host bridge */
-	bridge_core = bhndb_get_bridge_core_info(sc);
-	if (BHND_DEVCLASS_SUPPORTS_HOSTB(bhnd_core_class(core)))
-		return (!bhnd_cores_equal(core, bridge_core));
+	bridge_core = bhndb_get_bridge_core(sc);
+	if (BHND_DEVCLASS_SUPPORTS_HOSTB(bhnd_core_class(&core)))
+		return (!bhnd_cores_equal(&core, bridge_core));
 
 	/* Assume the core is populated */
 	return (false);
@@ -1128,7 +1203,7 @@ bhndb_get_hostb_core(device_t dev, device_t child, struct bhnd_core_info *core)
 {
 	struct bhndb_softc *sc = device_get_softc(dev);
 
-	*core = *bhndb_get_bridge_core_info(sc);
+	*core = *bhndb_get_bridge_core(sc);
 	return (0);
 }
 
@@ -1825,7 +1900,14 @@ bhndb_io_resource_slow(struct bhndb_softc *sc, bus_addr_t addr,
 }
 
 /**
- * Find the bridge resource to be used for I/O requests.
+ * Return a borrowed reference to a bridge resource allocation record capable
+ * of handling bus I/O requests of @p size at @p addr.
+ * 
+ * This will either return a  reference to an existing allocation
+ * record mapping the requested space, or will configure and return a free
+ * allocation record.
+ * 
+ * Will panic if a usable record cannot be found.
  * 
  * @param sc Bridge driver state.
  * @param addr The I/O target address.
@@ -2055,7 +2137,7 @@ static device_method_t bhndb_methods[] = {
 	DEVMETHOD(bhndb_resume_resource,	bhndb_resume_resource),
 
 	/* BHND interface */
-	DEVMETHOD(bhnd_bus_is_core_disabled,	bhndb_is_core_disabled),
+	DEVMETHOD(bhnd_bus_is_hw_disabled,	bhndb_is_hw_disabled),
 	DEVMETHOD(bhnd_bus_get_chipid,		bhndb_get_chipid),
 	DEVMETHOD(bhnd_bus_activate_resource,	bhndb_activate_bhnd_resource),
 	DEVMETHOD(bhnd_bus_deactivate_resource,	bhndb_deactivate_bhnd_resource),
