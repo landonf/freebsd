@@ -394,12 +394,11 @@ METHOD int get_intr_count {
  * Bridge-attached bus implementations may instead override standard
  * interconnect IRQ assignment, providing IRQs inherited from the parent bus.
  *
- * TODO: Once we can depend on INTRNG, we can replace this with a bridge-level
- * interrupt controller.
+ * TODO: Once we can depend on INTRNG, investigate replacing this with a
+ * bridge-level interrupt controller.
  * 
  * @param dev The bhnd bus parent of @p child.
- * @param child The bhnd device to which an interrupt should be
- * assigned.
+ * @param child The bhnd device to which an interrupt should be assigned.
  * @param rid The interrupt resource ID to be assigned.
  *
  * @retval 0		If an interrupt was assigned.
