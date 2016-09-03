@@ -82,7 +82,7 @@ struct siba_erom_io {
 
 	/* resource state */
 	device_t	 	 dev;		/**< parent dev to use for resource allocations,
-						     or NULL if initialized with bst/bsh */
+						     or NULL if unavailable. */
 	struct bhnd_resource	*res;		/**< memory resource, or NULL */
 	int			 rid;		/**< memory resource ID */
 
@@ -119,9 +119,8 @@ siba_erom_probe(bhnd_erom_class_t *cls, struct bhnd_resource *res,
 	int			error, rid;
 
 	/* Initialize I/O context */
-	dev = rman_get_device(res->res);
 	rid = rman_get_rid(res->res);
-	if ((error = siba_eio_init(&io, dev, res, rid, offset)))
+	if ((error = siba_eio_init(&io, NULL, res, rid, offset)))
 		return (error);
 
 	/* Perform probe */
@@ -282,7 +281,13 @@ static int
 siba_eio_init_common(struct siba_erom_io *io)
 {
 	struct bhnd_chipid	cid;
+	uint32_t		idreg;
 	int			error;
+
+	/* Validate bus type */
+	idreg = siba_eio_read_4(io, 0, CHIPC_ID);
+	if (CHIPC_GET_BITS(idreg, CHIPC_ID_BUS) != BHND_CHIPTYPE_SIBA)
+		return (ENXIO);	
 
 	/* There's always at least one core */
 	io->ncores = 1;
@@ -378,9 +383,11 @@ siba_eio_read_chipid(struct siba_erom_io *io, bus_addr_t enum_addr,
 	if (ccid.core_info.vendor != BHND_MFGID_BCM ||
 	    ccid.core_info.device != BHND_COREID_CC)
 	{
-		EROM_LOG(io, "first core not chipcommon "
-		    "(vendor=%#hx, core=%#hx)\n", ccid.core_info.vendor,
-		    ccid.core_info.device);
+		if (bootverbose) {
+			EROM_LOG(io, "first core not chipcommon "
+			    "(vendor=%#hx, core=%#hx)\n", ccid.core_infovendor,
+			    ccid.core_info.device);
+		}
 		return (ENXIO);
 	}
 
