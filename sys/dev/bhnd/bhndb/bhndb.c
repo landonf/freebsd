@@ -353,7 +353,7 @@ bhndb_init_region_cfg(struct bhndb_softc *sc, bhnd_erom_t *erom,
 		 */
 		
 		/* ... do not require bridge resources */
-		if (BHND_BUS_IS_CORE_DISABLED(sc->dev, sc->dev, core))
+		if (BHNDB_BUS_IS_CORE_DISABLED(sc->parent_dev, sc->dev, core))
 			continue;
 
 		/* ... do not have a priority table entry */
@@ -1168,26 +1168,28 @@ bhndb_get_chipid(device_t dev, device_t child)
 
 
 /**
- * Default implementation of BHND_BUS_IS_CORE_DISABLED().
+ * Default implementation of BHND_BUS_IS_HW_DISABLED().
  */
 static bool
-bhndb_is_core_disabled(device_t dev, device_t child,
-    struct bhnd_core_info *core)
+bhndb_is_hw_disabled(device_t dev, device_t child)
 {
 	struct bhndb_softc	*sc;
 	struct bhnd_core_info	*bridge_core;
+	struct bhnd_core_info	 core;
 
 	sc = device_get_softc(dev);
 
+	core = bhnd_get_core_info(child);
+
 	/* Try to defer to the bhndb bus parent */
-	if (BHNDB_BUS_IS_CORE_DISABLED(sc->parent_dev, dev, core))
+	if (BHNDB_BUS_IS_CORE_DISABLED(sc->parent_dev, dev, &core))
 		return (true);
 
 	/* Otherwise, we treat bridge-capable cores as unpopulated if they're
 	 * not the configured host bridge */
 	bridge_core = bhndb_get_bridge_core(sc);
-	if (BHND_DEVCLASS_SUPPORTS_HOSTB(bhnd_core_class(core)))
-		return (!bhnd_cores_equal(core, bridge_core));
+	if (BHND_DEVCLASS_SUPPORTS_HOSTB(bhnd_core_class(&core)))
+		return (!bhnd_cores_equal(&core, bridge_core));
 
 	/* Assume the core is populated */
 	return (false);
@@ -2156,7 +2158,7 @@ static device_method_t bhndb_methods[] = {
 	DEVMETHOD(bhndb_resume_resource,	bhndb_resume_resource),
 
 	/* BHND interface */
-	DEVMETHOD(bhnd_bus_is_core_disabled,	bhndb_is_core_disabled),
+	DEVMETHOD(bhnd_bus_is_hw_disabled,	bhndb_is_hw_disabled),
 	DEVMETHOD(bhnd_bus_get_chipid,		bhndb_get_chipid),
 	DEVMETHOD(bhnd_bus_activate_resource,	bhndb_activate_bhnd_resource),
 	DEVMETHOD(bhnd_bus_deactivate_resource,	bhndb_deactivate_bhnd_resource),

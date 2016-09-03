@@ -634,7 +634,7 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 
 		/* If pins are floating or the hardware is otherwise
 		 * unpopulated, the device shouldn't be used. */
-		if (BHND_BUS_IS_CORE_DISABLED(dev, dev, &cores[i]))
+		if (bhnd_is_hw_disabled(child))
 			device_disable(child);
 
 		/* Issue bus callback for fully initialized child. */

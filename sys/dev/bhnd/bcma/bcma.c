@@ -461,8 +461,6 @@ bcma_add_children(device_t bus)
 	/* Add all cores. */
 	bcma_erom = (struct bcma_erom *)erom;
 	while ((error = bcma_erom_next_corecfg(bcma_erom, &corecfg)) == 0) {
-		struct bhnd_core_info *core;
-
 		/* Add the child device */
 		child = BUS_ADD_CHILD(bus, 0, NULL, -1);
 		if (child == NULL) {
@@ -484,8 +482,7 @@ bcma_add_children(device_t bus)
 
 		/* If pins are floating or the hardware is otherwise
 		 * unpopulated, the device shouldn't be used. */
-		core = &dinfo->corecfg->core_info;
-		if (BHND_BUS_IS_CORE_DISABLED(bus, bus, core))
+		if (bhnd_is_hw_disabled(child))
 			device_disable(child);
 
 		/* Issue bus callback for fully initialized child. */
