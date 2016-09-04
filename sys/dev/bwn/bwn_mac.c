@@ -47,7 +47,13 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_nvram_map.h"
 
+/**
+ * bwn driver instance state.
+ */
 struct bwn_softc {
+	device_t		 dev;
+	uint32_t		 quirks;	/**< bwn quirk flags */
+	
 	int			 mem_rid;
 	struct bhnd_resource	*mem_res;
 
@@ -55,30 +61,28 @@ struct bwn_softc {
 	struct resource		*intr_res;
 };
 
-static const struct bwn_device {
-	uint16_t	 vendor;
-	uint16_t	 device;
-} bwn_devices[] = {
-	{ BHND_MFGID_BCM,	BHND_COREID_D11 },
-	{ BHND_MFGID_INVALID,	BHND_COREID_INVALID }
+static struct bhnd_device_quirk bwn_quirks[];
+
+static const struct bhnd_device bwn_devices[] = {
+	BHND_DEVICE(BCM, D11, NULL, bwn_quirks),
+	BHND_DEVICE_END
+};
+
+static struct bhnd_device_quirk bwn_quirks[] = {
+	BHND_DEVICE_QUIRK_END
 };
 
 static int
 bwn_probe(device_t dev)
 {
-	const struct bwn_device	*id;
+	const struct bhnd_device *id;
 
-	for (id = bwn_devices; id->device != BHND_COREID_INVALID; id++)
-	{
-		if (bhnd_get_vendor(dev) == id->vendor &&
-		    bhnd_get_device(dev) == id->device)
-		{
-			device_set_desc(dev, bhnd_get_device_name(dev));
-			return (BUS_PROBE_DEFAULT);
-		}
-	}
+	id = bhnd_device_lookup(dev, bwn_devices, sizeof(bwn_devices[0]));
+	if (id == NULL)
+		return (ENXIO);
 
-	return (ENXIO);
+	bhnd_set_default_core_desc(dev);
+	return (BUS_PROBE_DEFAULT);
 }
 
 static int
@@ -88,38 +92,33 @@ bwn_attach(device_t dev)
 	int			 error;
 
 	sc = device_get_softc(dev);
+	sc->dev = dev;
+	sc->quirks = bhnd_device_quirks(dev, bwn_devices,
+	    sizeof(bwn_devices[0]));
 
 	/* Allocate device resources */
 	sc->mem_rid = 0;
-	sc->mem_res = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY,
-	    &sc->mem_rid, RF_ACTIVE);
+	sc->intr_rid = 0;
+
+	sc->mem_res = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY, &sc->mem_rid,
+	    RF_ACTIVE);
 	if (sc->mem_res == NULL) {
 		device_printf(dev, "failed to allocate device registers\n");
 		error = ENXIO;
-		goto cleanup;
+		goto failed;
 	}
 
-	sc->intr_rid = 0;
 	sc->intr_res = bus_alloc_resource_any(dev, SYS_RES_IRQ, &sc->intr_rid,
 	    RF_ACTIVE|RF_SHAREABLE);
 	if (sc->intr_res == NULL) {
 		device_printf(dev, "failed to allocate device interrupt\n");
 		error = ENXIO;
-		goto cleanup;
+		goto failed;
 	}
-
-	// TODO
-	uint8_t	macaddr[6];
-	error = bhnd_nvram_getvar_array(dev, BHND_NVAR_MACADDR, macaddr,
-	    sizeof(macaddr), BHND_NVRAM_TYPE_UINT8);
-	if (error)
-		device_printf(dev, "error fetching macaddr: %d\n", error);
-	else
-		device_printf(dev, "got macaddr %6D\n", macaddr, ":");
 
 	return (0);
 
-cleanup:
+failed:
 	if (sc->mem_res != NULL)
 		bhnd_release_resource(dev, SYS_RES_MEMORY, sc->mem_rid,
 		    sc->mem_res);
