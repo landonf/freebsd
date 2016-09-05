@@ -1,6 +1,5 @@
 /*-
- * Copyright (c) 2015-2016 Landon Fuller <landon@freebsd.org>
- * Copyright (c) 2007 Bruce M. Simpson.
+ * Copyright (c) 2016 Landon Fuller <landonf@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,61 +29,39 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/kernel.h>
-#include <sys/bus.h>
 #include <sys/module.h>
 
-#include <machine/bus.h>
-#include <sys/rman.h>
-#include <machine/resource.h>
+#include <dev/bhnd/siba/sibareg.h>
+#include <dev/bhnd/siba/sibavar.h>
 
-#include <dev/bhnd/bhnd_ids.h>
-#include <dev/bhnd/bhnd_nexusvar.h>
-#include <dev/bhnd/cores/chipc/chipcreg.h>
+#include "bcm_machdep.h"
 
-#include "sibavar.h"
-
-/*
- * Supports siba(4) attachment to a MIPS nexus bus.
- * 
- * Derived from Bruce M. Simpson' original siba(4) driver.
- */
-
-struct siba_nexus_softc {
-	struct siba_softc		parent_sc;
-	struct bhnd_chipid		siba_cid;
-};
+#include "bhnd_nexusvar.h"
 
 static int
 siba_nexus_probe(device_t dev)
 {
-	struct siba_nexus_softc	*sc;
-	int			 error;
+	int error;
 
-	sc = device_get_softc(dev);
-
-	/* Read the ChipCommon info using the hints the kernel
-	 * was compiled with. */
-	if ((error = bhnd_nexus_read_chipid(dev, &sc->siba_cid)))
-		return (error);
-
-	if (sc->siba_cid.chip_type != BHND_CHIPTYPE_SIBA)
+	if (bcm_get_platform()->cid.chip_type != BHND_CHIPTYPE_SIBA)
 		return (ENXIO);
 
-	if ((error = siba_probe(dev)) > 0) {
-		device_printf(dev, "error %d in probe\n", error);
+	if ((error = siba_probe(dev)) > 0)
 		return (error);
-	}
 
 	/* Set device description */
-	bhnd_set_default_bus_desc(dev, &sc->siba_cid);
+	bhnd_set_default_bus_desc(dev, &bcm_get_platform()->cid);
 
-	return (0);
+	return (BUS_PROBE_SPECIFIC);
 }
 
 static int
 siba_nexus_attach(device_t dev)
 {
-	int error;
+	struct siba_softc	*sc;
+	int			 error;
+
+	sc = device_get_softc(dev);
 
 	/* Perform initial attach and enumerate our children. */
 	if ((error = siba_attach(dev)))
@@ -101,25 +78,17 @@ failed:
 	return (error);
 }
 
-static const struct bhnd_chipid *
-siba_nexus_get_chipid(device_t dev, device_t child) {
-	struct siba_nexus_softc	*sc = device_get_softc(dev);
-	return (&sc->siba_cid);
-}
-
 static device_method_t siba_nexus_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,			siba_nexus_probe),
 	DEVMETHOD(device_attach,		siba_nexus_attach),
 
-	/* bhnd interface */
-	DEVMETHOD(bhnd_bus_get_chipid,		siba_nexus_get_chipid),
-
 	DEVMETHOD_END
 };
 
 DEFINE_CLASS_2(bhnd, siba_nexus_driver, siba_nexus_methods,
-    sizeof(struct siba_nexus_softc), bhnd_nexus_driver, siba_driver);
+    sizeof(struct bhnd_softc), bhnd_nexus_driver, siba_driver);
 
 EARLY_DRIVER_MODULE(siba_nexus, nexus, siba_nexus_driver, bhnd_devclass, 0, 0,
     BUS_PASS_BUS + BUS_PASS_ORDER_MIDDLE);
+
