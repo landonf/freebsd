@@ -119,9 +119,9 @@ static device_method_t bcm_mips74k_methods[] = {
 	DEVMETHOD_END
 };
 
-static devclass_t bmips_cpu_devclass;
+static devclass_t bcm_mips_devclass;
 
-DEFINE_CLASS_0(bcm_mips74k, bcm_mips74k_driver, bcm_mips74k_methods, sizeof(struct bcm_mips74k_softc));
-EARLY_DRIVER_MODULE(bmips_cpu, bhnd, bcm_mips74k_driver, bmips_cpu_devclass, 0, 0, BUS_PASS_CPU + BUS_PASS_ORDER_EARLY);
+DEFINE_CLASS_0(bcm_mips, bcm_mips74k_driver, bcm_mips74k_methods, sizeof(struct bcm_mips74k_softc));
+EARLY_DRIVER_MODULE(bcm_mips74k, bhnd, bcm_mips74k_driver, bcm_mips_devclass, 0, 0, BUS_PASS_CPU + BUS_PASS_ORDER_EARLY);
 MODULE_VERSION(bcm_mips74k, 1);
 MODULE_DEPEND(bcm_mips74k, bhnd, 1, 1, 1);
