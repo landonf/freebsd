@@ -493,6 +493,19 @@ static const struct siba_devid bwn_devs[] = {
 	SIBA_DEV(BROADCOM, 80211, 16, "Revision 16")
 };
 
+static const struct bwn_bus_ops *
+bwn_get_bus_ops(device_t dev)
+{
+#if BWN_USE_SIBA
+	return (NULL);
+#else
+	if (device_get_devclass(dev) == devclass_find("bhnd"))
+		return (&bwn_bhnd_bus_ops);
+	else
+		return (&bwn_siba_bus_ops);
+#endif
+}
+
 static int
 bwn_probe(device_t dev)
 {
@@ -500,13 +513,7 @@ bwn_probe(device_t dev)
 	int			 i;
 
 	sc = device_get_softc(dev);
-
-#if !BWN_USE_SIBA
-	if (device_get_devclass(dev) == devclass_find("bhnd"))
-		sc->sc_bus_ops = &bwn_bhnd_bus_ops;
-	else
-		sc->sc_bus_ops = &bwn_siba_bus_ops;
-#endif
+	sc->sc_bus_ops = bwn_get_bus_ops(dev);
 
 	for (i = 0; i < nitems(bwn_devs); i++) {
 		if (siba_get_vendor(dev) == bwn_devs[i].sd_vendor &&
@@ -529,13 +536,7 @@ bwn_attach(device_t dev)
 #ifdef BWN_DEBUG
 	sc->sc_debug = bwn_debug;
 #endif
-
-#if !BWN_USE_SIBA
-	if (device_get_devclass(dev) == devclass_find("bhnd"))
-		sc->sc_bus_ops = &bwn_bhnd_bus_ops;
-	else
-		sc->sc_bus_ops = &bwn_siba_bus_ops;
-#endif
+	sc->sc_bus_ops = bwn_get_bus_ops(dev);
 
 	if ((sc->sc_flags & BWN_FLAG_ATTACHED) == 0) {
 		bwn_attach_pre(sc);
