@@ -1154,14 +1154,4 @@ bwn_get_chan_power(struct bwn_mac *mac, struct ieee80211_channel *c)
 	return c->ic_maxpower / 2;
 }
 
-/*
- * For now there's no bhnd bus support.  Places where it matters
- * should call this routine so we can start logging things.
- */
-static inline int
-bwn_is_bus_siba(struct bwn_mac *mac)
-{
-
-	return 1;
-}
 #endif	/* !_IF_BWNVAR_H */

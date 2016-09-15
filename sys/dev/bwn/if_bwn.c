@@ -1166,36 +1166,30 @@ bwn_attach_core(struct bwn_mac *mac)
 {
 	struct bwn_softc *sc = mac->mac_sc;
 	int error, have_bg = 0, have_a = 0;
+	uint32_t high;
 
 	KASSERT(siba_get_revid(sc->sc_dev) >= 5,
 	    ("unsupported revision %d", siba_get_revid(sc->sc_dev)));
 
-	if (bwn_is_bus_siba(mac)) {
-		uint32_t high;
-
-		siba_powerup(sc->sc_dev, 0);
-		high = siba_read_4(sc->sc_dev, SIBA_TGSHIGH);
-		have_a = (high & BWN_TGSHIGH_HAVE_5GHZ) ? 1 : 0;
-		have_bg = (high & BWN_TGSHIGH_HAVE_2GHZ) ? 1 : 0;
-		if (high & BWN_TGSHIGH_DUALPHY) {
-			have_bg = 1;
-			have_a = 1;
-		}
-#if 0
-		device_printf(sc->sc_dev, "%s: high=0x%08x, have_a=%d, have_bg=%d,"
-		    " deviceid=0x%04x, siba_deviceid=0x%04x\n",
-		    __func__,
-		    high,
-		    have_a,
-		    have_bg,
-		    siba_get_pci_device(sc->sc_dev),
-		    siba_get_chipid(sc->sc_dev));
-#endif
-	} else {
-		device_printf(sc->sc_dev, "%s: not siba; bailing\n", __func__);
-		error = ENXIO;
-		goto fail;
+	siba_powerup(sc->sc_dev, 0);
+	high = siba_read_4(sc->sc_dev, SIBA_TGSHIGH);
+	have_a = (high & BWN_TGSHIGH_HAVE_5GHZ) ? 1 : 0;
+	have_bg = (high & BWN_TGSHIGH_HAVE_2GHZ) ? 1 : 0;
+	if (high & BWN_TGSHIGH_DUALPHY) {
+		have_bg = 1;
+		have_a = 1;
 	}
+
+#if 0
+	device_printf(sc->sc_dev, "%s: high=0x%08x, have_a=%d, have_bg=%d,"
+	    " deviceid=0x%04x, siba_deviceid=0x%04x\n",
+	    __func__,
+	    high,
+	    have_a,
+	    have_bg,
+	    siba_get_pci_device(sc->sc_dev),
+	    siba_get_chipid(sc->sc_dev));
+#endif
 
 	/*
 	 * Guess at whether it has A-PHY or G-PHY.
@@ -4730,10 +4724,10 @@ bwn_rf_turnoff(struct bwn_mac *mac)
 }
 
 /*
- * SSB PHY reset.
+ * PHY reset.
  */
 static void
-bwn_phy_reset_siba(struct bwn_mac *mac)
+bwn_phy_reset(struct bwn_mac *mac)
 {
 	struct bwn_softc *sc = mac->mac_sc;
 
@@ -4744,17 +4738,6 @@ bwn_phy_reset_siba(struct bwn_mac *mac)
 	siba_write_4(sc->sc_dev, SIBA_TGSLOW,
 	    (siba_read_4(sc->sc_dev, SIBA_TGSLOW) & ~SIBA_TGSLOW_FGC));
 	DELAY(1000);
-}
-
-static void
-bwn_phy_reset(struct bwn_mac *mac)
-{
-
-	if (bwn_is_bus_siba(mac)) {
-		bwn_phy_reset_siba(mac);
-	} else {
-		BWN_ERRPRINTF(mac->mac_sc, "%s: unknown bus!\n", __func__);
-	}
 }
 
 static int

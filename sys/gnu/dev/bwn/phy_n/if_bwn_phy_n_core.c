@@ -6135,10 +6135,7 @@ static void bwn_nphy_superswitch_init(struct bwn_mac *mac, bool init)
 		BWN_PHY_WRITE(mac, BWN_NPHY_GPIO_LOOEN, 0);
 		BWN_PHY_WRITE(mac, BWN_NPHY_GPIO_HIOEN, 0);
 
-		/* XXX handle bhnd bus */
-		if (bwn_is_bus_siba(mac)) {
-			siba_gpio_set(sc->sc_dev, 0xfc00);
-		}
+		siba_gpio_set(sc->sc_dev, 0xfc00);
 
 		BWN_WRITE_SETMASK4(mac, BWN_MACCTL, ~BWN_MACCTL_GPOUT_MASK, 0);
 		BWN_WRITE_SETMASK2(mac, BWN_GPIO_MASK, ~0, 0xFC00);
@@ -6172,10 +6169,7 @@ static int bwn_phy_initn(struct bwn_mac *mac)
 	if ((mac->mac_phy.rev >= 3) &&
 	   (siba_sprom_get_bf_lo(sc->sc_dev) & BWN_BFL_EXTLNA) &&
 	   (bwn_current_band(mac) == BWN_BAND_2G)) {
-		/* XXX bhnd bus */
-		if (bwn_is_bus_siba(mac)) {
-			siba_cc_set32(sc->sc_dev, SIBA_CC_CHIPCTL, 0x40);
-		}
+		siba_cc_set32(sc->sc_dev, SIBA_CC_CHIPCTL, 0x40);
 	}
 	nphy->use_int_tx_iq_lo_cal = bwn_nphy_ipa(mac) ||
 		phy->rev >= 7 ||
@@ -6377,11 +6371,8 @@ static void bwn_nphy_pmu_spur_avoid(struct bwn_mac *mac, bool avoid)
 {
 	struct bwn_softc *sc = mac->mac_sc;
 
-	/* XXX bhnd */
-	if (bwn_is_bus_siba(mac)) {
-		DPRINTF(sc, BWN_DEBUG_RESET, "%s: spuravoid %d\n", __func__, avoid);
-		siba_pmu_spuravoid_pllupdate(sc->sc_dev, avoid);
-	}
+	DPRINTF(sc, BWN_DEBUG_RESET, "%s: spuravoid %d\n", __func__, avoid);
+	siba_pmu_spuravoid_pllupdate(sc->sc_dev, avoid);
 }
 
 /* http://bcm-v4.sipsolutions.net/802.11/PHY/N/ChanspecSetup */
@@ -6632,8 +6623,7 @@ bwn_nphy_op_prepare_structs(struct bwn_mac *mac)
 		if (mac->mac_phy.rev >= 2 &&
 		    (siba_sprom_get_bf2_lo(sc->sc_dev) & BWN_BFL2_TXPWRCTRL_EN)) {
 			nphy->txpwrctrl = true;
-			if (bwn_is_bus_siba(mac) &&
-			    (siba_get_type(sc->sc_dev) == SIBA_TYPE_PCI)) {
+			if (siba_get_type(sc->sc_dev) == SIBA_TYPE_PCI) {
 				if ((siba_get_pci_device(sc->sc_dev) == 0x4328) ||
 				    (siba_get_pci_device(sc->sc_dev) == 0x432a))
 					nphy->pwg_gain_5ghz = true;

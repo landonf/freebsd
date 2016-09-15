@@ -148,17 +148,12 @@ bwn_phy_force_clock(struct bwn_mac *mac, int force)
 
 	/* XXX Only for N, HT and AC PHYs */
 
-	/* XXX bhnd bus */
-	if (bwn_is_bus_siba(mac)) {
-			tmp = siba_read_4(sc->sc_dev, SIBA_TGSLOW);
-		if (force)
-			tmp |= SIBA_TGSLOW_FGC;
-		else
-			tmp &= ~SIBA_TGSLOW_FGC;
-		siba_write_4(sc->sc_dev, SIBA_TGSLOW, tmp);
-	} else {
-		BWN_ERRPRINTF(sc, "%s: unknown bus!\n", __func__);
-	}
+	tmp = siba_read_4(sc->sc_dev, SIBA_TGSLOW);
+	if (force)
+		tmp |= SIBA_TGSLOW_FGC;
+	else
+		tmp &= ~SIBA_TGSLOW_FGC;
+	siba_write_4(sc->sc_dev, SIBA_TGSLOW, tmp);
 }
 
 int
@@ -183,17 +178,12 @@ bwn_mac_phy_clock_set(struct bwn_mac *mac, int enabled)
 	struct bwn_softc *sc = mac->mac_sc;
 	uint32_t val;
 
-	/* XXX bhnd bus */
-	if (bwn_is_bus_siba(mac)) {
-		val = siba_read_4(sc->sc_dev, SIBA_TGSLOW);
-		if (enabled)
-			    val |= BWN_TGSLOW_MACPHYCLKEN;
-		else
-			    val &= ~BWN_TGSLOW_MACPHYCLKEN;
-		siba_write_4(sc->sc_dev, SIBA_TGSLOW, val);
-	} else {
-		BWN_ERRPRINTF(sc, "%s: unknown bus!\n", __func__);
-	}
+	val = siba_read_4(sc->sc_dev, SIBA_TGSLOW);
+	if (enabled)
+		    val |= BWN_TGSLOW_MACPHYCLKEN;
+	else
+		    val &= ~BWN_TGSLOW_MACPHYCLKEN;
+	siba_write_4(sc->sc_dev, SIBA_TGSLOW, val);
 }
 
 /* http://bcm-v4.sipsolutions.net/802.11/PHY/BmacCorePllReset */
@@ -202,13 +192,8 @@ bwn_wireless_core_phy_pll_reset(struct bwn_mac *mac)
 {
 	struct bwn_softc *sc = mac->mac_sc;
 
-	/* XXX bhnd bus */
-	if (bwn_is_bus_siba(mac)) {
-		siba_cc_write32(sc->sc_dev, SIBA_CC_CHIPCTL_ADDR, 0);
-		siba_cc_mask32(sc->sc_dev, SIBA_CC_CHIPCTL_DATA, ~0x4);
-		siba_cc_set32(sc->sc_dev, SIBA_CC_CHIPCTL_DATA, 0x4);
-		siba_cc_mask32(sc->sc_dev, SIBA_CC_CHIPCTL_DATA, ~0x4);
-	} else {
-		BWN_ERRPRINTF(sc, "%s: unknown bus!\n", __func__);
-	}
+	siba_cc_write32(sc->sc_dev, SIBA_CC_CHIPCTL_ADDR, 0);
+	siba_cc_mask32(sc->sc_dev, SIBA_CC_CHIPCTL_DATA, ~0x4);
+	siba_cc_set32(sc->sc_dev, SIBA_CC_CHIPCTL_DATA, 0x4);
+	siba_cc_mask32(sc->sc_dev, SIBA_CC_CHIPCTL_DATA, ~0x4);
 }
