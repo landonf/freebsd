@@ -65,15 +65,14 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/pci/pcivar.h>
 #include <dev/pci/pcireg.h>
-#include <dev/siba/siba_ids.h>
-#include <dev/siba/sibareg.h>
-#include <dev/siba/sibavar.h>
 
 #include <net80211/ieee80211_var.h>
 #include <net80211/ieee80211_radiotap.h>
 #include <net80211/ieee80211_regdomain.h>
 #include <net80211/ieee80211_phy.h>
 #include <net80211/ieee80211_ratectl.h>
+
+#include <dev/bwn/if_bwn_siba.h>
 
 #include <dev/bwn/if_bwnreg.h>
 #include <dev/bwn/if_bwnvar.h>
@@ -497,7 +496,17 @@ static const struct siba_devid bwn_devs[] = {
 static int
 bwn_probe(device_t dev)
 {
-	int i;
+	struct bwn_softc	*sc;
+	int			 i;
+
+	sc = device_get_softc(dev);
+
+#if !BWN_USE_SIBA
+	if (device_get_devclass(dev) == devclass_find("bhnd"))
+		sc->sc_bus_ops = &bwn_bhnd_bus_ops;
+	else
+		sc->sc_bus_ops = &bwn_siba_bus_ops;
+#endif
 
 	for (i = 0; i < nitems(bwn_devs); i++) {
 		if (siba_get_vendor(dev) == bwn_devs[i].sd_vendor &&
@@ -519,6 +528,13 @@ bwn_attach(device_t dev)
 	sc->sc_dev = dev;
 #ifdef BWN_DEBUG
 	sc->sc_debug = bwn_debug;
+#endif
+
+#if !BWN_USE_SIBA
+	if (device_get_devclass(dev) == devclass_find("bhnd"))
+		sc->sc_bus_ops = &bwn_bhnd_bus_ops;
+	else
+		sc->sc_bus_ops = &bwn_siba_bus_ops;
 #endif
 
 	if ((sc->sc_flags & BWN_FLAG_ATTACHED) == 0) {

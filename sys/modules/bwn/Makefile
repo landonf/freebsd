@@ -5,11 +5,15 @@
 KMOD=	if_bwn
 SRCS=	if_bwn.c if_bwnreg.h if_bwnvar.h
 SRCS+=	if_bwn_util.c
+SRCS+=	if_bwn_siba.c if_bwn_siba_compat.c
 
 # PHY
 SRCS+=	if_bwn_phy_common.c
 SRCS+=	if_bwn_phy_g.c if_bwn_phy_lp.c
 SRCS+=	if_bwn_phy_n.c
+
+# BHND
+SRCS+=	bhnd_bus_if.h
 
 # Other
 SRCS+=	device_if.h bus_if.h pci_if.h opt_bwn.h opt_wlan.h
