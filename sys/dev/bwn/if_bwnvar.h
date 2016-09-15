@@ -32,7 +32,8 @@
 #ifndef _IF_BWNVAR_H
 #define	_IF_BWNVAR_H
 
-struct siba_dev_softc;
+#include "if_bwn_siba.h"
+
 struct bwn_softc;
 struct bwn_mac;
 
