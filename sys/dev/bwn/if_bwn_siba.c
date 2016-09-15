@@ -54,6 +54,7 @@ const struct bwn_bus_ops bwn_siba_bus_ops = {
 	.get_chippkg			= siba_get_chippkg,
 	.get_type			= siba_get_type,
 	.get_cc_pmufreq			= siba_get_cc_pmufreq,
+	.get_cc_caps			= siba_get_cc_caps,
 	.get_cc_powerdelay		= siba_get_cc_powerdelay,
 	.get_pcicore_revid		= siba_get_pcicore_revid,
 	.sprom_get_rev			= siba_sprom_get_rev,
