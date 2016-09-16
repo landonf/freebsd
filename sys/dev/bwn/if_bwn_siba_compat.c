@@ -491,184 +491,182 @@ bhnd_compat_sprom_get_cddpo(device_t dev)
 }
 
 static void
-bhnd_compat_powerup(device_t arg0, int arg1)
+bhnd_compat_powerup(device_t dev, int dynamic)
 {
 	panic("unimplemented");
 }
 
 static int
-bhnd_compat_powerdown(device_t arg0)
+bhnd_compat_powerdown(device_t dev)
 {
 	panic("unimplemented");
 }
 
 static uint16_t
-bhnd_compat_read_2(device_t arg0, uint16_t arg1)
+bhnd_compat_read_2(device_t dev, uint16_t offset)
 {
 	panic("unimplemented");
 }
 
 static void
-bhnd_compat_write_2(device_t arg0, uint16_t arg1, uint16_t arg2)
+bhnd_compat_write_2(device_t dev, uint16_t offset, uint16_t value)
 {
 	panic("unimplemented");
 }
 
 static uint32_t
-bhnd_compat_read_4(device_t arg0, uint16_t arg1)
+bhnd_compat_read_4(device_t dev, uint16_t offset)
 {
 	panic("unimplemented");
 }
 
 static void
-bhnd_compat_write_4(device_t arg0, uint16_t arg1, uint32_t arg2)
+bhnd_compat_write_4(device_t dev, uint16_t offset, uint32_t value)
 {
 	panic("unimplemented");
 }
 
 static void
-bhnd_compat_dev_up(device_t arg0, uint32_t arg1)
+bhnd_compat_dev_up(device_t dev, uint32_t flags)
 {
 	panic("unimplemented");
 }
 
 static void
-bhnd_compat_dev_down(device_t arg0, uint32_t arg1)
+bhnd_compat_dev_down(device_t dev, uint32_t flags)
 {
 	panic("unimplemented");
 }
 
 static int
-bhnd_compat_dev_isup(device_t arg0)
+bhnd_compat_dev_isup(device_t dev)
 {
 	panic("unimplemented");
 }
 
 static void
-bhnd_compat_pcicore_intr(device_t arg0)
+bhnd_compat_pcicore_intr(device_t dev)
 {
 	panic("unimplemented");
 }
 
 static uint32_t
-bhnd_compat_dma_translation(device_t arg0)
+bhnd_compat_dma_translation(device_t dev)
 {
 	panic("unimplemented");
 }
 
 static void
-bhnd_compat_read_multi_2(device_t arg0, void *arg1, size_t arg2, uint16_t arg3)
+bhnd_compat_read_multi_2(device_t dev, void *buffer, size_t count, uint16_t offset)
 {
 	panic("unimplemented");
 }
 
 static void
-bhnd_compat_read_multi_4(device_t arg0, void *arg1, size_t arg2, uint16_t arg3)
+bhnd_compat_read_multi_4(device_t dev, void *buffer, size_t count, uint16_t offset)
 {
 	panic("unimplemented");
 }
 
 static void
-bhnd_compat_write_multi_2(device_t arg0, const void *arg1, size_t arg2,
-    uint16_t arg3)
+bhnd_compat_write_multi_2(device_t dev, const void *buffer, size_t count, uint16_t offset)
 {
 	panic("unimplemented");
 }
 
 static void
-bhnd_compat_write_multi_4(device_t arg0, const void *arg1, size_t arg2,
-    uint16_t arg3)
+bhnd_compat_write_multi_4(device_t dev, const void *buffer, size_t count, uint16_t offset)
 {
 	panic("unimplemented");
 }
 
 static void
-bhnd_compat_barrier(device_t arg0, int arg1)
+bhnd_compat_barrier(device_t dev, int flags)
 {
 	panic("unimplemented");
 }
 
 static void
-bhnd_compat_cc_pmu_set_ldovolt(device_t arg0, int arg1, uint32_t arg2)
+bhnd_compat_cc_pmu_set_ldovolt(device_t dev, int id, uint32_t volt)
 {
 	panic("unimplemented");
 }
 
 static void
-bhnd_compat_cc_pmu_set_ldoparef(device_t arg0, uint8_t arg1)
+bhnd_compat_cc_pmu_set_ldoparef(device_t dev, uint8_t on)
 {
 	panic("unimplemented");
 }
 
 static void
-bhnd_compat_gpio_set(device_t arg0, uint32_t arg1)
+bhnd_compat_gpio_set(device_t dev, uint32_t value)
 {
 	panic("unimplemented");
 }
 
 static uint32_t
-bhnd_compat_gpio_get(device_t arg0)
+bhnd_compat_gpio_get(device_t dev)
 {
 	panic("unimplemented");
 }
 
 static void
-bhnd_compat_fix_imcfglobug(device_t arg0)
+bhnd_compat_fix_imcfglobug(device_t dev)
 {
 	panic("unimplemented");
 }
 
 static int
-bhnd_compat_sprom_get_core_power_info(device_t arg0, int arg1,
-    struct siba_sprom_core_pwr_info *arg2)
+bhnd_compat_sprom_get_core_power_info(device_t dev, int core,
+    struct siba_sprom_core_pwr_info *c)
 {
 	panic("unimplemented");
 }
 
 static int
-bhnd_compat_sprom_get_mcs2gpo(device_t arg0, uint16_t *arg1)
+bhnd_compat_sprom_get_mcs2gpo(device_t dev, uint16_t *c)
 {
 	panic("unimplemented");
 }
 
 static int
-bhnd_compat_sprom_get_mcs5glpo(device_t arg0, uint16_t *arg1)
+bhnd_compat_sprom_get_mcs5glpo(device_t dev, uint16_t *c)
 {
 	panic("unimplemented");
 }
 
 static int
-bhnd_compat_sprom_get_mcs5gpo(device_t arg0, uint16_t *arg1)
+bhnd_compat_sprom_get_mcs5gpo(device_t dev, uint16_t *c)
 {
 	panic("unimplemented");
 }
 
 static int
-bhnd_compat_sprom_get_mcs5ghpo(device_t arg0, uint16_t *arg1)
+bhnd_compat_sprom_get_mcs5ghpo(device_t dev, uint16_t *c)
 {
 	panic("unimplemented");
 }
 
 static void
-bhnd_compat_pmu_spuravoid_pllupdate(device_t arg0, int arg1)
+bhnd_compat_pmu_spuravoid_pllupdate(device_t dev, int spur_avoid)
 {
 	panic("unimplemented");
 }
 
 static void
-bhnd_compat_cc_set32(device_t dev, uint32_t arg1, uint32_t arg2)
+bhnd_compat_cc_set32(device_t dev, uint32_t reg, uint32_t val)
 {
 	panic("unimplemented");
 }
 
 static void
-bhnd_compat_cc_mask32(device_t dev, uint32_t arg1, uint32_t arg2)
+bhnd_compat_cc_mask32(device_t dev, uint32_t reg, uint32_t mask)
 {
 	panic("unimplemented");
 }
 
 static void
-bhnd_compat_cc_write32(device_t dev, uint32_t arg1, uint32_t arg2)
+bhnd_compat_cc_write32(device_t dev, uint32_t reg, uint32_t val)
 {
 	panic("unimplemented");
 }
