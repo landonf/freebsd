@@ -35,12 +35,19 @@
 #include <sys/rman.h>
 #include <machine/resource.h>
 
+#include <dev/pci/pcireg.h>
+#include <dev/pci/pcivar.h>
+
 #define	BWN_USE_SIBA	1
 #include "if_bwn_siba.h"
 
 /** Legacy siba(4) bus operations */
 
 const struct bwn_bus_ops bwn_siba_bus_ops = {
+	.pci_find_cap			= pci_find_cap,
+	.pci_alloc_msi			= pci_alloc_msi,
+	.pci_release_msi		= pci_release_msi,
+	.pci_msi_count			= pci_msi_count,
 	.get_vendor			= siba_get_vendor,
 	.get_device			= siba_get_device,
 	.get_revid			= siba_get_revid,

@@ -37,23 +37,32 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/module.h>
 #include <sys/systm.h>
+#include <sys/socket.h>
+#include <sys/sockio.h>
 
 #include <machine/bus.h>
 #include <sys/rman.h>
 #include <machine/resource.h>
 
+#include <net/ethernet.h>
+#include <net/if.h>
+#include <net/if_var.h>
+#include <net/if_arp.h>
+#include <net/if_dl.h>
+#include <net/if_llc.h>
+#include <net/if_media.h>
+#include <net/if_types.h>
+
+#include <net80211/ieee80211_var.h>
+#include <net80211/ieee80211_radiotap.h>
+#include <net80211/ieee80211_regdomain.h>
+#include <net80211/ieee80211_phy.h>
+#include <net80211/ieee80211_ratectl.h>
+
 #include <dev/bhnd/bhnd.h>
 #include <dev/bhnd/bhnd_ids.h>
 
-#include "bhnd_nvram_map.h"
-
-struct bwn_softc {
-	int			 mem_rid;
-	struct bhnd_resource	*mem_res;
-
-	int			 intr_rid;
-	struct resource		*intr_res;
-};
+#include "if_bwnvar.h"
 
 static const struct bwn_device {
 	uint16_t	 vendor;
@@ -64,7 +73,7 @@ static const struct bwn_device {
 };
 
 static int
-bwn_probe(device_t dev)
+bwn_bhnd_probe(device_t dev)
 {
 	const struct bwn_device	*id;
 
@@ -82,93 +91,32 @@ bwn_probe(device_t dev)
 }
 
 static int
-bwn_attach(device_t dev)
+bwn_bhnd_attach(device_t dev)
 {
-	struct bwn_softc	*sc;
-	int			 error;
-
-	sc = device_get_softc(dev);
-
-	/* Allocate device resources */
-	sc->mem_rid = 0;
-	sc->mem_res = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY,
-	    &sc->mem_rid, RF_ACTIVE);
-	if (sc->mem_res == NULL) {
-		device_printf(dev, "failed to allocate device registers\n");
-		error = ENXIO;
-		goto cleanup;
-	}
-
-	sc->intr_rid = 0;
-	sc->intr_res = bus_alloc_resource_any(dev, SYS_RES_IRQ, &sc->intr_rid,
-	    RF_ACTIVE|RF_SHAREABLE);
-	if (sc->intr_res == NULL) {
-		device_printf(dev, "failed to allocate device interrupt\n");
-		error = ENXIO;
-		goto cleanup;
-	}
-
 	// TODO
-	uint8_t	macaddr[6];
-	error = bhnd_nvram_getvar_array(dev, BHND_NVAR_MACADDR, macaddr,
-	    sizeof(macaddr), BHND_NVRAM_TYPE_UINT8);
-	if (error)
-		device_printf(dev, "error fetching macaddr: %d\n", error);
-	else
-		device_printf(dev, "got macaddr %6D\n", macaddr, ":");
-
-	return (0);
-
-cleanup:
-	if (sc->mem_res != NULL)
-		bhnd_release_resource(dev, SYS_RES_MEMORY, sc->mem_rid,
-		    sc->mem_res);
-
-	if (sc->intr_res != NULL)
-		bus_release_resource(dev, SYS_RES_IRQ, sc->intr_rid,
-		    sc->intr_res);
-
-	return (error);
+	return (bwn_attach(dev));
 }
 
 static int
-bwn_detach(device_t dev)
+bwn_bhnd_detach(device_t dev)
 {
-	struct bwn_softc	*sc;
-
-	sc = device_get_softc(dev);
-
-	bhnd_release_resource(dev, SYS_RES_MEMORY, sc->mem_rid, sc->mem_res);
-	bus_release_resource(dev, SYS_RES_IRQ, sc->intr_rid, sc->intr_res);
-
-	return (0);
+	// TODO
+	return (bwn_detach(dev));
 }
 
-static int
-bwn_suspend(device_t dev)
-{
-	return (0);
-}
-
-static int
-bwn_resume(device_t dev)
-{
-	return (0);
-}
-
-static device_method_t bwn_methods[] = {
+static device_method_t bwn_bhnd_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_probe,		bwn_probe),
-	DEVMETHOD(device_attach,	bwn_attach),
-	DEVMETHOD(device_detach,	bwn_detach),
-	DEVMETHOD(device_suspend,	bwn_suspend),
-	DEVMETHOD(device_resume,	bwn_resume),
+	DEVMETHOD(device_probe,		bwn_bhnd_probe),
+	DEVMETHOD(device_attach,	bwn_bhnd_attach),
+	DEVMETHOD(device_detach,	bwn_bhnd_detach),
 	DEVMETHOD_END
 };
 
 static devclass_t bwn_devclass;
 
-DEFINE_CLASS_0(bwn, bwn_driver, bwn_methods, sizeof(struct bwn_softc));
-DRIVER_MODULE(bwn_mac, bhnd, bwn_driver, bwn_devclass, 0, 0);
-MODULE_DEPEND(bwn_mac, bhnd, 1, 1, 1);
-MODULE_VERSION(bwn_mac, 1);
+DEFINE_CLASS_1(bwn, bwn_bhnd_driver, bwn_bhnd_methods, sizeof(struct bwn_softc),
+    bwn_driver);
+
+DRIVER_MODULE(bwn_bhnd, bhnd, bwn_bhnd_driver, bwn_devclass, 0, 0);
+MODULE_DEPEND(bwn_bhnd, bhnd, 1, 1, 1);
+MODULE_VERSION(bwn_bhnd, 1);

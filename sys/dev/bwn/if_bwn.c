@@ -499,7 +499,10 @@ bwn_get_bus_ops(device_t dev)
 #if BWN_USE_SIBA
 	return (NULL);
 #else
-	if (device_get_devclass(dev) == devclass_find("bhnd"))
+	devclass_t	bus_cls;
+
+	bus_cls = device_get_devclass(device_get_parent(dev));
+	if (bus_cls == devclass_find("bhnd"))
 		return (&bwn_bhnd_bus_ops);
 	else
 		return (&bwn_siba_bus_ops);
@@ -525,7 +528,7 @@ bwn_probe(device_t dev)
 	return (ENXIO);
 }
 
-static int
+int
 bwn_attach(device_t dev)
 {
 	struct bwn_mac *mac;
@@ -729,7 +732,7 @@ bwn_phy_detach(struct bwn_mac *mac)
 		mac->mac_phy.detach(mac);
 }
 
-static int
+int
 bwn_detach(device_t dev)
 {
 	struct bwn_softc *sc = device_get_softc(dev);
@@ -7472,7 +7475,7 @@ static device_method_t bwn_methods[] = {
 	DEVMETHOD(device_resume,	bwn_resume),
 	DEVMETHOD_END
 };
-static driver_t bwn_driver = {
+driver_t bwn_driver = {
 	"bwn",
 	bwn_methods,
 	sizeof(struct bwn_softc)

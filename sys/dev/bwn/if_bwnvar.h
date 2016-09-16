@@ -37,6 +37,11 @@
 struct bwn_softc;
 struct bwn_mac;
 
+extern driver_t bwn_driver;
+
+int	bwn_attach(device_t dev);
+int	bwn_detach(device_t dev);
+
 #define	N(a)			(sizeof(a) / sizeof(a[0]))
 #define	BWN_ALIGN			0x1000
 #define	BWN_BUS_SPACE_MAXADDR_30BIT	0x3fffffff
@@ -1006,6 +1011,8 @@ struct bwn_softc {
 	device_t			sc_dev;
 #if !BWN_USE_SIBA
 	const struct bwn_bus_ops	*sc_bus_ops;
+	struct bhnd_resource		*sc_mem_res;
+	int				 sc_mem_rid;
 #endif
 	struct mtx			sc_mtx;
 	struct ieee80211com		sc_ic;

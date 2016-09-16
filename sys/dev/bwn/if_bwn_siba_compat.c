@@ -40,6 +40,34 @@
 #define	BWN_USE_SIBA	0
 #include "if_bwn_siba.h"
 
+
+/*
+ * Disable PCI-specific MSI interrupt allocation handling
+ */
+static int
+bhnd_compat_pci_find_cap(device_t dev, int capability, int *capreg)
+{
+	return (ENODEV);
+}
+
+static int
+bhnd_compat_pci_alloc_msi(device_t dev, int *count)
+{
+	return (ENODEV);
+}
+
+static int
+bhnd_compat_pci_release_msi(device_t dev)
+{
+	return (ENODEV);
+}
+
+static int
+bhnd_compat_pci_msi_count(device_t dev)
+{
+	return (0);
+}
+
 static uint16_t
 bhnd_compat_get_vendor(device_t dev)
 {
@@ -672,6 +700,10 @@ bhnd_compat_cc_write32(device_t dev, uint32_t reg, uint32_t val)
 }
 
 const struct bwn_bus_ops bwn_bhnd_bus_ops = {
+	.pci_find_cap			= bhnd_compat_pci_find_cap,
+	.pci_alloc_msi			= bhnd_compat_pci_alloc_msi,
+	.pci_release_msi		= bhnd_compat_pci_release_msi,
+	.pci_msi_count			= bhnd_compat_pci_msi_count,
 	.get_vendor			= bhnd_compat_get_vendor,
 	.get_device			= bhnd_compat_get_device,
 	.get_revid			= bhnd_compat_get_revid,

@@ -42,6 +42,10 @@ struct siba_sprom_core_pwr_info;
  * Legacy siba(4) bus API compatibility shims.
  */
 struct bwn_bus_ops {
+	int		(*pci_find_cap)(device_t, int, int *);
+	int		(*pci_alloc_msi)(device_t, int *);
+	int		(*pci_release_msi)(device_t);
+	int		(*pci_msi_count)(device_t);
 	uint16_t	(*get_vendor)(device_t);
 	uint16_t	(*get_device)(device_t);
 	uint8_t		(*get_revid)(device_t);
@@ -251,6 +255,15 @@ struct siba_sprom_core_pwr_info {
 
 #define	BWN_BUS_OPS(_dev)	\
 	(((struct bwn_softc *)device_get_softc(_dev))->sc_bus_ops)
+
+#define	pci_find_cap(_dev, capability, capreg)	\
+	BWN_BUS_OPS(_dev)->pci_find_cap(_dev, capability, capreg)
+#define	pci_alloc_msi(_dev, count)	\
+	BWN_BUS_OPS(_dev)->pci_alloc_msi(_dev, count)
+#define	pci_release_msi(_dev)	\
+	BWN_BUS_OPS(_dev)->pci_release_msi(_dev)
+#define	pci_msi_count(_dev)	\
+	BWN_BUS_OPS(_dev)->pci_msi_count(_dev)
 
 #define	siba_get_vendor(_dev)	\
 	BWN_BUS_OPS(_dev)->get_vendor(_dev)
