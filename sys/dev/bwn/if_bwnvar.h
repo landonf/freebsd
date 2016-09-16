@@ -1011,6 +1011,7 @@ struct bwn_softc {
 	device_t			sc_dev;
 #if !BWN_USE_SIBA
 	const struct bwn_bus_ops	*sc_bus_ops;
+	void				*sc_bus_ctx;
 	struct bhnd_resource		*sc_mem_res;
 	int				 sc_mem_rid;
 #endif

@@ -41,6 +41,18 @@
 #include "if_bwn_siba.h"
 
 
+static int
+bwn_bhnd_bus_ops_init(struct bwn_softc *sc)
+{
+	// TODO
+	return (0);
+}
+
+static void
+bwn_bhnd_bus_ops_fini(struct bwn_softc *sc)
+{
+}
+
 /*
  * Disable PCI-specific MSI interrupt allocation handling
  */
@@ -704,6 +716,8 @@ bhnd_compat_cc_write32(device_t dev, uint32_t reg, uint32_t val)
 }
 
 const struct bwn_bus_ops bwn_bhnd_bus_ops = {
+	.init				= bwn_bhnd_bus_ops_init,
+	.fini				= bwn_bhnd_bus_ops_fini,
 	.pci_find_cap			= bhnd_compat_pci_find_cap,
 	.pci_alloc_msi			= bhnd_compat_pci_alloc_msi,
 	.pci_release_msi		= bhnd_compat_pci_release_msi,

@@ -43,7 +43,20 @@
 
 /** Legacy siba(4) bus operations */
 
+static int
+bwn_siba_bus_ops_init(struct bwn_softc *sc)
+{
+	return (0);
+}
+
+static void
+bwn_siba_bus_ops_fini(struct bwn_softc *sc)
+{
+}
+
 const struct bwn_bus_ops bwn_siba_bus_ops = {
+	.init				= bwn_siba_bus_ops_init,
+	.fini				= bwn_siba_bus_ops_fini,
 	.pci_find_cap			= pci_find_cap,
 	.pci_alloc_msi			= pci_alloc_msi,
 	.pci_release_msi		= pci_release_msi,
