@@ -71,632 +71,636 @@ bhnd_compat_pci_msi_count(device_t dev)
 static uint16_t
 bhnd_compat_get_vendor(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_get_vendor() unimplemented");
 }
 
 static uint16_t
 bhnd_compat_get_device(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_get_device() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_get_revid(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_get_revid() unimplemented");
 }
 
 static uint16_t
 bhnd_compat_get_pci_vendor(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_get_pci_vendor() unimplemented");
 }
 
 static uint16_t
 bhnd_compat_get_pci_device(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_get_pci_device() unimplemented");
 }
 
 static uint16_t
 bhnd_compat_get_pci_subvendor(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_get_pci_subvendor() unimplemented");
 }
 
 static uint16_t
 bhnd_compat_get_pci_subdevice(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_get_pci_subdevice() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_get_pci_revid(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_get_pci_revid() unimplemented");
 }
 
 static uint16_t
 bhnd_compat_get_chipid(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_get_chipid() unimplemented");
 }
 
 static uint16_t
 bhnd_compat_get_chiprev(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_get_chiprev() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_get_chippkg(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_get_chippkg() unimplemented");
 }
 
 static enum siba_type
 bhnd_compat_get_type(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_get_type() unimplemented");
 }
 
 static uint32_t
 bhnd_compat_get_cc_pmufreq(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_get_cc_pmufreq() unimplemented");
 }
 
 static uint32_t
 bhnd_compat_get_cc_caps(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_get_cc_caps() unimplemented");
 }
 
 static uint16_t
 bhnd_compat_get_cc_powerdelay(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_get_cc_powerdelay() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_get_pcicore_revid(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_get_pcicore_revid() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_rev(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_rev() unimplemented");
 }
 
 static uint8_t *
 bhnd_compat_sprom_get_mac_80211bg(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_mac_80211bg() unimplemented");
 }
 
 static uint8_t *
 bhnd_compat_sprom_get_mac_80211a(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_mac_80211a() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_brev(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_brev() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_ccode(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_ccode() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_ant_a(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_ant_a() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_ant_bg(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_ant_bg() unimplemented");
 }
 
 static uint16_t
 bhnd_compat_sprom_get_pa0b0(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_pa0b0() unimplemented");
 }
 
 static uint16_t
 bhnd_compat_sprom_get_pa0b1(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_pa0b1() unimplemented");
 }
 
 static uint16_t
 bhnd_compat_sprom_get_pa0b2(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_pa0b2() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_gpio0(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_gpio0() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_gpio1(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_gpio1() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_gpio2(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_gpio2() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_gpio3(device_t dev)
 {
-	panic("unimplemented");
-}
-
-static uint16_t
-bhnd_compat_sprom_get_maxpwr_bg(device_t dev)
-{
-	panic("unimplemented");
+	panic("siba_sprom_get_gpio3() unimplemented");
 }
 
 static void
 bhnd_compat_sprom_set_maxpwr_bg(device_t dev, uint16_t t)
 {
-	panic("unimplemented");
+	panic("siba_sprom_set_maxpwr_bg() unimplemented");
+}
+
+static uint16_t
+bhnd_compat_sprom_get_maxpwr_bg(device_t dev)
+{
+	panic("siba_sprom_get_maxpwr_bg() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_rxpo2g(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_rxpo2g() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_rxpo5g(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_rxpo5g() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_tssi_bg(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_tssi_bg() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_tri2g(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_tri2g() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_tri5gl(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_tri5gl() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_tri5g(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_tri5g() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_tri5gh(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_tri5gh() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_rssisav2g(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_rssisav2g() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_rssismc2g(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_rssismc2g() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_rssismf2g(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_rssismf2g() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_bxa2g(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_bxa2g() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_rssisav5g(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_rssisav5g() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_rssismc5g(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_rssismc5g() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_rssismf5g(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_rssismf5g() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_bxa5g(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_bxa5g() unimplemented");
 }
 
 static uint16_t
 bhnd_compat_sprom_get_cck2gpo(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_cck2gpo() unimplemented");
 }
 
 static uint32_t
 bhnd_compat_sprom_get_ofdm2gpo(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_ofdm2gpo() unimplemented");
 }
 
 static uint32_t
 bhnd_compat_sprom_get_ofdm5glpo(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_ofdm5glpo() unimplemented");
 }
 
 static uint32_t
 bhnd_compat_sprom_get_ofdm5gpo(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_ofdm5gpo() unimplemented");
 }
 
 static uint32_t
 bhnd_compat_sprom_get_ofdm5ghpo(device_t dev)
 {
-	panic("unimplemented");
-}
-
-static uint16_t
-bhnd_compat_sprom_get_bf_lo(device_t dev)
-{
-	panic("unimplemented");
+	panic("siba_sprom_get_ofdm5ghpo() unimplemented");
 }
 
 static void
 bhnd_compat_sprom_set_bf_lo(device_t dev, uint16_t t)
 {
-	panic("unimplemented");
+	panic("siba_sprom_set_bf_lo() unimplemented");
+}
+
+static uint16_t
+bhnd_compat_sprom_get_bf_lo(device_t dev)
+{
+	panic("siba_sprom_get_bf_lo() unimplemented");
 }
 
 static uint16_t
 bhnd_compat_sprom_get_bf_hi(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_bf_hi() unimplemented");
 }
 
 static uint16_t
 bhnd_compat_sprom_get_bf2_lo(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_bf2_lo() unimplemented");
 }
 
 static uint16_t
 bhnd_compat_sprom_get_bf2_hi(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_bf2_hi() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_fem_2ghz_tssipos(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_fem_2ghz_tssipos() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_fem_2ghz_extpa_gain(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_fem_2ghz_extpa_gain() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_fem_2ghz_pdet_range(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_fem_2ghz_pdet_range() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_fem_2ghz_tr_iso(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_fem_2ghz_tr_iso() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_fem_2ghz_antswlut(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_fem_2ghz_antswlut() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_fem_5ghz_extpa_gain(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_fem_5ghz_extpa_gain() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_fem_5ghz_pdet_range(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_fem_5ghz_pdet_range() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_fem_5ghz_antswlut(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_fem_5ghz_antswlut() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_txpid_2g_0(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_txpid_2g_0() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_txpid_2g_1(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_txpid_2g_1() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_txpid_5gl_0(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_txpid_5gl_0() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_txpid_5gl_1(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_txpid_5gl_1() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_txpid_5g_0(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_txpid_5g_0() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_txpid_5g_1(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_txpid_5g_1() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_txpid_5gh_0(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_txpid_5gh_0() unimplemented");
 }
 
 static uint8_t
 bhnd_compat_sprom_get_txpid_5gh_1(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_txpid_5gh_1() unimplemented");
 }
 
 static uint16_t
 bhnd_compat_sprom_get_stbcpo(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_stbcpo() unimplemented");
 }
 
 static uint16_t
 bhnd_compat_sprom_get_cddpo(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_cddpo() unimplemented");
 }
 
 static void
 bhnd_compat_powerup(device_t dev, int dynamic)
 {
-	panic("unimplemented");
+	panic("siba_powerup() unimplemented");
 }
 
 static int
 bhnd_compat_powerdown(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_powerdown() unimplemented");
 }
 
 static uint16_t
 bhnd_compat_read_2(device_t dev, uint16_t offset)
 {
-	panic("unimplemented");
+	panic("siba_read_2() unimplemented");
 }
 
 static void
 bhnd_compat_write_2(device_t dev, uint16_t offset, uint16_t value)
 {
-	panic("unimplemented");
+	panic("siba_write_2() unimplemented");
 }
 
 static uint32_t
 bhnd_compat_read_4(device_t dev, uint16_t offset)
 {
-	panic("unimplemented");
+	panic("siba_read_4() unimplemented");
 }
 
 static void
 bhnd_compat_write_4(device_t dev, uint16_t offset, uint32_t value)
 {
-	panic("unimplemented");
+	panic("siba_write_4() unimplemented");
 }
 
 static void
 bhnd_compat_dev_up(device_t dev, uint32_t flags)
 {
-	panic("unimplemented");
+	panic("siba_dev_up() unimplemented");
 }
 
 static void
 bhnd_compat_dev_down(device_t dev, uint32_t flags)
 {
-	panic("unimplemented");
+	panic("siba_dev_down() unimplemented");
 }
 
 static int
 bhnd_compat_dev_isup(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_dev_isup() unimplemented");
 }
 
 static void
 bhnd_compat_pcicore_intr(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_pcicore_intr() unimplemented");
 }
 
 static uint32_t
 bhnd_compat_dma_translation(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_dma_translation() unimplemented");
 }
 
 static void
-bhnd_compat_read_multi_2(device_t dev, void *buffer, size_t count, uint16_t offset)
+bhnd_compat_read_multi_2(device_t dev, void *buffer, size_t count,
+    uint16_t offset)
 {
-	panic("unimplemented");
+	panic("siba_read_multi_2() unimplemented");
 }
 
 static void
-bhnd_compat_read_multi_4(device_t dev, void *buffer, size_t count, uint16_t offset)
+bhnd_compat_read_multi_4(device_t dev, void *buffer, size_t count,
+    uint16_t offset)
 {
-	panic("unimplemented");
+	panic("siba_read_multi_4() unimplemented");
 }
 
 static void
-bhnd_compat_write_multi_2(device_t dev, const void *buffer, size_t count, uint16_t offset)
+bhnd_compat_write_multi_2(device_t dev, const void *buffer, size_t count,
+    uint16_t offset)
 {
-	panic("unimplemented");
+	panic("siba_write_multi_2() unimplemented");
 }
 
 static void
-bhnd_compat_write_multi_4(device_t dev, const void *buffer, size_t count, uint16_t offset)
+bhnd_compat_write_multi_4(device_t dev, const void *buffer, size_t count,
+    uint16_t offset)
 {
-	panic("unimplemented");
+	panic("siba_write_multi_4() unimplemented");
 }
 
 static void
 bhnd_compat_barrier(device_t dev, int flags)
 {
-	panic("unimplemented");
+	panic("siba_barrier() unimplemented");
 }
 
 static void
 bhnd_compat_cc_pmu_set_ldovolt(device_t dev, int id, uint32_t volt)
 {
-	panic("unimplemented");
+	panic("siba_cc_pmu_set_ldovolt() unimplemented");
 }
 
 static void
 bhnd_compat_cc_pmu_set_ldoparef(device_t dev, uint8_t on)
 {
-	panic("unimplemented");
+	panic("siba_cc_pmu_set_ldoparef() unimplemented");
 }
 
 static void
 bhnd_compat_gpio_set(device_t dev, uint32_t value)
 {
-	panic("unimplemented");
+	panic("siba_gpio_set() unimplemented");
 }
 
 static uint32_t
 bhnd_compat_gpio_get(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_gpio_get() unimplemented");
 }
 
 static void
 bhnd_compat_fix_imcfglobug(device_t dev)
 {
-	panic("unimplemented");
+	panic("siba_fix_imcfglobug() unimplemented");
 }
 
 static int
 bhnd_compat_sprom_get_core_power_info(device_t dev, int core,
     struct siba_sprom_core_pwr_info *c)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_core_power_info() unimplemented");
 }
 
 static int
 bhnd_compat_sprom_get_mcs2gpo(device_t dev, uint16_t *c)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_mcs2gpo() unimplemented");
 }
 
 static int
 bhnd_compat_sprom_get_mcs5glpo(device_t dev, uint16_t *c)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_mcs5glpo() unimplemented");
 }
 
 static int
 bhnd_compat_sprom_get_mcs5gpo(device_t dev, uint16_t *c)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_mcs5gpo() unimplemented");
 }
 
 static int
 bhnd_compat_sprom_get_mcs5ghpo(device_t dev, uint16_t *c)
 {
-	panic("unimplemented");
+	panic("siba_sprom_get_mcs5ghpo() unimplemented");
 }
 
 static void
 bhnd_compat_pmu_spuravoid_pllupdate(device_t dev, int spur_avoid)
 {
-	panic("unimplemented");
+	panic("siba_pmu_spuravoid_pllupdate() unimplemented");
 }
 
 static void
 bhnd_compat_cc_set32(device_t dev, uint32_t reg, uint32_t val)
 {
-	panic("unimplemented");
+	panic("siba_cc_set32() unimplemented");
 }
 
 static void
 bhnd_compat_cc_mask32(device_t dev, uint32_t reg, uint32_t mask)
 {
-	panic("unimplemented");
+	panic("siba_cc_mask32() unimplemented");
 }
 
 static void
 bhnd_compat_cc_write32(device_t dev, uint32_t reg, uint32_t val)
 {
-	panic("unimplemented");
+	panic("siba_cc_write32() unimplemented");
 }
 
 const struct bwn_bus_ops bwn_bhnd_bus_ops = {
