@@ -44,13 +44,13 @@
 /** Legacy siba(4) bus operations */
 
 static int
-bwn_siba_bus_ops_init(struct bwn_softc *sc)
+bwn_siba_bus_ops_init(device_t dev)
 {
 	return (0);
 }
 
 static void
-bwn_siba_bus_ops_fini(struct bwn_softc *sc)
+bwn_siba_bus_ops_fini(device_t dev)
 {
 }
 

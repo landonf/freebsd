@@ -44,8 +44,8 @@ struct siba_sprom_core_pwr_info;
  */
 struct bwn_bus_ops {
 	/* bus-specific initialization/finalization */
-	int		(*init)(struct bwn_softc *);
-	void		(*fini)(struct bwn_softc *);
+	int		(*init)(device_t);
+	void		(*fini)(device_t);
 
 	/* compatibility shims */
 	int		(*pci_find_cap)(device_t, int, int *);
@@ -165,8 +165,8 @@ struct bwn_bus_ops {
 #include <dev/siba/sibareg.h>
 #include <dev/siba/sibavar.h>
 
-#define	BWN_BUS_OPS_ATTACH(sc)	(0)
-#define	BWN_BUS_OPS_DETACH(sc)
+#define	BWN_BUS_OPS_ATTACH(_dev)	(0)
+#define	BWN_BUS_OPS_DETACH(_dev)
 
 #else /* !BWN_USE_SIBA */
 
@@ -268,10 +268,10 @@ struct siba_sprom_core_pwr_info {
 #define	BWN_BUS_OPS(_dev)	\
 	BWN_BUS_OPS_SC((struct bwn_softc *)device_get_softc(_dev))
 
-#define	BWN_BUS_OPS_ATTACH(_sc)	\
-	BWN_BUS_OPS_SC(sc)->init(sc)
-#define	BWN_BUS_OPS_DETACH(_sc)	\
-	BWN_BUS_OPS_SC(sc)->fini(sc)
+#define	BWN_BUS_OPS_ATTACH(_dev)	\
+	BWN_BUS_OPS(_dev)->init(_dev)
+#define	BWN_BUS_OPS_DETACH(_dev)	\
+	BWN_BUS_OPS(_dev)->fini(_dev)
 
 #define	pci_find_cap(_dev, capability, capreg)	\
 	BWN_BUS_OPS(_dev)->pci_find_cap(_dev, capability, capreg)

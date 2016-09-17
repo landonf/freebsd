@@ -541,7 +541,7 @@ bwn_attach(device_t dev)
 #endif
 
 	sc->sc_bus_ops = bwn_get_bus_ops(dev);
-	if ((error = BWN_BUS_OPS_ATTACH(sc))) {
+	if ((error = BWN_BUS_OPS_ATTACH(dev))) {
 		device_printf(sc->sc_dev,
 		    "bus-specific initialization failed (%d)\n", error);
 		return (error);
@@ -653,7 +653,7 @@ fail1:
 	if (msic == BWN_MSI_MESSAGES && bwn_msi_disable == 0)
 		pci_release_msi(dev);
 fail0:
-	BWN_BUS_OPS_DETACH(sc);
+	BWN_BUS_OPS_DETACH(dev);
 	free(mac, M_DEVBUF);
 	return (error);
 }
@@ -779,7 +779,7 @@ bwn_detach(device_t dev)
 	mbufq_drain(&sc->sc_snd);
 	bwn_release_firmware(mac);
 	BWN_LOCK_DESTROY(sc);
-	BWN_BUS_OPS_DETACH(sc);
+	BWN_BUS_OPS_DETACH(dev);
 	return (0);
 }
 

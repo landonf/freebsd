@@ -29,27 +29,55 @@
 
 #include <sys/param.h>
 #include <sys/bus.h>
+#include <sys/kernel.h>
 #include <sys/systm.h>
+#include <sys/socket.h>
+#include <sys/sockio.h>
 
 #include <machine/bus.h>
 #include <sys/rman.h>
 #include <machine/resource.h>
 
+#include <net/ethernet.h>
+#include <net/if.h>
+#include <net/if_var.h>
+#include <net/if_arp.h>
+#include <net/if_dl.h>
+#include <net/if_llc.h>
+#include <net/if_media.h>
+#include <net/if_types.h>
+
+#include <dev/pci/pcireg.h>
+#include <dev/pci/pcivar.h>
+
+#include <net80211/ieee80211_var.h>
+#include <net80211/ieee80211_radiotap.h>
+#include <net80211/ieee80211_regdomain.h>
+#include <net80211/ieee80211_phy.h>
+#include <net80211/ieee80211_ratectl.h>
+
 #include <dev/bhnd/bhnd.h>
 
-#define	BWN_USE_SIBA	0
-#include "if_bwn_siba.h"
-
+#include "if_bwn_siba_compat.h"
 
 static int
-bwn_bhnd_bus_ops_init(struct bwn_softc *sc)
+bwn_bhnd_bus_ops_init(device_t dev)
 {
-	// TODO
+	struct bwn_bhnd_ctx	*ctx;
+	struct bwn_softc	*sc;
+
+	sc = device_get_softc(dev);
+
+	/* Allocate our context */
+	ctx = malloc(sizeof(struct bwn_bhnd_ctx), M_DEVBUF, M_WAITOK|M_ZERO);
+
+	/* Initialize bwn_softc */
+	sc->sc_bus_ctx = ctx;
 	return (0);
 }
 
 static void
-bwn_bhnd_bus_ops_fini(struct bwn_softc *sc)
+bwn_bhnd_bus_ops_fini(device_t dev)
 {
 }
 
@@ -155,6 +183,22 @@ bhnd_compat_get_revid(device_t dev)
 	panic("siba_get_revid() unimplemented");
 }
 
+/**
+ * Return the PCI bridge root device.
+ * 
+ * Will panic if a PCI bridge root device is not found.
+ */
+static device_t
+bwn_bhnd_get_pci_dev(device_t dev)
+{	device_t bridge_root;
+
+	bridge_root = bhnd_find_bridge_root(dev, devclass_find("pci"));
+	if (bridge_root == NULL)
+		panic("not a PCI device");
+
+	return (bridge_root);
+}
+
 /*
  * siba_get_pci_vendor()
  *
@@ -164,7 +208,7 @@ bhnd_compat_get_revid(device_t dev)
 static uint16_t
 bhnd_compat_get_pci_vendor(device_t dev)
 {
-	panic("siba_get_pci_vendor() unimplemented");
+	return (pci_get_vendor(bwn_bhnd_get_pci_dev(dev)));
 }
 
 /*
@@ -180,7 +224,7 @@ bhnd_compat_get_pci_vendor(device_t dev)
 static uint16_t
 bhnd_compat_get_pci_device(device_t dev)
 {
-	panic("siba_get_pci_device() unimplemented");
+	return (pci_get_device(bwn_bhnd_get_pci_dev(dev)));
 }
 
 /*
@@ -205,7 +249,7 @@ bhnd_compat_get_pci_device(device_t dev)
 static uint16_t
 bhnd_compat_get_pci_subvendor(device_t dev)
 {
-	panic("siba_get_pci_subvendor() unimplemented");
+	return (pci_get_subvendor(bwn_bhnd_get_pci_dev(dev)));
 }
 
 /*
@@ -228,7 +272,7 @@ bhnd_compat_get_pci_subvendor(device_t dev)
 static uint16_t
 bhnd_compat_get_pci_subdevice(device_t dev)
 {
-	panic("siba_get_pci_subdevice() unimplemented");
+	return (pci_get_subdevice(bwn_bhnd_get_pci_dev(dev)));
 }
 
 /*
@@ -244,7 +288,7 @@ bhnd_compat_get_pci_subdevice(device_t dev)
 static uint8_t
 bhnd_compat_get_pci_revid(device_t dev)
 {
-	panic("siba_get_pci_revid() unimplemented");
+	return (pci_get_revid(bwn_bhnd_get_pci_dev(dev)));
 }
 
 /*
@@ -316,7 +360,25 @@ bhnd_compat_get_chippkg(device_t dev)
 static enum siba_type
 bhnd_compat_get_type(device_t dev)
 {
-	panic("siba_get_type() unimplemented");
+	device_t		bus, hostb;
+	bhnd_devclass_t		hostb_devclass;
+
+	bus = device_get_parent(dev);
+	hostb = bhnd_find_hostb_device(bus);
+
+	if (hostb == NULL)
+		return (SIBA_TYPE_SSB);
+
+	hostb_devclass = bhnd_get_class(hostb);
+	switch (hostb_devclass) {
+	case BHND_DEVCLASS_PCCARD:
+		return (SIBA_TYPE_PCMCIA);
+	case BHND_DEVCLASS_PCI:
+	case BHND_DEVCLASS_PCIE:
+		return (SIBA_TYPE_PCI);
+	default:
+		panic("unsupported hostb devclass: %d\n", hostb_devclass);
+	}
 }
 
 /*
