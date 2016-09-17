@@ -143,7 +143,14 @@ bhnd_compat_pci_msi_count(device_t dev)
 static uint16_t
 bhnd_compat_get_vendor(device_t dev)
 {
-	panic("siba_get_vendor() unimplemented");
+	uint16_t vendor = bhnd_get_vendor(dev);
+
+	switch (vendor) {
+	case BHND_MFGID_BCM:
+		return (SIBA_VID_BROADCOM);
+	default:
+		return (0x0000);
+	}
 }
 
 /*
@@ -155,7 +162,7 @@ bhnd_compat_get_vendor(device_t dev)
 static uint16_t
 bhnd_compat_get_device(device_t dev)
 {
-	panic("siba_get_device() unimplemented");
+	return (bhnd_get_device(dev));
 }
 
 /*
@@ -178,7 +185,7 @@ bhnd_compat_get_device(device_t dev)
 static uint8_t
 bhnd_compat_get_revid(device_t dev)
 {
-	panic("siba_get_revid() unimplemented");
+	return (bhnd_get_hwrev(dev));
 }
 
 /**
