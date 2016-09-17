@@ -64,30 +64,23 @@ __FBSDID("$FreeBSD$");
 
 #include "if_bwnvar.h"
 
-static const struct bwn_device {
-	uint16_t	 vendor;
-	uint16_t	 device;
-} bwn_devices[] = {
-	{ BHND_MFGID_BCM,	BHND_COREID_D11 },
-	{ BHND_MFGID_INVALID,	BHND_COREID_INVALID }
+/* Supported device identifiers */
+static const struct bhnd_device bwn_devices[] = {
+	BHND_DEVICE(BCM, D11, NULL, NULL),
+	BHND_DEVICE_END
 };
 
 static int
 bwn_bhnd_probe(device_t dev)
 {
-	const struct bwn_device	*id;
+	const struct bhnd_device *id;
 
-	for (id = bwn_devices; id->device != BHND_COREID_INVALID; id++)
-	{
-		if (bhnd_get_vendor(dev) == id->vendor &&
-		    bhnd_get_device(dev) == id->device)
-		{
-			device_set_desc(dev, bhnd_get_device_name(dev));
-			return (BUS_PROBE_DEFAULT);
-		}
-	}
+	id = bhnd_device_lookup(dev, bwn_devices, sizeof(bwn_devices[0]));
+	if (id == NULL)
+		return (ENXIO);
 
-	return (ENXIO);
+	bhnd_set_default_core_desc(dev);
+	return (BUS_PROBE_DEFAULT);
 }
 
 static int
