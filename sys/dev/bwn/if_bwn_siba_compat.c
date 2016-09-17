@@ -89,7 +89,7 @@ bwn_bhnd_bus_ops_fini(device_t dev)
  * pci_find_cap()
  *
  * Referenced by:
- *   if_bwn.c:575
+ *   bwn_attach()
  */
 static int
 bhnd_compat_pci_find_cap(device_t dev, int capability, int *capreg)
@@ -101,7 +101,7 @@ bhnd_compat_pci_find_cap(device_t dev, int capability, int *capreg)
  * pci_alloc_msi()
  *
  * Referenced by:
- *   if_bwn.c:584
+ *   bwn_attach()
  */
 static int
 bhnd_compat_pci_alloc_msi(device_t dev, int *count)
@@ -113,7 +113,8 @@ bhnd_compat_pci_alloc_msi(device_t dev, int *count)
  * pci_release_msi()
  *
  * Referenced by:
- *   if_bwn.c:628, 751
+ *   bwn_attach()
+ *   bwn_detach()
  */
 static int
 bhnd_compat_pci_release_msi(device_t dev)
@@ -125,7 +126,7 @@ bhnd_compat_pci_release_msi(device_t dev)
  * pci_msi_count()
  *
  * Referenced by:
- *   if_bwn.c:576
+ *   bwn_attach()
  */
 static int
 bhnd_compat_pci_msi_count(device_t dev)
@@ -137,7 +138,7 @@ bhnd_compat_pci_msi_count(device_t dev)
  * siba_get_vendor()
  *
  * Referenced by:
- *   if_bwn.c:503
+ *   bwn_probe()
  */
 static uint16_t
 bhnd_compat_get_vendor(device_t dev)
@@ -149,7 +150,7 @@ bhnd_compat_get_vendor(device_t dev)
  * siba_get_device()
  *
  * Referenced by:
- *   if_bwn.c:504
+ *   bwn_probe()
  */
 static uint16_t
 bhnd_compat_get_device(device_t dev)
@@ -161,21 +162,18 @@ bhnd_compat_get_device(device_t dev)
  * siba_get_revid()
  *
  * Referenced by:
- *   if_bwn_phy_n_tables.c:3511, 3425
- *   if_bwn_phy_n_core.c:4321, 4212, 4195
- *   if_bwn_phy_g.c:3579
- *   if_bwn.c:6951, 6930
- *   if_bwn_phy_n_core.c:4300, 1557
- *   if_bwn.c:4542
- *   if_bwn_phy_n_core.c:6073, 6067
- *   if_bwn.c:3587, 3432, 3427, 2493...
- *   if_bwn_phy_n_core.c:606
- *   if_bwn.c:3481, 2138
- *   if_bwn_phy_g.c:3566
- *   if_bwn_phy_n_core.c:596
- *   if_bwn.c:1474, 2076, 1153
- *   if_bwn_phy_n_core.c:6631
- *   if_bwn.c:557, 3815, 2052, 505...
+ *   bwn_attach()
+ *   bwn_attach_core()
+ *   bwn_chip_init()
+ *   bwn_chiptest()
+ *   bwn_core_init()
+ *   bwn_core_start()
+ *   bwn_pio_idx2base()
+ *   bwn_pio_set_txqueue()
+ *   bwn_pio_tx_start()
+ *   bwn_probe()
+ * ... and 19 others
+ * 
  */
 static uint8_t
 bhnd_compat_get_revid(device_t dev)
@@ -203,7 +201,7 @@ bwn_bhnd_get_pci_dev(device_t dev)
  * siba_get_pci_vendor()
  *
  * Referenced by:
- *   if_bwn.c:797, 799, 796, 795...
+ *   bwn_sprom_bugfixes()
  */
 static uint16_t
 bhnd_compat_get_pci_vendor(device_t dev)
@@ -215,11 +213,10 @@ bhnd_compat_get_pci_vendor(device_t dev)
  * siba_get_pci_device()
  *
  * Referenced by:
- *   if_bwn.c:1206, 797, 532, 531...
- *   if_bwn_phy_n_core.c:6641
- *   if_bwn.c:1202, 533
- *   if_bwn_phy_n_core.c:6640
- *   if_bwn.c:798
+ *   bwn_attach()
+ *   bwn_attach_core()
+ *   bwn_nphy_op_prepare_structs()
+ *   bwn_sprom_bugfixes()
  */
 static uint16_t
 bhnd_compat_get_pci_device(device_t dev)
@@ -231,20 +228,16 @@ bhnd_compat_get_pci_device(device_t dev)
  * siba_get_pci_subvendor()
  *
  * Referenced by:
- *   if_bwn_phy_n_core.c:6234
- *   if_bwn.c:6036, 797
- *   if_bwn_phy_g.c:1813, 3122
- *   if_bwn.c:7158
- *   if_bwn_phy_g.c:293
- *   if_bwn.c:799, 796, 795
- *   if_bwn_phy_n_core.c:6630
- *   if_bwn.c:794, 793, 783
- *   if_bwn_phy_g.c:317, 946
- *   if_bwn.c:788
- *   if_bwn_phy_g.c:343, 331, 349
- *   if_bwn_phy_n_core.c:1559
- *   if_bwn.c:798
- *   if_bwn_phy_g.c:323
+ *   bwn_led_attach()
+ *   bwn_nphy_op_prepare_structs()
+ *   bwn_phy_g_prepare_hw()
+ *   bwn_phy_hwpctl_init()
+ *   bwn_phy_init_b5()
+ *   bwn_phy_initn()
+ *   bwn_phy_txpower_check()
+ *   bwn_radio_init2055_post()
+ *   bwn_sprom_bugfixes()
+ *   bwn_wa_init()
  */
 static uint16_t
 bhnd_compat_get_pci_subvendor(device_t dev)
@@ -256,18 +249,16 @@ bhnd_compat_get_pci_subvendor(device_t dev)
  * siba_get_pci_subdevice()
  *
  * Referenced by:
- *   if_bwn_phy_g.c:3123
- *   if_bwn.c:6037, 797
- *   if_bwn_phy_g.c:1814, 294, 325
- *   if_bwn_phy_n_core.c:6235
- *   if_bwn_phy_g.c:345, 333
- *   if_bwn.c:799, 796, 795, 794...
- *   if_bwn_phy_n_core.c:1560
- *   if_bwn_phy_g.c:319, 351
- *   if_bwn_phy_lp.c:1482
- *   if_bwn.c:798
- *   if_bwn_phy_g.c:947
- *   if_bwn_phy_n_core.c:3484
+ *   bwn_nphy_workarounds_rev1_2()
+ *   bwn_phy_g_prepare_hw()
+ *   bwn_phy_hwpctl_init()
+ *   bwn_phy_init_b5()
+ *   bwn_phy_initn()
+ *   bwn_phy_lp_bbinit_r01()
+ *   bwn_phy_txpower_check()
+ *   bwn_radio_init2055_post()
+ *   bwn_sprom_bugfixes()
+ *   bwn_wa_init()
  */
 static uint16_t
 bhnd_compat_get_pci_subdevice(device_t dev)
@@ -279,11 +270,10 @@ bhnd_compat_get_pci_subdevice(device_t dev)
  * siba_get_pci_revid()
  *
  * Referenced by:
- *   if_bwn_phy_g.c:1815, 298, 347
- *   if_bwn.c:789, 785
- *   if_bwn_phy_g.c:335, 321
- *   if_bwn_phy_lp.c:1305
- *   if_bwn_phy_g.c:295
+ *   bwn_phy_g_prepare_hw()
+ *   bwn_phy_lp_bbinit_r2()
+ *   bwn_sprom_bugfixes()
+ *   bwn_wa_init()
  */
 static uint8_t
 bhnd_compat_get_pci_revid(device_t dev)
@@ -295,27 +285,18 @@ bhnd_compat_get_pci_revid(device_t dev)
  * siba_get_chipid()
  *
  * Referenced by:
- *   if_bwn_phy_n_tables.c:3510
- *   if_bwn_phy_lp.c:2739
- *   if_bwn_phy_n_core.c:1239
- *   if_bwn_phy_lp.c:1332, 1322
- *   if_bwn_phy_n_core.c:1281, 1251, 1238
- *   if_bwn_phy_lp.c:1506, 690
- *   if_bwn_phy_n_tables.c:3744
- *   if_bwn_phy_n_core.c:6474
- *   if_bwn.c:3471
- *   if_bwn_phy_n_core.c:1250
- *   if_bwn_phy_lp.c:1358
- *   if_bwn_phy_n_tables.c:3424
- *   if_bwn.c:1405, 789
- *   if_bwn_phy_g.c:354
- *   if_bwn_phy_n_core.c:1240
- *   if_bwn.c:557
- *   if_bwn_phy_g.c:928, 167
- *   if_bwn_phy_n_core.c:1282
- *   if_bwn_phy_common.c:91
- *   if_bwn_phy_lp.c:1880
- *   if_bwn.c:3594
+ *   bwn_attach()
+ *   bwn_gpio_init()
+ *   bwn_mac_switch_freq()
+ *   bwn_phy_g_attach()
+ *   bwn_phy_g_init_sub()
+ *   bwn_phy_g_prepare_hw()
+ *   bwn_phy_getinfo()
+ *   bwn_phy_lp_calib()
+ *   bwn_set_opmode()
+ *   bwn_sprom_bugfixes()
+ * ... and 9 others
+ * 
  */
 static uint16_t
 bhnd_compat_get_chipid(device_t dev)
@@ -327,8 +308,10 @@ bhnd_compat_get_chipid(device_t dev)
  * siba_get_chiprev()
  *
  * Referenced by:
- *   if_bwn_phy_lp.c:2740, 1359, 1333, 1323
- *   if_bwn.c:3595, 1408, 1406
+ *   bwn_phy_getinfo()
+ *   bwn_phy_lp_bbinit_r2()
+ *   bwn_phy_lp_tblinit_r2()
+ *   bwn_set_opmode()
  */
 static uint16_t
 bhnd_compat_get_chiprev(device_t dev)
@@ -340,9 +323,9 @@ bhnd_compat_get_chiprev(device_t dev)
  * siba_get_chippkg()
  *
  * Referenced by:
- *   if_bwn_phy_n_core.c:1241
- *   if_bwn_phy_lp.c:1507
- *   if_bwn_phy_g.c:929
+ *   bwn_phy_g_init_sub()
+ *   bwn_phy_lp_bbinit_r01()
+ *   bwn_radio_2056_setup()
  */
 static uint8_t
 bhnd_compat_get_chippkg(device_t dev)
@@ -354,8 +337,10 @@ bhnd_compat_get_chippkg(device_t dev)
  * siba_get_type()
  *
  * Referenced by:
- *   if_bwn_phy_n_core.c:6639
- *   if_bwn.c:6948, 792, 2100, 2069
+ *   bwn_core_init()
+ *   bwn_dma_attach()
+ *   bwn_nphy_op_prepare_structs()
+ *   bwn_sprom_bugfixes()
  */
 static enum siba_type
 bhnd_compat_get_type(device_t dev)
@@ -385,7 +370,10 @@ bhnd_compat_get_type(device_t dev)
  * siba_get_cc_pmufreq()
  *
  * Referenced by:
- *   if_bwn_phy_lp.c:1677, 1595, 800, 901
+ *   bwn_phy_lp_b2062_init()
+ *   bwn_phy_lp_b2062_switch_channel()
+ *   bwn_phy_lp_b2063_switch_channel()
+ *   bwn_phy_lp_rxcal_r2()
  */
 static uint32_t
 bhnd_compat_get_cc_pmufreq(device_t dev)
@@ -397,7 +385,7 @@ bhnd_compat_get_cc_pmufreq(device_t dev)
  * siba_get_cc_caps()
  *
  * Referenced by:
- *   if_bwn_phy_lp.c:1593
+ *   bwn_phy_lp_b2062_init()
  */
 static uint32_t
 bhnd_compat_get_cc_caps(device_t dev)
@@ -409,7 +397,7 @@ bhnd_compat_get_cc_caps(device_t dev)
  * siba_get_cc_powerdelay()
  *
  * Referenced by:
- *   if_bwn.c:2267
+ *   bwn_chip_init()
  */
 static uint16_t
 bhnd_compat_get_cc_powerdelay(device_t dev)
@@ -421,7 +409,7 @@ bhnd_compat_get_cc_powerdelay(device_t dev)
  * siba_get_pcicore_revid()
  *
  * Referenced by:
- *   if_bwn.c:2070
+ *   bwn_core_init()
  */
 static uint8_t
 bhnd_compat_get_pcicore_revid(device_t dev)
@@ -433,7 +421,10 @@ bhnd_compat_get_pcicore_revid(device_t dev)
  * siba_sprom_get_rev()
  *
  * Referenced by:
- *   if_bwn_phy_n_core.c:4219, 3878, 3079, 6634
+ *   bwn_nphy_op_prepare_structs()
+ *   bwn_nphy_tx_power_ctl_setup()
+ *   bwn_nphy_tx_power_fix()
+ *   bwn_nphy_workarounds_rev7plus()
  */
 static uint8_t
 bhnd_compat_sprom_get_rev(device_t dev)
@@ -445,7 +436,7 @@ bhnd_compat_sprom_get_rev(device_t dev)
  * siba_sprom_get_mac_80211bg()
  *
  * Referenced by:
- *   if_bwn.c:671
+ *   bwn_attach_post()
  */
 static uint8_t *
 bhnd_compat_sprom_get_mac_80211bg(device_t dev)
@@ -457,7 +448,7 @@ bhnd_compat_sprom_get_mac_80211bg(device_t dev)
  * siba_sprom_get_mac_80211a()
  *
  * Referenced by:
- *   if_bwn.c:671
+ *   bwn_attach_post()
  */
 static uint8_t *
 bhnd_compat_sprom_get_mac_80211a(device_t dev)
@@ -469,7 +460,7 @@ bhnd_compat_sprom_get_mac_80211a(device_t dev)
  * siba_sprom_get_brev()
  *
  * Referenced by:
- *   if_bwn_phy_n_core.c:1561
+ *   bwn_radio_init2055_post()
  */
 static uint8_t
 bhnd_compat_sprom_get_brev(device_t dev)
@@ -481,7 +472,7 @@ bhnd_compat_sprom_get_brev(device_t dev)
  * siba_sprom_get_ccode()
  *
  * Referenced by:
- *   if_bwn_phy_g.c:3268
+ *   bwn_phy_g_switch_chan()
  */
 static uint8_t
 bhnd_compat_sprom_get_ccode(device_t dev)
@@ -493,7 +484,7 @@ bhnd_compat_sprom_get_ccode(device_t dev)
  * siba_sprom_get_ant_a()
  *
  * Referenced by:
- *   if_bwn.c:6523
+ *   bwn_antenna_sanitize()
  */
 static uint8_t
 bhnd_compat_sprom_get_ant_a(device_t dev)
@@ -505,7 +496,7 @@ bhnd_compat_sprom_get_ant_a(device_t dev)
  * siba_sprom_get_ant_bg()
  *
  * Referenced by:
- *   if_bwn.c:6521
+ *   bwn_antenna_sanitize()
  */
 static uint8_t
 bhnd_compat_sprom_get_ant_bg(device_t dev)
@@ -517,7 +508,7 @@ bhnd_compat_sprom_get_ant_bg(device_t dev)
  * siba_sprom_get_pa0b0()
  *
  * Referenced by:
- *   if_bwn_phy_g.c:163
+ *   bwn_phy_g_attach()
  */
 static uint16_t
 bhnd_compat_sprom_get_pa0b0(device_t dev)
@@ -529,7 +520,7 @@ bhnd_compat_sprom_get_pa0b0(device_t dev)
  * siba_sprom_get_pa0b1()
  *
  * Referenced by:
- *   if_bwn_phy_g.c:164
+ *   bwn_phy_g_attach()
  */
 static uint16_t
 bhnd_compat_sprom_get_pa0b1(device_t dev)
@@ -541,7 +532,7 @@ bhnd_compat_sprom_get_pa0b1(device_t dev)
  * siba_sprom_get_pa0b2()
  *
  * Referenced by:
- *   if_bwn_phy_g.c:165
+ *   bwn_phy_g_attach()
  */
 static uint16_t
 bhnd_compat_sprom_get_pa0b2(device_t dev)
@@ -553,7 +544,7 @@ bhnd_compat_sprom_get_pa0b2(device_t dev)
  * siba_sprom_get_gpio0()
  *
  * Referenced by:
- *   if_bwn.c:7167
+ *   bwn_led_attach()
  */
 static uint8_t
 bhnd_compat_sprom_get_gpio0(device_t dev)
@@ -565,7 +556,7 @@ bhnd_compat_sprom_get_gpio0(device_t dev)
  * siba_sprom_get_gpio1()
  *
  * Referenced by:
- *   if_bwn.c:7168
+ *   bwn_led_attach()
  */
 static uint8_t
 bhnd_compat_sprom_get_gpio1(device_t dev)
@@ -577,7 +568,7 @@ bhnd_compat_sprom_get_gpio1(device_t dev)
  * siba_sprom_get_gpio2()
  *
  * Referenced by:
- *   if_bwn.c:7169
+ *   bwn_led_attach()
  */
 static uint8_t
 bhnd_compat_sprom_get_gpio2(device_t dev)
@@ -589,7 +580,7 @@ bhnd_compat_sprom_get_gpio2(device_t dev)
  * siba_sprom_get_gpio3()
  *
  * Referenced by:
- *   if_bwn.c:7170
+ *   bwn_led_attach()
  */
 static uint8_t
 bhnd_compat_sprom_get_gpio3(device_t dev)
@@ -601,7 +592,7 @@ bhnd_compat_sprom_get_gpio3(device_t dev)
  * siba_sprom_get_maxpwr_bg()
  *
  * Referenced by:
- *   if_bwn_phy_g.c:660
+ *   bwn_phy_g_recalc_txpwr()
  */
 static uint16_t
 bhnd_compat_sprom_get_maxpwr_bg(device_t dev)
@@ -613,7 +604,7 @@ bhnd_compat_sprom_get_maxpwr_bg(device_t dev)
  * siba_sprom_set_maxpwr_bg()
  *
  * Referenced by:
- *   if_bwn_phy_g.c:666
+ *   bwn_phy_g_recalc_txpwr()
  */
 static void
 bhnd_compat_sprom_set_maxpwr_bg(device_t dev, uint16_t t)
@@ -625,7 +616,7 @@ bhnd_compat_sprom_set_maxpwr_bg(device_t dev, uint16_t t)
  * siba_sprom_get_rxpo2g()
  *
  * Referenced by:
- *   if_bwn_phy_lp.c:600
+ *   bwn_phy_lp_readsprom()
  */
 static uint8_t
 bhnd_compat_sprom_get_rxpo2g(device_t dev)
@@ -637,7 +628,7 @@ bhnd_compat_sprom_get_rxpo2g(device_t dev)
  * siba_sprom_get_rxpo5g()
  *
  * Referenced by:
- *   if_bwn_phy_lp.c:611
+ *   bwn_phy_lp_readsprom()
  */
 static uint8_t
 bhnd_compat_sprom_get_rxpo5g(device_t dev)
@@ -649,7 +640,7 @@ bhnd_compat_sprom_get_rxpo5g(device_t dev)
  * siba_sprom_get_tssi_bg()
  *
  * Referenced by:
- *   if_bwn_phy_g.c:162
+ *   bwn_phy_g_attach()
  */
 static uint8_t
 bhnd_compat_sprom_get_tssi_bg(device_t dev)
@@ -661,7 +652,7 @@ bhnd_compat_sprom_get_tssi_bg(device_t dev)
  * siba_sprom_get_tri2g()
  *
  * Referenced by:
- *   if_bwn_phy_lp.c:598
+ *   bwn_phy_lp_readsprom()
  */
 static uint8_t
 bhnd_compat_sprom_get_tri2g(device_t dev)
@@ -673,7 +664,7 @@ bhnd_compat_sprom_get_tri2g(device_t dev)
  * siba_sprom_get_tri5gl()
  *
  * Referenced by:
- *   if_bwn_phy_lp.c:607
+ *   bwn_phy_lp_readsprom()
  */
 static uint8_t
 bhnd_compat_sprom_get_tri5gl(device_t dev)
@@ -685,7 +676,7 @@ bhnd_compat_sprom_get_tri5gl(device_t dev)
  * siba_sprom_get_tri5g()
  *
  * Referenced by:
- *   if_bwn_phy_lp.c:608
+ *   bwn_phy_lp_readsprom()
  */
 static uint8_t
 bhnd_compat_sprom_get_tri5g(device_t dev)
@@ -697,7 +688,7 @@ bhnd_compat_sprom_get_tri5g(device_t dev)
  * siba_sprom_get_tri5gh()
  *
  * Referenced by:
- *   if_bwn_phy_lp.c:609
+ *   bwn_phy_lp_readsprom()
  */
 static uint8_t
 bhnd_compat_sprom_get_tri5gh(device_t dev)
@@ -709,7 +700,7 @@ bhnd_compat_sprom_get_tri5gh(device_t dev)
  * siba_sprom_get_rssisav2g()
  *
  * Referenced by:
- *   if_bwn_phy_lp.c:603
+ *   bwn_phy_lp_readsprom()
  */
 static uint8_t
 bhnd_compat_sprom_get_rssisav2g(device_t dev)
@@ -721,7 +712,7 @@ bhnd_compat_sprom_get_rssisav2g(device_t dev)
  * siba_sprom_get_rssismc2g()
  *
  * Referenced by:
- *   if_bwn_phy_lp.c:602
+ *   bwn_phy_lp_readsprom()
  */
 static uint8_t
 bhnd_compat_sprom_get_rssismc2g(device_t dev)
@@ -733,7 +724,7 @@ bhnd_compat_sprom_get_rssismc2g(device_t dev)
  * siba_sprom_get_rssismf2g()
  *
  * Referenced by:
- *   if_bwn_phy_lp.c:601
+ *   bwn_phy_lp_readsprom()
  */
 static uint8_t
 bhnd_compat_sprom_get_rssismf2g(device_t dev)
@@ -745,7 +736,7 @@ bhnd_compat_sprom_get_rssismf2g(device_t dev)
  * siba_sprom_get_bxa2g()
  *
  * Referenced by:
- *   if_bwn_phy_lp.c:599
+ *   bwn_phy_lp_readsprom()
  */
 static uint8_t
 bhnd_compat_sprom_get_bxa2g(device_t dev)
@@ -757,7 +748,7 @@ bhnd_compat_sprom_get_bxa2g(device_t dev)
  * siba_sprom_get_rssisav5g()
  *
  * Referenced by:
- *   if_bwn_phy_lp.c:614
+ *   bwn_phy_lp_readsprom()
  */
 static uint8_t
 bhnd_compat_sprom_get_rssisav5g(device_t dev)
@@ -769,7 +760,7 @@ bhnd_compat_sprom_get_rssisav5g(device_t dev)
  * siba_sprom_get_rssismc5g()
  *
  * Referenced by:
- *   if_bwn_phy_lp.c:613
+ *   bwn_phy_lp_readsprom()
  */
 static uint8_t
 bhnd_compat_sprom_get_rssismc5g(device_t dev)
@@ -781,7 +772,7 @@ bhnd_compat_sprom_get_rssismc5g(device_t dev)
  * siba_sprom_get_rssismf5g()
  *
  * Referenced by:
- *   if_bwn_phy_lp.c:612
+ *   bwn_phy_lp_readsprom()
  */
 static uint8_t
 bhnd_compat_sprom_get_rssismf5g(device_t dev)
@@ -793,7 +784,7 @@ bhnd_compat_sprom_get_rssismf5g(device_t dev)
  * siba_sprom_get_bxa5g()
  *
  * Referenced by:
- *   if_bwn_phy_lp.c:610
+ *   bwn_phy_lp_readsprom()
  */
 static uint8_t
 bhnd_compat_sprom_get_bxa5g(device_t dev)
@@ -805,7 +796,7 @@ bhnd_compat_sprom_get_bxa5g(device_t dev)
  * siba_sprom_get_cck2gpo()
  *
  * Referenced by:
- *   if_bwn_phy_n_ppr.c:204
+ *   bwn_ppr_load_max_from_sprom()
  */
 static uint16_t
 bhnd_compat_sprom_get_cck2gpo(device_t dev)
@@ -817,7 +808,7 @@ bhnd_compat_sprom_get_cck2gpo(device_t dev)
  * siba_sprom_get_ofdm2gpo()
  *
  * Referenced by:
- *   if_bwn_phy_n_ppr.c:166
+ *   bwn_ppr_load_max_from_sprom()
  */
 static uint32_t
 bhnd_compat_sprom_get_ofdm2gpo(device_t dev)
@@ -829,7 +820,7 @@ bhnd_compat_sprom_get_ofdm2gpo(device_t dev)
  * siba_sprom_get_ofdm5glpo()
  *
  * Referenced by:
- *   if_bwn_phy_n_ppr.c:174
+ *   bwn_ppr_load_max_from_sprom()
  */
 static uint32_t
 bhnd_compat_sprom_get_ofdm5glpo(device_t dev)
@@ -841,7 +832,7 @@ bhnd_compat_sprom_get_ofdm5glpo(device_t dev)
  * siba_sprom_get_ofdm5gpo()
  *
  * Referenced by:
- *   if_bwn_phy_n_ppr.c:182
+ *   bwn_ppr_load_max_from_sprom()
  */
 static uint32_t
 bhnd_compat_sprom_get_ofdm5gpo(device_t dev)
@@ -853,7 +844,7 @@ bhnd_compat_sprom_get_ofdm5gpo(device_t dev)
  * siba_sprom_get_ofdm5ghpo()
  *
  * Referenced by:
- *   if_bwn_phy_n_ppr.c:190
+ *   bwn_ppr_load_max_from_sprom()
  */
 static uint32_t
 bhnd_compat_sprom_get_ofdm5ghpo(device_t dev)
@@ -862,41 +853,10 @@ bhnd_compat_sprom_get_ofdm5ghpo(device_t dev)
 }
 
 /*
- * siba_sprom_get_bf_lo()
- *
- * Referenced by:
- *   if_bwn_phy_lp.c:3382, 3370
- *   if_bwn_phy_n_core.c:6176
- *   if_bwn_phy_g.c:3429, 3385
- *   if_bwn_phy_lp.c:1484, 1489
- *   if_bwn.c:5725
- *   if_bwn_phy_g.c:2679, 1824, 661, 2220
- *   if_bwn.c:3387
- *   if_bwn_phy_g.c:1931, 1543, 1445
- *   if_bwn.c:801
- *   if_bwn_phy_lp.c:1453
- *   if_bwn.c:2056
- *   if_bwn_phy_n_core.c:2625
- *   if_bwn_phy_g.c:1115, 1843
- *   if_bwn.c:791, 787, 3475
- *   if_bwn_phy_g.c:896, 909
- *   if_bwn.c:2110
- *   if_bwn_phy_g.c:809
- *   if_bwn.c:3381
- *   if_bwn_phy_g.c:710
- *   if_bwn.c:2067
- */
-static uint16_t
-bhnd_compat_sprom_get_bf_lo(device_t dev)
-{
-	panic("siba_sprom_get_bf_lo() unimplemented");
-}
-
-/*
  * siba_sprom_set_bf_lo()
  *
  * Referenced by:
- *   if_bwn.c:800, 786, 790
+ *   bwn_sprom_bugfixes()
  */
 static void
 bhnd_compat_sprom_set_bf_lo(device_t dev, uint16_t t)
@@ -905,12 +865,35 @@ bhnd_compat_sprom_set_bf_lo(device_t dev, uint16_t t)
 }
 
 /*
+ * siba_sprom_get_bf_lo()
+ *
+ * Referenced by:
+ *   bwn_bt_enable()
+ *   bwn_core_init()
+ *   bwn_gpio_init()
+ *   bwn_loopback_calcgain()
+ *   bwn_phy_g_init_sub()
+ *   bwn_phy_g_recalc_txpwr()
+ *   bwn_phy_g_set_txpwr()
+ *   bwn_phy_g_task_60s()
+ *   bwn_rx_rssi_calc()
+ *   bwn_sprom_bugfixes()
+ * ... and 11 others
+ * 
+ */
+static uint16_t
+bhnd_compat_sprom_get_bf_lo(device_t dev)
+{
+	panic("siba_sprom_get_bf_lo() unimplemented");
+}
+
+/*
  * siba_sprom_get_bf_hi()
  *
  * Referenced by:
- *   if_bwn_phy_lp.c:3369, 1505, 1499, 1477...
- *   if_bwn_phy_n_core.c:2624
- *   if_bwn_phy_lp.c:1455, 3381, 3357
+ *   bwn_nphy_gain_ctl_workarounds_rev3()
+ *   bwn_phy_lp_bbinit_r01()
+ *   bwn_phy_lp_tblinit_txgain()
  */
 static uint16_t
 bhnd_compat_sprom_get_bf_hi(device_t dev)
@@ -922,7 +905,12 @@ bhnd_compat_sprom_get_bf_hi(device_t dev)
  * siba_sprom_get_bf2_lo()
  *
  * Referenced by:
- *   if_bwn_phy_n_core.c:6636, 3467, 1246, 1266...
+ *   bwn_nphy_op_prepare_structs()
+ *   bwn_nphy_workarounds_rev1_2()
+ *   bwn_nphy_workarounds_rev3plus()
+ *   bwn_phy_initn()
+ *   bwn_radio_2056_setup()
+ *   bwn_radio_init2055_post()
  */
 static uint16_t
 bhnd_compat_sprom_get_bf2_lo(device_t dev)
@@ -934,7 +922,9 @@ bhnd_compat_sprom_get_bf2_lo(device_t dev)
  * siba_sprom_get_bf2_hi()
  *
  * Referenced by:
- *   if_bwn_phy_n_core.c:6186, 1259, 3080
+ *   bwn_nphy_workarounds_rev7plus()
+ *   bwn_phy_initn()
+ *   bwn_radio_2056_setup()
  */
 static uint16_t
 bhnd_compat_sprom_get_bf2_hi(device_t dev)
@@ -946,7 +936,7 @@ bhnd_compat_sprom_get_bf2_hi(device_t dev)
  * siba_sprom_get_fem_2ghz_tssipos()
  *
  * Referenced by:
- *   if_bwn_phy_n_core.c:4276
+ *   bwn_nphy_tx_power_ctl_setup()
  */
 static uint8_t
 bhnd_compat_sprom_get_fem_2ghz_tssipos(device_t dev)
@@ -958,7 +948,7 @@ bhnd_compat_sprom_get_fem_2ghz_tssipos(device_t dev)
  * siba_sprom_get_fem_2ghz_extpa_gain()
  *
  * Referenced by:
- *   if_bwn_phy_n_core.c:6650
+ *   bwn_nphy_op_prepare_structs()
  */
 static uint8_t
 bhnd_compat_sprom_get_fem_2ghz_extpa_gain(device_t dev)
@@ -970,7 +960,7 @@ bhnd_compat_sprom_get_fem_2ghz_extpa_gain(device_t dev)
  * siba_sprom_get_fem_2ghz_pdet_range()
  *
  * Referenced by:
- *   if_bwn_phy_n_core.c:3353
+ *   bwn_nphy_workarounds_rev3plus()
  */
 static uint8_t
 bhnd_compat_sprom_get_fem_2ghz_pdet_range(device_t dev)
@@ -982,7 +972,7 @@ bhnd_compat_sprom_get_fem_2ghz_pdet_range(device_t dev)
  * siba_sprom_get_fem_2ghz_tr_iso()
  *
  * Referenced by:
- *   if_bwn_phy_n_tables.c:3885
+ *   bwn_nphy_get_gain_ctl_workaround_ent()
  */
 static uint8_t
 bhnd_compat_sprom_get_fem_2ghz_tr_iso(device_t dev)
@@ -994,7 +984,8 @@ bhnd_compat_sprom_get_fem_2ghz_tr_iso(device_t dev)
  * siba_sprom_get_fem_2ghz_antswlut()
  *
  * Referenced by:
- *   if_bwn_phy_n_tables.c:3644, 3579
+ *   bwn_nphy_tables_init_rev3()
+ *   bwn_nphy_tables_init_rev7_volatile()
  */
 static uint8_t
 bhnd_compat_sprom_get_fem_2ghz_antswlut(device_t dev)
@@ -1006,8 +997,8 @@ bhnd_compat_sprom_get_fem_2ghz_antswlut(device_t dev)
  * siba_sprom_get_fem_5ghz_extpa_gain()
  *
  * Referenced by:
- *   if_bwn_phy_n_tables.c:3810, 3796
- *   if_bwn_phy_n_core.c:6651
+ *   bwn_nphy_get_tx_gain_table()
+ *   bwn_nphy_op_prepare_structs()
  */
 static uint8_t
 bhnd_compat_sprom_get_fem_5ghz_extpa_gain(device_t dev)
@@ -1019,7 +1010,7 @@ bhnd_compat_sprom_get_fem_5ghz_extpa_gain(device_t dev)
  * siba_sprom_get_fem_5ghz_pdet_range()
  *
  * Referenced by:
- *   if_bwn_phy_n_core.c:3355
+ *   bwn_nphy_workarounds_rev3plus()
  */
 static uint8_t
 bhnd_compat_sprom_get_fem_5ghz_pdet_range(device_t dev)
@@ -1031,7 +1022,8 @@ bhnd_compat_sprom_get_fem_5ghz_pdet_range(device_t dev)
  * siba_sprom_get_fem_5ghz_antswlut()
  *
  * Referenced by:
- *   if_bwn_phy_n_tables.c:3642, 3577
+ *   bwn_nphy_tables_init_rev3()
+ *   bwn_nphy_tables_init_rev7_volatile()
  */
 static uint8_t
 bhnd_compat_sprom_get_fem_5ghz_antswlut(device_t dev)
@@ -1043,7 +1035,7 @@ bhnd_compat_sprom_get_fem_5ghz_antswlut(device_t dev)
  * siba_sprom_get_txpid_2g_0()
  *
  * Referenced by:
- *   if_bwn_phy_n_core.c:3883
+ *   bwn_nphy_tx_power_fix()
  */
 static uint8_t
 bhnd_compat_sprom_get_txpid_2g_0(device_t dev)
@@ -1055,7 +1047,7 @@ bhnd_compat_sprom_get_txpid_2g_0(device_t dev)
  * siba_sprom_get_txpid_2g_1()
  *
  * Referenced by:
- *   if_bwn_phy_n_core.c:3884
+ *   bwn_nphy_tx_power_fix()
  */
 static uint8_t
 bhnd_compat_sprom_get_txpid_2g_1(device_t dev)
@@ -1067,7 +1059,7 @@ bhnd_compat_sprom_get_txpid_2g_1(device_t dev)
  * siba_sprom_get_txpid_5gl_0()
  *
  * Referenced by:
- *   if_bwn_phy_n_core.c:3886
+ *   bwn_nphy_tx_power_fix()
  */
 static uint8_t
 bhnd_compat_sprom_get_txpid_5gl_0(device_t dev)
@@ -1079,7 +1071,7 @@ bhnd_compat_sprom_get_txpid_5gl_0(device_t dev)
  * siba_sprom_get_txpid_5gl_1()
  *
  * Referenced by:
- *   if_bwn_phy_n_core.c:3887
+ *   bwn_nphy_tx_power_fix()
  */
 static uint8_t
 bhnd_compat_sprom_get_txpid_5gl_1(device_t dev)
@@ -1091,7 +1083,7 @@ bhnd_compat_sprom_get_txpid_5gl_1(device_t dev)
  * siba_sprom_get_txpid_5g_0()
  *
  * Referenced by:
- *   if_bwn_phy_n_core.c:3889
+ *   bwn_nphy_tx_power_fix()
  */
 static uint8_t
 bhnd_compat_sprom_get_txpid_5g_0(device_t dev)
@@ -1103,7 +1095,7 @@ bhnd_compat_sprom_get_txpid_5g_0(device_t dev)
  * siba_sprom_get_txpid_5g_1()
  *
  * Referenced by:
- *   if_bwn_phy_n_core.c:3890
+ *   bwn_nphy_tx_power_fix()
  */
 static uint8_t
 bhnd_compat_sprom_get_txpid_5g_1(device_t dev)
@@ -1115,7 +1107,7 @@ bhnd_compat_sprom_get_txpid_5g_1(device_t dev)
  * siba_sprom_get_txpid_5gh_0()
  *
  * Referenced by:
- *   if_bwn_phy_n_core.c:3892
+ *   bwn_nphy_tx_power_fix()
  */
 static uint8_t
 bhnd_compat_sprom_get_txpid_5gh_0(device_t dev)
@@ -1127,7 +1119,7 @@ bhnd_compat_sprom_get_txpid_5gh_0(device_t dev)
  * siba_sprom_get_txpid_5gh_1()
  *
  * Referenced by:
- *   if_bwn_phy_n_core.c:3893
+ *   bwn_nphy_tx_power_fix()
  */
 static uint8_t
 bhnd_compat_sprom_get_txpid_5gh_1(device_t dev)
@@ -1139,7 +1131,7 @@ bhnd_compat_sprom_get_txpid_5gh_1(device_t dev)
  * siba_sprom_get_stbcpo()
  *
  * Referenced by:
- *   if_bwn_phy_n_ppr.c:193, 185, 177, 169
+ *   bwn_ppr_load_max_from_sprom()
  */
 static uint16_t
 bhnd_compat_sprom_get_stbcpo(device_t dev)
@@ -1151,7 +1143,7 @@ bhnd_compat_sprom_get_stbcpo(device_t dev)
  * siba_sprom_get_cddpo()
  *
  * Referenced by:
- *   if_bwn_phy_n_ppr.c:192, 184, 176, 168
+ *   bwn_ppr_load_max_from_sprom()
  */
 static uint16_t
 bhnd_compat_sprom_get_cddpo(device_t dev)
@@ -1163,7 +1155,8 @@ bhnd_compat_sprom_get_cddpo(device_t dev)
  * siba_powerup()
  *
  * Referenced by:
- *   if_bwn.c:2014, 1159, 2109
+ *   bwn_attach_core()
+ *   bwn_core_init()
  */
 static void
 bhnd_compat_powerup(device_t dev, int dynamic)
@@ -1175,7 +1168,9 @@ bhnd_compat_powerup(device_t dev, int dynamic)
  * siba_powerdown()
  *
  * Referenced by:
- *   if_bwn.c:2180, 1331, 2122
+ *   bwn_attach_core()
+ *   bwn_core_exit()
+ *   bwn_core_init()
  */
 static int
 bhnd_compat_powerdown(device_t dev)
@@ -1187,34 +1182,18 @@ bhnd_compat_powerdown(device_t dev)
  * siba_read_2()
  *
  * Referenced by:
- *   if_bwn_phy_n_core.c:6406, 6148, 6147, 6692
- *   if_bwn_phy_g.c:3600, 3337, 3279, 3128
- *   if_bwn.c:7405, 7346, 7236, 6057
- *   if_bwn_phy_n_core.c:6693
- *   if_bwn_phy_g.c:2232, 2231, 2761, 2755...
- *   if_bwn.c:4416
- *   if_bwn_phy_g.c:2253, 2250
- *   if_bwn_phy_lp.c:482
- *   if_bwn.c:3692, 3704, 3476, 3468...
- *   if_bwn_phy_g.c:3274
- *   if_bwn_phy_lp.c:496
- *   if_bwn_phy_g.c:2807
- *   if_bwn_phy_lp.c:465
- *   if_bwn.c:1390, 2517
- *   if_bwn_phy_g.c:1259, 1247
- *   if_bwn_phy_n.c:187
- *   if_bwn_phy_g.c:1391, 1215
- *   if_bwn.c:1548, 1480, 7324
- *   if_bwn_phy_g.c:489
- *   if_bwn.c:1416, 1414, 1571, 1545...
- *   if_bwn_phy_n_core.c:6416
- *   if_bwn.c:1577, 3687
- *   if_bwn_phy_g.c:2762, 1028
- *   if_bwn_phy_n.c:161
- *   if_bwn_phy_g.c:1251, 1252
- *   if_bwn.c:2234
- *   if_bwn_phy_g.c:472
- *   if_bwn.c:3698
+ *   bwn_chip_init()
+ *   bwn_chiptest()
+ *   bwn_dummy_transmission()
+ *   bwn_gpio_init()
+ *   bwn_phy_getinfo()
+ *   bwn_pio_read_2()
+ *   bwn_shm_read_2()
+ *   bwn_shm_read_4()
+ *   bwn_wme_init()
+ *   bwn_wme_loadparams()
+ * ... and 23 others
+ * 
  */
 static uint16_t
 bhnd_compat_read_2(device_t dev, uint16_t offset)
@@ -1226,67 +1205,18 @@ bhnd_compat_read_2(device_t dev, uint16_t offset)
  * siba_write_2()
  *
  * Referenced by:
- *   if_bwn_phy_n_core.c:6421, 6411, 6407, 6148...
- *   if_bwn_phy_g.c:3478, 3475, 3337, 3279...
- *   if_bwn.c:7348, 7326, 7278, 6662...
- *   if_bwn_phy_common.c:100
- *   if_bwn_phy_g.c:2864
- *   if_bwn_phy_n_core.c:6693
- *   if_bwn.c:5095
- *   if_bwn_phy_g.c:2755
- *   if_bwn_phy_common.c:126
- *   if_bwn_phy_g.c:2334, 2323
- *   if_bwn.c:4490, 4487, 4484
- *   if_bwn_phy_g.c:2253, 2250
- *   if_bwn_phy_lp.c:482
- *   if_bwn.c:4325, 6677
- *   if_bwn_phy_lp.c:1158
- *   if_bwn.c:6663
- *   if_bwn_phy_lp.c:473
- *   if_bwn.c:3682, 3676, 3668, 3667...
- *   if_bwn_phy_g.c:479, 2863
- *   if_bwn_phy_lp.c:661, 660
- *   if_bwn.c:3353
- *   if_bwn_phy_g.c:3274, 1512, 2807
- *   if_bwn_phy_lp.c:472, 464
- *   if_bwn_phy_g.c:2862, 1384, 1382
- *   if_bwn.c:2267, 2250, 2249, 2248...
- *   if_bwn_phy_n_core.c:6417
- *   if_bwn.c:4811
- *   if_bwn_phy_g.c:1259, 1389, 995
- *   if_bwn_phy_common.c:101
- *   if_bwn_phy_g.c:1247
- *   if_bwn_phy_n.c:200, 199
- *   if_bwn_phy_g.c:1391
- *   if_bwn_phy_n.c:186, 169
- *   if_bwn_phy_g.c:1218
- *   if_bwn.c:6071, 1629, 1609
- *   if_bwn_phy_g.c:488
- *   if_bwn.c:1476, 3669, 1413, 1011...
- *   if_bwn_phy_g.c:987, 1255
- *   if_bwn_phy_common.c:133
- *   if_bwn_phy_n.c:168
- *   if_bwn_phy_lp.c:495
- *   if_bwn_phy_g.c:963
- *   if_bwn.c:3655
- *   if_bwn_phy_g.c:825
- *   if_bwn_phy_lp.c:554, 481
- *   if_bwn_phy_common.c:118
- *   if_bwn_phy_g.c:1028
- *   if_bwn.c:1415
- *   if_bwn_phy_n.c:160
- *   if_bwn_phy_g.c:480
- *   if_bwn.c:4480
- *   if_bwn_phy_g.c:471
- *   if_bwn_phy_common.c:137, 122, 125
- *   if_bwn.c:2234
- *   if_bwn_phy_common.c:136, 105, 104
- *   if_bwn_phy_g.c:497
- *   if_bwn_phy_common.c:97, 132, 121
- *   if_bwn_phy_g.c:498
- *   if_bwn_phy_common.c:96, 117
- *   if_bwn_phy_lp.c:504, 505
- *   if_bwn_phy_g.c:1519
+ *   bwn_chip_init()
+ *   bwn_chiptest()
+ *   bwn_crypt_init()
+ *   bwn_gpio_init()
+ *   bwn_phy_getinfo()
+ *   bwn_pio_tx_start()
+ *   bwn_set_opmode()
+ *   bwn_shm_write_2()
+ *   bwn_shm_write_4()
+ *   bwn_wme_init()
+ * ... and 43 others
+ * 
  */
 static void
 bhnd_compat_write_2(device_t dev, uint16_t offset, uint16_t value)
@@ -1298,25 +1228,18 @@ bhnd_compat_write_2(device_t dev, uint16_t offset, uint16_t value)
  * siba_read_4()
  *
  * Referenced by:
- *   if_bwn_radio_2055.c:1373
- *   if_bwn_phy_n_core.c:6146, 6069, 4322, 4302...
- *   if_bwn_phy_g.c:3601
- *   if_bwn.c:7401, 6934, 6933, 5205...
- *   if_bwn_phy_n_core.c:1535, 1512, 1506, 1500...
- *   if_bwn.c:6064, 5078, 4267, 4185...
- *   if_bwn_phy_n_core.c:6074
- *   if_bwn.c:3788
- *   if_bwn_phy_common.c:189
- *   if_bwn.c:2911, 1365, 4724
- *   if_bwn_phy_g.c:3590
- *   if_bwn.c:1362, 4728, 1376, 2903
- *   if_bwn_radio_2055.c:1369
- *   if_bwn_phy_g.c:418
- *   if_bwn.c:3744, 1370, 2530
- *   if_bwn_phy_g.c:3592
- *   if_bwn.c:3811, 3221, 5073, 997...
- *   if_bwn_phy_n_core.c:6068
- *   if_bwn_phy_common.c:154
+ *   bwn_attach_core()
+ *   bwn_chip_init()
+ *   bwn_chiptest()
+ *   bwn_core_exit()
+ *   bwn_core_init()
+ *   bwn_core_start()
+ *   bwn_pio_init()
+ *   bwn_pio_tx_start()
+ *   bwn_reset_core()
+ *   bwn_shm_read_4()
+ * ... and 42 others
+ * 
  */
 static uint32_t
 bhnd_compat_read_4(device_t dev, uint16_t offset)
@@ -1328,18 +1251,18 @@ bhnd_compat_read_4(device_t dev, uint16_t offset)
  * siba_write_4()
  *
  * Referenced by:
- *   if_bwn_phy_n_core.c:6146, 4322, 4301, 4213...
- *   if_bwn_phy_g.c:3601
- *   if_bwn.c:6612, 2259, 6078, 2237...
- *   if_bwn_phy_n_core.c:6074
- *   if_bwn.c:4844, 3788, 2534, 4163
- *   if_bwn_phy_common.c:194
- *   if_bwn.c:2911, 1364
- *   if_bwn_phy_g.c:3590
- *   if_bwn.c:4727, 2895, 2903, 3744...
- *   if_bwn_phy_common.c:159
- *   if_bwn.c:3124, 3125, 3790, 5075...
- *   if_bwn_phy_n_core.c:6068
+ *   bwn_chip_init()
+ *   bwn_chiptest()
+ *   bwn_core_exit()
+ *   bwn_core_start()
+ *   bwn_dma_mask()
+ *   bwn_dma_rxdirectfifo()
+ *   bwn_pio_init()
+ *   bwn_reset_core()
+ *   bwn_shm_ctlword()
+ *   bwn_shm_write_4()
+ * ... and 37 others
+ * 
  */
 static void
 bhnd_compat_write_4(device_t dev, uint16_t offset, uint32_t value)
@@ -1351,7 +1274,7 @@ bhnd_compat_write_4(device_t dev, uint16_t offset, uint32_t value)
  * siba_dev_up()
  *
  * Referenced by:
- *   if_bwn.c:1358
+ *   bwn_reset_core()
  */
 static void
 bhnd_compat_dev_up(device_t dev, uint32_t flags)
@@ -1363,7 +1286,8 @@ bhnd_compat_dev_up(device_t dev, uint32_t flags)
  * siba_dev_down()
  *
  * Referenced by:
- *   if_bwn.c:2179, 1329
+ *   bwn_attach_core()
+ *   bwn_core_exit()
  */
 static void
 bhnd_compat_dev_down(device_t dev, uint32_t flags)
@@ -1375,7 +1299,7 @@ bhnd_compat_dev_down(device_t dev, uint32_t flags)
  * siba_dev_isup()
  *
  * Referenced by:
- *   if_bwn.c:2015
+ *   bwn_core_init()
  */
 static int
 bhnd_compat_dev_isup(device_t dev)
@@ -1387,7 +1311,7 @@ bhnd_compat_dev_isup(device_t dev)
  * siba_pcicore_intr()
  *
  * Referenced by:
- *   if_bwn.c:2038
+ *   bwn_core_init()
  */
 static void
 bhnd_compat_pcicore_intr(device_t dev)
@@ -1399,7 +1323,9 @@ bhnd_compat_pcicore_intr(device_t dev)
  * siba_dma_translation()
  *
  * Referenced by:
- *   if_bwn.c:3080, 2967, 2874
+ *   bwn_dma_32_setdesc()
+ *   bwn_dma_64_setdesc()
+ *   bwn_dma_setup()
  */
 static uint32_t
 bhnd_compat_dma_translation(device_t dev)
@@ -1411,7 +1337,7 @@ bhnd_compat_dma_translation(device_t dev)
  * siba_read_multi_2()
  *
  * Referenced by:
- *   if_bwn.c:5500, 5556
+ *   bwn_pio_rxeof()
  */
 static void
 bhnd_compat_read_multi_2(device_t dev, void *buffer, size_t count,
@@ -1424,7 +1350,7 @@ bhnd_compat_read_multi_2(device_t dev, void *buffer, size_t count,
  * siba_read_multi_4()
  *
  * Referenced by:
- *   if_bwn.c:5497, 5539
+ *   bwn_pio_rxeof()
  */
 static void
 bhnd_compat_read_multi_4(device_t dev, void *buffer, size_t count,
@@ -1437,7 +1363,7 @@ bhnd_compat_read_multi_4(device_t dev, void *buffer, size_t count,
  * siba_write_multi_2()
  *
  * Referenced by:
- *   if_bwn.c:6625
+ *   bwn_pio_write_multi_2()
  */
 static void
 bhnd_compat_write_multi_2(device_t dev, const void *buffer, size_t count,
@@ -1450,7 +1376,7 @@ bhnd_compat_write_multi_2(device_t dev, const void *buffer, size_t count,
  * siba_write_multi_4()
  *
  * Referenced by:
- *   if_bwn.c:6582
+ *   bwn_pio_write_multi_4()
  */
 static void
 bhnd_compat_write_multi_4(device_t dev, const void *buffer, size_t count,
@@ -1463,7 +1389,9 @@ bhnd_compat_write_multi_4(device_t dev, const void *buffer, size_t count,
  * siba_barrier()
  *
  * Referenced by:
- *   if_bwn.c:4966, 4853, 4852, 4967...
+ *   bwn_intr()
+ *   bwn_intrtask()
+ *   bwn_ram_write()
  */
 static void
 bhnd_compat_barrier(device_t dev, int flags)
@@ -1475,7 +1403,7 @@ bhnd_compat_barrier(device_t dev, int flags)
  * siba_cc_pmu_set_ldovolt()
  *
  * Referenced by:
- *   if_bwn_phy_lp.c:1456
+ *   bwn_phy_lp_bbinit_r01()
  */
 static void
 bhnd_compat_cc_pmu_set_ldovolt(device_t dev, int id, uint32_t volt)
@@ -1487,7 +1415,7 @@ bhnd_compat_cc_pmu_set_ldovolt(device_t dev, int id, uint32_t volt)
  * siba_cc_pmu_set_ldoparef()
  *
  * Referenced by:
- *   if_bwn_phy_lp.c:1463, 1457
+ *   bwn_phy_lp_bbinit_r01()
  */
 static void
 bhnd_compat_cc_pmu_set_ldoparef(device_t dev, uint8_t on)
@@ -1499,8 +1427,10 @@ bhnd_compat_cc_pmu_set_ldoparef(device_t dev, uint8_t on)
  * siba_gpio_set()
  *
  * Referenced by:
- *   if_bwn_phy_n_core.c:6143
- *   if_bwn.c:3443, 2224, 2218, 3487
+ *   bwn_chip_exit()
+ *   bwn_chip_init()
+ *   bwn_gpio_init()
+ *   bwn_nphy_superswitch_init()
  */
 static void
 bhnd_compat_gpio_set(device_t dev, uint32_t value)
@@ -1512,7 +1442,7 @@ bhnd_compat_gpio_set(device_t dev, uint32_t value)
  * siba_gpio_get()
  *
  * Referenced by:
- *   if_bwn.c:3484
+ *   bwn_gpio_init()
  */
 static uint32_t
 bhnd_compat_gpio_get(device_t dev)
@@ -1524,7 +1454,7 @@ bhnd_compat_gpio_get(device_t dev)
  * siba_fix_imcfglobug()
  *
  * Referenced by:
- *   if_bwn.c:2040
+ *   bwn_core_init()
  */
 static void
 bhnd_compat_fix_imcfglobug(device_t dev)
@@ -1536,8 +1466,8 @@ bhnd_compat_fix_imcfglobug(device_t dev)
  * siba_sprom_get_core_power_info()
  *
  * Referenced by:
- *   if_bwn_phy_n_ppr.c:153
- *   if_bwn_phy_n_core.c:4186
+ *   bwn_nphy_tx_power_ctl_setup()
+ *   bwn_ppr_load_max_from_sprom()
  */
 static int
 bhnd_compat_sprom_get_core_power_info(device_t dev, int core,
@@ -1550,7 +1480,7 @@ bhnd_compat_sprom_get_core_power_info(device_t dev, int core,
  * siba_sprom_get_mcs2gpo()
  *
  * Referenced by:
- *   if_bwn_phy_n_ppr.c:167
+ *   bwn_ppr_load_max_from_sprom()
  */
 static int
 bhnd_compat_sprom_get_mcs2gpo(device_t dev, uint16_t *c)
@@ -1562,7 +1492,7 @@ bhnd_compat_sprom_get_mcs2gpo(device_t dev, uint16_t *c)
  * siba_sprom_get_mcs5glpo()
  *
  * Referenced by:
- *   if_bwn_phy_n_ppr.c:175
+ *   bwn_ppr_load_max_from_sprom()
  */
 static int
 bhnd_compat_sprom_get_mcs5glpo(device_t dev, uint16_t *c)
@@ -1574,7 +1504,7 @@ bhnd_compat_sprom_get_mcs5glpo(device_t dev, uint16_t *c)
  * siba_sprom_get_mcs5gpo()
  *
  * Referenced by:
- *   if_bwn_phy_n_ppr.c:183
+ *   bwn_ppr_load_max_from_sprom()
  */
 static int
 bhnd_compat_sprom_get_mcs5gpo(device_t dev, uint16_t *c)
@@ -1586,7 +1516,7 @@ bhnd_compat_sprom_get_mcs5gpo(device_t dev, uint16_t *c)
  * siba_sprom_get_mcs5ghpo()
  *
  * Referenced by:
- *   if_bwn_phy_n_ppr.c:191
+ *   bwn_ppr_load_max_from_sprom()
  */
 static int
 bhnd_compat_sprom_get_mcs5ghpo(device_t dev, uint16_t *c)
@@ -1598,7 +1528,7 @@ bhnd_compat_sprom_get_mcs5ghpo(device_t dev, uint16_t *c)
  * siba_pmu_spuravoid_pllupdate()
  *
  * Referenced by:
- *   if_bwn_phy_n_core.c:6386
+ *   bwn_nphy_pmu_spur_avoid()
  */
 static void
 bhnd_compat_pmu_spuravoid_pllupdate(device_t dev, int spur_avoid)
@@ -1610,8 +1540,8 @@ bhnd_compat_pmu_spuravoid_pllupdate(device_t dev, int spur_avoid)
  * siba_cc_set32()
  *
  * Referenced by:
- *   if_bwn_phy_n_core.c:6180
- *   if_bwn_phy_common.c:210
+ *   bwn_phy_initn()
+ *   bwn_wireless_core_phy_pll_reset()
  */
 static void
 bhnd_compat_cc_set32(device_t dev, uint32_t reg, uint32_t val)
@@ -1623,7 +1553,7 @@ bhnd_compat_cc_set32(device_t dev, uint32_t reg, uint32_t val)
  * siba_cc_mask32()
  *
  * Referenced by:
- *   if_bwn_phy_common.c:209, 211
+ *   bwn_wireless_core_phy_pll_reset()
  */
 static void
 bhnd_compat_cc_mask32(device_t dev, uint32_t reg, uint32_t mask)
@@ -1635,7 +1565,7 @@ bhnd_compat_cc_mask32(device_t dev, uint32_t reg, uint32_t mask)
  * siba_cc_write32()
  *
  * Referenced by:
- *   if_bwn_phy_common.c:208
+ *   bwn_wireless_core_phy_pll_reset()
  */
 static void
 bhnd_compat_cc_write32(device_t dev, uint32_t reg, uint32_t val)
