@@ -2499,9 +2499,13 @@ mmu_booke_clear_modify(mmu_t mmu, vm_page_t m)
  * is necessary that 0 only be returned when there are truly no
  * reference bits set.
  *
- * XXX: The exact number of bits to check and clear is a matter that
- * should be tested and standardized at some point in the future for
- * optimal aging of shared pages.
+ * As an optimization, update the page's dirty field if a modified bit is
+ * found while counting reference bits.  This opportunistic update can be
+ * performed at low cost and can eliminate the need for some future calls
+ * to pmap_is_modified().  However, since this function stops after
+ * finding PMAP_TS_REFERENCED_MAX reference bits, it may not detect some
+ * dirty pages.  Those dirty pages will only be detected by a future call
+ * to pmap_is_modified().
  */
 static int
 mmu_booke_ts_referenced(mmu_t mmu, vm_page_t m)
@@ -2518,6 +2522,8 @@ mmu_booke_ts_referenced(mmu_t mmu, vm_page_t m)
 		PMAP_LOCK(pv->pv_pmap);
 		if ((pte = pte_find(mmu, pv->pv_pmap, pv->pv_va)) != NULL &&
 		    PTE_ISVALID(pte)) {
+			if (PTE_ISMODIFIED(pte))
+				vm_page_dirty(m);
 			if (PTE_ISREFERENCED(pte)) {
 				mtx_lock_spin(&tlbivax_mutex);
 				tlb_miss_lock();
@@ -2528,7 +2534,7 @@ mmu_booke_ts_referenced(mmu_t mmu, vm_page_t m)
 				tlb_miss_unlock();
 				mtx_unlock_spin(&tlbivax_mutex);
 
-				if (++count > 4) {
+				if (++count >= PMAP_TS_REFERENCED_MAX) {
 					PMAP_UNLOCK(pv->pv_pmap);
 					break;
 				}
@@ -3391,27 +3397,37 @@ tlb1_init()
 	set_mas4_defaults();
 }
 
+/*
+ * pmap_early_io_unmap() should be used in short conjunction with
+ * pmap_early_io_map(), as in the following snippet:
+ *
+ * x = pmap_early_io_map(...);
+ * <do something with x>
+ * pmap_early_io_unmap(x, size);
+ *
+ * And avoiding more allocations between.
+ */
 void
 pmap_early_io_unmap(vm_offset_t va, vm_size_t size)
 {
 	int i;
 	tlb_entry_t e;
+	vm_size_t isize;
 
-	for (i = 0; i < TLB1_ENTRIES && size > 0; i ++) {
+	size = roundup(size, PAGE_SIZE);
+	isize = size;
+	for (i = 0; i < TLB1_ENTRIES && size > 0; i++) {
 		tlb1_read_entry(&e, i);
 		if (!(e.mas1 & MAS1_VALID))
 			continue;
-		/*
-		 * FIXME: this code does not work if VA region
-		 * spans multiple TLB entries. This does not cause
-		 * problems right now but shall be fixed in the future
-		 */
-		if (va >= e.virt && (va + size) <= (e.virt + e.size)) {
+		if (va <= e.virt && (va + isize) >= (e.virt + e.size)) {
 			size -= e.size;
 			e.mas1 &= ~MAS1_VALID;
 			tlb1_write_entry(&e, i);
 		}
 	}
+	if (tlb1_map_base == va + isize)
+		tlb1_map_base -= isize;
 }	
 		
 vm_offset_t 

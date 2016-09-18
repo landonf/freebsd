@@ -1236,7 +1236,7 @@ dev/ciss/ciss.c			optional ciss
 dev/cm/smc90cx6.c		optional cm
 dev/cmx/cmx.c			optional cmx
 dev/cmx/cmx_pccard.c		optional cmx pccard
-dev/cpufreq/ichss.c		optional cpufreq
+dev/cpufreq/ichss.c		optional cpufreq pci
 dev/cs/if_cs.c			optional cs
 dev/cs/if_cs_isa.c		optional cs isa
 dev/cs/if_cs_pccard.c		optional cs pccard
@@ -1281,7 +1281,11 @@ dev/cxgbe/t4_l2t.c		optional cxgbe pci \
 	compile-with "${NORMAL_C} -I$S/dev/cxgbe"
 dev/cxgbe/t4_tracer.c		optional cxgbe pci \
 	compile-with "${NORMAL_C} -I$S/dev/cxgbe"
+dev/cxgbe/t4_vf.c		optional cxgbev pci \
+	compile-with "${NORMAL_C} -I$S/dev/cxgbe"
 dev/cxgbe/common/t4_hw.c	optional cxgbe pci \
+	compile-with "${NORMAL_C} -I$S/dev/cxgbe"
+dev/cxgbe/common/t4vf_hw.c	optional cxgbev pci \
 	compile-with "${NORMAL_C} -I$S/dev/cxgbe"
 t4fw_cfg.c		optional cxgbe					\
 	compile-with	"${AWK} -f $S/tools/fw_stub.awk t4fw_cfg.fw:t4fw_cfg t4fw_cfg_uwire.fw:t4fw_cfg_uwire t4fw.fw:t4fw -mt4fw_cfg -c${.TARGET}" \
@@ -1497,6 +1501,11 @@ dev/etherswitch/ip17x/ip17x_vlans.c	optional ip17x
 dev/etherswitch/miiproxy.c		optional miiproxy
 dev/etherswitch/rtl8366/rtl8366rb.c	optional rtl8366rb
 dev/etherswitch/ukswitch/ukswitch.c	optional ukswitch
+dev/evdev/cdev.c			optional evdev
+dev/evdev/evdev.c			optional evdev
+dev/evdev/evdev_mt.c			optional evdev
+dev/evdev/evdev_utils.c			optional evdev
+dev/evdev/uinput.c			optional evdev uinput
 dev/ex/if_ex.c			optional ex
 dev/ex/if_ex_isa.c		optional ex isa
 dev/ex/if_ex_pccard.c		optional ex pccard
