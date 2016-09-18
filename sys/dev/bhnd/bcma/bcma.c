@@ -156,6 +156,13 @@ bcma_get_resource_list(device_t dev, device_t child)
 }
 
 static int
+bcma_resume_core(device_t dev, device_t child, uint16_t flags)
+{
+	// TODO
+	return (ENXIO);
+}
+
+static int
 bcma_reset_core(device_t dev, device_t child, uint16_t flags)
 {
 	struct bcma_devinfo *dinfo;
@@ -615,6 +622,7 @@ static device_method_t bcma_methods[] = {
 	DEVMETHOD(bhnd_bus_get_erom_class,	bcma_get_erom_class),
 	DEVMETHOD(bhnd_bus_alloc_devinfo,	bcma_alloc_bhnd_dinfo),
 	DEVMETHOD(bhnd_bus_free_devinfo,	bcma_free_bhnd_dinfo),
+	DEVMETHOD(bhnd_bus_resume_core,		bcma_resume_core),
 	DEVMETHOD(bhnd_bus_reset_core,		bcma_reset_core),
 	DEVMETHOD(bhnd_bus_suspend_core,	bcma_suspend_core),
 	DEVMETHOD(bhnd_bus_read_config,		bcma_read_config),

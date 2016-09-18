@@ -164,6 +164,26 @@ siba_get_resource_list(device_t dev, device_t child)
 	return (&dinfo->resources);
 }
 
+
+static int
+siba_resume_core(device_t dev, device_t child, uint16_t flags)
+{
+	struct siba_devinfo *dinfo;
+
+	if (device_get_parent(child) != dev)
+		BHND_BUS_RESUME_CORE(device_get_parent(dev), child, flags);
+
+	dinfo = device_get_ivars(child);
+
+	/* Can't resum the core without access to the CFG0 registers */
+	if (dinfo->cfg[0] == NULL)
+		return (ENODEV);
+
+	// TODO - perform resume
+
+	return (ENXIO);
+}
+
 static int
 siba_reset_core(device_t dev, device_t child, uint16_t flags)
 {
@@ -695,6 +715,7 @@ static device_method_t siba_methods[] = {
 	DEVMETHOD(bhnd_bus_get_erom_class,	siba_get_erom_class),
 	DEVMETHOD(bhnd_bus_alloc_devinfo,	siba_alloc_bhnd_dinfo),
 	DEVMETHOD(bhnd_bus_free_devinfo,	siba_free_bhnd_dinfo),
+	DEVMETHOD(bhnd_bus_resume_core,		siba_resume_core),
 	DEVMETHOD(bhnd_bus_reset_core,		siba_reset_core),
 	DEVMETHOD(bhnd_bus_suspend_core,	siba_suspend_core),
 	DEVMETHOD(bhnd_bus_read_config,		siba_read_config),
