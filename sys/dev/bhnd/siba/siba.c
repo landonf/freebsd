@@ -44,6 +44,9 @@ __FBSDID("$FreeBSD$");
 #include "sibareg.h"
 #include "sibavar.h"
 
+static struct bhnd_resource	*siba_get_cfg_res(device_t dev, device_t child,
+				     uint8_t cfg);
+
 static bhnd_erom_class_t *
 siba_get_erom_class(driver_t *driver)
 {
@@ -185,18 +188,27 @@ siba_resume_core(device_t dev, device_t child, uint16_t flags)
 }
 
 static int
+siba_resume_core(device_t dev, device_t child, uint16_t flags)
+{
+	struct bhnd_resource *res;
+
+	/* Can't resume the core without access to the CFG0 registers */
+	if ((res = siba_get_cfg_res(dev, child, 0)) == NULL)
+		return (UINT32_MAX);
+
+	// TODO - perform resume
+
+	return (ENXIO);
+}
+
+static int
 siba_reset_core(device_t dev, device_t child, uint16_t flags)
 {
-	struct siba_devinfo *dinfo;
-
-	if (device_get_parent(child) != dev)
-		BHND_BUS_RESET_CORE(device_get_parent(dev), child, flags);
-
-	dinfo = device_get_ivars(child);
+	struct bhnd_resource *res;
 
 	/* Can't reset the core without access to the CFG0 registers */
-	if (dinfo->cfg[0] == NULL)
-		return (ENODEV);
+	if ((res = siba_get_cfg_res(dev, child, 0)) == NULL)
+		return (UINT32_MAX);
 
 	// TODO - perform reset
 
@@ -206,18 +218,13 @@ siba_reset_core(device_t dev, device_t child, uint16_t flags)
 static int
 siba_suspend_core(device_t dev, device_t child)
 {
-	struct siba_devinfo *dinfo;
-
-	if (device_get_parent(child) != dev)
-		BHND_BUS_SUSPEND_CORE(device_get_parent(dev), child);
-
-	dinfo = device_get_ivars(child);
+	struct bhnd_resource *res;
 
 	/* Can't suspend the core without access to the CFG0 registers */
-	if (dinfo->cfg[0] == NULL)
-		return (ENODEV);
+	if ((res = siba_get_cfg_res(dev, child, 0)) == NULL)
+		return (UINT32_MAX);
 
-	// TODO - perform suspend
+	// TODO - perform resume
 
 	return (ENXIO);
 }
@@ -225,30 +232,25 @@ siba_suspend_core(device_t dev, device_t child)
 static uint32_t
 siba_read_config(device_t dev, device_t child, bus_size_t offset, u_int width)
 {
-	struct siba_devinfo	*dinfo;
+	struct bhnd_resource	*res;
 	rman_res_t		 r_size;
 
-	/* Must be directly attached */
-	if (device_get_parent(child) != dev)
-		return (UINT32_MAX);
-
 	/* CFG0 registers must be available */
-	dinfo = device_get_ivars(child);
-	if (dinfo->cfg[0] == NULL)
+	if ((res = siba_get_cfg_res(dev, child, 0)) == NULL)
 		return (UINT32_MAX);
 
 	/* Offset must fall within CFG0 */
-	r_size = rman_get_size(dinfo->cfg[0]->res);
+	r_size = rman_get_size(res->res);
 	if (r_size < offset || r_size - offset < width)
 		return (UINT32_MAX);
 
 	switch (width) {
 	case 1:
-		return (bhnd_bus_read_1(dinfo->cfg[0], offset));
+		return (bhnd_bus_read_1(res, offset));
 	case 2:
-		return (bhnd_bus_read_2(dinfo->cfg[0], offset));
+		return (bhnd_bus_read_2(res, offset));
 	case 4:
-		return (bhnd_bus_read_4(dinfo->cfg[0], offset));
+		return (bhnd_bus_read_4(res, offset));
 	}
 	
 	/* Unsuported */
@@ -259,30 +261,25 @@ static void
 siba_write_config(device_t dev, device_t child, bus_size_t offset, uint32_t val,
     u_int width)
 {
-	struct siba_devinfo	*dinfo;
+	struct bhnd_resource	*res;
 	rman_res_t		 r_size;
 
-	/* Must be directly attached */
-	if (device_get_parent(child) != dev)
-		return;
-
 	/* CFG0 registers must be available */
-	dinfo = device_get_ivars(child);
-	if (dinfo->cfg[0] == NULL)
+	if ((res = siba_get_cfg_res(dev, child, 0)) == NULL)
 		return;
 
 	/* Offset must fall within CFG0 */
-	r_size = rman_get_size(dinfo->cfg[0]->res);
+	r_size = rman_get_size(res->res);
 	if (r_size < offset || r_size - offset < width)
 		return;
 
 	switch (width) {
 	case 1:
-		bhnd_bus_write_1(dinfo->cfg[0], offset, val);
+		bhnd_bus_write_1(res, offset, val);
 	case 2:
-		bhnd_bus_write_2(dinfo->cfg[0], offset, val);
+		bhnd_bus_write_2(res, offset, val);
 	case 4:
-		bhnd_bus_write_4(dinfo->cfg[0], offset, val);
+		bhnd_bus_write_4(res, offset, val);
 	}
 }
 
@@ -506,6 +503,31 @@ siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
 	}
 
 	return (0);
+}
+
+/**
+ * Fetch the resource a given @p cfg block, or NULL if unavailable. 
+ * 
+ * @param dev The siba bus device.
+ * @param child An attached siba child.
+ * @param cfg The config number to lookup.
+ */
+static struct bhnd_resource *
+siba_get_cfg_res(device_t dev, device_t child, uint8_t cfg)
+{
+	struct siba_devinfo *dinfo;
+
+	/* Must be directly attached */
+	if (device_get_parent(child) != dev)
+		return (NULL);
+
+	dinfo = device_get_ivars(child);
+
+	/* Must be within the supported range */
+	if (cfg >= SIBA_MAX_CFG)
+		return (NULL);
+
+	return (dinfo->cfg[cfg]);
 }
 
 /**
