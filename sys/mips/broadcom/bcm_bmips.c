@@ -41,6 +41,8 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/bhnd.h>
 
+#include "bcm_bmipsreg.h"
+
 /*
  * BMIPS32 and BMIPS3300 core driver.
  *
@@ -48,24 +50,24 @@ __FBSDID("$FreeBSD$");
  * us to assume the availability of siba interrupt registers.
  */
 
-static const struct bhnd_device bcm_mips_devs[] = {
+static const struct bhnd_device bcm_bmips_devs[] = {
 	BHND_DEVICE(BCM, MIPS33, NULL, NULL, BHND_DF_SOC),
 	BHND_DEVICE_END
 };
 
-struct bcm_mips_softc {
+struct bcm_bmips_softc {
 	device_t		 dev;
 	struct resource		*mem_res;
 	int			 mem_rid;
 };
 
 static int
-bcm_mips_probe(device_t dev)
+bcm_bmips_probe(device_t dev)
 {
 	const struct bhnd_device	*id;
 
-	id = bhnd_device_lookup(dev, bcm_mips_devs,
-	    sizeof(bcm_mips_devs[0]));
+	id = bhnd_device_lookup(dev, bcm_bmips_devs,
+	    sizeof(bcm_bmips_devs[0]));
 	if (id == NULL)
 		return (ENXIO);
 
@@ -74,9 +76,9 @@ bcm_mips_probe(device_t dev)
 }
 
 static int
-bcm_mips_attach(device_t dev)
+bcm_bmips_attach(device_t dev)
 {
-	struct bcm_mips_softc *sc;
+	struct bcm_bmips_softc *sc;
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
@@ -92,9 +94,9 @@ bcm_mips_attach(device_t dev)
 }
 
 static int
-bcm_mips_detach(device_t dev)
+bcm_bmips_detach(device_t dev)
 {
-	struct bcm_mips_softc *sc;
+	struct bcm_bmips_softc *sc;
 
 	sc = device_get_softc(dev);
 
@@ -103,19 +105,19 @@ bcm_mips_detach(device_t dev)
 	return (0);
 }
 
-static device_method_t bcm_mips_methods[] = {
+static device_method_t bcm_bmips_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_probe,			bcm_mips_probe),
-	DEVMETHOD(device_attach,		bcm_mips_attach),
-	DEVMETHOD(device_detach,		bcm_mips_detach),
+	DEVMETHOD(device_probe,			bcm_bmips_probe),
+	DEVMETHOD(device_attach,		bcm_bmips_attach),
+	DEVMETHOD(device_detach,		bcm_bmips_detach),
 	
 	DEVMETHOD_END
 };
 
 static devclass_t bcm_mips_devclass;
 
-DEFINE_CLASS_0(bcm_mips, bcm_mips_driver, bcm_mips_methods, sizeof(struct bcm_mips_softc));
-EARLY_DRIVER_MODULE(bhnd_mips, bhnd, bcm_mips_driver, bcm_mips_devclass, 0, 0, BUS_PASS_CPU + BUS_PASS_ORDER_EARLY);
+DEFINE_CLASS_0(bcm_mips, bcm_bmips_driver, bcm_bmips_methods, sizeof(struct bcm_bmips_softc));
+EARLY_DRIVER_MODULE(bcm_bmips, bhnd, bcm_bmips_driver, bcm_mips_devclass, 0, 0, BUS_PASS_CPU + BUS_PASS_ORDER_EARLY);
 
-MODULE_VERSION(bcm_mips, 1);
-MODULE_DEPEND(bcm_mips, bhnd, 1, 1, 1);
+MODULE_VERSION(bcm_bmips, 1);
+MODULE_DEPEND(bcm_bmips, bhnd, 1, 1, 1);

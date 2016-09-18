@@ -29,8 +29,8 @@
  * $FreeBSD$
  */
 
-#ifndef	_MIPS_BROADCOM_MIPSREG_H_
-#define	_MIPS_BROADCOM_MIPSREG_H_
+#ifndef	_MIPS_BROADCOM_BMIPSREG_H_
+#define	_MIPS_BROADCOM_BMIPSREG_H_
 
 /*
  * Common BMIPS32/BMIPS3300 Registers
@@ -70,4 +70,4 @@
 #define	BCM_BMIPS33_TEST_MUX_EN		0x34	/**< test multiplexer enable (?) */
 #define	BCM_BMIPS33_EJTAG_GPIO_EN	0x2C	/**< ejtag gpio enable */
 
-#endif /* _MIPS_BROADCOM_MIPSREG_H_ */
+#endif /* _MIPS_BROADCOM_BMIPSREG_H_ */
