@@ -45,7 +45,7 @@ __FBSDID("$FreeBSD$");
 #include "bcm_mips74kreg.h"
 
 /*
- * BMIPS74K Core
+ * Broadcom MIPS74K Core
  *
  * These cores are only found on bcma(4) chipsets, allowing
  * us to assume the availability of bcma interrupt registers.
