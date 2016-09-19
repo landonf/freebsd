@@ -228,10 +228,6 @@ siba_reset_hw(device_t dev, device_t child, uint16_t suspend_flags,
 	uint32_t		 tmslow, imstate;
 	int			 error;
 
-	/* Place the core into a known state */
-	if ((error = BHND_BUS_SUSPEND_HW(dev, child, suspend_flags)))
-		return (error);
-
 	/* Only private core control flags should be specified; we must
 	 * control BHND_CF_CLOCK_EN, BHND_CF_FGC, etc. */
 	if (reset_flags & ~BHND_CF_CORE_BITS)
@@ -241,8 +237,12 @@ siba_reset_hw(device_t dev, device_t child, uint16_t suspend_flags,
 	if ((r = siba_get_cfg_res(dev, child, 0)) == NULL)
 		return (ENODEV);
 
-	/* Place the core into reset while enabling (and forcing distribution
-	 * of) our clocks */
+	/* Place the core into a known reset state */
+	if ((error = BHND_BUS_SUSPEND_HW(dev, child, suspend_flags)))
+		return (error);
+
+	/* Leaving the core in reset, set the caller's reset flags while
+	 * enabling (and forcing distribution of) the core's clocks. */
 	tmslow = SIBA_TML_RESET;
 	tmslow |= SIBA_SET_BITS(reset_flags | BHND_CF_CLOCK_EN | BHND_CF_FGC,
 	    SIBA_TML_SICF);
