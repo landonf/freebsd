@@ -95,6 +95,13 @@ u_int			 siba_admatch_offset(uint8_t addrspace);
 int			 siba_parse_admatch(uint32_t am, uint32_t *addr,
 			     uint32_t *size);
 
+struct bhnd_resource	*siba_get_config_block(device_t dev, device_t child,
+			     uint8_t cfg);
+
+int			 siba_wait_target_busy(device_t child,
+			     struct bhnd_resource *r, bus_size_t tmsh_reg,
+			     int usec);
+
 							     
 /* Sonics configuration register blocks */
 #define	SIBA_CFG_NUM_2_2	1			/**< sonics <= 2.2 maps SIBA_CFG0. */

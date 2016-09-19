@@ -45,11 +45,6 @@ __FBSDID("$FreeBSD$");
 #include "sibareg.h"
 #include "sibavar.h"
 
-static struct bhnd_resource	*siba_get_cfg_res(device_t dev, device_t child,
-				     uint8_t cfg);
-static int			 siba_wait_target_busy(device_t dev,
-				     device_t child, struct bhnd_resource *r,
-				     int usec);
 static void			 siba_write_core_state(struct bhnd_resource *r,
 				     bus_size_t reg, uint32_t value);
 
@@ -174,33 +169,6 @@ siba_get_resource_list(device_t dev, device_t child)
 }
 
 /**
- * Spin for up to @p usec waiting for SIBA_TMH_BUSY to clear in
- * the SIBA_CFG0_TMSTATEHIGH register mapped by @p r.
- * 
- * @param dev The siba device.
- * @param child The child device.
- * @param r A resource mapping @p child's SIBA_CFG0_OFFSET.
- * @param usec The maximum amount of time to spin, in microseconds.
- */
-static int
-siba_wait_target_busy(device_t dev, device_t child, struct bhnd_resource *r,
-    int usec)
-{
-	uint32_t tmshigh;
-
-	for (int i = 0; i < usec; i += 10) {
-		tmshigh = bhnd_bus_read_4(r, SIBA_CFG0_TMSTATEHIGH);
-		if (!SIBA_GET_FLAG(tmshigh, SIBA_TMH_BUSY))
-			return (0);
-
-		DELAY(10);
-	}
-
-	device_printf(child, "SIBA_TMH_BUSY wait timeout\n");
-	return (ETIMEDOUT);
-}
-
-/**
  * Write @p value to target/initiator state @p reg in @p r, handling both the
  * required read-back and DELAY().
  * 
@@ -234,7 +202,7 @@ siba_reset_hw(device_t dev, device_t child, uint16_t suspend_flags,
 		return (EINVAL);
 
 	/* Can't resume the core without access to the CFG0 registers */
-	if ((r = siba_get_cfg_res(dev, child, 0)) == NULL)
+	if ((r = siba_get_config_block(dev, child, 0)) == NULL)
 		return (ENODEV);
 
 	/* Place the core into a known reset state */
@@ -290,7 +258,7 @@ siba_suspend_hw(device_t dev, device_t child, uint16_t flags)
 		return (EINVAL);
 
 	/* Can't suspend the core without access to the CFG0 registers */
-	if ((r = siba_get_cfg_res(dev, child, 0)) == NULL)
+	if ((r = siba_get_config_block(dev, child, 0)) == NULL)
 		return (ENODEV);
 
 	/* Already in reset? */
@@ -322,7 +290,7 @@ siba_suspend_hw(device_t dev, device_t child, uint16_t flags)
 	siba_write_core_state(r, SIBA_CFG0_TMSTATELOW, tmslow);
 
 	/* Wait for busy flag to clear */
-	siba_wait_target_busy(dev, child, r, 100000);
+	siba_wait_target_busy(child, r, SIBA_CFG0_TMSTATEHIGH, 100000);
 
 	/* Is this an initiator core? */
 	idlow = bhnd_bus_read_4(r, SIBA_CFG0_IDLOW);
@@ -333,7 +301,7 @@ siba_suspend_hw(device_t dev, device_t child, uint16_t flags)
 		siba_write_core_state(r, SIBA_CFG0_IMSTATE, imstate);
 
 		/* Wait for busy flag to clear */
-		siba_wait_target_busy(dev, child, r, 100000);
+		siba_wait_target_busy(child, r, SIBA_CFG0_TMSTATEHIGH, 100000);
 	}
 
 	/* Put the core into reset, while leaving the clocks enabed (but gated),
@@ -371,7 +339,7 @@ siba_read_config(device_t dev, device_t child, bus_size_t offset, u_int width)
 	rman_res_t		 r_size;
 
 	/* CFG0 registers must be available */
-	if ((res = siba_get_cfg_res(dev, child, 0)) == NULL)
+	if ((res = siba_get_config_block(dev, child, 0)) == NULL)
 		return (UINT32_MAX);
 
 	/* Offset must fall within CFG0 */
@@ -400,7 +368,7 @@ siba_write_config(device_t dev, device_t child, bus_size_t offset, uint32_t val,
 	rman_res_t		 r_size;
 
 	/* CFG0 registers must be available */
-	if ((res = siba_get_cfg_res(dev, child, 0)) == NULL)
+	if ((res = siba_get_config_block(dev, child, 0)) == NULL)
 		return;
 
 	/* Offset must fall within CFG0 */
@@ -638,31 +606,6 @@ siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
 	}
 
 	return (0);
-}
-
-/**
- * Fetch the resource a given @p cfg block, or NULL if unavailable. 
- * 
- * @param dev The siba bus device.
- * @param child An attached siba child.
- * @param cfg The config number to lookup.
- */
-static struct bhnd_resource *
-siba_get_cfg_res(device_t dev, device_t child, uint8_t cfg)
-{
-	struct siba_devinfo *dinfo;
-
-	/* Must be directly attached */
-	if (device_get_parent(child) != dev)
-		return (NULL);
-
-	dinfo = device_get_ivars(child);
-
-	/* Must be within the supported range */
-	if (cfg >= SIBA_MAX_CFG)
-		return (NULL);
-
-	return (dinfo->cfg[cfg]);
 }
 
 /**

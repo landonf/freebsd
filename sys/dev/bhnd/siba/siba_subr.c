@@ -468,3 +468,64 @@ siba_parse_admatch(uint32_t am, uint32_t *addr, uint32_t *size)
 
 	return (0);
 }
+
+/**
+ * Fetch the resource mapping @p child's given siba(4) @p cfg block, or
+ * NULL if unavailable. 
+ * 
+ * @param dev The siba bus device.
+ * @param child An attached siba child.
+ * @param cfg The SIBA_CFG resource to be returned.
+ * 
+ * @retval non-NULL success
+ * @retval NULL If @p child is not a directly attached device, or if @p cfg
+ * is not mapped on @p child.
+ */
+struct bhnd_resource *
+siba_get_config_block(device_t dev, device_t child, uint8_t cfg)
+{
+	struct siba_devinfo *dinfo;
+
+	/* Must be directly attached */
+	if (device_get_parent(child) != dev)
+		return (NULL);
+
+	dinfo = device_get_ivars(child);
+
+	/* Must be within the supported range */
+	if (cfg >= SIBA_MAX_CFG)
+		return (NULL);
+
+	return (dinfo->cfg[cfg]);
+}
+
+/**
+ * Spin for up to @p usec waiting for SIBA_TMH_BUSY to clear in
+ * @p child's SIBA_CFG0_TMSTATEHIGH register.
+ * 
+ * @param child The child device corresponding to @p r.
+ * @param r An active resource mapping @p child's SIBA_CFG0_TMSTATEHIGH
+ * register.
+ * @param tmsh_reg Offset to the SIBA_CFG0_TMSTATEHIGH register.
+ * @param usec The maximum amount of time to spin, in microseconds.
+ * 
+ * @retval 0 if SIBA_TMH_BUSY is cleared prior to the @p usec timeout.
+ * @retval ETIMEDOUT if a timeout occurs prior to SIBA_TMH_BUSY clearing.
+ */
+int
+siba_wait_target_busy(device_t child, struct bhnd_resource *r,
+    bus_size_t tmsh_reg, int usec)
+{
+	uint32_t tmshigh;
+
+	for (int i = 0; i < usec; i += 10) {
+		tmshigh = bhnd_bus_read_4(r, tmsh_reg);
+		if (!SIBA_GET_FLAG(tmshigh, SIBA_TMH_BUSY))
+			return (0);
+
+		DELAY(10);
+	}
+
+	device_printf(child, "SIBA_TMH_BUSY wait timeout\n");
+	return (ETIMEDOUT);
+}
