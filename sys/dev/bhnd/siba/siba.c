@@ -189,8 +189,8 @@ siba_write_core_state(struct bhnd_resource *r, bus_size_t reg, uint32_t value)
  * Default siba(4) bus driver implementation of BHND_RESET_HW().
  */
 static int
-siba_reset_hw(device_t dev, device_t child, uint16_t suspend_flags,
-    uint16_t reset_flags)
+siba_reset_hw(device_t dev, device_t child, uint16_t reset_flags,
+    uint16_t flags)
 {
 	struct bhnd_resource	*r;
 	uint32_t		 tmslow, imstate;
@@ -198,7 +198,7 @@ siba_reset_hw(device_t dev, device_t child, uint16_t suspend_flags,
 
 	/* Only private core control flags should be specified; we must
 	 * control BHND_CF_CLOCK_EN, BHND_CF_FGC, etc. */
-	if (reset_flags & ~BHND_CF_CORE_BITS)
+	if (flags & ~BHND_CF_CORE_BITS)
 		return (EINVAL);
 
 	/* Can't resume the core without access to the CFG0 registers */
@@ -206,13 +206,13 @@ siba_reset_hw(device_t dev, device_t child, uint16_t suspend_flags,
 		return (ENODEV);
 
 	/* Place the core into a known reset state */
-	if ((error = BHND_BUS_SUSPEND_HW(dev, child, suspend_flags)))
+	if ((error = BHND_BUS_SUSPEND_HW(dev, child, reset_flags)))
 		return (error);
 
 	/* Leaving the core in reset, set the caller's reset flags while
 	 * enabling (and forcing distribution of) the core's clocks. */
 	tmslow = SIBA_TML_RESET;
-	tmslow |= SIBA_SET_BITS(reset_flags | BHND_CF_CLOCK_EN | BHND_CF_FGC,
+	tmslow |= SIBA_SET_BITS(flags | BHND_CF_CLOCK_EN | BHND_CF_FGC,
 	    SIBA_TML_SICF);
 	siba_write_core_state(r, SIBA_CFG0_TMSTATELOW, tmslow);
 
@@ -228,14 +228,14 @@ siba_reset_hw(device_t dev, device_t child, uint16_t suspend_flags,
 	}
 
 	/* Clear reset and wait for its propagation */
-	tmslow = SIBA_SET_BITS(reset_flags | BHND_CF_CLOCK_EN | BHND_CF_FGC,
+	tmslow = SIBA_SET_BITS(flags | BHND_CF_CLOCK_EN | BHND_CF_FGC,
 	    SIBA_TML_SICF);
 	siba_write_core_state(r, SIBA_CFG0_TMSTATELOW, tmslow);
 
 	DELAY(1);
 
 	/* Disable forced clock distribution */
-	tmslow = SIBA_SET_BITS(reset_flags | BHND_CF_CLOCK_EN | BHND_CF_FGC,
+	tmslow = SIBA_SET_BITS(flags | BHND_CF_CLOCK_EN | BHND_CF_FGC,
 	    SIBA_TML_SICF);
 	siba_write_core_state(r, SIBA_CFG0_TMSTATELOW, tmslow);
 
