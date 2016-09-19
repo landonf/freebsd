@@ -45,8 +45,8 @@ __FBSDID("$FreeBSD$");
 #include "sibareg.h"
 #include "sibavar.h"
 
-static void			 siba_write_core_state(struct bhnd_resource *r,
-				     bus_size_t reg, uint32_t value);
+static void	siba_write_core_state(struct bhnd_resource *r,
+		    bus_size_t reg, uint32_t value);
 
 static bhnd_erom_class_t *
 siba_get_erom_class(driver_t *driver)
