@@ -39,6 +39,7 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/bus.h>
 
+#include <dev/bhnd/bhnd_core.h>
 #include <dev/bhnd/cores/chipc/chipcreg.h>
 
 #include "sibareg.h"
@@ -181,18 +182,133 @@ siba_resume_core(device_t dev, device_t child, uint16_t flags)
 	return (ENXIO);
 }
 
+/**
+ * Spin for up to @p usec waiting for SIBA_TMH_BUSY to clear in
+ * the SIBA_CFG0_TMSTATEHIGH register mapped by @p r.
+ * 
+ * @param dev The siba device.
+ * @param child The child device.
+ * @param r A resource mapping @p child's SIBA_CFG0_OFFSET.
+ * @param usec The maximum amount of time to spin, in microseconds.
+ */
+static int
+siba_wait_target_busy(device_t dev, device_t child, struct bhnd_resource *r,
+    int usec)
+{
+	uint32_t tmshigh;
+
+	for (int i = 0; i < usec; i += 10) {
+		tmshigh = bhnd_bus_read_4(r, SIBA_CFG0_TMSTATEHIGH);
+		if (!SIBA_GET_FLAG(tmshigh, SIBA_TMH_BUSY))
+			return (0);
+
+		DELAY(10);
+	}
+
+	device_printf(child, "SIBA_TMH_BUSY wait timeout\n");
+	return (ETIMEDOUT);
+}
+
 static int
 siba_suspend_core(device_t dev, device_t child, uint16_t flags)
 {
-	struct bhnd_resource *res;
+	struct bhnd_resource	*r;
+	uint32_t		 idlow;
+	uint32_t		 imstate, tmslow;
 
 	/* Can't suspend the core without access to the CFG0 registers */
-	if ((res = siba_get_cfg_res(dev, child, 0)) == NULL)
+	if ((r = siba_get_cfg_res(dev, child, 0)) == NULL)
+		return (ENODEV);
+
+	/* Refuse invalid core-specific control flags */
+	if (flags & ~BHND_CF_CORE_BITS)
 		return (EINVAL);
 
-	// TODO - perform resume
+	/* Already in reset? */
+	tmslow = bhnd_bus_read_4(r, SIBA_CFG0_TMSTATELOW);
+	if (tmslow & SIBA_TML_RESET)
+		return (0);
 
-	return (ENXIO);
+	/* If clocks are already disabled, we can put the core directly
+	 * into reset */
+	if (!(SIBA_GET_BITS(tmslow, SIBA_TML_SICF) & BHND_CF_CLOCK_EN)) {
+		tmslow = SIBA_TML_REJ |
+			 SIBA_TML_RESET |
+			 SIBA_SET_BITS(flags, SIBA_TML_SICF);
+		bhnd_bus_write_4(r, SIBA_CFG0_TMSTATELOW, tmslow);
+		DELAY(1);
+
+		return (0);
+	}
+
+	/* 
+	 * Otherwise, we need to:
+	 *   - Set target/initiator reject (and wait for completion).
+	 *   - Leave the clocks enabled, but gated.
+	 *   - Place the core into reset.
+	 *   - Disable initiator reject.
+	 *   - Now that the core is in reset, disable the previously gated
+	 *     clocks.
+	 */
+
+	/* Set target reject and read back*/
+	tmslow |= SIBA_TML_REJ;
+	bhnd_bus_write_4(r, SIBA_CFG0_TMSTATELOW, tmslow);
+	bhnd_bus_read_4(r, SIBA_CFG0_TMSTATELOW);
+	DELAY(1);
+
+	/* Wait for busy flag to clear */
+	siba_wait_target_busy(dev, child, r, 100000);
+
+	/* Is this an initiator core? */
+	idlow = bhnd_bus_read_4(r, SIBA_CFG0_IDLOW);
+	if (SIBA_GET_FLAG(idlow, SIBA_IDL_INIT)) {
+		/* Set initiator agent reject */
+		imstate = bhnd_bus_read_4(r, SIBA_CFG0_IMSTATE);
+		imstate |= SIBA_IM_RJ;
+
+		bhnd_bus_write_4(r, SIBA_CFG0_IMSTATE, imstate);
+
+		/* read-back */
+		imstate = bhnd_bus_read_4(r, SIBA_CFG0_TMSTATELOW);
+		DELAY(1);
+
+		/* Wait for busy flag to clear */
+		siba_wait_target_busy(dev, child, r, 100000);
+	}
+
+	/* Put the core into reset, while leaving the clocks enabed (but gated),
+	 * and leaving reject asserted */
+	tmslow = SIBA_TML_REJ |
+		 SIBA_TML_RESET |
+		 SIBA_SET_BITS(
+		     BHND_CF_FGC | BHND_CF_CLOCK_EN | flags,
+		     SIBA_TML_SICF);
+
+	bhnd_bus_write_4(r, SIBA_CFG0_TMSTATELOW, tmslow);
+	
+	/* read-back */
+	bhnd_bus_read_4(r, SIBA_CFG0_TMSTATELOW);
+	DELAY(10);
+
+	/*
+	 * Now that the core is in reset:
+	 *  - Clear initiator reject.
+	 *  - Disable the clocks.
+	 *  - Leave TML_RESET and TML_REJ asserted.
+	 */
+	if (SIBA_GET_FLAG(idlow, SIBA_IDL_INIT)) {
+		imstate = bhnd_bus_read_4(r, SIBA_CFG0_IMSTATE);
+		imstate &= ~SIBA_IM_RJ;
+		bhnd_bus_write_4(r, SIBA_CFG0_IMSTATE, imstate);
+	}
+
+	tmslow = SIBA_TML_REJ |
+		 SIBA_TML_RESET |
+		 SIBA_SET_BITS(flags, SIBA_TML_SICF);
+	bhnd_bus_write_4(r, SIBA_CFG0_TMSTATELOW, tmslow);
+
+	return (0);
 }
 
 static uint32_t
