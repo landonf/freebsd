@@ -159,7 +159,7 @@ bcma_get_resource_list(device_t dev, device_t child)
  * Default bcma(4) bus driver implementation of BHND_BUS_RESET_HW().
  */
 static int
-bcma_reset_core(device_t dev, device_t child, uint16_t suspend_flags,
+bcma_reset_hw(device_t dev, device_t child, uint16_t suspend_flags,
     uint16_t resume_flags)
 {
 	struct bcma_devinfo *dinfo;
@@ -207,7 +207,7 @@ bcma_reset_core(device_t dev, device_t child, uint16_t suspend_flags,
  * Default bcma(4) bus driver implementation of BHND_BUS_SUSPEND_HW().
  */
 static int
-bcma_suspend_core(device_t dev, device_t child, uint16_t flags)
+bcma_suspend_hw(device_t dev, device_t child, uint16_t flags)
 {
 	struct bcma_devinfo *dinfo;
 
@@ -623,8 +623,8 @@ static device_method_t bcma_methods[] = {
 	DEVMETHOD(bhnd_bus_get_erom_class,	bcma_get_erom_class),
 	DEVMETHOD(bhnd_bus_alloc_devinfo,	bcma_alloc_bhnd_dinfo),
 	DEVMETHOD(bhnd_bus_free_devinfo,	bcma_free_bhnd_dinfo),
-	DEVMETHOD(bhnd_bus_reset_hw,		bcma_reset_core),
-	DEVMETHOD(bhnd_bus_suspend_hw,		bcma_suspend_core),
+	DEVMETHOD(bhnd_bus_reset_hw,		bcma_reset_hw),
+	DEVMETHOD(bhnd_bus_suspend_hw,		bcma_suspend_hw),
 	DEVMETHOD(bhnd_bus_read_config,		bcma_read_config),
 	DEVMETHOD(bhnd_bus_write_config,	bcma_write_config),
 	DEVMETHOD(bhnd_bus_get_port_count,	bcma_get_port_count),
