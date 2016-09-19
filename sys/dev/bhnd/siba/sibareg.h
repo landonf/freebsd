@@ -33,17 +33,12 @@
  * blocks.
  */
 
-/**
- * Extract a config attribute by applying _MASK and _SHIFT defines.
- * 
- * @param _reg The register value containing the desired attribute
- * @param _attr The BCMA EROM attribute name (e.g. ENTRY_ISVALID), to be
- * concatenated with the `SB` prefix and `_MASK`/`_SHIFT` suffixes.
- */
-#define	SIBA_REG_GET(_entry, _attr)			\
-	((_entry & SIBA_ ## _attr ## _MASK)	\
-	>> SIBA_ ## _attr ## _SHIFT)
-
+#define SIBA_GET_FLAG(_value, _flag)        \
+        (((_value) & _flag) != 0)
+#define SIBA_GET_BITS(_value, _field)       \
+        ((_value & _field ## _MASK) >> _field ## _SHIFT)
+#define SIBA_SET_BITS(_value, _field)       \
+        (((_value) << _field ## _SHIFT) & _field ## _MASK)
 
 #define	SIBA_ENUM_ADDR		BHND_DEFAULT_CHIPC_ADDR	/**< enumeration space */
 #define	SIBA_ENUM_SIZE		0x00100000		/**< size of the enumeration space */ 
@@ -260,7 +255,7 @@
 #define	SIBA_IDH_VENDOR_SHIFT	16
 
 #define	SIBA_IDH_CORE_REV(sbidh) \
-	(SIBA_REG_GET((sbidh), IDH_RCE) | ((sbidh) & SIBA_IDH_RC_MASK))
+	(SIBA_GET_BITS((sbidh), SIBA_IDH_RCE) | ((sbidh) & SIBA_IDH_RC_MASK))
 
 #define	SIBA_COMMIT		0xfd8		/* update buffered registers value */
 

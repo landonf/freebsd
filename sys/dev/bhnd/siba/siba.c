@@ -406,7 +406,7 @@ siba_get_core_ivec(device_t dev, device_t child, u_int intr, uint32_t *ivec)
 	/* Fetch sbflag number */
 	dinfo = device_get_ivars(child);
 	tpsflag = bhnd_bus_read_4(dinfo->cfg[0], SIBA_CFG0_TPSFLAG);
-	*ivec = SIBA_REG_GET(tpsflag, TPS_NUM0);
+	*ivec = SIBA_GET_BITS(tpsflag, SIBA_TPS_NUM0);
 
 	return (0);
 }
