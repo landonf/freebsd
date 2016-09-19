@@ -490,7 +490,7 @@ METHOD int reset_core {
 	device_t child;
 	uint16_t suspend_flags;
 	uint16_t resume_flags;
-}
+} DEFAULT bhnd_bus_generic_reset_core;
 
 /**
  * Suspend @p child's hardware in a low-power reset state, putting 

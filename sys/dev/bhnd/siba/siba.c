@@ -182,21 +182,6 @@ siba_resume_core(device_t dev, device_t child, uint16_t flags)
 }
 
 static int
-siba_reset_core(device_t dev, device_t child, uint16_t suspend_flags,
-    uint16_t resume_flags)
-{
-	struct bhnd_resource *res;
-
-	/* Can't reset the core without access to the CFG0 registers */
-	if ((res = siba_get_cfg_res(dev, child, 0)) == NULL)
-		return (EINVAL);
-
-	// TODO - perform reset
-
-	return (ENXIO);
-}
-
-static int
 siba_suspend_core(device_t dev, device_t child, uint16_t flags)
 {
 	struct bhnd_resource *res;
@@ -719,7 +704,6 @@ static device_method_t siba_methods[] = {
 	DEVMETHOD(bhnd_bus_alloc_devinfo,	siba_alloc_bhnd_dinfo),
 	DEVMETHOD(bhnd_bus_free_devinfo,	siba_free_bhnd_dinfo),
 	DEVMETHOD(bhnd_bus_resume_core,		siba_resume_core),
-	DEVMETHOD(bhnd_bus_reset_core,		siba_reset_core),
 	DEVMETHOD(bhnd_bus_suspend_core,	siba_suspend_core),
 	DEVMETHOD(bhnd_bus_read_config,		siba_read_config),
 	DEVMETHOD(bhnd_bus_write_config,	siba_write_config),
