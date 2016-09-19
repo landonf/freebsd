@@ -155,13 +155,9 @@ bcma_get_resource_list(device_t dev, device_t child)
 	return (&dinfo->resources);
 }
 
-static int
-bcma_resume_core(device_t dev, device_t child, uint16_t flags)
-{
-	// TODO
-	return (ENXIO);
-}
-
+/**
+ * Default bcma(4) bus driver implementation of BHND_BUS_RESET_HW().
+ */
 static int
 bcma_reset_core(device_t dev, device_t child, uint16_t suspend_flags,
     uint16_t resume_flags)
@@ -207,6 +203,9 @@ bcma_reset_core(device_t dev, device_t child, uint16_t suspend_flags,
 	return (0);
 }
 
+/**
+ * Default bcma(4) bus driver implementation of BHND_BUS_SUSPEND_HW().
+ */
 static int
 bcma_suspend_core(device_t dev, device_t child, uint16_t flags)
 {
@@ -624,7 +623,6 @@ static device_method_t bcma_methods[] = {
 	DEVMETHOD(bhnd_bus_get_erom_class,	bcma_get_erom_class),
 	DEVMETHOD(bhnd_bus_alloc_devinfo,	bcma_alloc_bhnd_dinfo),
 	DEVMETHOD(bhnd_bus_free_devinfo,	bcma_free_bhnd_dinfo),
-	DEVMETHOD(bhnd_bus_resume_core,		bcma_resume_core),
 	DEVMETHOD(bhnd_bus_reset_core,		bcma_reset_core),
 	DEVMETHOD(bhnd_bus_suspend_core,	bcma_suspend_core),
 	DEVMETHOD(bhnd_bus_read_config,		bcma_read_config),

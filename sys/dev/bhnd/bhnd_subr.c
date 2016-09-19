@@ -1549,26 +1549,6 @@ bhnd_bus_generic_get_nvram_var(device_t dev, device_t child, const char *name,
 	    name, buf, size, type));
 }
 
-
-/**
- * Helper function for implementing BHND_BUS_RESET_CORE().
- * 
- * This implementation of BHND_BUS_RESET_CORE() delegates suspend and
- * resume to @p dev's BHND_BUS_SUSPEND_CORE() and BHND_BUS_RESUME_CORE()
- * implementations.
- */
-int
-bhnd_bus_generic_reset_core(device_t dev, device_t child,
-    uint16_t suspend_flags, uint16_t resume_flags)
-{
-	int error;
-
-	if ((error = BHND_BUS_SUSPEND_CORE(dev, child, suspend_flags)))
-		return (error);
-
-	return (BHND_BUS_RESUME_CORE(dev, child, resume_flags));
-}
-
 /**
  * Helper function for implementing BHND_BUS_ALLOC_RESOURCE().
  * 

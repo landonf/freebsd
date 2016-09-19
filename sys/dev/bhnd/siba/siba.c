@@ -217,14 +217,24 @@ siba_write_core_state(struct bhnd_resource *r, bus_size_t reg, uint32_t value)
 	DELAY(1);
 }
 
+/**
+ * Default siba(4) bus driver implementation of BHND_RESET_HW().
+ */
 static int
-siba_resume_core(device_t dev, device_t child, uint16_t flags)
+siba_reset_core(device_t dev, device_t child, uint16_t suspend_flags,
+    uint16_t reset_flags)
 {
 	struct bhnd_resource	*r;
 	uint32_t		 tmslow, imstate;
+	int			 error;
 
-	/* Refuse invalid core-specific control flags */
-	if (flags & ~BHND_CF_CORE_BITS)
+	/* Place the core into a known suspended state */
+	if ((error = BHND_BUS_SUSPEND_CORE(dev, child, suspend_flags)))
+		return (error);
+
+	/* Only private core control flags should be specified; we must
+	 * control BHND_CF_CLOCK_EN, BHND_CF_FGC, etc. */
+	if (reset_flags & ~BHND_CF_CORE_BITS)
 		return (EINVAL);
 
 	/* Can't resume the core without access to the CFG0 registers */
@@ -234,7 +244,7 @@ siba_resume_core(device_t dev, device_t child, uint16_t flags)
 	/* Place the core into reset while enabling (and forcing distribution
 	 * of) our clocks */
 	tmslow = SIBA_TML_RESET;
-	tmslow |= SIBA_SET_BITS(flags | BHND_CF_CLOCK_EN | BHND_CF_FGC,
+	tmslow |= SIBA_SET_BITS(reset_flags | BHND_CF_CLOCK_EN | BHND_CF_FGC,
 	    SIBA_TML_SICF);
 	siba_write_core_state(r, SIBA_CFG0_TMSTATELOW, tmslow);
 
@@ -250,20 +260,23 @@ siba_resume_core(device_t dev, device_t child, uint16_t flags)
 	}
 
 	/* Clear reset and wait for its propagation */
-	tmslow = SIBA_SET_BITS(flags | BHND_CF_CLOCK_EN | BHND_CF_FGC,
+	tmslow = SIBA_SET_BITS(reset_flags | BHND_CF_CLOCK_EN | BHND_CF_FGC,
 	    SIBA_TML_SICF);
 	siba_write_core_state(r, SIBA_CFG0_TMSTATELOW, tmslow);
 
 	DELAY(1);
 
 	/* Disable forced clock distribution */
-	tmslow = SIBA_SET_BITS(flags | BHND_CF_CLOCK_EN | BHND_CF_FGC,
+	tmslow = SIBA_SET_BITS(reset_flags | BHND_CF_CLOCK_EN | BHND_CF_FGC,
 	    SIBA_TML_SICF);
 	siba_write_core_state(r, SIBA_CFG0_TMSTATELOW, tmslow);
 
 	return (0);
 }
 
+/**
+ * Default siba(4) bus driver implementation of BHND_SUSPEND_HW().
+ */
 static int
 siba_suspend_core(device_t dev, device_t child, uint16_t flags)
 {
@@ -271,7 +284,8 @@ siba_suspend_core(device_t dev, device_t child, uint16_t flags)
 	uint32_t		 idlow;
 	uint32_t		 imstate, tmslow;
 
-	/* Refuse invalid core-specific control flags */
+	/* Only private core control flags should be specified; we must
+	 * control BHND_CF_CLOCK_EN, BHND_CF_FGC, etc. */
 	if (flags & ~BHND_CF_CORE_BITS)
 		return (EINVAL);
 
@@ -858,7 +872,7 @@ static device_method_t siba_methods[] = {
 	DEVMETHOD(bhnd_bus_get_erom_class,	siba_get_erom_class),
 	DEVMETHOD(bhnd_bus_alloc_devinfo,	siba_alloc_bhnd_dinfo),
 	DEVMETHOD(bhnd_bus_free_devinfo,	siba_free_bhnd_dinfo),
-	DEVMETHOD(bhnd_bus_resume_core,		siba_resume_core),
+	DEVMETHOD(bhnd_bus_reset_core,		siba_reset_core),
 	DEVMETHOD(bhnd_bus_suspend_core,	siba_suspend_core),
 	DEVMETHOD(bhnd_bus_read_config,		siba_read_config),
 	DEVMETHOD(bhnd_bus_write_config,	siba_write_config),

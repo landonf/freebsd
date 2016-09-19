@@ -387,9 +387,6 @@ const struct bhnd_chipid	*bhnd_bus_generic_get_chipid(device_t dev,
 int				 bhnd_bus_generic_read_board_info(device_t dev,
 				     device_t child,
 				     struct bhnd_board_info *info);
-int				 bhnd_bus_generic_reset_core(device_t dev,
-				     device_t child, uint16_t suspend_flags,
-				     uint16_t resume_flags);
 struct bhnd_resource		*bhnd_bus_generic_alloc_resource (device_t dev,
 				     device_t child, int type, int *rid,
 				     rman_res_t start, rman_res_t end,
@@ -455,27 +452,11 @@ bhnd_get_chipid(device_t dev) {
 };
 
 /**
- * Bring the @p child's hardware out of reset, re-enabling any clocks
- * gated in BHND_BUS_SUSPEND_CORE().
+ * Place @p child's into reset with @p suspend_flags set, and then enable
+ * clocks and bring the core out of reset with @p resume_flags set.
  *
  * @param dev The parent of @p child.
  * @param child The device to be reset.
- * @param flags Device-specific core flags to be supplied when bringing
- * hardware out of reset.
- *
- * @retval 0 success
- * @retval non-zero error
- */
-static inline int
-bhnd_resume_core(device_t dev, uint16_t flags)
-{
-	return (BHND_BUS_RESUME_CORE(device_get_parent(dev), dev, flags));
-}
-
-/**
- * Put the device's hardware into reset, and then bring it back out.
- *
- * @param dev The device to be reset.
  * @param suspend_flags Device-specific core flags to be set when putting
  * the hardware into reset.
  * @param resume_flags Device-specific core flags to be set when bringing
@@ -492,13 +473,13 @@ bhnd_reset_core(device_t dev, uint16_t suspend_flags, uint16_t resume_flags)
 }
 
 /**
- * Suspend the device's hardware in a low-power state, generally by putting 
- * the core into reset and gating clocks.
+ * Suspend @p child's hardware in a low-power reset state.
  *
- * The hardware may be brought out of reset via bhnd_resume_core() or
- * bhnd_reset_core().
+ * The hardware may be brought out of reset via bhnd_reset_hw().
  *
  * @param dev The device to be suspended.
+ * @param flags Device-specific core flags to be supplied when putting the
+ * hardware into reset.
  *
  * @retval 0 success
  * @retval non-zero error
