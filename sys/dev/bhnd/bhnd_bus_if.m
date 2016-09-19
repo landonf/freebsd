@@ -477,7 +477,9 @@ METHOD int resume_core {
  *
  * @param dev The parent of @p child.
  * @param child The device to be reset.
- * @param flags Device-specific core flags to be supplied when bringing
+ * @param suspend_flags Device-specific core flags to be set when putting
+ * the hardware into reset.
+ * @param resume_flags Device-specific core flags to be set when bringing
  * hardware out of reset.
  *
  * @retval 0 success
@@ -486,7 +488,8 @@ METHOD int resume_core {
 METHOD int reset_core {
 	device_t dev;
 	device_t child;
-	uint16_t flags;
+	uint16_t suspend_flags;
+	uint16_t resume_flags;
 }
 
 /**
@@ -498,6 +501,8 @@ METHOD int reset_core {
  *
  * @param dev The parent of @p child.
  * @param child The device to be suspended.
+ * @param flags Device-specific core flags to be supplied when putting the
+ * hardware into reset.
  *
  * @retval 0 success
  * @retval non-zero error
@@ -505,6 +510,7 @@ METHOD int reset_core {
 METHOD int suspend_core {
 	device_t dev;
 	device_t child;
+	uint16_t flags;
 }
 
 /**

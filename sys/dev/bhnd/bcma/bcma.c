@@ -163,12 +163,13 @@ bcma_resume_core(device_t dev, device_t child, uint16_t flags)
 }
 
 static int
-bcma_reset_core(device_t dev, device_t child, uint16_t flags)
+bcma_reset_core(device_t dev, device_t child, uint16_t suspend_flags,
+    uint16_t resume_flags)
 {
 	struct bcma_devinfo *dinfo;
 
 	if (device_get_parent(child) != dev)
-		BHND_BUS_RESET_CORE(device_get_parent(dev), child, flags);
+		return (EINVAL);
 
 	dinfo = device_get_ivars(child);
 
@@ -182,13 +183,13 @@ bcma_reset_core(device_t dev, device_t child, uint16_t flags)
 	DELAY(10);
 
 	/* Disable clock */
-	bhnd_bus_write_4(dinfo->res_agent, BHND_CF, flags);
+	bhnd_bus_write_4(dinfo->res_agent, BHND_CF, suspend_flags);
 	bhnd_bus_read_4(dinfo->res_agent, BHND_CF);
 	DELAY(10);
 
 	/* Enable clocks & force clock gating */
 	bhnd_bus_write_4(dinfo->res_agent, BHND_CF, BHND_CF_CLOCK_EN |
-	    BHND_CF_FGC | flags);
+	    BHND_CF_FGC | suspend_flags);
 	bhnd_bus_read_4(dinfo->res_agent, BHND_CF);
 	DELAY(10);
 
@@ -198,7 +199,8 @@ bcma_reset_core(device_t dev, device_t child, uint16_t flags)
 	DELAY(10);
 
 	/* Release force clock gating */
-	bhnd_bus_write_4(dinfo->res_agent, BHND_CF, BHND_CF_CLOCK_EN | flags);
+	bhnd_bus_write_4(dinfo->res_agent, BHND_CF,
+	    BHND_CF_CLOCK_EN | resume_flags);
 	bhnd_bus_read_4(dinfo->res_agent, BHND_CF);
 	DELAY(10);
 
@@ -206,12 +208,12 @@ bcma_reset_core(device_t dev, device_t child, uint16_t flags)
 }
 
 static int
-bcma_suspend_core(device_t dev, device_t child)
+bcma_suspend_core(device_t dev, device_t child, uint16_t flags)
 {
 	struct bcma_devinfo *dinfo;
 
 	if (device_get_parent(child) != dev)
-		BHND_BUS_SUSPEND_CORE(device_get_parent(dev), child);
+		return (EINVAL);
 
 	dinfo = device_get_ivars(child);
 

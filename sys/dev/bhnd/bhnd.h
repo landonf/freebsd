@@ -473,16 +473,19 @@ bhnd_resume_core(device_t dev, uint16_t flags)
  * Put the device's hardware into reset, and then bring it back out.
  *
  * @param dev The device to be reset.
- * @param flags Device-specific core flags to be supplied when bringing
+ * @param suspend_flags Device-specific core flags to be set when putting
+ * the hardware into reset.
+ * @param resume_flags Device-specific core flags to be set when bringing
  * hardware out of reset.
  *
  * @retval 0 success
  * @retval non-zero error
  */
 static inline int
-bhnd_reset_core(device_t dev, uint16_t flags)
+bhnd_reset_core(device_t dev, uint16_t suspend_flags, uint16_t resume_flags)
 {
-	return (BHND_BUS_RESET_CORE(device_get_parent(dev), dev, flags));
+	return (BHND_BUS_RESET_CORE(device_get_parent(dev), dev, suspend_flags,
+	    resume_flags));
 }
 
 /**
@@ -498,9 +501,9 @@ bhnd_reset_core(device_t dev, uint16_t flags)
  * @retval non-zero error
  */
 static inline int
-bhnd_suspend_core(device_t dev)
+bhnd_suspend_core(device_t dev, uint16_t flags)
 {
-	return (BHND_BUS_SUSPEND_CORE(device_get_parent(dev), dev));
+	return (BHND_BUS_SUSPEND_CORE(device_get_parent(dev), dev, flags));
 }
 
 /**

@@ -167,26 +167,6 @@ siba_get_resource_list(device_t dev, device_t child)
 	return (&dinfo->resources);
 }
 
-
-static int
-siba_resume_core(device_t dev, device_t child, uint16_t flags)
-{
-	struct siba_devinfo *dinfo;
-
-	if (device_get_parent(child) != dev)
-		BHND_BUS_RESUME_CORE(device_get_parent(dev), child, flags);
-
-	dinfo = device_get_ivars(child);
-
-	/* Can't resum the core without access to the CFG0 registers */
-	if (dinfo->cfg[0] == NULL)
-		return (ENODEV);
-
-	// TODO - perform resume
-
-	return (ENXIO);
-}
-
 static int
 siba_resume_core(device_t dev, device_t child, uint16_t flags)
 {
@@ -194,7 +174,7 @@ siba_resume_core(device_t dev, device_t child, uint16_t flags)
 
 	/* Can't resume the core without access to the CFG0 registers */
 	if ((res = siba_get_cfg_res(dev, child, 0)) == NULL)
-		return (UINT32_MAX);
+		return (EINVAL);
 
 	// TODO - perform resume
 
@@ -202,13 +182,14 @@ siba_resume_core(device_t dev, device_t child, uint16_t flags)
 }
 
 static int
-siba_reset_core(device_t dev, device_t child, uint16_t flags)
+siba_reset_core(device_t dev, device_t child, uint16_t suspend_flags,
+    uint16_t resume_flags)
 {
 	struct bhnd_resource *res;
 
 	/* Can't reset the core without access to the CFG0 registers */
 	if ((res = siba_get_cfg_res(dev, child, 0)) == NULL)
-		return (UINT32_MAX);
+		return (EINVAL);
 
 	// TODO - perform reset
 
@@ -216,13 +197,13 @@ siba_reset_core(device_t dev, device_t child, uint16_t flags)
 }
 
 static int
-siba_suspend_core(device_t dev, device_t child)
+siba_suspend_core(device_t dev, device_t child, uint16_t flags)
 {
 	struct bhnd_resource *res;
 
 	/* Can't suspend the core without access to the CFG0 registers */
 	if ((res = siba_get_cfg_res(dev, child, 0)) == NULL)
-		return (UINT32_MAX);
+		return (EINVAL);
 
 	// TODO - perform resume
 
