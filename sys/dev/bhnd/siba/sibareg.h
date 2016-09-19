@@ -141,7 +141,7 @@
 #define	SIBA_TML_REJ_MASK	0x0006		/* reject field */
 #define	SIBA_TML_REJ		0x0002		/* reject */
 #define	SIBA_TML_TMPREJ		0x0004		/* temporary reject, for error recovery */
-#define	SIBA_TML_SICF_MASK	0xFFFF0000	/* core-specific control flags */
+#define	SIBA_TML_SICF_MASK	0xFFFF0000	/* core control flags */
 #define	SIBA_TML_SICF_SHIFT	16
 
 /* sbtmstatehigh */
@@ -149,7 +149,7 @@
 #define	SIBA_TMH_INT		0x0002		/* interrupt */
 #define	SIBA_TMH_BUSY		0x0004		/* busy */
 #define	SIBA_TMH_TO		0x0020		/* timeout (sonics >= 2.3) */
-#define	SIBA_TMH_SISF_MASK	0xFFFF0000	/* core-specific status flags */
+#define	SIBA_TMH_SISF_MASK	0xFFFF0000	/* core status flags */
 #define	SIBA_TMH_SISF_SHIFT	16
 
 /* sbbwa0 */
