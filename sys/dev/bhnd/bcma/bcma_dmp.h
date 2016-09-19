@@ -246,7 +246,7 @@
 #define	BCMA_DMP_OOBSEL_7_SHIFT	BCMA_DMP_OOBSEL_3_SHIFT
 
 /* resetctrl */
-#define	BMCA_DMP_RC_RESET	1
+#define	BMCA_DMP_RC_RESET	0x00000001
 
 /* config */
 #define	BCMA_DMP_CFG_OOB	0x00000020

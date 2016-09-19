@@ -158,7 +158,8 @@ bcma_get_resource_list(device_t dev, device_t child)
 static int
 bcma_reset_core(device_t dev, device_t child, uint16_t flags)
 {
-	struct bcma_devinfo *dinfo;
+	struct bcma_devinfo	*dinfo;
+	struct bhnd_resource	*r;
 
 	if (device_get_parent(child) != dev)
 		BHND_BUS_RESET_CORE(device_get_parent(dev), child, flags);
@@ -166,33 +167,33 @@ bcma_reset_core(device_t dev, device_t child, uint16_t flags)
 	dinfo = device_get_ivars(child);
 
 	/* Can't reset the core without access to the agent registers */
-	if (dinfo->res_agent == NULL)
+	if ((r = dinfo->res_agent) == NULL)
 		return (ENODEV);
 
 	/* Start reset */
-	bhnd_bus_write_4(dinfo->res_agent, BHND_RESET_CF, BHND_RESET_CF_ENABLE);
-	bhnd_bus_read_4(dinfo->res_agent, BHND_RESET_CF);
+	bhnd_bus_write_4(r, BCMA_DMP_RESETCTRL, BMCA_DMP_RC_RESET);
+	bhnd_bus_read_4(r, BCMA_DMP_RESETCTRL);
 	DELAY(10);
 
 	/* Disable clock */
-	bhnd_bus_write_4(dinfo->res_agent, BHND_CF, flags);
-	bhnd_bus_read_4(dinfo->res_agent, BHND_CF);
+	bhnd_bus_write_4(r, BCMA_DMP_IOCTRL, flags);
+	bhnd_bus_read_4(r, BCMA_DMP_IOCTRL);
 	DELAY(10);
 
 	/* Enable clocks & force clock gating */
-	bhnd_bus_write_4(dinfo->res_agent, BHND_CF, BHND_CF_CLOCK_EN |
+	bhnd_bus_write_4(r, BCMA_DMP_IOCTRL, BHND_CF_CLOCK_EN |
 	    BHND_CF_FGC | flags);
-	bhnd_bus_read_4(dinfo->res_agent, BHND_CF);
+	bhnd_bus_read_4(r, BCMA_DMP_IOCTRL);
 	DELAY(10);
 
 	/* Complete reset */
-	bhnd_bus_write_4(dinfo->res_agent, BHND_RESET_CF, 0);
-	bhnd_bus_read_4(dinfo->res_agent, BHND_RESET_CF);
+	bhnd_bus_write_4(r, BCMA_DMP_RESETCTRL, 0);
+	bhnd_bus_read_4(r, BCMA_DMP_RESETCTRL);
 	DELAY(10);
 
 	/* Release force clock gating */
-	bhnd_bus_write_4(dinfo->res_agent, BHND_CF, BHND_CF_CLOCK_EN | flags);
-	bhnd_bus_read_4(dinfo->res_agent, BHND_CF);
+	bhnd_bus_write_4(r, BCMA_DMP_IOCTRL, BHND_CF_CLOCK_EN | flags);
+	bhnd_bus_read_4(r, BCMA_DMP_IOCTRL);
 	DELAY(10);
 
 	return (0);
