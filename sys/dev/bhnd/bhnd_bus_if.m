@@ -468,7 +468,7 @@ METHOD void child_added {
  * @retval 0 success
  * @retval non-zero error
  */
-METHOD int reset_core {
+METHOD int reset_hw {
 	device_t dev;
 	device_t child;
 	uint16_t suspend_flags;
@@ -478,7 +478,7 @@ METHOD int reset_core {
 /**
  * Suspend @p child's hardware in a low-power reset state.
  *
- * The hardware may be brought out of reset via BHND_BUS_RESET_CORE().
+ * The hardware may be brought out of reset via BHND_BUS_RESET_HW().
  *
  * @param dev The parent of @p child.
  * @param child The device to be suspended.
@@ -488,7 +488,7 @@ METHOD int reset_core {
  * @retval 0 success
  * @retval non-zero error
  */
-METHOD int suspend_core {
+METHOD int suspend_hw {
 	device_t dev;
 	device_t child;
 	uint16_t flags;

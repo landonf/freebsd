@@ -221,15 +221,15 @@ siba_write_core_state(struct bhnd_resource *r, bus_size_t reg, uint32_t value)
  * Default siba(4) bus driver implementation of BHND_RESET_HW().
  */
 static int
-siba_reset_core(device_t dev, device_t child, uint16_t suspend_flags,
+siba_reset_hw(device_t dev, device_t child, uint16_t suspend_flags,
     uint16_t reset_flags)
 {
 	struct bhnd_resource	*r;
 	uint32_t		 tmslow, imstate;
 	int			 error;
 
-	/* Place the core into a known suspended state */
-	if ((error = BHND_BUS_SUSPEND_CORE(dev, child, suspend_flags)))
+	/* Place the core into a known state */
+	if ((error = BHND_BUS_SUSPEND_HW(dev, child, suspend_flags)))
 		return (error);
 
 	/* Only private core control flags should be specified; we must
@@ -278,7 +278,7 @@ siba_reset_core(device_t dev, device_t child, uint16_t suspend_flags,
  * Default siba(4) bus driver implementation of BHND_SUSPEND_HW().
  */
 static int
-siba_suspend_core(device_t dev, device_t child, uint16_t flags)
+siba_suspend_hw(device_t dev, device_t child, uint16_t flags)
 {
 	struct bhnd_resource	*r;
 	uint32_t		 idlow;
@@ -872,8 +872,8 @@ static device_method_t siba_methods[] = {
 	DEVMETHOD(bhnd_bus_get_erom_class,	siba_get_erom_class),
 	DEVMETHOD(bhnd_bus_alloc_devinfo,	siba_alloc_bhnd_dinfo),
 	DEVMETHOD(bhnd_bus_free_devinfo,	siba_free_bhnd_dinfo),
-	DEVMETHOD(bhnd_bus_reset_core,		siba_reset_core),
-	DEVMETHOD(bhnd_bus_suspend_core,	siba_suspend_core),
+	DEVMETHOD(bhnd_bus_reset_hw,		siba_reset_hw),
+	DEVMETHOD(bhnd_bus_suspend_hw,		siba_suspend_hw),
 	DEVMETHOD(bhnd_bus_read_config,		siba_read_config),
 	DEVMETHOD(bhnd_bus_write_config,	siba_write_config),
 	DEVMETHOD(bhnd_bus_get_port_count,	siba_get_port_count),

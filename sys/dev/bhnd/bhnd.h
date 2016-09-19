@@ -466,9 +466,9 @@ bhnd_get_chipid(device_t dev) {
  * @retval non-zero error
  */
 static inline int
-bhnd_reset_core(device_t dev, uint16_t suspend_flags, uint16_t resume_flags)
+bhnd_reset_hw(device_t dev, uint16_t suspend_flags, uint16_t resume_flags)
 {
-	return (BHND_BUS_RESET_CORE(device_get_parent(dev), dev, suspend_flags,
+	return (BHND_BUS_RESET_HW(device_get_parent(dev), dev, suspend_flags,
 	    resume_flags));
 }
 
@@ -485,9 +485,9 @@ bhnd_reset_core(device_t dev, uint16_t suspend_flags, uint16_t resume_flags)
  * @retval non-zero error
  */
 static inline int
-bhnd_suspend_core(device_t dev, uint16_t flags)
+bhnd_suspend_hw(device_t dev, uint16_t flags)
 {
-	return (BHND_BUS_SUSPEND_CORE(device_get_parent(dev), dev, flags));
+	return (BHND_BUS_SUSPEND_HW(device_get_parent(dev), dev, flags));
 }
 
 /**
