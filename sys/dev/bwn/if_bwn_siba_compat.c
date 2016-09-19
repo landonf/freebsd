@@ -57,16 +57,54 @@
 #include <net80211/ieee80211_ratectl.h>
 
 #include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/siba/sibareg.h>
 
 #include "if_bwn_siba_compat.h"
+
+#define	BWN_ASSERT_VALID_REG(_dev, _offset)	\
+	KASSERT(!bwn_bhnd_is_siba_reg(_dev, _offset), \
+	    ("accessing siba-specific register %#jx", (uintmax_t)(_offset)));
+
+/**
+ * Return true if @p offset is within a siba-specific configuration register
+ * block.
+ */
+static inline bool
+bwn_bhnd_is_siba_reg(device_t dev, uint16_t offset)
+{
+	if (offset >= SIBA_CFG0_OFFSET &&
+	    offset <= SIBA_CFG0_OFFSET + SIBA_CFG_SIZE)
+		return (true);
+
+	if (offset >= SIBA_CFG1_OFFSET &&
+	    offset <= SIBA_CFG1_OFFSET + SIBA_CFG_SIZE)
+		return (true);
+	
+	return (false);
+}
+
 
 static int
 bwn_bhnd_bus_ops_init(device_t dev)
 {
 	struct bwn_bhnd_ctx	*ctx;
 	struct bwn_softc	*sc;
+	int			 error;
 
 	sc = device_get_softc(dev);
+
+	sc->sc_mem_rid = 0;
+	sc->sc_mem_res = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY,
+	    &sc->sc_mem_rid, RF_ACTIVE);
+	if (sc->sc_mem_res == NULL) {
+		return (ENXIO);
+	}
+
+	/* Allocate PMU state */
+	if ((error = bhnd_alloc_pmu(dev))) {
+		device_printf(dev, "PMU allocation failed: %d\n", error);
+		goto failed;
+	}
 
 	/* Allocate our context */
 	ctx = malloc(sizeof(struct bwn_bhnd_ctx), M_DEVBUF, M_WAITOK|M_ZERO);
@@ -74,11 +112,23 @@ bwn_bhnd_bus_ops_init(device_t dev)
 	/* Initialize bwn_softc */
 	sc->sc_bus_ctx = ctx;
 	return (0);
+
+failed:
+	bhnd_release_resource(dev, SYS_RES_MEMORY, sc->sc_mem_rid,
+	    sc->sc_mem_res);
+	return (error);
 }
 
 static void
 bwn_bhnd_bus_ops_fini(device_t dev)
 {
+	struct bwn_softc	*sc;
+
+	sc = device_get_softc(dev);
+
+	bhnd_release_pmu(dev);
+	bhnd_release_resource(dev, SYS_RES_MEMORY, sc->sc_mem_rid,
+	    sc->sc_mem_res);
 }
 
 /*
@@ -1168,7 +1218,30 @@ bhnd_compat_sprom_get_cddpo(device_t dev)
 static void
 bhnd_compat_powerup(device_t dev, int dynamic)
 {
-	panic("siba_powerup() unimplemented");
+	bhnd_clock	clock;
+	int		error;
+
+	// XXX TODO: Should we bring up the core clock in bwn_reset_core()
+	// instead?
+
+	/* On bcma(4) devices, the core must be brought out of reset before
+	 * accessing PMU clock request registers */
+	if ((error = bhnd_reset_hw(dev, 0, 0))) {
+		device_printf(dev, "core reset failed: %d\n", error);
+		return;
+	}
+
+	/* Issue a PMU clock request */
+	if (dynamic)
+		clock = BHND_CLOCK_DYN;
+	else
+		clock = BHND_CLOCK_HT;
+
+	if ((error = bhnd_request_clock(dev, clock))) {
+		device_printf(dev, "%d clock request failed: %d\n",
+		    clock, error);
+	}
+
 }
 
 /*
@@ -1182,7 +1255,17 @@ bhnd_compat_powerup(device_t dev, int dynamic)
 static int
 bhnd_compat_powerdown(device_t dev)
 {
-	panic("siba_powerdown() unimplemented");
+	int	error;
+
+	/* Release any outstanding clock request */
+	if ((error = bhnd_request_clock(dev, BHND_CLOCK_DYN)))
+		return (error);
+
+	/* Suspend the core */
+	if ((error = bhnd_suspend_hw(dev, 0)))
+		return (error);
+
+	return (0);
 }
 
 /*
@@ -1205,7 +1288,11 @@ bhnd_compat_powerdown(device_t dev)
 static uint16_t
 bhnd_compat_read_2(device_t dev, uint16_t offset)
 {
-	panic("siba_read_2() unimplemented");
+	struct bwn_softc *sc = device_get_softc(dev);
+
+	BWN_ASSERT_VALID_REG(dev, offset);
+
+	return (bhnd_bus_read_2(sc->sc_mem_res, offset));
 }
 
 /*
@@ -1228,7 +1315,11 @@ bhnd_compat_read_2(device_t dev, uint16_t offset)
 static void
 bhnd_compat_write_2(device_t dev, uint16_t offset, uint16_t value)
 {
-	panic("siba_write_2() unimplemented");
+	struct bwn_softc *sc = device_get_softc(dev);
+
+	BWN_ASSERT_VALID_REG(dev, offset);
+
+	return (bhnd_bus_write_2(sc->sc_mem_res, offset, value));
 }
 
 /*
@@ -1251,7 +1342,11 @@ bhnd_compat_write_2(device_t dev, uint16_t offset, uint16_t value)
 static uint32_t
 bhnd_compat_read_4(device_t dev, uint16_t offset)
 {
-	panic("siba_read_4() unimplemented");
+	struct bwn_softc *sc = device_get_softc(dev);
+
+	BWN_ASSERT_VALID_REG(dev, offset);
+
+	return (bhnd_bus_read_4(sc->sc_mem_res, offset));
 }
 
 /*
@@ -1274,7 +1369,11 @@ bhnd_compat_read_4(device_t dev, uint16_t offset)
 static void
 bhnd_compat_write_4(device_t dev, uint16_t offset, uint32_t value)
 {
-	panic("siba_write_4() unimplemented");
+	struct bwn_softc *sc = device_get_softc(dev);
+
+	BWN_ASSERT_VALID_REG(dev, offset);
+
+	return (bhnd_bus_write_4(sc->sc_mem_res, offset, value));
 }
 
 /*
