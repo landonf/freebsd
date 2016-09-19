@@ -201,8 +201,9 @@ bcma_reset_hw(device_t dev, device_t child, uint16_t reset_flags,
 	if (rctrl != 0x0)
 		return (ETIMEDOUT);
 
-	/* Disable forced clock gating */
-	if ((error = bcma_dmp_set_ioctrl(child, dinfo, flags)))
+	/* Disable forced clock gating (leaving clock enabled) */
+	ioctrl = flags | BHND_CF_CLOCK_EN;
+	if ((error = bcma_dmp_set_ioctrl(child, dinfo, ioctrl)))
 		return (error);
 
 	return (0);
