@@ -172,6 +172,11 @@ bcma_reset_hw(device_t dev, device_t child, uint16_t reset_flags,
 
 	dinfo = device_get_ivars(child);
 
+	/* Only private core control flags should be specified; we must
+	 * control BHND_CF_CLOCK_EN, BHND_CF_FGC, etc. */
+	if (flags & ~BHND_CF_CORE_BITS)
+		return (EINVAL);
+
 	/* Can't reset the core without access to the agent registers */
 	r = dinfo->res_agent;
 	if (r == NULL)
