@@ -418,7 +418,7 @@ bcma_dmp_set_resetctrl(device_t child, struct bcma_devinfo *dinfo,
 
 	bhnd_bus_write_4(dinfo->res_agent, BCMA_DMP_RESETCTRL, value);
 	bhnd_bus_read_4(dinfo->res_agent, BCMA_DMP_RESETCTRL); /* read-back */
-	DELAY(1);
+	DELAY(10);
 
 	return (bcma_dmp_wait_reset(child, dinfo));
 }

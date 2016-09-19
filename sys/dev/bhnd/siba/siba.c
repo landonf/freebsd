@@ -201,13 +201,16 @@ siba_reset_hw(device_t dev, device_t child, uint16_t reset_flags,
 	if (flags & ~BHND_CF_CORE_BITS)
 		return (EINVAL);
 
+
 	/* Can't resume the core without access to the CFG0 registers */
 	if ((r = siba_get_config_block(dev, child, 0)) == NULL)
 		return (ENODEV);
 
+
 	/* Place the core into a known reset state */
 	if ((error = BHND_BUS_SUSPEND_HW(dev, child, reset_flags)))
 		return (error);
+
 
 	/* Leaving the core in reset, set the caller's reset flags and
 	 * enable+gate the core's clocks. */
@@ -216,9 +219,11 @@ siba_reset_hw(device_t dev, device_t child, uint16_t reset_flags,
 	    SIBA_TML_SICF);
 	siba_write_core_state(r, SIBA_CFG0_TMSTATELOW, tmslow);
 
+
 	/* Clear any target errors */
 	if (bhnd_bus_read_4(r, SIBA_CFG0_TMSTATEHIGH) & SIBA_TMH_SERR)
 		siba_write_core_state(r, SIBA_CFG0_TMSTATEHIGH, 0);
+
 
 	/* Clear any initiator errors */
 	imstate = bhnd_bus_read_4(r, SIBA_CFG0_IMSTATE);
@@ -227,16 +232,15 @@ siba_reset_hw(device_t dev, device_t child, uint16_t reset_flags,
 		siba_write_core_state(r, SIBA_CFG0_IMSTATE, imstate);
 	}
 
-	/* Clear reset and wait for its propagation */
-	tmslow = SIBA_SET_BITS(flags | BHND_CF_CLOCK_EN | BHND_CF_FGC,
-	    SIBA_TML_SICF);
-	siba_write_core_state(r, SIBA_CFG0_TMSTATELOW, tmslow);
 
+	/* Clear reset and wait for its propagation */
+	tmslow &= ~SIBA_TML_RESET;
+	siba_write_core_state(r, SIBA_CFG0_TMSTATELOW, tmslow);
 	DELAY(1);
 
+
 	/* Disable forced clock gating */
-	tmslow = SIBA_SET_BITS(flags | BHND_CF_CLOCK_EN | BHND_CF_FGC,
-	    SIBA_TML_SICF);
+	tmslow &= ~SIBA_SET_BITS(BHND_CF_FGC, SIBA_TML_SICF);
 	siba_write_core_state(r, SIBA_CFG0_TMSTATELOW, tmslow);
 
 	return (0);
@@ -306,7 +310,7 @@ siba_suspend_hw(device_t dev, device_t child, uint16_t flags)
 	/* Put the core into reset, while leaving the clocks enabed (but gated),
 	 * and leaving reject asserted */
 	tmslow = SIBA_TML_REJ | SIBA_TML_RESET;
-	tmslow |= SIBA_SET_BITS(flags | BHND_CF_FGC | BHND_CF_CLOCK_EN,
+	tmslow |= SIBA_SET_BITS(flags | BHND_CF_CLOCK_EN | BHND_CF_FGC,
 	    SIBA_TML_SICF);
 
 	siba_write_core_state(r, SIBA_CFG0_TMSTATELOW, tmslow);
@@ -315,8 +319,7 @@ siba_suspend_hw(device_t dev, device_t child, uint16_t flags)
 	/*
 	 * Now that the core is in reset:
 	 *  - Clear initiator reject.
-	 *  - Disable the clocks.
-	 *  - Leave TML_RESET and TML_REJ asserted.
+	 *  - Disable the clock and forced clock gating.
 	 */
 	if (SIBA_GET_FLAG(idlow, SIBA_IDL_INIT)) {
 		imstate = bhnd_bus_read_4(r, SIBA_CFG0_IMSTATE);
@@ -324,8 +327,7 @@ siba_suspend_hw(device_t dev, device_t child, uint16_t flags)
 		siba_write_core_state(r, SIBA_CFG0_IMSTATE, imstate);
 	}
 
-	tmslow = SIBA_TML_REJ | SIBA_TML_RESET |
-		 SIBA_SET_BITS(flags, SIBA_TML_SICF);
+	tmslow &= ~SIBA_SET_BITS(BHND_CF_CLOCK_EN|BHND_CF_FGC, SIBA_TML_SICF);
 	siba_write_core_state(r, SIBA_CFG0_TMSTATELOW, tmslow);
 
 	return (0);
