@@ -159,10 +159,13 @@ bcma_get_resource_list(device_t dev, device_t child)
  * Default bcma(4) bus driver implementation of BHND_BUS_RESET_HW().
  */
 static int
-bcma_reset_hw(device_t dev, device_t child, uint16_t suspend_flags,
-    uint16_t resume_flags)
+bcma_reset_hw(device_t dev, device_t child, uint16_t reset_flags,
+    uint16_t flags)
 {
-	struct bcma_devinfo *dinfo;
+	struct bcma_devinfo	*dinfo;
+	struct bhnd_resource	*r;
+	uint32_t		 ioctrl, rctrl;
+	int			 error;
 
 	if (device_get_parent(child) != dev)
 		return (EINVAL);
@@ -170,35 +173,37 @@ bcma_reset_hw(device_t dev, device_t child, uint16_t suspend_flags,
 	dinfo = device_get_ivars(child);
 
 	/* Can't reset the core without access to the agent registers */
-	if (dinfo->res_agent == NULL)
+	r = dinfo->res_agent;
+	if (r == NULL)
 		return (ENODEV);
 
-	/* Start reset */
-	bhnd_bus_write_4(dinfo->res_agent, BHND_RESET_CF, BHND_RESET_CF_ENABLE);
-	bhnd_bus_read_4(dinfo->res_agent, BHND_RESET_CF);
-	DELAY(10);
+	/* Place the core into a known reset state */
+	if ((error = BHND_BUS_SUSPEND_HW(dev, child, reset_flags)))
+		return (error);
 
-	/* Disable clock */
-	bhnd_bus_write_4(dinfo->res_agent, BHND_CF, suspend_flags);
-	bhnd_bus_read_4(dinfo->res_agent, BHND_CF);
-	DELAY(10);
+	/* Leaving the core in reset, set the caller's core flags and
+	 * enable (and force distribution of) the core clocks. */
+	ioctrl = flags | BHND_CF_CLOCK_EN | BHND_CF_FGC;
+	if ((error = bcma_dmp_set_ioctrl(child, dinfo, ioctrl)))
+		return (error);
 
-	/* Enable clocks & force clock gating */
-	bhnd_bus_write_4(dinfo->res_agent, BHND_CF, BHND_CF_CLOCK_EN |
-	    BHND_CF_FGC | suspend_flags);
-	bhnd_bus_read_4(dinfo->res_agent, BHND_CF);
-	DELAY(10);
+	/* Bring the core out of reset */
+	for (int i = 0; i < 3000; i += 10) {
+		bcma_dmp_set_resetctrl(child, dinfo, 0x0);
 
-	/* Complete reset */
-	bhnd_bus_write_4(dinfo->res_agent, BHND_RESET_CF, 0);
-	bhnd_bus_read_4(dinfo->res_agent, BHND_RESET_CF);
-	DELAY(10);
+		rctrl = bhnd_bus_read_4(r, BCMA_DMP_RESETCTRL);
+		if (rctrl == 0x0)
+			break;
 
-	/* Release force clock gating */
-	bhnd_bus_write_4(dinfo->res_agent, BHND_CF,
-	    BHND_CF_CLOCK_EN | resume_flags);
-	bhnd_bus_read_4(dinfo->res_agent, BHND_CF);
-	DELAY(10);
+		DELAY(10);
+	}
+
+	if (rctrl != 0x0)
+		return (ETIMEDOUT);
+
+	/* Disable forced clock distribution */
+	if ((error = bcma_dmp_set_ioctrl(child, dinfo, flags)))
+		return (error);
 
 	return (0);
 }
@@ -209,20 +214,45 @@ bcma_reset_hw(device_t dev, device_t child, uint16_t suspend_flags,
 static int
 bcma_suspend_hw(device_t dev, device_t child, uint16_t flags)
 {
-	struct bcma_devinfo *dinfo;
+	struct bcma_devinfo	*dinfo;
+	struct bhnd_resource	*r;
+	uint32_t		 rctrl;
+	int			 error;
 
 	if (device_get_parent(child) != dev)
 		return (EINVAL);
 
 	dinfo = device_get_ivars(child);
 
+	/* Only private core control flags should be specified; we must
+	 * control BHND_CF_CLOCK_EN, BHND_CF_FGC, etc. */
+	if (flags & ~BHND_CF_CORE_BITS)
+		return (EINVAL);
+
 	/* Can't suspend the core without access to the agent registers */
-	if (dinfo->res_agent == NULL)
+	r = dinfo->res_agent;
+	if (r == NULL)
 		return (ENODEV);
 
-	// TODO - perform suspend
+	/* Already in reset? */
+	rctrl = bhnd_bus_read_4(r, BCMA_DMP_RESETCTRL);
+	if (rctrl & BMCA_DMP_RC_RESET)
+		return (0);
 
-	return (ENXIO);
+	/* Wait for any pending reset operations to clear */
+	if ((error = bcma_dmp_wait_reset(child, dinfo)))
+		return (error);
+
+	/* Put core into reset */
+	error = bcma_dmp_set_resetctrl(child, dinfo, BMCA_DMP_RC_RESET);
+	if (error)
+		return (error);
+
+	/* Set core flags */
+	if ((error = bcma_dmp_set_ioctrl(child, dinfo, flags)))
+		return (error);
+
+	return (0);
 }
 
 static uint32_t
