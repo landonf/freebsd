@@ -81,9 +81,10 @@ siba_parse_core_id(uint32_t idhigh, uint32_t idlow, u_int core_idx, int unit)
 	uint8_t		num_addrspace;
 	uint8_t		num_cfg;
 
-	ocp_vendor = SIBA_REG_GET(idhigh, IDH_VENDOR);
-	sonics_rev = SIBA_REG_GET(idlow, IDL_SBREV);
-	num_addrspace = SIBA_REG_GET(idlow, IDL_NRADDR) + 1 /* + enum block */;
+	ocp_vendor = SIBA_GET_BITS(idhigh, SIBA_IDH_VENDOR);
+	sonics_rev = SIBA_GET_BITS(idlow, SIBA_IDL_SBREV);
+	num_addrspace = SIBA_GET_BITS(idlow, SIBA_IDL_NRADDR);
+	num_addrspace += 1 /* + enum block */;
 
 	/* Determine the number of sonics config register blocks */
 	num_cfg = SIBA_CFG_NUM_2_2;
@@ -93,7 +94,7 @@ siba_parse_core_id(uint32_t idhigh, uint32_t idlow, u_int core_idx, int unit)
 	return (struct siba_core_id) {
 		.core_info	= {
 			.vendor	= siba_get_bhnd_mfgid(ocp_vendor),
-			.device	= SIBA_REG_GET(idhigh, IDH_DEVICE),
+			.device	= SIBA_GET_BITS(idhigh, SIBA_IDH_DEVICE),
 			.hwrev	= SIBA_IDH_CORE_REV(idhigh),
 			.core_idx = core_idx,
 			.unit	= unit
@@ -447,23 +448,84 @@ siba_parse_admatch(uint32_t am, uint32_t *addr, uint32_t *size)
 		return (EINVAL);
 	
 	/* Extract the base address and size */
-	am_type = SIBA_REG_GET(am, AM_TYPE);
+	am_type = SIBA_GET_BITS(am, SIBA_AM_TYPE);
 	switch (am_type) {
 	case 0:
 		*addr = am & SIBA_AM_BASE0_MASK;
-		*size = 1 << (SIBA_REG_GET(am, AM_ADINT0) + 1);
+		*size = 1 << (SIBA_GET_BITS(am, SIBA_AM_ADINT0) + 1);
 		break;
 	case 1:
 		*addr = am & SIBA_AM_BASE1_MASK;
-		*size = 1 << (SIBA_REG_GET(am, AM_ADINT1) + 1);
+		*size = 1 << (SIBA_GET_BITS(am, SIBA_AM_ADINT1) + 1);
 		break;
 	case 2:
 		*addr = am & SIBA_AM_BASE2_MASK;
-		*size = 1 << (SIBA_REG_GET(am, AM_ADINT2) + 1);
+		*size = 1 << (SIBA_GET_BITS(am, SIBA_AM_ADINT2) + 1);
 		break;
 	default:
 		return (EINVAL);
 	}
 
 	return (0);
+}
+
+/**
+ * Fetch the resource mapping @p child's given siba(4) @p cfg block, or
+ * NULL if unavailable. 
+ * 
+ * @param dev The siba bus device.
+ * @param child An attached siba child.
+ * @param cfg The SIBA_CFG resource to be returned.
+ * 
+ * @retval non-NULL success
+ * @retval NULL If @p child is not a directly attached device, or if @p cfg
+ * is not mapped on @p child.
+ */
+struct bhnd_resource *
+siba_get_config_block(device_t dev, device_t child, uint8_t cfg)
+{
+	struct siba_devinfo *dinfo;
+
+	/* Must be directly attached */
+	if (device_get_parent(child) != dev)
+		return (NULL);
+
+	dinfo = device_get_ivars(child);
+
+	/* Must be within the supported range */
+	if (cfg >= SIBA_MAX_CFG)
+		return (NULL);
+
+	return (dinfo->cfg[cfg]);
+}
+
+/**
+ * Spin for up to @p usec waiting for SIBA_TMH_BUSY to clear in
+ * @p child's SIBA_CFG0_TMSTATEHIGH register.
+ * 
+ * @param child The child device corresponding to @p r.
+ * @param r An active resource mapping @p child's SIBA_CFG0_TMSTATEHIGH
+ * register.
+ * @param tmsh_reg Offset to the SIBA_CFG0_TMSTATEHIGH register.
+ * @param usec The maximum amount of time to spin, in microseconds.
+ * 
+ * @retval 0 if SIBA_TMH_BUSY is cleared prior to the @p usec timeout.
+ * @retval ETIMEDOUT if a timeout occurs prior to SIBA_TMH_BUSY clearing.
+ */
+int
+siba_wait_target_busy(device_t child, struct bhnd_resource *r,
+    bus_size_t tmsh_reg, int usec)
+{
+	uint32_t tmshigh;
+
+	for (int i = 0; i < usec; i += 10) {
+		tmshigh = bhnd_bus_read_4(r, tmsh_reg);
+		if (!SIBA_GET_FLAG(tmshigh, SIBA_TMH_BUSY))
+			return (0);
+
+		DELAY(10);
+	}
+
+	device_printf(child, "SIBA_TMH_BUSY wait timeout\n");
+	return (ETIMEDOUT);
 }

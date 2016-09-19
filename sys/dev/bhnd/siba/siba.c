@@ -39,10 +39,14 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/bus.h>
 
+#include <dev/bhnd/bhnd_core.h>
 #include <dev/bhnd/cores/chipc/chipcreg.h>
 
 #include "sibareg.h"
 #include "sibavar.h"
+
+static void	siba_write_core_state(struct bhnd_resource *r,
+		    bus_size_t reg, uint32_t value);
 
 static bhnd_erom_class_t *
 siba_get_erom_class(driver_t *driver)
@@ -164,71 +168,191 @@ siba_get_resource_list(device_t dev, device_t child)
 	return (&dinfo->resources);
 }
 
-static int
-siba_reset_core(device_t dev, device_t child, uint16_t flags)
+/**
+ * Write @p value to target/initiator state @p reg in @p r, handling both the
+ * required read-back and DELAY().
+ * 
+ * @param r A resource mapping a SIBA_CFG0_OFFSET register block.
+ * @param reg The state register to write (e.g. SIBA_CFG0_TMSTATELOW,
+ *    SIBA_CFG0_IMSTATE)
+ * @param value The value to write to @p reg.
+ */
+static void
+siba_write_core_state(struct bhnd_resource *r, bus_size_t reg, uint32_t value)
 {
-	struct siba_devinfo *dinfo;
-
-	if (device_get_parent(child) != dev)
-		BHND_BUS_RESET_CORE(device_get_parent(dev), child, flags);
-
-	dinfo = device_get_ivars(child);
-
-	/* Can't reset the core without access to the CFG0 registers */
-	if (dinfo->cfg[0] == NULL)
-		return (ENODEV);
-
-	// TODO - perform reset
-
-	return (ENXIO);
+	bhnd_bus_write_4(r, reg, value);
+	bhnd_bus_read_4(r, reg);
+	DELAY(1);
 }
 
+/**
+ * Default siba(4) bus driver implementation of BHND_RESET_HW().
+ */
 static int
-siba_suspend_core(device_t dev, device_t child)
+siba_reset_hw(device_t dev, device_t child, uint16_t reset_flags,
+    uint16_t flags)
 {
-	struct siba_devinfo *dinfo;
+	struct bhnd_resource	*r;
+	uint32_t		 tmslow, imstate;
+	int			 error;
 
-	if (device_get_parent(child) != dev)
-		BHND_BUS_SUSPEND_CORE(device_get_parent(dev), child);
+	/* Only private core control flags should be specified; we must
+	 * control BHND_CF_CLOCK_EN, BHND_CF_FGC, etc. */
+	if (flags & ~BHND_CF_CORE_BITS)
+		return (EINVAL);
 
-	dinfo = device_get_ivars(child);
-
-	/* Can't suspend the core without access to the CFG0 registers */
-	if (dinfo->cfg[0] == NULL)
+	/* Can't resume the core without access to the CFG0 registers */
+	if ((r = siba_get_config_block(dev, child, 0)) == NULL)
 		return (ENODEV);
 
-	// TODO - perform suspend
+	/* Place the core into a known reset state */
+	if ((error = BHND_BUS_SUSPEND_HW(dev, child, reset_flags)))
+		return (error);
 
-	return (ENXIO);
+	/* Leaving the core in reset, set the caller's reset flags and
+	 * enable+gate the core's clocks. */
+	tmslow = SIBA_TML_RESET;
+	tmslow |= SIBA_SET_BITS(flags | BHND_CF_CLOCK_EN | BHND_CF_FGC,
+	    SIBA_TML_SICF);
+	siba_write_core_state(r, SIBA_CFG0_TMSTATELOW, tmslow);
+
+	/* Clear any target errors */
+	if (bhnd_bus_read_4(r, SIBA_CFG0_TMSTATEHIGH) & SIBA_TMH_SERR)
+		siba_write_core_state(r, SIBA_CFG0_TMSTATEHIGH, 0);
+
+	/* Clear any initiator errors */
+	imstate = bhnd_bus_read_4(r, SIBA_CFG0_IMSTATE);
+	if (imstate & (SIBA_IM_IBE|SIBA_IM_TO)) {
+		imstate &= ~(SIBA_IM_IBE|SIBA_IM_TO);
+		siba_write_core_state(r, SIBA_CFG0_IMSTATE, imstate);
+	}
+
+	/* Clear reset and wait for its propagation */
+	tmslow = SIBA_SET_BITS(flags | BHND_CF_CLOCK_EN | BHND_CF_FGC,
+	    SIBA_TML_SICF);
+	siba_write_core_state(r, SIBA_CFG0_TMSTATELOW, tmslow);
+
+	DELAY(1);
+
+	/* Disable forced clock gating */
+	tmslow = SIBA_SET_BITS(flags | BHND_CF_CLOCK_EN | BHND_CF_FGC,
+	    SIBA_TML_SICF);
+	siba_write_core_state(r, SIBA_CFG0_TMSTATELOW, tmslow);
+
+	return (0);
+}
+
+/**
+ * Default siba(4) bus driver implementation of BHND_SUSPEND_HW().
+ */
+static int
+siba_suspend_hw(device_t dev, device_t child, uint16_t flags)
+{
+	struct bhnd_resource	*r;
+	uint32_t		 idlow;
+	uint32_t		 imstate, tmslow;
+
+	/* Only private core control flags should be specified; we must
+	 * control BHND_CF_CLOCK_EN, BHND_CF_FGC, etc. */
+	if (flags & ~BHND_CF_CORE_BITS)
+		return (EINVAL);
+
+	/* Can't suspend the core without access to the CFG0 registers */
+	if ((r = siba_get_config_block(dev, child, 0)) == NULL)
+		return (ENODEV);
+
+	/* Already in reset? */
+	tmslow = bhnd_bus_read_4(r, SIBA_CFG0_TMSTATELOW);
+	if (tmslow & SIBA_TML_RESET)
+		return (0);
+
+	/* If clocks are already disabled, we can put the core directly
+	 * into reset */
+	if (!(SIBA_GET_BITS(tmslow, SIBA_TML_SICF) & BHND_CF_CLOCK_EN)) {
+		tmslow = SIBA_TML_REJ | SIBA_TML_RESET |
+			 SIBA_SET_BITS(flags, SIBA_TML_SICF);
+		siba_write_core_state(r, SIBA_CFG0_TMSTATELOW, tmslow);
+
+		return (0);
+	}
+
+	/* 
+	 * If core core is currently clocked, we need to:
+	 *   - Set target/initiator reject (and wait for completion).
+	 *   - Leave the clocks enabled, and enable forced clock gating.
+	 *   - Place the core into reset and disable initiator reject.
+	 *   - Disable clocks and forced clock gating.
+	 */
+
+	/* Set target reject */
+	tmslow |= SIBA_TML_REJ;
+	siba_write_core_state(r, SIBA_CFG0_TMSTATELOW, tmslow);
+
+	/* Wait for busy flag to clear */
+	siba_wait_target_busy(child, r, SIBA_CFG0_TMSTATEHIGH, 100000);
+
+	/* Is this an initiator core? */
+	idlow = bhnd_bus_read_4(r, SIBA_CFG0_IDLOW);
+	if (SIBA_GET_FLAG(idlow, SIBA_IDL_INIT)) {
+		/* Set initiator agent reject */
+		imstate = bhnd_bus_read_4(r, SIBA_CFG0_IMSTATE);
+		imstate |= SIBA_IM_RJ;
+		siba_write_core_state(r, SIBA_CFG0_IMSTATE, imstate);
+
+		/* Wait for busy flag to clear */
+		siba_wait_target_busy(child, r, SIBA_CFG0_TMSTATEHIGH, 100000);
+	}
+
+	/* Put the core into reset, while leaving the clocks enabed (but gated),
+	 * and leaving reject asserted */
+	tmslow = SIBA_TML_REJ | SIBA_TML_RESET;
+	tmslow |= SIBA_SET_BITS(flags | BHND_CF_FGC | BHND_CF_CLOCK_EN,
+	    SIBA_TML_SICF);
+
+	siba_write_core_state(r, SIBA_CFG0_TMSTATELOW, tmslow);
+	DELAY(10);
+
+	/*
+	 * Now that the core is in reset:
+	 *  - Clear initiator reject.
+	 *  - Disable the clocks.
+	 *  - Leave TML_RESET and TML_REJ asserted.
+	 */
+	if (SIBA_GET_FLAG(idlow, SIBA_IDL_INIT)) {
+		imstate = bhnd_bus_read_4(r, SIBA_CFG0_IMSTATE);
+		imstate &= ~SIBA_IM_RJ;
+		siba_write_core_state(r, SIBA_CFG0_IMSTATE, imstate);
+	}
+
+	tmslow = SIBA_TML_REJ | SIBA_TML_RESET |
+		 SIBA_SET_BITS(flags, SIBA_TML_SICF);
+	siba_write_core_state(r, SIBA_CFG0_TMSTATELOW, tmslow);
+
+	return (0);
 }
 
 static uint32_t
 siba_read_config(device_t dev, device_t child, bus_size_t offset, u_int width)
 {
-	struct siba_devinfo	*dinfo;
+	struct bhnd_resource	*res;
 	rman_res_t		 r_size;
 
-	/* Must be directly attached */
-	if (device_get_parent(child) != dev)
-		return (UINT32_MAX);
-
 	/* CFG0 registers must be available */
-	dinfo = device_get_ivars(child);
-	if (dinfo->cfg[0] == NULL)
+	if ((res = siba_get_config_block(dev, child, 0)) == NULL)
 		return (UINT32_MAX);
 
 	/* Offset must fall within CFG0 */
-	r_size = rman_get_size(dinfo->cfg[0]->res);
+	r_size = rman_get_size(res->res);
 	if (r_size < offset || r_size - offset < width)
 		return (UINT32_MAX);
 
 	switch (width) {
 	case 1:
-		return (bhnd_bus_read_1(dinfo->cfg[0], offset));
+		return (bhnd_bus_read_1(res, offset));
 	case 2:
-		return (bhnd_bus_read_2(dinfo->cfg[0], offset));
+		return (bhnd_bus_read_2(res, offset));
 	case 4:
-		return (bhnd_bus_read_4(dinfo->cfg[0], offset));
+		return (bhnd_bus_read_4(res, offset));
 	}
 	
 	/* Unsuported */
@@ -239,30 +363,25 @@ static void
 siba_write_config(device_t dev, device_t child, bus_size_t offset, uint32_t val,
     u_int width)
 {
-	struct siba_devinfo	*dinfo;
+	struct bhnd_resource	*res;
 	rman_res_t		 r_size;
 
-	/* Must be directly attached */
-	if (device_get_parent(child) != dev)
-		return;
-
 	/* CFG0 registers must be available */
-	dinfo = device_get_ivars(child);
-	if (dinfo->cfg[0] == NULL)
+	if ((res = siba_get_config_block(dev, child, 0)) == NULL)
 		return;
 
 	/* Offset must fall within CFG0 */
-	r_size = rman_get_size(dinfo->cfg[0]->res);
+	r_size = rman_get_size(res->res);
 	if (r_size < offset || r_size - offset < width)
 		return;
 
 	switch (width) {
 	case 1:
-		bhnd_bus_write_1(dinfo->cfg[0], offset, val);
+		bhnd_bus_write_1(res, offset, val);
 	case 2:
-		bhnd_bus_write_2(dinfo->cfg[0], offset, val);
+		bhnd_bus_write_2(res, offset, val);
 	case 4:
-		bhnd_bus_write_4(dinfo->cfg[0], offset, val);
+		bhnd_bus_write_4(res, offset, val);
 	}
 }
 
@@ -423,7 +542,7 @@ siba_get_core_ivec(device_t dev, device_t child, u_int intr, uint32_t *ivec)
 	/* Fetch sbflag number */
 	dinfo = device_get_ivars(child);
 	tpsflag = bhnd_bus_read_4(dinfo->cfg[0], SIBA_CFG0_TPSFLAG);
-	*ivec = SIBA_REG_GET(tpsflag, TPS_NUM0);
+	*ivec = SIBA_GET_BITS(tpsflag, SIBA_TPS_NUM0);
 
 	return (0);
 }
@@ -695,8 +814,8 @@ static device_method_t siba_methods[] = {
 	DEVMETHOD(bhnd_bus_get_erom_class,	siba_get_erom_class),
 	DEVMETHOD(bhnd_bus_alloc_devinfo,	siba_alloc_bhnd_dinfo),
 	DEVMETHOD(bhnd_bus_free_devinfo,	siba_free_bhnd_dinfo),
-	DEVMETHOD(bhnd_bus_reset_core,		siba_reset_core),
-	DEVMETHOD(bhnd_bus_suspend_core,	siba_suspend_core),
+	DEVMETHOD(bhnd_bus_reset_hw,		siba_reset_hw),
+	DEVMETHOD(bhnd_bus_suspend_hw,		siba_suspend_hw),
 	DEVMETHOD(bhnd_bus_read_config,		siba_read_config),
 	DEVMETHOD(bhnd_bus_write_config,	siba_write_config),
 	DEVMETHOD(bhnd_bus_get_port_count,	siba_get_port_count),

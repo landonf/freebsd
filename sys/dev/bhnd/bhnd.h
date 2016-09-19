@@ -452,6 +452,45 @@ bhnd_get_chipid(device_t dev) {
 };
 
 /**
+ * Place @p child's into reset with @p reset_flags set, and then enable
+ * clocks and bring the core out of reset with @p flags set.
+ *
+ * @param dev The parent of @p child.
+ * @param child The device to be reset.
+ * @param reset_flags Device-specific core flags to be set when putting
+ * the hardware into reset.
+ * @param flags Device-specific core flags to be set when bringing
+ * hardware out of reset.
+ *
+ * @retval 0 success
+ * @retval non-zero error
+ */
+static inline int
+bhnd_reset_hw(device_t dev, uint16_t reset_flags, uint16_t flags)
+{
+	return (BHND_BUS_RESET_HW(device_get_parent(dev), dev, reset_flags,
+	    flags));
+}
+
+/**
+ * Suspend @p child's hardware in a low-power reset state.
+ *
+ * The hardware may be brought out of reset via bhnd_reset_hw().
+ *
+ * @param dev The device to be suspended.
+ * @param flags Device-specific core flags to be supplied when putting the
+ * hardware into reset.
+ *
+ * @retval 0 success
+ * @retval non-zero error
+ */
+static inline int
+bhnd_suspend_hw(device_t dev, uint16_t flags)
+{
+	return (BHND_BUS_SUSPEND_HW(device_get_parent(dev), dev, flags));
+}
+
+/**
  * If supported by the chipset, return the clock source for the given clock.
  *
  * This function is only supported on early PWRCTL-equipped chipsets
