@@ -47,6 +47,11 @@ __FBSDID("$FreeBSD$");
 
 static struct bhnd_resource	*siba_get_cfg_res(device_t dev, device_t child,
 				     uint8_t cfg);
+static int			 siba_wait_target_busy(device_t dev,
+				     device_t child, struct bhnd_resource *r,
+				     int usec);
+static void			 siba_write_core_state(struct bhnd_resource *r,
+				     bus_size_t reg, uint32_t value);
 
 static bhnd_erom_class_t *
 siba_get_erom_class(driver_t *driver)
@@ -168,20 +173,6 @@ siba_get_resource_list(device_t dev, device_t child)
 	return (&dinfo->resources);
 }
 
-static int
-siba_resume_core(device_t dev, device_t child, uint16_t flags)
-{
-	struct bhnd_resource *res;
-
-	/* Can't resume the core without access to the CFG0 registers */
-	if ((res = siba_get_cfg_res(dev, child, 0)) == NULL)
-		return (EINVAL);
-
-	// TODO - perform resume
-
-	return (ENXIO);
-}
-
 /**
  * Spin for up to @p usec waiting for SIBA_TMH_BUSY to clear in
  * the SIBA_CFG0_TMSTATEHIGH register mapped by @p r.
@@ -209,6 +200,70 @@ siba_wait_target_busy(device_t dev, device_t child, struct bhnd_resource *r,
 	return (ETIMEDOUT);
 }
 
+/**
+ * Write @p value to target/initiator state @p reg in @p r, handling both the
+ * required read-back and DELAY().
+ * 
+ * @param r A resource mapping a SIBA_CFG0_OFFSET register block.
+ * @param reg The state register to write (e.g. SIBA_CFG0_TMSTATELOW,
+ *    SIBA_CFG0_IMSTATE)
+ * @param value The value to write to @p reg.
+ */
+static void
+siba_write_core_state(struct bhnd_resource *r, bus_size_t reg, uint32_t value)
+{
+	bhnd_bus_write_4(r, reg, value);
+	bhnd_bus_read_4(r, reg);
+	DELAY(1);
+}
+
+static int
+siba_resume_core(device_t dev, device_t child, uint16_t flags)
+{
+	struct bhnd_resource	*r;
+	uint32_t		 tmslow, imstate;
+
+	/* Refuse invalid core-specific control flags */
+	if (flags & ~BHND_CF_CORE_BITS)
+		return (EINVAL);
+
+	/* Can't resume the core without access to the CFG0 registers */
+	if ((r = siba_get_cfg_res(dev, child, 0)) == NULL)
+		return (ENODEV);
+
+	/* Place the core into reset while enabling (and forcing distribution
+	 * of) our clocks */
+	tmslow = SIBA_TML_RESET;
+	tmslow |= SIBA_SET_BITS(flags | BHND_CF_CLOCK_EN | BHND_CF_FGC,
+	    SIBA_TML_SICF);
+	siba_write_core_state(r, SIBA_CFG0_TMSTATELOW, tmslow);
+
+	/* Clear any target errors */
+	if (bhnd_bus_read_4(r, SIBA_CFG0_TMSTATEHIGH) & SIBA_TMH_SERR)
+		siba_write_core_state(r, SIBA_CFG0_TMSTATEHIGH, 0);
+
+	/* Clear any initiator errors */
+	imstate = bhnd_bus_read_4(r, SIBA_CFG0_IMSTATE);
+	if (imstate & (SIBA_IM_IBE|SIBA_IM_TO)) {
+		imstate &= ~(SIBA_IM_IBE|SIBA_IM_TO);
+		siba_write_core_state(r, SIBA_CFG0_IMSTATE, imstate);
+	}
+
+	/* Clear reset and wait for its propagation */
+	tmslow = SIBA_SET_BITS(flags | BHND_CF_CLOCK_EN | BHND_CF_FGC,
+	    SIBA_TML_SICF);
+	siba_write_core_state(r, SIBA_CFG0_TMSTATELOW, tmslow);
+
+	DELAY(1);
+
+	/* Disable forced clock distribution */
+	tmslow = SIBA_SET_BITS(flags | BHND_CF_CLOCK_EN | BHND_CF_FGC,
+	    SIBA_TML_SICF);
+	siba_write_core_state(r, SIBA_CFG0_TMSTATELOW, tmslow);
+
+	return (0);
+}
+
 static int
 siba_suspend_core(device_t dev, device_t child, uint16_t flags)
 {
@@ -216,13 +271,13 @@ siba_suspend_core(device_t dev, device_t child, uint16_t flags)
 	uint32_t		 idlow;
 	uint32_t		 imstate, tmslow;
 
-	/* Can't suspend the core without access to the CFG0 registers */
-	if ((r = siba_get_cfg_res(dev, child, 0)) == NULL)
-		return (ENODEV);
-
 	/* Refuse invalid core-specific control flags */
 	if (flags & ~BHND_CF_CORE_BITS)
 		return (EINVAL);
+
+	/* Can't suspend the core without access to the CFG0 registers */
+	if ((r = siba_get_cfg_res(dev, child, 0)) == NULL)
+		return (ENODEV);
 
 	/* Already in reset? */
 	tmslow = bhnd_bus_read_4(r, SIBA_CFG0_TMSTATELOW);
@@ -232,30 +287,25 @@ siba_suspend_core(device_t dev, device_t child, uint16_t flags)
 	/* If clocks are already disabled, we can put the core directly
 	 * into reset */
 	if (!(SIBA_GET_BITS(tmslow, SIBA_TML_SICF) & BHND_CF_CLOCK_EN)) {
-		tmslow = SIBA_TML_REJ |
-			 SIBA_TML_RESET |
+		tmslow = SIBA_TML_REJ | SIBA_TML_RESET |
 			 SIBA_SET_BITS(flags, SIBA_TML_SICF);
-		bhnd_bus_write_4(r, SIBA_CFG0_TMSTATELOW, tmslow);
-		DELAY(1);
+		siba_write_core_state(r, SIBA_CFG0_TMSTATELOW, tmslow);
 
 		return (0);
 	}
 
 	/* 
-	 * Otherwise, we need to:
+	 * If core core is currently clocked, we need to:
 	 *   - Set target/initiator reject (and wait for completion).
-	 *   - Leave the clocks enabled, but gated.
-	 *   - Place the core into reset.
-	 *   - Disable initiator reject.
-	 *   - Now that the core is in reset, disable the previously gated
-	 *     clocks.
+	 *   - Leave the clocks enabled, forcing distribution of gated clocks
+	 *     throughout the core.
+	 *   - Place the core into reset and disable initiator reject.
+	 *   - Disable clocks and forced clock distribution.
 	 */
 
-	/* Set target reject and read back*/
+	/* Set target reject */
 	tmslow |= SIBA_TML_REJ;
-	bhnd_bus_write_4(r, SIBA_CFG0_TMSTATELOW, tmslow);
-	bhnd_bus_read_4(r, SIBA_CFG0_TMSTATELOW);
-	DELAY(1);
+	siba_write_core_state(r, SIBA_CFG0_TMSTATELOW, tmslow);
 
 	/* Wait for busy flag to clear */
 	siba_wait_target_busy(dev, child, r, 100000);
@@ -266,12 +316,7 @@ siba_suspend_core(device_t dev, device_t child, uint16_t flags)
 		/* Set initiator agent reject */
 		imstate = bhnd_bus_read_4(r, SIBA_CFG0_IMSTATE);
 		imstate |= SIBA_IM_RJ;
-
-		bhnd_bus_write_4(r, SIBA_CFG0_IMSTATE, imstate);
-
-		/* read-back */
-		imstate = bhnd_bus_read_4(r, SIBA_CFG0_TMSTATELOW);
-		DELAY(1);
+		siba_write_core_state(r, SIBA_CFG0_IMSTATE, imstate);
 
 		/* Wait for busy flag to clear */
 		siba_wait_target_busy(dev, child, r, 100000);
@@ -279,16 +324,11 @@ siba_suspend_core(device_t dev, device_t child, uint16_t flags)
 
 	/* Put the core into reset, while leaving the clocks enabed (but gated),
 	 * and leaving reject asserted */
-	tmslow = SIBA_TML_REJ |
-		 SIBA_TML_RESET |
-		 SIBA_SET_BITS(
-		     BHND_CF_FGC | BHND_CF_CLOCK_EN | flags,
-		     SIBA_TML_SICF);
+	tmslow = SIBA_TML_REJ | SIBA_TML_RESET;
+	tmslow |= SIBA_SET_BITS(flags | BHND_CF_FGC | BHND_CF_CLOCK_EN,
+	    SIBA_TML_SICF);
 
-	bhnd_bus_write_4(r, SIBA_CFG0_TMSTATELOW, tmslow);
-	
-	/* read-back */
-	bhnd_bus_read_4(r, SIBA_CFG0_TMSTATELOW);
+	siba_write_core_state(r, SIBA_CFG0_TMSTATELOW, tmslow);
 	DELAY(10);
 
 	/*
@@ -300,13 +340,12 @@ siba_suspend_core(device_t dev, device_t child, uint16_t flags)
 	if (SIBA_GET_FLAG(idlow, SIBA_IDL_INIT)) {
 		imstate = bhnd_bus_read_4(r, SIBA_CFG0_IMSTATE);
 		imstate &= ~SIBA_IM_RJ;
-		bhnd_bus_write_4(r, SIBA_CFG0_IMSTATE, imstate);
+		siba_write_core_state(r, SIBA_CFG0_IMSTATE, imstate);
 	}
 
-	tmslow = SIBA_TML_REJ |
-		 SIBA_TML_RESET |
+	tmslow = SIBA_TML_REJ | SIBA_TML_RESET |
 		 SIBA_SET_BITS(flags, SIBA_TML_SICF);
-	bhnd_bus_write_4(r, SIBA_CFG0_TMSTATELOW, tmslow);
+	siba_write_core_state(r, SIBA_CFG0_TMSTATELOW, tmslow);
 
 	return (0);
 }

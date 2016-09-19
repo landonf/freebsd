@@ -29,7 +29,7 @@
 #define	BHND_CF_BIST_EN		0x8000		/**< built-in self test */
 #define	BHND_CF_PME_EN		0x4000		/**< ??? */
 #define	BHND_CF_CORE_BITS	0x3ffc		/**< core specific flag mask */
-#define	BHND_CF_FGC		0x0002		/**< force clock gating */
+#define	BHND_CF_FGC		0x0002		/**< force on gated clocks */
 #define	BHND_CF_CLOCK_EN	0x0001		/**< enable clock */
 
 /* Common core status flags */
