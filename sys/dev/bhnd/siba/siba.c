@@ -209,8 +209,8 @@ siba_reset_hw(device_t dev, device_t child, uint16_t reset_flags,
 	if ((error = BHND_BUS_SUSPEND_HW(dev, child, reset_flags)))
 		return (error);
 
-	/* Leaving the core in reset, set the caller's reset flags while
-	 * enabling (and forcing distribution of) the core's clocks. */
+	/* Leaving the core in reset, set the caller's reset flags and
+	 * enable+gate the core's clocks. */
 	tmslow = SIBA_TML_RESET;
 	tmslow |= SIBA_SET_BITS(flags | BHND_CF_CLOCK_EN | BHND_CF_FGC,
 	    SIBA_TML_SICF);
@@ -234,7 +234,7 @@ siba_reset_hw(device_t dev, device_t child, uint16_t reset_flags,
 
 	DELAY(1);
 
-	/* Disable forced clock distribution */
+	/* Disable forced clock gating */
 	tmslow = SIBA_SET_BITS(flags | BHND_CF_CLOCK_EN | BHND_CF_FGC,
 	    SIBA_TML_SICF);
 	siba_write_core_state(r, SIBA_CFG0_TMSTATELOW, tmslow);
@@ -279,10 +279,9 @@ siba_suspend_hw(device_t dev, device_t child, uint16_t flags)
 	/* 
 	 * If core core is currently clocked, we need to:
 	 *   - Set target/initiator reject (and wait for completion).
-	 *   - Leave the clocks enabled, forcing distribution of gated clocks
-	 *     throughout the core.
+	 *   - Leave the clocks enabled, and enable forced clock gating.
 	 *   - Place the core into reset and disable initiator reject.
-	 *   - Disable clocks and forced clock distribution.
+	 *   - Disable clocks and forced clock gating.
 	 */
 
 	/* Set target reject */

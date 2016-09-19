@@ -182,7 +182,7 @@ bcma_reset_hw(device_t dev, device_t child, uint16_t reset_flags,
 		return (error);
 
 	/* Leaving the core in reset, set the caller's core flags and
-	 * enable (and force distribution of) the core clocks. */
+	 * enable+gate the core clocks. */
 	ioctrl = flags | BHND_CF_CLOCK_EN | BHND_CF_FGC;
 	if ((error = bcma_dmp_set_ioctrl(child, dinfo, ioctrl)))
 		return (error);
@@ -201,7 +201,7 @@ bcma_reset_hw(device_t dev, device_t child, uint16_t reset_flags,
 	if (rctrl != 0x0)
 		return (ETIMEDOUT);
 
-	/* Disable forced clock distribution */
+	/* Disable forced clock gating */
 	if ((error = bcma_dmp_set_ioctrl(child, dinfo, flags)))
 		return (error);
 
