@@ -39,12 +39,14 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/bus.h>
 
-#include "bcmavar.h"
+#include <dev/bhnd/cores/pmu/bhnd_pmu.h>
 
 #include "bcma_dmp.h"
 
 #include "bcma_eromreg.h"
 #include "bcma_eromvar.h"
+
+#include "bcmavar.h"
 
 /* RID used when allocating EROM table */
 #define	BCMA_EROM_RID	0
@@ -279,13 +281,16 @@ bcma_is_hw_suspended(device_t dev, device_t child)
 static int
 bcma_reset_hw(device_t dev, device_t child, uint16_t flags)
 {
-	struct bcma_devinfo	*dinfo;
-	struct bhnd_resource	*r;
+	struct bcma_devinfo		*dinfo;
+	struct bhnd_core_pmu_info	*pm;
+	struct bhnd_resource		*r;
+	int				 error;
 
 	if (device_get_parent(child) != dev)
 		BHND_BUS_RESET_HW(device_get_parent(dev), child, flags);
 
 	dinfo = device_get_ivars(child);
+	pm = dinfo->pmu_info;
 
 	/* Can't reset the core without access to the agent registers */
 	if ((r = dinfo->res_agent) == NULL)
@@ -300,6 +305,13 @@ bcma_reset_hw(device_t dev, device_t child, uint16_t flags)
 	bhnd_bus_write_4(r, BCMA_DMP_IOCTRL, flags);
 	bhnd_bus_read_4(r, BCMA_DMP_IOCTRL);
 	DELAY(10);
+
+	/* Now that the core is in RESET, release any outstanding PMU
+	 * requests. */
+	if (pm != NULL) {
+		if ((error = BHND_PMU_CORE_RELEASE(pm->pm_pmu, pm)))
+			return (error);
+	}
 
 	/* Enable clocks & force clock gating */
 	bhnd_bus_write_4(r, BCMA_DMP_IOCTRL, BHND_IOCTL_CLK_EN |
