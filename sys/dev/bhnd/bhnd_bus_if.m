@@ -64,24 +64,24 @@ CODE {
 	}
 
 	static uint16_t
-	bhnd_bus_null_read_hw_ioctl(device_t dev)
+	bhnd_bus_null_read_ioctl(device_t dev)
 	{
-		panic("bhnd_bus_read_hw_ioctl unimplemented");
+		panic("bhnd_bus_read_ioctl unimplemented");
 	}
 
 
 	static void
-	bhnd_bus_null_write_hw_ioctl(device_t dev, uint16_t value,
+	bhnd_bus_null_write_ioctl(device_t dev, uint16_t value,
 	    uint16_t mask)
 	{
-		panic("bhnd_bus_write_hw_ioctl unimplemented");
+		panic("bhnd_bus_write_ioctl unimplemented");
 	}
 
 
 	static uint16_t
-	bhnd_bus_null_read_hw_iost(device_t dev)
+	bhnd_bus_null_read_iost(device_t dev)
 	{
-		panic("bhnd_bus_read_hw_iost unimplemented");
+		panic("bhnd_bus_read_iost unimplemented");
 	}
 
 
@@ -496,10 +496,10 @@ METHOD void child_added {
  * @param child The bhnd device for which the I/O control register should be
  * read.
  */
-METHOD uint16_t read_hw_ioctl {
+METHOD uint16_t read_ioctl {
 	device_t dev;
 	device_t child;
-} DEFAULT bhnd_bus_null_read_hw_ioctl;
+} DEFAULT bhnd_bus_null_read_ioctl;
 
 /**
  * Write @p value with @p mask to @p child's I/O control register.
@@ -510,12 +510,12 @@ METHOD uint16_t read_hw_ioctl {
  * @param value The value to be written (see also BHND_IOCTL_*).
  * @param mask Only the bits defined by @p mask will be updated from @p value.
  */
-METHOD void write_hw_ioctl {
+METHOD void write_ioctl {
 	device_t dev;
 	device_t child;
 	uint16_t value;
 	uint16_t mask;
-} DEFAULT bhnd_bus_null_write_hw_ioctl;
+} DEFAULT bhnd_bus_null_write_ioctl;
 
 /**
  * Read the current value of @p child's I/O status register.
@@ -524,10 +524,10 @@ METHOD void write_hw_ioctl {
  * @param child The bhnd device for which the I/O status register should be
  * read.
  */
-METHOD uint16_t read_hw_iost {
+METHOD uint16_t read_iost {
 	device_t dev;
 	device_t child;
-} DEFAULT bhnd_bus_null_read_hw_iost;
+} DEFAULT bhnd_bus_null_read_iost;
 
 /**
  * Place the bhnd(4) device's hardware into a reset state, and then bring the

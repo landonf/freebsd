@@ -154,7 +154,7 @@ bcma_get_resource_list(device_t dev, device_t child)
 }
 
 static uint16_t
-bcma_read_hw_iost(device_t dev, device_t child)
+bcma_read_iost(device_t dev, device_t child)
 {
 	uint32_t val = bhnd_read_config(child, BCMA_DMP_IOSTATUS, 4);
 
@@ -163,7 +163,7 @@ bcma_read_hw_iost(device_t dev, device_t child)
 }
 
 static uint16_t
-bcma_read_hw_ioctl(device_t dev, device_t child)
+bcma_read_ioctl(device_t dev, device_t child)
 {
 	uint32_t val = bhnd_read_config(child, BCMA_DMP_IOCTRL, 4);
 
@@ -172,7 +172,7 @@ bcma_read_hw_ioctl(device_t dev, device_t child)
 }
 
 static void
-bcma_write_hw_ioctl(device_t dev, device_t child, uint16_t value, uint16_t mask)
+bcma_write_ioctl(device_t dev, device_t child, uint16_t value, uint16_t mask)
 {
 	uint32_t ioctl = bhnd_read_config(child, BCMA_DMP_IOCTRL, 4);
 	
@@ -643,9 +643,9 @@ static device_method_t bcma_methods[] = {
 	DEVMETHOD(bhnd_bus_get_erom_class,	bcma_get_erom_class),
 	DEVMETHOD(bhnd_bus_alloc_devinfo,	bcma_alloc_bhnd_dinfo),
 	DEVMETHOD(bhnd_bus_free_devinfo,	bcma_free_bhnd_dinfo),
-	DEVMETHOD(bhnd_bus_read_hw_ioctl,	bcma_read_hw_ioctl),
-	DEVMETHOD(bhnd_bus_write_hw_ioctl,	bcma_write_hw_ioctl),
-	DEVMETHOD(bhnd_bus_read_hw_iost,	bcma_read_hw_iost),
+	DEVMETHOD(bhnd_bus_read_ioctl,		bcma_read_ioctl),
+	DEVMETHOD(bhnd_bus_write_ioctl,		bcma_write_ioctl),
+	DEVMETHOD(bhnd_bus_read_iost,		bcma_read_iost),
 	DEVMETHOD(bhnd_bus_reset_hw,		bcma_reset_hw),
 	DEVMETHOD(bhnd_bus_suspend_hw,		bcma_suspend_hw),
 	DEVMETHOD(bhnd_bus_read_config,		bcma_read_config),

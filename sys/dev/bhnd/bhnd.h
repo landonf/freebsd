@@ -491,9 +491,9 @@ bhnd_get_chipid(device_t dev) {
  * @param dev The bhnd bus child device to be queried.
  */
 static inline uint16_t
-bhnd_read_hw_ioctl(device_t dev)
+bhnd_read_ioctl(device_t dev)
 {
-	return (BHND_BUS_READ_HW_IOCTL(device_get_parent(dev), dev));
+	return (BHND_BUS_READ_IOCTL(device_get_parent(dev), dev));
 }
 
 /**
@@ -506,9 +506,9 @@ bhnd_read_hw_ioctl(device_t dev)
  * @param mask Only the bits defined by @p mask will be updated from @p value.
  */
 static inline void
-bhnd_write_hw_ioctl(device_t dev, uint16_t value, uint16_t mask)
+bhnd_write_ioctl(device_t dev, uint16_t value, uint16_t mask)
 {
-	BHND_BUS_WRITE_HW_IOCTL(device_get_parent(dev), dev, value, mask);
+	BHND_BUS_WRITE_IOCTL(device_get_parent(dev), dev, value, mask);
 }
 
 /**
@@ -517,9 +517,9 @@ bhnd_write_hw_ioctl(device_t dev, uint16_t value, uint16_t mask)
  * @param dev The bhnd bus child device to be queried.
  */
 static inline uint16_t
-bhnd_read_hw_iost(device_t dev)
+bhnd_read_iost(device_t dev)
 {
-	return (BHND_BUS_READ_HW_IOST(device_get_parent(dev), dev));
+	return (BHND_BUS_READ_IOST(device_get_parent(dev), dev));
 }
 
 /**
