@@ -165,6 +165,54 @@ siba_get_resource_list(device_t dev, device_t child)
 }
 
 static int
+siba_read_iost(device_t dev, device_t child, uint16_t *iost)
+{
+	uint32_t	tmhigh;
+	int		error;
+
+	error = bhnd_read_config(child, SIBA_CFG0_TMSTATEHIGH, &tmhigh, 4);
+	if (error)
+		return (error);
+
+	*iost = (SIBA_REG_GET(tmhigh, TMH_SISF));
+	return (0);
+}
+
+static int
+siba_read_ioctl(device_t dev, device_t child, uint16_t *ioctl)
+{
+	uint32_t	tmlow;
+	int		error;
+
+	if ((error = bhnd_read_config(child, SIBA_CFG0_TMSTATELOW, &tmlow, 4)))
+		return (error);
+
+	*ioctl = (SIBA_REG_GET(tmlow, TML_SICF));
+	return (0);
+}
+
+static int
+siba_write_ioctl(device_t dev, device_t child, uint16_t value, uint16_t mask)
+{
+	uint32_t	tmlow, tlmask;
+	int		error;
+
+	if ((error = bhnd_read_config(child, SIBA_CFG0_TMSTATELOW, &tmlow, 4)))
+		return (error);
+
+	/* Shift and mask the user-provided mask to match the TMSTATELOW
+	 * layout */
+	tlmask = (mask << SIBA_TML_SICF_SHIFT) & SIBA_TML_SICF_MASK;
+
+	/* Mask and set TMSTATELOW core flag bits */
+	tmlow &= ~tlmask;
+	tmlow |= (value << SIBA_TML_SICF_SHIFT) & tlmask;
+
+	/* Write new TMSTATELOW */
+	return (bhnd_write_config(child, SIBA_CFG0_TMSTATELOW, &tmlow, 4));
+}
+
+static int
 siba_reset_hw(device_t dev, device_t child, uint16_t flags)
 {
 	struct siba_devinfo *dinfo;
@@ -704,8 +752,11 @@ static device_method_t siba_methods[] = {
 	DEVMETHOD(bhnd_bus_get_erom_class,	siba_get_erom_class),
 	DEVMETHOD(bhnd_bus_alloc_devinfo,	siba_alloc_bhnd_dinfo),
 	DEVMETHOD(bhnd_bus_free_devinfo,	siba_free_bhnd_dinfo),
+	DEVMETHOD(bhnd_bus_read_ioctl,		siba_read_ioctl),
+	DEVMETHOD(bhnd_bus_write_ioctl,		siba_write_ioctl),
+	DEVMETHOD(bhnd_bus_read_iost,		siba_read_iost),
 	DEVMETHOD(bhnd_bus_reset_hw,		siba_reset_hw),
-	DEVMETHOD(bhnd_bus_suspend_hw,	siba_suspend_hw),
+	DEVMETHOD(bhnd_bus_suspend_hw,		siba_suspend_hw),
 	DEVMETHOD(bhnd_bus_read_config,		siba_read_config),
 	DEVMETHOD(bhnd_bus_write_config,	siba_write_config),
 	DEVMETHOD(bhnd_bus_get_port_count,	siba_get_port_count),
