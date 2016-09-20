@@ -117,11 +117,6 @@ bwn_attach(device_t dev)
 	else
 		device_printf(dev, "got macaddr %6D\n", macaddr, ":");
 
-	if ((error = bhnd_alloc_pmu(dev)))
-		return (error);
-
-	bhnd_release_pmu(dev);
-
 	return (0);
 
 cleanup:
