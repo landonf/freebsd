@@ -165,12 +165,12 @@ siba_get_resource_list(device_t dev, device_t child)
 }
 
 static int
-siba_reset_core(device_t dev, device_t child, uint16_t flags)
+siba_reset_hw(device_t dev, device_t child, uint16_t flags)
 {
 	struct siba_devinfo *dinfo;
 
 	if (device_get_parent(child) != dev)
-		BHND_BUS_RESET_CORE(device_get_parent(dev), child, flags);
+		BHND_BUS_RESET_HW(device_get_parent(dev), child, flags);
 
 	dinfo = device_get_ivars(child);
 
@@ -184,12 +184,12 @@ siba_reset_core(device_t dev, device_t child, uint16_t flags)
 }
 
 static int
-siba_suspend_core(device_t dev, device_t child)
+siba_suspend_hw(device_t dev, device_t child)
 {
 	struct siba_devinfo *dinfo;
 
 	if (device_get_parent(child) != dev)
-		BHND_BUS_SUSPEND_CORE(device_get_parent(dev), child);
+		BHND_BUS_SUSPEND_HW(device_get_parent(dev), child);
 
 	dinfo = device_get_ivars(child);
 
@@ -695,8 +695,8 @@ static device_method_t siba_methods[] = {
 	DEVMETHOD(bhnd_bus_get_erom_class,	siba_get_erom_class),
 	DEVMETHOD(bhnd_bus_alloc_devinfo,	siba_alloc_bhnd_dinfo),
 	DEVMETHOD(bhnd_bus_free_devinfo,	siba_free_bhnd_dinfo),
-	DEVMETHOD(bhnd_bus_reset_core,		siba_reset_core),
-	DEVMETHOD(bhnd_bus_suspend_core,	siba_suspend_core),
+	DEVMETHOD(bhnd_bus_reset_hw,		siba_reset_hw),
+	DEVMETHOD(bhnd_bus_suspend_hw,	siba_suspend_hw),
 	DEVMETHOD(bhnd_bus_read_config,		siba_read_config),
 	DEVMETHOD(bhnd_bus_write_config,	siba_write_config),
 	DEVMETHOD(bhnd_bus_get_port_count,	siba_get_port_count),
