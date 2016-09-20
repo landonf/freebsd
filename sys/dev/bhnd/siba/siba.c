@@ -253,22 +253,55 @@ siba_is_hw_suspended(device_t dev, device_t child)
 }
 
 static int
-siba_reset_hw(device_t dev, device_t child, uint16_t flags)
+siba_reset_hw(device_t dev, device_t child, uint16_t ioctl)
 {
-	struct siba_devinfo *dinfo;
+	struct siba_devinfo		*dinfo;
+	struct bhnd_resource		*r;
+	uint32_t			 ts_low;
+	int				 error;
 
 	if (device_get_parent(child) != dev)
-		BHND_BUS_RESET_HW(device_get_parent(dev), child, flags);
+		return (EINVAL);
 
 	dinfo = device_get_ivars(child);
 
-	/* Can't reset the core without access to the CFG0 registers */
-	if (dinfo->cfg[0] == NULL)
+	/* Can't suspend the core without access to the CFG0 registers */
+	if ((r = dinfo->cfg[0]) == NULL)
 		return (ENODEV);
 
-	// TODO - perform reset
+	/* We require exclusive control over BHND_IOCTL_CLK_EN and
+	 * BHND_IOCTL_CLK_FORCE. */
+	if (ioctl & ~(BHND_IOCTL_CLK_EN | BHND_IOCTL_CLK_FORCE))
+		return (EINVAL);
 
-	return (ENXIO);
+	/* Place core into known RESET state */
+	if ((error = BHND_BUS_SUSPEND_HW(dev, child)))
+		return (error);
+
+	/* Re-enable clocks while leaving core in RESET and providing the
+	 * caller's IOCTL flags */
+	ts_low = (ioctl | BHND_IOCTL_CLK_EN | BHND_IOCTL_CLK_FORCE) <<
+	    SIBA_TML_SICF_SHIFT;
+	error = siba_write_target_state(child, dinfo, SIBA_CFG0_TMSTATELOW,
+	    ts_low, SIBA_TML_SICF_MASK);
+	if (error)
+		return (error);
+
+	/* Release from RESET while leaving clocks forced, ensuring the
+	 * signal propagates throughout the core */
+	error = siba_write_target_state(child, dinfo, SIBA_CFG0_TMSTATELOW,
+	    0x0, SIBA_TML_RESET);
+	if (error)
+		return (error);
+
+	/* The core should now be active; we can clear the BHND_IOCTL_CLK_FORCE
+	 * bit and allow the core to manage clock gating. */
+	error = siba_write_target_state(child, dinfo, SIBA_CFG0_TMSTATELOW,
+	    0x0, (BHND_IOCTL_CLK_FORCE << SIBA_TML_SICF_SHIFT));
+	if (error)
+		return (error);
+
+	return (0);
 }
 
 static int
