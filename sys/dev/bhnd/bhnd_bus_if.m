@@ -384,32 +384,6 @@ METHOD int read_board_info {
 } DEFAULT bhnd_bus_null_read_board_info;
 
 /**
- * Allocate and zero-initialize a buffer suitably sized and aligned for a
- * bhnd_devinfo structure.
- *
- * @param dev The bhnd bus device.
- *
- * @retval non-NULL	success
- * @retval NULL		allocation failed
- */
-METHOD struct bhnd_devinfo * alloc_devinfo {
-	device_t dev;
-};
-
-/**
- * Release memory previously allocated for @p devinfo.
- *
- * @param dev The bhnd bus device.
- * @param dinfo A devinfo buffer previously allocated via
- * BHND_BUS_ALLOC_DEVINFO().
- */
-METHOD void free_devinfo {
-	device_t dev;
-	struct bhnd_devinfo *dinfo;
-};
-
-
-/**
  * Return the number of interrupts to be assigned to @p child via
  * BHND_BUS_ASSIGN_INTR().
  * 

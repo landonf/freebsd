@@ -147,14 +147,13 @@ struct siba_core_id {
  * siba(4) per-device info
  */
 struct siba_devinfo {
-	struct bhnd_devinfo	 bhnd_dinfo;	/**< superclass device info. */
+	struct resource_list		 resources;			/**< per-core memory regions. */
+	struct siba_core_id		 core_id;			/**< core identification info */
+	struct siba_addrspace		 addrspace[SIBA_MAX_ADDRSPACE];	/**< memory map descriptors */
 
-	struct resource_list	 resources;	/**< per-core memory regions. */
-	struct siba_core_id	 core_id;	/**< core identification info */
-	struct siba_addrspace	 addrspace[SIBA_MAX_ADDRSPACE];	/**< memory map descriptors */
-
-	struct bhnd_resource	*cfg[SIBA_MAX_CFG];     /**< SIBA_CFG_* registers */
-	int			 cfg_rid[SIBA_MAX_CFG]; /**< SIBA_CFG_* resource IDs */
+	struct bhnd_resource		*cfg[SIBA_MAX_CFG];		/**< SIBA_CFG_* registers */
+	int				 cfg_rid[SIBA_MAX_CFG];		/**< SIBA_CFG_* resource IDs */
+	struct bhnd_core_pmu_info	*pmu_info;			/**< Bus-managed PMU state, or NULL */
 };
 
 

@@ -46,6 +46,8 @@
 
 #include "nvram/bhnd_nvram.h"
 
+struct bhnd_core_pmu_info;
+
 extern devclass_t bhnd_devclass;
 extern devclass_t bhnd_hostb_devclass;
 extern devclass_t bhnd_nvram_devclass;
@@ -67,6 +69,7 @@ enum bhnd_device_vars {
 	BHND_IVAR_CORE_UNIT,	/**< Bus-assigned core unit number,
 				     assigned sequentially (starting at 0) for
 				     each vendor/device pair. */
+	BHND_IVAR_PMU_INFO,	/**< Internal bus-managed PMU state */
 };
 
 /**
@@ -146,6 +149,7 @@ BHND_ACCESSOR(vendor_name,	VENDOR_NAME,	const char *);
 BHND_ACCESSOR(device_name,	DEVICE_NAME,	const char *);
 BHND_ACCESSOR(core_index,	CORE_INDEX,	u_int);
 BHND_ACCESSOR(core_unit,	CORE_UNIT,	int);
+BHND_ACCESSOR(pmu_info,		PMU_INFO,	struct bhnd_core_pmu_info *);
 
 #undef	BHND_ACCESSOR
 

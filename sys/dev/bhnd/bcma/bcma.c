@@ -89,6 +89,44 @@ bcma_detach(device_t dev)
 	return (bhnd_generic_detach(dev));
 }
 
+static device_t
+bcma_add_child(device_t dev, u_int order, const char *name, int unit)
+{
+	struct bcma_devinfo	*dinfo;
+	device_t		 child;
+
+	child = device_add_child_ordered(dev, order, name, unit);
+	if (child == NULL)
+		return (NULL);
+
+	if ((dinfo = bcma_alloc_dinfo(dev)) == NULL) {
+		device_delete_child(dev, child);
+		return (NULL);
+	}
+
+	device_set_ivars(child, dinfo);
+
+	return (child);
+}
+
+static void
+bcma_child_deleted(device_t dev, device_t child)
+{
+	struct bhnd_softc	*sc;
+	struct bcma_devinfo	*dinfo;
+
+	sc = device_get_softc(dev);
+
+	/* Call required bhnd(4) implementation */
+	bhnd_generic_child_deleted(dev, child);
+
+	/* Free bcma device info */
+	if ((dinfo = device_get_ivars(child)) != NULL)
+		bcma_free_dinfo(dev, dinfo);
+
+	device_set_ivars(child, NULL);
+}
+
 static int
 bcma_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 {
@@ -123,6 +161,9 @@ bcma_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 	case BHND_IVAR_CORE_UNIT:
 		*result = ci->unit;
 		return (0);
+	case BHND_IVAR_PMU_INFO:
+		*result = (uintptr_t) dinfo->pmu_info;
+		return (0);
 	default:
 		return (ENOENT);
 	}
@@ -131,6 +172,10 @@ bcma_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 static int
 bcma_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
 {
+	struct bcma_devinfo *dinfo;
+
+	dinfo = device_get_ivars(child);
+
 	switch (index) {
 	case BHND_IVAR_VENDOR:
 	case BHND_IVAR_DEVICE:
@@ -141,6 +186,9 @@ bcma_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
 	case BHND_IVAR_CORE_INDEX:
 	case BHND_IVAR_CORE_UNIT:
 		return (EINVAL);
+	case BHND_IVAR_PMU_INFO:
+		dinfo->pmu_info = (struct bhnd_core_pmu_info *) value;
+		return (0);
 	default:
 		return (ENOENT);
 	}
@@ -579,19 +627,6 @@ bcma_get_core_ivec(device_t dev, device_t child, u_int intr, uint32_t *ivec)
 	return (0);
 }
 
-static struct bhnd_devinfo *
-bcma_alloc_bhnd_dinfo(device_t dev)
-{
-	struct bcma_devinfo *dinfo = bcma_alloc_dinfo(dev);
-	return ((struct bhnd_devinfo *)dinfo);
-}
-
-static void
-bcma_free_bhnd_dinfo(device_t dev, struct bhnd_devinfo *dinfo)
-{
-	bcma_free_dinfo(dev, (struct bcma_devinfo *)dinfo);
-}
-
 /**
  * Scan the device enumeration ROM table, adding all valid discovered cores to
  * the bus.
@@ -685,14 +720,14 @@ static device_method_t bcma_methods[] = {
 	DEVMETHOD(device_detach,		bcma_detach),
 	
 	/* Bus interface */
+	DEVMETHOD(bus_add_child,		bcma_add_child),
+	DEVMETHOD(bus_child_deleted,		bcma_child_deleted),
 	DEVMETHOD(bus_read_ivar,		bcma_read_ivar),
 	DEVMETHOD(bus_write_ivar,		bcma_write_ivar),
 	DEVMETHOD(bus_get_resource_list,	bcma_get_resource_list),
 
 	/* BHND interface */
 	DEVMETHOD(bhnd_bus_get_erom_class,	bcma_get_erom_class),
-	DEVMETHOD(bhnd_bus_alloc_devinfo,	bcma_alloc_bhnd_dinfo),
-	DEVMETHOD(bhnd_bus_free_devinfo,	bcma_free_bhnd_dinfo),
 	DEVMETHOD(bhnd_bus_read_ioctl,		bcma_read_ioctl),
 	DEVMETHOD(bhnd_bus_write_ioctl,		bcma_write_ioctl),
 	DEVMETHOD(bhnd_bus_read_iost,		bcma_read_iost),

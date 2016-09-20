@@ -134,6 +134,9 @@ siba_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 	case BHND_IVAR_CORE_UNIT:
 		*result = cfg->unit;
 		return (0);
+	case BHND_IVAR_PMU_INFO:
+		*result = (uintptr_t) dinfo->pmu_info;
+		return (0);
 	default:
 		return (ENOENT);
 	}
@@ -142,6 +145,10 @@ siba_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 static int
 siba_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
 {
+	struct siba_devinfo *dinfo;
+
+	dinfo = device_get_ivars(child);
+
 	switch (index) {
 	case BHND_IVAR_VENDOR:
 	case BHND_IVAR_DEVICE:
@@ -152,6 +159,9 @@ siba_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
 	case BHND_IVAR_CORE_INDEX:
 	case BHND_IVAR_CORE_UNIT:
 		return (EINVAL);
+	case BHND_IVAR_PMU_INFO:
+		dinfo->pmu_info = (struct bhnd_core_pmu_info *) value;
+		return (0);
 	default:
 		return (ENOENT);
 	}
@@ -629,18 +639,42 @@ siba_map_cfg_resources(device_t dev, struct siba_devinfo *dinfo)
 	return (0);
 }
 
-
-static struct bhnd_devinfo *
-siba_alloc_bhnd_dinfo(device_t dev)
+static device_t
+siba_add_child(device_t dev, u_int order, const char *name, int unit)
 {
-	struct siba_devinfo *dinfo = siba_alloc_dinfo(dev);
-	return ((struct bhnd_devinfo *)dinfo);
+	struct siba_devinfo	*dinfo;
+	device_t		 child;
+
+	child = device_add_child_ordered(dev, order, name, unit);
+	if (child == NULL)
+		return (NULL);
+
+	if ((dinfo = siba_alloc_dinfo(dev)) == NULL) {
+		device_delete_child(dev, child);
+		return (NULL);
+	}
+
+	device_set_ivars(child, dinfo);
+
+	return (child);
 }
 
 static void
-siba_free_bhnd_dinfo(device_t dev, struct bhnd_devinfo *dinfo)
+siba_child_deleted(device_t dev, device_t child)
 {
-	siba_free_dinfo(dev, (struct siba_devinfo *)dinfo);
+	struct bhnd_softc	*sc;
+	struct siba_devinfo	*dinfo;
+
+	sc = device_get_softc(dev);
+
+	/* Call required bhnd(4) implementation */
+	bhnd_generic_child_deleted(dev, child);
+
+	/* Free siba device info */
+	if ((dinfo = device_get_ivars(child)) != NULL)
+		siba_free_dinfo(dev, dinfo);
+
+	device_set_ivars(child, NULL);
 }
 
 /**
@@ -771,14 +805,14 @@ static device_method_t siba_methods[] = {
 	DEVMETHOD(device_suspend,		siba_suspend),
 	
 	/* Bus interface */
+	DEVMETHOD(bus_add_child,		siba_add_child),
+	DEVMETHOD(bus_child_deleted,		siba_child_deleted),
 	DEVMETHOD(bus_read_ivar,		siba_read_ivar),
 	DEVMETHOD(bus_write_ivar,		siba_write_ivar),
 	DEVMETHOD(bus_get_resource_list,	siba_get_resource_list),
 
 	/* BHND interface */
 	DEVMETHOD(bhnd_bus_get_erom_class,	siba_get_erom_class),
-	DEVMETHOD(bhnd_bus_alloc_devinfo,	siba_alloc_bhnd_dinfo),
-	DEVMETHOD(bhnd_bus_free_devinfo,	siba_free_bhnd_dinfo),
 	DEVMETHOD(bhnd_bus_read_ioctl,		siba_read_ioctl),
 	DEVMETHOD(bhnd_bus_write_ioctl,		siba_write_ioctl),
 	DEVMETHOD(bhnd_bus_read_iost,		siba_read_iost),
