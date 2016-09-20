@@ -190,8 +190,8 @@ bcma_write_ioctl(device_t dev, device_t child, uint16_t value, uint16_t mask)
 	if ((error = bhnd_read_config(child, BCMA_DMP_IOCTRL, &ioctl, 4)))
 		return (error);
 	
-	ioctl &= ~(BCMA_DMP_IOCTRL_MASK | mask);
-	ioctl |= (value | mask);
+	ioctl &= ~(BCMA_DMP_IOCTRL_MASK & mask);
+	ioctl |= (value & mask);
 
 	return (bhnd_write_config(child, BCMA_DMP_IOCTRL, &ioctl, 4));
 }
