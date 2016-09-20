@@ -525,9 +525,11 @@ bhnd_read_hw_iost(device_t dev)
 /**
  * Place the bhnd(4) device's hardware into a reset state, and then bring the
  * hardware out of reset with BHND_IOCTL_CLK_EN and @p ioctl flags set.
+ * 
+ * Any clock or resource PMU requests previously made by @p dev will be
+ * invalidated.
  *
- * @param dev The parent of @p child.
- * @param child The device to be reset.
+ * @param dev The device to be reset.
  * @param ioctl Device-specific core ioctl flags to be supplied on reset
  * (see BHND_IOCTL_*).
  *
@@ -542,6 +544,9 @@ bhnd_reset_hw(device_t dev, uint16_t ioctl)
 
 /**
  * Suspend @p child's hardware in a low-power reset state.
+ *
+ * Any clock or resource PMU requests previously made by @p dev will be
+ * invalidated.
  *
  * The hardware may be brought out of reset via bhnd_reset_hw().
  *
@@ -735,17 +740,18 @@ bhnd_release_pmu(device_t dev)
 /** 
  * Request that @p clock (or faster) be routed to @p dev.
  * 
- * A driver must ask the bhnd bus to allocate clock request state
+ * @note A driver must ask the bhnd bus to allocate clock request state
  * via bhnd_alloc_pmu() before it can request clock resources.
  * 
- * Request multiplexing is managed by the bus.
+ * @note Any outstanding PMU clock requests will be discarded upon calling
+ * BHND_BUS_RESET_HW() or BHND_BUS_SUSPEND_HW().
  *
  * @param dev The bhnd(4) device to which @p clock should be routed.
  * @param clock The requested clock source. 
  *
  * @retval 0 success
  * @retval ENODEV If an unsupported clock was requested.
- * @retval ENXIO If the PMU has not been initialized or is otherwise unvailable.
+ * @retval ENXIO If the PMU has not been initialized or is otherwise unvailable,
  */
 static inline int
 bhnd_request_clock(device_t dev, bhnd_clock clock)
@@ -759,12 +765,13 @@ bhnd_request_clock(device_t dev, bhnd_clock clock)
  * This will power any clock sources (e.g. XTAL, PLL, etc) required for
  * @p clocks and wait until they are ready, discarding any previous
  * requests by @p dev.
- *
- * Request multiplexing is managed by the bus.
  * 
- * A driver must ask the bhnd bus to allocate clock request state
+ * @note A driver must ask the bhnd bus to allocate clock request state
  * via bhnd_alloc_pmu() before it can request clock resources.
- *
+ * 
+ * @note Any outstanding PMU clock requests will be discarded upon calling
+ * BHND_BUS_RESET_HW() or BHND_BUS_SUSPEND_HW().
+ * 
  * @param dev The requesting bhnd(4) device.
  * @param clocks The clock(s) to be enabled.
  *
@@ -781,8 +788,11 @@ bhnd_enable_clocks(device_t dev, uint32_t clocks)
 /**
  * Power up an external PMU-managed resource assigned to @p dev.
  * 
- * A driver must ask the bhnd bus to allocate PMU request state
+ * @note A driver must ask the bhnd bus to allocate PMU request state
  * via bhnd_alloc_pmu() before it can request PMU resources.
+ *
+ * @note Any outstanding PMU resource requests will be released upon calling
+ * bhnd_reset_hw() or bhnd_suspend_hw().
  *
  * @param dev The requesting bhnd(4) device.
  * @param rsrc The core-specific external resource identifier.

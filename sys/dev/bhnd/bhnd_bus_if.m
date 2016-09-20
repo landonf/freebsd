@@ -530,9 +530,13 @@ METHOD uint16_t read_hw_iost {
 } DEFAULT bhnd_bus_null_read_hw_iost;
 
 /**
- * Reset the device's hardware core.
+ * Place the bhnd(4) device's hardware into a reset state, and then bring the
+ * hardware out of reset with BHND_IOCTL_CLK_EN and @p ioctl flags set.
+ * 
+ * Any clock or resource PMU requests previously made by @p child will be
+ * invalidated.
  *
- * @param dev The parent of @p child.
+ * @param dev The bhnd bus parent of @p child.
  * @param child The device to be reset.
  * @param ioctl Device-specific core ioctl flags to be supplied on reset
  * (see BHND_IOCTL_*).
@@ -547,10 +551,15 @@ METHOD int reset_hw {
 } DEFAULT bhnd_bus_null_reset_hw;
 
 /**
- * Suspend a device hardware core.
+ * Suspend @p child's hardware in a low-power reset state.
  *
- * @param dev The parent of @p child.
- * @param child The device to be reset.
+ * Any clock or resource PMU requests previously made by @p dev will be
+ * invalidated.
+ *
+ * The hardware may be brought out of reset via bhnd_reset_hw().
+ *
+ * @param dev The bhnd bus parent of @P child.
+ * @param dev The device to be suspended.
  *
  * @retval 0 success
  * @retval non-zero error
@@ -654,10 +663,11 @@ METHOD int release_pmu {
 /** 
  * Request that @p clock (or faster) be routed to @p child.
  * 
- * A driver must ask the bhnd bus to allocate PMU request state
+ * @note A driver must ask the bhnd bus to allocate PMU request state
  * via BHND_BUS_ALLOC_PMU() before it can request clock resources.
- * 
- * Request multiplexing is managed by the bus.
+ *
+ * @note Any outstanding PMU clock requests will be discarded upon calling
+ * BHND_BUS_RESET_HW() or BHND_BUS_SUSPEND_HW().
  *
  * @param dev The parent of @p child.
  * @param child The bhnd device requesting @p clock.
@@ -680,10 +690,11 @@ METHOD int request_clock {
  * @p clocks and wait until they are ready, discarding any previous
  * requests by @p child.
  *
- * Request multiplexing is managed by the bus.
- * 
- * A driver must ask the bhnd bus to allocate PMU request state
+ * @note A driver must ask the bhnd bus to allocate PMU request state
  * via BHND_BUS_ALLOC_PMU() before it can request clock resources.
+ *
+ * @note Any outstanding PMU clock requests will be discarded upon calling
+ * BHND_BUS_RESET_HW() or BHND_BUS_SUSPEND_HW().
  *
  * @param dev The parent of @p child.
  * @param child The bhnd device requesting @p clock.
@@ -702,8 +713,11 @@ METHOD int enable_clocks {
 /**
  * Power up an external PMU-managed resource assigned to @p child.
  * 
- * A driver must ask the bhnd bus to allocate PMU request state
+ * @note A driver must ask the bhnd bus to allocate PMU request state
  * via BHND_BUS_ALLOC_PMU() before it can request PMU resources.
+ *
+ * @note Any outstanding PMU resource requests will be released upon calling
+ * BHND_BUS_RESET_HW() or BHND_BUS_SUSPEND_HW().
  *
  * @param dev The parent of @p child.
  * @param child The bhnd device requesting @p rsrc.
@@ -722,7 +736,7 @@ METHOD int request_ext_rsrc {
 /**
  * Power down an external PMU-managed resource assigned to @p child.
  * 
- * A driver must ask the bhnd bus to allocate PMU request state
+ * @note A driver must ask the bhnd bus to allocate PMU request state
  * via BHND_BUS_ALLOC_PMU() before it can request PMU resources.
  *
  * @param dev The parent of @p child.
