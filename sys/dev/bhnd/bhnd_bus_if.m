@@ -84,6 +84,11 @@ CODE {
 		panic("bhnd_bus_read_iost unimplemented");
 	}
 
+	static bool
+	bhnd_bus_null_in_hw_reset(device_t dev, device_t child)
+	{
+		panic("bhnd_bus_in_hw_reset unimplemented");
+	}
 
 	static int
 	bhnd_bus_null_reset_hw(device_t dev, uint16_t ioctl)
@@ -550,6 +555,25 @@ METHOD int read_iost {
 	device_t child;
 	uint16_t *iost;
 } DEFAULT bhnd_bus_null_read_iost;
+
+
+/**
+ * Return true if the bhnd(4) device's hardware is currently held in a reset
+ * state, or false otherwise.
+ *
+ * @warning A device in a non-RESET state is not necessarily active and
+ * usable (e.g. @see BHND_IOCTL_CLK_EN).
+ *
+ * @param dev The bhnd bus parent of @p child.
+ * @param child The device to query.
+ *
+ * @retval 0 success
+ * @retval non-zero error
+ */
+METHOD bool in_hw_reset {
+	device_t dev;
+	device_t child;
+} DEFAULT bhnd_bus_null_in_hw_reset;
 
 /**
  * Place the bhnd(4) device's hardware into a reset state, and then bring the
