@@ -46,8 +46,6 @@ __FBSDID("$FreeBSD$");
 #include "bcma_eromreg.h"
 #include "bcma_eromvar.h"
 
-#include <dev/bhnd/bhnd_core.h>
-
 /* RID used when allocating EROM table */
 #define	BCMA_EROM_RID	0
 
@@ -181,8 +179,8 @@ bcma_reset_core(device_t dev, device_t child, uint16_t flags)
 	DELAY(10);
 
 	/* Enable clocks & force clock gating */
-	bhnd_bus_write_4(r, BCMA_DMP_IOCTRL, BHND_CF_CLOCK_EN |
-	    BHND_CF_FGC | flags);
+	bhnd_bus_write_4(r, BCMA_DMP_IOCTRL, BHND_IOCTL_CLK_EN |
+	    BHND_IOCTL_CLK_FORCE | flags);
 	bhnd_bus_read_4(r, BCMA_DMP_IOCTRL);
 	DELAY(10);
 
@@ -192,7 +190,7 @@ bcma_reset_core(device_t dev, device_t child, uint16_t flags)
 	DELAY(10);
 
 	/* Release force clock gating */
-	bhnd_bus_write_4(r, BCMA_DMP_IOCTRL, BHND_CF_CLOCK_EN | flags);
+	bhnd_bus_write_4(r, BCMA_DMP_IOCTRL, BHND_IOCTL_CLK_EN | flags);
 	bhnd_bus_read_4(r, BCMA_DMP_IOCTRL);
 	DELAY(10);
 

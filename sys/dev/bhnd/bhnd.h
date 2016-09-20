@@ -99,6 +99,39 @@ enum {
 
 };
 
+
+/**
+ * Per-core IOCTL flags common to all bhnd(4) cores.
+ */
+enum {
+	BHND_IOCTL_BIST		= 0x8000,	/**< Initiate a built-in self-test (BIST). Must be cleared
+						     after BIST results are read via BHND_IOST_BIST_* */
+	BHND_IOCTL_PME		= 0x4000,	/**< Enable posting of power management events by the core. */
+	BHND_IOCTL_CFLAGS	= 0x3FFC,	/**< Reserved for core-specific ioctl flags. */
+	BHND_IOCTL_CLK_EN	= 0x0002,	/**< If cleared, the core clock will be disabled. Should be
+						     set during normal operation, and cleared when the core is
+						     held in reset. */
+	BHND_IOCTL_CLK_FORCE	= 0x0001,	/**< Force disable of clock gating, resulting in all clocks
+						     being distributed within the core. Should be set when
+						     asserting/deasserting reset to ensure the reset signal
+						     fully propagates to the entire core. */
+};
+
+/**
+ * Per-core IOST flags common to all bhnd(4) cores.
+ */
+enum {
+	BHND_IOST_BIST_DONE	= 0x8000,	/**< Set upon BIST completion (see BHND_IOCTL_BIST), and cleared
+						     if 0 is written to BHND_IOCTL_BIST. */ 
+	BHND_IOST_BIST_FAIL	= 0x4000,	/**< Set upon detection of a BIST error; the value is unspecified
+						     if BIST has not completed and BHND_IOST_BIST_DONE is not set. */
+	BHND_IOST_CLK		= 0x2000,	/**< Set if the core has requested that gated clocks be enabled, or
+						     cleared otherwise. The value is undefined if a core does not
+						     support clock gating. */
+	BHND_IOST_DMA64		= 0x1000,	/**< Set if this core supports 64-bit DMA */
+	BHND_IOST_CFLAGS	= 0x0FFC,	/**< Reserved for core-specific status flags. */
+};
+
 /*
  * Simplified accessors for bhnd device ivars
  */
