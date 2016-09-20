@@ -234,16 +234,29 @@ bcma_read_ioctl(device_t dev, device_t child, uint16_t *ioctl)
 static int
 bcma_write_ioctl(device_t dev, device_t child, uint16_t value, uint16_t mask)
 {
-	uint32_t	ioctl;
-	int		error;
+	struct bcma_devinfo	*dinfo;
+	struct bhnd_resource	*r;
+	uint32_t		 ioctl;
 
-	if ((error = bhnd_read_config(child, BCMA_DMP_IOCTRL, &ioctl, 4)))
-		return (error);
-	
+	if (device_get_parent(child) != dev)
+		return (EINVAL);
+
+	dinfo = device_get_ivars(child);
+	if ((r = dinfo->res_agent) == NULL)
+		return (ENODEV);
+
+	/* Write new value */
+	ioctl = bhnd_bus_read_4(r, BCMA_DMP_IOCTRL);
 	ioctl &= ~(BCMA_DMP_IOCTRL_MASK & mask);
 	ioctl |= (value & mask);
 
-	return (bhnd_write_config(child, BCMA_DMP_IOCTRL, &ioctl, 4));
+	bhnd_bus_write_4(r, BCMA_DMP_IOCTRL, ioctl);
+
+	/* Perform read-back and wait for completion */
+	bhnd_bus_read_4(r, BCMA_DMP_IOCTRL);
+	DELAY(10);
+
+	return (0);
 }
 
 static bool
@@ -335,20 +348,45 @@ bcma_reset_hw(device_t dev, device_t child, uint16_t flags)
 static int
 bcma_suspend_hw(device_t dev, device_t child)
 {
-	struct bcma_devinfo *dinfo;
+	struct bcma_devinfo		*dinfo;
+	struct bhnd_core_pmu_info	*pm;
+	struct bhnd_resource		*r;
+	uint32_t			 rst;
+	int				 error;
 
 	if (device_get_parent(child) != dev)
-		BHND_BUS_SUSPEND_HW(device_get_parent(dev), child);
+		return (EINVAL);
 
 	dinfo = device_get_ivars(child);
+	pm = dinfo->pmu_info;
 
 	/* Can't suspend the core without access to the agent registers */
-	if (dinfo->res_agent == NULL)
+	if ((r = dinfo->res_agent) == NULL)
 		return (ENODEV);
 
-	// TODO - perform suspend
+	/* Wait for any pending reset operations to clear */
+	if ((error = bcma_dmp_wait_reset(child, dinfo)))
+		return (error);
 
-	return (ENXIO);
+	/* Already in reset? */
+	rst = bhnd_bus_read_4(r, BCMA_DMP_RESETCTRL);
+	if (rst & BMCA_DMP_RC_RESET)
+
+	/* Put core into reset */
+	if ((error = bcma_dmp_write_reset(child, dinfo, BMCA_DMP_RC_RESET)))
+		return (error);
+
+	/* Clear core flags */
+	if ((error = bhnd_write_ioctl(child, 0x0, UINT16_MAX)))
+		return (error);
+
+	/* Inform PMU that all outstanding request state should be discarded */
+	if (pm != NULL) {
+		if ((error = BHND_PMU_CORE_RELEASE(pm->pm_pmu, pm)))
+			return (error);
+	}
+
+	return (0);
 }
 
 static int
