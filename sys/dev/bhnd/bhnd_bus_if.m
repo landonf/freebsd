@@ -85,9 +85,9 @@ CODE {
 	}
 
 	static bool
-	bhnd_bus_null_is_hw_active(device_t dev, device_t child)
+	bhnd_bus_null_is_hw_suspended(device_t dev, device_t child)
 	{
-		panic("bhnd_bus_is_hw_active unimplemented");
+		panic("bhnd_bus_is_hw_suspended unimplemented");
 	}
 
 	static int
@@ -558,19 +558,20 @@ METHOD int read_iost {
 
 
 /**
- * Return true if the given bhnd device's hardware is clocked
- * (BHND_IOCTL_CLK_EN) and is not held in a RESET state.
+ * Return true if the given bhnd device's hardware is currently held
+ * in a RESET state or otherwise not clocked (BHND_IOCTL_CLK_EN).
  * 
  * @param dev The bhnd bus parent of @p child.
  * @param child The device to query.
  *
- * @retval 0 success
- * @retval non-zero error
+ * @retval true If @p child is held in RESET or not clocked (BHND_IOCTL_CLK_EN),
+ * or an error occured determining @p child's hardware state.
+ * @retval false If @p child is clocked and is not held in RESET.
  */
-METHOD bool is_hw_active {
+METHOD bool is_hw_suspended {
 	device_t dev;
 	device_t child;
-} DEFAULT bhnd_bus_null_is_hw_active;
+} DEFAULT bhnd_bus_null_is_hw_suspended;
 
 /**
  * Place the bhnd(4) device's hardware into a reset state, and then bring the
