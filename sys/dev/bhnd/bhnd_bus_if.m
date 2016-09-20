@@ -63,14 +63,14 @@ CODE {
 		panic("bhnd_bus_get_chipid unimplemented");
 	}
 
-	static uint16_t
-	bhnd_bus_null_read_ioctl(device_t dev)
+	static int
+	bhnd_bus_null_read_ioctl(device_t dev, uint16_t *ioctl)
 	{
 		panic("bhnd_bus_read_ioctl unimplemented");
 	}
 
 
-	static void
+	static int
 	bhnd_bus_null_write_ioctl(device_t dev, uint16_t value,
 	    uint16_t mask)
 	{
@@ -78,8 +78,8 @@ CODE {
 	}
 
 
-	static uint16_t
-	bhnd_bus_null_read_iost(device_t dev)
+	static int
+	bhnd_bus_null_read_iost(device_t dev, uint16_t *iost)
 	{
 		panic("bhnd_bus_read_iost unimplemented");
 	}
@@ -196,16 +196,16 @@ CODE {
 		panic("bhnd_bus_release_ext_rsrc unimplemented");
 	}
 
-	static uint32_t
+	static int
 	bhnd_bus_null_read_config(device_t dev, device_t child,
-	    bus_size_t offset, u_int width)
+	    bus_size_t offset, void *value, u_int width)
 	{
 		panic("bhnd_bus_null_read_config unimplemented");
 	}
 
 	static void
 	bhnd_bus_null_write_config(device_t dev, device_t child,
-	    bus_size_t offset, uint32_t val, u_int width)
+	    bus_size_t offset, void *value, u_int width)
 	{
 		panic("bhnd_bus_null_write_config unimplemented");
 	}
@@ -495,10 +495,18 @@ METHOD void child_added {
  * @param dev The bhnd bus parent of @p child.
  * @param child The bhnd device for which the I/O control register should be
  * read.
+ * @param[out] ioctl On success, the I/O control register value.
+ *
+ * @retval 0 success
+ * @retval EINVAL If @p child is not a direct child of @p dev.
+ * @retval ENODEV If agent/config space for @p child is unavailable.
+ * @retval non-zero If reading the IOCTL register otherwise fails, a regular
+ * unix error code will be returned.
  */
-METHOD uint16_t read_ioctl {
+METHOD int read_ioctl {
 	device_t dev;
 	device_t child;
+	uint16_t *ioctl;
 } DEFAULT bhnd_bus_null_read_ioctl;
 
 /**
@@ -509,8 +517,14 @@ METHOD uint16_t read_ioctl {
  * be updated.
  * @param value The value to be written (see also BHND_IOCTL_*).
  * @param mask Only the bits defined by @p mask will be updated from @p value.
+ * 
+ * @retval 0 success
+ * @retval EINVAL If @p child is not a direct child of @p dev.
+ * @retval ENODEV If agent/config space for @p child is unavailable.
+ * @retval non-zero If writing the IOCTL register otherwise fails, a regular
+ * unix error code will be returned.
  */
-METHOD void write_ioctl {
+METHOD int write_ioctl {
 	device_t dev;
 	device_t child;
 	uint16_t value;
@@ -523,10 +537,18 @@ METHOD void write_ioctl {
  * @param dev The bhnd bus parent of @p child.
  * @param child The bhnd device for which the I/O status register should be
  * read.
+ * @param[out] iost On success, the I/O status register value.
+ * 
+ * @retval 0 success
+ * @retval EINVAL If @p child is not a direct child of @p dev.
+ * @retval ENODEV If agent/config space for @p child is unavailable.
+ * @retval non-zero If reading the IOST register otherwise fails, a regular
+ * unix error code will be returned.
  */
-METHOD uint16_t read_iost {
+METHOD int read_iost {
 	device_t dev;
 	device_t child;
+	uint16_t *iost;
 } DEFAULT bhnd_bus_null_read_iost;
 
 /**
@@ -760,6 +782,7 @@ METHOD int release_ext_rsrc {
  * @param dev The parent of @p child.
  * @param child The bhnd device for which @p offset should be read.
  * @param offset The offset to be read.
+ * @param[out] value On success, the bytes read at @p offset.
  * @param width The size of the access. Must be 1, 2 or 4 bytes.
  *
  * The exact behavior of this method is bus-specific. On a bcma(4) bus, this
@@ -768,11 +791,19 @@ METHOD int release_ext_rsrc {
  *
  * @note Device drivers should only use this API for functionality
  * that is not available via another bhnd(4) function.
+ *
+ * @retval 0 success
+ * @retval EINVAL If @p child is not a direct child of @p dev.
+ * @retval EINVAL If @p width is not one of 1, 2, or 4 bytes.
+ * @retval ENODEV If accessing agent/config space for @p child is unsupported.
+ * @retval EFAULT If reading @p width at @p offset exceeds the bounds of
+ * the mapped agent/config space  for @p child.
  */
-METHOD uint32_t read_config {
+METHOD int read_config {
 	device_t dev;
 	device_t child;
 	bus_size_t offset;
+	void *value;
 	u_int width;
 } DEFAULT bhnd_bus_null_read_config;
 
@@ -783,19 +814,27 @@ METHOD uint32_t read_config {
  * @param dev The parent of @p child.
  * @param child The bhnd device for which @p offset should be read.
  * @param offset The offset to be written.
- * @param width The size of the access. Must be 1, 2 or 4 bytes.
+ * @param value A pointer to the value to be written.
+ * @param width The size of @p value. Must be 1, 2 or 4 bytes.
  *
  * The exact behavior of this method is bus-specific. In the case of
  * bcma(4), this method provides access to the first agent port of @p child.
  *
  * @note Device drivers should only use this API for functionality
  * that is not available via another bhnd(4) function.
+ *
+ * @retval 0 success
+ * @retval EINVAL If @p child is not a direct child of @p dev.
+ * @retval EINVAL If @p width is not one of 1, 2, or 4 bytes.
+ * @retval ENODEV If accessing agent/config space for @p child is unsupported.
+ * @retval EFAULT If reading @p width at @p offset exceeds the bounds of
+ * the mapped agent/config space  for @p child.
  */
-METHOD void write_config {
+METHOD int write_config {
 	device_t dev;
 	device_t child;
 	bus_size_t offset;
-	uint32_t val;
+	const void *value;
 	u_int width;
 } DEFAULT bhnd_bus_null_write_config;
 

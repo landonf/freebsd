@@ -153,33 +153,47 @@ bcma_get_resource_list(device_t dev, device_t child)
 	return (&dinfo->resources);
 }
 
-static uint16_t
-bcma_read_iost(device_t dev, device_t child)
+static int
+bcma_read_iost(device_t dev, device_t child, uint16_t *iost)
 {
-	uint32_t val = bhnd_read_config(child, BCMA_DMP_IOSTATUS, 4);
+	uint32_t	value;
+	int		error;
+
+	if ((error = bhnd_read_config(child, BCMA_DMP_IOSTATUS, &value, 4)))
+		return (error);
 
 	/* Return only the bottom 16 bits */
-	return (val & BCMA_DMP_IOST_MASK);
+	*iost = (value & BCMA_DMP_IOST_MASK);
+	return (0);
 }
 
-static uint16_t
-bcma_read_ioctl(device_t dev, device_t child)
+static int
+bcma_read_ioctl(device_t dev, device_t child, uint16_t *ioctl)
 {
-	uint32_t val = bhnd_read_config(child, BCMA_DMP_IOCTRL, 4);
+	uint32_t	value;
+	int		error;
+
+	if ((error = bhnd_read_config(child, BCMA_DMP_IOCTRL, &value, 4)))
+		return (error);
 
 	/* Return only the bottom 16 bits */
-	return (val & BCMA_DMP_IOCTRL_MASK);
+	*ioctl = (value & BCMA_DMP_IOCTRL_MASK);
+	return (0);
 }
 
-static void
+static int
 bcma_write_ioctl(device_t dev, device_t child, uint16_t value, uint16_t mask)
 {
-	uint32_t ioctl = bhnd_read_config(child, BCMA_DMP_IOCTRL, 4);
+	uint32_t	ioctl;
+	int		error;
+
+	if ((error = bhnd_read_config(child, BCMA_DMP_IOCTRL, &ioctl, 4)))
+		return (error);
 	
 	ioctl &= ~(BCMA_DMP_IOCTRL_MASK | mask);
 	ioctl |= (value | mask);
 
-	bhnd_write_config(child, BCMA_DMP_IOCTRL, 4, ioctl);
+	return (bhnd_write_config(child, BCMA_DMP_IOCTRL, &ioctl, 4));
 }
 
 static int
@@ -245,42 +259,8 @@ bcma_suspend_hw(device_t dev, device_t child)
 	return (ENXIO);
 }
 
-static uint32_t
-bcma_read_config(device_t dev, device_t child, bus_size_t offset, u_int width)
-{
-	struct bcma_devinfo	*dinfo;
-	struct bhnd_resource	*r;
-
-	/* Must be a directly attached child core */
-	if (device_get_parent(child) != dev)
-		return (UINT32_MAX);
-
-	/* Fetch the agent registers */
-	dinfo = device_get_ivars(child);
-	if ((r = dinfo->res_agent) == NULL)
-		return (UINT32_MAX);
-
-	/* Verify bounds */
-	if (offset > rman_get_size(r->res))
-		return (UINT32_MAX);
-
-	if (rman_get_size(r->res) - offset < width)
-		return (UINT32_MAX);
-
-	switch (width) {
-	case 1:
-		return (bhnd_bus_read_1(r, offset));
-	case 2:
-		return (bhnd_bus_read_2(r, offset));
-	case 4:
-		return (bhnd_bus_read_4(r, offset));
-	default:
-		return (UINT32_MAX);
-	}
-}
-
-static void
-bcma_write_config(device_t dev, device_t child, bus_size_t offset, uint32_t val,
+static int
+bcma_read_config(device_t dev, device_t child, bus_size_t offset, void *value,
     u_int width)
 {
 	struct bcma_devinfo	*dinfo;
@@ -288,32 +268,70 @@ bcma_write_config(device_t dev, device_t child, bus_size_t offset, uint32_t val,
 
 	/* Must be a directly attached child core */
 	if (device_get_parent(child) != dev)
-		return;
+		return (EINVAL);
 
 	/* Fetch the agent registers */
 	dinfo = device_get_ivars(child);
 	if ((r = dinfo->res_agent) == NULL)
-		return;
+		return (ENODEV);
 
 	/* Verify bounds */
 	if (offset > rman_get_size(r->res))
-		return;
+		return (EFAULT);
 
 	if (rman_get_size(r->res) - offset < width)
-		return;
+		return (EFAULT);
 
 	switch (width) {
 	case 1:
-		bhnd_bus_write_1(r, offset, val);
-		break;
+		*((uint8_t *)value) = bhnd_bus_read_1(r, offset);
+		return (0);
 	case 2:
-		bhnd_bus_write_2(r, offset, val);
-		break;
+		*((uint16_t *)value) = bhnd_bus_read_2(r, offset);
+		return (0);
 	case 4:
-		bhnd_bus_write_4(r, offset, val);
-		break;
+		*((uint32_t *)value) = bhnd_bus_read_4(r, offset);
+		return (0);
 	default:
-		break;
+		return (EINVAL);
+	}
+}
+
+static int
+bcma_write_config(device_t dev, device_t child, bus_size_t offset,
+    const void *value, u_int width)
+{
+	struct bcma_devinfo	*dinfo;
+	struct bhnd_resource	*r;
+
+	/* Must be a directly attached child core */
+	if (device_get_parent(child) != dev)
+		return (EINVAL);
+
+	/* Fetch the agent registers */
+	dinfo = device_get_ivars(child);
+	if ((r = dinfo->res_agent) == NULL)
+		return (ENODEV);
+
+	/* Verify bounds */
+	if (offset > rman_get_size(r->res))
+		return (EFAULT);
+
+	if (rman_get_size(r->res) - offset < width)
+		return (EFAULT);
+
+	switch (width) {
+	case 1:
+		bhnd_bus_write_1(r, offset, *(const uint8_t *)value);
+		return (0);
+	case 2:
+		bhnd_bus_write_2(r, offset, *(const uint16_t *)value);
+		return (0);
+	case 4:
+		bhnd_bus_write_4(r, offset, *(const uint32_t *)value);
+		return (0);
+	default:
+		return (EINVAL);
 	}
 }
 
