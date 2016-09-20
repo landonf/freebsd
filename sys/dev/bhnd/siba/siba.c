@@ -40,6 +40,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/bus.h>
 
 #include <dev/bhnd/cores/chipc/chipcreg.h>
+#include <dev/bhnd/cores/pmu/bhnd_pmu.h>
 
 #include "sibareg.h"
 #include "sibavar.h"
@@ -191,46 +192,48 @@ siba_read_iost(device_t dev, device_t child, uint16_t *iost)
 static int
 siba_read_ioctl(device_t dev, device_t child, uint16_t *ioctl)
 {
-	uint32_t	tmlow;
+	uint32_t	ts_low;
 	int		error;
 
-	if ((error = bhnd_read_config(child, SIBA_CFG0_TMSTATELOW, &tmlow, 4)))
+	if ((error = bhnd_read_config(child, SIBA_CFG0_TMSTATELOW, &ts_low, 4)))
 		return (error);
 
-	*ioctl = (SIBA_REG_GET(tmlow, TML_SICF));
+	*ioctl = (SIBA_REG_GET(ts_low, TML_SICF));
 	return (0);
 }
 
 static int
 siba_write_ioctl(device_t dev, device_t child, uint16_t value, uint16_t mask)
 {
-	uint32_t	tmlow, tlmask;
-	int		error;
+	struct siba_devinfo	*dinfo;
+	struct bhnd_resource	*r;
+	uint32_t		 ts_low, ts_mask;
 
-	if ((error = bhnd_read_config(child, SIBA_CFG0_TMSTATELOW, &tmlow, 4)))
-		return (error);
+	if (device_get_parent(child) != dev)
+		return (EINVAL);
 
-	/* Shift and mask the user-provided mask to match the TMSTATELOW
-	 * layout */
-	tlmask = (mask << SIBA_TML_SICF_SHIFT) & SIBA_TML_SICF_MASK;
+	/* Fetch CFG0 mapping */
+	dinfo = device_get_ivars(child);
+	if ((r = dinfo->cfg[0]) == NULL)
+		return (ENODEV);
 
 	/* Mask and set TMSTATELOW core flag bits */
-	tmlow &= ~tlmask;
-	tmlow |= (value << SIBA_TML_SICF_SHIFT) & tlmask;
+	ts_mask = (mask << SIBA_TML_SICF_SHIFT) & SIBA_TML_SICF_MASK;
+	ts_low = (value << SIBA_TML_SICF_SHIFT) & ts_mask;
 
-	/* Write new TMSTATELOW */
-	return (bhnd_write_config(child, SIBA_CFG0_TMSTATELOW, &tmlow, 4));
+	return (siba_write_target_state(child, dinfo, SIBA_CFG0_TMSTATELOW,
+	    ts_low, ts_mask));
 }
 
 static bool
 siba_is_hw_suspended(device_t dev, device_t child)
 {
-	uint32_t		tmlow;
+	uint32_t		ts_low;
 	uint16_t		ioctl;
 	int			error;
 
 	/* Fetch target state */
-	error = bhnd_read_config(child, SIBA_CFG0_TMSTATELOW, &tmlow, 4);
+	error = bhnd_read_config(child, SIBA_CFG0_TMSTATELOW, &ts_low, 4);
 	if (error) {
 		device_printf(child, "error reading HW reset state: %d\n",
 		    error);
@@ -238,11 +241,11 @@ siba_is_hw_suspended(device_t dev, device_t child)
 	}
 
 	/* Is core held in RESET? */
-	if (tmlow & SIBA_TML_RESET)
+	if (ts_low & SIBA_TML_RESET)
 		return (true);
 
 	/* Is core clocked? */
-	ioctl = SIBA_REG_GET(tmlow, TML_SICF);
+	ioctl = SIBA_REG_GET(ts_low, TML_SICF);
 	if (!(ioctl & BHND_IOCTL_CLK_EN))
 		return (true);
 
@@ -271,20 +274,100 @@ siba_reset_hw(device_t dev, device_t child, uint16_t flags)
 static int
 siba_suspend_hw(device_t dev, device_t child)
 {
-	struct siba_devinfo *dinfo;
+	struct siba_devinfo		*dinfo;
+	struct bhnd_core_pmu_info	*pm;
+	struct bhnd_resource		*r;
+	uint32_t			 idl, ts_low;
+	uint16_t			 ioctl;
+	int				 error;
 
 	if (device_get_parent(child) != dev)
-		BHND_BUS_SUSPEND_HW(device_get_parent(dev), child);
+		return (EINVAL);
 
 	dinfo = device_get_ivars(child);
+	pm = dinfo->pmu_info;
 
 	/* Can't suspend the core without access to the CFG0 registers */
-	if (dinfo->cfg[0] == NULL)
+	if ((r = dinfo->cfg[0]) == NULL)
 		return (ENODEV);
 
-	// TODO - perform suspend
+	/* Already in RESET? */
+	ts_low = bhnd_bus_read_4(r, SIBA_CFG0_TMSTATELOW);
+	if (ts_low & SIBA_TML_RESET) {
+		/* Clear IOCTL flags, ensuring the clock is disabled */
+		return (siba_write_target_state(child, dinfo,
+		    SIBA_CFG0_TMSTATELOW, 0x0, SIBA_TML_SICF_MASK));
 
-	return (ENXIO);
+		return (0);
+	}
+
+	/* If clocks are already disabled, we can put the core directly
+	 * into RESET */
+	ioctl = SIBA_REG_GET(ts_low, TML_SICF);
+	if (!(ioctl & BHND_IOCTL_CLK_EN)) {
+		/* Set RESET and clear IOCTL flags */
+		return (siba_write_target_state(child, dinfo, 
+		    SIBA_CFG0_TMSTATELOW,
+		    SIBA_TML_RESET,
+		    SIBA_TML_RESET | SIBA_TML_SICF_MASK));
+	}
+
+	/* Reject any further target backplane transactions */
+	error = siba_write_target_state(child, dinfo, SIBA_CFG0_TMSTATELOW,
+	    SIBA_TML_REJ, SIBA_TML_REJ);
+	if (error)
+		return (error);
+
+	/* If this is an initiator core, we need to reject initiator
+	 * transactions too. */
+	idl = bhnd_bus_read_4(r, SIBA_CFG0_IDLOW);
+	if (idl & SIBA_IDL_INIT) {
+		error = siba_write_target_state(child, dinfo, SIBA_CFG0_IMSTATE,
+		    SIBA_IM_RJ, SIBA_IM_RJ);
+		if (error)
+			return (error);
+	}
+
+	/* Put the core into RESET|REJECT, forcing clocks to ensure the RESET
+	 * signal propagates throughout the core, leaving REJECT asserted. */
+	ts_low = SIBA_TML_RESET;
+	ts_low |= (BHND_IOCTL_CLK_EN | BHND_IOCTL_CLK_FORCE) <<
+	    SIBA_TML_SICF_SHIFT;
+
+	error = siba_write_target_state(child, dinfo, SIBA_CFG0_TMSTATELOW,
+		ts_low, ts_low);
+	if (error)
+		return (error);
+
+	/* Give RESET ample time */
+	DELAY(10);
+
+	/* Leaving core in reset, disable all clocks, clear REJ flags and
+	 * IOCTL state */
+	error = siba_write_target_state(child, dinfo, SIBA_CFG0_TMSTATELOW,
+		SIBA_TML_RESET,
+		SIBA_TML_RESET | SIBA_TML_REJ | SIBA_TML_SICF_MASK);
+	if (error)
+		return (error);
+
+	/* Clear previously asserted initiator reject */
+	if (idl & SIBA_IDL_INIT) {
+		error = siba_write_target_state(child, dinfo, SIBA_CFG0_IMSTATE,
+		    0, SIBA_IM_RJ);
+		if (error)
+			return (error);
+	}
+
+	/* Core is now in RESET, with clocks disabled and REJ not asserted.
+	 * 
+	 * We lastly need to inform the PMU, releasing any outstanding per-core
+	 * PMU requests */	
+	if (pm != NULL) {
+		if ((error = BHND_PMU_CORE_RELEASE(pm->pm_pmu, pm)))
+			return (error);
+	}
+
+	return (0);
 }
 
 static int

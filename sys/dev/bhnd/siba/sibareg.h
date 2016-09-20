@@ -157,9 +157,6 @@
 #define	SIBA_TMH_SISF_MASK	0xFFFF0000	/* core IOST flags */
 #define	SIBA_TMH_SISF_SHIFT	16
 
-#define	SIBA_TMH_SISF_MASK	0xFFFF0000
-#define	SIBA_TMH_SISF_SHIFT	16		/* Shift to locate the SI status flags in sbtmh */
-
 /* sbbwa0 */
 #define	SIBA_BWA_TAB0_MASK	0xffff		/* lookup table 0 */
 #define	SIBA_BWA_TAB1_MASK	0xffff		/* lookup table 1 */
