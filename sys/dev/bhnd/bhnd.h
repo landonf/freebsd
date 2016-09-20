@@ -522,10 +522,10 @@ bhnd_read_ioctl(device_t dev, uint16_t *ioctl)
  * @retval non-zero If writing the IOCTL register otherwise fails, a regular
  * unix error code will be returned.
  */
-static inline void
+static inline int
 bhnd_write_ioctl(device_t dev, uint16_t value, uint16_t mask)
 {
-	BHND_BUS_WRITE_IOCTL(device_get_parent(dev), dev, value, mask);
+	return (BHND_BUS_WRITE_IOCTL(device_get_parent(dev), dev, value, mask));
 }
 
 /**
