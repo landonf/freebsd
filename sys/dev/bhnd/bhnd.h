@@ -543,6 +543,22 @@ bhnd_read_iost(device_t dev, uint16_t *iost)
 }
 
 /**
+ * Return true if the given bhnd device's hardware is clocked
+ * (BHND_IOCTL_CLK_EN) and is not held in a RESET state.
+ * 
+ * @param dev The device to query.
+ *
+ * @retval true If @p child is clocked and not held in RESET.
+ * @retval false If @p child is not clocked, held in RESET, or an error
+ * occured determining @p child's hardware state.
+ */
+static inline bool
+bhnd_is_hw_active(device_t dev)
+{
+	return (BHND_BUS_IS_HW_ACTIVE(device_get_parent(dev), dev));
+}
+
+/**
  * Place the bhnd(4) device's hardware into a reset state, and then bring the
  * hardware out of reset with BHND_IOCTL_CLK_EN and @p ioctl flags set.
  * 
