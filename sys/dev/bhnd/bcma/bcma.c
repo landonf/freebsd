@@ -196,6 +196,25 @@ bcma_write_ioctl(device_t dev, device_t child, uint16_t value, uint16_t mask)
 	return (bhnd_write_config(child, BCMA_DMP_IOCTRL, &ioctl, 4));
 }
 
+static bool
+bcma_in_hw_reset(device_t dev, device_t child)
+{
+	uint32_t	rst;
+	int		error;
+
+	error = bhnd_read_config(child, BCMA_DMP_RESETCTRL, &rst, 4);
+	if (error) {
+		device_printf(child, "error reading HW reset state: %d\n",
+		    error);
+		return (false);
+	}
+
+	if (rst & BMCA_DMP_RC_RESET)
+		return (true);
+
+	return (false);
+}
+
 static int
 bcma_reset_hw(device_t dev, device_t child, uint16_t flags)
 {
@@ -664,6 +683,7 @@ static device_method_t bcma_methods[] = {
 	DEVMETHOD(bhnd_bus_read_ioctl,		bcma_read_ioctl),
 	DEVMETHOD(bhnd_bus_write_ioctl,		bcma_write_ioctl),
 	DEVMETHOD(bhnd_bus_read_iost,		bcma_read_iost),
+	DEVMETHOD(bhnd_bus_in_hw_reset,		bcma_in_hw_reset),
 	DEVMETHOD(bhnd_bus_reset_hw,		bcma_reset_hw),
 	DEVMETHOD(bhnd_bus_suspend_hw,		bcma_suspend_hw),
 	DEVMETHOD(bhnd_bus_read_config,		bcma_read_config),
