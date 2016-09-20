@@ -455,6 +455,46 @@ METHOD void child_added {
 } DEFAULT bhnd_bus_null_child_added;
 
 /**
+ * Read the current value of @p child's I/O control register.
+ *
+ * @param dev The bhnd bus parent of @p child.
+ * @param child The bhnd device for which the I/O control register should be
+ * read.
+ */
+METHOD uint16_t read_ioctl {
+	device_t dev;
+	device_t child;
+}
+
+/**
+ * Write @p flags with @p mask to @p child's I/O control register.
+ * 
+ * @param dev The bhnd bus parent of @p child.
+ * @param child The bhnd device for which the I/O control flags vector should
+ * be updated.
+ * @param value The value to be written (see BHND_IOCTL_*).
+ * @param mask Only the bits defined by @p mask will be updated from @p flags.
+ */
+METHOD uint16_t write_ioctl {
+	device_t dev;
+	device_t child;
+	uint16_t value;
+	uint16_t mask;
+}
+
+/**
+ * Read the current value of @p child's I/O status register.
+ *
+ * @param dev The bhnd bus parent of @p child.
+ * @param child The bhnd device for which the I/O status register should be
+ * read.
+ */
+METHOD uint16_t read_iost {
+	device_t dev;
+	device_t child;
+}
+
+/**
  * Reset the device's hardware core.
  *
  * @param dev The parent of @p child.
