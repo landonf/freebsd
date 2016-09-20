@@ -257,7 +257,7 @@ siba_reset_hw(device_t dev, device_t child, uint16_t ioctl)
 {
 	struct siba_devinfo		*dinfo;
 	struct bhnd_resource		*r;
-	uint32_t			 ts_low;
+	uint32_t			 ts_low, imstate;
 	int				 error;
 
 	if (device_get_parent(child) != dev)
@@ -278,14 +278,31 @@ siba_reset_hw(device_t dev, device_t child, uint16_t ioctl)
 	if ((error = BHND_BUS_SUSPEND_HW(dev, child)))
 		return (error);
 
-	/* Re-enable clocks while leaving core in RESET and providing the
-	 * caller's IOCTL flags */
+	/* Leaving the core in reset, set the caller's IOCTL flags and
+	 * enable the core's clocks. */
 	ts_low = (ioctl | BHND_IOCTL_CLK_EN | BHND_IOCTL_CLK_FORCE) <<
 	    SIBA_TML_SICF_SHIFT;
 	error = siba_write_target_state(child, dinfo, SIBA_CFG0_TMSTATELOW,
 	    ts_low, SIBA_TML_SICF_MASK);
 	if (error)
 		return (error);
+
+	/* Clear any target errors */
+	if (bhnd_bus_read_4(r, SIBA_CFG0_TMSTATEHIGH) & SIBA_TMH_SERR) {
+		error = siba_write_target_state(child, dinfo,
+		    SIBA_CFG0_TMSTATEHIGH, 0, SIBA_TMH_SERR);
+		if (error)
+			return (error);
+	}
+
+	/* Clear any initiator errors */
+	imstate = bhnd_bus_read_4(r, SIBA_CFG0_IMSTATE);
+	if (imstate & (SIBA_IM_IBE|SIBA_IM_TO)) {
+		error = siba_write_target_state(child, dinfo, SIBA_CFG0_IMSTATE,
+		    0, SIBA_IM_IBE|SIBA_IM_TO);
+		if (error)
+			return (error);
+	}
 
 	/* Release from RESET while leaving clocks forced, ensuring the
 	 * signal propagates throughout the core */
