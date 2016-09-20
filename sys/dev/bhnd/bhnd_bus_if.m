@@ -64,14 +64,14 @@ CODE {
 	}
 
 	static int
-	bhnd_bus_null_read_ioctl(device_t dev, uint16_t *ioctl)
+	bhnd_bus_null_read_ioctl(device_t dev, device_t child, uint16_t *ioctl)
 	{
 		panic("bhnd_bus_read_ioctl unimplemented");
 	}
 
 
 	static int
-	bhnd_bus_null_write_ioctl(device_t dev, uint16_t value,
+	bhnd_bus_null_write_ioctl(device_t dev, device_t child, uint16_t value,
 	    uint16_t mask)
 	{
 		panic("bhnd_bus_write_ioctl unimplemented");
@@ -79,7 +79,7 @@ CODE {
 
 
 	static int
-	bhnd_bus_null_read_iost(device_t dev, uint16_t *iost)
+	bhnd_bus_null_read_iost(device_t dev, device_t child, uint16_t *iost)
 	{
 		panic("bhnd_bus_read_iost unimplemented");
 	}
@@ -91,14 +91,14 @@ CODE {
 	}
 
 	static int
-	bhnd_bus_null_reset_hw(device_t dev, uint16_t ioctl)
+	bhnd_bus_null_reset_hw(device_t dev, device_t child, uint16_t ioctl)
 	{
 		panic("bhnd_bus_reset_hw unimplemented");
 	}
 
 
 	static int
-	bhnd_bus_null_suspend_hw(device_t dev)
+	bhnd_bus_null_suspend_hw(device_t dev, device_t child)
 	{
 		panic("bhnd_bus_suspend_hw unimplemented");
 	}
