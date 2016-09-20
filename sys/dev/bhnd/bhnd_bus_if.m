@@ -63,6 +63,41 @@ CODE {
 		panic("bhnd_bus_get_chipid unimplemented");
 	}
 
+	static uint16_t
+	bhnd_bus_null_read_core_ioctl(device_t dev)
+	{
+		panic("bhnd_bus_read_core_ioctl unimplemented");
+	}
+
+
+	static void
+	bhnd_bus_null_write_core_ioctl(device_t dev, uint16_t value,
+	    uint16_t mask)
+	{
+		panic("bhnd_bus_write_core_ioctl unimplemented");
+	}
+
+
+	static uint16_t
+	bhnd_bus_null_read_core_iost(device_t dev)
+	{
+		panic("bhnd_bus_read_core_iost unimplemented");
+	}
+
+
+	static int
+	bhnd_bus_null_reset_core(device_t dev, uint16_t ioctl)
+	{
+		panic("bhnd_bus_reset_core unimplemented");
+	}
+
+
+	static int
+	bhnd_bus_null_suspend_core(device_t dev)
+	{
+		panic("bhnd_bus_suspend_core unimplemented");
+	}
+
 	static bhnd_attach_type
 	bhnd_bus_null_get_attach_type(device_t dev, device_t child)
 	{
@@ -461,26 +496,26 @@ METHOD void child_added {
  * @param child The bhnd device for which the I/O control register should be
  * read.
  */
-METHOD uint16_t read_ioctl {
+METHOD uint16_t read_core_ioctl {
 	device_t dev;
 	device_t child;
-}
+} DEFAULT bhnd_bus_null_read_core_ioctl;
 
 /**
- * Write @p flags with @p mask to @p child's I/O control register.
+ * Write @p value with @p mask to @p child's I/O control register.
  * 
  * @param dev The bhnd bus parent of @p child.
- * @param child The bhnd device for which the I/O control flags vector should
+ * @param child The bhnd device for which the I/O control register should
  * be updated.
- * @param value The value to be written (see BHND_IOCTL_*).
- * @param mask Only the bits defined by @p mask will be updated from @p flags.
+ * @param value The value to be written (see also BHND_IOCTL_*).
+ * @param mask Only the bits defined by @p mask will be updated from @p value.
  */
-METHOD uint16_t write_ioctl {
+METHOD void write_core_ioctl {
 	device_t dev;
 	device_t child;
 	uint16_t value;
 	uint16_t mask;
-}
+} DEFAULT bhnd_bus_null_write_core_ioctl;
 
 /**
  * Read the current value of @p child's I/O status register.
@@ -489,17 +524,18 @@ METHOD uint16_t write_ioctl {
  * @param child The bhnd device for which the I/O status register should be
  * read.
  */
-METHOD uint16_t read_iost {
+METHOD uint16_t read_core_iost {
 	device_t dev;
 	device_t child;
-}
+} DEFAULT bhnd_bus_null_read_core_iost;
 
 /**
  * Reset the device's hardware core.
  *
  * @param dev The parent of @p child.
  * @param child The device to be reset.
- * @param flags Device-specific core flags to be supplied on reset.
+ * @param ioctl Device-specific core ioctl flags to be supplied on reset
+ * (see BHND_IOCTL_*).
  *
  * @retval 0 success
  * @retval non-zero error
@@ -507,8 +543,8 @@ METHOD uint16_t read_iost {
 METHOD int reset_core {
 	device_t dev;
 	device_t child;
-	uint16_t flags;
-}
+	uint16_t ioctl;
+} DEFAULT bhnd_bus_null_reset_core;
 
 /**
  * Suspend a device hardware core.
@@ -522,7 +558,7 @@ METHOD int reset_core {
 METHOD int suspend_core {
 	device_t dev;
 	device_t child;
-}
+} DEFAULT bhnd_bus_null_suspend_core;
 
 /**
  * If supported by the chipset, return the clock source for the given clock.

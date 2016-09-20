@@ -484,6 +484,73 @@ bhnd_get_chipid(device_t dev) {
 	return (BHND_BUS_GET_CHIPID(device_get_parent(dev), dev));
 };
 
+
+/**
+ * Read the current value of @p dev's per-core I/O control register.
+ *
+ * @param dev The bhnd device to be queried.
+ */
+static inline uint16_t
+bhnd_read_core_ioctl(device_t dev)
+{
+	return (BHND_BUS_READ_CORE_IOCTL(device_get_parent(dev), dev));
+}
+
+/**
+ * Write @p value and @p mask to @p dev's I/O control register.
+ * 
+ * @param dev The bhnd(4) device on which the IOCTL register will be updated.
+ * @param value The value to be written (see BHND_IOCTL_*).
+ * @param mask Only the bits defined by @p mask will be updated from @p value.
+ */
+static inline void
+bhnd_write_core_ioctl(device_t dev, uint16_t value, uint16_t mask)
+{
+	BHND_BUS_WRITE_CORE_IOCTL(device_get_parent(dev), dev, value, mask);
+}
+
+/**
+ * Read the current value of @p dev's per-core I/O status register.
+ *
+ * @param dev The bhnd device to be queried.
+ */
+static inline uint16_t
+bhnd_read_core_iost(device_t dev)
+{
+	return (BHND_BUS_READ_CORE_IOST(device_get_parent(dev), dev));
+}
+
+/**
+ * Reset the device's hardware core.
+ *
+ * @param dev The device to be reset.
+ * @param ioctl Device-specific core ioctl flags to be supplied on reset
+ * (see BHND_IOCTL_*).
+ *
+ * @retval 0 success
+ * @retval non-zero error
+ */
+static inline int
+bhnd_reset_core(device_t dev, uint16_t ioctl)
+{
+	return (BHND_BUS_RESET_CORE(device_get_parent(dev), dev, ioctl));
+}
+
+/**
+ * Suspend a device hardware core.
+ *
+ * @param dev The parent of @p child.
+ * @param child The device to be reset.
+ *
+ * @retval 0 success
+ * @retval non-zero error
+ */
+static inline int
+bhnd_suspend_core(device_t dev)
+{
+	return (BHND_BUS_SUSPEND_CORE(device_get_parent(dev), dev));
+}
+
 /**
  * If supported by the chipset, return the clock source for the given clock.
  *
