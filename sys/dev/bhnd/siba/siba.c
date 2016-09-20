@@ -213,22 +213,30 @@ siba_write_ioctl(device_t dev, device_t child, uint16_t value, uint16_t mask)
 }
 
 static bool
-siba_in_hw_reset(device_t dev, device_t child)
+siba_is_hw_active(device_t dev, device_t child)
 {
-	uint32_t		 tmslow;
-	int			 error;
+	uint32_t		tmlow;
+	uint16_t		ioctl;
+	int			error;
 
-	error = bhnd_read_config(child, SIBA_CFG0_TMSTATELOW, &tmslow, 4);
+	/* Fetch target state */
+	error = bhnd_read_config(child, SIBA_CFG0_TMSTATELOW, &tmlow, 4);
 	if (error) {
 		device_printf(child, "error reading HW reset state: %d\n",
 		    error);
 		return (false);
 	}
 
-	if (tmslow & SIBA_TML_RESET)
-		return (true);
+	/* Is core held in RESET? */
+	if (tmlow & SIBA_TML_RESET)
+		return (false);
 
-	return (false);
+	/* Is core clocked? */
+	ioctl = SIBA_REG_GET(tmlow, TML_SICF);
+	if (!(ioctl & BHND_IOCTL_CLK_EN))
+		return (false);
+
+	return (true);
 }
 
 static int
@@ -774,7 +782,7 @@ static device_method_t siba_methods[] = {
 	DEVMETHOD(bhnd_bus_read_ioctl,		siba_read_ioctl),
 	DEVMETHOD(bhnd_bus_write_ioctl,		siba_write_ioctl),
 	DEVMETHOD(bhnd_bus_read_iost,		siba_read_iost),
-	DEVMETHOD(bhnd_bus_in_hw_reset,		siba_in_hw_reset),
+	DEVMETHOD(bhnd_bus_is_hw_active,	siba_is_hw_active),
 	DEVMETHOD(bhnd_bus_reset_hw,		siba_reset_hw),
 	DEVMETHOD(bhnd_bus_suspend_hw,		siba_suspend_hw),
 	DEVMETHOD(bhnd_bus_read_config,		siba_read_config),

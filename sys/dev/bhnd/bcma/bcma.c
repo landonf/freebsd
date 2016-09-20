@@ -197,11 +197,13 @@ bcma_write_ioctl(device_t dev, device_t child, uint16_t value, uint16_t mask)
 }
 
 static bool
-bcma_in_hw_reset(device_t dev, device_t child)
+bcma_is_hw_active(device_t dev, device_t child)
 {
 	uint32_t	rst;
+	uint16_t	ioctl;
 	int		error;
 
+	/* Is core held in RESET? */
 	error = bhnd_read_config(child, BCMA_DMP_RESETCTRL, &rst, 4);
 	if (error) {
 		device_printf(child, "error reading HW reset state: %d\n",
@@ -210,9 +212,20 @@ bcma_in_hw_reset(device_t dev, device_t child)
 	}
 
 	if (rst & BMCA_DMP_RC_RESET)
-		return (true);
+		return (false);
 
-	return (false);
+	/* Is core clocked? */
+	error = bhnd_read_ioctl(child, &ioctl);
+	if (error) {
+		device_printf(child, "error reading HW ioctl register: %d\n",
+		    error);
+		return (false);
+	}
+
+	if (!(ioctl & BHND_IOCTL_CLK_EN))
+		return (false);
+
+	return (true);
 }
 
 static int
@@ -683,7 +696,7 @@ static device_method_t bcma_methods[] = {
 	DEVMETHOD(bhnd_bus_read_ioctl,		bcma_read_ioctl),
 	DEVMETHOD(bhnd_bus_write_ioctl,		bcma_write_ioctl),
 	DEVMETHOD(bhnd_bus_read_iost,		bcma_read_iost),
-	DEVMETHOD(bhnd_bus_in_hw_reset,		bcma_in_hw_reset),
+	DEVMETHOD(bhnd_bus_is_hw_active,	bcma_is_hw_active),
 	DEVMETHOD(bhnd_bus_reset_hw,		bcma_reset_hw),
 	DEVMETHOD(bhnd_bus_suspend_hw,		bcma_suspend_hw),
 	DEVMETHOD(bhnd_bus_read_config,		bcma_read_config),
