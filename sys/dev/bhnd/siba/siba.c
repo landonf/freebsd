@@ -271,7 +271,7 @@ siba_reset_hw(device_t dev, device_t child, uint16_t ioctl)
 
 	/* We require exclusive control over BHND_IOCTL_CLK_EN and
 	 * BHND_IOCTL_CLK_FORCE. */
-	if (ioctl & ~(BHND_IOCTL_CLK_EN | BHND_IOCTL_CLK_FORCE))
+	if (ioctl & (BHND_IOCTL_CLK_EN | BHND_IOCTL_CLK_FORCE))
 		return (EINVAL);
 
 	/* Place core into known RESET state */
