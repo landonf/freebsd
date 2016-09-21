@@ -61,9 +61,10 @@
 
 #include "if_bwn_siba_compat.h"
 
-#define	BWN_ASSERT_VALID_REG(_dev, _offset)	\
-	KASSERT(!bwn_bhnd_is_siba_reg(_dev, _offset), \
-	    ("accessing siba-specific register %#jx", (uintmax_t)(_offset)));
+#define	BWN_ASSERT_VALID_REG(_dev, _offset)				\
+	KASSERT(!bwn_bhnd_is_siba_reg(_dev, _offset),			\
+	    ("%s: accessing siba-specific register %#jx", __FUNCTION__,	\
+		(uintmax_t)(_offset)));
 
 /**
  * Return true if @p offset is within a siba-specific configuration register
@@ -358,7 +359,7 @@ bhnd_compat_get_pci_revid(device_t dev)
 static uint16_t
 bhnd_compat_get_chipid(device_t dev)
 {
-	panic("siba_get_chipid() unimplemented");
+	return (bhnd_get_chipid(dev)->chip_id);
 }
 
 /*
@@ -373,7 +374,7 @@ bhnd_compat_get_chipid(device_t dev)
 static uint16_t
 bhnd_compat_get_chiprev(device_t dev)
 {
-	panic("siba_get_chiprev() unimplemented");
+	return (bhnd_get_chipid(dev)->chip_rev);
 }
 
 /*
@@ -387,7 +388,7 @@ bhnd_compat_get_chiprev(device_t dev)
 static uint8_t
 bhnd_compat_get_chippkg(device_t dev)
 {
-	panic("siba_get_chippkg() unimplemented");
+	return (bhnd_get_chipid(dev)->chip_pkg);
 }
 
 /*
@@ -1342,10 +1343,28 @@ bhnd_compat_write_2(device_t dev, uint16_t offset, uint16_t value)
 static uint32_t
 bhnd_compat_read_4(device_t dev, uint16_t offset)
 {
-	struct bwn_softc *sc = device_get_softc(dev);
+	struct bwn_softc	*sc = device_get_softc(dev);
+	uint16_t		 ioreg;
+	int			 error;
 
+	/* bwn(4) fetches IOCTL/IOST values directly from siba-specific target
+	 * state registers; we map these directly to bhnd_read_(ioctl|iost) */
+	switch (offset) {
+	case SB0_REG_ABS(SIBA_CFG0_TMSTATELOW):
+		if ((error = bhnd_read_ioctl(dev, &ioreg)))
+			panic("error reading IOCTL: %d\n", error);
+
+		return (((uint32_t)ioreg) << SIBA_TML_SICF_SHIFT);
+
+	case SB0_REG_ABS(SIBA_CFG0_TMSTATEHIGH):
+		if ((error = bhnd_read_iost(dev, &ioreg)))
+			panic("error reading IOST: %d\n", error);
+
+		return (((uint32_t)ioreg) << SIBA_TMH_SISF_SHIFT);
+	}
+
+	/* Otherwise, perform a standard bus read */
 	BWN_ASSERT_VALID_REG(dev, offset);
-
 	return (bhnd_bus_read_4(sc->sc_mem_res, offset));
 }
 
@@ -1369,11 +1388,29 @@ bhnd_compat_read_4(device_t dev, uint16_t offset)
 static void
 bhnd_compat_write_4(device_t dev, uint16_t offset, uint32_t value)
 {
-	struct bwn_softc *sc = device_get_softc(dev);
+	struct bwn_softc	*sc = device_get_softc(dev);
+	uint16_t		 ioctl;
+	int			 error;
 
-	BWN_ASSERT_VALID_REG(dev, offset);
+	/* bwn(4) writes IOCTL values directly to siba-specific target state
+	 * registers; we map these directly to bhnd_write_ioctl() */
+	if (offset == SB0_REG_ABS(SIBA_CFG0_TMSTATELOW)) {
+		/* shift IOCTL flags back down to their original values */
+		if (value & ~SIBA_TML_SICF_MASK)
+			panic("%s: non-IOCTL flags provided", __FUNCTION__);
 
-	return (bhnd_bus_write_4(sc->sc_mem_res, offset, value));
+		ioctl = (value & SIBA_TML_SICF_MASK) >> SIBA_TML_SICF_SHIFT;
+
+		if ((error = bhnd_write_ioctl(dev, ioctl, UINT16_MAX)))
+			panic("error writing IOCTL: %d\n", error);
+	} else {
+		/* Otherwise, perform a standard bus write */
+		BWN_ASSERT_VALID_REG(dev, offset);
+
+		bhnd_bus_write_4(sc->sc_mem_res, offset, value);
+	}
+
+	return;
 }
 
 /*
@@ -1385,7 +1422,18 @@ bhnd_compat_write_4(device_t dev, uint16_t offset, uint32_t value)
 static void
 bhnd_compat_dev_up(device_t dev, uint32_t flags)
 {
-	panic("siba_dev_up() unimplemented");
+	uint16_t	ioctl;
+	int		error;
+
+	/* shift IOCTL flags back down to their original values */
+	if (flags & ~SIBA_TML_SICF_MASK)
+		panic("%s: non-IOCTL flags provided", __FUNCTION__);
+
+	ioctl = (flags & SIBA_TML_SICF_MASK) >> SIBA_TML_SICF_SHIFT;
+
+	/* perform core reset */
+	if ((error = bhnd_reset_hw(dev, ioctl)))
+		panic("%s: core reset failed: %d", __FUNCTION__, error);
 }
 
 /*
@@ -1398,7 +1446,15 @@ bhnd_compat_dev_up(device_t dev, uint32_t flags)
 static void
 bhnd_compat_dev_down(device_t dev, uint32_t flags)
 {
-	panic("siba_dev_down() unimplemented");
+	int error;
+
+	/* We don't support specifying IOCTL flags on suspend */
+	if (flags)
+		panic("%s: IOCTL flags ignored", __FUNCTION__);
+
+	/* Put core into RESET state */
+	if ((error = bhnd_suspend_hw(dev)))
+		panic("%s: core suspend failed: %d", __FUNCTION__, error);
 }
 
 /*
@@ -1410,7 +1466,7 @@ bhnd_compat_dev_down(device_t dev, uint32_t flags)
 static int
 bhnd_compat_dev_isup(device_t dev)
 {
-	panic("siba_dev_isup() unimplemented");
+	return (!bhnd_is_hw_suspended(dev));
 }
 
 /*
