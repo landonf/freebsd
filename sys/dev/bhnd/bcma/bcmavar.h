@@ -99,14 +99,6 @@ void			 bcma_free_corecfg(struct bcma_corecfg *corecfg);
 struct bcma_sport	*bcma_alloc_sport(bcma_pid_t port_num, bhnd_port_type port_type);
 void			 bcma_free_sport(struct bcma_sport *sport);
 
-int			 bcma_dmp_set_ioctrl(device_t child,
-			     struct bcma_devinfo *dinfo, uint32_t value);
-
-int			 bcma_dmp_set_resetctrl(device_t child,
-			     struct bcma_devinfo *dinfo, uint32_t value);
-int			 bcma_dmp_wait_reset(device_t child,
-			     struct bcma_devinfo *dinfo);
-
 /** BCMA master port descriptor */
 struct bcma_mport {
 	bcma_pid_t	mp_num;		/**< AXI port identifier (bus-unique) */

@@ -34,15 +34,12 @@ __FBSDID("$FreeBSD$");
 #include <sys/bus.h>
 #include <sys/kernel.h>
 #include <sys/limits.h>
-#include <sys/rman.h>
 #include <sys/systm.h>
 
 #include <machine/bus.h>
 #include <machine/resource.h>
 
 #include <dev/bhnd/bhndvar.h>
-
-#include "bcma_dmp.h"
 
 #include "bcmavar.h"
 
@@ -371,89 +368,3 @@ bcma_free_sport(struct bcma_sport *sport) {
 	free(sport, M_BHND);
 }
 
-/**
- * Set the bcma(4) child's DMP ioctrl register value, and then wait
- * for all operations to complete.
- * 
- * @param child The bcma(4) child device.
- * @param dinfo The @p child device info.
- * @param value The new ioctrl value to set.
- * 
- * @retval 0 success
- * @retval ENODEV if @p dinfo does not map an agent register resource.
- * @retval ETIMEDOUT if timeout occurs waiting for reset completion
- */
-int
-bcma_dmp_set_ioctrl(device_t child, struct bcma_devinfo *dinfo,
-    uint32_t value)
-{
-	if (dinfo->res_agent == NULL)
-		return (ENODEV);
-
-	bhnd_bus_write_4(dinfo->res_agent, BCMA_DMP_IOCTRL, value);
-	bhnd_bus_read_4(dinfo->res_agent, BCMA_DMP_IOCTRL); /* read-back */
-	DELAY(10);
-
-	return (0);
-}
-
-/**
- * Set the bcma(4) child's DMP resetctrl register value, and then wait
- * for all operations to complete.
- * 
- * @param child The bcma(4) child device.
- * @param dinfo The @p child device info.
- * @param value The new ioctrl value to set.
- * 
- * @retval 0 success
- * @retval ENODEV if @p dinfo does not map an agent register resource.
- * @retval ETIMEDOUT if timeout occurs waiting for reset completion
- */
-int
-bcma_dmp_set_resetctrl(device_t child, struct bcma_devinfo *dinfo,
-    uint32_t value)
-{
-	if (dinfo->res_agent == NULL)
-		return (ENODEV);
-
-	bhnd_bus_write_4(dinfo->res_agent, BCMA_DMP_RESETCTRL, value);
-	bhnd_bus_read_4(dinfo->res_agent, BCMA_DMP_RESETCTRL); /* read-back */
-	DELAY(10);
-
-	return (bcma_dmp_wait_reset(child, dinfo));
-}
-
-/**
- * Given a bcma(4) child's device info, spin waiting for the device's DMP
- * resetstatus register to clear.
- * 
- * @param child The bcma(4) child device.
- * @param dinfo The @p child device info.
- * 
- * @retval 0 success
- * @retval ENODEV if @p dinfo does not map an agent register resource.
- * @retval ETIMEDOUT if timeout occurs
- */
-int
-bcma_dmp_wait_reset(device_t child, struct bcma_devinfo *dinfo)
-{
-	uint32_t rst;
-
-	if (dinfo->res_agent == NULL)
-		return (ENODEV);
-
-	/* 300us should be long enough, but there are references to this
-	 * requiring up to 10ms when performing reset of an 80211 core
-	 * after a MAC PSM microcode watchdog event. */
-	for (int i = 0; i < 10000; i += 10) {
-		rst = bhnd_bus_read_4(dinfo->res_agent, BCMA_DMP_RESETSTATUS);
-		if (rst == 0)
-			return (0);
-
-		DELAY(10);
-	}
-
-	device_printf(child, "BCMA_DMP_RESETSTATUS timeout\n");
-
-	return (ETIMEDOUT);
-}

@@ -33,12 +33,17 @@
  * blocks.
  */
 
-#define SIBA_GET_FLAG(_value, _flag)        \
-        (((_value) & _flag) != 0)
-#define SIBA_GET_BITS(_value, _field)       \
-        ((_value & _field ## _MASK) >> _field ## _SHIFT)
-#define SIBA_SET_BITS(_value, _field)       \
-        (((_value) << _field ## _SHIFT) & _field ## _MASK)
+/**
+ * Extract a config attribute by applying _MASK and _SHIFT defines.
+ * 
+ * @param _reg The register value containing the desired attribute
+ * @param _attr The BCMA EROM attribute name (e.g. ENTRY_ISVALID), to be
+ * concatenated with the `SB` prefix and `_MASK`/`_SHIFT` suffixes.
+ */
+#define	SIBA_REG_GET(_entry, _attr)			\
+	((_entry & SIBA_ ## _attr ## _MASK)	\
+	>> SIBA_ ## _attr ## _SHIFT)
+
 
 #define	SIBA_ENUM_ADDR		BHND_DEFAULT_CHIPC_ADDR	/**< enumeration space */
 #define	SIBA_ENUM_SIZE		0x00100000		/**< size of the enumeration space */ 
@@ -141,16 +146,16 @@
 #define	SIBA_TML_REJ_MASK	0x0006		/* reject field */
 #define	SIBA_TML_REJ		0x0002		/* reject */
 #define	SIBA_TML_TMPREJ		0x0004		/* temporary reject, for error recovery */
-#define	SIBA_TML_SICF_MASK	0xFFFF0000	/* core control flags */
-#define	SIBA_TML_SICF_SHIFT	16
+
+#define	SIBA_TML_SICF_SHIFT	16		/* Shift to locate the SI control flags in sbtml */
 
 /* sbtmstatehigh */
 #define	SIBA_TMH_SERR		0x0001		/* serror */
 #define	SIBA_TMH_INT		0x0002		/* interrupt */
 #define	SIBA_TMH_BUSY		0x0004		/* busy */
 #define	SIBA_TMH_TO		0x0020		/* timeout (sonics >= 2.3) */
-#define	SIBA_TMH_SISF_MASK	0xFFFF0000	/* core status flags */
-#define	SIBA_TMH_SISF_SHIFT	16
+
+#define	SIBA_TMH_SISF_SHIFT	16		/* Shift to locate the SI status flags in sbtmh */
 
 /* sbbwa0 */
 #define	SIBA_BWA_TAB0_MASK	0xffff		/* lookup table 0 */
@@ -255,7 +260,7 @@
 #define	SIBA_IDH_VENDOR_SHIFT	16
 
 #define	SIBA_IDH_CORE_REV(sbidh) \
-	(SIBA_GET_BITS((sbidh), SIBA_IDH_RCE) | ((sbidh) & SIBA_IDH_RC_MASK))
+	(SIBA_REG_GET((sbidh), IDH_RCE) | ((sbidh) & SIBA_IDH_RC_MASK))
 
 #define	SIBA_COMMIT		0xfd8		/* update buffered registers value */
 

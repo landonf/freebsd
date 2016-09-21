@@ -455,43 +455,33 @@ METHOD void child_added {
 } DEFAULT bhnd_bus_null_child_added;
 
 /**
- * Place @p child's into reset with @p reset_flags set, and then enable
- * clocks and bring the core out of reset with @p flags set.
+ * Reset the device's hardware core.
  *
  * @param dev The parent of @p child.
  * @param child The device to be reset.
- * @param reset_flags Device-specific core flags to be set when putting
- * the hardware into reset.
- * @param flags Device-specific core flags to be set when bringing
- * hardware out of reset.
+ * @param flags Device-specific core flags to be supplied on reset.
  *
  * @retval 0 success
  * @retval non-zero error
  */
-METHOD int reset_hw {
+METHOD int reset_core {
 	device_t dev;
 	device_t child;
-	uint16_t reset_flags;
 	uint16_t flags;
 }
 
 /**
- * Suspend @p child's hardware in a low-power reset state.
- *
- * The hardware may be brought out of reset via BHND_BUS_RESET_HW().
+ * Suspend a device hardware core.
  *
  * @param dev The parent of @p child.
- * @param child The device to be suspended.
- * @param flags Device-specific core flags to be supplied when putting the
- * hardware into reset.
+ * @param child The device to be reset.
  *
  * @retval 0 success
  * @retval non-zero error
  */
-METHOD int suspend_hw {
+METHOD int suspend_core {
 	device_t dev;
 	device_t child;
-	uint16_t flags;
 }
 
 /**
