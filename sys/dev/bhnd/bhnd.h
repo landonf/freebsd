@@ -111,13 +111,13 @@ enum {
 						     after BIST results are read via BHND_IOST_BIST_* */
 	BHND_IOCTL_PME		= 0x4000,	/**< Enable posting of power management events by the core. */
 	BHND_IOCTL_CFLAGS	= 0x3FFC,	/**< Reserved for core-specific ioctl flags. */
-	BHND_IOCTL_CLK_EN	= 0x0002,	/**< If cleared, the core clock will be disabled. Should be
-						     set during normal operation, and cleared when the core is
-						     held in reset. */
-	BHND_IOCTL_CLK_FORCE	= 0x0001,	/**< Force disable of clock gating, resulting in all clocks
+	BHND_IOCTL_CLK_FORCE	= 0x0002,	/**< Force disable of clock gating, resulting in all clocks
 						     being distributed within the core. Should be set when
 						     asserting/deasserting reset to ensure the reset signal
 						     fully propagates to the entire core. */
+	BHND_IOCTL_CLK_EN	= 0x0001,	/**< If cleared, the core clock will be disabled. Should be
+						     set during normal operation, and cleared when the core is
+						     held in reset. */
 };
 
 /**
