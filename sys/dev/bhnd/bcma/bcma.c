@@ -292,7 +292,7 @@ bcma_is_hw_suspended(device_t dev, device_t child)
 }
 
 static int
-bcma_reset_hw(device_t dev, device_t child, uint16_t flags)
+bcma_reset_hw(device_t dev, device_t child, uint16_t ioctl)
 {
 	struct bcma_devinfo		*dinfo;
 	struct bhnd_core_pmu_info	*pm;
@@ -300,47 +300,44 @@ bcma_reset_hw(device_t dev, device_t child, uint16_t flags)
 	int				 error;
 
 	if (device_get_parent(child) != dev)
-		BHND_BUS_RESET_HW(device_get_parent(dev), child, flags);
+		return (EINVAL);
 
 	dinfo = device_get_ivars(child);
 	pm = dinfo->pmu_info;
 
-	/* Can't reset the core without access to the agent registers */
+	/* We require exclusive control over BHND_IOCTL_CLK_EN and
+	 * BHND_IOCTL_CLK_FORCE. */
+	if (ioctl & ~(BHND_IOCTL_CLK_EN | BHND_IOCTL_CLK_FORCE))
+		return (EINVAL);
+
+	/* Can't suspend the core without access to the agent registers */
 	if ((r = dinfo->res_agent) == NULL)
 		return (ENODEV);
 
-	/* Start reset */
-	bhnd_bus_write_4(r, BCMA_DMP_RESETCTRL, BMCA_DMP_RC_RESET);
-	bhnd_bus_read_4(r, BCMA_DMP_RESETCTRL);
-	DELAY(10);
+	/* Place core into known RESET state */
+	if ((error = BHND_BUS_SUSPEND_HW(dev, child)))
+		return (error);
 
-	/* Disable clock */
-	bhnd_bus_write_4(r, BCMA_DMP_IOCTRL, flags);
-	bhnd_bus_read_4(r, BCMA_DMP_IOCTRL);
-	DELAY(10);
+	/*
+	 * Leaving the core in reset:
+	 * - Set the caller's IOCTL flags
+	 * - Enable clocks
+	 * - Force clock distribution to ensure propagation throughout the
+	 *   core.
+	 */
+	error = bhnd_write_ioctl(child, 
+	    ioctl | BHND_IOCTL_CLK_EN | BHND_IOCTL_CLK_FORCE, UINT16_MAX);
+	if (error)
+		return (error);
 
-	/* Now that the core is in RESET, release any outstanding PMU
-	 * requests. */
-	if (pm != NULL) {
-		if ((error = BHND_PMU_CORE_RELEASE(pm->pm_pmu, pm)))
-			return (error);
-	}
+	/* Bring the core out of reset */
+	if ((error = bcma_dmp_write_reset(child, dinfo, 0x0)))
+		return (error);
 
-	/* Enable clocks & force clock gating */
-	bhnd_bus_write_4(r, BCMA_DMP_IOCTRL, BHND_IOCTL_CLK_EN |
-	    BHND_IOCTL_CLK_FORCE | flags);
-	bhnd_bus_read_4(r, BCMA_DMP_IOCTRL);
-	DELAY(10);
-
-	/* Complete reset */
-	bhnd_bus_write_4(r, BCMA_DMP_RESETCTRL, 0);
-	bhnd_bus_read_4(r, BCMA_DMP_RESETCTRL);
-	DELAY(10);
-
-	/* Release force clock gating */
-	bhnd_bus_write_4(r, BCMA_DMP_IOCTRL, BHND_IOCTL_CLK_EN | flags);
-	bhnd_bus_read_4(r, BCMA_DMP_IOCTRL);
-	DELAY(10);
+	/* Disable forced clock gating (leaving clock enabled) */
+	error = bhnd_write_ioctl(child, 0x0, BHND_IOCTL_CLK_FORCE);
+	if (error)
+		return (error);
 
 	return (0);
 }
