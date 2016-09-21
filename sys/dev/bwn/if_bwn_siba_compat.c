@@ -1226,7 +1226,7 @@ bhnd_compat_powerup(device_t dev, int dynamic)
 
 	/* On bcma(4) devices, the core must be brought out of reset before
 	 * accessing PMU clock request registers */
-	if ((error = bhnd_reset_hw(dev, 0, 0))) {
+	if ((error = bhnd_reset_hw(dev, 0))) {
 		device_printf(dev, "core reset failed: %d\n", error);
 		return;
 	}
@@ -1262,7 +1262,7 @@ bhnd_compat_powerdown(device_t dev)
 		return (error);
 
 	/* Suspend the core */
-	if ((error = bhnd_suspend_hw(dev, 0)))
+	if ((error = bhnd_suspend_hw(dev)))
 		return (error);
 
 	return (0);
