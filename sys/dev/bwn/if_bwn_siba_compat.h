@@ -49,4 +49,24 @@ bwn_bhnd_get_ctx(device_t dev)
 	return (sc->sc_bus_ctx);
 }
 
+/**
+ * Fetch and return an NVRAM variable via bhnd_nvram_getvar_*(), or return
+ * the given default value if the NVRAM variable is unavailable.
+ */
+#define	BWN_BHND_NVRAM_RETURN_VAR(_dev, _type, _name, _default)		\
+do {									\
+	_type ## _t	value;						\
+	int		error;						\
+									\
+	error = bhnd_nvram_getvar_ ## _type(_dev, _name, &value);	\
+	if (error) {							\
+		device_printf(_dev,					\
+		    "error reading NVRAM variable '%s': %d\n", _name,	\
+		    error);						\
+		return (_default);					\
+	}								\
+									\
+	return (value);							\
+} while(0)
+
 #endif /* _IF_BWN_SIBA_COMPAT_H_ */

@@ -59,6 +59,10 @@
 #include <dev/bhnd/bhnd.h>
 #include <dev/bhnd/siba/sibareg.h>
 
+#include <dev/bhnd/cores/pci/bhnd_pcireg.h>
+
+#include "bhnd_nvram_map.h"
+
 #include "if_bwn_siba_compat.h"
 
 #define	BWN_ASSERT_VALID_REG(_dev, _offset)				\
@@ -601,13 +605,15 @@ bhnd_compat_sprom_get_pa0b2(device_t dev)
 /*
  * siba_sprom_get_gpio0()
  *
+ * 'gpioX' are actually the led behavior (ledbh) NVRAM variables.
+ *
  * Referenced by:
  *   bwn_led_attach()
  */
 static uint8_t
 bhnd_compat_sprom_get_gpio0(device_t dev)
 {
-	panic("siba_sprom_get_gpio0() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_LEDBH0, 0x0);
 }
 
 /*
@@ -619,7 +625,7 @@ bhnd_compat_sprom_get_gpio0(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_gpio1(device_t dev)
 {
-	panic("siba_sprom_get_gpio1() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_LEDBH1, 0x0);
 }
 
 /*
@@ -631,7 +637,7 @@ bhnd_compat_sprom_get_gpio1(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_gpio2(device_t dev)
 {
-	panic("siba_sprom_get_gpio2() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_LEDBH2, 0x0);
 }
 
 /*
@@ -643,7 +649,7 @@ bhnd_compat_sprom_get_gpio2(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_gpio3(device_t dev)
 {
-	panic("siba_sprom_get_gpio3() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_LEDBH3, 0x0);
 }
 
 /*
@@ -1492,7 +1498,10 @@ bhnd_compat_pcicore_intr(device_t dev)
 static uint32_t
 bhnd_compat_dma_translation(device_t dev)
 {
-	panic("siba_dma_translation() unimplemented");
+	/* TODO: This matches the legacy bwn/siba DMA32 implementation, but
+	 * we'll need to extend both bwn(4) and bhnd(4) to provide DMA32/DMA64
+	 * PCI/PCIe/PCIeG2 support */
+	return (BHND_PCI_DMA32_TRANSLATION);
 }
 
 /*
