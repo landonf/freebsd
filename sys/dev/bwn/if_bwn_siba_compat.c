@@ -70,6 +70,9 @@
 	    ("%s: accessing siba-specific register %#jx", __FUNCTION__,	\
 		(uintmax_t)(_offset)));
 
+static int	bwn_bhnd_nvram_get_macaddr(device_t dev, const char *var,
+		    uint8_t result[ETHER_ADDR_LEN]);
+
 /**
  * Return true if @p offset is within a siba-specific configuration register
  * block.
@@ -94,9 +97,11 @@ bwn_bhnd_bus_ops_init(device_t dev)
 {
 	struct bwn_bhnd_ctx	*ctx;
 	struct bwn_softc	*sc;
+	uint8_t			 sromrev;
 	int			 error;
 
 	sc = device_get_softc(dev);
+	ctx = NULL;
 
 	sc->sc_mem_rid = 0;
 	sc->sc_mem_res = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY,
@@ -114,6 +119,39 @@ bwn_bhnd_bus_ops_init(device_t dev)
 	/* Allocate our context */
 	ctx = malloc(sizeof(struct bwn_bhnd_ctx), M_DEVBUF, M_WAITOK|M_ZERO);
 
+	/* Populate any NVRAM variables for which bwn(4) assumes the bus will
+	 * manage storage. */
+	if ((error = bhnd_nvram_getvar_uint8(dev, BHND_NVAR_SROMREV, &sromrev)))
+		return (error);
+
+	/* Fetch macaddrs if available; bwn(4) expects any missing macaddr
+	 * values to be initialized with 0xFF octets */
+	if (sromrev <= 2) {
+		/* WLAN0 macaddr */
+		error = bhnd_nvram_getvar_array(dev, BHND_NVAR_IL0MACADDR,
+		    ctx->macaddr, sizeof(ctx->macaddr), BHND_NVRAM_TYPE_UINT8);
+		if (error)
+			goto failed;
+
+		/* WLAN1 802.11a macaddr (may be unavailable) */
+		error = bhnd_nvram_getvar_array(dev, BHND_NVAR_ET1MACADDR,
+		    ctx->et1macaddr, sizeof(ctx->et1macaddr),
+		    BHND_NVRAM_TYPE_UINT8);
+		if (error == ENOENT)
+			memset(ctx->et1macaddr, 0xFF, sizeof(ctx->et1macaddr));
+		else if (error)
+			goto failed;
+	} else {
+		/* WLAN0 macaddr */
+		error = bhnd_nvram_getvar_array(dev, BHND_NVAR_MACADDR,
+		    ctx->macaddr, sizeof(ctx->macaddr), BHND_NVRAM_TYPE_UINT8);
+		if (error)
+			goto failed;
+
+		/* WLAN1 unavailable */
+		memset(ctx->et1macaddr, 0xFF, sizeof(ctx->et1macaddr));
+	}
+
 	/* Initialize bwn_softc */
 	sc->sc_bus_ctx = ctx;
 	return (0);
@@ -121,6 +159,10 @@ bwn_bhnd_bus_ops_init(device_t dev)
 failed:
 	bhnd_release_resource(dev, SYS_RES_MEMORY, sc->sc_mem_rid,
 	    sc->sc_mem_res);
+
+	if (ctx != NULL)
+		free(ctx, M_DEVBUF);
+
 	return (error);
 }
 
@@ -134,6 +176,26 @@ bwn_bhnd_bus_ops_fini(device_t dev)
 	bhnd_release_pmu(dev);
 	bhnd_release_resource(dev, SYS_RES_MEMORY, sc->sc_mem_rid,
 	    sc->sc_mem_res);
+}
+
+static int
+bwn_bhnd_nvram_get_macaddr(device_t dev, const char *var,
+    uint8_t result[ETHER_ADDR_LEN])
+{
+	int error;
+
+	/* Try to fetch the mac address */
+	error = bhnd_nvram_getvar_array(dev, var, result, ETHER_ADDR_LEN,
+	    BHND_NVRAM_TYPE_UINT8);
+
+	/*
+	 * bwn(4) expects macaddrs to be initialized with 0xFF to signify
+	 * ENOENT.
+	 */
+	if (error == ENOENT)
+		memset(result, 0xFF, ETHER_ADDR_LEN);
+
+	return (error);
 }
 
 /*
@@ -503,7 +565,8 @@ bhnd_compat_sprom_get_rev(device_t dev)
 static uint8_t *
 bhnd_compat_sprom_get_mac_80211bg(device_t dev)
 {
-	panic("siba_sprom_get_mac_80211bg() unimplemented");
+	/* 'MAC_80211BG' is il0macaddr or macaddr*/
+	return (bwn_bhnd_get_ctx(dev)->macaddr);
 }
 
 /*
@@ -515,7 +578,8 @@ bhnd_compat_sprom_get_mac_80211bg(device_t dev)
 static uint8_t *
 bhnd_compat_sprom_get_mac_80211a(device_t dev)
 {
-	panic("siba_sprom_get_mac_80211a() unimplemented");
+	/* 'MAC_80211A' is et1macaddr */
+	return (bwn_bhnd_get_ctx(dev)->et1macaddr);
 }
 
 /*

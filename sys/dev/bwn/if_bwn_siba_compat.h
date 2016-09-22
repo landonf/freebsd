@@ -35,13 +35,30 @@
 
 #include "if_bwnvar.h"
 
+#define	BWN_BHND_MAC
+
 /**
  * Compatiblity shim state.
  */
 struct bwn_bhnd_ctx {
-	// TODO
+	/* NVRAM variables that can't be pulled from NVRAM on-demand, either
+	 * due to bwn(4) requiring writability, or expecting pointers to
+	 * bus-managed storage. */
+
+	/*
+	 * MAC variables (read-only).
+	 * 
+	 * bwn(4) expects unavailable macaddrs to be initialized with 0xFF
+	 * octets.
+	 */
+	uint8_t	macaddr[ETHER_ADDR_LEN];	/**< BHND_NVAR_IL0MACADDR (sromrev 0-2) or
+						     BHND_NVAR_MACADDR (sromrev >= 3) */
+	uint8_t et1macaddr[ETHER_ADDR_LEN];	/**< BHND_NVAR_ET1MACADDR (sromrev 0-2) */
 };
 
+/**
+ * Return the bwn(4) device's bhnd compatiblity context.
+ */
 static inline struct bwn_bhnd_ctx *
 bwn_bhnd_get_ctx(device_t dev)
 {
@@ -60,9 +77,10 @@ do {									\
 									\
 	error = bhnd_nvram_getvar_ ## _type(_dev, _name, &value);	\
 	if (error) {							\
-		device_printf(_dev,					\
-		    "error reading NVRAM variable '%s': %d\n", _name,	\
-		    error);						\
+		if (error != ENOENT)					\
+			panic("error reading NVRAM variable '%s': %d",	\
+			     _name, error);				\
+									\
 		return (_default);					\
 	}								\
 									\
