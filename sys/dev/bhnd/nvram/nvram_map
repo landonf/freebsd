@@ -1219,10 +1219,15 @@ u8 freqoffset_corr {
 u8 hw_iqcal_en {
 	srom 8-10	0xB9 (&0x20, >>5)
 }
+
 u8[6] il0macaddr {
-	sfmt	macaddr
+	sfmt		macaddr
 	srom 0-2	u8 0x49, u8 0x48, u8 0x51, u8 0x50, u8 0x53, u8 0x52
+
+	# compatibility with sromrev >= 3
+	alias		macaddr
 }
+
 u8 iqcal_swp_dis {
 	srom 8-10	0xB9 (&0x10, >>4)
 }

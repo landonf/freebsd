@@ -139,6 +139,13 @@ struct bhnd_nvram_vardefn {
 	size_t				 num_sp_defs;	/**< number of sprom definitions */
 };
 
+/** NVRAM variable alias entry */
+struct bhnd_nvram_var_alias {
+	const char	*name;		/**< variable name */
+	const char	**aliases;	/**< aliases */
+	size_t		 num_aliases;	/**< number of aliases */
+};
+
 /**
  * NVRAM value tuple.
  */

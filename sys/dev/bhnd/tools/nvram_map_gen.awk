@@ -158,6 +158,7 @@ BEGIN {
 	ST_NONE		= "NONE"	# default state
 
 	# Property types
+	PROP_T_ALIAS	= "alias"
 	PROP_T_SFMT	= "sfmt"
 	PROP_T_ALL1	= "all1"
 
@@ -200,6 +201,12 @@ BEGIN {
 	VAR_PRIVATE	= "v_private"
 	VAR_ARRAY	= "v_array"
 	VAR_IGNALL1	= "v_ignall1"
+
+	# Alias array keys
+	ALIAS_VAR_NAME	= "a_name"
+	ALIAS_TGT	= "a_target"
+	ALIAS_TGT_NAME	= "a_target_name"
+	ALIAS_NUM_TGT	= "a_num_target"
 }
 
 # return the flag definition for variable `v`
@@ -282,6 +289,24 @@ function emit_nvram_vardef (v)
 function emit_var_namedef (v)
 {
 	emit("#define\tBHND_NVAR_" toupper(v) "\t\"" v "\"\n")
+}
+
+# emit a bhnd_nvram_var_alias entry for variable name `v`
+function emit_nvram_alias (v)
+{
+	if (!(v in alias_var_names))
+		return
+
+	emit("{ \"" v "\", (const char *[]) {\n")
+	output_depth++
+
+	for (_alias = 0; _alias < aliases[v,ALIAS_NUM_TGT]; _alias++) {
+		tgtk = subkey(v, ALIAS_TGT, _alias"")
+		emit("\"" aliases[tgtk,ALIAS_TGT_NAME] "\",\n")
+	}
+
+	output_depth--
+	emit(" }, " aliases[v,ALIAS_NUM_TGT] "},\n")
 }
 
 # generate a set of var offset definitions for struct variable `st_vid`
@@ -415,6 +440,23 @@ END {
 		}
 	}
 
+	# Validate all alias targets
+	for (v in alias_var_names) {
+		for (_i = 0; _i < aliases[v,ALIAS_NUM_TGT]; _i++) {
+			tgt = aliases[v,ALIAS_TGT,_i,ALIAS_TGT_NAME]
+			line = aliases[v,ALIAS_TGT,_i,DEF_LINE]
+
+			if (!v in var_names) {
+				errorx("'" tgt "' alias definition on line " \
+				    line " references undefined variable '" \
+				    v "'")
+			} else if (vars[v,VAR_STRUCT] != null) {
+				errorx("'" tgt "' alias definition on line " \
+				    line " references struct variable '" v "' ")
+			}
+		}
+	}
+
 	# Apply lexicographical sorting. To support more effecient table
 	# searching, we guarantee a stable sort order (using C collation).
 	sort(output_vars)
@@ -441,6 +483,18 @@ END {
 	} else if (OUT_T == OUT_T_HEADER) {
 		for (i = 0; i < num_output_vars; i++)
 			emit_var_namedef(output_vars[i])
+	}
+
+	# Emit any alias definitions
+	if (OUT_T == OUT_T_DATA) {
+		emit("static const struct bhnd_nvram_var_alias "\
+		    "bhnd_nvram_var_aliases[] = {\n")
+		output_depth++
+		for (i = 0; i < num_output_vars; i++)
+			emit_nvram_alias(output_vars[i])
+
+		output_depth--
+		emit("};\n")
 	}
 
 	printf("%u variable records written to %s\n", num_output_vars,
@@ -897,8 +951,8 @@ $1 == ST_SROM_DEFN && allow_def(ST_SROM_DEFN) && in_state(ST_STRUCT_BLOCK) {
 	next
 }
 
-# close any previous srom revision descriptor
-$1 == ST_SROM_DEFN && in_state(ST_SROM_DEFN) {
+# if not an offset definition, close previous srom revision descriptor
+$1 !~ SROM_OFF_REGEX && in_state(ST_SROM_DEFN) {
 	pop_state()
 }
 
@@ -1098,6 +1152,7 @@ $1 ~ SROM_OFF_REGEX && in_state(ST_SROM_DEFN) {
 	vars[name,VAR_TYPE] = type
 	vars[name,VAR_BASE_TYPE] = base_type
 	vars[name,NUM_REVS] = 0
+	vars[name,VAR_NUM_ALIAS] = 0
 	vars[name,VAR_PRIVATE] = private
 	vars[name,VAR_ARRAY] = array
 	vars[name,VAR_FMT] = "hex" # default if not specified
@@ -1124,6 +1179,36 @@ $1 ~ IDENT_REGEX && $2 ~ IDENT_REGEX && in_state(ST_VAR_BLOCK) {
 
 		vars[vid,VAR_FMT] = $2
 		debug($1 "=" FMT[$2])
+	} else if ($1 == PROP_T_ALIAS && !in_nested_state(ST_STRUCT_BLOCK)) {
+		if (NF != 2)
+			error("single alias name parameter expected")
+
+		tgt = vid
+		src = $2
+
+		# Add an alias entry for src, if required.
+		if (!(subkey(src,ALIAS_VAR_NAME) in aliases)) {
+			alias_var_names[src] = 0
+			aliases[src,ALIAS_VAR_NAME] = src
+			aliases[src,ALIAS_NUM_TGT] = 0
+		}
+
+		# Check for existing tgt entry
+		for (_n = 0; _n < aliases[src,ALIAS_NUM_TGT]; _n++) {
+			tkey = subkey(src,ALIAS_TGT,_n"")
+
+			if (aliases[tkey,ALIAS_TGT_NAME] == tgt)
+				error("alias " tgt " already defined for " src)
+		}
+
+		# Assign a new alias target ID
+		aid = aliases[src,ALIAS_NUM_TGT] ""
+		tkey = subkey(src,ALIAS_TGT,aid"")
+		aliases[src,ALIAS_NUM_TGT]++
+
+		# Record the alias target
+		aliases[tkey,ALIAS_TGT_NAME] = tgt
+		aliases[tkey,DEF_LINE] = NR
 	} else if ($1 == PROP_T_ALL1 && $2 == "ignore") {
 		vars[vid,VAR_IGNALL1] = 1
 	} else {
