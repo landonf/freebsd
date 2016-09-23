@@ -309,7 +309,7 @@ function emit_var_namedef (v)
 function gen_struct_var_offsets (vid, revk, st_vid, st_revk, base_addr)
 {
 	# Copy all offsets to the new variable
-	for (offset = 0; offset < vars[v,REV_NUM_OFFS]; offset++) {
+	for (offset = 0; offset < vars[revk,REV_NUM_OFFS]; offset++) {
 		st_offk = subkey(st_revk, OFF, offset"")
 		offk = subkey(revk, OFF, offset"")
 
@@ -348,7 +348,7 @@ function gen_struct_vars (st_vid)
 	}
 
 	# generate variable records for each defined struct offset
-	for (off = 0; off < st_max_off; off++) {
+	for (off = 0; off <= st_max_off; off++) {
 		# Construct basic variable definition
 		v = st_vid off""
 		vars[v,VAR_TYPE]	= vars[st_vid,VAR_TYPE]
@@ -402,13 +402,13 @@ function gen_struct_vars (st_vid)
 				revk = subkey(v, REV, rev)
 				vars[v,NUM_REVS]++
 
-				vars[revk,DEF_LINE]	= vars[st_revk,DEF_LINE]
+				vars[revk,DEF_LINE]	= vars[st_var_revk,DEF_LINE]
 				vars[revk,REV_START]	= v_start
 				vars[revk,REV_END]	= v_end
 				vars[revk,REV_NUM_OFFS] = \
 				    vars[st_var_revk,REV_NUM_OFFS]
 
-				gen_struct_var_offsets(v, revk, st_vid, st_revk,
+				gen_struct_var_offsets(v, revk, st_vid, st_var_revk,
 				    base_addr)
 			}
 		}
