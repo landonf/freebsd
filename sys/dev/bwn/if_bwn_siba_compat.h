@@ -35,25 +35,21 @@
 
 #include "if_bwnvar.h"
 
-#define	BWN_BHND_MAC
+#define	BWN_BHND_NUM_CORE_PWR	4
 
 /**
  * Compatiblity shim state.
  */
 struct bwn_bhnd_ctx {
-	/* NVRAM variables that can't be pulled from NVRAM on-demand, either
-	 * due to bwn(4) requiring writability, or expecting pointers to
-	 * bus-managed storage. */
+	uint8_t				sromrev;	/**< SROM format revision */
 
-	/*
-	 * MAC variables (read-only).
-	 * 
-	 * bwn(4) expects unavailable macaddrs to be initialized with 0xFF
-	 * octets.
-	 */
-	uint8_t	macaddr[ETHER_ADDR_LEN];	/**< BHND_NVAR_IL0MACADDR (sromrev 0-2) or
-						     BHND_NVAR_MACADDR (sromrev >= 3) */
-	uint8_t et1macaddr[ETHER_ADDR_LEN];	/**< BHND_NVAR_ET1MACADDR (sromrev 0-2) */
+	/* NVRAM variables for which bwn(4) expects the bus to manage storage
+	 * for (and in some cases, allow writes). */	
+	uint8_t				mac_80211bg[6];	/**< D11 unit 0 */
+	uint8_t				mac_80211a[6];	/**< D11 unit 1 */
+
+	uint32_t			boardflags;	/**< boardflags (bwn-writable) */
+	uint8_t				pa0maxpwr;	/**< 2GHz max power (bwn-writable) */
 };
 
 /**
@@ -67,23 +63,28 @@ bwn_bhnd_get_ctx(device_t dev)
 }
 
 /**
- * Fetch and return an NVRAM variable via bhnd_nvram_getvar_*(), or return
- * the given default value if the NVRAM variable is unavailable.
+ * Fetch an NVRAM variable via bhnd_nvram_getvar_*().
  */
-#define	BWN_BHND_NVRAM_RETURN_VAR(_dev, _type, _name, _default)		\
+#define	BWN_BHND_NVRAM_FETCH_VAR(_dev, _type, _name, _result)		\
+do {									\
+	int error;							\
+									\
+	mtx_lock(&Giant); /* XXX: temporarily required by bhnd(4) */	\
+	error = bhnd_nvram_getvar_ ## _type(_dev, _name, _result);	\
+	mtx_unlock(&Giant);						\
+	if (error) {							\
+		panic("NVRAM variable %s unreadable: %d", _name,	\
+		    error);						\
+	}								\
+} while(0)
+
+/**
+ * Fetch and return an NVRAM variable via bhnd_nvram_getvar_*().
+ */
+#define	BWN_BHND_NVRAM_RETURN_VAR(_dev, _type, _name)			\
 do {									\
 	_type ## _t	value;						\
-	int		error;						\
-									\
-	error = bhnd_nvram_getvar_ ## _type(_dev, _name, &value);	\
-	if (error) {							\
-		if (error != ENOENT)					\
-			panic("error reading NVRAM variable '%s': %d",	\
-			     _name, error);				\
-									\
-		return (_default);					\
-	}								\
-									\
+	BWN_BHND_NVRAM_FETCH_VAR(_dev, _type, _name, &value);		\
 	return (value);							\
 } while(0)
 

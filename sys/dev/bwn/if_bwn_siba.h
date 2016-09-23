@@ -232,19 +232,10 @@ enum siba_type {
 	SIBA_TYPE_PCMCIA
 };
 
+/* TODO: need a real country code table */
 enum {
-	SIBA_CCODE_WORLD		/* unused */,
-	SIBA_CCODE_THAILAND		/* unused */,
-	SIBA_CCODE_ISRAEL		/* unused */,
-	SIBA_CCODE_JORDAN		/* unused */,
-	SIBA_CCODE_CHINA		/* unused */,
 	SIBA_CCODE_JAPAN,
-	SIBA_CCODE_USA_CANADA_ANZ	/* unused */,
-	SIBA_CCODE_EUROPE		/* unused */,
-	SIBA_CCODE_USA_LOW		/* unused */,
-	SIBA_CCODE_JAPAN_HIGH		/* unused */,
-	SIBA_CCODE_ALL			/* unused */,
-	SIBA_CCODE_NONE			/* unused */
+	SIBA_CCODE_UNKNOWN
 };
 
 struct siba_sprom_core_pwr_info {
@@ -254,10 +245,10 @@ struct siba_sprom_core_pwr_info {
     uint8_t maxpwr_5gl;
     uint8_t maxpwr_5g;
     uint8_t maxpwr_5gh;
-    uint8_t pa_2g[4];
-    uint8_t pa_5gl[4];
-    uint8_t pa_5g[4];
-    uint8_t pa_5gh[4];
+    int16_t pa_2g[3];
+    int16_t pa_5gl[4];
+    int16_t pa_5g[4];
+    int16_t pa_5gh[4];
 };
 
 #define	SIBA_LDO_PAREF	0

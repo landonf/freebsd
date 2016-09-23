@@ -65,39 +65,20 @@
 
 #include "if_bwn_siba_compat.h"
 
+static int		bwn_bhnd_populate_nvram_data(device_t dev,
+			    struct bwn_bhnd_ctx *ctx);
+static inline bool	bwn_bhnd_is_siba_reg(device_t dev, uint16_t offset);
+
 #define	BWN_ASSERT_VALID_REG(_dev, _offset)				\
 	KASSERT(!bwn_bhnd_is_siba_reg(_dev, _offset),			\
 	    ("%s: accessing siba-specific register %#jx", __FUNCTION__,	\
 		(uintmax_t)(_offset)));
-
-static int	bwn_bhnd_nvram_get_macaddr(device_t dev, const char *var,
-		    uint8_t result[ETHER_ADDR_LEN]);
-
-/**
- * Return true if @p offset is within a siba-specific configuration register
- * block.
- */
-static inline bool
-bwn_bhnd_is_siba_reg(device_t dev, uint16_t offset)
-{
-	if (offset >= SIBA_CFG0_OFFSET &&
-	    offset <= SIBA_CFG0_OFFSET + SIBA_CFG_SIZE)
-		return (true);
-
-	if (offset >= SIBA_CFG1_OFFSET &&
-	    offset <= SIBA_CFG1_OFFSET + SIBA_CFG_SIZE)
-		return (true);
-	
-	return (false);
-}
-
 
 static int
 bwn_bhnd_bus_ops_init(device_t dev)
 {
 	struct bwn_bhnd_ctx	*ctx;
 	struct bwn_softc	*sc;
-	uint8_t			 sromrev;
 	int			 error;
 
 	sc = device_get_softc(dev);
@@ -119,38 +100,9 @@ bwn_bhnd_bus_ops_init(device_t dev)
 	/* Allocate our context */
 	ctx = malloc(sizeof(struct bwn_bhnd_ctx), M_DEVBUF, M_WAITOK|M_ZERO);
 
-	/* Populate any NVRAM variables for which bwn(4) assumes the bus will
-	 * manage storage. */
-	if ((error = bhnd_nvram_getvar_uint8(dev, BHND_NVAR_SROMREV, &sromrev)))
-		return (error);
-
-	/* Fetch macaddrs if available; bwn(4) expects any missing macaddr
-	 * values to be initialized with 0xFF octets */
-	if (sromrev <= 2) {
-		/* WLAN0 macaddr */
-		error = bhnd_nvram_getvar_array(dev, BHND_NVAR_IL0MACADDR,
-		    ctx->macaddr, sizeof(ctx->macaddr), BHND_NVRAM_TYPE_UINT8);
-		if (error)
-			goto failed;
-
-		/* WLAN1 802.11a macaddr (may be unavailable) */
-		error = bhnd_nvram_getvar_array(dev, BHND_NVAR_ET1MACADDR,
-		    ctx->et1macaddr, sizeof(ctx->et1macaddr),
-		    BHND_NVRAM_TYPE_UINT8);
-		if (error == ENOENT)
-			memset(ctx->et1macaddr, 0xFF, sizeof(ctx->et1macaddr));
-		else if (error)
-			goto failed;
-	} else {
-		/* WLAN0 macaddr */
-		error = bhnd_nvram_getvar_array(dev, BHND_NVAR_MACADDR,
-		    ctx->macaddr, sizeof(ctx->macaddr), BHND_NVRAM_TYPE_UINT8);
-		if (error)
-			goto failed;
-
-		/* WLAN1 unavailable */
-		memset(ctx->et1macaddr, 0xFF, sizeof(ctx->et1macaddr));
-	}
+	/* Populate NVRAM data */
+	if ((error = bwn_bhnd_populate_nvram_data(dev, ctx)))
+		goto failed;
 
 	/* Initialize bwn_softc */
 	sc->sc_bus_ctx = ctx;
@@ -178,24 +130,98 @@ bwn_bhnd_bus_ops_fini(device_t dev)
 	    sc->sc_mem_res);
 }
 
-static int
-bwn_bhnd_nvram_get_macaddr(device_t dev, const char *var,
-    uint8_t result[ETHER_ADDR_LEN])
+
+/**
+ * Return true if @p offset is within a siba-specific configuration register
+ * block.
+ */
+static inline bool
+bwn_bhnd_is_siba_reg(device_t dev, uint16_t offset)
 {
-	int error;
+	if (offset >= SIBA_CFG0_OFFSET &&
+	    offset <= SIBA_CFG0_OFFSET + SIBA_CFG_SIZE)
+		return (true);
 
-	/* Try to fetch the mac address */
-	error = bhnd_nvram_getvar_array(dev, var, result, ETHER_ADDR_LEN,
-	    BHND_NVRAM_TYPE_UINT8);
+	if (offset >= SIBA_CFG1_OFFSET &&
+	    offset <= SIBA_CFG1_OFFSET + SIBA_CFG_SIZE)
+		return (true);
+	
+	return (false);
+}
 
-	/*
-	 * bwn(4) expects macaddrs to be initialized with 0xFF to signify
-	 * ENOENT.
-	 */
-	if (error == ENOENT)
-		memset(result, 0xFF, ETHER_ADDR_LEN);
+/* Populate SPROM values from NVRAM */
+static int
+bwn_bhnd_populate_nvram_data(device_t dev, struct bwn_bhnd_ctx *ctx)
+{
+	const char	*mac_80211bg_var, *mac_80211a_var;
+	int	error;
 
-	return (error);
+	/* Fetch SROM revision */
+	error = bhnd_nvram_getvar_uint8(dev, BHND_NVAR_SROMREV, &ctx->sromrev);
+	if (error) {
+		device_printf(dev, "error reading %s: %d\n", BHND_NVAR_SROMREV,
+		    error);
+		return (error);
+	}
+
+	/* Fetch board flags */
+	error = bhnd_nvram_getvar_uint32(dev, BHND_NVAR_BOARDFLAGS,
+	    &ctx->boardflags);
+	if (error) {
+		device_printf(dev, "error reading %s: %d\n",
+		    BHND_NVAR_BOARDFLAGS, error);
+		return (error);
+	}
+
+	/* Fetch macaddrs if available; bwn(4) expects any missing macaddr
+	 * values to be initialized with 0xFF octets */
+	memset(ctx->mac_80211bg, 0xFF, sizeof(ctx->mac_80211bg));
+	memset(ctx->mac_80211a, 0xFF, sizeof(ctx->mac_80211a));
+
+	if (ctx->sromrev <= 2) {
+		mac_80211bg_var = BHND_NVAR_IL0MACADDR;
+		mac_80211a_var = BHND_NVAR_ET1MACADDR;
+	} else {
+		mac_80211bg_var = BHND_NVAR_MACADDR;
+		mac_80211a_var = NULL;
+	}
+
+	/* Fetch required D11 core 0 macaddr */
+	error = bhnd_nvram_getvar_array(dev, mac_80211bg_var, ctx->mac_80211bg,
+	    sizeof(ctx->mac_80211bg), BHND_NVRAM_TYPE_UINT8);
+	if (error) {
+		device_printf(dev, "error reading %s: %d\n", mac_80211bg_var,
+		    error);
+		return (error);
+	}
+
+	/* Fetch optional D11 core 1 macaddr */
+	if (mac_80211a_var != NULL) {
+		error = bhnd_nvram_getvar_array(dev, mac_80211a_var,
+		    ctx->mac_80211a, sizeof(ctx->mac_80211a),
+		    BHND_NVRAM_TYPE_UINT8);
+
+		if (error && error != ENOENT) {
+			device_printf(dev, "error reading %s: %d\n",
+			    mac_80211a_var, error);
+			return (error);
+		}
+	};
+
+	/* Fetch pa0maxpwr; bwn(4) expects to be able to modify it */
+	if ((ctx->sromrev >= 1 && ctx->sromrev <= 3) ||
+	    (ctx->sromrev >= 8 && ctx->sromrev <= 10))
+	{
+		error = bhnd_nvram_getvar_uint8(dev, BHND_NVAR_PA0MAXPWR,
+		     &ctx->pa0maxpwr);
+		if (error) {
+			device_printf(dev, "error reading %s: %d\n",
+			    BHND_NVAR_PA0MAXPWR, error);
+			return (error);
+		}
+	}
+
+	return (0);
 }
 
 /*
@@ -553,7 +579,7 @@ bhnd_compat_get_pcicore_revid(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_rev(device_t dev)
 {
-	panic("siba_sprom_get_rev() unimplemented");
+	return (bwn_bhnd_get_ctx(dev)->sromrev);
 }
 
 /*
@@ -566,7 +592,7 @@ static uint8_t *
 bhnd_compat_sprom_get_mac_80211bg(device_t dev)
 {
 	/* 'MAC_80211BG' is il0macaddr or macaddr*/
-	return (bwn_bhnd_get_ctx(dev)->macaddr);
+	return (bwn_bhnd_get_ctx(dev)->mac_80211bg);
 }
 
 /*
@@ -579,7 +605,7 @@ static uint8_t *
 bhnd_compat_sprom_get_mac_80211a(device_t dev)
 {
 	/* 'MAC_80211A' is et1macaddr */
-	return (bwn_bhnd_get_ctx(dev)->et1macaddr);
+	return (bwn_bhnd_get_ctx(dev)->mac_80211a);
 }
 
 /*
@@ -591,7 +617,8 @@ bhnd_compat_sprom_get_mac_80211a(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_brev(device_t dev)
 {
-	panic("siba_sprom_get_brev() unimplemented");
+	/* TODO: bwn(4) needs to switch to uint16_t */
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_BOARDREV);
 }
 
 /*
@@ -603,7 +630,10 @@ bhnd_compat_sprom_get_brev(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_ccode(device_t dev)
 {
-	panic("siba_sprom_get_ccode() unimplemented");
+	/* This has been replaced with 'ccode' in later SPROM
+	 * revisions, but this API is only called on devices with
+	 * spromrev 1. */
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_CC);
 }
 
 /*
@@ -615,7 +645,7 @@ bhnd_compat_sprom_get_ccode(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_ant_a(device_t dev)
 {
-	panic("siba_sprom_get_ant_a() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_AA5G);
 }
 
 /*
@@ -627,7 +657,7 @@ bhnd_compat_sprom_get_ant_a(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_ant_bg(device_t dev)
 {
-	panic("siba_sprom_get_ant_bg() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_AA2G);
 }
 
 /*
@@ -639,7 +669,7 @@ bhnd_compat_sprom_get_ant_bg(device_t dev)
 static uint16_t
 bhnd_compat_sprom_get_pa0b0(device_t dev)
 {
-	panic("siba_sprom_get_pa0b0() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint16, BHND_NVAR_PA0B0);
 }
 
 /*
@@ -651,7 +681,7 @@ bhnd_compat_sprom_get_pa0b0(device_t dev)
 static uint16_t
 bhnd_compat_sprom_get_pa0b1(device_t dev)
 {
-	panic("siba_sprom_get_pa0b1() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint16, BHND_NVAR_PA0B1);
 }
 
 /*
@@ -663,7 +693,36 @@ bhnd_compat_sprom_get_pa0b1(device_t dev)
 static uint16_t
 bhnd_compat_sprom_get_pa0b2(device_t dev)
 {
-	panic("siba_sprom_get_pa0b2() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint16, BHND_NVAR_PA0B2);
+}
+
+/**
+ * Fetch an led behavior (ledbhX) NVRAM variable value, for use by
+ * siba_sprom_get_gpioX().
+ * 
+ * ('gpioX' are actually the ledbhX NVRAM variables).
+ */
+static uint8_t
+bhnd_compat_sprom_get_ledbh(device_t dev, const char *name)
+{
+	uint8_t	value;
+	int	error;
+
+	mtx_lock(&Giant); /* XXX: temporarily required by bhnd(4) */
+	error = bhnd_nvram_getvar_uint8(dev, name, &value);
+	mtx_unlock(&Giant);
+
+	if (error && error != ENOENT)
+		panic("NVRAM variable %s unreadable: %d", name, error);
+
+	/* For some variables (including ledbhX), a value with all bits set is
+	 * treated as uninitialized in the SPROM format; our SPROM parser
+	 * detects this case and returns ENOENT, but bwn(4) actually expects
+	 * to read the raw value 0xFF value. */
+	if (error == ENOENT)
+		value = 0xFF;
+
+	return (value);
 }
 
 /*
@@ -677,7 +736,7 @@ bhnd_compat_sprom_get_pa0b2(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_gpio0(device_t dev)
 {
-	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_LEDBH0, 0x0);
+	return (bhnd_compat_sprom_get_ledbh(dev, BHND_NVAR_LEDBH0));
 }
 
 /*
@@ -689,7 +748,7 @@ bhnd_compat_sprom_get_gpio0(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_gpio1(device_t dev)
 {
-	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_LEDBH1, 0x0);
+	return (bhnd_compat_sprom_get_ledbh(dev, BHND_NVAR_LEDBH1));
 }
 
 /*
@@ -701,7 +760,7 @@ bhnd_compat_sprom_get_gpio1(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_gpio2(device_t dev)
 {
-	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_LEDBH2, 0x0);
+	return (bhnd_compat_sprom_get_ledbh(dev, BHND_NVAR_LEDBH2));
 }
 
 /*
@@ -713,7 +772,7 @@ bhnd_compat_sprom_get_gpio2(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_gpio3(device_t dev)
 {
-	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_LEDBH3, 0x0);
+	return (bhnd_compat_sprom_get_ledbh(dev, BHND_NVAR_LEDBH3));
 }
 
 /*
@@ -725,7 +784,7 @@ bhnd_compat_sprom_get_gpio3(device_t dev)
 static uint16_t
 bhnd_compat_sprom_get_maxpwr_bg(device_t dev)
 {
-	panic("siba_sprom_get_maxpwr_bg() unimplemented");
+	return (bwn_bhnd_get_ctx(dev)->pa0maxpwr);
 }
 
 /*
@@ -737,7 +796,8 @@ bhnd_compat_sprom_get_maxpwr_bg(device_t dev)
 static void
 bhnd_compat_sprom_set_maxpwr_bg(device_t dev, uint16_t t)
 {
-	panic("siba_sprom_set_maxpwr_bg() unimplemented");
+	KASSERT(t <= UINT8_MAX, ("invalid maxpwr value %hu", t));
+	bwn_bhnd_get_ctx(dev)->pa0maxpwr = t;
 }
 
 /*
@@ -749,7 +809,8 @@ bhnd_compat_sprom_set_maxpwr_bg(device_t dev, uint16_t t)
 static uint8_t
 bhnd_compat_sprom_get_rxpo2g(device_t dev)
 {
-	panic("siba_sprom_get_rxpo2g() unimplemented");
+	/* Should be signed, but bwn(4) expects an unsigned value */
+	BWN_BHND_NVRAM_RETURN_VAR(dev, int8, BHND_NVAR_RXPO2G);
 }
 
 /*
@@ -761,7 +822,8 @@ bhnd_compat_sprom_get_rxpo2g(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_rxpo5g(device_t dev)
 {
-	panic("siba_sprom_get_rxpo5g() unimplemented");
+	/* Should be signed, but bwn(4) expects an unsigned value */
+	BWN_BHND_NVRAM_RETURN_VAR(dev, int8, BHND_NVAR_RXPO5G);
 }
 
 /*
@@ -773,7 +835,7 @@ bhnd_compat_sprom_get_rxpo5g(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_tssi_bg(device_t dev)
 {
-	panic("siba_sprom_get_tssi_bg() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_PA0ITSSIT);
 }
 
 /*
@@ -785,7 +847,7 @@ bhnd_compat_sprom_get_tssi_bg(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_tri2g(device_t dev)
 {
-	panic("siba_sprom_get_tri2g() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_TRI2G);
 }
 
 /*
@@ -797,7 +859,7 @@ bhnd_compat_sprom_get_tri2g(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_tri5gl(device_t dev)
 {
-	panic("siba_sprom_get_tri5gl() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_TRI5GL);
 }
 
 /*
@@ -809,7 +871,7 @@ bhnd_compat_sprom_get_tri5gl(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_tri5g(device_t dev)
 {
-	panic("siba_sprom_get_tri5g() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_TRI5G);
 }
 
 /*
@@ -821,7 +883,7 @@ bhnd_compat_sprom_get_tri5g(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_tri5gh(device_t dev)
 {
-	panic("siba_sprom_get_tri5gh() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_TRI5GH);
 }
 
 /*
@@ -833,7 +895,7 @@ bhnd_compat_sprom_get_tri5gh(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_rssisav2g(device_t dev)
 {
-	panic("siba_sprom_get_rssisav2g() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_RSSISAV2G);
 }
 
 /*
@@ -845,7 +907,7 @@ bhnd_compat_sprom_get_rssisav2g(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_rssismc2g(device_t dev)
 {
-	panic("siba_sprom_get_rssismc2g() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_RSSISMC2G);
 }
 
 /*
@@ -857,7 +919,7 @@ bhnd_compat_sprom_get_rssismc2g(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_rssismf2g(device_t dev)
 {
-	panic("siba_sprom_get_rssismf2g() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_RSSISMF2G);
 }
 
 /*
@@ -869,7 +931,7 @@ bhnd_compat_sprom_get_rssismf2g(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_bxa2g(device_t dev)
 {
-	panic("siba_sprom_get_bxa2g() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_BXA2G);
 }
 
 /*
@@ -881,7 +943,7 @@ bhnd_compat_sprom_get_bxa2g(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_rssisav5g(device_t dev)
 {
-	panic("siba_sprom_get_rssisav5g() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_RSSISAV5G);
 }
 
 /*
@@ -893,7 +955,7 @@ bhnd_compat_sprom_get_rssisav5g(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_rssismc5g(device_t dev)
 {
-	panic("siba_sprom_get_rssismc5g() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_RSSISMC5G);
 }
 
 /*
@@ -905,7 +967,7 @@ bhnd_compat_sprom_get_rssismc5g(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_rssismf5g(device_t dev)
 {
-	panic("siba_sprom_get_rssismf5g() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_RSSISMF5G);
 }
 
 /*
@@ -917,7 +979,7 @@ bhnd_compat_sprom_get_rssismf5g(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_bxa5g(device_t dev)
 {
-	panic("siba_sprom_get_bxa5g() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_BXA5G);
 }
 
 /*
@@ -929,7 +991,7 @@ bhnd_compat_sprom_get_bxa5g(device_t dev)
 static uint16_t
 bhnd_compat_sprom_get_cck2gpo(device_t dev)
 {
-	panic("siba_sprom_get_cck2gpo() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint16, BHND_NVAR_CCK2GPO);
 }
 
 /*
@@ -941,7 +1003,7 @@ bhnd_compat_sprom_get_cck2gpo(device_t dev)
 static uint32_t
 bhnd_compat_sprom_get_ofdm2gpo(device_t dev)
 {
-	panic("siba_sprom_get_ofdm2gpo() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint32, BHND_NVAR_OFDM2GPO);
 }
 
 /*
@@ -953,7 +1015,7 @@ bhnd_compat_sprom_get_ofdm2gpo(device_t dev)
 static uint32_t
 bhnd_compat_sprom_get_ofdm5glpo(device_t dev)
 {
-	panic("siba_sprom_get_ofdm5glpo() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint32, BHND_NVAR_OFDM5GLPO);
 }
 
 /*
@@ -965,7 +1027,7 @@ bhnd_compat_sprom_get_ofdm5glpo(device_t dev)
 static uint32_t
 bhnd_compat_sprom_get_ofdm5gpo(device_t dev)
 {
-	panic("siba_sprom_get_ofdm5gpo() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint32, BHND_NVAR_OFDM5GPO);
 }
 
 /*
@@ -977,7 +1039,7 @@ bhnd_compat_sprom_get_ofdm5gpo(device_t dev)
 static uint32_t
 bhnd_compat_sprom_get_ofdm5ghpo(device_t dev)
 {
-	panic("siba_sprom_get_ofdm5ghpo() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint32, BHND_NVAR_OFDM5GHPO);
 }
 
 /*
@@ -989,7 +1051,12 @@ bhnd_compat_sprom_get_ofdm5ghpo(device_t dev)
 static void
 bhnd_compat_sprom_set_bf_lo(device_t dev, uint16_t t)
 {
-	panic("siba_sprom_set_bf_lo() unimplemented");
+	struct bwn_bhnd_ctx	*ctx;
+
+	ctx = bwn_bhnd_get_ctx(dev);
+
+	ctx->boardflags &= ~0xFFFF;
+	ctx->boardflags |= t;
 }
 
 /*
@@ -1012,7 +1079,8 @@ bhnd_compat_sprom_set_bf_lo(device_t dev, uint16_t t)
 static uint16_t
 bhnd_compat_sprom_get_bf_lo(device_t dev)
 {
-	panic("siba_sprom_get_bf_lo() unimplemented");
+	struct bwn_bhnd_ctx *ctx = bwn_bhnd_get_ctx(dev);
+	return (ctx->boardflags & UINT16_MAX);
 }
 
 /*
@@ -1026,7 +1094,8 @@ bhnd_compat_sprom_get_bf_lo(device_t dev)
 static uint16_t
 bhnd_compat_sprom_get_bf_hi(device_t dev)
 {
-	panic("siba_sprom_get_bf_hi() unimplemented");
+	struct bwn_bhnd_ctx *ctx = bwn_bhnd_get_ctx(dev);
+	return (ctx->boardflags >> 16);
 }
 
 /*
@@ -1043,7 +1112,10 @@ bhnd_compat_sprom_get_bf_hi(device_t dev)
 static uint16_t
 bhnd_compat_sprom_get_bf2_lo(device_t dev)
 {
-	panic("siba_sprom_get_bf2_lo() unimplemented");
+	uint32_t bf2;
+
+	BWN_BHND_NVRAM_FETCH_VAR(dev, uint32, BHND_NVAR_BOARDFLAGS2, &bf2);
+	return (bf2 & UINT16_MAX);
 }
 
 /*
@@ -1057,7 +1129,10 @@ bhnd_compat_sprom_get_bf2_lo(device_t dev)
 static uint16_t
 bhnd_compat_sprom_get_bf2_hi(device_t dev)
 {
-	panic("siba_sprom_get_bf2_hi() unimplemented");
+	uint32_t bf2;
+
+	BWN_BHND_NVRAM_FETCH_VAR(dev, uint32, BHND_NVAR_BOARDFLAGS2, &bf2);
+	return (bf2 >> 16);
 }
 
 /*
@@ -1069,7 +1144,7 @@ bhnd_compat_sprom_get_bf2_hi(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_fem_2ghz_tssipos(device_t dev)
 {
-	panic("siba_sprom_get_fem_2ghz_tssipos() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_TSSIPOS2G);
 }
 
 /*
@@ -1081,7 +1156,7 @@ bhnd_compat_sprom_get_fem_2ghz_tssipos(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_fem_2ghz_extpa_gain(device_t dev)
 {
-	panic("siba_sprom_get_fem_2ghz_extpa_gain() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_EXTPAGAIN2G);
 }
 
 /*
@@ -1093,7 +1168,7 @@ bhnd_compat_sprom_get_fem_2ghz_extpa_gain(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_fem_2ghz_pdet_range(device_t dev)
 {
-	panic("siba_sprom_get_fem_2ghz_pdet_range() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_PDETRANGE2G);
 }
 
 /*
@@ -1105,7 +1180,7 @@ bhnd_compat_sprom_get_fem_2ghz_pdet_range(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_fem_2ghz_tr_iso(device_t dev)
 {
-	panic("siba_sprom_get_fem_2ghz_tr_iso() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_TRISO2G);
 }
 
 /*
@@ -1118,7 +1193,7 @@ bhnd_compat_sprom_get_fem_2ghz_tr_iso(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_fem_2ghz_antswlut(device_t dev)
 {
-	panic("siba_sprom_get_fem_2ghz_antswlut() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_ANTSWCTL2G);
 }
 
 /*
@@ -1131,7 +1206,7 @@ bhnd_compat_sprom_get_fem_2ghz_antswlut(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_fem_5ghz_extpa_gain(device_t dev)
 {
-	panic("siba_sprom_get_fem_5ghz_extpa_gain() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_EXTPAGAIN5G);
 }
 
 /*
@@ -1143,7 +1218,7 @@ bhnd_compat_sprom_get_fem_5ghz_extpa_gain(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_fem_5ghz_pdet_range(device_t dev)
 {
-	panic("siba_sprom_get_fem_5ghz_pdet_range() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_PDETRANGE5G);
 }
 
 /*
@@ -1156,7 +1231,7 @@ bhnd_compat_sprom_get_fem_5ghz_pdet_range(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_fem_5ghz_antswlut(device_t dev)
 {
-	panic("siba_sprom_get_fem_5ghz_antswlut() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_ANTSWCTL5G);
 }
 
 /*
@@ -1168,7 +1243,7 @@ bhnd_compat_sprom_get_fem_5ghz_antswlut(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_txpid_2g_0(device_t dev)
 {
-	panic("siba_sprom_get_txpid_2g_0() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_TXPID2GA0);
 }
 
 /*
@@ -1180,7 +1255,7 @@ bhnd_compat_sprom_get_txpid_2g_0(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_txpid_2g_1(device_t dev)
 {
-	panic("siba_sprom_get_txpid_2g_1() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_TXPID2GA1);
 }
 
 /*
@@ -1192,7 +1267,7 @@ bhnd_compat_sprom_get_txpid_2g_1(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_txpid_5gl_0(device_t dev)
 {
-	panic("siba_sprom_get_txpid_5gl_0() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_TXPID5GLA0);
 }
 
 /*
@@ -1204,7 +1279,7 @@ bhnd_compat_sprom_get_txpid_5gl_0(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_txpid_5gl_1(device_t dev)
 {
-	panic("siba_sprom_get_txpid_5gl_1() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_TXPID5GLA1);
 }
 
 /*
@@ -1216,7 +1291,7 @@ bhnd_compat_sprom_get_txpid_5gl_1(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_txpid_5g_0(device_t dev)
 {
-	panic("siba_sprom_get_txpid_5g_0() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_TXPID5GA0);
 }
 
 /*
@@ -1228,7 +1303,7 @@ bhnd_compat_sprom_get_txpid_5g_0(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_txpid_5g_1(device_t dev)
 {
-	panic("siba_sprom_get_txpid_5g_1() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_TXPID5GA1);
 }
 
 /*
@@ -1240,7 +1315,7 @@ bhnd_compat_sprom_get_txpid_5g_1(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_txpid_5gh_0(device_t dev)
 {
-	panic("siba_sprom_get_txpid_5gh_0() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_TXPID5GHA0);
 }
 
 /*
@@ -1252,7 +1327,7 @@ bhnd_compat_sprom_get_txpid_5gh_0(device_t dev)
 static uint8_t
 bhnd_compat_sprom_get_txpid_5gh_1(device_t dev)
 {
-	panic("siba_sprom_get_txpid_5gh_1() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_TXPID5GHA1);
 }
 
 /*
@@ -1264,7 +1339,7 @@ bhnd_compat_sprom_get_txpid_5gh_1(device_t dev)
 static uint16_t
 bhnd_compat_sprom_get_stbcpo(device_t dev)
 {
-	panic("siba_sprom_get_stbcpo() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint16, BHND_NVAR_STBCPO);
 }
 
 /*
@@ -1276,7 +1351,7 @@ bhnd_compat_sprom_get_stbcpo(device_t dev)
 static uint16_t
 bhnd_compat_sprom_get_cddpo(device_t dev)
 {
-	panic("siba_sprom_get_cddpo() unimplemented");
+	BWN_BHND_NVRAM_RETURN_VAR(dev, uint16, BHND_NVAR_CDDPO);
 }
 
 /*
@@ -1548,7 +1623,8 @@ bhnd_compat_dev_isup(device_t dev)
 static void
 bhnd_compat_pcicore_intr(device_t dev)
 {
-	panic("siba_pcicore_intr() unimplemented");
+	/* interrupt enable */
+	// TODO
 }
 
 /*
@@ -1694,7 +1770,78 @@ bhnd_compat_gpio_get(device_t dev)
 static void
 bhnd_compat_fix_imcfglobug(device_t dev)
 {
-	panic("siba_fix_imcfglobug() unimplemented");
+	/* This is handled by siba_bhndb during attach/resume */
+}
+
+
+/* Core power NVRAM variables, indexed by D11 core unit number */
+static const struct bwn_power_vars {
+	const char *itt2ga;
+	const char *itt5ga;
+	const char *maxp2ga;
+	const char *pa2ga;
+	const char *pa5ga;
+} bwn_power_vars[BWN_BHND_NUM_CORE_PWR] = {
+#define	BHND_POWER_NVAR(_idx)					\
+	{ BHND_NVAR_ITT2GA ## _idx, BHND_NVAR_ITT5GA ## _idx,	\
+	  BHND_NVAR_MAXP2GA ## _idx, BHND_NVAR_PA2GA ## _idx,	\
+	  BHND_NVAR_PA5GA ## _idx }
+	BHND_POWER_NVAR(0),
+	BHND_POWER_NVAR(1),
+	BHND_POWER_NVAR(2),
+	BHND_POWER_NVAR(3)
+#undef BHND_POWER_NVAR
+};
+
+static int
+bwn_get_core_power_info_r11(device_t dev, const struct bwn_power_vars *v,
+    struct siba_sprom_core_pwr_info *c)
+{
+	int16_t	pa5ga[12];
+	int	error;
+
+	/* BHND_NVAR_PA2GA[core] */
+	error = bhnd_nvram_getvar_array(dev, v->pa2ga, c->pa_2g,
+	    sizeof(c->pa_2g), BHND_NVRAM_TYPE_INT16);
+	if (error)
+		return (error);
+
+	/* 
+	 * BHND_NVAR_PA5GA
+	 * 
+	 * The NVRAM variable is defined as a single pa5ga[12] array; we have
+	 * to split this into pa_5gl[4], pa_5g[4], and pa_5gh[4] for use
+	 * by bwn(4);
+	 */
+	_Static_assert(nitems(pa5ga) == nitems(c->pa_5g) + nitems(c->pa_5gh) +
+	    nitems(c->pa_5gl), "cannot split pa5ga into pa_5gl/pa_5g/pa_5gh");
+
+	error = bhnd_nvram_getvar_array(dev, v->pa5ga, pa5ga, sizeof(pa5ga),
+	    BHND_NVRAM_TYPE_INT16);
+	if (error)
+		return (error);
+
+	memcpy(c->pa_5gl, &pa5ga[0], sizeof(c->pa_5gl));
+	memcpy(c->pa_5g, &pa5ga[4], sizeof(c->pa_5g));
+	memcpy(c->pa_5gh, &pa5ga[8], sizeof(c->pa_5gh));
+	return (0);
+}
+
+static int
+bwn_get_core_power_info_r4_r10(device_t dev,
+    const struct bwn_power_vars *v, struct siba_sprom_core_pwr_info *c)
+{
+	int error;
+
+	/* BHND_NVAR_ITT2GA[core] */
+	if ((error = bhnd_nvram_getvar_uint8(dev, v->itt2ga, &c->itssi_2g)))
+		return (error);
+
+	/* BHND_NVAR_ITT5GA[core] */
+	if ((error = bhnd_nvram_getvar_uint8(dev, v->itt5ga, &c->itssi_5g)))
+		return (error);
+
+	return (0);
 }
 
 /*
@@ -1708,7 +1855,39 @@ static int
 bhnd_compat_sprom_get_core_power_info(device_t dev, int core,
     struct siba_sprom_core_pwr_info *c)
 {
-	panic("siba_sprom_get_core_power_info() unimplemented");
+	struct bwn_bhnd_ctx		*ctx;
+	const struct bwn_power_vars	*v;
+	int				 error;
+
+	if (core < 0 || core >= nitems(bwn_power_vars))
+		return (EINVAL);
+
+	ctx = bwn_bhnd_get_ctx(dev);
+	if (ctx->sromrev < 4)
+		return (ENXIO);
+
+	v = &bwn_power_vars[core];
+
+	/* Any power variables not found in NVRAM (or returning a
+	 * shorter array for a particular NVRAM revision) should be zero
+	 * initialized */
+	memset(c, 0x0, sizeof(*c));
+
+	mtx_lock(&Giant); /* XXX: temporarily required by bhnd_nvram_* */
+
+	/* Populate SPROM revision-independent values */
+	if ((error = bhnd_nvram_getvar_uint8(dev, v->maxp2ga, &c->maxpwr_2g)))
+		goto finished;
+
+	/* Populate SPROM revision-specific values */
+	if (ctx->sromrev >= 4 && ctx->sromrev <= 10)
+		error = bwn_get_core_power_info_r4_r10(dev, v, c);
+	else
+		error = bwn_get_core_power_info_r11(dev, v, c);
+
+finished:
+	mtx_unlock(&Giant);
+	return (error);
 }
 
 /*
@@ -1720,7 +1899,23 @@ bhnd_compat_sprom_get_core_power_info(device_t dev, int core,
 static int
 bhnd_compat_sprom_get_mcs2gpo(device_t dev, uint16_t *c)
 {
-	panic("siba_sprom_get_mcs2gpo() unimplemented");
+	static const char *varnames[] = {
+		BHND_NVAR_MCS2GPO0,
+		BHND_NVAR_MCS2GPO1,
+		BHND_NVAR_MCS2GPO2,
+		BHND_NVAR_MCS2GPO3,
+		BHND_NVAR_MCS2GPO4,
+		BHND_NVAR_MCS2GPO5,
+		BHND_NVAR_MCS2GPO6,
+		BHND_NVAR_MCS2GPO7
+	};
+
+	for (size_t i = 0; i < nitems(varnames); i++) {
+		const char *name = varnames[i];
+		BWN_BHND_NVRAM_FETCH_VAR(dev, uint16, name, &c[i]);
+	}
+
+	return (0);
 }
 
 /*
@@ -1732,7 +1927,23 @@ bhnd_compat_sprom_get_mcs2gpo(device_t dev, uint16_t *c)
 static int
 bhnd_compat_sprom_get_mcs5glpo(device_t dev, uint16_t *c)
 {
-	panic("siba_sprom_get_mcs5glpo() unimplemented");
+	static const char *varnames[] = {
+		BHND_NVAR_MCS5GLPO0,
+		BHND_NVAR_MCS5GLPO1,
+		BHND_NVAR_MCS5GLPO2,
+		BHND_NVAR_MCS5GLPO3,
+		BHND_NVAR_MCS5GLPO4,
+		BHND_NVAR_MCS5GLPO5,
+		BHND_NVAR_MCS5GLPO6,
+		BHND_NVAR_MCS5GLPO7
+	};
+
+	for (size_t i = 0; i < nitems(varnames); i++) {
+		const char *name = varnames[i];
+		BWN_BHND_NVRAM_FETCH_VAR(dev, uint16, name, &c[i]);
+	}
+
+	return (0);
 }
 
 /*
@@ -1744,7 +1955,23 @@ bhnd_compat_sprom_get_mcs5glpo(device_t dev, uint16_t *c)
 static int
 bhnd_compat_sprom_get_mcs5gpo(device_t dev, uint16_t *c)
 {
-	panic("siba_sprom_get_mcs5gpo() unimplemented");
+	static const char *varnames[] = {
+		BHND_NVAR_MCS5GPO0,
+		BHND_NVAR_MCS5GPO1,
+		BHND_NVAR_MCS5GPO2,
+		BHND_NVAR_MCS5GPO3,
+		BHND_NVAR_MCS5GPO4,
+		BHND_NVAR_MCS5GPO5,
+		BHND_NVAR_MCS5GPO6,
+		BHND_NVAR_MCS5GPO7
+	};
+
+	for (size_t i = 0; i < nitems(varnames); i++) {
+		const char *name = varnames[i];
+		BWN_BHND_NVRAM_FETCH_VAR(dev, uint16, name, &c[i]);
+	}
+
+	return (0);
 }
 
 /*
@@ -1756,7 +1983,23 @@ bhnd_compat_sprom_get_mcs5gpo(device_t dev, uint16_t *c)
 static int
 bhnd_compat_sprom_get_mcs5ghpo(device_t dev, uint16_t *c)
 {
-	panic("siba_sprom_get_mcs5ghpo() unimplemented");
+	static const char *varnames[] = {
+		BHND_NVAR_MCS5GHPO0,
+		BHND_NVAR_MCS5GHPO1,
+		BHND_NVAR_MCS5GHPO2,
+		BHND_NVAR_MCS5GHPO3,
+		BHND_NVAR_MCS5GHPO4,
+		BHND_NVAR_MCS5GHPO5,
+		BHND_NVAR_MCS5GHPO6,
+		BHND_NVAR_MCS5GHPO7
+	};
+
+	for (size_t i = 0; i < nitems(varnames); i++) {
+		const char *name = varnames[i];
+		BWN_BHND_NVRAM_FETCH_VAR(dev, uint16, name, &c[i]);
+	}
+
+	return (0);
 }
 
 /*
