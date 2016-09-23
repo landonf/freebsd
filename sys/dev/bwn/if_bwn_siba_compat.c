@@ -1654,7 +1654,10 @@ static void
 bhnd_compat_read_multi_2(device_t dev, void *buffer, size_t count,
     uint16_t offset)
 {
-	panic("siba_read_multi_2() unimplemented");
+	struct bwn_softc *sc = device_get_softc(dev);
+
+	BWN_ASSERT_VALID_REG(dev, offset);
+	return (bhnd_bus_read_multi_2(sc->sc_mem_res, offset, buffer, count));
 }
 
 /*
@@ -1667,7 +1670,10 @@ static void
 bhnd_compat_read_multi_4(device_t dev, void *buffer, size_t count,
     uint16_t offset)
 {
-	panic("siba_read_multi_4() unimplemented");
+	struct bwn_softc *sc = device_get_softc(dev);
+
+	BWN_ASSERT_VALID_REG(dev, offset);
+	return (bhnd_bus_read_multi_4(sc->sc_mem_res, offset, buffer, count));
 }
 
 /*
@@ -1680,7 +1686,13 @@ static void
 bhnd_compat_write_multi_2(device_t dev, const void *buffer, size_t count,
     uint16_t offset)
 {
-	panic("siba_write_multi_2() unimplemented");
+	struct bwn_softc *sc = device_get_softc(dev);
+
+	BWN_ASSERT_VALID_REG(dev, offset);
+
+	/* XXX discarding const to maintain API compatibility with
+	 * siba_write_multi_2() */
+	bhnd_bus_write_multi_2(sc->sc_mem_res, offset, (void *)buffer, count);
 }
 
 /*
@@ -1693,7 +1705,13 @@ static void
 bhnd_compat_write_multi_4(device_t dev, const void *buffer, size_t count,
     uint16_t offset)
 {
-	panic("siba_write_multi_4() unimplemented");
+	struct bwn_softc *sc = device_get_softc(dev);
+
+	BWN_ASSERT_VALID_REG(dev, offset);
+
+	/* XXX discarding const to maintain API compatibility with
+	 * siba_write_multi_4() */
+	bhnd_bus_write_multi_4(sc->sc_mem_res, offset, (void *)buffer, count);
 }
 
 /*
@@ -1707,7 +1725,12 @@ bhnd_compat_write_multi_4(device_t dev, const void *buffer, size_t count,
 static void
 bhnd_compat_barrier(device_t dev, int flags)
 {
-	panic("siba_barrier() unimplemented");
+	struct bwn_softc *sc = device_get_softc(dev);
+
+	/* XXX is siba_barrier()'s use of an offset and length of 0
+	 * correct? */
+	BWN_ASSERT_VALID_REG(dev, 0);
+	bhnd_bus_barrier(sc->sc_mem_res, 0, 0, flags);
 }
 
 /*
