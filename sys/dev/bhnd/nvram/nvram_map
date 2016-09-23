@@ -1335,7 +1335,7 @@ struct phy_chains[] {
 		srom 8-10	u8 0x9
 		srom >= 11	u8 0xD, u8 0xC, u8 0xF, u8 0xE
 	}
-	u16[3] pa2ga {
+	i16[3] pa2ga {
 		srom >= 11	0x2
 	}
 	u8 maxp2ga {
@@ -1343,7 +1343,8 @@ struct phy_chains[] {
 		srom 8-10	0x1
 		srom >= 11	0x1
 	}
-	u16[12] pa5ga {
+
+	i16[12] pa5ga {
 		srom >= 11	0x10
 	}	
 
