@@ -282,6 +282,13 @@ chipc_add_children(struct chipc_softc *sc)
 		}
 	}
 
+	/* GPIO */
+	child = BUS_ADD_CHILD(sc->dev, 0, "gpio", -1);
+	if (child == NULL) {
+		device_printf(sc->dev, "failed to add gpio device\n");
+		return (ENXIO);
+	}
+
 	/* All remaining devices are SoC-only */
 	if (bhnd_get_attach_type(sc->dev) != BHND_ATTACH_NATIVE)
 		return (0);
