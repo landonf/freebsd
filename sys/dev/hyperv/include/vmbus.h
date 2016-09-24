@@ -108,6 +108,13 @@ struct vmbus_chanpkt_rxbuf {
 	struct vmbus_rxbuf_desc cp_rxbuf[];
 } __packed;
 
+struct vmbus_chan_br {
+	void		*cbr;
+	bus_addr_t	cbr_paddr;
+	int		cbr_txsz;
+	int		cbr_rxsz;
+};
+
 struct vmbus_channel;
 struct hyperv_guid;
 
@@ -122,6 +129,9 @@ vmbus_get_channel(device_t dev)
 int		vmbus_chan_open(struct vmbus_channel *chan,
 		    int txbr_size, int rxbr_size, const void *udata, int udlen,
 		    vmbus_chan_callback_t cb, void *cbarg);
+int		vmbus_chan_open_br(struct vmbus_channel *chan,
+		    const struct vmbus_chan_br *cbr, const void *udata,
+		    int udlen, vmbus_chan_callback_t cb, void *cbarg);
 void		vmbus_chan_close(struct vmbus_channel *chan);
 
 int		vmbus_chan_gpadl_connect(struct vmbus_channel *chan,
@@ -161,5 +171,7 @@ uint32_t	vmbus_chan_subidx(const struct vmbus_channel *chan);
 bool		vmbus_chan_is_primary(const struct vmbus_channel *chan);
 const struct hyperv_guid *
 		vmbus_chan_guid_inst(const struct vmbus_channel *chan);
+int		vmbus_chan_prplist_nelem(int br_size, int prpcnt_max,
+		    int dlen_max);
 
 #endif	/* !_VMBUS_H_ */

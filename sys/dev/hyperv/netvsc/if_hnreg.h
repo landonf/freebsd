@@ -32,6 +32,22 @@
 #include <sys/param.h>
 #include <sys/systm.h>
 
+/*
+ * NDIS protocol version numbers
+ */
+#define HN_NDIS_VERSION_6_1		0x00060001
+#define HN_NDIS_VERSION_6_30		0x0006001e
+#define HN_NDIS_VERSION_MAJOR(ver)	(((ver) & 0xffff0000) >> 16)
+#define HN_NDIS_VERSION_MINOR(ver)	((ver) & 0xffff)
+
+/*
+ * NVS versions.
+ */
+#define HN_NVS_VERSION_1		0x00002
+#define HN_NVS_VERSION_2		0x30002
+#define HN_NVS_VERSION_4		0x40000
+#define HN_NVS_VERSION_5		0x50000
+
 #define HN_NVS_RXBUF_SIG		0xcafe
 #define HN_NVS_CHIM_SIG			0xface
 
@@ -44,6 +60,7 @@
  * NVS message transacion status codes.
  */
 #define HN_NVS_STATUS_OK		1
+#define HN_NVS_STATUS_FAILED		2
 
 /*
  * NVS request/response message types.
@@ -58,9 +75,13 @@
 #define HN_NVS_TYPE_CHIM_CONNRESP	105
 #define HN_NVS_TYPE_CHIM_DISCONN	106
 #define HN_NVS_TYPE_RNDIS		107
+#define HN_NVS_TYPE_RNDIS_ACK		108
 #define HN_NVS_TYPE_NDIS_CONF		125
+#define HN_NVS_TYPE_VFASSOC_NOTE	128	/* notification */
+#define HN_NVS_TYPE_SET_DATAPATH	129
 #define HN_NVS_TYPE_SUBCH_REQ		133
 #define HN_NVS_TYPE_SUBCH_RESP		133	/* same as SUBCH_REQ */
+#define HN_NVS_TYPE_TXTBL_NOTE		134	/* notification */
 
 /*
  * Any size less than this one will _not_ work, e.g. hn_nvs_init
@@ -195,5 +216,29 @@ struct hn_nvs_rndis {
 	uint8_t		nvs_rsvd[16];
 } __packed;
 CTASSERT(sizeof(struct hn_nvs_rndis) >= HN_NVS_REQSIZE_MIN);
+
+struct hn_nvs_rndis_ack {
+	uint32_t	nvs_type;	/* HN_NVS_TYPE_RNDIS_ACK */
+	uint32_t	nvs_status;	/* HN_NVS_STATUS_ */
+	uint8_t		nvs_rsvd[24];
+} __packed;
+CTASSERT(sizeof(struct hn_nvs_rndis_ack) >= HN_NVS_REQSIZE_MIN);
+
+/*
+ * RNDIS extension
+ */
+
+/* Per-packet hash info */
+#define HN_NDIS_HASH_INFO_SIZE		sizeof(uint32_t)
+#define HN_NDIS_PKTINFO_TYPE_HASHINF	NDIS_PKTINFO_TYPE_ORIG_NBLIST
+/* NDIS_HASH_ */
+
+/* Per-packet hash value */
+#define HN_NDIS_HASH_VALUE_SIZE		sizeof(uint32_t)
+#define HN_NDIS_PKTINFO_TYPE_HASHVAL	NDIS_PKTINFO_TYPE_PKT_CANCELID
+
+/* Per-packet-info size */
+#define HN_RNDIS_PKTINFO_SIZE(dlen)	\
+	__offsetof(struct rndis_pktinfo, rm_data[dlen])
 
 #endif	/* !_IF_HNREG_H_ */

@@ -122,6 +122,7 @@ SUBDIR=	alias \
 	pr \
 	printenv \
 	printf \
+	proccontrol \
 	procstat \
 	protect \
 	rctl \
@@ -294,7 +295,7 @@ SUBDIR.${MK_VT}+=	vtfontcvt
 SUBDIR.${MK_USB}+=	usbhidaction
 SUBDIR.${MK_USB}+=	usbhidctl
 SUBDIR.${MK_UTMPX}+=	last
-.if ${MACHINE_CPUARCH} != "riscv" # RISCVTODO users does not build
+.if ${MK_CXX} != "no"
 SUBDIR.${MK_UTMPX}+=	users
 .endif
 SUBDIR.${MK_UTMPX}+=	who
