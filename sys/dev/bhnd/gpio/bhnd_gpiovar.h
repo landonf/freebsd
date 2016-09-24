@@ -39,9 +39,14 @@
 #include <machine/bus.h>
 #include <machine/resource.h>
 
+#include <sys/gpio.h>
+
 #include <dev/bhnd/bhnd.h>
 
+MALLOC_DECLARE(M_BHND_GPIO);
 DECLARE_CLASS(bhnd_gpio_driver);
+
+#define	BHND_GPIO_NUMPINS	32	/**< BHND GPIO pin count */
 
 int	bhnd_gpio_probe(device_t dev);
 int	bhnd_gpio_attach(device_t dev, struct bhnd_resource *res);
@@ -53,7 +58,24 @@ int	bhnd_gpio_resume(device_t dev);
  * bhnd_gpio driver instance state.
  */
 struct bhnd_gpio_softc {
-	device_t			 dev;
+	device_t		 dev;
+	device_t		 bhnd_dev;	/**< bhnd-attached parent */
+	device_t		 gpiobus_dev;	/**< gpiobus child */
+
+	struct bhnd_resource	*res;		/**< borrowed register block reference */
+	int			 npins;		/**< pin count */
+	char			**names;	/**< pin names */
+
+	struct mtx		 mtx;		/**< state mutex */
 };
+
+
+#define	BGPIO_LOCK_INIT(sc) \
+	mtx_init(&(sc)->mtx, device_get_nameunit((sc)->dev), \
+	    "BHND GPIO driver lock", MTX_DEF)
+#define	BGPIO_LOCK(sc)				mtx_lock(&(sc)->mtx)
+#define	BGPIO_UNLOCK(sc)			mtx_unlock(&(sc)->mtx)
+#define	BGPIO_LOCK_ASSERT(sc, what)		mtx_assert(&(sc)->mtx, what)
+#define	BGPIO_LOCK_DESTROY(sc)			mtx_destroy(&(sc)->mtx)
 
 #endif /* _BHND_GPIO_BHND_GPIOVAR_H */

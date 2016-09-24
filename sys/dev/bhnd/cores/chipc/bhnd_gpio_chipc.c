@@ -71,7 +71,7 @@ bhnd_gpio_chipc_probe(device_t dev)
 	if ((error = bhnd_gpio_probe(dev)) > 0)
 		return (error);
 
-	device_set_desc(dev, "ChipCommon GPIO");
+	device_set_desc(dev, "Broadcom ChipCommon GPIO Controller");
 
 	return (BUS_PROBE_NOWILDCARD);
 }

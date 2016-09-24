@@ -4,6 +4,7 @@
 .PATH: ${.CURDIR}/../../dev/bhnd/cores/chipc
 .PATH: ${.CURDIR}/../../dev/bhnd/cores/chipc/pwrctl
 .PATH: ${.CURDIR}/../../dev/bhnd/cores/pmu
+.PATH: ${.CURDIR}/../../dev/bhnd/gpio
 .PATH: ${.CURDIR}/../../dev/bhnd/nvram
 
 KMOD=	bhnd
@@ -27,6 +28,9 @@ SRCS+=	bhnd_pmu.c \
 	bhnd_pmu_subr.c
 SRCS+=	bhnd_pmu_if.c bhnd_pmu_if.h
 
+# GPIO
+SRCS+=	bhnd_gpio.c
+
 # NVRAM/SPROM
 SRCS+=	bhnd_nvram.c \
 	bhnd_nvram_parser.c \
@@ -42,7 +46,6 @@ SUBDIR=	bcma \
 	bcma_bhndb \
 	bhndb \
 	bhndb_pci \
-	bhnd_gpio \
 	cores \
 	siba \
 	siba_bhndb
