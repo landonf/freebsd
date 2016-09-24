@@ -42,9 +42,6 @@
 #define	NVRAM_IDX_OFFSET_MAX	UINT16_MAX	/**< maximum indexable offset */
 #define	NVRAM_IDX_LEN_MAX	UINT8_MAX	/**< maximum indexable key/value length */
 
-#define	NVRAM_KEY_MAX		64		/**< maximum key length (not incl. NUL) */
-#define	NVRAM_VAL_MAX		255		/**< maximum value length (not incl. NUL) */
-
 #define	NVRAM_DEVPATH_STR	"devpath"	/**< name prefix of device path aliases */
 #define	NVRAM_DEVPATH_LEN	(sizeof(NVRAM_DEVPATH_STR) - 1)
 

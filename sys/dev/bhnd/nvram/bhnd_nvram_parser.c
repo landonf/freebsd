@@ -159,7 +159,7 @@ static const struct bhnd_nvram_ops bhnd_nvram_ops_table[] = {
 /* Limit a size_t value to a suitable range for use as a printf string field
  * width */
 #define	NVRAM_PRINT_WIDTH(_len)	\
-	((_len) > NVRAM_VAL_MAX ? NVRAM_VAL_MAX : (int)(_len))
+	((_len) > BHND_NVRAM_VAL_MAXLEN ? BHND_NVRAM_VAL_MAXLEN : (int)(_len))
 
 /* Is _c a field terminating/delimiting character? */
 #define	nvram_is_ftermc(_c)	((_c) == '\0' || nvram_is_fdelim(_c))
@@ -506,7 +506,7 @@ int
 bhnd_nvram_parser_getvar(struct bhnd_nvram *sc, const char *name, void *buf,
     size_t *len, bhnd_nvram_type type)
 {
-	char		*cstr, cstr_buf[NVRAM_VAL_MAX+1];
+	char		*cstr, cstr_buf[BHND_NVRAM_VAL_MAXLEN];
 	const char	*val;
 	size_t		 cstr_size;
 	size_t		 limit, nbytes;
@@ -930,7 +930,7 @@ bhnd_nvram_generate_index(struct bhnd_nvram *sc)
 	while ((error = enum_fn(sc, &env, &env_len, p, &p)) == 0) {
 		struct bhnd_nvram_devpath	*devpath;
 		char				*eptr;
-		char				 suffix[NVRAM_KEY_MAX+1];
+		char				 suffix[BHND_NVRAM_KEY_MAXLEN];
 		size_t				 suffix_len;
 		u_long				 index;
 
@@ -1261,7 +1261,7 @@ static int
 bhnd_nvram_bcm_init_defaults(struct bhnd_nvram *sc)
 {
 	struct bhnd_nvram_header	*header;
-	char				 vbuf[NVRAM_VAL_MAX];
+	char				 vbuf[BHND_NVRAM_VAL_MAXLEN];
 	uint32_t			 value;
 	int				 error;
 	int				 nwrite;
