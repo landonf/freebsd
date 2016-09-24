@@ -64,7 +64,6 @@ struct bhnd_gpio_softc {
 
 	struct bhnd_resource	*res;		/**< borrowed register block reference */
 	int			 npins;		/**< pin count */
-	char			**names;	/**< pin names */
 
 	struct mtx		 mtx;		/**< state mutex */
 };
