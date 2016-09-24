@@ -858,7 +858,7 @@ failed:
 }
 
 /*
- * An strcmp()-compatible  lexical comparison implementation that
+ * An strcmp()-compatible lexical comparison implementation that
  * handles non-NUL-terminated strings.
  */
 static int
@@ -1271,7 +1271,7 @@ bhnd_nvram_bcm_init_defaults(struct bhnd_nvram *sc)
 	if (!bhnd_nvram_bufptr_valid(sc, header, sizeof(*header), true))
 		return (EINVAL);
 
-	/* Extract a value value from the NVRAM header, format it, and
+	/* Extract a value from the NVRAM header, format it, and
 	 * register a new default variable tuple */
 #define	NVRAM_BCM_HEADER_DEFAULT(_field, _name)	do {			\
 	value = NVRAM_GET_BITS(le32toh(header->_field), _name);		\
