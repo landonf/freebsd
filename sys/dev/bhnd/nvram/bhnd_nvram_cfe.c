@@ -56,7 +56,27 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_nvram_if.h"
 
+#include "bhnd_nvram_iovar.h"
+
 #include "bhnd_nvramvar.h"
+
+/**
+ * CFE-backed NVRAM I/O context.
+ */
+struct bhnd_nvram_iocfe {
+	struct bhnd_nvram_io	 io;		/**< common I/O instance state */
+
+	char			*dname;		/**< CFE device name (borrowed reference) */
+	int			 fd;		/**< CFE file descriptor */
+	bus_size_t		 offset;	/**< base offset */
+	bus_size_t		 size;		/**< device size */
+	bool			 req_blk_erase;	/**< if flash blocks must be erased before
+						     writing */
+};
+
+BHND_NVRAM_IOPS_DEFN(iocfe)
+
+static int	 bhnd_nvram_iocfe_new(struct bhnd_nvram_io **io, char *dname);
 
 static int	 nvram_open_cfedev(device_t dev, char *devname, int fd,
 		     int64_t *offset, uint32_t *size, bhnd_nvram_format fmt);
@@ -136,6 +156,13 @@ bhnd_nvram_cfe_attach(device_t dev)
 		device_printf(dev, "CFE NVRAM device not found\n");
 		return (ENXIO);
 	}
+
+	// XXX TODO
+	struct bhnd_nvram_io *io;
+	if ((error = bhnd_nvram_iocfe_new(&io, devname)))
+		return (error);
+
+	bhnd_nvram_iocfe_free(io);
 
 	/* Copy out NVRAM buffer */
 	buffer = malloc(size, M_TEMP, M_NOWAIT);
@@ -359,10 +386,193 @@ nvram_find_cfedev(device_t dev, int *fd, int64_t *offset,
 	return (NULL);
 }
 
+
+/**
+ * Allocate and return a new I/O context backed by a CFE device.
+ *
+ * The caller is responsible for deallocating the returned I/O context via
+ * bhnd_nvram_io_free().
+ * 
+ * @param[out] io On success, a valid I/O context for @p dname.
+ * @param dname The name of the CFE device to be opened for reading.
+ *
+ * @retval 0 success.
+ * @retval non-zero if opening @p dname otherwise fails, a standard unix error
+ * will be returned.
+ */
+static int
+bhnd_nvram_iocfe_new(struct bhnd_nvram_io **io, char *dname)
+{
+	struct bhnd_nvram_iocfe	*iocfe;
+	nvram_info_t		 nvram_info;
+	int			 cerr, devinfo, dtype, rlen;
+	int64_t			 nv_offset;
+	u_int			 nv_size;
+	bool			 req_blk_erase;
+	int			 error;
+
+	iocfe = malloc(sizeof(*iocfe), M_BHND_NVRAM, M_WAITOK);
+	iocfe->io.iops = &bhnd_nvram_iocfe_ops;
+	iocfe->dname = dname;
+
+	/* Try to open the device */
+	iocfe->fd = cfe_open(dname);
+	if (iocfe->fd <= 0) {
+		printf("%s: cfe_open(%s) failed: %d\n", __FUNCTION__, dname,
+		    iocfe->fd);
+
+		error = ENXIO;
+		goto failed;
+	}
+
+	/* Try to fetch device info */
+	if ((devinfo = cfe_getdevinfo(iocfe->dname)) < 0) {
+		printf("%s: cfe_getdevinfo(%s) failed: %d\n", __FUNCTION__,
+		    iocfe->dname, devinfo);
+		error = ENXIO;
+		goto failed;
+	}
+
+	/* Verify device type */
+	dtype = devinfo & CFE_DEV_MASK;
+	switch (dtype) {
+	case CFE_DEV_FLASH:
+	case CFE_DEV_NVRAM:
+		/* Valid device type */
+		break;
+	default:
+		printf("%s: unknown device type for CFE dev %s: %d\n",
+		    __FUNCTION__, iocfe->dname, dtype);
+		error = ENXIO;
+		goto failed;
+	}
+
+	/* Try to fetch nvram info from CFE */
+	cerr = cfe_ioctl(iocfe->fd, IOCTL_NVRAM_GETINFO,
+	    (unsigned char *)&nvram_info, sizeof(nvram_info), &rlen, 0);
+	if (cerr == CFE_OK) {
+		/* Sanity check the result; must not be a negative integer */
+		if (nvram_info.nvram_size < 0 ||
+		    nvram_info.nvram_offset < 0)
+		{
+			printf("%s: invalid NVRAM layout (%d/%d) for CFE "
+			    "dev %s\n", __FUNCTION__, nvram_info.nvram_size,
+			    nvram_info.nvram_offset, iocfe->dname);
+			error = ENXIO;
+			goto failed;
+		}
+
+		nv_offset	= nvram_info.nvram_offset;
+		nv_size		= nvram_info.nvram_size;
+		req_blk_erase	= (nvram_info.nvram_eraseflg != 0);
+	} else if (cerr != CFE_OK && cerr != CFE_ERR_INV_COMMAND) {
+		printf("%s: IOCTL_NVRAM_GETINFO failed on CFE dev %s: %d\n",
+		    __FUNCTION__, iocfe->dname, cerr);
+		error = ENXIO;
+		goto failed;
+	}
+
+	/* Fall back on flash info.
+	 * 
+	 * This is known to be required on the Asus RT-N53 (CFE 5.70.55.33, 
+	 * BBP 1.0.37, BCM5358UB0), where IOCTL_NVRAM_GETINFO returns
+	 * CFE_ERR_INV_COMMAND.
+	 */
+	if (cerr == CFE_ERR_INV_COMMAND) {
+		flash_info_t fi;
+
+		cerr = cfe_ioctl(iocfe->fd, IOCTL_FLASH_GETINFO,
+		    (unsigned char *)&fi, sizeof(fi), &rlen, 0);
+
+		if (cerr != CFE_OK) {
+			printf("%s: IOCTL_FLASH_GETINFO failed on CFE dev %s: "
+			    "%d\n", __FUNCTION__, iocfe->dname, cerr);
+			error = ENXIO;
+			goto failed;
+		}
+
+		nv_offset	= 0x0;
+		nv_size		= fi.flash_size;
+		req_blk_erase	= !(fi.flash_flags & FLASH_FLAG_NOERASE);
+	}
+
+	
+	/* Verify that the full NVRAM layout can be represented via
+	 * bus_size_t. */
+	if (nv_size > BUS_SPACE_MAXSIZE ||
+	    BUS_SPACE_MAXSIZE - nv_size < nv_offset)
+	{
+		printf("%s: invalid NVRAM layout (%#x/%#jx) for CFE "
+		    "dev %s\n", __FUNCTION__, nv_size, (intmax_t)nv_offset, 
+		    iocfe->dname);
+	}
+
+	iocfe->offset = nv_offset;
+	iocfe->size = nv_size;
+	iocfe->req_blk_erase = req_blk_erase;
+
+	*io = &iocfe->io;
+	return (CFE_OK);
+
+failed:
+	if (iocfe->fd >= 0)
+		cfe_close(iocfe->fd);
+
+	free(iocfe, M_BHND_NVRAM);
+
+	*io = NULL;
+	return (error);
+}
+
+static void
+bhnd_nvram_iocfe_free(struct bhnd_nvram_io *io)
+{
+	struct bhnd_nvram_iocfe	*iocfe = (struct bhnd_nvram_iocfe *)io;
+
+	cfe_close(iocfe->fd);
+	free(io, M_BHND_NVRAM);
+}
+
+static bus_size_t
+bhnd_nvram_iocfe_get_size(struct bhnd_nvram_io *io)
+{
+	struct bhnd_nvram_iocfe	*iocfe = (struct bhnd_nvram_iocfe *)io;
+	return (iocfe->size);
+}
+
+static int
+bhnd_nvram_iocfe_read_ptr(struct bhnd_nvram_io *io, bus_size_t offset,
+    const void **ptr, bus_size_t *nbytes)
+{
+	/* unsupported */
+	return (ENODEV);
+}
+
+static int
+bhnd_nvram_iocfe_read(struct bhnd_nvram_io *io, bus_size_t offset, void *buffer,
+    bus_size_t *nbytes)
+{
+	struct bhnd_nvram_iocfe	*iocfe;
+	int			 nr, nreq;
+
+	iocfe = (struct bhnd_nvram_iocfe *) io;
+
+	nreq = bhnd_nvram_bsz_min(INT_MAX, *nbytes);
+	nr = cfe_readblk(iocfe->fd, iocfe->offset + offset, buffer, nreq);
+	if (nr < 0) {
+		printf("%s: cfe_readblk(%s) failed: %d\n", __FUNCTION__,
+		    iocfe->dname, nr);
+		return (ENXIO);
+	}
+
+	*nbytes = nr;
+	return (0);
+}
+
 static device_method_t bhnd_nvram_cfe_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_probe,			bhnd_nvram_cfe_probe),
-	DEVMETHOD(device_attach,		bhnd_nvram_cfe_attach),
+	DEVMETHOD(device_probe,		bhnd_nvram_cfe_probe),
+	DEVMETHOD(device_attach,	bhnd_nvram_cfe_attach),
 
 	DEVMETHOD_END
 };
