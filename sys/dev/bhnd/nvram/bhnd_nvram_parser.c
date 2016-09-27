@@ -879,7 +879,7 @@ bhnd_nvram_find_var(struct bhnd_nvram *sc, const char *name, const char **value,
 		panic("invalid value type for pending change %s", name);
 	}
 
-	/* Search backing buffer. We the index if available; otherwise,
+	/* Search backing buffer. We use the index if available; otherwise,
 	 * perform a buffer scan */
 	if (sc->idx != NULL) {
 		error = bhnd_nvram_index_lookup(sc, sc->idx, name, &env,
