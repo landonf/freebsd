@@ -82,10 +82,6 @@ BHND_NVRAM_IOPS_DEFN(iocfe)
 static int			 bhnd_nvram_iocfe_new(struct bhnd_nvram_io **io,
 				     char *dname);
 
-static int			 bhnd_nvram_ident_cfedev(device_t dev,
-				     const char *dname,
-				     struct bhnd_nvram_io *io,
-				     bhnd_nvram_format fmt);
 static struct bhnd_nvram_iocfe	*bhnd_nvram_find_cfedev(device_t dev,
 				     bhnd_nvram_format *fmt);
 
@@ -189,47 +185,6 @@ cleanup:
 }
 
 /**
- * Identify CFE NVRAM device.
- * 
- * @param	dev	bhnd_nvram_cfe device.
- * @param	dname	The name of the CFE device being identified.
- * @param	io	An I/O context mapping NVRAM data from @p dname.
- * @param	fmt	The data format to be identified.
- *
- * @retval	0		success
- * @retval	non-zero	If probing @p devname fails, a regular unix
- * 				error code will be returned.
- */
-static int
-bhnd_nvram_ident_cfedev(device_t dev, const char *dname,
-    struct bhnd_nvram_io *io, bhnd_nvram_format fmt)
-{
-	union bhnd_nvram_ident	ident;
-	size_t			nbytes;
-	int			error;
-
-	/* Verify expected format */
-	// TODO: handle short reads
-	nbytes = sizeof(ident); 
-	if ((error = bhnd_nvram_io_read(io, 0x0, &ident, &nbytes)))
-		return (error);
-
-	if ((error = bhnd_nvram_parser_identify(&ident, fmt)))
-		return (error);
-
-	if (fmt == BHND_NVRAM_FMT_BCM) {
-		if (ident.bcm.size > bhnd_nvram_io_get_size(io)) {
-			device_printf(dev, "%s: NVRAM size %#x overruns %#zx "
-			    "device limit\n", dname, ident.bcm.size,
-			    bhnd_nvram_io_get_size(io));
-			return (ENODEV);
-		}
-	}
-
-	return (0);
-}
-
-/**
  * Find, open, identify, and return an I/O context mapping our
  * CFE NVRAM device.
  * 
@@ -269,7 +224,7 @@ bhnd_nvram_find_cfedev(device_t dev, bhnd_nvram_format *fmt)
 				continue;
 
 			/* Identify */
-			error = bhnd_nvram_ident_cfedev(dev, dname, io, *fmt);
+			error = bhnd_nvram_parser_identify(io, *fmt);
 			if (error == 0)
 				return ((struct bhnd_nvram_iocfe *)io);
 

@@ -34,6 +34,8 @@
 
 #include <sys/param.h>
 
+#include <dev/bhnd/bhnd.h>
+
 struct bhnd_nvram_io;
 
 struct bhnd_nvram_io	*bhnd_nvram_iobuf_new(const void *buffer, size_t size);

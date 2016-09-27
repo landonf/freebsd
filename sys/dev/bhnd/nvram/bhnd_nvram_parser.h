@@ -37,6 +37,8 @@
 
 #include "bhnd_nvram_common.h"
 
+#include "bhnd_nvram_io.h"
+
 union bhnd_nvram_ident;
 
 struct bhnd_nvram_idx;
@@ -47,7 +49,7 @@ struct bhnd_nvram;
 
 LIST_HEAD(bhnd_nvram_devpaths, bhnd_nvram_devpath);
 
-int	bhnd_nvram_parser_identify(const union bhnd_nvram_ident *ident,
+int	bhnd_nvram_parser_identify(struct bhnd_nvram_io *io,
 	    bhnd_nvram_format expected);
 int	bhnd_nvram_parser_init(struct bhnd_nvram *sc, device_t owner,
 	    const void *data, size_t len, bhnd_nvram_format fmt);

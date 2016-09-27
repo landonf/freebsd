@@ -168,37 +168,63 @@ static const struct bhnd_nvram_ops bhnd_nvram_ops_table[] = {
 #define	nvram_is_fdelim(_c)	((_c) == ',')
 
 /**
- * Identify @p ident.
+ * Identify the NVRAM format of @p io.
  * 
- * @param ident Initial header data to be used for identification.
+ * @param io I/O context mapping the NVRAM data to be identified.
  * @param expected Expected format against which @p ident will be tested.
  * 
  * @retval 0 If @p ident has the @p expected format.
  * @retval ENODEV If @p ident does not match @p expected.
+ * @retval non-zero If reading from @p io otherwise fails, a standard unix
+ * error code will be returned.
  */
 int
-bhnd_nvram_parser_identify(const union bhnd_nvram_ident *ident,
-    bhnd_nvram_format expected)
+bhnd_nvram_parser_identify(struct bhnd_nvram_io *io, bhnd_nvram_format expected)
 {
-	uint32_t bcm_magic = le32toh(ident->bcm.magic);
+	union bhnd_nvram_ident	ident;
+	size_t			nbytes, io_size;
+	uint32_t		bcm_magic, bcm_size;
+	int			error;
+
+	/* Fetch enough NVRAM data to perform identification */
+	nbytes = sizeof(ident);
+	io_size = bhnd_nvram_io_get_size(io);
+
+	if (nbytes > io_size)
+		return (ENODEV);
+
+	if ((error = bhnd_nvram_io_read(io, 0x0, &ident, &nbytes)))
+		return (error);
+
+	/* Check for the expected NVRAM format */
+	bcm_magic = le32toh(ident.bcm.magic);
 
 	switch (expected) {
 	case BHND_NVRAM_FMT_BCM:
-		if (bcm_magic == NVRAM_MAGIC)
-			return (0);
+		if (bcm_magic != NVRAM_MAGIC)
+			return (ENODEV);
 
-		return (ENODEV);
+		/* Sanity check the header size */
+		bcm_size = le32toh(ident.bcm.size);
+		if (bcm_size > io_size) {
+			printf("%s: BCM NVRAM size field %#x overruns %#zx "
+			    "input I/O buffer size\n", __FUNCTION__, bcm_size,
+			    io_size);
+			return (ENODEV);
+		}
+
+		return (0);
 	case BHND_NVRAM_FMT_TLV:
 		if (bcm_magic == NVRAM_MAGIC)
 			return (ENODEV);
 
-		if (ident->tlv.tag != NVRAM_TLV_TYPE_ENV)
+		if (ident.tlv.tag != NVRAM_TLV_TYPE_ENV)
 			return (ENODEV);
 
 		return (0);
 	case BHND_NVRAM_FMT_BTXT:
-		for (size_t i = 0; i < nitems(ident->btxt); i++) {
-			char c = ident->btxt[i];
+		for (size_t i = 0; i < nitems(ident.btxt); i++) {
+			char c = ident.btxt[i];
 			if (!isprint(c) && !isspace(c))
 				return (ENODEV);
 		}
@@ -251,7 +277,8 @@ int
 bhnd_nvram_parser_init(struct bhnd_nvram *sc, device_t dev, const void *data,
     size_t size, bhnd_nvram_format fmt)
 {
-	int error;
+	struct bhnd_nvram_io	*io;
+	int			 error;
 
 	/* Initialize NVRAM state */
 	memset(sc, 0, sizeof(*sc));
@@ -263,8 +290,12 @@ bhnd_nvram_parser_init(struct bhnd_nvram *sc, device_t dev, const void *data,
 	if (size < sizeof(union bhnd_nvram_ident))
 		return (EINVAL);
 
-	error = bhnd_nvram_parser_identify(
-	    (const union bhnd_nvram_ident *)data, fmt);
+	// TODO: pass in `io` as an argument
+	if ((io = bhnd_nvram_iobuf_new(data, size)) == NULL)
+		return (EINVAL);
+
+	error = bhnd_nvram_parser_identify(io, fmt);
+	bhnd_nvram_io_free(io);
 	if (error)
 		return (error);
 
