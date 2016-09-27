@@ -65,9 +65,8 @@ struct bhnd_nvram_devpath {
  * Provides entry offsets into a backing NVRAM buffer.
  */
 struct bhnd_nvram_idx_entry {
-	uint16_t	env_offset;	/**< offset to env string (must be '\0'
-					     or '=' terminated) */
-	uint16_t	env_len;	/**< total length of env string */
+	uint16_t	env_offset;	/**< offset to env string (key must be
+					     '\0'   or '=' terminated) */
 };
 
 /**

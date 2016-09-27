@@ -84,68 +84,70 @@ static int	bhnd_nvram_parse_env(struct bhnd_nvram *sc, const char *env,
  *				successful parsing of @p data, will be set to
  *				the parsed size (which may be larger).
  */
-typedef int	(*bhnd_nvram_op_getsize)(const void *data, size_t *size);
+typedef int	(bhnd_nvram_op_getsize)(const void *data, size_t *size);
 
 /** Perform format-specific initialization. */
-typedef int	(*bhnd_nvram_op_init)(struct bhnd_nvram *sc);
+typedef int	(bhnd_nvram_op_init)(struct bhnd_nvram *sc);
 
 /** Initialize any format-specific default values. */
-typedef int	(*bhnd_nvram_op_init_defaults)(struct bhnd_nvram *sc);
-typedef int	(*bhnd_nvram_op_enum_buf)(struct bhnd_nvram *sc,
+typedef int	(bhnd_nvram_op_init_defaults)(struct bhnd_nvram *sc);
+
+typedef int	(bhnd_nvram_op_enum_buf)(struct bhnd_nvram *sc,
 		    const char **env, size_t *len, const uint8_t *p,
 		    uint8_t const **next);
 
-/* FMT_BCM ops */
-static int	bhnd_nvram_bcm_getsize(const void *data, size_t *size);
-static int	bhnd_nvram_bcm_init(struct bhnd_nvram *sc);
-static int	bhnd_nvram_bcm_init_defaults(struct bhnd_nvram *sc);
-static int	bhnd_nvram_bcm_enum_buf(struct bhnd_nvram *sc, const char **env,
-		    size_t *len, const uint8_t *p, uint8_t const **next);
-
-/* FMT_TLV ops */
-static int	bhnd_nvram_tlv_getsize(const void *data, size_t *size);
-static int	bhnd_nvram_tlv_init(struct bhnd_nvram *sc);
-static int	bhnd_nvram_tlv_enum_buf(struct bhnd_nvram *sc, const char **env,
-		    size_t *len, const uint8_t *p, uint8_t const **next);
-/* FMT_TXT ops */
-static int	bhnd_nvram_txt_getsize(const void *data, size_t *size);
-static int	bhnd_nvram_txt_init(struct bhnd_nvram *sc);
-static int	bhnd_nvram_txt_enum_buf(struct bhnd_nvram *sc, const char **env,
-		    size_t *len, const uint8_t *p, uint8_t const **next);
+/**
+ * Provide the string length of @p env.
+ * 
+ * @param sc NVRAM parser state.
+ * @param env Pointer to the env string within the backing buffer.
+ * @param[out] env_size	On success, the size of @p env, not including any
+ * trailing NUL.
+ */
+typedef int	(bhnd_nvram_op_env_len)(struct bhnd_nvram *sc,
+		    const char *env, size_t *env_len);
 
 /**
  * Format-specific operations.
  */
 struct bhnd_nvram_ops {
 	bhnd_nvram_format		 fmt;		/**< nvram format */
-	bhnd_nvram_op_getsize		 getsize;	/**< determine actual NVRAM size */
-	bhnd_nvram_op_init		 init;		/**< format-specific initialization */
-	bhnd_nvram_op_enum_buf		 enum_buf;	/**< enumerate backing buffer */
-	bhnd_nvram_op_init_defaults	 init_defaults;	/**< populate any default values */
+	bhnd_nvram_op_getsize		*getsize;	/**< determine actual NVRAM size */
+	bhnd_nvram_op_init		*init;		/**< format-specific initialization */
+	bhnd_nvram_op_init_defaults	*init_defaults;	/**< populate any default values */
+	bhnd_nvram_op_enum_buf		*enum_buf;	/**< enumerate backing buffer */
+	bhnd_nvram_op_env_len		*env_len;	/**< calculate length of env string */
 };
 
-static const struct bhnd_nvram_ops bhnd_nvram_ops_table[] = {
-	{ 
-		BHND_NVRAM_FMT_BCM,
-		bhnd_nvram_bcm_getsize,
-		bhnd_nvram_bcm_init, 
-		bhnd_nvram_bcm_enum_buf,
-		bhnd_nvram_bcm_init_defaults
-	},
-	{
-		BHND_NVRAM_FMT_TLV,
-		bhnd_nvram_tlv_getsize,
-		bhnd_nvram_tlv_init,
-		bhnd_nvram_tlv_enum_buf,
-		NULL
-	},
-	{
-		BHND_NVRAM_FMT_BTXT,
-		bhnd_nvram_txt_getsize,
-		bhnd_nvram_txt_init,
-		bhnd_nvram_txt_enum_buf,
-		NULL
-	},
+/**
+ * Declare a bhnd_nvram_ops class with name @p _n and @p _fmt.
+ */
+#define	BHND_NVRAM_OPS_DEFN(_n, _fmt)					\
+	static bhnd_nvram_op_getsize	bhnd_nvram_## _n ## _getsize;	\
+	static bhnd_nvram_op_init	bhnd_nvram_## _n ## _init;	\
+	static bhnd_nvram_op_init_defaults				\
+	    bhnd_nvram_ ## _n ## _init_defaults; 			\
+	static bhnd_nvram_op_enum_buf	bhnd_nvram_ ## _n ## _enum_buf;	\
+	static bhnd_nvram_op_env_len	bhnd_nvram_ ## _n ## _env_len;	\
+									\
+	static const struct bhnd_nvram_ops bhnd_nvram_ops_ ## _n = {	\
+		.fmt		= _fmt,					\
+		.getsize	= bhnd_nvram_ ## _n ## _getsize,	\
+		.init		= bhnd_nvram_ ## _n ## _init,		\
+		.init_defaults	= bhnd_nvram_ ## _n ## _init_defaults,	\
+		.enum_buf	= bhnd_nvram_ ## _n ## _enum_buf,	\
+		.env_len	= bhnd_nvram_ ## _n ## _env_len		\
+	};
+
+BHND_NVRAM_OPS_DEFN(bcm, BHND_NVRAM_FMT_BCM)
+BHND_NVRAM_OPS_DEFN(tlv, BHND_NVRAM_FMT_TLV)
+BHND_NVRAM_OPS_DEFN(txt, BHND_NVRAM_FMT_BTXT)
+
+
+static const struct bhnd_nvram_ops *bhnd_nvram_ops_table[] = {
+	&bhnd_nvram_ops_bcm,
+	&bhnd_nvram_ops_tlv,
+	&bhnd_nvram_ops_txt
 };
 
 #define	NVRAM_LOG(sc, fmt, ...)	do {			\
@@ -262,7 +264,7 @@ bhnd_nvram_find_ops(bhnd_nvram_format fmt)
 
 	/* Fetch format-specific operation callbacks */
 	for (size_t i = 0; i < nitems(bhnd_nvram_ops_table); i++) {
-		ops = &bhnd_nvram_ops_table[i];
+		ops = bhnd_nvram_ops_table[i];
 
 		if (ops->fmt != fmt)
 			continue;
@@ -853,7 +855,7 @@ static int
 bhnd_nvram_find_var(struct bhnd_nvram *sc, const char *name, const char **value,
     size_t *value_len)
 {
-	bhnd_nvram_op_enum_buf	 enum_fn;
+	bhnd_nvram_op_enum_buf	*enum_fn;
 	const char		*env;
 	size_t			 env_len;
 	int			 error;
@@ -974,7 +976,7 @@ bhnd_nvram_sort_idx(void *ctx, const void *lhs, const void *rhs)
 static int
 bhnd_nvram_generate_index(struct bhnd_nvram *sc)
 {
-	bhnd_nvram_op_enum_buf	 enum_fn;
+	bhnd_nvram_op_enum_buf	*enum_fn;
 	const char		*key, *val;
 	const char		*env;
 	const uint8_t		*p;
@@ -1110,7 +1112,6 @@ bhnd_nvram_generate_index(struct bhnd_nvram *sc)
 
 		idx = &sc->idx->entries[i];
 		idx->env_offset = env_offset;
-		idx->env_len = env_len;
 	}
 
 	/* Sort the index table */
@@ -1157,6 +1158,7 @@ bhnd_nvram_index_lookup(struct bhnd_nvram *sc, struct bhnd_nvram_idx *idx,
 	const char			*idxe_key;
 	size_t				 min, mid, max;
 	int				 order;
+	int				 error;
 
 	if (idx->num_entries == 0)
 		return (ENOENT);
@@ -1189,7 +1191,9 @@ bhnd_nvram_index_lookup(struct bhnd_nvram *sc, struct bhnd_nvram_idx *idx,
 
 			/* Match found */
 			*env = sc->buf + idxe->env_offset;
-			*env_len = idxe->env_len;
+
+			if ((error = sc->ops->env_len(sc, *env, env_len)))
+				return (error);
 
 			return (bhnd_nvram_parse_env(sc, *env, *env_len, &k,
 			    &klen, value, value_len));
@@ -1222,7 +1226,7 @@ static int
 bhnd_nvram_buffer_lookup(struct bhnd_nvram *sc, const char *name,
     const char **env, size_t *env_len, const char **value, size_t *value_len)
 {
-	bhnd_nvram_op_enum_buf	 enum_fn;
+	bhnd_nvram_op_enum_buf	*enum_fn;
 	const uint8_t		*p;
 	size_t			 name_len;
 	int			 error;
@@ -1339,12 +1343,24 @@ bhnd_nvram_bcm_init_defaults(struct bhnd_nvram *sc)
 	return (0);
 }
 
+/* FMT_BCM record length */
+static int
+bhnd_nvram_bcm_env_len(struct bhnd_nvram *sc, const char *env, size_t *env_len)
+{
+	if (!bhnd_nvram_bufptr_valid(sc, env, 1, true))
+		return (EINVAL);
+
+	*env_len = strnlen(env, sc->buf_size - ((const uint8_t *)env - sc->buf));
+	return (0);
+}
 
 /* FMT_BCM record parsing */
 static int
 bhnd_nvram_bcm_enum_buf(struct bhnd_nvram *sc, const char **env, size_t *len,
     const uint8_t *p, uint8_t const **next)
 {
+	int error;
+
 	/* First record is found following the NVRAM header */
 	if (p == NULL)
 		p = sc->buf + sizeof(struct bhnd_nvram_header);
@@ -1360,9 +1376,10 @@ bhnd_nvram_bcm_enum_buf(struct bhnd_nvram *sc, const char **env, size_t *len,
 		return (0);
 	}
 
-	/* Provide pointer to env data */
+	/* Provide pointer to env data and determine the record length */
 	*env = p;
-	*len = strnlen(p, sc->buf_size - (p - sc->buf));
+	if ((error = bhnd_nvram_bcm_env_len(sc, *env, len)))
+		return (error);
 
 	/* Advance to next entry and skip terminating NUL */
 	p += *len;
@@ -1429,6 +1446,25 @@ static int
 bhnd_nvram_tlv_init(struct bhnd_nvram *sc)
 {
 	return (0);
+}
+
+/* Populate FMT_TLV-specific default values */
+static int
+bhnd_nvram_tlv_init_defaults(struct bhnd_nvram *sc)
+{
+	return (0);
+}
+
+/* FMT_TLV record length */
+static int
+bhnd_nvram_tlv_env_len(struct bhnd_nvram *sc, const char *env, size_t *env_len)
+{
+	if (!bhnd_nvram_bufptr_valid(sc, env, 1, true))
+		return (EINVAL);
+
+	// XXX TODO: we really need an offset to the actual
+	// entry, not the env string
+	return (ENXIO);
 }
 
 /* FMT_TLV record parsing */
@@ -1512,6 +1548,13 @@ bhnd_nvram_txt_init(struct bhnd_nvram *sc)
 	return (0);
 }
 
+/* Populate FMT_BTXT-specific default values */
+static int
+bhnd_nvram_txt_init_defaults(struct bhnd_nvram *sc)
+{
+	return (0);
+}
+
 /* Seek past the next line ending (\r, \r\n, or \n) */
 static const uint8_t *
 bhnd_nvram_txt_seek_eol(struct bhnd_nvram *sc, const uint8_t *p)
@@ -1559,13 +1602,49 @@ bhnd_nvram_txt_seek_nextline(struct bhnd_nvram *sc, const uint8_t *p)
 	return (p);
 }
 
+/* FMT_BTXT record length */
+static int
+bhnd_nvram_txt_env_len(struct bhnd_nvram *sc, const char *env, size_t *env_len)
+{
+	const uint8_t	*p, *startp;
+	size_t		 line_len;
+
+	if ((const uint8_t *)env < sc->buf ||
+	    (const uint8_t *)env > (sc->buf + sc->buf_size))
+		return (EINVAL);
+
+	/* Find record termination (EOL, or '#') */
+	p = env;
+	startp = env;
+	while (p < sc->buf + sc->buf_size) {
+		if (*p == '#' || *p == '\n' || *p == '\r')
+			break;
+
+		p++;
+	}
+
+	/* Got line length, now trim trailing whitespace to determine
+	 * actual env length */
+	line_len = p - startp;
+	*env_len = line_len;
+
+	for (size_t i = 0; i < line_len && line_len > 0; i++) {
+		char c = startp[line_len - i - 1];
+		if (!isspace(c))
+			break;
+
+		*env_len -= 1;
+	}
+
+	return (0);
+}
+
 /* FMT_BTXT record parsing */
 static int
 bhnd_nvram_txt_enum_buf(struct bhnd_nvram *sc, const char **env, size_t *len,
     const uint8_t *p, uint8_t const **next)
 {
-	const uint8_t	*startp;
-	size_t		 line_len;
+	int error;
 
 	if (p == NULL)
 		p = sc->buf;
@@ -1581,37 +1660,12 @@ bhnd_nvram_txt_enum_buf(struct bhnd_nvram *sc, const char **env, size_t *len,
 		return (0);
 	}
 
-	/* Find record termination (EOL, or '#') */
-	startp = p;
-	while (p < sc->buf + sc->buf_size) {
-		if (*p == '#' || *p == '\n' || *p == '\r')
-			break;
-
-		p++;
-	}
-
-	/* Calculate line length, check for EOF */
-	line_len = p - startp;
-	if (!bhnd_nvram_bufptr_valid(sc, p, 1, false)) {
-		*env = NULL;
-		*len = 0;
-		*next = p;
-		return (0);
-	}
-
-	/* Got env data; trim any tailing whitespace */
-	*env = startp;
-	*len = line_len;
-
-	for (size_t i = 0; i < line_len && line_len > 0; i++) {
-		char c = startp[line_len - i - 1];
-		if (!isspace(c))
-			break;
-
-		*len -= 1;
-	}
+	/* Determine the entry length */
+	if ((error = bhnd_nvram_tlv_env_len(sc, p, len)))
+		return (error);
 
 	/* Advance to next entry */
+	p += *len;
 	p = bhnd_nvram_txt_seek_nextline(sc, p);
 	
 	*next = p;
