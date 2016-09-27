@@ -37,9 +37,6 @@
 
 #include "bhnd_nvram.h"
 
-struct bhnd_nvram_tuple;
-struct bhnd_nvram_varmap;
-
 struct bhnd_nvram_vardefn;
 
 MALLOC_DECLARE(M_BHND_NVRAM);
@@ -73,30 +70,6 @@ int				 bhnd_nvram_parse_octet_string(
 				     const char *value, size_t value_len,
 				     void *buf, size_t *len,
 				     bhnd_nvram_type type);
-
-int				 bhnd_nvram_varmap_init(
-				     struct bhnd_nvram_varmap *map,
-				     size_t nelements, int flags);
-void				 bhnd_nvram_varmap_free(
-				     struct bhnd_nvram_varmap *map);
-int				 bhnd_nvram_varmap_add(
-				     struct bhnd_nvram_varmap *map,
-				     const char *name, const char *value,
-				     size_t value_len);
-int				 bhnd_nvram_varmap_remove(
-				     struct bhnd_nvram_varmap *map,
-				     const char *name);
-struct bhnd_nvram_tuple		*bhnd_nvram_varmap_find(
-				    struct bhnd_nvram_varmap *map,
-				    const char *name, size_t name_len);
-bool				 bhnd_nvram_varmap_contains(
-				    struct bhnd_nvram_varmap *map,
-				    const char *name, size_t name_len);
-
-struct bhnd_nvram_tuple		*bhnd_nvram_tuple_alloc(const char *name,
-				     const char *value);
-void				 bhnd_nvram_tuple_free(
-				     struct bhnd_nvram_tuple *tuple);
 
 /** NVRAM variable flags */
 enum {
@@ -137,27 +110,6 @@ struct bhnd_nvram_vardefn {
 
 	const struct bhnd_sprom_vardefn	*sp_defs;	/**< SPROM-specific variable definitions */
 	size_t				 num_sp_defs;	/**< number of sprom definitions */
-};
-
-/**
- * NVRAM value tuple.
- */
-struct bhnd_nvram_tuple {
-	char	*name;		/**< variable name. */
-	size_t	 name_len;	/**< variable length. */
-	char	*value;		/**< value, or NULL if this tuple represents variable
-				     deletion */
-	size_t	 value_len;	/**< value length. */
-
-	LIST_ENTRY(bhnd_nvram_tuple) t_link;
-};
-
-LIST_HEAD(bhnd_nvram_tuples, bhnd_nvram_tuple);
-
-/** NVRAM tuple hash table */
-struct bhnd_nvram_varmap {
-	struct bhnd_nvram_tuples	*table;		/**< hash buckets */
-	u_long				 mask;		/**< hash index mask */
 };
 
 /**
