@@ -79,12 +79,15 @@ BHND_NVRAM_IOPS_DEFN(iocfe)
 #define IOCFE_LOG(_io, _fmt, ...)	\
 	printf("%s/%s: " _fmt, __FUNCTION__, (_io)->dname, ##__VA_ARGS__)
 
-static int	 bhnd_nvram_iocfe_new(struct bhnd_nvram_io **io, char *dname);
+static int			 bhnd_nvram_iocfe_new(struct bhnd_nvram_io **io,
+				     char *dname);
 
-static int	 nvram_open_cfedev(device_t dev, char *devname, int fd,
-		     int64_t *offset, uint32_t *size, bhnd_nvram_format fmt);
-static char	*nvram_find_cfedev(device_t dev, int *fd, int64_t *offset,
-		     uint32_t *size, bhnd_nvram_format *fmt);
+static int			 bhnd_nvram_ident_cfedev(device_t dev,
+				     const char *dname,
+				     struct bhnd_nvram_io *io,
+				     bhnd_nvram_format fmt);
+static struct bhnd_nvram_iocfe	*bhnd_nvram_find_cfedev(device_t dev,
+				     bhnd_nvram_format *fmt);
 
 /** Known CFE NVRAM device names, in probe order. */
 static char *nvram_cfe_devs[] = {
@@ -104,22 +107,19 @@ bhnd_nvram_format nvram_cfe_fmts[] = {
 static int
 bhnd_nvram_cfe_probe(device_t dev)
 {
-	char				*devname;
-	bhnd_nvram_format		 fmt;
-	int64_t				 offset;
-	uint32_t			 size;
-	int				 error;
-	int				 fd;
+	struct bhnd_nvram_iocfe	*iocfe;
+	bhnd_nvram_format	 fmt;
+	int			 error;
 
 	/* Defer to default driver implementation */
 	if ((error = bhnd_nvram_probe(dev)) > 0)
 		return (error);
 
 	/* Locate a usable CFE device */
-	devname = nvram_find_cfedev(dev, &fd, &offset, &size, &fmt);
-	if (devname == NULL)
+	iocfe = bhnd_nvram_find_cfedev(dev, &fmt);
+	if (iocfe == NULL)
 		return (ENXIO);
-	cfe_close(fd);
+	bhnd_nvram_io_free(&iocfe->io);
 
 	switch (fmt) {
 	case BHND_NVRAM_FMT_BCM:
@@ -141,65 +141,53 @@ bhnd_nvram_cfe_probe(device_t dev)
 static int
 bhnd_nvram_cfe_attach(device_t dev)
 {
-	char			*devname;
+	struct bhnd_nvram_iocfe	*iocfe;
 	unsigned char		*buffer;
 	bhnd_nvram_format	 fmt;
-	int64_t			 offset;
-	uint32_t		 size;
+	size_t			 size, nread;
 	int			 error;
-	int			 fd;
 
 	error = 0;
 	buffer = NULL;
-	fd = CFE_ERR;
 
 	/* Locate NVRAM device via CFE */
-	devname = nvram_find_cfedev(dev, &fd, &offset, &size, &fmt);
-	if (devname == NULL) {
+	iocfe = bhnd_nvram_find_cfedev(dev, &fmt);
+	if (iocfe == NULL) {
 		device_printf(dev, "CFE NVRAM device not found\n");
 		return (ENXIO);
 	}
 
-	// XXX TODO
-	struct bhnd_nvram_io *io;
-	if ((error = bhnd_nvram_iocfe_new(&io, devname)))
-		device_printf(dev, "bhnd_nvram_iocfe_new() failed: %d\n",
-		    error);
-	else
-		bhnd_nvram_iocfe_free(io);
-
 	/* Copy out NVRAM buffer */
+	size = bhnd_nvram_io_get_size(&iocfe->io);
 	buffer = malloc(size, M_TEMP, M_NOWAIT);
 	if (buffer == NULL)
 		return (ENOMEM);
 
 	for (size_t remain = size; remain > 0;) {
-		int nr, req;
-		
-		req = ulmin(INT_MAX, remain);
-		nr = cfe_readblk(fd, size-remain, buffer+(size-remain),
-		    req);
-		if (nr < 0) {
-			device_printf(dev, "%s: cfe_readblk() failed: %d\n",
-			    devname, fd);
+		nread = remain;
+		error = bhnd_nvram_io_read(&iocfe->io, size-remain,
+		    buffer+(size-remain), &nread);
+		if (error) {
+			IOCFE_LOG(iocfe, "bhnd_nvram_io_read() failed: %d\n",
+			    error);
 
 			error = ENXIO;
 			goto cleanup;
 		}
 
-		remain -= nr;
+		remain -= nread;
 
-		if (nr == 0 && remain > 0) {
-			device_printf(dev, "%s: cfe_readblk() unexpected EOF: "
-			    "%zu of %zu pending\n", devname, remain, size);
+		if (nread == 0 && remain > 0) {
+			IOCFE_LOG(iocfe, "bhnd_nvram_io_read() unexpected EOF: "
+			    "%zu of %zu pending\n", remain, size);
 
 			error = ENXIO;
 			goto cleanup;
 		}
 	}
 
-	device_printf(dev, "CFE %s (%#jx+%#jx)\n", devname, (uintmax_t)offset,
-	    (uintmax_t)size);
+	device_printf(dev, "CFE %s (%#zx+%#zx)\n", iocfe->dname, iocfe->offset,
+	    iocfe->size);
 
 	/* Delegate to default driver implementation */
 	error = bhnd_nvram_attach(dev, buffer, size, fmt);
@@ -208,182 +196,100 @@ cleanup:
 	if (buffer != NULL)
 		free(buffer, M_TEMP);
 
-	if (fd >= 0)
-		cfe_close(fd);
+	if (iocfe != NULL)
+		bhnd_nvram_io_free(&iocfe->io);
 
 	return (error);
 }
 
 /**
- * Identify and open a CFE NVRAM device.
+ * Identify CFE NVRAM device.
  * 
  * @param	dev	bhnd_nvram_cfe device.
- * @param	devname	The name of the CFE device to be probed.
- * @param	fd	An open CFE file descriptor for @p devname.
- * @param[out]	offset	On success, the NVRAM data offset within @p @fd.
- * @param[out]	size	On success, maximum the NVRAM data size within @p fd.
- * @param	fmt	The expected NVRAM data format for this device.
- * 
+ * @param	dname	The name of the CFE device being identified.
+ * @param	io	An I/O context mapping NVRAM data from @p dname.
+ * @param	fmt	The data format to be identified.
+ *
  * @retval	0		success
  * @retval	non-zero	If probing @p devname fails, a regular unix
  * 				error code will be returned.
  */
 static int
-nvram_open_cfedev(device_t dev, char *devname, int fd, int64_t *offset,
-    uint32_t *size, bhnd_nvram_format fmt)
+bhnd_nvram_ident_cfedev(device_t dev, const char *dname,
+    struct bhnd_nvram_io *io, bhnd_nvram_format fmt)
 {
 	union bhnd_nvram_ident	ident;
-	nvram_info_t		nvram_info;
-	int			cerr, devinfo, dtype, rlen;
+	size_t			nbytes;
 	int			error;
 
-	/* Try to fetch device info */
-	if ((devinfo = cfe_getdevinfo(devname)) == CFE_ERR_DEVNOTFOUND)
-		return (ENODEV);
-
-	if (devinfo < 0) {
-		device_printf(dev, "cfe_getdevinfo() failed: %d",
-		    devinfo);
-		return (ENXIO);
-	}
-
-	/* Verify device type */
-	dtype = devinfo & CFE_DEV_MASK;
-	switch (dtype) {
-	case CFE_DEV_FLASH:
-	case CFE_DEV_NVRAM:
-		/* Valid device type */
-		break;
-	default:
-		device_printf(dev, "%s: unknown device type %d\n",
-		    devname, dtype);
-		return (ENXIO);
-	}
-
-	/* Try to fetch nvram info from CFE */
-	cerr = cfe_ioctl(fd, IOCTL_NVRAM_GETINFO, (unsigned char *)&nvram_info,
-	    sizeof(nvram_info), &rlen, 0);
-	if (cerr != CFE_OK && cerr != CFE_ERR_INV_COMMAND) {
-		device_printf(dev, "%s: IOCTL_NVRAM_GETINFO failed: %d\n",
-		    devname, cerr);
-		return (ENXIO);
-	}
-
-	/* Fall back on flash info.
-	 * 
-	 * This is known to be required on the Asus RT-N53 (CFE 5.70.55.33, 
-	 * BBP 1.0.37, BCM5358UB0), where IOCTL_NVRAM_GETINFO returns
-	 * CFE_ERR_INV_COMMAND.
-	 */
-	if (cerr == CFE_ERR_INV_COMMAND) {
-		flash_info_t fi;
-
-		cerr = cfe_ioctl(fd, IOCTL_FLASH_GETINFO, (unsigned char *)&fi,
-		    sizeof(fi), &rlen, 0);
-
-		if (cerr != CFE_OK) {
-			device_printf(dev, "%s: IOCTL_FLASH_GETINFO failed: "
-			    "%d\n", devname, cerr);
-			return (ENXIO);
-		}
-
-		nvram_info.nvram_eraseflg	=
-		    !(fi.flash_flags & FLASH_FLAG_NOERASE);
-		nvram_info.nvram_offset		= 0x0;
-		nvram_info.nvram_size		= fi.flash_size;
-	}
-
-	/* Try to read NVRAM header/format identification */
-	cerr = cfe_readblk(fd, 0, (unsigned char *)&ident, sizeof(ident));
-	if (cerr < 0) {
-		device_printf(dev, "%s: cfe_readblk() failed: %d\n",
-		    devname, cerr);
-		return (ENXIO);
-	} else if (cerr == 0) {
-		/* EOF */
-		return (ENODEV);
-	} else if (cerr != sizeof(ident)) {
-		device_printf(dev, "%s: cfe_readblk() short read: %d\n",
-			devname, cerr);
-		return (ENXIO);
-	}
-
 	/* Verify expected format */
+	// TODO: handle short reads
+	nbytes = sizeof(ident); 
+	if ((error = bhnd_nvram_io_read(io, 0x0, &ident, &nbytes)))
+		return (error);
+
 	if ((error = bhnd_nvram_parser_identify(&ident, fmt)))
 		return (error);
 
-	/* Provide offset and size */
-	switch (fmt) {
-	case BHND_NVRAM_FMT_TLV:
-		/* No size field is available; must assume the NVRAM data
-		 * consumes up to the full CFE NVRAM range */
-		*offset = nvram_info.nvram_offset;
-		*size = nvram_info.nvram_size;
-		break;
-	case BHND_NVRAM_FMT_BCM:
-		if (ident.bcm.size > nvram_info.nvram_size) {
-			device_printf(dev, "%s: NVRAM size %#x overruns %#x "
-			    "device limit\n", devname, ident.bcm.size,
-			    nvram_info.nvram_size);
+	if (fmt == BHND_NVRAM_FMT_BCM) {
+		if (ident.bcm.size > bhnd_nvram_io_get_size(io)) {
+			device_printf(dev, "%s: NVRAM size %#x overruns %#zx "
+			    "device limit\n", dname, ident.bcm.size,
+			    bhnd_nvram_io_get_size(io));
 			return (ENODEV);
 		}
-
-		*offset = nvram_info.nvram_offset;
-		*size = ident.bcm.size;
-		break;
-	default:
-		return (EINVAL);
 	}
 
 	return (0);
 }
 
 /**
- * Find (and open) a CFE NVRAM device.
+ * Find, open, identify, and return an I/O context mapping our
+ * CFE NVRAM device.
  * 
  * @param	dev	bhnd_nvram_cfe device.
- * @param[out]	fd	On success, a valid CFE file descriptor. The callee
- *			is responsible for closing this file descriptor via
- *			cfe_close().
- * @param[out]	offset	On success, the NVRAM data offset within @p @fd.
- * @param[out]	size	On success, maximum the NVRAM data size within @p fd.
- * @param	fmt	The expected NVRAM data format for this device.
- * 
- * @return	On success, the opened CFE device's name will be returned. On
- *		error, returns NULL.
+ * @param[out]	fmt	On success, the identified NVRAM format.
+ *
+ * @retval	non-NULL success. the caller inherits ownership of the returned
+ * NVRAM I/O context.
+ * @retval	NULL if no usable CFE NVRAM device could be found.
  */
-static char *
-nvram_find_cfedev(device_t dev, int *fd, int64_t *offset,
-    uint32_t *size, bhnd_nvram_format *fmt)
+static struct bhnd_nvram_iocfe *
+bhnd_nvram_find_cfedev(device_t dev, bhnd_nvram_format *fmt)
 {
-	char	*devname;
-	int	 error;
+	struct bhnd_nvram_io	*io;
+	char			*dname;
+	int			 devinfo;
+	int			 error;
 
 	for (u_int i = 0; i < nitems(nvram_cfe_fmts); i++) {
 		*fmt = nvram_cfe_fmts[i];
 
 		for (u_int j = 0; j < nitems(nvram_cfe_devs); j++) {
-			devname = nvram_cfe_devs[j];
+			dname = nvram_cfe_devs[j];
 
-			/* Open for reading */
-			*fd = cfe_open(devname);
-			if (*fd == CFE_ERR_DEVNOTFOUND) {
-				continue;
-			} else if (*fd < 0) {
-				device_printf(dev, "%s: cfe_open() failed: "
-				    "%d\n", devname, *fd);
+			/* Does the device exist? */
+			if ((devinfo = cfe_getdevinfo(dname)) < 0) {
+				if (devinfo != CFE_ERR_DEVNOTFOUND) {
+					device_printf(dev, "cfe_getdevinfo(%s) "
+					    "failed: %d\n", dname, devinfo);
+				}
+
 				continue;
 			}
 
-			/* Probe */
-			error = nvram_open_cfedev(dev, devname, *fd, offset,
-			    size, *fmt);
+			/* Open for reading */
+			if ((error = bhnd_nvram_iocfe_new(&io, dname)))
+				continue;
+
+			/* Identify */
+			error = bhnd_nvram_ident_cfedev(dev, dname, io, *fmt);
 			if (error == 0)
-				return (devname);
+				return ((struct bhnd_nvram_iocfe *)io);
 
 			/* Keep searching */
-			devname = NULL;
-			cfe_close(*fd);
+			bhnd_nvram_io_free(io);
+			io = NULL;
 		}
 	}
 
