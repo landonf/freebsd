@@ -107,13 +107,14 @@ bhnd_nvram_iores_new(struct bhnd_resource *r, bus_size_t offset,
 	/* offset/size must be bus_width aligned  */
 	if ((r_start + offset) % bus_width != 0) {
 		printf("%s: base address %#jx+%#jx not aligned to bus "
-		    "width %u\n", __FUNCTION__, r_start, offset, bus_width);
+		    "width %u\n", __FUNCTION__, (uintmax_t)r_start,
+		    (uintmax_t)offset, bus_width);
 		return (NULL);
 	}
 
 	if (size % bus_width != 0) {
-		printf("%s: size %jx not aligned to bus width %u\n",
-		    __FUNCTION__, size, bus_width);
+		printf("%s: size %#jx not aligned to bus width %u\n",
+		    __FUNCTION__, (uintmax_t)size, bus_width);
 		return (NULL);
 	}
 
