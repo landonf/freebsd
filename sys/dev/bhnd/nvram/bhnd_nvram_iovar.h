@@ -37,15 +37,15 @@
 #include "bhnd_nvram_io.h"
 
 /** @see bhnd_nvram_io_read() */
-typedef int (bhnd_nvram_iop_read)(struct bhnd_nvram_io *io, bus_size_t offset,
-    void *buffer, bus_size_t *nbytes);
+typedef int (bhnd_nvram_iop_read)(struct bhnd_nvram_io *io, size_t offset,
+    void *buffer, size_t *nbytes);
 
 /** @see bhnd_nvram_io_read_ptr() */
-typedef int (bhnd_nvram_iop_read_ptr)(struct bhnd_nvram_io *io,
-    bus_size_t offset, const void **ptr, bus_size_t *nbytes);
+typedef int (bhnd_nvram_iop_read_ptr)(struct bhnd_nvram_io *io, size_t offset,
+    const void **ptr, size_t *nbytes);
 
 /** @see bhnd_nvram_io_get_size() */
-typedef bus_size_t (bhnd_nvram_iop_get_size)(struct bhnd_nvram_io *io);
+typedef size_t (bhnd_nvram_iop_get_size)(struct bhnd_nvram_io *io);
 
 /** @see bhnd_nvram_io_free() */
 typedef void (bhnd_nvram_iop_free)(struct bhnd_nvram_io *io);
@@ -82,19 +82,5 @@ struct bhnd_nvram_io {
 		.get_size	= bhnd_nvram_ ## _n ## _get_size,	\
 		.free		= bhnd_nvram_ ## _n ## _free		\
 	};
-
-
-static inline bus_size_t
-bhnd_nvram_bsz_max(bus_size_t a, bus_size_t b)
-{
-	return (a > b ? a : b);
-}
-
-
-static inline bus_size_t
-bhnd_nvram_bsz_min(bus_size_t a, bus_size_t b)
-{
-	return (a < b ? a : b);
-}
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_IOVAR_H_ */

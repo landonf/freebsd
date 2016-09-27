@@ -50,14 +50,17 @@ __FBSDID("$FreeBSD$");
 struct bhnd_nvram_iores {
 	struct bhnd_nvram_io	 io;		/**< common I/O instance state */
 	struct bhnd_resource	*res;		/**< backing resource (borrowed ref) */
-	bus_size_t		 offset;	/**< offset within res */
-	bus_size_t		 size;		/**< size relative to the base offset */
+	size_t			 offset;	/**< offset within res */
+	size_t			 size;		/**< size relative to the base offset */
 	u_int			 bus_width;	/**< data type byte width to be used
 						     when performing bus operations
 						     on res. (1, 2, or 4 bytes) */
 };
 
 BHND_NVRAM_IOPS_DEFN(iores);
+
+#define IORES_LOG(_fmt, ...)	\
+	printf("%s: " _fmt, __FUNCTION__, ##__VA_ARGS__)
 
 /**
  * Allocate and return a new I/O context backed by a borrowed reference to @p r.
@@ -90,13 +93,25 @@ bhnd_nvram_iores_new(struct bhnd_resource *r, bus_size_t offset,
 		/* valid */
 		break;
 	default:
-		printf("%s: invalid bus width %u\n", __FUNCTION__, bus_width);
+		IORES_LOG("invalid bus width %u\n", bus_width);
 		return (NULL);
 	}
 
-	/* offset/size must not exceed BUS_SPACE_MAXSIZE */
-	if (size > BUS_SPACE_MAXSIZE || offset > BUS_SPACE_MAXSIZE)
+	/* offset/size must not exceed our internal size_t representation,
+	 * or our bus_size_t usage (note that BUS_SPACE_MAXSIZE may be less
+	 * than 2^(sizeof(bus_size_t) * 32). */
+	if (size > SIZE_MAX || offset > SIZE_MAX) {
+		IORES_LOG("offset %#jx+%#jx exceeds SIZE_MAX\n",
+		    (uintmax_t)offset, (uintmax_t)offset);
 		return (NULL);
+	}
+	
+	if (size > BUS_SPACE_MAXSIZE || offset > BUS_SPACE_MAXSIZE)
+	{
+		IORES_LOG("offset %#jx+%#jx exceeds BUS_SPACE_MAXSIZE\n",
+		    (uintmax_t)offset, (uintmax_t)offset);
+		return (NULL);
+	}
 
 	/* offset/size fall within the resource's mapped range */
 	r_size = rman_get_size(r->res);
@@ -106,15 +121,14 @@ bhnd_nvram_iores_new(struct bhnd_resource *r, bus_size_t offset,
 
 	/* offset/size must be bus_width aligned  */
 	if ((r_start + offset) % bus_width != 0) {
-		printf("%s: base address %#jx+%#jx not aligned to bus "
-		    "width %u\n", __FUNCTION__, (uintmax_t)r_start,
-		    (uintmax_t)offset, bus_width);
+		IORES_LOG("base address %#jx+%#jx not aligned to bus width "
+		    "%u\n", (uintmax_t)r_start, (uintmax_t)offset, bus_width);
 		return (NULL);
 	}
 
 	if (size % bus_width != 0) {
-		printf("%s: size %#jx not aligned to bus width %u\n",
-		    __FUNCTION__, (uintmax_t)size, bus_width);
+		IORES_LOG("size %#jx not aligned to bus width %u\n",
+		    (uintmax_t)size, bus_width);
 		return (NULL);
 	}
 
@@ -135,7 +149,7 @@ bhnd_nvram_iores_free(struct bhnd_nvram_io *io)
 	free(io, M_BHND_NVRAM);
 }
 
-static bus_size_t
+static size_t
 bhnd_nvram_iores_get_size(struct bhnd_nvram_io *io)
 {
 	struct bhnd_nvram_iores	*iores = (struct bhnd_nvram_iores *)io;
@@ -143,16 +157,16 @@ bhnd_nvram_iores_get_size(struct bhnd_nvram_io *io)
 }
 
 static int
-bhnd_nvram_iores_read_ptr(struct bhnd_nvram_io *io, bus_size_t offset,
-    const void **ptr, bus_size_t *nbytes)
+bhnd_nvram_iores_read_ptr(struct bhnd_nvram_io *io, size_t offset,
+    const void **ptr, size_t *nbytes)
 {
 	/* unsupported */
 	return (ENODEV);
 }
 
 static int
-bhnd_nvram_iores_read(struct bhnd_nvram_io *io, bus_size_t offset, void *buffer,
-    bus_size_t *nbytes)
+bhnd_nvram_iores_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
+    size_t *nbytes)
 {
 	struct bhnd_nvram_iores	*iores;
 	bus_size_t		 r_offset;
@@ -179,7 +193,7 @@ bhnd_nvram_iores_read(struct bhnd_nvram_io *io, bus_size_t offset, void *buffer,
 		return (EFAULT);
 	}
 
-	*nbytes = bhnd_nvram_bsz_min(*nbytes, iores->size - offset);
+	*nbytes = ummin(*nbytes, iores->size - offset);
 	*nbytes = *nbytes - (*nbytes % iores->bus_width);
 
 	/* Determine actual resource offset and perform the read */

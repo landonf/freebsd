@@ -557,7 +557,7 @@ bhnd_nvram_iocfe_read(struct bhnd_nvram_io *io, bus_size_t offset, void *buffer,
 
 	iocfe = (struct bhnd_nvram_iocfe *) io;
 
-	nreq = bhnd_nvram_bsz_min(INT_MAX, *nbytes);
+	nreq = ummin(INT_MAX, *nbytes);
 	nr = cfe_readblk(iocfe->fd, iocfe->offset + offset, buffer, nreq);
 	if (nr < 0) {
 		printf("%s: cfe_readblk(%s) failed: %d\n", __FUNCTION__,

@@ -87,7 +87,7 @@ bhnd_nvram_iobuf_free(struct bhnd_nvram_io *io)
 	free(io, M_BHND_NVRAM);
 }
 
-static bus_size_t
+static size_t
 bhnd_nvram_iobuf_get_size(struct bhnd_nvram_io *io)
 {
 	struct bhnd_nvram_iobuf	*iobuf = (struct bhnd_nvram_iobuf *)io;
@@ -95,8 +95,8 @@ bhnd_nvram_iobuf_get_size(struct bhnd_nvram_io *io)
 }
 
 static int
-bhnd_nvram_iobuf_read_ptr(struct bhnd_nvram_io *io, bus_size_t offset,
-    const void **ptr, bus_size_t *nbytes)
+bhnd_nvram_iobuf_read_ptr(struct bhnd_nvram_io *io, size_t offset,
+    const void **ptr, size_t *nbytes)
 {
 	struct bhnd_nvram_iobuf	*iobuf;
 
@@ -108,14 +108,14 @@ bhnd_nvram_iobuf_read_ptr(struct bhnd_nvram_io *io, bus_size_t offset,
 
 	/* Valid read, provide a pointer to the buffer */
 	*ptr = ((const uint8_t *)iobuf->buf) + offset;
-	*nbytes = bhnd_nvram_bsz_min(*nbytes, iobuf->size - offset);
+	*nbytes = ummin(*nbytes, iobuf->size - offset);
 
 	return (0);
 }
 
 static int
-bhnd_nvram_iobuf_read(struct bhnd_nvram_io *io, bus_size_t offset, void *buffer,
-    bus_size_t *nbytes)
+bhnd_nvram_iobuf_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
+    size_t *nbytes)
 {
 	struct bhnd_nvram_iobuf	*iobuf;
 	const void		*ptr;

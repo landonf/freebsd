@@ -63,8 +63,8 @@ __FBSDID("$FreeBSD$");
  * misaligned and cannot be rounded down to an aligned non-zero value.
  */
 int
-bhnd_nvram_io_read(struct bhnd_nvram_io *io, bus_size_t offset, void *buffer,
-    bus_size_t *nbytes)
+bhnd_nvram_io_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
+    size_t *nbytes)
 {
 	return (io->iops->read(io, offset, buffer, nbytes));
 }
@@ -92,8 +92,8 @@ bhnd_nvram_io_read(struct bhnd_nvram_io *io, bus_size_t offset, void *buffer,
  * misaligned and cannot be rounded down to an aligned non-zero value.
  */
 int
-bhnd_nvram_io_read_ptr(struct bhnd_nvram_io *io, bus_size_t offset,
-    const void **ptr, bus_size_t *nbytes)
+bhnd_nvram_io_read_ptr(struct bhnd_nvram_io *io, size_t offset,
+    const void **ptr, size_t *nbytes)
 {
 	return (io->iops->read_ptr(io, offset, ptr, nbytes));
 }

@@ -38,17 +38,14 @@ struct bhnd_nvram_io;
 
 struct bhnd_nvram_io	*bhnd_nvram_iobuf_new(const void *buffer, size_t size);
 struct bhnd_nvram_io	*bhnd_nvram_iores_new(struct bhnd_resource *r,
-			     bus_size_t offset, bus_size_t size,
-			     u_int bus_width);
+			     size_t offset, size_t size, u_int bus_width);
 
-bus_size_t		 bhnd_nvram_io_get_size(struct bhnd_nvram_io *io);
+size_t			 bhnd_nvram_io_get_size(struct bhnd_nvram_io *io);
 
 int			 bhnd_nvram_io_read(struct bhnd_nvram_io *io,
-			     bus_size_t offset, void *buffer,
-			     bus_size_t *nbytes);
+			     size_t offset, void *buffer, size_t *nbytes);
 int			 bhnd_nvram_io_read_ptr(struct bhnd_nvram_io *io,
-			     bus_size_t offset, const void **ptr,
-			     bus_size_t *nbytes);
+			     size_t offset, const void **ptr, size_t *nbytes);
 
 void			 bhnd_nvram_io_free(struct bhnd_nvram_io *io);
 
