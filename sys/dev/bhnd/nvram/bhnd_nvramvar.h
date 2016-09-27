@@ -35,12 +35,14 @@
 #include <sys/param.h>
 #include <sys/bus.h>
 
+#include "bhnd_nvram.h"
+#include "bhnd_nvram_io.h"
 #include "bhnd_nvram_parser.h"
 
 DECLARE_CLASS(bhnd_nvram_driver);
 
 int	bhnd_nvram_probe(device_t dev);
-int	bhnd_nvram_attach(device_t dev, void *data, size_t size,
+int	bhnd_nvram_attach(device_t dev, struct bhnd_nvram_io *io,
 	    bhnd_nvram_format fmt);
 int	bhnd_nvram_resume(device_t dev);
 int	bhnd_nvram_suspend(device_t dev);

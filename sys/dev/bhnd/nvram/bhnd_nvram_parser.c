@@ -172,14 +172,18 @@ static const struct bhnd_nvram_ops bhnd_nvram_ops_table[] = {
  * 
  * @param io I/O context mapping the NVRAM data to be identified.
  * @param expected Expected format against which @p ident will be tested.
- * 
+ * @param[out] size_hint If not NULL, will be set to the maximum possible size
+ * of the NVRAM data (which may be less than the input @p io size), if @p io
+ * is sucessfully identified.
+ *
  * @retval 0 If @p ident has the @p expected format.
  * @retval ENODEV If @p ident does not match @p expected.
  * @retval non-zero If reading from @p io otherwise fails, a standard unix
  * error code will be returned.
  */
 int
-bhnd_nvram_parser_identify(struct bhnd_nvram_io *io, bhnd_nvram_format expected)
+bhnd_nvram_parser_identify(struct bhnd_nvram_io *io,
+    bhnd_nvram_format expected, size_t *size_hint)
 {
 	union bhnd_nvram_ident	ident;
 	size_t			nbytes, io_size;
@@ -195,6 +199,7 @@ bhnd_nvram_parser_identify(struct bhnd_nvram_io *io, bhnd_nvram_format expected)
 
 	if ((error = bhnd_nvram_io_read(io, 0x0, &ident, &nbytes)))
 		return (error);
+
 
 	/* Check for the expected NVRAM format */
 	bcm_magic = le32toh(ident.bcm.magic);
@@ -213,7 +218,10 @@ bhnd_nvram_parser_identify(struct bhnd_nvram_io *io, bhnd_nvram_format expected)
 			return (ENODEV);
 		}
 
+		if (size_hint != NULL)
+			*size_hint = bcm_size;
 		return (0);
+
 	case BHND_NVRAM_FMT_TLV:
 		if (bcm_magic == NVRAM_MAGIC)
 			return (ENODEV);
@@ -221,15 +229,23 @@ bhnd_nvram_parser_identify(struct bhnd_nvram_io *io, bhnd_nvram_format expected)
 		if (ident.tlv.tag != NVRAM_TLV_TYPE_ENV)
 			return (ENODEV);
 
+		/* We'd need to parse the entire input to determine the actual
+		 * size */
+		if (size_hint != NULL)
+			*size_hint = io_size;
 		return (0);
+
 	case BHND_NVRAM_FMT_BTXT:
 		for (size_t i = 0; i < nitems(ident.btxt); i++) {
 			char c = ident.btxt[i];
 			if (!isprint(c) && !isspace(c))
 				return (ENODEV);
 		}
+
+		if (size_hint != NULL)
+			*size_hint = io_size;
 		return (0);
-		break;
+
 	default:
 		printf("%s: unknown format: %d\n", __FUNCTION__, expected);
 		return (ENODEV);
@@ -260,25 +276,24 @@ bhnd_nvram_find_ops(bhnd_nvram_format fmt)
  * Identify the NVRAM format at @p offset within @p r, verify the
  * CRC (if applicable), and allocate a local shadow copy of the NVRAM data.
  * 
- * After initialization, no reference to @p input will be held by the
- * NVRAM parser, and @p input may be safely deallocated.
+ * After initialization, no reference to @p io will be held by the
+ * NVRAM parser, and @p io may be safely deallocated.
  * 
  * @param[out] sc The NVRAM parser state to be initialized.
  * @param dev The parser's parent device, or NULL if none.
- * @param data NVRAM data to be parsed.
- * @param size Size of @p data.
- * @param fmt Required format of @p input.
+ * @param io An I/O context mapping the NVRAM data to be parsed.
+ * @param fmt Required format of @p io.
  * 
  * @retval 0 success
  * @retval ENOMEM If internal allocation of NVRAM state fails.
- * @retval EINVAL If @p input parsing fails.
+ * @retval EINVAL If @p io parsing fails.
  */
 int
-bhnd_nvram_parser_init(struct bhnd_nvram *sc, device_t dev, const void *data,
-    size_t size, bhnd_nvram_format fmt)
+bhnd_nvram_parser_init(struct bhnd_nvram *sc, device_t dev,
+    struct bhnd_nvram_io *io, bhnd_nvram_format fmt)
 {
-	struct bhnd_nvram_io	*io;
-	int			 error;
+	size_t	size_hint;
+	int	error;
 
 	/* Initialize NVRAM state */
 	memset(sc, 0, sizeof(*sc));
@@ -287,16 +302,7 @@ bhnd_nvram_parser_init(struct bhnd_nvram *sc, device_t dev, const void *data,
 	LIST_INIT(&sc->devpaths);
 
 	/* Verify data format and init operation callbacks */
-	if (size < sizeof(union bhnd_nvram_ident))
-		return (EINVAL);
-
-	// TODO: pass in `io` as an argument
-	if ((io = bhnd_nvram_iobuf_new(data, size)) == NULL)
-		return (EINVAL);
-
-	error = bhnd_nvram_parser_identify(io, fmt);
-	bhnd_nvram_io_free(io);
-	if (error)
+	if ((error = bhnd_nvram_parser_identify(io, fmt, &size_hint)))
 		return (error);
 
 	if ((sc->ops = bhnd_nvram_find_ops(fmt)) == NULL) {
@@ -304,22 +310,25 @@ bhnd_nvram_parser_init(struct bhnd_nvram *sc, device_t dev, const void *data,
 		return (error);
 	}
 
-	/* Determine appropriate size for backing buffer */
-	sc->buf_size = size;
-	if ((error = sc->ops->getsize(data, &sc->buf_size)))
-		return (error);
-
-	if (sc->buf_size > size) {
-		NVRAM_LOG(sc, "cannot parse %zu NVRAM bytes, would overrun "
-		    "%zu byte input buffer\n", sc->buf_size, size);
-		return (EINVAL);
-	}
-
 	/* Allocate and populate backing buffer */
-	sc->buf = malloc(sc->buf_size, M_BHND_NVRAM, M_NOWAIT);
-	if (sc->buf == NULL)
-		return (ENOMEM);
-	memcpy(sc->buf, data, sc->buf_size);
+	sc->buf_size = size_hint;
+	sc->buf = malloc(sc->buf_size, M_BHND_NVRAM, M_WAITOK);
+
+	if ((error = bhnd_nvram_io_read(io, 0x0, sc->buf, &sc->buf_size)))
+		goto cleanup;
+
+	/* Determine the actual size, and shrink our allocation if possible */
+	size_hint = sc->buf_size;
+	if ((error = sc->ops->getsize(sc->buf, &size_hint)))
+		goto cleanup;
+
+	KASSERT(size_hint <= sc->buf_size, ("identified max size %zu "
+	    "incorrect; %zu required", size_hint, sc->buf_size));
+	if (size_hint < sc->buf_size) {
+		sc->buf_size = size_hint;
+		sc->buf = reallocf(sc->buf, sc->buf_size, M_BHND_NVRAM,
+		    M_WAITOK);
+	}
 
 	/* Allocate default/pending variable hash tables */
 	error = bhnd_nvram_varmap_init(&sc->defaults, NVRAM_SMALL_HASH_SIZE,

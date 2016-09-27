@@ -56,6 +56,8 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_nvram_if.h"
 
+#include "bhnd_nvram_io.h"
+
 #include "bhnd_nvramvar.h"
 
 /**
@@ -75,13 +77,12 @@ bhnd_nvram_probe(device_t dev)
  * device attachment.
  * 
  * @param dev BHND NVRAM device.
- * @param data NVRAM data to be copied and parsed. No reference to data
- * will be held after return.
- * @param size Size of @p data, in bytes.
+ * @param io An I/O context mapping the NVRAM data to be copied and parsed. No
+ * reference will be held after return.
  * @param fmt NVRAM format.
  */
 int
-bhnd_nvram_attach(device_t dev, void *data, size_t size, bhnd_nvram_format fmt)
+bhnd_nvram_attach(device_t dev, struct bhnd_nvram_io *io, bhnd_nvram_format fmt)
 {
 	struct bhnd_nvram_softc	*sc;
 	int			 error;
@@ -90,7 +91,7 @@ bhnd_nvram_attach(device_t dev, void *data, size_t size, bhnd_nvram_format fmt)
 	sc->dev = dev;
 
 	/* Initialize NVRAM parser */
-	error = bhnd_nvram_parser_init(&sc->nvram, dev, data, size, fmt);
+	error = bhnd_nvram_parser_init(&sc->nvram, dev, io, fmt);
 	if (error)
 		return (error);
 

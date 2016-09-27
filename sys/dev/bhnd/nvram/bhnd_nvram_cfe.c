@@ -138,13 +138,8 @@ static int
 bhnd_nvram_cfe_attach(device_t dev)
 {
 	struct bhnd_nvram_iocfe	*iocfe;
-	unsigned char		*buffer;
 	bhnd_nvram_format	 fmt;
-	size_t			 size, nread;
 	int			 error;
-
-	error = 0;
-	buffer = NULL;
 
 	/* Locate NVRAM device via CFE */
 	iocfe = bhnd_nvram_find_cfedev(dev, &fmt);
@@ -156,27 +151,8 @@ bhnd_nvram_cfe_attach(device_t dev)
 	device_printf(dev, "CFE %s (%#zx+%#zx)\n", iocfe->dname, iocfe->offset,
 	    iocfe->size);
 
-	/* Copy out NVRAM buffer */
-	size = bhnd_nvram_io_get_size(&iocfe->io);
-	buffer = malloc(size, M_TEMP, M_NOWAIT);
-	if (buffer == NULL)
-		return (ENOMEM);
-
-	nread = size;
-	error = bhnd_nvram_io_read(&iocfe->io, 0x0, buffer, &nread);
-	if (error) {
-		device_printf(dev, "reading NVRAM failed: %d\n", error);
-		goto cleanup;
-	}
-
-	KASSERT(nread == size, ("bhnd_nvram_io_read() returned short read"));
-
 	/* Delegate to default driver implementation */
-	error = bhnd_nvram_attach(dev, buffer, size, fmt);
-
-cleanup:
-	if (buffer != NULL)
-		free(buffer, M_TEMP);
+	error = bhnd_nvram_attach(dev, &iocfe->io, fmt);
 
 	if (iocfe != NULL)
 		bhnd_nvram_io_free(&iocfe->io);
@@ -224,7 +200,7 @@ bhnd_nvram_find_cfedev(device_t dev, bhnd_nvram_format *fmt)
 				continue;
 
 			/* Identify */
-			error = bhnd_nvram_parser_identify(io, *fmt);
+			error = bhnd_nvram_parser_identify(io, *fmt, NULL);
 			if (error == 0)
 				return ((struct bhnd_nvram_iocfe *)io);
 
