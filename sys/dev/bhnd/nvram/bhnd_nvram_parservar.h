@@ -40,7 +40,7 @@
 
 #define	NVRAM_IDX_VAR_THRESH	15		/**< index is generated if minimum variable count is met */
 #define	NVRAM_IDX_OFFSET_MAX	UINT16_MAX	/**< maximum indexable offset */
-#define	NVRAM_IDX_LEN_MAX	UINT8_MAX	/**< maximum indexable key/value length */
+#define	NVRAM_IDX_LEN_MAX	UINT16_MAX	/**< maximum indexable key/value length */
 
 #define	NVRAM_DEVPATH_STR	"devpath"	/**< name prefix of device path aliases */
 #define	NVRAM_DEVPATH_LEN	(sizeof(NVRAM_DEVPATH_STR) - 1)
@@ -65,9 +65,9 @@ struct bhnd_nvram_devpath {
  * Provides entry offsets into a backing NVRAM buffer.
  */
 struct bhnd_nvram_idx_entry {
-	uint16_t	env_offset;	/**< offset to env string */
-	uint8_t		key_len;	/**< key length */
-	uint8_t		val_len;	/**< value length */
+	uint16_t	env_offset;	/**< offset to env string (must be '\0'
+					     or '=' terminated) */
+	uint16_t	env_len;	/**< total length of env string */
 };
 
 /**

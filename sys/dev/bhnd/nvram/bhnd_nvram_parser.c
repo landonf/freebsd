@@ -56,8 +56,7 @@ static const struct bhnd_nvram_ops *bhnd_nvram_find_ops(bhnd_nvram_format fmt);
 static int	bhnd_nvram_find_var(struct bhnd_nvram *sc, const char *name,
 		    const char **value, size_t *value_len);
 
-static int	bhnd_nvram_keycmp(const char *lhs, size_t lhs_len,
-		    const char *rhs, size_t rhs_len);
+static int	bhnd_nvram_keycmp(const char *lhs, const char *rhs);
 static int	bhnd_nvram_sort_idx(void *ctx, const void *lhs,
 		    const void *rhs);
 static int	bhnd_nvram_generate_index(struct bhnd_nvram *sc);
@@ -160,6 +159,9 @@ static const struct bhnd_nvram_ops bhnd_nvram_ops_table[] = {
  * width */
 #define	NVRAM_PRINT_WIDTH(_len)	\
 	((_len) > BHND_NVRAM_VAL_MAXLEN ? BHND_NVRAM_VAL_MAXLEN : (int)(_len))
+
+/* Is _c a key terminating character? (one of '\0' or '=') */
+#define	nvram_is_key_termc(_c)	((_c) == '\0' || (_c) == '=')
 
 /* Is _c a field terminating/delimiting character? */
 #define	nvram_is_ftermc(_c)	((_c) == '\0' || nvram_is_fdelim(_c))
@@ -910,23 +912,33 @@ not_found:
 
 /*
  * An strcmp()-compatible lexical comparison implementation that
- * handles non-NUL-terminated strings.
+ * handles both NUL and '=' terminated strings.
  */
 static int
-bhnd_nvram_keycmp(const char *lhs, size_t lhs_len, const char *rhs,
-    size_t rhs_len)
+bhnd_nvram_keycmp(const char *lhs, const char *rhs)
 {
-	int order;
+	unsigned char	lchar, rchar;
 
-	order = strncmp(lhs, rhs, ulmin(lhs_len, rhs_len));
-	if (order == 0) {
-		if (lhs_len < rhs_len)
-			order = -1;
-		else if (lhs_len > rhs_len)
-			order = 1;
+	while (*lhs == *rhs ||
+	    (nvram_is_key_termc(*lhs) && nvram_is_key_termc(*rhs)))
+	{
+		if (nvram_is_key_termc(*lhs))
+			return (0);
+
+		lhs++;
+		rhs++;
 	}
 
-	return (order);
+	/* normalize any terminator */
+	lchar = *lhs;
+	rchar = *rhs;
+
+	if (nvram_is_key_termc(lchar))
+		lchar = '\0';
+	else if (nvram_is_key_termc(rchar))
+		rchar = '\0';
+
+	return (lchar - rchar);
 }
 
 /* sort function for bhnd_nvram_idx_entry values */
@@ -946,8 +958,7 @@ bhnd_nvram_sort_idx(void *ctx, const void *lhs, const void *rhs)
 	r_str = (char *)(sc->buf + r_idx->env_offset);
 
 	/* Perform comparison */
-	return (bhnd_nvram_keycmp(l_str, l_idx->key_len, r_str,
-	    r_idx->key_len));
+	return (bhnd_nvram_keycmp(l_str, r_str));
 }
 
 
@@ -1069,7 +1080,6 @@ bhnd_nvram_generate_index(struct bhnd_nvram *sc)
 	for (size_t i = 0; i < sc->idx->num_entries; i++) {
 		struct bhnd_nvram_idx_entry	*idx;
 		size_t				 env_offset;
-		size_t				 key_len, val_len;
 
 		/* Fetch next record */
 		if ((error = enum_fn(sc, &env, &env_len, p, &p)))
@@ -1091,29 +1101,16 @@ bhnd_nvram_generate_index(struct bhnd_nvram *sc)
 			goto bad_index;
 		}
 
-		/* Split key and value */
-		error = bhnd_nvram_parse_env(sc, env, env_len, &key, &key_len,
-		    &val, &val_len);
-		if (error)
-			return (error);
-
-		if (key_len > NVRAM_IDX_LEN_MAX) {
-			NVRAM_LOG(sc, "key length %#zx at %#zx exceeds maximum "
-			    "indexable value\n", key_len, env_offset);
-			goto bad_index;
-		}
-
-		if (val_len > NVRAM_IDX_LEN_MAX) {
-			NVRAM_LOG(sc, "value length %#zx for key '%.*s' "
-			    "exceeds maximum indexable value\n", val_len,
-			    NVRAM_PRINT_WIDTH(key_len), key);
+		/* Verify env length */
+		if (env_len > NVRAM_IDX_LEN_MAX) {
+			NVRAM_LOG(sc, "env length %#zx at %#zx exceeds maximum "
+			    "indexable value\n", env_len, env_offset);
 			goto bad_index;
 		}
 
 		idx = &sc->idx->entries[i];
 		idx->env_offset = env_offset;
-		idx->key_len = key_len;
-		idx->val_len = val_len;
+		idx->env_len = env_len;
 	}
 
 	/* Sort the index table */
@@ -1159,7 +1156,6 @@ bhnd_nvram_index_lookup(struct bhnd_nvram *sc, struct bhnd_nvram_idx *idx,
 	struct bhnd_nvram_idx_entry	*idxe;
 	const char			*idxe_key;
 	size_t				 min, mid, max;
-	size_t				 name_len;
 	int				 order;
 
 	if (idx->num_entries == 0)
@@ -1171,7 +1167,6 @@ bhnd_nvram_index_lookup(struct bhnd_nvram *sc, struct bhnd_nvram_idx *idx,
 	min = 0;
 	mid = 0;
 	max = idx->num_entries - 1;
-	name_len = strlen(name);
 
 	while (max >= min) {
 		/* Select midpoint */
@@ -1180,8 +1175,7 @@ bhnd_nvram_index_lookup(struct bhnd_nvram *sc, struct bhnd_nvram_idx *idx,
 
 		/* Determine which side of the partition to search */
 		idxe_key = (const char *) (sc->buf + idxe->env_offset);
-		order = bhnd_nvram_keycmp(idxe_key, idxe->key_len, name,
-		    name_len);
+		order = bhnd_nvram_keycmp(idxe_key, name);
 
 		if (order < 0) {
 			/* Search upper partition */
@@ -1190,14 +1184,15 @@ bhnd_nvram_index_lookup(struct bhnd_nvram *sc, struct bhnd_nvram_idx *idx,
 			/* Search lower partition */
 			max = mid - 1;
 		} else if (order == 0) {
+			const char	*k;
+			size_t		 klen;
+
 			/* Match found */
 			*env = sc->buf + idxe->env_offset;
-			*env_len = idxe->key_len + idxe->val_len + 1 /* '=' */;
+			*env_len = idxe->env_len;
 
-			*value = *env + idxe->key_len + 1 /* '=' */;
-			*value_len = idxe->val_len;
-
-			return (0);
+			return (bhnd_nvram_parse_env(sc, *env, *env_len, &k,
+			    &klen, value, value_len));
 		}
 	}
 
