@@ -52,6 +52,8 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_nvram_if.h"
 
+#include "bhnd_nvram_io.h"
+
 #include "bhnd_spromvar.h"
 
 #define	SPROM_LOCK_INIT(sc) \
@@ -100,10 +102,14 @@ int
 bhnd_sprom_attach(device_t dev, bus_size_t offset)
 {
 	struct bhnd_sprom_softc	*sc;
-	int				 error;
-	
+	struct bhnd_nvram_io	*io;
+	bus_size_t		 r_size, sprom_size;
+	int			 error;
+
 	sc = device_get_softc(dev);
 	sc->dev = dev;
+
+	io = NULL;
 
 	/* Allocate SPROM resource */
 	sc->sprom_rid = 0;
@@ -114,8 +120,33 @@ bhnd_sprom_attach(device_t dev, bus_size_t offset)
 		return (ENXIO);
 	}
 
+	/* Determine SPROM size */
+	r_size = rman_get_size(sc->sprom_res->res);
+	if (r_size <= offset || (r_size - offset) > BUS_SPACE_MAXSIZE) {
+		device_printf(dev, "invalid sprom offset\n");
+		error = ENXIO;
+		goto failed;
+	}
+
+	sprom_size = r_size - offset;
+
+	/* Allocate an I/O context for the SPROM parser. All SPROM reads
+	 * must be 16-bit aligned */
+	io = bhnd_nvram_iores_new(sc->sprom_res, offset, sprom_size,
+	    sizeof(uint16_t));
+	if (io == NULL) {
+		error = ENXIO;
+		goto failed;
+	}
+
 	/* Initialize SPROM shadow */
-	if ((error = bhnd_sprom_init(&sc->shadow, sc->sprom_res, offset)))
+	if ((error = bhnd_sprom_init(&sc->shadow, dev, io)))
+		goto failed;
+
+	/* Clean up I/O context */
+	bhnd_nvram_io_free(io);
+
+	if (error)
 		goto failed;
 
 	/* Initialize mutex */
@@ -124,8 +155,13 @@ bhnd_sprom_attach(device_t dev, bus_size_t offset)
 	return (0);
 	
 failed:
+	/* Clean up before releasing its backing resource */
+	if (io != NULL)
+		bhnd_nvram_io_free(io);
+
 	bhnd_release_resource(dev, SYS_RES_MEMORY, sc->sprom_rid,
 	    sc->sprom_res);
+
 	return (error);
 }
 

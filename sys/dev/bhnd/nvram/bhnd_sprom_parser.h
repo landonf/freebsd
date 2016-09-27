@@ -34,10 +34,12 @@
 
 #include <dev/bhnd/bhnd.h>
 
+#include "bhnd_nvram_io.h"
+
 struct bhnd_sprom;
 
-int	bhnd_sprom_init(struct bhnd_sprom *sprom, struct bhnd_resource *r,
-	    bus_size_t offset);
+int	bhnd_sprom_init(struct bhnd_sprom *sprom, device_t parent,
+	    struct bhnd_nvram_io *io);
 void	bhnd_sprom_fini(struct bhnd_sprom *sprom);
 int	bhnd_sprom_getvar(struct bhnd_sprom *sc, const char *name, void *buf,
 	    size_t *len, bhnd_nvram_type type);
@@ -48,12 +50,9 @@ int	bhnd_sprom_setvar(struct bhnd_sprom *sc, const char *name,
  * bhnd sprom parser instance state.
  */
 struct bhnd_sprom {
-	device_t		 dev;		/**< sprom parent device */
+	device_t		 parent;	/**< sprom parent device, or NULL */
 
 	uint8_t			 sp_rev;	/**< sprom revision */
-	
-	struct bhnd_resource	*sp_res;	/**< sprom resource. */
-	bus_size_t		 sp_res_off;	/**< offset to sprom image */
 
 	uint8_t			*sp_shadow;	/**< sprom shadow */
 	bus_size_t		 sp_size_max;	/**< maximum possible sprom length */

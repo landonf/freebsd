@@ -190,11 +190,11 @@ bhnd_nvram_iores_read(struct bhnd_nvram_io *io, bus_size_t offset, void *buffer,
 		break;
 	case 2:
 		bhnd_bus_read_region_stream_2(iores->res, r_offset, buffer,
-		    *nbytes);
+		    *nbytes / 2);
 		break;
 	case 4:
 		bhnd_bus_read_region_stream_4(iores->res, r_offset, buffer,
-		    *nbytes);
+		    *nbytes / 4);
 		break;
 	default:
 		panic("unreachable!");

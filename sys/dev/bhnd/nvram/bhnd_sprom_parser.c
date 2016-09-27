@@ -50,11 +50,14 @@ __FBSDID("$FreeBSD$");
  * Provides identification, decoding, and encoding of BHND SPROM data.
  */
 
-static int		 sprom_direct_read(struct bhnd_sprom *sc, size_t offset,
-			     void *buf, size_t nbytes, uint8_t *crc);
+static int		 sprom_direct_read(struct bhnd_sprom *sc,
+			     struct bhnd_nvram_io *io, size_t offset, void *buf,
+			     size_t nbytes, uint8_t *crc);
 static int		 sprom_extend_shadow(struct bhnd_sprom *sc,
-			     size_t image_size, uint8_t *crc);
-static int		 sprom_populate_shadow(struct bhnd_sprom *sc);
+			     struct bhnd_nvram_io *io, size_t image_size,
+			     uint8_t *crc);
+static int		 sprom_populate_shadow(struct bhnd_sprom *sc,
+			     struct bhnd_nvram_io *io);
 
 static int		 sprom_get_var_defn(struct bhnd_sprom *sc,
 			     const char *name,
@@ -65,6 +68,15 @@ static int		 sprom_get_var_defn(struct bhnd_sprom *sc,
 
 static char		 sprom_get_delim_char(struct bhnd_sprom *sc,
 			     bhnd_nvram_sfmt sfmt);
+
+#define	SPROM_LOG(_sc, _fmt, ...)	do {				\
+	if (_sc->parent != NULL) {					\
+		device_printf(_sc->parent, "%s: " _fmt, __FUNCTION__,	\
+		    ##__VA_ARGS__);					\
+	} else {							\
+		printf("%s: " _fmt, __FUNCTION__, ##__VA_ARGS__);	\
+	}								\
+} while(0)
 
 /* SPROM revision is always located at the second-to-last byte */
 #define	SPROM_REV(_sc)		SPROM_READ_1((_sc), (_sc)->sp_size - 2)
@@ -176,34 +188,28 @@ static const struct sprom_fmt {
 };
 
 /**
- * Identify the SPROM format at @p offset within @p r, verify the CRC,
- * and allocate a local shadow copy of the SPROM data.
+ * Identify the SPROM format mapped by @p io, verify the CRC, and allocate a
+ * local shadow copy of the SPROM data.
  * 
- * After successful initialization, @p r will not be accessed; any pin
- * configuration required for SPROM access may be reset.
+ * No persistent reference to @p io will be held by @p sprom.
  * 
  * @param[out] sprom On success, will be initialized with shadow of the SPROM
- * data. 
- * @param r An active resource mapping the SPROM data.
- * @param offset Offset of the SPROM data within @p resource.
+ * data.
+ * @param parent The parent device, or NULL if none.
+ * @param io An I/O context mapping the SPROM data.
  */
 int
-bhnd_sprom_init(struct bhnd_sprom *sprom, struct bhnd_resource *r,
-    bus_size_t offset)
+bhnd_sprom_init(struct bhnd_sprom *sprom, device_t parent,
+    struct bhnd_nvram_io *io)
 {
-	bus_size_t	 res_size;
+	bus_size_t	 io_size;
 	int		 error;
 
-	sprom->dev = rman_get_device(r->res);
-	sprom->sp_res = r;
-	sprom->sp_res_off = offset;
-
+	sprom->parent = parent;
+	
 	/* Determine maximum possible SPROM image size */
-	res_size = rman_get_size(r->res);
-	if (offset >= res_size)
-		return (EINVAL);
-
-	sprom->sp_size_max = MIN(res_size - offset, SPROM_SZ_MAX); 
+	io_size = bhnd_nvram_io_get_size(io);
+	sprom->sp_size_max = MIN(io_size, SPROM_SZ_MAX); 
 
 	/* Allocate and populate SPROM shadow */
 	sprom->sp_size = 0;
@@ -213,7 +219,7 @@ bhnd_sprom_init(struct bhnd_sprom *sprom, struct bhnd_resource *r,
 		return (ENOMEM);
 
 	/* Read and identify SPROM image */
-	if ((error = sprom_populate_shadow(sprom)))
+	if ((error = sprom_populate_shadow(sprom, io)))
 		return (error);
 
 	return (0);
@@ -403,8 +409,8 @@ bhnd_sprom_getvar(struct bhnd_sprom *sc, const char *name, void *buf,
 
 			fmtstr = bhnd_nvram_type_fmt(off->type, nv->sfmt, i);
 			if (fmtstr == NULL) {
-		                device_printf(sc->dev, "no NVRAM format string "
-				    "for '%s' (type=%d)\n", name, off->type);
+		                SPROM_LOG(sc, "no NVRAM format string for '%s' "
+				    "(type=%d)\n", name, off->type);
 				return (EOPNOTSUPP);
 			}
 
@@ -568,7 +574,7 @@ bhnd_sprom_setvar(struct bhnd_sprom *sc, const char *name, const void *buf,
 /* Read and identify the SPROM image by incrementally performing
  * read + CRC of all supported image formats */
 static int
-sprom_populate_shadow(struct bhnd_sprom *sc)
+sprom_populate_shadow(struct bhnd_sprom *sc, struct bhnd_nvram_io *io)
 {
 	const struct sprom_fmt	*fmt;
 	int			 error;
@@ -583,7 +589,7 @@ sprom_populate_shadow(struct bhnd_sprom *sc)
 		fmt = &sprom_fmts[i];
 
 		/* Read image data and check CRC */
-		if ((error = sprom_extend_shadow(sc, fmt->size, &crc)))
+		if ((error = sprom_extend_shadow(sc, io, fmt->size, &crc)))
 			return (error);
 
 		/* Skip on invalid CRC */
@@ -609,10 +615,8 @@ sprom_populate_shadow(struct bhnd_sprom *sc)
 			sig = SPROM_READ_2(sc, fmt->sig_offset);
 		
 		if (sig != fmt->sig_req) {
-			device_printf(sc->dev,
-			    "invalid sprom %hhu signature: 0x%hx "
-			    "(expected 0x%hx)\n",
-			    srom_rev, sig, fmt->sig_req);
+			SPROM_LOG(sc, "invalid sprom %hhu signature: 0x%hx "
+			    "(expected 0x%hx)\n", srom_rev, sig, fmt->sig_req);
 			return (EINVAL);
 		}
 
@@ -622,7 +626,7 @@ sprom_populate_shadow(struct bhnd_sprom *sc)
 	}
 
 	/* identification failed */
-	device_printf(sc->dev, "unrecognized SPROM format\n");
+	SPROM_LOG(sc, "unrecognized SPROM format\n");
 	return (EINVAL);
 }
 
@@ -631,8 +635,8 @@ sprom_populate_shadow(struct bhnd_sprom *sc)
  * data from the backing SPROM resource and updating the CRC.
  */
 static int
-sprom_extend_shadow(struct bhnd_sprom *sc, size_t image_size,
-    uint8_t *crc)
+sprom_extend_shadow(struct bhnd_sprom *sc, struct bhnd_nvram_io *io,
+    size_t image_size, uint8_t *crc)
 {
 	int	error;
 
@@ -647,8 +651,8 @@ sprom_extend_shadow(struct bhnd_sprom *sc, size_t image_size,
 		return (0);
 
 	/* Populate the extended range */
-	error = sprom_direct_read(sc, sc->sp_size, sc->sp_shadow + sc->sp_size,
-	     image_size - sc->sp_size, crc);
+	error = sprom_direct_read(sc, io, sc->sp_size,
+	     sc->sp_shadow + sc->sp_size, image_size - sc->sp_size, crc);
 	if (error)
 		return (error);
 
@@ -657,32 +661,41 @@ sprom_extend_shadow(struct bhnd_sprom *sc, size_t image_size,
 }
 
 /**
- * Read nbytes at the given offset from the backing SPROM resource, and
- * update the CRC.
+ * Read nbytes at the given offset from the backing SPROM I/O context
+ * into @p buf, and update the CRC.
  */
 static int
-sprom_direct_read(struct bhnd_sprom *sc, size_t offset, void *buf,
-    size_t nbytes, uint8_t *crc)
+sprom_direct_read(struct bhnd_sprom *sc, struct bhnd_nvram_io *io,
+    size_t offset, void *buf, size_t nbytes, uint8_t *crc)
 {
-	bus_size_t	 res_offset;
+	bus_size_t	 nread;
 	uint16_t	*p;
+	int		 error;
 
 	KASSERT(nbytes % sizeof(uint16_t) == 0, ("unaligned sprom size"));
 	KASSERT(offset % sizeof(uint16_t) == 0, ("unaligned sprom offset"));
 
+	/* Sanity check the request size */
+	if (nbytes > BUS_SPACE_MAXSIZE || offset > BUS_SPACE_MAXSIZE)
+		return (EINVAL);
+
 	/* Check for read overrun */
 	if (offset >= sc->sp_size_max || sc->sp_size_max - offset < nbytes) {
-		device_printf(sc->dev, "requested SPROM read would overrun\n");
+		SPROM_LOG(sc, "requested SPROM read would overrun\n");
 		return (EINVAL);
 	}
 
-	/* Perform read and update CRC */
-	p = (uint16_t *)buf;
-	res_offset = sc->sp_res_off + offset;
+	nread = 0;
+	for (bus_size_t nrem = nbytes; nrem > 0; nrem -= nread) {
+		p = (uint16_t *)((uint8_t *)buf + nread);
 
-	bhnd_bus_read_region_stream_2(sc->sp_res, res_offset, p,
-	    (nbytes / sizeof(uint16_t)));
-	*crc = bhnd_nvram_crc8(p, nbytes, *crc);
+		/* Perform read and update CRC */
+		nread = nrem;
+		if ((error = bhnd_nvram_io_read(io, offset, p, &nread)))
+			return (error);
+
+		*crc = bhnd_nvram_crc8(p, nread, *crc);
+	}
 
 	return (0);
 }
@@ -749,8 +762,7 @@ sprom_get_delim_char(struct bhnd_sprom *sc, bhnd_nvram_sfmt sfmt)
 		return (':');
 
 	default:
-		device_printf(sc->dev, "unknown NVRAM string format: %d\n",
-		    sfmt);
+		SPROM_LOG(sc, "unknown NVRAM string format: %d\n", sfmt);
 		return (',');
 	}
 }
