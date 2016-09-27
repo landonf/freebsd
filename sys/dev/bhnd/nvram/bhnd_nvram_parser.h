@@ -34,6 +34,7 @@
 
 #include <sys/param.h>
 #include <sys/bus.h>
+#include <sys/nv.h>
 
 #include "bhnd_nvram_common.h"
 
@@ -96,8 +97,8 @@ struct bhnd_nvram {
 	struct bhnd_nvram_idx		*idx;		/**< key index */
 
 	struct bhnd_nvram_devpaths	 devpaths;	/**< device paths */
-	struct bhnd_nvram_varmap	 defaults;	/**< default values */
-	struct bhnd_nvram_varmap	 pending;	/**< uncommitted writes */
+	nvlist_t			*defaults;	/**< default values */
+	nvlist_t			*pending;	/**< uncommitted writes */
 };
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_PARSER_H_ */

@@ -331,14 +331,12 @@ bhnd_nvram_parser_init(struct bhnd_nvram *sc, device_t dev,
 	}
 
 	/* Allocate default/pending variable hash tables */
-	error = bhnd_nvram_varmap_init(&sc->defaults, NVRAM_SMALL_HASH_SIZE,
-	    M_NOWAIT);
-	if (error)
+	sc->defaults = nvlist_create(NV_FLAG_IGNORE_CASE);
+	if (sc->defaults == NULL)
 		goto cleanup;
 
-	error = bhnd_nvram_varmap_init(&sc->pending, NVRAM_SMALL_HASH_SIZE,
-	    M_NOWAIT);
-	if (error)
+	sc->pending = nvlist_create(NV_FLAG_IGNORE_CASE);
+	if (sc->pending == NULL)
 		goto cleanup;
 
 	/* Perform format-specific initialization */
@@ -379,11 +377,11 @@ bhnd_nvram_parser_fini(struct bhnd_nvram *sc)
                 free(dpath, M_BHND_NVRAM);
         }
 
-        if (sc->defaults.table != NULL)
-		bhnd_nvram_varmap_free(&sc->defaults);
+        if (sc->defaults != NULL)
+		nvlist_destroy(sc->defaults);
 
-	if (sc->pending.table != NULL)
-		bhnd_nvram_varmap_free(&sc->pending);
+	if (sc->pending != NULL)
+		nvlist_destroy(sc->pending);
 
 	if (sc->idx != NULL)
 		free(sc->idx, M_BHND_NVRAM);
@@ -732,6 +730,9 @@ int
 bhnd_nvram_parser_setvar(struct bhnd_nvram *sc, const char *name,
     const void *buf, size_t len, bhnd_nvram_type type)
 {
+	const char	*inp;
+	char		 vbuf[NVRAM_VAL_MAX];
+
 	/* Verify name validity */
 	if (!bhnd_nvram_validate_name(name, strlen(name)))
 		return (EINVAL);
@@ -754,7 +755,21 @@ bhnd_nvram_parser_setvar(struct bhnd_nvram *sc, const char *name,
 
 	case BHND_NVRAM_TYPE_CHAR:
 	case BHND_NVRAM_TYPE_CSTR:
-		return (bhnd_nvram_varmap_add(&sc->pending, name, buf, len));
+		inp = buf;
+
+		/* Must not exceed NVRAM_VAL_MAX */
+		if (len > sizeof(vbuf))
+			return (EINVAL);
+
+		/* Must have room for a trailing NUL */
+		if (len == sizeof(vbuf) && inp[len-1] != '\0')
+			return (EINVAL);
+
+		/* Copy out the string value and append trailing NUL */
+		strlcpy(vbuf, buf, len);
+	
+		/* Add to pending change list */
+		nvlist_add_string(sc->pending, name, vbuf);
 	}
 
 	return (0);
@@ -836,15 +851,12 @@ static int
 bhnd_nvram_find_var(struct bhnd_nvram *sc, const char *name, const char **value,
     size_t *value_len)
 {
-	struct bhnd_nvram_tuple	*t;
 	bhnd_nvram_op_enum_buf	 enum_fn;
 	const char		*env;
 	size_t			 env_len;
-	size_t			 name_len;
 	int			 error;
 
 	enum_fn = sc->ops->enum_buf;
-	name_len = strlen(name);
 
 	/*
 	 * Search path:
@@ -855,18 +867,16 @@ bhnd_nvram_find_var(struct bhnd_nvram *sc, const char *name, const char **value,
 	 */
 
 	/* Search uncommitted changes */
-	t = bhnd_nvram_varmap_find(&sc->pending, name, name_len);
-	if (t != NULL) {
-		if (t->value != NULL) {
-			/* Uncommited value exists, is not a deletion */
-			*value = t->value;
-			*value_len = t->value_len;
-			return (0);
-		} else {
-			/* Value is marked for deletion. */
-			error = ENOENT;
-			goto failed;
-		}
+	if (nvlist_exists_null(sc->pending, name)) {
+		/* Value is marked for deletion. */
+		goto not_found;
+	} else if (nvlist_exists_string(sc->pending, name)) {
+		/* Uncommited value exists, is not a deletion */
+		*value = nvlist_get_string(sc->pending, name);
+		*value_len = strlen(*value);
+		return (0);
+	} else if (nvlist_exists(sc->pending, name)) {
+		panic("invalid value type for pending change %s", name);
 	}
 
 	/* Search backing buffer. We the index if available; otherwise,
@@ -879,18 +889,19 @@ bhnd_nvram_find_var(struct bhnd_nvram *sc, const char *name, const char **value,
 		    value, value_len);
 	}
 
-failed:
 	/* If a parse error occured, we don't want to hide the issue by
-	 * returning a default NVRAM value. Otherwise, look for a matching
-	 * default. */
+	 * returning a default NVRAM value. */
 	if (error != ENOENT)
 		return (error);
 
-	t = bhnd_nvram_varmap_find(&sc->defaults, name, name_len);
-	if (t != NULL) {
-		*value = t->value;
-		*value_len = t->value_len;
+	/* Otherwise, look for a matching default. */
+not_found:
+	if (nvlist_exists_string(sc->defaults, name)) {
+		*value = nvlist_get_string(sc->defaults, name);
+		*value_len = strlen(*value);
 		return (0);
+	} else if (nvlist_exists(sc->defaults, name)) {
+		panic("invalid value type for default value %s", name);
 	}
 
 	/* Not found, and no default value available */
@@ -1303,7 +1314,6 @@ bhnd_nvram_bcm_init_defaults(struct bhnd_nvram *sc)
 	struct bhnd_nvram_header	*header;
 	char				 vbuf[NVRAM_VAL_MAX];
 	uint32_t			 value;
-	int				 error;
 	int				 nwrite;
 
 	/* Verify that our header is readable */
@@ -1321,11 +1331,7 @@ bhnd_nvram_bcm_init_defaults(struct bhnd_nvram *sc)
 		    __FUNCTION__, _name ## _VAR, nwrite);		\
 		return (ENXIO);						\
 	}								\
-	error = bhnd_nvram_varmap_add(&sc->defaults,			\
-		_name ##_VAR, vbuf, strlen(vbuf));			\
-									\
-	if (error)							\
-		return (error);						\
+	nvlist_add_string(sc->defaults, _name ##_VAR, vbuf);		\
 } while(0)
 
 	NVRAM_BCM_HEADER_DEFAULT(cfg0,		NVRAM_CFG0_SDRAM_INIT);
