@@ -68,13 +68,16 @@ struct bhnd_nvram_iocfe {
 
 	char			*dname;		/**< CFE device name (borrowed reference) */
 	int			 fd;		/**< CFE file descriptor */
-	bus_size_t		 offset;	/**< base offset */
-	bus_size_t		 size;		/**< device size */
+	size_t			 offset;	/**< base offset */
+	size_t			 size;		/**< device size */
 	bool			 req_blk_erase;	/**< if flash blocks must be erased before
 						     writing */
 };
 
 BHND_NVRAM_IOPS_DEFN(iocfe)
+
+#define IOCFE_LOG(_io, _fmt, ...)	\
+	printf("%s/%s: " _fmt, __FUNCTION__, (_io)->dname, ##__VA_ARGS__)
 
 static int	 bhnd_nvram_iocfe_new(struct bhnd_nvram_io **io, char *dname);
 
@@ -160,9 +163,10 @@ bhnd_nvram_cfe_attach(device_t dev)
 	// XXX TODO
 	struct bhnd_nvram_io *io;
 	if ((error = bhnd_nvram_iocfe_new(&io, devname)))
-		return (error);
-
-	bhnd_nvram_iocfe_free(io);
+		device_printf(dev, "bhnd_nvram_iocfe_new() failed: %d\n",
+		    error);
+	else
+		bhnd_nvram_iocfe_free(io);
 
 	/* Copy out NVRAM buffer */
 	buffer = malloc(size, M_TEMP, M_NOWAIT);
@@ -418,8 +422,7 @@ bhnd_nvram_iocfe_new(struct bhnd_nvram_io **io, char *dname)
 	/* Try to open the device */
 	iocfe->fd = cfe_open(dname);
 	if (iocfe->fd <= 0) {
-		printf("%s: cfe_open(%s) failed: %d\n", __FUNCTION__, dname,
-		    iocfe->fd);
+		IOCFE_LOG(iocfe, "cfe_open() failed: %d\n", iocfe->fd);
 
 		error = ENXIO;
 		goto failed;
@@ -427,8 +430,7 @@ bhnd_nvram_iocfe_new(struct bhnd_nvram_io **io, char *dname)
 
 	/* Try to fetch device info */
 	if ((devinfo = cfe_getdevinfo(iocfe->dname)) < 0) {
-		printf("%s: cfe_getdevinfo(%s) failed: %d\n", __FUNCTION__,
-		    iocfe->dname, devinfo);
+		IOCFE_LOG(iocfe, "cfe_getdevinfo() failed: %d\n", devinfo);
 		error = ENXIO;
 		goto failed;
 	}
@@ -441,8 +443,7 @@ bhnd_nvram_iocfe_new(struct bhnd_nvram_io **io, char *dname)
 		/* Valid device type */
 		break;
 	default:
-		printf("%s: unknown device type for CFE dev %s: %d\n",
-		    __FUNCTION__, iocfe->dname, dtype);
+		IOCFE_LOG(iocfe, "unknown device type: %d\n", dtype);
 		error = ENXIO;
 		goto failed;
 	}
@@ -455,9 +456,8 @@ bhnd_nvram_iocfe_new(struct bhnd_nvram_io **io, char *dname)
 		if (nvram_info.nvram_size < 0 ||
 		    nvram_info.nvram_offset < 0)
 		{
-			printf("%s: invalid NVRAM layout (%d/%d) for CFE "
-			    "dev %s\n", __FUNCTION__, nvram_info.nvram_size,
-			    nvram_info.nvram_offset, iocfe->dname);
+			IOCFE_LOG(iocfe, "invalid NVRAM layout (%d/%d)\n",
+			    nvram_info.nvram_size, nvram_info.nvram_offset);
 			error = ENXIO;
 			goto failed;
 		}
@@ -466,8 +466,7 @@ bhnd_nvram_iocfe_new(struct bhnd_nvram_io **io, char *dname)
 		nv_size		= nvram_info.nvram_size;
 		req_blk_erase	= (nvram_info.nvram_eraseflg != 0);
 	} else if (cerr != CFE_OK && cerr != CFE_ERR_INV_COMMAND) {
-		printf("%s: IOCTL_NVRAM_GETINFO failed on CFE dev %s: %d\n",
-		    __FUNCTION__, iocfe->dname, cerr);
+		IOCFE_LOG(iocfe, "IOCTL_NVRAM_GETINFO failed: %d\n", cerr);
 		error = ENXIO;
 		goto failed;
 	}
@@ -485,8 +484,8 @@ bhnd_nvram_iocfe_new(struct bhnd_nvram_io **io, char *dname)
 		    (unsigned char *)&fi, sizeof(fi), &rlen, 0);
 
 		if (cerr != CFE_OK) {
-			printf("%s: IOCTL_FLASH_GETINFO failed on CFE dev %s: "
-			    "%d\n", __FUNCTION__, iocfe->dname, cerr);
+			IOCFE_LOG(iocfe, "IOCTL_FLASH_GETINFO failed %d\n",
+			    cerr);
 			error = ENXIO;
 			goto failed;
 		}
@@ -497,14 +496,12 @@ bhnd_nvram_iocfe_new(struct bhnd_nvram_io **io, char *dname)
 	}
 
 	
-	/* Verify that the full NVRAM layout can be represented via
-	 * bus_size_t. */
-	if (nv_size > BUS_SPACE_MAXSIZE ||
-	    BUS_SPACE_MAXSIZE - nv_size < nv_offset)
-	{
-		printf("%s: invalid NVRAM layout (%#x/%#jx) for CFE "
-		    "dev %s\n", __FUNCTION__, nv_size, (intmax_t)nv_offset, 
-		    iocfe->dname);
+	/* Verify that the full NVRAM layout can be represented via size_t */
+	if (nv_size > SIZE_MAX || SIZE_MAX - nv_size < nv_offset) {
+		IOCFE_LOG(iocfe, "invalid NVRAM layout (%#x/%#jx)\n",
+		    nv_size, (intmax_t)nv_offset);
+		error = ENXIO;
+		goto failed;
 	}
 
 	iocfe->offset = nv_offset;
@@ -533,7 +530,7 @@ bhnd_nvram_iocfe_free(struct bhnd_nvram_io *io)
 	free(io, M_BHND_NVRAM);
 }
 
-static bus_size_t
+static size_t
 bhnd_nvram_iocfe_get_size(struct bhnd_nvram_io *io)
 {
 	struct bhnd_nvram_iocfe	*iocfe = (struct bhnd_nvram_iocfe *)io;
@@ -541,16 +538,16 @@ bhnd_nvram_iocfe_get_size(struct bhnd_nvram_io *io)
 }
 
 static int
-bhnd_nvram_iocfe_read_ptr(struct bhnd_nvram_io *io, bus_size_t offset,
-    const void **ptr, bus_size_t *nbytes)
+bhnd_nvram_iocfe_read_ptr(struct bhnd_nvram_io *io, size_t offset,
+    const void **ptr, size_t *nbytes)
 {
 	/* unsupported */
 	return (ENODEV);
 }
 
 static int
-bhnd_nvram_iocfe_read(struct bhnd_nvram_io *io, bus_size_t offset, void *buffer,
-    bus_size_t *nbytes)
+bhnd_nvram_iocfe_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
+    size_t *nbytes)
 {
 	struct bhnd_nvram_iocfe	*iocfe;
 	int			 nr, nreq;
@@ -560,8 +557,7 @@ bhnd_nvram_iocfe_read(struct bhnd_nvram_io *io, bus_size_t offset, void *buffer,
 	nreq = ummin(INT_MAX, *nbytes);
 	nr = cfe_readblk(iocfe->fd, iocfe->offset + offset, buffer, nreq);
 	if (nr < 0) {
-		printf("%s: cfe_readblk(%s) failed: %d\n", __FUNCTION__,
-		    iocfe->dname, nr);
+		IOCFE_LOG(iocfe, "cfe_readblk() failed: %d\n", nr);
 		return (ENXIO);
 	}
 
