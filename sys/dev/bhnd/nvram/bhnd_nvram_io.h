@@ -39,6 +39,7 @@
 struct bhnd_nvram_io;
 
 struct bhnd_nvram_io	*bhnd_nvram_iobuf_new(const void *buffer, size_t size);
+
 struct bhnd_nvram_io	*bhnd_nvram_iores_new(struct bhnd_resource *r,
 			     size_t offset, size_t size, u_int bus_width);
 

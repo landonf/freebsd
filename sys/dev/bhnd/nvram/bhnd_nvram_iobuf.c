@@ -48,35 +48,66 @@ __FBSDID("$FreeBSD$");
  * Buffer-backed NVRAM I/O context.
  */
 struct bhnd_nvram_iobuf {
-	struct bhnd_nvram_io	 io;	/**< common I/O instance state */
-	const void		*buf;	/**< backing buffer (borrowed ref) */
-	size_t			 size;	/**< size of @p buf */
+	struct bhnd_nvram_io	 io;		/**< common I/O instance state */
+	void			*buf;		/**< backing buffer. if inline-allocated, will
+						     be a reference to data[]. */
+	size_t			 size;		/**< size of @p buf */
+	uint8_t			 data[];	/**< inline buffer allocation */
 };
 
 BHND_NVRAM_IOPS_DEFN(iobuf)
 
 /**
- * Allocate and return a new I/O context backed by a borrowed
- * reference to @p buffer.
+ * Allocate and return a new I/O context, copying @p size from @p buffer.
  *
  * The caller is responsible for deallocating the returned I/O context via
  * bhnd_nvram_io_free().
  * 
- * @param	buffer	The buffer to be mapped by the returned I/O context.
+ * @param	buffer	The buffer data be copied by the returned I/O context.
  * @param	size	The size of @p buffer, in bytes.
  * 
  * @retval	bhnd_nvram_io	success.
- * @retval	NULL		if allocation fails.
+ * @retval	NULL		allocation failed.
  */
 struct bhnd_nvram_io *
 bhnd_nvram_iobuf_new(const void *buffer, size_t size)
 {
-	struct bhnd_nvram_iobuf *iobuf;
+	struct bhnd_nvram_iobuf	*iobuf;
+	size_t			 iosz;
+	bool			 inline_alloc;
 
-	iobuf = malloc(sizeof(*iobuf), M_BHND_NVRAM, M_WAITOK);
+	/* Would iosz+size overflow? */
+	if (SIZE_MAX - iosz < size) {
+		inline_alloc = false;
+		iosz = sizeof(*iobuf);
+	} else {
+		inline_alloc = true;
+		iosz = sizeof(*iobuf) + size;
+	}
+
+	/* Allocate I/O context */
+	if ((iobuf = malloc(iosz, M_BHND_NVRAM, M_NOWAIT)) == NULL)
+		return (NULL);
+
 	iobuf->io.iops = &bhnd_nvram_iobuf_ops;
-	iobuf->buf = buffer;
+	iobuf->buf = NULL;
 	iobuf->size = size;
+
+	/* Either allocate our backing buffer, or initialize the
+	 * backing buffer with a reference to our inline allocation. */
+	if (inline_alloc)
+		iobuf->buf = &iobuf->data;
+	else
+		iobuf->buf = malloc(iobuf->size, M_BHND_NVRAM, M_NOWAIT);
+
+
+	if (iobuf->buf == NULL) {
+		free(iobuf, M_BHND_NVRAM);
+		return (NULL);
+	}
+
+	/* Copy the input buffer */
+	memcpy(iobuf->buf, buffer, iobuf->size);
 
 	return (&iobuf->io);
 }
@@ -84,7 +115,13 @@ bhnd_nvram_iobuf_new(const void *buffer, size_t size)
 static void
 bhnd_nvram_iobuf_free(struct bhnd_nvram_io *io)
 {
-	free(io, M_BHND_NVRAM);
+	struct bhnd_nvram_iobuf	*iobuf = (struct bhnd_nvram_iobuf *)io;
+
+	/* Free the backing buffer if it wasn't allocated inline */
+	if (iobuf->buf != &iobuf->data)
+		free(iobuf->buf, M_BHND_NVRAM);
+
+	free(iobuf, M_BHND_NVRAM);
 }
 
 static size_t
