@@ -157,37 +157,23 @@ bhnd_nvram_cfe_attach(device_t dev)
 		return (ENXIO);
 	}
 
+	device_printf(dev, "CFE %s (%#zx+%#zx)\n", iocfe->dname, iocfe->offset,
+	    iocfe->size);
+
 	/* Copy out NVRAM buffer */
 	size = bhnd_nvram_io_get_size(&iocfe->io);
 	buffer = malloc(size, M_TEMP, M_NOWAIT);
 	if (buffer == NULL)
 		return (ENOMEM);
 
-	for (size_t remain = size; remain > 0;) {
-		nread = remain;
-		error = bhnd_nvram_io_read(&iocfe->io, size-remain,
-		    buffer+(size-remain), &nread);
-		if (error) {
-			IOCFE_LOG(iocfe, "bhnd_nvram_io_read() failed: %d\n",
-			    error);
-
-			error = ENXIO;
-			goto cleanup;
-		}
-
-		remain -= nread;
-
-		if (nread == 0 && remain > 0) {
-			IOCFE_LOG(iocfe, "bhnd_nvram_io_read() unexpected EOF: "
-			    "%zu of %zu pending\n", remain, size);
-
-			error = ENXIO;
-			goto cleanup;
-		}
+	nread = size;
+	error = bhnd_nvram_io_read(&iocfe->io, 0x0, buffer, &nread);
+	if (error) {
+		device_printf(dev, "reading NVRAM failed: %d\n", error);
+		goto cleanup;
 	}
 
-	device_printf(dev, "CFE %s (%#zx+%#zx)\n", iocfe->dname, iocfe->offset,
-	    iocfe->size);
+	KASSERT(nread == size, ("bhnd_nvram_io_read() returned short read"));
 
 	/* Delegate to default driver implementation */
 	error = bhnd_nvram_attach(dev, buffer, size, fmt);
@@ -456,18 +442,65 @@ bhnd_nvram_iocfe_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
     size_t *nbytes)
 {
 	struct bhnd_nvram_iocfe	*iocfe;
+	size_t			 remain;
+	int64_t			 cfe_offset;
 	int			 nr, nreq;
 
-	iocfe = (struct bhnd_nvram_iocfe *) io;
+	iocfe = (struct bhnd_nvram_iocfe *)io;
 
-	nreq = ummin(INT_MAX, *nbytes);
-	nr = cfe_readblk(iocfe->fd, iocfe->offset + offset, buffer, nreq);
-	if (nr < 0) {
-		IOCFE_LOG(iocfe, "cfe_readblk() failed: %d\n", nr);
+	/* Determine (and validate) the base CFE offset */
+#if (SIZE_MAX > INT64_MAX)
+	if (iocfe->offset > INT64_MAX || offset > INT64_MAX)
 		return (ENXIO);
+#endif
+
+	if (INT64_MAX - offset < iocfe->offset)
+		return (ENXIO);
+
+	cfe_offset = iocfe->offset + offset;
+
+	/* Verify that cfe_offset + *nbytes is representable */
+	if (INT64_MAX - cfe_offset < *nbytes)
+		return (ENXIO);
+
+	/* Perform the read */
+	for (remain = *nbytes; remain > 0;) {
+		void	*p;
+		size_t	 nread;
+		int64_t	 cfe_noff;
+
+		nread = (*nbytes - remain);
+		cfe_noff = cfe_offset + nread;
+		p = ((uint8_t *)buffer + nread);
+		nreq = ummin(INT_MAX, remain);
+	
+		nr = cfe_readblk(iocfe->fd, cfe_noff, p, nreq);
+		if (nr < 0) {
+			IOCFE_LOG(iocfe, "cfe_readblk() failed: %d\n", nr);
+			return (ENXIO);
+		}
+
+		/* Check for unexpected short read */
+		if (nr == 0 && remain > 0) {
+			/* If the request fits entirely within the CFE
+			 * device range, we shouldn't hit EOF */
+			if (remain < iocfe->size &&
+			    iocfe->size - remain > offset)
+			{
+				IOCFE_LOG(iocfe, "cfe_readblk() returned "
+				    "unexpected short read (%d/%d)\n", nr,
+				    nreq);
+				return (ENXIO);
+			}
+		}
+
+		if (nr == 0)
+			break;
+
+		remain -= nr;
 	}
 
-	*nbytes = nr;
+	*nbytes = *nbytes - remain;
 	return (0);
 }
 

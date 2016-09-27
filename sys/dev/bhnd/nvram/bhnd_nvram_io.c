@@ -53,6 +53,9 @@ __FBSDID("$FreeBSD$");
  * successful return, will contain the number of bytes actually read. On EOF, a
  * length of 0 will be returned.
  * 
+ * The number of bytes read will only be less than requested if
+ * @p offset + @p nbytes exceeds the size returned by bhnd_nvram_io_get_size().
+ * 
  * @retval 0 success
  * @retval ENODEV if @p io does not support direct access to its backing read
  * buffer.
@@ -81,6 +84,9 @@ bhnd_nvram_io_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
  * @param[in,out] nbytes On input, the maximum number of bytes to be read; on 
  * successful return, will contain the number of bytes actually available at @p 
  * ptr. On EOF, a length of 0 will be returned.
+ *
+ * The number of readable bytes will only be less than requested if
+ * @p offset + @p nbytes exceeds the size returned by bhnd_nvram_io_get_size().
  * 
  * @retval 0 success
  * @retval ENODEV if @p io does not support direct access to its backing read 
