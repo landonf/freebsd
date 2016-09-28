@@ -37,7 +37,8 @@
 
 #include "bhnd_nvram.h"
 #include "bhnd_nvram_io.h"
-#include "bhnd_nvram_parser.h"
+
+#include <dev/bhnd/nvram_old/bhnd_nvram_parservar.h>
 
 DECLARE_CLASS(bhnd_nvram_driver);
 

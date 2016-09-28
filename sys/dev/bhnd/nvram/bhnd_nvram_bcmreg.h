@@ -29,33 +29,40 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_NVRAM_BHND_NVRAM_PARSER_H_
-#define _BHND_NVRAM_BHND_NVRAM_PARSER_H_
+#ifndef _BHND_NVRAM_BCM_BHND_NVRAM_BCMREG_H_
+#define _BHND_NVRAM_BCM_BHND_NVRAM_BCMREG_H_
 
-#include <sys/types.h>
+#define BCM_NVRAM_GET_BITS(_value, _field)  \
+        ((_value & _field ## _MASK) >> _field ## _SHIFT)
 
-#include "bhnd_nvram_io.h"
+/* NVRAM header fields */
+#define	BCM_NVRAM_MAGIC				0x48534C46	/* 'FLSH' */
+#define	BCM_NVRAM_VERSION			1
 
-/* NVRAM parser class */
-typedef struct bhnd_nvram_parser_class bhnd_nvram_parser_class_t;
+#define	BCM_NVRAM_CRC_SKIP			9		/* skip magic, size, and crc8 */
 
-/* NVRAM parser instance */
-struct bhnd_nvram_parser;
+#define	BCM_NVRAM_CFG0_CRC_MASK			0x000000FF
+#define	BCM_NVRAM_CFG0_CRC_SHIFT		0
+#define	BCM_NVRAM_CFG0_VER_MASK			0x0000FF00
+#define	BCM_NVRAM_CFG0_VER_SHIFT		8
+#define	BCM_NVRAM_CFG0_SDRAM_INIT_MASK		0xFFFF0000
+#define	BCM_NVRAM_CFG0_SDRAM_INIT_SHIFT		16
+#define	BCM_NVRAM_CFG0_SDRAM_INIT_VAR		"sdram_init"
+#define	BCM_NVRAM_CFG0_SDRAM_INIT_FMT		"0x%04x"
 
-/** Declare a bhnd_nvram_parser_class with name @p _n */
-#define	BHND_NVRAM_PARSER_DECL(_n) \
-	extern 	struct bhnd_nvram_parser_class bhnd_nvram_parser_## _n##_class
+#define	BCM_NVRAM_CFG1_SDRAM_CFG_MASK		0x0000FFFF
+#define	BCM_NVRAM_CFG1_SDRAM_CFG_SHIFT		0
+#define	BCM_NVRAM_CFG1_SDRAM_CFG_VAR		"sdram_config"
+#define	BCM_NVRAM_CFG1_SDRAM_CFG_FMT		"0x%04x"
 
-BHND_NVRAM_PARSER_DECL(bcm);
-BHND_NVRAM_PARSER_DECL(tlv);
-BHND_NVRAM_PARSER_DECL(btxt);
+#define	BCM_NVRAM_CFG1_SDRAM_REFRESH_MASK	0xFFFF0000
+#define	BCM_NVRAM_CFG1_SDRAM_REFRESH_SHIFT	16
+#define	BCM_NVRAM_CFG1_SDRAM_REFRESH_VAR	"sdram_refresh"
+#define	BCM_NVRAM_CFG1_SDRAM_REFRESH_FMT	"0x%04x"
 
-int	bhnd_nvram_parser_probe(bhnd_nvram_parser_class_t *cls,
-	    struct bhnd_nvram_io *io);
+#define	BCM_NVRAM_SDRAM_NCDL_MASK		UINT32_MAX
+#define	BCM_NVRAM_SDRAM_NCDL_SHIFT		0
+#define	BCM_NVRAM_SDRAM_NCDL_VAR		"sdram_ncdl"
+#define	BCM_NVRAM_SDRAM_NCDL_FMT		"0x%08x"
 
-int	bhnd_nvram_parser_new(bhnd_nvram_parser_class_t *cls,
-	    struct bhnd_nvram_parser **nv, struct bhnd_nvram_io *io);
-
-void	bhnd_nvram_parser_free(struct bhnd_nvram_parser *nv);
-
-#endif /* _BHND_NVRAM_BHND_NVRAM_PARSER_H_ */
+#endif /* _BHND_NVRAM_BCM_BHND_NVRAM_BCMREG_H_ */

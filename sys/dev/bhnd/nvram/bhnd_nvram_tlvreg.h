@@ -29,33 +29,12 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_NVRAM_BHND_NVRAM_PARSER_H_
-#define _BHND_NVRAM_BHND_NVRAM_PARSER_H_
+#ifndef _BHND_NVRAM_BHND_NVRAM_TLVREG_H_
+#define _BHND_NVRAM_BHND_NVRAM_TLVREG_H_
 
-#include <sys/types.h>
+/* WGT634U-specific TLV encoding */
+#define	NVRAM_TLV_TF_U8_LEN		0x01	/**< type has 8-bit length */
+#define	NVRAM_TLV_TYPE_END		0x00	/**< end of table */
+#define	NVRAM_TLV_TYPE_ENV		0x01	/**< variable record */
 
-#include "bhnd_nvram_io.h"
-
-/* NVRAM parser class */
-typedef struct bhnd_nvram_parser_class bhnd_nvram_parser_class_t;
-
-/* NVRAM parser instance */
-struct bhnd_nvram_parser;
-
-/** Declare a bhnd_nvram_parser_class with name @p _n */
-#define	BHND_NVRAM_PARSER_DECL(_n) \
-	extern 	struct bhnd_nvram_parser_class bhnd_nvram_parser_## _n##_class
-
-BHND_NVRAM_PARSER_DECL(bcm);
-BHND_NVRAM_PARSER_DECL(tlv);
-BHND_NVRAM_PARSER_DECL(btxt);
-
-int	bhnd_nvram_parser_probe(bhnd_nvram_parser_class_t *cls,
-	    struct bhnd_nvram_io *io);
-
-int	bhnd_nvram_parser_new(bhnd_nvram_parser_class_t *cls,
-	    struct bhnd_nvram_parser **nv, struct bhnd_nvram_io *io);
-
-void	bhnd_nvram_parser_free(struct bhnd_nvram_parser *nv);
-
-#endif /* _BHND_NVRAM_BHND_NVRAM_PARSER_H_ */
+#endif /* _BHND_NVRAM_BHND_NVRAM_TLVREG_H_ */

@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2015-2016 Landon Fuller <landonf@FreeBSD.org>
+ * Copyright (c) 2016 Landon Fuller <landonf@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,54 +29,58 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_NVRAM_BHND_NVRAM_PARSERVAR_H_
-#define _BHND_NVRAM_BHND_NVRAM_PARSERVAR_H_
+#ifndef _BHND_NVRAM_BHND_NVRAM_PARSER_VAR_H_
+#define _BHND_NVRAM_BHND_NVRAM_PARSER_VAR_H_
 
-#include <sys/types.h>
+#include <sys/param.h>
 
-#include "bhnd_nvram_common.h"
+#include "bhnd_nvram_io.h"
 
 #include "bhnd_nvram_parser.h"
 
-#define	NVRAM_IDX_VAR_THRESH	15		/**< index is generated if minimum variable count is met */
-#define	NVRAM_IDX_OFFSET_MAX	UINT16_MAX	/**< maximum indexable offset */
-#define	NVRAM_IDX_LEN_MAX	UINT16_MAX	/**< maximum indexable key/value length */
+/** @see bhnd_nvram_parser_probe() */
+typedef int (bhnd_nvram_parser_op_probe)(struct bhnd_nvram_io *io);
 
-#define	NVRAM_DEVPATH_STR	"devpath"	/**< name prefix of device path aliases */
-#define	NVRAM_DEVPATH_LEN	(sizeof(NVRAM_DEVPATH_STR) - 1)
+/** @see bhnd_nvram_parser_new() */
+typedef int (bhnd_nvram_parser_op_new)(struct bhnd_nvram_parser **nv,
+    struct bhnd_nvram_io *io);
 
-#define	NVRAM_SMALL_HASH_SIZE	16		/**< hash table size for pending/default tuples */
+/** @see bhnd_nvram_parser_free() */
+typedef void (bhnd_nvram_parser_op_free)(struct bhnd_nvram_parser *nv);
+
 
 /**
- * NVRAM devpath record.
- * 
- * Aliases index values to full device paths.
+ * NVRAM parser class.
  */
-struct bhnd_nvram_devpath {
-	u_long	 index;	/** alias index */
-	char	*path;	/** aliased path */
-
-	LIST_ENTRY(bhnd_nvram_devpath) dp_link;
+struct bhnd_nvram_parser_class {
+	bhnd_nvram_parser_op_probe	*op_probe;
+	bhnd_nvram_parser_op_new	*op_new;
+	bhnd_nvram_parser_op_free	*op_free;
 };
 
 /**
- * NVRAM index record.
- * 
- * Provides entry offsets into a backing NVRAM buffer.
+ * NVRAM parser instance.
  */
-struct bhnd_nvram_idx_entry {
-	uint16_t	env_offset;	/**< offset to env string (key must be
-					     '\0'   or '=' terminated) */
+struct bhnd_nvram_parser {
+	const struct bhnd_nvram_parser_class	*cls;
 };
 
 /**
- * NVRAM index.
- * 
- * Provides a compact binary search index into the backing NVRAM buffer.
+ * Define a bhnd_nvram_parser_class with name @p _n.
  */
-struct bhnd_nvram_idx {
-	size_t				num_entries;	/**< entry count */
-	struct bhnd_nvram_idx_entry	entries[];	/**< index entries */
-};
+#define	BHND_NVRAM_PARSER_DEFN(_n)					\
+	static bhnd_nvram_parser_op_probe				\
+	    bhnd_nvram_ ## _n ## _probe;				\
+	static bhnd_nvram_parser_op_new					\
+	    bhnd_nvram_ ## _n ## _new;					\
+	static bhnd_nvram_parser_op_free				\
+	    bhnd_nvram_ ## _n ## _free;					\
+									\
+	struct bhnd_nvram_parser_class bhnd_nvram_parser_## _n##_class =\
+	{								\
+		.op_probe	= bhnd_nvram_ ## _n ## _probe,		\
+		.op_new		= bhnd_nvram_ ## _n ## _new,		\
+		.op_free	= bhnd_nvram_ ## _n ## _free,		\
+	};
 
-#endif /* _BHND_NVRAM_BHND_NVRAM_PARSERVAR_H_ */
+#endif /* _BHND_NVRAM_BHND_NVRAM_PARSER_VAR_H_ */

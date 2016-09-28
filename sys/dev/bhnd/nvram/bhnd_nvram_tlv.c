@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2015-2016 Landon Fuller <landonf@FreeBSD.org>
+ * Copyright (c) 2016 Landon Fuller <landonf@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -25,37 +25,55 @@
  * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGES.
- * 
- * $FreeBSD$
  */
 
-#ifndef _BHND_NVRAM_BHND_NVRAM_PARSER_H_
-#define _BHND_NVRAM_BHND_NVRAM_PARSER_H_
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
 
-#include <sys/types.h>
+#include <sys/param.h>
+#include <sys/bus.h>
+#include <sys/malloc.h>
+#include <sys/rman.h>
 
-#include "bhnd_nvram_io.h"
+#include <machine/bus.h>
 
-/* NVRAM parser class */
-typedef struct bhnd_nvram_parser_class bhnd_nvram_parser_class_t;
+#include <dev/bhnd/bhnd.h>
 
-/* NVRAM parser instance */
-struct bhnd_nvram_parser;
+#include "bhnd_nvram_common.h"
 
-/** Declare a bhnd_nvram_parser_class with name @p _n */
-#define	BHND_NVRAM_PARSER_DECL(_n) \
-	extern 	struct bhnd_nvram_parser_class bhnd_nvram_parser_## _n##_class
+#include "bhnd_nvram_parser.h"
+#include "bhnd_nvram_parservar.h"
 
-BHND_NVRAM_PARSER_DECL(bcm);
-BHND_NVRAM_PARSER_DECL(tlv);
-BHND_NVRAM_PARSER_DECL(btxt);
+#include "bhnd_nvram_tlvreg.h"
 
-int	bhnd_nvram_parser_probe(bhnd_nvram_parser_class_t *cls,
-	    struct bhnd_nvram_io *io);
+/**
+ * CFE TLV parser.
+ * 
+ * Used on the WGT634U.
+ */
+struct bhnd_nvram_tlv {
+	struct bhnd_nvram_parser	nv;	/**< common instance state */
+};
 
-int	bhnd_nvram_parser_new(bhnd_nvram_parser_class_t *cls,
-	    struct bhnd_nvram_parser **nv, struct bhnd_nvram_io *io);
+BHND_NVRAM_PARSER_DEFN(tlv)
 
-void	bhnd_nvram_parser_free(struct bhnd_nvram_parser *nv);
+static int
+bhnd_nvram_tlv_probe(struct bhnd_nvram_io *io)
+{
+	// TODO
+	return (ENXIO);
+}
 
-#endif /* _BHND_NVRAM_BHND_NVRAM_PARSER_H_ */
+static int
+bhnd_nvram_tlv_new(struct bhnd_nvram_parser **nv,
+    struct bhnd_nvram_io *io)
+{
+	// TODO
+	return (ENXIO);
+}
+
+static void
+bhnd_nvram_tlv_free(struct bhnd_nvram_parser *nv)
+{
+	panic("TODO");
+}

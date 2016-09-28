@@ -5,6 +5,7 @@
 .PATH: ${.CURDIR}/../../dev/bhnd/cores/chipc/pwrctl
 .PATH: ${.CURDIR}/../../dev/bhnd/cores/pmu
 .PATH: ${.CURDIR}/../../dev/bhnd/nvram
+.PATH: ${.CURDIR}/../../dev/bhnd/nvram_old
 
 KMOD=	bhnd
 SRCS=	bhnd.c bhnd_subr.c
@@ -32,6 +33,8 @@ SRCS+=	bhnd_nvram.c \
 	bhnd_nvram_iobuf.c \
 	bhnd_nvram_iores.c \
 	bhnd_nvram_parser.c \
+	bhnd_nvram_parser_old.c \
+	bhnd_nvram_tlv.c \
 	bhnd_sprom.c \
 	bhnd_sprom_parser.c
 SRCS+=	bhnd_nvram_common.c
