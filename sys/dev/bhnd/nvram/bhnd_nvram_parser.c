@@ -32,8 +32,6 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 
-#include <dev/bhnd/bhnd.h>
-
 #include "bhnd_nvram_io.h"
 
 #include "bhnd_nvram_parservar.h"

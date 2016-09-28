@@ -37,8 +37,6 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/bus.h>
 
-#include <dev/bhnd/bhnd.h>
-
 #include "bhnd_nvram_common.h"
 
 #include "bhnd_nvram_parser.h"
