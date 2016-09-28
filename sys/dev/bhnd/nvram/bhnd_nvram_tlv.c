@@ -122,3 +122,10 @@ bhnd_nvram_tlv_free(struct bhnd_nvram_parser *nv)
 	bhnd_nvram_io_free(tlv->data);
 	free(tlv, M_BHND_NVRAM);
 }
+
+static const char *
+bhnd_nvram_tlv_next(struct bhnd_nvram_parser *nv, void **cookiep)
+{
+	// TODO
+	return (NULL);
+}

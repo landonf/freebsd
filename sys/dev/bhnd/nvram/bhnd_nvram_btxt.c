@@ -75,6 +75,9 @@ static int	bhnd_nvram_btxt_seek_next(struct bhnd_nvram_io *io,
 static int	bhnd_nvram_btxt_seek_eol(struct bhnd_nvram_io *io,
 		    size_t *offset);
 
+#define	BTXT_NVLOG(_fmt, ...)	\
+	printf("%s: " _fmt, __FUNCTION__, ##__VA_ARGS__)
+
 static int
 bhnd_nvram_btxt_probe(struct bhnd_nvram_io *io)
 {
@@ -198,6 +201,7 @@ bhnd_nvram_btxt_new(struct bhnd_nvram_parser **nv, struct bhnd_nvram_io *io)
 	if (btxt == NULL)
 		return (ENOMEM);
 
+	btxt->nv.cls = &bhnd_nvram_btxt_class;
 	btxt->data = NULL;
 
 	/* Parse the BTXT input data and initialize our backing
@@ -224,6 +228,64 @@ bhnd_nvram_btxt_free(struct bhnd_nvram_parser *nv)
 
 	bhnd_nvram_io_free(btxt->data);
 	free(nv, M_BHND_NVRAM);
+}
+
+static const char *
+bhnd_nvram_btxt_next(struct bhnd_nvram_parser *nv, void **cookiep)
+{
+	struct bhnd_nvram_btxt	*btxt;
+	const void		*nptr;
+	size_t			 io_offset, io_size;
+	size_t			 nbytes;
+	int			 error;
+
+	btxt = (struct bhnd_nvram_btxt *)nv;
+
+	io_size = bhnd_nvram_io_get_size(btxt->data);
+
+	/* Convert cookie back to an I/O offset */
+	KASSERT((uintptr_t)*cookiep < SIZE_MAX, ("cookie > SIZE_MAX)"));
+	KASSERT((uintptr_t)*cookiep <= io_size, ("cookie > io_size)"));
+
+	io_offset = (uintptr_t) *cookiep;
+
+	/* Already at EOF? */
+	if (io_offset == io_size)
+		return (NULL);
+
+	/* Seek past the current entry */
+	if ((error = bhnd_nvram_btxt_seek_eol(btxt->data, &io_offset))) {
+		BTXT_NVLOG("unexpected error in seek_eol(): %d\n", error);
+		return (NULL);
+	}
+
+	/* Seek to the next entry (if any) */
+	if ((error = bhnd_nvram_btxt_seek_next(btxt->data, &io_offset))) {
+		BTXT_NVLOG("unexpected error in seek_next(): %d\n", error);
+		return (NULL);
+	}
+
+	/* Provide the new offset */
+	if (io_offset > UINTPTR_MAX) {
+		BTXT_NVLOG("io_offset > UINPTR_MAX!\n");
+		return (NULL);
+	}
+
+	*cookiep = (void *)(uintptr_t)io_offset;
+
+	/* Hit EOF? */
+	if (io_offset == io_size)
+		return (NULL);
+
+	/* Return a pointer to the name string */
+	nbytes = 1;
+	error = bhnd_nvram_io_read_ptr(btxt->data, io_offset, &nptr, &nbytes);
+	if (error) {
+		BTXT_NVLOG("unexpected error in read_ptr(): %d\n", error);
+		return (NULL);
+	}
+
+	return (nptr);
 }
 
 /* Determine the entry length and env 'key=value' string length of the entry

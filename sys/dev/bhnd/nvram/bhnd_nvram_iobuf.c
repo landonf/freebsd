@@ -48,8 +48,9 @@ __FBSDID("$FreeBSD$");
 /**
  * Buffer-backed NVRAM I/O context.
  * 
- * iobuf instances are gauranteed to provide a contigious buffer, which
- * can be accessed via bhnd_nvram_io_read_ptr() and bhnd_nvram_io_write_ptr().
+ * iobuf instances are gauranteed to provide persistent references to its
+ * backing contigious buffer via bhnd_nvram_io_read_ptr() and
+ * bhnd_nvram_io_write_ptr().
  */
 struct bhnd_nvram_iobuf {
 	struct bhnd_nvram_io	 io;		/**< common I/O instance state */

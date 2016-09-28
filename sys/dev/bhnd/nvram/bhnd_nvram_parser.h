@@ -44,18 +44,21 @@ struct bhnd_nvram_parser;
 
 /** Declare a bhnd_nvram_parser_class with name @p _n */
 #define	BHND_NVRAM_PARSER_DECL(_n) \
-	extern 	struct bhnd_nvram_parser_class bhnd_nvram_parser_## _n##_class
+	extern 	struct bhnd_nvram_parser_class bhnd_nvram_ ## _n ##_class
 
 BHND_NVRAM_PARSER_DECL(bcm);
 BHND_NVRAM_PARSER_DECL(tlv);
 BHND_NVRAM_PARSER_DECL(btxt);
 
-int	bhnd_nvram_parser_probe(bhnd_nvram_parser_class_t *cls,
-	    struct bhnd_nvram_io *io);
+int		 bhnd_nvram_parser_probe(bhnd_nvram_parser_class_t *cls,
+		     struct bhnd_nvram_io *io);
 
-int	bhnd_nvram_parser_new(bhnd_nvram_parser_class_t *cls,
-	    struct bhnd_nvram_parser **nv, struct bhnd_nvram_io *io);
+int		 bhnd_nvram_parser_new(bhnd_nvram_parser_class_t *cls,
+		     struct bhnd_nvram_parser **nv, struct bhnd_nvram_io *io);
 
-void	bhnd_nvram_parser_free(struct bhnd_nvram_parser *nv);
+void		 bhnd_nvram_parser_free(struct bhnd_nvram_parser *nv);
+
+const char	*bhnd_nvram_parser_next(struct bhnd_nvram_parser *nv,
+		     void **cookiep);
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_PARSER_H_ */

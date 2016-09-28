@@ -48,6 +48,10 @@ typedef int (bhnd_nvram_parser_op_new)(struct bhnd_nvram_parser **nv,
 /** @see bhnd_nvram_parser_free() */
 typedef void (bhnd_nvram_parser_op_free)(struct bhnd_nvram_parser *nv);
 
+/** @see bhnd_nvram_parser_next() */
+typedef const char *(bhnd_nvram_parser_op_next)(struct bhnd_nvram_parser *nv,
+    void **cookiep);
+
 /**
  * NVRAM parser class.
  */
@@ -55,6 +59,7 @@ struct bhnd_nvram_parser_class {
 	bhnd_nvram_parser_op_probe	*op_probe;
 	bhnd_nvram_parser_op_new	*op_new;
 	bhnd_nvram_parser_op_free	*op_free;
+	bhnd_nvram_parser_op_next	*op_next;
 };
 
 /**
@@ -78,12 +83,15 @@ int	bhnd_nvram_parse_env(const char *env, size_t env_len, char delim,
 	    bhnd_nvram_ ## _n ## _new;					\
 	static bhnd_nvram_parser_op_free				\
 	    bhnd_nvram_ ## _n ## _free;					\
+	static bhnd_nvram_parser_op_next				\
+	    bhnd_nvram_ ## _n ## _next;					\
 									\
-	struct bhnd_nvram_parser_class bhnd_nvram_parser_## _n##_class =\
+	struct bhnd_nvram_parser_class bhnd_nvram_ ## _n ## _class =	\
 	{								\
 		.op_probe	= bhnd_nvram_ ## _n ## _probe,		\
 		.op_new		= bhnd_nvram_ ## _n ## _new,		\
 		.op_free	= bhnd_nvram_ ## _n ## _free,		\
+		.op_next	= bhnd_nvram_ ## _n ## _next,		\
 	};
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_PARSER_VAR_H_ */
