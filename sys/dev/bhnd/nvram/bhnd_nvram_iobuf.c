@@ -47,6 +47,9 @@ __FBSDID("$FreeBSD$");
 
 /**
  * Buffer-backed NVRAM I/O context.
+ * 
+ * iobuf instances are gauranteed to provide a contigious buffer, which
+ * can be accessed via bhnd_nvram_io_read_ptr() and bhnd_nvram_io_write_ptr().
  */
 struct bhnd_nvram_iobuf {
 	struct bhnd_nvram_io	 io;		/**< common I/O instance state */
@@ -78,8 +81,8 @@ bhnd_nvram_iobuf_empty(size_t size)
 	size_t			 iosz;
 	bool			 inline_alloc;
 
-	/* Would iosz+size overflow? */
-	if (SIZE_MAX - iosz < size) {
+	/* Would sizeof(iobuf)+size overflow? */
+	if (SIZE_MAX - sizeof(*iobuf) < size) {
 		inline_alloc = false;
 		iosz = sizeof(*iobuf);
 	} else {
@@ -199,9 +202,10 @@ bhnd_nvram_iobuf_ptr(struct bhnd_nvram_iobuf *iobuf, size_t offset, void **ptr,
 	if (offset > iobuf->size)
 		return (ENXIO);
 
-	/* Valid I/O range, provide a pointer to the buffer */
+	/* Valid I/O range, provide a pointer to the buffer and the
+	 * total count of available bytes */
 	*ptr = ((uint8_t *)iobuf->buf) + offset;
-	*nbytes = ummin(*nbytes, iobuf->size - offset);
+	*nbytes = iobuf->size - offset;
 
 	return (0);
 }
@@ -212,20 +216,28 @@ bhnd_nvram_iobuf_read_ptr(struct bhnd_nvram_io *io, size_t offset,
 {
 	struct bhnd_nvram_iobuf	*iobuf;
 	void			*ioptr;
+	size_t			 navail;
 	int			 error;
 
 	/* Validate and return a pointer into our backing buffer */
 	iobuf = (struct bhnd_nvram_iobuf *) io;
-	if ((error = bhnd_nvram_iobuf_ptr(iobuf, offset, &ioptr, nbytes)))
+
+	if ((error = bhnd_nvram_iobuf_ptr(iobuf, offset, &ioptr, &navail)))
 		return (error);
 
+	/* At least nbytes must be readable */
+	if (navail < *nbytes)
+		return (ENXIO);
+
 	*ptr = ioptr;
+	*nbytes = navail;
+
 	return (0);
 }
 
 static int
 bhnd_nvram_iobuf_write_ptr(struct bhnd_nvram_io *io, size_t offset,
-    void **ptr, size_t nbytes)
+    void **ptr, size_t *nbytes)
 {
 	struct bhnd_nvram_iobuf	*iobuf;
 	size_t			 navail;
@@ -234,15 +246,14 @@ bhnd_nvram_iobuf_write_ptr(struct bhnd_nvram_io *io, size_t offset,
 	iobuf = (struct bhnd_nvram_iobuf *) io;
 
 	/* Fetch a pointer into our backing buffer */
-	navail = nbytes;
 	if ((error = bhnd_nvram_iobuf_ptr(iobuf, offset, ptr, &navail)))
 		return (error);
 
-	/* Ensure that at least nbytes are writable; we don't support growing
-	 * the output buffer */
-	if (navail < nbytes)
+	/* At least nbytes must be writable  */
+	if (navail < *nbytes)
 		return (ENXIO);
 
+	*nbytes = navail;
 	return (0);
 }
 
@@ -251,13 +262,18 @@ bhnd_nvram_iobuf_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
     size_t *nbytes)
 {
 	const void	*ptr;
+	size_t		 navail;
 	int		 error;
 
 	/* Try to fetch our direct pointer */
-	if ((error = bhnd_nvram_io_read_ptr(io, offset, &ptr, nbytes)))
+	navail = 0;
+	if ((error = bhnd_nvram_io_read_ptr(io, offset, &ptr, &navail)))
 		return (error);
 
-	/* Valid read; copy out the requested data */
+	/* Limit to actual available bytes */
+	*nbytes = ummin(*nbytes, navail);
+
+	/* Copy out the requested data */
 	memcpy(buffer, ptr, *nbytes);
 	return (0);
 }
@@ -267,10 +283,12 @@ bhnd_nvram_iobuf_write(struct bhnd_nvram_io *io, size_t offset,
     void *buffer, size_t nbytes)
 {
 	void	*ptr;
+	size_t	 minbytes;
 	int	 error;
 
-	/* Try to fetch our direct pointer */
-	if ((error = bhnd_nvram_io_write_ptr(io, offset, &ptr, nbytes)))
+	/* Try to fetch a direct pointer for at least nbytes */
+	minbytes = nbytes;
+	if ((error = bhnd_nvram_io_write_ptr(io, offset, &ptr, &minbytes)))
 		return (error);
 
 	/* Valid read; copy in the provided data */

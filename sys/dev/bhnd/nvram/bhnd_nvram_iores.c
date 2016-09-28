@@ -166,7 +166,7 @@ bhnd_nvram_iores_read_ptr(struct bhnd_nvram_io *io, size_t offset,
 
 static int
 bhnd_nvram_iores_write_ptr(struct bhnd_nvram_io *io, size_t offset,
-    void **ptr, size_t nbytes)
+    void **ptr, size_t *nbytes)
 {
 	/* unsupported */
 	return (ENODEV);

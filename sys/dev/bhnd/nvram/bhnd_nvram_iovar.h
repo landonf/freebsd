@@ -50,7 +50,7 @@ typedef int (bhnd_nvram_iop_write)(struct bhnd_nvram_io *io, size_t offset,
 
 /** @see bhnd_nvram_io_write_ptr() */
 typedef int (bhnd_nvram_iop_write_ptr)(struct bhnd_nvram_io *io, size_t offset,
-    void **ptr, size_t nbytes);
+    void **ptr, size_t *nbytes);
 
 /** @see bhnd_nvram_io_get_size() */
 typedef size_t (bhnd_nvram_iop_get_size)(struct bhnd_nvram_io *io);

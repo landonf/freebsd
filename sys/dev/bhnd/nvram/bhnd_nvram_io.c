@@ -76,25 +76,23 @@ bhnd_nvram_io_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
  * Attempt to fetch a pointer to @p io's internal read buffer, if
  * supported by @p io.
  * 
- * The returned pointer may be invalidated by any future operations performed
- * on @p io.
+ * The returned pointer is only gauranteed to be valid until the next I/O
+ * operation performed on @p io; concrete implementations of bhnd_nvram_io
+ * may provide stronger gaurantees.
  * 
  * @param io NVRAM I/O context.
  * @param offset The offset within @p io for which to return a buffer pointer.
  * @param[out] ptr On success, will be initialized with a pointer to @p io's
  * internal read buffer.
- * @param[in,out] nbytes On input, the maximum number of bytes to be read; on 
- * successful return, will contain the number of bytes actually available at @p 
- * ptr. On EOF, a length of 0 will be returned.
- *
- * The number of readable bytes will only be less than requested if
- * @p offset + @p nbytes exceeds the size returned by bhnd_nvram_io_get_size().
+ * @param[in,out] nbytes On input, the minimum number of bytes that must
+ * be available at @p offset; on successful return, will contain the actual
+ * number of readable bytes.
  * 
  * @retval 0 success
  * @retval EIO if an input error occured reading @p io.
  * @retval ENODEV if @p io does not support direct access to its backing read 
  * buffer.
- * @retval ENXIO if a request for @p offset exceeds the size of @p io.
+ * @retval ENXIO if the request exceeds the size of @p io.
  * @retval EFAULT if @p io requires I/O request alignment and @p offset or
  * @p nbytes are misaligned.
  */
@@ -133,28 +131,31 @@ bhnd_nvram_io_write(struct bhnd_nvram_io *io, size_t offset, void *buffer,
  * Attempt to fetch a writable pointer to @p io's internal write buffer, if
  * supported by @p io.
  *
- * The returned pointer may be invalidated by any future operations performed
- * on @p io.
+ * The returned pointer is only gauranteed to be valid until the next I/O
+ * operation performed on @p io; concrete implementations of bhnd_nvram_io
+ * may provide stronger gaurantees.
  * 
  * @param io NVRAM I/O context.
  * @param offset The offset within @p io for which to return a buffer pointer.
- * @param[out] ptr On success, will be initialized with a pointer to @p io's
+ * @param[in,out] ptr On success, will be initialized with a pointer to @p io's
  * internal buffer at which up to @p nbytes may be written.
- * @param nbytes The required number of writable bytes.
+ * @param[in,out] nbytes On input, the minimum number of bytes that must
+ * be writable at @p offset; on successful return, will contain the actual
+ * number of writable bytes.
  * 
  * @retval 0 success
  * @retval EIO if an output error occurs preparing @p io's write buffer.
  * @retval ENODEV if @p io does not support direct access to its backing write
  * buffer.
  * @retval ENXIO if @p io does not support writes beyond the existing
- * end-of-file, and a write at @p offset would exceed the size of the @p io
- * backing data store.
+ * end-of-file, and a write at @p offset of @p nbytes in length would exceed
+ * the size of the @p io backing data store.
  * @retval EFAULT if @p io requires I/O request alignment and @p offset or
  * @p nbytes are misaligned.
  */
 int
 bhnd_nvram_io_write_ptr(struct bhnd_nvram_io *io, size_t offset, void **ptr,
-    size_t nbytes)
+    size_t *nbytes)
 {
 	return (io->iops->write_ptr(io, offset, ptr, nbytes));
 }
