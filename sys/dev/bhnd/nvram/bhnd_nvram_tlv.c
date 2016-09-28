@@ -32,6 +32,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/bus.h>
+#include <sys/ctype.h>
 #include <sys/malloc.h>
 #include <sys/rman.h>
 
@@ -51,16 +52,58 @@ __FBSDID("$FreeBSD$");
  */
 
 struct bhnd_nvram_tlv {
-	struct bhnd_nvram_parser	nv;	/**< common instance state */
+	struct bhnd_nvram_parser	 nv;	/**< common instance state */
+	struct bhnd_nvram_io		*data;	/**< backing buffer */
 };
 
 BHND_NVRAM_PARSER_DEFN(tlv)
 
+/** Minimal identification header */
+struct bhnd_nvram_tlv_ident {
+	uint8_t		tag;
+	uint8_t		size;
+	uint8_t		flags;
+	char		envp;
+} __packed;
+
 static int
 bhnd_nvram_tlv_probe(struct bhnd_nvram_io *io)
 {
-	// TODO
-	return (ENXIO);
+	struct bhnd_nvram_tlv_ident	ident;
+	size_t				nbytes;
+	int				error;
+
+	/* Look at the initial header for a valid TLV ENV tag */
+	nbytes = sizeof(ident);
+	if ((error = bhnd_nvram_io_read(io, 0x0, &ident, &nbytes)))
+		return (error);
+
+	if (nbytes < sizeof(ident)) {
+		/* This *could* be an empty TLV image, but all we're
+		 * testing for here is a single 0x0 byte followed by EOF */
+		if (nbytes == 1 && ident.tag == NVRAM_TLV_TYPE_END)
+			return (BUS_PROBE_LOW_PRIORITY);
+
+		return (ENXIO);
+	}
+
+	/* First entry should be a variable record (which we statically
+	 * assert as being defined to use a single byte size field) */
+	if (ident.tag != NVRAM_TLV_TYPE_ENV)
+		return (ENXIO);
+
+	_Static_assert(NVRAM_TLV_TYPE_ENV & NVRAM_TLV_TF_U8_LEN,
+	    "TYPE_ENV is not a U8-sized field");
+
+	/* The entry must be at least 3 characters ('x=\0') in length */
+	if (ident.size != 3)
+		return (ENXIO);
+
+	/* The first character should be a valid key char (alpha) */
+	if (!isalpha(ident.envp))
+		return (ENXIO);
+
+	return (BUS_PROBE_DEFAULT);
 }
 
 static int
