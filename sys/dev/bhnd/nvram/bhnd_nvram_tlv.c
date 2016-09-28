@@ -117,5 +117,8 @@ bhnd_nvram_tlv_new(struct bhnd_nvram_parser **nv,
 static void
 bhnd_nvram_tlv_free(struct bhnd_nvram_parser *nv)
 {
-	panic("TODO");
+	struct bhnd_nvram_tlv *tlv = (struct bhnd_nvram_tlv *)nv;
+
+	bhnd_nvram_io_free(tlv->data);
+	free(tlv, M_BHND_NVRAM);
 }
