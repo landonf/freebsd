@@ -25,15 +25,15 @@
  * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGES.
- * 
+ *
  * $FreeBSD$
  */
 
-#ifndef _BHND_NVRAM_BCM_BHND_NVRAM_BCMREG_H_
-#define _BHND_NVRAM_BCM_BHND_NVRAM_BCMREG_H_
+#ifndef _BHND_NVRAM_BHND_NVRAM_BCMREG_H_
+#define _BHND_NVRAM_BHND_NVRAM_BCMREG_H_
 
 #define BCM_NVRAM_GET_BITS(_value, _field)  \
-        ((_value & _field ## _MASK) >> _field ## _SHIFT)
+	((_value & _field ## _MASK) >> _field ## _SHIFT)
 
 /* NVRAM header fields */
 #define	BCM_NVRAM_MAGIC				0x48534C46	/* 'FLSH' */
@@ -65,4 +65,4 @@
 #define	BCM_NVRAM_SDRAM_NCDL_VAR		"sdram_ncdl"
 #define	BCM_NVRAM_SDRAM_NCDL_FMT		"0x%08x"
 
-#endif /* _BHND_NVRAM_BCM_BHND_NVRAM_BCMREG_H_ */
+#endif /* _BHND_NVRAM_BHND_NVRAM_BCMREG_H_ */

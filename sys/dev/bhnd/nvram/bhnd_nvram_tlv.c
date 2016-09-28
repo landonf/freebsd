@@ -44,11 +44,12 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_nvram_tlvreg.h"
 
-/**
+/*
  * CFE TLV parser.
  * 
- * Used on the WGT634U.
+ * The CFE-defined TLV NVRAM format is used on the WGT634U.
  */
+
 struct bhnd_nvram_tlv {
 	struct bhnd_nvram_parser	nv;	/**< common instance state */
 };
