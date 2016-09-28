@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2016 Landon Fuller <landonf@FreeBSD.org>
+ * Copyright (c) 2015-2016 Landon Fuller <landonf@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -36,6 +36,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/endian.h>
 #include <sys/malloc.h>
 #include <sys/rman.h>
+#include <sys/systm.h>
 
 #include <machine/bus.h>
 
@@ -66,6 +67,13 @@ union bhnd_nvram_btxt_ident {
 	uint32_t	bcm_magic;
 	char		btxt[8];
 };
+
+static int	bhnd_nvram_btxt_entry_len(struct bhnd_nvram_io *io,
+		    size_t offset, size_t *line_len, size_t *env_len);
+static int	bhnd_nvram_btxt_seek_next(struct bhnd_nvram_io *io,
+		    size_t *offset);
+static int	bhnd_nvram_btxt_seek_eol(struct bhnd_nvram_io *io,
+		    size_t *offset);
 
 static int
 bhnd_nvram_btxt_probe(struct bhnd_nvram_io *io)
@@ -108,6 +116,77 @@ bhnd_nvram_btxt_probe(struct bhnd_nvram_io *io)
 	return (BUS_PROBE_LOW_PRIORITY);
 }
 
+/**
+ * Initialize @p btxt with the provided board text data mapped by @p src.
+ * 
+ * @param btxt A newly allocated parser instance.
+ */
+static int
+bhnd_nvram_btxt_init(struct bhnd_nvram_btxt *btxt, struct bhnd_nvram_io *src)
+{
+	struct bhnd_nvram_io	*io;
+	const char		*name, *value;
+	size_t			 name_len, value_len;
+	size_t			 line_len, env_len;
+	size_t			 io_offset, io_size;
+	int			 error;
+
+	KASSERT(btxt->data == NULL, ("btxt data already allocated"));
+	
+	if ((io = bhnd_nvram_iobuf_copy(src)) == NULL)
+		return (ENOMEM);
+
+	btxt->data = io;
+
+	io_size = bhnd_nvram_io_get_size(io);
+	io_offset = 0;
+	while (io_offset < io_size) {
+		const void	*envp;
+		size_t		 nbytes;
+
+		/* Seek to the next key=value entry */
+		if ((error = bhnd_nvram_btxt_seek_next(io, &io_offset)))
+			return (error);
+
+		/* Determine the entry and line length */
+		error = bhnd_nvram_btxt_entry_len(io, io_offset, &line_len,
+		    &env_len);
+		if (error)
+			return (error);
+	
+		/* EOF? */
+		if (env_len == 0) {
+			KASSERT(io_offset == io_size, ("zero-length record "
+			    "returned from bhnd_nvram_btxt_seek_next()"));
+			break;
+		}
+
+		/* Parse the key=value string */
+		nbytes = env_len;
+		error = bhnd_nvram_io_read_ptr(io, io_offset, &envp, &nbytes);
+		if (error)
+			return (error);
+
+		error = bhnd_nvram_parse_env(envp, env_len, '=', &name,
+		    &name_len, &value, &value_len);
+		if (error)
+			return (error);
+
+		/* Insert a '\0' character, replacing the '=' delimiter and
+		 * allowing us to vend references directly to the variable
+		 * name */
+		error = bhnd_nvram_io_write(io, io_offset+name_len,
+		    &(char){'\0'}, 1);
+		if (error)
+			return (error);
+
+		/* Advance past EOL */
+		io_offset += line_len;
+	}
+
+	return (0);
+}
+
 static int
 bhnd_nvram_btxt_new(struct bhnd_nvram_parser **nv, struct bhnd_nvram_io *io)
 {
@@ -119,11 +198,12 @@ bhnd_nvram_btxt_new(struct bhnd_nvram_parser **nv, struct bhnd_nvram_io *io)
 	if (btxt == NULL)
 		return (ENOMEM);
 
-	/* Copy the BTXT input data */
-	if ((btxt->data = bhnd_nvram_iobuf_copy(io)) == NULL) {
-		error = ENOMEM;
+	btxt->data = NULL;
+
+	/* Parse the BTXT input data and initialize our backing
+	 * data representation */
+	if ((error = bhnd_nvram_btxt_init(btxt, io)))
 		goto failed;
-	}
 
 	*nv = &btxt->nv;
 	return (0);
@@ -146,4 +226,130 @@ bhnd_nvram_btxt_free(struct bhnd_nvram_parser *nv)
 	free(nv, M_BHND_NVRAM);
 }
 
+/* Determine the entry length and env 'key=value' string length of the entry
+ * at @p offset */
+static int
+bhnd_nvram_btxt_entry_len(struct bhnd_nvram_io *io, size_t offset,
+    size_t *line_len, size_t *env_len)
+{
+	const uint8_t	*baseptr, *p;
+	const void	*rbuf;
+	size_t		 nbytes;
+	int		 error;
 
+	/* Fetch read buffer */
+	nbytes = 0;
+	if ((error = bhnd_nvram_io_read_ptr(io, offset, &rbuf, &nbytes)))
+		return (error);
+
+	/* Find record termination (EOL, or '#') */
+	p = rbuf;
+	baseptr = rbuf;
+	while (p - baseptr < nbytes) {
+		if (*p == '#' || *p == '\n' || *p == '\r')
+			break;
+
+		p++;
+	}
+
+	/* Got line length, now trim any trailing whitespace to determine
+	 * actual env length */
+	*line_len = p - baseptr;
+	*env_len = *line_len;
+
+	for (size_t i = 0; i < *line_len; i++) {
+		char c = baseptr[*line_len - i - 1];
+		if (!isspace(c))
+			break;
+
+		*env_len -= 1;
+	}
+
+	return (0);
+}
+
+/* Seek past the next line ending (\r, \r\n, or \n) */
+static int
+bhnd_nvram_btxt_seek_eol(struct bhnd_nvram_io *io, size_t *offset)
+{
+	const uint8_t	*baseptr, *p;
+	const void	*rbuf;
+	size_t		 nbytes;
+	int		 error;
+
+	/* Fetch read buffer */
+	nbytes = 0;
+	if ((error = bhnd_nvram_io_read_ptr(io, *offset, &rbuf, &nbytes)))
+		return (error);
+
+	baseptr = rbuf;
+	p = rbuf;
+	while (p - baseptr < nbytes) {
+		char c = *p;
+
+		/* Advance to next char. The next position may be EOF, in which
+		 * case a read will be invalid */
+		p++;
+
+		if (c == '\r') {
+			/* CR, check for optional LF */
+			if (p - baseptr < nbytes) {
+				if (*p == '\n')
+					p++;
+			}
+
+			break;
+		} else if (c == '\n') {
+			break;
+		}
+	}
+
+	/* Hit newline or EOF */
+	*offset += (p - baseptr);
+	return (0);
+}
+
+/* Seek to the next valid non-comment line (or EOF) */
+static int
+bhnd_nvram_btxt_seek_next(struct bhnd_nvram_io *io, size_t *offset)
+{
+	const uint8_t	*baseptr, *p;
+	const void	*rbuf;
+	size_t		 nbytes;
+	int		 error;
+
+	/* Fetch read buffer */
+	nbytes = 0;
+	if ((error = bhnd_nvram_io_read_ptr(io, *offset, &rbuf, &nbytes)))
+		return (error);
+
+	/* Skip leading whitespace and comments */
+	baseptr = rbuf;
+	p = rbuf;
+	while (p - baseptr < nbytes) {
+		char c = *p;
+
+		/* Skip whitespace */
+		if (isspace(c)) {
+			p++;
+			continue;
+		}
+
+		/* Skip entire comment line */
+		if (c == '#') {
+			size_t line_off = *offset + (p - baseptr);
+	
+			if ((error = bhnd_nvram_btxt_seek_eol(io, &line_off)))
+				return (error);
+
+			p = baseptr + (line_off - *offset);
+			continue;
+		}
+
+		/* Non-whitespace, non-comment */
+		break;
+	}
+
+	*offset += (p - baseptr);
+	return (0);
+}

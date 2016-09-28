@@ -34,6 +34,7 @@ SRCS+=	bhnd_nvram.c \
 	bhnd_nvram_iobuf.c \
 	bhnd_nvram_iores.c \
 	bhnd_nvram_parser.c \
+	bhnd_nvram_parser_subr.c \
 	bhnd_nvram_parser_old.c \
 	bhnd_nvram_tlv.c \
 	bhnd_sprom.c \

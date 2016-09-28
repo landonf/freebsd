@@ -48,7 +48,6 @@ typedef int (bhnd_nvram_parser_op_new)(struct bhnd_nvram_parser **nv,
 /** @see bhnd_nvram_parser_free() */
 typedef void (bhnd_nvram_parser_op_free)(struct bhnd_nvram_parser *nv);
 
-
 /**
  * NVRAM parser class.
  */
@@ -64,6 +63,10 @@ struct bhnd_nvram_parser_class {
 struct bhnd_nvram_parser {
 	const struct bhnd_nvram_parser_class	*cls;
 };
+
+int	bhnd_nvram_parse_env(const char *env, size_t env_len, char delim,
+	    const char **name, size_t *name_len, const char **value,
+	    size_t *value_len);
 
 /**
  * Define a bhnd_nvram_parser_class with name @p _n.
