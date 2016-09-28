@@ -109,7 +109,7 @@ bhnd_nvram_io_read_ptr(struct bhnd_nvram_io *io, size_t offset,
  * 
  * @param io NVRAM I/O context.
  */
-bus_size_t
+size_t
 bhnd_nvram_io_get_size(struct bhnd_nvram_io *io)
 {
 	return (io->iops->get_size(io));
