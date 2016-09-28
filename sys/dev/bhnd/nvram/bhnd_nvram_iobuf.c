@@ -58,19 +58,20 @@ struct bhnd_nvram_iobuf {
 BHND_NVRAM_IOPS_DEFN(iobuf)
 
 /**
- * Allocate and return a new I/O context, copying @p size from @p buffer.
+ * Allocate and return a new iobuf instance with an uninitialized
+ * buffer of @p capacity bytes.
  *
  * The caller is responsible for deallocating the returned I/O context via
  * bhnd_nvram_io_free().
  * 
- * @param	buffer	The buffer data be copied by the returned I/O context.
- * @param	size	The size of @p buffer, in bytes.
+ * @param	size	The size of the backing buffer to be allocated, in
+ *			bytes.
  * 
- * @retval	bhnd_nvram_io	success.
- * @retval	NULL		allocation failed.
+ * @retval	bhnd_nvram_iobuf	success.
+ * @retval	NULL			allocation failed.
  */
-struct bhnd_nvram_io *
-bhnd_nvram_iobuf_new(const void *buffer, size_t size)
+static struct bhnd_nvram_iobuf *
+bhnd_nvram_iobuf_empty(size_t size)
 {
 	struct bhnd_nvram_iobuf	*iobuf;
 	size_t			 iosz;
@@ -106,11 +107,68 @@ bhnd_nvram_iobuf_new(const void *buffer, size_t size)
 		return (NULL);
 	}
 
+	return (iobuf);
+}
+
+/**
+ * Allocate and return a new I/O context, copying @p size from @p buffer.
+ *
+ * The caller is responsible for deallocating the returned I/O context via
+ * bhnd_nvram_io_free().
+ * 
+ * @param	buffer	The buffer data be copied by the returned I/O context.
+ * @param	size	The size of @p buffer, in bytes.
+ * 
+ * @retval	bhnd_nvram_io	success.
+ * @retval	NULL		allocation failed.
+ */
+struct bhnd_nvram_io *
+bhnd_nvram_iobuf_new(const void *buffer, size_t size)
+{
+	struct bhnd_nvram_iobuf *iobuf;
+
+	/* Allocate the iobuf instance */
+	if ((iobuf = bhnd_nvram_iobuf_empty(size)) == NULL)
+		return (NULL);
+
 	/* Copy the input buffer */
 	memcpy(iobuf->buf, buffer, iobuf->size);
 
 	return (&iobuf->io);
 }
+
+/**
+ * Allocate and return a new I/O context providing an in-memory copy
+ * of the data mapped by @p src.
+ *
+ * The caller is responsible for deallocating the returned I/O context via
+ * bhnd_nvram_io_free().
+ * 
+ * @param	src	The I/O context to be copied.
+ * 
+ * @retval	bhnd_nvram_io	success.
+ * @retval	NULL		allocation failed.
+ * @retval	NULL		copying @p src failed.
+ */
+struct bhnd_nvram_io *
+bhnd_nvram_iobuf_copy(struct bhnd_nvram_io *src)
+{
+	struct bhnd_nvram_iobuf	*iobuf;
+	size_t			 size;
+	int			 error;
+
+	/* Allocate the iobuf instance */
+	size = bhnd_nvram_io_get_size(src);
+	if ((iobuf = bhnd_nvram_iobuf_empty(size)) == NULL)
+		return (NULL);
+
+	/* Copy the input I/O context */
+	if ((error = bhnd_nvram_io_read(src, 0x0, iobuf->buf, &size)))
+		return (NULL);
+
+	return (&iobuf->io);
+}
+
 
 static void
 bhnd_nvram_iobuf_free(struct bhnd_nvram_io *io)
