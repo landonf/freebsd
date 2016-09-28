@@ -51,6 +51,11 @@ int			 bhnd_nvram_io_read(struct bhnd_nvram_io *io,
 int			 bhnd_nvram_io_read_ptr(struct bhnd_nvram_io *io,
 			     size_t offset, const void **ptr, size_t *nbytes);
 
+int			 bhnd_nvram_io_write(struct bhnd_nvram_io *io,
+			     size_t offset, void *buffer, size_t nbytes);
+int			 bhnd_nvram_io_write_ptr(struct bhnd_nvram_io *io,
+			     size_t offset, void **ptr, size_t nbytes);
+
 void			 bhnd_nvram_io_free(struct bhnd_nvram_io *io);
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_IO_H_ */

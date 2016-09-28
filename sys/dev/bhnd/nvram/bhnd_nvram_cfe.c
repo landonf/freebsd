@@ -369,6 +369,22 @@ bhnd_nvram_iocfe_read_ptr(struct bhnd_nvram_io *io, size_t offset,
 }
 
 static int
+bhnd_nvram_iocfe_write_ptr(struct bhnd_nvram_io *io, size_t offset,
+    void **ptr, size_t nbytes)
+{
+	/* unsupported */
+	return (ENODEV);
+}
+
+static int
+bhnd_nvram_iocfe_write(struct bhnd_nvram_io *io, size_t offset, void *buffer,
+    size_t nbytes)
+{
+	/* unsupported */
+	return (ENODEV);
+}
+
+static int
 bhnd_nvram_iocfe_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
     size_t *nbytes)
 {

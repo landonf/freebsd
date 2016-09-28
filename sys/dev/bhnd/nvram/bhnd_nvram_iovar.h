@@ -44,6 +44,14 @@ typedef int (bhnd_nvram_iop_read)(struct bhnd_nvram_io *io, size_t offset,
 typedef int (bhnd_nvram_iop_read_ptr)(struct bhnd_nvram_io *io, size_t offset,
     const void **ptr, size_t *nbytes);
 
+/** @see bhnd_nvram_io_write() */
+typedef int (bhnd_nvram_iop_write)(struct bhnd_nvram_io *io, size_t offset,
+    void *buffer, size_t nbytes);
+
+/** @see bhnd_nvram_io_write_ptr() */
+typedef int (bhnd_nvram_iop_write_ptr)(struct bhnd_nvram_io *io, size_t offset,
+    void **ptr, size_t nbytes);
+
 /** @see bhnd_nvram_io_get_size() */
 typedef size_t (bhnd_nvram_iop_get_size)(struct bhnd_nvram_io *io);
 
@@ -54,10 +62,12 @@ typedef void (bhnd_nvram_iop_free)(struct bhnd_nvram_io *io);
  * NVRAM abstract I/O operations.
  */
 struct bhnd_nvram_iops {
-	bhnd_nvram_iop_read	*read;		/**< read() implementation */
-	bhnd_nvram_iop_read_ptr	*read_ptr;	/**< read_ptr() implementation */
-	bhnd_nvram_iop_get_size	*get_size;	/**< get_size() implementation */
-	bhnd_nvram_iop_free	*free;		/**< free() implementation */
+	bhnd_nvram_iop_read		*read;		/**< read() implementation */
+	bhnd_nvram_iop_read_ptr		*read_ptr;	/**< read_ptr() implementation */
+	bhnd_nvram_iop_get_size		*get_size;	/**< get_size() implementation */
+	bhnd_nvram_iop_write		*write;		/**< write() implementation */
+	bhnd_nvram_iop_write_ptr	*write_ptr;	/**< write_ptr() implementation */
+	bhnd_nvram_iop_free		*free;		/**< free() implementation */
 };
 
 /**
@@ -73,12 +83,16 @@ struct bhnd_nvram_io {
 #define	BHND_NVRAM_IOPS_DEFN(_n)					\
 	static bhnd_nvram_iop_read	bhnd_nvram_ ## _n ## _read;	\
 	static bhnd_nvram_iop_read_ptr	bhnd_nvram_ ## _n ## _read_ptr;	\
+	static bhnd_nvram_iop_write	bhnd_nvram_ ## _n ## _write;	\
+	static bhnd_nvram_iop_write_ptr	bhnd_nvram_ ## _n ## _write_ptr;\
 	static bhnd_nvram_iop_get_size	bhnd_nvram_ ## _n ## _get_size;	\
 	static bhnd_nvram_iop_free	bhnd_nvram_ ## _n ## _free;	\
 									\
 	static struct bhnd_nvram_iops	bhnd_nvram_ ## _n ## _ops = {	\
 		.read		= bhnd_nvram_ ## _n ## _read,		\
 		.read_ptr	= bhnd_nvram_ ## _n ## _read_ptr,	\
+		.write		= bhnd_nvram_ ## _n ## _write,		\
+		.write_ptr	= bhnd_nvram_ ## _n ## _write_ptr,	\
 		.get_size	= bhnd_nvram_ ## _n ## _get_size,	\
 		.free		= bhnd_nvram_ ## _n ## _free		\
 	};

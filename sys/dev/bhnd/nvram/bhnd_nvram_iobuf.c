@@ -190,21 +190,58 @@ bhnd_nvram_iobuf_get_size(struct bhnd_nvram_io *io)
 	return (iobuf->size);
 }
 
+/* Common iobuf_(read|write)_ptr implementation */
+static int
+bhnd_nvram_iobuf_ptr(struct bhnd_nvram_iobuf *iobuf, size_t offset, void **ptr,
+    size_t *nbytes)
+{
+	/* Verify offset falls within the buffer range */
+	if (offset > iobuf->size)
+		return (ENXIO);
+
+	/* Valid I/O range, provide a pointer to the buffer */
+	*ptr = ((uint8_t *)iobuf->buf) + offset;
+	*nbytes = ummin(*nbytes, iobuf->size - offset);
+
+	return (0);
+}
+
 static int
 bhnd_nvram_iobuf_read_ptr(struct bhnd_nvram_io *io, size_t offset,
     const void **ptr, size_t *nbytes)
 {
 	struct bhnd_nvram_iobuf	*iobuf;
+	void			*ioptr;
+	int			 error;
+
+	/* Validate and return a pointer into our backing buffer */
+	iobuf = (struct bhnd_nvram_iobuf *) io;
+	if ((error = bhnd_nvram_iobuf_ptr(iobuf, offset, &ioptr, nbytes)))
+		return (error);
+
+	*ptr = ioptr;
+	return (0);
+}
+
+static int
+bhnd_nvram_iobuf_write_ptr(struct bhnd_nvram_io *io, size_t offset,
+    void **ptr, size_t nbytes)
+{
+	struct bhnd_nvram_iobuf	*iobuf;
+	size_t			 navail;
+	int			 error;
 
 	iobuf = (struct bhnd_nvram_iobuf *) io;
 
-	/* Verify offset falls within the buffer range */
-	if (offset > iobuf->size)
-		return (ENXIO);
+	/* Fetch a pointer into our backing buffer */
+	navail = nbytes;
+	if ((error = bhnd_nvram_iobuf_ptr(iobuf, offset, ptr, &navail)))
+		return (error);
 
-	/* Valid read, provide a pointer to the buffer */
-	*ptr = ((const uint8_t *)iobuf->buf) + offset;
-	*nbytes = ummin(*nbytes, iobuf->size - offset);
+	/* Ensure that at least nbytes are writable; we don't support growing
+	 * the output buffer */
+	if (navail < nbytes)
+		return (ENXIO);
 
 	return (0);
 }
@@ -213,18 +250,30 @@ static int
 bhnd_nvram_iobuf_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
     size_t *nbytes)
 {
-	struct bhnd_nvram_iobuf	*iobuf;
-	const void		*ptr;
-	int			 error;
-
-	iobuf = (struct bhnd_nvram_iobuf *) io;
+	const void	*ptr;
+	int		 error;
 
 	/* Try to fetch our direct pointer */
-	if ((error = bhnd_nvram_iobuf_read_ptr(io, offset, &ptr, nbytes)))
+	if ((error = bhnd_nvram_io_read_ptr(io, offset, &ptr, nbytes)))
 		return (error);
 
-	/* Valid read; copy out the bytes */
+	/* Valid read; copy out the requested data */
 	memcpy(buffer, ptr, *nbytes);
 	return (0);
 }
 
+static int
+bhnd_nvram_iobuf_write(struct bhnd_nvram_io *io, size_t offset,
+    void *buffer, size_t nbytes)
+{
+	void	*ptr;
+	int	 error;
+
+	/* Try to fetch our direct pointer */
+	if ((error = bhnd_nvram_io_write_ptr(io, offset, &ptr, nbytes)))
+		return (error);
+
+	/* Valid read; copy in the provided data */
+	memcpy(ptr, buffer, nbytes);
+	return (0);
+}

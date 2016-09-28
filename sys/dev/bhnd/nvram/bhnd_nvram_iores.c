@@ -165,14 +165,25 @@ bhnd_nvram_iores_read_ptr(struct bhnd_nvram_io *io, size_t offset,
 }
 
 static int
-bhnd_nvram_iores_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
+bhnd_nvram_iores_write_ptr(struct bhnd_nvram_io *io, size_t offset,
+    void **ptr, size_t nbytes)
+{
+	/* unsupported */
+	return (ENODEV);
+}
+
+/**
+ * Validate @p offset and @p nbytes:
+ * 
+ * - Verify that @p offset is mapped by the backing resource.
+ * - If less than @p nbytes are available at @p offset, write the actual number
+ *   of bytes available to @p nbytes.
+ * - Verify that @p offset + @p nbytes are correctly aligned.
+ */
+static int
+bhnd_nvram_iores_validate_req(struct bhnd_nvram_iores *iores, size_t offset,
     size_t *nbytes)
 {
-	struct bhnd_nvram_iores	*iores;
-	bus_size_t		 r_offset;
-
-	iores = (struct bhnd_nvram_iores *)io;
-
 	/* Verify offset falls within the resource range */
 	if (offset > iores->size)
 		return (ENXIO);
@@ -187,14 +198,33 @@ bhnd_nvram_iores_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
 	if (offset % iores->bus_width != 0)
 		return (EFAULT);
 
-	/* Limit nbytes to available range and perform alignment */
-	if (*nbytes != 0 && *nbytes < iores->bus_width) {
-		/* alignment would produce a zero-length read */
-		return (EFAULT);
-	}
-
+	/* Limit nbytes to available range and verify size alignment */
 	*nbytes = ummin(*nbytes, iores->size - offset);
-	*nbytes = *nbytes - (*nbytes % iores->bus_width);
+	if (*nbytes < iores->bus_width && *nbytes % iores->bus_width != 0)
+		return (EFAULT);
+
+	return (0);
+}
+
+
+static int
+bhnd_nvram_iores_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
+    size_t *nbytes)
+{
+	struct bhnd_nvram_iores	*iores;
+	bus_size_t		 r_offset;
+	int			 error;
+
+	iores = (struct bhnd_nvram_iores *)io;
+
+	/* Validate the request and determine the actual number of readable
+	 * bytes */
+	if ((error = bhnd_nvram_iores_validate_req(iores, offset, nbytes)))
+		return (error);
+
+	/* Handle EOF */
+	if (*nbytes == 0)
+		return (0);
 
 	/* Determine actual resource offset and perform the read */
 	r_offset = iores->offset + offset;
@@ -218,3 +248,45 @@ bhnd_nvram_iores_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
 	return (0);
 }
 
+static int
+bhnd_nvram_iores_write(struct bhnd_nvram_io *io, size_t offset,
+    void *buffer, size_t nbytes)
+{
+	struct bhnd_nvram_iores	*iores;
+	size_t			 navail;
+	bus_size_t		 r_offset;
+	int			 error;
+
+	iores = (struct bhnd_nvram_iores *)io;
+
+	/* Validate the request and determine the actual number of writable
+	 * bytes */
+	navail = nbytes;
+	if ((error = bhnd_nvram_iores_validate_req(iores, offset, &navail)))
+		return (error);
+
+	/* At least nbytes must be writable */
+	if (navail < nbytes)
+		return (ENXIO);
+
+	/* Determine actual resource offset and perform the write */
+	r_offset = iores->offset + offset;
+	switch (iores->bus_width) {
+	case 1:
+		bhnd_bus_write_region_stream_1(iores->res, r_offset, buffer,
+		    nbytes);
+		break;
+	case 2:
+		bhnd_bus_write_region_stream_2(iores->res, r_offset, buffer,
+		    nbytes / 2);
+		break;
+	case 4:
+		bhnd_bus_write_region_stream_4(iores->res, r_offset, buffer,
+		    nbytes / 4);
+		break;
+	default:
+		panic("unreachable!");
+	}
+
+	return (0);
+}

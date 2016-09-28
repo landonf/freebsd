@@ -57,12 +57,11 @@ __FBSDID("$FreeBSD$");
  * @p offset + @p nbytes exceeds the size returned by bhnd_nvram_io_get_size().
  * 
  * @retval 0 success
- * @retval ENODEV if @p io does not support direct access to its backing read
- * buffer.
+ * @retval EIO if an input error occured reading @p io.
  * @retval ENXIO if a request for @p offset exceeds the size of @p io.
  * @retval EFAULT if @p io requires I/O request alignment and @p offset is
  * misaligned.
- * @retval EFAULT if @p io requires I/O request alignment and @p size is
+ * @retval EFAULT if @p io requires I/O request alignment and @p nbytes is
  * misaligned and cannot be rounded down to an aligned non-zero value.
  */
 int
@@ -75,7 +74,10 @@ bhnd_nvram_io_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
 
 /**
  * Attempt to fetch a pointer to @p io's internal read buffer, if
- * supported.
+ * supported by @p io.
+ * 
+ * The returned pointer may be invalidated by any future operations performed
+ * on @p io.
  * 
  * @param io NVRAM I/O context.
  * @param offset The offset within @p io for which to return a buffer pointer.
@@ -89,19 +91,72 @@ bhnd_nvram_io_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
  * @p offset + @p nbytes exceeds the size returned by bhnd_nvram_io_get_size().
  * 
  * @retval 0 success
+ * @retval EIO if an input error occured reading @p io.
  * @retval ENODEV if @p io does not support direct access to its backing read 
  * buffer.
  * @retval ENXIO if a request for @p offset exceeds the size of @p io.
- * @retval EFAULT if @p io requires I/O request alignment and @p offset is 
- * misaligned.
- * @retval EFAULT if @p io requires I/O request alignment and @p size is 
- * misaligned and cannot be rounded down to an aligned non-zero value.
+ * @retval EFAULT if @p io requires I/O request alignment and @p offset or
+ * @p nbytes are misaligned.
  */
 int
 bhnd_nvram_io_read_ptr(struct bhnd_nvram_io *io, size_t offset,
     const void **ptr, size_t *nbytes)
 {
 	return (io->iops->read_ptr(io, offset, ptr, nbytes));
+}
+
+/** 
+ * Write @p nbytes to @p io at @p offset.
+ * 
+ * @param io NVRAM I/O context.
+ * @param offset The offset within @p io at which to perform the write.
+ * @param buffer Data to be written to @p io.
+ * @param nbytes The number of bytes to be written from @p buffer.
+ * 
+ * @retval 0 success
+ * @retval EIO if an output error occurs writing to @p io.
+ * @retval ENODEV if @p io does not support writing.
+ * @retval ENXIO if @p io does not support writes beyond the existing
+ * end-of-file, and a write at @p offset would exceed the size of the @p io
+ * backing data store.
+ * @retval EFAULT if @p io requires I/O request alignment and @p offset or
+ * @p nbytes are misaligned.
+ */
+int
+bhnd_nvram_io_write(struct bhnd_nvram_io *io, size_t offset, void *buffer,
+    size_t nbytes)
+{
+	return (io->iops->write(io, offset, buffer, nbytes));
+}
+
+/**
+ * Attempt to fetch a writable pointer to @p io's internal write buffer, if
+ * supported by @p io.
+ *
+ * The returned pointer may be invalidated by any future operations performed
+ * on @p io.
+ * 
+ * @param io NVRAM I/O context.
+ * @param offset The offset within @p io for which to return a buffer pointer.
+ * @param[out] ptr On success, will be initialized with a pointer to @p io's
+ * internal buffer at which up to @p nbytes may be written.
+ * @param nbytes The required number of writable bytes.
+ * 
+ * @retval 0 success
+ * @retval EIO if an output error occurs preparing @p io's write buffer.
+ * @retval ENODEV if @p io does not support direct access to its backing write
+ * buffer.
+ * @retval ENXIO if @p io does not support writes beyond the existing
+ * end-of-file, and a write at @p offset would exceed the size of the @p io
+ * backing data store.
+ * @retval EFAULT if @p io requires I/O request alignment and @p offset or
+ * @p nbytes are misaligned.
+ */
+int
+bhnd_nvram_io_write_ptr(struct bhnd_nvram_io *io, size_t offset, void **ptr,
+    size_t nbytes)
+{
+	return (io->iops->write_ptr(io, offset, ptr, nbytes));
 }
 
 /**
