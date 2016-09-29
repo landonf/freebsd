@@ -58,7 +58,7 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_nvram_iovar.h"
 
-#include "bhnd_nvramvar.h"
+#include "bhnd_nvram_cfevar.h"
 
 /**
  * CFE-backed NVRAM I/O context.
@@ -82,8 +82,8 @@ BHND_NVRAM_IOPS_DEFN(iocfe)
 static int			 bhnd_nvram_iocfe_new(struct bhnd_nvram_io **io,
 				     char *dname);
 
-static struct bhnd_nvram_iocfe	*bhnd_nvram_find_cfedev(device_t dev,
-				     bhnd_nvram_format *fmt);
+static struct bhnd_nvram_io	*bhnd_nvram_find_cfedev(device_t dev,
+				     char **dname, bhnd_nvram_format *fmt);
 
 /** Known CFE NVRAM device names, in probe order. */
 static char *nvram_cfe_devs[] = {
@@ -103,31 +103,37 @@ bhnd_nvram_format nvram_cfe_fmts[] = {
 static int
 bhnd_nvram_cfe_probe(device_t dev)
 {
-	struct bhnd_nvram_iocfe	*iocfe;
+	struct bhnd_nvram_io	*io;
+	const char		*fmt_desc;
+	char			*dname;
+	char			*desc;
 	bhnd_nvram_format	 fmt;
-	int			 error;
-
-	/* Defer to default driver implementation */
-	if ((error = bhnd_nvram_probe(dev)) > 0)
-		return (error);
 
 	/* Locate a usable CFE device */
-	iocfe = bhnd_nvram_find_cfedev(dev, &fmt);
-	if (iocfe == NULL)
+	io = bhnd_nvram_find_cfedev(dev, &dname, &fmt);
+	if (io == NULL)
 		return (ENXIO);
-	bhnd_nvram_io_free(&iocfe->io);
+	bhnd_nvram_io_free(io);
 
 	switch (fmt) {
 	case BHND_NVRAM_FMT_BCM:
-		device_set_desc(dev, "Broadcom NVRAM");
+		fmt_desc = "Broadcom";
 		break;
 	case BHND_NVRAM_FMT_TLV:
-		device_set_desc(dev, "Broadcom WGT634U NVRAM");
+		fmt_desc = "Broadcom WGT634U";
 		break;
 	default:
 		device_printf(dev, "unknown NVRAM format: %d\n", fmt);
 		return (ENXIO);
 	}
+
+	asprintf(&desc, M_BHND_NVRAM, "%s CFE %s", fmt_desc, dname);                                                                                                                                              
+	if (desc != NULL) {                                                                                                                   
+		device_set_desc_copy(dev, desc);
+		free(desc, M_BHND_NVRAM);
+        } else {                                                                                                                              
+                device_set_desc(dev, fmt_desc);                                                                                               
+        }      
 
 	/* Refuse wildcard attachments */
 	return (BUS_PROBE_NOWILDCARD);
@@ -137,25 +143,87 @@ bhnd_nvram_cfe_probe(device_t dev)
 static int
 bhnd_nvram_cfe_attach(device_t dev)
 {
-	struct bhnd_nvram_iocfe	*iocfe;
-	bhnd_nvram_format	 fmt;
-	int			 error;
+	struct bhnd_nvram_cfe_softc	*sc;
+	struct bhnd_nvram_io		*io;
+	char				*dname;
+	bhnd_nvram_format		 fmt;
+	int				 error;
+
+	sc = device_get_softc(dev);
+	sc->dev = dev;
 
 	/* Locate NVRAM device via CFE */
-	iocfe = bhnd_nvram_find_cfedev(dev, &fmt);
-	if (iocfe == NULL) {
+	io = bhnd_nvram_find_cfedev(dev, &dname, &fmt);
+	if (io == NULL) {
 		device_printf(dev, "CFE NVRAM device not found\n");
 		return (ENXIO);
 	}
 
-	device_printf(dev, "CFE %s (%#zx+%#zx)\n", iocfe->dname, iocfe->offset,
-	    iocfe->size);
+	/* Initialize NVRAM parser and free the I/O context */
+	error = bhnd_nvram_parser_init(&sc->nvram, dev, io, fmt);
+	bhnd_nvram_io_free(io);
+	if (error)
+		return (error);
 
-	/* Delegate to default driver implementation */
-	error = bhnd_nvram_attach(dev, &iocfe->io, fmt);
+	/* Initialize mutex */
+	BHND_NVRAM_CFE_LOCK_INIT(sc);
 
-	if (iocfe != NULL)
-		bhnd_nvram_io_free(&iocfe->io);
+	return (error);
+}
+
+static int
+bhnd_nvram_cfe_resume(device_t dev)
+{
+	return (0);
+}
+
+static int
+bhnd_nvram_cfe_suspend(device_t dev)
+{
+	return (0);
+}
+
+static int
+bhnd_nvram_cfe_detach(device_t dev)
+{
+	struct bhnd_nvram_cfe_softc *sc;
+
+	sc = device_get_softc(dev);
+
+	bhnd_nvram_parser_fini(&sc->nvram);
+	BHND_NVRAM_CFE_LOCK_DESTROY(sc);
+
+	return (0);
+}
+
+static int
+bhnd_nvram_cfe_getvar(device_t dev, const char *name, void *buf, size_t *len,
+    bhnd_nvram_type type)
+{
+	struct bhnd_nvram_cfe_softc	*sc;
+	int				 error;
+
+	sc = device_get_softc(dev);
+
+	BHND_NVRAM_CFE_LOCK(sc);
+	error = bhnd_nvram_parser_getvar(&sc->nvram, name, buf, len, type);
+	BHND_NVRAM_CFE_UNLOCK(sc);
+
+	return (error);
+}
+
+static int
+bhnd_nvram_cfe_setvar(device_t dev, const char *name, const void *buf,
+    size_t len, bhnd_nvram_type type)
+{
+	struct bhnd_nvram_cfe_softc	*sc;
+	int				 error;
+
+	sc = device_get_softc(dev);
+
+	BHND_NVRAM_CFE_LOCK(sc);
+	error = bhnd_nvram_parser_setvar(&sc->nvram, name, buf, len, type);
+	BHND_NVRAM_CFE_UNLOCK(sc);
 
 	return (error);
 }
@@ -164,18 +232,18 @@ bhnd_nvram_cfe_attach(device_t dev)
  * Find, open, identify, and return an I/O context mapping our
  * CFE NVRAM device.
  * 
- * @param	dev	bhnd_nvram_cfe device.
- * @param[out]	fmt	On success, the identified NVRAM format.
+ * @param	dev		bhnd_nvram_cfe device.
+ * @param[out]	dname		On success, the CFE device name.
+ * @param[out]	fmt		On success, the identified NVRAM format.
  *
  * @retval	non-NULL success. the caller inherits ownership of the returned
  * NVRAM I/O context.
  * @retval	NULL if no usable CFE NVRAM device could be found.
  */
-static struct bhnd_nvram_iocfe *
-bhnd_nvram_find_cfedev(device_t dev, bhnd_nvram_format *fmt)
+static struct bhnd_nvram_io *
+bhnd_nvram_find_cfedev(device_t dev, char **dname, bhnd_nvram_format *fmt)
 {
 	struct bhnd_nvram_io	*io;
-	char			*dname;
 	int			 devinfo;
 	int			 error;
 
@@ -183,26 +251,28 @@ bhnd_nvram_find_cfedev(device_t dev, bhnd_nvram_format *fmt)
 		*fmt = nvram_cfe_fmts[i];
 
 		for (u_int j = 0; j < nitems(nvram_cfe_devs); j++) {
-			dname = nvram_cfe_devs[j];
+			*dname = nvram_cfe_devs[j];
 
 			/* Does the device exist? */
-			if ((devinfo = cfe_getdevinfo(dname)) < 0) {
+			if ((devinfo = cfe_getdevinfo(*dname)) < 0) {
 				if (devinfo != CFE_ERR_DEVNOTFOUND) {
 					device_printf(dev, "cfe_getdevinfo(%s) "
-					    "failed: %d\n", dname, devinfo);
+					    "failed: %d\n", *dname, devinfo);
 				}
 
 				continue;
 			}
 
 			/* Open for reading */
-			if ((error = bhnd_nvram_iocfe_new(&io, dname)))
+			if ((error = bhnd_nvram_iocfe_new(&io, *dname)))
 				continue;
 
 			/* Identify */
 			error = bhnd_nvram_parser_identify(io, *fmt, NULL);
-			if (error == 0)
-				return ((struct bhnd_nvram_iocfe *)io);
+			if (error == 0) {
+				/* Found */
+				return (io);
+			}
 
 			/* Keep searching */
 			bhnd_nvram_io_free(io);
@@ -455,11 +525,18 @@ static device_method_t bhnd_nvram_cfe_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,		bhnd_nvram_cfe_probe),
 	DEVMETHOD(device_attach,	bhnd_nvram_cfe_attach),
+	DEVMETHOD(device_resume,	bhnd_nvram_cfe_resume),
+	DEVMETHOD(device_suspend,	bhnd_nvram_cfe_suspend),
+	DEVMETHOD(device_detach,	bhnd_nvram_cfe_detach),
+
+	/* NVRAM interface */
+	DEVMETHOD(bhnd_nvram_getvar,	bhnd_nvram_cfe_getvar),
+	DEVMETHOD(bhnd_nvram_setvar,	bhnd_nvram_cfe_setvar),
 
 	DEVMETHOD_END
 };
 
-DEFINE_CLASS_1(bhnd_nvram, bhnd_nvram_cfe, bhnd_nvram_cfe_methods, 
-    sizeof(struct bhnd_nvram_softc), bhnd_nvram_driver);
+DEFINE_CLASS_0(bhnd_nvram, bhnd_nvram_cfe, bhnd_nvram_cfe_methods,
+    sizeof(struct bhnd_nvram_cfe_softc));
 EARLY_DRIVER_MODULE(bhnd_nvram_cfe, nexus, bhnd_nvram_cfe,
     bhnd_nvram_devclass, NULL, NULL, BUS_PASS_BUS + BUS_PASS_ORDER_EARLY);

@@ -29,43 +29,31 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_NVRAM_BHND_NVRAMVAR_H_
-#define _BHND_NVRAM_BHND_NVRAMVAR_H_
+#ifndef _BHND_NVRAM_BHND_NVRAM_CFEVAR_H_
+#define _BHND_NVRAM_BHND_NVRAM_CFEVAR_H_
 
 #include <sys/param.h>
 #include <sys/bus.h>
 
 #include "bhnd_nvram.h"
-#include "bhnd_nvram_io.h"
-
 #include "bhnd_nvram_parser.h"
 
-DECLARE_CLASS(bhnd_nvram_driver);
-
-int	bhnd_nvram_probe(device_t dev);
-int	bhnd_nvram_attach(device_t dev, struct bhnd_nvram_io *io,
-	    bhnd_nvram_format fmt);
-int	bhnd_nvram_resume(device_t dev);
-int	bhnd_nvram_suspend(device_t dev);
-int	bhnd_nvram_detach(device_t dev);
-
 /**
- * bhnd_nvram driver instance state. Must be first member of all subclass
+ * bhnd_nvram_cfe driver instance state. Must be first member of all subclass
  * softc structures.
  */
-struct bhnd_nvram_softc {
+struct bhnd_nvram_cfe_softc {
 	device_t		 	dev;
 	struct mtx		 	mtx;	/**< nvram mutex */
 	struct bhnd_nvram		nvram;	/**< nvram shadow */
 };
 
-
-#define	BHND_NVRAM_LOCK_INIT(sc) \
+#define	BHND_NVRAM_CFE_LOCK_INIT(sc) \
 	mtx_init(&(sc)->mtx, device_get_nameunit((sc)->dev), \
-	    "bhnd_nvram lock", MTX_DEF)
-#define	BHND_NVRAM_LOCK(sc)			mtx_lock(&(sc)->mtx)
-#define	BHND_NVRAM_UNLOCK(sc)			mtx_unlock(&(sc)->mtx)
-#define	BHND_NVRAM_LOCK_ASSERT(sc, what)	mtx_assert(&(sc)->mtx, what)
-#define	BHND_NVRAM_LOCK_DESTROY(sc)		mtx_destroy(&(sc)->mtx)
+	    "bhnd_nvram_cfe lock", MTX_DEF)
+#define	BHND_NVRAM_CFE_LOCK(sc)			mtx_lock(&(sc)->mtx)
+#define	BHND_NVRAM_CFE_UNLOCK(sc)		mtx_unlock(&(sc)->mtx)
+#define	BHND_NVRAM_CFE_LOCK_ASSERT(sc, what)	mtx_assert(&(sc)->mtx, what)
+#define	BHND_NVRAM_CFE_LOCK_DESTROY(sc)		mtx_destroy(&(sc)->mtx)
 
-#endif /* _BHND_NVRAM_BHND_NVRAMVAR_H_ */
+#endif /* _BHND_NVRAM_BHND_NVRAM_CFEVAR_H_ */
