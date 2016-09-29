@@ -54,11 +54,11 @@ __FBSDID("$FreeBSD$");
 #include <dev/cfe/cfe_error.h>
 #include <dev/cfe/cfe_ioctl.h>
 
+#include <dev/bhnd/nvram/bhnd_nvram_iovar.h>
+
 #include "bhnd_nvram_if.h"
 
-#include "bhnd_nvram_iovar.h"
-
-#include "bhnd_nvram_cfevar.h"
+#include "bcm_nvram_cfevar.h"
 
 /**
  * CFE-backed NVRAM I/O context.

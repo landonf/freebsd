@@ -29,19 +29,16 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_NVRAM_BHND_NVRAM_CFEVAR_H_
-#define _BHND_NVRAM_BHND_NVRAM_CFEVAR_H_
+#ifndef	_MIPS_BROADCOM_BCM_NVRAM_CFE_H_
+#define	_MIPS_BROADCOM_BCM_NVRAM_CFE_H_
 
 #include <sys/param.h>
 #include <sys/bus.h>
 
-#include "bhnd_nvram.h"
-#include "bhnd_nvram_parser.h"
+#include <dev/bhnd/nvram/bhnd_nvram.h>
+#include <dev/bhnd/nvram/bhnd_nvram_parser.h>
 
-/**
- * bhnd_nvram_cfe driver instance state. Must be first member of all subclass
- * softc structures.
- */
+/** bhnd_nvram_cfe driver instance state. */
 struct bhnd_nvram_cfe_softc {
 	device_t		 	dev;
 	struct mtx		 	mtx;	/**< nvram mutex */
@@ -56,4 +53,4 @@ struct bhnd_nvram_cfe_softc {
 #define	BHND_NVRAM_CFE_LOCK_ASSERT(sc, what)	mtx_assert(&(sc)->mtx, what)
 #define	BHND_NVRAM_CFE_LOCK_DESTROY(sc)		mtx_destroy(&(sc)->mtx)
 
-#endif /* _BHND_NVRAM_BHND_NVRAM_CFEVAR_H_ */
+#endif /* _MIPS_BROADCOM_BCM_NVRAM_CFE_H_ */
