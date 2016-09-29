@@ -52,14 +52,25 @@ typedef void (bhnd_nvram_codec_op_free)(struct bhnd_nvram_codec *nv);
 typedef const char *(bhnd_nvram_codec_op_next)(struct bhnd_nvram_codec *nv,
     bhnd_nvram_type *type, size_t *len, void **cookiep);
 
+/** @see bhnd_nvram_codec_getvar() */
+typedef int (bhnd_nvram_codec_op_getvar)(struct bhnd_nvram_codec *nv,
+    void *cookiep, void *buf, size_t *len, bhnd_nvram_type type);
+
+/** @see bhnd_nvram_codec_getvar_ptr() */
+typedef const void *(bhnd_nvram_codec_op_getvar_ptr)(
+    struct bhnd_nvram_codec *nv, void *cookiep, size_t *len,
+    bhnd_nvram_type *type);
+
 /**
  * NVRAM parser class.
  */
 struct bhnd_nvram_codec_class {
 	bhnd_nvram_codec_op_probe	*op_probe;
-	bhnd_nvram_codec_op_new	*op_new;
+	bhnd_nvram_codec_op_new		*op_new;
 	bhnd_nvram_codec_op_free	*op_free;
 	bhnd_nvram_codec_op_next	*op_next;
+	bhnd_nvram_codec_op_getvar	*op_getvar;
+	bhnd_nvram_codec_op_getvar_ptr	*op_getvar_ptr;
 };
 
 /**
@@ -81,10 +92,14 @@ int	bhnd_nvram_parse_env(const char *env, size_t env_len, char delim,
 	    bhnd_nvram_ ## _n ## _probe;				\
 	static bhnd_nvram_codec_op_new					\
 	    bhnd_nvram_ ## _n ## _new;					\
-	static bhnd_nvram_codec_op_free				\
+	static bhnd_nvram_codec_op_free					\
 	    bhnd_nvram_ ## _n ## _free;					\
-	static bhnd_nvram_codec_op_next				\
+	static bhnd_nvram_codec_op_next					\
 	    bhnd_nvram_ ## _n ## _next;					\
+	static bhnd_nvram_codec_op_getvar				\
+	    bhnd_nvram_ ## _n ## _getvar;				\
+	static bhnd_nvram_codec_op_getvar_ptr				\
+	    bhnd_nvram_ ## _n ## _getvar_ptr;				\
 									\
 	struct bhnd_nvram_codec_class bhnd_nvram_ ## _n ## _class =	\
 	{								\
@@ -92,6 +107,8 @@ int	bhnd_nvram_parse_env(const char *env, size_t env_len, char delim,
 		.op_new		= bhnd_nvram_ ## _n ## _new,		\
 		.op_free	= bhnd_nvram_ ## _n ## _free,		\
 		.op_next	= bhnd_nvram_ ## _n ## _next,		\
+		.op_getvar	= bhnd_nvram_ ## _n ## _getvar,		\
+		.op_getvar_ptr	= bhnd_nvram_ ## _n ## _getvar_ptr,	\
 	};
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_CODEC_VAR_H_ */

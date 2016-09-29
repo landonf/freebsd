@@ -314,6 +314,22 @@ bhnd_nvram_btxt_next(struct bhnd_nvram_codec *nvc, bhnd_nvram_type *type,
 	return (name);
 }
 
+static int
+bhnd_nvram_btxt_getvar(struct bhnd_nvram_codec *nv, void *cookiep, void *buf,
+    size_t *len, bhnd_nvram_type type)
+{
+	// TODO
+	return (ENXIO);
+}
+
+const void *
+bhnd_nvram_btxt_getvar_ptr(struct bhnd_nvram_codec *nv, void *cookiep,
+    size_t *len, bhnd_nvram_type *type)
+{
+	// TODO
+	return (NULL);
+}
+
 /* Determine the entry length and env 'key=value' string length of the entry
  * at @p offset */
 static int

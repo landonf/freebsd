@@ -62,4 +62,11 @@ void		 bhnd_nvram_codec_free(struct bhnd_nvram_codec *nv);
 const char	*bhnd_nvram_codec_next(struct bhnd_nvram_codec *nv,
 		     bhnd_nvram_type *type, size_t *len, void **cookiep);
 
+int		 bhnd_nvram_codec_getvar(struct bhnd_nvram_codec *nvc,
+		     void *cookiep, void *buf, size_t *len,
+		     bhnd_nvram_type type);
+
+const void	*bhnd_nvram_codec_getvar_ptr(struct bhnd_nvram_codec *nvc,
+		     void *cookiep, size_t *len, bhnd_nvram_type *type);
+
 #endif /* _BHND_NVRAM_BHND_NVRAM_CODEC_H_ */

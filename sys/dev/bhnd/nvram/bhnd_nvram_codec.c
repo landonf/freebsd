@@ -95,11 +95,11 @@ bhnd_nvram_codec_free(struct bhnd_nvram_codec *nv)
 
 /**
  * Iterate over @p nv, returning the names, types, and lengths of subsequent
- * entries.
+ * variables.
  * 
  * @param nv The NVRAM parser to be iterated.
- * @param[out] type The entry value type.
- * @param[out] len The entry value length.
+ * @param[out] type The variable's value type.
+ * @param[out] len The variable's value length.
  * @param[in,out] cookiep A pointer to a cookiep value previously returned by
  * bhnd_nvram_codec_next(), or a NULL value to begin iteration.
  * 
@@ -111,4 +111,54 @@ bhnd_nvram_codec_next(struct bhnd_nvram_codec *nv, bhnd_nvram_type *type,
     size_t *len, void **cookiep)
 {
 	return (nv->cls->op_next(nv, type, len, cookiep));
+}
+
+/**
+ * Read a variable and decode as @p type.
+ *
+ * @param		nv	The NVRAM parser.
+ * @param		cookie	An NVRAM variable cookie previously returned
+ *				via bhnd_nvram_codec_next().
+ * @param[out]		buf	On success, the requested value will be written
+ *				to this buffer. This argment may be NULL if
+ *				the value is not desired.
+ * @param[in,out]	len	The capacity of @p buf. On success, will be set
+ *				to the actual size of the requested value.
+ * @param		type	The data type to be written to @p buf.
+ *
+ * @retval 0		success
+ * @retval ENOMEM	If @p buf is non-NULL and a buffer of @p len is too
+ *			small to hold the requested value.
+ * @retval EFTYPE	If the variable data cannot be coerced to @p type.
+ * @retval ERANGE	If value coercion would overflow @p type.
+ */
+int
+bhnd_nvram_codec_getvar(struct bhnd_nvram_codec *nv, void *cookiep, void *buf,
+    size_t *len, bhnd_nvram_type type)
+{
+	return (nv->cls->op_getvar(nv, cookiep, buf, len, type));
+}
+
+/**
+ * If available and supported by the NVRAM parser, return a reference
+ * to the internal buffer containing an entry's variable data,
+ * 
+ * Note that string values may not be NUL terminated.
+ *
+ * @param		nv	The NVRAM parser.
+ * @param		cookie	An NVRAM variable cookie previously returned
+ *				via bhnd_nvram_codec_next().
+ * @param[out]		len	On success, will be set to the actual size of
+ *				the requested value.
+ * @param[out]		type	The data type of the entry data.
+ *
+ * @retval non-NULL	success
+ * @retval NULL		if direct data access is unsupported by @p nv, or
+ *			unavailable for @p cookiep.
+ */
+const void *
+bhnd_nvram_codec_getvar_ptr(struct bhnd_nvram_codec *nv, void *cookiep,
+    size_t *len, bhnd_nvram_type *type)
+{
+	return (nv->cls->op_getvar_ptr(nv, cookiep, len, type));
 }

@@ -129,3 +129,19 @@ bhnd_nvram_tlv_next(struct bhnd_nvram_codec *nvc, bhnd_nvram_type *type,
 	// TODO
 	return (NULL);
 }
+
+static int
+bhnd_nvram_tlv_getvar(struct bhnd_nvram_codec *nv, void *cookiep, void *buf,
+    size_t *len, bhnd_nvram_type type)
+{
+	// TODO
+	return (ENXIO);
+}
+
+const void *
+bhnd_nvram_tlv_getvar_ptr(struct bhnd_nvram_codec *nv, void *cookiep,
+    size_t *len, bhnd_nvram_type *type)
+{
+	// TODO
+	return (NULL);
+}
