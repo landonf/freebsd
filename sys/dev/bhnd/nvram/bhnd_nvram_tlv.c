@@ -124,7 +124,8 @@ bhnd_nvram_tlv_free(struct bhnd_nvram_parser *nv)
 }
 
 static const char *
-bhnd_nvram_tlv_next(struct bhnd_nvram_parser *nv, void **cookiep)
+bhnd_nvram_tlv_next(struct bhnd_nvram_parser *nv, bhnd_nvram_type *type,
+    size_t *len, void **cookiep)
 {
 	// TODO
 	return (NULL);

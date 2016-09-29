@@ -53,10 +53,14 @@ __FBSDID("$FreeBSD$");
  * @param env The string to be parsed.
  * @param env_len The length of @p envp.
  * @param delim The delimiter used in @p envp. This will generally be '='.
- * @param[out] name On success, a pointer to the name string.
- * @param[out] name_len On success, the length of the name substring.
- * @param[out] value On success, a pointer to the value substring.
- * @param[out] value_len On success, the length of the value substring.
+ * @param[out] name If not NULL, a pointer to the name string. This argument
+ * may be NULL.
+ * @param[out] name_len On success, the length of the name substring. This
+ * argument may be NULL.
+ * @param[out] value On success, a pointer to the value substring. This argument
+ * may be NULL.
+ * @param[out] value_len On success, the length of the value substring. This
+ * argument may be NULL.
  * 
  * @retval 0 success
  * @retval EINVAL if parsing @p envp fails.
@@ -74,15 +78,20 @@ bhnd_nvram_parse_env(const char *env, size_t env_len, char delim,
 		return (EINVAL);
 	}
 
-	*name = env;
-	*name_len = p - env;
+	/* Name */
+	if (name != NULL)
+		*name = env;
+	if (name_len != NULL)
+		*name_len = p - env;
 
 	/* Skip delim */
 	p++;
 
-	/* Vaue */
-	*value = p;
-	*value_len = env_len - (p - env);
+	/* Value */
+	if (value != NULL)
+		*value = p;
+	if (value_len != NULL)
+		*value_len = env_len - (p - env);
 
 	return (0);
 }

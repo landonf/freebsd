@@ -231,11 +231,14 @@ bhnd_nvram_btxt_free(struct bhnd_nvram_parser *nv)
 }
 
 static const char *
-bhnd_nvram_btxt_next(struct bhnd_nvram_parser *nv, void **cookiep)
+bhnd_nvram_btxt_next(struct bhnd_nvram_parser *nv, bhnd_nvram_type *type,
+    size_t *len, void **cookiep)
 {
 	struct bhnd_nvram_btxt	*btxt;
+	const char		*name;
 	const void		*nptr;
 	size_t			 io_offset, io_size;
+	size_t			 line_len, env_len, value_len;
 	size_t			 nbytes;
 	int			 error;
 
@@ -253,19 +256,18 @@ bhnd_nvram_btxt_next(struct bhnd_nvram_parser *nv, void **cookiep)
 	if (io_offset == io_size)
 		return (NULL);
 
-	/* Seek past the current entry */
+	/* Seek to the next entry (if any) */
 	if ((error = bhnd_nvram_btxt_seek_eol(btxt->data, &io_offset))) {
 		BTXT_NVLOG("unexpected error in seek_eol(): %d\n", error);
 		return (NULL);
 	}
 
-	/* Seek to the next entry (if any) */
 	if ((error = bhnd_nvram_btxt_seek_next(btxt->data, &io_offset))) {
 		BTXT_NVLOG("unexpected error in seek_next(): %d\n", error);
 		return (NULL);
 	}
 
-	/* Provide the new offset */
+	/* Provide the new cookie for this offset */
 	if (io_offset > UINTPTR_MAX) {
 		BTXT_NVLOG("io_offset > UINPTR_MAX!\n");
 		return (NULL);
@@ -277,15 +279,39 @@ bhnd_nvram_btxt_next(struct bhnd_nvram_parser *nv, void **cookiep)
 	if (io_offset == io_size)
 		return (NULL);
 
-	/* Return a pointer to the name string */
-	nbytes = 1;
+	/* Determine the entry and line length */
+	error = bhnd_nvram_btxt_entry_len(btxt->data, io_offset, &line_len,
+	    &env_len);
+	if (error) {
+		BTXT_NVLOG("unexpected error in entry_len(): %d\n", error);
+		return (NULL);
+	}
+
+	/* Parse the key\0value string */
+	nbytes = env_len;
 	error = bhnd_nvram_io_read_ptr(btxt->data, io_offset, &nptr, &nbytes);
 	if (error) {
 		BTXT_NVLOG("unexpected error in read_ptr(): %d\n", error);
 		return (NULL);
 	}
 
-	return (nptr);
+	/* Fetch the name pointer and value length */
+	error = bhnd_nvram_parse_env(nptr, env_len, '\0', &name, NULL, NULL,
+	    &value_len);
+	if (error) {
+		BTXT_NVLOG("unexpected error in parse_env(): %d\n", error);
+		return (NULL);
+	}
+
+	/* Type is always CSTR */
+	*type = BHND_NVRAM_TYPE_CSTR;
+
+	/* We don't NUL-terminate value strings in our backing buffer; include
+	 * space for NUL in the returned length. */
+	*len = value_len + 1;
+
+	/* Return the name pointer */
+	return (name);
 }
 
 /* Determine the entry length and env 'key=value' string length of the entry

@@ -95,17 +95,21 @@ bhnd_nvram_parser_free(struct bhnd_nvram_parser *nv)
 }
 
 /**
- * Iterate over @p nv, returning the names of subsequent entries.
+ * Iterate over @p nv, returning the names, types, and lengths of subsequent
+ * entries.
  * 
  * @param nv The NVRAM parser to be iterated.
- * @param cookiep A pointer to a cookiep value previously returned by
+ * @param[out] type The entry value type.
+ * @param[out] len The entry value length.
+ * @param[in,out] cookiep A pointer to a cookiep value previously returned by
  * bhnd_nvram_parser_next(), or a NULL value to begin iteration.
  * 
  * @return Returns the next variable name, or NULL if there are no more
  * variables defined in @p nv.
  */
 const char *
-bhnd_nvram_parser_next(struct bhnd_nvram_parser *nv, void **cookiep)
+bhnd_nvram_parser_next(struct bhnd_nvram_parser *nv, bhnd_nvram_type *type,
+    size_t *len, void **cookiep)
 {
-	return (nv->cls->op_next(nv, cookiep));
+	return (nv->cls->op_next(nv, type, len, cookiep));
 }

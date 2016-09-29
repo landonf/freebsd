@@ -34,6 +34,7 @@
 
 #include <sys/types.h>
 
+#include "bhnd_nvram.h"
 #include "bhnd_nvram_io.h"
 
 /* NVRAM parser class */
@@ -59,6 +60,6 @@ int		 bhnd_nvram_parser_new(bhnd_nvram_parser_class_t *cls,
 void		 bhnd_nvram_parser_free(struct bhnd_nvram_parser *nv);
 
 const char	*bhnd_nvram_parser_next(struct bhnd_nvram_parser *nv,
-		     void **cookiep);
+		     bhnd_nvram_type *type, size_t *len, void **cookiep);
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_PARSER_H_ */

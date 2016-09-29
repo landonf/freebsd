@@ -50,7 +50,7 @@ typedef void (bhnd_nvram_parser_op_free)(struct bhnd_nvram_parser *nv);
 
 /** @see bhnd_nvram_parser_next() */
 typedef const char *(bhnd_nvram_parser_op_next)(struct bhnd_nvram_parser *nv,
-    void **cookiep);
+    bhnd_nvram_type *type, size_t *len, void **cookiep);
 
 /**
  * NVRAM parser class.
