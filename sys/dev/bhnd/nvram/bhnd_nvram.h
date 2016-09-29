@@ -115,6 +115,7 @@ typedef enum {
 #undef	BHND_NVRAM_TYPE_FLAGS_MASK
 #undef	BHND_NVRAM_TYPE_ID
 
+/** Evaluates to true if @p _type is a signed integer type */
 #define	BHND_NVRAM_SIGNED_TYPE(_type)	\
 	(((_type) & BHND_NVRAM_TF_SIGNED) == BHND_NVRAM_TF_SIGNED)
 
