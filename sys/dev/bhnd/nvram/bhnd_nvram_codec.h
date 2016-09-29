@@ -29,54 +29,37 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_NVRAM_BHND_NVRAM_PARSERVAR_H_
-#define _BHND_NVRAM_BHND_NVRAM_PARSERVAR_H_
+#ifndef _BHND_NVRAM_BHND_NVRAM_CODEC_H_
+#define _BHND_NVRAM_BHND_NVRAM_CODEC_H_
 
 #include <sys/types.h>
 
-#include <dev/bhnd/nvram/bhnd_nvram_common.h>
+#include "bhnd_nvram.h"
+#include "bhnd_nvram_io.h"
 
-#include "bhnd_nvram_parser.h"
+/* NVRAM parser class */
+typedef struct bhnd_nvram_codec_class bhnd_nvram_codec_class_t;
 
-#define	NVRAM_IDX_VAR_THRESH	15		/**< index is generated if minimum variable count is met */
-#define	NVRAM_IDX_OFFSET_MAX	UINT16_MAX	/**< maximum indexable offset */
-#define	NVRAM_IDX_LEN_MAX	UINT16_MAX	/**< maximum indexable key/value length */
+/* NVRAM parser instance */
+struct bhnd_nvram_codec;
 
-#define	NVRAM_DEVPATH_STR	"devpath"	/**< name prefix of device path aliases */
-#define	NVRAM_DEVPATH_LEN	(sizeof(NVRAM_DEVPATH_STR) - 1)
+/** Declare a bhnd_nvram_codec_class with name @p _n */
+#define	BHND_NVRAM_CODEC_DECL(_n) \
+	extern 	struct bhnd_nvram_codec_class bhnd_nvram_ ## _n ##_class
 
-#define	NVRAM_SMALL_HASH_SIZE	16		/**< hash table size for pending/default tuples */
+BHND_NVRAM_CODEC_DECL(bcm);
+BHND_NVRAM_CODEC_DECL(tlv);
+BHND_NVRAM_CODEC_DECL(btxt);
 
-/**
- * NVRAM devpath record.
- * 
- * Aliases index values to full device paths.
- */
-struct bhnd_nvram_devpath {
-	u_long	 index;	/** alias index */
-	char	*path;	/** aliased path */
+int		 bhnd_nvram_codec_probe(bhnd_nvram_codec_class_t *cls,
+		     struct bhnd_nvram_io *io);
 
-	LIST_ENTRY(bhnd_nvram_devpath) dp_link;
-};
+int		 bhnd_nvram_codec_new(bhnd_nvram_codec_class_t *cls,
+		     struct bhnd_nvram_codec **nv, struct bhnd_nvram_io *io);
 
-/**
- * NVRAM index record.
- * 
- * Provides entry offsets into a backing NVRAM buffer.
- */
-struct bhnd_nvram_idx_entry {
-	uint16_t	env_offset;	/**< offset to env string (key must be
-					     '\0'   or '=' terminated) */
-};
+void		 bhnd_nvram_codec_free(struct bhnd_nvram_codec *nv);
 
-/**
- * NVRAM index.
- * 
- * Provides a compact binary search index into the backing NVRAM buffer.
- */
-struct bhnd_nvram_idx {
-	size_t				num_entries;	/**< entry count */
-	struct bhnd_nvram_idx_entry	entries[];	/**< index entries */
-};
+const char	*bhnd_nvram_codec_next(struct bhnd_nvram_codec *nv,
+		     bhnd_nvram_type *type, size_t *len, void **cookiep);
 
-#endif /* _BHND_NVRAM_BHND_NVRAM_PARSERVAR_H_ */
+#endif /* _BHND_NVRAM_BHND_NVRAM_CODEC_H_ */

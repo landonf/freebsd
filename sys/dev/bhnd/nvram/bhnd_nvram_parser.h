@@ -32,34 +32,72 @@
 #ifndef _BHND_NVRAM_BHND_NVRAM_PARSER_H_
 #define _BHND_NVRAM_BHND_NVRAM_PARSER_H_
 
-#include <sys/types.h>
+#include <sys/param.h>
+#include <sys/bus.h>
+#include <sys/nv.h>
 
-#include "bhnd_nvram.h"
+#include "bhnd_nvram_common.h"
 #include "bhnd_nvram_io.h"
 
-/* NVRAM parser class */
-typedef struct bhnd_nvram_parser_class bhnd_nvram_parser_class_t;
+union bhnd_nvram_ident;
 
-/* NVRAM parser instance */
-struct bhnd_nvram_parser;
+struct bhnd_nvram_idx;
+struct bhnd_nvram_ops;
+struct bhnd_nvram_devpath;
 
-/** Declare a bhnd_nvram_parser_class with name @p _n */
-#define	BHND_NVRAM_PARSER_DECL(_n) \
-	extern 	struct bhnd_nvram_parser_class bhnd_nvram_ ## _n ##_class
+struct bhnd_nvram;
 
-BHND_NVRAM_PARSER_DECL(bcm);
-BHND_NVRAM_PARSER_DECL(tlv);
-BHND_NVRAM_PARSER_DECL(btxt);
+LIST_HEAD(bhnd_nvram_devpaths, bhnd_nvram_devpath);
 
-int		 bhnd_nvram_parser_probe(bhnd_nvram_parser_class_t *cls,
-		     struct bhnd_nvram_io *io);
+int	bhnd_nvram_parser_identify(struct bhnd_nvram_io *io,
+	    bhnd_nvram_format expected, size_t *size_hint);
+int	bhnd_nvram_parser_init(struct bhnd_nvram *sc, device_t owner,
+	    struct bhnd_nvram_io *io, bhnd_nvram_format fmt);
+void	bhnd_nvram_parser_fini(struct bhnd_nvram *sc);
 
-int		 bhnd_nvram_parser_new(bhnd_nvram_parser_class_t *cls,
-		     struct bhnd_nvram_parser **nv, struct bhnd_nvram_io *io);
+int	bhnd_nvram_parser_getvar(struct bhnd_nvram *sc, const char *name,
+	    void *buf, size_t *len, bhnd_nvram_type type);
+int	bhnd_nvram_parser_setvar(struct bhnd_nvram *sc, const char *name,
+	    const void *buf, size_t len, bhnd_nvram_type type);
 
-void		 bhnd_nvram_parser_free(struct bhnd_nvram_parser *nv);
+/** BCM NVRAM header */
+struct bhnd_nvram_header {
+	uint32_t magic;
+	uint32_t size;
+	uint32_t cfg0;		/**< crc:8, version:8, sdram_init:16 */
+	uint32_t cfg1;		/**< sdram_config:16, sdram_refresh:16 */
+	uint32_t sdram_ncdl;	/**< sdram_ncdl */
+} __packed;
 
-const char	*bhnd_nvram_parser_next(struct bhnd_nvram_parser *nv,
-		     bhnd_nvram_type *type, size_t *len, void **cookiep);
+/** 
+ * NVRAM format identification.
+ * 
+ * To perform identification of the NVRAM format using bhnd_nvram_identify(),
+ * read `sizeof(bhnd_nvram_indent)` bytes from the head of the NVRAM data.
+ */
+union bhnd_nvram_ident {
+	struct bhnd_nvram_header	bcm;
+	char				btxt[4];
+	struct bhnd_tlv_ident {
+		uint8_t		tag;
+		uint8_t		size[2];
+		uint8_t		flags;
+	} __packed tlv;
+};
+
+/** bhnd nvram parser instance state */
+struct bhnd_nvram {
+	device_t			 dev;		/**< parent device, or NULL */
+	const struct bhnd_nvram_ops	*ops;
+	uint8_t				*buf;		/**< nvram data */
+	size_t				 buf_size;
+	size_t				 num_buf_vars;	/**< number of records in @p buf (0 if not yet calculated) */
+
+	struct bhnd_nvram_idx		*idx;		/**< key index */
+
+	struct bhnd_nvram_devpaths	 devpaths;	/**< device paths */
+	nvlist_t			*defaults;	/**< default values */
+	nvlist_t			*pending;	/**< uncommitted writes */
+};
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_PARSER_H_ */

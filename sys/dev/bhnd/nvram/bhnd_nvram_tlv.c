@@ -40,8 +40,8 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_nvram_common.h"
 
-#include "bhnd_nvram_parser.h"
-#include "bhnd_nvram_parservar.h"
+#include "bhnd_nvram_codec.h"
+#include "bhnd_nvram_codecvar.h"
 
 #include "bhnd_nvram_tlvreg.h"
 
@@ -52,11 +52,11 @@ __FBSDID("$FreeBSD$");
  */
 
 struct bhnd_nvram_tlv {
-	struct bhnd_nvram_parser	 nv;	/**< common instance state */
-	struct bhnd_nvram_io		*data;	/**< backing buffer */
+	struct bhnd_nvram_codec	 nvc;	/**< common instance state */
+	struct bhnd_nvram_io	*data;	/**< backing buffer */
 };
 
-BHND_NVRAM_PARSER_DEFN(tlv)
+BHND_NVRAM_CODEC_DEFN(tlv)
 
 /** Minimal identification header */
 struct bhnd_nvram_tlv_ident {
@@ -107,24 +107,23 @@ bhnd_nvram_tlv_probe(struct bhnd_nvram_io *io)
 }
 
 static int
-bhnd_nvram_tlv_new(struct bhnd_nvram_parser **nv,
-    struct bhnd_nvram_io *io)
+bhnd_nvram_tlv_new(struct bhnd_nvram_codec **nvc, struct bhnd_nvram_io *io)
 {
 	// TODO
 	return (ENXIO);
 }
 
 static void
-bhnd_nvram_tlv_free(struct bhnd_nvram_parser *nv)
+bhnd_nvram_tlv_free(struct bhnd_nvram_codec *nvc)
 {
-	struct bhnd_nvram_tlv *tlv = (struct bhnd_nvram_tlv *)nv;
+	struct bhnd_nvram_tlv *tlv = (struct bhnd_nvram_tlv *)nvc;
 
 	bhnd_nvram_io_free(tlv->data);
 	free(tlv, M_BHND_NVRAM);
 }
 
 static const char *
-bhnd_nvram_tlv_next(struct bhnd_nvram_parser *nv, bhnd_nvram_type *type,
+bhnd_nvram_tlv_next(struct bhnd_nvram_codec *nvc, bhnd_nvram_type *type,
     size_t *len, void **cookiep)
 {
 	// TODO

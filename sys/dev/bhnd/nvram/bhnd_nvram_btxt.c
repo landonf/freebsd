@@ -44,8 +44,8 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_nvram_bcmreg.h"
 
-#include "bhnd_nvram_parser.h"
-#include "bhnd_nvram_parservar.h"
+#include "bhnd_nvram_codec.h"
+#include "bhnd_nvram_codecvar.h"
 
 /**
  * Broadcom board text file parser.
@@ -56,11 +56,11 @@ __FBSDID("$FreeBSD$");
  */
 
 struct bhnd_nvram_btxt {
-	struct bhnd_nvram_parser	 nv;	/**< common instance state */
-	struct bhnd_nvram_io		*data;	/**< memory-backed board text data */
+	struct bhnd_nvram_codec	 nvc;	/**< common instance state */
+	struct bhnd_nvram_io	*data;	/**< memory-backed board text data */
 };
 
-BHND_NVRAM_PARSER_DEFN(btxt)
+BHND_NVRAM_CODEC_DEFN(btxt)
 
 /** Minimal identification header */
 union bhnd_nvram_btxt_ident {
@@ -191,7 +191,7 @@ bhnd_nvram_btxt_init(struct bhnd_nvram_btxt *btxt, struct bhnd_nvram_io *src)
 }
 
 static int
-bhnd_nvram_btxt_new(struct bhnd_nvram_parser **nv, struct bhnd_nvram_io *io)
+bhnd_nvram_btxt_new(struct bhnd_nvram_codec **nvc, struct bhnd_nvram_io *io)
 {
 	struct bhnd_nvram_btxt	*btxt;
 	int			 error;
@@ -201,7 +201,7 @@ bhnd_nvram_btxt_new(struct bhnd_nvram_parser **nv, struct bhnd_nvram_io *io)
 	if (btxt == NULL)
 		return (ENOMEM);
 
-	btxt->nv.cls = &bhnd_nvram_btxt_class;
+	btxt->nvc.cls = &bhnd_nvram_btxt_class;
 	btxt->data = NULL;
 
 	/* Parse the BTXT input data and initialize our backing
@@ -209,7 +209,7 @@ bhnd_nvram_btxt_new(struct bhnd_nvram_parser **nv, struct bhnd_nvram_io *io)
 	if ((error = bhnd_nvram_btxt_init(btxt, io)))
 		goto failed;
 
-	*nv = &btxt->nv;
+	*nvc = &btxt->nvc;
 	return (0);
 
 failed:
@@ -222,16 +222,16 @@ failed:
 }
 
 static void
-bhnd_nvram_btxt_free(struct bhnd_nvram_parser *nv)
+bhnd_nvram_btxt_free(struct bhnd_nvram_codec *nvc)
 {
-	struct bhnd_nvram_btxt	*btxt = (struct bhnd_nvram_btxt *)nv;
+	struct bhnd_nvram_btxt	*btxt = (struct bhnd_nvram_btxt *)nvc;
 
 	bhnd_nvram_io_free(btxt->data);
-	free(nv, M_BHND_NVRAM);
+	free(nvc, M_BHND_NVRAM);
 }
 
 static const char *
-bhnd_nvram_btxt_next(struct bhnd_nvram_parser *nv, bhnd_nvram_type *type,
+bhnd_nvram_btxt_next(struct bhnd_nvram_codec *nvc, bhnd_nvram_type *type,
     size_t *len, void **cookiep)
 {
 	struct bhnd_nvram_btxt	*btxt;
@@ -242,7 +242,7 @@ bhnd_nvram_btxt_next(struct bhnd_nvram_parser *nv, bhnd_nvram_type *type,
 	size_t			 nbytes;
 	int			 error;
 
-	btxt = (struct bhnd_nvram_btxt *)nv;
+	btxt = (struct bhnd_nvram_btxt *)nvc;
 
 	io_size = bhnd_nvram_io_get_size(btxt->data);
 
