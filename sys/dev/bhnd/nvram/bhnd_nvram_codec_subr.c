@@ -286,19 +286,22 @@ bhnd_nvram_ident_octet_string(const char *inp, size_t ilen, char *delim)
  * @param		otype	The data type to be written to @p outp.
  * @param		inp	The string value to be coerced.
  * @param		ilen	The size of @p inp, in bytes.
+ * @param		hint	Variable formatting hint, or NULL.
  *
  * @retval 0		success
  * @retval ENOMEM	If @p outp is non-NULL and a buffer of @p olen is too
  *			small to hold the requested value.
  * @retval EFTYPE	If the variable data cannot be coerced to @p otype.
  * @retval ERANGE	If value coercion would overflow @p otype.
+ * @retval EFBIG	If an internal temporary buffer is required, but cannot
+ *			be allocated.
  */
 static int
 bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
-    const char *inp, size_t ilen)
+    const char *inp, size_t ilen, struct bhnd_nvram_fmt_hint *hint)
 {
 	const char	*cstr;
-	char		*cstr_buf, cstr_stkbuf[BHND_NVRAM_VAL_MAXLEN];
+	char		*cstr_buf, cstr_stack[BHND_NVRAM_VAL_MAXLEN];
 	size_t		 cstr_size, cstr_len;
 	size_t		 limit, nbytes;
 	bool		 is_octet_str, free_cstr_buf;
@@ -314,23 +317,47 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 	else
 		limit = 0;
 
-	/* Populate C string requests directly from the fetched value */
+
+	/*
+	 * Determine whether this is an octet string, and validate
+	 * the result against the provided formatting hint (if any)
+	 */
+	is_octet_str = bhnd_nvram_ident_octet_string(inp, ilen, &delim);
+	if (!is_octet_str) {
+		/* Use standard field delimiter */
+		delim = ',';
+	}
+
+	if (hint != NULL && hint->sfmt == BHND_NVRAM_SFMT_MACADDR) {
+		if (!is_octet_str) {
+			NVRAM_LOG("cannot format '%.*s' as MAC address\n",
+			    NVRAM_PRINT_WIDTH(ilen), inp);
+			return (EFTYPE);
+		}
+	}
+
+	/*
+	 * If the output type is also a C string, populate it directly from
+	 * the input string
+	 */
 	if (otype == BHND_NVRAM_TYPE_CSTR)
 		return (bhnd_nvram_coerce_string_cstr(outp, olen, inp, ilen));
 
-	/* Determine actual string size, including trailing NUL. */
+
+	/*
+	 * We need a NUL-terminated instance of the string value
+	 * for parsing.
+	 */
 	cstr_len = strnlen(inp, ilen);
 	cstr_size = cstr_len + 1;
 
-	/* We need a NUL-terminated instance of the string value
-	 * for parsing */
 	if (cstr_size <= ilen) {
 		/* String is already NUL terminated */
 		cstr = inp;
-	} else if (cstr_size <= sizeof(cstr_stkbuf)) {
+	} else if (cstr_size <= sizeof(cstr_stack)) {
 		/* Use stack allocated buffer to copy and NUL terminate
 		 * the input string */
-		cstr_buf = cstr_stkbuf;
+		cstr_buf = cstr_stack;
 	} else {
 		/* Use heap allocated buffer to copy and NUL terminate
 		 * the input string */
@@ -349,14 +376,9 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 		cstr = cstr_buf;
 	}
 
-	/* Is this an octet string? */
-	is_octet_str = bhnd_nvram_ident_octet_string(inp, ilen, &delim);
-	if (!is_octet_str) {
-		/* Use standard field delimiter */
-		delim = ',';
-	}
-
-	/* Parse */
+	/*
+	 * Parse the NUL-terminated string.
+	 */
 	for (const char *p = cstr; *p != '\0';) {
 		char		*endp;
 		size_t		 field_len;
@@ -377,7 +399,8 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 		if (field_len == 0) {
 			NVRAM_LOG("error: cannot parse empty string "
 			    "in '%s'\n", cstr);
-			return (EFTYPE);
+			error = EFTYPE;
+			goto finished;
 		}
 
 		/* Identify integer format */
@@ -491,6 +514,7 @@ finished:
  * @param		inp	The string value to be coerced.
  * @param		ilen	The size of @p inp, in bytes.
  * @param		itype	The base data type of @p inp.
+ * @param		hint	Variable formatting hint, or NULL.
  *
  * @retval 0		success
  * @retval ENOMEM	If @p outp is non-NULL and a buffer of @p olen is too
@@ -500,7 +524,8 @@ finished:
  */
 static int
 bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
-    const char *inp, size_t ilen, bhnd_nvram_type itype)
+    const char *inp, size_t ilen, bhnd_nvram_type itype,
+    struct bhnd_nvram_fmt_hint *hint)
 {
 	// TODO
 	return (EFTYPE);
@@ -519,6 +544,7 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
  * @param		inp	The value to be coerced.
  * @param		ilen	The size of @p inp, in bytes.
  * @param		itype	The base data type of @p inp.
+ * @param		hint	Variable formatting hint, or NULL.
  *
  * @retval 0		success
  * @retval ENOMEM	If @p outp is non-NULL and a buffer of @p olen is too
@@ -528,13 +554,14 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
  */
 int
 bhnd_nvram_coerce_value(void *outp, size_t *olen, bhnd_nvram_type otype,
-    const void *inp, size_t ilen, bhnd_nvram_type itype)
+    const void *inp, size_t ilen, bhnd_nvram_type itype,
+    struct bhnd_nvram_fmt_hint *hint)
 {
 	switch (itype) {
 		case BHND_NVRAM_TYPE_CHAR:
 		case BHND_NVRAM_TYPE_CSTR:
 			return (bhnd_nvram_coerce_string(outp, olen, otype, inp,
-			    ilen));
+			    ilen, hint));
 
 		case BHND_NVRAM_TYPE_UINT8:
 		case BHND_NVRAM_TYPE_UINT16:
@@ -543,7 +570,7 @@ bhnd_nvram_coerce_value(void *outp, size_t *olen, bhnd_nvram_type otype,
 		case BHND_NVRAM_TYPE_INT16:
 		case BHND_NVRAM_TYPE_INT32:
 			return (bhnd_nvram_coerce_int(outp, olen, otype, inp,
-			    ilen, itype));
+			    ilen, itype, hint));
 
 		default:
 			NVRAM_LOG("unhandled NVRAM input type: %d\n", itype);

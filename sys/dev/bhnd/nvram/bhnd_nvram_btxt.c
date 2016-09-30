@@ -300,7 +300,8 @@ bhnd_nvram_btxt_getvar(struct bhnd_nvram_codec *nv, void *cookiep, void *buf,
 		return (EINVAL);
 
 	/* Attempt value type coercion */
-	return (bhnd_nvram_coerce_value(buf, len, type, vptr, vlen, vtype));
+	return (bhnd_nvram_coerce_value(buf, len, type, vptr, vlen, vtype,
+	    NULL));
 }
 
 const void *

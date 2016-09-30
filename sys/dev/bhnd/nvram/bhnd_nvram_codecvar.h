@@ -37,6 +37,15 @@
 #include "bhnd_nvram_io.h"
 
 #include "bhnd_nvram_codec.h"
+#include "bhnd_nvram_common.h"
+
+/**
+ * Variable formatting hint.
+ */
+struct bhnd_nvram_fmt_hint {
+	bhnd_nvram_sfmt		 sfmt;	/**< variable string format */
+	uint32_t		 flags;	/**< BHND_NVRAM_VF_* flags */
+};
 
 
 int	bhnd_nvram_parse_env(const char *env, size_t env_len, char delim,
@@ -44,7 +53,8 @@ int	bhnd_nvram_parse_env(const char *env, size_t env_len, char delim,
 	    size_t *value_len);
 
 int	bhnd_nvram_coerce_value(void *outp, size_t *olen, bhnd_nvram_type otype,
-	    const void *inp, size_t ilen, bhnd_nvram_type itype);
+	    const void *inp, size_t ilen, bhnd_nvram_type itype,
+	    struct bhnd_nvram_fmt_hint *hint);
 
 /** @see bhnd_nvram_codec_probe() */
 typedef int (bhnd_nvram_codec_op_probe)(struct bhnd_nvram_io *io);
