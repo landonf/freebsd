@@ -480,6 +480,33 @@ finished:
 }
 
 /**
+ * Coerce integer value @p inp to @p otype, writing the result to @p outp.
+ *
+ * @param[out]		outp	On success, the value will be written to this 
+ *				buffer. This argment may be NULL if the value
+ *				is not desired.
+ * @param[in,out]	olen	The capacity of @p outp. On success, will be set
+ *				to the actual size of the requested value.
+ * @param		otype	The data type to be written to @p outp.
+ * @param		inp	The string value to be coerced.
+ * @param		ilen	The size of @p inp, in bytes.
+ * @param		itype	The base data type of @p inp.
+ *
+ * @retval 0		success
+ * @retval ENOMEM	If @p outp is non-NULL and a buffer of @p olen is too
+ *			small to hold the requested value.
+ * @retval EFTYPE	If the variable data cannot be coerced to @p otype.
+ * @retval ERANGE	If value coercion would overflow @p otype.
+ */
+static int
+bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
+    const char *inp, size_t ilen, bhnd_nvram_type itype)
+{
+	// TODO
+	return (EFTYPE);
+}
+
+/**
  * Coerce value @p inp of type @p itype to @p otype, writing the
  * result to @p outp.
  *
@@ -515,8 +542,9 @@ bhnd_nvram_coerce_value(void *outp, size_t *olen, bhnd_nvram_type otype,
 		case BHND_NVRAM_TYPE_INT8:
 		case BHND_NVRAM_TYPE_INT16:
 		case BHND_NVRAM_TYPE_INT32:
-			// TODO!
-			/* fall through */
+			return (bhnd_nvram_coerce_int(outp, olen, otype, inp,
+			    ilen, itype));
+
 		default:
 			NVRAM_LOG("unhandled NVRAM input type: %d\n", itype);
 			return (EFTYPE);
