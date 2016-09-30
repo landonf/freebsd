@@ -31,6 +31,7 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
+#include <sys/ctype.h>
 #include <sys/systm.h>
 
 #include "bhnd_nvram_io.h"
@@ -47,15 +48,479 @@ __FBSDID("$FreeBSD$");
 	    (BHND_NVRAM_VAL_MAXLEN*2) :		\
 	    (int)(_len))
 
+#define	NVRAM_LOG(_fmt, ...)	\
+	printf("%s: " _fmt, __FUNCTION__, ##__VA_ARGS__)
+
+/* Is _c a field terminating/delimiting character? */
+#define	nvram_istermc(_c)	((_c) == '\0' || nvram_isdelimc(_c))
+
+/* Is _c a field delimiting character? */
+#define	nvram_isdelimc(_c)	((_c) == ',')
+
 /**
- * TODO
+ * Coerce a string value to a NUL terminated C string.
+ * 
+ * @param[out]		outp	On success, the C string will be written to this
+ *				buffer. This argment may be NULL if the value
+ *				is not desired.
+ * @param[in,out]	olen	The capacity of @p outp. On success, will be set
+ *				to the actual length of the C string, including
+ *				terminating NUL.
+ * @param		inp	The string value to be coerced.
+ * @param		ilen	The length of @p inp, in bytes.
+ * 
+ * @retval 0		success
+ * @retval ENOMEM	If @p outp is non-NULL and a buffer of @p olen is too
+ *			small to hold the requested value.
+ */
+static int
+bhnd_nvram_coerce_string_cstr(char *outp, size_t *olen, const char *inp,
+    size_t ilen)
+{
+	size_t str_len;
+	size_t req_size;
+	size_t max_size;
+
+	if (outp != NULL)
+		max_size = *olen;
+	else
+		max_size = 0;
+
+	/* Determine input and output sizes, including whether additional space
+	 * is required for a trailing NUL */
+	str_len = strnlen(inp, ilen);
+	if (str_len == ilen)
+		req_size = str_len + 1;
+	else
+		req_size = ilen;
+
+	/* Provide actual size to caller */
+	*olen = req_size;
+	if (max_size < req_size) {
+		if (outp != NULL)
+			return (ENOMEM);
+		else
+			return (0);
+	}
+
+	/* Copy and NUL terminate output */
+	memcpy(outp, inp, str_len);
+	outp[str_len] = '\0';
+
+	return (0);
+}
+
+/**
+ * Identify the integer format of @p inp.
+ *
+ * @param inp Input string to be parsed.
+ * @param ilen Length of the integer string readable via @p inp.
+ * @param[out] base Integer base.
+ * @param[out] negated True if integer is prefixed with negation sign.
+ * 
+ * @retval true if parsed successfully
+ * @retval false if the format of @p inp cannot be determined.
+ */
+static bool
+bhnd_nvram_ident_integer_fmt(const char *inp, size_t ilen, int *base,
+    bool *negated)
+{
+	const char *p;
+
+	/* Hex? */
+	p = inp;
+	if (ilen > 2 && p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) {
+		bool valid;
+
+		/* Check all input characters */
+		valid = true;
+		for (p = inp + 2; p - inp < ilen; p++) {
+			if (isxdigit(*p))
+				continue;
+
+			valid = false;
+			break;
+		}
+
+		if (valid) {
+			*base = 16;
+			*negated = false;
+			return (true);
+		}
+	}
+
+	/* Decimal? */
+	p = inp;
+	if (ilen >= 1 && (*p == '-' || isdigit(*p))) {
+		bool		 valid;
+
+		valid = true;
+		*negated = false;
+		for (p = inp; p - inp < ilen; p++) {
+			if (p == inp && *p == '-') {
+				*negated = true;
+				continue;
+			}
+
+			if (isdigit(*p))
+				continue;
+
+			valid = false;
+			break;
+		}
+
+		if (valid) {
+			*base = 10;
+			return (true);
+		}
+	}
+
+	/* No match */
+	*base = 0;
+	*negated = false;
+	return (false);
+}
+
+/**
+ * Parse a field value, returning the actual pointer to the field string,
+ * and the total size of the field string.
+ * 
+ * @param[in,out] inp The field string to parse. Will be updated to point
+ * at the first non-whitespace character found.
+ * @param ilen The length of @p inp, in bytes.
+ * @param delim The field delimiter to search for.
+ *
+ * @return Returns the actual size of the field data.
+ */
+static size_t
+bhnd_nvram_parse_field(const char **inp, size_t ilen, char delim)
+{
+	const char	*p, *sp;
+
+	/* Skip any leading whitespace */
+	for (sp = *inp; sp - *inp < ilen && isspace(*sp); sp++)
+		continue;
+
+	*inp = sp;
+
+	/* Find the last field character */
+	for (p = *inp; p - *inp < ilen; p++) {
+		if (*p == delim || *p == '\0')
+			break;
+	}
+
+	return (p - *inp);
+}
+
+
+/**
+ * Determine whether @p inp is in "octet string" format (i.e.
+ * BHND_NVRAM_SFMT_MACADDR), consisting of hex octets separated with ':' or
+ * '-'.
+ *
+ * @param		inp	The string to be parsed.
+ * @param		ilen	The length of @p inp, in bytes.
+ * @param		delim	On success, the delimiter used by this octet
+ * 				string.
+ * 
+ * @retval true		if @p inp is a valid octet string
+ * @retval false	if @p inp is not a valid octet string.
+ */
+static bool
+bhnd_nvram_ident_octet_string(const char *inp, size_t ilen, char *delim)
+{
+	size_t slen;
+
+	slen = strnlen(inp, ilen);
+
+	/* String length (not including NUL) must be aligned on an octet
+	 * boundary ('AA:BB', not 'AA:B', etc), and must be large enough
+	 * to contain at least two octet entries. */
+	if (slen % 3 != 2 || slen < sizeof("AA:BB") - 1)
+		return (false);
+
+	/* Identify the delimiter used. The standard delimiter for
+	 * MAC addresses is ':', but some earlier NVRAM formats may use
+	 * '-' */
+	switch ((*delim = inp[2])) {
+	case ':':
+	case '-':
+		break;
+	default:
+		return (false);
+	}
+
+	/* Verify the octet string contains only hex digits */ 
+	for (const char *p = inp; p - inp < ilen; p++) {
+		size_t pos;
+
+		pos = (p - inp);
+
+		/* Skip delimiter after each octet */
+		if (pos % 3 == 2) {
+			if (*p == *delim)
+				continue;
+
+			if (*p == '\0')
+				return (0);
+
+			/* No delimiter? */
+			return (false);
+		}
+
+		if (!isxdigit(*p))
+			return (false);
+	}
+
+	return (true);
+}
+
+/**
+ * Coerce string @p inp to @p otype, writing the result to @p outp.
+ *
+ * @param[out]		outp	On success, the value will be written to this 
+ *				buffer. This argment may be NULL if the value
+ *				is not desired.
+ * @param[in,out]	olen	The capacity of @p outp. On success, will be set
+ *				to the actual size of the requested value.
+ * @param		otype	The data type to be written to @p outp.
+ * @param		inp	The string value to be coerced.
+ * @param		ilen	The size of @p inp, in bytes.
+ *
+ * @retval 0		success
+ * @retval ENOMEM	If @p outp is non-NULL and a buffer of @p olen is too
+ *			small to hold the requested value.
+ * @retval EFTYPE	If the variable data cannot be coerced to @p otype.
+ * @retval ERANGE	If value coercion would overflow @p otype.
+ */
+static int
+bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
+    const char *inp, size_t ilen)
+{
+	const char	*cstr;
+	char		*cstr_buf, cstr_stkbuf[BHND_NVRAM_VAL_MAXLEN];
+	size_t		 cstr_size, cstr_len;
+	size_t		 limit, nbytes;
+	bool		 is_octet_str, free_cstr_buf;
+	char		 delim;
+	int		 error;
+
+	nbytes = 0;
+	cstr_buf = NULL;
+	free_cstr_buf = false;
+
+	if (outp != NULL)
+		limit = *olen;
+	else
+		limit = 0;
+
+	/* Populate C string requests directly from the fetched value */
+	if (otype == BHND_NVRAM_TYPE_CSTR)
+		return (bhnd_nvram_coerce_string_cstr(outp, olen, inp, ilen));
+
+	/* Determine actual string size, including trailing NUL. */
+	cstr_len = strnlen(inp, ilen);
+	cstr_size = cstr_len + 1;
+
+	/* We need a NUL-terminated instance of the string value
+	 * for parsing */
+	if (cstr_size <= ilen) {
+		/* String is already NUL terminated */
+		cstr = inp;
+	} else if (cstr_size <= sizeof(cstr_stkbuf)) {
+		/* Use stack allocated buffer to copy and NUL terminate
+		 * the input string */
+		cstr_buf = cstr_stkbuf;
+	} else {
+		/* Use heap allocated buffer to copy and NUL terminate
+		 * the input string */
+		cstr_buf = malloc(cstr_size, M_BHND_NVRAM, M_NOWAIT);
+		if (cstr_buf == NULL)
+			return (EFBIG);
+
+		free_cstr_buf = true;
+	}
+
+	/* Copy and NUL terminate */
+	if (cstr_buf != NULL) {
+		strncpy(cstr_buf, inp, cstr_len);
+		cstr_buf[cstr_len] = '\0';
+
+		cstr = cstr_buf;
+	}
+
+	/* Is this an octet string? */
+	is_octet_str = bhnd_nvram_ident_octet_string(inp, ilen, &delim);
+	if (!is_octet_str) {
+		/* Use standard field delimiter */
+		delim = ',';
+	}
+
+	/* Parse */
+	for (const char *p = cstr; *p != '\0';) {
+		char		*endp;
+		size_t		 field_len;
+		int		 base;
+		bool		 is_int, is_negated;
+		union {
+			unsigned long	u32;
+			long		s32;
+		} intv;
+
+		/* Determine the field value's position and length,
+		 * skipping any leading whitespace */
+		field_len = cstr_len - (p - cstr);
+		field_len = bhnd_nvram_parse_field(&p, field_len, delim);
+
+		/* Empty field values cannot be parsed as a fixed
+		 * data type */
+		if (field_len == 0) {
+			NVRAM_LOG("error: cannot parse empty string "
+			    "in '%s'\n", cstr);
+			return (EFTYPE);
+		}
+
+		/* Identify integer format */
+		if (is_octet_str) {
+			is_int = true;
+			is_negated = false;
+			base = 16;
+		} else {
+			is_int = bhnd_nvram_ident_integer_fmt(p, field_len,
+			    &base, &is_negated);
+		}
+
+		/* Extract the field data */
+#define	NV_READ_INT(_ctype, _max, _min, _dest, _strto)	do {		\
+	if (!is_int) {							\
+		error = EFTYPE;						\
+		goto finished;						\
+	}								\
+									\
+	if (is_negated && _min == 0) {					\
+		error = ERANGE;						\
+		goto finished;						\
+	}								\
+									\
+	_dest = _strto(p, &endp, base);					\
+	if (endp == p || !(*endp == '\0' || *endp == delim)) {		\
+		error = ERANGE;						\
+		goto finished;						\
+	}								\
+									\
+	if (_dest > _max || _dest < _min) {				\
+		error = ERANGE;						\
+		goto finished;						\
+	}								\
+									\
+	if (limit > nbytes && limit - nbytes >= sizeof(_ctype))		\
+		*((_ctype *)((uint8_t *)outp + nbytes)) = _dest;	\
+									\
+	nbytes += sizeof(_ctype);					\
+} while(0)
+
+		switch (otype) {
+		case BHND_NVRAM_TYPE_CHAR:
+			/* Copy out the characters directly */
+			for (size_t i = 0; i < field_len; i++) {
+				if (limit > nbytes)
+					*((char *)outp + nbytes) = p[i];
+				nbytes++;
+			}
+			break;
+
+		case BHND_NVRAM_TYPE_UINT8:
+			NV_READ_INT(uint8_t, UINT8_MAX, 0, intv.u32, strtoul);
+			break;
+
+		case BHND_NVRAM_TYPE_UINT16:
+			NV_READ_INT(uint16_t, UINT16_MAX, 0, intv.u32, strtoul);
+			break;
+
+		case BHND_NVRAM_TYPE_UINT32:
+			NV_READ_INT(uint32_t, UINT32_MAX, 0, intv.u32, strtoul);
+			break;
+
+		case BHND_NVRAM_TYPE_INT8:
+			NV_READ_INT(int8_t, INT8_MAX, INT8_MIN, intv.s32,
+			    strtol);
+			break;
+
+		case BHND_NVRAM_TYPE_INT16:
+			NV_READ_INT(int16_t, INT16_MAX, INT16_MIN, intv.s32,
+			    strtol);
+			break;
+
+		case BHND_NVRAM_TYPE_INT32:
+			NV_READ_INT(int32_t, INT32_MAX, INT32_MIN, intv.s32,
+			    strtol);
+			break;
+
+		case BHND_NVRAM_TYPE_CSTR:	/* Must be handled above */
+			/* fallthrough */
+		default:
+			NVRAM_LOG("unhandled NVRAM output type: %d\n", otype);
+			error = EFTYPE;
+			goto finished;
+		}
+
+		/* Advance to next field, skip any trailing delimiter */
+		p += field_len;
+		if (*p == delim)
+			p++;
+	}
+
+	error = 0;
+
+finished:
+	if (free_cstr_buf)
+		free(cstr_buf, M_BHND_NVRAM);
+
+	return (error);
+}
+
+/**
+ * Coerce value @p inp of type @p itype to @p otype, writing the
+ * result to @p outp.
+ *
+ * @param[out]		outp	On success, the value will be written to this 
+ *				buffer. This argment may be NULL if the value
+ *				is not desired.
+ * @param[in,out]	olen	The capacity of @p outp. On success, will be set
+ *				to the actual size of the requested value.
+ * @param		otype	The data type to be written to @p outp.
+ * @param		inp	The value to be coerced.
+ * @param		ilen	The size of @p inp, in bytes.
+ * @param		itype	The base data type of @p inp.
+ *
+ * @retval 0		success
+ * @retval ENOMEM	If @p outp is non-NULL and a buffer of @p olen is too
+ *			small to hold the requested value.
+ * @retval EFTYPE	If the variable data cannot be coerced to @p otype.
+ * @retval ERANGE	If value coercion would overflow @p otype.
  */
 int
 bhnd_nvram_coerce_value(void *outp, size_t *olen, bhnd_nvram_type otype,
     const void *inp, size_t ilen, bhnd_nvram_type itype)
 {
-	// TODO
-	return (EINVAL);
+	switch (itype) {
+		case BHND_NVRAM_TYPE_CHAR:
+		case BHND_NVRAM_TYPE_CSTR:
+			return (bhnd_nvram_coerce_string(outp, olen, otype, inp,
+			    ilen));
+
+		case BHND_NVRAM_TYPE_UINT8:
+		case BHND_NVRAM_TYPE_UINT16:
+		case BHND_NVRAM_TYPE_UINT32:
+		case BHND_NVRAM_TYPE_INT8:
+		case BHND_NVRAM_TYPE_INT16:
+		case BHND_NVRAM_TYPE_INT32:
+			// TODO!
+			/* fall through */
+		default:
+			NVRAM_LOG("unhandled NVRAM input type: %d\n", itype);
+			return (EFTYPE);
+	}
 }
 
 /**
@@ -84,8 +549,8 @@ bhnd_nvram_parse_env(const char *env, size_t env_len, char delim,
 
 	/* Name */
 	if ((p = memchr(env, delim, env_len)) == NULL) {
-		printf("%s: delimiter '%c' not found in '%.*s'\n",
-		    __FUNCTION__, delim, NVRAM_PRINT_WIDTH(env_len), env);
+		NVRAM_LOG("delimiter '%c' not found in '%.*s'\n", delim,
+		    NVRAM_PRINT_WIDTH(env_len), env);
 		return (EINVAL);
 	}
 
