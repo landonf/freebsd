@@ -87,36 +87,34 @@ typedef enum {
 	BHND_NVRAM_FMT_UNKNOWN	= 5	/**< Unknown or unrecognized format */
 } bhnd_nvram_format;
 
-/** bhnd_nvram_type bit flags */
-enum {
-	BHND_NVRAM_TF_SIGNED	= (1<<7),
-};
-
-#define	BHND_NVRAM_TYPE_ID_MASK		0xF
-#define	BHND_NVRAM_TYPE_FLAGS_MASK	0x70
-
-#define	BHND_NVRAM_TYPE_ID(_id, _flags)		\
-	(((_id) & BHND_NVRAM_TYPE_ID_MASK) |	\
-	    ((_flags) & BHND_NVRAM_TYPE_FLAGS_MASK))
 
 /** Supported NVRAM data types */
 typedef enum {
-	BHND_NVRAM_TYPE_UINT8	= BHND_NVRAM_TYPE_ID(0, 0),			/**< unsigned 8-bit integer */
-	BHND_NVRAM_TYPE_UINT16	= BHND_NVRAM_TYPE_ID(1, 0),			/**< unsigned 16-bit integer */
-	BHND_NVRAM_TYPE_UINT32	= BHND_NVRAM_TYPE_ID(2, 0),			/**< unsigned 32-bit integer */
-	BHND_NVRAM_TYPE_INT8	= BHND_NVRAM_TYPE_ID(4, BHND_NVRAM_TF_SIGNED),	/**< signed 8-bit integer */
-	BHND_NVRAM_TYPE_INT16	= BHND_NVRAM_TYPE_ID(5, BHND_NVRAM_TF_SIGNED),	/**< signed 16-bit integer */
-	BHND_NVRAM_TYPE_INT32	= BHND_NVRAM_TYPE_ID(6, BHND_NVRAM_TF_SIGNED),	/**< signed 32-bit integer */
-	BHND_NVRAM_TYPE_CHAR	= BHND_NVRAM_TYPE_ID(7, BHND_NVRAM_TF_SIGNED),	/**< ASCII character */
-	BHND_NVRAM_TYPE_CSTR	= BHND_NVRAM_TYPE_ID(8,	0),			/**< NUL-terminated C string */
+	BHND_NVRAM_TYPE_UINT8	= 0,	/**< unsigned 8-bit integer */
+	BHND_NVRAM_TYPE_UINT16	= 1,	/**< unsigned 16-bit integer */
+	BHND_NVRAM_TYPE_UINT32	= 2,	/**< unsigned 32-bit integer */
+	BHND_NVRAM_TYPE_INT8	= 4,	/**< signed 8-bit integer */
+	BHND_NVRAM_TYPE_INT16	= 5,	/**< signed 16-bit integer */
+	BHND_NVRAM_TYPE_INT32	= 6,	/**< signed 32-bit integer */
+	BHND_NVRAM_TYPE_CHAR	= 7,	/**< ASCII character */
+	BHND_NVRAM_TYPE_CSTR	= 8,	/**< NUL-terminated C string */
 } bhnd_nvram_type;
 
-#undef	BHND_NVRAM_TYPE_ID_MASK
-#undef	BHND_NVRAM_TYPE_FLAGS_MASK
-#undef	BHND_NVRAM_TYPE_ID
-
 /** Evaluates to true if @p _type is a signed integer type */
-#define	BHND_NVRAM_SIGNED_TYPE(_type)	\
-	(((_type) & BHND_NVRAM_TF_SIGNED) == BHND_NVRAM_TF_SIGNED)
+#define	BHND_NVRAM_SIGNED_TYPE(_type)		\
+	((_type) == BHND_NVRAM_TYPE_INT8 ||	\
+	 (_type) == BHND_NVRAM_TYPE_INT16 ||	\
+	 (_type) == BHND_NVRAM_TYPE_INT32 ||	\
+	 (_type) == BHND_NVRAM_TYPE_CHAR)
+
+ /** Evaluates to true if @p _type is an unsigned integer type */
+#define	BHND_NVRAM_UNSIGNED_TYPE(_type)		\
+	((_type) == BHND_NVRAM_TYPE_UINT8 ||	\
+	 (_type) == BHND_NVRAM_TYPE_UINT16 ||	\
+	 (_type) == BHND_NVRAM_TYPE_UINT32)
+
+ /** Evaluates to true if @p _type is an integer type */
+#define	BHND_NVRAM_INT_TYPE(_type)		\
+	(BHND_NVRAM_SIGNED_TYPE(_type) || BHND_NVRAM_UNSIGNED_TYPE(_type))
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_H_ */
