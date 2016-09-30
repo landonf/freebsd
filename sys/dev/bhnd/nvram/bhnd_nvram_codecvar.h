@@ -50,7 +50,7 @@ typedef void (bhnd_nvram_codec_op_free)(struct bhnd_nvram_codec *nv);
 
 /** @see bhnd_nvram_codec_next() */
 typedef const char *(bhnd_nvram_codec_op_next)(struct bhnd_nvram_codec *nv,
-    bhnd_nvram_type *type, size_t *len, void **cookiep);
+    void **cookiep);
 
 /** @see bhnd_nvram_codec_getvar() */
 typedef int (bhnd_nvram_codec_op_getvar)(struct bhnd_nvram_codec *nv,

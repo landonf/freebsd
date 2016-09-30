@@ -68,6 +68,9 @@ union bhnd_nvram_btxt_ident {
 	char		btxt[8];
 };
 
+static size_t	bhnd_nvram_btxt_io_offset(struct bhnd_nvram_btxt *btxt,
+					  void *cookiep);
+
 static int	bhnd_nvram_btxt_entry_len(struct bhnd_nvram_io *io,
 		    size_t offset, size_t *line_len, size_t *env_len);
 static int	bhnd_nvram_btxt_seek_next(struct bhnd_nvram_io *io,
@@ -231,26 +234,18 @@ bhnd_nvram_btxt_free(struct bhnd_nvram_codec *nvc)
 }
 
 static const char *
-bhnd_nvram_btxt_next(struct bhnd_nvram_codec *nvc, bhnd_nvram_type *type,
-    size_t *len, void **cookiep)
+bhnd_nvram_btxt_next(struct bhnd_nvram_codec *nvc, void **cookiep)
 {
 	struct bhnd_nvram_btxt	*btxt;
-	const char		*name;
 	const void		*nptr;
 	size_t			 io_offset, io_size;
-	size_t			 line_len, env_len, value_len;
 	size_t			 nbytes;
 	int			 error;
 
 	btxt = (struct bhnd_nvram_btxt *)nvc;
 
 	io_size = bhnd_nvram_io_get_size(btxt->data);
-
-	/* Convert cookie back to an I/O offset */
-	KASSERT((uintptr_t)*cookiep < SIZE_MAX, ("cookie > SIZE_MAX)"));
-	KASSERT((uintptr_t)*cookiep <= io_size, ("cookie > io_size)"));
-
-	io_offset = (uintptr_t) *cookiep;
+	io_offset = bhnd_nvram_btxt_io_offset(btxt, *cookiep);
 
 	/* Already at EOF? */
 	if (io_offset == io_size)
@@ -279,39 +274,16 @@ bhnd_nvram_btxt_next(struct bhnd_nvram_codec *nvc, bhnd_nvram_type *type,
 	if (io_offset == io_size)
 		return (NULL);
 
-	/* Determine the entry and line length */
-	error = bhnd_nvram_btxt_entry_len(btxt->data, io_offset, &line_len,
-	    &env_len);
-	if (error) {
-		BTXT_NVLOG("unexpected error in entry_len(): %d\n", error);
-		return (NULL);
-	}
-
-	/* Parse the key\0value string */
-	nbytes = env_len;
+	/* Fetch the name pointer */
+	nbytes = 1;
 	error = bhnd_nvram_io_read_ptr(btxt->data, io_offset, &nptr, &nbytes);
 	if (error) {
 		BTXT_NVLOG("unexpected error in read_ptr(): %d\n", error);
 		return (NULL);
 	}
 
-	/* Fetch the name pointer and value length */
-	error = bhnd_nvram_parse_env(nptr, env_len, '\0', &name, NULL, NULL,
-	    &value_len);
-	if (error) {
-		BTXT_NVLOG("unexpected error in parse_env(): %d\n", error);
-		return (NULL);
-	}
-
-	/* Type is always CSTR */
-	*type = BHND_NVRAM_TYPE_CSTR;
-
-	/* We don't NUL-terminate value strings in our backing buffer; include
-	 * space for NUL in the returned length. */
-	*len = value_len + 1;
-
 	/* Return the name pointer */
-	return (name);
+	return (nptr);
 }
 
 static int
@@ -326,9 +298,69 @@ const void *
 bhnd_nvram_btxt_getvar_ptr(struct bhnd_nvram_codec *nv, void *cookiep,
     size_t *len, bhnd_nvram_type *type)
 {
-	// TODO
-	return (NULL);
+	struct bhnd_nvram_btxt	*btxt;
+	const void		*eptr;
+	const char		*vptr;
+	size_t			 io_offset, io_size;
+	size_t			 line_len, env_len;
+	size_t			 nbytes;
+	int			 error;
+	
+	btxt = (struct bhnd_nvram_btxt *)nv;
+	
+	io_size = bhnd_nvram_io_get_size(btxt->data);
+	io_offset = bhnd_nvram_btxt_io_offset(btxt, cookiep);
+
+	/* At EOF? */
+	if (io_offset == io_size)
+		return (NULL);
+
+	/* Determine the entry length */
+	error = bhnd_nvram_btxt_entry_len(btxt->data, io_offset, &line_len,
+	    &env_len);
+	if (error) {
+		BTXT_NVLOG("unexpected error in entry_len(): %d\n", error);
+		return (NULL);
+	}
+
+	/* Fetch the entry's value pointer and length */
+	nbytes = env_len;
+	error = bhnd_nvram_io_read_ptr(btxt->data, io_offset, &eptr, &nbytes);
+	if (error) {
+		BTXT_NVLOG("unexpected error in read_ptr(): %d\n", error);
+		return (NULL);
+	}
+
+	error = bhnd_nvram_parse_env(eptr, env_len, '\0', NULL, NULL, &vptr,
+	    len);
+	if (error) {
+		BTXT_NVLOG("unexpected error in parse_env(): %d\n", error);
+		return (NULL);
+	}
+
+	/* Type is always CSTR */
+	*type = BHND_NVRAM_TYPE_CSTR;
+
+	return (vptr);
 }
+
+/* Convert cookie back to an I/O offset */
+static size_t
+bhnd_nvram_btxt_io_offset(struct bhnd_nvram_btxt *btxt, void *cookiep)
+{
+	size_t		io_size;
+	uintptr_t	cval;
+
+	io_size = bhnd_nvram_io_get_size(btxt->data);
+	cval = (uintptr_t)cookiep;
+
+	KASSERT(cval < SIZE_MAX, ("cookie > SIZE_MAX)"));
+	KASSERT(cval <= io_size, ("cookie > io_size)"));
+
+	return ((size_t)cval);
+}
+
+
 
 /* Determine the entry length and env 'key=value' string length of the entry
  * at @p offset */

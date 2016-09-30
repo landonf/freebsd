@@ -94,12 +94,9 @@ bhnd_nvram_codec_free(struct bhnd_nvram_codec *nv)
 }
 
 /**
- * Iterate over @p nv, returning the names, types, and lengths of subsequent
- * variables.
+ * Iterate over @p nv, returning the names of subsequent variables.
  * 
  * @param nv The NVRAM parser to be iterated.
- * @param[out] type The variable's value type.
- * @param[out] len The variable's value length.
  * @param[in,out] cookiep A pointer to a cookiep value previously returned by
  * bhnd_nvram_codec_next(), or a NULL value to begin iteration.
  * 
@@ -107,10 +104,9 @@ bhnd_nvram_codec_free(struct bhnd_nvram_codec *nv)
  * variables defined in @p nv.
  */
 const char *
-bhnd_nvram_codec_next(struct bhnd_nvram_codec *nv, bhnd_nvram_type *type,
-    size_t *len, void **cookiep)
+bhnd_nvram_codec_next(struct bhnd_nvram_codec *nv, void **cookiep)
 {
-	return (nv->cls->op_next(nv, type, len, cookiep));
+	return (nv->cls->op_next(nv, cookiep));
 }
 
 /**

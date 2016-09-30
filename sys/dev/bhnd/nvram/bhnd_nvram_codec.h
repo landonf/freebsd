@@ -60,7 +60,7 @@ int		 bhnd_nvram_codec_new(bhnd_nvram_codec_class_t *cls,
 void		 bhnd_nvram_codec_free(struct bhnd_nvram_codec *nv);
 
 const char	*bhnd_nvram_codec_next(struct bhnd_nvram_codec *nv,
-		     bhnd_nvram_type *type, size_t *len, void **cookiep);
+		     void **cookiep);
 
 int		 bhnd_nvram_codec_getvar(struct bhnd_nvram_codec *nvc,
 		     void *cookiep, void *buf, size_t *len,
