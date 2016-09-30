@@ -290,8 +290,17 @@ static int
 bhnd_nvram_btxt_getvar(struct bhnd_nvram_codec *nv, void *cookiep, void *buf,
     size_t *len, bhnd_nvram_type type)
 {
-	// TODO
-	return (ENXIO);
+	const void	*vptr;
+	size_t		 vlen;
+	bhnd_nvram_type	 vtype;
+
+	/* Fetch pointer */
+	vptr = bhnd_nvram_codec_getvar_ptr(nv, cookiep, &vlen, &vtype);
+	if (vptr == NULL)
+		return (EINVAL);
+
+	/* Attempt value type coercion */
+	return (bhnd_nvram_coerce_value(buf, len, type, vptr, vlen, vtype));
 }
 
 const void *

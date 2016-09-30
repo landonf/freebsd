@@ -38,6 +38,14 @@
 
 #include "bhnd_nvram_codec.h"
 
+
+int	bhnd_nvram_parse_env(const char *env, size_t env_len, char delim,
+	    const char **name, size_t *name_len, const char **value,
+	    size_t *value_len);
+
+int	bhnd_nvram_coerce_value(void *outp, size_t *olen, bhnd_nvram_type otype,
+	    const void *inp, size_t ilen, bhnd_nvram_type itype);
+
 /** @see bhnd_nvram_codec_probe() */
 typedef int (bhnd_nvram_codec_op_probe)(struct bhnd_nvram_io *io);
 
@@ -79,10 +87,6 @@ struct bhnd_nvram_codec_class {
 struct bhnd_nvram_codec {
 	const struct bhnd_nvram_codec_class	*cls;
 };
-
-int	bhnd_nvram_parse_env(const char *env, size_t env_len, char delim,
-	    const char **name, size_t *name_len, const char **value,
-	    size_t *value_len);
 
 /**
  * Define a bhnd_nvram_codec_class with name @p _n.

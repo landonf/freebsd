@@ -48,6 +48,17 @@ __FBSDID("$FreeBSD$");
 	    (int)(_len))
 
 /**
+ * TODO
+ */
+int
+bhnd_nvram_coerce_value(void *outp, size_t *olen, bhnd_nvram_type otype,
+    const void *inp, size_t ilen, bhnd_nvram_type itype)
+{
+	// TODO
+	return (EINVAL);
+}
+
+/**
  * Parse a 'name=value' string.
  * 
  * @param env The string to be parsed.
