@@ -168,8 +168,10 @@ bhnd_nvram_iobuf_copy(struct bhnd_nvram_io *src)
 		return (NULL);
 
 	/* Copy the input I/O context */
-	if ((error = bhnd_nvram_io_read(src, 0x0, iobuf->buf, &size)))
+	if ((error = bhnd_nvram_io_read(src, 0x0, iobuf->buf, &size))) {
+		bhnd_nvram_io_free(&iobuf->io);
 		return (NULL);
+	}
 
 	return (&iobuf->io);
 }
