@@ -107,8 +107,10 @@ bhnd_nvram_coerce_string_cstr(char *outp, size_t *olen, const char *inp,
 	}
 
 	/* Copy and NUL terminate output */
-	memcpy(outp, inp, str_len);
-	outp[str_len] = '\0';
+	if (outp != NULL) {
+		memcpy(outp, inp, str_len);
+		outp[str_len] = '\0';
+	}
 
 	return (0);
 }
@@ -358,10 +360,12 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 		/* Use stack allocated buffer to copy and NUL terminate
 		 * the input string */
 		cstr_buf = cstr_stack;
+		cstr = cstr_buf;
 	} else {
 		/* Use heap allocated buffer to copy and NUL terminate
 		 * the input string */
 		cstr_buf = malloc(cstr_size, M_BHND_NVRAM, M_NOWAIT|M_WAITOK);
+		cstr = cstr_buf;
 		free_cstr_buf = true;
 	}
 
@@ -377,11 +381,14 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 	 * Parse the NUL-terminated string.
 	 */
 	for (const char *p = cstr; *p != '\0';) {
-		union bhnd_nvram_int_storage	 intv;
 		char				*endp;
 		size_t				 field_len;
 		int				 base;
 		bool				 is_int, is_negated;
+		union {
+			unsigned long	u32;
+			long		s32;
+		} intv;
 
 		/* Determine the field value's position and length,
 		 * skipping any leading whitespace */
@@ -431,7 +438,7 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 	}								\
 									\
 	if (limit > nbytes && limit - nbytes >= sizeof(_ctype))		\
-		*((_ctype *)((uint8_t *)outp + nbytes)) = _dest;	\
+		*((_ctype *)((uint8_t *)outp + nbytes)) = (_ctype)_dest;\
 									\
 	nbytes += sizeof(_ctype);					\
 } while(0)
@@ -706,18 +713,20 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 		return (EFTYPE);
 	}
 
-	/* If we're emitting a string, determine the variable's string format */
-	if (otype == BHND_NVRAM_TYPE_CSTR) {
-		/* Prefer the hinted format, fall back back on a sane
-		 * default */
-		if (hint != NULL) {
-			pfmt = hint->sfmt;
-		} else {
-			if (BHND_NVRAM_SIGNED_TYPE(itype))
-				pfmt = BHND_NVRAM_SFMT_DEC;
-			else
-				pfmt = BHND_NVRAM_SFMT_HEX;
-		}
+	/*
+	 * Fetch the string format to be used with an output type of
+	 * BHND_NVRAM_TYPE_CSTR.
+	 *
+	 * We prefer the hinted format, but otherwise fall back back on a
+	 * sane default.
+	 */
+	if (hint != NULL) {
+		pfmt = hint->sfmt;
+	} else {
+		if (BHND_NVRAM_SIGNED_TYPE(itype))
+			pfmt = BHND_NVRAM_SFMT_DEC;
+		else
+			pfmt = BHND_NVRAM_SFMT_HEX;
 	}
 
 	/* Determine the input integer type width */
@@ -743,9 +752,11 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 	/* Determine the output type width (will be 0 if variable-width) */
 	owidth = bhnd_nvram_type_width(otype);
 
-	/* Iterate over the input elements, coercing to the output type */
+	/* Iterate over the input elements, coercing to the output type
+	 * and writing to the output buffer */
 	for (size_t i = 0; i < nelem; i++) {
-		union bhnd_nvram_int_storage intv;
+		union bhnd_nvram_int_storage	intv;
+		size_t				remain;
 
 		/* Read the input element */
 		switch (itype) {
@@ -800,16 +811,12 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 			intv.s32 = intv.u32;
 		}
 		
-
-		/* Skip writing due to limited space in output buffer?
-		 * 
-		 * Note that for non-fixed width types, we actually need to
-		 * encode them to determine the output width */
-		if (owidth > 0) {
-			if (limit < owidth || limit - owidth < nbytes) {
-				nbytes += owidth;
-				continue;
-			}
+		/* Determine remaining space in output buffer */
+		if (limit < nbytes) {
+			remain = 0;
+		} else {
+			KASSERT(outp != NULL, ("NULL output buffer"));
+			remain = limit - nbytes;
 		}
 
 		/* Write output */
@@ -818,74 +825,79 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 			if (intv.u32 > UINT8_MAX)
 				return (ERANGE);
 
-			*((uint8_t *)outp + i) = intv.u32;
+			if (remain >= owidth)
+				*((uint8_t *)outp + i) = intv.u32;
 			break;
 
 		case BHND_NVRAM_TYPE_UINT16:
 			if (intv.u32 > UINT16_MAX)
 				return (ERANGE);
 
-			*((uint16_t *)outp + i) = intv.u32;
+			if (remain >= owidth)
+				*((uint16_t *)outp + i) = intv.u32;
 			break;
 
 		case BHND_NVRAM_TYPE_UINT32:
-			*((uint32_t *)outp + i) = intv.u32;
+			if (remain >= owidth)
+				*((uint32_t *)outp + i) = intv.u32;
 			break;
 
 		case BHND_NVRAM_TYPE_INT8:
 			if (intv.s32 < INT8_MIN || intv.s32 > INT8_MAX)
 				return (ERANGE);
 
-			*((int8_t *)outp + i) = intv.s32;
+			if (remain >= owidth)
+				*((int8_t *)outp + i) = intv.s32;
 			break;
 
 		case BHND_NVRAM_TYPE_INT16:
 			if (intv.s32 < INT16_MIN || intv.s32 > INT16_MAX)
 				return (ERANGE);
 
-			*((int16_t *)outp + i) = intv.s32;
+			if (remain >= owidth)
+				*((int16_t *)outp + i) = intv.s32;
 			break;
 
 		case BHND_NVRAM_TYPE_INT32:
-			*((int32_t *)outp + i) = intv.s32;
+			if (remain >= owidth)
+				*((int32_t *)outp + i) = intv.s32;
 			break;
 
 		case BHND_NVRAM_TYPE_CHAR:
 			if (intv.s32 < CHAR_MIN || intv.s32 > CHAR_MAX)
 				return (ERANGE);
 
-			*((char *)outp + i) = intv.s32;
+			if (remain >= owidth)
+				*((char *)outp + i) = intv.s32;
 			break;
 
 		case BHND_NVRAM_TYPE_CSTR: {
 			char		*p;
-			size_t		 p_len, p_req;
+			size_t		 p_len;
 
 			/* Determine our output pointer */
-			if (limit <= nbytes) {
+			p_len = remain;
+			if (p_len == 0) {
 				/* We're just formatting to determine the
 				 * required size */
 				p = NULL;
-				p_len = 0;
 			} else {
 				p = (char *)outp + nbytes;
-				p_len = limit - nbytes;
 			}
 
 			/* Attempt to write the entry + delimiter/NUL,
 			 * which gives us the actual number of bytes required
 			 * even if the buffer is too small. */
-			p_req = p_len;
-			error = bhnd_nvram_coerce_int_string(p, &p_req, pfmt,
+			error = bhnd_nvram_coerce_int_string(p, &p_len, pfmt,
 			    &intv, itype, i, nelem);
 			if (error)
 				return (error);
 
 			/* Add to total length */
-			if (SIZE_MAX - p_req < nbytes)
+			if (SIZE_MAX - p_len < nbytes)
 				return (EFTYPE); /* string too long */
 
-			nbytes += p_req;
+			nbytes += p_len;
 			break;
 		}
 		default:
