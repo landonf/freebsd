@@ -42,8 +42,8 @@ __FBSDID("$FreeBSD$");
 #include <machine/bus.h>
 #include <machine/resource.h>
 
-#include "bhnd_nvram_codec.h"
-#include "bhnd_nvram_codecvar.h"
+#include "bhnd_nvram_data.h"
+#include "bhnd_nvram_datavar.h"
 
 #include "bhnd_nvram_parserreg.h"
 #include "bhnd_nvram_parservar.h"
@@ -73,8 +73,8 @@ static void	*bhnd_nvram_index_lookup(struct bhnd_nvram *sc,
 	((_len) > BHND_NVRAM_VAL_MAXLEN ? BHND_NVRAM_VAL_MAXLEN : (int)(_len))
 
 
-static bhnd_nvram_codec_class_t *
-bhnd_nvram_get_parser_class(bhnd_nvram_format fmt)
+static bhnd_nvram_data_class_t *
+bhnd_nvram_get_data_class(bhnd_nvram_format fmt)
 {
 	switch (fmt) {
 	case BHND_NVRAM_FMT_BCM:
@@ -112,15 +112,15 @@ int
 bhnd_nvram_parser_identify(struct bhnd_nvram_io *io,
     bhnd_nvram_format expected, size_t *size_hint)
 {
-	bhnd_nvram_codec_class_t *cls;
+	bhnd_nvram_data_class_t *cls;
 
-	if ((cls = bhnd_nvram_get_parser_class(expected)) == NULL)
+	if ((cls = bhnd_nvram_get_data_class(expected)) == NULL)
 		return (ENODEV);
 	
 	if (size_hint != NULL)
 		*size_hint = bhnd_nvram_io_get_size(io);
 
-	if (bhnd_nvram_codec_probe(cls, io) <= 0)
+	if (bhnd_nvram_data_probe(cls, io) <= 0)
 		return (0);
 
 	return (ENODEV);
@@ -146,7 +146,7 @@ int
 bhnd_nvram_parser_init(struct bhnd_nvram *sc, device_t dev,
     struct bhnd_nvram_io *io, bhnd_nvram_format fmt)
 {
-	bhnd_nvram_codec_class_t	*cls;
+	bhnd_nvram_data_class_t	*cls;
 	int				 error;
 
 	/* Initialize NVRAM state */
@@ -154,14 +154,14 @@ bhnd_nvram_parser_init(struct bhnd_nvram *sc, device_t dev,
 	sc->dev = dev;
 	LIST_INIT(&sc->devpaths);
 
-	/* Verify data format and fetch parser class */
+	/* Verify data format and fetch data class */
 	if ((error = bhnd_nvram_parser_identify(io, fmt, NULL)))
 		return (error);
 
-	cls = bhnd_nvram_get_parser_class(fmt);
+	cls = bhnd_nvram_get_data_class(fmt);
 
-	/* Allocate backing parser */
-	if ((error = bhnd_nvram_codec_new(cls, &sc->nv, io)))
+	/* Parse the input data */
+	if ((error = bhnd_nvram_data_new(cls, &sc->nv, io)))
 		return (error);
 
 	/* Allocate uncommitted change list */
@@ -204,7 +204,7 @@ bhnd_nvram_parser_fini(struct bhnd_nvram *sc)
 		free(sc->idx, M_BHND_NVRAM);
 
 	if (sc->nv != NULL)
-		bhnd_nvram_codec_free(sc->nv);
+		bhnd_nvram_data_free(sc->nv);
 }
 
 /**
@@ -261,14 +261,14 @@ bhnd_nvram_parser_getvar(struct bhnd_nvram *sc, const char *name, void *buf,
 		panic("invalid value type for pending change %s", name);
 	}
 
-	/* Fetch variable from backing parser. We use the index if available;
-	 * otherwise, perform a full scan */
+	/* Fetch variable from parsed NVRAM data. We use our index if
+	 * available; otherwise, perform a full scan */
 	if (sc->idx != NULL) {
 		if ((cookiep = bhnd_nvram_index_lookup(sc, name)) == NULL)
 			return (ENOENT);
 	} else {
 		cookiep = NULL;
-		while ((next = bhnd_nvram_codec_next(sc->nv, &cookiep))) {
+		while ((next = bhnd_nvram_data_next(sc->nv, &cookiep))) {
 			if (strcasecmp(name, next) == 0)
 				break;
 		}
@@ -279,7 +279,7 @@ bhnd_nvram_parser_getvar(struct bhnd_nvram *sc, const char *name, void *buf,
 	}
 
 	/* Let the parser itself perform value coercion */
-	return (bhnd_nvram_codec_getvar(sc->nv, cookiep, buf, len, type));
+	return (bhnd_nvram_data_getvar(sc->nv, cookiep, buf, len, type));
 }
 
 /**
@@ -357,8 +357,8 @@ bhnd_nvram_sort_idx(void *ctx, const void *lhs, const void *rhs)
 	r_idx = rhs;
 
 	/* Fetch string pointers */
-	l_str = bhnd_nvram_codec_getvar_name(sc->nv, l_idx->cookiep);
-	r_str = bhnd_nvram_codec_getvar_name(sc->nv, r_idx->cookiep);
+	l_str = bhnd_nvram_data_getvar_name(sc->nv, l_idx->cookiep);
+	r_str = bhnd_nvram_data_getvar_name(sc->nv, r_idx->cookiep);
 
 	/* Perform comparison */
 	return (strcasecmp(l_str, r_str));
@@ -387,7 +387,7 @@ bhnd_nvram_generate_index(struct bhnd_nvram *sc)
 
 	/* Parse and register all device path aliases */
 	cookiep = NULL;
-	while ((name = bhnd_nvram_codec_next(sc->nv, &cookiep))) {
+	while ((name = bhnd_nvram_data_next(sc->nv, &cookiep))) {
 		struct bhnd_nvram_devpath	*devpath;
 		bhnd_nvram_type			 path_type;
 		const char			*path, *suffix;
@@ -411,11 +411,11 @@ bhnd_nvram_generate_index(struct bhnd_nvram *sc)
 		}
 
 		/* Try to read the target path */
-		path = bhnd_nvram_codec_getvar_ptr(sc->nv, cookiep, &path_len,
+		path = bhnd_nvram_data_getvar_ptr(sc->nv, cookiep, &path_len,
 		    &path_type);
 		if (path == NULL || path_type != BHND_NVRAM_TYPE_CSTR) {
 			path_len = sizeof(pathbuf);
-			error = bhnd_nvram_codec_getvar(sc->nv, cookiep,
+			error = bhnd_nvram_data_getvar(sc->nv, cookiep,
 			    &pathbuf, &path_len, BHND_NVRAM_TYPE_CSTR);
 			if (error)
 				return (error);
@@ -456,7 +456,7 @@ bhnd_nvram_generate_index(struct bhnd_nvram *sc)
 		struct bhnd_nvram_idx_entry *idx;
 
 		/* Fetch next entry */
-		name = bhnd_nvram_codec_next(sc->nv, &cookiep);
+		name = bhnd_nvram_data_next(sc->nv, &cookiep);
 
 		/* Early EOF */
 		if (name == NULL) {
@@ -518,7 +518,7 @@ bhnd_nvram_index_lookup(struct bhnd_nvram *sc, const char *name)
 		idxe = &sc->idx->entries[mid];
 
 		/* Determine which side of the partition to search */
-		idxe_key = bhnd_nvram_codec_getvar_name(sc->nv, idxe->cookiep);
+		idxe_key = bhnd_nvram_data_getvar_name(sc->nv, idxe->cookiep);
 		order = strcasecmp(idxe_key, name);
 
 		if (order < 0) {

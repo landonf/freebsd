@@ -29,47 +29,47 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_NVRAM_BHND_NVRAM_CODEC_H_
-#define _BHND_NVRAM_BHND_NVRAM_CODEC_H_
+#ifndef _BHND_NVRAM_BHND_NVRAM_DATA_H_
+#define _BHND_NVRAM_BHND_NVRAM_DATA_H_
 
 #include <sys/types.h>
 
 #include "bhnd_nvram.h"
 #include "bhnd_nvram_io.h"
 
-/* NVRAM parser class */
-typedef struct bhnd_nvram_codec_class bhnd_nvram_codec_class_t;
+/* NVRAM data class */
+typedef struct bhnd_nvram_data_class bhnd_nvram_data_class_t;
 
-/* NVRAM parser instance */
-struct bhnd_nvram_codec;
+/* NVRAM data instance */
+struct bhnd_nvram_data;
 
-/** Declare a bhnd_nvram_codec_class with name @p _n */
-#define	BHND_NVRAM_CODEC_DECL(_n) \
-	extern 	struct bhnd_nvram_codec_class bhnd_nvram_ ## _n ##_class
+/** Declare a bhnd_nvram_data_class with name @p _n */
+#define	BHND_NVRAM_DATA_CLASS_DECL(_n) \
+	extern 	struct bhnd_nvram_data_class bhnd_nvram_ ## _n ## _class
 
-BHND_NVRAM_CODEC_DECL(bcm);
-BHND_NVRAM_CODEC_DECL(tlv);
-BHND_NVRAM_CODEC_DECL(btxt);
+BHND_NVRAM_DATA_CLASS_DECL(bcm);
+BHND_NVRAM_DATA_CLASS_DECL(tlv);
+BHND_NVRAM_DATA_CLASS_DECL(btxt);
 
-int		 bhnd_nvram_codec_probe(bhnd_nvram_codec_class_t *cls,
+int		 bhnd_nvram_data_probe(bhnd_nvram_data_class_t *cls,
 		     struct bhnd_nvram_io *io);
 
-int		 bhnd_nvram_codec_new(bhnd_nvram_codec_class_t *cls,
-		     struct bhnd_nvram_codec **nv, struct bhnd_nvram_io *io);
+int		 bhnd_nvram_data_new(bhnd_nvram_data_class_t *cls,
+		     struct bhnd_nvram_data **nv, struct bhnd_nvram_io *io);
 
-void		 bhnd_nvram_codec_free(struct bhnd_nvram_codec *nv);
+void		 bhnd_nvram_data_free(struct bhnd_nvram_data *nv);
 
-const char	*bhnd_nvram_codec_next(struct bhnd_nvram_codec *nv,
+const char	*bhnd_nvram_data_next(struct bhnd_nvram_data *nv,
 		     void **cookiep);
 
-int		 bhnd_nvram_codec_getvar(struct bhnd_nvram_codec *nvc,
+int		 bhnd_nvram_data_getvar(struct bhnd_nvram_data *nv,
 		     void *cookiep, void *buf, size_t *len,
 		     bhnd_nvram_type type);
 
-const void	*bhnd_nvram_codec_getvar_ptr(struct bhnd_nvram_codec *nvc,
+const void	*bhnd_nvram_data_getvar_ptr(struct bhnd_nvram_data *nv,
 		     void *cookiep, size_t *len, bhnd_nvram_type *type);
 
-const char	*bhnd_nvram_codec_getvar_name(struct bhnd_nvram_codec *nv,
+const char	*bhnd_nvram_data_getvar_name(struct bhnd_nvram_data *nv,
 		     void *cookiep);
 
-#endif /* _BHND_NVRAM_BHND_NVRAM_CODEC_H_ */
+#endif /* _BHND_NVRAM_BHND_NVRAM_DATA_H_ */

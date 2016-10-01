@@ -29,8 +29,8 @@ SRCS+=	bhnd_pmu_if.c bhnd_pmu_if.h
 # NVRAM/SPROM
 SRCS+=	bhnd_nvram.c \
 	bhnd_nvram_btxt.c \
-	bhnd_nvram_codec.c \
-	bhnd_nvram_codec_subr.c \
+	bhnd_nvram_data.c \
+	bhnd_nvram_data_subr.c \
 	bhnd_nvram_io.c \
 	bhnd_nvram_iobuf.c \
 	bhnd_nvram_iores.c \

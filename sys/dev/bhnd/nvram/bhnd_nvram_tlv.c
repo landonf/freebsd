@@ -40,23 +40,23 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_nvram_common.h"
 
-#include "bhnd_nvram_codec.h"
-#include "bhnd_nvram_codecvar.h"
+#include "bhnd_nvram_data.h"
+#include "bhnd_nvram_datavar.h"
 
 #include "bhnd_nvram_tlvreg.h"
 
 /*
- * CFE TLV parser.
+ * CFE TLV NVRAM data class.
  * 
  * The CFE-defined TLV NVRAM format is used on the WGT634U.
  */
 
 struct bhnd_nvram_tlv {
-	struct bhnd_nvram_codec	 nvc;	/**< common instance state */
+	struct bhnd_nvram_data	 nv;	/**< common instance state */
 	struct bhnd_nvram_io	*data;	/**< backing buffer */
 };
 
-BHND_NVRAM_CODEC_DEFN(tlv)
+BHND_NVRAM_DATA_CLASS_DEFN(tlv)
 
 /** Minimal identification header */
 struct bhnd_nvram_tlv_ident {
@@ -107,30 +107,30 @@ bhnd_nvram_tlv_probe(struct bhnd_nvram_io *io)
 }
 
 static int
-bhnd_nvram_tlv_new(struct bhnd_nvram_codec **nvc, struct bhnd_nvram_io *io)
+bhnd_nvram_tlv_new(struct bhnd_nvram_data **nv, struct bhnd_nvram_io *io)
 {
 	// TODO
 	return (ENXIO);
 }
 
 static void
-bhnd_nvram_tlv_free(struct bhnd_nvram_codec *nvc)
+bhnd_nvram_tlv_free(struct bhnd_nvram_data *nv)
 {
-	struct bhnd_nvram_tlv *tlv = (struct bhnd_nvram_tlv *)nvc;
+	struct bhnd_nvram_tlv *tlv = (struct bhnd_nvram_tlv *)nv;
 
 	bhnd_nvram_io_free(tlv->data);
 	free(tlv, M_BHND_NVRAM);
 }
 
 static const char *
-bhnd_nvram_tlv_next(struct bhnd_nvram_codec *nvc, void **cookiep)
+bhnd_nvram_tlv_next(struct bhnd_nvram_data *nv, void **cookiep)
 {
 	// TODO
 	return (NULL);
 }
 
 static int
-bhnd_nvram_tlv_getvar(struct bhnd_nvram_codec *nv, void *cookiep, void *buf,
+bhnd_nvram_tlv_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
     size_t *len, bhnd_nvram_type type)
 {
 	// TODO
@@ -138,7 +138,7 @@ bhnd_nvram_tlv_getvar(struct bhnd_nvram_codec *nv, void *cookiep, void *buf,
 }
 
 static const void *
-bhnd_nvram_tlv_getvar_ptr(struct bhnd_nvram_codec *nv, void *cookiep,
+bhnd_nvram_tlv_getvar_ptr(struct bhnd_nvram_data *nv, void *cookiep,
     size_t *len, bhnd_nvram_type *type)
 {
 	// TODO
@@ -146,7 +146,7 @@ bhnd_nvram_tlv_getvar_ptr(struct bhnd_nvram_codec *nv, void *cookiep,
 }
 
 static const char *
-bhnd_nvram_tlv_getvar_name(struct bhnd_nvram_codec *nv, void *cookiep)
+bhnd_nvram_tlv_getvar_name(struct bhnd_nvram_data *nv, void *cookiep)
 {
 	// TODO
 	return (NULL);

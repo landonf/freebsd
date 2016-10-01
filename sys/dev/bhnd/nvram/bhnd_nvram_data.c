@@ -34,40 +34,40 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_nvram_io.h"
 
-#include "bhnd_nvram_codecvar.h"
-#include "bhnd_nvram_codec.h"
+#include "bhnd_nvram_datavar.h"
+#include "bhnd_nvram_data.h"
 
 /**
- * Probe to see if this NVRAM parser class supports the data mapped by the
+ * Probe to see if this NVRAM data class class supports the data mapped by the
  * given I/O context, returning a standard newbus device probe result
  * (see BUS_PROBE_*).
  *
  * @param cls The NVRAM class.
  * @param io An I/O context mapping the NVRAM data.
  *
- * @retval 0 if this is the only possible NVRAM parser parser for @p io.
+ * @retval 0 if this is the only possible NVRAM data class for @p io.
  * @retval negative if the probe succeeds, a negative value should be returned;
- * the parser returning the highest negative value will be selected to handle
+ * the class returning the highest negative value should be selected to handle
  * NVRAM parsing.
- * @retval ENXIO If the NVRAM format is not handled by this parser.
+ * @retval ENXIO If the NVRAM format is not handled by @p cls.
  * @retval positive if an error occurs during probing, a regular unix error
  * code should be returned.
  */
 int
-bhnd_nvram_codec_probe(bhnd_nvram_codec_class_t *cls, struct bhnd_nvram_io *io)
+bhnd_nvram_data_probe(bhnd_nvram_data_class_t *cls, struct bhnd_nvram_io *io)
 {
 	return (cls->op_probe(io));
 }
 
 /**
- * Allocate and initialize a new instance of parser class @p cls, copying and
+ * Allocate and initialize a new instance of data class @p cls, copying and
  * parsing NVRAM data from @p io.
   *
  * The caller is responsible for deallocating the parser instance
- * via bhnd_nvram_codec_free().
+ * via bhnd_nvram_data_free().
  * 
- * @param cls The parser class to be allocated.
- * @param nv On success, a pointer to the newly allocated NVRAM instance.
+ * @param cls The data class to be allocated.
+ * @param nv On success, a pointer to the newly allocated NVRAM data instance.
  * @param io An I/O context mapping the NVRAM data to be copied and parsed.
  * 
  * @retval 0 success
@@ -75,20 +75,20 @@ bhnd_nvram_codec_probe(bhnd_nvram_codec_class_t *cls, struct bhnd_nvram_io *io)
  * regular unix error code will be returned.
  */
 int
-bhnd_nvram_codec_new(bhnd_nvram_codec_class_t *cls,
-    struct bhnd_nvram_codec **nv, struct bhnd_nvram_io *io)
+bhnd_nvram_data_new(bhnd_nvram_data_class_t *cls,
+    struct bhnd_nvram_data **nv, struct bhnd_nvram_io *io)
 {
 	return (cls->op_new(nv, io));
 }
 
 /**
- * Free a previously allocated parser instance, releasing all associated
+ * Free a previously allocated data instance, releasing all associated
  * resources.
  * 
- * @param nv The NVRAM parser to be deallocated.
+ * @param nv The NVRAM data to be deallocated.
  */
 void
-bhnd_nvram_codec_free(struct bhnd_nvram_codec *nv)
+bhnd_nvram_data_free(struct bhnd_nvram_data *nv)
 {
 	return (nv->cls->op_free(nv));
 }
@@ -96,15 +96,15 @@ bhnd_nvram_codec_free(struct bhnd_nvram_codec *nv)
 /**
  * Iterate over @p nv, returning the names of subsequent variables.
  * 
- * @param nv The NVRAM parser to be iterated.
+ * @param nv The NVRAM data to be iterated.
  * @param[in,out] cookiep A pointer to a cookiep value previously returned by
- * bhnd_nvram_codec_next(), or a NULL value to begin iteration.
+ * bhnd_nvram_data_next(), or a NULL value to begin iteration.
  * 
  * @return Returns the next variable name, or NULL if there are no more
  * variables defined in @p nv.
  */
 const char *
-bhnd_nvram_codec_next(struct bhnd_nvram_codec *nv, void **cookiep)
+bhnd_nvram_data_next(struct bhnd_nvram_data *nv, void **cookiep)
 {
 	return (nv->cls->op_next(nv, cookiep));
 }
@@ -112,9 +112,9 @@ bhnd_nvram_codec_next(struct bhnd_nvram_codec *nv, void **cookiep)
 /**
  * Read a variable and decode as @p type.
  *
- * @param		nv	The NVRAM parser.
+ * @param		nv	The NVRAM data.
  * @param		cookie	An NVRAM variable cookie previously returned
- *				via bhnd_nvram_codec_next().
+ *				via bhnd_nvram_data_next().
  * @param[out]		buf	On success, the requested value will be written
  *				to this buffer. This argment may be NULL if
  *				the value is not desired.
@@ -129,21 +129,21 @@ bhnd_nvram_codec_next(struct bhnd_nvram_codec *nv, void **cookiep)
  * @retval ERANGE	If value coercion would overflow @p type.
  */
 int
-bhnd_nvram_codec_getvar(struct bhnd_nvram_codec *nv, void *cookiep, void *buf,
+bhnd_nvram_data_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
     size_t *len, bhnd_nvram_type type)
 {
 	return (nv->cls->op_getvar(nv, cookiep, buf, len, type));
 }
 
 /**
- * If available and supported by the NVRAM parser, return a reference
+ * If available and supported by the NVRAM data instance, return a reference
  * to the internal buffer containing an entry's variable data,
  * 
  * Note that string values may not be NUL terminated.
  *
- * @param		nv	The NVRAM parser.
+ * @param		nv	The NVRAM data.
  * @param		cookie	An NVRAM variable cookie previously returned
- *				via bhnd_nvram_codec_next().
+ *				via bhnd_nvram_data_next().
  * @param[out]		len	On success, will be set to the actual size of
  *				the requested value.
  * @param[out]		type	The data type of the entry data.
@@ -153,7 +153,7 @@ bhnd_nvram_codec_getvar(struct bhnd_nvram_codec *nv, void *cookiep, void *buf,
  *			unavailable for @p cookiep.
  */
 const void *
-bhnd_nvram_codec_getvar_ptr(struct bhnd_nvram_codec *nv, void *cookiep,
+bhnd_nvram_data_getvar_ptr(struct bhnd_nvram_data *nv, void *cookiep,
     size_t *len, bhnd_nvram_type *type)
 {
 	return (nv->cls->op_getvar_ptr(nv, cookiep, len, type));
@@ -162,14 +162,14 @@ bhnd_nvram_codec_getvar_ptr(struct bhnd_nvram_codec *nv, void *cookiep,
 
 /**
  * Return the variable name associated with a given @p cookiep.
- * @param nv The NVRAM parser to be iterated.
+ * @param nv The NVRAM data to be iterated.
  * @param[in,out] cookiep A pointer to a cookiep value previously returned by
- * bhnd_nvram_codec_next().
+ * bhnd_nvram_data_next().
  *
  * @return Returns the variable's name.
  */
 const char *
-bhnd_nvram_codec_getvar_name(struct bhnd_nvram_codec *nv, void *cookiep)
+bhnd_nvram_data_getvar_name(struct bhnd_nvram_data *nv, void *cookiep)
 {
 	return (nv->cls->op_getvar_name(nv, cookiep));
 }

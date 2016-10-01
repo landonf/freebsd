@@ -44,11 +44,11 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_nvram_bcmreg.h"
 
-#include "bhnd_nvram_codec.h"
-#include "bhnd_nvram_codecvar.h"
+#include "bhnd_nvram_data.h"
+#include "bhnd_nvram_datavar.h"
 
 /**
- * Broadcom board text file parser.
+ * Broadcom "Board Text" data class.
  *
  * This format is used to provide external NVRAM data for some
  * fullmac WiFi devices, and as an input format when programming
@@ -56,11 +56,11 @@ __FBSDID("$FreeBSD$");
  */
 
 struct bhnd_nvram_btxt {
-	struct bhnd_nvram_codec	 nvc;	/**< common instance state */
+	struct bhnd_nvram_data	 nv;	/**< common instance state */
 	struct bhnd_nvram_io	*data;	/**< memory-backed board text data */
 };
 
-BHND_NVRAM_CODEC_DEFN(btxt)
+BHND_NVRAM_DATA_CLASS_DEFN(btxt)
 
 /** Minimal identification header */
 union bhnd_nvram_btxt_ident {
@@ -125,7 +125,7 @@ bhnd_nvram_btxt_probe(struct bhnd_nvram_io *io)
 /**
  * Initialize @p btxt with the provided board text data mapped by @p src.
  * 
- * @param btxt A newly allocated parser instance.
+ * @param btxt A newly allocated data instance.
  */
 static int
 bhnd_nvram_btxt_init(struct bhnd_nvram_btxt *btxt, struct bhnd_nvram_io *src)
@@ -194,17 +194,17 @@ bhnd_nvram_btxt_init(struct bhnd_nvram_btxt *btxt, struct bhnd_nvram_io *src)
 }
 
 static int
-bhnd_nvram_btxt_new(struct bhnd_nvram_codec **nvc, struct bhnd_nvram_io *io)
+bhnd_nvram_btxt_new(struct bhnd_nvram_data **nv, struct bhnd_nvram_io *io)
 {
 	struct bhnd_nvram_btxt	*btxt;
 	int			 error;
 
-	/* Allocate and initialize the BTXT parser instance */
+	/* Allocate and initialize the BTXT data instance */
 	btxt = malloc(sizeof(*btxt), M_BHND_NVRAM, M_NOWAIT|M_ZERO);
 	if (btxt == NULL)
 		return (ENOMEM);
 
-	btxt->nvc.cls = &bhnd_nvram_btxt_class;
+	btxt->nv.cls = &bhnd_nvram_btxt_class;
 	btxt->data = NULL;
 
 	/* Parse the BTXT input data and initialize our backing
@@ -212,7 +212,7 @@ bhnd_nvram_btxt_new(struct bhnd_nvram_codec **nvc, struct bhnd_nvram_io *io)
 	if ((error = bhnd_nvram_btxt_init(btxt, io)))
 		goto failed;
 
-	*nvc = &btxt->nvc;
+	*nv = &btxt->nv;
 	return (0);
 
 failed:
@@ -225,16 +225,16 @@ failed:
 }
 
 static void
-bhnd_nvram_btxt_free(struct bhnd_nvram_codec *nvc)
+bhnd_nvram_btxt_free(struct bhnd_nvram_data *nv)
 {
-	struct bhnd_nvram_btxt	*btxt = (struct bhnd_nvram_btxt *)nvc;
+	struct bhnd_nvram_btxt	*btxt = (struct bhnd_nvram_btxt *)nv;
 
 	bhnd_nvram_io_free(btxt->data);
-	free(nvc, M_BHND_NVRAM);
+	free(nv, M_BHND_NVRAM);
 }
 
 static const char *
-bhnd_nvram_btxt_next(struct bhnd_nvram_codec *nvc, void **cookiep)
+bhnd_nvram_btxt_next(struct bhnd_nvram_data *nv, void **cookiep)
 {
 	struct bhnd_nvram_btxt	*btxt;
 	const void		*nptr;
@@ -242,7 +242,7 @@ bhnd_nvram_btxt_next(struct bhnd_nvram_codec *nvc, void **cookiep)
 	size_t			 nbytes;
 	int			 error;
 
-	btxt = (struct bhnd_nvram_btxt *)nvc;
+	btxt = (struct bhnd_nvram_btxt *)nv;
 
 	io_size = bhnd_nvram_io_get_size(btxt->data);
 	io_offset = bhnd_nvram_btxt_io_offset(btxt, *cookiep);
@@ -287,7 +287,7 @@ bhnd_nvram_btxt_next(struct bhnd_nvram_codec *nvc, void **cookiep)
 }
 
 static int
-bhnd_nvram_btxt_getvar(struct bhnd_nvram_codec *nv, void *cookiep, void *buf,
+bhnd_nvram_btxt_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
     size_t *len, bhnd_nvram_type type)
 {
 	const void	*vptr;
@@ -295,7 +295,7 @@ bhnd_nvram_btxt_getvar(struct bhnd_nvram_codec *nv, void *cookiep, void *buf,
 	bhnd_nvram_type	 vtype;
 
 	/* Fetch pointer */
-	vptr = bhnd_nvram_codec_getvar_ptr(nv, cookiep, &vlen, &vtype);
+	vptr = bhnd_nvram_data_getvar_ptr(nv, cookiep, &vlen, &vtype);
 	if (vptr == NULL)
 		return (EINVAL);
 
@@ -305,7 +305,7 @@ bhnd_nvram_btxt_getvar(struct bhnd_nvram_codec *nv, void *cookiep, void *buf,
 }
 
 const void *
-bhnd_nvram_btxt_getvar_ptr(struct bhnd_nvram_codec *nv, void *cookiep,
+bhnd_nvram_btxt_getvar_ptr(struct bhnd_nvram_data *nv, void *cookiep,
     size_t *len, bhnd_nvram_type *type)
 {
 	struct bhnd_nvram_btxt	*btxt;
@@ -355,7 +355,7 @@ bhnd_nvram_btxt_getvar_ptr(struct bhnd_nvram_codec *nv, void *cookiep,
 }
 
 static const char *
-bhnd_nvram_btxt_getvar_name(struct bhnd_nvram_codec *nv, void *cookiep)
+bhnd_nvram_btxt_getvar_name(struct bhnd_nvram_data *nv, void *cookiep)
 {
 	struct bhnd_nvram_btxt	*btxt;
 	const void		*ptr;

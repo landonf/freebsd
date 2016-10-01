@@ -37,7 +37,7 @@
 #include <sys/nv.h>
 
 #include "bhnd_nvram_common.h"
-#include "bhnd_nvram_codec.h"
+#include "bhnd_nvram_data.h"
 #include "bhnd_nvram_io.h"
 
 union bhnd_nvram_ident;
@@ -64,7 +64,7 @@ int	bhnd_nvram_parser_setvar(struct bhnd_nvram *sc, const char *name,
 /** bhnd nvram parser instance state */
 struct bhnd_nvram {
 	device_t			 dev;		/**< parent device, or NULL */
-	struct bhnd_nvram_codec		*nv;
+	struct bhnd_nvram_data		*nv;		/**< backing data */
 
 	struct bhnd_nvram_idx		*idx;		/**< key index */
 

@@ -29,14 +29,14 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_NVRAM_BHND_NVRAM_CODEC_VAR_H_
-#define _BHND_NVRAM_BHND_NVRAM_CODEC_VAR_H_
+#ifndef _BHND_NVRAM_BHND_NVRAM_DATAVAR_H_
+#define _BHND_NVRAM_BHND_NVRAM_DATAVAR_H_
 
 #include <sys/param.h>
 
 #include "bhnd_nvram_io.h"
 
-#include "bhnd_nvram_codec.h"
+#include "bhnd_nvram_data.h"
 #include "bhnd_nvram_common.h"
 
 /**
@@ -56,75 +56,74 @@ int	bhnd_nvram_coerce_value(void *outp, size_t *olen, bhnd_nvram_type otype,
 	    const void *inp, size_t ilen, bhnd_nvram_type itype,
 	    struct bhnd_nvram_fmt_hint *hint);
 
-/** @see bhnd_nvram_codec_probe() */
-typedef int (bhnd_nvram_codec_op_probe)(struct bhnd_nvram_io *io);
+/** @see bhnd_nvram_data_probe() */
+typedef int (bhnd_nvram_data_op_probe)(struct bhnd_nvram_io *io);
 
-/** @see bhnd_nvram_codec_new() */
-typedef int (bhnd_nvram_codec_op_new)(struct bhnd_nvram_codec **nv,
+/** @see bhnd_nvram_data_new() */
+typedef int (bhnd_nvram_data_op_new)(struct bhnd_nvram_data **nv,
     struct bhnd_nvram_io *io);
 
-/** @see bhnd_nvram_codec_free() */
-typedef void (bhnd_nvram_codec_op_free)(struct bhnd_nvram_codec *nv);
+/** @see bhnd_nvram_data_free() */
+typedef void (bhnd_nvram_data_op_free)(struct bhnd_nvram_data *nv);
 
-/** @see bhnd_nvram_codec_next() */
-typedef const char *(bhnd_nvram_codec_op_next)(struct bhnd_nvram_codec *nv,
+/** @see bhnd_nvram_data_next() */
+typedef const char *(bhnd_nvram_data_op_next)(struct bhnd_nvram_data *nv,
     void **cookiep);
 
-/** @see bhnd_nvram_codec_getvar_name() */
-typedef const char *(bhnd_nvram_codec_op_getvar_name)(
-    struct bhnd_nvram_codec *nv, void *cookiep);
+/** @see bhnd_nvram_data_getvar_name() */
+typedef const char *(bhnd_nvram_data_op_getvar_name)(
+    struct bhnd_nvram_data *nv, void *cookiep);
 
 
-/** @see bhnd_nvram_codec_getvar() */
-typedef int (bhnd_nvram_codec_op_getvar)(struct bhnd_nvram_codec *nv,
+/** @see bhnd_nvram_data_getvar() */
+typedef int (bhnd_nvram_data_op_getvar)(struct bhnd_nvram_data *nv,
     void *cookiep, void *buf, size_t *len, bhnd_nvram_type type);
 
-/** @see bhnd_nvram_codec_getvar_ptr() */
-typedef const void *(bhnd_nvram_codec_op_getvar_ptr)(
-    struct bhnd_nvram_codec *nv, void *cookiep, size_t *len,
+/** @see bhnd_nvram_data_getvar_ptr() */
+typedef const void *(bhnd_nvram_data_op_getvar_ptr)(
+    struct bhnd_nvram_data *nv, void *cookiep, size_t *len,
     bhnd_nvram_type *type);
 
 /**
- * NVRAM parser class.
+ * NVRAM data class.
  */
-struct bhnd_nvram_codec_class {
-	bhnd_nvram_codec_op_probe	*op_probe;
-	bhnd_nvram_codec_op_new		*op_new;
-	bhnd_nvram_codec_op_free	*op_free;
-	bhnd_nvram_codec_op_next	*op_next;
-	bhnd_nvram_codec_op_getvar	*op_getvar;
-	bhnd_nvram_codec_op_getvar_ptr	*op_getvar_ptr;
-	bhnd_nvram_codec_op_getvar_name	*op_getvar_name;
+struct bhnd_nvram_data_class {
+	bhnd_nvram_data_op_probe	*op_probe;
+	bhnd_nvram_data_op_new		*op_new;
+	bhnd_nvram_data_op_free		*op_free;
+	bhnd_nvram_data_op_next		*op_next;
+	bhnd_nvram_data_op_getvar	*op_getvar;
+	bhnd_nvram_data_op_getvar_ptr	*op_getvar_ptr;
+	bhnd_nvram_data_op_getvar_name	*op_getvar_name;
 };
 
 /**
- * NVRAM parser instance.
+ * NVRAM data instance.
  */
-struct bhnd_nvram_codec {
-	const struct bhnd_nvram_codec_class	*cls;
+struct bhnd_nvram_data {
+	const struct bhnd_nvram_data_class	*cls;
 };
 
 /**
- * Define a bhnd_nvram_codec_class with name @p _n.
+ * Define a bhnd_nvram_data_class with name @p _n.
  */
-#define	BHND_NVRAM_CODEC_DEFN(_n)					\
-	static bhnd_nvram_codec_op_probe				\
+#define	BHND_NVRAM_DATA_CLASS_DEFN(_n)					\
+	static bhnd_nvram_data_op_probe					\
 	    bhnd_nvram_ ## _n ## _probe;				\
-	static bhnd_nvram_codec_op_new					\
+	static bhnd_nvram_data_op_new					\
 	    bhnd_nvram_ ## _n ## _new;					\
-	static bhnd_nvram_codec_op_free					\
+	static bhnd_nvram_data_op_free					\
 	    bhnd_nvram_ ## _n ## _free;					\
-	static bhnd_nvram_codec_op_next					\
+	static bhnd_nvram_data_op_next					\
 	    bhnd_nvram_ ## _n ## _next;					\
-	static bhnd_nvram_codec_op_getvar				\
+	static bhnd_nvram_data_op_getvar				\
 	    bhnd_nvram_ ## _n ## _getvar;				\
-	static bhnd_nvram_codec_op_getvar_ptr				\
+	static bhnd_nvram_data_op_getvar_ptr				\
 	    bhnd_nvram_ ## _n ## _getvar_ptr;				\
-	static bhnd_nvram_codec_op_getvar_name				\
+	static bhnd_nvram_data_op_getvar_name				\
 	    bhnd_nvram_ ## _n ## _getvar_name;				\
 									\
-	struct bhnd_nvram_codec_class bhnd_nvram_ ## _n ## _class =	\
-	{								\
+	struct bhnd_nvram_data_class bhnd_nvram_ ## _n ## _class = {	\
 		.op_probe	= bhnd_nvram_ ## _n ## _probe,		\
 		.op_new		= bhnd_nvram_ ## _n ## _new,		\
 		.op_free	= bhnd_nvram_ ## _n ## _free,		\
@@ -134,4 +133,4 @@ struct bhnd_nvram_codec {
 		.op_getvar_name	= bhnd_nvram_ ## _n ## _getvar_name,	\
 	};
 
-#endif /* _BHND_NVRAM_BHND_NVRAM_CODEC_VAR_H_ */
+#endif /* _BHND_NVRAM_BHND_NVRAM_DATAVAR_H_ */

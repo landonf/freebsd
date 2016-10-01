@@ -1185,8 +1185,8 @@ dev/bhnd/nvram/bhnd_nvram.c		optional bhnd
 dev/bhnd/nvram/bhnd_nvram_common.c	optional bhnd
 dev/bhnd/nvram/bhnd_nvram_if.m		optional bhnd
 dev/bhnd/nvram/bhnd_nvram_btxt.c	optional bhnd
-dev/bhnd/nvram/bhnd_nvram_codec.c	optional bhnd
-dev/bhnd/nvram/bhnd_nvram_codec_subr.c	optional bhnd
+dev/bhnd/nvram/bhnd_nvram_data.c	optional bhnd
+dev/bhnd/nvram/bhnd_nvram_data_subr.c	optional bhnd
 dev/bhnd/nvram/bhnd_nvram_io.c		optional bhnd
 dev/bhnd/nvram/bhnd_nvram_iobuf.c	optional bhnd
 dev/bhnd/nvram/bhnd_nvram_iores.c	optional bhnd
