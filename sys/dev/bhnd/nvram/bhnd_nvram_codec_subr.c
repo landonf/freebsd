@@ -53,12 +53,6 @@ __FBSDID("$FreeBSD$");
 #define	NVRAM_LOG(_fmt, ...)	\
 	printf("%s: " _fmt, __FUNCTION__, ##__VA_ARGS__)
 
-/* Is _c a field terminating/delimiting character? */
-#define	nvram_istermc(_c)	((_c) == '\0' || nvram_isdelimc(_c))
-
-/* Is _c a field delimiting character? */
-#define	nvram_isdelimc(_c)	((_c) == ',')
-
 /** signed/unsigned 32-bit integer value storage */
 union bhnd_nvram_int_storage {
 	uint32_t	u32;
