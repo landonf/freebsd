@@ -293,8 +293,6 @@ bhnd_nvram_ident_octet_string(const char *inp, size_t ilen, char *delim)
  *			small to hold the requested value.
  * @retval EFTYPE	If the variable data cannot be coerced to @p otype.
  * @retval ERANGE	If value coercion would overflow @p otype.
- * @retval EFBIG	If an internal temporary buffer is required, but cannot
- *			be allocated.
  */
 static int
 bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
@@ -316,7 +314,6 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 		limit = *olen;
 	else
 		limit = 0;
-
 
 	/*
 	 * Determine whether this is an octet string, and validate
@@ -361,10 +358,7 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 	} else {
 		/* Use heap allocated buffer to copy and NUL terminate
 		 * the input string */
-		cstr_buf = malloc(cstr_size, M_BHND_NVRAM, M_NOWAIT);
-		if (cstr_buf == NULL)
-			return (EFBIG);
-
+		cstr_buf = malloc(cstr_size, M_BHND_NVRAM, M_NOWAIT|M_WAITOK);
 		free_cstr_buf = true;
 	}
 
@@ -521,14 +515,197 @@ finished:
  *			small to hold the requested value.
  * @retval EFTYPE	If the variable data cannot be coerced to @p otype.
  * @retval ERANGE	If value coercion would overflow @p otype.
+ * @retval EFAULT	If @p ilen is not correctly aligned for elements of
+ *			type @p itype.
  */
 static int
 bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
     const char *inp, size_t ilen, bhnd_nvram_type itype,
     struct bhnd_nvram_fmt_hint *hint)
 {
-	// TODO
-	return (EFTYPE);
+	size_t	limit, nbytes;
+	size_t	iwidth, owidth;
+	size_t	nelem;
+
+	//char	delim;
+	//int	error;
+
+	nbytes = 0;
+	if (outp != NULL)
+		limit = *olen;
+	else
+		limit = 0;
+
+	/* Verify the input type */
+	if (!BHND_NVRAM_INT_TYPE(itype)) {
+		NVRAM_LOG("non-integer input type %d", itype);
+		return (EFTYPE);
+	}
+
+	/* Determine the input integer type width */
+	iwidth = bhnd_nvram_type_width(itype);
+	if (iwidth == 0) {
+		/* Shouldn't be possible (unless we add support for
+		 * something like LEB128 encoding) */
+		NVRAM_LOG("variable width integer input type %d", itype);
+		return (EFTYPE);
+	}
+
+	/* Verify input buffer size and alignment for the given type. */                                                                                                                                                                      
+	if (ilen % bhnd_nvram_type_width(itype) != 0)
+		return (EFAULT);
+
+	/* Reject empty input values */
+	if (ilen == 0)
+		return (EFAULT);
+
+	/* Determine the number of input elements */
+	nelem = ilen / iwidth;
+
+	/* Determine the output type width (will be 0 if variable-width) */
+	owidth = bhnd_nvram_type_width(otype);
+
+	/* Iterate over the input elements, coercing to the output type */
+	for (size_t i = 0; i < nelem; i++) {
+		union {
+			unsigned long	u32;
+			long		s32;
+		} intv;
+
+		/* Read the input element */
+		switch (itype) {
+		case BHND_NVRAM_TYPE_UINT8:
+			intv.u32 = *((const uint8_t *)inp + i);
+			break;
+		case BHND_NVRAM_TYPE_UINT16:
+			intv.u32 = *((const uint16_t *)inp + i);
+			break;
+		case BHND_NVRAM_TYPE_UINT32:
+			intv.u32 = *((const uint32_t *)inp + i);
+			break;
+		case BHND_NVRAM_TYPE_INT8:
+			intv.s32 = *((const int8_t *)inp + i);
+			break;
+		case BHND_NVRAM_TYPE_INT16:
+			intv.s32 = *((const int16_t *)inp + i);
+			break;
+		case BHND_NVRAM_TYPE_INT32:
+			intv.s32 = *((const int32_t *)inp + i);
+			break;
+		case BHND_NVRAM_TYPE_CHAR:
+			intv.s32 = *((const char *)inp + i);
+			break;
+			
+		case BHND_NVRAM_TYPE_CSTR:
+			/* unreachable */
+			return (EFTYPE);
+		}
+
+		/* Handle signed/unsigned coercions */
+		if (BHND_NVRAM_SIGNED_TYPE(itype) &&
+		    BHND_NVRAM_UNSIGNED_TYPE(otype))
+		{
+			if (intv.s32 < 0) {
+				/* Can't represent negative value */
+				return (ERANGE);
+			}
+
+			/* Convert to unsigned representation */
+			intv.u32 = intv.s32;
+		} else if (BHND_NVRAM_UNSIGNED_TYPE(itype) &&
+		    BHND_NVRAM_SIGNED_TYPE(otype))
+		{
+			/* Handle unsigned -> signed coercions */
+			if (intv.u32 > INT32_MAX) {
+				/* Can't represent positive value */
+				return (ERANGE);
+			}
+
+			/* Convert to signed representation */
+			intv.s32 = intv.u32;
+		}
+		
+
+		/* Skip writing due to limited space in output buffer?
+		 * 
+		 * Note that for non-fixed width types, we actually need to
+		 * encode them to determine the output width */
+		if (owidth > 0) {
+			if (limit < owidth || limit - owidth < nbytes) {
+				nbytes += owidth;
+				continue;
+			}
+		}
+
+		/* Write output */
+		switch (otype) {
+		case BHND_NVRAM_TYPE_UINT8:
+			if (intv.u32 > UINT8_MAX)
+				return (ERANGE);
+
+			*((uint8_t *)outp + i) = intv.u32;
+			break;
+
+		case BHND_NVRAM_TYPE_UINT16:
+			if (intv.u32 > UINT16_MAX)
+				return (ERANGE);
+
+			*((uint16_t *)outp + i) = intv.u32;
+			break;
+
+		case BHND_NVRAM_TYPE_UINT32:
+			*((uint32_t *)outp + i) = intv.u32;
+			break;
+
+		case BHND_NVRAM_TYPE_INT8:
+			if (intv.s32 < INT8_MIN || intv.s32 > INT8_MAX)
+				return (ERANGE);
+
+			*((int8_t *)outp + i) = intv.s32;
+			break;
+
+		case BHND_NVRAM_TYPE_INT16:
+			if (intv.s32 < INT16_MIN || intv.s32 > INT16_MAX)
+				return (ERANGE);
+
+			*((int16_t *)outp + i) = intv.s32;
+			break;
+
+		case BHND_NVRAM_TYPE_INT32:
+			*((int32_t *)outp + i) = intv.s32;
+			break;
+
+		case BHND_NVRAM_TYPE_CHAR:
+			if (intv.s32 < CHAR_MIN || intv.s32 > CHAR_MAX)
+				return (ERANGE);
+
+			*((char *)outp + i) = intv.s32;
+			break;
+
+		case BHND_NVRAM_TYPE_CSTR:
+			// TODO
+			// XXX fall through
+		default:
+			printf("unknown type %d\n", otype);
+			return (EFTYPE);
+		}
+
+		nbytes += owidth;
+	}
+
+	/* Provide the actual length */
+	*olen = nbytes;
+
+	/* If no output was requested, nothing left to do */
+	if (outp == NULL)
+		return (0);
+
+	/* Otherwise, report a memory error if the output buffer was too
+	 * small */
+	if (limit < nbytes)
+		return (ENOMEM);
+
+	return (0);
 }
 
 /**
@@ -551,6 +728,8 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
  *			small to hold the requested value.
  * @retval EFTYPE	If the variable data cannot be coerced to @p otype.
  * @retval ERANGE	If value coercion would overflow @p otype.
+ * @retval EFAULT	If @p ilen is not correctly aligned for elements of
+ *			type @p itype.
  */
 int
 bhnd_nvram_coerce_value(void *outp, size_t *olen, bhnd_nvram_type otype,
