@@ -34,6 +34,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/ctype.h>
 #include <sys/systm.h>
 
+#include <machine/_inttypes.h>
+
 #include "bhnd_nvram_io.h"
 
 #include "bhnd_nvram_codecvar.h"
@@ -56,6 +58,12 @@ __FBSDID("$FreeBSD$");
 
 /* Is _c a field delimiting character? */
 #define	nvram_isdelimc(_c)	((_c) == ',')
+
+/** signed/unsigned 32-bit integer value storage */
+union bhnd_nvram_int_storage {
+	uint32_t	u32;
+	int32_t		s32;
+};
 
 /**
  * Coerce a string value to a NUL terminated C string.
@@ -374,14 +382,11 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 	 * Parse the NUL-terminated string.
 	 */
 	for (const char *p = cstr; *p != '\0';) {
-		char		*endp;
-		size_t		 field_len;
-		int		 base;
-		bool		 is_int, is_negated;
-		union {
-			unsigned long	u32;
-			long		s32;
-		} intv;
+		union bhnd_nvram_int_storage	 intv;
+		char				*endp;
+		size_t				 field_len;
+		int				 base;
+		bool				 is_int, is_negated;
 
 		/* Determine the field value's position and length,
 		 * skipping any leading whitespace */
@@ -497,6 +502,171 @@ finished:
 }
 
 /**
+ * Perform string formatting of integer value @p inv, writing the
+ * result to @p outp.
+ * 
+ * Either NUL or an array delimiter character will be appended to the output if
+ * required by both @p ofmt and the element's @p elem position.
+ * 
+ * The total number of bytes that would have been written if @p olen was
+ * unlimited will be returned via @p olen. This includes any terminating
+ * delimiter or NUL character.
+ * 
+ * @param		outp	The buffer to which the string value should be
+ *				written.
+ * @param[in,out]	olen	The total capacity of @p outp. On return, will
+ *				contain the actual number of bytes required.
+ * @param		ofmt	The output string format to be used when
+ *				formatting @p inv.
+ * @param		inv	The integer value to be written to @p outp.
+ * @param		itype	The integer type from which @p inv was parsed.
+ * @param		elem	The element index being printed. If this is the
+ *				first value in an array of elements, the index
+ *				would be 0, the next would be 1, and so on.
+ * @param		nelem	The total number of elements being printed.
+ * 
+ * @retval 0		success
+ * @retval EFTYPE	If the variable data cannot be coerced to a string
+ *			representation.
+ * @retval ERANGE	If value coercion would overflow the string's integer
+ *			representation.
+ */
+static int
+bhnd_nvram_coerce_int_string(char *outp, size_t *olen, bhnd_nvram_sfmt ofmt,
+    const union bhnd_nvram_int_storage *inv, bhnd_nvram_type itype, size_t elem,
+    size_t nelem)
+{
+	size_t		 iwidth;
+	size_t		 limit;
+	char		 delim;
+	int		 nwrite;
+	bool		 last_elem, has_delim;
+
+	if (outp != NULL)
+		limit = *olen;
+	else
+		limit = 0;
+
+	/* Default array element delimiter */
+	delim = ',';
+	has_delim = true;
+
+	/* Is this the last element? */
+	last_elem = false;
+	if (elem + 1 == nelem)
+		last_elem = true;
+
+	/* Sanity check the input type */
+	if (!BHND_NVRAM_INT_TYPE(itype)) {
+		NVRAM_LOG("invalid type: %d\n", itype);
+		return (EFTYPE);
+	}
+
+	iwidth = bhnd_nvram_type_width(itype);
+	switch (iwidth) {
+	case 1:
+	case 2:
+	case 4:
+		break;
+	default:
+		NVRAM_LOG("invalid type width for %d: %zu\n", itype, iwidth);
+		return (EFTYPE);
+	}
+
+
+	/* Format the string value */
+	switch (ofmt) {
+	case BHND_NVRAM_SFMT_MACADDR:
+		/* Canonical MACADDR format uses a ':' delimiter */
+		delim = ':';
+
+		nwrite = snprintf(outp, limit, "%02" PRIX32, inv->u32);
+		break;
+	case BHND_NVRAM_SFMT_LEDDC:
+		/* Do not delimit LEDDC values; they're simply appended */
+		has_delim = false;
+
+		/* Only include the '0x' prefix on the first element */
+		if (elem == 0) {
+			nwrite = snprintf(outp, limit, "0x%0*" PRIX32,
+			    (int)iwidth * 2 /* byte-width padding */, inv->u32);
+		} else {
+			nwrite = snprintf(outp, limit, "%0*" PRIX32,
+			    (int)iwidth * 2 /* byte-width padding */, inv->u32);
+		}
+		break;
+	case BHND_NVRAM_SFMT_HEX:
+		nwrite = snprintf(outp, limit, "0x%0*" PRIX32,
+		    (int)iwidth * 2 /* byte-width padding */,  inv->u32);
+		break;
+
+	case BHND_NVRAM_SFMT_DEC:
+		if (BHND_NVRAM_SIGNED_TYPE(itype))
+			nwrite = snprintf(outp, limit, "%" PRId32, inv->s32);
+		else
+			nwrite = snprintf(outp, limit, "%" PRIu32, inv->u32);
+
+		break;
+	case BHND_NVRAM_SFMT_CCODE: {
+		unsigned char c;
+
+		/* Do not delimit CCODE values; they're simply appended */
+		has_delim = false;
+
+		/* Must be representable as an ascii char */
+		if (BHND_NVRAM_SIGNED_TYPE(itype)) {
+			if (inv->s32 < 0 ||
+			    inv->s32 > CHAR_MAX ||
+			    !isascii(inv->s32))
+			{
+				NVRAM_LOG("cannot encode %" PRId32 "as ccode "
+				    "element\n", inv->s32);
+				return (ERANGE);
+			}
+
+			c = (char) inv->s32;
+		} else {
+			if (inv->u32 > CHAR_MAX || !isascii(inv->u32)) {
+				NVRAM_LOG("cannot encode %" PRIu32 "as ccode "
+				    "element\n", inv->s32);
+				return (ERANGE);
+			}
+
+			c = inv->u32;
+		}
+
+		nwrite = snprintf(outp, limit, "%c", c);
+		break;
+	}
+	default:
+		NVRAM_LOG("unsupported output string format %d\n", ofmt);
+		return (EFTYPE);
+	}
+
+	/* Handle snprintf failure */
+	if (nwrite < 0) {
+		NVRAM_LOG("snprintf() failed: %d\n", nwrite);
+		return (EFTYPE);
+	}
+
+	/* Provide the number of bytes written (or required if we could write
+	 * them), plus the cost of a trailing NUL or delimiter */
+	*olen = nwrite;
+	if (last_elem || has_delim)
+		*olen += 1;
+
+	/* If we exceeded our buffer capacity, nothing left to do */
+	if (nwrite >= limit)
+		return (0);
+
+	/* Do we need to replace NUL with a delimiter? */
+	if (!last_elem && has_delim)
+		outp[nwrite] = delim;
+
+	return (0);
+}
+
+/**
  * Coerce integer value @p inp to @p otype, writing the result to @p outp.
  *
  * @param[out]		outp	On success, the value will be written to this 
@@ -523,12 +693,11 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
     const char *inp, size_t ilen, bhnd_nvram_type itype,
     struct bhnd_nvram_fmt_hint *hint)
 {
-	size_t	limit, nbytes;
-	size_t	iwidth, owidth;
-	size_t	nelem;
-
-	//char	delim;
-	//int	error;
+	bhnd_nvram_sfmt	pfmt;
+	size_t		limit, nbytes;
+	size_t		iwidth, owidth;
+	size_t		nelem;
+	int		error;
 
 	nbytes = 0;
 	if (outp != NULL)
@@ -540,6 +709,20 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 	if (!BHND_NVRAM_INT_TYPE(itype)) {
 		NVRAM_LOG("non-integer input type %d", itype);
 		return (EFTYPE);
+	}
+
+	/* If we're emitting a string, determine the variable's string format */
+	if (otype == BHND_NVRAM_TYPE_CSTR) {
+		/* Prefer the hinted format, fall back back on a sane
+		 * default */
+		if (hint != NULL) {
+			pfmt = hint->sfmt;
+		} else {
+			if (BHND_NVRAM_SIGNED_TYPE(itype))
+				pfmt = BHND_NVRAM_SFMT_DEC;
+			else
+				pfmt = BHND_NVRAM_SFMT_HEX;
+		}
 	}
 
 	/* Determine the input integer type width */
@@ -567,10 +750,7 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 
 	/* Iterate over the input elements, coercing to the output type */
 	for (size_t i = 0; i < nelem; i++) {
-		union {
-			unsigned long	u32;
-			long		s32;
-		} intv;
+		union bhnd_nvram_int_storage intv;
 
 		/* Read the input element */
 		switch (itype) {
@@ -682,11 +862,39 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 			*((char *)outp + i) = intv.s32;
 			break;
 
-		case BHND_NVRAM_TYPE_CSTR:
-			// TODO
-			// XXX fall through
+		case BHND_NVRAM_TYPE_CSTR: {
+			char		*p;
+			size_t		 p_len, p_req;
+
+			/* Determine our output pointer */
+			if (limit <= nbytes) {
+				/* We're just formatting to determine the
+				 * required size */
+				p = NULL;
+				p_len = 0;
+			} else {
+				p = (char *)outp + nbytes;
+				p_len = limit - nbytes;
+			}
+
+			/* Attempt to write the entry + delimiter/NUL,
+			 * which gives us the actual number of bytes required
+			 * even if the buffer is too small. */
+			p_req = p_len;
+			error = bhnd_nvram_coerce_int_string(p, &p_req, pfmt,
+			    &intv, itype, i, nelem);
+			if (error)
+				return (error);
+
+			/* Add to total length */
+			if (SIZE_MAX - p_req < nbytes)
+				return (EFTYPE); /* string too long */
+
+			nbytes += p_req;
+			break;
+		}
 		default:
-			printf("unknown type %d\n", otype);
+			NVRAM_LOG("unknown type %d\n", otype);
 			return (EFTYPE);
 		}
 
