@@ -66,10 +66,6 @@ const struct bhnd_nvram_vardefn	*bhnd_nvram_find_vardefn(const char *varname);
 
 bool				 bhnd_nvram_validate_name(const char *name,
 				     size_t name_len);
-int				 bhnd_nvram_parse_octet_string(
-				     const char *value, size_t value_len,
-				     void *buf, size_t *len,
-				     bhnd_nvram_type type);
 
 /** NVRAM variable flags */
 enum {
