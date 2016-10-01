@@ -70,6 +70,11 @@ typedef void (bhnd_nvram_codec_op_free)(struct bhnd_nvram_codec *nv);
 typedef const char *(bhnd_nvram_codec_op_next)(struct bhnd_nvram_codec *nv,
     void **cookiep);
 
+/** @see bhnd_nvram_codec_getvar_name() */
+typedef const char *(bhnd_nvram_codec_op_getvar_name)(
+    struct bhnd_nvram_codec *nv, void *cookiep);
+
+
 /** @see bhnd_nvram_codec_getvar() */
 typedef int (bhnd_nvram_codec_op_getvar)(struct bhnd_nvram_codec *nv,
     void *cookiep, void *buf, size_t *len, bhnd_nvram_type type);
@@ -89,6 +94,7 @@ struct bhnd_nvram_codec_class {
 	bhnd_nvram_codec_op_next	*op_next;
 	bhnd_nvram_codec_op_getvar	*op_getvar;
 	bhnd_nvram_codec_op_getvar_ptr	*op_getvar_ptr;
+	bhnd_nvram_codec_op_getvar_name	*op_getvar_name;
 };
 
 /**
@@ -114,6 +120,8 @@ struct bhnd_nvram_codec {
 	    bhnd_nvram_ ## _n ## _getvar;				\
 	static bhnd_nvram_codec_op_getvar_ptr				\
 	    bhnd_nvram_ ## _n ## _getvar_ptr;				\
+	static bhnd_nvram_codec_op_getvar_name				\
+	    bhnd_nvram_ ## _n ## _getvar_name;				\
 									\
 	struct bhnd_nvram_codec_class bhnd_nvram_ ## _n ## _class =	\
 	{								\
@@ -123,6 +131,7 @@ struct bhnd_nvram_codec {
 		.op_next	= bhnd_nvram_ ## _n ## _next,		\
 		.op_getvar	= bhnd_nvram_ ## _n ## _getvar,		\
 		.op_getvar_ptr	= bhnd_nvram_ ## _n ## _getvar_ptr,	\
+		.op_getvar_name	= bhnd_nvram_ ## _n ## _getvar_name,	\
 	};
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_CODEC_VAR_H_ */

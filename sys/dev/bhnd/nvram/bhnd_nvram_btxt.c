@@ -354,6 +354,33 @@ bhnd_nvram_btxt_getvar_ptr(struct bhnd_nvram_codec *nv, void *cookiep,
 	return (vptr);
 }
 
+static const char *
+bhnd_nvram_btxt_getvar_name(struct bhnd_nvram_codec *nv, void *cookiep)
+{
+	struct bhnd_nvram_btxt	*btxt;
+	const void		*ptr;
+	size_t			 io_offset, io_size;
+	size_t			 nbytes;
+	int			 error;
+	
+	btxt = (struct bhnd_nvram_btxt *)nv;
+	
+	io_size = bhnd_nvram_io_get_size(btxt->data);
+	io_offset = bhnd_nvram_btxt_io_offset(btxt, cookiep);
+
+	/* At EOF? */
+	if (io_offset == io_size)
+		panic("invalid cookiep: %p", cookiep);
+
+	/* Variable name is found directly at the given offset */
+	nbytes = 1;
+	error = bhnd_nvram_io_read_ptr(btxt->data, io_offset, &ptr, &nbytes);
+	if (error)
+		panic("unexpected error in read_ptr(): %d\n", error);
+
+	return (ptr);
+}
+
 /* Convert cookie back to an I/O offset */
 static size_t
 bhnd_nvram_btxt_io_offset(struct bhnd_nvram_btxt *btxt, void *cookiep)

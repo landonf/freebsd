@@ -158,3 +158,18 @@ bhnd_nvram_codec_getvar_ptr(struct bhnd_nvram_codec *nv, void *cookiep,
 {
 	return (nv->cls->op_getvar_ptr(nv, cookiep, len, type));
 }
+
+
+/**
+ * Return the variable name associated with a given @p cookiep.
+ * @param nv The NVRAM parser to be iterated.
+ * @param[in,out] cookiep A pointer to a cookiep value previously returned by
+ * bhnd_nvram_codec_next().
+ *
+ * @return Returns the variable's name.
+ */
+const char *
+bhnd_nvram_codec_getvar_name(struct bhnd_nvram_codec *nv, void *cookiep)
+{
+	return (nv->cls->op_getvar_name(nv, cookiep));
+}

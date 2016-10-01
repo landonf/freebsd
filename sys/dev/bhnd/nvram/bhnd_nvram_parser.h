@@ -37,6 +37,7 @@
 #include <sys/nv.h>
 
 #include "bhnd_nvram_common.h"
+#include "bhnd_nvram_codec.h"
 #include "bhnd_nvram_io.h"
 
 union bhnd_nvram_ident;
@@ -60,43 +61,14 @@ int	bhnd_nvram_parser_getvar(struct bhnd_nvram *sc, const char *name,
 int	bhnd_nvram_parser_setvar(struct bhnd_nvram *sc, const char *name,
 	    const void *buf, size_t len, bhnd_nvram_type type);
 
-/** BCM NVRAM header */
-struct bhnd_nvram_header {
-	uint32_t magic;
-	uint32_t size;
-	uint32_t cfg0;		/**< crc:8, version:8, sdram_init:16 */
-	uint32_t cfg1;		/**< sdram_config:16, sdram_refresh:16 */
-	uint32_t sdram_ncdl;	/**< sdram_ncdl */
-} __packed;
-
-/** 
- * NVRAM format identification.
- * 
- * To perform identification of the NVRAM format using bhnd_nvram_identify(),
- * read `sizeof(bhnd_nvram_indent)` bytes from the head of the NVRAM data.
- */
-union bhnd_nvram_ident {
-	struct bhnd_nvram_header	bcm;
-	char				btxt[4];
-	struct bhnd_tlv_ident {
-		uint8_t		tag;
-		uint8_t		size[2];
-		uint8_t		flags;
-	} __packed tlv;
-};
-
 /** bhnd nvram parser instance state */
 struct bhnd_nvram {
 	device_t			 dev;		/**< parent device, or NULL */
-	const struct bhnd_nvram_ops	*ops;
-	uint8_t				*buf;		/**< nvram data */
-	size_t				 buf_size;
-	size_t				 num_buf_vars;	/**< number of records in @p buf (0 if not yet calculated) */
+	struct bhnd_nvram_codec		*nv;
 
 	struct bhnd_nvram_idx		*idx;		/**< key index */
 
 	struct bhnd_nvram_devpaths	 devpaths;	/**< device paths */
-	nvlist_t			*defaults;	/**< default values */
 	nvlist_t			*pending;	/**< uncommitted writes */
 };
 

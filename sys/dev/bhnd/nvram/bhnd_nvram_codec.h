@@ -69,4 +69,7 @@ int		 bhnd_nvram_codec_getvar(struct bhnd_nvram_codec *nvc,
 const void	*bhnd_nvram_codec_getvar_ptr(struct bhnd_nvram_codec *nvc,
 		     void *cookiep, size_t *len, bhnd_nvram_type *type);
 
+const char	*bhnd_nvram_codec_getvar_name(struct bhnd_nvram_codec *nv,
+		     void *cookiep);
+
 #endif /* _BHND_NVRAM_BHND_NVRAM_CODEC_H_ */

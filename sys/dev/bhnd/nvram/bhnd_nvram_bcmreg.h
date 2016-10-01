@@ -35,6 +35,15 @@
 #define BCM_NVRAM_GET_BITS(_value, _field)  \
 	((_value & _field ## _MASK) >> _field ## _SHIFT)
 
+/** BCM NVRAM header */
+struct bhnd_nvram_header {
+	uint32_t magic;
+	uint32_t size;
+	uint32_t cfg0;		/**< crc:8, version:8, sdram_init:16 */
+	uint32_t cfg1;		/**< sdram_config:16, sdram_refresh:16 */
+	uint32_t sdram_ncdl;	/**< sdram_ncdl */
+} __packed;
+
 /* NVRAM header fields */
 #define	BCM_NVRAM_MAGIC				0x48534C46	/* 'FLSH' */
 #define	BCM_NVRAM_VERSION			1

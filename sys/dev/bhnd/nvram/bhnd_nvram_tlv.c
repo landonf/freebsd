@@ -137,9 +137,16 @@ bhnd_nvram_tlv_getvar(struct bhnd_nvram_codec *nv, void *cookiep, void *buf,
 	return (ENXIO);
 }
 
-const void *
+static const void *
 bhnd_nvram_tlv_getvar_ptr(struct bhnd_nvram_codec *nv, void *cookiep,
     size_t *len, bhnd_nvram_type *type)
+{
+	// TODO
+	return (NULL);
+}
+
+static const char *
+bhnd_nvram_tlv_getvar_name(struct bhnd_nvram_codec *nv, void *cookiep)
 {
 	// TODO
 	return (NULL);

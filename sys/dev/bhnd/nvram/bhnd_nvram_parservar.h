@@ -62,11 +62,10 @@ struct bhnd_nvram_devpath {
 /**
  * NVRAM index record.
  * 
- * Provides entry offsets into a backing NVRAM buffer.
+ * Caches opaque entry identifiers extracted from the backing NVRAM parser.
  */
 struct bhnd_nvram_idx_entry {
-	uint16_t	env_offset;	/**< offset to env string (key must be
-					     '\0'   or '=' terminated) */
+	void	*cookiep;
 };
 
 /**
