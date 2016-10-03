@@ -224,9 +224,12 @@ function gen_var_flags (v)
 # emit the bhnd_sprom_offsets for a given variable revision key
 function emit_var_sprom_offsets (v, revk)
 {
-	emit(sprintf("{{%u, %u}, (struct bhnd_sprom_offset[]) {\n",
+	emit("{\n")
+	output_depth++
+	emit(sprintf(".compat = { %u, %u },\n",
 	    vars[revk,REV_START],
 	    vars[revk,REV_END]))
+	emit(".offsets = (struct bhnd_sprom_offset[]) {\n")
 	output_depth++
 
 	num_offs = vars[revk,REV_NUM_OFFS]
@@ -243,30 +246,45 @@ function emit_var_sprom_offsets (v, revk)
 				seg_addr = vars[segk,SEG_ADDR]
 				seg_addr += TSIZE[vars[segk,SEG_TYPE]] * seg_n
 
-				emit(sprintf("{%s, %s, %s, %s, %s},\n",
-				    seg_addr,
-				    (seg > 0) ? "true" : "false",
-				    DTYPE[vars[segk,SEG_TYPE]],
-				    vars[segk,SEG_SHIFT],
-				    vars[segk,SEG_MASK]))
+				emit("{\n")
+				output_depth++
 
+				emit(sprintf(".offset = %s,\n", seg_addr))
+				emit(sprintf(".cont = %s,\n",
+				    (seg > 0) ? "true" : "false"))
+				emit(sprintf(".type = %s,\n",
+				    DTYPE[vars[segk,SEG_TYPE]]))
+				emit(sprintf(".shift = %s,\n",
+				    vars[segk,SEG_SHIFT]))
+				emit(sprintf(".mask = %s,\n",
+				    vars[segk,SEG_MASK]))
 				num_offs_written++
+
+				output_depth--
+				emit("},\n")
 			}
 		}
 	}
 
 	output_depth--
-	emit("}, " num_offs_written "},\n")
+	emit("},\n")
+
+	emit(".num_offsets = " num_offs_written "\n")
+	output_depth--
+	emit("},\n")
 }
 
 # emit a bhnd_nvram_vardef for variable name `v`
 function emit_nvram_vardef (v)
 {
-	emit(sprintf("{\"%s\", %s, %s, %s, (struct bhnd_sprom_vardefn[]) {\n",
-		    v suffix,
-		    DTYPE[vars[v,VAR_BASE_TYPE]],
-		    FMT[vars[v,VAR_FMT]],
-		    gen_var_flags(v)))
+	emit("{\n")
+	output_depth++
+	emit(sprintf(".name = \"%s\",\n", v))
+	emit(sprintf(".type = %s,\n", DTYPE[vars[v,VAR_BASE_TYPE]]))
+	emit(sprintf(".sfmt = %s,\n", FMT[vars[v,VAR_FMT]]))
+	emit(sprintf(".flags = %s,\n", gen_var_flags(v)))
+	emit(sprintf(".num_sp_defs = %u,\n", vars[v,NUM_REVS]))
+	emit(".sp_defs = (struct bhnd_sprom_vardefn[]) {\n")
 	output_depth++
 
 	for (rev = 0; rev < vars[v,NUM_REVS]; rev++) {
@@ -275,7 +293,10 @@ function emit_nvram_vardef (v)
 	}
 
 	output_depth--
-	emit("}, " vars[v,NUM_REVS] "},\n")
+	emit("},\n")
+
+	output_depth--
+	emit("},\n")
 }
 
 # emit a header name #define for variable `v`
