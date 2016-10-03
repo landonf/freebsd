@@ -150,15 +150,22 @@ bhnd_nvram_iores_free(struct bhnd_nvram_io *io)
 }
 
 static size_t
-bhnd_nvram_iores_get_size(struct bhnd_nvram_io *io)
+bhnd_nvram_iores_getsize(struct bhnd_nvram_io *io)
 {
 	struct bhnd_nvram_iores	*iores = (struct bhnd_nvram_iores *)io;
 	return (iores->size);
 }
 
 static int
+bhnd_nvram_iores_setsize(struct bhnd_nvram_io *io, size_t size)
+{
+	/* unsupported */
+	return (ENODEV);
+}
+
+static int
 bhnd_nvram_iores_read_ptr(struct bhnd_nvram_io *io, size_t offset,
-    const void **ptr, size_t *nbytes)
+    const void **ptr, size_t nbytes, size_t *navail)
 {
 	/* unsupported */
 	return (ENODEV);
@@ -166,7 +173,7 @@ bhnd_nvram_iores_read_ptr(struct bhnd_nvram_io *io, size_t offset,
 
 static int
 bhnd_nvram_iores_write_ptr(struct bhnd_nvram_io *io, size_t offset,
-    void **ptr, size_t *nbytes)
+    void **ptr, size_t nbytes, size_t *navail)
 {
 	/* unsupported */
 	return (ENODEV);
@@ -209,21 +216,27 @@ bhnd_nvram_iores_validate_req(struct bhnd_nvram_iores *iores, size_t offset,
 
 static int
 bhnd_nvram_iores_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
-    size_t *nbytes)
+    size_t nbytes)
 {
 	struct bhnd_nvram_iores	*iores;
 	bus_size_t		 r_offset;
+	size_t			 navail;
 	int			 error;
 
 	iores = (struct bhnd_nvram_iores *)io;
 
 	/* Validate the request and determine the actual number of readable
 	 * bytes */
-	if ((error = bhnd_nvram_iores_validate_req(iores, offset, nbytes)))
+	navail = nbytes;
+	if ((error = bhnd_nvram_iores_validate_req(iores, offset, &navail)))
 		return (error);
 
-	/* Handle EOF */
-	if (*nbytes == 0)
+	/* At least nbytes must be readable */
+	if (navail < nbytes)
+		return (ENXIO);
+
+	/* Handle zero length read */
+	if (nbytes == 0)
 		return (0);
 
 	/* Determine actual resource offset and perform the read */
@@ -231,15 +244,15 @@ bhnd_nvram_iores_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
 	switch (iores->bus_width) {
 	case 1:
 		bhnd_bus_read_region_stream_1(iores->res, r_offset, buffer,
-		    *nbytes);
+		    nbytes);
 		break;
 	case 2:
 		bhnd_bus_read_region_stream_2(iores->res, r_offset, buffer,
-		    *nbytes / 2);
+		    nbytes / 2);
 		break;
 	case 4:
 		bhnd_bus_read_region_stream_4(iores->res, r_offset, buffer,
-		    *nbytes / 4);
+		    nbytes / 4);
 		break;
 	default:
 		panic("unreachable!");

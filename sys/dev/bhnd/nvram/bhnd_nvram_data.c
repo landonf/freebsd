@@ -31,6 +31,7 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
+#include <sys/systm.h>
 
 #include "bhnd_nvram_io.h"
 
@@ -94,6 +95,15 @@ bhnd_nvram_data_free(struct bhnd_nvram_data *nv)
 }
 
 /**
+ * Return the capability flags (@see BHND_NVRAM_DATA_CAP_*) for @p nv.
+ */
+uint32_t
+bhnd_nvram_data_getcaps(struct bhnd_nvram_data *nv)
+{
+	return (nv->cls->op_getcaps(nv));
+}
+
+/**
  * Iterate over @p nv, returning the names of subsequent variables.
  * 
  * @param nv The NVRAM data to be iterated.
@@ -109,12 +119,58 @@ bhnd_nvram_data_next(struct bhnd_nvram_data *nv, void **cookiep)
 	return (nv->cls->op_next(nv, cookiep));
 }
 
+
+/**
+ * Search @p nv for a named variable, returning the variable's opaque reference
+ * if found, or NULL if unavailable.
+ *
+ * The BHND_NVRAM_DATA_CAP_INDEXED capability flag will be returned by
+ * bhnd_nvram_data_getcaps() if @p nv supports effecient name-based
+ * lookups.
+ *
+ * @param nv The NVRAM data to search.
+ * @param name The name to search for.
+ *
+ * @retval non-NULL	If @p name is found, the opaque cookie value will be
+ *			returned.
+ * @retval NULL		If @p name is not found.
+ */
+void *
+bhnd_nvram_data_find(struct bhnd_nvram_data *nv, const char *name)
+{
+	return (nv->cls->op_find(nv, name));
+}
+
+/**
+ * A generic implementation of bhnd_nvram_data_find().
+ *
+ * This implementation will use bhnd_nvram_data_next() to perform a
+ * simple O(n) case-insensitve search for @p name.
+ */
+void *
+bhnd_nvram_data_generic_find(struct bhnd_nvram_data *nv, const char *name)
+{
+	const char	*next;
+	void		*cookiep;
+
+	cookiep = NULL;
+	while ((next = bhnd_nvram_data_next(nv, &cookiep))) {
+		if (strcasecmp(name, next) == 0)
+			return (cookiep);
+	}
+
+	/* Not found */
+	return (NULL);
+}
+
+
 /**
  * Read a variable and decode as @p type.
  *
  * @param		nv	The NVRAM data.
- * @param		cookie	An NVRAM variable cookie previously returned
- *				via bhnd_nvram_data_next().
+ * @param		cookiep	An NVRAM variable cookie previously returned
+ *				via bhnd_nvram_data_next() or
+ *				bhnd_nvram_data_find().
  * @param[out]		buf	On success, the requested value will be written
  *				to this buffer. This argment may be NULL if
  *				the value is not desired.
@@ -142,8 +198,9 @@ bhnd_nvram_data_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
  * Note that string values may not be NUL terminated.
  *
  * @param		nv	The NVRAM data.
- * @param		cookie	An NVRAM variable cookie previously returned
- *				via bhnd_nvram_data_next().
+ * @param		cookiep	An NVRAM variable cookie previously returned
+ *				via bhnd_nvram_data_next() or
+ *				bhnd_nvram_data_find().
  * @param[out]		len	On success, will be set to the actual size of
  *				the requested value.
  * @param[out]		type	The data type of the entry data.
@@ -162,9 +219,10 @@ bhnd_nvram_data_getvar_ptr(struct bhnd_nvram_data *nv, void *cookiep,
 
 /**
  * Return the variable name associated with a given @p cookiep.
- * @param nv The NVRAM data to be iterated.
- * @param[in,out] cookiep A pointer to a cookiep value previously returned by
- * bhnd_nvram_data_next().
+ * @param		nv	The NVRAM data to be iterated.
+ * @param[in,out]	cookiep	A pointer to a cookiep value previously returned
+ *				via bhnd_nvram_data_next() or
+ *				bhnd_nvram_data_find().
  *
  * @return Returns the variable's name.
  */

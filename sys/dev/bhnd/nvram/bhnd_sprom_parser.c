@@ -208,7 +208,7 @@ bhnd_sprom_init(struct bhnd_sprom *sprom, device_t parent,
 	sprom->parent = parent;
 	
 	/* Determine maximum possible SPROM image size */
-	io_size = bhnd_nvram_io_get_size(io);
+	io_size = bhnd_nvram_io_getsize(io);
 	sprom->sp_size_max = MIN(io_size, SPROM_SZ_MAX); 
 
 	/* Allocate and populate SPROM shadow */
@@ -668,8 +668,7 @@ static int
 sprom_direct_read(struct bhnd_sprom *sc, struct bhnd_nvram_io *io,
     size_t offset, void *buf, size_t nbytes, uint8_t *crc)
 {
-	bus_size_t	 nread;
-	int		 error;
+	int error;
 
 	KASSERT(nbytes % sizeof(uint16_t) == 0, ("unaligned sprom size"));
 	KASSERT(offset % sizeof(uint16_t) == 0, ("unaligned sprom offset"));
@@ -685,10 +684,8 @@ sprom_direct_read(struct bhnd_sprom *sc, struct bhnd_nvram_io *io,
 	}
 
 	/* Perform the read */
-	if ((error = bhnd_nvram_io_read(io, offset, buf, &nread)))
+	if ((error = bhnd_nvram_io_read(io, offset, buf, nbytes)))
 		return (error);
-
-	KASSERT(nread == nbytes, ("bhnd_nvram_io_read() short read"));
 
 	return (0);
 }

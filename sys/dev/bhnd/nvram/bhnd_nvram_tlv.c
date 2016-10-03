@@ -73,19 +73,26 @@ bhnd_nvram_tlv_probe(struct bhnd_nvram_io *io)
 	size_t				nbytes;
 	int				error;
 
-	/* Look at the initial header for a valid TLV ENV tag */
-	nbytes = sizeof(ident);
-	if ((error = bhnd_nvram_io_read(io, 0x0, &ident, &nbytes)))
-		return (error);
+	nbytes = bhnd_nvram_io_getsize(io);
 
+	/* Handle what might be an empty TLV image */
 	if (nbytes < sizeof(ident)) {
+		/* Fetch just the first tag */
+		error = bhnd_nvram_io_read(io, 0x0, &ident, sizeof(ident.tag));
+		if (error)
+			return (error);
+
 		/* This *could* be an empty TLV image, but all we're
 		 * testing for here is a single 0x0 byte followed by EOF */
 		if (nbytes == 1 && ident.tag == NVRAM_TLV_TYPE_END)
 			return (BUS_PROBE_LOW_PRIORITY);
-
+		
 		return (ENXIO);
 	}
+
+	/* Otherwise, look at the initial header for a valid TLV ENV tag */
+	if ((error = bhnd_nvram_io_read(io, 0x0, &ident, sizeof(ident))))
+		return (error);
 
 	/* First entry should be a variable record (which we statically
 	 * assert as being defined to use a single byte size field) */
@@ -122,11 +129,23 @@ bhnd_nvram_tlv_free(struct bhnd_nvram_data *nv)
 	free(tlv, M_BHND_NVRAM);
 }
 
+static uint32_t
+bhnd_nvram_tlv_getcaps(struct bhnd_nvram_data *nv)
+{
+	return (BHND_NVRAM_DATA_CAP_READ_PTR);
+}
+
 static const char *
 bhnd_nvram_tlv_next(struct bhnd_nvram_data *nv, void **cookiep)
 {
 	// TODO
 	return (NULL);
+}
+
+static void *
+bhnd_nvram_tlv_find(struct bhnd_nvram_data *nv, const char *name)
+{
+	return (bhnd_nvram_data_generic_find(nv, name));
 }
 
 static int

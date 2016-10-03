@@ -62,6 +62,9 @@ size_t				 bhnd_nvram_type_width(bhnd_nvram_type type);
 const char			*bhnd_nvram_type_fmt(bhnd_nvram_type type,
 				     bhnd_nvram_sfmt sfmt, size_t elem_num);
 
+const struct bhnd_nvram_vardefn	*bhnd_nvram_vardefn_table(void);
+size_t				 bhnd_nvram_vardefn_count(void);
+
 const struct bhnd_nvram_vardefn	*bhnd_nvram_find_vardefn(const char *varname);
 
 bool				 bhnd_nvram_validate_name(const char *name,

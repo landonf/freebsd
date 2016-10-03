@@ -50,6 +50,16 @@ struct bhnd_nvram_data;
 BHND_NVRAM_DATA_CLASS_DECL(bcm);
 BHND_NVRAM_DATA_CLASS_DECL(tlv);
 BHND_NVRAM_DATA_CLASS_DECL(btxt);
+BHND_NVRAM_DATA_CLASS_DECL(sprom);
+
+/** bhnd_nvram_data capabilities */
+enum {
+	/** Supports effecient lookup of variables by name */
+	BHND_NVRAM_DATA_CAP_INDEXED	= (1<<0),
+
+	/** Supports direct access to backing buffer */
+	BHND_NVRAM_DATA_CAP_READ_PTR	= (1<<1)
+};
 
 int		 bhnd_nvram_data_probe(bhnd_nvram_data_class_t *cls,
 		     struct bhnd_nvram_io *io);
@@ -59,8 +69,13 @@ int		 bhnd_nvram_data_new(bhnd_nvram_data_class_t *cls,
 
 void		 bhnd_nvram_data_free(struct bhnd_nvram_data *nv);
 
+uint32_t	 bhnd_nvram_data_getcaps(struct bhnd_nvram_data *nv);
+
 const char	*bhnd_nvram_data_next(struct bhnd_nvram_data *nv,
 		     void **cookiep);
+
+void		*bhnd_nvram_data_find(struct bhnd_nvram_data *nv,
+		     const char *name);
 
 int		 bhnd_nvram_data_getvar(struct bhnd_nvram_data *nv,
 		     void *cookiep, void *buf, size_t *len,

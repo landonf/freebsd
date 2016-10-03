@@ -210,6 +210,26 @@ bhnd_nvram_type_fmt(bhnd_nvram_type type, bhnd_nvram_sfmt sfmt,
 }
 
 /**
+ * Return a pointer to the first entry in the variable definition table.
+ *
+ * The total number of entries may be determined via bhnd_nvram_vardefn_count().
+ */
+const struct bhnd_nvram_vardefn	*
+bhnd_nvram_vardefn_table(void)
+{
+	return (&bhnd_nvram_vardefs[0]);
+}
+
+/**
+ * Return the number of entries in the variable definition table.
+ */
+size_t
+bhnd_nvram_vardefn_count(void)
+{
+	return (nitems(bhnd_nvram_vardefs));
+}
+
+/**
  * Find and return the variable definition for @p varname, if any.
  * 
  * @param varname variable name

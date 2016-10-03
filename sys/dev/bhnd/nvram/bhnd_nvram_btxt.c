@@ -85,18 +85,13 @@ static int
 bhnd_nvram_btxt_probe(struct bhnd_nvram_io *io)
 {
 	union bhnd_nvram_btxt_ident	ident;
-	size_t				nbytes;
 	char				c;
 	int				error;
 
 	/* Look at the initial header for something that looks like 
 	 * an ASCII board text file */
-	nbytes = sizeof(ident);
-	if ((error = bhnd_nvram_io_read(io, 0x0, &ident, &nbytes)))
+	if ((error = bhnd_nvram_io_read(io, 0x0, &ident, sizeof(ident))))
 		return (error);
-
-	if (nbytes < sizeof(ident))
-		return (ENXIO);
 
 	/* The BCM NVRAM format uses a 'FLSH' little endian magic value, which
 	 * shouldn't be interpreted as BTXT */
@@ -144,7 +139,7 @@ bhnd_nvram_btxt_init(struct bhnd_nvram_btxt *btxt, struct bhnd_nvram_io *src)
 
 	btxt->data = io;
 
-	io_size = bhnd_nvram_io_get_size(io);
+	io_size = bhnd_nvram_io_getsize(io);
 	io_offset = 0;
 	while (io_offset < io_size) {
 		const void	*envp;
@@ -169,7 +164,8 @@ bhnd_nvram_btxt_init(struct bhnd_nvram_btxt *btxt, struct bhnd_nvram_io *src)
 
 		/* Parse the key=value string */
 		nbytes = env_len;
-		error = bhnd_nvram_io_read_ptr(io, io_offset, &envp, &nbytes);
+		error = bhnd_nvram_io_read_ptr(io, io_offset, &envp, nbytes,
+		    NULL);
 		if (error)
 			return (error);
 
@@ -233,18 +229,29 @@ bhnd_nvram_btxt_free(struct bhnd_nvram_data *nv)
 	free(nv, M_BHND_NVRAM);
 }
 
+static uint32_t
+bhnd_nvram_btxt_getcaps(struct bhnd_nvram_data *nv)
+{
+	return (BHND_NVRAM_DATA_CAP_READ_PTR);
+}
+
+static void *
+bhnd_nvram_btxt_find(struct bhnd_nvram_data *nv, const char *name)
+{
+	return (bhnd_nvram_data_generic_find(nv, name));
+}
+
 static const char *
 bhnd_nvram_btxt_next(struct bhnd_nvram_data *nv, void **cookiep)
 {
 	struct bhnd_nvram_btxt	*btxt;
 	const void		*nptr;
 	size_t			 io_offset, io_size;
-	size_t			 nbytes;
 	int			 error;
 
 	btxt = (struct bhnd_nvram_btxt *)nv;
 
-	io_size = bhnd_nvram_io_get_size(btxt->data);
+	io_size = bhnd_nvram_io_getsize(btxt->data);
 	io_offset = bhnd_nvram_btxt_io_offset(btxt, *cookiep);
 
 	/* Already at EOF? */
@@ -274,9 +281,8 @@ bhnd_nvram_btxt_next(struct bhnd_nvram_data *nv, void **cookiep)
 	if (io_offset == io_size)
 		return (NULL);
 
-	/* Fetch the name pointer */
-	nbytes = 1;
-	error = bhnd_nvram_io_read_ptr(btxt->data, io_offset, &nptr, &nbytes);
+	/* Fetch the name pointer; it must be at least 1 byte long */
+	error = bhnd_nvram_io_read_ptr(btxt->data, io_offset, &nptr, 1, NULL);
 	if (error) {
 		BTXT_NVLOG("unexpected error in read_ptr(): %d\n", error);
 		return (NULL);
@@ -313,12 +319,11 @@ bhnd_nvram_btxt_getvar_ptr(struct bhnd_nvram_data *nv, void *cookiep,
 	const char		*vptr;
 	size_t			 io_offset, io_size;
 	size_t			 line_len, env_len;
-	size_t			 nbytes;
 	int			 error;
 	
 	btxt = (struct bhnd_nvram_btxt *)nv;
 	
-	io_size = bhnd_nvram_io_get_size(btxt->data);
+	io_size = bhnd_nvram_io_getsize(btxt->data);
 	io_offset = bhnd_nvram_btxt_io_offset(btxt, cookiep);
 
 	/* At EOF? */
@@ -334,8 +339,8 @@ bhnd_nvram_btxt_getvar_ptr(struct bhnd_nvram_data *nv, void *cookiep,
 	}
 
 	/* Fetch the entry's value pointer and length */
-	nbytes = env_len;
-	error = bhnd_nvram_io_read_ptr(btxt->data, io_offset, &eptr, &nbytes);
+	error = bhnd_nvram_io_read_ptr(btxt->data, io_offset, &eptr, env_len,
+	    NULL);
 	if (error) {
 		BTXT_NVLOG("unexpected error in read_ptr(): %d\n", error);
 		return (NULL);
@@ -360,21 +365,20 @@ bhnd_nvram_btxt_getvar_name(struct bhnd_nvram_data *nv, void *cookiep)
 	struct bhnd_nvram_btxt	*btxt;
 	const void		*ptr;
 	size_t			 io_offset, io_size;
-	size_t			 nbytes;
 	int			 error;
 	
 	btxt = (struct bhnd_nvram_btxt *)nv;
 	
-	io_size = bhnd_nvram_io_get_size(btxt->data);
+	io_size = bhnd_nvram_io_getsize(btxt->data);
 	io_offset = bhnd_nvram_btxt_io_offset(btxt, cookiep);
 
 	/* At EOF? */
 	if (io_offset == io_size)
 		panic("invalid cookiep: %p", cookiep);
 
-	/* Variable name is found directly at the given offset */
-	nbytes = 1;
-	error = bhnd_nvram_io_read_ptr(btxt->data, io_offset, &ptr, &nbytes);
+	/* Variable name is found directly at the given offset; trailing
+	 * NUL means we can assume that it's at least 1 byte long */
+	error = bhnd_nvram_io_read_ptr(btxt->data, io_offset, &ptr, 1, NULL);
 	if (error)
 		panic("unexpected error in read_ptr(): %d\n", error);
 
@@ -388,7 +392,7 @@ bhnd_nvram_btxt_io_offset(struct bhnd_nvram_btxt *btxt, void *cookiep)
 	size_t		io_size;
 	uintptr_t	cval;
 
-	io_size = bhnd_nvram_io_get_size(btxt->data);
+	io_size = bhnd_nvram_io_getsize(btxt->data);
 	cval = (uintptr_t)cookiep;
 
 	KASSERT(cval < SIZE_MAX, ("cookie > SIZE_MAX)"));
@@ -411,8 +415,7 @@ bhnd_nvram_btxt_entry_len(struct bhnd_nvram_io *io, size_t offset,
 	int		 error;
 
 	/* Fetch read buffer */
-	nbytes = 0;
-	if ((error = bhnd_nvram_io_read_ptr(io, offset, &rbuf, &nbytes)))
+	if ((error = bhnd_nvram_io_read_ptr(io, offset, &rbuf, 0, &nbytes)))
 		return (error);
 
 	/* Find record termination (EOL, or '#') */
@@ -451,8 +454,7 @@ bhnd_nvram_btxt_seek_eol(struct bhnd_nvram_io *io, size_t *offset)
 	int		 error;
 
 	/* Fetch read buffer */
-	nbytes = 0;
-	if ((error = bhnd_nvram_io_read_ptr(io, *offset, &rbuf, &nbytes)))
+	if ((error = bhnd_nvram_io_read_ptr(io, *offset, &rbuf, 0, &nbytes)))
 		return (error);
 
 	baseptr = rbuf;
@@ -492,8 +494,7 @@ bhnd_nvram_btxt_seek_next(struct bhnd_nvram_io *io, size_t *offset)
 	int		 error;
 
 	/* Fetch read buffer */
-	nbytes = 0;
-	if ((error = bhnd_nvram_io_read_ptr(io, *offset, &rbuf, &nbytes)))
+	if ((error = bhnd_nvram_io_read_ptr(io, *offset, &rbuf, 0, &nbytes)))
 		return (error);
 
 	/* Skip leading whitespace and comments */

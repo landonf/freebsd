@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2016 Landon Fuller <landonf@FreeBSD.org>
+ * Copyright (c) 2015-2016 Landon Fuller <landonf@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,38 +29,40 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_NVRAM_BHND_NVRAM_IO_H_
-#define _BHND_NVRAM_BHND_NVRAM_IO_H_
+#ifndef	_BHND_NVRAM_BHND_NVRAM_SPROMREG_H_
+#define	_BHND_NVRAM_BHND_NVRAM_SPROMREG_H_
 
-#include <sys/param.h>
+/** SPROM revision is always located at the second-to-last byte */
+#define	SPROM_REV_OFF(_size)	((_size) - 2)
 
-#include <dev/bhnd/bhnd.h>
+/** The maximum number of array elements encoded in a single SPROM variable */
+#define	SPROM_ARRAY_MAXLEN	12
 
-struct bhnd_nvram_io;
+#define	SPROM_SZ_R1_3		128	/**< SPROM image size (rev 1-3) */
+#define	SPROM_SZ_R4_8_9		440	/**< SPROM image size (rev 4, 8-9) */
+#define	SPROM_SZ_R10		460	/**< SPROM image size (rev 10) */ 
+#define	SPROM_SZ_R11		468	/**< SPROM image size (rev 11) */
 
-struct bhnd_nvram_io	*bhnd_nvram_iobuf_new(const void *buffer, size_t size);
-struct bhnd_nvram_io	*bhnd_nvram_iobuf_empty(size_t size, size_t capacity);
-struct bhnd_nvram_io	*bhnd_nvram_iobuf_copy(struct bhnd_nvram_io *src);
+/** Maximum supported SPROM image size */
+#define	SPROM_SZ_MAX		SPROM_SZ_R11
 
-struct bhnd_nvram_io	*bhnd_nvram_iores_new(struct bhnd_resource *r,
-			     size_t offset, size_t size, u_int bus_width);
+#define	SPROM_SIG_NONE		0x0
+#define	SPROM_SIG_NONE_OFF	0x0
 
-size_t			 bhnd_nvram_io_getsize(struct bhnd_nvram_io *io);
-int			 bhnd_nvram_io_setsize(struct bhnd_nvram_io *io,
-			     size_t size);
+/** SPROM signature (rev 4) */
+#define	SPROM_SIG_R4		0x5372			
+#define	SPROM_SIG_R4_OFF	64	/**< SPROM signature offset (rev 4) */
 
-int			 bhnd_nvram_io_read(struct bhnd_nvram_io *io,
-			     size_t offset, void *buffer, size_t nbytes);
-int			 bhnd_nvram_io_read_ptr(struct bhnd_nvram_io *io,
-			     size_t offset, const void **ptr, size_t nbytes,
-			     size_t *navail);
+/** SPROM signature (rev 8, 9) */
+#define	SPROM_SIG_R8_9		SPROM_SIG_R4
+#define	SPROM_SIG_R8_9_OFF	128	/**< SPROM signature offset (rev 8-9) */
 
-int			 bhnd_nvram_io_write(struct bhnd_nvram_io *io,
-			     size_t offset, void *buffer, size_t nbytes);
-int			 bhnd_nvram_io_write_ptr(struct bhnd_nvram_io *io,
-			     size_t offset, void **ptr, size_t nbytes,
-			     size_t *navail);
+/** SPROM signature (rev 10) */
+#define	SPROM_SIG_R10		SPROM_SIG_R4
+#define	SPROM_SIG_R10_OFF	438	/**< SPROM signature offset (rev 10) */
 
-void			 bhnd_nvram_io_free(struct bhnd_nvram_io *io);
+/** SPROM signature (rev 11) */
+#define	SPROM_SIG_R11		0x0634
+#define	SPROM_SIG_R11_OFF	128	/**< SPROM signature offset (rev 11) */
 
-#endif /* _BHND_NVRAM_BHND_NVRAM_IO_H_ */
+#endif /* _BHND_NVRAM_BHND_NVRAM_SPROMREG_H_ */

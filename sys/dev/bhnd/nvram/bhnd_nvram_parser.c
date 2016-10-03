@@ -87,6 +87,9 @@ bhnd_nvram_get_data_class(bhnd_nvram_format fmt)
 		
 	case BHND_NVRAM_FMT_BTXT:
 		return (&bhnd_nvram_btxt_class);
+
+	case BHND_NVRAM_FMT_SPROM:
+		return (&bhnd_nvram_sprom_class);
 		
 	default:
 		printf("%s: unknown format: %d\n", __FUNCTION__, fmt);
@@ -118,7 +121,7 @@ bhnd_nvram_parser_identify(struct bhnd_nvram_io *io,
 		return (ENODEV);
 	
 	if (size_hint != NULL)
-		*size_hint = bhnd_nvram_io_get_size(io);
+		*size_hint = bhnd_nvram_io_getsize(io);
 
 	if (bhnd_nvram_data_probe(cls, io) <= 0)
 		return (0);
@@ -230,7 +233,6 @@ int
 bhnd_nvram_parser_getvar(struct bhnd_nvram *sc, const char *name, void *buf,
     size_t *len, bhnd_nvram_type type)
 {
-	const char	*next;
 	void		*cookiep;
 	const void	*inp;
 	size_t		 ilen;
@@ -261,22 +263,9 @@ bhnd_nvram_parser_getvar(struct bhnd_nvram *sc, const char *name, void *buf,
 		panic("invalid value type for pending change %s", name);
 	}
 
-	/* Fetch variable from parsed NVRAM data. We use our index if
-	 * available; otherwise, perform a full scan */
-	if (sc->idx != NULL) {
-		if ((cookiep = bhnd_nvram_index_lookup(sc, name)) == NULL)
-			return (ENOENT);
-	} else {
-		cookiep = NULL;
-		while ((next = bhnd_nvram_data_next(sc->nv, &cookiep))) {
-			if (strcasecmp(name, next) == 0)
-				break;
-		}
-
-		/* Hit end without a match */
-		if (name == NULL)
-			return (ENOENT);
-	}
+	/* Fetch variable from parsed NVRAM data. */
+	if ((cookiep = bhnd_nvram_index_lookup(sc, name)) == NULL)
+		return (ENOENT);
 
 	/* Let the parser itself perform value coercion */
 	return (bhnd_nvram_data_getvar(sc->nv, cookiep, buf, len, type));
@@ -431,8 +420,13 @@ bhnd_nvram_generate_index(struct bhnd_nvram *sc)
 		LIST_INSERT_HEAD(&sc->devpaths, devpath, dp_link);
 	}
 
-	/* Skip generating variable index if threshold is not met */
+	/* Skip generating a variable index if threshold is not met ... */
 	if (num_records < NVRAM_IDX_VAR_THRESH)
+		return (0);
+
+	/* ... or if the backing data instance implements indexed lookup
+	 * internally */
+	if (bhnd_nvram_data_getcaps(sc->nv) & BHND_NVRAM_DATA_CAP_INDEXED)
 		return (0);
 
 	/* Allocate and populate variable index */
@@ -504,7 +498,7 @@ bhnd_nvram_index_lookup(struct bhnd_nvram *sc, const char *name)
 	int				 order;
 
 	if (sc->idx == NULL || sc->idx->num_entries == 0)
-		return (NULL);
+		return (bhnd_nvram_data_find(sc->nv, name));
 
 	/*
 	 * Locate the requested variable using a binary search.
