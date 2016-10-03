@@ -59,6 +59,9 @@ int	 bhnd_nvram_coerce_value(void *outp, size_t *olen,
 void	*bhnd_nvram_data_generic_find(struct bhnd_nvram_data *nv,
 	     const char *name);
 
+/** @see bhnd_nvram_data_class_desc() */
+typedef const char	*(bhnd_nvram_data_op_class_desc)(void);
+
 /** @see bhnd_nvram_data_probe() */
 typedef int		 (bhnd_nvram_data_op_probe)(struct bhnd_nvram_io *io);
 
@@ -99,6 +102,8 @@ typedef const void	*(bhnd_nvram_data_op_getvar_ptr)(
  * NVRAM data class.
  */
 struct bhnd_nvram_data_class {
+	/** Human-readable class description */
+	const char			*desc;
 	bhnd_nvram_data_op_probe	*op_probe;
 	bhnd_nvram_data_op_new		*op_new;
 	bhnd_nvram_data_op_free		*op_free;
@@ -120,7 +125,7 @@ struct bhnd_nvram_data {
 /**
  * Define a bhnd_nvram_data_class with name @p _n.
  */
-#define	BHND_NVRAM_DATA_CLASS_DEFN(_n)					\
+#define	BHND_NVRAM_DATA_CLASS_DEFN(_n, _desc)				\
 	static bhnd_nvram_data_op_probe					\
 	    bhnd_nvram_ ## _n ## _probe;				\
 	static bhnd_nvram_data_op_new					\
@@ -141,6 +146,7 @@ struct bhnd_nvram_data {
 	    bhnd_nvram_ ## _n ## _getvar_name;				\
 									\
 	struct bhnd_nvram_data_class bhnd_nvram_ ## _n ## _class = {	\
+		.desc		= _desc,				\
 		.op_probe	= bhnd_nvram_ ## _n ## _probe,		\
 		.op_new		= bhnd_nvram_ ## _n ## _new,		\
 		.op_free	= bhnd_nvram_ ## _n ## _free,		\

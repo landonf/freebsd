@@ -60,7 +60,7 @@ struct bhnd_nvram_btxt {
 	struct bhnd_nvram_io	*data;	/**< memory-backed board text data */
 };
 
-BHND_NVRAM_DATA_CLASS_DEFN(btxt)
+BHND_NVRAM_DATA_CLASS_DEFN(btxt, "Broadcom Board Text")
 
 /** Minimal identification header */
 union bhnd_nvram_btxt_ident {

@@ -61,6 +61,8 @@ enum {
 	BHND_NVRAM_DATA_CAP_READ_PTR	= (1<<1)
 };
 
+const char	*bhnd_nvram_data_class_desc(bhnd_nvram_data_class_t *cls);
+
 int		 bhnd_nvram_data_probe(bhnd_nvram_data_class_t *cls,
 		     struct bhnd_nvram_io *io);
 

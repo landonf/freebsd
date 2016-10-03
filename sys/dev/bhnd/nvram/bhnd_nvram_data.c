@@ -39,6 +39,17 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_nvram_data.h"
 
 /**
+ * Return a human-readable description for the given NVRAM data class.
+ * 
+ * @param cls The NVRAM class.
+ */
+const char *
+bhnd_nvram_data_class_desc(bhnd_nvram_data_class_t *cls)
+{
+	return (cls->desc);
+}
+
+/**
  * Probe to see if this NVRAM data class class supports the data mapped by the
  * given I/O context, returning a standard newbus device probe result
  * (see BUS_PROBE_*).

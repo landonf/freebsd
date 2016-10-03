@@ -56,7 +56,7 @@ struct bhnd_nvram_tlv {
 	struct bhnd_nvram_io	*data;	/**< backing buffer */
 };
 
-BHND_NVRAM_DATA_CLASS_DEFN(tlv)
+BHND_NVRAM_DATA_CLASS_DEFN(tlv, "WGT634U TLV")
 
 /** Minimal identification header */
 struct bhnd_nvram_tlv_ident {

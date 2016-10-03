@@ -63,6 +63,8 @@ struct bhnd_nvram_sprom {
 	uint8_t			 srev;	/**< parsed SPROM revision */
 };
 
+BHND_NVRAM_DATA_CLASS_DEFN(sprom, "Broadcom SPROM")
+
 /**
  * SPROM value storage.
  *
@@ -93,8 +95,6 @@ static size_t	bhnd_nvram_spromdef_nelems(
 static bool	bhnd_nvram_sprom_matches(struct bhnd_nvram_sprom *sprom,
 		    const struct bhnd_nvram_vardefn *var,
 		    const struct bhnd_sprom_vardefn **sprom_def);
-
-BHND_NVRAM_DATA_CLASS_DEFN(sprom)
 
 /*
  * Table of supported SPROM image formats, sorted by image size, ascending.
