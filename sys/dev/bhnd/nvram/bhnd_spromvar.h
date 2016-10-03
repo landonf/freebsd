@@ -34,7 +34,7 @@
 
 #include <dev/bhnd/bhnd.h>
 
-#include "bhnd_sprom_parser.h"
+#include "bhnd_nvram_parser.h"
 
 DECLARE_CLASS(bhnd_sprom_driver);
 
@@ -50,10 +50,8 @@ int	bhnd_sprom_detach(device_t dev);
  */
 struct bhnd_sprom_softc {
 	device_t		 dev;
-	struct bhnd_resource	*sprom_res;	/**< SPROM resource */
-	int			 sprom_rid;	/**< SPROM RID */
-	struct bhnd_sprom	 shadow;	/**< SPROM shadow */
-	struct mtx		 mtx;		/**< SPROM shadow mutex */
+	struct mtx		 	mtx;	/**< nvram mutex */
+	struct bhnd_nvram		nvram;	/**< nvram shadow */
 };
 
 #endif /* _BHND_NVRAM_BHND_SPROMVAR_H_ */

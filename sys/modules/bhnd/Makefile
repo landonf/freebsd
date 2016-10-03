@@ -37,8 +37,7 @@ SRCS+=	bhnd_nvram.c \
 	bhnd_nvram_parser.c \
 	bhnd_nvram_sprom.c \
 	bhnd_nvram_tlv.c \
-	bhnd_sprom.c \
-	bhnd_sprom_parser.c
+	bhnd_sprom.c
 SRCS+=	bhnd_nvram_common.c
 SRCS+=	bhnd_nvram_map.h bhnd_nvram_map_data.h
 SRCS+=	bhnd_nvram_if.c bhnd_nvram_if.h

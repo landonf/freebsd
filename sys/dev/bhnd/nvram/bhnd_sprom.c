@@ -103,7 +103,9 @@ bhnd_sprom_attach(device_t dev, bus_size_t offset)
 {
 	struct bhnd_sprom_softc	*sc;
 	struct bhnd_nvram_io	*io;
+	struct bhnd_resource	*r;
 	bus_size_t		 r_size, sprom_size;
+	int			 rid;
 	int			 error;
 
 	sc = device_get_softc(dev);
@@ -112,16 +114,15 @@ bhnd_sprom_attach(device_t dev, bus_size_t offset)
 	io = NULL;
 
 	/* Allocate SPROM resource */
-	sc->sprom_rid = 0;
-	sc->sprom_res = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY,
-	    &sc->sprom_rid, RF_ACTIVE);
-	if (sc->sprom_res == NULL) {
+	rid = 0;
+	r = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY, &rid, RF_ACTIVE);
+	if (r == NULL) {
 		device_printf(dev, "failed to allocate resources\n");
 		return (ENXIO);
 	}
 
 	/* Determine SPROM size */
-	r_size = rman_get_size(sc->sprom_res->res);
+	r_size = rman_get_size(r->res);
 	if (r_size <= offset || (r_size - offset) > BUS_SPACE_MAXSIZE) {
 		device_printf(dev, "invalid sprom offset\n");
 		error = ENXIO;
@@ -132,35 +133,33 @@ bhnd_sprom_attach(device_t dev, bus_size_t offset)
 
 	/* Allocate an I/O context for the SPROM parser. All SPROM reads
 	 * must be 16-bit aligned */
-	io = bhnd_nvram_iores_new(sc->sprom_res, offset, sprom_size,
-	    sizeof(uint16_t));
+	io = bhnd_nvram_iores_new(r, offset, sprom_size, sizeof(uint16_t));
 	if (io == NULL) {
 		error = ENXIO;
 		goto failed;
 	}
 
-	/* Initialize SPROM shadow */
-	if ((error = bhnd_sprom_init(&sc->shadow, dev, io)))
-		goto failed;
-
-	/* Clean up I/O context */
-	bhnd_nvram_io_free(io);
-
+	/* Initialize NVRAM parser */
+	error = bhnd_nvram_parser_init(&sc->nvram, dev, io,
+	    BHND_NVRAM_FMT_SPROM);
 	if (error)
 		goto failed;
+
+	/* Clean up our temporary I/O context and its backing resource */
+	bhnd_nvram_io_free(io);
+	bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
 
 	/* Initialize mutex */
 	SPROM_LOCK_INIT(sc);
 
 	return (0);
-	
+
 failed:
-	/* Clean up before releasing its backing resource */
+	/* Clean up I/O context before releasing its backing resource */
 	if (io != NULL)
 		bhnd_nvram_io_free(io);
 
-	bhnd_release_resource(dev, SYS_RES_MEMORY, sc->sprom_rid,
-	    sc->sprom_res);
+	bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
 
 	return (error);
 }
@@ -193,9 +192,7 @@ bhnd_sprom_detach(device_t dev)
 	
 	sc = device_get_softc(dev);
 
-	bhnd_release_resource(dev, SYS_RES_MEMORY, sc->sprom_rid,
-	    sc->sprom_res);
-	bhnd_sprom_fini(&sc->shadow);
+	bhnd_nvram_parser_fini(&sc->nvram);
 	SPROM_LOCK_DESTROY(sc);
 
 	return (0);
@@ -214,7 +211,7 @@ bhnd_sprom_getvar_method(device_t dev, const char *name, void *buf, size_t *len,
 	sc = device_get_softc(dev);
 
 	SPROM_LOCK(sc);
-	error = bhnd_sprom_getvar(&sc->shadow, name, buf, len, type);
+	error = bhnd_nvram_parser_getvar(&sc->nvram, name, buf, len, type);
 	SPROM_UNLOCK(sc);
 
 	return (error);
@@ -233,7 +230,7 @@ bhnd_sprom_setvar_method(device_t dev, const char *name, const void *buf,
 	sc = device_get_softc(dev);
 
 	SPROM_LOCK(sc);
-	error = bhnd_sprom_setvar(&sc->shadow, name, buf, len, type);
+	error = bhnd_nvram_parser_setvar(&sc->nvram, name, buf, len, type);
 	SPROM_UNLOCK(sc);
 
 	return (error);
