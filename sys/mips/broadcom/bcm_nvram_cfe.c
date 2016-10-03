@@ -83,7 +83,8 @@ static int			 bhnd_nvram_iocfe_new(struct bhnd_nvram_io **io,
 				     char *dname);
 
 static struct bhnd_nvram_io	*bhnd_nvram_find_cfedev(device_t dev,
-				     char **dname, bhnd_nvram_format *fmt);
+				     char **dname,
+				     bhnd_nvram_data_class_t **cls);
 
 /** Known CFE NVRAM device names, in probe order. */
 static char *nvram_cfe_devs[] = {
@@ -94,9 +95,10 @@ static char *nvram_cfe_devs[] = {
 };
 
 /** Supported CFE NVRAM formats, in probe order. */
-bhnd_nvram_format nvram_cfe_fmts[] = {
-	BHND_NVRAM_FMT_BCM,
-	BHND_NVRAM_FMT_TLV
+static bhnd_nvram_data_class_t * const nvram_cfe_fmts[] = {
+	// TODO
+	// &bhnd_nvram_bcm_class,
+	&bhnd_nvram_tlv_class
 };
 
 
@@ -104,36 +106,26 @@ static int
 bhnd_nvram_cfe_probe(device_t dev)
 {
 	struct bhnd_nvram_io	*io;
-	const char		*fmt_desc;
+	bhnd_nvram_data_class_t	*cls;
+	const char		*cls_desc;
 	char			*dname;
 	char			*desc;
-	bhnd_nvram_format	 fmt;
 
 	/* Locate a usable CFE device */
-	io = bhnd_nvram_find_cfedev(dev, &dname, &fmt);
+	io = bhnd_nvram_find_cfedev(dev, &dname, &cls);
 	if (io == NULL)
 		return (ENXIO);
 	bhnd_nvram_io_free(io);
 
-	switch (fmt) {
-	case BHND_NVRAM_FMT_BCM:
-		fmt_desc = "Broadcom";
-		break;
-	case BHND_NVRAM_FMT_TLV:
-		fmt_desc = "Broadcom WGT634U";
-		break;
-	default:
-		device_printf(dev, "unknown NVRAM format: %d\n", fmt);
-		return (ENXIO);
-	}
-
-	asprintf(&desc, M_BHND_NVRAM, "%s CFE %s", fmt_desc, dname);                                                                                                                                              
-	if (desc != NULL) {                                                                                                                   
+	/* Format the device description */
+	cls_desc = bhnd_nvram_data_class_desc(cls);
+	asprintf(&desc, M_BHND_NVRAM, "%s CFE %s", cls_desc, dname);
+	if (desc != NULL) {
 		device_set_desc_copy(dev, desc);
 		free(desc, M_BHND_NVRAM);
-        } else {                                                                                                                              
-                device_set_desc(dev, fmt_desc);                                                                                               
-        }      
+	} else {
+		device_set_desc(dev, cls_desc);
+	}
 
 	/* Refuse wildcard attachments */
 	return (BUS_PROBE_NOWILDCARD);
@@ -144,23 +136,23 @@ static int
 bhnd_nvram_cfe_attach(device_t dev)
 {
 	struct bhnd_nvram_cfe_softc	*sc;
+	bhnd_nvram_data_class_t		*cls;
 	struct bhnd_nvram_io		*io;
 	char				*dname;
-	bhnd_nvram_format		 fmt;
 	int				 error;
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
 
 	/* Locate NVRAM device via CFE */
-	io = bhnd_nvram_find_cfedev(dev, &dname, &fmt);
+	io = bhnd_nvram_find_cfedev(dev, &dname, &cls);
 	if (io == NULL) {
 		device_printf(dev, "CFE NVRAM device not found\n");
 		return (ENXIO);
 	}
 
 	/* Initialize NVRAM parser and free the I/O context */
-	error = bhnd_nvram_parser_init(&sc->nvram, dev, io, fmt);
+	error = bhnd_nvram_parser_init(&sc->nvram, dev, io, cls);
 	bhnd_nvram_io_free(io);
 	if (error)
 		return (error);
@@ -234,21 +226,23 @@ bhnd_nvram_cfe_setvar(device_t dev, const char *name, const void *buf,
  * 
  * @param	dev		bhnd_nvram_cfe device.
  * @param[out]	dname		On success, the CFE device name.
- * @param[out]	fmt		On success, the identified NVRAM format.
+ * @param[out]	cls		On success, the identified NVRAM data format
+ *				class.
  *
  * @retval	non-NULL success. the caller inherits ownership of the returned
  * NVRAM I/O context.
  * @retval	NULL if no usable CFE NVRAM device could be found.
  */
 static struct bhnd_nvram_io *
-bhnd_nvram_find_cfedev(device_t dev, char **dname, bhnd_nvram_format *fmt)
+bhnd_nvram_find_cfedev(device_t dev, char **dname,
+    bhnd_nvram_data_class_t **cls)
 {
 	struct bhnd_nvram_io	*io;
 	int			 devinfo;
-	int			 error;
+	int			 error, result;
 
 	for (u_int i = 0; i < nitems(nvram_cfe_fmts); i++) {
-		*fmt = nvram_cfe_fmts[i];
+		*cls = nvram_cfe_fmts[i];
 
 		for (u_int j = 0; j < nitems(nvram_cfe_devs); j++) {
 			*dname = nvram_cfe_devs[j];
@@ -267,10 +261,10 @@ bhnd_nvram_find_cfedev(device_t dev, char **dname, bhnd_nvram_format *fmt)
 			if ((error = bhnd_nvram_iocfe_new(&io, *dname)))
 				continue;
 
-			/* Identify */
-			error = bhnd_nvram_parser_identify(io, *fmt, NULL);
-			if (error == 0) {
-				/* Found */
+			/* Probe */
+			result = bhnd_nvram_data_probe(*cls, io);
+			if (result <= 0) {
+				/* Found a supporting NVRAM data class */
 				return (io);
 			}
 
@@ -424,15 +418,22 @@ bhnd_nvram_iocfe_free(struct bhnd_nvram_io *io)
 }
 
 static size_t
-bhnd_nvram_iocfe_get_size(struct bhnd_nvram_io *io)
+bhnd_nvram_iocfe_getsize(struct bhnd_nvram_io *io)
 {
 	struct bhnd_nvram_iocfe	*iocfe = (struct bhnd_nvram_iocfe *)io;
 	return (iocfe->size);
 }
 
 static int
+bhnd_nvram_iocfe_setsize(struct bhnd_nvram_io *io, size_t size)
+{
+	/* unsupported */
+	return (ENODEV);
+}
+
+static int
 bhnd_nvram_iocfe_read_ptr(struct bhnd_nvram_io *io, size_t offset,
-    const void **ptr, size_t *nbytes)
+    const void **ptr, size_t nbytes, size_t *navail)
 {
 	/* unsupported */
 	return (ENODEV);
@@ -440,7 +441,7 @@ bhnd_nvram_iocfe_read_ptr(struct bhnd_nvram_io *io, size_t offset,
 
 static int
 bhnd_nvram_iocfe_write_ptr(struct bhnd_nvram_io *io, size_t offset,
-    void **ptr, size_t *nbytes)
+    void **ptr, size_t nbytes, size_t *navail)
 {
 	/* unsupported */
 	return (ENODEV);
@@ -456,7 +457,7 @@ bhnd_nvram_iocfe_write(struct bhnd_nvram_io *io, size_t offset, void *buffer,
 
 static int
 bhnd_nvram_iocfe_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
-    size_t *nbytes)
+    size_t nbytes)
 {
 	struct bhnd_nvram_iocfe	*iocfe;
 	size_t			 remain;
@@ -476,17 +477,17 @@ bhnd_nvram_iocfe_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
 
 	cfe_offset = iocfe->offset + offset;
 
-	/* Verify that cfe_offset + *nbytes is representable */
-	if (INT64_MAX - cfe_offset < *nbytes)
+	/* Verify that cfe_offset + nbytes is representable */
+	if (INT64_MAX - cfe_offset < nbytes)
 		return (ENXIO);
 
 	/* Perform the read */
-	for (remain = *nbytes; remain > 0;) {
+	for (remain = nbytes; remain > 0;) {
 		void	*p;
 		size_t	 nread;
 		int64_t	 cfe_noff;
 
-		nread = (*nbytes - remain);
+		nread = (nbytes - remain);
 		cfe_noff = cfe_offset + nread;
 		p = ((uint8_t *)buffer + nread);
 		nreq = ummin(INT_MAX, remain);
@@ -517,7 +518,10 @@ bhnd_nvram_iocfe_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
 		remain -= nr;
 	}
 
-	*nbytes = *nbytes - remain;
+	/* Check for short read */
+	if (remain > 0)
+		return (ENXIO);
+
 	return (0);
 }
 

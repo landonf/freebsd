@@ -141,7 +141,7 @@ bhnd_sprom_attach(device_t dev, bus_size_t offset)
 
 	/* Initialize NVRAM parser */
 	error = bhnd_nvram_parser_init(&sc->nvram, dev, io,
-	    BHND_NVRAM_FMT_SPROM);
+	    &bhnd_nvram_sprom_class);
 	if (error)
 		goto failed;
 

@@ -42,7 +42,6 @@
  * NVRAM data sources supported by bhnd(4) devices.
  */
 typedef enum {
-	
 	BHND_NVRAM_SRC_OTP,	/**< On-chip one-time-programmable
 				  *  memory. */
 
@@ -73,22 +72,7 @@ typedef enum {
 				  */
 } bhnd_nvram_src;
 
-/** Supported NVRAM formats. */
-typedef enum {
-	BHND_NVRAM_FMT_BCM	= 0,	/**< Broadcom NUL-delimited key=value pairs */
-	BHND_NVRAM_FMT_TLV	= 1,	/**< CFE TLV encoding, as used on WGT634U */
-	BHND_NVRAM_FMT_BTXT	= 2,	/**< Broadcom board text file. This is used
-					     to provide external NVRAM data for some
-					     fullmac WiFi devices. */
-	BHND_NVRAM_FMT_SPROM	= 3,	/**< SPROM/OTP-specific encoding used by
-					     Broadcom network adapters */
-	BHND_NVRAM_FMT_CIS	= 4,	/**< A mostly CIS-compatible encoding used
-					     on some Broadcom network adapters */ 
-	BHND_NVRAM_FMT_UNKNOWN	= 5	/**< Unknown or unrecognized format */
-} bhnd_nvram_format;
-
-
-/** Supported NVRAM data types */
+/** NVRAM data types */
 typedef enum {
 	BHND_NVRAM_TYPE_UINT8	= 0,	/**< unsigned 8-bit integer */
 	BHND_NVRAM_TYPE_UINT16	= 1,	/**< unsigned 16-bit integer */

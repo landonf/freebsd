@@ -61,73 +61,11 @@ static void	*bhnd_nvram_index_lookup(struct bhnd_nvram *sc,
 		     const char *name);
 
 #define	NVRAM_LOG(sc, fmt, ...)	do {			\
-	if (sc->dev != NULL)					\
-		device_printf(sc->dev, fmt, ##__VA_ARGS__);	\
+	if (sc->owner != NULL)					\
+		device_printf(sc->owner, fmt, ##__VA_ARGS__);	\
 	else							\
 		printf("bhnd_nvram: " fmt, ##__VA_ARGS__);	\
 } while (0)
-
-/* Limit a size_t value to a suitable range for use as a printf string field
- * width */
-#define	NVRAM_PRINT_WIDTH(_len)	\
-	((_len) > BHND_NVRAM_VAL_MAXLEN ? BHND_NVRAM_VAL_MAXLEN : (int)(_len))
-
-
-static bhnd_nvram_data_class_t *
-bhnd_nvram_get_data_class(bhnd_nvram_format fmt)
-{
-	switch (fmt) {
-	case BHND_NVRAM_FMT_BCM:
-		// TODO
-		// return (&bhnd_nvram_bcm_class);
-		return (NULL);
-
-	case BHND_NVRAM_FMT_TLV:
-		return (&bhnd_nvram_tlv_class);
-		
-	case BHND_NVRAM_FMT_BTXT:
-		return (&bhnd_nvram_btxt_class);
-
-	case BHND_NVRAM_FMT_SPROM:
-		return (&bhnd_nvram_sprom_class);
-		
-	default:
-		printf("%s: unknown format: %d\n", __FUNCTION__, fmt);
-		return (NULL);
-	}
-}
-
-/**
- * Identify the NVRAM format of @p io.
- * 
- * @param io I/O context mapping the NVRAM data to be identified.
- * @param expected Expected format against which @p ident will be tested.
- * @param[out] size_hint If not NULL, will be set to the maximum possible size
- * of the NVRAM data (which may be less than the input @p io size), if @p io
- * is sucessfully identified.
- *
- * @retval 0 If @p ident has the @p expected format.
- * @retval ENODEV If @p ident does not match @p expected.
- * @retval non-zero If reading from @p io otherwise fails, a standard unix
- * error code will be returned.
- */
-int
-bhnd_nvram_parser_identify(struct bhnd_nvram_io *io,
-    bhnd_nvram_format expected, size_t *size_hint)
-{
-	bhnd_nvram_data_class_t *cls;
-
-	if ((cls = bhnd_nvram_get_data_class(expected)) == NULL)
-		return (ENODEV);
-	
-	if (size_hint != NULL)
-		*size_hint = bhnd_nvram_io_getsize(io);
-
-	if (bhnd_nvram_data_probe(cls, io) <= 0)
-		return (0);
-
-	return (ENODEV);
-}
 
 /**
  * Identify the NVRAM format at @p offset within @p r, verify the
@@ -137,31 +75,24 @@ bhnd_nvram_parser_identify(struct bhnd_nvram_io *io,
  * NVRAM parser, and @p io may be safely deallocated.
  * 
  * @param[out] sc The NVRAM parser state to be initialized.
- * @param dev The parser's parent device, or NULL if none.
+ * @param owner The parser's parent device, or NULL if none.
  * @param io An I/O context mapping the NVRAM data to be parsed.
- * @param fmt Required format of @p io.
+ * @param cls An NVRAM data class capable of parsing @p io.
  * 
  * @retval 0 success
  * @retval ENOMEM If internal allocation of NVRAM state fails.
  * @retval EINVAL If @p io parsing fails.
  */
 int
-bhnd_nvram_parser_init(struct bhnd_nvram *sc, device_t dev,
-    struct bhnd_nvram_io *io, bhnd_nvram_format fmt)
+bhnd_nvram_parser_init(struct bhnd_nvram *sc, device_t owner,
+    struct bhnd_nvram_io *io, bhnd_nvram_data_class_t *cls)
 {
-	bhnd_nvram_data_class_t	*cls;
-	int				 error;
+	int error;
 
 	/* Initialize NVRAM state */
 	memset(sc, 0, sizeof(*sc));
-	sc->dev = dev;
+	sc->owner = owner;
 	LIST_INIT(&sc->devpaths);
-
-	/* Verify data format and fetch data class */
-	if ((error = bhnd_nvram_parser_identify(io, fmt, NULL)))
-		return (error);
-
-	cls = bhnd_nvram_get_data_class(fmt);
 
 	/* Parse the input data */
 	if ((error = bhnd_nvram_data_new(cls, &sc->nv, io)))

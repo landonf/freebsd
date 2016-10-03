@@ -56,7 +56,7 @@ struct bhnd_nvram_tlv {
 	struct bhnd_nvram_io	*data;	/**< backing buffer */
 };
 
-BHND_NVRAM_DATA_CLASS_DEFN(tlv, "WGT634U TLV")
+BHND_NVRAM_DATA_CLASS_DEFN(tlv, "WGT634U")
 
 /** Minimal identification header */
 struct bhnd_nvram_tlv_ident {
@@ -103,7 +103,7 @@ bhnd_nvram_tlv_probe(struct bhnd_nvram_io *io)
 	    "TYPE_ENV is not a U8-sized field");
 
 	/* The entry must be at least 3 characters ('x=\0') in length */
-	if (ident.size != 3)
+	if (ident.size < 3)
 		return (ENXIO);
 
 	/* The first character should be a valid key char (alpha) */
