@@ -271,16 +271,19 @@ u16 cckbw20ul2gpo {
 	srom >= 11	0x152
 }
 
-# Country code (2 bytes ascii + 1 byte cctl)
-# in rev 2
-# 
+# Country code (2 bytes ASCII)
 char[2] ccode {
 	sfmt	ccode
-	srom 0-3	0x76
-	srom 4		0x52
-	srom 5-7	0x44
-	srom 8-10	0x92
-	srom >= 11	0x96
+	srom 0-3	0x77, 0x76
+	srom 4		0x53, 0x52
+	srom 5-7	0x45, 0x44
+	srom 8-10	0x93, 0x92
+	srom >= 11	0x97, 0x96
+}
+
+# Front-end switch control
+u8 cctl {
+	srom 2		0x78
 }
 
 # 2 byte; txchain, rxchain
