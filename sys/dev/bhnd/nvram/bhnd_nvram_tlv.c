@@ -34,7 +34,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/bus.h>
 #include <sys/ctype.h>
 #include <sys/malloc.h>
-#include <sys/rman.h>
+#include <sys/systm.h>
 
 #include <machine/bus.h>
 
@@ -68,7 +68,7 @@ struct bhnd_nvram_tlv_env_hdr {
 struct bhnd_nvram_tlv_env {
 	struct bhnd_nvram_tlv_env_hdr	hdr;
 	uint8_t				flags;
-	uint8_t				envp[];
+	char				envp[];
 } __packed;
 
 /* Return the length in bytes of an TLV_ENV's envp data */
@@ -422,7 +422,7 @@ bhnd_nvram_tlv_next_record(struct bhnd_nvram_io *io, size_t *next, size_t
 	/* Advance to next record */
 	if (parsed_len > io_size || io_size - parsed_len < io_offset) {
 		/* Hit early EOF */
-		TLV_NVLOG("TLV record length %zu truncated by input "
+		TLV_NVLOG("TLV record length %hu truncated by input "
 		    "size of %zu\n", parsed_len, io_size);
 		return (EINVAL);
 	}
