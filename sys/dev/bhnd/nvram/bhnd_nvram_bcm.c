@@ -52,6 +52,10 @@ __FBSDID("$FreeBSD$");
  * 
  * The Broadcom NVRAM NUL-delimited ASCII format is used by most
  * Broadcom SoCs.
+ * 
+ * The NVRAM data is encoded as a standard header, followed by series of
+ * NUL-terminated 'key=value' strings; the end of the stream is denoted
+ * by a single extra NUL character.
  */
 
 struct bhnd_nvram_bcm;
@@ -206,8 +210,11 @@ bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 		envp_len = strnlen(envp, io_size - io_offset);
 		error = bhnd_nvram_parse_env(envp, envp_len, '=', &name,
 					     &name_len, &value, &value_len);
-		if (error)
+		if (error) {
+			BCM_NVLOG("error parsing envp at offset %#zx: %d\n",
+			    io_offset, error);
 			return (error);
+		}
 
 		/* Insert a '\0' character, replacing the '=' delimiter and
 		 * allowing us to vend references directly to the variable
@@ -232,20 +239,28 @@ bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 
 		/* Seek past the value's terminating '\0' */
 		io_offset += envp_len;
-		if (io_offset == io_size)
+		if (io_offset == io_size) {
+			BCM_NVLOG("missing terminating NUL at offset %#zx\n",
+			    io_offset);
 			return (EINVAL);
+		}
 
-		if (*(p + io_offset) != '\0')
+		if (*(p + io_offset) != '\0') {
+			BCM_NVLOG("invalid terminator '%#hhx' at offset %#zx\n",
+			    *(p + io_offset), io_offset);
 			return (EINVAL);
+		}
 
-		/* Seek past the record seperator ('\0') */
-		if (++io_offset == io_size)
-			return (EINVAL);
+		/* Seek to the next record */
+		if (++io_offset == io_size) {
+			/* Hit EOF */
+			break;
+		}
 
-		if (*(p + io_offset) != '\0')
-			return (EINVAL);
-
-		io_offset++;
+		/* Check for explicit EOF (encoded as a single empty NUL
+		 * terminated string) */
+		if (*(p + io_offset) == '\0')
+			break;
 	}
 
 	return (0);
@@ -316,7 +331,6 @@ bhnd_nvram_bcm_next(struct bhnd_nvram_data *nv, void **cookiep)
 	
 	io_offset = sizeof(struct bhnd_nvram_header);
 	io_size = bhnd_nvram_io_getsize(bcm->data) - io_offset;
-	hvar = NULL;
 
 	/* Map backing buffer */
 	error = bhnd_nvram_io_read_ptr(bcm->data, io_offset, &ptr, io_size,
@@ -404,7 +418,7 @@ bhnd_nvram_bcm_getvar_ptr(struct bhnd_nvram_data *nv, void *cookiep,
 	struct bhnd_nvram_bcmdata	*hvar;
 	const char			*envp;
 
-	bcm = (struct bhnd_nvram_bcm *)bcm;
+	bcm = (struct bhnd_nvram_bcm *)nv;
 
 	/* Handle header variables */
 	if ((hvar = bhnd_nvram_bcm_to_hdrvar(bcm, cookiep)) != NULL) {
@@ -431,7 +445,7 @@ bhnd_nvram_bcm_getvar_name(struct bhnd_nvram_data *nv, void *cookiep)
 	struct bhnd_nvram_bcm		*bcm;
 	struct bhnd_nvram_bcmdata	*hvar;
 
-	bcm = (struct bhnd_nvram_bcm *)bcm;
+	bcm = (struct bhnd_nvram_bcm *)nv;
 
 	/* Handle header variables */
 	if ((hvar = bhnd_nvram_bcm_to_hdrvar(bcm, cookiep)) != NULL) {
