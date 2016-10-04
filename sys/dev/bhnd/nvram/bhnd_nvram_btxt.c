@@ -401,8 +401,6 @@ bhnd_nvram_btxt_io_offset(struct bhnd_nvram_btxt *btxt, void *cookiep)
 	return ((size_t)cval);
 }
 
-
-
 /* Determine the entry length and env 'key=value' string length of the entry
  * at @p offset */
 static int
