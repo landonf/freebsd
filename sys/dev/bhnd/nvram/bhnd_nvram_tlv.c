@@ -224,7 +224,7 @@ bhnd_nvram_tlv_new(struct bhnd_nvram_data **nv, struct bhnd_nvram_io *io)
 	tlv->nv.cls = &bhnd_nvram_tlv_class;
 	tlv->data = NULL;
 
-	/* Parse the BTXT input data and initialize our backing
+	/* Parse the TLV input data and initialize our backing
 	 * data representation */
 	if ((error = bhnd_nvram_tlv_init(tlv, io)))
 		goto failed;
