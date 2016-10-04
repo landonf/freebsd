@@ -352,7 +352,8 @@ bhnd_nvram_bcm_next(struct bhnd_nvram_data *nv, void **cookiep)
 			/* First iteration */
 			idx = 0;
 		} else {
-			idx = bhnd_nvram_bcm_hdrvar_index(bcm, hvar);
+			/* Advance to next entry, if any */
+			idx = bhnd_nvram_bcm_hdrvar_index(bcm, hvar) + 1;
 		}
 
 		/* Find the next header-defined variable that isn't
@@ -364,6 +365,10 @@ bhnd_nvram_bcm_next(struct bhnd_nvram_data *nv, void **cookiep)
 			*cookiep = &bcm->hvars[i];
 			return (bcm->hvars[i].name);
 		}
+
+		/* No further header-defined variables; fall-through
+		 * to the initial NVRAM data iteration path below */
+		*cookiep = NULL;
 	}
 
 	/* Handle standard NVRAM data iteration */
@@ -375,11 +380,10 @@ bhnd_nvram_bcm_next(struct bhnd_nvram_data *nv, void **cookiep)
 		envp = *cookiep;
 		envp += strlen(envp) + 1;	/* key + '\0' */
 		envp += strlen(envp) + 1;	/* value + '\0' */
-		envp++;				/* '\0' record delim */
 	}
 
 	/* EOF? */
-	if (envp - basep == io_size)
+	if (envp - basep == io_size || *envp == '\0')
 		return (NULL);
 
 	*cookiep = (void *)(uintptr_t)envp;
@@ -433,7 +437,7 @@ bhnd_nvram_bcm_getvar_ptr(struct bhnd_nvram_data *nv, void *cookiep,
 	/* Cookie points to key\0value\0 -- get the value address */
 	envp = cookiep;
 	envp += strlen(envp) + 1;	/* key + '\0' */
-	*len = strlen(envp) + 1;
+	*len = strlen(envp) + 1;	/* value + '\0' */
 	*type = BHND_NVRAM_TYPE_CSTR;
 
 	return (envp);
@@ -447,6 +451,7 @@ bhnd_nvram_bcm_getvar_name(struct bhnd_nvram_data *nv, void *cookiep)
 
 	bcm = (struct bhnd_nvram_bcm *)nv;
 
+	
 	/* Handle header variables */
 	if ((hvar = bhnd_nvram_bcm_to_hdrvar(bcm, cookiep)) != NULL) {
 		return (hvar->name);
