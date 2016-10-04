@@ -172,19 +172,44 @@ bhnd_nvram_iobuf_new(const void *buffer, size_t size)
 struct bhnd_nvram_io *
 bhnd_nvram_iobuf_copy(struct bhnd_nvram_io *src)
 {
+	return (bhnd_nvram_iobuf_copy_range(src, 0x0,
+	    bhnd_nvram_iobuf_getsize(src)));
+}
+
+/**
+ * Allocate and return a new I/O context providing an in-memory copy
+ * of @p size bytes mapped at @p offset by @p src.
+ *
+ * The caller is responsible for deallocating the returned I/O context via
+ * bhnd_nvram_io_free().
+ * 
+ * @param	src	The I/O context to be copied.
+ * @param	offset	The offset of the bytes to be copied from @p src.
+ * @param	size	The number of bytes to copy at @p offset from @p src.
+ * 
+ * @retval	bhnd_nvram_io	success.
+ * @retval	NULL		allocation failed.
+ * @retval	NULL		copying @p src failed.
+ */
+struct bhnd_nvram_io *
+bhnd_nvram_iobuf_copy_range(struct bhnd_nvram_io *src, size_t offset,
+    size_t size)
+{
 	struct bhnd_nvram_io	*io;
 	struct bhnd_nvram_iobuf	*iobuf;
-	size_t			 size;
 	int			 error;
 
+	/* Check if offset+size would overflow */
+	if (SIZE_MAX - size < offset)
+		return (NULL);
+
 	/* Allocate the iobuf instance */
-	size = bhnd_nvram_io_getsize(src);
 	if ((io = bhnd_nvram_iobuf_empty(size, size)) == NULL)
 		return (NULL);
 
 	/* Copy the input I/O context */
 	iobuf = (struct bhnd_nvram_iobuf *)io;
-	if ((error = bhnd_nvram_io_read(src, 0x0, iobuf->buf, size))) {
+	if ((error = bhnd_nvram_io_read(src, offset, iobuf->buf, size))) {
 		bhnd_nvram_io_free(&iobuf->io);
 		return (NULL);
 	}

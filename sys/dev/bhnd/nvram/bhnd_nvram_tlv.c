@@ -68,6 +68,11 @@ struct bhnd_nvram_tlv_ident {
 
 #define	TLV_NVLOG(_fmt, ...)	\
 	printf("%s: " _fmt, __FUNCTION__, ##__VA_ARGS__)
+	
+static int	bhnd_nvram_tlv_parse_size(struct bhnd_nvram_io *io,
+		    size_t *size);
+static int	bhnd_nvram_tlv_next_record(struct bhnd_nvram_io *io,
+		    size_t *offset, uint8_t *tag, size_t *val, uint16_t *vlen);
 
 static int
 bhnd_nvram_tlv_probe(struct bhnd_nvram_io *io)
@@ -131,16 +136,16 @@ bhnd_nvram_tlv_init(struct bhnd_nvram_tlv *tlv, struct bhnd_nvram_io *src)
 	int			 error;
 
 	KASSERT(tlv->data == NULL, ("tlv data already initialized"));
-	
-	if ((io = bhnd_nvram_iobuf_copy(src)) == NULL)
+
+	/* Determine the actual size of the TLV source data */
+	if ((error = bhnd_nvram_tlv_parse_size(src, &size)))
+		return (error);
+
+	/* Copy to our own internal buffer */
+	if ((io = bhnd_nvram_iobuf_copy_range(src, 0x0, size)) == NULL)
 		return (ENOMEM);
 
 	tlv->data = io;
-
-	/* Parse the TLV input data, initializing our backing
-	 * data representation */
-	io = bhnd_nvram_iobuf_copy(src);
-	size = bhnd_nvram_io_getsize(io);
 
 	/* Fetch a pointer to the full mapped range */
 	error = bhnd_nvram_io_read_ptr(io, 0x0, &ptr, size, NULL);
@@ -149,6 +154,7 @@ bhnd_nvram_tlv_init(struct bhnd_nvram_tlv *tlv, struct bhnd_nvram_io *src)
 		return (error);
 	}
 
+	/* Initialize our backing data representation */
 	start = ptr;
 	offset = 0;
 	while (offset < size) {
@@ -164,39 +170,27 @@ bhnd_nvram_tlv_init(struct bhnd_nvram_tlv *tlv, struct bhnd_nvram_io *src)
 			break;
 		}
 
-		if ((offset++) == size) {
-			TLV_NVLOG("TLV record header truncated at %#zx\n",
-			    offset);
+		if ((offset++) == size)
 			return (EINVAL);
-		}
 
 		/* Determine record length */
 		if (type & NVRAM_TLV_TF_U8_LEN) {
 			rlen = *(start + offset);
 		} else {
 			rlen = *(start + offset) << 8;
-			if ((offset++) == size) {
-				TLV_NVLOG("TLV 16-bit record length truncated "
-				    "at %#zx\n", offset);
+			if ((offset++) == size)
 				return (EINVAL);
-			}
 
 			rlen |= *(start + offset);
 		}
 
 		/* Advance to record value */
-		if ((offset++) >= size) {
-			TLV_NVLOG("TLV record value truncated at %#zx\n",
-			    offset);
+		if ((offset++) >= size)
 			return (EINVAL);
-		}
 
 		/* Verify that the full record value is mapped */
-		if (rlen > size || size - rlen < offset) {
-			TLV_NVLOG("TLV record length %zu truncated by input "
-			    "size of %zu\n", rlen, size);
+		if (rlen > size || size - rlen < offset)
 			return (EINVAL);
-		}
 	
 		/* Remaining processing applies only to env records */
 		if (type != NVRAM_TLV_TYPE_ENV) {
@@ -209,8 +203,6 @@ bhnd_nvram_tlv_init(struct bhnd_nvram_tlv *tlv, struct bhnd_nvram_io *src)
 			offset++;
 			rlen--;
 		} else {
-			TLV_NVLOG("invalid zero-length TLV_ENV record value "
-			    "at %#zx\n", offset);
 			return (EINVAL);
 		}
 
@@ -321,4 +313,130 @@ bhnd_nvram_tlv_getvar_name(struct bhnd_nvram_data *nv, void *cookiep)
 {
 	// TODO
 	return (NULL);
+}
+
+/**
+ * Incrementally parse @p io starting at @p offset, returning the parsed
+ * record's @p tag and @p size.
+ * 
+ * @param		io		The I/O context to parse.
+ * @param[in,out]	offset		The last offset returned by
+ *					bhnd_nvram_tlv_next_record(), or 0x0 to
+ *					begin parsing. Upon successful return,
+ *					will be set to the offset of the next
+ *					record (or the offset of EOF, if
+ *					NVRAM_TLV_TYPE_END was parsed).
+ * @param[out]		tag		The record's tag.
+ * @param[out]		val		The record's value offset. May be NULL.
+ * @param[out]		vlen		The record's value length. May be NULL.
+ * 
+ * @retval 0		success
+ * @retval EINVAL	if parsing @p io as TLV fails.
+ * @retval non-zero	if reading @p io otherwise fails, a regular unix error
+ *			code will be returned.
+ */
+static int
+bhnd_nvram_tlv_next_record(struct bhnd_nvram_io *io, size_t *offset,
+    uint8_t *tag, size_t *val, uint16_t *vlen)
+{
+	size_t		io_offset, io_size;
+	uint16_t	parsed_len;
+	uint8_t		len_hdr[2];
+	int		error;
+
+	io_offset = *offset;
+	io_size = bhnd_nvram_io_getsize(io);
+
+	/* Fetch initial tag */
+	error = bhnd_nvram_io_read(io, io_offset, tag, sizeof(*tag));
+	if (error)
+		return (error);
+	io_offset++;
+
+	/* EOF */
+	if (*tag == NVRAM_TLV_TYPE_END) {
+		if (val != NULL)
+			*val = 0;
+		if (vlen != NULL)
+			*vlen = 0;
+
+		*offset = io_offset;
+		return (0);
+	}
+
+	/* Read length field */
+	if (*tag & NVRAM_TLV_TF_U8_LEN) {
+		error = bhnd_nvram_io_read(io, io_offset, &len_hdr,
+		    sizeof(len_hdr[0]));
+		if (error) {
+			TLV_NVLOG("error reading TLV record size: %d\n",
+			    error);
+			return (error);
+		}
+
+		parsed_len = len_hdr[0];
+		io_offset++;
+	} else {
+		error = bhnd_nvram_io_read(io, io_offset, &len_hdr,
+		    sizeof(len_hdr));
+		if (error) {
+			TLV_NVLOG("error reading 16-bit TLV record "
+			    "size: %d\n", error);
+			return (error);
+		}
+
+		parsed_len = (len_hdr[0] << 8) | len_hdr[1];
+		io_offset += 2;
+	}
+
+	/* Provide the value offset and length */
+	if (val != NULL)
+		*val = io_offset;
+
+	if (vlen != NULL)
+		*vlen = parsed_len;
+
+	/* Advance offset to next record */
+	if (parsed_len > io_size || io_size - parsed_len < io_offset) {
+		/* Hit early EOF */
+		TLV_NVLOG("TLV record length %zu truncated by input "
+		    "size of %zu\n", parsed_len, io_size);
+		return (EINVAL);
+	}
+
+	*offset = io_offset + parsed_len;
+
+	/* Valid record found */
+	return (0);
+}
+
+/**
+ * Parse the TLV data in @p io to determine the total size of the TLV
+ * data mapped by @p io (which may be less than the size of @p io).
+ */
+static int
+bhnd_nvram_tlv_parse_size(struct bhnd_nvram_io *io, size_t *size)
+{
+	size_t		offset;
+	uint8_t		tag;
+	int		error;
+
+	/* We have to perform a minimal parse to determine the actual length */
+	offset = 0x0;
+	*size = 0x0;
+
+	/* Iterate over the input until we hit END tag or the read fails */
+	do {
+		error = bhnd_nvram_tlv_next_record(io, &offset, &tag, NULL,
+		    NULL);
+		if (error)
+			return (error);
+	} while (tag != NVRAM_TLV_TYPE_END);
+
+	/* Offset should now point to EOF */
+	KASSERT(offset <= bhnd_nvram_io_getsize(io), ("parse returned invalid "
+	    "EOF offset"));
+
+	*size = offset;
+	return (0);
 }

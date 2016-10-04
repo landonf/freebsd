@@ -41,6 +41,8 @@ struct bhnd_nvram_io;
 struct bhnd_nvram_io	*bhnd_nvram_iobuf_new(const void *buffer, size_t size);
 struct bhnd_nvram_io	*bhnd_nvram_iobuf_empty(size_t size, size_t capacity);
 struct bhnd_nvram_io	*bhnd_nvram_iobuf_copy(struct bhnd_nvram_io *src);
+struct bhnd_nvram_io	*bhnd_nvram_iobuf_copy_range(struct bhnd_nvram_io *src,
+			     size_t offset, size_t size);
 
 struct bhnd_nvram_io	*bhnd_nvram_iores_new(struct bhnd_resource *r,
 			     size_t offset, size_t size, u_int bus_width);
