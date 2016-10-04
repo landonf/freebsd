@@ -54,6 +54,17 @@ __FBSDID("$FreeBSD$");
  * Broadcom SoCs.
  */
 
+struct bhnd_nvram_bcm;
+
+static struct bhnd_nvram_bcmdata	*bhnd_nvram_bcm_gethdrvar(
+					     struct bhnd_nvram_bcm *bcm,
+					     const char *name);
+static struct bhnd_nvram_bcmdata	*bhnd_nvram_bcm_to_hdrvar(
+					     struct bhnd_nvram_bcm *bcm,
+					     void *cookiep);
+static size_t				 bhnd_nvram_bcm_hdrvar_index(
+					     struct bhnd_nvram_bcm *bcm,
+					     struct bhnd_nvram_bcmdata *hdrvar);
 /*
  * Set of BCM header values that are required to be mirrored in the
  * NVRAM data itself.
@@ -68,19 +79,23 @@ __FBSDID("$FreeBSD$");
 static const struct bhnd_nvram_bcmdata bhnd_nvram_bcm_hvars[] = {
 	{
 		.name	= BCM_NVRAM_CFG0_SDRAM_INIT_VAR,
-		.type	= BHND_NVRAM_TYPE_UINT16
+		.type	= BHND_NVRAM_TYPE_UINT16,
+		.size	= sizeof(uint16_t)
 	},
 	{
 		.name	= BCM_NVRAM_CFG1_SDRAM_CFG_VAR,
-		.type	= BHND_NVRAM_TYPE_UINT16
+		.type	= BHND_NVRAM_TYPE_UINT16,
+		.size	= sizeof(uint16_t)
 	},
 	{
 		.name	= BCM_NVRAM_CFG1_SDRAM_REFRESH_VAR,
-		.type	= BHND_NVRAM_TYPE_UINT16
+		.type	= BHND_NVRAM_TYPE_UINT16,
+		.size	= sizeof(uint16_t)
 	},
 	{
 		.name	= BCM_NVRAM_SDRAM_NCDL_VAR,
-		.type	= BHND_NVRAM_TYPE_UINT32
+		.type	= BHND_NVRAM_TYPE_UINT32,
+		.size	= sizeof(uint32_t)
 	},
 };
 
@@ -108,22 +123,6 @@ bhnd_nvram_bcm_probe(struct bhnd_nvram_io *io)
 		return (ENXIO);
 
 	return (BUS_PROBE_DEFAULT);
-}
-
-/**
- * Return the internal BCM data reference for a header-defined variable
- * with @p name, or NULL if none exists.
- */
-static struct bhnd_nvram_bcmdata *
-bhnd_nvram_bcm_gethdrvar(struct bhnd_nvram_bcm *bcm, const char *name)
-{
-	for (size_t i = 0; i < nitems(bcm->hvars); i++) {
-		if (strcmp(bcm->hvars[i].name, name) == 0)
-			return (&bcm->hvars[i]);
-	}
-
-	/* Not found */
-	return (NULL);
 }
 
 /**
@@ -306,17 +305,18 @@ bhnd_nvram_bcm_getcaps(struct bhnd_nvram_data *nv)
 static const char *
 bhnd_nvram_bcm_next(struct bhnd_nvram_data *nv, void **cookiep)
 {
-	struct bhnd_nvram_bcm	*bcm;
-	const void		*ptr;
-	const char		*envp, *basep;
-	size_t			 io_size, io_offset;
-	int			 error;
-
+	struct bhnd_nvram_bcm		*bcm;
+	struct bhnd_nvram_bcmdata	*hvar;
+	const void			*ptr;
+	const char			*envp, *basep;
+	size_t				 io_size, io_offset;
+	int				 error;
 
 	bcm = (struct bhnd_nvram_bcm *)nv;
 	
 	io_offset = sizeof(struct bhnd_nvram_header);
 	io_size = bhnd_nvram_io_getsize(bcm->data) - io_offset;
+	hvar = NULL;
 
 	/* Map backing buffer */
 	error = bhnd_nvram_io_read_ptr(bcm->data, io_offset, &ptr, io_size,
@@ -328,9 +328,33 @@ bhnd_nvram_bcm_next(struct bhnd_nvram_data *nv, void **cookiep)
 
 	basep = ptr;
 
-	/* Initial iteration? */
+	/* Handle header variable iteration */
+	hvar = bhnd_nvram_bcm_to_hdrvar(bcm, *cookiep);
+	if (hvar != NULL || *cookiep == NULL) {
+		size_t idx;
+
+		/* Determine the current position in the hvar array */
+		if (hvar == NULL) {
+			/* First iteration */
+			idx = 0;
+		} else {
+			idx = bhnd_nvram_bcm_hdrvar_index(bcm, hvar);
+		}
+
+		/* Find the next header-defined variable that isn't
+		 * defined in the NVRAM data, start iteration there */
+		for (size_t i = idx; i < nitems(bcm->hvars); i++) {
+			if (bcm->hvars[i].exists)
+				continue;
+
+			*cookiep = &bcm->hvars[i];
+			return (bcm->hvars[i].name);
+		}
+	}
+
+	/* Handle standard NVRAM data iteration */
 	if (*cookiep == NULL) {
-		/* First record */
+		/* Start at the first NVRAM data record */
 		envp = basep;
 	} else {
 		/* Seek to next record */
@@ -358,9 +382,9 @@ static int
 bhnd_nvram_bcm_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
     size_t *len, bhnd_nvram_type type)
 {
-	const void	*vptr;
-	size_t		 vlen;
-	bhnd_nvram_type	 vtype;
+	const void			*vptr;
+	size_t				 vlen;
+	bhnd_nvram_type			 vtype;
 
 	/* Fetch pointer */
 	vptr = bhnd_nvram_data_getvar_ptr(nv, cookiep, &vlen, &vtype);
@@ -376,9 +400,24 @@ static const void *
 bhnd_nvram_bcm_getvar_ptr(struct bhnd_nvram_data *nv, void *cookiep,
     size_t *len, bhnd_nvram_type *type)
 {
-	const char *envp = cookiep;
+	struct bhnd_nvram_bcm		*bcm;
+	struct bhnd_nvram_bcmdata	*hvar;
+	const char			*envp;
+
+	bcm = (struct bhnd_nvram_bcm *)bcm;
+
+	/* Handle header variables */
+	if ((hvar = bhnd_nvram_bcm_to_hdrvar(bcm, cookiep)) != NULL) {
+		KASSERT(hvar->size % bhnd_nvram_type_width(hvar->type) == 0,
+		    ("length is not aligned to type width"));
+
+		*type = hvar->type;
+		*len = hvar->size;
+		return (&hvar->value);
+	}
 
 	/* Cookie points to key\0value\0 -- get the value address */
+	envp = cookiep;
 	envp += strlen(envp) + 1;	/* key + '\0' */
 	*len = strlen(envp) + 1;
 	*type = BHND_NVRAM_TYPE_CSTR;
@@ -389,6 +428,68 @@ bhnd_nvram_bcm_getvar_ptr(struct bhnd_nvram_data *nv, void *cookiep,
 static const char *
 bhnd_nvram_bcm_getvar_name(struct bhnd_nvram_data *nv, void *cookiep)
 {
+	struct bhnd_nvram_bcm		*bcm;
+	struct bhnd_nvram_bcmdata	*hvar;
+
+	bcm = (struct bhnd_nvram_bcm *)bcm;
+
+	/* Handle header variables */
+	if ((hvar = bhnd_nvram_bcm_to_hdrvar(bcm, cookiep)) != NULL) {
+		return (hvar->name);
+	}
+
 	/* Cookie points to key\0value\0 */
 	return (cookiep);
+}
+
+/**
+ * Return the internal BCM data reference for a header-defined variable
+ * with @p name, or NULL if none exists.
+ */
+static struct bhnd_nvram_bcmdata *
+bhnd_nvram_bcm_gethdrvar(struct bhnd_nvram_bcm *bcm, const char *name)
+{
+	for (size_t i = 0; i < nitems(bcm->hvars); i++) {
+		if (strcmp(bcm->hvars[i].name, name) == 0)
+			return (&bcm->hvars[i]);
+	}
+
+	/* Not found */
+	return (NULL);
+}
+
+/**
+ * If @p cookiep references a header-defined variable, return the
+ * internal BCM data reference. Otherwise, returns NULL.
+ */
+static struct bhnd_nvram_bcmdata *
+bhnd_nvram_bcm_to_hdrvar(struct bhnd_nvram_bcm *bcm, void *cookiep)
+{
+	/* If the cookie falls within the hvar array, it's a
+	 * header variable cookie */
+	if (nitems(bcm->hvars) == 0)
+		return (NULL);
+
+	if (cookiep < (void *)&bcm->hvars[0])
+		return (NULL);
+
+	if (cookiep > (void *)&bcm->hvars[nitems(bcm->hvars)-1])
+		return (NULL);
+
+	KASSERT((uintptr_t)cookiep % sizeof(bcm->hvars[0]),
+	     ("misaligned hvar pointer"));
+	return ((struct bhnd_nvram_bcmdata *)cookiep);
+}
+
+/**
+ * Return the index of @p hdrvar within @p bcm's backing hvars array.
+ */
+static size_t
+bhnd_nvram_bcm_hdrvar_index(struct bhnd_nvram_bcm *bcm,
+    struct bhnd_nvram_bcmdata *hdrvar)
+{
+	KASSERT(bhnd_nvram_bcm_to_hdrvar(bcm, (void *)hdrvar) != NULL,
+	    ("%p is not a valid hdrvar reference", hdrvar));
+
+	return (hdrvar - &bcm->hvars[0]);
 }
