@@ -96,8 +96,7 @@ static char *nvram_cfe_devs[] = {
 
 /** Supported CFE NVRAM formats, in probe order. */
 static bhnd_nvram_data_class_t * const nvram_cfe_fmts[] = {
-	// TODO
-	// &bhnd_nvram_bcm_class,
+	&bhnd_nvram_bcm_class,
 	&bhnd_nvram_tlv_class
 };
 
