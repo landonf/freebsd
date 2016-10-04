@@ -35,7 +35,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/ctype.h>
 #include <sys/endian.h>
 #include <sys/malloc.h>
-#include <sys/rman.h>
+#include <sys/systm.h>
 
 #include <machine/bus.h>
 
@@ -56,6 +56,30 @@ __FBSDID("$FreeBSD$");
 struct bhnd_nvram_bcm {
 	struct bhnd_nvram_data	 nv;	/**< common instance state */
 	struct bhnd_nvram_io	*data;	/**< backing buffer */
+
+	/* 
+	 * BCM header values that are required to be mirrored in the
+	 * NVRAM data itself.
+	 *
+	 * If they're not included in the parsed NVRAM data, we need to
+	 * vend the header-parsed values with their appropriate keys
+	 * (see BCM_NVRAM_CFG0_SDRAM_*_VAR), and add them if we produce
+	 * an NVRAM write.
+	 *
+	 * If they're modified in NVRAM, we need to sync the changes with the
+	 * the NVRAM header values.
+	 */
+	uint16_t		 sdram_init;
+	bool			 have_sdram_init;
+
+	uint16_t		 sdram_config;
+	bool			 have_sdram_config;
+
+	uint16_t		 sdram_refresh;
+	bool			 have_sdram_refresh;
+
+	uint32_t		 sdram_ncdl;
+	bool			 have_sdram_ncdl;
 };
 
 BHND_NVRAM_DATA_CLASS_DEFN(bcm, "Broadcom")
@@ -89,7 +113,7 @@ bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 	struct bhnd_nvram_header	 hdr;
 	uint8_t				*p;
 	void				*ptr;
-	size_t				 io_size;
+	size_t				 io_offset, io_size;
 	uint8_t				 crc, valid;
 	int				 error;
 
@@ -125,7 +149,59 @@ bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 	}
 
 	/* Process the buffer */
-	// TODO
+	io_offset = sizeof(hdr);
+	while (io_offset < io_size) {
+		char		*envp;
+		const char	*name, *value;
+		size_t		 envp_len;
+		size_t		 name_len, value_len;
+
+		/* Parse the key=value string */
+		envp = (char *) (p + io_offset);
+		envp_len = strnlen(envp, io_size - io_offset);
+		error = bhnd_nvram_parse_env(envp, envp_len, '=', &name,
+					     &name_len, &value, &value_len);
+		if (error)
+			return (error);
+
+		/* Insert a '\0' character, replacing the '=' delimiter and
+		 * allowing us to vend references directly to the variable
+		 * name */
+		*(envp + name_len) = '\0';
+
+		/* Check for special-cased header variables */
+#define	BCM_CHECK_HDR_VAR(_flag, _name) do {			\
+	if (!bcm->have_ ## _flag &&				\
+	    strcmp(name, BCM_NVRAM_ ## _name ## _VAR) == 0)	\
+	{							\
+		bcm->have_ ## _flag = true;			\
+	}							\
+} while (0)
+
+		BCM_CHECK_HDR_VAR(sdram_init,		CFG0_SDRAM_INIT);
+		BCM_CHECK_HDR_VAR(sdram_config,		CFG1_SDRAM_CFG);
+		BCM_CHECK_HDR_VAR(sdram_refresh,	CFG1_SDRAM_REFRESH);
+		BCM_CHECK_HDR_VAR(sdram_ncdl,		SDRAM_NCDL);
+
+#undef BCM_CHECK_HDR_VAR
+
+		/* Seek past the value's terminating '\0' */
+		io_offset += envp_len;
+		if (io_offset == io_size)
+			return (EINVAL);
+
+		if (*(p + io_offset) != '\0')
+			return (EINVAL);
+
+		/* Seek past the record seperator ('\0') */
+		if (++io_offset == io_size)
+			return (EINVAL);
+
+		if (*(p + io_offset) != '\0')
+			return (EINVAL);
+
+		io_offset++;
+	}
 
 	return (0);
 }
@@ -179,8 +255,46 @@ bhnd_nvram_bcm_getcaps(struct bhnd_nvram_data *nv)
 static const char *
 bhnd_nvram_bcm_next(struct bhnd_nvram_data *nv, void **cookiep)
 {
-	// TODO
-	return (NULL);
+	struct bhnd_nvram_bcm	*bcm;
+	const void		*ptr;
+	const char		*envp, *basep;
+	size_t			 io_size, io_offset;
+	int			 error;
+
+
+	bcm = (struct bhnd_nvram_bcm *)nv;
+	
+	io_offset = sizeof(struct bhnd_nvram_header);
+	io_size = bhnd_nvram_io_getsize(bcm->data) - io_offset;
+
+	/* Map backing buffer */
+	error = bhnd_nvram_io_read_ptr(bcm->data, io_offset, &ptr, io_size,
+	    NULL);
+	if (error) {
+		BCM_NVLOG("error mapping backing buffer: %d\n", error);
+		return (NULL);
+	}
+
+	basep = ptr;
+
+	/* Initial iteration? */
+	if (*cookiep == NULL) {
+		/* First record */
+		envp = basep;
+	} else {
+		/* Seek to next record */
+		envp = *cookiep;
+		envp += strlen(envp) + 1;	/* key + '\0' */
+		envp += strlen(envp) + 1;	/* value + '\0' */
+		envp++;				/* '\0' record delim */
+	}
+
+	/* EOF? */
+	if (envp - basep == io_size)
+		return (NULL);
+
+	*cookiep = (void *)(uintptr_t)envp;
+	return (envp);
 }
 
 static void *
@@ -211,13 +325,19 @@ static const void *
 bhnd_nvram_bcm_getvar_ptr(struct bhnd_nvram_data *nv, void *cookiep,
     size_t *len, bhnd_nvram_type *type)
 {
-	// TODO
-	return (NULL);
+	const char *envp = cookiep;
+
+	/* Cookie points to key\0value\0 -- get the value address */
+	envp += strlen(envp) + 1;	/* key + '\0' */
+	*len = strlen(envp) + 1;
+	*type = BHND_NVRAM_TYPE_CSTR;
+
+	return (envp);
 }
 
 static const char *
 bhnd_nvram_bcm_getvar_name(struct bhnd_nvram_data *nv, void *cookiep)
 {
-	// TODO
-	return (NULL);
+	/* Cookie points to key\0value\0 */
+	return (cookiep);
 }
