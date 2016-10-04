@@ -129,10 +129,9 @@ bhnd_nvram_tlv_probe(struct bhnd_nvram_io *io)
 static int
 bhnd_nvram_tlv_init(struct bhnd_nvram_tlv *tlv, struct bhnd_nvram_io *src)
 {
-	struct bhnd_nvram_io	*io;
-	const void		*ptr;
-	const uint8_t		*start;
-	size_t			 offset, size;
+	size_t			 size;
+	size_t			 offset;
+	uint8_t			 tag;
 	int			 error;
 
 	KASSERT(tlv->data == NULL, ("tlv data already initialized"));
@@ -142,73 +141,45 @@ bhnd_nvram_tlv_init(struct bhnd_nvram_tlv *tlv, struct bhnd_nvram_io *src)
 		return (error);
 
 	/* Copy to our own internal buffer */
-	if ((io = bhnd_nvram_iobuf_copy_range(src, 0x0, size)) == NULL)
+	if ((tlv->data = bhnd_nvram_iobuf_copy_range(src, 0x0, size)) == NULL)
 		return (ENOMEM);
 
-	tlv->data = io;
-
-	/* Fetch a pointer to the full mapped range */
-	error = bhnd_nvram_io_read_ptr(io, 0x0, &ptr, size, NULL);
-	if (error) {
-		TLV_NVLOG("error reading mapped TLV data: %d\n", error);
-		return (error);
-	}
-
-	/* Initialize our backing data representation */
-	start = ptr;
+	/* Initialize our backing buffer */
 	offset = 0;
-	while (offset < size) {
-		size_t	rlen, name_len;
-		uint8_t	type;
-
-		/* Fetch type */
-		type = *(start + offset);
-
-		/* EOF */
-		if (type == NVRAM_TLV_TYPE_END) {
-			offset++;
-			break;
-		}
-
-		if ((offset++) == size)
-			return (EINVAL);
-
-		/* Determine record length */
-		if (type & NVRAM_TLV_TF_U8_LEN) {
-			rlen = *(start + offset);
-		} else {
-			rlen = *(start + offset) << 8;
-			if ((offset++) == size)
-				return (EINVAL);
-
-			rlen |= *(start + offset);
-		}
-
-		/* Advance to record value */
-		if ((offset++) >= size)
-			return (EINVAL);
-
-		/* Verify that the full record value is mapped */
-		if (rlen > size || size - rlen < offset)
-			return (EINVAL);
+	do {
+		const void	*ptr;
+		size_t		 env_off;
+		size_t		 name_len;
+		uint16_t	 env_len;
 	
-		/* Remaining processing applies only to env records */
-		if (type != NVRAM_TLV_TYPE_ENV) {
-			offset += rlen;
-			continue;
-		}
+		/* Fetch the next TLV_ENV record */
+		error = bhnd_nvram_tlv_next_record(tlv->data, &offset, &tag,
+		    &env_off, &env_len);
+		if (error)
+			return (error);
 
-		/* Skip flag field */
-		if (rlen >= 1) {
-			offset++;
-			rlen--;
+		if (tag != NVRAM_TLV_TYPE_ENV)
+			continue;
+
+		/* Skip the initial flags field */
+		if (env_len >= 1) {
+			env_off++;
+			env_len--;
 		} else {
+			/* Bogus record */
 			return (EINVAL);
 		}
 
 		/* Parse the key=value string */
-		error = bhnd_nvram_parse_env(start + offset, rlen, '=', NULL,
-		    &name_len, NULL, NULL);
+		error = bhnd_nvram_io_read_ptr(tlv->data, env_off, &ptr,
+		    env_len, NULL);
+		if (error) {
+			TLV_NVLOG("error reading mapped TLV data: %d\n", error);
+			return (error);
+		}
+
+		error = bhnd_nvram_parse_env(ptr, env_len, '=', NULL, &name_len,
+		    NULL, NULL);
 		if (error) {
 			TLV_NVLOG("error parsing TLV_ENV data: %d\n", error);
 			return (error);
@@ -217,18 +188,14 @@ bhnd_nvram_tlv_init(struct bhnd_nvram_tlv *tlv, struct bhnd_nvram_io *src)
 		/* Insert a '\0' character, replacing the '=' delimiter and
 		 * allowing us to vend references directly to the variable
 		 * name */
-		error = bhnd_nvram_io_write(io, offset + name_len,
+		error = bhnd_nvram_io_write(tlv->data, env_off + name_len,
 		    &(char){'\0'}, 1);
 		if (error) {
 			TLV_NVLOG("error updating TLV_ENV: %d\n", error);
 			return (error);
 		}
+	} while (tag != NVRAM_TLV_TYPE_END);
 
-		/* Advance to next entry */
-		offset += rlen;
-	}
-
-	// TODO - shrink buffer capacity to `offset`
 	return (0);
 }
 
