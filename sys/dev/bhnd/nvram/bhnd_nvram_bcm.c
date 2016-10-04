@@ -53,33 +53,61 @@ __FBSDID("$FreeBSD$");
  * Broadcom SoCs.
  */
 
+/**
+ * Internal representation of BCM NVRAM values that mirror (and must be
+ * vended as) NVRAM variables.
+ */
+struct bhnd_nvram_bcmdata {
+	const char	*name;		/**< variable name */
+	bhnd_nvram_type	 type;		/**< data type */
+	bool		 exists;	/**< is mirrored variable defined in the
+					     NVRAM data. */
+	/** variable data */
+	union {
+		uint16_t	u16;
+		uint32_t	u32;
+	} data;
+};
+
+/*
+ * Set of BCM header values that are required to be mirrored in the
+ * NVRAM data itself.
+ *
+ * If they're not included in the parsed NVRAM data, we need to vend the
+ * header-parsed values with their appropriate keys, and add them in any
+ * updates to the NVRAM data.
+ *
+ * If they're modified in NVRAM, we need to sync the changes with the
+ * the NVRAM header values.
+ */
+static const struct bhnd_nvram_bcmdata bhnd_nvram_bcm_hvars[] = {
+	{
+		.name	= BCM_NVRAM_CFG0_SDRAM_INIT_VAR,
+		.type	= BHND_NVRAM_TYPE_UINT16
+	},
+	{
+		.name	= BCM_NVRAM_CFG1_SDRAM_CFG_VAR,
+		.type	= BHND_NVRAM_TYPE_UINT16
+	},
+	{
+		.name	= BCM_NVRAM_CFG1_SDRAM_REFRESH_VAR,
+		.type	= BHND_NVRAM_TYPE_UINT16
+	},
+	{
+		.name	= BCM_NVRAM_SDRAM_NCDL_VAR,
+		.type	= BHND_NVRAM_TYPE_UINT32
+	},
+};
+
+#define	BHND_NVRAM_BCM_HDR_VARS	4	/**< number of BCM NVRAM header values
+					     that mirror NVRAM variables */
+
 struct bhnd_nvram_bcm {
-	struct bhnd_nvram_data	 nv;	/**< common instance state */
-	struct bhnd_nvram_io	*data;	/**< backing buffer */
+	struct bhnd_nvram_data		 nv;	/**< common instance state */
+	struct bhnd_nvram_io		*data;	/**< backing buffer */
 
-	/* 
-	 * BCM header values that are required to be mirrored in the
-	 * NVRAM data itself.
-	 *
-	 * If they're not included in the parsed NVRAM data, we need to
-	 * vend the header-parsed values with their appropriate keys
-	 * (see BCM_NVRAM_CFG0_SDRAM_*_VAR), and add them if we produce
-	 * an NVRAM write.
-	 *
-	 * If they're modified in NVRAM, we need to sync the changes with the
-	 * the NVRAM header values.
-	 */
-	uint16_t		 sdram_init;
-	bool			 have_sdram_init;
-
-	uint16_t		 sdram_config;
-	bool			 have_sdram_config;
-
-	uint16_t		 sdram_refresh;
-	bool			 have_sdram_refresh;
-
-	uint32_t		 sdram_ncdl;
-	bool			 have_sdram_ncdl;
+	/** BCM header values */
+	struct bhnd_nvram_bcmdata	 hvars[nitems(bhnd_nvram_bcm_hvars)];
 };
 
 BHND_NVRAM_DATA_CLASS_DEFN(bcm, "Broadcom")
@@ -100,6 +128,22 @@ bhnd_nvram_bcm_probe(struct bhnd_nvram_io *io)
 		return (ENXIO);
 
 	return (BUS_PROBE_DEFAULT);
+}
+
+/**
+ * Return the internal BCM data reference for a header-defined variable
+ * with @p name, or NULL if none exists.
+ */
+static struct bhnd_nvram_bcmdata *
+bhnd_nvram_bcm_gethdrvar(struct bhnd_nvram_bcm *bcm, const char *name)
+{
+	for (size_t i = 0; i < nitems(bcm->hvars); i++) {
+		if (strcmp(bcm->hvars[i].name, name) == 0)
+			return (&bcm->hvars[i]);
+	}
+
+	/* Not found */
+	return (NULL);
 }
 
 /**
@@ -169,21 +213,21 @@ bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 		 * name */
 		*(envp + name_len) = '\0';
 
-		/* Check for special-cased header variables */
-#define	BCM_CHECK_HDR_VAR(_flag, _name) do {			\
-	if (!bcm->have_ ## _flag &&				\
-	    strcmp(name, BCM_NVRAM_ ## _name ## _VAR) == 0)	\
-	{							\
-		bcm->have_ ## _flag = true;			\
-	}							\
-} while (0)
+		/* Record any NVRAM variables that mirror our header variables.
+		 * This is a brute-force search -- for the amount of data we're
+		 * operating on, it shouldn't be an issue. */
+		for (size_t i = 0; i < nitems(bcm->hvars); i++) {
+			/* Already seen? */
+			if (bcm->hvars[i].exists)
+				continue;
 
-		BCM_CHECK_HDR_VAR(sdram_init,		CFG0_SDRAM_INIT);
-		BCM_CHECK_HDR_VAR(sdram_config,		CFG1_SDRAM_CFG);
-		BCM_CHECK_HDR_VAR(sdram_refresh,	CFG1_SDRAM_REFRESH);
-		BCM_CHECK_HDR_VAR(sdram_ncdl,		SDRAM_NCDL);
+			/* Name matches? */
+			if ((strcmp(name, bcm->hvars[i].name)) != 0)
+				continue;
 
-#undef BCM_CHECK_HDR_VAR
+			/* Mark as seen */
+			bcm->hvars[i].exists = true;
+		}
 
 		/* Seek past the value's terminating '\0' */
 		io_offset += envp_len;
@@ -220,7 +264,12 @@ bhnd_nvram_bcm_new(struct bhnd_nvram_data **nv, struct bhnd_nvram_io *io)
 	bcm->nv.cls = &bhnd_nvram_bcm_class;
 	bcm->data = NULL;
 
-	/* Parse the BTXT input data and initialize our backing
+	/* Populate default BCM mirrored header value set */
+	_Static_assert(sizeof(bcm->hvars) == sizeof(bhnd_nvram_bcm_hvars),
+	    "hvars declaration must match bhnd_nvram_bcm_hvars template");
+	memcpy(bcm->hvars, bhnd_nvram_bcm_hvars, sizeof(bcm->hvars));
+
+	/* Parse the BCM input data and initialize our backing
 	 * data representation */
 	if ((error = bhnd_nvram_bcm_init(bcm, io)))
 		goto failed;
