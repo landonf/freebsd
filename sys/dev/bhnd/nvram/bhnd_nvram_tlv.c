@@ -66,6 +66,9 @@ struct bhnd_nvram_tlv_ident {
 	char		envp;
 } __packed;
 
+#define	TLV_NVLOG(_fmt, ...)	\
+	printf("%s: " _fmt, __FUNCTION__, ##__VA_ARGS__)
+
 static int
 bhnd_nvram_tlv_probe(struct bhnd_nvram_io *io)
 {
@@ -113,11 +116,160 @@ bhnd_nvram_tlv_probe(struct bhnd_nvram_io *io)
 	return (BUS_PROBE_DEFAULT);
 }
 
+/**
+ * Initialize @p tlv with the provided NVRAM TLV data mapped by @p src.
+ * 
+ * @param tlv A newly allocated data instance.
+ */
+static int
+bhnd_nvram_tlv_init(struct bhnd_nvram_tlv *tlv, struct bhnd_nvram_io *src)
+{
+	struct bhnd_nvram_io	*io;
+	const void		*ptr;
+	const uint8_t		*start;
+	size_t			 offset, size;
+	int			 error;
+
+	KASSERT(tlv->data == NULL, ("tlv data already initialized"));
+	
+	if ((io = bhnd_nvram_iobuf_copy(src)) == NULL)
+		return (ENOMEM);
+
+	tlv->data = io;
+
+	/* Parse the TLV input data, initializing our backing
+	 * data representation */
+	io = bhnd_nvram_iobuf_copy(src);
+	size = bhnd_nvram_io_getsize(io);
+
+	/* Fetch a pointer to the full mapped range */
+	error = bhnd_nvram_io_read_ptr(io, 0x0, &ptr, size, NULL);
+	if (error) {
+		TLV_NVLOG("error reading mapped TLV data: %d\n", error);
+		return (error);
+	}
+
+	start = ptr;
+	offset = 0;
+	while (offset < size) {
+		size_t	rlen, name_len;
+		uint8_t	type;
+
+		/* Fetch type */
+		type = *(start + offset);
+
+		/* EOF */
+		if (type == NVRAM_TLV_TYPE_END) {
+			offset++;
+			break;
+		}
+
+		if ((offset++) == size) {
+			TLV_NVLOG("TLV record header truncated at %#zx\n",
+			    offset);
+			return (EINVAL);
+		}
+
+		/* Determine record length */
+		if (type & NVRAM_TLV_TF_U8_LEN) {
+			rlen = *(start + offset);
+		} else {
+			rlen = *(start + offset) << 8;
+			if ((offset++) == size) {
+				TLV_NVLOG("TLV 16-bit record length truncated "
+				    "at %#zx\n", offset);
+				return (EINVAL);
+			}
+
+			rlen |= *(start + offset);
+		}
+
+		/* Advance to record value */
+		if ((offset++) >= size) {
+			TLV_NVLOG("TLV record value truncated at %#zx\n",
+			    offset);
+			return (EINVAL);
+		}
+
+		/* Verify that the full record value is mapped */
+		if (rlen > size || size - rlen < offset) {
+			TLV_NVLOG("TLV record length %zu truncated by input "
+			    "size of %zu\n", rlen, size);
+			return (EINVAL);
+		}
+	
+		/* Remaining processing applies only to env records */
+		if (type != NVRAM_TLV_TYPE_ENV) {
+			offset += rlen;
+			continue;
+		}
+
+		/* Skip flag field */
+		if (rlen >= 1) {
+			offset++;
+			rlen--;
+		} else {
+			TLV_NVLOG("invalid zero-length TLV_ENV record value "
+			    "at %#zx\n", offset);
+			return (EINVAL);
+		}
+
+		/* Parse the key=value string */
+		error = bhnd_nvram_parse_env(start + offset, rlen, '=', NULL,
+		    &name_len, NULL, NULL);
+		if (error) {
+			TLV_NVLOG("error parsing TLV_ENV data: %d\n", error);
+			return (error);
+		}
+
+		/* Insert a '\0' character, replacing the '=' delimiter and
+		 * allowing us to vend references directly to the variable
+		 * name */
+		error = bhnd_nvram_io_write(io, offset + name_len,
+		    &(char){'\0'}, 1);
+		if (error) {
+			TLV_NVLOG("error updating TLV_ENV: %d\n", error);
+			return (error);
+		}
+
+		/* Advance to next entry */
+		offset += rlen;
+	}
+
+	// TODO - shrink buffer capacity to `offset`
+	return (0);
+}
+
 static int
 bhnd_nvram_tlv_new(struct bhnd_nvram_data **nv, struct bhnd_nvram_io *io)
 {
-	// TODO
-	return (ENXIO);
+	
+	struct bhnd_nvram_tlv	*tlv;
+	int			 error;
+
+	/* Allocate and initialize the TLV data instance */
+	tlv = malloc(sizeof(*tlv), M_BHND_NVRAM, M_NOWAIT|M_ZERO);
+	if (tlv == NULL)
+		return (ENOMEM);
+
+	tlv->nv.cls = &bhnd_nvram_tlv_class;
+	tlv->data = NULL;
+
+	/* Parse the BTXT input data and initialize our backing
+	 * data representation */
+	if ((error = bhnd_nvram_tlv_init(tlv, io)))
+		goto failed;
+
+	*nv = &tlv->nv;
+	return (0);
+
+failed:
+	if (tlv->data != NULL)
+		bhnd_nvram_io_free(tlv->data);
+
+	free(tlv, M_BHND_NVRAM);
+
+	return (error);
 }
 
 static void
