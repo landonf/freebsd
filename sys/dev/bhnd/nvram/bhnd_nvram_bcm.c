@@ -45,6 +45,7 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_nvram_datavar.h"
 
 #include "bhnd_nvram_bcmreg.h"
+#include "bhnd_nvram_bcmvar.h"
 
 /*
  * Broadcom NVRAM data class.
@@ -52,22 +53,6 @@ __FBSDID("$FreeBSD$");
  * The Broadcom NVRAM NUL-delimited ASCII format is used by most
  * Broadcom SoCs.
  */
-
-/**
- * Internal representation of BCM NVRAM values that mirror (and must be
- * vended as) NVRAM variables.
- */
-struct bhnd_nvram_bcmdata {
-	const char	*name;		/**< variable name */
-	bhnd_nvram_type	 type;		/**< data type */
-	bool		 exists;	/**< is mirrored variable defined in the
-					     NVRAM data. */
-	/** variable data */
-	union {
-		uint16_t	u16;
-		uint32_t	u32;
-	} data;
-};
 
 /*
  * Set of BCM header values that are required to be mirrored in the
@@ -99,9 +84,7 @@ static const struct bhnd_nvram_bcmdata bhnd_nvram_bcm_hvars[] = {
 	},
 };
 
-#define	BHND_NVRAM_BCM_HDR_VARS	4	/**< number of BCM NVRAM header values
-					     that mirror NVRAM variables */
-
+/** BCM NVRAM data class instance */
 struct bhnd_nvram_bcm {
 	struct bhnd_nvram_data		 nv;	/**< common instance state */
 	struct bhnd_nvram_io		*data;	/**< backing buffer */
@@ -111,9 +94,6 @@ struct bhnd_nvram_bcm {
 };
 
 BHND_NVRAM_DATA_CLASS_DEFN(bcm, "Broadcom")
-
-#define	BCM_NVLOG(_fmt, ...)	\
-	printf("%s: " _fmt, __FUNCTION__, ##__VA_ARGS__)
 
 static int
 bhnd_nvram_bcm_probe(struct bhnd_nvram_io *io)
@@ -191,6 +171,28 @@ bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 		BCM_NVLOG("warning: NVRAM CRC error (crc=%#hhx, "
 		    "expected=%hhx)\n", crc, valid);
 	}
+
+	/* Populate header variables */
+#define	BCM_READ_HDR_VAR(_name, _dest, _swap) do {		\
+	struct bhnd_nvram_bcmdata *data;				\
+	data = bhnd_nvram_bcm_gethdrvar(bcm, _name ##_VAR);		\
+	KASSERT(data != NULL,						\
+	    ("no such header variable: " __STRING(_name)));		\
+									\
+									\
+	data->value. _dest = _swap(BCM_NVRAM_GET_BITS(			\
+	    hdr. _name ## _FIELD, _name));				\
+} while(0)
+
+	BCM_READ_HDR_VAR(BCM_NVRAM_CFG0_SDRAM_INIT,	u16, le16toh);
+	BCM_READ_HDR_VAR(BCM_NVRAM_CFG1_SDRAM_CFG,	u16, le16toh);
+	BCM_READ_HDR_VAR(BCM_NVRAM_CFG1_SDRAM_REFRESH,	u16, le16toh);
+	BCM_READ_HDR_VAR(BCM_NVRAM_SDRAM_NCDL,		u32, le32toh);
+
+	_Static_assert(nitems(bcm->hvars) == 4, "missing initialization for"
+	    "NVRAM header variable(s)");
+
+#undef BCM_READ_HDR_VAR
 
 	/* Process the buffer */
 	io_offset = sizeof(hdr);
