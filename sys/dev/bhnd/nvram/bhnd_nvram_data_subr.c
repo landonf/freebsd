@@ -824,7 +824,7 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 			if (intv.u32 > UINT8_MAX)
 				return (ERANGE);
 
-			if (remain >= owidth)
+			if (remain >= sizeof(uint8_t))
 				*((uint8_t *)outp + i) = intv.u32;
 			break;
 
@@ -832,12 +832,12 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 			if (intv.u32 > UINT16_MAX)
 				return (ERANGE);
 
-			if (remain >= owidth)
+			if (remain >= sizeof(uint16_t))
 				*((uint16_t *)outp + i) = intv.u32;
 			break;
 
 		case BHND_NVRAM_TYPE_UINT32:
-			if (remain >= owidth)
+			if (remain >= sizeof(uint32_t))
 				*((uint32_t *)outp + i) = intv.u32;
 			break;
 
@@ -845,7 +845,7 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 			if (intv.s32 < INT8_MIN || intv.s32 > INT8_MAX)
 				return (ERANGE);
 
-			if (remain >= owidth)
+			if (remain >= sizeof(int8_t))
 				*((int8_t *)outp + i) = intv.s32;
 			break;
 
@@ -853,12 +853,12 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 			if (intv.s32 < INT16_MIN || intv.s32 > INT16_MAX)
 				return (ERANGE);
 
-			if (remain >= owidth)
+			if (remain >= sizeof(uint16_t))
 				*((int16_t *)outp + i) = intv.s32;
 			break;
 
 		case BHND_NVRAM_TYPE_INT32:
-			if (remain >= owidth)
+			if (remain >= sizeof(uint32_t))
 				*((int32_t *)outp + i) = intv.s32;
 			break;
 
@@ -866,7 +866,7 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 			if (intv.s32 < CHAR_MIN || intv.s32 > CHAR_MAX)
 				return (ERANGE);
 
-			if (remain >= owidth)
+			if (remain >= sizeof(char))
 				*((char *)outp + i) = intv.s32;
 			break;
 
