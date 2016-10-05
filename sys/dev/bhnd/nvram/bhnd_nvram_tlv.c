@@ -319,7 +319,7 @@ bhnd_nvram_tlv_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 		 * delimiter back to '=' */
 		p += (val_offset - rec_offset);	/* advance to envp data */
 		p += strlen((char *)p);		/* skip variable name */
-		KASSERT(*p == '\0', ("expected \0, found %#hhx", *p));
+		KASSERT(*p == '\0', ("expected '\\0', found %#hhx", *p));
 		*p = '=';
 	} while (tag != NVRAM_TLV_TYPE_END);
 
