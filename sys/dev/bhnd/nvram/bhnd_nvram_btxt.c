@@ -125,7 +125,7 @@ bhnd_nvram_btxt_probe(struct bhnd_nvram_io *io)
 static int
 bhnd_nvram_btxt_init(struct bhnd_nvram_btxt *btxt, struct bhnd_nvram_io *src)
 {
-	struct bhnd_nvram_io	*io;
+	const void		*ptr;
 	const char		*name, *value;
 	size_t			 name_len, value_len;
 	size_t			 line_len, env_len;
@@ -134,24 +134,37 @@ bhnd_nvram_btxt_init(struct bhnd_nvram_btxt *btxt, struct bhnd_nvram_io *src)
 
 	KASSERT(btxt->data == NULL, ("btxt data already allocated"));
 	
-	if ((io = bhnd_nvram_iobuf_copy(src)) == NULL)
+	if ((btxt->data = bhnd_nvram_iobuf_copy(src)) == NULL)
 		return (ENOMEM);
 
-	btxt->data = io;
-
-	io_size = bhnd_nvram_io_getsize(io);
+	io_size = bhnd_nvram_io_getsize(btxt->data);
 	io_offset = 0;
+
+	/* Fetch a pointer mapping the entirity of the board text data */
+	error = bhnd_nvram_io_read_ptr(btxt->data, 0x0, &ptr, io_size, NULL);
+	if (error)
+		return (error);
+
+	/* Determine the actual size, minus any terminating NUL. We
+	 * parse NUL-terminated C strings, but do not include NUL termination
+	 * in our internal or serialized representations */
+	io_size = strnlen(ptr, io_size);
+
+	/* Adjust buffer size to account for NUL termination (if any) */
+	if ((error = bhnd_nvram_io_setsize(btxt->data, io_size)))
+		return (error);
+
+	/* Process the buffer */
 	while (io_offset < io_size) {
 		const void	*envp;
-		size_t		 nbytes;
 
 		/* Seek to the next key=value entry */
-		if ((error = bhnd_nvram_btxt_seek_next(io, &io_offset)))
+		if ((error = bhnd_nvram_btxt_seek_next(btxt->data, &io_offset)))
 			return (error);
 
 		/* Determine the entry and line length */
-		error = bhnd_nvram_btxt_entry_len(io, io_offset, &line_len,
-		    &env_len);
+		error = bhnd_nvram_btxt_entry_len(btxt->data, io_offset,
+		    &line_len, &env_len);
 		if (error)
 			return (error);
 	
@@ -162,22 +175,23 @@ bhnd_nvram_btxt_init(struct bhnd_nvram_btxt *btxt, struct bhnd_nvram_io *src)
 			break;
 		}
 
-		/* Parse the key=value string */
-		nbytes = env_len;
-		error = bhnd_nvram_io_read_ptr(io, io_offset, &envp, nbytes,
-		    NULL);
+		/* Fetch a pointer to the line start */
+		error = bhnd_nvram_io_read_ptr(btxt->data, io_offset, &envp,
+		    env_len, NULL);
 		if (error)
 			return (error);
 
+		/* Parse the key=value string */
 		error = bhnd_nvram_parse_env(envp, env_len, '=', &name,
 		    &name_len, &value, &value_len);
-		if (error)
+		if (error) {
 			return (error);
+		}
 
 		/* Insert a '\0' character, replacing the '=' delimiter and
 		 * allowing us to vend references directly to the variable
 		 * name */
-		error = bhnd_nvram_io_write(io, io_offset+name_len,
+		error = bhnd_nvram_io_write(btxt->data, io_offset+name_len,
 		    &(char){'\0'}, 1);
 		if (error)
 			return (error);
@@ -232,37 +246,48 @@ bhnd_nvram_btxt_free(struct bhnd_nvram_data *nv)
 static int
 bhnd_nvram_btxt_size(struct bhnd_nvram_data *nv, size_t *size)
 {
-	struct bhnd_nvram_btxt *btxt;
-	char			ch;
-	int			error;
-
-	btxt = (struct bhnd_nvram_btxt *)nv;
+	struct bhnd_nvram_btxt *btxt = (struct bhnd_nvram_btxt *)nv;
 
 	/* The serialized form will be identical in length
-	 * to our backing buffer representation, minus any
-	 * terminating NUL that might be included when operating on
-	 * BTXT data loaded from a C string */
+	 * to our backing buffer representation */
 	*size = bhnd_nvram_io_getsize(btxt->data);
-	if (*size == 0)
-		return (0);
-
-	/* Check for a terminating NUL */
-	error = bhnd_nvram_io_read(btxt->data, *size - 1, &ch, sizeof(ch));
-	if (error)
-		return (error);
-
-	/* Decrease size to account for NUL */
-	if (ch == '\0')
-		*size = *size - 1;
-
 	return (0);
 }
 
 static int
 bhnd_nvram_btxt_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 {
-	// TODO
-	return (ENXIO);
+	struct bhnd_nvram_btxt	*btxt;
+	size_t			 limit;
+	int			 error;
+
+	btxt = (struct bhnd_nvram_btxt *)nv;
+
+	limit = *len;
+
+	/* Provide actual output size */
+	if ((error = bhnd_nvram_data_size(nv, len)))
+		return (error);
+
+	if (limit < *len) {
+		if (buf != NULL)
+			return (ENOMEM);
+
+		return (0);
+	}
+
+	/* Copy our internal representation to the output buffer */
+	if ((error = bhnd_nvram_io_read(btxt->data, 0x0, buf, *len)))
+		return (error);
+
+	/* Restore the original key=value format, rewriting all '\0'
+	 * key\0value delimiters back to '=' */
+	for (char *p = buf; p - (char *)buf < *len; p++) {
+		if (*p == '\0')
+			*p = '=';
+	}
+
+	return (0);
 }
 
 static uint32_t
