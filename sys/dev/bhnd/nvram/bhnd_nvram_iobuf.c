@@ -173,7 +173,7 @@ struct bhnd_nvram_io *
 bhnd_nvram_iobuf_copy(struct bhnd_nvram_io *src)
 {
 	return (bhnd_nvram_iobuf_copy_range(src, 0x0,
-	    bhnd_nvram_iobuf_getsize(src)));
+	    bhnd_nvram_io_getsize(src)));
 }
 
 /**
