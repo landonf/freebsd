@@ -142,6 +142,7 @@ bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 	void				*ptr;
 	size_t				 io_offset, io_size;
 	uint8_t				 crc, valid;
+	char				 eof[2];
 	int				 error;
 
 	if ((error = bhnd_nvram_io_read(src, 0x0, &hdr, sizeof(hdr))))
@@ -151,19 +152,38 @@ bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 		return (ENXIO);
 
 	/* Fetch the actual NVRAM image size */
-	io_size = le32toh(hdr.size);
+	io_size = le32toh(hdr.size);	
+	if (io_size < sizeof(hdr)) {
+		/* The header size must include the header itself */
+		BCM_NVLOG("corrupt header size: %zu\n", io_size);
+		return (EINVAL);
+	}
 
-	/* Copy out the NVRAM image */
-	bcm->data = bhnd_nvram_iobuf_copy_range(src, 0x0, io_size);
+	if (io_size > bhnd_nvram_io_getsize(src)) {
+		BCM_NVLOG("header size %zu exceeds input size %zu\n",
+		    io_size, bhnd_nvram_io_getsize(src));
+		return (EINVAL);
+	}
+
+	/* Allocate a buffer large enough to hold the NVRAM image, and
+	 * an extra EOF-signaling NUL (on the chance it's missing from the
+	 * source data) */
+	if (io_size == SIZE_MAX)
+		return (ENOMEM);
+
+	bcm->data = bhnd_nvram_iobuf_empty(io_size, io_size + 1);
 	if (bcm->data == NULL)
 		return (ENOMEM);
 
-	/* Fetch a non-const pointer to the NVRAM image buffer */
+	/* Fetch a pointer into our backing buffer and copy in the
+	 * NVRAM image. */
 	error = bhnd_nvram_io_write_ptr(bcm->data, 0x0, &ptr, io_size, NULL);
 	if (error)
 		return (error);
 
 	p = ptr;
+	if ((error = bhnd_nvram_io_read(src, 0x0, p, io_size)))
+		return (error);
 
 	/* Verify the CRC */
 	valid = BCM_NVRAM_GET_BITS(hdr.cfg0, BCM_NVRAM_CFG0_CRC);
@@ -175,7 +195,35 @@ bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 		    "expected=%hhx)\n", crc, valid);
 	}
 
-	/* Populate header variables */
+	/* Check for missing EOF NUL byte; if missing, append it */
+	if (io_size - sizeof(hdr) == 1) {
+		/* Empty NVRAM image; there should be a single NUL byte */
+		eof[0] = '\0';
+		eof[1] = *(p + io_size - 1);
+	} else if (io_size - sizeof(hdr) >= sizeof(eof)) {
+		/* Non-empty NVRAM image; there should be a NUL byte
+		 * terminating the final record, followed by an additional
+		 * NUL marking EOF */
+		eof[0] = *(p + io_size - 2);
+		eof[1] = *(p + io_size - 1);
+	}
+
+	if (eof[0] != '\0' || eof[1] != '\0') {
+		char ch = '\0';
+
+		/* Grow buffer */
+		io_size++;
+		if ((error = bhnd_nvram_io_setsize(bcm->data, io_size)))
+			return (error);
+
+		/* Write NUL byte */
+		error = bhnd_nvram_io_write(bcm->data, io_size-1, &ch,
+		    sizeof(ch));
+		if (error)
+			return (error);
+	}
+
+	/* Populate header variable definitions */
 #define	BCM_READ_HDR_VAR(_name, _dest, _swap) do {		\
 	struct bhnd_nvram_bcmdata *data;				\
 	data = bhnd_nvram_bcm_gethdrvar(bcm, _name ##_VAR);		\
@@ -225,16 +273,16 @@ bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 		 * This is a brute-force search -- for the amount of data we're
 		 * operating on, it shouldn't be an issue. */
 		for (size_t i = 0; i < nitems(bcm->hvars); i++) {
-			/* Already seen? */
-			if (bcm->hvars[i].exists)
+			/* Already matched? */
+			if (bcm->hvars[i].mirrored)
 				continue;
 
 			/* Name matches? */
 			if ((strcmp(name, bcm->hvars[i].name)) != 0)
 				continue;
 
-			/* Mark as seen */
-			bcm->hvars[i].exists = true;
+			/* Mark as mirrored */
+			bcm->hvars[i].mirrored = true;
 		}
 
 		/* Seek past the value's terminating '\0' */
@@ -314,19 +362,179 @@ bhnd_nvram_bcm_free(struct bhnd_nvram_data *nv)
 static int
 bhnd_nvram_bcm_size(struct bhnd_nvram_data *nv, size_t *size)
 {
-	struct bhnd_nvram_bcm *bcm = (struct bhnd_nvram_bcm *)nv;
+	struct bhnd_nvram_bcm	*bcm;
+	int			 error;
 
-	/* The serialized form will be identical in length
-	 * to our backing buffer representation */
+	bcm = (struct bhnd_nvram_bcm *)nv;
+
+	/* The serialized form will be at least the length
+	 * of our backing buffer representation */
 	*size = bhnd_nvram_io_getsize(bcm->data);
+
+	/* Header variables that require mirroring will expand
+	 * the total size */
+	for (size_t i = 0; i < nitems(bcm->hvars); i++) {
+		struct bhnd_nvram_bcmdata	*hvar;
+		size_t				 entry_len;
+		size_t				 name_len;
+		size_t				 value_len;
+
+		hvar = &bcm->hvars[i];
+		if (hvar->mirrored)
+			continue;
+
+		/* Fetch the name length */
+		name_len = strlen(hvar->name);
+
+		/* Calculate the length of the value's CSTR representation */
+		error = bhnd_nvram_coerce_value(NULL, &value_len,
+		    BHND_NVRAM_TYPE_CSTR, &hvar->value, hvar->size, hvar->type,
+		    NULL);
+		if (error)
+			return (error);
+
+		/* name_len + '=' + value_len */
+		entry_len = name_len + 1 + value_len;
+
+		/* Add to total */
+		if (SIZE_MAX - entry_len < *size)
+			return (ERANGE);
+
+		*size = *size + entry_len;
+	}
+
 	return (0);
 }
 
 static int
 bhnd_nvram_bcm_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 {
-	// TODO
-	return (ENXIO);
+	struct bhnd_nvram_bcm		*bcm;
+	struct bhnd_nvram_header	 hdr;
+	void				*cookiep;
+	const char			*name;
+	size_t				 nbytes, req_size, limit;
+	uint8_t				 crc;
+	int				 error;
+
+	bcm = (struct bhnd_nvram_bcm *)nv;
+
+	/* Save the output buffer limit */
+	if (buf == NULL)
+		limit = 0;
+	else
+		limit = *len;
+
+	/* Calculate and provide the actual buffer size */
+	if ((error = bhnd_nvram_data_size(nv, &req_size)))
+		return (error);
+
+	*len = req_size;
+
+	/* Skip serialization if not requested, or report ENOMEM if
+	 * buffer is too small */
+	if (buf == NULL) {
+		return (0);
+	} else if (*len > limit) {
+		return (ENOMEM);
+	}
+
+	/* Reserve space for the NVRAM header */
+	nbytes = sizeof(struct bhnd_nvram_header);
+
+	/* Write all variables to the output buffer */
+	cookiep = NULL;
+	while ((name = bhnd_nvram_data_next(nv, &cookiep))) {
+		const void	*inp;
+		bhnd_nvram_type	 itype;
+		size_t		 ilen, olen;
+		uint8_t		*outp;
+		size_t		 name_len, val_len;
+
+		if (limit > nbytes) {
+			outp = (uint8_t *)buf + nbytes;
+			olen = limit - nbytes;
+		} else {
+			outp = NULL;
+			olen = 0;
+		}
+
+		/* Determine length of variable name */
+		name_len = strlen(name) + 1;
+
+		/* Write the variable name and '=' delimeter */
+		if (olen >= name_len) {
+			/* Copy name */
+			memcpy(outp, name, name_len - 1);
+
+			/* Append '=' */
+			*(outp + name_len - 1) = '=';
+		}
+
+		/* Adjust byte counts */
+		if (SIZE_MAX - name_len < nbytes)
+			return (ERANGE);
+
+		nbytes += name_len;
+
+		/* Reposition output */
+		if (limit > nbytes) {
+			outp = (uint8_t *)buf + nbytes;
+			olen = limit - nbytes;
+		} else {
+			outp = NULL;
+			olen = 0;
+		}
+
+		/* Fetch a pointer to the variable data */
+		inp = bhnd_nvram_data_getvar_ptr(nv, cookiep, &ilen, &itype);
+		if (inp == NULL)
+			return (ENXIO);
+
+		/* Coerce to NUL-terminated C string, writing to the output
+		 * buffer (or just calculating the length if outp is NULL) */
+		val_len = olen;
+		error = bhnd_nvram_coerce_value(outp, &val_len,
+		    BHND_NVRAM_TYPE_CSTR, inp, ilen, itype, NULL);
+		if (error && error != ENOMEM)
+			return (error);
+
+		/* Adjust byte counts */
+		if (SIZE_MAX - val_len < nbytes)
+			return (ERANGE);
+
+		nbytes += val_len;
+	}
+
+	/* Write terminating NUL */
+	if (nbytes < limit)
+		*((uint8_t *)buf + nbytes) = '\0';
+	nbytes++;
+
+	/* Provide actual size */
+	KASSERT(req_size == nbytes, ("calculated size incorrect"));
+	*len = nbytes;
+	if (nbytes > limit && buf != NULL)
+		return (ENOMEM);
+
+	/* Fetch current NVRAM header */
+	if ((error = bhnd_nvram_io_read(bcm->data, 0x0, &hdr, sizeof(hdr))))
+		return (error);
+
+	/* Update values covered by CRC and write to output buffer */
+	hdr.size = htole32(*len);
+	memcpy(buf, &hdr, sizeof(hdr));
+
+	/* Calculate new CRC */
+	crc = bhnd_nvram_crc8((uint8_t *)buf + BCM_NVRAM_CRC_SKIP,
+	    *len - BCM_NVRAM_CRC_SKIP, BHND_NVRAM_CRC8_INITIAL);
+
+	/* Update header with valid CRC */
+	hdr.cfg0 &= ~BCM_NVRAM_CFG0_CRC_MASK;
+	hdr.cfg0 |= (crc << BCM_NVRAM_CFG0_CRC_SHIFT);
+	memcpy(buf, &hdr, sizeof(hdr));
+
+	return (0);
 }
 
 static uint32_t
@@ -377,7 +585,7 @@ bhnd_nvram_bcm_next(struct bhnd_nvram_data *nv, void **cookiep)
 		/* Find the next header-defined variable that isn't
 		 * defined in the NVRAM data, start iteration there */
 		for (size_t i = idx; i < nitems(bcm->hvars); i++) {
-			if (bcm->hvars[i].exists)
+			if (bcm->hvars[i].mirrored)
 				continue;
 
 			*cookiep = &bcm->hvars[i];

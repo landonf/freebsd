@@ -40,8 +40,11 @@ struct bhnd_nvram_bcmdata {
 	const char	*name;		/**< variable name */
 	bhnd_nvram_type	 type;		/**< value type */
 	size_t		 size;		/**< value length */
-	bool		 exists;	/**< is mirrored variable defined in the
-					     NVRAM data. */
+	bool		 mirrored;	/**< variable mirroring this header
+					     value is defined in NVRAM data */
+	bool		 stale;		/**< header value does not match
+					     mirrored NVRAM value */
+
 	/** variable data */
 	union {
 		uint16_t	u16;
