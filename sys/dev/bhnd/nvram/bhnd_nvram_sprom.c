@@ -138,9 +138,10 @@ static const struct bhnd_nvram_sprom_fmt {
  *
  * @param	io	An I/O context mapping the SPROM data to be identified.
  * @param[out]	srev	On success, the identified SPROM revision.
- * @param[out]	shadow	On success, an iobuf instance mapping a copy of the
- *			parsed SPROM image. The caller is responsible for
- *			deallocating this instance via bhnd_nvram_io_free()
+ * @param[out]	shadow	On success, a correctly sized iobuf instance mapping
+ *			a copy of the parsed SPROM image. The caller is
+ *			responsible for deallocating this instance via
+ *			bhnd_nvram_io_free()
  *
  * @retval 0		success
  * @retval non-zero	If identifying @p io otherwise fails, a regular unix
