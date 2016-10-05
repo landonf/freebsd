@@ -269,7 +269,7 @@ bhnd_nvram_btxt_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 	if ((error = bhnd_nvram_data_size(nv, len)))
 		return (error);
 
-	if (buf != NULL) {
+	if (buf == NULL) {
 		return (0);
 	} else if (limit < *len) {
 		return (ENOMEM);
