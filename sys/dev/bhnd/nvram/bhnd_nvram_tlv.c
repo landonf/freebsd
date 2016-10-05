@@ -295,7 +295,7 @@ bhnd_nvram_tlv_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 		rec_size = next - rec_offset;
 
 		/* Calculate our output pointer */
-		if (rec_offset > limit && limit - rec_offset < rec_size) {
+		if (rec_offset > limit || limit - rec_offset < rec_size) {
 			/* buffer is full; cannot write */
 			p = NULL;
 		} else {
