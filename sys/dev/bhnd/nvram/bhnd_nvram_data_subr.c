@@ -345,7 +345,6 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 	if (otype == BHND_NVRAM_TYPE_CSTR)
 		return (bhnd_nvram_coerce_string_cstr(outp, olen, inp, ilen));
 
-
 	/*
 	 * We need a NUL-terminated instance of the string value
 	 * for parsing.
@@ -812,7 +811,7 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 		}
 		
 		/* Determine remaining space in output buffer */
-		if (limit < nbytes) {
+		if (limit <= nbytes) {
 			remain = 0;
 		} else {
 			KASSERT(outp != NULL, ("NULL output buffer"));
