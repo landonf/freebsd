@@ -250,6 +250,24 @@ bhnd_nvram_tlv_free(struct bhnd_nvram_data *nv)
 	free(tlv, M_BHND_NVRAM);
 }
 
+static int
+bhnd_nvram_tlv_size(struct bhnd_nvram_data *nv, size_t *size)
+{
+	struct bhnd_nvram_tlv *tlv = (struct bhnd_nvram_tlv *)nv;
+
+	/* The serialized form will be identical in length
+	 * to our backing buffer representation */
+	*size = bhnd_nvram_io_getsize(tlv->data);
+	return (0);
+}
+
+static int
+bhnd_nvram_tlv_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
+{
+	// TODO
+	return (ENXIO);
+}
+
 static uint32_t
 bhnd_nvram_tlv_getcaps(struct bhnd_nvram_data *nv)
 {

@@ -229,6 +229,42 @@ bhnd_nvram_btxt_free(struct bhnd_nvram_data *nv)
 	free(nv, M_BHND_NVRAM);
 }
 
+static int
+bhnd_nvram_btxt_size(struct bhnd_nvram_data *nv, size_t *size)
+{
+	struct bhnd_nvram_btxt *btxt;
+	char			ch;
+	int			error;
+
+	btxt = (struct bhnd_nvram_btxt *)nv;
+
+	/* The serialized form will be identical in length
+	 * to our backing buffer representation, minus any
+	 * terminating NUL that might be included when operating on
+	 * BTXT data loaded from a C string */
+	*size = bhnd_nvram_io_getsize(btxt->data);
+	if (*size == 0)
+		return (0);
+
+	/* Check for a terminating NUL */
+	error = bhnd_nvram_io_read(btxt->data, *size - 1, &ch, sizeof(ch));
+	if (error)
+		return (error);
+
+	/* Decrease size to account for NUL */
+	if (ch == '\0')
+		*size = *size - 1;
+
+	return (0);
+}
+
+static int
+bhnd_nvram_btxt_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
+{
+	// TODO
+	return (ENXIO);
+}
+
 static uint32_t
 bhnd_nvram_btxt_getcaps(struct bhnd_nvram_data *nv)
 {

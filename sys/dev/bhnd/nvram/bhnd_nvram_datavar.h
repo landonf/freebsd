@@ -72,6 +72,15 @@ typedef int		 (bhnd_nvram_data_op_new)(struct bhnd_nvram_data **nv,
 /** @see bhnd_nvram_data_free() */
 typedef void		 (bhnd_nvram_data_op_free)(struct bhnd_nvram_data *nv);
 
+/** @see bhnd_nvram_data_getsize() */
+typedef int		 (bhnd_nvram_data_op_size)(struct bhnd_nvram_data *nv,
+			     size_t *len);
+
+/** @see bhnd_nvram_data_serialize() */
+typedef int		 (bhnd_nvram_data_op_serialize)(
+			     struct bhnd_nvram_data *nv, void *buf,
+			     size_t *len);
+
 /** @see bhnd_nvram_data_getcaps() */
 typedef uint32_t	 (bhnd_nvram_data_op_getcaps)(
 			     struct bhnd_nvram_data *nv);
@@ -107,6 +116,8 @@ struct bhnd_nvram_data_class {
 	bhnd_nvram_data_op_probe	*op_probe;
 	bhnd_nvram_data_op_new		*op_new;
 	bhnd_nvram_data_op_free		*op_free;
+	bhnd_nvram_data_op_size		*op_size;
+	bhnd_nvram_data_op_serialize	*op_serialize;
 	bhnd_nvram_data_op_getcaps	*op_getcaps;
 	bhnd_nvram_data_op_next		*op_next;
 	bhnd_nvram_data_op_find		*op_find;
@@ -122,40 +133,58 @@ struct bhnd_nvram_data {
 	const struct bhnd_nvram_data_class	*cls;
 };
 
-/**
- * Define a bhnd_nvram_data_class with name @p _n.
+/*
+ * Helper macro for BHND_NVRAM_DATA_CLASS_DEFN().
+ *
+ * Declares a bhnd_nvram_data_class method implementation with class name
+ * _cname and method name _mname
  */
-#define	BHND_NVRAM_DATA_CLASS_DEFN(_n, _desc)				\
-	static bhnd_nvram_data_op_probe					\
-	    bhnd_nvram_ ## _n ## _probe;				\
-	static bhnd_nvram_data_op_new					\
-	    bhnd_nvram_ ## _n ## _new;					\
-	static bhnd_nvram_data_op_free					\
-	    bhnd_nvram_ ## _n ## _free;					\
-	static bhnd_nvram_data_op_getcaps				\
-	bhnd_nvram_ ## _n ## _getcaps;					\
-	static bhnd_nvram_data_op_next					\
-	    bhnd_nvram_ ## _n ## _next;					\
-	static bhnd_nvram_data_op_find					\
-	    bhnd_nvram_ ## _n ## _find;					\
-	static bhnd_nvram_data_op_getvar				\
-	    bhnd_nvram_ ## _n ## _getvar;				\
-	static bhnd_nvram_data_op_getvar_ptr				\
-	    bhnd_nvram_ ## _n ## _getvar_ptr;				\
-	static bhnd_nvram_data_op_getvar_name				\
-	    bhnd_nvram_ ## _n ## _getvar_name;				\
+#define	BHND_NVRAM_DATA_CLASS_DECL_METHOD(_cname, _mname)		\
+	static bhnd_nvram_data_op_ ## _mname				\
+	    bhnd_nvram_ ## _cname ## _ ## _mname;			\
+
+/*
+ * Helper macro for BHND_NVRAM_DATA_CLASS_DEFN().
+ *
+ * Assign a bhnd_nvram_data_class method implementation with class name
+ * @p _cname and method name @p _mname
+ */
+#define	BHND_NVRAM_DATA_CLASS_ASSIGN_METHOD(_cname, _mname)		\
+	.op_ ## _mname = bhnd_nvram_ ## _cname ## _ ## _mname,
+
+/*
+ * Helper macro for BHND_NVRAM_DATA_CLASS_DEFN().
+ *
+ * Iterate over all bhnd_nvram_data_class method names, calling
+ * _macro with the class name _cname as the first argument, and
+ * a bhnd_nvram_data_class method name as the second.
+ */
+#define	BHND_NVRAM_DATA_CLASS_ITER_METHODS(_cname, _macro)	\
+	_macro(_cname, probe)					\
+	_macro(_cname, new)					\
+	_macro(_cname, free)					\
+	_macro(_cname, size)					\
+	_macro(_cname, serialize)				\
+	_macro(_cname, getcaps)					\
+	_macro(_cname, next)					\
+	_macro(_cname, find)					\
+	_macro(_cname, getvar)					\
+	_macro(_cname, getvar_ptr)				\
+	_macro(_cname, getvar_name)
+
+/**
+ * Define a bhnd_nvram_data_class with class name @p _n and description
+ * @p _desc.
+ */
+#define	BHND_NVRAM_DATA_CLASS_DEFN(_cname, _desc)			\
+	BHND_NVRAM_DATA_CLASS_ITER_METHODS(_cname,			\
+	    BHND_NVRAM_DATA_CLASS_DECL_METHOD)				\
 									\
-	struct bhnd_nvram_data_class bhnd_nvram_ ## _n ## _class = {	\
+	struct bhnd_nvram_data_class bhnd_nvram_## _cname ## _class = {	\
 		.desc		= _desc,				\
-		.op_probe	= bhnd_nvram_ ## _n ## _probe,		\
-		.op_new		= bhnd_nvram_ ## _n ## _new,		\
-		.op_free	= bhnd_nvram_ ## _n ## _free,		\
-		.op_getcaps	= bhnd_nvram_ ## _n ## _getcaps,	\
-		.op_next	= bhnd_nvram_ ## _n ## _next,		\
-		.op_find	= bhnd_nvram_ ## _n ## _find,		\
-		.op_getvar	= bhnd_nvram_ ## _n ## _getvar,		\
-		.op_getvar_ptr	= bhnd_nvram_ ## _n ## _getvar_ptr,	\
-		.op_getvar_name	= bhnd_nvram_ ## _n ## _getvar_name,	\
+		BHND_NVRAM_DATA_CLASS_ITER_METHODS(_cname,		\
+		    BHND_NVRAM_DATA_CLASS_ASSIGN_METHOD)		\
 	};
+
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_DATAVAR_H_ */

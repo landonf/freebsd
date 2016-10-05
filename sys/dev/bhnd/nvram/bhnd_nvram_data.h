@@ -71,6 +71,11 @@ int		 bhnd_nvram_data_new(bhnd_nvram_data_class_t *cls,
 
 void		 bhnd_nvram_data_free(struct bhnd_nvram_data *nv);
 
+int		 bhnd_nvram_data_size(struct bhnd_nvram_data *nv, size_t *size);
+
+int		 bhnd_nvram_data_serialize(struct bhnd_nvram_data *nv,
+		     void *buf, size_t *len);
+
 uint32_t	 bhnd_nvram_data_getcaps(struct bhnd_nvram_data *nv);
 
 const char	*bhnd_nvram_data_next(struct bhnd_nvram_data *nv,

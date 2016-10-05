@@ -290,6 +290,46 @@ bhnd_nvram_sprom_free(struct bhnd_nvram_data *nv)
 	free(sp, M_BHND_NVRAM);
 }
 
+static int
+bhnd_nvram_sprom_size(struct bhnd_nvram_data *nv, size_t *size)
+{
+	struct bhnd_nvram_sprom *sprom = (struct bhnd_nvram_sprom *)nv;
+
+	/* The serialized form will be identical in length
+	 * to our backing buffer representation */
+	*size = bhnd_nvram_io_getsize(sprom->data);
+	return (0);
+}
+
+static int
+bhnd_nvram_sprom_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
+{
+	struct bhnd_nvram_sprom	*sprom;
+	size_t			 req_len;
+	int			 error;
+
+	sprom = (struct bhnd_nvram_sprom *)nv;
+
+	/* Verify buffer size */
+	if ((error = bhnd_nvram_sprom_size(nv, &req_len)))
+		return (error);
+
+	/* Provide the required size */
+	if (*len < req_len) {
+		*len = req_len;
+		if (buf != NULL)
+			return (ENOMEM);
+
+		return (0);
+	}
+
+	/* Provide the actual size */
+	*len = req_len;
+
+	/* Write to the output buffer */
+	return (bhnd_nvram_io_read(sprom->data, 0x0, buf, *len));
+}
+
 static uint32_t
 bhnd_nvram_sprom_getcaps(struct bhnd_nvram_data *nv)
 {

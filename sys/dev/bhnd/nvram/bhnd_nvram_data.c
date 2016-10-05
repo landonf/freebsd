@@ -106,7 +106,54 @@ bhnd_nvram_data_free(struct bhnd_nvram_data *nv)
 }
 
 /**
+ * Compute the size of the serialized form of @p nv.
+ *
+ * Serialization may be performed via bhnd_nvram_data_serialize().
+ *
+ * @param	nv	The NVRAM data to be queried.
+ * @param[out]	len	On success, will be set to the computed size.
+ * 
+ * @retval 0		success
+ * @retval non-zero	if computing the serialized size otherwise fails, a
+ *			regular unix error code will be returned.
+ */
+int
+bhnd_nvram_data_size(struct bhnd_nvram_data *nv, size_t *len)
+{
+	return (nv->cls->op_size(nv, len));
+}
+
+/**
+ * Serialize the NVRAM data to @p buf, using the NVRAM data class' native
+ * format.
+ * 
+ * The resulting serialization may be reparsed with @p nv's BHND NVRAM data
+ * class.
+ * 
+ * @param		nv	The NVRAM data to be serialized.
+ * @param[out]		buf	On success, the serialed NVRAM data will be
+ *				written to this buffer. This argment may be
+ *				NULL if the value is not desired.
+ * @param[in,out]	len	The capacity of @p buf. On success, will be set
+ *				to the actual length of the serialized data.
+ *
+ * @retval 0		success
+ * @retval ENOMEM	If @p buf is non-NULL and a buffer of @p len is too
+ *			small to hold the serialized data.
+ * @retval non-zero	If serialization otherwise fails, a regular unix error
+ *			code will be returned.
+ */
+int
+bhnd_nvram_data_serialize(struct bhnd_nvram_data *nv,
+    void *buf, size_t *len)
+{
+	return (nv->cls->op_serialize(nv, buf, len));
+}
+
+/**
  * Return the capability flags (@see BHND_NVRAM_DATA_CAP_*) for @p nv.
+ *
+ * @param	nv	The NVRAM data to be queried.
  */
 uint32_t
 bhnd_nvram_data_getcaps(struct bhnd_nvram_data *nv)
@@ -117,9 +164,10 @@ bhnd_nvram_data_getcaps(struct bhnd_nvram_data *nv)
 /**
  * Iterate over @p nv, returning the names of subsequent variables.
  * 
- * @param nv The NVRAM data to be iterated.
- * @param[in,out] cookiep A pointer to a cookiep value previously returned by
- * bhnd_nvram_data_next(), or a NULL value to begin iteration.
+ * @param		nv	The NVRAM data to be iterated.
+ * @param[in,out]	cookiep	A pointer to a cookiep value previously returned
+ *				by bhnd_nvram_data_next(), or a NULL value to
+ *				begin iteration.
  * 
  * @return Returns the next variable name, or NULL if there are no more
  * variables defined in @p nv.
@@ -139,8 +187,8 @@ bhnd_nvram_data_next(struct bhnd_nvram_data *nv, void **cookiep)
  * bhnd_nvram_data_getcaps() if @p nv supports effecient name-based
  * lookups.
  *
- * @param nv The NVRAM data to search.
- * @param name The name to search for.
+ * @param	nv	The NVRAM data to search.
+ * @param	name	The name to search for.
  *
  * @retval non-NULL	If @p name is found, the opaque cookie value will be
  *			returned.
