@@ -142,7 +142,6 @@ bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 	void				*ptr;
 	size_t				 io_offset, io_size;
 	uint8_t				 crc, valid;
-	char				 eof[2];
 	int				 error;
 
 	if ((error = bhnd_nvram_io_read(src, 0x0, &hdr, sizeof(hdr))))
@@ -193,34 +192,6 @@ bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 	if (crc != valid) {
 		BCM_NVLOG("warning: NVRAM CRC error (crc=%#hhx, "
 		    "expected=%hhx)\n", crc, valid);
-	}
-
-	/* Check for missing EOF NUL byte; if missing, append it */
-	if (io_size - sizeof(hdr) == 1) {
-		/* Empty NVRAM image; there should be a single NUL byte */
-		eof[0] = '\0';
-		eof[1] = *(p + io_size - 1);
-	} else if (io_size - sizeof(hdr) >= sizeof(eof)) {
-		/* Non-empty NVRAM image; there should be a NUL byte
-		 * terminating the final record, followed by an additional
-		 * NUL marking EOF */
-		eof[0] = *(p + io_size - 2);
-		eof[1] = *(p + io_size - 1);
-	}
-
-	if (eof[0] != '\0' || eof[1] != '\0') {
-		char ch = '\0';
-
-		/* Grow buffer */
-		io_size++;
-		if ((error = bhnd_nvram_io_setsize(bcm->data, io_size)))
-			return (error);
-
-		/* Write NUL byte */
-		error = bhnd_nvram_io_write(bcm->data, io_size-1, &ch,
-		    sizeof(ch));
-		if (error)
-			return (error);
 	}
 
 	/* Populate header variable definitions */
@@ -301,8 +272,21 @@ bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 
 		/* Seek to the next record */
 		if (++io_offset == io_size) {
-			/* Hit EOF */
-			break;
+			char ch;
+	
+			/* Hit EOF without finding a terminating NUL
+			 * byte; we need to grow our buffer and append
+			 * it */
+			io_size++;
+			if ((error = bhnd_nvram_io_setsize(bcm->data, io_size)))
+				return (error);
+
+			/* Write NUL byte */
+			ch = '\0';
+			error = bhnd_nvram_io_write(bcm->data, io_size-1, &ch,
+			    sizeof(ch));
+			if (error)
+				return (error);
 		}
 
 		/* Check for explicit EOF (encoded as a single empty NUL
