@@ -274,11 +274,11 @@ u16 cckbw20ul2gpo {
 # Country code (2 bytes ASCII)
 char[2] ccode {
 	sfmt	ccode
-	srom 0-3	0x77, 0x76
-	srom 4		0x53, 0x52
-	srom 5-7	0x45, 0x44
-	srom 8-10	0x93, 0x92
-	srom >= 11	0x97, 0x96
+	srom 0-3	char 0x77, char 0x76
+	srom 4		char 0x53, char 0x52
+	srom 5-7	char 0x45, char 0x44
+	srom 8-10	char 0x93, char 0x92
+	srom >= 11	char 0x97, char 0x96
 }
 
 # Front-end switch control
