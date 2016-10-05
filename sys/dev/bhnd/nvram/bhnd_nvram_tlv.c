@@ -280,6 +280,7 @@ bhnd_nvram_tlv_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 	do {
 		struct bhnd_nvram_tlv_env	*env;
 		uint8_t				*p;
+		size_t				 name_len;
 		size_t				 rec_offset, rec_size;
 
 		/* Parse the TLV record */
@@ -314,10 +315,8 @@ bhnd_nvram_tlv_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 		/* Restore the original key=value format, rewriting '\0'
 		 * delimiter back to '=' */
 		env = (struct bhnd_nvram_tlv_env *)p;
-		p = env->envp;		/* advance to envp string */
-		p += strlen((char *)p);	/* skip variable name */
-		KASSERT(*p == '\0', ("expected '\\0', found %#hhx", *p));
-		*p = '=';
+		name_len = strlen(env->envp);	/* skip variable name */
+		*(env->envp + name_len) = '=';	/* set '=' */
 	} while (tag != NVRAM_TLV_TYPE_END);
 
 	/* The 'next' offset should now point at EOF, and represents
