@@ -253,19 +253,84 @@ bhnd_nvram_tlv_free(struct bhnd_nvram_data *nv)
 static int
 bhnd_nvram_tlv_size(struct bhnd_nvram_data *nv, size_t *size)
 {
-	struct bhnd_nvram_tlv *tlv = (struct bhnd_nvram_tlv *)nv;
-
-	/* The serialized form will be identical in length
-	 * to our backing buffer representation */
-	*size = bhnd_nvram_io_getsize(tlv->data);
-	return (0);
+	/* Let the serialization implementation calculate the length */
+	return (bhnd_nvram_data_serialize(nv, NULL, size));
 }
 
 static int
 bhnd_nvram_tlv_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 {
-	// TODO
-	return (ENXIO);
+	struct bhnd_nvram_tlv	*tlv;
+	size_t			 limit;
+	size_t			 next;
+	uint8_t			 tag;
+	int			 error;
+
+	tlv = (struct bhnd_nvram_tlv *)nv;
+
+	/* Save the buffer capacity */
+	if (buf == NULL)
+		limit = 0;
+	else
+		limit = *len;
+
+	/* Write all of our TLV records to the output buffer (or just
+	 * calculate the buffer size that would be required) */
+	next = 0;
+	do {
+		
+		uint8_t	*p;
+		size_t	 rec_offset, rec_size;
+		size_t	 val_offset;
+
+		/* Save the record's offset */
+		rec_offset = next;
+
+		/* Parse the TLV record */
+		error = bhnd_nvram_tlv_next_record(tlv->data, &next,
+		    &val_offset, &tag);
+		if (error)
+			return (error);
+
+		rec_size = next - rec_offset;
+
+		/* Calculate our output pointer */
+		if (rec_offset > limit && limit - rec_offset < rec_size) {
+			/* buffer is full; cannot write */
+			p = NULL;
+		} else {
+			p = (uint8_t *)buf + rec_offset;
+		}
+
+		/* If not writing, nothing further to do for this record */
+		if (p == NULL)
+			continue;
+
+		/* Copy to the output buffer */
+		error = bhnd_nvram_io_read(tlv->data, rec_offset, p, rec_size);
+		if (error)
+			return (error);
+
+		/* All further processing is TLV_ENV-specific */
+		if (tag != NVRAM_TLV_TYPE_ENV)
+			continue;
+
+		/* Restore the original key=value format, rewriting '\0'
+		 * delimiter back to '=' */
+		p += (val_offset - rec_offset);	/* advance to envp data */
+		p += strlen((char *)p);		/* skip variable name */
+		KASSERT(*p == '\0', ("expected \0, found %#hhx", *p));
+		*p = '=';
+	} while (tag != NVRAM_TLV_TYPE_END);
+
+	/* The 'next' offset should now point at EOF, and represents
+	 * the total length of the serialized output. */
+	*len = next;
+
+	if (buf != NULL && limit < *len)
+		return (ENOMEM);
+
+	return (0);
 }
 
 static uint32_t
