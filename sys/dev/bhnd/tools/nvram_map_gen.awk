@@ -1253,10 +1253,15 @@ function emit_var_sprom_offsets (v, srom)
 			for (seg_n = 0; seg_n < seg_count; seg_n++) {
 				seg_n_off = (offset_base + seg_off + \
 				    (seg_n * seg_width))
+
+				if (seg_pos < list_size(segs) - 1)
+					cont = "true"
+				else
+					cont = "false"
 	
 				emit(sprintf("{%s, %s, %s, %s, %s},\n",
 				    seg_n_off,
-				    (seg_pos > 0) ? "true" : "false",
+				    cont,
 				    get(seg_base_type, _const),
 				    seg_shift,
 				    seg_mask))

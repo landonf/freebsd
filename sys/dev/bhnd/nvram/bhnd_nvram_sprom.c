@@ -481,8 +481,10 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 
 		off = &sp_def->offsets[i];
 
-		KASSERT(i > 0 || !off->cont, ("cont marked on first offset"));
-		KASSERT(ipos < nelem, ("output positioned past last element"));
+		KASSERT(i+1 < sp_def->num_offsets || !off->cont,
+		    ("cont marked on last offset"));
+		KASSERT(ipos < nelem,
+		    ("output positioned past last element"));
 
 #define	NV_READ_INT(_src, _dst, _swap)	do {				\
 	error = bhnd_nvram_io_read(sp->data, off->offset, &offv. _src,	\
@@ -549,7 +551,7 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 		}
 
 		/* Skip writing to inp if additional continuations remain */
-		if (i+1 < sp_def->num_offsets && sp_def->offsets[i].cont)
+		if (off->cont)
 			continue;
 
 		/* Use standard coercion support to perform overflow-checked
