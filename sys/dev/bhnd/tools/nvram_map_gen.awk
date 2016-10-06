@@ -264,16 +264,16 @@ BEGIN {
 	RootContext = class_new("RootContext", SymbolContext)
 		class_add_prop(RootContext, _structs, "structs")
 
-	RevSet = class_new("RevSet", AST)
-		class_add_prop(RevSet, _start, "start")
-		class_add_prop(RevSet, _end, "end")
+	RevDesc = class_new("RevDesc", AST)
+		class_add_prop(RevDesc, _start, "start")
+		class_add_prop(RevDesc, _end, "end")
 
 	Offset = class_new("Offset", AST)
 		class_add_prop(Offset, _segments, "segments")
 
 	SROM = class_new("SROM", AST)
-		class_add_prop(RevSet, _revisions, "revisions")
-		class_add_prop(RevSet, _offsets, "offsets")
+		class_add_prop(SPROM, _revisions, "revisions")
+		class_add_prop(SPROM, _offsets, "offsets")
 
 	Segment = class_new("Segment", AST)
 		class_add_prop(Segment, _addr, "addr")
@@ -1193,17 +1193,17 @@ function shiftf (n, do_getline)
 }
 
 #
-# Parse a revision descriptor from the current line.
+# Parse and return a revision descriptor from the current line.
 #
-function parse_revdesc (result)
+function parse_revdesc (_rstart, _rend, _robj)
 {
 	_rstart = 0
 	_rend = 0
 
 	if ($2 ~ "[0-9]*-[0-9*]") {
-		split($2, _revrange, "[ \t]*-[ \t]*")
-		_rstart = _revrange[1]
-		_rend = _revrange[2]
+		split($2, _g_rev_range, "[ \t]*-[ \t]*")
+		_rstart = _g_rev_range[1]
+		_rend = _g_rev_range[2]
 	} else if ($2 ~ "(>|>=|<|<=)" && $3 ~ "[1-9][0-9]*") {
 		if ($2 == ">") {
 			_rstart = int($3)+1
@@ -1227,8 +1227,12 @@ function parse_revdesc (result)
 		error("invalid revision descriptor")
 	}
 
-	result[REV_START] = _rstart
-	result[REV_END] = _rend
+	_robj = obj_new(RevDesc)
+	set(_robj, _start, _rstart)
+	set(_robj, _end, _rend)
+	set(_robj, _line, NR)
+
+	return (_robj)
 }
 
 
@@ -1345,69 +1349,40 @@ $1 == ST_STRUCT_BLOCK && in_parser_context(RootContext) {
 
 # struct srom base offsets
 $1 == ST_SROM_DEFN && in_parser_context(Struct) {
-	sid = g(STATE_IDENT)
+	ctx = parser_state_get_context(Struct)
 
 	# parse revision descriptor
-	rev_desc[REV_START] = 0
-	parse_revdesc(rev_desc)
-
-	# assign revision id
-	rev = structs[sid,NUM_REVS] ""
-	revk = subkey(sid, REV, rev)
-	structs[sid,NUM_REVS]++
-
-	# init basic revision state
-	structs[revk,REV_START] = rev_desc[REV_START]
-	structs[revk,REV_END] = rev_desc[REV_END]
-
+	revs = parse_revdesc()
 	if (match($0, "\\[[^]]*\\]") <= 0)
 		error("expected base address array")
 
+	# Parse the offset array
 	addrs_str = substr($0, RSTART+1, RLENGTH-2)
 	num_offs = split(addrs_str, addrs, ",[ \t]*")
-	structs[revk, REV_NUM_OFFS] = num_offs
-	for (i = 1; i <= num_offs; i++) {
-		offk = subkey(revk, OFF, (i-1) "")
 
+	for (i = 1; i <= num_offs; i++) {
 		if (addrs[i] !~ HEX_REGEX)
 			error("invalid base address '" addrs[i] "'")
 
-		structs[offk,SEG_ADDR] = addrs[i]
+		# TODO: append offset
 	}
 
-	debug("struct_srom " structs[revk,REV_START] "... [" addrs_str "]")
+	#debug("struct_srom " structs[revk,REV_START] "... [" addrs_str "]")
 	next
 }
 
 # close any previous srom revision descriptor
 $1 == ST_SROM_DEFN && in_parser_context(SROM) {
-	pop_state()
+	parser_state_pop()
 }
 
 # variable srom revision descriptor
 $1 == ST_SROM_DEFN && in_parser_context(Var) {
 	# parse revision descriptor
-	parse_revdesc(rev_desc)
+	revs = parse_revdesc()
 
-	# assign revision id
-	vid = g(STATE_IDENT)
-	rev = vars[vid,NUM_REVS] ""
-	revk = subkey(vid, REV, rev)
-	vars[vid,NUM_REVS]++
-
-	# vend scoped rev/revk variables for use in the
-	# revision offset block
-	push("rev_id", rev)
-	push("rev_key", revk)
-
-	# init basic revision state
-	vars[revk,DEF_LINE] = NR
-	vars[revk,REV_START] = rev_desc[REV_START]
-	vars[revk,REV_END] = rev_desc[REV_END]
-	vars[revk,REV_NUM_OFFS] = 0
-
-	debug("srom " rev_desc[REV_START] "-" rev_desc[REV_END] " {")
-	push_state(ST_SROM_DEFN, null, null, 0)
+	debug("srom " get(revs, _start) "-" get(revs, _end) " {")
+	parser_state_push(obj_new(SROM), 0) # TODO
 
 	# seek to the first offset definition
 	do {
@@ -1418,20 +1393,19 @@ $1 == ST_SROM_DEFN && in_parser_context(Var) {
 #
 # Parse an offset declaration from the current line.
 #
-function parse_offset_segment (revk, offk)
+function parse_offset_segment ()
 {
-	vid = g(STATE_IDENT)
-
 	# use explicit type if specified, otherwise use the variable's
 	# common type
 	if ($1 !~ HEX_REGEX) {
-		type = $1
-		if (type !~ TYPES_REGEX)
-			error("unknown field type '" type "'")
+		if ((type = parse_type_string($1)) == null)
+			error("unknown type '" $1 "'")
 
 		shiftf(1)
 	} else {
-		type = vars[vid,VAR_TYPE]
+		# TODO - need variable type
+		type = null
+		errorx("need to reference enclosing variable")
 	}
 
 	# read offset value
@@ -1497,23 +1471,10 @@ function parse_offset_segment (revk, offk)
 
 # revision offset definition
 $1 ~ SROM_OFF_REGEX && in_parser_context(SROM) {
-	vid = g(STATE_IDENT)
-
-	# fetch rev id/key defined by our parent block
-	rev = g("rev_id")
-	revk = g("rev_key")
+	srom = parser_state_get_context(SROM)
 
 	# parse all offsets
 	do {
-		# assign offset id
-		off = vars[revk,REV_NUM_OFFS] ""
-		offk = subkey(revk, OFF, off)
-		vars[revk,REV_NUM_OFFS]++
-
-		# initialize segment count
-		vars[offk,DEF_LINE] = NR
-		vars[offk,OFF_NUM_SEGS] = 0
-
 		debug("[")
 		# parse all segments
 		do {
