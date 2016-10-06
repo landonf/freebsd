@@ -43,6 +43,9 @@ BEGIN {
 	OUT_T_HEADER = "HEADER"
 	OUT_T_DATA = "DATA"
 
+	# Tab width to use when calculating output alignment
+	TAB_WIDTH = 8
+
 	# Enable debug output
 	DEBUG = 0
 
@@ -138,6 +141,11 @@ BEGIN {
 		class_add_prop(ListNode, _v, "v")
 		class_add_prop(ListNode, _next, "next")
 		class_add_prop(ListNode, _prev, "prev")
+
+	# Preprocessor Constant
+	MacroDefine = class_new("MacroDefine")
+		class_add_prop(MacroDefine, _name, "name")
+		class_add_prop(MacroDefine, _value, "value")
 
 	# ParseState definition
 	ParseState = class_new("ParseState")
@@ -322,6 +330,11 @@ END {
 
 	sort(output_vars, num_output_vars)
 
+	# Replace the variable names in the sort array with the actual
+	# variable instances
+	for (i = 0; i < num_output_vars; i++)
+		output_vars[i] = var_names[output_vars[i]]
+
 	# Truncate output file and write common header
 	printf("") > OUTPUT_FILE
 	emit("/*\n")
@@ -338,12 +351,43 @@ END {
 		    "bhnd_nvram_vardefs[] = {\n")
 		output_depth++
 		for (i = 0; i < num_output_vars; i++)
-			emit_nvram_vardef(var_names[output_vars[i]])
+			emit_nvram_vardef(output_vars[i])
 		output_depth--
 		emit("};\n")
 	} else if (OUT_T == OUT_T_HEADER) {
-		for (i = 0; i < num_output_vars; i++)
-			emit_var_namedef(output_vars[i])
+		# Produce our array of #defines
+		def_count = 0
+		max_namelen = 0
+		for (i = 0; i < num_output_vars; i++) {
+			var = output_vars[i]
+			vname = get(var, _name)
+			cname = var_get_constant_name(var)
+
+			# Variable name
+			m_name = cname
+			m = macro_new(cname, "\"" vname "\"")
+
+			max_namelen = max(max_namelen, length(m_name))
+			output_defs[def_count++] = m
+
+			# Variable array length
+			if (var_has_array_type(var)) {
+				m_name = cname "_MAXLEN"
+				m = macro_new(m_name, var_get_count(var))
+
+				output_defs[def_count++] = m
+				max_namelen = max(max_namelen, length(m_name))
+			}
+		}
+
+		# Calculate value tab alignment position for our defines
+		tab_align = max_namelen
+		tab_align += (TAB_WIDTH - (tab_align % TAB_WIDTH)) % TAB_WIDTH
+		tab_align /= TAB_WIDTH
+
+		for (i = 0; i < def_count; i++) {
+			emit_macro_define(output_defs[i], tab_align)
+		}
 	}
 
 	printf("%u variable records written to %s\n", num_output_vars,
@@ -575,6 +619,15 @@ function get(obj, prop, _class)
 	return (_g_obj[obj,OBJ_PROP,prop[PROP_ID]])
 }
 
+# Create a new MacroDefine instance
+function macro_new (name, value, _obj)
+{
+	_obj = obj_new(MacroDefine)
+	set(_obj, _name, name)
+	set(_obj, _value, value)
+
+	return (_obj)
+}
 
 # Create an empty list
 function list_new (_obj)
@@ -875,6 +928,36 @@ function var_new (name, type, fmt, props, _obj)
 	return (_obj)
 }
 
+# Return true if `var` has an array type
+function var_has_array_type (var, _vtype)
+{
+	obj_assert_class(var, Var)
+	_vtype = get(var, _type)
+	return (obj_is_instanceof(_vtype, ArrayType))
+}
+
+# Return the number of array elements defined by this variable's type,
+# or 1 if the variable does not have an array type.
+function var_get_count (var, _vtype)
+{
+	obj_assert_class(var, Var)
+
+	if (!var_has_array_type(var))
+		return (1)
+
+	_vtype = get(var, _type)
+	return (get(_vtype, _count))
+}
+
+# Return the base preprocessor constant name to be used with `var`
+function var_get_constant_name (var, _vname)
+{
+	obj_assert_class(var, Var)
+
+	_vname = get(var, _name)
+	return("BHND_NVAR_" toupper(_vname))
+}
+
 # Create a new Struct instance
 function struct_new (name, _obj)
 {
@@ -1071,10 +1154,20 @@ function emit_nvram_vardef (v)
 	emit("}, " list_size(get(v, _sroms)) "},\n")
 }
 
-# emit a header name #define for variable `v`
-function emit_var_namedef (v)
+# emit a MacroDefine constant, aligning the value to `tab_align`
+function emit_macro_define (macro, tab_align, _pad, _tabstr)
 {
-	emit("#define\tBHND_NVAR_" toupper(v) "\t\"" v "\"\n")
+	# Determine required padding to reach the desired alignment
+	_pad = int(length(get(macro, _name)) / TAB_WIDTH)
+	if (tab_align > _pad)
+		_pad = tab_align - _pad
+	else
+		_pad = 0
+
+	for (_pi = 0; _pi <= _pad; _pi++)
+		_tabstr = _tabstr "\t"
+
+	emit("#define\t" get(macro, _name) _tabstr get(macro, _value) "\n")
 }
 
 # generate a complete set of variable definitions for struct `st` and
@@ -1177,6 +1270,14 @@ function usage ()
 	print "usage: bhnd_nvram_map.awk <input map> [-hd] [-o output file]"
 	_EARLY_EXIT = 1
 	exit 1
+}
+
+#
+# Return the maximum of two values
+#
+function max (lhs, rhs)
+{
+	return (lhs > rhs ? lhs : rhs)
 }
 
 #
