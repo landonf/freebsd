@@ -200,6 +200,357 @@ BEGIN {
 	VAR_PRIVATE	= "v_private"
 	VAR_ARRAY	= "v_array"
 	VAR_IGNALL1	= "v_ignall1"
+
+	# Property array keys
+	PROP_ID		= "p_id"
+	PROP_NAME	= "p_name"
+
+	# Object array keys
+	OBJ_IS_CLS	= "o_is_cls"
+	OBJ_SUPER	= "o_super"
+	OBJ_PROP	= "o_prop"
+
+	# Class array keys
+	CLS_NAME	= "cls_name"
+	CLS_PROP	= "cls_prop"
+
+	# Define our type descriptor constants
+	UInt8	= type_new("u8", 1, "BHND_NVRAM_TYPE_UINT8", "0x000000FF")
+	UInt16	= type_new("u16", 2, "BHND_NVRAM_TYPE_UINT16", "0x0000FFFF")
+	UInt32	= type_new("u32", 4, "BHND_NVRAM_TYPE_UINT32", "0xFFFFFFFF")
+	Int8	= type_new("i8", 1, "BHND_NVRAM_TYPE_INT8", "0x000000FF")
+	Int16	= type_new("i16", 2, "BHND_NVRAM_TYPE_INT16", "0x0000FFFF")
+	Int16	= type_new("i32", 4, "BHND_NVRAM_TYPE_INT32", "0xFFFFFFFF")
+	Char	= type_new("char", 1, "BHND_NVRAM_TYPE_CHAR", "0x000000FF")
+
+	BaseTypes = list_new()
+		lappend(BaseTypes, UInt8)
+		lappend(BaseTypes, UInt16)
+		lappend(BaseTypes, UInt32)
+		lappend(BaseTypes, Int8)
+		lappend(BaseTypes, Int16)
+		lappend(BaseTypes, Int32)
+		lappend(BaseTypes, Char)
+
+	# Define our string format constants
+	SFmtHex		= sfmt_new("hex", "BHND_NVRAM_SFMT_HEX")
+	SFmtDec 	= sfmt_new("decimal", "BHND_NVRAM_SFMT_DEC")
+	SFmtCCODE	= sfmt_new("ccode", "BHND_NVRAM_SFMT_CCODE")
+	SFmtMAC		= sfmt_new("macaddr", "BHND_NVRAM_SFMT_MACADDR")
+	SFmtLEDDC	= sfmt_new("led_dc", "BHND_NVRAM_SFMT_LEDDC")
+
+	StringFormats = list_new()
+		lappend(StringFormats, SFmtHex)
+		lappend(StringFormats, SFmtDec)
+		lappend(StringFormats, SFmtCCODE)
+		lappend(StringFormats, SFmtMAC)
+		lappend(StringFormats, SFmtLEDDC)
+
+	for (n = lhead(StringFormats); n != null; n = lnext(n)) {
+		print get(lvalue(n), _name)
+	}
+	
+	errorx("wheeee")
+
+	# Define our AST classes
+	AST = class_new("AST")
+		class_add_prop(AST, _line, "line")
+
+	RevSet = class_new("RevSet", AST)
+		class_add_prop(RevSet, _start, "start")
+		class_add_prop(RevSet, _end, "end")
+
+	Offset = class_new("Offset", AST)
+		class_add_prop(Offset, _segments, "segments")
+
+	Segment = class_new("Segment", AST)
+		class_add_prop(Segment, _addr, "addr")
+		class_add_prop(Segment, _type, "type")
+		class_add_prop(Segment, _mask, "mask")
+		class_add_prop(Segment, _shift, "shift")
+
+	Var = class_new("Var", AST)
+		class_add_prop(Var, _name, "name")
+		class_add_prop(Var, _type, "type")
+		class_add_prop(Var, _fmt, "fmt")
+		class_add_prop(Var, _private, "private")
+
+	Struct = class_new("Struct", AST)
+		class_add_prop(Struct, _name, "name")
+		class_add_prop(Struct, _offsets, "offsets")
+		class_add_prop(Struct, _vars, "vars")
+}
+
+# Create a class instance with the given name
+function class_new (name, superclass, _class)
+{
+	if (_class != null)
+		errorx("class_get() must be called with one or two arguments")
+
+	# Look for an existing class instance
+	if (name in _g_class_names)
+		errorx("redefining class: " name)
+
+	# Create and register the class object
+	_class = obj_new(superclass)
+	_g_class_names[name] = _class
+	_g_obj[_class,OBJ_IS_CLS] = 1
+
+	return (_class)
+}
+
+# Return the class instance with the given name
+function class_get (name)
+{
+	if (name in _g_class_names)
+		return (_g_class_names[name])
+
+	errorx("no such class " name)
+}
+
+# Return the name of cls
+function class_get_name (cls)
+{
+	if (!obj_is_class(cls))
+		errorx(cls " is not a class object")
+
+	return (_g_obj[cls,CLS_NAME])
+}
+
+# Return true if the given property prop is defined on class
+function class_has_property (class, prop, _super, _prop_id)
+{
+	if (_super != null || _prop_id != null)
+		errorx("class_has_property() must be called with two arguments")
+
+	if (class == null)
+		return (false)
+
+	if (!obj_is_class(class))
+		errorx(class " is not a class object")
+
+	if (!(PROP_ID in prop))
+		return (false)
+
+	for (_super = class; _super != null; _super = obj_get_class(_super))
+	{
+		if ((_super,CLS_PROP,prop[PROP_ID]) in _g_obj)
+			return (1)
+	}
+
+	return (0)
+}
+
+# Define a `prop` on `class` with the given `name` string
+function class_add_prop (class, prop, name, _prop_id)
+{
+	if (_prop_id != null)
+		errorx("class_add_prop() must be called with three arguments")
+
+	# Check for duplicate property definition
+	if (class_has_property(class, prop))
+		errorx("property " prop[PROP_NAME] " already defined on " \
+		    class_get_name(class))
+
+	# Init property IDs
+	if (_g_prop_ids == null)
+		_g_prop_ids = 1
+
+	# Get (or create) new property entry
+	if (name in _g_prop_names) {
+		_prop_id = _g_prop_names[name]
+	} else {
+		_prop_id = _g_prop_ids++
+		_g_prop_names[name] = _prop_id
+		_g_props[_prop_id] = name
+
+		prop[PROP_NAME]	= name
+		prop[PROP_ID]	= _prop_id
+	}
+
+	# Add to class definition
+	_g_obj[class,CLS_PROP,prop[PROP_ID]] = name
+	return (name)
+}
+
+# Create a new instance of the given class
+function obj_new (class, _obj)
+{
+	if (_obj != null)
+		errorx("obj_new() must be called with one argument")
+
+	if (_g_obj_ids == null)
+		_g_obj_ids = 1
+
+	# Assign ID and set superclass
+	_obj = _g_obj_ids++
+	_g_obj[_obj,OBJ_SUPER] = class
+
+	return (_obj)
+}
+
+# Return true if obj is a class object
+function obj_is_class (obj)
+{
+	return (_g_obj[obj,OBJ_IS_CLS] == 1)
+}
+
+# Return the class of obj, if any.
+function obj_get_class (obj)
+{
+	return (_g_obj[obj,OBJ_SUPER])
+}
+
+# Return true if obj is an instance of the given class
+function obj_is_instanceof (obj, class, _super)
+{
+	if (_super != null)
+		errorx("obj_is_instanceof() must be called with two arguments")
+
+	if (!obj_is_class(class))
+		errorx(class " is not a class object")
+
+	for (_super = obj_get_class(obj); _super != null;
+	     _super = obj_get_class(_super))
+	{
+		if (_super == class)
+			return (1)
+	}
+
+	return (0)
+}
+
+# Set a property on obj
+function set(obj, prop, value)
+{
+	if (!class_has_property(obj_get_class(obj), prop)) {
+		errorx("invalid property '" prop "'")
+	}
+
+	_g_obj[obj,OBJ_PROP,prop[PROP_ID]] = value
+}
+
+# Get a property defined on obj
+function get(obj, prop)
+{
+	if (!class_has_property(obj_get_class(obj), prop)) {
+		print class_has_property(obj_get_class(obj), prop)
+		errorx("invalid property '" prop "'")
+	}
+
+	return (_g_obj[obj,OBJ_PROP,prop[PROP_ID]])
+}
+
+# Create a new Type instance
+function type_new (name, width, constant, mask, _obj)
+{
+	if (Type == null) {
+		Type = class_new("Type")
+		class_add_prop(Type, _name, "name")
+		class_add_prop(Type, _width, "width")
+		class_add_prop(Type, _const, "const")
+		class_add_prop(Type, _mask, "mask")
+	}
+
+	_obj = obj_new(Type)
+	set(_obj, _name, name)
+	set(_obj, _width, width)
+	set(_obj, _const, constant)
+	set(_obj, _mask, mask)
+
+	return (_obj)
+}
+
+# Create a new ArrayType instance
+function array_type_new (type, count, _obj)
+{
+	if (ArrayType == null) {
+		ArrayType = class_new("ArrayType")
+		class_add_prop(ArrayType, _type, "type")
+		class_add_prop(ArrayType, _count, "count")
+	}
+
+	_obj = obj_new(ArrayType)
+	set(_obj, _type, type)
+	set(_obj, _count, count)
+
+	return (_obj)
+}
+
+# Create a new SFmt instance
+function sfmt_new (name, constant, _obj)
+{
+	if (SFmt == null) {
+		SFmt = class_new("SFmt")
+		class_add_prop(SFmt, _name, "name")
+		class_add_prop(SFmt, _const, "const")
+	}
+
+	_obj = obj_new(SFmt)
+	set(_obj, _name, name)
+	set(_obj, _const, constant)
+
+	return (_obj)
+}
+
+# Create an empty list
+function list_new ()
+{
+	# Define list classes
+	if (List == null) {
+		List = class_new("List")
+		class_add_prop(List, _head, "head")
+		class_add_prop(List, _tail, "tail")
+	}
+
+	if (ListNode == null) {
+		ListNode = class_new("ListNode")
+		class_add_prop(ListNode, _v, "v")
+		class_add_prop(ListNode, _next, "next")
+		class_add_prop(ListNode, _prev, "prev")
+	}
+
+	return (obj_new(List))
+}
+
+# Append value to list
+function lappend (list, value, _node, _cur)
+{
+	# Create the new node
+	_node = obj_new(ListNode)
+	set(_node, _v, value)
+
+	# Insert in list
+	_cur = get(list, _tail)
+
+	if (_cur == null) {
+		# Insert at head of list
+		set(list, _head, _node)
+		set(list, _tail, _node)		
+	} else {
+		set(_node, _prev, _cur)
+		set(_cur, _next, _node)
+
+		set(list, _tail, _node)
+	}
+}
+
+# Return the first node in list, or null
+function lhead (list)
+{
+	return (get(list, _head))
+}
+
+# Return the next element in the list
+function lnext (lnode)
+{
+	return (get(lnode, _next))
+}
+
+# Return the value associated with the given list node
+function lvalue (lnode)
+{
+	return (get(lnode, _v))
 }
 
 # return the flag definition for variable `v`
@@ -789,7 +1140,7 @@ function push (name, value)
 
 # Set an existing variable's value in the symbol table; if not yet defined,
 # will trigger an error
-function set (name, value, scope)
+function symbol_set (name, value, scope)
 {
 	for (i = 0; i < depth; i++) {
 		if ((depth-i,name) in symbols) {
