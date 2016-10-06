@@ -251,11 +251,11 @@ BEGIN {
 	AST = class_new("AST")
 		class_add_prop(AST, _line, "line")
 
-	AbstractContext = class_new("AbstractContext", AST)
-		class_add_prop(AbstractContext, _vars, "vars")
+	SymbolContext = class_new("SymbolContext", AST)
+		class_add_prop(SymbolContext, _vars, "vars")
 
-	# Root parse context
-	RootContext = class_new("RootContext", AbstractContext)
+	# Root symbol context
+	RootContext = class_new("RootContext", SymbolContext)
 		class_add_prop(RootContext, _structs, "structs")
 
 	RevSet = class_new("RevSet", AST)
@@ -278,7 +278,7 @@ BEGIN {
 		class_add_prop(Var, _flags, "flags")
 		class_add_prop(Var, _offsets, "offsets")
 
-	Struct = class_new("Struct", AbstractContext)
+	Struct = class_new("Struct", SymbolContext)
 		class_add_prop(Struct, _name, "name")
 		class_add_prop(Struct, _offsets, "offsets")
 
@@ -462,6 +462,9 @@ function obj_is_instanceof (obj, class, _super)
 	if (_super != null)
 		errorx("obj_is_instanceof() must be called with two arguments")
 
+	if (obj == null)
+		errorx("obj_is_instanceof() called with null obj")
+
 	if (!obj_is_class(class))
 		errorx(class " is not a class object")
 
@@ -473,6 +476,15 @@ function obj_is_instanceof (obj, class, _super)
 	}
 
 	return (0)
+}
+
+# Assert that obj is an instance of the given class
+function obj_assert_class (obj, class)
+{
+	if (!obj_is_instanceof(obj, class)) {
+		errorx(class_get_name(class) "<" obj "> is not an instance of" \
+		    class_get_name(class))
+	}
 }
 
 # Set a property on obj
@@ -530,6 +542,7 @@ function type_get_default_format (type)
 	if (obj_is_instanceof(type, ArrayType))
 		return (type_get_default_format(get(type, _type)))
 
+	obj_assert_class(type, Type)
 	return (get(type, _default_fmt))
 }
 
@@ -539,6 +552,7 @@ function type_desc (type)
 	if (obj_is_instanceof(type, ArrayType))
 		return (type_desc(get(type, _type)) "[" get(type, _count) "]")
 
+	obj_assert_class(type, Type)
 	return get(type, _name)
 }
 
@@ -1551,8 +1565,7 @@ function parse_type_string (str, _base, _count)
 {
 	# Fetch our defining context
 	ctx = g(STATE_OBJ)
-	if (!obj_is_instanceof(ctx, AbstractContext))
-		errorx("non-context parent variable")
+	obj_assert_class(ctx, SymbolContext)
 
 	# Check for 'private' flag
 	var_flags = list_new()
