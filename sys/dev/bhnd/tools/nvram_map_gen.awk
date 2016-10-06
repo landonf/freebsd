@@ -165,6 +165,7 @@ BEGIN {
 	# tracking
 	STATE_TYPE	= "_state_type"
 	STATE_IDENT	= "_state_block_name"
+	STATE_OBJ	= "_state_obj"
 	STATE_LINENO	= "_state_first_line"
 	STATE_ISBLOCK	= "_state_is_block"
 
@@ -214,47 +215,48 @@ BEGIN {
 	CLS_NAME	= "cls_name"
 	CLS_PROP	= "cls_prop"
 
-	# Define our type descriptor constants
-	UInt8	= type_new("u8", 1, "BHND_NVRAM_TYPE_UINT8", "0x000000FF")
-	UInt16	= type_new("u16", 2, "BHND_NVRAM_TYPE_UINT16", "0x0000FFFF")
-	UInt32	= type_new("u32", 4, "BHND_NVRAM_TYPE_UINT32", "0xFFFFFFFF")
-	Int8	= type_new("i8", 1, "BHND_NVRAM_TYPE_INT8", "0x000000FF")
-	Int16	= type_new("i16", 2, "BHND_NVRAM_TYPE_INT16", "0x0000FFFF")
-	Int16	= type_new("i32", 4, "BHND_NVRAM_TYPE_INT32", "0xFFFFFFFF")
-	Char	= type_new("char", 1, "BHND_NVRAM_TYPE_CHAR", "0x000000FF")
+	# List class definition
+	List = class_new("List")
+		class_add_prop(List, _head, "head")
+		class_add_prop(List, _tail, "tail")
 
-	BaseTypes = list_new()
-		lappend(BaseTypes, UInt8)
-		lappend(BaseTypes, UInt16)
-		lappend(BaseTypes, UInt32)
-		lappend(BaseTypes, Int8)
-		lappend(BaseTypes, Int16)
-		lappend(BaseTypes, Int32)
-		lappend(BaseTypes, Char)
+	ListNode = class_new("ListNode")
+		class_add_prop(ListNode, _v, "v")
+		class_add_prop(ListNode, _next, "next")
+		class_add_prop(ListNode, _prev, "prev")
 
-	# Define our string format constants
-	SFmtHex		= sfmt_new("hex", "BHND_NVRAM_SFMT_HEX")
-	SFmtDec 	= sfmt_new("decimal", "BHND_NVRAM_SFMT_DEC")
-	SFmtCCODE	= sfmt_new("ccode", "BHND_NVRAM_SFMT_CCODE")
-	SFmtMAC		= sfmt_new("macaddr", "BHND_NVRAM_SFMT_MACADDR")
-	SFmtLEDDC	= sfmt_new("led_dc", "BHND_NVRAM_SFMT_LEDDC")
+	# VarFlag class definition
+	VarFlag = class_new("VarFlag")
+		class_add_prop(VarFlag, _name, "name")
+		class_add_prop(VarFlag, _const, "const")
 
-	StringFormats = list_new()
-		lappend(StringFormats, SFmtHex)
-		lappend(StringFormats, SFmtDec)
-		lappend(StringFormats, SFmtCCODE)
-		lappend(StringFormats, SFmtMAC)
-		lappend(StringFormats, SFmtLEDDC)
+	# Type class definitions
+	Type = class_new("Type")
+		class_add_prop(Type, _name, "name")
+		class_add_prop(Type, _width, "width")
+		class_add_prop(Type, _const, "const")
+		class_add_prop(Type, _default_fmt, "default_fmt")
+		class_add_prop(Type, _mask, "mask")
 
-	for (n = lhead(StringFormats); n != null; n = lnext(n)) {
-		print get(lvalue(n), _name)
-	}
-	
-	errorx("wheeee")
+	ArrayType = class_new("ArrayType", AbstractType)
+		class_add_prop(ArrayType, _type, "type")
+		class_add_prop(ArrayType, _count, "count")
 
-	# Define our AST classes
+	# SFmt class definition
+	SFmt = class_new("SFmt")
+		class_add_prop(SFmt, _name, "name")
+		class_add_prop(SFmt, _const, "const")
+
+	# AST class definitions
 	AST = class_new("AST")
 		class_add_prop(AST, _line, "line")
+
+	AbstractContext = class_new("AbstractContext", AST)
+		class_add_prop(AbstractContext, _vars, "vars")
+
+	# Root parse context
+	RootContext = class_new("RootContext", AbstractContext)
+		class_add_prop(RootContext, _structs, "structs")
 
 	RevSet = class_new("RevSet", AST)
 		class_add_prop(RevSet, _start, "start")
@@ -273,12 +275,62 @@ BEGIN {
 		class_add_prop(Var, _name, "name")
 		class_add_prop(Var, _type, "type")
 		class_add_prop(Var, _fmt, "fmt")
-		class_add_prop(Var, _private, "private")
+		class_add_prop(Var, _flags, "flags")
+		class_add_prop(Var, _offsets, "offsets")
 
-	Struct = class_new("Struct", AST)
+	Struct = class_new("Struct", AbstractContext)
 		class_add_prop(Struct, _name, "name")
 		class_add_prop(Struct, _offsets, "offsets")
-		class_add_prop(Struct, _vars, "vars")
+
+	# Type constants
+	UInt8	= type_new("u8", 1, "BHND_NVRAM_TYPE_UINT8", SFmtHex,
+	    "0x000000FF")
+	UInt16	= type_new("u16", 2, "BHND_NVRAM_TYPE_UINT16", SFmtHex,
+	    "0x0000FFFF")
+	UInt32	= type_new("u32", 4, "BHND_NVRAM_TYPE_UINT32", SFmtHex,
+	    "0xFFFFFFFF")
+	Int8	= type_new("i8", 1, "BHND_NVRAM_TYPE_INT8", SFmtDec,
+	    "0x000000FF")
+	Int16	= type_new("i16", 2, "BHND_NVRAM_TYPE_INT16", SFmtDec,
+	    "0x0000FFFF")
+	Int32	= type_new("i32", 4, "BHND_NVRAM_TYPE_INT32", SFmtDec,
+	    "0xFFFFFFFF")
+	Char	= type_new("char", 1, "BHND_NVRAM_TYPE_CHAR", SFmtHex,
+	    "0x000000FF")
+
+	BaseTypes = list_new()
+		lappend(BaseTypes, UInt8)
+		lappend(BaseTypes, UInt16)
+		lappend(BaseTypes, UInt32)
+		lappend(BaseTypes, Int8)
+		lappend(BaseTypes, Int16)
+		lappend(BaseTypes, Int32)
+		lappend(BaseTypes, Char)
+
+	# Variable flag constants
+	VarPrivate	= var_flag_new("private", "BHND_NVRAM_VF_MFGINT")
+	IgnAll1		= var_flag_new("ignall1", "BHND_NVRAM_VF_IGNALL1")
+
+	# String format constants
+	SFmtHex		= sfmt_new("hex", "BHND_NVRAM_SFMT_HEX")
+	SFmtDec 	= sfmt_new("decimal", "BHND_NVRAM_SFMT_DEC")
+	SFmtCCODE	= sfmt_new("ccode", "BHND_NVRAM_SFMT_CCODE")
+	SFmtMAC		= sfmt_new("macaddr", "BHND_NVRAM_SFMT_MACADDR")
+	SFmtLEDDC	= sfmt_new("led_dc", "BHND_NVRAM_SFMT_LEDDC")
+
+	StringFormats = list_new()
+		lappend(StringFormats, SFmtHex)
+		lappend(StringFormats, SFmtDec)
+		lappend(StringFormats, SFmtCCODE)
+		lappend(StringFormats, SFmtMAC)
+		lappend(StringFormats, SFmtLEDDC)
+
+	# Push the root parse context
+	root_ctx = obj_new(RootContext)
+	set(root_ctx, _vars, list_new())
+	set(root_ctx, _structs, list_new())
+
+	push_state(ST_NONE, null, root_ctx, 0)
 }
 
 # Create a class instance with the given name
@@ -295,6 +347,7 @@ function class_new (name, superclass, _class)
 	_class = obj_new(superclass)
 	_g_class_names[name] = _class
 	_g_obj[_class,OBJ_IS_CLS] = 1
+	_g_obj[_class,CLS_NAME] = name
 
 	return (_class)
 }
@@ -398,6 +451,8 @@ function obj_is_class (obj)
 # Return the class of obj, if any.
 function obj_get_class (obj)
 {
+	if (obj == null)
+		errorx("obj_get_class() on null object")
 	return (_g_obj[obj,OBJ_SUPER])
 }
 
@@ -421,55 +476,75 @@ function obj_is_instanceof (obj, class, _super)
 }
 
 # Set a property on obj
-function set(obj, prop, value)
+function set(obj, prop, value, _class)
 {
-	if (!class_has_property(obj_get_class(obj), prop)) {
-		errorx("invalid property '" prop "'")
+	if (obj == null)
+		errorx("setting property '"prop[PROP_NAME]"' on null object")
+
+	_class = obj_get_class(obj)
+	if (_class == null)
+		errorx(obj " has no superclass")
+	
+	if (!class_has_property(_class, prop)) {
+		warn("requested undefined property on " class_get_name(_class))
+		errorx("undefined property '" prop "'")
 	}
 
 	_g_obj[obj,OBJ_PROP,prop[PROP_ID]] = value
 }
 
 # Get a property defined on obj
-function get(obj, prop)
+function get(obj, prop, _class)
 {
-	if (!class_has_property(obj_get_class(obj), prop)) {
-		print class_has_property(obj_get_class(obj), prop)
-		errorx("invalid property '" prop "'")
+	if (obj == null)
+		errorx("requested property '"prop[PROP_NAME]"' on null object")
+
+	_class = obj_get_class(obj)
+	if (_class == null)
+		errorx(obj " has no superclass")
+
+	if (!class_has_property(_class, prop)) {
+		warn("requested undefined property on " class_get_name(_class))
+		errorx("undefined property '" prop "'")
 	}
 
 	return (_g_obj[obj,OBJ_PROP,prop[PROP_ID]])
 }
 
 # Create a new Type instance
-function type_new (name, width, constant, mask, _obj)
+function type_new (name, width, constant, fmt, mask, _obj)
 {
-	if (Type == null) {
-		Type = class_new("Type")
-		class_add_prop(Type, _name, "name")
-		class_add_prop(Type, _width, "width")
-		class_add_prop(Type, _const, "const")
-		class_add_prop(Type, _mask, "mask")
-	}
-
 	_obj = obj_new(Type)
 	set(_obj, _name, name)
 	set(_obj, _width, width)
 	set(_obj, _const, constant)
+	set(_obj, _default_fmt, fmt)
 	set(_obj, _mask, mask)
 
 	return (_obj)
 }
 
+# Return the default format for a given type / array type
+function type_get_default_format (type)
+{
+	if (obj_is_instanceof(type, ArrayType))
+		return (type_get_default_format(get(type, _type)))
+
+	return (get(type, _default_fmt))
+}
+
+# Return a string representation of the given type
+function type_desc (type)
+{
+	if (obj_is_instanceof(type, ArrayType))
+		return (type_desc(get(type, _type)) "[" get(type, _count) "]")
+
+	return get(type, _name)
+}
+
 # Create a new ArrayType instance
 function array_type_new (type, count, _obj)
 {
-	if (ArrayType == null) {
-		ArrayType = class_new("ArrayType")
-		class_add_prop(ArrayType, _type, "type")
-		class_add_prop(ArrayType, _count, "count")
-	}
-
 	_obj = obj_new(ArrayType)
 	set(_obj, _type, type)
 	set(_obj, _count, count)
@@ -480,12 +555,6 @@ function array_type_new (type, count, _obj)
 # Create a new SFmt instance
 function sfmt_new (name, constant, _obj)
 {
-	if (SFmt == null) {
-		SFmt = class_new("SFmt")
-		class_add_prop(SFmt, _name, "name")
-		class_add_prop(SFmt, _const, "const")
-	}
-
 	_obj = obj_new(SFmt)
 	set(_obj, _name, name)
 	set(_obj, _const, constant)
@@ -496,20 +565,6 @@ function sfmt_new (name, constant, _obj)
 # Create an empty list
 function list_new ()
 {
-	# Define list classes
-	if (List == null) {
-		List = class_new("List")
-		class_add_prop(List, _head, "head")
-		class_add_prop(List, _tail, "tail")
-	}
-
-	if (ListNode == null) {
-		ListNode = class_new("ListNode")
-		class_add_prop(ListNode, _v, "v")
-		class_add_prop(ListNode, _next, "next")
-		class_add_prop(ListNode, _prev, "prev")
-	}
-
 	return (obj_new(List))
 }
 
@@ -538,19 +593,49 @@ function lappend (list, value, _node, _cur)
 # Return the first node in list, or null
 function lhead (list)
 {
+	if (list == null)
+		errorx("list(): null list")
 	return (get(list, _head))
 }
 
 # Return the next element in the list
 function lnext (lnode)
 {
+	if (lnode == null)
+		errorx("lnext(): null node")
 	return (get(lnode, _next))
 }
 
 # Return the value associated with the given list node
 function lvalue (lnode)
 {
+	if (lnode == null)
+		errorx("lvalue(): null node")
 	return (get(lnode, _v))
+}
+
+# Create a new VarFlag instance
+function var_flag_new (name, constant, _obj)
+{
+	_obj = obj_new(VarFlag)
+	set(_obj, _name, name)
+	set(_obj, _const, constant)
+
+	return (_obj)
+}
+
+# Create a new Var instance
+function var_new (name, type, fmt, flags, line, _obj)
+{
+	_obj = obj_new(Var)
+	set(_obj, _name, name)
+	set(_obj, _type, type)
+	set(_obj, _fmt, fmt)
+	set(_obj, _flags, flags)
+	set(_obj, _offsets, list_new())
+	set(_obj, _line, line)
+
+	return (_obj)
 }
 
 # return the flag definition for variable `v`
@@ -752,10 +837,14 @@ END {
 		exit 1
 
 	# Check for complete block closure
-	if (depth > 0) {
+	if (!in_state(ST_NONE)) {
 		block_start = g(STATE_LINENO)
 		errorx("missing '}' for block opened on line " block_start "")
 	}
+
+	# XXX disabled
+	print "Done"
+	exit 0
 
 	# Generate concrete variable definitions for all struct variables
 	for (v in var_names) {
@@ -932,7 +1021,7 @@ function debug (msg)
 {
 	if (!DEBUG)
 		return
-	for (_di = 0; _di < depth; _di++)
+	for (_di = 1; _di < depth; _di++)
 		printf("\t") > "/dev/stderr"
 	print msg > "/dev/stderr"
 }
@@ -1039,11 +1128,13 @@ function parse_revdesc (result)
 # The name may be null, in which case the STATE_IDENT variable will not be
 # defined in this scope
 #
-function push_state (type, name, block) {
+function push_state (type, name, obj, block) {
 	depth++
 	push(STATE_LINENO, NR)
 	if (name != null)
 		push(STATE_IDENT, name)
+	if (obj != null)
+		push(STATE_OBJ, obj)
 	push(STATE_TYPE, type)
 	push(STATE_ISBLOCK, block)
 }
@@ -1066,10 +1157,10 @@ function pop_state () {
 # The name may be null, in which case the STATE_IDENT variable will not be
 # defined in this scope
 #
-function open_block (type, name)
+function open_block (type, name, obj)
 {
 	if ($0 ~ "{" || getline_matching("^[ \t]*{") > 0) {
-		push_state(type, name, 1)
+		push_state(type, name, obj, 1)
 		sub("^[^{]+{", "", $0)
 		return
 	}
@@ -1155,9 +1246,6 @@ function symbol_set (name, value, scope)
 # Evaluates to true if immediately within a block scope of the given type
 function in_state (type)
 {
-	if (!is_defined(STATE_TYPE))
-		return (type == ST_NONE)
-
 	return (type == g(STATE_TYPE))
 }
 
@@ -1276,7 +1364,7 @@ $1 == ST_SROM_DEFN && allow_def(ST_SROM_DEFN) {
 	vars[revk,REV_NUM_OFFS] = 0
 
 	debug("srom " rev_desc[REV_START] "-" rev_desc[REV_END] " {")
-	push_state(ST_SROM_DEFN, null, 0)
+	push_state(ST_SROM_DEFN, null, null, 0)
 
 	# seek to the first offset definition
 	do {
@@ -1412,58 +1500,89 @@ $1 ~ SROM_OFF_REGEX && in_state(ST_SROM_DEFN) {
 	} while (_more_vals)
 }
 
+# Find a type named `name`, if any
+function find_type (name, _n, _type)
+{
+	for (_n = lhead(BaseTypes); _n != null; _n = lnext(_n)) {
+		_type = lvalue(_n)
+		if (get(_type, _name) == name)
+			return (_type)
+	}
+
+	return (null)	
+}
+
+# Search `vars` list for a variable with `name`
+function var_list_search (vars, name, _n, _val)
+{
+	for (_n = lhead(vars); _n != null; _n = lnext(_n)) {
+		_val = lvalue(_n)
+		if (get(_val, _name) == name)
+			return (_val)
+	}
+
+	return (null)
+}
+
+#
+# Parse a type string to either the Type, ArrayType, or null if
+# the type is not recognized.
+#
+function parse_type_string (str, _base, _count)
+{
+	if (match(str, ARRAY_REGEX"$") > 0) {
+		# Extract count and base type
+		_count = substr(str, RSTART+1, RLENGTH-2)
+		sub(ARRAY_REGEX"$", "", str)
+
+		# Look for base type
+		if ((_base = find_type(str)) == null)
+			return (null)
+
+		return (array_type_new(_base, _count))
+	} else {
+		return (find_type(str))
+	}
+}
+
 # variable definition
 (($1 == "private" && $2 ~ TYPES_REGEX) || $1 ~ TYPES_REGEX) &&
     allow_def(ST_VAR_BLOCK) \
 {
-	# check for 'private' flag
+	# Fetch our defining context
+	ctx = g(STATE_OBJ)
+	if (!obj_is_instanceof(ctx, AbstractContext))
+		errorx("non-context parent variable")
+
+	# Check for 'private' flag
+	var_flags = list_new()
 	if ($1 == "private") {
+		lappend(var_flags, VarPrivate)
 		private = 1
 		shiftf(1)
-	} else {
-		private = 0
 	}
 
-	type = $1
-	name = $2
-	array = 0
-	debug(type " " name " {")
-
-	# Check for and remove any array[] specifier
-	base_type = type
-	if (sub(ARRAY_REGEX"$", "", base_type) > 0)
-		array = 1
-
-	# verify type
-	if (!base_type in DTYPE)
+	# Parse the type string
+	if ((type = parse_type_string($1)) == null)
 		error("unknown type '" $1 "'")
 
-	# Add top-level variable entry 
-	if (name in var_names) 
+	# Construct new variable instance
+	name = $2
+	offsets = list_new()
+	var = var_new(name, type, type_get_default_format(type), var_flags,
+	    offsets, NR)
+	debug((private ? "private " : "") type_desc(type) " " name " {")
+
+	# Add to our parent context
+	var_list = get(ctx, _vars)
+	if ((prev_var = var_list_search(var_list, name)) != null) {
 		error("variable identifier '" name "' previously defined on " \
-		    "line " vars[name,DEF_LINE])
-
-	var_names[name] = 0
-	vars[name,VAR_NAME] = name
-	vars[name,DEF_LINE] = NR
-	vars[name,VAR_TYPE] = type
-	vars[name,VAR_BASE_TYPE] = base_type
-	vars[name,NUM_REVS] = 0
-	vars[name,VAR_PRIVATE] = private
-	vars[name,VAR_ARRAY] = array
-	vars[name,VAR_FMT] = "hex" # default if not specified
-
-	open_block(ST_VAR_BLOCK, name)
-
-	debug("type=" DTYPE[base_type])
-
-	if (in_nested_state(ST_STRUCT_BLOCK)) {
-		# Fetch the enclosing struct's name
-		sid = g(STATE_IDENT, 1)
-
-		# Mark as a struct-based variable
-		vars[name,VAR_STRUCT] = sid
+		    "line " get(prev_var, _line))
 	}
+	lappend(var_list, var)
+
+	# Push our variable definition block
+	open_block(ST_VAR_BLOCK, name, var)
 }
 
 # variable parameters
