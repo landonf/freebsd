@@ -120,7 +120,6 @@ BEGIN {
 	# Property array keys
 	PROP_ID		= "p_id"
 	PROP_NAME	= "p_name"
-	PROP_CLS_CACHE	= "p_cls"
 
 	# Object array keys
 	OBJ_IS_CLS	= "o_is_cls"
@@ -208,12 +207,18 @@ BEGIN {
 		class_add_prop(VarProp, _prop_type, "name")
 		class_add_prop(VarProp, _value, "value")
 
+	StringConstant = class_new("StringConstant", AST)
+		class_add_prop(StringConstant, _value, "value")		# string
+		class_add_prop(StringConstant, _continued, "continued")	# bool
+
 	Var = class_new("Var", AST)
-		class_add_prop(Var, _name, "name")
-		class_add_prop(Var, _type, "type")
-		class_add_prop(Var, _fmt, "fmt")
-		class_add_prop(Var, _props, "props")
-		class_add_prop(Var, _sroms, "sroms")
+		class_add_prop(Var, _name, "name")	# string
+		class_add_prop(Var, _desc, "desc")	# StringConstant
+		class_add_prop(Var, _help, "help")	# StringConstant
+		class_add_prop(Var, _type, "type")	# AbstractType
+		class_add_prop(Var, _fmt, "fmt")	# SFmt
+		class_add_prop(Var, _props, "props")	# List<VarProp>
+		class_add_prop(Var, _sroms, "sroms")	# List<SROM>
 
 	# Provides a RevDesc, and a list of base offsets at which the
 	# struct is defined
@@ -394,7 +399,6 @@ END {
 	    OUTPUT_FILE) >> "/dev/stderr"
 }
 
-
 # Create a class instance with the given name
 function class_new (name, superclass, _class)
 {
@@ -437,36 +441,48 @@ function class_get_name (cls)
 	return (_g_obj[cls,CLS_NAME])
 }
 
-# Return true if the given property prop is defined on class
-function class_has_property (class, prop, _super, _prop_id)
+# Return true if the given property property ID is defined on class
+function class_has_prop_id (class, prop_id, _super)
 {
-	if (_super != null || _prop_id != null)
-		errorx("class_has_property() must be called with two arguments")
+	if (_super != null)
+		errorx("class_has_prop_id() must be called with two arguments")
 
 	if (class == null)
 		return (false)
 
-	# Check prop<->class cache
-	if ((PROP_CLS_CACHE, class) in prop)
+	# Check class<->prop cache
+	if ((class, prop_id) in _g_class_prop_cache)
 		return (1)
 
 	# Otherwise, slow path
 	if (!obj_is_class(class))
 		errorx(class " is not a class object")
 
-	if (!(PROP_ID in prop))
-		return (false)
+	if (_super != null)
+		errorx("class_has_prop_id() must be called with two arguments")
 
-	for (_super = class; _super != null; _super = obj_get_class(_super))
-	{
-		if ((_super,CLS_PROP,prop[PROP_ID]) in _g_obj) {
-			# Add to prop<->class cache
-			prop[PROP_CLS_CACHE, class] = 1
-			return (1)
-		}
+	if (!obj_is_class(class))
+		errorx(class " is not a class object")
+
+	for (_super = class; _super != null; _super = obj_get_class(_super)) {
+		if (!((_super,CLS_PROP,prop_id) in _g_obj))
+			continue
+
+		# Found; add to class<->prop cache
+		_g_class_prop_cache[class,prop_id] = 1
+		return (1)
 	}
 
 	return (0)
+}
+
+# Return true if the given property prop is defined on class
+function class_has_property (class, prop)
+{
+	if (!(PROP_ID in prop))
+		return (false)
+
+	return (class_has_prop_id(class, prop[PROP_ID]))
 }
 
 # Define a `prop` on `class` with the given `name` string
@@ -499,6 +515,39 @@ function class_add_prop (class, prop, name, _prop_id)
 	# Add to class definition
 	_g_obj[class,CLS_PROP,prop[PROP_ID]] = name
 	return (name)
+}
+
+# Return the property ID for a given class-defined property
+function class_get_prop_id (class, prop)
+{
+	if (class == null)
+		errorx("class_get_prop_id() on null class")
+
+	if (!class_has_property(class, prop)) {
+		errorx("requested undefined property '" prop[PROP_NAME] "on " \
+		    class_get_name(class))
+	}
+
+	return (prop[PROP_ID])
+}
+
+# Return the property ID for a given class-defined property name
+function class_get_named_prop_id (class, name, _prop_id)
+{
+	if (class == null)
+		errorx("class_get_prop_id() on null class")
+
+	if (!(name in _g_prop_names))
+		errorx("requested undefined property '" name "'")
+
+	_prop_id = _g_prop_names[name]
+
+	if (!class_has_prop_id(class, _prop_id)) {
+		errorx("requested undefined property '" _g_props[_prop_id] \
+		    "' on " class_get_name(class))
+	}
+
+	return (_prop_id)
 }
 
 # Create a new instance of the given class
@@ -583,40 +632,77 @@ function obj_assert_class (obj, class)
 	}
 }
 
-# Set a property on obj
-function set(obj, prop, value, _class)
+# Return an abstract property ID for a given property
+function obj_get_prop_id (obj, prop)
 {
 	if (obj == null)
-		errorx("setting property '"prop[PROP_NAME]"' on null object")
+		errorx("obj_get_prop_id() on null object")
 
-	_class = obj_get_class(obj)
-	if (_class == null)
-		errorx(obj " has no superclass")
-	
-	if (!class_has_property(_class, prop)) {
-		warn("requested undefined property on " class_get_name(_class))
-		errorx("undefined property '" prop "'")
-	}
-
-	_g_obj[obj,OBJ_PROP,prop[PROP_ID]] = value
+	return (class_get_prop_id(obj_get_class(obj), prop))
 }
 
-# Get a property defined on obj
-function get(obj, prop, _class)
+
+# Return the property ID for a given property name
+function obj_get_named_prop_id (obj, name)
 {
 	if (obj == null)
-		errorx("requested property '"prop[PROP_NAME]"' on null object")
+		errorx("obj_get_named_prop_id() on null object")
+
+	return (class_get_named_prop_id(obj_get_class(obj), name))
+}
+
+# Set a property on obj
+function set (obj, prop, value, _class)
+{
+	return (prop_set(obj, prop[PROP_ID], value))
+}
+
+# Get a property value defined on obj
+function get (obj, prop, _class)
+{
+	return (prop_get(obj, prop[PROP_ID]))
+}
+
+# Set a property on obj, using a property ID returned by obj_get_prop_id() or
+# class_get_prop_id()
+function prop_set (obj, prop_id, value, _class)
+{
+	if (obj == null) {
+		errorx("setting property '" _g_props[prop_id] \
+		    "' on null object")
+	}
 
 	_class = obj_get_class(obj)
 	if (_class == null)
 		errorx(obj " has no superclass")
 
-	if (!class_has_property(_class, prop)) {
-		warn("requested undefined property on " class_get_name(_class))
-		errorx("undefined property '" prop "'")
+	if (!class_has_prop_id(_class, prop_id)) {
+		errorx("requested undefined property '" _g_props[prop_id] \
+		    "' (" prop_id ") on " class_get_name(_class))
 	}
 
-	return (_g_obj[obj,OBJ_PROP,prop[PROP_ID]])
+	_g_obj[obj,OBJ_PROP,prop_id] = value
+}
+
+# Fetch a value property value from obj, using a property ID returned by
+# obj_get_prop_id() or class_get_prop_id()
+function prop_get (obj, prop_id, _class)
+{
+	if (obj == null) {
+		errorx("requested property '" _g_props[prop_id] \
+		    "' on null object")
+	}
+
+	_class = obj_get_class(obj)
+	if (_class == null)
+		errorx(obj " has no superclass")
+
+	if (!class_has_prop_id(_class, prop_id)) {
+		errorx("requested undefined property '" _g_props[prop_id] \
+		    "' (" prop_id ") on " class_get_name(_class))
+	}
+
+	return (_g_obj[obj,OBJ_PROP,prop_id])
 }
 
 # Create a new MacroDefine instance
@@ -912,6 +998,60 @@ function var_props_list_search (props, prop_type, _n, _prop, _t)
 	}
 
 	return (null)
+}
+
+# Create a new StringConstant AST node
+function stringconstant_new (value, continued, _obj)
+{
+	_obj = obj_new(StringConstant)
+	set(_obj, _value, value)
+	set(_obj, _continued, continued)
+	set(_obj, _line, NR)
+
+	return (_obj)
+}
+
+# Create an empty StringConstant AST node to which additional lines
+# may be appended
+function stringconstant_empty (_obj)
+{
+	return (stringconstant_new("", 1))
+}
+
+# Parse an input string and return a new string constant
+# instance
+function stringconstant_parse_line (line, _obj)
+{
+	_obj = stringconstant_empty()
+	stringconstant_append_line(_obj, line)
+	return (_obj)
+}
+
+# Parse and apend an additional line to this string constant
+function stringconstant_append_line (str, line, _cont, _strbuf)
+{
+	obj_assert_class(str, StringConstant)
+
+	# Must be marked for continuation
+	if (!get(str, _continued)) {
+		errorx("can't append to non-continuation string '" \
+		    get(str, _value) "'")
+	}
+
+	# Look for (and remove) any line continuation
+	_cont = sub(/\\[ \t]*$/, "", line)
+
+	# Trim leading and trailing whitespace
+	sub(/(^[ \t]+|[ \t]+$)/, "", line)
+
+	# Append to existing buffer
+	if ((_strbuf = get(str, _value)) == NULL)
+		set(str, _value, line)
+	else
+		set(str, _value, _strbuf " " line)
+
+	# Update line continuation setting
+	set(str, _continued, _cont)
 }
 
 # Create a new Var instance
@@ -1784,21 +1924,48 @@ $1 ~ IDENT_REGEX && $2 ~ IDENT_REGEX && in_parser_context(Var) {
 
 		# Must not have already been set
 		if ((dup = var_props_list_search(props, PropTypeIgnAll1))) {
-			error(PROP_T_ALL1 " previously specified on line " \
+			error("all1 previously specified on line " \
 			    get(dup, _line))
 		}
 
 		# Check argument
 		if ($2 != "ignore") {
-			error("unknown " PROP_T_ALL1 " value '" $2 "', " \
-			    "expected 'ignore'")
+			error("unknown all1 value '" $2 "', expected 'ignore'")
 		}
 
 		# Add to variable's property list
 		lappend(props, var_prop_new(PropTypeIgnAll1, 1))
+	} else if ($1 == "desc" || $1 == "help") {
+		# Fetch an indirect property reference for either the 'desc'
+		# or 'help' property
+		prop_id = obj_get_named_prop_id(var, $1)
+
+		# Check for an existing definition
+		if ((str = prop_get(var, prop_id)) != null) {
+			error(get(var, _name) " '" $1 "' redefined " \
+			    "(previously defined on line " get(str, _line) ")")
+		}
+
+		# Seek to the start of the help/desc string
+		shiftf(1)
+
+		# Parse the first line
+		str = stringconstant_parse_line($0)
+
+		# Incrementally parse line continuations
+		while (get(str, _continued)) {
+			getline
+			stringconstant_append_line(str, $0)
+		}
+
+		debug("desc \"" get(str, _value) "\"")
+
+		# Add to the var object
+		prop_set(var, prop_id, str)
 	} else {
 		error("unknown parameter " $1)
 	}
+
 	next
 }
 

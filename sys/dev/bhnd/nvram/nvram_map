@@ -1143,7 +1143,8 @@ u16 rpcal5gb3 {
 
 # Crystal frequency in kilohertz
 u32 xtalfreq {
-	sfmt	decimal
+	sfmt		decimal
+	desc	 	Crystal frequency (kHz)
 	srom >= 11	u16 0xB4
 }
 
