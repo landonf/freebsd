@@ -318,7 +318,7 @@ bhnd_nvram_sprom_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 
 	*len = req_len;
 
-	if (buf != NULL) {
+	if (buf == NULL) {
 		return (0);
 	} else if (*len > limit) {
 		return (ENOMEM);
