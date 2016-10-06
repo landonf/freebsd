@@ -225,6 +225,12 @@ BEGIN {
 		class_add_prop(ListNode, _next, "next")
 		class_add_prop(ListNode, _prev, "prev")
 
+	# ParseState definition
+	ParseState = class_new("ParseState")
+		class_add_prop(ParseState, _ctx, "ctx")
+		class_add_prop(ParseState, _is_block, "is_block")
+		class_add_prop(ParseState, _line, "line")
+
 	# VarFlag class definition
 	VarFlag = class_new("VarFlag")
 		class_add_prop(VarFlag, _name, "name")
@@ -264,6 +270,10 @@ BEGIN {
 
 	Offset = class_new("Offset", AST)
 		class_add_prop(Offset, _segments, "segments")
+
+	SROM = class_new("SROM", AST)
+		class_add_prop(RevSet, _revisions, "revisions")
+		class_add_prop(RevSet, _offsets, "offsets")
 
 	Segment = class_new("Segment", AST)
 		class_add_prop(Segment, _addr, "addr")
@@ -325,12 +335,15 @@ BEGIN {
 		lappend(StringFormats, SFmtMAC)
 		lappend(StringFormats, SFmtLEDDC)
 
-	# Push the root parse context
-	root_ctx = obj_new(RootContext)
-	set(root_ctx, _vars, list_new())
-	set(root_ctx, _structs, list_new())
+	# Create the parse state stack
+	_g_parse_stack = list_new()
 
-	push_state(ST_NONE, null, root_ctx, 0)
+	# Push the root parse state
+	_g_root_ctx = obj_new(RootContext)
+	set(_g_root_ctx, _vars, list_new())
+	set(_g_root_ctx, _structs, list_new())
+
+	parser_state_push(_g_root_ctx, 0)
 }
 
 # Create a class instance with the given name
@@ -364,6 +377,11 @@ function class_get (name)
 # Return the name of cls
 function class_get_name (cls)
 {
+	if (cls == null) {
+		warnx("class_get_name() called with null class")
+		return "<null>"
+	}
+
 	if (!obj_is_class(cls))
 		errorx(cls " is not a class object")
 
@@ -442,6 +460,19 @@ function obj_new (class, _obj)
 	return (_obj)
 }
 
+# Destroy all metadata associated with the given object
+function obj_delete (obj, _key)
+{
+	if (obj_is_class(obj))
+		errorx("cannot delete class objects")
+
+	for (_key in _g_obj) {
+                if (obj != substr(_key, 0, index(_key, SUBSEP) - 1))
+                        continue
+                delete _g_obj[_key]
+	}
+}
+
 # Return true if obj is a class object
 function obj_is_class (obj)
 {
@@ -462,11 +493,13 @@ function obj_is_instanceof (obj, class, _super)
 	if (_super != null)
 		errorx("obj_is_instanceof() must be called with two arguments")
 
-	if (obj == null)
-		errorx("obj_is_instanceof() called with null obj")
-
 	if (!obj_is_class(class))
 		errorx(class " is not a class object")
+
+	if (obj == null) {
+		errorx("obj_is_instanceof() called with null obj (class " \
+		    class_get_name(class) ")")
+	}
 
 	for (_super = obj_get_class(obj); _super != null;
 	     _super = obj_get_class(_super))
@@ -482,8 +515,9 @@ function obj_is_instanceof (obj, class, _super)
 function obj_assert_class (obj, class)
 {
 	if (!obj_is_instanceof(obj, class)) {
-		errorx(class_get_name(class) "<" obj "> is not an instance of" \
-		    class_get_name(class))
+		print "OBJ: " obj " class '" obj_get_class(obj) "'"
+		errorx(class_get_name(obj_get_class(obj)) "<" obj "> is not " \
+		    "an instance of " class_get_name(class))
 	}
 }
 
@@ -582,9 +616,33 @@ function list_new ()
 	return (obj_new(List))
 }
 
+# Return true if the list is empty
+function list_empty (list)
+{
+	return (lhead(list) == null)
+}
+
+function list_dump (list, _node)
+{
+	obj_assert_class(list, List)
+	print "List<" list ">"
+	print "head: " get(list, _head)
+	print "tail: " get(list, _tail)
+
+	for (_node = lhead(list); _node != null; _node = lnext(_node)) {
+		obj_assert_class(_node, ListNode)
+		print "node: " _node
+		print "\tprev: " get(_node, _prev)
+		print "\tnext: " get(_node, _next)
+		print "\tvalue: " get(_node, _v)
+	}
+}
+
 # Append value to list
 function lappend (list, value, _node, _cur)
 {
+	obj_assert_class(list, List)
+
 	# Create the new node
 	_node = obj_new(ListNode)
 	set(_node, _v, value)
@@ -607,24 +665,52 @@ function lappend (list, value, _node, _cur)
 # Return the first node in list, or null
 function lhead (list)
 {
-	if (list == null)
-		errorx("list(): null list")
+	obj_assert_class(list, List)
 	return (get(list, _head))
+}
+
+# Return the last node in list, or null
+function ltail (list)
+{
+	obj_assert_class(list, List)
+	return (get(list, _tail))
 }
 
 # Return the next element in the list
 function lnext (lnode)
 {
-	if (lnode == null)
-		errorx("lnext(): null node")
+	obj_assert_class(lnode, ListNode)
 	return (get(lnode, _next))
+}
+
+# Remove a list node from its enclosing list
+function ldelete (list, lnode, _node_prev, _node_next)
+{
+	obj_assert_class(list, List)
+	obj_assert_class(lnode, ListNode)
+
+	_node_prev = get(lnode, _prev)
+	_node_next = get(lnode, _next)
+
+	if (_node_prev != null)
+		set(_node_prev, _next, _node_next)
+
+	if (_node_next != null)
+		set(_node_next, _prev, _node_prev)
+
+	if (get(list, _head) == lnode)
+		set(list, _head, _node_next)
+
+	if (get(list, _tail) == lnode)
+		set(list, _tail, _node_prev)
+
+	obj_delete(lnode)
 }
 
 # Return the value associated with the given list node
 function lvalue (lnode)
 {
-	if (lnode == null)
-		errorx("lvalue(): null node")
+	obj_assert_class(lnode, ListNode)
 	return (get(lnode, _v))
 }
 
@@ -851,8 +937,9 @@ END {
 		exit 1
 
 	# Check for complete block closure
-	if (!in_state(ST_NONE)) {
-		block_start = g(STATE_LINENO)
+	if (!in_parser_context(RootContext)) {
+		state = parser_state_get()
+		block_start = get(state, _line)
 		errorx("missing '}' for block opened on line " block_start "")
 	}
 
@@ -1011,6 +1098,14 @@ function warn (msg)
 }
 
 #
+# Print an warning message without including the source line information
+#
+function warnx (msg)
+{
+	print "warning:", msg > "/dev/stderr"
+}
+
+#
 # Print a compiler error to stderr
 #
 function error (msg)
@@ -1136,33 +1231,49 @@ function parse_revdesc (result)
 	result[REV_END] = _rend
 }
 
-#
+
 # Push a new parser state.
-#
-# The name may be null, in which case the STATE_IDENT variable will not be
-# defined in this scope
-#
-function push_state (type, name, obj, block) {
+function parser_state_push (ctx, is_block, _state) {
 	depth++
-	push(STATE_LINENO, NR)
-	if (name != null)
-		push(STATE_IDENT, name)
-	if (obj != null)
-		push(STATE_OBJ, obj)
-	push(STATE_TYPE, type)
-	push(STATE_ISBLOCK, block)
+
+	_state = obj_new(ParseState)
+	set(_state, _ctx, ctx)
+	set(_state, _is_block, is_block)
+	set(_state, _line, NR)
+
+	lappend(_g_parse_stack, _state)
 }
 
-#
-# Pop the top of the parser state stack.
-#
-function pop_state () {
-	# drop all symbols defined at this depth
-	for (s in symbols) {
-		if (s ~ "^"depth"[^0-9]")
-			delete symbols[s]
-	}
-	depth--
+# Fetch the current parser state
+function parser_state_get (_top)
+{
+	if (list_empty(_g_parse_stack))
+		errorx("parser_state_get() called with empty parse stack")
+
+	_top = ltail(_g_parse_stack)
+	return (lvalue(_top))
+}
+
+# Pop the current parser state
+function parser_state_pop (_top)
+{
+	if (list_empty(_g_parse_stack))
+		errorx("parser_state_pop() called with empty parse stack")
+
+	_top = ltail(_g_parse_stack)
+	ldelete(_g_parse_stack, _top)
+}
+
+# Fetch the current context object associated with this parser state
+# If class is not null, the object will be asserted as being an instance
+# of the class.
+function parser_state_get_context (class, _ctx_obj)
+{
+	_ctx_obj = get(parser_state_get(), _ctx)
+	if (class != null)
+		obj_assert_class(_ctx_obj, class)
+
+	return (_ctx_obj)
 }
 
 #
@@ -1171,128 +1282,46 @@ function pop_state () {
 # The name may be null, in which case the STATE_IDENT variable will not be
 # defined in this scope
 #
-function open_block (type, name, obj)
+function parser_state_open_block (ctx)
 {
 	if ($0 ~ "{" || getline_matching("^[ \t]*{") > 0) {
-		push_state(type, name, obj, 1)
+		parser_state_push(ctx, 1)
 		sub("^[^{]+{", "", $0)
 		return
 	}
 
-	error("found '"$1 "' instead of expected '{' for '" name "'")
+	error("found '"$1 "' instead of expected '{'")
 }
 
 #
 # Find closing brace and pop parser states until the first
 # brace-delimited block is discarded.
 #
-function close_block ()
+function parser_state_close_block (_next_state, _found_block)
 {
 	if ($0 !~ "}")
 		error("internal error - no closing brace")
 
 	# pop states until we exit the first enclosing block
 	do {
-		_closed_block = g(STATE_ISBLOCK)
-		pop_state()
-	} while (!_closed_block)
+		_next_state = parser_state_get()
+		_found_block = get(_next_state, _is_block)
+		parser_state_pop()
+	} while (!_found_block)
 
 	# strip everything prior to the block closure
 	sub("^[^}]*}", "", $0)
 }
 
-# Internal symbol table lookup function. Returns the symbol depth if
-# name is found at or above scope; if scope is null, it defauls to 0
-function _find_sym (name, scope)
+# Evaluates to true if the current parser state is defined with a context of
+# the given class
+function in_parser_context (class, _ctx)
 {
-	if (scope == null)
-		scope = 0;
-
-	for (i = scope; i < depth; i++) {
-		if ((depth-i,name) in symbols)
-			return (depth-i)
-	}
-
-	return (-1)
-}
-
-#
-# Look up a variable in the symbol table with `name` and return its value.
-#
-# If `scope` is not null, the variable search will start at the provided
-# scope level -- 0 is the current scope, 1 is the parent's scope, etc.
-#
-function g (name, scope)
-{
-	_g_depth = _find_sym(name, scope)
-	if (_g_depth < 0)
-		error("'" name "' is undefined")
-
-	return (symbols[_g_depth,name])
-}
-
-function is_defined (name, scope)
-{
-	return (_find_sym(name, scope) >= 0)
-}
-
-# Define a new variable in the symbol table's current scope,
-# with the given value
-function push (name, value)
-{
-	symbols[depth,name] = value
-}
-
-# Set an existing variable's value in the symbol table; if not yet defined,
-# will trigger an error
-function symbol_set (name, value, scope)
-{
-	for (i = 0; i < depth; i++) {
-		if ((depth-i,name) in symbols) {
-			symbols[depth-i,name] = value
-			return
-		}
-	}
-	# No existing value, cannot define
-	error("'" name "' is undefined")
-}
-
-# Evaluates to true if immediately within a block scope of the given type
-function in_state (type)
-{
-	return (type == g(STATE_TYPE))
-}
-
-# Evaluates to true if within an immediate or non-immediate block scope of the
-# given type
-function in_nested_state (type)
-{
-	for (i = 0; i < depth; i++) {
-		if ((depth-i,STATE_TYPE) in symbols) {
-			if (symbols[depth-i,STATE_TYPE] == type)
-				return (1)
-		}
-	}
-	return (0)
-}
-
-# Evaluates to true if definitions of the given type are permitted within
-# the current scope
-function allow_def (type)
-{
-	if (type == ST_VAR_BLOCK) {
-		return (in_state(ST_NONE) || in_state(ST_STRUCT_BLOCK))
-	} else if (type == ST_STRUCT_BLOCK) {
-		return (in_state(ST_NONE))
-	} else if (type == ST_SROM_DEFN) {
-		return (in_state(ST_VAR_BLOCK) || in_state(ST_STRUCT_BLOCK))
-	}
-
-	error("unknown type '" type "'")
+	return (obj_is_instanceof(parser_state_get_context(), class))
 }
 
 # struct definition
-$1 == ST_STRUCT_BLOCK && allow_def($1) {
+$1 == ST_STRUCT_BLOCK && in_parser_context(RootContext) {
 	name = $2
 
 	# Remove array[] specifier
@@ -1314,8 +1343,8 @@ $1 == ST_STRUCT_BLOCK && allow_def($1) {
 	open_block(ST_STRUCT_BLOCK, name)
 }
 
-# struct srom descriptor
-$1 == ST_SROM_DEFN && allow_def(ST_SROM_DEFN) && in_state(ST_STRUCT_BLOCK) {
+# struct srom base offsets
+$1 == ST_SROM_DEFN && in_parser_context(Struct) {
 	sid = g(STATE_IDENT)
 
 	# parse revision descriptor
@@ -1351,12 +1380,12 @@ $1 == ST_SROM_DEFN && allow_def(ST_SROM_DEFN) && in_state(ST_STRUCT_BLOCK) {
 }
 
 # close any previous srom revision descriptor
-$1 == ST_SROM_DEFN && in_state(ST_SROM_DEFN) {
+$1 == ST_SROM_DEFN && in_parser_context(SROM) {
 	pop_state()
 }
 
-# open a new srom revision descriptor
-$1 == ST_SROM_DEFN && allow_def(ST_SROM_DEFN) {
+# variable srom revision descriptor
+$1 == ST_SROM_DEFN && in_parser_context(Var) {
 	# parse revision descriptor
 	parse_revdesc(rev_desc)
 
@@ -1384,20 +1413,6 @@ $1 == ST_SROM_DEFN && allow_def(ST_SROM_DEFN) {
 	do {
 		shiftf(1)
 	} while ($1 !~ SROM_OFF_REGEX && NF > 0)
-}
-
-#
-# Extract and return the array length from the given type string.
-# Returns -1 if the type is not an array.
-#
-function type_array_len (type)
-{
-	# extract byte count[] and width
-	if (match(type, ARRAY_REGEX"$") > 0) {
-		return (substr(type, RSTART+1, RLENGTH-2))
-	} else {
-		return (-1)
-	}
 }
 
 #
@@ -1481,7 +1496,7 @@ function parse_offset_segment (revk, offk)
 }
 
 # revision offset definition
-$1 ~ SROM_OFF_REGEX && in_state(ST_SROM_DEFN) {
+$1 ~ SROM_OFF_REGEX && in_parser_context(SROM) {
 	vid = g(STATE_IDENT)
 
 	# fetch rev id/key defined by our parent block
@@ -1514,8 +1529,8 @@ $1 ~ SROM_OFF_REGEX && in_state(ST_SROM_DEFN) {
 	} while (_more_vals)
 }
 
-# Find a type named `name`, if any
-function find_type (name, _n, _type)
+# Return the type constant for `name`, if any
+function type_named (name, _n, _type)
 {
 	for (_n = lhead(BaseTypes); _n != null; _n = lnext(_n)) {
 		_type = lvalue(_n)
@@ -1550,22 +1565,20 @@ function parse_type_string (str, _base, _count)
 		sub(ARRAY_REGEX"$", "", str)
 
 		# Look for base type
-		if ((_base = find_type(str)) == null)
+		if ((_base = type_named(str)) == null)
 			return (null)
 
 		return (array_type_new(_base, _count))
 	} else {
-		return (find_type(str))
+		return (type_named(str))
 	}
 }
 
 # variable definition
 (($1 == "private" && $2 ~ TYPES_REGEX) || $1 ~ TYPES_REGEX) &&
-    allow_def(ST_VAR_BLOCK) \
+    in_parser_context(SymbolContext) \
 {
-	# Fetch our defining context
-	ctx = g(STATE_OBJ)
-	obj_assert_class(ctx, SymbolContext)
+	ctx = parser_state_get_context(SymbolContext)
 
 	# Check for 'private' flag
 	var_flags = list_new()
@@ -1595,7 +1608,7 @@ function parse_type_string (str, _base, _count)
 	lappend(var_list, var)
 
 	# Push our variable definition block
-	open_block(ST_VAR_BLOCK, name, var)
+	parser_state_open_block(var)
 }
 
 # variable parameters
@@ -1621,21 +1634,21 @@ $1 ~ IDENT_REGEX && $2 ~ IDENT_REGEX && in_state(ST_VAR_BLOCK) {
 }
 
 # Close blocks
-/}/ && !in_state(ST_NONE) {
-	while (!in_state(ST_NONE) && $0 ~ "}") {
-		close_block();
+/}/ && !in_parser_context(RootContext) {
+	while (!in_parser_context(RootContext) && $0 ~ "}") {
+		parser_state_close_block();
 		debug("}")
 	}
 	next
 }
 
 # Report unbalanced '}'
-/}/ && in_state(ST_NONE) {
+/}/ && in_parser_context(RootContext) {
 	error("extra '}'")
 }
 
 # Invalid variable type
-$1 && allow_def(ST_VAR_BLOCK) {
+$1 && in_parser_context(SymbolContext) {
 	error("unknown type '" $1 "'")
 }
 
