@@ -434,6 +434,7 @@ bhnd_nvram_index_lookup(struct bhnd_nvram *sc, const char *name)
 	/*
 	 * Locate the requested variable using a binary search.
 	 */
+	KASSERT(sc->idx->num_entries > 0, ("empty array causes underflow"));
 	min = 0;
 	max = sc->idx->num_entries - 1;
 
@@ -450,7 +451,9 @@ bhnd_nvram_index_lookup(struct bhnd_nvram *sc, const char *name)
 			/* Search upper partition */
 			min = mid + 1;
 		} else if (order > 0) {
-			/* Search lower partition */
+			/* Search (non-empty) lower partition */
+			if (mid == 0)
+				break;
 			max = mid - 1;
 		} else if (order == 0) {
 			/* Match found */
