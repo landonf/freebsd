@@ -440,7 +440,7 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 	size_t				 ilen;
 	size_t				 ipos;
 	size_t				 nelem, nelem_all1;
-	size_t				 iwidth, owidth;
+	size_t				 iwidth;
 	int				 error;
 
 	sp = (struct bhnd_nvram_sprom *)nv;
@@ -464,9 +464,6 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 		SPROM_NVLOG("invalid SPROM data type: %d", var->type);
 		return (EFTYPE);
 	}
-
-	/* Fetch caller's destination type info */
-	owidth = bhnd_nvram_type_width(otype);
 
 	/* If the caller has requested the native variable representation,
 	 * we can decode directly into a supplied buffer.
