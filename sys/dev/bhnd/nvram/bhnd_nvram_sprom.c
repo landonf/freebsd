@@ -495,14 +495,13 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 		return (EFTYPE);					\
 	}								\
 									\
-	offv. _src = _swap(offv. _src);					\
+	offv. _src &= off->mask;					\
 	if (off->shift > 0) {						\
 		offv. _src >>= off->shift;				\
 	} else if (off->shift < 0) {					\
 		offv. _src <<= -off->shift;				\
 	}								\
-	offv. _src &= off->mask;					\
-	intv. _dst |= offv. _src;					\
+	intv. _dst |= _swap(offv. _src);				\
 } while(0)
 	
 		/* Read the value, widening to a common 32bit representation */
