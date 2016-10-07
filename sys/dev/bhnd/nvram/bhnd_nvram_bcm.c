@@ -705,7 +705,7 @@ bhnd_nvram_bcm_to_hdrvar(struct bhnd_nvram_bcm *bcm, void *cookiep)
 	if (cookiep > (void *)&bcm->hvars[nitems(bcm->hvars)-1])
 		return (NULL);
 
-	KASSERT((uintptr_t)cookiep % sizeof(bcm->hvars[0]),
+	KASSERT((uintptr_t)cookiep % sizeof(bcm->hvars[0]) == 0,
 	     ("misaligned hvar pointer"));
 	return ((struct bhnd_nvram_bcmdata *)cookiep);
 }
