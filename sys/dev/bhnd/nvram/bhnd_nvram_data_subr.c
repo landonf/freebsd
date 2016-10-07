@@ -581,7 +581,7 @@ bhnd_nvram_coerce_int_string(char *outp, size_t *olen, bhnd_nvram_sfmt ofmt,
 		/* Canonical MACADDR format uses a ':' delimiter */
 		delim = ':';
 
-		nwrite = snprintf(outp, limit, "%02" PRIX32, inv->u32);
+		nwrite = snprintf(outp, limit, "%02" PRIx32, inv->u32);
 		break;
 	case BHND_NVRAM_SFMT_LEDDC:
 		/* Do not delimit LEDDC values; they're simply appended */
@@ -589,15 +589,15 @@ bhnd_nvram_coerce_int_string(char *outp, size_t *olen, bhnd_nvram_sfmt ofmt,
 
 		/* Only include the '0x' prefix on the first element */
 		if (elem == 0) {
-			nwrite = snprintf(outp, limit, "0x%0*" PRIX32,
+			nwrite = snprintf(outp, limit, "0x%0*" PRIx32,
 			    (int)iwidth * 2 /* byte-width padding */, inv->u32);
 		} else {
-			nwrite = snprintf(outp, limit, "%0*" PRIX32,
+			nwrite = snprintf(outp, limit, "%0*" PRIx32,
 			    (int)iwidth * 2 /* byte-width padding */, inv->u32);
 		}
 		break;
 	case BHND_NVRAM_SFMT_HEX:
-		nwrite = snprintf(outp, limit, "0x%0*" PRIX32,
+		nwrite = snprintf(outp, limit, "0x%0*" PRIx32,
 		    (int)iwidth * 2 /* byte-width padding */,  inv->u32);
 		break;
 
