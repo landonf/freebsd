@@ -359,14 +359,31 @@ bhnd_nvram_sprom_next(struct bhnd_nvram_data *nv, void **cookiep)
 	}
 
 	/* Find the next matching entry */
-	while (elem < nelem) {
+	for (; elem < nelem; elem++) {
 		var = &table[elem];
 		*cookiep = SPROM_NVRAM_TO_COOKIE(var);
 
-		if (bhnd_nvram_sprom_matches(sp, var, NULL))
-			return (var->name);
+		if (!bhnd_nvram_sprom_matches(sp, var, NULL))
+			continue;
+		
+		/* The variable is defined in this SPROM revision, but we might
+		 * need to look at its value to determine whether it should be
+		 * treated as unavailable */
+		if (var->flags & BHND_NVRAM_VF_IGNALL1) {
+			int	error;
+			size_t	len;
 
-		elem++;
+			error = bhnd_nvram_sprom_getvar(nv, *cookiep, NULL,
+			    &len, var->type);
+			if (error) {
+				KASSERT(error == ENOENT, ("unexpected error "
+				    "parsing variable: %d", error));
+				continue;
+			}
+		}
+
+		/* Defined and readable */
+		return (var->name);
 	}
 
 	/* Not found */
@@ -388,6 +405,22 @@ bhnd_nvram_sprom_find(struct bhnd_nvram_data *nv, const char *name)
 	/* Verify that it matches our SPROM revision */
 	if (!bhnd_nvram_sprom_matches(sp, var, NULL))
 		return (NULL);
+	
+	/* The variable is defined in this SPROM revision, but we might need to
+	 * look at its value to determine whether it should be treated
+	 * as unavailable */
+	if (var->flags & BHND_NVRAM_VF_IGNALL1) {
+		int	error;
+		size_t	len;
+
+		error = bhnd_nvram_sprom_getvar(nv, SPROM_NVRAM_TO_COOKIE(var),
+		    NULL, &len, var->type);
+		if (error) {
+			KASSERT(error == ENOENT,
+			    ("unexpected error parsing variable: %d", error));
+			return (NULL);
+		}
+	}
 
 	/* Valid */
 	return (SPROM_NVRAM_TO_COOKIE(var));
@@ -434,13 +467,6 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 
 	/* Fetch caller's destination type info */
 	owidth = bhnd_nvram_type_width(otype);
-
-	/* If operating entirely on fixed type widths, we can
-	 * handle size requests without performing any parsing. */
-	if (buf == NULL && iwidth > 0 && owidth > 0) {
-		*len = nelem * owidth;
-		return (0);
-	}
 
 	/* If the caller has requested the native variable representation,
 	 * we can decode directly into a supplied buffer.
@@ -576,6 +602,14 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 		ipos++;
 	}
 
+	/* If marked IGNALL1 and all bits are set, treat variable as
+	 * unavailable */
+	if ((var->flags & BHND_NVRAM_VF_IGNALL1) &&
+	    nelem_all1 == sp_def->num_offsets)
+	{
+		return (ENOENT);
+	}
+
 	/* If we were decoding directly to the caller's output buffer, nothing
 	 * left to do but provide the decoded length */
 	if (inp == buf) {
@@ -636,10 +670,10 @@ bhnd_nvram_sprom_matches(struct bhnd_nvram_sprom *sprom,
 		
 		if (sprom->srev > sp->compat.last)
 			continue;
-		
-		/* Match */
+
 		if (sprom_def != NULL)
 			*sprom_def = sp;
+
 		return (true);
 	}
 	
