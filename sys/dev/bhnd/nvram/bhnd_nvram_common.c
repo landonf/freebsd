@@ -139,6 +139,15 @@ bhnd_nvram_vardefn_count(void)
 	return (nitems(bhnd_nvram_vardefs));
 }
 
+/* used by bhnd_nvram_find_vardefn() */
+static int
+bhnd_nvram_find_vardefn_compare(const void *key, const void *rhs)
+{
+	const struct bhnd_nvram_vardefn *r = rhs;
+
+	return (strcmp((const char *)key, r->name));
+}
+
 /**
  * Find and return the variable definition for @p varname, if any.
  * 
@@ -150,39 +159,8 @@ bhnd_nvram_vardefn_count(void)
 const struct bhnd_nvram_vardefn *
 bhnd_nvram_find_vardefn(const char *varname)
 {
-	size_t	min, mid, max;
-	int	order;
-
-	/*
-	 * Locate the requested variable using a binary search.
-	 * 
-	 * The variable table is guaranteed to be sorted in lexicographical
-	 * order (using the 'C' locale for collation rules)
-	 */
-	min = 0;
-	mid = 0;
-	max = nitems(bhnd_nvram_vardefs) - 1;
-
-	while (max >= min) {
-		/* Select midpoint */
-		mid = (min + max) / 2;
-
-		/* Determine which side of the partition to search */
-		order = strcmp(bhnd_nvram_vardefs[mid].name, varname);
-		if (order < 0) {
-			/* Search upper partition */
-			min = mid + 1;
-		} else if (order > 0) {
-			/* Search lower partition */
-			max = mid - 1;
-		} else if (order == 0) {
-			/* Match found */
-			return (&bhnd_nvram_vardefs[mid]);
-		}
-	}
-
-	/* Not found */
-	return (NULL);
+	return (bsearch(varname, bhnd_nvram_vardefs, nitems(bhnd_nvram_vardefs),
+	    sizeof(bhnd_nvram_vardefs[0]), bhnd_nvram_find_vardefn_compare));
 }
 
 /**
