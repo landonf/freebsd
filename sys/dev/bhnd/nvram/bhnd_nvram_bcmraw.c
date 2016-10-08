@@ -66,7 +66,7 @@ struct bhnd_nvram_bcmraw {
 	size_t				 size;	/**< buffer size */
 };
 
-BHND_NVRAM_DATA_CLASS_DEFN(bcmraw, "Broadcom")
+BHND_NVRAM_DATA_CLASS_DEFN(bcmraw, "Broadcom (RAW)")
 
 static int
 bhnd_nvram_bcmraw_probe(struct bhnd_nvram_io *io)
