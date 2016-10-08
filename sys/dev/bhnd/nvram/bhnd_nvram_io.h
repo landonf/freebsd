@@ -32,9 +32,17 @@
 #ifndef _BHND_NVRAM_BHND_NVRAM_IO_H_
 #define _BHND_NVRAM_BHND_NVRAM_IO_H_
 
+#ifdef _KERNEL
 #include <sys/param.h>
 
 #include <dev/bhnd/bhnd.h>
+#else /* !_KERNEL */
+#include <errno.h>
+
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
+#endif /* _KERNEL */
 
 struct bhnd_nvram_io;
 
@@ -44,8 +52,10 @@ struct bhnd_nvram_io	*bhnd_nvram_iobuf_copy(struct bhnd_nvram_io *src);
 struct bhnd_nvram_io	*bhnd_nvram_iobuf_copy_range(struct bhnd_nvram_io *src,
 			     size_t offset, size_t size);
 
+#ifdef _KERNEL
 struct bhnd_nvram_io	*bhnd_nvram_iores_new(struct bhnd_resource *r,
 			     size_t offset, size_t size, u_int bus_width);
+#endif /* _KERNEL */
 
 size_t			 bhnd_nvram_io_getsize(struct bhnd_nvram_io *io);
 int			 bhnd_nvram_io_setsize(struct bhnd_nvram_io *io,

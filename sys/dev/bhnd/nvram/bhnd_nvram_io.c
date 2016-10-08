@@ -30,14 +30,13 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#ifdef _KERNEL
 #include <sys/param.h>
-#include <sys/bus.h>
-#include <sys/malloc.h>
-#include <sys/rman.h>
-
-#include <machine/bus.h>
-
-#include <dev/bhnd/bhnd.h>
+#else /* !_KERNEL */
+#include <errno.h>
+#include <stdint.h>
+#include <stdlib.h>
+#endif /* _KERNEL */
 
 #include "bhnd_nvram_io.h"
 #include "bhnd_nvram_iovar.h"

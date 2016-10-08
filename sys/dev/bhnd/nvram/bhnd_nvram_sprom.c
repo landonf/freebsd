@@ -30,15 +30,23 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include <sys/param.h>
-#include <sys/bus.h>
 #include <sys/endian.h>
+
+#ifdef _KERNEL
+#include <sys/param.h>
 #include <sys/ctype.h>
 #include <sys/malloc.h>
-#include <sys/rman.h>
 #include <sys/systm.h>
+#else /* !_KERNEL */
+#include <ctype.h>
+#include <errno.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#endif /* _KERNEL */
 
-#include <machine/bus.h>
+#include "bhnd_nvramvar.h"
 
 #include "bhnd_nvram_common.h"
 
@@ -170,7 +178,7 @@ bhnd_nvram_sprom_parse(struct bhnd_nvram_io *io, uint8_t *srev,
 		nbytes = bhnd_nvram_io_getsize(buf);
 
 		if (nbytes > fmt->size)
-			panic("SPROM format is defined out-of-order");
+			BHND_NV_PANIC("SPROM format is defined out-of-order");
 
 		nr = fmt->size - nbytes;
 
@@ -249,7 +257,7 @@ bhnd_nvram_sprom_probe(struct bhnd_nvram_io *io)
 	/* Clean up the shadow iobuf */
 	bhnd_nvram_io_free(shadow);
 
-	return (BUS_PROBE_DEFAULT);
+	return (BHND_NVRAM_DATA_PROBE_DEFAULT);
 }
 
 static int
@@ -259,7 +267,7 @@ bhnd_nvram_sprom_new(struct bhnd_nvram_data **nv, struct bhnd_nvram_io *io)
 	int			 error;
 	
 	/* Allocate and initialize the SPROM data instance */
-	sp = malloc(sizeof(*sp), M_BHND_NVRAM, M_NOWAIT|M_ZERO);
+	sp = bhnd_nv_calloc(1, sizeof(*sp));
 	if (sp == NULL)
 		return (ENOMEM);
 
@@ -277,7 +285,7 @@ failed:
 	if (sp->data != NULL)
 		bhnd_nvram_io_free(sp->data);
 
-	free(sp, M_BHND_NVRAM);
+	bhnd_nv_free(sp);
 
 	return (error);
 }
@@ -288,7 +296,7 @@ bhnd_nvram_sprom_free(struct bhnd_nvram_data *nv)
 	struct bhnd_nvram_sprom *sp = (struct bhnd_nvram_sprom *)nv;
 	
 	bhnd_nvram_io_free(sp->data);
-	free(sp, M_BHND_NVRAM);
+	bhnd_nv_free(sp);
 }
 
 static int
@@ -354,7 +362,7 @@ bhnd_nvram_sprom_next(struct bhnd_nvram_data *nv, void **cookiep)
 		var = SPROM_COOKIE_TO_NVRAM(*cookiep);
 		elem = var - table;
 
-		KASSERT(elem < nelem, ("invalid cookie pointer"));
+		BHND_NV_ASSERT(elem < nelem, ("invalid cookie pointer"));
 		elem++;
 	}
 
@@ -376,8 +384,9 @@ bhnd_nvram_sprom_next(struct bhnd_nvram_data *nv, void **cookiep)
 			error = bhnd_nvram_sprom_getvar(nv, *cookiep, NULL,
 			    &len, var->type);
 			if (error) {
-				KASSERT(error == ENOENT, ("unexpected error "
-				    "parsing variable: %d", error));
+				BHND_NV_ASSERT(error == ENOENT,
+				    ("unexpected error parsing variable: %d",
+				     error));
 				continue;
 			}
 		}
@@ -416,7 +425,7 @@ bhnd_nvram_sprom_find(struct bhnd_nvram_data *nv, const char *name)
 		error = bhnd_nvram_sprom_getvar(nv, SPROM_NVRAM_TO_COOKIE(var),
 		    NULL, &len, var->type);
 		if (error) {
-			KASSERT(error == ENOENT,
+			BHND_NV_ASSERT(error == ENOENT,
 			    ("unexpected error parsing variable: %d", error));
 			return (NULL);
 		}
@@ -445,13 +454,13 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 
 	sp = (struct bhnd_nvram_sprom *)nv;
 
-	KASSERT(cookiep != NULL, ("NULL variable cookiep"));
+	BHND_NV_ASSERT(cookiep != NULL, ("NULL variable cookiep"));
 
 	/* Fetch NVRAM and SPROM definitions */
 	var = SPROM_COOKIE_TO_NVRAM(cookiep);
 	if (!bhnd_nvram_sprom_matches(sp, var, &sp_def)) {
 		/* Invalid cookie? */
-		panic("missing sprom definition for '%s'", var->name);
+		BHND_NV_PANIC("missing sprom definition for '%s'", var->name);
 	}
 
 	nelem = bhnd_nvram_spromdef_nelems(sp_def);
@@ -504,9 +513,9 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 
 		off = &sp_def->offsets[i];
 
-		KASSERT(i+1 < sp_def->num_offsets || !off->cont,
+		BHND_NV_ASSERT(i+1 < sp_def->num_offsets || !off->cont,
 		    ("cont marked on last offset"));
-		KASSERT(ipos < nelem,
+		BHND_NV_ASSERT(ipos < nelem,
 		    ("output positioned past last element"));
 
 #define	NV_READ_INT(_src, _dst, _swap)	do {				\
@@ -637,7 +646,7 @@ bhnd_nvram_sprom_getvar_name(struct bhnd_nvram_data *nv, void *cookiep)
 {
 	const struct bhnd_nvram_vardefn	*var;
 
-	KASSERT(cookiep != NULL, ("NULL variable cookiep"));
+	BHND_NV_ASSERT(cookiep != NULL, ("NULL variable cookiep"));
 
 	var = SPROM_COOKIE_TO_NVRAM(cookiep);
 	return (var->name);

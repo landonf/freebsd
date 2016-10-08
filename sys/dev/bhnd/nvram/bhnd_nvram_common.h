@@ -32,14 +32,22 @@
 #ifndef _BHND_NVRAM_BHND_NVRAM_COMMON_H_
 #define _BHND_NVRAM_BHND_NVRAM_COMMON_H_
 
+#ifdef _KERNEL
 #include <sys/param.h>
 #include <sys/malloc.h>
+#else
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
+#endif
 
 #include "bhnd_nvram.h"
 
 struct bhnd_nvram_vardefn;
 
+#ifdef _KERNEL
 MALLOC_DECLARE(M_BHND_NVRAM);
+#endif
 
 extern const uint8_t bhnd_nvram_crc8_tab[];
 

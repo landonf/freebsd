@@ -30,12 +30,30 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#ifdef _KERNEL
+
 #include <sys/param.h>
 #include <sys/ctype.h>
 #include <sys/limits.h>
 #include <sys/systm.h>
 
 #include <machine/_inttypes.h>
+
+#else /* !_KERNEL */
+
+#include <ctype.h>
+#include <errno.h>
+#include <inttypes.h>
+#include <limits.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+#endif /* _KERNEL */
+
+#include "bhnd_nvramvar.h"
 
 #include "bhnd_nvram_io.h"
 
@@ -139,7 +157,7 @@ bhnd_nvram_ident_integer_fmt(const char *inp, size_t ilen, int *base,
 
 		/* Check all input characters */
 		valid = true;
-		for (p = inp + 2; p - inp < ilen; p++) {
+		for (p = inp + 2; (size_t)(p - inp) < ilen; p++) {
 			if (isxdigit(*p))
 				continue;
 
@@ -161,7 +179,7 @@ bhnd_nvram_ident_integer_fmt(const char *inp, size_t ilen, int *base,
 
 		valid = true;
 		*negated = false;
-		for (p = inp; p - inp < ilen; p++) {
+		for (p = inp; (size_t)(p - inp) < ilen; p++) {
 			if (p == inp && *p == '-') {
 				*negated = true;
 				continue;
@@ -203,13 +221,13 @@ bhnd_nvram_parse_field(const char **inp, size_t ilen, char delim)
 	const char	*p, *sp;
 
 	/* Skip any leading whitespace */
-	for (sp = *inp; sp - *inp < ilen && isspace(*sp); sp++)
+	for (sp = *inp; (size_t)(sp - *inp) < ilen && isspace(*sp); sp++)
 		continue;
 
 	*inp = sp;
 
 	/* Find the last field character */
-	for (p = *inp; p - *inp < ilen; p++) {
+	for (p = *inp; (size_t)(p - *inp) < ilen; p++) {
 		if (*p == delim || *p == '\0')
 			break;
 	}
@@ -256,7 +274,7 @@ bhnd_nvram_ident_octet_string(const char *inp, size_t ilen, char *delim)
 	}
 
 	/* Verify the octet string contains only hex digits */ 
-	for (const char *p = inp; p - inp < ilen; p++) {
+	for (const char *p = inp; (size_t)(p - inp) < ilen; p++) {
 		size_t pos;
 
 		pos = (p - inp);
@@ -363,7 +381,9 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 	} else {
 		/* Use heap allocated buffer to copy and NUL terminate
 		 * the input string */
-		cstr_buf = malloc(cstr_size, M_BHND_NVRAM, M_NOWAIT|M_WAITOK);
+		if ((cstr_buf = bhnd_nv_malloc(cstr_size)) == NULL)
+			return (ENOMEM);
+
 		cstr = cstr_buf;
 		free_cstr_buf = true;
 	}
@@ -497,7 +517,7 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 
 finished:
 	if (free_cstr_buf)
-		free(cstr_buf, M_BHND_NVRAM);
+		bhnd_nv_free(cstr_buf);
 
 	return (error);
 }
@@ -657,7 +677,7 @@ bhnd_nvram_coerce_int_string(char *outp, size_t *olen, bhnd_nvram_sfmt ofmt,
 		*olen += 1;
 
 	/* If we exceeded our buffer capacity, nothing left to do */
-	if (nwrite >= limit)
+	if ((size_t)nwrite >= limit)
 		return (0);
 
 	/* Do we need to replace NUL with a delimiter? */
@@ -814,7 +834,7 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 		if (limit <= nbytes) {
 			remain = 0;
 		} else {
-			KASSERT(outp != NULL, ("NULL output buffer"));
+			BHND_NV_ASSERT(outp != NULL, ("NULL output buffer"));
 			remain = limit - nbytes;
 		}
 

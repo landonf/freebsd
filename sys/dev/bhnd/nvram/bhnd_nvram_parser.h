@@ -32,9 +32,20 @@
 #ifndef _BHND_NVRAM_BHND_NVRAM_PARSER_H_
 #define _BHND_NVRAM_BHND_NVRAM_PARSER_H_
 
+#ifdef _KERNEL
 #include <sys/param.h>
 #include <sys/bus.h>
 #include <sys/nv.h>
+#else /* !_KERNEL */
+#include <errno.h>
+
+#include <nv.h>
+
+#include <stdint.h>
+#include <stdlib.h>
+#endif
+
+#include <sys/queue.h>
 
 #include "bhnd_nvram_common.h"
 #include "bhnd_nvram_data.h"
@@ -50,8 +61,14 @@ struct bhnd_nvram;
 
 LIST_HEAD(bhnd_nvram_devpaths, bhnd_nvram_devpath);
 
+#ifdef _KERNEL
 int	bhnd_nvram_parser_init(struct bhnd_nvram *sc, device_t owner,
 	    struct bhnd_nvram_io *io, bhnd_nvram_data_class_t *cls);
+#else /* !_KERNEL */
+int	bhnd_nvram_parser_init(struct bhnd_nvram *sc, struct bhnd_nvram_io *io,
+	    bhnd_nvram_data_class_t *cls);
+#endif
+
 void	bhnd_nvram_parser_fini(struct bhnd_nvram *sc);
 
 int	bhnd_nvram_parser_getvar(struct bhnd_nvram *sc, const char *name,
@@ -61,7 +78,10 @@ int	bhnd_nvram_parser_setvar(struct bhnd_nvram *sc, const char *name,
 
 /** bhnd nvram parser instance state */
 struct bhnd_nvram {
+#ifdef _KERNEL
 	device_t			 owner;		/**< parent device, or NULL */
+#endif
+
 	struct bhnd_nvram_data		*nv;		/**< backing data */
 
 	struct bhnd_nvram_idx		*idx;		/**< key index */

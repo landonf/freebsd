@@ -30,16 +30,25 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include <sys/param.h>
-#include <sys/bus.h>
-#include <sys/ctype.h>
 #include <sys/endian.h>
+
+#ifdef _KERNEL
+
+#include <sys/param.h>
+#include <sys/ctype.h>
 #include <sys/malloc.h>
-#include <sys/rman.h>
 #include <sys/systm.h>
 
-#include <machine/bus.h>
+#else /* !_KERNEL */
 
+#include <ctype.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+#endif /* _KERNEL */
+
+#include "bhnd_nvramvar.h"
 #include "bhnd_nvram_common.h"
 
 #include "bhnd_nvram_bcmreg.h"
@@ -112,9 +121,8 @@ bhnd_nvram_btxt_probe(struct bhnd_nvram_io *io)
 		return (ENXIO);
 
 	/* We assert a low priority, given that we've only scanned an
-	 * initial few bytes of the file. In practice, BTXT will generally
-	 * be referenced explicitly when parsing files of a known format. */
-	return (BUS_PROBE_LOW_PRIORITY);
+	 * initial few bytes of the file. */
+	return (BHND_NVRAM_DATA_PROBE_MAYBE);
 }
 
 /**
@@ -132,7 +140,7 @@ bhnd_nvram_btxt_init(struct bhnd_nvram_btxt *btxt, struct bhnd_nvram_io *src)
 	size_t			 io_offset, io_size;
 	int			 error;
 
-	KASSERT(btxt->data == NULL, ("btxt data already allocated"));
+	BHND_NV_ASSERT(btxt->data == NULL, ("btxt data already allocated"));
 	
 	if ((btxt->data = bhnd_nvram_iobuf_copy(src)) == NULL)
 		return (ENOMEM);
@@ -170,8 +178,9 @@ bhnd_nvram_btxt_init(struct bhnd_nvram_btxt *btxt, struct bhnd_nvram_io *src)
 	
 		/* EOF? */
 		if (env_len == 0) {
-			KASSERT(io_offset == io_size, ("zero-length record "
-			    "returned from bhnd_nvram_btxt_seek_next()"));
+			BHND_NV_ASSERT(io_offset == io_size,
+		           ("zero-length record returned from "
+			    "bhnd_nvram_btxt_seek_next()"));
 			break;
 		}
 
@@ -210,7 +219,7 @@ bhnd_nvram_btxt_new(struct bhnd_nvram_data **nv, struct bhnd_nvram_io *io)
 	int			 error;
 
 	/* Allocate and initialize the BTXT data instance */
-	btxt = malloc(sizeof(*btxt), M_BHND_NVRAM, M_NOWAIT|M_ZERO);
+	btxt = bhnd_nv_calloc(1, sizeof(*btxt));
 	if (btxt == NULL)
 		return (ENOMEM);
 
@@ -229,7 +238,7 @@ failed:
 	if (btxt->data != NULL)
 		bhnd_nvram_io_free(btxt->data);
 
-	free(btxt, M_BHND_NVRAM);
+	bhnd_nv_free(btxt);
 
 	return (error);
 }
@@ -240,7 +249,7 @@ bhnd_nvram_btxt_free(struct bhnd_nvram_data *nv)
 	struct bhnd_nvram_btxt	*btxt = (struct bhnd_nvram_btxt *)nv;
 
 	bhnd_nvram_io_free(btxt->data);
-	free(nv, M_BHND_NVRAM);
+	bhnd_nv_free(nv);
 }
 
 static int
@@ -281,7 +290,7 @@ bhnd_nvram_btxt_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 
 	/* Restore the original key=value format, rewriting all '\0'
 	 * key\0value delimiters back to '=' */
-	for (char *p = buf; p - (char *)buf < *len; p++) {
+	for (char *p = buf; (size_t)(p - (char *)buf) < *len; p++) {
 		if (*p == '\0')
 			*p = '=';
 	}
@@ -434,13 +443,13 @@ bhnd_nvram_btxt_getvar_name(struct bhnd_nvram_data *nv, void *cookiep)
 
 	/* At EOF? */
 	if (io_offset == io_size)
-		panic("invalid cookiep: %p", cookiep);
+		BHND_NV_PANIC("invalid cookiep: %p", cookiep);
 
 	/* Variable name is found directly at the given offset; trailing
 	 * NUL means we can assume that it's at least 1 byte long */
 	error = bhnd_nvram_io_read_ptr(btxt->data, io_offset, &ptr, 1, NULL);
 	if (error)
-		panic("unexpected error in read_ptr(): %d\n", error);
+		BHND_NV_PANIC("unexpected error in read_ptr(): %d\n", error);
 
 	return (ptr);
 }
@@ -455,8 +464,8 @@ bhnd_nvram_btxt_io_offset(struct bhnd_nvram_btxt *btxt, void *cookiep)
 	io_size = bhnd_nvram_io_getsize(btxt->data);
 	cval = (uintptr_t)cookiep;
 
-	KASSERT(cval < SIZE_MAX, ("cookie > SIZE_MAX)"));
-	KASSERT(cval <= io_size, ("cookie > io_size)"));
+	BHND_NV_ASSERT(cval < SIZE_MAX, ("cookie > SIZE_MAX)"));
+	BHND_NV_ASSERT(cval <= io_size, ("cookie > io_size)"));
 
 	return ((size_t)cval);
 }
@@ -479,7 +488,7 @@ bhnd_nvram_btxt_entry_len(struct bhnd_nvram_io *io, size_t offset,
 	/* Find record termination (EOL, or '#') */
 	p = rbuf;
 	baseptr = rbuf;
-	while (p - baseptr < nbytes) {
+	while ((size_t)(p - baseptr) < nbytes) {
 		if (*p == '#' || *p == '\n' || *p == '\r')
 			break;
 
@@ -517,7 +526,7 @@ bhnd_nvram_btxt_seek_eol(struct bhnd_nvram_io *io, size_t *offset)
 
 	baseptr = rbuf;
 	p = rbuf;
-	while (p - baseptr < nbytes) {
+	while ((size_t)(p - baseptr) < nbytes) {
 		char c = *p;
 
 		/* Advance to next char. The next position may be EOF, in which
@@ -526,7 +535,7 @@ bhnd_nvram_btxt_seek_eol(struct bhnd_nvram_io *io, size_t *offset)
 
 		if (c == '\r') {
 			/* CR, check for optional LF */
-			if (p - baseptr < nbytes) {
+			if ((size_t)(p - baseptr) < nbytes) {
 				if (*p == '\n')
 					p++;
 			}
@@ -558,7 +567,7 @@ bhnd_nvram_btxt_seek_next(struct bhnd_nvram_io *io, size_t *offset)
 	/* Skip leading whitespace and comments */
 	baseptr = rbuf;
 	p = rbuf;
-	while (p - baseptr < nbytes) {
+	while ((size_t)(p - baseptr) < nbytes) {
 		char c = *p;
 
 		/* Skip whitespace */

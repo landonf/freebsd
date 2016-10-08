@@ -32,7 +32,16 @@
 #ifndef _BHND_NVRAM_BHND_NVRAM_DATA_H_
 #define _BHND_NVRAM_BHND_NVRAM_DATA_H_
 
+#ifdef _KERNEL
 #include <sys/types.h>
+#else /* !_KERNEL */
+#include <errno.h>
+
+#include <stdint.h>
+#include <stdlib.h>
+#endif /* _KERNEL */
+
+#include <sys/bus.h>
 
 #include "bhnd_nvram.h"
 #include "bhnd_nvram_io.h"
@@ -60,6 +69,18 @@ enum {
 
 	/** Supports direct access to backing buffer */
 	BHND_NVRAM_DATA_CAP_READ_PTR	= (1<<1)
+};
+
+/**
+ * A standard set of probe priorities returned by bhnd_nvram_data_probe().
+ * 
+ * Priority is defined in ascending order, with 0 being the highest priority.
+ * Return values greater than zero are interpreted as regular unix error codes.
+ */
+enum {
+	BHND_NVRAM_DATA_PROBE_MAYBE	= -40,	/**< Possible match */
+	BHND_NVRAM_DATA_PROBE_DEFAULT	= -20,	/**< Definite match of a base
+						     OS-supplied data class */
 };
 
 const char	*bhnd_nvram_data_class_desc(bhnd_nvram_data_class_t *cls);

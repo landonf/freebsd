@@ -30,14 +30,24 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#ifdef _KERNEL
+
 #include <sys/param.h>
-#include <sys/bus.h>
 #include <sys/ctype.h>
-#include <sys/endian.h>
 #include <sys/malloc.h>
 #include <sys/systm.h>
 
-#include <machine/bus.h>
+#else /* !_KERNEL */
+
+#include <ctype.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#endif /* _KERNEL */
+
+#include "bhnd_nvramvar.h"
 
 #include "bhnd_nvram_common.h"
 
@@ -78,11 +88,10 @@ bhnd_nvram_bcmraw_probe(struct bhnd_nvram_io *io)
 	/*
 	 * Fetch the initial bytes to try to identify BCM data.
 	 * 
-	 * We always assert a low priority, as we only scan the initial few
-	 * bytes of the file. In practice, BCM-RAW will generally be referenced
-	 * explicitly when parsing files of a known format.
+	 * We always assert a low probe priority, as we only scan the initial
+	 * bytes of the file.
 	 */
-	envp_len = ummin(sizeof(envp), bhnd_nvram_io_getsize(io));
+	envp_len = bhnd_nv_ummin(sizeof(envp), bhnd_nvram_io_getsize(io));
 	if ((error = bhnd_nvram_io_read(io, 0x0, envp, envp_len)))
 		return (error);
 
@@ -95,8 +104,7 @@ bhnd_nvram_bcmraw_probe(struct bhnd_nvram_io *io)
 		if (envp[0] != '\0')
 			return (ENXIO);
 
-		/* Maybe... */
-		return (BUS_PROBE_LOW_PRIORITY);
+		return (BHND_NVRAM_DATA_PROBE_MAYBE);
 	}
 
 	/* Don't match on non-ASCII data */
@@ -113,7 +121,7 @@ bhnd_nvram_bcmraw_probe(struct bhnd_nvram_io *io)
 	if (!isalpha(envp[0]))
 		return (ENXIO);
 
-	return (BUS_PROBE_LOW_PRIORITY);
+	return (BHND_NVRAM_DATA_PROBE_MAYBE);
 }
 
 /**
@@ -139,7 +147,8 @@ bhnd_nvram_bcmraw_init(struct bhnd_nvram_bcmraw *bcm, struct bhnd_nvram_io *src)
 
 	capacity = io_size + 1 /* room for extra NUL */;
 	bcm->size = io_size;
-	bcm->data = malloc(capacity, M_BHND_NVRAM, M_WAITOK);
+	if ((bcm->data = bhnd_nv_malloc(capacity)) == NULL)
+		return (ENOMEM);
 
 	/* Copy in the NVRAM image */
 	if ((error = bhnd_nvram_io_read(src, 0x0, bcm->data, io_size)))
@@ -179,7 +188,7 @@ bhnd_nvram_bcmraw_init(struct bhnd_nvram_bcmraw *bcm, struct bhnd_nvram_io *src)
 		/* If we hit EOF without finding a terminating NUL
 		 * byte, we need to append it */
 		if (++offset == bcm->size) {
-			KASSERT(offset < capacity,
+			BHND_NV_ASSERT(offset < capacity,
 			    ("appending past end of buffer"));
 			bcm->size++;
 			*(bcm->data + offset) = '\0';
@@ -193,8 +202,9 @@ bhnd_nvram_bcmraw_init(struct bhnd_nvram_bcmraw *bcm, struct bhnd_nvram_io *src)
 
 	/* Reclaim any unused space in he backing buffer */
 	if (offset < bcm->size) {
-		bcm->data = reallocf(bcm->data, bcm->size, M_BHND_NVRAM,
-		    M_WAITOK);
+		bcm->data = bhnd_nv_reallocf(bcm->data, bcm->size);
+		if (bcm->data == NULL)
+			return (ENOMEM);
 	}
 
 	return (0);
@@ -207,7 +217,7 @@ bhnd_nvram_bcmraw_new(struct bhnd_nvram_data **nv, struct bhnd_nvram_io *io)
 	int			 error;
 
 	/* Allocate and initialize the BCM data instance */
-	bcm = malloc(sizeof(*bcm), M_BHND_NVRAM, M_NOWAIT|M_ZERO);
+	bcm = bhnd_nv_malloc(sizeof(*bcm));
 	if (bcm == NULL)
 		return (ENOMEM);
 
@@ -224,9 +234,9 @@ bhnd_nvram_bcmraw_new(struct bhnd_nvram_data **nv, struct bhnd_nvram_io *io)
 
 failed:
 	if (bcm->data != NULL)
-		free(bcm->data, M_BHND_NVRAM);
+		bhnd_nv_free(bcm->data);
 
-	free(bcm, M_BHND_NVRAM);
+	bhnd_nv_free(bcm);
 
 	return (error);
 }
@@ -236,8 +246,8 @@ bhnd_nvram_bcmraw_free(struct bhnd_nvram_data *nv)
 {
 	struct bhnd_nvram_bcmraw *bcm = (struct bhnd_nvram_bcmraw *)nv;
 
-	free(bcm->data, M_BHND_NVRAM);
-	free(bcm, M_BHND_NVRAM);
+	bhnd_nv_free(bcm->data);
+	bhnd_nv_free(bcm);
 }
 
 static int
@@ -286,7 +296,8 @@ bhnd_nvram_bcmraw_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 
 		/* EOF? */
 		if (name_len == 0) {
-			KASSERT(*(p + offset) == '\0', ("no NUL terminator"));
+			BHND_NV_ASSERT(*(p + offset) == '\0',
+			    ("no NUL terminator"));
 
 			offset++;
 			break;
@@ -294,7 +305,7 @@ bhnd_nvram_bcmraw_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 
 		/* Rewrite 'name\0' to 'name=' */
 		offset += name_len;
-		KASSERT(*(p + offset) == '\0', ("incorrect offset"));
+		BHND_NV_ASSERT(*(p + offset) == '\0', ("incorrect offset"));
 
 		*(p + offset) = '=';
 		offset++;

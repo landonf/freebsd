@@ -30,17 +30,25 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include <sys/param.h>
-#include <sys/bus.h>
-#include <sys/ctype.h>
-#include <sys/endian.h>
-#include <sys/malloc.h>
 #include <sys/queue.h>
-#include <sys/rman.h>
+
+#ifdef _KERNEL
+
+#include <sys/param.h>
 #include <sys/systm.h>
 
-#include <machine/bus.h>
-#include <machine/resource.h>
+#else /* !_KERNEL */
+
+#include <errno.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+#endif /* _KERNEL */
+
+#include "bhnd_nvramvar.h"
 
 #include "bhnd_nvram_data.h"
 #include "bhnd_nvram_datavar.h"
@@ -54,21 +62,22 @@ __FBSDID("$FreeBSD$");
  * Provides identification, decoding, and encoding of BHND NVRAM data.
  */
 
+static int	bhnd_nvram_parser_init_common(struct bhnd_nvram *sc,
+		    struct bhnd_nvram_io *io, bhnd_nvram_data_class_t *cls);
 static int	 bhnd_nvram_sort_idx(void *ctx, const void *lhs,
 		     const void *rhs);
 static int	 bhnd_nvram_generate_index(struct bhnd_nvram *sc);
 static void	*bhnd_nvram_index_lookup(struct bhnd_nvram *sc,
 		     const char *name);
 
-#define	NVRAM_LOG(sc, fmt, ...)	do {			\
-	if (sc->owner != NULL)					\
-		device_printf(sc->owner, fmt, ##__VA_ARGS__);	\
-	else							\
-		printf("bhnd_nvram: " fmt, ##__VA_ARGS__);	\
-} while (0)
+#define	NVRAM_LOG(sc, fmt, ...)	\
+	BHND_NV_DEVLOG(sc->owner, fmt, ##__VA_ARGS__)
+
+
+#ifdef _KERNEL
 
 /**
- * Identify the NVRAM format at @p offset within @p r, verify the
+ * Identify the NVRAM format at @p offset within @p io, verify the
  * CRC (if applicable), and allocate a local shadow copy of the NVRAM data.
  * 
  * After initialization, no reference to @p io will be held by the
@@ -87,11 +96,51 @@ int
 bhnd_nvram_parser_init(struct bhnd_nvram *sc, device_t owner,
     struct bhnd_nvram_io *io, bhnd_nvram_data_class_t *cls)
 {
+	sc->owner = owner;
+	return (bhnd_nvram_parser_init_common(sc, io, cls));
+}
+
+#else /* !_KERNEL */
+
+/**
+ * Identify the NVRAM format at @p offset within @p io, verify the
+ * CRC (if applicable), and allocate a local shadow copy of the NVRAM data.
+ * 
+ * After initialization, no reference to @p io will be held by the
+ * NVRAM parser, and @p io may be safely deallocated.
+ * 
+ * @param[out] sc The NVRAM parser state to be initialized.
+ * @param io An I/O context mapping the NVRAM data to be parsed.
+ * @param cls An NVRAM data class capable of parsing @p io.
+ * 
+ * @retval 0 success
+ * @retval ENOMEM If internal allocation of NVRAM state fails.
+ * @retval EINVAL If @p io parsing fails.
+ */
+int
+bhnd_nvram_parser_init(struct bhnd_nvram *sc, struct bhnd_nvram_io *io,
+    bhnd_nvram_data_class_t *cls)
+{
+	return (bhnd_nvram_parser_init_common(sc, io, cls));
+}
+
+#endif /* _KERNEL */
+
+	
+/*
+ * Initialization common to kernel and non-kernel bhnd_nvram_parser_init()
+ * implementations
+ */
+static int
+bhnd_nvram_parser_init_common(struct bhnd_nvram *sc, struct bhnd_nvram_io *io,
+    bhnd_nvram_data_class_t *cls)
+{
 	int error;
 
 	/* Initialize NVRAM state */
-	memset(sc, 0, sizeof(*sc));
-	sc->owner = owner;
+	sc->idx = NULL;
+	sc->nv = NULL;
+	sc->pending = NULL;
 	LIST_INIT(&sc->devpaths);
 
 	/* Parse the input data */
@@ -114,7 +163,6 @@ cleanup:
 	return (error);
 }
 
-
 /**
  * Release all resources held by @p sc.
  * 
@@ -127,15 +175,15 @@ bhnd_nvram_parser_fini(struct bhnd_nvram *sc)
 	struct bhnd_nvram_devpath	*dpath, *dnext;
 
         LIST_FOREACH_SAFE(dpath, &sc->devpaths, dp_link, dnext) {
-		free(dpath->path, M_BHND_NVRAM);
-                free(dpath, M_BHND_NVRAM);
+		bhnd_nv_free(dpath->path);
+                bhnd_nv_free(dpath);
         }
 
 	if (sc->pending != NULL)
 		nvlist_destroy(sc->pending);
 
 	if (sc->idx != NULL)
-		free(sc->idx, M_BHND_NVRAM);
+		bhnd_nv_free(sc->idx);
 
 	if (sc->nv != NULL)
 		bhnd_nvram_data_free(sc->nv);
@@ -191,7 +239,7 @@ bhnd_nvram_parser_getvar(struct bhnd_nvram *sc, const char *name, void *buf,
 		return (bhnd_nvram_coerce_value(buf, len, type, inp, ilen,
 		    itype, NULL));
 	} else if (nvlist_exists(sc->pending, name)) {
-		panic("invalid value type for pending change %s", name);
+		BHND_NV_PANIC("invalid value type for pending change %s", name);
 	}
 
 	/* Fetch variable from parsed NVRAM data. */
@@ -342,12 +390,12 @@ bhnd_nvram_generate_index(struct bhnd_nvram *sc)
 		}
 
 		/* Register path alias */
-		devpath = malloc(sizeof(*devpath), M_BHND_NVRAM, M_NOWAIT);
+		devpath = bhnd_nv_malloc(sizeof(*devpath));
 		if (devpath == NULL)
 			return (ENOMEM);
 
 		devpath->index = index;
-		devpath->path = strndup(path, path_len, M_BHND_NVRAM);
+		devpath->path = bhnd_nv_strndup(path, path_len);
 		LIST_INSERT_HEAD(&sc->devpaths, devpath, dp_link);
 	}
 
@@ -363,7 +411,7 @@ bhnd_nvram_generate_index(struct bhnd_nvram *sc)
 	/* Allocate and populate variable index */
 	idx_bytes = sizeof(struct bhnd_nvram_idx) +
 	    (sizeof(struct bhnd_nvram_idx_entry) * num_records);
-	sc->idx = malloc(idx_bytes, M_BHND_NVRAM, M_NOWAIT);
+	sc->idx = bhnd_nv_malloc(idx_bytes);
 	if (sc->idx == NULL) {
 		NVRAM_LOG(sc, "error allocating %zu byte index\n", idx_bytes);
 		goto bad_index;
@@ -371,10 +419,12 @@ bhnd_nvram_generate_index(struct bhnd_nvram *sc)
 
 	sc->idx->num_entries = num_records;
 
+#ifdef _KERNEL
 	if (bootverbose) {
 		NVRAM_LOG(sc, "allocated %zu byte index for %zu variables\n",
 		    idx_bytes, num_records);
 	}
+#endif /* _KERNEL */
 
 	cookiep = NULL;
 	for (size_t i = 0; i < sc->idx->num_entries; i++) {
@@ -405,7 +455,7 @@ bad_index:
 	/* Fall back on non-indexed access */
 	NVRAM_LOG(sc, "reverting to non-indexed variable lookup\n");
 	if (sc->idx != NULL) {
-		free(sc->idx, M_BHND_NVRAM);
+		bhnd_nv_free(sc->idx);
 		sc->idx = NULL;
 	}
 
@@ -434,7 +484,8 @@ bhnd_nvram_index_lookup(struct bhnd_nvram *sc, const char *name)
 	/*
 	 * Locate the requested variable using a binary search.
 	 */
-	KASSERT(sc->idx->num_entries > 0, ("empty array causes underflow"));
+	BHND_NV_ASSERT(sc->idx->num_entries > 0,
+	    ("empty array causes underflow"));
 	min = 0;
 	max = sc->idx->num_entries - 1;
 

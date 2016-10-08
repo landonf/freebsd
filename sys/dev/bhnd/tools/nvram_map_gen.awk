@@ -351,7 +351,6 @@ END {
 
 	# Emit all variable definitions
 	if (OUT_T == OUT_T_DATA) {
-		emit("#include <dev/bhnd/nvram/bhnd_nvram_common.h>\n")
 		emit("static const struct bhnd_nvram_vardefn "\
 		    "bhnd_nvram_vardefs[] = {\n")
 		output_depth++

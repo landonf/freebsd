@@ -30,15 +30,26 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include <sys/ctype.h>
-
 #include <sys/param.h>
+
+#ifdef _KERNEL
+
+#include <sys/ctype.h>
 #include <sys/limits.h>
 #include <sys/malloc.h>
 #include <sys/kernel.h>
 #include <sys/systm.h>
 
 #include <machine/_inttypes.h>
+
+#else /* !_KERNEL */
+
+#include <ctype.h>
+#include <string.h>
+
+#endif /* _KERNEL */
+
+#include "bhnd_nvramvar.h"
 
 #include "bhnd_nvram_common.h"
 
@@ -49,7 +60,9 @@ __FBSDID("$FreeBSD$");
  * lookup.
  */
 
+#ifdef _KERNEL
 MALLOC_DEFINE(M_BHND_NVRAM, "bhnd_nvram", "bhnd nvram data");
+#endif
 
 /*
  * CRC-8 lookup table used to checksum SPROM and NVRAM data via
@@ -116,7 +129,7 @@ bhnd_nvram_type_width(bhnd_nvram_type type)
 	}
 
 	/* Quiesce gcc4.2 */
-	panic("bhnd nvram type %u unknown", type);
+	BHND_NV_PANIC("bhnd nvram type %u unknown", type);
 }
 
 /**
@@ -187,7 +200,7 @@ bhnd_nvram_validate_name(const char *name, size_t name_len)
 
 	/* Disallow path alias prefixes ([0-9]+:.*) */
 	if (limit >= 2 && isdigit(*name)) {
-		for (const char *p = name; p - name < limit; p++) {
+		for (const char *p = name; (size_t)(p - name) < limit; p++) {
 			if (isdigit(*p))
 				continue;
 			else if (*p == ':')
@@ -198,7 +211,7 @@ bhnd_nvram_validate_name(const char *name, size_t name_len)
 	}
 
 	/* Scan for special characters */
-	for (const char *p = name; p - name < limit; p++) {
+	for (const char *p = name; (size_t)(p - name) < limit; p++) {
 		switch (*p) {
 		case '/':	/* path delimiter */
 		case '=':	/* key=value delimiter */

@@ -31,13 +31,26 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
+#include <sys/endian.h>
+
+#ifdef _KERNEL
+
 #include <sys/bus.h>
 #include <sys/ctype.h>
-#include <sys/endian.h>
 #include <sys/malloc.h>
 #include <sys/systm.h>
 
-#include <machine/bus.h>
+#else /* !_KERNEL */
+
+#include <ctype.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#endif /* _KERNEL */
+
+#include "bhnd_nvramvar.h"
 
 #include "bhnd_nvram_common.h"
 
@@ -126,7 +139,7 @@ bhnd_nvram_bcm_probe(struct bhnd_nvram_io *io)
 	if (le32toh(hdr.magic) != BCM_NVRAM_MAGIC)
 		return (ENXIO);
 
-	return (BUS_PROBE_DEFAULT);
+	return (BHND_NVRAM_DATA_PROBE_DEFAULT);
 }
 
 /**
@@ -198,7 +211,7 @@ bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 #define	BCM_READ_HDR_VAR(_name, _dest, _swap) do {		\
 	struct bhnd_nvram_bcmdata *data;				\
 	data = bhnd_nvram_bcm_gethdrvar(bcm, _name ##_VAR);		\
-	KASSERT(data != NULL,						\
+	BHND_NV_ASSERT(data != NULL,						\
 	    ("no such header variable: " __STRING(_name)));		\
 									\
 									\
@@ -305,7 +318,7 @@ bhnd_nvram_bcm_new(struct bhnd_nvram_data **nv, struct bhnd_nvram_io *io)
 	int			 error;
 
 	/* Allocate and initialize the BCM data instance */
-	bcm = malloc(sizeof(*bcm), M_BHND_NVRAM, M_NOWAIT|M_ZERO);
+	bcm = bhnd_nv_calloc(1, sizeof(*bcm));
 	if (bcm == NULL)
 		return (ENOMEM);
 
@@ -329,7 +342,7 @@ failed:
 	if (bcm->data != NULL)
 		bhnd_nvram_io_free(bcm->data);
 
-	free(bcm, M_BHND_NVRAM);
+	bhnd_nv_free(bcm);
 
 	return (error);
 }
@@ -340,7 +353,7 @@ bhnd_nvram_bcm_free(struct bhnd_nvram_data *nv)
 	struct bhnd_nvram_bcm *bcm = (struct bhnd_nvram_bcm *)nv;
 
 	bhnd_nvram_io_free(bcm->data);
-	free(bcm, M_BHND_NVRAM);
+	bhnd_nv_free(bcm);
 }
 
 static int
@@ -496,7 +509,7 @@ bhnd_nvram_bcm_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 	nbytes++;
 
 	/* Provide actual size */
-	KASSERT(req_size == nbytes, ("calculated size incorrect"));
+	BHND_NV_ASSERT(req_size == nbytes, ("calculated size incorrect"));
 	*len = nbytes;
 	if (nbytes > limit && buf != NULL)
 		return (ENOMEM);
@@ -587,7 +600,7 @@ bhnd_nvram_bcm_next(struct bhnd_nvram_data *nv, void **cookiep)
 	}
 
 	/* On EOF, try switching to header variables */
-	if (envp - basep == io_size || *envp == '\0') {
+	if ((size_t)(envp - basep) == io_size || *envp == '\0') {
 		/* Find first valid header variable */
 		for (size_t i = 0; i < nitems(bcm->hvars); i++) {
 			if (bcm->hvars[i].mirrored)
@@ -641,7 +654,8 @@ bhnd_nvram_bcm_getvar_ptr(struct bhnd_nvram_data *nv, void *cookiep,
 
 	/* Handle header variables */
 	if ((hvar = bhnd_nvram_bcm_to_hdrvar(bcm, cookiep)) != NULL) {
-		KASSERT(hvar->size % bhnd_nvram_type_width(hvar->type) == 0,
+		BHND_NV_ASSERT(
+		    hvar->size % bhnd_nvram_type_width(hvar->type) == 0,
 		    ("length is not aligned to type width"));
 
 		*type = hvar->type;
@@ -699,7 +713,7 @@ bhnd_nvram_bcm_gethdrvar(struct bhnd_nvram_bcm *bcm, const char *name)
 static struct bhnd_nvram_bcmdata *
 bhnd_nvram_bcm_to_hdrvar(struct bhnd_nvram_bcm *bcm, void *cookiep)
 {
-#ifdef INVARIANTS                                                                                                                                                                                                                                
+#ifdef BHND_NVRAM_INVARIANTS                                                                                                                                                                                                                                
 	uintptr_t base, ptr;
 #endif
 
@@ -714,11 +728,11 @@ bhnd_nvram_bcm_to_hdrvar(struct bhnd_nvram_bcm *bcm, void *cookiep)
 	if (cookiep > (void *)&bcm->hvars[nitems(bcm->hvars)-1])
 		return (NULL);
 
-#ifdef INVARIANTS
+#ifdef BHND_NVRAM_INVARIANTS
 	base = (uintptr_t)bcm->hvars;
 	ptr = (uintptr_t)cookiep;
 
-	KASSERT((ptr - base) % sizeof(bcm->hvars[0]) == 0,
+	BHND_NV_ASSERT((ptr - base) % sizeof(bcm->hvars[0]) == 0,
 	    ("misaligned hvar pointer %p/%p", cookiep, bcm->hvars));
 #endif /* INVARIANTS */
 
@@ -732,7 +746,7 @@ static size_t
 bhnd_nvram_bcm_hdrvar_index(struct bhnd_nvram_bcm *bcm,
     struct bhnd_nvram_bcmdata *hdrvar)
 {
-	KASSERT(bhnd_nvram_bcm_to_hdrvar(bcm, (void *)hdrvar) != NULL,
+	BHND_NV_ASSERT(bhnd_nvram_bcm_to_hdrvar(bcm, (void *)hdrvar) != NULL,
 	    ("%p is not a valid hdrvar reference", hdrvar));
 
 	return (hdrvar - &bcm->hvars[0]);

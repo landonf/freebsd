@@ -30,8 +30,24 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+
+#ifdef _KERNEL
+
 #include <sys/param.h>
 #include <sys/systm.h>
+
+#include <machine/_inttypes.h>
+
+#else /* !_KERNEL */
+
+#include <errno.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+#endif /* _KERNEL */
+
+#include "bhnd_nvramvar.h"
 
 #include "bhnd_nvram_io.h"
 
@@ -51,8 +67,7 @@ bhnd_nvram_data_class_desc(bhnd_nvram_data_class_t *cls)
 
 /**
  * Probe to see if this NVRAM data class class supports the data mapped by the
- * given I/O context, returning a standard newbus device probe result
- * (see BUS_PROBE_*).
+ * given I/O context, returning a BHND_NVRAM_DATA_PROBE probe result.
  *
  * @param cls The NVRAM class.
  * @param io An I/O context mapping the NVRAM data.

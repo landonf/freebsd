@@ -30,16 +30,18 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#ifdef _KERNEL
 #include <sys/param.h>
-#include <sys/bus.h>
 #include <sys/malloc.h>
-#include <sys/rman.h>
 #include <sys/systm.h>
+#else /* !_KERNEL */
+#include <errno.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#endif /* _KERNEL */
 
-#include <machine/bus.h>
-
-#include <dev/bhnd/bhnd.h>
-
+#include "bhnd_nvramvar.h"
 #include "bhnd_nvram_common.h"
 
 #include "bhnd_nvram_io.h"
@@ -103,7 +105,8 @@ bhnd_nvram_iobuf_empty(size_t size, size_t capacity)
 	}
 
 	/* Allocate I/O context */
-	if ((iobuf = malloc(iosz, M_BHND_NVRAM, M_NOWAIT)) == NULL)
+	iobuf = bhnd_nv_malloc(iosz);
+	if (iobuf == NULL)
 		return (NULL);
 
 	iobuf->io.iops = &bhnd_nvram_iobuf_ops;
@@ -116,11 +119,11 @@ bhnd_nvram_iobuf_empty(size_t size, size_t capacity)
 	if (inline_alloc)
 		iobuf->buf = &iobuf->data;
 	else
-		iobuf->buf = malloc(iobuf->capacity, M_BHND_NVRAM, M_NOWAIT);
+		iobuf->buf = bhnd_nv_malloc(iobuf->capacity);
 
 
 	if (iobuf->buf == NULL) {
-		free(iobuf, M_BHND_NVRAM);
+		bhnd_nv_free(iobuf);
 		return (NULL);
 	}
 
@@ -225,9 +228,9 @@ bhnd_nvram_iobuf_free(struct bhnd_nvram_io *io)
 
 	/* Free the backing buffer if it wasn't allocated inline */
 	if (iobuf->buf != &iobuf->data)
-		free(iobuf->buf, M_BHND_NVRAM);
+		bhnd_nv_free(iobuf->buf);
 
-	free(iobuf, M_BHND_NVRAM);
+	bhnd_nv_free(iobuf);
 }
 
 static size_t
