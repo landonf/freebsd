@@ -101,7 +101,7 @@ bhnd_nvram_btxt_probe(struct bhnd_nvram_io *io)
 	/* Don't match on non-ASCII data */
 	for (size_t i = 0; i < nitems(ident.btxt); i++) {
 		c = ident.btxt[i];
-		if (!isprint(c) && !isspace(c))
+		if (!isprint(c))
 			return (ENXIO);
 	}
 
