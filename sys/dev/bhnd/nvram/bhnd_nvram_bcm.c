@@ -694,6 +694,10 @@ bhnd_nvram_bcm_gethdrvar(struct bhnd_nvram_bcm *bcm, const char *name)
 static struct bhnd_nvram_bcmdata *
 bhnd_nvram_bcm_to_hdrvar(struct bhnd_nvram_bcm *bcm, void *cookiep)
 {
+#ifdef INVARIANTS                                                                                                                                                                                                                                
+	uintptr_t base, ptr;
+#endif
+
 	/* If the cookie falls within the hvar array, it's a
 	 * header variable cookie */
 	if (nitems(bcm->hvars) == 0)
@@ -705,8 +709,14 @@ bhnd_nvram_bcm_to_hdrvar(struct bhnd_nvram_bcm *bcm, void *cookiep)
 	if (cookiep > (void *)&bcm->hvars[nitems(bcm->hvars)-1])
 		return (NULL);
 
-	KASSERT((uintptr_t)cookiep % sizeof(bcm->hvars[0]) == 0,
-	     ("misaligned hvar pointer"));
+#ifdef INVARIANTS
+	base = (uintptr_t)bcm->hvars;
+	ptr = (uintptr_t)cookiep;
+
+	KASSERT((ptr - base) % sizeof(bcm->hvars[0]) == 0,
+	    ("misaligned hvar pointer %p/%p", cookiep, bcm->hvars));
+#endif /* INVARIANTS */
+
 	return ((struct bhnd_nvram_bcmdata *)cookiep);
 }
 
