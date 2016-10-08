@@ -554,17 +554,11 @@ bhnd_nvram_bcm_next(struct bhnd_nvram_data *nv, void **cookiep)
 
 	/* Handle header variable iteration */
 	hvar = bhnd_nvram_bcm_to_hdrvar(bcm, *cookiep);
-	if (hvar != NULL || *cookiep == NULL) {
+	if (hvar != NULL) {
 		size_t idx;
 
-		/* Determine the current position in the hvar array */
-		if (hvar == NULL) {
-			/* First iteration */
-			idx = 0;
-		} else {
-			/* Advance to next entry, if any */
-			idx = bhnd_nvram_bcm_hdrvar_index(bcm, hvar) + 1;
-		}
+		/* Advance to next entry, if any */
+		idx = bhnd_nvram_bcm_hdrvar_index(bcm, hvar) + 1;
 
 		/* Find the next header-defined variable that isn't
 		 * defined in the NVRAM data, start iteration there */
@@ -576,9 +570,9 @@ bhnd_nvram_bcm_next(struct bhnd_nvram_data *nv, void **cookiep)
 			return (bcm->hvars[i].name);
 		}
 
-		/* No further header-defined variables; fall-through
-		 * to the initial NVRAM data iteration path below */
-		*cookiep = NULL;
+		/* No further header-defined variables; iteration
+		 * complete */
+		return (NULL);
 	}
 
 	/* Handle standard NVRAM data iteration */
@@ -592,9 +586,20 @@ bhnd_nvram_bcm_next(struct bhnd_nvram_data *nv, void **cookiep)
 		envp += strlen(envp) + 1;	/* value + '\0' */
 	}
 
-	/* EOF? */
-	if (envp - basep == io_size || *envp == '\0')
+	/* On EOF, try switching to header variables */
+	if (envp - basep == io_size || *envp == '\0') {
+		/* Find first valid header variable */
+		for (size_t i = 0; i < nitems(bcm->hvars); i++) {
+			if (bcm->hvars[i].mirrored)
+				continue;
+			
+			*cookiep = &bcm->hvars[i];
+			return (bcm->hvars[i].name);
+		}
+
+		/* No header variables */
 		return (NULL);
+	}
 
 	*cookiep = (void *)(uintptr_t)envp;
 	return (envp);
