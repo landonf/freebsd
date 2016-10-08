@@ -48,6 +48,7 @@ struct bhnd_nvram_data;
 	extern 	struct bhnd_nvram_data_class bhnd_nvram_ ## _n ## _class
 
 BHND_NVRAM_DATA_CLASS_DECL(bcm);
+BHND_NVRAM_DATA_CLASS_DECL(bcmraw);
 BHND_NVRAM_DATA_CLASS_DECL(tlv);
 BHND_NVRAM_DATA_CLASS_DECL(btxt);
 BHND_NVRAM_DATA_CLASS_DECL(sprom);
