@@ -435,6 +435,104 @@ bhnd_nvram_sprom_find(struct bhnd_nvram_data *nv, const char *name)
 	return (SPROM_NVRAM_TO_COOKIE(var));
 }
 
+/**
+ * Read the value from @p sp_offset, apply any necessary mask/shift, widen
+ * to the appropriate 32-bit type, and apply as a bitwise OR to @p value.
+ * 
+ * @param sp The SPROM data instance.
+ * @param var_defn The variable definition
+ * @param sp_offset The offset to be read
+ * @param value The read destination; the offset's value will be OR'd with the
+ * current contents of @p value.
+ */
+static int
+bhnd_nvram_sprom_read_offset(struct bhnd_nvram_sprom *sp,
+    const struct bhnd_nvram_vardefn *var,
+    const struct bhnd_sprom_offset *sp_offset,
+    union bhnd_nvram_sprom_intv *value)
+{
+	size_t	sp_width;
+	int	error;
+
+	union {
+		uint8_t		u8;
+		uint16_t	u16;
+		uint32_t	u32;
+		int8_t		s8;
+		int16_t		s16;
+		int32_t		s32;
+		char		ch;
+	} sp_value;
+
+	/* Determine type width */
+	sp_width = bhnd_nvram_type_width(sp_offset->type);
+	if (sp_width == 0) {
+		/* Variable-width types are unsupported */
+		SPROM_NVLOG("invalid %s SPROM offset type %d\n", var->name,
+		    sp_offset->type);
+		return (EFTYPE);
+	}
+
+	/* Perform read */
+	error = bhnd_nvram_io_read(sp->data, sp_offset->offset, &sp_value,
+	    sp_width);
+	if (error) {
+		SPROM_NVLOG("error reading %s SPROM offset %#hx: %d\n",
+		    var->name, sp_offset->offset, error);
+		return (EFTYPE);
+	}
+
+#define	NV_PARSE_INT(_type, _src, _dest, _swap)	do {			\
+	/* Swap to host byte order */					\
+	sp_value. _src = (_type) _swap(sp_value. _src);			\
+									\
+	/* Mask and shift the value */					\
+	sp_value. _src &= sp_offset->mask;				\
+	if (sp_offset->shift > 0) {					\
+		sp_value. _src >>= sp_offset->shift;			\
+	} else if (sp_offset->shift < 0) {				\
+		sp_value. _src <<= -sp_offset->shift;			\
+	}								\
+									\
+	/* Emit output, widening to 32-bit representation  */		\
+	value-> _dest |= sp_value. _src;				\
+} while(0)
+
+	/* Apply mask/shift and widen to a common 32bit representation */
+	switch (sp_offset->type) {
+	case BHND_NVRAM_TYPE_UINT8:
+		NV_PARSE_INT(uint8_t,	u8,	u32,	);
+		break;
+	case BHND_NVRAM_TYPE_UINT16:
+		NV_PARSE_INT(uint16_t,	u16,	u32,	le16toh);
+		break;
+	case BHND_NVRAM_TYPE_UINT32:
+		NV_PARSE_INT(uint32_t,	u32,	u32,	le32toh);
+		break;
+	case BHND_NVRAM_TYPE_INT8:
+		NV_PARSE_INT(int8_t,	s8,	s32,	);
+		break;
+	case BHND_NVRAM_TYPE_INT16:
+		NV_PARSE_INT(int16_t,	s16,	s32,	le16toh);
+		break;
+	case BHND_NVRAM_TYPE_INT32:
+		NV_PARSE_INT(int32_t,	s32,	s32,	le32toh);
+		break;
+	case BHND_NVRAM_TYPE_CHAR:
+		NV_PARSE_INT(char,	ch,	s32,	);
+		break;
+
+	case BHND_NVRAM_TYPE_CSTR:
+		/* fallthrough (unused by SPROM) */
+	default:
+		SPROM_NVLOG("unhandled %s offset type: %d\n", var->name,
+		    sp_offset->type);
+		return (EFTYPE);
+	}
+
+	return (0);
+}
+
 static int
 bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
     size_t *len, bhnd_nvram_type otype)
@@ -501,15 +599,6 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 		bhnd_nvram_type			 intv_type;
 		size_t				 nbyte;
 		void				*ptr;
-		union {
-			uint8_t		u8;
-			uint16_t	u16;
-			uint32_t	u32;
-			int8_t		s8;
-			int16_t		s16;
-			int32_t		s32;
-			char		ch;
-		} offv;
 
 		off = &sp_def->offsets[i];
 
@@ -518,55 +607,11 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 		BHND_NV_ASSERT(ipos < nelem,
 		    ("output positioned past last element"));
 
-#define	NV_READ_INT(_src, _dst, _swap)	do {				\
-	error = bhnd_nvram_io_read(sp->data, off->offset, &offv. _src,	\
-	    sizeof(offv. _src));					\
-	if (error) {							\
-		SPROM_NVLOG("error reading SPROM offset %#hx: %d\n",	\
-		    off->offset, error);				\
-		return (EFTYPE);					\
-	}								\
-									\
-	offv. _src &= off->mask;					\
-	if (off->shift > 0) {						\
-		offv. _src >>= off->shift;				\
-	} else if (off->shift < 0) {					\
-		offv. _src <<= -off->shift;				\
-	}								\
-	intv. _dst |= _swap(offv. _src);				\
-} while(0)
-	
-		/* Read the value, widening to a common 32bit representation */
-		switch (off->type) {
-		case BHND_NVRAM_TYPE_UINT8:
-			NV_READ_INT(u8, u32,);
-			break;
-		case BHND_NVRAM_TYPE_UINT16:
-			NV_READ_INT(u16, u32, le16toh);
-			break;
-		case BHND_NVRAM_TYPE_UINT32:
-			NV_READ_INT(u32, u32, le32toh);
-			break;
-		case BHND_NVRAM_TYPE_INT8:
-			NV_READ_INT(s8, s32,);
-			break;
-		case BHND_NVRAM_TYPE_INT16:
-			NV_READ_INT(s16, s32, le16toh);
-			break;
-		case BHND_NVRAM_TYPE_INT32:
-			NV_READ_INT(s32, s32, le32toh);
-			break;
-		case BHND_NVRAM_TYPE_CHAR:
-			NV_READ_INT(ch, s32,);
-			break;
+		/* Read the offset value, OR'ing with the current
+		 * value of intv */
+		if ((error = bhnd_nvram_sprom_read_offset(sp, var, off, &intv)))
+			return (error);
 
-		case BHND_NVRAM_TYPE_CSTR:
-			/* fallthrough (unused by SPROM) */
-		default:
-			SPROM_NVLOG("unhandled offset type: %d\n", off->type);
-			return (EFTYPE);
-		}
-		
 		/* If IGNALL1, record whether value has all bits set. */
 		if (var->flags & BHND_NVRAM_VF_IGNALL1) {
 			uint32_t all1;
@@ -581,13 +626,14 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 				nelem_all1++;
 		}
 
-		/* Skip writing to inp if additional continuations remain */
+		/* Skip writing to inp if additional offsets are required
+		 * to fully populate intv */
 		if (off->cont)
 			continue;
 
-		/* Use standard coercion support to perform overflow-checked
-		 * coercion from parsed uint32/int32 offset value, to the
-		 * actual variable type */
+		/* We use bhnd_nvram_coerce_value() to perform overflow-checked
+		 * coercion from the widened uint32/int32 intv value to the
+		 * requested output type */
 		if (BHND_NVRAM_SIGNED_TYPE(var->type))
 			intv_type = BHND_NVRAM_TYPE_INT32;
 		else
