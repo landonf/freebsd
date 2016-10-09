@@ -56,6 +56,7 @@ u32 boardflags3 {
 
 # Board serial number, independent of mac addr
 u16 boardnum {
+	sfmt		decimal
 	srom 1-2	0x4C
 	srom 3		0x4E
 	srom 4		0x50
@@ -255,6 +256,7 @@ u8 aga2 {
 
 # Default country code (sromrev == 1)
 u8 cc {
+	sfmt		decimal
 	srom 1		0x5C (&0xF)
 }
 
@@ -400,6 +402,7 @@ u8 tssiposslope5g {
 u8[2] leddc {
 	sfmt	led_dc
 	all1	ignore
+
 	srom 3		0x7C
 	srom 4		0x5A
 	srom 5-7	0x5A
@@ -629,17 +632,17 @@ u8 paparambwver {
 # PA parameters: 8 (sromrev == 1)
 # or 9 (sromrev > 1) bytes
 # 
-u16 pa0b0 {
+i16 pa0b0 {
 	sfmt	decimal
 	srom 1-3	0x5E
 	srom 8-10	0xC2
 }
-u16 pa0b1 {
+i16 pa0b1 {
 	sfmt	decimal
 	srom 1-3	0x60
 	srom 8-10	0xC4
 }
-u16 pa0b2 {
+i16 pa0b2 {
 	sfmt	decimal
 	srom 1-3	0x62
 	srom 8-10	0xC6
@@ -655,52 +658,53 @@ u8 pa0maxpwr {
 	srom 8-10	0xC1
 }
 u8 opo {
+	sfmt	decimal
 	srom 2-3	0x79
 	srom 8-10	0x143
 }
 
 # 5G PA params
-u16 pa1b0 {
+i16 pa1b0 {
 	sfmt	decimal
 	srom 1-3	0x6A
 	srom 8-10	0xCC
 }
-u16 pa1b1 {
+i16 pa1b1 {
 	sfmt	decimal
 	srom 1-3	0x6C
 	srom 8-10	0xCE
 }
-u16 pa1b2 {
+i16 pa1b2 {
 	sfmt	decimal
 	srom 1-3	0x6E
 	srom 8-10	0xD0
 }
-u16 pa1lob0 {
+i16 pa1lob0 {
 	sfmt	decimal
 	srom 2-3	0x3C
 	srom 8-10	0xD2
 }
-u16 pa1lob1 {
+i16 pa1lob1 {
 	sfmt	decimal
 	srom 2-3	0x3E
 	srom 8-10	0xD4
 }
-u16 pa1lob2 {
+i16 pa1lob2 {
 	sfmt	decimal
 	srom 2-3	0x40
 	srom 8-10	0xD6
 }
-u16 pa1hib0 {
+i16 pa1hib0 {
 	sfmt	decimal
 	srom 2-3	0x42
 	srom 8-10	0xD8
 }
-u16 pa1hib1 {
+i16 pa1hib1 {
 	sfmt	decimal
 	srom 2-3	0x44
 	srom 8-10	0xDA
 }
-u16 pa1hib2 {
+i16 pa1hib2 {
 	sfmt	decimal
 	srom 2-3	0x46
 	srom 8-10	0xDC
@@ -939,6 +943,7 @@ u16 stbcpo {
 }
 
 u8 regrev {
+	sfmt		decimal
 	srom 3		0x78
 	srom 4		0x55
 	srom 5-7	0x47
@@ -1339,7 +1344,7 @@ struct phy_chains[] {
 		srom 8-10	u8 0x9
 		srom >= 11	u8 0xD, u8 0xC, u8 0xF, u8 0xE
 	}
-	u16[3] pa2ga {
+	i16[3] pa2ga {
 		srom >= 11	0x2
 	}
 	u8 maxp2ga {
@@ -1347,7 +1352,7 @@ struct phy_chains[] {
 		srom 8-10	0x1
 		srom >= 11	0x1
 	}
-	u16[12] pa5ga {
+	i16[12] pa5ga {
 		srom >= 11	0x10
 	}	
 
