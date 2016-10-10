@@ -283,11 +283,6 @@ char[2] ccode {
 	srom >= 11	char 0x97, char 0x96
 }
 
-# Front-end switch control
-u8 cctl {
-	srom 2		0x78
-}
-
 # 2 byte; txchain, rxchain
 u8 txchain {
 	all1	ignore
