@@ -377,10 +377,7 @@ static const void *
 bhnd_nvram_bcmraw_getvar_ptr(struct bhnd_nvram_data *nv, void *cookiep,
     size_t *len, bhnd_nvram_type *type)
 {
-	struct bhnd_nvram_bcmraw	*bcm;
-	const char			*envp;
-
-	bcm = (struct bhnd_nvram_bcmraw *)nv;
+	const char *envp;
 
 	/* Cookie points to key\0value\0 -- get the value address */
 	envp = cookiep;
@@ -394,10 +391,6 @@ bhnd_nvram_bcmraw_getvar_ptr(struct bhnd_nvram_data *nv, void *cookiep,
 static const char *
 bhnd_nvram_bcmraw_getvar_name(struct bhnd_nvram_data *nv, void *cookiep)
 {
-	struct bhnd_nvram_bcmraw	*bcm;
-
-	bcm = (struct bhnd_nvram_bcmraw *)nv;
-
 	/* Cookie points to key\0value\0 */
 	return (cookiep);
 }
