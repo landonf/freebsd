@@ -238,7 +238,7 @@ bhnd_nvram_parse_field(const char **inp, size_t ilen, char delim)
 
 /**
  * Determine whether @p inp is in octet string format, consisting of a
- * maximum of two hex characters separated with ':' or '-'.
+ * fields of two hex characters, separated with ':' or '-' delimiters.
  * 
  * This may be used to identify MAC address octet strings
  * (BHND_NVRAM_SFMT_MACADDR).
@@ -254,7 +254,13 @@ bhnd_nvram_parse_field(const char **inp, size_t ilen, char delim)
 static bool
 bhnd_nvram_ident_octet_string(const char *inp, size_t ilen, char *delim)
 {
-	size_t elem_count;
+	size_t	elem_count;
+	size_t	max_elem_count, min_elem_count;
+
+	/* Require exactly two digits. If we relax this, there is room
+	 * for ambiguity with signed integers and the '-' delimiter */
+	min_elem_count = 2;
+	max_elem_count = 2;
 
 	/* Identify the delimiter used. The standard delimiter for MAC
 	 * addresses is ':', but some earlier NVRAM formats may use '-' */
@@ -266,12 +272,18 @@ bhnd_nvram_ident_octet_string(const char *inp, size_t ilen, char *delim)
 			return (false);
 
 		/* Look for the delimiter */
-		if ((loc = memchr(inp, *d, ilen)) != NULL) {
-			/* Delimiter found */
-			*delim = *loc;
-			break;
-		}
+		if ((loc = memchr(inp, *d, ilen)) == NULL)
+			continue;
+
+		/* Delimiter found */
+		*delim = *loc;
+		break;
 	}
+
+	/* To disambiguate from signed integers, if the delimiter is "-",
+	 * the octets must be exactly 2 chars each */
+	if (*delim == '-')
+		min_elem_count = 2;
 
 	/* String must be composed of individual octets (zero or more hex
 	 * digits) separated by our delimiter. */
@@ -289,12 +301,16 @@ bhnd_nvram_ident_octet_string(const char *inp, size_t ilen, char *delim)
 			if (*p != *delim)
 				return (false);
 
+			/* Must have parsed at least min_elem_count digits */
+			if (elem_count < min_elem_count)
+				return (false);
+
 			/* Reset element count */
 			elem_count = 0;
 			break;
 		default:
-			/* More than two hex digits? */
-			if (elem_count >= 2)
+			/* More than maximum number of hex digits? */
+			if (elem_count >= max_elem_count)
 				return (false);
 
 			/* Octet values must be hex digits */
@@ -429,7 +445,7 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 		 * data type */
 		if (field_len == 0) {
 			NVRAM_LOG("error: cannot parse empty string "
-			    "in '%s'\n", cstr);
+			    "in '%s' at offset %zu\n", cstr, (size_t)(p-cstr));
 			error = EFTYPE;
 			goto finished;
 		}
