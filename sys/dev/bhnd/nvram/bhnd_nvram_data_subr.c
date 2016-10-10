@@ -445,7 +445,7 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 		goto finished;						\
 	}								\
 									\
-	_dest = _strto(p, &endp, base);					\
+	_dest = (_ctype) _strto(p, &endp, base);			\
 	if (endp == p || !(*endp == '\0' || *endp == delim)) {		\
 		error = ERANGE;						\
 		goto finished;						\
@@ -513,7 +513,13 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 			p++;
 	}
 
-	error = 0;
+	/* Provide the actual written length */
+	*olen = nbytes;
+	if (limit < *olen && outp != NULL) {
+		error = ENOMEM;
+	} else {
+		error = 0;
+	}
 
 finished:
 	if (free_cstr_buf)
