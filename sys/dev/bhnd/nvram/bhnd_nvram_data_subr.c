@@ -237,9 +237,11 @@ bhnd_nvram_parse_field(const char **inp, size_t ilen, char delim)
 
 
 /**
- * Determine whether @p inp is in "octet string" format (i.e.
- * BHND_NVRAM_SFMT_MACADDR), consisting of hex octets separated with ':' or
- * '-'.
+ * Determine whether @p inp is in octet string format, consisting of a
+ * maximum of two hex characters separated with ':' or '-'.
+ * 
+ * This may be used to identify MAC address octet strings
+ * (BHND_NVRAM_SFMT_MACADDR).
  *
  * @param		inp	The string to be parsed.
  * @param		ilen	The length of @p inp, in bytes.
@@ -252,47 +254,56 @@ bhnd_nvram_parse_field(const char **inp, size_t ilen, char delim)
 static bool
 bhnd_nvram_ident_octet_string(const char *inp, size_t ilen, char *delim)
 {
-	size_t slen;
+	size_t elem_count;
 
-	slen = strnlen(inp, ilen);
+	/* Identify the delimiter used. The standard delimiter for MAC
+	 * addresses is ':', but some earlier NVRAM formats may use '-' */
+	for (const char *d = ":-";; d++) {
+		const char *loc;
 
-	/* String length (not including NUL) must be aligned on an octet
-	 * boundary ('AA:BB', not 'AA:B', etc), and must be large enough
-	 * to contain at least two octet entries. */
-	if (slen % 3 != 2 || slen < sizeof("AA:BB") - 1)
-		return (false);
+		/* No delimiter found, not an octet string */
+		if (*d == '\0')
+			return (false);
 
-	/* Identify the delimiter used. The standard delimiter for
-	 * MAC addresses is ':', but some earlier NVRAM formats may use
-	 * '-' */
-	switch ((*delim = inp[2])) {
-	case ':':
-	case '-':
-		break;
-	default:
-		return (false);
+		/* Look for the delimiter */
+		if ((loc = memchr(inp, *d, ilen)) != NULL) {
+			/* Delimiter found */
+			*delim = *loc;
+			break;
+		}
 	}
 
-	/* Verify the octet string contains only hex digits */ 
+	/* String must be composed of individual octets (zero or more hex
+	 * digits) separated by our delimiter. */
+	elem_count = 0;
 	for (const char *p = inp; (size_t)(p - inp) < ilen; p++) {
-		size_t pos;
+		switch (*p) {
+		case '\0':
+			/* Hit end of input without finding an invalid
+			 * character */
+			return (true);
+		case ':':
+		case '-':
+			/* Hit a delim character; all delims must match
+			 * the first delimiter used */
+			if (*p != *delim)
+				return (false);
 
-		pos = (p - inp);
+			/* Reset element count */
+			elem_count = 0;
+			break;
+		default:
+			/* More than two hex digits? */
+			if (elem_count >= 2)
+				return (false);
 
-		/* Skip delimiter after each octet */
-		if (pos % 3 == 2) {
-			if (*p == *delim)
-				continue;
+			/* Octet values must be hex digits */
+			if (!isxdigit(*p))
+				return (false);
 
-			if (*p == '\0')
-				return (0);
-
-			/* No delimiter? */
-			return (false);
+			elem_count++;
+			break;
 		}
-
-		if (!isxdigit(*p))
-			return (false);
 	}
 
 	return (true);
