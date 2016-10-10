@@ -664,6 +664,8 @@ bhnd_nvram_bcm_getvar_ptr(struct bhnd_nvram_data *nv, void *cookiep,
 	}
 
 	/* Cookie points to key\0value\0 -- get the value address */
+	BHND_NV_ASSERT(cookiep != NULL, ("NULL cookiep"));
+
 	envp = cookiep;
 	envp += strlen(envp) + 1;	/* key + '\0' */
 	*len = strlen(envp) + 1;	/* value + '\0' */
