@@ -33,15 +33,14 @@
 #define _BHND_NVRAM_BHND_NVRAM_DATA_H_
 
 #ifdef _KERNEL
-#include <sys/types.h>
+#include <sys/param.h>
+#include <sys/bus.h>
 #else /* !_KERNEL */
 #include <errno.h>
 
 #include <stdint.h>
 #include <stdlib.h>
 #endif /* _KERNEL */
-
-#include <sys/bus.h>
 
 #include "bhnd_nvram.h"
 #include "bhnd_nvram_io.h"
