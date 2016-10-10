@@ -67,7 +67,7 @@ u16 boardnum {
 
 # Board revision
 u16 boardrev {
-	srom 1-3	u8 0x5D
+	srom 1-3	u8 0x5C
 	srom 4-7	0x42
 	srom >= 8	0x82
 }
@@ -102,16 +102,16 @@ u32 rmax {
 
 # Antennas available
 u8 aa2g {
-	srom 1-3	0x5C (&0x30, >>4)
-	srom 4-7	0x5D
-	srom 8-10	0x9D
-	srom >= 11	0xA1
-}
-u8 aa5g {
-	srom 1-3	0x5C (&0xC0, >>6)
+	srom 1-3	0x5D (&0x30, >>4)
 	srom 4-7	0x5C
 	srom 8-10	0x9C
 	srom >= 11	0xA0
+}
+u8 aa5g {
+	srom 1-3	0x5D (&0xC0, >>6)
+	srom 4-7	0x5D
+	srom 8-10	0x9D
+	srom >= 11	0xA1
 }
 
 # ACPHY PA trimming parameters: 40
@@ -217,47 +217,47 @@ u16 dot11agduplrpo {
 
 # Antenna gain
 u8 ag0 {
-	srom 1-3	0x75
-	srom 4-7	0x5F
-	srom 8-10	0x9F
-}
-u8 ag1 {
 	srom 1-3	0x74
 	srom 4-7	0x5E
 	srom 8-10	0x9E
 }
-u8 ag2 {
-	srom 4-7	0x61
-	srom 8-10	0xA1
+u8 ag1 {
+	srom 1-3	0x75
+	srom 4-7	0x5F
+	srom 8-10	0x9F
 }
-u8 ag3 {
+u8 ag2 {
 	srom 4-7	0x60
 	srom 8-10	0xA0
 }
+u8 ag3 {
+	srom 4-7	0x61
+	srom 8-10	0xA1
+}
 
 u8 agbg0 {
-	srom >= 11	0xA2
-}
-u8 agbg1 {
 	srom >= 11	0xA3
 }
-u8 agbg2 {
-	srom >= 11	0xA4
+u8 agbg1 {
+	srom >= 11	0xA2
 }
-u8 aga0 {
+u8 agbg2 {
 	srom >= 11	0xA5
 }
+u8 aga0 {
+	srom >= 11	0xA4
+}
 u8 aga1 {
-	srom >= 11	0xA6
+	srom >= 11	0xA7
 }
 u8 aga2 {
-	srom >= 11	0xA7
+	srom >= 11	0xA6
 }
 
 # Default country code (sromrev == 1)
 u8 cc {
 	sfmt		decimal
-	srom 1		0x5C (&0xF)
+	srom 1		0x5D (&0xF)
 }
 
 # 2 bytes each
@@ -291,75 +291,75 @@ u8 cctl {
 # 2 byte; txchain, rxchain
 u8 txchain {
 	all1	ignore
-	srom 4-7	0x7B (&0xF)
-	srom 8-10	0xA3 (&0xF)
-	srom >= 11	0xA9 (&0xF)
+	srom 4-7	0x7A (&0xF)
+	srom 8-10	0xA2 (&0xF)
+	srom >= 11	0xA8 (&0xF)
 }
 u8 rxchain {
 	all1	ignore
-	srom 4-7	0x7B (&0xF0, >>4)
-	srom 8-10	0xA3 (&0xF0, >>4)
-	srom >= 11	0xA9 (&0xF0, >>4)
+	srom 4-7	0x7A (&0xF0, >>4)
+	srom 8-10	0xA2 (&0xF0, >>4)
+	srom >= 11	0xA8 (&0xF0, >>4)
 }
 u16 antswitch {
 	all1	ignore
-	srom 4-7	u8 0x7A
-	srom 8-10	u8 0xA2
-	srom >= 11	u8 0xA8
+	srom 4-7	u8 0x7B
+	srom 8-10	u8 0xA3
+	srom >= 11	u8 0xA9
 }
 
 u8 elna2g {
-	srom 8-10	0xBB
+	srom 8-10	0xBA
 }
 
 u8 elna5g {
-	srom 8-10	0xBA
+	srom 8-10	0xBB
 }
 
 # 11n front-end specification
 u8 antswctl2g {
-	srom 8-10	0xAE (&0xF8, >>3)
-}
-u8 triso2g {
-	srom 8-10	0xAE (&0x7)
-}
-u8 pdetrange2g {
 	srom 8-10	0xAF (&0xF8, >>3)
 }
+u8 triso2g {
+	srom 8-10	0xAF (&0x7)
+}
+u8 pdetrange2g {
+	srom 8-10	0xAE (&0xF8, >>3)
+}
 u8 extpagain2g {
-	srom 8-10	0xAF (&0x6, >>1)
+	srom 8-10	0xAE (&0x6, >>1)
 }
 u8 tssipos2g {
-	srom 8-10	0xAF (&0x1)
+	srom 8-10	0xAE (&0x1)
 }
 u8 antswctl5g {
-	srom 8-10	0xB0 (&0xF8, >>3)
-}
-u8 triso5g {
-	srom 8-10	0xB0 (&0x7)
-}
-u8 pdetrange5g {
 	srom 8-10	0xB1 (&0xF8, >>3)
 }
+u8 triso5g {
+	srom 8-10	0xB1 (&0x7)
+}
+u8 pdetrange5g {
+	srom 8-10	0xB0 (&0xF8, >>3)
+}
 u8 extpagain5g {
-	srom 8-10	0xB1 (&0x6, >>1)
+	srom 8-10	0xB0 (&0x6, >>1)
 }
 u8 tssipos5g {
-	srom 8-10	0xB1 (&0x1)
+	srom 8-10	0xB0 (&0x1)
 }
 
 # FEM config
 u8 femctrl {
 	sfmt	decimal
-	srom >= 11	0xAA (&0xF8, >>3)
+	srom >= 11	0xAB (&0xF8, >>3)
 }
 u8 papdcap2g {
 	sfmt	decimal
-	srom >= 11	0xAA (&0x4, >>2)
+	srom >= 11	0xAB (&0x4, >>2)
 }
 u8 tworangetssi2g {
 	sfmt	decimal
-	srom >= 11	0xAA (&0x2, >>1)
+	srom >= 11	0xAB (&0x2, >>1)
 }
 u8 pdgain2g {
 	sfmt	decimal
@@ -367,23 +367,23 @@ u8 pdgain2g {
 }
 u8 epagain2g {
 	sfmt	decimal
-	srom >= 11	0xAB (&0xE, >>1)
+	srom >= 11	0xAA (&0xE, >>1)
 }
 u8 tssiposslope2g {
 	sfmt	decimal
-	srom >= 11	0xAB (&0x1)
+	srom >= 11	0xAA (&0x1)
 }
 u8 gainctrlsph {
 	sfmt	decimal
-	srom >= 11	0xAC (&0xF8, >>3)
+	srom >= 11	0xAD (&0xF8, >>3)
 }
 u8 papdcap5g {
 	sfmt	decimal
-	srom >= 11	0xAC (&0x4, >>2)
+	srom >= 11	0xAD (&0x4, >>2)
 }
 u8 tworangetssi5g {
 	sfmt	decimal
-	srom >= 11	0xAC (&0x2, >>1)
+	srom >= 11	0xAD (&0x2, >>1)
 }
 u8 pdgain5g {
 	sfmt	decimal
@@ -391,11 +391,11 @@ u8 pdgain5g {
 }
 u8 epagain5g {
 	sfmt	decimal
-	srom >= 11	0xAD (&0xE, >>1)
+	srom >= 11	0xAC (&0xE, >>1)
 }
 u8 tssiposslope5g {
 	sfmt	decimal
-	srom >= 11	0xAD (&0x1)
+	srom >= 11	0xAC (&0x1)
 }
 
 # LED duty cycle
@@ -413,35 +413,35 @@ u8[2] leddc {
 # LED set
 u8 ledbh0 {
 	all1	ignore
-	srom 1-3	0x65
-	srom 4		0x57
-	srom 5-7	0x77
-	srom 8-10	0x97
-	srom >= 11	0x9B
-}
-u8 ledbh1 {
-	all1	ignore
 	srom 1-3	0x64
 	srom 4		0x56
 	srom 5-7	0x76
 	srom 8-10	0x96
 	srom >= 11	0x9A
 }
-u8 ledbh2 {
+u8 ledbh1 {
 	all1	ignore
-	srom 1-3	0x67
-	srom 4		0x59
-	srom 5-7	0x79
-	srom 8-10	0x99
-	srom >= 11	0x9D
+	srom 1-3	0x65
+	srom 4		0x57
+	srom 5-7	0x77
+	srom 8-10	0x97
+	srom >= 11	0x9B
 }
-u8 ledbh3 {
+u8 ledbh2 {
 	all1	ignore
 	srom 1-3	0x66
 	srom 4		0x58
 	srom 5-7	0x78
 	srom 8-10	0x98
 	srom >= 11	0x9C
+}
+u8 ledbh3 {
+	all1	ignore
+	srom 1-3	0x67
+	srom 4		0x59
+	srom 5-7	0x79
+	srom 8-10	0x99
+	srom >= 11	0x9D
 }
 
 # 2 bytes total
@@ -579,12 +579,12 @@ u16 mcs32po {
 }
 
 u8 measpower {
-	srom 8-10	0xB4 (&0xFE, >>1)
-	srom >= 11	0xB0 (&0xFE, >>1)
+	srom 8-10	0xB5 (&0xFE, >>1)
+	srom >= 11	0xB1 (&0xFE, >>1)
 }
 u8 measpower1 {
-	srom 8-10	0xBF (&0x7F)
-	srom >= 11	0xBB (&0x7F)
+	srom 8-10	0xBE (&0x7F)
+	srom >= 11	0xBA (&0x7F)
 }
 u8 measpower2 {
 	srom 8-10	u16 0xBE (&0x3F80, >>7)
@@ -597,8 +597,8 @@ u16 rawtempsense {
 
 u8 noiselvl2ga0 {
 	sfmt	decimal
-	srom 8-10	0x1AB (&0x1F)
-	srom >= 11	0x1BD (&0x1F)
+	srom 8-10	0x1AA (&0x1F)
+	srom >= 11	0x1BC (&0x1F)
 }
 u8 noiselvl2ga1 {
 	sfmt	decimal
@@ -607,12 +607,12 @@ u8 noiselvl2ga1 {
 }
 u8 noiselvl2ga2 {
 	sfmt	decimal
-	srom 8-10	0x1AA (&0x7C, >>2)
-	srom >= 11	0x1BC (&0x7C, >>2)
+	srom 8-10	0x1AB (&0x7C, >>2)
+	srom >= 11	0x1BD (&0x7C, >>2)
 }
 u8[4] noiselvl5ga0 {
 	sfmt	decimal
-	srom >= 11	u8 0x1BF (&0x1F), u8 0x1C1 (&0x1F), u8 0x1C3 (&0x1F), u8 0x1C5 (&0x1F)
+	srom >= 11	u8 0x1BE (&0x1F), u8 0x1C0 (&0x1F), u8 0x1C2 (&0x1F), u8 0x1C4 (&0x1F)
 }
 u8[4] noiselvl5ga1 {
 	sfmt	decimal
@@ -620,13 +620,13 @@ u8[4] noiselvl5ga1 {
 }
 u8[4] noiselvl5ga2 {
 	sfmt	decimal
-	srom >= 11	u8 0x1BE (&0x7C, >>2), u8 0x1C0 (&0x7C, >>2), u8 0x1C2 (&0x7C, >>2), u8 0x1C4 (&0x7C, >>2)
+	srom >= 11	u8 0x1BF (&0x7C, >>2), u8 0x1C1 (&0x7C, >>2), u8 0x1C3 (&0x7C, >>2), u8 0x1C5 (&0x7C, >>2)
 }
 
 # paparambwver
 u8 paparambwver {
 	sfmt	decimal
-	srom >= 11	0x190 (&0xF0, >>4)
+	srom >= 11	0x191 (&0xF0, >>4)
 }
 
 # PA parameters: 8 (sromrev == 1)
@@ -649,18 +649,18 @@ i16 pa0b2 {
 }
 u8 pa0itssit {
 	sfmt	decimal
-	srom 1-3	0x71
-	srom 8-10	0xC0
+	srom 1-3	0x70
+	srom 8-10	0xC1
 }
 u8 pa0maxpwr {
 	sfmt	decimal
-	srom 1-3	0x69
-	srom 8-10	0xC1
+	srom 1-3	0x68
+	srom 8-10	0xC0
 }
 u8 opo {
 	sfmt	decimal
-	srom 2-3	0x79
-	srom 8-10	0x143
+	srom 2-3	0x78
+	srom 8-10	0x142
 }
 
 # 5G PA params
@@ -711,23 +711,23 @@ i16 pa1hib2 {
 }
 u8 pa1itssit {
 	sfmt	decimal
-	srom 1-3	0x70
-	srom 8-10	0xC8
+	srom 1-3	0x71
+	srom 8-10	0xC9
 }
 u8 pa1maxpwr {
 	sfmt	decimal
-	srom 1-3	0x68
-	srom 8-10	0xC9
+	srom 1-3	0x69
+	srom 8-10	0xC8
 }
 u8 pa1lomaxpwr {
 	sfmt	decimal
-	srom 2-3	0x3A
-	srom 8-10	0xCA
+	srom 2-3	0x3B
+	srom 8-10	0xCB
 }
 u8 pa1himaxpwr {
 	sfmt	decimal
-	srom 2-3	0x3B
-	srom 8-10	0xCB
+	srom 2-3	0x3A
+	srom 8-10	0xCA
 }
 
 u16 pdoffset40ma0 {
@@ -750,16 +750,16 @@ u16 pdoffset80ma2 {
 }
 
 u8 pdoffset2g40ma0 {
-	srom >= 11	0xC9 (&0xF)
-}
-u8 pdoffset2g40ma1 {
-	srom >= 11	0xC9 (&0xF0, >>4)
-}
-u8 pdoffset2g40ma2 {
 	srom >= 11	0xC8 (&0xF)
 }
+u8 pdoffset2g40ma1 {
+	srom >= 11	0xC8 (&0xF0, >>4)
+}
+u8 pdoffset2g40ma2 {
+	srom >= 11	0xC9 (&0xF)
+}
 u8 pdoffset2g40mvalid {
-	srom >= 11	0xC8 (&0x80, >>7)
+	srom >= 11	0xC9 (&0x80, >>7)
 }
 
 # 40Mhz channel 2g/5g power offset
@@ -944,127 +944,127 @@ u16 stbcpo {
 
 u8 regrev {
 	sfmt		decimal
-	srom 3		0x78
-	srom 4		0x55
-	srom 5-7	0x47
-	srom 8-10	0x95
-	srom >= 11	0x99
+	srom 3		0x79
+	srom 4		0x54
+	srom 5-7	0x46
+	srom 8-10	0x94
+	srom >= 11	0x98
 }
 
 # 4328 2G RSSI mid pt sel & board switch arch,
 # 2 bytes, rev 3.
 # 
 u8 rssismf2g {
-	srom 3		0x51 (&0xF)
-	srom 8-10	0xA5 (&0xF)
+	srom 3		0x50 (&0xF)
+	srom 8-10	0xA4 (&0xF)
 }
 u8 rssismc2g {
-	srom 3		0x51 (&0xF0, >>4)
-	srom 8-10	0xA5 (&0xF0, >>4)
+	srom 3		0x50 (&0xF0, >>4)
+	srom 8-10	0xA4 (&0xF0, >>4)
 }
 u8 rssisav2g {
-	srom 3		0x50 (&0x7)
-	srom 8-10	0xA4 (&0x7)
+	srom 3		0x51 (&0x7)
+	srom 8-10	0xA5 (&0x7)
 }
 u8 bxa2g {
-	srom 3		0x50 (&0x18, >>3)
-	srom 8-10	0xA4 (&0x18, >>3)
+	srom 3		0x51 (&0x18, >>3)
+	srom 8-10	0xA5 (&0x18, >>3)
 }
 
 # 4328 5G RSSI mid pt sel & board switch arch,
 # 2 bytes, rev 3.
 # 
 u8 rssismf5g {
-	srom 3		0x53 (&0xF)
-	srom 8-10	0xA7 (&0xF)
+	srom 3		0x52 (&0xF)
+	srom 8-10	0xA6 (&0xF)
 }
 u8 rssismc5g {
-	srom 3		0x53 (&0xF0, >>4)
-	srom 8-10	0xA7 (&0xF0, >>4)
+	srom 3		0x52 (&0xF0, >>4)
+	srom 8-10	0xA6 (&0xF0, >>4)
 }
 u8 rssisav5g {
-	srom 3		0x52 (&0x7)
-	srom 8-10	0xA6 (&0x7)
+	srom 3		0x53 (&0x7)
+	srom 8-10	0xA7 (&0x7)
 }
 u8 bxa5g {
-	srom 3		0x52 (&0x18, >>3)
-	srom 8-10	0xA6 (&0x18, >>3)
+	srom 3		0x53 (&0x18, >>3)
+	srom 8-10	0xA7 (&0x18, >>3)
 }
 
 u8 rxgainerr2ga0 {
-	srom 8-10	0x19B (&0x3F)
-	srom >= 11	0x1C7 (&0x3F)
+	srom 8-10	0x19A (&0x3F)
+	srom >= 11	0x1C6 (&0x3F)
 }
 u8 rxgainerr2ga1 {
 	srom 8-10	u16 0x19A (&0x7C0, >>6)
 	srom >= 11	u16 0x1C6 (&0x7C0, >>6)
 }
 u8 rxgainerr2ga2 {
-	srom 8-10	0x19A (&0xF8, >>3)
-	srom >= 11	0x1C6 (&0xF8, >>3)
+	srom 8-10	0x19B (&0xF8, >>3)
+	srom >= 11	0x1C7 (&0xF8, >>3)
 }
 u8[4] rxgainerr5ga0 {
-	srom >= 11	u8 0x1C9 (&0x3F), u8 0x1CB (&0x3F), u8 0x1CD (&0x3F), u8 0x1CF (&0x3F)
+	srom >= 11	u8 0x1C8 (&0x3F), u8 0x1CA (&0x3F), u8 0x1CC (&0x3F), u8 0x1CE (&0x3F)
 }
 u8[4] rxgainerr5ga1 {
 	srom >= 11	u16[4] 0x1C8 (&0x7C0, >>6)
 }
 u8[4] rxgainerr5ga2 {
-	srom >= 11	u8 0x1C8 (&0xF8, >>3), u8 0x1CA (&0xF8, >>3), u8 0x1CC (&0xF8, >>3), u8 0x1CE (&0xF8, >>3)
+	srom >= 11	u8 0x1C9 (&0xF8, >>3), u8 0x1CB (&0xF8, >>3), u8 0x1CD (&0xF8, >>3), u8 0x1CF (&0xF8, >>3)
 }
 u8 rxgainerr5gha0 {
-	srom 8-10	0x1A1 (&0x3F)
+	srom 8-10	0x1A0 (&0x3F)
 }
 u8 rxgainerr5gha1 {
 	srom 8-10	u16 0x1A0 (&0x7C0, >>6)
 }
 u8 rxgainerr5gha2 {
-	srom 8-10	0x1A0 (&0xF8, >>3)
+	srom 8-10	0x1A1 (&0xF8, >>3)
 }
 u8 rxgainerr5gla0 {
-	srom 8-10	0x19D (&0x3F)
+	srom 8-10	0x19C (&0x3F)
 }
 u8 rxgainerr5gla1 {
 	srom 8-10	u16 0x19C (&0x7C0, >>6)
 }
 u8 rxgainerr5gla2 {
-	srom 8-10	0x19C (&0xF8, >>3)
+	srom 8-10	0x19D (&0xF8, >>3)
 }
 u8 rxgainerr5gma0 {
-	srom 8-10	0x19F (&0x3F)
+	srom 8-10	0x19E (&0x3F)
 }
 u8 rxgainerr5gma1 {
 	srom 8-10	u16 0x19E (&0x7C0, >>6)
 }
 u8 rxgainerr5gma2 {
-	srom 8-10	0x19E (&0xF8, >>3)
+	srom 8-10	0x19F (&0xF8, >>3)
 }
 u8 rxgainerr5gua0 {
-	srom 8-10	0x1A3 (&0x3F)
+	srom 8-10	0x1A2 (&0x3F)
 }
 u8 rxgainerr5gua1 {
 	srom 8-10	u16 0x1A2 (&0x7C0, >>6)
 }
 u8 rxgainerr5gua2 {
-	srom 8-10	0x1A2 (&0xF8, >>3)
+	srom 8-10	0x1A3 (&0xF8, >>3)
 }
 
 # 4328 2G RX power offset
 i8 rxpo2g {
 	sfmt	decimal
-	srom 3		0x5B
-	srom 8-10	0xAD
+	srom 3		0x5A
+	srom 8-10	0xAC
 }
 
 # 4328 5G RX power offset
 i8 rxpo5g {
 	sfmt	decimal
-	srom 3		0x5A
-	srom 8-10	0xAC
+	srom 3		0x5B
+	srom 8-10	0xAD
 }
 
 u16 subband5gver {
-	srom 8-10	u8 0x1A5 (&0x7)
+	srom 8-10	u8 0x1A4 (&0x7)
 	srom >= 11	0xD6
 }
 
@@ -1073,60 +1073,60 @@ u16 subband5gver {
 # byte2 period(msb 4 bits) | hysterisis(lsb 4 bits)
 # 
 u8 tempthresh {
-	srom 8-10	0xB2
-	srom >= 11	0xAE
-}
-u8 temps_period {
-	sfmt	decimal
-	srom 8-10	0xBC (&0xF)
-	srom >= 11	0xB8 (&0xF)
-}
-u8 temps_hysteresis {
-	sfmt	decimal
-	srom 8-10	0xBC (&0xF0, >>4)
-	srom >= 11	0xB8 (&0xF0, >>4)
-}
-u8 tempoffset {
-	sfmt	decimal
 	srom 8-10	0xB3
 	srom >= 11	0xAF
 }
+u8 temps_period {
+	sfmt	decimal
+	srom 8-10	0xBD (&0xF)
+	srom >= 11	0xB9 (&0xF)
+}
+u8 temps_hysteresis {
+	sfmt	decimal
+	srom 8-10	0xBD (&0xF0, >>4)
+	srom >= 11	0xB9 (&0xF0, >>4)
+}
+u8 tempoffset {
+	sfmt	decimal
+	srom 8-10	0xB2
+	srom >= 11	0xAE
+}
 u8 tempsense_slope {
-	srom 8-10	0xB7
-	srom >= 11	0xB3
+	srom 8-10	0xB6
+	srom >= 11	0xB2
 }
 u8 tempcorrx {
-	srom 8-10	0xB6 (&0xFC, >>2)
-	srom >= 11	0xB2 (&0xFC, >>2)
+	srom 8-10	0xB7 (&0xFC, >>2)
+	srom >= 11	0xB3 (&0xFC, >>2)
 }
 u8 tempsense_option {
-	srom 8-10	0xB6 (&0x3)
-	srom >= 11	0xB2 (&0x3)
+	srom 8-10	0xB7 (&0x3)
+	srom >= 11	0xB3 (&0x3)
 }
 u8 phycal_tempdelta {
 	sfmt	decimal
-	srom 8-10	0xBD
-	srom >= 11	0xB9
+	srom 8-10	0xBC
+	srom >= 11	0xB8
 }
 
 # 4328 2G TR isolation, 1 byte
 u8 tri2g {
-	srom 3		0x55
-	srom 8-10	0xA9
-}
-
-# 4328 5G TR isolation, 3 bytes
-u8 tri5gl {
-	srom 3		0x57
-	srom 8-10	0xAB
-}
-u8 tri5g {
 	srom 3		0x54
 	srom 8-10	0xA8
 }
-u8 tri5gh {
+
+# 4328 5G TR isolation, 3 bytes
+u8 tri5g {
+	srom 3		0x55
+	srom 8-10	0xA9
+}
+u8 tri5gl {
 	srom 3		0x56
 	srom 8-10	0xAA
+}
+u8 tri5gh {
+	srom 3		0x57
+	srom 8-10	0xAB
 }
 
 # phy txbf rpcalvars
@@ -1155,52 +1155,52 @@ u32 xtalfreq {
 
 # N-PHY tx power workaround
 u8 txpid2ga0 {
-	srom 4-7	0x63
-}
-u8 txpid2ga1 {
 	srom 4-7	0x62
 }
-u8 txpid2ga2 {
-	srom 4-7	0x65
+u8 txpid2ga1 {
+	srom 4-7	0x63
 }
-u8 txpid2ga3 {
+u8 txpid2ga2 {
 	srom 4-7	0x64
 }
-u8 txpid5ga0 {
-	srom 4-7	0x67
+u8 txpid2ga3 {
+	srom 4-7	0x65
 }
-u8 txpid5ga1 {
+u8 txpid5ga0 {
 	srom 4-7	0x66
 }
-u8 txpid5ga2 {
-	srom 4-7	0x69
+u8 txpid5ga1 {
+	srom 4-7	0x67
 }
-u8 txpid5ga3 {
+u8 txpid5ga2 {
 	srom 4-7	0x68
 }
-u8 txpid5gha0 {
-	srom 4-7	0x6F
+u8 txpid5ga3 {
+	srom 4-7	0x69
 }
-u8 txpid5gha1 {
+u8 txpid5gha0 {
 	srom 4-7	0x6E
 }
-u8 txpid5gha2 {
-	srom 4-7	0x71
+u8 txpid5gha1 {
+	srom 4-7	0x6F
 }
-u8 txpid5gha3 {
+u8 txpid5gha2 {
 	srom 4-7	0x70
 }
-u8 txpid5gla0 {
-	srom 4-7	0x6B
+u8 txpid5gha3 {
+	srom 4-7	0x71
 }
-u8 txpid5gla1 {
+u8 txpid5gla0 {
 	srom 4-7	0x6A
 }
+u8 txpid5gla1 {
+	srom 4-7	0x6B
+}
 u8 txpid5gla2 {
-	srom 4-7	0x6D
+	srom 4-7	0x6C
 }
 u8 txpid5gla3 {
-	srom 4-7	0x6C
+	srom 4-7	0x6D
 }
 
 u16 cckPwrOffset {
@@ -1211,95 +1211,95 @@ u8[6] et1macaddr {
 	srom 0-2	u8 0x55, u8 0x54, u8 0x57, u8 0x56, u8 0x59, u8 0x58
 }
 u8 eu_edthresh2g {
-	srom 8		0x1A9
-	srom 9		0x199
-	srom 10		0x199
-	srom 11		0x1D1
-}
-u8 eu_edthresh5g {
 	srom 8		0x1A8
 	srom 9		0x198
 	srom 10		0x198
 	srom 11		0x1D0
 }
+u8 eu_edthresh5g {
+	srom 8		0x1A9
+	srom 9		0x199
+	srom 10		0x199
+	srom 11		0x1D1
+}
 u8 freqoffset_corr {
-	srom 8-10	0xB9 (&0xF)
+	srom 8-10	0xB8 (&0xF)
 }
 u8 hw_iqcal_en {
-	srom 8-10	0xB9 (&0x20, >>5)
+	srom 8-10	0xB8 (&0x20, >>5)
 }
 u8[6] il0macaddr {
 	sfmt	macaddr
 	srom 0-2	u8 0x49, u8 0x48, u8 0x4B, u8 0x4A, u8 0x4D, u8 0x4C
 }
 u8 iqcal_swp_dis {
-	srom 8-10	0xB9 (&0x10, >>4)
+	srom 8-10	0xB8 (&0x10, >>4)
 }
 
 u8 noisecaloffset {
-	srom 8-9	0x1B5
-}
-u8 noisecaloffset5g {
 	srom 8-9	0x1B4
 }
+u8 noisecaloffset5g {
+	srom 8-9	0x1B5
+}
 u8 noiselvl5gha0 {
-	srom 8-10	0x1B1 (&0x1F)
+	srom 8-10	0x1B0 (&0x1F)
 }
 u8 noiselvl5gha1 {
 	srom 8-10	u16 0x1B0 (&0x3E0, >>5)
 }
 u8 noiselvl5gha2 {
-	srom 8-10	0x1B0 (&0x7C, >>2)
+	srom 8-10	0x1B1 (&0x7C, >>2)
 }
 u8 noiselvl5gla0 {
-	srom 8-10	0x1AD (&0x1F)
+	srom 8-10	0x1AC (&0x1F)
 }
 u8 noiselvl5gla1 {
 	srom 8-10	u16 0x1AC (&0x3E0, >>5)
 }
 u8 noiselvl5gla2 {
-	srom 8-10	0x1AC (&0x7C, >>2)
+	srom 8-10	0x1AD (&0x7C, >>2)
 }
 u8 noiselvl5gma0 {
-	srom 8-10	0x1AF (&0x1F)
+	srom 8-10	0x1AE (&0x1F)
 }
 u8 noiselvl5gma1 {
 	srom 8-10	u16 0x1AE (&0x3E0, >>5)
 }
 u8 noiselvl5gma2 {
-	srom 8-10	0x1AE (&0x7C, >>2)
+	srom 8-10	0x1AF (&0x7C, >>2)
 }
 u8 noiselvl5gua0 {
-	srom 8-10	0x1B3 (&0x1F)
+	srom 8-10	0x1B2 (&0x1F)
 }
 u8 noiselvl5gua1 {
 	srom 8-10	u16 0x1B2 (&0x3E0, >>5)
 }
 u8 noiselvl5gua2 {
-	srom 8-10	0x1B2 (&0x7C, >>2)
+	srom 8-10	0x1B3 (&0x7C, >>2)
 }
 
 u8 pcieingress_war {
-	srom 8-10	0x1A7 (&0xF)
+	srom 8-10	0x1A6 (&0xF)
 }
 
 u8 pdoffsetcckma0 {
-	srom >= 11	0x18F (&0xF)
+	srom >= 11	0x18E (&0xF)
 }
 u8 pdoffsetcckma1 {
-	srom >= 11	0x18F (&0xF0, >>4)
+	srom >= 11	0x18E (&0xF0, >>4)
 }
 u8 pdoffsetcckma2 {
-	srom >= 11	0x18E (&0xF)
+	srom >= 11	0x18F (&0xF)
 }
 
 u8 sar2g {
-	srom 9-10	0x1A9
-	srom >= 11	0x1BB
-}
-u8 sar5g {
 	srom 9-10	0x1A8
 	srom >= 11	0x1BA
+}
+u8 sar5g {
+	srom 9-10	0x1A9
+	srom >= 11	0x1BB
 }
 
 u32[5] swctrlmap_2g {
@@ -1340,17 +1340,17 @@ struct phy_chains[] {
 
 	# AC-PHY PA parameters
 	u8[4] maxp5ga {
-		srom 4-7	u8 0xB
-		srom 8-10	u8 0x9
-		srom >= 11	u8 0xD, u8 0xC, u8 0xF, u8 0xE
+		srom 4-7	u8 0xA
+		srom 8-10	u8 0x8
+		srom >= 11	u8 0xC, u8 0xD, u8 0xE, u8 0xF
 	}
 	i16[3] pa2ga {
 		srom >= 11	0x2
 	}
 	u8 maxp2ga {
-		srom 4-7	0x1
-		srom 8-10	0x1
-		srom >= 11	0x1
+		srom 4-7	0x0
+		srom 8-10	0x0
+		srom >= 11	0x0
 	}
 	i16[12] pa5ga {
 		srom >= 11	0x10
@@ -1358,40 +1358,40 @@ struct phy_chains[] {
 
 	# AC-PHY rxgains
 	u8 rxgains5ghtrelnabypa {
-		srom >= 11	0x8 (&0x80, >>7)
-	}
-	u8 rxgains5ghelnagaina {
-		srom >= 11	0x8 (&0x7)
-	}
-	u8 rxgains5gelnagaina {
-		srom >= 11	0xA (&0x7)
-	}
-	u8 rxgains5gmtrelnabypa {
 		srom >= 11	0x9 (&0x80, >>7)
 	}
-	u8 rxgains2gtrelnabypa {
-		srom >= 11	0xB (&0x80, >>7)
-	}
-	u8 rxgains5gmtrisoa {
-		srom >= 11	0x9 (&0x78, >>3)
-	}
-	u8 rxgains5gmelnagaina {
+	u8 rxgains5ghelnagaina {
 		srom >= 11	0x9 (&0x7)
 	}
-	u8 rxgains2gelnagaina {
+	u8 rxgains5gelnagaina {
 		srom >= 11	0xB (&0x7)
 	}
-	u8 rxgains5gtrisoa {
-		srom >= 11	0xA (&0x78, >>3)
+	u8 rxgains5gmtrelnabypa {
+		srom >= 11	0x8 (&0x80, >>7)
 	}
-	u8 rxgains5gtrelnabypa {
+	u8 rxgains2gtrelnabypa {
 		srom >= 11	0xA (&0x80, >>7)
 	}
-	u8 rxgains2gtrisoa {
+	u8 rxgains5gmtrisoa {
+		srom >= 11	0x8 (&0x78, >>3)
+	}
+	u8 rxgains5gmelnagaina {
+		srom >= 11	0x8 (&0x7)
+	}
+	u8 rxgains2gelnagaina {
+		srom >= 11	0xA (&0x7)
+	}
+	u8 rxgains5gtrisoa {
 		srom >= 11	0xB (&0x78, >>3)
 	}
+	u8 rxgains5gtrelnabypa {
+		srom >= 11	0xB (&0x80, >>7)
+	}
+	u8 rxgains2gtrisoa {
+		srom >= 11	0xA (&0x78, >>3)
+	}
 	u8 rxgains5ghtrisoa {
-		srom >= 11	0x8 (&0x78, >>3)
+		srom >= 11	0x9 (&0x78, >>3)
 	}
 
 	# 11n PA parameters
@@ -1433,8 +1433,8 @@ struct phy_chains[] {
 		srom 8-10	0xC
 	}
 	u8 maxp5gha {
-		srom 4-7	0xD
-		srom 8-10	0xB
+		srom 4-7	0xC
+		srom 8-10	0xA
 	}
 	u16 pa5ghw2a {
 		srom 4-7	0x22
@@ -1460,15 +1460,15 @@ struct phy_chains[] {
 		srom 8-10	0x2
 	}
 	u8 maxp5gla {
-		srom 4-7	0xC
-		srom 8-10	0xA
+		srom 4-7	0xD
+		srom 8-10	0xB
 	}
 	u8 itt5ga {
-		srom 4-7	0xA
-		srom 8-10	0x8
+		srom 4-7	0xB
+		srom 8-10	0x9
 	}
 	u8 itt2ga {
-		srom 4-7	0x0
-		srom 8-10	0x0
+		srom 4-7	0x1
+		srom 8-10	0x1
 	}
 }
