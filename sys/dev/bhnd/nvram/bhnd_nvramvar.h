@@ -78,7 +78,7 @@
 #endif
 #define	BHND_NV_ASSERT(expr, ...)	assert(expr)
 
-#define	BHND_NV_VERBOSE			(0)
+#define	BHND_NV_VERBOSE			(1)
 #define	BHND_NV_PANIC(fmt, ...)		do {			\
 	fprintf(stderr, "panic: " fmt "\n", ##__VA_ARGS__);	\
 	abort();						\

@@ -184,6 +184,7 @@ bhnd_nvram_sprom_parse(struct bhnd_nvram_io *io, uint8_t *srev,
 		if (nbytes > fmt->size)
 			BHND_NV_PANIC("SPROM format is defined out-of-order");
 
+		/* Calculate number of additional bytes to be read */
 		nr = fmt->size - nbytes;
 
 		/* Adjust the buffer size and fetch a write pointer */
@@ -203,8 +204,11 @@ bhnd_nvram_sprom_parse(struct bhnd_nvram_io *io, uint8_t *srev,
 		crc_valid = (crc == BHND_NVRAM_CRC8_VALID);
 
 		/* Fetch SPROM revision */
-		*srev = *((uint8_t *)ptr + SPROM_REV_OFF(nr));
-		
+		error = bhnd_nvram_io_read(buf, SPROM_REV_OFF(fmt->size), srev,
+		    sizeof(*srev));
+		if (error)
+			goto failed;
+
 		/* Early sromrev 1 devices (specifically some BCM440x enet
 		 * cards) are reported to have been incorrectly programmed
 		 * with a revision of 0x10. */
@@ -261,7 +265,7 @@ bhnd_nvram_sprom_parse(struct bhnd_nvram_io *io, uint8_t *srev,
 	/* No match -- set error and fallthrough */
 	error = ENXIO;
 	if (BHND_NV_VERBOSE && crc_errors > 0) {
-		SPROM_NVLOG("SPROM parsing failed with %zu CRC errors\n",
+		SPROM_NVLOG("sprom parsing failed with %zu CRC errors\n",
 		    crc_errors);
 	}
 
