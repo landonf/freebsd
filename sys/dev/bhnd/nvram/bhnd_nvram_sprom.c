@@ -162,10 +162,12 @@ bhnd_nvram_sprom_parse(struct bhnd_nvram_io *io, uint8_t *srev,
 	const struct bhnd_nvram_sprom_fmt	*fmt;
 	struct bhnd_nvram_io			*buf;
 	uint8_t					 crc;
+	size_t					 crc_errors;
 	int					 error;
 
-	crc = BHND_NVRAM_CRC8_INITIAL;
 	buf = bhnd_nvram_iobuf_empty(0, SPROM_SZ_MAX);
+	crc = BHND_NVRAM_CRC8_INITIAL;
+	crc_errors = 0;
 
 	/* We iterate the image formats smallest to largest, allowing us to
 	 * perform incremental checksum calculation */
@@ -173,9 +175,11 @@ bhnd_nvram_sprom_parse(struct bhnd_nvram_io *io, uint8_t *srev,
 		void		*ptr;
 		size_t		 nbytes, nr;
 		uint16_t	 sig;
+		bool		 crc_valid;
 
 		fmt = &bhnd_nvram_sprom_fmts[i];
 		nbytes = bhnd_nvram_io_getsize(buf);
+		crc_valid = false;
 
 		if (nbytes > fmt->size)
 			BHND_NV_PANIC("SPROM format is defined out-of-order");
@@ -190,15 +194,13 @@ bhnd_nvram_sprom_parse(struct bhnd_nvram_io *io, uint8_t *srev,
 		if (error)
 			goto failed;
 
-		/* Read image data and update CRC */
+		/* Read image data and update CRC (errors are reported
+		 * after the signature check) */
 		if ((error = bhnd_nvram_io_read(io, nbytes, ptr, nr)))
 			goto failed;
 
 		crc = bhnd_nvram_crc8(ptr, nr, crc);
-
-		/* Skip on invalid CRC */
-		if (crc != BHND_NVRAM_CRC8_VALID)
-			continue;
+		crc_valid = (crc == BHND_NVRAM_CRC8_VALID);
 
 		/* Fetch SPROM revision */
 		*srev = *((uint8_t *)ptr + SPROM_REV_OFF(nr));
@@ -213,7 +215,7 @@ bhnd_nvram_sprom_parse(struct bhnd_nvram_io *io, uint8_t *srev,
 		if (*srev < fmt->rev_min || *srev > fmt->rev_max)
 			continue;
 
-		/* Verify signature (if any) */
+		/* Check signature (if any) */
 		sig = SPROM_SIG_NONE;
 		if (fmt->sig_offset != SPROM_SIG_NONE_OFF) {
 			error = bhnd_nvram_io_read(buf, fmt->sig_offset, &sig,
@@ -223,10 +225,31 @@ bhnd_nvram_sprom_parse(struct bhnd_nvram_io *io, uint8_t *srev,
 
 			sig = le16toh(sig);
 		}
-		
+
+		/* If the signature does not match, skip to next format */
 		if (sig != fmt->sig_req) {
-			SPROM_NVLOG("invalid sprom %hhu signature: 0x%hx "
-			    "(expected 0x%hx)\n", *srev, sig, fmt->sig_req);
+			/* If the CRC is valid, log the mismatch */
+			if (crc_valid || BHND_NV_VERBOSE) {
+				SPROM_NVLOG("invalid sprom %hhu signature: "
+				    "0x%hx (expected 0x%hx)\n", *srev, sig,
+				    fmt->sig_req);
+				error = ENXIO;
+				goto failed;
+			}
+
+			continue;
+		}
+
+		/* Check CRC */
+		if (!crc_valid) {
+			/* If a signature chec succeded, log the CRC error */
+			if (sig != SPROM_SIG_NONE || BHND_NV_VERBOSE) {
+				SPROM_NVLOG("sprom %hhu CRC error (crc=%#hhx, "
+				    "expected=%#x)\n", *srev, crc,
+				    BHND_NVRAM_CRC8_VALID);
+				crc_errors++;
+			}
+
 			continue;
 		}
 
@@ -237,6 +260,10 @@ bhnd_nvram_sprom_parse(struct bhnd_nvram_io *io, uint8_t *srev,
 
 	/* No match -- set error and fallthrough */
 	error = ENXIO;
+	if (BHND_NV_VERBOSE && crc_errors > 0) {
+		SPROM_NVLOG("SPROM parsing failed with %zu CRC errors\n",
+		    crc_errors);
+	}
 
 failed:
 	bhnd_nvram_io_free(buf);

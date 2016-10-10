@@ -47,6 +47,7 @@
 #endif
 #define	BHND_NV_ASSERT(expr, ...)	KASSERT(expr, __VA_ARGS__)
 
+#define	BHND_NV_VERBOSE			(bootverbose)
 #define	BHND_NV_PANIC(...)		panic(__VA_ARGS__)
 #define	BHND_NV_DEVLOG(dev, fmt, ...)	do {		\
 	if (dev != NULL)				\
@@ -77,6 +78,7 @@
 #endif
 #define	BHND_NV_ASSERT(expr, ...)	assert(expr)
 
+#define	BHND_NV_VERBOSE			(0)
 #define	BHND_NV_PANIC(fmt, ...)		do {			\
 	fprintf(stderr, "panic: " fmt "\n", ##__VA_ARGS__);	\
 	abort();						\
