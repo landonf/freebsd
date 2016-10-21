@@ -2633,7 +2633,7 @@ vfs_vmio_invalidate(struct buf *bp)
 		while (vm_page_xbusied(m)) {
 			vm_page_lock(m);
 			VM_OBJECT_WUNLOCK(obj);
-			vm_page_busy_sleep(m, "mbncsh");
+			vm_page_busy_sleep(m, "mbncsh", true);
 			VM_OBJECT_WLOCK(obj);
 		}
 		if (pmap_page_wired_mappings(m) == 0)
@@ -3113,7 +3113,7 @@ flushbufqueues(struct vnode *lvp, int target, int flushdeps)
 		if (bp->b_qindex == QUEUE_SENTINEL || (lvp != NULL &&
 		    bp->b_vp != lvp)) {
 			mtx_unlock(&bqlocks[queue]);
- 			continue;
+			continue;
 		}
 		error = BUF_LOCK(bp, LK_EXCLUSIVE | LK_NOWAIT, NULL);
 		mtx_unlock(&bqlocks[queue]);
@@ -4182,7 +4182,7 @@ vfs_drain_busy_pages(struct buf *bp)
 			while (vm_page_xbusied(m)) {
 				vm_page_lock(m);
 				VM_OBJECT_WUNLOCK(bp->b_bufobj->bo_object);
-				vm_page_busy_sleep(m, "vbpage");
+				vm_page_busy_sleep(m, "vbpage", true);
 				VM_OBJECT_WLOCK(bp->b_bufobj->bo_object);
 			}
 		}
@@ -4544,7 +4544,7 @@ int
 bufsync(struct bufobj *bo, int waitfor)
 {
 
-	return (VOP_FSYNC(bo->__bo_vnode, waitfor, curthread));
+	return (VOP_FSYNC(bo2vnode(bo), waitfor, curthread));
 }
 
 void

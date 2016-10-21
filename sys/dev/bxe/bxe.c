@@ -490,8 +490,6 @@ static const struct {
                 4, STATS_FLAGS_FUNC, "mbuf_alloc_tpa"},
     { STATS_OFFSET32(tx_queue_full_return),
                 4, STATS_FLAGS_FUNC, "tx_queue_full_return"},
-    { STATS_OFFSET32(bxe_tx_mq_start_lock_failures),
-                4, STATS_FLAGS_FUNC, "bxe_tx_mq_start_lock_failures"},
     { STATS_OFFSET32(tx_request_link_down_failures),
                 4, STATS_FLAGS_FUNC, "tx_request_link_down_failures"},
     { STATS_OFFSET32(bd_avail_too_less_failures),
@@ -612,14 +610,13 @@ static const struct {
                 4, "mbuf_alloc_tpa"},
     { Q_STATS_OFFSET32(tx_queue_full_return),
                 4, "tx_queue_full_return"},
-    { Q_STATS_OFFSET32(bxe_tx_mq_start_lock_failures),
-                4, "bxe_tx_mq_start_lock_failures"},
     { Q_STATS_OFFSET32(tx_request_link_down_failures),
                 4, "tx_request_link_down_failures"},
     { Q_STATS_OFFSET32(bd_avail_too_less_failures),
                 4, "bd_avail_too_less_failures"},
     { Q_STATS_OFFSET32(tx_mq_not_empty),
                 4, "tx_mq_not_empty"}
+
 };
 
 #define BXE_NUM_ETH_STATS   ARRAY_SIZE(bxe_eth_stats_arr)
@@ -5616,7 +5613,7 @@ bxe_tx_start(if_t ifp)
     BXE_FP_TX_UNLOCK(fp);
 }
 
-#if __FreeBSD_version >= 800000
+#if __FreeBSD_version >= 901504
 
 static int
 bxe_tx_mq_start_locked(struct bxe_softc    *sc,
@@ -5646,9 +5643,7 @@ bxe_tx_mq_start_locked(struct bxe_softc    *sc,
         }
     }
 
-    if (!sc->link_vars.link_up ||
-        (if_getdrvflags(ifp) &
-        (IFF_DRV_RUNNING | IFF_DRV_OACTIVE)) != IFF_DRV_RUNNING) {
+    if (!sc->link_vars.link_up || !(ifp->if_drv_flags & IFF_DRV_RUNNING)) {
         fp->eth_q_stats.tx_request_link_down_failures++;
         goto bxe_tx_mq_start_locked_exit;
     }
@@ -5689,7 +5684,7 @@ bxe_tx_mq_start_locked(struct bxe_softc    *sc,
             fp->eth_q_stats.tx_encap_failures++;
             if (next != NULL) {
                 /* mark the TX queue as full and save the frame */
-                ifp->if_drv_flags |= IFF_DRV_OACTIVE;
+                if_setdrvflagbits(ifp, IFF_DRV_OACTIVE, 0);
                 drbr_putback(ifp, tx_br, next);
                 fp->eth_q_stats.mbuf_alloc_tx--;
                 fp->eth_q_stats.tx_frames_deferred++;
@@ -5704,7 +5699,7 @@ bxe_tx_mq_start_locked(struct bxe_softc    *sc,
         tx_count++;
 
         /* send a copy of the frame to any BPF listeners */
-        BPF_MTAP(ifp, next);
+	if_etherbpfmtap(ifp, next);
 
         drbr_advance(ifp, tx_br);
     }
@@ -5731,11 +5726,7 @@ bxe_tx_mq_start_deferred(void *arg,
 {
     struct bxe_fastpath *fp = (struct bxe_fastpath *)arg;
     struct bxe_softc *sc = fp->sc;
-#if __FreeBSD_version >= 800000
     if_t ifp = sc->ifp;
-#else
-    struct ifnet *ifp = sc->ifnet;
-#endif /* #if __FreeBSD_version >= 800000 */
 
     BXE_FP_TX_LOCK(fp);
     bxe_tx_mq_start_locked(sc, ifp, fp, NULL);
@@ -5801,7 +5792,7 @@ bxe_mq_flush(struct ifnet *ifp)
     if_qflush(ifp);
 }
 
-#endif /* FreeBSD_version >= 800000 */
+#endif /* FreeBSD_version >= 901504 */
 
 static uint16_t
 bxe_cid_ilt_lines(struct bxe_softc *sc)
@@ -6161,7 +6152,7 @@ bxe_free_fp_buffers(struct bxe_softc *sc)
     for (i = 0; i < sc->num_queues; i++) {
         fp = &sc->fp[i];
 
-#if __FreeBSD_version >= 800000
+#if __FreeBSD_version >= 901504
         if (fp->tx_br != NULL) {
             /* just in case bxe_mq_flush() wasn't called */
             if (mtx_initialized(&fp->tx_mtx)) {
@@ -7022,11 +7013,11 @@ bxe_link_attn(struct bxe_softc *sc)
             bxe_stats_handle(sc, STATS_EVENT_LINK_UP);
         }
 
-        /* Restart tx when the link comes back. */
+	/* Restart tx when the link comes back. */
         FOR_EACH_ETH_QUEUE(sc, i) {
             fp = &sc->fp[i];
             taskqueue_enqueue(fp->tq, &fp->tx_task);
-        }
+	}
     }
 
     if (sc->link_vars.link_up && sc->link_vars.line_speed) {
@@ -8636,6 +8627,11 @@ bxe_handle_fp_tq(void *context,
      * we need to add a "process/continue" flag here that the driver
      * can use to tell the task here not to do anything.
      */
+#if 0
+    if (!(if_getdrvflags(sc->ifp) & IFF_DRV_RUNNING)) {
+        return;
+    }
+#endif
 
     /* update the fastpath index */
     bxe_update_fp_sb_idx(fp);
@@ -9109,9 +9105,9 @@ bxe_interrupt_attach(struct bxe_softc *sc)
     snprintf(sc->sp_tq_name, sizeof(sc->sp_tq_name),
              "bxe%d_sp_tq", sc->unit);
     TASK_INIT(&sc->sp_tq_task, 0, bxe_handle_sp_tq, sc);
-    sc->sp_tq = taskqueue_create_fast(sc->sp_tq_name, M_NOWAIT,
-                                      taskqueue_thread_enqueue,
-                                      &sc->sp_tq);
+    sc->sp_tq = taskqueue_create(sc->sp_tq_name, M_NOWAIT,
+                                 taskqueue_thread_enqueue,
+                                 &sc->sp_tq);
     taskqueue_start_threads(&sc->sp_tq, 1, PWAIT, /* lower priority */
                             "%s", sc->sp_tq_name);
 
@@ -9122,11 +9118,11 @@ bxe_interrupt_attach(struct bxe_softc *sc)
                  "bxe%d_fp%d_tq", sc->unit, i);
         TASK_INIT(&fp->tq_task, 0, bxe_handle_fp_tq, fp);
         TASK_INIT(&fp->tx_task, 0, bxe_tx_mq_start_deferred, fp);
-        fp->tq = taskqueue_create_fast(fp->tq_name, M_NOWAIT,
-                                       taskqueue_thread_enqueue,
-                                       &fp->tq);
+        fp->tq = taskqueue_create(fp->tq_name, M_NOWAIT,
+                                  taskqueue_thread_enqueue,
+                                  &fp->tq);
         TIMEOUT_TASK_INIT(fp->tq, &fp->tx_timeout_task, 0,
-            bxe_tx_mq_start_deferred, fp);
+                          bxe_tx_mq_start_deferred, fp);
         taskqueue_start_threads(&fp->tq, 1, PI_NET, /* higher priority */
                                 "%s", fp->tq_name);
     }
@@ -12161,11 +12157,6 @@ bxe_periodic_callout_func(void *xsc)
     struct bxe_softc *sc = (struct bxe_softc *)xsc;
     int i;
 
-#if __FreeBSD_version < 800000
-    struct bxe_fastpath *fp;
-    uint16_t tx_bd_avail;
-#endif
-
     if (!BXE_CORE_TRYLOCK(sc)) {
         /* just bail and try again next time */
 
@@ -12184,28 +12175,8 @@ bxe_periodic_callout_func(void *xsc)
         BLOGW(sc, "periodic callout exit (state=0x%x)\n", sc->state);
         BXE_CORE_UNLOCK(sc);
         return;
-    }
-
-#if __FreeBSD_version < 800000
-
-    fp = &sc->fp[0];
-    if (BXE_FP_TX_TRYLOCK(fp)) {
-        struct ifnet *ifp = sc->ifnet;
-        /*
-         * If interface was stopped due to unavailable
-         * bds, try to process some tx completions
-         */
-        (void) bxe_txeof(sc, fp);
-           
-        tx_bd_avail = bxe_tx_avail(sc, fp);
-        if (tx_bd_avail >= BXE_TX_CLEANUP_THRESHOLD) {
-            bxe_tx_start_locked(sc, ifp, fp);
         }
- 
-        BXE_FP_TX_UNLOCK(fp);
-    }
-    
-#endif /* #if __FreeBSD_version >= 800000 */
+
 
     /* Check for TX timeouts on any fastpath. */
     FOR_EACH_QUEUE(sc, i) {
@@ -12683,7 +12654,7 @@ bxe_init_ifnet(struct bxe_softc *sc)
     if_setioctlfn(ifp, bxe_ioctl);
     if_setstartfn(ifp, bxe_tx_start);
     if_setgetcounterfn(ifp, bxe_get_counter);
-#if __FreeBSD_version >= 800000
+#if __FreeBSD_version >= 901504
     if_settransmitfn(ifp, bxe_tx_mq_start);
     if_setqflushfn(ifp, bxe_mq_flush);
 #endif
@@ -15726,7 +15697,7 @@ bxe_add_sysctls(struct bxe_softc *sc)
 static int
 bxe_alloc_buf_rings(struct bxe_softc *sc)
 {
-#if __FreeBSD_version >= 800000
+#if __FreeBSD_version >= 901504
 
     int i;
     struct bxe_fastpath *fp;
@@ -15747,7 +15718,7 @@ bxe_alloc_buf_rings(struct bxe_softc *sc)
 static void
 bxe_free_buf_rings(struct bxe_softc *sc)
 {
-#if __FreeBSD_version >= 800000
+#if __FreeBSD_version >= 901504
 
     int i;
     struct bxe_fastpath *fp;

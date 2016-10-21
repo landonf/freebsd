@@ -2303,7 +2303,8 @@ void bxe_dump_mbuf_data(struct bxe_softc *sc, char *pTag,
 extern int bxe_grc_dump(struct bxe_softc *sc);
 
 #if __FreeBSD_version >= 800000
-#if (__FreeBSD_version >= 1001513 && __FreeBSD_version < 1100000) || __FreeBSD_version >= 1100048
+#if (__FreeBSD_version >= 1001513 && __FreeBSD_version < 1100000) ||\
+    __FreeBSD_version >= 1100048
 #define BXE_SET_FLOWID(m) M_HASHTYPE_SET(m, M_HASHTYPE_OPAQUE)
 #define BXE_VALID_FLOWID(m) (M_HASHTYPE_GET(m) != M_HASHTYPE_NONE)
 #else
