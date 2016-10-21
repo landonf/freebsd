@@ -67,7 +67,10 @@ enum {
 	BHND_NVRAM_DATA_CAP_INDEXED	= (1<<0),
 
 	/** Supports direct access to backing buffer */
-	BHND_NVRAM_DATA_CAP_READ_PTR	= (1<<1)
+	BHND_NVRAM_DATA_CAP_READ_PTR	= (1<<1),
+
+	/** Supports device path prefixed variables */
+	BHND_NVRAM_DATA_CAP_DEVPATHS	= (1<<2),
 };
 
 /**
@@ -91,6 +94,8 @@ int		 bhnd_nvram_data_new(bhnd_nvram_data_class_t *cls,
 		     struct bhnd_nvram_data **nv, struct bhnd_nvram_io *io);
 
 void		 bhnd_nvram_data_free(struct bhnd_nvram_data *nv);
+
+size_t		 bhnd_nvram_data_count(struct bhnd_nvram_data *nv);
 
 int		 bhnd_nvram_data_size(struct bhnd_nvram_data *nv, size_t *size);
 

@@ -425,6 +425,13 @@ bhnd_nvram_sprom_free(struct bhnd_nvram_data *nv)
 	bhnd_nv_free(sp);
 }
 
+size_t
+bhnd_nvram_sprom_count(struct bhnd_nvram_data *nv)
+{
+	struct bhnd_nvram_sprom *sprom = (struct bhnd_nvram_sprom *)nv;
+	return (sprom->layout->num_vars);
+}
+
 static int
 bhnd_nvram_sprom_size(struct bhnd_nvram_data *nv, size_t *size)
 {

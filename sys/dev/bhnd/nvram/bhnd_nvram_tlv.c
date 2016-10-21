@@ -62,6 +62,7 @@ __FBSDID("$FreeBSD$");
 struct bhnd_nvram_tlv {
 	struct bhnd_nvram_data	 nv;	/**< common instance state */
 	struct bhnd_nvram_io	*data;	/**< backing buffer */
+	size_t			 count;	/**< variable count */
 };
 
 BHND_NVRAM_DATA_CLASS_DEFN(tlv, "WGT634U")
@@ -185,6 +186,7 @@ bhnd_nvram_tlv_init(struct bhnd_nvram_tlv *tlv, struct bhnd_nvram_io *src)
 		return (ENOMEM);
 
 	/* Initialize our backing buffer */
+	tlv->count = 0;
 	next = 0;
 	while ((env = bhnd_nvram_tlv_next_env(tlv, &next, NULL)) != NULL) {
 		size_t env_len;
@@ -210,6 +212,9 @@ bhnd_nvram_tlv_init(struct bhnd_nvram_tlv *tlv, struct bhnd_nvram_io *src)
 
 		/* Replace '=' with '\0' */
 		*(env->envp + name_len) = '\0';
+
+		/* Add to variable count */
+		tlv->count++;
 	};
 
 	return (0);
@@ -254,6 +259,13 @@ bhnd_nvram_tlv_free(struct bhnd_nvram_data *nv)
 
 	bhnd_nvram_io_free(tlv->data);
 	bhnd_nv_free(tlv);
+}
+
+size_t
+bhnd_nvram_tlv_count(struct bhnd_nvram_data *nv)
+{
+	struct bhnd_nvram_tlv *tlv = (struct bhnd_nvram_tlv *)nv;
+	return (tlv->count);
 }
 
 static int
@@ -338,7 +350,7 @@ bhnd_nvram_tlv_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 static uint32_t
 bhnd_nvram_tlv_getcaps(struct bhnd_nvram_data *nv)
 {
-	return (BHND_NVRAM_DATA_CAP_READ_PTR);
+	return (BHND_NVRAM_DATA_CAP_READ_PTR|BHND_NVRAM_DATA_CAP_DEVPATHS);
 }
 
 static const char *

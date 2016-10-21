@@ -123,6 +123,8 @@ struct bhnd_nvram_bcm {
 
 	/** BCM header values */
 	struct bhnd_nvram_bcmdata	 hvars[nitems(bhnd_nvram_bcm_hvars)];
+
+	size_t				 count;	/**< total variable count */
 };
 
 BHND_NVRAM_DATA_CLASS_DEFN(bcm, "Broadcom")
@@ -164,7 +166,7 @@ bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 		return (ENXIO);
 
 	/* Fetch the actual NVRAM image size */
-	io_size = le32toh(hdr.size);	
+	io_size = le32toh(hdr.size);
 	if (io_size < sizeof(hdr)) {
 		/* The header size must include the header itself */
 		BCM_NVLOG("corrupt header size: %zu\n", io_size);
@@ -230,6 +232,7 @@ bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 #undef BCM_READ_HDR_VAR
 
 	/* Process the buffer */
+	bcm->count = 0;
 	io_offset = sizeof(hdr);
 	while (io_offset < io_size) {
 		char		*envp;
@@ -283,6 +286,9 @@ bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 			return (EINVAL);
 		}
 
+		/* Update variable count */
+		bcm->count++;
+
 		/* Seek to the next record */
 		if (++io_offset == io_size) {
 			char ch;
@@ -306,6 +312,16 @@ bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 		 * terminated string) */
 		if (*(p + io_offset) == '\0')
 			break;
+	}
+
+	/* Add any non-mirrored header variables to our count */
+	for (size_t i = 0; i < nitems(bcm->hvars); i++) {
+		/* Counted when the mirrored variable was parsed from backing
+		 * data */
+		if (bcm->hvars[i].mirrored)
+			continue;
+
+		bcm->count++;
 	}
 
 	return (0);
@@ -354,6 +370,13 @@ bhnd_nvram_bcm_free(struct bhnd_nvram_data *nv)
 
 	bhnd_nvram_io_free(bcm->data);
 	bhnd_nv_free(bcm);
+}
+
+size_t
+bhnd_nvram_bcm_count(struct bhnd_nvram_data *nv)
+{
+	struct bhnd_nvram_bcm *bcm = (struct bhnd_nvram_bcm *)nv;
+	return (bcm->count);
 }
 
 static int
@@ -537,7 +560,7 @@ bhnd_nvram_bcm_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 static uint32_t
 bhnd_nvram_bcm_getcaps(struct bhnd_nvram_data *nv)
 {
-	return (BHND_NVRAM_DATA_CAP_READ_PTR);
+	return (BHND_NVRAM_DATA_CAP_READ_PTR|BHND_NVRAM_DATA_CAP_DEVPATHS);
 }
 
 static const char *

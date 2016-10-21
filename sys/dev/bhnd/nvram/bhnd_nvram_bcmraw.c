@@ -74,6 +74,7 @@ struct bhnd_nvram_bcmraw {
 	struct bhnd_nvram_data		 nv;	/**< common instance state */
 	char				*data;	/**< backing buffer */
 	size_t				 size;	/**< buffer size */
+	size_t				 count;	/**< variable count */
 };
 
 BHND_NVRAM_DATA_CLASS_DEFN(bcmraw, "Broadcom (RAW)")
@@ -155,6 +156,7 @@ bhnd_nvram_bcmraw_init(struct bhnd_nvram_bcmraw *bcm, struct bhnd_nvram_io *src)
 		return (error);
 
 	/* Process the buffer */
+	bcm->count = 0;
 	for (offset = 0; offset < bcm->size; offset++) {
 		char		*envp;
 		const char	*name, *value;
@@ -176,6 +178,9 @@ bhnd_nvram_bcmraw_init(struct bhnd_nvram_bcmraw *bcm, struct bhnd_nvram_io *src)
 		 * allowing us to vend references directly to the variable
 		 * name */
 		*(envp + name_len) = '\0';
+
+		/* Add to variable count */
+		bcm->count++;
 
 		/* Seek past the value's terminating '\0' */
 		offset += envp_len;
@@ -250,6 +255,14 @@ bhnd_nvram_bcmraw_free(struct bhnd_nvram_data *nv)
 	bhnd_nv_free(bcm);
 }
 
+static size_t
+bhnd_nvram_bcmraw_count(struct bhnd_nvram_data *nv)
+{
+	struct bhnd_nvram_bcmraw *bcm = (struct bhnd_nvram_bcmraw *)nv;
+
+	return (bcm->count);
+}
+
 static int
 bhnd_nvram_bcmraw_size(struct bhnd_nvram_data *nv, size_t *size)
 {
@@ -320,7 +333,7 @@ bhnd_nvram_bcmraw_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 static uint32_t
 bhnd_nvram_bcmraw_getcaps(struct bhnd_nvram_data *nv)
 {
-	return (BHND_NVRAM_DATA_CAP_READ_PTR);
+	return (BHND_NVRAM_DATA_CAP_READ_PTR|BHND_NVRAM_DATA_CAP_DEVPATHS);
 }
 
 static const char *

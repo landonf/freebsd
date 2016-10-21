@@ -62,7 +62,7 @@ __FBSDID("$FreeBSD$");
  * Provides identification, decoding, and encoding of BHND NVRAM data.
  */
 
-static int	bhnd_nvram_parser_init_common(struct bhnd_nvram *sc,
+static int	 bhnd_nvram_parser_init_common(struct bhnd_nvram *sc,
 		    struct bhnd_nvram_io *io, bhnd_nvram_data_class_t *cls);
 static int	 bhnd_nvram_sort_idx(void *ctx, const void *lhs,
 		     const void *rhs);
@@ -332,26 +332,25 @@ bhnd_nvram_sort_idx(void *ctx, const void *lhs, const void *rhs)
 	return (strcasecmp(l_str, r_str));
 }
 
-
 /**
- * Generate all indices for the NVRAM data backing @p nvram.
+ * Parse and register all device paths and path aliases in @p nvram.
  * 
  * @param sc		The NVRAM parser state.
  *
  * @retval 0		success
- * @retval non-zero	If indexing @p nvram fails, a regular unix
+ * @retval non-zero	If registering device paths fails, a regular unix
  *			error code will be returned.
  */
 static int
-bhnd_nvram_generate_index(struct bhnd_nvram *sc)
+bhnd_nvram_register_devpaths(struct bhnd_nvram *sc)
 {
 	const char	*name;
 	void		*cookiep;
-	size_t		 idx_bytes;
-	size_t		 num_records;
 	int		 error;
 
-	num_records = 0;
+	/* Skip if backing parser does not support device paths */
+	if (!(bhnd_nvram_data_getcaps(sc->nv) & BHND_NVRAM_DATA_CAP_DEVPATHS))
+		return (0);
 
 	/* Parse and register all device path aliases */
 	cookiep = NULL;
@@ -363,8 +362,6 @@ bhnd_nvram_generate_index(struct bhnd_nvram *sc)
 		char				 pathbuf[BHND_NVRAM_VAL_MAXLEN];
 		size_t				 path_len;
 		u_long				 index;
-
-		num_records++;
 
 		/* Check for devpath prefix */
 		if (strncmp(name, NVRAM_DEVPATH_STR, NVRAM_DEVPATH_LEN) != 0)
@@ -399,8 +396,34 @@ bhnd_nvram_generate_index(struct bhnd_nvram *sc)
 		LIST_INSERT_HEAD(&sc->devpaths, devpath, dp_link);
 	}
 
+	return (0);
+}
+
+/**
+ * Generate all indices for the NVRAM data backing @p nvram.
+ * 
+ * @param sc		The NVRAM parser state.
+ *
+ * @retval 0		success
+ * @retval non-zero	If indexing @p nvram fails, a regular unix
+ *			error code will be returned.
+ */
+static int
+bhnd_nvram_generate_index(struct bhnd_nvram *sc)
+{
+	const char	*name;
+	void		*cookiep;
+	size_t		 idx_bytes;
+	size_t		 num_vars;
+	int		 error;
+
+	/* Parse and register all device path aliases */
+	if ((error = bhnd_nvram_register_devpaths(sc)))
+		return (error);
+
 	/* Skip generating a variable index if threshold is not met ... */
-	if (num_records < NVRAM_IDX_VAR_THRESH)
+	num_vars = bhnd_nvram_data_count(sc->nv);
+	if (num_vars < NVRAM_IDX_VAR_THRESH)
 		return (0);
 
 	/* ... or if the backing data instance implements indexed lookup
@@ -410,19 +433,19 @@ bhnd_nvram_generate_index(struct bhnd_nvram *sc)
 
 	/* Allocate and populate variable index */
 	idx_bytes = sizeof(struct bhnd_nvram_idx) +
-	    (sizeof(struct bhnd_nvram_idx_entry) * num_records);
+	    (sizeof(struct bhnd_nvram_idx_entry) * num_vars);
 	sc->idx = bhnd_nv_malloc(idx_bytes);
 	if (sc->idx == NULL) {
 		NVRAM_LOG(sc, "error allocating %zu byte index\n", idx_bytes);
 		goto bad_index;
 	}
 
-	sc->idx->num_entries = num_records;
+	sc->idx->num_entries = num_vars;
 
 #ifdef _KERNEL
 	if (bootverbose) {
 		NVRAM_LOG(sc, "allocated %zu byte index for %zu variables\n",
-		    idx_bytes, num_records);
+		    idx_bytes, num_vars);
 	}
 #endif /* _KERNEL */
 

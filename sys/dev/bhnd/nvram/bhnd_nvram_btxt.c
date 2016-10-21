@@ -67,6 +67,7 @@ __FBSDID("$FreeBSD$");
 struct bhnd_nvram_btxt {
 	struct bhnd_nvram_data	 nv;	/**< common instance state */
 	struct bhnd_nvram_io	*data;	/**< memory-backed board text data */
+	size_t			 count;	/**< variable count */
 };
 
 BHND_NVRAM_DATA_CLASS_DEFN(btxt, "Broadcom Board Text")
@@ -163,6 +164,7 @@ bhnd_nvram_btxt_init(struct bhnd_nvram_btxt *btxt, struct bhnd_nvram_io *src)
 		return (error);
 
 	/* Process the buffer */
+	btxt->count = 0;
 	while (io_offset < io_size) {
 		const void	*envp;
 
@@ -204,6 +206,9 @@ bhnd_nvram_btxt_init(struct bhnd_nvram_btxt *btxt, struct bhnd_nvram_io *src)
 		    &(char){'\0'}, 1);
 		if (error)
 			return (error);
+
+		/* Add to variable count */
+		btxt->count++;
 
 		/* Advance past EOL */
 		io_offset += line_len;
@@ -250,6 +255,13 @@ bhnd_nvram_btxt_free(struct bhnd_nvram_data *nv)
 
 	bhnd_nvram_io_free(btxt->data);
 	bhnd_nv_free(nv);
+}
+
+size_t
+bhnd_nvram_btxt_count(struct bhnd_nvram_data *nv)
+{
+	struct bhnd_nvram_btxt *btxt = (struct bhnd_nvram_btxt *)nv;
+	return (btxt->count);
 }
 
 static int
@@ -301,7 +313,7 @@ bhnd_nvram_btxt_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 static uint32_t
 bhnd_nvram_btxt_getcaps(struct bhnd_nvram_data *nv)
 {
-	return (BHND_NVRAM_DATA_CAP_READ_PTR);
+	return (BHND_NVRAM_DATA_CAP_READ_PTR|BHND_NVRAM_DATA_CAP_DEVPATHS);
 }
 
 static void *

@@ -121,6 +121,17 @@ bhnd_nvram_data_free(struct bhnd_nvram_data *nv)
 }
 
 /**
+ * Return the number of variables in @p nv.
+ * 
+ * @param nv The NVRAM data to be queried.
+ */
+size_t
+bhnd_nvram_data_count(struct bhnd_nvram_data *nv)
+{
+	return (nv->cls->op_count(nv));
+}
+
+/**
  * Compute the size of the serialized form of @p nv.
  *
  * Serialization may be performed via bhnd_nvram_data_serialize().
@@ -192,7 +203,6 @@ bhnd_nvram_data_next(struct bhnd_nvram_data *nv, void **cookiep)
 {
 	return (nv->cls->op_next(nv, cookiep));
 }
-
 
 /**
  * Search @p nv for a named variable, returning the variable's opaque reference

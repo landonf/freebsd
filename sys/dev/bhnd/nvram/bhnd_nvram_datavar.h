@@ -72,7 +72,10 @@ typedef int		 (bhnd_nvram_data_op_new)(struct bhnd_nvram_data **nv,
 /** @see bhnd_nvram_data_free() */
 typedef void		 (bhnd_nvram_data_op_free)(struct bhnd_nvram_data *nv);
 
-/** @see bhnd_nvram_data_getsize() */
+/** @see bhnd_nvram_data_count() */
+typedef size_t		 (bhnd_nvram_data_op_count)(struct bhnd_nvram_data *nv);
+
+/** @see bhnd_nvram_data_size() */
 typedef int		 (bhnd_nvram_data_op_size)(struct bhnd_nvram_data *nv,
 			     size_t *len);
 
@@ -116,6 +119,7 @@ struct bhnd_nvram_data_class {
 	bhnd_nvram_data_op_probe	*op_probe;
 	bhnd_nvram_data_op_new		*op_new;
 	bhnd_nvram_data_op_free		*op_free;
+	bhnd_nvram_data_op_count	*op_count;
 	bhnd_nvram_data_op_size		*op_size;
 	bhnd_nvram_data_op_serialize	*op_serialize;
 	bhnd_nvram_data_op_getcaps	*op_getcaps;
@@ -163,6 +167,7 @@ struct bhnd_nvram_data {
 	_macro(_cname, probe)					\
 	_macro(_cname, new)					\
 	_macro(_cname, free)					\
+	_macro(_cname, count)					\
 	_macro(_cname, size)					\
 	_macro(_cname, serialize)				\
 	_macro(_cname, getcaps)					\
