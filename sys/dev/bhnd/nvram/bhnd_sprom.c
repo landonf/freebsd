@@ -70,9 +70,6 @@ __FBSDID("$FreeBSD$");
 int
 bhnd_sprom_probe(device_t dev)
 {
-	/* Quiet by default */
-	if (!bootverbose)
-		device_quiet(dev);
 	device_set_desc(dev, "SPROM/OTP");
 
 	/* Refuse wildcard attachments */
