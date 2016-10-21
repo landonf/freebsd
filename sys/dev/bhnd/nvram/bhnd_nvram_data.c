@@ -182,9 +182,9 @@ bhnd_nvram_data_serialize(struct bhnd_nvram_data *nv,
  * @param	nv	The NVRAM data to be queried.
  */
 uint32_t
-bhnd_nvram_data_getcaps(struct bhnd_nvram_data *nv)
+bhnd_nvram_data_caps(struct bhnd_nvram_data *nv)
 {
-	return (nv->cls->op_getcaps(nv));
+	return (nv->cls->op_caps(nv));
 }
 
 /**
@@ -209,7 +209,7 @@ bhnd_nvram_data_next(struct bhnd_nvram_data *nv, void **cookiep)
  * if found, or NULL if unavailable.
  *
  * The BHND_NVRAM_DATA_CAP_INDEXED capability flag will be returned by
- * bhnd_nvram_data_getcaps() if @p nv supports effecient name-based
+ * bhnd_nvram_data_caps() if @p nv supports effecient name-based
  * lookups.
  *
  * @param	nv	The NVRAM data to search.

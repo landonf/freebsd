@@ -349,7 +349,7 @@ bhnd_nvram_register_devpaths(struct bhnd_nvram *sc)
 	int		 error;
 
 	/* Skip if backing parser does not support device paths */
-	if (!(bhnd_nvram_data_getcaps(sc->nv) & BHND_NVRAM_DATA_CAP_DEVPATHS))
+	if (!(bhnd_nvram_data_caps(sc->nv) & BHND_NVRAM_DATA_CAP_DEVPATHS))
 		return (0);
 
 	/* Parse and register all device path aliases */
@@ -428,7 +428,7 @@ bhnd_nvram_generate_index(struct bhnd_nvram *sc)
 
 	/* ... or if the backing data instance implements indexed lookup
 	 * internally */
-	if (bhnd_nvram_data_getcaps(sc->nv) & BHND_NVRAM_DATA_CAP_INDEXED)
+	if (bhnd_nvram_data_caps(sc->nv) & BHND_NVRAM_DATA_CAP_INDEXED)
 		return (0);
 
 	/* Allocate and populate variable index */

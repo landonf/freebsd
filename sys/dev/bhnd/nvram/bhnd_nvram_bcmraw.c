@@ -331,7 +331,7 @@ bhnd_nvram_bcmraw_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 }
 
 static uint32_t
-bhnd_nvram_bcmraw_getcaps(struct bhnd_nvram_data *nv)
+bhnd_nvram_bcmraw_caps(struct bhnd_nvram_data *nv)
 {
 	return (BHND_NVRAM_DATA_CAP_READ_PTR|BHND_NVRAM_DATA_CAP_DEVPATHS);
 }

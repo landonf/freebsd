@@ -348,7 +348,7 @@ bhnd_nvram_tlv_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 }
 
 static uint32_t
-bhnd_nvram_tlv_getcaps(struct bhnd_nvram_data *nv)
+bhnd_nvram_tlv_caps(struct bhnd_nvram_data *nv)
 {
 	return (BHND_NVRAM_DATA_CAP_READ_PTR|BHND_NVRAM_DATA_CAP_DEVPATHS);
 }

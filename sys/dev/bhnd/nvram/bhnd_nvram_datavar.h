@@ -84,9 +84,8 @@ typedef int		 (bhnd_nvram_data_op_serialize)(
 			     struct bhnd_nvram_data *nv, void *buf,
 			     size_t *len);
 
-/** @see bhnd_nvram_data_getcaps() */
-typedef uint32_t	 (bhnd_nvram_data_op_getcaps)(
-			     struct bhnd_nvram_data *nv);
+/** @see bhnd_nvram_data_caps() */
+typedef uint32_t	 (bhnd_nvram_data_op_caps)(struct bhnd_nvram_data *nv);
 
 /** @see bhnd_nvram_data_next() */
 typedef const char	*(bhnd_nvram_data_op_next)(struct bhnd_nvram_data *nv,
@@ -122,7 +121,7 @@ struct bhnd_nvram_data_class {
 	bhnd_nvram_data_op_count	*op_count;
 	bhnd_nvram_data_op_size		*op_size;
 	bhnd_nvram_data_op_serialize	*op_serialize;
-	bhnd_nvram_data_op_getcaps	*op_getcaps;
+	bhnd_nvram_data_op_caps		*op_caps;
 	bhnd_nvram_data_op_next		*op_next;
 	bhnd_nvram_data_op_find		*op_find;
 	bhnd_nvram_data_op_getvar	*op_getvar;
@@ -170,7 +169,7 @@ struct bhnd_nvram_data {
 	_macro(_cname, count)					\
 	_macro(_cname, size)					\
 	_macro(_cname, serialize)				\
-	_macro(_cname, getcaps)					\
+	_macro(_cname, caps)					\
 	_macro(_cname, next)					\
 	_macro(_cname, find)					\
 	_macro(_cname, getvar)					\

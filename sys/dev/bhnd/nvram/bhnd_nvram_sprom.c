@@ -470,7 +470,7 @@ bhnd_nvram_sprom_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 }
 
 static uint32_t
-bhnd_nvram_sprom_getcaps(struct bhnd_nvram_data *nv)
+bhnd_nvram_sprom_caps(struct bhnd_nvram_data *nv)
 {
 	return (BHND_NVRAM_DATA_CAP_INDEXED);
 }
