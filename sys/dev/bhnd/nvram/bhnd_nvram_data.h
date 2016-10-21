@@ -63,7 +63,7 @@ BHND_NVRAM_DATA_CLASS_DECL(sprom);
 
 /** bhnd_nvram_data capabilities */
 enum {
-	/** Supports effecient lookup of variables by name */
+	/** Supports efficient lookup of variables by name */
 	BHND_NVRAM_DATA_CAP_INDEXED	= (1<<0),
 
 	/** Supports direct access to backing buffer */

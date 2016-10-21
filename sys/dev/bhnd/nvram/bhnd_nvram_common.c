@@ -132,26 +132,6 @@ bhnd_nvram_type_width(bhnd_nvram_type type)
 	BHND_NV_PANIC("bhnd nvram type %u unknown", type);
 }
 
-/**
- * Return a pointer to the first entry in the variable definition table.
- *
- * The total number of entries may be determined via bhnd_nvram_vardefn_count().
- */
-const struct bhnd_nvram_vardefn	*
-bhnd_nvram_vardefn_table(void)
-{
-	return (&bhnd_nvram_vardefs[0]);
-}
-
-/**
- * Return the number of entries in the variable definition table.
- */
-size_t
-bhnd_nvram_vardefn_count(void)
-{
-	return (nitems(bhnd_nvram_vardefs));
-}
-
 /* used by bhnd_nvram_find_vardefn() */
 static int
 bhnd_nvram_find_vardefn_compare(const void *key, const void *rhs)
@@ -172,8 +152,43 @@ bhnd_nvram_find_vardefn_compare(const void *key, const void *rhs)
 const struct bhnd_nvram_vardefn *
 bhnd_nvram_find_vardefn(const char *varname)
 {
-	return (bsearch(varname, bhnd_nvram_vardefs, nitems(bhnd_nvram_vardefs),
-	    sizeof(bhnd_nvram_vardefs[0]), bhnd_nvram_find_vardefn_compare));
+	return (bsearch(varname, bhnd_nvram_vardefns, bhnd_nvram_num_vardefns,
+	    sizeof(bhnd_nvram_vardefns[0]), bhnd_nvram_find_vardefn_compare));
+}
+
+/**
+ * Return the variable ID for a variable definition.
+ * 
+ * @param defn Variable definition previously returned by
+ * bhnd_nvram_find_vardefn() or bhnd_nvram_get_vardefn().
+ */
+size_t
+bhnd_nvram_get_vardefn_id(const struct bhnd_nvram_vardefn *defn)
+{
+	BHND_NV_ASSERT(
+	    defn >= bhnd_nvram_vardefns &&
+	    defn <= &bhnd_nvram_vardefns[bhnd_nvram_num_vardefns-1],
+	    ("invalid variable definition pointer %p", defn));
+
+	return (defn - bhnd_nvram_vardefns);
+}
+
+/**
+ * Return the variable definition with the given @p id, or NULL
+ * if no such variable ID is defined.
+ * 
+ * @param id variable ID.
+ *
+ * @retval bhnd_nvram_vardefn If a valid definition for @p id is found.
+ * @retval NULL If no definition for @p id is found. 
+ */
+const struct bhnd_nvram_vardefn *
+bhnd_nvram_get_vardefn(size_t id)
+{
+	if (id >= bhnd_nvram_num_vardefns)
+		return (NULL);
+
+	return (&bhnd_nvram_vardefns[id]);
 }
 
 /**

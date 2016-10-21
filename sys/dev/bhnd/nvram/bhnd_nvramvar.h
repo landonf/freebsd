@@ -56,7 +56,7 @@
 		BHND_NV_LOG(fmt, ##__VA_ARGS__);	\
 } while(0)
 #define	BHND_NV_LOG(fmt, ...)		\
-	printf("%s:" fmt, __FUNCTION__, ##__VA_ARGS__)
+	printf("%s: " fmt, __FUNCTION__, ##__VA_ARGS__)
 
 #define	bhnd_nv_ummax(a, b)		ummax((a), (b))
 #define	bhnd_nv_ummin(a, b)		ummin((a), (b))
@@ -78,14 +78,14 @@
 #endif
 #define	BHND_NV_ASSERT(expr, ...)	assert(expr)
 
-#define	BHND_NV_VERBOSE			(1)
+#define	BHND_NV_VERBOSE			(0)
 #define	BHND_NV_PANIC(fmt, ...)		do {			\
 	fprintf(stderr, "panic: " fmt "\n", ##__VA_ARGS__);	\
 	abort();						\
 } while(0)
 #define	BHND_NV_DEVLOG(dev, fmt, ...)	BHND_NV_LOG(fmt, ## __VA_ARGS__)
 #define	BHND_NV_LOG(fmt, ...)					\
-	fprintf(stderr, "%s:" fmt, __FUNCTION__, ##__VA_ARGS__)
+	fprintf(stderr, "%s: " fmt, __FUNCTION__, ##__VA_ARGS__)
 
 static inline uintmax_t
 bhnd_nv_ummax(uintmax_t a, uintmax_t b)

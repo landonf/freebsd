@@ -35,9 +35,6 @@
 /** SPROM revision is always located at the second-to-last byte */
 #define	SPROM_REV_OFF(_size)	((_size) - 2)
 
-/** The maximum number of array elements encoded in a single SPROM variable */
-#define	SPROM_ARRAY_MAXLEN	12
-
 #define	SPROM_SZ_R1_3		128	/**< SPROM image size (rev 1-3) */
 #define	SPROM_SZ_R4_8_9		440	/**< SPROM image size (rev 4, 8-9) */
 #define	SPROM_SZ_R10		460	/**< SPROM image size (rev 10) */ 
