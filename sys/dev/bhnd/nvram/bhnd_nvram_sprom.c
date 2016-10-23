@@ -753,6 +753,10 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 		}
 	}
 
+	/* Zero-initialize our decode buffer; any output elements skipped
+	 * during decode should default to zero. */
+	memset(inp, 0, ilen);
+
 	/*
 	 * Decode the SPROM data
 	 */
