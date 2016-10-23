@@ -544,7 +544,7 @@ bhnd_nvram_sprom_find_vid_compare(const void *key, const void *rhs)
 	const struct sprom_opcode_idx	*r;
 	size_t				 l;
 
-	l = *(size_t *)key;
+	l = *(const size_t *)key;
 	r = rhs;
 
 	if (l < r->vid)

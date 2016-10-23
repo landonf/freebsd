@@ -358,7 +358,7 @@ bhnd_nvram_bcmraw_next(struct bhnd_nvram_data *nv, void **cookiep)
 	if (*envp == '\0')
 		return (NULL);
 
-	*cookiep = (void *)envp;
+	*cookiep = (void *)(uintptr_t)envp;
 	return (envp);
 }
 
