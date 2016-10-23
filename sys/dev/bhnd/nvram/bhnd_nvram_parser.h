@@ -61,13 +61,8 @@ struct bhnd_nvram;
 
 LIST_HEAD(bhnd_nvram_devpaths, bhnd_nvram_devpath);
 
-#ifdef _KERNEL
-int	bhnd_nvram_parser_init(struct bhnd_nvram *sc, device_t owner,
-	    struct bhnd_nvram_io *io, bhnd_nvram_data_class_t *cls);
-#else /* !_KERNEL */
 int	bhnd_nvram_parser_init(struct bhnd_nvram *sc, struct bhnd_nvram_io *io,
 	    bhnd_nvram_data_class_t *cls);
-#endif
 
 void	bhnd_nvram_parser_fini(struct bhnd_nvram *sc);
 
@@ -78,10 +73,6 @@ int	bhnd_nvram_parser_setvar(struct bhnd_nvram *sc, const char *name,
 
 /** bhnd nvram parser instance state */
 struct bhnd_nvram {
-#ifdef _KERNEL
-	device_t			 owner;		/**< parent device, or NULL */
-#endif
-
 	struct bhnd_nvram_data		*nv;		/**< backing data */
 
 	struct bhnd_nvram_idx		*idx;		/**< key index */

@@ -62,8 +62,6 @@ __FBSDID("$FreeBSD$");
  * Provides identification, decoding, and encoding of BHND NVRAM data.
  */
 
-static int	 bhnd_nvram_parser_init_common(struct bhnd_nvram *sc,
-		    struct bhnd_nvram_io *io, bhnd_nvram_data_class_t *cls);
 static int	 bhnd_nvram_sort_idx(void *ctx, const void *lhs,
 		     const void *rhs);
 static int	 bhnd_nvram_generate_index(struct bhnd_nvram *sc);
@@ -72,35 +70,6 @@ static void	*bhnd_nvram_index_lookup(struct bhnd_nvram *sc,
 
 #define	NVRAM_LOG(sc, fmt, ...)	\
 	BHND_NV_DEVLOG(sc->owner, fmt, ##__VA_ARGS__)
-
-
-#ifdef _KERNEL
-
-/**
- * Identify the NVRAM format at @p offset within @p io, verify the
- * CRC (if applicable), and allocate a local shadow copy of the NVRAM data.
- * 
- * After initialization, no reference to @p io will be held by the
- * NVRAM parser, and @p io may be safely deallocated.
- * 
- * @param[out] sc The NVRAM parser state to be initialized.
- * @param owner The parser's parent device, or NULL if none.
- * @param io An I/O context mapping the NVRAM data to be parsed.
- * @param cls An NVRAM data class capable of parsing @p io.
- * 
- * @retval 0 success
- * @retval ENOMEM If internal allocation of NVRAM state fails.
- * @retval EINVAL If @p io parsing fails.
- */
-int
-bhnd_nvram_parser_init(struct bhnd_nvram *sc, device_t owner,
-    struct bhnd_nvram_io *io, bhnd_nvram_data_class_t *cls)
-{
-	sc->owner = owner;
-	return (bhnd_nvram_parser_init_common(sc, io, cls));
-}
-
-#else /* !_KERNEL */
 
 /**
  * Identify the NVRAM format at @p offset within @p io, verify the
@@ -119,20 +88,6 @@ bhnd_nvram_parser_init(struct bhnd_nvram *sc, device_t owner,
  */
 int
 bhnd_nvram_parser_init(struct bhnd_nvram *sc, struct bhnd_nvram_io *io,
-    bhnd_nvram_data_class_t *cls)
-{
-	return (bhnd_nvram_parser_init_common(sc, io, cls));
-}
-
-#endif /* _KERNEL */
-
-	
-/*
- * Initialization common to kernel and non-kernel bhnd_nvram_parser_init()
- * implementations
- */
-static int
-bhnd_nvram_parser_init_common(struct bhnd_nvram *sc, struct bhnd_nvram_io *io,
     bhnd_nvram_data_class_t *cls)
 {
 	int error;
