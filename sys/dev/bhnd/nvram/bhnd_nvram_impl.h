@@ -29,10 +29,15 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_NVRAM_BHND_NVRAMVAR_H_
-#define _BHND_NVRAM_BHND_NVRAMVAR_H_
+#ifndef _BHND_NVRAM_BHND_NVRAM_IMPL_H_
+#define _BHND_NVRAM_BHND_NVRAM_IMPL_H_
 
 #ifdef _KERNEL
+
+#include <sys/malloc.h>
+#include <sys/systm.h>
+
+MALLOC_DECLARE(M_BHND_NVRAM);
 
 #define	bhnd_nv_malloc(size)		malloc((size), M_BHND_NVRAM, M_WAITOK)
 #define	bhnd_nv_calloc(n, size)		malloc((n) * (size), M_BHND_NVRAM, \
@@ -66,6 +71,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #define	bhnd_nv_malloc(size)		malloc((size))
 #define	bhnd_nv_calloc(n, size)		calloc((n), (size))
@@ -103,4 +109,4 @@ bhnd_nv_ummin(uintmax_t a, uintmax_t b)
 
 #endif /* _KERNEL */
 
-#endif /* _BHND_NVRAM_BHND_NVRAMVAR_H_ */
+#endif /* _BHND_NVRAM_BHND_NVRAM_IMPL_H_ */

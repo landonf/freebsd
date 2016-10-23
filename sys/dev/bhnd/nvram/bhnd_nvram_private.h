@@ -46,14 +46,11 @@
 #endif
 
 #include "bhnd_nvram.h"
+#include "bhnd_nvram_impl.h"
 
 /* Forward declarations */
 struct bhnd_nvram_vardefn;
 struct bhnd_nvram_fmt_hint;
-
-#ifdef _KERNEL
-MALLOC_DECLARE(M_BHND_NVRAM);
-#endif
 
 size_t				 bhnd_nvram_type_width(bhnd_nvram_type type);
 

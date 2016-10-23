@@ -118,10 +118,10 @@ bhnd_nvram_cfe_probe(device_t dev)
 
 	/* Format the device description */
 	cls_desc = bhnd_nvram_data_class_desc(cls);
-	asprintf(&desc, M_BHND_NVRAM, "%s CFE %s", cls_desc, dname);
+	asprintf(&desc, M_DEVBUF, "%s CFE %s", cls_desc, dname);
 	if (desc != NULL) {
 		device_set_desc_copy(dev, desc);
-		free(desc, M_BHND_NVRAM);
+		free(desc, M_DEVBUF);
 	} else {
 		device_set_desc(dev, cls_desc);
 	}
@@ -301,7 +301,7 @@ bhnd_nvram_iocfe_new(struct bhnd_nvram_io **io, char *dname)
 	bool			 req_blk_erase;
 	int			 error;
 
-	iocfe = malloc(sizeof(*iocfe), M_BHND_NVRAM, M_WAITOK);
+	iocfe = malloc(sizeof(*iocfe), M_DEVBUF, M_WAITOK);
 	iocfe->io.iops = &bhnd_nvram_iocfe_ops;
 	iocfe->dname = dname;
 
@@ -401,7 +401,7 @@ failed:
 	if (iocfe->fd >= 0)
 		cfe_close(iocfe->fd);
 
-	free(iocfe, M_BHND_NVRAM);
+	free(iocfe, M_DEVBUF);
 
 	*io = NULL;
 	return (error);
@@ -413,7 +413,7 @@ bhnd_nvram_iocfe_free(struct bhnd_nvram_io *io)
 	struct bhnd_nvram_iocfe	*iocfe = (struct bhnd_nvram_iocfe *)io;
 
 	cfe_close(iocfe->fd);
-	free(io, M_BHND_NVRAM);
+	free(io, M_DEVBUF);
 }
 
 static size_t

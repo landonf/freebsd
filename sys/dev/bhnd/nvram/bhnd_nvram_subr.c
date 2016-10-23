@@ -34,7 +34,9 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/ctype.h>
+#include <sys/kernel.h>
 #include <sys/limits.h>
+#include <sys/malloc.h>
 #include <sys/systm.h>
 
 #include <machine/_inttypes.h>
@@ -53,14 +55,26 @@ __FBSDID("$FreeBSD$");
 
 #endif /* _KERNEL */
 
-#include "bhnd_nvramvar.h"
-
 #include "bhnd_nvram_io.h"
-
-#include "bhnd_nvram_datavar.h"
-#include "bhnd_nvram_data.h"
-
 #include "bhnd_nvram_private.h"
+#include "bhnd_nvram_private_data.h"
+
+#include "bhnd_nvram_map_data.h"
+
+/*
+ * Common NVRAM/SPROM support, including NVRAM variable map
+ * lookup.
+ */
+
+#ifdef _KERNEL
+MALLOC_DEFINE(M_BHND_NVRAM, "bhnd_nvram", "bhnd nvram data");
+#endif
+
+/** signed/unsigned 32-bit integer value storage */
+union bhnd_nvram_int_storage {
+	uint32_t	u32;
+	int32_t		s32;
+};
 
 /* Limit a size_t value to a suitable range for use as a printf string field
  * width */
@@ -72,11 +86,147 @@ __FBSDID("$FreeBSD$");
 #define	NVRAM_LOG(_fmt, ...)	\
 	printf("%s: " _fmt, __FUNCTION__, ##__VA_ARGS__)
 
-/** signed/unsigned 32-bit integer value storage */
-union bhnd_nvram_int_storage {
-	uint32_t	u32;
-	int32_t		s32;
-};
+/**
+ * Return the size of type @p type, or 0 if @p type has a variable width
+ * (e.g. a C string).
+ * 
+ * @param type NVRAM data type.
+ * @result the byte width of @p type.
+ */
+size_t
+bhnd_nvram_type_width(bhnd_nvram_type type)
+{
+	switch (type) {
+	case BHND_NVRAM_TYPE_INT8:
+	case BHND_NVRAM_TYPE_UINT8:
+	case BHND_NVRAM_TYPE_CHAR:
+		return (sizeof(uint8_t));
+
+	case BHND_NVRAM_TYPE_INT16:
+	case BHND_NVRAM_TYPE_UINT16:
+		return (sizeof(uint16_t));
+
+	case BHND_NVRAM_TYPE_INT32:
+	case BHND_NVRAM_TYPE_UINT32:
+		return (sizeof(uint32_t));
+
+	case BHND_NVRAM_TYPE_CSTR:
+		return (0);
+	}
+
+	/* Quiesce gcc4.2 */
+	BHND_NV_PANIC("bhnd nvram type %u unknown", type);
+}
+
+/* used by bhnd_nvram_find_vardefn() */
+static int
+bhnd_nvram_find_vardefn_compare(const void *key, const void *rhs)
+{
+	const struct bhnd_nvram_vardefn *r = rhs;
+
+	return (strcmp((const char *)key, r->name));
+}
+
+/**
+ * Find and return the variable definition for @p varname, if any.
+ * 
+ * @param varname variable name
+ * 
+ * @retval bhnd_nvram_vardefn If a valid definition for @p varname is found.
+ * @retval NULL If no definition for @p varname is found. 
+ */
+const struct bhnd_nvram_vardefn *
+bhnd_nvram_find_vardefn(const char *varname)
+{
+	return (bsearch(varname, bhnd_nvram_vardefns, bhnd_nvram_num_vardefns,
+	    sizeof(bhnd_nvram_vardefns[0]), bhnd_nvram_find_vardefn_compare));
+}
+
+/**
+ * Return the variable ID for a variable definition.
+ * 
+ * @param defn Variable definition previously returned by
+ * bhnd_nvram_find_vardefn() or bhnd_nvram_get_vardefn().
+ */
+size_t
+bhnd_nvram_get_vardefn_id(const struct bhnd_nvram_vardefn *defn)
+{
+	BHND_NV_ASSERT(
+	    defn >= bhnd_nvram_vardefns &&
+	    defn <= &bhnd_nvram_vardefns[bhnd_nvram_num_vardefns-1],
+	    ("invalid variable definition pointer %p", defn));
+
+	return (defn - bhnd_nvram_vardefns);
+}
+
+/**
+ * Return the variable definition with the given @p id, or NULL
+ * if no such variable ID is defined.
+ * 
+ * @param id variable ID.
+ *
+ * @retval bhnd_nvram_vardefn If a valid definition for @p id is found.
+ * @retval NULL If no definition for @p id is found. 
+ */
+const struct bhnd_nvram_vardefn *
+bhnd_nvram_get_vardefn(size_t id)
+{
+	if (id >= bhnd_nvram_num_vardefns)
+		return (NULL);
+
+	return (&bhnd_nvram_vardefns[id]);
+}
+
+/**
+ * Validate an NVRAM variable name.
+ * 
+ * Scans for special characters (path delimiters, value delimiters, path
+ * alias prefixes), returning false if the given name cannot be used
+ * as a relative NVRAM key.
+ * 
+ * @param name A relative NVRAM variable name to validate.
+ * @param name_len The length of @p name, in bytes.
+ * 
+ * @retval true If @p name is a valid relative NVRAM key.
+ * @retval false If @p name should not be used as a relative NVRAM key.
+ */
+bool
+bhnd_nvram_validate_name(const char *name, size_t name_len)
+{
+	size_t limit;
+
+	limit = strnlen(name, name_len);
+	if (limit == 0)
+		return (false);
+
+	/* Disallow path alias prefixes ([0-9]+:.*) */
+	if (limit >= 2 && isdigit(*name)) {
+		for (const char *p = name; (size_t)(p - name) < limit; p++) {
+			if (isdigit(*p))
+				continue;
+			else if (*p == ':')
+				return (false);
+			else
+				break;
+		}
+	}
+
+	/* Scan for special characters */
+	for (const char *p = name; (size_t)(p - name) < limit; p++) {
+		switch (*p) {
+		case '/':	/* path delimiter */
+		case '=':	/* key=value delimiter */
+			return (false);
+
+		default:
+			if (isspace(*p) || !isascii(*p))
+				return (false);
+		}
+	}
+
+	return (true);
+}
+
 
 /**
  * Coerce a string value to a NUL terminated C string.
