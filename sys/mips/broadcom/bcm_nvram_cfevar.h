@@ -36,13 +36,13 @@
 #include <sys/bus.h>
 
 #include <dev/bhnd/nvram/bhnd_nvram.h>
-#include <dev/bhnd/nvram/bhnd_nvram_parser.h>
+#include <dev/bhnd/nvram/bhnd_nvram_store.h>
 
 /** bhnd_nvram_cfe driver instance state. */
 struct bhnd_nvram_cfe_softc {
 	device_t		 	dev;
 	struct mtx		 	mtx;	/**< nvram mutex */
-	struct bhnd_nvram		nvram;	/**< nvram shadow */
+	struct bhnd_nvram_store		nvram;	/**< nvram store */
 };
 
 #define	BHND_NVRAM_CFE_LOCK_INIT(sc) \

@@ -150,8 +150,8 @@ bhnd_nvram_cfe_attach(device_t dev)
 		return (ENXIO);
 	}
 
-	/* Initialize NVRAM parser and free the I/O context */
-	error = bhnd_nvram_parser_init(&sc->nvram, dev, io, cls);
+	/* Initialize NVRAM store and free the I/O context */
+	error = bhnd_nvram_store_init(&sc->nvram, io, cls);
 	bhnd_nvram_io_free(io);
 	if (error)
 		return (error);
@@ -181,7 +181,7 @@ bhnd_nvram_cfe_detach(device_t dev)
 
 	sc = device_get_softc(dev);
 
-	bhnd_nvram_parser_fini(&sc->nvram);
+	bhnd_nvram_store_fini(&sc->nvram);
 	BHND_NVRAM_CFE_LOCK_DESTROY(sc);
 
 	return (0);
@@ -197,7 +197,7 @@ bhnd_nvram_cfe_getvar(device_t dev, const char *name, void *buf, size_t *len,
 	sc = device_get_softc(dev);
 
 	BHND_NVRAM_CFE_LOCK(sc);
-	error = bhnd_nvram_parser_getvar(&sc->nvram, name, buf, len, type);
+	error = bhnd_nvram_store_getvar(&sc->nvram, name, buf, len, type);
 	BHND_NVRAM_CFE_UNLOCK(sc);
 
 	return (error);
@@ -213,7 +213,7 @@ bhnd_nvram_cfe_setvar(device_t dev, const char *name, const void *buf,
 	sc = device_get_softc(dev);
 
 	BHND_NVRAM_CFE_LOCK(sc);
-	error = bhnd_nvram_parser_setvar(&sc->nvram, name, buf, len, type);
+	error = bhnd_nvram_store_setvar(&sc->nvram, name, buf, len, type);
 	BHND_NVRAM_CFE_UNLOCK(sc);
 
 	return (error);
