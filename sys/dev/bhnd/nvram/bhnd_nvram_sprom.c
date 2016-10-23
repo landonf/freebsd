@@ -58,7 +58,6 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_nvram_map.h"
 
-#include "bhnd_nvram_spromreg.h"
 #include "bhnd_nvram_spromvar.h"
 
 /*
@@ -175,9 +174,17 @@ bhnd_nvram_sprom_ident(struct bhnd_nvram_io *io,
 	struct bhnd_nvram_io	*buf;
 	uint8_t			 crc;
 	size_t			 crc_errors;
+	size_t			 sprom_sz_max;
 	int			 error;
 
-	buf = bhnd_nvram_iobuf_empty(0, SPROM_SZ_MAX);
+	/* Find the largest SPROM layout size */
+	sprom_sz_max = 0;
+	for (size_t i = 0; i < bhnd_sprom_num_layouts; i++) {
+		sprom_sz_max = ummax(sprom_sz_max, bhnd_sprom_layouts[i].size);
+	}
+
+	/* Allocate backing buffer and initialize CRC state */
+	buf = bhnd_nvram_iobuf_empty(0, sprom_sz_max);
 	crc = BHND_NVRAM_CRC8_INITIAL;
 	crc_errors = 0;
 
