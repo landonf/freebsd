@@ -34,8 +34,6 @@
 
 #include <sys/types.h>
 
-#include "bhnd_nvram_common.h"
-
 #include "bhnd_nvram_store.h"
 
 #define	NVRAM_IDX_VAR_THRESH	15		/**< index is generated if minimum variable count is met */

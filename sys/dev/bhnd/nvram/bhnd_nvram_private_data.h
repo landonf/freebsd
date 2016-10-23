@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2015-2016 Landon Fuller <landonf@FreeBSD.org>
+ * Copyright (c) 2016 Landon Fuller <landonf@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,55 +29,25 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_NVRAM_BHND_NVRAM_STORE_H_
-#define _BHND_NVRAM_BHND_NVRAM_STORE_H_
+#ifndef _BHND_NVRAM_BHND_NVRAM_PRIVATE_DATA_H_
+#define _BHND_NVRAM_BHND_NVRAM_PRIVATE_DATA_H_
+
+/*
+ * Private BHND NVRAM variable and SPROM format definitions.
+ */
 
 #ifdef _KERNEL
 #include <sys/param.h>
-#include <sys/bus.h>
-#include <sys/nv.h>
-#else /* !_KERNEL */
-#include <errno.h>
-
-#include <nv.h>
-
+#else
 #include <stdint.h>
-#include <stdlib.h>
 #endif
 
-#include <sys/queue.h>
+#include "bhnd_nvram_private.h"
 
-#include "bhnd_nvram_data.h"
-#include "bhnd_nvram_io.h"
+extern const struct bhnd_nvram_vardefn bhnd_nvram_vardefns[];
+extern const size_t bhnd_nvram_num_vardefns;
 
-union bhnd_nvram_ident;
+extern const struct bhnd_sprom_layout bhnd_sprom_layouts[];
+extern const size_t bhnd_sprom_num_layouts;
 
-struct bhnd_nvram_idx;
-struct bhnd_nvram_ops;
-struct bhnd_nvram_devpath;
-
-struct bhnd_nvram_store;
-
-LIST_HEAD(bhnd_nvram_devpaths, bhnd_nvram_devpath);
-
-int	bhnd_nvram_store_init(struct bhnd_nvram_store *sc,
-	    struct bhnd_nvram_io *io, bhnd_nvram_data_class_t *cls);
-
-void	bhnd_nvram_store_fini(struct bhnd_nvram_store *sc);
-
-int	bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
-	    void *buf, size_t *len, bhnd_nvram_type type);
-int	bhnd_nvram_store_setvar(struct bhnd_nvram_store *sc, const char *name,
-	    const void *buf, size_t len, bhnd_nvram_type type);
-
-/** bhnd nvram store instance state */
-struct bhnd_nvram_store {
-	struct bhnd_nvram_data		*nv;		/**< backing data */
-
-	struct bhnd_nvram_idx		*idx;		/**< key index */
-
-	struct bhnd_nvram_devpaths	 devpaths;	/**< device paths */
-	nvlist_t			*pending;	/**< uncommitted writes */
-};
-
-#endif /* _BHND_NVRAM_BHND_NVRAM_STORE_H_ */
+#endif /* _BHND_NVRAM_BHND_NVRAM_PRIVATE_DATA_H_ */

@@ -60,7 +60,7 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_nvram_datavar.h"
 #include "bhnd_nvram_data.h"
 
-#include "bhnd_nvram_common.h"
+#include "bhnd_nvram_private.h"
 
 /* Limit a size_t value to a suitable range for use as a printf string field
  * width */

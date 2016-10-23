@@ -29,8 +29,12 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_NVRAM_BHND_NVRAM_COMMON_H_
-#define _BHND_NVRAM_BHND_NVRAM_COMMON_H_
+#ifndef _BHND_NVRAM_BHND_NVRAM_PRIVATE_H_
+#define _BHND_NVRAM_BHND_NVRAM_PRIVATE_H_
+
+/*
+ * Private BHND NVRAM definitions.
+ */
 
 #ifdef _KERNEL
 #include <sys/param.h>
@@ -43,55 +47,60 @@
 
 #include "bhnd_nvram.h"
 
+/* Forward declarations */
 struct bhnd_nvram_vardefn;
+struct bhnd_nvram_fmt_hint;
 
 #ifdef _KERNEL
 MALLOC_DECLARE(M_BHND_NVRAM);
 #endif
 
-/** NVRAM data type string representations */
-typedef enum {
-	BHND_NVRAM_SFMT_HEX	= 1,	/**< hex format */
-	BHND_NVRAM_SFMT_DEC	= 2,	/**< decimal format */
-	BHND_NVRAM_SFMT_MACADDR	= 3,	/**< mac address (canonical form, hex octets,
-					     separated with ':') */
-	BHND_NVRAM_SFMT_LEDDC	= 4,	/**< LED PWM duty-cycle (2 bytes -- on/off) */
-	BHND_NVRAM_SFMT_CCODE	= 5	/**< count code format (2-3 ASCII chars, or hex string) */
-} bhnd_nvram_sfmt;
-
 size_t				 bhnd_nvram_type_width(bhnd_nvram_type type);
+
 const struct bhnd_nvram_vardefn	*bhnd_nvram_find_vardefn(const char *varname);
 const struct bhnd_nvram_vardefn	*bhnd_nvram_get_vardefn(size_t id);
 size_t				 bhnd_nvram_get_vardefn_id(
 				     const struct bhnd_nvram_vardefn *defn);
 
+int				 bhnd_nvram_parse_env(const char *env,
+				     size_t env_len, char delim,
+				     const char **name, size_t *name_len,
+				     const char **value, size_t *value_len);
+
+int				 bhnd_nvram_coerce_value(void *outp,
+				     size_t *olen, bhnd_nvram_type otype,
+				     const void *inp, size_t ilen,
+				     bhnd_nvram_type itype,
+				     struct bhnd_nvram_fmt_hint *hint);
+
 bool				 bhnd_nvram_validate_name(const char *name,
 				     size_t name_len);
 
+/** NVRAM data type string representations */
+typedef enum {
+	BHND_NVRAM_SFMT_HEX	= 1,	/**< hex format */
+	BHND_NVRAM_SFMT_DEC	= 2,	/**< decimal format */
+	BHND_NVRAM_SFMT_MACADDR	= 3,	/**< mac address (canonical form, hex
+					     octets, separated with ':') */
+	BHND_NVRAM_SFMT_LEDDC	= 4,	/**< LED PWM duty-cycle (2 bytes --
+					     on/off) */
+	BHND_NVRAM_SFMT_CCODE	= 5	/**< count code format (2-3 ASCII
+					     chars, or hex string) */
+} bhnd_nvram_sfmt;
+
+
 /** NVRAM variable flags */
 enum {
-	BHND_NVRAM_VF_ARRAY	= (1<<0),	/**< variable is an array */
-	BHND_NVRAM_VF_MFGINT	= (1<<1),	/**< mfg-internal variable; should not be externally visible */
-	BHND_NVRAM_VF_IGNALL1	= (1<<2)	/**< hide variable if its value has all bits set. */
+	BHND_NVRAM_VF_ARRAY	= 1<<0,	/**< variable is an array */
+	BHND_NVRAM_VF_MFGINT	= 1<<1,	/**< mfg-internal variable; should not
+					     be externally visible */
+	BHND_NVRAM_VF_IGNALL1	= 1<<2	/**< hide variable if its value has all
+					     bits set. */
 };
 
-
-/** NVRAM variable definition */
-struct bhnd_nvram_vardefn {
-	const char		*name;	  	/**< variable name */
-	const char		*desc;		/**< human readable description, or NULL */
-	const char		*help;		/**< human readable help text, or NULL */
-	bhnd_nvram_type		 type;	 	/**< base data type */
-	uint8_t			 nelem;		/**< array element count if BHND_NVRAM_VF_ARRAY,
-						     otherwise 1 */
-	bhnd_nvram_sfmt		 sfmt;		/**< string format */
-	uint32_t		 flags;		/**< BHND_NVRAM_VF_* flags */
-};
-
-extern const struct bhnd_nvram_vardefn bhnd_nvram_vardefns[];
-extern const size_t bhnd_nvram_num_vardefns;
-
-/** SPROM layout flags */
+/**
+ * SPROM layout flags
+ */
 enum {
 	/**
 	 * SPROM layout does not have magic identification value.
@@ -102,6 +111,29 @@ enum {
 	 * that the match was not a false positive.
 	 */
 	SPROM_LAYOUT_MAGIC_NONE	= (1<<0),	
+};
+
+/**
+ * Variable formatting hint.
+ */
+struct bhnd_nvram_fmt_hint {
+	bhnd_nvram_sfmt		 sfmt;	/**< variable string format */
+	uint32_t		 flags;	/**< BHND_NVRAM_VF_* flags */
+};
+
+
+/** NVRAM variable definition */
+struct bhnd_nvram_vardefn {
+	const char		*name;	/**< variable name */
+	const char		*desc;	/**< human readable description,
+					     or NULL */
+	const char		*help;	/**< human readable help text,
+					     or NULL */
+	bhnd_nvram_type		 type;	/**< base data type */
+	uint8_t			 nelem;	/**< array element count if
+					     BHND_NVRAM_VF_ARRAY, otherwise 1 */
+	bhnd_nvram_sfmt		 sfmt;	/**< string format */
+	uint32_t		 flags;	/**< flags (BHND_NVRAM_VF_*) */
 };
 
 /**
@@ -121,9 +153,6 @@ struct bhnd_sprom_layout {
 					     table */
 };
 
-extern const struct bhnd_sprom_layout bhnd_sprom_layouts[];
-extern const size_t bhnd_sprom_num_layouts;
-
 /*
  * Most opcodes are provided with two variants:
  *
@@ -136,41 +165,62 @@ extern const size_t bhnd_sprom_num_layouts;
 #define	SPROM_IMM_MASK			0x0F	/**< immediate value mask */
 #define	SPROM_IMM_MAX			SPROM_IMM_MASK
 #define	  SPROM_OP_DATA_U8		  0x00	/**< data is u8 */
-#define	  SPROM_OP_DATA_U8_SCALED	  0x01	/**< data is u8; multiply by type width */
+#define	  SPROM_OP_DATA_U8_SCALED	  0x01	/**< data is u8; multiply by
+						     type width */
 #define	  SPROM_OP_DATA_U16		  0x02	/**< data is u16-le */
 #define	  SPROM_OP_DATA_U32		  0x03	/**< data is u32-le */
 #define	  SPROM_OP_DATA_I8		  0x04	/**< data is i8 */
-#define	SPROM_OPCODE_EXT		0x00	/**< extended opcodes defined in IMM */
-#define	SPROM_OPCODE_EOF		0x00	/**< marks end of opcode stream */
-#define	SPROM_OPCODE_NELEM		0x01	/**< variable array element count follows as U8 */
-#define	SPROM_OPCODE_VAR_END		0x02	/**< marks end of variable definition */
-#define	SPROM_OPCODE_VAR_IMM		0x10	/**< variable ID (immediate) */
-#define	SPROM_OPCODE_VAR_REL_IMM	0x20	/**< relative variable ID (last ID + immediate) */
+#define	SPROM_OPCODE_EXT		0x00	/**< extended opcodes defined
+						     in IMM */
+#define	SPROM_OPCODE_EOF		0x00	/**< marks end of opcode
+						     stream */
+#define	SPROM_OPCODE_NELEM		0x01	/**< variable array element
+						     count follows as U8 */
+#define	SPROM_OPCODE_VAR_END		0x02	/**< marks end of variable
+						     definition */
+#define	SPROM_OPCODE_VAR_IMM		0x10	/**< variable ID (imm) */
+#define	SPROM_OPCODE_VAR_REL_IMM	0x20	/**< relative variable ID
+						     (last ID + imm) */
 #define	SPROM_OPCODE_VAR		0x30	/**< variable ID */
-#define	SPROM_OPCODE_REV_IMM		0x40	/**< revision range (immediate) */
+#define	SPROM_OPCODE_REV_IMM		0x40	/**< revision range (imm) */
 #define	SPROM_OPCODE_REV_RANGE		0x50	/**< revision range (8-bit range)*/
-#define	  SPROM_OP_REV_RANGE_MAX	  0x0F	/**< maximum representable SROM revision */
+#define	  SPROM_OP_REV_RANGE_MAX	  0x0F	/**< maximum representable SROM
+						     revision */
 #define	  SPROM_OP_REV_START_MASK	  0xF0
 #define	  SPROM_OP_REV_START_SHIFT	  4
 #define	  SPROM_OP_REV_END_MASK	 	  0x0F
 #define	  SPROM_OP_REV_END_SHIFT	  0
-#define	SPROM_OPCODE_MASK_IMM		0x60	/**< value mask (immediate) */
+#define	SPROM_OPCODE_MASK_IMM		0x60	/**< value mask (imm) */
 #define	SPROM_OPCODE_MASK		0x70	/**< value mask */
-#define	SPROM_OPCODE_SHIFT_IMM		0x80	/**< value shift (unsigned immediate, multipled by 2) */
+#define	SPROM_OPCODE_SHIFT_IMM		0x80	/**< value shift (unsigned
+						     imm, multipled by 2) */
 #define	SPROM_OPCODE_SHIFT		0x90	/**< value shift */
-#define	SPROM_OPCODE_OFFSET_REL_IMM	0xA0	/**< relative input offset (last offset + (immediate * type width) */
+#define	SPROM_OPCODE_OFFSET_REL_IMM	0xA0	/**< relative input offset
+						     (last offset +
+						      (imm * type width)) */
 #define	SPROM_OPCODE_OFFSET		0xB0	/**< input offset */
-#define	SPROM_OPCODE_TYPE_IMM		0xC0	/**< input type (BHND_NVRAM_TYPE_*) (immediate) */
-#define	SPROM_OPCODE_DO_BIND		0xD0	/**< bind current value, advance input/output offsets as per IMM */
-#define	  SPROM_OP_BIND_SKIP_IN_MASK	  0x03	/**< the number of input elements to advance after the bind */
+#define	SPROM_OPCODE_TYPE_IMM		0xC0	/**< input type (imm,
+						     see BHND_NVRAM_TYPE_*) */
+#define	SPROM_OPCODE_DO_BIND		0xD0	/**< bind current value,
+						     advance input/output
+						     offsets as per IMM */
+#define	  SPROM_OP_BIND_SKIP_IN_MASK	  0x03	/**< the number of input
+						     elements to advance after
+						     the bind */
 #define	  SPROM_OP_BIND_SKIP_IN_SHIFT	  0
 #define	  SPROM_OP_BIND_SKIP_IN_SIGN	 (1<<2)	/**< SKIP_IN sign bit */
-#define	  SPROM_OP_BIND_SKIP_OUT_MASK	  0x08	/**< the number of output elements to advance after the bind */
+#define	  SPROM_OP_BIND_SKIP_OUT_MASK	  0x08	/**< the number of output
+						     elements to advance after
+						     the bind */
 #define	  SPROM_OP_BIND_SKIP_OUT_SHIFT	  3
-#define	SPROM_OPCODE_DO_BINDN_IMM	0xE0	/**< bind IMM times, advancing input/output offsets by one element each time */
-#define	SPROM_OPCODE_DO_BINDN		0xF0	/**< bind multiple times, advancing input/output offsets as per
-						     SPROM_OP_BIND_SKIP_IN/SPROM_OP_BIND_SKIP_OUT IMM values.
-						     The U8 element count follows. */
+#define	SPROM_OPCODE_DO_BINDN_IMM	0xE0	/**< bind IMM times, advancing
+						     input/output offsets by one
+						     element each time */
+#define	SPROM_OPCODE_DO_BINDN		0xF0	/**< bind N times, advancing
+						     input/output offsets as per
+						     SPROM_OP_BIND_SKIP_IN/SPROM_OP_BIND_SKIP_OUT
+						     IMM values. The U8 element
+						     count follows. */
 
 /** Evaluates to true if opcode is an extended opcode */
 #define SPROM_OPCODE_IS_EXT(_opcode)	\
@@ -187,11 +237,11 @@ extern const size_t bhnd_sprom_num_layouts;
 
 /** Evaluates to true if the given opcode produces an implicit
  *  SPROM_OPCODE_VAR_END instruction for any open variable */
-#define	SPROM_OP_IS_IMPLICIT_VAR_END(_opcode)			\
-    (((_opcode) == SPROM_OPCODE_VAR_IMM)		||	\
+#define	SPROM_OP_IS_IMPLICIT_VAR_END(_opcode)		\
+    (((_opcode) == SPROM_OPCODE_VAR_IMM)	||	\
      ((_opcode) == SPROM_OPCODE_VAR_REL_IMM)	||	\
      ((_opcode) == SPROM_OPCODE_VAR)		||	\
-     ((_opcode) == SPROM_OPCODE_REV_IMM)		||	\
+     ((_opcode) == SPROM_OPCODE_REV_IMM)	||	\
      ((_opcode) == SPROM_OPCODE_REV_RANGE))
 
 /** Evaluates to true if the given opcode is either an explicit
@@ -207,4 +257,4 @@ extern const size_t bhnd_sprom_num_layouts;
 /** maximum representable SROM revision */
 #define	SPROM_OP_REV_MAX	MAX(SPROM_OP_REV_RANGE_MAX, SPROM_IMM_MAX)
 
-#endif /* _BHND_NVRAM_BHND_NVRAM_COMMON_H_ */
+#endif /* _BHND_NVRAM_BHND_NVRAM_PRIVATE_H_ */
