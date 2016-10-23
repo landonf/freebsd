@@ -49,28 +49,6 @@ struct bhnd_nvram_vardefn;
 MALLOC_DECLARE(M_BHND_NVRAM);
 #endif
 
-extern const uint8_t bhnd_nvram_crc8_tab[];
-
-#define	BHND_NVRAM_CRC8_INITIAL	0xFF		/**< Initial bhnd_nvram_crc8 value */
-#define	BHND_NVRAM_CRC8_VALID	0x9F		/**< Valid CRC-8 checksum */
-
-/**
- * Calculate CRC-8 over @p buf.
- * 
- * @param buf input buffer
- * @param size buffer size
- * @param crc last computed crc, or BHND_NVRAM_CRC8_INITIAL
- */
-static inline uint8_t
-bhnd_nvram_crc8(const void *buf, size_t size, uint8_t crc)
-{
-	const uint8_t *p = (const uint8_t *)buf;
-	while (size--)
-		crc = bhnd_nvram_crc8_tab[(crc ^ *p++)];
-
-	return (crc);
-}
-
 /** NVRAM data type string representations */
 typedef enum {
 	BHND_NVRAM_SFMT_HEX	= 1,	/**< hex format */
