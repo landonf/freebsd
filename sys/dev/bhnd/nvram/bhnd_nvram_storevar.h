@@ -36,7 +36,7 @@
 
 #include "bhnd_nvram_common.h"
 
-#include "bhnd_nvram_parser.h"
+#include "bhnd_nvram_store.h"
 
 #define	NVRAM_IDX_VAR_THRESH	15		/**< index is generated if minimum variable count is met */
 #define	NVRAM_IDX_OFFSET_MAX	UINT16_MAX	/**< maximum indexable offset */

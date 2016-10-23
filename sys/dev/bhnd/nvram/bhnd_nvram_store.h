@@ -29,8 +29,8 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_NVRAM_BHND_NVRAM_PARSER_H_
-#define _BHND_NVRAM_BHND_NVRAM_PARSER_H_
+#ifndef _BHND_NVRAM_BHND_NVRAM_STORE_H_
+#define _BHND_NVRAM_BHND_NVRAM_STORE_H_
 
 #ifdef _KERNEL
 #include <sys/param.h>
@@ -57,22 +57,22 @@ struct bhnd_nvram_idx;
 struct bhnd_nvram_ops;
 struct bhnd_nvram_devpath;
 
-struct bhnd_nvram;
+struct bhnd_nvram_store;
 
 LIST_HEAD(bhnd_nvram_devpaths, bhnd_nvram_devpath);
 
-int	bhnd_nvram_parser_init(struct bhnd_nvram *sc, struct bhnd_nvram_io *io,
-	    bhnd_nvram_data_class_t *cls);
+int	bhnd_nvram_store_init(struct bhnd_nvram_store *sc,
+	    struct bhnd_nvram_io *io, bhnd_nvram_data_class_t *cls);
 
-void	bhnd_nvram_parser_fini(struct bhnd_nvram *sc);
+void	bhnd_nvram_store_fini(struct bhnd_nvram_store *sc);
 
-int	bhnd_nvram_parser_getvar(struct bhnd_nvram *sc, const char *name,
+int	bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
 	    void *buf, size_t *len, bhnd_nvram_type type);
-int	bhnd_nvram_parser_setvar(struct bhnd_nvram *sc, const char *name,
+int	bhnd_nvram_store_setvar(struct bhnd_nvram_store *sc, const char *name,
 	    const void *buf, size_t len, bhnd_nvram_type type);
 
-/** bhnd nvram parser instance state */
-struct bhnd_nvram {
+/** bhnd nvram store instance state */
+struct bhnd_nvram_store {
 	struct bhnd_nvram_data		*nv;		/**< backing data */
 
 	struct bhnd_nvram_idx		*idx;		/**< key index */
@@ -81,4 +81,4 @@ struct bhnd_nvram {
 	nvlist_t			*pending;	/**< uncommitted writes */
 };
 
-#endif /* _BHND_NVRAM_BHND_NVRAM_PARSER_H_ */
+#endif /* _BHND_NVRAM_BHND_NVRAM_STORE_H_ */

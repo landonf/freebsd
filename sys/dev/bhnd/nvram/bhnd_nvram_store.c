@@ -53,23 +53,19 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_nvram_data.h"
 #include "bhnd_nvram_datavar.h"
 
-#include "bhnd_nvram_parserreg.h"
-#include "bhnd_nvram_parservar.h"
+#include "bhnd_nvram_storevar.h"
 
 /*
- * BHND NVRAM Parser
- * 
- * Provides identification, decoding, and encoding of BHND NVRAM data.
+ * BHND NVRAM Store
+ *
+ * Manages in-memory and persistent representations of NVRAM data.
  */
 
 static int	 bhnd_nvram_sort_idx(void *ctx, const void *lhs,
 		     const void *rhs);
-static int	 bhnd_nvram_generate_index(struct bhnd_nvram *sc);
-static void	*bhnd_nvram_index_lookup(struct bhnd_nvram *sc,
+static int	 bhnd_nvram_generate_index(struct bhnd_nvram_store *sc);
+static void	*bhnd_nvram_index_lookup(struct bhnd_nvram_store *sc,
 		     const char *name);
-
-#define	NVRAM_LOG(sc, fmt, ...)	\
-	BHND_NV_DEVLOG(sc->owner, fmt, ##__VA_ARGS__)
 
 /**
  * Identify the NVRAM format at @p offset within @p io, verify the
@@ -87,7 +83,7 @@ static void	*bhnd_nvram_index_lookup(struct bhnd_nvram *sc,
  * @retval EINVAL If @p io parsing fails.
  */
 int
-bhnd_nvram_parser_init(struct bhnd_nvram *sc, struct bhnd_nvram_io *io,
+bhnd_nvram_store_init(struct bhnd_nvram_store *sc, struct bhnd_nvram_io *io,
     bhnd_nvram_data_class_t *cls)
 {
 	int error;
@@ -114,7 +110,7 @@ bhnd_nvram_parser_init(struct bhnd_nvram *sc, struct bhnd_nvram_io *io,
 	return (0);
 
 cleanup:
-	bhnd_nvram_parser_fini(sc);
+	bhnd_nvram_store_fini(sc);
 	return (error);
 }
 
@@ -125,7 +121,7 @@ cleanup:
  * bhnd_nvram_parser_init().
  */
 void
-bhnd_nvram_parser_fini(struct bhnd_nvram *sc)
+bhnd_nvram_store_fini(struct bhnd_nvram_store *sc)
 {
 	struct bhnd_nvram_devpath	*dpath, *dnext;
 
@@ -164,8 +160,8 @@ bhnd_nvram_parser_fini(struct bhnd_nvram *sc)
  *                     error code will be returned.
   */
 int
-bhnd_nvram_parser_getvar(struct bhnd_nvram *sc, const char *name, void *buf,
-    size_t *len, bhnd_nvram_type type)
+bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
+    void *buf, size_t *len, bhnd_nvram_type type)
 {
 	void		*cookiep;
 	const void	*inp;
@@ -219,7 +215,7 @@ bhnd_nvram_parser_getvar(struct bhnd_nvram *sc, const char *name, void *buf,
  * @retval EINVAL	If @p len does not match the expected variable size.
  */
 int
-bhnd_nvram_parser_setvar(struct bhnd_nvram *sc, const char *name,
+bhnd_nvram_store_setvar(struct bhnd_nvram_store *sc, const char *name,
     const void *buf, size_t len, bhnd_nvram_type type)
 {
 	const char	*inp;
@@ -271,7 +267,7 @@ bhnd_nvram_parser_setvar(struct bhnd_nvram *sc, const char *name,
 static int
 bhnd_nvram_sort_idx(void *ctx, const void *lhs, const void *rhs)
 {
-	struct bhnd_nvram			*sc;
+	struct bhnd_nvram_store			*sc;
 	const struct bhnd_nvram_idx_entry	*l_idx, *r_idx;
 	const char				*l_str, *r_str;
 
@@ -297,7 +293,7 @@ bhnd_nvram_sort_idx(void *ctx, const void *lhs, const void *rhs)
  *			error code will be returned.
  */
 static int
-bhnd_nvram_register_devpaths(struct bhnd_nvram *sc)
+bhnd_nvram_register_devpaths(struct bhnd_nvram_store *sc)
 {
 	const char	*name;
 	void		*cookiep;
@@ -326,7 +322,7 @@ bhnd_nvram_register_devpaths(struct bhnd_nvram *sc)
 		suffix = name + NVRAM_DEVPATH_LEN;
 		index = strtoul(suffix, &eptr, 10);
 		if (eptr == suffix || *eptr != '\0') {
-			NVRAM_LOG(sc, "invalid devpath variable '%s'\n", name);
+			BHND_NV_LOG("invalid devpath variable '%s'\n", name);
 			continue;
 		}
 
@@ -364,7 +360,7 @@ bhnd_nvram_register_devpaths(struct bhnd_nvram *sc)
  *			error code will be returned.
  */
 static int
-bhnd_nvram_generate_index(struct bhnd_nvram *sc)
+bhnd_nvram_generate_index(struct bhnd_nvram_store *sc)
 {
 	const char	*name;
 	void		*cookiep;
@@ -391,7 +387,7 @@ bhnd_nvram_generate_index(struct bhnd_nvram *sc)
 	    (sizeof(struct bhnd_nvram_idx_entry) * num_vars);
 	sc->idx = bhnd_nv_malloc(idx_bytes);
 	if (sc->idx == NULL) {
-		NVRAM_LOG(sc, "error allocating %zu byte index\n", idx_bytes);
+		BHND_NV_LOG("error allocating %zu byte index\n", idx_bytes);
 		goto bad_index;
 	}
 
@@ -399,7 +395,7 @@ bhnd_nvram_generate_index(struct bhnd_nvram *sc)
 
 #ifdef _KERNEL
 	if (bootverbose) {
-		NVRAM_LOG(sc, "allocated %zu byte index for %zu variables\n",
+		BHND_NV_LOG("allocated %zu byte index for %zu variables\n",
 		    idx_bytes, num_vars);
 	}
 #endif /* _KERNEL */
@@ -413,7 +409,7 @@ bhnd_nvram_generate_index(struct bhnd_nvram *sc)
 
 		/* Early EOF */
 		if (name == NULL) {
-			NVRAM_LOG(sc, "indexing failed, expected %zu records "
+			BHND_NV_LOG("indexing failed, expected %zu records "
 			    "(got %zu)\n", sc->idx->num_entries, i+1);
 			goto bad_index;
 		}
@@ -431,7 +427,7 @@ bhnd_nvram_generate_index(struct bhnd_nvram *sc)
 
 bad_index:
 	/* Fall back on non-indexed access */
-	NVRAM_LOG(sc, "reverting to non-indexed variable lookup\n");
+	BHND_NV_LOG("reverting to non-indexed variable lookup\n");
 	if (sc->idx != NULL) {
 		bhnd_nv_free(sc->idx);
 		sc->idx = NULL;
@@ -449,7 +445,7 @@ bad_index:
  * @param	name		The variable to search for.
  */
 static void *
-bhnd_nvram_index_lookup(struct bhnd_nvram *sc, const char *name)
+bhnd_nvram_index_lookup(struct bhnd_nvram_store *sc, const char *name)
 {
 	struct bhnd_nvram_idx_entry	*idxe;
 	const char			*idxe_key;
