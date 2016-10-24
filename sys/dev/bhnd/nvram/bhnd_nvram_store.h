@@ -50,12 +50,8 @@
 #include "bhnd_nvram_data.h"
 #include "bhnd_nvram_io.h"
 
-union bhnd_nvram_ident;
-
 struct bhnd_nvram_idx;
-struct bhnd_nvram_ops;
 struct bhnd_nvram_devpath;
-
 struct bhnd_nvram_store;
 
 LIST_HEAD(bhnd_nvram_devpaths, bhnd_nvram_devpath);
