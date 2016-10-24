@@ -29,8 +29,8 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_NVRAM_BHND_NVRAM_PARSERVAR_H_
-#define _BHND_NVRAM_BHND_NVRAM_PARSERVAR_H_
+#ifndef _BHND_NVRAM_BHND_NVRAM_STOREVAR_H_
+#define _BHND_NVRAM_BHND_NVRAM_STOREVAR_H_
 
 #include <sys/types.h>
 
@@ -72,4 +72,16 @@ struct bhnd_nvram_idx {
 	struct bhnd_nvram_idx_entry	entries[];	/**< index entries */
 };
 
-#endif /* _BHND_NVRAM_BHND_NVRAM_PARSERVAR_H_ */
+LIST_HEAD(bhnd_nvram_devpaths, bhnd_nvram_devpath);
+
+/** bhnd nvram store instance state */
+struct bhnd_nvram_store {
+	struct bhnd_nvram_data		*nv;		/**< backing data */
+
+	struct bhnd_nvram_idx		*idx;		/**< key index */
+
+	struct bhnd_nvram_devpaths	 devpaths;	/**< device paths */
+	nvlist_t			*pending;	/**< uncommitted writes */
+};
+
+#endif /* _BHND_NVRAM_BHND_NVRAM_STOREVAR_H_ */

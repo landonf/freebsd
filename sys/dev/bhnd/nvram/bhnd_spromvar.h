@@ -49,9 +49,9 @@ int	bhnd_sprom_detach(device_t dev);
  * softc structures.
  */
 struct bhnd_sprom_softc {
-	device_t			dev;
-	struct mtx		 	mtx;	/**< nvram mutex */
-	struct bhnd_nvram_store		nvram;	/**< nvram store */
+	device_t			 dev;
+	struct mtx		 	 mtx;	/**< nvram mutex */
+	struct bhnd_nvram_store		*store;	/**< nvram store */
 };
 
 #endif /* _BHND_NVRAM_BHND_SPROMVAR_H_ */

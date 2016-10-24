@@ -88,12 +88,12 @@ bhnd_nvram_data_probe(bhnd_nvram_data_class_t *cls, struct bhnd_nvram_io *io)
 /**
  * Allocate and initialize a new instance of data class @p cls, copying and
  * parsing NVRAM data from @p io.
-  *
+ *
  * The caller is responsible for deallocating the parser instance
  * via bhnd_nvram_data_free().
  * 
  * @param cls The data class to be allocated.
- * @param nv On success, a pointer to the newly allocated NVRAM data instance.
+ * @param[out] nv On success, a pointer to the newly allocated NVRAM data instance.
  * @param io An I/O context mapping the NVRAM data to be copied and parsed.
  * 
  * @retval 0 success

@@ -80,62 +80,89 @@ static void	*bhnd_nvram_index_lookup(struct bhnd_nvram_store *sc,
  * @retval ENOMEM If internal allocation of NVRAM state fails.
  * @retval EINVAL If @p io parsing fails.
  */
+
+/**
+ * Allocate and initialize a new NVRAM data store instance.
+ *
+ * The caller is responsible for deallocating the instance via
+ * bhnd_nvram_store_free().
+ * 
+ * The NVRAM data mapped by @p io will be copied, and @p io may be safely
+ * deallocated after bhnd_nvram_store_new() returns.
+ * 
+ * @param[out] store On success, a pointer to the newly allocated NVRAM data
+ * instance.
+ * @param io An I/O context mapping the NVRAM data to be copied and parsed.
+ * @param cls If non-NULL, the NVRAM data class to be used when parsing @p io.
+ * If NULL, bhnd_nvram_data_probe() will be used to determine the data format.
+ *
+ * @retval 0 success
+ * @retval non-zero if an error occurs during allocation or initialization, a
+ * regular unix error code will be returned.
+ */
 int
-bhnd_nvram_store_init(struct bhnd_nvram_store *sc, struct bhnd_nvram_io *io,
+bhnd_nvram_store_new(struct bhnd_nvram_store **store, struct bhnd_nvram_io *io,
     bhnd_nvram_data_class_t *cls)
 {
-	int error;
+	struct bhnd_nvram_store *sc;
+	int			 error;
 
-	/* Initialize NVRAM state */
-	sc->idx = NULL;
-	sc->nv = NULL;
-	sc->pending = NULL;
+	/* Allocate new instance */
+	sc = bhnd_nv_calloc(1, sizeof(*store));
+	if (sc == NULL)
+		return (ENOMEM);
+
 	LIST_INIT(&sc->devpaths);
 
 	/* Parse the input data */
 	if ((error = bhnd_nvram_data_new(cls, &sc->nv, io)))
-		return (error);
+		goto cleanup;
 
 	/* Allocate uncommitted change list */
 	sc->pending = nvlist_create(NV_FLAG_IGNORE_CASE);
-	if (sc->pending == NULL)
+	if (sc->pending == NULL) {
+		error = ENOMEM;
 		goto cleanup;
+	}
 
 	/* Generate all indices */
 	if ((error = bhnd_nvram_generate_index(sc)))
 		goto cleanup;
 
+	*store = sc;
 	return (0);
 
 cleanup:
-	bhnd_nvram_store_fini(sc);
+	bhnd_nvram_store_free(*store);
 	return (error);
 }
 
 /**
- * Release all resources held by @p sc.
+ * Free an NVRAM store instance, releasing all associated resources.
  * 
- * @param sc A NVRAM instance previously initialized via
- * bhnd_nvram_parser_init().
+ * @param store A store instance previously allocated via
+ * bhnd_nvram_store_new().
  */
 void
-bhnd_nvram_store_fini(struct bhnd_nvram_store *sc)
+bhnd_nvram_store_free(struct bhnd_nvram_store *store)
 {
-	struct bhnd_nvram_devpath	*dpath, *dnext;
+	struct bhnd_nvram_devpath *dpath, *dnext;
 
-        LIST_FOREACH_SAFE(dpath, &sc->devpaths, dp_link, dnext) {
+        LIST_FOREACH_SAFE(dpath, &store->devpaths, dp_link, dnext) {
 		bhnd_nv_free(dpath->path);
                 bhnd_nv_free(dpath);
         }
 
-	if (sc->pending != NULL)
-		nvlist_destroy(sc->pending);
+	if (store->pending != NULL)
+		nvlist_destroy(store->pending);
 
-	if (sc->idx != NULL)
-		bhnd_nv_free(sc->idx);
+	if (store->idx != NULL)
+		bhnd_nv_free(store->idx);
 
-	if (sc->nv != NULL)
-		bhnd_nvram_data_free(sc->nv);
+	if (store->nv != NULL)
+		bhnd_nvram_data_free(store->nv);
+
+	bhnd_nv_free(store);
 }
 
 /**

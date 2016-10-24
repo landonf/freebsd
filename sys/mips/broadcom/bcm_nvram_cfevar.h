@@ -40,9 +40,9 @@
 
 /** bhnd_nvram_cfe driver instance state. */
 struct bhnd_nvram_cfe_softc {
-	device_t		 	dev;
-	struct mtx		 	mtx;	/**< nvram mutex */
-	struct bhnd_nvram_store		nvram;	/**< nvram store */
+	device_t		 	 dev;
+	struct mtx		 	 mtx;	/**< nvram mutex */
+	struct bhnd_nvram_store		*store;	/**< nvram store */
 };
 
 #define	BHND_NVRAM_CFE_LOCK_INIT(sc) \

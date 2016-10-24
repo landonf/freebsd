@@ -137,7 +137,7 @@ bhnd_sprom_attach(device_t dev, bus_size_t offset)
 	}
 
 	/* Initialize NVRAM data store */
-	error = bhnd_nvram_store_init(&sc->nvram, io, &bhnd_nvram_sprom_class);
+	error = bhnd_nvram_store_new(&sc->store, io, &bhnd_nvram_sprom_class);
 	if (error)
 		goto failed;
 
@@ -188,7 +188,7 @@ bhnd_sprom_detach(device_t dev)
 	
 	sc = device_get_softc(dev);
 
-	bhnd_nvram_store_fini(&sc->nvram);
+	bhnd_nvram_store_free(sc->store);
 	SPROM_LOCK_DESTROY(sc);
 
 	return (0);
@@ -207,7 +207,7 @@ bhnd_sprom_getvar_method(device_t dev, const char *name, void *buf, size_t *len,
 	sc = device_get_softc(dev);
 
 	SPROM_LOCK(sc);
-	error = bhnd_nvram_store_getvar(&sc->nvram, name, buf, len, type);
+	error = bhnd_nvram_store_getvar(sc->store, name, buf, len, type);
 	SPROM_UNLOCK(sc);
 
 	return (error);
@@ -226,7 +226,7 @@ bhnd_sprom_setvar_method(device_t dev, const char *name, const void *buf,
 	sc = device_get_softc(dev);
 
 	SPROM_LOCK(sc);
-	error = bhnd_nvram_store_setvar(&sc->nvram, name, buf, len, type);
+	error = bhnd_nvram_store_setvar(sc->store, name, buf, len, type);
 	SPROM_UNLOCK(sc);
 
 	return (error);
