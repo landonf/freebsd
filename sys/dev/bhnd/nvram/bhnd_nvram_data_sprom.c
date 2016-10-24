@@ -94,9 +94,6 @@ static int	sprom_opcode_apply_scale(struct sprom_opcode_state *state,
 static int	sprom_opcode_step(struct sprom_opcode_state *state,
 		    uint8_t *opcode);
 
-#define	SPROM_NVLOG(_fmt, ...)	\
-	BHND_NV_LOG(_fmt, ##__VA_ARGS__)
-
 #define	SPROM_OP_BAD(_state, _fmt, ...)					\
 	BHND_NV_LOG("bad encoding at %td: " _fmt,			\
 	    (_state)->input - (_state)->layout->bindings, ##__VA_ARGS__)
@@ -253,7 +250,7 @@ bhnd_nvram_sprom_ident(struct bhnd_nvram_io *io,
 		if (error) {
 			/* If the CRC is was valid, log the mismatch */
 			if (crc_valid || BHND_NV_VERBOSE) {
-				SPROM_NVLOG("invalid sprom %hhu signature: "
+				BHND_NV_LOG("invalid sprom %hhu signature: "
 					    "0x%hx (expected 0x%hx)\n", srev,
 					    magic, layout->magic_value);
 
@@ -269,7 +266,7 @@ bhnd_nvram_sprom_ident(struct bhnd_nvram_io *io,
 			/* If the magic check succeeded, then we may just have
 			 * data corruption -- log the CRC error */
 			if (have_magic || BHND_NV_VERBOSE) {
-				SPROM_NVLOG("sprom %hhu CRC error (crc=%#hhx, "
+				BHND_NV_LOG("sprom %hhu CRC error (crc=%#hhx, "
 					    "expected=%#x)\n", srev, crc,
 					    BHND_NVRAM_CRC8_VALID);
 			}
@@ -286,7 +283,7 @@ bhnd_nvram_sprom_ident(struct bhnd_nvram_io *io,
 	/* No match -- set error and fallthrough */
 	error = ENXIO;
 	if (crc_errors > 0 && BHND_NV_VERBOSE) {
-		SPROM_NVLOG("sprom parsing failed with %zu CRC errors\n",
+		BHND_NV_LOG("sprom parsing failed with %zu CRC errors\n",
 		    crc_errors);
 	}
 
@@ -381,7 +378,7 @@ bhnd_nvram_sprom_new(struct bhnd_nvram_data **nv, struct bhnd_nvram_io *io)
 	/* Should have reached end of binding table; next read must return
 	 * ENOENT */
 	if ((error = sprom_opcode_next_var(&sp->state)) != ENOENT) {
-		SPROM_NVLOG("expected EOF parsing binding table: %d\n", error);
+		BHND_NV_LOG("expected EOF parsing binding table: %d\n", error);
 		goto failed;
 	}
 
@@ -614,7 +611,7 @@ bhnd_nvram_sprom_read_offset(struct bhnd_nvram_sprom *sp,
 	sp_width = bhnd_nvram_type_width(type);
 	if (sp_width == 0) {
 		/* Variable-width types are unsupported */
-		SPROM_NVLOG("invalid %s SPROM offset type %d\n", var->name,
+		BHND_NV_LOG("invalid %s SPROM offset type %d\n", var->name,
 		    type);
 		return (EFTYPE);
 	}
@@ -623,7 +620,7 @@ bhnd_nvram_sprom_read_offset(struct bhnd_nvram_sprom *sp,
 	error = bhnd_nvram_io_read(sp->data, offset, &sp_value,
 	    sp_width);
 	if (error) {
-		SPROM_NVLOG("error reading %s SPROM offset %#zx: %d\n",
+		BHND_NV_LOG("error reading %s SPROM offset %#zx: %d\n",
 		    var->name, offset, error);
 		return (EFTYPE);
 	}
@@ -671,7 +668,7 @@ bhnd_nvram_sprom_read_offset(struct bhnd_nvram_sprom *sp,
 	case BHND_NVRAM_TYPE_CSTR:
 		/* fallthrough (unused by SPROM) */
 	default:
-		SPROM_NVLOG("unhandled %s offset type: %d\n", var->name, type);
+		BHND_NV_LOG("unhandled %s offset type: %d\n", var->name, type);
 		return (EFTYPE);
 	}
 
@@ -711,13 +708,13 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 	 * define a smaller element count.
 	 */
 	if ((error = sprom_opcode_parse_var(&sp->state, idx))) {
-		SPROM_NVLOG("variable evaluation failed: %d\n", error);
+		BHND_NV_LOG("variable evaluation failed: %d\n", error);
 		return (error);
 	}
 
 	nelem = sp->state.var.nelem;
 	if (nelem > var->nelem) {
-		SPROM_NVLOG("SPROM array element count %zu cannot be "
+		BHND_NV_LOG("SPROM array element count %zu cannot be "
 		    "represented by '%s' element count of %hhu\n", nelem,
 		    var->name, var->nelem);
 		return (EFTYPE);
@@ -727,7 +724,7 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 	if ((iwidth = bhnd_nvram_type_width(var->type)) == 0) {
 		/* SPROM does not use (and we do not support) decoding of
 		 * variable-width data types */
-		SPROM_NVLOG("invalid SPROM data type: %d", var->type);
+		BHND_NV_LOG("invalid SPROM data type: %d", var->type);
 		return (EFTYPE);
 	}
 	ilen = nelem * iwidth;
@@ -744,7 +741,7 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 	} else {
 		inp = &storage;
 		if (ilen > sizeof(storage)) {
-			SPROM_NVLOG("error decoding '%s', SPROM_ARRAY_MAXLEN "
+			BHND_NV_LOG("error decoding '%s', SPROM_ARRAY_MAXLEN "
 			    "incorrect\n", var->name);
 			return (EFTYPE);
 		}
@@ -758,7 +755,7 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 	 * Decode the SPROM data
 	 */
 	if ((error = sprom_opcode_state_seek(&sp->state, idx))) {
-		SPROM_NVLOG("variable seek failed: %d\n", error);
+		BHND_NV_LOG("variable seek failed: %d\n", error);
 		return (error);
 	}
 
@@ -786,7 +783,7 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 		binding = &sp->state.var.bind;
 
 		if (ipos >= nelem) {
-			SPROM_NVLOG("output skip %u positioned "
+			BHND_NV_LOG("output skip %u positioned "
 			    "%zu beyond nelem %zu\n",
 			    binding->skip_out, ipos, nelem);
 			return (EINVAL);
@@ -868,7 +865,7 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 
 			/* Advance output position */
 			if (SIZE_MAX - binding->skip_out < ipos) {
-				SPROM_NVLOG("output skip %u would overflow "
+				BHND_NV_LOG("output skip %u would overflow "
 				    "%zu\n", binding->skip_out, ipos);
 				return (EINVAL);
 			}

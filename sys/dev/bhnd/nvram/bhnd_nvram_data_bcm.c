@@ -167,12 +167,12 @@ bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 	io_size = le32toh(hdr.size);
 	if (io_size < sizeof(hdr)) {
 		/* The header size must include the header itself */
-		BCM_NVLOG("corrupt header size: %zu\n", io_size);
+		BHND_NV_LOG("corrupt header size: %zu\n", io_size);
 		return (EINVAL);
 	}
 
 	if (io_size > bhnd_nvram_io_getsize(src)) {
-		BCM_NVLOG("header size %zu exceeds input size %zu\n",
+		BHND_NV_LOG("header size %zu exceeds input size %zu\n",
 		    io_size, bhnd_nvram_io_getsize(src));
 		return (EINVAL);
 	}
@@ -203,7 +203,7 @@ bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 	    io_size - BCM_NVRAM_CRC_SKIP, BHND_NVRAM_CRC8_INITIAL);
 
 	if (crc != valid) {
-		BCM_NVLOG("warning: NVRAM CRC error (crc=%#hhx, "
+		BHND_NV_LOG("warning: NVRAM CRC error (crc=%#hhx, "
 		    "expected=%hhx)\n", crc, valid);
 	}
 
@@ -244,7 +244,7 @@ bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 		error = bhnd_nvram_parse_env(envp, envp_len, '=', &name,
 					     &name_len, &value, &value_len);
 		if (error) {
-			BCM_NVLOG("error parsing envp at offset %#zx: %d\n",
+			BHND_NV_LOG("error parsing envp at offset %#zx: %d\n",
 			    io_offset, error);
 			return (error);
 		}
@@ -273,14 +273,14 @@ bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 		/* Seek past the value's terminating '\0' */
 		io_offset += envp_len;
 		if (io_offset == io_size) {
-			BCM_NVLOG("missing terminating NUL at offset %#zx\n",
+			BHND_NV_LOG("missing terminating NUL at offset %#zx\n",
 			    io_offset);
 			return (EINVAL);
 		}
 
 		if (*(p + io_offset) != '\0') {
-			BCM_NVLOG("invalid terminator '%#hhx' at offset %#zx\n",
-			    *(p + io_offset), io_offset);
+			BHND_NV_LOG("invalid terminator '%#hhx' at offset "
+			    "%#zx\n", *(p + io_offset), io_offset);
 			return (EINVAL);
 		}
 
@@ -580,7 +580,7 @@ bhnd_nvram_bcm_next(struct bhnd_nvram_data *nv, void **cookiep)
 	error = bhnd_nvram_io_read_ptr(bcm->data, io_offset, &ptr, io_size,
 	    NULL);
 	if (error) {
-		BCM_NVLOG("error mapping backing buffer: %d\n", error);
+		BHND_NV_LOG("error mapping backing buffer: %d\n", error);
 		return (NULL);
 	}
 

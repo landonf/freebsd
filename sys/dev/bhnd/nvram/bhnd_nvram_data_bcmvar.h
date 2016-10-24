@@ -52,7 +52,4 @@ struct bhnd_nvram_bcmdata {
 	} value;
 };
 
-#define	BCM_NVLOG(_fmt, ...)	\
-    printf("%s: " _fmt, __FUNCTION__, ##__VA_ARGS__)
-
 #endif /* _BHND_NVRAM_BHND_NVRAM_BCMVAR_H_ */

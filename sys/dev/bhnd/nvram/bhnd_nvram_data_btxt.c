@@ -87,9 +87,6 @@ static int	bhnd_nvram_btxt_seek_next(struct bhnd_nvram_io *io,
 static int	bhnd_nvram_btxt_seek_eol(struct bhnd_nvram_io *io,
 		    size_t *offset);
 
-#define	BTXT_NVLOG(_fmt, ...)	\
-	printf("%s: " _fmt, __FUNCTION__, ##__VA_ARGS__)
-
 static int
 bhnd_nvram_btxt_probe(struct bhnd_nvram_io *io)
 {
@@ -340,18 +337,18 @@ bhnd_nvram_btxt_next(struct bhnd_nvram_data *nv, void **cookiep)
 
 	/* Seek to the next entry (if any) */
 	if ((error = bhnd_nvram_btxt_seek_eol(btxt->data, &io_offset))) {
-		BTXT_NVLOG("unexpected error in seek_eol(): %d\n", error);
+		BHND_NV_LOG("unexpected error in seek_eol(): %d\n", error);
 		return (NULL);
 	}
 
 	if ((error = bhnd_nvram_btxt_seek_next(btxt->data, &io_offset))) {
-		BTXT_NVLOG("unexpected error in seek_next(): %d\n", error);
+		BHND_NV_LOG("unexpected error in seek_next(): %d\n", error);
 		return (NULL);
 	}
 
 	/* Provide the new cookie for this offset */
 	if (io_offset > UINTPTR_MAX) {
-		BTXT_NVLOG("io_offset > UINPTR_MAX!\n");
+		BHND_NV_LOG("io_offset > UINPTR_MAX!\n");
 		return (NULL);
 	}
 
@@ -364,7 +361,7 @@ bhnd_nvram_btxt_next(struct bhnd_nvram_data *nv, void **cookiep)
 	/* Fetch the name pointer; it must be at least 1 byte long */
 	error = bhnd_nvram_io_read_ptr(btxt->data, io_offset, &nptr, 1, NULL);
 	if (error) {
-		BTXT_NVLOG("unexpected error in read_ptr(): %d\n", error);
+		BHND_NV_LOG("unexpected error in read_ptr(): %d\n", error);
 		return (NULL);
 	}
 
@@ -414,7 +411,7 @@ bhnd_nvram_btxt_getvar_ptr(struct bhnd_nvram_data *nv, void *cookiep,
 	error = bhnd_nvram_btxt_entry_len(btxt->data, io_offset, &line_len,
 	    &env_len);
 	if (error) {
-		BTXT_NVLOG("unexpected error in entry_len(): %d\n", error);
+		BHND_NV_LOG("unexpected error in entry_len(): %d\n", error);
 		return (NULL);
 	}
 
@@ -422,14 +419,14 @@ bhnd_nvram_btxt_getvar_ptr(struct bhnd_nvram_data *nv, void *cookiep,
 	error = bhnd_nvram_io_read_ptr(btxt->data, io_offset, &eptr, env_len,
 	    NULL);
 	if (error) {
-		BTXT_NVLOG("unexpected error in read_ptr(): %d\n", error);
+		BHND_NV_LOG("unexpected error in read_ptr(): %d\n", error);
 		return (NULL);
 	}
 
 	error = bhnd_nvram_parse_env(eptr, env_len, '\0', NULL, NULL, &vptr,
 	    len);
 	if (error) {
-		BTXT_NVLOG("unexpected error in parse_env(): %d\n", error);
+		BHND_NV_LOG("unexpected error in parse_env(): %d\n", error);
 		return (NULL);
 	}
 

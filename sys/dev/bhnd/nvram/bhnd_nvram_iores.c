@@ -59,9 +59,6 @@ struct bhnd_nvram_iores {
 
 BHND_NVRAM_IOPS_DEFN(iores);
 
-#define IORES_LOG(_fmt, ...)	\
-	printf("%s: " _fmt, __FUNCTION__, ##__VA_ARGS__)
-
 /**
  * Allocate and return a new I/O context backed by a borrowed reference to @p r.
  *
@@ -93,7 +90,7 @@ bhnd_nvram_iores_new(struct bhnd_resource *r, bus_size_t offset,
 		/* valid */
 		break;
 	default:
-		IORES_LOG("invalid bus width %u\n", bus_width);
+		BHND_NV_LOG("invalid bus width %u\n", bus_width);
 		return (NULL);
 	}
 
@@ -101,14 +98,14 @@ bhnd_nvram_iores_new(struct bhnd_resource *r, bus_size_t offset,
 	 * or our bus_size_t usage (note that BUS_SPACE_MAXSIZE may be less
 	 * than 2^(sizeof(bus_size_t) * 32). */
 	if (size > SIZE_MAX || offset > SIZE_MAX) {
-		IORES_LOG("offset %#jx+%#jx exceeds SIZE_MAX\n",
+		BHND_NV_LOG("offset %#jx+%#jx exceeds SIZE_MAX\n",
 		    (uintmax_t)offset, (uintmax_t)offset);
 		return (NULL);
 	}
 	
 	if (size > BUS_SPACE_MAXSIZE || offset > BUS_SPACE_MAXSIZE)
 	{
-		IORES_LOG("offset %#jx+%#jx exceeds BUS_SPACE_MAXSIZE\n",
+		BHND_NV_LOG("offset %#jx+%#jx exceeds BUS_SPACE_MAXSIZE\n",
 		    (uintmax_t)offset, (uintmax_t)offset);
 		return (NULL);
 	}
@@ -121,13 +118,13 @@ bhnd_nvram_iores_new(struct bhnd_resource *r, bus_size_t offset,
 
 	/* offset/size must be bus_width aligned  */
 	if ((r_start + offset) % bus_width != 0) {
-		IORES_LOG("base address %#jx+%#jx not aligned to bus width "
+		BHND_NV_LOG("base address %#jx+%#jx not aligned to bus width "
 		    "%u\n", (uintmax_t)r_start, (uintmax_t)offset, bus_width);
 		return (NULL);
 	}
 
 	if (size % bus_width != 0) {
-		IORES_LOG("size %#jx not aligned to bus width %u\n",
+		BHND_NV_LOG("size %#jx not aligned to bus width %u\n",
 		    (uintmax_t)size, bus_width);
 		return (NULL);
 	}
