@@ -307,21 +307,18 @@ bhnd_nvram_store_setvar(struct bhnd_nvram_store *sc, const char *name,
 	return (0);
 }
 
-/* sort function for bhnd_nvram_idx_entry values */
+/* sort function for bhnd_nvstore_index cookie values */
 static int
 bhnd_nvram_sort_idx(void *ctx, const void *lhs, const void *rhs)
 {
 	struct bhnd_nvram_store			*sc;
-	const struct bhnd_nvram_idx_entry	*l_idx, *r_idx;
 	const char				*l_str, *r_str;
 
 	sc = ctx;
-	l_idx = lhs;
-	r_idx = rhs;
 
-	/* Fetch string pointers */
-	l_str = bhnd_nvram_data_getvar_name(sc->nv, l_idx->cookiep);
-	r_str = bhnd_nvram_data_getvar_name(sc->nv, r_idx->cookiep);
+	/* Fetch string pointers from the cookiep values */
+	l_str = bhnd_nvram_data_getvar_name(sc->nv, *(void * const *)lhs);
+	r_str = bhnd_nvram_data_getvar_name(sc->nv, *(void * const *)rhs);
 
 	/* Perform comparison */
 	return (strcasecmp(l_str, r_str));
@@ -427,15 +424,15 @@ bhnd_nvram_generate_index(struct bhnd_nvram_store *sc)
 		return (0);
 
 	/* Allocate and populate variable index */
-	idx_bytes = sizeof(struct bhnd_nvram_idx) +
-	    (sizeof(struct bhnd_nvram_idx_entry) * num_vars);
+	idx_bytes = sizeof(struct bhnd_nvstore_index) +
+	    (sizeof(void *) * num_vars);
 	sc->idx = bhnd_nv_malloc(idx_bytes);
 	if (sc->idx == NULL) {
 		BHND_NV_LOG("error allocating %zu byte index\n", idx_bytes);
 		goto bad_index;
 	}
 
-	sc->idx->num_entries = num_vars;
+	sc->idx->num_cookiep = num_vars;
 
 #ifdef _KERNEL
 	if (bootverbose) {
@@ -445,27 +442,24 @@ bhnd_nvram_generate_index(struct bhnd_nvram_store *sc)
 #endif /* _KERNEL */
 
 	cookiep = NULL;
-	for (size_t i = 0; i < sc->idx->num_entries; i++) {
-		struct bhnd_nvram_idx_entry *idx;
-
+	for (size_t i = 0; i < sc->idx->num_cookiep; i++) {
 		/* Fetch next entry */
 		name = bhnd_nvram_data_next(sc->nv, &cookiep);
 
 		/* Early EOF */
 		if (name == NULL) {
 			BHND_NV_LOG("indexing failed, expected %zu records "
-			    "(got %zu)\n", sc->idx->num_entries, i+1);
+			    "(got %zu)\n", sc->idx->num_cookiep, i+1);
 			goto bad_index;
 		}
 
-		/* Save the variable reference */
-		idx = &sc->idx->entries[i];
-		idx->cookiep = cookiep;
+		/* Save the variable's cookiep */
+		sc->idx->cookiep[i] = cookiep;
 	}
 
 	/* Sort the index table */
-	qsort_r(sc->idx->entries, sc->idx->num_entries,
-	    sizeof(sc->idx->entries[0]), sc, bhnd_nvram_sort_idx);
+	qsort_r(sc->idx->cookiep, sc->idx->num_cookiep,
+	    sizeof(sc->idx->cookiep[0]), sc, bhnd_nvram_sort_idx);
 
 	return (0);
 
@@ -491,32 +485,32 @@ bad_index:
 static void *
 bhnd_nvram_index_lookup(struct bhnd_nvram_store *sc, const char *name)
 {
-	struct bhnd_nvram_idx_entry	*idxe;
-	const char			*idxe_key;
-	size_t				 min, mid, max;
-	int				 order;
+	void		*cookiep;
+	const char	*indexed_name;
+	size_t		 min, mid, max;
+	int		 order;
 
 	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
 
-	if (sc->idx == NULL || sc->idx->num_entries == 0)
+	if (sc->idx == NULL || sc->idx->num_cookiep == 0)
 		return (bhnd_nvram_data_find(sc->nv, name));
 
 	/*
 	 * Locate the requested variable using a binary search.
 	 */
-	BHND_NV_ASSERT(sc->idx->num_entries > 0,
+	BHND_NV_ASSERT(sc->idx->num_cookiep > 0,
 	    ("empty array causes underflow"));
 	min = 0;
-	max = sc->idx->num_entries - 1;
+	max = sc->idx->num_cookiep - 1;
 
 	while (max >= min) {
 		/* Select midpoint */
 		mid = (min + max) / 2;
-		idxe = &sc->idx->entries[mid];
+		cookiep = sc->idx->cookiep[mid];
 
 		/* Determine which side of the partition to search */
-		idxe_key = bhnd_nvram_data_getvar_name(sc->nv, idxe->cookiep);
-		order = strcasecmp(idxe_key, name);
+		indexed_name = bhnd_nvram_data_getvar_name(sc->nv, cookiep);
+		order = strcasecmp(indexed_name, name);
 
 		if (order < 0) {
 			/* Search upper partition */
@@ -528,7 +522,7 @@ bhnd_nvram_index_lookup(struct bhnd_nvram_store *sc, const char *name)
 			max = mid - 1;
 		} else if (order == 0) {
 			/* Match found */
-			return (idxe->cookiep);
+			return (cookiep);
 		}
 	}
 

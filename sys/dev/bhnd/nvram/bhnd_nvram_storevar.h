@@ -36,9 +36,11 @@
 
 #include "bhnd_nvram_store.h"
 
-#define	NVRAM_IDX_VAR_THRESH	15		/**< index is generated if minimum variable count is met */
+/** Index is only generated if minimum variable count is met */
+#define	NVRAM_IDX_VAR_THRESH	15
 
-#define	NVRAM_DEVPATH_STR	"devpath"	/**< name prefix of device path aliases */
+/** Name prefix of device path aliases */
+#define	NVRAM_DEVPATH_STR	"devpath"
 #define	NVRAM_DEVPATH_LEN	(sizeof(NVRAM_DEVPATH_STR) - 1)
 
 /**
@@ -54,22 +56,14 @@ struct bhnd_nvram_devpath {
 };
 
 /**
- * NVRAM index record.
+ * NVRAM store index.
  * 
- * Caches opaque entry identifiers extracted from the backing NVRAM parser.
+ * Provides effecient name-based lookup by maintaining an array of cached
+ * cookiep values, sorted lexicographically by variable name.
  */
-struct bhnd_nvram_idx_entry {
-	void	*cookiep;
-};
-
-/**
- * NVRAM index.
- * 
- * Provides a compact binary search index into the backing NVRAM buffer.
- */
-struct bhnd_nvram_idx {
-	size_t				num_entries;	/**< entry count */
-	struct bhnd_nvram_idx_entry	entries[];	/**< index entries */
+struct bhnd_nvstore_index {
+	size_t				 num_cookiep;	/**< cookiep count */
+	void				*cookiep[];	/**< cookiep values */
 };
 
 LIST_HEAD(bhnd_nvram_devpaths, bhnd_nvram_devpath);
@@ -78,7 +72,7 @@ LIST_HEAD(bhnd_nvram_devpaths, bhnd_nvram_devpath);
 struct bhnd_nvram_store {
 	struct mtx			 mtx;
 	struct bhnd_nvram_data		*nv;		/**< backing data */
-	struct bhnd_nvram_idx		*idx;		/**< key index */
+	struct bhnd_nvstore_index	*idx;		/**< index, or NULL */
 	struct bhnd_nvram_devpaths	 devpaths;	/**< device paths */
 	nvlist_t			*pending;	/**< uncommitted writes */
 };
