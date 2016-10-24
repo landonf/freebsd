@@ -52,10 +52,9 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_nvram_impl.h"
 #include "bhnd_nvram_private.h"
 
-#include "bhnd_nvram_data.h"
 #include "bhnd_nvram_datavar.h"
 
-#include "bhnd_nvram_spromvar.h"
+#include "bhnd_nvram_data_spromvar.h"
 
 /*
  * BHND SPROM NVRAM data class

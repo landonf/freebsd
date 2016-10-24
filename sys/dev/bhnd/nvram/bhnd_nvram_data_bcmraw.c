@@ -50,11 +50,7 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_nvram_impl.h"
 #include "bhnd_nvram_private.h"
 
-#include "bhnd_nvram_data.h"
 #include "bhnd_nvram_datavar.h"
-
-#include "bhnd_nvram_bcmreg.h"
-#include "bhnd_nvram_bcmvar.h"
 
 /*
  * Broadcom-RAW NVRAM data class.
@@ -168,7 +164,7 @@ bhnd_nvram_bcmraw_init(struct bhnd_nvram_bcmraw *bcm, struct bhnd_nvram_io *src)
 		error = bhnd_nvram_parse_env(envp, envp_len, '=', &name,
 					     &name_len, &value, &value_len);
 		if (error) {
-			BCM_NVLOG("error parsing envp at offset %#zx: %d\n",
+			BHND_NV_LOG("error parsing envp at offset %#zx: %d\n",
 			    offset, error);
 			return (error);
 		}
@@ -184,7 +180,7 @@ bhnd_nvram_bcmraw_init(struct bhnd_nvram_bcmraw *bcm, struct bhnd_nvram_io *src)
 		/* Seek past the value's terminating '\0' */
 		offset += envp_len;
 		if (offset == io_size) {
-			BCM_NVLOG("missing terminating NUL at offset %#zx\n",
+			BHND_NV_LOG("missing terminating NUL at offset %#zx\n",
 			    offset);
 			return (EINVAL);
 		}

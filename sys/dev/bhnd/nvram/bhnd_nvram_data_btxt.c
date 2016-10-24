@@ -51,10 +51,9 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_nvram_impl.h"
 #include "bhnd_nvram_private.h"
 
-#include "bhnd_nvram_bcmreg.h"
-
-#include "bhnd_nvram_data.h"
 #include "bhnd_nvram_datavar.h"
+
+#include "bhnd_nvram_data_bcmreg.h"	/* for BCM_NVRAM_MAGIC */
 
 /**
  * Broadcom "Board Text" data class.
