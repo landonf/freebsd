@@ -48,6 +48,11 @@
 #include "bhnd_nvram.h"
 #include "bhnd_nvram_impl.h"
 
+/*
+ * bhnd_nvram_crc8() lookup table.
+ */
+extern const uint8_t bhnd_nvram_crc8_tab[];
+
 /* Forward declarations */
 struct bhnd_nvram_vardefn;
 struct bhnd_nvram_fmt_hint;
@@ -72,6 +77,28 @@ int				 bhnd_nvram_coerce_value(void *outp,
 
 bool				 bhnd_nvram_validate_name(const char *name,
 				     size_t name_len);
+
+
+/**
+ * Calculate CRC-8 over @p buf using the Broadcom SPROM/NVRAM CRC-8
+ * polynomial.
+ * 
+ * @param buf input buffer
+ * @param size buffer size
+ * @param crc last computed crc, or BHND_NVRAM_CRC8_INITIAL
+ */
+static inline uint8_t
+bhnd_nvram_crc8(const void *buf, size_t size, uint8_t crc)
+{
+	const uint8_t *p = (const uint8_t *)buf;
+	while (size--)
+		crc = bhnd_nvram_crc8_tab[(crc ^ *p++)];
+
+	return (crc);
+}
+
+#define	BHND_NVRAM_CRC8_INITIAL	0xFF	/**< Initial bhnd_nvram_crc8 value */
+#define	BHND_NVRAM_CRC8_VALID	0x9F	/**< Valid CRC-8 checksum */
 
 /** NVRAM data type string representations */
 typedef enum {
@@ -163,6 +190,8 @@ extern const struct bhnd_sprom_layout bhnd_sprom_layouts[];
 extern const size_t bhnd_sprom_num_layouts;
 
 /*
+ * SPROM binding opcodes.
+ * 
  * Most opcodes are provided with two variants:
  *
  * - Standard:	The opcode's data directly follows the opcode. The data type
