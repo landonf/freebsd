@@ -46,7 +46,6 @@
 #endif
 
 #include "bhnd_nvram.h"
-#include "bhnd_nvram_impl.h"
 
 /*
  * bhnd_nvram_crc8() lookup table.
@@ -56,6 +55,81 @@ extern const uint8_t bhnd_nvram_crc8_tab[];
 /* Forward declarations */
 struct bhnd_nvram_vardefn;
 struct bhnd_nvram_fmt_hint;
+
+#ifdef _KERNEL
+
+MALLOC_DECLARE(M_BHND_NVRAM);
+
+#define	bhnd_nv_malloc(size)		malloc((size), M_BHND_NVRAM, M_WAITOK)
+#define	bhnd_nv_calloc(n, size)		malloc((n) * (size), M_BHND_NVRAM, \
+					    M_WAITOK | M_ZERO)
+#define	bhnd_nv_reallocf(buf, size)	reallocf((buf), (size), M_BHND_NVRAM, \
+					    M_WAITOK)
+#define	bhnd_nv_free(buf)		free((buf), M_BHND_NVRAM)
+#define	bhnd_nv_strndup(str, len)	strndup(str, len, M_BHND_NVRAM)
+
+#ifdef INVARIANTS
+#define	BHND_NV_INVARIANTS
+#endif
+
+#define	BHND_NV_ASSERT(expr, ...)	KASSERT(expr, __VA_ARGS__)
+
+#define	BHND_NV_VERBOSE			(bootverbose)
+#define	BHND_NV_PANIC(...)		panic(__VA_ARGS__)
+#define	BHND_NV_DEVLOG(dev, fmt, ...)	do {		\
+	if (dev != NULL)				\
+		device_printf(dev, fmt, ##__VA_ARGS__);	\
+	else						\
+		BHND_NV_LOG(fmt, ##__VA_ARGS__);	\
+} while(0)
+#define	BHND_NV_LOG(fmt, ...)		\
+	printf("%s: " fmt, __FUNCTION__, ##__VA_ARGS__)
+
+#define	bhnd_nv_ummax(a, b)		ummax((a), (b))
+#define	bhnd_nv_ummin(a, b)		ummin((a), (b))
+
+#else /* !_KERNEL */
+
+#include <assert.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+#define	bhnd_nv_malloc(size)		malloc((size))
+#define	bhnd_nv_calloc(n, size)		calloc((n), (size))
+#define	bhnd_nv_reallocf(buf, size)	reallocf((buf), (size))
+#define	bhnd_nv_free(buf)		free((buf))
+#define	bhnd_nv_strndup(str, len)	strndup(str, len)
+
+#ifndef NDEBUG
+#define	BHND_NV_INVARIANTS
+#endif
+
+#define	BHND_NV_ASSERT(expr, ...)	assert(expr)
+
+#define	BHND_NV_VERBOSE			(0)
+#define	BHND_NV_PANIC(fmt, ...)		do {			\
+	fprintf(stderr, "panic: " fmt "\n", ##__VA_ARGS__);	\
+	abort();						\
+} while(0)
+#define	BHND_NV_DEVLOG(dev, fmt, ...)	BHND_NV_LOG(fmt, ## __VA_ARGS__)
+#define	BHND_NV_LOG(fmt, ...)					\
+	fprintf(stderr, "%s: " fmt, __FUNCTION__, ##__VA_ARGS__)
+
+static inline uintmax_t
+bhnd_nv_ummax(uintmax_t a, uintmax_t b)
+{
+        return (a > b ? a : b);
+}
+
+static inline uintmax_t
+bhnd_nv_ummin(uintmax_t a, uintmax_t b)
+{
+
+        return (a < b ? a : b);
+}
+
+#endif /* _KERNEL */
 
 size_t				 bhnd_nvram_type_width(bhnd_nvram_type type);
 
