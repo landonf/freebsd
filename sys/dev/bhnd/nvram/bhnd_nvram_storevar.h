@@ -37,13 +37,9 @@
 #include "bhnd_nvram_store.h"
 
 #define	NVRAM_IDX_VAR_THRESH	15		/**< index is generated if minimum variable count is met */
-#define	NVRAM_IDX_OFFSET_MAX	UINT16_MAX	/**< maximum indexable offset */
-#define	NVRAM_IDX_LEN_MAX	UINT16_MAX	/**< maximum indexable key/value length */
 
 #define	NVRAM_DEVPATH_STR	"devpath"	/**< name prefix of device path aliases */
 #define	NVRAM_DEVPATH_LEN	(sizeof(NVRAM_DEVPATH_STR) - 1)
-
-#define	NVRAM_SMALL_HASH_SIZE	16		/**< hash table size for pending/default tuples */
 
 /**
  * NVRAM devpath record.
