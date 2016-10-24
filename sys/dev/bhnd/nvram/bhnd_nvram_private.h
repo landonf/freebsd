@@ -133,6 +133,12 @@ struct bhnd_nvram_vardefn {
 	uint32_t		 flags;	/**< flags (BHND_NVRAM_VF_*) */
 };
 
+/*
+ * NVRAM variable definitions generated from nvram_map.
+ */
+extern const struct bhnd_nvram_vardefn bhnd_nvram_vardefns[];
+extern const size_t bhnd_nvram_num_vardefns;
+
 /**
  * SPROM layout descriptor.
  */
@@ -149,6 +155,12 @@ struct bhnd_sprom_layout {
 					     for this layout by the binding
 					     table */
 };
+
+/*
+ * SPROM layout descriptions generated from nvram_map.
+ */
+extern const struct bhnd_sprom_layout bhnd_sprom_layouts[];
+extern const size_t bhnd_sprom_num_layouts;
 
 /*
  * Most opcodes are provided with two variants:

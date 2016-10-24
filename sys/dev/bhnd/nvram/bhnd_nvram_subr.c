@@ -58,7 +58,6 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_nvram_io.h"
 #include "bhnd_nvram_private.h"
-#include "bhnd_nvram_private_data.h"
 
 #include "bhnd_nvram_map_data.h"
 
