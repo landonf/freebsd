@@ -35,6 +35,7 @@
 #ifdef _KERNEL
 #include <sys/param.h>
 #else /* !_KERNEL */
+#include <stddef.h>
 #include <stdint.h>
 #endif /* _KERNEL */
 

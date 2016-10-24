@@ -182,7 +182,8 @@ bhnd_nvram_sprom_ident(struct bhnd_nvram_io *io,
 	/* Find the largest SPROM layout size */
 	sprom_sz_max = 0;
 	for (size_t i = 0; i < bhnd_sprom_num_layouts; i++) {
-		sprom_sz_max = ummax(sprom_sz_max, bhnd_sprom_layouts[i].size);
+		sprom_sz_max = bhnd_nv_ummax(sprom_sz_max,
+		    bhnd_sprom_layouts[i].size);
 	}
 
 	/* Allocate backing buffer and initialize CRC state */

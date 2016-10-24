@@ -30,9 +30,10 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include <sys/param.h>
+
 #ifdef _KERNEL
 
-#include <sys/param.h>
 #include <sys/ctype.h>
 #include <sys/kernel.h>
 #include <sys/limits.h>
