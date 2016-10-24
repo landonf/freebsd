@@ -76,12 +76,18 @@ LIST_HEAD(bhnd_nvram_devpaths, bhnd_nvram_devpath);
 
 /** bhnd nvram store instance state */
 struct bhnd_nvram_store {
+	struct mtx			 mtx;
 	struct bhnd_nvram_data		*nv;		/**< backing data */
-
 	struct bhnd_nvram_idx		*idx;		/**< key index */
-
 	struct bhnd_nvram_devpaths	 devpaths;	/**< device paths */
 	nvlist_t			*pending;	/**< uncommitted writes */
 };
+
+#define	BHND_NVSTORE_LOCK_INIT(sc) \
+	mtx_init(&(sc)->mtx, "BHND NVRAM store lock", NULL, MTX_DEF)
+#define	BHND_NVSTORE_LOCK(sc)			mtx_lock(&(sc)->mtx)
+#define	BHND_NVSTORE_UNLOCK(sc)			mtx_unlock(&(sc)->mtx)
+#define	BHND_NVSTORE_LOCK_ASSERT(sc, what)	mtx_assert(&(sc)->mtx, what)
+#define	BHND_NVSTORE_LOCK_DESTROY(sc)		mtx_destroy(&(sc)->mtx)
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_STOREVAR_H_ */

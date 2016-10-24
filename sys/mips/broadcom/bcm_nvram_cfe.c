@@ -61,17 +61,17 @@ __FBSDID("$FreeBSD$");
 #include "bcm_nvram_cfevar.h"
 
 /**
- * CFE-backed NVRAM I/O context.
+ * CFE-backed bhnd_nvram_io implementation.
  */
 struct bhnd_nvram_iocfe {
 	struct bhnd_nvram_io	 io;		/**< common I/O instance state */
 
-	char			*dname;		/**< CFE device name (borrowed reference) */
+	char			*dname;		/**< CFE device name (borrowed) */
 	int			 fd;		/**< CFE file descriptor */
 	size_t			 offset;	/**< base offset */
 	size_t			 size;		/**< device size */
-	bool			 req_blk_erase;	/**< if flash blocks must be erased before
-						     writing */
+	bool			 req_blk_erase;	/**< flash blocks must be erased
+						     before writing */
 };
 
 BHND_NVRAM_IOPS_DEFN(iocfe)
@@ -156,9 +156,6 @@ bhnd_nvram_cfe_attach(device_t dev)
 	if (error)
 		return (error);
 
-	/* Initialize mutex */
-	BHND_NVRAM_CFE_LOCK_INIT(sc);
-
 	return (error);
 }
 
@@ -182,7 +179,6 @@ bhnd_nvram_cfe_detach(device_t dev)
 	sc = device_get_softc(dev);
 
 	bhnd_nvram_store_free(sc->store);
-	BHND_NVRAM_CFE_LOCK_DESTROY(sc);
 
 	return (0);
 }
@@ -191,32 +187,18 @@ static int
 bhnd_nvram_cfe_getvar(device_t dev, const char *name, void *buf, size_t *len,
     bhnd_nvram_type type)
 {
-	struct bhnd_nvram_cfe_softc	*sc;
-	int				 error;
+	struct bhnd_nvram_cfe_softc *sc = device_get_softc(dev);
 
-	sc = device_get_softc(dev);
-
-	BHND_NVRAM_CFE_LOCK(sc);
-	error = bhnd_nvram_store_getvar(sc->store, name, buf, len, type);
-	BHND_NVRAM_CFE_UNLOCK(sc);
-
-	return (error);
+	return (bhnd_nvram_store_getvar(sc->store, name, buf, len, type));
 }
 
 static int
 bhnd_nvram_cfe_setvar(device_t dev, const char *name, const void *buf,
     size_t len, bhnd_nvram_type type)
 {
-	struct bhnd_nvram_cfe_softc	*sc;
-	int				 error;
+	struct bhnd_nvram_cfe_softc *sc = device_get_softc(dev);
 
-	sc = device_get_softc(dev);
-
-	BHND_NVRAM_CFE_LOCK(sc);
-	error = bhnd_nvram_store_setvar(sc->store, name, buf, len, type);
-	BHND_NVRAM_CFE_UNLOCK(sc);
-
-	return (error);
+	return (bhnd_nvram_store_setvar(sc->store, name, buf, len, type));
 }
 
 /**

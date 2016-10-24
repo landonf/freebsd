@@ -56,14 +56,6 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_spromvar.h"
 
-#define	SPROM_LOCK_INIT(sc) \
-	mtx_init(&(sc)->mtx, device_get_nameunit((sc)->dev), \
-	    "BHND SPROM lock", MTX_DEF)
-#define	SPROM_LOCK(sc)			mtx_lock(&(sc)->mtx)
-#define	SPROM_UNLOCK(sc)			mtx_unlock(&(sc)->mtx)
-#define	SPROM_LOCK_ASSERT(sc, what)	mtx_assert(&(sc)->mtx, what)
-#define	SPROM_LOCK_DESTROY(sc)		mtx_destroy(&(sc)->mtx)
-
 /**
  * Default bhnd sprom driver implementation of DEVICE_PROBE().
  */
@@ -145,9 +137,6 @@ bhnd_sprom_attach(device_t dev, bus_size_t offset)
 	bhnd_nvram_io_free(io);
 	bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
 
-	/* Initialize mutex */
-	SPROM_LOCK_INIT(sc);
-
 	return (0);
 
 failed:
@@ -189,7 +178,6 @@ bhnd_sprom_detach(device_t dev)
 	sc = device_get_softc(dev);
 
 	bhnd_nvram_store_free(sc->store);
-	SPROM_LOCK_DESTROY(sc);
 
 	return (0);
 }
@@ -201,16 +189,9 @@ static int
 bhnd_sprom_getvar_method(device_t dev, const char *name, void *buf, size_t *len,
     bhnd_nvram_type type)
 {
-	struct bhnd_sprom_softc	*sc;
-	int				 error;
+	struct bhnd_sprom_softc	*sc = device_get_softc(dev);
 
-	sc = device_get_softc(dev);
-
-	SPROM_LOCK(sc);
-	error = bhnd_nvram_store_getvar(sc->store, name, buf, len, type);
-	SPROM_UNLOCK(sc);
-
-	return (error);
+	return (bhnd_nvram_store_getvar(sc->store, name, buf, len, type));
 }
 
 /**
@@ -220,16 +201,9 @@ static int
 bhnd_sprom_setvar_method(device_t dev, const char *name, const void *buf,
     size_t len, bhnd_nvram_type type)
 {
-	struct bhnd_sprom_softc	*sc;
-	int				 error;
+	struct bhnd_sprom_softc	*sc = device_get_softc(dev);
 
-	sc = device_get_softc(dev);
-
-	SPROM_LOCK(sc);
-	error = bhnd_nvram_store_setvar(sc->store, name, buf, len, type);
-	SPROM_UNLOCK(sc);
-
-	return (error);
+	return (bhnd_nvram_store_setvar(sc->store, name, buf, len, type));
 }
 
 static device_method_t bhnd_sprom_methods[] = {

@@ -41,16 +41,7 @@
 /** bhnd_nvram_cfe driver instance state. */
 struct bhnd_nvram_cfe_softc {
 	device_t		 	 dev;
-	struct mtx		 	 mtx;	/**< nvram mutex */
 	struct bhnd_nvram_store		*store;	/**< nvram store */
 };
-
-#define	BHND_NVRAM_CFE_LOCK_INIT(sc) \
-	mtx_init(&(sc)->mtx, device_get_nameunit((sc)->dev), \
-	    "bhnd_nvram_cfe lock", MTX_DEF)
-#define	BHND_NVRAM_CFE_LOCK(sc)			mtx_lock(&(sc)->mtx)
-#define	BHND_NVRAM_CFE_UNLOCK(sc)		mtx_unlock(&(sc)->mtx)
-#define	BHND_NVRAM_CFE_LOCK_ASSERT(sc, what)	mtx_assert(&(sc)->mtx, what)
-#define	BHND_NVRAM_CFE_LOCK_DESTROY(sc)		mtx_destroy(&(sc)->mtx)
 
 #endif /* _MIPS_BROADCOM_BCM_NVRAM_CFE_H_ */

@@ -129,6 +129,8 @@ bhnd_nvram_store_new(struct bhnd_nvram_store **store, struct bhnd_nvram_io *io,
 	if ((error = bhnd_nvram_generate_index(sc)))
 		goto cleanup;
 
+	BHND_NVSTORE_LOCK_INIT(sc);
+
 	*store = sc;
 	return (0);
 
@@ -144,25 +146,26 @@ cleanup:
  * bhnd_nvram_store_new().
  */
 void
-bhnd_nvram_store_free(struct bhnd_nvram_store *store)
+bhnd_nvram_store_free(struct bhnd_nvram_store *sc)
 {
 	struct bhnd_nvram_devpath *dpath, *dnext;
 
-        LIST_FOREACH_SAFE(dpath, &store->devpaths, dp_link, dnext) {
+        LIST_FOREACH_SAFE(dpath, &sc->devpaths, dp_link, dnext) {
 		bhnd_nv_free(dpath->path);
                 bhnd_nv_free(dpath);
         }
 
-	if (store->pending != NULL)
-		nvlist_destroy(store->pending);
+	if (sc->pending != NULL)
+		nvlist_destroy(sc->pending);
 
-	if (store->idx != NULL)
-		bhnd_nv_free(store->idx);
+	if (sc->idx != NULL)
+		bhnd_nv_free(sc->idx);
 
-	if (store->nv != NULL)
-		bhnd_nvram_data_free(store->nv);
+	if (sc->nv != NULL)
+		bhnd_nvram_data_free(sc->nv);
 
-	bhnd_nv_free(store);
+	BHND_NVSTORE_LOCK_DESTROY(sc);
+	bhnd_nv_free(sc);
 }
 
 /**
@@ -192,6 +195,7 @@ bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
 	const void	*inp;
 	size_t		 ilen;
 	bhnd_nvram_type	 itype;
+	int		 error;
 
 	/*
 	 * Search order:
@@ -200,8 +204,11 @@ bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
 	 * - index lookup OR buffer scan
 	 */
 
+	BHND_NVSTORE_LOCK(sc);
+
 	/* Is variable marked for deletion? */
 	if (nvlist_exists_null(sc->pending, name)) {
+		BHND_NVSTORE_UNLOCK(sc);
 		return (ENOENT);
 	}
 
@@ -212,18 +219,28 @@ bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
 		ilen = strlen(inp) + 1;
 		itype = BHND_NVRAM_TYPE_CSTR;
 
-		return (bhnd_nvram_coerce_value(buf, len, type, inp, ilen,
-		    itype, NULL));
+		/* Coerce borrowed data reference before releasing
+		 * our lock. */
+		error = bhnd_nvram_coerce_value(buf, len, type, inp, ilen,
+		    itype, NULL);
+		BHND_NVSTORE_UNLOCK(sc);
+
+		return (error);
 	} else if (nvlist_exists(sc->pending, name)) {
 		BHND_NV_PANIC("invalid value type for pending change %s", name);
 	}
 
 	/* Fetch variable from parsed NVRAM data. */
-	if ((cookiep = bhnd_nvram_index_lookup(sc, name)) == NULL)
+	if ((cookiep = bhnd_nvram_index_lookup(sc, name)) == NULL) {
+		BHND_NVSTORE_UNLOCK(sc);
 		return (ENOENT);
+	}
 
 	/* Let the parser itself perform value coercion */
-	return (bhnd_nvram_data_getvar(sc->nv, cookiep, buf, len, type));
+	error =  bhnd_nvram_data_getvar(sc->nv, cookiep, buf, len, type);
+	BHND_NVSTORE_UNLOCK(sc);
+
+	return (error);
 }
 
 /**
@@ -282,7 +299,9 @@ bhnd_nvram_store_setvar(struct bhnd_nvram_store *sc, const char *name,
 		strlcpy(vbuf, buf, len);
 	
 		/* Add to pending change list */
+		BHND_NVSTORE_LOCK(sc);
 		nvlist_add_string(sc->pending, name, vbuf);
+		BHND_NVSTORE_UNLOCK(sc);
 	}
 
 	return (0);
@@ -476,6 +495,8 @@ bhnd_nvram_index_lookup(struct bhnd_nvram_store *sc, const char *name)
 	const char			*idxe_key;
 	size_t				 min, mid, max;
 	int				 order;
+
+	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
 
 	if (sc->idx == NULL || sc->idx->num_entries == 0)
 		return (bhnd_nvram_data_find(sc->nv, name));
