@@ -39,20 +39,17 @@
 /** Index is only generated if minimum variable count is met */
 #define	NVRAM_IDX_VAR_THRESH	15
 
-/** Name prefix of device path aliases */
-#define	NVRAM_DEVPATH_STR	"devpath"
-#define	NVRAM_DEVPATH_LEN	(sizeof(NVRAM_DEVPATH_STR) - 1)
+#define	BHND_NVSTORE_PATH_IDX_INVALID	ULONG_MAX
 
 /**
- * NVRAM devpath record.
- * 
- * Aliases index values to full device paths.
+ * NVRAM store path.
  */
-struct bhnd_nvram_devpath {
-	u_long	 index;	/** alias index */
-	char	*path;	/** aliased path */
+struct bhnd_nvstore_path {
+	char	*path;	/** path */
+	u_long	 index;	/** aliased path index, or
+			    BHND_NVSTORE_PATH_IDX_INVALID */
 
-	LIST_ENTRY(bhnd_nvram_devpath) dp_link;
+	LIST_ENTRY(bhnd_nvstore_path) dp_link;
 };
 
 /**
@@ -66,14 +63,14 @@ struct bhnd_nvstore_index {
 	void				*cookiep[];	/**< cookiep values */
 };
 
-LIST_HEAD(bhnd_nvram_devpaths, bhnd_nvram_devpath);
+LIST_HEAD(bhnd_nvstore_paths, bhnd_nvstore_path);
 
 /** bhnd nvram store instance state */
 struct bhnd_nvram_store {
 	struct mtx			 mtx;
 	struct bhnd_nvram_data		*nv;		/**< backing data */
 	struct bhnd_nvstore_index	*idx;		/**< index, or NULL */
-	struct bhnd_nvram_devpaths	 devpaths;	/**< device paths */
+	struct bhnd_nvstore_paths	 paths;		/**< paths */
 	nvlist_t			*pending;	/**< uncommitted writes */
 };
 

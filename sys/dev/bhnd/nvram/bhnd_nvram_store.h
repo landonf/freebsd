@@ -52,7 +52,6 @@
 
 struct bhnd_nvram_store;
 
-
 int	bhnd_nvram_store_new(struct bhnd_nvram_store **store,
 	    struct bhnd_nvram_io *io, bhnd_nvram_data_class_t *cls);
 

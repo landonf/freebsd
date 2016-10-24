@@ -112,7 +112,7 @@ bhnd_nvram_store_new(struct bhnd_nvram_store **store, struct bhnd_nvram_io *io,
 	if (sc == NULL)
 		return (ENOMEM);
 
-	LIST_INIT(&sc->devpaths);
+	LIST_INIT(&sc->paths);
 
 	/* Parse the input data */
 	if ((error = bhnd_nvram_data_new(cls, &sc->nv, io)))
@@ -148,9 +148,9 @@ cleanup:
 void
 bhnd_nvram_store_free(struct bhnd_nvram_store *sc)
 {
-	struct bhnd_nvram_devpath *dpath, *dnext;
+	struct bhnd_nvstore_path *dpath, *dnext;
 
-        LIST_FOREACH_SAFE(dpath, &sc->devpaths, dp_link, dnext) {
+        LIST_FOREACH_SAFE(dpath, &sc->paths, dp_link, dnext) {
 		bhnd_nv_free(dpath->path);
                 bhnd_nv_free(dpath);
         }
@@ -347,7 +347,7 @@ bhnd_nvram_register_devpaths(struct bhnd_nvram_store *sc)
 	/* Parse and register all device path aliases */
 	cookiep = NULL;
 	while ((name = bhnd_nvram_data_next(sc->nv, &cookiep))) {
-		struct bhnd_nvram_devpath	*devpath;
+		struct bhnd_nvstore_path	*devpath;
 		bhnd_nvram_type			 path_type;
 		const char			*path, *suffix;
 		char				*eptr;
@@ -356,11 +356,11 @@ bhnd_nvram_register_devpaths(struct bhnd_nvram_store *sc)
 		u_long				 index;
 
 		/* Check for devpath prefix */
-		if (strncmp(name, NVRAM_DEVPATH_STR, NVRAM_DEVPATH_LEN) != 0)
+		if (strncmp(name, "devpath", strlen("devpath")) != 0)
 			continue;
 
 		/* Parse index value that should follow a 'devpath' prefix */
-		suffix = name + NVRAM_DEVPATH_LEN;
+		suffix = name + strlen("devpath");
 		index = strtoul(suffix, &eptr, 10);
 		if (eptr == suffix || *eptr != '\0') {
 			BHND_NV_LOG("invalid devpath variable '%s'\n", name);
@@ -385,7 +385,7 @@ bhnd_nvram_register_devpaths(struct bhnd_nvram_store *sc)
 
 		devpath->index = index;
 		devpath->path = bhnd_nv_strndup(path, path_len);
-		LIST_INSERT_HEAD(&sc->devpaths, devpath, dp_link);
+		LIST_INSERT_HEAD(&sc->paths, devpath, dp_link);
 	}
 
 	return (0);
