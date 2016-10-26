@@ -66,22 +66,6 @@ static void	*bhnd_nvram_index_lookup(struct bhnd_nvram_store *sc,
 		     const char *name);
 
 /**
- * Identify the NVRAM format at @p offset within @p io, verify the
- * CRC (if applicable), and allocate a local shadow copy of the NVRAM data.
- * 
- * After initialization, no reference to @p io will be held by the
- * NVRAM parser, and @p io may be safely deallocated.
- * 
- * @param[out] sc The NVRAM parser state to be initialized.
- * @param io An I/O context mapping the NVRAM data to be parsed.
- * @param cls An NVRAM data class capable of parsing @p io.
- * 
- * @retval 0 success
- * @retval ENOMEM If internal allocation of NVRAM state fails.
- * @retval EINVAL If @p io parsing fails.
- */
-
-/**
  * Allocate and initialize a new NVRAM data store instance.
  *
  * The caller is responsible for deallocating the instance via
