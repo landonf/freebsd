@@ -71,22 +71,18 @@ static void	*bhnd_nvram_index_lookup(struct bhnd_nvram_store *sc,
  * The caller is responsible for deallocating the instance via
  * bhnd_nvram_store_free().
  * 
- * The NVRAM data mapped by @p io will be copied, and @p io may be safely
- * deallocated after bhnd_nvram_store_new() returns.
- * 
  * @param[out] store On success, a pointer to the newly allocated NVRAM data
  * instance.
- * @param io An I/O context mapping the NVRAM data to be copied and parsed.
- * @param cls If non-NULL, the NVRAM data class to be used when parsing @p io.
- * If NULL, bhnd_nvram_data_probe() will be used to determine the data format.
+ * @param data The NVRAM data to be managed by the returned NVRAM data store
+ * instance.
  *
  * @retval 0 success
  * @retval non-zero if an error occurs during allocation or initialization, a
  * regular unix error code will be returned.
  */
 int
-bhnd_nvram_store_new(struct bhnd_nvram_store **store, struct bhnd_nvram_io *io,
-    bhnd_nvram_data_class_t *cls)
+bhnd_nvram_store_new(struct bhnd_nvram_store **store,
+    struct bhnd_nvram_data *data)
 {
 	struct bhnd_nvram_store *sc;
 	int			 error;
@@ -98,9 +94,8 @@ bhnd_nvram_store_new(struct bhnd_nvram_store **store, struct bhnd_nvram_io *io,
 
 	LIST_INIT(&sc->paths);
 
-	/* Parse the input data */
-	if ((error = bhnd_nvram_data_new(cls, &sc->nv, io)))
-		goto cleanup;
+	/* Retain the NVRAM data */
+	sc->nv = bhnd_nvram_data_retain(data);
 
 	/* Allocate uncommitted change list */
 	sc->pending = nvlist_create(NV_FLAG_IGNORE_CASE);
@@ -120,6 +115,45 @@ bhnd_nvram_store_new(struct bhnd_nvram_store **store, struct bhnd_nvram_io *io,
 
 cleanup:
 	bhnd_nvram_store_free(*store);
+	return (error);
+}
+
+/**
+ * Allocate and initialize a new NVRAM data store instance, parsing the
+ * NVRAM data from @p io.
+ *
+ * The caller is responsible for deallocating the instance via
+ * bhnd_nvram_store_free().
+ * 
+ * The NVRAM data mapped by @p io will be copied, and @p io may be safely
+ * deallocated after bhnd_nvram_store_new() returns.
+ * 
+ * @param[out] store On success, a pointer to the newly allocated NVRAM data
+ * instance.
+ * @param io An I/O context mapping the NVRAM data to be copied and parsed.
+ * @param cls The NVRAM data class to be used when parsing @p io, or NULL
+ * to perform runtime identification of the appropriate data class.
+ *
+ * @retval 0 success
+ * @retval non-zero if an error occurs during allocation or initialization, a
+ * regular unix error code will be returned.
+ */
+int
+bhnd_nvram_store_parse(struct bhnd_nvram_store **store,
+    struct bhnd_nvram_io *io, bhnd_nvram_data_class_t *cls)
+{
+	struct bhnd_nvram_data	*data;
+	int			 error;
+
+
+	/* Try to parse the data */
+	if ((error = bhnd_nvram_data_new(cls, &data, io)))
+		return (error);
+
+	/* Try to create our new store instance */
+	error = bhnd_nvram_store_new(store, data);
+	bhnd_nvram_data_release(data);
+
 	return (error);
 }
 
@@ -146,7 +180,7 @@ bhnd_nvram_store_free(struct bhnd_nvram_store *sc)
 		bhnd_nv_free(sc->idx);
 
 	if (sc->nv != NULL)
-		bhnd_nvram_data_free(sc->nv);
+		bhnd_nvram_data_release(sc->nv);
 
 	BHND_NVSTORE_LOCK_DESTROY(sc);
 	bhnd_nv_free(sc);

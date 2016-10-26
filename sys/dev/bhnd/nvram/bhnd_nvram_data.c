@@ -90,7 +90,7 @@ bhnd_nvram_data_probe(bhnd_nvram_data_class_t *cls, struct bhnd_nvram_io *io)
  * of the data mapped by @p io, returning the parsed data in @p data.
  * 
  * The caller is responsible for deallocating the returned instance via
- * bhnd_nvram_data_free().
+ * bhnd_nvram_data_release().
  * 
  * @param[out] data On success, the parsed NVRAM data instance.
  * @param io An I/O context mapping the NVRAM data to be copied and parsed.
@@ -142,7 +142,7 @@ bhnd_nvram_data_probe_classes(struct bhnd_nvram_data **data,
 
 		/* Drop any previously parsed data */
 		if (*data != NULL) {
-			bhnd_nvram_data_free(*data);
+			bhnd_nvram_data_release(*data);
 			*data = NULL;
 		}
 
@@ -183,8 +183,8 @@ bhnd_nvram_data_probe_classes(struct bhnd_nvram_data **data,
  * Allocate and initialize a new instance of data class @p cls, copying and
  * parsing NVRAM data from @p io.
  *
- * The caller is responsible for deallocating the parser instance
- * via bhnd_nvram_data_free().
+ * The caller is responsible for releasing the returned parser instance
+ * reference via bhnd_nvram_data_release().
  * 
  * @param cls If non-NULL, the data class to be allocated. If NULL,
  * bhnd_nvram_data_probe_classes() will be used to determine the data format.
@@ -205,26 +205,55 @@ bhnd_nvram_data_new(bhnd_nvram_data_class_t *cls,
 	if (cls == NULL)
 		return (bhnd_nvram_data_probe_classes(nv, io, NULL, 0));
 
-	/* Otherwise, directly delegate to the class' new method */
-	if ((error = cls->op_new(nv, io)))
-		return (error);
+	/* Allocate new instance */
+	BHND_NV_ASSERT(sizeof(struct bhnd_nvram_data) <= cls->size,
+	    ("instance size %zu less than minimum %zu", cls->size,
+	     sizeof(struct bhnd_nvram_data)));
 
-	/* Set reference count */
+	*nv = bhnd_nv_calloc(1, cls->size);
+	(*nv)->cls = cls;
 	refcount_init(&(*nv)->refs, 1);
+
+	/* Let the class handle initialization */
+	if ((error = cls->op_new(*nv, io))) {
+		bhnd_nv_free(*nv);
+		return (error);
+	}
 
 	return (0);
 }
 
 /**
- * Free a previously allocated data instance, releasing all associated
- * resources.
+ * Retain and return a reference to the given data instance.
  * 
- * @param nv The NVRAM data to be deallocated.
+ * @param nv The reference to be retained.
+ */
+struct bhnd_nvram_data *
+bhnd_nvram_data_retain(struct bhnd_nvram_data *nv)
+{
+	refcount_acquire(&nv->refs);
+	return (nv);
+}
+
+/**
+ * Release a reference to the given data instance.
+ *
+ * If this is the last reference, the data instance and its associated
+ * resources will be freed.
+ * 
+ * @param nv The reference to be released.
  */
 void
-bhnd_nvram_data_free(struct bhnd_nvram_data *nv)
+bhnd_nvram_data_release(struct bhnd_nvram_data *nv)
 {
-	return (nv->cls->op_free(nv));
+	if (!refcount_release(&nv->refs))
+		return;
+
+	/* Free any internal resources */
+	nv->cls->op_free(nv);
+
+	/* Free the instance allocation */
+	bhnd_nv_free(nv);
 }
 
 /**

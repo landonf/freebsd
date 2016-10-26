@@ -103,7 +103,8 @@ int			 bhnd_nvram_data_new(bhnd_nvram_data_class_t *cls,
 			     struct bhnd_nvram_data **nv,
 			   struct bhnd_nvram_io *io);
 
-void			 bhnd_nvram_data_free(struct bhnd_nvram_data *nv);
+struct bhnd_nvram_data	*bhnd_nvram_data_retain(struct bhnd_nvram_data *nv);
+void			 bhnd_nvram_data_release(struct bhnd_nvram_data *nv);
 
 bhnd_nvram_data_class_t	*bhnd_nvram_data_class(struct bhnd_nvram_data *nv);
 

@@ -62,7 +62,7 @@ struct bhnd_nvram_tlv {
 	size_t			 count;	/**< variable count */
 };
 
-BHND_NVRAM_DATA_CLASS_DEFN(tlv, "WGT634U")
+BHND_NVRAM_DATA_CLASS_DEFN(tlv, "WGT634U", sizeof(struct bhnd_nvram_tlv))
 
 /** Minimal TLV_ENV record header */
 struct bhnd_nvram_tlv_env_hdr {
@@ -218,44 +218,31 @@ bhnd_nvram_tlv_init(struct bhnd_nvram_tlv *tlv, struct bhnd_nvram_io *src)
 }
 
 static int
-bhnd_nvram_tlv_new(struct bhnd_nvram_data **nv, struct bhnd_nvram_io *io)
+bhnd_nvram_tlv_new(struct bhnd_nvram_data *nv, struct bhnd_nvram_io *io)
 {
 	
 	struct bhnd_nvram_tlv	*tlv;
 	int			 error;
 
 	/* Allocate and initialize the TLV data instance */
-	tlv = bhnd_nv_calloc(1, sizeof(*tlv));
-	if (tlv == NULL)
-		return (ENOMEM);
-
-	tlv->nv.cls = &bhnd_nvram_tlv_class;
-	tlv->data = NULL;
+	tlv = (struct bhnd_nvram_tlv *)nv;
 
 	/* Parse the TLV input data and initialize our backing
 	 * data representation */
-	if ((error = bhnd_nvram_tlv_init(tlv, io)))
-		goto failed;
+	if ((error = bhnd_nvram_tlv_init(tlv, io))) {
+		bhnd_nvram_tlv_free(nv);
+		return (error);
+	}
 
-	*nv = &tlv->nv;
 	return (0);
-
-failed:
-	if (tlv->data != NULL)
-		bhnd_nvram_io_free(tlv->data);
-
-	bhnd_nv_free(tlv);
-
-	return (error);
 }
 
 static void
 bhnd_nvram_tlv_free(struct bhnd_nvram_data *nv)
 {
 	struct bhnd_nvram_tlv *tlv = (struct bhnd_nvram_tlv *)nv;
-
-	bhnd_nvram_io_free(tlv->data);
-	bhnd_nv_free(tlv);
+	if (tlv->data != NULL)
+		bhnd_nvram_io_free(tlv->data);
 }
 
 size_t

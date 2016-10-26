@@ -124,7 +124,7 @@ struct bhnd_nvram_bcm {
 	size_t				 count;	/**< total variable count */
 };
 
-BHND_NVRAM_DATA_CLASS_DEFN(bcm, "Broadcom")
+BHND_NVRAM_DATA_CLASS_DEFN(bcm, "Broadcom", sizeof(struct bhnd_nvram_bcm))
 
 static int
 bhnd_nvram_bcm_probe(struct bhnd_nvram_io *io)
@@ -325,18 +325,12 @@ bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 }
 
 static int
-bhnd_nvram_bcm_new(struct bhnd_nvram_data **nv, struct bhnd_nvram_io *io)
+bhnd_nvram_bcm_new(struct bhnd_nvram_data *nv, struct bhnd_nvram_io *io)
 {
 	struct bhnd_nvram_bcm	*bcm;
 	int			 error;
 
-	/* Allocate and initialize the BCM data instance */
-	bcm = bhnd_nv_calloc(1, sizeof(*bcm));
-	if (bcm == NULL)
-		return (ENOMEM);
-
-	bcm->nv.cls = &bhnd_nvram_bcm_class;
-	bcm->data = NULL;
+	bcm = (struct bhnd_nvram_bcm *)nv;
 
 	/* Populate default BCM mirrored header value set */
 	_Static_assert(sizeof(bcm->hvars) == sizeof(bhnd_nvram_bcm_hvars),
@@ -345,19 +339,12 @@ bhnd_nvram_bcm_new(struct bhnd_nvram_data **nv, struct bhnd_nvram_io *io)
 
 	/* Parse the BCM input data and initialize our backing
 	 * data representation */
-	if ((error = bhnd_nvram_bcm_init(bcm, io)))
-		goto failed;
+	if ((error = bhnd_nvram_bcm_init(bcm, io))) {
+		bhnd_nvram_bcm_free(nv);
+		return (error);
+	}
 
-	*nv = &bcm->nv;
 	return (0);
-
-failed:
-	if (bcm->data != NULL)
-		bhnd_nvram_io_free(bcm->data);
-
-	bhnd_nv_free(bcm);
-
-	return (error);
 }
 
 static void
@@ -365,8 +352,8 @@ bhnd_nvram_bcm_free(struct bhnd_nvram_data *nv)
 {
 	struct bhnd_nvram_bcm *bcm = (struct bhnd_nvram_bcm *)nv;
 
-	bhnd_nvram_io_free(bcm->data);
-	bhnd_nv_free(bcm);
+	if (bcm->data != NULL)
+		bhnd_nvram_io_free(bcm->data);
 }
 
 size_t

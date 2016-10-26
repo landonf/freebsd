@@ -62,7 +62,8 @@ __FBSDID("$FreeBSD$");
  * used on Broadcom wireless and wired adapters, that provides a subset of the
  * variables defined by Broadcom SoC NVRAM formats.
  */
-BHND_NVRAM_DATA_CLASS_DEFN(sprom, "Broadcom SPROM")
+BHND_NVRAM_DATA_CLASS_DEFN(sprom, "Broadcom SPROM",
+   sizeof(struct bhnd_nvram_sprom))
 
 static int	sprom_sort_idx(const void *lhs, const void *rhs);
 
@@ -309,20 +310,14 @@ bhnd_nvram_sprom_probe(struct bhnd_nvram_io *io)
 }
 
 static int
-bhnd_nvram_sprom_new(struct bhnd_nvram_data **nv, struct bhnd_nvram_io *io)
+bhnd_nvram_sprom_new(struct bhnd_nvram_data *nv, struct bhnd_nvram_io *io)
 {
 	struct bhnd_nvram_sprom		*sp;
 	size_t				 num_vars;
 	int				 error;
 
-	/* Allocate and initialize the SPROM data instance */
-	sp = bhnd_nv_calloc(1, sizeof(*sp));
-	if (sp == NULL)
-		return (ENOMEM);
+	sp = (struct bhnd_nvram_sprom *)nv;
 
-	sp->nv.cls = &bhnd_nvram_sprom_class;
-	sp->data = NULL;
-	
 	/* Identify the SPROM input data */
 	if ((error = bhnd_nvram_sprom_ident(io, &sp->layout, &sp->data)))
 		goto failed;
@@ -384,7 +379,6 @@ bhnd_nvram_sprom_new(struct bhnd_nvram_data **nv, struct bhnd_nvram_io *io)
         /* Sort index by variable ID, ascending */
         qsort(sp->idx, sp->num_idx, sizeof(sp->idx[0]), sprom_sort_idx);
 
-	*nv = &sp->nv;
 	return (0);
 	
 failed:
@@ -393,8 +387,6 @@ failed:
 
 	if (sp->idx != NULL)
 		bhnd_nv_free(sp->idx);
-
-	bhnd_nv_free(sp);
 
 	return (error);
 }
@@ -422,7 +414,6 @@ bhnd_nvram_sprom_free(struct bhnd_nvram_data *nv)
 	
 	bhnd_nvram_io_free(sp->data);
 	bhnd_nv_free(sp->idx);
-	bhnd_nv_free(sp);
 }
 
 size_t

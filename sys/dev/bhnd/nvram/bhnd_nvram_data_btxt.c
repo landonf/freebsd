@@ -68,7 +68,8 @@ struct bhnd_nvram_btxt {
 	size_t			 count;	/**< variable count */
 };
 
-BHND_NVRAM_DATA_CLASS_DEFN(btxt, "Broadcom Board Text")
+BHND_NVRAM_DATA_CLASS_DEFN(btxt, "Broadcom Board Text",
+    sizeof(struct bhnd_nvram_btxt))
 
 /** Minimal identification header */
 union bhnd_nvram_btxt_ident {
@@ -213,43 +214,30 @@ bhnd_nvram_btxt_init(struct bhnd_nvram_btxt *btxt, struct bhnd_nvram_io *src)
 }
 
 static int
-bhnd_nvram_btxt_new(struct bhnd_nvram_data **nv, struct bhnd_nvram_io *io)
+bhnd_nvram_btxt_new(struct bhnd_nvram_data *nv, struct bhnd_nvram_io *io)
 {
 	struct bhnd_nvram_btxt	*btxt;
 	int			 error;
 
 	/* Allocate and initialize the BTXT data instance */
-	btxt = bhnd_nv_calloc(1, sizeof(*btxt));
-	if (btxt == NULL)
-		return (ENOMEM);
-
-	btxt->nv.cls = &bhnd_nvram_btxt_class;
-	btxt->data = NULL;
+	btxt = (struct bhnd_nvram_btxt *)nv;
 
 	/* Parse the BTXT input data and initialize our backing
 	 * data representation */
-	if ((error = bhnd_nvram_btxt_init(btxt, io)))
-		goto failed;
+	if ((error = bhnd_nvram_btxt_init(btxt, io))) {
+		bhnd_nvram_btxt_free(nv);
+		return (error);
+	}
 
-	*nv = &btxt->nv;
 	return (0);
-
-failed:
-	if (btxt->data != NULL)
-		bhnd_nvram_io_free(btxt->data);
-
-	bhnd_nv_free(btxt);
-
-	return (error);
 }
 
 static void
 bhnd_nvram_btxt_free(struct bhnd_nvram_data *nv)
 {
-	struct bhnd_nvram_btxt	*btxt = (struct bhnd_nvram_btxt *)nv;
-
-	bhnd_nvram_io_free(btxt->data);
-	bhnd_nv_free(nv);
+	struct bhnd_nvram_btxt *btxt = (struct bhnd_nvram_btxt *)nv;
+	if (btxt->data != NULL)
+		bhnd_nvram_io_free(btxt->data);
 }
 
 size_t
