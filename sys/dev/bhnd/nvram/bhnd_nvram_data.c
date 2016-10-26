@@ -199,12 +199,20 @@ int
 bhnd_nvram_data_new(bhnd_nvram_data_class_t *cls,
     struct bhnd_nvram_data **nv, struct bhnd_nvram_io *io)
 {
+	int error;
+
 	/* If NULL, try to identify the appropriate class */
 	if (cls == NULL)
 		return (bhnd_nvram_data_probe_classes(nv, io, NULL, 0));
 
 	/* Otherwise, directly delegate to the class' new method */
-	return (cls->op_new(nv, io));
+	if ((error = cls->op_new(nv, io)))
+		return (error);
+
+	/* Set reference count */
+	refcount_init(&(*nv)->refs, 1);
+
+	return (0);
 }
 
 /**

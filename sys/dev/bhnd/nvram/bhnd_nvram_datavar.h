@@ -34,6 +34,7 @@
 
 #include <sys/param.h>
 #include <sys/linker_set.h>
+#include <sys/refcount.h>
 
 #include "bhnd_nvram_io.h"
 
@@ -120,6 +121,7 @@ struct bhnd_nvram_data_class {
  */
 struct bhnd_nvram_data {
 	struct bhnd_nvram_data_class	*cls;
+	volatile u_int			 refs;
 };
 
 /*
