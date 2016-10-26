@@ -108,7 +108,7 @@ bhnd_nvram_store_new(struct bhnd_nvram_store **store, struct bhnd_nvram_io *io,
 	int			 error;
 
 	/* Allocate new instance */
-	sc = bhnd_nv_calloc(1, sizeof(*store));
+	sc = bhnd_nv_calloc(1, sizeof(*sc));
 	if (sc == NULL)
 		return (ENOMEM);
 
