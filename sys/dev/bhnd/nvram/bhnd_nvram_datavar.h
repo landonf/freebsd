@@ -33,10 +33,14 @@
 #define _BHND_NVRAM_BHND_NVRAM_DATAVAR_H_
 
 #include <sys/param.h>
+#include <sys/linker_set.h>
 
 #include "bhnd_nvram_io.h"
 
 #include "bhnd_nvram_data.h"
+
+/** Registered NVRAM parser class instances. */
+SET_DECLARE(bhnd_nvram_data_class_set, bhnd_nvram_data_class_t);
 
 void	*bhnd_nvram_data_generic_find(struct bhnd_nvram_data *nv,
 	     const char *name);
@@ -115,7 +119,7 @@ struct bhnd_nvram_data_class {
  * NVRAM data instance.
  */
 struct bhnd_nvram_data {
-	const struct bhnd_nvram_data_class	*cls;
+	struct bhnd_nvram_data_class	*cls;
 };
 
 /*
@@ -160,7 +164,7 @@ struct bhnd_nvram_data {
 
 /**
  * Define a bhnd_nvram_data_class with class name @p _n and description
- * @p _desc.
+ * @p _desc, and register with bhnd_nvram_data_class_set.
  */
 #define	BHND_NVRAM_DATA_CLASS_DEFN(_cname, _desc)			\
 	BHND_NVRAM_DATA_CLASS_ITER_METHODS(_cname,			\
@@ -170,7 +174,9 @@ struct bhnd_nvram_data {
 		.desc		= _desc,				\
 		BHND_NVRAM_DATA_CLASS_ITER_METHODS(_cname,		\
 		    BHND_NVRAM_DATA_CLASS_ASSIGN_METHOD)		\
-	};
-
+	};								\
+									\
+	DATA_SET(bhnd_nvram_data_class_set,				\
+	    bhnd_nvram_## _cname ## _class);
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_DATAVAR_H_ */

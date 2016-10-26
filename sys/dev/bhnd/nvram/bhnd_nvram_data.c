@@ -86,13 +86,108 @@ bhnd_nvram_data_probe(bhnd_nvram_data_class_t *cls, struct bhnd_nvram_io *io)
 }
 
 /**
+ * Probe to see if an NVRAM data class in @p classes supports parsing
+ * of the data mapped by @p io, returning the parsed data in @p data.
+ * 
+ * The caller is responsible for deallocating the returned instance via
+ * bhnd_nvram_data_free().
+ * 
+ * @param[out] data On success, the parsed NVRAM data instance.
+ * @param io An I/O context mapping the NVRAM data to be copied and parsed.
+ * @param classes An array of NVRAM data classes to be probed, or NULL to
+ * probe the default supported set.
+ * @param num_classes The number of NVRAM data classes in @p classes.
+ * 
+ * @retval 0 success
+ * @retval ENXIO if no class is found capable of parsing @p io.
+ * @retval non-zero if an error otherwise occurs during allocation,
+ * initialization, or parsing of the NVRAM data, a regular unix error code
+ * will be returned.
+ */
+int
+bhnd_nvram_data_probe_classes(struct bhnd_nvram_data **data,
+    struct bhnd_nvram_io *io, bhnd_nvram_data_class_t *classes[],
+    size_t num_classes)
+{
+	bhnd_nvram_data_class_t *cls;
+	int			 error, prio, result;
+
+	cls = NULL;
+	prio = 0;
+	*data = NULL;
+
+	/* If class array is NULL, default to our linker set */
+	if (classes == NULL) {
+		classes = SET_BEGIN(bhnd_nvram_data_class_set);
+		num_classes = SET_COUNT(bhnd_nvram_data_class_set);
+	}
+
+	/* Try to find the best data class capable of parsing io */
+	for (size_t i = 0; i < num_classes; i++) {
+		bhnd_nvram_data_class_t *next_cls;
+
+		next_cls = classes[i];
+
+		/* Try to probe */
+		result = bhnd_nvram_data_probe(next_cls, io);
+
+		/* The parser did not match if an error was returned */
+		if (result > 0)
+			continue;
+
+		/* Lower priority than previous match; keep
+		 * searching */
+		if (cls != NULL && result <= prio)
+			continue;
+
+		/* Drop any previously parsed data */
+		if (*data != NULL) {
+			bhnd_nvram_data_free(*data);
+			*data = NULL;
+		}
+
+		/* If this is a 'maybe' match, attempt actual parsing to
+		 * verify that this does in fact match */
+		if (result <= BHND_NVRAM_DATA_PROBE_MAYBE) {
+			/* If parsing fails, keep searching */
+			error = bhnd_nvram_data_new(next_cls, data, io);
+			if (error)
+				continue;
+		}
+
+		/* Record best new match */
+		prio = result;
+		cls = next_cls;
+
+
+		/* Terminate search immediately on
+		 * BHND_NVRAM_DATA_PROBE_SPECIFIC */
+		if (result == BHND_NVRAM_DATA_PROBE_SPECIFIC)
+			break;
+	}
+
+	/* If no match, return error */
+	if (cls == NULL)
+		return (ENXIO);
+
+	/* If the NVRAM data was not parsed above, do so now */
+	if (*data == NULL) {
+		if ((error = bhnd_nvram_data_new(cls, data, io)))
+			return (error);
+	}
+
+	return (0);
+}
+
+/**
  * Allocate and initialize a new instance of data class @p cls, copying and
  * parsing NVRAM data from @p io.
  *
  * The caller is responsible for deallocating the parser instance
  * via bhnd_nvram_data_free().
  * 
- * @param cls The data class to be allocated.
+ * @param cls If non-NULL, the data class to be allocated. If NULL,
+ * bhnd_nvram_data_probe_classes() will be used to determine the data format.
  * @param[out] nv On success, a pointer to the newly allocated NVRAM data instance.
  * @param io An I/O context mapping the NVRAM data to be copied and parsed.
  * 
@@ -104,6 +199,11 @@ int
 bhnd_nvram_data_new(bhnd_nvram_data_class_t *cls,
     struct bhnd_nvram_data **nv, struct bhnd_nvram_io *io)
 {
+	/* If NULL, try to identify the appropriate class */
+	if (cls == NULL)
+		return (bhnd_nvram_data_probe_classes(nv, io, NULL, 0));
+
+	/* Otherwise, directly delegate to the class' new method */
 	return (cls->op_new(nv, io));
 }
 
@@ -117,6 +217,17 @@ void
 bhnd_nvram_data_free(struct bhnd_nvram_data *nv)
 {
 	return (nv->cls->op_free(nv));
+}
+
+/**
+ * Return a pointer to @p nv's data class.
+ * 
+ * @param nv The NVRAM data instance to be queried.
+ */
+bhnd_nvram_data_class_t *
+bhnd_nvram_data_class(struct bhnd_nvram_data *nv)
+{
+	return (nv->cls);
 }
 
 /**

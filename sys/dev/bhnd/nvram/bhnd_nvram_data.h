@@ -83,41 +83,54 @@ enum {
 	BHND_NVRAM_DATA_PROBE_MAYBE	= -40,	/**< Possible match */
 	BHND_NVRAM_DATA_PROBE_DEFAULT	= -20,	/**< Definite match of a base
 						     OS-supplied data class */
+	BHND_NVRAM_DATA_PROBE_SPECIFIC	= 0,	/**< Terminate search and use
+						     this data class for
+						     parsing */
 };
 
-const char	*bhnd_nvram_data_class_desc(bhnd_nvram_data_class_t *cls);
+const char		*bhnd_nvram_data_class_desc(
+			     bhnd_nvram_data_class_t *cls);
 
-int		 bhnd_nvram_data_probe(bhnd_nvram_data_class_t *cls,
-		     struct bhnd_nvram_io *io);
+int			 bhnd_nvram_data_probe(bhnd_nvram_data_class_t *cls,
+			     struct bhnd_nvram_io *io);
+int			 bhnd_nvram_data_probe_classes(
+			     struct bhnd_nvram_data **data,
+			     struct bhnd_nvram_io *io,
+			     bhnd_nvram_data_class_t *classes[],
+			     size_t num_classes);
 
-int		 bhnd_nvram_data_new(bhnd_nvram_data_class_t *cls,
-		     struct bhnd_nvram_data **nv, struct bhnd_nvram_io *io);
+int			 bhnd_nvram_data_new(bhnd_nvram_data_class_t *cls,
+			     struct bhnd_nvram_data **nv,
+			   struct bhnd_nvram_io *io);
 
-void		 bhnd_nvram_data_free(struct bhnd_nvram_data *nv);
+void			 bhnd_nvram_data_free(struct bhnd_nvram_data *nv);
 
-size_t		 bhnd_nvram_data_count(struct bhnd_nvram_data *nv);
+bhnd_nvram_data_class_t	*bhnd_nvram_data_class(struct bhnd_nvram_data *nv);
 
-int		 bhnd_nvram_data_size(struct bhnd_nvram_data *nv, size_t *size);
+size_t			 bhnd_nvram_data_count(struct bhnd_nvram_data *nv);
 
-int		 bhnd_nvram_data_serialize(struct bhnd_nvram_data *nv,
-		     void *buf, size_t *len);
+int			 bhnd_nvram_data_size(struct bhnd_nvram_data *nv,
+			     size_t *size);
 
-uint32_t	 bhnd_nvram_data_caps(struct bhnd_nvram_data *nv);
+int			 bhnd_nvram_data_serialize(struct bhnd_nvram_data *nv,
+			     void *buf, size_t *len);
 
-const char	*bhnd_nvram_data_next(struct bhnd_nvram_data *nv,
-		     void **cookiep);
+uint32_t		 bhnd_nvram_data_caps(struct bhnd_nvram_data *nv);
 
-void		*bhnd_nvram_data_find(struct bhnd_nvram_data *nv,
-		     const char *name);
+const char		*bhnd_nvram_data_next(struct bhnd_nvram_data *nv,
+			     void **cookiep);
 
-int		 bhnd_nvram_data_getvar(struct bhnd_nvram_data *nv,
-		     void *cookiep, void *buf, size_t *len,
-		     bhnd_nvram_type type);
+void			*bhnd_nvram_data_find(struct bhnd_nvram_data *nv,
+			     const char *name);
 
-const void	*bhnd_nvram_data_getvar_ptr(struct bhnd_nvram_data *nv,
-		     void *cookiep, size_t *len, bhnd_nvram_type *type);
+int			 bhnd_nvram_data_getvar(struct bhnd_nvram_data *nv,
+			     void *cookiep, void *buf, size_t *len,
+			     bhnd_nvram_type type);
 
-const char	*bhnd_nvram_data_getvar_name(struct bhnd_nvram_data *nv,
-		     void *cookiep);
+const void		*bhnd_nvram_data_getvar_ptr(struct bhnd_nvram_data *nv,
+			     void *cookiep, size_t *len, bhnd_nvram_type *type);
+
+const char		*bhnd_nvram_data_getvar_name(struct bhnd_nvram_data *nv,
+			     void *cookiep);
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_DATA_H_ */
