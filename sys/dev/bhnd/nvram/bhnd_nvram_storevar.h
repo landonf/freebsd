@@ -34,18 +34,24 @@
 
 #include <sys/types.h>
 
+#ifndef _KERNEL
+#include <pthread.h>
+#endif
+
 #include "bhnd_nvram_store.h"
 
 /** Index is only generated if minimum variable count is met */
-#define	NVRAM_IDX_VAR_THRESH	15
+#define	NVRAM_IDX_VAR_THRESH		15
 
-#define	BHND_NVSTORE_PATH_IDX_INVALID	ULONG_MAX
+#define	BHND_NVSTORE_PATH_ALIAS_NONE	ULONG_MAX
+
+LIST_HEAD(bhnd_nvstore_paths, bhnd_nvstore_path);
 
 /**
  * NVRAM store path.
  */
 struct bhnd_nvstore_path {
-	char	*path;	/** path */
+	char	*path;	/** relative path */
 	u_long	 index;	/** aliased path index, or
 			    BHND_NVSTORE_PATH_IDX_INVALID */
 
@@ -63,16 +69,21 @@ struct bhnd_nvstore_index {
 	void				*cookiep[];	/**< cookiep values */
 };
 
-LIST_HEAD(bhnd_nvstore_paths, bhnd_nvstore_path);
 
 /** bhnd nvram store instance state */
 struct bhnd_nvram_store {
+#ifdef _KERNEL
 	struct mtx			 mtx;
+#else
+	pthread_mutex_t			 mtx;
+#endif
 	struct bhnd_nvram_data		*nv;		/**< backing data */
 	struct bhnd_nvstore_index	*idx;		/**< index, or NULL */
 	struct bhnd_nvstore_paths	 paths;		/**< paths */
 	nvlist_t			*pending;	/**< uncommitted writes */
 };
+
+#ifdef _KERNEL
 
 #define	BHND_NVSTORE_LOCK_INIT(sc) \
 	mtx_init(&(sc)->mtx, "BHND NVRAM store lock", NULL, MTX_DEF)
@@ -80,5 +91,21 @@ struct bhnd_nvram_store {
 #define	BHND_NVSTORE_UNLOCK(sc)			mtx_unlock(&(sc)->mtx)
 #define	BHND_NVSTORE_LOCK_ASSERT(sc, what)	mtx_assert(&(sc)->mtx, what)
 #define	BHND_NVSTORE_LOCK_DESTROY(sc)		mtx_destroy(&(sc)->mtx)
+
+#else /* !_KERNEL */
+
+#define	BHND_NVSTORE_LOCK_INIT(sc)	do {				\
+	int error = pthread_mutex_init(&(sc)->mtx, NULL);		\
+	if (error)							\
+		BHND_NV_PANIC("pthread_mutex_init() failed: %d",	\
+		    error);						\
+} while(0)
+
+#define	BHND_NVSTORE_LOCK(sc)		pthread_mutex_lock(&(sc)->mtx)
+#define	BHND_NVSTORE_UNLOCK(sc)		pthread_mutex_unlock(&(sc)->mtx)
+#define	BHND_NVSTORE_LOCK_DESTROY(sc)	pthread_mutex_destroy(&(sc)->mtx)
+#define	BHND_NVSTORE_LOCK_ASSERT(sc, what)
+
+#endif /* _KERNEL */
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_STOREVAR_H_ */
