@@ -425,15 +425,22 @@ bhnd_nvram_data_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 
 /**
  * A generic implementation of bhnd_nvram_data_getvar().
+ * 
+ * This implementation will call bhnd_nvram_data_getvar_ptr() to fetch
+ * a pointer to the variable data and perform data coercion on behalf
+ * of the caller.
  *
- * This implementation will use bhnd_nvram_data_getvar_ptr() to fetch
- * a pointer to the variable data, before performing coercion to the
- * requested type.
+ * If a variable definition for the requested variable is available via
+ * bhnd_nvram_find_vardefn(), the definition will be used to provide
+ * formatting hints to bhnd_nvram_coerce_value().
  */
 int
 bhnd_nvram_data_generic_rp_getvar(struct bhnd_nvram_data *nv, void *cookiep,
     void *buf, size_t *len, bhnd_nvram_type type)
 {
+	const struct bhnd_nvram_vardefn	*vdefn;
+	struct bhnd_nvram_fmt_hint	*hint, vhint;
+	const char			*name;
 	const void			*vptr;
 	size_t				 vlen;
 	bhnd_nvram_type			 vtype;
@@ -441,14 +448,27 @@ bhnd_nvram_data_generic_rp_getvar(struct bhnd_nvram_data *nv, void *cookiep,
 	BHND_NV_ASSERT(bhnd_nvram_data_caps(nv) & BHND_NVRAM_DATA_CAP_READ_PTR,
 	    ("instance does not advertise READ_PTR support"));
 
-	/* Fetch pointer */
+
+	/* Check the variable definition table for a matching entry; if
+	 * it exists, use it to populate a formatting hint. */
+	name = bhnd_nvram_data_getvar_name(nv, cookiep);
+	vdefn = bhnd_nvram_find_vardefn(name);
+	if (vdefn != NULL) {
+		vhint.sfmt = vdefn->sfmt;
+		vhint.flags = vdefn->flags;
+		hint = &vhint;
+	} else {
+		hint = NULL;
+	}
+
+	/* Fetch pointer to our variable data */
 	vptr = bhnd_nvram_data_getvar_ptr(nv, cookiep, &vlen, &vtype);
 	if (vptr == NULL)
 		return (EINVAL);
 
 	/* Attempt value type coercion */
 	return (bhnd_nvram_coerce_value(buf, len, type, BHND_NVRAM_CSTR_DELIM,
-	    vptr, vlen, vtype, BHND_NVRAM_CSTR_DELIM, NULL));
+	    vptr, vlen, vtype, BHND_NVRAM_CSTR_DELIM, hint));
 }
 
 /**

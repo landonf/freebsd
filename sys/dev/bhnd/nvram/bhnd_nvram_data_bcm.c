@@ -671,7 +671,6 @@ bhnd_nvram_bcm_getvar_name(struct bhnd_nvram_data *nv, void *cookiep)
 
 	bcm = (struct bhnd_nvram_bcm *)nv;
 
-	
 	/* Handle header variables */
 	if ((hvar = bhnd_nvram_bcm_to_hdrvar(bcm, cookiep)) != NULL) {
 		return (hvar->name);
