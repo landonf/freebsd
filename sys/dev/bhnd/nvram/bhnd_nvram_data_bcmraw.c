@@ -113,7 +113,7 @@ bhnd_nvram_bcmraw_probe(struct bhnd_nvram_io *io)
 			return (ENXIO);
 	}
 
-	/* The first character should either be a valid key char */
+	/* The first character should be a valid key char */
 	if (!isalpha(envp[0]))
 		return (ENXIO);
 
