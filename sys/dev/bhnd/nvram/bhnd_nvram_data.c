@@ -199,7 +199,8 @@ int
 bhnd_nvram_data_new(bhnd_nvram_data_class_t *cls,
     struct bhnd_nvram_data **nv, struct bhnd_nvram_io *io)
 {
-	int error;
+	struct bhnd_nvram_data	*data;
+	int			 error;
 
 	/* If NULL, try to identify the appropriate class */
 	if (cls == NULL)
@@ -210,16 +211,17 @@ bhnd_nvram_data_new(bhnd_nvram_data_class_t *cls,
 	    ("instance size %zu less than minimum %zu", cls->size,
 	     sizeof(struct bhnd_nvram_data)));
 
-	*nv = bhnd_nv_calloc(1, cls->size);
-	(*nv)->cls = cls;
-	refcount_init(&(*nv)->refs, 1);
+	data = bhnd_nv_calloc(1, cls->size);
+	data->cls = cls;
+	refcount_init(&data->refs, 1);
 
 	/* Let the class handle initialization */
-	if ((error = cls->op_new(*nv, io))) {
-		bhnd_nv_free(*nv);
+	if ((error = cls->op_new(data, io))) {
+		bhnd_nv_free(data);
 		return (error);
 	}
 
+	*nv = data;
 	return (0);
 }
 
