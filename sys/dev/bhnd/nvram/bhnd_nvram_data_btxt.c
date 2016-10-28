@@ -134,7 +134,7 @@ bhnd_nvram_btxt_init(struct bhnd_nvram_btxt *btxt, struct bhnd_nvram_io *src)
 	const char		*name, *value;
 	size_t			 name_len, value_len;
 	size_t			 line_len, env_len;
-	size_t			 io_offset, io_size;
+	size_t			 io_offset, io_size, str_size;
 	int			 error;
 
 	BHND_NV_ASSERT(btxt->data == NULL, ("btxt data already allocated"));
@@ -153,7 +153,12 @@ bhnd_nvram_btxt_init(struct bhnd_nvram_btxt *btxt, struct bhnd_nvram_io *src)
 	/* Determine the actual size, minus any terminating NUL. We
 	 * parse NUL-terminated C strings, but do not include NUL termination
 	 * in our internal or serialized representations */
-	io_size = strnlen(ptr, io_size);
+	str_size = strnlen(ptr, io_size);
+
+	/* If the terminating NUL is not found at the end of the buffer,
+	 * this is BCM-RAW or other NUL-delimited NVRAM format. */
+	if (str_size < io_size && str_size + 1 < io_size)
+		return (EINVAL);
 
 	/* Adjust buffer size to account for NUL termination (if any) */
 	if ((error = bhnd_nvram_io_setsize(btxt->data, io_size)))
