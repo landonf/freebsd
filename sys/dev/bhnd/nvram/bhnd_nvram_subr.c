@@ -79,9 +79,7 @@ union bhnd_nvram_int_storage {
 /* Limit a size_t value to a suitable range for use as a printf string field
  * width */
 #define	NVRAM_PRINT_WIDTH(_len)			\
-	((_len) > (BHND_NVRAM_VAL_MAXLEN*2) ?	\
-	    (BHND_NVRAM_VAL_MAXLEN*2) :		\
-	    (int)(_len))
+	((_len) > (INT_MAX) ? (INT_MAX) : (int)(_len))
 
 #define	NVRAM_LOG(_fmt, ...)	\
 	printf("%s: " _fmt, __FUNCTION__, ##__VA_ARGS__)
@@ -485,7 +483,7 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
     struct bhnd_nvram_fmt_hint *hint)
 {
 	const char	*cstr;
-	char		*cstr_buf, cstr_stack[BHND_NVRAM_VAL_MAXLEN];
+	char		*cstr_buf, cstr_stack[512];
 	size_t		 cstr_size, cstr_len;
 	size_t		 limit, nbytes;
 	bool		 is_octet_str, free_cstr_buf;

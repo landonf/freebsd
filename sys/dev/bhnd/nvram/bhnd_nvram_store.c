@@ -280,7 +280,7 @@ bhnd_nvram_store_setvar(struct bhnd_nvram_store *sc, const char *name,
     const void *buf, size_t len, bhnd_nvram_type type)
 {
 	const char	*inp;
-	char		 vbuf[BHND_NVRAM_VAL_MAXLEN];
+	char		 vbuf[512];
 
 	/* Verify name validity */
 	if (!bhnd_nvram_validate_name(name, strlen(name)))
@@ -306,7 +306,7 @@ bhnd_nvram_store_setvar(struct bhnd_nvram_store *sc, const char *name,
 	case BHND_NVRAM_TYPE_CSTR:
 		inp = buf;
 
-		/* Must not exceed NVRAM_VAL_MAX */
+		/* Must not exceed buffer size */
 		if (len > sizeof(vbuf))
 			return (EINVAL);
 
@@ -367,12 +367,13 @@ bhnd_nvram_register_devpaths(struct bhnd_nvram_store *sc)
 	cookiep = NULL;
 	while ((name = bhnd_nvram_data_next(sc->nv, &cookiep))) {
 		struct bhnd_nvstore_path	*devpath;
-		bhnd_nvram_type			 path_type;
-		const char			*path, *suffix;
+		const char			*suffix;
 		char				*eptr;
-		char				 pathbuf[BHND_NVRAM_VAL_MAXLEN];
+		char				*path;
 		size_t				 path_len;
 		u_long				 index;
+
+		path = NULL;
 
 		/* Check for devpath prefix */
 		if (strncmp(name, "devpath", strlen("devpath")) != 0)
@@ -386,24 +387,33 @@ bhnd_nvram_register_devpaths(struct bhnd_nvram_store *sc)
 			continue;
 		}
 
-		/* Try to read the target path */
-		path = bhnd_nvram_data_getvar_ptr(sc->nv, cookiep, &path_len,
-		    &path_type);
-		if (path == NULL || path_type != BHND_NVRAM_TYPE_CSTR) {
-			path_len = sizeof(pathbuf);
-			error = bhnd_nvram_data_getvar(sc->nv, cookiep,
-			    &pathbuf, &path_len, BHND_NVRAM_TYPE_CSTR);
-			if (error)
-				return (error);
+		/* Determine path value length */
+		error = bhnd_nvram_data_getvar(sc->nv, cookiep, NULL, &path_len,
+		    BHND_NVRAM_TYPE_CSTR);
+		if (error)
+			return (error);
+
+		/* Allocate path buffer */
+		if ((path = bhnd_nv_malloc(path_len)) == NULL)
+			return (ENOMEM);
+
+		/* Decode to our new buffer */
+		error = bhnd_nvram_data_getvar(sc->nv, cookiep, path, &path_len,
+		    BHND_NVRAM_TYPE_CSTR);
+		if (error) {
+			bhnd_nv_free(path);
+			return (error);
 		}
 
 		/* Register path alias */
 		devpath = bhnd_nv_malloc(sizeof(*devpath));
-		if (devpath == NULL)
+		if (devpath == NULL) {
+			bhnd_nv_free(path);
 			return (ENOMEM);
+		}
 
 		devpath->index = index;
-		devpath->path = bhnd_nv_strndup(path, path_len);
+		devpath->path = path;
 		LIST_INSERT_HEAD(&sc->paths, devpath, dp_link);
 	}
 

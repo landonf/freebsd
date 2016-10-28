@@ -32,12 +32,6 @@
 #ifndef _BHND_NVRAM_BHND_NVRAM_H_
 #define _BHND_NVRAM_BHND_NVRAM_H_
 
-/** Maximum bhnd(4) NVRAM key string length (including trailing NUL) */
-#define	BHND_NVRAM_KEY_MAXLEN	65
-
-/** Maximum bhnd(4) NVRAM value string length (including trailing NUL) */
-#define	BHND_NVRAM_VAL_MAXLEN	256
-
 /**
  * NVRAM data sources supported by bhnd(4) devices.
  */
