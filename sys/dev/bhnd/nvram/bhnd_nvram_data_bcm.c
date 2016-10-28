@@ -391,9 +391,8 @@ bhnd_nvram_bcm_size(struct bhnd_nvram_data *nv, size_t *size)
 		name_len = strlen(hvar->name);
 
 		/* Calculate the length of the value's CSTR representation */
-		error = bhnd_nvram_coerce_value(NULL, &value_len,
-		    BHND_NVRAM_TYPE_CSTR, BHND_NVRAM_CSTR_DELIM, &hvar->value,
-		    hvar->size, hvar->type, BHND_NVRAM_CSTR_DELIM, NULL);
+		error = bhnd_nvram_data_getvar(nv, &bcm->hvars[i], NULL,
+		    &value_len, BHND_NVRAM_TYPE_CSTR);
 		if (error)
 			return (error);
 
@@ -449,10 +448,8 @@ bhnd_nvram_bcm_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 	/* Write all variables to the output buffer */
 	cookiep = NULL;
 	while ((name = bhnd_nvram_data_next(nv, &cookiep))) {
-		const void	*inp;
-		bhnd_nvram_type	 itype;
-		size_t		 ilen, olen;
 		uint8_t		*outp;
+		size_t		 olen;
 		size_t		 name_len, val_len;
 
 		if (limit > nbytes) {
@@ -490,17 +487,12 @@ bhnd_nvram_bcm_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 			olen = 0;
 		}
 
-		/* Fetch a pointer to the variable data */
-		inp = bhnd_nvram_data_getvar_ptr(nv, cookiep, &ilen, &itype);
-		if (inp == NULL)
-			return (ENXIO);
-
 		/* Coerce to NUL-terminated C string, writing to the output
 		 * buffer (or just calculating the length if outp is NULL) */
 		val_len = olen;
-		error = bhnd_nvram_coerce_value(outp, &val_len,
-		    BHND_NVRAM_TYPE_CSTR, BHND_NVRAM_CSTR_DELIM, inp, ilen,
-		    itype, BHND_NVRAM_CSTR_DELIM, NULL);
+		error = bhnd_nvram_data_getvar(nv, cookiep, outp, &val_len,
+		    BHND_NVRAM_TYPE_CSTR);
+
 		if (error && error != ENOMEM)
 			return (error);
 
@@ -636,18 +628,7 @@ static int
 bhnd_nvram_bcm_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
     size_t *len, bhnd_nvram_type type)
 {
-	const void			*vptr;
-	size_t				 vlen;
-	bhnd_nvram_type			 vtype;
-
-	/* Fetch pointer */
-	vptr = bhnd_nvram_data_getvar_ptr(nv, cookiep, &vlen, &vtype);
-	if (vptr == NULL)
-		return (EINVAL);
-
-	/* Attempt value type coercion */
-	return (bhnd_nvram_coerce_value(buf, len, type, BHND_NVRAM_CSTR_DELIM,
-	    vptr, vlen, vtype, BHND_NVRAM_CSTR_DELIM, NULL));
+	return (bhnd_nvram_data_generic_rp_getvar(nv, cookiep, buf, len, type));
 }
 
 static const void *

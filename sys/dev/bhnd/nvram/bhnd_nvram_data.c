@@ -396,7 +396,6 @@ bhnd_nvram_data_generic_find(struct bhnd_nvram_data *nv, const char *name)
 	return (NULL);
 }
 
-
 /**
  * Read a variable and decode as @p type.
  *
@@ -422,6 +421,34 @@ bhnd_nvram_data_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
     size_t *len, bhnd_nvram_type type)
 {
 	return (nv->cls->op_getvar(nv, cookiep, buf, len, type));
+}
+
+/**
+ * A generic implementation of bhnd_nvram_data_getvar().
+ *
+ * This implementation will use bhnd_nvram_data_getvar_ptr() to fetch
+ * a pointer to the variable data, before performing coercion to the
+ * requested type.
+ */
+int
+bhnd_nvram_data_generic_rp_getvar(struct bhnd_nvram_data *nv, void *cookiep,
+    void *buf, size_t *len, bhnd_nvram_type type)
+{
+	const void			*vptr;
+	size_t				 vlen;
+	bhnd_nvram_type			 vtype;
+
+	BHND_NV_ASSERT(bhnd_nvram_data_caps(nv) & BHND_NVRAM_DATA_CAP_READ_PTR,
+	    ("instance does not advertise READ_PTR support"));
+
+	/* Fetch pointer */
+	vptr = bhnd_nvram_data_getvar_ptr(nv, cookiep, &vlen, &vtype);
+	if (vptr == NULL)
+		return (EINVAL);
+
+	/* Attempt value type coercion */
+	return (bhnd_nvram_coerce_value(buf, len, type, BHND_NVRAM_CSTR_DELIM,
+	    vptr, vlen, vtype, BHND_NVRAM_CSTR_DELIM, NULL));
 }
 
 /**
