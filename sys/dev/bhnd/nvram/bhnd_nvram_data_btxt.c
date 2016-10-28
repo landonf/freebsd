@@ -163,6 +163,7 @@ bhnd_nvram_btxt_init(struct bhnd_nvram_btxt *btxt, struct bhnd_nvram_io *src)
 		io_size = str_size;
 
 	/* Adjust buffer size to account for NUL termination (if any) */
+	io_size = str_size;
 	if ((error = bhnd_nvram_io_setsize(btxt->data, io_size)))
 		return (error);
 
@@ -377,8 +378,8 @@ bhnd_nvram_btxt_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 		return (EINVAL);
 
 	/* Attempt value type coercion */
-	return (bhnd_nvram_coerce_value(buf, len, type, vptr, vlen, vtype,
-	    NULL));
+	return (bhnd_nvram_coerce_value(buf, len, type, BHND_NVRAM_CSTR_DELIM,
+	    vptr, vlen, vtype, BHND_NVRAM_CSTR_DELIM, NULL));
 }
 
 const void *

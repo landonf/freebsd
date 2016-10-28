@@ -846,7 +846,8 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 			/* Perform coercion of the array element */
 			nbyte = iwidth;
 			error = bhnd_nvram_coerce_value(ptr, &nbyte, var->type,
-			    &intv, sizeof(intv), intv_type, NULL);
+			    BHND_NVRAM_CSTR_DELIM, &intv, sizeof(intv),
+			    intv_type, BHND_NVRAM_CSTR_DELIM, NULL);
 			if (error)
 				return (error);
 
@@ -889,8 +890,8 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 		.flags = var->flags
 	};
 
-	return (bhnd_nvram_coerce_value(buf, len, otype, inp, ilen, var->type,
-	    &hint));
+	return (bhnd_nvram_coerce_value(buf, len, otype, BHND_NVRAM_CSTR_DELIM,
+	    inp, ilen, var->type, BHND_NVRAM_CSTR_DELIM, &hint));
 }
 
 static const void *

@@ -145,8 +145,8 @@ int				 bhnd_nvram_parse_env(const char *env,
 
 int				 bhnd_nvram_coerce_value(void *outp,
 				     size_t *olen, bhnd_nvram_type otype,
-				     const void *inp, size_t ilen,
-				     bhnd_nvram_type itype,
+				     char odelim, const void *inp, size_t ilen,
+				     bhnd_nvram_type itype, char idelim,
 				     struct bhnd_nvram_fmt_hint *hint);
 
 bool				 bhnd_nvram_validate_name(const char *name,
@@ -210,6 +210,9 @@ enum {
 	 */
 	SPROM_LAYOUT_MAGIC_NONE	= (1<<0),	
 };
+
+/** Default string field delimiter when parsing Broadcom NVRAM values */
+#define	BHND_NVRAM_CSTR_DELIM	','
 
 /**
  * Variable formatting hint.

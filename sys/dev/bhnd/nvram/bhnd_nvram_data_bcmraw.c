@@ -364,8 +364,8 @@ bhnd_nvram_bcmraw_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 		return (EINVAL);
 
 	/* Attempt value type coercion */
-	return (bhnd_nvram_coerce_value(buf, len, type, vptr, vlen, vtype,
-	    NULL));
+	return (bhnd_nvram_coerce_value(buf, len, type, BHND_NVRAM_CSTR_DELIM,
+	    vptr, vlen, vtype, BHND_NVRAM_CSTR_DELIM, NULL));
 }
 
 static const void *

@@ -239,8 +239,9 @@ bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
 
 		/* Coerce borrowed data reference before releasing
 		 * our lock. */
-		error = bhnd_nvram_coerce_value(buf, len, type, inp, ilen,
-		    itype, NULL);
+		error = bhnd_nvram_coerce_value(buf, len, type,
+		    BHND_NVRAM_CSTR_DELIM, inp, ilen, itype,
+		    BHND_NVRAM_CSTR_DELIM, NULL);
 		BHND_NVSTORE_UNLOCK(sc);
 
 		return (error);

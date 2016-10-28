@@ -392,8 +392,8 @@ bhnd_nvram_bcm_size(struct bhnd_nvram_data *nv, size_t *size)
 
 		/* Calculate the length of the value's CSTR representation */
 		error = bhnd_nvram_coerce_value(NULL, &value_len,
-		    BHND_NVRAM_TYPE_CSTR, &hvar->value, hvar->size, hvar->type,
-		    NULL);
+		    BHND_NVRAM_TYPE_CSTR, BHND_NVRAM_CSTR_DELIM, &hvar->value,
+		    hvar->size, hvar->type, BHND_NVRAM_CSTR_DELIM, NULL);
 		if (error)
 			return (error);
 
@@ -499,7 +499,8 @@ bhnd_nvram_bcm_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 		 * buffer (or just calculating the length if outp is NULL) */
 		val_len = olen;
 		error = bhnd_nvram_coerce_value(outp, &val_len,
-		    BHND_NVRAM_TYPE_CSTR, inp, ilen, itype, NULL);
+		    BHND_NVRAM_TYPE_CSTR, BHND_NVRAM_CSTR_DELIM, inp, ilen,
+		    itype, BHND_NVRAM_CSTR_DELIM, NULL);
 		if (error && error != ENOMEM)
 			return (error);
 
@@ -645,8 +646,8 @@ bhnd_nvram_bcm_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 		return (EINVAL);
 
 	/* Attempt value type coercion */
-	return (bhnd_nvram_coerce_value(buf, len, type, vptr, vlen, vtype,
-	    NULL));
+	return (bhnd_nvram_coerce_value(buf, len, type, BHND_NVRAM_CSTR_DELIM,
+	    vptr, vlen, vtype, BHND_NVRAM_CSTR_DELIM, NULL));
 }
 
 static const void *
