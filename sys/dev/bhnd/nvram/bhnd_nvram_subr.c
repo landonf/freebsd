@@ -236,9 +236,9 @@ bhnd_nvram_validate_name(const char *name, size_t name_len)
 		return (false);
 
 	/* Disallow path alias prefixes ([0-9]+:.*) */
-	if (limit >= 2 && isdigit(*name)) {
+	if (limit >= 2 && bhnd_nv_isdigit(*name)) {
 		for (const char *p = name; (size_t)(p - name) < limit; p++) {
-			if (isdigit(*p))
+			if (bhnd_nv_isdigit(*p))
 				continue;
 			else if (*p == ':')
 				return (false);
@@ -255,7 +255,7 @@ bhnd_nvram_validate_name(const char *name, size_t name_len)
 			return (false);
 
 		default:
-			if (isspace(*p) || !isascii(*p))
+			if (!isascii(*p) || bhnd_nv_isspace(*p))
 				return (false);
 		}
 	}
@@ -288,7 +288,7 @@ bhnd_nvram_ident_integer_fmt(const char *inp, size_t ilen, int *base,
 		/* Check all input characters */
 		valid = true;
 		for (p = inp + 2; (size_t)(p - inp) < ilen; p++) {
-			if (isxdigit(*p))
+			if (bhnd_nv_isxdigit(*p))
 				continue;
 
 			valid = false;
@@ -304,7 +304,7 @@ bhnd_nvram_ident_integer_fmt(const char *inp, size_t ilen, int *base,
 
 	/* Decimal? */
 	p = inp;
-	if (ilen >= 1 && (*p == '-' || isdigit(*p))) {
+	if (ilen >= 1 && (*p == '-' || bhnd_nv_isdigit(*p))) {
 		bool		 valid;
 
 		valid = true;
@@ -315,7 +315,7 @@ bhnd_nvram_ident_integer_fmt(const char *inp, size_t ilen, int *base,
 				continue;
 			}
 
-			if (isdigit(*p))
+			if (bhnd_nv_isdigit(*p))
 				continue;
 
 			valid = false;
@@ -351,7 +351,7 @@ bhnd_nvram_parse_field(const char **inp, size_t ilen, char delim)
 	const char	*p, *sp;
 
 	/* Skip any leading whitespace */
-	for (sp = *inp; (size_t)(sp - *inp) < ilen && isspace(*sp); sp++)
+	for (sp = *inp; (size_t)(sp-*inp) < ilen && bhnd_nv_isspace(*sp); sp++)
 		continue;
 
 	*inp = sp;
@@ -441,7 +441,7 @@ bhnd_nvram_ident_octet_string(const char *inp, size_t ilen, char *delim)
 				return (false);
 
 			/* Octet values must be hex digits */
-			if (!isxdigit(*p))
+			if (!bhnd_nv_isxdigit(*p))
 				return (false);
 
 			elem_count++;

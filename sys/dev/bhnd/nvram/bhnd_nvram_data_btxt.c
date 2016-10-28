@@ -104,17 +104,17 @@ bhnd_nvram_btxt_probe(struct bhnd_nvram_io *io)
 	if (le32toh(ident.bcm_magic) == BCM_NVRAM_MAGIC)
 		return (ENXIO);
 
-	/* Don't match on non-ASCII data */
+	/* Don't match on non-ASCII/non-printable data */
 	for (size_t i = 0; i < nitems(ident.btxt); i++) {
 		c = ident.btxt[i];
-		if (!isprint(c))
+		if (!bhnd_nv_isprint(c))
 			return (ENXIO);
 	}
 
 	/* The first character should either be a valid key char (alpha),
 	 * whitespace, or the start of a comment ('#') */
 	c = ident.btxt[0];
-	if (!isspace(c) && !isalpha(c) && c != '#')
+	if (!bhnd_nv_isspace(c) && !bhnd_nv_isalpha(c) && c != '#')
 		return (ENXIO);
 
 	/* We assert a low priority, given that we've only scanned an
@@ -505,7 +505,7 @@ bhnd_nvram_btxt_entry_len(struct bhnd_nvram_io *io, size_t offset,
 
 	for (size_t i = 0; i < *line_len; i++) {
 		char c = baseptr[*line_len - i - 1];
-		if (!isspace(c))
+		if (!bhnd_nv_isspace(c))
 			break;
 
 		*env_len -= 1;
@@ -574,7 +574,7 @@ bhnd_nvram_btxt_seek_next(struct bhnd_nvram_io *io, size_t *offset)
 		char c = *p;
 
 		/* Skip whitespace */
-		if (isspace(c)) {
+		if (bhnd_nv_isspace(c)) {
 			p++;
 			continue;
 		}

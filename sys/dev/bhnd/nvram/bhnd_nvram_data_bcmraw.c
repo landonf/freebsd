@@ -103,18 +103,18 @@ bhnd_nvram_bcmraw_probe(struct bhnd_nvram_io *io)
 		return (BHND_NVRAM_DATA_PROBE_MAYBE);
 	}
 
-	/* Don't match on non-ASCII data */
+	/* Don't match on non-ASCII, non-printable data */
 	for (size_t i = 0; i < envp_len; i++) {
 		char c = envp[i];
 		if (envp[i] == '\0')
 			break;
 
-		if (!isprint(c))
+		if (!bhnd_nv_isprint(c))
 			return (ENXIO);
 	}
 
 	/* The first character should be a valid key char */
-	if (!isalpha(envp[0]))
+	if (!bhnd_nv_isalpha(envp[0]))
 		return (ENXIO);
 
 	return (BHND_NVRAM_DATA_PROBE_MAYBE);

@@ -60,6 +60,14 @@ struct bhnd_nvram_fmt_hint;
 
 MALLOC_DECLARE(M_BHND_NVRAM);
 
+#define	bhnd_nv_isupper(c)	isupper(c)
+#define	bhnd_nv_islower(c)	islower(c)
+#define	bhnd_nv_isalpha(c)	isalpha(c)
+#define	bhnd_nv_isprint(c)	isprint(c)
+#define	bhnd_nv_isspace(c)	isspace(c)
+#define	bhnd_nv_isdigit(c)	isdigit(c)
+#define	bhnd_nv_isxdigit(c)	isxdigit(c)
+
 #define	bhnd_nv_malloc(size)		malloc((size), M_BHND_NVRAM, M_WAITOK)
 #define	bhnd_nv_calloc(n, size)		malloc((n) * (size), M_BHND_NVRAM, \
 					    M_WAITOK | M_ZERO)
@@ -94,6 +102,16 @@ MALLOC_DECLARE(M_BHND_NVRAM);
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+/* ASCII-specific ctype variants that work consistently regardless
+ * of current locale */
+#define	bhnd_nv_isupper(c)	((c) >= 'A' && (c) <= 'Z')
+#define	bhnd_nv_islower(c)	((c) >= 'a' && (c) <= 'z')
+#define	bhnd_nv_isalpha(c)	(bhnd_nv_isupper(c) || bhnd_nv_islower(c))
+#define	bhnd_nv_isprint(c)	((c) >= ' ' && (c) <= '~')
+#define	bhnd_nv_isspace(c)	((c) == ' ' || ((c) >= '\t' && (c) <= '\r'))
+#define	bhnd_nv_isdigit(c)	isdigit(c)
+#define	bhnd_nv_isxdigit(c)	isxdigit(c)
 
 #define	bhnd_nv_malloc(size)		malloc((size))
 #define	bhnd_nv_calloc(n, size)		calloc((n), (size))

@@ -153,7 +153,7 @@ bhnd_nvram_tlv_probe(struct bhnd_nvram_io *io)
 		return (ENXIO);
 
 	/* The first character should be a valid key char (alpha) */
-	if (!isalpha(ident.envp[0]))
+	if (!bhnd_nv_isalpha(ident.envp[0]))
 		return (ENXIO);
 
 	return (BHND_NVRAM_DATA_PROBE_DEFAULT);
