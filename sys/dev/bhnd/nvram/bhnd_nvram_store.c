@@ -114,7 +114,7 @@ bhnd_nvram_store_new(struct bhnd_nvram_store **store,
 	return (0);
 
 cleanup:
-	bhnd_nvram_store_free(*store);
+	bhnd_nvram_store_free(sc);
 	return (error);
 }
 
