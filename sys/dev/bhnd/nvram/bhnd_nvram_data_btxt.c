@@ -159,8 +159,6 @@ bhnd_nvram_btxt_init(struct bhnd_nvram_btxt *btxt, struct bhnd_nvram_io *src)
 	 * this is BCM-RAW or other NUL-delimited NVRAM format. */
 	if (str_size < io_size && str_size + 1 < io_size)
 		return (EINVAL);
-	else
-		io_size = str_size;
 
 	/* Adjust buffer size to account for NUL termination (if any) */
 	io_size = str_size;
