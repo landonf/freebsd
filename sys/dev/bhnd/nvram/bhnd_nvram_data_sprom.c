@@ -833,7 +833,7 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 			 * overflow-checked coercion from the widened
 			 * uint32/int32 intv value to the requested output
 			 * type */
-			if (BHND_NVRAM_SIGNED_TYPE(var->type))
+			if (bhnd_nvram_is_signed_type(var->type))
 				intv_type = BHND_NVRAM_TYPE_INT32;
 			else
 				intv_type = BHND_NVRAM_TYPE_UINT32;

@@ -121,8 +121,181 @@ const uint8_t bhnd_nvram_crc8_tab[] = {
 };
 
 /**
+ * Return true if @p type is a signed integer type, false otherwise.
+ * 
+ * Will return false for all array types.
+ * 
+ * @param type The type to query.
+ */
+bool
+bhnd_nvram_is_signed_type(bhnd_nvram_type type)
+{
+	switch (type) {
+	case BHND_NVRAM_TYPE_INT8:
+	case BHND_NVRAM_TYPE_INT16:
+	case BHND_NVRAM_TYPE_INT32:
+		BHND_NV_ASSERT(!bhnd_nvram_is_unsigned_type(type),
+		    ("%d type both signed and unsigned", type));
+		return (true);
+
+	case BHND_NVRAM_TYPE_CHAR:
+	case BHND_NVRAM_TYPE_UINT8:
+	case BHND_NVRAM_TYPE_UINT16:
+	case BHND_NVRAM_TYPE_UINT32:
+	case BHND_NVRAM_TYPE_STRING:
+	case BHND_NVRAM_TYPE_UINT8_ARRAY:
+	case BHND_NVRAM_TYPE_UINT16_ARRAY:
+	case BHND_NVRAM_TYPE_UINT32_ARRAY:
+	case BHND_NVRAM_TYPE_INT8_ARRAY:
+	case BHND_NVRAM_TYPE_INT16_ARRAY:
+	case BHND_NVRAM_TYPE_INT32_ARRAY:
+	case BHND_NVRAM_TYPE_CHAR_ARRAY:
+	case BHND_NVRAM_TYPE_STRING_ARRAY:
+		return (false);
+	}
+
+	/* Quiesce gcc4.2 */
+	BHND_NV_PANIC("bhnd nvram type %u unknown", type);
+}
+
+/**
+ * Return true if @p type is an unsigned integer type, false otherwise.
+ * 
+ * @param type The type to query.
+ *
+ * @return Will return false for all array types.
+ * @return Will return true for BHND_NVRAM_TYPE_CHAR.
+ */
+bool
+bhnd_nvram_is_unsigned_type(bhnd_nvram_type type)
+{
+	switch (type) {
+	case BHND_NVRAM_TYPE_UINT8:
+	case BHND_NVRAM_TYPE_UINT16:
+	case BHND_NVRAM_TYPE_UINT32:
+	case BHND_NVRAM_TYPE_CHAR:
+		BHND_NV_ASSERT(!bhnd_nvram_is_signed_type(type),
+		    ("%d type both signed and unsigned", type));
+		return (true);
+
+	case BHND_NVRAM_TYPE_INT8:
+	case BHND_NVRAM_TYPE_INT16:
+	case BHND_NVRAM_TYPE_INT32:
+	case BHND_NVRAM_TYPE_STRING:
+	case BHND_NVRAM_TYPE_UINT8_ARRAY:
+	case BHND_NVRAM_TYPE_UINT16_ARRAY:
+	case BHND_NVRAM_TYPE_UINT32_ARRAY:
+	case BHND_NVRAM_TYPE_INT8_ARRAY:
+	case BHND_NVRAM_TYPE_INT16_ARRAY:
+	case BHND_NVRAM_TYPE_INT32_ARRAY:
+	case BHND_NVRAM_TYPE_CHAR_ARRAY:
+	case BHND_NVRAM_TYPE_STRING_ARRAY:
+		return (false);
+	}
+
+	/* Quiesce gcc4.2 */
+	BHND_NV_PANIC("bhnd nvram type %u unknown", type);
+}
+
+/**
+ * Return true if bhnd_nvram_is_signed_type() or bhnd_nvram_is_unsigned_type()
+ * returns true for @p type.
+ * 
+ * @param type The type to query.
+ */
+bool
+bhnd_nvram_is_int_type(bhnd_nvram_type type)
+{
+	return (bhnd_nvram_is_signed_type(type) ||
+	    bhnd_nvram_is_unsigned_type(type));
+}
+
+/**
+ * Return true if @p type is an array type, false otherwise.
+ * 
+ * @param type The type to query.
+ */
+bool
+bhnd_nvram_is_array_type(bhnd_nvram_type type)
+{
+	switch (type) {
+	case BHND_NVRAM_TYPE_UINT8:
+	case BHND_NVRAM_TYPE_UINT16:
+	case BHND_NVRAM_TYPE_UINT32:
+	case BHND_NVRAM_TYPE_INT8:
+	case BHND_NVRAM_TYPE_INT16:
+	case BHND_NVRAM_TYPE_INT32:
+	case BHND_NVRAM_TYPE_CHAR:
+	case BHND_NVRAM_TYPE_STRING:
+		return (false);
+
+	case BHND_NVRAM_TYPE_UINT8_ARRAY:
+	case BHND_NVRAM_TYPE_UINT16_ARRAY:
+	case BHND_NVRAM_TYPE_UINT32_ARRAY:
+	case BHND_NVRAM_TYPE_INT8_ARRAY:
+	case BHND_NVRAM_TYPE_INT16_ARRAY:
+	case BHND_NVRAM_TYPE_INT32_ARRAY:
+	case BHND_NVRAM_TYPE_CHAR_ARRAY:
+	case BHND_NVRAM_TYPE_STRING_ARRAY:
+		return (true);
+	}
+
+	/* Quiesce gcc4.2 */
+	BHND_NV_PANIC("bhnd nvram type %u unknown", type);
+}
+
+/**
+ * If @p type is an array type, return the base element type. Otherwise,
+ * returns @p type.
+ * 
+ * @param type The type to query.
+ */
+bhnd_nvram_type
+bhnd_nvram_base_type(bhnd_nvram_type type)
+{
+	switch (type) {
+	case BHND_NVRAM_TYPE_UINT8:
+	case BHND_NVRAM_TYPE_UINT16:
+	case BHND_NVRAM_TYPE_UINT32:
+	case BHND_NVRAM_TYPE_INT8:
+	case BHND_NVRAM_TYPE_INT16:
+	case BHND_NVRAM_TYPE_INT32:
+	case BHND_NVRAM_TYPE_CHAR:
+	case BHND_NVRAM_TYPE_STRING:
+		return (type);
+
+	case BHND_NVRAM_TYPE_UINT8_ARRAY:
+		return (BHND_NVRAM_TYPE_UINT8);
+
+	case BHND_NVRAM_TYPE_UINT16_ARRAY:
+		return (BHND_NVRAM_TYPE_UINT16);
+
+	case BHND_NVRAM_TYPE_UINT32_ARRAY:
+		return (BHND_NVRAM_TYPE_UINT32);
+
+	case BHND_NVRAM_TYPE_INT8_ARRAY:
+		return (BHND_NVRAM_TYPE_INT8);
+
+	case BHND_NVRAM_TYPE_INT16_ARRAY:
+		return (BHND_NVRAM_TYPE_INT16);
+
+	case BHND_NVRAM_TYPE_INT32_ARRAY:
+		return (BHND_NVRAM_TYPE_INT32);
+
+	case BHND_NVRAM_TYPE_CHAR_ARRAY:
+		return (BHND_NVRAM_TYPE_CHAR);
+
+	case BHND_NVRAM_TYPE_STRING_ARRAY:
+		return (BHND_NVRAM_TYPE_STRING);
+	}
+
+	/* Quiesce gcc4.2 */
+	BHND_NV_PANIC("bhnd nvram type %u unknown", type);
+}
+
+/**
  * Return the size of type @p type, or 0 if @p type has a variable width
- * (e.g. a C string).
+ * (e.g. is an array type, or a variable-width string, etc).
  * 
  * @param type NVRAM data type.
  * @result the byte width of @p type.
@@ -145,6 +318,14 @@ bhnd_nvram_type_width(bhnd_nvram_type type)
 		return (sizeof(uint32_t));
 
 	case BHND_NVRAM_TYPE_STRING:
+	case BHND_NVRAM_TYPE_UINT8_ARRAY:
+	case BHND_NVRAM_TYPE_UINT16_ARRAY:
+	case BHND_NVRAM_TYPE_UINT32_ARRAY:
+	case BHND_NVRAM_TYPE_INT8_ARRAY:
+	case BHND_NVRAM_TYPE_INT16_ARRAY:
+	case BHND_NVRAM_TYPE_INT32_ARRAY:
+	case BHND_NVRAM_TYPE_CHAR_ARRAY:
+	case BHND_NVRAM_TYPE_STRING_ARRAY:
 		return (0);
 	}
 
@@ -755,7 +936,7 @@ bhnd_nvram_coerce_int_string(char *outp, size_t *olen, bhnd_nvram_sfmt ofmt,
 		last_elem = true;
 
 	/* Sanity check the input type */
-	if (!BHND_NVRAM_INT_TYPE(itype)) {
+	if (!bhnd_nvram_is_int_type(itype)) {
 		NVRAM_LOG("invalid type: %d\n", itype);
 		return (EFTYPE);
 	}
@@ -799,7 +980,7 @@ bhnd_nvram_coerce_int_string(char *outp, size_t *olen, bhnd_nvram_sfmt ofmt,
 		break;
 
 	case BHND_NVRAM_SFMT_DEC:
-		if (BHND_NVRAM_SIGNED_TYPE(itype))
+		if (bhnd_nvram_is_signed_type(itype))
 			nwrite = snprintf(outp, limit, "%" PRId32, inv->s32);
 		else
 			nwrite = snprintf(outp, limit, "%" PRIu32, inv->u32);
@@ -812,7 +993,7 @@ bhnd_nvram_coerce_int_string(char *outp, size_t *olen, bhnd_nvram_sfmt ofmt,
 		has_delim = false;
 
 		/* Must be representable as an ascii char */
-		if (BHND_NVRAM_SIGNED_TYPE(itype)) {
+		if (bhnd_nvram_is_signed_type(itype)) {
 			if (inv->s32 < 0 ||
 			    inv->s32 > CHAR_MAX ||
 			    !isascii(inv->s32))
@@ -908,7 +1089,7 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 		limit = 0;
 
 	/* Verify the input type */
-	if (!BHND_NVRAM_INT_TYPE(itype)) {
+	if (!bhnd_nvram_is_int_type(itype)) {
 		NVRAM_LOG("non-integer input type %d", itype);
 		return (EFTYPE);
 	}
@@ -923,7 +1104,7 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 	if (hint != NULL) {
 		pfmt = hint->sfmt;
 	} else {
-		if (BHND_NVRAM_SIGNED_TYPE(itype))
+		if (bhnd_nvram_is_signed_type(itype))
 			pfmt = BHND_NVRAM_SFMT_DEC;
 		else
 			pfmt = BHND_NVRAM_SFMT_HEX;
@@ -983,11 +1164,22 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 		case BHND_NVRAM_TYPE_STRING:
 			/* unreachable */
 			return (EFTYPE);
+
+		case BHND_NVRAM_TYPE_UINT8_ARRAY:
+		case BHND_NVRAM_TYPE_UINT16_ARRAY:
+		case BHND_NVRAM_TYPE_UINT32_ARRAY:
+		case BHND_NVRAM_TYPE_INT8_ARRAY:
+		case BHND_NVRAM_TYPE_INT16_ARRAY:
+		case BHND_NVRAM_TYPE_INT32_ARRAY:
+		case BHND_NVRAM_TYPE_CHAR_ARRAY:
+		case BHND_NVRAM_TYPE_STRING_ARRAY:
+			// XXX TODO
+			return (EFTYPE);
 		}
 
 		/* Handle signed/unsigned coercions */
-		if (BHND_NVRAM_SIGNED_TYPE(itype) &&
-		    BHND_NVRAM_UNSIGNED_TYPE(otype))
+		if (bhnd_nvram_is_signed_type(itype) &&
+		    bhnd_nvram_is_unsigned_type(otype))
 		{
 			if (intv.s32 < 0) {
 				/* Can't represent negative value */
@@ -996,8 +1188,8 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 
 			/* Convert to unsigned representation */
 			intv.u32 = intv.s32;
-		} else if (BHND_NVRAM_UNSIGNED_TYPE(itype) &&
-		    BHND_NVRAM_SIGNED_TYPE(otype))
+		} else if (bhnd_nvram_is_unsigned_type(itype) &&
+		    bhnd_nvram_is_signed_type(otype))
 		{
 			/* Handle unsigned -> signed coercions */
 			if (intv.u32 > INT32_MAX) {

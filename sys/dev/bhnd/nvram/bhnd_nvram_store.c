@@ -299,7 +299,15 @@ bhnd_nvram_store_setvar(struct bhnd_nvram_store *sc, const char *name,
 	case BHND_NVRAM_TYPE_INT8:
 	case BHND_NVRAM_TYPE_INT16:
 	case BHND_NVRAM_TYPE_INT32:
-		// TODO: primitive type value support
+	case BHND_NVRAM_TYPE_UINT8_ARRAY:
+	case BHND_NVRAM_TYPE_UINT16_ARRAY:
+	case BHND_NVRAM_TYPE_UINT32_ARRAY:
+	case BHND_NVRAM_TYPE_INT8_ARRAY:
+	case BHND_NVRAM_TYPE_INT16_ARRAY:
+	case BHND_NVRAM_TYPE_INT32_ARRAY:
+	case BHND_NVRAM_TYPE_CHAR_ARRAY:
+	case BHND_NVRAM_TYPE_STRING_ARRAY:
+		// TODO: non-char/string value support
 		return (EOPNOTSUPP);
 
 	case BHND_NVRAM_TYPE_CHAR:

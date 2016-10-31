@@ -89,22 +89,10 @@ typedef enum {
 						     NUL-terminated strings */
 } bhnd_nvram_type;
 
-/** Evaluates to true if @p _type is a signed integer type */
-#define	BHND_NVRAM_SIGNED_TYPE(_type)		\
-	((_type) == BHND_NVRAM_TYPE_INT8 ||	\
-	 (_type) == BHND_NVRAM_TYPE_INT16 ||	\
-	 (_type) == BHND_NVRAM_TYPE_INT32)
-	
-
- /** Evaluates to true if @p _type is an unsigned integer type */
-#define	BHND_NVRAM_UNSIGNED_TYPE(_type)		\
-	((_type) == BHND_NVRAM_TYPE_UINT8 ||	\
-	 (_type) == BHND_NVRAM_TYPE_UINT16 ||	\
-	 (_type) == BHND_NVRAM_TYPE_UINT32 ||	\
-	 (_type) == BHND_NVRAM_TYPE_CHAR)
-
- /** Evaluates to true if @p _type is an integer type */
-#define	BHND_NVRAM_INT_TYPE(_type)		\
-	(BHND_NVRAM_SIGNED_TYPE(_type) || BHND_NVRAM_UNSIGNED_TYPE(_type))
+bool		bhnd_nvram_is_signed_type(bhnd_nvram_type type);
+bool		bhnd_nvram_is_unsigned_type(bhnd_nvram_type type);
+bool		bhnd_nvram_is_int_type(bhnd_nvram_type type);
+bool		bhnd_nvram_is_array_type(bhnd_nvram_type type);
+bhnd_nvram_type	bhnd_nvram_base_type(bhnd_nvram_type type);
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_H_ */
