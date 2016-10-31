@@ -94,6 +94,20 @@ struct	trapframe;
  */
 typedef void alias_for_inthand_t(void);
 
+/*
+ * Returns the maximum physical address that can be used with the
+ * current system.
+ */
+static __inline vm_paddr_t
+cpu_getmaxphyaddr(void)
+{
+#if defined(__i386__) && !defined(PAE)
+	return (0xffffffff);
+#else
+	return ((1ULL << cpu_maxphyaddr) - 1);
+#endif
+}
+
 void	*alloc_fpusave(int flags);
 void	busdma_swi(void);
 bool	cpu_mwait_usable(void);
@@ -108,10 +122,9 @@ bool	fix_cpuid(void);
 void	fillw(int /*u_short*/ pat, void *base, size_t cnt);
 int	is_physical_memory(vm_paddr_t addr);
 int	isa_nmi(int cd);
-bool	nmi_call_kdb(u_int cpu, u_int type, struct trapframe *frame,
-	    bool panic);
-bool	nmi_call_kdb_smp(u_int type, struct trapframe *frame, bool panic);
-int	nmi_handle_intr(u_int type, struct trapframe *frame, bool panic);
+void	nmi_call_kdb(u_int cpu, u_int type, struct trapframe *frame);
+void	nmi_call_kdb_smp(u_int type, struct trapframe *frame);
+void	nmi_handle_intr(u_int type, struct trapframe *frame);
 void	pagecopy(void *from, void *to);
 void	printcpuinfo(void);
 int	user_dbreg_trap(void);
