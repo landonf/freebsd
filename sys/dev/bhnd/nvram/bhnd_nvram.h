@@ -68,14 +68,25 @@ typedef enum {
 
 /** NVRAM data types */
 typedef enum {
-	BHND_NVRAM_TYPE_UINT8	= 0,	/**< unsigned 8-bit integer */
-	BHND_NVRAM_TYPE_UINT16	= 1,	/**< unsigned 16-bit integer */
-	BHND_NVRAM_TYPE_UINT32	= 2,	/**< unsigned 32-bit integer */
-	BHND_NVRAM_TYPE_INT8	= 4,	/**< signed 8-bit integer */
-	BHND_NVRAM_TYPE_INT16	= 5,	/**< signed 16-bit integer */
-	BHND_NVRAM_TYPE_INT32	= 6,	/**< signed 32-bit integer */
-	BHND_NVRAM_TYPE_CHAR	= 7,	/**< ASCII/UTF-8 character */
-	BHND_NVRAM_TYPE_STRING	= 8,	/**< ASCII/UTF-8 NUL-terminated string */
+	BHND_NVRAM_TYPE_UINT8		= 0,	/**< unsigned 8-bit integer */
+	BHND_NVRAM_TYPE_UINT16		= 1,	/**< unsigned 16-bit integer */
+	BHND_NVRAM_TYPE_UINT32		= 2,	/**< unsigned 32-bit integer */
+	BHND_NVRAM_TYPE_INT8		= 4,	/**< signed 8-bit integer */
+	BHND_NVRAM_TYPE_INT16		= 5,	/**< signed 16-bit integer */
+	BHND_NVRAM_TYPE_INT32		= 6,	/**< signed 32-bit integer */
+	BHND_NVRAM_TYPE_CHAR		= 7,	/**< ASCII/UTF-8 character */
+	BHND_NVRAM_TYPE_STRING		= 8,	/**< ASCII/UTF-8 NUL-terminated
+						     string */
+	BHND_NVRAM_TYPE_UINT8_ARRAY	= 9,	/**< array of uint8 integers */
+	BHND_NVRAM_TYPE_UINT16_ARRAY	= 10,	/**< array of uint16 integers */
+	BHND_NVRAM_TYPE_UINT32_ARRAY	= 11,	/**< array of uint32 integers */
+	BHND_NVRAM_TYPE_INT8_ARRAY	= 12,	/**< array of int8 integers */
+	BHND_NVRAM_TYPE_INT16_ARRAY	= 13,	/**< array of int16 integers */
+	BHND_NVRAM_TYPE_INT32_ARRAY	= 14,	/**< array of int32 integers */
+	BHND_NVRAM_TYPE_CHAR_ARRAY	= 15,	/**< array of ASCII/UTF-8
+						     characters */
+	BHND_NVRAM_TYPE_STRING_ARRAY	= 16,	/**< array of ASCII/UTF-8
+						     NUL-terminated strings */
 } bhnd_nvram_type;
 
 /** Evaluates to true if @p _type is a signed integer type */
