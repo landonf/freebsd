@@ -288,7 +288,8 @@ bhnd_nvram_store_setvar(struct bhnd_nvram_store *sc, const char *name,
 
 	/* Verify buffer size alignment for the given type. If this is a
 	 * variable width type, a width of 0 will always pass this check */
-	if (len % bhnd_nvram_type_width(type) != 0)
+	// TODO: nelem
+	if (len % bhnd_nvram_value_size(type, buf, 1) != 0)
 		return (EINVAL);
 
 	/* Determine string format (or directly add variable, if a C string) */

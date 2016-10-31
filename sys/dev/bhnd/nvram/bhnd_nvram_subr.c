@@ -121,6 +121,53 @@ const uint8_t bhnd_nvram_crc8_tab[] = {
 };
 
 /**
+ * Return a human readable name for @p type.
+ * 
+ * @param type The type to query.
+ */
+static const char *
+bhnd_nvram_type_name(bhnd_nvram_type type)
+{
+	switch (type) {
+	case BHND_NVRAM_TYPE_UINT8:
+		return ("uint8");
+	case BHND_NVRAM_TYPE_UINT16:
+		return ("uint16");
+	case BHND_NVRAM_TYPE_UINT32:
+		return ("uint32");
+	case BHND_NVRAM_TYPE_CHAR:
+		return ("char");
+	case BHND_NVRAM_TYPE_INT8:
+		return ("int8");
+	case BHND_NVRAM_TYPE_INT16:
+		return ("int16");
+	case BHND_NVRAM_TYPE_INT32:
+		return ("int32");
+	case BHND_NVRAM_TYPE_STRING:
+		return ("string");
+	case BHND_NVRAM_TYPE_UINT8_ARRAY:
+		return ("uint8[]");
+	case BHND_NVRAM_TYPE_UINT16_ARRAY:
+		return ("uint16[]");
+	case BHND_NVRAM_TYPE_UINT32_ARRAY:
+		return ("uint32[]");
+	case BHND_NVRAM_TYPE_INT8_ARRAY:
+		return ("int8[]");
+	case BHND_NVRAM_TYPE_INT16_ARRAY:
+		return ("int16[]");
+	case BHND_NVRAM_TYPE_INT32_ARRAY:
+		return ("int32[]");
+	case BHND_NVRAM_TYPE_CHAR_ARRAY:
+		return ("char[]");
+	case BHND_NVRAM_TYPE_STRING_ARRAY:
+		return ("string[]");
+	}
+
+	/* Quiesce gcc4.2 */
+	BHND_NV_PANIC("bhnd nvram type %u unknown", type);
+}
+
+/**
  * Return true if @p type is a signed integer type, false otherwise.
  * 
  * Will return false for all array types.
@@ -294,15 +341,34 @@ bhnd_nvram_base_type(bhnd_nvram_type type)
 }
 
 /**
- * Return the size of type @p type, or 0 if @p type has a variable width
- * (e.g. is an array type, or a variable-width string, etc).
+ * Return the size, in bytes, of a value of @p type with @p nelem elements.
  * 
- * @param type NVRAM data type.
- * @result the byte width of @p type.
+ * @param type The type to query.
+ * @param data The actual data to be queried, or NULL if unknown. If NULL and
+ * the base type is not a fixed width type (e.g. BHND_NVRAM_TYPE_STRING), 0
+ * will be returned.
+ * @param nelem The number of elements. If @p type is not an array type,
+ * this value must be 1.
+ * 
+ * @retval 0 If @p type has a variable width, and @p data is NULL.
+ * @retval 0 If a @p nelem value greater than 1 is provided for a non-array
+ * @p type.
+ * @retval 0 If a @p nelem value of 0 is provided.
+ * @retval 0 If the result would exceed the maximum value representable by
+ * size_t.
+ * @retval non-zero The size, in bytes, of @p type with @p nelem elements.
  */
 size_t
-bhnd_nvram_type_width(bhnd_nvram_type type)
+bhnd_nvram_value_size(bhnd_nvram_type type, const void *data, size_t nelem)
 {
+	/* If nelem 0, nothing to do */
+	if (nelem == 0)
+		return (0);
+
+	/* Non-array types must have an nelem value of 1 */
+	if (!bhnd_nvram_is_array_type(nelem) && nelem != 1)
+		return (0);
+
 	switch (type) {
 	case BHND_NVRAM_TYPE_INT8:
 	case BHND_NVRAM_TYPE_UINT8:
@@ -317,16 +383,65 @@ bhnd_nvram_type_width(bhnd_nvram_type type)
 	case BHND_NVRAM_TYPE_UINT32:
 		return (sizeof(uint32_t));
 
-	case BHND_NVRAM_TYPE_STRING:
 	case BHND_NVRAM_TYPE_UINT8_ARRAY:
 	case BHND_NVRAM_TYPE_UINT16_ARRAY:
 	case BHND_NVRAM_TYPE_UINT32_ARRAY:
 	case BHND_NVRAM_TYPE_INT8_ARRAY:
 	case BHND_NVRAM_TYPE_INT16_ARRAY:
 	case BHND_NVRAM_TYPE_INT32_ARRAY:
-	case BHND_NVRAM_TYPE_CHAR_ARRAY:
-	case BHND_NVRAM_TYPE_STRING_ARRAY:
-		return (0);
+	case BHND_NVRAM_TYPE_CHAR_ARRAY: {
+		bhnd_nvram_type	base_type;
+		size_t		base_size;
+
+		base_type = bhnd_nvram_base_type(type);
+		base_size = bhnd_nvram_value_size(base_type, NULL, 1);
+
+		/* Would nelem * base_size overflow? */
+		if (SIZE_MAX / nelem < base_size) {
+			BHND_NV_LOG("cannot represent size %s * %zu\n",
+			    bhnd_nvram_type_name(base_type), nelem);
+			return (0);
+		}
+
+		return (nelem * base_size);
+	}
+
+	case BHND_NVRAM_TYPE_STRING_ARRAY: {
+		const char	*p;
+		size_t		 total_size;
+
+		if (data == NULL)
+			return (0);
+
+		/* Iterate over the NUL-terminated strings to calculate
+		 * total byte length */
+		p = data;
+		total_size = 0;
+		for (size_t i = 0; i < nelem; i++) {
+			size_t	elem_size;
+
+			elem_size = strlen(p) + 1;
+			p += elem_size;
+
+			/* Would total_size + elem_size overflow?
+			 * 
+			 * A memory range larger than SIZE_MAX shouldn't be,
+			 * possible, but include the check for completeness */
+			if (SIZE_MAX - total_size < elem_size)
+				return (0);
+
+			total_size += elem_size;
+		}
+
+		return (total_size);
+	}
+
+	case BHND_NVRAM_TYPE_STRING:
+		if (data == NULL)
+			return (0);
+
+		/* Single string's value size */
+		return (strlen(data) + 1);
 	}
 
 	/* Quiesce gcc4.2 */
@@ -941,7 +1056,7 @@ bhnd_nvram_coerce_int_string(char *outp, size_t *olen, bhnd_nvram_sfmt ofmt,
 		return (EFTYPE);
 	}
 
-	iwidth = bhnd_nvram_type_width(itype);
+	iwidth = bhnd_nvram_value_size(itype, NULL, 1);
 	switch (iwidth) {
 	case 1:
 	case 2:
@@ -1111,7 +1226,7 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 	}
 
 	/* Determine the input integer type width */
-	iwidth = bhnd_nvram_type_width(itype);
+	iwidth = bhnd_nvram_value_size(itype, NULL, 1);
 	if (iwidth == 0) {
 		/* Shouldn't be possible (unless we add support for
 		 * something like LEB128 encoding) */
@@ -1120,7 +1235,7 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 	}
 
 	/* Verify input buffer size and alignment for the given type. */                                                                                                                                                                      
-	if (ilen % bhnd_nvram_type_width(itype) != 0)
+	if (ilen % bhnd_nvram_value_size(itype, NULL, 1) != 0)
 		return (EFAULT);
 
 	/* Reject empty input values */
@@ -1131,7 +1246,7 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 	nelem = ilen / iwidth;
 
 	/* Determine the output type width (will be 0 if variable-width) */
-	owidth = bhnd_nvram_type_width(otype);
+	owidth = bhnd_nvram_value_size(otype, NULL, 1);
 
 	/* Iterate over the input elements, coercing to the output type
 	 * and writing to the output buffer */

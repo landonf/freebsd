@@ -94,22 +94,26 @@ static const struct bhnd_nvram_bcmdata bhnd_nvram_bcm_hvars[] = {
 	{
 		.name	= BCM_NVRAM_CFG0_SDRAM_INIT_VAR,
 		.type	= BHND_NVRAM_TYPE_UINT16,
-		.size	= sizeof(uint16_t)
+		.size	= sizeof(uint16_t),
+		.nelem	= 1,
 	},
 	{
 		.name	= BCM_NVRAM_CFG1_SDRAM_CFG_VAR,
 		.type	= BHND_NVRAM_TYPE_UINT16,
-		.size	= sizeof(uint16_t)
+		.size	= sizeof(uint16_t),
+		.nelem	= 1,
 	},
 	{
 		.name	= BCM_NVRAM_CFG1_SDRAM_REFRESH_VAR,
 		.type	= BHND_NVRAM_TYPE_UINT16,
-		.size	= sizeof(uint16_t)
+		.size	= sizeof(uint16_t),
+		.nelem	= 1,
 	},
 	{
 		.name	= BCM_NVRAM_SDRAM_NCDL_VAR,
 		.type	= BHND_NVRAM_TYPE_UINT32,
-		.size	= sizeof(uint32_t)
+		.size	= sizeof(uint32_t),
+		.nelem	= 1,
 	},
 };
 
@@ -643,8 +647,8 @@ bhnd_nvram_bcm_getvar_ptr(struct bhnd_nvram_data *nv, void *cookiep,
 
 	/* Handle header variables */
 	if ((hvar = bhnd_nvram_bcm_to_hdrvar(bcm, cookiep)) != NULL) {
-		BHND_NV_ASSERT(
-		    hvar->size % bhnd_nvram_type_width(hvar->type) == 0,
+		BHND_NV_ASSERT(hvar->size %
+		    bhnd_nvram_value_size(hvar->type, NULL, hvar->nelem) == 0,
 		    ("length is not aligned to type width"));
 
 		*type = hvar->type;

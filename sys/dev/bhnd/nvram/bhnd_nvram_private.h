@@ -149,7 +149,8 @@ bhnd_nv_ummin(uintmax_t a, uintmax_t b)
 
 #endif /* _KERNEL */
 
-size_t				 bhnd_nvram_type_width(bhnd_nvram_type type);
+size_t				 bhnd_nvram_value_size(bhnd_nvram_type type,
+				     const void *data, size_t nelem);
 
 const struct bhnd_nvram_vardefn	*bhnd_nvram_find_vardefn(const char *varname);
 const struct bhnd_nvram_vardefn	*bhnd_nvram_get_vardefn(size_t id);

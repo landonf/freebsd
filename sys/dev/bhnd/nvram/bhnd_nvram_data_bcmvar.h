@@ -39,6 +39,7 @@
 struct bhnd_nvram_bcmdata {
 	const char	*name;		/**< variable name */
 	bhnd_nvram_type	 type;		/**< value type */
+	size_t		 nelem;		/**< value element count */
 	size_t		 size;		/**< value length */
 	bool		 mirrored;	/**< variable mirroring this header
 					     value is defined in NVRAM data */
