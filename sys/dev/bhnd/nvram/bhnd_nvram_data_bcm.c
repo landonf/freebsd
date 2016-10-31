@@ -392,7 +392,7 @@ bhnd_nvram_bcm_size(struct bhnd_nvram_data *nv, size_t *size)
 
 		/* Calculate the length of the value's CSTR representation */
 		error = bhnd_nvram_data_getvar(nv, &bcm->hvars[i], NULL,
-		    &value_len, BHND_NVRAM_TYPE_CSTR);
+		    &value_len, BHND_NVRAM_TYPE_STRING);
 		if (error)
 			return (error);
 
@@ -491,7 +491,7 @@ bhnd_nvram_bcm_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 		 * buffer (or just calculating the length if outp is NULL) */
 		val_len = olen;
 		error = bhnd_nvram_data_getvar(nv, cookiep, outp, &val_len,
-		    BHND_NVRAM_TYPE_CSTR);
+		    BHND_NVRAM_TYPE_STRING);
 
 		if (error && error != ENOMEM)
 			return (error);
@@ -658,7 +658,7 @@ bhnd_nvram_bcm_getvar_ptr(struct bhnd_nvram_data *nv, void *cookiep,
 	envp = cookiep;
 	envp += strlen(envp) + 1;	/* key + '\0' */
 	*len = strlen(envp) + 1;	/* value + '\0' */
-	*type = BHND_NVRAM_TYPE_CSTR;
+	*type = BHND_NVRAM_TYPE_STRING;
 
 	return (envp);
 }

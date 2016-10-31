@@ -396,7 +396,7 @@ bhnd_nvram_tlv_getvar_ptr(struct bhnd_nvram_data *nv, void *cookiep,
 		BHND_NV_PANIC("unexpected error parsing '%s'", env->envp);
 
 	/* Type is always CSTR */
-	*type = BHND_NVRAM_TYPE_CSTR;
+	*type = BHND_NVRAM_TYPE_STRING;
 
 	return (val);
 }

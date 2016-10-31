@@ -75,7 +75,7 @@ typedef enum {
 	BHND_NVRAM_TYPE_INT16	= 5,	/**< signed 16-bit integer */
 	BHND_NVRAM_TYPE_INT32	= 6,	/**< signed 32-bit integer */
 	BHND_NVRAM_TYPE_CHAR	= 7,	/**< ASCII/UTF-8 character */
-	BHND_NVRAM_TYPE_CSTR	= 8,	/**< ASCII/UTF-8 NUL-terminated string */
+	BHND_NVRAM_TYPE_STRING	= 8,	/**< ASCII/UTF-8 NUL-terminated string */
 } bhnd_nvram_type;
 
 /** Evaluates to true if @p _type is a signed integer type */

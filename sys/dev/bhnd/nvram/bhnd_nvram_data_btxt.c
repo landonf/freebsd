@@ -413,7 +413,7 @@ bhnd_nvram_btxt_getvar_ptr(struct bhnd_nvram_data *nv, void *cookiep,
 	}
 
 	/* Type is always CSTR */
-	*type = BHND_NVRAM_TYPE_CSTR;
+	*type = BHND_NVRAM_TYPE_STRING;
 
 	return (vptr);
 }

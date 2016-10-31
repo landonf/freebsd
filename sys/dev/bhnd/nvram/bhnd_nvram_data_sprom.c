@@ -654,7 +654,7 @@ bhnd_nvram_sprom_read_offset(struct bhnd_nvram_sprom *sp,
 		NV_PARSE_INT(uint8_t,	u8,	u32,	);
 		break;
 
-	case BHND_NVRAM_TYPE_CSTR:
+	case BHND_NVRAM_TYPE_STRING:
 		/* fallthrough (unused by SPROM) */
 	default:
 		BHND_NV_LOG("unhandled %s offset type: %d\n", var->name, type);
@@ -1252,7 +1252,7 @@ sprom_opcode_set_type(struct sprom_opcode_state *state, bhnd_nvram_type type)
 	case BHND_NVRAM_TYPE_INT32:
 		mask = UINT32_MAX;
 		break;
-	case BHND_NVRAM_TYPE_CSTR:
+	case BHND_NVRAM_TYPE_STRING:
 		/* fallthrough (unused by SPROM) */
 	default:
 		SPROM_OP_BAD(state, "unsupported type: %d\n", type);

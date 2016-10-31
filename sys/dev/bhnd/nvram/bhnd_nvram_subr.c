@@ -144,7 +144,7 @@ bhnd_nvram_type_width(bhnd_nvram_type type)
 	case BHND_NVRAM_TYPE_UINT32:
 		return (sizeof(uint32_t));
 
-	case BHND_NVRAM_TYPE_CSTR:
+	case BHND_NVRAM_TYPE_STRING:
 		return (0);
 	}
 
@@ -460,9 +460,9 @@ bhnd_nvram_ident_octet_string(const char *inp, size_t ilen, char *delim)
  * @param[in,out]	olen	The capacity of @p outp. On success, will be set
  *				to the actual size of the requested value.
  * @param		otype	The data type to be written to @p outp.
- * @param		odelim	The default string field delimiter to be
- *				emitted when an @p otype of BHND_NVRAM_TYPE_CSTR
- *				is provided. Ignored if @p hint defines a field
+ * @param		odelim	The default string field delimiter to be emitted
+ *				when an @p otype of BHND_NVRAM_TYPE_STRING is
+ *				provided. Ignored if @p hint defines a field
  *				delimiter format.
  * @param		inp	The string value to be coerced.
  * @param		ilen	The size of @p inp, in bytes.
@@ -618,7 +618,7 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 
 		switch (otype) {
 		case BHND_NVRAM_TYPE_CHAR:
-		case BHND_NVRAM_TYPE_CSTR:
+		case BHND_NVRAM_TYPE_STRING:
 			/* Copy out the characters directly */
 			for (size_t i = 0; i < field_len; i++) {
 				if (limit > nbytes)
@@ -666,7 +666,7 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 		if (*p == idelim) {
 			p++;
 
-			if (otype == BHND_NVRAM_TYPE_CSTR) {
+			if (otype == BHND_NVRAM_TYPE_STRING) {
 				if (limit > nbytes)
 					*((char *)outp + nbytes) = odelim;
 
@@ -676,7 +676,7 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 	}
 
 	/* If emitting a C string, append terminating NUL */
-	if (otype == BHND_NVRAM_TYPE_CSTR) {
+	if (otype == BHND_NVRAM_TYPE_STRING) {
 		if (limit > nbytes)
 			*((char *)outp + nbytes) = '\0';
 
@@ -873,9 +873,9 @@ bhnd_nvram_coerce_int_string(char *outp, size_t *olen, bhnd_nvram_sfmt ofmt,
  * @param[in,out]	olen	The capacity of @p outp. On success, will be set
  *				to the actual size of the requested value.
  * @param		otype	The data type to be written to @p outp.
- * @param		odelim	The default string field delimiter to be
- *				emitted when an @p otype of BHND_NVRAM_TYPE_CSTR
- *				is provided. Ignored if @p hint defines a field
+ * @param		odelim	The default string field delimiter to be emitted
+ *				when an @p otype of BHND_NVRAM_TYPE_STRING is
+ *				provided. Ignored if @p hint defines a field
  *				delimiter format.
  * @param		inp	The string value to be coerced.
  * @param		ilen	The size of @p inp, in bytes.
@@ -915,7 +915,7 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 
 	/*
 	 * Fetch the string format to be used with an output type of
-	 * BHND_NVRAM_TYPE_CSTR.
+	 * BHND_NVRAM_TYPE_STRING.
 	 *
 	 * We prefer the hinted format, but otherwise fall back back on a
 	 * sane default.
@@ -980,7 +980,7 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 			intv.s32 = *((const int32_t *)inp + i);
 			break;
 
-		case BHND_NVRAM_TYPE_CSTR:
+		case BHND_NVRAM_TYPE_STRING:
 			/* unreachable */
 			return (EFTYPE);
 		}
@@ -1062,7 +1062,7 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 				*((int32_t *)outp + i) = intv.s32;
 			break;
 
-		case BHND_NVRAM_TYPE_CSTR: {
+		case BHND_NVRAM_TYPE_STRING: {
 			char		*p;
 			size_t		 p_len;
 
@@ -1124,15 +1124,15 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
  * @param[in,out]	olen	The capacity of @p outp. On success, will be set
  *				to the actual size of the requested value.
  * @param		otype	The data type to be written to @p outp.
- * @param		odelim	The default string field delimiter to be
- *				emitted when an @p otype of BHND_NVRAM_TYPE_CSTR
- *				is provided. Ignored if @p hint defines a field
+ * @param		odelim	The default string field delimiter to be emitted
+ *				when an @p otype of BHND_NVRAM_TYPE_STRING is
+ *				provided. Ignored if @p hint defines a field
  *				delimiter format.
  * @param		inp	The value to be coerced.
  * @param		ilen	The size of @p inp, in bytes.
  * @param		itype	The base data type of @p inp.
  * @param		idelim	The string field delimiter to be used when
- *				parsing an @p itype of BHND_NVRAM_TYPE_CSTR.
+ *				parsing an @p itype of BHND_NVRAM_TYPE_STRING.
  *				Ignored if @p hint defines a field delimiter
  *				format.
  * @param		hint	Variable formatting hint, or NULL.
@@ -1152,7 +1152,7 @@ bhnd_nvram_coerce_value(void *outp, size_t *olen, bhnd_nvram_type otype,
 {
 	switch (itype) {
 		case BHND_NVRAM_TYPE_CHAR:
-		case BHND_NVRAM_TYPE_CSTR:
+		case BHND_NVRAM_TYPE_STRING:
 			return (bhnd_nvram_coerce_string(outp, olen, otype,
 			    odelim, inp, ilen, idelim, hint));
 

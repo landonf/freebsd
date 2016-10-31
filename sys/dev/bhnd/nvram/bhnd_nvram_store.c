@@ -235,7 +235,7 @@ bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
 		/* Uncommited value exists, is not a deletion */
 		inp = nvlist_get_string(sc->pending, name);
 		ilen = strlen(inp) + 1;
-		itype = BHND_NVRAM_TYPE_CSTR;
+		itype = BHND_NVRAM_TYPE_STRING;
 
 		/* Coerce borrowed data reference before releasing
 		 * our lock. */
@@ -303,7 +303,7 @@ bhnd_nvram_store_setvar(struct bhnd_nvram_store *sc, const char *name,
 		return (EOPNOTSUPP);
 
 	case BHND_NVRAM_TYPE_CHAR:
-	case BHND_NVRAM_TYPE_CSTR:
+	case BHND_NVRAM_TYPE_STRING:
 		inp = buf;
 
 		/* Must not exceed buffer size */
@@ -389,7 +389,7 @@ bhnd_nvram_register_devpaths(struct bhnd_nvram_store *sc)
 
 		/* Determine path value length */
 		error = bhnd_nvram_data_getvar(sc->nv, cookiep, NULL, &path_len,
-		    BHND_NVRAM_TYPE_CSTR);
+		    BHND_NVRAM_TYPE_STRING);
 		if (error)
 			return (error);
 
@@ -399,7 +399,7 @@ bhnd_nvram_register_devpaths(struct bhnd_nvram_store *sc)
 
 		/* Decode to our new buffer */
 		error = bhnd_nvram_data_getvar(sc->nv, cookiep, path, &path_len,
-		    BHND_NVRAM_TYPE_CSTR);
+		    BHND_NVRAM_TYPE_STRING);
 		if (error) {
 			bhnd_nv_free(path);
 			return (error);

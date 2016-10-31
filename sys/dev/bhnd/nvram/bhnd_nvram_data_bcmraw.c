@@ -367,7 +367,7 @@ bhnd_nvram_bcmraw_getvar_ptr(struct bhnd_nvram_data *nv, void *cookiep,
 	envp = cookiep;
 	envp += strlen(envp) + 1;	/* key + '\0' */
 	*len = strlen(envp) + 1;	/* value + '\0' */
-	*type = BHND_NVRAM_TYPE_CSTR;
+	*type = BHND_NVRAM_TYPE_STRING;
 
 	return (envp);
 }
