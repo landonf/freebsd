@@ -622,7 +622,7 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 			/* Copy out the characters directly */
 			for (size_t i = 0; i < field_len; i++) {
 				if (limit > nbytes)
-					*((char *)outp + nbytes) = p[i];
+					*((uint8_t *)outp + nbytes) = p[i];
 				nbytes++;
 			}
 			break;
@@ -960,6 +960,7 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 
 		/* Read the input element */
 		switch (itype) {
+		case BHND_NVRAM_TYPE_CHAR:
 		case BHND_NVRAM_TYPE_UINT8:
 			intv.u32 = *((const uint8_t *)inp + i);
 			break;
@@ -978,10 +979,7 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 		case BHND_NVRAM_TYPE_INT32:
 			intv.s32 = *((const int32_t *)inp + i);
 			break;
-		case BHND_NVRAM_TYPE_CHAR:
-			intv.s32 = *((const char *)inp + i);
-			break;
-			
+
 		case BHND_NVRAM_TYPE_CSTR:
 			/* unreachable */
 			return (EFTYPE);
@@ -1021,6 +1019,7 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 
 		/* Write output */
 		switch (otype) {
+		case BHND_NVRAM_TYPE_CHAR:
 		case BHND_NVRAM_TYPE_UINT8:
 			if (intv.u32 > UINT8_MAX)
 				return (ERANGE);
@@ -1061,14 +1060,6 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 		case BHND_NVRAM_TYPE_INT32:
 			if (remain >= sizeof(uint32_t))
 				*((int32_t *)outp + i) = intv.s32;
-			break;
-
-		case BHND_NVRAM_TYPE_CHAR:
-			if (intv.s32 < CHAR_MIN || intv.s32 > CHAR_MAX)
-				return (ERANGE);
-
-			if (remain >= sizeof(char))
-				*((char *)outp + i) = intv.s32;
 			break;
 
 		case BHND_NVRAM_TYPE_CSTR: {

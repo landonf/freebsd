@@ -74,22 +74,23 @@ typedef enum {
 	BHND_NVRAM_TYPE_INT8	= 4,	/**< signed 8-bit integer */
 	BHND_NVRAM_TYPE_INT16	= 5,	/**< signed 16-bit integer */
 	BHND_NVRAM_TYPE_INT32	= 6,	/**< signed 32-bit integer */
-	BHND_NVRAM_TYPE_CHAR	= 7,	/**< ASCII character */
-	BHND_NVRAM_TYPE_CSTR	= 8,	/**< NUL-terminated C string */
+	BHND_NVRAM_TYPE_CHAR	= 7,	/**< ASCII/UTF-8 character */
+	BHND_NVRAM_TYPE_CSTR	= 8,	/**< ASCII/UTF-8 NUL-terminated string */
 } bhnd_nvram_type;
 
 /** Evaluates to true if @p _type is a signed integer type */
 #define	BHND_NVRAM_SIGNED_TYPE(_type)		\
 	((_type) == BHND_NVRAM_TYPE_INT8 ||	\
 	 (_type) == BHND_NVRAM_TYPE_INT16 ||	\
-	 (_type) == BHND_NVRAM_TYPE_INT32 ||	\
-	 (_type) == BHND_NVRAM_TYPE_CHAR)
+	 (_type) == BHND_NVRAM_TYPE_INT32)
+	
 
  /** Evaluates to true if @p _type is an unsigned integer type */
 #define	BHND_NVRAM_UNSIGNED_TYPE(_type)		\
 	((_type) == BHND_NVRAM_TYPE_UINT8 ||	\
 	 (_type) == BHND_NVRAM_TYPE_UINT16 ||	\
-	 (_type) == BHND_NVRAM_TYPE_UINT32)
+	 (_type) == BHND_NVRAM_TYPE_UINT32 ||	\
+	 (_type) == BHND_NVRAM_TYPE_CHAR)
 
  /** Evaluates to true if @p _type is an integer type */
 #define	BHND_NVRAM_INT_TYPE(_type)		\

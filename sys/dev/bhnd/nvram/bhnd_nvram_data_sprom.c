@@ -594,7 +594,6 @@ bhnd_nvram_sprom_read_offset(struct bhnd_nvram_sprom *sp,
 		int8_t		s8;
 		int16_t		s16;
 		int32_t		s32;
-		char		ch;
 	} sp_value;
 
 	/* Determine type width */
@@ -652,7 +651,7 @@ bhnd_nvram_sprom_read_offset(struct bhnd_nvram_sprom *sp,
 		NV_PARSE_INT(int32_t,	s32,	s32,	le32toh);
 		break;
 	case BHND_NVRAM_TYPE_CHAR:
-		NV_PARSE_INT(char,	ch,	s32,	);
+		NV_PARSE_INT(uint8_t,	u8,	u32,	);
 		break;
 
 	case BHND_NVRAM_TYPE_CSTR:
