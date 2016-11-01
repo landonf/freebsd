@@ -158,6 +158,12 @@ int				 bhnd_nvram_value_nelem(bhnd_nvram_type type,
 size_t				 bhnd_nvram_value_size(bhnd_nvram_type type,
 				     const void *data, size_t nelem);
 
+int				 bhnd_nvram_input_descriptor(
+				     bhnd_nvram_coerce_in_t *input,
+				     const void *inp, size_t ilen,
+				     bhnd_nvram_type itype,
+				     const bhnd_nvram_fmt_hint_t *hint);
+
 const struct bhnd_nvram_vardefn	*bhnd_nvram_find_vardefn(const char *varname);
 const struct bhnd_nvram_vardefn	*bhnd_nvram_get_vardefn(size_t id);
 size_t				 bhnd_nvram_get_vardefn_id(
@@ -245,11 +251,11 @@ struct bhnd_nvram_fmt_hint {
 
 /** Value coercion input descriptor */
 struct bhnd_nvram_coerce_in {
-	const void		*data;	/**< input buffer */
-	size_t			 len;	/**< input buffer length, in bytes */
-	bhnd_nvram_type		 type;	/**< input data type */
-	char			 delim;	/**< default input string delimiter */
-	bhnd_nvram_fmt_hint_t	*hint;	/**< format hint, or NULL */
+	const void			*data;	/**< input buffer */
+	size_t				 len;	/**< input buffer length */
+	bhnd_nvram_type			 type;	/**< input data type */
+	char				 delim;	/**< input string delimiter */
+	const bhnd_nvram_fmt_hint_t	*hint;	/**< format hint, or NULL */
 };
 
 

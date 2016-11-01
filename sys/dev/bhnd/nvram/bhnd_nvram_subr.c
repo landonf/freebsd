@@ -66,6 +66,9 @@ __FBSDID("$FreeBSD$");
  * lookup.
  */
 
+static bool	bhnd_nvram_ident_octet_string(const char *inp, size_t ilen,
+		    char *delim);
+
 #ifdef _KERNEL
 MALLOC_DEFINE(M_BHND_NVRAM, "bhnd_nvram", "bhnd nvram data");
 #endif
@@ -631,6 +634,65 @@ bhnd_nvram_value_size(bhnd_nvram_type type, const void *data, size_t nelem)
 
 	/* Quiesce gcc4.2 */
 	BHND_NV_PANIC("bhnd nvram type %u unknown", type);
+}
+
+/**
+ * Initialize a new @p input descriptor with the provided input data.
+ * 
+ * @param[out]	input	The input descriptor to be initialized.
+ * @param	inp	The input buffer.
+ * @param	ilen	The size of the input buffer, in bytes.
+ * @param	itype	The input buffer's data type.
+ * @param	hint	Input formatting hints, or NULL
+ * 
+ * @retval 0		success
+ * @retval EFAULT	If @p ilen is not correctly aligned for elements of
+ *			type @p itype.
+ * @retval EFTYPE	if the input buffer cannot be formatted as per @p hint.
+ */
+int
+bhnd_nvram_input_descriptor(bhnd_nvram_coerce_in_t *input, const void *inp,
+    size_t ilen, bhnd_nvram_type itype, const bhnd_nvram_fmt_hint_t *hint)
+{
+	bhnd_nvram_type	base_type;
+	size_t		base_size;
+
+	/* Initialize defaults */
+	*input = (bhnd_nvram_coerce_in_t) {
+		.data = inp,
+		.len = ilen,
+		.type = itype,
+		.delim = BHND_NVRAM_CSTR_DELIM,
+		.hint = hint
+	};
+
+	/* Verify basic length/alignment for fixed-width types */
+	base_type = bhnd_nvram_base_type(itype);
+	base_size = bhnd_nvram_value_size(itype, NULL, 1);
+
+	if (base_size > 0 && ilen % base_size != 0)
+		return (EFAULT);
+
+	/* If the input is not a string, nothing left to do */
+	if (itype != BHND_NVRAM_TYPE_STRING)
+		return (0);
+	
+	/*
+	 * If a string, determine whether this is an octet string, update the
+	 * delimiter, and verify against the provided formatting hint (if any).
+	 */
+	if (!bhnd_nvram_ident_octet_string(inp, input->len, &input->delim)) {
+		if (input->hint != NULL &&
+		    input->hint->sfmt == BHND_NVRAM_SFMT_MACADDR)
+		{
+			NVRAM_LOG("cannot format '%.*s' as MAC address\n",
+			    NVRAM_PRINT_WIDTH(input->len), inp);
+			return (EFTYPE);
+		}
+	}
+
+	/* Success */
+	return (0);
 }
 
 /* used by bhnd_nvram_find_vardefn() */
