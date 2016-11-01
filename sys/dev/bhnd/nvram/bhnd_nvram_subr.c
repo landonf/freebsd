@@ -1161,51 +1161,47 @@ bhnd_nvram_coerce_int_string(char *outp, size_t *olen, bhnd_nvram_sfmt ofmt,
 }
 
 /**
- * Coerce integer value @p inp to @p otype, writing the result to @p outp.
+ * Coerce integer value desribed by @p input, writing the result to the buffer
+ * (and with the format) described by @p output.
  *
- * @param[out]		outp	On success, the value will be written to this 
- *				buffer. This argment may be NULL if the value
- *				is not desired.
- * @param[in,out]	olen	The capacity of @p outp. On success, will be set
- *				to the actual size of the requested value.
- * @param		otype	The data type to be written to @p outp.
- * @param		odelim	The default string field delimiter to be emitted
- *				when an @p otype of BHND_NVRAM_TYPE_STRING is
- *				provided. Ignored if @p hint defines a field
- *				delimiter format.
- * @param		inp	The string value to be coerced.
- * @param		ilen	The size of @p inp, in bytes.
- * @param		itype	The base data type of @p inp.
- * @param		hint	Variable formatting hint, or NULL.
+ * @param[in,out]	output	Output data descriptor.
+ * @param		input	Input data descriptor.
  *
  * @retval 0		success
- * @retval ENOMEM	If @p outp is non-NULL and a buffer of @p olen is too
- *			small to hold the requested value.
- * @retval EFTYPE	If the variable data cannot be coerced to @p otype.
- * @retval ERANGE	If value coercion would overflow @p otype.
+ * @retval ENOMEM	If the @p output data buffer is non-NULL, and the
+ *			provided @p output len is too small to hold the
+ *			requested value.
+ * @retval EFTYPE	If value coercion from the given @p input type to the
+ * 			specified @p output type is impossible.
+ * @retval ERANGE	If value coercion would overflow (or underflow) the
+ *			@p output integer type.
  * @retval EFAULT	If @p ilen is not correctly aligned for elements of
  *			type @p itype.
  */
 static int
-bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
-    char odelim, const char *inp, size_t ilen, bhnd_nvram_type itype,
-    struct bhnd_nvram_fmt_hint *hint)
+bhnd_nvram_coerce_int(bhnd_nvram_coerce_out_t *output,
+    const bhnd_nvram_coerce_in_t *input)
 {
 	bhnd_nvram_sfmt	pfmt;
+	bhnd_nvram_type	itype, otype;
 	size_t		limit, nbytes;
 	size_t		iwidth, owidth;
 	size_t		nelem;
 	int		error;
 
 	nbytes = 0;
-	if (outp != NULL)
-		limit = *olen;
+	if (output->data != NULL)
+		limit = *output->len;
 	else
 		limit = 0;
 
+	/* Fetch the base element types */
+	itype = bhnd_nvram_base_type(input->type);
+	otype = bhnd_nvram_base_type(output->type);
+
 	/* Verify the input type */
 	if (!bhnd_nvram_is_int_type(itype)) {
-		NVRAM_LOG("non-integer input type %d", itype);
+		NVRAM_LOG("non-integer input type %d", input->type);
 		return (EFTYPE);
 	}
 
@@ -1216,8 +1212,8 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 	 * We prefer the hinted format, but otherwise fall back back on a
 	 * sane default.
 	 */
-	if (hint != NULL) {
-		pfmt = hint->sfmt;
+	if (input->hint != NULL) {
+		pfmt = input->hint->sfmt;
 	} else {
 		if (bhnd_nvram_is_signed_type(itype))
 			pfmt = BHND_NVRAM_SFMT_DEC;
@@ -1230,20 +1226,20 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 	if (iwidth == 0) {
 		/* Shouldn't be possible (unless we add support for
 		 * something like LEB128 encoding) */
-		NVRAM_LOG("variable width integer input type %d", itype);
+		NVRAM_LOG("variable width integer input type %d", input->type);
 		return (EFTYPE);
 	}
 
 	/* Verify input buffer size and alignment for the given type. */                                                                                                                                                                      
-	if (ilen % bhnd_nvram_value_size(itype, NULL, 1) != 0)
+	if (input->len % bhnd_nvram_value_size(itype, NULL, 1) != 0)
 		return (EFAULT);
 
 	/* Reject empty input values */
-	if (ilen == 0)
+	if (input->len == 0)
 		return (EFAULT);
 
 	/* Determine the number of input elements */
-	nelem = ilen / iwidth;
+	nelem = input->len / iwidth;
 
 	/* Determine the output type width (will be 0 if variable-width) */
 	owidth = bhnd_nvram_value_size(otype, NULL, 1);
@@ -1251,8 +1247,13 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 	/* Iterate over the input elements, coercing to the output type
 	 * and writing to the output buffer */
 	for (size_t i = 0; i < nelem; i++) {
-		union bhnd_nvram_int_storage	intv;
-		size_t				remain;
+		union bhnd_nvram_int_storage	 intv;
+		const void			*inp;
+		void				*outp;
+		size_t				 remain;
+
+		inp = input->data;
+		outp = output->data;
 
 		/* Read the input element */
 		switch (itype) {
@@ -1387,7 +1388,7 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 			 * which gives us the actual number of bytes required
 			 * even if the buffer is too small. */
 			error = bhnd_nvram_coerce_int_string(p, &p_len, pfmt,
-			    odelim, &intv, itype, i, nelem);
+			    output->delim, &intv, itype, i, nelem);
 			if (error)
 				return (error);
 
@@ -1406,11 +1407,13 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 		nbytes += owidth;
 	}
 
-	/* Provide the actual length */
-	*olen = nbytes;
+	/* Provide the actual length and item count */
+	*output->len = nbytes;
+	if (output->nelem != NULL)
+		*output->nelem = nelem;
 
 	/* If no output was requested, nothing left to do */
-	if (outp == NULL)
+	if (output->data == NULL)
 		return (0);
 
 	/* Otherwise, report a memory error if the output buffer was too
@@ -1450,20 +1453,26 @@ bhnd_nvram_coerce_value(bhnd_nvram_coerce_out_t *output,
 
 	switch (itype) {
 		case BHND_NVRAM_TYPE_CHAR:
+		case BHND_NVRAM_TYPE_CHAR_ARRAY:
 		case BHND_NVRAM_TYPE_STRING:
+		case BHND_NVRAM_TYPE_STRING_ARRAY:
 			return (bhnd_nvram_coerce_string(output->data,
 			    output->len, otype, output->delim, input->data,
 			    input->len, input->delim, input->hint));
 
 		case BHND_NVRAM_TYPE_UINT8:
+		case BHND_NVRAM_TYPE_UINT8_ARRAY:
 		case BHND_NVRAM_TYPE_UINT16:
+		case BHND_NVRAM_TYPE_UINT16_ARRAY:
 		case BHND_NVRAM_TYPE_UINT32:
+		case BHND_NVRAM_TYPE_UINT32_ARRAY:
 		case BHND_NVRAM_TYPE_INT8:
+		case BHND_NVRAM_TYPE_INT8_ARRAY:
 		case BHND_NVRAM_TYPE_INT16:
+		case BHND_NVRAM_TYPE_INT16_ARRAY:
 		case BHND_NVRAM_TYPE_INT32:
-			return (bhnd_nvram_coerce_int(output->data,
-			    output->len, otype, output->delim, input->data,
-			    input->len, itype, input->hint));
+		case BHND_NVRAM_TYPE_INT32_ARRAY:
+			return (bhnd_nvram_coerce_int(output, input));
 
 		default:
 			NVRAM_LOG("unhandled NVRAM input type: %d\n", itype);
