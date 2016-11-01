@@ -1457,6 +1457,10 @@ bhnd_nvram_coerce_value(void *outp, size_t *olen, bhnd_nvram_type otype,
     char odelim, const void *inp, size_t ilen, bhnd_nvram_type itype,
     char idelim, struct bhnd_nvram_fmt_hint *hint)
 {
+	// XXX TODO: nelem support
+	otype = bhnd_nvram_base_type(otype);
+	itype = bhnd_nvram_base_type(itype);
+
 	switch (itype) {
 		case BHND_NVRAM_TYPE_CHAR:
 		case BHND_NVRAM_TYPE_STRING:

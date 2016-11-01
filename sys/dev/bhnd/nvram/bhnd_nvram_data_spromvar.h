@@ -63,7 +63,7 @@ struct sprom_opcode_var {
 	uint8_t				nelem;		/**< variable array length */
 	uint32_t			mask;		/**< current bind input mask */
 	int8_t				shift;		/**< current bind input shift */
-	bhnd_nvram_type			type;		/**< current bind input type */
+	bhnd_nvram_type			base_type;	/**< current bind input type */
 	uint32_t			scale;		/**< current scale to apply to scaled encodings */
 	struct sprom_opcode_bind	bind;		/**< current bind state */
 	bool				have_bind;	/**< if bind state is defined */

@@ -330,7 +330,6 @@ function main(_i) {
 
 	VFlagPrivate	= vflag_new("private", "BHND_NVRAM_VF_MFGINT")
 	VFlagIgnoreAll1	= vflag_new("ignall1", "BHND_NVRAM_VF_IGNALL1")
-	VFlagArray	= vflag_new("array", "BHND_NVRAM_VF_ARRAY")
 
 	# Variable Access Type Constants
 	VAccess = class_new("VAccess")
@@ -585,7 +584,7 @@ function write_data_nvram_vardefn(v, _desc, _help, _type, _sfmt) {
 
 	_desc = get(v, p_desc)
 	_help = get(v, p_help)
-	_type = type_get_base(get(v, p_type))
+	_type = get(v, p_type)
 	_sfmt = var_get_sfmt(v)
 
 	emit("{\n")
@@ -602,7 +601,7 @@ function write_data_nvram_vardefn(v, _desc, _help, _type, _sfmt) {
 	else
 		emit(".help = NULL,\n")
 
-	emit(".type = " get(_type, p_const) ",\n")
+	emit(".type = " type_get_const(_type) ",\n")
 	emit(".nelem = " var_get_array_len(v) ",\n")
 	emit(".sfmt = " get(_sfmt, p_const) ",\n")
 	emit(".flags = " gen_var_flags(v) ",\n")
@@ -879,11 +878,10 @@ function srom_ops_reset_var(opstream, var, _vid_prev, _vid, _vid_name,
 
 	# Update state
 	_type = get(var, p_type)
-	_base_type = type_get_base(_type)
 	set(opstream, p_vid, _vid)
-	set(opstream, p_type, _base_type)
+	set(opstream, p_type, type_get_base(_type))
 	set(opstream, p_nelem, var_get_array_len(var))
-	set(opstream, p_mask, get(_base_type, p_mask))
+	set(opstream, p_mask, type_get_default_mask(_type))
 	set(opstream, p_shift, 0)
 	set(opstream, p_bind_total, 0)
 
@@ -977,28 +975,30 @@ function srom_ops_emit_offset(opstream, offset, _prev_offset, _rel_offset,
 
 # Emit OPCODE_TYPE (if necessary) for a new type value; this also
 # resets the mask to the type default.
-function srom_ops_emit_type(opstream, type, _prev_type, _prev_mask,
+function srom_ops_emit_type(opstream, type, _base_type, _prev_type, _prev_mask,
     _default_mask)
 {
 	obj_assert_class(opstream, SromOpStream)
-	obj_assert_class(type, Type)
+	if (!obj_is_instanceof(type, ArrayType))
+		obj_assert_class(type, Type)
 
-	_default_mask = get(type, p_mask)
+	_default_mask = type_get_default_mask(type)
+	_base_type = type_get_base(type)
 
 	# If state already matches the requested type, nothing to be
 	# done
 	_prev_type = get(opstream, p_type)
 	_prev_mask = get(opstream, p_mask)
-	if (_prev_type == type && _prev_mask == _default_mask)
+	if (type_equal(_prev_type, _base_type) && _prev_mask == _default_mask)
 		return
 
 	# Update state
-	set(opstream, p_type, type)
+	set(opstream, p_type, _base_type)
 	set(opstream, p_mask, _default_mask)
 
 	# Emit opcode
 	srom_ops_emit_opcode(opstream,
-	    SPROM_OPCODE_TYPE_IMM "|" get(type, p_const))
+	    SPROM_OPCODE_TYPE_IMM "|" type_get_const(_base_type))
 }
 
 # Emit OPCODE_MASK (if necessary) for a new mask value
@@ -1212,7 +1212,7 @@ function srom_ops_emit_segment(opstream, segment, continued, _value,
 		errorx("bind not flushed!")
 
 	# Encode type
-	_value = type_get_base(get(segment, p_type))
+	_value = get(segment, p_type)
 	srom_ops_emit_type(opstream, _value)
 
 	# Encode offset
@@ -1437,7 +1437,7 @@ function write_srom_entry_bindings(entry, opstream, _var, _vid,
 
 		# If the array length differs from the variable default,
 		# write an OPCODE_EXT_NELEM entry
-		if (type_get_count(_var_type) != type_get_count(_entry_type)) {
+		if (type_get_nelem(_var_type) != type_get_nelem(_entry_type)) {
 			srom_ops_emit_opcode(opstream, SPROM_OPCODE_NELEM,
 			    srom_entry_get_array_len(entry))
 		}
@@ -2427,7 +2427,7 @@ function type_new(name, width, signed, constant, array_constant, fmt, mask,
 	set(_obj, p_width, width)
 	set(_obj, p_signed, signed)
 	set(_obj, p_const, constant)
-	set(_obj, p_array_const, constant)
+	set(_obj, p_array_const, array_constant)
 	set(_obj, p_default_fmt, fmt)
 	set(_obj, p_mask, mask)
 
@@ -2460,6 +2460,16 @@ function type_equal(lhs, rhs) {
 	return (obj_trivially_equal(lhs, rhs))
 }
 
+# Return the type's default value mask. If the type is an array type,
+# the default mask of the base type will be returned.
+function type_get_default_mask(type) {
+	if (obj_is_instanceof(type, ArrayType))
+		return (type_get_default_mask(type_get_base(type)))
+
+	obj_assert_class(type, Type)
+	return (get(type, p_mask))
+}
+
 # Return the type's C constant representation
 function type_get_const(type) {
 	if (obj_is_instanceof(type, ArrayType))
@@ -2471,7 +2481,7 @@ function type_get_const(type) {
 
 # Return an array type's element count, or 1 if the type is not
 # an array type
-function type_get_count(type) {
+function type_get_nelem(type) {
 	if (obj_is_instanceof(type, ArrayType))
 		return (get(type, p_count))
 
@@ -2870,7 +2880,7 @@ function var_has_array_type(var, _vtype) {
 # or 1 if the variable does not have an array type.
 function var_get_array_len(var) {
 	obj_assert_class(var, Var)
-	return (type_get_count(get(var, p_type)))
+	return (type_get_nelem(get(var, p_type)))
 }
 
 # Return the sfmt for var. If not explicitly set on var, will return then
@@ -3090,7 +3100,7 @@ function srom_entry_has_array_type(entry) {
 function srom_entry_get_array_len(entry, _type) {
 	obj_assert_class(entry, SromEntry)
 
-	return (type_get_count(get(entry, p_type)))
+	return (type_get_nelem(get(entry, p_type)))
 }
 
 #
@@ -3286,10 +3296,6 @@ function gen_var_flags(v, _type, _flags, _flag, _str)
 	# VF_IGNALL1
 	if (get(v, p_ignall1))
 		array_append(_flags, VFlagIgnoreAll1)
-
-	# VF_ARRAY
-	if (obj_is_instanceof(_type, ArrayType))
-		array_append(_flags, VFlagArray)
 
 	# If empty, return empty flag value
 	if (array_size(_flags) == 0) {
@@ -3931,7 +3937,7 @@ function parse_srom_segment_attributes(offset, type, _attrs, _num_attr, _attr,
 	sub("^[^,(|){}]+", "", $0)
 
 	# defaults
-	_mask = get(type_get_base(type), p_mask)
+	_mask = type_get_default_mask(type)
 	_shift = 0
 
 	# parse attributes

@@ -208,10 +208,9 @@ typedef enum {
 
 /** NVRAM variable flags */
 enum {
-	BHND_NVRAM_VF_ARRAY	= 1<<0,	/**< variable is an array */
-	BHND_NVRAM_VF_MFGINT	= 1<<1,	/**< mfg-internal variable; should not
+	BHND_NVRAM_VF_MFGINT	= 1<<0,	/**< mfg-internal variable; should not
 					     be externally visible */
-	BHND_NVRAM_VF_IGNALL1	= 1<<2	/**< hide variable if its value has all
+	BHND_NVRAM_VF_IGNALL1	= 1<<1	/**< hide variable if its value has all
 					     bits set. */
 };
 
@@ -249,9 +248,9 @@ struct bhnd_nvram_vardefn {
 					     or NULL */
 	const char		*help;	/**< human readable help text,
 					     or NULL */
-	bhnd_nvram_type		 type;	/**< base data type */
-	uint8_t			 nelem;	/**< array element count if
-					     BHND_NVRAM_VF_ARRAY, otherwise 1 */
+	bhnd_nvram_type		 type;	/**< variable type */
+	uint8_t			 nelem;	/**< element count, or 1 if not an array
+					     typed variable */
 	bhnd_nvram_sfmt		 sfmt;	/**< string format */
 	uint32_t		 flags;	/**< flags (BHND_NVRAM_VF_*) */
 };

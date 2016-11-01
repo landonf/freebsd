@@ -675,6 +675,7 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 	union bhnd_nvram_sprom_storage	 storage;
 	union bhnd_nvram_sprom_storage	*inp;
 	union bhnd_nvram_sprom_intv	 intv;
+	bhnd_nvram_type			 var_btype;
 	size_t				 ilen, ipos, iwidth;
 	size_t				 nelem;
 	bool				 all_bits_set;
@@ -709,8 +710,11 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 		return (EFTYPE);
 	}
 
+	/* Fetch the var's base element type */
+	var_btype = bhnd_nvram_base_type(var->type);
+
 	/* Calculate total byte length of the native encoding */
-	if ((iwidth = bhnd_nvram_value_size(var->type, NULL, 1)) == 0) {
+	if ((iwidth = bhnd_nvram_value_size(var_btype, NULL, 1)) == 0) {
 		/* SPROM does not use (and we do not support) decoding of
 		 * variable-width data types */
 		BHND_NV_LOG("invalid SPROM data type: %d", var->type);
@@ -741,7 +745,7 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 	memset(inp, 0, ilen);
 
 	/*
-	 * Decode the SPROM data
+	 * Decode the SPROM data, iteratively decoding up to nelem values.
 	 */
 	if ((error = sprom_opcode_state_seek(&sp->state, idx))) {
 		BHND_NV_LOG("variable seek failed: %d\n", error);
@@ -790,7 +794,7 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 			/* Read the offset value, OR'ing with the current
 			 * value of intv */
 			error = bhnd_nvram_sprom_read_offset(sp, var,
-			    binding_var->type,
+			    binding_var->base_type,
 			    offset,
 			    binding_var->mask,
 			    binding_var->shift,
@@ -833,7 +837,7 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 			 * overflow-checked coercion from the widened
 			 * uint32/int32 intv value to the requested output
 			 * type */
-			if (bhnd_nvram_is_signed_type(var->type))
+			if (bhnd_nvram_is_signed_type(var_btype))
 				intv_type = BHND_NVRAM_TYPE_INT32;
 			else
 				intv_type = BHND_NVRAM_TYPE_UINT32;
@@ -844,7 +848,7 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 
 			/* Perform coercion of the array element */
 			nbyte = iwidth;
-			error = bhnd_nvram_coerce_value(ptr, &nbyte, var->type,
+			error = bhnd_nvram_coerce_value(ptr, &nbyte, var_btype,
 			    BHND_NVRAM_CSTR_DELIM, &intv, sizeof(intv),
 			    intv_type, BHND_NVRAM_CSTR_DELIM, NULL);
 			if (error)
@@ -1216,6 +1220,7 @@ sprom_opcode_flush_bind(struct sprom_opcode_state *state)
 static int
 sprom_opcode_set_type(struct sprom_opcode_state *state, bhnd_nvram_type type)
 {
+	bhnd_nvram_type	base_type;
 	size_t		width;
 	uint32_t	mask;
 
@@ -1237,8 +1242,9 @@ sprom_opcode_set_type(struct sprom_opcode_state *state, bhnd_nvram_type type)
 		return (EINVAL);
 	}
 
-	/* Determine default mask value for the type */
-	switch (bhnd_nvram_base_type(type)) {
+	/* Determine default mask value for the element type */
+	base_type = bhnd_nvram_base_type(type);
+	switch (base_type) {
 	case BHND_NVRAM_TYPE_UINT8:
 	case BHND_NVRAM_TYPE_INT8:
 	case BHND_NVRAM_TYPE_CHAR:
@@ -1260,7 +1266,7 @@ sprom_opcode_set_type(struct sprom_opcode_state *state, bhnd_nvram_type type)
 	}
 	
 	/* Update state */
-	state->var.type = type;
+	state->var.base_type = base_type;
 	state->var.mask = mask;
 	state->var.scale = (uint32_t)width;
 
@@ -1328,7 +1334,7 @@ sprom_opcode_set_nelem(struct sprom_opcode_state *state, uint8_t nelem)
 
 	/* If the variable is not an array-typed value, the array length
 	 * must be 1 */
-	if ((var->flags & BHND_NVRAM_VF_ARRAY) == 0 && nelem != 1) {
+	if (!bhnd_nvram_is_array_type(var->type) && nelem != 1) {
 		SPROM_OP_BAD(state, "nelem %hhu on non-array %zu\n", nelem,
 		    state->vid);
 		return (ENXIO);
