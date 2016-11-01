@@ -152,6 +152,9 @@ bhnd_nv_ummin(uintmax_t a, uintmax_t b)
 
 #endif /* _KERNEL */
 
+int				 bhnd_nvram_value_nelem(bhnd_nvram_type type,
+				     const void *data, size_t len,
+				     size_t *nelem);
 size_t				 bhnd_nvram_value_size(bhnd_nvram_type type,
 				     const void *data, size_t nelem);
 

@@ -181,8 +181,7 @@ bhnd_nvram_is_signed_type(bhnd_nvram_type type)
 	case BHND_NVRAM_TYPE_INT8:
 	case BHND_NVRAM_TYPE_INT16:
 	case BHND_NVRAM_TYPE_INT32:
-		BHND_NV_ASSERT(!bhnd_nvram_is_unsigned_type(type),
-		    ("%d type both signed and unsigned", type));
+		BHND_NV_ASSERT(bhnd_nvram_is_int_type(type), ("non-int type?"));
 		return (true);
 
 	case BHND_NVRAM_TYPE_CHAR:
@@ -216,18 +215,32 @@ bhnd_nvram_is_signed_type(bhnd_nvram_type type)
 bool
 bhnd_nvram_is_unsigned_type(bhnd_nvram_type type)
 {
+	/* If an integer type, must be either signed or unsigned */
+	if (!bhnd_nvram_is_int_type(type))
+		return (false);
+
+	return (!bhnd_nvram_is_signed_type(type));
+}
+
+/**
+ * Return true if bhnd_nvram_is_signed_type() or bhnd_nvram_is_unsigned_type()
+ * returns true for @p type.
+ * 
+ * @param type The type to query.
+ */
+bool
+bhnd_nvram_is_int_type(bhnd_nvram_type type)
+{
 	switch (type) {
 	case BHND_NVRAM_TYPE_UINT8:
 	case BHND_NVRAM_TYPE_UINT16:
 	case BHND_NVRAM_TYPE_UINT32:
 	case BHND_NVRAM_TYPE_CHAR:
-		BHND_NV_ASSERT(!bhnd_nvram_is_signed_type(type),
-		    ("%d type both signed and unsigned", type));
-		return (true);
-
 	case BHND_NVRAM_TYPE_INT8:
 	case BHND_NVRAM_TYPE_INT16:
 	case BHND_NVRAM_TYPE_INT32:
+		return (true);
+
 	case BHND_NVRAM_TYPE_STRING:
 	case BHND_NVRAM_TYPE_UINT8_ARRAY:
 	case BHND_NVRAM_TYPE_UINT16_ARRAY:
@@ -242,19 +255,6 @@ bhnd_nvram_is_unsigned_type(bhnd_nvram_type type)
 
 	/* Quiesce gcc4.2 */
 	BHND_NV_PANIC("bhnd nvram type %u unknown", type);
-}
-
-/**
- * Return true if bhnd_nvram_is_signed_type() or bhnd_nvram_is_unsigned_type()
- * returns true for @p type.
- * 
- * @param type The type to query.
- */
-bool
-bhnd_nvram_is_int_type(bhnd_nvram_type type)
-{
-	return (bhnd_nvram_is_signed_type(type) ||
-	    bhnd_nvram_is_unsigned_type(type));
 }
 
 /**
@@ -285,6 +285,47 @@ bhnd_nvram_is_array_type(bhnd_nvram_type type)
 	case BHND_NVRAM_TYPE_CHAR_ARRAY:
 	case BHND_NVRAM_TYPE_STRING_ARRAY:
 		return (true);
+	}
+
+	/* Quiesce gcc4.2 */
+	BHND_NV_PANIC("bhnd nvram type %u unknown", type);
+}
+
+/**
+ * Return true if append operations are supported over values of @p type.
+ *
+ * This function returns true for types for which:
+ *	- Provide an `identity` element (e.g. an empty array, or an empty string)
+ *	- Provide a reversible associative binary operator (e.g. list
+ *	  concatenation, string concatenation with an escaped delimiter, etc)
+ *	  for which `value + identity = value` holds.
+ *
+ * Array types (@see bhnd_nvram_is_array_type()) and BHND_NVRAM_TYPE_STRING are
+ * both supported as appendable types.
+ */
+bool
+bhnd_nvram_is_appendable_type(bhnd_nvram_type type)
+{
+	switch (type) {
+	case BHND_NVRAM_TYPE_UINT8_ARRAY:
+	case BHND_NVRAM_TYPE_UINT16_ARRAY:
+	case BHND_NVRAM_TYPE_UINT32_ARRAY:
+	case BHND_NVRAM_TYPE_INT8_ARRAY:
+	case BHND_NVRAM_TYPE_INT16_ARRAY:
+	case BHND_NVRAM_TYPE_INT32_ARRAY:
+	case BHND_NVRAM_TYPE_CHAR_ARRAY:
+	case BHND_NVRAM_TYPE_STRING_ARRAY:
+	case BHND_NVRAM_TYPE_STRING:
+		return (true);
+
+	case BHND_NVRAM_TYPE_UINT8:
+	case BHND_NVRAM_TYPE_UINT16:
+	case BHND_NVRAM_TYPE_UINT32:
+	case BHND_NVRAM_TYPE_INT8:
+	case BHND_NVRAM_TYPE_INT16:
+	case BHND_NVRAM_TYPE_INT32:
+	case BHND_NVRAM_TYPE_CHAR:
+		return (false);
 	}
 
 	/* Quiesce gcc4.2 */
@@ -379,10 +420,7 @@ bhnd_nvram_base_type(bhnd_nvram_type type)
  * Calculate the number of elements represented by a value of @p len bytes
  * with @p type.
  *
- * The @p type 
- * 
- * @param	type	The value type. Will be promoted to an array type if
- *			a non-array type is provided.
+ * @param	type	The value type.
  * @param	data	The actual data to be queried, or NULL if unknown.
  * @param	len	The length in bytes of @p data, or if @p data is NULL,
  *			the expected length in bytes.
@@ -392,7 +430,8 @@ bhnd_nvram_base_type(bhnd_nvram_type type)
  *			returned.
  *
  * @retval 0		success
- * @retval EINVAL	if @p type is not an array type
+ * @retval EFTYPE	if @p type is not an array type, and @p len is not
+ *			equal to the size of a single element of @p type.
  * @retval EFAULT	if @p len is not correctly aligned for elements of
  *			@p type.
  */
@@ -406,20 +445,11 @@ bhnd_nvram_value_nelem(bhnd_nvram_type type, const void *data, size_t len,
 	/* Length must be aligned to the element size */
 	base_type = bhnd_nvram_base_type(type);
 	base_size = bhnd_nvram_value_size(base_type, NULL, 1);
-	if (len % base_size != 0)
+	if (base_size != 0 && len % base_size != 0)
 		return (EFAULT);
 
-	switch (type) {		
-	case BHND_NVRAM_TYPE_UINT8_ARRAY:
-	case BHND_NVRAM_TYPE_UINT16_ARRAY:
-	case BHND_NVRAM_TYPE_UINT32_ARRAY:
-	case BHND_NVRAM_TYPE_INT8_ARRAY:
-	case BHND_NVRAM_TYPE_INT16_ARRAY:
-	case BHND_NVRAM_TYPE_INT32_ARRAY:
-	case BHND_NVRAM_TYPE_CHAR_ARRAY:
-		*nelem = len / base_size;
-		return (0);
-
+	switch (type) {
+	case BHND_NVRAM_TYPE_STRING:
 	case BHND_NVRAM_TYPE_STRING_ARRAY: {
 		const char	*p;
 		size_t		 nleft;
@@ -442,6 +472,11 @@ bhnd_nvram_value_nelem(bhnd_nvram_type type, const void *data, size_t len,
 			/* Increment element count */
 			(*nelem)++;
 
+			/* If not a string array, data must not contain more
+			 * than one entry. */
+			if (!bhnd_nvram_is_array_type(type) && *nelem > 1)
+				return (EFTYPE);
+
 			/* Determine string length */
 			slen = strnlen(p, nleft);
 			nleft -= slen;
@@ -459,7 +494,6 @@ bhnd_nvram_value_nelem(bhnd_nvram_type type, const void *data, size_t len,
 
 		return (0);
 	}
-
 	case BHND_NVRAM_TYPE_INT8:
 	case BHND_NVRAM_TYPE_UINT8:
 	case BHND_NVRAM_TYPE_CHAR:
@@ -467,9 +501,24 @@ bhnd_nvram_value_nelem(bhnd_nvram_type type, const void *data, size_t len,
 	case BHND_NVRAM_TYPE_UINT16:
 	case BHND_NVRAM_TYPE_INT32:
 	case BHND_NVRAM_TYPE_UINT32:
-	case BHND_NVRAM_TYPE_STRING:
-		/* Non-array types */
-		return (EINVAL);
+		/* Length must be equal to the size of exactly one
+		 * element (arrays can represent zero elements -- non-array
+		 * types cannot) */
+		if (len != base_size)
+			return (EFTYPE);
+		*nelem = 1;
+		return (0);
+
+	case BHND_NVRAM_TYPE_UINT8_ARRAY:
+	case BHND_NVRAM_TYPE_UINT16_ARRAY:
+	case BHND_NVRAM_TYPE_UINT32_ARRAY:
+	case BHND_NVRAM_TYPE_INT8_ARRAY:
+	case BHND_NVRAM_TYPE_INT16_ARRAY:
+	case BHND_NVRAM_TYPE_INT32_ARRAY:
+	case BHND_NVRAM_TYPE_CHAR_ARRAY:
+		BHND_NV_ASSERT(base_size != 0, ("invalid base size"));
+		*nelem = len / base_size;
+		return (0);
 	}
 
 	/* Quiesce gcc4.2 */
@@ -1587,6 +1636,34 @@ int
 bhnd_nvram_coerce_value(bhnd_nvram_coerce_out_t *output,
     const bhnd_nvram_coerce_in_t *input)
 {
+	size_t	nelem;
+	int	error;
+
+	/*
+	 * Calculate the input element count
+	 */
+	error = bhnd_nvram_value_nelem(input->type, input->data,
+	    input->len, &nelem);
+	if (error)
+		return (error);
+
+	/* Provide to caller */
+	if (output->nelem != NULL)
+		*output->nelem = nelem;
+
+	/*
+	 * If requesting coercion from an array type, then either:
+	 *
+	 * - The input array must contain a single element, or
+	 * - The output type must be capable of representing multiple values.
+	 */
+	if (bhnd_nvram_is_array_type(input->type) &&
+	    !bhnd_nvram_is_appendable_type(output->type) &&
+	    nelem != 1)
+	{
+		return (EFTYPE);
+	}
+
 	// XXX TODO: nelem support
 	bhnd_nvram_type otype, itype;
 	otype = bhnd_nvram_base_type(output->type);
