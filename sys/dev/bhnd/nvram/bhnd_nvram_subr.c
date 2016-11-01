@@ -292,6 +292,48 @@ bhnd_nvram_is_array_type(bhnd_nvram_type type)
 }
 
 /**
+ * Return the array type corresponding to @p type. If @p type is an array
+ * type, the original value of @p type will be returned.
+ * 
+ * @param type The type to query.
+ */
+bhnd_nvram_type
+bhnd_nvram_array_type(bhnd_nvram_type type)
+{
+	switch (type) {
+	case BHND_NVRAM_TYPE_UINT8_ARRAY:
+	case BHND_NVRAM_TYPE_UINT16_ARRAY:
+	case BHND_NVRAM_TYPE_UINT32_ARRAY:
+	case BHND_NVRAM_TYPE_INT8_ARRAY:
+	case BHND_NVRAM_TYPE_INT16_ARRAY:
+	case BHND_NVRAM_TYPE_INT32_ARRAY:
+	case BHND_NVRAM_TYPE_CHAR_ARRAY:
+	case BHND_NVRAM_TYPE_STRING_ARRAY:
+		return (type);
+
+	case BHND_NVRAM_TYPE_UINT8:
+		return (BHND_NVRAM_TYPE_UINT8_ARRAY);
+	case BHND_NVRAM_TYPE_UINT16:
+		return (BHND_NVRAM_TYPE_UINT16_ARRAY);
+	case BHND_NVRAM_TYPE_UINT32:
+		return (BHND_NVRAM_TYPE_UINT32_ARRAY);
+	case BHND_NVRAM_TYPE_INT8:
+		return (BHND_NVRAM_TYPE_INT8_ARRAY);
+	case BHND_NVRAM_TYPE_INT16:
+		return (BHND_NVRAM_TYPE_INT16_ARRAY);
+	case BHND_NVRAM_TYPE_INT32:
+		return (BHND_NVRAM_TYPE_INT32_ARRAY);
+	case BHND_NVRAM_TYPE_CHAR:
+		return (BHND_NVRAM_TYPE_CHAR_ARRAY);
+	case BHND_NVRAM_TYPE_STRING:
+		return (BHND_NVRAM_TYPE_STRING_ARRAY);
+	}
+
+	/* Quiesce gcc4.2 */
+	BHND_NV_PANIC("bhnd nvram type %u unknown", type);
+}
+
+/**
  * If @p type is an array type, return the base element type. Otherwise,
  * returns @p type.
  * 
@@ -313,25 +355,18 @@ bhnd_nvram_base_type(bhnd_nvram_type type)
 
 	case BHND_NVRAM_TYPE_UINT8_ARRAY:
 		return (BHND_NVRAM_TYPE_UINT8);
-
 	case BHND_NVRAM_TYPE_UINT16_ARRAY:
 		return (BHND_NVRAM_TYPE_UINT16);
-
 	case BHND_NVRAM_TYPE_UINT32_ARRAY:
 		return (BHND_NVRAM_TYPE_UINT32);
-
 	case BHND_NVRAM_TYPE_INT8_ARRAY:
 		return (BHND_NVRAM_TYPE_INT8);
-
 	case BHND_NVRAM_TYPE_INT16_ARRAY:
 		return (BHND_NVRAM_TYPE_INT16);
-
 	case BHND_NVRAM_TYPE_INT32_ARRAY:
 		return (BHND_NVRAM_TYPE_INT32);
-
 	case BHND_NVRAM_TYPE_CHAR_ARRAY:
 		return (BHND_NVRAM_TYPE_CHAR);
-
 	case BHND_NVRAM_TYPE_STRING_ARRAY:
 		return (BHND_NVRAM_TYPE_STRING);
 	}
@@ -341,22 +376,123 @@ bhnd_nvram_base_type(bhnd_nvram_type type)
 }
 
 /**
+ * Calculate the number of elements represented by a value of @p len bytes
+ * with @p type.
+ *
+ * The @p type 
+ * 
+ * @param	type	The value type. Will be promoted to an array type if
+ *			a non-array type is provided.
+ * @param	data	The actual data to be queried, or NULL if unknown.
+ * @param	len	The length in bytes of @p data, or if @p data is NULL,
+ *			the expected length in bytes.
+ * @param[out]	nelem	On success, the number of elements. If @p type is not
+ *			a fixed width type (e.g. BHND_NVRAM_TYPE_STRING_ARRAY),
+ *			and @p data is NULL, an @p nelem value of 0 will be
+ *			returned.
+ *
+ * @retval 0		success
+ * @retval EINVAL	if @p type is not an array type
+ * @retval EFAULT	if @p len is not correctly aligned for elements of
+ *			@p type.
+ */
+int
+bhnd_nvram_value_nelem(bhnd_nvram_type type, const void *data, size_t len,
+    size_t *nelem)
+{
+	bhnd_nvram_type	base_type;
+	size_t		base_size;
+
+	/* Length must be aligned to the element size */
+	base_type = bhnd_nvram_base_type(type);
+	base_size = bhnd_nvram_value_size(base_type, NULL, 1);
+	if (len % base_size != 0)
+		return (EFAULT);
+
+	switch (type) {		
+	case BHND_NVRAM_TYPE_UINT8_ARRAY:
+	case BHND_NVRAM_TYPE_UINT16_ARRAY:
+	case BHND_NVRAM_TYPE_UINT32_ARRAY:
+	case BHND_NVRAM_TYPE_INT8_ARRAY:
+	case BHND_NVRAM_TYPE_INT16_ARRAY:
+	case BHND_NVRAM_TYPE_INT32_ARRAY:
+	case BHND_NVRAM_TYPE_CHAR_ARRAY:
+		*nelem = len / base_size;
+		return (0);
+
+	case BHND_NVRAM_TYPE_STRING_ARRAY: {
+		const char	*p;
+		size_t		 nleft;
+
+		/* Cannot determine the element count without parsing
+		 * the actual data */
+		if (data == NULL) {
+			*nelem = 0;
+			return (0);
+		}
+
+		/* Iterate over the NUL-terminated strings to calculate
+		 * total element count */
+		p = data;
+		nleft = len;
+		*nelem = 0;
+		while (nleft > 0) {
+			size_t slen;
+
+			/* Increment element count */
+			(*nelem)++;
+
+			/* Determine string length */
+			slen = strnlen(p, nleft);
+			nleft -= slen;
+	
+			/* Advance input */
+			p += slen;
+
+			/* Account for trailing NUL, if we haven't hit the end
+			 * of the input */
+			if (nleft > 0) {
+				nleft--;
+				p++;
+			}
+		}
+
+		return (0);
+	}
+
+	case BHND_NVRAM_TYPE_INT8:
+	case BHND_NVRAM_TYPE_UINT8:
+	case BHND_NVRAM_TYPE_CHAR:
+	case BHND_NVRAM_TYPE_INT16:
+	case BHND_NVRAM_TYPE_UINT16:
+	case BHND_NVRAM_TYPE_INT32:
+	case BHND_NVRAM_TYPE_UINT32:
+	case BHND_NVRAM_TYPE_STRING:
+		/* Non-array types */
+		return (EINVAL);
+	}
+
+	/* Quiesce gcc4.2 */
+	BHND_NV_PANIC("bhnd nvram type %u unknown", type);
+}
+
+/**
  * Return the size, in bytes, of a value of @p type with @p nelem elements.
  * 
- * @param type The type to query.
- * @param data The actual data to be queried, or NULL if unknown. If NULL and
- * the base type is not a fixed width type (e.g. BHND_NVRAM_TYPE_STRING), 0
- * will be returned.
- * @param nelem The number of elements. If @p type is not an array type,
- * this value must be 1.
+ * @param	type	The value type.
+ * @param	data	The actual data to be queried, or NULL if unknown. If
+ *			NULL and the base type is not a fixed width type
+ *			(e.g. BHND_NVRAM_TYPE_STRING), 0 will be returned.
+ * @param	nelem	The number of elements. If @p type is not an array type,
+ *			this value must be 1.
  * 
- * @retval 0 If @p type has a variable width, and @p data is NULL.
- * @retval 0 If a @p nelem value greater than 1 is provided for a non-array
- * @p type.
- * @retval 0 If a @p nelem value of 0 is provided.
- * @retval 0 If the result would exceed the maximum value representable by
- * size_t.
- * @retval non-zero The size, in bytes, of @p type with @p nelem elements.
+ * @retval 0		If @p type has a variable width, and @p data is NULL.
+ * @retval 0		If a @p nelem value greater than 1 is provided for a
+ *			non-array @p type.
+ * @retval 0		If a @p nelem value of 0 is provided.
+ * @retval 0		If the result would exceed the maximum value
+ *			representable by size_t.
+ * @retval non-zero	The size, in bytes, of @p type with @p nelem elements.
  */
 size_t
 bhnd_nvram_value_size(bhnd_nvram_type type, const void *data, size_t nelem)
