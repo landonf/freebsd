@@ -748,40 +748,35 @@ bhnd_nvram_ident_octet_string(const char *inp, size_t ilen, char *delim)
 }
 
 /**
- * Coerce string @p inp to @p otype, writing the result to @p outp.
+ * Coerce string value desribed by @p input, writing the result to the buffer
+ * (and with the format) described by @p output.
  *
- * @param[out]		outp	On success, the value will be written to this 
- *				buffer. This argment may be NULL if the value
- *				is not desired.
- * @param[in,out]	olen	The capacity of @p outp. On success, will be set
- *				to the actual size of the requested value.
- * @param		otype	The data type to be written to @p outp.
- * @param		odelim	The default string field delimiter to be emitted
- *				when an @p otype of BHND_NVRAM_TYPE_STRING is
- *				provided. Ignored if @p hint defines a field
- *				delimiter format.
- * @param		inp	The string value to be coerced.
- * @param		ilen	The size of @p inp, in bytes.
- * @param		idelim	The string field delimiter to be used when
- *				parsing the input string. Ignored if @p hint
- *				defines a field delimiter format.
- * @param		hint	Variable formatting hint, or NULL.
+ * @param[in,out]	output	Output data descriptor.
+ * @param		input	Input data descriptor.
  *
  * @retval 0		success
- * @retval ENOMEM	If @p outp is non-NULL and a buffer of @p olen is too
- *			small to hold the requested value.
- * @retval EFTYPE	If the variable data cannot be coerced to @p otype.
- * @retval ERANGE	If value coercion would overflow @p otype.
+ * @retval ENOMEM	If the @p output data buffer is non-NULL, and the
+ *			provided @p output len is too small to hold the
+ *			requested value.
+ * @retval EFTYPE	If value coercion from the given @p input type to the
+ * 			specified @p output type is impossible.
+ * @retval ERANGE	If value coercion would overflow (or underflow) the
+ *			@p output integer type.
+ * @retval EFAULT	If @p ilen is not correctly aligned for elements of
+ *			type @p itype.
  */
 static int
-bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
-    char odelim, const char *inp, size_t ilen, char idelim,
-    struct bhnd_nvram_fmt_hint *hint)
+bhnd_nvram_coerce_string(bhnd_nvram_coerce_out_t *output,
+    const bhnd_nvram_coerce_in_t *input)
 {
 	const char	*cstr;
 	char		*cstr_buf, cstr_stack[512];
+	const void	*inp;
+	void		*outp;
 	size_t		 cstr_size, cstr_len;
 	size_t		 limit, nbytes;
+	bhnd_nvram_type	 otype_base;
+	char		 idelim, odelim;
 	bool		 is_octet_str, free_cstr_buf;
 	int		 error;
 
@@ -789,8 +784,17 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 	cstr_buf = NULL;
 	free_cstr_buf = false;
 
+	inp = input->data;
+	outp = output->data;
+	otype_base = bhnd_nvram_base_type(output->type);
+
+	/* Default string delimiters */
+	idelim = input->delim;
+	odelim = output->delim;
+
+	/* Determine output byte limit */
 	if (outp != NULL)
-		limit = *olen;
+		limit = *output->len;
 	else
 		limit = 0;
 
@@ -799,13 +803,13 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 	 * input delimiter as appropriate, and verify against the provided
 	 * formatting hint (if any).
 	 */
-	is_octet_str = bhnd_nvram_ident_octet_string(inp, ilen, &idelim);
-	if (hint != NULL &&
-	    hint->sfmt == BHND_NVRAM_SFMT_MACADDR &&
+	is_octet_str = bhnd_nvram_ident_octet_string(inp, input->len, &idelim);
+	if (input->hint != NULL &&
+	    input->hint->sfmt == BHND_NVRAM_SFMT_MACADDR &&
 	    !is_octet_str)
 	{
 		NVRAM_LOG("cannot format '%.*s' as MAC address\n",
-		    NVRAM_PRINT_WIDTH(ilen), inp);
+		    NVRAM_PRINT_WIDTH(input->len), inp);
 		return (EFTYPE);
 	}
 
@@ -817,10 +821,10 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 	 * We need a NUL-terminated instance of the string value
 	 * for parsing.
 	 */
-	cstr_len = strnlen(inp, ilen);
+	cstr_len = strnlen(inp, input->len);
 	cstr_size = cstr_len + 1;
 
-	if (cstr_size <= ilen) {
+	if (cstr_size <= input->len) {
 		/* String is already NUL terminated */
 		cstr = inp;
 	} else if (cstr_size <= sizeof(cstr_stack)) {
@@ -850,10 +854,10 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 	 * Parse the NUL-terminated string.
 	 */
 	for (const char *p = cstr; *p != '\0';) {
-		char				*endp;
-		size_t				 field_len;
-		int				 base;
-		bool				 is_int, is_negated;
+		char	*endp;
+		size_t	 field_len;
+		int	 base;
+		bool	 is_int, is_negated;
 		union {
 			unsigned long	u32;
 			long		s32;
@@ -912,7 +916,7 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 	nbytes += sizeof(_ctype);					\
 } while(0)
 
-		switch (otype) {
+		switch (otype_base) {
 		case BHND_NVRAM_TYPE_CHAR:
 		case BHND_NVRAM_TYPE_STRING:
 			/* Copy out the characters directly */
@@ -951,7 +955,8 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 			break;
 
 		default:
-			NVRAM_LOG("unhandled NVRAM output type: %d\n", otype);
+			NVRAM_LOG("unhandled NVRAM output type: %d\n",
+			    otype_base);
 			error = EFTYPE;
 			goto finished;
 		}
@@ -962,7 +967,7 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 		if (*p == idelim) {
 			p++;
 
-			if (otype == BHND_NVRAM_TYPE_STRING) {
+			if (otype_base == BHND_NVRAM_TYPE_STRING) {
 				if (limit > nbytes)
 					*((char *)outp + nbytes) = odelim;
 
@@ -972,7 +977,7 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 	}
 
 	/* If emitting a C string, append terminating NUL */
-	if (otype == BHND_NVRAM_TYPE_STRING) {
+	if (otype_base == BHND_NVRAM_TYPE_STRING) {
 		if (limit > nbytes)
 			*((char *)outp + nbytes) = '\0';
 
@@ -980,8 +985,8 @@ bhnd_nvram_coerce_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 	}
 
 	/* Provide the actual written length */
-	*olen = nbytes;
-	if (limit < *olen && outp != NULL) {
+	*output->len = nbytes;
+	if (limit < *output->len && outp != NULL) {
 		error = ENOMEM;
 	} else {
 		error = 0;
@@ -1456,9 +1461,7 @@ bhnd_nvram_coerce_value(bhnd_nvram_coerce_out_t *output,
 		case BHND_NVRAM_TYPE_CHAR_ARRAY:
 		case BHND_NVRAM_TYPE_STRING:
 		case BHND_NVRAM_TYPE_STRING_ARRAY:
-			return (bhnd_nvram_coerce_string(output->data,
-			    output->len, otype, output->delim, input->data,
-			    input->len, input->delim, input->hint));
+			return (bhnd_nvram_coerce_string(output, input));
 
 		case BHND_NVRAM_TYPE_UINT8:
 		case BHND_NVRAM_TYPE_UINT8_ARRAY:
