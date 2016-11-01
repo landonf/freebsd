@@ -366,7 +366,7 @@ bhnd_nvram_value_size(bhnd_nvram_type type, const void *data, size_t nelem)
 		return (0);
 
 	/* Non-array types must have an nelem value of 1 */
-	if (!bhnd_nvram_is_array_type(nelem) && nelem != 1)
+	if (!bhnd_nvram_is_array_type(type) && nelem != 1)
 		return (0);
 
 	switch (type) {
