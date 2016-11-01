@@ -675,6 +675,8 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 	union bhnd_nvram_sprom_storage	 storage;
 	union bhnd_nvram_sprom_storage	*inp;
 	union bhnd_nvram_sprom_intv	 intv;
+	bhnd_nvram_coerce_in_t		 vin;
+	bhnd_nvram_coerce_out_t		 vout;
 	bhnd_nvram_type			 var_btype;
 	size_t				 ilen, ipos, iwidth;
 	size_t				 nelem;
@@ -848,10 +850,21 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 
 			/* Perform coercion of the array element */
 			nbyte = iwidth;
-			error = bhnd_nvram_coerce_value(ptr, &nbyte, var_btype,
-			    BHND_NVRAM_CSTR_DELIM, &intv, sizeof(intv),
-			    intv_type, BHND_NVRAM_CSTR_DELIM, NULL);
-			if (error)
+
+			vin = (bhnd_nvram_coerce_in_t) {
+				.data = &intv,
+				.len = sizeof(intv),
+				.type = intv_type,
+				.delim = BHND_NVRAM_CSTR_DELIM,
+			};
+			vout = (bhnd_nvram_coerce_out_t) {
+				.data = ptr,
+				.len = &nbyte,
+				.type = var_btype,
+				.delim = BHND_NVRAM_CSTR_DELIM
+			};
+
+			if ((error = bhnd_nvram_coerce_value(&vout, &vin)))
 				return (error);
 
 			/* Clear temporary state */
@@ -893,8 +906,21 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 		.flags = var->flags
 	};
 
-	return (bhnd_nvram_coerce_value(buf, len, otype, BHND_NVRAM_CSTR_DELIM,
-	    inp, ilen, var->type, BHND_NVRAM_CSTR_DELIM, &hint));
+	vin = (bhnd_nvram_coerce_in_t) {
+		.data = inp,
+		.len = ilen,
+		.type = var->type,
+		.delim = BHND_NVRAM_CSTR_DELIM,
+		.hint = &hint
+	};
+	vout = (bhnd_nvram_coerce_out_t) {
+		.data = buf,
+		.len = len,
+		.type = otype,
+		.delim = BHND_NVRAM_CSTR_DELIM
+	};
+
+	return (bhnd_nvram_coerce_value(&vout, &vin));
 }
 
 static const void *

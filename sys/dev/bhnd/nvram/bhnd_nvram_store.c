@@ -232,6 +232,9 @@ bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
 
 	/* Does an uncommitted value exist? */
 	if (nvlist_exists_string(sc->pending, name)) {
+		bhnd_nvram_coerce_in_t	vin;
+		bhnd_nvram_coerce_out_t	vout;
+
 		/* Uncommited value exists, is not a deletion */
 		inp = nvlist_get_string(sc->pending, name);
 		ilen = strlen(inp) + 1;
@@ -239,9 +242,21 @@ bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
 
 		/* Coerce borrowed data reference before releasing
 		 * our lock. */
-		error = bhnd_nvram_coerce_value(buf, len, type,
-		    BHND_NVRAM_CSTR_DELIM, inp, ilen, itype,
-		    BHND_NVRAM_CSTR_DELIM, NULL);
+		vin = (bhnd_nvram_coerce_in_t) {
+			.data = inp,
+			.len = ilen,
+			.type = itype,
+			.delim = BHND_NVRAM_CSTR_DELIM,
+		};
+		vout = (bhnd_nvram_coerce_out_t) {
+			.data = buf,
+			.len = len,
+			.type = type,
+			.delim = BHND_NVRAM_CSTR_DELIM
+		};
+
+		error = bhnd_nvram_coerce_value(&vout, &vin);
+
 		BHND_NVSTORE_UNLOCK(sc);
 
 		return (error);

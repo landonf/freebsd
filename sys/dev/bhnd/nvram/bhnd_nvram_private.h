@@ -54,7 +54,10 @@ extern const uint8_t bhnd_nvram_crc8_tab[];
 
 /* Forward declarations */
 struct bhnd_nvram_vardefn;
-struct bhnd_nvram_fmt_hint;
+
+typedef struct bhnd_nvram_fmt_hint bhnd_nvram_fmt_hint_t;
+typedef struct bhnd_nvram_coerce_in bhnd_nvram_coerce_in_t;
+typedef struct bhnd_nvram_coerce_out bhnd_nvram_coerce_out_t;
 
 #ifdef _KERNEL
 
@@ -162,15 +165,12 @@ int				 bhnd_nvram_parse_env(const char *env,
 				     const char **name, size_t *name_len,
 				     const char **value, size_t *value_len);
 
-int				 bhnd_nvram_coerce_value(void *outp,
-				     size_t *olen, bhnd_nvram_type otype,
-				     char odelim, const void *inp, size_t ilen,
-				     bhnd_nvram_type itype, char idelim,
-				     struct bhnd_nvram_fmt_hint *hint);
+int				 bhnd_nvram_coerce_value(
+				     bhnd_nvram_coerce_out_t *output,
+				     const bhnd_nvram_coerce_in_t *input);
 
 bool				 bhnd_nvram_validate_name(const char *name,
 				     size_t name_len);
-
 
 /**
  * Calculate CRC-8 over @p buf using the Broadcom SPROM/NVRAM CRC-8
@@ -240,6 +240,29 @@ struct bhnd_nvram_fmt_hint {
 	uint32_t		 flags;	/**< BHND_NVRAM_VF_* flags */
 };
 
+/** Value coercion input descriptor */
+struct bhnd_nvram_coerce_in {
+	const void		*data;	/**< input buffer */
+	size_t			 len;	/**< input buffer length, in bytes */
+	bhnd_nvram_type		 type;	/**< input data type */
+	char			 delim;	/**< default input string delimiter */
+	bhnd_nvram_fmt_hint_t	*hint;	/**< format hint, or NULL */
+};
+
+
+/** Value coercion output descriptor */
+struct bhnd_nvram_coerce_out {
+	void		*data;	/**< output buffer, or NULL to calculate the
+				     required output buffer capacity */
+	size_t		*len;	/**< output buffer capacity. on success, or if
+				     insufficient space is available, will be
+				     set to the required buffer size */
+     	bhnd_nvram_type	 type;	/**< output data type requested */
+	size_t		*nelem;	/**< ignored on input; on success and non-NULL,
+				     will be set to the actual value element
+				     count. */
+	char		 delim;	/**< default output string delimiter */
+};
 
 /** NVRAM variable definition */
 struct bhnd_nvram_vardefn {

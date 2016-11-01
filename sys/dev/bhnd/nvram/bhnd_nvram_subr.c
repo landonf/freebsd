@@ -1422,50 +1422,38 @@ bhnd_nvram_coerce_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 }
 
 /**
- * Coerce value @p inp of type @p itype to @p otype, writing the
- * result to @p outp.
+ * Coerce value desribed by @p input, writing the result to the buffer
+ * (and with the format) described by @p output.
  *
- * @param[out]		outp	On success, the value will be written to this 
- *				buffer. This argment may be NULL if the value
- *				is not desired.
- * @param[in,out]	olen	The capacity of @p outp. On success, will be set
- *				to the actual size of the requested value.
- * @param		otype	The data type to be written to @p outp.
- * @param		odelim	The default string field delimiter to be emitted
- *				when an @p otype of BHND_NVRAM_TYPE_STRING is
- *				provided. Ignored if @p hint defines a field
- *				delimiter format.
- * @param		inp	The value to be coerced.
- * @param		ilen	The size of @p inp, in bytes.
- * @param		itype	The base data type of @p inp.
- * @param		idelim	The string field delimiter to be used when
- *				parsing an @p itype of BHND_NVRAM_TYPE_STRING.
- *				Ignored if @p hint defines a field delimiter
- *				format.
- * @param		hint	Variable formatting hint, or NULL.
+ * @param[in,out]	output	Output data descriptor.
+ * @param		input	Input data descriptor.
  *
  * @retval 0		success
- * @retval ENOMEM	If @p outp is non-NULL and a buffer of @p olen is too
- *			small to hold the requested value.
- * @retval EFTYPE	If the variable data cannot be coerced to @p otype.
- * @retval ERANGE	If value coercion would overflow @p otype.
+ * @retval ENOMEM	If the @p output data buffer is non-NULL, and the
+ *			provided @p output len is too small to hold the
+ *			requested value.
+ * @retval EFTYPE	If value coercion from the given @p input type to the
+ * 			specified @p output type is impossible.
+ * @retval ERANGE	If value coercion would overflow (or underflow) the
+ *			@p output integer type.
  * @retval EFAULT	If @p ilen is not correctly aligned for elements of
  *			type @p itype.
  */
 int
-bhnd_nvram_coerce_value(void *outp, size_t *olen, bhnd_nvram_type otype,
-    char odelim, const void *inp, size_t ilen, bhnd_nvram_type itype,
-    char idelim, struct bhnd_nvram_fmt_hint *hint)
+bhnd_nvram_coerce_value(bhnd_nvram_coerce_out_t *output,
+    const bhnd_nvram_coerce_in_t *input)
 {
 	// XXX TODO: nelem support
-	otype = bhnd_nvram_base_type(otype);
-	itype = bhnd_nvram_base_type(itype);
+	bhnd_nvram_type otype, itype;
+	otype = bhnd_nvram_base_type(output->type);
+	itype = bhnd_nvram_base_type(input->type);
 
 	switch (itype) {
 		case BHND_NVRAM_TYPE_CHAR:
 		case BHND_NVRAM_TYPE_STRING:
-			return (bhnd_nvram_coerce_string(outp, olen, otype,
-			    odelim, inp, ilen, idelim, hint));
+			return (bhnd_nvram_coerce_string(output->data,
+			    output->len, otype, output->delim, input->data,
+			    input->len, input->delim, input->hint));
 
 		case BHND_NVRAM_TYPE_UINT8:
 		case BHND_NVRAM_TYPE_UINT16:
@@ -1473,8 +1461,9 @@ bhnd_nvram_coerce_value(void *outp, size_t *olen, bhnd_nvram_type otype,
 		case BHND_NVRAM_TYPE_INT8:
 		case BHND_NVRAM_TYPE_INT16:
 		case BHND_NVRAM_TYPE_INT32:
-			return (bhnd_nvram_coerce_int(outp, olen, otype, odelim,
-			    inp, ilen, itype, hint));
+			return (bhnd_nvram_coerce_int(output->data,
+			    output->len, otype, output->delim, input->data,
+			    input->len, itype, input->hint));
 
 		default:
 			NVRAM_LOG("unhandled NVRAM input type: %d\n", itype);
