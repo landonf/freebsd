@@ -246,6 +246,48 @@ vm_fault_dirty(vm_map_entry_t entry, vm_page_t m, vm_prot_t prot,
 		vm_pager_page_unswapped(m);
 }
 
+static void
+vm_fault_fill_hold(vm_page_t *m_hold, vm_page_t m)
+{
+
+	if (m_hold != NULL) {
+		*m_hold = m;
+		vm_page_lock(m);
+		vm_page_hold(m);
+		vm_page_unlock(m);
+	}
+}
+
+/*
+ * Unlocks fs.first_object and fs.map on success.
+ */
+static int
+vm_fault_soft_fast(struct faultstate *fs, vm_offset_t vaddr, vm_prot_t prot,
+    int fault_type, int fault_flags, boolean_t wired, vm_page_t *m_hold)
+{
+	vm_page_t m;
+	int rv;
+
+	MPASS(fs->vp == NULL);
+	m = vm_page_lookup(fs->first_object, fs->first_pindex);
+	/* A busy page can be mapped for read|execute access. */
+	if (m == NULL || ((prot & VM_PROT_WRITE) != 0 &&
+	    vm_page_busied(m)) || m->valid != VM_PAGE_BITS_ALL)
+		return (KERN_FAILURE);
+	rv = pmap_enter(fs->map->pmap, vaddr, m, prot, fault_type |
+	    PMAP_ENTER_NOSLEEP | (wired ? PMAP_ENTER_WIRED : 0), 0);
+	if (rv != KERN_SUCCESS)
+		return (rv);
+	vm_fault_fill_hold(m_hold, m);
+	vm_fault_dirty(fs->entry, m, prot, fault_type, fault_flags, false);
+	VM_OBJECT_RUNLOCK(fs->first_object);
+	if (!wired)
+		vm_fault_prefault(fs, vaddr, PFBAK, PFFOR);
+	vm_map_lookup_done(fs->map, fs->entry);
+	curthread->td_ru.ru_minflt++;
+	return (KERN_SUCCESS);
+}
+
 /*
  *	vm_fault:
  *
@@ -290,12 +332,12 @@ int
 vm_fault_hold(vm_map_t map, vm_offset_t vaddr, vm_prot_t fault_type,
     int fault_flags, vm_page_t *m_hold)
 {
-	vm_prot_t prot;
-	vm_object_t next_object;
 	struct faultstate fs;
 	struct vnode *vp;
+	vm_object_t next_object, retry_object;
 	vm_offset_t e_end, e_start;
-	vm_page_t m;
+	vm_pindex_t retry_pindex;
+	vm_prot_t prot, retry_prot;
 	int ahead, alloc_req, behind, cluster_offset, error, era, faultcount;
 	int locked, map_generation, nera, result, rv;
 	u_char behavior;
@@ -375,36 +417,15 @@ RetryFault:;
 	    (fs.first_object->flags & OBJ_TMPFS_NODE) == 0) ||
 	    (fs.first_object->flags & OBJ_MIGHTBEDIRTY) != 0)) {
 		VM_OBJECT_RLOCK(fs.first_object);
-		if ((prot & VM_PROT_WRITE) != 0 &&
-		    (fs.first_object->type == OBJT_VNODE ||
-		    (fs.first_object->flags & OBJ_TMPFS_NODE) != 0) &&
-		    (fs.first_object->flags & OBJ_MIGHTBEDIRTY) == 0)
-			goto fast_failed;
-		m = vm_page_lookup(fs.first_object, fs.first_pindex);
-		/* A busy page can be mapped for read|execute access. */
-		if (m == NULL || ((prot & VM_PROT_WRITE) != 0 &&
-		    vm_page_busied(m)) || m->valid != VM_PAGE_BITS_ALL)
-			goto fast_failed;
-		result = pmap_enter(fs.map->pmap, vaddr, m, prot,
-		   fault_type | PMAP_ENTER_NOSLEEP | (wired ? PMAP_ENTER_WIRED :
-		   0), 0);
-		if (result != KERN_SUCCESS)
-			goto fast_failed;
-		if (m_hold != NULL) {
-			*m_hold = m;
-			vm_page_lock(m);
-			vm_page_hold(m);
-			vm_page_unlock(m);
+		if ((prot & VM_PROT_WRITE) == 0 ||
+		    (fs.first_object->type != OBJT_VNODE &&
+		    (fs.first_object->flags & OBJ_TMPFS_NODE) == 0) ||
+		    (fs.first_object->flags & OBJ_MIGHTBEDIRTY) != 0) {
+			rv = vm_fault_soft_fast(&fs, vaddr, prot, fault_type,
+			    fault_flags, wired, m_hold);
+			if (rv == KERN_SUCCESS)
+				return (rv);
 		}
-		vm_fault_dirty(fs.entry, m, prot, fault_type, fault_flags,
-		    false);
-		VM_OBJECT_RUNLOCK(fs.first_object);
-		if (!wired)
-			vm_fault_prefault(&fs, vaddr, PFBAK, PFFOR);
-		vm_map_lookup_done(fs.map, fs.entry);
-		curthread->td_ru.ru_minflt++;
-		return (KERN_SUCCESS);
-fast_failed:
 		if (!VM_OBJECT_TRYUPGRADE(fs.first_object)) {
 			VM_OBJECT_RUNLOCK(fs.first_object);
 			VM_OBJECT_WLOCK(fs.first_object);
@@ -420,8 +441,7 @@ fast_failed:
 	 * they will stay around as well.
 	 *
 	 * Bump the paging-in-progress count to prevent size changes (e.g. 
-	 * truncation operations) during I/O.  This must be done after
-	 * obtaining the vnode lock in order to avoid possible deadlocks.
+	 * truncation operations) during I/O.
 	 */
 	vm_object_reference_locked(fs.first_object);
 	vm_object_pip_add(fs.first_object, 1);
@@ -559,11 +579,18 @@ fast_failed:
 				unlock_and_deallocate(&fs);
 				VM_WAITPFAULT;
 				goto RetryFault;
-			} else if (fs.m->valid == VM_PAGE_BITS_ALL)
-				break;
+			}
 		}
 
 readrest:
+		/*
+		 * At this point, we have either allocated a new page or found
+		 * an existing page that is only partially valid.
+		 *
+		 * We hold a reference on the current object and the page is
+		 * exclusive busied.
+		 */
+
 		/*
 		 * If the pager for the current object might have the page,
 		 * then determine the number of additional pages to read and
@@ -633,21 +660,32 @@ readrest:
 		 */
 		if (fs.object->type != OBJT_DEFAULT) {
 			/*
-			 * We have either allocated a new page or found an
-			 * existing page that is only partially valid.  We
-			 * hold a reference on fs.object and the page is
-			 * exclusive busied.
+			 * Release the map lock before locking the vnode or
+			 * sleeping in the pager.  (If the current object has
+			 * a shadow, then an earlier iteration of this loop
+			 * may have already unlocked the map.)
 			 */
 			unlock_map(&fs);
 
 			if (fs.object->type == OBJT_VNODE &&
 			    (vp = fs.object->handle) != fs.vp) {
+				/*
+				 * Perform an unlock in case the desired vnode
+				 * changed while the map was unlocked during a
+				 * retry.
+				 */
 				unlock_vp(&fs);
-				locked = VOP_ISLOCKED(vp);
 
+				locked = VOP_ISLOCKED(vp);
 				if (locked != LK_EXCLUSIVE)
 					locked = LK_SHARED;
-				/* Do not sleep for vnode lock while fs.m is busy */
+
+				/*
+				 * We must not sleep acquiring the vnode lock
+				 * while we have the page exclusive busied or
+				 * the object's paging-in-progress count
+				 * incremented.  Otherwise, we could deadlock.
+				 */
 				error = vget(vp, locked | LK_CANRECURSE |
 				    LK_NOWAIT, curthread);
 				if (error != 0) {
@@ -928,10 +966,6 @@ readrest:
 	 * lookup.
 	 */
 	if (!fs.lookup_still_valid) {
-		vm_object_t retry_object;
-		vm_pindex_t retry_pindex;
-		vm_prot_t retry_prot;
-
 		if (!vm_map_trylock_read(fs.map)) {
 			release_page(&fs);
 			unlock_and_deallocate(&fs);
