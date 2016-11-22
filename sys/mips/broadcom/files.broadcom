@@ -11,11 +11,6 @@ mips/broadcom/bcm_nvram_cfe.c		optional bhnd siba_nexus cfe | \
 						 bhnd bcma_nexus cfe
 mips/broadcom/bcm_pmu.c			standard
 mips/mips/tick.c			standard
-mips/mips/mips_pic.c			standard
-kern/subr_intr.c			standard
-kern/pic_if.m				standard
-
-kern/msi_if.m				optional intrng
 
 mips/broadcom/uart_cpu_chipc.c		optional uart
 mips/broadcom/uart_bus_chipc.c		optional uart

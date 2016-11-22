@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2015 Oleksandr Tymoshenko
+ * Copyright 2015 Alexander Kabaev <kan@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -22,8 +22,15 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- * 
+ *
  * $FreeBSD$
  */
 
-#include "am335x-evm.dts"
+#ifndef JZ4780_CLOCK_H
+#define JZ4780_CLOCK_H
+
+extern int jz4780_ehci_enable(void);
+extern int jz4780_ohci_enable(void);
+extern int jz4780_otg_enable(void);
+
+#endif
