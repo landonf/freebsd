@@ -440,8 +440,6 @@ bhnd_nvram_data_generic_rp_getvar(struct bhnd_nvram_data *nv, void *cookiep,
 {
 	const struct bhnd_nvram_vardefn	*vdefn;
 	struct bhnd_nvram_fmt_hint	*hint, vhint;
-	bhnd_nvram_coerce_in_t		 vin;
-	bhnd_nvram_coerce_out_t		 vout;
 	const char			*name;
 	const void			*vptr;
 	size_t				 vlen;
@@ -449,7 +447,6 @@ bhnd_nvram_data_generic_rp_getvar(struct bhnd_nvram_data *nv, void *cookiep,
 
 	BHND_NV_ASSERT(bhnd_nvram_data_caps(nv) & BHND_NVRAM_DATA_CAP_READ_PTR,
 	    ("instance does not advertise READ_PTR support"));
-
 
 	/* Check the variable definition table for a matching entry; if
 	 * it exists, use it to populate a formatting hint. */
@@ -469,21 +466,8 @@ bhnd_nvram_data_generic_rp_getvar(struct bhnd_nvram_data *nv, void *cookiep,
 		return (EINVAL);
 
 	/* Attempt value type coercion */
-	vin = (bhnd_nvram_coerce_in_t) {
-		.data = vptr,
-		.len = vlen,
-		.type = vtype,
-		.delim = BHND_NVRAM_CSTR_DELIM,
-		.hint = hint
-	};
-	vout = (bhnd_nvram_coerce_out_t) {
-		.data = buf,
-		.len = len,
-		.type = type,
-		.delim = BHND_NVRAM_CSTR_DELIM
-	};
-
-	return (bhnd_nvram_coerce_value(&vout, &vin));
+	return (bhnd_nvram_coerce_bytes(buf, len, type, vptr, vlen, vtype,
+	    hint));
 }
 
 /**

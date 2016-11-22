@@ -127,7 +127,6 @@ union bhnd_nvram_sprom_storage {
 	char		ch[SPROM_ARRAY_MAXLEN];
 };
 
-
 /**
  * SPROM common integer value representation.
  */

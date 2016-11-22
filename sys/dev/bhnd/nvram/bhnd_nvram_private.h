@@ -36,8 +36,9 @@
  * Private BHND NVRAM definitions.
  */
 
-#ifdef _KERNEL
 #include <sys/param.h>
+
+#ifdef _KERNEL
 #include <sys/malloc.h>
 #else
 #include <stdbool.h>
@@ -56,8 +57,6 @@ extern const uint8_t bhnd_nvram_crc8_tab[];
 struct bhnd_nvram_vardefn;
 
 typedef struct bhnd_nvram_fmt_hint bhnd_nvram_fmt_hint_t;
-typedef struct bhnd_nvram_coerce_in bhnd_nvram_coerce_in_t;
-typedef struct bhnd_nvram_coerce_out bhnd_nvram_coerce_out_t;
 
 #ifdef _KERNEL
 
@@ -70,6 +69,7 @@ MALLOC_DECLARE(M_BHND_NVRAM);
 #define	bhnd_nv_isspace(c)	isspace(c)
 #define	bhnd_nv_isdigit(c)	isdigit(c)
 #define	bhnd_nv_isxdigit(c)	isxdigit(c)
+#define	bhnd_nv_toupper(c)	toupper(c)
 
 #define	bhnd_nv_malloc(size)		malloc((size), M_BHND_NVRAM, M_WAITOK)
 #define	bhnd_nv_calloc(n, size)		malloc((n) * (size), M_BHND_NVRAM, \
@@ -87,12 +87,6 @@ MALLOC_DECLARE(M_BHND_NVRAM);
 
 #define	BHND_NV_VERBOSE			(bootverbose)
 #define	BHND_NV_PANIC(...)		panic(__VA_ARGS__)
-#define	BHND_NV_DEVLOG(dev, fmt, ...)	do {		\
-	if (dev != NULL)				\
-		device_printf(dev, fmt, ##__VA_ARGS__);	\
-	else						\
-		BHND_NV_LOG(fmt, ##__VA_ARGS__);	\
-} while(0)
 #define	BHND_NV_LOG(fmt, ...)		\
 	printf("%s: " fmt, __FUNCTION__, ##__VA_ARGS__)
 
@@ -115,6 +109,8 @@ MALLOC_DECLARE(M_BHND_NVRAM);
 #define	bhnd_nv_isspace(c)	((c) == ' ' || ((c) >= '\t' && (c) <= '\r'))
 #define	bhnd_nv_isdigit(c)	isdigit(c)
 #define	bhnd_nv_isxdigit(c)	isxdigit(c)
+#define	bhnd_nv_toupper(c)	((c) -	\
+    (('a' - 'A') * ((c) >= 'a' && (c) <= 'z')))
 
 #define	bhnd_nv_malloc(size)		malloc((size))
 #define	bhnd_nv_calloc(n, size)		calloc((n), (size))
@@ -133,7 +129,6 @@ MALLOC_DECLARE(M_BHND_NVRAM);
 	fprintf(stderr, "panic: " fmt "\n", ##__VA_ARGS__);	\
 	abort();						\
 } while(0)
-#define	BHND_NV_DEVLOG(dev, fmt, ...)	BHND_NV_LOG(fmt, ## __VA_ARGS__)
 #define	BHND_NV_LOG(fmt, ...)					\
 	fprintf(stderr, "%s: " fmt, __FUNCTION__, ##__VA_ARGS__)
 
@@ -152,31 +147,49 @@ bhnd_nv_ummin(uintmax_t a, uintmax_t b)
 
 #endif /* _KERNEL */
 
+#ifdef BHND_NV_VERBOSE
+#define	BHND_NV_DEBUG(...)	BHND_NV_LOG(__VA_ARGS__)
+#else /* !BHND_NV_VERBOSE */
+#define	BHND_NV_DEBUG(...)
+#endif /* BHND_NV_VERBOSE */
+
+/* Limit a size_t value to a suitable range for use as a printf string field
+ * width */
+#define	BHND_NV_PRINT_WIDTH(_len)	\
+	((_len) > (INT_MAX) ? (INT_MAX) : (int)(_len))
+
 int				 bhnd_nvram_value_nelem(bhnd_nvram_type type,
 				     const void *data, size_t len,
 				     size_t *nelem);
 size_t				 bhnd_nvram_value_size(bhnd_nvram_type type,
-				     const void *data, size_t nelem);
-
-int				 bhnd_nvram_input_descriptor(
-				     bhnd_nvram_coerce_in_t *input,
-				     const void *inp, size_t ilen,
-				     bhnd_nvram_type itype,
-				     const bhnd_nvram_fmt_hint_t *hint);
+				     const void *data, size_t nbytes, 
+				     size_t nelem);
 
 const struct bhnd_nvram_vardefn	*bhnd_nvram_find_vardefn(const char *varname);
 const struct bhnd_nvram_vardefn	*bhnd_nvram_get_vardefn(size_t id);
 size_t				 bhnd_nvram_get_vardefn_id(
 				     const struct bhnd_nvram_vardefn *defn);
 
+int				 bhnd_nvram_parse_int(const char *s,
+				     size_t maxlen,  u_int base, size_t *nbytes,
+				     void *outp, size_t *olen,
+				     bhnd_nvram_type otype);
+
 int				 bhnd_nvram_parse_env(const char *env,
 				     size_t env_len, char delim,
 				     const char **name, size_t *name_len,
 				     const char **value, size_t *value_len);
 
-int				 bhnd_nvram_coerce_value(
-				     bhnd_nvram_coerce_out_t *output,
-				     const bhnd_nvram_coerce_in_t *input);
+size_t				 bhnd_nvram_parse_field(const char **inp,
+				     size_t ilen, char delim);
+size_t				 bhnd_nvram_trim_field(const char **inp,
+				     size_t ilen, char delim);
+
+int				 bhnd_nvram_coerce_bytes(void *outp,
+				     size_t *olen, bhnd_nvram_type otype,
+				     const void *inp, size_t ilen,
+				     bhnd_nvram_type itype,
+				     bhnd_nvram_fmt_hint_t *hint);
 
 bool				 bhnd_nvram_validate_name(const char *name,
 				     size_t name_len);
@@ -210,7 +223,7 @@ typedef enum {
 					     octets, separated with ':') */
 	BHND_NVRAM_SFMT_LEDDC	= 4,	/**< LED PWM duty-cycle (2 bytes --
 					     on/off) */
-	BHND_NVRAM_SFMT_CCODE	= 5	/**< count code format (2-3 ASCII
+	BHND_NVRAM_SFMT_CCODE	= 5	/**< country code format (2-3 ASCII
 					     chars, or hex string) */
 } bhnd_nvram_sfmt;
 
@@ -238,39 +251,12 @@ enum {
 	SPROM_LAYOUT_MAGIC_NONE	= (1<<0),	
 };
 
-/** Default string field delimiter when parsing Broadcom NVRAM values */
-#define	BHND_NVRAM_CSTR_DELIM	','
-
 /**
  * Variable formatting hint.
  */
 struct bhnd_nvram_fmt_hint {
 	bhnd_nvram_sfmt		 sfmt;	/**< variable string format */
 	uint32_t		 flags;	/**< BHND_NVRAM_VF_* flags */
-};
-
-/** Value coercion input descriptor */
-struct bhnd_nvram_coerce_in {
-	const void			*data;	/**< input buffer */
-	size_t				 len;	/**< input buffer length */
-	bhnd_nvram_type			 type;	/**< input data type */
-	char				 delim;	/**< input string delimiter */
-	const bhnd_nvram_fmt_hint_t	*hint;	/**< format hint, or NULL */
-};
-
-
-/** Value coercion output descriptor */
-struct bhnd_nvram_coerce_out {
-	void		*data;	/**< output buffer, or NULL to calculate the
-				     required output buffer capacity */
-	size_t		*len;	/**< output buffer capacity. on success, or if
-				     insufficient space is available, will be
-				     set to the required buffer size */
-     	bhnd_nvram_type	 type;	/**< output data type requested */
-	size_t		*nelem;	/**< ignored on input; on success and non-NULL,
-				     will be set to the actual value element
-				     count. */
-	char		 delim;	/**< default output string delimiter */
 };
 
 /** NVRAM variable definition */
@@ -343,6 +329,8 @@ extern const size_t bhnd_sprom_num_layouts;
 						     count follows as U8 */
 #define	SPROM_OPCODE_VAR_END		0x02	/**< marks end of variable
 						     definition */
+#define	SPROM_OPCODE_TYPE		0x03	/**< input type follows as U8
+						     (see BHND_NVRAM_TYPE_*) */
 #define	SPROM_OPCODE_VAR_IMM		0x10	/**< variable ID (imm) */
 #define	SPROM_OPCODE_VAR_REL_IMM	0x20	/**< relative variable ID
 						     (last ID + imm) */

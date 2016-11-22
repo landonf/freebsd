@@ -175,6 +175,7 @@ function main(_i) {
 	SPROM_OPCODE_SHIFT		= "SPROM_OPCODE_SHIFT"
 	SPROM_OPCODE_OFFSET_REL_IMM	= "SPROM_OPCODE_OFFSET_REL_IMM"
 	SPROM_OPCODE_OFFSET		= "SPROM_OPCODE_OFFSET"
+	SPROM_OPCODE_TYPE		= "SPROM_OPCODE_TYPE"
 	SPROM_OPCODE_TYPE_IMM		= "SPROM_OPCODE_TYPE_IMM"
 	SPROM_OPCODE_DO_BINDN_IMM	= "SPROM_OPCODE_DO_BINDN_IMM"
 	SPROM_OPCODE_DO_BIND		= "SPROM_OPCODE_DO_BIND"
@@ -273,7 +274,9 @@ function main(_i) {
 		class_add_prop(Type, p_width, "width")
 		class_add_prop(Type, p_signed, "signed")
 		class_add_prop(Type, p_const, "const")
+		class_add_prop(Type, p_const_val, "const_val")
 		class_add_prop(Type, p_array_const, "array_const")
+		class_add_prop(Type, p_array_const_val, "array_const_val")
 		class_add_prop(Type, p_default_fmt, "default_fmt")
 		class_add_prop(Type, p_mask, "mask")
 
@@ -294,25 +297,25 @@ function main(_i) {
 	CharMax		=  Int8Max
 
 	UInt8	= type_new("u8", 1, 0, "BHND_NVRAM_TYPE_UINT8",
-	   "BHND_NVRAM_TYPE_UINT8_ARRAY", SFmtHex, UInt8Max)
+	   "BHND_NVRAM_TYPE_UINT8_ARRAY", SFmtHex, UInt8Max, 0, 16)
 
 	UInt16	= type_new("u16", 2, 0, "BHND_NVRAM_TYPE_UINT16",
-	   "BHND_NVRAM_TYPE_UINT16_ARRAY", SFmtHex, UInt16Max)
+	   "BHND_NVRAM_TYPE_UINT16_ARRAY", SFmtHex, UInt16Max, 1, 17)
 
 	UInt32	= type_new("u32", 4, 0, "BHND_NVRAM_TYPE_UINT32",
-	   "BHND_NVRAM_TYPE_UINT32_ARRAY", SFmtHex, UInt32Max)
+	   "BHND_NVRAM_TYPE_UINT32_ARRAY", SFmtHex, UInt32Max, 2, 18)
 
 	Int8	= type_new("i8", 1, 1, "BHND_NVRAM_TYPE_INT8",
-	   "BHND_NVRAM_TYPE_INT8_ARRAY", SFmtDec, UInt8Max)
+	   "BHND_NVRAM_TYPE_INT8_ARRAY", SFmtDec, UInt8Max, 4, 20)
 
 	Int16	= type_new("i16", 2, 1, "BHND_NVRAM_TYPE_INT16",
-	   "BHND_NVRAM_TYPE_INT16_ARRAY", SFmtDec, UInt16Max)
+	   "BHND_NVRAM_TYPE_INT16_ARRAY", SFmtDec, UInt16Max, 5, 21)
 
 	Int32	= type_new("i32", 4, 1, "BHND_NVRAM_TYPE_INT32",
-	   "BHND_NVRAM_TYPE_INT32_ARRAY", SFmtDec, UInt32Max)
+	   "BHND_NVRAM_TYPE_INT32_ARRAY", SFmtDec, UInt32Max, 6, 22)
 
 	Char	= type_new("char", 1, 1, "BHND_NVRAM_TYPE_CHAR",
-	   "BHND_NVRAM_TYPE_CHAR_ARRAY", SFmtHex, UInt8Max)
+	   "BHND_NVRAM_TYPE_CHAR_ARRAY", SFmtHex, UInt8Max, 8, 24)
 
 	BaseTypes = map_new()
 		map_set(BaseTypes, get(UInt8,	p_name), UInt8)
@@ -322,6 +325,9 @@ function main(_i) {
 		map_set(BaseTypes, get(Int16,	p_name), Int16)
 		map_set(BaseTypes, get(Int32,	p_name), Int32)
 		map_set(BaseTypes, get(Char,	p_name), Char)
+
+	BaseTypesArray = map_to_array(BaseTypes)
+	BaseTypesCount = array_size(BaseTypesArray)
 
 	# Variable Flags
 	VFlag = class_new("VFlag")
@@ -518,8 +524,8 @@ function write_header(output_vars, _noutput_vars, _var,
 
 # Write the private data header (output type DATA)
 function write_data(output_vars, _noutput_vars, _var, _nvram, _layouts,
-    _nlayouts, _layout, _revs, _rev, _rev_start, _rev_end, _srom_table,
-    _nsrom_table, _i, _j)
+    _nlayouts, _layout, _revs, _rev, _rev_start, _rev_end, _base_type,
+    _srom_table, _nsrom_table, _i, _j)
 {
 	_nvram = parser_state_get_context(NVRAM)
 	_layouts = get(_nvram, p_srom_layouts)
@@ -563,7 +569,22 @@ function write_data(output_vars, _noutput_vars, _var, _nvram, _layouts,
 	output_depth--
 	emit("};\n")
 	emit("const size_t bhnd_nvram_num_vardefns = " _noutput_vars ";\n")
-	
+
+	# Write static asserts for raw type constant values that must be kept
+	# synchronized with the code
+	for (_i = 0; _i < BaseTypesCount; _i++) {
+		_base_type = array_get(BaseTypesArray, _i)
+
+		emit(sprintf("_Static_assert(%s == %u, \"%s\");\n",
+		    type_get_const(_base_type), type_get_const_val(_base_type),
+		    "type constant out of sync"))
+
+		emit(sprintf("_Static_assert(%s == %u, \"%s\");\n",
+		    get(_base_type, p_array_const),
+		    get(_base_type, p_array_const_val),
+		    "array type constant out of sync"))
+	}
+
 	# Write all top-level bhnd_sprom_layout entries
 	emit("/* SPROM layouts */\n")
 	emit("const struct bhnd_sprom_layout bhnd_sprom_layouts[] = {\n")
@@ -996,9 +1017,16 @@ function srom_ops_emit_type(opstream, type, _base_type, _prev_type, _prev_mask,
 	set(opstream, p_type, _base_type)
 	set(opstream, p_mask, _default_mask)
 
-	# Emit opcode
-	srom_ops_emit_opcode(opstream,
-	    SPROM_OPCODE_TYPE_IMM "|" type_get_const(_base_type))
+	# Emit opcode.
+	if (type_get_const_val(_base_type) <= SPROM_OP_IMM_MAX) {
+		# Single byte IMM encoding
+		srom_ops_emit_opcode(opstream,
+		    SPROM_OPCODE_TYPE_IMM "|" type_get_const(_base_type))
+	} else {
+		# Two byte encoding
+		srom_ops_emit_opcode(opstream, SPROM_OPCODE_TYPE,
+		    type_get_const(_base_type))
+	}
 }
 
 # Emit OPCODE_MASK (if necessary) for a new mask value
@@ -2418,7 +2446,7 @@ function map_to_array(map, _key, _prefix, _values) {
 
 # Create a new Type instance
 function type_new(name, width, signed, constant, array_constant, fmt, mask,
-    _obj)
+    constant_value, array_constant_value, _obj)
 {
 	obj_assert_class(fmt, SFmt)
 
@@ -2427,7 +2455,9 @@ function type_new(name, width, signed, constant, array_constant, fmt, mask,
 	set(_obj, p_width, width)
 	set(_obj, p_signed, signed)
 	set(_obj, p_const, constant)
+	set(_obj, p_const_val, constant_value)
 	set(_obj, p_array_const, array_constant)
+	set(_obj, p_array_const_val, array_constant_value)
 	set(_obj, p_default_fmt, fmt)
 	set(_obj, p_mask, mask)
 
@@ -2477,6 +2507,15 @@ function type_get_const(type) {
 
 	obj_assert_class(type, Type)
 	return (get(type, p_const))
+}
+
+# Return the type's C constant integer value
+function type_get_const_val(type) {
+	if (obj_is_instanceof(type, ArrayType))
+		return (get(type_get_base(type), p_array_const_val))
+
+	obj_assert_class(type, Type)
+	return (get(type, p_const_val))
 }
 
 # Return an array type's element count, or 1 if the type is not

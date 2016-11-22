@@ -597,7 +597,7 @@ bhnd_nvram_sprom_read_offset(struct bhnd_nvram_sprom *sp,
 	} sp_value;
 
 	/* Determine type width */
-	sp_width = bhnd_nvram_value_size(type, NULL, 1);
+	sp_width = bhnd_nvram_value_size(type, NULL, 0, 1);
 	if (sp_width == 0) {
 		/* Variable-width types are unsupported */
 		BHND_NV_LOG("invalid %s SPROM offset type %d\n", var->name,
@@ -654,6 +654,8 @@ bhnd_nvram_sprom_read_offset(struct bhnd_nvram_sprom *sp,
 		NV_PARSE_INT(uint8_t,	u8,	u32,	);
 		break;
 
+	case BHND_NVRAM_TYPE_UINT64:
+	case BHND_NVRAM_TYPE_INT64:
 	case BHND_NVRAM_TYPE_STRING:
 		/* fallthrough (unused by SPROM) */
 	default:
@@ -675,8 +677,6 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 	union bhnd_nvram_sprom_storage	 storage;
 	union bhnd_nvram_sprom_storage	*inp;
 	union bhnd_nvram_sprom_intv	 intv;
-	bhnd_nvram_coerce_in_t		 vin;
-	bhnd_nvram_coerce_out_t		 vout;
 	bhnd_nvram_type			 var_btype;
 	size_t				 ilen, ipos, iwidth;
 	size_t				 nelem;
@@ -716,7 +716,7 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 	var_btype = bhnd_nvram_base_type(var->type);
 
 	/* Calculate total byte length of the native encoding */
-	if ((iwidth = bhnd_nvram_value_size(var_btype, NULL, 1)) == 0) {
+	if ((iwidth = bhnd_nvram_value_size(var_btype, NULL, 0, 1)) == 0) {
 		/* SPROM does not use (and we do not support) decoding of
 		 * variable-width data types */
 		BHND_NV_LOG("invalid SPROM data type: %d", var->type);
@@ -835,7 +835,7 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 			if (binding->skip_out == 0)
 				continue;
 
-			/* We use bhnd_nvram_coerce_value() to perform
+			/* We use bhnd_nvram_coerce_bytes() to perform
 			 * overflow-checked coercion from the widened
 			 * uint32/int32 intv value to the requested output
 			 * type */
@@ -850,21 +850,9 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 
 			/* Perform coercion of the array element */
 			nbyte = iwidth;
-
-			vin = (bhnd_nvram_coerce_in_t) {
-				.data = &intv,
-				.len = sizeof(intv),
-				.type = intv_type,
-				.delim = BHND_NVRAM_CSTR_DELIM,
-			};
-			vout = (bhnd_nvram_coerce_out_t) {
-				.data = ptr,
-				.len = &nbyte,
-				.type = var_btype,
-				.delim = BHND_NVRAM_CSTR_DELIM
-			};
-
-			if ((error = bhnd_nvram_coerce_value(&vout, &vin)))
+			error = bhnd_nvram_coerce_bytes(ptr, &nbyte, var_btype,
+			    &intv, sizeof(intv), intv_type, NULL);
+			if (error)
 				return (error);
 
 			/* Clear temporary state */
@@ -906,21 +894,8 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 		.flags = var->flags
 	};
 
-	vin = (bhnd_nvram_coerce_in_t) {
-		.data = inp,
-		.len = ilen,
-		.type = var->type,
-		.delim = BHND_NVRAM_CSTR_DELIM,
-		.hint = &hint
-	};
-	vout = (bhnd_nvram_coerce_out_t) {
-		.data = buf,
-		.len = len,
-		.type = otype,
-		.delim = BHND_NVRAM_CSTR_DELIM
-	};
-
-	return (bhnd_nvram_coerce_value(&vout, &vin));
+	return (bhnd_nvram_coerce_bytes(buf, len, otype, inp, ilen, var->type,
+	    &hint));
 }
 
 static const void *
@@ -1257,7 +1232,7 @@ sprom_opcode_set_type(struct sprom_opcode_state *state, bhnd_nvram_type type)
 	}
 
 	/* Fetch type width for use as our scale value */
-	width = bhnd_nvram_value_size(type, NULL, 1);
+	width = bhnd_nvram_value_size(type, NULL, 0, 1);
 	if (width == 0) {
 		SPROM_OP_BAD(state, "unsupported variable-width type: %d\n",
 		    type);
@@ -1859,15 +1834,24 @@ sprom_opcode_step(struct sprom_opcode_state *state, uint8_t *opcode)
 			state->offset = val;
 			break;
 
+		case SPROM_OPCODE_TYPE:
+			/* Type follows as U8 */
+			immd = *state->input;
+			state->input++;
+
+			/* fall through */
 		case SPROM_OPCODE_TYPE_IMM:
 			switch (immd) {
 			case BHND_NVRAM_TYPE_UINT8:
 			case BHND_NVRAM_TYPE_UINT16:
 			case BHND_NVRAM_TYPE_UINT32:
+			case BHND_NVRAM_TYPE_UINT64:
 			case BHND_NVRAM_TYPE_INT8:
 			case BHND_NVRAM_TYPE_INT16:
 			case BHND_NVRAM_TYPE_INT32:
+			case BHND_NVRAM_TYPE_INT64:
 			case BHND_NVRAM_TYPE_CHAR:
+			case BHND_NVRAM_TYPE_STRING:
 				error = sprom_opcode_set_type(state,
 				    (bhnd_nvram_type)immd);
 				if (error)
@@ -1900,7 +1884,6 @@ sprom_opcode_step(struct sprom_opcode_state *state, uint8_t *opcode)
  * 
  * @param state The opcode state to be to be evaluated.
  * @param indexed The indexed variable location.
- * @param var On success, the fully evaluated variable state.
  *
  * @retval 0 success
  * @retval non-zero If evaluation fails, a regular unix error code will be

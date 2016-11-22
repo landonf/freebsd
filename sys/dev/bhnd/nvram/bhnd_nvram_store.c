@@ -160,7 +160,7 @@ bhnd_nvram_store_parse(struct bhnd_nvram_store **store,
 /**
  * Free an NVRAM store instance, releasing all associated resources.
  * 
- * @param store A store instance previously allocated via
+ * @param sc A store instance previously allocated via
  * bhnd_nvram_store_new().
  */
 void
@@ -232,9 +232,6 @@ bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
 
 	/* Does an uncommitted value exist? */
 	if (nvlist_exists_string(sc->pending, name)) {
-		bhnd_nvram_coerce_in_t	vin;
-		bhnd_nvram_coerce_out_t	vout;
-
 		/* Uncommited value exists, is not a deletion */
 		inp = nvlist_get_string(sc->pending, name);
 		ilen = strlen(inp) + 1;
@@ -242,20 +239,8 @@ bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
 
 		/* Coerce borrowed data reference before releasing
 		 * our lock. */
-		vin = (bhnd_nvram_coerce_in_t) {
-			.data = inp,
-			.len = ilen,
-			.type = itype,
-			.delim = BHND_NVRAM_CSTR_DELIM,
-		};
-		vout = (bhnd_nvram_coerce_out_t) {
-			.data = buf,
-			.len = len,
-			.type = type,
-			.delim = BHND_NVRAM_CSTR_DELIM
-		};
-
-		error = bhnd_nvram_coerce_value(&vout, &vin);
+		error = bhnd_nvram_coerce_bytes(buf, len, type, inp, ilen,
+		    itype, NULL);
 
 		BHND_NVSTORE_UNLOCK(sc);
 
@@ -303,8 +288,7 @@ bhnd_nvram_store_setvar(struct bhnd_nvram_store *sc, const char *name,
 
 	/* Verify buffer size alignment for the given type. If this is a
 	 * variable width type, a width of 0 will always pass this check */
-	// TODO: nelem
-	if (len % bhnd_nvram_value_size(type, buf, 1) != 0)
+	if (len % bhnd_nvram_value_size(type, buf, len, 1) != 0)
 		return (EINVAL);
 
 	/* Determine string format (or directly add variable, if a C string) */
@@ -312,15 +296,19 @@ bhnd_nvram_store_setvar(struct bhnd_nvram_store *sc, const char *name,
 	case BHND_NVRAM_TYPE_UINT8:
 	case BHND_NVRAM_TYPE_UINT16:
 	case BHND_NVRAM_TYPE_UINT32:
+	case BHND_NVRAM_TYPE_UINT64:
 	case BHND_NVRAM_TYPE_INT8:
 	case BHND_NVRAM_TYPE_INT16:
 	case BHND_NVRAM_TYPE_INT32:
+	case BHND_NVRAM_TYPE_INT64:
 	case BHND_NVRAM_TYPE_UINT8_ARRAY:
 	case BHND_NVRAM_TYPE_UINT16_ARRAY:
 	case BHND_NVRAM_TYPE_UINT32_ARRAY:
+	case BHND_NVRAM_TYPE_UINT64_ARRAY:
 	case BHND_NVRAM_TYPE_INT8_ARRAY:
 	case BHND_NVRAM_TYPE_INT16_ARRAY:
 	case BHND_NVRAM_TYPE_INT32_ARRAY:
+	case BHND_NVRAM_TYPE_INT64_ARRAY:
 	case BHND_NVRAM_TYPE_CHAR_ARRAY:
 	case BHND_NVRAM_TYPE_STRING_ARRAY:
 		// TODO: non-char/string value support

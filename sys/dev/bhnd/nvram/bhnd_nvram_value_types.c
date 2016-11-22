@@ -1,0 +1,413 @@
+/*-
+ * Copyright (c) 2015-2016 Landon Fuller <landonf@FreeBSD.org>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer,
+ *    without modification.
+ * 2. Redistributions in binary form must reproduce at minimum a disclaimer
+ *    similar to the "NO WARRANTY" disclaimer below ("Disclaimer") and any
+ *    redistribution must be conditioned upon including a substantially
+ *    similar Disclaimer requirement for further binary redistribution.
+ *
+ * NO WARRANTY
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF NONINFRINGEMENT, MERCHANTIBILITY
+ * AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
+ * THE COPYRIGHT HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY,
+ * OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+ * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+ * THE POSSIBILITY OF SUCH DAMAGES.
+ */
+
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
+
+#include <sys/param.h>
+
+#include <net/ethernet.h>
+
+#ifdef _KERNEL
+
+#include <sys/ctype.h>
+#include <sys/kernel.h>
+#include <sys/malloc.h>
+#include <sys/systm.h>
+
+#include <machine/_inttypes.h>
+
+#else /* !_KERNEL */
+
+#include <ctype.h>
+#include <errno.h>
+#include <inttypes.h>
+#include <stdlib.h>
+#include <string.h>
+
+#endif /* _KERNEL */
+
+#include "bhnd_nvram_private.h"
+
+#include "bhnd_nvram_valuevar.h"
+
+static bool	bhnd_nvram_ident_octet_string(const char *inp, size_t ilen,
+		    char *delim, size_t *nelem);
+
+static int
+bhnd_nvram_val_bcmstr_encode(bhnd_nvram_val_t *value, void *outp,
+    size_t *olen, bhnd_nvram_type otype)
+{
+	bhnd_nvram_val_t		 array;
+	const bhnd_nvram_val_type_t	*array_type;
+	const void			*inp;
+	bhnd_nvram_type			itype;
+	size_t				ilen;
+	int				error;
+
+	inp = bhnd_nvram_val_bytes(value, &ilen, &itype);
+
+	/* If the output is not an array type (or if it's a character array),
+	 * we can fall back on standard string encoding */
+	if (!bhnd_nvram_is_array_type(otype) ||
+	    otype == BHND_NVRAM_TYPE_CHAR_ARRAY)
+	{
+		return (bhnd_nvram_coerce_bytes(outp, olen, otype, inp, ilen,
+		    itype, NULL));
+	}
+
+	/* Otherwise, we need to interpret our value as either a macaddr
+	 * string, or a comma-delimited bcmstr_array */
+	inp = bhnd_nvram_val_bytes(value, &ilen, &itype);
+	if (bhnd_nvram_ident_octet_string(inp, ilen, NULL, NULL))
+		array_type = &bhnd_nvram_val_macaddr_string_type;
+	else
+		array_type = &bhnd_nvram_val_bcmstr_array_type;
+
+	/* Wrap in array-typed representation */
+	error = bhnd_nvram_val_init(&array, array_type, inp, ilen, itype,
+	    BHND_NVRAM_VAL_BORROW_DATA);
+	if (error) {
+		BHND_NV_LOG("error initializing array representation: %d\n",
+		    error);
+		return (error);
+	}
+
+	/* Ask the array-typed value to perform the encode */
+	error = bhnd_nvram_val_encode(&array, outp, olen, otype);
+	if (error)
+		BHND_NV_LOG("error encoding array representation: %d\n", error);
+
+	bhnd_nvram_val_release(&array);
+
+	return (error);
+}
+
+static const void *
+bhnd_nvram_val_bcmstr_array_next(bhnd_nvram_val_t *value, const void *prev,
+    size_t *len)
+{
+	const char	*next;
+	const char	*str;
+	bhnd_nvram_type	 stype;
+	size_t		 slen, remain;
+	char		 delim;
+
+	/* Fetch backing string */
+	str = bhnd_nvram_val_bytes(value, &slen, &stype);
+	BHND_NV_ASSERT(stype == BHND_NVRAM_TYPE_STRING,
+	    ("unsupported type: %d", stype));
+
+	/* Zero-length array? */
+	if (slen == 0)
+		return (NULL);
+
+	if (prev == NULL) {
+		/* First element */
+		next = str;
+		remain = slen;
+		delim = ',';
+	} else {
+		/* Advance to the previous element's delimiter */
+		next = (const char *)prev + *len;
+
+		/* Did we hit the end of the string? */
+		if ((size_t)(next - str) >= slen)
+			return (NULL);
+
+		/* Fetch (and skip past) the delimiter */
+		delim = *next;
+		next++;
+		remain = slen - (size_t)(next - str);
+
+		/* Was the delimiter the final character? */
+		if (remain == 0)
+			return (NULL);
+	}
+
+	/* Parse the field value, up to the next delimiter */
+	*len = bhnd_nvram_parse_field(&next, remain, delim);
+
+	return (next);
+}
+
+/**
+ * MAC address encoding support.
+ */
+static int
+bhnd_nvram_val_macaddr_encode(bhnd_nvram_val_t *value, void *outp,
+    size_t *olen, bhnd_nvram_type otype)
+{
+	const void	*inp;
+	bhnd_nvram_type	 itype;
+	size_t		 ilen;
+
+	/*
+	 * If converting to a string (or a single-element string array),
+	 * produce an octet string (00:00:...).
+	 */
+	if (bhnd_nvram_base_type(otype) == BHND_NVRAM_TYPE_STRING)
+		return (bhnd_nvram_val_fmt(value, "%*02hhX", outp, olen, ":"));
+
+	/* Otherwise, use standard encoding support */
+	inp = bhnd_nvram_val_bytes(value, &ilen, &itype);
+	return (bhnd_nvram_coerce_bytes(outp, olen, otype, inp, ilen, itype,
+	    NULL));
+}
+
+static int
+bhnd_nvram_val_macaddr_string_encode_elem(bhnd_nvram_val_t *value,
+    const void *inp, size_t ilen, void *outp, size_t *olen,
+    bhnd_nvram_type otype)
+{
+	size_t	nparsed;
+	int	error;
+
+	/* If integer encoding is requested, explicitly parse our
+	 * non-0x-prefixed as a base 16 integer value */
+	if (bhnd_nvram_is_int_type(otype)) {
+		error = bhnd_nvram_parse_int(inp, ilen, 16, &nparsed, outp,
+		    olen, otype);
+		if (error)
+			return (error);
+
+		if (nparsed != ilen)
+			return (EFTYPE);
+
+		return (0);
+	}
+
+	/* Otherwise, use standard encoding support */
+	return (bhnd_nvram_coerce_bytes(outp, olen, otype, inp, ilen,
+	    bhnd_nvram_val_elem_type(value), NULL));
+}
+
+static const void *
+bhnd_nvram_val_macaddr_string_next(bhnd_nvram_val_t *value, const void *prev,
+    size_t *len)
+{
+	const char	*next;
+	const char	*str;
+	bhnd_nvram_type	 stype;
+	size_t		 slen, remain;
+	char		 delim;
+
+	/* Fetch backing string */
+	str = bhnd_nvram_val_bytes(value, &slen, &stype);
+	BHND_NV_ASSERT(stype == BHND_NVRAM_TYPE_STRING,
+	    ("unsupported type: %d", stype));
+
+	/* Zero-length array? */
+	if (slen == 0)
+		return (NULL);
+
+	if (prev == NULL) {
+		/* First element */
+
+		/* Determine delimiter */
+		if (!bhnd_nvram_ident_octet_string(str, slen, &delim, NULL)) {
+			/* Default to comma-delimited parsing */
+			delim = ',';
+		}
+
+		/* Parsing will start at the base string pointer */
+		next = str;
+		remain = slen;
+	} else {
+		/* Advance to the previous element's delimiter */
+		next = (const char *)prev + *len;
+
+		/* Did we hit the end of the string? */
+		if ((size_t)(next - str) >= slen)
+			return (NULL);
+
+		/* Fetch (and skip past) the delimiter */
+		delim = *next;
+		next++;
+		remain = slen - (size_t)(next - str);
+
+		/* Was the delimiter the final character? */
+		if (remain == 0)
+			return (NULL);
+	}
+
+	/* Parse the field value, up to the next delimiter */
+	*len = bhnd_nvram_parse_field(&next, remain, delim);
+
+	return (next);
+}
+
+
+/**
+ * Determine whether @p inp is in octet string format, consisting of a
+ * fields of two hex characters, separated with ':' or '-' delimiters.
+ * 
+ * This may be used to identify MAC address octet strings
+ * (BHND_NVRAM_SFMT_MACADDR).
+ *
+ * @param		inp	The string to be parsed.
+ * @param		ilen	The length of @p inp, in bytes.
+ * @param[out]		delim	On success, the delimiter used by this octet
+ * 				string. May be set to NULL if the field
+ *				delimiter is not desired.
+ * @param[out]		nelem	On success, the number of fields in this
+ *				octet string. May be set to NULL if the field
+ *				count is not desired.
+ *
+ * 
+ * @retval true		if @p inp is a valid octet string
+ * @retval false	if @p inp is not a valid octet string.
+ */
+static bool
+bhnd_nvram_ident_octet_string(const char *inp, size_t ilen, char *delim,
+    size_t *nelem)
+{
+	size_t	elem_count;
+	size_t	max_elem_count, min_elem_count;
+	size_t	field_count;
+	char	idelim;
+
+	field_count = 0;
+
+	/* Require exactly two digits. If we relax this, there is room
+	 * for ambiguity with signed integers and the '-' delimiter */
+	min_elem_count = 2;
+	max_elem_count = 2;
+
+	/* Identify the delimiter used. The standard delimiter for MAC
+	 * addresses is ':', but some earlier NVRAM formats may use '-' */
+	for (const char *d = ":-";; d++) {
+		const char *loc;
+
+		/* No delimiter found, not an octet string */
+		if (*d == '\0')
+			return (false);
+
+		/* Look for the delimiter */
+		if ((loc = memchr(inp, *d, ilen)) == NULL)
+			continue;
+
+		/* Delimiter found */
+		idelim = *loc;
+		break;
+	}
+
+	/* To disambiguate from signed integers, if the delimiter is "-",
+	 * the octets must be exactly 2 chars each */
+	if (idelim == '-')
+		min_elem_count = 2;
+
+	/* String must be composed of individual octets (zero or more hex
+	 * digits) separated by our delimiter. */
+	elem_count = 0;
+	for (const char *p = inp; (size_t)(p - inp) < ilen; p++) {
+		switch (*p) {
+		case ':':
+		case '-':
+		case '\0':
+			/* Hit a delim character; all delims must match
+			 * the first delimiter used */
+			if (*p != '\0' && *p != idelim)
+				return (false);
+
+			/* Must have parsed at least min_elem_count digits */
+			if (elem_count < min_elem_count)
+				return (false);
+
+			/* Reset element count */
+			elem_count = 0;
+
+			/* Bump field count */
+			field_count++;
+			break;
+		default:
+			/* More than maximum number of hex digits? */
+			if (elem_count >= max_elem_count)
+				return (false);
+
+			/* Octet values must be hex digits */
+			if (!bhnd_nv_isxdigit(*p))
+				return (false);
+
+			elem_count++;
+			break;
+		}
+	}
+
+	if (delim != NULL)
+		*delim = idelim;
+
+	if (nelem != NULL)
+		*nelem = field_count;
+
+	return (true);
+}
+
+/**
+ * Generic Broadcom NVRAM string type.
+ * 
+ * Handles standard and comma-delimited string values as used in
+ * Broadcom NVRAM data.
+ */
+const bhnd_nvram_val_type_t bhnd_nvram_val_bcmstr_type = {
+	.name		= "bcmstr",
+	.native_type	= BHND_NVRAM_TYPE_STRING,
+	.op_encode	= bhnd_nvram_val_bcmstr_encode
+};
+
+/**
+ * Generic Broadcom NVRAM string array type.
+ * 
+ * Handles array interpretation of standard and comma-delimited string values
+ * as used in Broadcom NVRAM data.
+ */
+const bhnd_nvram_val_type_t bhnd_nvram_val_bcmstr_array_type = {
+	.name		= "bcmstr[]",
+	.native_type	= BHND_NVRAM_TYPE_STRING,
+	.op_next	= bhnd_nvram_val_bcmstr_array_next,
+};
+
+/**
+ * MAC address type.
+ */
+const bhnd_nvram_val_type_t bhnd_nvram_val_macaddr_type = {
+	.name		= "macaddr",
+	.native_type	= BHND_NVRAM_TYPE_UINT8_ARRAY,
+	.op_encode	= bhnd_nvram_val_macaddr_encode,
+};
+
+/**
+ * MAC address string type.
+ */
+const bhnd_nvram_val_type_t bhnd_nvram_val_macaddr_string_type = {
+	.name		= "macaddr-string",
+	.native_type	= BHND_NVRAM_TYPE_STRING,
+	.op_encode_elem	= bhnd_nvram_val_macaddr_string_encode_elem,
+	.op_next	= bhnd_nvram_val_macaddr_string_next,
+};
