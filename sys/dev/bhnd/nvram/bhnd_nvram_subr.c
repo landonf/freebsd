@@ -821,10 +821,10 @@ bhnd_nvram_coerce_bytes(void *outp, size_t *olen, bhnd_nvram_type otype,
     bhnd_nvram_fmt_hint_t *hint)
 {
 	bhnd_nvram_val_t		 val;
-	const bhnd_nvram_val_type_t	*val_type;
+	const bhnd_nvram_val_fmt_t	*fmt;
 	int				 error;
 
-	val_type = NULL;
+	fmt = NULL;
 
 	switch (itype) {
 	case BHND_NVRAM_TYPE_STRING:
@@ -838,7 +838,7 @@ bhnd_nvram_coerce_bytes(void *outp, size_t *olen, bhnd_nvram_type otype,
 				break;
 
 			case BHND_NVRAM_SFMT_LEDDC:
-				val_type = &bhnd_nvram_val_bcm_leddc_type;
+				fmt = &bhnd_nvram_val_bcm_leddc_fmt;
 				break;
 
 			case BHND_NVRAM_SFMT_CCODE:
@@ -846,7 +846,7 @@ bhnd_nvram_coerce_bytes(void *outp, size_t *olen, bhnd_nvram_type otype,
 				break;
 
 			case BHND_NVRAM_SFMT_MACADDR:
-				val_type = &bhnd_nvram_val_macaddr_string_type;
+				fmt = &bhnd_nvram_val_macaddr_string_fmt;
 				break;
 			}
 		}
@@ -856,15 +856,15 @@ bhnd_nvram_coerce_bytes(void *outp, size_t *olen, bhnd_nvram_type otype,
 		if (hint != NULL) {
 			switch (hint->sfmt) {
 			case BHND_NVRAM_SFMT_HEX:
-				val_type = &bhnd_nvram_val_hex_int_type;
+				fmt = &bhnd_nvram_val_hex_int_fmt;
 				break;
 
 			case BHND_NVRAM_SFMT_DEC:
-				val_type = &bhnd_nvram_val_decimal_int_type;
+				fmt = &bhnd_nvram_val_decimal_int_fmt;
 				break;
 
 			case BHND_NVRAM_SFMT_LEDDC:
-				val_type = &bhnd_nvram_val_bcm_leddc_type;
+				fmt = &bhnd_nvram_val_bcm_leddc_fmt;
 				break;
 
 			case BHND_NVRAM_SFMT_CCODE:
@@ -872,7 +872,7 @@ bhnd_nvram_coerce_bytes(void *outp, size_t *olen, bhnd_nvram_type otype,
 				break;
 
 			case BHND_NVRAM_SFMT_MACADDR:
-				val_type = &bhnd_nvram_val_macaddr_type;
+				fmt = &bhnd_nvram_val_macaddr_fmt;
 				break;
 			}
 		}
@@ -880,7 +880,7 @@ bhnd_nvram_coerce_bytes(void *outp, size_t *olen, bhnd_nvram_type otype,
 	}
 
 	/* Map input buffer as a value instance */
-	error = bhnd_nvram_val_init(&val, val_type, inp, ilen,
+	error = bhnd_nvram_val_init(&val, fmt, inp, ilen,
 	    itype, BHND_NVRAM_VAL_BORROW_DATA);
 	if (error)
 		return (error);

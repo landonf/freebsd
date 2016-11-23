@@ -42,16 +42,16 @@
 
 #include "bhnd_nvram.h"
 
-typedef struct bhnd_nvram_val_type	bhnd_nvram_val_type_t;
+typedef struct bhnd_nvram_val_fmt	bhnd_nvram_val_fmt_t;
 typedef struct bhnd_nvram_val		bhnd_nvram_val_t;
 
 int				 bhnd_nvram_val_init(bhnd_nvram_val_t *value,
-				     const bhnd_nvram_val_type_t *type,
+				     const bhnd_nvram_val_fmt_t *fmt,
 				     const void *inp, size_t ilen,
 				     bhnd_nvram_type itype, uint32_t flags);
 
 int				 bhnd_nvram_val_new(bhnd_nvram_val_t **value,
-				     const bhnd_nvram_val_type_t *type,
+				     const bhnd_nvram_val_fmt_t *fmt,
 				     const void *inp, size_t ilen,
 				     bhnd_nvram_type itype, uint32_t flags);
 
@@ -191,7 +191,7 @@ typedef enum {
 struct bhnd_nvram_val {
 	volatile u_int			 refs;		/**< reference count */
 	bhnd_nvram_val_storage_t	 val_storage;	/**< value structure storage */
-	const bhnd_nvram_val_type_t	*type;		/**< value type, or NULL for default behavior */
+	const bhnd_nvram_val_fmt_t	*fmt;		/**< value format, or NULL for default behavior */
 	bhnd_nvram_val_data_storage_t	 data_storage;	/**< data storage */
 	bhnd_nvram_type			 data_type;	/**< data type */
 	size_t				 data_len;	/**< data size */
@@ -211,9 +211,9 @@ struct bhnd_nvram_val {
 	} data;
 };
 
-/** Declare a bhnd_nvram_val_type with name @p _n */
+/** Declare a bhnd_nvram_val_fmt with name @p _n */
 #define	BHND_NVRAM_VAL_TYPE_DECL(_n)	\
-	extern const bhnd_nvram_val_type_t bhnd_nvram_val_ ## _n ## _type;
+	extern const bhnd_nvram_val_fmt_t bhnd_nvram_val_ ## _n ## _fmt;
 
 BHND_NVRAM_VAL_TYPE_DECL(decimal_int);
 BHND_NVRAM_VAL_TYPE_DECL(hex_int);

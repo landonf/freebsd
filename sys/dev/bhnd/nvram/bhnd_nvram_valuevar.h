@@ -38,9 +38,9 @@
  * Filter input data prior to initialization.
  * 
  * This may be used to permit direct initialization from data types other than
- * the default native_type defined by @p type.
+ * the default native_type defined by @p fmt.
  *
- * @param	type	NVRAM value type.
+ * @param	fmt	NVRAM value format.
  * @param	inp	Input data.
  * @param	ilen	Input data length.
  * @param	itype	Input data type.
@@ -50,7 +50,7 @@
  * @retval EFAULT	if @p ilen is not correctly aligned for elements of
  *			@p itype.
  */
-typedef int (bhnd_nvram_val_op_filter)(const bhnd_nvram_val_type_t *type,
+typedef int (bhnd_nvram_val_op_filter)(const bhnd_nvram_val_fmt_t *fmt,
     const void *inp, size_t ilen, bhnd_nvram_type itype);
 
 /** @see bhnd_nvram_val_encode() */
@@ -70,9 +70,13 @@ typedef const void *(bhnd_nvram_val_op_next)(bhnd_nvram_val_t *value,
 typedef size_t (bhnd_nvram_val_op_nelem)(bhnd_nvram_val_t *value);
 
 /**
- * NVRAM value type. Must be the first member of any value type subclass.
+ * NVRAM value format.
+ * 
+ * Provides a set of callbacks to support defining custom parsing
+ * and encoding/conversion behavior when representing values as
+ * instances of bhnd_nvram_val.
  */
-struct bhnd_nvram_val_type {
+struct bhnd_nvram_val_fmt {
 	const char			*name;		/**< type name */
 	bhnd_nvram_type			 native_type;	/**< native value representation */
 
