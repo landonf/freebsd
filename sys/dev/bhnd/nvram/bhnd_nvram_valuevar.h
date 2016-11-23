@@ -40,17 +40,20 @@
  * This may be used to permit direct initialization from data types other than
  * the default native_type defined by @p fmt.
  *
- * @param	fmt	NVRAM value format.
- * @param	inp	Input data.
- * @param	ilen	Input data length.
- * @param	itype	Input data type.
+ * @param[in,out]	fmt	Indirect pointer to the NVRAM value format. If
+ *				modified by the caller, initialization will be
+ *				restarted and performed using the provided
+ *				format instance.
+ * @param		inp	Input data.
+ * @param		ilen	Input data length.
+ * @param		itype	Input data type.
  *
  * @retval 0		If initialization from @p inp is supported.
  * @retval EFTYPE	If initialization from @p inp is unsupported.
  * @retval EFAULT	if @p ilen is not correctly aligned for elements of
  *			@p itype.
  */
-typedef int (bhnd_nvram_val_op_filter)(const bhnd_nvram_val_fmt_t *fmt,
+typedef int (bhnd_nvram_val_op_filter)(const bhnd_nvram_val_fmt_t **fmt,
     const void *inp, size_t ilen, bhnd_nvram_type itype);
 
 /** @see bhnd_nvram_val_encode() */

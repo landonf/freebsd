@@ -94,31 +94,40 @@ bhnd_nvram_val_init_common(bhnd_nvram_val_t *value, bhnd_nvram_val_storage_t
 	size_t		 olen;
 	int		 error;
 
-	/* Initialize */
-	*value = BHND_NVRAM_VAL_INITIALIZER(fmt, val_storage);
+	/* Determine expected data type, and allow the format to delegate to
+	 * a new format instance */
+	if (fmt != NULL && fmt->op_filter != NULL) {
+		const bhnd_nvram_val_fmt_t *nfmt = fmt;
 
-	/* Determine expected data type */
-	if (value->fmt != NULL) {
-		if (value->fmt->op_filter != NULL) {
-			/* Use the filter function to determine whether direct
-			 * initialization from is itype permitted */
-			error = value->fmt->op_filter(value->fmt, inp, ilen,
-			    itype);
-			if (error)
-				return (error);
+		/* Use the filter function to determine whether direct
+		 * initialization from is itype permitted */
+		error = fmt->op_filter(&nfmt, inp, ilen, itype);
+		if (error)
+			return (error);
 
-			otype = itype;
-		} else {
-			/* Value must be initialized with the format's native
-			 * type */
-			otype = value->fmt->native_type;
+		/* Retry initialization with new format? */
+		if (nfmt != fmt) {
+			return (bhnd_nvram_val_init_common(value, val_storage,
+			    nfmt, inp, ilen, itype, flags));
 		}
+
+		/* Value can be initialized with provided input type */
+		otype = itype;
+
+	} else if (fmt != NULL) {
+		/* Value must be initialized with the format's native
+		 * type */
+		otype = fmt->native_type;
+
 	} else {
 		/* No format specified; we can initialize directly from the
 		 * input data, and we'll handle all format operations
 		 * internally. */
 		otype = itype;
 	}
+
+	/* Initialize value instance */
+	*value = BHND_NVRAM_VAL_INITIALIZER(fmt, val_storage);
 
 	/* If input data already in native format, init directly. */
 	if (otype == itype) {

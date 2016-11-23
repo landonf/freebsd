@@ -218,10 +218,8 @@ struct bhnd_nvram_val {
 BHND_NVRAM_VAL_TYPE_DECL(decimal_int);
 BHND_NVRAM_VAL_TYPE_DECL(hex_int);
 BHND_NVRAM_VAL_TYPE_DECL(macaddr);
-BHND_NVRAM_VAL_TYPE_DECL(macaddr_string);
 
 BHND_NVRAM_VAL_TYPE_DECL(bcm_string);
-BHND_NVRAM_VAL_TYPE_DECL(bcm_string_array);
 BHND_NVRAM_VAL_TYPE_DECL(bcm_leddc);
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_VALUE_H_ */

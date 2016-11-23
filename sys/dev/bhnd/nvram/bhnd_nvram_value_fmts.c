@@ -57,14 +57,159 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_nvram_valuevar.h"
 
-static bool	bhnd_nvram_ident_octet_string(const char *inp, size_t ilen,
-		    char *delim, size_t *nelem);
+static bool		 bhnd_nvram_ident_octet_string(const char *inp,
+			     size_t ilen, char *delim, size_t *nelem);
+
+static int		 bhnd_nvram_val_decint_filter(
+			     const bhnd_nvram_val_fmt_t **fmt, const void *inp,
+			     size_t ilen, bhnd_nvram_type itype);
+static int		 bhnd_nvram_val_decint_encode_elem(
+			     bhnd_nvram_val_t *value, const void *inp,
+			     size_t ilen, void *outp, size_t *olen,
+			     bhnd_nvram_type otype);
+
+static int		 bhnd_nvram_val_hexint_filter(
+			     const bhnd_nvram_val_fmt_t **fmt, const void *inp,
+			     size_t ilen, bhnd_nvram_type itype);
+static int		 bhnd_nvram_val_hexint_encode_elem(
+			     bhnd_nvram_val_t *value, const void *inp,
+			     size_t ilen, void *outp, size_t *olen,
+			     bhnd_nvram_type otype);
+
+static int		 bhnd_nvram_val_macaddr_filter(
+			     const bhnd_nvram_val_fmt_t **fmt, const void *inp,
+			     size_t ilen, bhnd_nvram_type itype);
+static int		 bhnd_nvram_val_macaddr_encode(bhnd_nvram_val_t *value,
+			     void *outp, size_t *olen, bhnd_nvram_type otype);
+
+static int		 bhnd_nvram_val_macaddr_string_filter(
+			     const bhnd_nvram_val_fmt_t **fmt, const void *inp,
+			     size_t ilen, bhnd_nvram_type itype);
+static int		 bhnd_nvram_val_macaddr_string_encode_elem(
+			     bhnd_nvram_val_t *value, const void *inp,
+			     size_t ilen, void *outp, size_t *olen, 
+			     bhnd_nvram_type otype);
+static const void 	*bhnd_nvram_val_macaddr_string_next(
+			     bhnd_nvram_val_t *value, const void *prev,
+			     size_t *len);
+
+
+static int		 bhnd_nvram_val_bcm_leddc_filter(
+			     const bhnd_nvram_val_fmt_t **fmt, const void *inp,
+			     size_t ilen, bhnd_nvram_type itype);
+static int		 bhnd_nvram_val_bcm_leddc_encode_elem(
+			     bhnd_nvram_val_t *value, const void *inp,
+			     size_t ilen, void *outp, size_t *olen,
+			     bhnd_nvram_type otype);
+
+static int		 bhnd_nvram_val_bcmstr_encode(bhnd_nvram_val_t *value,
+			     void *outp, size_t *olen, bhnd_nvram_type otype);
+
+static const void	*bhnd_nvram_val_bcmstr_csv_next(bhnd_nvram_val_t *value,
+			     const void *prev, size_t *len);
 
 /**
- * Hex integer filter support.
+ * Generic decimal integer format.
+ *
+ * Extends standard integer handling, encoding the string representation of
+ * the integer value as a decimal string:
+ * - Positive values will be string-encoded without a prefix.
+ * - Negative values will be string-encoded with a leading '-' sign.
+ */
+const bhnd_nvram_val_fmt_t bhnd_nvram_val_decimal_int_fmt = {
+	.name		= "decimal-int",
+	.native_type	= BHND_NVRAM_TYPE_UINT64,
+	.op_filter	= bhnd_nvram_val_decint_filter,
+	.op_encode_elem	= bhnd_nvram_val_decint_encode_elem,
+};
+
+/**
+ * Generic hex integer format.
+ *
+ * Extends standard integer handling, encoding the string representation of
+ * the integer value as an 0x-prefixed hexadecimal string.
+ */
+const bhnd_nvram_val_fmt_t bhnd_nvram_val_hex_int_fmt = {
+	.name		= "hex-int",
+	.native_type	= BHND_NVRAM_TYPE_UINT64,
+	.op_filter	= bhnd_nvram_val_hexint_filter,
+	.op_encode_elem	= bhnd_nvram_val_hexint_encode_elem,
+};
+
+/**
+ * MAC address format.
+ */
+const bhnd_nvram_val_fmt_t bhnd_nvram_val_macaddr_fmt = {
+	.name		= "macaddr",
+	.native_type	= BHND_NVRAM_TYPE_UINT8_ARRAY,
+	.op_filter	= bhnd_nvram_val_macaddr_filter,
+	.op_encode	= bhnd_nvram_val_macaddr_encode,
+};
+
+/** MAC address string format. */
+static const bhnd_nvram_val_fmt_t bhnd_nvram_val_macaddr_string_fmt = {
+	.name		= "macaddr-string",
+	.native_type	= BHND_NVRAM_TYPE_STRING,
+	.op_filter	= bhnd_nvram_val_macaddr_string_filter,
+	.op_encode_elem	= bhnd_nvram_val_macaddr_string_encode_elem,
+	.op_next	= bhnd_nvram_val_macaddr_string_next,
+};
+
+/**
+ * Broadcom NVRAM/SPROM LED duty-cycle format.
+ * 
+ * LED duty-cycle values represent the on/off periods as a 32-bit integer,
+ * with the top 16 bits representing on cycles, and the bottom 16 representing
+ * off cycles.
+ * 
+ * LED duty cycle values have three different formats:
+ * 
+ * - SPROM:	A 16-bit unsigned integer, with on/off cycles encoded as 8-bit
+ *		values.
+ * - NVRAM:	A 16-bit decimal or hexadecimal string, with on/off cycles
+ *		encoded as 8-bit values as per the SPROM format.
+ * - NVRAM:	A 32-bit decimal or hexadecimal string, with on/off cycles
+ *		encoded as 16-bit values.
+ *
+ * To convert from a 16-bit representation to a 32-bit representation:
+ *     ((value & 0xFF00) << 16) | ((value & 0x00FF) << 8)
+ * 
+ * To convert from a 32-bit representation to a 16-bit representation, perform
+ * the same operation in reverse, discarding the lower 8-bits of each half
+ * of the 32-bit representation:
+ *     ((value >> 16) & 0xFF00) | ((value >> 8) & 0x00FF)
+ */
+const bhnd_nvram_val_fmt_t bhnd_nvram_val_bcm_leddc_fmt = {
+	.name		= "bcm-leddc",
+	.native_type	= BHND_NVRAM_TYPE_UINT32,
+	.op_filter	= bhnd_nvram_val_bcm_leddc_filter,
+	.op_encode_elem	= bhnd_nvram_val_bcm_leddc_encode_elem,
+};
+
+/**
+ * Broadcom NVRAM string format.
+ * 
+ * Handles standard, comma-delimited, and octet-string values as used in
+ * Broadcom NVRAM data.
+ */
+const bhnd_nvram_val_fmt_t bhnd_nvram_val_bcm_string_fmt = {
+	.name		= "bcm-string",
+	.native_type	= BHND_NVRAM_TYPE_STRING,
+	.op_encode	= bhnd_nvram_val_bcmstr_encode
+};
+
+/** Broadcom comma-delimited string. */
+static const bhnd_nvram_val_fmt_t bhnd_nvram_val_bcm_string_csv_fmt = {
+	.name		= "bcm-string[]",
+	.native_type	= BHND_NVRAM_TYPE_STRING,
+	.op_next	= bhnd_nvram_val_bcmstr_csv_next,
+};
+
+/**
+ * Hex integer filter.
  */
 static int
-bhnd_nvram_val_hexint_filter(const bhnd_nvram_val_fmt_t *fmt, const void *inp,
+bhnd_nvram_val_hexint_filter(const bhnd_nvram_val_fmt_t **fmt, const void *inp,
     size_t ilen, bhnd_nvram_type itype)
 {
 	/* Supports all integer and integer array types */
@@ -75,7 +220,7 @@ bhnd_nvram_val_hexint_filter(const bhnd_nvram_val_fmt_t *fmt, const void *inp,
 }
 
 /**
- * Hex integer encode support.
+ * Hex integer encode.
  */
 static int
 bhnd_nvram_val_hexint_encode_elem(bhnd_nvram_val_t *value, const void *inp,
@@ -99,10 +244,10 @@ bhnd_nvram_val_hexint_encode_elem(bhnd_nvram_val_t *value, const void *inp,
 }
 
 /**
- * Decimal integer filter support.
+ * Decimal integer filter.
  */
 static int
-bhnd_nvram_val_decint_filter(const bhnd_nvram_val_fmt_t *fmt, const void *inp,
+bhnd_nvram_val_decint_filter(const bhnd_nvram_val_fmt_t **fmt, const void *inp,
     size_t ilen, bhnd_nvram_type itype)
 {
 	/* Supports all integer and integer array types */
@@ -113,7 +258,7 @@ bhnd_nvram_val_decint_filter(const bhnd_nvram_val_fmt_t *fmt, const void *inp,
 }
 
 /**
- * Decimal integer encode support.
+ * Decimal integer encode.
  */
 static int
 bhnd_nvram_val_decint_encode_elem(bhnd_nvram_val_t *value, const void *inp,
@@ -142,10 +287,10 @@ bhnd_nvram_val_decint_encode_elem(bhnd_nvram_val_t *value, const void *inp,
 
 
 /**
- * Broadcom LED duty-cycle filter support.
+ * Broadcom LED duty-cycle filter.
  */
 static int
-bhnd_nvram_val_bcm_leddc_filter(const bhnd_nvram_val_fmt_t *fmt,
+bhnd_nvram_val_bcm_leddc_filter(const bhnd_nvram_val_fmt_t **fmt,
     const void *inp, size_t ilen, bhnd_nvram_type itype)
 {
 	switch (itype) {
@@ -159,7 +304,7 @@ bhnd_nvram_val_bcm_leddc_filter(const bhnd_nvram_val_fmt_t *fmt,
 }
 
 /**
- * Broadcom LED duty-cycle encode support.
+ * Broadcom LED duty-cycle encode.
  */
 static int
 bhnd_nvram_val_bcm_leddc_encode_elem(bhnd_nvram_val_t *value, const void *inp,
@@ -315,6 +460,9 @@ bhnd_nvram_val_bcm_leddc_encode_elem(bhnd_nvram_val_t *value, const void *inp,
 	return (0);
 }
 
+/**
+ * Broadcom NVRAM string encoding.
+ */
 static int
 bhnd_nvram_val_bcmstr_encode(bhnd_nvram_val_t *value, void *outp,
     size_t *olen, bhnd_nvram_type otype)
@@ -338,12 +486,12 @@ bhnd_nvram_val_bcmstr_encode(bhnd_nvram_val_t *value, void *outp,
 	}
 
 	/* Otherwise, we need to interpret our value as either a macaddr
-	 * string, or a comma-delimited bcmstr_array */
+	 * string, or a comma-delimited string. */
 	inp = bhnd_nvram_val_bytes(value, &ilen, &itype);
 	if (bhnd_nvram_ident_octet_string(inp, ilen, NULL, NULL))
 		array_fmt = &bhnd_nvram_val_macaddr_string_fmt;
 	else
-		array_fmt = &bhnd_nvram_val_bcm_string_array_fmt;
+		array_fmt = &bhnd_nvram_val_bcm_string_csv_fmt;
 
 	/* Wrap in array-typed representation */
 	error = bhnd_nvram_val_init(&array, array_fmt, inp, ilen, itype,
@@ -364,8 +512,11 @@ bhnd_nvram_val_bcmstr_encode(bhnd_nvram_val_t *value, void *outp,
 	return (error);
 }
 
+/**
+ * Broadcom NVRAM comma-delimited string iteration.
+ */
 static const void *
-bhnd_nvram_val_bcmstr_array_next(bhnd_nvram_val_t *value, const void *prev,
+bhnd_nvram_val_bcmstr_csv_next(bhnd_nvram_val_t *value, const void *prev,
     size_t *len)
 {
 	const char	*next;
@@ -413,7 +564,26 @@ bhnd_nvram_val_bcmstr_array_next(bhnd_nvram_val_t *value, const void *prev,
 }
 
 /**
- * MAC address encoding support.
+ * MAC address filter.
+ */
+static int
+bhnd_nvram_val_macaddr_filter(const bhnd_nvram_val_fmt_t **fmt,
+    const void *inp, size_t ilen, bhnd_nvram_type itype)
+{
+	switch (itype) {
+	case BHND_NVRAM_TYPE_UINT8_ARRAY:
+		return (0);
+	case BHND_NVRAM_TYPE_STRING:
+		/* Let macaddr_string format handle it */
+		*fmt = &bhnd_nvram_val_macaddr_string_fmt;
+		return (0);
+	default:
+		return (EFTYPE);
+	}
+}
+
+/**
+ * MAC address encoding.
  */
 static int
 bhnd_nvram_val_macaddr_encode(bhnd_nvram_val_t *value, void *outp,
@@ -438,6 +608,30 @@ bhnd_nvram_val_macaddr_encode(bhnd_nvram_val_t *value, void *outp,
 	    NULL));
 }
 
+/**
+ * MAC address string filter.
+ */
+static int
+bhnd_nvram_val_macaddr_string_filter(const bhnd_nvram_val_fmt_t **fmt,
+    const void *inp, size_t ilen, bhnd_nvram_type itype)
+{
+	switch (itype) {
+	case BHND_NVRAM_TYPE_STRING:
+		/* Use the standard string format implementation if the input
+		 * is not an octet string. */
+		if (!bhnd_nvram_ident_octet_string(inp, ilen, NULL, NULL))
+			*fmt = NULL;
+
+		return (0);
+	default:
+		return (EFTYPE);
+	}
+}
+
+
+/**
+ * MAC address string octet encoding.
+ */
 static int
 bhnd_nvram_val_macaddr_string_encode_elem(bhnd_nvram_val_t *value,
     const void *inp, size_t ilen, void *outp, size_t *olen,
@@ -465,6 +659,9 @@ bhnd_nvram_val_macaddr_string_encode_elem(bhnd_nvram_val_t *value,
 	    bhnd_nvram_val_elem_type(value), NULL));
 }
 
+/**
+ * MAC address string octet iteration.
+ */
 static const void *
 bhnd_nvram_val_macaddr_string_next(bhnd_nvram_val_t *value, const void *prev,
     size_t *len)
@@ -625,105 +822,3 @@ bhnd_nvram_ident_octet_string(const char *inp, size_t ilen, char *delim,
 
 	return (true);
 }
-
-/**
- * Generic hex integer format.
- *
- * Extends standard integer handling, encoding the string representation of
- * the integer value as an 0x-prefixed hexadecimal string.
- */
-const bhnd_nvram_val_fmt_t bhnd_nvram_val_hex_int_fmt = {
-	.name		= "hex-int",
-	.native_type	= BHND_NVRAM_TYPE_UINT64,
-	.op_filter	= bhnd_nvram_val_hexint_filter,
-	.op_encode_elem	= bhnd_nvram_val_hexint_encode_elem,
-};
-
-/**
- * Generic decimal integer format.
- *
- * Extends standard integer handling, encoding the string representation of
- * the integer value as a decimal string:
- * - Positive values will be string-encoded without a prefix.
- * - Negative values will be string-encoded with a leading '-' sign.
- */
-const bhnd_nvram_val_fmt_t bhnd_nvram_val_decimal_int_fmt = {
-	.name		= "decimal-int",
-	.native_type	= BHND_NVRAM_TYPE_UINT64,
-	.op_filter	= bhnd_nvram_val_decint_filter,
-	.op_encode_elem	= bhnd_nvram_val_decint_encode_elem,
-};
-
-/**
- * Broadcom NVRAM/SPROM LED duty-cycle format.
- * 
- * LED duty-cycle values represent the on/off periods as a 32-bit integer,
- * with the top 16 bits representing on cycles, and the bottom 16 representing
- * off cycles.
- * 
- * LED duty cycle values have three different formats:
- * 
- * - SPROM:	A 16-bit unsigned integer, with on/off cycles encoded as 8-bit
- *		values.
- * - NVRAM:	A 16-bit decimal or hexadecimal string, with on/off cycles
- *		encoded as 8-bit values as per the SPROM format.
- * - NVRAM:	A 32-bit decimal or hexadecimal string, with on/off cycles
- *		encoded as 16-bit values.
- *
- * To convert from a 16-bit representation to a 32-bit representation:
- *     ((value & 0xFF00) << 16) | ((value & 0x00FF) << 8)
- * 
- * To convert from a 32-bit representation to a 16-bit representation, perform
- * the same operation in reverse, discarding the lower 8-bits of each half
- * of the 32-bit representation:
- *     ((value >> 16) & 0xFF00) | ((value >> 8) & 0x00FF)
- */
-const bhnd_nvram_val_fmt_t bhnd_nvram_val_bcm_leddc_fmt = {
-	.name		= "bcm-leddc",
-	.native_type	= BHND_NVRAM_TYPE_UINT32,
-	.op_filter	= bhnd_nvram_val_bcm_leddc_filter,
-	.op_encode_elem	= bhnd_nvram_val_bcm_leddc_encode_elem,
-};
-
-/**
- * Broadcom NVRAM string format.
- * 
- * Handles standard, comma-delimited, and octet-string values as used in
- * Broadcom NVRAM data.
- */
-const bhnd_nvram_val_fmt_t bhnd_nvram_val_bcm_string_fmt = {
-	.name		= "bcm-string",
-	.native_type	= BHND_NVRAM_TYPE_STRING,
-	.op_encode	= bhnd_nvram_val_bcmstr_encode
-};
-
-/**
- * Broadcom NVRAM string array format.
- * 
- * Handles array interpretation of standard, comma-delimited, and octet string
- * formatted values as used in Broadcom NVRAM data.
- */
-const bhnd_nvram_val_fmt_t bhnd_nvram_val_bcm_string_array_fmt = {
-	.name		= "bcm-string[]",
-	.native_type	= BHND_NVRAM_TYPE_STRING,
-	.op_next	= bhnd_nvram_val_bcmstr_array_next,
-};
-
-/**
- * MAC address format.
- */
-const bhnd_nvram_val_fmt_t bhnd_nvram_val_macaddr_fmt = {
-	.name		= "macaddr",
-	.native_type	= BHND_NVRAM_TYPE_UINT8_ARRAY,
-	.op_encode	= bhnd_nvram_val_macaddr_encode,
-};
-
-/**
- * MAC address string format.
- */
-const bhnd_nvram_val_fmt_t bhnd_nvram_val_macaddr_string_fmt = {
-	.name		= "macaddr-string",
-	.native_type	= BHND_NVRAM_TYPE_STRING,
-	.op_encode_elem	= bhnd_nvram_val_macaddr_string_encode_elem,
-	.op_next	= bhnd_nvram_val_macaddr_string_next,
-};
