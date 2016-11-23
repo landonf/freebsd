@@ -34,6 +34,25 @@
 
 #include "bhnd_nvram_value.h"
 
+/**
+ * Filter input data prior to initialization.
+ * 
+ * This may be used to permit direct initialization from data types other than
+ * the default native_type defined by @p type.
+ *
+ * @param	type	NVRAM value type.
+ * @param	inp	Input data.
+ * @param	ilen	Input data length.
+ * @param	itype	Input data type.
+ *
+ * @retval 0		If initialization from @p inp is supported.
+ * @retval EFTYPE	If initialization from @p inp is unsupported.
+ * @retval EFAULT	if @p ilen is not correctly aligned for elements of
+ *			@p itype.
+ */
+typedef int (bhnd_nvram_val_op_filter)(const bhnd_nvram_val_type_t *type,
+    const void *inp, size_t ilen, bhnd_nvram_type itype);
+
 /** @see bhnd_nvram_val_encode() */
 typedef int (bhnd_nvram_val_op_encode)(bhnd_nvram_val_t *value, void *outp,
     size_t *olen, bhnd_nvram_type otype);
@@ -57,6 +76,7 @@ struct bhnd_nvram_val_type {
 	const char			*name;		/**< type name */
 	bhnd_nvram_type			 native_type;	/**< native value representation */
 
+	bhnd_nvram_val_op_filter	*op_filter;
 	bhnd_nvram_val_op_encode	*op_encode;
 	bhnd_nvram_val_op_encode_elem	*op_encode_elem;
 	bhnd_nvram_val_op_nelem		*op_nelem;

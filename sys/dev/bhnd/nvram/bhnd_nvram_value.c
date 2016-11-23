@@ -95,10 +95,24 @@ bhnd_nvram_val_init_common(bhnd_nvram_val_t *value,
 	int		 error;
 
 	/* Determine expected internal representation type */
-	if (value->type != NULL)
-		otype = value->type->native_type;
-	else
+	if (value->type != NULL) {
+		if (value->type->op_filter == NULL) {
+			/* Value must be initialized with its native type */
+			otype = value->type->native_type;
+		} else {
+			/* Is direct initialization from itype permitted? */
+			error = value->type->op_filter(value->type, inp, ilen,
+			    itype);
+			if (error)
+				return (error);
+
+			otype = itype;
+		}
+	} else {
+		/* No type specified; we can initialize directly from the input
+		 * data, and we'll handle all operations internally. */
 		otype = itype;
+	}
 
 	/* If input data already in native format, init directly. */
 	if (otype == itype) {
