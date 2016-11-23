@@ -925,7 +925,8 @@ bhnd_nvram_coerce_bytes(void *outp, size_t *olen, bhnd_nvram_type otype,
  *				bytes is not desired, a NULL pointer may be
  *				provided.
  * @param[out]		outp	On success, the parsed integer value will be
- *				written to @p outp.
+ *				written to @p outp. This argment may be NULL if
+ *				the value is not desired.
  * @param[in,out]	olen	The capacity of @p outp. On success, will be set
  *				to the actual size of the requested value.
  * @param		otype	The integer type to be parsed.
@@ -1144,12 +1145,10 @@ bhnd_nvram_parse_int(const char *str, size_t maxlen,  u_int base,
 
 	/* Provide (and verify) required length */
 	*olen = bhnd_nvram_value_size(otype, NULL, 0, 1);
-	if (limit < *olen) {
-		if (outp != NULL)
-			return (ENOMEM);
-
+	if (outp == NULL)
 		return (0);
-	}
+	else if (limit < *olen)
+		return (ENOMEM);
 
 	/* Provide result */
 	switch (otype) {
