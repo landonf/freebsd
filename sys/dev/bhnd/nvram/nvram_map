@@ -333,7 +333,7 @@ u8	ledbh3 {
 	#desc <variable description>
 	#help <variable help>
 }
-u8	leddc[2] {
+u32	leddc {
 	all1 ignore
 	sfmt leddc
 	#desc <variable description>
@@ -1966,7 +1966,7 @@ srom 2-3 {
 	0x078:	u8	opo
 	srom 3 {
 		0x079:	u8	regrev
-		0x07C:	u8	leddc[2]
+		0x07C:	u16	leddc
 	}
 	0x07E:	u8	sromrev
 	0x07F:	u8	<sromcrc>
@@ -1988,7 +1988,7 @@ srom 4 {
 	0x057:	u8	ledbh1
 	0x058:	u8	ledbh2
 	0x059:	u8	ledbh3
-	0x05A:	u8	leddc[2]
+	0x05A:	u16	leddc
 	0x05C:	u8	aa2g
 	0x05D:	u8	aa5g
 	0x05E:	u8	ag0
@@ -2158,7 +2158,7 @@ srom 5-7 {
 	0x04E:	u32	boardflags2
 	0x052:	u8	macaddr[6]	{ +0x1, +0x0, +0x3, +0x2, +0x5, +0x4 }
 	0x056:	u16	boardnum
-	0x05A:	u8	leddc[2]
+	0x05A:	u16	leddc
 	0x05C:	u8	aa2g
 	0x05D:	u8	aa5g
 	0x05E:	u8	ag0
@@ -2338,7 +2338,7 @@ srom 8 {
 	0x097:	u8	ledbh1
 	0x098:	u8	ledbh2
 	0x099:	u8	ledbh3
-	0x09A:	u8	leddc[2]
+	0x09A:	u16	leddc
 	0x09C:	u8	aa2g
 	0x09D:	u8	aa5g
 	0x09E:	u8	ag0
@@ -2602,7 +2602,7 @@ srom 9-10 {
 	0x097:	u8	ledbh1
 	0x098:	u8	ledbh2
 	0x099:	u8	ledbh3
-	0x09A:	u8	leddc[2]
+	0x09A:	u16	leddc
 	0x09C:	u8	aa2g
 	0x09D:	u8	aa5g
 	0x09E:	u8	ag0
@@ -2862,7 +2862,7 @@ srom 11 {
 	0x09B:	u8	ledbh1
 	0x09C:	u8	ledbh2
 	0x09D:	u8	ledbh3
-	0x09E:	u8	leddc[2]
+	0x09E:	u16	leddc
 	0x0A0:	u8	aa2g
 	0x0A1:	u8	aa5g
 	0x0A2:	u8	agbg1

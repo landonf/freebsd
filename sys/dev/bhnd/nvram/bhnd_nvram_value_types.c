@@ -156,6 +156,130 @@ bhnd_nvram_val_decint_encode_elem(bhnd_nvram_val_t *value, const void *inp,
 	return (error);
 }
 
+
+/**
+ * Broadcom LED duty-cycle filter support.
+ */
+static int
+bhnd_nvram_val_bcm_leddc_filter(const bhnd_nvram_val_type_t *type,
+    const void *inp, size_t ilen, bhnd_nvram_type itype)
+{
+	switch (itype) {
+	case BHND_NVRAM_TYPE_UINT16:
+	case BHND_NVRAM_TYPE_UINT32:
+	case BHND_NVRAM_TYPE_STRING:
+		return (0);
+	default:
+		return (EFTYPE);
+	}
+}
+
+/**
+ * Broadcom LED duty-cycle encode support.
+ */
+static int
+bhnd_nvram_val_bcm_leddc_encode_elem(bhnd_nvram_val_t *value, const void *inp,
+    size_t ilen, void *outp, size_t *olen, bhnd_nvram_type otype)
+{
+	bhnd_nvram_type		 itype;
+	size_t			 limit, nbytes;
+	int			 error;
+	union {
+		uint16_t	u16;
+		uint32_t	u32;
+	} val;
+
+	itype = bhnd_nvram_val_elem_type(value);
+	nbytes = 0;
+
+	/* Determine output byte limit */
+	if (outp != NULL)
+		limit = *olen;
+	else
+		limit = 0;
+
+	/* If the input/output types match, just delegate to standard value
+	 * encoding support */
+	if (otype == itype) {
+		return (bhnd_nvram_coerce_bytes(outp, olen, otype, inp, ilen,
+		    itype, NULL));
+	}
+
+	/*
+	 * Promote value to a common 32-bit representation.
+	 */
+	switch (itype) {
+	case BHND_NVRAM_TYPE_STRING: {
+		const char	*p;
+		size_t		 nlen, parsed;
+
+		/* Parse integer value */
+		p = inp;
+		nlen = sizeof(val.u32);
+		error = bhnd_nvram_parse_int(p, ilen, 0, &parsed, &val.u32,
+		    &nlen, BHND_NVRAM_TYPE_UINT32);
+		if (error)
+			return (error);
+
+		/* Trailing garbage? */
+		if (parsed < ilen && *(p+parsed) != '\0')
+			return (EFTYPE);
+
+		break;
+	}
+	case BHND_NVRAM_TYPE_UINT16: {
+		uint16_t u16;
+		u16 = *(const uint16_t *)inp;
+		val.u32 = ((u16 & 0xFF00) << 16) | ((u16 & 0x00FF) << 8);
+		break;
+	}
+
+	case BHND_NVRAM_TYPE_UINT32:
+		val.u32 = *(const uint32_t *)inp;
+		break;
+
+	default:
+		BHND_NV_PANIC("unsupported backing data type: %s",
+		    bhnd_nvram_type_name(itype));
+	}
+
+	/*
+	 * Encode as requested output type.
+	 */
+	switch (otype) {
+	case BHND_NVRAM_TYPE_STRING:
+		// TODO
+		BHND_NV_PANIC("unimplemented");
+		break;
+
+	case BHND_NVRAM_TYPE_UINT16: {
+		val.u16 = ((val.u32 >> 16) & 0xFF00) |
+		    ((val.u32 >> 8) & 0x00FF);
+		nbytes = sizeof(val.u16);
+		break;
+	}
+
+	case BHND_NVRAM_TYPE_UINT32:
+		nbytes = sizeof(val.u32);
+		break;
+
+	default:
+		return (EFTYPE);
+	}
+
+	/* Provide the actual length */
+	*olen = nbytes;
+
+	/* Skip writing? */
+	if (outp == NULL)
+		return (0);
+	else if (limit < nbytes)
+		return (ENOMEM);
+
+	memcpy(outp, &val, nbytes);
+	return (0);
+}
+
 static int
 bhnd_nvram_val_bcmstr_encode(bhnd_nvram_val_t *value, void *outp,
     size_t *olen, bhnd_nvram_type otype)
@@ -494,10 +618,39 @@ const bhnd_nvram_val_type_t bhnd_nvram_val_decimal_int_type = {
 };
 
 /**
- * Generic Broadcom NVRAM string type.
+ * Broadcom NVRAM/SPROM LED duty-cycle type.
  * 
- * Handles standard and comma-delimited string values as used in
- * Broadcom NVRAM data.
+ * LED duty-cycle values represent the on/off periods as a 32-bit integer,
+ * with the top 16 bits representing on cycles, and the bottom 16 representing
+ * off cycles.
+ * 
+ * LED duty cycles have two different actual encodings:
+ * 
+ * - SPROM:	A 16-bit unsigned integer, with on/off cycles encoded as 8-bit
+ *		values.
+ * - NVRAM:	A 32-bit hexadecimal string, with on/off cycles encoded as
+ *		16-bit values.
+ *
+ * To convert from a 16-bit representation to a 32-bit representation:
+ *     ((value & 0xFF00) << 16) | ((value & 0x00FF) << 8)
+ * 
+ * To convert from a 32-bit representation to a 16-bit representation, perform
+ * the same operation in reverse, discarding the lower 8-bits of each half
+ * of the 32-bit representation:
+ *     ((value >> 16) & 0xFF00) | ((value >> 8) & 0x00FF)
+ */
+const bhnd_nvram_val_type_t bhnd_nvram_val_bcm_leddc_type = {
+	.name		= "bcm-leddc",
+	.native_type	= BHND_NVRAM_TYPE_UINT32,
+	.op_filter	= bhnd_nvram_val_bcm_leddc_filter,
+	.op_encode_elem	= bhnd_nvram_val_bcm_leddc_encode_elem,
+};
+
+/**
+ * Broadcom NVRAM string type.
+ * 
+ * Handles standard, comma-delimited, and octet string formatted values as used
+ * in Broadcom NVRAM data.
  */
 const bhnd_nvram_val_type_t bhnd_nvram_val_bcm_string_type = {
 	.name		= "bcm-string",
@@ -506,10 +659,10 @@ const bhnd_nvram_val_type_t bhnd_nvram_val_bcm_string_type = {
 };
 
 /**
- * Generic Broadcom NVRAM string array type.
+ * Broadcom NVRAM string array type.
  * 
- * Handles array interpretation of standard and comma-delimited string values
- * as used in Broadcom NVRAM data.
+ * Handles array interpretation of standard, comma-delimited, and octet string
+ * formatted values as used in Broadcom NVRAM data.
  */
 const bhnd_nvram_val_type_t bhnd_nvram_val_bcm_string_array_type = {
 	.name		= "bcm-string[]",
