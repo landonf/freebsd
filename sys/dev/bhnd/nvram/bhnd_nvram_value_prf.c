@@ -113,8 +113,8 @@ bhnd_nvram_val_fmt(bhnd_nvram_val_t *value, const char *fmt, char *outp,
 
 
 /**
- * Format a string representation of @p value using @p fmt, with, writing the
- * result to @p outp.
+ * Format a string representation of the elements of @p value using @p fmt,
+ * writing the result to @p outp.
  *
  * @param		value	The value to be formatted.
  * @param		fmt	The format string.
@@ -134,14 +134,15 @@ bhnd_nvram_val_fmt(bhnd_nvram_val_t *value, const char *fmt, char *outp,
  * Format specifier format:
  *     %[repeat][flags][width][.precision][length modifier][specifier]
  *
- * The format string is interpreted as an encoding directive for the value;
- * the value will be asked to encode itself as the appropriate type based
- * on the length modifiers and specifier, and then formatted as a string.
+ * The format specifier is interpreted as an encoding directive for an
+ * individual value element; each format specifier will fetch the next element
+ * from the value, encode the element as the appropriate type based on the
+ * length modifiers and specifier, and then format the result as a string.
  * 
  * For example, given a string value of '0x000F', and a format specifier of
- * '%#hhx', the value will be asked to encode a BHND_NVRAM_TYPE_UINT8
- * representation, which will then be formatted according to the specifier
- * as '0xF'.
+ * '%#hhx', the value will be asked to encode its first element as
+ * BHND_NVRAM_TYPE_UINT8. String formatting will then be applied to the 8-bit
+ * unsigned integer representation, producing a string value of "0xF".
  * 
  * Repeat:
  * - '[digits]*'	Repeatedly apply the format specifier to the input
