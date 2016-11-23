@@ -88,7 +88,7 @@ bhnd_nvram_val_bcmstr_encode(bhnd_nvram_val_t *value, void *outp,
 	if (bhnd_nvram_ident_octet_string(inp, ilen, NULL, NULL))
 		array_type = &bhnd_nvram_val_macaddr_string_type;
 	else
-		array_type = &bhnd_nvram_val_bcmstr_array_type;
+		array_type = &bhnd_nvram_val_bcm_string_array_type;
 
 	/* Wrap in array-typed representation */
 	error = bhnd_nvram_val_init(&array, array_type, inp, ilen, itype,
@@ -375,8 +375,8 @@ bhnd_nvram_ident_octet_string(const char *inp, size_t ilen, char *delim,
  * Handles standard and comma-delimited string values as used in
  * Broadcom NVRAM data.
  */
-const bhnd_nvram_val_type_t bhnd_nvram_val_bcmstr_type = {
-	.name		= "bcmstr",
+const bhnd_nvram_val_type_t bhnd_nvram_val_bcm_string_type = {
+	.name		= "bcm-string",
 	.native_type	= BHND_NVRAM_TYPE_STRING,
 	.op_encode	= bhnd_nvram_val_bcmstr_encode
 };
@@ -387,8 +387,8 @@ const bhnd_nvram_val_type_t bhnd_nvram_val_bcmstr_type = {
  * Handles array interpretation of standard and comma-delimited string values
  * as used in Broadcom NVRAM data.
  */
-const bhnd_nvram_val_type_t bhnd_nvram_val_bcmstr_array_type = {
-	.name		= "bcmstr[]",
+const bhnd_nvram_val_type_t bhnd_nvram_val_bcm_string_array_type = {
+	.name		= "bcm-string[]",
 	.native_type	= BHND_NVRAM_TYPE_STRING,
 	.op_next	= bhnd_nvram_val_bcmstr_array_next,
 };
