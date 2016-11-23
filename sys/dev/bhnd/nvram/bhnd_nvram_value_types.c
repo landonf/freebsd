@@ -81,9 +81,7 @@ static int
 bhnd_nvram_val_hexint_encode_elem(bhnd_nvram_val_t *value, const void *inp,
     size_t ilen, void *outp, size_t *olen, bhnd_nvram_type otype)
 {
-	bhnd_nvram_val_t	eval;
-	bhnd_nvram_type		itype;
-	int			error;
+	bhnd_nvram_type	itype;
 
 	itype = bhnd_nvram_val_elem_type(value);
 
@@ -94,16 +92,9 @@ bhnd_nvram_val_hexint_encode_elem(bhnd_nvram_val_t *value, const void *inp,
 		    itype, NULL));
 	}
 
-	/* Otherwise, use val string formatting to emit a hex string value */
-	error = bhnd_nvram_val_init(&eval, NULL, inp, ilen, itype,
-	    BHND_NVRAM_VAL_BORROW_DATA);
-	if (error)
-		return (error);
-
-	error = bhnd_nvram_val_fmt(&eval, "0x%I64X", outp, olen);
-	bhnd_nvram_val_release(&eval);
-
-	return (error);
+	/* Otherwise, use standard string formatting to emit a hex string 
+	 * value */
+	return (bhnd_nvram_value_fmt("0x%I64X", inp, ilen, itype, outp, olen));
 }
 
 /**
@@ -127,9 +118,7 @@ static int
 bhnd_nvram_val_decint_encode_elem(bhnd_nvram_val_t *value, const void *inp,
     size_t ilen, void *outp, size_t *olen, bhnd_nvram_type otype)
 {
-	bhnd_nvram_val_t	eval;
-	bhnd_nvram_type		itype;
-	int			error;
+	bhnd_nvram_type itype;
 
 	itype = bhnd_nvram_val_elem_type(value);
 
@@ -140,20 +129,14 @@ bhnd_nvram_val_decint_encode_elem(bhnd_nvram_val_t *value, const void *inp,
 		    itype, NULL));
 	}
 
-	/* Otherwise, use val string formatting to emit a hex string value */
-	error = bhnd_nvram_val_init(&eval, NULL, inp, ilen, itype,
-	    BHND_NVRAM_VAL_BORROW_DATA);
-	if (error)
-		return (error);
-
-	if (bhnd_nvram_is_signed_type(itype))
-		error = bhnd_nvram_val_fmt(&eval, "%I64d", outp, olen);
-	else
-		error = bhnd_nvram_val_fmt(&eval, "%I64u", outp, olen);
-
-	bhnd_nvram_val_release(&eval);
-
-	return (error);
+	/* Otherwise, use standard string formatting to emit a hex string */
+	if (bhnd_nvram_is_signed_type(itype)) {
+		return (bhnd_nvram_value_fmt("%I64d", inp, ilen, itype, outp,
+		    olen));
+	} else {
+		return (bhnd_nvram_value_fmt("%I64u", inp, ilen, itype, outp,
+		    olen));
+	}
 }
 
 
