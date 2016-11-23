@@ -147,9 +147,9 @@ bhnd_nvram_val_decint_encode_elem(bhnd_nvram_val_t *value, const void *inp,
 		return (error);
 
 	if (bhnd_nvram_is_signed_type(itype))
-		error = bhnd_nvram_val_fmt(&eval, "0x%I64d", outp, olen);
+		error = bhnd_nvram_val_fmt(&eval, "%I64d", outp, olen);
 	else
-		error = bhnd_nvram_val_fmt(&eval, "0x%I64u", outp, olen);
+		error = bhnd_nvram_val_fmt(&eval, "%I64u", outp, olen);
 
 	bhnd_nvram_val_release(&eval);
 

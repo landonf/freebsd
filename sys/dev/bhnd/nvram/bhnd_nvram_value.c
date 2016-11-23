@@ -654,7 +654,7 @@ bhnd_nvram_val_encode_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 		if (otype_signed) {
 			len = snprintf(outp, limit, "%" PRId64, intv.i64);
 		} else {
-			len = snprintf(outp, limit, "0x%" PRIX64, intv.i64);
+			len = snprintf(outp, limit, "%" PRIu64, intv.u64);
 		}
 
 		if (len < 0) {
