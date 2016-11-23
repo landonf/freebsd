@@ -85,7 +85,7 @@ static char const bhnd_nv_hex2ascii[] = "0123456789abcdefghijklmnopqrstuvwxyz";
  *				requested string encoding (including a trailing
  *				NUL).
  * 
- * Refer to bhnd_nvram_val_vfmt() for full format string documentation.
+ * Refer to bhnd_nvram_val_vprintf() for full format string documentation.
  *
  * @retval 0		success
  * @retval EINVAL	If @p fmt contains unrecognized format string
@@ -98,14 +98,14 @@ static char const bhnd_nv_hex2ascii[] = "0123456789abcdefghijklmnopqrstuvwxyz";
  *			underflow) the representation defined by @p fmt.
  */
 int
-bhnd_nvram_val_fmt(bhnd_nvram_val_t *value, const char *fmt, char *outp,
+bhnd_nvram_val_printf(bhnd_nvram_val_t *value, const char *fmt, char *outp,
     size_t *olen, ...)
 {
 	va_list	ap;
 	int	error;
 
 	va_start(ap, olen);
-	error = bhnd_nvram_val_vfmt(value, fmt, outp, olen, ap);
+	error = bhnd_nvram_val_vprintf(value, fmt, outp, olen, ap);
 	va_end(ap);
 
 	return (error);
@@ -198,7 +198,7 @@ bhnd_nvram_val_fmt(bhnd_nvram_val_t *value, const char *fmt, char *outp,
  *			underflow) the representation defined by @p fmt.
  */
 int
-bhnd_nvram_val_vfmt(bhnd_nvram_val_t *value, const char *fmt, char *outp,
+bhnd_nvram_val_vprintf(bhnd_nvram_val_t *value, const char *fmt, char *outp,
     size_t *olen, va_list ap)
 {
 	const void	*elem;

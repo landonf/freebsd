@@ -164,7 +164,7 @@ int				 bhnd_nvram_value_nelem(bhnd_nvram_type type,
 size_t				 bhnd_nvram_value_size(bhnd_nvram_type type,
 				     const void *data, size_t nbytes, 
 				     size_t nelem);
-int				 bhnd_nvram_value_fmt(const char *fmt,
+int				 bhnd_nvram_value_printf(const char *fmt,
 				     const void *inp, size_t ilen,
 				     bhnd_nvram_type itype, char *outp,
 				     size_t *olen, ...);

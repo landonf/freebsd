@@ -70,12 +70,12 @@ int				 bhnd_nvram_val_encode_elem(
 				     size_t ilen, void *outp, size_t *olen,
 				     bhnd_nvram_type otype);
 
-int				 bhnd_nvram_val_fmt(
-				     bhnd_nvram_val_t *value, const char *fmt,
-				     char *outp, size_t *olen, ...);
-int				 bhnd_nvram_val_vfmt(
-				     bhnd_nvram_val_t *value, const char *fmt,
-				     char *outp, size_t *olen, va_list ap);
+int				 bhnd_nvram_val_printf(bhnd_nvram_val_t *value,
+				     const char *fmt, char *outp, size_t *olen,
+				     ...);
+int				 bhnd_nvram_val_vprintf(bhnd_nvram_val_t *value,
+				     const char *fmt, char *outp, size_t *olen,
+				     va_list ap);
 
 
 const void			*bhnd_nvram_val_bytes(bhnd_nvram_val_t *value,

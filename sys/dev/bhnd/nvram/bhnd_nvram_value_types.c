@@ -94,7 +94,8 @@ bhnd_nvram_val_hexint_encode_elem(bhnd_nvram_val_t *value, const void *inp,
 
 	/* Otherwise, use standard string formatting to emit a hex string 
 	 * value */
-	return (bhnd_nvram_value_fmt("0x%I64X", inp, ilen, itype, outp, olen));
+	return (bhnd_nvram_value_printf("0x%I64X", inp, ilen, itype, outp,
+	    olen));
 }
 
 /**
@@ -131,10 +132,10 @@ bhnd_nvram_val_decint_encode_elem(bhnd_nvram_val_t *value, const void *inp,
 
 	/* Otherwise, use standard string formatting to emit a hex string */
 	if (bhnd_nvram_is_signed_type(itype)) {
-		return (bhnd_nvram_value_fmt("%I64d", inp, ilen, itype, outp,
+		return (bhnd_nvram_value_printf("%I64d", inp, ilen, itype, outp,
 		    olen));
 	} else {
-		return (bhnd_nvram_value_fmt("%I64u", inp, ilen, itype, outp,
+		return (bhnd_nvram_value_printf("%I64u", inp, ilen, itype, outp,
 		    olen));
 	}
 }
@@ -270,10 +271,10 @@ bhnd_nvram_val_bcm_leddc_encode_elem(bhnd_nvram_val_t *value, const void *inp,
 		 * Prefer 16-bit format.
 		 */
 		if (!led16_lossy) {
-			return (bhnd_nvram_value_fmt("0x%04hX", &led16,
+			return (bhnd_nvram_value_printf("0x%04hX", &led16,
 			    sizeof(led16), BHND_NVRAM_TYPE_UINT16, outp, olen));
 		} else {
-			return (bhnd_nvram_value_fmt("0x%04X", &led32,
+			return (bhnd_nvram_value_printf("0x%04X", &led32,
 			    sizeof(led32), BHND_NVRAM_TYPE_UINT32, outp, olen));
 		}
 
@@ -426,8 +427,10 @@ bhnd_nvram_val_macaddr_encode(bhnd_nvram_val_t *value, void *outp,
 	 * If converting to a string (or a single-element string array),
 	 * produce an octet string (00:00:...).
 	 */
-	if (bhnd_nvram_base_type(otype) == BHND_NVRAM_TYPE_STRING)
-		return (bhnd_nvram_val_fmt(value, "%*02hhX", outp, olen, ":"));
+	if (bhnd_nvram_base_type(otype) == BHND_NVRAM_TYPE_STRING) {
+		return (bhnd_nvram_val_printf(value, "%*02hhX", outp, olen,
+		    ":"));
+	}
 
 	/* Otherwise, use standard encoding support */
 	inp = bhnd_nvram_val_bytes(value, &ilen, &itype);

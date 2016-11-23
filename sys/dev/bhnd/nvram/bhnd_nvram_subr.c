@@ -639,7 +639,7 @@ bhnd_nvram_value_size(bhnd_nvram_type type, const void *data, size_t nbytes,
  * Format a string representation of @p inp using @p fmt, with, writing the
  * result to @p outp.
  *
- * Refer to bhnd_nvram_val_vfmt() for full format string documentation.
+ * Refer to bhnd_nvram_val_vprintf() for full format string documentation.
  *
  * @param		fmt	The format string.
  * @param		inp	The value to be formatted.
@@ -662,7 +662,7 @@ bhnd_nvram_value_size(bhnd_nvram_type type, const void *data, size_t nbytes,
  *			underflow) the representation defined by @p fmt.
  */
 int
-bhnd_nvram_value_fmt(const char *fmt, const void *inp, size_t ilen,
+bhnd_nvram_value_printf(const char *fmt, const void *inp, size_t ilen,
     bhnd_nvram_type itype, char *outp, size_t *olen, ...)
 {
 	bhnd_nvram_val_t	val;
@@ -677,7 +677,7 @@ bhnd_nvram_value_fmt(const char *fmt, const void *inp, size_t ilen,
 
 	/* Attempt to format the value */
 	va_start(ap, olen);
-	error = bhnd_nvram_val_vfmt(&val, fmt, outp, olen, ap);
+	error = bhnd_nvram_val_vprintf(&val, fmt, outp, olen, ap);
 	va_end(ap);
 
 	/* Clean up */
