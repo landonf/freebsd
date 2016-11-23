@@ -781,6 +781,11 @@ bhnd_nvram_coerce_bytes(void *outp, size_t *olen, bhnd_nvram_type otype,
 			switch (hint->sfmt) {
 			case BHND_NVRAM_SFMT_HEX:
 			case BHND_NVRAM_SFMT_DEC:
+				/* We always prioritize preserving the existing
+				 * string value over attempting to coerce into
+				 * a hex_int or decimal_int, etc. */
+				break;
+
 			case BHND_NVRAM_SFMT_LEDDC:
 			case BHND_NVRAM_SFMT_CCODE:
 				// XXX TODO!
@@ -797,7 +802,13 @@ bhnd_nvram_coerce_bytes(void *outp, size_t *olen, bhnd_nvram_type otype,
 		if (hint != NULL) {
 			switch (hint->sfmt) {
 			case BHND_NVRAM_SFMT_HEX:
+				val_type = &bhnd_nvram_val_hex_int_type;
+				break;
+
 			case BHND_NVRAM_SFMT_DEC:
+				val_type = &bhnd_nvram_val_decimal_int_type;
+				break;
+
 			case BHND_NVRAM_SFMT_LEDDC:
 			case BHND_NVRAM_SFMT_CCODE:
 				// XXX TODO!

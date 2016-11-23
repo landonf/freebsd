@@ -60,6 +60,102 @@ __FBSDID("$FreeBSD$");
 static bool	bhnd_nvram_ident_octet_string(const char *inp, size_t ilen,
 		    char *delim, size_t *nelem);
 
+/**
+ * Hex integer filter support.
+ */
+static int
+bhnd_nvram_val_hexint_filter(const bhnd_nvram_val_type_t *type, const void *inp,
+    size_t ilen, bhnd_nvram_type itype)
+{
+	/* Supports all integer and integer array types */
+	if (bhnd_nvram_is_int_type(bhnd_nvram_base_type(itype)))
+		return (0);
+
+	return (EFTYPE);
+}
+
+/**
+ * Hex integer encode support.
+ */
+static int
+bhnd_nvram_val_hexint_encode_elem(bhnd_nvram_val_t *value, const void *inp,
+    size_t ilen, void *outp, size_t *olen, bhnd_nvram_type otype)
+{
+	bhnd_nvram_val_t	eval;
+	bhnd_nvram_type		itype;
+	int			error;
+
+	itype = bhnd_nvram_val_elem_type(value);
+
+	/* If not encoding as a string, perform standard integer value
+	 * encoding */
+	if (otype != BHND_NVRAM_TYPE_STRING) {
+		return (bhnd_nvram_coerce_bytes(outp, olen, otype, inp, ilen,
+		    itype, NULL));
+	}
+
+	/* Otherwise, use val string formatting to emit a hex string value */
+	error = bhnd_nvram_val_init(&eval, NULL, inp, ilen, itype,
+	    BHND_NVRAM_VAL_BORROW_DATA);
+	if (error)
+		return (error);
+
+	error = bhnd_nvram_val_fmt(&eval, "0x%I64X", outp, olen);
+	bhnd_nvram_val_release(&eval);
+
+	return (error);
+}
+
+/**
+ * Decimal integer filter support.
+ */
+static int
+bhnd_nvram_val_decint_filter(const bhnd_nvram_val_type_t *type, const void *inp,
+    size_t ilen, bhnd_nvram_type itype)
+{
+	/* Supports all integer and integer array types */
+	if (bhnd_nvram_is_int_type(bhnd_nvram_base_type(itype)))
+		return (0);
+
+	return (EFTYPE);
+}
+
+/**
+ * Decimal integer encode support.
+ */
+static int
+bhnd_nvram_val_decint_encode_elem(bhnd_nvram_val_t *value, const void *inp,
+    size_t ilen, void *outp, size_t *olen, bhnd_nvram_type otype)
+{
+	bhnd_nvram_val_t	eval;
+	bhnd_nvram_type		itype;
+	int			error;
+
+	itype = bhnd_nvram_val_elem_type(value);
+
+	/* If not encoding as a string, perform standard integer value
+	 * encoding */
+	if (otype != BHND_NVRAM_TYPE_STRING) {
+		return (bhnd_nvram_coerce_bytes(outp, olen, otype, inp, ilen,
+		    itype, NULL));
+	}
+
+	/* Otherwise, use val string formatting to emit a hex string value */
+	error = bhnd_nvram_val_init(&eval, NULL, inp, ilen, itype,
+	    BHND_NVRAM_VAL_BORROW_DATA);
+	if (error)
+		return (error);
+
+	if (bhnd_nvram_is_signed_type(itype))
+		error = bhnd_nvram_val_fmt(&eval, "0x%I64d", outp, olen);
+	else
+		error = bhnd_nvram_val_fmt(&eval, "0x%I64u", outp, olen);
+
+	bhnd_nvram_val_release(&eval);
+
+	return (error);
+}
+
 static int
 bhnd_nvram_val_bcmstr_encode(bhnd_nvram_val_t *value, void *outp,
     size_t *olen, bhnd_nvram_type otype)
@@ -368,6 +464,34 @@ bhnd_nvram_ident_octet_string(const char *inp, size_t ilen, char *delim,
 
 	return (true);
 }
+
+/**
+ * Generic hex integer type.
+ *
+ * Extends standard integer handling, encoding the string representation of
+ * the integer value as an 0x-prefixed hexadecimal string.
+ */
+const bhnd_nvram_val_type_t bhnd_nvram_val_hex_int_type = {
+	.name		= "hex-int",
+	.native_type	= BHND_NVRAM_TYPE_UINT64,
+	.op_filter	= bhnd_nvram_val_hexint_filter,
+	.op_encode_elem	= bhnd_nvram_val_hexint_encode_elem,
+};
+
+/**
+ * Generic decimal integer type.
+ *
+ * Extends standard integer handling, encoding the string representation of
+ * the integer value as a decimal string:
+ * - Positive values will be string-encoded without a prefix.
+ * - Negative values will be string-encoded with a leading '-' sign.
+ */
+const bhnd_nvram_val_type_t bhnd_nvram_val_decimal_int_type = {
+	.name		= "decimal-int",
+	.native_type	= BHND_NVRAM_TYPE_UINT64,
+	.op_filter	= bhnd_nvram_val_decint_filter,
+	.op_encode_elem	= bhnd_nvram_val_decint_encode_elem,
+};
 
 /**
  * Generic Broadcom NVRAM string type.
