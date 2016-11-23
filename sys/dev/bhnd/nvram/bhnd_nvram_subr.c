@@ -634,6 +634,57 @@ bhnd_nvram_value_size(bhnd_nvram_type type, const void *data, size_t nbytes,
 	BHND_NV_PANIC("bhnd nvram type %u unknown", type);
 }
 
+
+/**
+ * Format a string representation of @p inp using @p fmt, with, writing the
+ * result to @p outp.
+ *
+ * Refer to bhnd_nvram_val_vfmt() for full format string documentation.
+ *
+ * @param		fmt	The format string.
+ * @param		inp	The value to be formatted.
+ * @param		ilen	The size of @p inp, in bytes.
+ * @param		itype	The type of @p inp.
+ * @param[out]		outp	On success, the string value will be written to
+ *				this buffer. This argment may be NULL if the
+ *				value is not desired.
+ * @param[in,out]	olen	The capacity of @p outp. On success, will be set
+ *				to the actual size of the formatted string.
+ *
+ * @retval 0		success
+ * @retval EINVAL	If @p fmt contains unrecognized format string
+ *			specifiers.
+ * @retval ENOMEM	If the @p outp is non-NULL, and the provided @p olen
+ *			is too small to hold the encoded value.
+ * @retval EFTYPE	If value coercion from @p inp to a string value via
+ *			@p fmt is unsupported.
+ * @retval ERANGE	If value coercion of @p value would overflow (or
+ *			underflow) the representation defined by @p fmt.
+ */
+int
+bhnd_nvram_value_fmt(const char *fmt, const void *inp, size_t ilen,
+    bhnd_nvram_type itype, char *outp, size_t *olen, ...)
+{
+	bhnd_nvram_val_t	val;
+	va_list			ap;
+	int			error;
+
+	/* Map input buffer as a value instance */
+	error = bhnd_nvram_val_init(&val, NULL, inp, ilen, itype,
+	    BHND_NVRAM_VAL_BORROW_DATA);
+	if (error)
+		return (error);
+
+	/* Attempt to format the value */
+	va_start(ap, olen);
+	error = bhnd_nvram_val_vfmt(&val, fmt, outp, olen, ap);
+	va_end(ap);
+
+	/* Clean up */
+	bhnd_nvram_val_release(&val);
+	return (error);
+}
+
 /* used by bhnd_nvram_find_vardefn() */
 static int
 bhnd_nvram_find_vardefn_compare(const void *key, const void *rhs)
@@ -787,6 +838,9 @@ bhnd_nvram_coerce_bytes(void *outp, size_t *olen, bhnd_nvram_type otype,
 				break;
 
 			case BHND_NVRAM_SFMT_LEDDC:
+				val_type = &bhnd_nvram_val_bcm_leddc_type;
+				break;
+
 			case BHND_NVRAM_SFMT_CCODE:
 				// XXX TODO!
 				break;
@@ -810,6 +864,9 @@ bhnd_nvram_coerce_bytes(void *outp, size_t *olen, bhnd_nvram_type otype,
 				break;
 
 			case BHND_NVRAM_SFMT_LEDDC:
+				val_type = &bhnd_nvram_val_bcm_leddc_type;
+				break;
+
 			case BHND_NVRAM_SFMT_CCODE:
 				// XXX TODO!
 				break;

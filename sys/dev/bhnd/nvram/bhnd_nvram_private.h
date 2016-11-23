@@ -164,6 +164,10 @@ int				 bhnd_nvram_value_nelem(bhnd_nvram_type type,
 size_t				 bhnd_nvram_value_size(bhnd_nvram_type type,
 				     const void *data, size_t nbytes, 
 				     size_t nelem);
+int				 bhnd_nvram_value_fmt(const char *fmt,
+				     const void *inp, size_t ilen,
+				     bhnd_nvram_type itype, char *outp,
+				     size_t *olen, ...);
 
 const struct bhnd_nvram_vardefn	*bhnd_nvram_find_vardefn(const char *varname);
 const struct bhnd_nvram_vardefn	*bhnd_nvram_get_vardefn(size_t id);
@@ -184,6 +188,7 @@ size_t				 bhnd_nvram_parse_field(const char **inp,
 				     size_t ilen, char delim);
 size_t				 bhnd_nvram_trim_field(const char **inp,
 				     size_t ilen, char delim);
+
 
 int				 bhnd_nvram_coerce_bytes(void *outp,
 				     size_t *olen, bhnd_nvram_type otype,
@@ -221,8 +226,11 @@ typedef enum {
 	BHND_NVRAM_SFMT_DEC	= 2,	/**< decimal format */
 	BHND_NVRAM_SFMT_MACADDR	= 3,	/**< mac address (canonical form, hex
 					     octets, separated with ':') */
-	BHND_NVRAM_SFMT_LEDDC	= 4,	/**< LED PWM duty-cycle (2 bytes --
-					     on/off) */
+	BHND_NVRAM_SFMT_LEDDC	= 4,	/**< LED PWM duty-cycle. Encoded
+					     as either a 16-bit or 32-bit
+					     integer, the value must be scaled
+					     when converting between the two
+					     representations. */
 	BHND_NVRAM_SFMT_CCODE	= 5	/**< country code format (2-3 ASCII
 					     chars, or hex string) */
 } bhnd_nvram_sfmt;

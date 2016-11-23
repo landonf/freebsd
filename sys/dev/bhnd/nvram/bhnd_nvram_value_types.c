@@ -181,16 +181,20 @@ static int
 bhnd_nvram_val_bcm_leddc_encode_elem(bhnd_nvram_val_t *value, const void *inp,
     size_t ilen, void *outp, size_t *olen, bhnd_nvram_type otype)
 {
-	bhnd_nvram_type		 itype;
-	size_t			 limit, nbytes;
-	int			 error;
+	bhnd_nvram_type		itype;
+	size_t			limit, nbytes;
+	int			error;
+	uint16_t		led16;
+	uint32_t		led32;
+	bool			led16_lossy;
 	union {
 		uint16_t	u16;
 		uint32_t	u32;
-	} val;
+	} strval;
 
 	itype = bhnd_nvram_val_elem_type(value);
 	nbytes = 0;
+	led16_lossy = false;
 
 	/* Determine output byte limit */
 	if (outp != NULL)
@@ -205,19 +209,18 @@ bhnd_nvram_val_bcm_leddc_encode_elem(bhnd_nvram_val_t *value, const void *inp,
 		    itype, NULL));
 	}
 
-	/*
-	 * Promote value to a common 32-bit representation.
-	 */
-	switch (itype) {
-	case BHND_NVRAM_TYPE_STRING: {
+	/* If our value is a string, it may either be a 16-bit or a 32-bit
+	 * representation of the duty cycle */
+	if (itype == BHND_NVRAM_TYPE_STRING) {
 		const char	*p;
+		uint32_t	 ival;
 		size_t		 nlen, parsed;
 
 		/* Parse integer value */
 		p = inp;
-		nlen = sizeof(val.u32);
-		error = bhnd_nvram_parse_int(p, ilen, 0, &parsed, &val.u32,
-		    &nlen, BHND_NVRAM_TYPE_UINT32);
+		nlen = sizeof(ival);
+		error = bhnd_nvram_parse_int(p, ilen, 0, &parsed, &ival, &nlen,
+		    BHND_NVRAM_TYPE_UINT32);
 		if (error)
 			return (error);
 
@@ -225,19 +228,51 @@ bhnd_nvram_val_bcm_leddc_encode_elem(bhnd_nvram_val_t *value, const void *inp,
 		if (parsed < ilen && *(p+parsed) != '\0')
 			return (EFTYPE);
 
-		break;
+		/* Point inp and itype to either our parsed 32-bit or 16-bit
+		 * value */
+		inp = &strval;
+		if (ival & 0xFFFF0000) {
+			strval.u32 = ival;
+			itype = BHND_NVRAM_TYPE_UINT32;
+		} else {
+			strval.u16 = ival;
+			itype = BHND_NVRAM_TYPE_UINT16;
+		}
 	}
+
+	/* Populate both u32 and (possibly lossy) u16 LEDDC representations */
+	switch (itype) {
 	case BHND_NVRAM_TYPE_UINT16: {
-		uint16_t u16;
-		u16 = *(const uint16_t *)inp;
-		val.u32 = ((u16 & 0xFF00) << 16) | ((u16 & 0x00FF) << 8);
+		led16 = *(const uint16_t *)inp;
+		led32 = ((led16 & 0xFF00) << 16) | ((led16 & 0x00FF) << 8);
+
+		/* If all bits are set in the 16-bit value (indicating that
+		 * the value is 'unset' in SPROM), we must update the 32-bit
+		 * representation to match. */
+		if (led16 == UINT16_MAX)
+			led32 = UINT32_MAX;
+
 		break;
 	}
 
 	case BHND_NVRAM_TYPE_UINT32:
-		val.u32 = *(const uint32_t *)inp;
-		break;
+		led32 = *(const uint32_t *)inp;
+		led16 = ((led32 >> 16) & 0xFF00) | ((led32 >> 8) & 0x00FF);
 
+		/*
+		 * Determine whether the led16 conversion is lossy:
+		 * 
+		 * - If the lower 8 bits of each half of the 32-bit value
+		 *   aren't set, we can safely use the 16-bit representation
+		 *   without losing data.
+		 * - If all bits in the 32-bit value are set, the variable is
+		 *   treated as unset in  SPROM. We can safely use the 16-bit
+		 *   representation without losing data.
+		 */
+		if ((led32 & 0x00FF00FF) != 0 && led32 != UINT32_MAX)
+			led16_lossy = true;
+
+		break;
 	default:
 		BHND_NV_PANIC("unsupported backing data type: %s",
 		    bhnd_nvram_type_name(itype));
@@ -248,35 +283,51 @@ bhnd_nvram_val_bcm_leddc_encode_elem(bhnd_nvram_val_t *value, const void *inp,
 	 */
 	switch (otype) {
 	case BHND_NVRAM_TYPE_STRING:
-		// TODO
-		BHND_NV_PANIC("unimplemented");
+		/*
+		 * Prefer 16-bit format.
+		 */
+		if (!led16_lossy) {
+			return (bhnd_nvram_value_fmt("0x%04hX", &led16,
+			    sizeof(led16), BHND_NVRAM_TYPE_UINT16, outp, olen));
+		} else {
+			return (bhnd_nvram_value_fmt("0x%04X", &led32,
+			    sizeof(led32), BHND_NVRAM_TYPE_UINT32, outp, olen));
+		}
+
 		break;
 
 	case BHND_NVRAM_TYPE_UINT16: {
-		val.u16 = ((val.u32 >> 16) & 0xFF00) |
-		    ((val.u32 >> 8) & 0x00FF);
-		nbytes = sizeof(val.u16);
+		/* Can we encode as uint16 without losing data? */
+		if (led16_lossy)
+			return (ERANGE);
+
+		/* Write led16 format */
+		nbytes = sizeof(uint16_t);
+		if (limit >= nbytes)
+			*(uint16_t *)outp = led16;
+
 		break;
 	}
 
 	case BHND_NVRAM_TYPE_UINT32:
-		nbytes = sizeof(val.u32);
+		/* Write led32 format */
+		nbytes = sizeof(uint32_t);
+		if (limit >= nbytes)
+			*(uint32_t *)outp = led32;
 		break;
 
 	default:
+		/* No other output formats are supported */
 		return (EFTYPE);
 	}
 
 	/* Provide the actual length */
 	*olen = nbytes;
 
-	/* Skip writing? */
-	if (outp == NULL)
-		return (0);
-	else if (limit < nbytes)
+	/* Report insufficient space (if output was requested) */
+	if (limit < nbytes && outp != NULL)
 		return (ENOMEM);
 
-	memcpy(outp, &val, nbytes);
 	return (0);
 }
 
@@ -624,12 +675,14 @@ const bhnd_nvram_val_type_t bhnd_nvram_val_decimal_int_type = {
  * with the top 16 bits representing on cycles, and the bottom 16 representing
  * off cycles.
  * 
- * LED duty cycles have two different actual encodings:
+ * LED duty cycle values have three different formats:
  * 
  * - SPROM:	A 16-bit unsigned integer, with on/off cycles encoded as 8-bit
  *		values.
- * - NVRAM:	A 32-bit hexadecimal string, with on/off cycles encoded as
- *		16-bit values.
+ * - NVRAM:	A 16-bit decimal or hexadecimal string, with on/off cycles
+ *		encoded as 8-bit values as per the SPROM format.
+ * - NVRAM:	A 32-bit decimal or hexadecimal string, with on/off cycles
+ *		encoded as 16-bit values.
  *
  * To convert from a 16-bit representation to a 32-bit representation:
  *     ((value & 0xFF00) << 16) | ((value & 0x00FF) << 8)
