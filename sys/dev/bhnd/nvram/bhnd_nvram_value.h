@@ -43,7 +43,6 @@
 #include "bhnd_nvram.h"
 
 typedef struct bhnd_nvram_val_type	bhnd_nvram_val_type_t;
-typedef struct bhnd_nvram_val_repr	bhnd_nvram_val_repr_t;
 typedef struct bhnd_nvram_val		bhnd_nvram_val_t;
 
 int				 bhnd_nvram_val_init(bhnd_nvram_val_t *value,
