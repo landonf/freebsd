@@ -634,6 +634,46 @@ bhnd_nvram_value_size(bhnd_nvram_type type, const void *data, size_t nbytes,
 	BHND_NV_PANIC("bhnd nvram type %u unknown", type);
 }
 
+/**
+ * Iterate over all strings in the @p inp string array.
+ *
+ * @param	inp	The string array to be iterated. This must be a buffer
+ *			of one or more NUL-terminated strings --
+ *			@see BHND_NVRAM_TYPE_STRING_ARRAY.
+ * @param	ilen	The size, in bytes, of @p inp, including any
+ *			terminating NUL character(s).
+ * @param	prev	The value previously returned by
+ *			bhnd_nvram_string_array_next(), or NULL to begin
+ *			iteration.
+ *
+ * @retval non-NULL	A reference to the next NUL-terminated string
+ * @retval NULL		If the end of the string array is reached.
+ */
+const char *
+bhnd_nvram_string_array_next(const char *inp, size_t ilen, const char *prev)
+{
+	size_t nremain, plen;
+
+	if (ilen == 0)
+		return (NULL);
+
+	if (prev == NULL)
+		return (inp);
+
+	/* Advance to next value */
+	BHND_NV_ASSERT(prev >= inp, ("invalid prev pointer"));
+	BHND_NV_ASSERT(prev < (inp+ilen), ("invalid prev pointer"));
+
+	nremain = ilen - (size_t)(prev - inp);
+	plen = strnlen(prev, nremain);
+	nremain -= plen;
+
+	/* Only a trailing NUL remains? */
+	if (nremain <= 1)
+		return (NULL);
+
+	return (prev + plen + 1);
+}
 
 /**
  * Format a string representation of @p inp using @p fmt, with, writing the

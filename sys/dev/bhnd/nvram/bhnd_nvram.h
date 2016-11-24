@@ -111,6 +111,9 @@ typedef enum {
 						     NUL-terminated strings */
 } bhnd_nvram_type;
 
+const char	*bhnd_nvram_string_array_next(const char *inp, size_t ilen,
+		     const char *prev); 
+
 bool		 bhnd_nvram_is_signed_type(bhnd_nvram_type type);
 bool		 bhnd_nvram_is_unsigned_type(bhnd_nvram_type type);
 bool		 bhnd_nvram_is_int_type(bhnd_nvram_type type);
