@@ -365,8 +365,8 @@ bhnd_nvram_val_bcm_leddc_encode_elem(bhnd_nvram_val_t *value, const void *inp,
 	/* If the input/output types match, just delegate to standard value
 	 * encoding support */
 	if (otype == itype) {
-		return (bhnd_nvram_coerce_bytes(outp, olen, otype, inp, ilen,
-		    itype, NULL));
+		return (bhnd_nvram_value_coerce(inp, ilen, itype, outp, olen,
+		    otype));
 	}
 
 	/* If our value is a string, it may either be a 16-bit or a 32-bit
@@ -512,8 +512,8 @@ bhnd_nvram_val_bcmstr_encode(bhnd_nvram_val_t *value, void *outp,
 	if (!bhnd_nvram_is_array_type(otype) ||
 	    otype == BHND_NVRAM_TYPE_CHAR_ARRAY)
 	{
-		return (bhnd_nvram_coerce_bytes(outp, olen, otype, inp, ilen,
-		    itype, NULL));
+		return (bhnd_nvram_value_coerce(inp, ilen, itype, outp, olen,
+		    otype));
 	}
 
 	/* Otherwise, we need to interpret our value as either a macaddr
@@ -667,9 +667,7 @@ bhnd_nvram_val_bcm_macaddr_encode(bhnd_nvram_val_t *value, void *outp,
 
 	/* Otherwise, use standard encoding support */
 	inp = bhnd_nvram_val_bytes(value, &ilen, &itype);
-	return (bhnd_nvram_coerce_bytes(outp, olen, otype, inp, ilen, itype,
-	    NULL));
-}
+	return (bhnd_nvram_value_coerce(inp, ilen, itype, outp, olen, otype));}
 
 /**
  * MAC address string filter.
@@ -718,8 +716,8 @@ bhnd_nvram_val_bcm_macaddr_string_encode_elem(bhnd_nvram_val_t *value,
 	}
 
 	/* Otherwise, use standard encoding support */
-	return (bhnd_nvram_coerce_bytes(outp, olen, otype, inp, ilen,
-	    bhnd_nvram_val_elem_type(value), NULL));
+	return (bhnd_nvram_value_coerce(inp, ilen,
+	    bhnd_nvram_val_elem_type(value), outp, olen, otype));
 }
 
 /**

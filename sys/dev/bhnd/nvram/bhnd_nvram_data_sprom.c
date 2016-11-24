@@ -835,7 +835,7 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 			if (binding->skip_out == 0)
 				continue;
 
-			/* We use bhnd_nvram_coerce_bytes() to perform
+			/* We use bhnd_nvram_value_coerce() to perform
 			 * overflow-checked coercion from the widened
 			 * uint32/int32 intv value to the requested output
 			 * type */
@@ -850,8 +850,8 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 
 			/* Perform coercion of the array element */
 			nbyte = iwidth;
-			error = bhnd_nvram_coerce_bytes(ptr, &nbyte, var_btype,
-			    &intv, sizeof(intv), intv_type, NULL);
+			error = bhnd_nvram_value_coerce(&intv, sizeof(intv),
+			    intv_type, ptr, &nbyte, var_btype);
 			if (error)
 				return (error);
 

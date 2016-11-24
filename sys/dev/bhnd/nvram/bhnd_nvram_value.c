@@ -139,8 +139,7 @@ bhnd_nvram_val_init_common(bhnd_nvram_val_t *value, bhnd_nvram_val_storage_t
 	}
 	
 	/* Determine size when encoded in native format */
-	error = bhnd_nvram_coerce_bytes(NULL, &olen, otype, inp, ilen,
-	    itype, NULL);
+	error = bhnd_nvram_value_coerce(inp, ilen, itype, NULL, &olen, otype);
 	if (error)
 		goto failed;
 	
@@ -152,8 +151,7 @@ bhnd_nvram_val_init_common(bhnd_nvram_val_t *value, bhnd_nvram_val_storage_t
 	}
 	
 	/* Perform encode */
-	error = bhnd_nvram_coerce_bytes(outp, &olen, otype, inp, ilen, itype,
-	    NULL);
+	error = bhnd_nvram_value_coerce(inp, ilen, itype, outp, &olen, otype);
 	if (error)
 		goto failed;
 	
