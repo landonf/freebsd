@@ -125,6 +125,7 @@ bhnd_nvram_val_printf(bhnd_nvram_val_t *value, const char *fmt, char *outp,
  *				to the actual number of bytes required for the
  *				requested string encoding (including a trailing
  *				NUL).
+ * @param		ap	Argument list.
  *
  * @par Format Strings
  * 

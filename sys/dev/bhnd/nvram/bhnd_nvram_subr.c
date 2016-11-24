@@ -705,8 +705,48 @@ int
 bhnd_nvram_value_printf(const char *fmt, const void *inp, size_t ilen,
     bhnd_nvram_type itype, char *outp, size_t *olen, ...)
 {
+	va_list	ap;
+	int	error;
+
+	va_start(ap, olen);
+	error = bhnd_nvram_value_vprintf(fmt, inp, ilen, itype, outp, olen, ap);
+	va_end(ap);
+
+	return (error);
+}
+
+/**
+ * Format a string representation of @p inp using @p fmt, with, writing the
+ * result to @p outp.
+ *
+ * Refer to bhnd_nvram_val_vprintf() for full format string documentation.
+ *
+ * @param		fmt	The format string.
+ * @param		inp	The value to be formatted.
+ * @param		ilen	The size of @p inp, in bytes.
+ * @param		itype	The type of @p inp.
+ * @param[out]		outp	On success, the string value will be written to
+ *				this buffer. This argment may be NULL if the
+ *				value is not desired.
+ * @param[in,out]	olen	The capacity of @p outp. On success, will be set
+ *				to the actual size of the formatted string.
+ * @param		ap	Argument list.
+ *
+ * @retval 0		success
+ * @retval EINVAL	If @p fmt contains unrecognized format string
+ *			specifiers.
+ * @retval ENOMEM	If the @p outp is non-NULL, and the provided @p olen
+ *			is too small to hold the encoded value.
+ * @retval EFTYPE	If value coercion from @p inp to a string value via
+ *			@p fmt is unsupported.
+ * @retval ERANGE	If value coercion of @p value would overflow (or
+ *			underflow) the representation defined by @p fmt.
+ */
+int
+bhnd_nvram_value_vprintf(const char *fmt, const void *inp, size_t ilen,
+    bhnd_nvram_type itype, char *outp, size_t *olen, va_list ap)
+{
 	bhnd_nvram_val_t	val;
-	va_list			ap;
 	int			error;
 
 	/* Map input buffer as a value instance */
@@ -716,9 +756,7 @@ bhnd_nvram_value_printf(const char *fmt, const void *inp, size_t ilen,
 		return (error);
 
 	/* Attempt to format the value */
-	va_start(ap, olen);
 	error = bhnd_nvram_val_vprintf(&val, fmt, outp, olen, ap);
-	va_end(ap);
 
 	/* Clean up */
 	bhnd_nvram_val_release(&val);

@@ -40,7 +40,10 @@
 
 #ifdef _KERNEL
 #include <sys/malloc.h>
+
+#include <machine/stdarg.h>
 #else
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -168,6 +171,10 @@ int				 bhnd_nvram_value_printf(const char *fmt,
 				     const void *inp, size_t ilen,
 				     bhnd_nvram_type itype, char *outp,
 				     size_t *olen, ...);
+int				 bhnd_nvram_value_vprintf(const char *fmt,
+				     const void *inp, size_t ilen,
+				     bhnd_nvram_type itype, char *outp,
+				     size_t *olen, va_list ap);
 
 const struct bhnd_nvram_vardefn	*bhnd_nvram_find_vardefn(const char *varname);
 const struct bhnd_nvram_vardefn	*bhnd_nvram_get_vardefn(size_t id);
