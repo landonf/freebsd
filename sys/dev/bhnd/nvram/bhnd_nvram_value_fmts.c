@@ -161,27 +161,6 @@ static const bhnd_nvram_val_fmt_t bhnd_nvram_val_macaddr_string_fmt = {
 
 /**
  * Broadcom NVRAM/SPROM LED duty-cycle format.
- * 
- * LED duty-cycle values represent the on/off periods as a 32-bit integer,
- * with the top 16 bits representing on cycles, and the bottom 16 representing
- * off cycles.
- * 
- * LED duty cycle values have three different formats:
- * 
- * - SPROM:	A 16-bit unsigned integer, with on/off cycles encoded as 8-bit
- *		values.
- * - NVRAM:	A 16-bit decimal or hexadecimal string, with on/off cycles
- *		encoded as 8-bit values as per the SPROM format.
- * - NVRAM:	A 32-bit decimal or hexadecimal string, with on/off cycles
- *		encoded as 16-bit values.
- *
- * To convert from a 16-bit representation to a 32-bit representation:
- *     ((value & 0xFF00) << 16) | ((value & 0x00FF) << 8)
- * 
- * To convert from a 32-bit representation to a 16-bit representation, perform
- * the same operation in reverse, discarding the lower 8-bits of each half
- * of the 32-bit representation:
- *     ((value >> 16) & 0xFF00) | ((value >> 8) & 0x00FF)
  */
 const bhnd_nvram_val_fmt_t bhnd_nvram_val_bcm_leddc_fmt = {
 	.name		= "bcm-leddc",
@@ -325,6 +304,29 @@ bhnd_nvram_val_bcm_leddc_encode_elem(bhnd_nvram_val_t *value, const void *inp,
 		uint16_t	u16;
 		uint32_t	u32;
 	} strval;
+
+	/*
+	 * LED duty-cycle values represent the on/off periods as a 32-bit
+	 * integer, with the top 16 bits representing on cycles, and the
+	 * bottom 16 representing off cycles.
+	 * 
+	 * LED duty cycle values have three different formats:
+	 * 
+	 * - SPROM:	A 16-bit unsigned integer, with on/off cycles encoded
+	 *		as 8-bit values.
+	 * - NVRAM:	A 16-bit decimal or hexadecimal string, with on/off
+	 *		cycles encoded as 8-bit values as per the SPROM format.
+	 * - NVRAM:	A 32-bit decimal or hexadecimal string, with on/off
+	 *		cycles encoded as 16-bit values.
+	 *
+	 * To convert from a 16-bit representation to a 32-bit representation:
+	 *     ((value & 0xFF00) << 16) | ((value & 0x00FF) << 8)
+	 * 
+	 * To convert from a 32-bit representation to a 16-bit representation,
+	 * perform the same operation in reverse, discarding the lower 8-bits
+	 * of each half of the 32-bit representation:
+	 *     ((value >> 16) & 0xFF00) | ((value >> 8) & 0x00FF)
+	 */
 
 	itype = bhnd_nvram_val_elem_type(value);
 	nbytes = 0;
