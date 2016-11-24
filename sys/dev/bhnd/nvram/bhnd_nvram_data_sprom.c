@@ -670,10 +670,10 @@ static int
 bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
     size_t *len, bhnd_nvram_type otype)
 {
+	bhnd_nvram_val_t		 val;
 	struct bhnd_nvram_sprom		*sp;
 	struct sprom_opcode_idx		*idx;
 	const struct bhnd_nvram_vardefn	*var;
-	struct bhnd_nvram_fmt_hint	 hint;
 	union bhnd_nvram_sprom_storage	 storage;
 	union bhnd_nvram_sprom_storage	*inp;
 	union bhnd_nvram_sprom_intv	 intv;
@@ -724,22 +724,12 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 	}
 	ilen = nelem * iwidth;
 
-	/* If the caller has requested the native variable representation,
-	 * we can decode directly into a supplied buffer.
-	 *
-	 * Otherwise, we need to decode into our own local storage, and then
-	 * perform value coercion. */
-	if (buf != NULL && otype == var->type) {
-		inp = buf;
-		if (ilen > *len)
-			return (ENOMEM);
-	} else {
-		inp = &storage;
-		if (ilen > sizeof(storage)) {
-			BHND_NV_LOG("error decoding '%s', SPROM_ARRAY_MAXLEN "
-			    "incorrect\n", var->name);
-			return (EFTYPE);
-		}
+	/* Decode into our own local storage. */
+	inp = &storage;
+	if (ilen > sizeof(storage)) {
+		BHND_NV_LOG("error decoding '%s', SPROM_ARRAY_MAXLEN "
+		    "incorrect\n", var->name);
+		return (EFTYPE);
 	}
 
 	/* Zero-initialize our decode buffer; any output elements skipped
@@ -881,21 +871,18 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 	if ((var->flags & BHND_NVRAM_VF_IGNALL1) && all_bits_set)
 		return (ENOENT);
 
-	/* If we were decoding directly to the caller's output buffer, nothing
-	 * left to do but provide the decoded length */
-	if (inp == buf) {
-		*len = ilen;
-		return (0);
-	}
 
-	/* Otherwise, perform value coercion from our local storage */
-	hint = (struct bhnd_nvram_fmt_hint) {
-		.sfmt = var->sfmt,
-		.flags = var->flags
-	};
+	/* Perform value coercion from our local representation */
+	error = bhnd_nvram_val_init(&val, var->fmt, inp, ilen, var->type,
+	    BHND_NVRAM_VAL_BORROW_DATA);
+	if (error)
+		return (error);
 
-	return (bhnd_nvram_coerce_bytes(buf, len, otype, inp, ilen, var->type,
-	    &hint));
+	error = bhnd_nvram_val_encode(&val, buf, len, otype);
+
+	/* Clean up */
+	bhnd_nvram_val_release(&val);
+	return (error);
 }
 
 static const void *

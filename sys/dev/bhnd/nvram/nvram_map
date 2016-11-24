@@ -137,7 +137,7 @@ u32	boardflags3 {
 	#help <variable help>
 }
 u16	boardnum {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
@@ -170,7 +170,7 @@ u8	bxa5g {
 	#help <variable help>
 }
 u8	cc {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
@@ -191,7 +191,6 @@ u16	cckbw20ul2gpo {
 	#help <variable help>
 }
 char	ccode[2] {
-	sfmt ccode
 	#desc <variable description>
 	#help <variable help>
 }
@@ -224,17 +223,17 @@ u8	elna5g {
 	#help <variable help>
 }
 u8	epagain2g {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 u8	epagain5g {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 u8	et1macaddr[6] {
-	sfmt macaddr
+	fmt macaddr
 	#desc <variable description>
 	#help <variable help>
 }
@@ -255,7 +254,7 @@ u8	extpagain5g {
 	#help <variable help>
 }
 u8	femctrl {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
@@ -264,7 +263,7 @@ u8	freqoffset_corr {
 	#help <variable help>
 }
 u8	gainctrlsph {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
@@ -273,7 +272,7 @@ u8	hw_iqcal_en {
 	#help <variable help>
 }
 u8	il0macaddr[6] {
-	sfmt macaddr
+	fmt macaddr
 	#desc <variable description>
 	#help <variable help>
 }
@@ -335,7 +334,7 @@ u8	ledbh3 {
 }
 u32	leddc {
 	all1 ignore
-	sfmt leddc
+	fmt leddc
 	#desc <variable description>
 	#help <variable help>
 }
@@ -376,7 +375,7 @@ u32	legofdmbw20ul5gmpo {
 	#help <variable help>
 }
 u8	macaddr[6] {
-	sfmt macaddr
+	fmt macaddr
 	#desc <variable description>
 	#help <variable help>
 }
@@ -669,32 +668,32 @@ u8	noisecaloffset5g {
 	#help <variable help>
 }
 u8	noiselvl2ga0 {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 u8	noiselvl2ga1 {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 u8	noiselvl2ga2 {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 u8	noiselvl5ga0[4] {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 u8	noiselvl5ga1[4] {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 u8	noiselvl5ga2[4] {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
@@ -767,117 +766,117 @@ u16	ofdmlrbw202gpo {
 	#help <variable help>
 }
 u8	opo {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 i16	pa0b0 {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 i16	pa0b1 {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 i16	pa0b2 {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 u8	pa0itssit {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 u8	pa0maxpwr {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 i16	pa1b0 {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 i16	pa1b1 {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 i16	pa1b2 {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 i16	pa1hib0 {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 i16	pa1hib1 {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 i16	pa1hib2 {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 u8	pa1himaxpwr {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 u8	pa1itssit {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 i16	pa1lob0 {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 i16	pa1lob1 {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 i16	pa1lob2 {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 u8	pa1lomaxpwr {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 u8	pa1maxpwr {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 i16	pa2ga0[3] {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 i16	pa2ga1[3] {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 i16	pa2ga2[3] {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 i16	pa2ga3[3] {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
@@ -950,22 +949,22 @@ u16	pa2gw3a3 {
 	#help <variable help>
 }
 i16	pa5ga0[12] {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 i16	pa5ga1[12] {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 i16	pa5ga2[12] {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 i16	pa5ga3[12] {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
@@ -1178,17 +1177,17 @@ u16	pa5gw3a3 {
 	#help <variable help>
 }
 u8	paparambwver {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 u8	papdcap2g {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 u8	papdcap5g {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
@@ -1205,12 +1204,12 @@ u8	pdetrange5g {
 	#help <variable help>
 }
 u8	pdgain2g {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 u8	pdgain5g {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
@@ -1267,7 +1266,7 @@ u8	pdoffsetcckma2 {
 	#help <variable help>
 }
 u8	phycal_tempdelta {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
@@ -1276,17 +1275,17 @@ u16	rawtempsense {
 	#help <variable help>
 }
 u8	regrev {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 u32	rmax {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 u32	rmin {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
@@ -1599,12 +1598,12 @@ u8	rxgains5gtrisoa3 {
 	#help <variable help>
 }
 i8	rxpo2g {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 i8	rxpo5g {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
@@ -1697,17 +1696,17 @@ u8	tempcorrx {
 	#help <variable help>
 }
 u8	tempoffset {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 u8	temps_hysteresis {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 u8	temps_period {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
@@ -1764,22 +1763,22 @@ u8	tssipos5g {
 	#help <variable help>
 }
 u8	tssiposslope2g {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 u8	tssiposslope5g {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 u8	tworangetssi2g {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
 u8	tworangetssi5g {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }
@@ -1856,7 +1855,7 @@ u8	txpid5gla3 {
 	#help <variable help>
 }
 u32	xtalfreq {
-	sfmt decimal
+	fmt decimal
 	#desc <variable description>
 	#help <variable help>
 }

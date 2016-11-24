@@ -436,38 +436,45 @@ bhnd_nvram_data_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
  */
 int
 bhnd_nvram_data_generic_rp_getvar(struct bhnd_nvram_data *nv, void *cookiep,
-    void *buf, size_t *len, bhnd_nvram_type type)
+    void *outp, size_t *olen, bhnd_nvram_type otype)
 {
+	bhnd_nvram_val_t		 val;
 	const struct bhnd_nvram_vardefn	*vdefn;
-	struct bhnd_nvram_fmt_hint	*hint, vhint;
+	const bhnd_nvram_val_fmt_t	*fmt;
 	const char			*name;
 	const void			*vptr;
-	size_t				 vlen;
 	bhnd_nvram_type			 vtype;
+	size_t				 vlen;
+	int				 error;
 
 	BHND_NV_ASSERT(bhnd_nvram_data_caps(nv) & BHND_NVRAM_DATA_CAP_READ_PTR,
 	    ("instance does not advertise READ_PTR support"));
 
+	fmt = NULL;
+
 	/* Check the variable definition table for a matching entry; if
-	 * it exists, use it to populate a formatting hint. */
+	 * it exists, use it to populate the value format. */
 	name = bhnd_nvram_data_getvar_name(nv, cookiep);
 	vdefn = bhnd_nvram_find_vardefn(name);
-	if (vdefn != NULL) {
-		vhint.sfmt = vdefn->sfmt;
-		vhint.flags = vdefn->flags;
-		hint = &vhint;
-	} else {
-		hint = NULL;
-	}
+	if (vdefn != NULL)
+		fmt = vdefn->fmt;
 
 	/* Fetch pointer to our variable data */
 	vptr = bhnd_nvram_data_getvar_ptr(nv, cookiep, &vlen, &vtype);
 	if (vptr == NULL)
 		return (EINVAL);
 
-	/* Attempt value type coercion */
-	return (bhnd_nvram_coerce_bytes(buf, len, type, vptr, vlen, vtype,
-	    hint));
+	/* Attempt value coercion */
+	error = bhnd_nvram_val_init(&val, fmt, vptr, vlen, vtype,
+	    BHND_NVRAM_VAL_BORROW_DATA);
+	if (error)
+		return (error);
+
+	error = bhnd_nvram_val_encode(&val, outp, olen, otype);
+
+	/* Clean up */
+	bhnd_nvram_val_release(&val);
+	return (error);
 }
 
 /**

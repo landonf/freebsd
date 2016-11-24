@@ -50,6 +50,7 @@
 #endif
 
 #include "bhnd_nvram.h"
+#include "bhnd_nvram_value.h"
 
 /*
  * bhnd_nvram_crc8() lookup table.
@@ -58,8 +59,6 @@ extern const uint8_t bhnd_nvram_crc8_tab[];
 
 /* Forward declarations */
 struct bhnd_nvram_vardefn;
-
-typedef struct bhnd_nvram_fmt_hint bhnd_nvram_fmt_hint_t;
 
 #ifdef _KERNEL
 
@@ -202,13 +201,6 @@ size_t				 bhnd_nvram_parse_field(const char **inp,
 size_t				 bhnd_nvram_trim_field(const char **inp,
 				     size_t ilen, char delim);
 
-
-int				 bhnd_nvram_coerce_bytes(void *outp,
-				     size_t *olen, bhnd_nvram_type otype,
-				     const void *inp, size_t ilen,
-				     bhnd_nvram_type itype,
-				     bhnd_nvram_fmt_hint_t *hint);
-
 bool				 bhnd_nvram_validate_name(const char *name,
 				     size_t name_len);
 
@@ -233,22 +225,6 @@ bhnd_nvram_crc8(const void *buf, size_t size, uint8_t crc)
 #define	BHND_NVRAM_CRC8_INITIAL	0xFF	/**< Initial bhnd_nvram_crc8 value */
 #define	BHND_NVRAM_CRC8_VALID	0x9F	/**< Valid CRC-8 checksum */
 
-/** NVRAM data type string representations */
-typedef enum {
-	BHND_NVRAM_SFMT_HEX	= 1,	/**< hex format */
-	BHND_NVRAM_SFMT_DEC	= 2,	/**< decimal format */
-	BHND_NVRAM_SFMT_MACADDR	= 3,	/**< mac address (canonical form, hex
-					     octets, separated with ':') */
-	BHND_NVRAM_SFMT_LEDDC	= 4,	/**< LED PWM duty-cycle. Encoded
-					     as either a 16-bit or 32-bit
-					     integer, the value must be scaled
-					     when converting between the two
-					     representations. */
-	BHND_NVRAM_SFMT_CCODE	= 5	/**< country code format (2-3 ASCII
-					     chars, or hex string) */
-} bhnd_nvram_sfmt;
-
-
 /** NVRAM variable flags */
 enum {
 	BHND_NVRAM_VF_MFGINT	= 1<<0,	/**< mfg-internal variable; should not
@@ -272,26 +248,18 @@ enum {
 	SPROM_LAYOUT_MAGIC_NONE	= (1<<0),	
 };
 
-/**
- * Variable formatting hint.
- */
-struct bhnd_nvram_fmt_hint {
-	bhnd_nvram_sfmt		 sfmt;	/**< variable string format */
-	uint32_t		 flags;	/**< BHND_NVRAM_VF_* flags */
-};
-
 /** NVRAM variable definition */
 struct bhnd_nvram_vardefn {
-	const char		*name;	/**< variable name */
-	const char		*desc;	/**< human readable description,
-					     or NULL */
-	const char		*help;	/**< human readable help text,
-					     or NULL */
-	bhnd_nvram_type		 type;	/**< variable type */
-	uint8_t			 nelem;	/**< element count, or 1 if not an array
-					     typed variable */
-	bhnd_nvram_sfmt		 sfmt;	/**< string format */
-	uint32_t		 flags;	/**< flags (BHND_NVRAM_VF_*) */
+	const char			*name;	/**< variable name */
+	const char			*desc;	/**< human readable description,
+						     or NULL */
+	const char			*help;	/**< human readable help text,
+						     or NULL */
+	bhnd_nvram_type			 type;	/**< variable type */
+	uint8_t				 nelem;	/**< element count, or 1 if not
+						     an array-typed variable */
+	const bhnd_nvram_val_fmt_t	*fmt;	/**< value format, or NULL */
+	uint32_t			 flags;	/**< flags (BHND_NVRAM_VF_*) */
 };
 
 /*

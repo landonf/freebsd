@@ -46,7 +46,7 @@ SET_DECLARE(bhnd_nvram_data_class_set, bhnd_nvram_data_class_t);
 void	*bhnd_nvram_data_generic_find(struct bhnd_nvram_data *nv,
 	     const char *name);
 int	 bhnd_nvram_data_generic_rp_getvar(struct bhnd_nvram_data *nv,
-	     void *cookiep, void *buf, size_t *len, bhnd_nvram_type type);
+	     void *cookiep, void *outp, size_t *olen, bhnd_nvram_type otype);
 
 /** @see bhnd_nvram_data_class_desc() */
 typedef const char	*(bhnd_nvram_data_op_class_desc)(void);

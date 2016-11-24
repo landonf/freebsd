@@ -250,23 +250,21 @@ function main(_i) {
 		class_add_prop(ParseState, p_is_block, "is_block")
 		class_add_prop(ParseState, p_line, "line")
 
-	# String Formats
-	SFmt = class_new("SFmt")
-		class_add_prop(SFmt, p_name, "name")
-		class_add_prop(SFmt, p_const, "const")
+	# Value Formats
+	Fmt = class_new("Fmt")
+		class_add_prop(Fmt, p_name, "name")
+		class_add_prop(Fmt, p_symbol, "const")
 
-	SFmtHex		= sfmt_new("hex", "BHND_NVRAM_SFMT_HEX")
-	SFmtDec 	= sfmt_new("decimal", "BHND_NVRAM_SFMT_DEC")
-	SFmtCCODE	= sfmt_new("ccode", "BHND_NVRAM_SFMT_CCODE")
-	SFmtMAC		= sfmt_new("macaddr", "BHND_NVRAM_SFMT_MACADDR")
-	SFmtLEDDC	= sfmt_new("leddc", "BHND_NVRAM_SFMT_LEDDC")
+	FmtHex		= fmt_new("hex", "bhnd_nvram_val_bcm_hex_fmt")
+	FmtDec 		= fmt_new("decimal", "bhnd_nvram_val_bcm_decimal_fmt")
+	FmtMAC		= fmt_new("macaddr", "bhnd_nvram_val_bcm_macaddr_fmt")
+	FmtLEDDC	= fmt_new("leddc", "bhnd_nvram_val_bcm_leddc_fmt")
 
-	StringFormats = map_new()
-		map_set(StringFormats, get(SFmtHex,	p_name), SFmtHex)
-		map_set(StringFormats, get(SFmtDec,	p_name), SFmtDec)
-		map_set(StringFormats, get(SFmtCCODE,	p_name), SFmtCCODE)
-		map_set(StringFormats, get(SFmtMAC,	p_name), SFmtMAC)
-		map_set(StringFormats, get(SFmtLEDDC,	p_name), SFmtLEDDC)
+	ValueFormats = map_new()
+		map_set(ValueFormats, get(FmtHex,	p_name), FmtHex)
+		map_set(ValueFormats, get(FmtDec,	p_name), FmtDec)
+		map_set(ValueFormats, get(FmtMAC,	p_name), FmtMAC)
+		map_set(ValueFormats, get(FmtLEDDC,	p_name), FmtLEDDC)
 
 	# Data Types
 	Type = class_new("Type")
@@ -297,25 +295,25 @@ function main(_i) {
 	CharMax		=  Int8Max
 
 	UInt8	= type_new("u8", 1, 0, "BHND_NVRAM_TYPE_UINT8",
-	   "BHND_NVRAM_TYPE_UINT8_ARRAY", SFmtHex, UInt8Max, 0, 16)
+	   "BHND_NVRAM_TYPE_UINT8_ARRAY", FmtHex, UInt8Max, 0, 16)
 
 	UInt16	= type_new("u16", 2, 0, "BHND_NVRAM_TYPE_UINT16",
-	   "BHND_NVRAM_TYPE_UINT16_ARRAY", SFmtHex, UInt16Max, 1, 17)
+	   "BHND_NVRAM_TYPE_UINT16_ARRAY", FmtHex, UInt16Max, 1, 17)
 
 	UInt32	= type_new("u32", 4, 0, "BHND_NVRAM_TYPE_UINT32",
-	   "BHND_NVRAM_TYPE_UINT32_ARRAY", SFmtHex, UInt32Max, 2, 18)
+	   "BHND_NVRAM_TYPE_UINT32_ARRAY", FmtHex, UInt32Max, 2, 18)
 
 	Int8	= type_new("i8", 1, 1, "BHND_NVRAM_TYPE_INT8",
-	   "BHND_NVRAM_TYPE_INT8_ARRAY", SFmtDec, UInt8Max, 4, 20)
+	   "BHND_NVRAM_TYPE_INT8_ARRAY", FmtDec, UInt8Max, 4, 20)
 
 	Int16	= type_new("i16", 2, 1, "BHND_NVRAM_TYPE_INT16",
-	   "BHND_NVRAM_TYPE_INT16_ARRAY", SFmtDec, UInt16Max, 5, 21)
+	   "BHND_NVRAM_TYPE_INT16_ARRAY", FmtDec, UInt16Max, 5, 21)
 
 	Int32	= type_new("i32", 4, 1, "BHND_NVRAM_TYPE_INT32",
-	   "BHND_NVRAM_TYPE_INT32_ARRAY", SFmtDec, UInt32Max, 6, 22)
+	   "BHND_NVRAM_TYPE_INT32_ARRAY", FmtDec, UInt32Max, 6, 22)
 
 	Char	= type_new("char", 1, 1, "BHND_NVRAM_TYPE_CHAR",
-	   "BHND_NVRAM_TYPE_CHAR_ARRAY", SFmtHex, UInt8Max, 8, 24)
+	   "BHND_NVRAM_TYPE_CHAR_ARRAY", FmtHex, UInt8Max, 8, 24)
 
 	BaseTypes = map_new()
 		map_set(BaseTypes, get(UInt8,	p_name), UInt8)
@@ -379,7 +377,7 @@ function main(_i) {
 		class_add_prop(Var, p_desc, "desc")		# StringConstant
 		class_add_prop(Var, p_help, "help")		# StringConstant
 		class_add_prop(Var, p_type, "type")		# AbstractType
-		class_add_prop(Var, p_sfmt, "sfmt")		# SFmt
+		class_add_prop(Var, p_fmt, "fmt")		# Fmt
 		class_add_prop(Var, p_ignall1, "ignall1")	# bool
 		# ID is assigned once all variables are sorted
 		class_add_prop(Var, p_vid, "vid")		# int
@@ -600,13 +598,13 @@ function write_data(output_vars, _noutput_vars, _var, _nvram, _layouts,
 }
 
 # Write a bhnd_nvram_vardef entry for the given variable
-function write_data_nvram_vardefn(v, _desc, _help, _type, _sfmt) {
+function write_data_nvram_vardefn(v, _desc, _help, _type, _fmt) {
 	obj_assert_class(v, Var)
 
 	_desc = get(v, p_desc)
 	_help = get(v, p_help)
 	_type = get(v, p_type)
-	_sfmt = var_get_sfmt(v)
+	_fmt = var_get_fmt(v)
 
 	emit("{\n")
 	output_depth++
@@ -624,7 +622,7 @@ function write_data_nvram_vardefn(v, _desc, _help, _type, _sfmt) {
 
 	emit(".type = " type_get_const(_type) ",\n")
 	emit(".nelem = " var_get_array_len(v) ",\n")
-	emit(".sfmt = " get(_sfmt, p_const) ",\n")
+	emit(".fmt = &" get(_fmt, p_symbol) ",\n")
 	emit(".flags = " gen_var_flags(v) ",\n")
 
 	output_depth--
@@ -1624,8 +1622,8 @@ $1 == "group" && in_parser_context(NVRAM) {
 	parse_variable_defn()
 }
 
-# Variable "sfmt" parameter
-$1 == "sfmt" && in_parser_context(Var) {
+# Variable "fmt" parameter
+$1 == "fmt" && in_parser_context(Var) {
 	parse_variable_param($1)
 	next
 }
@@ -2448,7 +2446,7 @@ function map_to_array(map, _key, _prefix, _values) {
 function type_new(name, width, signed, constant, array_constant, fmt, mask,
     constant_value, array_constant_value, _obj)
 {
-	obj_assert_class(fmt, SFmt)
+	obj_assert_class(fmt, Fmt)
 
 	_obj = obj_new(Type)
 	set(_obj, p_name, name)
@@ -2537,8 +2535,8 @@ function type_get_base(type) {
 	return (type)
 }
 
-# Return the default sfmt for a given type instance
-function type_get_default_sfmt(type, _base) {
+# Return the default fmt for a given type instance
+function type_get_default_fmt(type, _base) {
 	_base = type_get_base(type)
 	return (get(_base, p_default_fmt))
 }
@@ -2640,20 +2638,20 @@ function type_named(name, _n, _type) {
 	return (null)	
 }
 
-# Create a new SFmt instance
-function sfmt_new(name, constant, _obj) {
-	_obj = obj_new(SFmt)
+# Create a new Fmt instance
+function fmt_new(name, symbol, _obj) {
+	_obj = obj_new(Fmt)
 	set(_obj, p_name, name)
-	set(_obj, p_const, constant)
+	set(_obj, p_symbol, symbol)
 
 	return (_obj)
 }
 
 
-# Return the SFmt constant for `name`, if any
-function sfmt_named(name, _n, _sfmt) {
-	if (map_contains(StringFormats, name))
-		return (map_get(StringFormats, name))
+# Return the Fmt constant for `name`, if any
+function fmt_named(name, _n, _fmt) {
+	if (map_contains(ValueFormats, name))
+		return (map_get(ValueFormats, name))
 
 	return (null)
 }
@@ -2922,17 +2920,17 @@ function var_get_array_len(var) {
 	return (type_get_nelem(get(var, p_type)))
 }
 
-# Return the sfmt for var. If not explicitly set on var, will return then
-# return of calling type_get_default_sfmt() with the variable's type
-function var_get_sfmt(var, _sfmt) {
+# Return the fmt for var. If not explicitly set on var, will return then
+# return of calling type_get_default_fmt() with the variable's type
+function var_get_fmt(var, _fmt) {
 	obj_assert_class(var, Var)
 
 	# If defined on var, return it
-	if ((_sfmt = get(var, p_sfmt)) != null)
-		return (_sfmt)
+	if ((_fmt = get(var, p_fmt)) != null)
+		return (_fmt)
 
 	# Fall back on the type's default
-	return (type_get_default_sfmt(get(var, p_type)))
+	return (type_get_default_fmt(get(var, p_type)))
 }
 
 # Return a new MacroDefine instance for the given variable, macro type,
@@ -3746,7 +3744,7 @@ function parse_variable_group(_ctx, _groups, _group, _group_name) {
 #	desc	...
 # }
 #
-function parse_variable_defn(_ctx, _vaccess, _type, _name, _sfmt, _var,
+function parse_variable_defn(_ctx, _vaccess, _type, _name, _fmt, _var,
     _var_list)
 {
 	_ctx = parser_state_get_context(SymbolContext)
@@ -3794,35 +3792,35 @@ function parse_variable_defn(_ctx, _vaccess, _type, _name, _sfmt, _var,
 
 
 #
-# Return a string containing the human-readable list of valid SFmt names
+# Return a string containing the human-readable list of valid Fmt names
 #
-function sfmt_get_human_readable_list(_result, _sfmts, _sfmt, _nsfmts, _i)
+function fmt_get_human_readable_list(_result, _fmts, _fmt, _nfmts, _i)
 {
 	# Build up a string listing the valid formats
-	_sfmts = map_to_array(StringFormats)
+	_fmts = map_to_array(ValueFormats)
 	_result = ""
 
-	_nsfmts = array_size(_sfmts)
-	for (_i = 0; _i < _nsfmts; _i++) {
-		_sfmt = array_get(_sfmts, _i)
-		if (_i+1 == _nsfmts)
+	_nfmts = array_size(_fmts)
+	for (_i = 0; _i < _nfmts; _i++) {
+		_fmt = array_get(_fmts, _i)
+		if (_i+1 == _nfmts)
 			_result = _result "or "
 
 		_result = _name_str \
-		    "'" get(_sfmt, p_name) "'"
+		    "'" get(_fmt, p_name) "'"
 
-		if (_i+1 < _nsfmts)
+		if (_i+1 < _nfmts)
 			_result = _result ", "
 	}
 
-	obj_delete(_sfmts)
+	obj_delete(_fmts)
 	return (_result)
 }
 
 #
 # Parse a variable parameter from the current line
 #
-# sfmt	(decimal|hex|macaddr|...)
+# fmt	(decimal|hex|macaddr|...)
 # all1	ignore
 # desc	"quoted string"
 # help	"quoted string"
@@ -3830,28 +3828,28 @@ function sfmt_get_human_readable_list(_result, _sfmts, _sfmt, _nsfmts, _i)
 function parse_variable_param(param_name, _var, _vprops, _prop_id, _pval) {
 	_var = parser_state_get_context(Var)
 
-	if (param_name == "sfmt") {
+	if (param_name == "fmt") {
 		debug($1 " " $2)
 
 		# Check for an existing definition
-		if ((_pval = get(_var, p_sfmt)) != null) {
-			error("sfmt previously specified on line " \
-			    obj_get_prop_nr(_var, p_sfmt))
+		if ((_pval = get(_var, p_fmt)) != null) {
+			error("fmt previously specified on line " \
+			    obj_get_prop_nr(_var, p_fmt))
 		}
 
 		# Validate arguments
 		if (NF != 2) {
 			error("'" $1 "' requires a single parameter value of " \
-			    sfmt_get_human_readable_list())
+			    fmt_get_human_readable_list())
 		}
 
-		if ((_pval = sfmt_named($2)) == null) {
+		if ((_pval = fmt_named($2)) == null) {
 			error("'" $1 "' value '" $2 "' unrecognized. Must be " \
-			    "one of " sfmt_get_human_readable_list())
+			    "one of " fmt_get_human_readable_list())
 		}
 
-		# Set sfmt reference
-		set(_var, p_sfmt, _pval)
+		# Set fmt reference
+		set(_var, p_fmt, _pval)
 	} else if (param_name == "all1") {
 		debug($1 " " $2)
 		
