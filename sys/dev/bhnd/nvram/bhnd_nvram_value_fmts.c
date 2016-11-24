@@ -239,30 +239,43 @@ static int
 bhnd_nvram_val_bcm_int_encode_elem(bhnd_nvram_val_t *value, const void *inp,
     size_t ilen, void *outp, size_t *olen, bhnd_nvram_type otype)
 {
-	const char		*fstr;
-	bhnd_nvram_type		 itype;
+	bhnd_nvram_type itype;
 
 	itype = bhnd_nvram_val_elem_type(value);
+	BHND_NV_ASSERT(bhnd_nvram_is_int_type(itype), ("invalid type"));
 
 	/* If not encoding as a string, perform generic value encoding */
 	if (otype != BHND_NVRAM_TYPE_STRING)
 		return (bhnd_nvram_val_generic_encode_elem(value, inp, ilen,
 		    outp, olen, otype));
 
-	/* Determine the appropriate format string */
+	/* Format as hex?  */
 	if (value->fmt == &bhnd_nvram_val_bcm_hex_fmt) {
-		fstr = "0x%I64X";
-	} else if (value->fmt == &bhnd_nvram_val_bcm_decimal_fmt) {
+		ssize_t	width;
+
+		/* Pad hexadecimal values out to their native width
+		 * (two chars per byte) */
+		width = bhnd_nvram_value_size(itype, NULL, 0, 1) * 2;
+
+		return (bhnd_nvram_value_printf("0x%0*I64X", inp, ilen, itype,
+		    outp, olen, width));
+
+	}
+
+	/* Format as decimal?  */
+	if (value->fmt == &bhnd_nvram_val_bcm_decimal_fmt) {
+		const char *fstr;
+
 		if (bhnd_nvram_is_signed_type(itype))
 			fstr = "%I64d";
 		else
 			fstr = "%I64u";
-	} else {
-		BHND_NV_PANIC("unsupported format");
+
+		return (bhnd_nvram_value_printf(fstr, inp, ilen, itype, outp,
+		    olen));
 	}
 
-	/* Format */
-	return (bhnd_nvram_value_printf(fstr, inp, ilen, itype, outp, olen));
+	BHND_NV_PANIC("unsupported format");
 }
 
 /**
