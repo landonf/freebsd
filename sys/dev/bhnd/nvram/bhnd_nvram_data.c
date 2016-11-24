@@ -450,7 +450,20 @@ bhnd_nvram_data_generic_rp_getvar(struct bhnd_nvram_data *nv, void *cookiep,
 	BHND_NV_ASSERT(bhnd_nvram_data_caps(nv) & BHND_NVRAM_DATA_CAP_READ_PTR,
 	    ("instance does not advertise READ_PTR support"));
 
-	fmt = NULL;
+	/* Fetch pointer to our variable data */
+	vptr = bhnd_nvram_data_getvar_ptr(nv, cookiep, &vlen, &vtype);
+	if (vptr == NULL)
+		return (EINVAL);
+
+	/* Use the NVRAM string support */
+	switch (vtype) {
+	case BHND_NVRAM_TYPE_STRING:
+	case BHND_NVRAM_TYPE_STRING_ARRAY:
+		fmt = &bhnd_nvram_val_bcm_string_fmt;
+		break;
+	default:
+		fmt = NULL;
+	}
 
 	/* Check the variable definition table for a matching entry; if
 	 * it exists, use it to populate the value format. */
@@ -458,11 +471,6 @@ bhnd_nvram_data_generic_rp_getvar(struct bhnd_nvram_data *nv, void *cookiep,
 	vdefn = bhnd_nvram_find_vardefn(name);
 	if (vdefn != NULL)
 		fmt = vdefn->fmt;
-
-	/* Fetch pointer to our variable data */
-	vptr = bhnd_nvram_data_getvar_ptr(nv, cookiep, &vlen, &vtype);
-	if (vptr == NULL)
-		return (EINVAL);
 
 	/* Attempt value coercion */
 	error = bhnd_nvram_val_init(&val, fmt, vptr, vlen, vtype,
