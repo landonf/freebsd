@@ -866,57 +866,29 @@ bhnd_nvram_coerce_bytes(void *outp, size_t *olen, bhnd_nvram_type otype,
 
 	fmt = NULL;
 
-	switch (itype) {
-	case BHND_NVRAM_TYPE_STRING:
-		if (hint != NULL) {
-			switch (hint->sfmt) {
-			case BHND_NVRAM_SFMT_HEX:
-			case BHND_NVRAM_SFMT_DEC:
-				/* We always prioritize preserving the existing
-				 * string value over attempting to coerce into
-				 * a hex_int or decimal_int, etc. */
-				break;
+	/* Determine appropriate value format */
+	if (hint != NULL) {
+		switch (hint->sfmt) {
+		case BHND_NVRAM_SFMT_HEX:
+			fmt = &bhnd_nvram_val_bcm_hex_fmt;
+			break;
 
-			case BHND_NVRAM_SFMT_LEDDC:
-				fmt = &bhnd_nvram_val_bcm_leddc_fmt;
-				break;
+		case BHND_NVRAM_SFMT_DEC:
+			fmt = &bhnd_nvram_val_bcm_decimal_fmt;
+			break;
 
-			case BHND_NVRAM_SFMT_CCODE:
-				// XXX TODO!
-				break;
+		case BHND_NVRAM_SFMT_LEDDC:
+			fmt = &bhnd_nvram_val_bcm_leddc_fmt;
+			break;
 
-			case BHND_NVRAM_SFMT_MACADDR:
-				fmt = &bhnd_nvram_val_macaddr_fmt;
-				break;
-			}
+		case BHND_NVRAM_SFMT_CCODE:
+			// XXX TODO!
+			break;
+
+		case BHND_NVRAM_SFMT_MACADDR:
+			fmt = &bhnd_nvram_val_macaddr_fmt;
+			break;
 		}
-		break;
-
-	default:
-		if (hint != NULL) {
-			switch (hint->sfmt) {
-			case BHND_NVRAM_SFMT_HEX:
-				fmt = &bhnd_nvram_val_bcm_hex_fmt;
-				break;
-
-			case BHND_NVRAM_SFMT_DEC:
-				fmt = &bhnd_nvram_val_bcm_decimal_fmt;
-				break;
-
-			case BHND_NVRAM_SFMT_LEDDC:
-				fmt = &bhnd_nvram_val_bcm_leddc_fmt;
-				break;
-
-			case BHND_NVRAM_SFMT_CCODE:
-				// XXX TODO!
-				break;
-
-			case BHND_NVRAM_SFMT_MACADDR:
-				fmt = &bhnd_nvram_val_macaddr_fmt;
-				break;
-			}
-		}
-		break;
 	}
 
 	/* Map input buffer as a value instance */

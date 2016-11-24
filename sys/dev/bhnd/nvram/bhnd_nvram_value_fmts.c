@@ -199,19 +199,21 @@ bhnd_nvram_val_bcm_int_filter(const bhnd_nvram_val_fmt_t **fmt, const void *inp,
 
 	switch (itype_base) {
 	case BHND_NVRAM_TYPE_STRING:
-		/* Accept any string value, but simply delegate to the common
-		 * Broadcom string type */
+		/*
+		 * If the input is a string, delegate to the Broadcom
+		 * string format -- preserving the original string value
+		 * takes priority over enforcing hexadecimal/integer string
+		 * formatting.
+		 */
 		*fmt = &bhnd_nvram_val_bcm_string_fmt;
 		return (0);
+
 	default:
-		/* Must be an integer type */
-		if (!bhnd_nvram_is_int_type(itype_base))
-			return (EFTYPE);
+		if (bhnd_nvram_is_int_type(itype_base))
+			return (0);
 
-		return (0);
+		return (EFTYPE);
 	}
-
-	return (EFTYPE);
 }
 
 /**
@@ -221,15 +223,12 @@ static int
 bhnd_nvram_val_bcm_int_encode(bhnd_nvram_val_t *value, void *outp, size_t *olen,
     bhnd_nvram_type otype)
 {
-	/* If not encoding as a string, perform generic value encoding */
-	if (otype != BHND_NVRAM_TYPE_STRING) {
-		return (bhnd_nvram_val_generic_encode(value, outp, olen,
-		    otype));
-	}
+	/* If encoding to a string, format multiple elements (if any) with a
+	 * comma delimiter. */
+	if (otype == BHND_NVRAM_TYPE_STRING)
+		return (bhnd_nvram_val_printf(value, "%[]s", outp, olen, ","));
 
-	/* Encode as a string. If the backing data type is an array,
-	 * format with a BCM comma field delimiter. */
-	return (bhnd_nvram_val_printf(value, "%[]s", outp, olen, ","));
+	return (bhnd_nvram_val_generic_encode(value, outp, olen, otype));
 }
 
 /**
