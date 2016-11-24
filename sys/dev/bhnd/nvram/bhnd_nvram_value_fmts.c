@@ -59,6 +59,8 @@ __FBSDID("$FreeBSD$");
 
 static bool		 bhnd_nvram_ident_octet_string(const char *inp,
 			     size_t ilen, char *delim, size_t *nelem);
+static bool		 bhnd_nvram_ident_num_string(const char *inp,
+			     size_t ilen, u_int base, u_int *obase);
 
 static int		 bhnd_nvram_val_bcm_macaddr_filter(
 			     const bhnd_nvram_val_fmt_t **fmt, const void *inp,
@@ -285,10 +287,24 @@ static int
 bhnd_nvram_val_bcm_leddc_filter(const bhnd_nvram_val_fmt_t **fmt,
     const void *inp, size_t ilen, bhnd_nvram_type itype)
 {
+	const char	*p;
+	size_t		 plen;
+
 	switch (itype) {
 	case BHND_NVRAM_TYPE_UINT16:
 	case BHND_NVRAM_TYPE_UINT32:
+		return (0);
+
 	case BHND_NVRAM_TYPE_STRING:
+		/* Trim any whitespace */
+		p = inp;
+		plen = bhnd_nvram_trim_field(&p, ilen, '\0');
+
+		/* If the value is not a valid integer string, delegate to the
+		 * Broadcom string format */
+		if (!bhnd_nvram_ident_num_string(p, plen, 0, NULL))
+			*fmt = &bhnd_nvram_val_bcm_string_fmt;
+
 		return (0);
 	default:
 		return (EFTYPE);
@@ -867,5 +883,111 @@ bhnd_nvram_ident_octet_string(const char *inp, size_t ilen, char *delim,
 	if (nelem != NULL)
 		*nelem = field_count;
 
+	return (true);
+}
+
+
+/**
+ * Determine whether @p inp is in hexadecimal, octal, or decimal string
+ * format.
+ *
+ * - A @p str may be prefixed with a single optional '+' or '-' sign denoting
+ *   signedness.
+ * - A hexadecimal @p str may include an '0x' or '0X' prefix, denoting that a
+ *   base 16 integer follows.
+ * - An octal @p str may include a '0' prefix, denoting that an octal integer
+ *   follows.
+ * 
+ * @param	inp	The string to be parsed.
+ * @param	ilen	The length of @p inp, in bytes.
+ * @param	base	The input string's base (2-36), or 0.
+ * @param[out]	obase	On success, will be set to the base of the parsed
+ *			integer. May be set to NULL if the base is not
+ *			desired.
+ *
+ * @retval true		if @p inp is a valid number string
+ * @retval false	if @p inp is not a valid number string.
+ * @retval false	if @p base is invalid.
+ */
+static bool
+bhnd_nvram_ident_num_string(const char *inp, size_t ilen, u_int base,
+    u_int *obase)
+{
+	size_t	nbytes, ndigits;
+
+	nbytes = 0;
+	ndigits = 0;
+
+	/* Parse and skip sign */
+	if (nbytes >= ilen)
+		return (false);
+
+	if (inp[nbytes] == '-' || inp[nbytes] == '+')
+		nbytes++;
+
+	/* Truncated after sign character? */
+	if (nbytes == ilen)
+		return (false);
+
+	/* Identify (or validate) hex base, skipping 0x/0X prefix */
+	if (base == 16 || base == 0) {
+		/* Check for (and skip) 0x/0X prefix */
+		if (ilen - nbytes >= 2 && inp[nbytes] == '0' &&
+		    (inp[nbytes+1] == 'x' || inp[nbytes+1] == 'X'))
+		{
+			base = 16;
+			nbytes += 2;
+		}
+	}
+
+	/* Truncated after hex prefix? */
+	if (nbytes == ilen)
+		return (false);
+
+	/* Differentiate decimal/octal by looking for a leading 0 */
+	if (base == 0) {
+		if (inp[nbytes] == '0') {
+			base = 8;
+		} else {
+			base = 10;
+		}
+	}
+
+	/* Consume and validate all remaining digit characters */
+	for (; nbytes < ilen; nbytes++) {
+		u_int	carry;
+		char	c;
+
+		/* Parse carry value */
+		c = inp[nbytes];
+		if (bhnd_nv_isdigit(c)) {
+			carry = c - '0';
+		} else if (bhnd_nv_isxdigit(c)) {
+			if (bhnd_nv_isupper(c))
+				carry = (c - 'A') + 10;
+			else
+				carry = (c - 'a') + 10;
+		} else {
+			/* Hit a non-digit character */
+			return (false);
+		}
+
+		/* If carry is outside the base, it's not a valid digit
+		 * in the current parse context; consider it a non-digit
+		 * character */
+		if (carry >= base)
+			return (false);
+
+		/* Increment parsed digit count */
+		ndigits++;
+	}
+
+	/* Empty integer string? */
+	if (ndigits == 0)
+		return (false);
+
+	/* Valid integer -- provide the base and return */
+	if (obase != NULL)
+		*obase = base;
 	return (true);
 }
