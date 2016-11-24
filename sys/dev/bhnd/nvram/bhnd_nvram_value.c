@@ -54,6 +54,9 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_nvram_valuevar.h"
 
+static int	bhnd_nvram_val_generic_decode(const bhnd_nvram_val_fmt_t *fmt,
+		    const void *inp, size_t ilen, bhnd_nvram_type itype,
+		    void *outp, size_t *olen, bhnd_nvram_type *otype);
 
 static void	*bhnd_nvram_val_alloc_bytes(bhnd_nvram_val_t *value,
 					    size_t ilen, bhnd_nvram_type itype,
@@ -82,6 +85,15 @@ static int	 bhnd_nvram_val_set_inline(bhnd_nvram_val_t *value,
 	    value->data.ptr == NULL,				\
 	    ("previously initialized value"))
 
+static int
+bhnd_nvram_val_generic_decode(const bhnd_nvram_val_fmt_t *fmt, const void *inp,
+    size_t ilen, bhnd_nvram_type itype, void *outp, size_t *olen,
+    bhnd_nvram_type *otype)
+{
+	return (bhnd_nvram_coerce_bytes(outp, olen, *otype, inp, ilen, itype,
+	    NULL));
+}
+
 /* Common initialization support for bhnd_nvram_val_init() and
  * bhnd_nvram_val_new() */
 static int
@@ -89,58 +101,63 @@ bhnd_nvram_val_init_common(bhnd_nvram_val_t *value, bhnd_nvram_val_storage_t
     val_storage, const bhnd_nvram_val_fmt_t *fmt, const void *inp, size_t ilen,
     bhnd_nvram_type itype, uint32_t flags)
 {
-	void		*outp;
-	bhnd_nvram_type	 otype;
-	size_t		 olen;
-	int		 error;
+	bhnd_nvram_val_op_decode	*decode;
+	const bhnd_nvram_val_fmt_t	*nfmt;
+	void				*outp;
+	bhnd_nvram_type			 otype;
+	size_t				 olen;
+	int				 error;
 
-	/* Determine expected data type, and allow the format to delegate to
-	 * a new format instance */
-	if (fmt != NULL && fmt->op_filter != NULL) {
-		const bhnd_nvram_val_fmt_t *nfmt = fmt;
+	otype = itype;
+	nfmt = fmt;
 
-		/* Use the filter function to determine whether direct
-		 * initialization from is itype permitted */
-		error = fmt->op_filter(&nfmt, inp, ilen, itype);
-		if (error)
-			return (error);
+	decode = NULL;
 
-		/* Retry initialization with new format? */
-		if (nfmt != fmt) {
-			return (bhnd_nvram_val_init_common(value, val_storage,
-			    nfmt, inp, ilen, itype, flags));
+	if (fmt != NULL) {
+		/* Format provides its own decode implementation */
+		if (fmt->op_decode != NULL)
+			decode = fmt->op_decode;
+
+		/* Validate the input data type */
+		if (fmt->op_filter != NULL) {
+			/* Use the filter function to determine whether
+			 * initialization from the given itype is permitted */
+			if ((error = fmt->op_filter(&nfmt, inp, ilen, itype)))
+				return (error);
+
+		} else if (fmt->op_decode == NULL) {
+			/* If the format does not provide a decode
+			 * implementation, the value must be initialized with
+			 * the format's native type */
+			if (itype != fmt->native_type)
+				return (EFTYPE);
 		}
-
-		/* Value can be initialized with provided input type */
-		otype = itype;
-
-	} else if (fmt != NULL) {
-		/* Value must be initialized with the format's native
-		 * type */
-		otype = fmt->native_type;
-
-	} else {
-		/* No format specified; we can initialize directly from the
-		 * input data, and we'll handle all format operations
-		 * internally. */
-		otype = itype;
 	}
+
+	/* Initialization delegated to new format? */
+	if (nfmt != fmt)
+		return (bhnd_nvram_val_init_common(value, val_storage, nfmt,
+		    inp, ilen, itype, flags));
 
 	/* Initialize value instance */
 	*value = BHND_NVRAM_VAL_INITIALIZER(fmt, val_storage);
 
-	/* If input data already in native format, init directly. */
-	if (otype == itype) {
+	/* If input data already in a supported format and no decode override
+	 * is provided, init directly. */
+	if (otype == itype && decode == NULL) {
 		error = bhnd_nvram_val_set(value, inp, ilen, itype, flags);
 		if (error)
 			goto failed;
 
 		return (0);
 	}
+
+	/* Fall back on generic decode implementation */
+	if (decode == NULL)
+		decode = bhnd_nvram_val_generic_decode;
 	
-	/* Determine size when encoded in native format */
-	error = bhnd_nvram_coerce_bytes(NULL, &olen, otype, inp, ilen,
-	    itype, NULL);
+	/* Determine size and type when encoded in native format */
+	error = decode(fmt, inp, ilen, itype, NULL, &olen, &otype);
 	if (error)
 		goto failed;
 	
@@ -152,8 +169,7 @@ bhnd_nvram_val_init_common(bhnd_nvram_val_t *value, bhnd_nvram_val_storage_t
 	}
 	
 	/* Perform encode */
-	error = bhnd_nvram_coerce_bytes(outp, &olen, otype, inp, ilen, itype,
-	    NULL);
+	error = decode(fmt, inp, ilen, itype, outp, &olen, &otype);
 	if (error)
 		goto failed;
 	

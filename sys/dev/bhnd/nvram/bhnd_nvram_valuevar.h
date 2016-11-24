@@ -56,6 +56,36 @@
 typedef int (bhnd_nvram_val_op_filter)(const bhnd_nvram_val_fmt_t **fmt,
     const void *inp, size_t ilen, bhnd_nvram_type itype);
 
+/**
+ * Decode input data for initialization.
+ * 
+ * @param		fmt	NVRAM value format.
+ * @param		inp	Input data.
+ * @param		ilen	Input data length.
+ * @param		itype	Input data type.
+ * @param[out]		outp	On success, the value will be written to this 
+ *				buffer. This argment may be NULL if the value
+ *				is not desired.
+ * @param[in,out]	olen	The capacity of @p outp. On success, will be set
+ *				to the actual size of the requested value.
+ * @param[out]		otype	The output type; either the format's native type,
+ *				or a type permitted by
+ *				bhnd_nvram_val_op_filter(). On success, will be
+ *				set to the actual data type written.
+ *
+ * @retval 0		If initialization from @p inp is supported.
+ * @retval ENOMEM	If @p outp is non-NULL and a buffer of @p olen is too
+ *			small to hold the requested value.
+ * @retval EFTYPE	If initialization from @p inp and @p itype is
+ *			unsupported.
+ * @retval ERANGE	If value coercion would overflow the output type.
+ * @retval EFAULT	if @p ilen is not correctly aligned for elements of
+ *			@p itype.
+ */
+typedef int (bhnd_nvram_val_op_decode)(const bhnd_nvram_val_fmt_t *fmt,
+    const void *inp, size_t ilen, bhnd_nvram_type itype, void *outp,
+    size_t *olen, bhnd_nvram_type *otype);
+
 /** @see bhnd_nvram_val_encode() */
 typedef int (bhnd_nvram_val_op_encode)(bhnd_nvram_val_t *value, void *outp,
     size_t *olen, bhnd_nvram_type otype);
@@ -84,6 +114,7 @@ struct bhnd_nvram_val_fmt {
 	bhnd_nvram_type			 native_type;	/**< native value representation */
 
 	bhnd_nvram_val_op_filter	*op_filter;
+	bhnd_nvram_val_op_decode	*op_decode;
 	bhnd_nvram_val_op_encode	*op_encode;
 	bhnd_nvram_val_op_encode_elem	*op_encode_elem;
 	bhnd_nvram_val_op_nelem		*op_nelem;
