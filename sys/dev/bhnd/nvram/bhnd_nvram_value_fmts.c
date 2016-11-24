@@ -229,7 +229,7 @@ bhnd_nvram_val_bcm_int_encode(bhnd_nvram_val_t *value, void *outp, size_t *olen,
 
 	/* Encode as a string. If the backing data type is an array,
 	 * format with a BCM comma field delimiter. */
-	return (bhnd_nvram_val_printf(value, "%*s", outp, olen, ","));
+	return (bhnd_nvram_val_printf(value, "%[]s", outp, olen, ","));
 }
 
 /**
@@ -254,9 +254,9 @@ bhnd_nvram_val_bcm_int_encode_elem(bhnd_nvram_val_t *value, const void *inp,
 		fstr = "0x%I64X";
 	} else if (value->fmt == &bhnd_nvram_val_bcm_decimal_fmt) {
 		if (bhnd_nvram_is_signed_type(itype))
-			fstr = "0x%I64d";
+			fstr = "%I64d";
 		else
-			fstr = "0x%I64u";
+			fstr = "%I64u";
 	} else {
 		BHND_NV_PANIC("unsupported format");
 	}
@@ -632,7 +632,7 @@ bhnd_nvram_val_macaddr_encode(bhnd_nvram_val_t *value, void *outp,
 	 * produce an octet string (00:00:...).
 	 */
 	if (bhnd_nvram_base_type(otype) == BHND_NVRAM_TYPE_STRING) {
-		return (bhnd_nvram_val_printf(value, "%*02hhX", outp, olen,
+		return (bhnd_nvram_val_printf(value, "%[]02hhX", outp, olen,
 		    ":"));
 	}
 

@@ -145,13 +145,17 @@ bhnd_nvram_val_printf(bhnd_nvram_val_t *value, const char *fmt, char *outp,
  * unsigned integer representation, producing a string value of "0xF".
  * 
  * Repeat:
- * - '[digits]*'	Repeatedly apply the format specifier to the input
- *			value's elements up to N times. The delimiter must be
- *			passed as a string in the next variadic argument.
- * - '*'		Repeatedly apply the format specifier to the input
+ * - [digits]		Repeatedly apply the format specifier to the input
+ *			value's elements up to `digits` times. The delimiter
+ *			must be passed as a string in the next variadic
+ *			argument.
+ * - []			Repeatedly apply the format specifier to the input
  *			value's elements until all elements have been. The
  *			processed. The delimiter must be passed as a string in
  *			the next variadic argument.
+ * - [*]		Repeatedly apply the format specifier to the input
+ *			value's elements. The repeat count is read from the
+ *			next variadic argument as a size_t value
  * 
  * Flags:
  * - '#'		use alternative form (e.g. 0x/0X prefixing of hex
@@ -163,8 +167,14 @@ bhnd_nvram_val_printf(bhnd_nvram_val_t *value, const char *fmt, char *outp,
  *			positive numbers.
  * 
  * Width/Precision:
- * - [digits]		minimum field width as per printf(3).
- * - .[digits]		precision as per printf(3).
+ * - digits		minimum field width.
+ * - *			read the minimum field width from the next variadic
+ *			argument as a ssize_t value. A negative value enables
+ *			left adjustment.
+ * - .digits		field precision.
+ * - .*			read the field precision from the next variadic argument
+ *			as a ssize_t value. A negative value enables left
+ *			adjustment.
  *
  * Length Modifiers:
  * - 'hh', 'I8'		Convert the value to an 8-bit signed or unsigned
@@ -262,18 +272,23 @@ bhnd_nvram_val_vprintf(bhnd_nvram_val_t *value, const char *fmt, char *outp,
 		}
 
 		/* Parse repeat specifier */
-		if ((bhnd_nv_isdigit(*p) && *p != '0') || *p == '*') {
-			char *endp;
-
+		if (*p == '[') {
+			p++;
+			
 			/* Determine repeat count */
-			if (*p == '*') {
+			if (*p == ']') {
 				/* Repeat consumes all input */
 				repeat = bhnd_nvram_val_nelem(value);
+			} else if (*p == '*') {
+				/* Repeat is supplied as an argument */
+				repeat = va_arg(ap, size_t);
 				p++;
 			} else {
+				char *endp;
+
 				/* Repeat specified as argument */
 				repeat = strtoul(p, &endp, 10);
-				if (p == endp || *endp != '*') {
+				if (p == endp) {
 					BHND_NV_LOG("error parsing repeat "
 						    "count at '%s'", p);
 					return (EINVAL);
@@ -282,6 +297,14 @@ bhnd_nvram_val_vprintf(bhnd_nvram_val_t *value, const char *fmt, char *outp,
 				/* Advance past repeat count */
 				p = endp;
 			}
+
+			/* Advance past terminating ']' */
+			if (*p != ']') {
+				BHND_NV_LOG("error parsing repeat count at "
+				    "'%s'", p);
+				return (EINVAL);
+			}
+			p++;
 
 			delim = va_arg(ap, const char *);
 			delim_len = strlen(delim);
@@ -326,7 +349,22 @@ bhnd_nvram_val_vprintf(bhnd_nvram_val_t *value, const char *fmt, char *outp,
 		}
 
 		/* Parse minimum width */
-		if (bhnd_nv_isdigit(*p)) {
+		if (*p == '*') {
+			ssize_t arg;
+
+			/* Width is supplied as an argument */
+			arg = va_arg(ap, int);
+
+			/* Negative width argument is interpreted as
+			 * '-' flag followed by positive width */
+			if (arg < 0) {
+				ladjust = true;
+				arg = -arg;
+			}
+
+			width = arg;
+			p++;
+		} else if (bhnd_nv_isdigit(*p)) {
 			uint32_t	v;
 			size_t		len, parsed;
 
@@ -353,13 +391,23 @@ bhnd_nvram_val_vprintf(bhnd_nvram_val_t *value, const char *fmt, char *outp,
 			p++;
 			have_precision = true;
 
-			/* Specifying precision as an argument is unsupported */
-			if (*p == '*')
-				return (EINVAL);
+			if (*p == '*') {
+				ssize_t arg;
 
-			/* Either specified as an integer value, or an implicit
-			 * precision of 0 if not specified */
-			if (!bhnd_nv_isdigit(*p)) {
+				/* Precision is specified as an argument */
+				arg = va_arg(ap, int);
+
+				/* Negative precision argument is interpreted
+				 * as '-' flag followed by positive
+				 * precision */
+				if (arg < 0) {
+					ladjust = true;
+					arg = -arg;
+				}
+
+				precision = arg;
+			} else if (!bhnd_nv_isdigit(*p)) {
+				/* Implicit precision of 0 */
 				precision = 0;
 			} else {
 				/* Parse precision value */
