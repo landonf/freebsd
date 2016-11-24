@@ -896,11 +896,11 @@ bhnd_nvram_coerce_bytes(void *outp, size_t *olen, bhnd_nvram_type otype,
 		if (hint != NULL) {
 			switch (hint->sfmt) {
 			case BHND_NVRAM_SFMT_HEX:
-				fmt = &bhnd_nvram_val_hex_int_fmt;
+				fmt = &bhnd_nvram_val_bcm_hex_fmt;
 				break;
 
 			case BHND_NVRAM_SFMT_DEC:
-				fmt = &bhnd_nvram_val_decimal_int_fmt;
+				fmt = &bhnd_nvram_val_bcm_decimal_fmt;
 				break;
 
 			case BHND_NVRAM_SFMT_LEDDC:

@@ -60,22 +60,6 @@ __FBSDID("$FreeBSD$");
 static bool		 bhnd_nvram_ident_octet_string(const char *inp,
 			     size_t ilen, char *delim, size_t *nelem);
 
-static int		 bhnd_nvram_val_decint_filter(
-			     const bhnd_nvram_val_fmt_t **fmt, const void *inp,
-			     size_t ilen, bhnd_nvram_type itype);
-static int		 bhnd_nvram_val_decint_encode_elem(
-			     bhnd_nvram_val_t *value, const void *inp,
-			     size_t ilen, void *outp, size_t *olen,
-			     bhnd_nvram_type otype);
-
-static int		 bhnd_nvram_val_hexint_filter(
-			     const bhnd_nvram_val_fmt_t **fmt, const void *inp,
-			     size_t ilen, bhnd_nvram_type itype);
-static int		 bhnd_nvram_val_hexint_encode_elem(
-			     bhnd_nvram_val_t *value, const void *inp,
-			     size_t ilen, void *outp, size_t *olen,
-			     bhnd_nvram_type otype);
-
 static int		 bhnd_nvram_val_macaddr_filter(
 			     const bhnd_nvram_val_fmt_t **fmt, const void *inp,
 			     size_t ilen, bhnd_nvram_type itype);
@@ -94,6 +78,16 @@ static const void 	*bhnd_nvram_val_macaddr_string_next(
 			     size_t *len);
 
 
+static int		 bhnd_nvram_val_bcm_int_filter(
+			     const bhnd_nvram_val_fmt_t **fmt, const void *inp,
+			     size_t ilen, bhnd_nvram_type itype);
+static int		 bhnd_nvram_val_bcm_int_encode(bhnd_nvram_val_t *value,
+			     void *outp, size_t *olen, bhnd_nvram_type otype);
+static int		 bhnd_nvram_val_bcm_int_encode_elem(
+			     bhnd_nvram_val_t *value, const void *inp,
+			     size_t ilen, void *outp, size_t *olen,
+			     bhnd_nvram_type otype);
+
 static int		 bhnd_nvram_val_bcm_leddc_filter(
 			     const bhnd_nvram_val_fmt_t **fmt, const void *inp,
 			     size_t ilen, bhnd_nvram_type itype);
@@ -111,34 +105,6 @@ static int		 bhnd_nvram_val_bcmstr_csv_filter(
 			     size_t ilen, bhnd_nvram_type itype);
 static const void	*bhnd_nvram_val_bcmstr_csv_next(bhnd_nvram_val_t *value,
 			     const void *prev, size_t *len);
-
-/**
- * Generic decimal integer format.
- *
- * Extends standard integer handling, encoding the string representation of
- * the integer value as a decimal string:
- * - Positive values will be string-encoded without a prefix.
- * - Negative values will be string-encoded with a leading '-' sign.
- */
-const bhnd_nvram_val_fmt_t bhnd_nvram_val_decimal_int_fmt = {
-	.name		= "decimal-int",
-	.native_type	= BHND_NVRAM_TYPE_UINT64,
-	.op_filter	= bhnd_nvram_val_decint_filter,
-	.op_encode_elem	= bhnd_nvram_val_decint_encode_elem,
-};
-
-/**
- * Generic hex integer format.
- *
- * Extends standard integer handling, encoding the string representation of
- * the integer value as an 0x-prefixed hexadecimal string.
- */
-const bhnd_nvram_val_fmt_t bhnd_nvram_val_hex_int_fmt = {
-	.name		= "hex-int",
-	.native_type	= BHND_NVRAM_TYPE_UINT64,
-	.op_filter	= bhnd_nvram_val_hexint_filter,
-	.op_encode_elem	= bhnd_nvram_val_hexint_encode_elem,
-};
 
 /**
  * MAC address format.
@@ -169,6 +135,37 @@ const bhnd_nvram_val_fmt_t bhnd_nvram_val_bcm_leddc_fmt = {
 	.op_encode_elem	= bhnd_nvram_val_bcm_leddc_encode_elem,
 };
 
+
+/**
+ * Broadcom NVRAM decimal integer format.
+ *
+ * Extends standard integer handling, encoding the string representation of
+ * the integer value as a decimal string:
+ * - Positive values will be string-encoded without a prefix.
+ * - Negative values will be string-encoded with a leading '-' sign.
+ */
+const bhnd_nvram_val_fmt_t bhnd_nvram_val_bcm_decimal_fmt = {
+	.name		= "bcm-decimal",
+	.native_type	= BHND_NVRAM_TYPE_UINT64,
+	.op_filter	= bhnd_nvram_val_bcm_int_filter,
+	.op_encode	= bhnd_nvram_val_bcm_int_encode,
+	.op_encode_elem	= bhnd_nvram_val_bcm_int_encode_elem,
+};
+
+/**
+ * Broadcom NVRAM decimal integer format.
+ *
+ * Extends standard integer handling, encoding the string representation of
+ * the integer value as an 0x-prefixed hexadecimal string.
+ */
+const bhnd_nvram_val_fmt_t bhnd_nvram_val_bcm_hex_fmt = {
+	.name		= "bcm-hex",
+	.native_type	= BHND_NVRAM_TYPE_UINT64,
+	.op_filter	= bhnd_nvram_val_bcm_int_filter,
+	.op_encode	= bhnd_nvram_val_bcm_int_encode,
+	.op_encode_elem	= bhnd_nvram_val_bcm_int_encode_elem,
+};
+
 /**
  * Broadcom NVRAM string format.
  * 
@@ -190,85 +187,83 @@ static const bhnd_nvram_val_fmt_t bhnd_nvram_val_bcm_string_csv_fmt = {
 };
 
 /**
- * Hex integer filter.
+ * Common hex/decimal integer filter implementation.
  */
 static int
-bhnd_nvram_val_hexint_filter(const bhnd_nvram_val_fmt_t **fmt, const void *inp,
+bhnd_nvram_val_bcm_int_filter(const bhnd_nvram_val_fmt_t **fmt, const void *inp,
     size_t ilen, bhnd_nvram_type itype)
 {
-	/* Supports all integer and integer array types */
-	if (bhnd_nvram_is_int_type(bhnd_nvram_base_type(itype)))
+	bhnd_nvram_type	itype_base;
+
+	itype_base = bhnd_nvram_base_type(itype);
+
+	switch (itype_base) {
+	case BHND_NVRAM_TYPE_STRING:
+		/* Accept any string value, but simply delegate to the common
+		 * Broadcom string type */
+		*fmt = &bhnd_nvram_val_bcm_string_fmt;
 		return (0);
+	default:
+		/* Must be an integer type */
+		if (!bhnd_nvram_is_int_type(itype_base))
+			return (EFTYPE);
+
+		return (0);
+	}
 
 	return (EFTYPE);
 }
 
 /**
- * Hex integer encode.
+ * Common hex/decimal integer encode implementation.
  */
 static int
-bhnd_nvram_val_hexint_encode_elem(bhnd_nvram_val_t *value, const void *inp,
-    size_t ilen, void *outp, size_t *olen, bhnd_nvram_type otype)
+bhnd_nvram_val_bcm_int_encode(bhnd_nvram_val_t *value, void *outp, size_t *olen,
+    bhnd_nvram_type otype)
 {
-	bhnd_nvram_type	itype;
-
-	itype = bhnd_nvram_val_elem_type(value);
-
-	/* If not encoding as a string, perform standard integer value
-	 * encoding */
+	/* If not encoding as a string, perform generic value encoding */
 	if (otype != BHND_NVRAM_TYPE_STRING) {
-		return (bhnd_nvram_coerce_bytes(outp, olen, otype, inp, ilen,
-		    itype, NULL));
+		return (bhnd_nvram_val_generic_encode(value, outp, olen,
+		    otype));
 	}
 
-	/* Otherwise, use standard string formatting to emit a hex string 
-	 * value */
-	return (bhnd_nvram_value_printf("0x%I64X", inp, ilen, itype, outp,
-	    olen));
+	/* Encode as a string. If the backing data type is an array,
+	 * format with a BCM comma field delimiter. */
+	return (bhnd_nvram_val_printf(value, "%*s", outp, olen, ","));
 }
 
 /**
- * Decimal integer filter.
+ * Common hex/decimal integer encode_elem implementation.
  */
 static int
-bhnd_nvram_val_decint_filter(const bhnd_nvram_val_fmt_t **fmt, const void *inp,
-    size_t ilen, bhnd_nvram_type itype)
-{
-	/* Supports all integer and integer array types */
-	if (bhnd_nvram_is_int_type(bhnd_nvram_base_type(itype)))
-		return (0);
-
-	return (EFTYPE);
-}
-
-/**
- * Decimal integer encode.
- */
-static int
-bhnd_nvram_val_decint_encode_elem(bhnd_nvram_val_t *value, const void *inp,
+bhnd_nvram_val_bcm_int_encode_elem(bhnd_nvram_val_t *value, const void *inp,
     size_t ilen, void *outp, size_t *olen, bhnd_nvram_type otype)
 {
-	bhnd_nvram_type itype;
+	const char		*fstr;
+	bhnd_nvram_type		 itype;
 
 	itype = bhnd_nvram_val_elem_type(value);
 
-	/* If not encoding as a string, perform standard integer value
-	 * encoding */
-	if (otype != BHND_NVRAM_TYPE_STRING) {
-		return (bhnd_nvram_coerce_bytes(outp, olen, otype, inp, ilen,
-		    itype, NULL));
-	}
+	/* If not encoding as a string, perform generic value encoding */
+	if (otype != BHND_NVRAM_TYPE_STRING)
+		return (bhnd_nvram_val_generic_encode_elem(value, inp, ilen,
+		    outp, olen, otype));
 
-	/* Otherwise, use standard string formatting to emit a hex string */
-	if (bhnd_nvram_is_signed_type(itype)) {
-		return (bhnd_nvram_value_printf("%I64d", inp, ilen, itype, outp,
-		    olen));
+	/* Determine the appropriate format string */
+	if (value->fmt == &bhnd_nvram_val_bcm_hex_fmt) {
+		fstr = "0x%I64X";
+	} else if (value->fmt == &bhnd_nvram_val_bcm_decimal_fmt) {
+		if (bhnd_nvram_is_signed_type(itype))
+			fstr = "0x%I64d";
+		else
+			fstr = "0x%I64u";
 	} else {
-		return (bhnd_nvram_value_printf("%I64u", inp, ilen, itype, outp,
-		    olen));
+		BHND_NV_PANIC("unsupported format");
 	}
-}
 
+	/* Format */
+	return (bhnd_nvram_value_printf(fstr, inp, ilen, itype, outp, olen));
+}
 
 /**
  * Broadcom LED duty-cycle filter.
