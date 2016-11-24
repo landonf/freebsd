@@ -102,9 +102,13 @@ static int		 bhnd_nvram_val_bcm_leddc_encode_elem(
 			     size_t ilen, void *outp, size_t *olen,
 			     bhnd_nvram_type otype);
 
+
 static int		 bhnd_nvram_val_bcmstr_encode(bhnd_nvram_val_t *value,
 			     void *outp, size_t *olen, bhnd_nvram_type otype);
 
+static int		 bhnd_nvram_val_bcmstr_csv_filter(
+			     const bhnd_nvram_val_fmt_t **fmt, const void *inp,
+			     size_t ilen, bhnd_nvram_type itype);
 static const void	*bhnd_nvram_val_bcmstr_csv_next(bhnd_nvram_val_t *value,
 			     const void *prev, size_t *len);
 
@@ -195,13 +199,14 @@ const bhnd_nvram_val_fmt_t bhnd_nvram_val_bcm_leddc_fmt = {
 const bhnd_nvram_val_fmt_t bhnd_nvram_val_bcm_string_fmt = {
 	.name		= "bcm-string",
 	.native_type	= BHND_NVRAM_TYPE_STRING,
-	.op_encode	= bhnd_nvram_val_bcmstr_encode
+	.op_encode	= bhnd_nvram_val_bcmstr_encode,
 };
 
 /** Broadcom comma-delimited string. */
 static const bhnd_nvram_val_fmt_t bhnd_nvram_val_bcm_string_csv_fmt = {
 	.name		= "bcm-string[]",
 	.native_type	= BHND_NVRAM_TYPE_STRING,
+	.op_filter	= bhnd_nvram_val_bcmstr_csv_filter,
 	.op_next	= bhnd_nvram_val_bcmstr_csv_next,
 };
 
@@ -513,6 +518,22 @@ bhnd_nvram_val_bcmstr_encode(bhnd_nvram_val_t *value, void *outp,
 }
 
 /**
+ * Broadcom NVRAM comma-delimited string filter.
+ */
+static int
+bhnd_nvram_val_bcmstr_csv_filter(const bhnd_nvram_val_fmt_t **fmt,
+    const void *inp, size_t ilen, bhnd_nvram_type itype)
+{
+	switch (itype) {
+	case BHND_NVRAM_TYPE_STRING:
+	case BHND_NVRAM_TYPE_STRING_ARRAY:
+		return (0);
+	default:
+		return (EFTYPE);
+	}
+}
+
+/**
  * Broadcom NVRAM comma-delimited string iteration.
  */
 static const void *
@@ -520,47 +541,63 @@ bhnd_nvram_val_bcmstr_csv_next(bhnd_nvram_val_t *value, const void *prev,
     size_t *len)
 {
 	const char	*next;
-	const char	*str;
-	bhnd_nvram_type	 stype;
-	size_t		 slen, remain;
+	const char	*inp;
+	bhnd_nvram_type	 itype;
+	size_t		 ilen, remain;
 	char		 delim;
 
-	/* Fetch backing string */
-	str = bhnd_nvram_val_bytes(value, &slen, &stype);
-	BHND_NV_ASSERT(stype == BHND_NVRAM_TYPE_STRING,
-	    ("unsupported type: %d", stype));
+	/* Fetch backing representation */
+	inp = bhnd_nvram_val_bytes(value, &ilen, &itype);
 
-	/* Zero-length array? */
-	if (slen == 0)
-		return (NULL);
-
-	if (prev == NULL) {
-		/* First element */
-		next = str;
-		remain = slen;
-		delim = ',';
-	} else {
-		/* Advance to the previous element's delimiter */
-		next = (const char *)prev + *len;
-
-		/* Did we hit the end of the string? */
-		if ((size_t)(next - str) >= slen)
+	/* Fetch next value */
+	switch (itype) {
+	case BHND_NVRAM_TYPE_STRING:
+		/* Zero-length array? */
+		if (ilen == 0)
 			return (NULL);
 
-		/* Fetch (and skip past) the delimiter */
-		delim = *next;
-		next++;
-		remain = slen - (size_t)(next - str);
+		if (prev == NULL) {
+			/* First element */
+			next = inp;
+			remain = ilen;
+			delim = ',';
+		} else {
+			/* Advance to the previous element's delimiter */
+			next = (const char *)prev + *len;
 
-		/* Was the delimiter the final character? */
-		if (remain == 0)
-			return (NULL);
+			/* Did we hit the end of the string? */
+			if ((size_t)(next - inp) >= ilen)
+				return (NULL);
+
+			/* Fetch (and skip past) the delimiter */
+			delim = *next;
+			next++;
+			remain = ilen - (size_t)(next - inp);
+
+			/* Was the delimiter the final character? */
+			if (remain == 0)
+				return (NULL);
+		}
+
+		/* Parse the field value, up to the next delimiter */
+		*len = bhnd_nvram_parse_field(&next, remain, delim);
+
+		return (next);
+
+	case BHND_NVRAM_TYPE_STRING_ARRAY:
+		next = bhnd_nvram_string_array_next(inp, ilen, prev);
+		if (next != NULL) {
+			*len = strlen(next);
+
+			/* Account for trailing NUL */
+			if (*len + (size_t)(next - inp) < ilen)
+				(*len)++;
+		}
+
+		return (next);
+	default:
+		BHND_NV_PANIC("unsupported type: %d", itype);
 	}
-
-	/* Parse the field value, up to the next delimiter */
-	*len = bhnd_nvram_parse_field(&next, remain, delim);
-
-	return (next);
 }
 
 /**
