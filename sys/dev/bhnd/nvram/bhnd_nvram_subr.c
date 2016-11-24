@@ -876,6 +876,47 @@ bhnd_nvram_validate_name(const char *name, size_t name_len)
  * Coerce value @p inp of type @p itype to @p otype, writing the
  * result to @p outp.
  *
+ * @param		inp	The value to be coerced.
+ * @param		ilen	The size of @p inp, in bytes.
+ * @param		itype	The base data type of @p inp.
+ * @param[out]		outp	On success, the value will be written to this 
+ *				buffer. This argment may be NULL if the value
+ *				is not desired.
+ * @param[in,out]	olen	The capacity of @p outp. On success, will be set
+ *				to the actual size of the requested value.
+ * @param		otype	The data type to be written to @p outp.
+ *
+ * @retval 0		success
+ * @retval ENOMEM	If @p outp is non-NULL and a buffer of @p olen is too
+ *			small to hold the requested value.
+ * @retval EFTYPE	If the variable data cannot be coerced to @p otype.
+ * @retval ERANGE	If value coercion would overflow @p otype.
+ */
+int
+bhnd_nvram_value_coerce(const void *inp, size_t ilen, bhnd_nvram_type itype,
+    void *outp, size_t *olen, bhnd_nvram_type otype)
+{
+	bhnd_nvram_val_t	val;
+	int			error;
+
+	/* Wrap input buffer in a value instance */
+	error = bhnd_nvram_val_init(&val, NULL, inp, ilen,
+	    itype, BHND_NVRAM_VAL_BORROW_DATA|BHND_NVRAM_VAL_FIXED);
+	if (error)
+		return (error);
+
+	/* Try to encode as requested type */
+	error = bhnd_nvram_val_encode(&val, outp, olen, otype);
+
+	/* Clean up and return error */
+	bhnd_nvram_val_release(&val);
+	return (error);
+}
+
+/**
+ * Coerce value @p inp of type @p itype to @p otype, writing the
+ * result to @p outp.
+ *
  * @param[out]		outp	On success, the value will be written to this 
  *				buffer. This argment may be NULL if the value
  *				is not desired.

@@ -161,12 +161,18 @@ bhnd_nv_ummin(uintmax_t a, uintmax_t b)
 #define	BHND_NV_PRINT_WIDTH(_len)	\
 	((_len) > (INT_MAX) ? (INT_MAX) : (int)(_len))
 
+int				 bhnd_nvram_value_coerce(const void *inp,
+				     size_t ilen, bhnd_nvram_type itype,
+				     void *outp, size_t *olen,
+				     bhnd_nvram_type otype);
+
 int				 bhnd_nvram_value_nelem(bhnd_nvram_type type,
 				     const void *data, size_t len,
 				     size_t *nelem);
 size_t				 bhnd_nvram_value_size(bhnd_nvram_type type,
 				     const void *data, size_t nbytes, 
 				     size_t nelem);
+
 int				 bhnd_nvram_value_printf(const char *fmt,
 				     const void *inp, size_t ilen,
 				     bhnd_nvram_type itype, char *outp,
