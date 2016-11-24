@@ -60,20 +60,21 @@ __FBSDID("$FreeBSD$");
 static bool		 bhnd_nvram_ident_octet_string(const char *inp,
 			     size_t ilen, char *delim, size_t *nelem);
 
-static int		 bhnd_nvram_val_macaddr_filter(
+static int		 bhnd_nvram_val_bcm_macaddr_filter(
 			     const bhnd_nvram_val_fmt_t **fmt, const void *inp,
 			     size_t ilen, bhnd_nvram_type itype);
-static int		 bhnd_nvram_val_macaddr_encode(bhnd_nvram_val_t *value,
-			     void *outp, size_t *olen, bhnd_nvram_type otype);
+static int		 bhnd_nvram_val_bcm_macaddr_encode(
+			     bhnd_nvram_val_t *value, void *outp, size_t *olen,
+			     bhnd_nvram_type otype);
 
-static int		 bhnd_nvram_val_macaddr_string_filter(
+static int		 bhnd_nvram_val_bcm_macaddr_string_filter(
 			     const bhnd_nvram_val_fmt_t **fmt, const void *inp,
 			     size_t ilen, bhnd_nvram_type itype);
-static int		 bhnd_nvram_val_macaddr_string_encode_elem(
+static int		 bhnd_nvram_val_bcm_macaddr_string_encode_elem(
 			     bhnd_nvram_val_t *value, const void *inp,
 			     size_t ilen, void *outp, size_t *olen, 
 			     bhnd_nvram_type otype);
-static const void 	*bhnd_nvram_val_macaddr_string_next(
+static const void 	*bhnd_nvram_val_bcm_macaddr_string_next(
 			     bhnd_nvram_val_t *value, const void *prev,
 			     size_t *len);
 
@@ -107,26 +108,26 @@ static const void	*bhnd_nvram_val_bcmstr_csv_next(bhnd_nvram_val_t *value,
 			     const void *prev, size_t *len);
 
 /**
- * MAC address format.
+ * Broadcom NVRAM MAC address format.
  */
-const bhnd_nvram_val_fmt_t bhnd_nvram_val_macaddr_fmt = {
-	.name		= "macaddr",
+const bhnd_nvram_val_fmt_t bhnd_nvram_val_bcm_macaddr_fmt = {
+	.name		= "bcm-macaddr",
 	.native_type	= BHND_NVRAM_TYPE_UINT8_ARRAY,
-	.op_filter	= bhnd_nvram_val_macaddr_filter,
-	.op_encode	= bhnd_nvram_val_macaddr_encode,
+	.op_filter	= bhnd_nvram_val_bcm_macaddr_filter,
+	.op_encode	= bhnd_nvram_val_bcm_macaddr_encode,
 };
 
-/** MAC address string format. */
-static const bhnd_nvram_val_fmt_t bhnd_nvram_val_macaddr_string_fmt = {
-	.name		= "macaddr-string",
+/** Broadcom NVRAM MAC address string format. */
+static const bhnd_nvram_val_fmt_t bhnd_nvram_val_bcm_macaddr_string_fmt = {
+	.name		= "bcm-macaddr-string",
 	.native_type	= BHND_NVRAM_TYPE_STRING,
-	.op_filter	= bhnd_nvram_val_macaddr_string_filter,
-	.op_encode_elem	= bhnd_nvram_val_macaddr_string_encode_elem,
-	.op_next	= bhnd_nvram_val_macaddr_string_next,
+	.op_filter	= bhnd_nvram_val_bcm_macaddr_string_filter,
+	.op_encode_elem	= bhnd_nvram_val_bcm_macaddr_string_encode_elem,
+	.op_next	= bhnd_nvram_val_bcm_macaddr_string_next,
 };
 
 /**
- * Broadcom NVRAM/SPROM LED duty-cycle format.
+ * Broadcom NVRAM LED duty-cycle format.
  */
 const bhnd_nvram_val_fmt_t bhnd_nvram_val_bcm_leddc_fmt = {
 	.name		= "bcm-leddc",
@@ -503,7 +504,7 @@ bhnd_nvram_val_bcmstr_encode(bhnd_nvram_val_t *value, void *outp,
 	 * string, or a comma-delimited string. */
 	inp = bhnd_nvram_val_bytes(value, &ilen, &itype);
 	if (bhnd_nvram_ident_octet_string(inp, ilen, NULL, NULL))
-		array_fmt = &bhnd_nvram_val_macaddr_string_fmt;
+		array_fmt = &bhnd_nvram_val_bcm_macaddr_string_fmt;
 	else
 		array_fmt = &bhnd_nvram_val_bcm_string_csv_fmt;
 
@@ -613,15 +614,15 @@ bhnd_nvram_val_bcmstr_csv_next(bhnd_nvram_val_t *value, const void *prev,
  * MAC address filter.
  */
 static int
-bhnd_nvram_val_macaddr_filter(const bhnd_nvram_val_fmt_t **fmt,
+bhnd_nvram_val_bcm_macaddr_filter(const bhnd_nvram_val_fmt_t **fmt,
     const void *inp, size_t ilen, bhnd_nvram_type itype)
 {
 	switch (itype) {
 	case BHND_NVRAM_TYPE_UINT8_ARRAY:
 		return (0);
 	case BHND_NVRAM_TYPE_STRING:
-		/* Let macaddr_string format handle it */
-		*fmt = &bhnd_nvram_val_macaddr_string_fmt;
+		/* Let bcm_macaddr_string format handle it */
+		*fmt = &bhnd_nvram_val_bcm_macaddr_string_fmt;
 		return (0);
 	default:
 		return (EFTYPE);
@@ -632,7 +633,7 @@ bhnd_nvram_val_macaddr_filter(const bhnd_nvram_val_fmt_t **fmt,
  * MAC address encoding.
  */
 static int
-bhnd_nvram_val_macaddr_encode(bhnd_nvram_val_t *value, void *outp,
+bhnd_nvram_val_bcm_macaddr_encode(bhnd_nvram_val_t *value, void *outp,
     size_t *olen, bhnd_nvram_type otype)
 {
 	const void	*inp;
@@ -658,15 +659,15 @@ bhnd_nvram_val_macaddr_encode(bhnd_nvram_val_t *value, void *outp,
  * MAC address string filter.
  */
 static int
-bhnd_nvram_val_macaddr_string_filter(const bhnd_nvram_val_fmt_t **fmt,
+bhnd_nvram_val_bcm_macaddr_string_filter(const bhnd_nvram_val_fmt_t **fmt,
     const void *inp, size_t ilen, bhnd_nvram_type itype)
 {
 	switch (itype) {
 	case BHND_NVRAM_TYPE_STRING:
-		/* Use the standard string format implementation if the input
-		 * is not an octet string. */
+		/* Use the standard Broadcom string format implementation if
+		 * the input is not an octet string. */
 		if (!bhnd_nvram_ident_octet_string(inp, ilen, NULL, NULL))
-			*fmt = NULL;
+			*fmt = &bhnd_nvram_val_bcm_string_fmt;
 
 		return (0);
 	default:
@@ -679,7 +680,7 @@ bhnd_nvram_val_macaddr_string_filter(const bhnd_nvram_val_fmt_t **fmt,
  * MAC address string octet encoding.
  */
 static int
-bhnd_nvram_val_macaddr_string_encode_elem(bhnd_nvram_val_t *value,
+bhnd_nvram_val_bcm_macaddr_string_encode_elem(bhnd_nvram_val_t *value,
     const void *inp, size_t ilen, void *outp, size_t *olen,
     bhnd_nvram_type otype)
 {
@@ -709,7 +710,7 @@ bhnd_nvram_val_macaddr_string_encode_elem(bhnd_nvram_val_t *value,
  * MAC address string octet iteration.
  */
 static const void *
-bhnd_nvram_val_macaddr_string_next(bhnd_nvram_val_t *value, const void *prev,
+bhnd_nvram_val_bcm_macaddr_string_next(bhnd_nvram_val_t *value, const void *prev,
     size_t *len)
 {
 	const char	*next;

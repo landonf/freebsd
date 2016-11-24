@@ -216,11 +216,11 @@ struct bhnd_nvram_val {
 	extern const bhnd_nvram_val_fmt_t bhnd_nvram_val_ ## _n ## _fmt;
 
 
-BHND_NVRAM_VAL_TYPE_DECL(macaddr);
 
 BHND_NVRAM_VAL_TYPE_DECL(bcm_decimal);
 BHND_NVRAM_VAL_TYPE_DECL(bcm_hex);
-BHND_NVRAM_VAL_TYPE_DECL(bcm_string);
 BHND_NVRAM_VAL_TYPE_DECL(bcm_leddc);
+BHND_NVRAM_VAL_TYPE_DECL(bcm_macaddr);
+BHND_NVRAM_VAL_TYPE_DECL(bcm_string);
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_VALUE_H_ */

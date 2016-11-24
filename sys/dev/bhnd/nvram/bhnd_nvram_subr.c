@@ -886,7 +886,7 @@ bhnd_nvram_coerce_bytes(void *outp, size_t *olen, bhnd_nvram_type otype,
 			break;
 
 		case BHND_NVRAM_SFMT_MACADDR:
-			fmt = &bhnd_nvram_val_macaddr_fmt;
+			fmt = &bhnd_nvram_val_bcm_macaddr_fmt;
 			break;
 		}
 	}
