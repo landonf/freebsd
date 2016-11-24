@@ -34,6 +34,13 @@
 
 #include "bhnd_nvram_value.h"
 
+int		 bhnd_nvram_val_generic_encode(bhnd_nvram_val_t *value,
+		     void *outp, size_t *olen, bhnd_nvram_type otype);
+int		 bhnd_nvram_val_generic_encode_elem(bhnd_nvram_val_t *value,
+		     const void *inp, size_t ilen, void *outp, size_t *olen,
+		     bhnd_nvram_type otype);
+const void	*bhnd_nvram_val_generic_next(bhnd_nvram_val_t *value,
+		     const void *prev, size_t *len);
 /**
  * Filter input data prior to initialization.
  * 

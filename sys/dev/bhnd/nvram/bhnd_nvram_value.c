@@ -717,6 +717,176 @@ int
 bhnd_nvram_val_encode(bhnd_nvram_val_t *value, void *outp, size_t *olen,
     bhnd_nvram_type otype)
 {
+	/* Prefer format implementation */
+	if (value->fmt != NULL && value->fmt->op_encode != NULL)
+		return (value->fmt->op_encode(value, outp, olen, otype));
+
+	return (bhnd_nvram_val_generic_encode(value, outp, olen, otype));
+}
+
+/**
+ * Encode the given @p value's element as @p otype, writing the result to
+ * @p outp.
+ *
+ * @param		inp	The element to be be encoded. Must be a value
+ *				previously returned by bhnd_nvram_val_next()
+ *				or bhnd_nvram_val_elem().
+ * @param		ilen	The size of @p inp, as returned by
+ *				bhnd_nvram_val_next() or bhnd_nvram_val_elem().
+ * @param[out]		outp	On success, the value will be written to this 
+ *				buffer. This argment may be NULL if the value is
+ *				not desired.
+ * @param[in,out]	olen	The capacity of @p outp. On success, will be set
+ *				to the actual size of the requested value.
+ * @param		otype	The data type to be written to @p outp.
+ *
+ * @retval 0		success
+ * @retval ENOMEM	If the @p outp is non-NULL, and the provided @p olen
+ *			is too small to hold the encoded value.
+ * @retval EFTYPE	If value coercion from @p value to @p otype is
+ *			impossible.
+ * @retval ERANGE	If value coercion would overflow (or underflow) the
+ *			a @p otype representation.
+ */
+int
+bhnd_nvram_val_encode_elem(bhnd_nvram_val_t *value, const void *inp,
+    size_t ilen, void *outp, size_t *olen, bhnd_nvram_type otype)
+{
+	/* Prefer format implementation */
+	if (value->fmt != NULL && value->fmt->op_encode_elem != NULL) {
+		return (value->fmt->op_encode_elem(value, inp, ilen, outp,
+		    olen, otype));
+	}
+
+	return (bhnd_nvram_val_generic_encode_elem(value, inp, ilen, outp,
+	    olen, otype));
+}
+
+/**
+ * Return the type, size, and a pointer to the internal representation
+ * of @p value.
+ * 
+ * @param	value	The value to be queried.
+ * @param[out]	olen	Size of the returned data, in bytes.
+ * @param[out]	otype	Data type.
+ */
+const void *
+bhnd_nvram_val_bytes(bhnd_nvram_val_t *value, size_t *olen,
+    bhnd_nvram_type *otype)
+{
+	/* Provide type and length */
+	*otype = value->data_type;
+	*olen = value->data_len;
+
+	switch (value->data_storage) {
+	case BHND_NVRAM_VAL_DATA_EXT_ALLOC:
+	case BHND_NVRAM_VAL_DATA_EXT_STATIC:
+	case BHND_NVRAM_VAL_DATA_EXT_WEAK:
+		/* Return a pointer to external storage */
+		return (value->data.ptr);
+
+	case BHND_NVRAM_VAL_DATA_INLINE:
+		/* Return a pointer to inline storage */
+		return (&value->data);
+
+	case BHND_NVRAM_VAL_DATA_NONE:
+		BHND_NV_PANIC("uninitialized value");
+	}
+
+	BHND_NV_PANIC("unknown storage type: %d", value->data_storage);
+}
+
+/**
+ * Iterate over all array elements in @p value.
+ *
+ * @param		value	The value to be iterated
+ * @param		prev	A value pointer previously returned by
+ *				bhnd_nvram_val_next() or bhnd_nvram_val_elem(),
+ *				or NULL to begin iteration at the first element.
+ * @param[in,out]	len	If prev is non-NULL, len must be a pointer
+ *				to the length previously returned by
+ *				bhnd_nvram_val_next() or bhnd_nvram_val_elem().
+ *				On success, will be set to the next element's
+ *				length, in bytes.
+ *
+ * @retval non-NULL	A borrowed reference to the element data.
+ * @retval NULL		If the end of the element array is reached.
+ */
+const void *
+bhnd_nvram_val_next(bhnd_nvram_val_t *value, const void *prev, size_t *len)
+{
+	/* Prefer the format implementation */
+	if (value->fmt != NULL && value->fmt->op_next != NULL)
+		return (value->fmt->op_next(value, prev, len));
+
+	return (bhnd_nvram_val_generic_next(value, prev, len));
+}
+
+/**
+ * Return value's element data type.
+ *
+ * @param	value	The value to be queried.
+ */
+bhnd_nvram_type
+bhnd_nvram_val_elem_type(bhnd_nvram_val_t *value)
+{
+	return (bhnd_nvram_base_type(value->data_type));
+}
+
+/**
+ * Return the total number of elements represented by @p value.
+ */
+size_t
+bhnd_nvram_val_nelem(bhnd_nvram_val_t *value)
+{
+	const void	*bytes;
+	bhnd_nvram_type	 type;
+	size_t		 nelem, len;
+	int		 error;
+
+	/* Prefer format implementation */
+	if (value->fmt != NULL && value->fmt->op_nelem != NULL)
+		return (value->fmt->op_nelem(value));
+
+	/*
+	 * If a custom op_next() is defined, bhnd_nvram_value_nelem() almost
+	 * certainly cannot produce a valid element count; it assumes a standard
+	 * data format that may not apply when custom iteration is required.
+	 *
+	 * Instead, use bhnd_nvram_val_next() to parse the backing data and
+	 * produce a total count.
+	 */
+	if (value->fmt != NULL && value->fmt->op_next != NULL) {
+		const void *next;
+
+		next = NULL;
+		nelem = 0;
+		while ((next = bhnd_nvram_val_next(value, next, &len)) != NULL)
+			nelem++;
+
+		return (nelem);
+	}
+
+	/* Otherwise, compute the standard element count */
+	bytes = bhnd_nvram_val_bytes(value, &len, &type);
+	if ((error = bhnd_nvram_value_nelem(type, bytes, len, &nelem))) {
+		/* Should always succeed */
+		BHND_NV_PANIC("error calculating element count for type '%s' "
+		    "with length %zu: %d\n", bhnd_nvram_type_name(type), len,
+		    error);
+	}
+
+	return (nelem);
+}
+
+/**
+ * Generic implementation of bhnd_nvram_val_op_encode(), compatible with
+ * all supported NVRAM data types.
+ */
+int
+bhnd_nvram_val_generic_encode(bhnd_nvram_val_t *value, void *outp, size_t *olen,
+    bhnd_nvram_type otype)
+{
 	const void	*inp;
 	bhnd_nvram_type	 itype;
 	size_t		 ilen;
@@ -729,10 +899,6 @@ bhnd_nvram_val_encode(bhnd_nvram_val_t *value, void *outp, size_t *olen,
 	nbytes = 0;
 	nelem = 0;
 	otype_base = bhnd_nvram_base_type(otype);
-
-	/* Prefer format implementation */
-	if (value->fmt != NULL && value->fmt->op_encode != NULL)
-		return (value->fmt->op_encode(value, outp, olen, otype));
 
 	/*
 	 * Normally, a rank polymorphic type like a character array would not
@@ -827,42 +993,15 @@ bhnd_nvram_val_encode(bhnd_nvram_val_t *value, void *outp, size_t *olen,
 }
 
 /**
- * Encode the given @p value's element as @p otype, writing the result to
- * @p outp.
- *
- * @param		inp	The element to be be encoded. Must be a value
- *				previously returned by bhnd_nvram_val_next()
- *				or bhnd_nvram_val_elem().
- * @param		ilen	The size of @p inp, as returned by
- *				bhnd_nvram_val_next() or bhnd_nvram_val_elem().
- * @param[out]		outp	On success, the value will be written to this 
- *				buffer. This argment may be NULL if the value is
- *				not desired.
- * @param[in,out]	olen	The capacity of @p outp. On success, will be set
- *				to the actual size of the requested value.
- * @param		otype	The data type to be written to @p outp.
- *
- * @retval 0		success
- * @retval ENOMEM	If the @p outp is non-NULL, and the provided @p olen
- *			is too small to hold the encoded value.
- * @retval EFTYPE	If value coercion from @p value to @p otype is
- *			impossible.
- * @retval ERANGE	If value coercion would overflow (or underflow) the
- *			a @p otype representation.
+ * Generic implementation of bhnd_nvram_val_op_encode_elem(), compatible with
+ * all supported NVRAM data types.
  */
 int
-bhnd_nvram_val_encode_elem(bhnd_nvram_val_t *value, const void *inp,
+bhnd_nvram_val_generic_encode_elem(bhnd_nvram_val_t *value, const void *inp,
     size_t ilen, void *outp, size_t *olen, bhnd_nvram_type otype)
 {
 	bhnd_nvram_type itype;
 
-	/* Prefer format implementation */
-	if (value->fmt != NULL && value->fmt->op_encode_elem != NULL) {
-		return (value->fmt->op_encode_elem(value, inp, ilen, outp,
-		    olen, otype));
-	}
-
-	/* Fall back on standard value encoding */
 	itype = bhnd_nvram_val_elem_type(value);
 	switch (itype) {
 	case BHND_NVRAM_TYPE_STRING:
@@ -888,67 +1027,18 @@ bhnd_nvram_val_encode_elem(bhnd_nvram_val_t *value, const void *inp,
 }
 
 /**
- * Return the type, size, and a pointer to the internal representation
- * of @p value.
- * 
- * @param	value	The value to be queried.
- * @param[out]	olen	Size of the returned data, in bytes.
- * @param[out]	otype	Data type.
+ * Generic implementation of bhnd_nvram_val_op_next(), compatible with
+ * all supported NVRAM data types.
  */
 const void *
-bhnd_nvram_val_bytes(bhnd_nvram_val_t *value, size_t *olen,
-    bhnd_nvram_type *otype)
-{
-	/* Provide type and length */
-	*otype = value->data_type;
-	*olen = value->data_len;
-
-	switch (value->data_storage) {
-	case BHND_NVRAM_VAL_DATA_EXT_ALLOC:
-	case BHND_NVRAM_VAL_DATA_EXT_STATIC:
-	case BHND_NVRAM_VAL_DATA_EXT_WEAK:
-		/* Return a pointer to external storage */
-		return (value->data.ptr);
-
-	case BHND_NVRAM_VAL_DATA_INLINE:
-		/* Return a pointer to inline storage */
-		return (&value->data);
-
-	case BHND_NVRAM_VAL_DATA_NONE:
-		BHND_NV_PANIC("uninitialized value");
-	}
-
-	BHND_NV_PANIC("unknown storage type: %d", value->data_storage);
-}
-
-/**
- * Iterate over all array elements in @p value.
- *
- * @param		value	The value to be iterated
- * @param		prev	A value pointer previously returned by
- *				bhnd_nvram_val_next() or bhnd_nvram_val_elem(),
- *				or NULL to begin iteration at the first element.
- * @param[in,out]	len	If prev is non-NULL, len must be a pointer
- *				to the length previously returned by
- *				bhnd_nvram_val_next() or bhnd_nvram_val_elem().
- *				On success, will be set to the next element's
- *				length, in bytes.
- *
- * @retval non-NULL	A borrowed reference to the element data.
- * @retval NULL		If the end of the element array is reached.
- */
-const void *
-bhnd_nvram_val_next(bhnd_nvram_val_t *value, const void *prev, size_t *len)
+bhnd_nvram_val_generic_next(bhnd_nvram_val_t *value, const void *prev,
+    size_t *len)
 {
 	const uint8_t	*inp;
 	const uint8_t	*next;
 	bhnd_nvram_type	 itype;
 	size_t		 ilen;
 	size_t		 offset;
-
-	/* Prefer the format implementation */
-	if (value->fmt != NULL && value->fmt->op_next != NULL)
-		return (value->fmt->op_next(value, prev, len));
 
 	/* Otherwise, default to iterating over the backing representation
 	 * according to its native representation */
@@ -980,63 +1070,6 @@ bhnd_nvram_val_next(bhnd_nvram_val_t *value, const void *prev, size_t *len)
 		BHND_NV_PANIC("short element -- misaligned representation");
 
 	return (next);
-}
-
-/**
- * Return value's element data type.
- *
- * @param	value	The value to be queried.
- */
-bhnd_nvram_type
-bhnd_nvram_val_elem_type(bhnd_nvram_val_t *value)
-{
-	return (bhnd_nvram_base_type(value->data_type));
-}
-
-/**
- * Return the total number of elements represented by @p value.
- */
-size_t
-bhnd_nvram_val_nelem(bhnd_nvram_val_t *value)
-{
-	const void	*bytes;
-	bhnd_nvram_type	 type;
-	size_t		 nelem, len;
-	int		 error;
-
-	/* Prefer format implementation */
-	if (value->fmt != NULL && value->fmt->op_nelem != NULL)
-		return (value->fmt->op_nelem(value));
-
-	/*
-	 * If a custom op_next() is defined, bhnd_nvram_value_nelem() almost
-	 * certainly cannot produce a valid element count; it assumes a standard
-	 * data format that may not apply when custom iteration is required.
-	 *
-	 * Instead, use bhnd_nvram_val_next() to parse the backing data and
-	 * produce a total count.
-	 */
-	if (value->fmt != NULL && value->fmt->op_next != NULL) {
-		const void *next;
-
-		next = NULL;
-		nelem = 0;
-		while ((next = bhnd_nvram_val_next(value, next, &len)) != NULL)
-			nelem++;
-
-		return (nelem);
-	}
-
-	/* Otherwise, compute the standard element count */
-	bytes = bhnd_nvram_val_bytes(value, &len, &type);
-	if ((error = bhnd_nvram_value_nelem(type, bytes, len, &nelem))) {
-		/* Should always succeed */
-		BHND_NV_PANIC("error calculating element count for type '%s' "
-		    "with length %zu: %d\n", bhnd_nvram_type_name(type), len,
-		    error);
-	}
-
-	return (nelem);
 }
 
 /**
