@@ -86,7 +86,12 @@ static int		 bhnd_nvram_val_bcm_int_filter(
 			     size_t ilen, bhnd_nvram_type itype);
 static int		 bhnd_nvram_val_bcm_int_encode(bhnd_nvram_val_t *value,
 			     void *outp, size_t *olen, bhnd_nvram_type otype);
-static int		 bhnd_nvram_val_bcm_int_encode_elem(
+
+static int		 bhnd_nvram_val_bcm_decimal_encode_elem(
+			     bhnd_nvram_val_t *value, const void *inp,
+			     size_t ilen, void *outp, size_t *olen,
+			     bhnd_nvram_type otype);
+static int		 bhnd_nvram_val_bcm_hex_encode_elem(
 			     bhnd_nvram_val_t *value, const void *inp,
 			     size_t ilen, void *outp, size_t *olen,
 			     bhnd_nvram_type otype);
@@ -152,21 +157,26 @@ const bhnd_nvram_val_fmt_t bhnd_nvram_val_bcm_decimal_fmt = {
 	.native_type	= BHND_NVRAM_TYPE_UINT64,
 	.op_filter	= bhnd_nvram_val_bcm_int_filter,
 	.op_encode	= bhnd_nvram_val_bcm_int_encode,
-	.op_encode_elem	= bhnd_nvram_val_bcm_int_encode_elem,
+	.op_encode_elem	= bhnd_nvram_val_bcm_decimal_encode_elem,
 };
 
 /**
  * Broadcom NVRAM decimal integer format.
  *
  * Extends standard integer handling, encoding the string representation of
- * the integer value as an 0x-prefixed hexadecimal string.
+ * unsigned and positive signed integer values as an 0x-prefixed hexadecimal
+ * string.
+ * 
+ * For compatibility with standard Broadcom NVRAM parsing, if the integer is
+ * both signed and negative, it will be string encoded as a negative decimal
+ * value, not as a twos-complement hexadecimal value.
  */
 const bhnd_nvram_val_fmt_t bhnd_nvram_val_bcm_hex_fmt = {
 	.name		= "bcm-hex",
 	.native_type	= BHND_NVRAM_TYPE_UINT64,
 	.op_filter	= bhnd_nvram_val_bcm_int_filter,
 	.op_encode	= bhnd_nvram_val_bcm_int_encode,
-	.op_encode_elem	= bhnd_nvram_val_bcm_int_encode_elem,
+	.op_encode_elem	= bhnd_nvram_val_bcm_hex_encode_elem,
 };
 
 /**
@@ -220,7 +230,7 @@ bhnd_nvram_val_bcm_int_filter(const bhnd_nvram_val_fmt_t **fmt, const void *inp,
 }
 
 /**
- * Common hex/decimal integer encode implementation.
+ * Broadcom hex/decimal integer encode implementation.
  */
 static int
 bhnd_nvram_val_bcm_int_encode(bhnd_nvram_val_t *value, void *outp, size_t *olen,
@@ -235,13 +245,15 @@ bhnd_nvram_val_bcm_int_encode(bhnd_nvram_val_t *value, void *outp, size_t *olen,
 }
 
 /**
- * Common hex/decimal integer encode_elem implementation.
+ * Broadcom hex integer encode_elem implementation.
  */
 static int
-bhnd_nvram_val_bcm_int_encode_elem(bhnd_nvram_val_t *value, const void *inp,
+bhnd_nvram_val_bcm_hex_encode_elem(bhnd_nvram_val_t *value, const void *inp,
     size_t ilen, void *outp, size_t *olen, bhnd_nvram_type otype)
 {
-	bhnd_nvram_type itype;
+	bhnd_nvram_type	itype;
+	ssize_t		width;
+	int		error;
 
 	itype = bhnd_nvram_val_elem_type(value);
 	BHND_NV_ASSERT(bhnd_nvram_is_int_type(itype), ("invalid type"));
@@ -251,33 +263,62 @@ bhnd_nvram_val_bcm_int_encode_elem(bhnd_nvram_val_t *value, const void *inp,
 		return (bhnd_nvram_val_generic_encode_elem(value, inp, ilen,
 		    outp, olen, otype));
 
-	/* Format as hex?  */
-	if (value->fmt == &bhnd_nvram_val_bcm_hex_fmt) {
-		ssize_t	width;
+	/* If the value is a signed, negative value, encode as a decimal
+	 * string */
+	if (bhnd_nvram_is_signed_type(itype)) {
+		int64_t		sval;
+		size_t		slen;
+		bhnd_nvram_type	stype;
 
-		/* Pad hexadecimal values out to their native width
-		 * (two chars per byte) */
-		width = bhnd_nvram_value_size(itype, NULL, 0, 1) * 2;
+		stype = BHND_NVRAM_TYPE_INT64;
+		slen = sizeof(sval);
 
-		return (bhnd_nvram_value_printf("0x%0*I64X", inp, ilen, itype,
-		    outp, olen, width));
+		/* Fetch 64-bit signed representation */
+		error = bhnd_nvram_value_coerce(inp, ilen, itype, &sval, &slen,
+		    stype);
+		if (error)
+			return (error);
 
+		/* Decimal encoding required? */
+		if (sval < 0)
+			return (bhnd_nvram_value_printf("%I64d", &sval, slen,
+			    stype, outp, olen, otype));
 	}
 
-	/* Format as decimal?  */
-	if (value->fmt == &bhnd_nvram_val_bcm_decimal_fmt) {
-		const char *fstr;
+	/*
+	 * Encode the value as a hex string.
+	 * 
+	 * Most producers of Broadcom NVRAM values zero-pad hex values out to
+	 * their native width (width * two hex characters), and we do the same
+	 * for compatibility
+	 */
 
-		if (bhnd_nvram_is_signed_type(itype))
-			fstr = "%I64d";
-		else
-			fstr = "%I64u";
+	width = bhnd_nvram_value_size(itype, NULL, 0, 1) * 2;
 
-		return (bhnd_nvram_value_printf(fstr, inp, ilen, itype, outp,
-		    olen));
-	}
+	return (bhnd_nvram_value_printf("0x%0*I64X", inp, ilen, itype,
+	    outp, olen, width));
+}
 
-	BHND_NV_PANIC("unsupported format");
+/**
+ * Broadcom decimal integer encode_elem implementation.
+ */
+static int
+bhnd_nvram_val_bcm_decimal_encode_elem(bhnd_nvram_val_t *value, const void *inp,
+    size_t ilen, void *outp, size_t *olen, bhnd_nvram_type otype)
+{
+	const char	*sfmt;
+	bhnd_nvram_type	 itype;
+
+	itype = bhnd_nvram_val_elem_type(value);
+	BHND_NV_ASSERT(bhnd_nvram_is_int_type(itype), ("invalid type"));
+
+	/* If not encoding as a string, perform generic value encoding */
+	if (otype != BHND_NVRAM_TYPE_STRING)
+		return (bhnd_nvram_val_generic_encode_elem(value, inp, ilen,
+		    outp, olen, otype));
+
+	sfmt = bhnd_nvram_is_signed_type(itype) ? "%I64d" : "%I64u";
+	return (bhnd_nvram_value_printf(sfmt, inp, ilen, itype, outp, olen));
 }
 
 /**

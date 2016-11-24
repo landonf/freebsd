@@ -215,8 +215,6 @@ struct bhnd_nvram_val {
 #define	BHND_NVRAM_VAL_TYPE_DECL(_n)	\
 	extern const bhnd_nvram_val_fmt_t bhnd_nvram_val_ ## _n ## _fmt;
 
-
-
 BHND_NVRAM_VAL_TYPE_DECL(bcm_decimal);
 BHND_NVRAM_VAL_TYPE_DECL(bcm_hex);
 BHND_NVRAM_VAL_TYPE_DECL(bcm_leddc);
