@@ -259,12 +259,14 @@ function main(_i) {
 	FmtDec 		= fmt_new("decimal", "bhnd_nvram_val_bcm_decimal_fmt")
 	FmtMAC		= fmt_new("macaddr", "bhnd_nvram_val_bcm_macaddr_fmt")
 	FmtLEDDC	= fmt_new("leddc", "bhnd_nvram_val_bcm_leddc_fmt")
+	FmtStr		= fmt_new("string", "bhnd_nvram_val_bcm_string_fmt")
 
 	ValueFormats = map_new()
 		map_set(ValueFormats, get(FmtHex,	p_name), FmtHex)
 		map_set(ValueFormats, get(FmtDec,	p_name), FmtDec)
 		map_set(ValueFormats, get(FmtMAC,	p_name), FmtMAC)
 		map_set(ValueFormats, get(FmtLEDDC,	p_name), FmtLEDDC)
+		map_set(ValueFormats, get(FmtStr,	p_name), FmtStr)
 
 	# Data Types
 	Type = class_new("Type")
@@ -313,7 +315,7 @@ function main(_i) {
 	   "BHND_NVRAM_TYPE_INT32_ARRAY", FmtDec, UInt32Max, 6, 22)
 
 	Char	= type_new("char", 1, 1, "BHND_NVRAM_TYPE_CHAR",
-	   "BHND_NVRAM_TYPE_CHAR_ARRAY", FmtHex, UInt8Max, 8, 24)
+	   "BHND_NVRAM_TYPE_CHAR_ARRAY", FmtStr, UInt8Max, 8, 24)
 
 	BaseTypes = map_new()
 		map_set(BaseTypes, get(UInt8,	p_name), UInt8)
