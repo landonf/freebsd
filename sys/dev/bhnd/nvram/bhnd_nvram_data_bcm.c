@@ -480,9 +480,10 @@ bhnd_nvram_bcm_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 
 	/* Provide actual size */
 	*len = nbytes;
-	if (nbytes > limit) {
+	if (buf == NULL || nbytes > limit) {
 		if (buf != NULL)
 			return (ENOMEM);
+
 		return (0);
 	}
 
