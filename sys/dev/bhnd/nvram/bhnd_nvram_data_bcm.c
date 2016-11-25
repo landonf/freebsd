@@ -133,7 +133,7 @@ BHND_NVRAM_DATA_CLASS_DEFN(bcm, "Broadcom", sizeof(struct bhnd_nvram_bcm))
 static int
 bhnd_nvram_bcm_probe(struct bhnd_nvram_io *io)
 {
-	struct bhnd_nvram_header	hdr;
+	struct bhnd_nvram_bcmhdr	hdr;
 	int				error;
 
 	if ((error = bhnd_nvram_io_read(io, 0x0, &hdr, sizeof(hdr))))
@@ -153,7 +153,7 @@ bhnd_nvram_bcm_probe(struct bhnd_nvram_io *io)
 static int
 bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 {
-	struct bhnd_nvram_header	 hdr;
+	struct bhnd_nvram_bcmhdr	 hdr;
 	uint8_t				*p;
 	void				*ptr;
 	size_t				 io_offset, io_size;
@@ -441,7 +441,7 @@ static int
 bhnd_nvram_bcm_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 {
 	struct bhnd_nvram_bcm		*bcm;
-	struct bhnd_nvram_header	 hdr;
+	struct bhnd_nvram_bcmhdr	 hdr;
 	void				*cookiep;
 	const char			*name;
 	size_t				 nbytes, req_size, limit;
@@ -471,7 +471,7 @@ bhnd_nvram_bcm_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 	}
 
 	/* Reserve space for the NVRAM header */
-	nbytes = sizeof(struct bhnd_nvram_header);
+	nbytes = sizeof(struct bhnd_nvram_bcmhdr);
 
 	/* Write all variables to the output buffer */
 	cookiep = NULL;
@@ -580,7 +580,7 @@ bhnd_nvram_bcm_next(struct bhnd_nvram_data *nv, void **cookiep)
 
 	bcm = (struct bhnd_nvram_bcm *)nv;
 	
-	io_offset = sizeof(struct bhnd_nvram_header);
+	io_offset = sizeof(struct bhnd_nvram_bcmhdr);
 	io_size = bhnd_nvram_io_getsize(bcm->data) - io_offset;
 
 	/* Map backing buffer */

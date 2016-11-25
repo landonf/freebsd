@@ -57,5 +57,14 @@ struct bhnd_nvram_bcm_hvar {
 	/** variable data */
 	union bhnd_nvram_bcm_hvar_value value;
 };
+	
+/** BCM NVRAM header */
+struct bhnd_nvram_bcmhdr {
+	uint32_t magic;
+	uint32_t size;
+	uint32_t cfg0;		/**< crc:8, version:8, sdram_init:16 */
+	uint32_t cfg1;		/**< sdram_config:16, sdram_refresh:16 */
+	uint32_t sdram_ncdl;	/**< sdram_ncdl */
+} __packed;
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_BCMVAR_H_ */
