@@ -33,6 +33,14 @@
 #define _BHND_NVRAM_BHND_NVRAM_BCMVAR_H_
 
 /**
+ * BCM NVRAM header value data.
+ */
+union bhnd_nvram_bcm_hvar_value {
+	uint16_t	u16;
+	uint32_t	u32;
+};
+
+/**
  * Internal representation of BCM NVRAM values that mirror (and must be
  * vended as) NVRAM variables.
  */
@@ -47,10 +55,7 @@ struct bhnd_nvram_bcm_hvar {
 					     mirrored NVRAM value */
 
 	/** variable data */
-	union {
-		uint16_t	u16;
-		uint32_t	u32;
-	} value;
+	union bhnd_nvram_bcm_hvar_value value;
 };
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_BCMVAR_H_ */

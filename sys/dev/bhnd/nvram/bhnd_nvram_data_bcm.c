@@ -261,16 +261,40 @@ bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 		 * This is a brute-force search -- for the amount of data we're
 		 * operating on, it shouldn't be an issue. */
 		for (size_t i = 0; i < nitems(bcm->hvars); i++) {
+			struct bhnd_nvram_bcm_hvar	*hvar;
+			union bhnd_nvram_bcm_hvar_value	 hval;
+			size_t				 hval_len;
+
+			hvar = &bcm->hvars[i];
+
 			/* Already matched? */
-			if (bcm->hvars[i].mirrored)
+			if (hvar->mirrored)
 				continue;
 
 			/* Name matches? */
-			if ((strcmp(name, bcm->hvars[i].name)) != 0)
+			if ((strcmp(name, hvar->name)) != 0)
 				continue;
 
 			/* Mark as mirrored */
-			bcm->hvars[i].mirrored = true;
+			hvar->mirrored = true;
+
+			/* Check for stale value */
+			hval_len = sizeof(hval);
+
+			error = bhnd_nvram_value_coerce(value, value_len,
+			    BHND_NVRAM_TYPE_STRING, &hval, &hval_len,
+			    hvar->type);
+			if (error) {
+				/* If parsing fails, we can likely only make
+				 * things worse by trying to synchronize the
+				 * variables */
+				BHND_NV_LOG("error parsing header variable "
+				    "'%s=%s': %d\n", name, value, error);
+			} else if (hval_len != hvar->size) {
+				hvar->stale = true;
+			} else if (memcmp(&hval, &hvar->value, hval_len) != 0) {
+				hvar->stale = true;
+			}
 		}
 
 		/* Seek past the value's terminating '\0' */
