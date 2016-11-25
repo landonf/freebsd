@@ -118,7 +118,6 @@ bool		 bhnd_nvram_is_signed_type(bhnd_nvram_type type);
 bool		 bhnd_nvram_is_unsigned_type(bhnd_nvram_type type);
 bool		 bhnd_nvram_is_int_type(bhnd_nvram_type type);
 bool		 bhnd_nvram_is_array_type(bhnd_nvram_type type);
-bhnd_nvram_type	 bhnd_nvram_array_type(bhnd_nvram_type type);
 bhnd_nvram_type	 bhnd_nvram_base_type(bhnd_nvram_type type);
 const char	*bhnd_nvram_type_name(bhnd_nvram_type type);
 

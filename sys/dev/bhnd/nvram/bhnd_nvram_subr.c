@@ -305,54 +305,6 @@ bhnd_nvram_is_array_type(bhnd_nvram_type type)
 }
 
 /**
- * Return the array type corresponding to @p type. If @p type is an array
- * type, the original value of @p type will be returned.
- * 
- * @param type The type to query.
- */
-bhnd_nvram_type
-bhnd_nvram_array_type(bhnd_nvram_type type)
-{
-	switch (type) {
-	case BHND_NVRAM_TYPE_UINT8_ARRAY:
-	case BHND_NVRAM_TYPE_UINT16_ARRAY:
-	case BHND_NVRAM_TYPE_UINT32_ARRAY:
-	case BHND_NVRAM_TYPE_UINT64_ARRAY:
-	case BHND_NVRAM_TYPE_INT8_ARRAY:
-	case BHND_NVRAM_TYPE_INT16_ARRAY:
-	case BHND_NVRAM_TYPE_INT32_ARRAY:
-	case BHND_NVRAM_TYPE_INT64_ARRAY:
-	case BHND_NVRAM_TYPE_CHAR_ARRAY:
-	case BHND_NVRAM_TYPE_STRING_ARRAY:
-		return (type);
-
-	case BHND_NVRAM_TYPE_UINT8:
-		return (BHND_NVRAM_TYPE_UINT8_ARRAY);
-	case BHND_NVRAM_TYPE_UINT16:
-		return (BHND_NVRAM_TYPE_UINT16_ARRAY);
-	case BHND_NVRAM_TYPE_UINT32:
-		return (BHND_NVRAM_TYPE_UINT32_ARRAY);
-	case BHND_NVRAM_TYPE_UINT64:
-		return (BHND_NVRAM_TYPE_UINT64_ARRAY);
-	case BHND_NVRAM_TYPE_INT8:
-		return (BHND_NVRAM_TYPE_INT8_ARRAY);
-	case BHND_NVRAM_TYPE_INT16:
-		return (BHND_NVRAM_TYPE_INT16_ARRAY);
-	case BHND_NVRAM_TYPE_INT32:
-		return (BHND_NVRAM_TYPE_INT32_ARRAY);
-	case BHND_NVRAM_TYPE_INT64:
-		return (BHND_NVRAM_TYPE_INT64_ARRAY);
-	case BHND_NVRAM_TYPE_CHAR:
-		return (BHND_NVRAM_TYPE_CHAR_ARRAY);
-	case BHND_NVRAM_TYPE_STRING:
-		return (BHND_NVRAM_TYPE_STRING_ARRAY);
-	}
-
-	/* Quiesce gcc4.2 */
-	BHND_NV_PANIC("bhnd nvram type %u unknown", type);
-}
-
-/**
  * If @p type is an array type, return the base element type. Otherwise,
  * returns @p type.
  * 
