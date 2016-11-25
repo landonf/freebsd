@@ -503,7 +503,7 @@ bhnd_nvram_val_bcm_leddc_encode_elem(bhnd_nvram_val_t *value, const void *inp,
 			return (ERANGE);
 
 		/* Write led16 format */
-		nbytes = sizeof(uint16_t);
+		nbytes += sizeof(uint16_t);
 		if (limit >= nbytes)
 			*(uint16_t *)outp = led16;
 
@@ -512,7 +512,7 @@ bhnd_nvram_val_bcm_leddc_encode_elem(bhnd_nvram_val_t *value, const void *inp,
 
 	case BHND_NVRAM_TYPE_UINT32:
 		/* Write led32 format */
-		nbytes = sizeof(uint32_t);
+		nbytes += sizeof(uint32_t);
 		if (limit >= nbytes)
 			*(uint32_t *)outp = led32;
 		break;
