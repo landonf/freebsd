@@ -151,7 +151,7 @@ bhnd_nvram_cfe_attach(device_t dev)
 	}
 
 	/* Initialize NVRAM store and free the I/O context */
-	error = bhnd_nvram_store_parse(&sc->store, io, cls);
+	error = bhnd_nvram_store_parse_new(&sc->store, io, cls);
 	bhnd_nvram_io_free(io);
 	if (error)
 		return (error);
