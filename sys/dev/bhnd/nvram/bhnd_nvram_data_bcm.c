@@ -94,25 +94,25 @@ static const struct bhnd_nvram_bcm_hvar bhnd_nvram_bcm_hvars[] = {
 	{
 		.name	= BCM_NVRAM_CFG0_SDRAM_INIT_VAR,
 		.type	= BHND_NVRAM_TYPE_UINT16,
-		.size	= sizeof(uint16_t),
+		.len	= sizeof(uint16_t),
 		.nelem	= 1,
 	},
 	{
 		.name	= BCM_NVRAM_CFG1_SDRAM_CFG_VAR,
 		.type	= BHND_NVRAM_TYPE_UINT16,
-		.size	= sizeof(uint16_t),
+		.len	= sizeof(uint16_t),
 		.nelem	= 1,
 	},
 	{
 		.name	= BCM_NVRAM_CFG1_SDRAM_REFRESH_VAR,
 		.type	= BHND_NVRAM_TYPE_UINT16,
-		.size	= sizeof(uint16_t),
+		.len	= sizeof(uint16_t),
 		.nelem	= 1,
 	},
 	{
 		.name	= BCM_NVRAM_SDRAM_NCDL_VAR,
 		.type	= BHND_NVRAM_TYPE_UINT32,
-		.size	= sizeof(uint32_t),
+		.len	= sizeof(uint32_t),
 		.nelem	= 1,
 	},
 };
@@ -268,19 +268,18 @@ bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 			hvar = &bcm->hvars[i];
 
 			/* Already matched? */
-			if (hvar->mirrored)
+			if (hvar->envp != NULL)
 				continue;
 
 			/* Name matches? */
 			if ((strcmp(name, hvar->name)) != 0)
 				continue;
 
-			/* Mark as mirrored */
-			hvar->mirrored = true;
+			/* Save pointer to mirrored envp */
+			hvar->envp = envp;
 
 			/* Check for stale value */
 			hval_len = sizeof(hval);
-
 			error = bhnd_nvram_value_coerce(value, value_len,
 			    BHND_NVRAM_TYPE_STRING, &hval, &hval_len,
 			    hvar->type);
@@ -290,7 +289,7 @@ bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 				 * variables */
 				BHND_NV_LOG("error parsing header variable "
 				    "'%s=%s': %d\n", name, value, error);
-			} else if (hval_len != hvar->size) {
+			} else if (hval_len != hvar->len) {
 				hvar->stale = true;
 			} else if (memcmp(&hval, &hvar->value, hval_len) != 0) {
 				hvar->stale = true;
@@ -339,14 +338,10 @@ bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 			break;
 	}
 
-	/* Add any non-mirrored header variables to our count */
+	/* Add non-mirrored header variables to total count variable */
 	for (size_t i = 0; i < nitems(bcm->hvars); i++) {
-		/* Counted when the mirrored variable was parsed from backing
-		 * data */
-		if (bcm->hvars[i].mirrored)
-			continue;
-
-		bcm->count++;
+		if (bcm->hvars[i].envp == NULL)
+			bcm->count++;
 	}
 
 	return (0);
@@ -360,7 +355,7 @@ bhnd_nvram_bcm_new(struct bhnd_nvram_data *nv, struct bhnd_nvram_io *io)
 
 	bcm = (struct bhnd_nvram_bcm *)nv;
 
-	/* Populate default BCM mirrored header value set */
+	/* Populate default BCM mirrored header variable set */
 	_Static_assert(sizeof(bcm->hvars) == sizeof(bhnd_nvram_bcm_hvars),
 	    "hvar declarations must match bhnd_nvram_bcm_hvars template");
 	memcpy(bcm->hvars, bhnd_nvram_bcm_hvars, sizeof(bcm->hvars));
@@ -403,8 +398,8 @@ bhnd_nvram_bcm_size(struct bhnd_nvram_data *nv, size_t *size)
 	 * of our backing buffer representation */
 	*size = bhnd_nvram_io_getsize(bcm->data);
 
-	/* Header variables that require mirroring will expand
-	 * the total size */
+	/* Header variables that require generation of their missing envp
+	 * entries must be included in the total size */
 	for (size_t i = 0; i < nitems(bcm->hvars); i++) {
 		struct bhnd_nvram_bcm_hvar	*hvar;
 		size_t				 entry_len;
@@ -412,7 +407,7 @@ bhnd_nvram_bcm_size(struct bhnd_nvram_data *nv, size_t *size)
 		size_t				 value_len;
 
 		hvar = &bcm->hvars[i];
-		if (hvar->mirrored)
+		if (hvar->envp != NULL)
 			continue;
 
 		/* Fetch the name length */
@@ -604,7 +599,7 @@ bhnd_nvram_bcm_next(struct bhnd_nvram_data *nv, void **cookiep)
 		/* Find the next header-defined variable that isn't
 		 * defined in the NVRAM data, start iteration there */
 		for (size_t i = idx; i < nitems(bcm->hvars); i++) {
-			if (bcm->hvars[i].mirrored)
+			if (bcm->hvars[i].envp != NULL)
 				continue;
 
 			*cookiep = &bcm->hvars[i];
@@ -631,7 +626,7 @@ bhnd_nvram_bcm_next(struct bhnd_nvram_data *nv, void **cookiep)
 	if ((size_t)(envp - basep) == io_size || *envp == '\0') {
 		/* Find first valid header variable */
 		for (size_t i = 0; i < nitems(bcm->hvars); i++) {
-			if (bcm->hvars[i].mirrored)
+			if (bcm->hvars[i].envp != NULL)
 				continue;
 			
 			*cookiep = &bcm->hvars[i];
@@ -672,12 +667,12 @@ bhnd_nvram_bcm_getvar_ptr(struct bhnd_nvram_data *nv, void *cookiep,
 	/* Handle header variables */
 	if ((hvar = bhnd_nvram_bcm_to_hdrvar(bcm, cookiep)) != NULL) {
 		BHND_NV_ASSERT(
-		    hvar->size % bhnd_nvram_value_size(hvar->type, NULL, 0,
+		    hvar->len % bhnd_nvram_value_size(hvar->type, NULL, 0,
 			hvar->nelem) == 0,
 		    ("length is not aligned to type width"));
 
 		*type = hvar->type;
-		*len = hvar->size;
+		*len = hvar->len;
 		return (&hvar->value);
 	}
 

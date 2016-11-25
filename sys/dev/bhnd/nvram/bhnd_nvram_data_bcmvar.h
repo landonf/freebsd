@@ -45,14 +45,14 @@ union bhnd_nvram_bcm_hvar_value {
  * vended as) NVRAM variables.
  */
 struct bhnd_nvram_bcm_hvar {
-	const char	*name;		/**< variable name */
-	bhnd_nvram_type	 type;		/**< value type */
-	size_t		 nelem;		/**< value element count */
-	size_t		 size;		/**< value length */
-	bool		 mirrored;	/**< variable mirroring this header
-					     value is defined in NVRAM data */
-	bool		 stale;		/**< header value does not match
-					     mirrored NVRAM value */
+	const char	*name;	/**< variable name */
+	bhnd_nvram_type	 type;	/**< value type */
+	size_t		 nelem;	/**< value element count */
+	size_t		 len;	/**< value length */
+	const char	*envp;	/**< Pointer to the NVRAM variable mirroring
+				     this header value, or NULL. */
+	bool		 stale;	/**< header value does not match
+				     mirrored NVRAM value */
 
 	/** variable data */
 	union bhnd_nvram_bcm_hvar_value value;
