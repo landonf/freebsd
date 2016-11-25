@@ -70,17 +70,17 @@ __FBSDID("$FreeBSD$");
 
 struct bhnd_nvram_bcm;
 
-static struct bhnd_nvram_bcmdata	*bhnd_nvram_bcm_gethdrvar(
+static struct bhnd_nvram_bcm_hvar	*bhnd_nvram_bcm_gethdrvar(
 					     struct bhnd_nvram_bcm *bcm,
 					     const char *name);
-static struct bhnd_nvram_bcmdata	*bhnd_nvram_bcm_to_hdrvar(
+static struct bhnd_nvram_bcm_hvar	*bhnd_nvram_bcm_to_hdrvar(
 					     struct bhnd_nvram_bcm *bcm,
 					     void *cookiep);
 static size_t				 bhnd_nvram_bcm_hdrvar_index(
 					     struct bhnd_nvram_bcm *bcm,
-					     struct bhnd_nvram_bcmdata *hdrvar);
+					     struct bhnd_nvram_bcm_hvar *hvar);
 /*
- * Set of BCM header values that are required to be mirrored in the
+ * Set of BCM NVRAM header values that are required to be mirrored in the
  * NVRAM data itself.
  *
  * If they're not included in the parsed NVRAM data, we need to vend the
@@ -90,7 +90,7 @@ static size_t				 bhnd_nvram_bcm_hdrvar_index(
  * If they're modified in NVRAM, we need to sync the changes with the
  * the NVRAM header values.
  */
-static const struct bhnd_nvram_bcmdata bhnd_nvram_bcm_hvars[] = {
+static const struct bhnd_nvram_bcm_hvar bhnd_nvram_bcm_hvars[] = {
 	{
 		.name	= BCM_NVRAM_CFG0_SDRAM_INIT_VAR,
 		.type	= BHND_NVRAM_TYPE_UINT16,
@@ -123,7 +123,7 @@ struct bhnd_nvram_bcm {
 	struct bhnd_nvram_io		*data;	/**< backing buffer */
 
 	/** BCM header values */
-	struct bhnd_nvram_bcmdata	 hvars[nitems(bhnd_nvram_bcm_hvars)];
+	struct bhnd_nvram_bcm_hvar	 hvars[nitems(bhnd_nvram_bcm_hvars)];
 
 	size_t				 count;	/**< total variable count */
 };
@@ -212,7 +212,7 @@ bhnd_nvram_bcm_init(struct bhnd_nvram_bcm *bcm, struct bhnd_nvram_io *src)
 
 	/* Populate header variable definitions */
 #define	BCM_READ_HDR_VAR(_name, _dest, _swap) do {		\
-	struct bhnd_nvram_bcmdata *data;				\
+	struct bhnd_nvram_bcm_hvar *data;				\
 	data = bhnd_nvram_bcm_gethdrvar(bcm, _name ##_VAR);		\
 	BHND_NV_ASSERT(data != NULL,						\
 	    ("no such header variable: " __STRING(_name)));		\
@@ -338,7 +338,7 @@ bhnd_nvram_bcm_new(struct bhnd_nvram_data *nv, struct bhnd_nvram_io *io)
 
 	/* Populate default BCM mirrored header value set */
 	_Static_assert(sizeof(bcm->hvars) == sizeof(bhnd_nvram_bcm_hvars),
-	    "hvars declaration must match bhnd_nvram_bcm_hvars template");
+	    "hvar declarations must match bhnd_nvram_bcm_hvars template");
 	memcpy(bcm->hvars, bhnd_nvram_bcm_hvars, sizeof(bcm->hvars));
 
 	/* Parse the BCM input data and initialize our backing
@@ -382,7 +382,7 @@ bhnd_nvram_bcm_size(struct bhnd_nvram_data *nv, size_t *size)
 	/* Header variables that require mirroring will expand
 	 * the total size */
 	for (size_t i = 0; i < nitems(bcm->hvars); i++) {
-		struct bhnd_nvram_bcmdata	*hvar;
+		struct bhnd_nvram_bcm_hvar	*hvar;
 		size_t				 entry_len;
 		size_t				 name_len;
 		size_t				 value_len;
@@ -548,7 +548,7 @@ static const char *
 bhnd_nvram_bcm_next(struct bhnd_nvram_data *nv, void **cookiep)
 {
 	struct bhnd_nvram_bcm		*bcm;
-	struct bhnd_nvram_bcmdata	*hvar;
+	struct bhnd_nvram_bcm_hvar	*hvar;
 	const void			*ptr;
 	const char			*envp, *basep;
 	size_t				 io_size, io_offset;
@@ -640,7 +640,7 @@ bhnd_nvram_bcm_getvar_ptr(struct bhnd_nvram_data *nv, void *cookiep,
     size_t *len, bhnd_nvram_type *type)
 {
 	struct bhnd_nvram_bcm		*bcm;
-	struct bhnd_nvram_bcmdata	*hvar;
+	struct bhnd_nvram_bcm_hvar	*hvar;
 	const char			*envp;
 
 	bcm = (struct bhnd_nvram_bcm *)nv;
@@ -672,7 +672,7 @@ static const char *
 bhnd_nvram_bcm_getvar_name(struct bhnd_nvram_data *nv, void *cookiep)
 {
 	struct bhnd_nvram_bcm		*bcm;
-	struct bhnd_nvram_bcmdata	*hvar;
+	struct bhnd_nvram_bcm_hvar	*hvar;
 
 	bcm = (struct bhnd_nvram_bcm *)nv;
 
@@ -689,7 +689,7 @@ bhnd_nvram_bcm_getvar_name(struct bhnd_nvram_data *nv, void *cookiep)
  * Return the internal BCM data reference for a header-defined variable
  * with @p name, or NULL if none exists.
  */
-static struct bhnd_nvram_bcmdata *
+static struct bhnd_nvram_bcm_hvar *
 bhnd_nvram_bcm_gethdrvar(struct bhnd_nvram_bcm *bcm, const char *name)
 {
 	for (size_t i = 0; i < nitems(bcm->hvars); i++) {
@@ -705,7 +705,7 @@ bhnd_nvram_bcm_gethdrvar(struct bhnd_nvram_bcm *bcm, const char *name)
  * If @p cookiep references a header-defined variable, return the
  * internal BCM data reference. Otherwise, returns NULL.
  */
-static struct bhnd_nvram_bcmdata *
+static struct bhnd_nvram_bcm_hvar *
 bhnd_nvram_bcm_to_hdrvar(struct bhnd_nvram_bcm *bcm, void *cookiep)
 {
 #ifdef BHND_NVRAM_INVARIANTS                                                                                                                                                                                                                                
@@ -731,7 +731,7 @@ bhnd_nvram_bcm_to_hdrvar(struct bhnd_nvram_bcm *bcm, void *cookiep)
 	    ("misaligned hvar pointer %p/%p", cookiep, bcm->hvars));
 #endif /* INVARIANTS */
 
-	return ((struct bhnd_nvram_bcmdata *)cookiep);
+	return ((struct bhnd_nvram_bcm_hvar *)cookiep);
 }
 
 /**
@@ -739,7 +739,7 @@ bhnd_nvram_bcm_to_hdrvar(struct bhnd_nvram_bcm *bcm, void *cookiep)
  */
 static size_t
 bhnd_nvram_bcm_hdrvar_index(struct bhnd_nvram_bcm *bcm,
-    struct bhnd_nvram_bcmdata *hdrvar)
+    struct bhnd_nvram_bcm_hvar *hdrvar)
 {
 	BHND_NV_ASSERT(bhnd_nvram_bcm_to_hdrvar(bcm, (void *)hdrvar) != NULL,
 	    ("%p is not a valid hdrvar reference", hdrvar));

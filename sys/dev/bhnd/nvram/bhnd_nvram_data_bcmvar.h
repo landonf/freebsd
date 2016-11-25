@@ -36,7 +36,7 @@
  * Internal representation of BCM NVRAM values that mirror (and must be
  * vended as) NVRAM variables.
  */
-struct bhnd_nvram_bcmdata {
+struct bhnd_nvram_bcm_hvar {
 	const char	*name;		/**< variable name */
 	bhnd_nvram_type	 type;		/**< value type */
 	size_t		 nelem;		/**< value element count */
