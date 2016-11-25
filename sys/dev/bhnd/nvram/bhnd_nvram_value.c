@@ -133,7 +133,7 @@ bhnd_nvram_val_init_common(bhnd_nvram_val_t *value, bhnd_nvram_val_storage_t
 	if (otype == itype) {
 		error = bhnd_nvram_val_set(value, inp, ilen, itype, flags);
 		if (error)
-			goto failed;
+			return (error);
 
 		return (0);
 	}
@@ -141,25 +141,19 @@ bhnd_nvram_val_init_common(bhnd_nvram_val_t *value, bhnd_nvram_val_storage_t
 	/* Determine size when encoded in native format */
 	error = bhnd_nvram_value_coerce(inp, ilen, itype, NULL, &olen, otype);
 	if (error)
-		goto failed;
+		return (error);
 	
 	/* Fetch reference to (or allocate) an appropriately sized buffer */
 	outp = bhnd_nvram_val_alloc_bytes(value, olen, otype, flags);
-	if (outp == NULL) {
-		error = ENOMEM;
-		goto failed;
-	}
+	if (outp == NULL)
+		return (ENOMEM);
 	
 	/* Perform encode */
 	error = bhnd_nvram_value_coerce(inp, ilen, itype, outp, &olen, otype);
 	if (error)
-		goto failed;
+		return (error);
 	
 	return (0);
-	
-failed:
-	bhnd_nvram_val_release(value);
-	return (error);
 }
 
 /**
@@ -190,8 +184,14 @@ int
 bhnd_nvram_val_init(bhnd_nvram_val_t *value, const bhnd_nvram_val_fmt_t *fmt,
     const void *inp, size_t ilen, bhnd_nvram_type itype, uint32_t flags)
 {
-	return (bhnd_nvram_val_init_common(value, BHND_NVRAM_VAL_STORAGE_AUTO,
-	    fmt, inp, ilen, itype, flags));
+	int error;
+
+	error = bhnd_nvram_val_init_common(value, BHND_NVRAM_VAL_STORAGE_AUTO,
+	    fmt, inp, ilen, itype, flags);
+	if (error)
+		bhnd_nvram_val_release(value);
+
+	return (error);
 }
 
 /**
@@ -221,13 +221,21 @@ int
 bhnd_nvram_val_new(bhnd_nvram_val_t **value, const bhnd_nvram_val_fmt_t *fmt,
     const void *inp, size_t ilen, bhnd_nvram_type itype, uint32_t flags)
 {
+	int error;
+
 	/* Allocate new instance */
 	if ((*value = bhnd_nv_malloc(sizeof(**value))) == NULL)
 		return (ENOMEM);
 
-	/* Perform initialization (will handle free() of value on failure) */
-	return (bhnd_nvram_val_init_common(*value,
-	    BHND_NVRAM_VAL_STORAGE_DYNAMIC, fmt, inp, ilen, itype, flags));
+	/* Perform common initialization. */
+	error = bhnd_nvram_val_init_common(*value,
+	    BHND_NVRAM_VAL_STORAGE_DYNAMIC, fmt, inp, ilen, itype, flags);
+	if (error) {
+		/* Will also free() the value allocation */
+		bhnd_nvram_val_release(*value);
+	}
+
+	return (error);
 }
 
 /**
