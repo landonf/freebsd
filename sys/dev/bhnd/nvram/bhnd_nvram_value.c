@@ -1279,7 +1279,8 @@ bhnd_nvram_val_alloc_bytes(bhnd_nvram_val_t *value, size_t ilen,
 
 	/* Can we use inline storage? */
 	if (bhnd_nvram_val_set_inline(value, NULL, ilen, itype) == 0) {
-		BHND_NV_ASSERT(sizeof(value->data) >= ilen);
+		BHND_NV_ASSERT(sizeof(value->data) >= ilen,
+		    ("ilen exceeds inline storage"));
 
 		value->data_type = itype;
 		value->data_len = ilen;
