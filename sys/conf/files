@@ -1220,7 +1220,6 @@ dev/bhnd/cores/pmu/bhnd_pmu.c		optional bhnd
 dev/bhnd/cores/pmu/bhnd_pmu_core.c	optional bhnd
 dev/bhnd/cores/pmu/bhnd_pmu_if.m	optional bhnd
 dev/bhnd/cores/pmu/bhnd_pmu_subr.c	optional bhnd
-dev/bhnd/nvram/bhnd_nvram.c		optional bhnd
 dev/bhnd/nvram/bhnd_nvram_data.c	optional bhnd
 dev/bhnd/nvram/bhnd_nvram_data_bcm.c	optional bhnd
 dev/bhnd/nvram/bhnd_nvram_data_bcmraw.c	optional bhnd
