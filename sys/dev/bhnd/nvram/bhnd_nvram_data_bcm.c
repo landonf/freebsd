@@ -389,47 +389,7 @@ bhnd_nvram_bcm_count(struct bhnd_nvram_data *nv)
 static int
 bhnd_nvram_bcm_size(struct bhnd_nvram_data *nv, size_t *size)
 {
-	struct bhnd_nvram_bcm	*bcm;
-	int			 error;
-
-	bcm = (struct bhnd_nvram_bcm *)nv;
-
-	/* The serialized form will be at least the length
-	 * of our backing buffer representation */
-	*size = bhnd_nvram_io_getsize(bcm->data);
-
-	/* Header variables that require generation of their missing envp
-	 * entries must be included in the total size */
-	for (size_t i = 0; i < nitems(bcm->hvars); i++) {
-		struct bhnd_nvram_bcm_hvar	*hvar;
-		size_t				 entry_len;
-		size_t				 name_len;
-		size_t				 value_len;
-
-		hvar = &bcm->hvars[i];
-		if (hvar->envp != NULL)
-			continue;
-
-		/* Fetch the name length */
-		name_len = strlen(hvar->name);
-
-		/* Calculate the length of the value's CSTR representation */
-		error = bhnd_nvram_data_getvar(nv, &bcm->hvars[i], NULL,
-		    &value_len, BHND_NVRAM_TYPE_STRING);
-		if (error)
-			return (error);
-
-		/* name_len + '=' + value_len */
-		entry_len = name_len + 1 + value_len;
-
-		/* Add to total */
-		if (SIZE_MAX - entry_len < *size)
-			return (ERANGE);
-
-		*size = *size + entry_len;
-	}
-
-	return (0);
+	return (bhnd_nvram_bcm_serialize(nv, NULL, size));
 }
 
 static int
@@ -439,11 +399,12 @@ bhnd_nvram_bcm_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 	struct bhnd_nvram_bcmhdr	 hdr;
 	void				*cookiep;
 	const char			*name;
-	size_t				 nbytes, req_size, limit;
+	size_t				 nbytes, limit;
 	uint8_t				 crc;
 	int				 error;
 
 	bcm = (struct bhnd_nvram_bcm *)nv;
+	nbytes = 0;
 
 	/* Save the output buffer limit */
 	if (buf == NULL)
@@ -451,22 +412,8 @@ bhnd_nvram_bcm_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 	else
 		limit = *len;
 
-	/* Calculate and provide the actual buffer size */
-	if ((error = bhnd_nvram_data_size(nv, &req_size)))
-		return (error);
-
-	*len = req_size;
-
-	/* Skip serialization if not requested, or report ENOMEM if
-	 * buffer is too small */
-	if (buf == NULL) {
-		return (0);
-	} else if (*len > limit) {
-		return (ENOMEM);
-	}
-
 	/* Reserve space for the NVRAM header */
-	nbytes = sizeof(struct bhnd_nvram_bcmhdr);
+	nbytes += sizeof(struct bhnd_nvram_bcmhdr);
 
 	/* Write all variables to the output buffer */
 	cookiep = NULL;
@@ -532,10 +479,12 @@ bhnd_nvram_bcm_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 	nbytes++;
 
 	/* Provide actual size */
-	BHND_NV_ASSERT(req_size == nbytes, ("calculated size incorrect"));
 	*len = nbytes;
-	if (nbytes > limit && buf != NULL)
-		return (ENOMEM);
+	if (nbytes > limit) {
+		if (buf != NULL)
+			return (ENOMEM);
+		return (0);
+	}
 
 	/* Fetch current NVRAM header */
 	if ((error = bhnd_nvram_io_read(bcm->data, 0x0, &hdr, sizeof(hdr))))
@@ -567,7 +516,7 @@ static const char *
 bhnd_nvram_bcm_next(struct bhnd_nvram_data *nv, void **cookiep)
 {
 	struct bhnd_nvram_bcm		*bcm;
-	struct bhnd_nvram_bcm_hvar	*hvar;
+	struct bhnd_nvram_bcm_hvar	*hvar, *hvar_next;
 	const void			*ptr;
 	const char			*envp, *basep;
 	size_t				 io_size, io_offset;
@@ -588,7 +537,8 @@ bhnd_nvram_bcm_next(struct bhnd_nvram_data *nv, void **cookiep)
 
 	basep = ptr;
 
-	/* Handle header variable iteration */
+	/* If cookiep pointers into our header variable array, handle as header
+	 * variable iteration. */
 	hvar = bhnd_nvram_bcm_to_hdrvar(bcm, *cookiep);
 	if (hvar != NULL) {
 		size_t idx;
@@ -596,14 +546,15 @@ bhnd_nvram_bcm_next(struct bhnd_nvram_data *nv, void **cookiep)
 		/* Advance to next entry, if any */
 		idx = bhnd_nvram_bcm_hdrvar_index(bcm, hvar) + 1;
 
-		/* Find the next header-defined variable that isn't
-		 * defined in the NVRAM data, start iteration there */
+		/* Find the next header-defined variable that isn't defined in
+		 * the NVRAM data, start iteration there */
 		for (size_t i = idx; i < nitems(bcm->hvars); i++) {
-			if (bcm->hvars[i].envp != NULL)
+			hvar_next = &bcm->hvars[i];
+			if (hvar_next->envp != NULL && !hvar_next->stale)
 				continue;
 
-			*cookiep = &bcm->hvars[i];
-			return (bcm->hvars[i].name);
+			*cookiep = hvar_next;
+			return (hvar_next->name);
 		}
 
 		/* No further header-defined variables; iteration
@@ -622,7 +573,36 @@ bhnd_nvram_bcm_next(struct bhnd_nvram_data *nv, void **cookiep)
 		envp += strlen(envp) + 1;	/* value + '\0' */
 	}
 
-	/* On EOF, try switching to header variables */
+	/*
+	 * Skip entries that have an existing header variable entry that takes
+	 * precedence over the NVRAM data value.
+	 * 
+	 * The header's value will be provided when performing header variable
+	 * iteration
+	 */
+	 while ((size_t)(envp - basep) < io_size && *envp != '\0') {
+		/* Locate corresponding header variable */
+		hvar = NULL;
+		for (size_t i = 0; i < nitems(bcm->hvars); i++) {
+			if (bcm->hvars[i].envp != envp)
+				continue;
+
+			hvar = &bcm->hvars[i];
+			break;
+		}
+
+		/* If no corresponding hvar entry, or the entry does not take
+		 * precedence over this NVRAM value, we can safely return this
+		 * value as-is. */
+		if (hvar == NULL || !hvar->stale)
+			break;
+
+		/* Seek to next record */
+		envp += strlen(envp) + 1;	/* key + '\0' */
+		envp += strlen(envp) + 1;	/* value + '\0' */
+	 }
+
+	/* On NVRAM data EOF, try switching to header variables */
 	if ((size_t)(envp - basep) == io_size || *envp == '\0') {
 		/* Find first valid header variable */
 		for (size_t i = 0; i < nitems(bcm->hvars); i++) {
