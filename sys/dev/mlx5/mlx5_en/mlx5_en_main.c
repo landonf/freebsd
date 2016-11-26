@@ -855,7 +855,13 @@ err_destroy_rq:
 static void
 mlx5e_close_rq(struct mlx5e_rq *rq)
 {
+	mtx_lock(&rq->mtx);
 	rq->enabled = 0;
+	callout_stop(&rq->watchdog);
+	mtx_unlock(&rq->mtx);
+
+	callout_drain(&rq->watchdog);
+
 	mlx5e_modify_rq(rq, MLX5_RQC_STATE_RDY, MLX5_RQC_STATE_ERR);
 }
 
@@ -1438,6 +1444,8 @@ mlx5e_chan_mtx_init(struct mlx5e_channel *c)
 	int tc;
 
 	mtx_init(&c->rq.mtx, "mlx5rx", MTX_NETWORK_LOCK, MTX_DEF);
+
+	callout_init_mtx(&c->rq.watchdog, &c->rq.mtx, 0);
 
 	for (tc = 0; tc < c->num_tc; tc++) {
 		struct mlx5e_sq *sq = c->sq + tc;
@@ -2903,6 +2911,7 @@ mlx5e_create_ifp(struct mlx5_core_dev *mdev)
 	ifp->if_capabilities |= IFCAP_LINKSTATE | IFCAP_JUMBO_MTU;
 	ifp->if_capabilities |= IFCAP_LRO;
 	ifp->if_capabilities |= IFCAP_TSO | IFCAP_VLAN_HWTSO;
+	ifp->if_capabilities |= IFCAP_HWSTATS;
 
 	/* set TSO limits so that we don't have to drop TX packets */
 	ifp->if_hw_tsomax = MLX5E_MAX_TX_PAYLOAD_SIZE - (ETHER_HDR_LEN + ETHER_VLAN_ENCAP_LEN);

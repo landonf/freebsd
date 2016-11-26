@@ -149,7 +149,7 @@
       </itemizedlist>
 
       <para>&intel; EM64T is an extended version of IA-32 (x86) and
-	different from &intel; IA-64 (Itanium) architecture.  Some
+	different from &intel; IA-64 (Itanium) architecture.  Some of
 	&intel;'s old documentation refers to &intel; EM64T as
 	<quote>64-bit extension technology</quote> or
 	<quote>IA-32e</quote>.</para>
@@ -800,6 +800,8 @@
 
       &hwlist.bge;
 
+      &hwlist.bnxt;
+
       &hwlist.bxe;
 
       &hwlist.cas;
@@ -998,8 +1000,9 @@
 
       &hwlist.rsu;
 
-      <para>Realtek RTL8188CE based PCIe IEEE 802.11b/g/n wireless network
-	adapters (&man.rtwn.4; driver)</para>
+      <para>Realtek RTL8192C, RTL8188E, RTL8812A and RTL8821A based
+	PCIe IEEE 802.11b/g/n wireless network adapters (&man.rtwn.4;
+	driver)</para>
 
       &hwlist.rum;
 
@@ -1012,8 +1015,6 @@
       &hwlist.ural;
 
       &hwlist.urtw;
-
-      &hwlist.urtwn;
 
       <para>[&arch.amd64;, &arch.i386;, &arch.pc98;] Lucent
 	Technologies WaveLAN/IEEE 802.11b wireless network adapters

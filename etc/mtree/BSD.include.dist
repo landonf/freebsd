@@ -118,6 +118,8 @@
         ..
         hwpmc
         ..
+        hyperv
+        ..
         ic
         ..
         iicbus
@@ -336,6 +338,8 @@
     ssp
     ..
     sys
+        disk
+        ..
     ..
     teken
     ..

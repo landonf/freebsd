@@ -61,7 +61,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/intr.h>
 #include <machine/smp.h>
 
-#include <dev/fdt/fdt_common.h>
+#include <dev/fdt/fdt_intr.h>
 #include <dev/ofw/ofw_bus_subr.h>
 
 #include <arm/arm/gic.h>
@@ -311,7 +311,7 @@ gic_decode_fdt(phandle_t iparent, pcell_t *intr, int *interrupt,
 
 	if (self == 0) {
 		for (ocd = compat_data; ocd->ocd_str != NULL; ocd++) {
-			if (fdt_is_compatible(iparent, ocd->ocd_str)) {
+			if (ofw_bus_node_is_compatible(iparent, ocd->ocd_str)) {
 				self = iparent;
 				break;
 			}
@@ -821,13 +821,15 @@ gic_map_fdt(device_t dev, u_int ncells, pcell_t *cells, u_int *irqp,
 		}
 
 		tripol = cells[2] & 0xff;
-		if (tripol & 0xf0 || (tripol & 0x0a && cells[0] == 0))
+		if (tripol & 0xf0 || (tripol & FDT_INTR_LOW_MASK &&
+		    cells[0] == 0))
 			device_printf(dev, "unsupported trigger/polarity "
 			    "configuration 0x%02x\n", tripol);
 
 		*irqp = irq;
 		*polp = INTR_POLARITY_CONFORM;
-		*trigp = tripol & 0x03 ? INTR_TRIGGER_EDGE : INTR_TRIGGER_LEVEL;
+		*trigp = tripol & FDT_INTR_EDGE_MASK ?
+		    INTR_TRIGGER_EDGE : INTR_TRIGGER_LEVEL;
 		return (0);
 	}
 	return (EINVAL);
@@ -1474,15 +1476,15 @@ arm_gicv2m_release_msi(device_t dev, device_t child, int count,
 
 	mtx_lock(&sc->sc_mutex);
 	for (i = 0; i < count; i++) {
-		gi = (struct gic_irqsrc *)isrc;
+		gi = (struct gic_irqsrc *)isrc[i];
 
 		KASSERT((gi->gi_flags & GI_FLAG_MSI_USED) == GI_FLAG_MSI_USED,
 		    ("%s: Trying to release an unused MSI-X interrupt",
 		    __func__));
 
 		gi->gi_flags &= ~GI_FLAG_MSI_USED;
-		mtx_unlock(&sc->sc_mutex);
 	}
+	mtx_unlock(&sc->sc_mutex);
 
 	return (0);
 }

@@ -220,9 +220,6 @@ OLD_DIRS+=usr/share/examples/bhyve
 OLD_FILES+=usr/bin/as
 OLD_FILES+=usr/bin/ld
 OLD_FILES+=usr/bin/ld.bfd
-.if ${MK_ELFCOPY_AS_OBJCOPY} == no
-OLD_FILES+=usr/bin/objcopy
-.endif
 OLD_FILES+=usr/bin/objdump
 OLD_FILES+=usr/libdata/ldscripts/armelf_fbsd.x
 OLD_FILES+=usr/libdata/ldscripts/armelf_fbsd.xbn
@@ -421,9 +418,6 @@ OLD_FILES+=usr/libdata/ldscripts/elf_x86_64_fbsd.xu
 OLD_FILES+=usr/libdata/ldscripts/elf_x86_64_fbsd.xw
 OLD_FILES+=usr/share/man/man1/as.1.gz
 OLD_FILES+=usr/share/man/man1/ld.1.gz
-.if ${MK_ELFCOPY_AS_OBJCOPY} == no
-OLD_FILES+=usr/share/man/man1/objcopy.1.gz
-.endif
 OLD_FILES+=usr/share/man/man1/objdump.1.gz
 OLD_FILES+=usr/share/man/man7/as.7.gz
 OLD_FILES+=usr/share/man/man7/ld.7.gz
@@ -682,6 +676,7 @@ OLD_FILES+=usr/libexec/bsdinstall/distextract
 OLD_FILES+=usr/libexec/bsdinstall/distfetch
 OLD_FILES+=usr/libexec/bsdinstall/docsinstall
 OLD_FILES+=usr/libexec/bsdinstall/entropy
+OLD_FILES+=usr/libexec/bsdinstall/hardening
 OLD_FILES+=usr/libexec/bsdinstall/hostname
 OLD_FILES+=usr/libexec/bsdinstall/jail
 OLD_FILES+=usr/libexec/bsdinstall/keymap
@@ -1095,6 +1090,7 @@ OLD_FILES+=boot/gptzfsboot
 OLD_FILES+=boot/zfsboot
 OLD_FILES+=boot/zfsloader
 OLD_FILES+=etc/rc.d/zfs
+OLD_FILES+=etc/rc.d/zfsbe
 OLD_FILES+=etc/rc.d/zvol
 OLD_FILES+=etc/devd/zfs.conf
 OLD_FILES+=etc/periodic/daily/404.status-zfs
@@ -1141,88 +1137,109 @@ OLD_FILES+=usr/bin/clang++
 OLD_FILES+=usr/bin/clang-cpp
 OLD_FILES+=usr/bin/clang-tblgen
 OLD_FILES+=usr/bin/llvm-tblgen
-OLD_FILES+=usr/lib/clang/3.8.0/include/sanitizer/allocator_interface.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/sanitizer/asan_interface.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/sanitizer/common_interface_defs.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/sanitizer/coverage_interface.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/sanitizer/dfsan_interface.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/sanitizer/linux_syscall_hooks.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/sanitizer/lsan_interface.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/sanitizer/msan_interface.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/sanitizer/tsan_interface_atomic.h
-OLD_DIRS+=usr/lib/clang/3.8.0/include/sanitizer
-OLD_FILES+=usr/lib/clang/3.8.0/include/__stddef_max_align_t.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/__wmmintrin_aes.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/__wmmintrin_pclmul.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/adxintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/altivec.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/ammintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/arm_acle.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/arm_neon.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/avx2intrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/avx512bwintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/avx512cdintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/avx512dqintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/avx512erintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/avx512fintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/avx512vlbwintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/avx512vldqintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/avx512vlintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/avxintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/bmi2intrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/bmiintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/cpuid.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/cuda_builtin_vars.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/emmintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/f16cintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/fma4intrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/fmaintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/fxsrintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/htmintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/htmxlintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/ia32intrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/immintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/lzcntintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/mm3dnow.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/mm_malloc.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/mmintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/module.modulemap
-OLD_FILES+=usr/lib/clang/3.8.0/include/nmmintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/pkuintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/pmmintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/popcntintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/prfchwintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/rdseedintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/rtmintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/s390intrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/shaintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/smmintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/tbmintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/tmmintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/vadefs.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/vecintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/wmmintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/x86intrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/xmmintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/xopintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/xtestintrin.h
-OLD_DIRS+=usr/lib/clang/3.8.0/include
-OLD_FILES+=usr/lib/clang/3.8.0/lib/freebsd/libclang_rt.asan-i386.a
-OLD_FILES+=usr/lib/clang/3.8.0/lib/freebsd/libclang_rt.asan-x86_64.a
-OLD_FILES+=usr/lib/clang/3.8.0/lib/freebsd/libclang_rt.asan_cxx-i386.a
-OLD_FILES+=usr/lib/clang/3.8.0/lib/freebsd/libclang_rt.asan_cxx-x86_64.a
-OLD_FILES+=usr/lib/clang/3.8.0/lib/freebsd/libclang_rt.profile-arm.a
-OLD_FILES+=usr/lib/clang/3.8.0/lib/freebsd/libclang_rt.profile-i386.a
-OLD_FILES+=usr/lib/clang/3.8.0/lib/freebsd/libclang_rt.profile-x86_64.a
-OLD_FILES+=usr/lib/clang/3.8.0/lib/freebsd/libclang_rt.safestack-i386.a
-OLD_FILES+=usr/lib/clang/3.8.0/lib/freebsd/libclang_rt.safestack-x86_64.a
-OLD_FILES+=usr/lib/clang/3.8.0/lib/freebsd/libclang_rt.ubsan_standalone-i386.a
-OLD_FILES+=usr/lib/clang/3.8.0/lib/freebsd/libclang_rt.ubsan_standalone-x86_64.a
-OLD_FILES+=usr/lib/clang/3.8.0/lib/freebsd/libclang_rt.ubsan_standalone_cxx-i386.a
-OLD_FILES+=usr/lib/clang/3.8.0/lib/freebsd/libclang_rt.ubsan_standalone_cxx-x86_64.a
-OLD_DIRS+=usr/lib/clang/3.8.0/lib/freebsd
-OLD_DIRS+=usr/lib/clang/3.8.0/lib
-OLD_DIRS+=usr/lib/clang/3.8.0
+OLD_FILES+=usr/lib/clang/3.9.0/include/sanitizer/allocator_interface.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/sanitizer/asan_interface.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/sanitizer/common_interface_defs.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/sanitizer/coverage_interface.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/sanitizer/dfsan_interface.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/sanitizer/linux_syscall_hooks.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/sanitizer/lsan_interface.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/sanitizer/msan_interface.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/sanitizer/tsan_interface_atomic.h
+OLD_DIRS+=usr/lib/clang/3.9.0/include/sanitizer
+OLD_FILES+=usr/lib/clang/3.9.0/include/__clang_cuda_cmath.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/__clang_cuda_intrinsics.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/__clang_cuda_math_forward_declares.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/__clang_cuda_runtime_wrapper.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/__stddef_max_align_t.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/__wmmintrin_aes.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/__wmmintrin_pclmul.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/adxintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/altivec.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/ammintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/arm_acle.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/arm_neon.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/avx2intrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/avx512bwintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/avx512cdintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/avx512dqintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/avx512erintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/avx512fintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/avx512ifmaintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/avx512ifmavlintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/avx512pfintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/avx512vbmiintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/avx512vbmivlintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/avx512vlbwintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/avx512vlcdintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/avx512vldqintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/avx512vlintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/avxintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/bmi2intrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/bmiintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/clflushoptintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/cpuid.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/cuda_builtin_vars.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/emmintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/f16cintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/fma4intrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/fmaintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/fxsrintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/htmintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/htmxlintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/ia32intrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/immintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/lzcntintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/mm3dnow.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/mm_malloc.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/mmintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/module.modulemap
+OLD_FILES+=usr/lib/clang/3.9.0/include/mwaitxintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/nmmintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/opencl-c.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/pkuintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/pmmintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/popcntintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/prfchwintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/rdseedintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/rtmintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/s390intrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/shaintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/smmintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/tbmintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/tmmintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/vadefs.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/vecintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/wmmintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/x86intrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/xmmintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/xopintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/xsavecintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/xsaveintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/xsaveoptintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/xsavesintrin.h
+OLD_FILES+=usr/lib/clang/3.9.0/include/xtestintrin.h
+OLD_DIRS+=usr/lib/clang/3.9.0/include
+OLD_FILES+=usr/lib/clang/3.9.0/lib/freebsd/libclang_rt.asan-i386.a
+OLD_FILES+=usr/lib/clang/3.9.0/lib/freebsd/libclang_rt.asan-i386.so
+OLD_FILES+=usr/lib/clang/3.9.0/lib/freebsd/libclang_rt.asan-preinit-i386.a
+OLD_FILES+=usr/lib/clang/3.9.0/lib/freebsd/libclang_rt.asan-preinit-x86_64.a
+OLD_FILES+=usr/lib/clang/3.9.0/lib/freebsd/libclang_rt.asan-x86_64.a
+OLD_FILES+=usr/lib/clang/3.9.0/lib/freebsd/libclang_rt.asan-x86_64.so
+OLD_FILES+=usr/lib/clang/3.9.0/lib/freebsd/libclang_rt.asan_cxx-i386.a
+OLD_FILES+=usr/lib/clang/3.9.0/lib/freebsd/libclang_rt.asan_cxx-x86_64.a
+OLD_FILES+=usr/lib/clang/3.9.0/lib/freebsd/libclang_rt.profile-arm.a
+OLD_FILES+=usr/lib/clang/3.9.0/lib/freebsd/libclang_rt.profile-i386.a
+OLD_FILES+=usr/lib/clang/3.9.0/lib/freebsd/libclang_rt.profile-x86_64.a
+OLD_FILES+=usr/lib/clang/3.9.0/lib/freebsd/libclang_rt.safestack-i386.a
+OLD_FILES+=usr/lib/clang/3.9.0/lib/freebsd/libclang_rt.safestack-x86_64.a
+OLD_FILES+=usr/lib/clang/3.9.0/lib/freebsd/libclang_rt.ubsan_standalone-i386.a
+OLD_FILES+=usr/lib/clang/3.9.0/lib/freebsd/libclang_rt.ubsan_standalone-x86_64.a
+OLD_FILES+=usr/lib/clang/3.9.0/lib/freebsd/libclang_rt.ubsan_standalone_cxx-i386.a
+OLD_FILES+=usr/lib/clang/3.9.0/lib/freebsd/libclang_rt.ubsan_standalone_cxx-x86_64.a
+OLD_DIRS+=usr/lib/clang/3.9.0/lib/freebsd
+OLD_DIRS+=usr/lib/clang/3.9.0/lib
+OLD_DIRS+=usr/lib/clang/3.9.0
 OLD_DIRS+=usr/lib/clang
 OLD_FILES+=usr/share/doc/llvm/clang/LICENSE.TXT
 OLD_DIRS+=usr/share/doc/llvm/clang
@@ -1256,7 +1273,6 @@ OLD_FILES+=usr/bin/llvm-objdump
 OLD_FILES+=usr/bin/llvm-pdbdump
 OLD_FILES+=usr/bin/llvm-rtdyld
 OLD_FILES+=usr/bin/llvm-symbolizer
-OLD_FILES+=usr/bin/macho-dump
 OLD_FILES+=usr/bin/opt
 OLD_FILES+=usr/share/man/man1/bugpoint.1.gz
 OLD_FILES+=usr/share/man/man1/llc.1.gz
@@ -1338,6 +1354,25 @@ OLD_FILES+=usr/bin/CC
 OLD_FILES+=usr/bin/c++
 OLD_FILES+=usr/bin/g++
 OLD_FILES+=usr/libexec/cc1plus
+.endif
+
+.if ${MK_DIALOG} == no
+OLD_FILES+=usr/bin/dialog
+OLD_FILES+=usr/bin/dpv
+OLD_FILES+=usr/lib/libdialog.a
+OLD_FILES+=usr/lib/libdialog.so
+OLD_FILES+=usr/lib/libdialog.so.8
+OLD_FILES+=usr/lib/libdialog_p.a
+OLD_FILES+=usr/lib/libdpv.a
+OLD_FILES+=usr/lib/libdpv.so
+OLD_FILES+=usr/lib/libdpv.so.1
+OLD_FILES+=usr/lib/libdpv_p.a
+OLD_FILES+=usr/sbin/bsdconfig
+OLD_FILES+=usr/share/man/man1/dialog.1.gz
+OLD_FILES+=usr/share/man/man1/dpv.1.gz
+OLD_FILES+=usr/share/man/man3/dialog.3.gz
+OLD_FILES+=usr/share/man/man3/dpv.3.gz
+OLD_FILES+=usr/share/man/man8/bsdconfig.8.gz
 .endif
 
 .if ${MK_FMTREE} == no
@@ -2155,6 +2190,39 @@ OLD_FILES+=usr/share/man/man3/gpio_pin_set.3.gz
 OLD_FILES+=usr/share/man/man3/gpio_pin_set_flags.3.gz
 OLD_FILES+=usr/share/man/man3/gpio_pin_tristate.3.gz
 OLD_FILES+=usr/share/man/man8/gpioctl.8.gz
+.endif
+
+.if ${MK_GNU_DIFF} == no
+OLD_FILES+=usr/bin/diff
+OLD_FILES+=usr/bin/diff3
+OLD_FILES+=usr/share/man/man1/diff.1.gz
+OLD_FILES+=usr/share/man/man1/diff3.1.gz
+OLD_FILES+=usr/share/man/man7/diff.7.gz
+.endif
+
+.if ${MK_GNU_GREP} == no
+OLD_FILES+=usr/bin/gnugrep
+OLD_FILES+=usr/share/man/man1/gnugrep.1.gz
+.if ${MK_BSD_GREP} == no
+OLD_FILES+=usr/bin/bzgrep
+OLD_FILES+=usr/bin/bzegrep
+OLD_FILES+=usr/bin/bzfgrep
+OLD_FILES+=usr/bin/egrep
+OLD_FILES+=usr/bin/fgrep
+OLD_FILES+=usr/bin/grep
+OLD_FILES+=usr/bin/zegrep
+OLD_FILES+=usr/bin/zfgrep
+OLD_FILES+=usr/bin/zgrep
+OLD_FILES+=usr/share/man/man1/bzegrep.1.gz
+OLD_FILES+=usr/share/man/man1/bzfgrep.1.gz
+OLD_FILES+=usr/share/man/man1/bzgrep.1.gz
+OLD_FILES+=usr/share/man/man1/egrep.1.gz
+OLD_FILES+=usr/share/man/man1/fgrep.1.gz
+OLD_FILES+=usr/share/man/man1/grep.1.gz
+OLD_FILES+=usr/share/man/man1/zegrep.1.gz
+OLD_FILES+=usr/share/man/man1/zfgrep.1.gz
+OLD_FILES+=usr/share/man/man1/zgrep.1.gz
+.endif
 .endif
 
 # Also includes vgrind(1)
@@ -4366,6 +4434,10 @@ OLD_DIRS+=usr/include/c++/v1
 # to be filled in
 #.endif
 
+.if ${MK_LLD} == no
+OLD_FILES+=usr/bin/ld.lld
+.endif
+
 .if ${MK_LLDB} == no
 OLD_FILES+=usr/bin/lldb
 OLD_FILES+=usr/share/man/man1/lldb.1.gz
@@ -5999,6 +6071,10 @@ OLD_FILES+=usr/share/man/whatis
 OLD_FILES+=usr/share/openssl/man/whatis
 .endif
 
+.if ${MK_MANDOCDB} != no
+OLD_FILES+=usr/share/man/man1/makewhatis.1.gz
+.endif
+
 .if ${MK_NDIS} == no
 OLD_FILES+=usr/sbin/ndiscvt
 OLD_FILES+=usr/sbin/ndisgen
@@ -6059,6 +6135,13 @@ OLD_FILES+=usr/share/snmp/mibs/BEGEMOT-NETGRAPH.txt
 .endif
 
 .if ${MK_NIS} == no
+OLD_FILES+=etc/rc.d/ypbind
+OLD_FILES+=etc/rc.d/ypldap
+OLD_FILES+=etc/rc.d/yppasswdd
+OLD_FILES+=etc/rc.d/ypserv
+OLD_FILES+=etc/rc.d/ypset
+OLD_FILES+=etc/rc.d/ypupdated
+OLD_FILES+=etc/rc.d/ypxfrd
 OLD_FILES+=usr/bin/ypcat
 OLD_FILES+=usr/bin/ypchfn
 OLD_FILES+=usr/bin/ypchpass
@@ -6788,29 +6871,6 @@ OLD_FILES+=usr/share/man/man1/rwho.1.gz
 OLD_FILES+=usr/share/man/man8/rlogind.8.gz
 OLD_FILES+=usr/share/man/man8/rshd.8.gz
 OLD_FILES+=usr/share/man/man8/rwhod.8.gz
-.endif
-
-.if ${MK_RCS} == no
-OLD_FILES+=usr/bin/ci
-OLD_FILES+=usr/bin/co
-OLD_FILES+=usr/bin/merge
-OLD_FILES+=usr/bin/rcs
-OLD_FILES+=usr/bin/rcsclean
-OLD_FILES+=usr/bin/rcsdiff
-OLD_FILES+=usr/bin/rcsfreeze
-OLD_FILES+=usr/bin/rcsmerge
-OLD_FILES+=usr/bin/rlog
-OLD_FILES+=usr/share/man/man1/ci.1.gz
-OLD_FILES+=usr/share/man/man1/co.1.gz
-OLD_FILES+=usr/share/man/man1/merge.1.gz
-OLD_FILES+=usr/share/man/man1/rcs.1.gz
-OLD_FILES+=usr/share/man/man1/rcsclean.1.gz
-OLD_FILES+=usr/share/man/man1/rcsdiff.1.gz
-OLD_FILES+=usr/share/man/man1/rcsfreeze.1.gz
-OLD_FILES+=usr/share/man/man1/rcsintro.1.gz
-OLD_FILES+=usr/share/man/man1/rcsmerge.1.gz
-OLD_FILES+=usr/share/man/man1/rlog.1.gz
-OLD_FILES+=usr/share/man/man5/rcsfile.5.gz
 .endif
 
 #.if ${MK_RESCUE} == no
@@ -8003,6 +8063,7 @@ OLD_FILES+=usr/bin/c++filt
 OLD_FILES+=usr/bin/ld
 OLD_FILES+=usr/bin/ld.bfd
 OLD_FILES+=usr/bin/nm
+OLD_FILES+=usr/bin/objcopy
 OLD_FILES+=usr/bin/readelf
 OLD_FILES+=usr/bin/size
 OLD_FILES+=usr/bin/strings
@@ -8015,10 +8076,7 @@ OLD_FILES+=usr/share/man/man1/readelf.1.gz
 OLD_FILES+=usr/share/man/man1/size.1.gz
 OLD_FILES+=usr/share/man/man1/strings.1.gz
 OLD_FILES+=usr/share/man/man1/strip.1.gz
-.if ${MK_ELFCOPY_AS_OBJCOPY} != no
-OLD_FILES+=usr/bin/objcopy
 OLD_FILES+=usr/share/man/man1/objcopy.1.gz
-.endif
 OLD_FILES+=usr/tests/usr.bin/yacc/Kyuafile
 OLD_FILES+=usr/tests/usr.bin/yacc/btyacc_calc1.y
 OLD_FILES+=usr/tests/usr.bin/yacc/btyacc_demo.y
@@ -8328,10 +8386,6 @@ OLD_FILES+=usr/tests/usr.bin/yacc/yacc/varsyntax_calc1.tab.h
 OLD_FILES+=usr/tests/usr.bin/yacc/yacc_tests
 OLD_DIRS+=usr/tests/usr.bin/yacc
 .endif
-.if ${MK_TOOLCHAIN} == no || ${MK_ELFCOPY_AS_OBJCOPY} != no
-OLD_FILES+=usr/bin/elfcopy
-OLD_FILES+=usr/share/man/man1/elfcopy.1.gz
-.endif
 
 .if ${MK_UNBOUND} == no
 OLD_FILES+=etc/rc.d/local_unbound
@@ -8609,6 +8663,7 @@ OLD_FILES+=usr/share/man/man4/otus.4.gz
 OLD_FILES+=usr/share/man/man4/otusfw.4.gz
 OLD_FILES+=usr/share/man/man4/rsu.4.gz
 OLD_FILES+=usr/share/man/man4/rsufw.4.gz
+OLD_FILES+=usr/share/man/man4/rtwn_usb.4.gz
 OLD_FILES+=usr/share/man/man4/u3g.4.gz
 OLD_FILES+=usr/share/man/man4/u3gstub.4.gz
 OLD_FILES+=usr/share/man/man4/uark.4.gz
@@ -8650,8 +8705,6 @@ OLD_FILES+=usr/share/man/man4/ural.4.gz
 OLD_FILES+=usr/share/man/man4/urio.4.gz
 OLD_FILES+=usr/share/man/man4/urndis.4.gz
 OLD_FILES+=usr/share/man/man4/urtw.4.gz
-OLD_FILES+=usr/share/man/man4/urtwn.4.gz
-OLD_FILES+=usr/share/man/man4/urtwnfw.4.gz
 OLD_FILES+=usr/share/man/man4/usb.4.gz
 OLD_FILES+=usr/share/man/man4/usb_quirk.4.gz
 OLD_FILES+=usr/share/man/man4/usb_template.4.gz
