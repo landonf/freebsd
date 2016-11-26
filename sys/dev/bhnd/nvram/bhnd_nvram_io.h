@@ -54,7 +54,8 @@ struct bhnd_nvram_io	*bhnd_nvram_iobuf_copy_range(struct bhnd_nvram_io *src,
 
 #ifdef _KERNEL
 struct bhnd_nvram_io	*bhnd_nvram_iores_new(struct bhnd_resource *r,
-			     size_t offset, size_t size, u_int bus_width);
+			     size_t bus_size_t, size_t bus_size_t,
+			     u_int bus_width);
 #endif /* _KERNEL */
 
 size_t			 bhnd_nvram_io_getsize(struct bhnd_nvram_io *io);
