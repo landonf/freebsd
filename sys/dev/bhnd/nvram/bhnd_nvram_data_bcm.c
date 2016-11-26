@@ -433,7 +433,7 @@ bhnd_nvram_bcm_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 		/* Determine length of variable name */
 		name_len = strlen(name) + 1;
 
-		/* Write the variable name and '=' delimeter */
+		/* Write the variable name and '=' delimiter */
 		if (olen >= name_len) {
 			/* Copy name */
 			memcpy(outp, name, name_len - 1);

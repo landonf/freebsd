@@ -1186,7 +1186,7 @@ function srom_opbind_append(bind, segment, skip_out, _bind_seg, _bind_off,
 	return (1)
 }
 
-# Return true if the given binding operation can be ommitted from the output
+# Return true if the given binding operation can be omitted from the output
 # if it would be immediately followed by a VAR, VAR_REL_IMM, or EOF opcode.
 #
 # The bind operatin must be configured with default count, skip_in, and 
