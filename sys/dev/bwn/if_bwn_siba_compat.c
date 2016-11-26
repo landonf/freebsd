@@ -188,7 +188,7 @@ bwn_bhnd_populate_nvram_data(device_t dev, struct bwn_bhnd_ctx *ctx)
 
 	/* Fetch required D11 core 0 macaddr */
 	error = bhnd_nvram_getvar_array(dev, mac_80211bg_var, ctx->mac_80211bg,
-	    sizeof(ctx->mac_80211bg), BHND_NVRAM_TYPE_UINT8);
+	    sizeof(ctx->mac_80211bg), BHND_NVRAM_TYPE_UINT8_ARRAY);
 	if (error) {
 		device_printf(dev, "error reading %s: %d\n", mac_80211bg_var,
 		    error);
