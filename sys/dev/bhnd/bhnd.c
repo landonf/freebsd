@@ -509,7 +509,6 @@ bhnd_find_nvram(struct bhnd_softc *sc)
         /* Make sure we're holding Giant for newbus */
 	GIANT_REQUIRED;
 
-
 	/* nvram_dev is initialized during attachment */
 	if (sc->attach_done) {
 		if (sc->nvram_dev == NULL)

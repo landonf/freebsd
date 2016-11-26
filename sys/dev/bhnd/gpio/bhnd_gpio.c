@@ -210,8 +210,8 @@ static int
 bhnd_gpio_pin_getname(device_t dev, uint32_t pin, char *name)
 {
 	struct bhnd_gpio_softc	*sc;
-	char			 key[BHND_NVRAM_KEY_MAXLEN];
-	char			 val[BHND_NVRAM_VAL_MAXLEN];
+	char			 key[sizeof("gpioXX")];
+	char			 val[512];
 	char			*nv_name;
 	int			 error;
 	int			 len;
