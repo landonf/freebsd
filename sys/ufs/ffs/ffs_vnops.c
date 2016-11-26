@@ -77,6 +77,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/priv.h>
 #include <sys/rwlock.h>
 #include <sys/stat.h>
+#include <sys/sysctl.h>
 #include <sys/vmmeter.h>
 #include <sys/vnode.h>
 
@@ -102,8 +103,9 @@ __FBSDID("$FreeBSD$");
 #ifdef DIRECTIO
 extern int	ffs_rawread(struct vnode *vp, struct uio *uio, int *workdone);
 #endif
-static vop_fsync_t	ffs_fsync;
 static vop_fdatasync_t	ffs_fdatasync;
+static vop_fsync_t	ffs_fsync;
+static vop_getpages_t	ffs_getpages;
 static vop_lock1_t	ffs_lock;
 static vop_read_t	ffs_read;
 static vop_write_t	ffs_write;
@@ -119,13 +121,12 @@ static vop_openextattr_t	ffs_openextattr;
 static vop_setextattr_t	ffs_setextattr;
 static vop_vptofh_t	ffs_vptofh;
 
-
 /* Global vfs data structures for ufs. */
 struct vop_vector ffs_vnodeops1 = {
 	.vop_default =		&ufs_vnodeops,
 	.vop_fsync =		ffs_fsync,
 	.vop_fdatasync =	ffs_fdatasync,
-	.vop_getpages =		vnode_pager_local_getpages,
+	.vop_getpages =		ffs_getpages,
 	.vop_getpages_async =	vnode_pager_local_getpages_async,
 	.vop_lock1 =		ffs_lock,
 	.vop_read =		ffs_read,
@@ -147,7 +148,7 @@ struct vop_vector ffs_vnodeops2 = {
 	.vop_default =		&ufs_vnodeops,
 	.vop_fsync =		ffs_fsync,
 	.vop_fdatasync =	ffs_fdatasync,
-	.vop_getpages =		vnode_pager_local_getpages,
+	.vop_getpages =		ffs_getpages,
 	.vop_getpages_async =	vnode_pager_local_getpages_async,
 	.vop_lock1 =		ffs_lock,
 	.vop_read =		ffs_read,
@@ -600,15 +601,6 @@ ffs_read(ap)
 		}
 
 		/*
-		 * If IO_DIRECT then set B_DIRECT for the buffer.  This
-		 * will cause us to attempt to release the buffer later on
-		 * and will cause the buffer cache to attempt to free the
-		 * underlying pages.
-		 */
-		if (ioflag & IO_DIRECT)
-			bp->b_flags |= B_DIRECT;
-
-		/*
 		 * We should only get non-zero b_resid when an I/O error
 		 * has occurred, which should cause us to break above.
 		 * However, if the short read did not cause an error,
@@ -632,25 +624,7 @@ ffs_read(ap)
 		if (error)
 			break;
 
-		if ((ioflag & (IO_VMIO|IO_DIRECT)) &&
-		   (LIST_EMPTY(&bp->b_dep))) {
-			/*
-			 * If there are no dependencies, and it's VMIO,
-			 * then we don't need the buf, mark it available
-			 * for freeing.  For non-direct VMIO reads, the VM
-			 * has the data.
-			 */
-			bp->b_flags |= B_RELBUF;
-			brelse(bp);
-		} else {
-			/*
-			 * Otherwise let whoever
-			 * made the request take care of
-			 * freeing it. We just queue
-			 * it onto another list.
-			 */
-			bqrelse(bp);
-		}
+		vfs_bio_brelse(bp, ioflag);
 	}
 
 	/*
@@ -659,15 +633,8 @@ ffs_read(ap)
 	 * and on normal completion has not set a new value into it.
 	 * so it must have come from a 'break' statement
 	 */
-	if (bp != NULL) {
-		if ((ioflag & (IO_VMIO|IO_DIRECT)) &&
-		   (LIST_EMPTY(&bp->b_dep))) {
-			bp->b_flags |= B_RELBUF;
-			brelse(bp);
-		} else {
-			bqrelse(bp);
-		}
-	}
+	if (bp != NULL)
+		vfs_bio_brelse(bp, ioflag);
 
 	if ((error == 0 || uio->uio_resid != orig_resid) &&
 	    (vp->v_mount->mnt_flag & (MNT_NOATIME | MNT_RDONLY)) == 0 &&
@@ -785,8 +752,6 @@ ffs_write(ap)
 			vnode_pager_setsize(vp, ip->i_size);
 			break;
 		}
-		if (ioflag & IO_DIRECT)
-			bp->b_flags |= B_DIRECT;
 		if ((ioflag & (IO_SYNC|IO_INVAL)) == (IO_SYNC|IO_INVAL))
 			bp->b_flags |= B_NOCACHE;
 
@@ -826,10 +791,8 @@ ffs_write(ap)
 		if (error != 0 && (bp->b_flags & B_CACHE) == 0 &&
 		    fs->fs_bsize == xfersize)
 			vfs_bio_clrbuf(bp);
-		if ((ioflag & (IO_VMIO|IO_DIRECT)) &&
-		   (LIST_EMPTY(&bp->b_dep))) {
-			bp->b_flags |= B_RELBUF;
-		}
+
+		vfs_bio_set_flags(bp, ioflag);
 
 		/*
 		 * If IO_SYNC each buffer is written synchronously.  Otherwise
@@ -977,15 +940,6 @@ ffs_extread(struct vnode *vp, struct uio *uio, int ioflag)
 		}
 
 		/*
-		 * If IO_DIRECT then set B_DIRECT for the buffer.  This
-		 * will cause us to attempt to release the buffer later on
-		 * and will cause the buffer cache to attempt to free the
-		 * underlying pages.
-		 */
-		if (ioflag & IO_DIRECT)
-			bp->b_flags |= B_DIRECT;
-
-		/*
 		 * We should only get non-zero b_resid when an I/O error
 		 * has occurred, which should cause us to break above.
 		 * However, if the short read did not cause an error,
@@ -1003,26 +957,7 @@ ffs_extread(struct vnode *vp, struct uio *uio, int ioflag)
 					(int)xfersize, uio);
 		if (error)
 			break;
-
-		if ((ioflag & (IO_VMIO|IO_DIRECT)) &&
-		   (LIST_EMPTY(&bp->b_dep))) {
-			/*
-			 * If there are no dependencies, and it's VMIO,
-			 * then we don't need the buf, mark it available
-			 * for freeing.  For non-direct VMIO reads, the VM
-			 * has the data.
-			 */
-			bp->b_flags |= B_RELBUF;
-			brelse(bp);
-		} else {
-			/*
-			 * Otherwise let whoever
-			 * made the request take care of
-			 * freeing it. We just queue
-			 * it onto another list.
-			 */
-			bqrelse(bp);
-		}
+		vfs_bio_brelse(bp, ioflag);
 	}
 
 	/*
@@ -1031,15 +966,8 @@ ffs_extread(struct vnode *vp, struct uio *uio, int ioflag)
 	 * and on normal completion has not set a new value into it.
 	 * so it must have come from a 'break' statement
 	 */
-	if (bp != NULL) {
-		if ((ioflag & (IO_VMIO|IO_DIRECT)) &&
-		   (LIST_EMPTY(&bp->b_dep))) {
-			bp->b_flags |= B_RELBUF;
-			brelse(bp);
-		} else {
-			bqrelse(bp);
-		}
-	}
+	if (bp != NULL)
+		vfs_bio_brelse(bp, ioflag);
 	return (error);
 }
 
@@ -1108,8 +1036,6 @@ ffs_extwrite(struct vnode *vp, struct uio *uio, int ioflag, struct ucred *ucred)
 		 */
 		if ((bp->b_flags & B_CACHE) == 0 && fs->fs_bsize <= xfersize)
 			vfs_bio_clrbuf(bp);
-		if (ioflag & IO_DIRECT)
-			bp->b_flags |= B_DIRECT;
 
 		if (uio->uio_offset + xfersize > dp->di_extsize)
 			dp->di_extsize = uio->uio_offset + xfersize;
@@ -1120,10 +1046,8 @@ ffs_extwrite(struct vnode *vp, struct uio *uio, int ioflag, struct ucred *ucred)
 
 		error =
 		    uiomove((char *)bp->b_data + blkoffset, (int)xfersize, uio);
-		if ((ioflag & (IO_VMIO|IO_DIRECT)) &&
-		   (LIST_EMPTY(&bp->b_dep))) {
-			bp->b_flags |= B_RELBUF;
-		}
+
+		vfs_bio_set_flags(bp, ioflag);
 
 		/*
 		 * If IO_SYNC each buffer is written synchronously.  Otherwise
@@ -1783,4 +1707,39 @@ vop_vptofh {
 	ufhp->ufid_ino = ip->i_number;
 	ufhp->ufid_gen = ip->i_gen;
 	return (0);
+}
+
+SYSCTL_DECL(_vfs_ffs);
+static int use_buf_pager = 1;
+SYSCTL_INT(_vfs_ffs, OID_AUTO, use_buf_pager, CTLFLAG_RWTUN, &use_buf_pager, 0,
+    "Always use buffer pager instead of bmap");
+
+static daddr_t
+ffs_gbp_getblkno(struct vnode *vp, vm_ooffset_t off)
+{
+
+	return (lblkno(VFSTOUFS(vp->v_mount)->um_fs, off));
+}
+
+static int
+ffs_gbp_getblksz(struct vnode *vp, daddr_t lbn)
+{
+
+	return (blksize(VFSTOUFS(vp->v_mount)->um_fs, VTOI(vp), lbn));
+}
+
+static int
+ffs_getpages(struct vop_getpages_args *ap)
+{
+	struct vnode *vp;
+	struct ufsmount *um;
+
+	vp = ap->a_vp;
+	um = VFSTOUFS(vp->v_mount);
+
+	if (!use_buf_pager && um->um_devvp->v_bufobj.bo_bsize <= PAGE_SIZE)
+		return (vnode_pager_generic_getpages(vp, ap->a_m, ap->a_count,
+		    ap->a_rbehind, ap->a_rahead, NULL, NULL));
+	return (vfs_bio_getpages(vp, ap->a_m, ap->a_count, ap->a_rbehind,
+	    ap->a_rahead, ffs_gbp_getblkno, ffs_gbp_getblksz));
 }

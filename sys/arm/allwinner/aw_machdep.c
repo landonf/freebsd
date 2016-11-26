@@ -36,7 +36,6 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#define _ARM32_BUS_DMA_PRIVATE
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/bus.h>
@@ -48,8 +47,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/bus.h>
 #include <machine/machdep.h>
 #include <machine/platformvar.h>
-
-#include <dev/fdt/fdt_common.h>
 
 #include <arm/allwinner/aw_mp.h>
 #include <arm/allwinner/aw_wdog.h>
@@ -147,20 +144,8 @@ allwinner_devmap_init(platform_t plat)
 	return (0);
 }
 
-struct arm32_dma_range *
-bus_dma_get_range(void)
-{
-	return (NULL);
-}
-
-int
-bus_dma_get_range_nb(void)
-{
-	return (0);
-}
-
-void
-cpu_reset()
+static void
+allwinner_cpu_reset(platform_t plat)
 {
 	aw_wdog_watchdog_reset();
 	printf("Reset failed!\n");
@@ -172,6 +157,7 @@ static platform_method_t a10_methods[] = {
 	PLATFORMMETHOD(platform_attach,         a10_attach),
 	PLATFORMMETHOD(platform_lastaddr,       allwinner_lastaddr),
 	PLATFORMMETHOD(platform_devmap_init,    allwinner_devmap_init),
+	PLATFORMMETHOD(platform_cpu_reset,	allwinner_cpu_reset),
 
 	PLATFORMMETHOD_END,
 };
@@ -183,6 +169,7 @@ static platform_method_t a13_methods[] = {
 	PLATFORMMETHOD(platform_attach,         a13_attach),
 	PLATFORMMETHOD(platform_lastaddr,       allwinner_lastaddr),
 	PLATFORMMETHOD(platform_devmap_init,    allwinner_devmap_init),
+	PLATFORMMETHOD(platform_cpu_reset,	allwinner_cpu_reset),
 
 	PLATFORMMETHOD_END,
 };
@@ -194,6 +181,7 @@ static platform_method_t a20_methods[] = {
 	PLATFORMMETHOD(platform_attach,         a20_attach),
 	PLATFORMMETHOD(platform_lastaddr,       allwinner_lastaddr),
 	PLATFORMMETHOD(platform_devmap_init,    allwinner_devmap_init),
+	PLATFORMMETHOD(platform_cpu_reset,	allwinner_cpu_reset),
 
 #ifdef SMP
 	PLATFORMMETHOD(platform_mp_start_ap,	aw_mp_start_ap),
@@ -209,6 +197,7 @@ static platform_method_t a31_methods[] = {
 	PLATFORMMETHOD(platform_attach,         a31_attach),
 	PLATFORMMETHOD(platform_lastaddr,       allwinner_lastaddr),
 	PLATFORMMETHOD(platform_devmap_init,    allwinner_devmap_init),
+	PLATFORMMETHOD(platform_cpu_reset,	allwinner_cpu_reset),
 
 #ifdef SMP
 	PLATFORMMETHOD(platform_mp_start_ap,	aw_mp_start_ap),
@@ -224,6 +213,7 @@ static platform_method_t a31s_methods[] = {
 	PLATFORMMETHOD(platform_attach,         a31s_attach),
 	PLATFORMMETHOD(platform_lastaddr,       allwinner_lastaddr),
 	PLATFORMMETHOD(platform_devmap_init,    allwinner_devmap_init),
+	PLATFORMMETHOD(platform_cpu_reset,	allwinner_cpu_reset),
 
 #ifdef SMP
 	PLATFORMMETHOD(platform_mp_start_ap,	aw_mp_start_ap),
@@ -239,6 +229,7 @@ static platform_method_t a83t_methods[] = {
 	PLATFORMMETHOD(platform_attach,         a83t_attach),
 	PLATFORMMETHOD(platform_lastaddr,       allwinner_lastaddr),
 	PLATFORMMETHOD(platform_devmap_init,    allwinner_devmap_init),
+	PLATFORMMETHOD(platform_cpu_reset,	allwinner_cpu_reset),
 
 #ifdef SMP
 	PLATFORMMETHOD(platform_mp_start_ap,	a83t_mp_start_ap),
@@ -254,6 +245,7 @@ static platform_method_t h3_methods[] = {
 	PLATFORMMETHOD(platform_attach,         h3_attach),
 	PLATFORMMETHOD(platform_lastaddr,       allwinner_lastaddr),
 	PLATFORMMETHOD(platform_devmap_init,    allwinner_devmap_init),
+	PLATFORMMETHOD(platform_cpu_reset,	allwinner_cpu_reset),
 
 #ifdef SMP
 	PLATFORMMETHOD(platform_mp_start_ap,	aw_mp_start_ap),

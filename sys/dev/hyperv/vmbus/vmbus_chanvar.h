@@ -33,8 +33,9 @@
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/queue.h>
-#include <sys/taskqueue.h>
 #include <sys/sysctl.h>
+#include <sys/sx.h>
+#include <sys/taskqueue.h>
 
 #include <dev/hyperv/include/hyperv.h>
 #include <dev/hyperv/include/hyperv_busdma.h>
@@ -124,13 +125,24 @@ struct vmbus_channel {
 	struct hyperv_dma		ch_bufring_dma;
 	uint32_t			ch_bufring_gpadl;
 
-	struct task			ch_detach_task;
+	struct task			ch_attach_task;	/* run in ch_mgmt_tq */
+	struct task			ch_detach_task;	/* run in ch_mgmt_tq */
+	struct taskqueue		*ch_mgmt_tq;
+
+	/* If this is a primary channel */
 	TAILQ_ENTRY(vmbus_channel)	ch_prilink;	/* primary chan link */
+
+	TAILQ_ENTRY(vmbus_channel)	ch_link;	/* channel link */
 	uint32_t			ch_subidx;	/* subchan index */
 	volatile uint32_t		ch_stflags;	/* atomic-op */
 							/* VMBUS_CHAN_ST_ */
 	struct hyperv_guid		ch_guid_type;
 	struct hyperv_guid		ch_guid_inst;
+
+	struct sx			ch_orphan_lock;
+	struct vmbus_xact_ctx		*ch_orphan_xact;
+
+	int				ch_refs;
 
 	struct sysctl_ctx_list		ch_sysctl_ctx;
 } __aligned(CACHE_LINE_SIZE);
@@ -150,7 +162,15 @@ struct vmbus_channel {
 #define VMBUS_CHAN_TXF_HASMNF		0x0001
 
 #define VMBUS_CHAN_ST_OPENED_SHIFT	0
+#define VMBUS_CHAN_ST_ONPRIL_SHIFT	1
+#define VMBUS_CHAN_ST_ONSUBL_SHIFT	2
+#define VMBUS_CHAN_ST_ONLIST_SHIFT	3
+#define VMBUS_CHAN_ST_REVOKED_SHIFT	4	/* sticky */
 #define VMBUS_CHAN_ST_OPENED		(1 << VMBUS_CHAN_ST_OPENED_SHIFT)
+#define VMBUS_CHAN_ST_ONPRIL		(1 << VMBUS_CHAN_ST_ONPRIL_SHIFT)
+#define VMBUS_CHAN_ST_ONSUBL		(1 << VMBUS_CHAN_ST_ONSUBL_SHIFT)
+#define VMBUS_CHAN_ST_ONLIST		(1 << VMBUS_CHAN_ST_ONLIST_SHIFT)
+#define VMBUS_CHAN_ST_REVOKED		(1 << VMBUS_CHAN_ST_REVOKED_SHIFT)
 
 struct vmbus_softc;
 struct vmbus_message;

@@ -44,7 +44,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/resource.h>
 
 #include <dev/bhnd/bhnd.h>
-#include <dev/bhnd/bhnd_core.h>
 
 #include <dev/bhnd/cores/pmu/bhnd_pmureg.h>
 
