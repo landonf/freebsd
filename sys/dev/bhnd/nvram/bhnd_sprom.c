@@ -129,7 +129,8 @@ bhnd_sprom_attach(device_t dev, bus_size_t offset)
 	}
 
 	/* Initialize NVRAM data store */
-	error = bhnd_nvram_store_parse_new(&sc->store, io, &bhnd_nvram_sprom_class);
+	error = bhnd_nvram_store_parse_new(&sc->store, io,
+	    &bhnd_nvram_sprom_class);
 	if (error)
 		goto failed;
 
