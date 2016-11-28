@@ -388,7 +388,7 @@ bhnd_nvram_data_generic_find(struct bhnd_nvram_data *nv, const char *name)
 
 	cookiep = NULL;
 	while ((next = bhnd_nvram_data_next(nv, &cookiep))) {
-		if (strcasecmp(name, next) == 0)
+		if (strcmp(name, next) == 0)
 			return (cookiep);
 	}
 

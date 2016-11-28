@@ -352,7 +352,7 @@ bhnd_nvram_sort_idx(void *ctx, const void *lhs, const void *rhs)
 	r_str = bhnd_nvram_data_getvar_name(sc->nv, *(void * const *)rhs);
 
 	/* Perform comparison */
-	return (strcasecmp(l_str, r_str));
+	return (strcmp(l_str, r_str));
 }
 
 /**
@@ -551,7 +551,7 @@ bhnd_nvram_index_lookup(struct bhnd_nvram_store *sc, const char *name)
 
 		/* Determine which side of the partition to search */
 		indexed_name = bhnd_nvram_data_getvar_name(sc->nv, cookiep);
-		order = strcasecmp(indexed_name, name);
+		order = strcmp(indexed_name, name);
 
 		if (order < 0) {
 			/* Search upper partition */
