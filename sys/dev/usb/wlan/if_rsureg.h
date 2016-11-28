@@ -48,6 +48,7 @@
 
 #define R92S_MACIDSETTING	0x0050
 #define R92S_MACID		(R92S_MACIDSETTING + 0x000)
+#define R92S_MAR		(R92S_MACIDSETTING + 0x010)
 
 #define R92S_GP			0x01e0
 #define R92S_GPIO_CTRL		(R92S_GP + 0x00c)
@@ -768,8 +769,8 @@ struct rsu_softc {
 
 	u_int				sc_running:1,
 					sc_calibrating:1,
-					sc_scanning:1,
-					sc_scan_pass:1;
+					sc_active_scan:1,
+					sc_extra_scan:1;
 	u_int				cut;
 	uint8_t				sc_rftype;
 	int8_t				sc_nrxstream;
