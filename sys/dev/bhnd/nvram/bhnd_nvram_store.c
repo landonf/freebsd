@@ -394,7 +394,9 @@ bhnd_nvram_register_devpaths(struct bhnd_nvram_store *sc)
 		/* Parse index value that should follow a 'devpath' prefix */
 		suffix = name + strlen("devpath");
 		index = strtoul(suffix, &eptr, 10);
-		if (eptr == suffix || *eptr != '\0') {
+		if (eptr == suffix || *eptr != '\0' ||
+		    index == BHND_NV_PATH_ALIAS_NONE)
+		{
 			BHND_NV_LOG("invalid devpath variable '%s'\n", name);
 			continue;
 		}
