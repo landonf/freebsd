@@ -41,9 +41,10 @@
 #include "bhnd_nvram_store.h"
 
 /** Index is only generated if minimum variable count is met */
-#define	NVRAM_IDX_VAR_THRESH		15
+#define	BHND_NV_IDX_VAR_THRESHOLD	15
 
-#define	BHND_NVSTORE_PATH_ALIAS_NONE	ULONG_MAX
+/** Path does not have an assigned alias */
+#define	BHND_NV_PATH_ALIAS_NONE		ULONG_MAX
 
 LIST_HEAD(bhnd_nvstore_paths, bhnd_nvstore_path);
 
@@ -52,8 +53,7 @@ LIST_HEAD(bhnd_nvstore_paths, bhnd_nvstore_path);
  */
 struct bhnd_nvstore_path {
 	char	*path;	/** relative path */
-	u_long	 index;	/** aliased path index, or
-			    BHND_NVSTORE_PATH_IDX_INVALID */
+	u_long	 index;	/** aliased path index, or BHND_NV_PATH_ALIAS_NONE */
 
 	LIST_ENTRY(bhnd_nvstore_path) dp_link;
 };

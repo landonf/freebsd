@@ -456,7 +456,7 @@ bhnd_nvram_generate_index(struct bhnd_nvram_store *sc)
 
 	/* Skip generating a variable index if threshold is not met ... */
 	num_vars = bhnd_nvram_data_count(sc->nv);
-	if (num_vars < NVRAM_IDX_VAR_THRESH)
+	if (num_vars < BHND_NV_IDX_VAR_THRESHOLD)
 		return (0);
 
 	/* ... or if the backing data instance implements indexed lookup
