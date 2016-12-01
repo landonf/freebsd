@@ -94,6 +94,9 @@ bhnd_nvram_val_init_common(bhnd_nvram_val_t *value, bhnd_nvram_val_storage_t
 	size_t		 olen;
 	int		 error;
 
+	/* Initialize value instance */
+	*value = BHND_NVRAM_VAL_INITIALIZER(fmt, val_storage);
+
 	/* Determine expected data type, and allow the format to delegate to
 	 * a new format instance */
 	if (fmt != NULL && fmt->op_filter != NULL) {
@@ -125,9 +128,6 @@ bhnd_nvram_val_init_common(bhnd_nvram_val_t *value, bhnd_nvram_val_storage_t
 		 * internally. */
 		otype = itype;
 	}
-
-	/* Initialize value instance */
-	*value = BHND_NVRAM_VAL_INITIALIZER(fmt, val_storage);
 
 	/* If input data already in native format, init directly. */
 	if (otype == itype) {
