@@ -183,8 +183,6 @@ struct bhnd_nvram_store {
 	bhnd_nvstore_path	*root_path;	/**< root path instance */
 	bhnd_nvstore_path_list	 paths[4];	/**< path hash table */
 	size_t			 num_paths;	/**< path count */
-
-	nvlist_t		*pending;	/**< uncommitted writes */
 };
 
 #ifdef _KERNEL

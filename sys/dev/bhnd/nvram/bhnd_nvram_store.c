@@ -169,6 +169,10 @@ bhnd_nvram_store_new(struct bhnd_nvram_store **store,
 	for (size_t i = 0; i < nitems(sc->aliases); i++)
 		LIST_INIT(&sc->aliases[i]);
 
+	/* Retain the NVRAM data */
+	sc->data = bhnd_nvram_data_retain(data);
+	sc->data_caps = bhnd_nvram_data_caps(data);
+
 	/* Register required root path */
 	error = bhnd_nvstore_register_path(sc, BHND_NVSTORE_ROOT_PATH,
 	    BHND_NVSTORE_ROOT_PATH_LEN);
@@ -178,17 +182,6 @@ bhnd_nvram_store_new(struct bhnd_nvram_store **store,
 	sc->root_path = bhnd_nvstore_get_path(sc, BHND_NVSTORE_ROOT_PATH,
 	    BHND_NVSTORE_ROOT_PATH_LEN);
 	BHND_NV_ASSERT(sc->root_path, ("missing root path"));
-
-	/* Retain the NVRAM data */
-	sc->data = bhnd_nvram_data_retain(data);
-	sc->data_caps = bhnd_nvram_data_caps(data);
-
-	/* Allocate uncommitted change list */
-	sc->pending = nvlist_create(NV_FLAG_IGNORE_CASE);
-	if (sc->pending == NULL) {
-		error = ENOMEM;
-		goto cleanup;
-	}
 
 	/* Parse all variables vended by our backing NVRAM data instance,
 	 * generating all path entries, alias entries, and variable indexes */
@@ -273,9 +266,6 @@ bhnd_nvram_store_free(struct bhnd_nvram_store *sc)
 			bhnd_nv_free(path);
 		}
 	}
-
-	if (sc->pending != NULL)
-		nvlist_destroy(sc->pending);
 
 	if (sc->data != NULL)
 		bhnd_nvram_data_release(sc->data);
@@ -750,12 +740,6 @@ bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
 	bhnd_nvstore_name_info	 info;
 	bhnd_nvstore_path	*path;
 	void			*cookiep;
-	// TODO: path-aware uncommitted change tracking
-#if 0
-	const void		*inp;
-	size_t			 ilen;
-	bhnd_nvram_type		 itype;
-#endif
 	int			 error;
 
 	BHND_NVSTORE_LOCK(sc);
@@ -778,39 +762,7 @@ bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
 		goto cleanup;
 	}
 
-	// TODO: path-aware uncommitted change tracking
-#if 0
-	/*
-	 * Search order:
-	 *
-	 * - uncommitted changes
-	 * - index lookup OR buffer scan
-	 */
-
-
-	/* Is variable marked for deletion? */
-	if (nvlist_exists_null(sc->pending, name)) {
-		error = ENOENT;
-		goto cleanup;
-	}
-
-	/* Does an uncommitted value exist? */
-	if (nvlist_exists_string(sc->pending, name)) {
-		/* Uncommited value exists, is not a deletion */
-		inp = nvlist_get_string(sc->pending, name);
-		ilen = strlen(inp) + 1;
-		itype = BHND_NVRAM_TYPE_STRING;
-
-		/* Coerce borrowed data reference before releasing
-		 * our lock. */
-		error = bhnd_nvram_value_coerce(inp, ilen, itype, outp, olen,
-		    otype);
-
-		goto cleanup;
-	} else if (nvlist_exists(sc->pending, name)) {
-		BHND_NV_PANIC("invalid value type for pending change %s", name);
-	}
-#endif
+	// TODO: path-aware uncommitted change unhandling
 
 	/* Lookup variable in the backing NVRAM data instance */
 	if ((cookiep = bhnd_nvstore_path_lookup(sc, path, info.name)) == NULL) {
@@ -843,9 +795,6 @@ int
 bhnd_nvram_store_setvar(struct bhnd_nvram_store *sc, const char *name,
     const void *inp, size_t ilen, bhnd_nvram_type itype)
 {
-	const char	*p;
-	char		 vbuf[512];
-
 	/* Verify name validity */
 	if (!bhnd_nvram_validate_name(name, strlen(name)))
 		return (EINVAL);
@@ -855,51 +804,8 @@ bhnd_nvram_store_setvar(struct bhnd_nvram_store *sc, const char *name,
 	if (ilen % bhnd_nvram_value_size(itype, inp, ilen, 1) != 0)
 		return (EINVAL);
 
-	/* Determine string format (or directly add variable, if a C string) */
-	switch (itype) {
-	case BHND_NVRAM_TYPE_UINT8:
-	case BHND_NVRAM_TYPE_UINT16:
-	case BHND_NVRAM_TYPE_UINT32:
-	case BHND_NVRAM_TYPE_UINT64:
-	case BHND_NVRAM_TYPE_INT8:
-	case BHND_NVRAM_TYPE_INT16:
-	case BHND_NVRAM_TYPE_INT32:
-	case BHND_NVRAM_TYPE_INT64:
-	case BHND_NVRAM_TYPE_UINT8_ARRAY:
-	case BHND_NVRAM_TYPE_UINT16_ARRAY:
-	case BHND_NVRAM_TYPE_UINT32_ARRAY:
-	case BHND_NVRAM_TYPE_UINT64_ARRAY:
-	case BHND_NVRAM_TYPE_INT8_ARRAY:
-	case BHND_NVRAM_TYPE_INT16_ARRAY:
-	case BHND_NVRAM_TYPE_INT32_ARRAY:
-	case BHND_NVRAM_TYPE_INT64_ARRAY:
-	case BHND_NVRAM_TYPE_CHAR_ARRAY:
-	case BHND_NVRAM_TYPE_STRING_ARRAY:
-		// TODO: non-char/string value support
-		return (EOPNOTSUPP);
-
-	case BHND_NVRAM_TYPE_CHAR:
-	case BHND_NVRAM_TYPE_STRING:
-		p = inp;
-
-		/* Must not exceed buffer size */
-		if (ilen > sizeof(vbuf))
-			return (EINVAL);
-
-		/* Must have room for a trailing NUL */
-		if (ilen == sizeof(vbuf) && p[ilen-1] != '\0')
-			return (EINVAL);
-
-		/* Copy out the string value and append trailing NUL */
-		strlcpy(vbuf, inp, ilen);
-	
-		/* Add to pending change list */
-		BHND_NVSTORE_LOCK(sc);
-		nvlist_add_string(sc->pending, name, vbuf);
-		BHND_NVSTORE_UNLOCK(sc);
-	}
-
-	return (0);
+	// TODO: uncommitted change tracking
+	return (EOPNOTSUPP);
 }
 
 /**

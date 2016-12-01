@@ -35,12 +35,8 @@
 #ifdef _KERNEL
 #include <sys/param.h>
 #include <sys/bus.h>
-#include <sys/nv.h>
 #else /* !_KERNEL */
 #include <errno.h>
-
-#include <nv.h>
-
 #include <stdint.h>
 #include <stdlib.h>
 #endif
