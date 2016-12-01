@@ -61,8 +61,8 @@ int	bhnd_nvram_store_parse_new(struct bhnd_nvram_store **store,
 void	bhnd_nvram_store_free(struct bhnd_nvram_store *store);
 
 int	bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
-	    void *buf, size_t *len, bhnd_nvram_type type);
+	    void *outp, size_t *olen, bhnd_nvram_type otype);
 int	bhnd_nvram_store_setvar(struct bhnd_nvram_store *sc, const char *name,
-	    const void *buf, size_t len, bhnd_nvram_type type);
+	    const void *inp, size_t ilen, bhnd_nvram_type itype);
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_STORE_H_ */
