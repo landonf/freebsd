@@ -73,13 +73,26 @@ MALLOC_DECLARE(M_BHND_NVRAM);
 #define	bhnd_nv_isxdigit(c)	isxdigit(c)
 #define	bhnd_nv_toupper(c)	toupper(c)
 
-#define	bhnd_nv_malloc(size)		malloc((size), M_BHND_NVRAM, M_WAITOK)
+#define	bhnd_nv_malloc(size)		malloc((size), M_BHND_NVRAM, M_NOWAIT)
 #define	bhnd_nv_calloc(n, size)		malloc((n) * (size), M_BHND_NVRAM, \
-					    M_WAITOK | M_ZERO)
+					    M_NOWAIT | M_ZERO)
 #define	bhnd_nv_reallocf(buf, size)	reallocf((buf), (size), M_BHND_NVRAM, \
-					    M_WAITOK)
+					    M_NOWAIT)
 #define	bhnd_nv_free(buf)		free((buf), M_BHND_NVRAM)
-#define	bhnd_nv_strndup(str, len)	strndup(str, len, M_BHND_NVRAM)
+
+/* We need our own strndup() implementation to pass required M_NOWAIT */
+static inline char *
+bhnd_nv_strndup(const char *str, size_t len)
+{
+	char	*dest;
+
+	len = strnlen(str, len);
+	dest = malloc(len + 1, M_BHND_NVRAM, M_NOWAIT);
+	memcpy(dest, str, len);
+	dest[len] = '\0';
+
+	return (dest);
+}
 
 #ifdef INVARIANTS
 #define	BHND_NV_INVARIANTS
