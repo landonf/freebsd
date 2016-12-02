@@ -42,6 +42,9 @@
 #include "bhnd_nvram_types.h"
 #include "bhnd_nvram_value.h"
 
+typedef struct bhnd_nvram_prop		bhnd_nvram_prop;
+typedef struct bhnd_nvram_plist		bhnd_nvram_plist;
+
 /**
  * NVRAM data sources supported by bhnd(4) devices.
  */
