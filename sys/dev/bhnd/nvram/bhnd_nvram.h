@@ -74,6 +74,14 @@ typedef enum {
 } bhnd_nvram_src;
 
 /**
+ * BHND NVRAM boolean type; guaranteed to be exactly 8-bits, representing
+ * true as integer constant 1, and false as integer constant 0.
+ * 
+ * Compatible with stdbool constants (true, false).
+ */
+typedef uint8_t	bhnd_nvram_bool_t;
+
+/**
  * NVRAM data types.
  * 
  * @internal
@@ -94,6 +102,10 @@ typedef enum {
 	BHND_NVRAM_TYPE_CHAR		= 8,	/**< ASCII/UTF-8 character */
 	BHND_NVRAM_TYPE_STRING		= 9,	/**< ASCII/UTF-8 NUL-terminated
 						     string */
+	BHND_NVRAM_TYPE_BOOL		= 10,	/**< uint8 boolean value. see
+						     bhnd_nvram_bool_t. */
+	BHND_NVRAM_TYPE_NULL		= 11,	/**< NULL (empty) value */
+	BHND_NVRAM_TYPE_BYTES		= 12,	/**< octet string */
 
 	/* 10-15 reserved for primitive (non-array) types */
 
@@ -109,6 +121,8 @@ typedef enum {
 						     characters */
 	BHND_NVRAM_TYPE_STRING_ARRAY	= 25,	/**< array of ASCII/UTF-8
 						     NUL-terminated strings */
+	BHND_NVRAM_TYPE_BOOL_ARRAY	= 26,	/**< array of uint8 boolean
+						     values */
 } bhnd_nvram_type;
 
 const char	*bhnd_nvram_string_array_next(const char *inp, size_t ilen,

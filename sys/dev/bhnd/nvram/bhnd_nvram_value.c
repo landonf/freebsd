@@ -35,6 +35,7 @@ __FBSDID("$FreeBSD$");
 
 #ifdef _KERNEL
 
+#include <sys/ctype.h>
 #include <sys/kernel.h>
 #include <sys/malloc.h>
 #include <sys/systm.h>
@@ -43,6 +44,7 @@ __FBSDID("$FreeBSD$");
 
 #else /* !_KERNEL */
 
+#include <ctype.h>
 #include <inttypes.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -63,6 +65,24 @@ static int	 bhnd_nvram_val_set(bhnd_nvram_val_t *value, const void *inp,
 				    uint32_t flags);
 static int	 bhnd_nvram_val_set_inline(bhnd_nvram_val_t *value,
 		     const void *inp, size_t ilen, bhnd_nvram_type itype);
+
+
+static int	 bhnd_nvram_val_encode_bytes(const void *inp, size_t ilen,
+		     bhnd_nvram_type itype, void *outp, size_t *olen,
+		     bhnd_nvram_type otype);
+static int	 bhnd_nvram_val_encode_int(const void *inp, size_t ilen,
+		     bhnd_nvram_type itype, void *outp, size_t *olen,
+		     bhnd_nvram_type otype);
+static int	 bhnd_nvram_val_encode_null(const void *inp, size_t ilen,
+		     bhnd_nvram_type itype, void *outp, size_t *olen,
+		     bhnd_nvram_type otype);
+static int	 bhnd_nvram_val_encode_bool(const void *inp, size_t ilen,
+		     bhnd_nvram_type itype, void *outp, size_t *olen,
+		     bhnd_nvram_type otype);
+static int	 bhnd_nvram_val_encode_string(const void *inp, size_t ilen,
+		     bhnd_nvram_type itype, void *outp, size_t *olen,
+		     bhnd_nvram_type otype);
+
 
 #define	BHND_NVRAM_VAL_INITIALIZER(_fmt, _storage)		\
 	(bhnd_nvram_val_t) {					\
@@ -324,6 +344,168 @@ bhnd_nvram_val_release(bhnd_nvram_val_t *value)
 }
 
 /**
+ * Standard BHND_NVRAM_TYPE_NULL encoding implementation.
+ */
+static int
+bhnd_nvram_val_encode_null(const void *inp, size_t ilen, bhnd_nvram_type itype,
+    void *outp, size_t *olen, bhnd_nvram_type otype)
+{
+	size_t	limit, nbytes;
+
+	BHND_NV_ASSERT(itype == BHND_NVRAM_TYPE_NULL,
+	    ("unsupported type: %d", itype));
+
+	/* Determine output byte limit */
+	if (outp != NULL)
+		limit = *olen;
+	else
+		limit = 0;
+
+	nbytes = 0;
+
+	/* Write to output */
+	switch (otype) {
+	case BHND_NVRAM_TYPE_NULL:
+		/* Can be directly encoded as a zero-length NULL value */
+		nbytes = 0;
+		break;
+
+	case BHND_NVRAM_TYPE_STRING:
+	case BHND_NVRAM_TYPE_STRING_ARRAY:
+		/* Can be encoded as an empty string */
+		if (limit > nbytes)
+			*((char *)outp + nbytes) = '\0';
+
+		nbytes++;
+		break;
+
+	default:
+		/* Not representable */
+		return (EFTYPE);
+	}
+
+	/* Provide required length */
+	*olen = nbytes;
+	if (limit < *olen) {
+		if (outp == NULL)
+			return (0);
+
+		return (ENOMEM);
+	}
+
+	return (0);
+}
+
+/**
+ * Standard BHND_NVRAM_TYPE_BOOL encoding implementation.
+ */
+static int
+bhnd_nvram_val_encode_bool(const void *inp, size_t ilen, bhnd_nvram_type itype,
+    void *outp, size_t *olen, bhnd_nvram_type otype)
+{
+	bhnd_nvram_bool_t	bval;
+	size_t			limit, nbytes, nelem;
+	int			error;
+
+	BHND_NV_ASSERT(itype == BHND_NVRAM_TYPE_BOOL,
+	    ("unsupported type: %d", itype));
+
+	/* Determine output byte limit */
+	if (outp != NULL)
+		limit = *olen;
+	else
+		limit = 0;
+
+	nbytes = 0;
+
+	/* Must be exactly one element in input */
+	if ((error = bhnd_nvram_value_nelem(itype, inp, ilen, &nelem)))
+		return (error);
+
+	if (nelem != 1)
+		return (EFTYPE);
+
+	/* Fetch (and normalize) boolean value */
+	bval = (*(const bhnd_nvram_bool_t *)inp != 0) ? true : false;
+
+	/* Write to output */
+	switch (otype) {
+	case BHND_NVRAM_TYPE_NULL:
+		/* False can be directly encoded as a zero-length NULL value */
+		if (bval != false)
+			return (EFTYPE);
+
+		nbytes = 0;
+		break;
+
+	case BHND_NVRAM_TYPE_STRING:
+	case BHND_NVRAM_TYPE_STRING_ARRAY: {
+		/* Can encode as "true" or "false" */
+		const char *str = bval ? "true" : "false";
+
+		nbytes = strlen(str) + 1;
+		if (limit > nbytes)
+			strcpy(outp, str);
+
+		break;
+	}
+
+	default:
+		/* If output type is an integer, we can delegate to standard
+		 * integer encoding to encode as zero or one. */
+		if (bhnd_nvram_is_int_type(otype)) {
+			uint8_t	ival = bval ? 1 : 0;
+
+			return (bhnd_nvram_val_encode_int(&ival, sizeof(ival),
+			    BHND_NVRAM_TYPE_UINT8, outp, olen, otype));
+		}
+
+		/* Otherwise not representable */
+		return (EFTYPE);
+	}
+
+	/* Provide required length */
+	*olen = nbytes;
+	if (limit < *olen) {
+		if (outp == NULL)
+			return (0);
+
+		return (ENOMEM);
+	}
+
+	return (0);
+}
+
+/**
+ * Standard BHND_NVRAM_TYPE_BYTES encoding implementation.
+ */
+static int
+bhnd_nvram_val_encode_bytes(const void *inp, size_t ilen, bhnd_nvram_type itype,
+    void *outp, size_t *olen, bhnd_nvram_type otype)
+{
+	BHND_NV_ASSERT(itype == BHND_NVRAM_TYPE_BYTES,
+	    ("unsupported type: %d", itype));
+
+	/* Write to output */
+	switch (otype) {
+	case BHND_NVRAM_TYPE_STRING:
+	case BHND_NVRAM_TYPE_STRING_ARRAY:
+		/* If encoding as a string, produce an EFI-style hexadecimal
+		 * byte array (HF1F...) by interpreting the octet string
+		 * as an array of uint8 values */
+		return (bhnd_nvram_value_printf("H%[]02hhX", inp, ilen,
+		    BHND_NVRAM_TYPE_UINT8_ARRAY, outp, olen, ""));
+
+	default:
+		/* Fall back on direct interpretation as an array of 8-bit
+		 * integers array */
+		return (bhnd_nvram_value_coerce(inp, ilen,
+		    BHND_NVRAM_TYPE_UINT8_ARRAY, outp, olen, otype));
+	}
+}
+
+
+/**
  * Standard string/char array/char encoding implementation.
  *
  * Input type must be one of:
@@ -332,8 +514,8 @@ bhnd_nvram_val_release(bhnd_nvram_val_t *value)
  * - BHND_NVRAM_TYPE_CHAR_ARRAY
  */
 static int
-bhnd_nvram_val_encode_string(void *outp, size_t *olen, bhnd_nvram_type otype,
-     const void *inp, size_t ilen, bhnd_nvram_type itype)
+bhnd_nvram_val_encode_string(const void *inp, size_t ilen,
+    bhnd_nvram_type itype, void *outp, size_t *olen, bhnd_nvram_type otype)
 {
 	const char	*cstr;
 	bhnd_nvram_type	 otype_base;
@@ -360,8 +542,16 @@ bhnd_nvram_val_encode_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 	/* Determine string length, minus trailing NUL (if any) */
 	cstr_len = strnlen(cstr, cstr_size);
 
-	/* Parse the field data */
+	/* Parse the string data and write to output */
 	switch (otype) {
+	case BHND_NVRAM_TYPE_NULL:
+		/* Only an empty string may be represented as a NULL value */
+		if (cstr_len != 0)
+			return (EFTYPE);
+
+		*olen = 0;
+		return (0);
+
 	case BHND_NVRAM_TYPE_CHAR:
 	case BHND_NVRAM_TYPE_CHAR_ARRAY:
 		/* String must contain exactly 1 non-terminating-NUL character
@@ -384,6 +574,99 @@ bhnd_nvram_val_encode_string(void *outp, size_t *olen, bhnd_nvram_type otype,
 			return (ENOMEM);
 
 		return (0);
+
+	case BHND_NVRAM_TYPE_BOOL:
+	case BHND_NVRAM_TYPE_BOOL_ARRAY: {
+		const char		*p;
+		size_t			 plen;
+		bhnd_nvram_bool_t	 bval;
+
+		/* Trim leading/trailing whitespace */
+		p = cstr;
+		plen = bhnd_nvram_trim_field(&p, cstr_len, '\0');
+
+		/* Parse string representation */
+		if (strncasecmp(p, "true", plen) == 0 ||
+		    strncasecmp(p, "yes", plen) == 0 ||
+		    strncmp(p, "1", plen) == 0)
+		{
+			bval = true;
+		} else if (strncasecmp(p, "false", plen) == 0 ||
+		    strncasecmp(p, "no", plen) == 0 ||
+		    strncmp(p, "0", plen) == 0)
+		{
+			bval = false;
+		} else {
+			/* Not a recognized boolean string */
+			return (EFTYPE);
+		}
+
+		/* Write to output */
+		nbytes = sizeof(bhnd_nvram_bool_t);
+		if (limit >= nbytes)
+			*((bhnd_nvram_bool_t *)outp) = bval;
+
+		/* Provide required length */
+		*olen = nbytes;
+		if (limit < *olen && outp != NULL)
+			return (ENOMEM);
+
+		return (0);
+	}
+
+	case BHND_NVRAM_TYPE_BYTES: {
+		const char	*p;
+		size_t		 plen, parsed_len;
+		int		 error;
+
+		/* Trim leading/trailing whitespace */
+		p = cstr;
+		plen = bhnd_nvram_trim_field(&p, cstr_len, '\0');
+
+		/* Check for EFI-style hexadecimal byte array string format.
+		 * Must have a 'H' prefix  */
+		if (plen < 1 || bhnd_nv_toupper(*p) != 'H')
+			return (EFTYPE);
+
+		/* Skip leading 'H' */
+		p++;
+		plen--;
+
+		/* Parse the input string's two-char octets until the end
+		 * of input is reached. The last octet may contain only
+		 * one char */
+		while (plen > 0) {
+			uint8_t	byte;
+			size_t	byte_len = sizeof(byte);
+
+			/* Parse next two-character hex octet */
+			error = bhnd_nvram_parse_int(p, bhnd_nv_ummin(plen, 2),
+			    16, &parsed_len, &byte, &byte_len, otype_base);
+			if (error) {
+				BHND_NV_DEBUG("error parsing '%.*s' as "
+				    "integer: %d\n", BHND_NV_PRINT_WIDTH(plen),
+				     p, error);
+
+				return (error);
+			}
+
+			/* Write to output */
+			if (limit > nbytes)
+				*((uint8_t *)outp + nbytes) = byte;
+			nbytes++;
+
+			/* Advance input */
+			p += parsed_len;
+			plen -= parsed_len;
+		}
+
+		/* Provide required length */
+		*olen = nbytes;
+		if (limit < *olen && outp != NULL)
+			return (ENOMEM);
+
+		return (0);
+	}
 
 	case BHND_NVRAM_TYPE_UINT8:
 	case BHND_NVRAM_TYPE_UINT8_ARRAY:
@@ -461,8 +744,8 @@ bhnd_nvram_val_encode_string(void *outp, size_t *olen, bhnd_nvram_type otype,
  * Standard integer encoding implementation.
  */
 static int
-bhnd_nvram_val_encode_int(void *outp, size_t *olen, bhnd_nvram_type otype,
-     const void *inp, size_t ilen, bhnd_nvram_type itype)
+bhnd_nvram_val_encode_int(const void *inp, size_t ilen, bhnd_nvram_type itype,
+    void *outp, size_t *olen, bhnd_nvram_type otype)
 {
 	bhnd_nvram_type	 otype_base;
 	size_t		 limit, nbytes;
@@ -585,8 +868,30 @@ bhnd_nvram_val_encode_int(void *outp, size_t *olen, bhnd_nvram_type otype,
 
 	/* Write output */
 	switch (otype) {
+	case BHND_NVRAM_TYPE_NULL:
+		/* Cannot encode an integer value as NULL */
+		return (EFTYPE);
+
+	case BHND_NVRAM_TYPE_BOOL: {
+		bhnd_nvram_bool_t bval;
+
+		if (intv.u64 == 0 || intv.u64 == 1) {
+			bval = intv.u64;
+		} else {
+			/* Encoding as a bool would lose information */
+			return (ERANGE);
+		}
+
+		nbytes = sizeof(bhnd_nvram_bool_t);
+		if (limit >= nbytes)
+			*((bhnd_nvram_bool_t *)outp) = bval;
+
+		break;
+	}
+
 	case BHND_NVRAM_TYPE_CHAR:
 	case BHND_NVRAM_TYPE_CHAR_ARRAY:
+	case BHND_NVRAM_TYPE_BYTES:
 	case BHND_NVRAM_TYPE_UINT8:
 	case BHND_NVRAM_TYPE_UINT8_ARRAY:
 		if (intv.u64 > UINT8_MAX)
@@ -905,27 +1210,30 @@ bhnd_nvram_val_generic_encode(bhnd_nvram_val_t *value, void *outp, size_t *olen,
 	nbytes = 0;
 	nelem = 0;
 	otype_base = bhnd_nvram_base_type(otype);
+	inp = bhnd_nvram_val_bytes(value, &ilen, &itype);
 
 	/*
-	 * Normally, a rank polymorphic type like a character array would not
-	 * be representable as a rank 1 type.
+	 * Normally, an array type is not universally representable as
+	 * non-array type.
 	 * 
-	 * As a special-cased exception, we can support conversion directly
-	 * from CHAR_ARRAY to STRING by treating the character array as a
-	 * non-NUL-terminated string.
-	 * 
-	 * This conversion is isomorphic; we also support conversion directly
-	 * from a STRING to a CHAR_ARRAY by the same mechanism.
+	 * As exceptions, we support conversion directly to/from:
+	 *	- CHAR_ARRAY/STRING:
+	 *		->STRING	Interpret the character array as a
+	 *			 	non-NUL-terminated string.
+	 *		->CHAR_ARRAY	Trim the trailing NUL from the string.
 	 */
-	inp = bhnd_nvram_val_bytes(value, &ilen, &itype);
-	if ((itype == BHND_NVRAM_TYPE_CHAR_ARRAY &&
-	     otype == BHND_NVRAM_TYPE_STRING) ||
-	    (itype == BHND_NVRAM_TYPE_STRING &&
-	     otype == BHND_NVRAM_TYPE_CHAR_ARRAY))
-	{
+#define	BHND_NV_IS_ISO_CONV(_lhs, _rhs)		\
+	((itype == BHND_NVRAM_TYPE_ ## _lhs &&	\
+	  otype == BHND_NVRAM_TYPE_ ## _rhs) ||	\
+	 (itype == BHND_NVRAM_TYPE_ ## _rhs &&	\
+	  otype == BHND_NVRAM_TYPE_ ## _lhs))
+
+	if (BHND_NV_IS_ISO_CONV(CHAR_ARRAY, STRING)) {
 		return (bhnd_nvram_val_encode_elem(value, inp, ilen, outp, olen,
 		    otype));
 	}
+
+#undef	BHND_NV_IS_ISO_CONV
 
 	/*
 	 * If both input and output are non-array types, try to encode them
@@ -1010,11 +1318,22 @@ bhnd_nvram_val_generic_encode_elem(bhnd_nvram_val_t *value, const void *inp,
 
 	itype = bhnd_nvram_val_elem_type(value);
 	switch (itype) {
+	case BHND_NVRAM_TYPE_NULL:
+		return (bhnd_nvram_val_encode_null(inp, ilen, itype, outp, olen,
+		    otype));
+
+	case BHND_NVRAM_TYPE_BYTES:
+		return (bhnd_nvram_val_encode_bytes(inp, ilen, itype, outp,
+		    olen, otype));
+
 	case BHND_NVRAM_TYPE_STRING:
 	case BHND_NVRAM_TYPE_CHAR:
-	case BHND_NVRAM_TYPE_CHAR_ARRAY:
-		return (bhnd_nvram_val_encode_string(outp, olen, otype, inp,
-		    ilen, itype));
+		return (bhnd_nvram_val_encode_string(inp, ilen, itype, outp,
+		    olen, otype));
+
+	case BHND_NVRAM_TYPE_BOOL:
+		return (bhnd_nvram_val_encode_bool(inp, ilen, itype, outp, olen,
+		    otype));
 
 	case BHND_NVRAM_TYPE_UINT8:
 	case BHND_NVRAM_TYPE_UINT16:
@@ -1024,9 +1343,8 @@ bhnd_nvram_val_generic_encode_elem(bhnd_nvram_val_t *value, const void *inp,
 	case BHND_NVRAM_TYPE_INT16:
 	case BHND_NVRAM_TYPE_INT32:
 	case BHND_NVRAM_TYPE_INT64:
-		return (bhnd_nvram_val_encode_int(outp, olen, otype, inp, ilen,
-		    itype));
-			
+		return (bhnd_nvram_val_encode_int(inp, ilen, itype, outp, olen,
+		    otype));	
 	default:
 		BHND_NV_PANIC("missing encode_elem() implementation");
 	}
@@ -1105,8 +1423,14 @@ bhnd_nvram_val_set(bhnd_nvram_val_t *value, const void *inp, size_t ilen,
     bhnd_nvram_type itype, uint32_t flags)
 {
 	void	*bytes;
+	size_t	 nelem;
+	int	 error;
 
 	BHND_NVRAM_VAL_ASSERT_EMPTY(value);
+
+	/* Validate alignment of fixed-width types */
+	if ((error = bhnd_nvram_value_nelem(itype, NULL, ilen, &nelem)))
+		return (error);
 
 	/* Reference the external data */
 	if ((flags & BHND_NVRAM_VAL_BORROW_DATA) ||
@@ -1192,9 +1516,21 @@ bhnd_nvram_val_set_inline(bhnd_nvram_val_t *value, const void *inp, size_t ilen,
 
 	/* Attempt to copy to inline storage */
 	switch (itype) {
+	case BHND_NVRAM_TYPE_NULL:
+		if (ilen != 0)
+			return (EFAULT);
+
+		/* Nothing to copy */
+		NV_STORE_INIT_INLINE();
+		return (0);
+
 	case BHND_NVRAM_TYPE_CHAR:
 		NV_STORE_INLINE(uint8_t, ch);
 		return (0);
+
+	case BHND_NVRAM_TYPE_BOOL:
+		NV_STORE_INLINE(bhnd_nvram_bool_t, b);
+		return(0);
 
 	case BHND_NVRAM_TYPE_UINT8:
 	case BHND_NVRAM_TYPE_INT8:
@@ -1220,6 +1556,7 @@ bhnd_nvram_val_set_inline(bhnd_nvram_val_t *value, const void *inp, size_t ilen,
 		NV_COPY_ARRRAY_INLINE(uint8_t, ch);
 		return (0);
 
+	case BHND_NVRAM_TYPE_BYTES:
 	case BHND_NVRAM_TYPE_UINT8_ARRAY:
 	case BHND_NVRAM_TYPE_INT8_ARRAY:
 		NV_COPY_ARRRAY_INLINE(uint8_t, u8);
@@ -1239,6 +1576,10 @@ bhnd_nvram_val_set_inline(bhnd_nvram_val_t *value, const void *inp, size_t ilen,
 	case BHND_NVRAM_TYPE_INT64_ARRAY:
 		NV_COPY_ARRRAY_INLINE(uint64_t, u64);
 		return (0);
+
+	case BHND_NVRAM_TYPE_BOOL_ARRAY:
+		NV_COPY_ARRRAY_INLINE(bhnd_nvram_bool_t, b);
+		return(0);
 
 	case BHND_NVRAM_TYPE_STRING:
 	case BHND_NVRAM_TYPE_STRING_ARRAY:

@@ -198,16 +198,17 @@ struct bhnd_nvram_val {
 
 	/** data representation */
 	union {
-		uint8_t		 u8[8];		/**< 8-bit unsigned data */
-		uint16_t	 u16[4];	/**< 16-bit unsigned data */
-		uint32_t	 u32[2];	/**< 32-bit unsigned data */
-		uint32_t	 u64[1];	/**< 64-bit unsigned data */
-		int8_t		 i8[8];		/**< 8-bit signed data */
-		int16_t		 i16[4];	/**< 16-bit signed data */
-		int32_t		 i32[2];	/**< 32-bit signed data */
-		int64_t		 i64[1];	/**< 64-bit signed data */
-		unsigned char	 ch[8];		/**< 8-bit character data */
-		const void	*ptr;		/**< external data */
+		uint8_t			 u8[8];		/**< 8-bit unsigned data */
+		uint16_t		 u16[4];	/**< 16-bit unsigned data */
+		uint32_t		 u32[2];	/**< 32-bit unsigned data */
+		uint32_t		 u64[1];	/**< 64-bit unsigned data */
+		int8_t			 i8[8];		/**< 8-bit signed data */
+		int16_t			 i16[4];	/**< 16-bit signed data */
+		int32_t			 i32[2];	/**< 32-bit signed data */
+		int64_t			 i64[1];	/**< 64-bit signed data */
+		unsigned char		 ch[8];		/**< 8-bit character data */
+		bhnd_nvram_bool_t	 b[8];		/**< 8-bit boolean data */
+		const void		*ptr;		/**< external data */
 	} data;
 };
 

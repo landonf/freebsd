@@ -654,6 +654,8 @@ bhnd_nvram_sprom_read_offset(struct bhnd_nvram_sprom *sp,
 		NV_PARSE_INT(uint8_t,	u8,	u32,	);
 		break;
 
+	case BHND_NVRAM_TYPE_BYTES:
+	case BHND_NVRAM_TYPE_NULL:
 	case BHND_NVRAM_TYPE_UINT64:
 	case BHND_NVRAM_TYPE_INT64:
 	case BHND_NVRAM_TYPE_STRING:

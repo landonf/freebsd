@@ -142,6 +142,12 @@ bhnd_nvram_type_name(bhnd_nvram_type type)
 		return ("int64");
 	case BHND_NVRAM_TYPE_STRING:
 		return ("string");
+	case BHND_NVRAM_TYPE_BOOL:
+		return ("bool");
+	case BHND_NVRAM_TYPE_NULL:
+		return ("null");
+	case BHND_NVRAM_TYPE_BYTES:
+		return ("bytes");
 	case BHND_NVRAM_TYPE_UINT8_ARRAY:
 		return ("uint8[]");
 	case BHND_NVRAM_TYPE_UINT16_ARRAY:
@@ -162,6 +168,8 @@ bhnd_nvram_type_name(bhnd_nvram_type type)
 		return ("char[]");
 	case BHND_NVRAM_TYPE_STRING_ARRAY:
 		return ("string[]");
+	case BHND_NVRAM_TYPE_BOOL_ARRAY:
+		return ("bool[]");
 	}
 
 	/* Quiesce gcc4.2 */
@@ -192,6 +200,9 @@ bhnd_nvram_is_signed_type(bhnd_nvram_type type)
 	case BHND_NVRAM_TYPE_UINT32:
 	case BHND_NVRAM_TYPE_UINT64:
 	case BHND_NVRAM_TYPE_STRING:
+	case BHND_NVRAM_TYPE_BOOL:
+	case BHND_NVRAM_TYPE_NULL:
+	case BHND_NVRAM_TYPE_BYTES:
 	case BHND_NVRAM_TYPE_UINT8_ARRAY:
 	case BHND_NVRAM_TYPE_UINT16_ARRAY:
 	case BHND_NVRAM_TYPE_UINT32_ARRAY:
@@ -202,6 +213,7 @@ bhnd_nvram_is_signed_type(bhnd_nvram_type type)
 	case BHND_NVRAM_TYPE_INT64_ARRAY:
 	case BHND_NVRAM_TYPE_CHAR_ARRAY:
 	case BHND_NVRAM_TYPE_STRING_ARRAY:
+	case BHND_NVRAM_TYPE_BOOL_ARRAY:
 		return (false);
 	}
 
@@ -249,6 +261,9 @@ bhnd_nvram_is_int_type(bhnd_nvram_type type)
 
 	case BHND_NVRAM_TYPE_CHAR:
 	case BHND_NVRAM_TYPE_STRING:
+	case BHND_NVRAM_TYPE_BOOL:
+	case BHND_NVRAM_TYPE_NULL:
+	case BHND_NVRAM_TYPE_BYTES:
 	case BHND_NVRAM_TYPE_UINT8_ARRAY:
 	case BHND_NVRAM_TYPE_UINT16_ARRAY:
 	case BHND_NVRAM_TYPE_UINT32_ARRAY:
@@ -259,6 +274,7 @@ bhnd_nvram_is_int_type(bhnd_nvram_type type)
 	case BHND_NVRAM_TYPE_INT64_ARRAY:
 	case BHND_NVRAM_TYPE_CHAR_ARRAY:
 	case BHND_NVRAM_TYPE_STRING_ARRAY:
+	case BHND_NVRAM_TYPE_BOOL_ARRAY:
 		return (false);
 	}
 
@@ -285,6 +301,9 @@ bhnd_nvram_is_array_type(bhnd_nvram_type type)
 	case BHND_NVRAM_TYPE_INT64:
 	case BHND_NVRAM_TYPE_CHAR:
 	case BHND_NVRAM_TYPE_STRING:
+	case BHND_NVRAM_TYPE_BOOL:
+	case BHND_NVRAM_TYPE_NULL:
+	case BHND_NVRAM_TYPE_BYTES:
 		return (false);
 
 	case BHND_NVRAM_TYPE_UINT8_ARRAY:
@@ -297,6 +316,7 @@ bhnd_nvram_is_array_type(bhnd_nvram_type type)
 	case BHND_NVRAM_TYPE_INT64_ARRAY:
 	case BHND_NVRAM_TYPE_CHAR_ARRAY:
 	case BHND_NVRAM_TYPE_STRING_ARRAY:
+	case BHND_NVRAM_TYPE_BOOL_ARRAY:
 		return (true);
 	}
 
@@ -324,6 +344,9 @@ bhnd_nvram_base_type(bhnd_nvram_type type)
 	case BHND_NVRAM_TYPE_INT64:
 	case BHND_NVRAM_TYPE_CHAR:
 	case BHND_NVRAM_TYPE_STRING:
+	case BHND_NVRAM_TYPE_BOOL:
+	case BHND_NVRAM_TYPE_NULL:
+	case BHND_NVRAM_TYPE_BYTES:
 		return (type);
 
 	case BHND_NVRAM_TYPE_UINT8_ARRAY:	return (BHND_NVRAM_TYPE_UINT8);
@@ -336,6 +359,7 @@ bhnd_nvram_base_type(bhnd_nvram_type type)
 	case BHND_NVRAM_TYPE_INT64_ARRAY:	return (BHND_NVRAM_TYPE_INT64);
 	case BHND_NVRAM_TYPE_CHAR_ARRAY:	return (BHND_NVRAM_TYPE_CHAR);
 	case BHND_NVRAM_TYPE_STRING_ARRAY:	return (BHND_NVRAM_TYPE_STRING);
+	case BHND_NVRAM_TYPE_BOOL_ARRAY:	return (BHND_NVRAM_TYPE_BOOL);
 	}
 
 	/* Quiesce gcc4.2 */
@@ -375,6 +399,20 @@ bhnd_nvram_value_nelem(bhnd_nvram_type type, const void *data, size_t len,
 		return (EFAULT);
 
 	switch (type) {
+	case BHND_NVRAM_TYPE_BYTES:
+		/* Always exactly one element */
+		*nelem = 1;
+		return (0);
+
+	case BHND_NVRAM_TYPE_NULL:
+		/* Must be zero length */
+		if (len != 0)
+			return (EFAULT);
+
+		/* Always exactly one element */
+		*nelem = 1;
+		return (0);
+
 	case BHND_NVRAM_TYPE_STRING:
 	case BHND_NVRAM_TYPE_STRING_ARRAY: {
 		const char	*p;
@@ -420,6 +458,7 @@ bhnd_nvram_value_nelem(bhnd_nvram_type type, const void *data, size_t len,
 
 		return (0);
 	}
+
 	case BHND_NVRAM_TYPE_INT8:
 	case BHND_NVRAM_TYPE_UINT8:
 	case BHND_NVRAM_TYPE_CHAR:
@@ -429,6 +468,7 @@ bhnd_nvram_value_nelem(bhnd_nvram_type type, const void *data, size_t len,
 	case BHND_NVRAM_TYPE_UINT32:
 	case BHND_NVRAM_TYPE_INT64:
 	case BHND_NVRAM_TYPE_UINT64:
+	case BHND_NVRAM_TYPE_BOOL:
 		/* Length must be equal to the size of exactly one
 		 * element (arrays can represent zero elements -- non-array
 		 * types cannot) */
@@ -446,6 +486,7 @@ bhnd_nvram_value_nelem(bhnd_nvram_type type, const void *data, size_t len,
 	case BHND_NVRAM_TYPE_INT32_ARRAY:
 	case BHND_NVRAM_TYPE_INT64_ARRAY:
 	case BHND_NVRAM_TYPE_CHAR_ARRAY:
+	case BHND_NVRAM_TYPE_BOOL_ARRAY:
 		BHND_NV_ASSERT(base_size != 0, ("invalid base size"));
 		*nelem = len / base_size;
 		return (0);
@@ -472,6 +513,7 @@ bhnd_nvram_value_nelem(bhnd_nvram_type type, const void *data, size_t len,
  * @retval 0		If a @p nelem value of 0 is provided.
  * @retval 0		If the result would exceed the maximum value
  *			representable by size_t.
+ * @retval 0		If @p type is BHND_NVRAM_TYPE_NULL.
  * @retval non-zero	The size, in bytes, of @p type with @p nelem elements.
  */
 size_t
@@ -495,7 +537,8 @@ bhnd_nvram_value_size(bhnd_nvram_type type, const void *data, size_t nbytes,
 	case BHND_NVRAM_TYPE_INT16_ARRAY:
 	case BHND_NVRAM_TYPE_INT32_ARRAY:
 	case BHND_NVRAM_TYPE_INT64_ARRAY:
-	case BHND_NVRAM_TYPE_CHAR_ARRAY: {
+	case BHND_NVRAM_TYPE_CHAR_ARRAY:
+	case BHND_NVRAM_TYPE_BOOL_ARRAY:{
 		bhnd_nvram_type	base_type;
 		size_t		base_size;
 
@@ -564,6 +607,19 @@ bhnd_nvram_value_size(bhnd_nvram_type type, const void *data, size_t nbytes,
 
 		return (size);
 	}
+
+	case BHND_NVRAM_TYPE_NULL:
+		return (0);
+
+	case BHND_NVRAM_TYPE_BYTES:
+		if (data == NULL)
+			return (0);
+
+		return (nbytes);
+
+	case BHND_NVRAM_TYPE_BOOL:
+		return (sizeof(bhnd_nvram_bool_t));
+
 	case BHND_NVRAM_TYPE_INT8:
 	case BHND_NVRAM_TYPE_UINT8:
 	case BHND_NVRAM_TYPE_CHAR:
