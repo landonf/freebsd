@@ -357,6 +357,12 @@ bhnd_nvram_bcmraw_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 	return (bhnd_nvram_data_generic_rp_getvar(nv, cookiep, buf, len, type));
 }
 
+static bhnd_nvram_val_t *
+bhnd_nvram_bcmraw_getvar_value(struct bhnd_nvram_data *nv, void *cookiep)
+{
+	return (bhnd_nvram_data_generic_rp_getvar_value(nv, cookiep));
+}
+
 static const void *
 bhnd_nvram_bcmraw_getvar_ptr(struct bhnd_nvram_data *nv, void *cookiep,
     size_t *len, bhnd_nvram_type *type)

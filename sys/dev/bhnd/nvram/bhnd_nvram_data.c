@@ -423,6 +423,50 @@ bhnd_nvram_data_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 	return (nv->cls->op_getvar(nv, cookiep, buf, len, type));
 }
 
+/*
+ * Common bhnd_nvram_data_getvar_ptr() wrapper used by
+ * bhnd_nvram_data_generic_rp_getvar() and
+ * bhnd_nvram_data_generic_rp_getvar_value().
+ *
+ * If a variable definition for the requested variable is available via
+ * bhnd_nvram_find_vardefn(), the definition will be used to populate fmt.
+ */
+static const void *
+bhnd_nvram_data_getvar_ptr_info(struct bhnd_nvram_data *nv, void *cookiep,
+    size_t *len, bhnd_nvram_type *type, const bhnd_nvram_val_fmt_t **fmt)
+{
+	const struct bhnd_nvram_vardefn	*vdefn;
+	const char			*name;
+	const void			*vptr;
+
+	BHND_NV_ASSERT(bhnd_nvram_data_caps(nv) & BHND_NVRAM_DATA_CAP_READ_PTR,
+	    ("instance does not advertise READ_PTR support"));
+
+	/* Fetch pointer to variable data */
+	vptr = bhnd_nvram_data_getvar_ptr(nv, cookiep, len, type);
+	if (vptr == NULL)
+		return (NULL);
+
+	/* Select a default value format implementation */
+	switch (*type) {
+	case BHND_NVRAM_TYPE_STRING:
+	case BHND_NVRAM_TYPE_STRING_ARRAY:
+		*fmt = &bhnd_nvram_val_bcm_string_fmt;
+		break;
+	default:
+		*fmt = NULL;
+	}
+
+	/* Check the variable definition table for a matching entry; if
+	 * it exists, use it to populate the value format. */
+	name = bhnd_nvram_data_getvar_name(nv, cookiep);
+	vdefn = bhnd_nvram_find_vardefn(name);
+	if (vdefn != NULL)
+		*fmt = vdefn->fmt;
+
+	return (vptr);
+}
+
 /**
  * A generic implementation of bhnd_nvram_data_getvar().
  * 
@@ -431,17 +475,15 @@ bhnd_nvram_data_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
  * of the caller.
  *
  * If a variable definition for the requested variable is available via
- * bhnd_nvram_find_vardefn(), the definition will be used to provide
- * formatting hints to bhnd_nvram_coerce_value().
+ * bhnd_nvram_find_vardefn(), the definition will be used to provide a
+ * formatting instance to bhnd_nvram_val_init().
  */
 int
 bhnd_nvram_data_generic_rp_getvar(struct bhnd_nvram_data *nv, void *cookiep,
     void *outp, size_t *olen, bhnd_nvram_type otype)
 {
 	bhnd_nvram_val_t		 val;
-	const struct bhnd_nvram_vardefn	*vdefn;
 	const bhnd_nvram_val_fmt_t	*fmt;
-	const char			*name;
 	const void			*vptr;
 	bhnd_nvram_type			 vtype;
 	size_t				 vlen;
@@ -450,27 +492,11 @@ bhnd_nvram_data_generic_rp_getvar(struct bhnd_nvram_data *nv, void *cookiep,
 	BHND_NV_ASSERT(bhnd_nvram_data_caps(nv) & BHND_NVRAM_DATA_CAP_READ_PTR,
 	    ("instance does not advertise READ_PTR support"));
 
-	/* Fetch pointer to our variable data */
-	vptr = bhnd_nvram_data_getvar_ptr(nv, cookiep, &vlen, &vtype);
+	/* Fetch variable data and value format*/
+	vptr = bhnd_nvram_data_getvar_ptr_info(nv, cookiep, &vlen, &vtype,
+	    &fmt);
 	if (vptr == NULL)
 		return (EINVAL);
-
-	/* Use the NVRAM string support */
-	switch (vtype) {
-	case BHND_NVRAM_TYPE_STRING:
-	case BHND_NVRAM_TYPE_STRING_ARRAY:
-		fmt = &bhnd_nvram_val_bcm_string_fmt;
-		break;
-	default:
-		fmt = NULL;
-	}
-
-	/* Check the variable definition table for a matching entry; if
-	 * it exists, use it to populate the value format. */
-	name = bhnd_nvram_data_getvar_name(nv, cookiep);
-	vdefn = bhnd_nvram_find_vardefn(name);
-	if (vdefn != NULL)
-		fmt = vdefn->fmt;
 
 	/* Attempt value coercion */
 	error = bhnd_nvram_val_init(&val, fmt, vptr, vlen, vtype,
@@ -483,6 +509,68 @@ bhnd_nvram_data_generic_rp_getvar(struct bhnd_nvram_data *nv, void *cookiep,
 	/* Clean up */
 	bhnd_nvram_val_release(&val);
 	return (error);
+}
+
+/**
+ * Return a new value instance containing an NVRAM entry's variable
+ * data.
+ * 
+ * The caller is responsible for deallocating the returned value via
+ * bhnd_nvram_val_release().
+ *
+ * @param		nv	The NVRAM data.
+ * @param		cookiep	An NVRAM variable cookie previously returned
+ *				via bhnd_nvram_data_next() or
+ *				bhnd_nvram_data_find().
+ *
+ * @retval non-NULL	success
+ * @retval NULL		if allocation fails, or the value cannot otherwise be
+ *			read.
+ */
+bhnd_nvram_val_t *
+bhnd_nvram_data_getvar_value(struct bhnd_nvram_data *nv, void *cookiep)
+{
+	return (nv->cls->op_getvar_value(nv, cookiep));
+}
+
+/**
+ * A generic implementation of bhnd_nvram_data_getvar_value().
+ * 
+ * This implementation will call bhnd_nvram_data_getvar_ptr() to fetch
+ * a pointer to the variable data and perform data coercion on behalf
+ * of the caller.
+ *
+ * If a variable definition for the requested variable is available via
+ * bhnd_nvram_find_vardefn(), the definition will be used to provide a
+ * formatting instance to bhnd_nvram_val_init().
+ */
+bhnd_nvram_val_t *
+bhnd_nvram_data_generic_rp_getvar_value(struct bhnd_nvram_data *nv,
+    void *cookiep)
+{
+	bhnd_nvram_val_t		*val;
+	const bhnd_nvram_val_fmt_t	*fmt;
+	const void			*vptr;
+	bhnd_nvram_type			 vtype;
+	size_t				 vlen;
+	int				 error;
+
+	BHND_NV_ASSERT(bhnd_nvram_data_caps(nv) & BHND_NVRAM_DATA_CAP_READ_PTR,
+	    ("instance does not advertise READ_PTR support"));
+
+	/* Fetch variable data and value format*/
+	vptr = bhnd_nvram_data_getvar_ptr_info(nv, cookiep, &vlen, &vtype,
+	    &fmt);
+	if (vptr == NULL)
+		return (NULL);
+
+	/* Allocate and return the new value instance */
+	error = bhnd_nvram_val_new(&val, fmt, vptr, vlen, vtype,
+	    BHND_NVRAM_VAL_DYNAMIC);
+	if (error)
+		return (NULL);
+
+	return (val);
 }
 
 /**
