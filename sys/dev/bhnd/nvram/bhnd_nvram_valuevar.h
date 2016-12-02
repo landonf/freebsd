@@ -40,7 +40,8 @@ int		 bhnd_nvram_val_generic_encode_elem(bhnd_nvram_val *value,
 		     const void *inp, size_t ilen, void *outp, size_t *olen,
 		     bhnd_nvram_type otype);
 const void	*bhnd_nvram_val_generic_next(bhnd_nvram_val *value,
-		     const void *prev, size_t *len);
+		     const void *prev, size_t *olen);
+
 /**
  * Filter input data prior to initialization.
  * 
@@ -74,7 +75,7 @@ typedef int (bhnd_nvram_val_op_encode_elem)(bhnd_nvram_val *value,
 
 /** @see bhnd_nvram_val_next() */
 typedef const void *(bhnd_nvram_val_op_next)(bhnd_nvram_val *value,
-    const void *prev, size_t *len);
+    const void *prev, size_t *olen);
 
 /** @see bhnd_nvram_val_nelem() */
 typedef size_t (bhnd_nvram_val_op_nelem)(bhnd_nvram_val *value);

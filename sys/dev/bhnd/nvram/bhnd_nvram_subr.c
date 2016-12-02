@@ -361,44 +361,30 @@ bhnd_nvram_base_type(bhnd_nvram_type type)
 }
 
 /**
- * Iterate over all strings in the @p inp string array.
+ * Iterate over all strings in the @p inp string array (@see
+ * BHNF_NVRAM_TYPE_STRING_ARRAY).
  *
- * @param	inp	The string array to be iterated. This must be a buffer
- *			of one or more NUL-terminated strings --
- *			@see BHND_NVRAM_TYPE_STRING_ARRAY.
- * @param	ilen	The size, in bytes, of @p inp, including any
- *			terminating NUL character(s).
- * @param	prev	The value previously returned by
- *			bhnd_nvram_string_array_next(), or NULL to begin
- *			iteration.
+ * @param		inp	The string array to be iterated. This must be a
+ *				buffer of one or more NUL-terminated strings.
+ * @param		ilen	The size, in bytes, of @p inp, including any
+ *				terminating NUL character(s).
+ * @param		prev	The pointer previously returned by
+ *				bhnd_nvram_string_array_next(), or NULL to begin
+ *				iteration.
+* @param[in,out]	olen	If @p prev is non-NULL, @p olen must be a
+ *				pointer to the length previously returned by
+ *				bhnd_nvram_string_array_next(). On success, will
+ *				be set to the next element's length, in bytes.
  *
  * @retval non-NULL	A reference to the next NUL-terminated string
  * @retval NULL		If the end of the string array is reached.
  */
 const char *
-bhnd_nvram_string_array_next(const char *inp, size_t ilen, const char *prev)
+bhnd_nvram_string_array_next(const char *inp, size_t ilen, const char *prev,
+    size_t *olen)
 {
-	size_t nremain, plen;
-
-	if (ilen == 0)
-		return (NULL);
-
-	if (prev == NULL)
-		return (inp);
-
-	/* Advance to next value */
-	BHND_NV_ASSERT(prev >= inp, ("invalid prev pointer"));
-	BHND_NV_ASSERT(prev < (inp+ilen), ("invalid prev pointer"));
-
-	nremain = ilen - (size_t)(prev - inp);
-	plen = strnlen(prev, nremain);
-	nremain -= plen;
-
-	/* Only a trailing NUL remains? */
-	if (nremain <= 1)
-		return (NULL);
-
-	return (prev + plen + 1);
+	return (bhnd_nvram_value_array_next(inp, ilen,
+	    BHND_NVRAM_TYPE_STRING_ARRAY, prev, olen));
 }
 
 /* used by bhnd_nvram_find_vardefn() */

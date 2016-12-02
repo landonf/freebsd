@@ -32,7 +32,7 @@
 #ifndef _BHND_NVRAM_BHND_NVRAM_VALUE_H_
 #define _BHND_NVRAM_BHND_NVRAM_VALUE_H_
 
-#include <sys/param.h>
+
 #include <sys/refcount.h>
 
 #ifdef _KERNEL
@@ -85,7 +85,7 @@ bhnd_nvram_type			 bhnd_nvram_val_elem_type(
 				     bhnd_nvram_val *value);
 
 const void			*bhnd_nvram_val_next(bhnd_nvram_val *value,
-				     const void *prev, size_t *len);
+				     const void *prev, size_t *olen);
 
 size_t				 bhnd_nvram_val_nelem(bhnd_nvram_val *value);
 

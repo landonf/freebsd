@@ -194,6 +194,10 @@ int				 bhnd_nvram_value_vprintf(const char *fmt,
 				     bhnd_nvram_type itype, char *outp,
 				     size_t *olen, va_list ap);
 
+const void			*bhnd_nvram_value_array_next(const void *inp,
+				     size_t ilen, bhnd_nvram_type itype,
+				     const void *prev, size_t *olen);
+
 const struct bhnd_nvram_vardefn	*bhnd_nvram_find_vardefn(const char *varname);
 const struct bhnd_nvram_vardefn	*bhnd_nvram_get_vardefn(size_t id);
 size_t				 bhnd_nvram_get_vardefn_id(

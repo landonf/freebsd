@@ -652,16 +652,9 @@ bhnd_nvram_val_bcmstr_csv_next(bhnd_nvram_val *value, const void *prev,
 		return (next);
 
 	case BHND_NVRAM_TYPE_STRING_ARRAY:
-		next = bhnd_nvram_string_array_next(inp, ilen, prev);
-		if (next != NULL) {
-			*len = strlen(next);
-
-			/* Account for trailing NUL */
-			if (*len + (size_t)(next - inp) < ilen)
-				(*len)++;
-		}
-
-		return (next);
+		/* Delegate to default array iteration */
+		return (bhnd_nvram_value_array_next(inp, ilen, itype, prev,
+		    len));
 	default:
 		BHND_NV_PANIC("unsupported type: %d", itype);
 	}

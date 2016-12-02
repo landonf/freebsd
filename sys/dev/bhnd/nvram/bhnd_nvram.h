@@ -77,6 +77,6 @@ typedef enum {
 } bhnd_nvram_src;
 
 const char	*bhnd_nvram_string_array_next(const char *inp, size_t ilen,
-		     const char *prev); 
+		     const char *prev, size_t *olen); 
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_H_ */

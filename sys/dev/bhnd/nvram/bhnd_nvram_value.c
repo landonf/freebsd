@@ -1111,8 +1111,8 @@ bhnd_nvram_val_bytes(bhnd_nvram_val *value, size_t *olen,
  * @param		prev	A value pointer previously returned by
  *				bhnd_nvram_val_next() or bhnd_nvram_val_elem(),
  *				or NULL to begin iteration at the first element.
- * @param[in,out]	len	If prev is non-NULL, len must be a pointer
- *				to the length previously returned by
+ * @param[in,out]	olen	If @p prev is non-NULL, @p olen must be a
+ *				pointer to the length previously returned by
  *				bhnd_nvram_val_next() or bhnd_nvram_val_elem().
  *				On success, will be set to the next element's
  *				length, in bytes.
@@ -1121,13 +1121,13 @@ bhnd_nvram_val_bytes(bhnd_nvram_val *value, size_t *olen,
  * @retval NULL		If the end of the element array is reached.
  */
 const void *
-bhnd_nvram_val_next(bhnd_nvram_val *value, const void *prev, size_t *len)
+bhnd_nvram_val_next(bhnd_nvram_val *value, const void *prev, size_t *olen)
 {
 	/* Prefer the format implementation */
 	if (value->fmt != NULL && value->fmt->op_next != NULL)
-		return (value->fmt->op_next(value, prev, len));
+		return (value->fmt->op_next(value, prev, olen));
 
-	return (bhnd_nvram_val_generic_next(value, prev, len));
+	return (bhnd_nvram_val_generic_next(value, prev, olen));
 }
 
 /**
@@ -1353,44 +1353,15 @@ bhnd_nvram_val_generic_encode_elem(bhnd_nvram_val *value, const void *inp,
  */
 const void *
 bhnd_nvram_val_generic_next(bhnd_nvram_val *value, const void *prev,
-    size_t *len)
+    size_t *olen)
 {
 	const uint8_t	*inp;
-	const uint8_t	*next;
 	bhnd_nvram_type	 itype;
 	size_t		 ilen;
-	size_t		 offset;
 
-	/* Otherwise, default to iterating over the backing representation
-	 * according to its native representation */
+	/* Iterate over the backing representation */
 	inp = bhnd_nvram_val_bytes(value, &ilen, &itype);
-
-	/* First element */
-	if (prev == NULL) {
-		/* Zero-length array? */
-		if (ilen == 0)
-			return (NULL);
-
-		*len = bhnd_nvram_value_size(itype, inp, ilen, 1);
-		return (inp);
-	}
-
-	/* Advance to next element */
-	BHND_NV_ASSERT(prev >= (const void *)inp, ("invalid cookiep"));
-	next = (const uint8_t *)prev + *len;
-	offset = (size_t)(next - inp);
-
-	if (offset >= ilen) {
-		/* Hit end of the array */
-		return (NULL);
-	}
-
-	/* Determine element size */
-	*len = bhnd_nvram_value_size(itype, next, ilen - offset, 1);
-	if (ilen - offset < *len)
-		BHND_NV_PANIC("short element -- misaligned representation");
-
-	return (next);
+	return (bhnd_nvram_value_array_next(inp, ilen, itype, prev, olen));
 }
 
 /**

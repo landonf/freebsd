@@ -412,6 +412,61 @@ bhnd_nvram_value_vprintf(const char *fmt, const void *inp, size_t ilen,
 }
 
 /**
+ * Iterate over all elements in @p inp.
+ *
+ * @param		inp	The value to be iterated.
+ * @param		ilen	The size, in bytes, of @p inp.
+ * @param		itype	The data type of @p inp.
+ * @param		prev	The value previously returned by
+ *				bhnd_nvram_value_array_next(), or NULL to begin
+ *				iteration.
+ * @param[in,out]	olen	If @p prev is non-NULL, @p olen must be a
+ *				pointer to the length previously returned by
+ *				bhnd_nvram_value_array_next(). On success, will
+ *				be set to the next element's length, in bytes.
+ *
+ * @retval non-NULL	A borrowed reference to the next element of @p inp.
+ * @retval NULL		If the end of the array is reached.
+ */
+const void *
+bhnd_nvram_value_array_next(const void *inp, size_t ilen, bhnd_nvram_type itype,
+    const void *prev, size_t *olen)
+{
+	const u_char	*next;
+	size_t		 offset;
+
+	/* Handle first element */
+	if (prev == NULL) {
+		/* Zero-length array? */
+		if (ilen == 0)
+			return (NULL);
+
+		*olen = bhnd_nvram_value_size(itype, inp, ilen, 1);
+		return (inp);
+	}
+
+	/* Advance to next element */
+	BHND_NV_ASSERT(prev >= (const void *)inp, ("invalid cookiep"));
+	next = (const u_char *)prev + *olen;
+	offset = (size_t)(next - (const u_char *)inp);
+
+	if (offset >= ilen) {
+		/* Hit end of the array */
+		return (NULL);
+	}
+
+	/* Determine element size */
+	*olen = bhnd_nvram_value_size(itype, next, ilen - offset, 1);
+	if (ilen - offset < *olen) {
+		BHND_NV_LOG("short element of type %s -- misaligned "
+		    "representation", bhnd_nvram_type_name(itype));
+		return (NULL);
+	}
+
+	return (next);
+}
+
+/**
  * Coerce value @p inp of type @p itype to @p otype, writing the
  * result to @p outp.
  *
