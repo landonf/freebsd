@@ -129,7 +129,7 @@ int			 bhnd_nvram_data_getvar(struct bhnd_nvram_data *nv,
 			     void *cookiep, void *buf, size_t *len,
 			     bhnd_nvram_type type);
 
-bhnd_nvram_val_t	*bhnd_nvram_data_getvar_value(
+bhnd_nvram_val		*bhnd_nvram_data_getvar_value(
 			     struct bhnd_nvram_data *nv, void *cookiep);
 
 const void		*bhnd_nvram_data_getvar_ptr(struct bhnd_nvram_data *nv,

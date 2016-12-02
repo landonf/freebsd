@@ -681,7 +681,7 @@ bhnd_nvram_sprom_read_offset(struct bhnd_nvram_sprom *sp,
  */
 static int
 bhnd_nvram_sprom_getvar_common(struct bhnd_nvram_data *nv, void *cookiep,
-    union bhnd_nvram_sprom_storage *storage, bhnd_nvram_val_t *val)
+    union bhnd_nvram_sprom_storage *storage, bhnd_nvram_val *val)
 {
 	struct bhnd_nvram_sprom		*sp;
 	struct sprom_opcode_idx		*idx;
@@ -892,7 +892,7 @@ static int
 bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
     size_t *len, bhnd_nvram_type otype)
 {
-	bhnd_nvram_val_t		val;
+	bhnd_nvram_val			val;
 	union bhnd_nvram_sprom_storage	storage;
 	int				error;
 
@@ -909,10 +909,10 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 	return (error);
 }
 
-static bhnd_nvram_val_t *
+static bhnd_nvram_val *
 bhnd_nvram_sprom_getvar_value(struct bhnd_nvram_data *nv, void *cookiep)
 {
-	bhnd_nvram_val_t		val, *copy;
+	bhnd_nvram_val			val, *copy;
 	union bhnd_nvram_sprom_storage	storage;
 	int				error;
 

@@ -369,7 +369,7 @@ bhnd_nvram_btxt_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 	return (bhnd_nvram_data_generic_rp_getvar(nv, cookiep, buf, len, type));
 }
 
-static bhnd_nvram_val_t *
+static bhnd_nvram_val *
 bhnd_nvram_btxt_getvar_value(struct bhnd_nvram_data *nv, void *cookiep)
 {
 	return (bhnd_nvram_data_generic_rp_getvar_value(nv, cookiep));

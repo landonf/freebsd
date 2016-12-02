@@ -433,7 +433,7 @@ bhnd_nvram_data_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
  */
 static const void *
 bhnd_nvram_data_getvar_ptr_info(struct bhnd_nvram_data *nv, void *cookiep,
-    size_t *len, bhnd_nvram_type *type, const bhnd_nvram_val_fmt_t **fmt)
+    size_t *len, bhnd_nvram_type *type, const bhnd_nvram_val_fmt **fmt)
 {
 	const struct bhnd_nvram_vardefn	*vdefn;
 	const char			*name;
@@ -482,8 +482,8 @@ int
 bhnd_nvram_data_generic_rp_getvar(struct bhnd_nvram_data *nv, void *cookiep,
     void *outp, size_t *olen, bhnd_nvram_type otype)
 {
-	bhnd_nvram_val_t		 val;
-	const bhnd_nvram_val_fmt_t	*fmt;
+	bhnd_nvram_val			 val;
+	const bhnd_nvram_val_fmt	*fmt;
 	const void			*vptr;
 	bhnd_nvram_type			 vtype;
 	size_t				 vlen;
@@ -527,7 +527,7 @@ bhnd_nvram_data_generic_rp_getvar(struct bhnd_nvram_data *nv, void *cookiep,
  * @retval NULL		if allocation fails, or the value cannot otherwise be
  *			read.
  */
-bhnd_nvram_val_t *
+bhnd_nvram_val *
 bhnd_nvram_data_getvar_value(struct bhnd_nvram_data *nv, void *cookiep)
 {
 	return (nv->cls->op_getvar_value(nv, cookiep));
@@ -544,12 +544,12 @@ bhnd_nvram_data_getvar_value(struct bhnd_nvram_data *nv, void *cookiep)
  * bhnd_nvram_find_vardefn(), the definition will be used to provide a
  * formatting instance to bhnd_nvram_val_init().
  */
-bhnd_nvram_val_t *
+bhnd_nvram_val *
 bhnd_nvram_data_generic_rp_getvar_value(struct bhnd_nvram_data *nv,
     void *cookiep)
 {
-	bhnd_nvram_val_t		*val;
-	const bhnd_nvram_val_fmt_t	*fmt;
+	bhnd_nvram_val			*val;
+	const bhnd_nvram_val_fmt	*fmt;
 	const void			*vptr;
 	bhnd_nvram_type			 vtype;
 	size_t				 vlen;

@@ -43,78 +43,69 @@
 /** Registered NVRAM parser class instances. */
 SET_DECLARE(bhnd_nvram_data_class_set, bhnd_nvram_data_class_t);
 
-void			*bhnd_nvram_data_generic_find(
-			     struct bhnd_nvram_data *nv, const char *name);
-int			 bhnd_nvram_data_generic_rp_getvar(
-			     struct bhnd_nvram_data *nv, void *cookiep,
-			     void *outp, size_t *olen, bhnd_nvram_type otype);
-bhnd_nvram_val_t	*bhnd_nvram_data_generic_rp_getvar_value(
-			     struct bhnd_nvram_data *nv, void *cookiep);
+void		*bhnd_nvram_data_generic_find(struct bhnd_nvram_data *nv,
+		     const char *name);
+int		 bhnd_nvram_data_generic_rp_getvar(struct bhnd_nvram_data *nv,
+		     void *cookiep, void *outp, size_t *olen,
+		     bhnd_nvram_type otype);
+bhnd_nvram_val	*bhnd_nvram_data_generic_rp_getvar_value(
+		     struct bhnd_nvram_data *nv, void *cookiep);
 
 /** @see bhnd_nvram_data_class_desc() */
-typedef const char		*(bhnd_nvram_data_op_class_desc)(void);
+typedef const char	*(bhnd_nvram_data_op_class_desc)(void);
 
 /** @see bhnd_nvram_data_probe() */
-typedef int			 (bhnd_nvram_data_op_probe)(
-				      struct bhnd_nvram_io *io);
+typedef int		 (bhnd_nvram_data_op_probe)(struct bhnd_nvram_io *io);
 
 /** @see bhnd_nvram_data_new() */
-typedef int			 (bhnd_nvram_data_op_new)(
-				      struct bhnd_nvram_data *nv,
-				      struct bhnd_nvram_io *io);
+typedef int		 (bhnd_nvram_data_op_new)(struct bhnd_nvram_data *nv,
+			      struct bhnd_nvram_io *io);
 
 /** Free all resources associated with @p nv. Called by
  *  bhnd_nvram_data_release() when the reference count reaches zero. */
-typedef void			 (bhnd_nvram_data_op_free)(
-				      struct bhnd_nvram_data *nv);
+typedef void		 (bhnd_nvram_data_op_free)(struct bhnd_nvram_data *nv);
 
 /** @see bhnd_nvram_data_count() */
-typedef size_t			 (bhnd_nvram_data_op_count)(
-				      struct bhnd_nvram_data *nv);
+typedef size_t		 (bhnd_nvram_data_op_count)(struct bhnd_nvram_data *nv);
 
 /** @see bhnd_nvram_data_size() */
-typedef int			 (bhnd_nvram_data_op_size)(
-				      struct bhnd_nvram_data *nv, size_t *len);
+typedef int		 (bhnd_nvram_data_op_size)(struct bhnd_nvram_data *nv,
+			      size_t *len);
 
 /** @see bhnd_nvram_data_serialize() */
-typedef int			 (bhnd_nvram_data_op_serialize)(
-				      struct bhnd_nvram_data *nv, void *buf,
-				      size_t *len);
+typedef int		 (bhnd_nvram_data_op_serialize)(
+			      struct bhnd_nvram_data *nv, void *buf,
+			      size_t *len);
 
 /** @see bhnd_nvram_data_caps() */
-typedef uint32_t		 (bhnd_nvram_data_op_caps)(
-				      struct bhnd_nvram_data *nv);
+typedef uint32_t	 (bhnd_nvram_data_op_caps)(struct bhnd_nvram_data *nv);
 
 /** @see bhnd_nvram_data_next() */
-typedef const char		*(bhnd_nvram_data_op_next)(
-				      struct bhnd_nvram_data *nv,
-				      void **cookiep);
+typedef const char	*(bhnd_nvram_data_op_next)(struct bhnd_nvram_data *nv,
+			      void **cookiep);
 
 /** @see bhnd_nvram_data_find() */
-typedef void			*(bhnd_nvram_data_op_find)(
-				      struct bhnd_nvram_data *nv,
-				      const char *name);
+typedef void		*(bhnd_nvram_data_op_find)(struct bhnd_nvram_data *nv,
+			      const char *name);
 
 /** @see bhnd_nvram_data_getvar_name() */
-typedef const char		*(bhnd_nvram_data_op_getvar_name)(
-				      struct bhnd_nvram_data *nv,
-				      void *cookiep);
+typedef const char	*(bhnd_nvram_data_op_getvar_name)(
+			      struct bhnd_nvram_data *nv,
+			      void *cookiep);
 
 /** @see bhnd_nvram_data_getvar() */
-typedef int			 (bhnd_nvram_data_op_getvar)(
-				      struct bhnd_nvram_data *nv,
-				      void *cookiep, void *buf, size_t *len,
-				      bhnd_nvram_type type);
+typedef int		 (bhnd_nvram_data_op_getvar)(struct bhnd_nvram_data *nv,
+			      void *cookiep, void *buf, size_t *len,
+			      bhnd_nvram_type type);
 
 /** @see bhnd_nvram_data_getvar_value() */
-typedef bhnd_nvram_val_t	*(bhnd_nvram_data_op_getvar_value)(
-				      struct bhnd_nvram_data *nv,
-				      void *cookiep);
+typedef bhnd_nvram_val	*(bhnd_nvram_data_op_getvar_value)(
+			      struct bhnd_nvram_data *nv, void *cookiep);
 
 /** @see bhnd_nvram_data_getvar_ptr() */
-typedef const void		*(bhnd_nvram_data_op_getvar_ptr)(
-				      struct bhnd_nvram_data *nv, void *cookiep,
-				      size_t *len, bhnd_nvram_type *type);
+typedef const void	*(bhnd_nvram_data_op_getvar_ptr)(
+			      struct bhnd_nvram_data *nv, void *cookiep,
+			      size_t *len, bhnd_nvram_type *type);
 
 /**
  * NVRAM data class.
