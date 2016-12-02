@@ -32,6 +32,7 @@
 #ifndef _BHND_NVRAM_BHND_NVRAM_VALUE_H_
 #define _BHND_NVRAM_BHND_NVRAM_VALUE_H_
 
+#include <sys/param.h>
 #include <sys/refcount.h>
 
 #ifdef _KERNEL
@@ -40,7 +41,7 @@
 #include <stdarg.h>
 #endif /* _KERNEL */
 
-#include "bhnd_nvram.h"
+#include "bhnd_nvram_types.h"
 
 typedef struct bhnd_nvram_val_fmt	bhnd_nvram_val_fmt;
 typedef struct bhnd_nvram_val		bhnd_nvram_val;
