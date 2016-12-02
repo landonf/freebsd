@@ -423,6 +423,7 @@ bhnd_nvram_data_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 	return (nv->cls->op_getvar(nv, cookiep, buf, len, type));
 }
 
+
 /**
  * A generic implementation of bhnd_nvram_data_getvar().
  * 
@@ -438,9 +439,9 @@ int
 bhnd_nvram_data_generic_rp_getvar(struct bhnd_nvram_data *nv, void *cookiep,
     void *outp, size_t *olen, bhnd_nvram_type otype)
 {
-	bhnd_nvram_val_t		 val;
+	bhnd_nvram_val			 val;
 	const struct bhnd_nvram_vardefn	*vdefn;
-	const bhnd_nvram_val_fmt_t	*fmt;
+	const bhnd_nvram_val_fmt	*fmt;
 	const char			*name;
 	const void			*vptr;
 	bhnd_nvram_type			 vtype;
