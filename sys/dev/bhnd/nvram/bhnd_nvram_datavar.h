@@ -43,13 +43,12 @@
 /** Registered NVRAM parser class instances. */
 SET_DECLARE(bhnd_nvram_data_class_set, bhnd_nvram_data_class_t);
 
-void		*bhnd_nvram_data_generic_find(struct bhnd_nvram_data *nv,
-		     const char *name);
-int		 bhnd_nvram_data_generic_rp_getvar(struct bhnd_nvram_data *nv,
-		     void *cookiep, void *outp, size_t *olen,
-		     bhnd_nvram_type otype);
-bhnd_nvram_val	*bhnd_nvram_data_generic_rp_getvar_value(
-		     struct bhnd_nvram_data *nv, void *cookiep);
+void	*bhnd_nvram_data_generic_find(struct bhnd_nvram_data *nv,
+	     const char *name);
+int	 bhnd_nvram_data_generic_rp_getvar(struct bhnd_nvram_data *nv,
+	     void *cookiep, void *outp, size_t *olen, bhnd_nvram_type otype);
+int	 bhnd_nvram_data_generic_rp_getvar_value(struct bhnd_nvram_data *nv,
+	     void *cookiep, bhnd_nvram_val **value);
 
 /** @see bhnd_nvram_data_class_desc() */
 typedef const char	*(bhnd_nvram_data_op_class_desc)(void);
@@ -99,8 +98,9 @@ typedef int		 (bhnd_nvram_data_op_getvar)(struct bhnd_nvram_data *nv,
 			      bhnd_nvram_type type);
 
 /** @see bhnd_nvram_data_getvar_value() */
-typedef bhnd_nvram_val	*(bhnd_nvram_data_op_getvar_value)(
-			      struct bhnd_nvram_data *nv, void *cookiep);
+typedef int		 (bhnd_nvram_data_op_getvar_value)(
+			      struct bhnd_nvram_data *nv, void *cookiep,
+			      bhnd_nvram_val **value);
 
 /** @see bhnd_nvram_data_getvar_ptr() */
 typedef const void	*(bhnd_nvram_data_op_getvar_ptr)(

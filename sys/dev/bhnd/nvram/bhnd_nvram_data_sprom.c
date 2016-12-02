@@ -909,25 +909,27 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 	return (error);
 }
 
-static bhnd_nvram_val *
-bhnd_nvram_sprom_getvar_value(struct bhnd_nvram_data *nv, void *cookiep)
+static int
+bhnd_nvram_sprom_getvar_value(struct bhnd_nvram_data *nv, void *cookiep,
+    bhnd_nvram_val **value)
 {
-	bhnd_nvram_val			val, *copy;
+	bhnd_nvram_val			val;
 	union bhnd_nvram_sprom_storage	storage;
 	int				error;
 
 	/* Decode variable to a new value instance */
 	error = bhnd_nvram_sprom_getvar_common(nv, cookiep, &storage, &val);
 	if (error)
-		return (NULL);
+		return (error);
 
 	/* Attempt to copy to heap */
-	copy = bhnd_nvram_val_copy(&val);
-
-	/* Clean up */
+	*value = bhnd_nvram_val_copy(&val);
 	bhnd_nvram_val_release(&val);
 
-	return (copy);
+	if (*value == NULL)
+		return (ENOMEM);
+
+	return (0);
 }
 
 static const void *

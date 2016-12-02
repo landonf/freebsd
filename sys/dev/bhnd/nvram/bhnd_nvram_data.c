@@ -512,25 +512,27 @@ bhnd_nvram_data_generic_rp_getvar(struct bhnd_nvram_data *nv, void *cookiep,
 }
 
 /**
- * Return a new value instance containing an NVRAM entry's variable
- * data.
+ * Allocate and initialize new value instance containing an NVRAM entry's
+ * variable data.
  * 
  * The caller is responsible for deallocating the returned value via
  * bhnd_nvram_val_release().
  *
- * @param		nv	The NVRAM data.
- * @param		cookiep	An NVRAM variable cookie previously returned
- *				via bhnd_nvram_data_next() or
- *				bhnd_nvram_data_find().
+ * @param	nv	The NVRAM data.
+ * @param	cookiep	An NVRAM variable cookie previously returned
+ *			via bhnd_nvram_data_next() or bhnd_nvram_data_find().
+ * @param[out]	value	On success, the allocated value instance.
  *
- * @retval non-NULL	success
- * @retval NULL		if allocation fails, or the value cannot otherwise be
- *			read.
+ * @retval 0		success
+ * @retval ENOMEM	If allocation fails.
+ * @retval non-zero	If initialization of the value otherwise fails, a
+ *			regular unix error code will be returned.
  */
-bhnd_nvram_val *
-bhnd_nvram_data_getvar_value(struct bhnd_nvram_data *nv, void *cookiep)
+int
+bhnd_nvram_data_getvar_value(struct bhnd_nvram_data *nv, void *cookiep,
+    bhnd_nvram_val **value)
 {
-	return (nv->cls->op_getvar_value(nv, cookiep));
+	return (nv->cls->op_getvar_value(nv, cookiep, value));
 }
 
 /**
@@ -544,16 +546,14 @@ bhnd_nvram_data_getvar_value(struct bhnd_nvram_data *nv, void *cookiep)
  * bhnd_nvram_find_vardefn(), the definition will be used to provide a
  * formatting instance to bhnd_nvram_val_init().
  */
-bhnd_nvram_val *
+int
 bhnd_nvram_data_generic_rp_getvar_value(struct bhnd_nvram_data *nv,
-    void *cookiep)
+    void *cookiep, bhnd_nvram_val **value)
 {
-	bhnd_nvram_val			*val;
 	const bhnd_nvram_val_fmt	*fmt;
 	const void			*vptr;
 	bhnd_nvram_type			 vtype;
 	size_t				 vlen;
-	int				 error;
 
 	BHND_NV_ASSERT(bhnd_nvram_data_caps(nv) & BHND_NVRAM_DATA_CAP_READ_PTR,
 	    ("instance does not advertise READ_PTR support"));
@@ -562,15 +562,11 @@ bhnd_nvram_data_generic_rp_getvar_value(struct bhnd_nvram_data *nv,
 	vptr = bhnd_nvram_data_getvar_ptr_info(nv, cookiep, &vlen, &vtype,
 	    &fmt);
 	if (vptr == NULL)
-		return (NULL);
+		return (EINVAL);
 
 	/* Allocate and return the new value instance */
-	error = bhnd_nvram_val_new(&val, fmt, vptr, vlen, vtype,
-	    BHND_NVRAM_VAL_DYNAMIC);
-	if (error)
-		return (NULL);
-
-	return (val);
+	return (bhnd_nvram_val_new(value, fmt, vptr, vlen, vtype,
+	    BHND_NVRAM_VAL_DYNAMIC));
 }
 
 /**
