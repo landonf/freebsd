@@ -179,6 +179,7 @@ struct bhnd_nvram_store {
 	uint32_t		 data_caps;	/**< data capability flags */
 
 	bhnd_nvstore_alias_list	 aliases[4];	/**< path alias hash table */
+	size_t			 num_aliases;	/**< alias count */
 
 	bhnd_nvstore_path	*root_path;	/**< root path instance */
 	bhnd_nvstore_path_list	 paths[4];	/**< path hash table */

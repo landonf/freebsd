@@ -166,6 +166,7 @@ bhnd_nvram_store_new(struct bhnd_nvram_store **store,
 		LIST_INIT(&sc->paths[i]);
 
 	/* Initialize alias hash table */
+	sc->num_aliases = 0;
 	for (size_t i = 0; i < nitems(sc->aliases); i++)
 		LIST_INIT(&sc->aliases[i]);
 
@@ -274,6 +275,113 @@ bhnd_nvram_store_free(struct bhnd_nvram_store *sc)
 	bhnd_nv_free(sc);
 }
 
+/**
+ * Returns true if direct export via bhnd_nvram_data_serialize() may
+ * be used to fufill an export request.
+ * 
+ * @param	sc	The NVRAM store instance.
+ * @param	cls	The NVRAM data class to be used for encoding the NVRAM
+ *			data.
+ * @param	path	The NVRAM path to export.
+ * @param	flags	Export flags. See BHND_NVSTORE_EXPORT_*.
+ */
+static bool
+bhnd_nvram_store_can_export_direct(struct bhnd_nvram_store *sc,
+    const bhnd_nvram_data_class *cls, bhnd_nvstore_path *path, uint32_t flags)
+{
+	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
+
+	/* The data store must not contain any uncommitted changes */
+	// TODO
+
+	/* Class must match */
+	if (cls != bhnd_nvram_data_get_class(sc->data))
+		return (false);
+
+	/* Must be exporting the root path */
+	if (path != sc->root_path)
+		return (false);
+
+	/* Must be exporting all subpaths (or have no subpaths to export) */
+	if (sc->num_paths > 1) {
+		if ((flags & BHND_NVSTORE_EXPORT_CHILDREN) == 0)
+			return (false);
+	}
+
+	/* Must have compact path encoding enabled if used by the current
+	 * data */
+	if (sc->num_aliases > 0) {
+		if ((flags & BHND_NVSTORE_EXPORT_COMPACT_DEVPATHS) == 0)
+			return (false);
+	}
+
+	/* Can use direct export of the underlying backing data */
+	return (true);
+}
+
+/**
+ * Serialize all NVRAM data at @p path to @p outp using the given data @p cls
+ * and @p flags.
+ * 
+ * @param		store	The NVRAM store instance.
+ * @param		cls	The NVRAM data class to be used for encoding
+ *				the NVRAM data, or NULL to use @p store's
+ *				current data encoding.
+ * @param		dpath	The NVRAM path to export, or NULL to select the
+ *				root path.
+ * @param[out]		outp	On success, the serialized NVRAM data will be
+ *				written to this buffer. This argment may be NULL
+ *				if the data is not desired.
+ * @param[in,out]	olen	The capacity of @p outp. On success, will be set
+ *				to the actual size of the requested value.
+ * @param		flags	Export flags. See BHND_NVSTORE_EXPORT_*.
+ *
+ * @retval 0		success
+ * @retval ENOENT	The requested path was not found.
+ * @retval ENOMEM	If @p outp is non-NULL and a buffer of @p olen is too
+ *			small to hold the requested value.
+ * @retval non-zero	If export of  @p path otherwise fails, a regular unix
+ *			error code will be returned.
+ */
+int
+bhnd_nvram_store_export(struct bhnd_nvram_store *store,
+    const bhnd_nvram_data_class *cls, const char *dpath, void *outp,
+    size_t *olen, uint32_t flags)
+{
+	bhnd_nvstore_path	*path;
+	int			 error;
+
+	BHND_NVSTORE_LOCK(store);
+
+	/* Default to current data format */
+	if (cls == NULL)
+		cls = bhnd_nvram_data_get_class(store->data);
+
+	/* Default to root path */
+	if (dpath == NULL)
+		dpath = BHND_NVSTORE_ROOT_PATH;
+
+	/* Fetch referenced path */
+	path = bhnd_nvstore_get_path(store, dpath, strlen(dpath));
+	if (path == NULL) {
+		error = ENOENT;
+		goto cleanup;
+	}
+
+	/* Can we perform a direct export of the unmodified data? */
+	if (bhnd_nvram_store_can_export_direct(store, cls, path, flags)) {
+		error = bhnd_nvram_data_serialize(store->data, outp, olen);
+		BHND_NVSTORE_UNLOCK(store);
+		return (error);
+	}
+
+	// TODO
+	error = ENXIO;
+
+cleanup:
+	BHND_NVSTORE_UNLOCK(store);
+	return (error);
+}
 
 /**
  * Parse all variables vended by our backing NVRAM data instance,
@@ -1087,6 +1195,10 @@ bhnd_nvstore_register_alias(struct bhnd_nvram_store *sc,
 	path_str = NULL;
 	alias = NULL;
 
+	/* Can't represent more than SIZE_MAX aliases */
+	if (sc->num_aliases == SIZE_MAX)
+		return (ENOMEM);
+
 	/* Must be an alias declaration */
 	if (info->type != BHND_NVSTORE_ALIAS_DECL)
 		return (EINVAL);
@@ -1165,6 +1277,9 @@ bhnd_nvstore_register_alias(struct bhnd_nvram_store *sc,
 	/* Insert in alias hash table */
 	alist = &sc->aliases[alias->alias % nitems(sc->aliases)];
 	LIST_INSERT_HEAD(alist, alias, na_link);
+
+	/* Increment alias count */
+	sc->num_aliases++;
 
 	bhnd_nv_free(path_str);
 	return (0);

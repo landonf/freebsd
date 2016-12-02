@@ -48,6 +48,15 @@
 
 struct bhnd_nvram_store;
 
+/**
+ * NVRAM export flags.
+ */
+enum {
+	BHND_NVSTORE_EXPORT_CHILDREN		= (1<<0),	/**< include all subpaths */
+	BHND_NVSTORE_EXPORT_COMPACT_DEVPATHS	= (1<<1),	/**< generate compact device paths,
+								     if supported by export data class. */
+};
+
 int	bhnd_nvram_store_new(struct bhnd_nvram_store **store,
 	    struct bhnd_nvram_data *data);
 
@@ -55,6 +64,10 @@ int	bhnd_nvram_store_parse_new(struct bhnd_nvram_store **store,
 	    struct bhnd_nvram_io *io, bhnd_nvram_data_class *cls);
 
 void	bhnd_nvram_store_free(struct bhnd_nvram_store *store);
+
+int	bhnd_nvram_store_export(struct bhnd_nvram_store *store,
+	    const bhnd_nvram_data_class *cls, const char *dpath, void *outp,
+	    size_t *olen, uint32_t flags);
 
 int	bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
 	    void *outp, size_t *olen, bhnd_nvram_type otype);
