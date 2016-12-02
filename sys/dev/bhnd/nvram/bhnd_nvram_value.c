@@ -138,8 +138,7 @@ bhnd_nvram_val_init_common(bhnd_nvram_val_t *value, bhnd_nvram_val_storage_t
 		otype = itype;
 
 	} else if (fmt != NULL) {
-		/* Value must be initialized with the format's native
-		 * type */
+		/* Value must be initialized with the format's native type */
 		otype = fmt->native_type;
 
 	} else {
