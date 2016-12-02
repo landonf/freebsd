@@ -59,7 +59,7 @@ __FBSDID("$FreeBSD$");
  * @param cls The NVRAM class.
  */
 const char *
-bhnd_nvram_data_class_desc(bhnd_nvram_data_class_t *cls)
+bhnd_nvram_data_class_desc(bhnd_nvram_data_class *cls)
 {
 	return (cls->desc);
 }
@@ -80,7 +80,7 @@ bhnd_nvram_data_class_desc(bhnd_nvram_data_class_t *cls)
  * code should be returned.
  */
 int
-bhnd_nvram_data_probe(bhnd_nvram_data_class_t *cls, struct bhnd_nvram_io *io)
+bhnd_nvram_data_probe(bhnd_nvram_data_class *cls, struct bhnd_nvram_io *io)
 {
 	return (cls->op_probe(io));
 }
@@ -106,10 +106,10 @@ bhnd_nvram_data_probe(bhnd_nvram_data_class_t *cls, struct bhnd_nvram_io *io)
  */
 int
 bhnd_nvram_data_probe_classes(struct bhnd_nvram_data **data,
-    struct bhnd_nvram_io *io, bhnd_nvram_data_class_t *classes[],
+    struct bhnd_nvram_io *io, bhnd_nvram_data_class *classes[],
     size_t num_classes)
 {
-	bhnd_nvram_data_class_t *cls;
+	bhnd_nvram_data_class	*cls;
 	int			 error, prio, result;
 
 	cls = NULL;
@@ -124,7 +124,7 @@ bhnd_nvram_data_probe_classes(struct bhnd_nvram_data **data,
 
 	/* Try to find the best data class capable of parsing io */
 	for (size_t i = 0; i < num_classes; i++) {
-		bhnd_nvram_data_class_t *next_cls;
+		bhnd_nvram_data_class *next_cls;
 
 		next_cls = classes[i];
 
@@ -196,8 +196,8 @@ bhnd_nvram_data_probe_classes(struct bhnd_nvram_data **data,
  * regular unix error code will be returned.
  */
 int
-bhnd_nvram_data_new(bhnd_nvram_data_class_t *cls,
-    struct bhnd_nvram_data **nv, struct bhnd_nvram_io *io)
+bhnd_nvram_data_new(bhnd_nvram_data_class *cls, struct bhnd_nvram_data **nv,
+    struct bhnd_nvram_io *io)
 {
 	struct bhnd_nvram_data	*data;
 	int			 error;
@@ -263,8 +263,8 @@ bhnd_nvram_data_release(struct bhnd_nvram_data *nv)
  * 
  * @param nv The NVRAM data instance to be queried.
  */
-bhnd_nvram_data_class_t *
-bhnd_nvram_data_class(struct bhnd_nvram_data *nv)
+bhnd_nvram_data_class *
+bhnd_nvram_data_get_class(struct bhnd_nvram_data *nv)
 {
 	return (nv->cls);
 }
