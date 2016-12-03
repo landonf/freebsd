@@ -43,15 +43,15 @@
 /** Registered NVRAM parser class instances. */
 SET_DECLARE(bhnd_nvram_data_class_set, bhnd_nvram_data_class);
 
-void	*bhnd_nvram_data_generic_find(struct bhnd_nvram_data *nv,
-	     const char *name);
-int	 bhnd_nvram_data_generic_rp_getvar(struct bhnd_nvram_data *nv,
-	     void *cookiep, void *outp, size_t *olen, bhnd_nvram_type otype);
-int	 bhnd_nvram_data_generic_rp_getvar_value(struct bhnd_nvram_data *nv,
-	     void *cookiep, bhnd_nvram_val **value);
+void		*bhnd_nvram_data_generic_find(struct bhnd_nvram_data *nv,
+		     const char *name);
 
-/** @see bhnd_nvram_data_class_desc() */
-typedef const char	*(bhnd_nvram_data_op_class_desc)(void);
+int		 bhnd_nvram_data_generic_rp_getvar(struct bhnd_nvram_data *nv,
+		     void *cookiep, void *outp, size_t *olen,
+		     bhnd_nvram_type otype);
+int		 bhnd_nvram_data_generic_rp_getvar_value(
+		     struct bhnd_nvram_data *nv, void *cookiep,
+		     bhnd_nvram_val **value);
 
 /** @see bhnd_nvram_data_probe() */
 typedef int		 (bhnd_nvram_data_op_probe)(struct bhnd_nvram_io *io);
@@ -112,7 +112,9 @@ typedef const void	*(bhnd_nvram_data_op_getvar_ptr)(
  */
 struct bhnd_nvram_data_class {
 	const char			*desc;		/**< description */
+	uint32_t			 caps;		/**< capabilities (BHND_NVRAM_DATA_CAP_*) */
 	size_t				 size;		/**< instance size */
+
 	bhnd_nvram_data_op_probe	*op_probe;
 	bhnd_nvram_data_op_new		*op_new;
 	bhnd_nvram_data_op_free		*op_free;
@@ -181,12 +183,13 @@ struct bhnd_nvram_data {
  * Define a bhnd_nvram_data_class with class name @p _n and description
  * @p _desc, and register with bhnd_nvram_data_class_set.
  */
-#define	BHND_NVRAM_DATA_CLASS_DEFN(_cname, _desc, _size)		\
+#define	BHND_NVRAM_DATA_CLASS_DEFN(_cname, _desc, _caps, _size)		\
 	BHND_NVRAM_DATA_CLASS_ITER_METHODS(_cname,			\
 	    BHND_NVRAM_DATA_CLASS_DECL_METHOD)				\
 									\
 	struct bhnd_nvram_data_class bhnd_nvram_## _cname ## _class = {	\
 		.desc		= (_desc),				\
+		.caps		= (_caps),				\
 		.size		= (_size),				\
 		BHND_NVRAM_DATA_CLASS_ITER_METHODS(_cname,		\
 		    BHND_NVRAM_DATA_CLASS_ASSIGN_METHOD)		\

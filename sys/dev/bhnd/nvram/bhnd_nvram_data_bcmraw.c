@@ -72,7 +72,7 @@ struct bhnd_nvram_bcmraw {
 };
 
 BHND_NVRAM_DATA_CLASS_DEFN(bcmraw, "Broadcom (RAW)",
-   sizeof(struct bhnd_nvram_bcmraw))
+    BHND_NVRAM_DATA_CAP_DEVPATHS, sizeof(struct bhnd_nvram_bcmraw))
 
 static int
 bhnd_nvram_bcmraw_probe(struct bhnd_nvram_io *io)

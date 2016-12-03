@@ -62,7 +62,8 @@ struct bhnd_nvram_tlv {
 	size_t			 count;	/**< variable count */
 };
 
-BHND_NVRAM_DATA_CLASS_DEFN(tlv, "WGT634U", sizeof(struct bhnd_nvram_tlv))
+BHND_NVRAM_DATA_CLASS_DEFN(tlv, "WGT634U", BHND_NVRAM_DATA_CAP_DEVPATHS,
+    sizeof(struct bhnd_nvram_tlv))
 
 /** Minimal TLV_ENV record header */
 struct bhnd_nvram_tlv_env_hdr {

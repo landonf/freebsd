@@ -65,6 +65,18 @@ bhnd_nvram_data_class_desc(bhnd_nvram_data_class *cls)
 }
 
 /**
+ * Return the class-level capability flags (@see BHND_NVRAM_DATA_CAP_*) for
+ * of @p cls.
+ *
+ * @param cls The NVRAM class.
+ */
+uint32_t
+bhnd_nvram_data_class_caps(bhnd_nvram_data_class *cls)
+{
+	return (cls->caps);
+}
+
+/**
  * Probe to see if this NVRAM data class class supports the data mapped by the
  * given I/O context, returning a BHND_NVRAM_DATA_PROBE probe result.
  *

@@ -128,7 +128,8 @@ struct bhnd_nvram_bcm {
 	size_t				 count;	/**< total variable count */
 };
 
-BHND_NVRAM_DATA_CLASS_DEFN(bcm, "Broadcom", sizeof(struct bhnd_nvram_bcm))
+BHND_NVRAM_DATA_CLASS_DEFN(bcm, "Broadcom", BHND_NVRAM_DATA_CAP_DEVPATHS,
+    sizeof(struct bhnd_nvram_bcm))
 
 static int
 bhnd_nvram_bcm_probe(struct bhnd_nvram_io *io)

@@ -63,7 +63,7 @@ __FBSDID("$FreeBSD$");
  * variables defined by Broadcom SoC NVRAM formats.
  */
 BHND_NVRAM_DATA_CLASS_DEFN(sprom, "Broadcom SPROM",
-   sizeof(struct bhnd_nvram_sprom))
+    BHND_NVRAM_DATA_CAP_DEVPATHS, sizeof(struct bhnd_nvram_sprom))
 
 static int	sprom_sort_idx(const void *lhs, const void *rhs);
 

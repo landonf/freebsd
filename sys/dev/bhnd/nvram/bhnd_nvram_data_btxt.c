@@ -69,7 +69,7 @@ struct bhnd_nvram_btxt {
 };
 
 BHND_NVRAM_DATA_CLASS_DEFN(btxt, "Broadcom Board Text",
-    sizeof(struct bhnd_nvram_btxt))
+    BHND_NVRAM_DATA_CAP_DEVPATHS, sizeof(struct bhnd_nvram_btxt))
 
 /** Minimal identification header */
 union bhnd_nvram_btxt_ident {

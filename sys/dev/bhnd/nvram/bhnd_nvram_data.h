@@ -90,6 +90,7 @@ enum {
 };
 
 const char		*bhnd_nvram_data_class_desc(bhnd_nvram_data_class *cls);
+uint32_t		 bhnd_nvram_data_class_caps(bhnd_nvram_data_class *cls);
 
 int			 bhnd_nvram_data_probe(bhnd_nvram_data_class *cls,
 			     struct bhnd_nvram_io *io);
