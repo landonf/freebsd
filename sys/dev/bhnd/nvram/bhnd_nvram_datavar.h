@@ -56,6 +56,12 @@ int		 bhnd_nvram_data_generic_rp_getvar_value(
 /** @see bhnd_nvram_data_probe() */
 typedef int		 (bhnd_nvram_data_op_probe)(struct bhnd_nvram_io *io);
 
+/** @see bhnd_nvram_data_class_serialize() */
+typedef int		 (bhnd_nvram_data_op_class_serialize)(
+			      bhnd_nvram_data_class *cls,
+			      bhnd_nvram_plist *plist, void *outp,
+			      size_t *olen);
+
 /** @see bhnd_nvram_data_new() */
 typedef int		 (bhnd_nvram_data_op_new)(struct bhnd_nvram_data *nv,
 			      struct bhnd_nvram_io *io);
@@ -115,19 +121,20 @@ struct bhnd_nvram_data_class {
 	uint32_t			 caps;		/**< capabilities (BHND_NVRAM_DATA_CAP_*) */
 	size_t				 size;		/**< instance size */
 
-	bhnd_nvram_data_op_probe	*op_probe;
-	bhnd_nvram_data_op_new		*op_new;
-	bhnd_nvram_data_op_free		*op_free;
-	bhnd_nvram_data_op_count	*op_count;
-	bhnd_nvram_data_op_size		*op_size;
-	bhnd_nvram_data_op_serialize	*op_serialize;
-	bhnd_nvram_data_op_caps		*op_caps;
-	bhnd_nvram_data_op_next		*op_next;
-	bhnd_nvram_data_op_find		*op_find;
-	bhnd_nvram_data_op_getvar	*op_getvar;
-	bhnd_nvram_data_op_getvar_ptr	*op_getvar_ptr;
-	bhnd_nvram_data_op_getvar_value	*op_getvar_value;
-	bhnd_nvram_data_op_getvar_name	*op_getvar_name;
+	bhnd_nvram_data_op_probe		*op_probe;
+	bhnd_nvram_data_op_class_serialize	*op_class_serialize;
+	bhnd_nvram_data_op_new			*op_new;
+	bhnd_nvram_data_op_free			*op_free;
+	bhnd_nvram_data_op_count		*op_count;
+	bhnd_nvram_data_op_size			*op_size;
+	bhnd_nvram_data_op_serialize		*op_serialize;
+	bhnd_nvram_data_op_caps			*op_caps;
+	bhnd_nvram_data_op_next			*op_next;
+	bhnd_nvram_data_op_find			*op_find;
+	bhnd_nvram_data_op_getvar		*op_getvar;
+	bhnd_nvram_data_op_getvar_ptr		*op_getvar_ptr;
+	bhnd_nvram_data_op_getvar_value		*op_getvar_value;
+	bhnd_nvram_data_op_getvar_name		*op_getvar_name;
 };
 
 /**
@@ -166,6 +173,7 @@ struct bhnd_nvram_data {
  */
 #define	BHND_NVRAM_DATA_CLASS_ITER_METHODS(_cname, _macro)	\
 	_macro(_cname, probe)					\
+	_macro(_cname, class_serialize)				\
 	_macro(_cname, new)					\
 	_macro(_cname, free)					\
 	_macro(_cname, count)					\

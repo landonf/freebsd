@@ -122,6 +122,14 @@ bhnd_nvram_btxt_probe(struct bhnd_nvram_io *io)
 	return (BHND_NVRAM_DATA_PROBE_MAYBE);
 }
 
+static int
+bhnd_nvram_btxt_class_serialize(bhnd_nvram_data_class *cls,
+    bhnd_nvram_plist *plist, void *outp, size_t *olen)
+{
+	// XXX TODO
+	return (EFTYPE);
+}
+
 /**
  * Initialize @p btxt with the provided board text data mapped by @p src.
  * 

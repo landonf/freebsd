@@ -77,6 +77,40 @@ bhnd_nvram_data_class_caps(bhnd_nvram_data_class *cls)
 }
 
 /**
+ * Serialize all NVRAM properties in @p plist using @p cls's NVRAM data
+ * format, writing the result to @p outp.
+ * 
+ * @param		cls	The NVRAM data class to be used to perform
+ *				serialization.
+ * @param		plist	The raw property values to be serialized, in
+ *				order, to @p outp.
+ * @param[out]		outp	On success, the serialed NVRAM data will be
+ *				written to this buffer. This argment may be
+ *				NULL if the value is not desired.
+ * @param[in,out]	olen	The capacity of @p buf. On success, will be set
+ *				to the actual length of the serialized data.
+ *
+ * @retval 0		success
+ * 
+ * @retval ENOMEM	If @p outp is non-NULL and a buffer of @p olen is too
+ *			small to hold the serialized data.
+ * @retval ENOENT	If a property value required by @p cls is not found in
+ *			@p plist.
+ * @retval EFTYPE	If a property value in @p plist cannot be represented
+ *			as the data type required by @p cls.
+ * @retval ERANGE	If a property value in @p plist would would overflow
+ *			(or underflow) the data type required by @p cls.
+ * @retval non-zero	If serialization otherwise fails, a regular unix error
+ *			code will be returned.
+ */
+int
+bhnd_nvram_data_class_serialize(bhnd_nvram_data_class *cls,
+    bhnd_nvram_plist *plist, void *outp, size_t *olen)
+{
+	return (cls->op_class_serialize(cls, plist, outp, olen));
+}
+
+/**
  * Probe to see if this NVRAM data class class supports the data mapped by the
  * given I/O context, returning a BHND_NVRAM_DATA_PROBE probe result.
  *

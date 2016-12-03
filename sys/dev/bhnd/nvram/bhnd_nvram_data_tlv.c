@@ -160,6 +160,14 @@ bhnd_nvram_tlv_probe(struct bhnd_nvram_io *io)
 	return (BHND_NVRAM_DATA_PROBE_DEFAULT);
 }
 
+static int
+bhnd_nvram_tlv_class_serialize(bhnd_nvram_data_class *cls,
+    bhnd_nvram_plist *plist, void *outp, size_t *olen)
+{
+	// XXX TODO
+	return (EFTYPE);
+}
+
 /**
  * Initialize @p tlv with the provided NVRAM TLV data mapped by @p src.
  * 
