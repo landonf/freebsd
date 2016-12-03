@@ -80,6 +80,21 @@ MALLOC_DECLARE(M_BHND_NVRAM);
 					    M_NOWAIT)
 #define	bhnd_nv_free(buf)		free((buf), M_BHND_NVRAM)
 
+/* We need our own strdup() implementation to pass required M_NOWAIT */
+static inline char *
+bhnd_nv_strdup(const char *str)
+{
+	char	*dest;
+	size_t	 len;
+
+	len = strlen(str);
+	dest = malloc(len + 1, M_BHND_NVRAM, M_NOWAIT);
+	memcpy(dest, str, len);
+	dest[len] = '\0';
+
+	return (dest);
+}
+
 /* We need our own strndup() implementation to pass required M_NOWAIT */
 static inline char *
 bhnd_nv_strndup(const char *str, size_t len)
@@ -131,6 +146,7 @@ bhnd_nv_strndup(const char *str, size_t len)
 #define	bhnd_nv_calloc(n, size)		calloc((n), (size))
 #define	bhnd_nv_reallocf(buf, size)	reallocf((buf), (size))
 #define	bhnd_nv_free(buf)		free((buf))
+#define	bhnd_nv_strdup(str)		strdup(str)
 #define	bhnd_nv_strndup(str, len)	strndup(str, len)
 
 #ifndef NDEBUG

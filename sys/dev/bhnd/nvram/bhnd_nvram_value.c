@@ -1131,6 +1131,17 @@ bhnd_nvram_val_next(bhnd_nvram_val *value, const void *prev, size_t *olen)
 }
 
 /**
+ * Return the value's data type.
+ *
+ * @param	value	The value to be queried.
+ */
+bhnd_nvram_type
+bhnd_nvram_val_type(bhnd_nvram_val *value)
+{
+	return (value->data_type);
+}
+
+/**
  * Return value's element data type.
  *
  * @param	value	The value to be queried.

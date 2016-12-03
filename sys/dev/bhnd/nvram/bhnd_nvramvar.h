@@ -33,6 +33,12 @@
 #define _BHND_NVRAM_BHND_NVRAMVAR_H_
 
 #include "bhnd_nvram.h"
+#include <sys/queue.h>
+
+LIST_HEAD(bhnd_nvram_plist_entry_list, bhnd_nvram_plist_entry);
+
+typedef struct bhnd_nvram_plist_entry		bhnd_nvram_plist_entry;
+typedef struct bhnd_nvram_plist_entry_list	bhnd_nvram_plist_entry_list;
 
 /**
  * NVRAM property.
@@ -40,19 +46,19 @@
 struct bhnd_nvram_prop {
 	volatile u_int	 refs;	/**< refcount */
 
-	const char	*name;	/**< property name */
+	char		*name;	/**< property name */
 	bhnd_nvram_val	*value;	/**< property value */
 };
 
 /**
  * NVRAM property list entry.
  */
-typedef struct bhnd_nvram_plist_entry {
-	bhnd_nvram_prop	*value;
+struct bhnd_nvram_plist_entry {
+	bhnd_nvram_prop	*prop;
 
-	LIST_ENTRY(bhnd_nvram_plist_entry)  pl_link;
-	LIST_ENTRY(bhnd_nvram_plist_entry)  pl_hash_link;
-} bhnd_nvram_plist_entry;
+	TAILQ_ENTRY(bhnd_nvram_plist_entry)	pl_link;
+	LIST_ENTRY(bhnd_nvram_plist_entry)	pl_hash_link;
+};
 
 /**
  * NVRAM property list.
@@ -61,8 +67,9 @@ typedef struct bhnd_nvram_plist_entry {
  */
 struct bhnd_nvram_plist {
 	volatile u_int				refs;		/**< refcount */
-	LIST_HEAD(,bhnd_nvram_plist_entry)	props;		/**< all properties */
-	LIST_HEAD(,bhnd_nvram_plist_entry)	name_map[16];	/**< name-based hash table */
+	TAILQ_HEAD(,bhnd_nvram_plist_entry)	entries;	/**< all properties */
+	size_t					num_entries;	/**< entry count */
+	bhnd_nvram_plist_entry_list		names[16];	/**< name-based hash table */
 };
 
 #endif /* _BHND_NVRAM_BHND_NVRAMVAR_H_ */
