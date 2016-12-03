@@ -49,6 +49,8 @@ bhnd_nvram_plist	*bhnd_nvram_plist_new(void);
 bhnd_nvram_plist	*bhnd_nvram_plist_retain(bhnd_nvram_plist *plist);
 void			 bhnd_nvram_plist_release(bhnd_nvram_plist *plist);
 
+bhnd_nvram_plist	*bhnd_nvram_plist_copy(bhnd_nvram_plist *plist);
+
 size_t			 bhnd_nvram_plist_count(bhnd_nvram_plist *plist);
 
 int			 bhnd_nvram_plist_append(bhnd_nvram_plist *plist,
@@ -73,7 +75,7 @@ int			 bhnd_nvram_plist_remove(bhnd_nvram_plist *plist,
 bool			 bhnd_nvram_plist_contains(bhnd_nvram_plist *plist,
 			     const char *name);
 bhnd_nvram_prop		*bhnd_nvram_plist_next(bhnd_nvram_plist *plist,
-			     void **cookiep);
+			     bhnd_nvram_prop *prop);
 bhnd_nvram_prop		*bhnd_nvram_plist_get(bhnd_nvram_plist *plist,
 			     const char *name);
 

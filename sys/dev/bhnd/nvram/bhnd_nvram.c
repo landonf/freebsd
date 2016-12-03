@@ -130,6 +130,45 @@ bhnd_nvram_plist_release(bhnd_nvram_plist *plist)
 }
 
 /**
+ * Return a shallow copy of @p plist.
+ * 
+ * The caller is responsible for releasing the returned property value
+ * via bhnd_nvram_plist_release().
+ * 
+ * @retval non-NULL	success
+ * @retval NULL		if allocation fails.
+ */
+bhnd_nvram_plist *
+bhnd_nvram_plist_copy(bhnd_nvram_plist *plist)
+{
+	bhnd_nvram_plist	*copy;
+	bhnd_nvram_prop		*prop;
+	int			 error;
+
+	/* Allocate new, empty plist */
+	if ((copy = bhnd_nvram_plist_new()) == NULL)
+		return (NULL);
+
+	/* Append all properties */
+	prop = NULL;
+	while ((prop = bhnd_nvram_plist_next(plist, prop)) != NULL) {
+		error = bhnd_nvram_plist_append(copy, prop);
+		if (error) {
+			if (error != ENOMEM) {
+				BHND_NV_LOG("error copying property: %d\n",
+				    error);
+			}
+
+			bhnd_nvram_plist_release(copy);
+			return (NULL);
+		}
+	}
+
+	/* Return ownership of the copy to our caller */
+	return (copy);
+}
+
+/**
  * Return the number of properties in @p plist.
  */
 size_t
@@ -419,30 +458,36 @@ bhnd_nvram_plist_append_string(bhnd_nvram_plist *plist, const char *name,
 /**
  * Iterate over all properties in @p plist.
  * 
- * @param		plist	The property list to be iterated.
- * @param[in,out]	cookiep	A pointer to a cookiep value previously returned
- *				by bhnd_nvram_plist_next(), or a NULL value to
- *				begin iteration.
+ * @param	plist	The property list to be iterated.
+ * @param	prop	A property in @p plist, or NULL to return the first
+ *			property in @p plist.
  * 
  * @retval non-NULL	A borrowed reference to the next property in @p plist.
- * @retval NULL		If the end of the property list is reached.
+ * @retval NULL		If the end of the property list is reached or @p prop
+ *			is not found in @p plist.
  */
 bhnd_nvram_prop *
-bhnd_nvram_plist_next(bhnd_nvram_plist *plist, void **cookiep)
+bhnd_nvram_plist_next(bhnd_nvram_plist *plist, bhnd_nvram_prop *prop)
 {
 	bhnd_nvram_plist_entry *entry;
 
-	if (*cookiep == NULL) {
+	if (prop == NULL) {
 		entry = TAILQ_FIRST(&plist->entries);
-	} else {
-		entry = *cookiep;
-		entry = TAILQ_NEXT(entry, pl_link);
+		return (entry->prop);
 	}
 
-	if (entry == NULL)
+	/* Look up previous property entry by name */
+	if ((entry = bhnd_nvram_plist_get_entry(plist, prop->name)) == NULL)
 		return (NULL);
 
-	*cookiep = entry;
+	/* The property instance must be identical */
+	if (entry->prop != prop)
+		return (NULL);
+
+	/* Fetch next entry */
+	if ((entry = TAILQ_NEXT(entry, pl_link)) == NULL)
+		return (NULL);
+
 	return (entry->prop);
 }
 
