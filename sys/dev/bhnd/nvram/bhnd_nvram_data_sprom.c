@@ -66,13 +66,11 @@ __FBSDID("$FreeBSD$");
 BHND_NVRAM_DATA_CLASS_DEFN(sprom, "Broadcom SPROM",
     BHND_NVRAM_DATA_CAP_DEVPATHS, sizeof(struct bhnd_nvram_sprom))
 
-// TODO
-#define	SPROM_OP_BAD(_state, _fmt, ...)					\
-	BHND_NV_LOG("bad encoding at %td: " _fmt,			\
-	    (_state)->input - (_state)->layout->bindings, ##__VA_ARGS__)
+#define	SPROM_COOKIE_TO_VID(_cookie)	\
+	(((struct bhnd_sprom_opcode_idx_entry *)(_cookie))->vid)
 
-#define	SPROM_COOKIE_TO_NVRAM(_cookie)	\
-	bhnd_nvram_get_vardefn(((struct bhnd_sprom_opcode_idx *)_cookie)->vid)
+#define	SPROM_COOKIE_TO_NVRAM_VAR(_cookie)	\
+	bhnd_nvram_get_vardefn(SPROM_COOKIE_TO_VID(_cookie))
 
 /**
  * Read the magic value from @p io, and verify that it matches
@@ -333,28 +331,11 @@ bhnd_nvram_sprom_class_serialize(bhnd_nvram_data_class *cls,
 	return (ENXIO);
 }
 
-/* sort function for sprom_opcode_idx values */
-static int
-sprom_sort_idx(const void *lhs, const void *rhs)
-{
-	const bhnd_sprom_opcode_idx	*l, *r;
-
-	l = lhs;
-	r = rhs;
-
-	if (l->vid < r->vid)
-		return (-1);
-	if (l->vid > r->vid)
-		return (1);
-	return (0);
-}
-
 static int
 bhnd_nvram_sprom_new(struct bhnd_nvram_data *nv, struct bhnd_nvram_io *io)
 {
-	struct bhnd_nvram_sprom		*sp;
-	size_t				 num_vars;
-	int				 error;
+	struct bhnd_nvram_sprom	*sp;
+	int			 error;
 
 	sp = (struct bhnd_nvram_sprom *)nv;
 
@@ -366,67 +347,11 @@ bhnd_nvram_sprom_new(struct bhnd_nvram_data *nv, struct bhnd_nvram_io *io)
 	if ((error = bhnd_sprom_opcode_init(&sp->state, sp->layout)))
 		goto failed;
 
-	/* Allocate our opcode index */
-	sp->num_idx = sp->layout->num_vars;
-	if ((sp->idx = bhnd_nv_calloc(sp->num_idx, sizeof(*sp->idx))) == NULL)
-		goto failed;
-
-	/* Parse out index entries from our stateful opcode stream */
-	for (num_vars = 0; num_vars < sp->num_idx; num_vars++) {
-		size_t opcodes;
-
-		/* Seek to next entry */
-		if ((error = bhnd_sprom_opcode_next_var(&sp->state))) {
-			SPROM_OP_BAD(&sp->state,
-			    "error reading expected variable entry: %d\n",
-			    error);
-			goto failed;
-		}
-
-		/* We limit the SPROM index representations to the minimal
-		 * type widths capable of covering all known layouts */
-
-		/* Save SPROM image offset */
-		if (sp->state.offset > UINT16_MAX) {
-			SPROM_OP_BAD(&sp->state,
-			    "cannot index large offset %u\n", sp->state.offset);
-		}
-		sp->idx[num_vars].offset = sp->state.offset;
-
-		/* Save current variable ID */
-		if (sp->state.vid > UINT16_MAX) {
-			SPROM_OP_BAD(&sp->state,
-			    "cannot index large vid %zu\n",  sp->state.vid);
-		}
-		sp->idx[num_vars].vid = sp->state.vid;
-
-		/* Save opcode position */
-		opcodes = (sp->state.input - sp->layout->bindings);
-		if (opcodes > UINT16_MAX) {
-			SPROM_OP_BAD(&sp->state,
-			    "cannot index large opcode offset %zu\n", opcodes);
-		}
-		sp->idx[num_vars].opcodes = opcodes;
-	}
-
-	/* Should have reached end of binding table; next read must return
-	 * ENOENT */
-	if ((error = bhnd_sprom_opcode_next_var(&sp->state)) != ENOENT) {
-		BHND_NV_LOG("expected EOF parsing binding table: %d\n", error);
-		goto failed;
-	}
-
-        /* Sort index by variable ID, ascending */
-        qsort(sp->idx, sp->num_idx, sizeof(sp->idx[0]), sprom_sort_idx);
-
 	return (0);
-	
+
 failed:
 	if (sp->data != NULL)
 		bhnd_nvram_io_free(sp->data);
-
-	if (sp->idx != NULL)
-		bhnd_nv_free(sp->idx);
 
 	return (error);
 }
@@ -435,9 +360,9 @@ static void
 bhnd_nvram_sprom_free(struct bhnd_nvram_data *nv)
 {
 	struct bhnd_nvram_sprom *sp = (struct bhnd_nvram_sprom *)nv;
-	
+
+	bhnd_sprom_opcode_fini(&sp->state);
 	bhnd_nvram_io_free(sp->data);
-	bhnd_nv_free(sp->idx);
 }
 
 size_t
@@ -494,39 +419,17 @@ static const char *
 bhnd_nvram_sprom_next(struct bhnd_nvram_data *nv, void **cookiep)
 {
 	struct bhnd_nvram_sprom		*sp;
-	bhnd_sprom_opcode_idx		*idx_entry;
-	size_t				 idx_next;
+	bhnd_sprom_opcode_idx_entry	*entry;
 	const struct bhnd_nvram_vardefn	*var;
 
 	sp = (struct bhnd_nvram_sprom *)nv;
 
-	/* Seek to appropriate starting point */
-	if (*cookiep == NULL) {
-		/* Start search at first index entry */
-		idx_next = 0;
-	} else {
-		/* Determine current index position */
-		idx_entry = *cookiep;
-		idx_next = (size_t)(idx_entry - sp->idx);
-		BHND_NV_ASSERT(idx_next < sp->num_idx,
-		    ("invalid index %zu; corrupt cookie?", idx_next));
-
-		/* Advance to next entry */
-		idx_next++;
-
-		/* Check for EOF */
-		if (idx_next == sp->num_idx)
-			return (NULL);
-	}
-
-	/* Skip entries that are disabled by virtue of IGNALL1 */
-	for (; idx_next < sp->num_idx; idx_next++) {
-		/* Fetch index entry and update cookiep  */
-		idx_entry = &sp->idx[idx_next];
-		*cookiep = idx_entry;
-
-		/* Fetch variable definition */
-		var = bhnd_nvram_get_vardefn(idx_entry->vid);
+	/* Find next index entry that is not disabled by virtue of IGNALL1 */
+	entry = *cookiep;
+	while ((entry = bhnd_sprom_opcode_index_next(&sp->state, entry))) {
+		/* Update cookiep and fetch variable definition */
+		*cookiep = entry;
+		var = SPROM_COOKIE_TO_NVRAM_VAR(*cookiep);
 
 		/* We might need to parse the variable's value to determine
 		 * whether it should be treated as unset */
@@ -552,41 +455,18 @@ bhnd_nvram_sprom_next(struct bhnd_nvram_data *nv, void **cookiep)
 	return (NULL);
 }
 
-/* bsearch function used by bhnd_nvram_sprom_find() */
-static int
-bhnd_nvram_sprom_find_vid_compare(const void *key, const void *rhs)
-{
-	const bhnd_sprom_opcode_idx	*r;
-	size_t				 l;
 
-	l = *(const size_t *)key;
-	r = rhs;
-
-	if (l < r->vid)
-		return (-1);
-	if (l > r->vid)
-		return (1);
-	return (0);
-}
 
 static void *
 bhnd_nvram_sprom_find(struct bhnd_nvram_data *nv, const char *name)
 {
 	struct bhnd_nvram_sprom		*sp;
-	const struct bhnd_nvram_vardefn	*var;
-	size_t				 vid;
+	bhnd_sprom_opcode_idx_entry	*entry;
 
 	sp = (struct bhnd_nvram_sprom *)nv;
 
-	/* Determine the variable ID for the given name */
-	if ((var = bhnd_nvram_find_vardefn(name)) == NULL)
-		return (NULL);
-
-	vid = bhnd_nvram_get_vardefn_id(var);
-
-	/* Search our index for the variable ID */
-	return (bsearch(&vid, sp->idx, sp->num_idx, sizeof(sp->idx[0]),
-	    bhnd_nvram_sprom_find_vid_compare));
+	entry = bhnd_sprom_opcode_index_find(&sp->state, name);
+	return (entry);
 }
 
 /**
@@ -708,7 +588,7 @@ bhnd_nvram_sprom_getvar_common(struct bhnd_nvram_data *nv, void *cookiep,
     union bhnd_nvram_sprom_storage *storage, bhnd_nvram_val *val)
 {
 	struct bhnd_nvram_sprom		*sp;
-	bhnd_sprom_opcode_idx		*idx;
+	bhnd_sprom_opcode_idx_entry	*entry;
 	const struct bhnd_nvram_vardefn	*var;
 	union bhnd_nvram_sprom_storage	*inp;
 	union bhnd_nvram_sprom_intv	 intv;
@@ -719,12 +599,12 @@ bhnd_nvram_sprom_getvar_common(struct bhnd_nvram_data *nv, void *cookiep,
 	int				 error;
 
 	sp = (struct bhnd_nvram_sprom *)nv;
-	idx = cookiep;
+	entry = cookiep;
 
 	BHND_NV_ASSERT(cookiep != NULL, ("NULL variable cookiep"));
 
 	/* Fetch canonical variable definition */
-	var = SPROM_COOKIE_TO_NVRAM(cookiep);
+	var = SPROM_COOKIE_TO_NVRAM_VAR(cookiep);
 	BHND_NV_ASSERT(var != NULL, ("invalid cookiep %p", cookiep));
 
 	/*
@@ -734,7 +614,7 @@ bhnd_nvram_sprom_getvar_common(struct bhnd_nvram_data *nv, void *cookiep,
 	 * canonical NVRAM variable definition, but some SPROM layouts may
 	 * define a smaller element count.
 	 */
-	if ((error = bhnd_sprom_opcode_parse_var(&sp->state, idx))) {
+	if ((error = bhnd_sprom_opcode_parse_var(&sp->state, entry))) {
 		BHND_NV_LOG("variable evaluation failed: %d\n", error);
 		return (error);
 	}
@@ -774,7 +654,7 @@ bhnd_nvram_sprom_getvar_common(struct bhnd_nvram_data *nv, void *cookiep,
 	/*
 	 * Decode the SPROM data, iteratively decoding up to nelem values.
 	 */
-	if ((error = bhnd_sprom_opcode_seek(&sp->state, idx))) {
+	if ((error = bhnd_sprom_opcode_seek(&sp->state, entry))) {
 		BHND_NV_LOG("variable seek failed: %d\n", error);
 		return (error);
 	}
@@ -972,7 +852,7 @@ bhnd_nvram_sprom_getvar_name(struct bhnd_nvram_data *nv, void *cookiep)
 
 	BHND_NV_ASSERT(cookiep != NULL, ("NULL variable cookiep"));
 
-	var = SPROM_COOKIE_TO_NVRAM(cookiep);
+	var = SPROM_COOKIE_TO_NVRAM_VAR(cookiep);
 	BHND_NV_ASSERT(var != NULL, ("invalid cookiep %p", cookiep));
 
 	return (var->name);

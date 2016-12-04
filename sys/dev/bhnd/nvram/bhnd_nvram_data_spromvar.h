@@ -46,24 +46,40 @@
 /** The maximum number of array elements encoded in a single SPROM variable */
 #define	BHND_SPROM_ARRAY_MAXLEN	12
 
-typedef struct bhnd_sprom_opcode_state	bhnd_sprom_opcode_state;
-typedef struct bhnd_sprom_opcode_bind	bhnd_sprom_opcode_bind;
-typedef struct bhnd_sprom_opcode_var	bhnd_sprom_opcode_var;
-typedef struct bhnd_sprom_opcode_idx	bhnd_sprom_opcode_idx;
+typedef struct bhnd_sprom_opcode_state		bhnd_sprom_opcode_state;
+typedef struct bhnd_sprom_opcode_bind		bhnd_sprom_opcode_bind;
+typedef struct bhnd_sprom_opcode_var		bhnd_sprom_opcode_var;
+typedef struct bhnd_sprom_opcode_idx_entry	bhnd_sprom_opcode_idx_entry;
 
-int	bhnd_sprom_opcode_init(bhnd_sprom_opcode_state *state,
-		    const struct bhnd_sprom_layout *layout);
-int	bhnd_sprom_opcode_reset(bhnd_sprom_opcode_state *state);
-int	bhnd_sprom_opcode_next_var(bhnd_sprom_opcode_state *state);
-int	bhnd_sprom_opcode_parse_var(bhnd_sprom_opcode_state *state,
-	    bhnd_sprom_opcode_idx *indexed);
+int				 bhnd_sprom_opcode_init(
+				     bhnd_sprom_opcode_state *state,
+				     const bhnd_sprom_layout *layout);
+void				 bhnd_sprom_opcode_fini(
+				     bhnd_sprom_opcode_state *state);
 
-int	bhnd_sprom_opcode_seek(bhnd_sprom_opcode_state *state,
-	    bhnd_sprom_opcode_idx *indexed);
-int	bhnd_sprom_opcode_next_binding(bhnd_sprom_opcode_state *state);
+bhnd_sprom_opcode_idx_entry	*bhnd_sprom_opcode_index_find(
+				     bhnd_sprom_opcode_state *state,
+				     const char *name);
+bhnd_sprom_opcode_idx_entry	*bhnd_sprom_opcode_index_next(
+				     bhnd_sprom_opcode_state *state,
+				     bhnd_sprom_opcode_idx_entry *prev);
 
-int	bhnd_sprom_opcode_apply_scale(bhnd_sprom_opcode_state *state,
-	    uint32_t *value);
+int				 bhnd_sprom_opcode_reset(
+				     bhnd_sprom_opcode_state *state);
+int				 bhnd_sprom_opcode_next_var(
+				     bhnd_sprom_opcode_state *state);
+int				 bhnd_sprom_opcode_parse_var(
+				     bhnd_sprom_opcode_state *state,
+				     bhnd_sprom_opcode_idx_entry *entry);
+
+int				 bhnd_sprom_opcode_seek(
+				     bhnd_sprom_opcode_state *state,
+				     bhnd_sprom_opcode_idx_entry *entry);
+int				 bhnd_sprom_opcode_next_binding(
+				     bhnd_sprom_opcode_state *state);
+int				 bhnd_sprom_opcode_apply_scale(
+				     bhnd_sprom_opcode_state *state,
+				      uint32_t *value);
 
 /**
  * SPROM opcode per-bind evaluation state.
@@ -107,6 +123,9 @@ typedef enum {
 struct bhnd_sprom_opcode_state {
 	const bhnd_sprom_layout		*layout;	/**< SPROM layout */
 
+	bhnd_sprom_opcode_idx_entry	*idx;		/**< variable index (NULL during initialization) */
+	size_t				 num_idx;	/**< variable index entry count */
+
 	/** Current SPROM revision range */
 	bitstr_t			 bit_decl(revs, SPROM_OP_REV_MAX);
 	
@@ -124,7 +143,7 @@ struct bhnd_sprom_opcode_state {
 /**
  * SPROM opcode variable index entry
  */
-struct bhnd_sprom_opcode_idx {
+struct bhnd_sprom_opcode_idx_entry {
 	uint16_t	vid;		/**< SPROM variable ID */
 	uint16_t	offset;		/**< SPROM input offset */
 	uint16_t	opcodes;	/**< SPROM opcode offset */
@@ -162,8 +181,6 @@ struct bhnd_nvram_sprom {
 	struct bhnd_nvram_io	*data;		/**< backing SPROM image */
 	const bhnd_sprom_layout	*layout;	/**< layout definition */
 	bhnd_sprom_opcode_state	 state;		/**< opcode eval state */
-	bhnd_sprom_opcode_idx	*idx;		/**< opcode index entries */
-	size_t			 num_idx;	/**< opcode index entry count */
 };
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_SPROMVAR_H_ */

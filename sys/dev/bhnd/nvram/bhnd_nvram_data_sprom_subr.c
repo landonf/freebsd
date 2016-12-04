@@ -46,6 +46,10 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_nvram_private.h"
 #include "bhnd_nvram_data_spromvar.h"
 
+static int	bhnd_sprom_opcode_sort_idx(const void *lhs, const void *rhs);
+static int	bhnd_nvram_opcode_idx_vid_compare(const void *key,
+		    const void *rhs);
+
 static int	bhnd_sprom_opcode_set_type(bhnd_sprom_opcode_state *state,
 		    bhnd_nvram_type type);
 
@@ -80,13 +84,88 @@ int
 bhnd_sprom_opcode_init(bhnd_sprom_opcode_state *state,
     const struct bhnd_sprom_layout *layout)
 {
-	memset(state, 0, sizeof(*state));
+	bhnd_sprom_opcode_idx_entry	*idx;
+	size_t				 num_vars, num_idx;
+	int				 error;
+
+	idx = NULL;
 
 	state->layout = layout;
-	state->input = layout->bindings;
-	state->var_state = SPROM_OPCODE_VAR_STATE_NONE;
+	state->idx = NULL;
+	state->num_idx = 0;
 
-	bit_set(state->revs, layout->rev);
+	/* Initialize interpretation state */
+	if ((error = bhnd_sprom_opcode_reset(state)))
+		return (error);
+
+	/* Allocate and populate our opcode index */
+	num_idx = state->layout->num_vars;
+	idx = bhnd_nv_calloc(num_idx, sizeof(*idx));
+	if (idx == NULL)
+		return (ENOMEM);
+
+	for (num_vars = 0; num_vars < num_idx; num_vars++) {
+		size_t opcodes;
+
+		/* Seek to next entry */
+		if ((error = bhnd_sprom_opcode_next_var(state))) {
+			SPROM_OP_BAD(state, "error reading expected variable "
+			    "entry: %d\n", error);
+			bhnd_nv_free(idx);
+			return (error);
+		}
+
+		/* We limit the SPROM index representations to the minimal
+		 * type widths capable of covering all known layouts */
+
+		/* Save SPROM image offset */
+		if (state->offset > UINT16_MAX) {
+			SPROM_OP_BAD(state, "cannot index large offset %u\n",
+			    state->offset);
+			bhnd_nv_free(idx);
+			return (ENXIO);
+		}
+		idx[num_vars].offset = state->offset;
+
+		/* Save current variable ID */
+		if (state->vid > UINT16_MAX) {
+			SPROM_OP_BAD(state, "cannot index large vid %zu\n",
+			    state->vid);
+			bhnd_nv_free(idx);
+			return (ENXIO);
+		}
+		idx[num_vars].vid = state->vid;
+
+		/* Save opcode position */
+		opcodes = (state->input - state->layout->bindings);
+		if (opcodes > UINT16_MAX) {
+			SPROM_OP_BAD(state, "cannot index large opcode offset "
+			    "%zu\n", opcodes);
+			bhnd_nv_free(idx);
+			return (ENXIO);
+		}
+		idx[num_vars].opcodes = opcodes;
+	}
+
+	/* Should have reached end of binding table; next read must return
+	 * ENOENT */
+	if ((error = bhnd_sprom_opcode_next_var(state)) != ENOENT) {
+		BHND_NV_LOG("expected EOF parsing binding table: %d\n", error);
+		bhnd_nv_free(idx);
+		return (ENXIO);
+	}
+
+	/* Reset interpretation state */
+	if ((error = bhnd_sprom_opcode_reset(state))) {
+		bhnd_nv_free(idx);
+		return (error);
+	}
+
+	/* Make index available to opcode state evaluation */
+        qsort(idx, num_idx, sizeof(idx[0]), bhnd_sprom_opcode_sort_idx);
+
+	state->idx = idx;
+	state->num_idx = num_idx;
 
 	return (0);
 }
@@ -103,22 +182,148 @@ bhnd_sprom_opcode_init(bhnd_sprom_opcode_state *state,
 int
 bhnd_sprom_opcode_reset(bhnd_sprom_opcode_state *state)
 {
-	return (bhnd_sprom_opcode_init(state, state->layout));
+	memset(&state->var, 0, sizeof(state->var));
+
+	state->input = state->layout->bindings;
+	state->offset = 0;
+	state->vid = 0;
+	state->var_state = SPROM_OPCODE_VAR_STATE_NONE;
+	bit_set(state->revs, state->layout->rev);
+
+	return (0);
 }
 
 /**
- * Reset SPROM opcode evaluation state and seek to the @p indexed position.
+ * Free any resources associated with @p state.
+ * 
+ * @param state An opcode state previously successfully initialized with
+ * bhnd_sprom_opcode_init().
+ */
+void
+bhnd_sprom_opcode_fini(bhnd_sprom_opcode_state *state)
+{
+	bhnd_nv_free(state->idx);
+}
+
+
+/**
+ * Sort function used to prepare our index for querying; sorts
+ * bhnd_sprom_opcode_idx_entry values by variable ID, ascending.
+ */
+static int
+bhnd_sprom_opcode_sort_idx(const void *lhs, const void *rhs)
+{
+	const bhnd_sprom_opcode_idx_entry *l, *r;
+
+	l = lhs;
+	r = rhs;
+
+	if (l->vid < r->vid)
+		return (-1);
+	if (l->vid > r->vid)
+		return (1);
+	return (0);
+}
+
+/**
+ * Binary search comparison function used by bhnd_sprom_opcode_index_find();
+ * searches bhnd_sprom_opcode_idx_entry values by variable ID, ascending.
+ */
+static int
+bhnd_nvram_opcode_idx_vid_compare(const void *key, const void *rhs)
+{
+	const bhnd_sprom_opcode_idx_entry	*entry;
+	size_t				 	 vid;
+
+	vid = *(const size_t *)key;
+	entry = rhs;
+
+	if (vid < entry->vid)
+		return (-1);
+	if (vid > entry->vid)
+		return (1);
+
+	return (0);
+}
+
+/**
+ * Locate an index entry for the variable with @p name, or NULL if not found.
+ * 
+ * @param state The opcode state to be queried.
+ * @param name	The name to search for.
+ *
+ * @retval non-NULL	If @p name is found, its index entry value will be
+ *			returned.
+ * @retval NULL		If @p name is not found.
+ */
+bhnd_sprom_opcode_idx_entry *
+bhnd_sprom_opcode_index_find(bhnd_sprom_opcode_state *state, const char *name)
+{
+	const struct bhnd_nvram_vardefn	*var;
+	size_t				 vid;
+
+	/* Determine the variable ID for the given name */
+	if ((var = bhnd_nvram_find_vardefn(name)) == NULL)
+		return (NULL);
+
+	vid = bhnd_nvram_get_vardefn_id(var);
+
+	/* Search our index for the variable ID */
+	return (bsearch(&vid, state->idx, state->num_idx, sizeof(state->idx[0]),
+	    bhnd_nvram_opcode_idx_vid_compare));
+}
+
+
+/**
+ * Iterate over all index entries in @p state.
+ * 
+ * @param		state	The opcode state to be iterated.
+ * @param[in,out]	prev	An entry previously returned by
+ *				bhnd_sprom_opcode_index_next(), or a NULL value
+ *				to begin iteration.
+ * 
+ * @return Returns the next index entry name, or NULL if all entries have
+ * been iterated.
+ */
+bhnd_sprom_opcode_idx_entry *
+bhnd_sprom_opcode_index_next(bhnd_sprom_opcode_state *state,
+    bhnd_sprom_opcode_idx_entry *prev)
+{
+	size_t idxpos;
+
+	/* Get next index position */
+	if (prev == NULL) {
+		idxpos = 0;
+	} else {
+		/* Determine current position */
+		idxpos = (size_t)(prev - state->idx);
+		BHND_NV_ASSERT(idxpos < state->num_idx,
+		    ("invalid index %zu", idxpos));
+
+		/* Advance to next entry */
+		idxpos++;
+	}
+
+	/* Check for EOF */
+	if (idxpos == state->num_idx)
+		return (NULL);
+
+	return (&state->idx[idxpos]);
+}
+
+/**
+ * Reset SPROM opcode evaluation state and seek to the @p entry's position.
  * 
  * @param state The opcode state to be reset.
- * @param indexed The indexed location to which we'll seek the opcode state.
+ * @param entry The indexed entry to which we'll seek the opcode state.
  */
 int
 bhnd_sprom_opcode_seek(bhnd_sprom_opcode_state *state,
-    bhnd_sprom_opcode_idx *indexed)
+    bhnd_sprom_opcode_idx_entry *entry)
 {
 	int error;
 
-	BHND_NV_ASSERT(indexed->opcodes < state->layout->bindings_size,
+	BHND_NV_ASSERT(entry->opcodes < state->layout->bindings_size,
 	    ("index entry references invalid opcode position"));
 
 	/* Reset state */
@@ -126,13 +331,13 @@ bhnd_sprom_opcode_seek(bhnd_sprom_opcode_state *state,
 		return (error);
 
 	/* Seek to the indexed sprom opcode offset */
-	state->input = state->layout->bindings + indexed->opcodes;
+	state->input = state->layout->bindings + entry->opcodes;
 
 	/* Restore the indexed sprom data offset and VID */
-	state->offset = indexed->offset;
+	state->offset = entry->offset;
 
 	/* Restore the indexed sprom variable ID */
-	if ((error = bhnd_sprom_opcode_set_var(state, indexed->vid)))
+	if ((error = bhnd_sprom_opcode_set_var(state, entry->vid)))
 		return (error);
 
 	return (0);
@@ -1036,11 +1241,11 @@ bhnd_sprom_opcode_step(bhnd_sprom_opcode_state *state, uint8_t *opcode)
 }
 
 /**
- * Reset SPROM opcode evaluation state, seek to the @p indexed position,
+ * Reset SPROM opcode evaluation state, seek to the @p entry's position,
  * and perform complete evaluation of the variable's opcodes.
  * 
  * @param state The opcode state to be to be evaluated.
- * @param indexed The indexed variable location.
+ * @param entry The indexed variable location.
  *
  * @retval 0 success
  * @retval non-zero If evaluation fails, a regular unix error code will be
@@ -1048,13 +1253,13 @@ bhnd_sprom_opcode_step(bhnd_sprom_opcode_state *state, uint8_t *opcode)
  */
 int
 bhnd_sprom_opcode_parse_var(bhnd_sprom_opcode_state *state,
-    bhnd_sprom_opcode_idx *indexed)
+    bhnd_sprom_opcode_idx_entry *entry)
 {
 	uint8_t	opcode;
 	int	error;
 
 	/* Seek to entry */
-	if ((error = bhnd_sprom_opcode_seek(state, indexed)))
+	if ((error = bhnd_sprom_opcode_seek(state, entry)))
 		return (error);
 
 	/* Parse full variable definition */
