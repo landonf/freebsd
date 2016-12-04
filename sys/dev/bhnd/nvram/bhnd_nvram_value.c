@@ -65,7 +65,7 @@ static int	 bhnd_nvram_val_set_inline(bhnd_nvram_val *value,
 		     const void *inp, size_t ilen, bhnd_nvram_type itype);
 
 
-static int	 bhnd_nvram_val_encode_bytes(const void *inp, size_t ilen,
+static int	 bhnd_nvram_val_encode_data(const void *inp, size_t ilen,
 		     bhnd_nvram_type itype, void *outp, size_t *olen,
 		     bhnd_nvram_type otype);
 static int	 bhnd_nvram_val_encode_int(const void *inp, size_t ilen,
@@ -474,13 +474,13 @@ bhnd_nvram_val_encode_bool(const void *inp, size_t ilen, bhnd_nvram_type itype,
 }
 
 /**
- * Standard BHND_NVRAM_TYPE_BYTES encoding implementation.
+ * Standard BHND_NVRAM_TYPE_DATA encoding implementation.
  */
 static int
-bhnd_nvram_val_encode_bytes(const void *inp, size_t ilen, bhnd_nvram_type itype,
+bhnd_nvram_val_encode_data(const void *inp, size_t ilen, bhnd_nvram_type itype,
     void *outp, size_t *olen, bhnd_nvram_type otype)
 {
-	BHND_NV_ASSERT(itype == BHND_NVRAM_TYPE_BYTES,
+	BHND_NV_ASSERT(itype == BHND_NVRAM_TYPE_DATA,
 	    ("unsupported type: %d", itype));
 
 	/* Write to output */
@@ -611,7 +611,7 @@ bhnd_nvram_val_encode_string(const void *inp, size_t ilen,
 		return (0);
 	}
 
-	case BHND_NVRAM_TYPE_BYTES: {
+	case BHND_NVRAM_TYPE_DATA: {
 		const char	*p;
 		size_t		 plen, parsed_len;
 		int		 error;
@@ -888,7 +888,7 @@ bhnd_nvram_val_encode_int(const void *inp, size_t ilen, bhnd_nvram_type itype,
 
 	case BHND_NVRAM_TYPE_CHAR:
 	case BHND_NVRAM_TYPE_CHAR_ARRAY:
-	case BHND_NVRAM_TYPE_BYTES:
+	case BHND_NVRAM_TYPE_DATA:
 	case BHND_NVRAM_TYPE_UINT8:
 	case BHND_NVRAM_TYPE_UINT8_ARRAY:
 		if (intv.u64 > UINT8_MAX)
@@ -1330,8 +1330,8 @@ bhnd_nvram_val_generic_encode_elem(bhnd_nvram_val *value, const void *inp,
 		return (bhnd_nvram_val_encode_null(inp, ilen, itype, outp, olen,
 		    otype));
 
-	case BHND_NVRAM_TYPE_BYTES:
-		return (bhnd_nvram_val_encode_bytes(inp, ilen, itype, outp,
+	case BHND_NVRAM_TYPE_DATA:
+		return (bhnd_nvram_val_encode_data(inp, ilen, itype, outp,
 		    olen, otype));
 
 	case BHND_NVRAM_TYPE_STRING:
@@ -1535,7 +1535,7 @@ bhnd_nvram_val_set_inline(bhnd_nvram_val *value, const void *inp, size_t ilen,
 		NV_COPY_ARRRAY_INLINE(uint8_t, ch);
 		return (0);
 
-	case BHND_NVRAM_TYPE_BYTES:
+	case BHND_NVRAM_TYPE_DATA:
 	case BHND_NVRAM_TYPE_UINT8_ARRAY:
 	case BHND_NVRAM_TYPE_INT8_ARRAY:
 		NV_COPY_ARRRAY_INLINE(uint8_t, u8);

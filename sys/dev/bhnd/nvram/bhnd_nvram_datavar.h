@@ -49,9 +49,9 @@ void		*bhnd_nvram_data_generic_find(struct bhnd_nvram_data *nv,
 int		 bhnd_nvram_data_generic_rp_getvar(struct bhnd_nvram_data *nv,
 		     void *cookiep, void *outp, size_t *olen,
 		     bhnd_nvram_type otype);
-int		 bhnd_nvram_data_generic_rp_getvar_value(
+int		 bhnd_nvram_data_generic_rp_getval(
 		     struct bhnd_nvram_data *nv, void *cookiep,
-		     bhnd_nvram_val **value);
+		     bhnd_nvram_val **val);
 
 /** @see bhnd_nvram_data_probe() */
 typedef int		 (bhnd_nvram_data_op_probe)(struct bhnd_nvram_io *io);
@@ -103,8 +103,8 @@ typedef int		 (bhnd_nvram_data_op_getvar)(struct bhnd_nvram_data *nv,
 			      void *cookiep, void *buf, size_t *len,
 			      bhnd_nvram_type type);
 
-/** @see bhnd_nvram_data_getvar_value() */
-typedef int		 (bhnd_nvram_data_op_getvar_value)(
+/** @see bhnd_nvram_data_getval() */
+typedef int		 (bhnd_nvram_data_op_getval)(
 			      struct bhnd_nvram_data *nv, void *cookiep,
 			      bhnd_nvram_val **value);
 
@@ -133,7 +133,7 @@ struct bhnd_nvram_data_class {
 	bhnd_nvram_data_op_find			*op_find;
 	bhnd_nvram_data_op_getvar		*op_getvar;
 	bhnd_nvram_data_op_getvar_ptr		*op_getvar_ptr;
-	bhnd_nvram_data_op_getvar_value		*op_getvar_value;
+	bhnd_nvram_data_op_getval		*op_getval;
 	bhnd_nvram_data_op_getvar_name		*op_getvar_name;
 };
 
@@ -184,7 +184,7 @@ struct bhnd_nvram_data {
 	_macro(_cname, find)					\
 	_macro(_cname, getvar)					\
 	_macro(_cname, getvar_ptr)				\
-	_macro(_cname, getvar_value)				\
+	_macro(_cname, getval)					\
 	_macro(_cname, getvar_name)
 
 /**

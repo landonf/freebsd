@@ -645,10 +645,10 @@ bhnd_nvram_bcm_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 }
 
 static int
-bhnd_nvram_bcm_getvar_value(struct bhnd_nvram_data *nv, void *cookiep,
+bhnd_nvram_bcm_getval(struct bhnd_nvram_data *nv, void *cookiep,
     bhnd_nvram_val **value)
 {
-	return (bhnd_nvram_data_generic_rp_getvar_value(nv, cookiep, value));
+	return (bhnd_nvram_data_generic_rp_getval(nv, cookiep, value));
 }
 
 static const void *

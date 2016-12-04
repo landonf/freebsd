@@ -79,7 +79,7 @@ bhnd_nvram_value_nelem(bhnd_nvram_type type, const void *data, size_t len,
 		return (EFAULT);
 
 	switch (type) {
-	case BHND_NVRAM_TYPE_BYTES:
+	case BHND_NVRAM_TYPE_DATA:
 		/* Always exactly one element */
 		*nelem = 1;
 		return (0);
@@ -291,7 +291,7 @@ bhnd_nvram_value_size(bhnd_nvram_type type, const void *data, size_t nbytes,
 	case BHND_NVRAM_TYPE_NULL:
 		return (0);
 
-	case BHND_NVRAM_TYPE_BYTES:
+	case BHND_NVRAM_TYPE_DATA:
 		if (data == NULL)
 			return (0);
 

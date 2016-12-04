@@ -152,7 +152,11 @@ typedef struct bhnd_nvstore_index {
 typedef struct bhnd_nvstore_path {
 	char			*path_str;	/**< canonical path string */
 	size_t			 num_vars;	/**< per-path variable count */
-	bhnd_nvstore_index	*index;		/**< per-path index, or NULL */
+	bhnd_nvstore_index	*index;		/**< per-path index, or NULL if
+						     this is a root path for
+						     which the data source
+						     may be queried directly. */
+	bhnd_nvram_plist	*pending;	/**< pending changes */
 
 	LIST_ENTRY(bhnd_nvstore_path) np_link;
 } bhnd_nvstore_path;

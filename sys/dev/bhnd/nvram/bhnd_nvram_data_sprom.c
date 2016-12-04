@@ -662,7 +662,7 @@ bhnd_nvram_sprom_read_offset(struct bhnd_nvram_sprom *sp,
 		NV_PARSE_INT(uint8_t,	u8,	u32,	);
 		break;
 
-	case BHND_NVRAM_TYPE_BYTES:
+	case BHND_NVRAM_TYPE_DATA:
 	case BHND_NVRAM_TYPE_NULL:
 	case BHND_NVRAM_TYPE_UINT64:
 	case BHND_NVRAM_TYPE_INT64:
@@ -918,7 +918,7 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 }
 
 static int
-bhnd_nvram_sprom_getvar_value(struct bhnd_nvram_data *nv, void *cookiep,
+bhnd_nvram_sprom_getval(struct bhnd_nvram_data *nv, void *cookiep,
     bhnd_nvram_val **value)
 {
 	bhnd_nvram_val			val;

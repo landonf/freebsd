@@ -79,7 +79,7 @@ int				 bhnd_nvram_val_vprintf(bhnd_nvram_val *value,
 
 
 const void			*bhnd_nvram_val_bytes(bhnd_nvram_val *value,
-				     size_t *len, bhnd_nvram_type *itype);
+				     size_t *olen, bhnd_nvram_type *oitype);
 
 bhnd_nvram_type			 bhnd_nvram_val_type(bhnd_nvram_val *value);
 bhnd_nvram_type			 bhnd_nvram_val_elem_type(

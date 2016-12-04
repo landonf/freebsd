@@ -55,15 +55,19 @@ size_t			 bhnd_nvram_plist_count(bhnd_nvram_plist *plist);
 
 int			 bhnd_nvram_plist_append(bhnd_nvram_plist *plist,
 			     bhnd_nvram_prop *prop);
-int			 bhnd_nvram_plist_append_value(bhnd_nvram_plist *plist,
+int			 bhnd_nvram_plist_append_val(bhnd_nvram_plist *plist,
+			     const char *name, bhnd_nvram_val *val);
+int			 bhnd_nvram_plist_append_bytes(bhnd_nvram_plist *plist,
 			     const char *name, const void *inp, size_t ilen,
 			     bhnd_nvram_type itype);
 int			 bhnd_nvram_plist_append_string(bhnd_nvram_plist *plist,
 			     const char *name, const char *val);
 
 int			 bhnd_nvram_plist_replace(bhnd_nvram_plist *plist,
-			     const char *name, bhnd_nvram_val *value);
-int			 bhnd_nvram_plist_replace_value(bhnd_nvram_plist *plist,
+			     bhnd_nvram_prop *prop);
+int			 bhnd_nvram_plist_replace_val(bhnd_nvram_plist *plist,
+			     const char *name, bhnd_nvram_val *val);
+int			 bhnd_nvram_plist_replace_bytes(bhnd_nvram_plist *plist,
 			     const char *name, const void *inp, size_t ilen,
 			     bhnd_nvram_type itype);
 int			 bhnd_nvram_plist_replace_string(bhnd_nvram_plist *plist,
@@ -80,8 +84,8 @@ bhnd_nvram_prop		*bhnd_nvram_plist_get(bhnd_nvram_plist *plist,
 			     const char *name);
 
 bhnd_nvram_prop		*bhnd_nvram_prop_new(const char *name,
-			     bhnd_nvram_val *value);
-bhnd_nvram_prop		*bhnd_nvram_prop_new_value(const char *name,
+			     bhnd_nvram_val *val);
+bhnd_nvram_prop		*bhnd_nvram_prop_bytes_new(const char *name,
 			     const void *inp, size_t ilen,
 			     bhnd_nvram_type itype);
 
@@ -92,8 +96,8 @@ const char		*bhnd_nvram_prop_name(bhnd_nvram_prop *prop);
 bhnd_nvram_val		*bhnd_nvram_prop_val(bhnd_nvram_prop *prop);
 bhnd_nvram_type		 bhnd_nvram_prop_type(bhnd_nvram_prop *prop);
 
-int			 bhnd_nvram_prop_get(bhnd_nvram_prop *prop, void *outp,
-			     size_t *olen);
+const void		*bhnd_nvram_prop_bytes(bhnd_nvram_prop *prop,
+			     size_t *olen, bhnd_nvram_type *otype);
 int			 bhnd_nvram_prop_encode(bhnd_nvram_prop *prop,
 			     void *outp, size_t *olen, bhnd_nvram_type otype);
 

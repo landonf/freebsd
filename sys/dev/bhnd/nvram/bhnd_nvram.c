@@ -193,14 +193,14 @@ bhnd_nvram_plist_contains(bhnd_nvram_plist *plist, const char *name)
 }
 
 /**
- * Replace the current property value for a property matching @p name,
- * maintaining the property's order in @p plist.
+ * Replace the current property value for a property matching the name
+ * of @p prop, maintaining the property's current order in @p plist.
  * 
- * If @p name is not found in @p plist, a new property will be appended.
+ * If a matching property is not found in @p plist, @p prop will instead be
+ * appended.
  * 
  * @param	plist	The property list to be modified.
- * @param	name	The name of the property to be replaced.
- * @param	value	The replacement value for @p name.
+ * @param	prop	The replacement property.
  * 
  * @retval 0		success
  * @retval ENOMEM	if allocation fails.
@@ -208,33 +208,55 @@ bhnd_nvram_plist_contains(bhnd_nvram_plist *plist, const char *name)
  *			error code will be returned.
  */
 int
-bhnd_nvram_plist_replace(bhnd_nvram_plist *plist, const char *name,
-    bhnd_nvram_val *value)
+bhnd_nvram_plist_replace(bhnd_nvram_plist *plist, bhnd_nvram_prop *prop)
 {
 	bhnd_nvram_plist_entry	*entry;
+
+	/* Fetch current entry */
+	entry = bhnd_nvram_plist_get_entry(plist, prop->name);
+	if (entry == NULL) {
+		/* Not found -- append property instead */
+		return (bhnd_nvram_plist_append(plist, prop));
+	}
+
+	/* Replace the current entry's property reference */
+	bhnd_nvram_prop_release(entry->prop);
+	entry->prop = bhnd_nvram_prop_retain(prop);
+
+	return (0);
+}
+
+/**
+ * Replace the current property value for a property matching @p name,
+ * maintaining the property's order in @p plist.
+ * 
+ * If @p name is not found in @p plist, a new property will be appended.
+ * 
+ * @param	plist	The property list to be modified.
+ * @param	name	The name of the property to be replaced.
+ * @param	val	The replacement value for @p name.
+ * 
+ * @retval 0		success
+ * @retval ENOMEM	if allocation fails.
+ * @retval non-zero	if modifying @p plist otherwise fails, a regular unix
+ *			error code will be returned.
+ */
+int
+bhnd_nvram_plist_replace_val(bhnd_nvram_plist *plist, const char *name,
+    bhnd_nvram_val *val)
+{
 	bhnd_nvram_prop		*prop;
 	int			 error;
 
 	/* Construct a new property instance for the name and value */
-	if ((prop = bhnd_nvram_prop_new(name, value)) == NULL)
+	if ((prop = bhnd_nvram_prop_new(name, val)) == NULL)
 		return (ENOMEM);
 
-	/* Fetch entry */
-	entry = bhnd_nvram_plist_get_entry(plist, name);
-	if (entry == NULL) {
-		/* Not found -- append property instead */
-		error = bhnd_nvram_plist_append(plist, prop);
-		bhnd_nvram_prop_release(prop);
+	/* Attempt replace */
+	error = bhnd_nvram_plist_replace(plist, prop);
+	bhnd_nvram_prop_release(prop);
 
-		return (error);
-	}
-
-	/* Replace the current entry's property reference, transfering
-	 * our reference ownership to the entry instance. */
-	bhnd_nvram_prop_release(entry->prop);
-	entry->prop = prop;
-
-	return (0);
+	return (error);
 }
 
 /**
@@ -257,16 +279,16 @@ bhnd_nvram_plist_replace(bhnd_nvram_plist *plist, const char *name,
  *			error code will be returned.
  */
 int
-bhnd_nvram_plist_replace_value(bhnd_nvram_plist *plist, const char *name,
+bhnd_nvram_plist_replace_bytes(bhnd_nvram_plist *plist, const char *name,
     const void *inp, size_t ilen, bhnd_nvram_type itype)
 {
 	bhnd_nvram_prop	*prop;
 	int		 error;
 
-	if ((prop = bhnd_nvram_prop_new_value(name, inp, ilen, itype)) == NULL)
+	if ((prop = bhnd_nvram_prop_bytes_new(name, inp, ilen, itype)) == NULL)
 		return (ENOMEM);
 
-	error = bhnd_nvram_plist_replace(plist, name, prop->value);
+	error = bhnd_nvram_plist_replace(plist, prop);
 	bhnd_nvram_prop_release(prop);
 
 	return (error);
@@ -293,7 +315,7 @@ int
 bhnd_nvram_plist_replace_string(bhnd_nvram_plist *plist, const char *name,
     const char *val)
 {
-	return (bhnd_nvram_plist_replace_value(plist, name, val, strlen(val)+1,
+	return (bhnd_nvram_plist_replace_bytes(plist, name, val, strlen(val)+1,
 	    BHND_NVRAM_TYPE_STRING));
 }
 
@@ -406,6 +428,33 @@ bhnd_nvram_plist_append(bhnd_nvram_plist *plist, bhnd_nvram_prop *prop)
 }
 
 /**
+ * Append a new property to @p plist with @p name and @p val.
+ * 
+ * @param	plist	The property list to be modified.
+ * @param	name	The name of the property to be appended.
+ * @param	val	The value of the property to be appended.
+ * 
+ * @retval 0		success
+ * @retval ENOMEM	if allocation fails.
+ * @retval EEXIST	an existing property with @p name was found in @p plist.
+ */
+int
+bhnd_nvram_plist_append_val(bhnd_nvram_plist *plist, const char *name,
+    bhnd_nvram_val *val)
+{
+	bhnd_nvram_prop	*prop;
+	int		 error;
+
+	if ((prop = bhnd_nvram_prop_new(name, val)) == NULL)
+		return (ENOMEM);
+
+	error = bhnd_nvram_plist_append(plist, prop);
+	bhnd_nvram_prop_release(prop);
+
+	return (error);
+}
+
+/**
  * Append a new property to @p plist, copying the property value from the
  * given @p inp buffer of @p itype and @p ilen.
  * 
@@ -420,13 +469,13 @@ bhnd_nvram_plist_append(bhnd_nvram_plist *plist, bhnd_nvram_prop *prop)
  * @retval EEXIST	an existing property with @p name was found in @p plist.
  */
 int
-bhnd_nvram_plist_append_value(bhnd_nvram_plist *plist, const char *name,
+bhnd_nvram_plist_append_bytes(bhnd_nvram_plist *plist, const char *name,
     const void *inp, size_t ilen, bhnd_nvram_type itype)
 {
 	bhnd_nvram_prop	*prop;
 	int		 error;
 
-	if ((prop = bhnd_nvram_prop_new_value(name, inp, ilen, itype)) == NULL)
+	if ((prop = bhnd_nvram_prop_bytes_new(name, inp, ilen, itype)) == NULL)
 		return (ENOMEM);
 
 	error = bhnd_nvram_plist_append(plist, prop);
@@ -437,7 +486,7 @@ bhnd_nvram_plist_append_value(bhnd_nvram_plist *plist, const char *name,
 
 /**
  * Append a new string property to @p plist, copying the property value from
- * @p value.
+ * @p val.
  * 
  * @param	plist	The property list to be modified.
  * @param	name	The name of the property to be appended.
@@ -451,7 +500,7 @@ int
 bhnd_nvram_plist_append_string(bhnd_nvram_plist *plist, const char *name,
     const char *val)
 {
-	return (bhnd_nvram_plist_append_value(plist, name, val, strlen(val)+1,
+	return (bhnd_nvram_plist_append_bytes(plist, name, val, strlen(val)+1,
 	    BHND_NVRAM_TYPE_STRING));
 }
 
@@ -472,7 +521,9 @@ bhnd_nvram_plist_next(bhnd_nvram_plist *plist, bhnd_nvram_prop *prop)
 	bhnd_nvram_plist_entry *entry;
 
 	if (prop == NULL) {
-		entry = TAILQ_FIRST(&plist->entries);
+		if ((entry = TAILQ_FIRST(&plist->entries)) == NULL)
+			return (NULL);
+
 		return (entry->prop);
 	}
 
@@ -519,13 +570,13 @@ bhnd_nvram_plist_get(bhnd_nvram_plist *plist, const char *name)
  * via bhnd_nvram_prop_release().
  * 
  * @param	name	Property name.
- * @param	value	Property value.
+ * @param	val	Property value.
  * 
  * @retval non-NULL	success
  * @retval NULL		if allocation fails.
  */
 struct bhnd_nvram_prop *
-bhnd_nvram_prop_new(const char *name, bhnd_nvram_val *value)
+bhnd_nvram_prop_new(const char *name, bhnd_nvram_val *val)
 {
 	struct bhnd_nvram_prop *prop;
 
@@ -539,7 +590,7 @@ bhnd_nvram_prop_new(const char *name, bhnd_nvram_val *value)
 	if ((prop->name = bhnd_nv_strdup(name)) == NULL)
 		goto failed;
 
-	if ((prop->value = bhnd_nvram_val_copy(value)) == NULL)
+	if ((prop->val = bhnd_nvram_val_copy(val)) == NULL)
 		goto failed;
 
 	return (prop);
@@ -548,8 +599,8 @@ failed:
 	if (prop->name != NULL)
 		bhnd_nv_free(prop->name);
 
-	if (prop->value != NULL)
-		bhnd_nvram_val_release(prop->value);
+	if (prop->val != NULL)
+		bhnd_nvram_val_release(prop->val);
 
 	bhnd_nv_free(prop);
 	return (NULL);
@@ -571,7 +622,7 @@ failed:
  * @retval NULL		if allocation or initialization fails.
  */
 bhnd_nvram_prop *
-bhnd_nvram_prop_new_value(const char *name, const void *inp, size_t ilen,
+bhnd_nvram_prop_bytes_new(const char *name, const void *inp, size_t ilen,
     bhnd_nvram_type itype)
 {
 	bhnd_nvram_prop	*prop;
@@ -632,7 +683,7 @@ bhnd_nvram_prop_release(bhnd_nvram_prop *prop)
 		return;
 
 	/* Free property data */
-	bhnd_nvram_val_release(prop->value);
+	bhnd_nvram_val_release(prop->val);
 	bhnd_nv_free(prop->name);
 	bhnd_nv_free(prop);
 }
@@ -656,7 +707,7 @@ bhnd_nvram_prop_name(bhnd_nvram_prop *prop)
 bhnd_nvram_val *
 bhnd_nvram_prop_val(bhnd_nvram_prop *prop)
 {
-	return (prop->value);
+	return (prop->val);
 }
 
 /**
@@ -667,36 +718,31 @@ bhnd_nvram_prop_val(bhnd_nvram_prop *prop)
 bhnd_nvram_type
 bhnd_nvram_prop_type(bhnd_nvram_prop *prop)
 {
-	return (bhnd_nvram_val_type(prop->value));
+	return (bhnd_nvram_val_type(prop->val));
 }
 
 /**
- * Fetch the property's value, writing the result to @p outp.
+ * Return a borrowed reference to the property's internal value representation.
  *
- * The data type written to outp may be determined via bhnd_nvram_prop_type().
- * 
- * @param		prop	The property to query.
- * @param[out]		outp	On success, the value will be written to this 
- *				buffer.This argment may be NULL if the value is
- *				not desired.
- * @param[in,out]	olen	The capacity of @p outp. On success, will be set
- *				to the actual size of the requested value.
- *
- * @retval 0		success
- * @retval ENOMEM	If the @p outp is non-NULL, and the provided @p olen
- *			is too small to hold the encoded value.
- * @retval non-zero	If fetching the property value otherwise fails, a
- *			regular unix error code will be returned.
+ * @param	prop	The property to query.
+ * @param[out]	olen	The returned data's size, in bytes.
+ * @param[out]	otype	The returned data's type.
  */
-int
-bhnd_nvram_prop_get(bhnd_nvram_prop *prop, void *outp, size_t *olen)
+const void *
+bhnd_nvram_prop_bytes(bhnd_nvram_prop *prop, size_t *olen,
+    bhnd_nvram_type *otype)
 {
-	return (bhnd_nvram_prop_encode(prop, outp, olen,
-	    bhnd_nvram_prop_type(prop)));
+	const void *bytes;
+
+	bytes = bhnd_nvram_val_bytes(prop->val, olen, otype);
+	BHND_NV_ASSERT(*otype == bhnd_nvram_prop_type(prop), ("type mismatch"));
+
+	return (bytes);
 }
 
 /**
- * Attempt to encode the property's value as @p otype, writing the result to @p outp.
+ * Attempt to encode the property's value as @p otype, writing the result
+ * to @p outp.
  *
  * @param		prop	The property to be encoded.
  * @param[out]		outp	On success, the value will be written to this 
@@ -718,5 +764,5 @@ int
 bhnd_nvram_prop_encode(bhnd_nvram_prop *prop, void *outp, size_t *olen,
     bhnd_nvram_type otype)
 {
-	return (bhnd_nvram_val_encode(prop->value, outp, olen, otype));
+	return (bhnd_nvram_val_encode(prop->val, outp, olen, otype));
 }

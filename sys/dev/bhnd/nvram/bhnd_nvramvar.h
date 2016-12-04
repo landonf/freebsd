@@ -47,7 +47,7 @@ struct bhnd_nvram_prop {
 	volatile u_int	 refs;	/**< refcount */
 
 	char		*name;	/**< property name */
-	bhnd_nvram_val	*value;	/**< property value */
+	bhnd_nvram_val	*val;	/**< property value */
 };
 
 /**

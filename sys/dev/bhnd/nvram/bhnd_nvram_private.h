@@ -79,6 +79,8 @@ MALLOC_DECLARE(M_BHND_NVRAM);
 #define	bhnd_nv_reallocf(buf, size)	reallocf((buf), (size), M_BHND_NVRAM, \
 					    M_NOWAIT)
 #define	bhnd_nv_free(buf)		free((buf), M_BHND_NVRAM)
+#define	bhnd_nv_asprintf(buf, fmt, ...)	asprintf((buf), M_BHND_NVRAM,	\
+					    fmt, ## __VA_ARGS__)
 
 /* We need our own strdup() implementation to pass required M_NOWAIT */
 static inline char *
@@ -148,6 +150,7 @@ bhnd_nv_strndup(const char *str, size_t len)
 #define	bhnd_nv_free(buf)		free((buf))
 #define	bhnd_nv_strdup(str)		strdup(str)
 #define	bhnd_nv_strndup(str, len)	strndup(str, len)
+#define	bhnd_nv_asprintf(buf, fmt, ...)	asprintf((buf), fmt, ## __VA_ARGS__)
 
 #ifndef NDEBUG
 #define	BHND_NV_INVARIANTS

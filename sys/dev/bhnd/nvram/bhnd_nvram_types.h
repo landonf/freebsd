@@ -70,7 +70,7 @@ typedef enum {
 	BHND_NVRAM_TYPE_BOOL		= 10,	/**< uint8 boolean value. see
 						     bhnd_nvram_bool_t. */
 	BHND_NVRAM_TYPE_NULL		= 11,	/**< NULL (empty) value */
-	BHND_NVRAM_TYPE_BYTES		= 12,	/**< octet string */
+	BHND_NVRAM_TYPE_DATA		= 12,	/**< opaque octet string */
 
 	/* 10-15 reserved for primitive (non-array) types */
 

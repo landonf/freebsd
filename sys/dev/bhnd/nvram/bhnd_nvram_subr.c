@@ -140,8 +140,8 @@ bhnd_nvram_type_name(bhnd_nvram_type type)
 		return ("bool");
 	case BHND_NVRAM_TYPE_NULL:
 		return ("null");
-	case BHND_NVRAM_TYPE_BYTES:
-		return ("bytes");
+	case BHND_NVRAM_TYPE_DATA:
+		return ("data");
 	case BHND_NVRAM_TYPE_UINT8_ARRAY:
 		return ("uint8[]");
 	case BHND_NVRAM_TYPE_UINT16_ARRAY:
@@ -196,7 +196,7 @@ bhnd_nvram_is_signed_type(bhnd_nvram_type type)
 	case BHND_NVRAM_TYPE_STRING:
 	case BHND_NVRAM_TYPE_BOOL:
 	case BHND_NVRAM_TYPE_NULL:
-	case BHND_NVRAM_TYPE_BYTES:
+	case BHND_NVRAM_TYPE_DATA:
 	case BHND_NVRAM_TYPE_UINT8_ARRAY:
 	case BHND_NVRAM_TYPE_UINT16_ARRAY:
 	case BHND_NVRAM_TYPE_UINT32_ARRAY:
@@ -257,7 +257,7 @@ bhnd_nvram_is_int_type(bhnd_nvram_type type)
 	case BHND_NVRAM_TYPE_STRING:
 	case BHND_NVRAM_TYPE_BOOL:
 	case BHND_NVRAM_TYPE_NULL:
-	case BHND_NVRAM_TYPE_BYTES:
+	case BHND_NVRAM_TYPE_DATA:
 	case BHND_NVRAM_TYPE_UINT8_ARRAY:
 	case BHND_NVRAM_TYPE_UINT16_ARRAY:
 	case BHND_NVRAM_TYPE_UINT32_ARRAY:
@@ -297,7 +297,7 @@ bhnd_nvram_is_array_type(bhnd_nvram_type type)
 	case BHND_NVRAM_TYPE_STRING:
 	case BHND_NVRAM_TYPE_BOOL:
 	case BHND_NVRAM_TYPE_NULL:
-	case BHND_NVRAM_TYPE_BYTES:
+	case BHND_NVRAM_TYPE_DATA:
 		return (false);
 
 	case BHND_NVRAM_TYPE_UINT8_ARRAY:
@@ -340,7 +340,7 @@ bhnd_nvram_base_type(bhnd_nvram_type type)
 	case BHND_NVRAM_TYPE_STRING:
 	case BHND_NVRAM_TYPE_BOOL:
 	case BHND_NVRAM_TYPE_NULL:
-	case BHND_NVRAM_TYPE_BYTES:
+	case BHND_NVRAM_TYPE_DATA:
 		return (type);
 
 	case BHND_NVRAM_TYPE_UINT8_ARRAY:	return (BHND_NVRAM_TYPE_UINT8);
