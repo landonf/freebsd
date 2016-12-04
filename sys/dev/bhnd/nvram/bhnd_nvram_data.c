@@ -82,8 +82,8 @@ bhnd_nvram_data_class_caps(bhnd_nvram_data_class *cls)
  * 
  * @param		cls	The NVRAM data class to be used to perform
  *				serialization.
- * @param		plist	The raw property values to be serialized, in
- *				order, to @p outp.
+ * @param		props	The raw property values to be serialized to
+ *				@p outp, in serialization order.
  * @param[out]		outp	On success, the serialed NVRAM data will be
  *				written to this buffer. This argment may be
  *				NULL if the value is not desired.
@@ -105,9 +105,9 @@ bhnd_nvram_data_class_caps(bhnd_nvram_data_class *cls)
  */
 int
 bhnd_nvram_data_class_serialize(bhnd_nvram_data_class *cls,
-    bhnd_nvram_plist *plist, void *outp, size_t *olen)
+    bhnd_nvram_plist *props, void *outp, size_t *olen)
 {
-	return (cls->op_class_serialize(cls, plist, outp, olen));
+	return (cls->op_class_serialize(cls, props, outp, olen));
 }
 
 /**

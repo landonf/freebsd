@@ -307,7 +307,7 @@ extern const size_t bhnd_nvram_num_vardefns;
 /**
  * SPROM layout descriptor.
  */
-struct bhnd_sprom_layout {
+typedef struct bhnd_sprom_layout {
 	size_t		 size;		/**< SPROM image size, in bytes */
 	uint8_t		 rev;		/**< SPROM revision */
 	uint8_t		 flags;		/**< layout flags (SPROM_LAYOUT_*) */
@@ -319,7 +319,7 @@ struct bhnd_sprom_layout {
 	uint16_t	 num_vars;	/**< total number of variables defined
 					     for this layout by the binding
 					     table */
-};
+} bhnd_sprom_layout;
 
 /*
  * SPROM layout descriptions generated from nvram_map.

@@ -94,7 +94,7 @@ uint32_t		 bhnd_nvram_data_class_caps(bhnd_nvram_data_class *cls);
 
 int			 bhnd_nvram_data_class_serialize(
 			     bhnd_nvram_data_class *cls,
-			     bhnd_nvram_plist *plist, void *outp, size_t *olen);
+			     bhnd_nvram_plist *props, void *outp, size_t *olen);
 
 int			 bhnd_nvram_data_probe(bhnd_nvram_data_class *cls,
 			     struct bhnd_nvram_io *io);

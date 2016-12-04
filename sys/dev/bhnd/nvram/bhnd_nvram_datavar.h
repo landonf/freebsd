@@ -59,7 +59,7 @@ typedef int		 (bhnd_nvram_data_op_probe)(struct bhnd_nvram_io *io);
 /** @see bhnd_nvram_data_class_serialize() */
 typedef int		 (bhnd_nvram_data_op_class_serialize)(
 			      bhnd_nvram_data_class *cls,
-			      bhnd_nvram_plist *plist, void *outp,
+			      bhnd_nvram_plist *props, void *outp,
 			      size_t *olen);
 
 /** @see bhnd_nvram_data_new() */

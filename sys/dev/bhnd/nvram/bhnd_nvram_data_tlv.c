@@ -162,7 +162,7 @@ bhnd_nvram_tlv_probe(struct bhnd_nvram_io *io)
 
 static int
 bhnd_nvram_tlv_class_serialize(bhnd_nvram_data_class *cls,
-    bhnd_nvram_plist *plist, void *outp, size_t *olen)
+    bhnd_nvram_plist *props, void *outp, size_t *olen)
 {
 	// XXX TODO
 	return (EFTYPE);
