@@ -63,6 +63,14 @@ __FBSDID("$FreeBSD$");
  * used on Broadcom wireless and wired adapters, that provides a subset of the
  * variables defined by Broadcom SoC NVRAM formats.
  */
+
+static const bhnd_sprom_layout  *bhnd_nvram_sprom_get_layout(uint8_t sromrev);
+
+static int			 bhnd_nvram_sprom_ident(
+				     struct bhnd_nvram_io *io,
+				     const bhnd_sprom_layout **ident,
+				     struct bhnd_nvram_io **shadow);
+
 BHND_NVRAM_DATA_CLASS_DEFN(sprom, "Broadcom SPROM",
     BHND_NVRAM_DATA_CAP_DEVPATHS, sizeof(struct bhnd_nvram_sprom))
 
@@ -280,6 +288,24 @@ bhnd_nvram_sprom_probe(struct bhnd_nvram_io *io)
 	return (BHND_NVRAM_DATA_PROBE_DEFAULT);
 }
 
+
+/**
+ * Return the SPROM layout definition for the given @p sromrev, or NULL if
+ * not found.
+ */
+static const bhnd_sprom_layout *
+bhnd_nvram_sprom_get_layout(uint8_t sromrev)
+{
+	/* Find matching SPROM layout definition */
+	for (size_t i = 0; i < bhnd_sprom_num_layouts; i++) {
+		if (bhnd_sprom_layouts[i].rev == sromrev)
+			return (&bhnd_sprom_layouts[i]);
+	}
+
+	/* Not found */
+	return (NULL);
+}
+
 static int
 bhnd_nvram_sprom_class_serialize(bhnd_nvram_data_class *cls,
     bhnd_nvram_plist *props, void *outp, size_t *olen)
@@ -307,15 +333,8 @@ bhnd_nvram_sprom_class_serialize(bhnd_nvram_data_class *cls,
 		return (EFTYPE);
 	}
 
-	/* Find matching SPROM layout definition */
-	for (size_t i = 0; i < bhnd_sprom_num_layouts; i++) {
-		if (bhnd_sprom_layouts[i].rev == sromrev) {
-			layout = &bhnd_sprom_layouts[i];
-			break;
-		}
-	}
-
-	if (layout == NULL) {
+	/* Find SPROM layout definition */
+	if ((layout = bhnd_nvram_sprom_get_layout(sromrev)) == NULL) {
 		BHND_NV_LOG("unsupported sromrev: %hhu\n", sromrev);
 		return (EFTYPE);
 	}
@@ -328,7 +347,7 @@ bhnd_nvram_sprom_class_serialize(bhnd_nvram_data_class *cls,
 		return (ENOMEM);
 
 	// XXX TODO
-	return (ENXIO);
+	return (0);
 }
 
 static int
