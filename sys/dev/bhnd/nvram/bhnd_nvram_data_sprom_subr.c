@@ -50,6 +50,9 @@ static int	bhnd_sprom_opcode_sort_idx(const void *lhs, const void *rhs);
 static int	bhnd_nvram_opcode_idx_vid_compare(const void *key,
 		    const void *rhs);
 
+static int	bhnd_sprom_opcode_reset(bhnd_sprom_opcode_state *state);
+static int	bhnd_sprom_opcode_next_var(bhnd_sprom_opcode_state *state);
+
 static int	bhnd_sprom_opcode_set_type(bhnd_sprom_opcode_state *state,
 		    bhnd_nvram_type type);
 
@@ -179,7 +182,7 @@ bhnd_sprom_opcode_init(bhnd_sprom_opcode_state *state,
  * @retval 0 success
  * @retval non-zero If reset fails, a regular unix error code will be returned.
  */
-int
+static int
 bhnd_sprom_opcode_reset(bhnd_sprom_opcode_state *state)
 {
 	memset(&state->var, 0, sizeof(state->var));
@@ -1288,7 +1291,7 @@ bhnd_sprom_opcode_parse_var(bhnd_sprom_opcode_state *state,
  * @retval non-zero if evaluation otherwise fails, a regular unix error
  * code will be returned.
  */
-int
+static int
 bhnd_sprom_opcode_next_var(bhnd_sprom_opcode_state *state)
 {
 	uint8_t	opcode;

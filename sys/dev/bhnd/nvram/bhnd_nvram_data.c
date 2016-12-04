@@ -94,7 +94,7 @@ bhnd_nvram_data_class_caps(bhnd_nvram_data_class *cls)
  * 
  * @retval ENOMEM	If @p outp is non-NULL and a buffer of @p olen is too
  *			small to hold the serialized data.
- * @retval ENOENT	If a property value required by @p cls is not found in
+ * @retval EINVAL	If a property value required by @p cls is not found in
  *			@p plist.
  * @retval EFTYPE	If a property value in @p plist cannot be represented
  *			as the data type required by @p cls.

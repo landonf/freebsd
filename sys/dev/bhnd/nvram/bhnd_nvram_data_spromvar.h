@@ -64,10 +64,6 @@ bhnd_sprom_opcode_idx_entry	*bhnd_sprom_opcode_index_next(
 				     bhnd_sprom_opcode_state *state,
 				     bhnd_sprom_opcode_idx_entry *prev);
 
-int				 bhnd_sprom_opcode_reset(
-				     bhnd_sprom_opcode_state *state);
-int				 bhnd_sprom_opcode_next_var(
-				     bhnd_sprom_opcode_state *state);
 int				 bhnd_sprom_opcode_parse_var(
 				     bhnd_sprom_opcode_state *state,
 				     bhnd_sprom_opcode_idx_entry *entry);

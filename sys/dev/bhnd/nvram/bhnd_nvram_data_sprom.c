@@ -306,23 +306,60 @@ bhnd_nvram_sprom_get_layout(uint8_t sromrev)
 	return (NULL);
 }
 
+/**
+ * Serialize a property value to @p outp.
+ * 
+ * @param state	The SPROM opcode state describing the layout of @p outp.
+ * @param entry	The SPROM opcode entry for @p prop.
+ * @param prop	The property value to encode to @p outp as per @p entry.
+ * @param outp	The SPROM image output buffer to which @p prop should be
+ *		written.
+ * @param olen	The size of @p outp.
+ * 
+ * @retval 0		success
+ * @retval EFTYPE	If value coercion from @p prop to the type required by
+ *			@p entry is unsupported.
+ * @retval ERANGE	If value coercion from @p prop would overflow
+ *			(or underflow) the type required by @p entry.
+ * @retval non-zero	If serialization otherwise fails, a regular unix error
+ *			code will be returned.
+ */
+static int
+bhnd_nvram_sprom_class_serialize_prop(bhnd_sprom_opcode_state *state,
+    bhnd_sprom_opcode_idx_entry *entry, bhnd_nvram_prop *prop, void *outp,
+    size_t olen)
+{
+
+	/* Should always be true */
+	if (olen < state->layout->size)
+		return (ENOMEM);
+
+	// TODO
+	return (0);
+}
+
 static int
 bhnd_nvram_sprom_class_serialize(bhnd_nvram_data_class *cls,
     bhnd_nvram_plist *props, void *outp, size_t *olen)
 {
-	bhnd_nvram_prop		*prop;
-	const bhnd_sprom_layout	*layout;
-	uint8_t			 sromrev;
-	size_t			 limit, proplen;
-	int			 error;
+	bhnd_sprom_opcode_state		 state;
+	bhnd_nvram_prop			*prop;
+	bhnd_sprom_opcode_idx_entry	*entry;
+	const bhnd_sprom_layout		*layout;
+	size_t				 limit, proplen;
+	size_t				 crc_offset;
+	uint8_t				 crc;
+	uint8_t				 sromrev;
+	int				 error;
 
 	limit = *olen;
 	layout = NULL;
 
 	/* Fetch sromrev property */
 	if ((prop = bhnd_nvram_plist_get(props, BHND_NVAR_SROMREV)) == NULL) {
-		BHND_NV_LOG("missing required sromrev property\n");
-		return (ENOENT);
+		BHND_NV_LOG("missing required property: %s\n",
+		    BHND_NVAR_SROMREV);
+		return (EINVAL);
 	}
 
 	proplen = sizeof(sromrev);
@@ -346,8 +383,92 @@ bhnd_nvram_sprom_class_serialize(bhnd_nvram_data_class *cls,
 	else if (limit < *olen)
 		return (ENOMEM);
 
-	// XXX TODO
-	return (0);
+	/* Initialize SPROM layout interpreter */
+	if ((error = bhnd_sprom_opcode_init(&state, layout))) {
+		BHND_NV_LOG("error initializing opcode state: %d\n", error);
+		return (ENXIO);
+	}
+
+	/* Check for unsupported properties */
+	prop = NULL;
+	while ((prop = bhnd_nvram_plist_next(props, prop)) != NULL) {
+		const char *name;
+
+		/* Fetch the corresponding SPROM layout index entry */
+		name = bhnd_nvram_prop_name(prop);
+		entry = bhnd_sprom_opcode_index_find(&state, name);
+		if (entry == NULL) {
+			BHND_NV_LOG("property '%s' unsupported by sromrev "
+			    "%hhu\n", name, layout->rev);
+			error = EINVAL;
+			goto finished;
+		}
+
+		/* Attempt to serialize the property value to the appropriate
+		 * offset within the output buffer */
+		error = bhnd_nvram_sprom_class_serialize_prop(&state, entry,
+		    prop, outp, *olen);
+		if (error) {
+			/* ENOMEM is reserved for signaling that the output
+			 * buffer capacity is insufficient */
+			if (error == ENOMEM)
+				error = EINVAL;
+
+			goto finished;
+		}
+	}
+
+	/*
+	 * Serialize all SPROM variable data.
+	 */
+	entry = NULL;
+	while ((entry = bhnd_sprom_opcode_index_next(&state, entry)) != NULL) {
+		const struct bhnd_nvram_vardefn *var;
+
+		var = bhnd_nvram_get_vardefn(entry->vid);
+		BHND_NV_ASSERT(var != NULL, ("missing variable definition"));
+
+		prop = bhnd_nvram_plist_get(props, var->name);
+
+		// XXX TODO
+	}
+
+	/*
+	 * Write magic value, if any.
+	 */
+	if (!(layout->flags & SPROM_LAYOUT_MAGIC_NONE)) {
+		uint16_t *magic;
+
+		BHND_NV_ASSERT(
+		    layout->magic_offset + sizeof(*magic) < layout->size,
+		    ("invalid magic offset"));
+
+		magic = (uint16_t *)((uint8_t *)outp + layout->magic_offset);
+		*magic = htole16(layout->magic_value);
+	}
+
+	/*
+	 * Compute and write CRC; the final byte always contains the CRC
+	 * value
+	 */
+	BHND_NV_ASSERT(layout->size > 0, ("invalid layout size"));
+	crc_offset = layout->size - 1;
+
+	/* Calculate the CRC over all SPROM data, not including the CRC byte. */
+	crc = bhnd_nvram_crc8(outp, crc_offset, BHND_NVRAM_CRC8_INITIAL);
+
+	/* Write the checksum. */
+	*((uint8_t *)outp + crc_offset) = ~crc;
+
+	
+	/*
+	 * Success!
+	 */
+	error = 0;
+
+finished:
+	bhnd_sprom_opcode_fini(&state);
+	return (error);
 }
 
 static int
