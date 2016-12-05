@@ -37,6 +37,7 @@ SRCS+=	bhnd_nvram.c \
 	bhnd_nvram_data_tlv.c \
 	bhnd_nvram_io.c \
 	bhnd_nvram_iobuf.c \
+	bhnd_nvram_ioptr.c \
 	bhnd_nvram_iores.c \
 	bhnd_nvram_store.c \
 	bhnd_nvram_subr.c \

@@ -71,6 +71,20 @@ static int			 bhnd_nvram_sprom_ident(
 				     const bhnd_sprom_layout **ident,
 				     struct bhnd_nvram_io **shadow);
 
+static int			 bhnd_nvram_sprom_write_offset(
+				     const struct bhnd_nvram_vardefn *var,
+				     struct bhnd_nvram_io *data,
+				     bhnd_nvram_type type, size_t offset,
+				     uint32_t mask, int8_t shift,
+				     uint32_t value);
+
+static int			 bhnd_nvram_sprom_read_offset(
+				     const struct bhnd_nvram_vardefn *var,
+				     struct bhnd_nvram_io *data,
+				     bhnd_nvram_type type, size_t offset,
+				     uint32_t mask, int8_t shift,
+				     uint32_t *value);
+
 BHND_NVRAM_DATA_CLASS_DEFN(sprom, "Broadcom SPROM",
     BHND_NVRAM_DATA_CAP_DEVPATHS, sizeof(struct bhnd_nvram_sprom))
 
@@ -307,15 +321,13 @@ bhnd_nvram_sprom_get_layout(uint8_t sromrev)
 }
 
 /**
- * Serialize a property value to @p outp.
+ * Serialize a property value to @p io.
  * 
  * @param state	The SPROM opcode state describing the layout of @p outp.
  * @param entry	The SPROM opcode entry for @p prop.
  * @param prop	The property value to encode to @p outp as per @p entry.
- * @param outp	The SPROM image output buffer to which @p prop should be
- *		written.
- * @param olen	The size of @p outp.
- * 
+ * @param io	I/O context to which @p prop should be written.
+ *
  * @retval 0		success
  * @retval EFTYPE	If value coercion from @p prop to the type required by
  *			@p entry is unsupported.
@@ -326,15 +338,196 @@ bhnd_nvram_sprom_get_layout(uint8_t sromrev)
  */
 static int
 bhnd_nvram_sprom_class_serialize_prop(bhnd_sprom_opcode_state *state,
-    bhnd_sprom_opcode_idx_entry *entry, bhnd_nvram_prop *prop, void *outp,
-    size_t olen)
+    bhnd_sprom_opcode_idx_entry *entry, bhnd_nvram_prop *prop,
+    struct bhnd_nvram_io *io)
 {
+	const struct bhnd_nvram_vardefn	*var;
+	uint32_t			 val[BHND_SPROM_ARRAY_MAXLEN];
+	bhnd_nvram_type			 itype, var_base_type;
+	size_t				 ipos, ilen, nelem;
+	int				 error;
 
-	/* Should always be true */
-	if (olen < state->layout->size)
-		return (ENOMEM);
+	/* Fetch variable definition and the native element type */
+	var = bhnd_nvram_get_vardefn(entry->vid);
+	BHND_NV_ASSERT(var != NULL, ("missing variable definition"));
 
-	// TODO
+	var_base_type = bhnd_nvram_base_type(var->type);
+
+	/* Fetch the element count from the SPROM variable layout definition */
+	if ((error = bhnd_sprom_opcode_parse_var(state, entry)))
+		return (error);
+
+	nelem = state->var.nelem;
+	BHND_NV_ASSERT(nelem <= var->nelem, ("SPROM nelem=%zu exceeds maximum "
+	     "NVRAM nelem=%hhu", nelem, var->nelem));
+
+	/* Promote the data to a common 32-bit representation */
+	if (bhnd_nvram_is_signed_type(var_base_type))
+		itype = BHND_NVRAM_TYPE_INT32_ARRAY;
+	else
+		itype = BHND_NVRAM_TYPE_UINT32_ARRAY;
+
+	/* Calculate total size of the 32-bit promoted representation */
+	if ((ilen = bhnd_nvram_value_size(itype, NULL, 0, nelem)) == 0) {
+		/* Variable-width types are unsupported */
+		BHND_NV_LOG("invalid %s SPROM variable type %d\n",
+			    var->name, var->type);
+		return (EFTYPE);
+	}
+
+	/* The native representation must fit within our scratch array */
+	if (ilen > sizeof(val)) {
+		BHND_NV_LOG("error encoding '%s', SPROM_ARRAY_MAXLEN "
+			    "incorrect\n", var->name);
+		return (EFTYPE);
+	}
+
+	/* Initialize our common 32-bit value representation */
+	if (prop == NULL ||
+	    bhnd_nvram_prop_type(prop) == BHND_NVRAM_TYPE_NULL) 
+	{
+		/* No value provided; can this variable be encoded as missing
+		 * by setting all bits to one? */
+		if (!(var->flags & BHND_NVRAM_VF_IGNALL1)) {
+			BHND_NV_LOG("missing required property: %s\n",
+			    var->name);
+			return (EINVAL);
+		}
+	
+		/* Set all bits */
+		memset(val, 0xFF, ilen);
+	} else {
+		union bhnd_nvram_sprom_storage	prop_val;
+		size_t				prop_len, prop_nelem;
+		bhnd_nvram_type			prop_type;
+
+
+		/* Try to coerce the property value into the native variable
+		 * type */
+		prop_len = sizeof(prop_val);
+		error = bhnd_nvram_prop_encode(prop, &prop_val, &prop_len,
+		     var->type);
+		if (error)
+			return (error);
+
+		/*
+		 * Promote to a common 32-bit representation. 
+		 *
+		 * We must use the raw type to interpret the input data as its
+		 * underlying integer representation -- otherwise, coercion
+		 * would attempt to parse the input as its complex
+		 * representation.
+		 *
+		 * For example, direct CHAR -> UINT32 coercion would attempt to
+		 * parse the character as a decimal integer, rather than
+		 * promoting the raw UTF8 byte value to a 32-bit value.
+		 */
+		prop_type = bhnd_nvram_raw_type(var->type);
+		error = bhnd_nvram_value_coerce(&prop_val, prop_len, prop_type,
+		     val, &ilen, itype);
+		if (error)
+			return (error);
+
+		/* Encoded element count must match SPROM's definition */
+		error = bhnd_nvram_value_nelem(itype, val, ilen, &prop_nelem);
+		if (error)
+			return (error);
+
+		if (prop_nelem != nelem) {
+			const char *type_name;
+	
+			type_name = bhnd_nvram_type_name(var_base_type);
+			BHND_NV_LOG("invalid %s property value '%s[%zu]': "
+			    "required %s[%zu]", var->name, type_name,
+			    prop_nelem, type_name, nelem);
+			return (EFTYPE);
+		}
+	}
+
+	/*
+	 * Seek to the start of the variable's SPROM layout definition and
+	 * iterate over all bindings.
+	 */
+	if ((error = bhnd_sprom_opcode_seek(state, entry))) {
+		BHND_NV_LOG("variable seek failed: %d\n", error);
+		return (error);
+	}
+	
+	ipos = 0;
+	while ((error = bhnd_sprom_opcode_next_binding(state)) == 0) {
+		bhnd_sprom_opcode_bind	*binding;
+		bhnd_sprom_opcode_var	*binding_var;
+		size_t			 offset;
+		uint32_t		 skip_out_bytes;
+
+		BHND_NV_ASSERT(
+		    state->var_state >= SPROM_OPCODE_VAR_STATE_OPEN,
+		    ("invalid var state"));
+		BHND_NV_ASSERT(state->var.have_bind, ("invalid bind state"));
+
+		binding_var = &state->var;
+		binding = &state->var.bind;
+
+		/* Calculate output skip bytes for this binding.
+		 * 
+		 * Skip directions are defined in terms of decoding, and
+		 * reversed when encoding. */
+		skip_out_bytes = binding->skip_in;
+		error = bhnd_sprom_opcode_apply_scale(state, &skip_out_bytes);
+		if (error)
+			return (error);
+
+		/* Bind */
+		offset = state->offset;
+		for (size_t i = 0; i < binding->count; i++) {
+			/* Encode current input value */
+			if (ipos >= nelem) {
+				BHND_NV_LOG("input skip %u positioned %zu "
+				    "beyond nelem %zu\n", binding->skip_out,
+				    ipos, nelem);
+				return (EINVAL);
+			}
+
+			error = bhnd_nvram_sprom_write_offset(var, io,
+			    binding_var->base_type,
+			    offset,
+			    binding_var->mask,
+			    binding_var->shift,
+			    val[ipos]);
+			if (error)
+				return (error);
+
+			/* Adjust output position; this was already verified to
+			 * not overflow/underflow during SPROM opcode
+			 * evaluation */
+			if (binding->skip_in_negative) {
+				offset -= skip_out_bytes;
+			} else {
+				offset += skip_out_bytes;
+			}
+
+			/* Skip advancing input if additional bindings are
+			 * required to fully encode intv */
+			if (binding->skip_out == 0)
+				continue;
+
+			/* Advance input position */
+			if (SIZE_MAX - binding->skip_out < ipos) {
+				BHND_NV_LOG("output skip %u would overflow "
+				    "%zu\n", binding->skip_out, ipos);
+				return (EINVAL);
+			}
+
+			ipos += binding->skip_out;
+		}
+	}
+
+	/* Did we iterate all bindings until hitting end of the variable
+	 * definition? */
+	BHND_NV_ASSERT(error != 0, ("loop terminated early"));
+	if (error != ENOENT)
+		return (error);
+
 	return (0);
 }
 
@@ -343,6 +536,7 @@ bhnd_nvram_sprom_class_serialize(bhnd_nvram_data_class *cls,
     bhnd_nvram_plist *props, void *outp, size_t *olen)
 {
 	bhnd_sprom_opcode_state		 state;
+	struct bhnd_nvram_io		*io;
 	bhnd_nvram_prop			*prop;
 	bhnd_sprom_opcode_idx_entry	*entry;
 	const bhnd_sprom_layout		*layout;
@@ -354,6 +548,7 @@ bhnd_nvram_sprom_class_serialize(bhnd_nvram_data_class *cls,
 
 	limit = *olen;
 	layout = NULL;
+	io = NULL;
 
 	/* Fetch sromrev property */
 	if ((prop = bhnd_nvram_plist_get(props, BHND_NVAR_SROMREV)) == NULL) {
@@ -403,19 +598,16 @@ bhnd_nvram_sprom_class_serialize(bhnd_nvram_data_class *cls,
 			error = EINVAL;
 			goto finished;
 		}
+	}
 
-		/* Attempt to serialize the property value to the appropriate
-		 * offset within the output buffer */
-		error = bhnd_nvram_sprom_class_serialize_prop(&state, entry,
-		    prop, outp, *olen);
-		if (error) {
-			/* ENOMEM is reserved for signaling that the output
-			 * buffer capacity is insufficient */
-			if (error == ENOMEM)
-				error = EINVAL;
+	/* Zero-initialize output */
+	memset(outp, 0, *olen);
 
-			goto finished;
-		}
+	/* Allocate wrapping I/O context for output buffer */
+	io = bhnd_nvram_ioptr_new(outp, *olen, *olen, BHND_NVRAM_IOPTR_RDWR);
+	if (io == NULL) {
+		error = ENOMEM;
+		goto finished;
 	}
 
 	/*
@@ -428,23 +620,40 @@ bhnd_nvram_sprom_class_serialize(bhnd_nvram_data_class *cls,
 		var = bhnd_nvram_get_vardefn(entry->vid);
 		BHND_NV_ASSERT(var != NULL, ("missing variable definition"));
 
+		/* Fetch prop; will be NULL if unavailble */
 		prop = bhnd_nvram_plist_get(props, var->name);
 
-		// XXX TODO
+		/* Attempt to serialize the property value to the appropriate
+		 * offset within the output buffer */
+		error = bhnd_nvram_sprom_class_serialize_prop(&state, entry,
+		    prop, io);
+		if (error) {
+			BHND_NV_LOG("error serializing %s to required type "
+			    "%s: %d\n", var->name,
+			    bhnd_nvram_type_name(var->type), error);
+
+			/* ENOMEM is reserved for signaling that the output
+			 * buffer capacity is insufficient */
+			if (error == ENOMEM)
+				error = EINVAL;
+
+			goto finished;
+		}
 	}
 
 	/*
 	 * Write magic value, if any.
 	 */
 	if (!(layout->flags & SPROM_LAYOUT_MAGIC_NONE)) {
-		uint16_t *magic;
+		uint16_t magic;
 
-		BHND_NV_ASSERT(
-		    layout->magic_offset + sizeof(*magic) < layout->size,
-		    ("invalid magic offset"));
-
-		magic = (uint16_t *)((uint8_t *)outp + layout->magic_offset);
-		*magic = htole16(layout->magic_value);
+		magic = htole16(layout->magic_value);
+		error = bhnd_nvram_io_write(io, layout->magic_offset, &magic,
+		    sizeof(magic));
+		if (error) {
+			BHND_NV_LOG("error writing magic value: %d\n", error);
+			goto finished;
+		}
 	}
 
 	/*
@@ -455,11 +664,14 @@ bhnd_nvram_sprom_class_serialize(bhnd_nvram_data_class *cls,
 	crc_offset = layout->size - 1;
 
 	/* Calculate the CRC over all SPROM data, not including the CRC byte. */
-	crc = bhnd_nvram_crc8(outp, crc_offset, BHND_NVRAM_CRC8_INITIAL);
+	crc = ~bhnd_nvram_crc8(outp, crc_offset, BHND_NVRAM_CRC8_INITIAL);
 
 	/* Write the checksum. */
-	*((uint8_t *)outp + crc_offset) = ~crc;
-
+	error = bhnd_nvram_io_write(io, crc_offset, &crc, sizeof(crc));
+	if (error) {
+		BHND_NV_LOG("error writing CRC value: %d\n", error);
+		goto finished;
+	}
 	
 	/*
 	 * Success!
@@ -468,6 +680,10 @@ bhnd_nvram_sprom_class_serialize(bhnd_nvram_data_class *cls,
 
 finished:
 	bhnd_sprom_opcode_fini(&state);
+	
+	if (io != NULL)
+		bhnd_nvram_io_free(io);
+
 	return (error);
 }
 
@@ -595,8 +811,6 @@ bhnd_nvram_sprom_next(struct bhnd_nvram_data *nv, void **cookiep)
 	return (NULL);
 }
 
-
-
 static void *
 bhnd_nvram_sprom_find(struct bhnd_nvram_data *nv, const char *name)
 {
@@ -610,11 +824,107 @@ bhnd_nvram_sprom_find(struct bhnd_nvram_data *nv, const char *name)
 }
 
 /**
- * Read the value of @p type from the SPROM data at @p offset, apply @p mask
+ * Write @p value of @p type to the SPROM @p data at @p offset, applying
+ * @p mask and @p shift, and OR with the existing data.
+ *
+ * @param var The NVRAM variable definition.
+ * @param data The SPROM data to be modified.
+ * @param type The type to write at @p offset.
+ * @param offset The data offset to be written.
+ * @param mask The mask to be applied to @p value after shifting.
+ * @param shift The shift to be applied to @p value; if positive, a left
+ * shift will be applied, if negative, a right shift (this is the reverse of the
+ * decoding behavior)
+ * @param value The value to be written. The parsed value will be OR'd with the
+ * current contents of @p data at @p offset.
+ */
+static int
+bhnd_nvram_sprom_write_offset(const struct bhnd_nvram_vardefn *var,
+    struct bhnd_nvram_io *data, bhnd_nvram_type type, size_t offset,
+    uint32_t mask, int8_t shift, uint32_t value)
+{
+	union bhnd_nvram_sprom_storage	scratch;
+	int				error;
+
+#define	NV_WRITE_INT(_widen, _repr, _swap)	do {		\
+	/* Narrow the 32-bit representation */			\
+	scratch._repr[1] = (_widen)value;			\
+								\
+	/* Shift and mask the new value */			\
+	if (shift > 0)						\
+		scratch._repr[1] <<= shift;			\
+	else if (shift < 0)					\
+		scratch._repr[1] >>= -shift;			\
+	scratch._repr[1] &= mask;				\
+								\
+	/* Swap to output byte order */				\
+	scratch._repr[1] = _swap(scratch._repr[1]);		\
+								\
+	/* Fetch the current value */				\
+	error = bhnd_nvram_io_read(data, offset,		\
+	    &scratch._repr[0], sizeof(scratch._repr[0]));	\
+	if (error) {						\
+		BHND_NV_LOG("error reading %s SPROM offset "	\
+		    "%#zx: %d\n", var->name, offset, error);	\
+		return (EFTYPE);				\
+	}							\
+								\
+	/* Mask and set our new value's bits in the current	\
+	 * value */						\
+	if (shift >= 0)						\
+		scratch._repr[0] &= ~_swap(mask << shift);	\
+	else if (shift < 0)					\
+		scratch._repr[0] &= ~_swap(mask >> (-shift));	\
+	scratch._repr[0] |= scratch._repr[1];			\
+								\
+	/* Perform write */					\
+	error = bhnd_nvram_io_write(data, offset,		\
+	    &scratch._repr[0], sizeof(scratch._repr[0]));	\
+	if (error) {						\
+		BHND_NV_LOG("error writing %s SPROM offset "	\
+		    "%#zx: %d\n", var->name, offset, error);	\
+		return (EFTYPE);				\
+	}							\
+} while(0)
+
+	/* Apply mask/shift and widen to a common 32bit representation */
+	switch (type) {
+	case BHND_NVRAM_TYPE_UINT8:
+		NV_WRITE_INT(uint32_t,	u8,	);
+		break;
+	case BHND_NVRAM_TYPE_UINT16:
+		NV_WRITE_INT(uint32_t,	u16,	htole16);
+		break;
+	case BHND_NVRAM_TYPE_UINT32:
+		NV_WRITE_INT(uint32_t,	u32,	htole32);
+		break;
+	case BHND_NVRAM_TYPE_INT8:
+		NV_WRITE_INT(int32_t,	i8,	);
+		break;
+	case BHND_NVRAM_TYPE_INT16:
+		NV_WRITE_INT(int32_t,	i16,	htole16);
+		break;
+	case BHND_NVRAM_TYPE_INT32:
+		NV_WRITE_INT(int32_t,	i32,	htole32);
+		break;
+	case BHND_NVRAM_TYPE_CHAR:
+		NV_WRITE_INT(uint32_t,	u8,	);
+		break;
+	default:
+		BHND_NV_LOG("unhandled %s offset type: %d\n", var->name, type);
+		return (EFTYPE);
+	}
+#undef	NV_WRITE_INT
+
+	return (0);
+}
+
+/**
+ * Read the value of @p type from the SPROM @p data at @p offset, apply @p mask
  * and @p shift, and OR with the existing @p value.
  * 
- * @param sp The SPROM data instance.
- * @param var The NVRAM variable definition
+ * @param var The NVRAM variable definition.
+ * @param data The SPROM data to be decoded.
  * @param type The type to read at @p offset
  * @param offset The data offset to be read.
  * @param mask The mask to be applied to the value read at @p offset.
@@ -624,90 +934,67 @@ bhnd_nvram_sprom_find(struct bhnd_nvram_data *nv, const char *name)
  * current contents of @p value.
  */
 static int
-bhnd_nvram_sprom_read_offset(struct bhnd_nvram_sprom *sp,
-    const struct bhnd_nvram_vardefn *var, bhnd_nvram_type type,
-    size_t offset, uint32_t mask, int8_t shift,
-    union bhnd_nvram_sprom_intv *value)
+bhnd_nvram_sprom_read_offset(const struct bhnd_nvram_vardefn *var,
+    struct bhnd_nvram_io *data, bhnd_nvram_type type, size_t offset,
+    uint32_t mask, int8_t shift, uint32_t *value)
 {
-	size_t	sp_width;
-	int	error;
-	union {
-		uint8_t		u8;
-		uint16_t	u16;
-		uint32_t	u32;
-		int8_t		s8;
-		int16_t		s16;
-		int32_t		s32;
-	} sp_value;
+	union bhnd_nvram_sprom_storage	scratch;
+	int				error;
 
-	/* Determine type width */
-	sp_width = bhnd_nvram_value_size(type, NULL, 0, 1);
-	if (sp_width == 0) {
-		/* Variable-width types are unsupported */
-		BHND_NV_LOG("invalid %s SPROM offset type %d\n", var->name,
-		    type);
-		return (EFTYPE);
-	}
-
-	/* Perform read */
-	error = bhnd_nvram_io_read(sp->data, offset, &sp_value,
-	    sp_width);
-	if (error) {
-		BHND_NV_LOG("error reading %s SPROM offset %#zx: %d\n",
-		    var->name, offset, error);
-		return (EFTYPE);
-	}
-
-#define	NV_PARSE_INT(_type, _src, _dest, _swap)	do {			\
-	/* Swap to host byte order */					\
-	sp_value. _src = (_type) _swap(sp_value. _src);			\
-									\
-	/* Mask and shift the value */					\
-	sp_value. _src &= mask;				\
+#define	NV_PARSE_INT(_widen, _repr, _swap)		do {	\
+	/* Perform read */					\
+	error = bhnd_nvram_io_read(data, offset,		\
+	    &scratch._repr[0], sizeof(scratch._repr[0]));	\
+	if (error) {						\
+		BHND_NV_LOG("error reading %s SPROM offset "	\
+		    "%#zx: %d\n", var->name, offset, error);	\
+		return (EFTYPE);				\
+	}							\
+								\
+	/* Swap to host byte order */				\
+	scratch._repr[0] = _swap(scratch._repr[0]);		\
+								\
+	/* Mask and shift the value */				\
+	scratch._repr[0] &= mask;				\
 	if (shift > 0) {					\
-		sp_value. _src >>= shift;			\
-	} else if (shift < 0) {				\
-		sp_value. _src <<= -shift;			\
-	}								\
-									\
-	/* Emit output, widening to 32-bit representation  */		\
-	value-> _dest |= sp_value. _src;				\
+		scratch. _repr[0] >>= shift;			\
+	} else if (shift < 0) {					\
+		scratch. _repr[0] <<= -shift;			\
+	}							\
+								\
+	/* Widen to 32-bit representation and OR with current	\
+	 * value */						\
+	(*value) |= (_widen)scratch._repr[0];			\
 } while(0)
 
 	/* Apply mask/shift and widen to a common 32bit representation */
 	switch (type) {
 	case BHND_NVRAM_TYPE_UINT8:
-		NV_PARSE_INT(uint8_t,	u8,	u32,	);
+		NV_PARSE_INT(uint32_t,	u8,	);
 		break;
 	case BHND_NVRAM_TYPE_UINT16:
-		NV_PARSE_INT(uint16_t,	u16,	u32,	le16toh);
+		NV_PARSE_INT(uint32_t,	u16,	le16toh);
 		break;
 	case BHND_NVRAM_TYPE_UINT32:
-		NV_PARSE_INT(uint32_t,	u32,	u32,	le32toh);
+		NV_PARSE_INT(uint32_t,	u32,	le32toh);
 		break;
 	case BHND_NVRAM_TYPE_INT8:
-		NV_PARSE_INT(int8_t,	s8,	s32,	);
+		NV_PARSE_INT(int32_t,	i8,	);
 		break;
 	case BHND_NVRAM_TYPE_INT16:
-		NV_PARSE_INT(int16_t,	s16,	s32,	le16toh);
+		NV_PARSE_INT(int32_t,	i16,	le16toh);
 		break;
 	case BHND_NVRAM_TYPE_INT32:
-		NV_PARSE_INT(int32_t,	s32,	s32,	le32toh);
+		NV_PARSE_INT(int32_t,	i32,	le32toh);
 		break;
 	case BHND_NVRAM_TYPE_CHAR:
-		NV_PARSE_INT(uint8_t,	u8,	u32,	);
+		NV_PARSE_INT(uint32_t,	u8,	);
 		break;
-
-	case BHND_NVRAM_TYPE_DATA:
-	case BHND_NVRAM_TYPE_NULL:
-	case BHND_NVRAM_TYPE_UINT64:
-	case BHND_NVRAM_TYPE_INT64:
-	case BHND_NVRAM_TYPE_STRING:
-		/* fallthrough (unused by SPROM) */
 	default:
 		BHND_NV_LOG("unhandled %s offset type: %d\n", var->name, type);
 		return (EFTYPE);
 	}
+#undef	NV_PARSE_INT
 
 	return (0);
 }
@@ -721,7 +1008,7 @@ bhnd_nvram_sprom_read_offset(struct bhnd_nvram_sprom *sp,
  * the lifetime of @p storage.
  *
  * The caller is responsible for releasing any allocated value state
- * via bhnd_nvram_val_free().
+ * via bhnd_nvram_val_release().
  */
 static int
 bhnd_nvram_sprom_getvar_common(struct bhnd_nvram_data *nv, void *cookiep,
@@ -731,8 +1018,8 @@ bhnd_nvram_sprom_getvar_common(struct bhnd_nvram_data *nv, void *cookiep,
 	bhnd_sprom_opcode_idx_entry	*entry;
 	const struct bhnd_nvram_vardefn	*var;
 	union bhnd_nvram_sprom_storage	*inp;
-	union bhnd_nvram_sprom_intv	 intv;
 	bhnd_nvram_type			 var_btype;
+	uint32_t			 intv;
 	size_t				 ilen, ipos, iwidth;
 	size_t				 nelem;
 	bool				 all_bits_set;
@@ -800,7 +1087,7 @@ bhnd_nvram_sprom_getvar_common(struct bhnd_nvram_data *nv, void *cookiep,
 	}
 
 	ipos = 0;
-	intv.u32 = 0x0;
+	intv = 0x0;
 	if (var->flags & BHND_NVRAM_VF_IGNALL1)
 		all_bits_set = true;
 	else
@@ -841,7 +1128,7 @@ bhnd_nvram_sprom_getvar_common(struct bhnd_nvram_data *nv, void *cookiep,
 		for (size_t i = 0; i < binding->count; i++) {
 			/* Read the offset value, OR'ing with the current
 			 * value of intv */
-			error = bhnd_nvram_sprom_read_offset(sp, var,
+			error = bhnd_nvram_sprom_read_offset(var, sp->data,
 			    binding_var->base_type,
 			    offset,
 			    binding_var->mask,
@@ -863,7 +1150,7 @@ bhnd_nvram_sprom_getvar_common(struct bhnd_nvram_data *nv, void *cookiep,
 				else if (binding_var->shift < 0)
 					all1 <<= -binding_var->shift;
 
-				if ((intv.u32 & all1) != all1)
+				if ((intv & all1) != all1)
 					all_bits_set = false;
 			}
 
@@ -902,7 +1189,7 @@ bhnd_nvram_sprom_getvar_common(struct bhnd_nvram_data *nv, void *cookiep,
 				return (error);
 
 			/* Clear temporary state */
-			intv.u32 = 0x0;
+			intv = 0x0;
 
 			/* Advance output position */
 			if (SIZE_MAX - binding->skip_out < ipos) {

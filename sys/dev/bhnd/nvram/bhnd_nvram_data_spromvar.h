@@ -162,14 +162,6 @@ union bhnd_nvram_sprom_storage {
 };
 
 /**
- * SPROM common integer value representation.
- */
-union bhnd_nvram_sprom_intv {
-	uint32_t	u32;
-	int32_t		s32;
-};
-
-/**
  * SPROM data class instance state.
  */
 struct bhnd_nvram_sprom {
