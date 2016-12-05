@@ -1117,7 +1117,8 @@ bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
 	}
 
 	/* Search uncommitted changes first */
-	if ((prop = bhnd_nvram_plist_get(path->pending, info.name)) != NULL) {
+	prop = bhnd_nvram_plist_getprop(path->pending, info.name);
+	if (prop != NULL) {
 		/* Found in uncommitted change list */
 		if (bhnd_nvram_prop_type(prop) == BHND_NVRAM_TYPE_NULL) {
 			/* NULL property values denote a pending deletion */

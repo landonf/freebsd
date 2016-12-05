@@ -551,7 +551,8 @@ bhnd_nvram_sprom_class_serialize(bhnd_nvram_data_class *cls,
 	io = NULL;
 
 	/* Fetch sromrev property */
-	if ((prop = bhnd_nvram_plist_get(props, BHND_NVAR_SROMREV)) == NULL) {
+	prop = bhnd_nvram_plist_getprop(props, BHND_NVAR_SROMREV);
+	if (prop == NULL) {
 		BHND_NV_LOG("missing required property: %s\n",
 		    BHND_NVAR_SROMREV);
 		return (EINVAL);
@@ -621,7 +622,7 @@ bhnd_nvram_sprom_class_serialize(bhnd_nvram_data_class *cls,
 		BHND_NV_ASSERT(var != NULL, ("missing variable definition"));
 
 		/* Fetch prop; will be NULL if unavailble */
-		prop = bhnd_nvram_plist_get(props, var->name);
+		prop = bhnd_nvram_plist_getprop(props, var->name);
 
 		/* Attempt to serialize the property value to the appropriate
 		 * offset within the output buffer */

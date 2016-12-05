@@ -80,8 +80,9 @@ bool			 bhnd_nvram_plist_contains(bhnd_nvram_plist *plist,
 			     const char *name);
 bhnd_nvram_prop		*bhnd_nvram_plist_next(bhnd_nvram_plist *plist,
 			     bhnd_nvram_prop *prop);
-bhnd_nvram_prop		*bhnd_nvram_plist_get(bhnd_nvram_plist *plist,
+bhnd_nvram_prop		*bhnd_nvram_plist_getprop(bhnd_nvram_plist *plist,
 			     const char *name);
+
 
 bhnd_nvram_prop		*bhnd_nvram_prop_new(const char *name,
 			     bhnd_nvram_val *val);
