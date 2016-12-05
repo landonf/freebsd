@@ -84,6 +84,7 @@ bhnd_nvram_data_class_caps(bhnd_nvram_data_class *cls)
  *				serialization.
  * @param		props	The raw property values to be serialized to
  *				@p outp, in serialization order.
+ * @param		options	Serialization options for @p cls, or NULL.
  * @param[out]		outp	On success, the serialed NVRAM data will be
  *				written to this buffer. This argment may be
  *				NULL if the value is not desired.
@@ -105,9 +106,10 @@ bhnd_nvram_data_class_caps(bhnd_nvram_data_class *cls)
  */
 int
 bhnd_nvram_data_class_serialize(bhnd_nvram_data_class *cls,
-    bhnd_nvram_plist *props, void *outp, size_t *olen)
+    bhnd_nvram_plist *props, bhnd_nvram_plist *options, void *outp,
+    size_t *olen)
 {
-	return (cls->op_class_serialize(cls, props, outp, olen));
+	return (cls->op_class_serialize(cls, props, options, outp, olen));
 }
 
 /**

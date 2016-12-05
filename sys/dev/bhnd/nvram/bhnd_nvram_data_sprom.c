@@ -533,7 +533,8 @@ bhnd_nvram_sprom_class_serialize_prop(bhnd_sprom_opcode_state *state,
 
 static int
 bhnd_nvram_sprom_class_serialize(bhnd_nvram_data_class *cls,
-    bhnd_nvram_plist *props, void *outp, size_t *olen)
+    bhnd_nvram_plist *props, bhnd_nvram_plist *options, void *outp,
+    size_t *olen)
 {
 	bhnd_sprom_opcode_state		 state;
 	struct bhnd_nvram_io		*io;
