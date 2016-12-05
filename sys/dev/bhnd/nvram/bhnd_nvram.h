@@ -80,9 +80,27 @@ bool			 bhnd_nvram_plist_contains(bhnd_nvram_plist *plist,
 			     const char *name);
 bhnd_nvram_prop		*bhnd_nvram_plist_next(bhnd_nvram_plist *plist,
 			     bhnd_nvram_prop *prop);
-bhnd_nvram_prop		*bhnd_nvram_plist_getprop(bhnd_nvram_plist *plist,
-			     const char *name);
 
+bhnd_nvram_prop		*bhnd_nvram_plist_get_prop(bhnd_nvram_plist *plist,
+			     const char *name);
+int			 bhnd_nvram_plist_get_encoded(bhnd_nvram_plist *plist,
+			     const char *name, void *outp, size_t olen,
+			     bhnd_nvram_type otype);
+
+int			 bhnd_nvram_plist_get_char(bhnd_nvram_plist *plist,
+			     const char *name, u_char *val);
+int			 bhnd_nvram_plist_get_uint8(bhnd_nvram_plist *plist,
+			     const char *name, uint8_t *val);
+int			 bhnd_nvram_plist_get_uint16(bhnd_nvram_plist *plist,
+			     const char *name, uint16_t *val);
+int			 bhnd_nvram_plist_get_uint32(bhnd_nvram_plist *plist,
+			     const char *name, uint32_t *val);
+int			 bhnd_nvram_plist_get_uint64(bhnd_nvram_plist *plist,
+			     const char *name, uint64_t *val);
+int			 bhnd_nvram_plist_get_string(bhnd_nvram_plist *plist,
+			     const char *name, const char **val);
+int			 bhnd_nvram_plist_get_bool(bhnd_nvram_plist *plist,
+			     const char *name, bool *val);
 
 bhnd_nvram_prop		*bhnd_nvram_prop_new(const char *name,
 			     bhnd_nvram_val *val);

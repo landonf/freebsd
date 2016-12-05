@@ -540,7 +540,7 @@ bhnd_nvram_sprom_class_serialize(bhnd_nvram_data_class *cls,
 	bhnd_nvram_prop			*prop;
 	bhnd_sprom_opcode_idx_entry	*entry;
 	const bhnd_sprom_layout		*layout;
-	size_t				 limit, proplen;
+	size_t				 limit;
 	size_t				 crc_offset;
 	uint8_t				 crc;
 	uint8_t				 sromrev;
@@ -551,16 +551,13 @@ bhnd_nvram_sprom_class_serialize(bhnd_nvram_data_class *cls,
 	io = NULL;
 
 	/* Fetch sromrev property */
-	prop = bhnd_nvram_plist_getprop(props, BHND_NVAR_SROMREV);
-	if (prop == NULL) {
+	if (!bhnd_nvram_plist_contains(props, BHND_NVAR_SROMREV)) {
 		BHND_NV_LOG("missing required property: %s\n",
 		    BHND_NVAR_SROMREV);
 		return (EINVAL);
 	}
 
-	proplen = sizeof(sromrev);
-	error = bhnd_nvram_prop_encode(prop, &sromrev, &proplen,
-	    BHND_NVRAM_TYPE_UINT8);
+	error = bhnd_nvram_plist_get_uint8(props, BHND_NVAR_SROMREV, &sromrev);
 	if (error) {
 		BHND_NV_LOG("error reading sromrev property: %d\n", error);
 		return (EFTYPE);
@@ -622,7 +619,7 @@ bhnd_nvram_sprom_class_serialize(bhnd_nvram_data_class *cls,
 		BHND_NV_ASSERT(var != NULL, ("missing variable definition"));
 
 		/* Fetch prop; will be NULL if unavailble */
-		prop = bhnd_nvram_plist_getprop(props, var->name);
+		prop = bhnd_nvram_plist_get_prop(props, var->name);
 
 		/* Attempt to serialize the property value to the appropriate
 		 * offset within the output buffer */

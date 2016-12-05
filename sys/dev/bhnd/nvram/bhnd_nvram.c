@@ -553,7 +553,7 @@ bhnd_nvram_plist_next(bhnd_nvram_plist *plist, bhnd_nvram_prop *prop)
  * @retval NULL		if @p name is not found.
  */
 bhnd_nvram_prop *
-bhnd_nvram_plist_getprop(bhnd_nvram_plist *plist, const char *name)
+bhnd_nvram_plist_get_prop(bhnd_nvram_plist *plist, const char *name)
 {
 	bhnd_nvram_plist_entry *entry;
 
@@ -561,6 +561,166 @@ bhnd_nvram_plist_getprop(bhnd_nvram_plist *plist, const char *name)
 		return (NULL);
 
 	return (entry->prop);
+}
+
+/**
+ * Attempt to encode a named property's value as @p otype, writing the result
+ * to @p outp.
+ *
+ * @param		plist	The property list to be queried.
+ * @param		name	The name of the property value to be returned.
+ * @param[out]		outp	On success, the value will be written to this 
+ *				buffer. This argment may be NULL if the value is
+ *				not desired.
+ * @param[in,out]	olen	The capacity of @p outp. On success, will be set
+ *				to the actual size of the requested value.
+ * @param		otype	The data type to be written to @p outp.
+ *
+ * @retval 0		success
+ * @retval ENOENT	If @p name is not found in @p plist.
+ * @retval ENOMEM	If the @p outp is non-NULL, and the provided @p olen
+ *			is too small to hold the encoded value.
+ * @retval EFTYPE	If value coercion from @p prop to @p otype is
+ *			impossible.
+ * @retval ERANGE	If value coercion would overflow (or underflow) the
+ *			a @p otype representation.
+ */
+int
+bhnd_nvram_plist_get_encoded(bhnd_nvram_plist *plist, const char *name,
+    void *outp, size_t olen, bhnd_nvram_type otype)
+{
+	bhnd_nvram_prop *prop;
+
+	if ((prop = bhnd_nvram_plist_get_prop(plist, name)) == NULL)
+		return (ENOENT);
+
+	return (bhnd_nvram_prop_encode(prop, outp, &olen, otype));
+}
+
+/**
+ * Return the character representation of a named property's value.
+ * 
+ * @param	plist	The property list to be queried.
+ * @param	name	The name of the property value to be returned.
+ * @param[out]	val	On success, the character value of @p name.
+ *
+ * @retval 0		success
+ * @retval ENOENT	If @p name is not found in @p plist.
+ * @retval EFTYPE	If coercion of the property's value to @p val.
+ * @retval ERANGE	If coercion of the property's value would overflow
+ *			(or underflow) @p val.
+ */
+int
+bhnd_nvram_plist_get_char(bhnd_nvram_plist *plist, const char *name,
+    u_char *val)
+{
+	return (bhnd_nvram_plist_get_encoded(plist, name, val, sizeof(*val),
+	    BHND_NVRAM_TYPE_CHAR));
+}
+
+/**
+ * Return the uint8 representation of a named property's value.
+ * 
+ * @param	plist	The property list to be queried.
+ * @param	name	The name of the property value to be returned.
+ * @param[out]	val	On success, the uint8 value of @p name.
+ *
+ * @retval 0		success
+ * @retval ENOENT	If @p name is not found in @p plist.
+ * @retval EFTYPE	If coercion of the property's value to @p val.
+ * @retval ERANGE	If coercion of the property's value would overflow
+ *			(or underflow) @p val.
+ */
+int
+bhnd_nvram_plist_get_uint8(bhnd_nvram_plist *plist, const char *name,
+    uint8_t *val)
+{
+	return (bhnd_nvram_plist_get_encoded(plist, name, val, sizeof(*val),
+	    BHND_NVRAM_TYPE_UINT8));
+}
+
+/**
+ * Return the uint16 representation of a named property's value.
+ * 
+ * @param	plist	The property list to be queried.
+ * @param	name	The name of the property value to be returned.
+ * @param[out]	val	On success, the uint16 value of @p name.
+ *
+ * @retval 0		success
+ * @retval ENOENT	If @p name is not found in @p plist.
+ * @retval EFTYPE	If coercion of the property's value to @p val.
+ * @retval ERANGE	If coercion of the property's value would overflow
+ *			(or underflow) @p val.
+ */
+int
+bhnd_nvram_plist_get_uint16(bhnd_nvram_plist *plist, const char *name,
+    uint16_t *val)
+{
+	return (bhnd_nvram_plist_get_encoded(plist, name, val, sizeof(*val),
+	    BHND_NVRAM_TYPE_UINT16));
+}
+
+/**
+ * Return the uint32 representation of a named property's value.
+ * 
+ * @param	plist	The property list to be queried.
+ * @param	name	The name of the property value to be returned.
+ * @param[out]	val	On success, the uint32 value of @p name.
+ *
+ * @retval 0		success
+ * @retval ENOENT	If @p name is not found in @p plist.
+ * @retval EFTYPE	If coercion of the property's value to @p val.
+ * @retval ERANGE	If coercion of the property's value would overflow
+ *			(or underflow) @p val.
+ */
+int
+bhnd_nvram_plist_get_uint32(bhnd_nvram_plist *plist, const char *name,
+    uint32_t *val)
+{
+	return (bhnd_nvram_plist_get_encoded(plist, name, val, sizeof(*val),
+	    BHND_NVRAM_TYPE_UINT32));
+}
+
+/**
+ * Return the uint64 representation of a named property's value.
+ * 
+ * @param	plist	The property list to be queried.
+ * @param	name	The name of the property value to be returned.
+ * @param[out]	val	On success, the uint64 value of @p name.
+ *
+ * @retval 0		success
+ * @retval ENOENT	If @p name is not found in @p plist.
+ * @retval EFTYPE	If coercion of the property's value to @p val.
+ * @retval ERANGE	If coercion of the property's value would overflow
+ *			(or underflow) @p val.
+ */
+int
+bhnd_nvram_plist_get_uint64(bhnd_nvram_plist *plist, const char *name,
+    uint64_t *val)
+{
+	return (bhnd_nvram_plist_get_encoded(plist, name, val, sizeof(*val),
+	    BHND_NVRAM_TYPE_UINT64));
+}
+
+/**
+ * Return the boolean representation of a named property's value.
+ * 
+ * @param	plist	The property list to be queried.
+ * @param	name	The name of the property value to be returned.
+ * @param[out]	val	On success, the boolean value of @p name.
+ *
+ * @retval 0		success
+ * @retval ENOENT	If @p name is not found in @p plist.
+ * @retval EFTYPE	If coercion of the property's value to @p val.
+ * @retval ERANGE	If coercion of the property's value would overflow
+ *			(or underflow) @p val.
+ */
+int
+bhnd_nvram_plist_get_bool(bhnd_nvram_plist *plist, const char *name,
+    bool *val)
+{
+	return (bhnd_nvram_plist_get_encoded(plist, name, val, sizeof(*val),
+	    BHND_NVRAM_TYPE_BOOL));
 }
 
 /**
