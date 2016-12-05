@@ -331,6 +331,7 @@ bhnd_nvram_store_export_child(struct bhnd_nvram_store *sc,
 	/* Allocate variable device path prefix to use for all property names,
 	 * and if using compact encoding, emit the devpathXX= variable */
 	prefix = NULL;
+	prefix_len = 0;
 	if (emit_compact_devpath) {
 		char	 *pathvar;
 		u_long	  alias;
