@@ -100,6 +100,67 @@ static int	 bhnd_nvram_val_encode_string(const void *inp, size_t ilen,
 	    value->data.ptr == NULL,				\
 	    ("previously initialized value"))
 
+/**
+ * Return the default format for values of @p type.
+ */
+const bhnd_nvram_val_fmt *
+bhnd_nvram_val_default_fmt(bhnd_nvram_type type)
+{
+	switch (type) {
+	case BHND_NVRAM_TYPE_UINT8:
+		return (&bhnd_nvram_val_uint8_fmt);
+	case BHND_NVRAM_TYPE_UINT16:
+		return (&bhnd_nvram_val_uint16_fmt);
+	case BHND_NVRAM_TYPE_UINT32:
+		return (&bhnd_nvram_val_uint32_fmt);
+	case BHND_NVRAM_TYPE_UINT64:
+		return (&bhnd_nvram_val_uint64_fmt);
+	case BHND_NVRAM_TYPE_INT8:
+		return (&bhnd_nvram_val_int8_fmt);
+	case BHND_NVRAM_TYPE_INT16:
+		return (&bhnd_nvram_val_int16_fmt);
+	case BHND_NVRAM_TYPE_INT32:
+		return (&bhnd_nvram_val_int32_fmt);
+	case BHND_NVRAM_TYPE_INT64:
+		return (&bhnd_nvram_val_int64_fmt);
+	case BHND_NVRAM_TYPE_CHAR:
+		return (&bhnd_nvram_val_char_fmt);
+	case BHND_NVRAM_TYPE_STRING:
+		return (&bhnd_nvram_val_string_fmt);
+	case BHND_NVRAM_TYPE_BOOL:
+		return (&bhnd_nvram_val_bool_fmt);
+	case BHND_NVRAM_TYPE_NULL:
+		return (&bhnd_nvram_val_null_fmt);
+	case BHND_NVRAM_TYPE_DATA:
+		return (&bhnd_nvram_val_data_fmt);
+	case BHND_NVRAM_TYPE_UINT8_ARRAY:
+		return (&bhnd_nvram_val_uint8_array_fmt);
+	case BHND_NVRAM_TYPE_UINT16_ARRAY:
+		return (&bhnd_nvram_val_uint16_array_fmt);
+	case BHND_NVRAM_TYPE_UINT32_ARRAY:
+		return (&bhnd_nvram_val_uint32_array_fmt);
+	case BHND_NVRAM_TYPE_UINT64_ARRAY:
+		return (&bhnd_nvram_val_uint64_array_fmt);
+	case BHND_NVRAM_TYPE_INT8_ARRAY:
+		return (&bhnd_nvram_val_int8_array_fmt);
+	case BHND_NVRAM_TYPE_INT16_ARRAY:
+		return (&bhnd_nvram_val_int16_array_fmt);
+	case BHND_NVRAM_TYPE_INT32_ARRAY:
+		return (&bhnd_nvram_val_int32_array_fmt);
+	case BHND_NVRAM_TYPE_INT64_ARRAY:
+		return (&bhnd_nvram_val_int64_array_fmt);
+	case BHND_NVRAM_TYPE_CHAR_ARRAY:
+		return (&bhnd_nvram_val_char_array_fmt);
+	case BHND_NVRAM_TYPE_STRING_ARRAY:
+		return (&bhnd_nvram_val_string_array_fmt);
+	case BHND_NVRAM_TYPE_BOOL_ARRAY:
+		return (&bhnd_nvram_val_bool_array_fmt);
+	}
+	
+	/* Quiesce gcc4.2 */
+	BHND_NV_PANIC("bhnd nvram type %u unknown", type);
+}
+
 /* Common initialization support for bhnd_nvram_val_init() and
  * bhnd_nvram_val_new() */
 static int
@@ -112,12 +173,17 @@ bhnd_nvram_val_init_common(bhnd_nvram_val *value,
 	size_t		 olen;
 	int		 error;
 
+	/* If the value format is unspecified, we use the default format
+	 * for the input data type */
+	if (fmt == NULL)
+		fmt = bhnd_nvram_val_default_fmt(itype);
+
 	/* Initialize value instance */
 	*value = BHND_NVRAM_VAL_INITIALIZER(fmt, val_storage);
 
 	/* Determine expected data type, and allow the format to delegate to
 	 * a new format instance */
-	if (fmt != NULL && fmt->op_filter != NULL) {
+	if (fmt->op_filter != NULL) {
 		const bhnd_nvram_val_fmt *nfmt = fmt;
 
 		/* Use the filter function to determine whether direct
@@ -138,12 +204,6 @@ bhnd_nvram_val_init_common(bhnd_nvram_val *value,
 	} else if (fmt != NULL) {
 		/* Value must be initialized with the format's native type */
 		otype = fmt->native_type;
-
-	} else {
-		/* No format specified; we can initialize directly from the
-		 * input data, and we'll handle all format operations
-		 * internally. */
-		otype = itype;
 	}
 
 	/* If input data already in native format, init directly. */
@@ -412,8 +472,6 @@ bhnd_nvram_val_encode_bool(const void *inp, size_t ilen, bhnd_nvram_type itype,
 		limit = *olen;
 	else
 		limit = 0;
-
-	nbytes = 0;
 
 	/* Must be exactly one element in input */
 	if ((error = bhnd_nvram_value_nelem(itype, inp, ilen, &nelem)))
@@ -1026,7 +1084,7 @@ bhnd_nvram_val_encode(bhnd_nvram_val *value, void *outp, size_t *olen,
     bhnd_nvram_type otype)
 {
 	/* Prefer format implementation */
-	if (value->fmt != NULL && value->fmt->op_encode != NULL)
+	if (value->fmt->op_encode != NULL)
 		return (value->fmt->op_encode(value, outp, olen, otype));
 
 	return (bhnd_nvram_val_generic_encode(value, outp, olen, otype));
@@ -1061,7 +1119,7 @@ bhnd_nvram_val_encode_elem(bhnd_nvram_val *value, const void *inp,
     size_t ilen, void *outp, size_t *olen, bhnd_nvram_type otype)
 {
 	/* Prefer format implementation */
-	if (value->fmt != NULL && value->fmt->op_encode_elem != NULL) {
+	if (value->fmt->op_encode_elem != NULL) {
 		return (value->fmt->op_encode_elem(value, inp, ilen, outp,
 		    olen, otype));
 	}
@@ -1124,7 +1182,7 @@ const void *
 bhnd_nvram_val_next(bhnd_nvram_val *value, const void *prev, size_t *olen)
 {
 	/* Prefer the format implementation */
-	if (value->fmt != NULL && value->fmt->op_next != NULL)
+	if (value->fmt->op_next != NULL)
 		return (value->fmt->op_next(value, prev, olen));
 
 	return (bhnd_nvram_val_generic_next(value, prev, olen));
@@ -1164,7 +1222,7 @@ bhnd_nvram_val_nelem(bhnd_nvram_val *value)
 	int		 error;
 
 	/* Prefer format implementation */
-	if (value->fmt != NULL && value->fmt->op_nelem != NULL)
+	if (value->fmt->op_nelem != NULL)
 		return (value->fmt->op_nelem(value));
 
 	/*
@@ -1175,7 +1233,7 @@ bhnd_nvram_val_nelem(bhnd_nvram_val *value)
 	 * Instead, use bhnd_nvram_val_next() to parse the backing data and
 	 * produce a total count.
 	 */
-	if (value->fmt != NULL && value->fmt->op_next != NULL) {
+	if (value->fmt->op_next != NULL) {
 		const void *next;
 
 		next = NULL;
