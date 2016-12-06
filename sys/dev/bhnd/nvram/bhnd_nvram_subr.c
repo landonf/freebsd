@@ -844,6 +844,46 @@ bhnd_nvram_parse_int(const char *str, size_t maxlen,  u_int base,
 }
 
 /**
+ * Trim leading path (pci/1/1) or path alias (0:) prefix from @p name, if any,
+ * returning a pointer to the start of the relative variable name.
+ * 
+ * @par Examples
+ * 
+ * - "/foo"		-> "foo"
+ * - "dev/pci/foo"	-> "foo"
+ * - "0:foo"		-> "foo"
+ * - "foo"		-> "foo"
+ * 
+ * @param name The string to be trimmed.
+ * 
+ * @return A pointer to the start of the relative variable name in @p name.
+ */
+const char *
+bhnd_nvram_trim_path_name(const char *name)
+{
+	char *endp;
+
+	/* path alias prefix? (0:varname) */
+	if (bhnd_nv_isdigit(*name)) {
+		/* Parse '0...:' alias prefix, if it exists */
+		strtoul(name, &endp, 10);
+		if (endp != name && *endp == ':') {
+			/* Variable name follows 0: prefix */
+			return (endp+1);
+		}
+	}
+
+	/* device path prefix? (pci/1/1/varname) */
+	if ((endp = strrchr(name, '/')) != NULL) {
+		/* Variable name follows the final path separator '/' */
+		return (endp+1);
+	}
+
+	/* variable name is not prefixed */
+	return (name);
+}
+
+/**
  * Parse a 'name=value' string.
  * 
  * @param env The string to be parsed.

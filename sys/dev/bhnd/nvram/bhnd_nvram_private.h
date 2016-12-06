@@ -237,6 +237,8 @@ size_t				 bhnd_nvram_parse_field(const char **inp,
 size_t				 bhnd_nvram_trim_field(const char **inp,
 				     size_t ilen, char delim);
 
+const char			*bhnd_nvram_trim_path_name(const char *name);
+
 bool				 bhnd_nvram_validate_name(const char *name,
 				     size_t name_len);
 

@@ -129,7 +129,6 @@ static int			 bhnd_nvstore_register_alias(
 
 static const char		*bhnd_nvstore_parse_relpath(const char *parent,
 				     const char *child);
-static const char		*bhnd_nvstore_trim_name(const char *name);
 static int			 bhnd_nvstore_parse_name_info(const char *name,
 				     uint32_t data_caps,
 				     bhnd_nvstore_name_info *info);
@@ -390,7 +389,7 @@ bhnd_nvram_store_export_child(struct bhnd_nvram_store *sc,
 
 		/* Trim device path prefix */
 		if (sc->data_caps & BHND_NVRAM_DATA_CAP_DEVPATHS)
-			name = bhnd_nvstore_trim_name(name);
+			name = bhnd_nvram_trim_path_name(name);
 
 		/* Update maximum name length. We use this below to allocate
 		 * a fixed name formatting buffer */
@@ -840,8 +839,8 @@ bhnd_nvstore_idx_cmp(void *ctx, const void *lhs, const void *rhs)
 
 	/* Trim device path prefixes */
 	if (sc->data_caps & BHND_NVRAM_DATA_CAP_DEVPATHS) {
-		l_str = bhnd_nvstore_trim_name(l_str);
-		r_str = bhnd_nvstore_trim_name(r_str);
+		l_str = bhnd_nvram_trim_path_name(l_str);
+		r_str = bhnd_nvram_trim_path_name(r_str);
 	}
 
 	/* Perform comparison */
@@ -1044,7 +1043,7 @@ bhnd_nvstore_index_lookup(struct bhnd_nvram_store *sc,
 
 		/* Trim any path prefix */
 		if (sc->data_caps & BHND_NVRAM_DATA_CAP_DEVPATHS)
-			indexed_name = bhnd_nvstore_trim_name(indexed_name);
+			indexed_name = bhnd_nvram_trim_path_name(indexed_name);
 
 		/* Determine which side of the partition to search */
 		order = strcmp(indexed_name, name);
@@ -1597,35 +1596,6 @@ bhnd_nvstore_parse_relpath(const char *parent, const char *child)
 
 	/* No match (e.g. parent=/foo..., child=/fooo...) */
 	return (NULL);
-}
-
-/**
- * Trim leading path (pci/1/1) or path alias (0:) prefix from @p name, if any,
- * returning a pointer to the start of the relative variable name.
- */
-static const char *
-bhnd_nvstore_trim_name(const char *name)
-{
-	char *endp;
-
-	/* path alias prefix? (0:varname) */
-	if (bhnd_nv_isdigit(*name)) {
-		/* Parse '0...:' alias prefix, if it exists */
-		strtoul(name, &endp, 10);
-		if (endp != name && *endp == ':') {
-			/* Variable name follows 0: prefix */
-			return (endp+1);
-		}
-	}
-
-	/* device path prefix? (pci/1/1/varname) */
-	if ((endp = strrchr(name, '/')) != NULL) {
-		/* Variable name follows the final path separator '/' */
-		return (endp+1);
-	}
-
-	/* variable name is not prefixed */
-	return (name);
 }
 
 /**
