@@ -496,14 +496,6 @@ bhnd_nvram_data_getvar_ptr_info(struct bhnd_nvram_data *nv, void *cookiep,
 		return (NULL);
 
 	/* Select a default value format implementation */
-	switch (*type) {
-	case BHND_NVRAM_TYPE_STRING:
-	case BHND_NVRAM_TYPE_STRING_ARRAY:
-		*fmt = &bhnd_nvram_val_bcm_string_fmt;
-		break;
-	default:
-		*fmt = NULL;
-	}
 
 
 	/* Fetch the reference variable name */
@@ -517,8 +509,17 @@ bhnd_nvram_data_getvar_ptr_info(struct bhnd_nvram_data *nv, void *cookiep,
 	/* Check the variable definition table for a matching entry; if
 	 * it exists, use it to populate the value format. */
 	vdefn = bhnd_nvram_find_vardefn(name);
-	if (vdefn != NULL)
+	if (vdefn != NULL) {
+		BHND_NV_ASSERT(vdefn->fmt != NULL,
+		    ("NULL format for %s", name));
 		*fmt = vdefn->fmt;
+	} else if (*type == BHND_NVRAM_TYPE_STRING) {
+		/* Default to Broadcom-specific string interpretation */
+		*fmt = &bhnd_nvram_val_bcm_string_fmt;
+	} else {
+		/* Fall back on native formatting */
+		*fmt = bhnd_nvram_val_default_fmt(*type);
+	}
 
 	return (vptr);
 }
