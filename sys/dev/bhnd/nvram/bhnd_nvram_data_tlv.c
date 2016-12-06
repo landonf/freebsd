@@ -165,8 +165,120 @@ bhnd_nvram_tlv_class_serialize(bhnd_nvram_data_class *cls,
     bhnd_nvram_plist *props, bhnd_nvram_plist *options, void *outp,
     size_t *olen)
 {
-	// XXX TODO
-	return (EFTYPE);
+	bhnd_nvram_prop	*prop;
+	size_t		 limit, nbytes;
+	int		 error;
+
+	/* Determine output byte limit */
+	if (outp != NULL)
+		limit = *olen;
+	else
+		limit = 0;
+
+	nbytes = 0;
+
+	/* Write all properties */
+	prop = NULL;
+	while ((prop = bhnd_nvram_plist_next(props, prop)) != NULL) {
+		struct bhnd_nvram_tlv_env	 env;
+		const char			*name;
+		uint8_t				*p;
+		size_t				 name_len, value_len;
+		size_t				 rec_size;
+
+		env.hdr.tag = NVRAM_TLV_TYPE_ENV;
+		env.hdr.size = sizeof(env.flags);
+		env.flags = 0x0;
+
+		/* Fetch name value and add to record length */
+		name = bhnd_nvram_prop_name(prop);
+		name_len = strlen(name) + 1 /* '=' */;
+
+		if (UINT8_MAX - env.hdr.size < name_len) {
+			BHND_NV_LOG("%s name exceeds maximum TLV record "
+			    "length\n", name);
+			return (EFTYPE); /* would overflow TLV size */
+		}
+
+		env.hdr.size += name_len;
+
+		/* Add string value to record length */
+		error = bhnd_nvram_prop_encode(prop, NULL, &value_len,
+		    BHND_NVRAM_TYPE_STRING);
+		if (error) {
+			BHND_NV_LOG("error serializing %s to required type "
+			    "%s: %d\n", name,
+			    bhnd_nvram_type_name(BHND_NVRAM_TYPE_STRING),
+			    error);
+			return (error);
+		}
+
+		if (UINT8_MAX - env.hdr.size < value_len) {
+			BHND_NV_LOG("%s value exceeds maximum TLV record "
+			    "length\n", name);
+			return (EFTYPE); /* would overflow TLV size */
+		}
+
+		env.hdr.size += value_len;
+
+		/* Calculate total record size */
+		rec_size = sizeof(env.hdr) + env.hdr.size;
+		if (SIZE_MAX - nbytes < rec_size)
+			return (EFTYPE); /* would overflow size_t */
+
+		/* Calculate our output pointer */
+		if (nbytes > limit || limit - nbytes < rec_size) {
+			/* buffer is full; cannot write */
+			p = NULL;
+		} else {
+			p = (uint8_t *)outp + nbytes;
+		}
+
+		/* Write to output */
+		if (p != NULL) {
+			u_char *saved;
+
+			memcpy(p, &env, sizeof(env));
+			p += sizeof(env);
+			saved = p;
+	
+			memcpy(p, name, name_len - 1);
+			p[name_len - 1] = '=';
+			p += name_len;
+
+			error = bhnd_nvram_prop_encode(prop, p, &value_len,
+			    BHND_NVRAM_TYPE_STRING);
+			if (error) {
+				BHND_NV_LOG("error serializing %s to required "
+				    "type %s: %d\n", name,
+				    bhnd_nvram_type_name(
+					BHND_NVRAM_TYPE_STRING),
+				    error);
+				return (error);
+			}
+		}
+
+		nbytes += rec_size;
+	}
+
+	/* Write terminating END record */
+	if (limit > nbytes)
+		*((uint8_t *)outp + nbytes) = NVRAM_TLV_TYPE_END;
+
+	if (nbytes == SIZE_MAX)
+		return (EFTYPE); /* would overflow size_t */
+	nbytes++;
+
+	/* Provide required length */
+	*olen = nbytes;
+	if (limit < *olen) {
+		if (outp == NULL)
+			return (0);
+
+		return (ENOMEM);
+	}
+
+	return (0);
 }
 
 /**
@@ -356,16 +468,25 @@ bhnd_nvram_tlv_next(struct bhnd_nvram_data *nv, void **cookiep)
 
 	tlv = (struct bhnd_nvram_tlv *)nv;
 
-	/* Seek past the TLV_ENV record referenced by cookiep */
-	io_offset = bhnd_nvram_tlv_to_offset(tlv, *cookiep);
-	if (bhnd_nvram_tlv_next_env(tlv, &io_offset, NULL) == NULL)
-		BHND_NV_PANIC("invalid cookiep: %p\n", cookiep);
+	/* Find next readable TLV record */
+	if (*cookiep == NULL) {
+		/* Start search at offset 0x0 */
+		io_offset = 0x0;
+		env = bhnd_nvram_tlv_next_env(tlv, &io_offset, cookiep);
+	} else {
+		/* Seek past the previous env record */
+		io_offset = bhnd_nvram_tlv_to_offset(tlv, *cookiep);
+		env = bhnd_nvram_tlv_next_env(tlv, &io_offset, NULL);
+		if (env == NULL)
+			BHND_NV_PANIC("invalid cookiep; record missing");
 
-	/* Fetch the next TLV_ENV record */
-	if ((env = bhnd_nvram_tlv_next_env(tlv, &io_offset, cookiep)) == NULL) {
-		/* No remaining ENV records */
-		return (NULL);
+		/* Advance to next env record, update the caller's cookiep */
+		env = bhnd_nvram_tlv_next_env(tlv, &io_offset, cookiep);
 	}
+
+	/* Check for EOF */
+	if (env == NULL)
+		return (NULL);
 
 	/* Return the NUL terminated name */
 	return (env->envp);
@@ -654,26 +775,43 @@ bhnd_nvram_tlv_get_env(struct bhnd_nvram_tlv *tlv, void *cookiep)
 static void *
 bhnd_nvram_tlv_to_cookie(struct bhnd_nvram_tlv *tlv, size_t io_offset)
 {
+	const void	*ptr;
+	int		 error;
+
 	BHND_NV_ASSERT(io_offset < bhnd_nvram_io_getsize(tlv->data),
 	    ("io_offset %zu out-of-range", io_offset));
 	BHND_NV_ASSERT(io_offset < UINTPTR_MAX,
 	    ("io_offset %#zx exceeds UINTPTR_MAX", io_offset));
 
-	return ((void *)(uintptr_t)(io_offset));
+	error = bhnd_nvram_io_read_ptr(tlv->data, 0x0, &ptr, io_offset, NULL);
+	if (error)
+		BHND_NV_PANIC("error mapping offset %zu: %d", io_offset, error);
+
+	ptr = (const uint8_t *)ptr + io_offset;
+	return (__DECONST(void *, ptr));
 }
 
 /* Convert a cookiep back to an I/O offset */
 static size_t
 bhnd_nvram_tlv_to_offset(struct bhnd_nvram_tlv *tlv, void *cookiep)
 {
-	size_t		io_size;
-	uintptr_t	cval;
+	const void	*ptr;
+	intptr_t	 offset;
+	size_t		 io_size;
+	int		 error;
+
+	BHND_NV_ASSERT(cookiep != NULL, ("null cookiep"));
 
 	io_size = bhnd_nvram_io_getsize(tlv->data);
-	cval = (uintptr_t)cookiep;
 
-	BHND_NV_ASSERT(cval < SIZE_MAX, ("cookie > SIZE_MAX)"));
-	BHND_NV_ASSERT(cval <= io_size, ("cookie > io_size)"));
+	error = bhnd_nvram_io_read_ptr(tlv->data, 0x0, &ptr, io_size, NULL);
+	if (error)
+		BHND_NV_PANIC("error mapping offset %zu: %d", io_size, error);
 
-	return ((size_t)cval);
+	offset = (const uint8_t *)cookiep - (const uint8_t *)ptr;
+	BHND_NV_ASSERT(offset >= 0, ("invalid cookiep"));
+	BHND_NV_ASSERT((uintptr_t)offset < SIZE_MAX, ("cookiep > SIZE_MAX)"));
+	BHND_NV_ASSERT((uintptr_t)offset <= io_size, ("cookiep > io_size)"));
+
+	return ((size_t)offset);
 }

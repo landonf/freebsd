@@ -151,8 +151,179 @@ bhnd_nvram_bcm_class_serialize(bhnd_nvram_data_class *cls,
     bhnd_nvram_plist *props, bhnd_nvram_plist *options, void *outp,
     size_t *olen)
 {
-	// XXX TODO
-	return (EFTYPE);
+	struct bhnd_nvram_bcmhdr	 hdr;
+	bhnd_nvram_prop			*prop;
+	size_t				 limit, nbytes;
+	uint32_t			 sdram_ncdl;
+	uint16_t			 sdram_init, sdram_cfg, sdram_refresh;
+	uint8_t				 bcm_ver, crc8;
+	int				 error;
+
+	/* Determine output byte limit */
+	if (outp != NULL)
+		limit = *olen;
+	else
+		limit = 0;
+
+	/* Fetch required header variables */
+#define	PROPS_GET_HDRVAR(_name, _dest, _type)	do {			\
+		const char *name = BCM_NVRAM_ ## _name ## _VAR;	\
+		if (!bhnd_nvram_plist_contains(props, name)) {		\
+			BHND_NV_LOG("missing required property: %s\n",	\
+			    name);					\
+			return (EFTYPE);				\
+		}							\
+									\
+		error = bhnd_nvram_plist_get_encoded(props, name,	\
+		    (_dest), sizeof(*(_dest)),				\
+		    BHND_NVRAM_TYPE_ ##_type);				\
+		if (error) {						\
+			BHND_NV_LOG("error reading required header "	\
+			    "%s property: %d\n", name, error);		\
+			return (EFTYPE);				\
+		}							\
+} while (0)
+
+	PROPS_GET_HDRVAR(SDRAM_NCDL,		&sdram_ncdl,	UINT32);
+	PROPS_GET_HDRVAR(CFG0_SDRAM_INIT,	&sdram_init,	UINT16);
+	PROPS_GET_HDRVAR(CFG1_SDRAM_CFG,	&sdram_cfg,	UINT16);
+	PROPS_GET_HDRVAR(CFG1_SDRAM_REFRESH,	&sdram_refresh,	UINT16);
+
+#undef	PROPS_GET_HDRVAR
+
+	/* Fetch BCM nvram version from options */
+	if (options != NULL &&
+	    bhnd_nvram_plist_contains(options, BCM_NVRAM_ENCODE_OPT_VERSION))
+	{
+		error = bhnd_nvram_plist_get_uint8(options,
+		    BCM_NVRAM_ENCODE_OPT_VERSION, &bcm_ver);
+	} else {
+		bcm_ver = BCM_NVRAM_CFG0_VER_DEFAULT;
+	}
+
+	/* Construct our header */
+	hdr = (struct bhnd_nvram_bcmhdr) {
+		.magic = htole32(BCM_NVRAM_MAGIC),
+		.size = 0,
+		.cfg0 = 0,
+		.cfg1 = 0,
+		.sdram_ncdl = htole32(sdram_ncdl)
+	};
+
+	hdr.cfg0 = BCM_NVRAM_SET_BITS(hdr.cfg0, BCM_NVRAM_CFG0_CRC, 0x0);
+	hdr.cfg0 = BCM_NVRAM_SET_BITS(hdr.cfg0, BCM_NVRAM_CFG0_VER, bcm_ver);
+	hdr.cfg0 = BCM_NVRAM_SET_BITS(hdr.cfg0, BCM_NVRAM_CFG0_SDRAM_INIT,
+	    htole16(sdram_init));
+	
+	hdr.cfg1 = BCM_NVRAM_SET_BITS(hdr.cfg1, BCM_NVRAM_CFG1_SDRAM_CFG,
+	    htole16(sdram_cfg));
+	hdr.cfg1 = BCM_NVRAM_SET_BITS(hdr.cfg1, BCM_NVRAM_CFG1_SDRAM_REFRESH,
+	    htole16(sdram_refresh));
+
+	/* Write the header */
+	nbytes = sizeof(hdr);
+	if (limit >= nbytes)
+		memcpy(outp, &hdr, sizeof(hdr));
+
+	/* Write all properties */
+	prop = NULL;
+	while ((prop = bhnd_nvram_plist_next(props, prop)) != NULL) {
+		const char	*name;
+		char		*p;
+		size_t		 prop_limit;
+		size_t		 name_len, value_len;
+
+		if (outp == NULL || limit < nbytes) {
+			p = NULL;
+			prop_limit = 0;
+		} else {
+			p = ((char *)outp) + nbytes;
+			prop_limit = limit - nbytes;
+		}
+
+		/* Fetch and write name + '=' to output */
+		name = bhnd_nvram_prop_name(prop);
+		name_len = strlen(name) + 1;
+
+		if (prop_limit > name_len) {
+			memcpy(p, name, name_len - 1);
+			p[name_len - 1] = '=';
+
+			prop_limit -= name_len;
+			p += name_len;
+		} else {
+			prop_limit = 0;
+			p = NULL;
+		}
+
+		/* Advance byte count */
+		if (SIZE_MAX - nbytes < name_len)
+			return (EFTYPE); /* would overflow size_t */
+
+		nbytes += name_len;
+
+		/* Attempt to write NUL-terminated value to output */
+		value_len = prop_limit;
+		error = bhnd_nvram_prop_encode(prop, p, &value_len,
+		    BHND_NVRAM_TYPE_STRING);
+
+		/* If encoding failed for any reason other than ENOMEM (which
+		 * we'll detect and report after encoding all properties),
+		 * return immediately */
+		if (error && error != ENOMEM) {
+			BHND_NV_LOG("error serializing %s to required type "
+			    "%s: %d\n", name,
+			    bhnd_nvram_type_name(BHND_NVRAM_TYPE_STRING),
+			    error);
+			return (error);
+		}
+
+		/* Advance byte count */
+		if (SIZE_MAX - nbytes < value_len)
+			return (EFTYPE); /* would overflow size_t */
+
+		nbytes += value_len;
+	}
+
+	/* Write terminating '\0' */
+	if (limit > nbytes)
+		*((char *)outp + nbytes) = '\0';
+
+	if (nbytes == SIZE_MAX)
+		return (EFTYPE); /* would overflow size_t */
+	else
+		nbytes++;
+
+	/* Update header length; this must fit within the header's 32-bit size
+	 * field */
+	if (nbytes <= UINT32_MAX) {
+		hdr.size = nbytes;
+	} else {
+		BHND_NV_LOG("size %zu exceeds maximum supported size of %u "
+		    "bytes\n", nbytes, UINT32_MAX);
+		return (EFTYPE);
+	}
+
+	/* Provide required length */
+	*olen = nbytes;
+	if (limit < *olen) {
+		if (outp == NULL)
+			return (0);
+
+		return (ENOMEM);
+	}
+
+	/* Calculate the CRC value */
+	BHND_NV_ASSERT(nbytes >= BCM_NVRAM_CRC_SKIP, ("invalid output size"));
+	crc8 = bhnd_nvram_crc8((uint8_t *)outp + BCM_NVRAM_CRC_SKIP,
+	    nbytes - BCM_NVRAM_CRC_SKIP, BHND_NVRAM_CRC8_INITIAL);
+
+	/* Update CRC and write the finalized header */
+	BHND_NV_ASSERT(nbytes >= sizeof(hdr), ("invalid output size"));
+	hdr.cfg0 = BCM_NVRAM_SET_BITS(hdr.cfg0, BCM_NVRAM_CFG0_CRC, crc8);
+	memcpy(outp, &hdr, sizeof(hdr));
+
+	return (0);
 }
 
 /**
