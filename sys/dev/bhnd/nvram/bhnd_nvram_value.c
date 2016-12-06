@@ -201,7 +201,7 @@ bhnd_nvram_val_init_common(bhnd_nvram_val *value,
 		/* Value can be initialized with provided input type */
 		otype = itype;
 
-	} else if (fmt != NULL) {
+	} else {
 		/* Value must be initialized with the format's native type */
 		otype = fmt->native_type;
 	}
