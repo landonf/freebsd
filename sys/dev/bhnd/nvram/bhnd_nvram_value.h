@@ -46,6 +46,9 @@
 typedef struct bhnd_nvram_val_fmt	bhnd_nvram_val_fmt;
 typedef struct bhnd_nvram_val		bhnd_nvram_val;
 
+const bhnd_nvram_val_fmt	*bhnd_nvram_val_default_fmt(
+				      bhnd_nvram_type type);
+
 int				 bhnd_nvram_val_init(bhnd_nvram_val *value,
 				     const bhnd_nvram_val_fmt *fmt,
 				     const void *inp, size_t ilen,
@@ -193,7 +196,7 @@ typedef enum {
 struct bhnd_nvram_val {
 	volatile u_int			 refs;		/**< reference count */
 	bhnd_nvram_val_storage		 val_storage;	/**< value structure storage */
-	const bhnd_nvram_val_fmt	*fmt;		/**< value format, or NULL for default behavior */
+	const bhnd_nvram_val_fmt	*fmt;		/**< value format */
 	bhnd_nvram_val_data_storage	 data_storage;	/**< data storage */
 	bhnd_nvram_type			 data_type;	/**< data type */
 	size_t				 data_len;	/**< data size */
@@ -215,13 +218,39 @@ struct bhnd_nvram_val {
 };
 
 /** Declare a bhnd_nvram_val_fmt with name @p _n */
-#define	BHND_NVRAM_VAL_TYPE_DECL(_n)	\
+#define	BHND_NVRAM_VAL_FMT_DECL(_n)	\
 	extern const bhnd_nvram_val_fmt bhnd_nvram_val_ ## _n ## _fmt;
 
-BHND_NVRAM_VAL_TYPE_DECL(bcm_decimal);
-BHND_NVRAM_VAL_TYPE_DECL(bcm_hex);
-BHND_NVRAM_VAL_TYPE_DECL(bcm_leddc);
-BHND_NVRAM_VAL_TYPE_DECL(bcm_macaddr);
-BHND_NVRAM_VAL_TYPE_DECL(bcm_string);
+BHND_NVRAM_VAL_FMT_DECL(bcm_decimal);
+BHND_NVRAM_VAL_FMT_DECL(bcm_hex);
+BHND_NVRAM_VAL_FMT_DECL(bcm_leddc);
+BHND_NVRAM_VAL_FMT_DECL(bcm_macaddr);
+BHND_NVRAM_VAL_FMT_DECL(bcm_string);
+
+BHND_NVRAM_VAL_FMT_DECL(uint8);
+BHND_NVRAM_VAL_FMT_DECL(uint16);
+BHND_NVRAM_VAL_FMT_DECL(uint32);
+BHND_NVRAM_VAL_FMT_DECL(uint64);
+BHND_NVRAM_VAL_FMT_DECL(int8);
+BHND_NVRAM_VAL_FMT_DECL(int16);
+BHND_NVRAM_VAL_FMT_DECL(int32);
+BHND_NVRAM_VAL_FMT_DECL(int64);
+BHND_NVRAM_VAL_FMT_DECL(char);
+BHND_NVRAM_VAL_FMT_DECL(bool);
+BHND_NVRAM_VAL_FMT_DECL(string);
+BHND_NVRAM_VAL_FMT_DECL(data);
+BHND_NVRAM_VAL_FMT_DECL(null);
+
+BHND_NVRAM_VAL_FMT_DECL(uint8_array);
+BHND_NVRAM_VAL_FMT_DECL(uint16_array);
+BHND_NVRAM_VAL_FMT_DECL(uint32_array);
+BHND_NVRAM_VAL_FMT_DECL(uint64_array);
+BHND_NVRAM_VAL_FMT_DECL(int8_array);
+BHND_NVRAM_VAL_FMT_DECL(int16_array);
+BHND_NVRAM_VAL_FMT_DECL(int32_array);
+BHND_NVRAM_VAL_FMT_DECL(int64_array);
+BHND_NVRAM_VAL_FMT_DECL(char_array);
+BHND_NVRAM_VAL_FMT_DECL(bool_array);
+BHND_NVRAM_VAL_FMT_DECL(string_array);
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_VALUE_H_ */
