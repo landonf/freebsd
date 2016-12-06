@@ -476,7 +476,7 @@ bhnd_nvram_data_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
  * bhnd_nvram_data_generic_rp_getvar() and
  * bhnd_nvram_data_generic_rp_getval().
  *
- * If a variable definition for the requested variable is available via
+ * If a variable definition for the requested variable is found via
  * bhnd_nvram_find_vardefn(), the definition will be used to populate fmt.
  */
 static const void *
@@ -505,9 +505,17 @@ bhnd_nvram_data_getvar_ptr_info(struct bhnd_nvram_data *nv, void *cookiep,
 		*fmt = NULL;
 	}
 
+
+	/* Fetch the reference variable name */
+	name = bhnd_nvram_data_getvar_name(nv, cookiep);
+
+	/* Trim path prefix, if any; the Broadcom NVRAM format assumes a global
+	 * namespace for all variable definitions */
+	if (bhnd_nvram_data_caps(nv) & BHND_NVRAM_DATA_CAP_DEVPATHS)
+		name = bhnd_nvram_trim_path_name(name);
+
 	/* Check the variable definition table for a matching entry; if
 	 * it exists, use it to populate the value format. */
-	name = bhnd_nvram_data_getvar_name(nv, cookiep);
 	vdefn = bhnd_nvram_find_vardefn(name);
 	if (vdefn != NULL)
 		*fmt = vdefn->fmt;
