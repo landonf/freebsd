@@ -236,11 +236,8 @@ bhnd_nvram_tlv_class_serialize(bhnd_nvram_data_class *cls,
 
 		/* Write to output */
 		if (p != NULL) {
-			u_char *saved;
-
 			memcpy(p, &env, sizeof(env));
 			p += sizeof(env);
-			saved = p;
 	
 			memcpy(p, name, name_len - 1);
 			p[name_len - 1] = '=';
