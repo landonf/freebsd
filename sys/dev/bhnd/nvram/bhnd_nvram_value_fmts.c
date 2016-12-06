@@ -326,9 +326,7 @@ bhnd_nvram_val_bcm_hex_encode_elem(bhnd_nvram_val *value, const void *inp,
 	 * their native width (width * two hex characters), and we do the same
 	 * for compatibility
 	 */
-
-	width = bhnd_nvram_value_size(itype, NULL, 0, 1) * 2;
-
+	width = bhnd_nvram_type_width(itype) * 2;
 	return (bhnd_nvram_value_printf("0x%0*I64X", inp, ilen, itype,
 	    outp, olen, width));
 }

@@ -368,7 +368,7 @@ bhnd_nvram_sprom_class_serialize_prop(bhnd_sprom_opcode_state *state,
 		itype = BHND_NVRAM_TYPE_UINT32_ARRAY;
 
 	/* Calculate total size of the 32-bit promoted representation */
-	if ((ilen = bhnd_nvram_value_size(itype, NULL, 0, nelem)) == 0) {
+	if ((ilen = bhnd_nvram_value_size(NULL, 0, itype, nelem)) == 0) {
 		/* Variable-width types are unsupported */
 		BHND_NV_LOG("invalid %s SPROM variable type %d\n",
 			    var->name, var->type);
@@ -429,7 +429,7 @@ bhnd_nvram_sprom_class_serialize_prop(bhnd_sprom_opcode_state *state,
 			return (error);
 
 		/* Encoded element count must match SPROM's definition */
-		error = bhnd_nvram_value_nelem(itype, val, ilen, &prop_nelem);
+		error = bhnd_nvram_value_nelem(val, ilen, itype, &prop_nelem);
 		if (error)
 			return (error);
 
@@ -1057,7 +1057,7 @@ bhnd_nvram_sprom_getvar_common(struct bhnd_nvram_data *nv, void *cookiep,
 	var_btype = bhnd_nvram_base_type(var->type);
 
 	/* Calculate total byte length of the native encoding */
-	if ((iwidth = bhnd_nvram_value_size(var_btype, NULL, 0, 1)) == 0) {
+	if ((iwidth = bhnd_nvram_value_size(NULL, 0, var_btype, 1)) == 0) {
 		/* SPROM does not use (and we do not support) decoding of
 		 * variable-width data types */
 		BHND_NV_LOG("invalid SPROM data type: %d", var->type);

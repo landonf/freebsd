@@ -586,7 +586,7 @@ bhnd_sprom_opcode_set_type(bhnd_sprom_opcode_state *state, bhnd_nvram_type type)
 	}
 
 	/* Fetch type width for use as our scale value */
-	width = bhnd_nvram_value_size(type, NULL, 0, 1);
+	width = bhnd_nvram_type_width(type);
 	if (width == 0) {
 		SPROM_OP_BAD(state, "unsupported variable-width type: %d\n",
 		    type);

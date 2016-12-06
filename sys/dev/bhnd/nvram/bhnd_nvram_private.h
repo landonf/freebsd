@@ -197,11 +197,15 @@ int				 bhnd_nvram_value_coerce(const void *inp,
 				     void *outp, size_t *olen,
 				     bhnd_nvram_type otype);
 
-int				 bhnd_nvram_value_nelem(bhnd_nvram_type type,
-				     const void *data, size_t len,
+int				 bhnd_nvram_value_check_aligned(const void *inp,
+				     size_t ilen, bhnd_nvram_type itype);
+
+int				 bhnd_nvram_value_nelem(const void *inp,
+				     size_t ilen, bhnd_nvram_type itype,
 				     size_t *nelem);
-size_t				 bhnd_nvram_value_size(bhnd_nvram_type type,
-				     const void *data, size_t nbytes, 
+
+size_t				 bhnd_nvram_value_size(const void *inp,
+				     size_t ilen, bhnd_nvram_type itype,
 				     size_t nelem);
 
 int				 bhnd_nvram_value_printf(const char *fmt,

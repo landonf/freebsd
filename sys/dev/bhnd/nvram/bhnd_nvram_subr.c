@@ -417,6 +417,112 @@ bhnd_nvram_raw_type(bhnd_nvram_type type)
 }
 
 /**
+ * Return the size, in bytes, of a single element of @p type, or 0
+ * if @p type is a variable-width type.
+ * 
+ * @param type	The type to query.
+ */
+size_t
+bhnd_nvram_type_width(bhnd_nvram_type type)
+{
+	switch (type) {
+	case BHND_NVRAM_TYPE_STRING:
+	case BHND_NVRAM_TYPE_STRING_ARRAY:
+	case BHND_NVRAM_TYPE_DATA:
+		return (0);
+
+	case BHND_NVRAM_TYPE_NULL:
+		return (0);
+
+	case BHND_NVRAM_TYPE_BOOL:
+	case BHND_NVRAM_TYPE_BOOL_ARRAY:
+		return (sizeof(bhnd_nvram_bool_t));
+
+	case BHND_NVRAM_TYPE_CHAR:
+	case BHND_NVRAM_TYPE_CHAR_ARRAY:
+	case BHND_NVRAM_TYPE_UINT8:
+	case BHND_NVRAM_TYPE_UINT8_ARRAY:
+	case BHND_NVRAM_TYPE_INT8:
+	case BHND_NVRAM_TYPE_INT8_ARRAY:
+		return (sizeof(uint8_t));
+
+	case BHND_NVRAM_TYPE_UINT16:
+	case BHND_NVRAM_TYPE_UINT16_ARRAY:
+	case BHND_NVRAM_TYPE_INT16:
+	case BHND_NVRAM_TYPE_INT16_ARRAY:
+		return (sizeof(uint16_t));
+
+	case BHND_NVRAM_TYPE_UINT32:
+	case BHND_NVRAM_TYPE_UINT32_ARRAY:
+	case BHND_NVRAM_TYPE_INT32:
+	case BHND_NVRAM_TYPE_INT32_ARRAY:
+		return (sizeof(uint32_t));
+
+	case BHND_NVRAM_TYPE_UINT64:
+	case BHND_NVRAM_TYPE_UINT64_ARRAY:
+	case BHND_NVRAM_TYPE_INT64:
+	case BHND_NVRAM_TYPE_INT64_ARRAY:
+		return (sizeof(uint64_t));
+	}
+
+	/* Quiesce gcc4.2 */
+	BHND_NV_PANIC("bhnd nvram type %u unknown", type);
+}
+
+/**
+ * Return the native host alignment for values of @p type.
+ * 
+ * @param type The type to query.
+ */
+size_t
+bhnd_nvram_type_host_align(bhnd_nvram_type type)
+{
+	switch (type) {
+	case BHND_NVRAM_TYPE_CHAR:
+	case BHND_NVRAM_TYPE_CHAR_ARRAY:
+	case BHND_NVRAM_TYPE_DATA:
+	case BHND_NVRAM_TYPE_STRING:
+	case BHND_NVRAM_TYPE_STRING_ARRAY:
+		return (_Alignof(uint8_t));
+	case BHND_NVRAM_TYPE_BOOL:
+	case BHND_NVRAM_TYPE_BOOL_ARRAY: {
+		_Static_assert(sizeof(bhnd_nvram_bool_t) == sizeof(uint8_t),
+		    "bhnd_nvram_bool_t must be uint8-representable");
+		return (_Alignof(uint8_t));
+	}
+	case BHND_NVRAM_TYPE_NULL:
+		return (1);
+	case BHND_NVRAM_TYPE_UINT8:
+	case BHND_NVRAM_TYPE_UINT8_ARRAY:
+		return (_Alignof(uint8_t));
+	case BHND_NVRAM_TYPE_UINT16:
+	case BHND_NVRAM_TYPE_UINT16_ARRAY:
+		return (_Alignof(uint16_t));
+	case BHND_NVRAM_TYPE_UINT32:
+	case BHND_NVRAM_TYPE_UINT32_ARRAY:
+		return (_Alignof(uint32_t));
+	case BHND_NVRAM_TYPE_UINT64:
+	case BHND_NVRAM_TYPE_UINT64_ARRAY:
+		return (_Alignof(uint64_t));
+	case BHND_NVRAM_TYPE_INT8:
+	case BHND_NVRAM_TYPE_INT8_ARRAY:
+		return (_Alignof(int8_t));
+	case BHND_NVRAM_TYPE_INT16:
+	case BHND_NVRAM_TYPE_INT16_ARRAY:
+		return (_Alignof(int16_t));
+	case BHND_NVRAM_TYPE_INT32:
+	case BHND_NVRAM_TYPE_INT32_ARRAY:
+		return (_Alignof(int32_t));
+	case BHND_NVRAM_TYPE_INT64:
+	case BHND_NVRAM_TYPE_INT64_ARRAY:
+		return (_Alignof(int64_t));
+	}
+
+	/* Quiesce gcc4.2 */
+	BHND_NV_PANIC("bhnd nvram type %u unknown", type);
+}
+
+/**
  * Iterate over all strings in the @p inp string array (@see
  * BHNF_NVRAM_TYPE_STRING_ARRAY).
  *
@@ -801,7 +907,7 @@ bhnd_nvram_parse_int(const char *str, size_t maxlen,  u_int base,
 		value = -value;
 
 	/* Provide (and verify) required length */
-	*olen = bhnd_nvram_value_size(otype, NULL, 0, 1);
+	*olen = bhnd_nvram_type_width(otype);
 	if (outp == NULL)
 		return (0);
 	else if (limit < *olen)

@@ -54,10 +54,20 @@ int				 bhnd_nvram_val_init(bhnd_nvram_val *value,
 				     const void *inp, size_t ilen,
 				     bhnd_nvram_type itype, uint32_t flags);
 
+int				 bhnd_nvram_val_convert_init(
+				     bhnd_nvram_val *value,
+				     const bhnd_nvram_val_fmt *fmt,
+				     bhnd_nvram_val *src, uint32_t flags);
+
 int				 bhnd_nvram_val_new(bhnd_nvram_val **value,
 				     const bhnd_nvram_val_fmt *fmt,
 				     const void *inp, size_t ilen,
 				     bhnd_nvram_type itype, uint32_t flags);
+
+int				 bhnd_nvram_val_convert_new(
+				     bhnd_nvram_val **value,
+				     const bhnd_nvram_val_fmt *fmt,
+				     bhnd_nvram_val *src, uint32_t flags);
 
 bhnd_nvram_val			*bhnd_nvram_val_copy(bhnd_nvram_val *value);
 

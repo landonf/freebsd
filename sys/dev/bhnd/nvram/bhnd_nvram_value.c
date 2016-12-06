@@ -56,6 +56,8 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_nvram_valuevar.h"
 
+static int	 bhnd_nvram_val_fmt_filter(const bhnd_nvram_val_fmt **fmt,
+		     const void *inp, size_t ilen, bhnd_nvram_type itype);
 
 static void	*bhnd_nvram_val_alloc_bytes(bhnd_nvram_val *value, size_t ilen,
 		     bhnd_nvram_type itype, uint32_t flags);
@@ -81,7 +83,8 @@ static int	 bhnd_nvram_val_encode_string(const void *inp, size_t ilen,
 		     bhnd_nvram_type itype, void *outp, size_t *olen,
 		     bhnd_nvram_type otype);
 
-
+/** Initialize an empty value instance with @p _fmt, @p _storage, and
+ *  an implicit callee-owned reference */
 #define	BHND_NVRAM_VAL_INITIALIZER(_fmt, _storage)		\
 	(bhnd_nvram_val) {					\
 		.refs = 1,					\
@@ -99,6 +102,13 @@ static int	 bhnd_nvram_val_encode_string(const void *inp, size_t ilen,
 	    value->data_len == 0 &&				\
 	    value->data.ptr == NULL,				\
 	    ("previously initialized value"))
+
+/** Return true if BHND_NVRAM_VAL_BORROW_DATA or BHND_NVRAM_VAL_STATIC_DATA is
+ *  set in @p _flags (e.g. we should attempt to directly reference external
+ *  data */
+#define	BHND_NVRAM_VAL_EXTREF_BORROWED_DATA(_flags)		\
+	(((_flags) & BHND_NVRAM_VAL_BORROW_DATA) ||		\
+	 ((_flags) & BHND_NVRAM_VAL_STATIC_DATA))
 
 /**
  * Return the default format for values of @p type.
@@ -161,6 +171,67 @@ bhnd_nvram_val_default_fmt(bhnd_nvram_type type)
 	BHND_NV_PANIC("bhnd nvram type %u unknown", type);
 }
 
+/**
+ * Determine whether @p fmt (or new format delegated to by @p fmt) is
+ * capable of direct initialization from buffer @p inp.
+ * 
+ * @param[in,out]	fmt	Indirect pointer to the NVRAM value format. If
+ *				the format instance cannot handle the data type
+ *				directly, it may delegate to a new format
+ *				instance. On success, this parameter will be
+ *				set to the format that should be used when
+ *				performing initialization from @p inp.
+ * @param		inp	Input data.
+ * @param		ilen	Input data length.
+ * @param		itype	Input data type.
+ *
+ * @retval 0		If initialization from @p inp is supported.
+ * @retval EFTYPE	If initialization from @p inp is unsupported.
+ * @retval EFAULT	if @p ilen is not correctly aligned for elements of
+ *			@p itype.
+ */
+static int
+bhnd_nvram_val_fmt_filter(const bhnd_nvram_val_fmt **fmt, const void *inp,
+    size_t ilen, bhnd_nvram_type itype)
+{
+	const bhnd_nvram_val_fmt	*ofmt, *nfmt;
+	int				 error;
+
+	nfmt = ofmt = *fmt;
+
+	/* Validate alignment */
+	if ((error = bhnd_nvram_value_check_aligned(inp, ilen, itype)))
+		return (error);
+
+	/* If the format does not provide a filter function, it only supports
+	 * direct initialization from its native type */
+	if (ofmt->op_filter == NULL) {
+		if (itype == ofmt->native_type)
+			return (0);
+
+		return (EFTYPE);
+	}
+
+	/* Use the filter function to determine whether direct initialization
+	 * from itype is permitted */
+	error = ofmt->op_filter(&nfmt, inp, ilen, itype);
+	if (error)
+		return (error);
+
+	/* Retry filter with new format? */
+	if (ofmt != nfmt) {
+		error = bhnd_nvram_val_fmt_filter(&nfmt, inp, ilen, itype);
+		if (error)
+			return (error);
+
+		/* Success -- provide delegated format to caller */
+		*fmt = nfmt;
+	}
+
+	/* Value can be initialized with provided format and input type */
+	return (0);
+}
+
 /* Common initialization support for bhnd_nvram_val_init() and
  * bhnd_nvram_val_new() */
 static int
@@ -178,33 +249,20 @@ bhnd_nvram_val_init_common(bhnd_nvram_val *value,
 	if (fmt == NULL)
 		fmt = bhnd_nvram_val_default_fmt(itype);
 
-	/* Initialize value instance */
-	*value = BHND_NVRAM_VAL_INITIALIZER(fmt, val_storage);
-
 	/* Determine expected data type, and allow the format to delegate to
 	 * a new format instance */
-	if (fmt->op_filter != NULL) {
-		const bhnd_nvram_val_fmt *nfmt = fmt;
-
-		/* Use the filter function to determine whether direct
-		 * initialization from is itype permitted */
-		error = fmt->op_filter(&nfmt, inp, ilen, itype);
-		if (error)
-			return (error);
-
-		/* Retry initialization with new format? */
-		if (nfmt != fmt) {
-			return (bhnd_nvram_val_init_common(value, val_storage,
-			    nfmt, inp, ilen, itype, flags));
-		}
-
+	if ((error = bhnd_nvram_val_fmt_filter(&fmt, inp, ilen, itype))) {
+		/* Direct initialization from the provided input type is
+		 * not supported; alue must be initialized with the format's
+		 * native type */
+		otype = fmt->native_type;
+	} else {
 		/* Value can be initialized with provided input type */
 		otype = itype;
-
-	} else {
-		/* Value must be initialized with the format's native type */
-		otype = fmt->native_type;
 	}
+
+	/* Initialize value instance */
+	*value = BHND_NVRAM_VAL_INITIALIZER(fmt, val_storage);
 
 	/* If input data already in native format, init directly. */
 	if (otype == itype) {
@@ -230,6 +288,59 @@ bhnd_nvram_val_init_common(bhnd_nvram_val *value,
 	if (error)
 		return (error);
 	
+	return (0);
+}
+
+/* Common initialization support for bhnd_nvram_val_convert_init() and
+ * bhnd_nvram_val_convert_new() */
+static int
+bhnd_nvram_val_convert_common(bhnd_nvram_val *value,
+    bhnd_nvram_val_storage val_storage, const bhnd_nvram_val_fmt *fmt,
+    bhnd_nvram_val *src, uint32_t flags)
+{
+	void		*outp;
+	bhnd_nvram_type	 otype;
+	size_t		 olen;
+	int		 error;
+
+	/* Try to perform direct initialization from the source value's backing
+	 * data? */
+	if (BHND_NVRAM_VAL_EXTREF_BORROWED_DATA(flags)) {
+		const bhnd_nvram_val_fmt	*nfmt;
+		const void			*inp;
+		bhnd_nvram_type			 itype;
+		size_t				 ilen;
+
+		inp = bhnd_nvram_val_bytes(src, &ilen, &itype);
+
+		/* If the requested format -- or a format it delegates to --
+		 * declares support for direct initialization from the source
+		 * data, we can delegate directly to standard initialization
+		 * from the buffer */
+		nfmt = fmt;
+		error = bhnd_nvram_val_fmt_filter(&nfmt, inp, ilen, itype);
+		if (error == 0)
+			return (bhnd_nvram_val_init_common(value, val_storage,
+			    fmt, inp, ilen, itype, flags));
+	}
+
+	/* Initialize value instance */
+	*value = BHND_NVRAM_VAL_INITIALIZER(fmt, val_storage);
+
+	/* Determine size when encoded in native format */
+	otype = fmt->native_type;
+	if ((bhnd_nvram_val_encode(src, NULL, &olen, otype)))
+		return (error);
+	
+	/* Fetch reference to (or allocate) an appropriately sized buffer */
+	outp = bhnd_nvram_val_alloc_bytes(value, olen, otype, flags);
+	if (outp == NULL)
+		return (ENOMEM);
+	
+	/* Perform encode */
+	if ((error = bhnd_nvram_val_encode(src, outp, &olen, otype)))
+		return (error);
+
 	return (0);
 }
 
@@ -265,6 +376,42 @@ bhnd_nvram_val_init(bhnd_nvram_val *value, const bhnd_nvram_val_fmt *fmt,
 
 	error = bhnd_nvram_val_init_common(value, BHND_NVRAM_VAL_STORAGE_AUTO,
 	    fmt, inp, ilen, itype, flags);
+	if (error)
+		bhnd_nvram_val_release(value);
+
+	return (error);
+}
+
+/**
+ * Initialize an externally allocated instance of @p value with @p fmt, and
+ * attempt to initialize its internal representation from the given @p src
+ * value.
+ *
+ * On success, the caller owns a reference to @p value, and is responsible for
+ * freeing any resources allocated for @p value via bhnd_nvram_val_release().
+ *
+ * @param	value	The externally allocated value instance to be
+ *			initialized.
+ * @param	fmt	The value's format.
+ * @param	src	Input value to be converted.
+ * @param	flags	Value flags (see BHND_NVRAM_VAL_*).
+ * 
+ * @retval 0		success
+ * @retval ENOMEM	If allocation fails.
+ * @retval EFTYPE	If @p fmt initialization from @p src is unsupported.
+ * @retval EFAULT	if @p ilen is not correctly aligned for elements of
+ *			@p itype.
+ * @retval ERANGE	If value coercion of @p src would overflow
+ *			(or underflow) the @p fmt representation.
+ */
+int
+bhnd_nvram_val_convert_init(bhnd_nvram_val *value,
+    const bhnd_nvram_val_fmt *fmt, bhnd_nvram_val *src, uint32_t flags)
+{
+	int error;
+
+	error = bhnd_nvram_val_convert_common(value,
+	    BHND_NVRAM_VAL_STORAGE_AUTO, fmt, src, flags);
 	if (error)
 		bhnd_nvram_val_release(value);
 
@@ -316,6 +463,47 @@ bhnd_nvram_val_new(bhnd_nvram_val **value, const bhnd_nvram_val_fmt *fmt,
 }
 
 /**
+ * Allocate a value instance with @p fmt, and attempt to initialize its internal
+ * representation from the given @p src value.
+ *
+ * On success, the caller owns a reference to @p value, and is responsible for
+ * freeing any resources allocated for @p value via bhnd_nvram_val_release().
+ *
+ * @param[out]	value	On success, the allocated value instance.
+ * @param	fmt	The value's format.
+ * @param	src	Input value to be converted.
+ * @param	flags	Value flags (see BHND_NVRAM_VAL_*).
+ * 
+ * @retval 0		success
+ * @retval ENOMEM	If allocation fails.
+ * @retval EFTYPE	If @p fmt initialization from @p src is unsupported.
+ * @retval EFAULT	if @p ilen is not correctly aligned for elements of
+ *			@p itype.
+ * @retval ERANGE	If value coercion of @p src would overflow
+ *			(or underflow) the @p fmt representation.
+ */
+int
+bhnd_nvram_val_convert_new(bhnd_nvram_val **value,
+    const bhnd_nvram_val_fmt *fmt, bhnd_nvram_val *src, uint32_t flags)
+{
+	int error;
+
+	/* Allocate new instance */
+	if ((*value = bhnd_nv_malloc(sizeof(**value))) == NULL)
+		return (ENOMEM);
+
+	/* Perform common initialization. */
+	error = bhnd_nvram_val_convert_common(*value,
+	    BHND_NVRAM_VAL_STORAGE_DYNAMIC, fmt, src, flags);
+	if (error) {
+		/* Will also free() the value allocation */
+		bhnd_nvram_val_release(*value);
+	}
+
+	return (error);
+}
+
+/**
  * Copy or retain a reference to @p value.
  * 
  * On success, the caller is responsible for freeing the result via
@@ -335,16 +523,24 @@ bhnd_nvram_val_copy(bhnd_nvram_val *value)
 	size_t			 len;
 	uint32_t		 flags;
 	int			 error;
+	
+	BHND_NV_ASSERT(
+	    value->refs == 1 ||
+	    value->val_storage == BHND_NVRAM_VAL_STORAGE_DYNAMIC,
+	    ("non-allocated value has active refcount (%u)", value->refs));
 
-	/* If dynamically allocated, simply bump the reference count */
+	/*
+	 * If dynamically allocated and the data is not weakly referenced,
+	 * simply bump the reference count. 
+	 *
+	 * Otherwise, we need to perform an actual copy.
+	 */
 	if (value->val_storage == BHND_NVRAM_VAL_STORAGE_DYNAMIC) {
-		refcount_acquire(&value->refs);
-		return (value);
+		if (value->data_storage != BHND_NVRAM_VAL_DATA_EXT_WEAK) {
+			refcount_acquire(&value->refs);
+			return (value);
+		}
 	}
-
-	/* Otherwise, we need to perform an actual copy */
-	BHND_NV_ASSERT(value->refs == 1, ("non-allocated value has "
-	    "active refcount (%u)", value->refs));
 
 	/* Compute the new value's flags based on the source value */
 	switch (value->data_storage) {
@@ -474,7 +670,7 @@ bhnd_nvram_val_encode_bool(const void *inp, size_t ilen, bhnd_nvram_type itype,
 		limit = 0;
 
 	/* Must be exactly one element in input */
-	if ((error = bhnd_nvram_value_nelem(itype, inp, ilen, &nelem)))
+	if ((error = bhnd_nvram_value_nelem(inp, ilen, itype, &nelem)))
 		return (error);
 
 	if (nelem != 1)
@@ -1246,7 +1442,7 @@ bhnd_nvram_val_nelem(bhnd_nvram_val *value)
 
 	/* Otherwise, compute the standard element count */
 	bytes = bhnd_nvram_val_bytes(value, &len, &type);
-	if ((error = bhnd_nvram_value_nelem(type, bytes, len, &nelem))) {
+	if ((error = bhnd_nvram_value_nelem(bytes, len, type, &nelem))) {
 		/* Should always succeed */
 		BHND_NV_PANIC("error calculating element count for type '%s' "
 		    "with length %zu: %d\n", bhnd_nvram_type_name(type), len,
@@ -1460,13 +1656,12 @@ bhnd_nvram_val_set(bhnd_nvram_val *value, const void *inp, size_t ilen,
     bhnd_nvram_type itype, uint32_t flags)
 {
 	void	*bytes;
-	size_t	 nelem;
 	int	 error;
 
 	BHND_NVRAM_VAL_ASSERT_EMPTY(value);
 
-	/* Validate alignment of fixed-width types */
-	if ((error = bhnd_nvram_value_nelem(itype, NULL, ilen, &nelem)))
+	/* Validate alignment */
+	if ((error = bhnd_nvram_value_check_aligned(inp, ilen, itype)))
 		return (error);
 
 	/* Reference the external data */
