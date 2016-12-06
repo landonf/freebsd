@@ -483,3 +483,11 @@ bhnd_nvram_bcmraw_getvar_name(struct bhnd_nvram_data *nv, void *cookiep)
 	/* Cookie points to key\0value\0 */
 	return (cookiep);
 }
+
+static int
+bhnd_nvram_bcmraw_filter_setvar(struct bhnd_nvram_data *nv, const char *name,
+    bhnd_nvram_val *value, bhnd_nvram_val **result)
+{
+	// TODO
+	return (ENXIO);
+}

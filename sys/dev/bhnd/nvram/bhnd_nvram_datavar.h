@@ -114,6 +114,11 @@ typedef const void	*(bhnd_nvram_data_op_getvar_ptr)(
 			      struct bhnd_nvram_data *nv, void *cookiep,
 			      size_t *len, bhnd_nvram_type *type);
 
+/** @see bhnd_nvram_data_filter_setvar() */
+typedef int		 (bhnd_nvram_data_op_filter_setvar)(
+			      struct bhnd_nvram_data *nv, const char *name,
+			      bhnd_nvram_val *value, bhnd_nvram_val **result);
+
 /**
  * NVRAM data class.
  */
@@ -136,6 +141,7 @@ struct bhnd_nvram_data_class {
 	bhnd_nvram_data_op_getvar_ptr		*op_getvar_ptr;
 	bhnd_nvram_data_op_getval		*op_getval;
 	bhnd_nvram_data_op_getvar_name		*op_getvar_name;
+	bhnd_nvram_data_op_filter_setvar	*op_filter_setvar;
 };
 
 /**
@@ -183,6 +189,7 @@ struct bhnd_nvram_data {
 	_macro(_cname, caps)					\
 	_macro(_cname, next)					\
 	_macro(_cname, find)					\
+	_macro(_cname, filter_setvar)				\
 	_macro(_cname, getvar)					\
 	_macro(_cname, getvar_ptr)				\
 	_macro(_cname, getval)					\

@@ -723,3 +723,12 @@ bhnd_nvram_btxt_seek_next(struct bhnd_nvram_io *io, size_t *offset)
 	*offset += (p - baseptr);
 	return (0);
 }
+
+static int
+bhnd_nvram_btxt_filter_setvar(struct bhnd_nvram_data *nv, const char *name,
+    bhnd_nvram_val *value, bhnd_nvram_val **result)
+{
+	// TODO
+	*result = bhnd_nvram_val_copy(value);
+	return (0);
+}

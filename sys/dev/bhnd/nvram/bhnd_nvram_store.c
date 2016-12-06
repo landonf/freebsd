@@ -62,6 +62,11 @@ __FBSDID("$FreeBSD$");
  * Manages in-memory and persistent representations of NVRAM data.
  */
 
+typedef enum {
+	BHND_NVSTORE_NAME_INTERNAL,
+	BHND_NVSTORE_NAME_EXTERNAL
+} bhnd_nvstore_name_type;
+
 static int			 bhnd_nvstore_parse_data(
 				     struct bhnd_nvram_store *sc);
 
@@ -130,6 +135,7 @@ static int			 bhnd_nvstore_register_alias(
 static const char		*bhnd_nvstore_parse_relpath(const char *parent,
 				     const char *child);
 static int			 bhnd_nvstore_parse_name_info(const char *name,
+				     bhnd_nvstore_name_type name_type,
 				     uint32_t data_caps,
 				     bhnd_nvstore_name_info *info);
 
@@ -594,8 +600,8 @@ bhnd_nvstore_parse_data(struct bhnd_nvram_store *sc)
 		bhnd_nvstore_name_info	 info;
 
 		/* Parse the name info */
-		error = bhnd_nvstore_parse_name_info(name, sc->data_caps,
-		    &info);
+		error = bhnd_nvstore_parse_name_info(name,
+		    BHND_NVSTORE_NAME_INTERNAL, sc->data_caps, &info);
 		if (error)
 			return (error);
 
@@ -661,8 +667,8 @@ bhnd_nvstore_parse_data(struct bhnd_nvram_store *sc)
 		bhnd_nvstore_path	*path;
 
 		/* Parse the name info */
-		error = bhnd_nvstore_parse_name_info(name, sc->data_caps,
-		    &info);
+		error = bhnd_nvstore_parse_name_info(name,
+		    BHND_NVSTORE_NAME_INTERNAL, sc->data_caps, &info);
 		if (error)
 			return (error);
 
@@ -733,8 +739,8 @@ bhnd_nvstore_parse_path_entries(struct bhnd_nvram_store *sc)
 		bhnd_nvstore_name_info info;
 
 		/* Parse the name info */
-		error = bhnd_nvstore_parse_name_info(name, sc->data_caps,
-		    &info);
+		error = bhnd_nvstore_parse_name_info(name,
+		    BHND_NVSTORE_NAME_INTERNAL, sc->data_caps, &info);
 		if (error)
 			return (error);
 
@@ -1098,16 +1104,10 @@ bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
 	BHND_NVSTORE_LOCK(sc);
 
 	/* Parse the variable name */
-	error = bhnd_nvstore_parse_name_info(name, sc->data_caps, &info);
+	error = bhnd_nvstore_parse_name_info(name, BHND_NVSTORE_NAME_EXTERNAL,
+	    sc->data_caps, &info);
 	if (error)
 		goto finished;
-
-	/* Filter out requests that directly include a variable alias prefix
-	 * (e.g. '0:name') */
-	if (info.path_type == BHND_NVSTORE_PATH_ALIAS) {
-		error = ENOENT;
-		goto finished;
-	}
 
 	/* Fetch the variable's enclosing path entry */
 	if ((path = bhnd_nvstore_var_get_path(sc, &info)) == NULL) {
@@ -1146,6 +1146,66 @@ finished:
 	return (error);
 }
 
+static int
+bhnd_nvram_store_setval_common(struct bhnd_nvram_store *sc, const char *name,
+    bhnd_nvram_val *value)
+{
+	bhnd_nvram_val		*prop_val;
+	bhnd_nvstore_path	*path;
+	bhnd_nvstore_name_info	 info;
+	int			 error;
+
+	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
+
+	/* Parse the variable name */
+	error = bhnd_nvstore_parse_name_info(name, BHND_NVSTORE_NAME_EXTERNAL,
+	    sc->data_caps, &info);
+	if (error)
+		return (error);
+
+	/* Fetch the variable's enclosing path entry */
+	if ((path = bhnd_nvstore_var_get_path(sc, &info)) == NULL)
+		return (error);
+
+	/* Allow the data store to filter the NVRAM value */
+	// TODO: need to path-prefix the variable name
+	error = bhnd_nvram_data_filter_setvar(sc->data, info.name, value,
+	    &prop_val);
+	if (error)
+		return (error);
+
+	/* Add to pending change list and drop our reference */
+	error = bhnd_nvram_plist_replace_val(path->pending, info.name,
+	    prop_val);
+	bhnd_nvram_val_release(prop_val);
+
+	return (0);
+}
+
+/**
+ * Set an NVRAM variable.
+ * 
+ * @param	sc	The NVRAM parser state.
+ * @param	name	The NVRAM variable name.
+ * @param	value	The new value.
+ *
+ * @retval 0		success
+ * @retval ENOENT	The requested variable @p name was not found.
+ * @retval EINVAL	If @p value is invalid.
+ */
+int
+bhnd_nvram_store_setval(struct bhnd_nvram_store *sc, const char *name,
+    bhnd_nvram_val *value)
+{
+	int error;
+
+	BHND_NVSTORE_LOCK(sc);
+	error = bhnd_nvram_store_setval_common(sc, name, value);
+	BHND_NVSTORE_UNLOCK(sc);
+
+	return (error);
+}
+
 /**
  * Set an NVRAM variable.
  * 
@@ -1156,24 +1216,30 @@ finished:
  * @param		itype	The data type of @p inp.
  *
  * @retval 0		success
- * @retval ENOENT	The requested variable was not found.
- * @retval EINVAL	If @p len does not match the expected variable size.
+ * @retval ENOENT	The requested variable @p name was not found.
+ * @retval EINVAL	If the new value is invalid.
  */
 int
 bhnd_nvram_store_setvar(struct bhnd_nvram_store *sc, const char *name,
     const void *inp, size_t ilen, bhnd_nvram_type itype)
 {
-	/* Verify name validity */
-	if (!bhnd_nvram_validate_name(name, strlen(name)))
-		return (EINVAL);
+	bhnd_nvram_val	val;
+	int		error;
 
-	/* Verify buffer size alignment for the given type. If this is a
-	 * variable width type, a width of 0 will always pass this check */
-	if (ilen % bhnd_nvram_value_size(itype, inp, ilen, 1) != 0)
+	error = bhnd_nvram_val_init(&val, NULL, inp, ilen, itype,
+	    BHND_NVRAM_VAL_FIXED|BHND_NVRAM_VAL_BORROW_DATA);
+	if (error) {
+		BHND_NV_LOG("error initializing value: %d\n", error);
 		return (EINVAL);
+	}
 
-	// TODO: uncommitted change tracking
-	return (EOPNOTSUPP);
+	BHND_NVSTORE_LOCK(sc);
+	error = bhnd_nvram_store_setval_common(sc, name, &val);
+	BHND_NVSTORE_UNLOCK(sc);
+
+	bhnd_nvram_val_release(&val);
+
+	return (error);
 }
 
 /**
@@ -1603,9 +1669,12 @@ bhnd_nvstore_parse_relpath(const char *parent, const char *child)
  * type-specific @p prefix (e.g. '0:', 'pci/1/1', 'devpath'), and its
  * type-specific @p suffix (e.g. 'varname', '0').
  * 
- * @param	name		The raw NVRAM variable name to be parsed. This
+ * @param	name		The NVRAM variable name to be parsed. This
  *				value must remain valid for the lifetime of
  *				@p info.
+ * @param	type		The NVRAM name type -- either INTERNAL for names
+ *				parsed from backing NVRAM data, or EXTERNAL for
+ *				names provided by external NVRAM store clients.
  * @param	data_caps	The backing NVRAM data capabilities
  *				(see bhnd_nvram_data_caps()).
  * @param[out]	info		On success, the parsed variable name info.
@@ -1615,8 +1684,8 @@ bhnd_nvstore_parse_relpath(const char *parent, const char *child)
  *			error code will be returned.
  */
 static int
-bhnd_nvstore_parse_name_info(const char *name, uint32_t data_caps,
-    bhnd_nvstore_name_info *info)
+bhnd_nvstore_parse_name_info(const char *name, bhnd_nvstore_name_type type,
+    uint32_t data_caps, bhnd_nvstore_name_info *info)
 {
 	const char	*p;
 	char		*endp;
@@ -1648,6 +1717,11 @@ bhnd_nvstore_parse_name_info(const char *name, uint32_t data_caps,
 			/* Parse '0:' alias prefix */
 			alias = strtoul(name, &endp, 10);
 			if (endp != name && *endp == ':') {
+				/* Alias prefixes are reserved for use by the
+				 * backing NVRAM format */
+				if (type != BHND_NVSTORE_NAME_INTERNAL)
+					return (ENOENT);
+
 				info->type = BHND_NVSTORE_VAR;
 				info->path_type = BHND_NVSTORE_PATH_ALIAS;
 

@@ -73,4 +73,7 @@ int	bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
 int	bhnd_nvram_store_setvar(struct bhnd_nvram_store *sc, const char *name,
 	    const void *inp, size_t ilen, bhnd_nvram_type itype);
 
+int	bhnd_nvram_store_setval(struct bhnd_nvram_store *sc, const char *name,
+	    bhnd_nvram_val *value);
+
 #endif /* _BHND_NVRAM_BHND_NVRAM_STORE_H_ */

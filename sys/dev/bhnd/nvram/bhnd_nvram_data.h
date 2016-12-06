@@ -143,4 +143,8 @@ const char		*bhnd_nvram_data_getvar_name(struct bhnd_nvram_data *nv,
 int			 bhnd_nvram_data_getval(struct bhnd_nvram_data *nv,
 			     void *cookiep, bhnd_nvram_val **val);
 
+int			 bhnd_nvram_data_filter_setvar(
+			     struct bhnd_nvram_data *nv, const char *name,
+			     bhnd_nvram_val *value, bhnd_nvram_val **result);
+
 #endif /* _BHND_NVRAM_BHND_NVRAM_DATA_H_ */

@@ -555,6 +555,14 @@ bhnd_nvram_tlv_getvar_name(struct bhnd_nvram_data *nv, void *cookiep)
 	return (&env->envp[0]);
 }
 
+static int
+bhnd_nvram_tlv_filter_setvar(struct bhnd_nvram_data *nv, const char *name,
+    bhnd_nvram_val *value, bhnd_nvram_val **result)
+{
+	// TODO
+	return (ENXIO);
+}
+
 /**
  * Iterate over the records starting at @p next, returning the parsed
  * record's @p tag, @p size, and @p offset.

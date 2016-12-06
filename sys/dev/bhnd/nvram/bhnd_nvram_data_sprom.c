@@ -1283,3 +1283,11 @@ bhnd_nvram_sprom_getvar_name(struct bhnd_nvram_data *nv, void *cookiep)
 
 	return (var->name);
 }
+
+static int
+bhnd_nvram_sprom_filter_setvar(struct bhnd_nvram_data *nv, const char *name,
+    bhnd_nvram_val *value, bhnd_nvram_val **result)
+{
+	// TODO
+	return (ENXIO);
+}

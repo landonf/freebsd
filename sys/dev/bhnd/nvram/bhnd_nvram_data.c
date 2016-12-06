@@ -665,3 +665,27 @@ bhnd_nvram_data_getvar_name(struct bhnd_nvram_data *nv, void *cookiep)
 {
 	return (nv->cls->op_getvar_name(nv, cookiep));
 }
+
+/**
+ * Filter a request to set variable @p name with @p value.
+ * 
+ * On success, the caller owns a reference to @p result, and must release
+ * any held resources via bhnd_nvram_val_release().
+ * 
+ * @param	nv	The NVRAM data instance.
+ * @param	name	The name of the variable to be set.
+ * @param	value	The proposed value to be set.
+ * @param[out]	result	On success, a caller-owned reference to the filtered
+ *			value to be set.
+ * 
+ * @retval	0	success
+ * @retval	ENOENT	if @p name is unrecognized by @p nv.
+ * @retval	EINVAL	if @p name is recognized by @p nv, but @p value cannot
+ *			be converted to a supported value type.
+ */
+int
+bhnd_nvram_data_filter_setvar(struct bhnd_nvram_data *nv, const char *name,
+    bhnd_nvram_val *value, bhnd_nvram_val **result)
+{
+	return (nv->cls->op_filter_setvar(nv, name, value, result));
+}

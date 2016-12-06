@@ -873,6 +873,14 @@ bhnd_nvram_bcm_getvar_name(struct bhnd_nvram_data *nv, void *cookiep)
 	return (cookiep);
 }
 
+static int
+bhnd_nvram_bcm_filter_setvar(struct bhnd_nvram_data *nv, const char *name,
+    bhnd_nvram_val *value, bhnd_nvram_val **result)
+{
+	// TODO
+	return (ENXIO);
+}
+
 /**
  * Return the internal BCM data reference for a header-defined variable
  * with @p name, or NULL if none exists.
