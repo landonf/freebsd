@@ -197,6 +197,11 @@ bhnd_nvram_bcm_class_serialize(bhnd_nvram_data_class *cls,
 	{
 		error = bhnd_nvram_plist_get_uint8(options,
 		    BCM_NVRAM_ENCODE_OPT_VERSION, &bcm_ver);
+		if (error) {
+			BHND_NV_LOG("error reading %s uint8 option value: %d\n",
+			    BCM_NVRAM_ENCODE_OPT_VERSION, error);
+			return (EINVAL);
+		}
 	} else {
 		bcm_ver = BCM_NVRAM_CFG0_VER_DEFAULT;
 	}
@@ -297,7 +302,7 @@ bhnd_nvram_bcm_class_serialize(bhnd_nvram_data_class *cls,
 	/* Update header length; this must fit within the header's 32-bit size
 	 * field */
 	if (nbytes <= UINT32_MAX) {
-		hdr.size = nbytes;
+		hdr.size = (uint32_t)nbytes;
 	} else {
 		BHND_NV_LOG("size %zu exceeds maximum supported size of %u "
 		    "bytes\n", nbytes, UINT32_MAX);
