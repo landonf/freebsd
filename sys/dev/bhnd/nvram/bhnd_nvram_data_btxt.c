@@ -728,7 +728,38 @@ static int
 bhnd_nvram_btxt_filter_setvar(struct bhnd_nvram_data *nv, const char *name,
     bhnd_nvram_val *value, bhnd_nvram_val **result)
 {
-	// TODO
-	*result = bhnd_nvram_val_copy(value);
+	bhnd_nvram_val	*str;
+	const char	*inp;
+	bhnd_nvram_type	 itype;
+	size_t		 ilen;
+	int		 error;
+
+	/* Name (trimmed of any path prefix) must be valid */
+	if (!bhnd_nvram_validate_name(bhnd_nvram_trim_path_name(name)))
+		return (EINVAL);
+
+	/* Value must be bcm-formatted string */
+	error = bhnd_nvram_val_convert_new(&str, &bhnd_nvram_val_bcm_string_fmt,
+	    value, BHND_NVRAM_VAL_DYNAMIC);
+	if (error)
+		return (error);
+
+	/* Value string must not contain our record delimiter character ('\n'),
+	 * or our comment character ('#') */
+	inp = bhnd_nvram_val_bytes(str, &ilen, &itype);
+	BHND_NV_ASSERT(itype == BHND_NVRAM_TYPE_STRING, ("non-string value"));
+	for (size_t i = 0; i < ilen; i++) {
+		switch (inp[i]) {
+		case '\n':
+		case '#':
+			BHND_NV_LOG("invalid character (%#hhx) in value\n",
+			    inp[i]);
+			bhnd_nvram_val_release(str);
+			return (EINVAL);
+		}
+	}
+
+	/* Success. Transfer result ownership to the caller. */
+	*result = str;
 	return (0);
 }

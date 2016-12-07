@@ -488,6 +488,20 @@ static int
 bhnd_nvram_bcmraw_filter_setvar(struct bhnd_nvram_data *nv, const char *name,
     bhnd_nvram_val *value, bhnd_nvram_val **result)
 {
-	// TODO
-	return (ENXIO);
+	bhnd_nvram_val	*str;
+	int		 error;
+
+	/* Name (trimmed of any path prefix) must be valid */
+	if (!bhnd_nvram_validate_name(bhnd_nvram_trim_path_name(name)))
+		return (EINVAL);
+
+	/* Value must be bcm-formatted string */
+	error = bhnd_nvram_val_convert_new(&str, &bhnd_nvram_val_bcm_string_fmt,
+	    value, BHND_NVRAM_VAL_DYNAMIC);
+	if (error)
+		return (error);
+
+	/* Success. Transfer result ownership to the caller. */
+	*result = str;
+	return (0);
 }

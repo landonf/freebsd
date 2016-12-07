@@ -1288,6 +1288,41 @@ static int
 bhnd_nvram_sprom_filter_setvar(struct bhnd_nvram_data *nv, const char *name,
     bhnd_nvram_val *value, bhnd_nvram_val **result)
 {
+	struct bhnd_nvram_sprom		*sp;
+	const struct bhnd_nvram_vardefn	*var;
+	bhnd_sprom_opcode_idx_entry	*entry;
+#if 0
+	bhnd_nvram_val			*spval;
+	int				 error;
+#endif
+
+	sp = (struct bhnd_nvram_sprom *)nv;
+
+	/* Name must not have a path prefix */
+	if (bhnd_nvram_trim_path_name(name) != name)
+		return (EINVAL);
+
+	/* Name must be valid */
+	if (!bhnd_nvram_validate_name(name))
+		return (EINVAL);
+
+	/* A corresponding variable must be defined in our SPROM layout */
+	if ((entry = bhnd_sprom_opcode_index_find(&sp->state, name)) == NULL)
+		return (ENOENT);
+
+	var = bhnd_nvram_get_vardefn(entry->vid);
+	
+	/* Value must coercible to the SPROM-defined type */
+#if 0
 	// TODO
+	error = bhnd_nvram_val_convert_new(&str, &bhnd_nvram_val_bcm_string_fmt,
+	    value, BHND_NVRAM_VAL_DYNAMIC);
+	if (error)
+		return (error);
+
+	/* Success. Transfer result ownership to the caller. */
+	*result = str;
+	return (0);
+#endif
 	return (ENXIO);
 }
