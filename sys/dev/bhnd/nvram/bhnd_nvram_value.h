@@ -183,20 +183,21 @@ typedef enum {
 	BHND_NVRAM_VAL_DATA_INLINE	= 1,
 
 	/**
-	* Value represented by an external reference to data with a static
-	* storage location. The data need not be copied if copying the value.
-	*/
+	 * Value represented by an external reference to data with a static
+	 * storage location. The data need not be copied if copying the value.
+	 */
 	BHND_NVRAM_VAL_DATA_EXT_STATIC	= 2,
 
 	/**
-	* Value represented by weak external reference, which must be copied
-	* if copying the value */
+	 * Value represented by weak external reference, which must be copied
+	 * if copying the value.
+	 */
 	BHND_NVRAM_VAL_DATA_EXT_WEAK	= 3,
 
 	/**
-	* Value represented by an external reference that must be deallocated
-	* when deallocating the value
-	*/
+	 * Value represented by an external reference that must be deallocated
+	 * when deallocating the value.
+	 */
 	BHND_NVRAM_VAL_DATA_EXT_ALLOC	= 4,
 } bhnd_nvram_val_data_storage;
 
