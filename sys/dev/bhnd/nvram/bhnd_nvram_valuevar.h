@@ -90,7 +90,9 @@ typedef size_t (bhnd_nvram_val_op_nelem)(bhnd_nvram_val *value);
 struct bhnd_nvram_val_fmt {
 	const char			*name;		/**< type name */
 	bhnd_nvram_type			 native_type;	/**< native value representation */
-
+	bool				 copy_direct;	/**< the backing value may be copied directly
+							     for use by a different bhnd_nvram_val_fmt
+							     instance without passing through op_encode() */
 	bhnd_nvram_val_op_filter	*op_filter;
 	bhnd_nvram_val_op_encode	*op_encode;
 	bhnd_nvram_val_op_encode_elem	*op_encode_elem;

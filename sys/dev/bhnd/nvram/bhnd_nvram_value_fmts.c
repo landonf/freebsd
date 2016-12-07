@@ -204,7 +204,8 @@ static const bhnd_nvram_val_fmt bhnd_nvram_val_bcm_string_csv_fmt = {
 #define	BHND_NVRAM_VAL_FMT_NATIVE(_n, _type)				\
 	const bhnd_nvram_val_fmt bhnd_nvram_val_ ## _n ## _fmt = {	\
 		.name		= __STRING(_n),				\
-		.native_type	= BHND_NVRAM_TYPE_ ## _type		\
+		.native_type	= BHND_NVRAM_TYPE_ ## _type,		\
+		.copy_direct	= true,					\
 	}
 
 BHND_NVRAM_VAL_FMT_NATIVE(uint8,	UINT8);

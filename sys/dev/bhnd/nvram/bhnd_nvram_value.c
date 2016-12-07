@@ -403,7 +403,9 @@ bhnd_nvram_val_convert_common(bhnd_nvram_val *value,
 	/* Determine whether direct initialization from the source value's
 	 * existing data is supported by the new format */
 	inp = bhnd_nvram_val_bytes(src, &ilen, &itype);
-	if (bhnd_nvram_val_fmt_filter(&fmt, inp, ilen, itype) == 0) {
+	if (src->fmt->copy_direct &&
+	    bhnd_nvram_val_fmt_filter(&fmt, inp, ilen, itype) == 0)
+	{
 		/* Adjust value flags based on the source data storage */
 		switch (src->data_storage) {
 		case BHND_NVRAM_VAL_DATA_NONE:
