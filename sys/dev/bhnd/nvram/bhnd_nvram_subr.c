@@ -627,6 +627,18 @@ bhnd_nvram_validate_name(const char *name)
 	if (bhnd_nvram_trim_path_name(name) != name)
 		return (false);
 
+	/* Reject device path alias declarations (devpath[1-9][0-9]*.*\0) */
+	if (strncmp(name, "devpath", strlen("devpath")) == 0) {
+		const char	*p;
+		char		*endp;
+
+		/* Check for trailing [1-9][0-9]* */
+		p = name + strlen("devpath");
+		strtoul(p, &endp, 10);
+		if (endp != p)
+			return (false);
+	}
+
 	/* Scan for [^A-Za-z_0-9] */
 	for (const char *p = name; *p != '\0'; p++) {
 		switch (*p) {

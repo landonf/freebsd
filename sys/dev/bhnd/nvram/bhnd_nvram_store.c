@@ -1810,6 +1810,14 @@ bhnd_nvstore_parse_name_info(const char *name, bhnd_nvstore_name_type type,
 		if (strncmp(name, "devpath", strlen("devpath")) == 0) {
 			u_long alias;
 
+			/* Perform standard validation on the relative
+			 * variable name */
+			if (type != BHND_NVSTORE_NAME_INTERNAL &&
+			    !bhnd_nvram_validate_name(name))
+			{
+				return (ENOENT);
+			}
+
 			/* Parse alias value that should follow a 'devpath'
 			 * prefix */
 			p = name + strlen("devpath");
@@ -1831,10 +1839,13 @@ bhnd_nvstore_parse_name_info(const char *name, bhnd_nvstore_name_type type,
 			/* Parse '0:' alias prefix */
 			alias = strtoul(name, &endp, 10);
 			if (endp != name && *endp == ':') {
-				/* Alias prefixes are reserved for use by the
-				 * backing NVRAM format */
-				if (type != BHND_NVSTORE_NAME_INTERNAL)
+				/* Perform standard validation on the relative
+				 * variable name */
+				if (type != BHND_NVSTORE_NAME_INTERNAL &&
+				    !bhnd_nvram_validate_name(name))
+				{
 					return (ENOENT);
+				}
 
 				info->type = BHND_NVSTORE_VAR;
 				info->path_type = BHND_NVSTORE_PATH_ALIAS;
@@ -1866,6 +1877,14 @@ bhnd_nvstore_parse_name_info(const char *name, bhnd_nvstore_name_type type,
 			while (path_len > 0 && path[path_len-1] == '/')
 				path_len--;
 
+			/* Perform standard validation on the relative
+			 * variable name */
+			if (type != BHND_NVSTORE_NAME_INTERNAL &&
+			    !bhnd_nvram_validate_name(relative_name))
+			{
+				return (ENOENT);
+			}
+
 			/* Initialize result with pointers into the name
 			 * buffer */
 			info->type = BHND_NVSTORE_VAR;
@@ -1880,6 +1899,13 @@ bhnd_nvstore_parse_name_info(const char *name, bhnd_nvstore_name_type type,
 
 	/* If all other parsing fails, the result is a simple variable with
 	 * an implicit path of "/" */
+	if (type != BHND_NVSTORE_NAME_INTERNAL &&
+	    !bhnd_nvram_validate_name(name))
+	{
+		/* Invalid relative name */
+		return (ENOENT);
+	}
+
 	info->type = BHND_NVSTORE_VAR;
 	info->path_type = BHND_NVSTORE_PATH_STRING;
 	info->name = name;
