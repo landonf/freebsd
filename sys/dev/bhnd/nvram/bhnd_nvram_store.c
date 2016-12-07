@@ -1218,10 +1218,16 @@ bhnd_nvram_store_setval_common(struct bhnd_nvram_store *sc, const char *name,
 {
 	bhnd_nvram_val		*prop_val;
 	bhnd_nvstore_path	*path;
+	const char		*full_name;
+	char			*namebuf;
+	void			*cookiep;
 	bhnd_nvstore_name_info	 info;
 	int			 error;
 
 	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
+
+	prop_val = NULL;
+	namebuf = NULL;
 
 	/* Parse the variable name */
 	error = bhnd_nvstore_parse_name_info(name, BHND_NVSTORE_NAME_EXTERNAL,
@@ -1233,19 +1239,61 @@ bhnd_nvram_store_setval_common(struct bhnd_nvram_store *sc, const char *name,
 	if ((path = bhnd_nvstore_var_get_path(sc, &info)) == NULL)
 		return (error);
 
+	/* Determine the full path-prefixed name for the variable */
+	cookiep = bhnd_nvstore_index_lookup(sc, path->index, info.name);
+	if (cookiep != NULL) {
+		/* Variable is already defined in the backing data; use the
+		 * existing variable name */
+		full_name = bhnd_nvram_data_getvar_name(sc->data, cookiep);
+	} else if (path == sc->root_path) {
+		/* No prefix required for root path */
+		full_name = name;
+	} else {
+		bhnd_nvstore_alias	*alias;
+		int			 len;
+
+		/* New variable is being set; we need to determine the
+		 * appropriate path prefix */
+		alias = bhnd_nvstore_find_alias(sc, path->path_str);
+		if (alias != NULL) {
+			/* Use <alias>:name */
+			len = bhnd_nv_asprintf(&namebuf, "%lu:%s", alias->alias,
+			    name);
+		} else {
+			/* Use path/name */
+			len = bhnd_nv_asprintf(&namebuf, "%s/%s",
+			    path->path_str, name);
+		}
+
+		if (len < 0)
+			return (ENOMEM);
+
+		full_name = namebuf;
+	}
+
 	/* Allow the data store to filter the NVRAM value */
-	// TODO: need to path-prefix the variable name
-	error = bhnd_nvram_data_filter_setvar(sc->data, info.name, value,
+	error = bhnd_nvram_data_filter_setvar(sc->data, full_name, value,
 	    &prop_val);
 	if (error)
-		return (error);
+		goto cleanup;
 
-	/* Add to pending change list and drop our reference */
+	/* Add relative variable name to the per-path change list */
 	error = bhnd_nvram_plist_replace_val(path->pending, info.name,
 	    prop_val);
-	bhnd_nvram_val_release(prop_val);
+	if (error)
+		goto cleanup;
 
-	return (0);
+	/* Success */
+	error = 0;
+
+cleanup:
+	if (namebuf != NULL)
+		bhnd_nv_free(namebuf);
+
+	if (prop_val != NULL)
+		bhnd_nvram_val_release(prop_val);
+
+	return (error);
 }
 
 /**
