@@ -93,7 +93,6 @@ static int	 bhnd_nvram_val_encode_string(const void *inp, size_t ilen,
 		.data_storage = BHND_NVRAM_VAL_DATA_NONE,	\
 	};
 
-
 /** Assert that @p value's backing representation state has initialized
  *  as empty. */
 #define	BHND_NVRAM_VAL_ASSERT_EMPTY(_value)			\
@@ -122,6 +121,23 @@ static int	 bhnd_nvram_val_encode_string(const void *inp, size_t ilen,
 #define	BHND_NVRAM_VAL_NEED_COPY(_val)				\
 	((_val)->val_storage == BHND_NVRAM_VAL_STORAGE_AUTO ||	\
 	 (_val)->data_storage == BHND_NVRAM_VAL_DATA_EXT_WEAK)
+
+volatile u_int			 refs;		/**< reference count */
+bhnd_nvram_val_storage		 val_storage;	/**< value structure storage */
+const bhnd_nvram_val_fmt	*fmt;		/**< value format */
+bhnd_nvram_val_data_storage	 data_storage;	/**< data storage */
+bhnd_nvram_type			 data_type;	/**< data type */
+size_t				 data_len;	/**< data size */
+
+/* Shared NULL value instance */
+bhnd_nvram_val bhnd_nvram_val_null = {
+	.refs		= 0,
+	.val_storage	= BHND_NVRAM_VAL_STORAGE_STATIC,
+	.fmt		= &bhnd_nvram_val_null_fmt,
+	.data_storage	= BHND_NVRAM_VAL_DATA_INLINE,
+	.data_type	= BHND_NVRAM_TYPE_NULL,
+	.data_len	= 0,
+};
 
 /**
  * Return the default format for values of @p type.
@@ -548,17 +564,28 @@ bhnd_nvram_val_copy(bhnd_nvram_val *value)
 	uint32_t		 flags;
 	int			 error;
 
-	BHND_NV_ASSERT(
-	    value->refs == 1 ||
-	    value->val_storage == BHND_NVRAM_VAL_STORAGE_DYNAMIC,
-	    ("non-allocated value has active refcount (%u)", value->refs));
-
-	/* If dynamically allocated and backing data is not weakly referenced,
-	 * we can simply bump the reference count. */
-	if (!BHND_NVRAM_VAL_NEED_COPY(value)) {
-		refcount_acquire(&value->refs);
+	switch (value->val_storage) {
+	case BHND_NVRAM_VAL_STORAGE_STATIC:
+		/* If static, can return as-is */
 		return (value);
+
+	case BHND_NVRAM_VAL_STORAGE_DYNAMIC:
+		if (!BHND_NVRAM_VAL_NEED_COPY(value)) {
+			refcount_acquire(&value->refs);
+			return (value);
+		}
+
+		/* Perform copy below */
+		break;
+
+	case BHND_NVRAM_VAL_STORAGE_AUTO:
+		BHND_NV_ASSERT(value->refs == 1, ("non-allocated value has "
+		    "active refcount (%u)", value->refs));
+
+		/* Perform copy below */
+		break;
 	}
+
 
 	/* Compute the new value's flags based on the source value */
 	switch (value->data_storage) {
@@ -600,6 +627,10 @@ void
 bhnd_nvram_val_release(bhnd_nvram_val *value)
 {
 	BHND_NV_ASSERT(value->refs >= 1, ("value over-released"));
+
+	/* Skip if value is static */
+	if (value->val_storage == BHND_NVRAM_VAL_STORAGE_STATIC)
+		return;
 
 	/* Drop reference */
 	if (!refcount_release(&value->refs))

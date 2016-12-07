@@ -150,7 +150,7 @@ enum {
  */
 typedef enum {
 	/**
-	 * The value structure has an automatic or static storage duration
+	 * The value structure has an automatic storage duration
 	 * (e.g. it is stack allocated, or is otherwise externally managed),
 	 * and no destructors will be run prior to deallocation of the value.
 	 *
@@ -167,6 +167,15 @@ typedef enum {
 	 * as-is.
 	 */
 	BHND_NVRAM_VAL_STORAGE_DYNAMIC	= 2,
+
+	/**
+	 * The value structure has a static storage duration, and will never
+	 * be deallocated.
+	 *
+	 * When performing copy/retain, the existing structure may be referenced
+	 * without modification.
+	 */
+	BHND_NVRAM_VAL_STORAGE_STATIC	= 3,
 } bhnd_nvram_val_storage;
 
 /**
@@ -263,5 +272,9 @@ BHND_NVRAM_VAL_FMT_DECL(int64_array);
 BHND_NVRAM_VAL_FMT_DECL(char_array);
 BHND_NVRAM_VAL_FMT_DECL(bool_array);
 BHND_NVRAM_VAL_FMT_DECL(string_array);
+
+/** Shared NULL value instance */
+#define	BHND_NVRAM_VAL_NULL	(&bhnd_nvram_val_null)
+extern bhnd_nvram_val bhnd_nvram_val_null;
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_VALUE_H_ */

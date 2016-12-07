@@ -71,6 +71,12 @@ static int			 bhnd_nvram_sprom_ident(
 				     const bhnd_sprom_layout **ident,
 				     struct bhnd_nvram_io **shadow);
 
+static int			 bhnd_nvram_sprom_encode_var(
+				     bhnd_sprom_opcode_state *state,
+				     bhnd_sprom_opcode_idx_entry *entry,
+				     bhnd_nvram_val *value,
+				     struct bhnd_nvram_io *io);
+
 static int			 bhnd_nvram_sprom_write_offset(
 				     const struct bhnd_nvram_vardefn *var,
 				     struct bhnd_nvram_io *data,
@@ -321,28 +327,30 @@ bhnd_nvram_sprom_get_layout(uint8_t sromrev)
 }
 
 /**
- * Serialize a property value to @p io.
- * 
- * @param state	The SPROM opcode state describing the layout of @p outp.
- * @param entry	The SPROM opcode entry for @p prop.
- * @param prop	The property value to encode to @p outp as per @p entry.
- * @param io	I/O context to which @p prop should be written.
+ * Serialize a SPROM variable.
+ *
+ * @param state	The SPROM opcode state describing the layout of @p io.
+ * @param entry	The variable's SPROM opcode index entry.
+ * @param value	The value to encode to @p io as per @p entry.
+ * @param io	I/O context to which @p value should be written, or NULL
+ *		if no output should be produced. This may be used to validate
+ *		values prior to write.
  *
  * @retval 0		success
- * @retval EFTYPE	If value coercion from @p prop to the type required by
+ * @retval EFTYPE	If value coercion from @p value to the type required by
  *			@p entry is unsupported.
- * @retval ERANGE	If value coercion from @p prop would overflow
+ * @retval ERANGE	If value coercion from @p value would overflow
  *			(or underflow) the type required by @p entry.
  * @retval non-zero	If serialization otherwise fails, a regular unix error
  *			code will be returned.
  */
 static int
-bhnd_nvram_sprom_class_serialize_prop(bhnd_sprom_opcode_state *state,
-    bhnd_sprom_opcode_idx_entry *entry, bhnd_nvram_prop *prop,
+bhnd_nvram_sprom_encode_var(bhnd_sprom_opcode_state *state,
+    bhnd_sprom_opcode_idx_entry *entry, bhnd_nvram_val *value,
     struct bhnd_nvram_io *io)
 {
 	const struct bhnd_nvram_vardefn	*var;
-	uint32_t			 val[BHND_SPROM_ARRAY_MAXLEN];
+	uint32_t			 u32[BHND_SPROM_ARRAY_MAXLEN];
 	bhnd_nvram_type			 itype, var_base_type;
 	size_t				 ipos, ilen, nelem;
 	int				 error;
@@ -376,16 +384,14 @@ bhnd_nvram_sprom_class_serialize_prop(bhnd_sprom_opcode_state *state,
 	}
 
 	/* The native representation must fit within our scratch array */
-	if (ilen > sizeof(val)) {
+	if (ilen > sizeof(u32)) {
 		BHND_NV_LOG("error encoding '%s', SPROM_ARRAY_MAXLEN "
 			    "incorrect\n", var->name);
 		return (EFTYPE);
 	}
 
 	/* Initialize our common 32-bit value representation */
-	if (prop == NULL ||
-	    bhnd_nvram_prop_type(prop) == BHND_NVRAM_TYPE_NULL) 
-	{
+	if (bhnd_nvram_val_type(value) == BHND_NVRAM_TYPE_NULL) {
 		/* No value provided; can this variable be encoded as missing
 		 * by setting all bits to one? */
 		if (!(var->flags & BHND_NVRAM_VF_IGNALL1)) {
@@ -395,18 +401,16 @@ bhnd_nvram_sprom_class_serialize_prop(bhnd_sprom_opcode_state *state,
 		}
 	
 		/* Set all bits */
-		memset(val, 0xFF, ilen);
+		memset(u32, 0xFF, ilen);
 	} else {
-		union bhnd_nvram_sprom_storage	prop_val;
-		size_t				prop_len, prop_nelem;
-		bhnd_nvram_type			prop_type;
+		union bhnd_nvram_sprom_storage	var_storage;
+		size_t				var_len, enc_nelem;
+		bhnd_nvram_type			raw_type;
 
-
-		/* Try to coerce the property value into the native variable
-		 * type */
-		prop_len = sizeof(prop_val);
-		error = bhnd_nvram_prop_encode(prop, &prop_val, &prop_len,
-		     var->type);
+		/* Try to coerce the value into the native variable type */
+		var_len = sizeof(var_storage);
+		error = bhnd_nvram_val_encode(value, &var_storage, &var_len,
+		    var->type);
 		if (error)
 			return (error);
 
@@ -422,24 +426,24 @@ bhnd_nvram_sprom_class_serialize_prop(bhnd_sprom_opcode_state *state,
 		 * parse the character as a decimal integer, rather than
 		 * promoting the raw UTF8 byte value to a 32-bit value.
 		 */
-		prop_type = bhnd_nvram_raw_type(var->type);
-		error = bhnd_nvram_value_coerce(&prop_val, prop_len, prop_type,
-		     val, &ilen, itype);
+		raw_type = bhnd_nvram_raw_type(var->type);
+		error = bhnd_nvram_value_coerce(&var_storage, var_len, raw_type,
+		     u32, &ilen, itype);
 		if (error)
 			return (error);
 
 		/* Encoded element count must match SPROM's definition */
-		error = bhnd_nvram_value_nelem(val, ilen, itype, &prop_nelem);
+		error = bhnd_nvram_value_nelem(u32, ilen, itype, &enc_nelem);
 		if (error)
 			return (error);
 
-		if (prop_nelem != nelem) {
+		if (enc_nelem != nelem) {
 			const char *type_name;
 	
 			type_name = bhnd_nvram_type_name(var_base_type);
 			BHND_NV_LOG("invalid %s property value '%s[%zu]': "
 			    "required %s[%zu]", var->name, type_name,
-			    prop_nelem, type_name, nelem);
+			    enc_nelem, type_name, nelem);
 			return (EFTYPE);
 		}
 	}
@@ -480,7 +484,6 @@ bhnd_nvram_sprom_class_serialize_prop(bhnd_sprom_opcode_state *state,
 		/* Bind */
 		offset = state->offset;
 		for (size_t i = 0; i < binding->count; i++) {
-			/* Encode current input value */
 			if (ipos >= nelem) {
 				BHND_NV_LOG("input skip %u positioned %zu "
 				    "beyond nelem %zu\n", binding->skip_out,
@@ -488,14 +491,17 @@ bhnd_nvram_sprom_class_serialize_prop(bhnd_sprom_opcode_state *state,
 				return (EINVAL);
 			}
 
-			error = bhnd_nvram_sprom_write_offset(var, io,
-			    binding_var->base_type,
-			    offset,
-			    binding_var->mask,
-			    binding_var->shift,
-			    val[ipos]);
-			if (error)
-				return (error);
+			/* Write next offset */
+			if (io != NULL) {
+				error = bhnd_nvram_sprom_write_offset(var, io,
+				    binding_var->base_type,
+				    offset,
+				    binding_var->mask,
+				    binding_var->shift,
+				    u32[ipos]);
+				if (error)
+					return (error);
+			}
 
 			/* Adjust output position; this was already verified to
 			 * not overflow/underflow during SPROM opcode
@@ -614,18 +620,23 @@ bhnd_nvram_sprom_class_serialize(bhnd_nvram_data_class *cls,
 	 */
 	entry = NULL;
 	while ((entry = bhnd_sprom_opcode_index_next(&state, entry)) != NULL) {
-		const struct bhnd_nvram_vardefn *var;
+		const struct bhnd_nvram_vardefn	*var;
+		bhnd_nvram_val			*val;
 
 		var = bhnd_nvram_get_vardefn(entry->vid);
 		BHND_NV_ASSERT(var != NULL, ("missing variable definition"));
 
-		/* Fetch prop; will be NULL if unavailble */
+		/* Fetch prop; will be NULL if unavailable */
 		prop = bhnd_nvram_plist_get_prop(props, var->name);
+		if (prop != NULL) {
+			val = bhnd_nvram_prop_val(prop);
+		} else {
+			val = BHND_NVRAM_VAL_NULL;
+		}
 
 		/* Attempt to serialize the property value to the appropriate
 		 * offset within the output buffer */
-		error = bhnd_nvram_sprom_class_serialize_prop(&state, entry,
-		    prop, io);
+		error = bhnd_nvram_sprom_encode_var(&state, entry, val, io);
 		if (error) {
 			BHND_NV_LOG("error serializing %s to required type "
 			    "%s: %d\n", var->name,
@@ -1291,38 +1302,30 @@ bhnd_nvram_sprom_filter_setvar(struct bhnd_nvram_data *nv, const char *name,
 	struct bhnd_nvram_sprom		*sp;
 	const struct bhnd_nvram_vardefn	*var;
 	bhnd_sprom_opcode_idx_entry	*entry;
-#if 0
 	bhnd_nvram_val			*spval;
 	int				 error;
-#endif
 
 	sp = (struct bhnd_nvram_sprom *)nv;
 
-	/* Name must not have a path prefix */
-	if (bhnd_nvram_trim_path_name(name) != name)
-		return (EINVAL);
-
-	/* Name must be valid */
-	if (!bhnd_nvram_validate_name(name))
-		return (EINVAL);
-
-	/* A corresponding variable must be defined in our SPROM layout */
+	/* Variable must be defined in our SPROM layout */
 	if ((entry = bhnd_sprom_opcode_index_find(&sp->state, name)) == NULL)
 		return (ENOENT);
 
+	/* Value must coercible to the NVRAM-defined variable type */
 	var = bhnd_nvram_get_vardefn(entry->vid);
-	
-	/* Value must coercible to the SPROM-defined type */
-#if 0
-	// TODO
-	error = bhnd_nvram_val_convert_new(&str, &bhnd_nvram_val_bcm_string_fmt,
-	    value, BHND_NVRAM_VAL_DYNAMIC);
+	error = bhnd_nvram_val_convert_new(&spval, var->fmt, value,
+	    BHND_NVRAM_VAL_DYNAMIC);
 	if (error)
 		return (error);
 
-	/* Success. Transfer result ownership to the caller. */
-	*result = str;
+	/* Value must be encodeable by our SPROM layout */
+	error = bhnd_nvram_sprom_encode_var(&sp->state, entry, spval, NULL);
+	if (error) {
+		bhnd_nvram_val_release(spval);
+		return (error);
+	}
+
+	/* Success. Transfer value's ownership to the caller. */
+	*result = spval;
 	return (0);
-#endif
-	return (ENXIO);
 }
