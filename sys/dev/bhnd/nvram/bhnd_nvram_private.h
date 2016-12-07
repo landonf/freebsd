@@ -243,8 +243,7 @@ size_t				 bhnd_nvram_trim_field(const char **inp,
 
 const char			*bhnd_nvram_trim_path_name(const char *name);
 
-bool				 bhnd_nvram_validate_name(const char *name,
-				     size_t name_len);
+bool				 bhnd_nvram_validate_name(const char *name);
 
 /**
  * Calculate CRC-8 over @p buf using the Broadcom SPROM/NVRAM CRC-8

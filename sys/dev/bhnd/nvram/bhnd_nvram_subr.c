@@ -614,44 +614,33 @@ bhnd_nvram_get_vardefn(size_t id)
  * Scans for special characters (path delimiters, value delimiters, path
  * alias prefixes), returning false if the given name cannot be used
  * as a relative NVRAM key.
- * 
+ *
  * @param name A relative NVRAM variable name to validate.
- * @param name_len The length of @p name, in bytes.
  * 
  * @retval true If @p name is a valid relative NVRAM key.
  * @retval false If @p name should not be used as a relative NVRAM key.
  */
 bool
-bhnd_nvram_validate_name(const char *name, size_t name_len)
+bhnd_nvram_validate_name(const char *name)
 {
-	size_t limit;
-
-	limit = strnlen(name, name_len);
-	if (limit == 0)
+	/* Reject path-prefixed variable names */
+	if (bhnd_nvram_trim_path_name(name) != name)
 		return (false);
 
-	/* Disallow path alias prefixes ([0-9]+:.*) */
-	if (limit >= 2 && bhnd_nv_isdigit(*name)) {
-		for (const char *p = name; (size_t)(p - name) < limit; p++) {
-			if (bhnd_nv_isdigit(*p))
-				continue;
-			else if (*p == ':')
-				return (false);
-			else
-				break;
-		}
-	}
-
-	/* Scan for special characters */
-	for (const char *p = name; (size_t)(p - name) < limit; p++) {
+	/* Scan for [^A-Za-z_0-9] */
+	for (const char *p = name; *p != '\0'; p++) {
 		switch (*p) {
-		case '/':	/* path delimiter */
-		case '=':	/* key=value delimiter */
-			return (false);
+		/* [0-9_] */
+		case '0': case '1': case '2': case '3': case '4':
+		case '5': case '6': case '7': case '8': case '9':
+		case '_':
+			break;
 
+		/* [A-Za-z] */
 		default:
-			if (!isascii(*p) || bhnd_nv_isspace(*p))
+			if (!bhnd_nv_isalpha(*p))
 				return (false);
+			break;
 		}
 	}
 
