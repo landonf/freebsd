@@ -43,15 +43,14 @@
 /** Registered NVRAM parser class instances. */
 SET_DECLARE(bhnd_nvram_data_class_set, bhnd_nvram_data_class);
 
-void		*bhnd_nvram_data_generic_find(struct bhnd_nvram_data *nv,
-		     const char *name);
-
-int		 bhnd_nvram_data_generic_rp_getvar(struct bhnd_nvram_data *nv,
-		     void *cookiep, void *outp, size_t *olen,
-		     bhnd_nvram_type otype);
-int		 bhnd_nvram_data_generic_rp_getval(
-		     struct bhnd_nvram_data *nv, void *cookiep,
-		     bhnd_nvram_val **val);
+void			*bhnd_nvram_data_generic_find(
+			     struct bhnd_nvram_data *nv, const char *name);
+int			 bhnd_nvram_data_generic_rp_getvar(
+			     struct bhnd_nvram_data *nv, void *cookiep,
+			     void *outp, size_t *olen, bhnd_nvram_type otype);
+int			 bhnd_nvram_data_generic_rp_getval(
+			     struct bhnd_nvram_data *nv, void *cookiep,
+			     bhnd_nvram_val **val);
 
 /** @see bhnd_nvram_data_probe() */
 typedef int		 (bhnd_nvram_data_op_probe)(struct bhnd_nvram_io *io);
