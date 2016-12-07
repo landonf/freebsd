@@ -808,7 +808,6 @@ bhnd_nvram_sprom_next(struct bhnd_nvram_data *nv, void **cookiep)
 			if (error) {
 				BHND_NV_ASSERT(error == ENOENT, ("unexpected "
 				    "error parsing variable: %d", error));
-
 				continue;
 			}
 		}
@@ -1228,6 +1227,25 @@ bhnd_nvram_sprom_getvar_common(struct bhnd_nvram_data *nv, void *cookiep,
 	return (bhnd_nvram_val_init(val, var->fmt, inp, ilen, var->type,
 	    BHND_NVRAM_VAL_BORROW_DATA));
 		return (error);
+}
+
+static int
+bhnd_nvram_sprom_getvar_order(struct bhnd_nvram_data *nv, void *cookiep1,
+    void *cookiep2)
+{
+	struct bhnd_sprom_opcode_idx_entry *e1, *e2;
+
+	e1 = cookiep1;
+	e2 = cookiep2;
+
+	/* Use the index entry order; this matches the order of variables
+	 * returned via bhnd_nvram_sprom_next() */
+	if (e1 < e2)
+		return (-1);
+	else if (e1 > e2)
+		return (1);
+
+	return (0);
 }
 
 static int

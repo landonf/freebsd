@@ -740,6 +740,7 @@ bhnd_nvram_bcm_next(struct bhnd_nvram_data *nv, void **cookiep)
 			if (hvar_next->envp != NULL && !hvar_next->stale)
 				continue;
 
+
 			*cookiep = hvar_next;
 			return (hvar_next->name);
 		}
@@ -795,7 +796,7 @@ bhnd_nvram_bcm_next(struct bhnd_nvram_data *nv, void **cookiep)
 		for (size_t i = 0; i < nitems(bcm->hvars); i++) {
 			if (bcm->hvars[i].envp != NULL)
 				continue;
-			
+
 			*cookiep = &bcm->hvars[i];
 			return (bcm->hvars[i].name);
 		}
@@ -804,7 +805,7 @@ bhnd_nvram_bcm_next(struct bhnd_nvram_data *nv, void **cookiep)
 		return (NULL);
 	}
 
-	*cookiep = (void *)(uintptr_t)envp;
+	*cookiep = __DECONST(void *, envp);
 	return (envp);
 }
 
@@ -812,6 +813,39 @@ static void *
 bhnd_nvram_bcm_find(struct bhnd_nvram_data *nv, const char *name)
 {
 	return (bhnd_nvram_data_generic_find(nv, name));
+}
+
+static int
+bhnd_nvram_bcm_getvar_order(struct bhnd_nvram_data *nv, void *cookiep1,
+    void *cookiep2)
+{
+	struct bhnd_nvram_bcm		*bcm;
+	struct bhnd_nvram_bcm_hvar	*hvar1, *hvar2;
+
+	bcm = (struct bhnd_nvram_bcm *)nv;
+
+	hvar1 = bhnd_nvram_bcm_to_hdrvar(bcm, cookiep1);
+	hvar2 = bhnd_nvram_bcm_to_hdrvar(bcm, cookiep2);
+
+	/* Header variables are always ordered below any variables defined
+	 * in the BCM data */
+	if (hvar1 != NULL && hvar2 == NULL) {
+		return (1);	/* hvar follows non-hvar */
+	} else if (hvar1 == NULL && hvar2 != NULL) {
+		return (-1);	/* non-hvar precedes hvar */
+	}
+
+	/* Otherwise, both cookies are either hvars or non-hvars. We can
+	 * safely fall back on pointer order, which will provide a correct
+	 * ordering matching the behavior of bhnd_nvram_data_next() for
+	 * both cases */
+	if (cookiep1 < cookiep2)
+		return (-1);
+
+	if (cookiep1 > cookiep2)
+		return (1);
+
+	return (0);
 }
 
 static int

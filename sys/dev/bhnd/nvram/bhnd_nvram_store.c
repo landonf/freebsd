@@ -405,6 +405,13 @@ bhnd_nvram_store_export_child(struct bhnd_nvram_store *sc,
 		if (bhnd_nvram_plist_contains(child->pending, name))
 			continue;
 
+		/* Skip if higher precedence value was already defined. This
+		 * may occur if the underlying data store contains duplicate
+		 * keys; iteration will always return the definition with
+		 * the highest precedence first */
+		if (bhnd_nvram_plist_contains(path_vars, name))
+			continue;
+
 		/* Fetch the variable's value representation */
 		error = bhnd_nvram_data_getval(sc->data, cookiep, &val);
 		if (error)
@@ -832,25 +839,43 @@ bhnd_nvstore_index_append(struct bhnd_nvram_store *sc,
 static int
 bhnd_nvstore_idx_cmp(void *ctx, const void *lhs, const void *rhs)
 {
-	struct bhnd_nvram_store			*sc;
-	const char				*l_str, *r_str;
+	struct bhnd_nvram_store	*sc;
+	void			*l_cookiep, *r_cookiep;
+	const char		*l_str, *r_str;
+	const char		*l_name, *r_name;
+	int			 order;
 
 	sc = ctx;
+	l_cookiep = *(void * const *)lhs;
+	r_cookiep = *(void * const *)rhs;
 
 	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
 
 	/* Fetch string pointers from the cookiep values */
-	l_str = bhnd_nvram_data_getvar_name(sc->data, *(void * const *)lhs);
-	r_str = bhnd_nvram_data_getvar_name(sc->data, *(void * const *)rhs);
+	l_str = bhnd_nvram_data_getvar_name(sc->data, l_cookiep);
+	r_str = bhnd_nvram_data_getvar_name(sc->data, r_cookiep);
 
 	/* Trim device path prefixes */
 	if (sc->data_caps & BHND_NVRAM_DATA_CAP_DEVPATHS) {
-		l_str = bhnd_nvram_trim_path_name(l_str);
-		r_str = bhnd_nvram_trim_path_name(r_str);
+		l_name = bhnd_nvram_trim_path_name(l_str);
+		r_name = bhnd_nvram_trim_path_name(r_str);
+	} else {
+		l_name = l_str;
+		r_name = r_str;
 	}
 
 	/* Perform comparison */
-	return (strcmp(l_str, r_str));
+	order = strcmp(l_name, r_name);
+	if (order != 0 || lhs == rhs)
+		return (order);
+
+	/* If the backing data incorrectly contains variables with duplicate
+	 * names, we need a sort order that provides stable behavior.
+	 * 
+	 * Since Broadcom's own code varies wildly on this question, we just
+	 * use a simple precedence rule: The first declaration of a variable
+	 * takes precedence. */
+	return (bhnd_nvram_data_getvar_order(sc->data, l_cookiep, r_cookiep));
 }
 
 /**
@@ -1025,6 +1050,7 @@ bhnd_nvstore_index_lookup(struct bhnd_nvram_store *sc,
 	void		*cookiep;
 	const char	*indexed_name;
 	size_t		 min, mid, max;
+	uint32_t	 data_caps;
 	int		 order;
 
 	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
@@ -1036,6 +1062,7 @@ bhnd_nvstore_index_lookup(struct bhnd_nvram_store *sc,
 	if (index->count == 0)
 		return (NULL);
 
+	data_caps = sc->data_caps;
 	min = 0;
 	max = index->count - 1;
 
@@ -1048,7 +1075,7 @@ bhnd_nvstore_index_lookup(struct bhnd_nvram_store *sc,
 		indexed_name = bhnd_nvram_data_getvar_name(sc->data, cookiep);
 
 		/* Trim any path prefix */
-		if (sc->data_caps & BHND_NVRAM_DATA_CAP_DEVPATHS)
+		if (data_caps & BHND_NVRAM_DATA_CAP_DEVPATHS)
 			indexed_name = bhnd_nvram_trim_path_name(indexed_name);
 
 		/* Determine which side of the partition to search */
@@ -1062,7 +1089,46 @@ bhnd_nvstore_index_lookup(struct bhnd_nvram_store *sc,
 				break;
 			max = mid - 1;
 		} else if (order == 0) {
-			/* Match found */
+			size_t	idx;
+
+			/*
+			 * Match found.
+			 * 
+			 * If this happens to be a key with multiple definitions
+			 * in the backing store, we need to find the entry with
+			 * the highest declaration precedence.
+			 * 
+			 * Duplicates are sorted in order of descending
+			 * precedence; to find the highest precedence entry,
+			 * we search backwards through the index.
+			 */
+			idx = mid;
+			while (idx > 0) {
+				void		*prev;
+				const char	*prev_name;
+
+				/* Fetch preceding index entry */
+				prev = &index->cookiep[idx-1];
+				prev_name = bhnd_nvram_data_getvar_name(
+				    sc->data, cookiep);
+
+				/* Trim any path prefix */
+				if (data_caps & BHND_NVRAM_DATA_CAP_DEVPATHS)
+					prev_name = bhnd_nvram_trim_path_name(
+					    indexed_name);
+
+				/* If no match, current cookiep is the highest
+				 * precedence variable definition */
+				if (strcmp(indexed_name, prev_name) != 0)
+					return (cookiep);
+
+				/* Otherwise, prefer the earlier definition
+				 * and keep searching for a higher-precedence
+				 * definitions */
+				idx--;
+				cookiep = prev;
+			}
+
 			return (cookiep);
 		}
 	}

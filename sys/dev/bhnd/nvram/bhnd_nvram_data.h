@@ -130,6 +130,10 @@ const char		*bhnd_nvram_data_next(struct bhnd_nvram_data *nv,
 void			*bhnd_nvram_data_find(struct bhnd_nvram_data *nv,
 			     const char *name);
 
+int			 bhnd_nvram_data_getvar_order(
+			     struct bhnd_nvram_data *nv, void *cookiep1,
+			     void *cookiep2);
+
 int			 bhnd_nvram_data_getvar(struct bhnd_nvram_data *nv,
 			     void *cookiep, void *buf, size_t *len,
 			     bhnd_nvram_type type);

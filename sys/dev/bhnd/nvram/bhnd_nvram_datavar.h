@@ -93,6 +93,11 @@ typedef const char	*(bhnd_nvram_data_op_next)(struct bhnd_nvram_data *nv,
 typedef void		*(bhnd_nvram_data_op_find)(struct bhnd_nvram_data *nv,
 			      const char *name);
 
+/** @see bhnd_nvram_data_getvar_order() */
+typedef int		 (bhnd_nvram_data_op_getvar_order)(
+			      struct bhnd_nvram_data *nv, void *cookiep1,
+			      void *cookiep2);
+
 /** @see bhnd_nvram_data_getvar_name() */
 typedef const char	*(bhnd_nvram_data_op_getvar_name)(
 			      struct bhnd_nvram_data *nv,
@@ -136,6 +141,7 @@ struct bhnd_nvram_data_class {
 	bhnd_nvram_data_op_caps			*op_caps;
 	bhnd_nvram_data_op_next			*op_next;
 	bhnd_nvram_data_op_find			*op_find;
+	bhnd_nvram_data_op_getvar_order		*op_getvar_order;
 	bhnd_nvram_data_op_getvar		*op_getvar;
 	bhnd_nvram_data_op_getvar_ptr		*op_getvar_ptr;
 	bhnd_nvram_data_op_getval		*op_getval;
@@ -189,6 +195,7 @@ struct bhnd_nvram_data {
 	_macro(_cname, next)					\
 	_macro(_cname, find)					\
 	_macro(_cname, filter_setvar)				\
+	_macro(_cname, getvar_order)				\
 	_macro(_cname, getvar)					\
 	_macro(_cname, getvar_ptr)				\
 	_macro(_cname, getval)					\

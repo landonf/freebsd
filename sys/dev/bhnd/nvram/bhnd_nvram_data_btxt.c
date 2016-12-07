@@ -464,6 +464,19 @@ bhnd_nvram_btxt_next(struct bhnd_nvram_data *nv, void **cookiep)
 }
 
 static int
+bhnd_nvram_btxt_getvar_order(struct bhnd_nvram_data *nv, void *cookiep1,
+    void *cookiep2)
+{
+	if (cookiep1 < cookiep2)
+		return (-1);
+
+	if (cookiep1 > cookiep2)
+		return (1);
+
+	return (0);
+}
+
+static int
 bhnd_nvram_btxt_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
     size_t *len, bhnd_nvram_type type)
 {

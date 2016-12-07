@@ -398,7 +398,26 @@ bhnd_nvram_data_caps(struct bhnd_nvram_data *nv)
 const char *
 bhnd_nvram_data_next(struct bhnd_nvram_data *nv, void **cookiep)
 {
-	return (nv->cls->op_next(nv, cookiep));
+	const char	*name;
+#ifdef BHND_NV_INVARIANTS
+	void		*prev = *cookiep;
+#endif
+
+	/* Fetch next */
+	if ((name = nv->cls->op_next(nv, cookiep)) == NULL)
+		return (NULL);
+
+	/* Enforce precedence ordering invariant between bhnd_nvram_data_next()
+	 * and bhnd_nvram_data_getvar_order() */
+#ifdef BHND_NV_INVARIANTS
+	if (prev != NULL &&
+	    bhnd_nvram_data_getvar_order(nv, prev, *cookiep) > 0)
+	{
+		BHND_NV_PANIC("%s: returned out-of-order entry", __FUNCTION__);
+	}
+#endif
+
+	return (name);
 }
 
 /**
@@ -442,6 +461,37 @@ bhnd_nvram_data_generic_find(struct bhnd_nvram_data *nv, const char *name)
 
 	/* Not found */
 	return (NULL);
+}
+
+/**
+ * Compare the declaration order of two NVRAM variables.
+ * 
+ * Variable declaration order is used to determine the current order of
+ * the variables in the source data, as well as to determine the precedence
+ * of variable declarations in data sources that define duplicate names.
+ * 
+ * The comparison order will match the order of variables returned via
+ * bhnd_nvstore_path_data_next().
+ *
+ * @param		nv		The NVRAM data.
+ * @param		cookiep1	An NVRAM variable cookie previously
+ *					returned via bhnd_nvram_data_next() or
+ *					bhnd_nvram_data_find().
+ * @param		cookiep2	An NVRAM variable cookie previously
+ *					returned via bhnd_nvram_data_next() or
+ *					bhnd_nvram_data_find().
+ *
+ * @retval <= -1	If @p cookiep1 has an earlier declaration order than
+ *			@p cookiep2.
+ * @retval 0		If @p cookiep1 and @p cookiep2 are identical.
+ * @retval >= 1		If @p cookiep has a later declaration order than
+ *			@p cookiep2.
+ */
+int
+bhnd_nvram_data_getvar_order(struct bhnd_nvram_data *nv, void *cookiep1,
+    void *cookiep2)
+{
+	return (nv->cls->op_getvar_order(nv, cookiep1, cookiep2));
 }
 
 /**
