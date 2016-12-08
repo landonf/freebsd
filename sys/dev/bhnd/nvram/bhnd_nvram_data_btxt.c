@@ -350,9 +350,12 @@ bhnd_nvram_btxt_count(struct bhnd_nvram_data *nv)
 }
 
 static int
-bhnd_nvram_btxt_size(struct bhnd_nvram_data *nv, size_t *size)
+bhnd_nvram_btxt_size(struct bhnd_nvram_data *nv, bhnd_nvram_plist *updates,
+    size_t *size)
 {
 	struct bhnd_nvram_btxt *btxt = (struct bhnd_nvram_btxt *)nv;
+
+	// XXX TODO
 
 	/* The serialized form will be identical in length
 	 * to our backing buffer representation */
@@ -361,7 +364,8 @@ bhnd_nvram_btxt_size(struct bhnd_nvram_data *nv, size_t *size)
 }
 
 static int
-bhnd_nvram_btxt_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
+bhnd_nvram_btxt_serialize(struct bhnd_nvram_data *nv, bhnd_nvram_plist *updates,
+    void *buf, size_t *len)
 {
 	struct bhnd_nvram_btxt	*btxt;
 	size_t			 limit;
@@ -372,7 +376,7 @@ bhnd_nvram_btxt_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 	limit = *len;
 
 	/* Provide actual output size */
-	if ((error = bhnd_nvram_data_size(nv, len)))
+	if ((error = bhnd_nvram_data_size(nv, updates, len)))
 		return (error);
 
 	if (buf == NULL) {

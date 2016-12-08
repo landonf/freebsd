@@ -117,10 +117,10 @@ bhnd_nvram_data_class	*bhnd_nvram_data_get_class(struct bhnd_nvram_data *nv);
 size_t			 bhnd_nvram_data_count(struct bhnd_nvram_data *nv);
 
 int			 bhnd_nvram_data_size(struct bhnd_nvram_data *nv,
-			     size_t *size);
+			     bhnd_nvram_plist *updates, size_t *size);
 
 int			 bhnd_nvram_data_serialize(struct bhnd_nvram_data *nv,
-			     void *buf, size_t *len);
+			     bhnd_nvram_plist *updates, void *buf, size_t *len);
 
 uint32_t		 bhnd_nvram_data_caps(struct bhnd_nvram_data *nv);
 

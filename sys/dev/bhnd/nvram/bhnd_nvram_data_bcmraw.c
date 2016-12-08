@@ -344,13 +344,15 @@ bhnd_nvram_bcmraw_count(struct bhnd_nvram_data *nv)
 }
 
 static int
-bhnd_nvram_bcmraw_size(struct bhnd_nvram_data *nv, size_t *size)
+bhnd_nvram_bcmraw_size(struct bhnd_nvram_data *nv, bhnd_nvram_plist *updates,
+    size_t *size)
 {
-	return (bhnd_nvram_bcmraw_serialize(nv, NULL, size));
+	return (bhnd_nvram_bcmraw_serialize(nv, updates, NULL, size));
 }
 
 static int
-bhnd_nvram_bcmraw_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
+bhnd_nvram_bcmraw_serialize(struct bhnd_nvram_data *nv,
+    bhnd_nvram_plist *updates, void *buf, size_t *len)
 {
 	struct bhnd_nvram_bcmraw	*bcm;
 	char * const			 p = (char *)buf;

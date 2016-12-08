@@ -376,14 +376,16 @@ bhnd_nvram_tlv_count(struct bhnd_nvram_data *nv)
 }
 
 static int
-bhnd_nvram_tlv_size(struct bhnd_nvram_data *nv, size_t *size)
+bhnd_nvram_tlv_size(struct bhnd_nvram_data *nv, bhnd_nvram_plist *updates,
+    size_t *size)
 {
 	/* Let the serialization implementation calculate the length */
-	return (bhnd_nvram_data_serialize(nv, NULL, size));
+	return (bhnd_nvram_data_serialize(nv, updates, NULL, size));
 }
 
 static int
-bhnd_nvram_tlv_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
+bhnd_nvram_tlv_serialize(struct bhnd_nvram_data *nv, bhnd_nvram_plist *updates,
+    void *buf, size_t *len)
 {
 	struct bhnd_nvram_tlv	*tlv;
 	size_t			 limit;

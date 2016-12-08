@@ -739,9 +739,14 @@ bhnd_nvram_sprom_count(struct bhnd_nvram_data *nv)
 }
 
 static int
-bhnd_nvram_sprom_size(struct bhnd_nvram_data *nv, size_t *size)
+bhnd_nvram_sprom_size(struct bhnd_nvram_data *nv, bhnd_nvram_plist *updates,
+    size_t *size)
 {
 	struct bhnd_nvram_sprom *sprom = (struct bhnd_nvram_sprom *)nv;
+
+	/* The format revision is immutable */
+	if (bhnd_nvram_plist_contains(updates, BHND_NVAR_SROMREV))
+		return (EINVAL);
 
 	/* The serialized form will be identical in length
 	 * to our backing buffer representation */
@@ -750,7 +755,8 @@ bhnd_nvram_sprom_size(struct bhnd_nvram_data *nv, size_t *size)
 }
 
 static int
-bhnd_nvram_sprom_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
+bhnd_nvram_sprom_serialize(struct bhnd_nvram_data *nv,
+    bhnd_nvram_plist *updates, void *buf, size_t *len)
 {
 	struct bhnd_nvram_sprom	*sprom;
 	size_t			 limit, req_len;
@@ -760,7 +766,7 @@ bhnd_nvram_sprom_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
 	limit = *len;
 
 	/* Provide the required size */
-	if ((error = bhnd_nvram_sprom_size(nv, &req_len)))
+	if ((error = bhnd_nvram_sprom_size(nv, updates, &req_len)))
 		return (error);
 
 	*len = req_len;

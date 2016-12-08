@@ -334,6 +334,8 @@ bhnd_nvram_data_count(struct bhnd_nvram_data *nv)
  * Serialization may be performed via bhnd_nvram_data_serialize().
  *
  * @param	nv	The NVRAM data to be queried.
+ * @param	updates	A flat, ordered representation of all updates
+ *			to be included to the serialized output.
  * @param[out]	len	On success, will be set to the computed size.
  * 
  * @retval 0		success
@@ -341,19 +343,22 @@ bhnd_nvram_data_count(struct bhnd_nvram_data *nv)
  *			regular unix error code will be returned.
  */
 int
-bhnd_nvram_data_size(struct bhnd_nvram_data *nv, size_t *len)
+bhnd_nvram_data_size(struct bhnd_nvram_data *nv, bhnd_nvram_plist *updates,
+    size_t *len)
 {
-	return (nv->cls->op_size(nv, len));
+	return (nv->cls->op_size(nv, updates, len));
 }
 
 /**
- * Serialize the NVRAM data to @p buf, using the NVRAM data class' native
- * format.
+ * Serialize the NVRAM data to @p buf using the NVRAM data class' native
+ * format, applying all updates in @p updates.
  * 
  * The resulting serialization may be reparsed with @p nv's BHND NVRAM data
  * class.
  * 
  * @param		nv	The NVRAM data to be serialized.
+ * @param		updates	A flat, ordered representation of all updates
+ *				to be included to the serialized output.
  * @param[out]		buf	On success, the serialed NVRAM data will be
  *				written to this buffer. This argment may be
  *				NULL if the value is not desired.
@@ -367,10 +372,10 @@ bhnd_nvram_data_size(struct bhnd_nvram_data *nv, size_t *len)
  *			code will be returned.
  */
 int
-bhnd_nvram_data_serialize(struct bhnd_nvram_data *nv,
+bhnd_nvram_data_serialize(struct bhnd_nvram_data *nv, bhnd_nvram_plist *updates,
     void *buf, size_t *len)
 {
-	return (nv->cls->op_serialize(nv, buf, len));
+	return (nv->cls->op_serialize(nv, updates, buf, len));
 }
 
 /**
