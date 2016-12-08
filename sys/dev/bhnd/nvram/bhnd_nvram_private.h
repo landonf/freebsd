@@ -156,7 +156,22 @@ bhnd_nv_strndup(const char *str, size_t len)
 #define	BHND_NV_INVARIANTS
 #endif
 
-#define	BHND_NV_ASSERT(expr, ...)	assert(expr)
+#ifdef BHND_NV_INVARIANTS
+
+#define	BHND_NV_ASSERT(expr, msg)	do {				\
+	if (!(expr)) {							\
+		fprintf(stderr, "Assertion failed: %s, function %s, "	\
+		    "file %s, line %u\n", __STRING(expr), __FUNCTION__,	\
+		    __FILE__, __LINE__);				\
+		BHND_NV_PANIC msg;					\
+	}								\
+} while(0)
+
+#else /* !BHND_NV_INVARIANTS */
+
+#define	BHND_NV_ASSERT(expr, msg)
+
+#endif /* BHND_NV_INVARIANTS */
 
 #define	BHND_NV_VERBOSE			(0)
 #define	BHND_NV_PANIC(fmt, ...)		do {			\

@@ -383,6 +383,31 @@ bhnd_nvram_plist_get_entry(bhnd_nvram_plist *plist, const char *name)
 }
 
 /**
+ * Append all properties from @p tail to @p plist.
+  * 
+ * @param	plist	The property list to be modified.
+ * @param	tail	The property list to append.
+ * 
+ * @retval 0		success
+ * @retval ENOMEM	if allocation fails.
+ * @retval EEXIST	an existing property from @p tail was found in @p plist.
+ */
+int
+bhnd_nvram_plist_append_list(bhnd_nvram_plist *plist, bhnd_nvram_plist *tail)
+{
+	bhnd_nvram_prop	*p;
+	int		 error;
+
+	p = NULL;
+	while ((p = bhnd_nvram_plist_next(tail, p)) != NULL) {
+		if ((error = bhnd_nvram_plist_append(plist, p)))
+			return (error);
+	}
+
+	return (0);
+}
+
+/**
  * Append @p prop to @p plist.
  * 
  * @param	plist	The property list to be modified.

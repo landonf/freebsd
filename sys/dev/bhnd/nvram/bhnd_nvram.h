@@ -53,6 +53,9 @@ bhnd_nvram_plist	*bhnd_nvram_plist_copy(bhnd_nvram_plist *plist);
 
 size_t			 bhnd_nvram_plist_count(bhnd_nvram_plist *plist);
 
+int			 bhnd_nvram_plist_append_list(bhnd_nvram_plist *plist,
+			     bhnd_nvram_plist *tail);
+
 int			 bhnd_nvram_plist_append(bhnd_nvram_plist *plist,
 			     bhnd_nvram_prop *prop);
 int			 bhnd_nvram_plist_append_val(bhnd_nvram_plist *plist,

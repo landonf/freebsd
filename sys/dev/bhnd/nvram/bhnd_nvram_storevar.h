@@ -46,6 +46,11 @@
 #define	BHND_NVSTORE_ROOT_PATH		"/"
 #define	BHND_NVSTORE_ROOT_PATH_LEN	sizeof(BHND_NVSTORE_ROOT_PATH)
 
+#define BHND_NVSTORE_GET_FLAG(_value, _flag)	\
+	(((_value) & BHND_NVSTORE_ ## _flag) != 0)
+#define	BHND_NVSTORE_GET_BITS(_value, _field)	\
+	((_value) & BHND_NVSTORE_ ## _field ## _MASK)
+
 
 LIST_HEAD(bhnd_nvstore_alias_list, bhnd_nvstore_alias);
 LIST_HEAD(bhnd_nvstore_path_list, bhnd_nvstore_path);
@@ -151,7 +156,8 @@ typedef struct bhnd_nvstore_index {
  */
 typedef struct bhnd_nvstore_path {
 	char			*path_str;	/**< canonical path string */
-	size_t			 num_vars;	/**< per-path variable count */
+	size_t			 num_vars;	/**< per-path count of committed
+						     (non-pending) variables */
 	bhnd_nvstore_index	*index;		/**< per-path index, or NULL if
 						     this is a root path for
 						     which the data source
