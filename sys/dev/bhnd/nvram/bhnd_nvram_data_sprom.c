@@ -71,7 +71,7 @@ static int			 bhnd_nvram_sprom_ident(
 				     const bhnd_sprom_layout **ident,
 				     struct bhnd_nvram_io **shadow);
 
-static int			 bhnd_nvram_sprom_encode_var(
+static int			 bhnd_nvram_sprom_write_var(
 				     bhnd_sprom_opcode_state *state,
 				     bhnd_sprom_opcode_idx_entry *entry,
 				     bhnd_nvram_val *value,
@@ -348,7 +348,7 @@ bhnd_nvram_sprom_get_layout(uint8_t sromrev)
  *			code will be returned.
  */
 static int
-bhnd_nvram_sprom_encode_var(bhnd_sprom_opcode_state *state,
+bhnd_nvram_sprom_write_var(bhnd_sprom_opcode_state *state,
     bhnd_sprom_opcode_idx_entry *entry, bhnd_nvram_val *value,
     struct bhnd_nvram_io *io)
 {
@@ -668,7 +668,7 @@ bhnd_nvram_sprom_class_serialize(bhnd_nvram_data_class *cls,
 
 		/* Attempt to serialize the property value to the appropriate
 		 * offset within the output buffer */
-		error = bhnd_nvram_sprom_encode_var(&state, entry, val, io);
+		error = bhnd_nvram_sprom_write_var(&state, entry, val, io);
 		if (error) {
 			BHND_NV_LOG("error serializing %s to required type "
 			    "%s: %d\n", var->name,
@@ -841,7 +841,7 @@ bhnd_nvram_sprom_serialize(struct bhnd_nvram_data *nv,
 		}
 
 		/* Encode to output buffer */
-		error = bhnd_nvram_sprom_encode_var(&sprom->state, entry, val,
+		error = bhnd_nvram_sprom_write_var(&sprom->state, entry, val,
 		    io);
 		if (error) {
 			BHND_NV_LOG("error encoding %s: %d\n", name, error);
@@ -1428,7 +1428,7 @@ bhnd_nvram_sprom_filter_setvar(struct bhnd_nvram_data *nv, const char *name,
 		return (ENOENT);
 
 	/* Value must be encodeable by our SPROM layout */
-	error = bhnd_nvram_sprom_encode_var(&sp->state, entry, value, NULL);
+	error = bhnd_nvram_sprom_write_var(&sp->state, entry, value, NULL);
 	if (error)
 		return (error);
 
