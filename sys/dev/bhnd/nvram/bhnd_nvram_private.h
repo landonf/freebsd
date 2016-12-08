@@ -334,6 +334,7 @@ typedef struct bhnd_sprom_layout {
 	size_t		 srev_offset;	/**< offset to SROM revision */
 	size_t		 magic_offset;	/**< offset to magic value */
 	uint16_t	 magic_value;	/**< expected magic value */
+	size_t		 crc_offset;	/**< offset to crc8 value */
 	const uint8_t	*bindings;	/**< SPROM binding opcode table */
 	size_t		 bindings_size;	/**< SPROM binding opcode table size */
 	uint16_t	 num_vars;	/**< total number of variables defined

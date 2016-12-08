@@ -581,7 +581,6 @@ bhnd_nvram_sprom_class_serialize(bhnd_nvram_data_class *cls,
 	bhnd_sprom_opcode_idx_entry	*entry;
 	const bhnd_sprom_layout		*layout;
 	size_t				 limit;
-	size_t				 crc_offset;
 	uint8_t				 crc;
 	uint8_t				 sromrev;
 	int				 error;
@@ -699,18 +698,12 @@ bhnd_nvram_sprom_class_serialize(bhnd_nvram_data_class *cls,
 		}
 	}
 
-	/*
-	 * Compute and write CRC; the final byte always contains the CRC
-	 * value
-	 */
-	BHND_NV_ASSERT(layout->size > 0, ("invalid layout size"));
-	crc_offset = layout->size - 1;
-
 	/* Calculate the CRC over all SPROM data, not including the CRC byte. */
-	crc = ~bhnd_nvram_crc8(outp, crc_offset, BHND_NVRAM_CRC8_INITIAL);
+	crc = ~bhnd_nvram_crc8(outp, layout->crc_offset,
+	    BHND_NVRAM_CRC8_INITIAL);
 
 	/* Write the checksum. */
-	error = bhnd_nvram_io_write(io, crc_offset, &crc, sizeof(crc));
+	error = bhnd_nvram_io_write(io, layout->crc_offset, &crc, sizeof(crc));
 	if (error) {
 		BHND_NV_LOG("error writing CRC value: %d\n", error);
 		goto finished;
@@ -791,7 +784,6 @@ bhnd_nvram_sprom_serialize(struct bhnd_nvram_data *nv,
 	struct bhnd_nvram_io	*io;
 	bhnd_nvram_prop		*prop;
 	size_t			 limit, req_len;
-	size_t			 crc_offset;
 	uint8_t			 crc8;
 	int			 error;
 
@@ -857,18 +849,13 @@ bhnd_nvram_sprom_serialize(struct bhnd_nvram_data *nv,
 		}
 	}
 
-	/*
-	 * Compute and write CRC; the final byte always contains the CRC
-	 * value
-	 */
-	BHND_NV_ASSERT(sprom->layout->size > 0, ("invalid layout size"));
-	crc_offset = sprom->layout->size - 1;
-
 	/* Calculate the CRC over all SPROM data, not including the CRC byte. */
-	crc8 = ~bhnd_nvram_crc8(buf, crc_offset, BHND_NVRAM_CRC8_INITIAL);
+	crc8 = ~bhnd_nvram_crc8(buf, sprom->layout->crc_offset,
+	    BHND_NVRAM_CRC8_INITIAL);
 
 	/* Write the checksum. */
-	error = bhnd_nvram_io_write(io, crc_offset, &crc8, sizeof(crc8));
+	error = bhnd_nvram_io_write(io, sprom->layout->crc_offset, &crc8,
+	    sizeof(crc8));
 	if (error) {
 		BHND_NV_LOG("error writing CRC value: %d\n", error);
 		goto cleanup;

@@ -634,7 +634,7 @@ function write_data_nvram_vardefn(v, _desc, _help, _type, _fmt) {
 # Write a top-level bhnd_sprom_layout entry for the given revision
 # and layout definition
 function write_data_srom_layout(layout, revision, _flags, _size,
-    _sromcrc, _crc_seg,
+    _sromcrc, _crc_seg, _crc_off,
     _sromsig, _sig_seg, _sig_offset, _sig_value,
     _sromrev, _rev_seg, _rev_off,
     _num_vars)
@@ -648,7 +648,8 @@ function write_data_srom_layout(layout, revision, _flags, _size,
 		    "cannot compute total size")
 	} else {
 		_crc_seg = srom_entry_get_single_segment(_sromcrc)
-		_size = get(_crc_seg, p_offset)
+		_crc_off = get(_crc_seg, p_offset)
+		_size = _crc_off
 		_size += get(get(_crc_seg, p_type), p_width)
 	}
 
@@ -702,6 +703,8 @@ function write_data_srom_layout(layout, revision, _flags, _size,
 		emit(".magic_offset = 0,\n")
 		emit(".magic_value = 0,\n")
 	}
+
+	emit(".crc_offset = " _crc_off ",\n")
 
 	emit(".bindings = " srom_layout_get_variable_name(layout) ",\n")
 	emit(".bindings_size = nitems(" \
