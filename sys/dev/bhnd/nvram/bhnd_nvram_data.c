@@ -529,7 +529,7 @@ bhnd_nvram_data_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 /*
  * Common bhnd_nvram_data_getvar_ptr() wrapper used by
  * bhnd_nvram_data_generic_rp_getvar() and
- * bhnd_nvram_data_generic_rp_getval().
+ * bhnd_nvram_data_generic_rp_copy_val().
  *
  * If a variable definition for the requested variable is found via
  * bhnd_nvram_find_vardefn(), the definition will be used to populate fmt.
@@ -641,14 +641,14 @@ bhnd_nvram_data_generic_rp_getvar(struct bhnd_nvram_data *nv, void *cookiep,
  *			regular unix error code will be returned.
  */
 int
-bhnd_nvram_data_getval(struct bhnd_nvram_data *nv, void *cookiep,
+bhnd_nvram_data_copy_val(struct bhnd_nvram_data *nv, void *cookiep,
     bhnd_nvram_val **value)
 {
-	return (nv->cls->op_getval(nv, cookiep, value));
+	return (nv->cls->op_copy_val(nv, cookiep, value));
 }
 
 /**
- * A generic implementation of bhnd_nvram_data_getval().
+ * A generic implementation of bhnd_nvram_data_copy_val().
  * 
  * This implementation will call bhnd_nvram_data_getvar_ptr() to fetch
  * a pointer to the variable data and perform data coercion on behalf
@@ -659,7 +659,7 @@ bhnd_nvram_data_getval(struct bhnd_nvram_data *nv, void *cookiep,
  * formatting instance to bhnd_nvram_val_init().
  */
 int
-bhnd_nvram_data_generic_rp_getval(struct bhnd_nvram_data *nv,
+bhnd_nvram_data_generic_rp_copy_val(struct bhnd_nvram_data *nv,
     void *cookiep, bhnd_nvram_val **value)
 {
 	const bhnd_nvram_val_fmt	*fmt;

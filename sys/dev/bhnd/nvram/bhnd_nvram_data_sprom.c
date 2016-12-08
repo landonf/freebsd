@@ -1365,7 +1365,7 @@ bhnd_nvram_sprom_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
 }
 
 static int
-bhnd_nvram_sprom_getval(struct bhnd_nvram_data *nv, void *cookiep,
+bhnd_nvram_sprom_copy_val(struct bhnd_nvram_data *nv, void *cookiep,
     bhnd_nvram_val **value)
 {
 	bhnd_nvram_val			val;

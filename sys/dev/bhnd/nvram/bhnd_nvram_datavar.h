@@ -48,7 +48,7 @@ void			*bhnd_nvram_data_generic_find(
 int			 bhnd_nvram_data_generic_rp_getvar(
 			     struct bhnd_nvram_data *nv, void *cookiep,
 			     void *outp, size_t *olen, bhnd_nvram_type otype);
-int			 bhnd_nvram_data_generic_rp_getval(
+int			 bhnd_nvram_data_generic_rp_copy_val(
 			     struct bhnd_nvram_data *nv, void *cookiep,
 			     bhnd_nvram_val **val);
 
@@ -94,6 +94,11 @@ typedef const char	*(bhnd_nvram_data_op_next)(struct bhnd_nvram_data *nv,
 typedef void		*(bhnd_nvram_data_op_find)(struct bhnd_nvram_data *nv,
 			      const char *name);
 
+/** @see bhnd_nvram_data_copy_val() */
+typedef int		 (bhnd_nvram_data_op_copy_val)(
+			      struct bhnd_nvram_data *nv, void *cookiep,
+			      bhnd_nvram_val **value);
+
 /** @see bhnd_nvram_data_getvar_order() */
 typedef int		 (bhnd_nvram_data_op_getvar_order)(
 			      struct bhnd_nvram_data *nv, void *cookiep1,
@@ -108,11 +113,6 @@ typedef const char	*(bhnd_nvram_data_op_getvar_name)(
 typedef int		 (bhnd_nvram_data_op_getvar)(struct bhnd_nvram_data *nv,
 			      void *cookiep, void *buf, size_t *len,
 			      bhnd_nvram_type type);
-
-/** @see bhnd_nvram_data_getval() */
-typedef int		 (bhnd_nvram_data_op_getval)(
-			      struct bhnd_nvram_data *nv, void *cookiep,
-			      bhnd_nvram_val **value);
 
 /** @see bhnd_nvram_data_getvar_ptr() */
 typedef const void	*(bhnd_nvram_data_op_getvar_ptr)(
@@ -142,10 +142,10 @@ struct bhnd_nvram_data_class {
 	bhnd_nvram_data_op_caps			*op_caps;
 	bhnd_nvram_data_op_next			*op_next;
 	bhnd_nvram_data_op_find			*op_find;
+	bhnd_nvram_data_op_copy_val		*op_copy_val;
 	bhnd_nvram_data_op_getvar_order		*op_getvar_order;
 	bhnd_nvram_data_op_getvar		*op_getvar;
 	bhnd_nvram_data_op_getvar_ptr		*op_getvar_ptr;
-	bhnd_nvram_data_op_getval		*op_getval;
 	bhnd_nvram_data_op_getvar_name		*op_getvar_name;
 	bhnd_nvram_data_op_filter_setvar	*op_filter_setvar;
 };
@@ -196,10 +196,10 @@ struct bhnd_nvram_data {
 	_macro(_cname, next)					\
 	_macro(_cname, find)					\
 	_macro(_cname, filter_setvar)				\
+	_macro(_cname, copy_val)				\
 	_macro(_cname, getvar_order)				\
 	_macro(_cname, getvar)					\
 	_macro(_cname, getvar_ptr)				\
-	_macro(_cname, getval)					\
 	_macro(_cname, getvar_name)
 
 /**

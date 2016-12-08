@@ -348,7 +348,7 @@ bhnd_nvstore_merge_exported(struct bhnd_nvram_store *sc,
 			continue;
 
 		/* Fetch the variable's value representation */
-		if ((error = bhnd_nvram_data_getval(sc->data, cookiep, &val)))
+		if ((error = bhnd_nvram_data_copy_val(sc->data, cookiep, &val)))
 			return (error);
 
 		/* Add to path variable list */
