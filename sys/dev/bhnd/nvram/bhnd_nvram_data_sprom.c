@@ -1331,6 +1331,10 @@ bhnd_nvram_sprom_filter_setvar(struct bhnd_nvram_data *nv, const char *name,
 
 	sp = (struct bhnd_nvram_sprom *)nv;
 
+	/* The layout revision is immutable and cannot be changed */
+	if (strcmp(name, BHND_NVAR_SROMREV) == 0)
+		return (EINVAL);
+
 	/* Variable must be defined in our SPROM layout */
 	if ((entry = bhnd_sprom_opcode_index_find(&sp->state, name)) == NULL)
 		return (ENOENT);
