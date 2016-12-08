@@ -1263,29 +1263,30 @@ bhnd_nvstore_index_lookup(struct bhnd_nvram_store *sc,
 			 */
 			idx = mid;
 			while (idx > 0) {
-				void		*prev;
-				const char	*prev_name;
+				void		*dup_cookiep;
+				const char	*dup_name;
 
 				/* Fetch preceding index entry */
-				prev = &index->cookiep[idx-1];
-				prev_name = bhnd_nvram_data_getvar_name(
-				    sc->data, cookiep);
+				idx--;
+				dup_cookiep = index->cookiep[idx];
+				dup_name = bhnd_nvram_data_getvar_name(sc->data,
+				    dup_cookiep);
 
 				/* Trim any path prefix */
-				if (data_caps & BHND_NVRAM_DATA_CAP_DEVPATHS)
-					prev_name = bhnd_nvram_trim_path_name(
-					    indexed_name);
+				if (data_caps & BHND_NVRAM_DATA_CAP_DEVPATHS) {
+					dup_name = bhnd_nvram_trim_path_name(
+					    dup_name);
+				}
 
-				/* If no match, current cookiep is the highest
-				 * precedence variable definition */
-				if (strcmp(indexed_name, prev_name) != 0)
+				/* If no match, current cookiep is the variable
+				 * definition with the highest precedence */
+				if (strcmp(indexed_name, dup_name) != 0)
 					return (cookiep);
 
-				/* Otherwise, prefer the earlier definition
+				/* Otherwise, prefer this earlier definition,
 				 * and keep searching for a higher-precedence
 				 * definitions */
-				idx--;
-				cookiep = prev;
+				cookiep = dup_cookiep;
 			}
 
 			return (cookiep);
