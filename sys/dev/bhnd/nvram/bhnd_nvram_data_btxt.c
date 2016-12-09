@@ -125,9 +125,8 @@ bhnd_nvram_btxt_probe(struct bhnd_nvram_io *io)
 }
 
 static int
-bhnd_nvram_btxt_class_serialize(bhnd_nvram_data_class *cls,
-    bhnd_nvram_plist *props, bhnd_nvram_plist *options, void *outp,
-    size_t *olen)
+bhnd_nvram_btxt_serialize(bhnd_nvram_data_class *cls, bhnd_nvram_plist *props,
+    bhnd_nvram_plist *options, void *outp, size_t *olen)
 {
 	bhnd_nvram_prop	*prop;
 	size_t		 limit, nbytes;
@@ -353,56 +352,6 @@ static bhnd_nvram_plist *
 bhnd_nvram_btxt_options(struct bhnd_nvram_data *nv)
 {
 	return (NULL);
-}
-
-static int
-bhnd_nvram_btxt_size(struct bhnd_nvram_data *nv, bhnd_nvram_plist *updates,
-    size_t *size)
-{
-	struct bhnd_nvram_btxt *btxt = (struct bhnd_nvram_btxt *)nv;
-
-	// XXX TODO
-
-	/* The serialized form will be identical in length
-	 * to our backing buffer representation */
-	*size = bhnd_nvram_io_getsize(btxt->data);
-	return (0);
-}
-
-static int
-bhnd_nvram_btxt_serialize(struct bhnd_nvram_data *nv, bhnd_nvram_plist *updates,
-    void *buf, size_t *len)
-{
-	struct bhnd_nvram_btxt	*btxt;
-	size_t			 limit;
-	int			 error;
-
-	btxt = (struct bhnd_nvram_btxt *)nv;
-
-	limit = *len;
-
-	/* Provide actual output size */
-	if ((error = bhnd_nvram_data_size(nv, updates, len)))
-		return (error);
-
-	if (buf == NULL) {
-		return (0);
-	} else if (limit < *len) {
-		return (ENOMEM);
-	}	
-
-	/* Copy our internal representation to the output buffer */
-	if ((error = bhnd_nvram_io_read(btxt->data, 0x0, buf, *len)))
-		return (error);
-
-	/* Restore the original key=value format, rewriting all '\0'
-	 * key\0value delimiters back to '=' */
-	for (char *p = buf; (size_t)(p - (char *)buf) < *len; p++) {
-		if (*p == '\0')
-			*p = '=';
-	}
-
-	return (0);
 }
 
 static uint32_t

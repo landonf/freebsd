@@ -148,9 +148,8 @@ bhnd_nvram_bcm_probe(struct bhnd_nvram_io *io)
 }
 
 static int
-bhnd_nvram_bcm_class_serialize(bhnd_nvram_data_class *cls,
-    bhnd_nvram_plist *props, bhnd_nvram_plist *options, void *outp,
-    size_t *olen)
+bhnd_nvram_bcm_serialize(bhnd_nvram_data_class *cls, bhnd_nvram_plist *props,
+    bhnd_nvram_plist *options, void *outp, size_t *olen)
 {
 	struct bhnd_nvram_bcmhdr	 hdr;
 	bhnd_nvram_prop			*prop;
@@ -595,129 +594,6 @@ bhnd_nvram_bcm_options(struct bhnd_nvram_data *nv)
 {
 	struct bhnd_nvram_bcm *bcm = (struct bhnd_nvram_bcm *)nv;
 	return (bcm->opts);
-}
-
-static int
-bhnd_nvram_bcm_size(struct bhnd_nvram_data *nv, bhnd_nvram_plist *updates,
-    size_t *size)
-{
-	return (bhnd_nvram_bcm_serialize(nv, updates, NULL, size));
-}
-
-static int
-bhnd_nvram_bcm_serialize(struct bhnd_nvram_data *nv, bhnd_nvram_plist *updates,
-    void *buf, size_t *len)
-{
-	struct bhnd_nvram_bcm		*bcm;
-	struct bhnd_nvram_bcmhdr	 hdr;
-	void				*cookiep;
-	const char			*name;
-	size_t				 nbytes, limit;
-	uint8_t				 crc;
-	int				 error;
-
-	bcm = (struct bhnd_nvram_bcm *)nv;
-	nbytes = 0;
-
-	/* Save the output buffer limit */
-	if (buf == NULL)
-		limit = 0;
-	else
-		limit = *len;
-
-	/* Reserve space for the NVRAM header */
-	nbytes += sizeof(struct bhnd_nvram_bcmhdr);
-
-	/* Write all variables to the output buffer */
-	cookiep = NULL;
-	while ((name = bhnd_nvram_data_next(nv, &cookiep))) {
-		uint8_t		*outp;
-		size_t		 olen;
-		size_t		 name_len, val_len;
-
-		if (limit > nbytes) {
-			outp = (uint8_t *)buf + nbytes;
-			olen = limit - nbytes;
-		} else {
-			outp = NULL;
-			olen = 0;
-		}
-
-		/* Determine length of variable name */
-		name_len = strlen(name) + 1;
-
-		/* Write the variable name and '=' delimiter */
-		if (olen >= name_len) {
-			/* Copy name */
-			memcpy(outp, name, name_len - 1);
-
-			/* Append '=' */
-			*(outp + name_len - 1) = '=';
-		}
-
-		/* Adjust byte counts */
-		if (SIZE_MAX - name_len < nbytes)
-			return (ERANGE);
-
-		nbytes += name_len;
-
-		/* Reposition output */
-		if (limit > nbytes) {
-			outp = (uint8_t *)buf + nbytes;
-			olen = limit - nbytes;
-		} else {
-			outp = NULL;
-			olen = 0;
-		}
-
-		/* Coerce to NUL-terminated C string, writing to the output
-		 * buffer (or just calculating the length if outp is NULL) */
-		val_len = olen;
-		error = bhnd_nvram_data_getvar(nv, cookiep, outp, &val_len,
-		    BHND_NVRAM_TYPE_STRING);
-
-		if (error && error != ENOMEM)
-			return (error);
-
-		/* Adjust byte counts */
-		if (SIZE_MAX - val_len < nbytes)
-			return (ERANGE);
-
-		nbytes += val_len;
-	}
-
-	/* Write terminating NUL */
-	if (nbytes < limit)
-		*((uint8_t *)buf + nbytes) = '\0';
-	nbytes++;
-
-	/* Provide actual size */
-	*len = nbytes;
-	if (buf == NULL || nbytes > limit) {
-		if (buf != NULL)
-			return (ENOMEM);
-
-		return (0);
-	}
-
-	/* Fetch current NVRAM header */
-	if ((error = bhnd_nvram_io_read(bcm->data, 0x0, &hdr, sizeof(hdr))))
-		return (error);
-
-	/* Update values covered by CRC and write to output buffer */
-	hdr.size = htole32(*len);
-	memcpy(buf, &hdr, sizeof(hdr));
-
-	/* Calculate new CRC */
-	crc = bhnd_nvram_crc8((uint8_t *)buf + BCM_NVRAM_CRC_SKIP,
-	    *len - BCM_NVRAM_CRC_SKIP, BHND_NVRAM_CRC8_INITIAL);
-
-	/* Update header with valid CRC */
-	hdr.cfg0 &= ~BCM_NVRAM_CFG0_CRC_MASK;
-	hdr.cfg0 |= (crc << BCM_NVRAM_CFG0_CRC_SHIFT);
-	memcpy(buf, &hdr, sizeof(hdr));
-
-	return (0);
 }
 
 static uint32_t

@@ -121,9 +121,8 @@ bhnd_nvram_bcmraw_probe(struct bhnd_nvram_io *io)
 }
 
 static int
-bhnd_nvram_bcmraw_class_serialize(bhnd_nvram_data_class *cls,
-    bhnd_nvram_plist *props, bhnd_nvram_plist *options, void *outp,
-    size_t *olen)
+bhnd_nvram_bcmraw_serialize(bhnd_nvram_data_class *cls, bhnd_nvram_plist *props,
+    bhnd_nvram_plist *options, void *outp, size_t *olen)
 {
 	bhnd_nvram_prop	*prop;
 	size_t		 limit, nbytes;
@@ -347,75 +346,6 @@ bhnd_nvram_bcmraw_count(struct bhnd_nvram_data *nv)
 	struct bhnd_nvram_bcmraw *bcm = (struct bhnd_nvram_bcmraw *)nv;
 
 	return (bcm->count);
-}
-
-static int
-bhnd_nvram_bcmraw_size(struct bhnd_nvram_data *nv, bhnd_nvram_plist *updates,
-    size_t *size)
-{
-	return (bhnd_nvram_bcmraw_serialize(nv, updates, NULL, size));
-}
-
-static int
-bhnd_nvram_bcmraw_serialize(struct bhnd_nvram_data *nv,
-    bhnd_nvram_plist *updates, void *buf, size_t *len)
-{
-	struct bhnd_nvram_bcmraw	*bcm;
-	char * const			 p = (char *)buf;
-	size_t				 limit;
-	size_t				 offset;
-
-	bcm = (struct bhnd_nvram_bcmraw *)nv;
-
-	/* Save the output buffer limit */
-	if (buf == NULL)
-		limit = 0;
-	else
-		limit = *len;
-
-	/* The serialized form will be exactly the length
-	 * of our backing buffer representation */
-	*len = bcm->size;
-
-	/* Skip serialization if not requested, or report ENOMEM if
-	 * buffer is too small */
-	if (buf == NULL) {
-		return (0);
-	} else if (*len > limit) {
-		return (ENOMEM);
-	}
-
-	/* Write all variables to the output buffer */
-	memcpy(buf, bcm->data, *len);
-
-	/* Rewrite all '\0' delimiters back to '=' */
-	offset = 0;
-	while (offset < bcm->size) {
-		size_t name_len, value_len;
-
-		name_len = strlen(p + offset);
-
-		/* EOF? */
-		if (name_len == 0) {
-			BHND_NV_ASSERT(*(p + offset) == '\0',
-			    ("no NUL terminator"));
-
-			offset++;
-			break;
-		}
-
-		/* Rewrite 'name\0' to 'name=' */
-		offset += name_len;
-		BHND_NV_ASSERT(*(p + offset) == '\0', ("incorrect offset"));
-
-		*(p + offset) = '=';
-		offset++;
-
-		value_len = strlen(p + offset);
-		offset += value_len + 1;
-	}
-
-	return (0);
 }
 
 static uint32_t

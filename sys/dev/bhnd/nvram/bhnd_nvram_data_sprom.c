@@ -571,9 +571,8 @@ bhnd_nvram_sprom_write_var(bhnd_sprom_opcode_state *state,
 }
 
 static int
-bhnd_nvram_sprom_class_serialize(bhnd_nvram_data_class *cls,
-    bhnd_nvram_plist *props, bhnd_nvram_plist *options, void *outp,
-    size_t *olen)
+bhnd_nvram_sprom_serialize(bhnd_nvram_data_class *cls, bhnd_nvram_plist *props,
+    bhnd_nvram_plist *options, void *outp, size_t *olen)
 {
 	bhnd_sprom_opcode_state		 state;
 	struct bhnd_nvram_io		*io;
@@ -768,112 +767,6 @@ static bhnd_nvram_plist *
 bhnd_nvram_sprom_options(struct bhnd_nvram_data *nv)
 {
 	return (NULL);
-}
-
-static int
-bhnd_nvram_sprom_size(struct bhnd_nvram_data *nv, bhnd_nvram_plist *updates,
-    size_t *size)
-{
-	struct bhnd_nvram_sprom *sprom = (struct bhnd_nvram_sprom *)nv;
-
-	/* The serialized form will be identical in length
-	 * to our backing buffer representation */
-	*size = bhnd_nvram_io_getsize(sprom->data);
-	return (0);
-}
-
-static int
-bhnd_nvram_sprom_serialize(struct bhnd_nvram_data *nv,
-    bhnd_nvram_plist *updates, void *buf, size_t *len)
-{
-	struct bhnd_nvram_sprom	*sprom;
-	struct bhnd_nvram_io	*io;
-	bhnd_nvram_prop		*prop;
-	size_t			 limit, req_len;
-	uint8_t			 crc8;
-	int			 error;
-
-	sprom = (struct bhnd_nvram_sprom *)nv;
-	limit = *len;
-
-	/* Provide the required size */
-	if ((error = bhnd_nvram_sprom_size(nv, updates, &req_len)))
-		return (error);
-
-	*len = req_len;
-
-	if (buf == NULL) {
-		return (0);
-	} else if (*len > limit) {
-		return (ENOMEM);
-	}
-
-	/* Write unmodified image to the output buffer */
-	if ((error = bhnd_nvram_io_read(sprom->data, 0x0, buf, *len)))
-		return (error);
-
-	/* Apply all updates to the output image */
-	io = bhnd_nvram_ioptr_new(buf, *len, *len, BHND_NVRAM_IOPTR_RDWR);
-	if (io == NULL) {
-		BHND_NV_LOG("error allocating ioptr: %d\n", error);
-		return (ENXIO);
-	}
-
-	prop = NULL;
-	while ((prop = bhnd_nvram_plist_next(updates, prop)) != NULL) {
-		const char			*name;
-		bhnd_sprom_opcode_idx_entry	*entry;
-		bhnd_nvram_val			*val;
-
-		name = bhnd_nvram_prop_name(prop);
-		val = bhnd_nvram_prop_val(prop);
-
-		/* Is this variable defined by our SPROM layout? */
-		entry = bhnd_sprom_opcode_index_find(&sprom->state, name);
-		if (entry == NULL) {
-			BHND_NV_LOG("unknown variable: %s\n", name);
-
-			error = ENOENT;
-			goto cleanup;
-		}
-
-		/* Are external writes to this variable permitted? */
-		if (bhnd_sprom_is_external_immutable(name)) {
-			BHND_NV_LOG("refusing update of immutable variable: "
-			    "%s\n", name);
-
-			error = EINVAL;
-			goto cleanup;
-		}
-
-		/* Encode to output buffer */
-		error = bhnd_nvram_sprom_write_var(&sprom->state, entry, val,
-		    io);
-		if (error) {
-			BHND_NV_LOG("error encoding %s: %d\n", name, error);
-			goto cleanup;
-		}
-	}
-
-	/* Calculate the CRC over all SPROM data, not including the CRC byte. */
-	crc8 = ~bhnd_nvram_crc8(buf, sprom->layout->crc_offset,
-	    BHND_NVRAM_CRC8_INITIAL);
-
-	/* Write the checksum. */
-	error = bhnd_nvram_io_write(io, sprom->layout->crc_offset, &crc8,
-	    sizeof(crc8));
-	if (error) {
-		BHND_NV_LOG("error writing CRC value: %d\n", error);
-		goto cleanup;
-	}
-
-	/* Success */
-	bhnd_nvram_io_free(io);
-	return (0);
-
-cleanup:
-	bhnd_nvram_io_free(io);
-	return (error);
 }
 
 static uint32_t

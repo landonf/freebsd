@@ -105,11 +105,11 @@ bhnd_nvram_data_class_caps(bhnd_nvram_data_class *cls)
  *			code will be returned.
  */
 int
-bhnd_nvram_data_class_serialize(bhnd_nvram_data_class *cls,
+bhnd_nvram_data_serialize(bhnd_nvram_data_class *cls,
     bhnd_nvram_plist *props, bhnd_nvram_plist *options, void *outp,
     size_t *olen)
 {
-	return (cls->op_class_serialize(cls, props, options, outp, olen));
+	return (cls->op_serialize(cls, props, options, outp, olen));
 }
 
 /**
@@ -330,7 +330,7 @@ bhnd_nvram_data_count(struct bhnd_nvram_data *nv)
 
 /**
  * Return a borrowed reference to the serialization options for @p nv,
- * suitable for use with bhnd_nvram_data_class_serialize(), or NULL if none.
+ * suitable for use with bhnd_nvram_data_serialize(), or NULL if none.
  * 
  * @param nv The NVRAM data to be queried.
  */
@@ -338,57 +338,6 @@ bhnd_nvram_plist *
 bhnd_nvram_data_options(struct bhnd_nvram_data *nv)
 {
 	return (nv->cls->op_options(nv));
-}
-
-
-/**
- * Compute the size of the serialized form of @p nv.
- *
- * Serialization may be performed via bhnd_nvram_data_serialize().
- *
- * @param	nv	The NVRAM data to be queried.
- * @param	updates	A flat, ordered representation of all updates
- *			to be included to the serialized output.
- * @param[out]	len	On success, will be set to the computed size.
- * 
- * @retval 0		success
- * @retval non-zero	if computing the serialized size otherwise fails, a
- *			regular unix error code will be returned.
- */
-int
-bhnd_nvram_data_size(struct bhnd_nvram_data *nv, bhnd_nvram_plist *updates,
-    size_t *len)
-{
-	return (nv->cls->op_size(nv, updates, len));
-}
-
-/**
- * Serialize the NVRAM data to @p buf using the NVRAM data class' native
- * format, applying all updates in @p updates.
- * 
- * The resulting serialization may be reparsed with @p nv's BHND NVRAM data
- * class.
- * 
- * @param		nv	The NVRAM data to be serialized.
- * @param		updates	A flat, ordered representation of all updates
- *				to be included to the serialized output.
- * @param[out]		buf	On success, the serialed NVRAM data will be
- *				written to this buffer. This argment may be
- *				NULL if the value is not desired.
- * @param[in,out]	len	The capacity of @p buf. On success, will be set
- *				to the actual length of the serialized data.
- *
- * @retval 0		success
- * @retval ENOMEM	If @p buf is non-NULL and a buffer of @p len is too
- *			small to hold the serialized data.
- * @retval non-zero	If serialization otherwise fails, a regular unix error
- *			code will be returned.
- */
-int
-bhnd_nvram_data_serialize(struct bhnd_nvram_data *nv, bhnd_nvram_plist *updates,
-    void *buf, size_t *len)
-{
-	return (nv->cls->op_serialize(nv, updates, buf, len));
 }
 
 /**
