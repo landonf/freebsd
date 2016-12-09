@@ -86,6 +86,8 @@ bhnd_nvram_prop		*bhnd_nvram_plist_next(bhnd_nvram_plist *plist,
 
 bhnd_nvram_prop		*bhnd_nvram_plist_get_prop(bhnd_nvram_plist *plist,
 			     const char *name);
+bhnd_nvram_val		*bhnd_nvram_plist_get_val(bhnd_nvram_plist *plist,
+			     const char *name);
 int			 bhnd_nvram_plist_get_encoded(bhnd_nvram_plist *plist,
 			     const char *name, void *outp, size_t olen,
 			     bhnd_nvram_type otype);

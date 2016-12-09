@@ -589,6 +589,27 @@ bhnd_nvram_plist_get_prop(bhnd_nvram_plist *plist, const char *name)
 }
 
 /**
+ * Return a borrowed reference to the named property's value, or NULL if
+ * @p name is not found in @p plist.
+ * 
+ * @param	plist	The property list to be queried.
+ * @param	name	The name of the property to be returned.
+ *
+ * @retval non-NULL	if @p name is found.
+ * @retval NULL		if @p name is not found.
+ */
+bhnd_nvram_val *
+bhnd_nvram_plist_get_val(bhnd_nvram_plist *plist, const char *name)
+{
+	bhnd_nvram_prop *prop;
+
+	if ((prop = bhnd_nvram_plist_get_prop(plist, name)) == NULL)
+		return (NULL);
+
+	return (bhnd_nvram_prop_val(prop));
+}
+
+/**
  * Attempt to encode a named property's value as @p otype, writing the result
  * to @p outp.
  *
