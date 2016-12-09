@@ -644,8 +644,8 @@ cleanup:
 }
 
 /**
- * Export a flat NVRAM property list representation of all NVRAM properties
- * at @p path.
+ * Export a flat, ordered NVRAM property list representation of all NVRAM
+ * properties at @p path.
  * 
  * @param	sc	The NVRAM store instance.
  * @param	path	The NVRAM path to export, or NULL to select the root
