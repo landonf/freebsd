@@ -185,6 +185,16 @@ bhnd_nvram_store_new(struct bhnd_nvram_store **store,
 	/* Retain the NVRAM data */
 	sc->data = bhnd_nvram_data_retain(data);
 	sc->data_caps = bhnd_nvram_data_caps(data);
+	sc->data_opts = bhnd_nvram_data_options(data);
+	if (sc->data_opts != NULL) {
+		bhnd_nvram_plist_retain(sc->data_opts);
+	} else {
+		sc->data_opts = bhnd_nvram_plist_new();
+		if (sc->data_opts == NULL) {
+			error = ENOMEM;
+			goto cleanup;
+		}
+	}
 
 	/* Register required root path */
 	error = bhnd_nvstore_register_path(sc, BHND_NVSTORE_ROOT_PATH,
@@ -283,6 +293,9 @@ bhnd_nvram_store_free(struct bhnd_nvram_store *sc)
 
 	if (sc->data != NULL)
 		bhnd_nvram_data_release(sc->data);
+
+	if (sc->data_opts != NULL)
+		bhnd_nvram_plist_release(sc->data_opts);
 
 	BHND_NVSTORE_LOCK_DESTROY(sc);
 	bhnd_nv_free(sc);
@@ -650,9 +663,17 @@ cleanup:
  * @param	sc	The NVRAM store instance.
  * @param	path	The NVRAM path to export, or NULL to select the root
  *			path.
-  * @param[out]	plist	On success, will be set to the newly allocated property
- *			list. The caller is responsible for releasing this value
- *			via bhnd_nvram_plist_release().
+ * @param[out]	cls	On success, will be set to the backing data class
+ *			of @p sc. If the data class is are not desired,
+ *			a NULL pointer may be provided.
+ * @param[out]	props	On success, will be set to a caller-owned property
+ *			list containing the exported properties. The caller is
+ *			responsible for releasing this value via
+ *			bhnd_nvram_plist_release().
+ * @param[out]	options	On success, will be set to a caller-owned property
+ *			list containing the current NVRAM serialization options
+ *			for @p sc. The caller is responsible for releasing this
+ *			value via bhnd_nvram_plist_release().
  * @param	flags	Export flags. See BHND_NVSTORE_EXPORT_*.
  * 
  * @retval 0		success
@@ -664,7 +685,8 @@ cleanup:
  */
 int
 bhnd_nvram_store_export(struct bhnd_nvram_store *sc, const char *path,
-    bhnd_nvram_plist **plist, uint32_t flags)
+    bhnd_nvram_data_class **cls, bhnd_nvram_plist **props,
+    bhnd_nvram_plist **options, uint32_t flags)
 {
 	bhnd_nvram_plist	*unordered;
 	bhnd_nvstore_path	*top;
@@ -674,11 +696,11 @@ bhnd_nvram_store_export(struct bhnd_nvram_store *sc, const char *path,
 	size_t			 num_dpath_flags;
 	int			 error;
 	
-	*plist = NULL;
+	*props = NULL;
 	unordered = NULL;
 	num_dpath_flags = 0;
-
-	BHND_NVSTORE_LOCK(sc);
+	if (options != NULL)
+		*options = NULL;
 
 	/* Default to exporting root path */
 	if (path == NULL)
@@ -711,10 +733,14 @@ bhnd_nvram_store_export(struct bhnd_nvram_store *sc, const char *path,
 	if (num_dpath_flags != 1)
 		return (EINVAL);
 
+	/* Lock internal state before querying paths/properties */
+	BHND_NVSTORE_LOCK(sc);
+
 	/* Fetch referenced path */
 	top = bhnd_nvstore_get_path(sc, path, strlen(path));
 	if (top == NULL) {
-		return (ENOENT);
+		error = ENOENT;
+		goto failed;
 	}
 
 	/* Allocate new, empty property list */
@@ -744,16 +770,23 @@ bhnd_nvram_store_export(struct bhnd_nvram_store *sc, const char *path,
 		}
 	}
 
+	/* If requested, provide the current class and serialization options */
+	if (cls != NULL)
+		*cls = bhnd_nvram_data_get_class(sc->data);
+
+	if (options != NULL)
+		*options = bhnd_nvram_plist_retain(sc->data_opts);
+
 	/*
 	 * If we're re-encoding device paths, don't bother preserving the
 	 * existing NVRAM variable order; our variable names will not match
 	 * the existing backing NVRAM data.
 	 */
 	if (!BHND_NVSTORE_GET_FLAG(flags, EXPORT_PRESERVE_DEVPATHS)) {
-		*plist = unordered;
+		*props = unordered;
+		unordered = NULL;
 
-		BHND_NVSTORE_UNLOCK(sc);
-		return (0);
+		goto finished;
 	}
 
 	/* 
@@ -766,7 +799,7 @@ bhnd_nvram_store_export(struct bhnd_nvram_store *sc, const char *path,
 	 * identical to the input serialization if uncommitted changes are
 	 * excluded from the export.
 	 */
-	if ((*plist = bhnd_nvram_plist_new()) == NULL) {
+	if ((*props = bhnd_nvram_plist_new()) == NULL) {
 		error = ENOMEM;
 		goto failed;
 	}
@@ -780,7 +813,7 @@ bhnd_nvram_store_export(struct bhnd_nvram_store *sc, const char *path,
 			continue;
 
 		/* Append to ordered result */
-		if ((error = bhnd_nvram_plist_append(*plist, prop)))
+		if ((error = bhnd_nvram_plist_append(*props, prop)))
 			goto failed;
 	
 		/* Remove from unordered list */
@@ -791,14 +824,17 @@ bhnd_nvram_store_export(struct bhnd_nvram_store *sc, const char *path,
 	 * end of the export list */
 	prop = NULL;
 	while ((prop = bhnd_nvram_plist_next(unordered, prop)) != NULL) {
-		if ((error = bhnd_nvram_plist_append(*plist, prop)))
+		if ((error = bhnd_nvram_plist_append(*props, prop)))
 			goto failed;
 	}
 
 	/* Export complete */
+finished:
 	BHND_NVSTORE_UNLOCK(sc);
 
-	bhnd_nvram_plist_release(unordered);
+	if (unordered != NULL)
+		bhnd_nvram_plist_release(unordered);
+
 	return (0);
 
 failed:
@@ -807,8 +843,95 @@ failed:
 	if (unordered != NULL)
 		bhnd_nvram_plist_release(unordered);
 
-	if (*plist != NULL)
-		bhnd_nvram_plist_release(*plist);
+	if (options != NULL && *options != NULL)
+		bhnd_nvram_plist_release(*options);
+
+	if (*props != NULL)
+		bhnd_nvram_plist_release(*props);
+
+	return (error);
+}
+
+/**
+ * Encode all NVRAM properties at @p path, using the @p store's current NVRAM
+ * data format.
+ * 
+ * @param	sc	The NVRAM store instance.
+ * @param	path	The NVRAM path to export, or NULL to select the root
+ *			path.
+ * @param[out]	data	On success, will be set to the newly serialized value.
+ *			The caller is responsible for freeing this value
+ *			via bhnd_nvram_io_free().
+ * @param	flags	Export flags. See BHND_NVSTORE_EXPORT_*.
+ *
+ * @retval 0		success
+ * @retval EINVAL	If @p flags is invalid.
+ * @retval ENOENT	The requested path was not found.
+ * @retval ENOMEM	If allocation fails.
+ * @retval non-zero	If serialization of  @p path otherwise fails, a regular
+ *			unix error code will be returned.
+ */
+int
+bhnd_nvram_store_serialize(struct bhnd_nvram_store *sc, const char *path,
+   struct bhnd_nvram_io **data,  uint32_t flags)
+{
+	bhnd_nvram_plist	*props;
+	bhnd_nvram_plist	*options;
+	bhnd_nvram_data_class	*cls;
+	struct bhnd_nvram_io	*io;
+	void			*outp;
+	size_t			 olen;
+	int			 error;
+
+	props = NULL;
+	options = NULL;
+	io = NULL;
+
+	/* Perform requested export */
+	error = bhnd_nvram_store_export(sc, path, &cls, &props, &options,
+	    flags);
+	if (error)
+		return (error);
+
+	/* Determine serialized size */
+	error = bhnd_nvram_data_serialize(cls, props, options, NULL, &olen);
+	if (error)
+		goto failed;
+
+	/* Allocate output buffer */
+	if ((io = bhnd_nvram_iobuf_empty(olen, olen)) == NULL) {
+		error = ENOMEM;
+		goto failed;
+	}
+
+	/* Fetch write pointer */
+	if ((error = bhnd_nvram_io_write_ptr(io, 0, &outp, olen, NULL)))
+		goto failed;
+
+	/* Perform serialization */
+	error = bhnd_nvram_data_serialize(cls, props, options, outp, &olen);
+	if (error)
+		goto failed;
+
+	if ((error = bhnd_nvram_io_setsize(io, olen)))
+		goto failed;
+
+	/* Success */
+	bhnd_nvram_plist_release(props);
+	bhnd_nvram_plist_release(options);
+
+	*data = io;
+	return (0);
+
+failed:
+	if (props != NULL)
+		bhnd_nvram_plist_release(props);
+
+	if (options != NULL)
+		bhnd_nvram_plist_release(options);
+
+	if (io != NULL)
+		bhnd_nvram_io_free(io);
 
 	return (error);
 }

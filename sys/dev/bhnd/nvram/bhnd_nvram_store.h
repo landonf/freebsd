@@ -70,7 +70,12 @@ int	bhnd_nvram_store_parse_new(struct bhnd_nvram_store **store,
 void	bhnd_nvram_store_free(struct bhnd_nvram_store *store);
 
 int	bhnd_nvram_store_export(struct bhnd_nvram_store *store,
-	    const char *path, bhnd_nvram_plist **plist, uint32_t flags);
+	    const char *path, bhnd_nvram_data_class **cls,
+	    bhnd_nvram_plist **props, bhnd_nvram_plist **options,
+	    uint32_t flags);
+
+int	bhnd_nvram_store_serialize(struct bhnd_nvram_store *store,
+	    const char *path, struct bhnd_nvram_io **data,  uint32_t flags);
 
 int	bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
 	    void *outp, size_t *olen, bhnd_nvram_type otype);
