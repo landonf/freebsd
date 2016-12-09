@@ -764,6 +764,12 @@ bhnd_nvram_sprom_count(struct bhnd_nvram_data *nv)
 	return (sprom->layout->num_vars);
 }
 
+static bhnd_nvram_plist *
+bhnd_nvram_sprom_options(struct bhnd_nvram_data *nv)
+{
+	return (NULL);
+}
+
 static int
 bhnd_nvram_sprom_size(struct bhnd_nvram_data *nv, bhnd_nvram_plist *updates,
     size_t *size)

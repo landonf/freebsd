@@ -77,6 +77,10 @@ typedef size_t		 (bhnd_nvram_data_op_count)(struct bhnd_nvram_data *nv);
 typedef int		 (bhnd_nvram_data_op_size)(struct bhnd_nvram_data *nv,
 			      bhnd_nvram_plist *updates, size_t *len);
 
+/** @see bhnd_nvram_data_options() */
+typedef bhnd_nvram_plist*(bhnd_nvram_data_op_options)(
+			      struct bhnd_nvram_data *nv);
+
 /** @see bhnd_nvram_data_serialize() */
 typedef int		 (bhnd_nvram_data_op_serialize)(
 			      struct bhnd_nvram_data *nv,
@@ -137,6 +141,7 @@ struct bhnd_nvram_data_class {
 	bhnd_nvram_data_op_new			*op_new;
 	bhnd_nvram_data_op_free			*op_free;
 	bhnd_nvram_data_op_count		*op_count;
+	bhnd_nvram_data_op_options		*op_options;
 	bhnd_nvram_data_op_size			*op_size;
 	bhnd_nvram_data_op_serialize		*op_serialize;
 	bhnd_nvram_data_op_caps			*op_caps;
@@ -190,6 +195,7 @@ struct bhnd_nvram_data {
 	_macro(_cname, new)					\
 	_macro(_cname, free)					\
 	_macro(_cname, count)					\
+	_macro(_cname, options)					\
 	_macro(_cname, size)					\
 	_macro(_cname, serialize)				\
 	_macro(_cname, caps)					\

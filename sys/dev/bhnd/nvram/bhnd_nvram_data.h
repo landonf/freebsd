@@ -116,6 +116,8 @@ bhnd_nvram_data_class	*bhnd_nvram_data_get_class(struct bhnd_nvram_data *nv);
 
 size_t			 bhnd_nvram_data_count(struct bhnd_nvram_data *nv);
 
+bhnd_nvram_plist	*bhnd_nvram_data_options(struct bhnd_nvram_data *nv);
+
 int			 bhnd_nvram_data_size(struct bhnd_nvram_data *nv,
 			     bhnd_nvram_plist *updates, size_t *size);
 

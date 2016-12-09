@@ -335,6 +335,12 @@ bhnd_nvram_bcmraw_free(struct bhnd_nvram_data *nv)
 		bhnd_nv_free(bcm->data);
 }
 
+static bhnd_nvram_plist *
+bhnd_nvram_bcmraw_options(struct bhnd_nvram_data *nv)
+{
+	return (NULL);
+}
+
 static size_t
 bhnd_nvram_bcmraw_count(struct bhnd_nvram_data *nv)
 {

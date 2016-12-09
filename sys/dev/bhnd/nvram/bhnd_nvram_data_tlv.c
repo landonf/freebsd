@@ -375,6 +375,13 @@ bhnd_nvram_tlv_count(struct bhnd_nvram_data *nv)
 	return (tlv->count);
 }
 
+
+static bhnd_nvram_plist *
+bhnd_nvram_tlv_options(struct bhnd_nvram_data *nv)
+{
+	return (NULL);
+}
+
 static int
 bhnd_nvram_tlv_size(struct bhnd_nvram_data *nv, bhnd_nvram_plist *updates,
     size_t *size)
