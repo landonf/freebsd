@@ -624,8 +624,7 @@ bhnd_nvram_data_generic_rp_getvar(struct bhnd_nvram_data *nv, void *cookiep,
 }
 
 /**
- * Allocate and initialize new value instance containing an NVRAM entry's
- * variable data.
+ * Return a caller-owned copy of an NVRAM entry's variable data.
  * 
  * The caller is responsible for deallocating the returned value via
  * bhnd_nvram_val_release().
@@ -633,7 +632,7 @@ bhnd_nvram_data_generic_rp_getvar(struct bhnd_nvram_data *nv, void *cookiep,
  * @param	nv	The NVRAM data.
  * @param	cookiep	An NVRAM variable cookie previously returned
  *			via bhnd_nvram_data_next() or bhnd_nvram_data_find().
- * @param[out]	value	On success, the allocated value instance.
+ * @param[out]	value	On success, the caller-owned value instance.
  *
  * @retval 0		success
  * @retval ENOMEM	If allocation fails.
