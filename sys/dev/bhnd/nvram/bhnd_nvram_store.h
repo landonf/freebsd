@@ -53,9 +53,9 @@ struct bhnd_nvram_store;
  */
 enum {
 	BHND_NVSTORE_EXPORT_CHILDREN		= (1<<0),	/**< Include all subpaths */
-	BHND_NVSTORE_EXPORT_PRESERVE_DEVPATHS	= (0),		/**< Preserve existing device path definitions (default) */
-	BHND_NVSTORE_EXPORT_COMPACT_DEVPATHS	= (1<<1),	/**< Re-encode all device paths using compact syntax */
-	BHND_NVSTORE_EXPORT_EXPAND_DEVPATHS	= (1<<2),	/**< Re-encode all device paths using non-compact syntax */
+	BHND_NVSTORE_EXPORT_PRESERVE_DEVPATHS	= (1<<1),	/**< Preserve existing device path definitions (default) */
+	BHND_NVSTORE_EXPORT_COMPACT_DEVPATHS	= (1<<2),	/**< Re-encode all device paths using compact syntax */
+	BHND_NVSTORE_EXPORT_EXPAND_DEVPATHS	= (1<<3),	/**< Re-encode all device paths using non-compact syntax */
 	BHND_NVSTORE_EXPORT_ALL_VARS		= (1<<6|1<<7),	/**< Include all variables (default) */
 	BHND_NVSTORE_EXPORT_COMMITTED		= (1<<6),	/**< Include all committed changes */
 	BHND_NVSTORE_EXPORT_UNCOMMITTED		= (1<<7),	/**< Include all uncommitted changes */

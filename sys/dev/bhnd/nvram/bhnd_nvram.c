@@ -324,12 +324,8 @@ bhnd_nvram_plist_replace_string(bhnd_nvram_plist *plist, const char *name,
  * 
  * @param	plist	The property list to be modified.
  * @param	name	The name of the property to be removed.
- * 
- * @retval 0		success
- * @retval non-zero	if modifying @p plist otherwise fails, a regular unix
- *			error code will be returned.
  */
-int
+void
 bhnd_nvram_plist_remove(bhnd_nvram_plist *plist, const char *name)
 {
 	bhnd_nvram_plist_entry *entry;
@@ -337,7 +333,7 @@ bhnd_nvram_plist_remove(bhnd_nvram_plist *plist, const char *name)
 	/* Fetch entry */
 	entry = bhnd_nvram_plist_get_entry(plist, name);
 	if (entry == NULL)
-		return (0);
+		return;
 
 	/* Remove from entry list and hash table */
 	TAILQ_REMOVE(&plist->entries, entry, pl_link);
@@ -351,7 +347,7 @@ bhnd_nvram_plist_remove(bhnd_nvram_plist *plist, const char *name)
 	BHND_NV_ASSERT(plist->num_entries > 0, ("entry count over-release"));
 	plist->num_entries--;
 
-	return (0);
+	return;
 }
 
 /**

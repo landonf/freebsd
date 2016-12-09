@@ -39,10 +39,13 @@ __FBSDID("$FreeBSD$");
 #include <sys/ctype.h>
 #include <sys/systm.h>
 
+#include <machine/_inttypes.h>
+
 #else /* !_KERNEL */
 
 #include <ctype.h>
 #include <errno.h>
+#include <inttypes.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -511,10 +514,13 @@ bhnd_nvram_store_export_child(struct bhnd_nvram_store *sc,
 	} else if (BHND_NVSTORE_GET_FLAG(flags, EXPORT_EXPAND_DEVPATHS)) {
 		/* Re-encode with fully expanded device path */
 		emit_compact_devpath = false;
-	} else {
+	} else if (BHND_NVSTORE_GET_FLAG(flags, EXPORT_PRESERVE_DEVPATHS)) {
 		/* Preserve existing encoding of this path */
 		if (bhnd_nvstore_find_alias(sc, child->path_str) != NULL)
 			emit_compact_devpath = true;
+	} else {
+		BHND_NV_LOG("invalid device path flag: %#" PRIx32, flags);
+		return (EINVAL);
 	}
 
 	/* Allocate variable device path prefix to use for all property names,
@@ -660,10 +666,17 @@ int
 bhnd_nvram_store_export(struct bhnd_nvram_store *sc, const char *path,
     bhnd_nvram_plist **plist, uint32_t flags)
 {
+	bhnd_nvram_plist	*unordered;
 	bhnd_nvstore_path	*top;
+	bhnd_nvram_prop		*prop;
+	const char		*name;
+	void			*cookiep;
+	size_t			 num_dpath_flags;
 	int			 error;
 	
 	*plist = NULL;
+	unordered = NULL;
+	num_dpath_flags = 0;
 
 	BHND_NVSTORE_LOCK(sc);
 
@@ -678,30 +691,42 @@ bhnd_nvram_store_export(struct bhnd_nvram_store *sc, const char *path,
 		flags |= BHND_NVSTORE_EXPORT_ALL_VARS;
 	}
 
-	/* Report incompatible device path flags */
-	if (BHND_NVSTORE_GET_FLAG(flags, EXPORT_COMPACT_DEVPATHS) &&
-	    BHND_NVSTORE_GET_FLAG(flags, EXPORT_EXPAND_DEVPATHS))
+	/* Default to preserving the current device path encoding */
+	if (!BHND_NVSTORE_GET_FLAG(flags, EXPORT_COMPACT_DEVPATHS) &&
+	    !BHND_NVSTORE_GET_FLAG(flags, EXPORT_EXPAND_DEVPATHS))
 	{
-		return (EINVAL);
+		flags |= BHND_NVSTORE_EXPORT_PRESERVE_DEVPATHS;
 	}
+
+	/* Exactly one device path encoding flag must be set */
+	if (BHND_NVSTORE_GET_FLAG(flags, EXPORT_COMPACT_DEVPATHS))
+		num_dpath_flags++;
+
+	if (BHND_NVSTORE_GET_FLAG(flags, EXPORT_EXPAND_DEVPATHS))
+		num_dpath_flags++;
+
+	if (BHND_NVSTORE_GET_FLAG(flags, EXPORT_PRESERVE_DEVPATHS))
+		num_dpath_flags++;
+
+	if (num_dpath_flags != 1)
+		return (EINVAL);
 
 	/* Fetch referenced path */
 	top = bhnd_nvstore_get_path(sc, path, strlen(path));
 	if (top == NULL) {
-		error = ENOENT;
-		goto cleanup;
+		return (ENOENT);
 	}
 
 	/* Allocate new, empty property list */
-	if ((*plist = bhnd_nvram_plist_new()) == NULL) {
+	if ((unordered = bhnd_nvram_plist_new()) == NULL) {
 		error = ENOMEM;
-		goto cleanup;
+		goto failed;
 	}
 
 	/* Export the top-level path first */
-	error = bhnd_nvram_store_export_child(sc, top, top, *plist, flags);
+	error = bhnd_nvram_store_export_child(sc, top, top, unordered, flags);
 	if (error)
-		goto cleanup;
+		goto failed;
 
 	/* Attempt to export any children of the root path */
 	for (size_t i = 0; i < nitems(sc->paths); i++) {
@@ -713,22 +738,77 @@ bhnd_nvram_store_export(struct bhnd_nvram_store *sc, const char *path,
 				continue;
 
 			error = bhnd_nvram_store_export_child(sc, top,
-			    child, *plist, flags);
+			    child, unordered, flags);
 			if (error)
-				goto cleanup;
+				goto failed;
 		}
 	}
-	
-	/* Export complete */
-	error = 0;
 
-cleanup:
+	/*
+	 * If we're re-encoding device paths, don't bother preserving the
+	 * existing NVRAM variable order; our variable names will not match
+	 * the existing backing NVRAM data.
+	 */
+	if (!BHND_NVSTORE_GET_FLAG(flags, EXPORT_PRESERVE_DEVPATHS)) {
+		*plist = unordered;
+
+		BHND_NVSTORE_UNLOCK(sc);
+		return (0);
+	}
+
+	/* 
+	 * Re-order the flattened output to match the existing NVRAM variable
+	 * ordering.
+	 * 
+	 * We append all new variables at the end of the input; this should
+	 * reduce the delta that needs to be written (e.g. to flash) when
+	 * committing NVRAM changes, and should result in a serialization
+	 * identical to the input serialization if uncommitted changes are
+	 * excluded from the export.
+	 */
+	if ((*plist = bhnd_nvram_plist_new()) == NULL) {
+		error = ENOMEM;
+		goto failed;
+	}
+
+	/* Using the backing NVRAM data ordering to order all variables
+	 * currently defined in the backing store */ 
+	cookiep = NULL;
+	while ((name = bhnd_nvram_data_next(sc->data, &cookiep))) {
+		prop = bhnd_nvram_plist_get_prop(unordered, name);
+		if (prop == NULL)
+			continue;
+
+		/* Append to ordered result */
+		if ((error = bhnd_nvram_plist_append(*plist, prop)))
+			goto failed;
+	
+		/* Remove from unordered list */
+		bhnd_nvram_plist_remove(unordered, name);
+	}
+
+	/* Any remaining variables are new, and should be appended to the
+	 * end of the export list */
+	prop = NULL;
+	while ((prop = bhnd_nvram_plist_next(unordered, prop)) != NULL) {
+		if ((error = bhnd_nvram_plist_append(*plist, prop)))
+			goto failed;
+	}
+
+	/* Export complete */
 	BHND_NVSTORE_UNLOCK(sc);
 
-	if (error && *plist != NULL) {
+	bhnd_nvram_plist_release(unordered);
+	return (0);
+
+failed:
+	BHND_NVSTORE_UNLOCK(sc);
+
+	if (unordered != NULL)
+		bhnd_nvram_plist_release(unordered);
+
+	if (*plist != NULL)
 		bhnd_nvram_plist_release(*plist);
-		*plist = NULL;
-	}
 
 	return (error);
 }

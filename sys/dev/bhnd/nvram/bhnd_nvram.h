@@ -76,7 +76,7 @@ int			 bhnd_nvram_plist_replace_bytes(bhnd_nvram_plist *plist,
 int			 bhnd_nvram_plist_replace_string(bhnd_nvram_plist *plist,
 			     const char *name, const char *val);
 
-int			 bhnd_nvram_plist_remove(bhnd_nvram_plist *plist,
+void			 bhnd_nvram_plist_remove(bhnd_nvram_plist *plist,
 			     const char *name);
 
 bool			 bhnd_nvram_plist_contains(bhnd_nvram_plist *plist,
