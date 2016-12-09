@@ -449,18 +449,18 @@ bhnd_nvram_btxt_next(struct bhnd_nvram_data *nv, void **cookiep)
 	if (io_offset == io_size)
 		return (NULL);
 
-	/* Seek to the first valid entry */
+	/* Seek to the first valid entry, or EOF */
 	if ((error = bhnd_nvram_btxt_seek_next(btxt->data, &io_offset))) {
 		BHND_NV_LOG("unexpected error in seek_next(): %d\n", error);
 		return (NULL);
 	}
 
-	/* Provide the new cookie for this offset */
-	*cookiep = bhnd_nvram_btxt_offset_to_cookiep(btxt, io_offset);
-
 	/* Hit EOF? */
 	if (io_offset == io_size)
 		return (NULL);
+
+	/* Provide the new cookie for this offset */
+	*cookiep = bhnd_nvram_btxt_offset_to_cookiep(btxt, io_offset);
 
 	/* Fetch the name pointer; it must be at least 1 byte long */
 	error = bhnd_nvram_io_read_ptr(btxt->data, io_offset, &nptr, 1, NULL);
