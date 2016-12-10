@@ -51,14 +51,21 @@
 #define	BHND_NVSTORE_GET_BITS(_value, _field)	\
 	((_value) & BHND_NVSTORE_ ## _field ## _MASK)
 
+/* Forward declarations */
+typedef struct bhnd_nvstore_name_info	bhnd_nvstore_name_info;
+typedef struct bhnd_nvstore_index	bhnd_nvstore_index;
+typedef struct bhnd_nvstore_path	bhnd_nvstore_path;
 
-LIST_HEAD(bhnd_nvstore_alias_list, bhnd_nvstore_alias);
-LIST_HEAD(bhnd_nvstore_update_list, bhnd_nvstore_update);
-LIST_HEAD(bhnd_nvstore_path_list, bhnd_nvstore_path);
+typedef struct bhnd_nvstore_alias	bhnd_nvstore_alias;
+typedef struct bhnd_nvstore_update	bhnd_nvstore_update;
 
-typedef struct bhnd_nvstore_alias_list bhnd_nvstore_alias_list;
-typedef struct bhnd_nvstore_update_list bhnd_nvstore_update_list;
-typedef struct bhnd_nvstore_path_list bhnd_nvstore_path_list;
+typedef struct bhnd_nvstore_alias_list	bhnd_nvstore_alias_list;
+typedef struct bhnd_nvstore_update_list	bhnd_nvstore_update_list;
+typedef struct bhnd_nvstore_path_list	bhnd_nvstore_path_list;
+
+LIST_HEAD(bhnd_nvstore_alias_list,	bhnd_nvstore_alias);
+LIST_HEAD(bhnd_nvstore_update_list,	bhnd_nvstore_update);
+LIST_HEAD(bhnd_nvstore_path_list,	bhnd_nvstore_path);
 
 /**
  * NVRAM store variable entry types.
@@ -75,6 +82,74 @@ typedef enum {
 	BHND_NVSTORE_PATH_STRING	= 0,	/**< path is a string value */
 	BHND_NVSTORE_PATH_ALIAS		= 1	/**< path is an alias reference */
 } bhnd_nvstore_path_type;
+
+/**
+ * NVRAM variable namespaces.
+ */
+typedef enum {
+	BHND_NVSTORE_NAME_INTERNAL	= 1,	/**< internal namespace. permits
+						     use of reserved devpath and
+						     alias name prefixes. */
+	BHND_NVSTORE_NAME_EXTERNAL	= 2,	/**< external namespace. forbids
+						     use of name prefixes used
+						     for device path handling */
+} bhnd_nvstore_name_type;
+
+bhnd_nvstore_index	*bhnd_nvstore_index_new(size_t capacity);
+void			 bhnd_nvstore_index_free(bhnd_nvstore_index *index);
+int			 bhnd_nvstore_index_append(struct bhnd_nvram_store *sc,
+			     bhnd_nvstore_index *index,
+			     void *cookiep);
+int			 bhnd_nvstore_index_prepare(
+			     struct bhnd_nvram_store *sc,
+			     bhnd_nvstore_index *index);
+void			*bhnd_nvstore_index_lookup(struct bhnd_nvram_store *sc,
+			     bhnd_nvstore_index *index, const char *name);
+
+bhnd_nvstore_path	*bhnd_nvstore_get_root_path(
+			    struct bhnd_nvram_store *sc);
+bool			 bhnd_nvstore_is_root_path(struct bhnd_nvram_store *sc,
+			     bhnd_nvstore_path *path);
+
+void			 bhnd_nvstore_path_free(struct bhnd_nvstore_path *path);
+
+void			*bhnd_nvstore_path_data_next(
+			     struct bhnd_nvram_store *sc,
+			     bhnd_nvstore_path *path, void **indexp);
+void			*bhnd_nvstore_path_data_lookup(
+			     struct bhnd_nvram_store *sc,
+			     bhnd_nvstore_path *path, const char *name);
+bhnd_nvstore_update	*bhnd_nvstore_path_get_update(
+			     struct bhnd_nvram_store *sc,
+			     bhnd_nvstore_path *path, const char *name);
+
+bhnd_nvstore_alias	*bhnd_nvstore_find_alias(struct bhnd_nvram_store *sc,
+			     const char *path);
+bhnd_nvstore_alias	*bhnd_nvstore_get_alias(struct bhnd_nvram_store *sc,
+			     u_long alias_val);
+
+bhnd_nvstore_path	*bhnd_nvstore_get_path(struct bhnd_nvram_store *sc,
+			     const char *path, size_t path_len);
+bhnd_nvstore_path	*bhnd_nvstore_resolve_path_alias(
+			     struct bhnd_nvram_store *sc, u_long aval);
+
+bhnd_nvstore_path	*bhnd_nvstore_var_get_path(struct bhnd_nvram_store *sc,
+			     bhnd_nvstore_name_info *info);
+int			 bhnd_nvstore_var_register_path(
+			     struct bhnd_nvram_store *sc,
+			     bhnd_nvstore_name_info *info, void *cookiep);
+
+int			 bhnd_nvstore_register_path(struct bhnd_nvram_store *sc,
+			     const char *path, size_t path_len);
+int			 bhnd_nvstore_register_alias(
+			     struct bhnd_nvram_store *sc,
+			     const bhnd_nvstore_name_info *info, void *cookiep);
+
+const char		*bhnd_nvstore_parse_relpath(const char *parent,
+			     const char *child);
+int			 bhnd_nvstore_parse_name_info(const char *name,
+			     bhnd_nvstore_name_type name_type,
+			     uint32_t data_caps, bhnd_nvstore_name_info *info);
 
 /**
  * NVRAM variable name descriptor.
@@ -121,7 +196,7 @@ typedef enum {
  * 
  * Alias values are always positive, base 10 integers.
  */
-typedef struct bhnd_nvstore_name_info {
+struct bhnd_nvstore_name_info {
 	const char		*name;		/**< variable name */
 	bhnd_nvstore_var_type	 type;		/**< variable type */
 	bhnd_nvstore_path_type	 path_type;	/**< path type */
@@ -139,7 +214,7 @@ typedef struct bhnd_nvstore_name_info {
 			u_long		 value;		/**< device alias */
 		} alias;
 	} path;
-} bhnd_nvstore_name_info;
+};
 
 /**
  * NVRAM variable index.
@@ -147,16 +222,16 @@ typedef struct bhnd_nvstore_name_info {
  * Provides effecient name-based lookup by maintaining an array of cached
  * cookiep values, sorted lexicographically by relative variable name.
  */
-typedef struct bhnd_nvstore_index {
+struct bhnd_nvstore_index {
 	size_t	 count;		/**< entry count */
 	size_t	 capacity;	/**< entry capacity */
 	void	*cookiep[];	/**< cookiep values */
-} bhnd_nvstore_index;
+};
 
 /**
  * NVRAM device path.
  */
-typedef struct bhnd_nvstore_path {
+struct bhnd_nvstore_path {
 	char				*path_str;	/**< canonical path string */
 	size_t				 num_vars;	/**< per-path count of committed
 							     (non-pending) variables */
@@ -170,29 +245,29 @@ typedef struct bhnd_nvstore_path {
 	bhnd_nvram_plist		*pending;	/**< pending changes */
 
 	LIST_ENTRY(bhnd_nvstore_path) np_link;
-} bhnd_nvstore_path;
+};
 
 /**
  * NVRAM device path alias.
  */
-typedef struct bhnd_nvstore_alias {
+struct bhnd_nvstore_alias {
 	bhnd_nvstore_path	*path;		/**< borrowed path reference */
 	void			*cookiep;	/**< NVRAM variable's cookiep value */
 	u_long			 alias;		/**< alias value */
 
 	LIST_ENTRY(bhnd_nvstore_alias) na_link;
-} bhnd_nvstore_alias;
+};
 
 /**
  * NVRAM pending update entry.
  */
-typedef struct bhnd_nvstore_update {
+struct bhnd_nvstore_update {
 	char		*name;		/**< full variable name (including any path prefix). */
 	const char	*rel_name;	/**< path-relative variable name. */
 	bhnd_nvram_val	*value;		/**< new value, or NULL if representing deletion */
 
 	LIST_ENTRY(bhnd_nvstore_update) nc_link;
-} bhnd_nvstore_update;
+};
 
 /** bhnd nvram store instance state */
 struct bhnd_nvram_store {

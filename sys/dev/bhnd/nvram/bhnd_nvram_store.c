@@ -65,85 +65,31 @@ __FBSDID("$FreeBSD$");
  * Manages in-memory and persistent representations of NVRAM data.
  */
 
-typedef enum {
-	BHND_NVSTORE_NAME_INTERNAL,
-	BHND_NVSTORE_NAME_EXTERNAL
-} bhnd_nvstore_name_type;
-
 static int			 bhnd_nvstore_parse_data(
 				     struct bhnd_nvram_store *sc);
 
 static int			 bhnd_nvstore_parse_path_entries(
 				     struct bhnd_nvram_store *sc);
 
-static bhnd_nvstore_index	*bhnd_nvstore_index_new(size_t capacity);
-static void			 bhnd_nvstore_index_free(
-				     bhnd_nvstore_index *index);
-static int			 bhnd_nvstore_index_append(
+static int			 bhnd_nvram_store_export_child(
 				     struct bhnd_nvram_store *sc,
-				     bhnd_nvstore_index *index,
-				     void *cookiep);
-static int			 bhnd_nvstore_index_prepare(
-				     struct bhnd_nvram_store *sc,
-				     bhnd_nvstore_index *index);
-static void			*bhnd_nvstore_index_lookup(
-				     struct bhnd_nvram_store *sc,
-				     bhnd_nvstore_index *index,
-				     const char *name);
+				     bhnd_nvstore_path *top,
+				     bhnd_nvstore_path *child,
+				     bhnd_nvram_plist *plist,
+				     uint32_t flags);
 
-static bhnd_nvstore_path	*bhnd_nvstore_get_root_path(
-				    struct bhnd_nvram_store *sc);
-static bool			 bhnd_nvstore_is_root_path(
-				     struct bhnd_nvram_store *sc,
-				     bhnd_nvstore_path *path);
-
-static void			*bhnd_nvstore_path_data_next(
-				      struct bhnd_nvram_store *sc,
-				      bhnd_nvstore_path *path, void **indexp);
-static void			*bhnd_nvstore_path_data_lookup(
+static int			 bhnd_nvstore_export_merge(
 				     struct bhnd_nvram_store *sc,
 				     bhnd_nvstore_path *path,
-				     const char *name);
-static bhnd_nvstore_update	*bhnd_nvstore_path_get_update(
-				     struct bhnd_nvram_store *sc,
-				     bhnd_nvstore_path *path, const char *name);
+				     bhnd_nvram_plist *merged,
+				     uint32_t flags);
 
-static bhnd_nvstore_alias	*bhnd_nvstore_find_alias(
+static int			 bhnd_nvstore_export_devpath_alias(
 				     struct bhnd_nvram_store *sc,
-				     const char *path);
-static bhnd_nvstore_alias	*bhnd_nvstore_get_alias(
-				     struct bhnd_nvram_store *sc,
-				     u_long alias_val);
-
-static bhnd_nvstore_path	*bhnd_nvstore_get_path(
-				     struct bhnd_nvram_store *sc,
-				     const char *path, size_t path_len);
-static bhnd_nvstore_path	*bhnd_nvstore_resolve_path_alias(
-				     struct bhnd_nvram_store *sc,
-				     u_long aval);
-
-static bhnd_nvstore_path	*bhnd_nvstore_var_get_path(
-				     struct bhnd_nvram_store *sc,
-				     bhnd_nvstore_name_info *info);
-static int			 bhnd_nvstore_var_register_path(
-				     struct bhnd_nvram_store *sc,
-				     bhnd_nvstore_name_info *info,
-				     void *cookiep);
-
-static int			 bhnd_nvstore_register_path(
-				     struct bhnd_nvram_store *sc,
-				     const char *path, size_t path_len);
-static int			 bhnd_nvstore_register_alias(
-				     struct bhnd_nvram_store *sc,
-				     const bhnd_nvstore_name_info *info,
-				     void *cookiep);
-
-static const char		*bhnd_nvstore_parse_relpath(const char *parent,
-				     const char *child);
-static int			 bhnd_nvstore_parse_name_info(const char *name,
-				     bhnd_nvstore_name_type name_type,
-				     uint32_t data_caps,
-				     bhnd_nvstore_name_info *info);
+				     bhnd_nvstore_path *path,
+				     const char *devpath,
+				     bhnd_nvram_plist *plist,
+				     u_long *alias_val);
 
 /**
  * Allocate and initialize a new NVRAM data store instance.
@@ -265,33 +211,6 @@ bhnd_nvram_store_parse_new(struct bhnd_nvram_store **store,
 }
 
 /**
- * Free an NVRAM path instance, releasing all associated resources.
- */
-static void
-bhnd_nvstore_path_free(struct bhnd_nvstore_path *path)
-{
-	/* Free the per-path index */
-	if (path->index != NULL)
-		bhnd_nvstore_index_free(path->index);
-
-	/* Free all update entries */
-	for (size_t i = 0; i < nitems(path->updates); i++) {
-		bhnd_nvstore_update *update, *upnext;
-		LIST_FOREACH_SAFE(update, &path->updates[i], nc_link, upnext) {
-			bhnd_nv_free(update->name);
-			if (update->value != NULL)
-				bhnd_nvram_val_release(update->value);
-
-			bhnd_nv_free(update);
-		}
-	}
-
-	bhnd_nvram_plist_release(path->pending);
-	bhnd_nv_free(path->path_str);
-	bhnd_nv_free(path);
-}
-
-/**
  * Free an NVRAM store instance, releasing all associated resources.
  * 
  * @param sc A store instance previously allocated via
@@ -326,6 +245,196 @@ bhnd_nvram_store_free(struct bhnd_nvram_store *sc)
 }
 
 /**
+ * Parse all variables vended by our backing NVRAM data instance,
+ * generating all path entries, alias entries, and variable indexes.
+ * 
+ * @param	sc	The NVRAM store instance to be initialized with
+ *			paths, aliases, and data parsed from its backing
+ *			data.
+ *
+ * @retval 0		success
+ * @retval non-zero	if an error occurs during parsing, a regular unix error
+ *			code will be returned.
+ */
+static int
+bhnd_nvstore_parse_data(struct bhnd_nvram_store *sc)
+{
+	const char	*name;
+	void		*cookiep;
+	int		 error;
+
+	/* Parse and register all device paths and path aliases. This enables
+	 * resolution of _forward_ references to device paths aliases when
+	 * scanning variable entries below */
+	if ((error = bhnd_nvstore_parse_path_entries(sc)))
+		return (error);
+
+	/* Calculate the per-path variable counts, and report dangling alias
+	 * references as an error. */
+	cookiep = NULL;
+	while ((name = bhnd_nvram_data_next(sc->data, &cookiep))) {
+		bhnd_nvstore_path	*path;
+		bhnd_nvstore_name_info	 info;
+
+		/* Parse the name info */
+		error = bhnd_nvstore_parse_name_info(name,
+		    BHND_NVSTORE_NAME_INTERNAL, sc->data_caps, &info);
+		if (error)
+			return (error);
+
+		switch (info.type) {
+		case BHND_NVSTORE_VAR:
+			/* Fetch referenced path */
+			path = bhnd_nvstore_var_get_path(sc, &info);
+			if (path == NULL) {
+				BHND_NV_LOG("variable '%s' has dangling "
+					    "path reference\n", name);
+				return (EFTYPE);
+			}
+
+			/* Increment path variable count */
+			if (path->num_vars == SIZE_MAX) {
+				BHND_NV_LOG("more than SIZE_MAX variables in "
+				    "path %s\n", path->path_str);
+				return (EFTYPE);
+			}
+			path->num_vars++;
+			break;
+
+		case BHND_NVSTORE_ALIAS_DECL:
+			/* Skip -- path alias already parsed and recorded */
+			break;
+		}
+	}
+
+	/* If the backing NVRAM data instance vends only a single root ("/")
+	 * path, we may be able to skip generating an index for the root
+	 * path */
+	if (sc->num_paths == 1) {
+		bhnd_nvstore_path *path;
+
+		/* If the backing instance provides its own name-based lookup
+		 * indexing, we can skip generating a duplicate here */
+		if (sc->data_caps & BHND_NVRAM_DATA_CAP_INDEXED)
+			return (0);
+
+		/* If the sole root path contains fewer variables than the
+		 * minimum indexing threshhold, we do not need to generate an
+		 * index */
+		path = bhnd_nvstore_get_root_path(sc);
+		if (path->num_vars < BHND_NV_IDX_VAR_THRESHOLD)
+			return (0);
+	}
+
+	/* Allocate per-path index instances */
+	for (size_t i = 0; i < nitems(sc->paths); i++) {
+		bhnd_nvstore_path	*path;
+
+		LIST_FOREACH(path, &sc->paths[i], np_link) {
+			path->index = bhnd_nvstore_index_new(path->num_vars);
+			if (path->index == NULL)
+				return (ENOMEM);
+		}
+	}
+
+	/* Populate per-path indexes */
+	cookiep = NULL;
+	while ((name = bhnd_nvram_data_next(sc->data, &cookiep))) {
+		bhnd_nvstore_name_info	 info;
+		bhnd_nvstore_path	*path;
+
+		/* Parse the name info */
+		error = bhnd_nvstore_parse_name_info(name,
+		    BHND_NVSTORE_NAME_INTERNAL, sc->data_caps, &info);
+		if (error)
+			return (error);
+
+		switch (info.type) {
+		case BHND_NVSTORE_VAR:
+			/* Fetch referenced path */
+			path = bhnd_nvstore_var_get_path(sc, &info);
+			BHND_NV_ASSERT(path != NULL,
+			    ("dangling path reference"));
+
+			/* Append to index */
+			error = bhnd_nvstore_index_append(sc, path->index,
+			    cookiep);
+			if (error)
+				return (error);
+			break;
+
+		case BHND_NVSTORE_ALIAS_DECL:
+			/* Skip */
+			break;
+		}
+	}
+
+	/* Prepare indexes for querying */
+	for (size_t i = 0; i < nitems(sc->paths); i++) {
+		bhnd_nvstore_path	*path;
+
+		LIST_FOREACH(path, &sc->paths[i], np_link) {
+			error = bhnd_nvstore_index_prepare(sc, path->index);
+			if (error)
+				return (error);
+		}
+	}
+
+	return (0);
+}
+
+
+/**
+ * Parse and register path and path alias entries for all declarations found in
+ * the NVRAM data backing @p nvram.
+ * 
+ * @param sc		The NVRAM store instance.
+ *
+ * @retval 0		success
+ * @retval non-zero	If parsing fails, a regular unix error code will be
+ *			returned.
+ */
+static int
+bhnd_nvstore_parse_path_entries(struct bhnd_nvram_store *sc)
+{
+	const char	*name;
+	void		*cookiep;
+	int		 error;
+
+	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
+
+	/* Skip path registration if the data source does not support device
+	 * paths. */
+	if (!(sc->data_caps & BHND_NVRAM_DATA_CAP_DEVPATHS)) {
+		BHND_NV_ASSERT(sc->root_path != NULL, ("missing root path"));
+		return (0);
+	}
+
+	/* Otherwise, parse and register all paths and path aliases */
+	cookiep = NULL;
+	while ((name = bhnd_nvram_data_next(sc->data, &cookiep))) {
+		bhnd_nvstore_name_info info;
+
+		/* Parse the name info */
+		error = bhnd_nvstore_parse_name_info(name,
+		    BHND_NVSTORE_NAME_INTERNAL, sc->data_caps, &info);
+		if (error)
+			return (error);
+
+		/* Register the path */
+		error = bhnd_nvstore_var_register_path(sc, &info, cookiep);
+		if (error) {
+			BHND_NV_LOG("failed to register path for %s: %d\n",
+			    name, error);
+			return (error);
+		}
+	}
+
+	return (0);
+}
+
+
+/**
  * Merge exported per-path variables (uncommitted, committed, or both) into 
  * the empty @p merged property list.
  * 
@@ -340,7 +449,7 @@ bhnd_nvram_store_free(struct bhnd_nvram_store *sc)
  *			fails, a regular unix error code will be returned.
  */
 static int
-bhnd_nvstore_merge_exported(struct bhnd_nvram_store *sc,
+bhnd_nvstore_export_merge(struct bhnd_nvram_store *sc,
     bhnd_nvstore_path *path, bhnd_nvram_plist *merged, uint32_t flags)
 {
 	void	*cookiep, *idxp;
@@ -595,7 +704,7 @@ bhnd_nvram_store_export_child(struct bhnd_nvram_store *sc,
 		goto cleanup;
 	}
 
-	error = bhnd_nvstore_merge_exported(sc, child, path_vars, flags);
+	error = bhnd_nvstore_export_merge(sc, child, path_vars, flags);
 	if (error)
 		goto cleanup;
 
@@ -957,604 +1066,6 @@ failed:
 }
 
 /**
- * Parse all variables vended by our backing NVRAM data instance,
- * generating all path entries, alias entries, and variable indexes.
- * 
- * @param	sc	The NVRAM store instance to be initialized with
- *			paths, aliases, and data parsed from its backing
- *			data.
- *
- * @retval 0		success
- * @retval non-zero	if an error occurs during parsing, a regular unix error
- *			code will be returned.
- */
-static int
-bhnd_nvstore_parse_data(struct bhnd_nvram_store *sc)
-{
-	const char	*name;
-	void		*cookiep;
-	int		 error;
-
-	/* Parse and register all device paths and path aliases. This enables
-	 * resolution of _forward_ references to device paths aliases when
-	 * scanning variable entries below */
-	if ((error = bhnd_nvstore_parse_path_entries(sc)))
-		return (error);
-
-	/* Calculate the per-path variable counts, and report dangling alias
-	 * references as an error. */
-	cookiep = NULL;
-	while ((name = bhnd_nvram_data_next(sc->data, &cookiep))) {
-		bhnd_nvstore_path	*path;
-		bhnd_nvstore_name_info	 info;
-
-		/* Parse the name info */
-		error = bhnd_nvstore_parse_name_info(name,
-		    BHND_NVSTORE_NAME_INTERNAL, sc->data_caps, &info);
-		if (error)
-			return (error);
-
-		switch (info.type) {
-		case BHND_NVSTORE_VAR:
-			/* Fetch referenced path */
-			path = bhnd_nvstore_var_get_path(sc, &info);
-			if (path == NULL) {
-				BHND_NV_LOG("variable '%s' has dangling "
-					    "path reference\n", name);
-				return (EFTYPE);
-			}
-
-			/* Increment path variable count */
-			if (path->num_vars == SIZE_MAX) {
-				BHND_NV_LOG("more than SIZE_MAX variables in "
-				    "path %s\n", path->path_str);
-				return (EFTYPE);
-			}
-			path->num_vars++;
-			break;
-
-		case BHND_NVSTORE_ALIAS_DECL:
-			/* Skip -- path alias already parsed and recorded */
-			break;
-		}
-	}
-
-	/* If the backing NVRAM data instance vends only a single root ("/")
-	 * path, we may be able to skip generating an index for the root
-	 * path */
-	if (sc->num_paths == 1) {
-		bhnd_nvstore_path *path;
-
-		/* If the backing instance provides its own name-based lookup
-		 * indexing, we can skip generating a duplicate here */
-		if (sc->data_caps & BHND_NVRAM_DATA_CAP_INDEXED)
-			return (0);
-
-		/* If the sole root path contains fewer variables than the
-		 * minimum indexing threshhold, we do not need to generate an
-		 * index */
-		path = bhnd_nvstore_get_root_path(sc);
-		if (path->num_vars < BHND_NV_IDX_VAR_THRESHOLD)
-			return (0);
-	}
-
-	/* Allocate per-path index instances */
-	for (size_t i = 0; i < nitems(sc->paths); i++) {
-		bhnd_nvstore_path	*path;
-
-		LIST_FOREACH(path, &sc->paths[i], np_link) {
-			path->index = bhnd_nvstore_index_new(path->num_vars);
-			if (path->index == NULL)
-				return (ENOMEM);
-		}
-	}
-
-	/* Populate per-path indexes */
-	cookiep = NULL;
-	while ((name = bhnd_nvram_data_next(sc->data, &cookiep))) {
-		bhnd_nvstore_name_info	 info;
-		bhnd_nvstore_path	*path;
-
-		/* Parse the name info */
-		error = bhnd_nvstore_parse_name_info(name,
-		    BHND_NVSTORE_NAME_INTERNAL, sc->data_caps, &info);
-		if (error)
-			return (error);
-
-		switch (info.type) {
-		case BHND_NVSTORE_VAR:
-			/* Fetch referenced path */
-			path = bhnd_nvstore_var_get_path(sc, &info);
-			BHND_NV_ASSERT(path != NULL,
-			    ("dangling path reference"));
-
-			/* Append to index */
-			error = bhnd_nvstore_index_append(sc, path->index,
-			    cookiep);
-			if (error)
-				return (error);
-			break;
-
-		case BHND_NVSTORE_ALIAS_DECL:
-			/* Skip */
-			break;
-		}
-	}
-
-	/* Prepare indexes for querying */
-	for (size_t i = 0; i < nitems(sc->paths); i++) {
-		bhnd_nvstore_path	*path;
-
-		LIST_FOREACH(path, &sc->paths[i], np_link) {
-			error = bhnd_nvstore_index_prepare(sc, path->index);
-			if (error)
-				return (error);
-		}
-	}
-
-	return (0);
-}
-
-
-/**
- * Parse and register path and path alias entries for all declarations found in
- * the NVRAM data backing @p nvram.
- * 
- * @param sc		The NVRAM store instance.
- *
- * @retval 0		success
- * @retval non-zero	If parsing fails, a regular unix error code will be
- *			returned.
- */
-static int
-bhnd_nvstore_parse_path_entries(struct bhnd_nvram_store *sc)
-{
-	const char	*name;
-	void		*cookiep;
-	int		 error;
-
-	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
-
-	/* Skip path registration if the data source does not support device
-	 * paths. */
-	if (!(sc->data_caps & BHND_NVRAM_DATA_CAP_DEVPATHS)) {
-		BHND_NV_ASSERT(sc->root_path != NULL, ("missing root path"));
-		return (0);
-	}
-
-	/* Otherwise, parse and register all paths and path aliases */
-	cookiep = NULL;
-	while ((name = bhnd_nvram_data_next(sc->data, &cookiep))) {
-		bhnd_nvstore_name_info info;
-
-		/* Parse the name info */
-		error = bhnd_nvstore_parse_name_info(name,
-		    BHND_NVSTORE_NAME_INTERNAL, sc->data_caps, &info);
-		if (error)
-			return (error);
-
-		/* Register the path */
-		error = bhnd_nvstore_var_register_path(sc, &info, cookiep);
-		if (error) {
-			BHND_NV_LOG("failed to register path for %s: %d\n",
-			    name, error);
-			return (error);
-		}
-	}
-
-	return (0);
-}
-
-/**
- * Allocate and initialize a new index instance with @p capacity.
- * 
- * The caller is responsible for deallocating the instance via
- * bhnd_nvstore_index_free().
- * 
- * @param	capacity	The maximum number of variables to be indexed.
- * 
- * @retval non-NULL	success
- * @retval NULL		if allocation failed.
- */
-static bhnd_nvstore_index *
-bhnd_nvstore_index_new(size_t capacity)
-{
-	bhnd_nvstore_index	*index;
-	size_t			 bytes;
-
-	/* Allocate and populate variable index */
-	bytes = sizeof(struct bhnd_nvstore_index) + (sizeof(void *) * capacity);
-	index = bhnd_nv_malloc(bytes);
-	if (index == NULL) {
-		BHND_NV_LOG("error allocating %zu byte index\n", bytes);
-		return (NULL);
-	}
-
-	index->count = 0;
-	index->capacity = capacity;
-
-	return (index);
-}
-
-/**
- * Free an index instance, releasing all associated resources.
- * 
- * @param	index	An index instance previously allocated via
- *			bhnd_nvstore_index_new().
- */
-static void
-bhnd_nvstore_index_free(bhnd_nvstore_index *index)
-{
-	bhnd_nv_free(index);
-}
-
-/**
- * Append a new NVRAM variable's @p cookiep value to @p index.
- * 
- * After one or more append requests, the index must be prepared via
- * bhnd_nvstore_index_prepare() before any indexed lookups are performed.
- *
- * @param	sc	The NVRAM store from which NVRAM values will be queried.
- * @param	index	The index to be modified.
- * @param	cookiep	The cookiep value (as provided by the backing NVRAM
- *			data instance of @p sc) to be included in @p index.
- * 
- * @retval 0		success
- * @retval ENOMEM	if appending an additional entry would exceed the
- *			capacity of @p index.
- */
-static int
-bhnd_nvstore_index_append(struct bhnd_nvram_store *sc,
-    bhnd_nvstore_index *index, void *cookiep)
-{
-	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
-
-	if (index->count >= index->capacity)
-		return (ENOMEM);
-
-	index->cookiep[index->count] = cookiep;
-	index->count++;
-	return (0);
-}
-
-/* sort function for bhnd_nvstore_index_prepare() */
-static int
-bhnd_nvstore_idx_cmp(void *ctx, const void *lhs, const void *rhs)
-{
-	struct bhnd_nvram_store	*sc;
-	void			*l_cookiep, *r_cookiep;
-	const char		*l_str, *r_str;
-	const char		*l_name, *r_name;
-	int			 order;
-
-	sc = ctx;
-	l_cookiep = *(void * const *)lhs;
-	r_cookiep = *(void * const *)rhs;
-
-	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
-
-	/* Fetch string pointers from the cookiep values */
-	l_str = bhnd_nvram_data_getvar_name(sc->data, l_cookiep);
-	r_str = bhnd_nvram_data_getvar_name(sc->data, r_cookiep);
-
-	/* Trim device path prefixes */
-	if (sc->data_caps & BHND_NVRAM_DATA_CAP_DEVPATHS) {
-		l_name = bhnd_nvram_trim_path_name(l_str);
-		r_name = bhnd_nvram_trim_path_name(r_str);
-	} else {
-		l_name = l_str;
-		r_name = r_str;
-	}
-
-	/* Perform comparison */
-	order = strcmp(l_name, r_name);
-	if (order != 0 || lhs == rhs)
-		return (order);
-
-	/* If the backing data incorrectly contains variables with duplicate
-	 * names, we need a sort order that provides stable behavior.
-	 * 
-	 * Since Broadcom's own code varies wildly on this question, we just
-	 * use a simple precedence rule: The first declaration of a variable
-	 * takes precedence. */
-	return (bhnd_nvram_data_getvar_order(sc->data, l_cookiep, r_cookiep));
-}
-
-/**
- * Prepare @p index for querying via bhnd_nvstore_index_lookup().
- * 
- * After one or more append requests, the index must be prepared via
- * bhnd_nvstore_index_prepare() before any indexed lookups are performed.
- *
- * @param	sc	The NVRAM store from which NVRAM values will be queried.
- * @param	index	The index to be prepared.
- * 
- * @retval 0		success
- * @retval non-zero	if preparing @p index otherwise fails, a regular unix
- *			error code will be returned.
- */
-static int
-bhnd_nvstore_index_prepare(struct bhnd_nvram_store *sc,
-    bhnd_nvstore_index *index)
-{
-	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
-
-	/* Sort the index table */
-	qsort_r(index->cookiep, index->count, sizeof(index->cookiep[0]), sc,
-	    bhnd_nvstore_idx_cmp);
-
-	return (0);
-}
-
-/**
- * Return a borrowed reference to the root path node.
- * 
- * @param	sc	The NVRAM store.
- */
-static bhnd_nvstore_path *
-bhnd_nvstore_get_root_path(struct bhnd_nvram_store *sc)
-{
-	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
-	return (sc->root_path);
-}
-
-/**
- * Return true if @p path is the root path node.
- * 
- * @param	sc	The NVRAM store.
- * @param	path	The path to query.
- */
-static bool
-bhnd_nvstore_is_root_path(struct bhnd_nvram_store *sc, bhnd_nvstore_path *path)
-{
-	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
-	return (sc->root_path == path);
-}
-
-/**
- * Return an update entry matching @p name in @p path, or NULL if no entry
- * found.
- * 
- * @param sc	The NVRAM store.
- * @param path	The path to query.
- * @param name	The NVRAM variable name to search for in @p path's update set.
- * 
- * @retval non-NULL	success
- * @retval NULL		if @p name is not found in @p path.
- */
-static bhnd_nvstore_update *
-bhnd_nvstore_path_get_update(struct bhnd_nvram_store *sc,
-    bhnd_nvstore_path *path, const char *name)
-{
-	bhnd_nvstore_update_list	*list;
-	bhnd_nvstore_update		*update;
-	uint32_t			 h;
-
-	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
-
-	/* Use hash lookup */
-	h = hash32_str(name, HASHINIT);
-	list = &path->updates[h % nitems(path->updates)];
-
-	LIST_FOREACH(update, list, nc_link) {
-		if (strcmp(update->rel_name, name) == 0)
-			return (update);
-	}
-
-	/* Not found */
-	return (NULL);
-}
-
-/**
- * Iterate over all variable cookiep values retrievable from the backing
- * data store in @p path.
- * 
- * @warning Pending updates in @p path are ignored by this function.
- *
- * @param		sc	The NVRAM store.
- * @param		path	The NVRAM path to be iterated.
- * @param[in,out]	indexp	A pointer to an opaque indexp value previously
- *				returned by bhnd_nvstore_path_data_next(), or a
- *				NULL value to begin iteration.
- *
- * @return Returns the next variable name, or NULL if there are no more
- * variables defined in @p path.
- */
-static void *
-bhnd_nvstore_path_data_next(struct bhnd_nvram_store *sc,
-     bhnd_nvstore_path *path, void **indexp)
-{
-	void **index_ref;
-
-	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
-
-	/* No index */
-	if (path->index == NULL) {
-		/* An index is required for all non-empty, non-root path
-		 * instances */
-		BHND_NV_ASSERT(bhnd_nvstore_is_root_path(sc, path),
-		    ("missing index for non-root path %s", path->path_str));
-
-		/* Iterate NVRAM data directly, using the NVRAM data's cookiep
-		 * value as our indexp context */
-		if ((bhnd_nvram_data_next(sc->data, indexp)) == NULL)
-			return (NULL);
-
-		return (*indexp);
-	}
-
-	/* Empty index */
-	if (path->index->count == 0)
-		return (NULL);
-
-	if (*indexp == NULL) {
-		/* First index entry */
-		index_ref = &path->index->cookiep[0];
-	} else {
-		size_t idxpos;
-
-		/* Advance to next index entry */
-		index_ref = *indexp;
-		index_ref++;
-
-		/* Hit end of index? */
-		BHND_NV_ASSERT(index_ref > path->index->cookiep,
-		    ("invalid indexp"));
-
-		idxpos = (index_ref - path->index->cookiep);
-		if (idxpos >= path->index->count)
-			return (NULL);
-	}
-
-	/* Provide new index position */
-	*indexp = index_ref;
-
-	/* Return the data's cookiep value */
-	return (*index_ref);
-}
-
-/**
- * Perform an lookup of @p name in the backing NVRAM data for @p path,
- * returning the associated cookiep value, or NULL if the variable is not found
- * in the backing NVRAM data.
- * 
- * @warning Pending updates in @p path are ignored by this function.
- * 
- * @param	sc	The NVRAM store from which NVRAM values will be queried.
- * @param	path	The path to be queried.
- * @param	name	The variable name to be queried.
- * 
- * @retval non-NULL	success
- * @retval NULL		if @p name is not found in @p index.
- */
-static void *
-bhnd_nvstore_path_data_lookup(struct bhnd_nvram_store *sc,
-    bhnd_nvstore_path *path, const char *name)
-{
-	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
-
-	/* No index */
-	if (path->index == NULL) {
-		/* An index is required for all non-empty, non-root path
-		 * instances */
-		BHND_NV_ASSERT(bhnd_nvstore_is_root_path(sc, path),
-		    ("missing index for non-root path %s", path->path_str));
-
-		/* Look up directly in NVRAM data */
-		return (bhnd_nvram_data_find(sc->data, name));
-	}
-
-	/* Otherwise, delegate to an index-based lookup */
-	return (bhnd_nvstore_index_lookup(sc, path->index, name));
-}
-
-/**
- * Perform an index lookup of @p name, returning the associated cookiep
- * value, or NULL if the variable does not exist.
- * 
- * @param	sc	The NVRAM store from which NVRAM values will be queried.
- * @param	index	The index to be queried.
- * @param	name	The variable name to be queried.
- * 
- * @retval non-NULL	success
- * @retval NULL		if @p name is not found in @p index.
- */
-static void *
-bhnd_nvstore_index_lookup(struct bhnd_nvram_store *sc,
-    bhnd_nvstore_index *index, const char *name)
-{
-	void		*cookiep;
-	const char	*indexed_name;
-	size_t		 min, mid, max;
-	uint32_t	 data_caps;
-	int		 order;
-
-	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
-	BHND_NV_ASSERT(index != NULL, ("NULL index"));
-
-	/*
-	 * Locate the requested variable using a binary search.
-	 */
-	if (index->count == 0)
-		return (NULL);
-
-	data_caps = sc->data_caps;
-	min = 0;
-	max = index->count - 1;
-
-	while (max >= min) {
-		/* Select midpoint */
-		mid = (min + max) / 2;
-		cookiep = index->cookiep[mid];
-
-		/* Fetch variable name */
-		indexed_name = bhnd_nvram_data_getvar_name(sc->data, cookiep);
-
-		/* Trim any path prefix */
-		if (data_caps & BHND_NVRAM_DATA_CAP_DEVPATHS)
-			indexed_name = bhnd_nvram_trim_path_name(indexed_name);
-
-		/* Determine which side of the partition to search */
-		order = strcmp(indexed_name, name);
-		if (order < 0) {
-			/* Search upper partition */
-			min = mid + 1;
-		} else if (order > 0) {
-			/* Search (non-empty) lower partition */
-			if (mid == 0)
-				break;
-			max = mid - 1;
-		} else if (order == 0) {
-			size_t	idx;
-
-			/*
-			 * Match found.
-			 * 
-			 * If this happens to be a key with multiple definitions
-			 * in the backing store, we need to find the entry with
-			 * the highest declaration precedence.
-			 * 
-			 * Duplicates are sorted in order of descending
-			 * precedence; to find the highest precedence entry,
-			 * we search backwards through the index.
-			 */
-			idx = mid;
-			while (idx > 0) {
-				void		*dup_cookiep;
-				const char	*dup_name;
-
-				/* Fetch preceding index entry */
-				idx--;
-				dup_cookiep = index->cookiep[idx];
-				dup_name = bhnd_nvram_data_getvar_name(sc->data,
-				    dup_cookiep);
-
-				/* Trim any path prefix */
-				if (data_caps & BHND_NVRAM_DATA_CAP_DEVPATHS) {
-					dup_name = bhnd_nvram_trim_path_name(
-					    dup_name);
-				}
-
-				/* If no match, current cookiep is the variable
-				 * definition with the highest precedence */
-				if (strcmp(indexed_name, dup_name) != 0)
-					return (cookiep);
-
-				/* Otherwise, prefer this earlier definition,
-				 * and keep searching for a higher-precedence
-				 * definitions */
-				cookiep = dup_cookiep;
-			}
-
-			return (cookiep);
-		}
-	}
-
-	/* Not found */
-	return (NULL);
-}
-
-/**
  * Read an NVRAM variable.
  *
  * @param		sc	The NVRAM parser state.
@@ -1845,568 +1356,4 @@ bhnd_nvram_store_setvar(struct bhnd_nvram_store *sc, const char *name,
 	bhnd_nvram_val_release(&val);
 
 	return (error);
-}
-
-/**
- * Return the device path entry registered for @p path, if any.
- * 
- * @param	sc		The NVRAM store to be queried.
- * @param	path		The device path to search for.
- * @param	path_len	The length of @p path.
- *
- * @retval non-NULL	if found.
- * @retval NULL		if not found.
- */
-static bhnd_nvstore_path *
-bhnd_nvstore_get_path(struct bhnd_nvram_store *sc, const char *path,
-    size_t path_len)
-{
-	bhnd_nvstore_path_list	*plist;
-	bhnd_nvstore_path	*p;
-	uint32_t		 h;
-
-	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
-
-	/* Use hash lookup */
-	h = hash32_strn(path, path_len, HASHINIT);
-	plist = &sc->paths[h % nitems(sc->paths)];
-
-	LIST_FOREACH(p, plist, np_link) {
-		/* Check for prefix match */
-		if (strncmp(p->path_str, path, path_len) != 0)
-			continue;
-
-		/* Check for complete match */
-		if (strnlen(path, path_len) != strlen(p->path_str))
-			continue;
-
-		return (p);
-	}
-
-	/* Not found */
-	return (NULL);
-}
-
-/**
- * Resolve @p aval to its corresponding device path entry, if any.
- * 
- * @param	sc		The NVRAM store to be queried.
- * @param	aval		The device path alias value to search for.
- *
- * @retval non-NULL	if found.
- * @retval NULL		if not found.
- */
-static bhnd_nvstore_path *
-bhnd_nvstore_resolve_path_alias(struct bhnd_nvram_store *sc, u_long aval)
-{
-	bhnd_nvstore_alias *alias;
-
-	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
-
-	/* Fetch alias entry */
-	if ((alias = bhnd_nvstore_get_alias(sc, aval)) == NULL)
-		return (NULL);
-
-	return (alias->path);
-}
-
-/**
- * Register a device path entry for the path referenced by variable name
- * @p info, if any.
- *
- * @param	sc		The NVRAM store to be updated.
- * @param	info		The NVRAM variable name info.
- * @param	cookiep		The NVRAM variable's cookiep value.
- *
- * @retval 0		if the path was successfully registered, or an identical
- *			path or alias entry exists.
- * @retval EEXIST	if a conflicting entry already exists for the path or
- *			alias referenced by @p info.
- * @retval ENOENT	if @p info contains a dangling alias reference.
- * @retval EINVAL	if @p info contains an unsupported bhnd_nvstore_var_type
- *			and bhnd_nvstore_path_type combination.
- * @retval ENOMEM	if allocation fails.
- */
-static int
-bhnd_nvstore_var_register_path(struct bhnd_nvram_store *sc,
-    bhnd_nvstore_name_info *info, void *cookiep)
-{
-	switch (info->type) {
-	case BHND_NVSTORE_VAR:
-		/* Variable */
-		switch (info->path_type) {
-		case BHND_NVSTORE_PATH_STRING:
-			/* Variable contains a full path string
-			 * (pci/1/1/varname); register the path */
-			return (bhnd_nvstore_register_path(sc,
-			    info->path.str.value, info->path.str.value_len));
-
-		case BHND_NVSTORE_PATH_ALIAS:
-			/* Variable contains an alias reference (0:varname).
-			 * There's no path to register */
-			return (0);
-		}
-
-		BHND_NV_PANIC("unsupported path type %d", info->path_type);
-		break;
-
-	case BHND_NVSTORE_ALIAS_DECL:
-		/* Alias declaration */
-		return (bhnd_nvstore_register_alias(sc, info, cookiep));
-	}
-
-	BHND_NV_PANIC("unsupported var type %d", info->type);
-}
-
-/**
- * Resolve the device path entry referenced referenced by @p info.
- *
- * @param	sc		The NVRAM store to be updated.
- * @param	info		Variable name information descriptor containing
- *				the path or path alias to be resolved.
- *
- * @retval non-NULL	if found.
- * @retval NULL		if not found.
- */
-static bhnd_nvstore_path *
-bhnd_nvstore_var_get_path(struct bhnd_nvram_store *sc,
-    bhnd_nvstore_name_info *info)
-{
-	switch (info->path_type) {
-	case BHND_NVSTORE_PATH_STRING:
-		return (bhnd_nvstore_get_path(sc, info->path.str.value,
-		    info->path.str.value_len));
-	case BHND_NVSTORE_PATH_ALIAS:
-		return (bhnd_nvstore_resolve_path_alias(sc,
-		    info->path.alias.value));
-	}
-
-	BHND_NV_PANIC("unsupported path type %d", info->path_type);
-}
-
-/**
- * Return the device path alias entry registered for @p alias_val, if any.
- * 
- * @param	sc		The NVRAM store to be queried.
- * @param	alias_val	The alias value to search for.
- *
- * @retval non-NULL	if found.
- * @retval NULL		if not found.
- */
-static bhnd_nvstore_alias *
-bhnd_nvstore_get_alias(struct bhnd_nvram_store *sc, u_long alias_val)
-{
-	bhnd_nvstore_alias_list	*alist;
-	bhnd_nvstore_alias	*alias;
-
-	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
-
-	/* Can use hash lookup */
-	alist = &sc->aliases[alias_val % nitems(sc->aliases)];
-	LIST_FOREACH(alias, alist, na_link) {
-		if (alias->alias == alias_val)
-			return (alias);			
-	}
-
-	/* Not found */
-	return (NULL);
-}
-
-/**
- * Return the device path alias entry registered for @p path, if any.
- * 
- * @param	sc	The NVRAM store to be queried.
- * @param	path	The alias path to search for.
- *
- * @retval non-NULL	if found.
- * @retval NULL		if not found.
- */
-static bhnd_nvstore_alias *
-bhnd_nvstore_find_alias(struct bhnd_nvram_store *sc, const char *path)
-{
-	bhnd_nvstore_alias *alias;
-
-	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
-
-	/* Have to scan the full table */
-	for (size_t i = 0; i < nitems(sc->aliases); i++) {
-		LIST_FOREACH(alias, &sc->aliases[i], na_link) {
-			if (strcmp(alias->path->path_str, path) == 0)
-				return (alias);			
-		}
-	}
-
-	/* Not found */
-	return (NULL);
-}
-
-/**
- * Register a device path entry for @p path.
- * 
- * @param	sc		The NVRAM store to be updated.
- * @param	path_str	The absolute device path string.
- * @param	path_slen	The length of @p path_str.
- * 
- * @retval 0		if the path was successfully registered, or an identical
- *			path/alias entry already exists.
- * @retval ENOMEM	if allocation fails.
- */
-static int
-bhnd_nvstore_register_path(struct bhnd_nvram_store *sc, const char *path_str,
-    size_t path_slen)
-{
-	bhnd_nvstore_path_list	*plist;
-	bhnd_nvstore_path	*path;
-	uint32_t		 h;
-
-	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
-
-	/* Already exists? */
-	if (bhnd_nvstore_get_path(sc, path_str, path_slen) != NULL)
-		return (0);
-
-	/* Can't represent more than SIZE_MAX paths */
-	if (sc->num_paths == SIZE_MAX)
-		return (ENOMEM);
-
-	/* Allocate new entry */
-	path = bhnd_nv_malloc(sizeof(*path));
-	if (path == NULL)
-		return (ENOMEM);
-
-	path->index = NULL;
-	path->num_vars = 0;
-	path->num_updates = 0;
-
-	/* Initialize update hash table */
-	for (size_t i = 0; i < nitems(path->updates); i++)
-		LIST_INIT(&path->updates[i]);
-
-	if ((path->pending = bhnd_nvram_plist_new()) == NULL) {
-		bhnd_nv_free(path);
-		return (ENOMEM);
-	}
-
-	if ((path->path_str = bhnd_nv_strndup(path_str, path_slen)) == NULL) {
-		bhnd_nvram_plist_release(path->pending);
-		bhnd_nv_free(path);
-		return (ENOMEM);
-	}
-
-	/* Insert in path hash table */
-	h = hash32_str(path->path_str, HASHINIT);
-	plist = &sc->paths[h % nitems(sc->paths)];
-	LIST_INSERT_HEAD(plist, path, np_link);
-
-	/* Increment path count */
-	sc->num_paths++;
-
-	return (0);
-}
-
-/**
- * Register a device path alias for an NVRAM 'devpathX' variable.
- * 
- * The path value for the alias will be fetched from the backing NVRAM data.
- * 
- * @param	sc	The NVRAM store to be updated.
- * @param	info	The NVRAM variable name info.
- * @param	cookiep	The NVRAM variable's cookiep value.
- * 
- * @retval 0		if the alias was successfully registered, or an
- *			identical alias entry exists.
- * @retval EEXIST	if a conflicting alias or path entry already exists.
- * @retval EINVAL	if @p info is not a BHND_NVSTORE_ALIAS_DECL or does
- *			not contain a BHND_NVSTORE_PATH_ALIAS entry.
- * @retval ENOMEM	if allocation fails.
- */
-static int
-bhnd_nvstore_register_alias(struct bhnd_nvram_store *sc,
-    const bhnd_nvstore_name_info *info, void *cookiep)
-{
-	bhnd_nvstore_alias_list	*alist;
-	bhnd_nvstore_alias	*alias;
-	bhnd_nvstore_path	*path;
-	char			*path_str;
-	size_t			 path_slen;
-	int			 error;
-
-	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
-
-	path_str = NULL;
-	alias = NULL;
-
-	/* Can't represent more than SIZE_MAX aliases */
-	if (sc->num_aliases == SIZE_MAX)
-		return (ENOMEM);
-
-	/* Must be an alias declaration */
-	if (info->type != BHND_NVSTORE_ALIAS_DECL)
-		return (EINVAL);
-
-	if (info->path_type != BHND_NVSTORE_PATH_ALIAS)
-		return (EINVAL);
-
-	/* Fetch the devpath variable's value length */
-	error = bhnd_nvram_data_getvar(sc->data, cookiep, NULL, &path_slen,
-	    BHND_NVRAM_TYPE_STRING);
-	if (error)
-		return (ENOMEM);
-
-	/* Allocate path string buffer */
-	if ((path_str = bhnd_nv_malloc(path_slen)) == NULL)
-		return (ENOMEM);
-
-	/* Decode to our new buffer */
-	error = bhnd_nvram_data_getvar(sc->data, cookiep, path_str, &path_slen,
-	    BHND_NVRAM_TYPE_STRING);
-	if (error)
-		goto failed;
-
-	/* Trim trailing '/' character(s) from the path length */
-	path_slen = strnlen(path_str, path_slen);
-	while (path_slen > 0 && path_str[path_slen-1] == '/') {
-		path_str[path_slen-1] = '\0';
-		path_slen--;
-	}
-
-	/* Is a conflicting alias entry already registered for this alias
-	 * value? */
-	alias = bhnd_nvstore_get_alias(sc, info->path.alias.value);
-	if (alias != NULL) {
-		if (alias->cookiep != cookiep ||
-		    strcmp(alias->path->path_str, path_str) != 0)
-		{
-			error = EEXIST;
-			goto failed;
-		}
-	}
-
-	/* Is a conflicting entry already registered for the alias path? */
-	if ((alias = bhnd_nvstore_find_alias(sc, path_str)) != NULL) {
-		if (alias->alias != info->path.alias.value ||
-		    alias->cookiep != cookiep ||
-		    strcmp(alias->path->path_str, path_str) != 0)
-		{
-			error = EEXIST;
-			goto failed;
-		}
-	}
-
-	/* Get (or register) the target path entry */
-	path = bhnd_nvstore_get_path(sc, path_str, path_slen);
-	if (path == NULL) {
-		error = bhnd_nvstore_register_path(sc, path_str, path_slen);
-		if (error)
-			goto failed;
-
-		path = bhnd_nvstore_get_path(sc, path_str, path_slen);
-		BHND_NV_ASSERT(path != NULL, ("missing registered path"));
-	}
-
-	/* Allocate alias entry */
-	alias = bhnd_nv_calloc(1, sizeof(*alias));
-	if (alias == NULL) {
-		error = ENOMEM;
-		goto failed;
-	}
-
-	alias->path = path;
-	alias->cookiep = cookiep;
-	alias->alias = info->path.alias.value;
-
-	/* Insert in alias hash table */
-	alist = &sc->aliases[alias->alias % nitems(sc->aliases)];
-	LIST_INSERT_HEAD(alist, alias, na_link);
-
-	/* Increment alias count */
-	sc->num_aliases++;
-
-	bhnd_nv_free(path_str);
-	return (0);
-
-failed:
-	if (path_str != NULL)
-		bhnd_nv_free(path_str);
-
-	if (alias != NULL)
-		bhnd_nv_free(alias);
-
-	return (error);
-}
-
-/**
- * If @p child is equal to or a child path of @p parent, return a pointer to
- * @p child's path component(s) relative to @p parent; otherwise, return NULL.
- */
-static const char *
-bhnd_nvstore_parse_relpath(const char *parent, const char *child)
-{
-	size_t prefix_len;
-
-	/* All paths have an implicit leading '/'; this allows us to treat
-	 * our manufactured root path of "/" as a prefix to all NVRAM-defined
-	 * paths (which do not necessarily include a leading '/' */
-	if (*parent == '/')
-		parent++;
-
-	if (*child == '/')
-		child++;
-
-	/* Is parent a prefix of child? */
-	prefix_len = strlen(parent);
-	if (strncmp(parent, child, prefix_len) != 0)
-		return (NULL);
-
-	/* A zero-length prefix matches everything */
-	if (prefix_len == 0)
-		return (child);
-
-	/* Is child equal to parent? */
-	if (child[prefix_len] == '\0')
-		return (child + prefix_len);
-
-	/* Is child actually a child of parent? */
-	if (child[prefix_len] == '/')
-		return (child + prefix_len + 1);
-
-	/* No match (e.g. parent=/foo..., child=/fooo...) */
-	return (NULL);
-}
-
-/**
- * Parse a raw NVRAM variable name and return its @p entry_type, its
- * type-specific @p prefix (e.g. '0:', 'pci/1/1', 'devpath'), and its
- * type-specific @p suffix (e.g. 'varname', '0').
- * 
- * @param	name		The NVRAM variable name to be parsed. This
- *				value must remain valid for the lifetime of
- *				@p info.
- * @param	type		The NVRAM name type -- either INTERNAL for names
- *				parsed from backing NVRAM data, or EXTERNAL for
- *				names provided by external NVRAM store clients.
- * @param	data_caps	The backing NVRAM data capabilities
- *				(see bhnd_nvram_data_caps()).
- * @param[out]	info		On success, the parsed variable name info.
- * 
- * @retval 0		success
- * @retval non-zero	if parsing @p name otherwise fails, a regular unix
- *			error code will be returned.
- */
-static int
-bhnd_nvstore_parse_name_info(const char *name, bhnd_nvstore_name_type type,
-    uint32_t data_caps, bhnd_nvstore_name_info *info)
-{
-	const char	*p;
-	char		*endp;
-
-	/* Skip path parsing? */
-	if (data_caps & BHND_NVRAM_DATA_CAP_DEVPATHS) {
-		/* devpath declaration? (devpath0=pci/1/1) */
-		if (strncmp(name, "devpath", strlen("devpath")) == 0) {
-			u_long alias;
-
-			/* Perform standard validation on the relative
-			 * variable name */
-			if (type != BHND_NVSTORE_NAME_INTERNAL &&
-			    !bhnd_nvram_validate_name(name))
-			{
-				return (ENOENT);
-			}
-
-			/* Parse alias value that should follow a 'devpath'
-			 * prefix */
-			p = name + strlen("devpath");
-			alias = strtoul(p, &endp, 10);
-			if (endp != p && *endp == '\0') {
-				info->type = BHND_NVSTORE_ALIAS_DECL;
-				info->path_type = BHND_NVSTORE_PATH_ALIAS;
-				info->name = name;
-				info->path.alias.value = alias;
-
-				return (0);
-			}
-		}
-
-		/* device aliased variable? (0:varname) */
-		if (bhnd_nv_isdigit(*name)) {
-			u_long alias;
-
-			/* Parse '0:' alias prefix */
-			alias = strtoul(name, &endp, 10);
-			if (endp != name && *endp == ':') {
-				/* Perform standard validation on the relative
-				 * variable name */
-				if (type != BHND_NVSTORE_NAME_INTERNAL &&
-				    !bhnd_nvram_validate_name(name))
-				{
-					return (ENOENT);
-				}
-
-				info->type = BHND_NVSTORE_VAR;
-				info->path_type = BHND_NVSTORE_PATH_ALIAS;
-
-				/* name follows 0: prefix */
-				info->name = endp + 1;
-				info->path.alias.value = alias;
-
-				return (0);
-			}
-		}
-
-		/* device variable? (pci/1/1/varname) */
-		if ((p = strrchr(name, '/')) != NULL) {
-			const char	*path, *relative_name;
-			size_t		 path_len;
-
-			/* Determine the path length; 'p' points at the last
-			 * path separator in 'name' */
-			path_len = p - name;
-			path = name;
-
-			/* The relative variable name directly follows the
-			 * final path separator '/' */
-			relative_name = path + path_len + 1;
-
-			/* Now that we calculated the name offset, exclude all
-			 * trailing '/' characters from the path length */
-			while (path_len > 0 && path[path_len-1] == '/')
-				path_len--;
-
-			/* Perform standard validation on the relative
-			 * variable name */
-			if (type != BHND_NVSTORE_NAME_INTERNAL &&
-			    !bhnd_nvram_validate_name(relative_name))
-			{
-				return (ENOENT);
-			}
-
-			/* Initialize result with pointers into the name
-			 * buffer */
-			info->type = BHND_NVSTORE_VAR;
-			info->path_type = BHND_NVSTORE_PATH_STRING;
-			info->name = relative_name;
-			info->path.str.value = path;
-			info->path.str.value_len = path_len;
-
-			return (0);
-		}
-	}
-
-	/* If all other parsing fails, the result is a simple variable with
-	 * an implicit path of "/" */
-	if (type != BHND_NVSTORE_NAME_INTERNAL &&
-	    !bhnd_nvram_validate_name(name))
-	{
-		/* Invalid relative name */
-		return (ENOENT);
-	}
-
-	info->type = BHND_NVSTORE_VAR;
-	info->path_type = BHND_NVSTORE_PATH_STRING;
-	info->name = name;
-	info->path.str.value = BHND_NVSTORE_ROOT_PATH;
-	info->path.str.value_len = BHND_NVSTORE_ROOT_PATH_LEN;
-
-	return (0);
 }
