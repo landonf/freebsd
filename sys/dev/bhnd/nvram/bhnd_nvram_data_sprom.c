@@ -402,50 +402,27 @@ bhnd_nvram_sprom_write_var(bhnd_sprom_opcode_state *state,
 			    var->name);
 			return (EINVAL);
 		}
-	
+
 		/* Set all bits */
 		memset(u32, 0xFF, ilen);
 	} else {
-		bhnd_nvram_val			 bcm_str;
-		union bhnd_nvram_sprom_storage	 var_storage;
-		size_t				 var_len, enc_nelem;
-		bhnd_nvram_type			 raw_type;
+		bhnd_nvram_val	 bcm_val;
+		const void	*var_ptr;
+		bhnd_nvram_type	 var_type, raw_type;
+		size_t		 var_len, enc_nelem;
 
-		/* Try to coerce the value into the native variable type.
-		 * 
-		 * For compatibility with text-based Broadcom NVRAM, if the
-		 * input is a string, we try to to interpret it via bcm-str
-		 * formatting */
-		var_len = sizeof(var_storage);
-
-		switch (bhnd_nvram_val_type(value)) {
-		case BHND_NVRAM_TYPE_STRING:
-			/* Convert to bcm-string value */
-			error = bhnd_nvram_val_convert_init(&bcm_str,
-			    &bhnd_nvram_val_bcm_string_fmt, value,
-			    BHND_NVRAM_VAL_DYNAMIC|BHND_NVRAM_VAL_BORROW_DATA);
-			if (error)
-				return (error);
-
-			/* Try to encode as the native variable type */
-			error = bhnd_nvram_val_encode(&bcm_str, &var_storage,
-			    &var_len, var->type);
-
-			/* Release our bcm-string representation */
-			bhnd_nvram_val_release(&bcm_str);
-
-			if (error)
-				return (error);
-			break;
-
-		default:
-			/* Try to encode as the native variable type */
-			error = bhnd_nvram_val_encode(value, &var_storage,
-			    &var_len, var->type);
-			if (error)
-				return (error);
-			break;
+		/* Try to coerce the value to the native variable format. */
+		error = bhnd_nvram_val_convert_init(&bcm_val, var->fmt, value,
+		    BHND_NVRAM_VAL_DYNAMIC|BHND_NVRAM_VAL_BORROW_DATA);
+		if (error) {
+			BHND_NV_LOG("error converting input type %s to %s "
+			    "format\n",
+			    bhnd_nvram_type_name(bhnd_nvram_val_type(value)),
+			    bhnd_nvram_val_fmt_name(var->fmt));
+			return (error);
 		}
+
+		var_ptr = bhnd_nvram_val_bytes(&bcm_val, &var_len, &var_type);
 
 		/*
 		 * Promote to a common 32-bit representation. 
@@ -459,11 +436,20 @@ bhnd_nvram_sprom_write_var(bhnd_sprom_opcode_state *state,
 		 * parse the character as a decimal integer, rather than
 		 * promoting the raw UTF8 byte value to a 32-bit value.
 		 */
-		raw_type = bhnd_nvram_raw_type(var->type);
-		error = bhnd_nvram_value_coerce(&var_storage, var_len, raw_type,
+		raw_type = bhnd_nvram_raw_type(var_type);
+		error = bhnd_nvram_value_coerce(var_ptr, var_len, raw_type,
 		     u32, &ilen, itype);
-		if (error)
+
+		/* Clean up temporary value representation */
+		bhnd_nvram_val_release(&bcm_val);
+
+		/* Report coercion failure */
+		if (error) {
+			BHND_NV_LOG("error promoting %s to %s: %d\n",
+			    bhnd_nvram_type_name(var_type),
+			    bhnd_nvram_type_name(itype), error);
 			return (error);
+		}
 
 		/* Encoded element count must match SPROM's definition */
 		error = bhnd_nvram_value_nelem(u32, ilen, itype, &enc_nelem);
@@ -1312,6 +1298,7 @@ bhnd_nvram_sprom_filter_setvar(struct bhnd_nvram_data *nv, const char *name,
     bhnd_nvram_val *value, bhnd_nvram_val **result)
 {
 	struct bhnd_nvram_sprom		*sp;
+	const struct bhnd_nvram_vardefn	*var;
 	bhnd_sprom_opcode_idx_entry	*entry;
 	bhnd_nvram_val			*spval;
 	int				 error;
@@ -1326,16 +1313,38 @@ bhnd_nvram_sprom_filter_setvar(struct bhnd_nvram_data *nv, const char *name,
 	if ((entry = bhnd_sprom_opcode_index_find(&sp->state, name)) == NULL)
 		return (ENOENT);
 
-	/* Value must be encodeable by our SPROM layout */
-	error = bhnd_nvram_sprom_write_var(&sp->state, entry, value, NULL);
+	var = bhnd_nvram_get_vardefn(entry->vid);
+	BHND_NV_ASSERT(var != NULL, ("missing variable definition"));
+
+	// TODO: do not denote deletion via NULL values
+	/* Check for deletion requests */
+	if (bhnd_nvram_val_type(value) == BHND_NVRAM_TYPE_NULL) {
+		if (!(var->flags & BHND_NVRAM_VF_IGNALL1))
+			return (EINVAL);
+
+		spval = bhnd_nvram_val_copy(value);
+		if (spval == NULL)
+			return (ENOMEM);
+
+		*result = spval;
+		return (0);
+	}
+
+	/* Value must be convertible to the native variable type */
+	error = bhnd_nvram_val_convert_new(&spval, var->fmt, value,
+	    BHND_NVRAM_VAL_DYNAMIC);
 	if (error)
 		return (error);
 
-	/* Success. The caller expects to own a reference to the result, so
-	 * we copy/retain the original value here. */
-	if ((spval = bhnd_nvram_val_copy(value)) == NULL)
-		return (ENOMEM);
+	/* Value must be encodeable by our SPROM layout */
+	error = bhnd_nvram_sprom_write_var(&sp->state, entry, spval, NULL);
+	if (error) {
+		bhnd_nvram_val_release(spval);
+		return (error);
+	}
 
+	/* Success. Transfer our ownership of the converted value to the
+	 * caller */
 	*result = spval;
 	return (0);
 }
