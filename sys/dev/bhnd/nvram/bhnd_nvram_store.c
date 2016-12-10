@@ -104,6 +104,9 @@ static void			*bhnd_nvstore_path_data_lookup(
 				     struct bhnd_nvram_store *sc,
 				     bhnd_nvstore_path *path,
 				     const char *name);
+static bhnd_nvstore_change	*bhnd_nvstore_path_get_pending(
+				     struct bhnd_nvram_store *sc,
+				     bhnd_nvstore_path *path, const char *name);
 
 static bhnd_nvstore_alias	*bhnd_nvstore_find_alias(
 				     struct bhnd_nvram_store *sc,
@@ -262,6 +265,32 @@ bhnd_nvram_store_parse_new(struct bhnd_nvram_store **store,
 }
 
 /**
+ * Free an NVRAM path instance, releasing all associated resources.
+ */
+static void
+bhnd_nvstore_path_free(struct bhnd_nvstore_path *path)
+{
+	/* Free the per-path index */
+	if (path->index != NULL)
+		bhnd_nvstore_index_free(path->index);
+
+	/* Free all changelist entries */
+	for (size_t i = 0; i < nitems(path->changes); i++) {
+		bhnd_nvstore_change *c, *cnext;
+		LIST_FOREACH_SAFE(c, &path->changes[i], nc_link, cnext) {
+			bhnd_nv_free(c->name);
+			bhnd_nvram_val_release(c->value);
+
+			bhnd_nv_free(c);
+		}
+	}
+
+	bhnd_nvram_plist_release(path->pending);
+	bhnd_nv_free(path->path_str);
+	bhnd_nv_free(path);
+}
+
+/**
  * Free an NVRAM store instance, releasing all associated resources.
  * 
  * @param sc A store instance previously allocated via
@@ -281,14 +310,8 @@ bhnd_nvram_store_free(struct bhnd_nvram_store *sc)
 	/* Clean up path hash table */
 	for (size_t i = 0; i < nitems(sc->paths); i++) {
 		bhnd_nvstore_path *path, *pnext;
-		LIST_FOREACH_SAFE(path, &sc->paths[i], np_link, pnext) {
-			if (path->index != NULL)
-				bhnd_nvstore_index_free(path->index);
-
-			bhnd_nvram_plist_release(path->pending);
-			bhnd_nv_free(path->path_str);
-			bhnd_nv_free(path);
-		}
+		LIST_FOREACH_SAFE(path, &sc->paths[i], np_link, pnext)
+			bhnd_nvstore_path_free(path);
 	}
 
 	if (sc->data != NULL)
@@ -300,10 +323,6 @@ bhnd_nvram_store_free(struct bhnd_nvram_store *sc)
 	BHND_NVSTORE_LOCK_DESTROY(sc);
 	bhnd_nv_free(sc);
 }
-
-/** Maximum alias ('devpathXX=') variable name length */
-#define	BHND_NVSTORE_ALIAS_VARNAME_MAXLEN	\
-	(sizeof("devpath") + sizeof(u_long)*3)
 
 /**
  * Merge exported per-path variables (uncommitted, committed, or both) into 
@@ -1292,6 +1311,40 @@ bhnd_nvstore_is_root_path(struct bhnd_nvram_store *sc, bhnd_nvstore_path *path)
 }
 
 /**
+ * Return the the pending changelist entry matching @p name in @p path, or
+ * NULL if no entry found.
+ * 
+ * @param sc	The NVRAM store.
+ * @param path	The path to query.
+ * @param name	The NVRAM variable name to search for in @p path's changelist.
+ * 
+ * @retval non-NULL	success
+ * @retval NULL		if @p name is not found in @p path.
+ */
+static bhnd_nvstore_change *
+bhnd_nvstore_path_get_pending(struct bhnd_nvram_store *sc,
+    bhnd_nvstore_path *path, const char *name)
+{
+	bhnd_nvstore_change_list	*list;
+	bhnd_nvstore_change		*c;
+	uint32_t			 h;
+
+	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
+
+	/* Use hash lookup */
+	h = hash32_str(name, HASHINIT);
+	list = &path->changes[h % nitems(path->changes)];
+
+	LIST_FOREACH(c, list, nc_link) {
+		if (strcmp(c->rel_name, name) == 0)
+			return (c);
+	}
+
+	/* Not found */
+	return (NULL);
+}
+
+/**
  * Iterate over all variable cookiep values retrievable from the backing
  * data store in @p path.
  * 
@@ -1526,7 +1579,7 @@ bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
 {
 	bhnd_nvstore_name_info	 info;
 	bhnd_nvstore_path	*path;
-	bhnd_nvram_prop		*prop;
+	bhnd_nvstore_change	*change;
 	void			*cookiep;
 	int			 error;
 
@@ -1545,14 +1598,17 @@ bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
 	}
 
 	/* Search uncommitted changes first */
-	prop = bhnd_nvram_plist_get_prop(path->pending, info.name);
-	if (prop != NULL) {
+	change = bhnd_nvstore_path_get_pending(sc, path, info.name);
+	if (change != NULL) {
+		bhnd_nvram_val *val;
+
 		/* Found in uncommitted change list */
-		if (bhnd_nvram_prop_type(prop) == BHND_NVRAM_TYPE_NULL) {
+		val = change->value;
+		if (bhnd_nvram_val_type(val) == BHND_NVRAM_TYPE_NULL) {
 			/* NULL property values denote a pending deletion */
 			error = ENOENT;
 		} else {
-			error = bhnd_nvram_prop_encode(prop, outp, olen, otype);
+			error = bhnd_nvram_val_encode(val, outp, olen, otype);
 		}
 
 		goto finished;
@@ -1581,6 +1637,7 @@ bhnd_nvram_store_setval_common(struct bhnd_nvram_store *sc, const char *name,
 {
 	bhnd_nvram_val		*prop_val;
 	bhnd_nvstore_path	*path;
+	bhnd_nvstore_change	*change;
 	const char		*full_name;
 	char			*namebuf;
 	void			*cookiep;
@@ -1642,11 +1699,82 @@ bhnd_nvram_store_setval_common(struct bhnd_nvram_store *sc, const char *name,
 		goto cleanup;
 	}
 
+	// XXX TODO REMOVE
 	/* Add relative variable name to the per-path change list */
 	error = bhnd_nvram_plist_replace_val(path->pending, info.name,
 	    prop_val);
 	if (error)
 		goto cleanup;
+
+	/* Update or create a pending change entry */
+	change = bhnd_nvstore_path_get_pending(sc, path, info.name);
+	if (change != NULL) {
+		char *n;
+
+		/* Update the full prefixed name, if required */
+		if (strcmp(change->name, full_name) != 0) {
+			n = bhnd_nv_strdup(full_name);
+			if (n == NULL) {
+				error = ENOMEM;
+				goto cleanup;
+			}
+
+			bhnd_nv_free(change->name);
+			change->name = n;
+			change->rel_name = n;
+			if (sc->data_caps & BHND_NVRAM_DATA_CAP_DEVPATHS)
+				change->rel_name = bhnd_nvram_trim_path_name(n);
+		}
+
+		/* Replace the value, transfering our value ownership
+		 * to the change entry */
+		bhnd_nvram_val_release(change->value);
+		change->value = prop_val;
+		prop_val = NULL;
+
+	} else {
+		bhnd_nvstore_change_list	*clist;
+		uint32_t			 h;
+
+		/* Can't represent more than SIZE_MAX change entries */
+		if (path->num_changes == SIZE_MAX) {
+			error = ENOMEM;
+			goto cleanup;
+		}
+
+		/* Allocate new entry */
+		if ((change = bhnd_nv_malloc(sizeof(*change))) == NULL) {
+			error = ENOMEM;
+			goto cleanup;
+		}
+
+		/* Copy the full name value */
+		change->name = bhnd_nv_strdup(full_name);
+		if (change->name == NULL) {
+			bhnd_nv_free(change);
+			error = ENOMEM;
+			goto cleanup;
+		}
+
+		/* Set the relative name as a pointer into the full name */
+		change->rel_name = change->name;
+		if (sc->data_caps & BHND_NVRAM_DATA_CAP_DEVPATHS) {
+			change->rel_name = bhnd_nvram_trim_path_name(
+			    change->rel_name);
+		}
+
+		/* Transfer our value ownership to the new change entry */
+		change->value = prop_val;
+		prop_val = NULL;
+
+		/* Insert into the hash table */
+		h = hash32_str(change->rel_name, HASHINIT);
+		clist = &path->changes[h % nitems(path->changes)];
+		LIST_INSERT_HEAD(clist, change, nc_link);
+
+		/* Increment change count */
+		path->num_changes++;
+	}
 
 	/* Success */
 	error = 0;
@@ -1935,13 +2063,13 @@ bhnd_nvstore_register_path(struct bhnd_nvram_store *sc, const char *path_str,
 
 	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
 
-	/* Can't represent more than SIZE_MAX paths */
-	if (sc->num_paths == SIZE_MAX)
-		return (ENOMEM);
-
 	/* Already exists? */
 	if (bhnd_nvstore_get_path(sc, path_str, path_slen) != NULL)
 		return (0);
+
+	/* Can't represent more than SIZE_MAX paths */
+	if (sc->num_paths == SIZE_MAX)
+		return (ENOMEM);
 
 	/* Allocate new entry */
 	path = bhnd_nv_malloc(sizeof(*path));
@@ -1950,6 +2078,11 @@ bhnd_nvstore_register_path(struct bhnd_nvram_store *sc, const char *path_str,
 
 	path->index = NULL;
 	path->num_vars = 0;
+	path->num_changes = 0;
+
+	/* Initialize changelist hash table */
+	for (size_t i = 0; i < nitems(path->changes); i++)
+		LIST_INIT(&path->changes[i]);
 
 	if ((path->pending = bhnd_nvram_plist_new()) == NULL) {
 		bhnd_nv_free(path);

@@ -53,9 +53,11 @@
 
 
 LIST_HEAD(bhnd_nvstore_alias_list, bhnd_nvstore_alias);
+LIST_HEAD(bhnd_nvstore_change_list, bhnd_nvstore_change);
 LIST_HEAD(bhnd_nvstore_path_list, bhnd_nvstore_path);
 
 typedef struct bhnd_nvstore_alias_list bhnd_nvstore_alias_list;
+typedef struct bhnd_nvstore_change_list bhnd_nvstore_change_list;
 typedef struct bhnd_nvstore_path_list bhnd_nvstore_path_list;
 
 /**
@@ -155,14 +157,17 @@ typedef struct bhnd_nvstore_index {
  * NVRAM device path.
  */
 typedef struct bhnd_nvstore_path {
-	char			*path_str;	/**< canonical path string */
-	size_t			 num_vars;	/**< per-path count of committed
-						     (non-pending) variables */
-	bhnd_nvstore_index	*index;		/**< per-path index, or NULL if
-						     this is a root path for
-						     which the data source
-						     may be queried directly. */
-	bhnd_nvram_plist	*pending;	/**< pending changes */
+	char				*path_str;	/**< canonical path string */
+	size_t				 num_vars;	/**< per-path count of committed
+							     (non-pending) variables */
+	bhnd_nvstore_index		*index;		/**< per-path index, or NULL if
+							     this is a root path for
+							     which the data source
+							     may be queried directly. */
+	bhnd_nvstore_change_list	 changes[4];	/**< uncommitted changes, hashed
+							     by path-relative variable name. */
+	size_t				 num_changes;	/**< pending change count */
+	bhnd_nvram_plist		*pending;	/**< pending changes */
 
 	LIST_ENTRY(bhnd_nvstore_path) np_link;
 } bhnd_nvstore_path;
@@ -177,6 +182,17 @@ typedef struct bhnd_nvstore_alias {
 
 	LIST_ENTRY(bhnd_nvstore_alias) na_link;
 } bhnd_nvstore_alias;
+
+/**
+ * NVRAM pending change.
+ */
+typedef struct bhnd_nvstore_change {
+	char		*name;		/**< full variable name (including any path prefix). */
+	const char	*rel_name;	/**< path-relative variable name. */
+	bhnd_nvram_val	*value;		/**< new value */
+
+	LIST_ENTRY(bhnd_nvstore_change) nc_link;
+} bhnd_nvstore_change;
 
 /** bhnd nvram store instance state */
 struct bhnd_nvram_store {
