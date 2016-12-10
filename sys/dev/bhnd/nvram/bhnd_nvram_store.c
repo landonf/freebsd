@@ -591,37 +591,6 @@ bhnd_nvstore_export_devpath_alias(struct bhnd_nvram_store *sc,
 }
 
 /**
- * Return true if there are no variables to be exported in @p path with
- * @p flags.
- * 
- * @param	sc		The NVRAM store instance.
- * @param	path		The NVRAM path to be queried.
- * @param	flags		Export flags. See BHND_NVSTORE_EXPORT_*.
- */
-static bool
-bhnd_nvstore_is_export_path_empty(struct bhnd_nvram_store *sc,
-    bhnd_nvstore_path *path, uint32_t flags)
-{
-	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
-
-	if (BHND_NVSTORE_GET_FLAG(flags, EXPORT_COMMITTED)) {
-		// TODO check for deleted variables
-		if (path->num_vars > 0)
-			return (false);
-	}
-
-	if (BHND_NVSTORE_GET_FLAG(flags, EXPORT_UNCOMMITTED)) {
-		/* If any variables writes are pending, the path is
-		 * non-empty */
-		if (bhnd_nvram_plist_count(path->pending) > 0)
-			return (false);
-	}
-
-	/* Path is empty */
-	return (true);
-}
-
-/**
  * Export a single @p child path's properties, appending the result to @p plist.
  * 
  * @param	sc		The NVRAM store instance.
@@ -669,9 +638,20 @@ bhnd_nvram_store_export_child(struct bhnd_nvram_store *sc,
 	if (!BHND_NVSTORE_GET_FLAG(flags, EXPORT_CHILDREN) && relpath_len > 0)
 		return (0);
 
+	/* Collect all variables to be included in the export */
+	if ((path_vars = bhnd_nvram_plist_new()) == NULL)
+		return (ENOMEM);
+
+	if ((error = bhnd_nvstore_export_merge(sc, child, path_vars, flags))) {
+		bhnd_nvram_plist_release(path_vars);
+		return (error);
+	}
+
 	/* Skip if no children are to be exported */
-	if (bhnd_nvstore_is_export_path_empty(sc, child, flags))
+	if (bhnd_nvram_plist_count(path_vars) == 0) {
+		bhnd_nvram_plist_release(path_vars);
 		return (0);
+	}
 
 	/* Determine appropriate device path encoding */
 	emit_compact_devpath = false;
@@ -688,7 +668,8 @@ bhnd_nvram_store_export_child(struct bhnd_nvram_store *sc,
 			emit_compact_devpath = true;
 	} else {
 		BHND_NV_LOG("invalid device path flag: %#" PRIx32, flags);
-		return (EINVAL);
+		error = EINVAL;
+		goto finished;
 	}
 
 	/* Allocate variable device path prefix to use for all property names,
@@ -704,12 +685,14 @@ bhnd_nvram_store_export_child(struct bhnd_nvram_store *sc,
 		error = bhnd_nvstore_export_devpath_alias(sc, child, relpath,
 		    plist, &alias_val);
 		if (error)
-			return (error);
+			goto finished;
 
 		/* Allocate variable name prefix */
 		len = bhnd_nv_asprintf(&prefix, "%lu:", alias_val);
-		if (prefix == NULL)
-			return (ENOMEM);
+		if (prefix == NULL) {
+			error = ENOMEM;
+			goto finished;
+		}
 	
 		prefix_len = len;
 	} else if (relpath_len > 0) {
@@ -718,21 +701,13 @@ bhnd_nvram_store_export_child(struct bhnd_nvram_store *sc,
 		/* Allocate the variable name prefix, appending '/' to the
 		 * relative path */
 		len = bhnd_nv_asprintf(&prefix, "%s/", relpath);
-		if (prefix == NULL)
-			return (ENOMEM);
+		if (prefix == NULL) {
+			error = ENOMEM;
+			goto finished;
+		}
 
 		prefix_len = len;
 	}
-
-	/* Merge committed and uncommitted variables */
-	if ((path_vars = bhnd_nvram_plist_new()) == NULL) {
-		error = ENOMEM;
-		goto cleanup;
-	}
-
-	error = bhnd_nvstore_export_merge(sc, child, path_vars, flags);
-	if (error)
-		goto cleanup;
 
 	/* If prefixing of variable names is required, allocate a name
 	 * formatting buffer */
@@ -755,7 +730,7 @@ bhnd_nvram_store_export_child(struct bhnd_nvram_store *sc,
 		namebuf = bhnd_nv_malloc(namebuf_size);
 		if (namebuf == NULL) {
 			error = ENOMEM;
-			goto cleanup;
+			goto finished;
 		}
 	}
 
@@ -792,13 +767,13 @@ bhnd_nvram_store_export_child(struct bhnd_nvram_store *sc,
 		error = bhnd_nvram_plist_append_val(plist, name,
 		    bhnd_nvram_prop_val(prop));
 		if (error)
-			goto cleanup;
+			goto finished;
 	}
 
 	/* Success */
 	error = 0;
 
-cleanup:
+finished:
 	if (prefix != NULL)
 		bhnd_nv_free(prefix);
 
