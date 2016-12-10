@@ -104,7 +104,7 @@ static void			*bhnd_nvstore_path_data_lookup(
 				     struct bhnd_nvram_store *sc,
 				     bhnd_nvstore_path *path,
 				     const char *name);
-static bhnd_nvstore_change	*bhnd_nvstore_path_get_pending(
+static bhnd_nvstore_update	*bhnd_nvstore_path_get_update(
 				     struct bhnd_nvram_store *sc,
 				     bhnd_nvstore_path *path, const char *name);
 
@@ -274,14 +274,15 @@ bhnd_nvstore_path_free(struct bhnd_nvstore_path *path)
 	if (path->index != NULL)
 		bhnd_nvstore_index_free(path->index);
 
-	/* Free all changelist entries */
-	for (size_t i = 0; i < nitems(path->changes); i++) {
-		bhnd_nvstore_change *c, *cnext;
-		LIST_FOREACH_SAFE(c, &path->changes[i], nc_link, cnext) {
-			bhnd_nv_free(c->name);
-			bhnd_nvram_val_release(c->value);
+	/* Free all update entries */
+	for (size_t i = 0; i < nitems(path->updates); i++) {
+		bhnd_nvstore_update *update, *upnext;
+		LIST_FOREACH_SAFE(update, &path->updates[i], nc_link, upnext) {
+			bhnd_nv_free(update->name);
+			if (update->value != NULL)
+				bhnd_nvram_val_release(update->value);
 
-			bhnd_nv_free(c);
+			bhnd_nv_free(update);
 		}
 	}
 
@@ -356,7 +357,7 @@ bhnd_nvstore_merge_exported(struct bhnd_nvram_store *sc,
 	if (!BHND_NVSTORE_GET_FLAG(flags, EXPORT_COMMITTED))
 		return (0);
 
-	/* Merge in the committed changes */
+	/* Merge in the committed NVRAM variables */
 	idxp = NULL;
 	while ((cookiep = bhnd_nvstore_path_data_next(sc, path, &idxp))) {
 		const char	*name;
@@ -369,7 +370,7 @@ bhnd_nvstore_merge_exported(struct bhnd_nvram_store *sc,
 		if (sc->data_caps & BHND_NVRAM_DATA_CAP_DEVPATHS)
 			name = bhnd_nvram_trim_path_name(name);
 
-		/* Skip if already defined in pending changes */
+		/* Skip if already defined in pending updates */
 		if (BHND_NVSTORE_GET_FLAG(flags, EXPORT_UNCOMMITTED)) {
 			if (bhnd_nvram_plist_contains(path->pending, name))
 				continue;
@@ -588,7 +589,7 @@ bhnd_nvram_store_export_child(struct bhnd_nvram_store *sc,
 		prefix_len = len;
 	}
 
-	/* Merge committed and uncommitted changes */
+	/* Merge committed and uncommitted variables */
 	if ((path_vars = bhnd_nvram_plist_new()) == NULL) {
 		error = ENOMEM;
 		goto cleanup;
@@ -814,8 +815,8 @@ bhnd_nvram_store_export(struct bhnd_nvram_store *sc, const char *path,
 	 * 
 	 * We append all new variables at the end of the input; this should
 	 * reduce the delta that needs to be written (e.g. to flash) when
-	 * committing NVRAM changes, and should result in a serialization
-	 * identical to the input serialization if uncommitted changes are
+	 * committing NVRAM updates, and should result in a serialization
+	 * identical to the input serialization if uncommitted updates are
 	 * excluded from the export.
 	 */
 	if ((*props = bhnd_nvram_plist_new()) == NULL) {
@@ -1311,33 +1312,33 @@ bhnd_nvstore_is_root_path(struct bhnd_nvram_store *sc, bhnd_nvstore_path *path)
 }
 
 /**
- * Return the the pending changelist entry matching @p name in @p path, or
- * NULL if no entry found.
+ * Return an update entry matching @p name in @p path, or NULL if no entry
+ * found.
  * 
  * @param sc	The NVRAM store.
  * @param path	The path to query.
- * @param name	The NVRAM variable name to search for in @p path's changelist.
+ * @param name	The NVRAM variable name to search for in @p path's update set.
  * 
  * @retval non-NULL	success
  * @retval NULL		if @p name is not found in @p path.
  */
-static bhnd_nvstore_change *
-bhnd_nvstore_path_get_pending(struct bhnd_nvram_store *sc,
+static bhnd_nvstore_update *
+bhnd_nvstore_path_get_update(struct bhnd_nvram_store *sc,
     bhnd_nvstore_path *path, const char *name)
 {
-	bhnd_nvstore_change_list	*list;
-	bhnd_nvstore_change		*c;
+	bhnd_nvstore_update_list	*list;
+	bhnd_nvstore_update		*update;
 	uint32_t			 h;
 
 	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
 
 	/* Use hash lookup */
 	h = hash32_str(name, HASHINIT);
-	list = &path->changes[h % nitems(path->changes)];
+	list = &path->updates[h % nitems(path->updates)];
 
-	LIST_FOREACH(c, list, nc_link) {
-		if (strcmp(c->rel_name, name) == 0)
-			return (c);
+	LIST_FOREACH(update, list, nc_link) {
+		if (strcmp(update->rel_name, name) == 0)
+			return (update);
 	}
 
 	/* Not found */
@@ -1348,7 +1349,7 @@ bhnd_nvstore_path_get_pending(struct bhnd_nvram_store *sc,
  * Iterate over all variable cookiep values retrievable from the backing
  * data store in @p path.
  * 
- * @warning Pending changes in @p path are ignored by this function.
+ * @warning Pending updates in @p path are ignored by this function.
  *
  * @param		sc	The NVRAM store.
  * @param		path	The NVRAM path to be iterated.
@@ -1417,7 +1418,7 @@ bhnd_nvstore_path_data_next(struct bhnd_nvram_store *sc,
  * returning the associated cookiep value, or NULL if the variable is not found
  * in the backing NVRAM data.
  * 
- * @warning Pending changes in @p path are ignored by this function.
+ * @warning Pending updates in @p path are ignored by this function.
  * 
  * @param	sc	The NVRAM store from which NVRAM values will be queried.
  * @param	path	The path to be queried.
@@ -1579,7 +1580,7 @@ bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
 {
 	bhnd_nvstore_name_info	 info;
 	bhnd_nvstore_path	*path;
-	bhnd_nvstore_change	*change;
+	bhnd_nvstore_update	*update;
 	void			*cookiep;
 	int			 error;
 
@@ -1597,18 +1598,15 @@ bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
 		goto finished;
 	}
 
-	/* Search uncommitted changes first */
-	change = bhnd_nvstore_path_get_pending(sc, path, info.name);
-	if (change != NULL) {
-		bhnd_nvram_val *val;
-
-		/* Found in uncommitted change list */
-		val = change->value;
-		if (bhnd_nvram_val_type(val) == BHND_NVRAM_TYPE_NULL) {
-			/* NULL property values denote a pending deletion */
+	/* Search uncommitted updates first */
+	update = bhnd_nvstore_path_get_update(sc, path, info.name);
+	if (update != NULL) {
+		if (update->value == NULL) {
+			/* NULL denotes a pending deletion */
 			error = ENOENT;
 		} else {
-			error = bhnd_nvram_val_encode(val, outp, olen, otype);
+			error = bhnd_nvram_val_encode(update->value, outp, olen,
+			    otype);
 		}
 
 		goto finished;
@@ -1637,7 +1635,7 @@ bhnd_nvram_store_setval_common(struct bhnd_nvram_store *sc, const char *name,
 {
 	bhnd_nvram_val		*prop_val;
 	bhnd_nvstore_path	*path;
-	bhnd_nvstore_change	*change;
+	bhnd_nvstore_update	*update;
 	const char		*full_name;
 	char			*namebuf;
 	void			*cookiep;
@@ -1700,80 +1698,80 @@ bhnd_nvram_store_setval_common(struct bhnd_nvram_store *sc, const char *name,
 	}
 
 	// XXX TODO REMOVE
-	/* Add relative variable name to the per-path change list */
+	/* Add relative variable name to the per-path update list */
 	error = bhnd_nvram_plist_replace_val(path->pending, info.name,
 	    prop_val);
 	if (error)
 		goto cleanup;
 
-	/* Update or create a pending change entry */
-	change = bhnd_nvstore_path_get_pending(sc, path, info.name);
-	if (change != NULL) {
+	/* Update or create a pending update entry */
+	update = bhnd_nvstore_path_get_update(sc, path, info.name);
+	if (update != NULL) {
 		char *n;
 
 		/* Update the full prefixed name, if required */
-		if (strcmp(change->name, full_name) != 0) {
+		if (strcmp(update->name, full_name) != 0) {
 			n = bhnd_nv_strdup(full_name);
 			if (n == NULL) {
 				error = ENOMEM;
 				goto cleanup;
 			}
 
-			bhnd_nv_free(change->name);
-			change->name = n;
-			change->rel_name = n;
+			bhnd_nv_free(update->name);
+			update->name = n;
+			update->rel_name = n;
 			if (sc->data_caps & BHND_NVRAM_DATA_CAP_DEVPATHS)
-				change->rel_name = bhnd_nvram_trim_path_name(n);
+				update->rel_name = bhnd_nvram_trim_path_name(n);
 		}
 
 		/* Replace the value, transfering our value ownership
-		 * to the change entry */
-		bhnd_nvram_val_release(change->value);
-		change->value = prop_val;
+		 * to the update entry */
+		bhnd_nvram_val_release(update->value);
+		update->value = prop_val;
 		prop_val = NULL;
 
 	} else {
-		bhnd_nvstore_change_list	*clist;
+		bhnd_nvstore_update_list	*update_list;
 		uint32_t			 h;
 
-		/* Can't represent more than SIZE_MAX change entries */
-		if (path->num_changes == SIZE_MAX) {
+		/* Can't represent more than SIZE_MAX update entries */
+		if (path->num_updates == SIZE_MAX) {
 			error = ENOMEM;
 			goto cleanup;
 		}
 
 		/* Allocate new entry */
-		if ((change = bhnd_nv_malloc(sizeof(*change))) == NULL) {
+		if ((update = bhnd_nv_malloc(sizeof(*update))) == NULL) {
 			error = ENOMEM;
 			goto cleanup;
 		}
 
 		/* Copy the full name value */
-		change->name = bhnd_nv_strdup(full_name);
-		if (change->name == NULL) {
-			bhnd_nv_free(change);
+		update->name = bhnd_nv_strdup(full_name);
+		if (update->name == NULL) {
+			bhnd_nv_free(update);
 			error = ENOMEM;
 			goto cleanup;
 		}
 
 		/* Set the relative name as a pointer into the full name */
-		change->rel_name = change->name;
+		update->rel_name = update->name;
 		if (sc->data_caps & BHND_NVRAM_DATA_CAP_DEVPATHS) {
-			change->rel_name = bhnd_nvram_trim_path_name(
-			    change->rel_name);
+			update->rel_name = bhnd_nvram_trim_path_name(
+			    update->rel_name);
 		}
 
-		/* Transfer our value ownership to the new change entry */
-		change->value = prop_val;
+		/* Transfer our value ownership to the new update entry */
+		update->value = prop_val;
 		prop_val = NULL;
 
 		/* Insert into the hash table */
-		h = hash32_str(change->rel_name, HASHINIT);
-		clist = &path->changes[h % nitems(path->changes)];
-		LIST_INSERT_HEAD(clist, change, nc_link);
+		h = hash32_str(update->rel_name, HASHINIT);
+		update_list = &path->updates[h % nitems(path->updates)];
+		LIST_INSERT_HEAD(update_list, update, nc_link);
 
-		/* Increment change count */
-		path->num_changes++;
+		/* Increment update count */
+		path->num_updates++;
 	}
 
 	/* Success */
@@ -2078,11 +2076,11 @@ bhnd_nvstore_register_path(struct bhnd_nvram_store *sc, const char *path_str,
 
 	path->index = NULL;
 	path->num_vars = 0;
-	path->num_changes = 0;
+	path->num_updates = 0;
 
-	/* Initialize changelist hash table */
-	for (size_t i = 0; i < nitems(path->changes); i++)
-		LIST_INIT(&path->changes[i]);
+	/* Initialize update hash table */
+	for (size_t i = 0; i < nitems(path->updates); i++)
+		LIST_INIT(&path->updates[i]);
 
 	if ((path->pending = bhnd_nvram_plist_new()) == NULL) {
 		bhnd_nv_free(path);
