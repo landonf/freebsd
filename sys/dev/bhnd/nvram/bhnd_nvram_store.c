@@ -286,8 +286,6 @@ bhnd_nvram_store_free(struct bhnd_nvram_store *sc)
 				bhnd_nvstore_index_free(path->index);
 
 			bhnd_nvram_plist_release(path->pending);
-			bhnd_nvram_plist_release(path->deleted);
-
 			bhnd_nv_free(path->path_str);
 			bhnd_nv_free(path);
 		}
@@ -1934,7 +1932,6 @@ bhnd_nvstore_register_path(struct bhnd_nvram_store *sc, const char *path_str,
 	bhnd_nvstore_path_list	*plist;
 	bhnd_nvstore_path	*path;
 	uint32_t		 h;
-	int			 error;
 
 	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
 
@@ -1947,7 +1944,7 @@ bhnd_nvstore_register_path(struct bhnd_nvram_store *sc, const char *path_str,
 		return (0);
 
 	/* Allocate new entry */
-	path = bhnd_nv_calloc(1, sizeof(*path));
+	path = bhnd_nv_malloc(sizeof(*path));
 	if (path == NULL)
 		return (ENOMEM);
 
@@ -1955,18 +1952,14 @@ bhnd_nvstore_register_path(struct bhnd_nvram_store *sc, const char *path_str,
 	path->num_vars = 0;
 
 	if ((path->pending = bhnd_nvram_plist_new()) == NULL) {
-		error = ENOMEM;
-		goto failed;
-	}
-
-	if ((path->deleted = bhnd_nvram_plist_new()) == NULL) {
-		error = ENOMEM;
-		goto failed;
+		bhnd_nv_free(path);
+		return (ENOMEM);
 	}
 
 	if ((path->path_str = bhnd_nv_strndup(path_str, path_slen)) == NULL) {
-		error = ENOMEM;
-		goto failed;
+		bhnd_nvram_plist_release(path->pending);
+		bhnd_nv_free(path);
+		return (ENOMEM);
 	}
 
 	/* Insert in path hash table */
@@ -1978,17 +1971,6 @@ bhnd_nvstore_register_path(struct bhnd_nvram_store *sc, const char *path_str,
 	sc->num_paths++;
 
 	return (0);
-
-failed:
-	if (path->pending != NULL)
-		bhnd_nvram_plist_release(path->pending);
-
-	if (path->deleted != NULL)
-		bhnd_nvram_plist_release(path->deleted);
-
-	bhnd_nv_free(path);
-
-	return (error);
 }
 
 /**

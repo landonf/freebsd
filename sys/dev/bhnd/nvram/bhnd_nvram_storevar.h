@@ -162,8 +162,7 @@ typedef struct bhnd_nvstore_path {
 						     this is a root path for
 						     which the data source
 						     may be queried directly. */
-	bhnd_nvram_plist	*pending;	/**< pending modifications */
-	bhnd_nvram_plist	*deleted;	/**< pending deletions */
+	bhnd_nvram_plist	*pending;	/**< pending changes */
 
 	LIST_ENTRY(bhnd_nvstore_path) np_link;
 } bhnd_nvstore_path;
