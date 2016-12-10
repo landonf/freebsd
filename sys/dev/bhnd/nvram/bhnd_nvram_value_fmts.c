@@ -143,7 +143,6 @@ const bhnd_nvram_val_fmt bhnd_nvram_val_bcm_leddc_fmt = {
 	.op_encode_elem	= bhnd_nvram_val_bcm_leddc_encode_elem,
 };
 
-
 /**
  * Broadcom NVRAM decimal integer format.
  *
@@ -205,7 +204,6 @@ static const bhnd_nvram_val_fmt bhnd_nvram_val_bcm_string_csv_fmt = {
 	const bhnd_nvram_val_fmt bhnd_nvram_val_ ## _n ## _fmt = {	\
 		.name		= __STRING(_n),				\
 		.native_type	= BHND_NVRAM_TYPE_ ## _type,		\
-		.copy_direct	= true,					\
 	}
 
 BHND_NVRAM_VAL_FMT_NATIVE(uint8,	UINT8);

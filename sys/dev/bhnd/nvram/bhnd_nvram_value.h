@@ -46,6 +46,9 @@
 typedef struct bhnd_nvram_val_fmt	bhnd_nvram_val_fmt;
 typedef struct bhnd_nvram_val		bhnd_nvram_val;
 
+const char			*bhnd_nvram_val_fmt_name(
+				     const bhnd_nvram_val_fmt *fmt);
+
 const bhnd_nvram_val_fmt	*bhnd_nvram_val_default_fmt(
 				      bhnd_nvram_type type);
 
@@ -92,7 +95,7 @@ int				 bhnd_nvram_val_vprintf(bhnd_nvram_val *value,
 
 
 const void			*bhnd_nvram_val_bytes(bhnd_nvram_val *value,
-				     size_t *olen, bhnd_nvram_type *oitype);
+				     size_t *olen, bhnd_nvram_type *otype);
 
 bhnd_nvram_type			 bhnd_nvram_val_type(bhnd_nvram_val *value);
 bhnd_nvram_type			 bhnd_nvram_val_elem_type(
