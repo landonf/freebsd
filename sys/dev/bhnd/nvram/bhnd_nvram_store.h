@@ -81,6 +81,8 @@ int	bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
 	    void *outp, size_t *olen, bhnd_nvram_type otype);
 int	bhnd_nvram_store_setvar(struct bhnd_nvram_store *sc, const char *name,
 	    const void *inp, size_t ilen, bhnd_nvram_type itype);
+int	bhnd_nvram_store_unsetvar(struct bhnd_nvram_store *sc,
+	    const char *name);
 
 int	bhnd_nvram_store_setval(struct bhnd_nvram_store *sc, const char *name,
 	    bhnd_nvram_val *value);

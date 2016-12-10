@@ -591,6 +591,37 @@ bhnd_nvstore_export_devpath_alias(struct bhnd_nvram_store *sc,
 }
 
 /**
+ * Return true if there are no variables to be exported in @p path with
+ * @p flags.
+ * 
+ * @param	sc		The NVRAM store instance.
+ * @param	path		The NVRAM path to be queried.
+ * @param	flags		Export flags. See BHND_NVSTORE_EXPORT_*.
+ */
+static bool
+bhnd_nvstore_is_export_path_empty(struct bhnd_nvram_store *sc,
+    bhnd_nvstore_path *path, uint32_t flags)
+{
+	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
+
+	if (BHND_NVSTORE_GET_FLAG(flags, EXPORT_COMMITTED)) {
+		// TODO check for deleted variables
+		if (path->num_vars > 0)
+			return (false);
+	}
+
+	if (BHND_NVSTORE_GET_FLAG(flags, EXPORT_UNCOMMITTED)) {
+		/* If any variables writes are pending, the path is
+		 * non-empty */
+		if (bhnd_nvram_plist_count(path->pending) > 0)
+			return (false);
+	}
+
+	/* Path is empty */
+	return (true);
+}
+
+/**
  * Export a single @p child path's properties, appending the result to @p plist.
  * 
  * @param	sc		The NVRAM store instance.
@@ -639,13 +670,8 @@ bhnd_nvram_store_export_child(struct bhnd_nvram_store *sc,
 		return (0);
 
 	/* Skip if no children are to be exported */
-	if ((!BHND_NVSTORE_GET_FLAG(flags, EXPORT_COMMITTED) ||
-	     child->num_vars == 0) &&
-	    (!BHND_NVSTORE_GET_FLAG(flags, EXPORT_UNCOMMITTED) ||
-	     bhnd_nvram_plist_count(child->pending) == 0))
-	{
+	if (bhnd_nvstore_is_export_path_empty(sc, child, flags))
 		return (0);
-	}
 
 	/* Determine appropriate device path encoding */
 	emit_compact_devpath = false;
@@ -1119,7 +1145,6 @@ bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
 			error = bhnd_nvram_val_encode(update->value, outp, olen,
 			    otype);
 		}
-
 		goto finished;
 	}
 
@@ -1140,6 +1165,12 @@ finished:
 	return (error);
 }
 
+/**
+ * Common bhnd_nvram_store_set*() and bhnd_nvram_store_unsetvar()
+ * implementation.
+ * 
+ * If @p value is NULL, the variable will be marked for deletion.
+ */
 static int
 bhnd_nvram_store_setval_common(struct bhnd_nvram_store *sc, const char *name,
     bhnd_nvram_val *value)
@@ -1200,6 +1231,7 @@ bhnd_nvram_store_setval(struct bhnd_nvram_store *sc, const char *name,
  * @retval 0		success
  * @retval ENOENT	The requested variable @p name was not found.
  * @retval EINVAL	If the new value is invalid.
+ * @retval EINVAL	If @p name is read-only.
  */
 int
 bhnd_nvram_store_setvar(struct bhnd_nvram_store *sc, const char *name,
@@ -1220,6 +1252,28 @@ bhnd_nvram_store_setvar(struct bhnd_nvram_store *sc, const char *name,
 	BHND_NVSTORE_UNLOCK(sc);
 
 	bhnd_nvram_val_release(&val);
+
+	return (error);
+}
+
+/**
+ * Unset an NVRAM variable.
+ * 
+ * @param		sc	The NVRAM parser state.
+ * @param		name	The NVRAM variable name.
+ *
+ * @retval 0		success
+ * @retval ENOENT	The requested variable @p name was not found.
+ * @retval EINVAL	If @p name is read-only.
+ */
+int
+bhnd_nvram_store_unsetvar(struct bhnd_nvram_store *sc, const char *name)
+{
+	int error;
+
+	BHND_NVSTORE_LOCK(sc);
+	error = bhnd_nvram_store_setval_common(sc, name, BHND_NVRAM_VAL_NULL);
+	BHND_NVSTORE_UNLOCK(sc);
 
 	return (error);
 }
