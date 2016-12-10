@@ -922,6 +922,18 @@ bhnd_nvram_prop_type(bhnd_nvram_prop *prop)
 }
 
 /**
+ * Return true if @p prop has a NULL value type (BHND_NVRAM_TYPE_NULL), false
+ * otherwise.
+ * 
+ * @param      prop    The property to query.
+ */
+bool
+bhnd_nvram_prop_is_null(bhnd_nvram_prop *prop)
+{
+	return (bhnd_nvram_prop_type(prop) == BHND_NVRAM_TYPE_NULL);
+}
+
+/**
  * Return a borrowed reference to the property's internal value representation.
  *
  * @param	prop	The property to query.

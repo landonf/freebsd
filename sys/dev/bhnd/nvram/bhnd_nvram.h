@@ -120,6 +120,8 @@ const char		*bhnd_nvram_prop_name(bhnd_nvram_prop *prop);
 bhnd_nvram_val		*bhnd_nvram_prop_val(bhnd_nvram_prop *prop);
 bhnd_nvram_type		 bhnd_nvram_prop_type(bhnd_nvram_prop *prop);
 
+bool			 bhnd_nvram_prop_is_null(bhnd_nvram_prop *prop);
+
 const void		*bhnd_nvram_prop_bytes(bhnd_nvram_prop *prop,
 			     size_t *olen, bhnd_nvram_type *otype);
 int			 bhnd_nvram_prop_encode(bhnd_nvram_prop *prop,

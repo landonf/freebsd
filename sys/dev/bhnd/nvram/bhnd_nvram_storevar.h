@@ -57,8 +57,6 @@ typedef struct bhnd_nvstore_index	bhnd_nvstore_index;
 typedef struct bhnd_nvstore_path	bhnd_nvstore_path;
 
 typedef struct bhnd_nvstore_alias	bhnd_nvstore_alias;
-typedef struct bhnd_nvstore_update	bhnd_nvstore_update;
-typedef struct bhnd_nvstore_updates	bhnd_nvstore_updates;
 
 typedef struct bhnd_nvstore_alias_list	bhnd_nvstore_alias_list;
 typedef struct bhnd_nvstore_update_list	bhnd_nvstore_update_list;
@@ -122,7 +120,7 @@ void			*bhnd_nvstore_path_data_next(
 void			*bhnd_nvstore_path_data_lookup(
 			     struct bhnd_nvram_store *sc,
 			     bhnd_nvstore_path *path, const char *name);
-bhnd_nvstore_update	*bhnd_nvstore_path_get_update(
+bhnd_nvram_prop		*bhnd_nvstore_path_get_update(
 			     struct bhnd_nvram_store *sc,
 			     bhnd_nvstore_path *path, const char *name);
 int			 bhnd_nvstore_path_register_update(
@@ -139,10 +137,6 @@ bhnd_nvstore_path	*bhnd_nvstore_get_path(struct bhnd_nvram_store *sc,
 			     const char *path, size_t path_len);
 bhnd_nvstore_path	*bhnd_nvstore_resolve_path_alias(
 			     struct bhnd_nvram_store *sc, u_long aval);
-
-bhnd_nvstore_update	*bhnd_nvstore_updates_next(
-			     bhnd_nvstore_updates *updates,
-			     bhnd_nvstore_update *prev);
 
 bhnd_nvstore_path	*bhnd_nvstore_var_get_path(struct bhnd_nvram_store *sc,
 			     bhnd_nvstore_name_info *info);
@@ -240,26 +234,6 @@ struct bhnd_nvstore_index {
 };
 
 /**
- * NVRAM per-path update state.
- */
-struct bhnd_nvstore_updates {
-	bhnd_nvstore_update_list	ntable[4];	/**< name lookup table */
-	bhnd_nvstore_update_list	records;	/**< all update records */
-	size_t				num_updates;	/**< update count */
-};
-
-/**
- * NVRAM pending update entry.
- */
-struct bhnd_nvstore_update {
-	char		*name;		/**< path-relative variable name. */
-	bhnd_nvram_val	*value;		/**< new value, or NULL if representing deletion */
-
-	LIST_ENTRY(bhnd_nvstore_update) up_hash_link;
-	LIST_ENTRY(bhnd_nvstore_update) up_link;
-};
-
-/**
  * NVRAM device path.
  */
 struct bhnd_nvstore_path {
@@ -270,7 +244,6 @@ struct bhnd_nvstore_path {
 							     this is a root path for
 							     which the data source
 							     may be queried directly. */
-	bhnd_nvstore_updates		 updates;	/**< pending updates. */
 	bhnd_nvram_plist		*pending;	/**< pending changes */
 
 	LIST_ENTRY(bhnd_nvstore_path) np_link;

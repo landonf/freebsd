@@ -59,29 +59,6 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_nvram_storevar.h"
 
-static void			 bhnd_nvstore_updates_init(
-				     bhnd_nvstore_updates *updates);
-static void			 bhnd_nvstore_updates_fini(
-				     bhnd_nvstore_updates *updates);
-static bhnd_nvstore_update	*bhnd_nvstore_updates_get(
-				     bhnd_nvstore_updates *updates,
-				     const char *name);
-
-static int			 bhnd_nvstore_updates_add(
-				     bhnd_nvstore_updates *updates,
-				     const char *name, bhnd_nvram_val *value);
-static void			 bhnd_nvstore_updates_remove(
-				     bhnd_nvstore_updates *updates,
-				     const char *name);
-
-static bhnd_nvstore_update	*bhnd_nvstore_update_new(const char *name,
-				     bhnd_nvram_val *value);
-static void			 bhnd_nvstore_update_free(
-				     bhnd_nvstore_update *update);
-static int			 bhnd_nvstore_update_set(
-				     bhnd_nvstore_update *update,
-				     const char *name, bhnd_nvram_val *value);
-
 static int			 bhnd_nvstore_idx_cmp(void *ctx,
 				     const void *lhs, const void *rhs);
 
@@ -109,9 +86,6 @@ bhnd_nvstore_path_new(const char *path_str, size_t path_len)
 
 	path->index = NULL;
 	path->num_vars = 0;
-
-	/* Initialize update set */
-	bhnd_nvstore_updates_init(&path->updates);
 
 	path->pending = bhnd_nvram_plist_new();
 	if (path->pending == NULL)
@@ -145,291 +119,9 @@ bhnd_nvstore_path_free(struct bhnd_nvstore_path *path)
 	if (path->index != NULL)
 		bhnd_nvstore_index_free(path->index);
 
-	/* Free update set */
-	bhnd_nvstore_updates_fini(&path->updates);
-
 	bhnd_nvram_plist_release(path->pending);
 	bhnd_nv_free(path->path_str);
 	bhnd_nv_free(path);
-}
-
-/**
- * Initialize a new update set.
- * 
- * @param[out] updates	The update set to initialize.
- */
-static void
-bhnd_nvstore_updates_init(bhnd_nvstore_updates *updates)
-{
-	/* Initialize record list */
-	LIST_INIT(&updates->records);
-
-	/* Initialize hash table */
-	for (size_t i = 0; i < nitems(updates->ntable); i++)
-		LIST_INIT(&updates->ntable[i]);
-
-	updates->num_updates = 0;
-}
-
-/**
- * Free any resources associated with @p updates.
- * 
- * @param updates	An update set instance previously successfully
- *			initialized via bhnd_nvstore_updates_init().
- */
-static void
-bhnd_nvstore_updates_fini(bhnd_nvstore_updates *updates)
-{
-	bhnd_nvstore_update *up, *upnext;
-
-	LIST_FOREACH_SAFE(up, &updates->records, up_link, upnext)
-		bhnd_nvstore_update_free(up);
-}
-
-/**
- * Return the update record matching @p name in @p updates, or NULL if no
- * matching record exists.
- * 
- * @param updates	The NVRAM update state to query.
- * @param name		The NVRAM variable name to query.
- * 
- * @retval non-NULL	success
- * @retval NULL		if @p name is not found in @p path.
- */
-static bhnd_nvstore_update *
-bhnd_nvstore_updates_get(bhnd_nvstore_updates *updates, const char *name)
-{
-	bhnd_nvstore_update_list	*bucket;
-	bhnd_nvstore_update		*update;
-	uint32_t			 h;
-
-	/* Use hash lookup */
-	h = hash32_str(name, HASHINIT);
-	bucket = &updates->ntable[h % nitems(updates->ntable)];
-
-	LIST_FOREACH(update, bucket, up_hash_link) {
-		if (strcmp(update->name, name) == 0)
-			return (update);
-	}
-
-	/* Not found */
-	return (NULL);
-}
-
-/**
- * Fetch the next update record in @p updates.
- * 
- * @param	updates	The update set to be iterated.
- * @param	prev	The previous update record, or NULL to return the first
- *			record in @p updates.
- * 
- * @retval non-NULL	A borrowed reference to the next record in @p updates.
- * @retval NULL		If the end of the update set is reached.
- */
-bhnd_nvstore_update *
-bhnd_nvstore_updates_next(bhnd_nvstore_updates *updates,
-    bhnd_nvstore_update *prev)
-{
-	if (prev == NULL)
-		return (LIST_FIRST(&updates->records));
-
-	return (LIST_NEXT(prev, up_link));
-}
-
-/**
- * Add or replace an update record in @p updates with the given @p name
- * and @p value.
- * 
- * If an error occurs, @p updates will be left unmodified.
- * 
- * @param updates	The update set to be modified.
- * @param name		The path-relative variable name.
- * @param value		The new value, or NULL if this is a deletion.
- * 
- * @retval 0		success.
- * @retval ENOMEM	if allocation fails.
- */
-static int
-bhnd_nvstore_updates_add(bhnd_nvstore_updates *updates, const char *name,
-    bhnd_nvram_val *value)
-{
-	bhnd_nvstore_update_list	*bucket;
-	bhnd_nvstore_update		*update;
-	uint32_t			 h;
-
-	/* Update existing record, if any */
-	update = bhnd_nvstore_updates_get(updates, name);
-	if (update != NULL)
-		return (bhnd_nvstore_update_set(update, name, value));
-
-	/* Can't represent more than SIZE_MAX update entries */
-	if (updates->num_updates == SIZE_MAX)
-		return (ENOMEM);
-
-	/* Allocate new record */
-	update = bhnd_nvstore_update_new(name, value);
-	if (update == NULL)
-		return (ENOMEM);
-
-	/* Insert into the hash table */
-	h = hash32_str(update->name, HASHINIT);
-	bucket = &updates->ntable[h % nitems(updates->ntable)];
-	LIST_INSERT_HEAD(bucket, update, up_hash_link);
-
-	/* Add to record list */
-	LIST_INSERT_HEAD(&updates->records, update, up_link);
-
-	/* Increment update count */
-	updates->num_updates++;
-
-	return (0);
-}
-
-/**
- * Remove the update record in @p updates for the given @p name, if any.
- * 
- * @param updates	The update set to be modified.
- * @param name		The path-relative variable name to be removed.
- */
-static void
-bhnd_nvstore_updates_remove(bhnd_nvstore_updates *updates, const char *name)
-{
-	bhnd_nvstore_update *update;
-
-	/* Fetch record */
-	update = bhnd_nvstore_updates_get(updates, name);
-	if (update == NULL)
-		return;
-
-	/* Remove from hash table and record list */
-	LIST_REMOVE(update, up_hash_link);
-	LIST_REMOVE(update, up_link);
-
-	/* Free record */
-	bhnd_nvstore_update_free(update);
-
-	/* Decrement record count */
-	BHND_NV_ASSERT(updates->num_updates > 0, ("update count over-release"));
-	updates->num_updates--;
-}
-
-/**
- * Allocate and initialize a new update record.
- * 
- * @param name	The path-relative variable name.
- * @param value	The update value, or NULL if this is a deletion.
- * 
- * @retval 0		success.
- * @retval ENOMEM	if allocation fails.
- */
-static bhnd_nvstore_update *
-bhnd_nvstore_update_new(const char *name, bhnd_nvram_val *value)
-{
-	bhnd_nvstore_update	*update;
-	int			 error;
-
-	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
-
-	/* Allocate an empty (zero-initialized) instance */
-	update = bhnd_nv_calloc(1, sizeof(*update));
-	if (update == NULL)
-		return (NULL);
-
-	/* Initialize the new instance */
-	error = bhnd_nvstore_update_set(update, name, value);
-	if (error) {
-		if (error != ENOMEM)
-			BHND_NV_LOG("failed to initialize update: %d\n", error);
-
-		bhnd_nvstore_update_free(update);
-		return (NULL);
-	}
-
-	return (update);
-}
-
-/**
- * Free an update record, releasing all associated resources.
- * 
- * @param update The update record to be deallocated.
- */
-static void
-bhnd_nvstore_update_free(bhnd_nvstore_update *update)
-{
-	if (update->name != NULL)
-		bhnd_nv_free(update->name);
-
-	if (update->value != NULL)
-		bhnd_nvram_val_release(update->value);
-
-	bhnd_nv_free(update);
-}
-
-/**
- * Set the name and value of @p update.
- * 
- * If an error occurs, @p update will be left unmodified.
- * 
- * @param update	The update to be modified.
- * @param name		The new path-relative variable name to be set.
- * @param value		The new value, or NULL if this is a deletion.
- * 
- * @retval 0		success.
- * @retval ENOMEM	if allocation fails.
- */
-static int
-bhnd_nvstore_update_set(bhnd_nvstore_update *update, const char *name,
-    bhnd_nvram_val *value)
-{
-	bhnd_nvram_val	*update_val;
-	char		*update_name;
-	int		 error;
-
-	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
-
-	update_val = NULL;
-	update_name = NULL;
-
-	/* Copy the value */
-	if (value != NULL) {
-		update_val = bhnd_nvram_val_copy(value);
-		if (update_val == NULL) {
-			error = ENOMEM;
-			goto failed;
-		}
-	}
-
-	/* Update the full prefixed name, if required */
-	if (update->name == NULL || strcmp(update->name, name) != 0) {
-		update_name = bhnd_nv_strdup(name);
-		if (update_name == NULL) {
-			error = ENOMEM;
-			goto failed;
-		}
-
-		if (update->name != NULL)
-			bhnd_nv_free(update->name);
-
-		update->name = update_name;
-	}
-
-	/* Replace the current value, transfering our value ownership
-	 * to the update record */
-	if (update->value != NULL)
-		bhnd_nvram_val_release(update->value);
-
-	update->value = update_val;
-
-	return (0);
-
-failed:
-	if (update_val != NULL)
-		bhnd_nvram_val_release(update_val);
-
-	if (update_name != NULL)
-		bhnd_nv_free(update_name);
-
-	return (error);
 }
 
 /**
@@ -599,22 +291,22 @@ bhnd_nvstore_is_root_path(struct bhnd_nvram_store *sc, bhnd_nvstore_path *path)
 }
 
 /**
- * Return the update record matching @p name in @p path, or NULL if no record
+ * Return the update entry matching @p name in @p path, or NULL if no entry
  * found.
  * 
  * @param sc	The NVRAM store.
  * @param path	The path to query.
- * @param name	The NVRAM variable name to search for in @p path's update set.
+ * @param name	The NVRAM variable name to search for in @p path's update list.
  * 
  * @retval non-NULL	success
  * @retval NULL		if @p name is not found in @p path.
  */
-bhnd_nvstore_update *
+bhnd_nvram_prop *
 bhnd_nvstore_path_get_update(struct bhnd_nvram_store *sc,
     bhnd_nvstore_path *path, const char *name)
 {
 	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
-	return (bhnd_nvstore_updates_get(&path->updates, name));
+	return (bhnd_nvram_plist_get_prop(path->pending, name));
 }
 
 /**
@@ -691,24 +383,22 @@ bhnd_nvstore_path_register_update(struct bhnd_nvram_store *sc,
 		goto cleanup;
 	}
 
-	// XXX TODO REMOVE
 	/* Add relative variable name to the per-path update list */
-	error = bhnd_nvram_plist_replace_val(path->pending, name, prop_val);
-	if (error)
-		goto cleanup;
-
-
-	/* Add (or remove) update record */
 	if (value == NULL && !nvram_committed) {
 		/* This is a deletion request for a variable not defined in
 		 * out backing store; we can simply remove the corresponding
-		 * update record. */
-		bhnd_nvstore_updates_remove(&path->updates, name);
-		error = 0;
+		 * update entry. */
+		bhnd_nvram_plist_remove(path->pending, name);
 	} else {
-		/* Update or create a pending update record */
-		error = bhnd_nvstore_updates_add(&path->updates, name, prop_val);
+		/* Update or append a pending update entry */
+		error = bhnd_nvram_plist_replace_val(path->pending, name,
+		    prop_val);
+		if (error)
+			goto cleanup;
 	}
+
+	/* Success */
+	error = 0;
 
 cleanup:
 	if (namebuf != NULL)

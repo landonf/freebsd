@@ -1117,7 +1117,7 @@ bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
 {
 	bhnd_nvstore_name_info	 info;
 	bhnd_nvstore_path	*path;
-	bhnd_nvstore_update	*update;
+	bhnd_nvram_prop		*prop;
 	void			*cookiep;
 	int			 error;
 
@@ -1136,14 +1136,13 @@ bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
 	}
 
 	/* Search uncommitted updates first */
-	update = bhnd_nvstore_path_get_update(sc, path, info.name);
-	if (update != NULL) {
-		if (update->value == NULL) {
+	prop = bhnd_nvstore_path_get_update(sc, path, info.name);
+	if (prop != NULL) {
+		if (bhnd_nvram_prop_is_null(prop)) {
 			/* NULL denotes a pending deletion */
 			error = ENOENT;
 		} else {
-			error = bhnd_nvram_val_encode(update->value, outp, olen,
-			    otype);
+			error = bhnd_nvram_prop_encode(prop, outp, olen, otype);
 		}
 		goto finished;
 	}
