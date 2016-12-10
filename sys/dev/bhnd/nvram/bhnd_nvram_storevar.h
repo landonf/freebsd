@@ -58,6 +58,7 @@ typedef struct bhnd_nvstore_path	bhnd_nvstore_path;
 
 typedef struct bhnd_nvstore_alias	bhnd_nvstore_alias;
 typedef struct bhnd_nvstore_update	bhnd_nvstore_update;
+typedef struct bhnd_nvstore_updates	bhnd_nvstore_updates;
 
 typedef struct bhnd_nvstore_alias_list	bhnd_nvstore_alias_list;
 typedef struct bhnd_nvstore_update_list	bhnd_nvstore_update_list;
@@ -95,6 +96,10 @@ typedef enum {
 						     for device path handling */
 } bhnd_nvstore_name_type;
 
+bhnd_nvstore_path	*bhnd_nvstore_path_new(const char *path_str,
+			     size_t path_len);
+void			 bhnd_nvstore_path_free(struct bhnd_nvstore_path *path);
+
 bhnd_nvstore_index	*bhnd_nvstore_index_new(size_t capacity);
 void			 bhnd_nvstore_index_free(bhnd_nvstore_index *index);
 int			 bhnd_nvstore_index_append(struct bhnd_nvram_store *sc,
@@ -111,8 +116,6 @@ bhnd_nvstore_path	*bhnd_nvstore_get_root_path(
 bool			 bhnd_nvstore_is_root_path(struct bhnd_nvram_store *sc,
 			     bhnd_nvstore_path *path);
 
-void			 bhnd_nvstore_path_free(struct bhnd_nvstore_path *path);
-
 void			*bhnd_nvstore_path_data_next(
 			     struct bhnd_nvram_store *sc,
 			     bhnd_nvstore_path *path, void **indexp);
@@ -122,6 +125,10 @@ void			*bhnd_nvstore_path_data_lookup(
 bhnd_nvstore_update	*bhnd_nvstore_path_get_update(
 			     struct bhnd_nvram_store *sc,
 			     bhnd_nvstore_path *path, const char *name);
+int			 bhnd_nvstore_path_register_update(
+			     struct bhnd_nvram_store *sc,
+			     bhnd_nvstore_path *path, const char *name,
+			     bhnd_nvram_val *value);
 
 bhnd_nvstore_alias	*bhnd_nvstore_find_alias(struct bhnd_nvram_store *sc,
 			     const char *path);
@@ -132,6 +139,10 @@ bhnd_nvstore_path	*bhnd_nvstore_get_path(struct bhnd_nvram_store *sc,
 			     const char *path, size_t path_len);
 bhnd_nvstore_path	*bhnd_nvstore_resolve_path_alias(
 			     struct bhnd_nvram_store *sc, u_long aval);
+
+bhnd_nvstore_update	*bhnd_nvstore_updates_next(
+			     bhnd_nvstore_updates *updates,
+			     bhnd_nvstore_update *prev);
 
 bhnd_nvstore_path	*bhnd_nvstore_var_get_path(struct bhnd_nvram_store *sc,
 			     bhnd_nvstore_name_info *info);
@@ -229,6 +240,26 @@ struct bhnd_nvstore_index {
 };
 
 /**
+ * NVRAM per-path update state.
+ */
+struct bhnd_nvstore_updates {
+	bhnd_nvstore_update_list	ntable[4];	/**< name lookup table */
+	bhnd_nvstore_update_list	records;	/**< all update records */
+	size_t				num_updates;	/**< update count */
+};
+
+/**
+ * NVRAM pending update entry.
+ */
+struct bhnd_nvstore_update {
+	char		*name;		/**< path-relative variable name. */
+	bhnd_nvram_val	*value;		/**< new value, or NULL if representing deletion */
+
+	LIST_ENTRY(bhnd_nvstore_update) up_hash_link;
+	LIST_ENTRY(bhnd_nvstore_update) up_link;
+};
+
+/**
  * NVRAM device path.
  */
 struct bhnd_nvstore_path {
@@ -239,9 +270,7 @@ struct bhnd_nvstore_path {
 							     this is a root path for
 							     which the data source
 							     may be queried directly. */
-	bhnd_nvstore_update_list	 updates[4];	/**< uncommitted updates, hashed
-							     by path-relative variable name. */
-	size_t				 num_updates;	/**< pending change count */
+	bhnd_nvstore_updates		 updates;	/**< pending updates. */
 	bhnd_nvram_plist		*pending;	/**< pending changes */
 
 	LIST_ENTRY(bhnd_nvstore_path) np_link;
@@ -256,17 +285,6 @@ struct bhnd_nvstore_alias {
 	u_long			 alias;		/**< alias value */
 
 	LIST_ENTRY(bhnd_nvstore_alias) na_link;
-};
-
-/**
- * NVRAM pending update entry.
- */
-struct bhnd_nvstore_update {
-	char		*name;		/**< full variable name (including any path prefix). */
-	const char	*rel_name;	/**< path-relative variable name. */
-	bhnd_nvram_val	*value;		/**< new value, or NULL if representing deletion */
-
-	LIST_ENTRY(bhnd_nvstore_update) nc_link;
 };
 
 /** bhnd nvram store instance state */

@@ -1144,19 +1144,11 @@ static int
 bhnd_nvram_store_setval_common(struct bhnd_nvram_store *sc, const char *name,
     bhnd_nvram_val *value)
 {
-	bhnd_nvram_val		*prop_val;
 	bhnd_nvstore_path	*path;
-	bhnd_nvstore_update	*update;
-	const char		*full_name;
-	char			*namebuf;
-	void			*cookiep;
 	bhnd_nvstore_name_info	 info;
 	int			 error;
 
 	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
-
-	prop_val = NULL;
-	namebuf = NULL;
 
 	/* Parse the variable name */
 	error = bhnd_nvstore_parse_name_info(name, BHND_NVSTORE_NAME_EXTERNAL,
@@ -1168,134 +1160,8 @@ bhnd_nvram_store_setval_common(struct bhnd_nvram_store *sc, const char *name,
 	if ((path = bhnd_nvstore_var_get_path(sc, &info)) == NULL)
 		return (error);
 
-	/* Determine the full path-prefixed name for the variable */
-	cookiep = bhnd_nvstore_index_lookup(sc, path->index, info.name);
-	if (cookiep != NULL) {
-		/* Variable is already defined in the backing data; use the
-		 * existing variable name */
-		full_name = bhnd_nvram_data_getvar_name(sc->data, cookiep);
-	} else if (path == sc->root_path) {
-		/* No prefix required for root path */
-		full_name = name;
-	} else {
-		bhnd_nvstore_alias	*alias;
-		int			 len;
-
-		/* New variable is being set; we need to determine the
-		 * appropriate path prefix */
-		alias = bhnd_nvstore_find_alias(sc, path->path_str);
-		if (alias != NULL) {
-			/* Use <alias>:name */
-			len = bhnd_nv_asprintf(&namebuf, "%lu:%s", alias->alias,
-			    info.name);
-		} else {
-			/* Use path/name */
-			len = bhnd_nv_asprintf(&namebuf, "%s/%s",
-			    path->path_str, info.name);
-		}
-
-		if (len < 0)
-			return (ENOMEM);
-
-		full_name = namebuf;
-	}
-
-	/* Allow the data store to filter the NVRAM value */
-	error = bhnd_nvram_data_filter_setvar(sc->data, full_name, value,
-	    &prop_val);
-	if (error) {
-		BHND_NV_LOG("cannot set property %s: %d\n", full_name, error);
-		goto cleanup;
-	}
-
-	// XXX TODO REMOVE
-	/* Add relative variable name to the per-path update list */
-	error = bhnd_nvram_plist_replace_val(path->pending, info.name,
-	    prop_val);
-	if (error)
-		goto cleanup;
-
-	/* Update or create a pending update entry */
-	update = bhnd_nvstore_path_get_update(sc, path, info.name);
-	if (update != NULL) {
-		char *n;
-
-		/* Update the full prefixed name, if required */
-		if (strcmp(update->name, full_name) != 0) {
-			n = bhnd_nv_strdup(full_name);
-			if (n == NULL) {
-				error = ENOMEM;
-				goto cleanup;
-			}
-
-			bhnd_nv_free(update->name);
-			update->name = n;
-			update->rel_name = n;
-			if (sc->data_caps & BHND_NVRAM_DATA_CAP_DEVPATHS)
-				update->rel_name = bhnd_nvram_trim_path_name(n);
-		}
-
-		/* Replace the value, transfering our value ownership
-		 * to the update entry */
-		bhnd_nvram_val_release(update->value);
-		update->value = prop_val;
-		prop_val = NULL;
-
-	} else {
-		bhnd_nvstore_update_list	*update_list;
-		uint32_t			 h;
-
-		/* Can't represent more than SIZE_MAX update entries */
-		if (path->num_updates == SIZE_MAX) {
-			error = ENOMEM;
-			goto cleanup;
-		}
-
-		/* Allocate new entry */
-		if ((update = bhnd_nv_malloc(sizeof(*update))) == NULL) {
-			error = ENOMEM;
-			goto cleanup;
-		}
-
-		/* Copy the full name value */
-		update->name = bhnd_nv_strdup(full_name);
-		if (update->name == NULL) {
-			bhnd_nv_free(update);
-			error = ENOMEM;
-			goto cleanup;
-		}
-
-		/* Set the relative name as a pointer into the full name */
-		update->rel_name = update->name;
-		if (sc->data_caps & BHND_NVRAM_DATA_CAP_DEVPATHS) {
-			update->rel_name = bhnd_nvram_trim_path_name(
-			    update->rel_name);
-		}
-
-		/* Transfer our value ownership to the new update entry */
-		update->value = prop_val;
-		prop_val = NULL;
-
-		/* Insert into the hash table */
-		h = hash32_str(update->rel_name, HASHINIT);
-		update_list = &path->updates[h % nitems(path->updates)];
-		LIST_INSERT_HEAD(update_list, update, nc_link);
-
-		/* Increment update count */
-		path->num_updates++;
-	}
-
-	/* Success */
-	error = 0;
-
-cleanup:
-	if (namebuf != NULL)
-		bhnd_nv_free(namebuf);
-
-	if (prop_val != NULL)
-		bhnd_nvram_val_release(prop_val);
-
-	return (error);
+	/* Register the update entry */
+	return (bhnd_nvstore_path_register_update(sc, path, info.name, value));
 }
 
 /**

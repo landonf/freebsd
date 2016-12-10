@@ -346,8 +346,6 @@ bhnd_nvram_plist_remove(bhnd_nvram_plist *plist, const char *name)
 	/* Decrement entry count */
 	BHND_NV_ASSERT(plist->num_entries > 0, ("entry count over-release"));
 	plist->num_entries--;
-
-	return;
 }
 
 /**
