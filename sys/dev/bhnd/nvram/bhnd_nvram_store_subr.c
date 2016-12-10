@@ -63,6 +63,58 @@ static int	bhnd_nvstore_idx_cmp(void *ctx, const void *lhs,
 		    const void *rhs);
 
 /**
+ * Allocate and initialize a new path instance.
+ * 
+ * The caller is responsible for deallocating the instance via
+ * bhnd_nvstore_path_free().
+ * 
+ * @param	path_str	The path's canonical string representation.
+ * @param	path_len	The length of @p path_str.
+ * 
+ * @retval non-NULL	success
+ * @retval NULL		if allocation fails.
+ */
+bhnd_nvstore_path *
+bhnd_nvstore_path_new(const char *path_str, size_t path_len)
+{
+	bhnd_nvstore_path *path;
+
+	/* Allocate new entry */
+	path = bhnd_nv_malloc(sizeof(*path));
+	if (path == NULL)
+		return (NULL);
+
+	path->index = NULL;
+	path->num_vars = 0;
+	path->num_updates = 0;
+
+	/* Initialize update hash table */
+	for (size_t i = 0; i < nitems(path->updates); i++)
+		LIST_INIT(&path->updates[i]);
+
+	path->pending = bhnd_nvram_plist_new();
+	if (path->pending == NULL)
+		goto failed;
+
+	path->path_str = bhnd_nv_strndup(path_str, path_len);
+	if (path->path_str == NULL)
+		goto failed;
+
+	return (path);
+
+failed:
+	if (path->pending != NULL)
+		bhnd_nvram_plist_release(path->pending);
+
+	if (path->path_str != NULL)
+		bhnd_nv_free(path->path_str);
+
+	bhnd_nv_free(path);
+
+	return (NULL);
+}
+
+/**
  * Free an NVRAM path instance, releasing all associated resources.
  */
 void
@@ -98,7 +150,7 @@ bhnd_nvstore_path_free(struct bhnd_nvstore_path *path)
  * @param	capacity	The maximum number of variables to be indexed.
  * 
  * @retval non-NULL	success
- * @retval NULL		if allocation failed.
+ * @retval NULL		if allocation fails.
  */
 bhnd_nvstore_index *
 bhnd_nvstore_index_new(size_t capacity)
@@ -696,7 +748,7 @@ bhnd_nvstore_find_alias(struct bhnd_nvram_store *sc, const char *path)
  * 
  * @param	sc		The NVRAM store to be updated.
  * @param	path_str	The absolute device path string.
- * @param	path_slen	The length of @p path_str.
+ * @param	path_len	The length of @p path_str.
  * 
  * @retval 0		if the path was successfully registered, or an identical
  *			path/alias entry already exists.
@@ -704,7 +756,7 @@ bhnd_nvstore_find_alias(struct bhnd_nvram_store *sc, const char *path)
  */
 int
 bhnd_nvstore_register_path(struct bhnd_nvram_store *sc, const char *path_str,
-    size_t path_slen)
+    size_t path_len)
 {
 	bhnd_nvstore_path_list	*plist;
 	bhnd_nvstore_path	*path;
@@ -713,7 +765,7 @@ bhnd_nvstore_register_path(struct bhnd_nvram_store *sc, const char *path_str,
 	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
 
 	/* Already exists? */
-	if (bhnd_nvstore_get_path(sc, path_str, path_slen) != NULL)
+	if (bhnd_nvstore_get_path(sc, path_str, path_len) != NULL)
 		return (0);
 
 	/* Can't represent more than SIZE_MAX paths */
@@ -721,28 +773,9 @@ bhnd_nvstore_register_path(struct bhnd_nvram_store *sc, const char *path_str,
 		return (ENOMEM);
 
 	/* Allocate new entry */
-	path = bhnd_nv_malloc(sizeof(*path));
+	path = bhnd_nvstore_path_new(path_str, path_len);
 	if (path == NULL)
 		return (ENOMEM);
-
-	path->index = NULL;
-	path->num_vars = 0;
-	path->num_updates = 0;
-
-	/* Initialize update hash table */
-	for (size_t i = 0; i < nitems(path->updates); i++)
-		LIST_INIT(&path->updates[i]);
-
-	if ((path->pending = bhnd_nvram_plist_new()) == NULL) {
-		bhnd_nv_free(path);
-		return (ENOMEM);
-	}
-
-	if ((path->path_str = bhnd_nv_strndup(path_str, path_slen)) == NULL) {
-		bhnd_nvram_plist_release(path->pending);
-		bhnd_nv_free(path);
-		return (ENOMEM);
-	}
 
 	/* Insert in path hash table */
 	h = hash32_str(path->path_str, HASHINIT);
@@ -779,7 +812,7 @@ bhnd_nvstore_register_alias(struct bhnd_nvram_store *sc,
 	bhnd_nvstore_alias	*alias;
 	bhnd_nvstore_path	*path;
 	char			*path_str;
-	size_t			 path_slen;
+	size_t			 path_len;
 	int			 error;
 
 	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
@@ -799,26 +832,26 @@ bhnd_nvstore_register_alias(struct bhnd_nvram_store *sc,
 		return (EINVAL);
 
 	/* Fetch the devpath variable's value length */
-	error = bhnd_nvram_data_getvar(sc->data, cookiep, NULL, &path_slen,
+	error = bhnd_nvram_data_getvar(sc->data, cookiep, NULL, &path_len,
 	    BHND_NVRAM_TYPE_STRING);
 	if (error)
 		return (ENOMEM);
 
 	/* Allocate path string buffer */
-	if ((path_str = bhnd_nv_malloc(path_slen)) == NULL)
+	if ((path_str = bhnd_nv_malloc(path_len)) == NULL)
 		return (ENOMEM);
 
 	/* Decode to our new buffer */
-	error = bhnd_nvram_data_getvar(sc->data, cookiep, path_str, &path_slen,
+	error = bhnd_nvram_data_getvar(sc->data, cookiep, path_str, &path_len,
 	    BHND_NVRAM_TYPE_STRING);
 	if (error)
 		goto failed;
 
 	/* Trim trailing '/' character(s) from the path length */
-	path_slen = strnlen(path_str, path_slen);
-	while (path_slen > 0 && path_str[path_slen-1] == '/') {
-		path_str[path_slen-1] = '\0';
-		path_slen--;
+	path_len = strnlen(path_str, path_len);
+	while (path_len > 0 && path_str[path_len-1] == '/') {
+		path_str[path_len-1] = '\0';
+		path_len--;
 	}
 
 	/* Is a conflicting alias entry already registered for this alias
@@ -845,13 +878,13 @@ bhnd_nvstore_register_alias(struct bhnd_nvram_store *sc,
 	}
 
 	/* Get (or register) the target path entry */
-	path = bhnd_nvstore_get_path(sc, path_str, path_slen);
+	path = bhnd_nvstore_get_path(sc, path_str, path_len);
 	if (path == NULL) {
-		error = bhnd_nvstore_register_path(sc, path_str, path_slen);
+		error = bhnd_nvstore_register_path(sc, path_str, path_len);
 		if (error)
 			goto failed;
 
-		path = bhnd_nvstore_get_path(sc, path_str, path_slen);
+		path = bhnd_nvstore_get_path(sc, path_str, path_len);
 		BHND_NV_ASSERT(path != NULL, ("missing registered path"));
 	}
 
