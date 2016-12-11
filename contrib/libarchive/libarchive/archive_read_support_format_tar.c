@@ -294,44 +294,55 @@ archive_read_format_tar_cleanup(struct archive_read *a)
 	return (ARCHIVE_OK);
 }
 
+/*
+ * Validate number field
+ *
+ * This has to be pretty lenient in order to accomodate the enormous
+ * variety of tar writers in the world:
+ *  = POSIX (IEEE Std 1003.1-1988) ustar requires octal values with leading
+ *    zeros and allows fields to be terminated with space or null characters
+ *  = Many writers use different termination (in particular, libarchive
+ *    omits terminator bytes to squeeze one or two more digits)
+ *  = Many writers pad with space and omit leading zeros
+ *  = GNU tar and star write base-256 values if numbers are too
+ *    big to be represented in octal
+ *
+ *  Examples of specific tar headers that we should support:
+ *  = Perl Archive::Tar terminates uid, gid, devminor and devmajor with two
+ *    null bytes, pads size with spaces and other numeric fields with zeroes
+ *  = plexus-archiver prior to 2.6.3 (before switching to commons-compress)
+ *    may have uid and gid fields filled with spaces without any octal digits
+ *    at all and pads all numeric fields with spaces
+ *
+ * This should tolerate all variants in use.  It will reject a field
+ * where the writer just left garbage after a trailing NUL.
+ */
 static int
 validate_number_field(const char* p_field, size_t i_size)
 {
 	unsigned char marker = (unsigned char)p_field[0];
-	/* octal? */
-	if ((marker >= '0' && marker <= '7') || marker == ' ') {
-		size_t i = 0;
-		int octal_found = 0;
-		for (i = 0; i < i_size; ++i) {
-			switch (p_field[i])
-			{
-			case ' ': /* skip any leading spaces and trailing space*/
-				if (octal_found == 0 || i == i_size - 1) {
-					continue;
-				}
-				break;
-			case '\0': /* null is allowed only at the end */
-				if (i != i_size - 1) {
-					return 0;
-				}
-				break;
-			/* rest must be octal digits */
-			case '0': case '1': case '2': case '3':
-			case '4': case '5': case '6': case '7':
-				++octal_found;
-				break;
-			}
-		}
-		return octal_found > 0;
-	}
-	/* base 256 (i.e. binary number) */
-	else if (marker == 128 || marker == 255 || marker == 0) {
-		/* nothing to check */
+	if (marker == 128 || marker == 255 || marker == 0) {
+		/* Base-256 marker, there's nothing we can check. */
 		return 1;
-	}
-	/* not a number field */
-	else {
-		return 0;
+	} else {
+		/* Must be octal */
+		size_t i = 0;
+		/* Skip any leading spaces */
+		while (i < i_size && p_field[i] == ' ') {
+			++i;
+		}
+		/* Skip octal digits. */
+		while (i < i_size && p_field[i] >= '0' && p_field[i] <= '7') {
+			++i;
+		}
+		/* Any remaining characters must be space or NUL padding. */
+		while (i < i_size) {
+			if (p_field[i] != ' ' && p_field[i] != 0) {
+				return 0;
+			}
+			++i;
+		}
+		return 1;
 	}
 }
 
@@ -388,20 +399,16 @@ archive_read_format_tar_bid(struct archive_read *a, int best_bid)
 
 	/*
 	 * Check format of mode/uid/gid/mtime/size/rdevmajor/rdevminor fields.
-	 * These are usually octal numbers but GNU tar encodes "big" values as
-	 * base256 and leading zeroes are sometimes replaced by spaces.
-	 * Even the null terminator is sometimes omitted. Anyway, must be checked
-	 * to avoid false positives.
 	 */
-	if (bid > 0 &&
-		(validate_number_field(header->mode, sizeof(header->mode)) == 0 ||
-		 validate_number_field(header->uid, sizeof(header->uid)) == 0 ||
-		 validate_number_field(header->gid, sizeof(header->gid)) == 0 ||
-		 validate_number_field(header->mtime, sizeof(header->mtime)) == 0 ||
-		 validate_number_field(header->size, sizeof(header->size)) == 0 ||
-		 validate_number_field(header->rdevmajor, sizeof(header->rdevmajor)) == 0 ||
-		 validate_number_field(header->rdevminor, sizeof(header->rdevminor)) == 0)) {
-			bid = 0;
+	if (bid > 0 && (
+	    validate_number_field(header->mode, sizeof(header->mode)) == 0
+	    || validate_number_field(header->uid, sizeof(header->uid)) == 0
+	    || validate_number_field(header->gid, sizeof(header->gid)) == 0
+	    || validate_number_field(header->mtime, sizeof(header->mtime)) == 0
+	    || validate_number_field(header->size, sizeof(header->size)) == 0
+	    || validate_number_field(header->rdevmajor, sizeof(header->rdevmajor)) == 0
+	    || validate_number_field(header->rdevminor, sizeof(header->rdevminor)) == 0)) {
+		bid = 0;
 	}
 
 	return (bid);
