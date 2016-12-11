@@ -156,7 +156,7 @@ bhnd_nvram_btxt_serialize(bhnd_nvram_data_class *cls, bhnd_nvram_plist *props,
 			prop_limit = limit - nbytes;
 		}
 
-		/* Fetch and write name + '=' to output */
+		/* Fetch and write 'name=' to output */
 		name = bhnd_nvram_prop_name(prop);
 		name_len = strlen(name) + 1;
 
@@ -177,7 +177,8 @@ bhnd_nvram_btxt_serialize(bhnd_nvram_data_class *cls, bhnd_nvram_plist *props,
 
 		nbytes += name_len;
 
-		/* Attempt to write NUL-terminated value to output */
+		/* Write NUL-terminated value to output, rewrite NUL as
+		 * '\n' record delimiter */
 		value_len = prop_limit;
 		error = bhnd_nvram_prop_encode(prop, p, &value_len,
 		    BHND_NVRAM_TYPE_STRING);
