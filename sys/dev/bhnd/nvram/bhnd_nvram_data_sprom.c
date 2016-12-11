@@ -1316,20 +1316,6 @@ bhnd_nvram_sprom_filter_setvar(struct bhnd_nvram_data *nv, const char *name,
 	var = bhnd_nvram_get_vardefn(entry->vid);
 	BHND_NV_ASSERT(var != NULL, ("missing variable definition"));
 
-	// TODO: do not denote deletion via NULL values
-	/* Check for deletion requests */
-	if (bhnd_nvram_val_type(value) == BHND_NVRAM_TYPE_NULL) {
-		if (!(var->flags & BHND_NVRAM_VF_IGNALL1))
-			return (EINVAL);
-
-		spval = bhnd_nvram_val_copy(value);
-		if (spval == NULL)
-			return (ENOMEM);
-
-		*result = spval;
-		return (0);
-	}
-
 	/* Value must be convertible to the native variable type */
 	error = bhnd_nvram_val_convert_new(&spval, var->fmt, value,
 	    BHND_NVRAM_VAL_DYNAMIC);
@@ -1346,6 +1332,35 @@ bhnd_nvram_sprom_filter_setvar(struct bhnd_nvram_data *nv, const char *name,
 	/* Success. Transfer our ownership of the converted value to the
 	 * caller */
 	*result = spval;
+	return (0);
+}
+
+static int
+bhnd_nvram_sprom_filter_unsetvar(struct bhnd_nvram_data *nv, const char *name)
+{
+	struct bhnd_nvram_sprom		*sp;
+	const struct bhnd_nvram_vardefn	*var;
+	bhnd_sprom_opcode_idx_entry	*entry;
+
+	sp = (struct bhnd_nvram_sprom *)nv;
+
+	/* Is this an externally immutable variable name? */
+	if (bhnd_sprom_is_external_immutable(name))
+		return (EINVAL);
+
+	/* Variable must be defined in our SPROM layout */
+	if ((entry = bhnd_sprom_opcode_index_find(&sp->state, name)) == NULL)
+		return (ENOENT);
+
+	var = bhnd_nvram_get_vardefn(entry->vid);
+
+	/* Variable must be capable of representing a NULL/deleted value.
+	 * 
+	 * Since SPROM's layout is fixed, this requires IGNALL -- if
+	 * all bits are set, an IGNALL variable is treated as unset. */
+	if (!(var->flags & BHND_NVRAM_VF_IGNALL1))
+		return (EINVAL);
+
 	return (0);
 }
 

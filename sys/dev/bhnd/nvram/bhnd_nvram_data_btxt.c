@@ -735,3 +735,10 @@ bhnd_nvram_btxt_filter_setvar(struct bhnd_nvram_data *nv, const char *name,
 	*result = str;
 	return (0);
 }
+
+static int
+bhnd_nvram_btxt_filter_unsetvar(struct bhnd_nvram_data *nv, const char *name)
+{
+	/* We permit deletion of any variable */
+	return (0);
+}

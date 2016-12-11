@@ -58,7 +58,9 @@ enum {
 	BHND_NVSTORE_EXPORT_EXPAND_DEVPATHS	= (1<<3),	/**< Re-encode all device paths using non-compact syntax */
 	BHND_NVSTORE_EXPORT_ALL_VARS		= (1<<6|1<<7),	/**< Include all variables (default) */
 	BHND_NVSTORE_EXPORT_COMMITTED		= (1<<6),	/**< Include all committed changes */
-	BHND_NVSTORE_EXPORT_UNCOMMITTED		= (1<<7),	/**< Include all uncommitted changes */
+	BHND_NVSTORE_EXPORT_UNCOMMITTED		= (1<<7),	/**< Include all uncommitted changes (not including deletions) */
+	BHND_NVSTORE_EXPORT_DELETED		= (1<<8),	/**< Include all uncommitted deltions (as
+								     properties of type BHND_NVRAM_TYPE_NULL) */
 };
 
 int	bhnd_nvram_store_new(struct bhnd_nvram_store **store,

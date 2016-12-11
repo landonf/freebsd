@@ -457,9 +457,21 @@ bhnd_nvstore_export_merge(struct bhnd_nvram_store *sc,
 
 	/* Populate merged list with all pending variables */
 	if (BHND_NVSTORE_GET_FLAG(flags, EXPORT_UNCOMMITTED)) {
-		error = bhnd_nvram_plist_append_list(merged, path->pending);
-		if (error)
-			return (error);
+		bhnd_nvram_prop *prop;
+
+		prop = NULL;
+		while ((prop = bhnd_nvram_plist_next(path->pending, prop))) {
+			/* Skip variables marked for deletion */
+			if (!BHND_NVSTORE_GET_FLAG(flags, EXPORT_DELETED)) {
+				if (bhnd_nvram_prop_is_null(prop))
+					continue;
+			}
+
+			/* Append to merged list */
+			error = bhnd_nvram_plist_append(merged, prop);
+			if (error)
+				return (error);
+		}
 	}
 
 	/* Skip merging committed variables? */
@@ -740,10 +752,6 @@ bhnd_nvram_store_export_child(struct bhnd_nvram_store *sc,
 	while ((prop = bhnd_nvram_plist_next(path_vars, prop)) != NULL) {
 		const char *name;
 
-		/* NULL property values denote a pending deletion */
-		if (bhnd_nvram_prop_type(prop) == BHND_NVRAM_TYPE_NULL)
-			continue;
-
 		/* Prepend device prefix to the variable name */
 		name = bhnd_nvram_prop_name(prop);
 		if (prefix != NULL) {
@@ -862,6 +870,13 @@ bhnd_nvram_store_export(struct bhnd_nvram_store *sc, const char *path,
 
 	if (num_dpath_flags != 1)
 		return (EINVAL);
+
+	/* If EXPORT_DELETED is set, EXPORT_UNCOMMITTED must be set too */
+	if (BHND_NVSTORE_GET_FLAG(flags, EXPORT_DELETED) &&
+	    !BHND_NVSTORE_GET_FLAG(flags, EXPORT_DELETED))
+	{
+		return (EINVAL);
+	}
 
 	/* Lock internal state before querying paths/properties */
 	BHND_NVSTORE_LOCK(sc);

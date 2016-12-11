@@ -118,6 +118,10 @@ typedef int		 (bhnd_nvram_data_op_filter_setvar)(
 			      struct bhnd_nvram_data *nv, const char *name,
 			      bhnd_nvram_val *value, bhnd_nvram_val **result);
 
+/** @see bhnd_nvram_data_filter_unsetvar() */
+typedef int		 (bhnd_nvram_data_op_filter_unsetvar)(
+			      struct bhnd_nvram_data *nv, const char *name);
+
 /**
  * NVRAM data class.
  */
@@ -141,6 +145,7 @@ struct bhnd_nvram_data_class {
 	bhnd_nvram_data_op_getvar_ptr		*op_getvar_ptr;
 	bhnd_nvram_data_op_getvar_name		*op_getvar_name;
 	bhnd_nvram_data_op_filter_setvar	*op_filter_setvar;
+	bhnd_nvram_data_op_filter_unsetvar	*op_filter_unsetvar;
 };
 
 /**
@@ -187,12 +192,13 @@ struct bhnd_nvram_data {
 	_macro(_cname, caps)					\
 	_macro(_cname, next)					\
 	_macro(_cname, find)					\
-	_macro(_cname, filter_setvar)				\
 	_macro(_cname, copy_val)				\
 	_macro(_cname, getvar_order)				\
 	_macro(_cname, getvar)					\
 	_macro(_cname, getvar_ptr)				\
-	_macro(_cname, getvar_name)
+	_macro(_cname, getvar_name)				\
+	_macro(_cname, filter_setvar)				\
+	_macro(_cname, filter_unsetvar)
 
 /**
  * Define a bhnd_nvram_data_class with class name @p _n and description

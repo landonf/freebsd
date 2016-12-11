@@ -142,5 +142,7 @@ int			 bhnd_nvram_data_copy_val(struct bhnd_nvram_data *nv,
 int			 bhnd_nvram_data_filter_setvar(
 			     struct bhnd_nvram_data *nv, const char *name,
 			     bhnd_nvram_val *value, bhnd_nvram_val **result);
+int			 bhnd_nvram_data_filter_unsetvar(
+			     struct bhnd_nvram_data *nv, const char *name);
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_DATA_H_ */

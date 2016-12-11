@@ -697,12 +697,29 @@ bhnd_nvram_data_getvar_name(struct bhnd_nvram_data *nv, void *cookiep)
  * 
  * @retval	0	success
  * @retval	ENOENT	if @p name is unrecognized by @p nv.
- * @retval	EINVAL	if @p name is recognized by @p nv, but @p value cannot
- *			be converted to a supported value type.
+ * @retval	EINVAL	if @p name is read-only.
+ * @retval	EINVAL	if @p value cannot be converted to the required value
+ *			type.
  */
 int
 bhnd_nvram_data_filter_setvar(struct bhnd_nvram_data *nv, const char *name,
     bhnd_nvram_val *value, bhnd_nvram_val **result)
 {
 	return (nv->cls->op_filter_setvar(nv, name, value, result));
+}
+
+/**
+ * Filter a request to delete variable @p name.
+ * 
+ * @param	nv	The NVRAM data instance.
+ * @param	name	The name of the variable to be deleted.
+ * 
+ * @retval	0	success
+ * @retval	ENOENT	if @p name is unrecognized by @p nv.
+ * @retval	EINVAL	if @p name is read-only.
+ */
+int
+bhnd_nvram_data_filter_unsetvar(struct bhnd_nvram_data *nv, const char *name)
+{
+	return (nv->cls->op_filter_unsetvar(nv, name));
 }

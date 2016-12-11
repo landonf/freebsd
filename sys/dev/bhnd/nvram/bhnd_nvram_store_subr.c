@@ -315,7 +315,7 @@ bhnd_nvstore_path_get_update(struct bhnd_nvram_store *sc,
  * @param sc	The NVRAM store.
  * @param path	The path to be modified.
  * @param name	The path-relative variable name to be modified.
- * @param value	The new value, or NULL if this is a deletion.
+ * @param value	The new value. A value of BHND_NVRAM_TYPE_NULL denotes deletion.
  * 
  * @retval 0		success
  * @retval ENOMEM	if allocation fails.
@@ -375,16 +375,33 @@ bhnd_nvstore_path_register_update(struct bhnd_nvram_store *sc,
 		full_name = namebuf;
 	}
 
-	/* Allow the data store to filter the NVRAM value */
-	error = bhnd_nvram_data_filter_setvar(sc->data, full_name, value,
-	    &prop_val);
-	if (error) {
-		BHND_NV_LOG("cannot set property %s: %d\n", full_name, error);
-		goto cleanup;
+	/* Allow the data store to filter the NVRAM operation */
+	if (bhnd_nvram_val_type(value) == BHND_NVRAM_TYPE_NULL) {
+		error = bhnd_nvram_data_filter_unsetvar(sc->data, full_name);
+		if (error) {
+			BHND_NV_LOG("cannot unset property %s: %d\n", full_name,
+			    error);
+			goto cleanup;
+		}
+
+		if ((prop_val = bhnd_nvram_val_copy(value)) == NULL) {
+			error = ENOMEM;
+			goto cleanup;
+		}
+	} else {
+		error = bhnd_nvram_data_filter_setvar(sc->data, full_name,
+		    value,  &prop_val);
+		if (error) {
+			BHND_NV_LOG("cannot set property %s: %d\n", full_name,
+			    error);
+			goto cleanup;
+		}
 	}
 
 	/* Add relative variable name to the per-path update list */
-	if (value == NULL && !nvram_committed) {
+	if (bhnd_nvram_val_type(value) == BHND_NVRAM_TYPE_NULL &&
+	    !nvram_committed)
+	{
 		/* This is a deletion request for a variable not defined in
 		 * out backing store; we can simply remove the corresponding
 		 * update entry. */

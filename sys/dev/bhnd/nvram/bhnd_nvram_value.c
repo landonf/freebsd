@@ -131,7 +131,7 @@ size_t				 data_len;	/**< data size */
 
 /* Shared NULL value instance */
 bhnd_nvram_val bhnd_nvram_val_null = {
-	.refs		= 0,
+	.refs		= 1,
 	.val_storage	= BHND_NVRAM_VAL_STORAGE_STATIC,
 	.fmt		= &bhnd_nvram_val_null_fmt,
 	.data_storage	= BHND_NVRAM_VAL_DATA_INLINE,
@@ -687,16 +687,6 @@ bhnd_nvram_val_encode_null(const void *inp, size_t ilen, bhnd_nvram_type itype,
 		/* Can be directly encoded as a zero-length NULL value */
 		nbytes = 0;
 		break;
-
-	case BHND_NVRAM_TYPE_STRING:
-	case BHND_NVRAM_TYPE_STRING_ARRAY:
-		/* Can be encoded as an empty string */
-		if (limit > nbytes)
-			*((char *)outp + nbytes) = '\0';
-
-		nbytes++;
-		break;
-
 	default:
 		/* Not representable */
 		return (EFTYPE);

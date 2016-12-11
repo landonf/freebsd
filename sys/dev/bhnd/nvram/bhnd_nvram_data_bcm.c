@@ -835,6 +835,13 @@ bhnd_nvram_bcm_filter_setvar(struct bhnd_nvram_data *nv, const char *name,
 	return (0);
 }
 
+static int
+bhnd_nvram_bcm_filter_unsetvar(struct bhnd_nvram_data *nv, const char *name)
+{
+	/* We permit deletion of any variable */
+	return (0);
+}
+
 /**
  * Return the internal BCM data reference for a header-defined variable
  * with @p name, or NULL if none exists.

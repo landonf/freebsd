@@ -544,6 +544,13 @@ bhnd_nvram_tlv_filter_setvar(struct bhnd_nvram_data *nv, const char *name,
 	return (0);
 }
 
+static int
+bhnd_nvram_tlv_filter_unsetvar(struct bhnd_nvram_data *nv, const char *name)
+{
+	/* We permit deletion of any variable */
+	return (0);
+}
+
 /**
  * Iterate over the records starting at @p next, returning the parsed
  * record's @p tag, @p size, and @p offset.
