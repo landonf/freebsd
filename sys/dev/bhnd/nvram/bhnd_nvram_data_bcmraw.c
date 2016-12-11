@@ -245,6 +245,12 @@ bhnd_nvram_bcmraw_count(struct bhnd_nvram_data *nv)
 	return (bcm->count);
 }
 
+static bhnd_nvram_plist *
+bhnd_nvram_bcmraw_options(struct bhnd_nvram_data *nv)
+{
+	return (NULL);
+}
+
 static int
 bhnd_nvram_bcmraw_size(struct bhnd_nvram_data *nv, size_t *size)
 {
