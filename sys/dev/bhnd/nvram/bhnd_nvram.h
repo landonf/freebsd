@@ -39,93 +39,13 @@
 #include <stdint.h>
 #endif /* _KERNEL */
 
-#include "bhnd_nvram_types.h"
-#include "bhnd_nvram_value.h"
-
-typedef struct bhnd_nvram_prop		bhnd_nvram_prop;
-typedef struct bhnd_nvram_plist		bhnd_nvram_plist;
-
-bhnd_nvram_plist	*bhnd_nvram_plist_new(void);
-bhnd_nvram_plist	*bhnd_nvram_plist_retain(bhnd_nvram_plist *plist);
-void			 bhnd_nvram_plist_release(bhnd_nvram_plist *plist);
-
-bhnd_nvram_plist	*bhnd_nvram_plist_copy(bhnd_nvram_plist *plist);
-
-size_t			 bhnd_nvram_plist_count(bhnd_nvram_plist *plist);
-
-int			 bhnd_nvram_plist_append_list(bhnd_nvram_plist *plist,
-			     bhnd_nvram_plist *tail);
-
-int			 bhnd_nvram_plist_append(bhnd_nvram_plist *plist,
-			     bhnd_nvram_prop *prop);
-int			 bhnd_nvram_plist_append_val(bhnd_nvram_plist *plist,
-			     const char *name, bhnd_nvram_val *val);
-int			 bhnd_nvram_plist_append_bytes(bhnd_nvram_plist *plist,
-			     const char *name, const void *inp, size_t ilen,
-			     bhnd_nvram_type itype);
-int			 bhnd_nvram_plist_append_string(bhnd_nvram_plist *plist,
-			     const char *name, const char *val);
-
-int			 bhnd_nvram_plist_replace(bhnd_nvram_plist *plist,
-			     bhnd_nvram_prop *prop);
-int			 bhnd_nvram_plist_replace_val(bhnd_nvram_plist *plist,
-			     const char *name, bhnd_nvram_val *val);
-int			 bhnd_nvram_plist_replace_bytes(bhnd_nvram_plist *plist,
-			     const char *name, const void *inp, size_t ilen,
-			     bhnd_nvram_type itype);
-int			 bhnd_nvram_plist_replace_string(bhnd_nvram_plist *plist,
-			     const char *name, const char *val);
-
-void			 bhnd_nvram_plist_remove(bhnd_nvram_plist *plist,
-			     const char *name);
-
-bool			 bhnd_nvram_plist_contains(bhnd_nvram_plist *plist,
-			     const char *name);
-bhnd_nvram_prop		*bhnd_nvram_plist_next(bhnd_nvram_plist *plist,
-			     bhnd_nvram_prop *prop);
-
-bhnd_nvram_prop		*bhnd_nvram_plist_get_prop(bhnd_nvram_plist *plist,
-			     const char *name);
-bhnd_nvram_val		*bhnd_nvram_plist_get_val(bhnd_nvram_plist *plist,
-			     const char *name);
-int			 bhnd_nvram_plist_get_encoded(bhnd_nvram_plist *plist,
-			     const char *name, void *outp, size_t olen,
-			     bhnd_nvram_type otype);
-
-int			 bhnd_nvram_plist_get_char(bhnd_nvram_plist *plist,
-			     const char *name, u_char *val);
-int			 bhnd_nvram_plist_get_uint8(bhnd_nvram_plist *plist,
-			     const char *name, uint8_t *val);
-int			 bhnd_nvram_plist_get_uint16(bhnd_nvram_plist *plist,
-			     const char *name, uint16_t *val);
-int			 bhnd_nvram_plist_get_uint32(bhnd_nvram_plist *plist,
-			     const char *name, uint32_t *val);
-int			 bhnd_nvram_plist_get_uint64(bhnd_nvram_plist *plist,
-			     const char *name, uint64_t *val);
-int			 bhnd_nvram_plist_get_string(bhnd_nvram_plist *plist,
-			     const char *name, const char **val);
-int			 bhnd_nvram_plist_get_bool(bhnd_nvram_plist *plist,
-			     const char *name, bool *val);
-
-bhnd_nvram_prop		*bhnd_nvram_prop_new(const char *name,
-			     bhnd_nvram_val *val);
-bhnd_nvram_prop		*bhnd_nvram_prop_bytes_new(const char *name,
-			     const void *inp, size_t ilen,
-			     bhnd_nvram_type itype);
-
-bhnd_nvram_prop		*bhnd_nvram_prop_retain(bhnd_nvram_prop *prop);
-void			 bhnd_nvram_prop_release(bhnd_nvram_prop *prop);
-
-const char		*bhnd_nvram_prop_name(bhnd_nvram_prop *prop);
-bhnd_nvram_val		*bhnd_nvram_prop_val(bhnd_nvram_prop *prop);
-bhnd_nvram_type		 bhnd_nvram_prop_type(bhnd_nvram_prop *prop);
-
-bool			 bhnd_nvram_prop_is_null(bhnd_nvram_prop *prop);
-
-const void		*bhnd_nvram_prop_bytes(bhnd_nvram_prop *prop,
-			     size_t *olen, bhnd_nvram_type *otype);
-int			 bhnd_nvram_prop_encode(bhnd_nvram_prop *prop,
-			     void *outp, size_t *olen, bhnd_nvram_type otype);
+/**
+ * BHND NVRAM boolean type; guaranteed to be exactly 8-bits, representing
+ * true as integer constant 1, and false as integer constant 0.
+ * 
+ * Compatible with stdbool constants (true, false).
+ */
+typedef uint8_t	bhnd_nvram_bool_t;
 
 /**
  * NVRAM data sources supported by bhnd(4) devices.
@@ -160,6 +80,61 @@ typedef enum {
 				  *  device.
 				  */
 } bhnd_nvram_src;
+
+/**
+ * NVRAM data types.
+ * 
+ * @internal
+ * 
+ * All primitive (non-array) constants should be representable as a 4-bit
+ * integer (e.g. 0-15) to support SPROM_OPCODE_TYPE_IMM encoding as used by
+ * nvram_map_gen.awk.
+ */
+typedef enum {
+	BHND_NVRAM_TYPE_UINT8		= 0,	/**< unsigned 8-bit integer */
+	BHND_NVRAM_TYPE_UINT16		= 1,	/**< unsigned 16-bit integer */
+	BHND_NVRAM_TYPE_UINT32		= 2,	/**< unsigned 32-bit integer */
+	BHND_NVRAM_TYPE_UINT64		= 3,	/**< signed 64-bit integer */
+	BHND_NVRAM_TYPE_INT8		= 4,	/**< signed 8-bit integer */
+	BHND_NVRAM_TYPE_INT16		= 5,	/**< signed 16-bit integer */
+	BHND_NVRAM_TYPE_INT32		= 6,	/**< signed 32-bit integer */
+	BHND_NVRAM_TYPE_INT64		= 7,	/**< signed 64-bit integer */
+	BHND_NVRAM_TYPE_CHAR		= 8,	/**< ASCII/UTF-8 character */
+	BHND_NVRAM_TYPE_STRING		= 9,	/**< ASCII/UTF-8 NUL-terminated
+						     string */
+	BHND_NVRAM_TYPE_BOOL		= 10,	/**< uint8 boolean value. see
+						     bhnd_nvram_bool_t. */
+	BHND_NVRAM_TYPE_NULL		= 11,	/**< NULL (empty) value */
+	BHND_NVRAM_TYPE_DATA		= 12,	/**< opaque octet string */
+
+	/* 10-15 reserved for primitive (non-array) types */
+
+	BHND_NVRAM_TYPE_UINT8_ARRAY	= 16,	/**< array of uint8 integers */
+	BHND_NVRAM_TYPE_UINT16_ARRAY	= 17,	/**< array of uint16 integers */
+	BHND_NVRAM_TYPE_UINT32_ARRAY	= 18,	/**< array of uint32 integers */
+	BHND_NVRAM_TYPE_UINT64_ARRAY	= 19,	/**< array of uint64 integers */
+	BHND_NVRAM_TYPE_INT8_ARRAY	= 20,	/**< array of int8 integers */
+	BHND_NVRAM_TYPE_INT16_ARRAY	= 21,	/**< array of int16 integers */
+	BHND_NVRAM_TYPE_INT32_ARRAY	= 22,	/**< array of int32 integers */
+	BHND_NVRAM_TYPE_INT64_ARRAY	= 23,	/**< array of int64 integers */
+	BHND_NVRAM_TYPE_CHAR_ARRAY	= 24,	/**< array of ASCII/UTF-8
+						     characters */
+	BHND_NVRAM_TYPE_STRING_ARRAY	= 25,	/**< array of ASCII/UTF-8
+						     NUL-terminated strings */
+	BHND_NVRAM_TYPE_BOOL_ARRAY	= 26,	/**< array of uint8 boolean
+						     values */
+} bhnd_nvram_type;
+
+
+bool		 bhnd_nvram_is_signed_type(bhnd_nvram_type type);
+bool		 bhnd_nvram_is_unsigned_type(bhnd_nvram_type type);
+bool		 bhnd_nvram_is_int_type(bhnd_nvram_type type);
+bool		 bhnd_nvram_is_array_type(bhnd_nvram_type type);
+bhnd_nvram_type	 bhnd_nvram_base_type(bhnd_nvram_type type);
+bhnd_nvram_type	 bhnd_nvram_raw_type(bhnd_nvram_type type);
+const char	*bhnd_nvram_type_name(bhnd_nvram_type type);
+size_t		 bhnd_nvram_type_width(bhnd_nvram_type type);
+size_t		 bhnd_nvram_type_host_align(bhnd_nvram_type type);
 
 const char	*bhnd_nvram_string_array_next(const char *inp, size_t ilen,
 		     const char *prev, size_t *olen); 

@@ -27,8 +27,7 @@ SRCS+=	bhnd_pmu.c \
 SRCS+=	bhnd_pmu_if.c bhnd_pmu_if.h
 
 # NVRAM/SPROM
-SRCS+=	bhnd_nvram.c \
-	bhnd_nvram_data.c \
+SRCS+=	bhnd_nvram_data.c \
 	bhnd_nvram_data_bcm.c \
 	bhnd_nvram_data_bcmraw.c \
 	bhnd_nvram_data_btxt.c \
@@ -39,6 +38,7 @@ SRCS+=	bhnd_nvram.c \
 	bhnd_nvram_iobuf.c \
 	bhnd_nvram_ioptr.c \
 	bhnd_nvram_iores.c \
+	bhnd_nvram_plist.c \
 	bhnd_nvram_store.c \
 	bhnd_nvram_store_subr.c \
 	bhnd_nvram_subr.c \

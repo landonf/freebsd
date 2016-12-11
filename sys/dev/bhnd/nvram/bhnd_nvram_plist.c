@@ -46,7 +46,7 @@ __FBSDID("$FreeBSD$");
 
 #endif /* _KERNEL */
 
-#include "bhnd_nvramvar.h"
+#include "bhnd_nvram_plistvar.h"
 #include "bhnd_nvram_private.h"
 
 static bhnd_nvram_plist_entry	*bhnd_nvram_plist_get_entry(

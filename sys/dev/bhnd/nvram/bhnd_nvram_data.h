@@ -44,6 +44,7 @@
 
 #include "bhnd_nvram.h"
 #include "bhnd_nvram_io.h"
+#include "bhnd_nvram_plist.h"
 #include "bhnd_nvram_value.h"
 
 /* NVRAM data class */

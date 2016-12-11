@@ -41,7 +41,7 @@
 #include <stdarg.h>
 #endif /* _KERNEL */
 
-#include "bhnd_nvram_types.h"
+#include "bhnd_nvram.h"
 
 typedef struct bhnd_nvram_val_fmt	bhnd_nvram_val_fmt;
 typedef struct bhnd_nvram_val		bhnd_nvram_val;

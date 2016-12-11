@@ -1231,7 +1231,6 @@ dev/bhnd/cores/pmu/bhnd_pmu.c		optional bhnd
 dev/bhnd/cores/pmu/bhnd_pmu_core.c	optional bhnd
 dev/bhnd/cores/pmu/bhnd_pmu_if.m	optional bhnd
 dev/bhnd/cores/pmu/bhnd_pmu_subr.c	optional bhnd
-dev/bhnd/nvram/bhnd_nvram.c		optional bhnd
 dev/bhnd/nvram/bhnd_nvram_data.c	optional bhnd
 dev/bhnd/nvram/bhnd_nvram_data_bcm.c	optional bhnd
 dev/bhnd/nvram/bhnd_nvram_data_bcmraw.c	optional bhnd
@@ -1244,6 +1243,7 @@ dev/bhnd/nvram/bhnd_nvram_io.c		optional bhnd
 dev/bhnd/nvram/bhnd_nvram_iobuf.c	optional bhnd
 dev/bhnd/nvram/bhnd_nvram_ioptr.c	optional bhnd
 dev/bhnd/nvram/bhnd_nvram_iores.c	optional bhnd
+dev/bhnd/nvram/bhnd_nvram_plist.c	optional bhnd
 dev/bhnd/nvram/bhnd_nvram_store.c	optional bhnd
 dev/bhnd/nvram/bhnd_nvram_store_subr.c	optional bhnd
 dev/bhnd/nvram/bhnd_nvram_subr.c	optional bhnd

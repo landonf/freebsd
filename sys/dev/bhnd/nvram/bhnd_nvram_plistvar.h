@@ -29,10 +29,10 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_NVRAM_BHND_NVRAMVAR_H_
-#define _BHND_NVRAM_BHND_NVRAMVAR_H_
+#ifndef _BHND_NVRAM_BHND_PLISTVAR_H_
+#define _BHND_NVRAM_BHND_PLISTVAR_H_
 
-#include "bhnd_nvram.h"
+#include "bhnd_nvram_plist.h"
 #include <sys/queue.h>
 
 LIST_HEAD(bhnd_nvram_plist_entry_list, bhnd_nvram_plist_entry);
@@ -72,4 +72,4 @@ struct bhnd_nvram_plist {
 	bhnd_nvram_plist_entry_list		names[16];	/**< name-based hash table */
 };
 
-#endif /* _BHND_NVRAM_BHND_NVRAMVAR_H_ */
+#endif /* _BHND_NVRAM_BHND_PLISTVAR_H_ */
