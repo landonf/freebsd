@@ -39,6 +39,13 @@
 #include <stdint.h>
 #endif /* _KERNEL */
 
+/* forward declarations */
+struct bhnd_nvram_plane;
+struct bhnd_nvram_prov;
+struct bhnd_nvram_plist;
+
+typedef struct bhnd_nvram_phandle bhnd_nvram_phandle;
+
 /**
  * BHND NVRAM boolean type; guaranteed to be exactly 8-bits, representing
  * true as integer constant 1, and false as integer constant 0.
@@ -125,18 +132,64 @@ typedef enum {
 						     values */
 } bhnd_nvram_type;
 
+struct bhnd_nvram_plane	*bhnd_nvram_plane_new(void);
+struct bhnd_nvram_plane	*bhnd_nvram_plane_retain(
+			     struct bhnd_nvram_plane *plane);
+void			 bhnd_nvram_plane_release(
+			     struct bhnd_nvram_plane *plane);
+int			 bhnd_nvram_plane_register(
+			     struct bhnd_nvram_plane *plane,
+			     struct bhnd_nvram_prov *prov);
+int			 bhnd_nvram_plane_deregister(
+			     struct bhnd_nvram_plane *plane,
+			     struct bhnd_nvram_prov *prov);
+int			 bhnd_nvram_plane_register_path(
+			     struct bhnd_nvram_plane *plane,
+			     struct bhnd_nvram_prov *prov, const char *path);
+int			 bhnd_nvram_plane_deregister_path(
+			     struct bhnd_nvram_plane *plane,
+			     struct bhnd_nvram_prov *prov, const char *path);
 
-bool		 bhnd_nvram_is_signed_type(bhnd_nvram_type type);
-bool		 bhnd_nvram_is_unsigned_type(bhnd_nvram_type type);
-bool		 bhnd_nvram_is_int_type(bhnd_nvram_type type);
-bool		 bhnd_nvram_is_array_type(bhnd_nvram_type type);
-bhnd_nvram_type	 bhnd_nvram_base_type(bhnd_nvram_type type);
-bhnd_nvram_type	 bhnd_nvram_raw_type(bhnd_nvram_type type);
-const char	*bhnd_nvram_type_name(bhnd_nvram_type type);
-size_t		 bhnd_nvram_type_width(bhnd_nvram_type type);
-size_t		 bhnd_nvram_type_host_align(bhnd_nvram_type type);
+bhnd_nvram_phandle	*bhnd_nvram_plane_open_root(
+			     struct bhnd_nvram_plane *plane);
+bhnd_nvram_phandle	*bhnd_nvram_plane_open_path(
+			     struct bhnd_nvram_plane *plane, const char *path);
+bhnd_nvram_phandle	*bhnd_nvram_plane_open_parent(
+			     bhnd_nvram_phandle *phandle);
+bhnd_nvram_phandle	*bhnd_nvram_plane_retain_path(
+			     bhnd_nvram_phandle *phandle);
+void			 bhnd_nvram_plane_close_path(
+			     bhnd_nvram_phandle *phandle);
+bhnd_nvram_phandle	*bhnd_nvram_plane_findprop_path(
+			     bhnd_nvram_phandle *phandle, const char *propname);
 
-const char	*bhnd_nvram_string_array_next(const char *inp, size_t ilen,
-		     const char *prev, size_t *olen); 
+int			 bhnd_nvram_plane_setprop(bhnd_nvram_phandle *phandle,
+			     const char *propname, const void *buf, size_t len,
+			     bhnd_nvram_type type);
+int			 bhnd_nvram_plane_getprop(bhnd_nvram_phandle *phandle,
+			     const char *propname, void *buf, size_t *len,
+			     bhnd_nvram_type type);
+
+int			 bhnd_nvram_plane_getprop_alloc(
+			     bhnd_nvram_phandle *phandle, const char *propname,
+			     void **buf, size_t *len, bhnd_nvram_type type,
+			     int flags);
+void			 bhnd_nvram_plane_getprop_free(void *buf);
+
+struct bhnd_nvram_plist	*bhnd_nvram_plane_getprops_copy(
+			     bhnd_nvram_phandle *phandle);
+
+bool			 bhnd_nvram_is_signed_type(bhnd_nvram_type type);
+bool			 bhnd_nvram_is_unsigned_type(bhnd_nvram_type type);
+bool			 bhnd_nvram_is_int_type(bhnd_nvram_type type);
+bool			 bhnd_nvram_is_array_type(bhnd_nvram_type type);
+bhnd_nvram_type		 bhnd_nvram_base_type(bhnd_nvram_type type);
+bhnd_nvram_type		 bhnd_nvram_raw_type(bhnd_nvram_type type);
+const char		*bhnd_nvram_type_name(bhnd_nvram_type type);
+size_t			 bhnd_nvram_type_width(bhnd_nvram_type type);
+size_t			 bhnd_nvram_type_host_align(bhnd_nvram_type type);
+
+const char		*bhnd_nvram_string_array_next(const char *inp,
+			     size_t ilen, const char *prev, size_t *olen); 
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_H_ */

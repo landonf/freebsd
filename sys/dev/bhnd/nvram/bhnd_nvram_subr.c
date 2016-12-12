@@ -67,10 +67,6 @@ __FBSDID("$FreeBSD$");
  * lookup.
  */
 
-#ifdef _KERNEL
-MALLOC_DEFINE(M_BHND_NVRAM, "bhnd_nvram", "bhnd nvram data");
-#endif
-
 /*
  * CRC-8 lookup table used to checksum SPROM and NVRAM data via
  * bhnd_nvram_crc8().
