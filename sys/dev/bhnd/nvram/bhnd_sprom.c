@@ -71,7 +71,7 @@ bhnd_sprom_probe(device_t dev)
 /* Default DEVICE_ATTACH() implementation; assumes a zero offset to the
  * SPROM data */
 static int
-bhnd_sprom_attach_meth(device_t dev)
+bhnd_sprom_generic_attach(device_t dev)
 {
 	return (bhnd_sprom_attach(dev, 0));
 }
@@ -101,6 +101,14 @@ bhnd_sprom_attach(device_t dev, bus_size_t offset)
 	sc->dev = dev;
 
 	io = NULL;
+
+	/* Fetch NVRAM plane */
+	sc->plane = bhnd_get_nvram_plane(dev);
+	if (sc->plane == NULL) {
+		device_printf(dev, "missing NVRAM plane; cannot register "
+		    "NVRAM device \n");
+		return (ENXIO);
+	}
 
 	/* Allocate SPROM resource */
 	rid = 0;
@@ -137,6 +145,25 @@ bhnd_sprom_attach(device_t dev, bus_size_t offset)
 	/* Clean up our temporary I/O context and its backing resource */
 	bhnd_nvram_io_free(io);
 	bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
+
+	/* Register ourselves with the NVRAM plane */
+	if ((error = bhnd_nvram_plane_register_device(sc->plane, dev))) {
+		device_printf(dev, "failed to register NVRAM device: %d\n",
+		    error);
+
+		bhnd_nvram_store_free(sc->store);
+		return (error);
+	}
+
+	/* Register our NVRAM path with the plane */
+	// TODO: multiple paths?
+	if ((error = bhnd_nvram_plane_register_path(sc->plane, dev, "/"))) {
+		device_printf(dev, "failed to register NVRAM path: %d\n",
+		    error);
+
+		bhnd_nvram_store_free(sc->store);
+		return (error);
+	}
 
 	return (0);
 
@@ -175,9 +202,15 @@ int
 bhnd_sprom_detach(device_t dev)
 {
 	struct bhnd_sprom_softc	*sc;
+	int			 error;
 	
 	sc = device_get_softc(dev);
 
+	/* Deregister all NVRAM paths provided by this device */
+	if ((error = bhnd_nvram_plane_deregister_device(sc->plane, dev)))
+		return (error);
+
+	/* Clean up backing NVRAM store */
 	bhnd_nvram_store_free(sc->store);
 
 	return (0);
@@ -187,7 +220,7 @@ bhnd_sprom_detach(device_t dev)
  * Default bhnd sprom driver implementation of BHND_NVRAM_GETVAR().
  */
 static int
-bhnd_sprom_getvar_method(device_t dev, const char *name, void *buf, size_t *len,
+bhnd_sprom_getvar(device_t dev, const char *name, void *buf, size_t *len,
     bhnd_nvram_type type)
 {
 	struct bhnd_sprom_softc	*sc = device_get_softc(dev);
@@ -199,7 +232,7 @@ bhnd_sprom_getvar_method(device_t dev, const char *name, void *buf, size_t *len,
  * Default bhnd sprom driver implementation of BHND_NVRAM_SETVAR().
  */
 static int
-bhnd_sprom_setvar_method(device_t dev, const char *name, const void *buf,
+bhnd_sprom_setvar(device_t dev, const char *name, const void *buf,
     size_t len, bhnd_nvram_type type)
 {
 	struct bhnd_sprom_softc	*sc = device_get_softc(dev);
@@ -210,14 +243,14 @@ bhnd_sprom_setvar_method(device_t dev, const char *name, const void *buf,
 static device_method_t bhnd_sprom_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,			bhnd_sprom_probe),
-	DEVMETHOD(device_attach,		bhnd_sprom_attach_meth),
+	DEVMETHOD(device_attach,		bhnd_sprom_generic_attach),
 	DEVMETHOD(device_resume,		bhnd_sprom_resume),
 	DEVMETHOD(device_suspend,		bhnd_sprom_suspend),
 	DEVMETHOD(device_detach,		bhnd_sprom_detach),
 
 	/* NVRAM interface */
-	DEVMETHOD(bhnd_nvram_getvar,		bhnd_sprom_getvar_method),
-	DEVMETHOD(bhnd_nvram_setvar,		bhnd_sprom_setvar_method),
+	DEVMETHOD(bhnd_nvram_getvar,		bhnd_sprom_getvar),
+	DEVMETHOD(bhnd_nvram_setvar,		bhnd_sprom_setvar),
 
 	DEVMETHOD_END
 };

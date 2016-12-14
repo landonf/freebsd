@@ -1224,6 +1224,17 @@ bhndb_get_hostb_core(device_t dev, device_t child, struct bhnd_core_info *core)
 	return (0);
 }
 
+
+/**
+ * Default bhndb(4) implementation of BHND_GET_NVRAM_PLANE()
+ */
+static struct bhnd_nvram_plane *
+bhndb_get_nvram_plane(device_t dev, device_t child)
+{
+	struct bhndb_softc *sc = device_get_softc(dev);
+	return (sc->nvram_plane);
+}
+
 /**
  * Default bhndb(4) implementation of BUS_ALLOC_RESOURCE().
  */
@@ -2156,6 +2167,7 @@ static device_method_t bhndb_methods[] = {
 
 	/* BHND interface */
 	DEVMETHOD(bhnd_bus_get_chipid,		bhndb_get_chipid),
+	DEVMETHOD(bhnd_bus_get_nvram_plane,	bhndb_get_nvram_plane),
 	DEVMETHOD(bhnd_bus_activate_resource,	bhndb_activate_bhnd_resource),
 	DEVMETHOD(bhnd_bus_deactivate_resource,	bhndb_deactivate_bhnd_resource),
 	DEVMETHOD(bhnd_bus_get_nvram_var,	bhnd_bus_generic_get_nvram_var),
