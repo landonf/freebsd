@@ -55,8 +55,10 @@ typedef struct bhnd_nvram_plane_list	bhnd_nvram_plane_list;
  * deallocated.
  */
 struct bhnd_nvref {
-	volatile u_int	srefs;	/**< strong references */
-	volatile u_int	wrefs;	/**< weak references */
+	volatile u_int	 srefs;			/**< strong references */
+	volatile u_int	 wrefs;			/**< weak references */
+	void		*value;			/**< refcounted value */
+	void		(*vfree)(void *value);	/**< free() callback */
 };
 
 /**
@@ -104,23 +106,23 @@ struct bhnd_nvram_plane {
  * Initialize reference count state.
  */
 static inline void
-bhnd_nvref_init(struct bhnd_nvref *ref)
+bhnd_nvref_init(struct bhnd_nvref *ref, void *value, void (*vfree)(void *))
 {
 	/* Single strong reference, plus corresponding weak reference */
 	refcount_init(&ref->srefs, 1);
 	refcount_init(&ref->wrefs, 1);
+
+	ref->value = value;
+	ref->vfree = vfree;
 }
 
 /**
- * Return true if no references (weak or strong) are held by ref.
+ * Return true if the reference is dead; it has no active strong references.
  */
 static inline bool
-bhnd_nvref_is_dead(struct bhnd_nvref *ref)
+bhnd_nvref_is_zombie(struct bhnd_nvref *ref)
 {
 	if (atomic_load_acq_int(&ref->srefs) > 0)
-		return (false);
-
-	if (atomic_load_acq_int(&ref->wrefs) > 0)
 		return (false);
 
 	return (true);
@@ -139,8 +141,10 @@ bhnd_nvref_retain_weak(struct bhnd_nvref *ref)
 }
 
 /**
- * Release a weak reference, returning true if this was the last weak
- * or strong reference held, and the value may be safely deallocated.
+ * Release a weak reference. If this was the last reference (weak or strong),
+ * the value will be deallocated.
+ * 
+ * Returns true if the value was deallocated, false otherwise.
  */
 static inline bool
 bhnd_nvref_release_weak(struct bhnd_nvref *ref)
@@ -148,7 +152,13 @@ bhnd_nvref_release_weak(struct bhnd_nvref *ref)
 	BHND_NV_ASSERT(ref->wrefs >= 1, ("overrelease"));
 	BHND_NV_ASSERT(ref->srefs >= ref->wrefs, ("lost weak ref"));
 
-	return (refcount_release(&ref->wrefs) != 0);
+	if (!refcount_release(&ref->wrefs))
+		return (false);
+
+	if (ref->vfree != NULL)
+		ref->vfree(ref->value);
+
+	return (true);
 }
 
 /**
@@ -164,23 +174,22 @@ bhnd_nvref_retain(struct bhnd_nvref *ref)
 }
 
 /**
- * Release a strong reference, returning true if this was the last strong
- * reference held.
+ * Release a strong reference. If this was the last reference (weak or strong),
+ * the value will be deallocated.
+ * 
+ * Returns true if the value was deallocated, false otherwise.
  */
 static inline bool
 bhnd_nvref_release(struct bhnd_nvref *ref)
 {
-	bool last;
-
 	BHND_NV_ASSERT(ref->srefs >= 1, ("over-release"));
 
 	/* Drop strong reference */
-	last = (refcount_release(&ref->srefs) != 0);
+	refcount_release(&ref->srefs);
 
-	/* All strong references also hold a weak reference */
-	bhnd_nvref_release_weak(ref);
-
-	return (last);
+	/* All strong references also hold a weak reference. If this was
+	 * the last weak reference, this will result in deallocation. */
+	return (bhnd_nvref_release_weak(ref));
 }
 
 /**

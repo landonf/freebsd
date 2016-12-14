@@ -171,6 +171,9 @@ bhnd_nvram_phandle	*bhnd_nvram_plane_open_root(
 			     struct bhnd_nvram_plane *plane);
 bhnd_nvram_phandle	*bhnd_nvram_plane_open_path(
 			     struct bhnd_nvram_plane *plane, const char *path);
+bhnd_nvram_phandle	*bhnd_nvram_plane_find_path(
+			     struct bhnd_nvram_plane *plane, const char *path);
+
 bhnd_nvram_phandle	*bhnd_nvram_plane_open_parent(
 			     bhnd_nvram_phandle *phandle);
 bhnd_nvram_phandle	*bhnd_nvram_plane_retain_path(
