@@ -185,14 +185,17 @@ bhnd_nvram_plane_find_device(struct bhnd_nvram_plane *plane, device_t dev)
 	BHND_NVPLANE_LOCK_ASSERT(plane, SX_LOCKED);
 
 	LIST_FOREACH(entry, &plane->devices, dn_link) {
-		if (entry->dev == dev)
+		if (entry->dev == dev) {
+			if (bhnd_nvref_is_zombie(&entry->refs))
+				return (NULL);
+
 			return (entry);
+		}
 	}
 
 	/* Not found */
 	return (NULL);
 }
-
 
 /**
  * Register a new NVRAM device with @p plane.
@@ -225,6 +228,7 @@ bhnd_nvram_plane_register_device(struct bhnd_nvram_plane *plane, device_t dev)
 	}
 
 	entry->dev = dev;
+	bhnd_nvref_init(&entry->refs, &entry, NULL);
 
 	/* Insert in device list */
 	LIST_INSERT_HEAD(&plane->devices, entry, dn_link);

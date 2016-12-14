@@ -67,7 +67,9 @@ struct bhnd_nvref {
  * NVRAM device entry.
  */
 struct bhnd_nvram_devnode {
-	device_t	dev;
+	device_t		dev;	/**< provider */
+	struct bhnd_nvref	refs;	/**< reference count */
+
 	LIST_ENTRY(bhnd_nvram_devnode) dn_link;
 };
 
@@ -98,7 +100,7 @@ struct bhnd_nvram_plane {
 	bhnd_nvram_devnode_list		 devices;	/**< registered devices */
 	bhnd_nvram_plane_list		 children;	/**< weak references to
 							     all children */
-	struct sx			 lock;		/**< state lock */
+	struct sx			 lock;		/**< topology lock */
 
 	LIST_ENTRY(bhnd_nvram_plane) np_link;
 };
