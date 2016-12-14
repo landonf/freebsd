@@ -174,7 +174,12 @@ bhnd_nvram_plane_retain(struct bhnd_nvram_plane *plane)
 /**
  * Register a new NVRAM provider with @p plane.
  * 
- * TODO
+ * @param	plane	The NVRAM plane with which @p prov will be registered.
+ * @param	prov	The NVRAM provider to register with @p plane.
+ * 
+ * @retval 0		success.
+ * @retval EEXIST	if @p prov is already registered with @p plane.
+ * @retval ENOMEM	if allocation fails.
  */
 int
 bhnd_nvram_plane_register(struct bhnd_nvram_plane *plane,
@@ -185,9 +190,17 @@ bhnd_nvram_plane_register(struct bhnd_nvram_plane *plane,
 }
 
 /**
- * Deregister a NVRAM provider and all associated paths.
+ * Deregister an NVRAM provider and all associated paths.
  * 
- * TODO
+ * If @p prov is not currently registered with @p plane, the request will
+ * be ignored.
+ * 
+ * All paths previously registered to @p prov will be deregistered.
+ * 
+ * @param	plane	The NVRAM plane from which @p prov will be deregistered.
+ * @param	prov	The NVRAM provider to deregister from @p plane.
+ * 
+ * @retval 0	success.
  */
 int
 bhnd_nvram_plane_deregister(struct bhnd_nvram_plane *plane,
@@ -198,9 +211,18 @@ bhnd_nvram_plane_deregister(struct bhnd_nvram_plane *plane,
 }
 
 /**
- * Register a new NVRAM path.
+ * Register a new NVRAM path entry.
  * 
- * TODO
+ * @param	plane		The NVRAM plane with which @p pathname will be
+ *				registered.
+ * @param	prov		The NVRAM provider for the path.
+ * @param	pathname	The fully qualified path to be registered.
+ * 
+ * @retval 0		success.
+ * @retval EINVAL	if @p prov was not previously registered via
+ *			bhnd_nvram_plane_register().
+ * @retval EEXIST	if @p pathname is already registered in @p plane.
+ * @retval ENOMEM	if allocation fails.
  */
 int
 bhnd_nvram_plane_register_path(struct bhnd_nvram_plane *plane,
@@ -211,9 +233,18 @@ bhnd_nvram_plane_register_path(struct bhnd_nvram_plane *plane,
 }
 
 /**
- * Deregister an NVRAM path.
+ * Deregister an NVRAM path entry.
  * 
- * TODO
+ * @param	plane		The NVRAM plane with which @p pathname will be
+ *				registered.
+ * @param	prov		The current NVRAM provider for the path.
+ * @param	pathname	The fully qualified path to be deregistered.
+ * 
+ * @retval 0		success.
+ * @retval EINVAL	if @p prov was not previously registered via
+ *			bhnd_nvram_plane_register().
+ * @retval ENOENT	if @p pathname is not registered in @p plane, or is
+ *			not provided by @p prov.
  */
 int
 bhnd_nvram_plane_deregister_path(struct bhnd_nvram_plane *plane,
@@ -389,6 +420,25 @@ bhnd_nvram_plane_findprop_path(bhnd_nvram_phandle *phandle,
 	return (NULL);
 }
 
+/**
+ * Insert or update an NVRAM property value in @p phandle.
+ * 
+ * @param		phandle		The path handle to be updated.
+ * @param		propname	The property name.
+ * @param[out]		buf		The new property value.
+ * @param[in,out]	len		The size of @p buf.
+ * @param		type		The data type of @p buf.
+ *
+ * @retval 0		success
+ * @retval ENOENT	If @p propname is not a known property name, and the
+ *			definition of arbitrary property names is unsupported
+ *			by @p phandle.
+ * @retval ENODEV	If the underlying provider for @p phandle is
+ *			unavailable.
+ * @retval EINVAL	If @p propname is read-only.
+ * @retval EINVAL	If @p propname cannot be set to the given value or
+ *			value type.
+ */
 int
 bhnd_nvram_plane_setprop(bhnd_nvram_phandle *phandle, const char *propname,
     const void *buf, size_t len, bhnd_nvram_type type)
