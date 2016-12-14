@@ -1035,6 +1035,122 @@ bhnd_nvram_parse_env(const char *env, size_t env_len, char delim,
 	return (0);
 }
 
+/**
+ * Iterate over all path components in the @p path string.
+ *
+ * @param		path	The path to be iterated.
+ * @param		prev	The pointer previously returned by
+ *				bhnd_nvram_path_name_next(), or NULL to begin
+ *				iteration.
+* @param[in,out]	namelen	If @p prev is non-NULL, @p len must be a
+ *				pointer to the length previously returned by
+ *				bhnd_nvram_path_name_next(). On success, will
+ *				be set to the next element's length, in bytes.
+ *
+ * @retval non-NULL	A reference to the next path component.
+ * @retval NULL		If no further path components are available in @p path.
+ */
+const char *
+bhnd_nvram_path_name_next(const char *path, const char *prev, size_t *namelen)
+{
+	const char *next, *endp;
+
+	/* Handle first element */
+	if (prev == NULL) {
+		next = path;
+
+		/* Initial '/' should be returned as-is */
+		if (*next == '/') {
+			*namelen = 1;
+			return (next);
+		}
+	} else {
+		/* Advance to next component */
+		next = prev + *namelen;
+	}
+
+	/* Trim extra '/' */
+	while (*next == '/')
+		next++;
+
+	/* Hit end of path? */
+	if (*next == '\0')
+		return (NULL);
+
+	/* Determine length of this path component */
+	endp = strchr(next, '/');
+	if (endp != NULL) {
+		*namelen = (size_t)(endp - next);
+	} else {
+		*namelen = strlen(next);
+	}
+
+	return (next);
+}
+
+/**
+ * Normalize the given NVRAM @p path, writing the result to @p normalized.
+ * 
+ * @param path		The path to be normalized.
+ * @param normalized	The normalized path buffer. Must be capable of storing
+ *			at least strlen(path)+1.
+ */
+void
+bhnd_nvram_normalize_path(const char *path, char *normalized)
+{
+	const char	*next;
+	char		*outp;
+	size_t		 namelen;
+
+	next = path;
+	outp = normalized;
+
+	next = NULL;
+	while ((next = bhnd_nvram_path_name_next(path, next, &namelen))) {
+		const char *p = next;
+
+		/* Skip empty paths (unless this is the leading '/') */
+		if (namelen == 0)
+			continue;
+
+		/* Skip '.' paths */
+		if (namelen == 1 && p[0] == '.') {
+			p += namelen;
+			continue;
+		}
+
+		/* Trim previous component on '..' */
+		if (namelen == 2 && p[0] == '.' && p[1] == '.') {
+			while (outp > normalized) {
+				outp--;
+				if (*outp == '/') {
+					/* Preserve leading '/' */
+					if (outp == normalized)
+						outp++;
+
+					break;
+				}
+			}
+
+			continue;
+		}
+
+		/* Append '/' delimiter if required */
+		if (outp > normalized && *(outp-1) != '/') {
+			*outp = '/';
+			outp++;
+		}
+
+		/* Append path component */
+		for (size_t i = 0; i < namelen; i++) {
+			*outp = p[i];
+			outp++;
+		}
+	}
+
+	/* NUL terminate */
+	*outp = '\0';
+}
 
 /**
  * Parse a field value, returning the actual pointer to the first

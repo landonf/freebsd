@@ -251,6 +251,11 @@ int				 bhnd_nvram_parse_env(const char *env,
 				     const char **name, size_t *name_len,
 				     const char **value, size_t *value_len);
 
+const char			*bhnd_nvram_path_name_next(const char *path,
+				     const char *prev, size_t *namelen);
+void				 bhnd_nvram_normalize_path(const char *path,
+				     char *normalized);
+
 size_t				 bhnd_nvram_parse_field(const char **inp,
 				     size_t ilen, char delim);
 size_t				 bhnd_nvram_trim_field(const char **inp,
