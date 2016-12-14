@@ -33,15 +33,30 @@
 #define _BHND_NVRAM_BHND_NVRAMVAR_H_
 
 #include <sys/param.h>
+#include <sys/lock.h>
+#include <sys/queue.h>
 #include <sys/refcount.h>
+#include <sys/sx.h>
+
+LIST_HEAD(bhnd_nvram_phandle_list, bhnd_nvram_phandle);
+LIST_HEAD(bhnd_nvram_plane_list, bhnd_nvram_plane);
+
+typedef struct bhnd_nvram_phandle_list	bhnd_nvram_phandle_list;
+typedef struct bhnd_nvram_plane_list	bhnd_nvram_plane_list;
 
 /**
- * NVRAM plane.
+ * Simple weak reference implementation.
  * 
- * Manages a common namespace of NVRAM paths and associated NVRAM providers.
+ * Each strong reference also holds a weak reference; when the strong
+ * reference count hits zero, any additional attempts to promote a weak
+ * reference to a strong reference will be rejected.
+ * 
+ * When the weak reference count hits zero, the value may be safely
+ * deallocated.
  */
-struct bhnd_nvram_plane {
-	volatile u_int	refs;	/**< reference count */
+struct bhnd_nvref {
+	volatile u_int	srefs;	/**< strong references */
+	volatile u_int	wrefs;	/**< weak references */
 };
 
 /**
@@ -50,9 +65,145 @@ struct bhnd_nvram_plane {
  * Provides a reference-counted handle to an open path within an NVRAM plane.
  */
 struct bhnd_nvram_phandle {
-	volatile u_int			 refs;		/**< reference count */
-	struct bhnd_nvram_plane		*plane;		/**< enclosing NVRAM plane */
-	struct bhnd_nvram_phandle	*parent;	/**< parent, or NULL */
+	struct bhnd_nvref	 refs;		/**< reference count */
+	bhnd_nvram_phandle	*parent;	/**< parent path, or NULL */
+
+	struct bhnd_nvram_plane	*plane;		/**< weak reference to plane */
+	bhnd_nvram_phandle_list	 children;	/**< weak references to all children */
+
+	LIST_ENTRY(bhnd_nvram_phandle) np_link;
 };
+
+/**
+ * NVRAM plane.
+ * 
+ * Manages a common namespace of NVRAM paths and associated NVRAM providers.
+ */
+struct bhnd_nvram_plane {
+	struct bhnd_nvref	 refs;		/**< reference count */
+	struct bhnd_nvram_plane	*parent;	/**< parent plane, or NULL */
+	bhnd_nvram_plane_list	 children;	/**< weak references to all
+						     children */
+	struct sx		 lock;		/**< state lock */
+
+	LIST_ENTRY(bhnd_nvram_plane) np_link;
+};
+
+
+#define	BHND_NVPLANE_LOCK_INIT(sc) \
+	sx_init(&(sc)->lock, "BHND NVRAM plane lock")
+#define	BHND_NVPLANE_LOCK_RD(sc)		sx_slock(&(sc)->lock)
+#define	BHND_NVPLANE_UNLOCK_RD(sc)		sx_sunlock(&(sc)->lock)
+#define	BHND_NVPLANE_TRY_UPGRADE(sc)		sx_try_upgrade(&(sc)->lock)
+#define	BHND_NVPLANE_LOCK_RW(sc)		sx_slock(&(sc)->lock)
+#define	BHND_NVPLANE_UNLOCK_RW(sc)		sx_sunlock(&(sc)->lock)
+#define	BHND_NVPLANE_LOCK_ASSERT(sc, what)	sx_assert(&(sc)->lock, what)
+#define	BHND_NVPLANE_LOCK_DESTROY(sc)		sx_destroy(&(sc)->lock)
+
+/**
+ * Initialize reference count state.
+ */
+static inline void
+bhnd_nvref_init(struct bhnd_nvref *ref)
+{
+	/* Single strong reference, plus corresponding weak reference */
+	refcount_init(&ref->srefs, 1);
+	refcount_init(&ref->wrefs, 1);
+}
+
+/**
+ * Return true if no references (weak or strong) are held by ref.
+ */
+static inline bool
+bhnd_nvref_is_dead(struct bhnd_nvref *ref)
+{
+	if (atomic_load_acq_int(&ref->srefs) > 0)
+		return (false);
+
+	if (atomic_load_acq_int(&ref->wrefs) > 0)
+		return (false);
+
+	return (true);
+}
+
+/**
+ * Acquire a weak reference from an existing strong reference.
+ */
+static inline void
+bhnd_nvref_retain_weak(struct bhnd_nvref *ref)
+{
+	BHND_NV_ASSERT(ref->srefs >= 1, ("dead value"));
+	BHND_NV_ASSERT(ref->wrefs >= 1, ("overrelease"));
+
+	refcount_acquire(&ref->wrefs);
+}
+
+/**
+ * Release a weak reference, returning true if this was the last weak
+ * or strong reference held, and the value may be safely deallocated.
+ */
+static inline bool
+bhnd_nvref_release_weak(struct bhnd_nvref *ref)
+{
+	BHND_NV_ASSERT(ref->wrefs >= 1, ("overrelease"));
+	BHND_NV_ASSERT(ref->srefs >= ref->wrefs, ("lost weak ref"));
+
+	return (refcount_release(&ref->wrefs) != 0);
+}
+
+/**
+ * Acquire a strong reference from an existing strong reference.
+ */
+static inline void
+bhnd_nvref_retain(struct bhnd_nvref *ref)
+{
+	BHND_NV_ASSERT(ref->srefs >= 1, ("over-release"));
+
+	/* All strong references also hold a weak reference */
+	refcount_acquire(&ref->wrefs);
+}
+
+/**
+ * Release a strong reference, returning true if this was the last strong
+ * reference held.
+ */
+static inline bool
+bhnd_nvref_release(struct bhnd_nvref *ref)
+{
+	bool last;
+
+	BHND_NV_ASSERT(ref->srefs >= 1, ("over-release"));
+
+	/* Drop strong reference */
+	last = (refcount_release(&ref->srefs) != 0);
+
+	/* All strong references also hold a weak reference */
+	bhnd_nvref_release_weak(ref);
+
+	return (last);
+}
+
+/**
+ * Promote a weak reference to a strong reference, returning true on success,
+ * false on failure.
+ */
+static inline bool
+bhnd_nvref_promote(struct bhnd_nvref *ref)
+{
+	u_int srefs;
+
+	do {
+		/* Fetch current reference count */
+		srefs = ref->srefs;
+
+		/* If the strong reference count is already zero, the object is
+		 * already dead */
+		if (ref->srefs == 0)
+			return (false);
+
+	} while (!atomic_cmpset_acq_int(&ref->srefs, srefs, srefs+1));
+
+	return (true);
+}
 
 #endif /* _BHND_NVRAM_BHND_NVRAMVAR_H_ */

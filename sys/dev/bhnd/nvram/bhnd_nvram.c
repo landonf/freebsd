@@ -31,27 +31,17 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
-#include <sys/refcount.h>
-
-#ifdef _KERNEL
-
-#include <sys/malloc.h>
 #include <sys/kernel.h>
-
-#else /* !_KERNEL */
-
-#include <errno.h>
-#include <stdlib.h>
-
-#endif /* _KERNEL */
+#include <sys/lock.h>
+#include <sys/malloc.h>
+#include <sys/mutex.h>
+#include <sys/refcount.h>
 
 #include "bhnd_nvram_private.h"
 
 #include "bhnd_nvramvar.h"
 
-#ifdef _KERNEL
 MALLOC_DEFINE(M_BHND_NVRAM, "bhnd_nvram", "bhnd nvram data");
-#endif
 
 /**
  * Allocate and initialize an empty NVRAM plane.
@@ -59,10 +49,12 @@ MALLOC_DEFINE(M_BHND_NVRAM, "bhnd_nvram", "bhnd nvram data");
  * The caller is responsible for releasing the returned NVRAM plane
  * via bhnd_nvram_plane_release().
  * 
+ * @param	parent	The parent NVRAM plane, or NULL.
+ * 
  * @retval NULL if allocation failed.
  */
 struct bhnd_nvram_plane *
-bhnd_nvram_plane_new(void)
+bhnd_nvram_plane_new(struct bhnd_nvram_plane *parent)
 {
 	struct bhnd_nvram_plane	*plane;
 
@@ -70,6 +62,24 @@ bhnd_nvram_plane_new(void)
 	if (plane == NULL)
 		return (NULL);
 
+	plane->parent = NULL;
+
+	bhnd_nvref_init(&plane->refs);
+	LIST_INIT(&plane->children);
+
+	BHND_NVPLANE_LOCK_INIT(plane);
+
+	if (parent != NULL) {
+		plane->parent = bhnd_nvram_plane_retain(parent);
+
+		/* Register weak reference with parent */
+		bhnd_nvref_retain_weak(&plane->refs);
+
+		BHND_NVPLANE_LOCK_RW(parent);
+		LIST_INSERT_HEAD(&parent->children, plane, np_link);
+		BHND_NVPLANE_UNLOCK_RW(parent);
+	}
+			 
 	return (plane);
 }
 
@@ -84,9 +94,7 @@ bhnd_nvram_plane_new(void)
 struct bhnd_nvram_plane *
 bhnd_nvram_plane_retain(struct bhnd_nvram_plane *plane)
 {
-	BHND_NV_ASSERT(plane->refs >= 1, ("refcount over-release"));
-	refcount_acquire(&plane->refs);
-
+	bhnd_nvref_retain(&plane->refs);
 	return (plane);
 }
 
@@ -100,11 +108,37 @@ bhnd_nvram_plane_retain(struct bhnd_nvram_plane *plane)
 void
 bhnd_nvram_plane_release(struct bhnd_nvram_plane *plane)
 {
-	BHND_NV_ASSERT(plane->refs >= 1, ("refcount over-release"));
+	struct bhnd_nvram_plane	*parent;
+	struct bhnd_nvram_plane	*p, *pnext;
 
-	if (!refcount_release(&plane->refs))
+	/* Drop our strong reference */
+	if (!bhnd_nvref_release(&plane->refs))
 		return;
 
+	/* If that was the last strong reference, drop our parent's weak
+	 * reference to our instance */
+	parent = plane->parent;
+	if (parent != NULL) {
+		BHND_NVPLANE_LOCK_RW(parent);
+		LIST_FOREACH_SAFE(p, &parent->children, np_link, pnext) {
+			if (p != plane)
+				continue;
+
+			bhnd_nvref_release_weak(&p->refs);
+			LIST_REMOVE(p, np_link);
+			break;
+		}
+		BHND_NVPLANE_UNLOCK_RW(parent);
+
+		BHND_NV_ASSERT(bhnd_nvref_is_dead(&plane->refs),
+		    ("stale weak reference"));
+
+		/* Drop our strong parent reference */
+		bhnd_nvram_plane_release(parent);
+	}
+
+	/* Clean up remaining instance state */
+	BHND_NVPLANE_LOCK_DESTROY(plane);
 	bhnd_nv_free(plane);
 }
 
@@ -232,10 +266,7 @@ bhnd_nvram_plane_open_path(struct bhnd_nvram_plane *plane, const char *path)
 bhnd_nvram_phandle *
 bhnd_nvram_plane_retain_path(bhnd_nvram_phandle *phandle)
 {
-	BHND_NV_ASSERT(phandle->refs >= 1, ("refcount over-release"));
-
-	refcount_acquire(&phandle->refs);
-
+	bhnd_nvref_retain(&phandle->refs);
 	return (phandle);
 }
 
@@ -247,10 +278,36 @@ bhnd_nvram_plane_retain_path(bhnd_nvram_phandle *phandle)
 void
 bhnd_nvram_plane_close_path(bhnd_nvram_phandle *phandle)
 {
-	BHND_NV_ASSERT(phandle->refs >= 1, ("refcount over-release"));
+	struct bhnd_nvram_phandle	*parent;
+	struct bhnd_nvram_phandle	*p, *pnext;
 
-	if (!refcount_release(&phandle->refs))
+	/* Drop our strong reference */
+	if (!bhnd_nvref_release(&phandle->refs))
 		return;
+
+	/* If that was the last strong reference, drop our parent's weak
+	 * reference to our instance */
+	parent = phandle->parent;
+	if (parent != NULL) {
+		BHND_NVPLANE_LOCK_RW(phandle->plane);
+
+		LIST_FOREACH_SAFE(p, &parent->children, np_link, pnext) {
+			if (p != phandle)
+				continue;
+
+			bhnd_nvref_release_weak(&p->refs);
+			LIST_REMOVE(p, np_link);
+			break;
+		}
+
+		BHND_NVPLANE_UNLOCK_RW(phandle->plane);
+
+		BHND_NV_ASSERT(bhnd_nvref_is_dead(&phandle->refs),
+		    ("stale weak reference"));
+
+		/* Drop our strong parent reference */
+		bhnd_nvram_plane_close_path(parent);
+	}
 
 	/* Release our plane reference */
 	bhnd_nvram_plane_release(phandle->plane);
@@ -366,11 +423,7 @@ bhnd_nvram_plane_getprop_alloc(bhnd_nvram_phandle *phandle,
 		if (*buf != NULL)
 			bhnd_nv_free(buf);
 
-#ifdef _KERNEL
 		*buf = malloc(*len, M_BHND_NVRAM, flags);
-#else
-		*buf = bhnd_nv_malloc(*len);
-#endif
 		if (buf == NULL)
 			return (ENOMEM);
 
