@@ -1040,20 +1040,22 @@ bhnd_nvram_parse_env(const char *env, size_t env_len, char delim,
  *
  * @param		path	The path to be iterated.
  * @param		prev	The pointer previously returned by
- *				bhnd_nvram_path_name_next(), or NULL to begin
+ *				bhnd_nvram_pathname_next(), or NULL to begin
  *				iteration.
 * @param[in,out]	namelen	If @p prev is non-NULL, @p len must be a
  *				pointer to the length previously returned by
- *				bhnd_nvram_path_name_next(). On success, will
+ *				bhnd_nvram_pathname_next(). On success, will
  *				be set to the next element's length, in bytes.
  *
  * @retval non-NULL	A reference to the next path component.
  * @retval NULL		If no further path components are available in @p path.
  */
 const char *
-bhnd_nvram_path_name_next(const char *path, const char *prev, size_t *namelen)
+bhnd_nvram_path_next(const char *path, size_t pathlen, const char *prev,
+    size_t *namelen)
 {
-	const char *next, *endp;
+	const char	*next, *endp;
+	size_t		 offset;
 
 	/* Handle first element */
 	if (prev == NULL) {
@@ -1069,12 +1071,17 @@ bhnd_nvram_path_name_next(const char *path, const char *prev, size_t *namelen)
 		next = prev + *namelen;
 	}
 
+	/* Determine actual offset */
+	offset = (size_t)(next - path);
+
 	/* Trim extra '/' */
-	while (*next == '/')
+	while (offset < pathlen && *next == '/') {
+		offset++;
 		next++;
+	}
 
 	/* Hit end of path? */
-	if (*next == '\0')
+	if (offset == pathlen || *next == '\0')
 		return (NULL);
 
 	/* Determine length of this path component */
@@ -1098,26 +1105,22 @@ bhnd_nvram_path_name_next(const char *path, const char *prev, size_t *namelen)
 void
 bhnd_nvram_normalize_path(const char *path, char *normalized)
 {
-	const char	*next;
+	const char	*p;
 	char		*outp;
-	size_t		 namelen;
+	size_t		 namelen, pathlen;
 
-	next = path;
 	outp = normalized;
 
-	next = NULL;
-	while ((next = bhnd_nvram_path_name_next(path, next, &namelen))) {
-		const char *p = next;
-
+	pathlen = strlen(path);
+	p = NULL;
+	while ((p = bhnd_nvram_path_next(path, pathlen, p, &namelen))) {
 		/* Skip empty paths (unless this is the leading '/') */
 		if (namelen == 0)
 			continue;
 
 		/* Skip '.' paths */
-		if (namelen == 1 && p[0] == '.') {
-			p += namelen;
+		if (namelen == 1 && p[0] == '.')
 			continue;
-		}
 
 		/* Trim previous component on '..' */
 		if (namelen == 2 && p[0] == '.' && p[1] == '.') {
