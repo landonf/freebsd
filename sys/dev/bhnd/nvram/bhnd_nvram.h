@@ -174,11 +174,11 @@ bhnd_nvram_phandle	*bhnd_nvram_plane_open_path(
 bhnd_nvram_phandle	*bhnd_nvram_plane_find_path(
 			     struct bhnd_nvram_plane *plane, const char *path);
 
-bhnd_nvram_phandle	*bhnd_nvram_plane_open_parent(
-			     bhnd_nvram_phandle *phandle);
 bhnd_nvram_phandle	*bhnd_nvram_plane_retain_path(
 			     bhnd_nvram_phandle *phandle);
 void			 bhnd_nvram_plane_release_path(
+			     bhnd_nvram_phandle *phandle);
+bhnd_nvram_phandle	*bhnd_nvram_plane_parent_path(
 			     bhnd_nvram_phandle *phandle);
 
 bhnd_nvram_phandle	*bhnd_nvram_plane_findprop_path(

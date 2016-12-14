@@ -289,7 +289,6 @@ bhnd_nvram_plane_open_path(struct bhnd_nvram_plane *plane, const char *path)
 /**
  * Open and return a caller-owned reference to the parent of @p phandle,
  * if any.
- * @p path.
  * 
  * The caller assumes ownership of the returned path handle, and is responsible
  * for releasing it via bhnd_nvram_plane_release_path().
@@ -300,7 +299,7 @@ bhnd_nvram_plane_open_path(struct bhnd_nvram_plane *plane, const char *path)
  * @retval NULL		if @p phandle is the root of the path hierarchy.
  */
 bhnd_nvram_phandle *
-bhnd_nvram_plane_open_parent(bhnd_nvram_phandle *phandle)
+bhnd_nvram_plane_parent_path(bhnd_nvram_phandle *phandle)
 {
 	if (phandle->parent == NULL)
 		return (NULL);
