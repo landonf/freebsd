@@ -43,7 +43,10 @@ __FBSDID("$FreeBSD$");
 
 MALLOC_DEFINE(M_BHND_NVRAM, "bhnd_nvram", "bhnd nvram data");
 
-static void	bhnd_nvram_plane_free(void *value);
+static void				 bhnd_nvram_plane_free(void *value);
+static struct bhnd_nvram_prov_entry	*bhnd_nvram_plane_find_prov(
+					     struct bhnd_nvram_plane *plane,
+					     struct bhnd_nvram_prov *prov);
 
 /**
  * Allocate and initialize an empty NVRAM plane.
@@ -64,17 +67,17 @@ bhnd_nvram_plane_new(struct bhnd_nvram_plane *parent)
 	if (plane == NULL)
 		return (NULL);
 
+	plane->parent = parent;
+	LIST_INIT(&plane->children);
+	LIST_INIT(&plane->providers);
+
 	/* Initialize plane refcount */
 	bhnd_nvref_init(&plane->refs, plane, bhnd_nvram_plane_free);
-
-	/* Initialize empty list of (weakly referenced) children */
-	LIST_INIT(&plane->children);
 
 	/* Initialize our state lock */
 	BHND_NVPLANE_LOCK_INIT(plane);
 
 	/* Register with parent, if any */
-	plane->parent = NULL;
 	if (parent != NULL) {
 		/* Retain strong parent reference */
 		plane->parent = bhnd_nvram_plane_retain(parent);
@@ -172,6 +175,27 @@ bhnd_nvram_plane_retain(struct bhnd_nvram_plane *plane)
 }
 
 /**
+ * Search for @p prov in @p plane, returning its provider entry if found.
+ */
+static struct bhnd_nvram_prov_entry *
+bhnd_nvram_plane_find_prov(struct bhnd_nvram_plane *plane,
+    struct bhnd_nvram_prov *prov)
+{
+	struct bhnd_nvram_prov_entry *entry;
+
+	BHND_NVPLANE_LOCK_ASSERT(plane, SX_LOCKED);
+
+	LIST_FOREACH(entry, &plane->providers, npe_link) {
+		if (entry->prov == prov)
+			return (entry);
+	}
+
+	/* Not found */
+	return (NULL);
+}
+
+
+/**
  * Register a new NVRAM provider with @p plane.
  * 
  * @param	plane	The NVRAM plane with which @p prov will be registered.
@@ -185,8 +209,30 @@ int
 bhnd_nvram_plane_register(struct bhnd_nvram_plane *plane,
     struct bhnd_nvram_prov *prov)
 {
-	// TODO
-	return (ENXIO);
+	struct bhnd_nvram_prov_entry *entry;
+
+	BHND_NVPLANE_LOCK_RW(plane);
+
+	/* Already registered? */
+	if (bhnd_nvram_plane_find_prov(plane, prov) != NULL) {
+		BHND_NVPLANE_UNLOCK_RW(plane);
+		return (EEXIST);
+	}
+
+	/* Allocate new entry */
+	entry = bhnd_nv_malloc(sizeof(*entry));
+	if (entry == NULL) {
+		BHND_NVPLANE_UNLOCK_RW(plane);
+		return (ENOMEM);
+	}
+
+	entry->prov = prov;
+
+	/* Insert in provider list */
+	LIST_INSERT_HEAD(&plane->providers, entry, npe_link);
+
+	BHND_NVPLANE_UNLOCK_RW(plane);
+	return (0);
 }
 
 /**
@@ -206,8 +252,25 @@ int
 bhnd_nvram_plane_deregister(struct bhnd_nvram_plane *plane,
     struct bhnd_nvram_prov *prov)
 {
-	// TODO
-	return (ENXIO);
+	struct bhnd_nvram_prov_entry *entry;
+
+	BHND_NVPLANE_LOCK_RW(plane);
+
+	entry = bhnd_nvram_plane_find_prov(plane, prov);
+	if (entry == NULL) {
+		/* Ignore request to deregister unrecognized provider */
+		BHND_NVPLANE_UNLOCK_RW(plane);
+		return (0);
+	}
+
+	/* Remove from provider list */
+	LIST_REMOVE(entry, npe_link);
+	BHND_NVPLANE_UNLOCK_RW(plane);
+
+	/* Free entry */
+	bhnd_nv_free(entry);
+
+	return (0);
 }
 
 /**
@@ -228,8 +291,18 @@ int
 bhnd_nvram_plane_register_path(struct bhnd_nvram_plane *plane,
     struct bhnd_nvram_prov *prov, const char *pathname)
 {
-	// TODO
-	return (ENXIO);
+	BHND_NVPLANE_LOCK_RW(plane);
+
+	/* Provider must be registered. */
+	if (bhnd_nvram_plane_find_prov(plane, prov) == NULL) {
+		BHND_NVPLANE_UNLOCK_RW(plane);
+		return (EINVAL);
+	}
+
+	// TODO: register path
+
+	BHND_NVPLANE_UNLOCK_RW(plane);
+	return (0);
 }
 
 /**

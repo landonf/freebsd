@@ -38,11 +38,13 @@
 #include <sys/refcount.h>
 #include <sys/sx.h>
 
-LIST_HEAD(bhnd_nvram_phandle_list, bhnd_nvram_phandle);
-LIST_HEAD(bhnd_nvram_plane_list, bhnd_nvram_plane);
+LIST_HEAD(bhnd_nvram_phandle_list,	bhnd_nvram_phandle);
+LIST_HEAD(bhnd_nvram_plane_list,	bhnd_nvram_plane);
+LIST_HEAD(bhnd_nvram_prov_entry_list,	bhnd_nvram_prov_entry);
 
-typedef struct bhnd_nvram_phandle_list	bhnd_nvram_phandle_list;
-typedef struct bhnd_nvram_plane_list	bhnd_nvram_plane_list;
+typedef struct bhnd_nvram_phandle_list		bhnd_nvram_phandle_list;
+typedef struct bhnd_nvram_plane_list		bhnd_nvram_plane_list;
+typedef struct bhnd_nvram_prov_entry_list	bhnd_nvram_prov_entry_list;
 
 /**
  * Simple weak reference implementation.
@@ -59,6 +61,15 @@ struct bhnd_nvref {
 	volatile u_int	 wrefs;			/**< weak references */
 	void		*value;			/**< refcounted value */
 	void		(*vfree)(void *value);	/**< free() callback */
+};
+
+/**
+ * NVRAM provider entry.
+ */
+struct bhnd_nvram_prov_entry {
+	struct bhnd_nvram_prov	*prov;	/**< NVRAM provider */
+
+	LIST_ENTRY(bhnd_nvram_prov_entry) npe_link;
 };
 
 /**
@@ -82,11 +93,13 @@ struct bhnd_nvram_phandle {
  * Manages a common namespace of NVRAM paths and associated NVRAM providers.
  */
 struct bhnd_nvram_plane {
-	struct bhnd_nvref	 refs;		/**< reference count */
-	struct bhnd_nvram_plane	*parent;	/**< parent plane, or NULL */
-	bhnd_nvram_plane_list	 children;	/**< weak references to all
-						     children */
-	struct sx		 lock;		/**< state lock */
+	struct bhnd_nvref		 refs;		/**< reference count */
+	struct bhnd_nvram_plane		*parent;	/**< parent plane, or
+							     NULL */
+	bhnd_nvram_prov_entry_list	 providers;	/**< registered providers */
+	bhnd_nvram_plane_list		 children;	/**< weak references to
+							     all children */
+	struct sx			 lock;		/**< state lock */
 
 	LIST_ENTRY(bhnd_nvram_plane) np_link;
 };
