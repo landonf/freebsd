@@ -161,6 +161,7 @@ bhnd_sprom_attach(device_t dev, bus_size_t offset)
 		device_printf(dev, "failed to register NVRAM path: %d\n",
 		    error);
 
+		bhnd_nvram_plane_deregister_device(sc->plane, dev);
 		bhnd_nvram_store_free(sc->store);
 		return (error);
 	}
