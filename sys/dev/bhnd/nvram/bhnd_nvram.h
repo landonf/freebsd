@@ -154,6 +154,7 @@ struct bhnd_nvram_plane	*bhnd_nvram_plane_retain(
 			     struct bhnd_nvram_plane *plane);
 void			 bhnd_nvram_plane_release(
 			     struct bhnd_nvram_plane *plane);
+
 int			 bhnd_nvram_plane_register(
 			     struct bhnd_nvram_plane *plane,
 			     struct bhnd_nvram_prov *prov);
@@ -162,17 +163,21 @@ int			 bhnd_nvram_plane_deregister(
 			     struct bhnd_nvram_prov *prov);
 int			 bhnd_nvram_plane_register_path(
 			     struct bhnd_nvram_plane *plane,
-			     struct bhnd_nvram_prov *prov, const char *path);
+			     struct bhnd_nvram_prov *prov,
+			     const char *pathname);
 int			 bhnd_nvram_plane_deregister_path(
 			     struct bhnd_nvram_plane *plane,
-			     struct bhnd_nvram_prov *prov, const char *path);
+			     struct bhnd_nvram_prov *prov,
+			     const char *pathname);
 
 bhnd_nvram_phandle	*bhnd_nvram_plane_open_root(
 			     struct bhnd_nvram_plane *plane);
 bhnd_nvram_phandle	*bhnd_nvram_plane_open_path(
-			     struct bhnd_nvram_plane *plane, const char *path);
+			     struct bhnd_nvram_plane *plane,
+			     const char *pathname);
 bhnd_nvram_phandle	*bhnd_nvram_plane_find_path(
-			     struct bhnd_nvram_plane *plane, const char *path);
+			     struct bhnd_nvram_plane *plane,
+			     const char *pathname);
 
 bhnd_nvram_phandle	*bhnd_nvram_plane_retain_path(
 			     bhnd_nvram_phandle *phandle);

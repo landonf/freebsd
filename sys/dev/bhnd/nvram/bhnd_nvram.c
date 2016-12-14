@@ -204,7 +204,7 @@ bhnd_nvram_plane_deregister(struct bhnd_nvram_plane *plane,
  */
 int
 bhnd_nvram_plane_register_path(struct bhnd_nvram_plane *plane,
-    struct bhnd_nvram_prov *prov, const char *path)
+    struct bhnd_nvram_prov *prov, const char *pathname)
 {
 	// TODO
 	return (ENXIO);
@@ -217,7 +217,7 @@ bhnd_nvram_plane_register_path(struct bhnd_nvram_plane *plane,
  */
 int
 bhnd_nvram_plane_deregister_path(struct bhnd_nvram_plane *plane,
-    struct bhnd_nvram_prov *prov, const char *path)
+    struct bhnd_nvram_prov *prov, const char *pathname)
 {
 	// TODO
 	return (ENXIO);
@@ -247,17 +247,17 @@ bhnd_nvram_plane_open_root(struct bhnd_nvram_plane *plane)
  * for releasing the reference via bhnd_nvram_plane_release_path().
  * 
  * @param	plane		The NVRAM plane at which to start the search.
- * @param	path		The path to search for.
+ * @param	pathname	The path to search for.
  */
 bhnd_nvram_phandle *
-bhnd_nvram_plane_find_path(struct bhnd_nvram_plane *plane, const char *path)
+bhnd_nvram_plane_find_path(struct bhnd_nvram_plane *plane, const char *pathname)
 {
 	struct bhnd_nvram_plane	*p;
 	bhnd_nvram_phandle	*phandle;
 
 	/* Walk the plane hierarchy until we hit a match */
 	for (p = plane; p != NULL; p = p->parent) {
-		phandle = bhnd_nvram_plane_open_path(p, path);
+		phandle = bhnd_nvram_plane_open_path(p, pathname);
 		if (phandle != NULL)
 			return (phandle);
 	}
@@ -273,14 +273,14 @@ bhnd_nvram_plane_find_path(struct bhnd_nvram_plane *plane, const char *path)
  * The caller assumes ownership of the returned path handle, and is responsible
  * for releasing it via bhnd_nvram_plane_release_path().
  * 
- * @param	plane	The NVRAM plane containing @p path.
- * @param	path	The fully qualified path to be opened.
+ * @param	plane		The NVRAM plane containing @p path.
+ * @param	pathname	The fully qualified path to be opened.
  *
  * @retval non-NULL	if @p path is found in @p plane.
  * @retval NULL		if @p path is not found in @p plane.
  */
 bhnd_nvram_phandle *
-bhnd_nvram_plane_open_path(struct bhnd_nvram_plane *plane, const char *path)
+bhnd_nvram_plane_open_path(struct bhnd_nvram_plane *plane, const char *pathname)
 {
 	// TODO
 	return (NULL);
