@@ -40,11 +40,11 @@
 
 LIST_HEAD(bhnd_nvram_phandle_list,	bhnd_nvram_phandle);
 LIST_HEAD(bhnd_nvram_plane_list,	bhnd_nvram_plane);
-LIST_HEAD(bhnd_nvram_prov_entry_list,	bhnd_nvram_prov_entry);
+LIST_HEAD(bhnd_nvram_devnode_list,	bhnd_nvram_devnode);
 
-typedef struct bhnd_nvram_phandle_list		bhnd_nvram_phandle_list;
-typedef struct bhnd_nvram_plane_list		bhnd_nvram_plane_list;
-typedef struct bhnd_nvram_prov_entry_list	bhnd_nvram_prov_entry_list;
+typedef struct bhnd_nvram_phandle_list	bhnd_nvram_phandle_list;
+typedef struct bhnd_nvram_plane_list	bhnd_nvram_plane_list;
+typedef struct bhnd_nvram_devnode_list	bhnd_nvram_devnode_list;
 
 /**
  * Simple weak reference implementation.
@@ -64,12 +64,11 @@ struct bhnd_nvref {
 };
 
 /**
- * NVRAM provider entry.
+ * NVRAM device entry.
  */
-struct bhnd_nvram_prov_entry {
-	struct bhnd_nvram_prov	*prov;	/**< NVRAM provider */
-
-	LIST_ENTRY(bhnd_nvram_prov_entry) npe_link;
+struct bhnd_nvram_devnode {
+	device_t	dev;
+	LIST_ENTRY(bhnd_nvram_devnode) dn_link;
 };
 
 /**
@@ -90,13 +89,13 @@ struct bhnd_nvram_phandle {
 /**
  * NVRAM plane.
  * 
- * Manages a common namespace of NVRAM paths and associated NVRAM providers.
+ * Manages a common namespace of NVRAM paths and associated NVRAM devices.
  */
 struct bhnd_nvram_plane {
 	struct bhnd_nvref		 refs;		/**< reference count */
 	struct bhnd_nvram_plane		*parent;	/**< parent plane, or
 							     NULL */
-	bhnd_nvram_prov_entry_list	 providers;	/**< registered providers */
+	bhnd_nvram_devnode_list		 devices;	/**< registered devices */
 	bhnd_nvram_plane_list		 children;	/**< weak references to
 							     all children */
 	struct sx			 lock;		/**< state lock */

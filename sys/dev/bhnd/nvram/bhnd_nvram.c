@@ -44,9 +44,9 @@ __FBSDID("$FreeBSD$");
 MALLOC_DEFINE(M_BHND_NVRAM, "bhnd_nvram", "bhnd nvram data");
 
 static void				 bhnd_nvram_plane_free(void *value);
-static struct bhnd_nvram_prov_entry	*bhnd_nvram_plane_find_prov(
+static struct bhnd_nvram_devnode	*bhnd_nvram_plane_find_device(
 					     struct bhnd_nvram_plane *plane,
-					     struct bhnd_nvram_prov *prov);
+					     device_t dev);
 
 /**
  * Allocate and initialize an empty NVRAM plane.
@@ -69,7 +69,7 @@ bhnd_nvram_plane_new(struct bhnd_nvram_plane *parent)
 
 	plane->parent = parent;
 	LIST_INIT(&plane->children);
-	LIST_INIT(&plane->providers);
+	LIST_INIT(&plane->devices);
 
 	/* Initialize plane refcount */
 	bhnd_nvref_init(&plane->refs, plane, bhnd_nvram_plane_free);
@@ -175,18 +175,17 @@ bhnd_nvram_plane_retain(struct bhnd_nvram_plane *plane)
 }
 
 /**
- * Search for @p prov in @p plane, returning its provider entry if found.
+ * Search for @p device in @p plane, returning its entry if found.
  */
-static struct bhnd_nvram_prov_entry *
-bhnd_nvram_plane_find_prov(struct bhnd_nvram_plane *plane,
-    struct bhnd_nvram_prov *prov)
+static struct bhnd_nvram_devnode *
+bhnd_nvram_plane_find_device(struct bhnd_nvram_plane *plane, device_t dev)
 {
-	struct bhnd_nvram_prov_entry *entry;
+	struct bhnd_nvram_devnode *entry;
 
 	BHND_NVPLANE_LOCK_ASSERT(plane, SX_LOCKED);
 
-	LIST_FOREACH(entry, &plane->providers, npe_link) {
-		if (entry->prov == prov)
+	LIST_FOREACH(entry, &plane->devices, dn_link) {
+		if (entry->dev == dev)
 			return (entry);
 	}
 
@@ -196,25 +195,24 @@ bhnd_nvram_plane_find_prov(struct bhnd_nvram_plane *plane,
 
 
 /**
- * Register a new NVRAM provider with @p plane.
+ * Register a new NVRAM device with @p plane.
  * 
- * @param	plane	The NVRAM plane with which @p prov will be registered.
- * @param	prov	The NVRAM provider to register with @p plane.
+ * @param	plane	The NVRAM plane with which @p dev will be registered.
+ * @param	dev	The NVRAM device to register.
  * 
  * @retval 0		success.
- * @retval EEXIST	if @p prov is already registered with @p plane.
+ * @retval EEXIST	if @p dev is already registered with @p plane.
  * @retval ENOMEM	if allocation fails.
  */
 int
-bhnd_nvram_plane_register(struct bhnd_nvram_plane *plane,
-    struct bhnd_nvram_prov *prov)
+bhnd_nvram_plane_register_device(struct bhnd_nvram_plane *plane, device_t dev)
 {
-	struct bhnd_nvram_prov_entry *entry;
+	struct bhnd_nvram_devnode *entry;
 
 	BHND_NVPLANE_LOCK_RW(plane);
 
 	/* Already registered? */
-	if (bhnd_nvram_plane_find_prov(plane, prov) != NULL) {
+	if (bhnd_nvram_plane_find_device(plane, dev) != NULL) {
 		BHND_NVPLANE_UNLOCK_RW(plane);
 		return (EEXIST);
 	}
@@ -226,45 +224,45 @@ bhnd_nvram_plane_register(struct bhnd_nvram_plane *plane,
 		return (ENOMEM);
 	}
 
-	entry->prov = prov;
+	entry->dev = dev;
 
-	/* Insert in provider list */
-	LIST_INSERT_HEAD(&plane->providers, entry, npe_link);
+	/* Insert in device list */
+	LIST_INSERT_HEAD(&plane->devices, entry, dn_link);
 
 	BHND_NVPLANE_UNLOCK_RW(plane);
 	return (0);
 }
 
 /**
- * Deregister an NVRAM provider and all associated paths.
+ * Deregister an NVRAM device and all associated paths.
  * 
- * If @p prov is not currently registered with @p plane, the request will
+ * If @p dev is not currently registered with @p plane, the request will
  * be ignored.
  * 
- * All paths previously registered to @p prov will be deregistered.
+ * All paths previously registered to @p dev will be deregistered.
  * 
- * @param	plane	The NVRAM plane from which @p prov will be deregistered.
- * @param	prov	The NVRAM provider to deregister from @p plane.
+ * @param	plane	The NVRAM plane from which @p device will be removed.
+ * @param	dev	The NVRAM device to deregister from @p plane.
  * 
  * @retval 0	success.
  */
 int
-bhnd_nvram_plane_deregister(struct bhnd_nvram_plane *plane,
-    struct bhnd_nvram_prov *prov)
+bhnd_nvram_plane_deregister_device(struct bhnd_nvram_plane *plane,
+    device_t dev)
 {
-	struct bhnd_nvram_prov_entry *entry;
+	struct bhnd_nvram_devnode *entry;
 
 	BHND_NVPLANE_LOCK_RW(plane);
 
-	entry = bhnd_nvram_plane_find_prov(plane, prov);
+	entry = bhnd_nvram_plane_find_device(plane, dev);
 	if (entry == NULL) {
-		/* Ignore request to deregister unrecognized provider */
+		/* Ignore request to deregister unrecognized device */
 		BHND_NVPLANE_UNLOCK_RW(plane);
 		return (0);
 	}
 
-	/* Remove from provider list */
-	LIST_REMOVE(entry, npe_link);
+	/* Remove from device list */
+	LIST_REMOVE(entry, dn_link);
 	BHND_NVPLANE_UNLOCK_RW(plane);
 
 	/* Free entry */
@@ -278,23 +276,23 @@ bhnd_nvram_plane_deregister(struct bhnd_nvram_plane *plane,
  * 
  * @param	plane		The NVRAM plane with which @p pathname will be
  *				registered.
- * @param	prov		The NVRAM provider for the path.
+ * @param	dev		The NVRAM device vending the path.
  * @param	pathname	The fully qualified path to be registered.
  * 
  * @retval 0		success.
- * @retval EINVAL	if @p prov was not previously registered via
- *			bhnd_nvram_plane_register().
+ * @retval EINVAL	if @p dev was not previously registered via
+ *			bhnd_nvram_plane_register_device().
  * @retval EEXIST	if @p pathname is already registered in @p plane.
  * @retval ENOMEM	if allocation fails.
  */
 int
-bhnd_nvram_plane_register_path(struct bhnd_nvram_plane *plane,
-    struct bhnd_nvram_prov *prov, const char *pathname)
+bhnd_nvram_plane_register_path(struct bhnd_nvram_plane *plane, device_t dev,
+    const char *pathname)
 {
 	BHND_NVPLANE_LOCK_RW(plane);
 
-	/* Provider must be registered. */
-	if (bhnd_nvram_plane_find_prov(plane, prov) == NULL) {
+	/* The NVRAM device must be registered. */
+	if (bhnd_nvram_plane_find_device(plane, dev) == NULL) {
 		BHND_NVPLANE_UNLOCK_RW(plane);
 		return (EINVAL);
 	}
@@ -310,18 +308,19 @@ bhnd_nvram_plane_register_path(struct bhnd_nvram_plane *plane,
  * 
  * @param	plane		The NVRAM plane with which @p pathname will be
  *				registered.
- * @param	prov		The current NVRAM provider for the path.
+ * @param	dev		The current NVRAM device registered for
+ *				@p pathname.
  * @param	pathname	The fully qualified path to be deregistered.
  * 
  * @retval 0		success.
- * @retval EINVAL	if @p prov was not previously registered via
- *			bhnd_nvram_plane_register().
- * @retval ENOENT	if @p pathname is not registered in @p plane, or is
- *			not provided by @p prov.
+ * @retval EINVAL	if @p dev was not previously registered via
+ *			bhnd_nvram_plane_register_device().
+ * @retval ENOENT	if @p pathname is not registered in @p plane, or was
+ *			not registered by @p dev.
  */
 int
-bhnd_nvram_plane_deregister_path(struct bhnd_nvram_plane *plane,
-    struct bhnd_nvram_prov *prov, const char *pathname)
+bhnd_nvram_plane_deregister_path(struct bhnd_nvram_plane *plane, device_t dev,
+    const char *pathname)
 {
 	// TODO
 	return (ENXIO);
@@ -506,8 +505,7 @@ bhnd_nvram_plane_findprop_path(bhnd_nvram_phandle *phandle,
  * @retval ENOENT	If @p propname is not a known property name, and the
  *			definition of arbitrary property names is unsupported
  *			by @p phandle.
- * @retval ENODEV	If the underlying provider for @p phandle is
- *			unavailable.
+ * @retval ENODEV	If the underlying device for @p phandle is unavailable.
  * @retval EINVAL	If @p propname is read-only.
  * @retval EINVAL	If @p propname cannot be set to the given value or
  *			value type.
@@ -537,8 +535,7 @@ bhnd_nvram_plane_setprop(bhnd_nvram_phandle *phandle, const char *propname,
  * @retval ENOENT	If @p propname is not found in @p phandle.
  * @retval ENOMEM	If @p buf is non-NULL and a buffer of @p len is too
  *			small to hold the requested value.
- * @retval ENODEV	If the underlying provider for @p phandle is
- *			unavailable.
+ * @retval ENODEV	If the underlying device for @p phandle is unavailable.
  * @retval EFTYPE	If the property value cannot be coerced to @p type.
  * @retval ERANGE	If value coercion would overflow @p type.
  * @retval non-zero	If reading the property value otherwise fails, a
@@ -572,8 +569,7 @@ bhnd_nvram_plane_getprop(bhnd_nvram_phandle *phandle, const char *propname,
  * @retval 0		success
  * @retval ENOENT	If @p propname is not found in @p phandle.
  * @retval ENOMEM	If allocation fails.
- * @retval ENODEV	If the underlying provider for @p phandle is
- *			unavailable.
+ * @retval ENODEV	If the underlying device for @p phandle is unavailable.
  * @retval EFTYPE	If the property value cannot be coerced to @p type.
  * @retval ERANGE	If value coercion would overflow @p type.
  * @retval non-zero	If reading the property value otherwise fails, a

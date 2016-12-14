@@ -143,11 +143,9 @@ const char		*bhnd_nvram_string_array_next(const char *inp,
 
 /* forward declarations */
 struct bhnd_nvram_plane;
-struct bhnd_nvram_prov;
 struct bhnd_nvram_plist;
 
 typedef struct bhnd_nvram_phandle bhnd_nvram_phandle;
-
 
 struct bhnd_nvram_plane	*bhnd_nvram_plane_new(struct bhnd_nvram_plane *parent);
 struct bhnd_nvram_plane	*bhnd_nvram_plane_retain(
@@ -155,19 +153,16 @@ struct bhnd_nvram_plane	*bhnd_nvram_plane_retain(
 void			 bhnd_nvram_plane_release(
 			     struct bhnd_nvram_plane *plane);
 
-int			 bhnd_nvram_plane_register(
-			     struct bhnd_nvram_plane *plane,
-			     struct bhnd_nvram_prov *prov);
-int			 bhnd_nvram_plane_deregister(
-			     struct bhnd_nvram_plane *plane,
-			     struct bhnd_nvram_prov *prov);
+int			 bhnd_nvram_plane_register_device(
+			     struct bhnd_nvram_plane *plane, device_t dev);
+int			 bhnd_nvram_plane_deregister_device(
+			     struct bhnd_nvram_plane *plane, device_t dev);
+
 int			 bhnd_nvram_plane_register_path(
-			     struct bhnd_nvram_plane *plane,
-			     struct bhnd_nvram_prov *prov,
+			     struct bhnd_nvram_plane *plane, device_t dev,
 			     const char *pathname);
 int			 bhnd_nvram_plane_deregister_path(
-			     struct bhnd_nvram_plane *plane,
-			     struct bhnd_nvram_prov *prov,
+			     struct bhnd_nvram_plane *plane, device_t dev,
 			     const char *pathname);
 
 bhnd_nvram_phandle	*bhnd_nvram_plane_open_root(
