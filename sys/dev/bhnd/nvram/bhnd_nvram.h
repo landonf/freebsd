@@ -178,8 +178,9 @@ bhnd_nvram_phandle	*bhnd_nvram_plane_open_parent(
 			     bhnd_nvram_phandle *phandle);
 bhnd_nvram_phandle	*bhnd_nvram_plane_retain_path(
 			     bhnd_nvram_phandle *phandle);
-void			 bhnd_nvram_plane_close_path(
+void			 bhnd_nvram_plane_release_path(
 			     bhnd_nvram_phandle *phandle);
+
 bhnd_nvram_phandle	*bhnd_nvram_plane_findprop_path(
 			     bhnd_nvram_phandle *phandle, const char *propname);
 

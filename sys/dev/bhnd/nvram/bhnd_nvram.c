@@ -244,7 +244,7 @@ bhnd_nvram_plane_open_root(struct bhnd_nvram_plane *plane)
  * handle for the first path matching @p path, or NULL if not found.
  * 
  * The caller assumes ownership of the returned path handle, and is responsible
- * for releasing the reference via bhnd_nvram_plane_close_path().
+ * for releasing the reference via bhnd_nvram_plane_release_path().
  * 
  * @param	plane		The NVRAM plane at which to start the search.
  * @param	path		The path to search for.
@@ -313,7 +313,7 @@ bhnd_nvram_plane_open_parent(bhnd_nvram_phandle *phandle)
  * to the caller.
  * 
  * The caller is responsible for releasing their reference ownership via
- * bhnd_nvram_plane_close_path().
+ * bhnd_nvram_plane_release_path().
  * 
  * @param	phandle	The path handle to be retained.
  * 
@@ -327,12 +327,12 @@ bhnd_nvram_plane_retain_path(bhnd_nvram_phandle *phandle)
 }
 
 /**
- * Close a previously opened or retained path reference.
+ * Release a path handle.
  *
- * @param	phandle	The path handle to be closed.
+ * @param	phandle	The path handle to be released.
  */
 void
-bhnd_nvram_plane_close_path(bhnd_nvram_phandle *phandle)
+bhnd_nvram_plane_release_path(bhnd_nvram_phandle *phandle)
 {
 	struct bhnd_nvram_phandle *parent;
 
@@ -368,7 +368,7 @@ bhnd_nvram_plane_close_path(bhnd_nvram_phandle *phandle)
 	bhnd_nvref_release_weak(&phandle->refs);
 
 	/* Drop our now-invalidated strong reference to our parent */
-	bhnd_nvram_plane_close_path(parent);
+	bhnd_nvram_plane_release_path(parent);
 }
 
 /**
@@ -377,7 +377,7 @@ bhnd_nvram_plane_close_path(bhnd_nvram_phandle *phandle)
  * matching @p propname, or NULL if not found.
  * 
  * The caller assumes ownership of the returned path handle, and is responsible
- * for releasing the reference via bhnd_nvram_plane_close_path().
+ * for releasing the reference via bhnd_nvram_plane_release_path().
  * 
  * @param	phandle		The path at which to start the search.
  * @param	propname	The property to search for.
