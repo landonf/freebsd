@@ -531,6 +531,13 @@ bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass)
 		return (ENXIO);
 	}
 
+	/* Allocate our (empty) NVRAM plane */
+	sc->nvram_plane = bhnd_nvram_plane_new(bhnd_get_nvram_plane(dev));
+	if (sc->nvram_plane == NULL) {
+		error = ENOMEM;
+		goto failed;
+	}
+
 	/* Allocate our host resources */
 	if ((error = bhndb_alloc_host_resources(sc->bus_res)))
 		goto failed;
@@ -572,6 +579,9 @@ failed:
 
 	if (sc->bus_res != NULL)
 		bhndb_free_resources(sc->bus_res);
+
+	if (sc->nvram_plane != NULL)
+		bhnd_nvram_plane_release(sc->nvram_plane);
 
 	return (error);
 }
@@ -918,7 +928,10 @@ bhndb_generic_detach(device_t dev)
 
 	/* Clean up our driver state. */
 	bhndb_free_resources(sc->bus_res);
-	
+
+	/* Drop up our bridge-level NVRAM plane */
+	bhnd_nvram_plane_release(sc->nvram_plane);
+
 	BHNDB_LOCK_DESTROY(sc);
 
 	return (0);

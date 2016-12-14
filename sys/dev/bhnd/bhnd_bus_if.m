@@ -362,6 +362,17 @@ METHOD bhnd_attach_type get_attach_type {
 } DEFAULT bhnd_bus_null_get_attach_type;
 
 /**
+ * Return the NVRAM plane for the parent bus, or NULL if unavailable.
+ *
+ * @param	dev	The device whose child is being examined.
+ * @param	child	The child device.
+ */
+METHOD struct bhnd_nvram_plane * get_nvram_plane {
+	device_t	 dev;
+	device_t	 child;
+} DEFAULT bhnd_bus_generic_get_nvram_plane;
+
+/**
  * Attempt to read the BHND board identification from the parent bus.
  *
  * This relies on NVRAM access, and will fail if a valid NVRAM device cannot

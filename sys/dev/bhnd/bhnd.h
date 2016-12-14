@@ -421,6 +421,8 @@ int				 bhnd_bus_generic_get_nvram_var(device_t dev,
 				     bhnd_nvram_type type);
 const struct bhnd_chipid	*bhnd_bus_generic_get_chipid(device_t dev,
 				     device_t child);
+struct bhnd_nvram_plane		*bhnd_bus_generic_get_nvram_plane(device_t dev,
+				     device_t child);
 int				 bhnd_bus_generic_read_board_info(device_t dev,
 				     device_t child,
 				     struct bhnd_board_info *info);
@@ -488,6 +490,16 @@ bhnd_get_chipid(device_t dev) {
 	return (BHND_BUS_GET_CHIPID(device_get_parent(dev), dev));
 };
 
+/**
+ * Return the NVRAM plane for the bhnd bus, or NULL if unavailable.
+ *
+ * @param dev A bhnd bus child device.
+ */
+static inline struct bhnd_nvram_plane *
+bhnd_get_nvram_plane(device_t dev)
+{
+	return (BHND_BUS_GET_NVRAM_PLANE(device_get_parent(dev), dev));
+}
 
 /**
  * Read the current value of a bhnd(4) device's per-core I/O control register.

@@ -1461,6 +1461,25 @@ bhnd_bus_generic_get_chipid(device_t dev, device_t child)
 	panic("missing BHND_BUS_GET_CHIPID()");
 }
 
+/**
+ * Helper function for implementing BHND_BUS_GET_NVRAM_PLANE().
+ * 
+ * This implementation delegates the request to the BHND_BUS_GET_NVRAM_PLANE()
+ * method on the parent of @p dev.
+ * 
+ * If no parent exists, NULL will be returned.
+ */
+struct bhnd_nvram_plane *
+bhnd_bus_generic_get_nvram_plane(device_t dev, device_t child)
+{
+	if (device_get_parent(dev) != NULL) {
+		return (BHND_BUS_GET_NVRAM_PLANE(device_get_parent(dev),
+		    child));
+	}
+
+	return (NULL);
+}
+
 /* nvram board_info population macros for bhnd_bus_generic_read_board_info() */
 #define	BHND_GV(_dest, _name)	\
 	bhnd_nvram_getvar_uint(child, BHND_NVAR_ ## _name, &_dest,	\

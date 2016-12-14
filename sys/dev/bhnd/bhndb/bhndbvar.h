@@ -96,6 +96,8 @@ struct bhndb_softc {
 	device_t			 parent_dev;	/**< parent device */
 	device_t			 bus_dev;	/**< child bhnd(4) bus */
 
+	struct bhnd_nvram_plane		*nvram_plane;	/**< bridge-level nvram plane */
+
 	struct mtx			 sc_mtx;	/**< resource lock. */
 	struct bhndb_resources		*bus_res;	/**< bus resource state */
 };
