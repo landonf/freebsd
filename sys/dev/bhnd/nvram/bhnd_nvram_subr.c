@@ -1039,6 +1039,7 @@ bhnd_nvram_parse_env(const char *env, size_t env_len, char delim,
  * Iterate over all path components in the @p path string.
  *
  * @param		path	The path to be iterated.
+ * @param		pathlen	The length of @p path.
  * @param		prev	The pointer previously returned by
  *				bhnd_nvram_pathname_next(), or NULL to begin
  *				iteration.
@@ -1054,7 +1055,7 @@ const char *
 bhnd_nvram_path_next(const char *path, size_t pathlen, const char *prev,
     size_t *namelen)
 {
-	const char	*next, *endp;
+	const char	*next;
 	size_t		 offset;
 
 	/* Handle first element */
@@ -1085,11 +1086,10 @@ bhnd_nvram_path_next(const char *path, size_t pathlen, const char *prev,
 		return (NULL);
 
 	/* Determine length of this path component */
-	endp = strchr(next, '/');
-	if (endp != NULL) {
-		*namelen = (size_t)(endp - next);
-	} else {
-		*namelen = strlen(next);
+	*namelen = 0;
+	for (*namelen = 0; *namelen + offset < pathlen; (*namelen)++) {
+		if (next[*namelen] == '/' || next[*namelen] == '\0')
+			break;
 	}
 
 	return (next);
@@ -1153,6 +1153,118 @@ bhnd_nvram_normalize_path(const char *path, char *normalized)
 
 	/* NUL terminate */
 	*outp = '\0';
+}
+
+/**
+ * Return a pointer to last component of @p path, ignoring any trailing
+ * '/' characters.
+ * 
+ * @param	path		The path to be parsed.
+ * @param	pathlen		The length of @p path.
+ * @param[out]	namelen		The length of returned path component.
+ */
+const char *
+bhnd_nvram_path_basename(const char *path, size_t pathlen, size_t *namelen)
+{
+	size_t prefix_len;
+
+	/* Skip trailing '/' elements */
+	while (pathlen > 0 && path[pathlen - 1] == '/') {
+		/* If path consists entirely of '/', that's what we return */
+		if (pathlen == 1) {
+			*namelen = pathlen;
+			return (path);
+		}
+
+		pathlen--;
+	}
+
+	/* Find final '/' */
+	prefix_len = 0;
+	for (size_t i = 0; i < pathlen; i++) {
+		const char *p;
+		
+		p = path + (pathlen - i - 1);
+		if (*p == '/') {
+			prefix_len = (p - path);
+
+			/* Skip '/' */
+			if (prefix_len < pathlen)
+				prefix_len++;
+
+			break;
+		}
+	}
+
+	*namelen = pathlen - prefix_len;
+	return (path + prefix_len);
+}
+
+/**
+ * Return the length of the initial directory portion of @p path.
+ * 
+ * Any trailing '/' characters are ignored.
+ * 
+ * @param	path		The path to be parsed.
+ * @param	pathlen		The length of @p path.
+ */
+size_t
+bhnd_nvram_path_dirlen(const char *path, size_t pathlen)
+{
+	const char	*name;
+	size_t		 namelen;
+
+	/* Determine final path component */
+	name = bhnd_nvram_path_basename(path, pathlen, &namelen);
+	if (name == path)
+		return (namelen);
+
+	/* Trim trailing component */
+	pathlen -= namelen;
+
+	/* Trim trailing '/' (but not a leading '/') */
+	while (pathlen > 1 && path[pathlen - 1] == '/')
+		pathlen--;
+
+	return (pathlen);
+}
+
+/**
+ * Return true if @p pathname is non-empty, normalized, fully qualified path,
+ * false otherwise.
+ *
+ * @param		path	The path to be iterated.
+ */
+bool
+bhnd_nvram_is_qualified_path(const char *path)
+{
+	const char	*p;
+	size_t		 namelen, pathlen;
+
+	p = NULL;
+	pathlen = strlen(path);
+
+	/* First component must be '/' */
+	p = bhnd_nvram_path_next(path, pathlen, p, &namelen);
+	if (p == NULL || namelen != 1 || *p != '/')
+
+	/* Validate remaining components */
+	while ((p = bhnd_nvram_path_next(path, pathlen, p, &namelen)) != NULL) {
+		/* Cannot be empty */
+		if (namelen == 0)
+			return (false);
+
+		/* Cannot be '.' or '..' */
+		if (p[0] == '.') {
+			if (namelen == 1)
+				return (false);
+
+			if (namelen == 2 && p[1] == '.')
+				return (false);
+		}
+	}
+
+	return (true);
 }
 
 /**

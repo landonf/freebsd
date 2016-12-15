@@ -44,6 +44,14 @@ __FBSDID("$FreeBSD$");
 MALLOC_DEFINE(M_BHND_NVRAM, "bhnd_nvram", "bhnd nvram data");
 
 static void				 bhnd_nvram_plane_free(void *value);
+
+static bhnd_nvram_phandle		*bhnd_nvram_plane_new_path(
+					     const char *pathname,
+					     struct bhnd_nvram_plane *plane,
+					     bhnd_nvram_phandle *parent);
+static void				 bhnd_nvram_plane_free_path(
+					     void *value);
+
 static struct bhnd_nvram_devnode	*bhnd_nvram_plane_find_device(
 					     struct bhnd_nvram_plane *plane,
 					     device_t dev);
@@ -116,8 +124,8 @@ bhnd_nvram_plane_release(struct bhnd_nvram_plane *plane)
 		return;
 
 	/*
-	 * We're a zombie now. Mark our parent (if any) as unavailable, and
-	 * then remove ourselves from the parent.
+	 * We're a zombie. Remove any active weak reference held by our parent
+	 * path. If that's the last weak reference, we'll be fully deallocated.
 	 */
 	BHND_NVPLANE_LOCK_RW(plane);
 	parent = plane->parent;
@@ -149,10 +157,8 @@ bhnd_nvram_plane_free(void *value)
 
 	BHND_NV_ASSERT(LIST_EMPTY(&plane->children),
 	    ("free() with active children"));
-
-	/* Drop our own strong parent reference */
-	if (plane->parent != NULL)
-		bhnd_nvram_plane_release(plane->parent);
+	BHND_NV_ASSERT(plane->parent == NULL,
+	    ("free() with active parent"));
 
 	/* Clean up remaining instance state */
 	BHND_NVPLANE_LOCK_DESTROY(plane);
@@ -173,6 +179,7 @@ bhnd_nvram_plane_retain(struct bhnd_nvram_plane *plane)
 	bhnd_nvref_retain(&plane->refs);
 	return (plane);
 }
+
 
 /**
  * Search for @p device in @p plane, returning its entry if found.
@@ -284,6 +291,7 @@ bhnd_nvram_plane_deregister_device(struct bhnd_nvram_plane *plane,
  * @param	pathname	The fully qualified path to be registered.
  * 
  * @retval 0		success.
+ * @retval EINVAL	if @p pathname is not a fully-qualified path.
  * @retval EINVAL	if @p dev was not previously registered via
  *			bhnd_nvram_plane_register_device().
  * @retval EEXIST	if @p pathname is already registered in @p plane.
@@ -293,6 +301,19 @@ int
 bhnd_nvram_plane_register_path(struct bhnd_nvram_plane *plane, device_t dev,
     const char *pathname)
 {
+	const char	*name;
+	size_t		 pathlen;
+	size_t		 nlen, plen;
+
+	/* Path must be fully qualified */
+	if (!bhnd_nvram_is_qualified_path(pathname)) {
+		BHND_NV_LOG("invalid path: %s\n", pathname);
+		return (EINVAL);
+	}
+
+	pathlen = strlen(pathname);
+
+	/* Acquire topology lock. */
 	BHND_NVPLANE_LOCK_RW(plane);
 
 	/* The NVRAM device must be registered. */
@@ -301,7 +322,18 @@ bhnd_nvram_plane_register_path(struct bhnd_nvram_plane *plane, device_t dev,
 		return (EINVAL);
 	}
 
-	// TODO: register path
+	/* The path must not already be registered */
+	// TODO
+
+	/* Populate any missing parent parent path entries */
+	name = NULL;
+	plen = bhnd_nvram_path_dirlen(pathname, pathlen);
+	while ((name = bhnd_nvram_path_next(pathname, plen, name, &nlen))) {
+		printf("get path = %.*s\n", (int)nlen, name);
+	}
+
+	/* Register path entry */
+	// TODO
 
 	BHND_NVPLANE_UNLOCK_RW(plane);
 	return (0);
@@ -328,6 +360,132 @@ bhnd_nvram_plane_deregister_path(struct bhnd_nvram_plane *plane, device_t dev,
 {
 	// TODO
 	return (ENXIO);
+}
+
+/**
+ * Allocate and initialize an NVRAM path handle.
+ * 
+ * The caller is responsible for releasing the returned NVRAM plane
+ * via bhnd_nvram_plane_release_path().
+ * 
+ * @param	pathname	The fully qualified path name.
+ * @param	plane		The path's NVRAM plane.
+ * @param	parent		The path's NVRAM parent.
+ * 
+ * @retval NULL if allocation failed.
+ */
+static bhnd_nvram_phandle *
+bhnd_nvram_plane_new_path(const char *pathname, struct bhnd_nvram_plane *plane,
+     bhnd_nvram_phandle *parent)
+{
+	static bhnd_nvram_phandle *phandle;
+
+	BHND_NV_ASSERT(plane == parent->plane, ("parent in foreign plane"));
+	BHND_NV_ASSERT(bhnd_nvram_is_qualified_path(pathname),
+	    ("path is not fully qualified"));
+
+	/* Allocate our path handle instance */
+	phandle = bhnd_nv_malloc(sizeof(*phandle));
+	if (phandle == NULL)
+		return (NULL);
+
+	bhnd_nvref_init(&phandle->refs, phandle, bhnd_nvram_plane_free_path);
+
+	/* Copy path string */
+	phandle->path = bhnd_nv_malloc(strlen(pathname) + 1);
+	if (phandle->path == NULL)
+		goto failed;
+
+failed:
+	if (phandle->path != NULL)
+		bhnd_nv_free(phandle->path);
+
+	bhnd_nv_free(phandle);
+	return (NULL);
+}
+
+/**
+ * Retain a new reference to an open path handle, returning @p phandle
+ * to the caller.
+ * 
+ * The caller is responsible for releasing their reference ownership via
+ * bhnd_nvram_plane_release_path().
+ * 
+ * @param	phandle	The path handle to be retained.
+ * 
+ * @return Returns the @p phandle argument for convenience.
+ */
+bhnd_nvram_phandle *
+bhnd_nvram_plane_retain_path(bhnd_nvram_phandle *phandle)
+{
+	bhnd_nvref_retain(&phandle->refs);
+	return (phandle);
+}
+
+/**
+ * Release a path handle.
+ *
+ * @param	phandle	The path handle to be released.
+ */
+void
+bhnd_nvram_plane_release_path(bhnd_nvram_phandle *phandle)
+{
+	struct bhnd_nvram_phandle *parent;
+
+	/* Release our caller's strong reference. If that results in
+	 * deallocation, nothing left to do */
+	if (bhnd_nvref_release(&phandle->refs))
+		return;
+
+	/* Are weak references keeping us alive in zombie form? */
+	if (!bhnd_nvref_is_zombie(&phandle->refs))
+		return;
+
+	/*
+	 * We're a zombie. Remove any active weak reference held by our parent
+	 * path. If that's the last weak reference, we'll be fully deallocated.
+	 */
+	BHND_NVPLANE_LOCK_RW(phandle->plane);
+	parent = phandle->parent;
+	phandle->parent = NULL;
+	BHND_NVPLANE_UNLOCK_RW(phandle->plane);
+
+	/* If no parent path, nothing else to do */
+	if (parent == NULL)
+		return;
+
+	/* Drop parent path's entry for this child */
+	BHND_NVPLANE_LOCK_RW(parent->plane);
+	LIST_REMOVE(phandle, np_link);
+	BHND_NVPLANE_UNLOCK_RW(parent->plane);
+
+	/* Drop parent's weak reference for this child -- may trigger
+	 * immediate deallocation of this child. */
+	bhnd_nvref_release_weak(&phandle->refs);
+
+	/* Drop our now-invalidated strong reference to our parent */
+	bhnd_nvram_plane_release_path(parent);
+}
+
+
+/* bhnd_nvram_phandle deallocation callback */
+static void
+bhnd_nvram_plane_free_path(void *value)
+{
+	struct bhnd_nvram_phandle *phandle = value;
+
+	BHND_NV_ASSERT(LIST_EMPTY(&phandle->children),
+	    ("free() with active children"));
+
+	BHND_NV_ASSERT(phandle->parent == NULL,
+	    ("free() with valid parent"));
+
+	/* Drop our weak plane reference */
+	bhnd_nvref_release_weak(&phandle->plane->refs);
+
+	/* Clean up remaining instance state */
+	bhnd_nv_free(phandle->path);
+	bhnd_nv_free(phandle);
 }
 
 /**
@@ -412,69 +570,6 @@ bhnd_nvram_plane_parent_path(bhnd_nvram_phandle *phandle)
 		return (NULL);
 
 	return (bhnd_nvram_plane_retain_path(phandle->parent));
-}
-
-/**
- * Retain a new reference to an open path handle, returning @p phandle
- * to the caller.
- * 
- * The caller is responsible for releasing their reference ownership via
- * bhnd_nvram_plane_release_path().
- * 
- * @param	phandle	The path handle to be retained.
- * 
- * @return Returns the @p phandle argument for convenience.
- */
-bhnd_nvram_phandle *
-bhnd_nvram_plane_retain_path(bhnd_nvram_phandle *phandle)
-{
-	bhnd_nvref_retain(&phandle->refs);
-	return (phandle);
-}
-
-/**
- * Release a path handle.
- *
- * @param	phandle	The path handle to be released.
- */
-void
-bhnd_nvram_plane_release_path(bhnd_nvram_phandle *phandle)
-{
-	struct bhnd_nvram_phandle *parent;
-
-	/* Release our caller's strong reference. If that results in
-	 * deallocation, nothing left to do */
-	if (bhnd_nvref_release(&phandle->refs))
-		return;
-
-	/* Are weak references keeping us alive in zombie form? */
-	if (!bhnd_nvref_is_zombie(&phandle->refs))
-		return;
-
-	/*
-	 * We're a zombie now. Mark our parent path (if any) as unavailable,
-	 * and then remove ourselves from the parent.
-	 */
-	BHND_NVPLANE_LOCK_RW(phandle->plane);
-	parent = phandle->parent;
-	phandle->parent = NULL;
-	BHND_NVPLANE_UNLOCK_RW(phandle->plane);
-
-	/* If no parent path, nothing else to do */
-	if (parent == NULL)
-		return;
-
-	/* Drop parent path's entry for this child */
-	BHND_NVPLANE_LOCK_RW(parent->plane);
-	LIST_REMOVE(phandle, np_link);
-	BHND_NVPLANE_UNLOCK_RW(parent->plane);
-
-	/* Drop parent's weak reference for this child -- may trigger
-	 * immediate deallocation of this child. */
-	bhnd_nvref_release_weak(&phandle->refs);
-
-	/* Drop our now-invalidated strong reference to our parent */
-	bhnd_nvram_plane_release_path(parent);
 }
 
 /**

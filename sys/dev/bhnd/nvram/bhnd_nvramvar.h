@@ -82,6 +82,9 @@ struct bhnd_nvram_phandle {
 	struct bhnd_nvref	 refs;		/**< reference count */
 	bhnd_nvram_phandle	*parent;	/**< parent path, or NULL */
 
+	char			*path;		/**< fully qualified path */
+	const char		*name;		/**< relative name */
+
 	struct bhnd_nvram_plane	*plane;		/**< weak reference to plane */
 	bhnd_nvram_phandle_list	 children;	/**< weak references to all children */
 
@@ -97,6 +100,8 @@ struct bhnd_nvram_plane {
 	struct bhnd_nvref		 refs;		/**< reference count */
 	struct bhnd_nvram_plane		*parent;	/**< parent plane, or
 							     NULL */
+
+	bhnd_nvram_phandle		*root;		/**< root path */
 	bhnd_nvram_devnode_list		 devices;	/**< registered devices */
 	bhnd_nvram_plane_list		 children;	/**< weak references to
 							     all children */
@@ -104,7 +109,6 @@ struct bhnd_nvram_plane {
 
 	LIST_ENTRY(bhnd_nvram_plane) np_link;
 };
-
 
 #define	BHND_NVPLANE_LOCK_INIT(sc) \
 	sx_init(&(sc)->lock, "BHND NVRAM plane lock")
