@@ -31,6 +31,7 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
+#include <sys/hash.h>
 #include <sys/kernel.h>
 #include <sys/lock.h>
 #include <sys/malloc.h>
@@ -661,6 +662,9 @@ static void
 bhnd_nvram_plane_register_child_path(struct bhnd_nvram_plane *plane,
     bhnd_nvram_path_entry *path, bhnd_nvram_path_entry *child)
 {
+	bhnd_nvram_path_entry_list	*bucket;
+	uint32_t			 h;
+
 	BHND_NVPLANE_LOCK_RW(plane);
 
 	BHND_NV_ASSERT(path->phandle->plane == plane,
@@ -668,9 +672,14 @@ bhnd_nvram_plane_register_child_path(struct bhnd_nvram_plane *plane,
 	BHND_NV_ASSERT(child->phandle->plane == plane,
 	    ("child in foreign plane"));
 
-	/* Retain weak reference and add to child list */
-	BHND_NVREF_RETAIN_WEAK(child, np_refs);
-	LIST_INSERT_HEAD(&path->children, child, np_link);
+	/* Add a strong reference to the path hash table */
+	h = hash32_str(path->phandle->pathname, HASHINIT);
+	bucket = &plane->paths[h % nitems(plane->paths)];
+	LIST_INSERT_HEAD(bucket, BHND_NVREF_RETAIN(child, np_refs), np_link);
+
+	/* Add a weak reference to the parent's list of children */
+	LIST_INSERT_HEAD(&path->children,
+	    BHND_NVREF_RETAIN_WEAK(child, np_refs), np_link);
 
 	BHND_NVPLANE_UNLOCK_RW(plane);
 }
