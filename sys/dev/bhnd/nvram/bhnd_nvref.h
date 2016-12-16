@@ -136,20 +136,22 @@ bhnd_nvref_retain(struct bhnd_nvref *ref)
 } while(0)
 
 /**
- * Retain a weak reference to @p value.
+ * Retain a weak reference to @p value and return @p value.
  * 
  * @param value	The strongly referenced value.
  * @param field	The value's reference count field.
  */
-#define	BHND_NVREF_RETAIN_WEAK(value, field) do {		\
-	BHND_NV_ASSERT((value)->field.strong > 0,		\
-	    ("over-release"));					\
-	BHND_NV_ASSERT((value)->field.weak > 0,		\
-	    ("over-release"));					\
-	BHND_NV_ASSERT((value)->field.weak < UINT_MAX,	\
-	    ("overflow"));					\
-	atomic_add_acq_int(&((value)->field).weak, 1);	\
-} while (0)
+#define	BHND_NVREF_RETAIN_WEAK(value, field)	\
+	(bhnd_nvref_retain_weak(&((value)->field)), (value))
+
+static inline void
+bhnd_nvref_retain_weak(struct bhnd_nvref *ref)
+{
+	BHND_NV_ASSERT(ref->strong > 0, ("over-release"));
+	BHND_NV_ASSERT(ref->weak > 0, ("over-release"));
+	BHND_NV_ASSERT(ref->weak < UINT_MAX, ("overflow"));
+	atomic_add_acq_int(&ref->weak, 1);
+}
 
 /**
  * Release a weak reference, possibly deallocating @p value.

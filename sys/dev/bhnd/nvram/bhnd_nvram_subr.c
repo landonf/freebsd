@@ -1161,7 +1161,9 @@ bhnd_nvram_normalize_path(const char *path, char *normalized)
  * 
  * @param	path		The path to be parsed.
  * @param	pathlen		The length of @p path.
- * @param[out]	namelen		The length of returned path component.
+ * @param[out]	namelen		The length of returned path component. This
+ *				argment may be NULL if the length is not
+ *				desired.
  */
 const char *
 bhnd_nvram_path_basename(const char *path, size_t pathlen, size_t *namelen)
@@ -1172,7 +1174,8 @@ bhnd_nvram_path_basename(const char *path, size_t pathlen, size_t *namelen)
 	while (pathlen > 0 && path[pathlen - 1] == '/') {
 		/* If path consists entirely of '/', that's what we return */
 		if (pathlen == 1) {
-			*namelen = pathlen;
+			if (namelen != NULL)
+				*namelen = pathlen;
 			return (path);
 		}
 
@@ -1196,7 +1199,8 @@ bhnd_nvram_path_basename(const char *path, size_t pathlen, size_t *namelen)
 		}
 	}
 
-	*namelen = pathlen - prefix_len;
+	if (namelen != NULL)
+		*namelen = pathlen - prefix_len;
 	return (path + prefix_len);
 }
 

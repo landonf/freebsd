@@ -49,6 +49,15 @@ typedef struct bhnd_nvram_plane_list	bhnd_nvram_plane_list;
 typedef struct bhnd_nvram_devnode_list	bhnd_nvram_devnode_list;
 
 /**
+ * NVRAM path provider types.
+ */
+typedef enum {
+	BHND_NVRAM_PROVIDER_NONE	= 0,	/**< no data provider */
+	BHND_NVRAM_PROVIDER_DEV		= 1,	/**< device provider */
+	BHND_NVRAM_PROVIDER_PATH	= 2,	/**< re-exported path provider */
+} bhnd_nvram_prov_type;
+
+/**
  * NVRAM device entry.
  */
 struct bhnd_nvram_devnode {
@@ -56,6 +65,20 @@ struct bhnd_nvram_devnode {
 
 	struct bhnd_nvref		dn_refs;
 	LIST_ENTRY(bhnd_nvram_devnode)	dn_link;
+};
+
+
+/**
+ * NVRAM path provider state.
+ */
+struct bhnd_nvram_prov {
+	bhnd_nvram_prov_type		 type;	/**< provider type */
+
+	/** type-specific provider reference */
+	union bhnd_nvram_prov_src {
+		struct bhnd_nvram_devnode	*dev;		/**< device provider (BHND_NVRAM_PROVIDER_DEV) */
+		bhnd_nvram_phandle		*phandle;	/**< path provider (BHND_NVRAM_PROVIDER_PATH) */
+	} src;
 };
 
 /**
@@ -68,11 +91,14 @@ struct bhnd_nvram_phandle {
 	char				*path;		/**< fully qualified path */
 	const char			*name;		/**< relative name */
 
+	struct bhnd_nvram_prov		 prov;		/**< data source */
+
 	struct bhnd_nvram_plane		*plane;		/**< weak reference to plane */
 	bhnd_nvram_phandle_list		 children;	/**< weak references to all children */
 
 	struct bhnd_nvref		 np_refs;
-	LIST_ENTRY(bhnd_nvram_phandle)	 np_link;
+	LIST_ENTRY(bhnd_nvram_phandle)	 np_child_link;	/**< link within child list */
+	LIST_ENTRY(bhnd_nvram_phandle)	 np_all_link;	/**< link within all paths */
 };
 
 /**
@@ -81,13 +107,12 @@ struct bhnd_nvram_phandle {
  * Manages a common namespace of NVRAM paths and associated NVRAM devices.
  */
 struct bhnd_nvram_plane {
-	struct bhnd_nvram_plane		*parent;	/**< parent plane, or
-							     NULL */
+	struct bhnd_nvram_plane		*parent;	/**< parent plane, or NULL */
 
 	bhnd_nvram_phandle		*root;		/**< root path */
+	bhnd_nvram_phandle_list		 paths;		/**< all paths */
 	bhnd_nvram_devnode_list		 devices;	/**< registered devices */
-	bhnd_nvram_plane_list		 children;	/**< weak references to
-							     all children */
+	bhnd_nvram_plane_list		 children;	/**< weak references to all children */
 	struct sx			 lock;		/**< topology lock */
 
 	struct bhnd_nvref		 np_refs;
