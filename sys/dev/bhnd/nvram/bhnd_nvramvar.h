@@ -54,7 +54,7 @@ typedef struct bhnd_nvram_devnode_list	bhnd_nvram_devnode_list;
 struct bhnd_nvram_devnode {
 	device_t			dev;	/**< provider */
 
-	BHND_NVREF(bhnd_nvram_devnode)	dn_refs;
+	struct bhnd_nvref		dn_refs;
 	LIST_ENTRY(bhnd_nvram_devnode)	dn_link;
 };
 
@@ -71,7 +71,7 @@ struct bhnd_nvram_phandle {
 	struct bhnd_nvram_plane		*plane;		/**< weak reference to plane */
 	bhnd_nvram_phandle_list		 children;	/**< weak references to all children */
 
-	BHND_NVREF(bhnd_nvram_phandle)	 np_refs;
+	struct bhnd_nvref		 np_refs;
 	LIST_ENTRY(bhnd_nvram_phandle)	 np_link;
 };
 
@@ -90,7 +90,7 @@ struct bhnd_nvram_plane {
 							     all children */
 	struct sx			 lock;		/**< topology lock */
 
-	BHND_NVREF(bhnd_nvram_plane)	 np_refs;
+	struct bhnd_nvref		 np_refs;
 	LIST_ENTRY(bhnd_nvram_plane)	 np_link;
 };
 

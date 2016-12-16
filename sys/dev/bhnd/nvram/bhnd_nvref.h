@@ -36,42 +36,32 @@
 
 #include <machine/atomic.h>
 
-/*
- * Reference count data structure supporting both strong and weak references.
- */
-
 /**
- * Declare a reference count data structure providing references to @p type.
+ * Reference count data structure supporting both strong and weak references.
+ * 
+ * One implicit weak reference is held by all strong references; when all
+ * strong references are released, this weak reference is also released,
+ * allowing deallocation to occur.
  *
- * @param type	The weakly-referenced structure type.
+ * This avoids ordering concerns around strong and weak reference behavior, at
+ * the cost of one additional atomic operation upon discarding the last strong
+ * reference.
+ *
+ * When the strong reference count hits zero, the referenced value may be
+ * deallocated.
+ *
+ * When the weak reference count hits zero, the reference count data structure
+ * itself may be deallocated.
  */
-#define	BHND_NVREF(type)						\
-struct {								\
-	/* 								\
-	 * One implicit weak reference is held by all strong		\
-	 * references; when all strong references are released, this	\
-	 * weak reference is also released, allowing deallocation to	\
-	 * occur.							\
-	 * 								\
-	 * This avoids ordering concerns around strong and weak		\
-	 * reference behavior, at the cost of one additional atomic	\
-	 * operation upon discarding the last strong reference.		\
-	 * 								\
-	 * When the strong reference count hits zero, the referenced	\
-	 * value may be deallocated.					\
-	 *								\
-	 * When the weak reference count hits zero, the reference count	\
-	 * data structure itself may be deallocated.			\
-	 */								\
-	volatile u_int	 strong;	/* strong refcount */		\
-	volatile u_int	 weak;		/* weak refcount */		\
-}
+struct bhnd_nvref {
+	volatile u_int	 strong;	/* strong refcount */
+	volatile u_int	 weak;		/* weak refcount */
+};
 
 /**
  * Initialize a the reference count structure.
  * 
- * @param ref	A reference count structure previously declared via
- *		BHND_NVREF().
+ * @param ref	A reference count structure.
  */
 #define	BHND_NVREF_INIT(ref) do {					\
 	/* Implicit initial strong reference */				\
@@ -82,16 +72,21 @@ struct {								\
 } while(0)
 
 /**
- * Retain a strong reference to @p value.
+ * Retain a strong reference to @p value and return @p value.
  * 
  * @param value	The referenced value.
  * @param field	The value's reference count field.
  */
-#define	BHND_NVREF_RETAIN(value, field) do {				\
-	BHND_NV_ASSERT((value)->field.strong > 0, ("over-release"));	\
-	BHND_NV_ASSERT((value)->field.strong < UINT_MAX, ("overflow"));	\
-	atomic_add_acq_int(&((value)->field).strong, 1);		\
-} while (0)
+#define	BHND_NVREF_RETAIN(value, field)	\
+	(bhnd_nvref_retain(&((value)->field)), (value))
+
+static inline void
+bhnd_nvref_retain(struct bhnd_nvref *ref)
+{
+	BHND_NV_ASSERT(ref->strong > 0, ("over-release"));
+	BHND_NV_ASSERT(ref->strong < UINT_MAX, ("overflow"));
+	atomic_add_acq_int(&ref->strong, 1);
+}
 
 /**
  * Release a strong reference to @p value, possibly deallocating @p value.
@@ -189,10 +184,10 @@ struct {								\
  */
 #define	BHND_NVREF_PROMOTE_WEAK(value, field)			\
 	(bhnd_nvref_promote_weak(&((value)->field).strong) ?	\
-	    ((weak)->valref->ptr) : (NULL))
+	    (value) : (NULL))
 
 static inline bool
-bhnd_nvref_promote_weak(volatile u_int *strong)
+bhnd_nvref_promote_weak(struct bhnd_nvref *ref)
 {
 	u_int old;
 
@@ -202,11 +197,11 @@ bhnd_nvref_promote_weak(volatile u_int *strong)
 	do {
 		/* fetch current strong refcount. if zero, value is a zombie,
 		 * and cannot be strongly retained  */
-		old = *strong;
+		old = ref->strong;
 		if (old == 0)
 			return (false);
 
-	} while (!atomic_cmpset_acq_int(strong, old, old+1));
+	} while (!atomic_cmpset_acq_int(&ref->strong, old, old+1));
 
 	return (true);
 }
