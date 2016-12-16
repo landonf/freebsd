@@ -1159,6 +1159,8 @@ bhnd_nvram_normalize_path(const char *path, char *normalized)
  * Return a pointer to last component of @p path, ignoring any trailing
  * '/' characters.
  * 
+ * If the path is '/', '/' will be returned.
+ * 
  * @param	path		The path to be parsed.
  * @param	pathlen		The length of @p path.
  * @param[out]	namelen		The length of returned path component. This
@@ -1168,7 +1170,11 @@ bhnd_nvram_normalize_path(const char *path, char *normalized)
 const char *
 bhnd_nvram_path_basename(const char *path, size_t pathlen, size_t *namelen)
 {
-	size_t prefix_len;
+	size_t	prefix_len;
+
+	/* We need the length minus any trailing NUL */
+	if (pathlen > 0 && path[pathlen - 1] == '\0')
+		pathlen--;
 
 	/* Skip trailing '/' elements */
 	while (pathlen > 0 && path[pathlen - 1] == '/') {

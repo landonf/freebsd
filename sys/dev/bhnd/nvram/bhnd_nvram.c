@@ -43,48 +43,52 @@ __FBSDID("$FreeBSD$");
 
 MALLOC_DEFINE(M_BHND_NVRAM, "bhnd_nvram", "bhnd nvram data");
 
-static void				 bhnd_nvram_plane_free(
+static void			 bhnd_nvram_plane_free(
 					     struct bhnd_nvram_plane *plane);
 
-static bool				 bhnd_nvram_plane_has_child(
-					     struct bhnd_nvram_plane *plane,
-					     struct bhnd_nvram_plane *child);
-static void				 bhnd_nvram_plane_register_child(
-					     struct bhnd_nvram_plane *plane,
-					     struct bhnd_nvram_plane *child);
-static void				 bhnd_nvram_plane_deregister_child(
-					     struct bhnd_nvram_plane *plane,
-					     struct bhnd_nvram_plane *child);
+static bool			 bhnd_nvram_plane_has_child(
+				     struct bhnd_nvram_plane *plane,
+				     struct bhnd_nvram_plane *child);
+static void			 bhnd_nvram_plane_register_child(
+				     struct bhnd_nvram_plane *plane,
+				     struct bhnd_nvram_plane *child);
+static void			 bhnd_nvram_plane_deregister_child(
+				     struct bhnd_nvram_plane *plane,
+				     struct bhnd_nvram_plane *child);
 
-static bhnd_nvram_phandle		*bhnd_nvram_path_new(
-					     const char *pathname,
-					     struct bhnd_nvram_plane *plane,
-					     bhnd_nvram_phandle *parent);
-static void				 bhnd_nvram_path_free(
-					     bhnd_nvram_phandle *phandle);
+static bhnd_nvram_path_entry	*bhnd_nvram_path_entry_new(const char *pathname,
+				     struct bhnd_nvram_plane *plane,
+				     bhnd_nvram_path_entry *parent);
+static void			 bhnd_nvram_path_entry_free(
+				     bhnd_nvram_path_entry *path);
 
-static bool				 bhnd_nvram_plane_has_child_path(
-					     struct bhnd_nvram_plane *plane,
-					     bhnd_nvram_phandle *phandle,
-					     bhnd_nvram_phandle *child);
-static void				 bhnd_nvram_plane_register_child_path(
-					     struct bhnd_nvram_plane *plane,
-					     bhnd_nvram_phandle *phandle,
-					     bhnd_nvram_phandle *child);
-static void				 bhnd_nvram_plane_deregister_child_path(
-					     struct bhnd_nvram_plane *plane,
-					     bhnd_nvram_phandle *phandle,
-					     bhnd_nvram_phandle *child);
+static bhnd_nvram_phandle	*bhnd_nvram_phandle_new(const char *pathname,
+				     struct bhnd_nvram_plane *plane);
+static void			 bhnd_nvram_phandle_free(
+				     bhnd_nvram_phandle *phandle);
 
-static struct bhnd_nvram_devnode	*bhnd_nvram_plane_find_device(
-					     struct bhnd_nvram_plane *plane,
-					     device_t dev);
+static bool			 bhnd_nvram_plane_has_child_path(
+				     struct bhnd_nvram_plane *plane,
+				     bhnd_nvram_path_entry *path,
+				     bhnd_nvram_path_entry *child);
+static void			 bhnd_nvram_plane_register_child_path(
+				     struct bhnd_nvram_plane *plane,
+				     bhnd_nvram_path_entry *path,
+				     bhnd_nvram_path_entry *child);
+static void			 bhnd_nvram_plane_deregister_child_path(
+				     struct bhnd_nvram_plane *plane,
+				     bhnd_nvram_path_entry *path,
+				     bhnd_nvram_path_entry *child);
 
-static void				 bhnd_nvram_devnode_free(
-					     struct bhnd_nvram_devnode *);
+static bhnd_nvram_dev_entry	*bhnd_nvram_plane_find_device(
+				     struct bhnd_nvram_plane *plane,
+				     device_t dev);
+
+static void			 bhnd_nvram_dev_entry_free(
+				     bhnd_nvram_dev_entry *dev);
 
 static void
-bhnd_nvram_devnode_free(struct bhnd_nvram_devnode *devnode)
+bhnd_nvram_dev_entry_free(bhnd_nvram_dev_entry *devnode)
 {
 	// XXX TODO
 }
@@ -103,14 +107,17 @@ struct bhnd_nvram_plane *
 bhnd_nvram_plane_new(struct bhnd_nvram_plane *parent)
 {
 	struct bhnd_nvram_plane	*plane;
+	bhnd_nvram_path_entry	*root;
 
 	plane = bhnd_nv_calloc(1, sizeof(*plane));
 	if (plane == NULL)
 		return (NULL);
 
-	LIST_INIT(&plane->paths);
 	LIST_INIT(&plane->children);
 	LIST_INIT(&plane->devices);
+
+	for (size_t i = 0; i < nitems(plane->paths); i++)
+		LIST_INIT(&plane->paths[i]);
 
 	BHND_NVREF_INIT(&plane->np_refs);
 
@@ -127,13 +134,15 @@ bhnd_nvram_plane_new(struct bhnd_nvram_plane *parent)
 	}
 
 	/* Register implicit root path */
-	plane->root = bhnd_nvram_path_new("/", plane, NULL);
-	if (plane->root == NULL) {
+	root = bhnd_nvram_path_entry_new("/", plane, NULL);
+	if (root == NULL) {
 		BHND_NVREF_RELEASE(plane, np_refs, bhnd_nvram_plane_free);
 		return (NULL);
 	}
 
-	LIST_INSERT_HEAD(&plane->paths, plane->root, np_all_link);
+	// TODO: add to path hash table
+	BHND_NVREF_RELEASE(root, np_refs, bhnd_nvram_path_entry_free);
+	// LIST_INSERT_HEAD(&plane->paths, plane->root, np_all_link);
 
 	return (plane);
 }
@@ -147,9 +156,8 @@ bhnd_nvram_plane_new(struct bhnd_nvram_plane *parent)
 static void
 bhnd_nvram_plane_free(struct bhnd_nvram_plane *plane)
 {
-	struct bhnd_nvram_phandle	*p, *pnext;
 	struct bhnd_nvram_plane		*c, *cnext;
-	struct bhnd_nvram_devnode	*d, *dnext;
+	bhnd_nvram_dev_entry		*d, *dnext;
 
 	BHND_NVREF_ASSERT_CAN_FREE(plane, np_refs);
 
@@ -162,13 +170,18 @@ bhnd_nvram_plane_free(struct bhnd_nvram_plane *plane)
 	/* Release all strong device references */
 	LIST_FOREACH_SAFE(d, &plane->devices, dn_link, dnext) {
 		LIST_REMOVE(d, dn_link);
-		BHND_NVREF_RELEASE(d, dn_refs, bhnd_nvram_devnode_free);
+		BHND_NVREF_RELEASE(d, dn_refs, bhnd_nvram_dev_entry_free);
 	}
 
 	/* Release all strong path references */
-	LIST_FOREACH_SAFE(p, &plane->paths, np_all_link, pnext) {
-		LIST_REMOVE(p, np_all_link);
-		BHND_NVREF_RELEASE(p, np_refs, bhnd_nvram_path_free);
+	for (size_t i = 0; i < nitems(plane->paths); i++) {
+		bhnd_nvram_path_entry *p, *pnext;
+
+		LIST_FOREACH_SAFE(p, &plane->paths[i], np_hash_link, pnext) {
+			LIST_REMOVE(p, np_hash_link);
+			BHND_NVREF_RELEASE(p, np_refs, 
+			    bhnd_nvram_path_entry_free);
+		}
 	}
 
 	/* Release strong reference to parent */
@@ -281,10 +294,10 @@ bhnd_nvram_plane_deregister_child(struct bhnd_nvram_plane *plane,
 /**
  * Search for @p device in @p plane, returning its entry if found.
  */
-static struct bhnd_nvram_devnode *
+static struct bhnd_nvram_dev_entry *
 bhnd_nvram_plane_find_device(struct bhnd_nvram_plane *plane, device_t dev)
 {
-	struct bhnd_nvram_devnode *entry;
+	struct bhnd_nvram_dev_entry *entry;
 
 	BHND_NVPLANE_LOCK_ASSERT(plane, SX_LOCKED);
 
@@ -310,7 +323,7 @@ bhnd_nvram_plane_find_device(struct bhnd_nvram_plane *plane, device_t dev)
 int
 bhnd_nvram_plane_register_device(struct bhnd_nvram_plane *plane, device_t dev)
 {
-	struct bhnd_nvram_devnode *entry;
+	struct bhnd_nvram_dev_entry *entry;
 
 	BHND_NVPLANE_LOCK_RW(plane);
 
@@ -354,7 +367,7 @@ int
 bhnd_nvram_plane_deregister_device(struct bhnd_nvram_plane *plane,
     device_t dev)
 {
-	struct bhnd_nvram_devnode *entry;
+	struct bhnd_nvram_dev_entry *entry;
 
 	BHND_NVPLANE_LOCK_RW(plane);
 
@@ -456,7 +469,7 @@ bhnd_nvram_plane_deregister_path(struct bhnd_nvram_plane *plane, device_t dev,
 }
 
 /**
- * Allocate and initialize an NVRAM path handle.
+ * Allocate and initialize an NVRAM path instance.
  * 
  * The caller is responsible for releasing the returned NVRAM plane
  * via bhnd_nvram_plane_release_path().
@@ -467,50 +480,109 @@ bhnd_nvram_plane_deregister_path(struct bhnd_nvram_plane *plane, device_t dev,
  * 
  * @retval NULL if allocation failed.
  */
-static bhnd_nvram_phandle *
-bhnd_nvram_path_new(const char *pathname, struct bhnd_nvram_plane *plane,
-     bhnd_nvram_phandle *parent)
+static bhnd_nvram_path_entry *
+bhnd_nvram_path_entry_new(const char *pathname, struct bhnd_nvram_plane *plane,
+    bhnd_nvram_path_entry *parent)
 {
-	static bhnd_nvram_phandle	*phandle;
-	size_t				 path_size;
+	bhnd_nvram_path_entry	*path;
+	size_t			 pathlen;
 
-	BHND_NV_ASSERT(plane == parent->plane, ("parent in foreign plane"));
 	BHND_NV_ASSERT(bhnd_nvram_is_qualified_path(pathname),
-	    ("path is not fully qualified"));
+	    ("path is not fully qualified: %s", pathname));
 
-	/* Allocate our path handle instance */
+	/* Allocate our path instance */
+	path = bhnd_nv_malloc(sizeof(*path));
+	if (path == NULL)
+		return (NULL);
+
+	path->prov.type = BHND_NVRAM_PROVIDER_NONE;
+	BHND_NVREF_INIT(&path->np_refs);
+	LIST_INIT(&path->children);
+
+	/* Allocate path handle */
+	path->phandle = bhnd_nvram_phandle_new(pathname, plane);
+	if (path->phandle == NULL) {
+		bhnd_nv_free(path);
+		return (NULL);
+	}
+
+	/* Fetch borrowed pointer to our relative path name */
+	pathlen = strlen(path->phandle->pathname) + 1;
+	path->name = bhnd_nvram_path_basename(path->phandle->pathname, pathlen,
+	    NULL);
+
+	BHND_NV_ASSERT(strlen(path->name) > 0, ("empty path: %s", pathname));
+
+	/* Retain a strong parent reference */
+	path->parent = NULL;
+	if (parent != NULL)
+		path->parent = BHND_NVREF_RETAIN(parent, np_refs);
+
+	return (path);
+}
+
+/**
+ * Deallocate @p path and all associated resources.
+ * 
+ * @param	path	The NVRAM path to be deallocated.
+ */
+static void
+bhnd_nvram_path_entry_free(bhnd_nvram_path_entry *path)
+{
+	bhnd_nvram_path_entry *c, *cnext;
+
+	BHND_NVREF_ASSERT_CAN_FREE(path, np_refs);
+
+	/* Release all weak child references */
+	LIST_FOREACH_SAFE(c, &path->children, np_link, cnext) {
+		LIST_REMOVE(c, np_link);
+		BHND_NVREF_RELEASE_WEAK(c, np_refs, bhnd_nvram_path_entry_free);
+	}
+
+	/* Release strong parent reference */
+	if (path->parent != NULL) {
+		BHND_NVREF_RELEASE(path->parent, np_refs,
+		    bhnd_nvram_path_entry_free);
+	}
+
+	/* Release strong path handle reference */
+	BHND_NVREF_RELEASE(path->phandle, np_refs, bhnd_nvram_phandle_free);
+
+	/* Clean up remaining instance state */
+	bhnd_nv_free(path);
+}
+
+/**
+ * Allocate and initialize an NVRAM path handle.
+ * 
+ * The caller is responsible for releasing the returned NVRAM plane
+ * via bhnd_nvram_path_release().
+ * 
+ * @param	pathname	The fully qualified path name.
+ * @param	plane		The path's NVRAM plane.
+ * 
+ * @retval NULL if allocation fails.
+ */
+static bhnd_nvram_phandle *
+bhnd_nvram_phandle_new(const char *pathname, struct bhnd_nvram_plane *plane)
+{
+	bhnd_nvram_phandle	*phandle;
+
+	BHND_NV_ASSERT(bhnd_nvram_is_qualified_path(pathname),
+	    ("path is not fully qualified: %s", pathname));
+
 	phandle = bhnd_nv_malloc(sizeof(*phandle));
 	if (phandle == NULL)
 		return (NULL);
 
-	phandle->prov.type = BHND_NVRAM_PROVIDER_NONE;
-
-	BHND_NVREF_INIT(&phandle->np_refs);
-	LIST_INIT(&phandle->children);
-
-	/* Copy and parse the path name */
-	path_size = strlen(pathname) + 1;
-	phandle->path = bhnd_nv_malloc(path_size);
-	if (phandle->path == NULL)
-		goto failed;
-
-	phandle->name = bhnd_nvram_path_basename(pathname, path_size, NULL);
-	phandle->plane = BHND_NVREF_RETAIN_WEAK(plane, np_refs);
-
-	/* Retain a strong parent refernece, and register our instance */
-	if (parent != NULL) {
-		phandle->parent = BHND_NVREF_RETAIN(parent, np_refs);
-		bhnd_nvram_plane_register_child_path(plane, parent, phandle);
+	phandle->pathname = bhnd_nv_strdup(pathname);
+	if (phandle->pathname == NULL) {
+		bhnd_nv_free(phandle);
+		return (NULL);
 	}
 
+	BHND_NVREF_INIT(&phandle->np_refs);
 	return (phandle);
-
-failed:
-	if (phandle->path != NULL)
-		bhnd_nv_free(phandle->path);
-
-	bhnd_nv_free(phandle);
-	return (NULL);
 }
 
 /**
@@ -530,35 +602,6 @@ bhnd_nvram_path_retain(bhnd_nvram_phandle *phandle)
 	return (BHND_NVREF_RETAIN(phandle, np_refs));
 }
 
-
-/**
- * Attempt to deallocate @p path and all associated resources.
- * 
- * @param	path	The NVRAM path to be deallocated.
- */
-static void
-bhnd_nvram_path_free(struct bhnd_nvram_phandle *phandle)
-{
-	struct bhnd_nvram_phandle *c, *cnext;
-
-	BHND_NVREF_ASSERT_CAN_FREE(phandle, np_refs);
-
-	/* Release all weak child references */
-	LIST_FOREACH_SAFE(c, &phandle->children, np_child_link, cnext)
-		BHND_NVREF_RELEASE_WEAK(c, np_refs, bhnd_nvram_path_free);
-
-	/* Release weak plane reference */
-	BHND_NVREF_RELEASE_WEAK(phandle->plane, np_refs, bhnd_nvram_plane_free);
-
-	/* Release strong parent reference */
-	if (phandle->parent != NULL)
-		bhnd_nvram_path_release(phandle->parent);
-
-	/* Clean up remaining instance state */
-	bhnd_nv_free(phandle->path);
-	bhnd_nv_free(phandle);
-}
-
 /**
  * Release a path handle.
  *
@@ -567,7 +610,20 @@ bhnd_nvram_path_free(struct bhnd_nvram_phandle *phandle)
 void
 bhnd_nvram_path_release(bhnd_nvram_phandle *phandle)
 {
-	BHND_NVREF_RELEASE(phandle, np_refs, bhnd_nvram_path_free);
+	BHND_NVREF_RELEASE(phandle, np_refs, bhnd_nvram_phandle_free);
+}
+
+/**
+ * Deallocate @p phandle and all associated resources.
+ * 
+ * @param	phandle	The NVRAM path handle to be deallocated.
+ */
+static void
+bhnd_nvram_phandle_free(bhnd_nvram_phandle *phandle)
+{
+	BHND_NVREF_RELEASE_WEAK(phandle->plane, np_refs, bhnd_nvram_plane_free);
+	bhnd_nv_free(phandle->pathname);
+	bhnd_nv_free(phandle);
 }
 
 /**
@@ -579,16 +635,13 @@ bhnd_nvram_path_release(bhnd_nvram_phandle *phandle)
  */
 static bool
 bhnd_nvram_plane_has_child_path(struct bhnd_nvram_plane *plane,
-    bhnd_nvram_phandle *path, bhnd_nvram_phandle *child)
+    bhnd_nvram_path_entry *path, bhnd_nvram_path_entry *child)
 {
-	bhnd_nvram_phandle *p;
+	bhnd_nvram_path_entry *p;
 
 	BHND_NVPLANE_LOCK_ASSERT(plane, SX_LOCKED);
 
-	BHND_NV_ASSERT(path->plane == plane, ("path in foreign plane"));
-	BHND_NV_ASSERT(child->plane == plane, ("child in foreign plane"));
-
-	LIST_FOREACH(p, &path->children, np_child_link) {
+	LIST_FOREACH(p, &path->children, np_hash_link) {
 		if (p == child)
 			return (true);
 	}
@@ -606,16 +659,18 @@ bhnd_nvram_plane_has_child_path(struct bhnd_nvram_plane *plane,
  */
 static void
 bhnd_nvram_plane_register_child_path(struct bhnd_nvram_plane *plane,
-    bhnd_nvram_phandle *path, bhnd_nvram_phandle *child)
+    bhnd_nvram_path_entry *path, bhnd_nvram_path_entry *child)
 {
 	BHND_NVPLANE_LOCK_RW(plane);
 
-	BHND_NV_ASSERT(path->plane == plane, ("path in foreign plane"));
-	BHND_NV_ASSERT(child->plane == plane, ("child in foreign plane"));
+	BHND_NV_ASSERT(path->phandle->plane == plane,
+	    ("path in foreign plane"));
+	BHND_NV_ASSERT(child->phandle->plane == plane,
+	    ("child in foreign plane"));
 
 	/* Retain weak reference and add to child list */
 	BHND_NVREF_RETAIN_WEAK(child, np_refs);
-	LIST_INSERT_HEAD(&path->children, child, np_child_link);
+	LIST_INSERT_HEAD(&path->children, child, np_link);
 
 	BHND_NVPLANE_UNLOCK_RW(plane);
 }
@@ -631,12 +686,14 @@ bhnd_nvram_plane_register_child_path(struct bhnd_nvram_plane *plane,
  */
 static void
 bhnd_nvram_plane_deregister_child_path(struct bhnd_nvram_plane *plane,
-    bhnd_nvram_phandle *path, bhnd_nvram_phandle *child)
+    bhnd_nvram_path_entry *path, bhnd_nvram_path_entry *child)
 {
 	BHND_NVPLANE_LOCK_RW(plane);
 
-	BHND_NV_ASSERT(path->plane == plane, ("path in foreign plane"));
-	BHND_NV_ASSERT(child->plane == plane, ("child in foreign plane"));
+	BHND_NV_ASSERT(path->phandle->plane == plane,
+	    ("path in foreign plane"));
+	BHND_NV_ASSERT(child->phandle->plane == plane,
+	    ("child in foreign plane"));
 
 	/* Ignore (potentially duplicate) deregistration requests for unknown
 	 * children */
@@ -646,12 +703,12 @@ bhnd_nvram_plane_deregister_child_path(struct bhnd_nvram_plane *plane,
 	}
 
 	/* Remove from child list */
-	LIST_REMOVE(child, np_child_link);
+	LIST_REMOVE(child, np_link);
 
 	BHND_NVPLANE_UNLOCK_RW(plane);
 
 	/* Release weak reference to child */
-	BHND_NVREF_RELEASE_WEAK(child, np_refs, bhnd_nvram_path_free);
+	BHND_NVREF_RELEASE_WEAK(child, np_refs, bhnd_nvram_path_entry_free);
 }
 
 /**
@@ -728,10 +785,9 @@ bhnd_nvram_plane_open_path(struct bhnd_nvram_plane *plane, const char *pathname)
 bhnd_nvram_phandle *
 bhnd_nvram_path_get_parent(bhnd_nvram_phandle *phandle)
 {
-	if (phandle->parent == NULL)
-		return (NULL);
-
-	return (phandle->parent);
+	// TODO: resolve to path
+	// TODO: how to handle dead plane reference?
+	return (NULL);
 }
 
 /**
