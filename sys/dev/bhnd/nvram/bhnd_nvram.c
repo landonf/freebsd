@@ -44,8 +44,7 @@ __FBSDID("$FreeBSD$");
 MALLOC_DEFINE(M_BHND_NVRAM, "bhnd_nvram", "bhnd nvram data");
 
 static void				 bhnd_nvram_plane_free(
-					     struct bhnd_nvram_plane *plane,
-					     bool zombie);
+					     struct bhnd_nvram_plane *plane);
 
 static bool				 bhnd_nvram_plane_has_child(
 					     struct bhnd_nvram_plane *plane,
@@ -62,8 +61,7 @@ static bhnd_nvram_phandle		*bhnd_nvram_path_new(
 					     struct bhnd_nvram_plane *plane,
 					     bhnd_nvram_phandle *parent);
 static void				 bhnd_nvram_path_free(
-					     bhnd_nvram_phandle *phandle,
-					     bool zombie);
+					     bhnd_nvram_phandle *phandle);
 
 static bool				 bhnd_nvram_plane_has_child_path(
 					     struct bhnd_nvram_plane *plane,
@@ -83,11 +81,10 @@ static struct bhnd_nvram_devnode	*bhnd_nvram_plane_find_device(
 					     device_t dev);
 
 static void				 bhnd_nvram_devnode_free(
-					     struct bhnd_nvram_devnode *devnode,
-					     bool zombie);
+					     struct bhnd_nvram_devnode *);
 
 static void
-bhnd_nvram_devnode_free(struct bhnd_nvram_devnode *devnode, bool zombie)
+bhnd_nvram_devnode_free(struct bhnd_nvram_devnode *devnode)
 {
 	// XXX TODO
 }
@@ -106,13 +103,11 @@ struct bhnd_nvram_plane *
 bhnd_nvram_plane_new(struct bhnd_nvram_plane *parent)
 {
 	struct bhnd_nvram_plane	*plane;
-	bhnd_nvram_phandle	*root;
 
 	plane = bhnd_nv_calloc(1, sizeof(*plane));
 	if (plane == NULL)
 		return (NULL);
 
-	plane->parent = parent;
 	LIST_INIT(&plane->paths);
 	LIST_INIT(&plane->children);
 	LIST_INIT(&plane->devices);
@@ -122,23 +117,23 @@ bhnd_nvram_plane_new(struct bhnd_nvram_plane *parent)
 	BHND_NVPLANE_LOCK_INIT(plane);
 
 	/* Register with parent, if any */
+	plane->parent = NULL;
 	if (parent != NULL) {
 		/* Retain strong parent reference */
 		plane->parent = bhnd_nvram_plane_retain(parent);
-
+	
 		/* Add to parent's child list */
 		bhnd_nvram_plane_register_child(plane->parent, plane);
 	}
 
 	/* Register implicit root path */
-	root = bhnd_nvram_path_new("/", plane, NULL);
-	if (root == NULL) {
+	plane->root = bhnd_nvram_path_new("/", plane, NULL);
+	if (plane->root == NULL) {
 		BHND_NVREF_RELEASE(plane, np_refs, bhnd_nvram_plane_free);
 		return (NULL);
 	}
 
-	plane->root = root;
-	LIST_INSERT_HEAD(&plane->paths, root, np_all_link);
+	LIST_INSERT_HEAD(&plane->paths, plane->root, np_all_link);
 
 	return (plane);
 }
@@ -148,25 +143,13 @@ bhnd_nvram_plane_new(struct bhnd_nvram_plane *parent)
  * Attempt to deallocate @p plane and all associated resources.
  * 
  * @param	plane	The NVRAM plane to be deallocated.
- * @param	zombie	True if called after @p plane has become a zombie; it
- *			is kept alive solely by weak references.
  */
 static void
-bhnd_nvram_plane_free(struct bhnd_nvram_plane *plane, bool zombie)
+bhnd_nvram_plane_free(struct bhnd_nvram_plane *plane)
 {
 	struct bhnd_nvram_phandle	*p, *pnext;
 	struct bhnd_nvram_plane		*c, *cnext;
 	struct bhnd_nvram_devnode	*d, *dnext;
-
-	/* If we're now a zombie, attempt to deregister from the parent plane
-	 * (if any), dropping the parent's weak reference to this value and
-	 * potentially triggering full deallocation. */
-	if (zombie) {
-		if (plane->parent != NULL)
-			bhnd_nvram_plane_deregister_child(plane->parent, plane);
-
-		return;
-	}
 
 	BHND_NVREF_ASSERT_CAN_FREE(plane, np_refs);
 
@@ -190,7 +173,7 @@ bhnd_nvram_plane_free(struct bhnd_nvram_plane *plane, bool zombie)
 
 	/* Release strong reference to parent */
 	if (plane->parent != NULL)
-		bhnd_nvram_plane_release(plane);
+		bhnd_nvram_plane_release(plane->parent);
 
 	BHND_NVPLANE_LOCK_DESTROY(plane);
 	bhnd_nv_free(plane);
@@ -207,8 +190,7 @@ bhnd_nvram_plane_free(struct bhnd_nvram_plane *plane, bool zombie)
 struct bhnd_nvram_plane *
 bhnd_nvram_plane_retain(struct bhnd_nvram_plane *plane)
 {
-	BHND_NVREF_RETAIN(plane, np_refs);
-	return (plane);
+	return (BHND_NVREF_RETAIN(plane, np_refs));
 }
 
 /**
@@ -553,25 +535,11 @@ bhnd_nvram_path_retain(bhnd_nvram_phandle *phandle)
  * Attempt to deallocate @p path and all associated resources.
  * 
  * @param	path	The NVRAM path to be deallocated.
- * @param	zombie	True if called after @p path has become a zombie; it
- *			is kept alive solely by weak references.
  */
 static void
-bhnd_nvram_path_free(struct bhnd_nvram_phandle *phandle, bool zombie)
+bhnd_nvram_path_free(struct bhnd_nvram_phandle *phandle)
 {
 	struct bhnd_nvram_phandle *c, *cnext;
-
-	/* If we're now a zombie, attempt to deregister from the parent path
-	 * (if any), dropping the parent's weak reference to this value and
-	 * potentially triggering full deallocation. */
-	if (zombie) {
-
-		if (phandle->parent != NULL) {
-			// TODO: deregister
-		}
-
-		return;
-	}
 
 	BHND_NVREF_ASSERT_CAN_FREE(phandle, np_refs);
 
@@ -579,12 +547,12 @@ bhnd_nvram_path_free(struct bhnd_nvram_phandle *phandle, bool zombie)
 	LIST_FOREACH_SAFE(c, &phandle->children, np_child_link, cnext)
 		BHND_NVREF_RELEASE_WEAK(c, np_refs, bhnd_nvram_path_free);
 
+	/* Release weak plane reference */
+	BHND_NVREF_RELEASE_WEAK(phandle->plane, np_refs, bhnd_nvram_plane_free);
+
 	/* Release strong parent reference */
 	if (phandle->parent != NULL)
 		bhnd_nvram_path_release(phandle->parent);
-
-	/* Release weak plane reference */
-	BHND_NVREF_RELEASE_WEAK(phandle->plane, np_refs, bhnd_nvram_plane_free);
 
 	/* Clean up remaining instance state */
 	bhnd_nv_free(phandle->path);

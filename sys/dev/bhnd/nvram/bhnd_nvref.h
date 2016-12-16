@@ -93,7 +93,7 @@ bhnd_nvref_retain(struct bhnd_nvref *ref)
  * 
  * @param value		The referenced value.
  * @param field		The value's reference count field.
- * @param dealloc	The value's deallocation callback, or NULL.
+ * @param dealloc	The value's deallocation callback.
  */
 #define	BHND_NVREF_RELEASE(value, field, dealloc) do {			\
 	BHND_NV_ASSERT((value)->field.strong > 0, ("over-release"));	\
@@ -104,17 +104,7 @@ bhnd_nvref_retain(struct bhnd_nvref *ref)
 		/* We released the last strong reference; discard the	\
 		 * the implicit weak reference shared by all strong 	\
 		 * references. */					\
-		if (atomic_fetchadd_int(&(value)->field.weak,		\
-		    -1) == 0)						\
-		{							\
-			/* Value is dead */				\
-			if ((dealloc) != NULL)				\
-				(dealloc)((value), false);		\
-		} else {						\
-			/* Value is a zombie */				\
-			if ((dealloc) != NULL)				\
-				(dealloc)((value), true);		\
-		}							\
+		BHND_NVREF_RELEASE_WEAK((value), field, (dealloc));	\
 	}								\
 } while(0)
 
@@ -158,22 +148,18 @@ bhnd_nvref_retain_weak(struct bhnd_nvref *ref)
  * 
  * @param value		The weakly referenced value.
  * @param field		The value's reference count field.
- * @param dealloc	The value's deallocation callback, or NULL.
+ * @param dealloc	The value's deallocation callback.
  */
-#define	BHND_NVREF_RELEASE_WEAK(value, field, dealloc) do {	\
-	BHND_NV_ASSERT((value)->field.weak > 0,		\
-	    ("over-release"));					\
-	BHND_NV_ASSERT((value)->field.weak >=		\
-	    (value)->field.strong, ("over-release"));	\
-								\
-	/* Drop weak reference */				\
-	if (atomic_fetchadd_int(&(value)->field.weak,	\
-	    -1) == 0)						\
-	{							\
-		/* Value is dead */				\
-		if ((dealloc) != NULL)				\
-			(dealloc)(value, false);		\
-	}							\
+#define	BHND_NVREF_RELEASE_WEAK(value, field, dealloc) do {		\
+	BHND_NV_ASSERT((value)->field.weak > 0, ("over-release"));	\
+	BHND_NV_ASSERT((value)->field.weak >= (value)->field.strong,	\
+	    ("over-release"));						\
+									\
+	/* Drop weak reference */					\
+	if (atomic_fetchadd_int(&(value)->field.weak, -1) == 0) {	\
+		/* Value is dead */					\
+		(dealloc)(value);					\
+	}								\
 } while (0)
 
 /**
