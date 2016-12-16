@@ -174,31 +174,27 @@ bhnd_nvram_phandle	*bhnd_nvram_plane_find_path(
 			     struct bhnd_nvram_plane *plane,
 			     const char *pathname);
 
-bhnd_nvram_phandle	*bhnd_nvram_plane_retain_path(
+bhnd_nvram_phandle	*bhnd_nvram_path_retain(bhnd_nvram_phandle *phandle);
+void			 bhnd_nvram_path_release(bhnd_nvram_phandle *phandle);
+bhnd_nvram_phandle	*bhnd_nvram_path_get_parent(
 			     bhnd_nvram_phandle *phandle);
-void			 bhnd_nvram_plane_release_path(
-			     bhnd_nvram_phandle *phandle);
-bhnd_nvram_phandle	*bhnd_nvram_plane_parent_path(
-			     bhnd_nvram_phandle *phandle);
-
-bhnd_nvram_phandle	*bhnd_nvram_plane_findprop_path(
+bhnd_nvram_phandle	*bhnd_nvram_path_find_proppath(
 			     bhnd_nvram_phandle *phandle, const char *propname);
 
-int			 bhnd_nvram_plane_setprop(bhnd_nvram_phandle *phandle,
+int			 bhnd_nvram_path_setprop(bhnd_nvram_phandle *phandle,
 			     const char *propname, const void *buf, size_t len,
 			     bhnd_nvram_type type);
-int			 bhnd_nvram_plane_getprop(bhnd_nvram_phandle *phandle,
+int			 bhnd_nvram_path_getprop(bhnd_nvram_phandle *phandle,
 			     const char *propname, void *buf, size_t *len,
 			     bhnd_nvram_type type);
 
-int			 bhnd_nvram_plane_getprop_alloc(
+int			 bhnd_nvram_path_getprop_alloc(
 			     bhnd_nvram_phandle *phandle, const char *propname,
 			     void **buf, size_t *len, bhnd_nvram_type type,
 			     int flags);
-void			 bhnd_nvram_plane_getprop_free(void *buf);
+void			 bhnd_nvram_path_getprop_free(void *buf);
 
-struct bhnd_nvram_plist	*bhnd_nvram_plane_getprops_copy(
-			     bhnd_nvram_phandle *phandle);
+struct bhnd_nvram_plist	*bhnd_nvram_path_copyprops(bhnd_nvram_phandle *phandle);
 
 #endif /* _KERNEL */
 

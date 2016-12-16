@@ -57,11 +57,11 @@ static void				 bhnd_nvram_plane_deregister_child(
 					     struct bhnd_nvram_plane *plane,
 					     struct bhnd_nvram_plane *child);
 
-static bhnd_nvram_phandle		*bhnd_nvram_plane_new_path(
+static bhnd_nvram_phandle		*bhnd_nvram_path_new(
 					     const char *pathname,
 					     struct bhnd_nvram_plane *plane,
 					     bhnd_nvram_phandle *parent);
-static void				 bhnd_nvram_plane_free_path(
+static void				 bhnd_nvram_path_free(
 					     bhnd_nvram_phandle *phandle,
 					     bool zombie);
 
@@ -453,7 +453,7 @@ bhnd_nvram_plane_deregister_path(struct bhnd_nvram_plane *plane, device_t dev,
  * @retval NULL if allocation failed.
  */
 static bhnd_nvram_phandle *
-bhnd_nvram_plane_new_path(const char *pathname, struct bhnd_nvram_plane *plane,
+bhnd_nvram_path_new(const char *pathname, struct bhnd_nvram_plane *plane,
      bhnd_nvram_phandle *parent)
 {
 	static bhnd_nvram_phandle *phandle;
@@ -494,7 +494,7 @@ failed:
  * @return Returns the @p phandle argument for convenience.
  */
 bhnd_nvram_phandle *
-bhnd_nvram_plane_retain_path(bhnd_nvram_phandle *phandle)
+bhnd_nvram_path_retain(bhnd_nvram_phandle *phandle)
 {
 	BHND_NVREF_RETAIN(phandle, np_refs);
 	return (phandle);
@@ -509,7 +509,7 @@ bhnd_nvram_plane_retain_path(bhnd_nvram_phandle *phandle)
  *			is kept alive solely by weak references.
  */
 static void
-bhnd_nvram_plane_free_path(struct bhnd_nvram_phandle *phandle, bool zombie)
+bhnd_nvram_path_free(struct bhnd_nvram_phandle *phandle, bool zombie)
 {
 	struct bhnd_nvram_phandle *c, *cnext;
 
@@ -528,11 +528,11 @@ bhnd_nvram_plane_free_path(struct bhnd_nvram_phandle *phandle, bool zombie)
 
 	/* Release all weak child references */
 	LIST_FOREACH_SAFE(c, &phandle->children, np_link, cnext)
-		BHND_NVREF_RELEASE_WEAK(c, np_refs, bhnd_nvram_plane_free_path);
+		BHND_NVREF_RELEASE_WEAK(c, np_refs, bhnd_nvram_path_free);
 
 	/* Release strong parent reference */
 	if (phandle->parent != NULL)
-		bhnd_nvram_plane_release_path(phandle->parent);
+		bhnd_nvram_path_release(phandle->parent);
 
 	/* Release weak plane reference */
 	BHND_NVREF_RELEASE_WEAK(phandle->plane, np_refs, bhnd_nvram_plane_free);
@@ -548,9 +548,9 @@ bhnd_nvram_plane_free_path(struct bhnd_nvram_phandle *phandle, bool zombie)
  * @param	phandle	The path handle to be released.
  */
 void
-bhnd_nvram_plane_release_path(bhnd_nvram_phandle *phandle)
+bhnd_nvram_path_release(bhnd_nvram_phandle *phandle)
 {
-	BHND_NVREF_RELEASE(phandle, np_refs, bhnd_nvram_plane_free_path);
+	BHND_NVREF_RELEASE(phandle, np_refs, bhnd_nvram_path_free);
 }
 
 /**
@@ -617,39 +617,35 @@ bhnd_nvram_plane_open_path(struct bhnd_nvram_plane *plane, const char *pathname)
 }
 
 /**
- * Open and return a caller-owned reference to the parent of @p phandle,
- * if any.
- * 
- * The caller assumes ownership of the returned path handle, and is responsible
- * for releasing it via bhnd_nvram_plane_release_path().
+ * Open and return a borrowed reference to the parent of @p phandle, if any.
  *
  * @param	phandle	The path whose parent is to be opened.
  *
- * @retval non-NULL	a caller-owned reference to the parent of @p phandle.
+ * @retval non-NULL	a borrowed reference to the parent of @p phandle.
  * @retval NULL		if @p phandle is the root of the path hierarchy.
  */
 bhnd_nvram_phandle *
-bhnd_nvram_plane_parent_path(bhnd_nvram_phandle *phandle)
+bhnd_nvram_path_get_parent(bhnd_nvram_phandle *phandle)
 {
 	if (phandle->parent == NULL)
 		return (NULL);
 
-	return (bhnd_nvram_plane_retain_path(phandle->parent));
+	return (bhnd_nvram_path_retain(phandle->parent));
 }
 
 /**
  * Recursively search @p phandle and its parents for the given property,
- * opening and returning a path handle for the first path containing a property
+ * returning a borrowed path handle for the first path containing a property
  * matching @p propname, or NULL if not found.
- * 
- * The caller assumes ownership of the returned path handle, and is responsible
- * for releasing the reference via bhnd_nvram_plane_release_path().
  * 
  * @param	phandle		The path at which to start the search.
  * @param	propname	The property to search for.
+ * 
+ * @retval non-NULL	a borrowed reference to a path containing @p propname.
+ * @retval NULL		if @p propname is not found.
  */
 bhnd_nvram_phandle *
-bhnd_nvram_plane_findprop_path(bhnd_nvram_phandle *phandle,
+bhnd_nvram_path_find_proppath(bhnd_nvram_phandle *phandle,
     const char *propname)
 {
 	// TODO
@@ -675,7 +671,7 @@ bhnd_nvram_plane_findprop_path(bhnd_nvram_phandle *phandle,
  *			value type.
  */
 int
-bhnd_nvram_plane_setprop(bhnd_nvram_phandle *phandle, const char *propname,
+bhnd_nvram_path_setprop(bhnd_nvram_phandle *phandle, const char *propname,
     const void *buf, size_t len, bhnd_nvram_type type)
 {
 	// TODO
@@ -706,7 +702,7 @@ bhnd_nvram_plane_setprop(bhnd_nvram_phandle *phandle, const char *propname,
  *			regular unix error code will be returned.
  */
 int
-bhnd_nvram_plane_getprop(bhnd_nvram_phandle *phandle, const char *propname,
+bhnd_nvram_path_getprop(bhnd_nvram_phandle *phandle, const char *propname,
     void *buf, size_t *len, bhnd_nvram_type type)
 {
 	// TODO
@@ -740,7 +736,7 @@ bhnd_nvram_plane_getprop(bhnd_nvram_phandle *phandle, const char *propname,
  *			regular unix error code will be returned.
  */
 int
-bhnd_nvram_plane_getprop_alloc(bhnd_nvram_phandle *phandle,
+bhnd_nvram_path_getprop_alloc(bhnd_nvram_phandle *phandle,
     const char *propname, void **buf, size_t *len, bhnd_nvram_type type,
     int flags)
 {
@@ -752,7 +748,7 @@ bhnd_nvram_plane_getprop_alloc(bhnd_nvram_phandle *phandle,
 	*buf = NULL;
 	do {
 		/* Determine required size */
-		error = bhnd_nvram_plane_getprop(phandle, propname, NULL, len,
+		error = bhnd_nvram_path_getprop(phandle, propname, NULL, len,
 		    type);
 		if (error)
 			return (error);
@@ -767,7 +763,7 @@ bhnd_nvram_plane_getprop_alloc(bhnd_nvram_phandle *phandle,
 
 		/* Write to output buffer */
 		olen = *len;
-		error = bhnd_nvram_plane_getprop(phandle, propname, buf, len,
+		error = bhnd_nvram_path_getprop(phandle, propname, buf, len,
 		    type);
 	} while (error == ENOMEM && olen < *len);
 
@@ -781,7 +777,7 @@ bhnd_nvram_plane_getprop_alloc(bhnd_nvram_phandle *phandle,
  * bhnd_nvram_plane_getprop_alloc().
  */
 void
-bhnd_nvram_plane_getprop_free(void *buf)
+bhnd_nvram_path_getprop_free(void *buf)
 {
 	bhnd_nv_free(buf);
 }
@@ -799,7 +795,7 @@ bhnd_nvram_plane_getprop_free(void *buf)
  * @retval NULL		if allocation fails.
  */
 struct bhnd_nvram_plist *
-bhnd_nvram_plane_getprops_copy(bhnd_nvram_phandle *phandle)
+bhnd_nvram_path_copyprops(bhnd_nvram_phandle *phandle)
 {
 	// TODO
 	return (NULL);
