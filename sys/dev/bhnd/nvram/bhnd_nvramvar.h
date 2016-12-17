@@ -38,7 +38,7 @@
 #include <sys/refcount.h>
 #include <sys/sx.h>
 
-#include "bhnd_nvref.h"
+#include <machine/atomic.h>
 
 typedef struct bhnd_nvram_dev_entry		bhnd_nvram_dev_entry;
 typedef struct bhnd_nvram_path_entry		bhnd_nvram_path_entry;
@@ -60,6 +60,28 @@ typedef enum {
 	BHND_NVRAM_PROVIDER_DEV		= 1,	/**< device provider */
 	BHND_NVRAM_PROVIDER_PATH	= 2,	/**< re-exported path provider */
 } bhnd_nvram_prov_type;
+
+
+/**
+ * Reference count data structure supporting both strong and weak references.
+ * 
+ * One implicit weak reference is held by all strong references; when all
+ * strong references are released, this weak reference is also released,
+ * allowing deallocation to occur.
+ *
+ * This avoids ordering concerns around strong and weak reference behavior, at
+ * the cost of one additional atomic operation upon discarding the last strong
+ * reference.
+ *
+ * - When the strong reference count hits zero, the referenced value's instance
+ *   state may be deallocated.
+ * - When the weak reference count hits zero, the reference counted data
+ *   structure itself may be deallocated.
+ */
+struct bhnd_nvref {
+	volatile u_int	 strong;	/* strong refcount */
+	volatile u_int	 weak;		/* weak refcount */
+};
 
 /**
  * NVRAM device entry.
@@ -137,5 +159,140 @@ struct bhnd_nvram_plane {
 #define	BHND_NVPLANE_UNLOCK_RW(sc)		sx_xunlock(&(sc)->lock)
 #define	BHND_NVPLANE_LOCK_ASSERT(sc, what)	sx_assert(&(sc)->lock, what)
 #define	BHND_NVPLANE_LOCK_DESTROY(sc)		sx_destroy(&(sc)->lock)
+
+
+/**
+ * Initialize a the reference count structure.
+ * 
+ * @param ref	A reference count structure.
+ */
+#define	BHND_NVREF_INIT(ref) do {					\
+	/* Implicit initial strong reference */				\
+	atomic_set_rel_int(&(ref)->strong, 1);				\
+									\
+	/* Single weak reference shared by all strong references */	\
+	atomic_set_rel_int(&(ref)->weak, 1);				\
+} while(0)
+
+/**
+ * Retain a strong reference to @p value and return @p value.
+ * 
+ * @param value	The referenced value.
+ * @param field	The value's reference count field.
+ */
+#define	BHND_NVREF_RETAIN(value, field)	\
+	(bhnd_nvref_retain(&((value)->field)), (value))
+
+static inline void
+bhnd_nvref_retain(struct bhnd_nvref *ref)
+{
+	BHND_NV_ASSERT(ref->strong > 0, ("over-release"));
+	BHND_NV_ASSERT(ref->strong < UINT_MAX, ("overflow"));
+	atomic_add_acq_int(&ref->strong, 1);
+}
+
+/**
+ * Release a strong reference to @p value, possibly deallocating @p value.
+ * 
+ * @param value		The referenced value.
+ * @param field		The value's reference count field.
+ * @param fini		The value's finalization callback.
+ */
+#define	BHND_NVREF_RELEASE(value, field, dealloc) do {			\
+	BHND_NV_ASSERT((value)->field.strong > 0, ("over-release"));	\
+	BHND_NV_ASSERT((value)->field.weak > 0, ("over-release"));	\
+									\
+	/* Drop strong reference */					\
+	if (atomic_fetchadd_int(&(value)->field.strong, -1) == 0) {	\
+		/* No remaining strong references; can deallocate	\
+		 * instance state */					\
+		(dealloc)(value);					\
+									\
+		/* Discard the the implicit weak reference shared by	\
+		 * all strong references. */				\
+		BHND_NVREF_RELEASE_WEAK((value), field);		\
+	}								\
+} while(0)
+
+/**
+ * Assert that @p value is has no remaining strong references and instance
+ * state can be safely deallocated.
+ * 
+ * @param value	The referenced value.
+ * @param field	The value's reference count field.
+ */
+#define	BHND_NVREF_ASSERT_CAN_FREE(value, field) do {		\
+	BHND_NV_ASSERT(						\
+	    atomic_load_acq_int(&(value)->field.strong) == 0,	\
+	    ("cannot free live value"));			\
+} while(0)
+
+/**
+ * Retain a weak reference to @p value and return @p value.
+ * 
+ * @param value	The strongly referenced value.
+ * @param field	The value's reference count field.
+ */
+#define	BHND_NVREF_RETAIN_WEAK(value, field)	\
+	(bhnd_nvref_retain_weak(&((value)->field)), (value))
+
+static inline void
+bhnd_nvref_retain_weak(struct bhnd_nvref *ref)
+{
+	BHND_NV_ASSERT(ref->strong > 0, ("over-release"));
+	BHND_NV_ASSERT(ref->weak > 0, ("over-release"));
+	BHND_NV_ASSERT(ref->weak < UINT_MAX, ("overflow"));
+	atomic_add_acq_int(&ref->weak, 1);
+}
+
+/**
+ * Release a weak reference, possibly deallocating @p value.
+ * 
+ * @param value		The weakly referenced value.
+ * @param field		The value's reference count field.
+ */
+#define	BHND_NVREF_RELEASE_WEAK(value, field) do {			\
+	BHND_NV_ASSERT((value)->field.weak > 0, ("over-release"));	\
+	BHND_NV_ASSERT((value)->field.weak >= (value)->field.strong,	\
+	    ("over-release"));						\
+									\
+	/* Drop weak reference */					\
+	if (atomic_fetchadd_int(&(value)->field.weak, -1) == 0) {	\
+		/* Value is now dead */					\
+		bhnd_nv_free(value);					\
+	}								\
+} while (0)
+
+/**
+ * Promote a weak reference to a strong reference, returning the referenced
+ * value on success, or NULL if the value is a zombie -- it has no further
+ * strong references remaining.
+ * 
+ * @param value	The weakly referenced value.
+ * @param field	The value's reference count field.
+ */
+#define	BHND_NVREF_PROMOTE_WEAK(value, field)			\
+	(bhnd_nvref_promote_weak(&((value)->field).strong) ?	\
+	    (value) : (NULL))
+
+static inline bool
+bhnd_nvref_promote_weak(struct bhnd_nvref *ref)
+{
+	u_int old;
+
+	/* Increment the reference count using compare-and-swap to ensure that
+	 * we don't resurrect a value with a strong refcount of zero
+	 * (a 'zombie') */
+	do {
+		/* fetch current strong refcount. if zero, value is a zombie,
+		 * and cannot be strongly retained  */
+		old = ref->strong;
+		if (old == 0)
+			return (false);
+
+	} while (!atomic_cmpset_acq_int(&ref->strong, old, old+1));
+
+	return (true);
+}
 
 #endif /* _BHND_NVRAM_BHND_NVRAMVAR_H_ */

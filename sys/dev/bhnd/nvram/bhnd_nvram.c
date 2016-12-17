@@ -44,8 +44,8 @@ __FBSDID("$FreeBSD$");
 
 MALLOC_DEFINE(M_BHND_NVRAM, "bhnd_nvram", "bhnd nvram data");
 
-static void			 bhnd_nvram_plane_free(
-					     struct bhnd_nvram_plane *plane);
+static void			 bhnd_nvram_plane_fini(
+				     struct bhnd_nvram_plane *plane);
 
 static bool			 bhnd_nvram_plane_has_child(
 				     struct bhnd_nvram_plane *plane,
@@ -71,24 +71,24 @@ static bhnd_nvram_path_entry	*bhnd_nvram_path_entry_new(const char *pathname,
 				     size_t pathlen,
 				     struct bhnd_nvram_plane *plane,
 				     bhnd_nvram_path_entry *parent);
-static void			 bhnd_nvram_path_entry_free(
+static void			 bhnd_nvram_path_entry_fini(
 				     bhnd_nvram_path_entry *path);
 
 static bhnd_nvram_phandle	*bhnd_nvram_phandle_new(const char *pathname,
 				     size_t pathlen,
 				     struct bhnd_nvram_plane *plane);
-static void			 bhnd_nvram_phandle_free(
+static void			 bhnd_nvram_phandle_fini(
 				     bhnd_nvram_phandle *phandle);
 
 static bhnd_nvram_dev_entry	*bhnd_nvram_plane_find_device(
 				     struct bhnd_nvram_plane *plane,
 				     device_t dev);
 
-static void			 bhnd_nvram_dev_entry_free(
+static void			 bhnd_nvram_dev_entry_fini(
 				     bhnd_nvram_dev_entry *dev);
 
 static void
-bhnd_nvram_dev_entry_free(bhnd_nvram_dev_entry *devnode)
+bhnd_nvram_dev_entry_fini(bhnd_nvram_dev_entry *devnode)
 {
 	// XXX TODO
 }
@@ -138,7 +138,7 @@ bhnd_nvram_plane_new(struct bhnd_nvram_plane *parent)
 	/* Add default root path */
 	root = bhnd_nvram_path_entry_new("/", strlen("/"), plane, NULL);
 	if (root == NULL) {
-		BHND_NVREF_RELEASE(plane, np_refs, bhnd_nvram_plane_free);
+		BHND_NVREF_RELEASE(plane, np_refs, bhnd_nvram_plane_fini);
 		return (NULL);
 	}
 
@@ -152,12 +152,12 @@ bhnd_nvram_plane_new(struct bhnd_nvram_plane *parent)
 
 
 /**
- * Attempt to deallocate @p plane and all associated resources.
+ * Attempt to deallocate all resources held by @p plane.
  * 
  * @param	plane	The NVRAM plane to be deallocated.
  */
 static void
-bhnd_nvram_plane_free(struct bhnd_nvram_plane *plane)
+bhnd_nvram_plane_fini(struct bhnd_nvram_plane *plane)
 {
 	struct bhnd_nvram_plane		*c, *cnext;
 	bhnd_nvram_dev_entry		*d, *dnext;
@@ -167,13 +167,13 @@ bhnd_nvram_plane_free(struct bhnd_nvram_plane *plane)
 	/* Release all weak child references */
 	LIST_FOREACH_SAFE(c, &plane->children, np_link, cnext) {
 		LIST_REMOVE(c, np_link);
-		BHND_NVREF_RELEASE_WEAK(c, np_refs, bhnd_nvram_plane_free);
+		BHND_NVREF_RELEASE_WEAK(c, np_refs);
 	}
 
 	/* Release all strong device references */
 	LIST_FOREACH_SAFE(d, &plane->devices, dn_link, dnext) {
 		LIST_REMOVE(d, dn_link);
-		BHND_NVREF_RELEASE(d, dn_refs, bhnd_nvram_dev_entry_free);
+		BHND_NVREF_RELEASE(d, dn_refs, bhnd_nvram_dev_entry_fini);
 	}
 
 	/* Release all strong path references */
@@ -183,7 +183,7 @@ bhnd_nvram_plane_free(struct bhnd_nvram_plane *plane)
 		LIST_FOREACH_SAFE(p, &plane->paths[i], np_hash_link, pnext) {
 			LIST_REMOVE(p, np_hash_link);
 			BHND_NVREF_RELEASE(p, np_refs, 
-			    bhnd_nvram_path_entry_free);
+			    bhnd_nvram_path_entry_fini);
 		}
 	}
 
@@ -219,7 +219,7 @@ bhnd_nvram_plane_retain(struct bhnd_nvram_plane *plane)
 void
 bhnd_nvram_plane_release(struct bhnd_nvram_plane *plane)
 {
-	BHND_NVREF_RELEASE(plane, np_refs, bhnd_nvram_plane_free);
+	BHND_NVREF_RELEASE(plane, np_refs, bhnd_nvram_plane_fini);
 }
 
 /**
@@ -291,7 +291,7 @@ bhnd_nvram_plane_deregister_child(struct bhnd_nvram_plane *plane,
 	BHND_NVPLANE_UNLOCK_RW(plane);
 
 	/* Release weak reference to child */
-	BHND_NVREF_RELEASE_WEAK(child, np_refs, bhnd_nvram_plane_free);
+	BHND_NVREF_RELEASE_WEAK(child, np_refs);
 }
 
 /**
@@ -498,7 +498,7 @@ bhnd_nvram_plane_add_path(struct bhnd_nvram_plane *plane, const char *pathname,
 		 * due to allocation failure */
 		if (child != NULL) {
 			BHND_NVREF_RELEASE(child, np_refs,
-			    bhnd_nvram_path_entry_free);
+			    bhnd_nvram_path_entry_fini);
 		}
 
 		/* Did allocation of the new entry fail? */
@@ -540,7 +540,7 @@ bhnd_nvram_plane_add_path(struct bhnd_nvram_plane *plane, const char *pathname,
 
 	/* Drop our now extraneously entry reference; a strong reference is
 	 * now held by our hash table */	
-	BHND_NVREF_RELEASE(child, np_refs, bhnd_nvram_path_entry_free);
+	BHND_NVREF_RELEASE(child, np_refs, bhnd_nvram_path_entry_fini);
 
 	return (child);
 }
@@ -579,7 +579,7 @@ bhnd_nvram_plane_remove_path(struct bhnd_nvram_plane *plane,
 	BHND_NVPLANE_UNLOCK_RW(plane);
 
 	/* Release weak reference to child */
-	BHND_NVREF_RELEASE_WEAK(child, np_refs, bhnd_nvram_path_entry_free);
+	BHND_NVREF_RELEASE_WEAK(child, np_refs);
 #endif
 }
 
@@ -733,29 +733,24 @@ bhnd_nvram_path_entry_new(const char *pathname, size_t pathlen,
  * @param	path	The NVRAM path to be deallocated.
  */
 static void
-bhnd_nvram_path_entry_free(bhnd_nvram_path_entry *path)
+bhnd_nvram_path_entry_fini(bhnd_nvram_path_entry *path)
 {
 	bhnd_nvram_path_entry *c, *cnext;
-
-	BHND_NVREF_ASSERT_CAN_FREE(path, np_refs);
 
 	/* Release all weak child references */
 	LIST_FOREACH_SAFE(c, &path->children, np_child_link, cnext) {
 		LIST_REMOVE(c, np_child_link);
-		BHND_NVREF_RELEASE_WEAK(c, np_refs, bhnd_nvram_path_entry_free);
+		BHND_NVREF_RELEASE_WEAK(c, np_refs);
 	}
 
 	/* Release strong parent reference */
 	if (path->parent != NULL) {
 		BHND_NVREF_RELEASE(path->parent, np_refs,
-		    bhnd_nvram_path_entry_free);
+		    bhnd_nvram_path_entry_fini);
 	}
 
 	/* Release strong path handle reference */
-	BHND_NVREF_RELEASE(path->phandle, np_refs, bhnd_nvram_phandle_free);
-
-	/* Clean up remaining instance state */
-	bhnd_nv_free(path);
+	BHND_NVREF_RELEASE(path->phandle, np_refs, bhnd_nvram_phandle_fini);
 }
 
 /**
@@ -818,7 +813,7 @@ bhnd_nvram_path_retain(bhnd_nvram_phandle *phandle)
 void
 bhnd_nvram_path_release(bhnd_nvram_phandle *phandle)
 {
-	BHND_NVREF_RELEASE(phandle, np_refs, bhnd_nvram_phandle_free);
+	BHND_NVREF_RELEASE(phandle, np_refs, bhnd_nvram_phandle_fini);
 }
 
 /**
@@ -827,9 +822,9 @@ bhnd_nvram_path_release(bhnd_nvram_phandle *phandle)
  * @param	phandle	The NVRAM path handle to be deallocated.
  */
 static void
-bhnd_nvram_phandle_free(bhnd_nvram_phandle *phandle)
+bhnd_nvram_phandle_fini(bhnd_nvram_phandle *phandle)
 {
-	BHND_NVREF_RELEASE_WEAK(phandle->plane, np_refs, bhnd_nvram_plane_free);
+	BHND_NVREF_RELEASE_WEAK(phandle->plane, np_refs);
 	bhnd_nv_free(phandle->pathname);
 	bhnd_nv_free(phandle);
 }
