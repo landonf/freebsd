@@ -95,8 +95,8 @@ struct bhnd_nvram_path_entry {
 	bhnd_nvram_path_entry_list	 children;	/**< weak references to all children */
 	struct bhnd_nvref		 np_refs;
 
-	LIST_ENTRY(bhnd_nvram_path_entry) np_link;	/**< path child list link */
-	LIST_ENTRY(bhnd_nvram_path_entry) np_hash_link;	/**< path hash table list link */
+	LIST_ENTRY(bhnd_nvram_path_entry) np_child_link;	/**< path child list link */
+	LIST_ENTRY(bhnd_nvram_path_entry) np_hash_link;		/**< path hash table list link */
 };
 
 /**
@@ -133,8 +133,8 @@ struct bhnd_nvram_plane {
 #define	BHND_NVPLANE_LOCK_RD(sc)		sx_slock(&(sc)->lock)
 #define	BHND_NVPLANE_UNLOCK_RD(sc)		sx_sunlock(&(sc)->lock)
 #define	BHND_NVPLANE_TRY_UPGRADE(sc)		sx_try_upgrade(&(sc)->lock)
-#define	BHND_NVPLANE_LOCK_RW(sc)		sx_slock(&(sc)->lock)
-#define	BHND_NVPLANE_UNLOCK_RW(sc)		sx_sunlock(&(sc)->lock)
+#define	BHND_NVPLANE_LOCK_RW(sc)		sx_xlock(&(sc)->lock)
+#define	BHND_NVPLANE_UNLOCK_RW(sc)		sx_xunlock(&(sc)->lock)
 #define	BHND_NVPLANE_LOCK_ASSERT(sc, what)	sx_assert(&(sc)->lock, what)
 #define	BHND_NVPLANE_LOCK_DESTROY(sc)		sx_destroy(&(sc)->lock)
 

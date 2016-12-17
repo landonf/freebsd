@@ -251,16 +251,19 @@ int				 bhnd_nvram_parse_env(const char *env,
 				     const char **name, size_t *name_len,
 				     const char **value, size_t *value_len);
 
-const char			*bhnd_nvram_path_next(const char *path,
+const char			*bhnd_nvram_parse_path_next(const char *path,
 				     size_t pathlen, const char *prev,
 				     size_t *namelen);
-const char			*bhnd_nvram_path_basename(const char *path,
-				     size_t pathlen, size_t *namelen);
-size_t				 bhnd_nvram_path_dirlen(const char *path,
+const char			*bhnd_nvram_parse_path_basename(
+				     const char *path, size_t pathlen,
+				     size_t *namelen);
+size_t				 bhnd_nvram_parse_path_dirlen(const char *path,
 				     size_t pathlen);
+
 void				 bhnd_nvram_normalize_path(const char *path,
-				     char *normalized);
-bool				 bhnd_nvram_is_qualified_path(const char *path);
+				     size_t pathlen, char *normalized);
+bool				 bhnd_nvram_is_qualified_path(const char *path,
+				     size_t pathlen);
 
 size_t				 bhnd_nvram_parse_field(const char **inp,
 				     size_t ilen, char delim);

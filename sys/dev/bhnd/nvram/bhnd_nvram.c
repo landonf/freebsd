@@ -57,29 +57,28 @@ static void			 bhnd_nvram_plane_deregister_child(
 				     struct bhnd_nvram_plane *plane,
 				     struct bhnd_nvram_plane *child);
 
+static bhnd_nvram_path_entry	*bhnd_nvram_plane_get_path(
+				     struct bhnd_nvram_plane *plane,
+				     const char *pathname, size_t pathlen);
+static bhnd_nvram_path_entry	*bhnd_nvram_plane_add_path(
+				     struct bhnd_nvram_plane *plane,
+				     const char *pathname, size_t pathlen);
+static void			 bhnd_nvram_plane_remove_path(
+				     struct bhnd_nvram_plane *plane,
+				     const char *pathname, size_t pathlen);
+
 static bhnd_nvram_path_entry	*bhnd_nvram_path_entry_new(const char *pathname,
+				     size_t pathlen,
 				     struct bhnd_nvram_plane *plane,
 				     bhnd_nvram_path_entry *parent);
 static void			 bhnd_nvram_path_entry_free(
 				     bhnd_nvram_path_entry *path);
 
 static bhnd_nvram_phandle	*bhnd_nvram_phandle_new(const char *pathname,
+				     size_t pathlen,
 				     struct bhnd_nvram_plane *plane);
 static void			 bhnd_nvram_phandle_free(
 				     bhnd_nvram_phandle *phandle);
-
-static bool			 bhnd_nvram_plane_has_child_path(
-				     struct bhnd_nvram_plane *plane,
-				     bhnd_nvram_path_entry *path,
-				     bhnd_nvram_path_entry *child);
-static void			 bhnd_nvram_plane_register_child_path(
-				     struct bhnd_nvram_plane *plane,
-				     bhnd_nvram_path_entry *path,
-				     bhnd_nvram_path_entry *child);
-static void			 bhnd_nvram_plane_deregister_child_path(
-				     struct bhnd_nvram_plane *plane,
-				     bhnd_nvram_path_entry *path,
-				     bhnd_nvram_path_entry *child);
 
 static bhnd_nvram_dev_entry	*bhnd_nvram_plane_find_device(
 				     struct bhnd_nvram_plane *plane,
@@ -107,8 +106,10 @@ bhnd_nvram_dev_entry_free(bhnd_nvram_dev_entry *devnode)
 struct bhnd_nvram_plane *
 bhnd_nvram_plane_new(struct bhnd_nvram_plane *parent)
 {
-	struct bhnd_nvram_plane	*plane;
-	bhnd_nvram_path_entry	*root;
+	struct bhnd_nvram_plane		*plane;
+	bhnd_nvram_path_entry_list	*bucket;
+	bhnd_nvram_path_entry		*root;
+	uint32_t			 h;
 
 	plane = bhnd_nv_calloc(1, sizeof(*plane));
 	if (plane == NULL)
@@ -134,16 +135,17 @@ bhnd_nvram_plane_new(struct bhnd_nvram_plane *parent)
 		bhnd_nvram_plane_register_child(plane->parent, plane);
 	}
 
-	/* Register implicit root path */
-	root = bhnd_nvram_path_entry_new("/", plane, NULL);
+	/* Add default root path */
+	root = bhnd_nvram_path_entry_new("/", strlen("/"), plane, NULL);
 	if (root == NULL) {
 		BHND_NVREF_RELEASE(plane, np_refs, bhnd_nvram_plane_free);
 		return (NULL);
 	}
 
-	// TODO: add to path hash table
-	BHND_NVREF_RELEASE(root, np_refs, bhnd_nvram_path_entry_free);
-	// LIST_INSERT_HEAD(&plane->paths, plane->root, np_all_link);
+	/* Insert into path hash table */
+	h = hash32_str(root->phandle->pathname, HASHINIT);
+	bucket = &plane->paths[h % nitems(plane->paths)];
+	LIST_INSERT_HEAD(bucket, root, np_hash_link);
 
 	return (plane);
 }
@@ -389,6 +391,199 @@ bhnd_nvram_plane_deregister_device(struct bhnd_nvram_plane *plane,
 	return (0);
 }
 
+
+/**
+ * Return the path entry for @p path, or NULL if not found.
+ * 
+ * @param	plane		The NVRAM plane to query.
+ * @param	pathname	The fully qualified name of the NVRAM path
+ *				entry to be fetched.
+ * @param	pathlen		The length of @p pathname.
+ */
+static bhnd_nvram_path_entry *
+bhnd_nvram_plane_get_path(struct bhnd_nvram_plane *plane, const char *pathname,
+    size_t pathlen)
+{
+	bhnd_nvram_path_entry_list	*bucket;
+	bhnd_nvram_path_entry		*path;
+	uint32_t			 h;
+
+	BHND_NVPLANE_LOCK_ASSERT(plane, SX_LOCKED);
+	BHND_NV_ASSERT(pathname != NULL, ("NULL path"));
+
+	/* We need the length minus any trailing NUL */
+	if (pathlen > 0 && pathname[pathlen - 1] == '\0')
+		pathlen--;
+
+	/* Search hash table for the path */
+	h = hash32_strn(pathname, pathlen, HASHINIT);
+	bucket = &plane->paths[h % nitems(plane->paths)];
+	LIST_FOREACH(path, bucket, np_hash_link) {
+		if (strncmp(pathname, path->phandle->pathname, pathlen) != 0)
+			continue;
+
+		if (path->phandle->pathname[pathlen] == '\0')
+			return (path);
+	}
+
+	/* Not found */
+	return (NULL);
+}
+
+/**
+ * Add an empty path entry for @p pathname, returning a borrowed reference
+ * to the new entry.
+ * 
+ * Any intermediate paths will be created as required.
+ *
+ * @param	plane		The NVRAM plane.
+ * @param	pathname	The fully qualified name of the NVRAM path
+ *				entry to be added.
+ * @param	pathlen		The length of @p pathname.
+ *
+ * @retval non-NULL	success
+ * @retval NULL		if allocation fails.
+ */
+static bhnd_nvram_path_entry *
+bhnd_nvram_plane_add_path(struct bhnd_nvram_plane *plane, const char *pathname,
+    size_t pathlen)
+{
+	bhnd_nvram_path_entry	*entry, *child, *top;
+	const char		*name;
+	size_t			 namelen;
+
+	BHND_NVPLANE_LOCK_ASSERT(plane, SA_XLOCKED);
+
+	child = NULL;
+	top = NULL;
+
+	if (!bhnd_nvram_is_qualified_path(pathname, pathlen)) {
+		BHND_NV_PANIC("path not fully qualified: %.*s",
+		    BHND_NV_PRINT_WIDTH(pathlen),  pathname);
+	}
+
+	if (bhnd_nvram_plane_get_path(plane, pathname, pathlen) != NULL) {
+		BHND_NV_PANIC("duplicate path %.*s",
+		    BHND_NV_PRINT_WIDTH(pathlen),  pathname);
+	}
+
+	/*
+	 * Walk path, adding our parent paths as required. 
+	 * 
+	 * We avoid linking the paths into the NVRAM plane until all paths have
+	 * been successfully allocated -- this simplifies cleanup by allowing
+	 * us to simply release the most recently allocated path entry
+	 */
+	name = NULL;
+	while ((name = bhnd_nvram_parse_path_next(pathname, pathlen, name,
+	    &namelen)) != NULL)
+	{
+		bhnd_nvram_path_entry	*parent;
+		size_t			 dirlen;
+
+		/* Determine length of leading directory prefix */
+		dirlen = (name + namelen) - pathname;
+
+		/* Does parent path already exist? */
+		parent = bhnd_nvram_plane_get_path(plane, pathname, dirlen);
+		if (parent != NULL)
+			continue;
+
+		/* Attempt to allocate parent entry */
+		parent = bhnd_nvram_path_entry_new(pathname, dirlen, plane,
+		    child);
+
+		/* Drop our previous child entry; it has either been retained
+		 * by the newly allocated instance, or we need to clean up
+		 * due to allocation failure */
+		if (child != NULL) {
+			BHND_NVREF_RELEASE(child, np_refs,
+			    bhnd_nvram_path_entry_free);
+		}
+
+		/* Did allocation of the new entry fail? */
+		if (parent == NULL)
+			return (NULL);
+
+		/* Save the top-most added entry */
+		if (top == NULL)
+			top = parent;
+
+		/* Save the new child entry */
+		child = parent;
+	}
+
+	/* Iterate over the newly allocated entries, adding their parent's weak
+	 * references and inserting into the path hash table */
+	for (entry = child; entry != NULL; entry = entry->parent) {
+		bhnd_nvram_path_entry_list	*bucket;
+		uint32_t			 h;
+
+		/* Add strong reference to the path hash table */
+		h = hash32_str(entry->phandle->pathname, HASHINIT);
+		bucket = &plane->paths[h % nitems(plane->paths)];
+
+		BHND_NVREF_RETAIN(entry, np_refs);
+		LIST_INSERT_HEAD(bucket, entry, np_hash_link);
+
+		/* Add a weak reference to the parent's list of children */
+		if (entry->parent != NULL) {
+			BHND_NVREF_RETAIN_WEAK(entry, np_refs);
+			LIST_INSERT_HEAD(&entry->parent->children, entry,
+			    np_child_link);
+		}
+
+		/* Stop once we hit the final newly allocated entry */
+		if (entry == top)
+			break;
+	}
+
+	/* Drop our now extraneously entry reference; a strong reference is
+	 * now held by our hash table */	
+	BHND_NVREF_RELEASE(child, np_refs, bhnd_nvram_path_entry_free);
+
+	return (child);
+}
+
+/**
+ * Remove and release the path entry for @p pathname from @p plane.
+ * 
+ * @param	plane		The NVRAM plane.
+ * @param	pathname	The fully qualified name of the NVRAM path
+ *				entry to be removed.
+ * @param	pathlen		The length of @p pathname.
+ */
+static void
+bhnd_nvram_plane_remove_path(struct bhnd_nvram_plane *plane,
+    const char *pathname, size_t pathlen)
+{
+	// TODO
+#if 0
+	BHND_NVPLANE_LOCK_RW(plane);
+
+	BHND_NV_ASSERT(path->phandle->plane == plane,
+	    ("path in foreign plane"));
+	BHND_NV_ASSERT(child->phandle->plane == plane,
+	    ("child in foreign plane"));
+
+	/* Ignore (potentially duplicate) deregistration requests for unknown
+	 * children */
+	if (!bhnd_nvram_plane_has_child_path(plane, path, child)) {
+		BHND_NVPLANE_UNLOCK_RW(plane);
+		return;
+	}
+
+	/* Remove from child list */
+	LIST_REMOVE(child, np_link);
+
+	BHND_NVPLANE_UNLOCK_RW(plane);
+
+	/* Release weak reference to child */
+	BHND_NVREF_RELEASE_WEAK(child, np_refs, bhnd_nvram_path_entry_free);
+#endif
+}
+
+
 /**
  * Register a new NVRAM path entry.
  * 
@@ -408,17 +603,15 @@ int
 bhnd_nvram_plane_register_path(struct bhnd_nvram_plane *plane, device_t dev,
     const char *pathname)
 {
-	const char	*name;
-	size_t		 pathlen;
-	size_t		 nlen, plen;
+	bhnd_nvram_path_entry	*entry;
+	size_t			 pathlen;
 
 	/* Path must be fully qualified */
-	if (!bhnd_nvram_is_qualified_path(pathname)) {
+	pathlen = strlen(pathname);
+	if (!bhnd_nvram_is_qualified_path(pathname, pathlen)) {
 		BHND_NV_LOG("invalid path: %s\n", pathname);
 		return (EINVAL);
 	}
-
-	pathlen = strlen(pathname);
 
 	/* Acquire topology lock. */
 	BHND_NVPLANE_LOCK_RW(plane);
@@ -429,18 +622,30 @@ bhnd_nvram_plane_register_path(struct bhnd_nvram_plane *plane, device_t dev,
 		return (EINVAL);
 	}
 
-	/* The path must not already be registered */
-	// TODO
-
-	/* Populate any missing parent parent path entries */
-	name = NULL;
-	plen = bhnd_nvram_path_dirlen(pathname, pathlen);
-	while ((name = bhnd_nvram_path_next(pathname, plen, name, &nlen))) {
-		printf("get path = %.*s\n", (int)nlen, name);
+	/* Fetch or add an empty path entry */
+	entry = bhnd_nvram_plane_get_path(plane, pathname, pathlen);
+	if (entry != NULL) {
+		/* A non-empty path must not already be registered */
+		if (entry->prov.type != BHND_NVRAM_PROVIDER_NONE) {
+			BHND_NVPLANE_UNLOCK_RW(plane);
+			return (EEXIST);
+		}
+	} else {
+		entry = bhnd_nvram_plane_add_path(plane, pathname, pathlen);
+		if (entry == NULL) {
+			BHND_NVPLANE_UNLOCK_RW(plane);
+			return (ENOMEM);
+		}
 	}
 
-	/* Register path entry */
-	// TODO
+	for (size_t i = 0; i < nitems(plane->paths); i++) {
+		bhnd_nvram_path_entry *e;
+		LIST_FOREACH(e, &plane->paths[i], np_hash_link) {
+			printf("PATH %s\n", e->phandle->pathname);
+		}
+	}
+
+	// TODO: point path entry at the device provider.
 
 	BHND_NVPLANE_UNLOCK_RW(plane);
 	return (0);
@@ -482,14 +687,14 @@ bhnd_nvram_plane_deregister_path(struct bhnd_nvram_plane *plane, device_t dev,
  * @retval NULL if allocation failed.
  */
 static bhnd_nvram_path_entry *
-bhnd_nvram_path_entry_new(const char *pathname, struct bhnd_nvram_plane *plane,
-    bhnd_nvram_path_entry *parent)
+bhnd_nvram_path_entry_new(const char *pathname, size_t pathlen,
+    struct bhnd_nvram_plane *plane, bhnd_nvram_path_entry *parent)
 {
 	bhnd_nvram_path_entry	*path;
-	size_t			 pathlen;
 
-	BHND_NV_ASSERT(bhnd_nvram_is_qualified_path(pathname),
-	    ("path is not fully qualified: %s", pathname));
+	BHND_NV_ASSERT(bhnd_nvram_is_qualified_path(pathname, pathlen),
+	    ("path is not fully qualified: %.*s", BHND_NV_PRINT_WIDTH(pathlen),
+	     pathname));
 
 	/* Allocate our path instance */
 	path = bhnd_nv_malloc(sizeof(*path));
@@ -501,18 +706,18 @@ bhnd_nvram_path_entry_new(const char *pathname, struct bhnd_nvram_plane *plane,
 	LIST_INIT(&path->children);
 
 	/* Allocate path handle */
-	path->phandle = bhnd_nvram_phandle_new(pathname, plane);
+	path->phandle = bhnd_nvram_phandle_new(pathname, pathlen, plane);
 	if (path->phandle == NULL) {
 		bhnd_nv_free(path);
 		return (NULL);
 	}
 
 	/* Fetch borrowed pointer to our relative path name */
-	pathlen = strlen(path->phandle->pathname) + 1;
-	path->name = bhnd_nvram_path_basename(path->phandle->pathname, pathlen,
-	    NULL);
+	path->name = bhnd_nvram_parse_path_basename(path->phandle->pathname,
+	    pathlen, NULL);
 
-	BHND_NV_ASSERT(strlen(path->name) > 0, ("empty path: %s", pathname));
+	BHND_NV_ASSERT(strlen(path->name) > 0,
+	    ("empty basename: %s", path->phandle->pathname));
 
 	/* Retain a strong parent reference */
 	path->parent = NULL;
@@ -535,8 +740,8 @@ bhnd_nvram_path_entry_free(bhnd_nvram_path_entry *path)
 	BHND_NVREF_ASSERT_CAN_FREE(path, np_refs);
 
 	/* Release all weak child references */
-	LIST_FOREACH_SAFE(c, &path->children, np_link, cnext) {
-		LIST_REMOVE(c, np_link);
+	LIST_FOREACH_SAFE(c, &path->children, np_child_link, cnext) {
+		LIST_REMOVE(c, np_child_link);
 		BHND_NVREF_RELEASE_WEAK(c, np_refs, bhnd_nvram_path_entry_free);
 	}
 
@@ -565,18 +770,20 @@ bhnd_nvram_path_entry_free(bhnd_nvram_path_entry *path)
  * @retval NULL if allocation fails.
  */
 static bhnd_nvram_phandle *
-bhnd_nvram_phandle_new(const char *pathname, struct bhnd_nvram_plane *plane)
+bhnd_nvram_phandle_new(const char *pathname, size_t pathlen,
+    struct bhnd_nvram_plane *plane)
 {
 	bhnd_nvram_phandle	*phandle;
 
-	BHND_NV_ASSERT(bhnd_nvram_is_qualified_path(pathname),
-	    ("path is not fully qualified: %s", pathname));
+	BHND_NV_ASSERT(bhnd_nvram_is_qualified_path(pathname, pathlen),
+	    ("path is not fully qualified: %.*s", BHND_NV_PRINT_WIDTH(pathlen),
+	     pathname));
 
 	phandle = bhnd_nv_malloc(sizeof(*phandle));
 	if (phandle == NULL)
 		return (NULL);
 
-	phandle->pathname = bhnd_nv_strdup(pathname);
+	phandle->pathname = bhnd_nv_strndup(pathname, pathlen);
 	if (phandle->pathname == NULL) {
 		bhnd_nv_free(phandle);
 		return (NULL);
@@ -625,99 +832,6 @@ bhnd_nvram_phandle_free(bhnd_nvram_phandle *phandle)
 	BHND_NVREF_RELEASE_WEAK(phandle->plane, np_refs, bhnd_nvram_plane_free);
 	bhnd_nv_free(phandle->pathname);
 	bhnd_nv_free(phandle);
-}
-
-/**
- * Return true if @p child is registered with @p path, false otherwise.
- * 
- * @param	plane	The NVRAM plane.
- * @param	path	The NVRAM parent path to query.
- * @param	child	The NVRAM child plane to search for.
- */
-static bool
-bhnd_nvram_plane_has_child_path(struct bhnd_nvram_plane *plane,
-    bhnd_nvram_path_entry *path, bhnd_nvram_path_entry *child)
-{
-	bhnd_nvram_path_entry *p;
-
-	BHND_NVPLANE_LOCK_ASSERT(plane, SX_LOCKED);
-
-	LIST_FOREACH(p, &path->children, np_hash_link) {
-		if (p == child)
-			return (true);
-	}
-
-	/* Not found */
-	return (false);
-}
-
-/**
- * Retain a weak reference to @p child and add to @p path's list of children.
- * 
-  * @param	plane	The NVRAM plane.
- * @param	path	The NVRAM path with which @p child will be registered.
- * @param	dev	The NVRAM device to register.
- */
-static void
-bhnd_nvram_plane_register_child_path(struct bhnd_nvram_plane *plane,
-    bhnd_nvram_path_entry *path, bhnd_nvram_path_entry *child)
-{
-	bhnd_nvram_path_entry_list	*bucket;
-	uint32_t			 h;
-
-	BHND_NVPLANE_LOCK_RW(plane);
-
-	BHND_NV_ASSERT(path->phandle->plane == plane,
-	    ("path in foreign plane"));
-	BHND_NV_ASSERT(child->phandle->plane == plane,
-	    ("child in foreign plane"));
-
-	/* Add a strong reference to the path hash table */
-	h = hash32_str(path->phandle->pathname, HASHINIT);
-	bucket = &plane->paths[h % nitems(plane->paths)];
-	LIST_INSERT_HEAD(bucket, BHND_NVREF_RETAIN(child, np_refs), np_link);
-
-	/* Add a weak reference to the parent's list of children */
-	LIST_INSERT_HEAD(&path->children,
-	    BHND_NVREF_RETAIN_WEAK(child, np_refs), np_link);
-
-	BHND_NVPLANE_UNLOCK_RW(plane);
-}
-
-
-/**
- * Remove @p child from @p path's list of children and release the weak
- * reference acquired bhnd_nvram_plane_register_child().
- * 
- * @param	plane	The NVRAM plane.
- * @param	path	The NVRAM path with which @p child will be registered.
- * @param	dev	The NVRAM device to register.
- */
-static void
-bhnd_nvram_plane_deregister_child_path(struct bhnd_nvram_plane *plane,
-    bhnd_nvram_path_entry *path, bhnd_nvram_path_entry *child)
-{
-	BHND_NVPLANE_LOCK_RW(plane);
-
-	BHND_NV_ASSERT(path->phandle->plane == plane,
-	    ("path in foreign plane"));
-	BHND_NV_ASSERT(child->phandle->plane == plane,
-	    ("child in foreign plane"));
-
-	/* Ignore (potentially duplicate) deregistration requests for unknown
-	 * children */
-	if (!bhnd_nvram_plane_has_child_path(plane, path, child)) {
-		BHND_NVPLANE_UNLOCK_RW(plane);
-		return;
-	}
-
-	/* Remove from child list */
-	LIST_REMOVE(child, np_link);
-
-	BHND_NVPLANE_UNLOCK_RW(plane);
-
-	/* Release weak reference to child */
-	BHND_NVREF_RELEASE_WEAK(child, np_refs, bhnd_nvram_path_entry_free);
 }
 
 /**

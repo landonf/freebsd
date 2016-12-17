@@ -1052,7 +1052,7 @@ bhnd_nvram_parse_env(const char *env, size_t env_len, char delim,
  * @retval NULL		If no further path components are available in @p path.
  */
 const char *
-bhnd_nvram_path_next(const char *path, size_t pathlen, const char *prev,
+bhnd_nvram_parse_path_next(const char *path, size_t pathlen, const char *prev,
     size_t *namelen)
 {
 	const char	*next;
@@ -1100,20 +1100,19 @@ bhnd_nvram_path_next(const char *path, size_t pathlen, const char *prev,
  * 
  * @param path		The path to be normalized.
  * @param normalized	The normalized path buffer. Must be capable of storing
- *			at least strlen(path)+1.
+ *			at least strnlen(path, pathlen)+1.
  */
 void
-bhnd_nvram_normalize_path(const char *path, char *normalized)
+bhnd_nvram_normalize_path(const char *path, size_t pathlen, char *normalized)
 {
 	const char	*p;
 	char		*outp;
-	size_t		 namelen, pathlen;
+	size_t		 namelen;
 
 	outp = normalized;
 
-	pathlen = strlen(path);
 	p = NULL;
-	while ((p = bhnd_nvram_path_next(path, pathlen, p, &namelen))) {
+	while ((p = bhnd_nvram_parse_path_next(path, pathlen, p, &namelen))) {
 		/* Skip empty paths (unless this is the leading '/') */
 		if (namelen == 0)
 			continue;
@@ -1168,7 +1167,8 @@ bhnd_nvram_normalize_path(const char *path, char *normalized)
  *				desired.
  */
 const char *
-bhnd_nvram_path_basename(const char *path, size_t pathlen, size_t *namelen)
+bhnd_nvram_parse_path_basename(const char *path, size_t pathlen,
+    size_t *namelen)
 {
 	size_t	prefix_len;
 
@@ -1219,13 +1219,13 @@ bhnd_nvram_path_basename(const char *path, size_t pathlen, size_t *namelen)
  * @param	pathlen		The length of @p path.
  */
 size_t
-bhnd_nvram_path_dirlen(const char *path, size_t pathlen)
+bhnd_nvram_parse_path_dirlen(const char *path, size_t pathlen)
 {
 	const char	*name;
 	size_t		 namelen;
 
 	/* Determine final path component */
-	name = bhnd_nvram_path_basename(path, pathlen, &namelen);
+	name = bhnd_nvram_parse_path_basename(path, pathlen, &namelen);
 	if (name == path)
 		return (namelen);
 
@@ -1243,23 +1243,23 @@ bhnd_nvram_path_dirlen(const char *path, size_t pathlen)
  * Return true if @p pathname is non-empty, normalized, fully qualified path,
  * false otherwise.
  *
- * @param		path	The path to be iterated.
+ * @param	path	The path to be parsed.
+ * @param	pathlen	The length of @p path.
  */
 bool
-bhnd_nvram_is_qualified_path(const char *path)
+bhnd_nvram_is_qualified_path(const char *path, size_t pathlen)
 {
 	const char	*p;
-	size_t		 namelen, pathlen;
+	size_t		 namelen;
 
 	p = NULL;
-	pathlen = strlen(path);
 
 	/* First component must be '/' */
-	p = bhnd_nvram_path_next(path, pathlen, p, &namelen);
+	p = bhnd_nvram_parse_path_next(path, pathlen, p, &namelen);
 	if (p == NULL || namelen != 1 || *p != '/')
 
 	/* Validate remaining components */
-	while ((p = bhnd_nvram_path_next(path, pathlen, p, &namelen)) != NULL) {
+	while ((p = bhnd_nvram_parse_path_next(path, pathlen, p, &namelen))) {
 		/* Cannot be empty */
 		if (namelen == 0)
 			return (false);
