@@ -198,5 +198,4 @@ struct bhnd_nvram_plist	*bhnd_nvram_path_copyprops(bhnd_nvram_phandle *phandle);
 
 #endif /* _KERNEL */
 
-
 #endif /* _BHND_NVRAM_BHND_NVRAM_H_ */
