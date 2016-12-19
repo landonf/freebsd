@@ -662,6 +662,14 @@ struct scsi_log_fua_stat_and_perf {
 	uint8_t	fuanv_write_int[8];
 };
 
+struct scsi_log_informational_exceptions {
+	struct scsi_log_param_header hdr;
+#define	SLP_IE_GEN			0x0000
+	uint8_t	ie_asc;
+	uint8_t	ie_ascq;
+	uint8_t	temperature;
+};
+
 struct scsi_control_page {
 	u_int8_t page_code;
 	u_int8_t page_length;
@@ -765,21 +773,6 @@ struct scsi_caching_page {
 	uint8_t non_cache_seg_size[3];
 };
 
-/*
- * XXX KDM move this off to a vendor shim.
- */
-struct copan_debugconf_subpage {
-	uint8_t page_code;
-#define DBGCNF_PAGE_CODE		0x00
-	uint8_t subpage;
-#define DBGCNF_SUBPAGE_CODE	0xF0
-	uint8_t page_length[2];
-	uint8_t page_version;
-#define DBGCNF_VERSION			0x00
-	uint8_t ctl_time_io_secs[2];
-};
-
-
 struct scsi_info_exceptions_page {
 	u_int8_t page_code;
 #define	SIEP_PAGE_SAVABLE		0x80	/* Page is savable */
@@ -793,6 +786,12 @@ struct scsi_info_exceptions_page {
 #define	SIEP_FLAGS_EBACKERR		0x02
 #define	SIEP_FLAGS_LOGERR		0x01
 	u_int8_t mrie;
+#define	SIEP_MRIE_NO		0x00
+#define	SIEP_MRIE_UA		0x02
+#define	SIEP_MRIE_REC_COND	0x03
+#define	SIEP_MRIE_REC_UNCOND	0x04
+#define	SIEP_MRIE_NO_SENSE	0x05
+#define	SIEP_MRIE_ON_REQ	0x06
 	u_int8_t interval_timer[4];
 	u_int8_t report_count[4];
 };
@@ -2477,10 +2476,17 @@ struct scsi_vpd_extended_inquiry_data
 #define	SVPD_EID_NV_SUP		0x02
 #define	SVPD_EID_V_SUP		0x01
 	uint8_t flags4;
+#define	SVPD_EID_NO_PI_CHK	0x20
 #define	SVPD_EID_P_I_I_SUP	0x10
-#define	SVPD_EID_LUICLT		0x01
+#define	SVPD_EID_LUICLR		0x01
 	uint8_t flags5;
+#define	SVPD_EID_LUCT_MASK	0xe0
+#define	SVPD_EID_LUCT_NOT_REP	0x00
+#define	SVPD_EID_LUCT_CONGL	0x20
+#define	SVPD_EID_LUCT_GROUP	0x40
 #define	SVPD_EID_R_SUP		0x10
+#define	SVPD_EID_RTD_SUP	0x08
+#define	SVPD_EID_HSSRELEF	0x02
 #define	SVPD_EID_CBCS		0x01
 	uint8_t flags6;
 #define	SVPD_EID_MULTI_I_T_FW	0x0F
@@ -2491,10 +2497,16 @@ struct scsi_vpd_extended_inquiry_data
 	uint8_t est[2];
 	uint8_t flags7;
 #define	SVPD_EID_POA_SUP	0x80
-#define	SVPD_EID_HRA_SUP	0x80
-#define	SVPD_EID_VSA_SUP	0x80
+#define	SVPD_EID_HRA_SUP	0x40
+#define	SVPD_EID_VSA_SUP	0x20
 	uint8_t max_sense_length;
-	uint8_t reserved2[50];
+	uint8_t bind_flags;
+#define	SVPD_EID_IBS		0x80
+#define	SVPD_EID_IAS		0x40
+#define	SVPD_EID_SAC		0x04
+#define	SVPD_EID_NRD1		0x02
+#define	SVPD_EID_NRD0		0x01
+	uint8_t reserved2[49];
 };
 
 struct scsi_vpd_mode_page_policy_descr
