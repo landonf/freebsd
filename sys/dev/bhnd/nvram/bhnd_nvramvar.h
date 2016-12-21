@@ -41,14 +41,13 @@
 #include <machine/atomic.h>
 
 typedef struct bhnd_nvram_dev_entry		bhnd_nvram_dev_entry;
-typedef struct bhnd_nvram_path_entry		bhnd_nvram_path_entry;
 typedef struct bhnd_nvram_prov			bhnd_nvram_prov;
 
-LIST_HEAD(bhnd_nvram_path_entry_list,		bhnd_nvram_path_entry);
+LIST_HEAD(bhnd_nvram_phandle_list,		bhnd_nvram_phandle);
 LIST_HEAD(bhnd_nvram_plane_list,		bhnd_nvram_plane);
 LIST_HEAD(bhnd_nvram_dev_entry_list,		bhnd_nvram_dev_entry);
 
-typedef struct bhnd_nvram_path_entry_list	bhnd_nvram_path_entry_list;
+typedef struct bhnd_nvram_phandle_list		bhnd_nvram_phandle_list;
 typedef struct bhnd_nvram_plane_list		bhnd_nvram_plane_list;
 typedef struct bhnd_nvram_dev_entry_list	bhnd_nvram_dev_entry_list;
 
@@ -102,23 +101,8 @@ struct bhnd_nvram_prov {
 	/** type-specific provider reference */
 	union bhnd_nvram_prov_src {
 		bhnd_nvram_dev_entry	*dev;	/**< NVRAM device (BHND_NVRAM_PROVIDER_DEV) */
-		bhnd_nvram_phandle	*path;	/**< reexported parent path (BHND_NVRAM_PROVIDER_PATH) */
+		bhnd_nvram_phandle	*path;	/**< re-exported parent path (BHND_NVRAM_PROVIDER_PATH) */
 	} src;
-};
-
-/**
- * NVRAM path entry.
- */
-struct bhnd_nvram_path_entry {
-	bhnd_nvram_phandle		*phandle;	/**< path handle */
-	const char			*name;		/**< relative name (borrowed from phandle)*/
-	bhnd_nvram_prov			 prov;		/**< data source */
-	bhnd_nvram_path_entry		*parent;	/**< strong parent reference, or NULL */
-	bhnd_nvram_path_entry_list	 children;	/**< weak references to all children */
-	struct bhnd_nvref		 np_refs;
-
-	LIST_ENTRY(bhnd_nvram_path_entry) np_child_link;	/**< path child list link */
-	LIST_ENTRY(bhnd_nvram_path_entry) np_hash_link;		/**< path hash table list link */
 };
 
 /**
@@ -127,10 +111,15 @@ struct bhnd_nvram_path_entry {
  * Provides a reference-counted handle to a path within an NVRAM plane.
  */
 struct bhnd_nvram_phandle {
-	char			*pathname;	/**< fully qualified path name */
-	struct bhnd_nvram_plane	*plane;		/**< weak plane reference */
+	char				*pathname;	/**< fully qualified path name */
+	const char			*name;		/**< relative path name within pathname */
+	bhnd_nvram_prov			 prov;		/**< data source */
+	bhnd_nvram_phandle		*parent;	/**< strong parent reference, or NULL */
+	bhnd_nvram_phandle_list		 children;	/**< weak references to all children */
 
-	struct bhnd_nvref	 np_refs;
+	struct bhnd_nvref		 np_refs;
+	LIST_ENTRY(bhnd_nvram_phandle)	 np_child_link;
+	LIST_ENTRY(bhnd_nvram_phandle)	 np_all_link;
 };
 
 /**
@@ -141,7 +130,7 @@ struct bhnd_nvram_phandle {
 struct bhnd_nvram_plane {
 	struct bhnd_nvram_plane		*parent;	/**< parent plane, or NULL */
 
-	bhnd_nvram_path_entry_list	 paths[4];	/**< all paths, hashed by fully-qualified name */
+	bhnd_nvram_phandle		*root;		/**< root path */
 	bhnd_nvram_dev_entry_list	 devices;	/**< registered devices */
 	bhnd_nvram_plane_list		 children;	/**< weak references to all children */
 	struct sx			 lock;		/**< topology lock */
