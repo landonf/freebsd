@@ -56,6 +56,9 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_spromvar.h"
 
+static int	bhnd_sprom_init_store(struct bhnd_sprom_softc *sc,
+		     bus_size_t offset);
+
 /**
  * Default bhnd sprom driver implementation of DEVICE_PROBE().
  */
@@ -91,21 +94,12 @@ int
 bhnd_sprom_attach(device_t dev, bus_size_t offset)
 {
 	struct bhnd_sprom_softc	*sc;
-	struct bhnd_nvram_io	*io;
-	struct bhnd_resource	*r;
 	char			**paths;
 	size_t			 num_paths;
-	bus_size_t		 r_size, sprom_size;
-	int			 rid;
 	int			 error;
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
-
-	io = NULL;
-	r = NULL;
-	sc->store = NULL;
-	paths = NULL;
 
 	/* Fetch NVRAM plane */
 	sc->plane = bhnd_get_nvram_plane(dev);
@@ -115,44 +109,15 @@ bhnd_sprom_attach(device_t dev, bus_size_t offset)
 		return (ENXIO);
 	}
 
-	/* Allocate SPROM resource */
-	rid = 0;
-	r = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY, &rid, RF_ACTIVE);
-	if (r == NULL) {
-		device_printf(dev, "failed to allocate resources\n");
-		return (ENXIO);
-	}
-
-	/* Determine SPROM size */
-	r_size = rman_get_size(r->res);
-	if (r_size <= offset || (r_size - offset) > BUS_SPACE_MAXSIZE) {
-		device_printf(dev, "invalid sprom offset\n");
-		error = ENXIO;
-		goto cleanup;
-	}
-
-	sprom_size = r_size - offset;
-
-	/* Allocate an I/O context for the SPROM parser. All SPROM reads
-	 * must be 16-bit aligned */
-	io = bhnd_nvram_iores_new(r, offset, sprom_size, sizeof(uint16_t));
-	if (io == NULL) {
-		error = ENXIO;
-		goto cleanup;
-	}
-
 	/* Initialize NVRAM data store */
-	error = bhnd_nvram_store_parse_new(&sc->store, io,
-	    &bhnd_nvram_sprom_class);
-	if (error)
-		goto cleanup;
+	if ((error = bhnd_sprom_init_store(sc, offset)))
+		return (error);
 
 	/* Fetch our NVRAM path(s) */
 	error = bhnd_nvram_store_get_paths(sc->store, &paths, &num_paths);
 	if (error) {
-		device_printf(dev, "failed to fetch NVRAM paths: %d\n",
-		    error);
-		goto cleanup;
+		device_printf(dev, "failed to fetch NVRAM paths: %d\n", error);
+		goto failed;
 	}
 
 	/* Register ourselves with the NVRAM plane */
@@ -161,25 +126,78 @@ bhnd_sprom_attach(device_t dev, bus_size_t offset)
 	if (error) {
 		device_printf(dev, "failed to register NVRAM device: %d\n",
 		    error);
-		goto cleanup;
+		goto failed;
 	}
 
-	/* Success */
-	error = 0;
+	bhnd_nvram_store_free_paths(sc->store, paths, num_paths);
 
-cleanup:
-	/* Clean up I/O context before releasing its backing resource */
-	if (io != NULL)
-		bhnd_nvram_io_free(io);
+	return (0);
 
-	if (r != NULL)
-		bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
-
+failed:
 	if (paths != NULL)
 		bhnd_nvram_store_free_paths(sc->store, paths, num_paths);
 
-	if (error && sc->store != NULL)
-		bhnd_nvram_store_free(sc->store);
+	bhnd_nvram_store_free(sc->store);
+
+	return (error);
+}
+
+
+/**
+ * Initialize the backing NVRAM store instance.
+ * 
+ * Assumes SPROM is mapped via SYS_RES_MEMORY resource with RID 0.
+ *
+ * @param sc BHND SPROM device state.
+ * @param offset Offset to the SPROM data.
+ */
+static int
+bhnd_sprom_init_store(struct bhnd_sprom_softc *sc, bus_size_t offset)
+{
+	struct bhnd_nvram_io	*io;
+	struct bhnd_resource	*r;
+	bus_size_t		 r_size, sprom_size;
+	int			 rid;
+	int			 error;
+
+	io = NULL;
+	r = NULL;
+
+	/* Allocate SPROM resource */
+	rid = 0;
+	r = bhnd_alloc_resource_any(sc->dev, SYS_RES_MEMORY, &rid, RF_ACTIVE);
+	if (r == NULL) {
+		device_printf(sc->dev, "failed to allocate resources\n");
+
+		return (ENXIO);
+	}
+
+	/* Determine SPROM size */
+	r_size = rman_get_size(r->res);
+	if (r_size <= offset || (r_size - offset) > BUS_SPACE_MAXSIZE) {
+		device_printf(sc->dev, "invalid sprom offset\n");
+
+		bhnd_release_resource(sc->dev, SYS_RES_MEMORY, rid, r);
+		return (ENXIO);
+	}
+
+	sprom_size = r_size - offset;
+
+	/* Allocate an I/O context for the SPROM parser. All SPROM reads
+	 * must be 16-bit aligned */
+	io = bhnd_nvram_iores_new(r, offset, sprom_size, sizeof(uint16_t));
+	if (io == NULL) {
+		bhnd_release_resource(sc->dev, SYS_RES_MEMORY, rid, r);
+		return (ENXIO);
+	}
+
+	/* Attempt to initialize NVRAM data store */
+	error = bhnd_nvram_store_parse_new(&sc->store, io,
+	    &bhnd_nvram_sprom_class);
+
+	/* Clean up I/O context before releasing the backing resource */
+	bhnd_nvram_io_free(io);
+	bhnd_release_resource(sc->dev, SYS_RES_MEMORY, rid, r);
 
 	return (error);
 }
