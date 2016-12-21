@@ -93,6 +93,8 @@ bhnd_sprom_attach(device_t dev, bus_size_t offset)
 	struct bhnd_sprom_softc	*sc;
 	struct bhnd_nvram_io	*io;
 	struct bhnd_resource	*r;
+	char			**paths;
+	size_t			 num_paths;
 	bus_size_t		 r_size, sprom_size;
 	int			 rid;
 	int			 error;
@@ -101,6 +103,9 @@ bhnd_sprom_attach(device_t dev, bus_size_t offset)
 	sc->dev = dev;
 
 	io = NULL;
+	r = NULL;
+	sc->store = NULL;
+	paths = NULL;
 
 	/* Fetch NVRAM plane */
 	sc->plane = bhnd_get_nvram_plane(dev);
@@ -123,7 +128,7 @@ bhnd_sprom_attach(device_t dev, bus_size_t offset)
 	if (r_size <= offset || (r_size - offset) > BUS_SPACE_MAXSIZE) {
 		device_printf(dev, "invalid sprom offset\n");
 		error = ENXIO;
-		goto failed;
+		goto cleanup;
 	}
 
 	sprom_size = r_size - offset;
@@ -133,47 +138,48 @@ bhnd_sprom_attach(device_t dev, bus_size_t offset)
 	io = bhnd_nvram_iores_new(r, offset, sprom_size, sizeof(uint16_t));
 	if (io == NULL) {
 		error = ENXIO;
-		goto failed;
+		goto cleanup;
 	}
 
 	/* Initialize NVRAM data store */
 	error = bhnd_nvram_store_parse_new(&sc->store, io,
 	    &bhnd_nvram_sprom_class);
 	if (error)
-		goto failed;
+		goto cleanup;
 
-	/* Clean up our temporary I/O context and its backing resource */
-	bhnd_nvram_io_free(io);
-	bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
+	/* Fetch our NVRAM path(s) */
+	error = bhnd_nvram_store_get_paths(sc->store, &paths, &num_paths);
+	if (error) {
+		device_printf(dev, "failed to fetch NVRAM paths: %d\n",
+		    error);
+		goto cleanup;
+	}
 
 	/* Register ourselves with the NVRAM plane */
-	if ((error = bhnd_nvram_plane_register_device(sc->plane, dev))) {
+	error = bhnd_nvram_plane_register_device(sc->plane, dev, paths,
+	    num_paths);
+	if (error) {
 		device_printf(dev, "failed to register NVRAM device: %d\n",
 		    error);
-
-		bhnd_nvram_store_free(sc->store);
-		return (error);
+		goto cleanup;
 	}
 
-	/* Register our NVRAM path with the plane */
-	// TODO: multiple paths?
-	if ((error = bhnd_nvram_plane_register_path(sc->plane, dev, "/"))) {
-		device_printf(dev, "failed to register NVRAM path: %d\n",
-		    error);
+	/* Success */
+	error = 0;
 
-		bhnd_nvram_plane_deregister_device(sc->plane, dev);
-		bhnd_nvram_store_free(sc->store);
-		return (error);
-	}
-
-	return (0);
-
-failed:
+cleanup:
 	/* Clean up I/O context before releasing its backing resource */
 	if (io != NULL)
 		bhnd_nvram_io_free(io);
 
-	bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
+	if (r != NULL)
+		bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
+
+	if (paths != NULL)
+		bhnd_nvram_store_free_paths(sc->store, paths, num_paths);
+
+	if (error && sc->store != NULL)
+		bhnd_nvram_store_free(sc->store);
 
 	return (error);
 }

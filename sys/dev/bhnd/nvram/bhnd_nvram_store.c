@@ -1082,6 +1082,78 @@ failed:
 }
 
 /**
+ * Retrieve a list of NVRAM paths currently available via @p sc,
+ * and return the list in @p paths and the count in @p num_paths.
+ * 
+ * The memory allocated for the list must be freed via
+ * bhnd_nvram_store_free_paths().
+ * 
+ * @param	sc		The NVRAM store instance.
+ * @param[out]	paths		The list of NVRAM path.
+ * @param[out]	num_paths	The number of paths in @p paths.
+ * 
+ * @retval 0		success
+ * @retval non-zero	if an error occurs, a regular unix error code will
+ *			be returned.
+ */
+int
+bhnd_nvram_store_get_paths(struct bhnd_nvram_store *sc, char ***paths,
+    size_t *num_paths)
+{
+	bhnd_nvstore_path	*path;
+	char			**result;
+
+	BHND_NVSTORE_LOCK(sc);
+	
+	result = bhnd_nv_calloc(sc->num_paths, sizeof(*result));
+	if (result == NULL) {
+		BHND_NVSTORE_UNLOCK(sc);
+		return (ENOMEM);
+	}
+
+	*num_paths = 0;
+	for (size_t i = 0; i < nitems(sc->paths); i++) {
+		LIST_FOREACH(path, &sc->paths[i], np_link) {
+			BHND_NV_ASSERT(*num_paths < sc->num_paths,
+			    ("invalid path count"));
+
+			result[*num_paths] = bhnd_nv_strdup(path->path_str);
+			if (result[*num_paths] == NULL)
+				goto failed;
+
+			(*num_paths)++;
+		}
+	}
+
+	BHND_NVSTORE_UNLOCK(sc);
+
+	*paths = result;
+	return (0);
+
+failed:
+	BHND_NVSTORE_UNLOCK(sc);
+	bhnd_nvram_store_free_paths(sc, result, *num_paths);
+	return (ENOMEM);
+}
+
+/**
+ * Free any memory allocated in a previous call to bhnd_nvram_store_get_paths().
+ *
+ * @param	sc		The NVRAM store instance.
+ * @param	paths		A path list allocated by @p sc. 
+ * @param	num_paths	The number of paths in @p paths.
+ */
+void
+bhnd_nvram_store_free_paths(struct bhnd_nvram_store *sc, char **paths,
+    size_t num_paths)
+{
+	for (size_t i = 0; i < num_paths; i++)
+		bhnd_nv_free(paths[i]);
+
+	bhnd_nv_free(paths);
+}
+
+/**
  * Read an NVRAM variable.
  *
  * @param		sc	The NVRAM parser state.

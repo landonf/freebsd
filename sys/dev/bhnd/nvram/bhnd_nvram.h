@@ -154,16 +154,19 @@ void			 bhnd_nvram_plane_release(
 			     struct bhnd_nvram_plane *plane);
 
 int			 bhnd_nvram_plane_register_device(
-			     struct bhnd_nvram_plane *plane, device_t dev);
+			     struct bhnd_nvram_plane *plane, device_t dev,
+			     char **pathnames, size_t num_pathnames);
 int			 bhnd_nvram_plane_deregister_device(
 			     struct bhnd_nvram_plane *plane, device_t dev);
 
-int			 bhnd_nvram_plane_register_path(
+
+int			 bhnd_nvram_plane_register_paths(
 			     struct bhnd_nvram_plane *plane, device_t dev,
-			     const char *pathname);
-int			 bhnd_nvram_plane_deregister_path(
+			     char **pathnames, size_t num_pathnames);
+
+int			 bhnd_nvram_plane_deregister_paths(
 			     struct bhnd_nvram_plane *plane, device_t dev,
-			     const char *pathname);
+			     char **pathnames, size_t num_pathnames);
 
 bhnd_nvram_phandle	*bhnd_nvram_plane_open_root(
 			     struct bhnd_nvram_plane *plane);

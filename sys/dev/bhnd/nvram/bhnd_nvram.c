@@ -57,6 +57,14 @@ static void			 bhnd_nvram_plane_deregister_child(
 				     struct bhnd_nvram_plane *plane,
 				     struct bhnd_nvram_plane *child);
 
+static int			 bhnd_nvram_plane_deregister_device_locked(
+				     struct bhnd_nvram_plane *plane,
+				     device_t dev);
+static int			 bhnd_nvram_plane_register_paths_locked(
+				     struct bhnd_nvram_plane *plane,
+				     device_t dev, char **pathnames,
+				     size_t num_pathnames);
+
 static bhnd_nvram_phandle	*bhnd_nvram_plane_get_phandle(
 				     struct bhnd_nvram_plane *plane,
 				     const char *pathname, size_t pathlen);
@@ -289,17 +297,26 @@ bhnd_nvram_plane_find_device(struct bhnd_nvram_plane *plane, device_t dev)
 /**
  * Register a new NVRAM device with @p plane.
  * 
- * @param	plane	The NVRAM plane with which @p dev will be registered.
- * @param	dev	The NVRAM device to register.
+ * @param	plane		The NVRAM plane with which @p dev will be
+ *				registered.
+ * @param	dev		The NVRAM device to register.
+ * @param	pathnames	The fully qualified path names to be mapped
+ *				to @p dev.
+ * @param	num_pathnames	The number of @p pathnames.
  * 
  * @retval 0		success.
  * @retval EEXIST	if @p dev is already registered with @p plane.
+ * @retval EINVAL	if a path in @p pathnames is not a fully-qualified path.
+ * @retval EEXIST	if a path in @p pathnames is already registered in
+ *			@p plane.
  * @retval ENOMEM	if allocation fails.
  */
 int
-bhnd_nvram_plane_register_device(struct bhnd_nvram_plane *plane, device_t dev)
+bhnd_nvram_plane_register_device(struct bhnd_nvram_plane *plane, device_t dev,
+    char **pathnames, size_t num_pathnames)
 {
-	struct bhnd_nvram_dev_entry *entry;
+	struct bhnd_nvram_dev_entry	*entry;
+	int				 error;
 
 	BHND_NVPLANE_LOCK_RW(plane);
 
@@ -319,10 +336,22 @@ bhnd_nvram_plane_register_device(struct bhnd_nvram_plane *plane, device_t dev)
 	entry->dev = dev;
 	BHND_NVREF_INIT(&entry->dn_refs);
 
-	/* Insert in device list */
+	/* Insert in device list (transfering our strong reference) */
 	LIST_INSERT_HEAD(&plane->devices, entry, dn_link);
 
+	/* Try to register paths */
+	error = bhnd_nvram_plane_register_paths_locked(plane, dev, pathnames,
+	    num_pathnames);
+	if (error) {
+		/* Path registration failed; deregister device */
+		bhnd_nvram_plane_deregister_device_locked(plane, dev);
+
+		BHND_NVPLANE_UNLOCK_RW(plane);
+		return (error);
+	}
+
 	BHND_NVPLANE_UNLOCK_RW(plane);
+
 	return (0);
 }
 
@@ -343,27 +372,37 @@ int
 bhnd_nvram_plane_deregister_device(struct bhnd_nvram_plane *plane,
     device_t dev)
 {
-	struct bhnd_nvram_dev_entry *entry;
+	int error;
 
 	BHND_NVPLANE_LOCK_RW(plane);
+	error = bhnd_nvram_plane_deregister_device_locked(plane, dev);
+	BHND_NVPLANE_UNLOCK_RW(plane);
+
+	return (error);
+}
+
+static int
+bhnd_nvram_plane_deregister_device_locked(struct bhnd_nvram_plane *plane,
+    device_t dev)
+{
+	struct bhnd_nvram_dev_entry *entry;
+
+	BHND_NVPLANE_LOCK_ASSERT(plane, SX_LOCKED);
 
 	entry = bhnd_nvram_plane_find_device(plane, dev);
 	if (entry == NULL) {
 		/* Ignore request to deregister unrecognized device */
-		BHND_NVPLANE_UNLOCK_RW(plane);
 		return (0);
 	}
 
 	/* Remove from device list */
 	LIST_REMOVE(entry, dn_link);
-	BHND_NVPLANE_UNLOCK_RW(plane);
 
 	/* Free entry */
 	bhnd_nv_free(entry);
 
 	return (0);
 }
-
 
 /**
  * Return the path handle for @p path, or NULL if not found.
@@ -525,24 +564,50 @@ bhnd_nvram_plane_remove_phandle(struct bhnd_nvram_plane *plane,
 
 
 /**
- * Register a new NVRAM path entry.
+ * Register NVRAM path entries for @p dev.
  * 
  * @param	plane		The NVRAM plane with which @p pathname will be
  *				registered.
  * @param	dev		The NVRAM device vending the path.
- * @param	pathname	The fully qualified path to be registered.
+ * @param	pathnames	The fully qualified path names to be registered.
+ * @param	num_pathnames	The number of @p pathnames.
  * 
  * @retval 0		success.
- * @retval EINVAL	if @p pathname is not a fully-qualified path.
+ * @retval EINVAL	if a path in @p pathnames is not a fully-qualified path.
  * @retval EINVAL	if @p dev was not previously registered via
  *			bhnd_nvram_plane_register_device().
- * @retval EEXIST	if @p pathname is already registered in @p plane.
+ * @retval EEXIST	if a path in @p pathnames is already registered in
+ *			@p plane.
  * @retval ENOMEM	if allocation fails.
  */
 int
-bhnd_nvram_plane_register_path(struct bhnd_nvram_plane *plane, device_t dev,
-    const char *pathname)
+bhnd_nvram_plane_register_paths(struct bhnd_nvram_plane *plane, device_t dev,
+    char **pathnames, size_t num_pathnames)
 {
+	int error;
+
+	BHND_NVPLANE_LOCK_RW(plane);
+	error = bhnd_nvram_plane_register_paths_locked(plane, dev, pathnames,
+	    num_pathnames);
+	BHND_NVPLANE_UNLOCK_RW(plane);
+
+	return (error);
+}
+
+static int
+bhnd_nvram_plane_register_paths_locked(struct bhnd_nvram_plane *plane,
+    device_t dev, char **pathnames, size_t num_pathnames)
+{
+	BHND_NVPLANE_LOCK_ASSERT(plane, SX_LOCKED);
+
+	// TODO: register all
+	for (size_t i = 0; i < num_pathnames; i++) {
+		printf("register: '%s'\n", pathnames[i]);
+	}
+
+	return (ENXIO);
+
+#if 0
 	bhnd_nvram_phandle	*phandle;
 	size_t			 pathlen;
 
@@ -586,16 +651,19 @@ bhnd_nvram_plane_register_path(struct bhnd_nvram_plane *plane, device_t dev,
 
 	BHND_NVPLANE_UNLOCK_RW(plane);
 	return (0);
+#endif
 }
 
 /**
- * Deregister an NVRAM path entry.
+ * Deregister NVRAM path entries for @p dev.
  * 
  * @param	plane		The NVRAM plane with which @p pathname will be
  *				registered.
  * @param	dev		The current NVRAM device registered for
  *				@p pathname.
- * @param	pathname	The fully qualified path to be deregistered.
+ * @param	pathnames	The fully qualified path names to be
+ *				deregistered.
+ * @param	num_pathnames	The number of @p pathnames.
  * 
  * @retval 0		success.
  * @retval EINVAL	if @p dev was not previously registered via
@@ -604,8 +672,8 @@ bhnd_nvram_plane_register_path(struct bhnd_nvram_plane *plane, device_t dev,
  *			not registered by @p dev.
  */
 int
-bhnd_nvram_plane_deregister_path(struct bhnd_nvram_plane *plane, device_t dev,
-    const char *pathname)
+bhnd_nvram_plane_deregister_paths(struct bhnd_nvram_plane *plane, device_t dev,
+    char **pathnames, size_t num_pathnames)
 {
 	// TODO
 	return (ENXIO);
@@ -631,8 +699,6 @@ bhnd_nvram_phandle_new(const char *pathname, size_t pathlen,
 	BHND_NV_ASSERT(bhnd_nvram_is_qualified_path(pathname, pathlen),
 	    ("path is not fully qualified: %.*s", BHND_NV_PRINT_WIDTH(pathlen),
 	     pathname));
-
-	BHND_NVPLANE_LOCK_ASSERT(plane, SX_LOCKED);
 
 	/* Allocate path handle */
 	phandle = bhnd_nv_malloc(sizeof(*phandle));

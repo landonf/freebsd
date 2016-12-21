@@ -79,6 +79,11 @@ int	bhnd_nvram_store_export(struct bhnd_nvram_store *store,
 int	bhnd_nvram_store_serialize(struct bhnd_nvram_store *store,
 	    const char *path, struct bhnd_nvram_io **data,  uint32_t flags);
 
+int	bhnd_nvram_store_get_paths(struct bhnd_nvram_store *sc, char ***paths,
+	    size_t *num_paths);
+void	bhnd_nvram_store_free_paths(struct bhnd_nvram_store *sc, char **paths,
+	    size_t num_paths);
+
 int	bhnd_nvram_store_getvar(struct bhnd_nvram_store *sc, const char *name,
 	    void *outp, size_t *olen, bhnd_nvram_type otype);
 int	bhnd_nvram_store_setvar(struct bhnd_nvram_store *sc, const char *name,
