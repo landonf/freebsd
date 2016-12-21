@@ -401,8 +401,8 @@ bhnd_nvram_plane_get_path(struct bhnd_nvram_plane *plane, const char *pathname,
  * @retval NULL		if allocation fails.
  */
 static bhnd_nvram_phandle *
-bhnd_nvram_plane_add_path(struct bhnd_nvram_plane *plane, const char *pathname,
-    size_t pathlen)
+bhnd_nvram_plane_add_phandle(struct bhnd_nvram_plane *plane,
+    const char *pathname, size_t pathlen)
 {
 	bhnd_nvram_phandle	*entry, *child, *top;
 	const char		*name;
@@ -494,7 +494,7 @@ bhnd_nvram_plane_add_path(struct bhnd_nvram_plane *plane, const char *pathname,
  * @param	pathlen		The length of @p pathname.
  */
 static void
-bhnd_nvram_plane_remove_path(struct bhnd_nvram_plane *plane,
+bhnd_nvram_plane_remove_phandle(struct bhnd_nvram_plane *plane,
     const char *pathname, size_t pathlen)
 {
 	// TODO
@@ -574,7 +574,8 @@ bhnd_nvram_plane_register_path(struct bhnd_nvram_plane *plane, device_t dev,
 		/* The device must own a reference to this path */
 		bhnd_nvram_path_retain(phandle);
 	} else {
-		phandle = bhnd_nvram_plane_add_path(plane, pathname, pathlen);
+		phandle = bhnd_nvram_plane_add_phandle(plane, pathname,
+		    pathlen);
 		if (phandle == NULL) {
 			BHND_NVPLANE_UNLOCK_RW(plane);
 			return (ENOMEM);
