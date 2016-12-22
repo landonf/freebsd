@@ -193,7 +193,7 @@ bhnd_nvref_retain(struct bhnd_nvref *ref)
 	BHND_NV_ASSERT((value)->field.weak > 0, ("over-release"));	\
 									\
 	/* Drop strong reference */					\
-	if (atomic_fetchadd_int(&(value)->field.strong, -1) == 0) {	\
+	if (atomic_fetchadd_int(&(value)->field.strong, -1) == 1) {	\
 		/* No remaining strong references; can finalize		\
 		 * instance state. Our implicit weak reference will	\
 		 * keep the value pointer alive during finalization */	\
@@ -248,7 +248,7 @@ bhnd_nvref_retain_weak(struct bhnd_nvref *ref)
 	    ("over-release"));						\
 									\
 	/* Drop weak reference */					\
-	if (atomic_fetchadd_int(&(value)->field.weak, -1) == 0) {	\
+	if (atomic_fetchadd_int(&(value)->field.weak, -1) == 1) {	\
 		/* Value is now dead */					\
 		bhnd_nv_free(value);					\
 	}								\
