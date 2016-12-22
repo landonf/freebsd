@@ -50,6 +50,9 @@ static void			 bhnd_nvram_plane_fini(
 static bool			 bhnd_nvram_plane_is_child(
 				     struct bhnd_nvram_plane *plane,
 				     struct bhnd_nvram_plane *child);
+static void			 bhnd_nvram_plane_remove_child(
+				     struct bhnd_nvram_plane *plane,
+				     struct bhnd_nvram_plane *child);
 
 static int			 bhnd_nvram_plane_deregister_device_locked(
 				     struct bhnd_nvram_plane *plane,
@@ -156,6 +159,27 @@ bhnd_nvram_plane_is_child(struct bhnd_nvram_plane *plane,
 }
 
 /**
+ * Remove @p child from @p plane.
+ * 
+ * @param	plane	The NVRAM plane to modify.
+ * @param	child	The NVRAM child plane to remove from @p plane.
+ */
+static void
+bhnd_nvram_plane_remove_child(struct bhnd_nvram_plane *plane,
+    struct bhnd_nvram_plane *child)
+{
+	BHND_NVPLANE_LOCK_RW(plane);
+
+	if (!bhnd_nvram_plane_is_child(plane, child))
+		BHND_NV_PANIC("plane is not a direct child of parent");
+
+	LIST_REMOVE(plane, np_link);
+	BHND_NVREF_RELEASE_WEAK(plane, np_refs);
+
+	BHND_NVPLANE_UNLOCK_RW(plane);
+}
+
+/**
  * Finalize @p plane, deallocating all associated resources.
  * 
  * @param	plane	The NVRAM plane to be finalized.
@@ -164,49 +188,34 @@ static void
 bhnd_nvram_plane_fini(struct bhnd_nvram_plane *plane)
 {
 	struct bhnd_nvram_plane		*parent;
-	struct bhnd_nvram_plane		*c, *cnext;
 	bhnd_nvram_dev_entry		*d, *dnext;
 
 	BHND_NVREF_ASSERT_CAN_FREE(plane, np_refs);
 
-	/* Release all weak child references */
-	LIST_FOREACH_SAFE(c, &plane->children, np_link, cnext) {
-		LIST_REMOVE(c, np_link);
-		BHND_NVREF_RELEASE_WEAK(c, np_refs);
-	}
+	BHND_NV_ASSERT(LIST_EMPTY(&plane->children),
+	     ("active children did not keep us alive"));
 
-	/* Release all strong device references */
 	LIST_FOREACH_SAFE(d, &plane->devices, dn_link, dnext) {
 		LIST_REMOVE(d, dn_link);
 		BHND_NVREF_RELEASE(d, dn_refs, bhnd_nvram_dev_entry_fini);
 	}
 
-	/* Release root path */
 	bhnd_nvram_path_release(plane->root);
-
-	/* Destroy our internal lock */
 	BHND_NVPLANE_LOCK_DESTROY(plane);
 
-	/* Clean up parent references? */
-	if ((parent = plane->parent) == NULL)
-		return;
+	/*
+	 * Remove our parent's reference to this instance.
+	 * 
+	 * This may deallocate our plane instance entirely, and no
+	 * member references to plane should be made after this point.
+	 */
+	if ((parent = plane->parent) != NULL) {
+		/* Drop parent's reference to this instance */
+		bhnd_nvram_plane_remove_child(parent, plane);
 
-	/* Remove from the parent's child list */
-	BHND_NVPLANE_LOCK_RW(parent);
-
-	if (bhnd_nvram_plane_is_child(parent, plane)) {
-		LIST_REMOVE(plane, np_link);
-	} else {
-		BHND_NV_PANIC("plane is not a direct child of parent");
+		/* Drop our parent reference */
+		bhnd_nvram_plane_release(parent);
 	}
-
-	BHND_NVPLANE_UNLOCK_RW(plane->parent);
-
-	/* Release strong reference to parent */
-	bhnd_nvram_plane_release(plane->parent);
-
-	/* Release parent's weak reference to our instance */
-	BHND_NVREF_RELEASE_WEAK(plane, np_refs);
 }
 
 /**
