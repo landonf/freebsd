@@ -87,6 +87,7 @@ struct bhnd_nvref {
  */
 struct bhnd_nvram_dev_entry {
 	device_t				dev;	/**< provider */
+	bhnd_nvram_phandle_list			paths;	/**< registered paths */
 
 	struct bhnd_nvref			dn_refs;
 	LIST_ENTRY(bhnd_nvram_dev_entry)	dn_link;
@@ -100,7 +101,7 @@ struct bhnd_nvram_prov {
 
 	/** type-specific provider reference */
 	union bhnd_nvram_prov_src {
-		bhnd_nvram_dev_entry	*dev;	/**< NVRAM device (BHND_NVRAM_PROVIDER_DEV) */
+		bhnd_nvram_dev_entry	*dev;	/**< weak reference to NVRAM device (BHND_NVRAM_PROVIDER_DEV) */
 		bhnd_nvram_phandle	*path;	/**< re-exported parent path (BHND_NVRAM_PROVIDER_PATH) */
 	} src;
 };
@@ -119,7 +120,7 @@ struct bhnd_nvram_phandle {
 
 	struct bhnd_nvref		 np_refs;
 	LIST_ENTRY(bhnd_nvram_phandle)	 np_child_link;
-	LIST_ENTRY(bhnd_nvram_phandle)	 np_all_link;
+	LIST_ENTRY(bhnd_nvram_phandle)	 np_dev_link;
 };
 
 /**
@@ -187,15 +188,16 @@ bhnd_nvref_retain(struct bhnd_nvref *ref)
  * @param field		The value's reference count field.
  * @param fini		The value's finalization callback.
  */
-#define	BHND_NVREF_RELEASE(value, field, dealloc) do {			\
+#define	BHND_NVREF_RELEASE(value, field, fini) do {			\
 	BHND_NV_ASSERT((value)->field.strong > 0, ("over-release"));	\
 	BHND_NV_ASSERT((value)->field.weak > 0, ("over-release"));	\
 									\
 	/* Drop strong reference */					\
 	if (atomic_fetchadd_int(&(value)->field.strong, -1) == 0) {	\
-		/* No remaining strong references; can deallocate	\
-		 * instance state */					\
-		(dealloc)(value);					\
+		/* No remaining strong references; can finalize		\
+		 * instance state. Our implicit weak reference will	\
+		 * keep the value pointer alive during finalization */	\
+		(fini)(value);						\
 									\
 		/* Discard the the implicit weak reference shared by	\
 		 * all strong references. */				\
