@@ -80,12 +80,6 @@ static bhnd_nvram_dev_entry	*bhnd_nvram_plane_find_device(
 static void			 bhnd_nvram_dev_entry_fini(
 				     bhnd_nvram_dev_entry *dev);
 
-static void
-bhnd_nvram_dev_entry_fini(bhnd_nvram_dev_entry *devnode)
-{
-	// XXX TODO
-}
-
 /**
  * Allocate and initialize an empty NVRAM plane.
  * 
@@ -162,9 +156,9 @@ bhnd_nvram_plane_is_child(struct bhnd_nvram_plane *plane,
 }
 
 /**
- * Attempt to deallocate all resources held by @p plane.
+ * Finalize @p plane, deallocating all associated resources.
  * 
- * @param	plane	The NVRAM plane to be deallocated.
+ * @param	plane	The NVRAM plane to be finalized.
  */
 static void
 bhnd_nvram_plane_fini(struct bhnd_nvram_plane *plane)
@@ -325,6 +319,20 @@ bhnd_nvram_plane_register_device(struct bhnd_nvram_plane *plane, device_t dev,
 }
 
 /**
+ * Finalize @p dentry, deallocating all associated resources.
+ * 
+ * @param	dentry	The NVRAM device entry to be finalized.
+ */
+static void
+bhnd_nvram_dev_entry_fini(bhnd_nvram_dev_entry *dentry)
+{
+	bhnd_nvram_phandle *phandle, *pnext;
+
+	LIST_FOREACH_SAFE(phandle, &dentry->paths, np_prov_link, pnext)
+		bhnd_nvram_path_release(phandle);
+}
+
+/**
  * Deregister an NVRAM device and all associated paths.
  * 
  * If @p dev is not currently registered with @p plane, the request will
@@ -364,17 +372,16 @@ bhnd_nvram_plane_deregister_device_locked(struct bhnd_nvram_plane *plane,
 		return (0);
 	}
 
-	/* Remove from device list */
+	/* Drop device entry */
 	LIST_REMOVE(entry, dn_link);
-
-	/* Free entry */
-	bhnd_nv_free(entry);
+	BHND_NVREF_RELEASE(entry, dn_refs, bhnd_nvram_dev_entry_fini);
 
 	return (0);
 }
 
 /**
- * Return the path handle for @p path, or NULL if not found.
+ * Retain and return the path handle for @p pathname, or return NULL if not
+ * found.
  * 
  * @param	plane		The NVRAM plane to query.
  * @param	pathname	The fully qualified name of the NVRAM path
@@ -385,13 +392,82 @@ static bhnd_nvram_phandle *
 bhnd_nvram_plane_get_phandle(struct bhnd_nvram_plane *plane,
     const char *pathname, size_t pathlen)
 {
+	bhnd_nvram_phandle	*path;
+	const char		*name;
+	size_t			 namelen;
+
 	BHND_NVPLANE_LOCK_ASSERT(plane, SA_LOCKED);
-	BHND_NV_ASSERT(pathname != NULL, ("NULL path"));
 
-	// TODO
+	/* First element must be "/" */
+	name = NULL;
+	name = bhnd_nvram_parse_path_next(pathname, pathlen, name, &namelen);
+	if (namelen != 1 || *name != '/')
+		return (NULL);
 
-	/* Not found */
-	return (NULL);
+	/* Walk the path tree */
+	path = bhnd_nvram_path_retain(plane->root);
+	while ((name = bhnd_nvram_parse_path_next(pathname, pathlen, name,
+	    &namelen)) != NULL)
+	{
+		bhnd_nvram_phandle	*child;
+		bool			 found;
+
+		/* cwd reference is a no-op */
+		if (namelen == 1 && *name == '.')
+			continue;
+
+		/* parent reference */
+		if (namelen == 2 && name[0] == '.' && name[1] == '.') {
+			/* Cannot resolve a parent reference if we're already
+			 * at the root path */
+			if (path->parent == NULL) {
+				bhnd_nvram_path_release(path);
+				return (NULL);
+			}
+
+			/* Replace current path with its parent, and then
+			 * continue searching */
+			child = path;
+
+			path = bhnd_nvram_path_retain(child->parent);
+			bhnd_nvram_path_release(child);
+
+			continue;
+		}
+
+		/* locate name in the current path */
+		found = false;
+		LIST_FOREACH(child, &path->children, np_child_link) {
+			child = BHND_NVREF_PROMOTE_WEAK(child, np_refs);
+			if (child == NULL)
+				continue;
+
+			if (strncmp(child->name, name, namelen) != 0) {
+				bhnd_nvram_path_release(child);
+				continue;
+			}
+
+			if (child->name[namelen] != '\0') {
+				bhnd_nvram_path_release(child);
+				continue;
+			}
+
+			/* Subpath matches; replace our current path
+			 * reference */
+			found = true;
+			bhnd_nvram_path_release(path);
+			path = child;
+			break;
+		}
+
+		if (!found) {
+			bhnd_nvram_path_release(path);
+			return (NULL);
+		}
+	}
+
+	/* Transfer ownership of the path to our caller */
+	return (path);
 }
 
 /**
@@ -426,7 +502,10 @@ bhnd_nvram_plane_add_phandle(struct bhnd_nvram_plane *plane,
 		    BHND_NV_PRINT_WIDTH(pathlen),  pathname);
 	}
 
-	if (bhnd_nvram_plane_get_phandle(plane, pathname, pathlen) != NULL) {
+	entry = bhnd_nvram_plane_get_phandle(plane, pathname, pathlen);
+	if (entry != NULL) {
+		bhnd_nvram_path_release(entry);
+
 		BHND_NV_PANIC("duplicate path %.*s",
 		    BHND_NV_PRINT_WIDTH(pathlen),  pathname);
 	}
@@ -680,9 +759,9 @@ bhnd_nvram_phandle_new(const char *pathname, size_t pathlen,
 }
 
 /**
- * Deallocate @p phandle and all associated resources.
+ * Finalize @p phandle, deallocating all associated resources.
  * 
- * @param	phandle	The NVRAM path to be deallocated.
+ * @param	phandle	The NVRAM path to be finalized.
  */
 static void
 bhnd_nvram_phandle_fini(bhnd_nvram_phandle *phandle)
@@ -699,7 +778,17 @@ bhnd_nvram_phandle_fini(bhnd_nvram_phandle *phandle)
 	if (phandle->parent != NULL)
 		bhnd_nvram_path_release(phandle->parent);
 
-	// TODO: provider reference
+	/* Release weak provider reference */
+	switch (phandle->prov.type) {
+	case BHND_NVRAM_PROVIDER_NONE:
+		break;
+	case BHND_NVRAM_PROVIDER_DEV:
+		BHND_NVREF_RELEASE_WEAK(phandle->prov.src.dev, dn_refs);
+		break;
+	case BHND_NVRAM_PROVIDER_PATH:
+		BHND_NVREF_RELEASE_WEAK(phandle->prov.src.path, np_refs);
+		break;
+	}
 
 	bhnd_nv_free(phandle->pathname);
 }
@@ -776,14 +865,13 @@ bhnd_nvram_plane_find_path(struct bhnd_nvram_plane *plane, const char *pathname)
 }
 
 /**
- * Open and return a caller-owned reference to the given fully qualified
- * @p path.
+ * Open and return a caller-owned reference to the given @p path.
  * 
  * The caller assumes ownership of the returned path handle, and is responsible
  * for releasing it via bhnd_nvram_plane_release_path().
  * 
  * @param	plane		The NVRAM plane containing @p path.
- * @param	pathname	The fully qualified path to be opened.
+ * @param	pathname	The path to be opened.
  *
  * @retval non-NULL	if @p path is found in @p plane.
  * @retval NULL		if @p path is not found in @p plane.
@@ -791,8 +879,14 @@ bhnd_nvram_plane_find_path(struct bhnd_nvram_plane *plane, const char *pathname)
 bhnd_nvram_phandle *
 bhnd_nvram_plane_open_path(struct bhnd_nvram_plane *plane, const char *pathname)
 {
-	// TODO
-	return (NULL);
+	bhnd_nvram_phandle *phandle;
+
+	BHND_NVPLANE_LOCK_RD(plane);
+	phandle = bhnd_nvram_plane_get_phandle(plane, pathname,
+	    strlen(pathname));
+	BHND_NVPLANE_UNLOCK_RD(plane);
+
+	return (phandle);
 }
 
 /**
@@ -806,9 +900,7 @@ bhnd_nvram_plane_open_path(struct bhnd_nvram_plane *plane, const char *pathname)
 bhnd_nvram_phandle *
 bhnd_nvram_path_get_parent(bhnd_nvram_phandle *phandle)
 {
-	// TODO: resolve to path
-	// TODO: how to handle dead plane reference?
-	return (NULL);
+	return (phandle->parent);
 }
 
 /**

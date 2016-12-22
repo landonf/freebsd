@@ -263,7 +263,7 @@ bhnd_nvref_retain_weak(struct bhnd_nvref *ref)
  * @param field	The value's reference count field.
  */
 #define	BHND_NVREF_PROMOTE_WEAK(value, field)			\
-	(bhnd_nvref_promote_weak(&((value)->field).strong) ?	\
+	(bhnd_nvref_promote_weak(&(value)->field) ?	\
 	    (value) : (NULL))
 
 static inline bool
