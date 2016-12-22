@@ -68,16 +68,24 @@ static int			 bhnd_nvstore_idx_cmp(void *ctx,
  * The caller is responsible for deallocating the instance via
  * bhnd_nvstore_path_free().
  * 
- * @param	path_str	The path's canonical string representation.
+ * @param	path_str	The path's Broadcom-formatted canonical string
+ *				representation.
  * @param	path_len	The length of @p path_str.
  * 
  * @retval non-NULL	success
  * @retval NULL		if allocation fails.
+ * @retval NULL		if @p path_str is invalid.
  */
 bhnd_nvstore_path *
 bhnd_nvstore_path_new(const char *path_str, size_t path_len)
 {
-	bhnd_nvstore_path *path;
+	bhnd_nvstore_path	*path;
+
+	/* Must not be an empty path */
+	if (path_len == 0) {
+		BHND_NV_LOG("zero-length path string\n");
+		return (NULL);
+	}
 
 	/* Allocate new entry */
 	path = bhnd_nv_malloc(sizeof(*path));
@@ -91,9 +99,45 @@ bhnd_nvstore_path_new(const char *path_str, size_t path_len)
 	if (path->pending == NULL)
 		goto failed;
 
-	path->path_str = bhnd_nv_strndup(path_str, path_len);
-	if (path->path_str == NULL)
-		goto failed;
+	/*
+	 * Paths exported via the nvram_plane API must be fully qualified, but
+	 * broadcom device paths are not '/'-prefixed.
+	 * 
+	 * We prepend a '/' here if necessary, and point the canonical
+	 * Broadcom path string at just past any leading '/'.
+	 */
+	if (path_str[0] != '/') {
+		size_t qpathlen;
+
+		/* Allocate qualified path buffer with space for a prepended
+		 * '/' */
+		qpathlen = strnlen(path_str, path_len) + 1; /* + '\0' */
+		qpathlen += 1; /* + '/' */
+
+		path->qual_path_str = bhnd_nv_malloc(qpathlen);
+		if (path->qual_path_str == NULL)
+			goto failed;
+
+		/* Prepend '/' */
+		*path->qual_path_str = '/';
+
+		/* Copy and NUL terminate the path string */
+		strncpy(path->qual_path_str + 1, path_str, path_len);
+		path->qual_path_str[path_len + 1] = '\0';
+	} else {
+		/* Can copy as-is */
+		path->qual_path_str = bhnd_nv_strndup(path_str, path_len);
+		if (path->qual_path_str == NULL)
+			goto failed;
+	}
+
+	/*
+	 * Set Broadcom-formatted canonical path string (for all but the root
+	 * path)
+	 */
+	path->path_str = path->qual_path_str;
+	if (path->path_str[0] == '/' && path->path_str[1] != '\0')
+		path->path_str++;
 
 	return (path);
 
@@ -101,8 +145,8 @@ failed:
 	if (path->pending != NULL)
 		bhnd_nvram_plist_release(path->pending);
 
-	if (path->path_str != NULL)
-		bhnd_nv_free(path->path_str);
+	if (path->qual_path_str != NULL)
+		bhnd_nv_free(path->qual_path_str);
 
 	bhnd_nv_free(path);
 
@@ -120,7 +164,7 @@ bhnd_nvstore_path_free(struct bhnd_nvstore_path *path)
 		bhnd_nvstore_index_free(path->index);
 
 	bhnd_nvram_plist_release(path->pending);
-	bhnd_nv_free(path->path_str);
+	bhnd_nv_free(path->qual_path_str);
 	bhnd_nv_free(path);
 }
 
@@ -971,7 +1015,8 @@ bhnd_nvstore_register_alias(struct bhnd_nvram_store *sc,
 			goto failed;
 
 		path = bhnd_nvstore_get_path(sc, path_str, path_len);
-		BHND_NV_ASSERT(path != NULL, ("missing registered path"));
+		BHND_NV_ASSERT(path != NULL, ("missing registered path: %.*s",
+		    BHND_NV_PRINT_WIDTH(path_len), path_str));
 	}
 
 	/* Allocate alias entry */
@@ -1045,6 +1090,52 @@ bhnd_nvstore_parse_relpath(const char *parent, const char *child)
 }
 
 /**
+ * Parse an externally-provided NVRAM path, returning a pointer to start of
+ * the canonical internal path within @p path, or NULL if @p path is invalid.
+ * 
+ * @param		path	The external NVRAM path to be parsed.
+ * @param[in,out]	pathlen	The length of @p path. On success
+ *				will be set to the length of the
+ *				returned path string.
+ */
+const char *
+bhnd_nvstore_parse_external_path(const char *path, size_t *pathlen)
+{
+	/* We need the length minus any trailing NUL */
+	if (*pathlen > 0 && path[*pathlen - 1] == '\0')
+		(*pathlen)--;
+
+	/* Check for required leading '/' */
+	if (*pathlen == 0 || *path != '/')
+		return (NULL);
+
+	/* If this is the root path, return as-is */
+	if (*pathlen == 1 && *path == '/')
+		return (path);
+
+	/* Trim leading '/' and trailing '/' characters */
+	while (*pathlen > 0 && *path == '/') {
+		path++;
+		(*pathlen)--;
+	}
+
+	while (*pathlen > 0 && path[*pathlen - 1] == '/')
+		(*pathlen)--;
+
+	return (path);
+}
+
+/* Define a variable name info instance with a string path */
+#define	BHND_NVSTORE_VAR_NAME_INFO(_path, _path_len, _name)	\
+	((bhnd_nvstore_name_info) {				\
+		.type = BHND_NVSTORE_VAR,			\
+		.path_type = BHND_NVSTORE_PATH_STRING,		\
+		.name = (_name),				\
+		.path.str.value = (_path),			\
+		.path.str.value_len = (_path_len),		\
+	})
+
+/**
  * Parse a raw NVRAM variable name and return its @p entry_type, its
  * type-specific @p prefix (e.g. '0:', 'pci/1/1', 'devpath'), and its
  * type-specific @p suffix (e.g. 'varname', '0').
@@ -1071,11 +1162,44 @@ bhnd_nvstore_parse_name_info(const char *name, bhnd_nvstore_name_type type,
 	char		*endp;
 
 	/* Skip path parsing? */
-	if (data_caps & BHND_NVRAM_DATA_CAP_DEVPATHS) {
-		/* devpath declaration? (devpath0=pci/1/1) */
-		if (strncmp(name, "devpath", strlen("devpath")) == 0) {
-			u_long alias;
+	if (!(data_caps & BHND_NVRAM_DATA_CAP_DEVPATHS)) {
+		*info = BHND_NVSTORE_VAR_NAME_INFO(BHND_NVSTORE_ROOT_PATH,
+		    BHND_NVSTORE_ROOT_PATH_LEN, name);
+	}
 
+	/* devpath declaration? (devpath0=pci/1/1) */
+	if (strncmp(name, "devpath", strlen("devpath")) == 0) {
+		u_long alias;
+
+		/* Perform standard validation on the relative
+		 * variable name */
+		if (type != BHND_NVSTORE_NAME_INTERNAL &&
+		    !bhnd_nvram_validate_name(name))
+		{
+			return (ENOENT);
+		}
+
+		/* Parse alias value that should follow a 'devpath'
+		 * prefix */
+		p = name + strlen("devpath");
+		alias = strtoul(p, &endp, 10);
+		if (endp != p && *endp == '\0') {
+			info->type = BHND_NVSTORE_ALIAS_DECL;
+			info->path_type = BHND_NVSTORE_PATH_ALIAS;
+			info->name = name;
+			info->path.alias.value = alias;
+
+			return (0);
+		}
+	}
+
+	/* device aliased variable? (0:varname) */
+	if (bhnd_nv_isdigit(*name)) {
+		u_long alias;
+
+		/* Parse '0:' alias prefix */
+		alias = strtoul(name, &endp, 10);
+		if (endp != name && *endp == ':') {
 			/* Perform standard validation on the relative
 			 * variable name */
 			if (type != BHND_NVSTORE_NAME_INTERNAL &&
@@ -1084,83 +1208,63 @@ bhnd_nvstore_parse_name_info(const char *name, bhnd_nvstore_name_type type,
 				return (ENOENT);
 			}
 
-			/* Parse alias value that should follow a 'devpath'
-			 * prefix */
-			p = name + strlen("devpath");
-			alias = strtoul(p, &endp, 10);
-			if (endp != p && *endp == '\0') {
-				info->type = BHND_NVSTORE_ALIAS_DECL;
-				info->path_type = BHND_NVSTORE_PATH_ALIAS;
-				info->name = name;
-				info->path.alias.value = alias;
-
-				return (0);
-			}
-		}
-
-		/* device aliased variable? (0:varname) */
-		if (bhnd_nv_isdigit(*name)) {
-			u_long alias;
-
-			/* Parse '0:' alias prefix */
-			alias = strtoul(name, &endp, 10);
-			if (endp != name && *endp == ':') {
-				/* Perform standard validation on the relative
-				 * variable name */
-				if (type != BHND_NVSTORE_NAME_INTERNAL &&
-				    !bhnd_nvram_validate_name(name))
-				{
-					return (ENOENT);
-				}
-
-				info->type = BHND_NVSTORE_VAR;
-				info->path_type = BHND_NVSTORE_PATH_ALIAS;
-
-				/* name follows 0: prefix */
-				info->name = endp + 1;
-				info->path.alias.value = alias;
-
-				return (0);
-			}
-		}
-
-		/* device variable? (pci/1/1/varname) */
-		if ((p = strrchr(name, '/')) != NULL) {
-			const char	*path, *relative_name;
-			size_t		 path_len;
-
-			/* Determine the path length; 'p' points at the last
-			 * path separator in 'name' */
-			path_len = p - name;
-			path = name;
-
-			/* The relative variable name directly follows the
-			 * final path separator '/' */
-			relative_name = path + path_len + 1;
-
-			/* Now that we calculated the name offset, exclude all
-			 * trailing '/' characters from the path length */
-			while (path_len > 0 && path[path_len-1] == '/')
-				path_len--;
-
-			/* Perform standard validation on the relative
-			 * variable name */
-			if (type != BHND_NVSTORE_NAME_INTERNAL &&
-			    !bhnd_nvram_validate_name(relative_name))
-			{
-				return (ENOENT);
-			}
-
-			/* Initialize result with pointers into the name
-			 * buffer */
 			info->type = BHND_NVSTORE_VAR;
-			info->path_type = BHND_NVSTORE_PATH_STRING;
-			info->name = relative_name;
-			info->path.str.value = path;
-			info->path.str.value_len = path_len;
+			info->path_type = BHND_NVSTORE_PATH_ALIAS;
+
+			/* name follows 0: prefix */
+			info->name = endp + 1;
+			info->path.alias.value = alias;
 
 			return (0);
 		}
+	}
+
+	/* device variable? (pci/1/1/varname) */
+	if ((p = strrchr(name, '/')) != NULL) {
+		const char	*path, *relative_name;
+		size_t		 path_len;
+
+		/* Determine the path length; 'p' points at the last
+		 * path separator in 'name' */
+		path_len = p - name;
+		path = name;
+
+		/* The relative variable name directly follows the
+		 * final path separator '/' */
+		relative_name = path + path_len + 1;
+
+		/* Now that we calculated the name offset, exclude all
+		 * trailing '/' characters from the path length */
+		while (path_len > 0 && path[path_len-1] == '/')
+			path_len--;
+
+		/* Parse path as an external path? */
+		if (type == BHND_NVSTORE_NAME_EXTERNAL) {
+			path = bhnd_nvstore_parse_external_path(path,
+			    &path_len);
+			if (path == NULL) {
+				/* External path is invalid */
+				return (ENOENT);
+			}
+		}
+
+		/* Perform standard validation on the relative
+		 * variable name */
+		if (type != BHND_NVSTORE_NAME_INTERNAL &&
+		    !bhnd_nvram_validate_name(relative_name))
+		{
+			return (ENOENT);
+		}
+
+		/* Initialize result with pointers into the name
+		 * buffer */
+		info->type = BHND_NVSTORE_VAR;
+		info->path_type = BHND_NVSTORE_PATH_STRING;
+		info->name = relative_name;
+		info->path.str.value = path;
+		info->path.str.value_len = path_len;
+
+		return (0);
 	}
 
 	/* If all other parsing fails, the result is a simple variable with
@@ -1172,11 +1276,8 @@ bhnd_nvstore_parse_name_info(const char *name, bhnd_nvstore_name_type type,
 		return (ENOENT);
 	}
 
-	info->type = BHND_NVSTORE_VAR;
-	info->path_type = BHND_NVSTORE_PATH_STRING;
-	info->name = name;
-	info->path.str.value = BHND_NVSTORE_ROOT_PATH;
-	info->path.str.value_len = BHND_NVSTORE_ROOT_PATH_LEN;
+	*info = BHND_NVSTORE_VAR_NAME_INFO(BHND_NVSTORE_ROOT_PATH,
+	    BHND_NVSTORE_ROOT_PATH_LEN, name);
 
 	return (0);
 }

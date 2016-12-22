@@ -832,6 +832,7 @@ bhnd_nvram_store_export(struct bhnd_nvram_store *sc, const char *path,
 	const char		*name;
 	void			*cookiep;
 	size_t			 num_dpath_flags;
+	size_t			 pathlen;
 	int			 error;
 	
 	*props = NULL;
@@ -843,6 +844,13 @@ bhnd_nvram_store_export(struct bhnd_nvram_store *sc, const char *path,
 	/* Default to exporting root path */
 	if (path == NULL)
 		path = BHND_NVSTORE_ROOT_PATH;
+
+	pathlen = strlen(path);
+	path = bhnd_nvstore_parse_external_path(path, &pathlen);
+	if (path == NULL) {
+		/* Path is not a valid fully-qualified external path */
+		return (ENOENT);
+	}
 
 	/* Default to exporting all properties */
 	if (!BHND_NVSTORE_GET_FLAG(flags, EXPORT_COMMITTED) &&
@@ -882,7 +890,7 @@ bhnd_nvram_store_export(struct bhnd_nvram_store *sc, const char *path,
 	BHND_NVSTORE_LOCK(sc);
 
 	/* Fetch referenced path */
-	top = bhnd_nvstore_get_path(sc, path, strlen(path));
+	top = bhnd_nvstore_get_path(sc, path, pathlen);
 	if (top == NULL) {
 		error = ENOENT;
 		goto failed;
@@ -1082,14 +1090,14 @@ failed:
 }
 
 /**
- * Retrieve a list of NVRAM paths currently available via @p sc,
+ * Retrieve a list of fully-qualified NVRAM paths currently available via @p sc,
  * and return the list in @p paths and the count in @p num_paths.
  * 
  * The memory allocated for the list must be freed via
  * bhnd_nvram_store_free_paths().
  * 
  * @param	sc		The NVRAM store instance.
- * @param[out]	paths		The list of NVRAM path.
+ * @param[out]	paths		The list of fully qualified NVRAM paths.
  * @param[out]	num_paths	The number of paths in @p paths.
  * 
  * @retval 0		success
@@ -1117,7 +1125,9 @@ bhnd_nvram_store_get_paths(struct bhnd_nvram_store *sc, char ***paths,
 			BHND_NV_ASSERT(*num_paths < sc->num_paths,
 			    ("invalid path count"));
 
-			result[*num_paths] = bhnd_nv_strdup(path->path_str);
+			result[*num_paths] = bhnd_nv_strdup(
+			    path->qual_path_str);
+
 			if (result[*num_paths] == NULL)
 				goto failed;
 

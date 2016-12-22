@@ -154,6 +154,8 @@ int			 bhnd_nvstore_register_alias(
 
 const char		*bhnd_nvstore_parse_relpath(const char *parent,
 			     const char *child);
+const char		*bhnd_nvstore_parse_external_path(const char *pathname,
+			     size_t *pathlen);
 int			 bhnd_nvstore_parse_name_info(const char *name,
 			     bhnd_nvstore_name_type name_type,
 			     uint32_t data_caps, bhnd_nvstore_name_info *info);
@@ -239,7 +241,9 @@ struct bhnd_nvstore_index {
  * NVRAM device path.
  */
 struct bhnd_nvstore_path {
-	char				*path_str;	/**< canonical path string */
+	char				*qual_path_str;	/**< fully qualified path */
+	const char			*path_str;	/**< broadcom-formatted canonical path */
+
 	size_t				 num_vars;	/**< per-path count of committed
 							     (non-pending) variables */
 	bhnd_nvstore_index		*index;		/**< per-path index, or NULL if
