@@ -54,7 +54,7 @@ static bool			 bhnd_nvram_plane_is_child(
 static int			 bhnd_nvram_plane_deregister_device_locked(
 				     struct bhnd_nvram_plane *plane,
 				     device_t dev);
-static int			 bhnd_nvram_plane_register_paths_locked(
+static int			 bhnd_nvram_plane_add_paths_locked(
 				     struct bhnd_nvram_plane *plane,
 				     device_t dev, char **pathnames,
 				     size_t num_pathnames);
@@ -150,7 +150,7 @@ bhnd_nvram_plane_is_child(struct bhnd_nvram_plane *plane,
 {
 	struct bhnd_nvram_plane *p;
 
-	BHND_NVPLANE_LOCK_ASSERT(plane, SX_LOCKED);
+	BHND_NVPLANE_LOCK_ASSERT(plane, SA_LOCKED);
 
 	LIST_FOREACH(p, &plane->children, np_link) {
 		if (p == child)
@@ -250,7 +250,7 @@ bhnd_nvram_plane_find_device(struct bhnd_nvram_plane *plane, device_t dev)
 {
 	struct bhnd_nvram_dev_entry *entry;
 
-	BHND_NVPLANE_LOCK_ASSERT(plane, SX_LOCKED);
+	BHND_NVPLANE_LOCK_ASSERT(plane, SA_LOCKED);
 
 	LIST_FOREACH(entry, &plane->devices, dn_link) {
 		if (entry->dev == dev)
@@ -309,7 +309,7 @@ bhnd_nvram_plane_register_device(struct bhnd_nvram_plane *plane, device_t dev,
 	LIST_INSERT_HEAD(&plane->devices, entry, dn_link);
 
 	/* Try to register paths */
-	error = bhnd_nvram_plane_register_paths_locked(plane, dev, pathnames,
+	error = bhnd_nvram_plane_add_paths_locked(plane, dev, pathnames,
 	    num_pathnames);
 	if (error) {
 		/* Path registration failed; deregister device */
@@ -356,7 +356,7 @@ bhnd_nvram_plane_deregister_device_locked(struct bhnd_nvram_plane *plane,
 {
 	struct bhnd_nvram_dev_entry *entry;
 
-	BHND_NVPLANE_LOCK_ASSERT(plane, SX_LOCKED);
+	BHND_NVPLANE_LOCK_ASSERT(plane, SA_XLOCKED);
 
 	entry = bhnd_nvram_plane_find_device(plane, dev);
 	if (entry == NULL) {
@@ -385,7 +385,7 @@ static bhnd_nvram_phandle *
 bhnd_nvram_plane_get_phandle(struct bhnd_nvram_plane *plane,
     const char *pathname, size_t pathlen)
 {
-	BHND_NVPLANE_LOCK_ASSERT(plane, SX_LOCKED);
+	BHND_NVPLANE_LOCK_ASSERT(plane, SA_LOCKED);
 	BHND_NV_ASSERT(pathname != NULL, ("NULL path"));
 
 	// TODO
@@ -494,7 +494,7 @@ bhnd_nvram_plane_add_phandle(struct bhnd_nvram_plane *plane,
 }
 
 /**
- * Register NVRAM path entries for @p dev.
+ * Register new NVRAM path entries for @p dev.
  * 
  * @param	plane		The NVRAM plane with which @p pathname will be
  *				registered.
@@ -511,13 +511,13 @@ bhnd_nvram_plane_add_phandle(struct bhnd_nvram_plane *plane,
  * @retval ENOMEM	if allocation fails.
  */
 int
-bhnd_nvram_plane_register_paths(struct bhnd_nvram_plane *plane, device_t dev,
+bhnd_nvram_plane_add_paths(struct bhnd_nvram_plane *plane, device_t dev,
     char **pathnames, size_t num_pathnames)
 {
 	int error;
 
 	BHND_NVPLANE_LOCK_RW(plane);
-	error = bhnd_nvram_plane_register_paths_locked(plane, dev, pathnames,
+	error = bhnd_nvram_plane_add_paths_locked(plane, dev, pathnames,
 	    num_pathnames);
 	BHND_NVPLANE_UNLOCK_RW(plane);
 
@@ -525,15 +525,15 @@ bhnd_nvram_plane_register_paths(struct bhnd_nvram_plane *plane, device_t dev,
 }
 
 static int
-bhnd_nvram_plane_register_paths_locked(struct bhnd_nvram_plane *plane,
-    device_t dev, char **pathnames, size_t num_pathnames)
+bhnd_nvram_plane_add_paths_locked(struct bhnd_nvram_plane *plane, device_t dev,
+    char **pathnames, size_t num_pathnames)
 {
 	bhnd_nvram_dev_entry	*dentry;
 	bhnd_nvram_phandle_list	 phandles;
 	bhnd_nvram_phandle	*phandle, *pnext;
 	int			 error;
 
-	BHND_NVPLANE_LOCK_ASSERT(plane, SX_LOCKED);
+	BHND_NVPLANE_LOCK_ASSERT(plane, SA_XLOCKED);
 
 	/* The NVRAM device must be registered. */
 	dentry = bhnd_nvram_plane_find_device(plane, dev);
@@ -577,14 +577,14 @@ bhnd_nvram_plane_register_paths_locked(struct bhnd_nvram_plane *plane,
 
 		/* Add to list of new handles allocated for the device
 		 * provider */
-		LIST_INSERT_HEAD(&phandles, phandle, np_dev_link);
+		LIST_INSERT_HEAD(&phandles, phandle, np_prov_link);
 	}
 
 	/* Register the new path handles with the device entry */
-	LIST_FOREACH_SAFE(phandle, &phandles, np_dev_link, pnext) {
+	LIST_FOREACH_SAFE(phandle, &phandles, np_prov_link, pnext) {
 		/* Transfer handle ownership to the device entry */
-		LIST_REMOVE(phandle, np_dev_link);
-		LIST_INSERT_HEAD(&dentry->paths, phandle, np_dev_link);
+		LIST_REMOVE(phandle, np_prov_link);
+		LIST_INSERT_HEAD(&dentry->paths, phandle, np_prov_link);
 
 		/* Link the path handle back to the device entry */
 		phandle->prov.type = BHND_NVRAM_PROVIDER_DEV;
@@ -595,7 +595,7 @@ bhnd_nvram_plane_register_paths_locked(struct bhnd_nvram_plane *plane,
 
 failed:
 	/* Clean up */
-	LIST_FOREACH_SAFE(phandle, &phandles, np_dev_link, pnext)
+	LIST_FOREACH_SAFE(phandle, &phandles, np_prov_link, pnext)
 		bhnd_nvram_path_release(phandle);
 
 	return (error);
@@ -619,7 +619,7 @@ failed:
  *			not registered by @p dev.
  */
 int
-bhnd_nvram_plane_deregister_paths(struct bhnd_nvram_plane *plane, device_t dev,
+bhnd_nvram_plane_remove_paths(struct bhnd_nvram_plane *plane, device_t dev,
     char **pathnames, size_t num_pathnames)
 {
 	// TODO

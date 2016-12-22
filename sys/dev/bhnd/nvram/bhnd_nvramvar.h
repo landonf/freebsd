@@ -119,8 +119,8 @@ struct bhnd_nvram_phandle {
 	bhnd_nvram_phandle_list		 children;	/**< weak references to all children */
 
 	struct bhnd_nvref		 np_refs;
-	LIST_ENTRY(bhnd_nvram_phandle)	 np_child_link;
-	LIST_ENTRY(bhnd_nvram_phandle)	 np_dev_link;
+	LIST_ENTRY(bhnd_nvram_phandle)	 np_child_link;	/**< parent's child list */
+	LIST_ENTRY(bhnd_nvram_phandle)	 np_prov_link;	/**< data source's path list */
 };
 
 /**

@@ -159,12 +159,10 @@ int			 bhnd_nvram_plane_register_device(
 int			 bhnd_nvram_plane_deregister_device(
 			     struct bhnd_nvram_plane *plane, device_t dev);
 
-
-int			 bhnd_nvram_plane_register_paths(
+int			 bhnd_nvram_plane_add_paths(
 			     struct bhnd_nvram_plane *plane, device_t dev,
 			     char **pathnames, size_t num_pathnames);
-
-int			 bhnd_nvram_plane_deregister_paths(
+int			 bhnd_nvram_plane_remove_paths(
 			     struct bhnd_nvram_plane *plane, device_t dev,
 			     char **pathnames, size_t num_pathnames);
 
