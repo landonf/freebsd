@@ -105,7 +105,7 @@ bhnd_nvram_plane_new(struct bhnd_nvram_plane *parent)
 	LIST_INIT(&plane->children);
 	LIST_INIT(&plane->devices);
 
-	BHND_NVREF_INIT(&plane->np_refs);
+	BHND_NVREF_INIT(&plane->refs);
 
 	BHND_NVPLANE_LOCK_INIT(plane);
 
@@ -119,8 +119,8 @@ bhnd_nvram_plane_new(struct bhnd_nvram_plane *parent)
 		/* Add weak reference to our parent's child list */
 		BHND_NVPLANE_LOCK_RW(parent);
 
-		BHND_NVREF_RETAIN_WEAK(plane, np_refs);
-		LIST_INSERT_HEAD(&parent->children, plane, np_link);
+		BHND_NVREF_RETAIN_WEAK(plane, refs);
+		LIST_INSERT_HEAD(&parent->children, plane, children_link);
 
 		BHND_NVPLANE_UNLOCK_RW(parent);
 	}
@@ -149,7 +149,7 @@ bhnd_nvram_plane_is_child(struct bhnd_nvram_plane *plane,
 
 	BHND_NVPLANE_LOCK_ASSERT(plane, SA_LOCKED);
 
-	LIST_FOREACH(p, &plane->children, np_link) {
+	LIST_FOREACH(p, &plane->children, children_link) {
 		if (p == child)
 			return (true);
 	}
@@ -173,8 +173,8 @@ bhnd_nvram_plane_remove_child(struct bhnd_nvram_plane *plane,
 	if (!bhnd_nvram_plane_is_child(plane, child))
 		BHND_NV_PANIC("plane is not a direct child of parent");
 
-	LIST_REMOVE(plane, np_link);
-	BHND_NVREF_RELEASE_WEAK(plane, np_refs);
+	LIST_REMOVE(plane, children_link);
+	BHND_NVREF_RELEASE_WEAK(plane, refs);
 
 	BHND_NVPLANE_UNLOCK_RW(plane);
 }
@@ -190,14 +190,14 @@ bhnd_nvram_plane_fini(struct bhnd_nvram_plane *plane)
 	struct bhnd_nvram_plane		*parent;
 	bhnd_nvram_dev_entry		*d, *dnext;
 
-	BHND_NVREF_ASSERT_CAN_FREE(plane, np_refs);
+	BHND_NVREF_ASSERT_CAN_FREE(plane, refs);
 
 	BHND_NV_ASSERT(LIST_EMPTY(&plane->children),
 	     ("active children did not keep us alive"));
 
-	LIST_FOREACH_SAFE(d, &plane->devices, dn_link, dnext) {
-		LIST_REMOVE(d, dn_link);
-		BHND_NVREF_RELEASE(d, dn_refs, bhnd_nvram_dev_entry_fini);
+	LIST_FOREACH_SAFE(d, &plane->devices, devs_link, dnext) {
+		LIST_REMOVE(d, devs_link);
+		BHND_NVREF_RELEASE(d, refs, bhnd_nvram_dev_entry_fini);
 	}
 
 	bhnd_nvram_path_release(plane->root);
@@ -229,7 +229,7 @@ bhnd_nvram_plane_fini(struct bhnd_nvram_plane *plane)
 struct bhnd_nvram_plane *
 bhnd_nvram_plane_retain(struct bhnd_nvram_plane *plane)
 {
-	return (BHND_NVREF_RETAIN(plane, np_refs));
+	return (BHND_NVREF_RETAIN(plane, refs));
 }
 
 /**
@@ -242,7 +242,7 @@ bhnd_nvram_plane_retain(struct bhnd_nvram_plane *plane)
 void
 bhnd_nvram_plane_release(struct bhnd_nvram_plane *plane)
 {
-	BHND_NVREF_RELEASE(plane, np_refs, bhnd_nvram_plane_fini);
+	BHND_NVREF_RELEASE(plane, refs, bhnd_nvram_plane_fini);
 }
 
 /**
@@ -255,7 +255,7 @@ bhnd_nvram_plane_find_device(struct bhnd_nvram_plane *plane, device_t dev)
 
 	BHND_NVPLANE_LOCK_ASSERT(plane, SA_LOCKED);
 
-	LIST_FOREACH(entry, &plane->devices, dn_link) {
+	LIST_FOREACH(entry, &plane->devices, devs_link) {
 		if (entry->dev == dev)
 			return (entry);
 	}
@@ -306,10 +306,10 @@ bhnd_nvram_plane_register_device(struct bhnd_nvram_plane *plane, device_t dev,
 	entry->dev = dev;
 
 	LIST_INIT(&entry->paths);
-	BHND_NVREF_INIT(&entry->dn_refs);
+	BHND_NVREF_INIT(&entry->refs);
 
 	/* Insert in device list (transfering our strong reference) */
-	LIST_INSERT_HEAD(&plane->devices, entry, dn_link);
+	LIST_INSERT_HEAD(&plane->devices, entry, devs_link);
 
 	/* Try to register paths */
 	error = bhnd_nvram_plane_add_paths_locked(plane, dev, pathnames,
@@ -337,8 +337,9 @@ bhnd_nvram_dev_entry_fini(bhnd_nvram_dev_entry *dentry)
 {
 	bhnd_nvram_phandle *phandle, *pnext;
 
-	LIST_FOREACH_SAFE(phandle, &dentry->paths, np_prov_link, pnext)
+	LIST_FOREACH_SAFE(phandle, &dentry->paths, pathlist_link, pnext) {
 		bhnd_nvram_path_release(phandle);
+	}
 }
 
 /**
@@ -382,8 +383,8 @@ bhnd_nvram_plane_deregister_device_locked(struct bhnd_nvram_plane *plane,
 	}
 
 	/* Drop device entry */
-	LIST_REMOVE(entry, dn_link);
-	BHND_NVREF_RELEASE(entry, dn_refs, bhnd_nvram_dev_entry_fini);
+	LIST_REMOVE(entry, devs_link);
+	BHND_NVREF_RELEASE(entry, refs, bhnd_nvram_dev_entry_fini);
 
 	return (0);
 }
@@ -446,8 +447,8 @@ bhnd_nvram_plane_get_phandle(struct bhnd_nvram_plane *plane,
 
 		/* locate name in the current path */
 		found = false;
-		LIST_FOREACH(child, &path->children, np_child_link) {
-			child = BHND_NVREF_PROMOTE_WEAK(child, np_refs);
+		LIST_FOREACH(child, &path->children, children_link) {
+			child = BHND_NVREF_PROMOTE_WEAK(child, refs);
 			if (child == NULL)
 				continue;
 
@@ -567,9 +568,9 @@ bhnd_nvram_plane_add_phandle(struct bhnd_nvram_plane *plane,
 	for (entry = child; entry != NULL; entry = entry->parent) {
 		/* Insert a weak reference in the parent's list of children */
 		if (entry->parent != NULL) {
-			BHND_NVREF_RETAIN_WEAK(entry, np_refs);
+			BHND_NVREF_RETAIN_WEAK(entry, refs);
 			LIST_INSERT_HEAD(&entry->parent->children, entry,
-			    np_child_link);
+			    children_link);
 		}
 
 		/* Stop once we hit the final newly allocated entry */
@@ -665,26 +666,27 @@ bhnd_nvram_plane_add_paths_locked(struct bhnd_nvram_plane *plane, device_t dev,
 
 		/* Add to list of new handles allocated for the device
 		 * provider */
-		LIST_INSERT_HEAD(&phandles, phandle, np_prov_link);
+		LIST_INSERT_HEAD(&phandles, phandle, pathlist_link);
 	}
 
 	/* Register the new path handles with the device entry */
-	LIST_FOREACH_SAFE(phandle, &phandles, np_prov_link, pnext) {
+	LIST_FOREACH_SAFE(phandle, &phandles, pathlist_link, pnext) {
 		/* Transfer handle ownership to the device entry */
-		LIST_REMOVE(phandle, np_prov_link);
-		LIST_INSERT_HEAD(&dentry->paths, phandle, np_prov_link);
+		LIST_REMOVE(phandle, pathlist_link);
+		LIST_INSERT_HEAD(&dentry->paths, phandle, pathlist_link);
 
 		/* Link the path handle back to the device entry */
 		phandle->prov.type = BHND_NVRAM_PROVIDER_DEV;
-		phandle->prov.src.dev = BHND_NVREF_RETAIN_WEAK(dentry, dn_refs);
+		phandle->prov.src.dev = BHND_NVREF_RETAIN_WEAK(dentry, refs);
 	}
 
 	return (0);
 
 failed:
 	/* Clean up */
-	LIST_FOREACH_SAFE(phandle, &phandles, np_prov_link, pnext)
+	LIST_FOREACH_SAFE(phandle, &phandles, pathlist_link, pnext) {
 		bhnd_nvram_path_release(phandle);
+	}
 
 	return (error);
 }
@@ -742,7 +744,7 @@ bhnd_nvram_phandle_new(const char *pathname, size_t pathlen,
 
 	phandle->prov.type = BHND_NVRAM_PROVIDER_NONE;
 
-	BHND_NVREF_INIT(&phandle->np_refs);
+	BHND_NVREF_INIT(&phandle->refs);
 	LIST_INIT(&phandle->children);
 
 	/* Copy absolute path */
@@ -762,7 +764,7 @@ bhnd_nvram_phandle_new(const char *pathname, size_t pathlen,
 	/* Retain a strong parent reference */
 	phandle->parent = NULL;
 	if (parent != NULL)
-		phandle->parent = BHND_NVREF_RETAIN(parent, np_refs);
+		phandle->parent = BHND_NVREF_RETAIN(parent, refs);
 
 	return (phandle);
 }
@@ -778,9 +780,9 @@ bhnd_nvram_phandle_fini(bhnd_nvram_phandle *phandle)
 	bhnd_nvram_phandle *c, *cnext;
 
 	/* Release all weak child references */
-	LIST_FOREACH_SAFE(c, &phandle->children, np_child_link, cnext) {
-		LIST_REMOVE(c, np_child_link);
-		BHND_NVREF_RELEASE_WEAK(c, np_refs);
+	LIST_FOREACH_SAFE(c, &phandle->children, children_link, cnext) {
+		LIST_REMOVE(c, children_link);
+		BHND_NVREF_RELEASE_WEAK(c, refs);
 	}
 
 	/* Release strong parent reference */
@@ -792,10 +794,10 @@ bhnd_nvram_phandle_fini(bhnd_nvram_phandle *phandle)
 	case BHND_NVRAM_PROVIDER_NONE:
 		break;
 	case BHND_NVRAM_PROVIDER_DEV:
-		BHND_NVREF_RELEASE_WEAK(phandle->prov.src.dev, dn_refs);
+		BHND_NVREF_RELEASE_WEAK(phandle->prov.src.dev, refs);
 		break;
 	case BHND_NVRAM_PROVIDER_PATH:
-		BHND_NVREF_RELEASE_WEAK(phandle->prov.src.path, np_refs);
+		BHND_NVREF_RELEASE_WEAK(phandle->prov.src.path, refs);
 		break;
 	}
 
@@ -816,7 +818,7 @@ bhnd_nvram_phandle_fini(bhnd_nvram_phandle *phandle)
 bhnd_nvram_phandle *
 bhnd_nvram_path_retain(bhnd_nvram_phandle *phandle)
 {
-	return (BHND_NVREF_RETAIN(phandle, np_refs));
+	return (BHND_NVREF_RETAIN(phandle, refs));
 }
 
 /**
@@ -827,7 +829,7 @@ bhnd_nvram_path_retain(bhnd_nvram_phandle *phandle)
 void
 bhnd_nvram_path_release(bhnd_nvram_phandle *phandle)
 {
-	BHND_NVREF_RELEASE(phandle, np_refs, bhnd_nvram_phandle_fini);
+	BHND_NVREF_RELEASE(phandle, refs, bhnd_nvram_phandle_fini);
 }
 
 /**

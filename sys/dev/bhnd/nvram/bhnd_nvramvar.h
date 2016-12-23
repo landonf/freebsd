@@ -95,11 +95,11 @@ struct bhnd_nvref {
  * NVRAM device entry.
  */
 struct bhnd_nvram_dev_entry {
-	device_t				dev;	/**< provider */
-	bhnd_nvram_phandle_list			paths;	/**< registered paths */
+	device_t				dev;		/**< provider */
+	bhnd_nvram_phandle_list			paths;		/**< registered paths */
 
-	struct bhnd_nvref			dn_refs;
-	LIST_ENTRY(bhnd_nvram_dev_entry)	dn_link;
+	struct bhnd_nvref			refs;
+	LIST_ENTRY(bhnd_nvram_dev_entry)	devs_link;	/**< plane provider list entry */
 };
 
 /**
@@ -127,9 +127,9 @@ struct bhnd_nvram_phandle {
 	bhnd_nvram_phandle		*parent;	/**< strong parent reference, or NULL */
 	bhnd_nvram_phandle_list		 children;	/**< weak references to all children */
 
-	struct bhnd_nvref		 np_refs;
-	LIST_ENTRY(bhnd_nvram_phandle)	 np_child_link;	/**< parent's child list */
-	LIST_ENTRY(bhnd_nvram_phandle)	 np_prov_link;	/**< data source's path list */
+	struct bhnd_nvref		 refs;
+	LIST_ENTRY(bhnd_nvram_phandle)	 children_link;	/**< parent's children list entry */
+	LIST_ENTRY(bhnd_nvram_phandle)	 pathlist_link;	/**< provider's path list entry */
 };
 
 /**
@@ -145,8 +145,8 @@ struct bhnd_nvram_plane {
 	bhnd_nvram_plane_list		 children;	/**< weak references to all children */
 	struct sx			 lock;		/**< topology lock */
 
-	struct bhnd_nvref		 np_refs;
-	LIST_ENTRY(bhnd_nvram_plane)	 np_link;
+	struct bhnd_nvref		 refs;
+	LIST_ENTRY(bhnd_nvram_plane)	 children_link;	/**< parent's children list entry */
 };
 
 #define	BHND_NVPLANE_LOCK_INIT(sc) \
