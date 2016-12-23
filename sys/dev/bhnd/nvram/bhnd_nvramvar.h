@@ -72,10 +72,19 @@ typedef enum {
  * the cost of one additional atomic operation upon discarding the last strong
  * reference.
  *
- * - When the strong reference count hits zero, the referenced value's instance
- *   state may be deallocated.
- * - When the weak reference count hits zero, the reference counted data
- *   structure itself may be deallocated.
+ *	- When the strong reference count hits zero, the referenced value's
+ *	  instance state may be deallocated.
+ *	- When the weak reference count hits zero, the reference counted data
+ *	  structure itself may be deallocated.
+ * 
+ * All NVRAM plane data structures are reference counted; as a general set of
+ * guidelines:
+ * 
+ *	- Children hold strong references to their parent.
+ *	- Parents hold weak references to children.
+ *	- Weak references must be explicitly promoted to strong references
+ *	  before access, which may fail if all strong references to the value
+ *	  have been released. See BHND_NVREF_PROMOTE_WEAK().
  */
 struct bhnd_nvref {
 	volatile u_int	 strong;	/* strong refcount */
