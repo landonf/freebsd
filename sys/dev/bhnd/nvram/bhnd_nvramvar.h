@@ -67,15 +67,6 @@ typedef struct bhnd_nvram_prov_list	bhnd_nvram_prov_list;
  *	  instance state may be deallocated.
  *	- When the weak reference count hits zero, the reference counted data
  *	  structure itself may be deallocated.
- * 
- * Most NVRAM plane data structures are reference counted; as a general set of
- * guidelines:
- * 
- *	- Children hold strong references to their parent.
- *	- Parents hold weak references to children.
- *	- Weak references must be explicitly promoted to strong references
- *	  before access, which may fail if all strong references to the value
- *	  have been released. See BHND_NVREF_PROMOTE_WEAK().
  */
 struct bhnd_nvref {
 	volatile u_int	 strong;	/* strong refcount */
@@ -98,36 +89,73 @@ struct bhnd_nvram_prov {
  * NVRAM path handle.
  * 
  * Provides a reference-counted handle to a path within an NVRAM plane.
+ * 
+  * Locking / Reference Counting:
+ *
+ *	- Child paths hold strong references to their parent; parents hold
+ *	  weak references to children.
+ *	- Child paths must lock their parents; parents never directly lock
+ *	  children.
+ *	- Weak references to a child must be explicitly promoted to a strong
+ *	  reference  before access, which may fail if all strong references to
+ *	  the child path have been released. See BHND_NVREF_PROMOTE_WEAK().
  */
 struct bhnd_nvram_phandle {
-	struct bhnd_nvram_plane		*plane;		/**< plane (weak reference) */
+	struct bhnd_nvref		 refs;
+
+	/* immutable state */
 	char				*pathname;	/**< fully qualified path name */
 	const char			*name;		/**< relative path name within pathname */
-
-	struct bhnd_nvram_prov		*prov;		/**< provider, or NULL if none (weak reference) */
 	bhnd_nvram_phandle		*parent;	/**< parent, or NULL */
-	bhnd_nvram_phandle_list		 children;	/**< all children */
 
-	struct bhnd_nvref		 refs;
+	/* mutable state */
+	struct bhnd_nvram_prov		*prov;		/**< provider, or NULL if none (weak reference) */
+	bhnd_nvram_phandle_list		 children;	/**< all children */
+	struct sx			 p_lock;	/**< mutable state lock */
+
+	/* externally managed state */
 	LIST_ENTRY(bhnd_nvram_phandle)	 children_link;	/**< parent children list entry */
 	LIST_ENTRY(bhnd_nvram_phandle)	 pathlist_link;	/**< provider path list entry */
 };
 
+#define	BHND_NVPATH_LOCK_INIT(sc) \
+	sx_init(&(sc)->p_lock, "BHND NVRAM path lock")
+#define	BHND_NVPATH_LOCK_RD(sc)			sx_slock(&(sc)->p_lock)
+#define	BHND_NVPATH_UNLOCK_RD(sc)		sx_sunlock(&(sc)->p_lock)
+#define	BHND_NVPATH_TRY_UPGRADE(sc)		sx_try_upgrade(&(sc)->p_lock)
+#define	BHND_NVPATH_LOCK_RW(sc)			sx_xlock(&(sc)->p_lock)
+#define	BHND_NVPATH_UNLOCK_RW(sc)		sx_xunlock(&(sc)->p_lock)
+#define	BHND_NVPATH_LOCK_ASSERT(sc, what)	sx_assert(&(sc)->p_lock, what)
+#define	BHND_NVPATH_LOCK_DESTROY(sc)		sx_destroy(&(sc)->p_lock)
+
 /**
  * NVRAM plane.
  * 
- * Manages a common namespace of NVRAM paths and associated NVRAM devices.
+ * Manages a tree of NVRAM planes, NVRAM paths, and associated NVRAM devices.
+ *
+ * Locking / Reference Counting:
+ *
+ *	- Child planes hold strong references to parent planes; parents hold
+ *	  weak references to children.
+ *	- Child planes must lock their parents; parents never directly lock
+ *	  children.
+ *	- Weak references to a child must be explicitly promoted to a strong
+ *	  reference  before access, which may fail if all strong references to
+ *	  the child plane have been released. See BHND_NVREF_PROMOTE_WEAK().
  */
 struct bhnd_nvram_plane {
-	struct bhnd_nvram_plane		*parent;	/**< parent plane, or NULL */
+	struct bhnd_nvref		 refs;
 
+	/* immutable state */
+	struct bhnd_nvram_plane		*parent;	/**< parent plane, or NULL */
 	bhnd_nvram_phandle		*root;		/**< root path */
+
+	/* mutable state */
 	bhnd_nvram_prov_list		 providers;	/**< registered providers */
 	bhnd_nvram_plane_list		 children;	/**< weak references to all children */
+	struct sx			 lock;		/**< mutable state lock */
 
-	struct sx			 lock;		/**< topology lock */
-
-	struct bhnd_nvref		 refs;
+	/* externally managed state */
 	LIST_ENTRY(bhnd_nvram_plane)	 children_link;	/**< parent children list entry */
 };
 
