@@ -92,10 +92,6 @@ static bhnd_nvram_phandle	*bhnd_nvram_phandle_new(
 static void			 bhnd_nvram_phandle_fini(
 				     bhnd_nvram_phandle *path);
 
-static void			 bhnd_nvram_phandle_remove_children(
-				     struct bhnd_nvram_plane *plane,
-				     bhnd_nvram_phandle *parent);
-
 void				 bhnd_nvram_phandle_set_provider(
 				     struct bhnd_nvram_plane *plane,
 				     bhnd_nvram_phandle *phandle,
@@ -173,9 +169,7 @@ bhnd_nvram_plane_fini(struct bhnd_nvram_plane *plane)
 	BHND_NV_ASSERT(LIST_EMPTY(&plane->children),
 	     ("active children did not keep us alive"));
 
-	/* Abandon all children of our root path, and then drop our
-	 * root path reference */
-	bhnd_nvram_phandle_remove_children(plane, plane->root);
+	/* Drop our root path reference */
 	bhnd_nvram_path_release(plane->root);
 
 	/* Release all providers */
@@ -980,43 +974,6 @@ bhnd_nvram_phandle_fini(bhnd_nvram_phandle *phandle)
 	BHND_NVREF_RELEASE_WEAK(phandle->plane, refs);
 
 	bhnd_nv_free(phandle->pathname);
-}
-
-/**
- * Recursively abandon all children defined below @p parent.
- * 
- * @param	plane	The NVRAM plane containing @p phandle.
- * @param	phandle	The NVRAM phandle to be modified.
- */
-static void
-bhnd_nvram_phandle_remove_children(struct bhnd_nvram_plane *plane,
-    bhnd_nvram_phandle *parent)
-{
-	bhnd_nvram_phandle *child, *pnext;
-
-	if (plane->refs.strong > 0)
-		BHND_NVPLANE_LOCK_ASSERT(plane, SA_XLOCKED);
-
-	LIST_FOREACH_SAFE(child, &parent->children, children_link, pnext) {
-		/* Remove from child list */
-		LIST_REMOVE(child, children_link);
-
-		/* Try to promote to a strong reference; if the child is
-		 * still alive, we need to recursively destroy its children */
-		if (BHND_NVREF_PROMOTE_WEAK(child, refs) == NULL) {
-			/* Child is a zombie */
-			BHND_NVREF_RELEASE_WEAK(child, refs);
-			continue;
-		}
-
-		/* Recurse into the child */
-		bhnd_nvram_phandle_remove_children(plane, child);
-
-		/* Drop both our weak reference, and our recently acquired
-		 * strong reference */
-		BHND_NVREF_RELEASE_WEAK(child, refs);
-		BHND_NVREF_RELEASE(child, refs, bhnd_nvram_phandle_fini);
-	}
 }
 
 /**
