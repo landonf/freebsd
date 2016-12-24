@@ -121,8 +121,7 @@ bhnd_sprom_attach(device_t dev, bus_size_t offset)
 	}
 
 	/* Register ourselves with the NVRAM plane */
-	error = bhnd_nvram_plane_register_device(sc->plane, dev, paths,
-	    num_paths);
+	error = bhnd_nvram_plane_add_device(sc->plane, dev, paths, num_paths);
 	if (error) {
 		device_printf(dev, "failed to register NVRAM device: %d\n",
 		    error);
@@ -232,7 +231,7 @@ bhnd_sprom_detach(device_t dev)
 	sc = device_get_softc(dev);
 
 	/* Deregister all NVRAM paths provided by this device */
-	if ((error = bhnd_nvram_plane_deregister_device(sc->plane, dev)))
+	if ((error = bhnd_nvram_plane_remove_device(sc->plane, dev)))
 		return (error);
 
 	/* Clean up backing NVRAM store */

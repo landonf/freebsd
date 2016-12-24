@@ -33,7 +33,8 @@
 #define _BHND_NVRAM_BHND_NVRAM_H_
 
 #ifdef _KERNEL
-#include <sys/types.h>
+#include <sys/param.h>
+#include <sys/kobj.h>
 #else /* !_KERNEL */
 #include <stdbool.h>
 #include <stdint.h>
@@ -125,7 +126,6 @@ typedef enum {
 						     values */
 } bhnd_nvram_type;
 
-
 bool			 bhnd_nvram_is_signed_type(bhnd_nvram_type type);
 bool			 bhnd_nvram_is_unsigned_type(bhnd_nvram_type type);
 bool			 bhnd_nvram_is_int_type(bhnd_nvram_type type);
@@ -137,7 +137,7 @@ size_t			 bhnd_nvram_type_width(bhnd_nvram_type type);
 size_t			 bhnd_nvram_type_host_align(bhnd_nvram_type type);
 
 const char		*bhnd_nvram_string_array_next(const char *inp,
-			     size_t ilen, const char *prev, size_t *olen); 
+			     size_t ilen, const char *prev, size_t *olen);
 
 #ifdef _KERNEL
 
@@ -153,10 +153,10 @@ struct bhnd_nvram_plane	*bhnd_nvram_plane_retain(
 void			 bhnd_nvram_plane_release(
 			     struct bhnd_nvram_plane *plane);
 
-int			 bhnd_nvram_plane_register_device(
+int			 bhnd_nvram_plane_add_device(
 			     struct bhnd_nvram_plane *plane, device_t dev,
 			     char **pathnames, size_t num_pathnames);
-int			 bhnd_nvram_plane_deregister_device(
+int			 bhnd_nvram_plane_remove_device(
 			     struct bhnd_nvram_plane *plane, device_t dev);
 
 int			 bhnd_nvram_plane_add_paths(
@@ -165,7 +165,6 @@ int			 bhnd_nvram_plane_add_paths(
 int			 bhnd_nvram_plane_remove_paths(
 			     struct bhnd_nvram_plane *plane, device_t dev,
 			     char **pathnames, size_t num_pathnames);
-
 bhnd_nvram_phandle	*bhnd_nvram_plane_open_root(
 			     struct bhnd_nvram_plane *plane);
 bhnd_nvram_phandle	*bhnd_nvram_plane_open_path(

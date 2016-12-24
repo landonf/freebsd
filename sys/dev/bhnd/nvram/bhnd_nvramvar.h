@@ -33,6 +33,8 @@
 #define _BHND_NVRAM_BHND_NVRAMVAR_H_
 
 #include <sys/param.h>
+
+#include <sys/kobj.h>
 #include <sys/lock.h>
 #include <sys/queue.h>
 #include <sys/refcount.h>
@@ -40,26 +42,15 @@
 
 #include <machine/atomic.h>
 
-typedef struct bhnd_nvram_dev_entry		bhnd_nvram_dev_entry;
-typedef struct bhnd_nvram_prov			bhnd_nvram_prov;
+#include "bhnd_nvram.h"
 
-LIST_HEAD(bhnd_nvram_phandle_list,		bhnd_nvram_phandle);
-LIST_HEAD(bhnd_nvram_plane_list,		bhnd_nvram_plane);
-LIST_HEAD(bhnd_nvram_dev_entry_list,		bhnd_nvram_dev_entry);
+LIST_HEAD(bhnd_nvram_phandle_list,	bhnd_nvram_phandle);
+LIST_HEAD(bhnd_nvram_plane_list,	bhnd_nvram_plane);
+LIST_HEAD(bhnd_nvram_prov_list,		bhnd_nvram_prov);
 
-typedef struct bhnd_nvram_phandle_list		bhnd_nvram_phandle_list;
-typedef struct bhnd_nvram_plane_list		bhnd_nvram_plane_list;
-typedef struct bhnd_nvram_dev_entry_list	bhnd_nvram_dev_entry_list;
-
-/**
- * NVRAM path provider types.
- */
-typedef enum {
-	BHND_NVRAM_PROVIDER_NONE	= 0,	/**< no data provider */
-	BHND_NVRAM_PROVIDER_DEV		= 1,	/**< device provider */
-	BHND_NVRAM_PROVIDER_PATH	= 2,	/**< re-exported path provider */
-} bhnd_nvram_prov_type;
-
+typedef struct bhnd_nvram_phandle_list	bhnd_nvram_phandle_list;
+typedef struct bhnd_nvram_plane_list	bhnd_nvram_plane_list;
+typedef struct bhnd_nvram_prov_list	bhnd_nvram_prov_list;
 
 /**
  * Reference count data structure supporting both strong and weak references.
@@ -77,7 +68,7 @@ typedef enum {
  *	- When the weak reference count hits zero, the reference counted data
  *	  structure itself may be deallocated.
  * 
- * All NVRAM plane data structures are reference counted; as a general set of
+ * Most NVRAM plane data structures are reference counted; as a general set of
  * guidelines:
  * 
  *	- Children hold strong references to their parent.
@@ -92,27 +83,15 @@ struct bhnd_nvref {
 };
 
 /**
- * NVRAM device entry.
- */
-struct bhnd_nvram_dev_entry {
-	device_t				dev;		/**< provider */
-	bhnd_nvram_phandle_list			paths;		/**< registered paths */
-
-	struct bhnd_nvref			refs;
-	LIST_ENTRY(bhnd_nvram_dev_entry)	devs_link;	/**< plane provider list entry */
-};
-
-/**
- * NVRAM path provider state.
+ * NVRAM provider.
  */
 struct bhnd_nvram_prov {
-	bhnd_nvram_prov_type		 type;	/**< provider type */
+	device_t			 dev;		/**< device */
+	bhnd_nvram_phandle_list		 paths;		/**< registered paths */
+	struct bhnd_nvram_plane		*plane;		/**< plane (weak reference) */
 
-	/** type-specific provider reference */
-	union bhnd_nvram_prov_src {
-		bhnd_nvram_dev_entry	*dev;	/**< weak reference to NVRAM device (BHND_NVRAM_PROVIDER_DEV) */
-		bhnd_nvram_phandle	*path;	/**< re-exported parent path (BHND_NVRAM_PROVIDER_PATH) */
-	} src;
+	struct bhnd_nvref		 refs;
+	LIST_ENTRY(bhnd_nvram_prov)	 providers_link;
 };
 
 /**
@@ -121,15 +100,17 @@ struct bhnd_nvram_prov {
  * Provides a reference-counted handle to a path within an NVRAM plane.
  */
 struct bhnd_nvram_phandle {
+	struct bhnd_nvram_plane		*plane;		/**< plane (weak reference) */
 	char				*pathname;	/**< fully qualified path name */
 	const char			*name;		/**< relative path name within pathname */
-	bhnd_nvram_prov			 prov;		/**< data source */
-	bhnd_nvram_phandle		*parent;	/**< strong parent reference, or NULL */
-	bhnd_nvram_phandle_list		 children;	/**< weak references to all children */
+
+	struct bhnd_nvram_prov		*prov;		/**< provider, or NULL if none (weak reference) */
+	bhnd_nvram_phandle		*parent;	/**< parent, or NULL */
+	bhnd_nvram_phandle_list		 children;	/**< all children */
 
 	struct bhnd_nvref		 refs;
-	LIST_ENTRY(bhnd_nvram_phandle)	 children_link;	/**< parent's children list entry */
-	LIST_ENTRY(bhnd_nvram_phandle)	 pathlist_link;	/**< provider's path list entry */
+	LIST_ENTRY(bhnd_nvram_phandle)	 children_link;	/**< parent children list entry */
+	LIST_ENTRY(bhnd_nvram_phandle)	 pathlist_link;	/**< provider path list entry */
 };
 
 /**
@@ -141,12 +122,13 @@ struct bhnd_nvram_plane {
 	struct bhnd_nvram_plane		*parent;	/**< parent plane, or NULL */
 
 	bhnd_nvram_phandle		*root;		/**< root path */
-	bhnd_nvram_dev_entry_list	 devices;	/**< registered devices */
+	bhnd_nvram_prov_list		 providers;	/**< registered providers */
 	bhnd_nvram_plane_list		 children;	/**< weak references to all children */
+
 	struct sx			 lock;		/**< topology lock */
 
 	struct bhnd_nvref		 refs;
-	LIST_ENTRY(bhnd_nvram_plane)	 children_link;	/**< parent's children list entry */
+	LIST_ENTRY(bhnd_nvram_plane)	 children_link;	/**< parent children list entry */
 };
 
 #define	BHND_NVPLANE_LOCK_INIT(sc) \
@@ -158,7 +140,6 @@ struct bhnd_nvram_plane {
 #define	BHND_NVPLANE_UNLOCK_RW(sc)		sx_xunlock(&(sc)->lock)
 #define	BHND_NVPLANE_LOCK_ASSERT(sc, what)	sx_assert(&(sc)->lock, what)
 #define	BHND_NVPLANE_LOCK_DESTROY(sc)		sx_destroy(&(sc)->lock)
-
 
 /**
  * Initialize a the reference count structure.
