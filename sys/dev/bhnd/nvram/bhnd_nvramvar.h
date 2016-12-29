@@ -77,13 +77,26 @@ struct bhnd_nvref {
  * NVRAM provider.
  */
 struct bhnd_nvram_prov {
+	struct bhnd_nvref		 refs;
+
+	/* mutable state */
 	device_t			 dev;		/**< device */
 	bhnd_nvram_phandle_list		 paths;		/**< registered paths */
-	struct bhnd_nvram_plane		*plane;		/**< plane (weak reference) */
+	struct sx			 pv_lock;	/**< mutable state lock */
 
-	struct bhnd_nvref		 refs;
+	/* externally managed state */
 	LIST_ENTRY(bhnd_nvram_prov)	 providers_link;
 };
+
+#define	BHND_NVPROV_LOCK_INIT(sc) \
+	sx_init(&(sc)->pv_lock, "BHND NVRAM provider lock")
+#define	BHND_NVPROV_LOCK_RD(sc)			sx_slock(&(sc)->pv_lock)
+#define	BHND_NVPROV_UNLOCK_RD(sc)		sx_sunlock(&(sc)->pv_lock)
+#define	BHND_NVPROV_TRY_UPGRADE(sc)		sx_try_upgrade(&(sc)->pv_lock)
+#define	BHND_NVPROV_LOCK_RW(sc)			sx_xlock(&(sc)->pv_lock)
+#define	BHND_NVPROV_UNLOCK_RW(sc)		sx_xunlock(&(sc)->pv_lock)
+#define	BHND_NVPROV_LOCK_ASSERT(sc, what)	sx_assert(&(sc)->pv_lock, what)
+#define	BHND_NVPROV_LOCK_DESTROY(sc)		sx_destroy(&(sc)->pv_lock)
 
 /**
  * NVRAM path handle.
@@ -111,7 +124,7 @@ struct bhnd_nvram_phandle {
 	/* mutable state */
 	struct bhnd_nvram_prov		*prov;		/**< provider, or NULL if none (weak reference) */
 	bhnd_nvram_phandle_list		 children;	/**< all children */
-	struct sx			 p_lock;	/**< mutable state lock */
+	struct sx			 ph_lock;	/**< mutable state lock */
 
 	/* externally managed state */
 	LIST_ENTRY(bhnd_nvram_phandle)	 children_link;	/**< parent children list entry */
@@ -119,14 +132,14 @@ struct bhnd_nvram_phandle {
 };
 
 #define	BHND_NVPATH_LOCK_INIT(sc) \
-	sx_init(&(sc)->p_lock, "BHND NVRAM path lock")
-#define	BHND_NVPATH_LOCK_RD(sc)			sx_slock(&(sc)->p_lock)
-#define	BHND_NVPATH_UNLOCK_RD(sc)		sx_sunlock(&(sc)->p_lock)
-#define	BHND_NVPATH_TRY_UPGRADE(sc)		sx_try_upgrade(&(sc)->p_lock)
-#define	BHND_NVPATH_LOCK_RW(sc)			sx_xlock(&(sc)->p_lock)
-#define	BHND_NVPATH_UNLOCK_RW(sc)		sx_xunlock(&(sc)->p_lock)
-#define	BHND_NVPATH_LOCK_ASSERT(sc, what)	sx_assert(&(sc)->p_lock, what)
-#define	BHND_NVPATH_LOCK_DESTROY(sc)		sx_destroy(&(sc)->p_lock)
+	sx_init(&(sc)->ph_lock, "BHND NVRAM path lock")
+#define	BHND_NVPATH_LOCK_RD(sc)			sx_slock(&(sc)->ph_lock)
+#define	BHND_NVPATH_UNLOCK_RD(sc)		sx_sunlock(&(sc)->ph_lock)
+#define	BHND_NVPATH_TRY_UPGRADE(sc)		sx_try_upgrade(&(sc)->ph_lock)
+#define	BHND_NVPATH_LOCK_RW(sc)			sx_xlock(&(sc)->ph_lock)
+#define	BHND_NVPATH_UNLOCK_RW(sc)		sx_xunlock(&(sc)->ph_lock)
+#define	BHND_NVPATH_LOCK_ASSERT(sc, what)	sx_assert(&(sc)->ph_lock, what)
+#define	BHND_NVPATH_LOCK_DESTROY(sc)		sx_destroy(&(sc)->ph_lock)
 
 /**
  * NVRAM plane.

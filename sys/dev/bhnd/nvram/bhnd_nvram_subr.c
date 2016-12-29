@@ -1098,6 +1098,10 @@ bhnd_nvram_parse_path_next(const char *path, size_t pathlen, const char *prev,
 /**
  * Normalize the given NVRAM @p path, writing the result to @p normalized.
  * 
+ * - Rewrites duplicate '/' sequences to a single '/'.
+ * - Removes '.' path components.
+ * - Rewrites '..' parent references relative to their position in @p path.
+ * 
  * @param path		The path to be normalized.
  * @param normalized	The normalized path buffer. Must be capable of storing
  *			at least strnlen(path, pathlen)+1.
@@ -1240,25 +1244,21 @@ bhnd_nvram_parse_path_dirlen(const char *path, size_t pathlen)
 }
 
 /**
- * Return true if @p pathname is non-empty, normalized, fully qualified path,
- * false otherwise.
+ * Return true if @p pathname is non-empty, normalized path
+ * (@see bhnd_nvram_normalize_path()), false otherwise.
  *
  * @param	path	The path to be parsed.
  * @param	pathlen	The length of @p path.
  */
 bool
-bhnd_nvram_is_qualified_path(const char *path, size_t pathlen)
+bhnd_nvram_is_normalized_path(const char *path, size_t pathlen)
 {
 	const char	*p;
 	size_t		 namelen;
 
 	p = NULL;
 
-	/* First component must be '/' */
-	p = bhnd_nvram_parse_path_next(path, pathlen, p, &namelen);
-	if (p == NULL || namelen != 1 || *p != '/')
-
-	/* Validate remaining components */
+	/* Validate all path component */
 	while ((p = bhnd_nvram_parse_path_next(path, pathlen, p, &namelen))) {
 		/* Cannot be empty */
 		if (namelen == 0)
@@ -1273,6 +1273,51 @@ bhnd_nvram_is_qualified_path(const char *path, size_t pathlen)
 				return (false);
 		}
 	}
+
+	return (true);
+}
+
+/**
+ * Return true if @p pathname is non-empty, normalized, fully qualified path,
+ * false otherwise.
+ *
+ * @param	path	The path to be parsed.
+ * @param	pathlen	The length of @p path.
+ */
+bool
+bhnd_nvram_is_qualified_path(const char *path, size_t pathlen)
+{
+	const char	*name;
+	size_t		 namelen;
+
+	/* First component must be '/' */
+	name = NULL;
+	name = bhnd_nvram_parse_path_next(path, pathlen, name, &namelen);
+	if (name == NULL || namelen != 1 || *name != '/')
+		return (false);
+
+	/* Path must be in fully normal form */
+	return (bhnd_nvram_is_normalized_path(path, pathlen));
+}
+
+
+/**
+ * Return true if @p pathname is a relative path, false otherwise.
+ *
+ * @param	path	The path to be parsed.
+ * @param	pathlen	The length of @p path.
+ */
+bool
+bhnd_nvram_is_relative_path(const char *path, size_t pathlen)
+{
+	const char	*name;
+	size_t		 namelen;
+
+	/* First component must be '/' */
+	name = NULL;
+	name = bhnd_nvram_parse_path_next(path, pathlen, name, &namelen);
+	if (name == NULL || namelen != 1 || *name != '/')
+		return (false);
 
 	return (true);
 }
