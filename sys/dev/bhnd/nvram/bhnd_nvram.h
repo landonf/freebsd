@@ -142,42 +142,52 @@ const char		*bhnd_nvram_string_array_next(const char *inp,
 #ifdef _KERNEL
 
 /* forward declarations */
+struct bhnd_nvram_entry;
 struct bhnd_nvram_plane;
 struct bhnd_nvram_plist;
+struct bhnd_nvram_provider;
 
-typedef struct bhnd_nvram_phandle bhnd_nvram_phandle;
+struct bhnd_nvram_plane		*bhnd_nvram_plane_new(
+				     struct bhnd_nvram_plane *parent);
+struct bhnd_nvram_plane		*bhnd_nvram_plane_retain(
+				     struct bhnd_nvram_plane *plane);
+void				 bhnd_nvram_plane_release(
+				     struct bhnd_nvram_plane *plane);
 
-struct bhnd_nvram_plane	*bhnd_nvram_plane_new(struct bhnd_nvram_plane *parent);
-struct bhnd_nvram_plane	*bhnd_nvram_plane_retain(
+struct bhnd_nvram_provider	*bhnd_nvram_provider_new(device_t dev);
+int				 bhnd_nvram_provider_destroy(
+				     struct bhnd_nvram_provider *provider);
+
+int				 bhnd_nvram_register_paths(
+				     struct bhnd_nvram_plane *plane,
+				     struct bhnd_nvram_provider *provider,
+				     char **pathnames, size_t num_pathnames);
+
+int				 bhnd_nvram_deregister_paths(
+				     struct bhnd_nvram_plane *plane,
+				     struct bhnd_nvram_provider *provider,
+				     char **pathnames, size_t num_pathnames);
+
+#if 0
+
+struct bhnd_nvram_entry	*bhnd_nvram_plane_get_root(
 			     struct bhnd_nvram_plane *plane);
-void			 bhnd_nvram_plane_release(
-			     struct bhnd_nvram_plane *plane);
-
-int			 bhnd_nvram_plane_add_device(
-			     struct bhnd_nvram_plane *plane, device_t dev,
-			     char **pathnames, size_t num_pathnames);
-int			 bhnd_nvram_plane_remove_device(
-			     struct bhnd_nvram_plane *plane, device_t dev);
-
-int			 bhnd_nvram_plane_add_paths(
-			     struct bhnd_nvram_plane *plane, device_t dev,
-			     char **pathnames, size_t num_pathnames);
-int			 bhnd_nvram_plane_remove_paths(
-			     struct bhnd_nvram_plane *plane, device_t dev,
-			     char **pathnames, size_t num_pathnames);
-bhnd_nvram_phandle	*bhnd_nvram_plane_open_root(
-			     struct bhnd_nvram_plane *plane);
-bhnd_nvram_phandle	*bhnd_nvram_plane_open_path(
+struct bhnd_nvram_entry	*bhnd_nvram_plane_open_path(
 			     struct bhnd_nvram_plane *plane,
 			     const char *pathname);
-bhnd_nvram_phandle	*bhnd_nvram_plane_find_path(
+struct bhnd_nvram_entry	*bhnd_nvram_plane_find_path(
 			     struct bhnd_nvram_plane *plane,
 			     const char *pathname);
 
-bhnd_nvram_phandle	*bhnd_nvram_path_retain(bhnd_nvram_phandle *phandle);
-void			 bhnd_nvram_path_release(bhnd_nvram_phandle *phandle);
-bhnd_nvram_phandle	*bhnd_nvram_path_get_parent(
-			     bhnd_nvram_phandle *phandle);
+struct bhnd_nvram_entry	*bhnd_nvram_retain_entry(
+			     struct bhnd_nvram_entry *entry);
+void			 bhnd_nvram_release_entry(
+			     struct bhnd_nvram_entry *entry);
+
+struct bhnd_nvram_entry	*bhnd_nvram_open_entry_parent(
+			     struct bhnd_nvram_entry *entry,
+			     struct bhnd_nvram_plane *plane);
+
 bhnd_nvram_phandle	*bhnd_nvram_path_find_proppath(
 			     bhnd_nvram_phandle *phandle, const char *propname);
 
@@ -195,6 +205,8 @@ int			 bhnd_nvram_path_getprop_alloc(
 void			 bhnd_nvram_path_getprop_free(void *buf);
 
 struct bhnd_nvram_plist	*bhnd_nvram_path_copyprops(bhnd_nvram_phandle *phandle);
+
+#endif
 
 #endif /* _KERNEL */
 

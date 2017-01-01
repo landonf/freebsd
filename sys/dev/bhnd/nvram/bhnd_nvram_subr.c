@@ -1171,7 +1171,7 @@ bhnd_nvram_normalize_path(const char *path, size_t pathlen, char *normalized)
  *				desired.
  */
 const char *
-bhnd_nvram_parse_path_basename(const char *path, size_t pathlen,
+bhnd_nvram_parse_path_filename(const char *path, size_t pathlen,
     size_t *namelen)
 {
 	size_t	prefix_len;
@@ -1229,7 +1229,7 @@ bhnd_nvram_parse_path_dirlen(const char *path, size_t pathlen)
 	size_t		 namelen;
 
 	/* Determine final path component */
-	name = bhnd_nvram_parse_path_basename(path, pathlen, &namelen);
+	name = bhnd_nvram_parse_path_filename(path, pathlen, &namelen);
 	if (name == path)
 		return (namelen);
 
@@ -1258,9 +1258,13 @@ bhnd_nvram_is_normalized_path(const char *path, size_t pathlen)
 
 	p = NULL;
 
-	/* Validate all path component */
+	/* Path cannot be empty */
+	if (strnlen(path, pathlen) == 0)
+		return (false);
+
+	/* Validate all path components */
 	while ((p = bhnd_nvram_parse_path_next(path, pathlen, p, &namelen))) {
-		/* Cannot be empty */
+		/* Path component cannot be empty (i.e. "//") */
 		if (namelen == 0)
 			return (false);
 

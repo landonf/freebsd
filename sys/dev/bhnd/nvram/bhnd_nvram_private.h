@@ -254,7 +254,7 @@ int				 bhnd_nvram_parse_env(const char *env,
 const char			*bhnd_nvram_parse_path_next(const char *path,
 				     size_t pathlen, const char *prev,
 				     size_t *namelen);
-const char			*bhnd_nvram_parse_path_basename(
+const char			*bhnd_nvram_parse_path_filename(
 				     const char *path, size_t pathlen,
 				     size_t *namelen);
 size_t				 bhnd_nvram_parse_path_dirlen(const char *path,

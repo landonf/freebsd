@@ -101,29 +101,36 @@ bhnd_sprom_attach(device_t dev, bus_size_t offset)
 	sc = device_get_softc(dev);
 	sc->dev = dev;
 
-	/* Fetch NVRAM plane */
+	/* Fetch NVRAM plane and allocate our NVRAM provider state */
 	sc->plane = bhnd_get_nvram_plane(dev);
 	if (sc->plane == NULL) {
 		device_printf(dev, "missing NVRAM plane; cannot register "
-		    "NVRAM device \n");
+		    "NVRAM device\n");
 		return (ENXIO);
+	}
+
+	sc->prov = bhnd_nvram_provider_new(dev);
+	if (sc->prov == NULL) {
+		device_printf(dev, "failed to allocate NVRAM provider state\n");
+		return (ENOMEM);
 	}
 
 	/* Initialize NVRAM data store */
 	if ((error = bhnd_sprom_init_store(sc, offset)))
 		return (error);
 
-	/* Fetch our NVRAM path(s) */
+	/* Register our NVRAM path(s) with the NVRAM plane */
 	error = bhnd_nvram_store_get_paths(sc->store, &paths, &num_paths);
 	if (error) {
 		device_printf(dev, "failed to fetch NVRAM paths: %d\n", error);
 		goto failed;
 	}
 
-	/* Register ourselves with the NVRAM plane */
-	error = bhnd_nvram_plane_add_device(sc->plane, dev, paths, num_paths);
+	/* Register our NVRAM path(s) with the NVRAM plane */
+	error = bhnd_nvram_register_paths(sc->plane, sc->prov, paths,
+	    num_paths);
 	if (error) {
-		device_printf(dev, "failed to register NVRAM device: %d\n",
+		device_printf(dev, "failed to register NVRAM paths: %d\n",
 		    error);
 		goto failed;
 	}
@@ -136,7 +143,8 @@ failed:
 	if (paths != NULL)
 		bhnd_nvram_store_free_paths(sc->store, paths, num_paths);
 
-	bhnd_nvram_store_free(sc->store);
+	if (sc->store != NULL)
+		bhnd_nvram_store_free(sc->store);
 
 	return (error);
 }
@@ -230,8 +238,8 @@ bhnd_sprom_detach(device_t dev)
 	
 	sc = device_get_softc(dev);
 
-	/* Deregister all NVRAM paths provided by this device */
-	if ((error = bhnd_nvram_plane_remove_device(sc->plane, dev)))
+	/* Attempt to destroy our NVRAM provider registration */
+	if ((error = bhnd_nvram_provider_destroy(sc->prov)))
 		return (error);
 
 	/* Clean up backing NVRAM store */
