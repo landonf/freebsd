@@ -49,10 +49,14 @@ static struct bhnd_nvram_entry	*bhnd_nvram_entry_new(
 static void			 bhnd_nvram_entry_fini(
 				     struct bhnd_nvram_entry *entry);
 
+static void			 bhnd_nvram_consumer_fini(
+				     struct bhnd_nvram_consumer *consumer);
+
 static void			 bhnd_nvram_provider_fini(
 				     struct bhnd_nvram_provider *provider);
-static struct bhnd_nvram_entry	*bhnd_nvram_provider_find_entry(
-				     struct bhnd_nvram_provider *provider,
+
+static struct bhnd_nvram_entry	*bhnd_nvram_find_entry(
+				     struct bhnd_nvram_entry_list *entries,
 				     const char *pathname);
 
 static void			 bhnd_nvram_plane_fini(
@@ -70,6 +74,11 @@ static struct bhnd_nvram_link	*bhnd_nvram_plane_resolve_path(
 				     struct bhnd_nvram_link *cwd,
 				     const char *pathname,
 				     size_t pathlen);
+
+#define	BHND_NVPROV_ASSERT_STATE(_prov, _state)		\
+	BHND_NV_ASSERT((_prov)->state == (_state),	\
+	    ("invalid state: %d", (_prov)->state))
+
 
 /**
  * Allocate and initialize a reference-counted NVRAM path string.
@@ -152,10 +161,16 @@ bhnd_nvram_entry_new(struct bhnd_nvram_provider *provider, const char *pathname)
 static void
 bhnd_nvram_entry_fini(struct bhnd_nvram_entry *entry)
 {
+	BHND_NV_ASSERT(LIST_EMPTY(&entry->consumers), ("active consumers"));
+
 	BHND_NVREF_RELEASE_WEAK(entry->prov, refs);
 	BHND_NVREF_RELEASE(entry->canon, refs, bhnd_nvpath_fini);
+}
 
-	// TODO: clean up consumer references?
+static void
+bhnd_nvram_consumer_fini(struct bhnd_nvram_consumer *consumer)
+{
+	BHND_NVREF_RELEASE_WEAK(consumer->plane, refs);
 }
 
 /**
@@ -177,35 +192,94 @@ bhnd_nvram_provider_new(device_t dev)
 		return (NULL);
 
 	provider->dev = dev;
-
-	LIST_INIT(&provider->entries);
-	BHND_NVREF_INIT(&provider->refs);
+	provider->state = BHND_NVRAM_PROV_ACTIVE;
 
 	BHND_NVPROV_LOCK_INIT(provider);
+	BHND_NVREF_INIT(&provider->refs);
+
+	LIST_INIT(&provider->entries);
 
 	return (provider);
 }
 
 /**
- * TODO
+ * Release a @p provider instance previously allocated via
+ * bhnd_nvram_provider_new().
+ * 
+ * This function will:
+ * 
+ * - Mark the provider as unavailable, preventing any new requests from
+ *   being dispatched to the device, and then sleep until all outstanding
+ *   requests have completed.
+ * - Remove all consumer references to the provider, including any paths
+ *   registered via bhnd_nvram_register_paths(), or paths re-exported to
+ *   additional NVRAM planes.
+ * - Release the caller's strong reference to provider, allowing deallocation
+ *   of the provider and associated resources.
+ * 
+ * Upon return, no further requests will be made to @p provider.
  */
-int
+void
 bhnd_nvram_provider_destroy(struct bhnd_nvram_provider *provider)
 {
-	BHND_NVREF_RELEASE(provider, refs, bhnd_nvram_provider_fini);
+	struct bhnd_nvram_entry *e, *enext;
 
-	// TODO
-	return (ENXIO);
+	BHND_NVPROV_LOCK_RW(provider);
+
+	/* Set stopping state; any threads acquiring a read lock after
+	 * this point will immediately return ENODEV instead of querying
+	 * the provider */
+	BHND_NVPROV_ASSERT_STATE(provider, BHND_NVRAM_PROV_ACTIVE);
+	provider->state = BHND_NVRAM_PROV_STOPPING;
+
+	/* Wait for any outstanding requests to complete */
+	while (provider->in_use > 0) {
+		sx_sleep(&provider->in_use, &provider->prov_lock, 0,
+		    "bhnd_nvprov", 0);
+	}
+
+	/* Set dead state */
+	provider->state = BHND_NVRAM_PROV_DEAD;
+
+	/* After this point, any threads accessing the provider will terminate
+	 * after reading the 'dead' state, and we can safely modify other
+	 * structure members without a lock held. */
+	BHND_NVPROV_UNLOCK_RW(provider);
+
+	LIST_FOREACH_SAFE(e, &provider->entries, ne_link, enext) {
+		struct bhnd_nvram_consumer	*c, *cnext;
+		struct bhnd_nvram_plane		*plane;
+
+		LIST_FOREACH_SAFE(c, &e->consumers, nc_link, cnext) {
+			/* Attempt to promote the weak plane reference */
+			plane = BHND_NVREF_PROMOTE_WEAK(c->plane, refs);
+
+			/* Remove consumer entry */
+			LIST_REMOVE(c, nc_link);
+			BHND_NVREF_RELEASE(c, refs, bhnd_nvram_consumer_fini);
+
+			/* If fetching a strong reference failed, the plane
+			 * is already dead */
+			if (plane == NULL)
+				continue;
+
+			// TODO: ask the plane to deregister the entry
+		}
+	}
+
+	/* Release the caller's provider reference */
+	BHND_NVREF_RELEASE(provider, refs, bhnd_nvram_provider_fini);
 }
 
 static void
 bhnd_nvram_provider_fini(struct bhnd_nvram_provider *provider)
 {
-	struct bhnd_nvram_entry *entry, *enext;
+	/* Should not be possible to reach the finalization without
+	 * first calling bhnd_nvram_provider_destroy() */
+	BHND_NVPROV_ASSERT_STATE(provider, BHND_NVRAM_PROV_DEAD);
 
-	LIST_FOREACH_SAFE(entry, &provider->entries, ne_link, enext) {
-		// TODO: clean up entries?
-	}
+	BHND_NV_ASSERT(LIST_EMPTY(&provider->entries), ("active entries"));
+	BHND_NV_ASSERT(provider->in_use == 0, ("provider in use"));
 
 	BHND_NVPROV_LOCK_DESTROY(provider);
 }

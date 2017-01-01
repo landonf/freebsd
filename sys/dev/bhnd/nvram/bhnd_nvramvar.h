@@ -109,23 +109,30 @@ struct bhnd_nvpath {
 
 #endif
 
+typedef enum {
+	BHND_NVRAM_PROV_ACTIVE		= 0,
+	BHND_NVRAM_PROV_STOPPING	= 1,
+	BHND_NVRAM_PROV_DEAD		= 2,
+} bhnd_nvram_prov_state;
+
 /**
  * NVRAM provider.
  */
 struct bhnd_nvram_provider {
 	device_t			 dev;		/**< device */
 	struct bhnd_nvram_entry_list	 entries;	/**< registered path entries */
+	u_int				 in_use;	/**< busy count */
+	bhnd_nvram_prov_state		 state;
+
 	struct sx			 prov_lock;
 
 	struct bhnd_nvref		 refs;
-	LIST_ENTRY(bhnd_nvram_provider)	 np_link;
 };
 
 #define	BHND_NVPROV_LOCK_INIT(sc) \
 	sx_init(&(sc)->prov_lock, "BHND NVRAM provider lock")
 #define	BHND_NVPROV_LOCK_RD(sc)			sx_slock(&(sc)->prov_lock)
 #define	BHND_NVPROV_UNLOCK_RD(sc)		sx_sunlock(&(sc)->prov_lock)
-#define	BHND_NVPROV_TRY_UPGRADE(sc)		sx_try_upgrade(&(sc)->prov_lock)
 #define	BHND_NVPROV_LOCK_RW(sc)			sx_xlock(&(sc)->prov_lock)
 #define	BHND_NVPROV_UNLOCK_RW(sc)		sx_xunlock(&(sc)->prov_lock)
 #define	BHND_NVPROV_LOCK_ASSERT(sc, what)	\
@@ -149,8 +156,9 @@ struct bhnd_nvram_entry {
  * NVRAM consumer.
  */
 struct bhnd_nvram_consumer {
-	struct bhnd_nvram_plane		*plane;		/**< consuming plane */
+	struct bhnd_nvram_plane		*plane;		/**< consuming plane (weak ref) */
 
+	struct bhnd_nvref		 refs;
 	LIST_ENTRY(bhnd_nvram_consumer)	 nc_link;
 };
 

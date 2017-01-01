@@ -233,14 +233,12 @@ bhnd_sprom_suspend(device_t dev)
 int
 bhnd_sprom_detach(device_t dev)
 {
-	struct bhnd_sprom_softc	*sc;
-	int			 error;
-	
+	struct bhnd_sprom_softc *sc;
+
 	sc = device_get_softc(dev);
 
-	/* Attempt to destroy our NVRAM provider registration */
-	if ((error = bhnd_nvram_provider_destroy(sc->prov)))
-		return (error);
+	/* Destroy our NVRAM provider registration */
+	bhnd_nvram_provider_destroy(sc->prov);
 
 	/* Clean up backing NVRAM store */
 	bhnd_nvram_store_free(sc->store);

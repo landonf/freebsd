@@ -155,7 +155,7 @@ void				 bhnd_nvram_plane_release(
 				     struct bhnd_nvram_plane *plane);
 
 struct bhnd_nvram_provider	*bhnd_nvram_provider_new(device_t dev);
-int				 bhnd_nvram_provider_destroy(
+void				 bhnd_nvram_provider_destroy(
 				     struct bhnd_nvram_provider *provider);
 
 int				 bhnd_nvram_register_paths(
