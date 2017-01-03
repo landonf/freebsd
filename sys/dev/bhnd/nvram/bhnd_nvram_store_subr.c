@@ -93,6 +93,7 @@ bhnd_nvstore_path_new(const char *path_str, size_t path_len)
 		return (NULL);
 
 	path->index = NULL;
+	path->qual_path_str = NULL;
 	path->num_vars = 0;
 
 	path->pending = bhnd_nvram_plist_new();
