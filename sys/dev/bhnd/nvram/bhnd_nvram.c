@@ -91,6 +91,16 @@ static void			 bhnd_nvram_consumers_free(
 static void			 bhnd_nvram_provider_fini(
 				     struct bhnd_nvram_provider *provider);
 
+static int			 bhnd_nvram_provider_busy(
+				     struct bhnd_nvram_provider *provider);
+static int			 bhnd_nvram_provider_busy_locked(
+				     struct bhnd_nvram_provider *provider);
+
+static void			 bhnd_nvram_provider_unbusy(
+				     struct bhnd_nvram_provider *provider);
+static void			 bhnd_nvram_provider_unbusy_locked(
+				     struct bhnd_nvram_provider *provider);
+
 static struct bhnd_nvram_link	*bhnd_nvram_link_new(const char *name,
 				     size_t namelen, const char *parent,
 				     size_t parentlen);
@@ -568,6 +578,7 @@ bhnd_nvram_provider_new(device_t dev)
 
 	BHND_NVPROV_LOCK_INIT(provider);
 	BHND_NVREF_INIT(&provider->refs);
+	refcount_init(&provider->busy, 0);
 
 	LIST_INIT(&provider->entries);
 
@@ -598,22 +609,26 @@ bhnd_nvram_provider_destroy(struct bhnd_nvram_provider *provider)
 
 	BHND_NVPROV_LOCK_RW(provider);
 
-	/* Set stopping state; any threads acquiring a read lock after
-	 * this point will immediately return ENODEV instead of querying
-	 * the provider */
+	/* Set stopping state; any calls to bhnd_nvram_provider_busy() after
+	 * this point will fail with ENODEV */
 	BHND_NVPROV_ASSERT_ACTIVE(provider);
 	provider->state = BHND_NVRAM_PROV_STOPPING;
 
-	/* Wait for any outstanding requests to complete */
-	while (provider->in_use > 0)
+	/* Wait for all outstanding reservations to be released. */
+	while (provider->busy > 0)
 		BHND_NVPROV_LOCK_WAIT(provider);
 
 	/* Set dead state */
+	BHND_NV_ASSERT(provider->busy == 0, ("busy %u", provider->busy));
 	provider->state = BHND_NVRAM_PROV_DEAD;
 
-	/* After this point, any threads accessing the provider will terminate
-	 * upon reading the 'dead' state, and we can safely modify other
-	 * structure members without a lock held. */
+	/*
+	 * After this point, any concurrent access to the provider will
+	 * terminate upon reading the provider's state.
+	 *
+	 * We can now safely modify other structure members without a lock
+	 * held.
+	 */
 	BHND_NVPROV_UNLOCK_RW(provider);
 
 	LIST_FOREACH_SAFE(e, &provider->entries, ne_link, enext) {
@@ -665,12 +680,73 @@ bhnd_nvram_provider_fini(struct bhnd_nvram_provider *provider)
 	BHND_NVPROV_ASSERT_STATE(provider, BHND_NVRAM_PROV_DEAD);
 
 	BHND_NV_ASSERT(LIST_EMPTY(&provider->entries), ("active entries"));
-	BHND_NV_ASSERT(provider->in_use == 0, ("provider in use"));
+	BHND_NV_ASSERT(provider->busy == 0, ("provider in use"));
 
 	BHND_NVPROV_LOCK_DESTROY(provider);
 }
 
+/**
+ * Attempt to retain a reservation on provider, preventing removal of the
+ * provider until a matching call to bhnd_nvram_provider_unbusy() is made.
+ * 
+ * @param provider	The provider to be marked as busy.
+ * 
+ * @retval 0		success
+ * @retval ENODEV	if @p provider is marked for removal.
+ */
+static int
+bhnd_nvram_provider_busy(struct bhnd_nvram_provider *provider)
+{
+	int error;
 
+	BHND_NVPROV_LOCK_RD(provider);
+	error = bhnd_nvram_provider_busy_locked(provider);
+	BHND_NVPROV_UNLOCK_RD(provider);
+
+	return (error);
+}
+
+static int
+bhnd_nvram_provider_busy_locked(struct bhnd_nvram_provider *provider)
+{
+	BHND_NVPROV_LOCK_ASSERT(provider, SA_LOCKED);
+
+	if (provider->state != BHND_NVRAM_PROV_ACTIVE)
+		return (ENODEV);
+
+	refcount_acquire(&provider->busy);
+	return (0);
+}
+
+/**
+ * Release a reservation on @p provider acquired via
+ * bhnd_nvram_provider_busy()
+ * 
+ * @param provider	The provider to be marked as busy.
+ * 
+ * @retval 0		success
+ * @retval ENODEV	if @p provider is marked for removal.
+ */
+static void
+bhnd_nvram_provider_unbusy(struct bhnd_nvram_provider *provider)
+{
+	BHND_NVPROV_LOCK_RD(provider);
+	bhnd_nvram_provider_unbusy_locked(provider);
+	BHND_NVPROV_UNLOCK_RD(provider);
+}
+
+static void
+bhnd_nvram_provider_unbusy_locked(struct bhnd_nvram_provider *provider)
+{
+	BHND_NVPROV_LOCK_ASSERT(provider, SA_LOCKED);
+	BHND_NVPROV_ASSERT_ACTIVE(provider);
+
+	if (refcount_release(&provider->busy)) {
+		/* Wake up any threads waiting for the busy count to hit
+		 * zero */
+		BHND_NVPROV_LOCK_WAKEUP(provider);
+	}
+}
 
 /**
  * Allocate, initialize, and return an unconnected adjacency list link node.
@@ -1270,6 +1346,11 @@ bhnd_nvram_register_paths(struct bhnd_nvram_plane *plane,
 	struct bhnd_nvram_entry		**entries;
 	struct bhnd_nvram_consumer	**consumers;
 	int				 error;
+	bool				 prov_busy;
+
+	entries = NULL;
+	consumers = NULL;
+	prov_busy = false;
 
 	/* Skip if no paths are provided */
 	if (num_pathnames == 0)
@@ -1303,23 +1384,32 @@ bhnd_nvram_register_paths(struct bhnd_nvram_plane *plane,
 	 */
 	BHND_NVPROV_LOCK_RW(provider);
 
-	// TODO: mark provider as busy to prevent destruction
-
-	/* Provider must be running */
-	if (provider->state != BHND_NVRAM_PROV_ACTIVE) {
+	/* Mark provider as busy, verifying that the provider is currently
+	 * active and will remain so until we release our reservation. */
+	error = bhnd_nvram_provider_busy_locked(provider);
+	if (error == 0) {
+		prov_busy = true;
+	} else {
 		BHND_NVPROV_UNLOCK_RW(provider);
-		return (ENODEV);
+
+		goto failed;
 	}
 
 	/* Register provider entries and consumer records for all paths */
 	entries = bhnd_nv_calloc(num_pathnames, sizeof(entries[0]));
-	if (entries == NULL)
-		return (ENOMEM);
+	if (entries == NULL) {
+		BHND_NVPROV_UNLOCK_RW(provider);
+
+		error = ENOMEM;
+		goto failed;
+	}
 
 	consumers = bhnd_nvram_consumers_alloc(plane, num_pathnames);
 	if (consumers == NULL) {
-		bhnd_nv_free(entries);
-		return (ENOMEM);
+		BHND_NVPROV_UNLOCK_RW(provider);
+
+		error = ENOMEM;
+		goto failed;
 	}
 
 	for (size_t i = 0; i < num_pathnames; i++) {
@@ -1331,6 +1421,8 @@ bhnd_nvram_register_paths(struct bhnd_nvram_plane *plane,
 		/* Fetch or create the provider entry */
 		entry = bhnd_nvram_entry_insert(provider, pathname);
 		if (entry == NULL) {
+			BHND_NVPROV_UNLOCK_RW(provider);
+
 			error = ENOMEM;
 			goto failed;
 		}
@@ -1365,12 +1457,14 @@ bhnd_nvram_register_paths(struct bhnd_nvram_plane *plane,
 		    strlen(pathname), &link);
 		if (error) {
 			BHND_NVPLANE_UNLOCK_RW(plane);
+
 			goto failed;
 		}
 
 		/* The link must not have a consumer record already assigned */
 		if (link->consumer != NULL) {
 			BHND_NVPLANE_UNLOCK_RW(plane);
+
 			error = EEXIST;
 			goto failed;
 		}
@@ -1405,28 +1499,41 @@ bhnd_nvram_register_paths(struct bhnd_nvram_plane *plane,
 
 	bhnd_nv_free(entries);
 
-	// TODO: unbusy provider to allow destruction
+	/* Release our reservation on the provider */
+	bhnd_nvram_provider_unbusy_locked(provider);
 
 	return (0);
 
 failed:
 	/* Clean up our local consumer record references */
-	bhnd_nvram_consumers_free(consumers, num_pathnames);
+	if (consumers != NULL)
+		bhnd_nvram_consumers_free(consumers, num_pathnames);
 
-	/* Clean up our previously added provider entries */
-	BHND_NVPROV_LOCK_RW(provider);
-	for (size_t i = 0; i < num_pathnames && entries[i] != NULL; i++) {
-		struct bhnd_nvram_entry	*entry = entries[i];
+	if (entries != NULL) {
+		BHND_NVPROV_LOCK_RW(provider);
 
-		/* Try to remove the entry */
-		bhnd_nvram_entry_try_remove(provider, entry);
+		/* Clean up our previously added provider entries */
+		for (size_t i = 0; i < num_pathnames; i++) {
+			struct bhnd_nvram_entry	*entry = entries[i];
 
-		/* Release our strong entry reference */
-		BHND_NVREF_RELEASE(entry, refs, bhnd_nvram_entry_fini);
+			if (entries[i] == NULL)
+				continue;
+
+			/* Try to remove the entry */
+			bhnd_nvram_entry_try_remove(provider, entry);
+
+			/* Release our strong entry reference */
+			BHND_NVREF_RELEASE(entry, refs, bhnd_nvram_entry_fini);
+		}
+
+		/* Release our reservation on the provider */
+		if (prov_busy)
+			bhnd_nvram_provider_unbusy_locked(provider);
+
+		BHND_NVPROV_UNLOCK_RW(provider);
+
+		bhnd_nv_free(entries);
 	}
-	BHND_NVPROV_UNLOCK_RW(provider);
-
-	bhnd_nv_free(entries);
 
 	/* Clean up any previously added plane-specific adjacency list links */
 	BHND_NVPLANE_LOCK_RW(plane);

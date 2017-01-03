@@ -102,7 +102,8 @@ typedef enum {
 struct bhnd_nvram_provider {
 	device_t			 dev;		/**< device */
 	struct bhnd_nvram_entry_list	 entries;	/**< registered path entries */
-	u_int				 in_use;	/**< busy count */
+	volatile u_int			 busy;		/**< busy count. may be incremented
+							     atomically with read lock held. */
 	bhnd_nvram_prov_state		 state;
 
 #ifdef _KERNEL
