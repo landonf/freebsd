@@ -31,13 +31,22 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/types.h>
+
+#ifdef _KERNEL
 #include <sys/malloc.h>
 #include <sys/kernel.h>
+#else /* !_KERNEL */
+#include <errno.h>
+#include <string.h>
+#include <stdint.h>
+#endif /* _KERNEL */
 
 #include "bhnd_nvram_private.h"
 #include "bhnd_nvramvar.h"
 
+#ifdef _KERNEL
 MALLOC_DEFINE(M_BHND_NVRAM, "bhnd_nvram", "BHND NVRAM data");
+#endif /* _KERNEL */
 
 static struct bhnd_nvpath	*bhnd_nvpath_new(const char *pathname,
 				     size_t pathlen);
@@ -455,7 +464,6 @@ bhnd_nvram_consumer_fini(struct bhnd_nvram_consumer *consumer)
  * Set the entry associated with @p consumer. May only be set once, prior
  * to the consumer record being linked into the plane.
  * 
- * @param plane		The NVRAM plane associated with the consumer record.
  * @param consumer	The empty consumer record to be modified.
  * @param entry		The entry to be set.
  */
@@ -583,10 +591,8 @@ bhnd_nvram_provider_destroy(struct bhnd_nvram_provider *provider)
 	provider->state = BHND_NVRAM_PROV_STOPPING;
 
 	/* Wait for any outstanding requests to complete */
-	while (provider->in_use > 0) {
-		sx_sleep(&provider->in_use, &provider->prov_lock, 0,
-		    "bhnd_nvprov", 0);
-	}
+	while (provider->in_use > 0)
+		BHND_NVPROV_LOCK_WAIT(provider);
 
 	/* Set dead state */
 	provider->state = BHND_NVRAM_PROV_DEAD;
@@ -691,20 +697,15 @@ bhnd_nvram_link_new(const char *name, size_t namelen, const char *pathname,
 
 /**
  * Create or fetch the plane-specific adjacency list link for @p pathname
- * in @p plane, returning a caller-owned reference to the link.
+ * in @p plane, returning a borrowed reference to the link.
  *
  * @param	plane		The NVRAM plane.
  * @param	cwd		The 'current working directory' from which
  *				relative paths will be resolved, or NULL if
  *				only fully qualified paths should be permitted.
- * @param	cwd		The 'current working directory' from which
- *				relative paths will be resolved, or NULL if
- *				only fully qualified paths should be permitted.
  * @param	pathname	The name of the NVRAM path entry to be added.
  * @param	pathlen		The length of @p pathname.
- * @param[out]	child		On success, the newly added child's path handle.
- *				The caller is responsible for releasing this
- *				handle via bhnd_nvram_path_release().
+ * @param[out]	link		On success, the newly inserted link.
  *
  * @retval 0		success
  * @retval EINVAL	if @p cwd is NULL and @p pathname is a relative path.

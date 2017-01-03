@@ -139,13 +139,16 @@ size_t			 bhnd_nvram_type_host_align(bhnd_nvram_type type);
 const char		*bhnd_nvram_string_array_next(const char *inp,
 			     size_t ilen, const char *prev, size_t *olen);
 
-#ifdef _KERNEL
-
 /* forward declarations */
 struct bhnd_nvram_entry;
 struct bhnd_nvram_plane;
 struct bhnd_nvram_plist;
 struct bhnd_nvram_provider;
+
+// XXX TODO
+#ifndef _KERNEL
+typedef void * device_t;
+#endif /* !_KERNEL */
 
 struct bhnd_nvram_plane		*bhnd_nvram_plane_new(
 				     struct bhnd_nvram_plane *parent);
@@ -207,7 +210,5 @@ void			 bhnd_nvram_path_getprop_free(void *buf);
 struct bhnd_nvram_plist	*bhnd_nvram_path_copyprops(bhnd_nvram_phandle *phandle);
 
 #endif
-
-#endif /* _KERNEL */
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_H_ */

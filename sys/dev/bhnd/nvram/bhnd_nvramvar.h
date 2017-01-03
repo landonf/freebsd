@@ -33,12 +33,14 @@
 #define _BHND_NVRAM_BHND_NVRAMVAR_H_
 
 #include <sys/param.h>
-
-#include <sys/kobj.h>
-#include <sys/lock.h>
 #include <sys/queue.h>
-#include <sys/refcount.h>
+
+#ifdef _KERNEL
+#include <sys/lock.h>
 #include <sys/sx.h>
+#else /* !_KERNEL */
+#include <pthread.h>
+#endif /* __KERNEL */
 
 #include <machine/atomic.h>
 
@@ -84,35 +86,9 @@ struct bhnd_nvpath {
 	struct bhnd_nvref	 refs;
 };
 
-// TODO: locking
-#if 0
-
-#define	BHND_NVRAM_LOCK_INIT(sc) \
-	sx_init(&(sc)->topo_lock, "BHND NVRAM topology lock")
-#define	BHND_NVRAM_LOCK_RD(sc)			sx_slock(&(sc)->topo_lock)
-#define	BHND_NVRAM_UNLOCK_RD(sc)		sx_sunlock(&(sc)->topo_lock)
-#define	BHND_NVRAM_TRY_UPGRADE(sc)		sx_try_upgrade(&(sc)->topo_lock)
-#define	BHND_NVRAM_LOCK_RW(sc)			sx_xlock(&(sc)->topo_lock)
-#define	BHND_NVRAM_UNLOCK_RW(sc)		sx_xunlock(&(sc)->topo_lock)
-#define	BHND_NVRAM_LOCK_ASSERT(sc, what)	\
-	sx_assert(&(sc)->topo_lock, what)
-#define	BHND_NVRAM_LOCK_DESTROY(sc)		sx_destroy(&(sc)->topo_lock)
-
-#else
-
-#define	BHND_NVRAM_LOCK_INIT(sc) \
-	sx_init(&(sc)->topo_lock, "BHND NVRAM topology lock")
-#define	BHND_NVRAM_LOCK_RD(sc)			sx_slock(&(sc)->topo_lock)
-#define	BHND_NVRAM_UNLOCK_RD(sc)		sx_sunlock(&(sc)->topo_lock)
-#define	BHND_NVRAM_TRY_UPGRADE(sc)		sx_try_upgrade(&(sc)->topo_lock)
-#define	BHND_NVRAM_LOCK_RW(sc)			sx_xlock(&(sc)->topo_lock)
-#define	BHND_NVRAM_UNLOCK_RW(sc)		sx_xunlock(&(sc)->topo_lock)
-#define	BHND_NVRAM_LOCK_ASSERT(sc, what)	\
-	sx_assert(&(sc)->topo_lock, what)
-#define	BHND_NVRAM_LOCK_DESTROY(sc)		sx_destroy(&(sc)->topo_lock)
-
-#endif
-
+/**
+ * NVRAM provider state.
+ */
 typedef enum {
 	BHND_NVRAM_PROV_ACTIVE		= 0,
 	BHND_NVRAM_PROV_STOPPING	= 1,
@@ -128,10 +104,17 @@ struct bhnd_nvram_provider {
 	u_int				 in_use;	/**< busy count */
 	bhnd_nvram_prov_state		 state;
 
+#ifdef _KERNEL
 	struct sx			 prov_lock;
+#else /*! _KERNEL */
+	pthread_mutex_t			 prov_lock;
+	pthread_cond_t			 prov_cond;
+#endif /* _KERNEL */
 
 	struct bhnd_nvref		 refs;
 };
+
+#ifdef _KERNEL
 
 #define	BHND_NVPROV_LOCK_INIT(sc) \
 	sx_init(&(sc)->prov_lock, "BHND NVRAM provider lock")
@@ -139,9 +122,42 @@ struct bhnd_nvram_provider {
 #define	BHND_NVPROV_UNLOCK_RD(sc)		sx_sunlock(&(sc)->prov_lock)
 #define	BHND_NVPROV_LOCK_RW(sc)			sx_xlock(&(sc)->prov_lock)
 #define	BHND_NVPROV_UNLOCK_RW(sc)		sx_xunlock(&(sc)->prov_lock)
+
+#define	BHND_NVPROV_LOCK_WAIT(sc)		\
+	sx_sleep(&(sc)->prov_lock, &(sc)->prov_lock, 0, "bhnd_nvprov", 0);
+#define	BHND_NVPROV_LOCK_WAKEUP(sc)		wakeup(&(sc)->prov_lock);
+
 #define	BHND_NVPROV_LOCK_ASSERT(sc, what)	\
 	sx_assert(&(sc)->prov_lock, what)
 #define	BHND_NVPROV_LOCK_DESTROY(sc)		sx_destroy(&(sc)->prov_lock)
+
+#else /* !_KERNEL */
+
+#define	BHND_NVPROV_LOCK_INIT(sc) do {					\
+	int error = pthread_mutex_init(&(sc)->prov_lock, NULL);		\
+	if (error)							\
+		BHND_NV_PANIC("pthread_mutex_init() failed: %d",	\
+		    error);						\
+									    \
+	error = pthread_cond_init(&(sc)->prov_cond, NULL);		\
+	if (error)							\
+		BHND_NV_PANIC("pthread_cond_init() failed: %d", error);	\
+} while(0)
+
+#define	BHND_NVPROV_LOCK_RD(sc)		pthread_mutex_lock(&(sc)->prov_lock)
+#define	BHND_NVPROV_UNLOCK_RD(sc)	pthread_mutex_unlock(&(sc)->prov_lock)
+#define	BHND_NVPROV_LOCK_RW(sc)		BHND_NVPROV_LOCK_RD(sc)
+#define	BHND_NVPROV_UNLOCK_RW(sc)	BHND_NVPROV_UNLOCK_RD(sc)
+
+#define	BHND_NVPROV_LOCK_WAIT(sc)	\
+	pthread_cond_wait(&(sc)->prov_cond, &(sc)->prov_lock);
+#define	BHND_NVPROV_LOCK_WAKEUP(sc)	\
+	pthread_cond_broadcast(&(sc)->prov_cond);
+
+#define	BHND_NVPROV_LOCK_DESTROY(sc)	pthread_mutex_destroy(&(sc)->prov_lock)
+#define	BHND_NVPROV_LOCK_ASSERT(sc, what)
+
+#endif /* _KERNEL */
 
 /**
  * NVRAM entry.
@@ -211,11 +227,18 @@ struct bhnd_nvram_plane {
 	struct bhnd_nvram_link		*root;		/**< root ("/") */
 
 	LIST_HEAD(,bhnd_nvram_plane)	 children;	/**< children */
+
+#ifdef _KERNEL
 	struct sx			 plane_lock;
+#else /*! _KERNEL */
+	pthread_rwlock_t		 plane_lock;
+#endif /* _KERNEL */
 
 	struct bhnd_nvref		 refs;
 	LIST_ENTRY(bhnd_nvram_plane)	 child_link;
 };
+
+#ifdef _KERNEL
 
 #define	BHND_NVPLANE_LOCK_INIT(sc) \
 	sx_init(&(sc)->plane_lock, "BHND NVRAM plane lock")
@@ -226,6 +249,25 @@ struct bhnd_nvram_plane {
 #define	BHND_NVPLANE_LOCK_ASSERT(sc, what)	\
 	sx_assert(&(sc)->plane_lock, what)
 #define	BHND_NVPLANE_LOCK_DESTROY(sc)		sx_destroy(&(sc)->plane_lock)
+
+#else /* !_KERNEL */
+
+#define	BHND_NVPLANE_LOCK_INIT(sc) do {					\
+	int error = pthread_rwlock_init(&(sc)->plane_lock, NULL);	\
+	if (error)							\
+		BHND_NV_PANIC("pthread_rwlock_init() failed: %d",	\
+		    error);						\
+} while(0)
+
+#define	BHND_NVPLANE_LOCK_RD(sc)	pthread_rwlock_rdlock(&(sc)->plane_lock)
+#define	BHND_NVPLANE_UNLOCK_RD(sc)	pthread_rwlock_unlock(&(sc)->plane_lock)
+#define	BHND_NVPLANE_LOCK_RW(sc)	pthread_rwlock_wrlock(&(sc)->plane_lock)
+#define	BHND_NVPLANE_UNLOCK_RW(sc)	pthread_rwlock_unlock(&(sc)->plane_lock)
+#define	BHND_NVPLANE_LOCK_DESTROY(sc)	\
+	pthread_rwlock_destroy(&(sc)->plane_lock)
+#define	BHND_NVPLANE_LOCK_ASSERT(sc, what)
+
+#endif /* _KERNEL */
 
 /**
  * Initialize a the reference count structure.
