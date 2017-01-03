@@ -1350,11 +1350,7 @@ failed:
 	/* Clean up our previously added provider entries */
 	BHND_NVPROV_LOCK_RW(provider);
 	for (size_t i = 0; i < num_pathnames && entries[i] != NULL; i++) {
-		struct bhnd_nvram_entry	*entry;
-		const char		*pathname;
-
-		pathname = pathnames[i];
-		entry = entries[i];
+		struct bhnd_nvram_entry	*entry = entries[i];
 
 		/* Try to remove the entry */
 		bhnd_nvram_entry_try_remove(provider, entry);
