@@ -34,6 +34,7 @@
 
 #include <sys/param.h>
 #include <sys/queue.h>
+#include <sys/refcount.h>
 
 #ifdef _KERNEL
 #include <sys/lock.h>
@@ -373,7 +374,7 @@ bhnd_nvref_promote_weak(struct bhnd_nvref *ref)
  * The reference count is provided for informational purposes only; there are
  * no external atomicity gaurantees.
  */
-#define	BHND_NVREF_RECOUNT(value, field)	\
+#define	BHND_NVREF_REFCOUNT(value, field)	\
 	(atomic_load_acq_int(&(value)->field.strong))
 
 /**
@@ -382,6 +383,6 @@ bhnd_nvref_promote_weak(struct bhnd_nvref *ref)
  * fail.
  */
 #define	BHND_NVREF_IS_ZOMBIE(value, field)	\
-	(BHND_NVREF_RECOUNT(value, field) == 0)
+	(BHND_NVREF_REFCOUNT(value, field) == 0)
 
 #endif /* _BHND_NVRAM_BHND_NVRAMVAR_H_ */

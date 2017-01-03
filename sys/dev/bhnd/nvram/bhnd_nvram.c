@@ -952,7 +952,7 @@ bhnd_nvram_link_remove(struct bhnd_nvram_plane *plane,
 			break;
 
 		/* Do not free non-leaf/non-empty parents */
-		if (!bhnd_nvram_link_is_leaf(plane, link))
+		if (!bhnd_nvram_link_is_leaf(plane, parent))
 			break;
 
 		link = parent;
@@ -1162,8 +1162,8 @@ bhnd_nvram_plane_remove_child(struct bhnd_nvram_plane *plane,
 	if (!bhnd_nvram_plane_is_child(plane, child))
 		BHND_NV_PANIC("plane is not a direct child of parent");
 
-	LIST_REMOVE(plane, child_link);
-	BHND_NVREF_RELEASE_WEAK(plane, refs);
+	LIST_REMOVE(child, child_link);
+	BHND_NVREF_RELEASE_WEAK(child, refs);
 }
 
 /**
