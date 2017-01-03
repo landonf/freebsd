@@ -184,6 +184,17 @@ bhnd_nvpath_append(const char *pathname, size_t pathlen, const char *name,
 	size_t			 bufsize, baselen;
 	bool			 need_delim;
 
+	/* Map NULL zero-length strings to valid empty string pointers */
+	if (pathname == NULL) {
+		BHND_NV_ASSERT(pathlen == 0, ("NULL pathname"));
+		pathname = "";
+	}
+
+	if (name == NULL) {
+		BHND_NV_ASSERT(namelen == 0, ("NULL name"));
+		name = "";
+	}
+
 	/* Calculate the lengths minus any trailing NUL */
 	namelen = strnlen(name, namelen);
 	pathlen = strnlen(pathname, pathlen);
