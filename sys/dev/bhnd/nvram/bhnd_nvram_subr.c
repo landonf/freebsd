@@ -1102,18 +1102,22 @@ bhnd_nvram_parse_path_next(const char *path, size_t pathlen, const char *prev,
  * - Removes '.' path components.
  * - Rewrites '..' parent references relative to their position in @p path.
  * 
- * @param path		The path to be normalized.
- * @param normalized	The normalized path buffer. Must be capable of storing
- *			at least strnlen(path, pathlen)+1.
+ * @param path	The path to be normalized.
+ * @param outp	The normalized path buffer. Must be capable of storing
+ *		at least strnlen(path, pathlen)+1.
+ * @param olen	The size of @p outp.
  */
 void
-bhnd_nvram_normalize_path(const char *path, size_t pathlen, char *normalized)
+bhnd_nvram_normalize_path(const char *path, size_t pathlen, char *outp,
+    size_t olen)
 {
 	const char	*p;
-	char		*outp;
+	char		*base;
 	size_t		 namelen;
 
-	outp = normalized;
+	base = outp;
+
+	BHND_NV_ASSERT(olen >= strnlen(path, pathlen)+1, ("short outp buffer"));
 
 	p = NULL;
 	while ((p = bhnd_nvram_parse_path_next(path, pathlen, p, &namelen))) {
@@ -1127,11 +1131,11 @@ bhnd_nvram_normalize_path(const char *path, size_t pathlen, char *normalized)
 
 		/* Trim previous component on '..' */
 		if (namelen == 2 && p[0] == '.' && p[1] == '.') {
-			while (outp > normalized) {
+			while (outp > base) {
 				outp--;
 				if (*outp == '/') {
 					/* Preserve leading '/' */
-					if (outp == normalized)
+					if (outp == base)
 						outp++;
 
 					break;
@@ -1142,7 +1146,7 @@ bhnd_nvram_normalize_path(const char *path, size_t pathlen, char *normalized)
 		}
 
 		/* Append '/' delimiter if required */
-		if (outp > normalized && *(outp-1) != '/') {
+		if (outp > base && *(outp-1) != '/') {
 			*outp = '/';
 			outp++;
 		}

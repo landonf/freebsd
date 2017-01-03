@@ -46,7 +46,7 @@
 
 struct bhnd_nvram_entry;
 struct bhnd_nvram_provider;
-struct bhnd_nvram_consumer;
+typedef struct bhnd_nvram_consumer bhnd_nvram_consumer;
 
 LIST_HEAD(bhnd_nvram_entry_list, bhnd_nvram_entry);
 
@@ -76,7 +76,11 @@ struct bhnd_nvref {
  */
 struct bhnd_nvpath {
 	char			*pathname;	/**< canonical, fully qualified path name */
-	const char		*filename;	/**< relative file name within pathname */
+	size_t			 pathlen;	/**< length of pathname */
+
+	const char		*basename;	/**< relative file name within pathname */
+	size_t			 baselen;	/**< length of basename */
+
 	struct bhnd_nvref	 refs;
 };
 
@@ -146,16 +150,30 @@ struct bhnd_nvram_entry {
 	struct bhnd_nvram_provider	*prov;		/**< exporting provider */
 	struct bhnd_nvpath		*canon;		/**< provider's canonical path string */
 
-	LIST_HEAD(,bhnd_nvram_consumer)	 consumers;	/**< planes consuming this entry */
+	LIST_HEAD(,bhnd_nvram_consumer)	 consumers;	/**< planes consuming this entry (weak references) */
 
 	struct bhnd_nvref		 refs;
 	LIST_ENTRY(bhnd_nvram_entry)	 ne_link;
 };
 
 /**
- * NVRAM consumer.
+ * NVRAM consumer record.
+ * 
+ * This represents the relationship between NVRAM provider entries, and NVRAM
+ * plane adjacency list links.
+ * 
+ * A new consumer instance is allocated for every NVRAM plane link, with a
+ * single strong reference held by the plane's link, and a weak reference held
+ * by the provider's entry.
+ *
+ * If single strong reference to the consumer instance is released by the
+ * plane, the provider can detect the zombie consumer instance (and discard it)
+ * without having to lock both the plane and the provider simultaneously.
  */
 struct bhnd_nvram_consumer {
+	struct bhnd_nvram_entry		*entry;		/**< providing entry (strong ref), or NULL if
+							     consumer record has not been linked to an
+							     NVRAM entry.  */
 	struct bhnd_nvram_plane		*plane;		/**< consuming plane (weak ref) */
 
 	struct bhnd_nvref		 refs;
@@ -175,7 +193,8 @@ struct bhnd_nvram_consumer {
 struct bhnd_nvram_link {
 	struct bhnd_nvpath		*path;		/**< plane-specific path string */
 	struct bhnd_nvram_link		*parent;	/**< parent, or NULL */
-	struct bhnd_nvram_entry		*entry;		/**< provider entry, or NULL */
+	struct bhnd_nvram_consumer	*consumer;	/**< per-link consumer record, or NULL if
+							     no provider is associated with this link. */
 
 	LIST_HEAD(,bhnd_nvram_link)	 children;	/**< all children */
 
@@ -189,20 +208,24 @@ struct bhnd_nvram_link {
  */
 struct bhnd_nvram_plane {
 	struct bhnd_nvram_plane		*parent;	/**< parent, or NULL */
-	struct bhnd_nvram_link		*root;		/**< root path, or NULL */
+	struct bhnd_nvram_link		*root;		/**< root ("/") */
 
 	LIST_HEAD(,bhnd_nvram_plane)	 children;	/**< children */
+	struct sx			 plane_lock;
 
 	struct bhnd_nvref		 refs;
 	LIST_ENTRY(bhnd_nvram_plane)	 child_link;
 };
 
-// TODO: locking
-#define	BHND_NVPLANE_LOCK_RD(p)
-#define	BHND_NVPLANE_UNLOCK_RD(p)
-#define	BHND_NVPLANE_LOCK_RW(p)
-#define	BHND_NVPLANE_UNLOCK_RW(p)
-#define	BHND_NVPLANE_LOCK_ASSERT(p, what)
+#define	BHND_NVPLANE_LOCK_INIT(sc) \
+	sx_init(&(sc)->plane_lock, "BHND NVRAM plane lock")
+#define	BHND_NVPLANE_LOCK_RD(sc)		sx_slock(&(sc)->plane_lock)
+#define	BHND_NVPLANE_UNLOCK_RD(sc)		sx_sunlock(&(sc)->plane_lock)
+#define	BHND_NVPLANE_LOCK_RW(sc)		sx_xlock(&(sc)->plane_lock)
+#define	BHND_NVPLANE_UNLOCK_RW(sc)		sx_xunlock(&(sc)->plane_lock)
+#define	BHND_NVPLANE_LOCK_ASSERT(sc, what)	\
+	sx_assert(&(sc)->plane_lock, what)
+#define	BHND_NVPLANE_LOCK_DESTROY(sc)		sx_destroy(&(sc)->plane_lock)
 
 /**
  * Initialize a the reference count structure.
@@ -300,5 +323,23 @@ bhnd_nvref_promote_weak(struct bhnd_nvref *ref)
 
 	return (true);
 }
+
+/**
+ * Return the current strong reference count of a strongly or weakly held
+ * @p value.
+ * 
+ * The reference count is provided for informational purposes only; there are
+ * no external atomicity gaurantees.
+ */
+#define	BHND_NVREF_RECOUNT(value, field)	\
+	(atomic_load_acq_int(&(value)->field.strong))
+
+/**
+ * Return true if the given weak reference is a zombie-- it has no further
+ * strong references remaining, and promotion to a strong reference would
+ * fail.
+ */
+#define	BHND_NVREF_IS_ZOMBIE(value, field)	\
+	(BHND_NVREF_RECOUNT(value, field) == 0)
 
 #endif /* _BHND_NVRAM_BHND_NVRAMVAR_H_ */

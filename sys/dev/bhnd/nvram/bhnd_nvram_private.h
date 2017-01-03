@@ -261,7 +261,7 @@ size_t				 bhnd_nvram_parse_path_dirlen(const char *path,
 				     size_t pathlen);
 
 void				 bhnd_nvram_normalize_path(const char *path,
-				     size_t pathlen, char *normalized);
+				     size_t pathlen, char *outp, size_t olen);
 bool				 bhnd_nvram_is_normalized_path(const char *path,
 				     size_t pathlen);
 bool				 bhnd_nvram_is_qualified_path(const char *path,
