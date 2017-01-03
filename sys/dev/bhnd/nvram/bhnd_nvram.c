@@ -1264,7 +1264,7 @@ bhnd_nvram_plane_remove_child(struct bhnd_nvram_plane *plane,
  */
 int
 bhnd_nvram_register_paths(struct bhnd_nvram_plane *plane,
-    struct bhnd_nvram_provider *provider, char **pathnames,
+    struct bhnd_nvram_provider *provider, const char *pathnames[],
     size_t num_pathnames)
 {
 	struct bhnd_nvram_entry		**entries;
