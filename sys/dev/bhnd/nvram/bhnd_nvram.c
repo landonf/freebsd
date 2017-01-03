@@ -94,6 +94,9 @@ static void			 bhnd_nvram_provider_fini(
 static struct bhnd_nvram_link	*bhnd_nvram_link_new(const char *name,
 				     size_t namelen, const char *parent,
 				     size_t parentlen);
+static void			 bhnd_nvram_link_free(
+				     struct bhnd_nvram_plane *plane,
+				     struct bhnd_nvram_link *link);
 
 static int			 bhnd_nvram_link_insert(
 				     struct bhnd_nvram_plane *plane,
@@ -673,7 +676,7 @@ bhnd_nvram_provider_fini(struct bhnd_nvram_provider *provider)
  * Allocate, initialize, and return an unconnected adjacency list link node.
  * 
  * The caller is responsible for releasing the returned link via
- * bhnd_nvram_link_remove().
+ * bhnd_nvram_link_remove() or bhnd_nvram_link_free().
  *
  * @param name		The relative path name to append to @p pathname.
  * @param namelen	The length of @p name.
@@ -704,6 +707,57 @@ bhnd_nvram_link_new(const char *name, size_t namelen, const char *pathname,
 	}
 
 	return (link);
+}
+
+/**
+ * Free a disconnected link instance and all of its children.
+ * 
+ * @param plane	The NVRAM plane.
+ * @param link	The link to be freed.
+ */
+static void
+bhnd_nvram_link_free(struct bhnd_nvram_plane *plane,
+    struct bhnd_nvram_link *link)
+{
+	struct bhnd_nvram_link	*cwd;
+
+	/* We don't need a lock during finalization */
+	if (!BHND_NVREF_IS_ZOMBIE(plane, refs))
+		BHND_NVPLANE_LOCK_ASSERT(plane, SA_XLOCKED);
+
+	BHND_NV_ASSERT(link->parent == NULL, ("link is not disconnected"));
+
+	/* Walk the tree without tail recursion, performing deallocation */
+	cwd = link;
+	while (cwd != NULL) {
+		struct bhnd_nvram_link *parent;
+
+		/* Once we hit a leaf node, free the node and then try
+		 * to walk upwards */
+		if (LIST_EMPTY(&cwd->children)) {
+			parent = cwd->parent;
+
+			BHND_NV_ASSERT(cwd->consumer == NULL,
+			    ("link has active consumer record"));
+
+			/* Remove from the parent's list of children */
+			if (parent != NULL)
+				LIST_REMOVE(cwd, nl_link);
+
+			/* Release the path string */
+			BHND_NVREF_RELEASE(cwd->path, refs, bhnd_nvpath_fini);			
+
+			/* Free the link allocation */
+			bhnd_nv_free(cwd);
+
+			/* Continue at the node's parent */
+			cwd = parent;
+			continue;
+		} 
+
+		/* Otherwise, recursively evaluate the first child */
+		cwd = LIST_FIRST(&cwd->children);
+	}	
 }
 
 /**
@@ -939,7 +993,7 @@ bhnd_nvram_link_remove(struct bhnd_nvram_plane *plane,
 		BHND_NV_ASSERT(bhnd_nvram_link_is_leaf(plane, link),
 		    ("cannot free active link"));
 
-		/* Remove from parent */
+		/* Disconnect from parent */
 		if ((parent = link->parent) != NULL) {
 			struct bhnd_nvram_link *l;
 
@@ -949,23 +1003,32 @@ bhnd_nvram_link_remove(struct bhnd_nvram_plane *plane,
 				BHND_NV_PANIC("non-symmetric binary relation");
 
 			LIST_REMOVE(link, nl_link);
+
+			link->parent = NULL;
 		}
 
-		/* Release path reference */
-		BHND_NVREF_RELEASE(link->path, refs, bhnd_nvpath_fini);
+		/* Free the now disconnected link instance */
+		bhnd_nvram_link_free(plane, link);
 
-		/* No parent to recursively free */
-		if (parent == NULL)
+		/*
+		 * Recursively remove our parent? 
+		 */
+		if (parent == NULL) {
+			/* No parent */
 			break;
+		}
 
-		/* Do not recursively free the plane's root node */
-		if (plane->root == parent)
+		if (plane->root == parent) {
+			/* Do not remove the plane's persistent root node */
 			break;
+		}
 
-		/* Do not free non-leaf/non-empty parents */
-		if (!bhnd_nvram_link_is_leaf(plane, parent))
+		if (!bhnd_nvram_link_is_leaf(plane, parent)) {
+			/* Do not free non-leaf/non-empty parents */
 			break;
+		}
 
+		/* Remove parent */
 		link = parent;
 	}
 }
@@ -1066,11 +1129,11 @@ bhnd_nvram_plane_new(struct bhnd_nvram_plane *parent)
 	if (parent != NULL) {
 		plane->parent = bhnd_nvram_plane_retain(parent);
 
-		/* Insert reference into the parent's child list */
+		/* Insert weak reference into the parent's child list */
 		BHND_NVPLANE_LOCK_RW(parent);
 
-		LIST_INSERT_HEAD(&parent->children,
-		    BHND_NVREF_RETAIN_WEAK(plane, refs), child_link);
+		BHND_NVREF_RETAIN_WEAK(plane, refs);
+		LIST_INSERT_HEAD(&parent->children, plane, child_link);
 
 		BHND_NVPLANE_UNLOCK_RW(parent);
 	}
@@ -1089,7 +1152,10 @@ bhnd_nvram_plane_fini(struct bhnd_nvram_plane *plane)
 	struct bhnd_nvram_plane *parent;
 
 	BHND_NV_ASSERT(LIST_EMPTY(&plane->children), ("active children"));
-	BHND_NV_ASSERT(LIST_EMPTY(&plane->root->children), ("active links"));
+
+	/* Drop our persistent root link */
+	// TODO: disconnect consumer records
+	bhnd_nvram_link_free(plane, plane->root);
 
 	/*
 	 * Remove ourselves from the parent plane.
