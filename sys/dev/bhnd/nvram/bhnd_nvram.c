@@ -1320,9 +1320,6 @@ bhnd_nvram_register_paths(struct bhnd_nvram_plane *plane,
 
 	/* Clean up our local consumer record references. After this, there
 	 * will exist only one strong reference to the consumer record. */
-	for (size_t i = 0; i < num_pathnames; i++) {
-		BHND_NV_ASSERT(BHND_NVREF_RECOUNT(consumers[i], refs) == 2, ("invalid refcount"));
-	}
 	bhnd_nvram_consumers_free(consumers, num_pathnames);
 
 	/* Release all locally held strong references to our entries */
