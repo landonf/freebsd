@@ -165,10 +165,10 @@ struct bhnd_nvram_provider {
  * NVRAM entry.
  */
 struct bhnd_nvram_entry {
-	struct bhnd_nvram_provider	*prov;		/**< exporting provider */
+	struct bhnd_nvram_provider	*prov;		/**< exporting provider (weak ref) */
 	struct bhnd_nvpath		*canon;		/**< provider's canonical path string */
 
-	LIST_HEAD(,bhnd_nvram_consumer)	 consumers;	/**< planes consuming this entry (weak references) */
+	LIST_HEAD(,bhnd_nvram_consumer)	 consumers;	/**< planes consuming this entry (weak refs) */
 
 	struct bhnd_nvref		 refs;
 	LIST_ENTRY(bhnd_nvram_entry)	 ne_link;
@@ -216,7 +216,8 @@ struct bhnd_nvram_link {
 
 	LIST_HEAD(,bhnd_nvram_link)	 children;	/**< all children */
 
-	LIST_ENTRY(bhnd_nvram_link)	 nl_link;
+	LIST_ENTRY(bhnd_nvram_link)	 child_link;
+	LIST_ENTRY(bhnd_nvram_link)	 hash_link;
 };
 
 /**
@@ -227,6 +228,7 @@ struct bhnd_nvram_link {
 struct bhnd_nvram_plane {
 	struct bhnd_nvram_plane		*parent;	/**< parent, or NULL */
 	struct bhnd_nvram_link		*root;		/**< root ("/") */
+	LIST_HEAD(,bhnd_nvram_link)	 map[4];	/**< entry -> link map */
 
 	LIST_HEAD(,bhnd_nvram_plane)	 children;	/**< children */
 
@@ -307,6 +309,7 @@ struct bhnd_nvram_plane {
 		/* No remaining strong references; can finalize		\
 		 * instance state. Our implicit weak reference will	\
 		 * keep the value pointer alive during finalization */	\
+		atomic_thread_fence_acq();				\
 		(fini)(value, ##__VA_ARGS__);				\
 									\
 		/* Discard the the implicit weak reference shared by	\
