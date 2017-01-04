@@ -104,9 +104,6 @@ static void			 bhnd_nvram_provider_unbusy_locked(
 static struct bhnd_nvram_link	*bhnd_nvram_link_new(const char *name,
 				     size_t namelen, const char *parent,
 				     size_t parentlen);
-static void			 bhnd_nvram_link_free(
-				     struct bhnd_nvram_plane *plane,
-				     struct bhnd_nvram_link *link);
 
 static int			 bhnd_nvram_link_insert(
 				     struct bhnd_nvram_plane *plane,
@@ -145,8 +142,10 @@ static void			 bhnd_nvram_plane_fini(
 static bool			 bhnd_nvram_plane_is_child(
 				     struct bhnd_nvram_plane *plane,
 				     struct bhnd_nvram_plane *child);
-
 static struct bhnd_nvram_link	*bhnd_nvram_plane_resolve_entry(
+				     struct bhnd_nvram_plane *plane,
+				     struct bhnd_nvram_entry *entry);
+static void			 bhnd_nvram_plane_remove_entry(
 				     struct bhnd_nvram_plane *plane,
 				     struct bhnd_nvram_entry *entry);
 
@@ -640,31 +639,34 @@ bhnd_nvram_provider_destroy(struct bhnd_nvram_provider *provider)
 			struct bhnd_nvram_consumer	*consumer;
 			struct bhnd_nvram_plane		*plane;
 	
-			/* Attempt to promote our weak consumer reference,
-			 * and then drop the list entry's weak reference */
+			/* Attempt to promote our weak consumer reference */
 			consumer = BHND_NVREF_PROMOTE_WEAK(c, refs);
 
-			BHND_NVREF_RELEASE_WEAK(c, refs);
+			/* Remove consumer from list */
 			LIST_REMOVE(c, nc_link);
+			BHND_NVREF_RELEASE_WEAK(c, refs);
 
-			if (consumer == NULL) {
-				/* Consumer already dead */
+			/* If the consumer record is already dead, nothing
+			 * left to do. */
+			if (consumer == NULL)
 				continue;
-			}
 
-			/* Attempt to promote our consumer's weak plane
-			 * reference, and then drop our strong reference to
-			 * the consumer */
+			/* Try to fetch a strong reference to the plane  */
 			plane = BHND_NVREF_PROMOTE_WEAK(consumer->plane, refs);
+
+			/* Drop our consumer reference */
 			BHND_NVREF_RELEASE(consumer, refs,
 			    bhnd_nvram_consumer_fini);
 
-			if (plane == NULL) {
-				/* Plane already dead; nothing left to do */
+			/* If the plane is already dead, nothing left to do */
+			if (plane == NULL)
 				continue;
-			}
 
-			// TODO: ask the plane to deregister the entry
+			/* Ask the plane to deregister the entry, and then
+			 * drop our plane reference */
+			BHND_NVPLANE_LOCK_RW(plane);
+			bhnd_nvram_plane_remove_entry(plane, e);
+			BHND_NVPLANE_UNLOCK_RW(plane);
 
 			BHND_NVREF_RELEASE(plane, refs, bhnd_nvram_plane_fini);
 		}
@@ -758,7 +760,7 @@ bhnd_nvram_provider_unbusy_locked(struct bhnd_nvram_provider *provider)
  * Allocate, initialize, and return an unconnected adjacency list link node.
  * 
  * The caller is responsible for releasing the returned link via
- * bhnd_nvram_link_remove() or bhnd_nvram_link_free().
+ * bhnd_nvram_link_remove()
  *
  * @param name		The relative path name to append to @p pathname.
  * @param namelen	The length of @p name.
@@ -792,24 +794,38 @@ bhnd_nvram_link_new(const char *name, size_t namelen, const char *pathname,
 }
 
 /**
- * Free a disconnected link instance and all of its children.
+ * Free a link instance and all of its children, adding any unused consumer
+ * records to the plane's free list.
  * 
+ * If removing @p link results in its parent becoming an empty leaf node, the
+ * parent will also be removed. This will be performed recursively, up
+ * to (but not including) the persistent root ("/") link entry.
+ *
  * @param plane	The NVRAM plane.
  * @param link	The link to be freed.
  */
 static void
-bhnd_nvram_link_free(struct bhnd_nvram_plane *plane,
+bhnd_nvram_link_remove(struct bhnd_nvram_plane *plane,
     struct bhnd_nvram_link *link)
 {
 	struct bhnd_nvram_link	*cwd;
+	bool			 in_orig_tree;
+
+	in_orig_tree = true;
 
 	/* We don't need a lock during finalization */
 	if (!BHND_NVREF_IS_ZOMBIE(plane, refs))
 		BHND_NVPLANE_LOCK_ASSERT(plane, SA_XLOCKED);
 
-	BHND_NV_ASSERT(link->parent == NULL, ("link is not disconnected"));
+	/* Disconnect from the parent, preventing upward traversal from freeing
+	 * the parent within the tree walking loop */
+	if (link->parent != NULL) {
+		LIST_REMOVE(link, child_link);
+		link->parent = NULL;
+	}
 
-	/* Walk the tree without tail recursion, performing deallocation */
+	/* Walk the tree without tail recursion, performing deallocation
+	 * starting at leaf nodes. */
 	cwd = link;
 	while (cwd != NULL) {
 		struct bhnd_nvram_link *parent;
@@ -819,12 +835,28 @@ bhnd_nvram_link_free(struct bhnd_nvram_plane *plane,
 		if (LIST_EMPTY(&cwd->children)) {
 			parent = cwd->parent;
 
-			BHND_NV_ASSERT(cwd->consumer == NULL,
-			    ("link has active consumer record"));
+			/*
+			 * Once we hit the link originally passed to
+			 * bhnd_nvram_link_free(), we've freed all requested
+			 * nodes.
+			 *
+			 * After this point, we should only traverse into
+			 * parent nodes if they are empty leafs that can be
+			 * safely garbage collected
+			 */
+			if (cwd == link)
+				in_orig_tree = false;
 
-			/* Remove from the parent's list of children */
+			/* Disconnect from the parent */
 			if (parent != NULL)
 				LIST_REMOVE(cwd, child_link);
+
+			/* Move the consumer record to the free list */
+			if (cwd->consumer) {
+				LIST_INSERT_HEAD(&plane->freelist,
+				    cwd->consumer, free_link);
+				cwd->consumer = NULL;
+			}
 
 			/* Release the path string */
 			BHND_NVREF_RELEASE(cwd->path, refs, bhnd_nvpath_fini);			
@@ -832,7 +864,19 @@ bhnd_nvram_link_free(struct bhnd_nvram_plane *plane,
 			/* Free the link allocation */
 			bhnd_nv_free(cwd);
 
-			/* Continue at the node's parent */
+			/* Resume traversal at the parent node? */
+			cwd = NULL;
+			if (!in_orig_tree && parent != NULL) {
+				/* Do not remove non-leaf parents */
+				if (!bhnd_nvram_link_is_leaf(plane, parent))
+					break;
+				
+				/* Do not remove the plane's persistent root
+				 * node */
+				if (plane->root == parent)
+					break;
+			}
+
 			cwd = parent;
 			continue;
 		} 
@@ -930,7 +974,6 @@ failed:
 
 	return (error);
 }
-
 
 /**
  * Resolve @p pathname to its plane-specific adjacency list link, or NULL if
@@ -1053,69 +1096,6 @@ bhnd_nvram_link_is_leaf(struct bhnd_nvram_plane *plane,
 }
 
 /**
- * Remove @p link from @p plane and free all associated resources. The
- * link must be an unused leaf node (@see bhnd_nvram_link_is_leaf()),
- * 
- * If removing @p link results in its parent becoming a leaf node, the
- * parent will also be removed. This will be performed recursively, up
- * to (but not including) the persistent root ("/") link entry.
- * 
- * @param	plane	The NVRAM plane.
- * @param	link	The link to be deallocated.
- */
-static void
-bhnd_nvram_link_remove(struct bhnd_nvram_plane *plane,
-    struct bhnd_nvram_link *link)
-{
-	BHND_NVPLANE_LOCK_ASSERT(plane, SA_XLOCKED);
-
-	while (1) {
-		struct bhnd_nvram_link *parent;
-
-		BHND_NV_ASSERT(bhnd_nvram_link_is_leaf(plane, link),
-		    ("cannot free active link"));
-
-		/* Disconnect from parent */
-		if ((parent = link->parent) != NULL) {
-			struct bhnd_nvram_link *l;
-
-			l = bhnd_nvram_link_find_child(plane, link->parent,
-			    link->path->basename);
-			if (l != link)
-				BHND_NV_PANIC("non-symmetric binary relation");
-
-			LIST_REMOVE(link, child_link);
-
-			link->parent = NULL;
-		}
-
-		/* Free the now disconnected link instance */
-		bhnd_nvram_link_free(plane, link);
-
-		/*
-		 * Recursively remove our parent? 
-		 */
-		if (parent == NULL) {
-			/* No parent */
-			break;
-		}
-
-		if (plane->root == parent) {
-			/* Do not remove the plane's persistent root node */
-			break;
-		}
-
-		if (!bhnd_nvram_link_is_leaf(plane, parent)) {
-			/* Do not free non-leaf/non-empty parents */
-			break;
-		}
-
-		/* Remove parent */
-		link = parent;
-	}
-}
-
-/**
  * If @p link is an unused leaf node (@see bhnd_nvram_link_is_leaf()),
  * free @p link and all associated resources.
  * 
@@ -1195,9 +1175,11 @@ bhnd_nvram_plane_new(struct bhnd_nvram_plane *parent)
 	if (plane == NULL)
 		return (NULL);
 
-	LIST_INIT(&plane->children);
 	BHND_NVPLANE_LOCK_INIT(plane);
 	BHND_NVREF_INIT(&plane->refs);
+	LIST_INIT(&plane->children);
+	LIST_INIT(&plane->freelist);
+
 	plane->parent = NULL;
 
 	for (size_t i = 0; i < nitems(plane->map); i++)
@@ -1226,6 +1208,18 @@ bhnd_nvram_plane_new(struct bhnd_nvram_plane *parent)
 	return (plane);
 }
 
+void
+bhnd_nvram_plane_gc(struct bhnd_nvram_plane *plane)
+{
+	struct bhnd_nvram_consumer	*c, *cnext;
+	struct bhnd_nvram_consumer_list	 consumers;
+
+	LIST_FOREACH_SAFE(c, &plane->freelist, free_link, cnext) {
+		LIST_REMOVE(c, free_link);
+		LIST_INSERT_HEAD(&consumers, c, free_link);
+	}
+}
+
 /**
  * Finalize @p plane, deallocating all associated resources.
  * 
@@ -1236,31 +1230,13 @@ bhnd_nvram_plane_fini(struct bhnd_nvram_plane *plane)
 {
 	struct bhnd_nvram_plane *parent;
 
-	BHND_NVPLANE_LOCK_ASSERT(plane, SA_UNLOCKED);
-
 	BHND_NV_ASSERT(LIST_EMPTY(&plane->children), ("active children"));
 
-	/* Disconnect all consumer records */
-	for (size_t i = 0; i < nitems(plane->map); i++) {
-		struct bhnd_nvram_link		*link, *lnext;
-		struct bhnd_nvram_consumer	*consumer;
-
-		LIST_FOREACH_SAFE(link, &plane->map[i], hash_link, lnext) {
-			/* Claim the consumer entry */
-			consumer = link->consumer;
-			link->consumer = NULL;
-
-			// TODO: garbage collect
-			BHND_NVREF_RELEASE(consumer, refs,
-			    bhnd_nvram_consumer_fini);
-
-			/* Remove the hash table entry */
-			LIST_REMOVE(link, hash_link);
-		}
-	}
-
 	/* Drop our persistent root link */
-	bhnd_nvram_link_free(plane, plane->root);
+	bhnd_nvram_link_remove(plane, plane->root);
+
+	/* Disconnect all consumer records */
+	// TODO
 
 	/*
 	 * Unlink ourselves from the parent plane.
@@ -1339,9 +1315,14 @@ bhnd_nvram_plane_is_child(struct bhnd_nvram_plane *plane,
 	return (false);
 }
 
+
 /**
- * Return the plane-specific adjacency link entry for @p entry, or NULL if not
+ * Return the plane-specific adjacency link for @p entry, or NULL if not
  * found.
+ * 
+ * @param plane	The NVRAM plane to be queried.
+ * @param entry	The NVRAM entry for which the plane's adjacency link should
+ *		be returned.
  */
 static struct bhnd_nvram_link *
 bhnd_nvram_plane_resolve_entry(struct bhnd_nvram_plane *plane,
@@ -1369,6 +1350,34 @@ bhnd_nvram_plane_resolve_entry(struct bhnd_nvram_plane *plane,
 }
 
 /**
+ * Discard the plane-specific adjacency link for @p entry, if any.
+ * 
+ * @param plane	The NVRAM plane to be modified.
+ * @param entry	The NVRAM entry for which the plane's adjacency link should
+ *		be removed.
+ */
+static void
+bhnd_nvram_plane_remove_entry(struct bhnd_nvram_plane *plane,
+    struct bhnd_nvram_entry *entry)
+{
+	struct bhnd_nvram_link *link;
+
+	BHND_NVPLANE_LOCK_ASSERT(plane, SA_XLOCKED);
+
+	/* Find the link */
+	link = bhnd_nvram_plane_resolve_entry(plane, entry);
+	if (link == NULL)
+		return;
+
+	/* Discard the consumer record */
+	BHND_NVREF_RELEASE(link->consumer, refs, bhnd_nvram_consumer_fini);
+	link->consumer = NULL;
+
+	/* Remove the hash table entry */
+	LIST_REMOVE(link, hash_link);
+}
+
+/**
  * Register NVRAM paths exported by @p provider.
  * 
  * @param	plane		The NVRAM plane in which @p pathnames will be
@@ -1389,7 +1398,7 @@ bhnd_nvram_plane_resolve_entry(struct bhnd_nvram_plane *plane,
  */
 int
 bhnd_nvram_register_paths(struct bhnd_nvram_plane *plane,
-    struct bhnd_nvram_provider *provider, const char *pathnames[],
+    struct bhnd_nvram_provider *provider, char *pathnames[],
     size_t num_pathnames)
 {
 	struct bhnd_nvram_entry		**entries;

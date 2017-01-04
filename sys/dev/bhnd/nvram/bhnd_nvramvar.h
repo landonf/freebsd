@@ -51,7 +51,8 @@ struct bhnd_nvram_entry;
 struct bhnd_nvram_provider;
 typedef struct bhnd_nvram_consumer bhnd_nvram_consumer;
 
-LIST_HEAD(bhnd_nvram_entry_list, bhnd_nvram_entry);
+LIST_HEAD(bhnd_nvram_entry_list,	bhnd_nvram_entry);
+LIST_HEAD(bhnd_nvram_consumer_list,	bhnd_nvram_consumer);
 
 /**
  * Reference count data structure supporting both strong and weak references.
@@ -167,8 +168,7 @@ struct bhnd_nvram_provider {
 struct bhnd_nvram_entry {
 	struct bhnd_nvram_provider	*prov;		/**< exporting provider (weak ref) */
 	struct bhnd_nvpath		*canon;		/**< provider's canonical path string */
-
-	LIST_HEAD(,bhnd_nvram_consumer)	 consumers;	/**< planes consuming this entry (weak refs) */
+	struct bhnd_nvram_consumer_list	 consumers;	/**< planes consuming this entry (weak refs) */
 
 	struct bhnd_nvref		 refs;
 	LIST_ENTRY(bhnd_nvram_entry)	 ne_link;
@@ -195,7 +195,8 @@ struct bhnd_nvram_consumer {
 	struct bhnd_nvram_plane		*plane;		/**< consuming plane (weak ref) */
 
 	struct bhnd_nvref		 refs;
-	LIST_ENTRY(bhnd_nvram_consumer)	 nc_link;
+	LIST_ENTRY(bhnd_nvram_consumer)	 nc_link;	/**< bhnd_nvram_entry consumer list entry */
+	LIST_ENTRY(bhnd_nvram_consumer)	 free_link;	/**< bhnd_nvram_plane free list entry */
 };
 
 /**
@@ -228,8 +229,9 @@ struct bhnd_nvram_link {
 struct bhnd_nvram_plane {
 	struct bhnd_nvram_plane		*parent;	/**< parent, or NULL */
 	struct bhnd_nvram_link		*root;		/**< root ("/") */
-	LIST_HEAD(,bhnd_nvram_link)	 map[4];	/**< entry -> link map */
+	struct bhnd_nvram_consumer_list	 freelist;	/**< free consumer records */
 
+	LIST_HEAD(,bhnd_nvram_link)	 map[4];	/**< entry -> link map */
 	LIST_HEAD(,bhnd_nvram_plane)	 children;	/**< children */
 
 #ifdef _KERNEL

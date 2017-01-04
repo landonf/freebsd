@@ -164,14 +164,12 @@ void				 bhnd_nvram_provider_destroy(
 int				 bhnd_nvram_register_paths(
 				     struct bhnd_nvram_plane *plane,
 				     struct bhnd_nvram_provider *provider,
-				     const char *pathnames[],
-				     size_t num_pathnames);
+				     char *pathnames[], size_t num_pathnames);
 
 int				 bhnd_nvram_deregister_paths(
 				     struct bhnd_nvram_plane *plane,
 				     struct bhnd_nvram_provider *provider,
-				     const char *pathnames[],
-				     size_t num_pathnames);
+				     char *pathnames[], size_t num_pathnames);
 
 #if 0
 
