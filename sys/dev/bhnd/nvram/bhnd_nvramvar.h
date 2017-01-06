@@ -78,7 +78,7 @@ struct bhnd_nvref {
 /**
  * NVRAM canonical path string.
  */
-struct bhnd_nvpath {
+struct bhnd_nvpath_str {
 	char			*pathname;	/**< canonical, fully qualified path name */
 	size_t			 pathlen;	/**< length of pathname */
 
@@ -167,7 +167,7 @@ struct bhnd_nvram_provider {
  */
 struct bhnd_nvram_entry {
 	struct bhnd_nvram_provider	*prov;		/**< exporting provider (weak ref) */
-	struct bhnd_nvpath		*canon;		/**< provider's canonical path string */
+	struct bhnd_nvpath_str		*canon;		/**< provider's canonical path string */
 	struct bhnd_nvram_consumer_list	 consumers;	/**< planes consuming this entry (weak refs) */
 
 	struct bhnd_nvref		 refs;
@@ -210,7 +210,7 @@ struct bhnd_nvram_consumer {
  * represented as a table of bhnd_nvram_link instances.
  */
 struct bhnd_nvram_link {
-	struct bhnd_nvpath		*path;		/**< plane-specific path string */
+	struct bhnd_nvpath_str		*path;		/**< plane-specific path string */
 	struct bhnd_nvram_link		*parent;	/**< parent, or NULL */
 	struct bhnd_nvram_consumer	*consumer;	/**< per-link consumer record, or NULL if
 							     no provider is associated with this link. */

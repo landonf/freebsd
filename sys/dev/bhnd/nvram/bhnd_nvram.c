@@ -48,13 +48,13 @@ __FBSDID("$FreeBSD$");
 MALLOC_DEFINE(M_BHND_NVRAM, "bhnd_nvram", "BHND NVRAM data");
 #endif /* _KERNEL */
 
-static struct bhnd_nvpath	*bhnd_nvpath_new(const char *pathname,
+static struct bhnd_nvpath_str	*bhnd_nvpath_str_new(const char *pathname,
 				     size_t pathlen);
-static struct bhnd_nvpath	*bhnd_nvpath_append(const char *pathname,
+static struct bhnd_nvpath_str	*bhnd_nvpath_str_append(const char *pathname,
 				     size_t pathlen, const char *name,
 				     size_t namelen);
-
-static void			 bhnd_nvpath_fini(struct bhnd_nvpath *path);
+static void			 bhnd_nvpath_str_fini(
+				     struct bhnd_nvpath_str *path);
 
 static struct bhnd_nvram_entry	*bhnd_nvram_entry_insert(
 				     struct bhnd_nvram_provider *provider,
@@ -167,10 +167,10 @@ static void			 bhnd_nvram_plane_remove_entry(
  * 
  * @retval NULL if allocation fails.
  */
-static struct bhnd_nvpath *
-bhnd_nvpath_new(const char *pathname, size_t pathlen)
+static struct bhnd_nvpath_str *
+bhnd_nvpath_str_new(const char *pathname, size_t pathlen)
 {
-	return (bhnd_nvpath_append(pathname, pathlen, NULL, 0));
+	return (bhnd_nvpath_str_append(pathname, pathlen, NULL, 0));
 }
 
 /**
@@ -188,11 +188,11 @@ bhnd_nvpath_new(const char *pathname, size_t pathlen)
  * @retval non-NULL	success
  * @retval NULL		if allocation fails.
  */
-static struct bhnd_nvpath *
-bhnd_nvpath_append(const char *pathname, size_t pathlen, const char *name,
+static struct bhnd_nvpath_str *
+bhnd_nvpath_str_append(const char *pathname, size_t pathlen, const char *name,
     size_t namelen)
 {
-	struct bhnd_nvpath	*path;
+	struct bhnd_nvpath_str	*path;
 	char			*pathbuf;
 	size_t			 bufsize, baselen;
 	bool			 need_delim;
@@ -273,7 +273,7 @@ bhnd_nvpath_append(const char *pathname, size_t pathlen, const char *name,
 }
 
 static void
-bhnd_nvpath_fini(struct bhnd_nvpath *path)
+bhnd_nvpath_str_fini(struct bhnd_nvpath_str *path)
 {
 	bhnd_nv_free(path->pathname);
 }
@@ -323,7 +323,7 @@ bhnd_nvram_entry_insert(struct bhnd_nvram_provider *provider,
 	if (entry == NULL)
 		return (NULL);
 
-	entry->canon = bhnd_nvpath_new(pathname, strlen(pathname));
+	entry->canon = bhnd_nvpath_str_new(pathname, strlen(pathname));
 	if (entry->canon == NULL) {
 		bhnd_nv_free(entry);
 		return (NULL);
@@ -345,7 +345,7 @@ bhnd_nvram_entry_fini(struct bhnd_nvram_entry *entry)
 	BHND_NV_ASSERT(LIST_EMPTY(&entry->consumers), ("active consumers"));
 
 	BHND_NVREF_RELEASE_WEAK(entry->prov, refs);
-	BHND_NVREF_RELEASE(entry->canon, refs, bhnd_nvpath_fini);
+	BHND_NVREF_RELEASE(entry->canon, refs, bhnd_nvpath_str_fini);
 }
 
 /**
@@ -784,7 +784,7 @@ bhnd_nvram_link_new(const char *name, size_t namelen, const char *pathname,
 	link->parent = NULL;
 	LIST_INIT(&link->children);
 
-	link->path = bhnd_nvpath_append(pathname, pathlen, name, namelen);
+	link->path = bhnd_nvpath_str_append(pathname, pathlen, name, namelen);
 	if (link->path == NULL) {
 		bhnd_nv_free(link);
 		return (NULL);
@@ -859,7 +859,8 @@ bhnd_nvram_link_remove(struct bhnd_nvram_plane *plane,
 			}
 
 			/* Release the path string */
-			BHND_NVREF_RELEASE(cwd->path, refs, bhnd_nvpath_fini);			
+			BHND_NVREF_RELEASE(cwd->path, refs,
+			    bhnd_nvpath_str_fini);			
 
 			/* Free the link allocation */
 			bhnd_nv_free(cwd);
