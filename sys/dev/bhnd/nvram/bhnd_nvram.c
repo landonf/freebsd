@@ -1208,18 +1208,6 @@ bhnd_nvram_plane_new(struct bhnd_nvram_plane *parent)
 	return (plane);
 }
 
-void
-bhnd_nvram_plane_gc(struct bhnd_nvram_plane *plane)
-{
-	struct bhnd_nvram_consumer	*c, *cnext;
-	struct bhnd_nvram_consumer_list	 consumers;
-
-	LIST_FOREACH_SAFE(c, &plane->freelist, free_link, cnext) {
-		LIST_REMOVE(c, free_link);
-		LIST_INSERT_HEAD(&consumers, c, free_link);
-	}
-}
-
 /**
  * Finalize @p plane, deallocating all associated resources.
  * 
