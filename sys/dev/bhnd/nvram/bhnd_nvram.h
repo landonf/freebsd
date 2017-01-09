@@ -157,19 +157,19 @@ struct bhnd_nvram_plane		*bhnd_nvram_plane_retain(
 void				 bhnd_nvram_plane_release(
 				     struct bhnd_nvram_plane *plane);
 
-struct bhnd_nvram_provider	*bhnd_nvram_provider_new(device_t dev);
-void				 bhnd_nvram_provider_destroy(
-				     struct bhnd_nvram_provider *provider);
-
 int				 bhnd_nvram_register_paths(
 				     struct bhnd_nvram_plane *plane,
 				     struct bhnd_nvram_provider *provider,
 				     char *pathnames[], size_t num_pathnames);
-
-int				 bhnd_nvram_deregister_paths(
+void				 bhnd_nvram_deregister_paths(
 				     struct bhnd_nvram_plane *plane,
 				     struct bhnd_nvram_provider *provider,
 				     char *pathnames[], size_t num_pathnames);
+
+struct bhnd_nvram_provider	*bhnd_nvram_provider_new(device_t dev);
+void				 bhnd_nvram_provider_destroy(
+				     struct bhnd_nvram_provider *provider);
+
 
 #if 0
 

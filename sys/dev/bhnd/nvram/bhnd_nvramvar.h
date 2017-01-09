@@ -47,12 +47,10 @@
 
 #include "bhnd_nvram.h"
 
-struct bhnd_nvram_entry;
-struct bhnd_nvram_provider;
-typedef struct bhnd_nvram_consumer bhnd_nvram_consumer;
-
-LIST_HEAD(bhnd_nvram_entry_list,	bhnd_nvram_entry);
 LIST_HEAD(bhnd_nvram_consumer_list,	bhnd_nvram_consumer);
+LIST_HEAD(bhnd_nvram_link_list,		bhnd_nvram_link);
+
+typedef struct bhnd_nvram_consumer bhnd_nvram_consumer;
 
 /**
  * Reference count data structure supporting both strong and weak references.
@@ -89,6 +87,96 @@ struct bhnd_nvpath_str {
 };
 
 /**
+ * NVRAM consumer record.
+ */
+struct bhnd_nvram_consumer {
+	struct bhnd_nvram_plane		*plane;		/**< referencing plane (weak ref) */
+	size_t				 uses;		/**< the number of plane references */
+
+	struct bhnd_nvref		 refs;
+	LIST_ENTRY(bhnd_nvram_consumer)	 nc_link;
+};
+
+/**
+ * NVRAM path adjacency list entry.
+ * 
+ * An individual NVRAM path may be registered in one canonical plane, and then
+ * re-exported in additional planes, or within the same plane at an additional
+ * position.
+ *
+ * The plane-specific graph of binary parent/child path relations is
+ * represented as a table of bhnd_nvram_link instances.
+ */
+struct bhnd_nvram_link {
+	struct bhnd_nvpath_str		*path;		/**< plane-specific path string */
+	struct bhnd_nvram_link		*parent;	/**< plane-specific parent, or NULL */
+
+	struct bhnd_nvram_provider	*prov;		/**< provider, or NULL */
+	struct bhnd_nvpath_str		*prov_path;	/**< provider's canonical path, or NULL */
+	const void			*prov_pending;	/**< if provider registration is incomplete, a non-NULL
+							     pointer uniquely identifying the current operation */
+
+	struct bhnd_nvram_link_list	 children;	/**< all children */
+
+	LIST_ENTRY(bhnd_nvram_link)	 child_link;
+	LIST_ENTRY(bhnd_nvram_link)	 hash_link;
+};
+
+/**
+ * NVRAM plane.
+ * 
+ * Manages a tree of NVRAM planes, NVRAM paths, and associated NVRAM devices.
+ */
+struct bhnd_nvram_plane {
+	struct bhnd_nvram_plane		*parent;	/**< parent, or NULL */
+	struct bhnd_nvram_link		*root;		/**< root ("/") */
+	struct bhnd_nvram_link_list	 prov_map[4];	/**< provider -> link(s) map */
+
+	LIST_HEAD(,bhnd_nvram_plane)	 children;	/**< children */
+
+#ifdef _KERNEL
+	struct sx			 plane_lock;
+#else /*! _KERNEL */
+	pthread_rwlock_t		 plane_lock;
+#endif /* _KERNEL */
+
+	struct bhnd_nvref		 refs;
+	LIST_ENTRY(bhnd_nvram_plane)	 child_link;
+};
+
+#ifdef _KERNEL
+
+#define	BHND_NVPLANE_LOCK_INIT(sc) \
+	sx_init(&(sc)->plane_lock, "BHND NVRAM plane lock")
+#define	BHND_NVPLANE_LOCK_RD(sc)		sx_slock(&(sc)->plane_lock)
+#define	BHND_NVPLANE_UNLOCK_RD(sc)		sx_sunlock(&(sc)->plane_lock)
+#define	BHND_NVPLANE_LOCK_RW(sc)		sx_xlock(&(sc)->plane_lock)
+#define	BHND_NVPLANE_UNLOCK_RW(sc)		sx_xunlock(&(sc)->plane_lock)
+#define	BHND_NVPLANE_LOCK_ASSERT(sc, what)	\
+	sx_assert(&(sc)->plane_lock, what)
+#define	BHND_NVPLANE_LOCK_DESTROY(sc)		sx_destroy(&(sc)->plane_lock)
+
+#else /* !_KERNEL */
+
+#define	BHND_NVPLANE_LOCK_INIT(sc) do {					\
+	int error = pthread_rwlock_init(&(sc)->plane_lock, NULL);	\
+	if (error)							\
+		BHND_NV_PANIC("pthread_rwlock_init() failed: %d",	\
+		    error);						\
+} while(0)
+
+#define	BHND_NVPLANE_LOCK_RD(sc)	pthread_rwlock_rdlock(&(sc)->plane_lock)
+#define	BHND_NVPLANE_UNLOCK_RD(sc)	pthread_rwlock_unlock(&(sc)->plane_lock)
+#define	BHND_NVPLANE_LOCK_RW(sc)	pthread_rwlock_wrlock(&(sc)->plane_lock)
+#define	BHND_NVPLANE_UNLOCK_RW(sc)	pthread_rwlock_unlock(&(sc)->plane_lock)
+#define	BHND_NVPLANE_LOCK_DESTROY(sc)	\
+	pthread_rwlock_destroy(&(sc)->plane_lock)
+#define	BHND_NVPLANE_LOCK_ASSERT(sc, what)
+
+#endif /* _KERNEL */
+
+
+/**
  * NVRAM provider state.
  */
 typedef enum {
@@ -102,10 +190,10 @@ typedef enum {
  */
 struct bhnd_nvram_provider {
 	device_t			 dev;		/**< device */
-	struct bhnd_nvram_entry_list	 entries;	/**< registered path entries */
+	struct bhnd_nvram_consumer_list	 consumers;	/**< all consumers */
+	bhnd_nvram_prov_state		 state;		/**< current provider state */
 	volatile u_int			 busy;		/**< busy count. may be incremented
 							     atomically with read lock held. */
-	bhnd_nvram_prov_state		 state;
 
 #ifdef _KERNEL
 	struct sx			 prov_lock;
@@ -159,119 +247,6 @@ struct bhnd_nvram_provider {
 
 #define	BHND_NVPROV_LOCK_DESTROY(sc)	pthread_mutex_destroy(&(sc)->prov_lock)
 #define	BHND_NVPROV_LOCK_ASSERT(sc, what)
-
-#endif /* _KERNEL */
-
-/**
- * NVRAM entry.
- */
-struct bhnd_nvram_entry {
-	struct bhnd_nvram_provider	*prov;		/**< exporting provider (weak ref) */
-	struct bhnd_nvpath_str		*canon;		/**< provider's canonical path string */
-	struct bhnd_nvram_consumer_list	 consumers;	/**< planes consuming this entry (weak refs) */
-
-	struct bhnd_nvref		 refs;
-	LIST_ENTRY(bhnd_nvram_entry)	 ne_link;
-};
-
-/**
- * NVRAM consumer record.
- * 
- * This represents the relationship between NVRAM provider entries, and NVRAM
- * plane adjacency list links.
- * 
- * A new consumer instance is allocated for every NVRAM plane link, with a
- * single strong reference held by the plane's link, and a weak reference held
- * by the provider's entry.
- *
- * If single strong reference to the consumer instance is released by the
- * plane, the provider can detect the zombie consumer instance (and discard it)
- * without having to lock both the plane and the provider simultaneously.
- */
-struct bhnd_nvram_consumer {
-	struct bhnd_nvram_entry		*entry;		/**< providing entry (strong ref), or NULL if
-							     consumer record has not been linked to an
-							     NVRAM entry.  */
-	struct bhnd_nvram_plane		*plane;		/**< consuming plane (weak ref) */
-
-	struct bhnd_nvref		 refs;
-	LIST_ENTRY(bhnd_nvram_consumer)	 nc_link;	/**< bhnd_nvram_entry consumer list entry */
-	LIST_ENTRY(bhnd_nvram_consumer)	 free_link;	/**< bhnd_nvram_plane free list entry */
-};
-
-/**
- * NVRAM path adjacency list entry.
- * 
- * An individual NVRAM path may be registered in one canonical plane, and then
- * re-exported in additional planes, or within the same plane at an additional
- * position.
- *
- * The plane-specific graph of binary parent/child path relations is
- * represented as a table of bhnd_nvram_link instances.
- */
-struct bhnd_nvram_link {
-	struct bhnd_nvpath_str		*path;		/**< plane-specific path string */
-	struct bhnd_nvram_link		*parent;	/**< parent, or NULL */
-	struct bhnd_nvram_consumer	*consumer;	/**< per-link consumer record, or NULL if
-							     no provider is associated with this link. */
-
-	LIST_HEAD(,bhnd_nvram_link)	 children;	/**< all children */
-
-	LIST_ENTRY(bhnd_nvram_link)	 child_link;
-	LIST_ENTRY(bhnd_nvram_link)	 hash_link;
-};
-
-/**
- * NVRAM plane.
- * 
- * Manages a tree of NVRAM planes, NVRAM paths, and associated NVRAM devices.
- */
-struct bhnd_nvram_plane {
-	struct bhnd_nvram_plane		*parent;	/**< parent, or NULL */
-	struct bhnd_nvram_link		*root;		/**< root ("/") */
-	struct bhnd_nvram_consumer_list	 freelist;	/**< free consumer records */
-
-	LIST_HEAD(,bhnd_nvram_link)	 map[4];	/**< entry -> link map */
-	LIST_HEAD(,bhnd_nvram_plane)	 children;	/**< children */
-
-#ifdef _KERNEL
-	struct sx			 plane_lock;
-#else /*! _KERNEL */
-	pthread_rwlock_t		 plane_lock;
-#endif /* _KERNEL */
-
-	struct bhnd_nvref		 refs;
-	LIST_ENTRY(bhnd_nvram_plane)	 child_link;
-};
-
-#ifdef _KERNEL
-
-#define	BHND_NVPLANE_LOCK_INIT(sc) \
-	sx_init(&(sc)->plane_lock, "BHND NVRAM plane lock")
-#define	BHND_NVPLANE_LOCK_RD(sc)		sx_slock(&(sc)->plane_lock)
-#define	BHND_NVPLANE_UNLOCK_RD(sc)		sx_sunlock(&(sc)->plane_lock)
-#define	BHND_NVPLANE_LOCK_RW(sc)		sx_xlock(&(sc)->plane_lock)
-#define	BHND_NVPLANE_UNLOCK_RW(sc)		sx_xunlock(&(sc)->plane_lock)
-#define	BHND_NVPLANE_LOCK_ASSERT(sc, what)	\
-	sx_assert(&(sc)->plane_lock, what)
-#define	BHND_NVPLANE_LOCK_DESTROY(sc)		sx_destroy(&(sc)->plane_lock)
-
-#else /* !_KERNEL */
-
-#define	BHND_NVPLANE_LOCK_INIT(sc) do {					\
-	int error = pthread_rwlock_init(&(sc)->plane_lock, NULL);	\
-	if (error)							\
-		BHND_NV_PANIC("pthread_rwlock_init() failed: %d",	\
-		    error);						\
-} while(0)
-
-#define	BHND_NVPLANE_LOCK_RD(sc)	pthread_rwlock_rdlock(&(sc)->plane_lock)
-#define	BHND_NVPLANE_UNLOCK_RD(sc)	pthread_rwlock_unlock(&(sc)->plane_lock)
-#define	BHND_NVPLANE_LOCK_RW(sc)	pthread_rwlock_wrlock(&(sc)->plane_lock)
-#define	BHND_NVPLANE_UNLOCK_RW(sc)	pthread_rwlock_unlock(&(sc)->plane_lock)
-#define	BHND_NVPLANE_LOCK_DESTROY(sc)	\
-	pthread_rwlock_destroy(&(sc)->plane_lock)
-#define	BHND_NVPLANE_LOCK_ASSERT(sc, what)
 
 #endif /* _KERNEL */
 
