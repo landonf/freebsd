@@ -1234,9 +1234,7 @@ bhnd_nvram_register_paths(struct bhnd_nvram_plane *plane,
 	return (0);
 
 failed:
-	/* Clean up previously added links */
-	BHND_NVPLANE_LOCK_RW(plane);
-
+	/* Clean up previously added links (lock still held) */
 	for (size_t i = 0; i < num_pathnames; i++) {
 		const char		*pathname;
 		struct bhnd_nvram_link	*link;
