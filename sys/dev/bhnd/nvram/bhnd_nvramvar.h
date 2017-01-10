@@ -113,8 +113,6 @@ struct bhnd_nvram_link {
 
 	struct bhnd_nvram_provider	*prov;		/**< provider, or NULL */
 	struct bhnd_nvpath_str		*prov_path;	/**< provider's canonical path, or NULL */
-	const void			*prov_pending;	/**< if provider registration is incomplete, a non-NULL
-							     pointer uniquely identifying the current operation */
 
 	struct bhnd_nvram_link_list	 children;	/**< all children */
 

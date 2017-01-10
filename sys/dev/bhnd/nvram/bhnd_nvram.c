@@ -634,7 +634,6 @@ bhnd_nvram_link_new(const char *name, size_t namelen,
 	if (prov != NULL) {
 		link->prov = BHND_NVREF_RETAIN(prov, refs);
 		link->prov_path = BHND_NVREF_RETAIN(prov_path, refs);
-		link->prov_pending = NULL;
 	}
 
 	return (link);
@@ -707,7 +706,6 @@ bhnd_nvram_link_clear_provider(struct bhnd_nvram_link *link)
 
 	link->prov = NULL;
 	link->prov_path = NULL;
-	link->prov_pending = NULL;
 }
 
 /**
@@ -1142,7 +1140,6 @@ bhnd_nvram_register_paths(struct bhnd_nvram_plane *plane,
     size_t num_pathnames)
 {
 	size_t	prov_bucket;
-	u_int	pending_context;
 	int	error;
 
 	/* Skip if no paths are provided */
@@ -1205,19 +1202,42 @@ bhnd_nvram_register_paths(struct bhnd_nvram_plane *plane,
 		/* Fetch or create a new link node */
 		error = bhnd_nvram_link_insert(plane, NULL, pathname, pathlen,
 		    &link);
-		if (error)
-			goto failed;
-
-		/* Existing links must not have a provider already assigned */
-		if (link->prov != NULL) {
+		if (error == 0 && link->prov != NULL) {
+			/* An existing link was found, but it already has a
+			 * provider assigned */
 			error = EEXIST;
-			goto failed;
+		}
+
+		/* On failure, we need to clean up all previously inserted
+		 * links and return the error */
+		if (error) {
+			for (size_t j = 0; j < i; j++) {
+				/* Clear link's provider state */
+				bhnd_nvram_link_clear_provider(link);
+
+				/* Remove from the plane's provider->link map */
+				LIST_REMOVE(link, hash_link);
+
+				/* Try to remove the link */
+				bhnd_nvram_plane_try_remove(plane, link);
+			}
+
+			/* Drop our plane lock before modifying the provider */
+			BHND_NVPLANE_UNLOCK_RW(plane);
+
+			/* Release the consumer references we added above */
+			bhnd_nvram_provider_remove_consumer(provider, plane,
+			    num_pathnames);
+
+			/* Release our reservation on the provider */
+			bhnd_nvram_provider_unbusy(provider);
+
+			return (error);
 		}
 
 		/* Assign new provider and mark as pending */
 		link->prov = BHND_NVREF_RETAIN(provider, refs);
 		link->prov_path = BHND_NVREF_RETAIN(link->path, refs);
-		link->prov_pending = &pending_context;
 
 		/* Insert in provider->link map */
 		LIST_INSERT_HEAD(&plane->prov_map[prov_bucket], link,
@@ -1226,53 +1246,12 @@ bhnd_nvram_register_paths(struct bhnd_nvram_plane *plane,
 
 	BHND_NVPLANE_UNLOCK_RW(plane);
 
-	/* Release our reservation on the provider, allowing it to perform any
-	 * pending termination operations (which could include removing the
-	 * links we just added!) */
+	/* Release our reservation on the provider, allowing any pending
+	 * termination operations to proceed (which could include removing
+	 * the links we just added!) */
 	bhnd_nvram_provider_unbusy(provider);
 
 	return (0);
-
-failed:
-	/* Clean up previously added links (lock still held) */
-	for (size_t i = 0; i < num_pathnames; i++) {
-		const char		*pathname;
-		struct bhnd_nvram_link	*link;
-
-		pathname = pathnames[i];
-
-		/* Fetch previously added link */
-		link = bhnd_nvram_link_resolve(plane, NULL, pathname,
-		    strlen(pathname));
-
-		/* The link may have already been removed */
-		if (link == NULL)
-			continue;
-
-		/* The link may not be owned by this operation */
-		if (link->prov_pending != &pending_context)
-			continue;
-
-		/* Clear link's provider state */
-		bhnd_nvram_link_clear_provider(link);
-
-		/* Remove from the plane's provider->link map */
-		LIST_REMOVE(link, hash_link);
-
-		/* Try to remove the link */
-		bhnd_nvram_plane_try_remove(plane, link);
-	}
-
-	BHND_NVPLANE_UNLOCK_RW(plane);
-
-	/* Release the consumer references registered above */
-	bhnd_nvram_provider_remove_consumer(provider, plane,
-	    num_pathnames);
-
-	/* Release our reservation on the provider */
-	bhnd_nvram_provider_unbusy(provider);
-
-	return (error);
 }
 
 /**
