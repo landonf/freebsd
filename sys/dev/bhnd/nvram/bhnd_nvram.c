@@ -1275,11 +1275,11 @@ bhnd_nvram_deregister_paths(struct bhnd_nvram_plane *plane,
 {
 	struct bhnd_nvram_link_list	*prov_map;
 	struct bhnd_nvram_link		*link, *lnext;
-	size_t				 bucket, num_refs;
+	size_t				 bucket, use_count;
 
 	BHND_NVPLANE_LOCK_RW(plane);
 
-	num_refs = 0;
+	use_count = 0;
 	bucket = (uintptr_t)provider % nitems(plane->prov_map);
 	prov_map = &plane->prov_map[bucket];
 
@@ -1304,10 +1304,17 @@ bhnd_nvram_deregister_paths(struct bhnd_nvram_plane *plane,
 			/* Clean up any leaf link nodes */
 			bhnd_nvram_plane_try_remove(plane, link);
 
-			/* Increment total number of consumer references. */
-			BHND_NV_ASSERT(num_refs < SIZE_MAX,
+			/*
+			 * Increment total number of consumer references to
+			 * be released.
+			 * 
+			 * bhnd_nvram_provider_add_consumer() guarantees that
+			 * the number of active consumer references will never
+			 * exceed than SIZE_MAX.
+			 */
+			BHND_NV_ASSERT(use_count < SIZE_MAX,
 			    ("unrepresentable refcount"));
-			num_refs++;
+			use_count++;
 		}
 	}
 
@@ -1315,7 +1322,7 @@ bhnd_nvram_deregister_paths(struct bhnd_nvram_plane *plane,
 
 	/* With the plane now unlocked, release our consumer reference(s) to
 	 * the provider */
-	bhnd_nvram_provider_remove_consumer(provider, plane, num_refs);
+	bhnd_nvram_provider_remove_consumer(provider, plane, use_count);
 }
 
 #if 0
