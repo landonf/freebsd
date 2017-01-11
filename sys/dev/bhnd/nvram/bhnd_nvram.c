@@ -1131,8 +1131,8 @@ bhnd_nvram_plane_remove_provider(struct bhnd_nvram_plane *plane,
  * @param	plane		The NVRAM plane in which @p pathnames will be
  *				registered.
  * @param	provider	The NVRAM provider for @p pathnames.
- * @param	pathnames	Normalized, fully qualified plane-specific path
- *				names to be mapped to @p provider.
+ * @param	pathnames	Normalized, fully qualified path names to be
+ *				mapped to @p provider.
  * @param	num_pathnames	The number of @p pathnames.
  * 
  * @retval 0		success.
@@ -1274,8 +1274,8 @@ bhnd_nvram_register_paths(struct bhnd_nvram_plane *plane,
  * @param	plane		The NVRAM plane in which @p pathnames will be
  *				registered.
  * @param	provider	The NVRAM provider for @p pathnames.
- * @param	pathnames	Normalized, fully qualified plane-specific
- *				path names to be unmapped from @p provider.
+ * @param	pathnames	Normalized, fully qualified path names to be
+ *				unmapped from @p provider.
  * @param	num_pathnames	The number of @p pathnames.
  */
 void
