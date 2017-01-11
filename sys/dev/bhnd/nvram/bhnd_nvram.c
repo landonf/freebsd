@@ -270,7 +270,7 @@ bhnd_nvram_consumer_new(struct bhnd_nvram_plane *plane)
 	BHND_NVREF_INIT(&consumer->refs);
 
 	consumer->plane = BHND_NVREF_RETAIN_WEAK(plane, refs);
-	consumer->uses = 0;
+	consumer->use_count = 0;
 
 	return (consumer);
 }
@@ -302,10 +302,10 @@ bhnd_nvram_provider_new(device_t dev)
 
 	provider->dev = dev;
 	provider->state = BHND_NVRAM_PROV_ACTIVE;
+	provider->busy = 0;
 
 	BHND_NVPROV_LOCK_INIT(provider);
 	BHND_NVREF_INIT(&provider->refs);
-	refcount_init(&provider->busy, 0);
 
 	LIST_INIT(&provider->consumers);
 
@@ -406,7 +406,9 @@ bhnd_nvram_provider_fini(struct bhnd_nvram_provider *provider)
  * @param use_count	The use count to be added to @p plane's consumer entry.
  * 
  * @retval 0		success.
- * @retval ERANGE	if @p num_uses would overflow.
+ * @retval EBUSY	if @p num_uses would overflow the use count; consumer
+ *			registration will not be possible until an existing
+ *			consumer entry is removed.
  * @retval ENOMEM	if allocation fails.
  * @retval ENODEV	if @p provider is marked for removal.
  */
@@ -445,12 +447,12 @@ bhnd_nvram_provider_add_consumer(struct bhnd_nvram_provider *provider,
 	}
 
 	/* Check for overflow */
-	if (SIZE_MAX - consumer->uses < use_count) {
+	if (SIZE_MAX - consumer->use_count < use_count) {
 		BHND_NVPROV_UNLOCK_RW(provider);
-		return (ERANGE);
+		return (EBUSY);
 	}
 
-	consumer->uses += use_count;
+	consumer->use_count += use_count;
 	BHND_NVPROV_UNLOCK_RW(provider);
 	return (0);
 }
@@ -487,13 +489,13 @@ bhnd_nvram_provider_remove_consumer(struct bhnd_nvram_provider *provider,
 			continue;
 
 		/* Found; decrement use count */
-		if (c->uses < use_count)
-			BHND_NV_PANIC("%zu < %zu", c->uses, use_count);
+		if (c->use_count < use_count)
+			BHND_NV_PANIC("%zu < %zu", c->use_count, use_count);
 
-		c->uses -= use_count;
+		c->use_count -= use_count;
 
 		/* If the count hits zero, deallocate the consumer entry */
-		if (c->uses == 0) {
+		if (c->use_count == 0) {
 			LIST_REMOVE(c, nc_link);
 			BHND_NVREF_RELEASE(c, refs, bhnd_nvram_consumer_fini);
 
@@ -516,15 +518,17 @@ bhnd_nvram_provider_remove_consumer(struct bhnd_nvram_provider *provider,
  * 
  * @retval 0		success
  * @retval ENODEV	if @p provider is marked for removal.
+ * @retval EAGAIN	if incrementing @p provider's busy count would trigger
+ *			an overflow.
  */
 static int
 bhnd_nvram_provider_busy(struct bhnd_nvram_provider *provider)
 {
 	int error;
 
-	BHND_NVPROV_LOCK_RD(provider);
+	BHND_NVPROV_LOCK_RW(provider);
 	error = bhnd_nvram_provider_busy_locked(provider);
-	BHND_NVPROV_UNLOCK_RD(provider);
+	BHND_NVPROV_UNLOCK_RW(provider);
 
 	return (error);
 }
@@ -532,12 +536,16 @@ bhnd_nvram_provider_busy(struct bhnd_nvram_provider *provider)
 static int
 bhnd_nvram_provider_busy_locked(struct bhnd_nvram_provider *provider)
 {
-	BHND_NVPROV_LOCK_ASSERT(provider, SA_LOCKED);
+	BHND_NVPROV_LOCK_ASSERT(provider, SA_XLOCKED);
 
 	if (provider->state != BHND_NVRAM_PROV_ACTIVE)
 		return (ENODEV);
 
-	refcount_acquire(&provider->busy);
+	if (provider->busy == SIZE_MAX)
+		return (EAGAIN);
+
+	provider->busy++;
+
 	return (0);
 }
 
@@ -553,20 +561,22 @@ bhnd_nvram_provider_busy_locked(struct bhnd_nvram_provider *provider)
 static void
 bhnd_nvram_provider_unbusy(struct bhnd_nvram_provider *provider)
 {
-	BHND_NVPROV_LOCK_RD(provider);
+	BHND_NVPROV_LOCK_RW(provider);
 	bhnd_nvram_provider_unbusy_locked(provider);
-	BHND_NVPROV_UNLOCK_RD(provider);
+	BHND_NVPROV_UNLOCK_RW(provider);
 }
 
 static void
 bhnd_nvram_provider_unbusy_locked(struct bhnd_nvram_provider *provider)
 {
-	BHND_NVPROV_LOCK_ASSERT(provider, SA_LOCKED);
+	BHND_NVPROV_LOCK_ASSERT(provider, SA_XLOCKED);
 	BHND_NVPROV_ASSERT_ACTIVE(provider);
 
-	if (refcount_release(&provider->busy)) {
-		/* Wake up any threads waiting for the busy count to hit
-		 * zero */
+	BHND_NV_ASSERT(provider->busy > 0, ("busy count underflow"));
+	provider->busy--;
+
+	if (provider->busy == 0) {
+		/* Wake up any threads waiting for the busy count to hit zero */
 		BHND_NVPROV_LOCK_WAKEUP(provider);
 	}
 }

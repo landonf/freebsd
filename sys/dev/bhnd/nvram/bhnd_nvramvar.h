@@ -91,7 +91,7 @@ struct bhnd_nvpath_str {
  */
 struct bhnd_nvram_consumer {
 	struct bhnd_nvram_plane		*plane;		/**< referencing plane (weak ref) */
-	size_t				 uses;		/**< the number of plane references */
+	size_t				 use_count;	/**< the number of plane references */
 
 	struct bhnd_nvref		 refs;
 	LIST_ENTRY(bhnd_nvram_consumer)	 nc_link;
@@ -190,8 +190,7 @@ struct bhnd_nvram_provider {
 	device_t			 dev;		/**< device */
 	struct bhnd_nvram_consumer_list	 consumers;	/**< all consumers */
 	bhnd_nvram_prov_state		 state;		/**< current provider state */
-	volatile u_int			 busy;		/**< busy count. may be incremented
-							     atomically with read lock held. */
+	size_t				 busy;		/**< busy count. */
 
 #ifdef _KERNEL
 	struct sx			 prov_lock;
