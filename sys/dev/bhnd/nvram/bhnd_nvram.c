@@ -48,35 +48,45 @@ __FBSDID("$FreeBSD$");
 MALLOC_DEFINE(M_BHND_NVRAM, "bhnd_nvram", "BHND NVRAM data");
 #endif /* _KERNEL */
 
-static struct bhnd_nvpath_str	*bhnd_nvpath_str_new(const char *pathname,
-				     size_t pathlen);
-static struct bhnd_nvpath_str	*bhnd_nvpath_str_append(const char *pathname,
-				     size_t pathlen, const char *name,
-				     size_t namelen);
-static void			 bhnd_nvpath_str_fini(
-				     struct bhnd_nvpath_str *path);
+static int			 bhnd_nvpath_new(struct bhnd_nvpath **path,
+				     const char *pathname, size_t pathlen);
+static int			 bhnd_nvpath_append_name(
+				     struct bhnd_nvpath **path,
+				     struct bhnd_nvpath *parent,
+				     const char *name, size_t namelen);
+
+struct bhnd_nvpath		*bhnd_nvpath_retain(struct bhnd_nvpath *path);
+void				 bhnd_nvpath_release(struct bhnd_nvpath *path);
+
+static void			 bhnd_nvpath_fini(struct bhnd_nvpath *path);
 
 static bhnd_nvram_consumer	*bhnd_nvram_consumer_new(
 				     struct bhnd_nvram_plane *plane);
 static void			 bhnd_nvram_consumer_fini(
 				     struct bhnd_nvram_consumer *consumer);
 
-static struct bhnd_nvram_link	*bhnd_nvram_link_new(const char *name,
-				     size_t namelen,
-				     struct bhnd_nvram_link *parent,
-				     struct bhnd_nvram_provider *prov,
-				     struct bhnd_nvpath_str *prov_path);
+static struct bhnd_nvram_entry	*bhnd_nvram_entry_new(
+				     struct bhnd_nvram_provider *provider,
+				     struct bhnd_nvpath *path);
+static void			 bhnd_nvram_entry_fini(
+				     struct bhnd_nvram_entry *entry);
+
 static void			 bhnd_nvram_link_free(
 				     struct bhnd_nvram_link *link);
 
-static void			 bhnd_nvram_link_clear_provider(
+static int			 bhnd_nvram_link_set_entry(
+				     struct bhnd_nvram_plane *plane,
+				     struct bhnd_nvram_link *link,
+				     struct bhnd_nvram_entry *entry);
+static void			 bhnd_nvram_link_clear_entry(
+				     struct bhnd_nvram_plane *plane,
 				     struct bhnd_nvram_link *link);
 
 static int			 bhnd_nvram_link_insert(
+				     struct bhnd_nvram_link **link,
 				     struct bhnd_nvram_plane *plane,
-				     struct bhnd_nvram_link *cwd,
-				     const char *pathname, size_t pathlen,
-				     struct bhnd_nvram_link **link);
+				     struct bhnd_nvpath *path,
+				     struct bhnd_nvram_entry *entry);
 static struct bhnd_nvram_link	*bhnd_nvram_link_resolve(
 				     struct bhnd_nvram_plane *plane,
 				     struct bhnd_nvram_link *cwd,
@@ -132,118 +142,126 @@ static void			 bhnd_nvram_provider_unbusy_locked(
  * 
  * The caller is responsible for releasing the returned path instance.
  * 
- * @param pathname	A fully qualified path in normalized (canonical) form.
- * @param pathlen	The length of @p pathname.
+ * @param[out]	path		On success, the newly allocated NVRAM path
+ *				string.
+ * @param	pathname	A fully qualified, normalized path.
+ * @param	pathlen		The length of @p pathname.
  * 
- * @retval NULL if allocation fails.
+ * @retval 0		success
+ * @retval ENOMEM	if allocation fails.
+ * @retval EINVAL	if @p pathname is not in fully-qualified, normalized
+ *			form.
  */
-static struct bhnd_nvpath_str *
-bhnd_nvpath_str_new(const char *pathname, size_t pathlen)
+static int
+bhnd_nvpath_new(struct bhnd_nvpath **path, const char *pathname,
+    size_t pathlen)
 {
-	return (bhnd_nvpath_str_append(pathname, pathlen, NULL, 0));
+	struct bhnd_nvpath *p;
+
+	/* Validate path */
+	if (!bhnd_nvram_is_qualified_path(pathname, pathlen))
+		return (EINVAL);
+
+	if (!bhnd_nvram_is_normalized_path(pathname, pathlen))
+		return (EINVAL);
+
+	/* Allocate new path instance */
+	if ((p = bhnd_nv_calloc(1, sizeof(*p))) == NULL)
+		return (ENOMEM);
+
+	BHND_NVREF_INIT(&p->refs);
+
+	/* Copy path name */
+	p->pathname = bhnd_nv_strndup(pathname, pathlen);
+	if (p->pathname == NULL) {
+		bhnd_nv_free(p);
+		return (ENOMEM);
+	}
+	p->pathlen = strlen(p->pathname);
+
+	/* Populate path's base name */
+	p->basename = bhnd_nvram_parse_path_filename(p->pathname, p->pathlen,
+	    &p->baselen);
+
+	/* Success */
+	*path = p;
+	return (0);
 }
 
 /**
- * Allocate and return a new path string by appending @p name to @p pathname.
+ * Allocate and return a new path by appending @p name to @p parent.
  * 
- * The returned path string will be fully normalized.
+ * @param[out]	path	On success, the new path instance.
+ * @param	parent	The parent path.
+ * @param	name	The single path component to append to @p parent.
+ * @param	namelen	The length of @p name.
  * 
- * The caller is responsible for releasing the returned path instance.
- *
- * @param	pathname	The parent path.
- * @param	pathlen		The length of @p pathname.
- * @param	name		The path component to be appended.
- * @param	namelen		The length of @p name.
- * 
- * @retval non-NULL	success
- * @retval NULL		if allocation fails.
+ * @retval 0		success
+ * @retval ENOMEM	if allocation fails.
+ * @retval EINVAL	if @p name is not a valid, relative path component.
  */
-static struct bhnd_nvpath_str *
-bhnd_nvpath_str_append(const char *pathname, size_t pathlen, const char *name,
-    size_t namelen)
+static int
+bhnd_nvpath_append_name(struct bhnd_nvpath **path, struct bhnd_nvpath *parent,
+    const char *name, size_t namelen)
 {
-	struct bhnd_nvpath_str	*path;
-	char			*pathbuf;
-	size_t			 bufsize, baselen;
-	bool			 need_delim;
+	char	*buf;
+	size_t	 bufsize;
+	int	 error;
 
-	/* Map NULL zero-length strings to valid empty string pointers */
-	if (pathname == NULL) {
-		BHND_NV_ASSERT(pathlen == 0, ("NULL pathname"));
-		pathname = "";
-	}
+	/* Cannot contain ".." or ".", etc */
+	if (!bhnd_nvram_is_normalized_path(name, namelen))
+		return (EINVAL);
 
-	if (name == NULL) {
-		BHND_NV_ASSERT(namelen == 0, ("NULL name"));
-		name = "";
-	}
+	/* Must not contain path delimiter */
+	if (memchr(name, '/', namelen) != NULL)
+		return (EINVAL);
 
-	/* Calculate the lengths minus any trailing NUL */
+	/* Calculate namelen minus any trailing NUL */
 	namelen = strnlen(name, namelen);
-	pathlen = strnlen(pathname, pathlen);
 
-	/* Do we need to insert a '/' delimiter? Only necessary if both
-	 * strings to be appended are non-empty. */
-	need_delim = false;
-	if (namelen > 0 && pathlen > 0) {
-		if ((pathname[pathlen-1] != '/') && (name[0] != '/'))
-			need_delim = true;
-	}
+	/* Determine total concatenated length of parent + '/' + name + '\0' */
+	bufsize = namelen + 1; /* '\0' */
 
-	/* Determine total concatenated length of path + / + name + '\0' */
-	baselen = pathlen;
-	if (need_delim)
-		baselen += 1; /* '/' */
+	if (SIZE_MAX - (parent->pathlen + 1 /* '/' */) < bufsize)
+		return (ENOMEM); /* size_t would overflow */
 
-	bufsize = baselen + namelen + 1 /* '\0' */;
+	bufsize += parent->pathlen + 1;
 
 	/* Produce concatenated path */
-	if ((pathbuf = bhnd_nv_malloc(bufsize)) == NULL)
-		return (NULL);
+	if ((buf = bhnd_nv_malloc(bufsize)) == NULL)
+		return (ENOMEM);
 
-	strncpy(pathbuf, pathname, pathlen);
-	if (need_delim) {
-		BHND_NV_ASSERT(baselen > 0, ("invalid base length"));
-		pathbuf[baselen - 1] = '/';
-	}
-	strncpy(pathbuf+baselen, name, namelen);
+	strcpy(buf, parent->pathname);
+
+	BHND_NV_ASSERT(parent->pathlen > 0, ("invalid base length"));
+	buf[parent->pathlen] = '/';
+
+	strncpy(buf+parent->pathlen+1, name, namelen);
 
 	BHND_NV_ASSERT(bufsize > 0, ("invalid bufsize"));
-	pathbuf[bufsize-1] = '\0';
-
-	/* If required, normalize path string */
-	if (!bhnd_nvram_is_normalized_path(pathbuf, bufsize)) {
-		char	*nbuf;
-
-		if ((nbuf = bhnd_nv_malloc(bufsize)) == NULL) {
-			bhnd_nv_free(pathbuf);
-			return (NULL);
-		}
-
-		bhnd_nvram_normalize_path(pathbuf, bufsize, nbuf, bufsize);
-		bhnd_nv_free(pathbuf);
-		pathbuf = nbuf;
-	}
+	buf[bufsize-1] = '\0';
 
 	/* Allocate new path instance */
-	if ((path = bhnd_nv_calloc(1, sizeof(*path))) == NULL) {
-		bhnd_nv_free(pathbuf);
-		return (NULL);
-	}
+	error = bhnd_nvpath_new(path, buf, bufsize);
+	bhnd_nv_free(buf);
 
-	BHND_NVREF_INIT(&path->refs);
-	path->pathname = pathbuf;
-	path->pathlen = strlen(pathbuf);
+	return (error);
+}
 
-	/* Populate path's base name */
-	path->basename = bhnd_nvram_parse_path_filename(path->pathname,
-	    path->pathlen, &path->baselen);
+struct bhnd_nvpath *
+bhnd_nvpath_retain(struct bhnd_nvpath *path)
+{
+	return (BHND_NVREF_RETAIN(path, refs));
+}
 
-	return (path);
+void
+bhnd_nvpath_release(struct bhnd_nvpath *path)
+{
+	BHND_NVREF_RELEASE(path, refs, bhnd_nvpath_fini);
 }
 
 static void
-bhnd_nvpath_str_fini(struct bhnd_nvpath_str *path)
+bhnd_nvpath_fini(struct bhnd_nvpath *path)
 {
 	bhnd_nv_free(path->pathname);
 }
@@ -280,6 +298,42 @@ static void
 bhnd_nvram_consumer_fini(struct bhnd_nvram_consumer *consumer)
 {
 	BHND_NVREF_RELEASE_WEAK(consumer->plane, refs);
+}
+
+/**
+ * Allocate, initialize, and return a new NVRAM entry.
+ * 
+ * The caller is responsible for releasing the returned entry.
+ * 
+ * @param provider	The NVRAM entry's data provider.
+ * @param path		The NVRAM entry's canonical (provider-defined) path.
+ * 
+ * @retval non-NULL	success.
+ * @retval NULL		if allocation fails.
+ */
+static struct bhnd_nvram_entry *
+bhnd_nvram_entry_new(struct bhnd_nvram_provider *provider,
+    struct bhnd_nvpath *path)
+{
+	struct bhnd_nvram_entry *entry;
+
+	entry = bhnd_nv_calloc(1, sizeof(*entry));
+	if (entry == NULL)
+		return (NULL);
+
+	BHND_NVREF_INIT(&entry->refs);
+
+	entry->provider = BHND_NVREF_RETAIN(provider, refs);
+	entry->path = bhnd_nvpath_retain(path);
+
+	return (entry);
+}
+
+static void
+bhnd_nvram_entry_fini(struct bhnd_nvram_entry *entry)
+{
+	BHND_NVREF_RELEASE(entry->provider, refs, bhnd_nvram_provider_fini);
+	bhnd_nvpath_release(entry->path);
 }
 
 /**
@@ -322,8 +376,8 @@ bhnd_nvram_provider_new(device_t dev)
  *   being dispatched to the device, and then sleep until all outstanding
  *   requests have completed.
  * - Remove all consumer references to the provider, including any paths
- *   registered via bhnd_nvram_register_paths(), or paths re-exported to
- *   additional NVRAM planes.
+ *   registered via bhnd_nvram_plane_register_paths() or
+ *   bhnd_nvram_plane_map_entry().
  * - Release the caller's strong reference to provider, allowing deallocation
  *   of the provider and associated resources.
  * 
@@ -581,77 +635,9 @@ bhnd_nvram_provider_unbusy_locked(struct bhnd_nvram_provider *provider)
 	}
 }
 
-
-/**
- * Allocate, initialize, and return an unconnected adjacency list link node.
- * 
- * The caller is responsible for deallocating the returned link via
- * bhnd_nvram_link_free()
- *
- * @param name		The path name relative to @p parent.
- * @param namelen	The length of @p name.
- * @param parent	The link's parent path, or NULL if none.
- * @param prov		The link's provider, or NULL.
- * @param prov_path	If @p prov is non-NULL, the provider's canonical path
- *			for this link.
- * 
- * @retval non-NULL	success
- * @retval NULL		if allocation fails
- */
-static struct bhnd_nvram_link *
-bhnd_nvram_link_new(const char *name, size_t namelen,
-    struct bhnd_nvram_link *parent, struct bhnd_nvram_provider *prov,
-    struct bhnd_nvpath_str *prov_path)
-{
-	struct bhnd_nvram_link *link;
-
-	BHND_NV_ASSERT(prov == NULL || prov_path != NULL,
-		("prov/prov_path must be NULL or non-NULL"));
-
-	link = bhnd_nv_calloc(1, sizeof(*link));
-	if (link == NULL)
-		return (NULL);
-
-	LIST_INIT(&link->children);
-
-	/* Allocate full path */
-	if (parent == NULL) {
-		link->path = bhnd_nvpath_str_new(name, namelen);
-	} else {
-		link->path = bhnd_nvpath_str_append(parent->path->pathname,
-		    parent->path->pathlen, name, namelen);
-	}
-
-	if (link->path == NULL) {
-		bhnd_nv_free(link);
-		return (NULL);
-	}
-
-	BHND_NV_ASSERT(
-	    bhnd_nvram_is_normalized_path(link->path->pathname,
-		link->path->pathlen) &&
-	    bhnd_nvram_is_qualified_path(link->path->pathname,
-		link->path->pathlen),
-	    ("invalid path: %s", link->path->pathname));
-
-	/* Connect to parent */
-	if (parent != NULL) {
-		link->parent = parent;
-		LIST_INSERT_HEAD(&parent->children, link, child_link);
-	}
-
-	/* Retain provider reference */
-	if (prov != NULL) {
-		link->prov = BHND_NVREF_RETAIN(prov, refs);
-		link->prov_path = BHND_NVREF_RETAIN(prov_path, refs);
-	}
-
-	return (link);
-}
-
 /**
  * Free a link instance and all of its children. The link (and all of its
- * children) must not have an assigned provider.
+ * children) must not have a backing NVRAM entry.
  *
  * @param link	The link to be freed.
  */
@@ -673,8 +659,8 @@ bhnd_nvram_link_free(struct bhnd_nvram_link *link)
 	while (cwd != NULL) {
 		struct bhnd_nvram_link *parent;
 
-		/* Must not have an active provider */
-		BHND_NV_ASSERT(cwd->prov == NULL, ("active provider"));
+		/* Must not have a backing entry assigned */
+		BHND_NV_ASSERT(cwd->entry == NULL, ("active link"));
 
 		/* Once we hit a leaf node, free the node and then try
 		 * to walk upwards */
@@ -686,8 +672,7 @@ bhnd_nvram_link_free(struct bhnd_nvram_link *link)
 				LIST_REMOVE(cwd, child_link);
 
 			/* Release the path string */
-			BHND_NVREF_RELEASE(cwd->path, refs,
-			    bhnd_nvpath_str_fini);			
+			bhnd_nvpath_release(cwd->path);
 
 			/* Free the link allocation */
 			bhnd_nv_free(cwd);
@@ -704,18 +689,57 @@ bhnd_nvram_link_free(struct bhnd_nvram_link *link)
 }
 
 /**
- * Clear all provider-specific state in @p link.
+ * Attempt to set the backing entry reference in @p link.
  * 
+ * @param plane	The NVRAM plane.
+ * @param link	The link to be modified.
+ * @param entry	The new entry reference to be set.
+ * 
+ * @retval 0		success
+ * @retval EEXIST	if @p link has an existing entry reference.
+ */
+static int
+bhnd_nvram_link_set_entry(struct bhnd_nvram_plane *plane,
+    struct bhnd_nvram_link *link, struct bhnd_nvram_entry *entry)
+{
+	size_t bucket;
+
+	BHND_NVPLANE_LOCK_ASSERT(plane, SA_XLOCKED);
+
+	if (link->entry != NULL)
+		return (EEXIST);
+
+	/* Save entry reference */
+	link->entry = BHND_NVREF_RETAIN(entry, refs);
+
+	/* Insert in provider->link map */
+	bucket = (uintptr_t)entry->provider % nitems(plane->prov_map);
+	LIST_INSERT_HEAD(&plane->prov_map[bucket], link, hash_link);
+
+	return (0);
+}
+
+/**
+ * Clear the backing entry reference in @p link.
+ * 
+ * @param plane	The NVRAM plane.
  * @param link	The link to be modified.
  */
 static void
-bhnd_nvram_link_clear_provider(struct bhnd_nvram_link *link)
+bhnd_nvram_link_clear_entry(struct bhnd_nvram_plane *plane,
+    struct bhnd_nvram_link *link)
 {
-	BHND_NVREF_RELEASE(link->prov, refs, bhnd_nvram_provider_fini);
-	BHND_NVREF_RELEASE(link->prov_path, refs, bhnd_nvpath_str_fini);
+	BHND_NVPLANE_LOCK_ASSERT(plane, SA_XLOCKED);
 
-	link->prov = NULL;
-	link->prov_path = NULL;
+	if (link->entry == NULL)
+		return;
+
+	/* Clear entry reference */
+	BHND_NVREF_RELEASE(link->entry, refs, bhnd_nvram_entry_fini);
+	link->entry = NULL;
+
+	/* Remove from provider->link map */
+	LIST_REMOVE(link, hash_link);
 }
 
 /**
@@ -723,70 +747,78 @@ bhnd_nvram_link_clear_provider(struct bhnd_nvram_link *link)
  * in @p plane, returning a borrowed reference to the link.
  *
  * @param	plane		The NVRAM plane.
- * @param	cwd		The 'current working directory' from which
- *				relative paths will be resolved, or NULL if
- *				only fully qualified paths should be permitted.
- * @param	pathname	The name of the NVRAM path entry to be added.
- * @param	pathlen		The length of @p pathname.
+ * @param	path		The NVRAM path entry to be created or fetched.
+ * @param	entry		The backing entry to be set on the link, or
+ *				NULL if none.
  * @param[out]	link		On success, the newly inserted link.
  *
  * @retval 0		success
  * @retval EINVAL	if @p cwd is NULL and @p pathname is a relative path.
  * @retval EINVAL	if @p pathname is invalid.
+ * @retval EEXIST	if @p entry is non-NULL and an entry is already
+ *			registered for the existing adjacency list link at
+ *			@p pathname.
  * @retval ENOMEM	if allocation fails.
  */
 static int
-bhnd_nvram_link_insert(struct bhnd_nvram_plane *plane,
-    struct bhnd_nvram_link *cwd, const char *pathname, size_t pathlen,
-    struct bhnd_nvram_link **link)
+bhnd_nvram_link_insert(struct bhnd_nvram_link **link,
+    struct bhnd_nvram_plane *plane, struct bhnd_nvpath *path,
+    struct bhnd_nvram_entry *entry)
 {
-	const char	*basename, *name;
-	size_t		 namelen, baselen;
-	int		 error;
+	struct bhnd_nvram_link	*cwd;
+	const char		*name;
+	size_t			 namelen;
+	int			 error;
 
 	BHND_NVPLANE_LOCK_ASSERT(plane, SA_XLOCKED);
 
-	/* The basename must be non-empty, and must be a normalized path
-	 * component (i.e. not one of ".", "..") */
-	basename = bhnd_nvram_parse_path_filename(pathname, pathlen, &baselen);
-	if (baselen == 0 || !bhnd_nvram_is_normalized_path(basename, baselen))
-		return (EINVAL);
-
-	/* Determine the initial search path */
-	name = NULL;
-	name = bhnd_nvram_parse_path_next(pathname, pathlen, name, &namelen);
-
-	if (namelen == 1 && *name == '/') {
-		cwd = plane->root;
-	} else {
-		if (cwd == NULL)
-			return (EINVAL);
-
-		/* restart path walking at the first element */
-		name = NULL;
-	}
+	cwd = plane->root;
 
 	/* Walk the input path, resolving or creating all path components */
 	name = NULL;
-	while ((name = bhnd_nvram_parse_path_next(pathname, pathlen, name,
-	    &namelen)) != NULL)
+	while ((name = bhnd_nvram_parse_path_next(path->pathname, path->pathlen,
+	    name, &namelen)) != NULL)
 	{
-		struct bhnd_nvram_link *next;
+		struct bhnd_nvram_link	*next;
 
 		/* Resolve or create the next path component's link */
 		next = bhnd_nvram_link_resolve(plane, cwd, name, namelen);
 		if (next == NULL) {
-			/* Not found; create a new link node */
-			next = bhnd_nvram_link_new(name, namelen, cwd, NULL,
-			    NULL);
+			struct bhnd_nvpath *next_path;
+
+			/* Allocate path instance */
+			error = bhnd_nvpath_append_name(&next_path, cwd->path,
+			    name, namelen);
+			if (error)
+				goto failed;
+
+			/* Allocate new link instance */
+			next = bhnd_nv_calloc(1, sizeof(*next));
 			if (next == NULL) {
+				bhnd_nvpath_release(next_path);
+
 				error = ENOMEM;
 				goto failed;
 			}
+
+			LIST_INIT(&next->children);
+
+			/* Transfer ownership of next_path to the link */
+			next->path = next_path;
+
+			/* Connect to parent */
+			next->parent = cwd;
+			LIST_INSERT_HEAD(&cwd->children, next, child_link);
 		}
 
 		/* Replace cwd with new link and continue resolution */
 		cwd = next;
+	}
+
+	/* Try to set the entry reference, if any */
+	if (entry != NULL) {
+		if ((error = bhnd_nvram_link_set_entry(plane, cwd, entry)))
+			goto failed;
 	}
 
 	*link = cwd;
@@ -910,9 +942,16 @@ bhnd_nvram_plane_new(struct bhnd_nvram_plane *parent)
 	for (size_t i = 0; i < nitems(plane->prov_map); i++)
 		LIST_INIT(&plane->prov_map[i]);
 
-	/* Create our persistent root entry */
-	plane->root = bhnd_nvram_link_new("/", strlen("/"), NULL, NULL, NULL);
+	/* Create our persistent root link */
+	plane->root = bhnd_nv_calloc(1, sizeof(*plane->root));
 	if (plane->root == NULL) {
+		bhnd_nvram_plane_release(plane);
+		return (NULL);
+	}
+
+	LIST_INIT(&plane->root->children);
+	if (bhnd_nvpath_new(&plane->root->path, "/", strlen("/")) != 0) {
+		bhnd_nv_free(plane->root);
 		bhnd_nvram_plane_release(plane);
 		return (NULL);
 	}
@@ -952,17 +991,20 @@ bhnd_nvram_plane_fini(struct bhnd_nvram_plane *plane)
 		LIST_FOREACH_SAFE(link, &plane->prov_map[i], hash_link, lnext) {
 			struct bhnd_nvram_provider *prov;
 
-			prov = link->prov;
-			BHND_NV_ASSERT(prov != NULL, ("missing provider"));
-			
-			/* Clear the link's provider state */
-			bhnd_nvram_link_clear_provider(link);
+			BHND_NV_ASSERT(link->entry != NULL, ("missing entry"));
 
-			/* Remove from the plane's provider->link map */
-			LIST_REMOVE(link, hash_link);
+			/* Save a reference to the provider */
+			prov = BHND_NVREF_RETAIN(link->entry->provider, refs);
 
-			/* Release the provider's consumer reference */
+			/* Clear the link's entry state */
+			bhnd_nvram_link_clear_entry(plane, link);
+
+			/* Release the provider's reference to this consumer */
 			bhnd_nvram_provider_remove_consumer(prov, plane, 1);
+
+			/* Release our provider reference */
+			BHND_NVREF_RELEASE(prov, refs,
+			    bhnd_nvram_provider_fini);
 		}
 	}
 
@@ -1041,8 +1083,8 @@ bhnd_nvram_plane_is_leaf(struct bhnd_nvram_plane *plane,
 	BHND_NV_ASSERT(strcmp(link->path->pathname, "/") != 0,
 	    ("non-root link with / path"));
 
-	/* Must not have an active provider reference */
-	if (link->prov != NULL)
+	/* Must not have a backing NVRAM entry */
+	if (link->entry != NULL)
 		return (false);
 
 	/* Must not have active children */
@@ -1099,15 +1141,15 @@ bhnd_nvram_plane_remove_provider(struct bhnd_nvram_plane *plane,
 	num_refs = 0;
 	bucket = (uintptr_t)provider % nitems(plane->prov_map);
 	LIST_FOREACH_SAFE(link, &plane->prov_map[bucket], hash_link, lnext) {
+		BHND_NV_ASSERT(link->entry != NULL, ("missing entry"));
+
 		/* Skip non-matching provider entries */
-		if (link->prov != provider)
+		if (link->entry->provider != provider)
 			continue;
 
-		/* Clear link's provider state */
-		bhnd_nvram_link_clear_provider(link);
-
-		/* Remove from the plane's provider->link map */
-		LIST_REMOVE(link, hash_link);
+		/* Clear link's provider state and remove from the 
+		 * provider -> link map */
+		bhnd_nvram_link_clear_entry(plane, link);
 
 		/* Clean up any leaf link nodes */
 		bhnd_nvram_plane_try_remove(plane, link);
@@ -1145,32 +1187,21 @@ bhnd_nvram_plane_remove_provider(struct bhnd_nvram_plane *plane,
  * @retval ENOMEM	if allocation fails.
  */
 int
-bhnd_nvram_register_paths(struct bhnd_nvram_plane *plane,
+bhnd_nvram_plane_register_paths(struct bhnd_nvram_plane *plane,
     struct bhnd_nvram_provider *provider, char *pathnames[],
     size_t num_pathnames)
 {
-	size_t	prov_bucket;
+	size_t	prov_bucket, num_links;
 	int	error;
 
 	/* Skip if no paths are provided */
 	if (num_pathnames == 0)
 		return (0);
 
-	/* Validate all paths */
+	/* Check for duplicate paths */
 	for (size_t i = 0; i < num_pathnames; i++) {
-		const char	*pathname;
-		size_t		 pathlen;
-		
-		pathname = pathnames[i];
-		pathlen = strlen(pathname);
+		const char *pathname = pathnames[i];
 
-		if (!bhnd_nvram_is_qualified_path(pathname, pathlen))
-			return (EINVAL);
-
-		if (!bhnd_nvram_is_normalized_path(pathname, pathlen))
-			return (EINVAL);
-
-		/* No duplicates */
 		for (size_t j = 0; j < i; j++) {
 			if (strcmp(pathname, pathnames[j]) == 0) {
 				BHND_NV_LOG("duplicate path: %s\n", pathname);
@@ -1199,59 +1230,37 @@ bhnd_nvram_register_paths(struct bhnd_nvram_plane *plane,
 
 	prov_bucket = (uintptr_t)provider % nitems(plane->prov_map);
 
-	/* Verify that none of the requested links have an existing provider
-	 * attached */
+	num_links = 0;
 	for (size_t i = 0; i < num_pathnames; i++) {
+		struct bhnd_nvram_entry	*entry;
 		struct bhnd_nvram_link	*link;
-		const char		*pathname;
-		size_t			 pathlen;
+		struct bhnd_nvpath	*path;
 
-		pathname = pathnames[i];
-		pathlen = strlen(pathname);
+		/* Allocate path instance */
+		error = bhnd_nvpath_new(&path, pathnames[i],
+		    strlen(pathnames[i]));
+		if (error)
+			goto failed;
+
+		/* Allocate entry for this path */
+		entry = bhnd_nvram_entry_new(provider, path);
+		bhnd_nvpath_release(path);
+
+		if (entry == NULL) {
+			error = ENOMEM;
+			goto failed;
+		}
 
 		/* Fetch or create a new link node */
-		error = bhnd_nvram_link_insert(plane, NULL, pathname, pathlen,
-		    &link);
-		if (error == 0 && link->prov != NULL) {
-			/* An existing link was found, but it already has a
-			 * provider assigned */
-			error = EEXIST;
-		}
+		error = bhnd_nvram_link_insert(&link, plane, entry->path,
+		    entry);
+		BHND_NVREF_RELEASE(entry, refs, bhnd_nvram_entry_fini);
 
-		/* On failure, we need to clean up all previously inserted
-		 * links and return the error */
-		if (error) {
-			for (size_t j = 0; j < i; j++) {
-				/* Clear link's provider state */
-				bhnd_nvram_link_clear_provider(link);
+		if (error)
+			goto failed;
 
-				/* Remove from the plane's provider->link map */
-				LIST_REMOVE(link, hash_link);
-
-				/* Try to remove the link */
-				bhnd_nvram_plane_try_remove(plane, link);
-			}
-
-			/* Drop our plane lock before modifying the provider */
-			BHND_NVPLANE_UNLOCK_RW(plane);
-
-			/* Release the consumer references we added above */
-			bhnd_nvram_provider_remove_consumer(provider, plane,
-			    num_pathnames);
-
-			/* Release our reservation on the provider */
-			bhnd_nvram_provider_unbusy(provider);
-
-			return (error);
-		}
-
-		/* Assign new provider and mark as pending */
-		link->prov = BHND_NVREF_RETAIN(provider, refs);
-		link->prov_path = BHND_NVREF_RETAIN(link->path, refs);
-
-		/* Insert in provider->link map */
-		LIST_INSERT_HEAD(&plane->prov_map[prov_bucket], link,
-		    hash_link);
+		/* Increment count of successfully added links */
+		num_links++;
 	}
 
 	BHND_NVPLANE_UNLOCK_RW(plane);
@@ -1262,11 +1271,46 @@ bhnd_nvram_register_paths(struct bhnd_nvram_plane *plane,
 	bhnd_nvram_provider_unbusy(provider);
 
 	return (0);
+
+failed:
+	/* Lock must still be held */
+	BHND_NVPLANE_LOCK_ASSERT(plane, SA_XLOCKED);
+
+	/* Clean up all previously inserted links */
+	for (size_t i = 0; i < num_links; i++) {
+		struct bhnd_nvram_link	*link;
+		const char		*pathname;
+		size_t			 pathlen;
+
+		pathname = pathnames[i];
+		pathlen = strlen(pathname);
+		link = bhnd_nvram_link_resolve(plane, NULL, pathname, pathlen);
+
+		BHND_NV_ASSERT(link != NULL, ("missing link"));
+
+		/* Clear link's backing entry */
+		bhnd_nvram_link_clear_entry(plane, link);
+
+		/* Try to remove the link */
+		bhnd_nvram_plane_try_remove(plane, link);
+	}
+
+	/* Drop our plane lock before modifying the provider */
+	BHND_NVPLANE_UNLOCK_RW(plane);
+
+	/* Release the consumer references we added above */
+	bhnd_nvram_provider_remove_consumer(provider, plane,
+	    num_pathnames);
+
+	/* Release our reservation on the provider */
+	bhnd_nvram_provider_unbusy(provider);
+
+	return (error);
 }
 
 /**
  * Deregister NVRAM paths previously registered via
- * bhnd_nvram_register_paths().
+ * bhnd_nvram_plane_register_paths().
  * 
  * If a path is currently mapped by a provider other than @p provider, the
  * request to deregister the path will be ignored.
@@ -1279,7 +1323,7 @@ bhnd_nvram_register_paths(struct bhnd_nvram_plane *plane,
  * @param	num_pathnames	The number of @p pathnames.
  */
 void
-bhnd_nvram_deregister_paths(struct bhnd_nvram_plane *plane,
+bhnd_nvram_plane_deregister_paths(struct bhnd_nvram_plane *plane,
     struct bhnd_nvram_provider *provider, char *pathnames[],
     size_t num_pathnames)
 {
@@ -1294,22 +1338,24 @@ bhnd_nvram_deregister_paths(struct bhnd_nvram_plane *plane,
 	prov_map = &plane->prov_map[bucket];
 
 	LIST_FOREACH_SAFE(link, prov_map, hash_link, lnext) {
+		struct bhnd_nvram_entry *entry;
+
 		/* Provider must match */
-		if (link->prov != provider)
+		if ((entry = link->entry) == NULL)
+			continue;
+
+		if (entry->provider != provider)
 			continue;
 
 		/* Path must match */
 		for (size_t i = 0; i < num_pathnames; i++) {
 			const char *pathname = pathnames[i];
 
-			if (strcmp(pathname, link->path->pathname) != 0)
+			if (strcmp(pathname, entry->path->pathname) != 0)
 				continue;
 
 			/* Clear link's provider state */
-			bhnd_nvram_link_clear_provider(link);
-
-			/* Remove from the plane's provider->link map */
-			LIST_REMOVE(link, hash_link);
+			bhnd_nvram_link_clear_entry(plane, link);
 
 			/* Clean up any leaf link nodes */
 			bhnd_nvram_plane_try_remove(plane, link);
@@ -1333,6 +1379,76 @@ bhnd_nvram_deregister_paths(struct bhnd_nvram_plane *plane,
 	/* With the plane now unlocked, release our consumer reference(s) to
 	 * the provider */
 	bhnd_nvram_provider_remove_consumer(provider, plane, use_count);
+}
+
+/**
+ * Map an NVRAM entry into @p plane at @p pathname.
+ * 
+ * @param	plane		The NVRAM plane in which @p entry will be mapped.
+ * @param	entry		The NVRAM entry to be mapped.
+ * @param	pathname	Normalized, fully qualified path name at which
+ *				@p entry should be mapped in @p plane.
+ * 
+ * @retval 0		success.
+ * @retval EEXIST	if @p pathname is already registered in @p plane.
+ * @retval ENODEV	if the provider for @p entry is marked for removal.
+ * @retval ENOMEM	if allocation fails.
+ */
+int
+bhnd_nvram_plane_map_entry(struct bhnd_nvram_plane *plane,
+    struct bhnd_nvram_entry *entry, const char *pathname)
+{
+	struct bhnd_nvram_link	*link;
+	struct bhnd_nvpath	*path;
+	int			 error;
+
+	/* Parse and wrap the path name; this also verifies that the string
+	 * is a normalized, fully-qualified path */
+	error = bhnd_nvpath_new(&path, pathname, strlen(pathname));
+	if (error)
+		return (error);
+
+	/* Try to mark the provider as busy; this ensures that the provider
+	 * will not perform termination while we modify the plane */
+	if ((error = bhnd_nvram_provider_busy(entry->provider))) {
+		bhnd_nvpath_release(path);
+		return (error);
+	}
+
+	/* Register a consumer reference for the new mapping */
+	error = bhnd_nvram_provider_add_consumer(entry->provider, plane, 1);
+	if (error) {
+		bhnd_nvpath_release(path);
+		bhnd_nvram_provider_unbusy(entry->provider);
+		return (error);
+	}
+
+	/* Fetch or create a new link node, and set the backing entry */
+	BHND_NVPLANE_LOCK_RW(plane);
+
+	error = bhnd_nvram_link_insert(&link, plane, entry->path, entry);
+	bhnd_nvpath_release(path);
+
+	if (error)
+		goto failed;
+
+	BHND_NVPLANE_UNLOCK_RW(plane);
+
+	/* Release our reservation on the provider, allowing any pending
+	 * termination operations to proceed (which could include removing
+	 * the links we just added!) */
+	bhnd_nvram_provider_unbusy(entry->provider);
+
+	return (0);
+
+failed:
+	/* Release the consumer reference we added above */
+	bhnd_nvram_provider_remove_consumer(entry->provider, plane, 1);
+
+	/* Release our reservation on the provider */
+	bhnd_nvram_provider_unbusy(entry->provider);
+
+	return (error);
 }
 
 #if 0

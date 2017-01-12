@@ -142,7 +142,6 @@ const char		*bhnd_nvram_string_array_next(const char *inp,
 /* forward declarations */
 struct bhnd_nvram_entry;
 struct bhnd_nvram_plane;
-struct bhnd_nvram_plist;
 struct bhnd_nvram_provider;
 
 // XXX TODO
@@ -157,21 +156,23 @@ struct bhnd_nvram_plane		*bhnd_nvram_plane_retain(
 void				 bhnd_nvram_plane_release(
 				     struct bhnd_nvram_plane *plane);
 
-int				 bhnd_nvram_register_paths(
+int				 bhnd_nvram_plane_register_paths(
 				     struct bhnd_nvram_plane *plane,
 				     struct bhnd_nvram_provider *provider,
 				     char *pathnames[], size_t num_pathnames);
-void				 bhnd_nvram_deregister_paths(
+void				 bhnd_nvram_plane_deregister_paths(
 				     struct bhnd_nvram_plane *plane,
 				     struct bhnd_nvram_provider *provider,
 				     char *pathnames[], size_t num_pathnames);
+
+int				 bhnd_nvram_plane_map_entry(
+				     struct bhnd_nvram_plane *plane,
+				     struct bhnd_nvram_entry *entry,
+				     const char *pathname);
 
 struct bhnd_nvram_provider	*bhnd_nvram_provider_new(device_t dev);
 void				 bhnd_nvram_provider_destroy(
 				     struct bhnd_nvram_provider *provider);
-
-
-#if 0
 
 struct bhnd_nvram_entry	*bhnd_nvram_plane_get_root(
 			     struct bhnd_nvram_plane *plane);
@@ -181,6 +182,8 @@ struct bhnd_nvram_entry	*bhnd_nvram_plane_open_path(
 struct bhnd_nvram_entry	*bhnd_nvram_plane_find_path(
 			     struct bhnd_nvram_plane *plane,
 			     const char *pathname);
+
+#if 0
 
 struct bhnd_nvram_entry	*bhnd_nvram_retain_entry(
 			     struct bhnd_nvram_entry *entry);

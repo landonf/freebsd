@@ -126,8 +126,7 @@ bhnd_sprom_attach(device_t dev, bus_size_t offset)
 		goto failed;
 	}
 
-	/* Register our NVRAM path(s) with the NVRAM plane */
-	error = bhnd_nvram_register_paths(sc->plane, sc->prov, paths,
+	error = bhnd_nvram_plane_register_paths(sc->plane, sc->prov, paths,
 	    num_paths);
 	if (error) {
 		device_printf(dev, "failed to register NVRAM paths: %d\n",

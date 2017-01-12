@@ -48,6 +48,7 @@
 #include "bhnd_nvram.h"
 
 LIST_HEAD(bhnd_nvram_consumer_list,	bhnd_nvram_consumer);
+LIST_HEAD(bhnd_nvram_entry_list,	bhnd_nvram_entry);
 LIST_HEAD(bhnd_nvram_link_list,		bhnd_nvram_link);
 
 typedef struct bhnd_nvram_consumer bhnd_nvram_consumer;
@@ -76,7 +77,7 @@ struct bhnd_nvref {
 /**
  * NVRAM canonical path string.
  */
-struct bhnd_nvpath_str {
+struct bhnd_nvpath {
 	char			*pathname;	/**< canonical, fully qualified path name */
 	size_t			 pathlen;	/**< length of pathname */
 
@@ -98,6 +99,19 @@ struct bhnd_nvram_consumer {
 };
 
 /**
+ * NVRAM path entry.
+ * 
+ * Represents provider-exported NVRAM path that may be referenced by muliple
+ * NVRAM planes.g
+ */
+struct bhnd_nvram_entry {
+	struct bhnd_nvram_provider	*provider;	/**< provider */
+	struct bhnd_nvpath		*path;		/**< canonical path */
+
+	struct bhnd_nvref		 refs;
+};
+
+/**
  * NVRAM path adjacency list entry.
  * 
  * An individual NVRAM path may be registered in one canonical plane, and then
@@ -108,11 +122,10 @@ struct bhnd_nvram_consumer {
  * represented as a table of bhnd_nvram_link instances.
  */
 struct bhnd_nvram_link {
-	struct bhnd_nvpath_str		*path;		/**< plane-specific path string */
+	struct bhnd_nvpath		*path;		/**< plane-specific path string */
 	struct bhnd_nvram_link		*parent;	/**< plane-specific parent, or NULL */
 
-	struct bhnd_nvram_provider	*prov;		/**< provider, or NULL */
-	struct bhnd_nvpath_str		*prov_path;	/**< provider's canonical path, or NULL */
+	struct bhnd_nvram_entry		*entry;		/**< backing entry, or NULL */
 
 	struct bhnd_nvram_link_list	 children;	/**< all children */
 
@@ -150,8 +163,10 @@ struct bhnd_nvram_plane {
 #define	BHND_NVPLANE_UNLOCK_RD(sc)		sx_sunlock(&(sc)->plane_lock)
 #define	BHND_NVPLANE_LOCK_RW(sc)		sx_xlock(&(sc)->plane_lock)
 #define	BHND_NVPLANE_UNLOCK_RW(sc)		sx_xunlock(&(sc)->plane_lock)
-#define	BHND_NVPLANE_LOCK_ASSERT(sc, what)	\
-	sx_assert(&(sc)->plane_lock, what)
+#define	BHND_NVPLANE_LOCK_ASSERT(sc, what)		\
+	/* Lock not required during destruction */	\
+	(BHND_NVREF_REFCOUNT(plane, refs) == 0 ||	\
+	 sx_assert(&(sc)->plane_lock, what))
 #define	BHND_NVPLANE_LOCK_DESTROY(sc)		sx_destroy(&(sc)->plane_lock)
 
 #else /* !_KERNEL */

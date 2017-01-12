@@ -1268,7 +1268,8 @@ bhnd_nvram_is_normalized_path(const char *path, size_t pathlen)
 
 	/* Validate all path components */
 	while ((p = bhnd_nvram_parse_path_next(path, pathlen, p, &namelen))) {
-		/* Path component cannot be empty (i.e. "//") */
+		/* Path component cannot be empty (i.e. "//" or if a trailing
+		 * '/' is found) */
 		if (namelen == 0)
 			return (false);
 
