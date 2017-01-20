@@ -496,7 +496,7 @@ contrib/dev/acpica/components/utilities/utuuid.c	optional acpi acpi_debug
 contrib/dev/acpica/components/utilities/utxface.c	optional acpi
 contrib/dev/acpica/components/utilities/utxferror.c	optional acpi
 contrib/dev/acpica/components/utilities/utxfinit.c	optional acpi
-#contrib/dev/acpica/components/utilities/utxfmutex.c	optional acpi
+contrib/dev/acpica/os_specific/service_layers/osgendbg.c	optional acpi acpi_debug
 contrib/ipfilter/netinet/fil.c	optional ipfilter inet \
 	compile-with "${NORMAL_C} ${NO_WSELF_ASSIGN} -Wno-unused -I$S/contrib/ipfilter"
 contrib/ipfilter/netinet/ip_auth.c optional ipfilter inet \
@@ -1387,7 +1387,7 @@ t4fw.fwo		optional cxgbe					\
 	no-implicit-rule						\
 	clean		"t4fw.fwo"
 t4fw.fw			optional cxgbe					\
-	dependency	"$S/dev/cxgbe/firmware/t4fw-1.16.22.0.bin.uu"	\
+	dependency	"$S/dev/cxgbe/firmware/t4fw-1.16.26.0.bin.uu"	\
 	compile-with	"${NORMAL_FW}"					\
 	no-obj no-implicit-rule						\
 	clean		"t4fw.fw"
@@ -1411,7 +1411,7 @@ t5fw.fwo		optional cxgbe					\
 	no-implicit-rule						\
 	clean		"t5fw.fwo"
 t5fw.fw			optional cxgbe					\
-	dependency	"$S/dev/cxgbe/firmware/t5fw-1.16.22.0.bin.uu"	\
+	dependency	"$S/dev/cxgbe/firmware/t5fw-1.16.26.0.bin.uu"	\
 	compile-with	"${NORMAL_FW}"					\
 	no-obj no-implicit-rule						\
 	clean		"t5fw.fw"
@@ -1435,7 +1435,7 @@ t6fw.fwo		optional cxgbe					\
 	no-implicit-rule						\
 	clean		"t6fw.fwo"
 t6fw.fw			optional cxgbe					\
-	dependency	"$S/dev/cxgbe/firmware/t6fw-1.16.22.0.bin.uu"	\
+	dependency	"$S/dev/cxgbe/firmware/t6fw-1.16.26.0.bin.uu"	\
 	compile-with	"${NORMAL_FW}"					\
 	no-obj no-implicit-rule						\
 	clean		"t6fw.fw"
@@ -1545,6 +1545,7 @@ dev/drm2/drm_memory.c		optional drm2
 dev/drm2/drm_mm.c		optional drm2
 dev/drm2/drm_modes.c		optional drm2
 dev/drm2/drm_pci.c		optional drm2
+dev/drm2/drm_platform.c		optional drm2
 dev/drm2/drm_scatter.c		optional drm2
 dev/drm2/drm_stub.c		optional drm2
 dev/drm2/drm_sysctl.c		optional drm2
@@ -1572,43 +1573,43 @@ dev/eisa/eisa_if.m		standard
 dev/eisa/eisaconf.c		optional eisa
 dev/e1000/if_em.c		optional em \
 	compile-with "${NORMAL_C} -I$S/dev/e1000"
-dev/e1000/if_lem.c		optional em \
+dev/e1000/em_txrx.c		optional em \
 	compile-with "${NORMAL_C} -I$S/dev/e1000"
-dev/e1000/if_igb.c		optional igb \
+dev/e1000/igb_txrx.c		optional em \
 	compile-with "${NORMAL_C} -I$S/dev/e1000"
-dev/e1000/e1000_80003es2lan.c	optional em | igb \
+dev/e1000/e1000_80003es2lan.c	optional em \
 	compile-with "${NORMAL_C} -I$S/dev/e1000"
-dev/e1000/e1000_82540.c		optional em | igb \
+dev/e1000/e1000_82540.c		optional em \
 	compile-with "${NORMAL_C} -I$S/dev/e1000"
-dev/e1000/e1000_82541.c		optional em | igb \
+dev/e1000/e1000_82541.c		optional em \
 	compile-with "${NORMAL_C} -I$S/dev/e1000"
-dev/e1000/e1000_82542.c		optional em | igb \
+dev/e1000/e1000_82542.c		optional em \
 	compile-with "${NORMAL_C} -I$S/dev/e1000"
-dev/e1000/e1000_82543.c		optional em | igb \
+dev/e1000/e1000_82543.c		optional em \
 	compile-with "${NORMAL_C} -I$S/dev/e1000"
-dev/e1000/e1000_82571.c		optional em | igb \
+dev/e1000/e1000_82571.c		optional em \
 	compile-with "${NORMAL_C} -I$S/dev/e1000"
-dev/e1000/e1000_82575.c		optional em | igb \
+dev/e1000/e1000_82575.c		optional em \
 	compile-with "${NORMAL_C} -I$S/dev/e1000"
-dev/e1000/e1000_ich8lan.c	optional em | igb \
+dev/e1000/e1000_ich8lan.c	optional em \
 	compile-with "${NORMAL_C} -I$S/dev/e1000"
-dev/e1000/e1000_i210.c		optional em | igb \
+dev/e1000/e1000_i210.c		optional em \
 	compile-with "${NORMAL_C} -I$S/dev/e1000"
-dev/e1000/e1000_api.c		optional em | igb \
+dev/e1000/e1000_api.c		optional em \
 	compile-with "${NORMAL_C} -I$S/dev/e1000"
-dev/e1000/e1000_mac.c		optional em | igb \
+dev/e1000/e1000_mac.c		optional em \
 	compile-with "${NORMAL_C} -I$S/dev/e1000"
-dev/e1000/e1000_manage.c	optional em | igb \
+dev/e1000/e1000_manage.c	optional em \
 	compile-with "${NORMAL_C} -I$S/dev/e1000"
-dev/e1000/e1000_nvm.c		optional em | igb \
+dev/e1000/e1000_nvm.c		optional em \
 	compile-with "${NORMAL_C} -I$S/dev/e1000"
-dev/e1000/e1000_phy.c		optional em | igb \
+dev/e1000/e1000_phy.c		optional em \
 	compile-with "${NORMAL_C} -I$S/dev/e1000"
-dev/e1000/e1000_vf.c		optional em | igb \
+dev/e1000/e1000_vf.c		optional em \
 	compile-with "${NORMAL_C} -I$S/dev/e1000"
-dev/e1000/e1000_mbx.c		optional em | igb \
+dev/e1000/e1000_mbx.c		optional em \
 	compile-with "${NORMAL_C} -I$S/dev/e1000"
-dev/e1000/e1000_osdep.c		optional em | igb \
+dev/e1000/e1000_osdep.c		optional em \
 	compile-with "${NORMAL_C} -I$S/dev/e1000"
 dev/et/if_et.c			optional et
 dev/en/if_en_pci.c		optional en pci
@@ -1639,6 +1640,7 @@ dev/etherswitch/ip17x/ip17x_phy.c	optional ip17x
 dev/etherswitch/ip17x/ip17x_vlans.c	optional ip17x
 dev/etherswitch/miiproxy.c		optional miiproxy
 dev/etherswitch/rtl8366/rtl8366rb.c	optional rtl8366rb
+dev/etherswitch/e6000sw/e6000sw.c	optional e6000sw
 dev/etherswitch/ukswitch/ukswitch.c	optional ukswitch
 dev/evdev/cdev.c			optional evdev
 dev/evdev/evdev.c			optional evdev
@@ -1713,6 +1715,7 @@ dev/gpio/gpioled_fdt.c		optional gpioled fdt
 dev/gpio/gpiopower.c		optional gpiopower fdt
 dev/gpio/gpioregulator.c	optional gpioregulator fdt ext_resources
 dev/gpio/gpiospi.c		optional gpiospi
+dev/gpio/gpioths.c		optional gpioths
 dev/gpio/gpio_if.m		optional gpio
 dev/gpio/gpiobus_if.m		optional gpio
 dev/gpio/gpiopps.c		optional gpiopps
@@ -1730,6 +1733,7 @@ dev/hptiop/hptiop.c		optional hptiop scbus
 dev/hwpmc/hwpmc_logging.c	optional hwpmc
 dev/hwpmc/hwpmc_mod.c		optional hwpmc
 dev/hwpmc/hwpmc_soft.c		optional hwpmc
+dev/ichiic/ig4_acpi.c		optional ig4 acpi iicbus
 dev/ichiic/ig4_iic.c		optional ig4 iicbus
 dev/ichiic/ig4_pci.c		optional ig4 pci iicbus
 dev/ichsmb/ichsmb.c		optional ichsmb
@@ -2713,6 +2717,7 @@ dev/rtwn/rtl8821a/r21a_led.c	optional rtwn
 dev/rtwn/rtl8821a/r21a_rom.c	optional rtwn
 dev/rtwn/rtl8821a/r21a_rx.c	optional rtwn
 dev/rtwn/rtl8821a/usb/r21au_attach.c	optional rtwn_usb
+dev/rtwn/rtl8821a/usb/r21au_dfs.c	optional rtwn_usb
 dev/rtwn/rtl8821a/usb/r21au_init.c	optional rtwn_usb
 rtwn-rtl8188eufw.c		optional rtwn-rtl8188eufw | rtwnfw	\
 	compile-with	"${AWK} -f $S/tools/fw_stub.awk rtwn-rtl8188eufw.fw:rtwn-rtl8188eufw:111 -mrtwn-rtl8188eufw -c${.TARGET}" \
@@ -2822,7 +2827,9 @@ dev/scc/scc_dev_quicc.c		optional scc quicc
 dev/scc/scc_dev_sab82532.c	optional scc
 dev/scc/scc_dev_z8530.c		optional scc
 dev/sdhci/sdhci.c		optional sdhci
+dev/sdhci/sdhci_fdt_gpio.c	optional sdhci fdt gpio
 dev/sdhci/sdhci_if.m		optional sdhci
+dev/sdhci/sdhci_acpi.c		optional sdhci acpi
 dev/sdhci/sdhci_pci.c		optional sdhci pci
 dev/sf/if_sf.c			optional sf pci
 dev/sge/if_sge.c		optional sge pci
@@ -3902,9 +3909,9 @@ net/if_tun.c			optional tun
 net/if_tap.c			optional tap
 net/if_vlan.c			optional vlan
 net/if_vxlan.c			optional vxlan inet | vxlan inet6
-net/ifdi_if.m                  optional ether pci
-net/iflib.c                    optional ether pci
-net/mp_ring.c                  optional ether
+net/ifdi_if.m			optional ether pci
+net/iflib.c			optional ether pci
+net/mp_ring.c			optional ether
 net/mppcc.c			optional netgraph_mppc_compression
 net/mppcd.c			optional netgraph_mppc_compression
 net/netisr.c			standard
@@ -3963,6 +3970,7 @@ net80211/ieee80211_sta.c	optional wlan \
 net80211/ieee80211_superg.c	optional wlan ieee80211_support_superg
 net80211/ieee80211_scan_sw.c	optional wlan
 net80211/ieee80211_tdma.c	optional wlan ieee80211_support_tdma
+net80211/ieee80211_vht.c	optional wlan
 net80211/ieee80211_wds.c	optional wlan
 net80211/ieee80211_xauth.c	optional wlan wlan_xauth
 net80211/ieee80211_alq.c	optional wlan ieee80211_alq
