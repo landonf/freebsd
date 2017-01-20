@@ -48,6 +48,16 @@ __FBSDID("$FreeBSD$");
 MALLOC_DEFINE(M_BHND_NVRAM, "bhnd_nvram", "BHND NVRAM data");
 #endif /* _KERNEL */
 
+static struct bhnd_nvlock	*bhnd_nvlock_new(const char *description);
+static void			 bhnd_nvlock_fini(struct bhnd_nvlock *lock);
+
+static inline void		 bhnd_nvlock_rwlock(struct bhnd_nvlock *lock);
+static inline void		 bhnd_nvlock_rwunlock(struct bhnd_nvlock *lock);
+static inline void		 bhnd_nvlock_rdlock(struct bhnd_nvlock *lock);
+static inline void		 bhnd_nvlock_rdunlock(struct bhnd_nvlock *lock);
+static inline void		 bhnd_nvlock_wakeup(struct bhnd_nvlock *lock);
+static inline void		 bhnd_nvlock_wait(struct bhnd_nvlock *lock);
+
 static int			 bhnd_nvpath_new(struct bhnd_nvpath **path,
 				     const char *pathname, size_t pathlen);
 static int			 bhnd_nvpath_append_name(
@@ -61,15 +71,37 @@ void				 bhnd_nvpath_release(struct bhnd_nvpath *path);
 static void			 bhnd_nvpath_fini(struct bhnd_nvpath *path);
 
 static bhnd_nvram_consumer	*bhnd_nvram_consumer_new(
-				     struct bhnd_nvram_plane *plane);
-static void			 bhnd_nvram_consumer_fini(
+				     struct bhnd_nvram_entry *entry);
+static void			 bhnd_nvram_consumer_free(
 				     struct bhnd_nvram_consumer *consumer);
 
-static struct bhnd_nvram_entry	*bhnd_nvram_entry_new(
+static int			 bhnd_nvram_new_link_entry(
+				     struct bhnd_nvram_entry **link,
+				     struct bhnd_nvram_plane *plane,
+				     struct bhnd_nvpath *path);
+
+static struct bhnd_nvram_entry	*bhnd_nvram_new_prov_entry(
 				     struct bhnd_nvram_provider *provider,
 				     struct bhnd_nvpath *path);
+
 static void			 bhnd_nvram_entry_fini(
 				     struct bhnd_nvram_entry *entry);
+
+static int			 bhnd_nvram_entry_register_consumer(
+				     struct bhnd_nvram_entry *target,
+				     struct bhnd_nvram_entry *consumer);
+static void			 bhnd_nvram_entry_deregister_consumer(
+				     struct bhnd_nvram_entry *target,
+				     struct bhnd_nvram_entry *consumer);
+
+static void			 bhnd_nvram_entry_invalidated(
+				     struct bhnd_nvram_entry *consumer,
+				     struct bhnd_nvram_entry *target);
+
+static void			 bhnd_nvram_entry_invalidate(
+				     struct bhnd_nvram_entry *entry);
+
+#if 0
 
 static void			 bhnd_nvram_link_free(
 				     struct bhnd_nvram_link *link);
@@ -93,8 +125,12 @@ static struct bhnd_nvram_link	*bhnd_nvram_link_resolve(
 				     const char *pathname,
 				     size_t pathlen);
 
+#endif
+
 static void			 bhnd_nvram_plane_fini(
 				     struct bhnd_nvram_plane *plane);
+
+#if 0
 
 static bool			 bhnd_nvram_plane_is_leaf(
 				     struct bhnd_nvram_plane *plane,
@@ -118,24 +154,148 @@ static void			 bhnd_nvram_provider_remove_consumer(
 				     struct bhnd_nvram_provider *provider,
 				     struct bhnd_nvram_plane *plane,
 				     size_t use_count);
+#endif
 
 static int			 bhnd_nvram_provider_busy(
-				     struct bhnd_nvram_provider *provider) __attribute__((unused));
+				     struct bhnd_nvram_provider *provider);
 static int			 bhnd_nvram_provider_busy_locked(
 				     struct bhnd_nvram_provider *provider);
 
 static void			 bhnd_nvram_provider_unbusy(
-				     struct bhnd_nvram_provider *provider) __attribute__((unused));
+				     struct bhnd_nvram_provider *provider);
 static void			 bhnd_nvram_provider_unbusy_locked(
 				     struct bhnd_nvram_provider *provider);
 
-
+// TODO: keep?
 #define	BHND_NVPROV_ASSERT_STATE(_prov, _state)		\
 	BHND_NV_ASSERT((_prov)->state == (_state),	\
 	    ("invalid state: %d", (_prov)->state))
 
 #define	BHND_NVPROV_ASSERT_ACTIVE(_prov)		\
 	BHND_NVPROV_ASSERT_STATE((_prov), BHND_NVRAM_PROV_ACTIVE)
+
+#define	BHND_NVENTRY_ASSERT_COMMON_TOPO(_lhs, _rhs)		\
+	BHND_NV_ASSERT((_lhs)->topo_lock == (_rhs)->topo_lock,	\
+	   ("cross-topology reference"));
+
+/**
+ * Allocate and return a reference-counted NVRAM lock instance.
+ * 
+ * The caller is responsible for releasing the returned instance.
+ * 
+ * @param description	Lock description.
+ * 
+ * @retval non-NULL	success
+ * @retval NULL		if allocation fails.
+ */
+static struct bhnd_nvlock *
+bhnd_nvlock_new(const char *description)
+{
+	struct bhnd_nvlock	*lock;
+#ifndef _KERNEL
+	int			 error;
+#endif /* !_KERNEL */
+
+
+	if ((lock = bhnd_nv_calloc(1, sizeof(*lock))) == NULL)
+		return (NULL);
+
+	BHND_NVREF_INIT(&lock->refs);
+
+#ifdef _KERNEL
+	sx_init(&lock->nv_lock, description);
+#else /* !_KERNEL */
+	if ((error = pthread_mutex_init(&lock->nv_lock, NULL))) {
+		BHND_NV_LOG("pthread_mutex_init() failed: %d\n", error);
+		bhnd_nv_free(lock);
+		return (NULL);
+	}
+
+	if ((error = pthread_cond_init(&lock->nv_cond, NULL))) {
+		BHND_NV_LOG("pthread_cond_init() failed: %d\n", error);
+		pthread_mutex_destroy(&lock->nv_lock);
+		bhnd_nv_free(lock);
+		return (NULL);
+	}
+#endif
+
+	return (lock);
+}
+
+static void
+bhnd_nvlock_fini(struct bhnd_nvlock *lock)
+{
+#ifdef _KERNEL
+	sx_destroy(&lock->nv_lock);
+#else /* !_KERNEL */
+	pthread_cond_destroy(&lock->nv_cond);
+	pthread_mutex_destroy(&lock->nv_lock);
+#endif
+}
+
+static inline void
+bhnd_nvlock_rwlock(struct bhnd_nvlock *lock)
+{
+	BHND_NVLOCK_ASSERT(target->topo_lock, SA_UNLOCKED);
+
+#ifdef _KERNEL
+	sx_xlock(&lock->nv_lock);
+#else /* !_KERNEL */
+	pthread_mutex_lock(&lock->nv_lock);
+#endif /* _KERNEL */
+}
+
+static inline void
+bhnd_nvlock_rwunlock(struct bhnd_nvlock *lock)
+{
+#ifdef _KERNEL
+	sx_xunlock(&lock->nv_lock);
+#else /* !_KERNEL */
+	pthread_mutex_lock(&lock->nv_lock);
+#endif /* _KERNEL */
+}
+
+static inline void
+bhnd_nvlock_rdlock(struct bhnd_nvlock *lock)
+{
+	BHND_NVLOCK_ASSERT(target->topo_lock, SA_UNLOCKED);
+
+#ifdef _KERNEL
+	sx_slock(&lock->nv_lock);
+#else /* !_KERNEL */
+	pthread_mutex_lock(&lock->nv_lock);
+#endif /* _KERNEL */
+}
+
+static inline void
+bhnd_nvlock_rdunlock(struct bhnd_nvlock *lock)
+{
+#ifdef _KERNEL
+	sx_sunlock(&lock->nv_lock);
+#else /* !_KERNEL */
+	pthread_mutex_unlock(&lock->nv_lock);
+#endif /* _KERNEL */
+}
+
+static inline void
+bhnd_nvlock_wakeup(struct bhnd_nvlock *lock)
+{
+#ifdef _KERNEL
+	wakeup(lock);
+#else /* !_KERNEL */
+	pthread_cond_broadcast(&lock->nv_cond);
+#endif /* _KERNEL */
+}
+
+static inline void
+bhnd_nvlock_wait(struct bhnd_nvlock *lock)
+{
+#ifdef _KERNEL
+	sx_sleep(lock, &lock->nv_lock, 0, "bhnd_nvlk", 0);
+#else /* !_KERNEL */
+	pthread_cond_wait(&lock->nv_cond, &lock->nv_lock);
+#endif /* _KERNEL */
+}
 
 /**
  * Allocate and initialize a reference-counted NVRAM path string.
@@ -269,15 +429,15 @@ bhnd_nvpath_fini(struct bhnd_nvpath *path)
 /**
  * Allocate, initialize, and return a new NVRAM consumer record.
  * 
- * The caller is responsible for releasing the returned consumer record.
+ * The caller assumes ownership of the returned consumer record.
  * 
- * @param plane		The NVRAM plane associated with this consumer record.
+ * @param entry		The NVRAM entry associated with this consumer record.
  * 
  * @retval non-NULL	success.
  * @retval NULL		if allocation fails.
  */
 static struct bhnd_nvram_consumer *
-bhnd_nvram_consumer_new(struct bhnd_nvram_plane *plane)
+bhnd_nvram_consumer_new(struct bhnd_nvram_entry *entry)
 {
 	struct bhnd_nvram_consumer *consumer;
 
@@ -285,35 +445,25 @@ bhnd_nvram_consumer_new(struct bhnd_nvram_plane *plane)
 	if (consumer == NULL)
 		return (NULL);
 
-	BHND_NVREF_INIT(&consumer->refs);
-
-	consumer->plane = BHND_NVREF_RETAIN_WEAK(plane, refs);
-	consumer->use_count = 0;
+	consumer->entry = BHND_NVREF_RETAIN_WEAK(entry, refs);
 
 	return (consumer);
 }
 
-
+/**
+ * Free an NVRAM consumer entry.
+ */
 static void
-bhnd_nvram_consumer_fini(struct bhnd_nvram_consumer *consumer)
+bhnd_nvram_consumer_free(struct bhnd_nvram_consumer *consumer)
 {
-	BHND_NVREF_RELEASE_WEAK(consumer->plane, refs);
+	BHND_NVREF_RELEASE_WEAK(consumer->entry, refs);
+	bhnd_nv_free(consumer);
 }
 
-/**
- * Allocate, initialize, and return a new NVRAM entry.
- * 
- * The caller is responsible for releasing the returned entry.
- * 
- * @param provider	The NVRAM entry's data provider.
- * @param path		The NVRAM entry's canonical (provider-defined) path.
- * 
- * @retval non-NULL	success.
- * @retval NULL		if allocation fails.
- */
+/* common allocation/initialization shared by all entry types */
 static struct bhnd_nvram_entry *
-bhnd_nvram_entry_new(struct bhnd_nvram_provider *provider,
-    struct bhnd_nvpath *path)
+bhnd_nvram_entry_new(bhnd_nvram_entry_type type, struct bhnd_nvpath *path,
+    struct bhnd_nvlock *topo_lock)
 {
 	struct bhnd_nvram_entry *entry;
 
@@ -321,10 +471,12 @@ bhnd_nvram_entry_new(struct bhnd_nvram_provider *provider,
 	if (entry == NULL)
 		return (NULL);
 
-	BHND_NVREF_INIT(&entry->refs);
-
-	entry->provider = BHND_NVREF_RETAIN(provider, refs);
+	entry->type = type;
 	entry->path = bhnd_nvpath_retain(path);
+	entry->topo_lock = BHND_NVREF_RETAIN(topo_lock, refs);
+	entry->invalid = false;
+
+	LIST_INIT(&entry->consumers);
 
 	return (entry);
 }
@@ -332,8 +484,460 @@ bhnd_nvram_entry_new(struct bhnd_nvram_provider *provider,
 static void
 bhnd_nvram_entry_fini(struct bhnd_nvram_entry *entry)
 {
-	BHND_NVREF_RELEASE(entry->provider, refs, bhnd_nvram_provider_fini);
-	bhnd_nvpath_release(entry->path);
+	/* Invalidate the entry (if it's not already invalid), deregistering
+	 * all consumers, dropping parent, target, and plane/provider
+	 * references */
+	bhnd_nvram_entry_invalidate(entry);
+
+	BHND_NV_ASSERT(entry->invalid, ("entry not invalidated"));
+	BHND_NV_ASSERT(LIST_EMPTY(&entry->consumers), ("active consumers"));
+	BHND_NV_ASSERT(entry->target == NULL, ("active target"));
+	BHND_NV_ASSERT(entry->parent == NULL, ("active parent"));
+
+	switch (entry->type) {
+	case BHND_NVRAM_PROV_ENTRY:
+		BHND_NV_ASSERT(entry->d.provider == NULL, ("active provider"));
+		break;
+	case BHND_NVRAM_PLANE_ENTRY:
+		BHND_NV_ASSERT(entry->d.plane == NULL, ("active plane"));
+		break;
+	}
+
+	/* Release remaining internal state */
+	if (entry->path != NULL)
+		bhnd_nvpath_release(entry->path);
+
+	if (entry->topo_lock != NULL)
+		BHND_NVREF_RELEASE(entry->topo_lock, refs, bhnd_nvlock_fini);
+}
+
+
+/**
+ * Retain a reference and return @p entry to the caller.
+ * 
+ * The caller is responsible for releasing their reference ownership via
+ * bhnd_nvram_entry_release().
+ * 
+ * @param entry	The NVRAM entry to be retained.
+ */
+struct bhnd_nvram_entry *
+bhnd_nvram_entry_retain(struct bhnd_nvram_entry *entry)
+{
+	return (BHND_NVREF_RETAIN(entry, refs));
+}
+
+/**
+ * Release a reference to @p entry.
+ *
+ * If this is the last reference, all associated resources will be freed.
+ * 
+ * @param entry	The NVRAM entry to be released.
+ */
+void
+bhnd_nvram_entry_release(struct bhnd_nvram_entry *entry)
+{
+	BHND_NVREF_RELEASE(entry, refs, bhnd_nvram_entry_fini);
+}
+
+
+/**
+ * Allocate, initialize, and return a new provider-backed NVRAM entry.
+ * 
+ * The caller is responsible for releasing the returned entry.
+ * 
+ * @param provider	The entry provider.
+ * @param path		The entry's canonical path.
+ * 
+ * @retval 0		success.
+ * @retval ENOMEM	if allocation fails.
+ */
+static struct bhnd_nvram_entry *
+bhnd_nvram_new_prov_entry(struct bhnd_nvram_provider *provider,
+    struct bhnd_nvpath *path)
+{
+	struct bhnd_nvram_entry *entry;
+
+	entry = bhnd_nvram_entry_new(BHND_NVRAM_PROV_ENTRY, path,
+	    provider->prov_lock);
+	if (entry == NULL)
+		return (NULL);
+
+	entry->d.provider = BHND_NVREF_RETAIN_WEAK(provider, refs);
+
+	return (entry);
+}
+
+/**
+ * Allocate, initialize, and return a new tree of link entries representing
+ * @p path.
+ * 
+ * The caller is responsible for releasing the returned root entry.
+ * 
+ * @param[out]	link	On success, the leaf entry for the tree defined by
+ * 			@p path.
+ * @param	plane	The link's plane.
+ * @param	path	The link's canonical path.
+ * 
+ * @retval 0		success.
+ * @retval ENOMEM	if allocation fails.
+ */
+static int
+bhnd_nvram_new_link_entry(struct bhnd_nvram_entry **link,
+    struct bhnd_nvram_plane *plane, struct bhnd_nvpath *path)
+{
+	struct bhnd_nvram_entry	*cwd, *root;
+	struct bhnd_nvpath	*child_path;
+	const char		*name;
+	size_t			 namelen;
+	int			 error;
+
+	/* Walk the path, creating a full tree of link nodes */
+	cwd = NULL;
+	root = NULL;
+	child_path = NULL;
+	name = NULL;
+	while ((name = bhnd_nvram_parse_path_next(path->pathname, path->pathlen,
+	    name, &namelen)) != NULL)
+	{
+		struct bhnd_nvram_entry *child;
+
+		/* Allocate path instance */
+		if (cwd == NULL) {
+			error = bhnd_nvpath_new(&child_path, name, namelen);
+		} else {
+			error = bhnd_nvpath_append_name(&child_path, cwd->path,
+			    name, namelen);
+			if (error)
+				goto failed;
+		}
+
+		/* Allocate new entry */
+		child = bhnd_nvram_entry_new(BHND_NVRAM_PLANE_ENTRY, child_path,
+		    plane->topo_lock);
+		bhnd_nvpath_release(child_path);
+		child_path = NULL;
+
+		if (child == NULL) {
+			error = ENOMEM;
+			goto failed;
+		}
+
+		/* Initialize link-specific state */
+		child->d.plane = BHND_NVREF_RETAIN_WEAK(plane, refs);
+		LIST_INIT(&child->children);
+
+		if (cwd == NULL) {
+			/* Save strong reference to the root node */
+			root = child;
+		} else {
+			/* Connect to parent, transfering ownership of the
+			 * child reference to the parent instance */
+			child->parent = BHND_NVREF_RETAIN_WEAK(cwd, refs);
+			LIST_INSERT_HEAD(&cwd->children, child, child_link);
+		}
+
+		/* Replace cwd with new link and continue */
+		cwd = child;
+	}
+
+	/* Transfer ownership of the root node to the caller */
+	*link = root;
+	return (0);
+
+failed:
+	if (root != NULL)
+		bhnd_nvram_entry_release(root);
+
+	if (child_path != NULL)
+		bhnd_nvpath_release(child_path);
+
+	return (error);
+}
+
+/**
+ * Register @p consumer with @p target, ensuring that @p consumer is
+ * notified of @p target's lifecycle (including invalidation of @p target).
+ * 
+ * To avoid leaking resources, calls to bhnd_nvram_entry_register_consumer()
+ * must be balanced with bhnd_nvram_entry_deregister_consumer().
+ * 
+ * @param target	The entry to be modified.
+ * @param consumer	The entry for which a consumer reference to @p target
+ *			should be added. A weak reference to this entry will
+ *			be held by @p target.
+ *
+ * @retval ENOMEM	if allocation fails.
+ * @retval ENXIO	if @p entry has been invalidated.
+ */
+static int
+bhnd_nvram_entry_register_consumer(struct bhnd_nvram_entry *target,
+    struct bhnd_nvram_entry *consumer)
+{
+	struct bhnd_nvram_consumer *c;
+
+	/* Allocate our new consumer record */
+	if ((c = bhnd_nvram_consumer_new(consumer)) == NULL)
+		return (ENOMEM);
+
+	bhnd_nvlock_rwlock(target->topo_lock);
+
+	/* Target entry must be valid */
+	if (target->invalid) {
+		bhnd_nvlock_rwunlock(target->topo_lock);
+		bhnd_nvram_consumer_free(c);
+		return (ENXIO);
+	}
+
+	/* Insert new consumer reference */
+	LIST_INSERT_HEAD(&target->consumers, c, nc_link);
+
+	bhnd_nvlock_rwunlock(target->topo_lock);
+
+	return (0);
+}
+
+/**
+ * Remove a consumer reference to @p target.
+ * 
+ * @param target	The entry to be modified.
+ * @param consumer	The entry for which a consumer reference to @p target
+ *			should be removed.
+ */
+static void
+bhnd_nvram_entry_deregister_consumer(struct bhnd_nvram_entry *target,
+    struct bhnd_nvram_entry *consumer)
+{
+	struct bhnd_nvram_consumer *c, *cnext;
+
+	bhnd_nvlock_rwlock(target->topo_lock);
+
+	/* If the target has been invalidated, all consumer records have
+	 * already been discarded (or will be), and removal requests can be
+	 * ignored */
+	if (target->invalid) {
+		bhnd_nvlock_rwunlock(target->topo_lock);
+		return;
+	}
+
+	/* Remove the first matching consumer entry */
+	LIST_FOREACH_SAFE(c, &target->consumers, nc_link, cnext) {
+		if (c->entry != consumer)
+			continue;
+
+		/* Found; disconnect from list and drop our lock */
+		LIST_REMOVE(c, nc_link);
+		bhnd_nvlock_rwunlock(target->topo_lock);
+
+		/* Free the consumer record */
+		bhnd_nvram_consumer_free(c);
+		return;
+	}
+
+	bhnd_nvlock_rwunlock(target->topo_lock);
+	BHND_NV_PANIC("invalid consumer reference"); 
+}
+
+
+/**
+ * Called upon invalidation of an entry of which @p consumer is a registered
+ * consumer.
+ * 
+ * @param consumer	The entry registered as a consumer of @p target.
+ * @param target	The invalidated entry.
+ */
+static void
+bhnd_nvram_entry_invalidated(struct bhnd_nvram_entry *consumer,
+    struct bhnd_nvram_entry *target)
+{
+	bhnd_nvlock_rwlock(consumer->topo_lock);
+
+	/* Are we referencing the given target? */
+	if (consumer->target != target) {
+		bhnd_nvlock_rwunlock(consumer->topo_lock);
+		return;
+	}
+
+	/* Clear target state and drop our lock */
+	consumer->target = NULL;
+	bhnd_nvlock_rwunlock(consumer->topo_lock);
+
+	/* Release the weak target reference cleared above */
+	BHND_NVREF_RELEASE_WEAK(target, refs);
+}
+
+/**
+ * Invalid @p entry and its children, disconnecting the entry from its
+ * enclosing topology and all entry consumers.
+ * 
+ * @param entry	The NVRAM entry to be invalidated.
+ */
+static void
+bhnd_nvram_entry_invalidate(struct bhnd_nvram_entry *entry)
+{
+	struct bhnd_nvram_entry		*cwd, *parent, *enext;
+	struct bhnd_nvram_entry_list	 entries;
+
+	LIST_INIT(&entries);
+
+	/* Acquire topology lock */
+	bhnd_nvlock_rwlock(entry->topo_lock);
+
+	/* Skip if already invalidated (e.g. if we're called from
+	 * bhnd_nvram_entry_fini()) */
+	if (entry->invalid) {
+		bhnd_nvlock_rwunlock(entry->topo_lock);
+		return;
+	}
+
+	/* Ensure that the entry remains alive even after disconnection from
+	 * its owning parent */
+	bhnd_nvram_entry_retain(entry);
+
+	/*
+	 * Disconnect the entry's subgraph from its parent, preventing the tree
+	 * traversal below from traversing upwards into the (not to be
+	 * disconnected) parent.
+	 */
+	parent = BHND_NVREF_PROMOTE_WEAK(entry->parent, refs);
+	if (parent != NULL) {
+		BHND_NVENTRY_ASSERT_COMMON_TOPO(parent, entry);
+
+		/* Disconnect from parent */
+		LIST_REMOVE(entry, child_link);
+		BHND_NVREF_RELEASE_WEAK(entry, refs);
+
+		/* Drop promoted strong parent reference */
+		bhnd_nvram_entry_release(parent);
+	}
+
+	/*
+	 * Produce a flat entry free list (without employing recursion).
+	 * 
+	 * We traverse the tree until we hit a leaf node, disconnect the leaf
+	 * from its parent's list of children, add it to our free list, and
+	 * restart traversal at the node's parent, if any.
+	 */
+	cwd = entry;
+	while (cwd != NULL) {
+		struct bhnd_nvram_entry *parent;
+
+		/*
+		 * If we hit a leaf node, disconnect the node, add to our
+		 * free list, and then try traverse its parent.
+		 * 
+		 * If we hit a non-leaf node, traverse its children looking
+		 * for a leaf.
+		 */
+		if (LIST_EMPTY(&cwd->children)) {
+			/* Removing the leaf from its parent will release
+			 * what may be its last strong reference; we keep
+			 * it alive here with an explicit reference */
+			bhnd_nvram_entry_retain(cwd);
+
+			/* Disconnect the leaf from its parent */
+			if ((parent = cwd->parent) != NULL) {
+				BHND_NVENTRY_ASSERT_COMMON_TOPO(parent, cwd);
+
+				/* Remove parent's strong reference to the
+				 * child */
+				LIST_REMOVE(cwd, child_link);
+				bhnd_nvram_entry_release(cwd);
+
+				/* Drop child's weak refrence back to parent */
+				BHND_NVREF_RELEASE_WEAK(parent, refs);
+				cwd->parent = NULL;
+			}
+
+			/* Mark the leaf node as invalid, and add it to our
+			 * free list (transfering the reference ownership we
+			 * retained above) */
+			cwd->invalid = true;
+			LIST_INSERT_HEAD(&entries, cwd, child_link);
+
+			/* Resume traversal at the leaf's parent (if any) */
+			cwd = parent;
+		} else {
+			struct bhnd_nvram_entry	*child;
+
+			child = LIST_FIRST(&cwd->children);
+
+			BHND_NVENTRY_ASSERT_COMMON_TOPO(cwd, child);
+			BHND_NV_ASSERT(child->parent == cwd,
+			    ("dangling parent"));
+
+			/* Resume traversal at the child node */
+			cwd = child;
+		}
+	}
+
+	/*
+	 * All entries have been invalidated; we hold implicit ownership of the
+	 * entry state, and do not need to worry about contention with other
+	 * threads -- we invalidated the entries before dropping the lock,
+	 * entries cannot transition out of an invalid state, and all other
+	 * threads will terminate any entry operations upon reading the
+	 * invalidation flag.
+	 * 
+	 * As such, we drop all locks before deallocating the entries, and avoid
+	 * any potential for deadlock due to reentrant locking.
+	 */
+	bhnd_nvlock_rwunlock(entry->topo_lock);
+
+	LIST_FOREACH_SAFE(cwd, &entries, child_link, enext) {
+		struct bhnd_nvram_consumer *consumer, *cnext;
+
+		BHND_NV_ASSERT(cwd->invalid, ("entry not invalidated"));
+
+		/* Notify all consumers of the entry's invalidation, and
+		 * drop the associated consumer records */
+		LIST_FOREACH_SAFE(consumer, &cwd->consumers, nc_link, cnext) {
+			struct bhnd_nvram_entry *centry;
+
+			LIST_REMOVE(consumer, nc_link);
+
+			centry = BHND_NVREF_PROMOTE_WEAK(consumer->entry, refs);
+			if (centry != NULL) {
+				bhnd_nvram_entry_invalidated(centry, cwd);
+				bhnd_nvram_entry_release(centry);
+			}
+
+			bhnd_nvram_consumer_free(consumer);
+		}
+
+		/* Disconnect entry from its target, if any */
+		if (cwd->target != NULL) {
+			struct bhnd_nvram_entry *target;
+
+			target = BHND_NVREF_PROMOTE_WEAK(cwd->target, refs);
+			if (target != NULL) {
+				bhnd_nvram_entry_deregister_consumer(target,
+				    cwd);
+				bhnd_nvram_entry_release(target);
+			}
+
+			BHND_NVREF_RELEASE_WEAK(cwd->target, refs);
+			cwd->target = NULL;
+		}
+
+		/* Drop weak reference to the enclosing plane/provider */
+		switch (entry->type) {
+		case BHND_NVRAM_PROV_ENTRY:
+			BHND_NVREF_RELEASE_WEAK(entry->d.provider, refs);
+			entry->d.provider = NULL;
+			break;
+		case BHND_NVRAM_PLANE_ENTRY:
+			BHND_NVREF_RELEASE_WEAK(entry->d.plane, refs);
+			entry->d.plane = NULL;
+			break;
+		}
+
+		/* Remove from freelist and drop our strong reference */
+		LIST_REMOVE(cwd, child_link);
+		bhnd_nvram_entry_release(cwd);
+	}
+
+	/* Drop our last reference to the entry */
+	bhnd_nvram_entry_release(entry);
 }
 
 /**
@@ -354,20 +958,25 @@ bhnd_nvram_provider_new(device_t dev)
 	if (provider == NULL)
 		return (NULL);
 
+	provider->prov_lock = bhnd_nvlock_new("BHND NVRAM provider lock");
+	if (provider->prov_lock == NULL) {
+		bhnd_nv_free(provider);
+		return (NULL);
+	}
+
 	provider->dev = dev;
 	provider->state = BHND_NVRAM_PROV_ACTIVE;
 	provider->busy = 0;
 
-	BHND_NVPROV_LOCK_INIT(provider);
 	BHND_NVREF_INIT(&provider->refs);
 
-	LIST_INIT(&provider->consumers);
+	LIST_INIT(&provider->entries);
 
 	return (provider);
 }
 
 /**
- * Release a @p provider instance previously allocated via
+ * Free a @p provider instance previously allocated via
  * bhnd_nvram_provider_new().
  * 
  * This function will:
@@ -386,6 +995,8 @@ bhnd_nvram_provider_new(device_t dev)
 void
 bhnd_nvram_provider_destroy(struct bhnd_nvram_provider *provider)
 {
+	// TODO
+#if 0
 	struct bhnd_nvram_consumer_list	 consumers;
 	struct bhnd_nvram_consumer	*c, *cnext;
 
@@ -394,7 +1005,7 @@ bhnd_nvram_provider_destroy(struct bhnd_nvram_provider *provider)
 	BHND_NVPROV_LOCK_RW(provider);
 
 	/* Set stopping state; any calls to bhnd_nvram_provider_busy() after
-	 * this point will fail with ENODEV */
+	 * this point will fail with ENXIO */
 	BHND_NVPROV_ASSERT_ACTIVE(provider);
 	provider->state = BHND_NVRAM_PROV_STOPPING;
 
@@ -436,6 +1047,7 @@ bhnd_nvram_provider_destroy(struct bhnd_nvram_provider *provider)
 
 	/* Release the caller's provider reference */
 	BHND_NVREF_RELEASE(provider, refs, bhnd_nvram_provider_fini);
+#endif
 }
 
 static void
@@ -445,12 +1057,14 @@ bhnd_nvram_provider_fini(struct bhnd_nvram_provider *provider)
 	 * first calling bhnd_nvram_provider_destroy() */
 	BHND_NVPROV_ASSERT_STATE(provider, BHND_NVRAM_PROV_DEAD);
 
-	BHND_NV_ASSERT(LIST_EMPTY(&provider->consumers), ("active consumers"));
+	BHND_NV_ASSERT(LIST_EMPTY(&provider->entries), ("active entries"));
 	BHND_NV_ASSERT(provider->busy == 0, ("provider in use"));
 
-	BHND_NVPROV_LOCK_DESTROY(provider);
+	BHND_NVREF_RELEASE(provider->prov_lock, refs, bhnd_nvlock_fini);
 }
 
+// TODO: replacing consumer interface 
+#if 0
 /**
  * Add a consumer reference for @p plane to @p provider.
  * 
@@ -464,7 +1078,7 @@ bhnd_nvram_provider_fini(struct bhnd_nvram_provider *provider)
  *			registration will not be possible until an existing
  *			consumer entry is removed.
  * @retval ENOMEM	if allocation fails.
- * @retval ENODEV	if @p provider is marked for removal.
+ * @retval ENXIO	if @p provider is marked for removal.
  */
 static int
 bhnd_nvram_provider_add_consumer(struct bhnd_nvram_provider *provider,
@@ -472,12 +1086,12 @@ bhnd_nvram_provider_add_consumer(struct bhnd_nvram_provider *provider,
 {
 	struct bhnd_nvram_consumer *c, *consumer;
 
-	BHND_NVPROV_LOCK_RW(provider);
+	bhnd_nvlock_rwlock(provider->prov_lock);
 
 	/* Provider must be active */
 	if (provider->state != BHND_NVRAM_PROV_ACTIVE) {
-		BHND_NVPROV_UNLOCK_RW(provider);
-		return (ENODEV);
+		bhnd_nvlock_rwunlock(provider->prov_lock);
+		return (ENXIO);
 	}
 
 	/* Look for an existing consumer entry, if any */
@@ -493,7 +1107,7 @@ bhnd_nvram_provider_add_consumer(struct bhnd_nvram_provider *provider,
 	if (consumer == NULL) {
 		consumer = bhnd_nvram_consumer_new(plane);
 		if (consumer == NULL) {
-			BHND_NVPROV_UNLOCK_RW(provider);
+			bhnd_nvlock_rwunlock(provider->prov_lock);
 			return (ENOMEM);
 		}
 
@@ -502,12 +1116,12 @@ bhnd_nvram_provider_add_consumer(struct bhnd_nvram_provider *provider,
 
 	/* Check for overflow */
 	if (SIZE_MAX - consumer->use_count < use_count) {
-		BHND_NVPROV_UNLOCK_RW(provider);
+		bhnd_nvlock_rwunlock(provider->prov_lock);
 		return (EBUSY);
 	}
 
 	consumer->use_count += use_count;
-	BHND_NVPROV_UNLOCK_RW(provider);
+	bhnd_nvlock_rwunlock(provider->prov_lock);
 	return (0);
 }
 
@@ -564,6 +1178,8 @@ bhnd_nvram_provider_remove_consumer(struct bhnd_nvram_provider *provider,
 	BHND_NV_PANIC("invalid consumer reference"); 
 }
 
+#endif
+
 /**
  * Attempt to retain a reservation on provider, preventing removal of the
  * provider until a matching call to bhnd_nvram_provider_unbusy() is made.
@@ -571,7 +1187,7 @@ bhnd_nvram_provider_remove_consumer(struct bhnd_nvram_provider *provider,
  * @param provider	The provider to be marked as busy.
  * 
  * @retval 0		success
- * @retval ENODEV	if @p provider is marked for removal.
+ * @retval ENXIO	if @p provider is marked for removal.
  * @retval EAGAIN	if incrementing @p provider's busy count would trigger
  *			an overflow.
  */
@@ -580,9 +1196,9 @@ bhnd_nvram_provider_busy(struct bhnd_nvram_provider *provider)
 {
 	int error;
 
-	BHND_NVPROV_LOCK_RW(provider);
+	bhnd_nvlock_rwlock(provider->prov_lock);
 	error = bhnd_nvram_provider_busy_locked(provider);
-	BHND_NVPROV_UNLOCK_RW(provider);
+	bhnd_nvlock_rwunlock(provider->prov_lock);
 
 	return (error);
 }
@@ -590,10 +1206,10 @@ bhnd_nvram_provider_busy(struct bhnd_nvram_provider *provider)
 static int
 bhnd_nvram_provider_busy_locked(struct bhnd_nvram_provider *provider)
 {
-	BHND_NVPROV_LOCK_ASSERT(provider, SA_XLOCKED);
+	BHND_NVLOCK_ASSERT(provider->prov_lock, SA_XLOCKED);
 
 	if (provider->state != BHND_NVRAM_PROV_ACTIVE)
-		return (ENODEV);
+		return (ENXIO);
 
 	if (provider->busy == SIZE_MAX)
 		return (EAGAIN);
@@ -610,20 +1226,20 @@ bhnd_nvram_provider_busy_locked(struct bhnd_nvram_provider *provider)
  * @param provider	The provider to be marked as busy.
  * 
  * @retval 0		success
- * @retval ENODEV	if @p provider is marked for removal.
+ * @retval ENXIO	if @p provider is marked for removal.
  */
 static void
 bhnd_nvram_provider_unbusy(struct bhnd_nvram_provider *provider)
 {
-	BHND_NVPROV_LOCK_RW(provider);
+	bhnd_nvlock_rwlock(provider->prov_lock);
 	bhnd_nvram_provider_unbusy_locked(provider);
-	BHND_NVPROV_UNLOCK_RW(provider);
+	bhnd_nvlock_rwunlock(provider->prov_lock);
 }
 
 static void
 bhnd_nvram_provider_unbusy_locked(struct bhnd_nvram_provider *provider)
 {
-	BHND_NVPROV_LOCK_ASSERT(provider, SA_XLOCKED);
+	BHND_NVLOCK_ASSERT(provider->prov_lock, SA_XLOCKED);
 	BHND_NVPROV_ASSERT_ACTIVE(provider);
 
 	BHND_NV_ASSERT(provider->busy > 0, ("busy count underflow"));
@@ -631,9 +1247,13 @@ bhnd_nvram_provider_unbusy_locked(struct bhnd_nvram_provider *provider)
 
 	if (provider->busy == 0) {
 		/* Wake up any threads waiting for the busy count to hit zero */
-		BHND_NVPROV_LOCK_WAKEUP(provider);
+		bhnd_nvlock_wakeup(provider->prov_lock);
 	}
 }
+
+// TODO: link code review
+
+#if 0
 
 /**
  * Free a link instance and all of its children. The link (and all of its
@@ -685,7 +1305,7 @@ bhnd_nvram_link_free(struct bhnd_nvram_link *link)
 			 * a leaf node */
 			cwd = LIST_FIRST(&cwd->children);
 		}
-	}	
+	}
 }
 
 /**
@@ -914,6 +1534,8 @@ bhnd_nvram_link_resolve(struct bhnd_nvram_plane *plane,
 	return (cwd);
 }
 
+#endif
+
 /**
  * Allocate and initialize an empty NVRAM plane.
  * 
@@ -933,14 +1555,23 @@ bhnd_nvram_plane_new(struct bhnd_nvram_plane *parent)
 	if (plane == NULL)
 		return (NULL);
 
-	BHND_NVPLANE_LOCK_INIT(plane);
 	BHND_NVREF_INIT(&plane->refs);
 	LIST_INIT(&plane->children);
 
 	plane->parent = NULL;
 
+	// TODO: plane entry mapping
+#if 0
 	for (size_t i = 0; i < nitems(plane->prov_map); i++)
 		LIST_INIT(&plane->prov_map[i]);
+#endif
+
+	/* Allocate our plane's toplogy lock */
+	plane->topo_lock = bhnd_nvlock_new("BHND NVRAM Plane Lock");
+	if (plane->topo_lock == NULL) {
+		bhnd_nvram_plane_release(plane);
+		return (NULL);
+	}
 
 	/* Create our persistent root link */
 	plane->root = bhnd_nv_calloc(1, sizeof(*plane->root));
@@ -961,12 +1592,12 @@ bhnd_nvram_plane_new(struct bhnd_nvram_plane *parent)
 		plane->parent = bhnd_nvram_plane_retain(parent);
 
 		/* Insert weak reference into the parent's child list */
-		BHND_NVPLANE_LOCK_RW(parent);
+		bhnd_nvlock_rwlock(parent->topo_lock);
 
 		BHND_NVREF_RETAIN_WEAK(plane, refs);
 		LIST_INSERT_HEAD(&parent->children, plane, child_link);
 
-		BHND_NVPLANE_UNLOCK_RW(parent);
+		bhnd_nvlock_rwunlock(parent->topo_lock);
 	}
 
 	return (plane);
@@ -982,6 +1613,8 @@ bhnd_nvram_plane_fini(struct bhnd_nvram_plane *plane)
 {
 	struct bhnd_nvram_plane *parent;
 
+	// TODO: plane cleanup of entries
+#if 0
 	BHND_NV_ASSERT(LIST_EMPTY(&plane->children), ("active children"));
 
 	/* Disconnect all provider references */
@@ -1010,15 +1643,20 @@ bhnd_nvram_plane_fini(struct bhnd_nvram_plane *plane)
 
 	/* Free our link nodes */
 	bhnd_nvram_link_free(plane->root);
+#endif
+
+	/* Release our toplogy lock reference */
+	if (plane->topo_lock != NULL)
+		BHND_NVREF_RELEASE(plane->topo_lock, refs, bhnd_nvlock_fini);
 
 	/*
 	 * Unlink ourselves from the parent plane.
 	 */
 	if ((parent = plane->parent) != NULL) {
 		/* Remove from the parent's list of children */
-		BHND_NVPLANE_LOCK_RW(parent);
+		bhnd_nvlock_rwlock(parent->topo_lock);
 		LIST_REMOVE(plane, child_link);
-		BHND_NVPLANE_UNLOCK_RW(parent);
+		bhnd_nvlock_rwunlock(parent->topo_lock);
 
 		/* Drop our parent's weak reference to this instance; this may
 		 * deallocate our instance, and no member references should be
@@ -1057,6 +1695,8 @@ bhnd_nvram_plane_release(struct bhnd_nvram_plane *plane)
 	BHND_NVREF_RELEASE(plane, refs, bhnd_nvram_plane_fini);
 }
 
+// TODO: plane link mess
+#if 0
 
 /**
  * Return true if @p link is a leaf node and can be safely deallocated, false
@@ -1074,7 +1714,7 @@ static bool
 bhnd_nvram_plane_is_leaf(struct bhnd_nvram_plane *plane,
     struct bhnd_nvram_link *link)
 {
-	BHND_NVPLANE_LOCK_ASSERT(plane, SA_LOCKED);
+	BHND_NVLOCK_ASSERT(plane->topo_lock, SA_LOCKED);
 
 	/* Must not be the root link */
 	if (plane->root == link)
@@ -1183,7 +1823,7 @@ bhnd_nvram_plane_remove_provider(struct bhnd_nvram_plane *plane,
  *			normalized path.
  * @retval EEXIST	if a path in @p pathnames is already registered in
  *			@p plane.
- * @retval ENODEV	if @p provider is marked for removal.
+ * @retval ENXIO	if @p provider is marked for removal.
  * @retval ENOMEM	if allocation fails.
  */
 int
@@ -1391,7 +2031,7 @@ bhnd_nvram_plane_deregister_paths(struct bhnd_nvram_plane *plane,
  * 
  * @retval 0		success.
  * @retval EEXIST	if @p pathname is already registered in @p plane.
- * @retval ENODEV	if the provider for @p entry is marked for removal.
+ * @retval ENXIO	if the provider for @p entry is marked for removal.
  * @retval ENOMEM	if allocation fails.
  */
 int
@@ -1451,6 +2091,9 @@ failed:
 	return (error);
 }
 
+#endif
+
+// TODO: legacy phandle code
 #if 0
 
 /**
@@ -1595,7 +2238,7 @@ bhnd_nvram_path_find_proppath(bhnd_nvram_phandle *phandle,
  * @retval ENOENT	If @p propname is not a known property name, and the
  *			definition of arbitrary property names is unsupported
  *			by @p phandle.
- * @retval ENODEV	If the underlying device for @p phandle is unavailable.
+ * @retval ENXIO	If the underlying device for @p phandle is unavailable.
  * @retval EINVAL	If @p propname is read-only.
  * @retval EINVAL	If @p propname cannot be set to the given value or
  *			value type.
@@ -1625,7 +2268,7 @@ bhnd_nvram_path_setprop(bhnd_nvram_phandle *phandle, const char *propname,
  * @retval ENOENT	If @p propname is not found in @p phandle.
  * @retval ENOMEM	If @p buf is non-NULL and a buffer of @p len is too
  *			small to hold the requested value.
- * @retval ENODEV	If the underlying device for @p phandle is unavailable.
+ * @retval ENXIO	If the underlying device for @p phandle is unavailable.
  * @retval EFTYPE	If the property value cannot be coerced to @p type.
  * @retval ERANGE	If value coercion would overflow @p type.
  * @retval non-zero	If reading the property value otherwise fails, a
@@ -1659,7 +2302,7 @@ bhnd_nvram_path_getprop(bhnd_nvram_phandle *phandle, const char *propname,
  * @retval 0		success
  * @retval ENOENT	If @p propname is not found in @p phandle.
  * @retval ENOMEM	If allocation fails.
- * @retval ENODEV	If the underlying device for @p phandle is unavailable.
+ * @retval ENXIO	If the underlying device for @p phandle is unavailable.
  * @retval EFTYPE	If the property value cannot be coerced to @p type.
  * @retval ERANGE	If value coercion would overflow @p type.
  * @retval non-zero	If reading the property value otherwise fails, a

@@ -151,6 +151,9 @@ typedef void * device_t;
 
 struct bhnd_nvram_plane		*bhnd_nvram_plane_new(
 				     struct bhnd_nvram_plane *parent);
+void				 bhnd_nvram_plane_destroy(
+				     struct bhnd_nvram_plane *plane);
+
 struct bhnd_nvram_plane		*bhnd_nvram_plane_retain(
 				     struct bhnd_nvram_plane *plane);
 void				 bhnd_nvram_plane_release(
@@ -164,6 +167,11 @@ void				 bhnd_nvram_plane_deregister_paths(
 				     struct bhnd_nvram_plane *plane,
 				     struct bhnd_nvram_provider *provider,
 				     char *pathnames[], size_t num_pathnames);
+
+struct bhnd_nvram_entry		*bhnd_nvram_entry_retain(
+				     struct bhnd_nvram_entry *entry);
+void				 bhnd_nvram_entry_release(
+				     struct bhnd_nvram_entry *entry);
 
 int				 bhnd_nvram_plane_map_entry(
 				     struct bhnd_nvram_plane *plane,
@@ -185,10 +193,7 @@ struct bhnd_nvram_entry	*bhnd_nvram_plane_find_path(
 
 #if 0
 
-struct bhnd_nvram_entry	*bhnd_nvram_retain_entry(
-			     struct bhnd_nvram_entry *entry);
-void			 bhnd_nvram_release_entry(
-			     struct bhnd_nvram_entry *entry);
+
 
 struct bhnd_nvram_entry	*bhnd_nvram_open_entry_parent(
 			     struct bhnd_nvram_entry *entry,

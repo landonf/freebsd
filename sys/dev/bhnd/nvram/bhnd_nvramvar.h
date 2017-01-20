@@ -49,9 +49,16 @@
 
 LIST_HEAD(bhnd_nvram_consumer_list,	bhnd_nvram_consumer);
 LIST_HEAD(bhnd_nvram_entry_list,	bhnd_nvram_entry);
-LIST_HEAD(bhnd_nvram_link_list,		bhnd_nvram_link);
 
 typedef struct bhnd_nvram_consumer bhnd_nvram_consumer;
+
+/**
+ * NVRAM entry types.
+ */
+typedef enum {
+	BHND_NVRAM_PLANE_ENTRY	= 1,
+	BHND_NVRAM_PROV_ENTRY	= 2,
+} bhnd_nvram_entry_type;
 
 /**
  * Reference count data structure supporting both strong and weak references.
@@ -88,49 +95,53 @@ struct bhnd_nvpath {
 };
 
 /**
- * NVRAM consumer record.
+ * NVRAM entry consumer record.
  */
 struct bhnd_nvram_consumer {
-	struct bhnd_nvram_plane		*plane;		/**< referencing plane (weak ref) */
-	size_t				 use_count;	/**< the number of plane references */
-
-	struct bhnd_nvref		 refs;
+	/* immutable state */
+	struct bhnd_nvram_entry		*entry;		/**< referencing entry (weak ref) */
 	LIST_ENTRY(bhnd_nvram_consumer)	 nc_link;
 };
 
 /**
- * NVRAM path entry.
- * 
- * Represents provider-exported NVRAM path that may be referenced by muliple
- * NVRAM planes.g
+ * Reference-counted NVRAM sx(9) lock
  */
-struct bhnd_nvram_entry {
-	struct bhnd_nvram_provider	*provider;	/**< provider */
-	struct bhnd_nvpath		*path;		/**< canonical path */
+struct bhnd_nvlock {
+#ifdef _KERNEL
+	struct sx		nv_lock;
+#else /*! _KERNEL */
+	pthread_mutex_t		nv_lock;
+	pthread_cond_t		nv_cond;
+#endif /* _KERNEL */
 
-	struct bhnd_nvref		 refs;
+	struct bhnd_nvref	refs;
 };
 
 /**
- * NVRAM path adjacency list entry.
- * 
- * An individual NVRAM path may be registered in one canonical plane, and then
- * re-exported in additional planes, or within the same plane at an additional
- * position.
- *
- * The plane-specific graph of binary parent/child path relations is
- * represented as a table of bhnd_nvram_link instances.
+ * NVRAM entry node.
  */
-struct bhnd_nvram_link {
-	struct bhnd_nvpath		*path;		/**< plane-specific path string */
-	struct bhnd_nvram_link		*parent;	/**< plane-specific parent, or NULL */
+struct bhnd_nvram_entry {
+	struct bhnd_nvref		 refs;
+	bool				 invalid;	/**< entry invalidated; disconnection is pending */
 
-	struct bhnd_nvram_entry		*entry;		/**< backing entry, or NULL */
+	bhnd_nvram_entry_type		 type;		/**< entry type */
+	struct bhnd_nvpath		*path;		/**< canonical path */
 
-	struct bhnd_nvram_link_list	 children;	/**< all children */
+	struct bhnd_nvram_consumer_list	 consumers;	/**< registered consumers */
+	struct bhnd_nvram_entry		*target;	/**< entry alias target, or NULL (weak ref) */
+	struct bhnd_nvram_entry		*parent;	/**< parent, or NULL (weak ref) */
+	struct bhnd_nvram_entry_list	 children;	/**< all children (strong ref) */
+	struct bhnd_nvlock		*topo_lock;	/**< enclosing plane/provider's lock */
 
-	LIST_ENTRY(bhnd_nvram_link)	 child_link;
-	LIST_ENTRY(bhnd_nvram_link)	 hash_link;
+	union {
+		/* BHND_NVRAM_ENTRY_LINK */
+		struct bhnd_nvram_plane		*plane;		/**< enclosing plane (weak ref) */
+
+		/* BHND_NVRAM_ENTRY_PROV */
+		struct bhnd_nvram_provider	*provider;	/**< provider (weak ref) */
+	} d;
+
+	LIST_ENTRY(bhnd_nvram_entry)	 child_link;	/**< parent's weakly held list entry, if any */
 };
 
 /**
@@ -140,54 +151,16 @@ struct bhnd_nvram_link {
  */
 struct bhnd_nvram_plane {
 	struct bhnd_nvram_plane		*parent;	/**< parent, or NULL */
-	struct bhnd_nvram_link		*root;		/**< root ("/") */
-	struct bhnd_nvram_link_list	 prov_map[4];	/**< provider -> link(s) map */
+	struct bhnd_nvram_entry		*root;		/**< root ("/") */
+	struct bhnd_nvram_entry_list	 entries;	/**< all entries */
 
 	LIST_HEAD(,bhnd_nvram_plane)	 children;	/**< children */
 
-#ifdef _KERNEL
-	struct sx			 plane_lock;
-#else /*! _KERNEL */
-	pthread_rwlock_t		 plane_lock;
-#endif /* _KERNEL */
+	struct bhnd_nvlock		*topo_lock;	/**< topology lock */
 
 	struct bhnd_nvref		 refs;
 	LIST_ENTRY(bhnd_nvram_plane)	 child_link;
 };
-
-#ifdef _KERNEL
-
-#define	BHND_NVPLANE_LOCK_INIT(sc) \
-	sx_init(&(sc)->plane_lock, "BHND NVRAM plane lock")
-#define	BHND_NVPLANE_LOCK_RD(sc)		sx_slock(&(sc)->plane_lock)
-#define	BHND_NVPLANE_UNLOCK_RD(sc)		sx_sunlock(&(sc)->plane_lock)
-#define	BHND_NVPLANE_LOCK_RW(sc)		sx_xlock(&(sc)->plane_lock)
-#define	BHND_NVPLANE_UNLOCK_RW(sc)		sx_xunlock(&(sc)->plane_lock)
-#define	BHND_NVPLANE_LOCK_ASSERT(sc, what)		\
-	/* Lock not required during destruction */	\
-	(BHND_NVREF_REFCOUNT(plane, refs) == 0 ||	\
-	 sx_assert(&(sc)->plane_lock, what))
-#define	BHND_NVPLANE_LOCK_DESTROY(sc)		sx_destroy(&(sc)->plane_lock)
-
-#else /* !_KERNEL */
-
-#define	BHND_NVPLANE_LOCK_INIT(sc) do {					\
-	int error = pthread_rwlock_init(&(sc)->plane_lock, NULL);	\
-	if (error)							\
-		BHND_NV_PANIC("pthread_rwlock_init() failed: %d",	\
-		    error);						\
-} while(0)
-
-#define	BHND_NVPLANE_LOCK_RD(sc)	pthread_rwlock_rdlock(&(sc)->plane_lock)
-#define	BHND_NVPLANE_UNLOCK_RD(sc)	pthread_rwlock_unlock(&(sc)->plane_lock)
-#define	BHND_NVPLANE_LOCK_RW(sc)	pthread_rwlock_wrlock(&(sc)->plane_lock)
-#define	BHND_NVPLANE_UNLOCK_RW(sc)	pthread_rwlock_unlock(&(sc)->plane_lock)
-#define	BHND_NVPLANE_LOCK_DESTROY(sc)	\
-	pthread_rwlock_destroy(&(sc)->plane_lock)
-#define	BHND_NVPLANE_LOCK_ASSERT(sc, what)
-
-#endif /* _KERNEL */
-
 
 /**
  * NVRAM provider state.
@@ -202,65 +175,20 @@ typedef enum {
  * NVRAM provider.
  */
 struct bhnd_nvram_provider {
-	device_t			 dev;		/**< device */
-	struct bhnd_nvram_consumer_list	 consumers;	/**< all consumers */
+	device_t			 dev;		/**< device */	
 	bhnd_nvram_prov_state		 state;		/**< current provider state */
 	size_t				 busy;		/**< busy count. */
+	struct bhnd_nvram_entry_list	 entries;	/**< exported provider entries */
 
-#ifdef _KERNEL
-	struct sx			 prov_lock;
-#else /*! _KERNEL */
-	pthread_mutex_t			 prov_lock;
-	pthread_cond_t			 prov_cond;
-#endif /* _KERNEL */
-
+	struct bhnd_nvlock		*prov_lock;
 	struct bhnd_nvref		 refs;
 };
 
 #ifdef _KERNEL
-
-#define	BHND_NVPROV_LOCK_INIT(sc) \
-	sx_init(&(sc)->prov_lock, "BHND NVRAM provider lock")
-#define	BHND_NVPROV_LOCK_RD(sc)			sx_slock(&(sc)->prov_lock)
-#define	BHND_NVPROV_UNLOCK_RD(sc)		sx_sunlock(&(sc)->prov_lock)
-#define	BHND_NVPROV_LOCK_RW(sc)			sx_xlock(&(sc)->prov_lock)
-#define	BHND_NVPROV_UNLOCK_RW(sc)		sx_xunlock(&(sc)->prov_lock)
-
-#define	BHND_NVPROV_LOCK_WAIT(sc)		\
-	sx_sleep(&(sc)->prov_lock, &(sc)->prov_lock, 0, "bhnd_nvprov", 0);
-#define	BHND_NVPROV_LOCK_WAKEUP(sc)		wakeup(&(sc)->prov_lock);
-
-#define	BHND_NVPROV_LOCK_ASSERT(sc, what)	\
-	sx_assert(&(sc)->prov_lock, what)
-#define	BHND_NVPROV_LOCK_DESTROY(sc)		sx_destroy(&(sc)->prov_lock)
-
+#define	BHND_NVLOCK_ASSERT(lock, what)	sx_assert(&(lock)->nv_lock, what)
 #else /* !_KERNEL */
-
-#define	BHND_NVPROV_LOCK_INIT(sc) do {					\
-	int error = pthread_mutex_init(&(sc)->prov_lock, NULL);		\
-	if (error)							\
-		BHND_NV_PANIC("pthread_mutex_init() failed: %d",	\
-		    error);						\
-									    \
-	error = pthread_cond_init(&(sc)->prov_cond, NULL);		\
-	if (error)							\
-		BHND_NV_PANIC("pthread_cond_init() failed: %d", error);	\
-} while(0)
-
-#define	BHND_NVPROV_LOCK_RD(sc)		pthread_mutex_lock(&(sc)->prov_lock)
-#define	BHND_NVPROV_UNLOCK_RD(sc)	pthread_mutex_unlock(&(sc)->prov_lock)
-#define	BHND_NVPROV_LOCK_RW(sc)		BHND_NVPROV_LOCK_RD(sc)
-#define	BHND_NVPROV_UNLOCK_RW(sc)	BHND_NVPROV_UNLOCK_RD(sc)
-
-#define	BHND_NVPROV_LOCK_WAIT(sc)	\
-	pthread_cond_wait(&(sc)->prov_cond, &(sc)->prov_lock);
-#define	BHND_NVPROV_LOCK_WAKEUP(sc)	\
-	pthread_cond_broadcast(&(sc)->prov_cond);
-
-#define	BHND_NVPROV_LOCK_DESTROY(sc)	pthread_mutex_destroy(&(sc)->prov_lock)
-#define	BHND_NVPROV_LOCK_ASSERT(sc, what)
-
-#endif /* _KERNEL */
+#define	BHND_NVLOCK_ASSERT(lock, what)
+#endif
 
 /**
  * Initialize a the reference count structure.
@@ -361,6 +289,13 @@ bhnd_nvref_promote_weak(struct bhnd_nvref *ref)
 }
 
 /**
+ * Assert that @p value is has at least one strong reference.
+ */
+#define	BHND_NVREF_ASSERT_ALIVE(value, field)			\
+	BHND_NV_ASSERT(!BHND_NVREF_IS_ZOMBIE((value), (field)),	\
+	    ("zombie reference"));
+
+/**
  * Return the current strong reference count of a strongly or weakly held
  * @p value.
  * 
@@ -371,7 +306,7 @@ bhnd_nvref_promote_weak(struct bhnd_nvref *ref)
 	(atomic_load_acq_int(&(value)->field.strong))
 
 /**
- * Return true if the given weak reference is a zombie-- it has no further
+ * Return true if the given weak reference is a zombie -- it has no further
  * strong references remaining, and promotion to a strong reference would
  * fail.
  */
