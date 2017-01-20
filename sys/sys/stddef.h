@@ -38,6 +38,11 @@ typedef	__ptrdiff_t	ptrdiff_t;
 #define	_PTRDIFF_T_DECLARED
 #endif
 
+#ifndef _MAX_ALIGN_T_DECLARED
+typedef	__max_align_t	max_align_t;
+#define	_MAX_ALIGN_T_DECLARED
+#endif
+
 #define	offsetof(type, field)	__offsetof(type, field)
 
 #endif /* !_SYS_STDDEF_H_ */

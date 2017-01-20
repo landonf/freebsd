@@ -62,11 +62,18 @@ typedef	___wchar_t	wchar_t;
 #endif
 #endif
 
+#if defined(__CLANG_MAX_ALIGN_T_DEFINED) || defined(_GCC_MAX_ALIGN_T)
+#ifndef _MAX_ALIGN_T_DECLARED
+#define _MAX_ALIGN_T_DECLARED
+#endif
+#endif
+
 #if __STDC_VERSION__ >= 201112L || __cplusplus >= 201103L
-#ifndef __CLANG_MAX_ALIGN_T_DEFINED
+#ifndef _MAX_ALIGN_T_DECLARED
 typedef	__max_align_t	max_align_t;
 #define __CLANG_MAX_ALIGN_T_DEFINED
 #define _GCC_MAX_ALIGN_T
+#define _MAX_ALIGN_T_DECLARED
 #endif
 #endif
 
