@@ -58,6 +58,32 @@ static inline void		 bhnd_nvlock_rdunlock(struct bhnd_nvlock *lock);
 static inline void		 bhnd_nvlock_wakeup(struct bhnd_nvlock *lock);
 static inline void		 bhnd_nvlock_wait(struct bhnd_nvlock *lock);
 
+static struct bhnd_nvobj	*bhnd_nvobj_new(struct bhnd_nvobj_class *cls);
+
+static struct bhnd_nvobj	*bhnd_nvobj_retain(struct bhnd_nvobj *obj);
+static void			 bhnd_nvobj_release(struct bhnd_nvobj *obj);
+static void			 bhnd_nvobj_fini(struct bhnd_nvobj *obj);
+
+static struct bhnd_nvobj	*bhnd_nvobj_retain_weak(struct bhnd_nvobj *obj);
+static void			 bhnd_nvobj_release_weak(
+				     struct bhnd_nvobj *obj);
+static struct bhnd_nvobj	*bhnd_nvobj_promote_weak(
+				     struct bhnd_nvobj *obj);
+
+static void			*bhnd_nvobj_get_ivars(struct bhnd_nvobj *obj);
+
+static int			 bhnd_nvobj_add_observer(struct bhnd_nvobj *obj,
+				     struct bhnd_nvobj *observer,
+				     bhnd_nvobj_observer_fn *fn);
+static void			 bhnd_nvobj_remove_observer(
+				     struct bhnd_nvobj *obj,
+				     struct bhnd_nvobj *observer,
+				     bhnd_nvobj_observer_fn *fn);
+static void			 bhnd_nvobj_notify_observers(
+				     struct bhnd_nvobj *obj,
+				     bhnd_nvram_event event,
+				     struct bhnd_nvobj *info);
+
 static int			 bhnd_nvpath_new(struct bhnd_nvpath **path,
 				     const char *pathname, size_t pathlen);
 static int			 bhnd_nvpath_append_name(
@@ -69,6 +95,13 @@ struct bhnd_nvpath		*bhnd_nvpath_retain(struct bhnd_nvpath *path);
 void				 bhnd_nvpath_release(struct bhnd_nvpath *path);
 
 static void			 bhnd_nvpath_fini(struct bhnd_nvpath *path);
+
+static bhnd_nvram_observer	*bhnd_nvram_observer_new(struct bhnd_nvobj *obj,
+				     bhnd_nvobj_observer_fn *fn);
+static void			 bhnd_nvram_observer_invalidate(
+				     struct bhnd_nvram_observer *observer);
+static void			 bhnd_nvram_observer_fini(
+				     struct bhnd_nvram_observer *observer);
 
 static bhnd_nvram_consumer	*bhnd_nvram_consumer_new(
 				     struct bhnd_nvram_entry *entry);
@@ -174,6 +207,9 @@ static void			 bhnd_nvram_provider_unbusy_locked(
 #define	BHND_NVPROV_ASSERT_ACTIVE(_prov)		\
 	BHND_NVPROV_ASSERT_STATE((_prov), BHND_NVRAM_PROV_ACTIVE)
 
+#define	BHND_NVOBJ_ASSERT_ALIVE(_obj)			\
+	BHND_NV_ASSERT(!BHND_NVREF_IS_ZOMBIE((_obj), refs), ("zombie object"))
+
 #define	BHND_NVENTRY_ASSERT_COMMON_TOPO(_lhs, _rhs)		\
 	BHND_NV_ASSERT((_lhs)->topo_lock == (_rhs)->topo_lock,	\
 	   ("cross-topology reference"));
@@ -236,7 +272,7 @@ bhnd_nvlock_fini(struct bhnd_nvlock *lock)
 static inline void
 bhnd_nvlock_rwlock(struct bhnd_nvlock *lock)
 {
-	BHND_NVLOCK_ASSERT(target->topo_lock, SA_UNLOCKED);
+	BHND_NVLOCK_ASSERT(lock, SA_UNLOCKED);
 
 #ifdef _KERNEL
 	sx_xlock(&lock->nv_lock);
@@ -258,7 +294,7 @@ bhnd_nvlock_rwunlock(struct bhnd_nvlock *lock)
 static inline void
 bhnd_nvlock_rdlock(struct bhnd_nvlock *lock)
 {
-	BHND_NVLOCK_ASSERT(target->topo_lock, SA_UNLOCKED);
+	BHND_NVLOCK_ASSERT(lock, SA_UNLOCKED);
 
 #ifdef _KERNEL
 	sx_slock(&lock->nv_lock);
@@ -295,6 +331,340 @@ bhnd_nvlock_wait(struct bhnd_nvlock *lock)
 #else /* !_KERNEL */
 	pthread_cond_wait(&lock->nv_cond, &lock->nv_lock);
 #endif /* _KERNEL */
+}
+
+/**
+ * Allocate and return a new zero-initialized NVRAM object instance.
+ * 
+ * The caller is responsible for releasing the returned instance.
+ * 
+ * @param cls	NVRAM object class.
+ * 
+ * @retval non-NULL	success
+ * @retval NULL		if allocation fails.
+ */
+static struct bhnd_nvobj *
+bhnd_nvobj_new(struct bhnd_nvobj_class *cls)
+{
+	struct bhnd_nvobj	*obj;
+#ifndef _KERNEL
+	int			 error;
+#endif
+
+	obj = bhnd_nv_calloc(1, sizeof(*obj) + cls->size);
+	if (obj == NULL)
+		return (NULL);
+
+	obj->cls = cls;
+	BHND_NVREF_INIT(&obj->refs);
+	LIST_INIT(&obj->observers);
+
+#ifdef _KERNEL
+	sx_init(&obj->obs_lock, "BHND NVRAM observer list lock");
+	sx_init(&obj->obs_free_lock, "BHND NVRAM observer free lock");
+#else /* !_KERNEL */
+	error = pthread_rwlock_init(&obj->obs_lock, NULL);
+	if (error) {
+		BHND_NV_LOG("pthread_rwlock_init() failed: %d\n", error);
+		bhnd_nv_free(obj);
+		return (NULL);
+	}
+
+	error = pthread_mutex_init(&obj->obs_free_lock, NULL);
+	if (error) {
+		BHND_NV_LOG("pthread_mutex_init() failed: %d\n", error);
+		bhnd_nv_free(obj);
+		return (NULL);
+	}
+#endif /* _KERNEL */
+
+	return (obj);
+}
+
+static void
+bhnd_nvobj_fini(struct bhnd_nvobj *obj)
+{
+	struct bhnd_nvram_observer *observer, *obs_next;
+
+	/* Execute custom finalizer */
+	if (obj->cls->fini != NULL) {
+		obj->cls->fini(obj);
+		BHND_NV_ASSERT(BHND_NVREF_IS_ZOMBIE(obj, refs),
+		    ("object resurrected by finalizer"));
+	}
+
+	/* Drop all observer references */
+	LIST_FOREACH_SAFE(observer, &obj->observers, link, obs_next) {
+		LIST_REMOVE(observer, link);
+		BHND_NVREF_RELEASE(observer, refs, bhnd_nvram_observer_fini);
+	}
+
+#ifdef _KERNEL
+	sx_destroy(&obj->obs_lock);
+	sx_destroy(&obj->obs_free_lock);
+#else /* !_KERNEL */
+	pthread_rwlock_destroy(&obj->obs_lock);
+	pthread_mutex_destroy(&obj->obs_free_lock);
+#endif /* _KERNEL */
+}
+
+
+/**
+ * Retain a strong reference to @p obj and return @p obj.
+ * 
+ * @param obj	The referenced object.
+ */
+static struct bhnd_nvobj *
+bhnd_nvobj_retain(struct bhnd_nvobj *obj)
+{
+	BHND_NVOBJ_ASSERT_ALIVE(obj);
+	return (BHND_NVREF_RETAIN(obj, refs));
+}
+
+/**
+ * Release a strong reference to @p obj, possibly deallocating @p obj.
+ * 
+ * @param obj	The referenced object.
+ */
+static void
+bhnd_nvobj_release(struct bhnd_nvobj *obj)
+{
+	BHND_NVOBJ_ASSERT_ALIVE(obj);
+	BHND_NVREF_RELEASE(obj, refs, bhnd_nvobj_fini);
+}
+
+/**
+ * Retain a weak reference to @p obj and return @p obj.
+ * 
+ * @param obj	The strongly referenced object.
+ */
+static struct bhnd_nvobj *
+bhnd_nvobj_retain_weak(struct bhnd_nvobj *obj)
+{
+	BHND_NVOBJ_ASSERT_ALIVE(obj);
+	return (BHND_NVREF_RETAIN_WEAK(obj, refs));
+}
+
+/**
+ * Release a weak reference, possibly deallocating @p obj.
+ * 
+ * @param obj	The weakly-referenced object.
+ */
+static void
+bhnd_nvobj_release_weak(struct bhnd_nvobj *obj)
+{
+	BHND_NVREF_RELEASE_WEAK(obj, refs);
+}
+
+/**
+ * Attempt to promote a weak object reference to a strong reference, returning
+ * NULL if the object has already been finalized, or a new strong reference
+ * on success.
+ * 
+ * If a new strong reference is returned, the caller is responsible for
+ * releasing the reference via bhnd_nvobj_release().
+ * 
+ * The caller's existing weak reference is unmodified.
+ * 
+ * @param obj A weakly-reference object.
+ */
+static struct bhnd_nvobj *
+bhnd_nvobj_promote_weak(struct bhnd_nvobj *obj)
+{
+	return (BHND_NVREF_PROMOTE_WEAK(obj, refs));
+}
+
+/**
+ * Return a pointer to the per-instance opaque object state.
+ * 
+ * @param obj The object to query.
+ */
+static void *
+bhnd_nvobj_get_ivars(struct bhnd_nvobj *obj)
+{
+	return (&obj->ivars);
+}
+
+/**
+ * Register @p observer with @p fn as an observer on @p obj.
+ * 
+ * On success, the caller is responsible for releasing the observer
+ * registration via bhnd_nvobj_remove_observer().
+ * 
+ * @param obj		The object to be observed.
+ * @param observer	The observer to be registered.
+ * @param fn		The observer's callback function.
+ * 
+ * @retval 0		success
+ * @retval ENOMEM	if allocation fails
+ */
+static int
+bhnd_nvobj_add_observer(struct bhnd_nvobj *obj, struct bhnd_nvobj *observer,
+    bhnd_nvobj_observer_fn *fn)
+{
+	struct bhnd_nvram_observer *obs;
+
+	BHND_NVOBJ_ASSERT_ALIVE(obj);
+
+	/* Allocate new observer record */
+	obs = bhnd_nvram_observer_new(observer, fn);
+	if (obs == NULL)
+		return (ENOMEM);
+
+	BHND_NVOBJ_OBSERVERS_XLOCK(obj);
+	LIST_INSERT_HEAD(&obj->observers, obs, link);
+	BHND_NVOBJ_OBSERVERS_XUNLOCK(obj);
+
+	return (0);
+}
+
+/**
+ * Remove a previous registration of @p observer with @p fn on @p obj.
+ * 
+ * On success, the caller is responsible for releasing the observer
+ * registration via bhnd_nvobj_remove_observer().
+ * 
+ * @param obj		The object to be observed.
+ * @param observer	The observer to be deregistered.
+ * @param fn		The observer's callback function, or NULL to remove
+ *			all observer registrations for @p observer.
+ * 
+ * @retval 0		success
+ * @retval ENOMEM	if allocation fails
+ */
+static void
+bhnd_nvobj_remove_observer(struct bhnd_nvobj *obj, struct bhnd_nvobj *observer,
+    bhnd_nvobj_observer_fn *fn)
+{
+	struct bhnd_nvram_observer	*obs, *obs_next;
+	bool				 matched, have_iter_lock;
+
+	BHND_NVOBJ_ASSERT_ALIVE(obj);
+
+	BHND_NVOBJ_OBSERVERS_XLOCK(obj);
+
+	/* Remove matching entry/entries */
+	matched = false;
+	have_iter_lock = BHND_NVOBJ_OBSERVERS_TRY_ITER_LOCK(obj);
+	LIST_FOREACH_SAFE(obs, &obj->observers, link, obs_next) {
+		if (obs->obj != observer)
+			continue;
+
+		if (fn != NULL && obs->fn != fn)
+			continue;
+
+		/* Found a valid match */
+		matched = true;
+
+		/*
+		 * Can we delete the observer? If iteration is in progress,
+		 * we need to mark it for future deletion.
+		 * 
+		 * Actual deletion will be performed by the iterating thread
+		 * once it can reacquire the observer list lock
+		 */
+		if (!have_iter_lock) {
+			/* Mark as invalid, but leave in place for iteration */
+			bhnd_nvram_observer_invalidate(obs);
+		} else {
+			/* We hold the iteration lock; remove the entry */
+			LIST_REMOVE(obs, link);
+			BHND_NVREF_RELEASE(obs, refs, bhnd_nvram_observer_fini);
+		}
+
+		/* Unless we're removing all observer registrations, we only
+		 * want to remove one reference */
+		if (fn != NULL)
+			break;
+	}
+
+	if (have_iter_lock)
+		BHND_NVOBJ_OBSERVERS_ITER_UNLOCK(obj);
+	
+	BHND_NVOBJ_OBSERVERS_XUNLOCK(obj);
+
+	/* Unless we're removing all observer registrations, we expect
+	 * removal to be balanced with addition, and a matching record must be
+	 * found */
+	if (fn != NULL && !matched)
+		BHND_NV_PANIC("observer over-released");
+}
+
+/**
+ * Dispatch @p event with @p info to all observers registered on @p obj.
+ * 
+ * @param obj	The dispatching object.
+ * @param event	The event to dispatch.
+ * @param info	Event-specific information, or NULL.
+ */
+static void
+bhnd_nvobj_notify_observers(struct bhnd_nvobj *obj, bhnd_nvram_event event,
+    struct bhnd_nvobj *info)
+{
+	struct bhnd_nvram_observer	*obs, *obs_next;
+
+	BHND_NVOBJ_ASSERT_ALIVE(obj);
+
+	/* Acquire a read lock on the observer list, and then acquire our
+	 * free lock to prevent the deletion of observer records during
+	 * iteration */
+	BHND_NVOBJ_OBSERVERS_SLOCK(obj);
+	BHND_NVOBJ_OBSERVERS_ITER_LOCK(obj);
+
+	LIST_FOREACH_SAFE(obs, &obj->observers, link, obs_next) {
+		struct bhnd_nvobj	*self;
+		bhnd_nvobj_observer_fn	*fn;
+
+		/* Pending deletion? */
+		if (obs->obj == NULL)
+			continue;
+
+		/* Try to fetch a strong reference to the observer */
+		if ((self = bhnd_nvobj_promote_weak(obs->obj)) == NULL)
+			continue;
+
+		/* Save currently registered function pointer */
+		fn = obs->fn;
+
+		/*
+		 * Dispatch the event.
+		 *
+		 * We drop our observer list lock during dispatch to allow for
+		 * reentrant calls from the observer; as long as we hold the
+		 * iteration lock, our observer records will not be deallocated
+		 * or removed from the observer list.
+		 * 
+		 * Note that the object and function associated with the
+		 * observer records may be modified while we do not hold the
+		 * lock.
+		 */
+		BHND_NVOBJ_OBSERVERS_SUNLOCK(obj);
+
+		fn(self, obj, event, info);
+
+		/* Drop the strong reference acquired above. We do this prior
+		 * to re-acquiring our observer list lock to ensure that
+		 * reentrant calls triggered by deallocation can not deadlock */
+		bhnd_nvobj_release(self);
+
+		/* Reacquire observer list lock */
+		BHND_NVOBJ_OBSERVERS_SLOCK(obj);
+	}
+
+	/* Clean up any observer records that were marked for deletion by
+	 * other threads while we held the iteration lock */
+	LIST_FOREACH_SAFE(obs, &obj->observers, link, obs_next) {
+		if (obs->obj != NULL)
+			continue; /* still valid */
+
+		LIST_REMOVE(obs, link);
+		BHND_NVREF_RELEASE(obs, refs, bhnd_nvram_observer_fini);
+	}
+
+
+	/* Release our observer locks */
+	BHND_NVOBJ_OBSERVERS_XUNLOCK(obj);
+	BHND_NVOBJ_OBSERVERS_ITER_UNLOCK(obj);
 }
 
 /**
@@ -424,6 +794,49 @@ static void
 bhnd_nvpath_fini(struct bhnd_nvpath *path)
 {
 	bhnd_nv_free(path->pathname);
+}
+
+/**
+ * Allocate, initialize, and return a new NVRAM observer record.
+ * 
+ * The caller assumes ownership of the returned instance.
+ * 
+ * @param obj	The observing object, to be weakly retained.
+ * @param fn	The observation event callback for @p obj.
+ * 
+ * @retval non-NULL	success.
+ * @retval NULL		if allocation fails.
+ */
+static bhnd_nvram_observer *
+bhnd_nvram_observer_new(struct bhnd_nvobj *obj, bhnd_nvobj_observer_fn *fn)
+{
+	struct bhnd_nvram_observer *observer;
+
+	observer = bhnd_nv_calloc(1, sizeof(*observer));
+	if (observer == NULL)
+		return (NULL);
+
+	observer->obj = bhnd_nvobj_retain_weak(obj);
+	observer->fn = fn;
+
+	return (observer);
+}
+
+static void
+bhnd_nvram_observer_invalidate(struct bhnd_nvram_observer *observer)
+{
+	if (observer->obj != NULL) {
+		bhnd_nvobj_release_weak(observer->obj);
+		observer->obj = NULL;
+	}
+
+	observer->fn = NULL;
+}
+
+static void
+bhnd_nvram_observer_fini(struct bhnd_nvram_observer *observer)
+{
+	bhnd_nvram_observer_invalidate(observer);
 }
 
 /**

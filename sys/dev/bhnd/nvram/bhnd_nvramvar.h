@@ -38,9 +38,11 @@
 
 #ifdef _KERNEL
 #include <sys/lock.h>
+#include <sys/stddef.h>
 #include <sys/sx.h>
 #else /* !_KERNEL */
 #include <pthread.h>
+#include <stddef.h>
 #endif /* __KERNEL */
 
 #include <machine/atomic.h>
@@ -49,16 +51,41 @@
 
 LIST_HEAD(bhnd_nvram_consumer_list,	bhnd_nvram_consumer);
 LIST_HEAD(bhnd_nvram_entry_list,	bhnd_nvram_entry);
+LIST_HEAD(bhnd_nvram_observer_list,	bhnd_nvram_observer);
 
+typedef struct bhnd_nvram_observer bhnd_nvram_observer;
 typedef struct bhnd_nvram_consumer bhnd_nvram_consumer;
 
+struct bhnd_nvobj;
+struct bhnd_nvobj_class;
+
 /**
- * NVRAM entry types.
+ * NVRAM observable events.
  */
 typedef enum {
-	BHND_NVRAM_PLANE_ENTRY	= 1,
-	BHND_NVRAM_PROV_ENTRY	= 2,
-} bhnd_nvram_entry_type;
+	/** The object has been disconnected from its enclosing topology and
+	 *  marked as invalid; all listeners should discard any held references
+	 *  where possible */
+	BHND_NVRAM_EVENT_DISCONNECT	= 2,
+} bhnd_nvram_event;
+
+/**
+ * Event dispatch handler.
+ * 
+ * @param self		The observing object.
+ * @param target	The dispatching object.
+ * @param event		The dispatched event.
+ * @param info		Event-specific information, if any.
+ */
+typedef void (bhnd_nvobj_observer_fn)(struct bhnd_nvobj *self,
+    struct bhnd_nvobj *target, bhnd_nvram_event event, struct bhnd_nvobj *info);
+
+/**
+ * Object finalization operation.
+ * 
+ * @param self		The observing object.
+ */
+typedef void (bhnd_nvobj_fini_op)(struct bhnd_nvobj *self);
 
 /**
  * Reference count data structure supporting both strong and weak references.
@@ -82,6 +109,106 @@ struct bhnd_nvref {
 };
 
 /**
+ * Reference-counted NVRAM lock
+ */
+struct bhnd_nvlock {
+#ifdef _KERNEL
+	struct sx		nv_lock;
+#else /*! _KERNEL */
+	pthread_mutex_t		nv_lock;
+	pthread_cond_t		nv_cond;
+#endif /* _KERNEL */
+
+	struct bhnd_nvref	refs;
+};
+
+/**
+ * Generic NVRAM object.
+ * 
+ * Provides reference counting (including both strong and weak references)
+ * and generic event listener registration.
+ */
+struct bhnd_nvobj {
+	const struct bhnd_nvobj_class		*cls;		/**< class definition */
+	struct bhnd_nvref			 refs;		/**< reference count */
+	struct bhnd_nvram_observer_list		 observers;	/**< registered observers (weak refs) */
+#ifdef _KERNEL
+	struct sx				 obs_lock;	/**< observer list lock */
+	struct sx				 obs_free_lock;	/**< must be held to remove/free observer entries */
+#else /* !_KERNEL */
+	pthread_rwlock_t			 obs_lock;
+	pthread_mutex_t				 obs_free_lock;
+#endif /* _KERNEL */
+
+	_Alignas(_Alignof(max_align_t)) u_char	 ivars[];
+};
+
+/**
+ * NVRAM object class description.
+ */
+struct bhnd_nvobj_class {
+	size_t			 size;	/**< object size */
+	bhnd_nvobj_fini_op	*fini;	/**< finalizer */
+};
+
+/**
+ * NVRAM observer registration.
+ */
+struct bhnd_nvram_observer {
+	struct bhnd_nvobj		*obj;	/**< observing object (weak ref) */
+	bhnd_nvobj_observer_fn		*fn;	/**< event callback */
+
+	struct bhnd_nvref		 refs;
+	LIST_ENTRY(bhnd_nvram_observer)	 link;	/**< observer list link */
+};
+
+
+#ifdef _KERNEL
+
+#define	BHND_NVOBJ_OBSERVERS_XLOCK(obj)		sx_xlock(&(obj)->obs_lock)
+#define	BHND_NVOBJ_OBSERVERS_XUNLOCK(obj)	sx_xunlock(&(obj)->obs_lock)
+#define	BHND_NVOBJ_OBSERVERS_SLOCK(obj)		sx_slock(&(obj)->obs_lock)
+#define	BHND_NVOBJ_OBSERVERS_SUNLOCK(obj)	sx_sunlock(&(obj)->obs_lock)
+
+#define	BHND_NVOBJ_OBSERVERS_ITER_LOCK(obj)	sx_xlock(&(obj)->obs_free_lock)
+#define	BHND_NVOBJ_OBSERVERS_TRY_ITER_LOCK(obj)		\
+    sx_try_xlock(&(obj)->obs_free_lock)
+#define	BHND_NVOBJ_OBSERVERS_ITER_UNLOCK(obj)	sx_xunlock(&(obj)->obs_free_lock)
+
+#define	BHND_NVOBJ_OBSERVERS_LOCK_ASSERT(obj, what)	\
+    sx_assert(&(obj)->obs_lock, what)
+
+#else /* !_KERNEL */
+
+#define	BHND_NVOBJ_OBSERVERS_XLOCK(obj)		\
+    pthread_rwlock_rwlock(&(obj)->obs_lock)
+#define	BHND_NVOBJ_OBSERVERS_XUNLOCK(obj)	\
+    pthread_rwlock_unlock(&(obj)->obs_lock)
+#define	BHND_NVOBJ_OBSERVERS_SLOCK(obj)		\
+    pthread_rwlock_rdlock(&(obj)->obs_lock)
+#define	BHND_NVOBJ_OBSERVERS_SUNLOCK(obj)	\
+    pthread_rwlock_unlock(&(obj)->obs_lock)
+
+#define	BHND_NVOBJ_OBSERVERS_ITER_LOCK(obj)	\
+    pthread_mutex_lock(&(obj)->obs_free_lock)
+#define	BHND_NVOBJ_OBSERVERS_TRY_ITER_LOCK(obj)	\
+    pthread_mutex_trylock(&(obj)->obs_free_lock)
+#define	BHND_NVOBJ_OBSERVERS_ITER_UNLOCK(obj)	\
+    pthread_mutex_unlock(&(obj)->obs_free_lock)
+
+#define	BHND_NVOBJ_OBSERVERS_LOCK_ASSERT(obj, what)
+
+#endif /* _KERNEL */
+
+/**
+ * NVRAM entry types.
+ */
+typedef enum {
+	BHND_NVRAM_PLANE_ENTRY	= 1,
+	BHND_NVRAM_PROV_ENTRY	= 2,
+} bhnd_nvram_entry_type;
+
+/**
  * NVRAM canonical path string.
  */
 struct bhnd_nvpath {
@@ -101,20 +228,6 @@ struct bhnd_nvram_consumer {
 	/* immutable state */
 	struct bhnd_nvram_entry		*entry;		/**< referencing entry (weak ref) */
 	LIST_ENTRY(bhnd_nvram_consumer)	 nc_link;
-};
-
-/**
- * Reference-counted NVRAM sx(9) lock
- */
-struct bhnd_nvlock {
-#ifdef _KERNEL
-	struct sx		nv_lock;
-#else /*! _KERNEL */
-	pthread_mutex_t		nv_lock;
-	pthread_cond_t		nv_cond;
-#endif /* _KERNEL */
-
-	struct bhnd_nvref	refs;
 };
 
 /**
