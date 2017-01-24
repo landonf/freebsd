@@ -92,7 +92,7 @@ bhnd_nvram_ioptr_new(const void *ptr, size_t size, size_t capacity,
 		return (NULL);
 	
 	/* Allocate I/O context */
-	ioptr = bhnd_nv_malloc(sizeof(*ioptr));
+	ioptr = bhnd_nv_malloc(sizeof(*ioptr), M_NOWAIT);
 	if (ioptr == NULL)
 		return (NULL);
 	

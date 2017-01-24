@@ -114,7 +114,7 @@ bhnd_nvram_store_new(struct bhnd_nvram_store **store,
 	int			 error;
 
 	/* Allocate new instance */
-	sc = bhnd_nv_calloc(1, sizeof(*sc));
+	sc = bhnd_nv_calloc(1, sizeof(*sc), M_NOWAIT);
 	if (sc == NULL)
 		return (ENOMEM);
 
@@ -553,7 +553,7 @@ bhnd_nvstore_export_devpath_alias(struct bhnd_nvram_store *sc,
 		*alias_val = alias->alias;
 
 		/* Allocate devpathXX variable name */
-		bhnd_nv_asprintf(&pathvar, "devpath%lu", *alias_val);
+		bhnd_nv_asprintf(&pathvar, M_NOWAIT, "devpath%lu", *alias_val);
 		if (pathvar == NULL)
 			return (ENOMEM);
 
@@ -578,7 +578,7 @@ bhnd_nvstore_export_devpath_alias(struct bhnd_nvram_store *sc,
 		}
 
 		/* Allocate devpathXX variable name */
-		bhnd_nv_asprintf(&pathvar, "devpath%lu", *alias_val);
+		bhnd_nv_asprintf(&pathvar, M_NOWAIT, "devpath%lu", *alias_val);
 		if (pathvar == NULL)
 			return (ENOMEM);
 
@@ -700,7 +700,7 @@ bhnd_nvram_store_export_child(struct bhnd_nvram_store *sc,
 			goto finished;
 
 		/* Allocate variable name prefix */
-		len = bhnd_nv_asprintf(&prefix, "%lu:", alias_val);
+		len = bhnd_nv_asprintf(&prefix, M_NOWAIT, "%lu:", alias_val);
 		if (prefix == NULL) {
 			error = ENOMEM;
 			goto finished;
@@ -712,7 +712,7 @@ bhnd_nvram_store_export_child(struct bhnd_nvram_store *sc,
 
 		/* Allocate the variable name prefix, appending '/' to the
 		 * relative path */
-		len = bhnd_nv_asprintf(&prefix, "%s/", relpath);
+		len = bhnd_nv_asprintf(&prefix, M_NOWAIT, "%s/", relpath);
 		if (prefix == NULL) {
 			error = ENOMEM;
 			goto finished;
@@ -739,7 +739,7 @@ bhnd_nvram_store_export_child(struct bhnd_nvram_store *sc,
 
 		/* Allocate name buffer (path-prefix + name + '\0') */
 		namebuf_size = prefix_len + maxlen + 1;
-		namebuf = bhnd_nv_malloc(namebuf_size);
+		namebuf = bhnd_nv_malloc(namebuf_size, M_NOWAIT);
 		if (namebuf == NULL) {
 			error = ENOMEM;
 			goto finished;

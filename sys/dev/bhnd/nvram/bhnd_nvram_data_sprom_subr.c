@@ -103,7 +103,7 @@ bhnd_sprom_opcode_init(bhnd_sprom_opcode_state *state,
 
 	/* Allocate and populate our opcode index */
 	num_idx = state->layout->num_vars;
-	idx = bhnd_nv_calloc(num_idx, sizeof(*idx));
+	idx = bhnd_nv_calloc(num_idx, sizeof(*idx), M_NOWAIT);
 	if (idx == NULL)
 		return (ENOMEM);
 

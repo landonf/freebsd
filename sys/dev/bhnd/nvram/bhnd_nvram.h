@@ -126,6 +126,14 @@ typedef enum {
 						     values */
 } bhnd_nvram_type;
 
+/**
+ * NVRAM API flags.
+ */
+enum {
+	BHND_NVRAM_FLAGS_NOWAIT		= (1<<0),	/**< do not block (e.g. on malloc) */
+	BHND_NVRAM_FLAGS_WAITOK		= (1<<1),	/**< ok to block (e.g. on malloc) */
+};
+
 bool			 bhnd_nvram_is_signed_type(bhnd_nvram_type type);
 bool			 bhnd_nvram_is_unsigned_type(bhnd_nvram_type type);
 bool			 bhnd_nvram_is_int_type(bhnd_nvram_type type);

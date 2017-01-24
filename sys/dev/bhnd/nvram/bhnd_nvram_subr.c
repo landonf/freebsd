@@ -103,6 +103,54 @@ const uint8_t bhnd_nvram_crc8_tab[] = {
 	0x26, 0x68, 0x9f
 };
 
+/* We need our own vasprintf() implementation to pass malloc flags */
+int
+bhnd_nv_vasprintf(char **buf, int flags, const char *fmt, va_list ap)
+{
+	va_list	ap_copy;
+	char	emptybuf;
+	int	size, ret;
+
+	/* determine formatted size */
+	va_copy(ap_copy, ap);
+	size = snprintf(&emptybuf, 0, fmt, ap_copy);
+	va_end(ap_copy);
+
+	if (size < 0) {
+		*buf = NULL;
+		return (size);
+	}
+
+	size++; /* len + '\0' */
+
+	/* allocate output buffer with user-supplied flags */
+	if ((*buf = bhnd_nv_malloc(size, flags)) == NULL)
+		return (-1);
+
+	/* emit formatted string */
+	ret = vsnprintf(*buf, size, fmt, ap);
+	if (ret < 0) {
+		bhnd_nv_free(*buf);
+		*buf = NULL;
+	}
+
+	return (ret);
+}
+
+/* We need our own asprintf() implementation to pass malloc flags */
+int
+bhnd_nv_asprintf(char **buf, int flags, const char *fmt, ...)
+{
+	va_list	ap;
+	int	ret;
+
+	va_start(ap, fmt);
+	ret = bhnd_nv_vasprintf(buf, flags, fmt, ap);
+	va_end(ap);
+
+	return (ret);
+}
+
 /**
  * Return a human readable name for @p type.
  * 

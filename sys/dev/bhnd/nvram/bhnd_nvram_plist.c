@@ -66,7 +66,7 @@ bhnd_nvram_plist_new(void)
 {
 	bhnd_nvram_plist *plist;
 
-	plist = bhnd_nv_calloc(1, sizeof(*plist));
+	plist = bhnd_nv_calloc(1, sizeof(*plist), M_NOWAIT);
 	if (plist == NULL)
 		return NULL;
 
@@ -426,7 +426,7 @@ bhnd_nvram_plist_append(bhnd_nvram_plist *plist, bhnd_nvram_prop *prop)
 		return (ENOMEM);
 
 	/* Allocate new entry */
-	entry = bhnd_nv_malloc(sizeof(*entry));
+	entry = bhnd_nv_malloc(sizeof(*entry), M_NOWAIT);
 	if (entry == NULL)
 		return (ENOMEM);
 
@@ -780,14 +780,14 @@ bhnd_nvram_prop_new(const char *name, bhnd_nvram_val *val)
 {
 	struct bhnd_nvram_prop *prop;
 
-	prop = bhnd_nv_calloc(1, sizeof(*prop));
+	prop = bhnd_nv_calloc(1, sizeof(*prop), M_NOWAIT);
 	if (prop == NULL)
 		return NULL;
 
 	/* Implicit caller-owned reference */
 	prop->refs = 1;
 
-	if ((prop->name = bhnd_nv_strdup(name)) == NULL)
+	if ((prop->name = bhnd_nv_strdup(name, M_NOWAIT)) == NULL)
 		goto failed;
 
 	if ((prop->val = bhnd_nvram_val_copy(val)) == NULL)

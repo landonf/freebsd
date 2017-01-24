@@ -252,7 +252,7 @@ bhnd_nvram_bcmraw_init(struct bhnd_nvram_bcmraw *bcm, struct bhnd_nvram_io *src)
 
 	capacity = io_size + 1 /* room for extra NUL */;
 	bcm->size = io_size;
-	if ((bcm->data = bhnd_nv_malloc(capacity)) == NULL)
+	if ((bcm->data = bhnd_nv_malloc(capacity, M_NOWAIT)) == NULL)
 		return (ENOMEM);
 
 	/* Copy in the NVRAM image */
@@ -311,7 +311,7 @@ bhnd_nvram_bcmraw_init(struct bhnd_nvram_bcmraw *bcm, struct bhnd_nvram_io *src)
 
 	/* Reclaim any unused space in he backing buffer */
 	if (offset < bcm->size) {
-		bcm->data = bhnd_nv_reallocf(bcm->data, bcm->size);
+		bcm->data = bhnd_nv_reallocf(bcm->data, bcm->size, M_NOWAIT);
 		if (bcm->data == NULL)
 			return (ENOMEM);
 	}

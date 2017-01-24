@@ -259,7 +259,7 @@ bhnd_nvram_data_new(bhnd_nvram_data_class *cls, struct bhnd_nvram_data **nv,
 	    ("instance size %zu less than minimum %zu", cls->size,
 	     sizeof(struct bhnd_nvram_data)));
 
-	data = bhnd_nv_calloc(1, cls->size);
+	data = bhnd_nv_calloc(1, cls->size, M_NOWAIT);
 	data->cls = cls;
 	refcount_init(&data->refs, 1);
 

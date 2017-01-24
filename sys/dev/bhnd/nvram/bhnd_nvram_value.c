@@ -397,7 +397,7 @@ bhnd_nvram_val_new(bhnd_nvram_val **value, const bhnd_nvram_val_fmt *fmt,
 	int error;
 
 	/* Allocate new instance */
-	if ((*value = bhnd_nv_malloc(sizeof(**value))) == NULL)
+	if ((*value = bhnd_nv_malloc(sizeof(**value), M_NOWAIT)) == NULL)
 		return (ENOMEM);
 
 	/* Perform common initialization. */
@@ -536,7 +536,7 @@ bhnd_nvram_val_convert_new(bhnd_nvram_val **value,
 	int error;
 
 	/* Allocate new instance */
-	if ((*value = bhnd_nv_malloc(sizeof(**value))) == NULL)
+	if ((*value = bhnd_nv_malloc(sizeof(**value), M_NOWAIT)) == NULL)
 		return (ENOMEM);
 
 	/* Perform common initialization. */
@@ -1924,7 +1924,7 @@ bhnd_nvram_val_alloc_bytes(bhnd_nvram_val *value, size_t ilen,
 		return (NULL);
 
 	/* Allocate external storage */
-	if ((ptr = bhnd_nv_malloc(ilen)) == NULL)
+	if ((ptr = bhnd_nv_malloc(ilen, M_NOWAIT)) == NULL)
 		return (NULL);
 
 	value->data.ptr = ptr;

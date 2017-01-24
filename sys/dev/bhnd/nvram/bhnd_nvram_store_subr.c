@@ -88,7 +88,7 @@ bhnd_nvstore_path_new(const char *path_str, size_t path_len)
 	}
 
 	/* Allocate new entry */
-	path = bhnd_nv_malloc(sizeof(*path));
+	path = bhnd_nv_malloc(sizeof(*path), M_NOWAIT);
 	if (path == NULL)
 		return (NULL);
 
@@ -115,7 +115,7 @@ bhnd_nvstore_path_new(const char *path_str, size_t path_len)
 		qpathlen = strnlen(path_str, path_len) + 1; /* + '\0' */
 		qpathlen += 1; /* + '/' */
 
-		path->qual_path_str = bhnd_nv_malloc(qpathlen);
+		path->qual_path_str = bhnd_nv_malloc(qpathlen, M_NOWAIT);
 		if (path->qual_path_str == NULL)
 			goto failed;
 
@@ -127,7 +127,8 @@ bhnd_nvstore_path_new(const char *path_str, size_t path_len)
 		path->qual_path_str[path_len + 1] = '\0';
 	} else {
 		/* Can copy as-is */
-		path->qual_path_str = bhnd_nv_strndup(path_str, path_len);
+		path->qual_path_str = bhnd_nv_strndup(path_str, path_len,
+		    M_NOWAIT);
 		if (path->qual_path_str == NULL)
 			goto failed;
 	}
@@ -188,7 +189,7 @@ bhnd_nvstore_index_new(size_t capacity)
 
 	/* Allocate and populate variable index */
 	bytes = sizeof(struct bhnd_nvstore_index) + (sizeof(void *) * capacity);
-	index = bhnd_nv_malloc(bytes);
+	index = bhnd_nv_malloc(bytes, M_NOWAIT);
 	if (index == NULL) {
 		BHND_NV_LOG("error allocating %zu byte index\n", bytes);
 		return (NULL);
@@ -406,11 +407,11 @@ bhnd_nvstore_path_register_update(struct bhnd_nvram_store *sc,
 		alias = bhnd_nvstore_find_alias(sc, path->path_str);
 		if (alias != NULL) {
 			/* Use <alias>:name */
-			len = bhnd_nv_asprintf(&namebuf, "%lu:%s", alias->alias,
-			    name);
+			len = bhnd_nv_asprintf(&namebuf, M_NOWAIT, "%lu:%s",
+			    alias->alias, name);
 		} else {
 			/* Use path/name */
-			len = bhnd_nv_asprintf(&namebuf, "%s/%s",
+			len = bhnd_nv_asprintf(&namebuf, M_NOWAIT, "%s/%s",
 			    path->path_str, name);
 		}
 
@@ -969,7 +970,7 @@ bhnd_nvstore_register_alias(struct bhnd_nvram_store *sc,
 		return (ENOMEM);
 
 	/* Allocate path string buffer */
-	if ((path_str = bhnd_nv_malloc(path_len)) == NULL)
+	if ((path_str = bhnd_nv_malloc(path_len, M_NOWAIT)) == NULL)
 		return (ENOMEM);
 
 	/* Decode to our new buffer */
@@ -1021,7 +1022,7 @@ bhnd_nvstore_register_alias(struct bhnd_nvram_store *sc,
 	}
 
 	/* Allocate alias entry */
-	alias = bhnd_nv_calloc(1, sizeof(*alias));
+	alias = bhnd_nv_calloc(1, sizeof(*alias), M_NOWAIT);
 	if (alias == NULL) {
 		error = ENOMEM;
 		goto failed;

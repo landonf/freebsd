@@ -104,7 +104,7 @@ bhnd_nvram_iobuf_empty(size_t size, size_t capacity)
 	}
 
 	/* Allocate I/O context */
-	iobuf = bhnd_nv_malloc(iosz);
+	iobuf = bhnd_nv_malloc(iosz, M_NOWAIT);
 	if (iobuf == NULL)
 		return (NULL);
 
@@ -118,8 +118,7 @@ bhnd_nvram_iobuf_empty(size_t size, size_t capacity)
 	if (inline_alloc)
 		iobuf->buf = &iobuf->data;
 	else
-		iobuf->buf = bhnd_nv_malloc(iobuf->capacity);
-
+		iobuf->buf = bhnd_nv_malloc(iobuf->capacity, M_NOWAIT);
 
 	if (iobuf->buf == NULL) {
 		bhnd_nv_free(iobuf);

@@ -73,43 +73,6 @@ MALLOC_DECLARE(M_BHND_NVRAM);
 #define	bhnd_nv_isxdigit(c)	isxdigit(c)
 #define	bhnd_nv_toupper(c)	toupper(c)
 
-#define	bhnd_nv_malloc(size)		malloc((size), M_BHND_NVRAM, M_NOWAIT)
-#define	bhnd_nv_calloc(n, size)		malloc((n) * (size), M_BHND_NVRAM, \
-					    M_NOWAIT | M_ZERO)
-#define	bhnd_nv_reallocf(buf, size)	reallocf((buf), (size), M_BHND_NVRAM, \
-					    M_NOWAIT)
-#define	bhnd_nv_free(buf)		free((buf), M_BHND_NVRAM)
-#define	bhnd_nv_asprintf(buf, fmt, ...)	asprintf((buf), M_BHND_NVRAM,	\
-					    fmt, ## __VA_ARGS__)
-
-/* We need our own strdup() implementation to pass required M_NOWAIT */
-static inline char *
-bhnd_nv_strdup(const char *str)
-{
-	char	*dest;
-	size_t	 len;
-
-	len = strlen(str);
-	dest = malloc(len + 1, M_BHND_NVRAM, M_NOWAIT);
-	memcpy(dest, str, len);
-	dest[len] = '\0';
-
-	return (dest);
-}
-
-/* We need our own strndup() implementation to pass required M_NOWAIT */
-static inline char *
-bhnd_nv_strndup(const char *str, size_t len)
-{
-	char	*dest;
-
-	len = strnlen(str, len);
-	dest = malloc(len + 1, M_BHND_NVRAM, M_NOWAIT);
-	memcpy(dest, str, len);
-	dest[len] = '\0';
-
-	return (dest);
-}
 
 #ifdef INVARIANTS
 #define	BHND_NV_INVARIANTS
@@ -121,6 +84,62 @@ bhnd_nv_strndup(const char *str, size_t len)
 #define	BHND_NV_PANIC(...)		panic(__VA_ARGS__)
 #define	BHND_NV_LOG(fmt, ...)		\
 	printf("%s: " fmt, __FUNCTION__, ##__VA_ARGS__)
+
+static inline void *
+bhnd_nv_malloc(size_t size, int flags)
+{
+	return (malloc(size, M_BHND_NVRAM, flags));
+}
+
+static inline void *
+bhnd_nv_calloc(size_t n, size_t size, int flags)
+{
+	if ((SIZE_MAX / size) < n)
+		return (NULL);
+
+	return (malloc(n * size, M_BHND_NVRAM, flags | M_ZERO));
+}
+
+static inline void *
+bhnd_nv_reallocf(void *addr, size_t size, int flags)
+{
+	return (realloc(addr, size, M_BHND_NVRAM, flags));
+}
+
+static inline void
+bhnd_nv_free(void *addr)
+{
+	free(addr, M_BHND_NVRAM);
+}
+
+/* We need our own strdup() implementation to pass malloc flags */
+static inline char *
+bhnd_nv_strdup(const char *str, int flags)
+{
+	char	*dest;
+	size_t	 len;
+
+	len = strlen(str);
+	dest = malloc(len + 1, M_BHND_NVRAM, flags);
+	memcpy(dest, str, len);
+	dest[len] = '\0';
+
+	return (dest);
+}
+
+/* We need our own strndup() implementation to pass malloc flags */
+static inline char *
+bhnd_nv_strndup(const char *str, size_t len, int flags)
+{
+	char	*dest;
+
+	len = strnlen(str, len);
+	dest = malloc(len + 1, M_BHND_NVRAM, flags);
+	memcpy(dest, str, len);
+	dest[len] = '\0';
+
+	return (dest);
+}
 
 #define	bhnd_nv_ummax(a, b)		ummax((a), (b))
 #define	bhnd_nv_ummin(a, b)		ummin((a), (b))
@@ -143,16 +162,15 @@ bhnd_nv_strndup(const char *str, size_t len)
 #define	bhnd_nv_isxdigit(c)	isxdigit(c)
 #define	bhnd_nv_toupper(c)	((c) -	\
     (('a' - 'A') * ((c) >= 'a' && (c) <= 'z')))
+    
+#define	bhnd_nv_malloc(size, flags)		malloc((size))
+#define	bhnd_nv_calloc(n, size, flags)		calloc((n), (size))
+#define	bhnd_nv_reallocf(buf, size, flags)	reallocf((buf), (size))
+#define	bhnd_nv_free(buf)			free((buf))
+#define	bhnd_nv_strdup(str, flags)		strdup(str)
+#define	bhnd_nv_strndup(str, len, flags)	strndup(str, len)
 
-#define	bhnd_nv_malloc(size)		malloc((size))
-#define	bhnd_nv_calloc(n, size)		calloc((n), (size))
-#define	bhnd_nv_reallocf(buf, size)	reallocf((buf), (size))
-#define	bhnd_nv_free(buf)		free((buf))
-#define	bhnd_nv_strdup(str)		strdup(str)
-#define	bhnd_nv_strndup(str, len)	strndup(str, len)
-#define	bhnd_nv_asprintf(buf, fmt, ...)	asprintf((buf), fmt, ## __VA_ARGS__)
-
-#ifndef NDEBUG
+#if !defined(NDEBUG) && !defined(BHND_NV_INVARIANTS)
 #define	BHND_NV_INVARIANTS
 #endif
 
@@ -181,6 +199,9 @@ bhnd_nv_strndup(const char *str, size_t len)
 #define	BHND_NV_LOG(fmt, ...)					\
 	fprintf(stderr, "%s: " fmt, __FUNCTION__, ##__VA_ARGS__)
 
+#define	M_NOWAIT	(1<<0)
+#define	M_WAITOK	(1<<1)
+
 static inline uintmax_t
 bhnd_nv_ummax(uintmax_t a, uintmax_t b)
 {
@@ -206,6 +227,42 @@ bhnd_nv_ummin(uintmax_t a, uintmax_t b)
  * width */
 #define	BHND_NV_PRINT_WIDTH(_len)	\
 	((_len) > (INT_MAX) ? (INT_MAX) : (int)(_len))
+
+#ifndef _KERNEL
+
+#endif /* !_KERNEL */
+
+/*
+ * Validate the given bhnd nvram flag(s) (BHND_NVRAM_FLAGS_*) and return the
+ * corresponding malloc(9) flag(s) (M_WAITOK, M_NOWAIT, ...)
+ */
+static inline int
+bhnd_nv_malloc_flags(uint32_t nv_flags)
+{
+	nv_flags &= (BHND_NVRAM_FLAGS_NOWAIT|BHND_NVRAM_FLAGS_WAITOK);
+	switch (nv_flags) {
+#ifdef _KERNEL
+	case BHND_NVRAM_FLAGS_NOWAIT:
+		return (M_NOWAIT);
+	case BHND_NVRAM_FLAGS_WAITOK:
+		return (M_WAITOK);
+#else /* !_KERNEL */
+	case BHND_NVRAM_FLAGS_NOWAIT:
+	case BHND_NVRAM_FLAGS_WAITOK:
+		return (0);
+#endif /* _KERNEL */
+
+	default:
+		BHND_NV_PANIC("exactly one of WAITOK or NOWAIT required");
+	}
+}
+
+
+
+int				 bhnd_nv_vasprintf(char **buf, int flags,
+				     const char *fmt, va_list ap);
+int				 bhnd_nv_asprintf(char **buf, int flags,
+				     const char *fmt, ...);
 
 int				 bhnd_nvram_value_coerce(const void *inp,
 				     size_t ilen, bhnd_nvram_type itype,

@@ -237,6 +237,11 @@ struct bhnd_nvram_consumer {
 	LIST_ENTRY(bhnd_nvram_consumer)	 nc_link;
 };
 
+
+struct bhnd_nvram_link {
+	
+};
+
 /**
  * NVRAM entry node.
  */

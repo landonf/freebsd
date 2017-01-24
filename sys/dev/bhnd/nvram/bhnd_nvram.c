@@ -250,7 +250,7 @@ bhnd_nvlock_new(const char *description)
 #endif /* !_KERNEL */
 
 
-	if ((lock = bhnd_nv_calloc(1, sizeof(*lock))) == NULL)
+	if ((lock = bhnd_nv_calloc(1, sizeof(*lock), M_NOWAIT)) == NULL)
 		return (NULL);
 
 	BHND_NVREF_INIT(&lock->refs);
@@ -368,7 +368,7 @@ bhnd_nvobj_new(struct bhnd_nvobj_class *cls)
 	int			 error;
 #endif
 
-	obj = bhnd_nv_calloc(1, sizeof(*obj) + cls->size);
+	obj = bhnd_nv_calloc(1, sizeof(*obj) + cls->size, M_NOWAIT);
 	if (obj == NULL)
 		return (NULL);
 
@@ -744,13 +744,13 @@ bhnd_nvpath_new(struct bhnd_nvpath **path, const char *pathname,
 		return (EINVAL);
 
 	/* Allocate new path instance */
-	if ((p = bhnd_nv_calloc(1, sizeof(*p))) == NULL)
+	if ((p = bhnd_nv_calloc(1, sizeof(*p), M_NOWAIT)) == NULL)
 		return (ENOMEM);
 
 	BHND_NVREF_INIT(&p->refs);
 
 	/* Copy path name */
-	p->pathname = bhnd_nv_strndup(pathname, pathlen);
+	p->pathname = bhnd_nv_strndup(pathname, pathlen, M_NOWAIT);
 	if (p->pathname == NULL) {
 		bhnd_nv_free(p);
 		return (ENOMEM);
@@ -806,7 +806,7 @@ bhnd_nvpath_append_name(struct bhnd_nvpath **path, struct bhnd_nvpath *parent,
 	bufsize += parent->pathlen + 1;
 
 	/* Produce concatenated path */
-	if ((buf = bhnd_nv_malloc(bufsize)) == NULL)
+	if ((buf = bhnd_nv_malloc(bufsize, M_NOWAIT)) == NULL)
 		return (ENOMEM);
 
 	strcpy(buf, parent->pathname);
@@ -860,7 +860,7 @@ bhnd_nvram_observer_new(struct bhnd_nvobj *obj, bhnd_nvobj_observer_fn *fn)
 {
 	struct bhnd_nvram_observer *observer;
 
-	observer = bhnd_nv_calloc(1, sizeof(*observer));
+	observer = bhnd_nv_calloc(1, sizeof(*observer), M_NOWAIT);
 	if (observer == NULL)
 		return (NULL);
 
@@ -915,7 +915,7 @@ bhnd_nvram_consumer_new(struct bhnd_nvram_entry *entry)
 {
 	struct bhnd_nvram_consumer *consumer;
 
-	consumer = bhnd_nv_calloc(1, sizeof(*consumer));
+	consumer = bhnd_nv_calloc(1, sizeof(*consumer), M_NOWAIT);
 	if (consumer == NULL)
 		return (NULL);
 
@@ -942,7 +942,7 @@ bhnd_nvram_entry_new(bhnd_nvram_entry_type type, struct bhnd_nvpath *path,
 {
 	struct bhnd_nvram_entry *entry;
 
-	entry = bhnd_nv_calloc(1, sizeof(*entry));
+	entry = bhnd_nv_calloc(1, sizeof(*entry), M_NOWAIT);
 	if (entry == NULL)
 		return (NULL);
 
@@ -1898,7 +1898,7 @@ bhnd_nvram_link_insert(struct bhnd_nvram_link **link,
 				goto failed;
 
 			/* Allocate new link instance */
-			next = bhnd_nv_calloc(1, sizeof(*next));
+			next = bhnd_nv_calloc(1, sizeof(*next), M_NOWAIT);
 			if (next == NULL) {
 				bhnd_nvpath_release(next_path);
 
@@ -2036,7 +2036,7 @@ bhnd_nvram_plane_new(struct bhnd_nvram_plane *parent)
 {
 	struct bhnd_nvram_plane	*plane;
 
-	plane = bhnd_nv_calloc(1, sizeof(*plane));
+	plane = bhnd_nv_calloc(1, sizeof(*plane), M_NOWAIT);
 	if (plane == NULL)
 		return (NULL);
 
@@ -2059,7 +2059,7 @@ bhnd_nvram_plane_new(struct bhnd_nvram_plane *parent)
 	}
 
 	/* Create our persistent root entry */
-	plane->root = bhnd_nv_calloc(1, sizeof(*plane->root));
+	plane->root = bhnd_nv_calloc(1, sizeof(*plane->root), M_NOWAIT);
 	if (plane->root == NULL) {
 		bhnd_nvram_plane_release(plane);
 		return (NULL);
