@@ -228,37 +228,6 @@ bhnd_nv_ummin(uintmax_t a, uintmax_t b)
 #define	BHND_NV_PRINT_WIDTH(_len)	\
 	((_len) > (INT_MAX) ? (INT_MAX) : (int)(_len))
 
-#ifndef _KERNEL
-
-#endif /* !_KERNEL */
-
-/*
- * Validate the given bhnd nvram flag(s) (BHND_NVRAM_FLAGS_*) and return the
- * corresponding malloc(9) flag(s) (M_WAITOK, M_NOWAIT, ...)
- */
-static inline int
-bhnd_nv_malloc_flags(uint32_t nv_flags)
-{
-	nv_flags &= (BHND_NVRAM_FLAGS_NOWAIT|BHND_NVRAM_FLAGS_WAITOK);
-	switch (nv_flags) {
-#ifdef _KERNEL
-	case BHND_NVRAM_FLAGS_NOWAIT:
-		return (M_NOWAIT);
-	case BHND_NVRAM_FLAGS_WAITOK:
-		return (M_WAITOK);
-#else /* !_KERNEL */
-	case BHND_NVRAM_FLAGS_NOWAIT:
-	case BHND_NVRAM_FLAGS_WAITOK:
-		return (0);
-#endif /* _KERNEL */
-
-	default:
-		BHND_NV_PANIC("exactly one of WAITOK or NOWAIT required");
-	}
-}
-
-
-
 int				 bhnd_nv_vasprintf(char **buf, int flags,
 				     const char *fmt, va_list ap);
 int				 bhnd_nv_asprintf(char **buf, int flags,
@@ -355,6 +324,25 @@ bhnd_nvram_crc8(const void *buf, size_t size, uint8_t crc)
 
 #define	BHND_NVRAM_CRC8_INITIAL	0xFF	/**< Initial bhnd_nvram_crc8 value */
 #define	BHND_NVRAM_CRC8_VALID	0x9F	/**< Valid CRC-8 checksum */
+
+
+/*
+ * Validate the given bhnd nvram flag(s) (BHND_NVRAM_FLAG_*) and return the
+ * corresponding malloc(9) flag(s) (M_WAITOK, M_NOWAIT, ...)
+ */
+static inline int
+bhnd_nv_malloc_flags(uint32_t nv_flags)
+{
+	nv_flags &= (BHND_NVRAM_FLAG_NOWAIT|BHND_NVRAM_FLAG_WAITOK);
+	switch (nv_flags) {
+	case BHND_NVRAM_FLAG_NOWAIT:
+		return (M_NOWAIT);
+	case BHND_NVRAM_FLAG_WAITOK:
+		return (M_WAITOK);
+	default:
+		BHND_NV_PANIC("exactly one of WAITOK or NOWAIT required");
+	}
+}
 
 /** NVRAM variable flags */
 enum {
