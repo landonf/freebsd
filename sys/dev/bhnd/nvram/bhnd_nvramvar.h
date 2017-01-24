@@ -122,6 +122,9 @@ struct bhnd_nvlock {
 	struct bhnd_nvref	refs;
 };
 
+#define	BHND_NVOBJ_MAGIC	0xCAFEF00D
+#define	BHND_NVOBJ_ZOMBIE_MAGIC	0xDEADBEEF
+
 /**
  * Generic NVRAM object.
  * 
@@ -129,6 +132,9 @@ struct bhnd_nvlock {
  * and generic event listener registration.
  */
 struct bhnd_nvobj {
+#ifdef BHND_NV_INVARIANTS
+	uint32_t				 nvobj_magic;
+#endif /* BHND_NV_INVARIANTS */
 	const struct bhnd_nvobj_class		*cls;		/**< class definition */
 	struct bhnd_nvref			 refs;		/**< reference count */
 	struct bhnd_nvram_observer_list		 observers;	/**< registered observers (weak refs) */
@@ -139,6 +145,7 @@ struct bhnd_nvobj {
 	pthread_rwlock_t			 obs_lock;
 	pthread_mutex_t				 obs_free_lock;
 #endif /* _KERNEL */
+
 
 	_Alignas(_Alignof(max_align_t)) u_char	 ivars[];
 };
@@ -405,8 +412,8 @@ bhnd_nvref_promote_weak(struct bhnd_nvref *ref)
  * Assert that @p value is has at least one strong reference.
  */
 #define	BHND_NVREF_ASSERT_ALIVE(value, field)			\
-	BHND_NV_ASSERT(!BHND_NVREF_IS_ZOMBIE((value), (field)),	\
-	    ("zombie reference"));
+	BHND_NV_ASSERT(!BHND_NVREF_IS_ZOMBIE((value), field),	\
+	    ("zombie reference"))
 
 /**
  * Return the current strong reference count of a strongly or weakly held

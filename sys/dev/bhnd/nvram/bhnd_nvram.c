@@ -71,6 +71,7 @@ static struct bhnd_nvobj	*bhnd_nvobj_promote_weak(
 				     struct bhnd_nvobj *obj);
 
 static void			*bhnd_nvobj_get_ivars(struct bhnd_nvobj *obj);
+static struct bhnd_nvobj	*bhnd_nvobj_get_obj(void *ivars);
 
 static int			 bhnd_nvobj_add_observer(struct bhnd_nvobj *obj,
 				     struct bhnd_nvobj *observer,
@@ -103,6 +104,15 @@ static void			 bhnd_nvram_observer_invalidate(
 static void			 bhnd_nvram_observer_fini(
 				     struct bhnd_nvram_observer *observer);
 
+// TODO: static, nvobj-based provider interface
+#if 0
+struct bhnd_nvram_provider	*bhnd_nvram_provider_new(device_t dev);
+void				 bhnd_nvram_provider_destroy(
+				     struct bhnd_nvram_provider *provider);
+#endif
+
+// TODO: nvobj-based entry interface
+#if 0
 static bhnd_nvram_consumer	*bhnd_nvram_consumer_new(
 				     struct bhnd_nvram_entry *entry);
 static void			 bhnd_nvram_consumer_free(
@@ -133,6 +143,8 @@ static void			 bhnd_nvram_entry_invalidated(
 
 static void			 bhnd_nvram_entry_invalidate(
 				     struct bhnd_nvram_entry *entry);
+				     
+#endif
 
 #if 0
 
@@ -187,7 +199,6 @@ static void			 bhnd_nvram_provider_remove_consumer(
 				     struct bhnd_nvram_provider *provider,
 				     struct bhnd_nvram_plane *plane,
 				     size_t use_count);
-#endif
 
 static int			 bhnd_nvram_provider_busy(
 				     struct bhnd_nvram_provider *provider);
@@ -199,16 +210,22 @@ static void			 bhnd_nvram_provider_unbusy(
 static void			 bhnd_nvram_provider_unbusy_locked(
 				     struct bhnd_nvram_provider *provider);
 
-// TODO: keep?
 #define	BHND_NVPROV_ASSERT_STATE(_prov, _state)		\
 	BHND_NV_ASSERT((_prov)->state == (_state),	\
 	    ("invalid state: %d", (_prov)->state))
 
 #define	BHND_NVPROV_ASSERT_ACTIVE(_prov)		\
 	BHND_NVPROV_ASSERT_STATE((_prov), BHND_NVRAM_PROV_ACTIVE)
+#endif
 
-#define	BHND_NVOBJ_ASSERT_ALIVE(_obj)			\
-	BHND_NV_ASSERT(!BHND_NVREF_IS_ZOMBIE((_obj), refs), ("zombie object"))
+#define	BHND_NVOBJ_ASSERT_IS_OBJ(_obj)				\
+	BHND_NV_ASSERT((_obj)->nvobj_magic == BHND_NVOBJ_MAGIC,	\
+	    ("non-object"));
+
+#define	BHND_NVOBJ_ASSERT_ALIVE(_obj) do {			\
+	BHND_NVOBJ_ASSERT_IS_OBJ(_obj);				\
+	BHND_NVREF_ASSERT_ALIVE((_obj), refs);			\
+} while (0)
 
 #define	BHND_NVENTRY_ASSERT_COMMON_TOPO(_lhs, _rhs)		\
 	BHND_NV_ASSERT((_lhs)->topo_lock == (_rhs)->topo_lock,	\
@@ -359,6 +376,10 @@ bhnd_nvobj_new(struct bhnd_nvobj_class *cls)
 	BHND_NVREF_INIT(&obj->refs);
 	LIST_INIT(&obj->observers);
 
+#ifdef BHND_NV_INVARIANTS
+	obj->nvobj_magic = BHND_NVOBJ_MAGIC;
+#endif /* BHND_NV_INVARIANTS */
+
 #ifdef _KERNEL
 	sx_init(&obj->obs_lock, "BHND NVRAM observer list lock");
 	sx_init(&obj->obs_free_lock, "BHND NVRAM observer free lock");
@@ -385,6 +406,12 @@ static void
 bhnd_nvobj_fini(struct bhnd_nvobj *obj)
 {
 	struct bhnd_nvram_observer *observer, *obs_next;
+
+	BHND_NVOBJ_ASSERT_IS_OBJ(obj);
+
+#ifdef BHND_NV_INVARIANTS
+	obj->nvobj_magic = BHND_NVOBJ_ZOMBIE_MAGIC;
+#endif
 
 	/* Execute custom finalizer */
 	if (obj->cls->fini != NULL) {
@@ -484,6 +511,27 @@ bhnd_nvobj_get_ivars(struct bhnd_nvobj *obj)
 {
 	return (&obj->ivars);
 }
+
+/**
+ * Return the object instance for an ivar pointer.
+ * 
+ * @param ivars	Per-instance opaque object state previously returned by
+ *		bhnd_nvobj_get_ivars().
+ */
+static struct bhnd_nvobj *
+bhnd_nvobj_get_obj(void *ivars)
+{
+	struct bhnd_nvobj	*obj;
+	uintptr_t		 addr;
+
+	addr = (uintptr_t)ivars - __offsetof(struct bhnd_nvobj, ivars);
+	obj = (struct bhnd_nvobj *)addr;
+
+	BHND_NVOBJ_ASSERT_IS_OBJ(obj);
+
+	return (obj);
+}
+
 
 /**
  * Register @p observer with @p fn as an observer on @p obj.
@@ -822,6 +870,16 @@ bhnd_nvram_observer_new(struct bhnd_nvobj *obj, bhnd_nvobj_observer_fn *fn)
 	return (observer);
 }
 
+/**
+ * Invalidate @p observer, releasing the associated observing object.
+ * 
+ * This may be used to mark an observer as pending deletion if the
+ * free lock cannot be acquired.
+ * 
+ * Assumes that the appropriate locks are held by the caller.
+ * 
+ * @param observer	The observer instance to be invalidated.
+ */
 static void
 bhnd_nvram_observer_invalidate(struct bhnd_nvram_observer *observer)
 {
@@ -839,6 +897,9 @@ bhnd_nvram_observer_fini(struct bhnd_nvram_observer *observer)
 	bhnd_nvram_observer_invalidate(observer);
 }
 
+
+// TODO: consumer -> observer
+#if 0
 /**
  * Allocate, initialize, and return a new NVRAM consumer record.
  * 
@@ -872,6 +933,7 @@ bhnd_nvram_consumer_free(struct bhnd_nvram_consumer *consumer)
 	BHND_NVREF_RELEASE_WEAK(consumer->entry, refs);
 	bhnd_nv_free(consumer);
 }
+#endif
 
 /* common allocation/initialization shared by all entry types */
 static struct bhnd_nvram_entry *
@@ -900,7 +962,10 @@ bhnd_nvram_entry_fini(struct bhnd_nvram_entry *entry)
 	/* Invalidate the entry (if it's not already invalid), deregistering
 	 * all consumers, dropping parent, target, and plane/provider
 	 * references */
+	// TODO: nvobj-based entry interface
+#if 0
 	bhnd_nvram_entry_invalidate(entry);
+#endif
 
 	BHND_NV_ASSERT(entry->invalid, ("entry not invalidated"));
 	BHND_NV_ASSERT(LIST_EMPTY(&entry->consumers), ("active consumers"));
@@ -952,6 +1017,9 @@ bhnd_nvram_entry_release(struct bhnd_nvram_entry *entry)
 	BHND_NVREF_RELEASE(entry, refs, bhnd_nvram_entry_fini);
 }
 
+
+// TODO: nvobj-based entry interface
+#if 0
 
 /**
  * Allocate, initialize, and return a new provider-backed NVRAM entry.
@@ -1353,6 +1421,11 @@ bhnd_nvram_entry_invalidate(struct bhnd_nvram_entry *entry)
 	bhnd_nvram_entry_release(entry);
 }
 
+#endif
+
+// TODO: replace provider interface
+#if 0
+
 /**
  * Allocate, initialize, and return a new NVRAM provider instance.
  * 
@@ -1409,7 +1482,6 @@ void
 bhnd_nvram_provider_destroy(struct bhnd_nvram_provider *provider)
 {
 	// TODO
-#if 0
 	struct bhnd_nvram_consumer_list	 consumers;
 	struct bhnd_nvram_consumer	*c, *cnext;
 
@@ -1460,7 +1532,6 @@ bhnd_nvram_provider_destroy(struct bhnd_nvram_provider *provider)
 
 	/* Release the caller's provider reference */
 	BHND_NVREF_RELEASE(provider, refs, bhnd_nvram_provider_fini);
-#endif
 }
 
 static void
@@ -1475,6 +1546,8 @@ bhnd_nvram_provider_fini(struct bhnd_nvram_provider *provider)
 
 	BHND_NVREF_RELEASE(provider->prov_lock, refs, bhnd_nvlock_fini);
 }
+
+#endif
 
 // TODO: replacing consumer interface 
 #if 0
@@ -1591,8 +1664,6 @@ bhnd_nvram_provider_remove_consumer(struct bhnd_nvram_provider *provider,
 	BHND_NV_PANIC("invalid consumer reference"); 
 }
 
-#endif
-
 /**
  * Attempt to retain a reservation on provider, preventing removal of the
  * provider until a matching call to bhnd_nvram_provider_unbusy() is made.
@@ -1663,6 +1734,7 @@ bhnd_nvram_provider_unbusy_locked(struct bhnd_nvram_provider *provider)
 		bhnd_nvlock_wakeup(provider->prov_lock);
 	}
 }
+#endif
 
 // TODO: link code review
 
@@ -1986,7 +2058,7 @@ bhnd_nvram_plane_new(struct bhnd_nvram_plane *parent)
 		return (NULL);
 	}
 
-	/* Create our persistent root link */
+	/* Create our persistent root entry */
 	plane->root = bhnd_nv_calloc(1, sizeof(*plane->root));
 	if (plane->root == NULL) {
 		bhnd_nvram_plane_release(plane);
@@ -2106,6 +2178,46 @@ void
 bhnd_nvram_plane_release(struct bhnd_nvram_plane *plane)
 {
 	BHND_NVREF_RELEASE(plane, refs, bhnd_nvram_plane_fini);
+}
+
+/**
+ * Map @p pathname (and all subpaths) in @p plane to the given NVRAM @p device.
+ * 
+ * @param	plane		The NVRAM plane in which @p pathname will be
+ *				mapped.
+ * @param	dev		The NVRAM device to be mapped.
+ * @param	pathname	Normalized, fully qualified path name to be
+ *				mapped to @p dev.
+ * 
+ * @retval 0		success.
+ * @retval EINVAL	if @p pathname is not a fully-qualified, normalized
+ *			path.
+ * @retval EEXIST	if @p pathname is already mapped in @p plane.
+ * @retval ENOMEM	if allocation fails.
+ */
+int
+bhnd_nvram_plane_map_device(struct bhnd_nvram_plane *plane, device_t dev,
+    const char *pathname)
+{
+	// TODO
+	return (ENXIO);
+}
+
+/**
+ * Unmap @p pathname in @p plane from the given NVRAM @p device.
+ * 
+ * @param	plane		The NVRAM plane in which @p pathname will be
+ *				mapped.
+ * @param	dev		The NVRAM device to be mapped.
+ * @param	pathname	Normalized, fully qualified path name to be
+ *				unmapped, or NULL to unmap all paths currently
+ *				mapped to @p dev.
+ */
+void
+bhnd_nvram_plane_unmap_device(struct bhnd_nvram_plane *plane, device_t dev,
+    const char *pathname)
+{
+	// TODO
 }
 
 // TODO: plane link mess
