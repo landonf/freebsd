@@ -1370,7 +1370,7 @@ bhnd_nvram_is_relative_path(const char *path, size_t pathlen)
 	const char	*name;
 	size_t		 namelen;
 
-	/* First component must be '/' */
+	/* First component must not be '/' */
 	name = NULL;
 	name = bhnd_nvram_parse_path_next(path, pathlen, name, &namelen);
 	if (name == NULL || namelen != 1 || *name != '/')
