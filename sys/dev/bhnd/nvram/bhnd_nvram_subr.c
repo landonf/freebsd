@@ -1305,30 +1305,54 @@ bhnd_nvram_parse_path_dirlen(const char *path, size_t pathlen)
 bool
 bhnd_nvram_is_normalized_path(const char *path, size_t pathlen)
 {
-	const char	*p;
-	size_t		 namelen;
-
-	p = NULL;
+	size_t offset;
 
 	/* Path cannot be empty */
-	if (strnlen(path, pathlen) == 0)
+	if (pathlen == 0)
 		return (false);
 
-	/* Validate all path components */
-	while ((p = bhnd_nvram_parse_path_next(path, pathlen, p, &namelen))) {
-		/* Path component cannot be empty (i.e. "//" or if a trailing
-		 * '/' is found) */
+	/* Skip initial '/', if any*/
+	offset = 0;
+	if (offset < pathlen && path[offset] == '/')
+		offset++;
+
+	/* Scan remaining path components */
+	while (offset < pathlen) {
+		const char	*name;
+		size_t		 end, namelen;
+
+		name = path+offset;
+
+		/* Find end of this path component */
+		end = offset;
+		while (end < pathlen && path[end] != '/' && path[end] != '\0')
+			end++;
+
+		namelen = end - offset;
+
+		/*
+		 * Reject invalid path components:
+		 * - Empty components (e.g. '//' or trailing '/')
+		 * - Relative components ('.', '..)
+		 */
 		if (namelen == 0)
 			return (false);
 
-		/* Cannot be '.' or '..' */
-		if (p[0] == '.') {
-			if (namelen == 1)
-				return (false);
+		if (namelen == 1 && name[0] == '.')
+			return (false);
 
-			if (namelen == 2 && p[1] == '.')
-				return (false);
-		}
+		if (namelen == 2 && name[0] == '.' && name[1] == '.')
+			return (false);
+
+		/* Terminate if this path component was delimited by '\0';
+		 * otherwise, advance to next path component */
+		if (path[end] == '\0')
+			break;
+
+		/* Advance to next path component */
+		offset = end;
+		if (offset < pathlen && path[offset] == '/')
+			offset++;
 	}
 
 	return (true);
