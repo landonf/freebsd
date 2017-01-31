@@ -63,6 +63,10 @@ bhnd_nvplane_validate_name(const char *name)
 	if (strchr(name, '/') != NULL)
 		return (false);
 
+	/* Name cannot be '.' or '..' */
+	if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0)
+		return (false);
+
 	return (true);
 }
 
@@ -76,7 +80,6 @@ bhnd_nvplane_validate_name(const char *name)
  *				instance.
  * @param	name		The name of the new plane instance.
  * @param	parent		The parent plane, or NULL.
- * @param	prov		The plane's provider, or NULL.
  * @param	malloc_flags	Flags to be passed to malloc (see malloc(9)).
  * 
  * @retval 0		success
@@ -86,7 +89,7 @@ bhnd_nvplane_validate_name(const char *name)
  */
 int
 bhnd_nvram_plane_new(bhnd_nvram_plane_t **plane, const char *name,
-    bhnd_nvram_plane_t *parent, bhnd_nvram_prov_t *prov, int malloc_flags)
+    bhnd_nvram_plane_t *parent, int malloc_flags)
 {
 	bhnd_nvram_plane_t *p;
 
@@ -130,7 +133,7 @@ bhnd_nvram_plane_new(bhnd_nvram_plane_t **plane, const char *name,
 	}
 
 	refcount_init(&p->refs, 1);
-	p->prov = prov;
+	p->pmap = NULL;
 
 	BHND_NVPLANE_LOCK_INIT(p);
 	LIST_INIT(&p->children);
@@ -182,7 +185,7 @@ bhnd_nvram_plane_release(bhnd_nvram_plane_t *plane)
 
 	/* Detach should release all parent, provider, and child references */
 	BHND_NV_ASSERT(plane->parent == NULL, ("parent attached"));
-	BHND_NV_ASSERT(plane->prov == NULL, ("provider attached"));
+	BHND_NV_ASSERT(plane->pmap == NULL, ("provider attached"));
 	BHND_NV_ASSERT(LIST_EMPTY(&plane->children), ("children attached"));
 
 	/* Free remaining internal state */
@@ -206,6 +209,9 @@ bhnd_nvram_plane_detach(bhnd_nvram_plane_t *plane)
 	bhnd_nvram_plane_list_t	 detached;
 
 	LIST_INIT(&detached);
+
+	/* Unmap the plane's backing provider, if any */
+	bhnd_nvram_plane_unmap_provider(plane, NULL);
 
 	/* Acquire a write lock on the parent (if any) and the child plane,
 	 * and then detach the plane from its parent.
@@ -232,9 +238,6 @@ bhnd_nvram_plane_detach(bhnd_nvram_plane_t *plane)
 			plane->parent = NULL;
 		}
 	}
-
-	/* Detach the plane from its provider */
-	plane->prov = NULL;
 
 	/* Acquire locks on all children in the required iteration order */
 	LIST_FOREACH(child, &plane->children, np_link)
@@ -352,25 +355,18 @@ bhnd_nvram_plane_get_child(bhnd_nvram_plane_t *plane, const char *pathname)
 	size_t			 namelen, pathlen;
 	bool			 failed;
 
-	/*
-	 * Validate the pathname:
-	 * 
-	 * - Any leading '/' is skipped.
-	 * - Path must be fully normalized.
-	 * - Path must not be empty.
-	 */
+	/* Skip leading '/', if any */
 	if (*pathname == '/')
 		pathname++;
 
+	/* Deterimine path length, rejecting empty paths */
 	pathlen = strlen(pathname);
-
 	if (pathlen == 0)
 		return (NULL);
 
+	/* Path must be fully normalized */
 	if (!bhnd_nvram_is_normalized_path(pathname, pathlen))
 		return (NULL);
-
-
 
 	/*
 	 * Perform path resolution, walking downwards from our initial plane
@@ -518,4 +514,107 @@ bhnd_nvram_plane_free_children(bhnd_nvram_plane_t *plane,
 		bhnd_nvram_plane_release(children[i]);
 
 	bhnd_nv_free(children);
+}
+
+/**
+ * Map @p provider into the given NVRAM plane.
+ * 
+ * @param	plane		The NVRAM plane into which @p provider will be
+ * 				mapped.
+ * @param	provider	The NVRAM provider to be mapped.
+ * @param	malloc_flags	Flags to be passed to malloc (see malloc(9)).
+ *
+ * @retval 0		success
+ * @retval ENOMEM	if allocation fails.
+ * @retval non-zero	If mapping the provider otherwise fails, a regular unix
+ *			error code will be returned.
+ */
+int
+bhnd_nvram_plane_map_provider(bhnd_nvram_plane_t *plane,
+    bhnd_nvram_prov_t *provider, int malloc_flags)
+{
+	bhnd_nvram_plane_pmap_t	*pmap;
+	int			 error;
+
+	if (provider == NULL)
+		BHND_NV_PANIC("NULL provider");
+
+	/* Allocate provider mapping state */
+	pmap = bhnd_nv_calloc(1, sizeof(*pmap), malloc_flags);
+	if (pmap == NULL)
+		return (ENOMEM);
+
+	mtx_init(&pmap->pm_lock, "BHND NVRAM pm_req mutex", NULL, MTX_DEF);
+
+	pmap->pm_prov = provider;
+	pmap->pm_reqs = 0;
+
+	/* Attempt to map into the plane */
+	BHND_NVPLANE_LOCK_RW(plane);
+	if (plane->pmap == NULL) {
+		plane->pmap = pmap;
+		error = 0;
+	} else {
+		error = EEXIST;
+	}
+	BHND_NVPLANE_UNLOCK_RW(plane);
+
+	/* Clean up unused mapping state on error */
+	if (error) {
+		mtx_destroy(&pmap->pm_lock);
+		bhnd_nv_free(pmap);
+	}
+
+	return (error);
+}
+
+/**
+ * Unmap @p provider from the NVRAM plane.
+ * 
+ * @param	plane		The NVRAM plane from which @p provider will be
+ * 				unmapped.
+ * @param	provider	The NVRAM provider to be unmapped, or NULL
+ *				to unmap all currently mapped providers.
+ */
+void
+bhnd_nvram_plane_unmap_provider(bhnd_nvram_plane_t *plane,
+    bhnd_nvram_prov_t *provider)
+{
+	bhnd_nvram_plane_pmap_t	*pmap;
+
+	BHND_NVPLANE_LOCK_RW(plane);
+
+	/* Fetch the provider mapping (if any) */
+	if ((pmap = plane->pmap) == NULL) {
+		BHND_NVPLANE_UNLOCK_RW(plane);
+		return;
+	}
+
+	/* Skip if current mapping does not match the specified provider */
+	if (provider != NULL && plane->pmap->pm_prov != provider) {
+		BHND_NVPLANE_UNLOCK_RW(plane);
+		return;
+	}
+
+	/* Found match; disconnect mapping from the plane */
+	plane->pmap = NULL;
+
+	BHND_NVPLANE_UNLOCK_RW(plane);
+
+	/* The provider is no longer mapped by the plane; we only need to wait
+	 * for any outstanding requests to complete.
+	 * 
+	 * Once the request count hits zero, no concurrent threads hold a
+	 * reference to this mapping */
+	mtx_lock(&pmap->pm_lock);
+	while (pmap->pm_reqs > 0) {
+		mtx_sleep(pmap, &pmap->pm_lock, 0, "bhnd_nvrq", 0);
+	}
+	mtx_unlock(&pmap->pm_lock);
+
+	BHND_NV_ASSERT(pmap->pm_reqs == 0, ("requests active"));
+
+	/* Clean up mapping state */
+	mtx_destroy(&pmap->pm_lock);
+	bhnd_nv_free(pmap);
 }

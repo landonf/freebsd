@@ -109,15 +109,15 @@ bhnd_sprom_attach(device_t dev, bus_size_t offset)
 	if ((error = bhnd_sprom_new_store(dev, &sc->store, offset)))
 		return (error);
 
-	// XXX TODO
-#if 0
-	/* Map the root NVRAM path to our device */
-	if ((error = bhnd_nvram_plane_map_device(sc->plane, dev, "/"))) {
-		device_printf(dev, "failed to map NVRAM root: %d\n", error);
+	// XXX TODO: initialize sc->prov
+
+	/* Map our device into the NVRAM plane */
+	error = bhnd_nvram_plane_map_provider(sc->plane, sc->prov, M_WAITOK);
+	if (error) {
+		device_printf(dev, "failed to map NVRAM store: %d\n", error);
 		bhnd_nvram_store_free(sc->store);
 		return (error);
 	}
-#endif
 
 	return (0);
 }
@@ -207,17 +207,12 @@ bhnd_sprom_suspend(device_t dev)
 int
 bhnd_sprom_detach(device_t dev)
 {
-	struct bhnd_sprom_softc *sc;
+	struct bhnd_sprom_softc	*sc;
 
 	sc = device_get_softc(dev);
 
-	// XXX: TODO
-	bhnd_nvram_plane_detach(sc->plane);
-	bhnd_nvram_plane_release(sc->plane);
-#if 0
 	/* Disconnect our device from the NVRAM plane */
-	bhnd_nvram_plane_unmap_device(sc->plane, dev, NULL);
-#endif
+	bhnd_nvram_plane_unmap_provider(sc->plane, sc->prov);
 
 	/* Clean up backing NVRAM store */
 	bhnd_nvram_store_free(sc->store);

@@ -95,7 +95,6 @@ CODE {
 		panic("bhnd_nvram_prov_delprop unimplemented");
 	}
 
-	
 	static int
 	bhnd_nvram_prov_null_getprop(bhnd_nvram_prov_t *prov,
 	    bhnd_nvram_phandle_t phandle, const char *propname, void *buf,

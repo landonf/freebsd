@@ -34,12 +34,22 @@
 
 #include <sys/param.h>
 #include <sys/lock.h>
+#include <sys/mutex.h>
 #include <sys/sx.h>
 
 #include "bhnd_nvram.h"
 
 LIST_HEAD(bhnd_nvram_plane_list, bhnd_nvram_plane);
 typedef struct bhnd_nvram_plane_list bhnd_nvram_plane_list_t;
+
+/**
+ * NVRAM plane provider mapping.
+ */
+typedef struct bhnd_nvram_plane_pmap {
+	bhnd_nvram_prov_t	*pm_prov;	/**< provider instance */
+	volatile u_int		 pm_reqs;	/**< active provider request count */
+	struct mtx		 pm_lock;	/**< request count mutex */
+} bhnd_nvram_plane_pmap_t;
 
 /**
  * NVRAM plane.
@@ -56,7 +66,7 @@ typedef struct bhnd_nvram_plane_list bhnd_nvram_plane_list_t;
  */
 struct bhnd_nvram_plane {
 	bhnd_nvram_plane_t	*parent;	/**< parent, or NULL */
-	bhnd_nvram_prov_t	*prov;		/**< provider instance, or NULL */
+	bhnd_nvram_plane_pmap_t	*pmap;	/**< provider mapping, or NULL */
 	char			*name;		/**< plane's relative name */
 	bhnd_nvram_plane_list_t	 children;	/**< child planes */
 	volatile u_int		 refs;		/**< reference count */
@@ -73,5 +83,8 @@ struct bhnd_nvram_plane {
 #define	BHND_NVPLANE_UNLOCK_RW(sc)		sx_xunlock(&(sc)->lock)
 #define	BHND_NVPLANE_LOCK_ASSERT(sc, what)	sx_assert(&(sc)->lock, what)
 #define	BHND_NVPLANE_LOCK_DESTROY(sc)		sx_destroy(&(sc)->lock)
+
+/** maximum representable number of outstanding provider requests */
+#define	BHND_NVPLANE_PROV_REQS_MAX	UINT_MAX
 
 #endif /* _BHND_NVRAM_BHND_NVRAMVAR_H_ */

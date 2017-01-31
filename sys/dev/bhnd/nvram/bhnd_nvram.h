@@ -155,7 +155,7 @@ enum {
 
 int			 bhnd_nvram_plane_new(bhnd_nvram_plane_t **plane,
 			     const char *name, bhnd_nvram_plane_t *parent, 
-			     bhnd_nvram_prov_t *prov, int malloc_flags);
+			     int malloc_flags);
 
 bhnd_nvram_plane_t	*bhnd_nvram_plane_retain(bhnd_nvram_plane_t *plane);
 void			 bhnd_nvram_plane_release(bhnd_nvram_plane_t *plane);
@@ -171,6 +171,13 @@ int			 bhnd_nvram_plane_get_children(
 void			 bhnd_nvram_plane_free_children(
 			     bhnd_nvram_plane_t *plane,
 			     bhnd_nvram_plane_t **children, size_t count);
+
+int			 bhnd_nvram_plane_map_provider(
+			     bhnd_nvram_plane_t *plane,
+			     bhnd_nvram_prov_t *provider, int malloc_flags);
+void			 bhnd_nvram_plane_unmap_provider(
+			     bhnd_nvram_plane_t *plane,
+			     bhnd_nvram_prov_t *provider);
 
 bool			 bhnd_nvram_is_signed_type(bhnd_nvram_type type);
 bool			 bhnd_nvram_is_unsigned_type(bhnd_nvram_type type);
