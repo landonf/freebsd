@@ -333,14 +333,14 @@ bhnd_nvram_crc8(const void *buf, size_t size, uint8_t crc)
 static inline int
 bhnd_nv_malloc_flags(uint32_t nv_flags)
 {
-	nv_flags &= (BHND_NVRAM_FLAG_NOWAIT|BHND_NVRAM_FLAG_WAITOK);
+	nv_flags &= BHND_NVRAM_FLAG_NOWAIT;
 	switch (nv_flags) {
 	case BHND_NVRAM_FLAG_NOWAIT:
 		return (M_NOWAIT);
-	case BHND_NVRAM_FLAG_WAITOK:
+	case 0:
 		return (M_WAITOK);
 	default:
-		BHND_NV_PANIC("exactly one of WAITOK or NOWAIT required");
+		BHND_NV_PANIC("invalid flags: %#" PRIx32, nv_flags);
 	}
 }
 

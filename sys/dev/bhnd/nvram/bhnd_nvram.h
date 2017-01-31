@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2015-2016 Landon Fuller <landon@landonf.org>
+ * Copyright (c) 2015-2017 Landon Fuller <landonf@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -35,10 +35,26 @@
 #ifdef _KERNEL
 #include <sys/param.h>
 #include <sys/kobj.h>
+
+#include <machine/_inttypes.h>
 #else /* !_KERNEL */
 #include <stdbool.h>
 #include <stdint.h>
 #endif /* _KERNEL */
+
+/* forward declarations */
+typedef struct bhnd_nvram_plane	bhnd_nvram_plane_t;
+typedef struct bhnd_nvram_prov	bhnd_nvram_prov_t;
+
+/**
+ * Opaque NVRAM path handle
+ */
+typedef uintptr_t bhnd_nvram_phandle_t;
+
+/**
+ * A NULL path handle.
+ */
+#define	BHND_NVRAM_PHANDLE_NULL	((bhnd_nvram_phandle_t)0x0)
 
 /**
  * BHND NVRAM boolean type; guaranteed to be exactly 8-bits, representing
@@ -130,9 +146,31 @@ typedef enum {
  * NVRAM API flags.
  */
 enum {
-	BHND_NVRAM_FLAG_NOWAIT		= (1<<0),	/**< do not block (e.g. on malloc) */
-	BHND_NVRAM_FLAG_WAITOK		= (1<<1),	/**< ok to block (e.g. on malloc) */
+	BHND_NVRAM_FLAG_NOWAIT		= (1<<0),	/**< do not block on malloc */
+	BHND_NVRAM_FLAG_SEARCH_PARENTS	= (1<<1),	/**< recursively search a phandle
+							     and its parents for a matching
+							     property */
 };
+
+
+int			 bhnd_nvram_plane_new(bhnd_nvram_plane_t **plane,
+			     const char *name, bhnd_nvram_plane_t *parent, 
+			     bhnd_nvram_prov_t *prov, int malloc_flags);
+
+bhnd_nvram_plane_t	*bhnd_nvram_plane_retain(bhnd_nvram_plane_t *plane);
+void			 bhnd_nvram_plane_release(bhnd_nvram_plane_t *plane);
+void			 bhnd_nvram_plane_detach(bhnd_nvram_plane_t *plane);
+
+const char		*bhnd_nvram_plane_get_name(bhnd_nvram_plane_t *plane);
+bhnd_nvram_plane_t	*bhnd_nvram_plane_get_child(bhnd_nvram_plane_t *plane,
+			     const char *pathname);
+int			 bhnd_nvram_plane_get_children(
+			     bhnd_nvram_plane_t *plane,
+			     bhnd_nvram_plane_t ***children, size_t *count,
+			     int malloc_flags);
+void			 bhnd_nvram_plane_free_children(
+			     bhnd_nvram_plane_t *plane,
+			     bhnd_nvram_plane_t **children, size_t count);
 
 bool			 bhnd_nvram_is_signed_type(bhnd_nvram_type type);
 bool			 bhnd_nvram_is_unsigned_type(bhnd_nvram_type type);
@@ -146,79 +184,5 @@ size_t			 bhnd_nvram_type_host_align(bhnd_nvram_type type);
 
 const char		*bhnd_nvram_string_array_next(const char *inp,
 			     size_t ilen, const char *prev, size_t *olen);
-
-/* forward declarations */
-struct bhnd_nvram_entry;
-struct bhnd_nvram_plane;
-struct bhnd_nvram_provider;
-
-// XXX TODO
-#ifndef _KERNEL
-typedef void * device_t;
-#endif /* !_KERNEL */
-
-struct bhnd_nvram_plane		*bhnd_nvram_plane_new(
-				     struct bhnd_nvram_plane *parent);
-void				 bhnd_nvram_plane_destroy(
-				     struct bhnd_nvram_plane *plane);
-
-struct bhnd_nvram_plane		*bhnd_nvram_plane_retain(
-				     struct bhnd_nvram_plane *plane);
-void				 bhnd_nvram_plane_release(
-				     struct bhnd_nvram_plane *plane);
-
-int				 bhnd_nvram_plane_map_device(
-				     struct bhnd_nvram_plane *plane,
-				     device_t dev, const char *pathname);
-void				 bhnd_nvram_plane_unmap_device(
-				     struct bhnd_nvram_plane *plane,
-				     device_t dev, const char *pathname);
-
-struct bhnd_nvram_entry		*bhnd_nvram_entry_retain(
-				     struct bhnd_nvram_entry *entry);
-void				 bhnd_nvram_entry_release(
-				     struct bhnd_nvram_entry *entry);
-
-int				 bhnd_nvram_plane_map_entry(
-				     struct bhnd_nvram_plane *plane,
-				     struct bhnd_nvram_entry *entry,
-				     const char *pathname);
-
-struct bhnd_nvram_entry	*bhnd_nvram_plane_get_root(
-			     struct bhnd_nvram_plane *plane);
-struct bhnd_nvram_entry	*bhnd_nvram_plane_open_path(
-			     struct bhnd_nvram_plane *plane,
-			     const char *pathname);
-struct bhnd_nvram_entry	*bhnd_nvram_plane_find_path(
-			     struct bhnd_nvram_plane *plane,
-			     const char *pathname);
-
-#if 0
-
-
-
-struct bhnd_nvram_entry	*bhnd_nvram_open_entry_parent(
-			     struct bhnd_nvram_entry *entry,
-			     struct bhnd_nvram_plane *plane);
-
-bhnd_nvram_phandle	*bhnd_nvram_path_find_proppath(
-			     bhnd_nvram_phandle *phandle, const char *propname);
-
-int			 bhnd_nvram_path_setprop(bhnd_nvram_phandle *phandle,
-			     const char *propname, const void *buf, size_t len,
-			     bhnd_nvram_type type);
-int			 bhnd_nvram_path_getprop(bhnd_nvram_phandle *phandle,
-			     const char *propname, void *buf, size_t *len,
-			     bhnd_nvram_type type);
-
-int			 bhnd_nvram_path_getprop_alloc(
-			     bhnd_nvram_phandle *phandle, const char *propname,
-			     void **buf, size_t *len, bhnd_nvram_type type,
-			     int flags);
-void			 bhnd_nvram_path_getprop_free(void *buf);
-
-struct bhnd_nvram_plist	*bhnd_nvram_path_copyprops(bhnd_nvram_phandle *phandle);
-
-#endif
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_H_ */

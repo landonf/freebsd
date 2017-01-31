@@ -491,11 +491,11 @@ bhnd_get_chipid(device_t dev) {
 };
 
 /**
- * Return the NVRAM plane for the bhnd bus, or NULL if unavailable.
+ * Return the NVRAM plane for the parent bus, or NULL if none.
  *
  * @param dev A bhnd bus child device.
  */
-static inline struct bhnd_nvram_plane *
+static inline bhnd_nvram_plane_t *
 bhnd_get_nvram_plane(device_t dev)
 {
 	return (BHND_BUS_GET_NVRAM_PLANE(device_get_parent(dev), dev));

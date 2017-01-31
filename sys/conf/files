@@ -1245,6 +1245,7 @@ dev/bhnd/nvram/bhnd_nvram_iobuf.c	optional bhnd
 dev/bhnd/nvram/bhnd_nvram_ioptr.c	optional bhnd
 dev/bhnd/nvram/bhnd_nvram_iores.c	optional bhnd
 dev/bhnd/nvram/bhnd_nvram_plist.c	optional bhnd
+dev/bhnd/nvram/bhnd_nvram_prov_if.m	optional bhnd
 dev/bhnd/nvram/bhnd_nvram_store.c	optional bhnd
 dev/bhnd/nvram/bhnd_nvram_store_subr.c	optional bhnd
 dev/bhnd/nvram/bhnd_nvram_subr.c	optional bhnd

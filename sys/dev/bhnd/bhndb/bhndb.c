@@ -531,10 +531,12 @@ bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass)
 		return (ENXIO);
 	}
 
-	/* Allocate our (empty) NVRAM plane */
-	sc->nvram_plane = bhnd_nvram_plane_new(bhnd_get_nvram_plane(dev));
-	if (sc->nvram_plane == NULL) {
-		error = ENOMEM;
+	/* Allocate our local NVRAM plane */
+	error = bhnd_nvram_plane_new(&sc->nvram_plane, device_get_nameunit(dev),
+	    bhnd_get_nvram_plane(dev), NULL, M_WAITOK);
+	if (error) {
+		device_printf(sc->dev, "failed to allocate NVRAM plane: %d\n",
+		    error);
 		goto failed;
 	}
 

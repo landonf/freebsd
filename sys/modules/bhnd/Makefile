@@ -50,6 +50,7 @@ SRCS+=	bhnd_nvram.c \
 	bhnd_sprom.c
 SRCS+=	bhnd_nvram_map.h bhnd_nvram_map_data.h
 SRCS+=	bhnd_nvram_if.c bhnd_nvram_if.h
+SRCS+=	bhnd_nvram_prov_if.c bhnd_nvram_prov_if.h
 
 SRCS+=	device_if.h bus_if.h
 

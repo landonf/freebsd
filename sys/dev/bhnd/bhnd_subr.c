@@ -1469,7 +1469,7 @@ bhnd_bus_generic_get_chipid(device_t dev, device_t child)
  * 
  * If no parent exists, NULL will be returned.
  */
-struct bhnd_nvram_plane *
+bhnd_nvram_plane_t *
 bhnd_bus_generic_get_nvram_plane(device_t dev, device_t child)
 {
 	if (device_get_parent(dev) != NULL) {
