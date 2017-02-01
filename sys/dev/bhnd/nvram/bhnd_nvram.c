@@ -48,19 +48,19 @@ MALLOC_DEFINE(M_BHND_NVRAM, "bhnd_nvram", "BHND NVRAM data");
 static bool			 bhnd_nvplane_validate_name(const char *name);
 
 static int			 bhnd_nvplane_pmap_enter(
-				     bhnd_nvram_plane_pmap_t *pmap);
+				     bhnd_nvram_pmap_t *pmap);
 static void			 bhnd_nvplane_pmap_exit(
-				     bhnd_nvram_plane_pmap_t *pmap);
+				     bhnd_nvram_pmap_t *pmap);
 static void			 bhnd_nvplane_pmap_wait_reqs(
-				     bhnd_nvram_plane_pmap_t *pmap);
+				     bhnd_nvram_pmap_t *pmap);
 
 static int			 bhnd_nvplane_entry_enter(
 				     bhnd_nvram_entry_t *entry,
-				     bhnd_nvram_plane_pmap_t **pmap,
+				     bhnd_nvram_pmap_t **pmap,
 				     bhnd_nvram_phandle_t *phandle);
 static void			 bhnd_nvplane_entry_exit(
 				     bhnd_nvram_entry_t *entry,
-				     bhnd_nvram_plane_pmap_t *pmap,
+				     bhnd_nvram_pmap_t *pmap,
 				     bhnd_nvram_phandle_t phandle);
 
 static bhnd_nvram_plane_t	*bhnd_nvplane_find_child(
@@ -550,7 +550,7 @@ int
 bhnd_nvram_plane_map_provider(bhnd_nvram_plane_t *plane,
     bhnd_nvram_prov_t *provider)
 {
-	bhnd_nvram_plane_pmap_t	*pmap;
+	bhnd_nvram_pmap_t	*pmap;
 	bhnd_nvram_entry_t	*entry;
 
 	if (provider == NULL)
@@ -606,7 +606,7 @@ void
 bhnd_nvram_plane_unmap_provider(bhnd_nvram_plane_t *plane,
     bhnd_nvram_prov_t *provider)
 {
-	bhnd_nvram_plane_pmap_t	*pmap;
+	bhnd_nvram_pmap_t	*pmap;
 	bhnd_nvram_entry_t	*entry;
 
 	BHND_NVPLANE_LOCK_RW(plane);
@@ -696,7 +696,7 @@ int
 bhnd_nvram_plane_find_entry(bhnd_nvram_plane_t *plane, const char *path,
     bhnd_nvram_entry_t **entry)
 {
-	bhnd_nvram_plane_pmap_t	*pmap;
+	bhnd_nvram_pmap_t	*pmap;
 	bhnd_nvram_phandle_t	 phandle;
 	bhnd_nvram_entry_t	*result;
 	int			 error;
@@ -797,7 +797,7 @@ bhnd_nvram_get_children(bhnd_nvram_entry_t *entry,
     bhnd_nvram_entry_t ***children, size_t *count)
 {
 #if 0
-	bhnd_nvram_plane_pmap_t	*pmap;
+	bhnd_nvram_pmap_t	*pmap;
 	bhnd_nvram_phandle_t	 phandle;
 	bhnd_nvram_phandle_t	*phandles;
 	bhnd_nvram_entry_t	**entries;
@@ -852,7 +852,7 @@ int
 bhnd_nvram_setprop(bhnd_nvram_entry_t *entry, const char *propname,
     const void *buf, size_t len, bhnd_nvram_type type)
 {
-	bhnd_nvram_plane_pmap_t	*pmap;
+	bhnd_nvram_pmap_t	*pmap;
 	bhnd_nvram_phandle_t	 phandle;
 	int			 error;
 
@@ -870,7 +870,7 @@ bhnd_nvram_setprop(bhnd_nvram_entry_t *entry, const char *propname,
 int
 bhnd_nvram_delprop(bhnd_nvram_entry_t *entry, const char *propname)
 {
-	bhnd_nvram_plane_pmap_t	*pmap;
+	bhnd_nvram_pmap_t	*pmap;
 	bhnd_nvram_phandle_t	 phandle;
 	int			 error;
 
@@ -888,7 +888,7 @@ int
 bhnd_nvram_getprop(bhnd_nvram_entry_t *entry, const char *propname, void *buf,
     size_t *len, bhnd_nvram_type type, bool search_parents)
 {
-	bhnd_nvram_plane_pmap_t	*pmap;
+	bhnd_nvram_pmap_t	*pmap;
 	bhnd_nvram_phandle_t	 phandle;
 	int			 error;
 
@@ -907,7 +907,7 @@ int
 bhnd_nvram_getprop_alloc(bhnd_nvram_entry_t *entry, const char *propname,
     void **buf, size_t *len, bhnd_nvram_type type, bool search_parents)
 {
-	bhnd_nvram_plane_pmap_t	*pmap;
+	bhnd_nvram_pmap_t	*pmap;
 	bhnd_nvram_phandle_t	 phandle;
 	void			*outp;
 	size_t			 req_olen, olen;
@@ -964,7 +964,7 @@ int
 bhnd_nvram_copyprops(bhnd_nvram_entry_t *entry,
     struct bhnd_nvram_plist **plist)
 {
-	bhnd_nvram_plane_pmap_t	*pmap;
+	bhnd_nvram_pmap_t	*pmap;
 	bhnd_nvram_phandle_t	 phandle;
 	int			 error;
 
@@ -989,7 +989,7 @@ bhnd_nvram_copyprops(bhnd_nvram_entry_t *entry,
  * @retval EAGAIN	if incrementing the use count would overflow.
  */
 static int
-bhnd_nvplane_pmap_enter(bhnd_nvram_plane_pmap_t *pmap)
+bhnd_nvplane_pmap_enter(bhnd_nvram_pmap_t *pmap)
 {
 	mtx_lock(&pmap->lock);
 
@@ -1012,7 +1012,7 @@ bhnd_nvplane_pmap_enter(bhnd_nvram_plane_pmap_t *pmap)
  * @param pmap	The provider mapping.
  */
 static void
-bhnd_nvplane_pmap_exit(bhnd_nvram_plane_pmap_t *pmap)
+bhnd_nvplane_pmap_exit(bhnd_nvram_pmap_t *pmap)
 {
 	mtx_lock(&pmap->lock);
 
@@ -1031,7 +1031,7 @@ bhnd_nvplane_pmap_exit(bhnd_nvram_plane_pmap_t *pmap)
  * @param pmap	The provider mapping.
  */
 static void
-bhnd_nvplane_pmap_wait_reqs(bhnd_nvram_plane_pmap_t *pmap)
+bhnd_nvplane_pmap_wait_reqs(bhnd_nvram_pmap_t *pmap)
 {
 	mtx_assert(&pmap->lock, SA_UNLOCKED);
 
@@ -1060,8 +1060,8 @@ bhnd_nvplane_pmap_wait_reqs(bhnd_nvram_plane_pmap_t *pmap)
  *			regular unix error code will be returned.
  */
 static int
-bhnd_nvplane_entry_enter(bhnd_nvram_entry_t *entry,
-    bhnd_nvram_plane_pmap_t **pmap, bhnd_nvram_phandle_t *phandle)
+bhnd_nvplane_entry_enter(bhnd_nvram_entry_t *entry, bhnd_nvram_pmap_t **pmap,
+    bhnd_nvram_phandle_t *phandle)
 {
 	int error;
 
@@ -1141,8 +1141,8 @@ bhnd_nvplane_entry_enter(bhnd_nvram_entry_t *entry,
  *			regular unix error code will be returned.
  */
 static void
-bhnd_nvplane_entry_exit(bhnd_nvram_entry_t *entry,
-    bhnd_nvram_plane_pmap_t *pmap, bhnd_nvram_phandle_t phandle)
+bhnd_nvplane_entry_exit(bhnd_nvram_entry_t *entry, bhnd_nvram_pmap_t *pmap,
+    bhnd_nvram_phandle_t phandle)
 {
 	BHND_NVRAM_PROV_RELEASE_PATH(pmap->prov, phandle);
 	bhnd_nvplane_pmap_exit(pmap);

@@ -52,7 +52,7 @@ typedef struct bhnd_nvram_plane_pmap {
 	bhnd_nvram_prov_t	*prov;	/**< provider instance */
 	u_int			 reqs;	/**< active provider request count */
 	struct mtx		 lock;	/**< request count mutex */
-} bhnd_nvram_plane_pmap_t;
+} bhnd_nvram_pmap_t;
 
 /**
  * NVRAM entry.
@@ -60,7 +60,7 @@ typedef struct bhnd_nvram_plane_pmap {
 struct bhnd_nvram_entry {
 	bhnd_nvram_plane_t	*plane;		/**< defining plane */
 	char			*path;		/**< fully qualified, normalized target path */
-	bhnd_nvram_plane_pmap_t	*pmap;		/**< defining provider's mapping, or NULL */
+	bhnd_nvram_pmap_t	*pmap;		/**< defining provider's mapping, or NULL */
 	bhnd_nvram_phandle_t	 phandle;	/**< target phandle, or BHND_NVRAM_PHANDLE_NULL */
 	volatile u_int		 refs;		/**< reference count */
 
@@ -85,7 +85,7 @@ struct bhnd_nvram_entry {
  */
 struct bhnd_nvram_plane {
 	bhnd_nvram_plane_t	*parent;	/**< parent, or NULL */
-	bhnd_nvram_plane_pmap_t	*pmap;		/**< provider mapping, or NULL */
+	bhnd_nvram_pmap_t	*pmap;		/**< provider mapping, or NULL */
 	char			*name;		/**< plane's relative name */
 	bhnd_nvram_plane_list_t	 children;	/**< child planes */
 	bhnd_nvram_entry_list_t	 entries;	/**< in-use entries */
