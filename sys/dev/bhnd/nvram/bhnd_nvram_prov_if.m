@@ -45,6 +45,8 @@ HEADER {
 }
 
 CODE {
+	#include "bhnd_nvram_prov_if.h"
+
 	static int
 	bhnd_nvram_prov_null_sync(bhnd_nvram_prov_t *prov, bool forced)
 	{
@@ -53,7 +55,7 @@ CODE {
 
 	static int
 	bhnd_nvram_prov_null_open_path(bhnd_nvram_prov_t *prov,
-	    bhnd_nvram_phandle_t cwd, const char *pathname, uint32_t flags,
+	    bhnd_nvram_phandle_t cwd, const char *pathname, size_t pathlen,
 	    bhnd_nvram_phandle_t *phandle)
 	{
 		panic("bhnd_nvram_prov_open_path unimplemented");
@@ -66,7 +68,7 @@ CODE {
 		panic("bhnd_nvram_prov_retain_path unimplemented");
 	}
 
-	static int
+	static void
 	bhnd_nvram_prov_null_release_path(bhnd_nvram_prov_t *prov,
 	    bhnd_nvram_phandle_t phandle)
 	{
@@ -74,10 +76,17 @@ CODE {
 	}
 
 	static int
-	bhnd_nvram_prov_null_open_children(bhnd_nvram_prov_t *prov,
-	    bhnd_nvram_phandle_t **phandle, char *buf, size_t *len)
+	bhnd_nvram_prov_null_get_children(bhnd_nvram_prov_t *prov,
+	    bhnd_nvram_phandle_t **children, size_t *count)
 	{
-		panic("bhnd_nvram_prov_path_open_children unimplemented");
+		panic("bhnd_nvram_prov_get_children unimplemented");
+	}
+
+	static int
+	bhnd_nvram_prov_null_free_children(bhnd_nvram_prov_t *prov,
+	    bhnd_nvram_phandle_t *children, size_t count)
+	{
+		panic("bhnd_nvram_prov_free_children unimplemented");
 	}
 
 	static int
@@ -98,7 +107,7 @@ CODE {
 	static int
 	bhnd_nvram_prov_null_getprop(bhnd_nvram_prov_t *prov,
 	    bhnd_nvram_phandle_t phandle, const char *propname, void *buf,
-	    size_t len, bhnd_nvram_type type, uint32_t flags)
+	    size_t *len, bhnd_nvram_type type, bool search_parents)
 	{
 		panic("bhnd_nvram_prov_getprop unimplemented");
 	}
@@ -136,22 +145,20 @@ METHOD int sync {
 /**
  * Open and return a handle for the given @p path.
  * 
- * The caller assumes ownership of the returned path handle, and is responsible
- * for releasing it via BHND_NVRAM_PROV_RELEASE_PATH()
+ * The caller assumes ownership of the returned provider handle, and is
+ * responsible for releasing it via BHND_NVRAM_PROV_RELEASE_PATH()
  * 
  * @param	prov	The NVRAM provider.
- * @param	cwd	The path handle from which @p path will be resolved, or
- *			BHND_NVRAM_PHANDLE_NULL to perform resolution from the
- *			root path.
+ * @param	cwd	The provider handle from which @p path will be resolved,
+ *			or BHND_NVRAM_PHANDLE_NULL to perform resolution from
+ *			the root path.
  * @param	path	The path to be opened relative to @p cwd.
  * @param	pathlen	The length of @p path.
- * @param	flags	BHND_NVRAM_FLAG_NOWAIT or 0.
  * @param[out]	phandle	On success, a caller-owned reference to @p path.
  *
  * @retval 0		success
  * @retval ENOMEM	If allocation fails
- * @retval ENOENT	If @p path or @p cwd are not found.
- * @retval EINVAL	If @p flags is invalid.
+ * @retval ENODEV	If @p path or @p cwd are not found.
  * @retval non-zero	If opening @p path otherwise fails, a regular
  *			unix error code will be returned.
  */
@@ -160,18 +167,17 @@ METHOD int open_path {
 	bhnd_nvram_phandle_t	 cwd;
 	const char		*path;
 	size_t			 pathlen;
-	uint32_t		 flags;
 	bhnd_nvram_phandle_t	*phandle;
 } DEFAULT bhnd_nvram_prov_null_open_path;
 
 /**
- * Retain a new reference to an open path handle.
+ * Retain a new reference to an open provider handle.
  * 
  * The caller is responsible for releasing their reference ownership via
  * BHND_NVRAM_PROV_RELEASE_PATH().
  * 
  * @param prov		The NVRAM provider.
- * @param phandle	The path handle to be retained.
+ * @param phandle	The provider handle to be retained.
  * 
  * @return Returns the @p phandle argument for convenience.
  */
@@ -184,7 +190,7 @@ METHOD bhnd_nvram_phandle_t retain_path {
  * Release a caller-owned reference to the given @p phandle.
  *
  * @param prov		The NVRAM provider.
- * @param phandle	The caller-owned path handle to be released.
+ * @param phandle	The caller-owned provider handle to be released.
  */
 METHOD void release_path {
 	bhnd_nvram_prov_t	*prov;
@@ -199,8 +205,8 @@ METHOD void release_path {
  * BHND_NVRAM_PROV_FREE_CHILDREN().
  *
  * @param	prov		The NVRAM provider.
- * @param	phandle		The path handle to be queried.
- * @param[out]	children	The list of child path handles.
+ * @param	phandle		The provider handle to be queried.
+ * @param[out]	children	The list of child provider handles.
  * @param[out]	count		The number of handles in @p children.
  *
  * @retval 0		success
@@ -208,11 +214,11 @@ METHOD void release_path {
  *			small to hold the requested value.
  * @retval ENODEV	If @p phandle is no longer mapped in @p prov.
  */
-METHOD int open_children {
+METHOD int get_children {
 	bhnd_nvram_prov_t	*prov;
 	bhnd_nvram_phandle_t	**children;
 	size_t			*count;
-} DEFAULT bhnd_nvram_prov_null_open_children;
+} DEFAULT bhnd_nvram_prov_null_get_children;
 
 /**
  * Free resources allocated in a previous call to
@@ -225,13 +231,13 @@ METHOD void free_children {
 	bhnd_nvram_prov_t	*prov;
 	bhnd_nvram_phandle_t	*children;
 	size_t			 count;
-} bhnd_nvram_prov_null_free_children;
+} DEFAULT bhnd_nvram_prov_null_free_children;
 
 /**
  * Insert or update a property value in @p phandle.
  * 
  * @param	prov		The NVRAM provider.
- * @param	phandle		The path handle to be updated.
+ * @param	phandle		The provider handle to be updated.
  * @param	propname	The property name.
  * @param[out]	buf		The new property value.
  * @param	len		The size of @p buf.
@@ -263,7 +269,7 @@ METHOD int setprop {
  * Delete a property value in @p phandle.
  * 
  * @param	prov		The NVRAM provider.
- * @param	phandle		The path handle to be updated.
+ * @param	phandle		The provider handle to be updated.
  * @param	propname	The property name.
  *
  * @retval 0		success
@@ -277,16 +283,13 @@ METHOD int delprop {
 	bhnd_nvram_prov_t	*prov;
 	bhnd_nvram_phandle_t	 phandle;
 	const char		*propname;
-	const void		*buf;
-	size_t			 len;
-	bhnd_nvram_type		 type;
 } DEFAULT bhnd_nvram_prov_null_delprop;
 
 /**
  * Read a property value from @p phandle.
  *
  * @param		prov		The NVRAM provider.
- * @param		phandle		The path handle to be queried.
+ * @param		phandle		The provider handle to be queried.
  * @param		propname	The property name.
  * @param[out]		buf		On success, the property value will be
  *					written to this buffer. This argment may
@@ -298,10 +301,9 @@ METHOD int delprop {
  *					desired (e.g. to test for the existence
  *					of a property).
  * @param		type		The data type to be written to @p buf.
- * @param		flags		BHND_NVRAM_FLAG_SEARCH_PARENTS or 0.
+ * @param		search_parents	If true ... TODO
  *
  * @retval 0		success
- * @retval EINVAL	If @p flags is invalid.
  * @retval ENOENT	If @p propname is not found in @p phandle (or in a
  *			parent of @p phandle, if BHND_NVRAM_FLAG_SEARCH_PARENTS
  *			is specified).
@@ -330,7 +332,7 @@ METHOD int delprop {
  * @p bhnd_nvram_plist_release().
  * 
  * @param	prov	The NVRAM provider.
- * @param	phandle	The path handle to be queried.
+ * @param	phandle	The provider handle to be queried.
  * @param[out]	plist	On success, a property list containing a copy of all
  *			properties defined in @p phandle.
  *

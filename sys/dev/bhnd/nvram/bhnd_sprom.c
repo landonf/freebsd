@@ -112,8 +112,7 @@ bhnd_sprom_attach(device_t dev, bus_size_t offset)
 	// XXX TODO: initialize sc->prov
 
 	/* Map our device into the NVRAM plane */
-	error = bhnd_nvram_plane_map_provider(sc->plane, sc->prov, M_WAITOK);
-	if (error) {
+	if ((error = bhnd_nvram_plane_map_provider(sc->plane, sc->prov))) {
 		device_printf(dev, "failed to map NVRAM store: %d\n", error);
 		bhnd_nvram_store_free(sc->store);
 		return (error);

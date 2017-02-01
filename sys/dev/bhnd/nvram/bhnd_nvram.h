@@ -43,16 +43,19 @@
 #endif /* _KERNEL */
 
 /* forward declarations */
+typedef struct bhnd_nvram_entry	bhnd_nvram_entry_t;
 typedef struct bhnd_nvram_plane	bhnd_nvram_plane_t;
 typedef struct bhnd_nvram_prov	bhnd_nvram_prov_t;
 
+struct bhnd_nvram_plist;
+
 /**
- * Opaque NVRAM path handle
+ * Opaque NVRAM provider handle
  */
 typedef uintptr_t bhnd_nvram_phandle_t;
 
 /**
- * A NULL path handle.
+ * A NULL provider handle.
  */
 #define	BHND_NVRAM_PHANDLE_NULL	((bhnd_nvram_phandle_t)0x0)
 
@@ -154,8 +157,7 @@ enum {
 
 
 int			 bhnd_nvram_plane_new(bhnd_nvram_plane_t **plane,
-			     const char *name, bhnd_nvram_plane_t *parent, 
-			     int malloc_flags);
+			     const char *name, bhnd_nvram_plane_t *parent);
 
 bhnd_nvram_plane_t	*bhnd_nvram_plane_retain(bhnd_nvram_plane_t *plane);
 void			 bhnd_nvram_plane_release(bhnd_nvram_plane_t *plane);
@@ -166,18 +168,48 @@ bhnd_nvram_plane_t	*bhnd_nvram_plane_get_child(bhnd_nvram_plane_t *plane,
 			     const char *pathname);
 int			 bhnd_nvram_plane_get_children(
 			     bhnd_nvram_plane_t *plane,
-			     bhnd_nvram_plane_t ***children, size_t *count,
-			     int malloc_flags);
+			     bhnd_nvram_plane_t ***children, size_t *count);
 void			 bhnd_nvram_plane_free_children(
 			     bhnd_nvram_plane_t *plane,
 			     bhnd_nvram_plane_t **children, size_t count);
 
 int			 bhnd_nvram_plane_map_provider(
 			     bhnd_nvram_plane_t *plane,
-			     bhnd_nvram_prov_t *provider, int malloc_flags);
+			     bhnd_nvram_prov_t *provider);
 void			 bhnd_nvram_plane_unmap_provider(
 			     bhnd_nvram_plane_t *plane,
 			     bhnd_nvram_prov_t *provider);
+
+int			 bhnd_nvram_plane_find_entry(bhnd_nvram_plane_t *plane,
+			     const char *path, bhnd_nvram_entry_t **entry);
+
+bhnd_nvram_entry_t	*bhnd_nvram_entry_retain(bhnd_nvram_entry_t *entry);
+void			 bhnd_nvram_entry_release(bhnd_nvram_entry_t *entry);
+
+int			 bhnd_nvram_get_children(
+			     bhnd_nvram_entry_t *entry,
+			     bhnd_nvram_entry_t ***children, size_t *count);
+int			 bhnd_nvram_free_children(
+			     bhnd_nvram_entry_t *entry,
+			     bhnd_nvram_entry_t **children, size_t count);
+
+int			 bhnd_nvram_setprop(bhnd_nvram_entry_t *entry,
+			     const char *propname, const void *buf, size_t len,
+			     bhnd_nvram_type type);
+int			 bhnd_nvram_delprop(bhnd_nvram_entry_t *entry,
+			     const char *propname);
+
+int			 bhnd_nvram_getprop(bhnd_nvram_entry_t *entry,
+			     const char *propname, void *buf, size_t *len,
+			     bhnd_nvram_type type, bool search_parents);
+int			 bhnd_nvram_getprop_alloc(bhnd_nvram_entry_t *entry,
+			     const char *propname, void **buf, size_t *len,
+			     bhnd_nvram_type type, bool search_parents);
+void			 bhnd_nvram_getprop_free(void *buf);
+
+int			 bhnd_nvram_copyprops(bhnd_nvram_entry_t *entry,
+			     struct bhnd_nvram_plist **plist);
+
 
 bool			 bhnd_nvram_is_signed_type(bhnd_nvram_type type);
 bool			 bhnd_nvram_is_unsigned_type(bhnd_nvram_type type);

@@ -39,10 +39,29 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_nvramvar.h"
 #include "bhnd_nvram_private.h"
 
+#include "bhnd_nvram_prov_if.h"
+
+
 MALLOC_DEFINE(M_BHND_NVRAM, "bhnd_nvram", "BHND NVRAM data");
 
 
 static bool			 bhnd_nvplane_validate_name(const char *name);
+
+static int			 bhnd_nvplane_pmap_enter(
+				     bhnd_nvram_plane_pmap_t *pmap);
+static void			 bhnd_nvplane_pmap_exit(
+				     bhnd_nvram_plane_pmap_t *pmap);
+static void			 bhnd_nvplane_pmap_wait_reqs(
+				     bhnd_nvram_plane_pmap_t *pmap);
+
+static int			 bhnd_nvplane_entry_enter(
+				     bhnd_nvram_entry_t *entry,
+				     bhnd_nvram_plane_pmap_t **pmap,
+				     bhnd_nvram_phandle_t *phandle);
+static void			 bhnd_nvplane_entry_exit(
+				     bhnd_nvram_entry_t *entry,
+				     bhnd_nvram_plane_pmap_t *pmap,
+				     bhnd_nvram_phandle_t phandle);
 
 static bhnd_nvram_plane_t	*bhnd_nvplane_find_child(
 				     bhnd_nvram_plane_t *plane,
@@ -80,7 +99,6 @@ bhnd_nvplane_validate_name(const char *name)
  *				instance.
  * @param	name		The name of the new plane instance.
  * @param	parent		The parent plane, or NULL.
- * @param	malloc_flags	Flags to be passed to malloc (see malloc(9)).
  * 
  * @retval 0		success
  * @retval ENOMEM	if allocation fails.
@@ -89,7 +107,7 @@ bhnd_nvplane_validate_name(const char *name)
  */
 int
 bhnd_nvram_plane_new(bhnd_nvram_plane_t **plane, const char *name,
-    bhnd_nvram_plane_t *parent, int malloc_flags)
+    bhnd_nvram_plane_t *parent)
 {
 	bhnd_nvram_plane_t *p;
 
@@ -122,11 +140,11 @@ bhnd_nvram_plane_new(bhnd_nvram_plane_t **plane, const char *name,
 	}
 
 	/* Allocate new child plane instance */
-	p = bhnd_nv_calloc(1, sizeof(*p), malloc_flags);
+	p = bhnd_nv_calloc(1, sizeof(*p), M_NOWAIT);
 	if (p == NULL)
 		return (ENOMEM);
 
-	p->name = bhnd_nv_strdup(name, malloc_flags);
+	p->name = bhnd_nv_strdup(name, M_NOWAIT);
 	if (p->name == NULL) {
 		bhnd_nv_free(p);
 		return (ENOMEM);
@@ -137,6 +155,7 @@ bhnd_nvram_plane_new(bhnd_nvram_plane_t **plane, const char *name,
 
 	BHND_NVPLANE_LOCK_INIT(p);
 	LIST_INIT(&p->children);
+	LIST_INIT(&p->entries);
 
 	/* Connect to parent (if any), then drop the parent lock */
 	if ((p->parent = parent) != NULL) {
@@ -439,14 +458,13 @@ bhnd_nvram_plane_get_child(bhnd_nvram_plane_t *plane, const char *pathname)
  * @param	plane		The NVRAM plane to query.
  * @param[out]	children	The list of child planes.
  * @param[out]	count		The number of planes returned.
- * @param	malloc_flags	Flags to be passed to malloc (see malloc(9)).
  * 
  * @retval 0		success
  * @retval ENOMEM	if allocation fails.
  */
 int
 bhnd_nvram_plane_get_children(bhnd_nvram_plane_t *plane,
-    bhnd_nvram_plane_t ***children, size_t *count, int malloc_flags)
+    bhnd_nvram_plane_t ***children, size_t *count)
 {
 	bhnd_nvram_plane_t	*child, **list;
 	size_t			 num_attached;
@@ -472,7 +490,7 @@ bhnd_nvram_plane_get_children(bhnd_nvram_plane_t *plane,
 
 	/* Allocate child list */
 	list = bhnd_nv_calloc(num_attached, sizeof(bhnd_nvram_plane_t *),
-	    malloc_flags);
+	    M_NOWAIT);
 	if (list == NULL) {
 		BHND_NVPLANE_UNLOCK_RO(plane);
 		return (ENOMEM);
@@ -522,7 +540,6 @@ bhnd_nvram_plane_free_children(bhnd_nvram_plane_t *plane,
  * @param	plane		The NVRAM plane into which @p provider will be
  * 				mapped.
  * @param	provider	The NVRAM provider to be mapped.
- * @param	malloc_flags	Flags to be passed to malloc (see malloc(9)).
  *
  * @retval 0		success
  * @retval ENOMEM	if allocation fails.
@@ -531,41 +548,50 @@ bhnd_nvram_plane_free_children(bhnd_nvram_plane_t *plane,
  */
 int
 bhnd_nvram_plane_map_provider(bhnd_nvram_plane_t *plane,
-    bhnd_nvram_prov_t *provider, int malloc_flags)
+    bhnd_nvram_prov_t *provider)
 {
 	bhnd_nvram_plane_pmap_t	*pmap;
-	int			 error;
+	bhnd_nvram_entry_t	*entry;
 
 	if (provider == NULL)
 		BHND_NV_PANIC("NULL provider");
 
 	/* Allocate provider mapping state */
-	pmap = bhnd_nv_calloc(1, sizeof(*pmap), malloc_flags);
+	pmap = bhnd_nv_calloc(1, sizeof(*pmap), M_NOWAIT);
 	if (pmap == NULL)
 		return (ENOMEM);
 
-	mtx_init(&pmap->pm_lock, "BHND NVRAM pm_req mutex", NULL, MTX_DEF);
+	mtx_init(&pmap->lock, "BHND NVRAM pm_req mutex", NULL, MTX_DEF);
 
-	pmap->pm_prov = provider;
-	pmap->pm_reqs = 0;
+	pmap->prov = provider;
+	pmap->reqs = 0;
 
-	/* Attempt to map into the plane */
 	BHND_NVPLANE_LOCK_RW(plane);
-	if (plane->pmap == NULL) {
-		plane->pmap = pmap;
-		error = 0;
-	} else {
-		error = EEXIST;
+
+	/* Plane must not already have a provider mapped. */
+	if (plane->pmap != NULL) {
+		BHND_NVPLANE_UNLOCK_RW(plane);
+
+		mtx_destroy(&pmap->lock);
+		bhnd_nv_free(pmap);
+
+		return (EEXIST);
 	}
+
+	/* Connect the provider, associate all outstanding entries */
+	plane->pmap = pmap;
+
+	LIST_FOREACH(entry, &plane->entries, ne_link) {
+		BHND_NV_ASSERT(entry->pmap == NULL, ("dangling pmap"));
+		BHND_NV_ASSERT(entry->phandle == BHND_NVRAM_PHANDLE_NULL,
+		    ("dangling phandle"));
+
+		entry->pmap = pmap;
+	}
+
 	BHND_NVPLANE_UNLOCK_RW(plane);
 
-	/* Clean up unused mapping state on error */
-	if (error) {
-		mtx_destroy(&pmap->pm_lock);
-		bhnd_nv_free(pmap);
-	}
-
-	return (error);
+	return (0);
 }
 
 /**
@@ -581,6 +607,7 @@ bhnd_nvram_plane_unmap_provider(bhnd_nvram_plane_t *plane,
     bhnd_nvram_prov_t *provider)
 {
 	bhnd_nvram_plane_pmap_t	*pmap;
+	bhnd_nvram_entry_t	*entry;
 
 	BHND_NVPLANE_LOCK_RW(plane);
 
@@ -591,12 +618,21 @@ bhnd_nvram_plane_unmap_provider(bhnd_nvram_plane_t *plane,
 	}
 
 	/* Skip if current mapping does not match the specified provider */
-	if (provider != NULL && plane->pmap->pm_prov != provider) {
+	if (provider != NULL && plane->pmap->prov != provider) {
 		BHND_NVPLANE_UNLOCK_RW(plane);
 		return;
 	}
 
-	/* Found match; disconnect mapping from the plane */
+	/* Found match; invalidate all entries */
+	BHND_NV_ASSERT(plane->pmap->prov == provider, ("invalid prov"));
+	LIST_FOREACH(entry, &plane->entries, ne_link) {
+		BHND_NV_ASSERT(entry->pmap == pmap, ("dangling pmap"));
+
+		entry->pmap = NULL;
+		entry->phandle = BHND_NVRAM_PHANDLE_NULL;
+	}
+
+	/* Disconnect from the plane */
 	plane->pmap = NULL;
 
 	BHND_NVPLANE_UNLOCK_RW(plane);
@@ -606,15 +642,508 @@ bhnd_nvram_plane_unmap_provider(bhnd_nvram_plane_t *plane,
 	 * 
 	 * Once the request count hits zero, no concurrent threads hold a
 	 * reference to this mapping */
-	mtx_lock(&pmap->pm_lock);
-	while (pmap->pm_reqs > 0) {
-		mtx_sleep(pmap, &pmap->pm_lock, 0, "bhnd_nvrq", 0);
-	}
-	mtx_unlock(&pmap->pm_lock);
-
-	BHND_NV_ASSERT(pmap->pm_reqs == 0, ("requests active"));
+	bhnd_nvplane_pmap_wait_reqs(pmap);
+	BHND_NV_ASSERT(pmap->reqs == 0, ("requests active"));
 
 	/* Clean up mapping state */
-	mtx_destroy(&pmap->pm_lock);
+	mtx_destroy(&pmap->lock);
 	bhnd_nv_free(pmap);
+}
+
+/**
+ * Return an entry instance for @p path, allocating and registering a new
+ * entry if no existing entry can be found.
+ * 
+ * The caller is responsible for releasing the returned entry via
+ * bhnd_nvram_entry_release().
+ */
+static bhnd_nvram_entry_t *
+bhnd_nvplane_get_entry(bhnd_nvram_plane_t *plane, const char *path)
+{
+	bhnd_nvram_entry_t *entry;
+
+	BHND_NVPLANE_LOCK_ASSERT(plane, SA_XLOCKED);
+
+	LIST_FOREACH(entry, &plane->entries, ne_link) {
+		if (strcmp(entry->path, path) == 0)
+			return (bhnd_nvram_entry_retain(entry));
+	}
+
+	/* Not found; register a new entry */
+	entry = bhnd_nv_calloc(1, sizeof(*entry), M_NOWAIT);
+	if (entry == NULL)
+		return (NULL);
+
+	entry->path = bhnd_nv_strdup(path, M_NOWAIT);
+	if (entry->path == NULL) {
+		bhnd_nv_free(entry);
+		return (NULL);
+	}
+
+	refcount_init(&entry->refs, 1);
+	entry->plane = bhnd_nvram_plane_retain(plane);
+	entry->pmap = plane->pmap;
+	entry->phandle = BHND_NVRAM_PHANDLE_NULL;
+
+	LIST_INSERT_HEAD(&plane->entries, entry, ne_link);
+	return (entry);
+}
+
+/**
+ * 
+ */
+int
+bhnd_nvram_plane_find_entry(bhnd_nvram_plane_t *plane, const char *path,
+    bhnd_nvram_entry_t **entry)
+{
+	bhnd_nvram_plane_pmap_t	*pmap;
+	bhnd_nvram_phandle_t	 phandle;
+	bhnd_nvram_entry_t	*result;
+	int			 error;
+
+	BHND_NVPLANE_LOCK_RW(plane);
+
+	/* All entry lookups fail without a provider */
+	if (plane->pmap == NULL) {
+		BHND_NVPLANE_UNLOCK_RW(plane);
+		return (ENODEV);
+	}
+
+	/* Retain or allocate an entry instance */
+	if ((result = bhnd_nvplane_get_entry(plane, path)) == NULL) {
+		BHND_NVPLANE_UNLOCK_RW(plane);
+		return (ENOMEM);
+	}
+
+	/* Claim the entry's phandle reference, forcing reacquisition of
+	 * the reference below */
+	phandle = result->phandle;
+	result->phandle = BHND_NVRAM_PHANDLE_NULL;
+
+	/* Ensure the provider will not be be unmapped after we drop
+	 * our lock below */
+	pmap = result->pmap;
+	if ((error = bhnd_nvplane_pmap_enter(result->pmap))) {
+		BHND_NVPLANE_UNLOCK_RW(plane);
+
+		bhnd_nvram_entry_release(result);
+		return (error);
+	}
+
+	BHND_NVPLANE_UNLOCK_RW(plane);
+
+	/* Drop the now unused phandle reference, and then release our
+	 * reservation on the provider mapping */
+	BHND_NVRAM_PROV_RELEASE_PATH(pmap->prov, phandle);
+	bhnd_nvplane_pmap_exit(pmap);
+
+	pmap = NULL;
+	phandle = BHND_NVRAM_PHANDLE_NULL;
+
+	/* Force reacquisition of the entry's phandle, verifying that the
+	 * requested path still exists in the backing provider */
+	if ((error = bhnd_nvplane_entry_enter(result, &pmap, &phandle))) {
+		bhnd_nvram_entry_release(result);
+		return (error);
+	}
+
+	bhnd_nvplane_entry_exit(result, pmap, phandle);
+
+	/* Return the validated entry */
+	*entry = result;
+	return (0);
+}
+
+bhnd_nvram_entry_t *
+bhnd_nvram_entry_retain(bhnd_nvram_entry_t *entry)
+{
+	refcount_acquire(&entry->refs);
+	return (entry);
+}
+
+void
+bhnd_nvram_entry_release(bhnd_nvram_entry_t *entry)
+{
+	/* We need to hold our lock to guarantee that the entry cannot
+	 * be resurrected by the NVRAM plane's weak reference after the
+	 * refcount hits zero */
+	BHND_NVPLANE_LOCK_RW(entry->plane);
+
+	if (!refcount_release(&entry->refs)) {
+		BHND_NVPLANE_UNLOCK_RW(entry->plane);
+		return;
+	}
+
+	BHND_NV_ASSERT(
+	    bhnd_nvplane_get_entry(entry->plane, entry->path) == entry,
+	    ("dangling entry reference"));
+
+	/* Disconnect the entry from the plane */
+	LIST_REMOVE(entry, ne_link);
+
+	/* Release phandle reference (plane lock is held to prevent unmapping
+	 * of the provider) */
+	if (entry->pmap != NULL && entry->phandle != BHND_NVRAM_PHANDLE_NULL)
+		BHND_NVRAM_PROV_RELEASE_PATH(entry->pmap->prov, entry->phandle);
+
+	BHND_NVPLANE_UNLOCK_RW(entry->plane);
+
+	/* Clean up remaining entry state */
+	bhnd_nv_free(entry->path);
+}
+
+int
+bhnd_nvram_get_children(bhnd_nvram_entry_t *entry,
+    bhnd_nvram_entry_t ***children, size_t *count)
+{
+#if 0
+	bhnd_nvram_plane_pmap_t	*pmap;
+	bhnd_nvram_phandle_t	 phandle;
+	bhnd_nvram_phandle_t	*phandles;
+	bhnd_nvram_entry_t	**entries;
+	char			**paths;
+	size_t			 num_phandles;
+	int			 error;
+
+	if ((error = bhnd_nvplane_entry_enter(entry, &pmap, &phandle)))
+		return (error);
+
+	/* Fetch phandles for all children */
+	error = BHND_NVRAM_PROV_GET_CHILDREN(pmap->prov, phandle, &phandles,
+	    &num_phandles);
+	if (error) {
+		bhnd_nvplane_entry_exit(entry, pmap, phandle);
+		return (error);
+	}
+
+	/* Fetch path names */
+	paths = bhnd_nv_calloc(num_phandles, sizeof(*paths), M_NOWAIT);
+	if (paths == NULL) {
+		bhnd_nvplane_entry_exit(entry, pmap, phandle);
+		return (ENOMEM);
+	}
+
+
+	/* Allocate and populate our entry list buffer */
+	entries = bhnd_nv_calloc(num_phandles, sizeof(*entries), M_NOWAIT);
+	if (entries == NULL) {
+		bhnd_nvplane_entry_exit(entry, pmap, phandle);
+		return (ENOMEM);
+	}
+
+	BHND_NVPLANE_LOCK_RW(plane);
+	for (size_t i = 0; i < num_phandles; i++) {
+		entries[i] = bhnd_nvplane_get_entry(plane, )
+	}
+	BHND_NVPLANE_UNLOCK_RW(plane);
+#endif
+
+	panic("TODO");
+}
+
+int
+bhnd_nvram_free_children(bhnd_nvram_entry_t *entry,
+    bhnd_nvram_entry_t **children, size_t count)
+{
+	panic("TODO");
+}
+
+int
+bhnd_nvram_setprop(bhnd_nvram_entry_t *entry, const char *propname,
+    const void *buf, size_t len, bhnd_nvram_type type)
+{
+	bhnd_nvram_plane_pmap_t	*pmap;
+	bhnd_nvram_phandle_t	 phandle;
+	int			 error;
+
+	if ((error = bhnd_nvplane_entry_enter(entry, &pmap, &phandle)))
+		return (error);
+
+	error = BHND_NVRAM_PROV_SETPROP(pmap->prov, phandle, propname, buf,
+	    len, type);
+
+	bhnd_nvplane_entry_exit(entry, pmap, phandle);
+
+	return (error);
+}
+
+int
+bhnd_nvram_delprop(bhnd_nvram_entry_t *entry, const char *propname)
+{
+	bhnd_nvram_plane_pmap_t	*pmap;
+	bhnd_nvram_phandle_t	 phandle;
+	int			 error;
+
+	if ((error = bhnd_nvplane_entry_enter(entry, &pmap, &phandle)))
+		return (error);
+
+	error = BHND_NVRAM_PROV_DELPROP(pmap->prov, phandle, propname);
+
+	bhnd_nvplane_entry_exit(entry, pmap, phandle);
+
+	return (error);
+}
+
+int
+bhnd_nvram_getprop(bhnd_nvram_entry_t *entry, const char *propname, void *buf,
+    size_t *len, bhnd_nvram_type type, bool search_parents)
+{
+	bhnd_nvram_plane_pmap_t	*pmap;
+	bhnd_nvram_phandle_t	 phandle;
+	int			 error;
+
+	if ((error = bhnd_nvplane_entry_enter(entry, &pmap, &phandle)))
+		return (error);
+
+	error = BHND_NVRAM_PROV_GETPROP(pmap->prov, phandle, propname, buf,
+	    len, type, search_parents);
+
+	bhnd_nvplane_entry_exit(entry, pmap, phandle);
+
+	return (error);
+}
+
+int
+bhnd_nvram_getprop_alloc(bhnd_nvram_entry_t *entry, const char *propname,
+    void **buf, size_t *len, bhnd_nvram_type type, bool search_parents)
+{
+	bhnd_nvram_plane_pmap_t	*pmap;
+	bhnd_nvram_phandle_t	 phandle;
+	void			*outp;
+	size_t			 req_olen, olen;
+	int			 error;
+
+	if ((error = bhnd_nvplane_entry_enter(entry, &pmap, &phandle)))
+		return (error);
+
+	outp = NULL;
+	do {
+		if (outp != NULL)
+			bhnd_nv_free(outp);
+
+		/* Determine required buffer size */
+		error = BHND_NVRAM_PROV_GETPROP(pmap->prov, phandle, propname,
+		    NULL, &req_olen, type, search_parents);
+		if (error) {
+			goto cleanup;
+		}
+
+		/* Allocate and fetch to buffer */
+		outp = bhnd_nv_malloc(req_olen, M_NOWAIT);
+		if (outp == NULL) {
+			error = ENOMEM;
+			goto cleanup;
+		}
+
+		olen = req_olen;
+		error = BHND_NVRAM_PROV_GETPROP(pmap->prov, phandle, propname,
+		    outp, &olen, type, search_parents);
+	} while (error == ENOMEM && olen > req_olen);
+
+cleanup:
+	bhnd_nvplane_entry_exit(entry, pmap, phandle);
+
+	if (!error) {
+		*buf = outp;
+		*len = olen;
+	} else {
+		if (outp != NULL)
+			bhnd_nv_free(outp);
+	}
+
+	return (error);
+}
+
+void
+bhnd_nvram_getprop_free(void *buf)
+{
+	bhnd_nv_free(buf);
+}
+
+int
+bhnd_nvram_copyprops(bhnd_nvram_entry_t *entry,
+    struct bhnd_nvram_plist **plist)
+{
+	bhnd_nvram_plane_pmap_t	*pmap;
+	bhnd_nvram_phandle_t	 phandle;
+	int			 error;
+
+	if ((error = bhnd_nvplane_entry_enter(entry, &pmap, &phandle)))
+		return (error);
+
+	error = BHND_NVRAM_PROV_COPYPROPS(pmap->prov, phandle, plist);
+
+	bhnd_nvplane_entry_exit(entry, pmap, phandle);
+
+	return (error);
+}
+
+/**
+ * Begin a new request against @p pmap, acquiring a usage reservation on the
+ * given provider mapping; the backing provider reference is guaranteed to
+ * remain valid until a matching call to bhnd_nvplane_pmap_exit().
+ * 
+ * @param pmap	The provider mapping.
+ * 
+ * @retval 0		success
+ * @retval EAGAIN	if incrementing the use count would overflow.
+ */
+static int
+bhnd_nvplane_pmap_enter(bhnd_nvram_plane_pmap_t *pmap)
+{
+	mtx_lock(&pmap->lock);
+
+	if (pmap->reqs >= BHND_NVPLANE_PROV_REQS_MAX) {
+		mtx_unlock(&pmap->lock);
+		return (EAGAIN);
+	}
+
+	pmap->reqs++;
+
+	mtx_unlock(&pmap->lock);
+
+	return (0);
+}
+
+
+/**
+ * Release a usage reservation held on @p pmap.
+ * 
+ * @param pmap	The provider mapping.
+ */
+static void
+bhnd_nvplane_pmap_exit(bhnd_nvram_plane_pmap_t *pmap)
+{
+	mtx_lock(&pmap->lock);
+
+	BHND_NV_ASSERT(pmap->reqs > 0, ("overrelease"));
+
+	pmap->reqs--;
+	if (pmap->reqs == 0)
+		wakeup(pmap);
+
+	mtx_unlock(&pmap->lock);
+}
+
+/**
+ * Sleep until all requests have completed on @p pmap.
+ * 
+ * @param pmap	The provider mapping.
+ */
+static void
+bhnd_nvplane_pmap_wait_reqs(bhnd_nvram_plane_pmap_t *pmap)
+{
+	mtx_assert(&pmap->lock, SA_UNLOCKED);
+
+	mtx_lock(&pmap->lock);
+	while (pmap->reqs > 0) {
+		mtx_sleep(pmap, &pmap->lock, 0, "bhnd_nvrq", 0);
+	}
+	mtx_unlock(&pmap->lock);
+}
+
+/**
+ * Begin a new request against @p entry, acquiring a request reservation on the
+ * mapped provider.
+ * 
+ * Upon request completion, bhnd_nvplane_entry_exit() must be called to release
+ * all acquired resources.
+ * 
+ * @param	entry	The plane entry.
+ * @param[out]	pmap	On success, the provider mapping for @p entry.
+ * @param[out]	phandle	On success, the provider handle for @p entry.
+ * 
+ * @retval 0		success
+ * @retval EAGAIN	if incrementing the use count would overflow.
+ * @retval ENODEV	if the entry's path is no longer mapped by a provider.
+ * @retval non-zero	if starting a request on @p entry otherwise fails, a
+ *			regular unix error code will be returned.
+ */
+static int
+bhnd_nvplane_entry_enter(bhnd_nvram_entry_t *entry,
+    bhnd_nvram_plane_pmap_t **pmap, bhnd_nvram_phandle_t *phandle)
+{
+	int error;
+
+	BHND_NVPLANE_LOCK_ASSERT(entry->plane, SA_UNLOCKED);
+
+	/*
+	 * Fetch and retain the entry's backing provider mapping and
+	 * phandle (if any).
+	 */
+	BHND_NVPLANE_LOCK_RO(entry->plane);
+
+	/* Must have a provider mapping */
+	if (entry->pmap == NULL) {
+		BHND_NVPLANE_UNLOCK_RO(entry->plane);
+		return (ENODEV);
+	}
+
+	/* Acquire a reservation on the provider mapping */
+	if ((error = bhnd_nvplane_pmap_enter(entry->pmap))) {
+		BHND_NVPLANE_UNLOCK_RO(entry->plane);
+		return (error);
+	}
+
+	/* Save the provider and phandle references */
+	*pmap = entry->pmap;
+	*phandle = entry->phandle;
+	if (*phandle != BHND_NVRAM_PHANDLE_NULL)
+		BHND_NVRAM_PROV_RETAIN_PATH((*pmap)->prov, *phandle);
+
+	BHND_NVPLANE_UNLOCK_RO(entry->plane);
+
+	/*
+	 * Lazy fallback resolution of the entry's phandle.
+	 */
+	if (*phandle == BHND_NVRAM_PHANDLE_NULL) {
+		/* Try to open the path */
+		error = BHND_NVRAM_PROV_OPEN_PATH((*pmap)->prov,
+		    BHND_NVRAM_PHANDLE_NULL, entry->path, strlen(entry->path),
+		    phandle);
+
+		if (error) {
+			bhnd_nvplane_pmap_exit(*pmap);
+			return (error);
+		}
+
+		/* Try to update our entry with the resolved phandle */
+		BHND_NVPLANE_LOCK_RW(entry->plane);
+		if (entry->pmap == *pmap &&
+		    entry->phandle == BHND_NVRAM_PHANDLE_NULL)
+		{
+			BHND_NVRAM_PROV_RETAIN_PATH((*pmap)->prov, *phandle);
+			entry->phandle = *phandle;
+		}
+		BHND_NVPLANE_UNLOCK_RW(entry->plane);
+	}
+
+	/* The pmap and phandle are now valid; we transfer ownership of our
+	 * open pmap reservation and the strong phandle reference to our
+	 * caller */
+	return (0);
+}
+
+/**
+ * Terminate a request against @p entry, releasing all resources acquired
+ * by bhnd_nvplane_entry_enter().
+ * 
+ * @param	entry	The plane entry.
+ * @param[out]	pmap	The provider mapping returned by
+ *			bhnd_nvplane_entry_enter().
+ * @param[out]	phandle	The provider handle returned by
+ *			bhnd_nvplane_entry_enter().
+ * 
+ * @retval 0		success
+ * @retval EAGAIN	if incrementing the use count would overflow.
+ * @retval ENODEV	if the entry's path is no longer mapped by a provider.
+ * @retval non-zero	if starting a request on @p entry otherwise fails, a
+ *			regular unix error code will be returned.
+ */
+static void
+bhnd_nvplane_entry_exit(bhnd_nvram_entry_t *entry,
+    bhnd_nvram_plane_pmap_t *pmap, bhnd_nvram_phandle_t phandle)
+{
+	BHND_NVRAM_PROV_RELEASE_PATH(pmap->prov, phandle);
+	bhnd_nvplane_pmap_exit(pmap);
 }
