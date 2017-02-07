@@ -532,11 +532,10 @@ bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass)
 	}
 
 	/* Allocate our local NVRAM plane */
-	error = bhnd_nvram_plane_new(&sc->nvram_plane, device_get_nameunit(dev),
-	    bhnd_get_nvram_plane(dev));
-	if (error) {
-		device_printf(sc->dev, "failed to allocate NVRAM plane: %d\n",
-		    error);
+	sc->nvram_plane = bhnd_nvram_plane_new(device_get_nameunit(dev));
+	if (sc->nvram_plane == NULL) {
+		device_printf(sc->dev, "failed to allocate NVRAM plane\n");
+		error = ENOMEM;
 		goto failed;
 	}
 

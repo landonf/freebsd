@@ -111,8 +111,8 @@ bhnd_sprom_attach(device_t dev, bus_size_t offset)
 
 	// XXX TODO: initialize sc->prov
 
-	/* Map our device into the NVRAM plane */
-	if ((error = bhnd_nvram_plane_map_provider(sc->plane, sc->prov))) {
+	/* Register our device with the NVRAM plane */
+	if ((error = bhnd_nvram_plane_set_provider(sc->plane, sc->prov))) {
 		device_printf(dev, "failed to map NVRAM store: %d\n", error);
 		bhnd_nvram_store_free(sc->store);
 		return (error);
@@ -211,7 +211,8 @@ bhnd_sprom_detach(device_t dev)
 	sc = device_get_softc(dev);
 
 	/* Disconnect our device from the NVRAM plane */
-	bhnd_nvram_plane_unmap_provider(sc->plane, sc->prov);
+	// XXX TODO
+	// bhnd_nvram_plane_unmap_provider(sc->plane, sc->prov);
 
 	/* Clean up backing NVRAM store */
 	bhnd_nvram_store_free(sc->store);

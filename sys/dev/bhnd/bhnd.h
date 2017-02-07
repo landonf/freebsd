@@ -495,7 +495,7 @@ bhnd_get_chipid(device_t dev) {
  *
  * @param dev A bhnd bus child device.
  */
-static inline bhnd_nvram_plane_t *
+static inline bhnd_nvram_plane *
 bhnd_get_nvram_plane(device_t dev)
 {
 	return (BHND_BUS_GET_NVRAM_PLANE(device_get_parent(dev), dev));

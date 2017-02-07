@@ -39,60 +39,26 @@
 
 #include "bhnd_nvram.h"
 
-LIST_HEAD(bhnd_nvram_entry_list,	bhnd_nvram_entry);
-LIST_HEAD(bhnd_nvram_plane_list,	bhnd_nvram_plane);
-
-typedef struct bhnd_nvram_entry_list	bhnd_nvram_entry_list_t;
-typedef struct bhnd_nvram_plane_list	bhnd_nvram_plane_list_t;
-
-/**
- * NVRAM plane provider mapping.
- */
-typedef struct bhnd_nvram_plane_pmap {
-	bhnd_nvram_prov_t	*prov;	/**< provider instance */
-	u_int			 reqs;	/**< active provider request count */
-	struct mtx		 lock;	/**< request count mutex */
-} bhnd_nvram_pmap_t;
-
 /**
  * NVRAM entry.
  */
 struct bhnd_nvram_entry {
-	bhnd_nvram_plane_t	*plane;		/**< defining plane */
-	char			*path;		/**< fully qualified, normalized target path */
-	bhnd_nvram_pmap_t	*pmap;		/**< defining provider's mapping, or NULL */
-	bhnd_nvram_phandle_t	 phandle;	/**< target phandle, or BHND_NVRAM_PHANDLE_NULL */
-	volatile u_int		 refs;		/**< reference count */
-
-	LIST_ENTRY(bhnd_nvram_entry)	ne_link;
+	bhnd_nvram_plane		*plane;		/**< defining plane */
+	bhnd_nvram_provider		*provider;	/**< provider */
+	bhnd_nvram_phandle		 phandle;	/**< provider handle */
+	volatile u_int			 refs;		/**< reference count */
 };
 
 
 /**
- * NVRAM plane.
- * 
- * Provides a hierarchical namespace of child planes associated per-plane NVRAM
- * providers.
- * 
- * Locking Protocol:
- * - Hierarchical locks must be acquired in parent -> child order.
- * - Peer locks must be acquired in children[n], children[n+1] order.
- * - An entry writer lock may be acquired after acquiring an NVRAM plane
- *   reader or writer lock.
- * - Locks may be released in any order.
- * - After releasing a lock, no locks may be acquired until all previously
- *   acquired locks have also been released.
+ * NVRAM plane, providing a hierarchical namespace of NVRAM entries and
+ * associated entry properties.
  */
 struct bhnd_nvram_plane {
-	bhnd_nvram_plane_t	*parent;	/**< parent, or NULL */
-	bhnd_nvram_pmap_t	*pmap;		/**< provider mapping, or NULL */
-	char			*name;		/**< plane's relative name */
-	bhnd_nvram_plane_list_t	 children;	/**< child planes */
-	bhnd_nvram_entry_list_t	 entries;	/**< in-use entries */
+	char			*name;		/**< assigned name */
+	bhnd_nvram_provider	*provider;	/**< provider, or NULL if none */
 	volatile u_int		 refs;		/**< reference count */
 	struct sx		 lock;		/**< plane lock */
-
-	LIST_ENTRY(bhnd_nvram_plane) np_link;
 };
 
 #define	BHND_NVPLANE_LOCK_INIT(sc) \
@@ -101,10 +67,10 @@ struct bhnd_nvram_plane {
 #define	BHND_NVPLANE_UNLOCK_RO(sc)		sx_sunlock(&(sc)->lock)
 #define	BHND_NVPLANE_LOCK_RW(sc)		sx_xlock(&(sc)->lock)
 #define	BHND_NVPLANE_UNLOCK_RW(sc)		sx_xunlock(&(sc)->lock)
+#define	BHND_NVPLANE_UNLOCK(sc)			sx_unlock(&(sc)->lock)
+#define	BHND_NVPLANE_TRY_UPGRADE(sc)		sx_try_upgrade(&(sc)->lock)
+#define	BHND_NVPLANE_DOWNGRADE(sc)		sx_downgrade(&(sc)->lock)
 #define	BHND_NVPLANE_LOCK_ASSERT(sc, what)	sx_assert(&(sc)->lock, what)
 #define	BHND_NVPLANE_LOCK_DESTROY(sc)		sx_destroy(&(sc)->lock)
-
-/** maximum representable number of outstanding provider requests */
-#define	BHND_NVPLANE_PROV_REQS_MAX	UINT_MAX
 
 #endif /* _BHND_NVRAM_BHND_NVRAMVAR_H_ */

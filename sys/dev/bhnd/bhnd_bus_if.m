@@ -367,7 +367,7 @@ METHOD bhnd_attach_type get_attach_type {
  * @param	dev	The device whose child is being examined.
  * @param	child	The child device.
  */
-METHOD bhnd_nvram_plane_t * get_nvram_plane {
+METHOD bhnd_nvram_plane * get_nvram_plane {
 	device_t	 dev;
 	device_t	 child;
 } DEFAULT bhnd_bus_generic_get_nvram_plane;

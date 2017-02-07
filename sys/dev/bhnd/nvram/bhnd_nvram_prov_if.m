@@ -47,88 +47,124 @@ HEADER {
 CODE {
 	#include "bhnd_nvram_prov_if.h"
 
+	static bhnd_nvram_provider *
+	bhnd_nvram_prov_null_retain(bhnd_nvram_provider *provider)
+	{
+		panic("bhnd_nvram_prov_retain unimplemented");
+	}
+
+	static void
+	bhnd_nvram_prov_null_release(bhnd_nvram_provider *provider)
+	{
+		panic("bhnd_nvram_prov_release unimplemented");
+	}
+
+
 	static int
-	bhnd_nvram_prov_null_sync(bhnd_nvram_prov_t *prov, bool forced)
+	bhnd_nvram_prov_null_sync(bhnd_nvram_provider *provider, bool forced)
 	{
 		panic("bhnd_nvram_prov_sync unimplemented");
 	}
 
 	static int
-	bhnd_nvram_prov_null_open_path(bhnd_nvram_prov_t *prov,
-	    bhnd_nvram_phandle_t cwd, const char *pathname, size_t pathlen,
-	    bhnd_nvram_phandle_t *phandle)
+	bhnd_nvram_prov_null_open_path(bhnd_nvram_provider *provider,
+	    bhnd_nvram_phandle cwd, const char *pathname, size_t pathlen,
+	    bhnd_nvram_phandle *phandle)
 	{
 		panic("bhnd_nvram_prov_open_path unimplemented");
 	}
 
-	static bhnd_nvram_phandle_t
-	bhnd_nvram_prov_null_retain_path(bhnd_nvram_prov_t *prov,
-	    bhnd_nvram_phandle_t phandle)
+	static bhnd_nvram_phandle
+	bhnd_nvram_prov_null_retain_path(bhnd_nvram_provider *provider,
+	    bhnd_nvram_phandle phandle)
 	{
 		panic("bhnd_nvram_prov_retain_path unimplemented");
 	}
 
 	static void
-	bhnd_nvram_prov_null_release_path(bhnd_nvram_prov_t *prov,
-	    bhnd_nvram_phandle_t phandle)
+	bhnd_nvram_prov_null_release_path(bhnd_nvram_provider *provider,
+	    bhnd_nvram_phandle phandle)
 	{
 		panic("bhnd_nvram_prov_release_path unimplemented");
 	}
 
 	static int
-	bhnd_nvram_prov_null_get_children(bhnd_nvram_prov_t *prov,
-	    bhnd_nvram_phandle_t **children, size_t *count)
+	bhnd_nvram_prov_null_get_children(bhnd_nvram_provider *provider,
+	    bhnd_nvram_phandle **children, size_t *count)
 	{
 		panic("bhnd_nvram_prov_get_children unimplemented");
 	}
 
 	static int
-	bhnd_nvram_prov_null_free_children(bhnd_nvram_prov_t *prov,
-	    bhnd_nvram_phandle_t *children, size_t count)
+	bhnd_nvram_prov_null_free_children(bhnd_nvram_provider *provider,
+	    bhnd_nvram_phandle *children, size_t count)
 	{
 		panic("bhnd_nvram_prov_free_children unimplemented");
 	}
 
 	static int
-	bhnd_nvram_prov_null_setprop(bhnd_nvram_prov_t *prov,
-	    bhnd_nvram_phandle_t phandle, const char *propname, const void *buf,
+	bhnd_nvram_prov_null_setprop(bhnd_nvram_provider *provider,
+	    bhnd_nvram_phandle phandle, const char *propname, const void *buf,
 	    size_t len, bhnd_nvram_type type)
 	{
 		panic("bhnd_nvram_prov_setprop unimplemented");
 	}
 
 	static int
-	bhnd_nvram_prov_null_delprop(bhnd_nvram_prov_t *prov,
-	    bhnd_nvram_phandle_t phandle, const char *propname)
+	bhnd_nvram_prov_null_delprop(bhnd_nvram_provider *provider,
+	    bhnd_nvram_phandle phandle, const char *propname)
 	{
 		panic("bhnd_nvram_prov_delprop unimplemented");
 	}
 
 	static int
-	bhnd_nvram_prov_null_getprop(bhnd_nvram_prov_t *prov,
-	    bhnd_nvram_phandle_t phandle, const char *propname, void *buf,
+	bhnd_nvram_prov_null_getprop(bhnd_nvram_provider *provider,
+	    bhnd_nvram_phandle phandle, const char *propname, void *buf,
 	    size_t *len, bhnd_nvram_type type, bool search_parents)
 	{
 		panic("bhnd_nvram_prov_getprop unimplemented");
 	}
 
 	static int
-	bhnd_nvram_prov_null_copyprops(bhnd_nvram_prov_t *prov,
-	    bhnd_nvram_phandle_t phandle, struct bhnd_nvram_plist **plist)
+	bhnd_nvram_prov_null_copyprops(bhnd_nvram_provider *provider,
+	    bhnd_nvram_phandle phandle, struct bhnd_nvram_plist **plist)
 	{
 		panic("bhnd_nvram_prov_copyprops unimplemented");
 	}
 }
 
 /**
+ * Retain a reference to the NVRAM provider.
+ * 
+ * The caller is responsible for releasing their reference ownership via
+ * BHND_NVRAM_PROV_RELEASE().
+ * 
+ * @param provider	The NVRAM provider to be retained.
+ * 
+ * @return Returns the @p prov argument for convenience.
+ */
+METHOD bhnd_nvram_provider * retain {
+	bhnd_nvram_provider	*provider;
+} DEFAULT bhnd_nvram_prov_null_retain;
+
+/**
+ * Release a reference to the NVRAM provider.
+ * 
+ * @param provider	The NVRAM provider to be released.
+ */
+METHOD void release {
+	bhnd_nvram_provider	*provider;
+} DEFAULT bhnd_nvram_prov_null_release;
+
+/**
  * Request that pending changes be written out to the provider's non-volatile
  * storage.
  *
- * @param	prov	The NVRAM provider.
- * @param	forced	If true, perform the write immediately. If false, the
- *			NVRAM provider may arbitrarily delay or coalesce writes
- *			to prevent unnecessary (or actively malicious) flash
- *			memory wear.
+ * @param	provider	The NVRAM provider.
+ * @param	forced		If true, perform the write immediately. If
+ *				false, the NVRAM provider may arbitrarily delay
+ *				or coalesce writes to prevent unnecessary flash
+ *				memory wear.
  *
  * @retval 0		success
  * @retval ENOSPC	There is insufficient space to write the NVRAM image,
@@ -138,7 +174,7 @@ CODE {
  *			regular unix error code will be returned.
  */
 METHOD int sync {
-	bhnd_nvram_prov_t	*prov;
+	bhnd_nvram_provider	*provider;
 	bool			 forced;
 } DEFAULT bhnd_nvram_prov_null_sync;
 
@@ -148,26 +184,26 @@ METHOD int sync {
  * The caller assumes ownership of the returned provider handle, and is
  * responsible for releasing it via BHND_NVRAM_PROV_RELEASE_PATH()
  * 
- * @param	prov	The NVRAM provider.
- * @param	cwd	The provider handle from which @p path will be resolved,
- *			or BHND_NVRAM_PHANDLE_NULL to perform resolution from
- *			the root path.
- * @param	path	The path to be opened relative to @p cwd.
- * @param	pathlen	The length of @p path.
- * @param[out]	phandle	On success, a caller-owned reference to @p path.
+ * @param	provider	The NVRAM provider.
+ * @param	cwd		The provider handle from which @p path will be
+ *				resolved, or BHND_NVRAM_PHANDLE_NULL to perform
+ *				resolution from the root path.
+ * @param	path		The path to be opened relative to @p cwd.
+ * @param	pathlen		The length of @p path.
+ * @param[out]	phandle		On success, a caller-owned reference to @p path.
  *
  * @retval 0		success
  * @retval ENOMEM	If allocation fails
- * @retval ENODEV	If @p path or @p cwd are not found.
+ * @retval ENOENT	If @p path or @p cwd are not found.
  * @retval non-zero	If opening @p path otherwise fails, a regular
  *			unix error code will be returned.
  */
 METHOD int open_path {
-	bhnd_nvram_prov_t	*prov;
-	bhnd_nvram_phandle_t	 cwd;
+	bhnd_nvram_provider	*provider;
+	bhnd_nvram_phandle	 cwd;
 	const char		*path;
 	size_t			 pathlen;
-	bhnd_nvram_phandle_t	*phandle;
+	bhnd_nvram_phandle	*phandle;
 } DEFAULT bhnd_nvram_prov_null_open_path;
 
 /**
@@ -176,26 +212,38 @@ METHOD int open_path {
  * The caller is responsible for releasing their reference ownership via
  * BHND_NVRAM_PROV_RELEASE_PATH().
  * 
- * @param prov		The NVRAM provider.
+ * @param provider	The NVRAM provider.
  * @param phandle	The provider handle to be retained.
  * 
  * @return Returns the @p phandle argument for convenience.
  */
-METHOD bhnd_nvram_phandle_t retain_path {
-	bhnd_nvram_prov_t	*prov;
-	bhnd_nvram_phandle_t	 phandle;
+METHOD bhnd_nvram_phandle retain_path {
+	bhnd_nvram_provider	*provider;
+	bhnd_nvram_phandle	 phandle;
 } DEFAULT bhnd_nvram_prov_null_retain_path;
 
 /**
  * Release a caller-owned reference to the given @p phandle.
  *
- * @param prov		The NVRAM provider.
+ * @param provider	The NVRAM provider.
  * @param phandle	The caller-owned provider handle to be released.
  */
 METHOD void release_path {
-	bhnd_nvram_prov_t	*prov;
-	bhnd_nvram_phandle_t	 phandle;
+	bhnd_nvram_provider	*provider;
+	bhnd_nvram_phandle	 phandle;
 } DEFAULT bhnd_nvram_prov_null_release_path;
+
+/**
+ * Return a borrowed reference to the given @p phandle's fully-qualified,
+ * canonical path.
+ *
+ * @param	provider	The NVRAM provider.
+ * @param	phandle		The provider handle to be queried.
+ */
+METHOD const char * get_pathname {
+	bhnd_nvram_provider	*provider;
+	bhnd_nvram_phandle	 phandle;
+};
 
 /**
  * Retrieve a list of all direct children of @p phandle, returning the list
@@ -204,19 +252,19 @@ METHOD void release_path {
  * The resources allocated for the list should be freed using
  * BHND_NVRAM_PROV_FREE_CHILDREN().
  *
- * @param	prov		The NVRAM provider.
+ * @param	provider	The NVRAM provider.
  * @param	phandle		The provider handle to be queried.
  * @param[out]	children	The list of child provider handles.
  * @param[out]	count		The number of handles in @p children.
  *
  * @retval 0		success
- * @retval ENOMEM	If @p buf is non-NULL and a buffer of @p len is too
- *			small to hold the requested value.
- * @retval ENODEV	If @p phandle is no longer mapped in @p prov.
+ * @retval ENOMEM	If allocation fails.
+ * @retval ENOENT	If the path described by @p phandle does not exist.
  */
 METHOD int get_children {
-	bhnd_nvram_prov_t	*prov;
-	bhnd_nvram_phandle_t	**children;
+	bhnd_nvram_provider	*provider;
+	bhnd_nvram_phandle	 phandle;
+	bhnd_nvram_phandle	**children;
 	size_t			*count;
 } DEFAULT bhnd_nvram_prov_null_get_children;
 
@@ -224,19 +272,20 @@ METHOD int get_children {
  * Free resources allocated in a previous call to
  * BHND_NVRAM_PROV_GET_CHILDREN().
  *
- * @param	erom		The erom parser instance.
- * @param	cores		A core table allocated by @p erom. 
+ * @param	provider	The NVRAM provider.
+ * @param	children	A list of children allocated by @p provider. 
+ * @param	count		The number of handles in @p children.
  */
 METHOD void free_children {
-	bhnd_nvram_prov_t	*prov;
-	bhnd_nvram_phandle_t	*children;
+	bhnd_nvram_provider	*provider;
+	bhnd_nvram_phandle	*children;
 	size_t			 count;
 } DEFAULT bhnd_nvram_prov_null_free_children;
 
 /**
  * Insert or update a property value in @p phandle.
  * 
- * @param	prov		The NVRAM provider.
+ * @param	provider	The NVRAM provider.
  * @param	phandle		The provider handle to be updated.
  * @param	propname	The property name.
  * @param[out]	buf		The new property value.
@@ -244,11 +293,10 @@ METHOD void free_children {
  * @param	type		The data type of @p buf.
  *
  * @retval 0		success
- * @retval ENOENT	If @p propname is not a known property name, and the
- *			definition of arbitrary property names is unsupported
- *			by @p phandle.
- * @retval ENODEV	If @p phandle is no longer mapped in @p prov.
- * @retval EINVAL	If @p propname is read-only.
+ * @retval ENOATTR	If @p propname is not a known property name, and the
+ *			definition of arbitrary property names within @p phandle
+ *			is unsupported by @p prov.
+ * @retval ENOENT	If the path described by @p phandle does not exist.
  * @retval EFTYPE	If @p propname cannot be set to the given value or
  *			value type.
  * @retval ERANGE	If @p buf cannot be represented within the value range
@@ -257,8 +305,8 @@ METHOD void free_children {
  *			regular unix error code will be returned.
  */
 METHOD int setprop {
-	bhnd_nvram_prov_t	*prov;
-	bhnd_nvram_phandle_t	 phandle;
+	bhnd_nvram_provider	*provider;
+	bhnd_nvram_phandle	 phandle;
 	const char		*propname;
 	const void		*buf;
 	size_t			 len;
@@ -268,27 +316,27 @@ METHOD int setprop {
 /**
  * Delete a property value in @p phandle.
  * 
- * @param	prov		The NVRAM provider.
+ * @param	provider	The NVRAM provider.
  * @param	phandle		The provider handle to be updated.
  * @param	propname	The property name.
  *
  * @retval 0		success
- * @retval ENOENT	If @p propname is not found in @p phandle.
- * @retval ENODEV	If @p phandle is no longer mapped in @p prov.
+ * @retval ENOATTR	If @p propname is not found in @p phandle.
+ * @retval ENOENT	If the path described by @p phandle does not exist.
  * @retval EINVAL	If @p propname is read-only.
  * @retval non-zero	If deleting the property value otherwise fails, a
  *			regular unix error code will be returned.
  */
 METHOD int delprop {
-	bhnd_nvram_prov_t	*prov;
-	bhnd_nvram_phandle_t	 phandle;
+	bhnd_nvram_provider	*provider;
+	bhnd_nvram_phandle	 phandle;
 	const char		*propname;
 } DEFAULT bhnd_nvram_prov_null_delprop;
 
 /**
  * Read a property value from @p phandle.
  *
- * @param		prov		The NVRAM provider.
+ * @param		provider	The NVRAM provider.
  * @param		phandle		The provider handle to be queried.
  * @param		propname	The property name.
  * @param[out]		buf		On success, the property value will be
@@ -301,23 +349,25 @@ METHOD int delprop {
  *					desired (e.g. to test for the existence
  *					of a property).
  * @param		type		The data type to be written to @p buf.
- * @param		search_parents	If true ... TODO
+ * @param		search_parents	If true, recursively search @p phandle
+					and its parents for the first path
+					containing a property matching
+					@p propname.
  *
  * @retval 0		success
- * @retval ENOENT	If @p propname is not found in @p phandle (or in a
- *			parent of @p phandle, if BHND_NVRAM_FLAG_SEARCH_PARENTS
- *			is specified).
+ * @retval ENOATTR	If @p propname is not found in @p phandle (or in a
+ *			parent of @p phandle, if search_parents is specified).
  * @retval ENOMEM	If @p buf is non-NULL and a buffer of @p len is too
  *			small to hold the requested value.
- * @retval ENODEV	If @p phandle is no longer mapped in @p prov.
+ * @retval ENOENT	If the path described by @p phandle does not exist.
  * @retval EFTYPE	If the property value cannot be coerced to @p type.
  * @retval ERANGE	If value coercion would overflow @p type.
  * @retval non-zero	If reading the property value otherwise fails, a
  *			regular unix error code will be returned.
  */
  METHOD int getprop {
-	bhnd_nvram_prov_t	*prov;
-	bhnd_nvram_phandle_t	 phandle;
+	bhnd_nvram_provider	*provider;
+	bhnd_nvram_phandle	 phandle;
 	const char		*propname;
 	const void		*buf;
 	size_t			*len;
@@ -331,17 +381,19 @@ METHOD int delprop {
  * The caller is responsible for releasing the result via
  * @p bhnd_nvram_plist_release().
  * 
- * @param	prov	The NVRAM provider.
- * @param	phandle	The provider handle to be queried.
- * @param[out]	plist	On success, a property list containing a copy of all
- *			properties defined in @p phandle.
+ * @param	provider	The NVRAM provider.
+ * @param	phandle		The provider handle to be queried.
+ * @param[out]	plist		On success, a property list containing a copy
+ *				of all properties defined in @p phandle.
  *
  * @retval 0		success
  * @retval ENOMEM	If allocation fails.
- * @retval ENODEV	If @p phandle is no longer mapped in @p prov.
+ * @retval ENOENT	If the path described by @p phandle does not exist.
+ * @retval non-zero	If reading the property values otherwise fails, a
+ *			regular unix error code will be returned.
  */
 METHOD int copyprops {
-	bhnd_nvram_prov_t	*prov;
-	bhnd_nvram_phandle_t	 phandle;
+	bhnd_nvram_provider	*provider;
+	bhnd_nvram_phandle	 phandle;
 	struct bhnd_nvram_plist	**plist;
 } DEFAULT bhnd_nvram_prov_null_copyprops;
