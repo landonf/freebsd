@@ -66,9 +66,6 @@ bhnd_nvram_plane_new(const char *name)
 {
 	bhnd_nvram_plane *plane;
 
-	/* Make sure we're holding Giant for newbus */                                                                                                                                            
-        GIANT_REQUIRED;
-
 	/* Allocate new plane instance */
 	plane = bhnd_nv_calloc(1, sizeof(*plane), M_NOWAIT);
 	if (plane == NULL)
