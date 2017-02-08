@@ -60,6 +60,14 @@ static int			 bhnd_nvstore_parse_data(
 static int			 bhnd_nvstore_parse_path_entries(
 				     struct bhnd_nvram_store *sc);
 
+static int			 bhnd_nvstore_export_path(
+				     struct bhnd_nvram_store *sc,
+				     bhnd_nvstore_path *path,
+				     bhnd_nvram_data_class **cls,
+				     bhnd_nvram_plist **props,
+				     bhnd_nvram_plist **options,
+				     uint32_t flags);
+
 static int			 bhnd_nvram_store_export_child(
 				     struct bhnd_nvram_store *sc,
 				     bhnd_nvstore_path *top,
@@ -161,7 +169,7 @@ bhnd_nvram_store_fini(struct bhnd_nvram_provider *prov)
 	for (size_t i = 0; i < nitems(sc->paths); i++) {
 		bhnd_nvstore_path *path, *pnext;
 		LIST_FOREACH_SAFE(path, &sc->paths[i], np_link, pnext)
-			bhnd_nvstore_path_free(path);
+			bhnd_nvstore_path_release(path);
 	}
 
 	if (sc->data != NULL)
@@ -194,32 +202,80 @@ bhnd_nvram_store_sync(struct bhnd_nvram_provider *prov, bool forced)
 }
 
 static int
-bhnd_nvram_store_open_path(bhnd_nvram_provider *provider,
-    bhnd_nvram_phandle cwd, const char *pathname, size_t pathlen,
-    bhnd_nvram_phandle *phandle)
+bhnd_nvram_store_open_path(bhnd_nvram_provider *prov, const char *pathname,
+    size_t pathlen, bhnd_nvram_phandle *phandle)
 {
-	printf("OPEN PATH?\n");
-	// TODO
-	return (ENXIO);
-}
+	struct bhnd_nvram_store	*sc;
+	bhnd_nvstore_path	*path;
 
-static bhnd_nvram_phandle
-bhnd_nvram_store_retain_path(bhnd_nvram_provider *provider,
-    bhnd_nvram_phandle phandle)
-{
-	// TODO
-	return (ENXIO);
+	sc = bhnd_nvram_provider_get_softc(prov);
+
+	pathname = bhnd_nvstore_parse_external_path(pathname, &pathlen);
+	if (pathname == NULL)
+		return (ENOENT);
+
+	BHND_NVSTORE_LOCK(sc);
+	if ((path = bhnd_nvstore_get_path(sc, pathname, pathlen)) != NULL) {
+		bhnd_nvstore_path_retain(path);
+	}
+	BHND_NVSTORE_UNLOCK(sc);
+
+	if (path == NULL)
+		return (ENOENT);
+
+	*phandle = (bhnd_nvram_phandle)path;
+	return (0);
 }
 
 static void
-bhnd_nvram_store_release_path(bhnd_nvram_provider *provider,
+bhnd_nvram_store_retain_path(bhnd_nvram_provider *prov,
     bhnd_nvram_phandle phandle)
 {
-	// TODO
+	bhnd_nvstore_path_retain((bhnd_nvstore_path *)phandle);
+}
+
+static void
+bhnd_nvram_store_release_path(bhnd_nvram_provider *prov,
+    bhnd_nvram_phandle phandle)
+{
+	bhnd_nvstore_path_release((bhnd_nvstore_path *)phandle);
 }
 
 static int
-bhnd_nvram_store_get_children(bhnd_nvram_provider *provider,
+bhnd_nvram_store_get_pathname(bhnd_nvram_provider *prov,
+    bhnd_nvram_phandle phandle, char *buf, size_t *len)
+{
+	struct bhnd_nvram_store	*sc;
+        bhnd_nvstore_path       *path;
+	size_t			 limit;
+
+	sc = bhnd_nvram_provider_get_softc(prov);
+	path = (bhnd_nvstore_path *)phandle;
+
+	limit = *len;
+
+	BHND_NVSTORE_LOCK(sc);
+
+	/* Determine required buffer size */
+	*len = strlen(path->qual_path_str) + 1;
+
+	if (buf == NULL) {
+		BHND_NVSTORE_UNLOCK(sc);
+		return (0);
+	} else if (*len > limit) {
+		BHND_NVSTORE_UNLOCK(sc);
+		return (ENOMEM);
+	}
+
+	strcpy(buf, path->qual_path_str);
+
+	BHND_NVSTORE_UNLOCK(sc);
+
+	return (0);
+}
+
+static int
+bhnd_nvram_store_get_children(bhnd_nvram_provider *prov,
     bhnd_nvram_phandle phandle, bhnd_nvram_phandle **children, size_t *count)
 {
 	// TODO
@@ -227,44 +283,153 @@ bhnd_nvram_store_get_children(bhnd_nvram_provider *provider,
 }
 
 static void
-bhnd_nvram_store_free_children(bhnd_nvram_provider *provider,
+bhnd_nvram_store_free_children(bhnd_nvram_provider *prov,
     bhnd_nvram_phandle *children, size_t count)
 {
-	// TODO
+	for (size_t i = 0; i < count; i++) {
+		bhnd_nvstore_path *path;
+
+		path = (bhnd_nvstore_path *)children[i];
+		bhnd_nvstore_path_release(path);
+	}
+
+	bhnd_nv_free(children);
 }
 
 static int
-bhnd_nvram_store_setprop(bhnd_nvram_provider *provider,
-    bhnd_nvram_phandle phandle, const char *propname, const void *buf,
-    size_t len, bhnd_nvram_type type)
+bhnd_nvram_store_setprop(bhnd_nvram_provider *prov, bhnd_nvram_phandle phandle,
+    const char *propname, const void *buf, size_t len, bhnd_nvram_type type)
 {
-	// TODO
-	return (ENXIO);
+	struct bhnd_nvram_store	*sc;
+	bhnd_nvstore_path       *path;
+	bhnd_nvram_val		 val;
+	int			 error;
+
+	sc = bhnd_nvram_provider_get_softc(prov);
+	path = (bhnd_nvstore_path *)phandle;
+
+	if (!bhnd_nvram_validate_name(propname))
+		return (ENOATTR);
+
+	/* Wrap the property value */
+	error = bhnd_nvram_val_init(&val, NULL, buf, len, type,
+	    BHND_NVRAM_VAL_FIXED|BHND_NVRAM_VAL_BORROW_DATA);
+	if (error) {
+		BHND_NV_LOG("error initializing value: %d\n", error);
+		return (EINVAL);
+	}
+
+	/* Register the update */
+	BHND_NVSTORE_LOCK(sc);
+	error = bhnd_nvstore_path_register_update(sc, path, propname, &val);
+	BHND_NVSTORE_UNLOCK(sc);
+
+	bhnd_nvram_val_release(&val);
+
+	return (error);
 }
 
 static int
-bhnd_nvram_store_delprop(bhnd_nvram_provider *provider,
-    bhnd_nvram_phandle phandle, const char *propname)
+bhnd_nvram_store_delprop(bhnd_nvram_provider *prov, bhnd_nvram_phandle phandle,
+    const char *propname)
 {
-	// TODO
-	return (ENXIO);
+	struct bhnd_nvram_store	*sc;
+        bhnd_nvstore_path       *path;
+	bhnd_nvram_val		 val;
+        int                      error;
+
+	sc = bhnd_nvram_provider_get_softc(prov);
+	path = (bhnd_nvstore_path *)phandle;
+
+	if (!bhnd_nvram_validate_name(propname))
+		return (ENOATTR);
+
+	/* Register the update */
+	BHND_NVSTORE_LOCK(sc);
+	error = bhnd_nvstore_path_register_update(sc, path, propname,
+	    BHND_NVRAM_VAL_NULL);
+	BHND_NVSTORE_UNLOCK(sc);
+
+	bhnd_nvram_val_release(&val);
+
+	return (error);
 }
 
 static int
-bhnd_nvram_store_getprop(bhnd_nvram_provider *provider,
+bhnd_nvram_store_getprop(bhnd_nvram_provider *prov,
     bhnd_nvram_phandle phandle, const char *propname, void *buf, size_t *len,
     bhnd_nvram_type type, bool search_parents)
 {
-	// TODO
-	return (ENXIO);
+	struct bhnd_nvram_store	*sc;
+        bhnd_nvstore_path       *path;
+	bhnd_nvram_prop		*prop;
+	void			*cookiep;
+        int                      error;
+
+	sc = bhnd_nvram_provider_get_softc(prov);
+	path = (bhnd_nvstore_path *)phandle;
+
+	BHND_NVSTORE_LOCK(sc);
+
+	do {
+		const char	*parent;
+		size_t		 plen;
+
+		error = ENOATTR;
+
+		/* Search uncommitted updates first */
+		prop = bhnd_nvstore_path_get_update(sc, path, propname);
+		if (prop != NULL) {
+			if (bhnd_nvram_prop_is_null(prop)) {
+				/* NULL values denote a pending deletion */
+				error = ENOATTR;
+			} else {
+				error = bhnd_nvram_prop_encode(prop, buf, len,
+				    type);
+			}
+
+			break;
+		}
+
+		/* Search the backing NVRAM data */
+		cookiep = bhnd_nvstore_path_data_lookup(sc, path, propname);
+		if (cookiep != NULL) {
+			/* Found in backing store */
+			error = bhnd_nvram_data_getvar(sc->data, cookiep, buf,
+			    len, type);
+			break;
+		}
+
+		/* Not found -- recursively search parent? */
+		if (!search_parents)
+			break;
+
+		parent = path->path_str;
+		plen = bhnd_nvram_parse_path_dirlen(parent, strlen(parent));
+		path = bhnd_nvstore_get_path(sc, parent, plen);
+	} while (path != NULL);
+
+	BHND_NVSTORE_UNLOCK(sc);
+	return (error);
 }
 
 static int
-bhnd_nvram_store_copyprops(bhnd_nvram_provider *provider,
+bhnd_nvram_store_copyprops(bhnd_nvram_provider *prov,
     bhnd_nvram_phandle phandle, struct bhnd_nvram_plist **plist)
 {
-	// TODO
-	return (ENXIO);
+	struct bhnd_nvram_store	*sc;
+        bhnd_nvstore_path       *path;
+        int                      error;
+
+	sc = bhnd_nvram_provider_get_softc(prov);
+	path = (bhnd_nvstore_path *)phandle;
+
+	BHND_NVSTORE_LOCK(sc);
+	error = bhnd_nvstore_export_path(sc, path, NULL, plist, NULL,
+	    BHND_NVSTORE_EXPORT_COMMITTED|BHND_NVSTORE_EXPORT_UNCOMMITTED);
+	BHND_NVSTORE_UNLOCK(sc);
+
+	return (error);
 }
 
 static kobj_method_t bhnd_nvram_store_methods[] = {
@@ -272,6 +437,7 @@ static kobj_method_t bhnd_nvram_store_methods[] = {
 	KOBJMETHOD(bhnd_nvram_prov_fini,		bhnd_nvram_store_fini),
 	KOBJMETHOD(bhnd_nvram_prov_sync,		bhnd_nvram_store_sync),
 	KOBJMETHOD(bhnd_nvram_prov_open_path,		bhnd_nvram_store_open_path),
+	KOBJMETHOD(bhnd_nvram_prov_get_pathname,	bhnd_nvram_store_get_pathname),
 	KOBJMETHOD(bhnd_nvram_prov_retain_path,		bhnd_nvram_store_retain_path),
 	KOBJMETHOD(bhnd_nvram_prov_release_path,	bhnd_nvram_store_release_path),
 	KOBJMETHOD(bhnd_nvram_prov_get_children,	bhnd_nvram_store_get_children),
@@ -429,7 +595,7 @@ bhnd_nvram_store_free(struct bhnd_nvram_store *sc)
 	for (size_t i = 0; i < nitems(sc->paths); i++) {
 		bhnd_nvstore_path *path, *pnext;
 		LIST_FOREACH_SAFE(path, &sc->paths[i], np_link, pnext)
-			bhnd_nvstore_path_free(path);
+			bhnd_nvstore_path_release(path);
 	}
 
 	if (sc->data != NULL)
@@ -993,62 +1159,13 @@ finished:
 }
 
 /**
- * Export a flat, ordered NVRAM property list representation of all NVRAM
- * properties at @p path.
- * 
- * @param	sc	The NVRAM store instance.
- * @param	path	The NVRAM path to export, or NULL to select the root
- *			path.
- * @param[out]	cls	On success, will be set to the backing data class
- *			of @p sc. If the data class is are not desired,
- *			a NULL pointer may be provided.
- * @param[out]	props	On success, will be set to a caller-owned property
- *			list containing the exported properties. The caller is
- *			responsible for releasing this value via
- *			bhnd_nvram_plist_release().
- * @param[out]	options	On success, will be set to a caller-owned property
- *			list containing the current NVRAM serialization options
- *			for @p sc. The caller is responsible for releasing this
- *			value via bhnd_nvram_plist_release().
- * @param	flags	Export flags. See BHND_NVSTORE_EXPORT_*.
- * 
- * @retval 0		success
- * @retval EINVAL	If @p flags is invalid.
- * @retval ENOENT	The requested path was not found.
- * @retval ENOMEM	If allocation fails.
- * @retval non-zero	If export of  @p path otherwise fails, a regular unix
- *			error code will be returned.
+ * Filter and validate the given export @p flags, returning the updated flags
+ * in @p oflags.
  */
-int
-bhnd_nvram_store_export(struct bhnd_nvram_store *sc, const char *path,
-    bhnd_nvram_data_class **cls, bhnd_nvram_plist **props,
-    bhnd_nvram_plist **options, uint32_t flags)
+static int
+bhnd_nvstore_filter_export_flags(uint32_t flags, uint32_t *oflags)
 {
-	bhnd_nvram_plist	*unordered;
-	bhnd_nvstore_path	*top;
-	bhnd_nvram_prop		*prop;
-	const char		*name;
-	void			*cookiep;
-	size_t			 num_dpath_flags;
-	size_t			 pathlen;
-	int			 error;
-	
-	*props = NULL;
-	unordered = NULL;
-	num_dpath_flags = 0;
-	if (options != NULL)
-		*options = NULL;
-
-	/* Default to exporting root path */
-	if (path == NULL)
-		path = BHND_NVSTORE_ROOT_PATH;
-
-	pathlen = strlen(path);
-	path = bhnd_nvstore_parse_external_path(path, &pathlen);
-	if (path == NULL) {
-		/* Path is not a valid fully-qualified external path */
-		return (ENOENT);
-	}
+	size_t num_dpath_flags = 0;
 
 	/* Default to exporting all properties */
 	if (!BHND_NVSTORE_GET_FLAG(flags, EXPORT_COMMITTED) &&
@@ -1084,15 +1201,58 @@ bhnd_nvram_store_export(struct bhnd_nvram_store *sc, const char *path,
 		return (EINVAL);
 	}
 
-	/* Lock internal state before querying paths/properties */
-	BHND_NVSTORE_LOCK(sc);
+	/* Flags are valid */
+	*oflags = flags;
+	return (0);
+}
 
-	/* Fetch referenced path */
-	top = bhnd_nvstore_get_path(sc, path, pathlen);
-	if (top == NULL) {
-		error = ENOENT;
-		goto failed;
-	}
+/**
+ * Export a flat, ordered NVRAM property list representation of all NVRAM
+ * properties at @p path.
+ * 
+ * @param	sc	The NVRAM store instance.
+ * @param	path	The NVRAM path to export.
+ * @param[out]	cls	On success, will be set to the backing data class
+ *			of @p sc. If the data class is are not desired,
+ *			a NULL pointer may be provided.
+ * @param[out]	props	On success, will be set to a caller-owned property
+ *			list containing the exported properties. The caller is
+ *			responsible for releasing this value via
+ *			bhnd_nvram_plist_release().
+ * @param[out]	options	On success, will be set to a caller-owned property
+ *			list containing the current NVRAM serialization options
+ *			for @p sc. The caller is responsible for releasing this
+ *			value via bhnd_nvram_plist_release().
+ * @param	flags	Export flags. See BHND_NVSTORE_EXPORT_*.
+ * 
+ * @retval 0		success
+ * @retval EINVAL	If @p flags is invalid.
+ * @retval ENOENT	The requested path was not found.
+ * @retval ENOMEM	If allocation fails.
+ * @retval non-zero	If export of  @p path otherwise fails, a regular unix
+ *			error code will be returned.
+ */
+static int
+bhnd_nvstore_export_path(struct bhnd_nvram_store *sc, bhnd_nvstore_path *path,
+    bhnd_nvram_data_class **cls, bhnd_nvram_plist **props,
+    bhnd_nvram_plist **options, uint32_t flags)
+{
+	bhnd_nvram_plist	*unordered;
+	bhnd_nvram_prop		*prop;
+	const char		*name;
+	void			*cookiep;
+	int			 error;
+
+	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
+
+	*props = NULL;
+	unordered = NULL;
+	if (options != NULL)
+		*options = NULL;
+
+	/* Validate and filter the export flags */
+	if ((error = bhnd_nvstore_filter_export_flags(flags, &flags)))
+		return (error);
 
 	/* Allocate new, empty property list */
 	if ((unordered = bhnd_nvram_plist_new()) == NULL) {
@@ -1101,21 +1261,21 @@ bhnd_nvram_store_export(struct bhnd_nvram_store *sc, const char *path,
 	}
 
 	/* Export the top-level path first */
-	error = bhnd_nvram_store_export_child(sc, top, top, unordered, flags);
+	error = bhnd_nvram_store_export_child(sc, path, path, unordered, flags);
 	if (error)
 		goto failed;
 
-	/* Attempt to export any children of the root path */
+	/* If requested, export any children */
 	for (size_t i = 0; i < nitems(sc->paths); i++) {
 		bhnd_nvstore_path *child;
 
 		LIST_FOREACH(child, &sc->paths[i], np_link) {
 			/* Top-level path was already exported */
-			if (child == top)
+			if (child == path)
 				continue;
 
-			error = bhnd_nvram_store_export_child(sc, top,
-			    child, unordered, flags);
+			error = bhnd_nvram_store_export_child(sc, path, child,
+			    unordered, flags);
 			if (error)
 				goto failed;
 		}
@@ -1181,16 +1341,12 @@ bhnd_nvram_store_export(struct bhnd_nvram_store *sc, const char *path,
 
 	/* Export complete */
 finished:
-	BHND_NVSTORE_UNLOCK(sc);
-
 	if (unordered != NULL)
 		bhnd_nvram_plist_release(unordered);
 
 	return (0);
 
 failed:
-	BHND_NVSTORE_UNLOCK(sc);
-
 	if (unordered != NULL)
 		bhnd_nvram_plist_release(unordered);
 
@@ -1199,6 +1355,75 @@ failed:
 
 	if (*props != NULL)
 		bhnd_nvram_plist_release(*props);
+
+	return (error);
+}
+
+/**
+ * Export a flat, ordered NVRAM property list representation of all NVRAM
+ * properties at @p path.
+ * 
+ * @param	sc	The NVRAM store instance.
+ * @param	path	The NVRAM path to export, or NULL to select the root
+ *			path.
+ * @param[out]	cls	On success, will be set to the backing data class
+ *			of @p sc. If the data class is are not desired,
+ *			a NULL pointer may be provided.
+ * @param[out]	props	On success, will be set to a caller-owned property
+ *			list containing the exported properties. The caller is
+ *			responsible for releasing this value via
+ *			bhnd_nvram_plist_release().
+ * @param[out]	options	On success, will be set to a caller-owned property
+ *			list containing the current NVRAM serialization options
+ *			for @p sc. The caller is responsible for releasing this
+ *			value via bhnd_nvram_plist_release().
+ * @param	flags	Export flags. See BHND_NVSTORE_EXPORT_*.
+ * 
+ * @retval 0		success
+ * @retval EINVAL	If @p flags is invalid.
+ * @retval ENOENT	The requested path was not found.
+ * @retval ENOMEM	If allocation fails.
+ * @retval non-zero	If export of  @p path otherwise fails, a regular unix
+ *			error code will be returned.
+ */
+int
+bhnd_nvram_store_export(struct bhnd_nvram_store *sc, const char *path,
+    bhnd_nvram_data_class **cls, bhnd_nvram_plist **props,
+    bhnd_nvram_plist **options, uint32_t flags)
+{
+	bhnd_nvram_plist	*unordered;
+	bhnd_nvstore_path	*top;
+	size_t			 pathlen;
+	int			 error;
+	
+	*props = NULL;
+	unordered = NULL;
+	if (options != NULL)
+		*options = NULL;
+
+	/* Default to exporting root path */
+	if (path == NULL)
+		path = BHND_NVSTORE_ROOT_PATH;
+
+	pathlen = strlen(path);
+	path = bhnd_nvstore_parse_external_path(path, &pathlen);
+	if (path == NULL) {
+		/* Path is not a valid fully-qualified external path */
+		return (ENOENT);
+	}
+
+	BHND_NVSTORE_LOCK(sc);
+
+	/* Fetch referenced path */
+	top = bhnd_nvstore_get_path(sc, path, pathlen);
+	if (top == NULL) {
+		error = ENOENT;
+	} else {
+		error = bhnd_nvstore_export_path(sc, top, cls, props, options,
+		    flags);
+	}
+
+	BHND_NVSTORE_UNLOCK(sc);
 
 	return (error);
 }

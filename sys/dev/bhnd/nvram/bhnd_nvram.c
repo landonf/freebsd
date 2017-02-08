@@ -288,8 +288,8 @@ bhnd_nvram_plane_open_path(bhnd_nvram_plane *plane, const char *path,
 	BHND_NVPLANE_UNLOCK_RO(plane);
 
 	/* Attempt to resolve the path */
-	error = BHND_NVRAM_PROV_OPEN_PATH(provider, BHND_NVRAM_PHANDLE_NULL,
-	    path, strlen(path), &phandle);
+	error = BHND_NVRAM_PROV_OPEN_PATH(provider, path, strlen(path),
+	    &phandle);
 	if (error) {
 		bhnd_nvram_provider_release(provider);
 		return (error);
@@ -328,7 +328,9 @@ bhnd_nvram_entry_new(bhnd_nvram_plane *plane, bhnd_nvram_provider *provider,
 	refcount_init(&entry->refs, 1);
 	entry->plane = bhnd_nvram_plane_retain(plane);
 	entry->provider = bhnd_nvram_provider_retain(provider);
-	entry->phandle = BHND_NVRAM_PROV_RETAIN_PATH(provider, phandle);
+
+	BHND_NVRAM_PROV_RETAIN_PATH(provider, phandle);
+	entry->phandle = phandle;
 
 	return (entry);
 }
@@ -410,7 +412,8 @@ bhnd_nvram_get_phandle(bhnd_nvram_entry *entry)
 const char *
 bhnd_nvram_get_pathname(bhnd_nvram_entry *entry)
 {
-	return (BHND_NVRAM_PROV_GET_PATHNAME(entry->provider, entry->phandle));
+	// TODO
+	panic("unimplemented");
 }
 
 /**

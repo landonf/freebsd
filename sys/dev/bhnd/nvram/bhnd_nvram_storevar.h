@@ -98,7 +98,8 @@ typedef enum {
 
 bhnd_nvstore_path	*bhnd_nvstore_path_new(const char *path_str,
 			     size_t path_len);
-void			 bhnd_nvstore_path_free(struct bhnd_nvstore_path *path);
+bhnd_nvstore_path	*bhnd_nvstore_path_retain(bhnd_nvstore_path *path);
+void			 bhnd_nvstore_path_release(bhnd_nvstore_path *path);
 
 bhnd_nvstore_index	*bhnd_nvstore_index_new(size_t capacity);
 void			 bhnd_nvstore_index_free(bhnd_nvstore_index *index);
@@ -252,7 +253,8 @@ struct bhnd_nvstore_path {
 							     may be queried directly. */
 	bhnd_nvram_plist		*pending;	/**< pending changes */
 
-	LIST_ENTRY(bhnd_nvstore_path) np_link;
+	volatile u_int			 refs;		/**< reference count */
+	LIST_ENTRY(bhnd_nvstore_path)	 np_link;
 };
 
 /**

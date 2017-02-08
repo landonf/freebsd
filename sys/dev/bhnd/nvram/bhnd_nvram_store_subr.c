@@ -66,7 +66,7 @@ static int			 bhnd_nvstore_idx_cmp(void *ctx,
  * Allocate and initialize a new path instance.
  * 
  * The caller is responsible for deallocating the instance via
- * bhnd_nvstore_path_free().
+ * bhnd_nvstore_path_release().
  * 
  * @param	path_str	The path's Broadcom-formatted canonical string
  *				representation.
@@ -92,6 +92,7 @@ bhnd_nvstore_path_new(const char *path_str, size_t path_len)
 	if (path == NULL)
 		return (NULL);
 
+	refcount_init(&path->refs, 1);
 	path->index = NULL;
 	path->qual_path_str = NULL;
 	path->num_vars = 0;
@@ -156,11 +157,24 @@ failed:
 }
 
 /**
- * Free an NVRAM path instance, releasing all associated resources.
+ * Retain a strong path reference.
+ */
+bhnd_nvstore_path *
+bhnd_nvstore_path_retain(bhnd_nvstore_path *path)
+{
+	refcount_acquire(&path->refs);
+	return (path);
+}
+
+/**
+ * Release a strong path reference.
  */
 void
-bhnd_nvstore_path_free(struct bhnd_nvstore_path *path)
+bhnd_nvstore_path_release(struct bhnd_nvstore_path *path)
 {
+	if (!refcount_release(&path->refs))
+		return;
+
 	/* Free the per-path index */
 	if (path->index != NULL)
 		bhnd_nvstore_index_free(path->index);
@@ -365,7 +379,7 @@ bhnd_nvstore_path_get_update(struct bhnd_nvram_store *sc,
  * 
  * @retval 0		success
  * @retval ENOMEM	if allocation fails.
- * @retval ENOENT	if @p name is unknown.
+ * @retval ENOATTR	if @p name is unknown.
  * @retval EINVAL	if @p value is NULL, and deletion of @p is not
  *			supported.
  * @retval EINVAL	if @p value cannot be converted to a supported value
@@ -875,6 +889,8 @@ bhnd_nvstore_find_alias(struct bhnd_nvram_store *sc, const char *path)
 	return (NULL);
 }
 
+
+
 /**
  * Register a device path entry for @p path.
  * 
@@ -890,9 +906,11 @@ int
 bhnd_nvstore_register_path(struct bhnd_nvram_store *sc, const char *path_str,
     size_t path_len)
 {
-	bhnd_nvstore_path_list	*plist;
-	bhnd_nvstore_path	*path;
-	uint32_t		 h;
+	bhnd_nvstore_path_list	 paths;
+	bhnd_nvstore_path	*path, *pnext;
+	const char		*name;
+	size_t			 namelen, paths_required;
+	int			 error;
 
 	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
 
@@ -900,24 +918,64 @@ bhnd_nvstore_register_path(struct bhnd_nvram_store *sc, const char *path_str,
 	if (bhnd_nvstore_get_path(sc, path_str, path_len) != NULL)
 		return (0);
 
-	/* Can't represent more than SIZE_MAX paths */
-	if (sc->num_paths == SIZE_MAX)
-		return (ENOMEM);
+	/* Walk the path, creating all missing intermediate path entries */
+	LIST_INIT(&paths);
+	paths_required = 0;
+	name = NULL;
+	while ((name = bhnd_nvram_parse_path_next(path_str, path_len, name,
+	    &namelen)) != NULL)
+	{
+		size_t prefix_len;
 
-	/* Allocate new entry */
-	path = bhnd_nvstore_path_new(path_str, path_len);
-	if (path == NULL)
-		return (ENOMEM);
+		/* Determine the length of this path component's fully-qualified
+		 * path string */
+		prefix_len = (name - path_str) + namelen;
 
-	/* Insert in path hash table */
-	h = hash32_str(path->path_str, HASHINIT);
-	plist = &sc->paths[h % nitems(sc->paths)];
-	LIST_INSERT_HEAD(plist, path, np_link);
+		/* Already exists? */
+		path = bhnd_nvstore_get_path(sc, path_str, prefix_len);
+		if (path != NULL)
+			continue;
 
-	/* Increment path count */
-	sc->num_paths++;
+		/* Can't represent more than SIZE_MAX paths */
+		if (SIZE_MAX - sc->num_paths <= paths_required) {
+			error = ENOMEM;
+			goto failed;
+		}
+
+		/* Increment path count */
+		sc->num_paths++;
+
+		/* Allocate new entry */
+		path = bhnd_nvstore_path_new(path_str, prefix_len);
+		if (path == NULL) {
+			error = ENOMEM;
+			goto failed;
+		}
+
+		LIST_INSERT_HEAD(&paths, path, np_link);
+	}
+
+	/* Insert path entries into our path hash table */
+	LIST_FOREACH_SAFE(path, &paths, np_link, pnext) {
+		bhnd_nvstore_path_list	*bucket;
+		uint32_t		 h;
+
+		h = hash32_str(path->path_str, HASHINIT);
+		bucket = &sc->paths[h % nitems(sc->paths)];
+
+		LIST_REMOVE(path, np_link);
+		LIST_INSERT_HEAD(bucket, path, np_link);
+	}
 
 	return (0);
+
+failed:
+	LIST_FOREACH_SAFE(path, &paths, np_link, pnext) {
+		LIST_REMOVE(path, np_link);
+		bhnd_nvstore_path_release(path);
+	}
+
+	return (error);
 }
 
 /**

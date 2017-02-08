@@ -1495,7 +1495,7 @@ bhnd_bus_generic_get_nvram_plane(device_t dev, device_t child)
 
 #define	OPT_BHND_GV(_dest, _name, _default)	do {			\
 	if ((error = BHND_GV(_dest, _name))) {				\
-		if (error != ENOENT) {					\
+		if (error != ENOATTR && error != ENOENT) {		\
 			device_printf(dev,				\
 			    "error reading "				\
 			       __STRING(_name) ": %d\n", error);	\

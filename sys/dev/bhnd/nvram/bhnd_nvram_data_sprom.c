@@ -1311,7 +1311,7 @@ bhnd_nvram_sprom_filter_setvar(struct bhnd_nvram_data *nv, const char *name,
 
 	/* Variable must be defined in our SPROM layout */
 	if ((entry = bhnd_sprom_opcode_index_find(&sp->state, name)) == NULL)
-		return (ENOENT);
+		return (ENOATTR);
 
 	var = bhnd_nvram_get_vardefn(entry->vid);
 	BHND_NV_ASSERT(var != NULL, ("missing variable definition"));
@@ -1350,7 +1350,7 @@ bhnd_nvram_sprom_filter_unsetvar(struct bhnd_nvram_data *nv, const char *name)
 
 	/* Variable must be defined in our SPROM layout */
 	if ((entry = bhnd_sprom_opcode_index_find(&sp->state, name)) == NULL)
-		return (ENOENT);
+		return (ENOATTR);
 
 	var = bhnd_nvram_get_vardefn(entry->vid);
 

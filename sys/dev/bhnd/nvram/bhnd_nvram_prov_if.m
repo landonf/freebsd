@@ -67,8 +67,7 @@ CODE {
 
 	static int
 	bhnd_nvram_prov_null_open_path(bhnd_nvram_provider *provider,
-	    bhnd_nvram_phandle cwd, const char *pathname, size_t pathlen,
-	    bhnd_nvram_phandle *phandle)
+	    const char *pathname, size_t pathlen, bhnd_nvram_phandle *phandle)
 	{
 		panic("bhnd_nvram_prov_open_path unimplemented");
 	}
@@ -85,6 +84,13 @@ CODE {
 	    bhnd_nvram_phandle phandle)
 	{
 		panic("bhnd_nvram_prov_release_path unimplemented");
+	}
+
+	static int
+	bhnd_nvram_prov_null_get_pathname(bhnd_nvram_provider *provider,
+	    bhnd_nvram_phandle phandle, char *buf, size_t *len)
+	{
+		panic("bhnd_nvram_prov_get_pathname unimplemented");
 	}
 
 	static int
@@ -189,10 +195,7 @@ METHOD int sync {
  * responsible for releasing it via BHND_NVRAM_PROV_RELEASE_PATH()
  * 
  * @param	provider	The NVRAM provider.
- * @param	cwd		The provider handle from which @p path will be
- *				resolved, or BHND_NVRAM_PHANDLE_NULL to perform
- *				resolution from the root path.
- * @param	path		The path to be opened relative to @p cwd.
+ * @param	path		The fully-qualified path to be opened.
  * @param	pathlen		The length of @p path.
  * @param[out]	phandle		On success, a caller-owned reference to @p path.
  *
@@ -204,7 +207,6 @@ METHOD int sync {
  */
 METHOD int open_path {
 	bhnd_nvram_provider	*provider;
-	bhnd_nvram_phandle	 cwd;
 	const char		*path;
 	size_t			 pathlen;
 	bhnd_nvram_phandle	*phandle;
@@ -218,10 +220,8 @@ METHOD int open_path {
  * 
  * @param provider	The NVRAM provider.
  * @param phandle	The provider handle to be retained.
- * 
- * @return Returns the @p phandle argument for convenience.
  */
-METHOD bhnd_nvram_phandle retain_path {
+METHOD void retain_path {
 	bhnd_nvram_provider	*provider;
 	bhnd_nvram_phandle	 phandle;
 } DEFAULT bhnd_nvram_prov_null_retain_path;
@@ -238,16 +238,27 @@ METHOD void release_path {
 } DEFAULT bhnd_nvram_prov_null_release_path;
 
 /**
- * Return a borrowed reference to the given @p phandle's fully-qualified,
- * canonical path.
+ * Return the given @p phandle's path string.
  *
- * @param	provider	The NVRAM provider.
- * @param	phandle		The provider handle to be queried.
+ * @param		provider	The NVRAM provider.
+ * @param		phandle		The provider handle to be queried.
+ * @param[out]		buf		On success, the NUL-terminated path will
+ *					be written to this buffer. This argment
+ *					may be NULL if the value is not desired.
+ * @param[in,out]	len		The maximum capacity of @p buf. On
+ *					success, will be set to the actual size
+ *					of the path string.
+ *
+ * @retval 0		success
+ * @retval ENOMEM	If @p buf is non-NULL and a buffer of @p len is too
+ *			small to hold the NUL-terminated path.
  */
-METHOD const char * get_pathname {
+METHOD int get_pathname {
 	bhnd_nvram_provider	*provider;
 	bhnd_nvram_phandle	 phandle;
-};
+	char			*buf;
+	size_t			*len;
+} DEFAULT bhnd_nvram_prov_null_get_pathname;
 
 /**
  * Retrieve a list of all direct children of @p phandle, returning the list
