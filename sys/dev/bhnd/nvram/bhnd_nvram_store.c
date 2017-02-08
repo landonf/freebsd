@@ -31,39 +31,28 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
-#include <sys/hash.h>
-#include <sys/queue.h>
-
-#ifdef _KERNEL
 
 #include <sys/ctype.h>
+#include <sys/hash.h>
+#include <sys/queue.h>
 #include <sys/systm.h>
 
 #include <machine/_inttypes.h>
 
-#else /* !_KERNEL */
-
-#include <ctype.h>
-#include <errno.h>
-#include <inttypes.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
-
-#endif /* _KERNEL */
-
 #include "bhnd_nvram_private.h"
 #include "bhnd_nvram_datavar.h"
-
 #include "bhnd_nvram_storevar.h"
+
+#include "bhnd_nvram_prov_if.h"
 
 /*
  * BHND NVRAM Store
- *
- * Manages in-memory and persistent representations of NVRAM data.
+ * 
+ * Vends an NVRAM provider interface to a backing bhnd_nvram_data instance.
  */
+
+static void			 bhnd_nvram_store_fini(
+				     struct bhnd_nvram_provider *prov);
 
 static int			 bhnd_nvstore_parse_data(
 				     struct bhnd_nvram_store *sc);
@@ -90,6 +79,215 @@ static int			 bhnd_nvstore_export_devpath_alias(
 				     const char *devpath,
 				     bhnd_nvram_plist *plist,
 				     u_long *alias_val);
+
+static int
+bhnd_nvram_store_init(struct bhnd_nvram_provider *prov, const void *params)
+{
+	struct bhnd_nvram_store				*sc;
+	const struct bhnd_nvram_store_init_params	*init_params;
+	int						 error;
+
+	// TODO: save dev reference
+
+	sc = bhnd_nvram_provider_get_softc(prov);
+	init_params = params;
+
+	BHND_NVSTORE_LOCK_INIT(sc);
+	BHND_NVSTORE_LOCK(sc);
+
+	/* Initialize path hash table */
+	sc->num_paths = 0;
+	for (size_t i = 0; i < nitems(sc->paths); i++)
+		LIST_INIT(&sc->paths[i]);
+
+	/* Initialize alias hash table */
+	sc->num_aliases = 0;
+	for (size_t i = 0; i < nitems(sc->aliases); i++)
+		LIST_INIT(&sc->aliases[i]);
+
+	/* Retain the NVRAM data */
+	sc->data = bhnd_nvram_data_retain(init_params->data);
+	sc->data_caps = bhnd_nvram_data_caps(init_params->data);
+	sc->data_opts = bhnd_nvram_data_options(init_params->data);
+	if (sc->data_opts != NULL) {
+		bhnd_nvram_plist_retain(sc->data_opts);
+	} else {
+		sc->data_opts = bhnd_nvram_plist_new();
+		if (sc->data_opts == NULL) {
+			error = ENOMEM;
+			goto cleanup;
+		}
+	}
+
+	/* Register required root path */
+	error = bhnd_nvstore_register_path(sc, BHND_NVSTORE_ROOT_PATH,
+	    BHND_NVSTORE_ROOT_PATH_LEN);
+	if (error)
+		goto cleanup;
+
+	sc->root_path = bhnd_nvstore_get_path(sc, BHND_NVSTORE_ROOT_PATH,
+	    BHND_NVSTORE_ROOT_PATH_LEN);
+	BHND_NV_ASSERT(sc->root_path, ("missing root path"));
+
+	/* Parse all variables vended by our backing NVRAM data instance,
+	 * generating all path entries, alias entries, and variable indexes */
+	if ((error = bhnd_nvstore_parse_data(sc)))
+		goto cleanup;
+
+	BHND_NVSTORE_UNLOCK(sc);
+	return (0);
+
+cleanup:
+	BHND_NVSTORE_UNLOCK(sc);
+	bhnd_nvram_store_fini(prov);
+	return (error);
+}
+
+static void
+bhnd_nvram_store_fini(struct bhnd_nvram_provider *prov)
+{
+	struct bhnd_nvram_store *sc;
+
+	sc = bhnd_nvram_provider_get_softc(prov);
+
+	/* Clean up alias hash table */
+	for (size_t i = 0; i < nitems(sc->aliases); i++) {
+		bhnd_nvstore_alias *alias, *anext;
+		LIST_FOREACH_SAFE(alias, &sc->aliases[i], na_link, anext)
+			bhnd_nv_free(alias);
+	}
+
+	/* Clean up path hash table */
+	for (size_t i = 0; i < nitems(sc->paths); i++) {
+		bhnd_nvstore_path *path, *pnext;
+		LIST_FOREACH_SAFE(path, &sc->paths[i], np_link, pnext)
+			bhnd_nvstore_path_free(path);
+	}
+
+	if (sc->data != NULL)
+		bhnd_nvram_data_release(sc->data);
+
+	if (sc->data_opts != NULL)
+		bhnd_nvram_plist_release(sc->data_opts);
+
+	BHND_NVSTORE_LOCK_DESTROY(sc);
+}
+
+static int
+bhnd_nvram_store_sync(struct bhnd_nvram_provider *prov, bool forced)
+{
+	struct bhnd_nvram_store *sc;
+
+	sc = bhnd_nvram_provider_get_softc(prov);
+
+	BHND_NVSTORE_LOCK(sc);
+	if (sc->dev == NULL) {
+		BHND_NVSTORE_UNLOCK(sc);
+		return (ENXIO);
+	}
+
+	// TODO: request sync
+	panic("unimplemented");
+
+	BHND_NVSTORE_UNLOCK(sc);
+	return (0);
+}
+
+static int
+bhnd_nvram_store_open_path(bhnd_nvram_provider *provider,
+    bhnd_nvram_phandle cwd, const char *pathname, size_t pathlen,
+    bhnd_nvram_phandle *phandle)
+{
+	printf("OPEN PATH?\n");
+	// TODO
+	return (ENXIO);
+}
+
+static bhnd_nvram_phandle
+bhnd_nvram_store_retain_path(bhnd_nvram_provider *provider,
+    bhnd_nvram_phandle phandle)
+{
+	// TODO
+	return (ENXIO);
+}
+
+static void
+bhnd_nvram_store_release_path(bhnd_nvram_provider *provider,
+    bhnd_nvram_phandle phandle)
+{
+	// TODO
+}
+
+static int
+bhnd_nvram_store_get_children(bhnd_nvram_provider *provider,
+    bhnd_nvram_phandle phandle, bhnd_nvram_phandle **children, size_t *count)
+{
+	// TODO
+	return (ENXIO);
+}
+
+static void
+bhnd_nvram_store_free_children(bhnd_nvram_provider *provider,
+    bhnd_nvram_phandle *children, size_t count)
+{
+	// TODO
+}
+
+static int
+bhnd_nvram_store_setprop(bhnd_nvram_provider *provider,
+    bhnd_nvram_phandle phandle, const char *propname, const void *buf,
+    size_t len, bhnd_nvram_type type)
+{
+	// TODO
+	return (ENXIO);
+}
+
+static int
+bhnd_nvram_store_delprop(bhnd_nvram_provider *provider,
+    bhnd_nvram_phandle phandle, const char *propname)
+{
+	// TODO
+	return (ENXIO);
+}
+
+static int
+bhnd_nvram_store_getprop(bhnd_nvram_provider *provider,
+    bhnd_nvram_phandle phandle, const char *propname, void *buf, size_t *len,
+    bhnd_nvram_type type, bool search_parents)
+{
+	// TODO
+	return (ENXIO);
+}
+
+static int
+bhnd_nvram_store_copyprops(bhnd_nvram_provider *provider,
+    bhnd_nvram_phandle phandle, struct bhnd_nvram_plist **plist)
+{
+	// TODO
+	return (ENXIO);
+}
+
+static kobj_method_t bhnd_nvram_store_methods[] = {
+	KOBJMETHOD(bhnd_nvram_prov_init,		bhnd_nvram_store_init),
+	KOBJMETHOD(bhnd_nvram_prov_fini,		bhnd_nvram_store_fini),
+	KOBJMETHOD(bhnd_nvram_prov_sync,		bhnd_nvram_store_sync),
+	KOBJMETHOD(bhnd_nvram_prov_open_path,		bhnd_nvram_store_open_path),
+	KOBJMETHOD(bhnd_nvram_prov_retain_path,		bhnd_nvram_store_retain_path),
+	KOBJMETHOD(bhnd_nvram_prov_release_path,	bhnd_nvram_store_release_path),
+	KOBJMETHOD(bhnd_nvram_prov_get_children,	bhnd_nvram_store_get_children),
+	KOBJMETHOD(bhnd_nvram_prov_free_children,	bhnd_nvram_store_free_children),
+	KOBJMETHOD(bhnd_nvram_prov_setprop,		bhnd_nvram_store_setprop),
+	KOBJMETHOD(bhnd_nvram_prov_delprop,		bhnd_nvram_store_delprop),
+	KOBJMETHOD(bhnd_nvram_prov_getprop,		bhnd_nvram_store_getprop),
+	KOBJMETHOD(bhnd_nvram_prov_copyprops,		bhnd_nvram_store_copyprops),
+
+	KOBJMETHOD_END
+};
+
+DEFINE_CLASS_0(bhnd_nvram_store, bhnd_nvram_store_provider, bhnd_nvram_store_methods, sizeof(struct bhnd_nvram_store));
+
+
+// TODO: previous
 
 /**
  * Allocate and initialize a new NVRAM data store instance.

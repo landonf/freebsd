@@ -32,19 +32,27 @@
 #ifndef _BHND_NVRAM_BHND_NVRAM_STORE_H_
 #define _BHND_NVRAM_BHND_NVRAM_STORE_H_
 
-#ifdef _KERNEL
 #include <sys/param.h>
+
 #include <sys/bus.h>
-#else /* !_KERNEL */
-#include <errno.h>
-#include <stdint.h>
-#include <stdlib.h>
-#endif
+#include <sys/kobj.h>
 
 #include <sys/queue.h>
 
+#include "bhnd_nvram.h"
 #include "bhnd_nvram_data.h"
-#include "bhnd_nvram_io.h"
+
+/**
+ * NVRAM store initialization parameters.
+ */
+struct bhnd_nvram_store_init_params {
+	device_t		dev;	/**< NVRAM device, or NULL */
+	struct bhnd_nvram_data *data;	/**< NVRAM data */
+};
+
+DECLARE_CLASS(bhnd_nvram_store_provider);
+
+// TODO: OLD
 
 struct bhnd_nvram_store;
 
@@ -59,9 +67,10 @@ enum {
 	BHND_NVSTORE_EXPORT_ALL_VARS		= (1<<6|1<<7),	/**< Include all variables (default) */
 	BHND_NVSTORE_EXPORT_COMMITTED		= (1<<6),	/**< Include all committed changes */
 	BHND_NVSTORE_EXPORT_UNCOMMITTED		= (1<<7),	/**< Include all uncommitted changes (not including deletions) */
-	BHND_NVSTORE_EXPORT_DELETED		= (1<<8),	/**< Include all uncommitted deltions (as
+	BHND_NVSTORE_EXPORT_DELETED		= (1<<8),	/**< Include all uncommitted deletions (as
 								     properties of type BHND_NVRAM_TYPE_NULL) */
 };
+
 
 int	bhnd_nvram_store_new(struct bhnd_nvram_store **store,
 	    struct bhnd_nvram_data *data);

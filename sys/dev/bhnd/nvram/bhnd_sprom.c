@@ -56,8 +56,8 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_spromvar.h"
 
-static int	bhnd_sprom_new_store(device_t dev,
-		    struct bhnd_nvram_store **store, bus_size_t offset);
+static int	bhnd_sprom_new_provider(device_t dev,
+		    struct bhnd_nvram_provider **prov, bus_size_t offset);
 
 /**
  * Default bhnd sprom driver implementation of DEVICE_PROBE().
@@ -94,27 +94,30 @@ int
 bhnd_sprom_attach(device_t dev, bus_size_t offset)
 {
 	struct bhnd_sprom_softc	*sc;
+	struct bhnd_nvram_plane	*plane;
 	int			 error;
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
 
 	/* Fetch NVRAM plane from the bus */
-	if ((sc->plane = bhnd_get_nvram_plane(dev)) == NULL) {
+	if ((plane = bhnd_get_nvram_plane(dev)) == NULL) {
 		device_printf(dev, "missing NVRAM plane\n");
 		return (ENXIO);
 	}
 
-	/* Parse SPROM data and allocate new NVRAM data store */
-	if ((error = bhnd_sprom_new_store(dev, &sc->store, offset)))
+	sc->plane = bhnd_nvram_plane_retain(plane);
+
+	/* Parse SPROM data and allocate NVRAM provider */
+	if ((error = bhnd_sprom_new_provider(dev, &sc->prov, offset)))
 		return (error);
 
-	// XXX TODO: initialize sc->prov
-
-	/* Register our device with the NVRAM plane */
+	/* Register provider with the NVRAM plane */
 	if ((error = bhnd_nvram_plane_set_provider(sc->plane, sc->prov))) {
-		device_printf(dev, "failed to map NVRAM store: %d\n", error);
-		bhnd_nvram_store_free(sc->store);
+		device_printf(dev, "failed to map SPROM into NVRAM plane: "
+		    "%d\n", error);
+
+		bhnd_nvram_provider_release(sc->prov);
 		return (error);
 	}
 
@@ -123,26 +126,29 @@ bhnd_sprom_attach(device_t dev, bus_size_t offset)
 
 
 /**
- * Allocate a new NVRAM store instance.
+ * Allocate a new NVRAM provider instance.
  * 
  * Assumes SPROM is mapped via SYS_RES_MEMORY resource with RID 0.
  *
  * @param	dev	BHND SPROM device.
- * @param[out]	store	On success, the new NVRAM store instance.
+ * @param[out]	prov	On success, the new NVRAM provider instance.
  * @param	offset	Offset to the SPROM data in RID 0.
  */
 static int
-bhnd_sprom_new_store(device_t dev, struct bhnd_nvram_store **store,
+bhnd_sprom_new_provider(device_t dev, struct bhnd_nvram_provider **prov,
     bus_size_t offset)
 {
-	struct bhnd_nvram_io	*io;
-	struct bhnd_resource	*r;
-	bus_size_t		 r_size, sprom_size;
-	int			 rid;
-	int			 error;
+	struct bhnd_nvram_store_init_params	 params;
+	struct bhnd_nvram_data			*data;
+	struct bhnd_nvram_io			*io;
+	struct bhnd_resource			*r;
+	bus_size_t				 r_size, sprom_size;
+	int					 rid;
+	int					 error;
 
 	io = NULL;
 	r = NULL;
+	data = NULL;
 
 	/* Allocate SPROM resource */
 	rid = 0;
@@ -157,9 +163,9 @@ bhnd_sprom_new_store(device_t dev, struct bhnd_nvram_store **store,
 	if (r_size <= offset || (r_size - offset) > BUS_SPACE_MAXSIZE) {
 		device_printf(dev, "invalid sprom offset %#jx\n",
 		    (uintmax_t)offset);
-		bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
 
-		return (ENXIO);
+		error = ENXIO;
+		goto cleanup;
 	}
 
 	sprom_size = r_size - offset;
@@ -168,16 +174,39 @@ bhnd_sprom_new_store(device_t dev, struct bhnd_nvram_store **store,
 	 * must be 16-bit aligned */
 	io = bhnd_nvram_iores_new(r, offset, sprom_size, sizeof(uint16_t));
 	if (io == NULL) {
-		bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
-		return (ENXIO);
+		error = ENXIO;
+		goto cleanup;
 	}
 
-	/* Attempt to initialize NVRAM data store */
-	error = bhnd_nvram_store_parse_new(store, io, &bhnd_nvram_sprom_class);
+	/* Try to parse the data */
+	error = bhnd_nvram_data_new(&bhnd_nvram_sprom_class, &data, io);
+	if (error) {
+		data = NULL;
+		goto cleanup;
+	}
 
-	/* Clean up I/O context before releasing the backing resource */
-	bhnd_nvram_io_free(io);
-	bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
+	/* Attempt to initialize the NVRAM provider instance */
+	params = (struct bhnd_nvram_store_init_params) {
+		.dev = dev,
+		.data = data
+	};
+
+	error = bhnd_nvram_provider_new(prov, &bhnd_nvram_store_provider,
+	    &params);
+	if (error)
+		goto cleanup;
+
+cleanup:
+	if (io != NULL) {
+		/* Clean up I/O context before releasing its backing resource */
+		bhnd_nvram_io_free(io);
+	}
+
+	if (r != NULL)
+		bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
+
+	if (data != NULL)
+		bhnd_nvram_data_release(data);
 
 	return (error);
 }
@@ -210,12 +239,8 @@ bhnd_sprom_detach(device_t dev)
 
 	sc = device_get_softc(dev);
 
-	/* Disconnect our device from the NVRAM plane */
-	// XXX TODO
-	// bhnd_nvram_plane_unmap_provider(sc->plane, sc->prov);
-
-	/* Clean up backing NVRAM store */
-	bhnd_nvram_store_free(sc->store);
+	// XXX TODO: Disconnect our device from the NVRAM provider
+	bhnd_nvram_provider_release(sc->prov);
 
 	return (0);
 }
@@ -227,9 +252,10 @@ static int
 bhnd_sprom_getvar(device_t dev, const char *name, void *buf, size_t *len,
     bhnd_nvram_type type)
 {
-	struct bhnd_sprom_softc	*sc = device_get_softc(dev);
+//	struct bhnd_sprom_softc	*sc = device_get_softc(dev);
 
-	return (bhnd_nvram_store_getvar(sc->store, name, buf, len, type));
+	// XXX TODO
+	return (ENOENT);
 }
 
 /**
@@ -239,9 +265,10 @@ static int
 bhnd_sprom_setvar(device_t dev, const char *name, const void *buf,
     size_t len, bhnd_nvram_type type)
 {
-	struct bhnd_sprom_softc	*sc = device_get_softc(dev);
+//	struct bhnd_sprom_softc	*sc = device_get_softc(dev);
 
-	return (bhnd_nvram_store_setvar(sc->store, name, buf, len, type));
+	// XXX TODO
+	return (ENOENT);
 }
 
 static device_method_t bhnd_sprom_methods[] = {
@@ -252,7 +279,7 @@ static device_method_t bhnd_sprom_methods[] = {
 	DEVMETHOD(device_suspend,		bhnd_sprom_suspend),
 	DEVMETHOD(device_detach,		bhnd_sprom_detach),
 
-	/* NVRAM interface */
+	/* Legacy NVRAM interface */
 	DEVMETHOD(bhnd_nvram_getvar,		bhnd_sprom_getvar),
 	DEVMETHOD(bhnd_nvram_setvar,		bhnd_sprom_setvar),
 

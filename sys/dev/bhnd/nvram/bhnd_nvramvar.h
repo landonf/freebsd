@@ -33,11 +33,25 @@
 #define _BHND_NVRAM_BHND_NVRAMVAR_H_
 
 #include <sys/param.h>
+
+#include <sys/kobj.h>
+#include <sys/stddef.h>
+
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/sx.h>
 
 #include "bhnd_nvram.h"
+
+/**
+ * NVRAM provider.
+ */
+struct bhnd_nvram_provider {
+	KOBJ_FIELDS;
+
+	volatile u_int				refs;		/**< reference count */
+	_Alignas(_Alignof(max_align_t)) u_char	softc[];	/**< instance state */
+};
 
 /**
  * NVRAM entry.

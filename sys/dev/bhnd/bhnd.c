@@ -875,30 +875,29 @@ bhnd_generic_is_region_valid(device_t dev, device_t child,
 /**
  * Default bhnd(4) bus driver implementation of BHND_BUS_GET_NVRAM_VAR().
  * 
- * This implementation searches @p dev for a usable NVRAM child device.
- * 
- * If no usable child device is found on @p dev, the request is delegated to
- * the BHND_BUS_GET_NVRAM_VAR() method on the parent of @p dev.
+ * This implementation fetches the NVRAM plane for @p child using
+ * BHND_BUS_GET_NVRAM_PLANE(), and attempts to read the requested property
+ * from the root ("/") entry.
  */
 int
 bhnd_generic_get_nvram_var(device_t dev, device_t child, const char *name,
     void *buf, size_t *size, bhnd_nvram_type type)
 {
-	struct bhnd_softc	*sc;
-	device_t		 nvram, parent;
+	struct bhnd_nvram_plane	*plane;
+	struct bhnd_nvram_entry	*entry;
+	int			 error;
 
-	sc = device_get_softc(dev);
-
-	/* If a NVRAM device is available, consult it first */
-	if ((nvram = bhnd_find_nvram(sc)) != NULL)
-		return BHND_NVRAM_GETVAR(nvram, name, buf, size, type);
-
-	/* Otherwise, try to delegate to parent */
-	if ((parent = device_get_parent(dev)) == NULL)
+	plane = BHND_BUS_GET_NVRAM_PLANE(dev, child);
+	if (plane == NULL)
 		return (ENODEV);
 
-	return (BHND_BUS_GET_NVRAM_VAR(device_get_parent(dev), child,
-	    name, buf, size, type));
+	if ((error = bhnd_nvram_plane_open_path(plane, "/", &entry)))
+		return (error);
+
+	error = bhnd_nvram_getprop(entry, name, buf, size, type, false);
+	bhnd_nvram_release(entry);
+
+	return (error);
 }
 
 /**

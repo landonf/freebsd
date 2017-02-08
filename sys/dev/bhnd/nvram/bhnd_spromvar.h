@@ -52,7 +52,6 @@ struct bhnd_sprom_softc {
 	device_t			 dev;
 	bhnd_nvram_plane		*plane;	/**< nvram plane */
 	bhnd_nvram_provider		*prov;
-	struct bhnd_nvram_store		*store;	/**< nvram store */
 };
 
 #endif /* _BHND_NVRAM_BHND_SPROMVAR_H_ */

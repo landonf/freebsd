@@ -40,25 +40,24 @@ INTERFACE bhnd_nvram_prov;
 #
 
 HEADER {
-	/* forward declarations */
-	struct bhnd_nvram_plist;
+	#include <dev/bhnd/nvram/bhnd_nvram.h>
 }
 
 CODE {
 	#include "bhnd_nvram_prov_if.h"
 
-	static bhnd_nvram_provider *
-	bhnd_nvram_prov_null_retain(bhnd_nvram_provider *provider)
+	static int
+	bhnd_nvram_prov_null_init(bhnd_nvram_provider *provider,
+	    const void *params)
 	{
-		panic("bhnd_nvram_prov_retain unimplemented");
+		panic("bhnd_nvram_prov_init unimplemented");
 	}
 
 	static void
-	bhnd_nvram_prov_null_release(bhnd_nvram_provider *provider)
+	bhnd_nvram_prov_null_fini(bhnd_nvram_provider *provider)
 	{
-		panic("bhnd_nvram_prov_release unimplemented");
+		/* no-op */
 	}
-
 
 	static int
 	bhnd_nvram_prov_null_sync(bhnd_nvram_provider *provider, bool forced)
@@ -90,12 +89,13 @@ CODE {
 
 	static int
 	bhnd_nvram_prov_null_get_children(bhnd_nvram_provider *provider,
-	    bhnd_nvram_phandle **children, size_t *count)
+	    bhnd_nvram_phandle phandle, bhnd_nvram_phandle **children,
+	    size_t *count)
 	{
 		panic("bhnd_nvram_prov_get_children unimplemented");
 	}
 
-	static int
+	static void
 	bhnd_nvram_prov_null_free_children(bhnd_nvram_provider *provider,
 	    bhnd_nvram_phandle *children, size_t count)
 	{
@@ -134,27 +134,31 @@ CODE {
 }
 
 /**
- * Retain a reference to the NVRAM provider.
+ * Initialize an NVRAM provider instance.
  * 
- * The caller is responsible for releasing their reference ownership via
- * BHND_NVRAM_PROV_RELEASE().
- * 
- * @param provider	The NVRAM provider to be retained.
- * 
- * @return Returns the @p prov argument for convenience.
+ * @param provider	The NVRAM provider to initialize.
+ * @param params	Class-specific initialization parameters.
+ *
+ * @retval 0		success
+ * @retval non-zero	if an error occurs initializing the provider, a regular
+ *			unix error code will be returned.
  */
-METHOD bhnd_nvram_provider * retain {
+METHOD int init {
 	bhnd_nvram_provider	*provider;
-} DEFAULT bhnd_nvram_prov_null_retain;
+	const void		*params;
+} DEFAULT bhnd_nvram_prov_null_init;
 
 /**
- * Release a reference to the NVRAM provider.
+ * Release all resources held by @p provider.
+ *
+ * Invoked automatically when the NVRAM provider's reference count reaches
+ * zero.
  * 
- * @param provider	The NVRAM provider to be released.
+ * @param provider	The NVRAM provider to be freed.
  */
-METHOD void release {
+METHOD void fini {
 	bhnd_nvram_provider	*provider;
-} DEFAULT bhnd_nvram_prov_null_release;
+} DEFAULT bhnd_nvram_prov_null_fini;
 
 /**
  * Request that pending changes be written out to the provider's non-volatile
@@ -295,7 +299,7 @@ METHOD void free_children {
  * @retval 0		success
  * @retval ENOATTR	If @p propname is not a known property name, and the
  *			definition of arbitrary property names within @p phandle
- *			is unsupported by @p prov.
+ *			is unsupported by @p provider.
  * @retval ENOENT	If the path described by @p phandle does not exist.
  * @retval EFTYPE	If @p propname cannot be set to the given value or
  *			value type.
@@ -369,7 +373,7 @@ METHOD int delprop {
 	bhnd_nvram_provider	*provider;
 	bhnd_nvram_phandle	 phandle;
 	const char		*propname;
-	const void		*buf;
+	void			*buf;
 	size_t			*len;
 	bhnd_nvram_type		 type;
 	bool			 search_parents;

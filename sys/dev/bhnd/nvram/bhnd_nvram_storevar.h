@@ -268,11 +268,8 @@ struct bhnd_nvstore_alias {
 
 /** bhnd nvram store instance state */
 struct bhnd_nvram_store {
-#ifdef _KERNEL
 	struct mtx		 mtx;
-#else
-	pthread_mutex_t		 mtx;
-#endif
+	device_t		 dev;		/**< NVRAM device, or NULL */
 	struct bhnd_nvram_data	*data;		/**< backing data */
 	uint32_t		 data_caps;	/**< data capability flags */
 	bhnd_nvram_plist	*data_opts;	/**< data serialization options */
