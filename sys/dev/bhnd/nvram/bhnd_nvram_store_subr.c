@@ -823,11 +823,9 @@ bhnd_nvstore_var_get_path(struct bhnd_nvram_store *sc,
 {
 	switch (info->path_type) {
 	case BHND_NVSTORE_PATH_STRING:
-		printf("search for %.*s\n", (int) info->path.str.value_len, info->path.str.value);
 		return (bhnd_nvstore_get_path(sc, info->path.str.value,
 		    info->path.str.value_len));
 	case BHND_NVSTORE_PATH_ALIAS:
-		printf("resolve %lu\n", info->path.alias.value);
 		return (bhnd_nvstore_resolve_path_alias(sc,
 		    info->path.alias.value));
 	}
