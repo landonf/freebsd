@@ -137,9 +137,6 @@ int			 bhnd_nvstore_var_register_path(
 
 int			 bhnd_nvstore_register_path(struct bhnd_nvram_store *sc,
 			     const char *path, size_t path_len);
-int			 bhnd_nvstore_register_alias(
-			     struct bhnd_nvram_store *sc,
-			     const bhnd_nvstore_name_info *info, void *cookiep);
 
 const char		*bhnd_nvstore_parse_relpath(const char *parent,
 			     const char *child);
@@ -248,10 +245,13 @@ struct bhnd_nvstore_path {
  * NVRAM device path alias.
  */
 struct bhnd_nvstore_alias {
-	bhnd_nvstore_path	*path;		/**< borrowed path reference */
-	void			*cookiep;	/**< NVRAM variable's cookiep value */
 	u_long			 alias;		/**< alias value */
-
+	bool			 defined;	/**< if false, alias is a dangling reference to an undefined
+						     device path */
+	bhnd_nvstore_path	*path;		/**< borrowed path reference, or NULL if this
+						     is an undefined alias entry */
+	void			*cookiep;	/**< NVRAM variable's cookiep value, or NULL if
+						     this is an undefined alias entry. */
 	LIST_ENTRY(bhnd_nvstore_alias) na_link;
 };
 

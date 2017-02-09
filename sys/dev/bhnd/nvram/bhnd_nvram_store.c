@@ -475,9 +475,13 @@ bhnd_nvstore_parse_data(struct bhnd_nvram_store *sc)
 			/* Fetch referenced path */
 			path = bhnd_nvstore_var_get_path(sc, &info);
 			if (path == NULL) {
-				BHND_NV_LOG("variable '%s' has dangling "
-					    "path reference\n", name);
-				return (EFTYPE);
+				/* Some devices ship with NVRAM variables 
+				 * referencing undefined device path aliases */
+				if (BHND_NV_VERBOSE) {
+					BHND_NV_LOG("variable '%s' has "
+					    "dangling path reference\n", name);
+				}
+				break;
 			}
 
 			/* Increment path variable count */
@@ -539,12 +543,17 @@ bhnd_nvstore_parse_data(struct bhnd_nvram_store *sc)
 
 		switch (info.type) {
 		case BHND_NVSTORE_VAR:
-			/* Fetch referenced path */
+			/* Fetch referenced path; if variable has a dangling
+			 * alias reference, no path will be available */
 			path = bhnd_nvstore_var_get_path(sc, &info);
-			BHND_NV_ASSERT(path != NULL,
-			    ("dangling path reference"));
+			if (path == NULL) {
+				BHND_NV_ASSERT(
+				    info.path_type == BHND_NVSTORE_PATH_ALIAS,
+				    ("non-alias dangling reference: %s", name));
+				break;
+			}
 
-			/* Append to index */
+			/* Append to path index */
 			error = bhnd_nvstore_index_append(sc, path->index,
 			    cookiep);
 			if (error)
@@ -738,6 +747,7 @@ bhnd_nvstore_export_devpath_alias(struct bhnd_nvram_store *sc,
 	/* Prefer alias value already reserved for this path. */
 	alias = bhnd_nvstore_find_alias(sc, path->path_str);
 	if (alias != NULL) {
+		BHND_NV_ASSERT(alias->defined, ("undefined alias"));
 		*alias_val = alias->alias;
 
 		/* Allocate devpathXX variable name */
@@ -749,7 +759,7 @@ bhnd_nvstore_export_devpath_alias(struct bhnd_nvram_store *sc,
 		error = bhnd_nvram_plist_append_string(plist, pathvar, devpath);
 
 		BHND_NV_ASSERT(error != EEXIST, ("reserved alias %lu:%s in use",
-		   * alias_val, path->path_str));
+		   *alias_val, path->path_str));
 
 		bhnd_nv_free(pathvar);
 		return (error);

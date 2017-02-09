@@ -59,6 +59,15 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_nvram_storevar.h"
 
+
+static int			 bhnd_nvstore_register_alias(
+				     struct bhnd_nvram_store *sc,
+				     const bhnd_nvstore_name_info *info,
+				     void *cookiep);
+static int			 bhnd_nvstore_register_alias_stub(
+				     struct bhnd_nvram_store *sc,
+				     const bhnd_nvstore_name_info *info);
+
 static int			 bhnd_nvstore_idx_cmp(void *ctx,
 				     const void *lhs, const void *rhs);
 
@@ -421,6 +430,8 @@ bhnd_nvstore_path_register_update(struct bhnd_nvram_store *sc,
 		alias = bhnd_nvstore_find_alias(sc, path->path_str);
 		if (alias != NULL) {
 			/* Use <alias>:name */
+			BHND_NV_ASSERT(alias->defined,
+			    ("path lookup returned undefined alias"));
 			len = bhnd_nv_asprintf(&namebuf, M_NOWAIT, "%lu:%s",
 			    alias->alias, name);
 		} else {
@@ -791,9 +802,8 @@ bhnd_nvstore_var_register_path(struct bhnd_nvram_store *sc,
 			    info->path.str.value, info->path.str.value_len));
 
 		case BHND_NVSTORE_PATH_ALIAS:
-			/* Variable contains an alias reference (0:varname).
-			 * There's no path to register */
-			return (0);
+			/* Variable contains an alias reference (0:varname). */
+			return (bhnd_nvstore_register_alias_stub(sc, info));
 		}
 
 		BHND_NV_PANIC("unsupported path type %d", info->path_type);
@@ -880,6 +890,9 @@ bhnd_nvstore_find_alias(struct bhnd_nvram_store *sc, const char *path)
 	/* Have to scan the full table */
 	for (size_t i = 0; i < nitems(sc->aliases); i++) {
 		LIST_FOREACH(alias, &sc->aliases[i], na_link) {
+			if (alias->path == NULL)
+				continue;
+
 			if (strcmp(alias->path->path_str, path) == 0)
 				return (alias);			
 		}
@@ -987,21 +1000,19 @@ failed:
  * @param	info	The NVRAM variable name info.
  * @param	cookiep	The NVRAM variable's cookiep value.
  * 
- * @retval 0		if the alias was successfully registered, or an
- *			identical alias entry exists.
+ * @retval 0		if the alias was successfully registered.
  * @retval EEXIST	if a conflicting alias or path entry already exists.
  * @retval EINVAL	if @p info is not a BHND_NVSTORE_ALIAS_DECL or does
  *			not contain a BHND_NVSTORE_PATH_ALIAS entry.
  * @retval ENOMEM	if allocation fails.
  */
-int
+static int
 bhnd_nvstore_register_alias(struct bhnd_nvram_store *sc,
     const bhnd_nvstore_name_info *info, void *cookiep)
 {
-	bhnd_nvstore_alias_list	*alist;
 	bhnd_nvstore_alias	*alias;
 	bhnd_nvstore_path	*path;
-	char			*path_str;
+	char			*path_str, *path_buf;
 	size_t			 path_len;
 	int			 error;
 
@@ -1010,10 +1021,6 @@ bhnd_nvstore_register_alias(struct bhnd_nvram_store *sc,
 	path_str = NULL;
 	alias = NULL;
 
-	/* Can't represent more than SIZE_MAX aliases */
-	if (sc->num_aliases == SIZE_MAX)
-		return (ENOMEM);
-
 	/* Must be an alias declaration */
 	if (info->type != BHND_NVSTORE_ALIAS_DECL)
 		return (EINVAL);
@@ -1021,53 +1028,48 @@ bhnd_nvstore_register_alias(struct bhnd_nvram_store *sc,
 	if (info->path_type != BHND_NVSTORE_PATH_ALIAS)
 		return (EINVAL);
 
-	/* Fetch the devpath variable's value length */
+	/* Register a stub alias entry, if required */
+	if ((error = bhnd_nvstore_register_alias_stub(sc, info)))
+		return (error);
+
+	/* Fetch the alias entry */
+	alias = bhnd_nvstore_get_alias(sc, info->path.alias.value);
+	BHND_NV_ASSERT(alias != NULL, ("missing registered alias: %lu",
+	    info->path.alias.value));
+
+	if (alias->defined)
+		return (EEXIST);
+
+	/*
+	 * Fetch and normalize the alias' path string.
+	 */
 	error = bhnd_nvram_data_getvar(sc->data, cookiep, NULL, &path_len,
-	    BHND_NVRAM_TYPE_STRING);
-	if (error)
-		return (ENOMEM);
-
-	/* Allocate path string buffer */
-	if ((path_str = bhnd_nv_malloc(path_len, M_NOWAIT)) == NULL)
-		return (ENOMEM);
-
-	/* Decode to our new buffer */
-	error = bhnd_nvram_data_getvar(sc->data, cookiep, path_str, &path_len,
 	    BHND_NVRAM_TYPE_STRING);
 	if (error)
 		goto failed;
 
-	/* Trim trailing '/' character(s) from the path length */
-	path_len = strnlen(path_str, path_len);
-	while (path_len > 0 && path_str[path_len-1] == '/') {
-		path_str[path_len-1] = '\0';
-		path_len--;
+	/* Allocate path string buffers */
+	if ((path_str = bhnd_nv_malloc(path_len, M_NOWAIT)) == NULL) {
+		error = ENOMEM;
+		goto failed;
 	}
 
-	/* Is a conflicting alias entry already registered for this alias
-	 * value? */
-	alias = bhnd_nvstore_get_alias(sc, info->path.alias.value);
-	if (alias != NULL) {
-		if (alias->cookiep != cookiep ||
-		    strcmp(alias->path->path_str, path_str) != 0)
-		{
-			error = EEXIST;
-			goto failed;
-		}
+	if ((path_buf = bhnd_nv_malloc(path_len, M_NOWAIT)) == NULL) {
+		error = ENOMEM;
+		goto failed;
 	}
 
-	/* Is a conflicting entry already registered for the alias path? */
-	if ((alias = bhnd_nvstore_find_alias(sc, path_str)) != NULL) {
-		if (alias->alias != info->path.alias.value ||
-		    alias->cookiep != cookiep ||
-		    strcmp(alias->path->path_str, path_str) != 0)
-		{
-			error = EEXIST;
-			goto failed;
-		}
-	}
+	/* Decode to our new buffer and normalize */
+	error = bhnd_nvram_data_getvar(sc->data, cookiep, path_buf,
+	    &path_len, BHND_NVRAM_TYPE_STRING);
+	if (error)
+		goto failed;
 
-	/* Get (or register) the target path entry */
+	bhnd_nvram_normalize_path(path_buf, path_len, path_str,
+	    path_len);
+	path_len = strlen(path_str);
+
+	/* Get (or register) the alias target's path entry */
 	path = bhnd_nvstore_get_path(sc, path_str, path_len);
 	if (path == NULL) {
 		error = bhnd_nvstore_register_path(sc, path_str, path_len);
@@ -1079,16 +1081,77 @@ bhnd_nvstore_register_alias(struct bhnd_nvram_store *sc,
 		    BHND_NV_PRINT_WIDTH(path_len), path_str));
 	}
 
-	/* Allocate alias entry */
-	alias = bhnd_nv_calloc(1, sizeof(*alias), M_NOWAIT);
-	if (alias == NULL) {
-		error = ENOMEM;
-		goto failed;
-	}
+	/* Update alias entry */
+	BHND_NV_ASSERT(!alias->defined, ("redefining alias"));
+	BHND_NV_ASSERT(alias->path == NULL, ("alias has path"));
+	BHND_NV_ASSERT(alias->cookiep == NULL, ("alias has cookiep"));
 
 	alias->path = path;
 	alias->cookiep = cookiep;
+	alias->defined = true;
+
+	bhnd_nv_free(path_str);
+	bhnd_nv_free(path_buf);
+
+	return (0);
+
+failed:
+	if (path_str != NULL)
+		bhnd_nv_free(path_str);
+
+	if (path_buf != NULL)
+		bhnd_nv_free(path_buf);
+
+	return (error);
+}
+
+/**
+ * If required, register a device path alias stub for the NVRAM alias
+ * referenced by a variable (e.g. '0:varname').
+ * 
+ * @param	sc	The NVRAM store to be updated.
+ * @param	info	The NVRAM variable's name info.
+ * 
+ * @retval 0		if the alias was successfully registered, or an
+ *			applicable alias entry already exists.
+ * @retval EINVAL	if @p info is not a BHND_NVSTORE_VAR or does
+ *			not contain a BHND_NVSTORE_PATH_ALIAS entry.
+ * @retval ENOMEM	if allocation fails.
+ * @retval non-zero	if registering an alias entry otherwise fails, a regular
+ *			unix error code will be returned.
+ */
+static int
+bhnd_nvstore_register_alias_stub(struct bhnd_nvram_store *sc,
+    const bhnd_nvstore_name_info *info)
+{
+	bhnd_nvstore_alias_list	*alist;
+	bhnd_nvstore_alias	*alias;
+
+	BHND_NVSTORE_LOCK_ASSERT(sc, MA_OWNED);
+
+	alias = NULL;
+
+	/* Variable must reference an alias path */
+	if (info->path_type != BHND_NVSTORE_PATH_ALIAS)
+		return (EINVAL);
+
+	/* Is there an existing entry? */
+	alias = bhnd_nvstore_get_alias(sc, info->path.alias.value);
+	if (alias != NULL)
+		return (0);
+
+	/* Can we register an additional alias entry? */
+	if (sc->num_aliases == SIZE_MAX)
+		return (ENOMEM);
+
+	alias = bhnd_nv_calloc(1, sizeof(*alias), M_NOWAIT);
+	if (alias == NULL)
+		return (ENOMEM);
+
 	alias->alias = info->path.alias.value;
+	alias->defined = false;
+	alias->path = NULL;
+	alias->cookiep = NULL;
 
 	/* Insert in alias hash table */
 	alist = &sc->aliases[alias->alias % nitems(sc->aliases)];
@@ -1097,17 +1160,7 @@ bhnd_nvstore_register_alias(struct bhnd_nvram_store *sc,
 	/* Increment alias count */
 	sc->num_aliases++;
 
-	bhnd_nv_free(path_str);
 	return (0);
-
-failed:
-	if (path_str != NULL)
-		bhnd_nv_free(path_str);
-
-	if (alias != NULL)
-		bhnd_nv_free(alias);
-
-	return (error);
 }
 
 /**
