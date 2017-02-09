@@ -155,11 +155,13 @@ bhnd_nvram_cfe_attach(device_t dev)
 	}
 
 	/* Parse the NVRAM data */
-	error = bhnd_nvram_data_new(&bhnd_nvram_sprom_class, &data, io);
+	error = bhnd_nvram_data_new(cls, &data, io);
 	bhnd_nvram_io_free(io);
 
-	if (error)
+	if (error) {
+		device_printf(dev, "failed to parse NVRAM image: %d\n", error);
 		return (error);
+	}
 
 	/* Initialize the NVRAM provider */
 	params = (struct bhnd_nvram_store_init_params) {
@@ -171,8 +173,11 @@ bhnd_nvram_cfe_attach(device_t dev)
 	    &params);
 	bhnd_nvram_data_release(data);
 
-	if (error)
+	if (error) {
+		device_printf(dev, "error initializing NVRAM provider: %d\n",
+		    error);
 		return (error);
+	}
 
 	/* Register provider with the NVRAM plane */
 	if ((error = bhnd_nvram_plane_set_provider(sc->plane, sc->prov))) {
