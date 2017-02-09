@@ -168,7 +168,15 @@ r12a_read_chipid_vendor(struct rtwn_softc *sc, uint32_t reg_sys_cfg)
 static void
 r12au_adj_devcaps(struct rtwn_softc *sc)
 {
-	/* TODO: LDPC, STBC etc */
+	struct r12a_softc *rs = sc->sc_priv;
+	struct ieee80211com *ic = &sc->sc_ic;
+
+	if (rs->chip & R12A_CHIP_C_CUT) {
+		ic->ic_htcaps |= IEEE80211_HTCAP_LDPC |
+				 IEEE80211_HTC_TXLDPC;
+	}
+
+	/* TODO: STBC, VHT etc */
 }
 
 void
@@ -207,6 +215,7 @@ r12au_attach(struct rtwn_usb_softc *uc)
 	sc->sc_fw_reset			= r12a_fw_reset;
 	sc->sc_fw_download_enable	= r12a_fw_download_enable;
 #endif
+	sc->sc_llt_init			= r92c_llt_init;
 	sc->sc_set_page_size		= r12a_set_page_size;
 	sc->sc_lc_calib			= r12a_lc_calib;
 	sc->sc_iq_calib			= r12a_iq_calib;

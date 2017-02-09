@@ -157,10 +157,11 @@ r21au_adj_devcaps(struct rtwn_softc *sc)
 	struct ieee80211com *ic = &sc->sc_ic;
 	struct r12a_softc *rs = sc->sc_priv;
 
+	ic->ic_htcaps |= IEEE80211_HTC_TXLDPC;
 	if (rs->rs_radar != 0)
 		ic->ic_caps |= IEEE80211_C_DFS;
 
-	/* TODO: LDPC etc */
+	/* TODO: VHT */
 }
 
 void
@@ -200,6 +201,7 @@ r21au_attach(struct rtwn_usb_softc *uc)
 	sc->sc_fw_reset			= r21a_fw_reset;
 	sc->sc_fw_download_enable	= r12a_fw_download_enable;
 #endif
+	sc->sc_llt_init			= r92c_llt_init;
 	sc->sc_set_page_size 		= rtwn_nop_int_softc;
 	sc->sc_lc_calib			= rtwn_nop_softc;	/* XXX not used */
 	sc->sc_iq_calib			= r12a_iq_calib;
