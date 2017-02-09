@@ -94,8 +94,8 @@ static int			 bhnd_nvram_sprom_read_offset(
 static bool			 bhnd_sprom_is_external_immutable(
 				     const char *name);
 
-BHND_NVRAM_DATA_CLASS_DEFN(sprom, "Broadcom SPROM",
-    BHND_NVRAM_DATA_CAP_DEVPATHS, sizeof(struct bhnd_nvram_sprom))
+BHND_NVRAM_DATA_CLASS_DEFN(sprom, "Broadcom SPROM", 0,
+    sizeof(struct bhnd_nvram_sprom))
 
 #define	SPROM_COOKIE_TO_VID(_cookie)	\
 	(((struct bhnd_sprom_opcode_idx_entry *)(_cookie))->vid)
