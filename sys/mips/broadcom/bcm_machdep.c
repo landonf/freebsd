@@ -112,6 +112,8 @@ extern int	*end;
 static struct bcm_platform	 bcm_platform_data;
 static bool			 bcm_platform_data_avail = false;
 
+static struct bhnd_nvram_plane	*bcm_root_plane = NULL;
+
 struct bcm_platform *
 bcm_get_platform(void)
 {
@@ -120,6 +122,24 @@ bcm_get_platform(void)
 
 	return (&bcm_platform_data);
 }
+
+struct bhnd_nvram_plane *
+bcm_get_root_plane(void)
+{
+	if (bcm_root_plane == NULL)
+		panic("called before SI_SUB_KMEM");
+
+	return (bcm_root_plane);
+}
+
+static void
+bcm_init_root_plane(void *data __unused)
+{
+	/* Allocate empty root NVRAM plane */
+	if ((bcm_root_plane = bhnd_nvram_plane_new("root")) == NULL)
+		panic("bhnd_nvram_plane_new() failed");
+}
+SYSINIT(bcm_root_plane, SI_SUB_KMEM, SI_ORDER_ANY, bcm_init_root_plane, NULL);
 
 static bus_addr_t
 bcm_get_bus_addr(void)

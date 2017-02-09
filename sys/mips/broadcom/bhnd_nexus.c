@@ -91,6 +91,15 @@ bhnd_nexus_deactivate_resource(device_t dev, device_t child,
 }
 
 /**
+ * Default bhnd_nexus implementation of BHND_BUS_GET_NVRAM_PLANE().
+ */
+static struct bhnd_nvram_plane *
+bhnd_nexus_get_nvram_plane(device_t dev, device_t child)
+{
+	return (bcm_get_root_plane());
+}
+
+/**
  * Default bhnd_nexus implementation of BHND_BUS_IS_HW_DISABLED().
  */
 static bool
@@ -162,6 +171,7 @@ static device_method_t bhnd_nexus_methods[] = {
 	/* bhnd interface */
 	DEVMETHOD(bhnd_bus_activate_resource,	bhnd_nexus_activate_resource),
 	DEVMETHOD(bhnd_bus_deactivate_resource, bhnd_nexus_deactivate_resource),
+	DEVMETHOD(bhnd_bus_get_nvram_plane,	bhnd_nexus_get_nvram_plane),
 	DEVMETHOD(bhnd_bus_is_hw_disabled,	bhnd_nexus_is_hw_disabled),
 	DEVMETHOD(bhnd_bus_get_attach_type,	bhnd_nexus_get_attach_type),
 	DEVMETHOD(bhnd_bus_get_chipid,		bhnd_nexus_get_chipid),

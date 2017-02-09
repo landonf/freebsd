@@ -71,6 +71,7 @@ struct bcm_platform {
 };
 
 struct bcm_platform	*bcm_get_platform(void);
+struct bhnd_nvram_plane	*bcm_get_root_plane(void);
 
 uint64_t		 bcm_get_cpufreq(struct bcm_platform *bp);
 uint64_t		 bcm_get_sifreq(struct bcm_platform *bp);

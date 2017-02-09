@@ -58,6 +58,8 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_nvram_if.h"
 
+#include "bcm_machdep.h"
+
 #include "bcm_nvram_cfevar.h"
 
 /**
@@ -143,10 +145,7 @@ bhnd_nvram_cfe_attach(device_t dev)
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
-
-	sc->plane = bhnd_get_nvram_plane(dev);
-	if (sc->plane == NULL)
-		panic("missing NVRAM plane");
+	sc->plane = bcm_get_root_plane();
 
 	/* Locate NVRAM device via CFE */
 	io = bhnd_nvram_find_cfedev(dev, &dname, &cls);
