@@ -922,7 +922,7 @@ bhnd_pmu_res_masks(struct bhnd_pmu_softc *sc, uint32_t *pmin, uint32_t *pmax)
 
 	/* Apply nvram override to min mask */
 	error = bhnd_nvram_getvar_uint32(sc->chipc_dev, BHND_NVAR_RMIN, &nval);
-	if (error && error != ENOENT) {
+	if (error && error != ENOATTR) {
 		PMU_LOG(sc, "NVRAM error reading %s: %d\n",
 		    BHND_NVAR_RMIN, error);
 		return (error);
@@ -933,7 +933,7 @@ bhnd_pmu_res_masks(struct bhnd_pmu_softc *sc, uint32_t *pmin, uint32_t *pmax)
 
 	/* Apply nvram override to max mask */
 	error = bhnd_nvram_getvar_uint32(sc->chipc_dev, BHND_NVAR_RMAX, &nval);
-	if (error && error != ENOENT) {
+	if (error && error != ENOATTR) {
 		PMU_LOG(sc, "NVRAM error reading %s: %d\n",
 		    BHND_NVAR_RMAX, error);
 		return (error);
@@ -1069,7 +1069,7 @@ bhnd_pmu_res_init(struct bhnd_pmu_softc *sc)
 		snprintf(name, sizeof(name), "r%dt", i);
 		error = bhnd_nvram_getvar_uint32(sc->chipc_dev, name, &val);
 
-		if (error == ENOENT) {
+		if (error == ENOATTR) {
 			continue;
 		} else if (error) {
 			PMU_LOG(sc, "NVRAM error reading %s: %d\n",
@@ -1144,7 +1144,7 @@ bhnd_pmu_res_init(struct bhnd_pmu_softc *sc)
 		snprintf(name, sizeof(name), "r%dd", i);
 		error = bhnd_nvram_getvar_uint32(sc->chipc_dev, name, &val);
 
-		if (error == ENOENT) {
+		if (error == ENOATTR) {
 			continue;
 		} else if (error) {
 			PMU_LOG(sc, "NVRAM error reading %s: %d\n", name,
@@ -2695,7 +2695,7 @@ bhnd_pmu_init(struct bhnd_pmu_softc *sc)
 
 	/* If not available, log any real errors, and then try to measure it */
 	if (error) {
-		if (error != ENOENT)
+		if (error != ENOATTR)
 			PMU_LOG(sc, "error fetching xtalfreq: %d\n", error);
 
 		xtalfreq = bhnd_pmu_measure_alpclk(sc);
