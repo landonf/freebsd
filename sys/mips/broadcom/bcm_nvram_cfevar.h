@@ -41,7 +41,8 @@
 /** bhnd_nvram_cfe driver instance state. */
 struct bhnd_nvram_cfe_softc {
 	device_t		 	 dev;
-	struct bhnd_nvram_store		*store;	/**< nvram store */
+	bhnd_nvram_plane		*plane;
+	bhnd_nvram_provider		*prov;
 };
 
 #endif /* _MIPS_BROADCOM_BCM_NVRAM_CFE_H_ */

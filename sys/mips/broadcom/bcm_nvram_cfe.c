@@ -133,14 +133,20 @@ bhnd_nvram_cfe_probe(device_t dev)
 static int
 bhnd_nvram_cfe_attach(device_t dev)
 {
-	struct bhnd_nvram_cfe_softc	*sc;
-	bhnd_nvram_data_class		*cls;
-	struct bhnd_nvram_io		*io;
-	char				*dname;
-	int				 error;
+	struct bhnd_nvram_cfe_softc		*sc;
+	bhnd_nvram_data_class			*cls;
+	struct bhnd_nvram_data			*data;
+	struct bhnd_nvram_io			*io;
+	char					*dname;
+	struct bhnd_nvram_store_init_params	 params;
+	int					 error;
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
+
+	sc->plane = bhnd_get_nvram_plane(dev);
+	if (sc->plane == NULL)
+		panic("missing NVRAM plane");
 
 	/* Locate NVRAM device via CFE */
 	io = bhnd_nvram_find_cfedev(dev, &dname, &cls);
@@ -149,13 +155,36 @@ bhnd_nvram_cfe_attach(device_t dev)
 		return (ENXIO);
 	}
 
-	/* Initialize NVRAM store and free the I/O context */
-	error = bhnd_nvram_store_parse_new(&sc->store, io, cls);
+	/* Parse the NVRAM data */
+	error = bhnd_nvram_data_new(&bhnd_nvram_sprom_class, &data, io);
 	bhnd_nvram_io_free(io);
+
 	if (error)
 		return (error);
 
-	return (error);
+	/* Initialize the NVRAM provider */
+	params = (struct bhnd_nvram_store_init_params) {
+		.dev = dev,
+		.data = data
+	};
+
+	error = bhnd_nvram_provider_new(&sc->prov, &bhnd_nvram_store_provider,
+	    &params);
+	bhnd_nvram_data_release(data);
+
+	if (error)
+		return (error);
+
+	/* Register provider with the NVRAM plane */
+	if ((error = bhnd_nvram_plane_set_provider(sc->plane, sc->prov))) {
+		device_printf(dev, "failed to map %s into NVRAM plane: "
+		    "%d\n", device_get_nameunit(dev), error);
+
+		bhnd_nvram_provider_release(sc->prov);
+		return (error);
+	}
+
+	return (0);
 }
 
 static int
@@ -177,7 +206,8 @@ bhnd_nvram_cfe_detach(device_t dev)
 
 	sc = device_get_softc(dev);
 
-	bhnd_nvram_store_free(sc->store);
+	// XXX TODO: Disconnect our device from the NVRAM provider
+	bhnd_nvram_provider_release(sc->prov);
 
 	return (0);
 }
@@ -186,18 +216,20 @@ static int
 bhnd_nvram_cfe_getvar(device_t dev, const char *name, void *buf, size_t *len,
     bhnd_nvram_type type)
 {
-	struct bhnd_nvram_cfe_softc *sc = device_get_softc(dev);
+	// struct bhnd_nvram_cfe_softc *sc = device_get_softc(dev);
 
-	return (bhnd_nvram_store_getvar(sc->store, name, buf, len, type));
+	// XXX TODO
+	return (ENOENT);
 }
 
 static int
 bhnd_nvram_cfe_setvar(device_t dev, const char *name, const void *buf,
     size_t len, bhnd_nvram_type type)
 {
-	struct bhnd_nvram_cfe_softc *sc = device_get_softc(dev);
+	// struct bhnd_nvram_cfe_softc *sc = device_get_softc(dev);
 
-	return (bhnd_nvram_store_setvar(sc->store, name, buf, len, type));
+	// XXX TODO
+	return (ENOENT);
 }
 
 /**

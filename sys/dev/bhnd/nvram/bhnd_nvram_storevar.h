@@ -84,18 +84,6 @@ typedef enum {
 	BHND_NVSTORE_PATH_ALIAS		= 1	/**< path is an alias reference */
 } bhnd_nvstore_path_type;
 
-/**
- * NVRAM variable namespaces.
- */
-typedef enum {
-	BHND_NVSTORE_NAME_INTERNAL	= 1,	/**< internal namespace. permits
-						     use of reserved devpath and
-						     alias name prefixes. */
-	BHND_NVSTORE_NAME_EXTERNAL	= 2,	/**< external namespace. forbids
-						     use of name prefixes used
-						     for device path handling */
-} bhnd_nvstore_name_type;
-
 bhnd_nvstore_path	*bhnd_nvstore_path_new(const char *path_str,
 			     size_t path_len);
 bhnd_nvstore_path	*bhnd_nvstore_path_retain(bhnd_nvstore_path *path);
@@ -158,7 +146,6 @@ const char		*bhnd_nvstore_parse_relpath(const char *parent,
 const char		*bhnd_nvstore_parse_external_path(const char *pathname,
 			     size_t *pathlen);
 int			 bhnd_nvstore_parse_name_info(const char *name,
-			     bhnd_nvstore_name_type name_type,
 			     uint32_t data_caps, bhnd_nvstore_name_info *info);
 
 /**

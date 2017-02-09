@@ -50,7 +50,7 @@ int	bhnd_sprom_detach(device_t dev);
  */
 struct bhnd_sprom_softc {
 	device_t			 dev;
-	bhnd_nvram_plane		*plane;	/**< nvram plane */
+	bhnd_nvram_plane		*plane;
 	bhnd_nvram_provider		*prov;
 };
 
