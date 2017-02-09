@@ -594,7 +594,6 @@ bhnd_nvstore_parse_path_entries(struct bhnd_nvram_store *sc)
 	/* Skip path registration if the data source does not support device
 	 * paths. */
 	if (!(sc->data_caps & BHND_NVRAM_DATA_CAP_DEVPATHS)) {
-		printf("SKIP PATH PARSING");
 		BHND_NV_ASSERT(sc->root_path != NULL, ("missing root path"));
 		return (0);
 	}
