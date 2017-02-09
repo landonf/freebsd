@@ -279,7 +279,7 @@ bhnd_nvram_plane_open_path(bhnd_nvram_plane *plane, const char *path,
 	BHND_NVPLANE_LOCK_RO(plane);
 
 	if ((provider = plane->provider) == NULL) {
-		BHND_NVPLANE_UNLOCK_RW(plane);
+		BHND_NVPLANE_UNLOCK_RO(plane);
 		return (ENXIO);
 	}
 
