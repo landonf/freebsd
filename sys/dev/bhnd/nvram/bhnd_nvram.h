@@ -73,6 +73,18 @@ typedef uintptr_t	bhnd_nvram_phandle;
 typedef uint8_t	bhnd_nvram_bool_t;
 
 /**
+ * NVRAM provider sync callback.
+ * 
+ * @param prov	The requesting provider.
+ * @param force	If true, perform the write immediately. If false, the NVRAM
+ *		provider may arbitrarily delay or coalesce writes to prevent
+ *		unnecessary flash memory wear.
+ * @param ctx	Prevously registered callback context.
+ */
+typedef int	(bhnd_nvram_provider_sync_fn)(bhnd_nvram_provider *prov,
+		     bool force, void *ctx);
+
+/**
  * NVRAM data sources supported by bhnd(4) devices.
  */
 typedef enum {

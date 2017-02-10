@@ -43,11 +43,23 @@
 #include "bhnd_nvram_data.h"
 
 /**
+ * NVRAM sync callback.
+ * 
+ * @param 
+ * @param force	If true, perform the write immediately. If false, the NVRAM
+ *		provider may arbitrarily delay or coalesce writes to prevent
+ *		unnecessary flash memory wear.
+ * @param ctx	Opaque context.
+ */
+typedef int (bhnd_nvram_store_sync_f)(struct bhnd_nvram_provider *prov, bool force, void *ctx);
+
+/**
  * NVRAM store initialization parameters.
  */
 struct bhnd_nvram_store_init_params {
-	device_t		dev;	/**< NVRAM device, or NULL */
-	struct bhnd_nvram_data *data;	/**< NVRAM data */
+	struct bhnd_nvram_data	*data;		/**< NVRAM data */
+	bhnd_nvram_store_sync_f	 sync;		/**< sync callback */
+	void			*sync_ctx;	/**< sync context */
 };
 
 DECLARE_CLASS(bhnd_nvram_store_provider);

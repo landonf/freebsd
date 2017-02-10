@@ -40,6 +40,8 @@ INTERFACE bhnd_nvram_prov;
 #
 
 HEADER {
+	#include <sys/time.h>
+
 	#include <dev/bhnd/nvram/bhnd_nvram.h>
 }
 
@@ -165,6 +167,17 @@ METHOD int init {
 METHOD void fini {
 	bhnd_nvram_provider	*provider;
 } DEFAULT bhnd_nvram_prov_null_fini;
+
+/**
+ * Register a function which will be called by BHND_NVRAM_PROV_SYNC() to
+ * perform a write of pending changes to non-volatile storage.
+ */
+METHOD void set_sync_callback {
+	bhnd_nvram_provider		*provider;
+	bhnd_nvram_provider_sync_fn	*fn;
+	void				*ctx;
+	sbintime_t			 min_sync_interval;
+} DEFAULT bhnd_nvram_prov_null_set_sync_callback;
 
 /**
  * Request that pending changes be written out to the provider's non-volatile
