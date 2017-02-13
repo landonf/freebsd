@@ -104,6 +104,7 @@ static pci_vendor_info_t em_vendor_info_array[] =
 	PVID(0x8086, E1000_DEV_ID_82571EB_QUAD_COPPER_LP, "Intel(R) PRO/1000 Network Connection"),
 	PVID(0x8086, E1000_DEV_ID_82571EB_QUAD_FIBER, "Intel(R) PRO/1000 Network Connection"), 
 	PVID(0x8086, E1000_DEV_ID_82571PT_QUAD_COPPER, "Intel(R) PRO/1000 Network Connection"),
+	PVID(0x8086, E1000_DEV_ID_82572EI,		"Intel(R) PRO/1000 Network Connection"),
 	PVID(0x8086, E1000_DEV_ID_82572EI_COPPER,	"Intel(R) PRO/1000 Network Connection"),
 	PVID(0x8086, E1000_DEV_ID_82572EI_FIBER,	"Intel(R) PRO/1000 Network Connection"), 
 	PVID(0x8086, E1000_DEV_ID_82572EI_SERDES,	"Intel(R) PRO/1000 Network Connection"), 
@@ -1623,6 +1624,11 @@ em_if_timer(if_ctx_t ctx, uint16_t qid)
 	struct em_rx_queue *que;
 	int i;
 	int trigger = 0; 
+
+	if (qid != 0) {
+		/* XXX all this stuff is per-adapter */
+		return;
+	}
 
 	em_if_update_admin_status(ctx); 
 	em_update_stats_counters(adapter);
