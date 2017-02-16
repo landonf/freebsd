@@ -51,7 +51,6 @@ __FBSDID("$FreeBSD$");
 
 #include "chipcreg.h"
 #include "chipcvar.h"
-#include "chipc_slicer.h"
 
 #include "chipc_spi.h"
 
@@ -129,8 +128,6 @@ chipc_spi_attach(device_t dev)
 			error = ENXIO;
 			goto failed;
 		}
-
-		chipc_register_slicer(ccaps->flash_type);
 
 		if ((error = device_probe_and_attach(flash_dev))) {
 			device_printf(dev, "failed to attach %s: %d\n",
