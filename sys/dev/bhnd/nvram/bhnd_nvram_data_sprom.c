@@ -311,6 +311,12 @@ bhnd_nvram_sprom_probe(struct bhnd_nvram_io *io)
 	return (BHND_NVRAM_DATA_PROBE_DEFAULT);
 }
 
+static int
+bhnd_nvram_sprom_getvar_direct(struct bhnd_nvram_io *io, const char *name,
+    void *buf, size_t *len, bhnd_nvram_type type)
+{
+	return (ENXIO);
+}
 
 /**
  * Return the SPROM layout definition for the given @p sromrev, or NULL if

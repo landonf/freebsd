@@ -125,6 +125,13 @@ bhnd_nvram_btxt_probe(struct bhnd_nvram_io *io)
 }
 
 static int
+bhnd_nvram_btxt_getvar_direct(struct bhnd_nvram_io *io, const char *name,
+    void *buf, size_t *len, bhnd_nvram_type type)
+{
+	return (ENXIO);
+}
+
+static int
 bhnd_nvram_btxt_serialize(bhnd_nvram_data_class *cls, bhnd_nvram_plist *props,
     bhnd_nvram_plist *options, void *outp, size_t *olen)
 {
