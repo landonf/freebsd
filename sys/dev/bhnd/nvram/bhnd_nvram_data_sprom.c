@@ -76,6 +76,13 @@ static int			 bhnd_nvram_sprom_write_var(
 				     bhnd_nvram_val *value,
 				     struct bhnd_nvram_io *io);
 
+static int			 bhnd_nvram_sprom_read_var(
+				     struct bhnd_sprom_opcode_state *state,
+				     struct bhnd_sprom_opcode_idx_entry *entry,
+				     struct bhnd_nvram_io *io,
+				     union bhnd_nvram_sprom_storage *storage,
+				     bhnd_nvram_val *val);
+
 static int			 bhnd_nvram_sprom_write_offset(
 				     const struct bhnd_nvram_vardefn *var,
 				     struct bhnd_nvram_io *data,
@@ -293,7 +300,62 @@ static int
 bhnd_nvram_sprom_getvar_direct(struct bhnd_nvram_io *io, const char *name,
     void *buf, size_t *len, bhnd_nvram_type type)
 {
-	return (ENXIO);
+	const bhnd_sprom_layout		*layout;
+	bhnd_sprom_opcode_state		 state;
+	const struct bhnd_nvram_vardefn	*var;
+	size_t				 vid;
+	int				 error;
+
+	/* Look up the variable definition and ID */
+	if ((var = bhnd_nvram_find_vardefn(name)) == NULL)
+		return (ENOENT);
+	
+	vid = bhnd_nvram_get_vardefn_id(var);
+
+	/* Identify the SPROM image layout */
+	if ((error = bhnd_nvram_sprom_ident(io, &layout)))
+		return (error);
+
+	/* Initialize SPROM layout interpreter */
+	if ((error = bhnd_sprom_opcode_init(&state, layout))) {
+		BHND_NV_LOG("error initializing opcode state: %d\n", error);
+		return (ENXIO);
+	}
+
+	/* Find SPROM layout entry for the requested variable */
+	while ((error = bhnd_sprom_opcode_next_var(&state)) == 0) {
+		bhnd_sprom_opcode_idx_entry	entry;
+		union bhnd_nvram_sprom_storage	storage;
+		bhnd_nvram_val			val;
+	
+		/* Fetch the variable's entry state */
+		if ((error = bhnd_sprom_opcode_init_entry(&state, &entry)))
+			return (error);
+
+		/* Match against expected VID */
+		if (entry.vid != vid)
+			continue;
+
+		/* Decode variable to a new value instance */
+		error = bhnd_nvram_sprom_read_var(&state, &entry, io, &storage,
+		    &val);
+		if (error)
+			return (error);
+
+		/* Perform value coercion */
+		error = bhnd_nvram_val_encode(&val, buf, len, type);
+
+		/* Clean up */
+		bhnd_nvram_val_release(&val);
+		return (error);
+	}
+
+	/* Hit EOF without matching the requested variable? */
+	if (error == ENOENT)
+		return (ENOENT);
+
+	/* Some other parse error occured */
+	return (error);
 }
 
 /**
@@ -349,7 +411,7 @@ bhnd_nvram_sprom_write_var(bhnd_sprom_opcode_state *state,
 	var_base_type = bhnd_nvram_base_type(var->type);
 
 	/* Fetch the element count from the SPROM variable layout definition */
-	if ((error = bhnd_sprom_opcode_parse_var(state, entry)))
+	if ((error = bhnd_sprom_opcode_eval_var(state, entry)))
 		return (error);
 
 	nelem = state->var.nelem;
@@ -978,9 +1040,15 @@ bhnd_nvram_sprom_read_offset(const struct bhnd_nvram_vardefn *var,
 }
 
 /**
- * Common variable decoding; fetches and decodes variable to @p val,
- * using @p storage for actual data storage.
+ * Read a SPROM variable value from @p io.
  * 
+ * @param	state		The SPROM opcode state describing the layout of @p io.
+ * @param	entry		The variable's SPROM opcode index entry.
+ * @param	io		The input I/O context.
+ * @param	storage		Storage to be used with @p val.
+ * @param[out]	val		Value instance to be initialized with the
+ *				parsed variable data.
+ *
  * The returned @p val instance will hold a borrowed reference to @p storage,
  * and must be copied via bhnd_nvram_val_copy() if it will be referenced beyond
  * the lifetime of @p storage.
@@ -989,13 +1057,12 @@ bhnd_nvram_sprom_read_offset(const struct bhnd_nvram_vardefn *var,
  * via bhnd_nvram_val_release().
  */
 static int
-bhnd_nvram_sprom_getvar_common(struct bhnd_nvram_data *nv, void *cookiep,
+bhnd_nvram_sprom_read_var(struct bhnd_sprom_opcode_state *state,
+    struct bhnd_sprom_opcode_idx_entry *entry, struct bhnd_nvram_io *io,
     union bhnd_nvram_sprom_storage *storage, bhnd_nvram_val *val)
 {
-	struct bhnd_nvram_sprom		*sp;
-	bhnd_sprom_opcode_idx_entry	*entry;
-	const struct bhnd_nvram_vardefn	*var;
 	union bhnd_nvram_sprom_storage	*inp;
+	const struct bhnd_nvram_vardefn	*var;
 	bhnd_nvram_type			 var_btype;
 	uint32_t			 intv;
 	size_t				 ilen, ipos, iwidth;
@@ -1003,14 +1070,9 @@ bhnd_nvram_sprom_getvar_common(struct bhnd_nvram_data *nv, void *cookiep,
 	bool				 all_bits_set;
 	int				 error;
 
-	sp = (struct bhnd_nvram_sprom *)nv;
-	entry = cookiep;
-
-	BHND_NV_ASSERT(cookiep != NULL, ("NULL variable cookiep"));
-
 	/* Fetch canonical variable definition */
-	var = SPROM_COOKIE_TO_NVRAM_VAR(cookiep);
-	BHND_NV_ASSERT(var != NULL, ("invalid cookiep %p", cookiep));
+	var = bhnd_nvram_get_vardefn(entry->vid);
+	BHND_NV_ASSERT(var != NULL, ("invalid entry"));
 
 	/*
 	 * Fetch the array length from the SPROM variable definition.
@@ -1019,12 +1081,12 @@ bhnd_nvram_sprom_getvar_common(struct bhnd_nvram_data *nv, void *cookiep,
 	 * canonical NVRAM variable definition, but some SPROM layouts may
 	 * define a smaller element count.
 	 */
-	if ((error = bhnd_sprom_opcode_parse_var(&sp->state, entry))) {
+	if ((error = bhnd_sprom_opcode_eval_var(state, entry))) {
 		BHND_NV_LOG("variable evaluation failed: %d\n", error);
 		return (error);
 	}
 
-	nelem = sp->state.var.nelem;
+	nelem = state->var.nelem;
 	if (nelem > var->nelem) {
 		BHND_NV_LOG("SPROM array element count %zu cannot be "
 		    "represented by '%s' element count of %hhu\n", nelem,
@@ -1059,7 +1121,7 @@ bhnd_nvram_sprom_getvar_common(struct bhnd_nvram_data *nv, void *cookiep,
 	/*
 	 * Decode the SPROM data, iteratively decoding up to nelem values.
 	 */
-	if ((error = bhnd_sprom_opcode_seek(&sp->state, entry))) {
+	if ((error = bhnd_sprom_opcode_seek(state, entry))) {
 		BHND_NV_LOG("variable seek failed: %d\n", error);
 		return (error);
 	}
@@ -1070,7 +1132,7 @@ bhnd_nvram_sprom_getvar_common(struct bhnd_nvram_data *nv, void *cookiep,
 		all_bits_set = true;
 	else
 		all_bits_set = false;
-	while ((error = bhnd_sprom_opcode_next_binding(&sp->state)) == 0) {
+	while ((error = bhnd_sprom_opcode_next_binding(state)) == 0) {
 		bhnd_sprom_opcode_bind	*binding;
 		bhnd_sprom_opcode_var	*binding_var;
 		bhnd_nvram_type		 intv_type;
@@ -1080,12 +1142,12 @@ bhnd_nvram_sprom_getvar_common(struct bhnd_nvram_data *nv, void *cookiep,
 		void			*ptr;
 
 		BHND_NV_ASSERT(
-		    sp->state.var_state >= SPROM_OPCODE_VAR_STATE_OPEN,
+		    state->var_state >= SPROM_OPCODE_VAR_STATE_OPEN,
 		    ("invalid var state"));
-		BHND_NV_ASSERT(sp->state.var.have_bind, ("invalid bind state"));
+		BHND_NV_ASSERT(state->var.have_bind, ("invalid bind state"));
 
-		binding_var = &sp->state.var;
-		binding = &sp->state.var.bind;
+		binding_var = &state->var;
+		binding = &state->var.bind;
 
 		if (ipos >= nelem) {
 			BHND_NV_LOG("output skip %u positioned "
@@ -1096,17 +1158,16 @@ bhnd_nvram_sprom_getvar_common(struct bhnd_nvram_data *nv, void *cookiep,
 
 		/* Calculate input skip bytes for this binding */
 		skip_in_bytes = binding->skip_in;
-		error = bhnd_sprom_opcode_apply_scale(&sp->state,
-		    &skip_in_bytes);
+		error = bhnd_sprom_opcode_apply_scale(state, &skip_in_bytes);
 		if (error)
 			return (error);
 
 		/* Bind */
-		offset = sp->state.offset;
+		offset = state->offset;
 		for (size_t i = 0; i < binding->count; i++) {
 			/* Read the offset value, OR'ing with the current
 			 * value of intv */
-			error = bhnd_nvram_sprom_read_offset(var, sp->data,
+			error = bhnd_nvram_sprom_read_offset(var, io,
 			    binding_var->base_type,
 			    offset,
 			    binding_var->mask,
@@ -1196,6 +1257,39 @@ bhnd_nvram_sprom_getvar_common(struct bhnd_nvram_data *nv, void *cookiep,
 	return (bhnd_nvram_val_init(val, var->fmt, inp, ilen, var->type,
 	    BHND_NVRAM_VAL_BORROW_DATA));
 		return (error);
+}
+
+
+/**
+ * Common variable decoding; fetches and decodes variable to @p val,
+ * using @p storage for actual data storage.
+ * 
+ * The returned @p val instance will hold a borrowed reference to @p storage,
+ * and must be copied via bhnd_nvram_val_copy() if it will be referenced beyond
+ * the lifetime of @p storage.
+ *
+ * The caller is responsible for releasing any allocated value state
+ * via bhnd_nvram_val_release().
+ */
+static int
+bhnd_nvram_sprom_getvar_common(struct bhnd_nvram_data *nv, void *cookiep,
+    union bhnd_nvram_sprom_storage *storage, bhnd_nvram_val *val)
+{
+	struct bhnd_nvram_sprom		*sp;
+	bhnd_sprom_opcode_idx_entry	*entry;
+	const struct bhnd_nvram_vardefn	*var;
+
+	BHND_NV_ASSERT(cookiep != NULL, ("NULL variable cookiep"));
+
+	sp = (struct bhnd_nvram_sprom *)nv;
+	entry = cookiep;
+
+	/* Fetch canonical variable definition */
+	var = SPROM_COOKIE_TO_NVRAM_VAR(cookiep);
+	BHND_NV_ASSERT(var != NULL, ("invalid cookiep %p", cookiep));
+
+	return (bhnd_nvram_sprom_read_var(&sp->state, entry, sp->data, storage,
+	    val));
 }
 
 static int
