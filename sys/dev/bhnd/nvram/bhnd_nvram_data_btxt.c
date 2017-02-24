@@ -160,7 +160,7 @@ bhnd_nvram_btxt_getvar_direct(struct bhnd_nvram_io *io, const char *name,
 	namepos = 0;
 	vlen = 0;
 
-	while (offset < limit) {
+	while ((offset - bufpos) < limit) {
 		BHND_NV_ASSERT(bufpos <= buflen,
 		    ("buf position invalid (%zu > %zu)", bufpos, buflen));
 		BHND_NV_ASSERT(buflen <= sizeof(buf),
@@ -168,6 +168,8 @@ bhnd_nvram_btxt_getvar_direct(struct bhnd_nvram_io *io, const char *name,
 
 		/* Repopulate our parse buffer? */
 		if (buflen - bufpos == 0) {
+			BHND_NV_ASSERT(offset < limit, ("offset overrun"));
+
 			buflen = bhnd_nv_ummin(sizeof(buf), limit - offset);
 			bufpos = 0;
 
@@ -266,6 +268,7 @@ bhnd_nvram_btxt_getvar_direct(struct bhnd_nvram_io *io, const char *name,
 				/* Consumed full buffer looking for newline; 
 				 * force repopulation of the buffer and
 				 * retry */
+				pstate = BTXT_PARSE_NEXT_LINE;
 				bufpos = buflen;
 			}
 
@@ -338,7 +341,7 @@ bhnd_nvram_btxt_getvar_direct(struct bhnd_nvram_io *io, const char *name,
 	}
 
 	/* Variable not found */
-	return (ENXIO);
+	return (ENOENT);
 }
 
 static int

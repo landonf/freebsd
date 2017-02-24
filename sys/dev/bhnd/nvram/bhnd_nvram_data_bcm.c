@@ -209,7 +209,7 @@ bhnd_nvram_bcm_getvar_direct_common(struct bhnd_nvram_io *io, const char *name,
 	namepos = 0;
 	vlen = 0;
 
-	while (offset < limit) {
+	while ((offset - bufpos) < limit) {
 		BHND_NV_ASSERT(bufpos <= buflen,
 		    ("buf position invalid (%zu > %zu)", bufpos, buflen));
 		BHND_NV_ASSERT(buflen <= sizeof(buf),
@@ -217,6 +217,8 @@ bhnd_nvram_bcm_getvar_direct_common(struct bhnd_nvram_io *io, const char *name,
 
 		/* Repopulate our parse buffer? */
 		if (buflen - bufpos == 0) {
+			BHND_NV_ASSERT(offset < limit, ("offset overrun"));
+
 			buflen = bhnd_nv_ummin(sizeof(buf), limit - offset);
 			bufpos = 0;
 
@@ -362,7 +364,7 @@ bhnd_nvram_bcm_getvar_direct_common(struct bhnd_nvram_io *io, const char *name,
 	}
 
 	/* Variable not found */
-	return (ENXIO);
+	return (ENOENT);
 }
 
 static int
