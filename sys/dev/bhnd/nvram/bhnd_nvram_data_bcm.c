@@ -210,6 +210,11 @@ bhnd_nvram_bcm_getvar_direct_common(struct bhnd_nvram_io *io, const char *name,
 	vlen = 0;
 
 	while (offset < limit) {
+		BHND_NV_ASSERT(bufpos <= buflen,
+		    ("buf position invalid (%zu > %zu)", bufpos, buflen));
+		BHND_NV_ASSERT(buflen <= sizeof(buf),
+		    ("buf length invalid (%zu > %zu", buflen, sizeof(buf)));
+
 		/* Repopulate our parse buffer? */
 		if (buflen - bufpos == 0) {
 			buflen = bhnd_nv_ummin(sizeof(buf), limit - offset);
@@ -265,7 +270,9 @@ bhnd_nvram_bcm_getvar_direct_common(struct bhnd_nvram_io *io, const char *name,
 			BHND_NV_ASSERT(buflen - bufpos > 0, ("empty buffer!"));
 
 			if (buf[bufpos] == '=') {
-				/* Key fully matched; now parse the value */
+				/* Key fully matched; advance past '=' and
+				 * parse the value */
+				bufpos++;
 				pstate = BCM_PARSE_VALUE_START;
 			} else {
 				/* No match; advance to next entry and restart
@@ -279,13 +286,13 @@ bhnd_nvram_bcm_getvar_direct_common(struct bhnd_nvram_io *io, const char *name,
 			const char *p;
 
 			/* Scan for a '\0' terminator */
-			p = memchr(&buf[bufpos], '\0', buflen - bufpos);
+			p = memchr(buf+bufpos, '\0', buflen - bufpos);
 
 			if (p != NULL) {
 				/* Found entry terminator; restart name
 				 * matching at next entry */
 				pstate = BCM_PARSE_KEY_START;
-				bufpos += (p - buf) + 1 /* skip '\0' */;
+				bufpos = (p - buf) + 1 /* skip '\0' */;
 			} else {
 				/* Consumed full buffer looking for '\0'; 
 				 * force repopulation of the buffer and
@@ -300,7 +307,7 @@ bhnd_nvram_bcm_getvar_direct_common(struct bhnd_nvram_io *io, const char *name,
 			const char *p;
 
 			/* Scan for a '\0' terminator */
-			p = memchr(&buf[bufpos], '\0', buflen - bufpos);
+			p = memchr(buf+bufpos, '\0', buflen - bufpos);
 
 			if (p != NULL) {
 				/* Found entry terminator; parse the value */
@@ -318,7 +325,7 @@ bhnd_nvram_bcm_getvar_direct_common(struct bhnd_nvram_io *io, const char *name,
 
 				/* Move existing value data to start of
 				 * buffer */
-				memmove(buf, &buf[bufpos], buflen - bufpos);
+				memmove(buf, buf+bufpos, buflen - bufpos);
 				buflen = bufpos;
 				bufpos = 0;
 
@@ -328,7 +335,7 @@ bhnd_nvram_bcm_getvar_direct_common(struct bhnd_nvram_io *io, const char *name,
 				    limit - offset);
 
 				error = bhnd_nvram_io_read(io, offset,
-				    &buf[buflen], nread);
+				    buf+buflen, nread);
 				if (error)
 					return (error);
 
@@ -349,11 +356,12 @@ bhnd_nvram_bcm_getvar_direct_common(struct bhnd_nvram_io *io, const char *name,
 		case BCM_PARSE_VALUE:
 			BHND_NV_ASSERT(vlen <= buflen, ("value buf overrun"));
 
-			return (bhnd_nvram_value_coerce(&buf[bufpos], vlen,
+			return (bhnd_nvram_value_coerce(buf+bufpos, vlen,
 			    BHND_NVRAM_TYPE_STRING, outp, olen, otype));
 		}
 	}
 
+	/* Variable not found */
 	return (ENXIO);
 }
 
