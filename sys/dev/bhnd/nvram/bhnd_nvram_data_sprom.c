@@ -68,8 +68,7 @@ static const bhnd_sprom_layout  *bhnd_nvram_sprom_get_layout(uint8_t sromrev);
 
 static int			 bhnd_nvram_sprom_ident(
 				     struct bhnd_nvram_io *io,
-				     const bhnd_sprom_layout **ident,
-				     struct bhnd_nvram_io **shadow);
+				     const bhnd_sprom_layout **ident);
 
 static int			 bhnd_nvram_sprom_write_var(
 				     bhnd_sprom_opcode_state *state,
@@ -153,10 +152,6 @@ bhnd_nvram_sprom_check_magic(struct bhnd_nvram_io *io,
  *
  * @param	io	An I/O context mapping the SPROM data to be identified.
  * @param[out]	ident	On success, the identified SPROM layout.
- * @param[out]	shadow	On success, a correctly sized iobuf instance mapping
- *			a copy of the identified SPROM image. The caller is
- *			responsible for deallocating this instance via
- *			bhnd_nvram_io_free()
  *
  * @retval 0		success
  * @retval non-zero	If identifying @p io otherwise fails, a regular unix
@@ -164,77 +159,69 @@ bhnd_nvram_sprom_check_magic(struct bhnd_nvram_io *io,
  */
 static int
 bhnd_nvram_sprom_ident(struct bhnd_nvram_io *io,
-    const bhnd_sprom_layout **ident, struct bhnd_nvram_io **shadow)
+    const bhnd_sprom_layout **ident)
 {
-	struct bhnd_nvram_io	*buf;
-	uint8_t			 crc;
-	size_t			 crc_errors;
-	size_t			 sprom_sz_max;
-	int			 error;
+	uint8_t	crc;
+	size_t	crc_errors;
+	size_t	nbytes;
+	int	error;
 
-	/* Find the largest SPROM layout size */
-	sprom_sz_max = 0;
-	for (size_t i = 0; i < bhnd_sprom_num_layouts; i++) {
-		sprom_sz_max = bhnd_nv_ummax(sprom_sz_max,
-		    bhnd_sprom_layouts[i].size);
-	}
-
-	/* Allocate backing buffer and initialize CRC state */
-	buf = bhnd_nvram_iobuf_empty(0, sprom_sz_max);
 	crc = BHND_NVRAM_CRC8_INITIAL;
 	crc_errors = 0;
+	nbytes = 0;
 
 	/* We iterate the SPROM layouts smallest to largest, allowing us to
 	 * perform incremental checksum calculation */
 	for (size_t i = 0; i < bhnd_sprom_num_layouts; i++) {
 		const bhnd_sprom_layout	*layout;
-		void			*ptr;
-		size_t			 nbytes, nr;
+		u_char			 buf[512];
+		size_t			 nread;
 		uint16_t		 magic;
 		uint8_t			 srev;
 		bool			 crc_valid;
 		bool			 have_magic;
 
 		layout = &bhnd_sprom_layouts[i];
-		nbytes = bhnd_nvram_io_getsize(buf);
 
-		if ((layout->flags & SPROM_LAYOUT_MAGIC_NONE)) {
+		have_magic = true;
+		if ((layout->flags & SPROM_LAYOUT_MAGIC_NONE))
 			have_magic = false;
-		} else {
-			have_magic = true;
+
+		/*
+		 * Read image data and update CRC (errors are reported
+		 * after the signature check)
+		 * 
+		 * Layout instances must be ordered from smallest to largest by
+		 * the nvram_map compiler, allowing us to incrementally update
+		 * our CRC.
+		 */
+		if (nbytes > layout->size)
+			BHND_NV_PANIC("SPROM layout defined out-of-order");
+
+		nread = layout->size - nbytes;
+
+		while (nread > 0) {
+			size_t nr;
+
+			nr = bhnd_nv_ummin(nread, sizeof(buf));
+
+			if ((error = bhnd_nvram_io_read(io, nbytes, buf, nr)))
+				return (error);
+
+			crc = bhnd_nvram_crc8(buf, nr, crc);
+			crc_valid = (crc == BHND_NVRAM_CRC8_VALID);
+			if (!crc_valid)
+				crc_errors++;
+
+			nread -= nr;
+			nbytes += nr;
 		}
 
-		/* Layout instances must be ordered from smallest to largest by
-		 * the nvram_map compiler */
-		if (nbytes > layout->size)
-			BHND_NV_PANIC("SPROM layout is defined out-of-order");
-
-		/* Calculate number of additional bytes to be read */
-		nr = layout->size - nbytes;
-
-		/* Adjust the buffer size and fetch a write pointer */
-		if ((error = bhnd_nvram_io_setsize(buf, layout->size)))
-			goto failed;
-
-		error = bhnd_nvram_io_write_ptr(buf, nbytes, &ptr, nr, NULL);
-		if (error)
-			goto failed;
-
-		/* Read image data and update CRC (errors are reported
-		 * after the signature check) */
-		if ((error = bhnd_nvram_io_read(io, nbytes, ptr, nr)))
-			goto failed;
-
-		crc = bhnd_nvram_crc8(ptr, nr, crc);
-		crc_valid = (crc == BHND_NVRAM_CRC8_VALID);
-		if (!crc_valid)
-			crc_errors++;
-
-		/* Fetch SPROM revision */
-		error = bhnd_nvram_io_read(buf, layout->srev_offset, &srev,
+		/* Read SPROM revision */
+		error = bhnd_nvram_io_read(io, layout->srev_offset, &srev,
 		    sizeof(srev));
 		if (error)
-			goto failed;
+			return (error);
 
 		/* Early sromrev 1 devices (specifically some BCM440x enet
 		 * cards) are reported to have been incorrectly programmed
@@ -248,7 +235,7 @@ bhnd_nvram_sprom_ident(struct bhnd_nvram_io *io,
 
 		/* Check the magic value, skipping to the next layout on
 		 * failure. */
-		error = bhnd_nvram_sprom_check_magic(buf, layout, &magic);
+		error = bhnd_nvram_sprom_check_magic(io, layout, &magic);
 		if (error) {
 			/* If the CRC is was valid, log the mismatch */
 			if (crc_valid || BHND_NV_VERBOSE) {
@@ -256,8 +243,7 @@ bhnd_nvram_sprom_ident(struct bhnd_nvram_io *io,
 					    "0x%hx (expected 0x%hx)\n", srev,
 					    magic, layout->magic_value);
 
-					error = ENXIO;
-					goto failed;
+					return (ENXIO);
 			}
 	
 			continue;
@@ -277,36 +263,28 @@ bhnd_nvram_sprom_ident(struct bhnd_nvram_io *io,
 		}
 
 		/* Identified */
-		*shadow = buf;
 		*ident = layout;
 		return (0);
 	}
 
-	/* No match -- set error and fallthrough */
-	error = ENXIO;
+	/* No match */
 	if (crc_errors > 0 && BHND_NV_VERBOSE) {
 		BHND_NV_LOG("sprom parsing failed with %zu CRC errors\n",
 		    crc_errors);
 	}
 
-failed:
-	bhnd_nvram_io_free(buf);
-	return (error);
+	return (ENXIO);
 }
 
 static int
 bhnd_nvram_sprom_probe(struct bhnd_nvram_io *io)
 {
 	const bhnd_sprom_layout	*layout;
-	struct bhnd_nvram_io	*shadow;
 	int			 error;
 
 	/* Try to parse the input */
-	if ((error = bhnd_nvram_sprom_ident(io, &layout, &shadow)))
+	if ((error = bhnd_nvram_sprom_ident(io, &layout)))
 		return (error);
-
-	/* Clean up the shadow iobuf */
-	bhnd_nvram_io_free(shadow);
 
 	return (BHND_NVRAM_DATA_PROBE_DEFAULT);
 }
@@ -723,7 +701,12 @@ bhnd_nvram_sprom_new(struct bhnd_nvram_data *nv, struct bhnd_nvram_io *io)
 	sp = (struct bhnd_nvram_sprom *)nv;
 
 	/* Identify the SPROM input data */
-	if ((error = bhnd_nvram_sprom_ident(io, &sp->layout, &sp->data)))
+	if ((error = bhnd_nvram_sprom_ident(io, &sp->layout)))
+		return (error);
+
+	/* Copy SPROM image to our shadow buffer */
+	sp->data = bhnd_nvram_iobuf_copy_range(io, 0, sp->layout->size);
+	if (sp->data == NULL)
 		goto failed;
 
 	/* Initialize SPROM binding eval state */
