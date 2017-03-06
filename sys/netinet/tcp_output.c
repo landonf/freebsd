@@ -10,7 +10,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -695,6 +695,8 @@ after_sack_rexmit:
 		    (adv >= (int32_t)(so->so_rcv.sb_hiwat / 4) ||
 		     recwin <= (so->so_rcv.sb_hiwat / 8) ||
 		     so->so_rcv.sb_hiwat <= 8 * tp->t_maxseg))
+			goto send;
+		if (2 * adv >= (int32_t)so->so_rcv.sb_hiwat)
 			goto send;
 	}
 dontupdate:
