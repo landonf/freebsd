@@ -13,7 +13,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -349,7 +349,8 @@
  * void bar(int myArray[__min_size(10)]);
  */
 #if !defined(__cplusplus) && \
-    (!defined(__STDC_VERSION) || (__STDC_VERSION__ >= 199901))
+    (defined(__clang__) || __GNUC_PREREQ__(4, 6)) && \
+    (!defined(__STDC_VERSION__) || (__STDC_VERSION__ >= 199901))
 #define __min_size(x)	static (x)
 #else
 #define __min_size(x)	(x)

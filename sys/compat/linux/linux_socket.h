@@ -141,21 +141,15 @@ struct l_ucred {
 };
 
 #if defined(__i386__) || (defined(__amd64__) && defined(COMPAT_LINUX32))
-
 struct linux_accept_args {
-	int s;
-	l_uintptr_t addr;
-	l_uintptr_t namelen;
+	register_t s;
+	register_t addr;
+	register_t namelen;
 };
 
 int linux_accept(struct thread *td, struct linux_accept_args *args);
 
-#endif /* __i386__ || (__amd64__ && COMPAT_LINUX32) */
-
-
-
 /* Operations for socketcall */
-
 #define	LINUX_SOCKET 		1
 #define	LINUX_BIND		2
 #define	LINUX_CONNECT 		3
@@ -176,6 +170,7 @@ int linux_accept(struct thread *td, struct linux_accept_args *args);
 #define	LINUX_ACCEPT4		18
 #define	LINUX_RECVMMSG		19
 #define	LINUX_SENDMMSG		20
+#endif /* __i386__ || (__amd64__ && COMPAT_LINUX32) */
 
 /* Socket options */
 #define	LINUX_IP_TOS		1

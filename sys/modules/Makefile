@@ -1,6 +1,6 @@
 # $FreeBSD$
 
-SYSDIR?=${.CURDIR}/..
+SYSDIR?=${SRCTOP}/sys
 .include "${SYSDIR}/conf/kern.opts.mk"
 
 SUBDIR_PARALLEL=
@@ -27,13 +27,13 @@ SUBDIR=	\
 	age \
 	${_agp} \
 	aha \
-	${_ahb} \
 	ahci \
 	${_aic} \
 	aic7xxx \
 	alc \
 	ale \
 	alq \
+	${_amd_ecc_inject} \
 	${_amdsbwd} \
 	${_amdtemp} \
 	amr \
@@ -351,8 +351,6 @@ SUBDIR=	\
 	ste \
 	${_stg} \
 	stge \
-	${_streams} \
-	${_svr4} \
 	${_sym} \
 	${_syscons} \
 	sysvipc \
@@ -425,7 +423,7 @@ SUBDIR+=	opensolaris
 .endif
 
 .if ${MK_CRYPT} != "no" || defined(ALL_MODULES)
-.if exists(${.CURDIR}/../opencrypto)
+.if exists(${SRCTOP}/sys/opencrypto)
 _crypto=	crypto
 _cryptodev=	cryptodev
 _random_fortuna=random_fortuna
@@ -613,6 +611,7 @@ _acpi=		acpi
 .if ${MK_CRYPT} != "no" || defined(ALL_MODULES)
 _aesni=		aesni
 .endif
+_amd_ecc_inject=amd_ecc_inject
 _amdsbwd=	amdsbwd
 _amdtemp=	amdtemp
 _arcmsr=	arcmsr
@@ -733,12 +732,7 @@ _nsp=		nsp
 _pcfclock=	pcfclock
 _pst=		pst
 _sbni=		sbni
-_streams=	streams
 _stg=		stg
-_svr4=		svr4
-.if ${MK_EISA} != "no"
-_ahb=		ahb
-.endif
 _cm=		cm
 .if ${MK_SOURCELESS_UCODE} != "no"
 _ctau=		ctau
