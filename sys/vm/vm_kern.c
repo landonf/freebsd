@@ -13,7 +13,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -552,11 +552,13 @@ debug_vm_lowmem(SYSCTL_HANDLER_ARGS)
 	error = sysctl_handle_int(oidp, &i, 0, req);
 	if (error)
 		return (error);
-	if (i)	 
-		EVENTHANDLER_INVOKE(vm_lowmem, 0);
+	if ((i & ~(VM_LOW_KMEM | VM_LOW_PAGES)) != 0)
+		return (EINVAL);
+	if (i != 0)
+		EVENTHANDLER_INVOKE(vm_lowmem, i);
 	return (0);
 }
 
 SYSCTL_PROC(_debug, OID_AUTO, vm_lowmem, CTLTYPE_INT | CTLFLAG_RW, 0, 0,
-    debug_vm_lowmem, "I", "set to trigger vm_lowmem event");
+    debug_vm_lowmem, "I", "set to trigger vm_lowmem event with given flags");
 #endif

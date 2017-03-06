@@ -61,6 +61,7 @@ __FBSDID("$FreeBSD$");
 #define	DR_OE		(1 << 11)	/* Overrun error */
 
 #define	UART_FR		0x06		/* Flag register */
+#define	FR_RXFE		(1 << 4)	/* Receive FIFO/reg empty */
 #define	FR_TXFF		(1 << 5)	/* Transmit FIFO/reg full */
 #define	FR_RXFF		(1 << 6)	/* Receive FIFO/reg full */
 #define	FR_TXFE		(1 << 7)	/* Transmit FIFO/reg empty */
@@ -85,6 +86,16 @@ __FBSDID("$FreeBSD$");
 #define	CR_TXE		(1 << 8)	/* Transmit enable */
 #define	CR_UARTEN	(1 << 0)	/* UART enable */
 
+#define	UART_IFLS	0x0d		/* FIFO level select register */
+#define	IFLS_RX_SHIFT	3		/* RX level in bits [5:3] */
+#define	IFLS_TX_SHIFT	0		/* TX level in bits [2:0] */
+#define	IFLS_MASK	0x07		/* RX/TX level is 3 bits */
+#define	IFLS_LVL_1_8th	0		/* Interrupt at 1/8 full */
+#define	IFLS_LVL_2_8th	1		/* Interrupt at 1/4 full */
+#define	IFLS_LVL_4_8th	2		/* Interrupt at 1/2 full */
+#define	IFLS_LVL_6_8th	3		/* Interrupt at 3/4 full */
+#define	IFLS_LVL_7_8th	4		/* Interrupt at 7/8 full */
+
 #define	UART_IMSC	0x0e		/* Interrupt mask set/clear register */
 #define	IMSC_MASK_ALL	0x7ff		/* Mask all interrupts */
 
@@ -99,6 +110,18 @@ __FBSDID("$FreeBSD$");
 
 #define	UART_MIS	0x10		/* Masked interrupt status register */
 #define	UART_ICR	0x11		/* Interrupt clear register */
+
+/*
+ * The hardware FIFOs are 16 bytes each.  We configure them to interrupt when
+ * 3/4 full/empty.  For RX we set the size to the full hardware capacity so that
+ * the uart core allocates enough buffer space to hold a complete fifo full of
+ * incoming data.  For TX, we need to limit the size to the capacity we know
+ * will be available when the interrupt occurs; uart_core will feed exactly that
+ * many bytes to uart_pl011_bus_transmit() which must consume them all.
+ */
+#define	FIFO_RX_SIZE	16
+#define	FIFO_TX_SIZE	12
+#define	FIFO_IFLS_BITS	((IFLS_LVL_6_8th << IFLS_RX_SHIFT) | (IFLS_LVL_2_8th))
 
 /*
  * FIXME: actual register size is SoC-dependent, we need to handle it
@@ -171,9 +194,9 @@ uart_pl011_param(struct uart_bas *bas, int baudrate, int databits, int stopbits,
 		line |= LCR_H_PEN;
 	else
 		line &= ~LCR_H_PEN;
+	line |= LCR_H_FEN;
 
 	/* Configure the rest */
-	line &= ~LCR_H_FEN;
 	ctrl |= (CR_RXE | CR_TXE | CR_UARTEN);
 
 	if (bas->rclk != 0 && baudrate != 0) {
@@ -185,6 +208,9 @@ uart_pl011_param(struct uart_bas *bas, int baudrate, int databits, int stopbits,
 	/* Add config. to line before reenabling UART */
 	__uart_setreg(bas, UART_LCR_H, (__uart_getreg(bas, UART_LCR_H) &
 	    ~0xff) | line);
+
+	/* Set rx and tx fifo levels. */
+	__uart_setreg(bas, UART_IFLS, FIFO_IFLS_BITS);
 
 	__uart_setreg(bas, UART_CR, ctrl);
 }
@@ -219,7 +245,7 @@ static int
 uart_pl011_rxready(struct uart_bas *bas)
 {
 
-	return (__uart_getreg(bas, UART_FR) & FR_RXFF);
+	return !(__uart_getreg(bas, UART_FR) & FR_RXFE);
 }
 
 static int
@@ -417,8 +443,8 @@ uart_pl011_bus_probe(struct uart_softc *sc)
 
 	device_set_desc(sc->sc_dev, "PrimeCell UART (PL011)");
 
-	sc->sc_rxfifosz = 1;
-	sc->sc_txfifosz = 1;
+	sc->sc_rxfifosz = FIFO_RX_SIZE;
+	sc->sc_txfifosz = FIFO_TX_SIZE;
 
 	return (0);
 }
@@ -433,14 +459,15 @@ uart_pl011_bus_receive(struct uart_softc *sc)
 	bas = &sc->sc_bas;
 	uart_lock(sc->sc_hwmtx);
 
-	ints = __uart_getreg(bas, UART_MIS);
-	while (ints & (UART_RXREADY | RIS_RTIM)) {
+	for (;;) {
+		ints = __uart_getreg(bas, UART_FR);
+		if (ints & FR_RXFE)
+			break;
 		if (uart_rx_full(sc)) {
 			sc->sc_rxbuf[sc->sc_rxput] = UART_STAT_OVERRUN;
 			break;
 		}
 
-		__uart_setreg(bas, UART_ICR, (UART_RXREADY | RIS_RTIM));
 		xc = __uart_getreg(bas, UART_DR);
 		rx = xc & 0xff;
 
@@ -450,7 +477,6 @@ uart_pl011_bus_receive(struct uart_softc *sc)
 			rx |= UART_STAT_PARERR;
 
 		uart_rx_put(sc, rx);
-		ints = __uart_getreg(bas, UART_MIS);
 	}
 
 	uart_unlock(sc->sc_hwmtx);
@@ -481,19 +507,11 @@ uart_pl011_bus_transmit(struct uart_softc *sc)
 		uart_barrier(bas);
 	}
 
-	/* If not empty wait until it is */
-	if ((__uart_getreg(bas, UART_FR) & FR_TXFE) != FR_TXFE) {
-		sc->sc_txbusy = 1;
-
-		/* Enable TX interrupt */
-		__uart_setreg(bas, UART_IMSC, psc->imsc);
-	}
+	/* Mark busy and enable TX interrupt */
+	sc->sc_txbusy = 1;
+	__uart_setreg(bas, UART_IMSC, psc->imsc);
 
 	uart_unlock(sc->sc_hwmtx);
-
-	/* No interrupt expected, schedule the next fifo write */
-	if (!sc->sc_txbusy)
-		uart_sched_softih(sc, SER_INT_TXIDLE);
 
 	return (0);
 }
