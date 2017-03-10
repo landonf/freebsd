@@ -92,6 +92,44 @@ group "Antenna Configuration" {
 	}
 }
 
+group "Boot Configuration" {
+	u32	bootflags {
+		desc	"Boot Flags"
+		help	"System boot flags (0x1: kernel on NAND flash, 0x2:
+			 bootloader on NAND flash)."
+	}
+
+	u8	bootpartition {
+		desc	"Boot Image Index"
+		help	"The active boot image. Unsupported on devices without
+			 CFE failsafe image support."
+	}
+
+	u8	image_boot {
+		desc	"Boot Image Index"
+		help	"The active boot image. Unsupported on devices without
+			 CFE dual image support."
+	}
+
+	u32	image_size {
+		desc	"Boot Image Size"
+		help	"The flash image size (in kilobytes). Unsupported on
+			 devices without CFE dual or failsafe image support."
+	}
+
+	u32	image_first_offset {
+		desc	"Boot Image 0 Flash Offset"
+		help	"Offset to the first flash image. Unsupported on
+			 devices without CFE dual or failsafe image support."
+	}
+
+	u32	image_second_offset {
+		desc	"Boot Image 1 Flash Offset"
+		help	"Offset to the second flash image. Unsupported on
+			 devices without CFE dual or failsafe image support."
+	}
+}
+
 u8	aga0 {
 	#desc <variable description>
 	#help <variable help>
