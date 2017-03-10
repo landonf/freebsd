@@ -60,7 +60,7 @@ __FBSDID("$FreeBSD$");
 
 /*
  * Performs slicing of a ChipCommon-attached flash device based on CFE's
- * hardcoded flash partition map and conservative heuristic. 
+ * hardcoded flash partition map and conservative heuristics. 
  * 
  * In theory, we should be able to fully enumerate the flash layout using
  * cfe_enumdev() and CFE device ioctls.
