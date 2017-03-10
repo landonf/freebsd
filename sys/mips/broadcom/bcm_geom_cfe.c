@@ -54,6 +54,8 @@ __FBSDID("$FreeBSD$");
 #include "bcm_machdep.h"
 #include "bhnd_nvram_map.h"
 
+#include "bcm_geom_cfe.h"
+
 #define	CFE_CLASS_NAME		"CFE_MAP"
 
 #define	G_CFE_LOG(msg, ...)	printf("%s: " msg, __FUNCTION__, ## __VA_ARGS__)
@@ -213,11 +215,7 @@ __FBSDID("$FreeBSD$");
 /*
  * Supported CFE flash devices.
  */
-static const struct cfe_flash_device {
-	const char		*cfe_name;	/**< CFE device class name */
-	const char		*geom_attr;	/**< GEOM device attribute */
-	const chipc_flash	*flash_types;	/**< supported ChipCommon flash types */
-} cfe_flash_devices[] = {
+static const struct cfe_flash_device cfe_flash_devices[] = {
 	{ "nflash",	"NAND::device",	(chipc_flash[]){
 	    CHIPC_NFLASH, CHIPC_NFLASH_4706, CHIPC_FLASH_NONE } },
 	{ "flash",	"CFI::device",	(chipc_flash[]){
@@ -245,15 +243,6 @@ static char *cfe_flash_parts[] = {
 
 #endif
 
-/**
- * CFE operating system image layout types.
- */
-typedef enum {
-	CFE_IMAGE_FAILSAFE,	/**< CFE with FAILSAFE_UPGRADE enabled */
-	CFE_IMAGE_DUAL,		/**< CFE with DUAL_IMAGE enabled */
-	CFE_IMAGE_SIMPLE	/**< CFE with default config (single image) */
-} cfe_image_layout;
-
 /* NVRAM variables defining the currently selected CFE OS boot image */
 static const struct cfe_image_defn {
 	const char		*nvar;		/**< NVRAM variable name */
@@ -269,30 +258,6 @@ static const char *cfe_image_offset_vars[] = {
 	BHND_NVAR_IMAGE_FIRST_OFFSET,
 	BHND_NVAR_IMAGE_SECOND_OFFSET
 };
-
-#define	CFE_MAX_IMG	2	/**< maximum CFE image count */
-
-/**
- * CFE operating system image info.
- */
-struct cfe_image_info {
-	cfe_image_layout	layout;			/**< CFE layout type */
-	uint8_t			bootimage;		/**< boot image index */
-	size_t			num_images;		/**< image count */
-	uint64_t		offsets[CFE_MAX_IMG];	/**< image offsets */
-	uint64_t		sizes[CFE_MAX_IMG];	/**< image sizes */
-};
-
-/* Standard CFE image */
-#define	CFE_MAGIC_OFFSET	0x4E0
-#define	CFE_MAGIC_COUNT		2
-#define	CFE_MAGIC_0		0
-#define	CFE_MAGIC_1		1
-#define	CFE_MAGIC		0x43464531	/* 'CFE1' */
-
-/* Self-decompressing CFE image */
-#define	CFE_BISZ_OFFSET		0x3E0
-#define	CFE_BISZ_MAGIC		0x4249535A	/* 'BISZ' */
 
 struct g_cfe_softc {
 };
