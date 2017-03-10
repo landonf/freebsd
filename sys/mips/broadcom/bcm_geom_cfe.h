@@ -33,6 +33,8 @@
 #ifndef _MIPS_BROADCOM_BCM_GEOM_CFE_H_
 #define _MIPS_BROADCOM_BCM_GEOM_CFE_H_
 
+#define	CFE_CLASS_NAME		"CFE_MAP"
+
 /* CFE binary magic */
 #define	CFE_MAGIC		0x43464531	/* 'CFE1' */
 #define	CFE_MAGIC_OFFSET	0x4E0		/**< CFE magic offset */
@@ -45,6 +47,13 @@
 #define	CFE_BISZ_MAGIC		0x4249535A	/* 'BISZ' */
 
 #define	CFE_MAX_IMG		2		/**< maximum CFE OS image count */
+
+
+/**
+ * GEOM CFE_MAP instance state
+ */
+struct g_cfe_softc {
+};
 
 /**
  * CFE/GEOM device mapping entry.
@@ -66,13 +75,13 @@ typedef enum {
 	CFE_IMAGE_FAILSAFE,	/**< CFE with FAILSAFE_UPGRADE enabled */
 	CFE_IMAGE_DUAL,		/**< CFE with DUAL_IMAGE enabled */
 	CFE_IMAGE_SIMPLE	/**< CFE with default config (single image) */
-} cfe_image_layout;
+} cfe_bootimg_type;
 
 /**
  * CFE operating system image info.
  */
-struct cfe_image_info {
-	cfe_image_layout	layout;			/**< CFE layout type */
+struct cfe_bootimg_info {
+	cfe_bootimg_type	type;			/**< CFE layout type */
 	uint8_t			bootimage;		/**< boot image index */
 	size_t			num_images;		/**< image count */
 	uint64_t		offsets[CFE_MAX_IMG];	/**< image offsets */

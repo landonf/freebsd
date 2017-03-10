@@ -56,10 +56,6 @@ __FBSDID("$FreeBSD$");
 
 #include "bcm_geom_cfe.h"
 
-#define	CFE_CLASS_NAME		"CFE_MAP"
-
-#define	G_CFE_LOG(msg, ...)	printf("%s: " msg, __FUNCTION__, ## __VA_ARGS__)
-
 /*
  * Performs slicing of a ChipCommon-attached flash device based on CFE's
  * hardcoded flash partition map and conservative heuristics. 
@@ -74,6 +70,9 @@ __FBSDID("$FreeBSD$");
  * Worse, the validity of the flash/nvram ioctls depends on the CFE flash
  * driver in use, requiring CFE driver-specific workarounds (see
  * 'CFE Driver Quirks' below).
+ * 
+ * As a result, we probe a set of known CFE partitions to determine the
+ * space useable by the OS.
  * 
  * == Basic Flash Layout ==
  * 
@@ -212,6 +211,23 @@ __FBSDID("$FreeBSD$");
  *		Unsupported
  */
 
+
+static device_t				 g_cfe_find_chipc_parent(device_t dev);
+static bool				 g_cfe_flash_type_matches(
+					     chipc_flash type,
+					     const struct cfe_flash_device *id);
+static const struct cfe_flash_device	*g_cfe_device_lookup(
+					     struct g_consumer *cp);
+static int				 g_cfe_check_magic(
+					     struct g_consumer *cp);
+static int				 g_cfe_read_parts(
+					     struct g_consumer *cp);
+static int				 g_cfe_get_bootflags(
+					     struct bcm_platform *bp,
+					     uint32_t *bootflags);
+static int				 g_cfe_get_bootimg_info(
+					     struct cfe_bootimg_info *info);
+
 /*
  * Supported CFE flash devices.
  */
@@ -243,24 +259,27 @@ static char *cfe_flash_parts[] = {
 
 #endif
 
-/* NVRAM variables defining the currently selected CFE OS boot image */
-static const struct cfe_image_defn {
+/**
+ * Map of CFE image layout types to their associated OS boot image index
+ * NVRAM variable.
+ */
+static const struct cfe_bootimg_var {
+	cfe_bootimg_type	 type;		/**< layout type */
 	const char		*nvar;		/**< NVRAM variable name */
-	cfe_image_layout	 layout;	/**< layout type */
 	size_t			 num_images;	/**< image count */
-} cfe_image_defns[] = {
-	{ BHND_NVAR_BOOTPARTITION,	CFE_IMAGE_FAILSAFE,	2},
-	{ BHND_NVAR_IMAGE_BOOT,		CFE_IMAGE_DUAL,		2},
+} cfe_bootimg_vars[] = {
+	{ CFE_IMAGE_FAILSAFE,	BHND_NVAR_BOOTPARTITION,	2 },
+	{ CFE_IMAGE_DUAL,	BHND_NVAR_IMAGE_BOOT,		2 },
+	{ CFE_IMAGE_SIMPLE,	NULL,				1 },
 };
 
 /* Image offset variables (by partition index) */
-static const char *cfe_image_offset_vars[] = {
+static const char *cfe_bootimg_offset_vars[] = {
 	BHND_NVAR_IMAGE_FIRST_OFFSET,
 	BHND_NVAR_IMAGE_SECOND_OFFSET
 };
 
-struct g_cfe_softc {
-};
+#define	CFE_LOG(msg, ...)	printf("%s: " msg, __FUNCTION__, ## __VA_ARGS__)
 
 static int
 g_cfe_access(struct g_provider *pp, int dread, int dwrite, int dexcl)
@@ -330,6 +349,75 @@ g_cfe_access_taste(struct g_provider *pp, int dread, int dwrite, int dexcl)
 	return (EOPNOTSUPP);
 }
 
+static struct g_geom *
+g_cfe_taste(struct g_class *mp, struct g_provider *pp, int insist)
+{
+	struct g_consumer	*cp;
+	struct g_geom		*gp;
+	struct cfe_bootimg_info	 info;
+	int			 error;
+
+	g_trace(G_T_TOPOLOGY, "cfe_taste(%s,%s)", mp->name, pp->name);
+	g_topology_assert();
+
+	/* Don't recurse */
+	if (strcmp(pp->geom->class->name, CFE_CLASS_NAME) == 0)
+		return (NULL);
+
+	/*
+	 * Add a consumer to the GEOM topology, acquiring read access to
+	 * the provider.
+	 */
+	gp = g_new_geomf(mp, pp->name);
+	gp->orphan = g_cfe_orphan_taste;
+	gp->start = g_cfe_start_taste;
+	gp->access = g_cfe_access_taste;
+	cp = g_new_consumer(gp);
+	cp->flags |= G_CF_DIRECT_SEND | G_CF_DIRECT_RECEIVE;
+	error = g_attach(cp, pp);
+	if (error == 0)
+		error = g_access(cp, 1, 0, 0);
+
+	if (error) {
+		g_wither_geom(gp, ENXIO);
+		return (NULL);
+	}
+
+	/* Match against our device table */
+	if (g_cfe_device_lookup(cp) == NULL)
+		goto failed;
+
+	/* Fetch CFE image layout */
+	if ((error = g_cfe_get_bootimg_info(&info))) {
+		CFE_LOG("error fetching CFE image info: %d\n", error);
+		goto failed;
+	}
+
+	/* Read our partition map */
+	if ((error = g_cfe_read_parts(cp))) {
+		CFE_LOG("error parsing CFE image: %d\n", error);
+		goto failed;
+	}
+
+	// TODO
+	printf("MATCH\n");
+
+failed:	
+	/* No match */
+	g_access(cp, -1, 0, 0);
+	g_detach(cp);
+	g_destroy_consumer(cp);
+	g_destroy_geom(gp);
+	return (NULL);
+}
+
+static void
+g_cfe_config(struct gctl_req *req, struct g_class *mp, const char *verb)
+{
+
+}
+
+
 /**
  * Return the ChipCommon device to which @p dev is attached, or NULL if
  * not attached via ChipCommon.
@@ -343,12 +431,12 @@ g_cfe_find_chipc_parent(device_t dev)
 	mtx_assert(&Giant, MA_OWNED);
 
 	if ((chipc_class = devclass_find("bhnd_chipc")) == NULL) {
-		G_CFE_LOG("missing chipcommon device class\n");
+		CFE_LOG("missing chipcommon device class\n");
 		return (NULL);
 	}
 
 	if ((bhnd_class = devclass_find("bhnd")) == NULL) {
-		G_CFE_LOG("missing bhnd device class\n");
+		CFE_LOG("missing bhnd device class\n");
 		return (NULL);
 	}
 
@@ -422,7 +510,7 @@ g_cfe_device_lookup(struct g_consumer *cp)
 		ccaps = BHND_CHIPC_GET_CAPS(chipc);
 
 		if (!g_cfe_flash_type_matches(ccaps->flash_type, id)) {
-			G_CFE_LOG("unknown chipc flash type: %d\n",
+			CFE_LOG("unknown chipc flash type: %d\n",
 			    ccaps->flash_type);
 			continue;
 		}
@@ -503,7 +591,7 @@ g_cfe_read_parts(struct g_consumer *cp)
 	g_topology_assert();
 
 	if ((error = g_cfe_check_magic(cp))) {
-		G_CFE_LOG("unknown CFE image format\n");
+		CFE_LOG("unknown CFE image format\n");
 		return (error);
 	}
 
@@ -532,10 +620,10 @@ g_cfe_get_bootflags(struct bcm_platform *bp, uint32_t *bootflags)
  * Populate @p info with the CFE image layout.
  */
 static int
-g_cfe_get_image_info(struct cfe_image_info *info)
+g_cfe_get_bootimg_info(struct cfe_bootimg_info *info)
 {
 	struct bcm_platform		*bp;
-	const struct cfe_image_defn	*defn;
+	const struct cfe_bootimg_var	*imgvar;
 	uint32_t			 bootflags;
 	uint8_t				 bootimage;
 	uint64_t			 imagesize;
@@ -545,16 +633,16 @@ g_cfe_get_image_info(struct cfe_image_info *info)
 	bp = bcm_get_platform();
 
 	/* Determine layout type and boot image index */
-	defn = NULL;
-	for (size_t i = 0; i < nitems(cfe_image_defns); i++) {
+	imgvar = NULL;
+	for (size_t i = 0; i < nitems(cfe_bootimg_vars); i++) {
 		/* Try to fetch the boot image index from NVRAM */
 		len = sizeof(bootimage);
-		error = bcm_get_nvram(bp, cfe_image_defns[i].nvar, &bootimage,
+		error = bcm_get_nvram(bp, cfe_bootimg_vars[i].nvar, &bootimage,
 		    &len, BHND_NVRAM_TYPE_UINT8);
 
 		if (!error) {
 			/* Matched */
-			defn = &cfe_image_defns[i];
+			imgvar = &cfe_bootimg_vars[i];
 			break;
 		} else if (error != ENOENT) {
 			/* Return an error if the NVRAM read fails for any
@@ -563,22 +651,22 @@ g_cfe_get_image_info(struct cfe_image_info *info)
 		}
 	}
 
-	if (defn == NULL) {
-		/* No image support */
-		info->layout = CFE_IMAGE_SIMPLE;
+	if (imgvar == NULL) {
+		/* No dual/failsafe image support */
+		info->type = CFE_IMAGE_SIMPLE;
 		info->num_images = 0;
 		info->bootimage = 0;
 		return (0);
 	} else {
-		/* Images supported by CFE */
-		info->layout = defn->layout;
-		info->num_images = defn->num_images;
+		/* Dual/failsafe image */
+		info->type = imgvar->type;
+		info->num_images = imgvar->num_images;
 		info->bootimage = bootimage;
 	}
 
 	/* Fetch the boot flags */
 	if ((error = g_cfe_get_bootflags(bp, &bootflags))) {
-		G_CFE_LOG("error reading bootflags: %d\n", error);
+		CFE_LOG("error reading bootflags: %d\n", error);
 		return (error);
 	}
 
@@ -586,14 +674,14 @@ g_cfe_get_image_info(struct cfe_image_info *info)
 	for (size_t i = 0; i < info->num_images; i++) {
 		KASSERT(i < nitems(info->offsets), ("bad image count: %zu", i));
 
-		if (i >= nitems(cfe_image_offset_vars))
+		if (i >= nitems(cfe_bootimg_offset_vars))
 			return (ENXIO);
 
 		len = sizeof(info->offsets[i]);
-		error = bcm_get_nvram(bp, cfe_image_offset_vars[i],
+		error = bcm_get_nvram(bp, cfe_bootimg_offset_vars[i],
 		    &info->offsets[i], &len, BHND_NVRAM_TYPE_UINT64);
 		if (error) {
-			G_CFE_LOG("error fetching offset[%zu]: %d\n", i, error);
+			CFE_LOG("error fetching offset[%zu]: %d\n", i, error);
 			return (error);
 		}
 	}
@@ -605,81 +693,13 @@ g_cfe_get_image_info(struct cfe_image_info *info)
 	if (error == ENOENT) {
 		
 	} else if (error) {
-		G_CFE_LOG("error fetching image size: %d\n", error);
+		CFE_LOG("error fetching image size: %d\n", error);
 		return (error);
 	}
 
 	// TODO: image size
 
 	return (0);
-}
-
-static struct g_geom *
-g_cfe_taste(struct g_class *mp, struct g_provider *pp, int insist)
-{
-	struct g_consumer	*cp;
-	struct g_geom		*gp;
-	struct cfe_image_info	 info;
-	int			 error;
-
-	g_trace(G_T_TOPOLOGY, "cfe_taste(%s,%s)", mp->name, pp->name);
-	g_topology_assert();
-
-	/* Don't recurse */
-	if (strcmp(pp->geom->class->name, CFE_CLASS_NAME) == 0)
-		return (NULL);
-
-	/*
-	 * Add a consumer to the GEOM topology, acquiring read access to
-	 * the provider.
-	 */
-	gp = g_new_geomf(mp, pp->name);
-	gp->orphan = g_cfe_orphan_taste;
-	gp->start = g_cfe_start_taste;
-	gp->access = g_cfe_access_taste;
-	cp = g_new_consumer(gp);
-	cp->flags |= G_CF_DIRECT_SEND | G_CF_DIRECT_RECEIVE;
-	error = g_attach(cp, pp);
-	if (error == 0)
-		error = g_access(cp, 1, 0, 0);
-
-	if (error) {
-		g_wither_geom(gp, ENXIO);
-		return (NULL);
-	}
-
-	/* Match against our device table */
-	if (g_cfe_device_lookup(cp) == NULL)
-		goto failed;
-
-	/* Fetch CFE image layout */
-	if ((error = g_cfe_get_image_info(&info))) {
-		G_CFE_LOG("error fetching CFE image info: %d\n", error);
-		goto failed;
-	}
-
-	/* Read our partition map */
-	if ((error = g_cfe_read_parts(cp))) {
-		G_CFE_LOG("error parsing CFE image: %d\n", error);
-		goto failed;
-	}
-
-	// TODO
-	printf("MATCH\n");
-
-failed:	
-	/* No match */
-	g_access(cp, -1, 0, 0);
-	g_detach(cp);
-	g_destroy_consumer(cp);
-	g_destroy_geom(gp);
-	return (NULL);
-}
-
-static void
-g_cfe_config(struct gctl_req *req, struct g_class *mp, const char *verb)
-{
-
 }
 
 static struct g_class g_cfe_class = {
