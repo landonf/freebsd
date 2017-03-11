@@ -66,6 +66,7 @@ struct cfe_flash_device {
 	const char		*cfe_name;	/**< CFE device class name */
 	const char		*geom_attr;	/**< GEOM device attribute */
 	const chipc_flash	*flash_types;	/**< supported ChipCommon flash types */
+	uint32_t		 cfe_quirks;	/**< CFE driver quirks (see CFE_DEV_QUIRK_*) */
 };
 
 /**
@@ -86,6 +87,28 @@ struct cfe_bootimg_info {
 	size_t			num_images;		/**< image count */
 	uint64_t		offsets[CFE_MAX_IMG];	/**< image offsets */
 	uint64_t		sizes[CFE_MAX_IMG];	/**< image sizes */
+};
+
+/**
+ * CFE flash device driver quirks.
+ */
+enum {
+	/** No quirks */
+	CFE_DEV_QUIRK_NONE		= 0,
+
+	/** IOCTL_FLASH_GETINFO always returns an offset of 0x0 */
+	CFE_DEV_QUIRK_FI_ZERO_OFFSET	= (1<<1),
+
+	/** IOCTL_FLASH_GETINFO always returns the total flash size (not
+	  * the size of the actual partition) */
+	CFE_DEV_QUIRK_FI_TOTAL_SIZE	= (1<<2),
+
+	/* IOCTL_NVRAM_GETINFO (incorrectly) returns the size of the actual
+	 * partition, and may be used to determine partition size. */
+	CFE_DEV_QUIRK_NV_PART_SIZE	= (1<<3),
+
+	/** IOCTL_NVRAM_GETINFO is not supported */
+	CFE_DEV_QUIRK_NO_NVINFO		= (1<<4),
 };
 
 #endif /* _MIPS_BROADCOM_BCM_GEOM_CFE_H_ */

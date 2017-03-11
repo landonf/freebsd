@@ -219,25 +219,33 @@ static bool				 g_cfe_flash_type_matches(
 static const struct cfe_flash_device	*g_cfe_device_lookup(
 					     struct g_consumer *cp);
 static int				 g_cfe_check_magic(
-					     struct g_consumer *cp);
+					     struct g_consumer *cp,
+					     off_t cfe_offset);
 static int				 g_cfe_read_parts(
 					     struct g_consumer *cp);
-static int				 g_cfe_get_bootflags(
-					     struct bcm_platform *bp,
-					     uint32_t *bootflags);
-static int				 g_cfe_get_bootimg_info(
+static int				 g_cfe_probe_bootimg(
 					     struct cfe_bootimg_info *info);
 
 /*
- * Supported CFE flash devices.
+ * Supported CFE/GEOM flash devices.
  */
 static const struct cfe_flash_device cfe_flash_devices[] = {
-	{ "nflash",	"NAND::device",	(chipc_flash[]){
-	    CHIPC_NFLASH, CHIPC_NFLASH_4706, CHIPC_FLASH_NONE } },
+	{ "nflash",	"NAND::device", (chipc_flash[]) {
+	    CHIPC_NFLASH,	CHIPC_NFLASH_4706,	CHIPC_FLASH_NONE },
+	    CFE_DEV_QUIRK_FI_ZERO_OFFSET | CFE_DEV_QUIRK_FI_TOTAL_SIZE |
+	    CFE_DEV_QUIRK_NO_NVINFO
+	},
+
 	{ "flash",	"CFI::device",	(chipc_flash[]){
-	    CHIPC_PFLASH_CFI, CHIPC_FLASH_NONE } },
+	    CHIPC_PFLASH_CFI,	CHIPC_FLASH_NONE },
+	    CFE_DEV_QUIRK_NV_PART_SIZE
+	},
+
 	{ "flash",	"SPI::device",	(chipc_flash[]){
-	    CHIPC_SFLASH_AT, CHIPC_SFLASH_ST, CHIPC_FLASH_NONE } }
+	    CHIPC_SFLASH_AT,	CHIPC_SFLASH_ST,	CHIPC_FLASH_NONE },
+	    CFE_DEV_QUIRK_FI_ZERO_OFFSET | CFE_DEV_QUIRK_FI_TOTAL_SIZE |
+	    CFE_DEV_QUIRK_NV_PART_SIZE
+	}
 };
 
 #if 0
@@ -270,7 +278,6 @@ static const struct cfe_bootimg_var {
 } cfe_bootimg_vars[] = {
 	{ CFE_IMAGE_FAILSAFE,	BHND_NVAR_BOOTPARTITION,	2 },
 	{ CFE_IMAGE_DUAL,	BHND_NVAR_IMAGE_BOOT,		2 },
-	{ CFE_IMAGE_SIMPLE,	NULL,				1 },
 };
 
 /* Image offset variables (by partition index) */
@@ -387,8 +394,8 @@ g_cfe_taste(struct g_class *mp, struct g_provider *pp, int insist)
 	if (g_cfe_device_lookup(cp) == NULL)
 		goto failed;
 
-	/* Fetch CFE image layout */
-	if ((error = g_cfe_get_bootimg_info(&info))) {
+	/* Fetch CFE boot image info */
+	if ((error = g_cfe_probe_bootimg(&info))) {
 		CFE_LOG("error fetching CFE image info: %d\n", error);
 		goto failed;
 	}
@@ -416,7 +423,6 @@ g_cfe_config(struct gctl_req *req, struct g_class *mp, const char *verb)
 {
 
 }
-
 
 /**
  * Return the ChipCommon device to which @p dev is attached, or NULL if
@@ -528,52 +534,71 @@ g_cfe_device_lookup(struct g_consumer *cp)
 /**
  * Read and validate the CFE image magic.
  * 
+ * @param cp		GEOM consumer containing CFE image.
+ * @param cfe_offset	Offset to CFE image within @p cp.
+ * 
  * @retval 0		success
- * @retval non-zero	if probing fails, a regular unix error code will be
- *			returned.
+ * @retval non-zero	if the CFE image cannot be identified, a regular unix
+ *			error code will be returned.
  */
 static int
-g_cfe_check_magic(struct g_consumer *cp)
+g_cfe_check_magic(struct g_consumer *cp, off_t cfe_offset)
 {
 	u_char		*buf;
-	off_t		 sectorsize;
+	off_t		 nbytes, sector, sectorsize;
 	uint32_t	*magic;
 	int		 error;
 
 	g_topology_assert();
 	sectorsize = cp->provider->sectorsize;
 
-	/* Standard CFE image? */
-	g_topology_unlock();
-	buf = g_read_data(cp, rounddown(CFE_MAGIC_OFFSET, sectorsize),
-	    roundup(sizeof(*magic) * CFE_MAGIC_COUNT, sectorsize), &error);
-	g_topology_lock();
+	/* Standard CFE image */
+	if (OFF_MAX - cfe_offset >= CFE_MAGIC_OFFSET) {
+		sector = rounddown(cfe_offset + CFE_MAGIC_OFFSET, sectorsize);
+		nbytes = roundup(sizeof(*magic) * CFE_MAGIC_COUNT, sectorsize);
 
-	if (buf == NULL)
-		return (error);
+		g_topology_unlock();
+		buf = g_read_data(cp, sector, nbytes, &error);
+		g_topology_lock();
 
-	magic = (uint32_t *)(buf + (CFE_MAGIC_OFFSET % sectorsize));
-	if (magic[CFE_MAGIC_0] == CFE_MAGIC &&
-	    magic[CFE_MAGIC_1] == CFE_MAGIC)
-	{
+		if (buf == NULL)
+			return (error);
+
+		magic = (uint32_t *)(buf + (CFE_MAGIC_OFFSET % sectorsize));
+		if (magic[CFE_MAGIC_0] == CFE_MAGIC &&
+		    magic[CFE_MAGIC_1] == CFE_MAGIC)
+		{
+			g_free(buf);
+			return (0);
+		}
+
+		/* No match */
 		g_free(buf);
-		return (0);
+		buf = NULL;
 	}
 
-	/* Self-decompressing CFE image? */
-	g_free(buf);
-	g_topology_unlock();
-	buf = g_read_data(cp, rounddown(CFE_BISZ_OFFSET, sectorsize),
-	    roundup(sizeof(*magic), sectorsize), &error);
-	g_topology_lock();
 
-	if (buf == NULL)
-		return (error);
+	/* Self-decompressing CFEZ image */
+	if (OFF_MAX - cfe_offset >= CFE_BISZ_OFFSET) {
+		sector = rounddown(cfe_offset + CFE_BISZ_OFFSET, sectorsize);
+		nbytes = roundup(sizeof(*magic), sectorsize);
 
-	magic = (uint32_t *)(buf + (CFE_BISZ_OFFSET % sectorsize));
-	if (*magic == CFE_BISZ_MAGIC) {
+		g_topology_unlock();
+		buf = g_read_data(cp, sector, nbytes, &error);
+		g_topology_lock();
+
+		if (buf == NULL)
+			return (error);
+
+		magic = (uint32_t *)(buf + (CFE_BISZ_OFFSET % sectorsize));
+		if (*magic == CFE_BISZ_MAGIC) {
+			g_free(buf);
+			return (0);
+		}
+
+		/* No match */
 		g_free(buf);
-		return (0);
+		buf = NULL;
 	}
 
 	/* Unrecognized */
@@ -590,7 +615,7 @@ g_cfe_read_parts(struct g_consumer *cp)
 
 	g_topology_assert();
 
-	if ((error = g_cfe_check_magic(cp))) {
+	if ((error = g_cfe_check_magic(cp, 0x0))) {
 		CFE_LOG("unknown CFE image format\n");
 		return (error);
 	}
@@ -598,35 +623,16 @@ g_cfe_read_parts(struct g_consumer *cp)
 	return (0);
 }
 
-static int
-g_cfe_get_bootflags(struct bcm_platform *bp, uint32_t *bootflags)
-{
-	size_t	len;
-	int	error;
-
-	len = sizeof(*bootflags);
-	error = bcm_get_nvram(bp, BHND_NVAR_BOOTFLAGS, bootflags, &len,
-	    BHND_NVRAM_TYPE_UINT32);
-	if (error == ENOENT) {
-		/* Not found; default to no flags set */
-		*bootflags = 0x0;
-		error = 0;
-	}
-
-	return (error);
-}
-
 /**
- * Populate @p info with the CFE image layout.
+ * Populate @p info with the CFE boot image layout.
  */
 static int
-g_cfe_get_bootimg_info(struct cfe_bootimg_info *info)
+g_cfe_probe_bootimg(struct cfe_bootimg_info *info)
 {
 	struct bcm_platform		*bp;
 	const struct cfe_bootimg_var	*imgvar;
-	uint32_t			 bootflags;
-	uint8_t				 bootimage;
-	uint64_t			 imagesize;
+	uint8_t				 bootimg;
+	uint64_t			 imgsize;
 	size_t				 len;
 	int				 error;
 
@@ -636,8 +642,8 @@ g_cfe_get_bootimg_info(struct cfe_bootimg_info *info)
 	imgvar = NULL;
 	for (size_t i = 0; i < nitems(cfe_bootimg_vars); i++) {
 		/* Try to fetch the boot image index from NVRAM */
-		len = sizeof(bootimage);
-		error = bcm_get_nvram(bp, cfe_bootimg_vars[i].nvar, &bootimage,
+		len = sizeof(bootimg);
+		error = bcm_get_nvram(bp, cfe_bootimg_vars[i].nvar, &bootimg,
 		    &len, BHND_NVRAM_TYPE_UINT8);
 
 		if (!error) {
@@ -654,21 +660,20 @@ g_cfe_get_bootimg_info(struct cfe_bootimg_info *info)
 	if (imgvar == NULL) {
 		/* No dual/failsafe image support */
 		info->type = CFE_IMAGE_SIMPLE;
-		info->num_images = 0;
-		info->bootimage = 0;
+		info->num_images	= 1;
+		info->bootimage		= 0;
+		info->offsets[0]	= 0;
+		info->sizes[0]		= 0;
+
+		// TODO: probe TRX/OS image size?
+
 		return (0);
-	} else {
-		/* Dual/failsafe image */
-		info->type = imgvar->type;
-		info->num_images = imgvar->num_images;
-		info->bootimage = bootimage;
 	}
 
-	/* Fetch the boot flags */
-	if ((error = g_cfe_get_bootflags(bp, &bootflags))) {
-		CFE_LOG("error reading bootflags: %d\n", error);
-		return (error);
-	}
+	/* Dual/failsafe image */
+	info->type = imgvar->type;
+	info->num_images = imgvar->num_images;
+	info->bootimage = bootimg;
 
 	/* Probe image offsets */
 	for (size_t i = 0; i < info->num_images; i++) {
@@ -686,18 +691,17 @@ g_cfe_get_bootimg_info(struct cfe_bootimg_info *info)
 		}
 	}
 
-	/* Determine image size */
-	len = sizeof(imagesize);
-	error = bcm_get_nvram(bp, BHND_NVAR_IMAGE_SIZE, &imagesize, &len,
+	/* Probe image sizes */
+	len = sizeof(imgsize);
+	error = bcm_get_nvram(bp, BHND_NVAR_IMAGE_SIZE, &imgsize, &len,
 	    BHND_NVRAM_TYPE_UINT64);
-	if (error == ENOENT) {
-		
-	} else if (error) {
+	if (error) {
 		CFE_LOG("error fetching image size: %d\n", error);
 		return (error);
 	}
 
-	// TODO: image size
+	for (size_t i = 0; i < info->num_images; i++)
+		info->sizes[i] = imgsize;
 
 	return (0);
 }
