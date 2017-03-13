@@ -232,19 +232,19 @@ static int				 g_cfe_probe_bootimg(
 static const struct cfe_flash_device cfe_flash_devices[] = {
 	{ "nflash",	"NAND::device", (chipc_flash[]) {
 	    CHIPC_NFLASH,	CHIPC_NFLASH_4706,	CHIPC_FLASH_NONE },
-	    CFE_DEV_QUIRK_FI_ZERO_OFFSET | CFE_DEV_QUIRK_FI_TOTAL_SIZE |
+	    CFE_DEV_QUIRK_FLASH_ZERO_OFFSET | CFE_DEV_QUIRK_FLASH_TOTAL_SIZE |
 	    CFE_DEV_QUIRK_NO_NVINFO
 	},
 
 	{ "flash",	"CFI::device",	(chipc_flash[]){
 	    CHIPC_PFLASH_CFI,	CHIPC_FLASH_NONE },
-	    CFE_DEV_QUIRK_NV_PART_SIZE
+	    CFE_DEV_QUIRK_NVINFO_PART_SIZE
 	},
 
 	{ "flash",	"SPI::device",	(chipc_flash[]){
 	    CHIPC_SFLASH_AT,	CHIPC_SFLASH_ST,	CHIPC_FLASH_NONE },
-	    CFE_DEV_QUIRK_FI_ZERO_OFFSET | CFE_DEV_QUIRK_FI_TOTAL_SIZE |
-	    CFE_DEV_QUIRK_NV_PART_SIZE
+	    CFE_DEV_QUIRK_FLASH_ZERO_OFFSET | CFE_DEV_QUIRK_FLASH_TOTAL_SIZE |
+	    CFE_DEV_QUIRK_NVINFO_PART_SIZE
 	}
 };
 
