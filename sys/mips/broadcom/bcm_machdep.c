@@ -99,8 +99,8 @@ __FBSDID("$FreeBSD$");
 static int	bcm_init_platform_data(struct bcm_platform *bp);
 
 static int	bcm_find_core(struct bcm_platform *bp,
-		    struct bhnd_core_match *md, struct bhnd_core_info *info,
-		    uintptr_t *addr);
+		    const struct bhnd_core_match *descs, size_t num_descs,
+		    struct bhnd_core_info *info, uintptr_t *addr);
 
 static int	bcm_erom_probe_and_attach(bhnd_erom_class_t **erom_cls,
 		    kobj_ops_t erom_ops, bhnd_erom_t *erom, size_t esize,
@@ -111,6 +111,15 @@ extern int	*end;
 
 static struct bcm_platform	 bcm_platform_data;
 static bool			 bcm_platform_data_avail = false;
+
+static const struct bhnd_core_match bcm_chipc_cores[] = {
+	{ BHND_MATCH_CORE(BHND_MFGID_BCM,	BHND_COREID_CC)		},
+	{ BHND_MATCH_CORE(BHND_MFGID_BCM,	BHND_COREID_4706_CC)	},
+};
+
+static const struct bhnd_core_match bcm_pmu_cores[] = {
+	{ BHND_MATCH_CORE(BHND_MFGID_BCM,	BHND_COREID_PMU)	},
+};
 
 struct bcm_platform *
 bcm_get_platform(void)
@@ -133,29 +142,41 @@ bcm_get_bus_addr(void)
 }
 
 /**
- * Search the device enumeration table for a core matching @p md,
+ * Search the device enumeration table for a core matching @p descs,
  * 
  * @param	bp		Platform state containing a valid EROM parser.
- * @param	md		The core match descriptor.
+ * @param	descs		The core match descriptor table.
+ * @param	num_descs	The number of match descriptors in @p descs.
  * @param[out]	info		If non-NULL, will be populated with the core
  *				info.
  * @param[out]	addr		If non-NULL, will be populated with the core's
  *				physical register address.
  */
 static int
-bcm_find_core(struct bcm_platform *bp, struct bhnd_core_match *md,
-    struct bhnd_core_info *info, uintptr_t *addr)
+bcm_find_core(struct bcm_platform *bp, const struct bhnd_core_match *descs,
+    size_t num_descs, struct bhnd_core_info *info, uintptr_t *addr)
 {
 	bhnd_addr_t		b_addr;
 	bhnd_size_t		b_size;
 	int			error;
 
 	/* Fetch core info */
-	error = bhnd_erom_lookup_core_addr(&bp->erom.obj, md, BHND_PORT_DEVICE,
-	    0, 0, info, &b_addr, &b_size);
-	if (error)
-		return (error);
+	for (size_t i = 0; i < num_descs; i++) {
+		error = bhnd_erom_lookup_core_addr(&bp->erom.obj, &descs[i],
+		    BHND_PORT_DEVICE, 0, 0, info, &b_addr, &b_size);
 
+		/* Terminate search on first match */
+		if (error == 0)
+			break;
+
+		/* Terminate on first error (other than core not found) */
+		if (error != ENOENT)
+			return (error);
+
+		/* Continue search ... */
+	}
+
+	/* Provide the core's base address */
 	if (addr != NULL && b_addr > UINTPTR_MAX) {
 		BCM_ERR("core address %#jx overflows native address width\n",
 		    (uintmax_t)b_addr);
@@ -256,9 +277,8 @@ bcm_erom_probe_and_attach(bhnd_erom_class_t **erom_cls, kobj_ops_t erom_ops,
 static int
 bcm_init_platform_data(struct bcm_platform *bp)
 {
-	struct bhnd_core_match	md;
-	bool			aob, pmu;
-	int			error;
+	bool	aob, pmu;
+	int	error;
 
 	/* Fetch CFE console handle (if any). Must be initialized before
 	 * any calls to printf/early_putc. */
@@ -277,32 +297,11 @@ bcm_init_platform_data(struct bcm_platform *bp)
 	}
 
 	/* Fetch chipcommon core info */
-	md = (struct bhnd_core_match) {
-		BHND_MATCH_CORE_VENDOR(BHND_MFGID_BCM),
-		BHND_MATCH_CORE_CLASS(BHND_DEVCLASS_CC),
-		BHND_MATCH_CORE_UNIT(0)
-	};
-
-	error = bcm_find_core(bp, &md, &bp->cc_id, &bp->cc_addr);
+	error = bcm_find_core(bp, bcm_chipc_cores, nitems(bcm_chipc_cores),
+	    &bp->cc_id, &bp->cc_addr);
 	if (error) {
 		BCM_ERR("error locating chipc core: %d\n", error);
 		return (error);
-	}
-
-	/* Must be a supported chipc core type */
-	switch (bp->cc_id.device) {
-	case BHND_COREID_CC:
-	case BHND_COREID_4706_CC:
-		/* Supported */
-		break;
-
-	default:
-		BCM_ERR("unsupported chipc core: %s %s (%#x/%#x)\n",
-		    bhnd_vendor_name(bp->cc_id.vendor),
-		    bhnd_core_name(&bp->cc_id), bp->cc_id.vendor,
-		    bp->cc_id.device);
-
-		return (ENXIO);
 	}
 
 	/* Fetch chipc capability flags */
@@ -318,13 +317,8 @@ bcm_init_platform_data(struct bcm_platform *bp)
 
 	if (pmu && aob) {
 		/* PMU block mapped to a PMU core on the Always-on-Bus (aob) */
-		md = (struct bhnd_core_match) {
-			BHND_MATCH_CORE_VENDOR(BHND_MFGID_BCM),
-			BHND_MATCH_CORE_ID(BHND_COREID_PMU),
-			BHND_MATCH_CORE_UNIT(0)
-		};
-
-		error = bcm_find_core(bp, &md, &bp->pmu_id,  &bp->pmu_addr);
+		error = bcm_find_core(bp, bcm_pmu_cores, nitems(bcm_pmu_cores),
+		    &bp->pmu_id,  &bp->pmu_addr);
 		if (error) {
 			BCM_ERR("error locating pmu core: %d\n", error);
 			return (error);
