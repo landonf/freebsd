@@ -181,6 +181,8 @@
 #define	BHND_PMU_CC1_SW_TYPE_EPHYRMII	0x00000080
 #define	BHND_PMU_CC1_SW_TYPE_RGMII	0x000000c0
 
+#ifdef BHND_PMU_XXX_COMPAT
+
 /* PMU corerev and chip specific PLL controls.
  * PMU<rev>_PLL<num>_XX where <rev> is PMU corerev and <num> is an arbitrary number
  * to differentiate different PLLs controlled by the same PMU rev.
@@ -708,5 +710,7 @@
 
 /* PMU resource up transition time in ILP cycles */
 #define	BHND_PMURES_UP_TRANSITION		2
+
+#endif /* BHND_PMU_XXX_COMPAT */
 
 #endif /* _BHND_CORES_PMU_BHND_PMUREG_H_ */

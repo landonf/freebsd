@@ -293,6 +293,7 @@
 
 
 /* Broadcom ChipCommon Chip IDs */
+#define	BHND_CHIPID_INVALID		0xFFFF		/* invalid chip id */
 #define	BHND_CHIPID_BCM4306		0x4306		/* 4306 chipcommon chipid */
 #define	BHND_CHIPID_BCM4311		0x4311		/* 4311 PCIe 802.11a/b/g */
 #define	BHND_CHIPID_BCM43111		43111		/* 43111 chipcommon chipid (OTP chipid) */

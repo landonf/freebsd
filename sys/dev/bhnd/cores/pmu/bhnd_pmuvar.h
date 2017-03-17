@@ -38,6 +38,9 @@
 #include "bhnd_pmu.h"
 
 struct bhnd_pmu_query;
+struct bhnd_pmu_softc;
+struct bhnd_pmu_hwcfg;
+struct bhnd_pmu_ops;
 struct bhnd_pmu_io;
 
 DECLARE_CLASS(bhnd_pmu_driver);
@@ -60,20 +63,6 @@ uint32_t	bhnd_pmu_mem_clock(struct bhnd_pmu_query *sc);
 uint32_t	bhnd_pmu_alp_clock(struct bhnd_pmu_query *sc);
 uint32_t	bhnd_pmu_ilp_clock(struct bhnd_pmu_query *sc);
 
-/* 
- * BHND PMU device quirks / features
- */
-enum {
-	/** No quirks */
-	BPMU_QUIRK_NONE			= 0,
-
-	/** On BCM4328-derived chipsets, the CLK_CTL_ST register CCS_HTAVAIL
-	 *  and CCS_ALPAVAIL bits are swapped; the BHND_CCS0_* constants should
-	 *  be used. */
-	BPMU_QUIRK_CLKCTL_CCS0	= 1
-};
-
-
 /**
  * PMU read-only query support.
  * 
@@ -84,6 +73,7 @@ struct bhnd_pmu_query {
 	device_t			 dev;		/**< owning device, or NULL */
 	struct bhnd_chipid		 cid;		/**< chip identification */
 	uint32_t			 caps;		/**< pmu capability flags. */
+	const struct bhnd_pmu_hwcfg	*hwcfg;		/**< pmu hardware configuration */
 
 	const struct bhnd_pmu_io	*io;		/**< I/O operations */
 	void				*io_ctx;	/**< I/O callback context */
@@ -98,7 +88,7 @@ struct bhnd_pmu_io {
 	/* Read 4 bytes from PMU @p reg */
 	uint32_t	(*rd4)(bus_size_t reg, void *ctx);
 
-	/* Read 4 bytes to PMU @p reg */
+	/* Write 4 bytes to PMU @p reg */
 	void		(*wr4)(bus_size_t reg, uint32_t val, void *ctx);
 
 	/* Read ChipCommon's CHIP_ST register */

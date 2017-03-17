@@ -26,17 +26,252 @@ __FBSDID("$FreeBSD$");
 #include <sys/types.h>
 
 #include <dev/bhnd/bhnd.h>
+
+// XXX TODO drop XXX_COMPAT
+#define BHND_PMU_XXX_COMPAT
+#include "bhnd_pmureg.h"
+#include "bhnd_pmuvar.h"
+#include "bhnd_pmu_private.h"
+
+/* PMU resources */
+static bool	bhnd_pmu_res_depfltr_bb(struct bhnd_pmu_softc *sc);
+static bool	bhnd_pmu_res_depfltr_ncb(struct bhnd_pmu_softc *sc);
+static bool	bhnd_pmu_res_depfltr_paldo(struct bhnd_pmu_softc *sc);
+static bool	bhnd_pmu_res_depfltr_npaldo(struct bhnd_pmu_softc *sc);
+static uint32_t	bhnd_pmu_res_deps(struct bhnd_pmu_softc *sc, uint32_t rsrcs,
+		    bool all);
+static int	bhnd_pmu_res_uptime(struct bhnd_pmu_softc *sc, uint8_t rsrc,
+		    uint32_t *uptime);
+static int	bhnd_pmu_res_masks(struct bhnd_pmu_softc *sc, uint32_t *pmin,
+		    uint32_t *pmax);
+
+/**
+ * Probe and return the hardware configuration to be used with the PMU mapped
+ * by @p io and @p io_ctx on @p cid.
+ *
+ * @param[out]	hwcfg	On success, the probed PMU hardware configuration.
+ * @param	io	PMU I/O callbacks.
+ * @param	io_ctx	PMU I/O callback context.
+ * @param	cid	The device's chip identifier.
+ *
+ * @retval 0		success
+ * @retval ENXIO	if the PMU is not supported by any registered operation
+ *			callbacks.
+ * @retval positive	if an error otherwise occurs during probing, a regular
+ *			unix error code will be returned.
+ */
+int
+bhnd_pmu_hwcfg_probe(const struct bhnd_pmu_hwcfg **hwcfg,
+    const struct bhnd_pmu_io *io, void *io_ctx, const struct bhnd_chipid *cid)
+{
+	struct bhnd_pmu_ops	**optr;
+	int			  prio, result;
+
+	*hwcfg = NULL;
+	prio = 0;
+
+	SET_FOREACH(optr, bhnd_pmu_ops_set) {
+		const struct bhnd_pmu_ops	*next;
+		const struct bhnd_pmu_hwcfg	*next_hwcfg;
+
+		next = *optr;
+
+		result = next->probe(&next_hwcfg, io, io_ctx, cid);
+		if (result > 0)
+			continue;
+
+		/* Check for a new highest priority match */
+		if (*hwcfg == NULL || result > prio) {
+			prio = result;
+			*hwcfg = next_hwcfg;
+		}
+
+		/* Terminate immediately on BUS_PROBE_SPECIFIC */
+		if (result == BUS_PROBE_SPECIFIC)
+			break;
+	}
+
+	/* Did at least one probe succeed? */
+	if (*hwcfg == NULL)
+		return (ENXIO);
+
+	return (0);
+}
+
+/**
+ * Search @p entries for the first entry matching @p cid.
+ * 
+ * @param cid		The chip identification to be matched against.
+ * @param entries	The PMU hardware entries to matched against.
+ * @param entry_size	The @p entries entry size, in bytes.
+ * 
+ * @retval bhnd_pmu_hwcfg	the first matching entry, if any.
+ * @retval NULL			if no matching entry is found in @p table.
+ */
+const struct bhnd_pmu_hwcfg *
+bhnd_pmu_hwcfg_lookup(const struct bhnd_chipid *cid,
+    const struct bhnd_pmu_hwcfg *entries, size_t entry_size)
+{
+	const struct bhnd_pmu_hwcfg *cfg;
+
+	for (cfg = entries; !BHND_PMU_HWCFG_IS_END(cfg); cfg =
+	    (const struct bhnd_pmu_hwcfg *)((const u_char *) cfg + entry_size))
+	{
+		if (!bhnd_chip_matches(cid, &cfg->hwreq))
+			continue;
+
+		/* found */
+		return (cfg);
+	}
+
+	/* not found */
+	return (NULL);
+}
+
+/**
+ * Return the device-specific resource number for @p rsrc, if any.
+ * 
+ * @param	hwcfg		The PMU hardware configuration to be queried.
+ * @param	rsrc		The resource ID to search for in @p hwcfg.
+ * @param[out]	rsrc_num	On success, the configuration-specific resource
+ *				number for @p rsrc.
+ * 
+ * @retval true		success
+ * @retval false	if @p rsrc is not defined by @p hwcfg.
+ */
+bool
+bhnd_pmu_rsrc_lookup(const struct bhnd_pmu_hwcfg *hwcfg, bhnd_pmu_rsrc rsrc,
+    uint8_t *rsrc_num)
+{
+	const struct bhnd_pmu_rsrc_map *rm;
+
+	for (rm = hwcfg->rsrc_map; !BHND_PMU_RSRC_MAP_IS_END(rm); rm++) {
+		if (rm->rsrc == rsrc) {
+			*rsrc_num = rm->rsrc_num;
+			return (true);
+		}
+	}
+
+	/* not found */
+	return (false);
+}
+
+/**
+ * Add PMU managed @p rsrc to the PMU minimum resource mask.
+ * 
+ * @param sc	PMU driver state.
+ * @param rsrc	The resource to be enabled.
+ * 
+ * @retval 0		success
+ * @retval ENODEV	if @p rsrc is not defined by the device.
+ */
+int
+bhnd_pmu_rsrc_on(struct bhnd_pmu_softc *sc, bhnd_pmu_rsrc rsrc)
+{
+	uint8_t rsrc_num;
+
+	if (!bhnd_pmu_rsrc_lookup(sc->query.hwcfg, rsrc, &rsrc_num)) {
+		BHND_PMU_LOG(sc, "request for unknown resource: %d\n", rsrc);
+		return (ENODEV);
+	}
+
+	BHND_PMU_OR_4(sc, BHND_PMU_MIN_RES_MASK, BHND_PMURES_BIT(rsrc_num));
+
+	return (0);
+}
+
+/**
+ * Remove PMU managed @p rsrc from the PMU minimum resource mask.
+ *
+ * @param sc	PMU driver state.
+ * @param rsrc	The resource to be disabled.
+ * 
+ * @retval 0		success
+ * @retval ENODEV	if @p rsrc is not defined by the device.
+ */
+int
+bhnd_pmu_rsrc_off(struct bhnd_pmu_softc *sc, bhnd_pmu_rsrc rsrc)
+{
+	uint8_t rsrc_num;
+
+	if (!bhnd_pmu_rsrc_lookup(sc->query.hwcfg, rsrc, &rsrc_num)) {
+		BHND_PMU_LOG(sc, "request for unknown resource: %d\n", rsrc);
+		return (ENODEV);
+	}
+
+	BHND_PMU_AND_4(sc, BHND_PMU_MIN_RES_MASK, ~(BHND_PMURES_BIT(rsrc_num)));
+
+	return (0);
+}
+
+/**
+ * Return the uptime of @p rsrc in ILP clock cycles.
+ * 
+ * @param	sc	PMU driver state.
+ * @param	rsrc	The resource to be queried.
+ * @param[out]	uptime	On success, the resource's uptime in ILP cycles.
+ */
+int
+bhnd_pmu_rsrc_uptime(struct bhnd_pmu_softc *sc, bhnd_pmu_rsrc rsrc,
+    uint32_t *uptime)
+{
+	uint32_t	deps;
+	uint32_t	up, dup, dmax;
+	uint32_t	min_mask;
+	uint8_t		rsrc_num;
+	int		error;
+
+	if (!bhnd_pmu_rsrc_lookup(sc->query.hwcfg, rsrc, &rsrc_num)) {
+		BHND_PMU_LOG(sc, "request for unknown resource: %d\n", rsrc);
+		return (ENODEV);
+	}
+
+	/* Fetch resource uptime */
+	BHND_PMU_WRITE_4(sc, BHND_PMU_RES_TABLE_SEL, rsrc_num);
+	up = BHND_PMU_READ_4(sc, BHND_PMU_RES_UPDN_TIMER);
+	up = BHND_PMU_GET_BITS(up, BHND_PMU_RES_UPDN_UPTME);
+
+	/* Find direct dependencies */
+	deps = bhnd_pmu_res_deps(sc, BHND_PMURES_BIT(rsrc_num), false);
+	for (uint8_t i = 0; i <= BHND_PMU_RESNUM_MAX; i++) {
+		if (!(deps & BHND_PMURES_BIT(i)))
+			continue;
+
+		deps &= ~bhnd_pmu_res_deps(sc, BHND_PMURES_BIT(i), true);
+	}
+
+	/* Exclude the minimum resource set */
+	if ((error = bhnd_pmu_res_masks(sc, &min_mask, NULL)))
+		return (error);
+
+	deps &= ~min_mask;
+
+	/* Determine max uptime of direct dependencies */
+	dmax = 0;
+	for (uint8_t i = 0; i <= BHND_PMU_RESNUM_MAX; i++) {
+		if (!(deps & BHND_PMURES_BIT(i)))
+			continue;
+
+		if ((error = bhnd_pmu_res_uptime(sc, i, &dup)))
+			return (error);
+
+		if (dmax < dup)
+			dmax = dup;
+	}
+
+	*uptime = (up + dmax + BHND_PMURES_UP_TRANSITION);
+	return (0);
+}
+
+
+// XXX TODO LEGACY
+
 #include <dev/bhnd/cores/chipc/chipc.h>
 #include <dev/bhnd/cores/chipc/chipcreg.h>
 
 #include <dev/bhnd/bcma/bcma_dmp.h>
 
 #include "bhnd_nvram_map.h"
-
-#include "bhnd_pmureg.h"
-#include "bhnd_pmuvar.h"
-
-#include "bhnd_pmu_private.h"
 
 #define	PMU_LOG(_sc, _fmt, ...)	do {				\
 	if (_sc->dev != NULL)					\
@@ -51,16 +286,11 @@ __FBSDID("$FreeBSD$");
 #define	PMU_DEBUG(_sc, _fmt, ...)
 #endif
 
-typedef struct pmu0_xtaltab0 pmu0_xtaltab0_t;
 typedef struct pmu1_xtaltab0 pmu1_xtaltab0_t;
 
 /* PLL controls/clocks */
 static const pmu1_xtaltab0_t *bhnd_pmu1_xtaltab0(struct bhnd_pmu_query *sc);
 static const pmu1_xtaltab0_t *bhnd_pmu1_xtaldef0(struct bhnd_pmu_query *sc);
-
-static void	bhnd_pmu0_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal);
-static uint32_t	bhnd_pmu0_cpuclk0(struct bhnd_pmu_query *sc);
-static uint32_t	bhnd_pmu0_alpclk0(struct bhnd_pmu_query *sc);
 
 static void	bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal);
 static uint32_t	bhnd_pmu1_pllfvco0(struct bhnd_pmu_query *sc);
@@ -68,18 +298,6 @@ static uint32_t	bhnd_pmu1_cpuclk0(struct bhnd_pmu_query *sc);
 static uint32_t	bhnd_pmu1_alpclk0(struct bhnd_pmu_query *sc);
 
 static uint32_t	bhnd_pmu5_clock(struct bhnd_pmu_query *sc, u_int pll0, u_int m);
-
-/* PMU resources */
-static bool	bhnd_pmu_res_depfltr_bb(struct bhnd_pmu_softc *sc);
-static bool	bhnd_pmu_res_depfltr_ncb(struct bhnd_pmu_softc *sc);
-static bool	bhnd_pmu_res_depfltr_paldo(struct bhnd_pmu_softc *sc);
-static bool	bhnd_pmu_res_depfltr_npaldo(struct bhnd_pmu_softc *sc);
-static uint32_t	bhnd_pmu_res_deps(struct bhnd_pmu_softc *sc, uint32_t rsrcs,
-		    bool all);
-static int	bhnd_pmu_res_uptime(struct bhnd_pmu_softc *sc, uint8_t rsrc,
-		    uint32_t *uptime);
-static int	bhnd_pmu_res_masks(struct bhnd_pmu_softc *sc, uint32_t *pmin,
-		    uint32_t *pmax);
 
 static void	bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc,
 		    uint8_t spuravoid);
@@ -115,11 +333,30 @@ int
 bhnd_pmu_query_init(struct bhnd_pmu_query *query, device_t dev,
     struct bhnd_chipid id, const struct bhnd_pmu_io *io, void *ctx)
 {
+	int error;
+
 	query->dev = dev;
 	query->io = io;
 	query->io_ctx = ctx;
 	query->cid = id;
 	query->caps = BHND_PMU_READ_4(query, BHND_PMU_CAP);
+	
+	error = bhnd_pmu_hwcfg_probe(&query->hwcfg, io, ctx, &id);
+	if (error) {
+		char name[BHND_CHIPID_MAX_NAMELEN];
+
+		bhnd_format_chip_id(name, sizeof(name), id.chip_id);
+		BHND_PMU_LOG(query, "failed to identify PMU configuration for "
+		    "%s: %d\n", name, error);
+
+		// XXX TODO
+		if (error == ENXIO) {
+			BHND_PMU_LOG(query, "running in legacy mode\n");
+			query->hwcfg = NULL;
+		} else {
+			return (error);
+		}
+	}
 
 	return (0);
 }
@@ -1185,36 +1422,6 @@ bhnd_pmu_res_init(struct bhnd_pmu_softc *sc)
 }
 
 /* setup pll and query clock speed */
-struct pmu0_xtaltab0 {
-	uint16_t	freq;
-	uint8_t		xf;
-	uint8_t		wbint;
-	uint32_t	wbfrac;
-};
-
-/* the following table is based on 880Mhz fvco */
-static const pmu0_xtaltab0_t pmu0_xtaltab0[] = {
-	{
-	12000, 1, 73, 349525}, {
-	13000, 2, 67, 725937}, {
-	14400, 3, 61, 116508}, {
-	15360, 4, 57, 305834}, {
-	16200, 5, 54, 336579}, {
-	16800, 6, 52, 399457}, {
-	19200, 7, 45, 873813}, {
-	19800, 8, 44, 466033}, {
-	20000, 9, 44, 0}, {
-	25000, 10, 70, 419430}, {
-	26000, 11, 67, 725937}, {
-	30000, 12, 58, 699050}, {
-	38400, 13, 45, 873813}, {
-	40000, 14, 45, 0}, {
-	0, 0, 0, 0}
-};
-
-#define	PMU0_XTAL0_DEFAULT	8
-
-/* setup pll and query clock speed */
 struct pmu1_xtaltab0 {
 	uint16_t	fref;
 	uint8_t		xf;
@@ -1516,197 +1723,6 @@ bhnd_pmu1_alpclk0(struct bhnd_pmu_query *sc)
 
 	return (xt->fref * 1000);
 }
-
-/* Set up PLL registers in the PMU as per the crystal speed. */
-static void
-bhnd_pmu0_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
-{
-	const pmu0_xtaltab0_t	*xt;
-	uint32_t		 pll_data, pll_mask;
-	uint32_t		 pll_res;
-	uint32_t		 pmu_ctrl;
-	uint32_t		 xf;
-
-	/* Use h/w default PLL config */
-	if (xtal == 0) {
-		PMU_DEBUG(sc, "Unspecified xtal frequency, skipping PLL "
-		    "configuration\n");
-		return;
-	}
-
-	/* Find the frequency in the table */
-	for (xt = pmu0_xtaltab0; xt->freq; xt ++) {
-		if (xt->freq == xtal)
-			break;
-	}
-
-	if (xt->freq == 0)
-		xt = &pmu0_xtaltab0[PMU0_XTAL0_DEFAULT];
-
-	PMU_DEBUG(sc, "XTAL %d.%d MHz (%d)\n", xtal / 1000, xtal % 1000,
-	    xt->xf);
-
-	/* Check current PLL state */
-	pmu_ctrl = BHND_PMU_READ_4(sc, BHND_PMU_CTRL);
-	xf = BHND_PMU_GET_BITS(pmu_ctrl, BHND_PMU_CTRL_XTALFREQ);
-	if (xf == xt->xf) {
-#ifdef BCMUSBDEV
-		if (sc->cid.chip_id == BHND_CHIPID_BCM4328) {
-			bhnd_pmu0_sbclk4328(sc,
-			    BHND_PMU0_PLL0_PC0_DIV_ARM_88MHZ);
-			return;
-		}
-#endif	/* BCMUSBDEV */
-
-		PMU_DEBUG(sc, "PLL already programmed for %d.%d MHz\n",
-		         xt->freq / 1000, xt->freq % 1000);
-		return;
-	}
-
-	if (xf != 0) {
-		PMU_DEBUG(sc,
-		    "Reprogramming PLL for %d.%d MHz (was %d.%dMHz)\n",
-		    xt->freq / 1000, xt->freq % 1000,
-		    pmu0_xtaltab0[tmp-1].freq / 1000, 
-		    pmu0_xtaltab0[tmp-1].freq % 1000);
-	} else {
-		PMU_DEBUG(sc, "Programming PLL for %d.%d MHz\n",
-		    xt->freq / 1000, xt->freq % 1000);
-	}
-
-	/* Make sure the PLL is off */
-	switch (sc->cid.chip_id) {
-	case BHND_CHIPID_BCM4328:
-		pll_res = PMURES_BIT(RES4328_BB_PLL_PU);
-		break;
-	case BHND_CHIPID_BCM5354:
-		pll_res = PMURES_BIT(RES5354_BB_PLL_PU);
-		break;
-	default:
-		panic("unsupported chipid %#hx\n", sc->cid.chip_id);
-	}
-	BHND_PMU_AND_4(sc, BHND_PMU_MIN_RES_MASK, ~pll_res);
-	BHND_PMU_AND_4(sc, BHND_PMU_MAX_RES_MASK, ~pll_res);
-
-	/* Wait for HT clock to shutdown. */
-	PMU_WAIT_CLKST(sc, 0, BHND_CCS_HTAVAIL);
-
-	PMU_DEBUG(sc, "Done masking\n");
-
-	/* Write PDIV in pllcontrol[0] */
-	if (xt->freq >= BHND_PMU0_PLL0_PC0_PDIV_FREQ) {
-		BHND_PMU_PLL_WRITE(sc, BHND_PMU0_PLL0_PLLCTL0,
-		    BHND_PMU0_PLL0_PC0_PDIV_MASK, BHND_PMU0_PLL0_PC0_PDIV_MASK);
-	} else {
-		BHND_PMU_PLL_WRITE(sc, BHND_PMU0_PLL0_PLLCTL0, 0,
-		    BHND_PMU0_PLL0_PC0_PDIV_MASK);
-	}
-
-	/* Write WILD in pllcontrol[1] */
-	pll_data =
-	    BHND_PMU_SET_BITS(xt->wbint, BHND_PMU0_PLL0_PC1_WILD_INT) |
-	    BHND_PMU_SET_BITS(xt->wbfrac, BHND_PMU0_PLL0_PC1_WILD_FRAC);
-
-	if (xt->wbfrac == 0) {
-		pll_data |= BHND_PMU0_PLL0_PC1_STOP_MOD;
-	} else {
-		pll_data &= ~BHND_PMU0_PLL0_PC1_STOP_MOD;
-	}
-	
-	pll_mask = 
-	    BHND_PMU0_PLL0_PC1_WILD_INT_MASK |
-	    BHND_PMU0_PLL0_PC1_WILD_FRAC_MASK;
-
-	BHND_PMU_PLL_WRITE(sc, BHND_PMU0_PLL0_PLLCTL1, pll_data, pll_mask);
-
-	/* Write WILD in pllcontrol[2] */
-	pll_data = BHND_PMU_SET_BITS(xt->wbint, BHND_PMU0_PLL0_PC2_WILD_INT);
-	pll_mask = BHND_PMU0_PLL0_PC2_WILD_INT_MASK;
-	BHND_PMU_PLL_WRITE(sc, BHND_PMU0_PLL0_PLLCTL2, pll_data, pll_mask);
-
-	PMU_DEBUG(sc, "Done pll\n");
-
-	/* Write XtalFreq. Set the divisor also. */
-	pmu_ctrl = BHND_PMU_READ_4(sc, BHND_PMU_CTRL);
-	pmu_ctrl &= ~(BHND_PMU_CTRL_ILP_DIV_MASK|BHND_PMU_CTRL_XTALFREQ_MASK);
-
-	pmu_ctrl |= BHND_PMU_SET_BITS(((xt->freq + 127) / 128) - 1,
-	    BHND_PMU_CTRL_ILP_DIV);
-	pmu_ctrl |= BHND_PMU_SET_BITS(xt->xf, BHND_PMU_CTRL_XTALFREQ);
-
-	BHND_PMU_WRITE_4(sc, BHND_PMU_CTRL, pmu_ctrl);
-}
-
-/* query alp/xtal clock frequency */
-static uint32_t
-bhnd_pmu0_alpclk0(struct bhnd_pmu_query *sc)
-{
-	const pmu0_xtaltab0_t	*xt;
-	uint32_t		 xf;
-
-	/* Find the frequency in the table */
-	xf = BHND_PMU_READ_4(sc, BHND_PMU_CTRL);
-	xf = BHND_PMU_GET_BITS(xf, BHND_PMU_CTRL_XTALFREQ);
-	for (xt = pmu0_xtaltab0; xt->freq; xt++)
-		if (xt->xf == xf)
-			break;
-
-	/* PLL must be configured before */
-	if (xt == NULL || xt->freq == 0)
-		panic("unsupported frequency: %u", xf);
-
-	return (xt->freq * 1000);
-}
-
-/* query CPU clock frequency */
-static uint32_t
-bhnd_pmu0_cpuclk0(struct bhnd_pmu_query *sc)
-{
-	uint32_t tmp, divarm;
-	uint32_t FVCO;
-#ifdef BCMDBG
-	uint32_t pdiv, wbint, wbfrac, fvco;
-	uint32_t freq;
-#endif
-
-	FVCO = FVCO_880;
-
-	/* Read divarm from pllcontrol[0] */
-	tmp = BHND_PMU_PLL_READ(sc, BHND_PMU0_PLL0_PLLCTL0);
-	divarm = BHND_PMU_GET_BITS(tmp, BHND_PMU0_PLL0_PC0_DIV_ARM);
-
-#ifdef BCMDBG
-	/* Calculate fvco based on xtal freq, pdiv, and wild */
-	pdiv = tmp & BHND_PMU0_PLL0_PC0_PDIV_MASK;
-
-	tmp = BHND_PMU_PLL_READ(sc, BHND_PMU0_PLL0_PLLCTL1);
-	wbfrac = BHND_PMU_GET_BITS(tmp, BHND_PMU0_PLL0_PC1_WILD_FRAC);
-	wbint = BHND_PMU_GET_BITS(tmp, PMU0_PLL0_PC1_WILD_INT);
-
-	tmp = BHND_PMU_PLL_READ(sc, BHND_PMU0_PLL0_PLLCTL2);
-	wbint += BHND_PMU_GET_BITS(tmp, BHND_PMU0_PLL0_PC2_WILD_INT);
-
-	freq = bhnd_pmu0_alpclk0(sih, osh, cc) / 1000;
-
-	fvco = (freq * wbint) << 8;
-	fvco += (freq * (wbfrac >> 10)) >> 2;
-	fvco += (freq * (wbfrac & 0x3ff)) >> 10;
-	fvco >>= 8;
-	fvco >>= pdiv;
-	fvco /= 1000;
-	fvco *= 1000;
-
-	PMU_DEBUG(sc, "bhnd_pmu0_cpuclk0: wbint %u wbfrac %u fvco %u\n",
-	         wbint, wbfrac, fvco);
-
-	FVCO = fvco;
-#endif	/* BCMDBG */
-
-	/* Return ARM/SB clock */
-	return FVCO / (divarm + BHND_PMU0_PLL0_PC0_DIV_ARM_BASE) * 1000;
-}
-
-
 
 /* Set up PLL registers in the PMU as per the crystal speed. */
 static void
@@ -2087,9 +2103,13 @@ bhnd_pmu1_cpuclk0(struct bhnd_pmu_query *sc)
 }
 
 /* initialize PLL */
-void 
+int 
 bhnd_pmu_pll_init(struct bhnd_pmu_softc *sc, u_int xtalfreq)
 {
+	if (sc->query.hwcfg != NULL)
+		return (sc->query.hwcfg->ops->init(sc, xtalfreq));
+
+	// XXX TODO legacy
 	uint32_t max_mask, min_mask;
 	uint32_t res_ht, res_pll;
 
@@ -2133,14 +2153,6 @@ bhnd_pmu_pll_init(struct bhnd_pmu_softc *sc, u_int xtalfreq)
 	case BHND_CHIPID_BCM4325:
 		bhnd_pmu1_pllinit0(sc, xtalfreq);
 		break;
-	case BHND_CHIPID_BCM4328:
-		bhnd_pmu0_pllinit0(sc, xtalfreq);
-		break;
-	case BHND_CHIPID_BCM5354:
-		if (xtalfreq == 0)
-			xtalfreq = 25000;
-		bhnd_pmu0_pllinit0(sc, xtalfreq);
-		break;
 	case BHND_CHIPID_BCM4329:
 		if (xtalfreq == 0)
 			xtalfreq = 38400;
@@ -2182,6 +2194,8 @@ bhnd_pmu_pll_init(struct bhnd_pmu_softc *sc, u_int xtalfreq)
 		    sc->cid.chip_id, sc->cid.chip_rev, BHND_PMU_REV(sc));
 		break;
 	}
+
+	return (0);
 }
 
 /**
@@ -2192,14 +2206,23 @@ bhnd_pmu_pll_init(struct bhnd_pmu_softc *sc, u_int xtalfreq)
 uint32_t
 bhnd_pmu_alp_clock(struct bhnd_pmu_query *sc)
 {
+	int error;
+
+	if (sc->hwcfg != NULL) {
+		uint32_t hz;
+
+		error = sc->hwcfg->ops->get_alp_clock(sc, &hz);
+		if (error)
+			panic("XXX TODO: fetching ALP clock: %d\n", error);
+
+		return (hz);
+	}
+
+	// XXX TODO legacy
 	uint32_t clock;
 
 	clock = BHND_PMU_ALP_CLOCK;
 	switch (sc->cid.chip_id) {
-	case BHND_CHIPID_BCM4328:
-	case BHND_CHIPID_BCM5354:
-		clock = bhnd_pmu0_alpclk0(sc);
-		break;
 	case BHND_CHIPID_BCM4315:
 	case BHND_CHIPID_BCM4319:
 	case BHND_CHIPID_BCM4325:
@@ -2340,6 +2363,19 @@ bhnd_pmu5_clock(struct bhnd_pmu_query *sc, u_int pll0, u_int m)
 uint32_t
 bhnd_pmu_si_clock(struct bhnd_pmu_query *sc)
 {
+	int error;
+
+	if (sc->hwcfg != NULL) {
+		uint32_t hz;
+
+		error = sc->hwcfg->ops->get_bp_clock(sc, &hz);
+		if (error)
+			panic("XXX TODO: fetching backplane clock: %d\n", error);
+
+		return (hz);
+	}
+
+	// XXX TODO legacy
 	uint32_t chipst;
 	uint32_t clock;
 
@@ -2374,10 +2410,6 @@ bhnd_pmu_si_clock(struct bhnd_pmu_query *sc)
 
 	case BHND_CHIPID_BCM4325:
 		clock = bhnd_pmu1_cpuclk0(sc);
-		break;
-
-	case BHND_CHIPID_BCM4328:
-		clock = bhnd_pmu0_cpuclk0(sc);
 		break;
 
 	case BHND_CHIPID_BCM4329:
@@ -2446,11 +2478,20 @@ bhnd_pmu_si_clock(struct bhnd_pmu_query *sc)
 uint32_t 
 bhnd_pmu_cpu_clock(struct bhnd_pmu_query *sc)
 {
-	uint32_t clock;
+	int error;
 
-	/* 5354 chip uses a non programmable PLL of frequency 240MHz */
-	if (sc->cid.chip_id == BHND_CHIPID_BCM5354)
-		return (240 * 1000 * 1000); /* 240MHz */
+	if (sc->hwcfg != NULL) {
+		uint32_t hz;
+
+		error = sc->hwcfg->ops->get_cpu_clock(sc, &hz);
+		if (error)
+			panic("XXX TODO: fetching CPU clock: %d\n", error);
+
+		return (hz);
+	}
+
+	// XXX TODO legacy
+	uint32_t clock;
 
 	if (sc->cid.chip_id == BHND_CHIPID_BCM53572)
 		return (300000000);
@@ -2497,6 +2538,18 @@ bhnd_pmu_cpu_clock(struct bhnd_pmu_query *sc)
 uint32_t
 bhnd_pmu_mem_clock(struct bhnd_pmu_query *sc)
 {
+	int error;
+	if (sc->hwcfg != NULL) {
+		uint32_t hz;
+
+		error = sc->hwcfg->ops->get_mem_clock(sc, &hz);
+		if (error)
+			panic("XXX TODO: fetching MEM clock: %d\n", error);
+
+		return (hz);
+	}
+
+	// TODO legacy
 	uint32_t clock;
 
 	if (BHND_PMU_REV(sc) >= 5 &&
@@ -2688,21 +2741,29 @@ bhnd_pmu_init(struct bhnd_pmu_softc *sc)
 		BHND_PMU_REGCTRL_WRITE(sc, 2, 0x00000005, 0x00000007);
 	}
 
-
 	/* Fetch target xtalfreq, in KHz */
-	error = bhnd_nvram_getvar_uint32(sc->chipc_dev, BHND_NVAR_XTALFREQ,
-	    &xtalfreq);
+	// XXX TODO
+	if (sc->query.hwcfg != NULL && sc->query.hwcfg->xtalfreq != 0) {
+		xtalfreq = sc->query.hwcfg->xtalfreq;
+	} else {
+		error = bhnd_nvram_getvar_uint32(sc->chipc_dev,
+		    BHND_NVAR_XTALFREQ, &xtalfreq);
 
-	/* If not available, log any real errors, and then try to measure it */
-	if (error) {
-		if (error != ENOENT)
-			PMU_LOG(sc, "error fetching xtalfreq: %d\n", error);
+		/* If not available, log any real errors, and then try to
+		 * measure it */
+		if (error) {
+			if (error != ENOENT) {
+				BHND_PMU_LOG(sc, "error fetching xtalfreq: "
+				    "%d\n", error);
+			}
 
-		xtalfreq = bhnd_pmu_measure_alpclk(sc);
+			xtalfreq = bhnd_pmu_measure_alpclk(sc);
+		}
 	}
 
 	/* Perform PLL initialization */
-	bhnd_pmu_pll_init(sc, xtalfreq);
+	if ((error = bhnd_pmu_pll_init(sc, xtalfreq)))
+		return (error);
 
 	if ((error = bhnd_pmu_res_init(sc)))
 		return (error);
@@ -3291,27 +3352,39 @@ bhnd_pmu_is_otp_powered(struct bhnd_pmu_softc *sc)
 void
 bhnd_pmu_paref_ldo_enable(struct bhnd_pmu_softc *sc, bool enable)
 {
-	uint32_t ldo;
+	uint32_t	ldo;
+	int		error;
 
-	switch (sc->cid.chip_id) {
-	case BHND_CHIPID_BCM4328:
-		ldo = PMURES_BIT(RES4328_PA_REF_LDO);
-		break;
-	case BHND_CHIPID_BCM5354:
-		ldo = PMURES_BIT(RES5354_PA_REF_LDO);
-		break;
-	case BHND_CHIPID_BCM4312:
-		ldo = PMURES_BIT(RES4312_PA_REF_LDO);
-		break;
-	default:
+	// XXX TODO
+	if (sc->query.hwcfg != NULL) {
+		if (enable)
+			error = bhnd_pmu_rsrc_on(sc, BHND_PMU_RSRC_PA_REF_LDO);
+		else
+			error = bhnd_pmu_rsrc_off(sc, BHND_PMU_RSRC_PA_REF_LDO);
+
+		if (error) {
+			// TODO report error
+			panic("error enabling PA reference LDO resource: %d",
+			    error);
+		}
+
 		return;
 	}
 
-	if (enable) {
-		BHND_PMU_OR_4(sc, BHND_PMU_MIN_RES_MASK, ldo);
-	} else {
-		BHND_PMU_AND_4(sc, BHND_PMU_MIN_RES_MASK, ~ldo);
+	/* XXX LEGACY */
+	switch (sc->cid.chip_id) {
+	case BHND_CHIPID_BCM4312:
+		ldo = PMURES_BIT(RES4312_PA_REF_LDO);
+		if (enable)
+			BHND_PMU_OR_4(sc, BHND_PMU_MIN_RES_MASK, ldo);
+		else
+			BHND_PMU_AND_4(sc, BHND_PMU_MIN_RES_MASK, ~ldo);
+		break;
+	default:
+		panic("unsupported device");
 	}
+
+
 }
 
 /* initialize PMU switch/regulators */

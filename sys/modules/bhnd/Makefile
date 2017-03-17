@@ -22,6 +22,7 @@ SRCS+=	bhnd_chipc_if.c bhnd_chipc_if.h
 
 # PMU
 SRCS+=	bhnd_pmu.c \
+	bhnd_pmu0.c \
 	bhnd_pmu_core.c \
 	bhnd_pmu_subr.c
 SRCS+=	bhnd_pmu_if.c bhnd_pmu_if.h

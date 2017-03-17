@@ -170,6 +170,7 @@ bhnd_pmu_attach(device_t dev, struct bhnd_resource *res)
 	BPMU_LOCK_INIT(sc);
 
 	/* Set quirk flags */
+	// XXX TODO: remove
 	switch (sc->cid.chip_id) {
 	case BHND_CHIPID_BCM4328:
 	case BHND_CHIPID_BCM5354:
