@@ -51,6 +51,13 @@ NOTE TO PEOPLE WHO THINK THAT FreeBSD 12.x IS SLOW:
 
 ****************************** SPECIAL WARNING: ******************************
 
+20170316:
+	The mmcsd.ko module now additionally depends on geom_flashmap.ko.
+	Also, mmc.ko and mmcsd.ko need to be a matching pair built from the
+	same source (previously, the dependency of mmcsd.ko on mmc.ko was
+	missing, but mmcsd.ko now will refuse to load if it is incompatible
+	with mmc.ko).
+
 20170315:
 	The syntax of ipfw(8) named states was changed to avoid ambiguity.
 	If you have used named states in the firewall rules, you need to modify
@@ -61,11 +68,6 @@ NOTE TO PEOPLE WHO THINK THAT FreeBSD 12.x IS SLOW:
 	The old drm (sys/dev/drm/) drivers for i915 and radeon have been
 	removed as the userland we provide cannot use them. The KMS version
 	(sys/dev/drm2) support the same hardware.
-
-20170311:
-	GNU diff has been replaced by a BSD licensed diff. Some features of GNU
-	diff has not been implemented, if those are needed a newer version of
-	GNU diff is available via the diffutils package under the gdiff name.
 
 20170302:
 	Clang, llvm, lldb, compiler-rt and libc++ have been upgraded to 4.0.0.

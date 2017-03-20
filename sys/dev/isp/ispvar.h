@@ -80,6 +80,7 @@ struct ispmdvec {
 #endif
 #define	ISP_MAX_TARGETS(isp)	(IS_FC(isp)? MAX_FC_TARG : MAX_TARGETS)
 #define	ISP_MAX_LUNS(isp)	(isp)->isp_maxluns
+#define	ISP_MAX_IRQS		3
 
 /*
  * Macros to access ISP registers through bus specific layers-
@@ -526,6 +527,7 @@ struct ispsoftc {
 	uint16_t		isp_maxcmds;	/* max possible I/O cmds */
 	uint8_t			isp_type;	/* HBA Chip Type */
 	uint8_t			isp_revision;	/* HBA Chip H/W Revision */
+	uint8_t			isp_nirq;	/* number of IRQs */
 	uint16_t		isp_nchan;	/* number of channels */
 	uint32_t		isp_maxluns;	/* maximum luns supported */
 
@@ -544,7 +546,6 @@ struct ispsoftc {
 	uint32_t		isp_rqstoutrp;	/* register for REQOUTP */
 	uint32_t		isp_respinrp;	/* register for RESINP */
 	uint32_t		isp_respoutrp;	/* register for RESOUTP */
-	NANOTIME_T		isp_init_time;		/* time were last initialized */
 
 	/*
 	 * Volatile state
@@ -552,7 +553,6 @@ struct ispsoftc {
 
 	volatile u_int		isp_mboxbsy;	/* mailbox command active */
 	volatile u_int		isp_state;
-	volatile u_int		isp_nactive;	/* how many commands active */
 	volatile mbreg_t	isp_curmbx;	/* currently active mailbox command */
 	volatile uint32_t	isp_reqodx;	/* index of last ISP pickup */
 	volatile uint32_t	isp_reqidx;	/* index of next request */
