@@ -5,8 +5,7 @@
  *
  * This file is derived from the hndpmu.c source contributed by Broadcom 
  * to to the Linux staging repository, as well as later revisions of hndpmu.c
- * distributed with the Asus RT-N16 and Netgear WNDR4500 firmware source code
- * releases.
+ * distributed with the Asus RT-N16 firmware source code release.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -2336,26 +2335,38 @@ bhnd_pmu5_clock(struct bhnd_pmu_query *sc, u_int pll0, u_int m)
 static uint32_t
 bhnd_pmu6_4706_clock(struct bhnd_pmu_query *sc, u_int pll0, u_int m)
 {
-	uint32_t clock, ndiv, tmp;
+	uint32_t chipst, clock;
+	uint32_t ndiv, p1div, p2div, tmp;
 
-	/* Get N divider to determine CPU clock */
+	/* Get N, P1 and P2 dividers to determine CPU clock */
 	BHND_PMU_WRITE_4(sc, BHND_PMU_PLL_CONTROL_ADDR,
 	    pll0 + BHND_PMU6_4706_PROCPLL_OFF);
 	BHND_PMU_READ_4(sc, BHND_PMU_PLL_CONTROL_ADDR);
 
 	tmp = BHND_PMU_READ_4(sc, BHND_PMU_PLL_CONTROL_DATA);
 	ndiv = BHND_PMU_GET_BITS(tmp, BHND_PMU6_4706_PROC_NDIV_INT);
+	p1div = BHND_PMU_GET_BITS(tmp, BHND_PMU6_4706_PROC_P1DIV);
+	p2div = BHND_PMU_GET_BITS(tmp, BHND_PMU6_4706_PROC_P2DIV);
 
 	/* Fixed 25MHz reference clock */
-	clock = ndiv * 25000000;
+	clock = 25 * 1000 * 1000;
+
+	/* The low-cost bonding uses an input divider of 4; otherwise, 2 */
+	chipst = sc->io->rd_chipst(sc->io_ctx);
+	if (chipst & CHIPC_CST4706_LOWCOST_PKG)
+		clock /= 4;
+	else
+		clock /= 2;
+
+	clock *= ndiv * p2div / p1div;
 
 	switch (m) {
 	case BHND_PMU6_MAINPLL_CPU:
-		return (clock / 2);
+		return (clock);
 	case BHND_PMU6_MAINPLL_MEM:
-		return (clock / 4);
+		return (clock / 2);
 	case BHND_PMU6_MAINPLL_SI:
-		return (clock / 8);
+		return (clock / 4);
 	default:
 		PMU_LOG(sc, "bad m divider: %d", m);
 		return (0);
