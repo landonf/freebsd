@@ -2513,7 +2513,6 @@ bhnd_pmu_cpu_clock(struct bhnd_pmu_query *sc)
 			    BHND_PMU5_MAINPLL_CPU));
 
 		case BHND_CHIPID_BCM4706:
-			printf("trying 4706 clock\n");
 			return (bhnd_pmu6_4706_clock(sc,
 			    BHND_PMU4706_MAINPLL_PLL0, BHND_PMU6_MAINPLL_CPU));
 
