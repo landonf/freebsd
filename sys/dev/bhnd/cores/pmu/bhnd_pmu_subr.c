@@ -2484,8 +2484,6 @@ bhnd_pmu_si_clock(struct bhnd_pmu_query *sc)
 uint32_t 
 bhnd_pmu_cpu_clock(struct bhnd_pmu_query *sc)
 {
-	printf("got clock request\n");
-
 	/* 5354 chip uses a non programmable PLL of frequency 240MHz */
 	if (sc->cid.chip_id == BHND_CHIPID_BCM5354)
 		return (240 * 1000 * 1000); /* 240MHz */
