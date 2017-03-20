@@ -70,7 +70,7 @@ static uint32_t	bhnd_pmu1_alpclk0(struct bhnd_pmu_query *sc);
 
 static uint32_t	bhnd_pmu5_clock(struct bhnd_pmu_query *sc, u_int pll0, u_int m);
 
-static uint32_t bhnd_pmu6_4706_clock(struct bhnd_pmu_query *sc, u_int pll0,
+static uint32_t	bhnd_pmu6_4706_clock(struct bhnd_pmu_query *sc, u_int pll0,
 		    u_int m);
 
 /* PMU resources */
