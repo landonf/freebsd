@@ -2517,8 +2517,8 @@ bhnd_pmu_cpu_clock(struct bhnd_pmu_query *sc)
 			    BHND_PMU4706_MAINPLL_PLL0, BHND_PMU6_MAINPLL_CPU));
 
 		default:
-			panic("cannot query CPU clock on unsupported chip "
-			    "%hu\n", sc->cid.chip_id);
+			return (bhnd_pmu5_clock(sc, BHND_PMU4716_MAINPLL_PLL0,
+			    BHND_PMU5_MAINPLL_CPU));
 		}
 	} else {
 		return (bhnd_pmu_si_clock(sc));
@@ -2559,8 +2559,8 @@ bhnd_pmu_mem_clock(struct bhnd_pmu_query *sc)
 			    BHND_PMU4706_MAINPLL_PLL0, BHND_PMU6_MAINPLL_MEM));
 
 		default:
-			panic("cannot query MEM clock on unsupported chip "
-			    "%hu\n", sc->cid.chip_id);
+			return (bhnd_pmu5_clock(sc, BHND_PMU4716_MAINPLL_PLL0,
+			    BHND_PMU5_MAINPLL_MEM));
 		}
 
 	} else {
