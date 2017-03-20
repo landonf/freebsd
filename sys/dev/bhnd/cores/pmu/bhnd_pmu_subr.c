@@ -2349,13 +2349,12 @@ bhnd_pmu6_4706_clock(struct bhnd_pmu_query *sc, u_int pll0, u_int m)
 	/* Fixed 25MHz reference clock */
 	clock = ndiv * 25000000;
 
-	/* Map PMU5 divider */
 	switch (m) {
-	case BHND_PMU5_MAINPLL_CPU:
+	case BHND_PMU6_MAINPLL_CPU:
 		return (clock / 2);
-	case BHND_PMU5_MAINPLL_MEM:
+	case BHND_PMU6_MAINPLL_MEM:
 		return (clock / 4);
-	case BHND_PMU5_MAINPLL_SI:
+	case BHND_PMU6_MAINPLL_SI:
 		return (clock / 8);
 	default:
 		PMU_LOG(sc, "bad m divider: %d", m);
