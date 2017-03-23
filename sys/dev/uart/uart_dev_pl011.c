@@ -40,6 +40,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/uart/uart_cpu.h>
 #ifdef FDT
 #include <dev/uart/uart_cpu_fdt.h>
+#include <dev/ofw/ofw_bus.h>
 #endif
 #include <dev/uart/uart_bus.h>
 #include "uart_if.h"
@@ -111,16 +112,24 @@ __FBSDID("$FreeBSD$");
 #define	UART_MIS	0x10		/* Masked interrupt status register */
 #define	UART_ICR	0x11		/* Interrupt clear register */
 
+#define	UART_PIDREG_0	0x3f8		/* Peripheral ID register 0 */
+#define	UART_PIDREG_1	0x3f9		/* Peripheral ID register 1 */
+#define	UART_PIDREG_2	0x3fa		/* Peripheral ID register 2 */
+#define	UART_PIDREG_3	0x3fb		/* Peripheral ID register 3 */
+
 /*
- * The hardware FIFOs are 16 bytes each.  We configure them to interrupt when
- * 3/4 full/empty.  For RX we set the size to the full hardware capacity so that
- * the uart core allocates enough buffer space to hold a complete fifo full of
- * incoming data.  For TX, we need to limit the size to the capacity we know
- * will be available when the interrupt occurs; uart_core will feed exactly that
- * many bytes to uart_pl011_bus_transmit() which must consume them all.
+ * The hardware FIFOs are 16 bytes each on rev 2 and earlier hardware, 32 bytes
+ * on rev 3 and later.  We configure them to interrupt when 3/4 full/empty.  For
+ * RX we set the size to the full hardware capacity so that the uart core
+ * allocates enough buffer space to hold a complete fifo full of incoming data.
+ * For TX, we need to limit the size to the capacity we know will be available
+ * when the interrupt occurs; uart_core will feed exactly that many bytes to
+ * uart_pl011_bus_transmit() which must consume them all.
  */
-#define	FIFO_RX_SIZE	16
-#define	FIFO_TX_SIZE	12
+#define	FIFO_RX_SIZE_R2	16
+#define	FIFO_TX_SIZE_R2	12
+#define	FIFO_RX_SIZE_R3	32
+#define	FIFO_TX_SIZE_R3	24
 #define	FIFO_IFLS_BITS	((IFLS_LVL_6_8th << IFLS_RX_SHIFT) | (IFLS_LVL_2_8th))
 
 /*
@@ -440,11 +449,45 @@ uart_pl011_bus_param(struct uart_softc *sc, int baudrate, int databits,
 static int
 uart_pl011_bus_probe(struct uart_softc *sc)
 {
+	uint8_t hwrev;
+#ifdef FDT
+	pcell_t node;
+	uint32_t periphid;
+
+	/*
+	 * The FIFO sizes vary depending on hardware; rev 2 and below have 16
+	 * byte FIFOs, rev 3 and up are 32 byte.  The hardware rev is in the
+	 * primecell periphid register, but we get a bit of drama, as always,
+	 * with the bcm2835 (rpi), which claims to be rev 3, but has 16 byte
+	 * FIFOs.  We check for both the old freebsd-historic and the proper
+	 * bindings-defined compatible strings for bcm2835, and also check the
+	 * workaround the linux drivers use for rpi3, which is to override the
+	 * primecell periphid register value with a property.
+	 */
+	if (ofw_bus_is_compatible(sc->sc_dev, "brcm,bcm2835-pl011") ||
+	    ofw_bus_is_compatible(sc->sc_dev, "broadcom,bcm2835-uart")) {
+		hwrev = 2;
+	} else {
+		node = ofw_bus_get_node(sc->sc_dev);
+		if (OF_getencprop(node, "arm,primecell-periphid", &periphid,
+		    sizeof(periphid)) > 0) {
+			hwrev = (periphid >> 20) & 0x0f;
+		} else {
+			hwrev = __uart_getreg(&sc->sc_bas, UART_PIDREG_2) >> 4;
+		}
+	}
+#else
+	hwrev = __uart_getreg(&sc->sc_bas, UART_PIDREG_2) >> 4;
+#endif
+	if (hwrev <= 2) {
+		sc->sc_rxfifosz = FIFO_RX_SIZE_R2;
+		sc->sc_txfifosz = FIFO_TX_SIZE_R2;
+	} else {
+		sc->sc_rxfifosz = FIFO_RX_SIZE_R3;
+		sc->sc_txfifosz = FIFO_TX_SIZE_R3;
+	}
 
 	device_set_desc(sc->sc_dev, "PrimeCell UART (PL011)");
-
-	sc->sc_rxfifosz = FIFO_RX_SIZE;
-	sc->sc_txfifosz = FIFO_TX_SIZE;
 
 	return (0);
 }
