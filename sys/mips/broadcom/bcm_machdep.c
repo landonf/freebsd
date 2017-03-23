@@ -296,7 +296,7 @@ bcm_init_platform_data(struct bcm_platform *bp)
 		return (error);
 	}
 
-	if (bootverbose || 1)
+	if (bootverbose)
 		bhnd_erom_dump(&bp->erom.obj);
 
 	/* Fetch chipcommon core info */
