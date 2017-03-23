@@ -112,14 +112,11 @@ isp_attach_chan(ispsoftc_t *isp, struct cam_devq *devq, int chan)
 	int i;
 #endif
 
-	/*
-	 * Construct our SIM entry.
-	 */
-	sim = cam_sim_alloc(isp_action, isp_poll, "isp", isp, device_get_unit(isp->isp_dev), &isp->isp_osinfo.lock, isp->isp_maxcmds, isp->isp_maxcmds, devq);
-
-	if (sim == NULL) {
+	sim = cam_sim_alloc(isp_action, isp_poll, "isp", isp,
+	    device_get_unit(isp->isp_dev), &isp->isp_lock,
+	    isp->isp_maxcmds, isp->isp_maxcmds, devq);
+	if (sim == NULL)
 		return (ENOMEM);
-	}
 
 	ISP_LOCK(isp);
 	if (xpt_bus_register(sim, isp->isp_dev, chan) != CAM_SUCCESS) {
@@ -173,7 +170,7 @@ isp_attach_chan(ispsoftc_t *isp, struct cam_devq *devq, int chan)
 		fc->isp = isp;
 		fc->ready = 1;
 
-		callout_init_mtx(&fc->gdt, &isp->isp_osinfo.lock, 0);
+		callout_init_mtx(&fc->gdt, &isp->isp_lock, 0);
 		TASK_INIT(&fc->gtask, 1, isp_gdt_task, fc);
 #ifdef	ISP_TARGET_MODE
 		TAILQ_INIT(&fc->waitq);
@@ -267,7 +264,7 @@ isp_detach_chan(ispsoftc_t *isp, int chan)
 	/* Wait for the channel's spawned threads to exit. */
 	wakeup(isp->isp_osinfo.pc.ptr);
 	while (*num_threads != 0)
-		mtx_sleep(isp, &isp->isp_osinfo.lock, PRIBIO, "isp_reap", 100);
+		mtx_sleep(isp, &isp->isp_lock, PRIBIO, "isp_reap", 100);
 }
 
 int
@@ -291,10 +288,9 @@ isp_attach(ispsoftc_t *isp)
 		}
 	}
 
-	callout_init_mtx(&isp->isp_osinfo.tmo, &isp->isp_osinfo.lock, 0);
+	callout_init_mtx(&isp->isp_osinfo.tmo, &isp->isp_lock, 0);
 	isp_timer_count = hz >> 2;
 	callout_reset(&isp->isp_osinfo.tmo, isp_timer_count, isp_timer, isp);
-	isp->isp_osinfo.timer_active = 1;
 
 	isp->isp_osinfo.cdev = make_dev(&isp_cdevsw, du, UID_ROOT, GID_OPERATOR, 0600, "%s", nu);
 	if (isp->isp_osinfo.cdev) {
@@ -315,10 +311,6 @@ unwind:
 		ISP_UNLOCK(isp);
 		cam_sim_free(sim, FALSE);
 	}
-	if (isp->isp_osinfo.cdev) {
-		destroy_dev(isp->isp_osinfo.cdev);
-		isp->isp_osinfo.cdev = NULL;
-	}
 	cam_simq_free(isp->isp_osinfo.devq);
 	isp->isp_osinfo.devq = NULL;
 	return (-1);
@@ -327,35 +319,20 @@ unwind:
 int
 isp_detach(ispsoftc_t *isp)
 {
-	struct cam_sim *sim;
 	int chan;
-
-	ISP_LOCK(isp);
-	for (chan = isp->isp_nchan - 1; chan >= 0; chan -= 1) {
-		ISP_GET_PC(isp, chan, sim, sim);
-		if (sim->refcount > 2) {
-			ISP_UNLOCK(isp);
-			return (EBUSY);
-		}
-	}
-	/* Tell spawned threads that we're exiting. */
-	isp->isp_osinfo.is_exiting = 1;
-	if (isp->isp_osinfo.timer_active) {
-		callout_stop(&isp->isp_osinfo.tmo);
-		isp->isp_osinfo.timer_active = 0;
-	}
-	for (chan = isp->isp_nchan - 1; chan >= 0; chan -= 1)
-		isp_detach_chan(isp, chan);
-	ISP_UNLOCK(isp);
 
 	if (isp->isp_osinfo.cdev) {
 		destroy_dev(isp->isp_osinfo.cdev);
 		isp->isp_osinfo.cdev = NULL;
 	}
-	if (isp->isp_osinfo.devq != NULL) {
-		cam_simq_free(isp->isp_osinfo.devq);
-		isp->isp_osinfo.devq = NULL;
-	}
+	ISP_LOCK(isp);
+	/* Tell spawned threads that we're exiting. */
+	isp->isp_osinfo.is_exiting = 1;
+	for (chan = isp->isp_nchan - 1; chan >= 0; chan -= 1)
+		isp_detach_chan(isp, chan);
+	ISP_UNLOCK(isp);
+	callout_drain(&isp->isp_osinfo.tmo);
+	cam_simq_free(isp->isp_osinfo.devq);
 	return (0);
 }
 
@@ -754,8 +731,6 @@ isp_free_pcmd(ispsoftc_t *isp, union ccb *ccb)
 	if (ISP_PCMD(ccb)) {
 #ifdef	ISP_TARGET_MODE
 		PISP_PCMD(ccb)->datalen = 0;
-		PISP_PCMD(ccb)->totslen = 0;
-		PISP_PCMD(ccb)->cumslen = 0;
 		PISP_PCMD(ccb)->crn = 0;
 #endif
 		PISP_PCMD(ccb)->next = isp->isp_osinfo.pcmd_free;
@@ -864,7 +839,7 @@ isp_tmcmd_restart(ispsoftc_t *isp)
 		ISP_GET_PC_ADDR(isp, bus, waitq, waitq);
 		ccb = (union ccb *)TAILQ_FIRST(waitq);
 		if (ccb != NULL) {
-			TAILQ_REMOVE(waitq, &ccb->ccb_h, periph_links.tqe);
+			TAILQ_REMOVE(waitq, &ccb->ccb_h, sim_links.tqe);
 			isp_target_start_ctio(isp, ccb, FROM_TIMER);
 		}
 	}
@@ -1120,17 +1095,17 @@ isp_target_start_ctio(ispsoftc_t *isp, union ccb *ccb, enum Start_Ctio_How how)
 		/*
 		 * Insert at the tail of the list, if any, waiting CTIO CCBs
 		 */
-		TAILQ_INSERT_TAIL(waitq, &ccb->ccb_h, periph_links.tqe);
+		TAILQ_INSERT_TAIL(waitq, &ccb->ccb_h, sim_links.tqe);
 		break;
 	case FROM_TIMER:
 	case FROM_SRR:
 	case FROM_CTIO_DONE:
-		TAILQ_INSERT_HEAD(waitq, &ccb->ccb_h, periph_links.tqe);
+		TAILQ_INSERT_HEAD(waitq, &ccb->ccb_h, sim_links.tqe);
 		break;
 	}
 
 	while ((ccb = (union ccb *) TAILQ_FIRST(waitq)) != NULL) {
-		TAILQ_REMOVE(waitq, &ccb->ccb_h, periph_links.tqe);
+		TAILQ_REMOVE(waitq, &ccb->ccb_h, sim_links.tqe);
 
 		cso = &ccb->csio;
 		xfrlen = cso->dxfer_len;
@@ -1179,7 +1154,7 @@ isp_target_start_ctio(ispsoftc_t *isp, union ccb *ccb, enum Start_Ctio_How how)
 		 */
 		if (atp->ctcnt >= ATPD_CCB_OUTSTANDING) {
 			isp_prt(isp, ISP_LOGTINFO, "[0x%x] handling only %d CCBs at a time (flags for this ccb: 0x%x)", cso->tag_id, ATPD_CCB_OUTSTANDING, ccb->ccb_h.flags);
-			TAILQ_INSERT_HEAD(waitq, &ccb->ccb_h, periph_links.tqe);
+			TAILQ_INSERT_HEAD(waitq, &ccb->ccb_h, sim_links.tqe);
 			break;
 		}
 
@@ -1264,7 +1239,7 @@ isp_target_start_ctio(ispsoftc_t *isp, union ccb *ccb, enum Start_Ctio_How how)
 			cto->ct_iid_hi = atp->sid >> 16;
 			cto->ct_oxid = atp->oxid;
 			cto->ct_vpidx = ISP_GET_VPIDX(isp, XS_CHANNEL(ccb));
-			cto->ct_timeout = (XS_TIME(ccb) + 999) / 1000;
+			cto->ct_timeout = XS_TIME(ccb);
 			cto->ct_flags = atp->tattr << CT7_TASK_ATTR_SHIFT;
 
 			/*
@@ -1304,7 +1279,7 @@ isp_target_start_ctio(ispsoftc_t *isp, union ccb *ccb, enum Start_Ctio_How how)
 					if (atp->ests == NULL) {
 						atp->ests = isp_get_ecmd(isp);
 						if (atp->ests == NULL) {
-							TAILQ_INSERT_HEAD(waitq, &ccb->ccb_h, periph_links.tqe);
+							TAILQ_INSERT_HEAD(waitq, &ccb->ccb_h, sim_links.tqe);
 							break;
 						}
 					}
@@ -1413,7 +1388,7 @@ isp_target_start_ctio(ispsoftc_t *isp, union ccb *ccb, enum Start_Ctio_How how)
 					cto->ct_lun = ccb->ccb_h.target_lun;
 				}
 			}
-			cto->ct_timeout = (XS_TIME(ccb) + 999) / 1000;
+			cto->ct_timeout = XS_TIME(ccb);
 			cto->ct_rxid = cso->tag_id;
 
 			/*
@@ -1459,7 +1434,7 @@ isp_target_start_ctio(ispsoftc_t *isp, union ccb *ccb, enum Start_Ctio_How how)
 					if (atp->ests == NULL) {
 						atp->ests = isp_get_ecmd(isp);
 						if (atp->ests == NULL) {
-							TAILQ_INSERT_HEAD(waitq, &ccb->ccb_h, periph_links.tqe);
+							TAILQ_INSERT_HEAD(waitq, &ccb->ccb_h, sim_links.tqe);
 							break;
 						}
 					}
@@ -1548,13 +1523,13 @@ isp_target_start_ctio(ispsoftc_t *isp, union ccb *ccb, enum Start_Ctio_How how)
 
 		if (isp_get_pcmd(isp, ccb)) {
 			ISP_PATH_PRT(isp, ISP_LOGWARN, ccb->ccb_h.path, "out of PCMDs\n");
-			TAILQ_INSERT_HEAD(waitq, &ccb->ccb_h, periph_links.tqe);
+			TAILQ_INSERT_HEAD(waitq, &ccb->ccb_h, sim_links.tqe);
 			break;
 		}
 		handle = isp_allocate_handle(isp, ccb, ISP_HANDLE_TARGET);
 		if (handle == 0) {
 			ISP_PATH_PRT(isp, ISP_LOGWARN, ccb->ccb_h.path, "No XFLIST pointers for %s\n", __func__);
-			TAILQ_INSERT_HEAD(waitq, &ccb->ccb_h, periph_links.tqe);
+			TAILQ_INSERT_HEAD(waitq, &ccb->ccb_h, sim_links.tqe);
 			isp_free_pcmd(isp, ccb);
 			break;
 		}
@@ -1584,7 +1559,7 @@ isp_target_start_ctio(ispsoftc_t *isp, union ccb *ccb, enum Start_Ctio_How how)
 			isp_destroy_handle(isp, handle);
 			isp_free_pcmd(isp, ccb);
 			if (dmaresult == CMD_EAGAIN) {
-				TAILQ_INSERT_HEAD(waitq, &ccb->ccb_h, periph_links.tqe);
+				TAILQ_INSERT_HEAD(waitq, &ccb->ccb_h, sim_links.tqe);
 				break;
 			}
 			ccb->ccb_h.status = CAM_REQ_CMP_ERR;
@@ -2604,7 +2579,6 @@ isp_watchdog(void *arg)
 		isp_prt(isp, ISP_LOGERR, "%s: timeout for handle 0x%x", __func__, handle);
 		xs->ccb_h.status &= ~CAM_STATUS_MASK;
 		xs->ccb_h.status |= CAM_CMD_TIMEOUT;
-		isp_prt_endcmd(isp, xs);
 		isp_done(xs);
 	} else {
 		if (ohandle != ISP_HANDLE_FREE) {
@@ -2825,8 +2799,7 @@ isp_kthread(void *arg)
 	int slp = 0, d;
 	int lb, lim;
 
-	mtx_lock(&isp->isp_osinfo.lock);
-
+	ISP_LOCK(isp);
 	while (isp->isp_osinfo.is_exiting == 0) {
 		isp_prt(isp, ISP_LOG_SANCFG|ISP_LOGDEBUG0,
 		    "Chan %d Checking FC state", chan);
@@ -2880,10 +2853,10 @@ isp_kthread(void *arg)
 
 		isp_prt(isp, ISP_LOG_SANCFG|ISP_LOGDEBUG0,
 		    "Chan %d sleep for %d seconds", chan, slp);
-		msleep(fc, &isp->isp_osinfo.lock, PRIBIO, "ispf", slp * hz);
+		msleep(fc, &isp->isp_lock, PRIBIO, "ispf", slp * hz);
 	}
 	fc->num_threads -= 1;
-	mtx_unlock(&isp->isp_osinfo.lock);
+	ISP_UNLOCK(isp);
 	kthread_exit();
 }
 
@@ -2982,20 +2955,21 @@ isp_abort_inot(ispsoftc_t *isp, union ccb *ccb)
 static void
 isp_action(struct cam_sim *sim, union ccb *ccb)
 {
-	int bus, tgt, ts, error;
+	int bus, tgt, error;
 	ispsoftc_t *isp;
 	struct ccb_trans_settings *cts;
+	sbintime_t ts;
 
 	CAM_DEBUG(ccb->ccb_h.path, CAM_DEBUG_TRACE, ("isp_action\n"));
 
 	isp = (ispsoftc_t *)cam_sim_softc(sim);
-	mtx_assert(&isp->isp_lock, MA_OWNED);
+	ISP_ASSERT_LOCKED(isp);
+	bus = cam_sim_bus(sim);
 	isp_prt(isp, ISP_LOGDEBUG2, "isp_action code %x", ccb->ccb_h.func_code);
 	ISP_PCMD(ccb) = NULL;
 
 	switch (ccb->ccb_h.func_code) {
 	case XPT_SCSI_IO:	/* Execute the requested I/O operation */
-		bus = XS_CHANNEL(ccb);
 		/*
 		 * Do a couple of preliminary checks...
 		 */
@@ -3034,15 +3008,12 @@ isp_action(struct cam_sim *sim, union ccb *ccb)
 		switch (error) {
 		case CMD_QUEUED:
 			ccb->ccb_h.status |= CAM_SIM_QUEUED;
-			if (ccb->ccb_h.timeout == CAM_TIME_INFINITY) {
+			if (ccb->ccb_h.timeout == CAM_TIME_INFINITY)
 				break;
-			}
-			ts = ccb->ccb_h.timeout;
-			if (ts == CAM_TIME_DEFAULT) {
-				ts = 60*1000;
-			}
-			ts = isp_mstohz(ts);
-			callout_reset(&PISP_PCMD(ccb)->wdog, ts, isp_watchdog, ccb);
+			/* Give firmware extra 10s to handle timeout. */
+			ts = SBT_1MS * ccb->ccb_h.timeout + 10 * SBT_1S;
+			callout_reset_sbt(&PISP_PCMD(ccb)->wdog, ts, 0,
+			    isp_watchdog, ccb, 0);
 			break;
 		case CMD_RQLATER:
 			isp_prt(isp, ISP_LOGDEBUG0, "%d.%jx retry later",
@@ -3153,7 +3124,6 @@ isp_action(struct cam_sim *sim, union ccb *ccb)
 		break;
 #endif
 	case XPT_RESET_DEV:		/* BDR the specified SCSI device */
-		bus = cam_sim_bus(xpt_path_sim(ccb->ccb_h.path));
 		tgt = ccb->ccb_h.target_id;
 		tgt |= (bus << 16);
 
@@ -3212,7 +3182,6 @@ isp_action(struct cam_sim *sim, union ccb *ccb)
 			break;
 		}
 		tgt = cts->ccb_h.target_id;
-		bus = cam_sim_bus(xpt_path_sim(cts->ccb_h.path));
 		if (IS_SCSI(isp)) {
 			struct ccb_trans_settings_scsi *scsi = &cts->proto_specific.scsi;
 			struct ccb_trans_settings_spi *spi = &cts->xport_specific.spi;
@@ -3277,7 +3246,6 @@ isp_action(struct cam_sim *sim, union ccb *ccb)
 	case XPT_GET_TRAN_SETTINGS:
 		cts = &ccb->cts;
 		tgt = cts->ccb_h.target_id;
-		bus = cam_sim_bus(xpt_path_sim(cts->ccb_h.path));
 		if (IS_FC(isp)) {
 			fcparam *fcp = FCPARAM(isp, bus);
 			struct ccb_trans_settings_scsi *scsi = &cts->proto_specific.scsi;
@@ -3366,7 +3334,6 @@ isp_action(struct cam_sim *sim, union ccb *ccb)
 		break;
 
 	case XPT_RESET_BUS:		/* Reset the specified bus */
-		bus = cam_sim_bus(sim);
 		error = isp_control(isp, ISPCTL_RESET_BUS, bus);
 		if (error) {
 			ccb->ccb_h.status = CAM_REQ_CMP_ERR;
@@ -3401,7 +3368,6 @@ isp_action(struct cam_sim *sim, union ccb *ccb)
 			break;
 		}
 
-		bus = cam_sim_bus(xpt_path_sim(kp->ccb_h.path));
 		fcp = FCPARAM(isp, bus);
 
 		if (kp->xport_specific.fc.valid & KNOB_VALID_ADDRESS) {
@@ -3461,7 +3427,6 @@ isp_action(struct cam_sim *sim, union ccb *ccb)
 		if (IS_FC(isp)) {
 			fcparam *fcp;
 
-			bus = cam_sim_bus(xpt_path_sim(kp->ccb_h.path));
 			fcp = FCPARAM(isp, bus);
 
 			kp->xport_specific.fc.wwnn = fcp->isp_wwnn;
@@ -3509,7 +3474,6 @@ isp_action(struct cam_sim *sim, union ccb *ccb)
 		else
 			cpi->maxio = (ISP_NSEG_MAX - 1) * PAGE_SIZE;
 
-		bus = cam_sim_bus(xpt_path_sim(cpi->ccb_h.path));
 		if (IS_FC(isp)) {
 			fcparam *fcp = FCPARAM(isp, bus);
 
@@ -4079,7 +4043,7 @@ isp_mbox_wait_complete(ispsoftc_t *isp, mbreg_t *mbp)
 	if (isp->isp_osinfo.mbox_sleep_ok) {
 		isp->isp_osinfo.mbox_sleep_ok = 0;
 		isp->isp_osinfo.mbox_sleeping = 1;
-		msleep_sbt(&isp->isp_osinfo.mboxcmd_done, &isp->isp_osinfo.lock,
+		msleep_sbt(&isp->isp_osinfo.mboxcmd_done, &isp->isp_lock,
 		    PRIBIO, "ispmbx_sleep", to * SBT_1US, 0, 0);
 		isp->isp_osinfo.mbox_sleep_ok = 1;
 		isp->isp_osinfo.mbox_sleeping = 0;
@@ -4126,23 +4090,6 @@ isp_fc_scratch_acquire(ispsoftc_t *isp, int chan)
 		isp->isp_osinfo.pc.fc[chan].fcbsy = 1;
 	}
 	return (ret);
-}
-
-int
-isp_mstohz(int ms)
-{
-	int hz;
-	struct timeval t;
-	t.tv_sec = ms / 1000;
-	t.tv_usec = (ms % 1000) * 1000;
-	hz = tvtohz(&t);
-	if (hz < 0) {
-		hz = 0x7fffffff;
-	}
-	if (hz == 0) {
-		hz = 1;
-	}
-	return (hz);
 }
 
 void
