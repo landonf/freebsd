@@ -140,20 +140,15 @@ static const struct bhnd_core_desc {
 	BHND_CDESC(BCM, NS_CC_B,	CC_B,		"ChipCommon B Auxiliary I/O Controller"),
 	BHND_CDESC(BCM, 4706_SOCRAM,	RAM,		"Internal Memory"),
 	BHND_CDESC(BCM, IHOST_ARMCA9,	CPU,		"ARM Cortex A9 CPU"),
-	BHND_CDESC(BCM, 4706_GMAC_CMN,	ENET,		"Gigabit MAC (Common)"),
+	BHND_CDESC(ARM, 4706_GMAC_CMN,	ENET,		"Gigabit MAC Common"),
 	BHND_CDESC(BCM, 4706_GMAC,	ENET_MAC,	"Gigabit MAC"),
 	BHND_CDESC(BCM, AMEMC,		MEMC,		"Denali DDR1/DDR2 Memory Controller"),
+	BHND_CDESC(BCM, ALTA_I2S,	OTHER,		"ALTA I2S Digital Audio Interface"),
+	BHND_CDESC(ARM, DDR23_PHY,	OTHER,		"DDR2/DDR3 PHY"), 
+	BHND_CDESC(ARM, NIC301A,	OTHER,		"NIC-301A Network Interconnect" ),
+	BHND_CDESC(ARM, NIC301B,	OTHER,		"NIC-301B Network Interconnect" ),
+	BHND_CDESC(ARM, NIC301C,	OTHER,		"NIC-301C Network Interconnect" ),
 #undef	BHND_CDESC
-
-	/* Derived from inspection of the BCM4331 cores that provide PrimeCell
-	 * IDs. Due to lack of documentation, the surmised device name/purpose
-	 * provided here may be incorrect. */
-	{ BHND_MFGID_ARM,	BHND_PRIMEID_EROM,	BHND_DEVCLASS_OTHER,
-	    "PL364 Device Enumeration ROM" },
-	{ BHND_MFGID_ARM,	BHND_PRIMEID_SWRAP,	BHND_DEVCLASS_OTHER,
-	    "PL368 Device Management Interface" },
-	{ BHND_MFGID_ARM,	BHND_PRIMEID_MWRAP,	BHND_DEVCLASS_OTHER,
-	    "PL369 Device Management Interface" },
 
 	{ 0, 0, 0, NULL }
 };

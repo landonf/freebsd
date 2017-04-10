@@ -516,8 +516,11 @@
 #define	BHND_COREID_4706_GMAC_CMN	0x5dc		/* Gigabit MAC common core */
 #define	BHND_COREID_4706_GMAC		0x52d           /* Gigabit MAC core */
 #define	BHND_COREID_AMEMC		0x52e           /* DDR1/2 cadence/denali memory controller core */
-
-
+#define	BHND_COREID_ALTA_I2S		0x534		/* ALTA I2S core */
+#define	BHND_COREID_DDR23_PHY		0x5dd		/* DDR2/3 PHY */
+#define	BHND_COREID_NIC301A		0x1a		/* NIC-301 Network Interconnect GPV (?) (BCM4706) */
+#define	BHND_COREID_NIC301B		0x1b		/* NIC-301 Network Interconnect GPV (?) (BCM4706) */
+#define	BHND_COREID_NIC301C		0x1c		/* NIC-301 Network Interconnect GPV (?) (BCM4706) */
 
 /* ARM PrimeCell Peripherial IDs. These were derived from inspection of the
  * PrimeCell-compatible BCM4331 cores, but due to lack of documentation, the
