@@ -294,8 +294,6 @@ draw_txtcharcursor(scr_stat *scp, int at, u_short c, u_short a, int flip)
 	sc_softc_t *sc;
 
 	sc = scp->sc;
-	scp->cursor_saveunder_char = c;
-	scp->cursor_saveunder_attr = a;
 
 #ifndef SC_NO_FONT_LOADING
 	if (scp->curs_attr.flags & CONS_CHAR_CURSOR) {
@@ -372,18 +370,18 @@ vga_txtcursor(scr_stat *scp, int at, int blink, int on, int flip)
 		if (on) {
 			scp->status |= VR_CURSOR_ON;
 			draw_txtcharcursor(scp, at,
-					   sc_vtb_getc(&scp->scr, at),
-					   sc_vtb_geta(&scp->scr, at),
+					   sc_vtb_getc(&scp->vtb, at),
+					   sc_vtb_geta(&scp->vtb, at),
 					   flip);
 		} else {
-			cursor_attr = scp->cursor_saveunder_attr;
+			cursor_attr = sc_vtb_geta(&scp->vtb, at);
 			if (flip)
 				cursor_attr = (cursor_attr & 0x8800)
 					| ((cursor_attr & 0x7000) >> 4)
 					| ((cursor_attr & 0x0700) << 4);
 			if (scp->status & VR_CURSOR_ON)
 				sc_vtb_putc(&scp->scr, at,
-					    scp->cursor_saveunder_char,
+					    sc_vtb_getc(&scp->vtb, at),
 					    cursor_attr);
 			scp->status &= ~VR_CURSOR_ON;
 		}
@@ -1103,21 +1101,16 @@ remove_pxlmouse_planar(scr_stat *scp, int x, int y)
 {
 	vm_offset_t p;
 	int col, row;
-	int pos;
 	int line_width;
 	int ymax;
 	int i;
 
-	/* erase the mouse cursor image */
+	/*
+	 * The caller will remove parts of the mouse image over the text
+	 * window better than we can do.  Remove only parts over the border.
+	 */
 	col = x/8 - scp->xoff;
 	row = y/scp->font_size - scp->yoff;
-	pos = row*scp->xsize + col;
-	i = (col < scp->xsize - 1) ? 2 : 1;
-	(*scp->rndr->draw)(scp, pos, i, FALSE);
-	if (row < scp->ysize - 1)
-		(*scp->rndr->draw)(scp, pos + scp->xsize, i, FALSE);
-
-	/* paint border if necessary */
 	line_width = scp->sc->adp->va_line_width;
 	outw(GDCIDX, 0x0005);		/* read mode 0, write mode 0 */
 	outw(GDCIDX, 0x0003);		/* data rotate/function select */
@@ -1169,9 +1162,6 @@ vga_pxlmouse_direct(scr_stat *scp, int x, int y, int on)
 	uint8_t  *u8;
 	int bpp;
 
-	if (!on)
-		return;
-
 	bpp = scp->sc->adp->va_info.vi_depth;
 
 	if ((bpp == 16) && (scp->sc->adp->va_info.vi_pixel_fsizes[1] == 5))
@@ -1182,6 +1172,9 @@ vga_pxlmouse_direct(scr_stat *scp, int x, int y, int on)
 
 	xend = imin(x + 16, scp->xpixel);
 	yend = imin(y + 16, scp->ypixel);
+
+	if (on)
+		goto do_on;
 
 	p = scp->sc->adp->va_window + y_old * line_width + x_old * pixel_size;
 
@@ -1207,7 +1200,9 @@ vga_pxlmouse_direct(scr_stat *scp, int x, int y, int on)
 
 		p += line_width;
 	}
+	return;
 
+do_on:
 	p = scp->sc->adp->va_window + y * line_width + x * pixel_size;
 
 	for (i = 0; i < (yend - y); i++) {

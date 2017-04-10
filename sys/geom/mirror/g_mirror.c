@@ -1304,11 +1304,13 @@ g_mirror_sync_release(struct g_mirror_softc *sc)
 static void
 g_mirror_sync_request_free(struct g_mirror_disk *disk, struct bio *bp)
 {
-	int i;
+	int idx;
 
 	if (disk != NULL && disk->d_sync.ds_bios != NULL) {
-		i = (int)(uintptr_t)bp->bio_caller1;
-		disk->d_sync.ds_bios[i] = NULL;
+		idx = (int)(uintptr_t)bp->bio_caller1;
+		KASSERT(disk->d_sync.ds_bios[idx] == bp,
+		    ("unexpected sync BIO at %p:%d", disk, idx));
+		disk->d_sync.ds_bios[idx] = NULL;
 	}
 	free(bp->bio_data, M_MIRROR);
 	g_destroy_bio(bp);
@@ -1375,7 +1377,7 @@ g_mirror_sync_request(struct bio *bp)
 	    {
 		off_t offset;
 		void *data;
-		int i;
+		int i, idx;
 
 		KFAIL_POINT_ERROR(DEBUG_FP, g_mirror_sync_request_write,
 		    bp->bio_error);
@@ -1413,6 +1415,7 @@ g_mirror_sync_request(struct bio *bp)
 
 		/* Send next synchronization request. */
 		data = bp->bio_data;
+		idx = (int)(uintptr_t)bp->bio_caller1;
 		g_reset_bio(bp);
 		bp->bio_cmd = BIO_READ;
 		bp->bio_offset = sync->ds_offset;
@@ -1422,6 +1425,7 @@ g_mirror_sync_request(struct bio *bp)
 		bp->bio_data = data;
 		bp->bio_from = sync->ds_consumer;
 		bp->bio_to = sc->sc_provider;
+		bp->bio_caller1 = (void *)(uintptr_t)idx;
 		G_MIRROR_LOGREQ(3, bp, "Sending synchronization request.");
 		sync->ds_consumer->index++;
 		/*
@@ -1439,7 +1443,7 @@ g_mirror_sync_request(struct bio *bp)
 		offset = sc->sc_mediasize;
 		for (i = 0; i < g_mirror_syncreqs; i++) {
 			bp = sync->ds_bios[i];
-			if (bp->bio_offset < offset)
+			if (bp != NULL && bp->bio_offset < offset)
 				offset = bp->bio_offset;
 		}
 		if (sync->ds_offset_done + (MAXPHYS * 100) < offset) {
@@ -1917,6 +1921,10 @@ g_mirror_worker(void *arg)
 					kproc_exit(0);
 				}
 				mtx_lock(&sc->sc_queue_mtx);
+				if (bioq_first(&sc->sc_queue) != NULL) {
+					mtx_unlock(&sc->sc_queue_mtx);
+					continue;
+				}
 			}
 			sx_xunlock(&sc->sc_lock);
 			/*
@@ -2475,11 +2483,8 @@ g_mirror_update_device(struct g_mirror_softc *sc, bool force)
 		if (g_mirror_ndisks(sc, G_MIRROR_DISK_STATE_ACTIVE) == 0 &&
 		    g_mirror_ndisks(sc, G_MIRROR_DISK_STATE_NEW) == 0) {
 			/*
-			 * No active disks or no disks at all,
-			 * so destroy device.
+			 * No usable disks, so destroy the device.
 			 */
-			if (sc->sc_provider != NULL)
-				g_mirror_destroy_provider(sc);
 			sc->sc_flags |= G_MIRROR_DEVICE_FLAG_DESTROY;
 			break;
 		} else if (g_mirror_ndisks(sc,
@@ -3040,7 +3045,7 @@ g_mirror_destroy(struct g_mirror_softc *sc, int how)
 	g_topology_assert_not();
 	sx_assert(&sc->sc_lock, SX_XLOCKED);
 
-	if (sc->sc_provider_open != 0 || SCHEDULER_STOPPED()) {
+	if (sc->sc_provider_open != 0) {
 		switch (how) {
 		case G_MIRROR_DESTROY_SOFT:
 			G_MIRROR_DEBUG(1,
@@ -3373,6 +3378,9 @@ g_mirror_shutdown_post_sync(void *arg, int howto)
 	struct g_geom *gp, *gp2;
 	struct g_mirror_softc *sc;
 	int error;
+
+	if (panicstr != NULL)
+		return;
 
 	mp = arg;
 	g_topology_lock();
