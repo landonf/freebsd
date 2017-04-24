@@ -51,6 +51,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/ktr.h>
 #include <sys/rwlock.h>
 #include <sys/umtx.h>
+#include <sys/vmmeter.h>
 #include <sys/cpuset.h>
 #ifdef	HWPMC_HOOKS
 #include <sys/pmckern.h>
@@ -473,6 +474,7 @@ thread_exit(void)
 	KASSERT(p != NULL, ("thread exiting without a process"));
 	CTR3(KTR_PROC, "thread_exit: thread %p (pid %ld, %s)", td,
 	    (long)p->p_pid, td->td_name);
+	SDT_PROBE0(proc, , , lwp__exit);
 	KASSERT(TAILQ_EMPTY(&td->td_sigqueue.sq_list), ("signal pending"));
 
 #ifdef AUDIT
@@ -544,7 +546,7 @@ thread_exit(void)
 	td->td_incruntime += runtime;
 	PCPU_SET(switchtime, new_switchtime);
 	PCPU_SET(switchticks, ticks);
-	PCPU_INC(cnt.v_swtch);
+	VM_CNT_INC(v_swtch);
 
 	/* Save our resource usage in our process. */
 	td->td_ru.ru_nvcsw++;

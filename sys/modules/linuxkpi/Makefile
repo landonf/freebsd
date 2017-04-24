@@ -6,13 +6,16 @@ SRCS=	linux_kmod.c \
 	linux_compat.c \
 	linux_current.c \
 	linux_kthread.c \
+	linux_lock.c \
 	linux_page.c \
 	linux_pci.c \
 	linux_radix.c \
 	linux_rcu.c \
+	linux_slab.c \
 	linux_tasklet.c \
 	linux_idr.c \
-	linux_usb.c
+	linux_usb.c \
+	linux_work.c
 
 SRCS+=	bus_if.h \
 	device_if.h \

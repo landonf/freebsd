@@ -22,6 +22,8 @@
         ..
         pkill
         ..
+        pwait
+        ..
         sh
             builtins
             ..
@@ -308,6 +310,8 @@
             ttyio
             ..
         ..
+        libcam
+        ..
         libcasper
             services
                 cap_dns
@@ -324,6 +328,8 @@
         ..
         libdevdctl
         ..
+        libkvm
+        ..
         libmp
         ..
         libnv
@@ -331,6 +337,8 @@
         libproc
         ..
         librt
+        ..
+        libsbuf
         ..
         libthr
             dlopen
@@ -421,10 +429,6 @@
                 uzip
                     etalon
                     ..
-                ..
-            ..
-            eli
-                pbkdf2
                 ..
             ..
         ..
@@ -610,6 +614,8 @@
         ..
         cut
         ..
+        diff
+        ..
         dirname
         ..
         file2c
@@ -637,6 +643,8 @@
         ncal
         ..
         opensm
+        ..
+        pr
         ..
         printf
         ..

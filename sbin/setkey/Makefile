@@ -46,11 +46,14 @@ CLEANFILES=	y.tab.c y.tab.h key_test.o keytest
 # ipsec_strerror.c is for avoiding shlib reference to non-exported function.
 .PATH: ${SRCTOP}/lib/libipsec ${SRCTOP}/sys/netipsec
 SRCS+= pfkey.c pfkey_dump.c key_debug.c ipsec_strerror.c
-CFLAGS+= -I${SRCTOP}/lib/libipsec -I${SRCTOP}/sys/netipsec
+CFLAGS+= -I${SRCTOP}/sys
 
 SRCS+=	y.tab.h
 y.tab.h: parse.y
 CFLAGS+= -DIPSEC_DEBUG -DYY_NO_UNPUT
+.if ${MK_INET_SUPPORT} != "no"
+CFLAGS+= -DINET
+.endif
 .if ${MK_INET6_SUPPORT} != "no"
 CFLAGS+= -DINET6
 .endif
