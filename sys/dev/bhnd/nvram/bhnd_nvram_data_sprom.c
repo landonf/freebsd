@@ -1291,39 +1291,6 @@ bhnd_nvram_sprom_getvar_common(struct bhnd_nvram_data *nv, void *cookiep,
 	    val));
 }
 
-
-/**
- * Common variable decoding; fetches and decodes variable to @p val,
- * using @p storage for actual data storage.
- * 
- * The returned @p val instance will hold a borrowed reference to @p storage,
- * and must be copied via bhnd_nvram_val_copy() if it will be referenced beyond
- * the lifetime of @p storage.
- *
- * The caller is responsible for releasing any allocated value state
- * via bhnd_nvram_val_release().
- */
-static int
-bhnd_nvram_sprom_getvar_common(struct bhnd_nvram_data *nv, void *cookiep,
-    union bhnd_nvram_sprom_storage *storage, bhnd_nvram_val *val)
-{
-	struct bhnd_nvram_sprom		*sp;
-	bhnd_sprom_opcode_idx_entry	*entry;
-	const struct bhnd_nvram_vardefn	*var;
-
-	BHND_NV_ASSERT(cookiep != NULL, ("NULL variable cookiep"));
-
-	sp = (struct bhnd_nvram_sprom *)nv;
-	entry = cookiep;
-
-	/* Fetch canonical variable definition */
-	var = SPROM_COOKIE_TO_NVRAM_VAR(cookiep);
-	BHND_NV_ASSERT(var != NULL, ("invalid cookiep %p", cookiep));
-
-	return (bhnd_nvram_sprom_read_var(&sp->state, entry, sp->data, storage,
-	    val));
-}
-
 static int
 bhnd_nvram_sprom_getvar_order(struct bhnd_nvram_data *nv, void *cookiep1,
     void *cookiep2)
