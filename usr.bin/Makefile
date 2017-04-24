@@ -34,6 +34,7 @@ SUBDIR=	alias \
 	csplit \
 	ctlstat \
 	cut \
+	diff \
 	dirname \
 	du \
 	elf2aout \
@@ -189,7 +190,8 @@ SUBDIR=	alias \
 	xo \
 	xz \
 	xzdec \
-	yes
+	yes \
+	zstd
 
 # NB: keep these sorted by MK_* knobs
 

@@ -1613,6 +1613,8 @@ OLD_FILES+=usr/share/man/man8/fmtree.8.gz
 
 .if ${MK_FTP} == no
 OLD_FILES+=etc/ftpusers
+OLD_FILES+=etc/pam.d/ftp
+OLD_FILES+=etc/pam.d/ftpd
 OLD_FILES+=etc/rc.d/ftpd
 OLD_FILES+=usr/bin/ftp
 OLD_FILES+=usr/bin/gate-ftp
@@ -6178,6 +6180,13 @@ OLD_FILES+=usr/share/locale/zh_HK.UTF-8/LC_MESSAGES
 OLD_FILES+=usr/share/locale/zh_HK.UTF-8/LC_MONETARY
 OLD_FILES+=usr/share/locale/zh_HK.UTF-8/LC_NUMERIC
 OLD_FILES+=usr/share/locale/zh_HK.UTF-8/LC_TIME
+OLD_DIRS+=usr/share/locale/zh_TW.Big5
+OLD_FILES+=usr/share/locale/zh_TW.Big5/LC_COLLATE
+OLD_FILES+=usr/share/locale/zh_TW.Big5/LC_CTYPE
+OLD_FILES+=usr/share/locale/zh_TW.Big5/LC_MESSAGES
+OLD_FILES+=usr/share/locale/zh_TW.Big5/LC_MONETARY
+OLD_FILES+=usr/share/locale/zh_TW.Big5/LC_NUMERIC
+OLD_FILES+=usr/share/locale/zh_TW.Big5/LC_TIME
 OLD_DIRS+=usr/share/locale/zh_TW.UTF-8
 OLD_FILES+=usr/share/locale/zh_TW.UTF-8/LC_COLLATE
 OLD_FILES+=usr/share/locale/zh_TW.UTF-8/LC_CTYPE
@@ -8037,6 +8046,7 @@ OLD_FILES+=usr/share/nls/uk_UA.UTF-8/tcsh.cat
 .endif
 
 .if ${MK_TELNET} == no
+OLD_FILES+=etc/pam.d/telnetd
 OLD_FILES+=usr/bin/telnet
 OLD_FILES+=usr/libexec/telnetd
 OLD_FILES+=usr/share/man/man1/telnet.1.gz
