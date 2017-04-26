@@ -1453,6 +1453,9 @@ bhnd_nvram_g_pio_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
 	pio = (struct g_cfe_nvram_probeio *)io;
 	probe = pio->probe;
 
+	KASSERT(probe->have_offset, ("missing partition offset"));
+	KASSERT(probe->have_size, ("missing partition size"));
+
 	g_topology_assert();
 	sectorsize = probe->cp->provider->sectorsize;
 
@@ -1471,7 +1474,7 @@ bhnd_nvram_g_pio_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
 		return (ENXIO);
 	}
 
-	sector = rounddown(offset, sectorsize);
+	sector = rounddown(probe->offset + offset, sectorsize);
 	nread = roundup(nbytes, sectorsize);
 
 	/* If required, perform a read; we try to re-use our last read sector */
