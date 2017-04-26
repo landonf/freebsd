@@ -33,10 +33,14 @@
 #ifndef _MIPS_BROADCOM_BCM_GEOM_CFE_H_
 #define _MIPS_BROADCOM_BCM_GEOM_CFE_H_
 
-#define	CFE_CLASS_NAME		"CFE_MAP"
+#include <sys/param.h>
+
+#include <sys/queue.h>
+
+#define	CFE_CLASS_NAME		"BCM_CFE"
 
 /* CFE binary magic */
-#define	CFE_MAGIC		0x43464531	/* 'CFE1' */
+#define	CFE_MAGIC		0x43464531	/**< 'CFE1' */
 #define	CFE_MAGIC_OFFSET	0x4E0		/**< CFE magic offset */
 #define	CFE_MAGIC_COUNT		2		/**< CFE magic count */
 #define	CFE_MAGIC_0		0		/**< 1st CFE magic constant */
@@ -46,11 +50,12 @@
 #define	CFE_BISZ_OFFSET		0x3E0
 #define	CFE_BISZ_MAGIC		0x4249535A	/* 'BISZ' */
 
-#define	CFE_MAX_IMG		2		/**< maximum CFE OS image count */
-
+#define	CFE_IMG_MAX		2		/**< maximum CFE OS image count */
+#define	CFE_DUNIT_MAX		64		/**< maximum CFE device unit */
+#define	CFE_DNAME_MAX		64		/**< maximum CFE device name */
 
 /**
- * GEOM CFE_MAP instance state
+ * GEOM BCM_CFE instance state
  */
 struct g_cfe_softc {
 };
@@ -70,6 +75,30 @@ struct cfe_flash_device {
 };
 
 /**
+ * CFE flash device probe state.
+ */
+struct cfe_flash_probe {
+	struct g_consumer		*cp;			/**< GEOM flash consumer */
+	const struct cfe_flash_device	*dev;			/**< CFE flash device mapping descriptor */
+	char				 dname[CFE_DNAME_MAX];	/**< CFE device name */
+	u_int				 unit;			/**< CFE flash unit (e.g flash1) */
+	int				 fd;			/**< CFE device handle, or -1 if device unavailable */
+	off_t				 mediasize;		/**< media size, in bytes */
+	u_int				 blksize;		/**< media block size, in bytes */
+
+	off_t				 offset;		/**< partition offset (if known) */
+	off_t				 size;			/**< partition size (if known) */
+	bool				 have_offset;		/**< partition offset has been determined */
+	bool				 have_size;		/**< partition size has been determined */
+
+	TAILQ_ENTRY(cfe_flash_probe)	 fp_link;
+};
+
+
+/** GEOM CFE flash probe function */
+typedef int (g_cfe_probe_func)(struct cfe_flash_probe *);
+
+/**
  * CFE operating system image layout types.
  */
 typedef enum {
@@ -85,8 +114,8 @@ struct cfe_bootimg_info {
 	cfe_bootimg_type	type;			/**< CFE layout type */
 	uint8_t			bootimage;		/**< boot image index */
 	size_t			num_images;		/**< image count */
-	uint64_t		offsets[CFE_MAX_IMG];	/**< image offsets */
-	uint64_t		sizes[CFE_MAX_IMG];	/**< image sizes */
+	uint64_t		offsets[CFE_IMG_MAX];	/**< image offsets */
+	uint64_t		sizes[CFE_IMG_MAX];	/**< image sizes */
 };
 
 /**
@@ -94,21 +123,31 @@ struct cfe_bootimg_info {
  */
 enum {
 	/** No quirks */
-	CFE_DEV_QUIRK_NONE		= 0,
+	G_CFE_QUIRK_NONE			= 0,
 
-	/** IOCTL_FLASH_GETINFO always returns an offset of 0x0 */
-	CFE_DEV_QUIRK_FLASH_ZERO_OFFSET	= (1<<1),
+	/** IOCTL_FLASH_GETINFO always returns an invalid offset */
+	G_CFE_QUIRK_FLASH_INV_OFF	= (1<<1),
 
-	/** IOCTL_FLASH_GETINFO always returns the total flash size (not
-	  * the size of the actual partition) */
-	CFE_DEV_QUIRK_FLASH_TOTAL_SIZE	= (1<<2),
+	/** IOCTL_FLASH_GETINFO always returns an invalid size */
+	G_CFE_QUIRK_FLASH_INV_SIZE	= (1<<2),
 
 	/* IOCTL_NVRAM_GETINFO (incorrectly) returns the size of the actual
 	 * partition, and may be used to determine partition size. */
-	CFE_DEV_QUIRK_NVINFO_PART_SIZE	= (1<<3),
+	G_CFE_QUIRK_NVRAM_PART_SIZE	= (1<<3),
 
 	/** IOCTL_NVRAM_GETINFO is not supported */
-	CFE_DEV_QUIRK_NO_NVINFO		= (1<<4),
+	G_CFE_QUIRK_NVRAM_UNAVAIL	= (1<<4),
+
+	/** IOCTL_FLASH_GETINFO always returns an offset of 0x0 */
+	G_CFE_QUIRK_FLASH_ZERO_OFF	= (1<<5) | G_CFE_QUIRK_FLASH_INV_OFF,
+
+	/** IOCTL_FLASH_GETINFO always returns the total flash size (not
+	  * the size of the actual partition) */
+	G_CFE_QUIRK_FLASH_TOTAL_SIZE	= (1<<6) | G_CFE_QUIRK_FLASH_INV_SIZE,
 };
+
+#define	G_CFE_QUIRK(_cfe_dev, _cfe_quirk)		\
+	(((_cfe_dev)->cfe_quirks & G_CFE_QUIRK_ ## _cfe_quirk) != 0)
+
 
 #endif /* _MIPS_BROADCOM_BCM_GEOM_CFE_H_ */

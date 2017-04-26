@@ -42,14 +42,19 @@ __FBSDID("$FreeBSD$");
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/sbuf.h>
+#include <sys/sysctl.h>
+
+#include <machine/_inttypes.h>
 
 #include <geom/geom.h>
 #include <geom/geom_slice.h>
 
+#include <dev/bhnd/bhndvar.h>
 #include <dev/bhnd/cores/chipc/chipc.h>
 
 #include <dev/cfe/cfe_api.h>
 #include <dev/cfe/cfe_error.h>
+#include <dev/cfe/cfe_ioctl.h>
 
 #include "bcm_machdep.h"
 #include "bhnd_nvram_map.h"
@@ -211,11 +216,20 @@ __FBSDID("$FreeBSD$");
  *		Unsupported
  */
 
-
 static device_t				 g_cfe_find_chipc_parent(device_t dev);
 static bool				 g_cfe_flash_type_matches(
-					     chipc_flash type,
-					     const struct cfe_flash_device *id);
+					     const struct cfe_flash_device *id,
+					     chipc_flash type);
+
+static int				 g_cfe_new_probe(
+					     struct cfe_flash_probe **probe,
+					     struct g_consumer *cp,
+					     const struct cfe_flash_device *dev,
+					     u_int cfe_unit,
+					     const char *cfe_part);
+static void				 g_cfe_free_probe(
+					     struct cfe_flash_probe *probe);
+
 static const struct cfe_flash_device	*g_cfe_device_lookup(
 					     struct g_consumer *cp);
 static int				 g_cfe_check_magic(
@@ -223,8 +237,28 @@ static int				 g_cfe_check_magic(
 					     off_t cfe_offset);
 static int				 g_cfe_read_parts(
 					     struct g_consumer *cp);
-static int				 g_cfe_probe_bootimg(
+static int				 g_cfe_get_bootimg_info(
 					     struct cfe_bootimg_info *info);
+
+/* CFE flash probe functions */
+static g_cfe_probe_func			 g_cfe_probe_flash_info;
+static g_cfe_probe_func			 g_cfe_probe_nvram_info;
+static g_cfe_probe_func			 g_cfe_fallback_size_probe;
+
+
+#define G_CFE_PROBE_FUNC(_name)	\
+	{ __STRING(_name), _name }
+/**
+ * Table of all CFE flash probe functions, ordered by application priorty.
+ */
+static const struct g_cfe_probe_func_info {
+	const char		*desc;
+	g_cfe_probe_func	*fn;
+} g_cfe_probe_funcs[] = {
+	G_CFE_PROBE_FUNC(g_cfe_probe_flash_info),
+	G_CFE_PROBE_FUNC(g_cfe_probe_nvram_info),
+	G_CFE_PROBE_FUNC(g_cfe_fallback_size_probe)
+};
 
 /*
  * Supported CFE/GEOM flash devices.
@@ -232,23 +266,21 @@ static int				 g_cfe_probe_bootimg(
 static const struct cfe_flash_device cfe_flash_devices[] = {
 	{ "nflash",	"NAND::device", (chipc_flash[]) {
 	    CHIPC_NFLASH,	CHIPC_NFLASH_4706,	CHIPC_FLASH_NONE },
-	    CFE_DEV_QUIRK_FLASH_ZERO_OFFSET | CFE_DEV_QUIRK_FLASH_TOTAL_SIZE |
-	    CFE_DEV_QUIRK_NO_NVINFO
+	    (G_CFE_QUIRK_FLASH_ZERO_OFF | G_CFE_QUIRK_FLASH_TOTAL_SIZE |
+	     G_CFE_QUIRK_NVRAM_UNAVAIL)
 	},
 
 	{ "flash",	"CFI::device",	(chipc_flash[]){
 	    CHIPC_PFLASH_CFI,	CHIPC_FLASH_NONE },
-	    CFE_DEV_QUIRK_NVINFO_PART_SIZE
+	    G_CFE_QUIRK_NVRAM_PART_SIZE
 	},
 
 	{ "flash",	"SPI::device",	(chipc_flash[]){
 	    CHIPC_SFLASH_AT,	CHIPC_SFLASH_ST,	CHIPC_FLASH_NONE },
-	    CFE_DEV_QUIRK_FLASH_ZERO_OFFSET | CFE_DEV_QUIRK_FLASH_TOTAL_SIZE |
-	    CFE_DEV_QUIRK_NVINFO_PART_SIZE
+	    (G_CFE_QUIRK_FLASH_ZERO_OFF | G_CFE_QUIRK_FLASH_TOTAL_SIZE |
+	     G_CFE_QUIRK_NVRAM_PART_SIZE)
 	}
 };
-
-#if 0
 
 /*
  * Known CFE flash partition names.
@@ -264,8 +296,6 @@ static char *cfe_flash_parts[] = {
 	"trx",		/* TRX data */
 	"trx2",		/* TRX data (dual/failsafe image) */
 };
-
-#endif
 
 /**
  * Map of CFE image layout types to their associated OS boot image index
@@ -286,7 +316,25 @@ static const char *cfe_bootimg_offset_vars[] = {
 	BHND_NVAR_IMAGE_SECOND_OFFSET
 };
 
-#define	CFE_LOG(msg, ...)	printf("%s: " msg, __FUNCTION__, ## __VA_ARGS__)
+/* Debugging flags */
+enum {
+	G_CFE_DEBUG_PROBE = 1 << 0,
+};
+
+static u_long g_cfe_debug = 0 /* XXX */ | G_CFE_DEBUG_PROBE;
+
+#define	G_CFE_DEBUG_EN(_type)	((G_CFE_DEBUG_ ## _type & g_cfe_debug) != 0)
+
+SYSCTL_DECL(_kern_geom);
+SYSCTL_NODE(_kern_geom, OID_AUTO, bcmcfe, CTLFLAG_RW, 0, "BCM_CFE");
+SYSCTL_UINT(_kern_geom_bcmcfe, OID_AUTO, debug, CTLFLAG_RWTUN,
+    &g_cfe_debug, 0, "Debug flags");
+
+#define	G_CFE_LOG(msg, ...)	printf("%s: " msg, __FUNCTION__, ## __VA_ARGS__)
+#define	G_CFE_DEBUG(flg, msg, ...)	do {		\
+	if (G_CFE_DEBUG_EN(flg))			\
+		G_CFE_LOG(msg, ## __VA_ARGS__);		\
+} while (0)
 
 static int
 g_cfe_access(struct g_provider *pp, int dread, int dwrite, int dexcl)
@@ -359,10 +407,13 @@ g_cfe_access_taste(struct g_provider *pp, int dread, int dwrite, int dexcl)
 static struct g_geom *
 g_cfe_taste(struct g_class *mp, struct g_provider *pp, int insist)
 {
-	struct g_consumer	*cp;
-	struct g_geom		*gp;
-	struct cfe_bootimg_info	 info;
-	int			 error;
+	struct g_consumer		*cp;
+	struct g_geom			*gp;
+	const struct cfe_flash_device	*cfe_dev;
+	struct cfe_flash_probe		*probe, *pnext;
+	struct cfe_bootimg_info		 info;
+	int				 error;
+	TAILQ_HEAD(,cfe_flash_probe)	 probes;
 
 	g_trace(G_T_TOPOLOGY, "cfe_taste(%s,%s)", mp->name, pp->name);
 	g_topology_assert();
@@ -370,6 +421,8 @@ g_cfe_taste(struct g_class *mp, struct g_provider *pp, int insist)
 	/* Don't recurse */
 	if (strcmp(pp->geom->class->name, CFE_CLASS_NAME) == 0)
 		return (NULL);
+
+	TAILQ_INIT(&probes);
 
 	/*
 	 * Add a consumer to the GEOM topology, acquiring read access to
@@ -391,25 +444,57 @@ g_cfe_taste(struct g_class *mp, struct g_provider *pp, int insist)
 	}
 
 	/* Match against our device table */
-	if (g_cfe_device_lookup(cp) == NULL)
+	if ((cfe_dev = g_cfe_device_lookup(cp)) == NULL)
 		goto failed;
 
+	/* Look for known partitions on unit 0 */
+	for (size_t i = 0; i < nitems(cfe_flash_parts); i++) {
+		error = g_cfe_new_probe(&probe, cp, cfe_dev, 0,
+		    cfe_flash_parts[i]);
+		if (!error) {
+			TAILQ_INSERT_TAIL(&probes, probe, fp_link);
+		} else {
+			G_CFE_DEBUG(PROBE, "g_cfe_new_probe(%s): %d\n",
+			    cfe_dev->cfe_name, error);
+		}
+	}
+
 	/* Fetch CFE boot image info */
-	if ((error = g_cfe_probe_bootimg(&info))) {
-		CFE_LOG("error fetching CFE image info: %d\n", error);
+	if ((error = g_cfe_get_bootimg_info(&info))) {
+		G_CFE_LOG("error fetching CFE image info: %d\n", error);
 		goto failed;
 	}
 
 	/* Read our partition map */
 	if ((error = g_cfe_read_parts(cp))) {
-		CFE_LOG("error parsing CFE image: %d\n", error);
+		G_CFE_LOG("error parsing CFE image: %d\n", error);
 		goto failed;
 	}
 
 	// TODO
+	TAILQ_FOREACH(probe, &probes, fp_link) {
+		if (probe->have_offset && probe->have_size) {
+			G_CFE_LOG("%s (base=%#jx, size=%#jx)\n", probe->dname,
+			    (intmax_t)probe->offset, (intmax_t)probe->size);
+		} else if (probe->have_offset) {
+			G_CFE_LOG("%s (base=%#jx, size=unk)\n", probe->dname,
+			    (intmax_t)probe->offset);
+		} else if (probe->have_size) {
+			G_CFE_LOG("%s (base=unk, size=%#jx)\n", probe->dname,
+			    (intmax_t)probe->size);
+		} else {
+			G_CFE_LOG("%s (base=unk, size=unk)\n", probe->dname);
+		}
+	}
+
 	printf("MATCH\n");
 
-failed:	
+failed:
+	TAILQ_FOREACH_SAFE(probe, &probes, fp_link, pnext) {
+		TAILQ_REMOVE(&probes, probe, fp_link);
+		g_cfe_free_probe(probe);
+	}
+
 	/* No match */
 	g_access(cp, -1, 0, 0);
 	g_detach(cp);
@@ -425,6 +510,350 @@ g_cfe_config(struct gctl_req *req, struct g_class *mp, const char *verb)
 }
 
 /**
+ * Attempt to populate @p probe with IOCTL_FLASH_GETINFO.
+ */
+static int
+g_cfe_probe_flash_info(struct cfe_flash_probe *probe)
+{
+	flash_info_t	fi;
+	int		cerr, rlen;
+
+	/* Skip? */
+	if (G_CFE_QUIRK(probe->dev, FLASH_INV_OFF) &&
+	    G_CFE_QUIRK(probe->dev, FLASH_INV_SIZE))
+		return (ENXIO);
+
+	/* Fetch and populate the flash data */
+	cerr = cfe_ioctl(probe->fd, IOCTL_FLASH_GETINFO, (u_char *)&fi,
+	    sizeof(fi), &rlen, 0);
+	if (cerr != CFE_OK) {
+		if (cerr != CFE_ERR_INV_COMMAND)
+			G_CFE_LOG("%s IOCTL_FLASH_GETINFO failed %d\n",
+			    probe->dname, cerr);
+
+		return (ENXIO);
+	}
+
+	if (!G_CFE_QUIRK(probe->dev, FLASH_INV_OFF)) {
+#if ULLONG_MAX > OFF_MAX
+		if (fi.flash_base > OFF_MAX) {
+			G_CFE_LOG("CFE %s flash base %#llx exceeds maximum "
+			    "supported offset\n", probe->dname, fi.flash_base);
+			return (ENXIO);
+		}
+#endif
+
+		probe->offset = (off_t)fi.flash_base;
+		probe->have_offset = true;
+	}
+
+	if (!G_CFE_QUIRK(probe->dev, FLASH_INV_SIZE)) {
+#if UINT_MAX > OFF_MAX
+		if (fi.flash_size > OFF_MAX) {
+			G_CFE_LOG("CFE %s flash size %#llx exceeds maximum "
+			    "supported size\n", probe->dname, fi.flash_base);
+			return (ENXIO);
+		}
+#endif
+
+		probe->size = (off_t)fi.flash_size;
+		probe->have_size = true;
+	}
+
+	return (0);
+}
+
+/**
+ * Attempt to populate @p probe with IOCTL_NVRAM_GETINFO.
+ */
+static int
+g_cfe_probe_nvram_info(struct cfe_flash_probe *probe)
+{
+	nvram_info_t	ni;
+	int		cerr, rlen;
+
+	/* Skip if IOCTL_NVRAM_GETINFO does not provide the partition size */
+	if (!G_CFE_QUIRK(probe->dev, NVRAM_PART_SIZE))
+		return (ENXIO);
+
+	/* Fetch and populate the partition's size info */
+	cerr = cfe_ioctl(probe->fd, IOCTL_NVRAM_GETINFO, (u_char *)&ni,
+	    sizeof(ni), &rlen, 0);
+	if (cerr != CFE_OK) {
+		if (cerr != CFE_ERR_INV_COMMAND)
+			G_CFE_LOG("%s IOCTL_NVRAM_GETINFO failed %d\n",
+			    probe->dname, cerr);
+
+		return (ENXIO);
+	}
+
+	if (ni.nvram_size < 0) {
+		G_CFE_LOG("CFE returned invalid nvram size (%d) for %s\n",
+		    ni.nvram_size, probe->dname);
+		return (ENXIO);
+	}
+
+#if INT_MAX > OFF_MAX
+	if (ni.nvram_size > OFF_MAX) {
+		G_CFE_LOG("CFE returned invalid nvram size (%d) for %s\n",
+		    ni.nvram_size, probe->dname);
+		return (ENXIO);
+	}
+#endif
+
+	probe->size = (off_t)ni.nvram_size;
+	probe->have_size = true;
+
+	return (0);
+}
+
+/**
+ * Attempt to populate @p probe's partition size by performing sector-aligned
+ * zero length reads.
+ */
+static int
+g_cfe_fallback_size_probe(struct cfe_flash_probe *probe)
+{
+	int64_t	cfe_offset;
+	u_char	buf[1];
+	bool	log_readblk_err;
+	int	cerr;
+
+	log_readblk_err = G_CFE_DEBUG_EN(PROBE);
+	cfe_offset = (int64_t)probe->mediasize;
+
+#if OFF_MAX > INT64_MAX
+	if (probe->mediasize > INT64_MAX)
+		cfe_offset = INT64_MAX;
+#endif
+
+	while (cfe_offset > probe->blksize && probe->blksize > 0) {
+		cerr = cfe_readblk(probe->fd, cfe_offset, buf, sizeof(buf));
+
+		if (cerr == CFE_ERR_IOERR) {
+			/* Continue search at next block */
+			cfe_offset -= probe->blksize;
+
+			continue;
+
+		} else if (cerr == CFE_ERR_EOF || cerr == 0) {
+			/* Found partition EOF */
+			probe->size = (off_t)cfe_offset;
+			probe->have_size = true;
+
+			return (0);
+
+		} else if (cerr < 0) {
+			/* Read failed with an unknown error; this is expected
+			 * on some earlier SENTRY5 CFE releases, where reading
+			 * past EOF may trigger an overflow */
+			if (log_readblk_err) {
+				G_CFE_LOG("cfe_readblk(%s, %#jx, ...) failed "
+				    "with unexpected error: %d\n", probe->dname,
+				    cfe_offset, cerr);
+
+				/* Only log the first failure */
+				log_readblk_err = false;
+			}
+
+			cfe_offset -= probe->blksize;
+
+			continue;
+
+		} else if (cerr > 0) {
+			/* Read succeeded. If we previously read an invalid
+			 * block, this is the last valid block in the
+			 * partition */
+			if (cfe_offset < probe->mediasize) {
+				probe->size = cfe_offset + probe->blksize;
+				probe->have_size = true;
+				return (0);
+			}
+
+			/* If this is our first read, our media size must be
+			 * incorrect; we calculated an invalid maximum read
+			 * offset */
+			G_CFE_LOG("%s partition extends beyond maximum "
+			    "expected CFE read offset %#" PRIx64 "\n",
+			    probe->dname, cfe_offset);
+
+			return (ENXIO);
+		}
+	}
+
+	/* Failed to locate final valid block */
+	return (ENXIO);
+}
+
+/**
+ * Apply the given probe function to @p probe and validate the result. If
+ * the probe function fails, or returns an invalid result, @p probe will be
+ * left unmodified.
+ * 
+ * @param[in,out]	probe	Probe state.
+ * @param		pfi	Probe function info.
+ * 
+ * @retval 0		success
+ * @retval ENODEV	if the specified device/partition does not exist.
+ * @retval ENXIO	if the probe otherwise fails.
+ */
+static int
+g_cfe_try_probe(struct cfe_flash_probe *probe,
+    const struct g_cfe_probe_func_info *pfi)
+{
+	struct cfe_flash_probe	cp;
+	int			error;
+
+	/* Execute with a local copy of the probe data */
+	cp = *probe;
+	if ((error = pfi->fn(&cp))) {
+		G_CFE_DEBUG(PROBE, "%s(%s): %d\n", pfi->desc, probe->dname,
+		    error);
+		return (error);
+	}
+
+	/* Validate probed offset */
+	if (cp.have_offset) {
+		/* Must fit within total media size */
+		if (cp.mediasize <= cp.offset) {
+			G_CFE_LOG("%s: %s returned invalid offset %#jx "
+			    "(mediasize=%#jx)\n", cp.dname, pfi->desc,
+			    cp.offset, cp.mediasize);
+
+			cp.have_offset = false;
+		}
+	}
+
+	/* Validate probed size (+offset, if available) */
+	if (cp.have_size) {
+		off_t offset;
+
+		/* Must fit within total media size */
+		offset = 0x0;
+		if (cp.have_offset)
+			offset = cp.offset;
+
+		if (offset >= cp.mediasize) {
+			G_CFE_LOG("%s: %s invalid offset %#jx "
+			    "(mediasize=%#jx)\n", cp.dname, pfi->desc,
+			    cp.offset, cp.mediasize);
+
+			cp.have_size = false;
+		}
+
+		if (cp.mediasize - offset < cp.size) {
+			G_CFE_LOG("%s: %s %#jx+%#jx exceeds media size"
+			    " %#jx\n", cp.dname, pfi->desc, cp.offset, cp.size,
+			    cp.mediasize);
+
+			cp.have_size = false;
+		}
+	}
+
+	/* Save validated results */
+	if (cp.have_offset) {
+		probe->have_offset = true;
+		probe->offset = cp.offset;
+	}
+
+	if (cp.have_size) {
+		probe->have_size = true;
+		probe->size = cp.size;
+	}
+
+	return (0);
+}
+
+/**
+ * Allocate, initialize, and return a new CFE flash prove instance
+ * for the specified CFE device.
+ * 
+ * @param[out]	probe		On success, a newly allocated probe instance.
+ * @param	cp		Flash GEOM consumer.
+ * @param	dev		CFE device description.
+ * @param	unit		CFE device unit.
+ * @param	part		CFE partition name.
+ * 
+ * @retval 0		success
+ * @retval ENOMEM	if allocation fails.
+ * @retval ENODEV	if the specified device/partition does not exist.
+ * @retval ENXIO	if probing for the specified device otherwise fails.
+ */
+static int
+g_cfe_new_probe(struct cfe_flash_probe **probe,
+    struct g_consumer *cp, const struct cfe_flash_device *cfe_dev,
+    u_int cfe_unit, const char *cfe_part)
+{
+	struct cfe_flash_probe	*p;
+	int			 error, n;
+
+	p = malloc(sizeof(*p), M_BHND, M_WAITOK|M_ZERO);
+	p->dev = cfe_dev;
+	p->unit = cfe_unit;
+	p->fd = -1;
+	p->cp = cp;
+
+	g_topology_assert();
+	p->mediasize = cp->provider->mediasize;
+	p->blksize = cp->provider->sectorsize;
+
+	/* Format the full CFE device name */
+	n = snprintf(p->dname, sizeof(p->dname), "%s%u.%s",
+	    cfe_dev->cfe_name, cfe_unit, cfe_part);
+
+	if (n >= sizeof(p->dname)) {
+		g_cfe_free_probe(p);
+		return (ENOMEM);
+	}
+
+	/* Try to open the device */
+	if ((p->fd = cfe_open(p->dname)) < 0) {
+		if (p->fd == CFE_ERR_DEVNOTFOUND) {
+			error = ENODEV;
+		} else {
+			G_CFE_LOG("error opening CFE device %s: %d\n", p->dname,
+			    p->fd);
+			error = ENXIO;
+		}
+ 
+		g_cfe_free_probe(p);
+		return (ENXIO);
+	}
+
+	/* Try to populate partition info */
+	for (size_t i = 0; i < nitems(g_cfe_probe_funcs); i++) {
+		const struct g_cfe_probe_func_info *pfi;
+
+		pfi = &g_cfe_probe_funcs[i];
+		error = g_cfe_try_probe(p, pfi);
+		G_CFE_DEBUG(PROBE, "%s(%s): %d\n", pfi->desc, p->dname, error);
+
+		if (error)
+			continue;
+
+		if (p->have_offset)
+			G_CFE_DEBUG(PROBE, "\toffset:\t%#jx\n",
+			    (intmax_t)p->offset);
+
+		if (p->have_size)
+			G_CFE_DEBUG(PROBE, "\tsize:\t%#jx\n",
+			    (intmax_t)p->size);
+	}
+
+	*probe = p;
+	return (0);
+}
+
+static void
+g_cfe_free_probe(struct cfe_flash_probe *probe)
+{
+	if (probe->fd >= 0)
+		cfe_close(probe->fd);
+
+	free(probe, M_BHND);
+}
+
+/**
  * Return the ChipCommon device to which @p dev is attached, or NULL if
  * not attached via ChipCommon.
  */
@@ -437,12 +866,12 @@ g_cfe_find_chipc_parent(device_t dev)
 	mtx_assert(&Giant, MA_OWNED);
 
 	if ((chipc_class = devclass_find("bhnd_chipc")) == NULL) {
-		CFE_LOG("missing chipcommon device class\n");
+		G_CFE_LOG("missing chipcommon device class\n");
 		return (NULL);
 	}
 
 	if ((bhnd_class = devclass_find("bhnd")) == NULL) {
-		CFE_LOG("missing bhnd device class\n");
+		G_CFE_LOG("missing bhnd device class\n");
 		return (NULL);
 	}
 
@@ -467,7 +896,7 @@ g_cfe_find_chipc_parent(device_t dev)
  * Return true if @p id declares support for flash @p type, false otherwise.
  */
 static bool
-g_cfe_flash_type_matches(chipc_flash type, const struct cfe_flash_device *id)
+g_cfe_flash_type_matches(const struct cfe_flash_device *id, chipc_flash type)
 {
 	const chipc_flash *req;
 
@@ -515,8 +944,8 @@ g_cfe_device_lookup(struct g_consumer *cp)
 		 * table entry */
 		ccaps = BHND_CHIPC_GET_CAPS(chipc);
 
-		if (!g_cfe_flash_type_matches(ccaps->flash_type, id)) {
-			CFE_LOG("unknown chipc flash type: %d\n",
+		if (!g_cfe_flash_type_matches(id, ccaps->flash_type)) {
+			G_CFE_LOG("unknown chipc flash type: %d\n",
 			    ccaps->flash_type);
 			continue;
 		}
@@ -616,7 +1045,7 @@ g_cfe_read_parts(struct g_consumer *cp)
 	g_topology_assert();
 
 	if ((error = g_cfe_check_magic(cp, 0x0))) {
-		CFE_LOG("unknown CFE image format\n");
+		G_CFE_LOG("unknown CFE image format\n");
 		return (error);
 	}
 
@@ -627,7 +1056,7 @@ g_cfe_read_parts(struct g_consumer *cp)
  * Populate @p info with the CFE boot image layout.
  */
 static int
-g_cfe_probe_bootimg(struct cfe_bootimg_info *info)
+g_cfe_get_bootimg_info(struct cfe_bootimg_info *info)
 {
 	struct bcm_platform		*bp;
 	const struct cfe_bootimg_var	*imgvar;
@@ -686,7 +1115,7 @@ g_cfe_probe_bootimg(struct cfe_bootimg_info *info)
 		error = bcm_get_nvram(bp, cfe_bootimg_offset_vars[i],
 		    &info->offsets[i], &len, BHND_NVRAM_TYPE_UINT64);
 		if (error) {
-			CFE_LOG("error fetching offset[%zu]: %d\n", i, error);
+			G_CFE_LOG("error fetching offset[%zu]: %d\n", i, error);
 			return (error);
 		}
 	}
@@ -696,7 +1125,7 @@ g_cfe_probe_bootimg(struct cfe_bootimg_info *info)
 	error = bcm_get_nvram(bp, BHND_NVAR_IMAGE_SIZE, &imgsize, &len,
 	    BHND_NVRAM_TYPE_UINT64);
 	if (error) {
-		CFE_LOG("error fetching image size: %d\n", error);
+		G_CFE_LOG("error fetching image size: %d\n", error);
 		return (error);
 	}
 
