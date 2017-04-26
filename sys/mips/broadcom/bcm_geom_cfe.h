@@ -95,9 +95,24 @@ struct cfe_flash_probe {
 	TAILQ_ENTRY(cfe_flash_probe)	 fp_link;
 };
 
+/** GEOM CFE flash probe list */
+TAILQ_HEAD(g_cfe_flash_probe_list, cfe_flash_probe);
 
 /** GEOM CFE flash probe function */
-typedef int (g_cfe_probe_func)(struct cfe_flash_probe *);
+typedef int (g_cfe_probe_func)(struct cfe_flash_probe *,
+			           struct g_cfe_flash_probe_list *probes);
+
+/**
+ * GEOM/CFE flash probe-backed bhnd_nvram_io implementation.
+ */
+struct g_cfe_nvram_probeio {
+	struct bhnd_nvram_io	 io;		/**< common I/O instance state */
+	struct cfe_flash_probe	*probe;		/**< partition probe state (borrowed) */
+	void			*last;		/**< last read sector(s), or NULL */
+	off_t			 last_off;	/**< offset of last read */
+	off_t			 last_len;	/**< length of last read */
+};
+
 
 /**
  * CFE operating system image layout types.
