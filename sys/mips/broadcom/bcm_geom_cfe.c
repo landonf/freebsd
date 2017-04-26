@@ -723,8 +723,8 @@ g_cfe_fallback_size_probe(struct cfe_flash_probe *probe,
 
 		} else if (cerr < 0) {
 			/* Read failed with an unknown error; this is expected
-			 * on some earlier SENTRY5 CFE releases, where reading
-			 * past EOF may trigger an overflow */
+			 * on some CFE releases where reading past EOF may
+			 * trigger an offset calculation bug */
 			if (log_readblk_err) {
 				G_CFE_LOG("cfe_readblk(%s, %#jx, ...) failed "
 				    "with unexpected error: %d\n", probe->dname,
@@ -1137,10 +1137,27 @@ g_cfe_new_probe(struct cfe_flash_probe **probe,
 	p->unit = cfe_unit;
 	p->fd = -1;
 	p->cp = cp;
+	p->readonly = false;
+	p->invalid = false;
+	p->have_offset = false;
+	p->have_size = false;
 
 	g_topology_assert();
 	p->mediasize = cp->provider->mediasize;
 	p->blksize = cp->provider->sectorsize;
+
+	/* Flash block sizes smaller than G_CFE_MINALIGN have been reported
+	 * on very old devices; on these devices, partitions are still aligned
+	 * to G_CFE_MINALIGN */
+	if (p->blksize < G_CFE_MINALIGN) {
+		if (p->blksize % G_CFE_MINALIGN != 0) {
+			G_CFE_LOG("cannot round %#jx sector size to minimum "
+			   "partition alignment %#x\n", (intmax_t)p->blksize,
+			    G_CFE_MINALIGN);
+		}
+
+		p->blksize = G_CFE_MINALIGN;
+	}
 
 	/* Format the full CFE device name */
 	n = snprintf(p->dname, sizeof(p->dname), "%s%u.%s",

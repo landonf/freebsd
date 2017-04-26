@@ -58,6 +58,8 @@
 #define	CFE_DUNIT_MAX		64		/**< maximum CFE device unit */
 #define	CFE_DNAME_MAX		64		/**< maximum CFE device name */
 
+#define	G_CFE_MINALIGN		0x1000		/**< minimum partition alignment */
+
 struct cfe_flash_probe;
 
 /**
@@ -107,6 +109,8 @@ struct cfe_flash_probe {
 	off_t				 mediasize;		/**< media size, in bytes */
 	u_int				 blksize;		/**< media block size, in bytes */
 
+	bool				 invalid;		/**< partition should be ignored */
+	bool				 readonly;		/**< partition should be marked read-only */
 	off_t				 offset;		/**< partition offset (if known) */
 	off_t				 size;			/**< partition size (if known) */
 	bool				 have_offset;		/**< partition offset has been determined */
