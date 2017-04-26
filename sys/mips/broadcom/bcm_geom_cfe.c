@@ -1160,10 +1160,12 @@ g_cfe_new_probe(struct cfe_flash_probe **probe,
 	 * on very old devices; on these devices, partitions are still aligned
 	 * to G_CFE_MINALIGN */
 	if (p->blksize < G_CFE_MINALIGN) {
-		if (p->blksize % G_CFE_MINALIGN != 0) {
+		if ((G_CFE_MINALIGN % p->blksize) != 0) {
 			G_CFE_LOG("cannot round %#jx sector size to minimum "
 			   "partition alignment %#x\n", (intmax_t)p->blksize,
 			    G_CFE_MINALIGN);
+			g_cfe_free_probe(p);
+			return (ENXIO);
 		}
 
 		p->blksize = G_CFE_MINALIGN;
