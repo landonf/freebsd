@@ -56,7 +56,6 @@ chipc_flash_name(chipc_flash type)
 		return ("QSPI Flash");
 
 	case CHIPC_NFLASH:
-	case CHIPC_NFLASH_4706:
 		return ("NAND");
 
 	case CHIPC_FLASH_NONE:
@@ -86,7 +85,6 @@ chipc_flash_bus_name(chipc_flash type)
 		return (NULL);
 
 	case CHIPC_NFLASH:
-	case CHIPC_NFLASH_4706:
 		/* unimplemented; nandbus? */
 		return (NULL);
 
@@ -117,7 +115,6 @@ chipc_sflash_device_name(chipc_flash type)
 
 	case CHIPC_PFLASH_CFI:
 	case CHIPC_NFLASH:
-	case CHIPC_NFLASH_4706:
 	case CHIPC_FLASH_NONE:
 	default:
 		return (NULL);
@@ -258,6 +255,8 @@ chipc_print_caps(device_t dev, struct chipc_caps *caps)
 	    CC_TFS(seci), CC_TFS(gsio));
 	device_printf(dev, "AOB:     %-3s   | BootROM: %s\n",
 	    CC_TFS(aob), CC_TFS(boot_rom));
+	device_printf(dev, "NANDC:   %s\n",
+	    CC_TFS(nand_core));
 
 #undef CC_TFS
 }

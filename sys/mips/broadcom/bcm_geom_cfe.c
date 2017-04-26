@@ -297,7 +297,7 @@ static const struct g_cfe_probe_func_info {
  */
 static const struct cfe_flash_device cfe_flash_devices[] = {
 	{ "nflash",	"NAND::device", (chipc_flash[]) {
-	    CHIPC_NFLASH,	CHIPC_NFLASH_4706,	CHIPC_FLASH_NONE },
+	    CHIPC_NFLASH,	CHIPC_FLASH_NONE },
 	    (G_CFE_QUIRK_FLASH_ZERO_OFF | G_CFE_QUIRK_FLASH_TOTAL_SIZE |
 	     G_CFE_QUIRK_NVRAM_UNAVAIL)
 	},

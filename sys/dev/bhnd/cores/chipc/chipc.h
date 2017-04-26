@@ -48,8 +48,7 @@ typedef enum {
 	CHIPC_SFLASH_AT		= 3,	/**< Atmel serial flash */
 	CHIPC_QSFLASH_ST	= 4,	/**< ST quad-SPI flash */ 
 	CHIPC_QSFLASH_AT	= 5,	/**< Atmel quad-SPI flash */
-	CHIPC_NFLASH		= 6,	/**< NAND flash */
-	CHIPC_NFLASH_4706	= 7	/**< BCM4706 NAND flash */
+	CHIPC_NFLASH		= 6	/**< NAND flash */
 } chipc_flash;
 
 /**
@@ -63,6 +62,7 @@ struct chipc_caps {
 
 	uint8_t		extbus_type;	/**< ExtBus type (CHIPC_CAP_EXTBUS_*) */
 
+	bool		nand_core;	/**< if a NAND flash core is available */
 	chipc_flash 	flash_type;	/**< flash type */
 	uint8_t		cfi_width;	/**< CFI bus width, 0 if unknown or CFI
 					     not present */

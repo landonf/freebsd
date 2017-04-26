@@ -455,11 +455,11 @@ chipc_read_caps(struct chipc_softc *sc, struct chipc_caps *caps)
 			
 	}
 
-	/* Handle 4706_NFLASH fallback */
+	/* Handle 4706-specific NAND core capability flag */
 	if (CHIPC_QUIRK(sc, 4706_NFLASH) &&
 	    CHIPC_GET_FLAG(cap_reg, CHIPC_CAP_4706_NFLASH))
 	{
-		caps->flash_type = CHIPC_NFLASH_4706;
+		caps->nand_core = true;
 	}
 
 
