@@ -81,6 +81,7 @@ struct cfe_flash_probe {
 	struct g_consumer		*cp;			/**< GEOM flash consumer */
 	const struct cfe_flash_device	*dev;			/**< CFE flash device mapping descriptor */
 	char				 dname[CFE_DNAME_MAX];	/**< CFE device name */
+	char				 pname[CFE_DNAME_MAX];	/**< CFE partition name */
 	u_int				 unit;			/**< CFE flash unit (e.g flash1) */
 	int				 fd;			/**< CFE device handle, or -1 if device unavailable */
 	off_t				 mediasize;		/**< media size, in bytes */

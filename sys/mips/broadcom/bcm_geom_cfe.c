@@ -244,6 +244,7 @@ static int				 g_cfe_get_bootimg_info(
 static g_cfe_probe_func			 g_cfe_probe_flash_info;
 static g_cfe_probe_func			 g_cfe_probe_nvram_info;
 static g_cfe_probe_func			 g_cfe_fallback_size_probe;
+static g_cfe_probe_func			 g_cfe_probe_part_boot;
 
 
 #define G_CFE_PROBE_FUNC(_name, _pass)	\
@@ -258,7 +259,8 @@ static const struct g_cfe_probe_func_info {
 } g_cfe_probe_funcs[] = {
 	G_CFE_PROBE_FUNC(g_cfe_probe_flash_info,	0),
 	G_CFE_PROBE_FUNC(g_cfe_probe_nvram_info,	0),
-	G_CFE_PROBE_FUNC(g_cfe_fallback_size_probe,	1)
+	G_CFE_PROBE_FUNC(g_cfe_fallback_size_probe,	1),
+	G_CFE_PROBE_FUNC(g_cfe_probe_part_boot,		2),
 };
 
 /*
@@ -687,6 +689,33 @@ g_cfe_fallback_size_probe(struct cfe_flash_probe *probe)
 }
 
 /**
+ * If @p probe's is a CFE bootloader partition, provide the expected zero
+ * offset.
+ */
+static int
+g_cfe_probe_part_boot(struct cfe_flash_probe *probe)
+{
+	/* Must be a boot partition */
+	if (strcmp(probe->pname, "boot") != 0)
+		return (ENXIO);
+
+	/* Skip if an offset was already probed */
+	if (probe->have_offset) {
+		if (probe->offset != 0) {
+			G_CFE_LOG("%s has unexpected non-zero offset: %#jx\n",
+			    probe->dname, (intmax_t)probe->offset);
+		}
+
+		return (0);
+	}
+
+	probe->have_offset = true;
+	probe->offset = 0x0;
+
+	return (0);
+}
+
+/**
  * Apply the given probe function to @p probe and validate the result. If
  * the probe function fails, or returns an invalid result, @p probe will be
  * left unmodified.
@@ -806,6 +835,14 @@ g_cfe_new_probe(struct cfe_flash_probe **probe,
 		g_cfe_free_probe(p);
 		return (ENOMEM);
 	}
+
+	/* Populate the CFE partition name */
+	if (strlen(cfe_part) >= sizeof(p->pname)) {
+		g_cfe_free_probe(p);
+		return (ENOMEM);
+	}
+
+	strlcpy(p->pname, cfe_part, sizeof(p->pname));
 
 	/* Try to open the device */
 	if ((p->fd = cfe_open(p->dname)) < 0) {
