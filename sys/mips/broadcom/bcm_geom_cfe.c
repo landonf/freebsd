@@ -353,7 +353,7 @@ enum {
 	G_CFE_DEBUG_PROBE = 1 << 0,
 };
 
-static u_long g_cfe_debug = 0 /* XXX */ | G_CFE_DEBUG_PROBE;
+static u_long g_cfe_debug = 0;
 
 #define	G_CFE_DEBUG_EN(_type)	((G_CFE_DEBUG_ ## _type & g_cfe_debug) != 0)
 
