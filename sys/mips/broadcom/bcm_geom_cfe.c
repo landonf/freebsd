@@ -246,18 +246,19 @@ static g_cfe_probe_func			 g_cfe_probe_nvram_info;
 static g_cfe_probe_func			 g_cfe_fallback_size_probe;
 
 
-#define G_CFE_PROBE_FUNC(_name)	\
-	{ __STRING(_name), _name }
+#define G_CFE_PROBE_FUNC(_name, _pass)	\
+	{ __STRING(_name), _name, _pass }
 /**
  * Table of all CFE flash probe functions, ordered by application priorty.
  */
 static const struct g_cfe_probe_func_info {
 	const char		*desc;
 	g_cfe_probe_func	*fn;
+	u_int			 pass;
 } g_cfe_probe_funcs[] = {
-	G_CFE_PROBE_FUNC(g_cfe_probe_flash_info),
-	G_CFE_PROBE_FUNC(g_cfe_probe_nvram_info),
-	G_CFE_PROBE_FUNC(g_cfe_fallback_size_probe)
+	G_CFE_PROBE_FUNC(g_cfe_probe_flash_info,	0),
+	G_CFE_PROBE_FUNC(g_cfe_probe_nvram_info,	0),
+	G_CFE_PROBE_FUNC(g_cfe_fallback_size_probe,	1)
 };
 
 /*
@@ -821,23 +822,36 @@ g_cfe_new_probe(struct cfe_flash_probe **probe,
 	}
 
 	/* Try to populate partition info */
-	for (size_t i = 0; i < nitems(g_cfe_probe_funcs); i++) {
-		const struct g_cfe_probe_func_info *pfi;
+	for (u_int pass = 0, final_pass = false; !final_pass; pass++) {
+		final_pass = true;
 
-		pfi = &g_cfe_probe_funcs[i];
-		error = g_cfe_try_probe(p, pfi);
-		G_CFE_DEBUG(PROBE, "%s(%s): %d\n", pfi->desc, p->dname, error);
+		for (size_t i = 0; i < nitems(g_cfe_probe_funcs); i++) {
+			const struct g_cfe_probe_func_info *pfi;
 
-		if (error)
-			continue;
+			pfi = &g_cfe_probe_funcs[i];
 
-		if (p->have_offset)
-			G_CFE_DEBUG(PROBE, "\toffset:\t%#jx\n",
-			    (intmax_t)p->offset);
+			/* Applies to current pass? */
+			if (pfi->pass != pass) {
+				if (pfi->pass > pass)
+					final_pass = false;
 
-		if (p->have_size)
-			G_CFE_DEBUG(PROBE, "\tsize:\t%#jx\n",
-			    (intmax_t)p->size);
+				continue;
+			}
+
+			error = g_cfe_try_probe(p, pfi);
+			G_CFE_DEBUG(PROBE, "%s(%s): %d\n", pfi->desc, p->dname, error);
+
+			if (error)
+				continue;
+
+			if (p->have_offset)
+				G_CFE_DEBUG(PROBE, "\toffset:\t%#jx\n",
+				    (intmax_t)p->offset);
+
+			if (p->have_size)
+				G_CFE_DEBUG(PROBE, "\tsize:\t%#jx\n",
+				    (intmax_t)p->size);
+		}
 	}
 
 	*probe = p;
