@@ -216,7 +216,7 @@ __FBSDID("$FreeBSD$");
  *		Unsupported
  */
 
-BHND_NVRAM_IOPS_DEFN(g_pio);
+BHND_NVRAM_IOPS_DEFN(g_cfeio);
 
 struct g_cfe_probe_func_info;
 
@@ -238,6 +238,11 @@ static struct cfe_flash_probe		*g_cfe_find_probe(
 					     struct g_cfe_flash_probe_list *,
 					     const char *pname);
 
+static int				 g_cfe_read_probe(
+					     struct cfe_flash_probe *probe,
+					     void *outp, off_t offset,
+					     off_t length);
+
 static int				 g_cfe_try_probe(
 					     const struct g_cfe_probe_func_info *,
 					     struct cfe_flash_probe *,
@@ -245,16 +250,14 @@ static int				 g_cfe_try_probe(
 
 static const struct cfe_flash_device	*g_cfe_device_lookup(
 					     struct g_consumer *cp);
-static int				 g_cfe_check_magic(
-					     struct g_consumer *cp,
-					     off_t cfe_offset);
+
 static int				 g_cfe_read_parts(
 					     struct g_consumer *cp);
 static int				 g_cfe_get_bootimg_info(
 					     struct cfe_bootimg_info *info);
 
-static int				 bhnd_nvram_g_pio_init(
-					     struct g_cfe_nvram_probeio *pio,
+static int				 g_cfe_probe_io_init(
+					     struct g_cfe_probe_io *pio,
 					     struct cfe_flash_probe *probe);
 
 /* CFE flash probe functions */
@@ -479,13 +482,18 @@ g_cfe_taste(struct g_class *mp, struct g_provider *pp, int insist)
 	/* Allocate partition probe records for all discoverable partitions on
 	 * unit 0 */
 	for (size_t i = 0; i < nitems(cfe_flash_parts); i++) {
-		error = g_cfe_new_probe(&probe, cp, cfe_dev, 0,
+		u_int unit = 0;
+
+		error = g_cfe_new_probe(&probe, cp, cfe_dev, unit,
 		    cfe_flash_parts[i]);
 		if (!error) {
 			TAILQ_INSERT_TAIL(&probes, probe, fp_link);
 		} else if (error != ENODEV) {
-			G_CFE_DEBUG(PROBE, "g_cfe_new_probe(%s): %d\n",
-			    cfe_dev->cfe_name, error);
+			G_CFE_LOG("failed to create '%s%u.%s' probe state: "
+			    "%d\n", cfe_dev->cfe_name, unit, cfe_flash_parts[i],
+			    error);
+
+			goto failed;
 		}
 	}
 
@@ -509,11 +517,11 @@ g_cfe_taste(struct g_class *mp, struct g_provider *pp, int insist)
 
 				/* Attempt probe */
 				error = g_cfe_try_probe(pfi, probe, &probes);
-				G_CFE_DEBUG(PROBE, "%s(%s): %d\n", pfi->desc,
-				    probe->dname, error);
-
 				if (error)
 					continue;
+				
+				G_CFE_DEBUG(PROBE, "%s(%s): %d\n", pfi->desc,
+				    probe->dname, error);
 
 				if (probe->have_offset)
 					G_CFE_DEBUG(PROBE, "\toffset:\t%#jx\n",
@@ -763,7 +771,8 @@ static int
 g_cfe_probe_part_boot(struct cfe_flash_probe *probe,
     struct g_cfe_flash_probe_list *probes)
 {
-	int error;
+	uint32_t	magic[CFE_MAGIC_COUNT];
+	int		error;
 
 	/* Must be a boot partition */
 	if (strcmp(probe->pname, "boot") != 0)
@@ -775,14 +784,27 @@ g_cfe_probe_part_boot(struct cfe_flash_probe *probe,
 		probe->offset = 0x0;
 	}
 
-	/* Check for CFE magic */
-	if ((error = g_cfe_check_magic(probe->cp, probe->offset))) {
-		G_CFE_LOG("%s: unrecognized CFE image at offset %#jx\n",
-		    probe->dname, (intmax_t)probe->offset);
-		return (error);
+	/* Standard CFE image? */
+	error = g_cfe_read_probe(probe, magic, CFE_MAGIC_OFFSET, sizeof(magic));
+	if (!error) {
+		if (magic[CFE_MAGIC_0] == CFE_MAGIC &&
+		    magic[CFE_MAGIC_1] == CFE_MAGIC)
+		{
+			return (0);
+		}
 	}
 
-	return (0);
+	/* Self-decompressing CFEZ image? */
+	error = g_cfe_read_probe(probe, magic, CFE_BISZ_OFFSET, sizeof(*magic));
+	if (!error) {
+		if (magic[CFE_MAGIC_0] == CFE_BISZ_MAGIC)
+			return (0);
+	}
+
+	/* Unrecognized */
+	G_CFE_LOG("%s: unrecognized CFE image at offset %#jx\n", probe->dname,
+	    (intmax_t)probe->offset);
+	return (ENXIO);
 }
 
 /**
@@ -792,8 +814,8 @@ static int
 g_cfe_probe_part_nvram(struct cfe_flash_probe *probe,
     struct g_cfe_flash_probe_list *probes)
 {
-	struct g_cfe_nvram_probeio	pio;
-	int				error, result;
+	struct g_cfe_probe_io	pio;
+	int			error, result;
 
 	/* Recognized NVRAM formats, in probe order. */
 	bhnd_nvram_data_class * const nvram_classes[] = {
@@ -825,7 +847,7 @@ g_cfe_probe_part_nvram(struct cfe_flash_probe *probe,
 	}
 
 	/* Initialize our mapping NVRAM I/O context */
-	if ((error = bhnd_nvram_g_pio_init(&pio, probe)))
+	if ((error = g_cfe_probe_io_init(&pio, probe)))
 		return (error);
 
 	/* Check for NVRAM magic */
@@ -856,35 +878,65 @@ static int
 g_cfe_probe_part_config(struct cfe_flash_probe *probe,
     struct g_cfe_flash_probe_list *probes)
 {
-	struct cfe_flash_probe *boot;
+	struct cfe_flash_probe	*boot;
+	u_char			*buf;
+	off_t			 nbytes, sector;
+	off_t			 offset;
+	uint16_t		 magic;
+	int			 error;
 	
 	/* Must be a config partition */
 	if (strcmp(probe->pname, "config") != 0)
 		return (ENXIO);
 
 	/* Skip if a valid offset was already probed */
-	if (probe->have_offset) {
-		// TODO: Check MINIX magic?
-		return (0);
+	if (!probe->have_offset) {	
+		/* The configuration partition is found relative to the boot
+		 * partition */
+		if ((boot = g_cfe_find_probe(probes, "boot")) == NULL)
+			return (ENXIO);
+
+		if (!boot->have_offset || !boot->have_size)
+			return (ENXIO);
+
+		if (OFF_MAX - boot->offset < boot->size) {
+			/* Would overflow */
+			return (ENXIO);
+		}
+
+		probe->have_offset = true;
+		probe->offset = roundup(boot->offset + boot->size,
+		    boot->blksize);
 	}
 
-	/* The configuration partition is found relative to the boot
-	 * partition */
-	if ((boot = g_cfe_find_probe(probes, "boot")) == NULL)
+	/* Check for expected MINIX partition magic */
+	if (OFF_MAX - probe->offset < CFE_MINIX_OFFSET)
 		return (ENXIO);
 
-	if (!boot->have_offset || !boot->have_size)
+	if (probe->size < (CFE_MINIX_OFFSET + sizeof(magic)))
 		return (ENXIO);
 
-	if (OFF_MAX - boot->offset > boot->size) {
-		/* Would overflow */
+	offset = probe->offset + CFE_MINIX_OFFSET;
+	sector = rounddown(offset, probe->blksize);
+	nbytes = roundup(sizeof(magic), probe->blksize);
+
+	g_topology_unlock();
+	buf = g_read_data(probe->cp, sector, nbytes, &error);
+	g_topology_lock();
+
+	if (buf == NULL)
+		return (error);
+
+	/* Fetch magic value and free our GEOM buffer */
+	magic = le16toh(*(uint16_t *)(buf + (offset % probe->blksize)));
+	g_free(buf);
+
+	if (magic != CFE_MINIX_MAGIC) {
+		G_CFE_LOG("%s: unrecognized config partition at offset %#jx\n",
+		    probe->dname, (intmax_t)probe->offset);
 		return (ENXIO);
 	}
 
-	probe->have_offset = true;
-	probe->offset = roundup(boot->offset + boot->size, boot->blksize);
-
-	// TODO: Check MINIX magic?
 	return (0);
 }
 
@@ -923,6 +975,63 @@ g_cfe_find_probe(struct g_cfe_flash_probe_list *probes, const char *pname)
 }
 
 /**
+ * Read @p length bytes at @p offset from the partition mapped by @p probe.
+ * 
+ * @param	probe	The probe entry mapping the partition be read.
+ * @param[out]	outp	On success, @p length bytes will be written to
+ *			this buffer.
+ * @param	offset	The read offset within @p probe.
+ * @param	length	The number of bytes to be read.
+ * 
+ * @retval 0		success
+ * @retval ENXIO	if the partition's offset or size have not been probed.
+ * @retval ENXIO	if the request is beyond the partition's total size.
+ * @retval non-zero	if the probe otherwise fails, a regular unix
+ *			error code will be returned.
+ */
+static int
+g_cfe_read_probe(struct cfe_flash_probe *probe, void *outp, off_t offset,
+    off_t length)
+{
+	void	*buf;
+	off_t	 sector, nbytes;
+	int	 error;
+
+	g_topology_assert();
+
+	if (!probe->have_offset || !probe->have_size)
+		return (ENXIO);
+
+	/* Check for possible overflows */
+	if (OFF_MAX - probe->offset < offset)
+		return (ENXIO); /* probe->offset+offset would overflow */
+
+	if (OFF_MAX - offset < length)
+		return (ENXIO); /* offset+length would overflow */
+
+	/* Verify that the request falls within the partition's range */
+	if (probe->size < offset + length)
+		return (ENXIO);
+
+	/* Perform the block-aligned read */
+	sector = rounddown(offset, probe->blksize);
+	nbytes = roundup(length, probe->blksize);
+
+	g_topology_unlock();
+	buf = g_read_data(probe->cp, sector, nbytes, &error);
+	g_topology_lock();
+
+	if (buf == NULL)
+		return (error);
+
+	/* Copy out the result and clean up */
+	memcpy(outp, ((uint8_t *)buf) + (offset % probe->blksize), length);
+	g_free(buf);
+
+	return (0);
+}
+
+/**
  * Apply the given probe function to @p probe and validate the result. If
  * the probe function fails, or returns an invalid result, @p probe will be
  * left unmodified.
@@ -945,11 +1054,8 @@ g_cfe_try_probe(const struct g_cfe_probe_func_info *pfi,
 
 	/* Execute with a local copy of the probe data */
 	cp = *probe;
-	if ((error = pfi->fn(&cp, probes))) {
-		G_CFE_DEBUG(PROBE, "%s(%s): %d\n", pfi->desc, probe->dname,
-		    error);
+	if ((error = pfi->fn(&cp, probes)))
 		return (error);
-	}
 
 	/* Validate probed offset */
 	if (cp.have_offset) {
@@ -1064,7 +1170,7 @@ g_cfe_new_probe(struct cfe_flash_probe **probe,
 		}
  
 		g_cfe_free_probe(p);
-		return (ENXIO);
+		return (error);
 	}
 
 	*probe = p;
@@ -1188,93 +1294,20 @@ g_cfe_device_lookup(struct g_consumer *cp)
 }
 
 /**
- * Read and validate the CFE image magic.
- * 
- * @param cp		GEOM consumer containing CFE image.
- * @param cfe_offset	Offset to CFE image within @p cp.
- * 
- * @retval 0		success
- * @retval non-zero	if the CFE image cannot be identified, a regular unix
- *			error code will be returned.
- */
-static int
-g_cfe_check_magic(struct g_consumer *cp, off_t cfe_offset)
-{
-	u_char		*buf;
-	off_t		 nbytes, sector, sectorsize;
-	uint32_t	*magic;
-	int		 error;
-
-	g_topology_assert();
-	sectorsize = cp->provider->sectorsize;
-
-	/* Standard CFE image */
-	if (OFF_MAX - cfe_offset >= CFE_MAGIC_OFFSET) {
-		sector = rounddown(cfe_offset + CFE_MAGIC_OFFSET, sectorsize);
-		nbytes = roundup(sizeof(*magic) * CFE_MAGIC_COUNT, sectorsize);
-
-		g_topology_unlock();
-		buf = g_read_data(cp, sector, nbytes, &error);
-		g_topology_lock();
-
-		if (buf == NULL)
-			return (error);
-
-		magic = (uint32_t *)(buf + (CFE_MAGIC_OFFSET % sectorsize));
-		if (magic[CFE_MAGIC_0] == CFE_MAGIC &&
-		    magic[CFE_MAGIC_1] == CFE_MAGIC)
-		{
-			g_free(buf);
-			return (0);
-		}
-
-		/* No match */
-		g_free(buf);
-		buf = NULL;
-	}
-
-
-	/* Self-decompressing CFEZ image */
-	if (OFF_MAX - cfe_offset >= CFE_BISZ_OFFSET) {
-		sector = rounddown(cfe_offset + CFE_BISZ_OFFSET, sectorsize);
-		nbytes = roundup(sizeof(*magic), sectorsize);
-
-		g_topology_unlock();
-		buf = g_read_data(cp, sector, nbytes, &error);
-		g_topology_lock();
-
-		if (buf == NULL)
-			return (error);
-
-		magic = (uint32_t *)(buf + (CFE_BISZ_OFFSET % sectorsize));
-		if (*magic == CFE_BISZ_MAGIC) {
-			g_free(buf);
-			return (0);
-		}
-
-		/* No match */
-		g_free(buf);
-		buf = NULL;
-	}
-
-	/* Unrecognized */
-	return (ENXIO);
-}
-
-/**
  * Parse all partitions.
  */
 static int
 g_cfe_read_parts(struct g_consumer *cp)
 {
-	int error;
-
 	g_topology_assert();
 
+	// TODO
+#if 0
 	if ((error = g_cfe_check_magic(cp, 0x0))) {
 		G_CFE_LOG("unknown CFE image format\n");
 		return (error);
 	}
+#endif
 
 	return (0);
 }
@@ -1363,7 +1396,7 @@ g_cfe_get_bootimg_info(struct cfe_bootimg_info *info)
 }
 
 /**
- * Initialize a new CFE partition probe-backed I/O context.
+ * Initialize a new GEOM-backed partition probe I/O context.
  *
  * The caller is responsible for releasing all resources held by the returned
  * I/O context via bhnd_nvram_io_free().
@@ -1379,13 +1412,13 @@ g_cfe_get_bootimg_info(struct cfe_bootimg_info *info)
  *			error will be returned.
  */
 static int
-bhnd_nvram_g_pio_init(struct g_cfe_nvram_probeio *pio,
-    struct cfe_flash_probe *probe)
+g_cfe_probe_io_init(struct g_cfe_probe_io *pio, struct cfe_flash_probe *probe)
 {
-	pio->io.iops = &bhnd_nvram_g_pio_ops;
+	pio->io.iops = &bhnd_nvram_g_cfeio_ops;
 	pio->probe = probe;
 	pio->last = NULL;
 	pio->last_off = 0x0;
+	pio->last_len = 0x0;
 
 	if (!probe->have_offset || !probe->have_size)
 		return (EINVAL);
@@ -1394,9 +1427,9 @@ bhnd_nvram_g_pio_init(struct g_cfe_nvram_probeio *pio,
 }
 
 static void
-bhnd_nvram_g_pio_free(struct bhnd_nvram_io *io)
+bhnd_nvram_g_cfeio_free(struct bhnd_nvram_io *io)
 {
-	struct g_cfe_nvram_probeio *pio = (struct g_cfe_nvram_probeio *)io;
+	struct g_cfe_probe_io *pio = (struct g_cfe_probe_io *)io;
 
 	/* All other resources are managed externally */
 	if (pio->last != NULL)
@@ -1404,21 +1437,21 @@ bhnd_nvram_g_pio_free(struct bhnd_nvram_io *io)
 }
 
 static size_t
-bhnd_nvram_g_pio_getsize(struct bhnd_nvram_io *io)
+bhnd_nvram_g_cfeio_getsize(struct bhnd_nvram_io *io)
 {
-	struct g_cfe_nvram_probeio *pio = (struct g_cfe_nvram_probeio *)io;
+	struct g_cfe_probe_io *pio = (struct g_cfe_probe_io *)io;
 	return (pio->probe->size);
 }
 
 static int
-bhnd_nvram_g_pio_setsize(struct bhnd_nvram_io *io, size_t size)
+bhnd_nvram_g_cfeio_setsize(struct bhnd_nvram_io *io, size_t size)
 {
 	/* unsupported */
 	return (ENODEV);
 }
 
 static int
-bhnd_nvram_g_pio_read_ptr(struct bhnd_nvram_io *io, size_t offset,
+bhnd_nvram_g_cfeio_read_ptr(struct bhnd_nvram_io *io, size_t offset,
     const void **ptr, size_t nbytes, size_t *navail)
 {
 	/* unsupported */
@@ -1426,7 +1459,7 @@ bhnd_nvram_g_pio_read_ptr(struct bhnd_nvram_io *io, size_t offset,
 }
 
 static int
-bhnd_nvram_g_pio_write_ptr(struct bhnd_nvram_io *io, size_t offset,
+bhnd_nvram_g_cfeio_write_ptr(struct bhnd_nvram_io *io, size_t offset,
     void **ptr, size_t nbytes, size_t *navail)
 {
 	/* unsupported */
@@ -1434,23 +1467,23 @@ bhnd_nvram_g_pio_write_ptr(struct bhnd_nvram_io *io, size_t offset,
 }
 
 static int
-bhnd_nvram_g_pio_write(struct bhnd_nvram_io *io, size_t offset, void *buffer,
-    size_t nbytes)
+bhnd_nvram_g_cfeio_write(struct bhnd_nvram_io *io, size_t offset,
+    void *buffer, size_t nbytes)
 {
 	/* unsupported */
 	return (ENODEV);
 }
 
 static int
-bhnd_nvram_g_pio_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
+bhnd_nvram_g_cfeio_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
     size_t nbytes)
 {
-	struct g_cfe_nvram_probeio	*pio;
-	struct cfe_flash_probe		*probe;
-	off_t				 nread, sector, sectorsize;
-	int				 error;
+	struct g_cfe_probe_io	*pio;
+	struct cfe_flash_probe	*probe;
+	off_t			 nread, sector, sectorsize;
+	int			 error;
 
-	pio = (struct g_cfe_nvram_probeio *)io;
+	pio = (struct g_cfe_probe_io *)io;
 	probe = pio->probe;
 
 	KASSERT(probe->have_offset, ("missing partition offset"));
@@ -1479,7 +1512,7 @@ bhnd_nvram_g_pio_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
 
 	/* If required, perform a read; we try to re-use our last read sector */
 	if (pio->last == NULL || pio->last_off != sector ||
-	    pio->last_len != nread)
+	    pio->last_len < nread)
 	{
 		if (pio->last != NULL) {
 			g_free(pio->last);

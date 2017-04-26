@@ -46,6 +46,10 @@
 #define	CFE_MAGIC_0		0		/**< 1st CFE magic constant */
 #define	CFE_MAGIC_1		1		/**< 2nd CFE magic constant */
 
+/* SENTRY5 'config' partition magic (MINIX v1 filesystem, 30 char name limit) */
+#define	CFE_MINIX_OFFSET	0x410
+#define	CFE_MINIX_MAGIC		0x138F
+
 /* Self-describing compressed CFEZ binary magic */
 #define	CFE_BISZ_OFFSET		0x3E0
 #define	CFE_BISZ_MAGIC		0x4249535A	/* 'BISZ' */
@@ -53,6 +57,8 @@
 #define	CFE_IMG_MAX		2		/**< maximum CFE OS image count */
 #define	CFE_DUNIT_MAX		64		/**< maximum CFE device unit */
 #define	CFE_DNAME_MAX		64		/**< maximum CFE device name */
+
+struct cfe_flash_probe;
 
 /**
  * GEOM BCM_CFE instance state
@@ -72,6 +78,19 @@ struct cfe_flash_device {
 	const char		*geom_attr;	/**< GEOM device attribute */
 	const chipc_flash	*flash_types;	/**< supported ChipCommon flash types */
 	uint32_t		 cfe_quirks;	/**< CFE driver quirks (see CFE_DEV_QUIRK_*) */
+};
+
+/**
+ * GEOM flash partition probing bhnd_nvram_io implementation.
+ * 
+ * Provides GEOM-backed I/O mapping of a probed flash partition.
+ */
+struct g_cfe_probe_io {
+	struct bhnd_nvram_io	 io;		/**< common I/O instance state */
+	struct cfe_flash_probe	*probe;		/**< partition probe state (borrowed) */
+	void			*last;		/**< last read sector(s), or NULL */
+	off_t			 last_off;	/**< offset of last read */
+	off_t			 last_len;	/**< length of last read */
 };
 
 /**
@@ -101,18 +120,6 @@ TAILQ_HEAD(g_cfe_flash_probe_list, cfe_flash_probe);
 /** GEOM CFE flash probe function */
 typedef int (g_cfe_probe_func)(struct cfe_flash_probe *,
 			           struct g_cfe_flash_probe_list *probes);
-
-/**
- * GEOM/CFE flash probe-backed bhnd_nvram_io implementation.
- */
-struct g_cfe_nvram_probeio {
-	struct bhnd_nvram_io	 io;		/**< common I/O instance state */
-	struct cfe_flash_probe	*probe;		/**< partition probe state (borrowed) */
-	void			*last;		/**< last read sector(s), or NULL */
-	off_t			 last_off;	/**< offset of last read */
-	off_t			 last_len;	/**< length of last read */
-};
-
 
 /**
  * CFE operating system image layout types.
