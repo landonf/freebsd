@@ -1068,9 +1068,14 @@ g_cfe_try_probe(const struct g_cfe_probe_func_info *pfi,
 	if (cp.have_offset) {
 		/* Must fit within total media size */
 		if (cp.mediasize <= cp.offset) {
-			G_CFE_LOG("%s: %s returned invalid offset %#jx "
-			    "(mediasize=%#jx)\n", cp.dname, pfi->desc,
-			    cp.offset, cp.mediasize);
+			/* Some early SENTRY5 devices will return the
+			 * flash base address; we can safely discard the
+			 * offset and ignore the error */
+			if (cp.mediasize != G_CFE_FLASH_ADDR) {
+				G_CFE_LOG("%s: %s returned invalid offset %#jx "
+				    "(mediasize=%#jx)\n", cp.dname, pfi->desc,
+				    cp.offset, cp.mediasize);
+			}
 
 			cp.have_offset = false;
 		}

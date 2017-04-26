@@ -39,6 +39,7 @@
 
 #define	CFE_CLASS_NAME		"BCM_CFE"
 
+
 /* CFE binary magic */
 #define	CFE_MAGIC		0x43464531	/**< 'CFE1' */
 #define	CFE_MAGIC_OFFSET	0x4E0		/**< CFE magic offset */
@@ -59,6 +60,7 @@
 #define	CFE_DNAME_MAX		64		/**< maximum CFE device name */
 
 #define	G_CFE_MINALIGN		0x1000		/**< minimum partition alignment */
+#define	G_CFE_FLASH_ADDR	0x1c000000	/**< physical flash address on SENTRY5 hardware */
 
 struct cfe_flash_probe;
 
