@@ -103,6 +103,7 @@ struct cfe_flash_probe {
 	char				 pname[CFE_DNAME_MAX];	/**< CFE partition name */
 	u_int				 unit;			/**< CFE flash unit (e.g flash1) */
 	int				 fd;			/**< CFE device handle, or -1 if device unavailable */
+	bool				 fd_noclose;		/**< if true, the CFE device handle is shared and should not be closed */
 	off_t				 mediasize;		/**< media size, in bytes */
 	u_int				 blksize;		/**< media block size, in bytes */
 

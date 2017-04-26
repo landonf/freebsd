@@ -195,6 +195,27 @@ bcm_find_core(struct bcm_platform *bp, const struct bhnd_core_match *descs,
 }
 
 /**
+ * Return the shared CFE handle for @p dname, or CFE_ERR_DEVNOTFOUND if
+ * no shared handle is available.
+ * 
+ * @param	bp	Platform state.
+ * @param	dname	CFE device name.
+ *
+ * @returns a valid CFE handle (>= 0) on success, or CFE_ERR_DEVNOTFOUND if
+ * no shared handle exists for the requested device.
+ */
+int
+bcm_get_cfe_fd(struct bcm_platform *bp, const char *dname)
+{
+	/* NVRAM is the only device currently supported */
+	if (bp->nvram_dname == NULL || strcmp(bp->nvram_dname, dname) != 0)
+		return (CFE_ERR_DEVNOTFOUND);
+
+	KASSERT(bp->nvram_fd >= 0, ("missing NVRAM handle"));
+	return (bp->nvram_fd);
+}
+
+/**
  * Read a variable directly from NVRAM, decoding as @p type.
  *
  * @param		bp	Platform state.
@@ -328,9 +349,14 @@ bcm_init_platform_data(struct bcm_platform *bp)
 	/* Probe CFE NVRAM sources */
 	bp->nvram_io = &bcm_cfe_nvram.io;
 	error = bcm_nvram_find_cfedev(&bcm_cfe_nvram, &bp->nvram_cls);
-	if (error) {
+	if (!error) {
+		bp->nvram_dname = bcm_cfe_nvram.dname;
+		bp->nvram_fd = bcm_cfe_nvram.fd;
+	} else {
 		bp->nvram_io = NULL;
 		bp->nvram_cls = NULL;
+		bp->nvram_dname = NULL;
+		bp->nvram_fd = -1;
 	}
 #endif /* CFE */
 

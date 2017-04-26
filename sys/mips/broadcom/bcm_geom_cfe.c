@@ -1160,7 +1160,20 @@ g_cfe_new_probe(struct cfe_flash_probe **probe,
 	strlcpy(p->pname, cfe_part, sizeof(p->pname));
 
 	/* Try to open the device */
-	if ((p->fd = cfe_open(p->dname)) < 0) {
+	p->fd_noclose = false;
+	p->fd = cfe_open(p->dname);
+	if (p->fd == CFE_ERR_DEVOPEN) {
+		int fd;
+		
+		/* If already open, look for a shared handle */
+		fd = bcm_get_cfe_fd(bcm_get_platform(), p->dname);
+		if (fd >= 0) {
+			p->fd = fd;
+			p->fd_noclose = true;
+		}
+	}
+
+	if (p->fd < 0) {
 		if (p->fd == CFE_ERR_DEVNOTFOUND) {
 			error = ENODEV;
 		} else {
@@ -1180,7 +1193,7 @@ g_cfe_new_probe(struct cfe_flash_probe **probe,
 static void
 g_cfe_free_probe(struct cfe_flash_probe *probe)
 {
-	if (probe->fd >= 0)
+	if (probe->fd >= 0 && !probe->fd_noclose)
 		cfe_close(probe->fd);
 
 	free(probe, M_BHND);

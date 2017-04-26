@@ -69,6 +69,8 @@ struct bcm_platform {
 
 	struct bhnd_nvram_io	*nvram_io;	/**< NVRAM I/O context, or NULL if unavailable */
 	bhnd_nvram_data_class	*nvram_cls;	/**< NVRAM data class, or NULL if unavailable */
+	const char		*nvram_dname;	/**< NVRAM CFE device name, or NULL if unavailable */
+	int			 nvram_fd;	/**< NVRAM CFE handle, or -1 if unavailable */
 
 #ifdef CFE
 	int			cfe_console;	/**< Console handle, or -1 */
@@ -83,6 +85,9 @@ uint64_t		 bcm_get_alpfreq(struct bcm_platform *bp);
 uint64_t		 bcm_get_ilpfreq(struct bcm_platform *bp);
 
 u_int			 bcm_get_uart_rclk(struct bcm_platform *bp);
+
+int			 bcm_get_cfe_fd(struct bcm_platform *bp,
+			     const char *dname);
 
 int			 bcm_get_nvram(struct bcm_platform *bp,
 			     const char *name, void *outp, size_t *olen,
