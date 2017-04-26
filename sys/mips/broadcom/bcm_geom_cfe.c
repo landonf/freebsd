@@ -454,7 +454,7 @@ g_cfe_taste(struct g_class *mp, struct g_provider *pp, int insist)
 	if (strcmp(pp->geom->class->name, CFE_CLASS_NAME) == 0)
 		return (NULL);
 
-	TAILQ_INIT(&probes);
+	LIST_INIT(&probes);
 
 	/*
 	 * Add a consumer to the GEOM topology, acquiring read access to
@@ -487,7 +487,7 @@ g_cfe_taste(struct g_class *mp, struct g_provider *pp, int insist)
 		error = g_cfe_new_probe(&probe, cp, cfe_dev, unit,
 		    cfe_flash_parts[i]);
 		if (!error) {
-			TAILQ_INSERT_TAIL(&probes, probe, fp_link);
+			LIST_INSERT_HEAD(&probes, probe, fp_link);
 		} else if (error != ENODEV) {
 			G_CFE_LOG("failed to create '%s%u.%s' probe state: "
 			    "%d\n", cfe_dev->cfe_name, unit, cfe_flash_parts[i],
@@ -501,7 +501,7 @@ g_cfe_taste(struct g_class *mp, struct g_provider *pp, int insist)
 	for (u_int pass = 0, final_pass = false; !final_pass; pass++) {
 		final_pass = true;
 
-		TAILQ_FOREACH(probe, &probes, fp_link) {
+		LIST_FOREACH_SAFE(probe, &probes, fp_link, pnext) {
 			for (size_t i = 0; i < nitems(g_cfe_probe_funcs); i++) {
 				const struct g_cfe_probe_func_info *pfi;
 
@@ -519,7 +519,14 @@ g_cfe_taste(struct g_class *mp, struct g_provider *pp, int insist)
 				error = g_cfe_try_probe(pfi, probe, &probes);
 				if (error)
 					continue;
-				
+
+				/* Partition invalidated? */
+				if (probe->invalid) {
+					LIST_REMOVE(probe, fp_link);
+					g_cfe_free_probe(probe);
+					continue;
+				}
+
 				G_CFE_DEBUG(PROBE, "%s(%s): %d\n", pfi->desc,
 				    probe->dname, error);
 
@@ -547,7 +554,7 @@ g_cfe_taste(struct g_class *mp, struct g_provider *pp, int insist)
 	}
 
 	// TODO
-	TAILQ_FOREACH(probe, &probes, fp_link) {
+	LIST_FOREACH(probe, &probes, fp_link) {
 		if (probe->have_offset && probe->have_size) {
 			G_CFE_LOG("%s (base=%#jx, size=%#jx)\n", probe->dname,
 			    (intmax_t)probe->offset, (intmax_t)probe->size);
@@ -565,8 +572,8 @@ g_cfe_taste(struct g_class *mp, struct g_provider *pp, int insist)
 	printf("MATCH\n");
 
 failed:
-	TAILQ_FOREACH_SAFE(probe, &probes, fp_link, pnext) {
-		TAILQ_REMOVE(&probes, probe, fp_link);
+	LIST_FOREACH_SAFE(probe, &probes, fp_link, pnext) {
+		LIST_REMOVE(probe, fp_link);
 		g_cfe_free_probe(probe);
 	}
 
@@ -965,7 +972,7 @@ g_cfe_find_probe(struct g_cfe_flash_probe_list *probes, const char *pname)
 {
 	struct cfe_flash_probe *probe;
 
-	TAILQ_FOREACH(probe, probes, fp_link) {
+	LIST_FOREACH(probe, probes, fp_link) {
 		if (strcmp(probe->pname, pname) == 0)
 			return (probe);
 	}
@@ -1096,6 +1103,9 @@ g_cfe_try_probe(const struct g_cfe_probe_func_info *pfi,
 	}
 
 	/* Save validated results */
+	probe->readonly = cp.readonly;
+	probe->invalid = cp.invalid;
+
 	if (cp.have_offset) {
 		probe->have_offset = true;
 		probe->offset = cp.offset;

@@ -116,11 +116,11 @@ struct cfe_flash_probe {
 	bool				 have_offset;		/**< partition offset has been determined */
 	bool				 have_size;		/**< partition size has been determined */
 
-	TAILQ_ENTRY(cfe_flash_probe)	 fp_link;
+	LIST_ENTRY(cfe_flash_probe)	 fp_link;
 };
 
 /** GEOM CFE flash probe list */
-TAILQ_HEAD(g_cfe_flash_probe_list, cfe_flash_probe);
+LIST_HEAD(g_cfe_flash_probe_list, cfe_flash_probe);
 
 /** GEOM CFE flash probe function */
 typedef int (g_cfe_probe_func)(struct cfe_flash_probe *,
