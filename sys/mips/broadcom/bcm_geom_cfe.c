@@ -1000,11 +1000,12 @@ static int
 g_cfe_read_probe(struct cfe_flash_probe *probe, void *outp, off_t offset,
     off_t length)
 {
-	void	*buf;
-	off_t	 sector, nbytes;
+	uint8_t	*buf;
+	off_t	 sector, nbytes, sectorsize;
 	int	 error;
 
 	g_topology_assert();
+	sectorsize = probe->cp->provider->sectorsize;
 
 	if (!probe->have_offset || !probe->have_size)
 		return (ENXIO);
@@ -1021,8 +1022,8 @@ g_cfe_read_probe(struct cfe_flash_probe *probe, void *outp, off_t offset,
 		return (ENXIO);
 
 	/* Perform the block-aligned read */
-	sector = rounddown(offset, probe->blksize);
-	nbytes = roundup(length, probe->blksize);
+	sector = rounddown(offset, sectorsize);
+	nbytes = roundup(length, sectorsize);
 
 	g_topology_unlock();
 	buf = g_read_data(probe->cp, sector, nbytes, &error);
@@ -1032,7 +1033,7 @@ g_cfe_read_probe(struct cfe_flash_probe *probe, void *outp, off_t offset,
 		return (error);
 
 	/* Copy out the result and clean up */
-	memcpy(outp, ((uint8_t *)buf) + (offset % probe->blksize), length);
+	memcpy(outp, buf + ((sector + offset) % sectorsize), length);
 	g_free(buf);
 
 	return (0);
@@ -1159,11 +1160,10 @@ g_cfe_new_probe(struct cfe_flash_probe **probe,
 
 	g_topology_assert();
 	p->mediasize = cp->provider->mediasize;
-	p->blksize = cp->provider->sectorsize;
+	p->blksize = cp->provider->stripesize;
 
-	/* Flash block sizes smaller than G_CFE_MINALIGN have been reported
-	 * on very old devices; on these devices, partitions are still aligned
-	 * to G_CFE_MINALIGN */
+	/* Some devices support flash block sizes smaller than G_CFE_MINALIGN;
+	 * on these devices, partitions are still aligned to G_CFE_MINALIGN */
 	if (p->blksize < G_CFE_MINALIGN) {
 		if ((G_CFE_MINALIGN % p->blksize) != 0) {
 			G_CFE_LOG("cannot round %#jx sector size to minimum "
@@ -1389,6 +1389,8 @@ g_cfe_get_bootimg_info(struct cfe_bootimg_info *info)
 		} else if (error != ENOENT) {
 			/* Return an error if the NVRAM read fails for any
 			 * reason other than variable not found */
+			G_CFE_LOG("error fetching '%s' boot image index "
+			    "variable: %d\n", cfe_bootimg_vars[i].nvar, error);
 			return (error);
 		}
 	}
@@ -1415,8 +1417,10 @@ g_cfe_get_bootimg_info(struct cfe_bootimg_info *info)
 	for (size_t i = 0; i < info->num_images; i++) {
 		KASSERT(i < nitems(info->offsets), ("bad image count: %zu", i));
 
-		if (i >= nitems(cfe_bootimg_offset_vars))
+		if (i >= nitems(cfe_bootimg_offset_vars)) {
+			G_CFE_LOG("missing offset variable for image %zu\n", i);
 			return (ENXIO);
+		}
 
 		len = sizeof(info->offsets[i]);
 		error = bcm_get_nvram(bp, cfe_bootimg_offset_vars[i],
@@ -1527,6 +1531,7 @@ bhnd_nvram_g_cfeio_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
 {
 	struct g_cfe_probe_io	*pio;
 	struct cfe_flash_probe	*probe;
+	uint8_t			*ptr;
 	off_t			 nread, sector, sectorsize;
 	int			 error;
 
@@ -1576,7 +1581,9 @@ bhnd_nvram_g_cfeio_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
 
 	/* Copy out the requested data */
 	KASSERT(pio->last != NULL, ("buffer went missing"));
-	memcpy(buffer, pio->last, nbytes);
+	ptr = pio->last;
+	ptr += ((probe->offset + offset) % sectorsize);
+	memcpy(buffer, ptr, nbytes);
 
 	return (0);
 }
