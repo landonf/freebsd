@@ -956,6 +956,8 @@ static int
 g_cfe_probe_part_trx(struct cfe_flash_probe *probe,
     struct g_cfe_flash_probe_list *probes)
 {
+	// TODO
+#if 0
 	struct cfe_flash_probe	*os;
 	const char		*trx_names[] = { "trx", "trx1", "trx2" };
 	const char		*os_names[] = { "os", "os1", "os2" };
@@ -966,6 +968,7 @@ g_cfe_probe_part_trx(struct cfe_flash_probe *probe,
 		if (strcmp(probe->pname, "config") != 0)
 			return (ENXIO);
 	}
+#endif
 
 	// TODO
 	return (ENXIO);
