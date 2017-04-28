@@ -346,6 +346,10 @@ bcm_init_platform_data(struct bcm_platform *bp)
 	if ((bp->cfe_console = cfe_getstdhandle(CFE_STDHANDLE_CONSOLE)) < 0)
 		bp->cfe_console = -1;
 
+	/* Initialize empty list of CFE disks; this will be populated once
+	 * the kernel memory subsystem is available */
+	SLIST_INIT(&bp->cfe_disks);
+
 	/* Probe CFE NVRAM sources */
 	bp->nvram_io = &bcm_cfe_nvram.io;
 	error = bcm_nvram_find_cfedev(&bcm_cfe_nvram, &bp->nvram_cls);
@@ -419,6 +423,26 @@ bcm_init_platform_data(struct bcm_platform *bp)
 	bcm_platform_data_avail = true;
 	return (0);
 }
+
+#ifdef CFE
+
+static void
+bcm_platform_probe_cfe_disks(void *ident)
+{
+	struct bcm_platform	*bp; 
+	int			 error;
+
+	bp = bcm_get_platform();
+
+	if ((error = bcm_cfe_probe_disks(&bp->cfe_disks)))
+		BCM_ERR("bcm_cfe_probe_disks() failed: %d\n", error);
+}
+
+SYSINIT(bcm_platform_probe_cfe_disks, SI_SUB_KMEM, SI_ORDER_MIDDLE,
+    bcm_platform_probe_cfe_disks, NULL);
+
+#endif /* CFE */
+
 
 void
 platform_cpu_init()
