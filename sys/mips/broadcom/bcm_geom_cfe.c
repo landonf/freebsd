@@ -267,7 +267,8 @@ static g_cfe_probe_func			 g_cfe_fallback_size_probe;
 static g_cfe_probe_func			 g_cfe_probe_part_boot;
 static g_cfe_probe_func			 g_cfe_probe_part_nvram;
 static g_cfe_probe_func			 g_cfe_probe_part_config;
-static g_cfe_probe_func			 g_cfe_probe_part_trxos;
+static g_cfe_probe_func			 g_cfe_probe_part_trx;
+static g_cfe_probe_func			 g_cfe_probe_part_os;
 
 #define G_CFE_PROBE_FUNC(_name, _pass)	\
 	{ __STRING(_name), _name, _pass }
@@ -289,7 +290,8 @@ static const struct g_cfe_probe_func_info {
 	G_CFE_PROBE_FUNC(g_cfe_probe_part_boot,		2),
 	G_CFE_PROBE_FUNC(g_cfe_probe_part_nvram,	2),
 	G_CFE_PROBE_FUNC(g_cfe_probe_part_config,	3),
-	G_CFE_PROBE_FUNC(g_cfe_probe_part_trxos,	4),
+	G_CFE_PROBE_FUNC(g_cfe_probe_part_trx,		4),
+	G_CFE_PROBE_FUNC(g_cfe_probe_part_os,		5),
 };
 
 /*
@@ -948,10 +950,32 @@ g_cfe_probe_part_config(struct cfe_flash_probe *probe,
 }
 
 /**
- * Determine offset of the TRX or OS partition.
+ * Determine size/offset of the TRX partition.
  */
 static int
-g_cfe_probe_part_trxos(struct cfe_flash_probe *probe,
+g_cfe_probe_part_trx(struct cfe_flash_probe *probe,
+    struct g_cfe_flash_probe_list *probes)
+{
+	struct cfe_flash_probe	*os;
+	const char		*trx_names[] = { "trx", "trx1", "trx2" };
+	const char		*os_names[] = { "os", "os1", "os2" };
+
+	/* Must be a trx partition */
+	for (size_t i = 0; i < nitems(trx_names); i++) {
+		// TODO
+		if (strcmp(probe->pname, "config") != 0)
+			return (ENXIO);
+	}
+
+	// TODO
+	return (ENXIO);
+}
+
+/**
+ * Determine offset of the OS partition.
+ */
+static int
+g_cfe_probe_part_os(struct cfe_flash_probe *probe,
     struct g_cfe_flash_probe_list *probes)
 {
 	// TODO
