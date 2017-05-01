@@ -818,24 +818,33 @@ bcm_cfe_probe_part_readsize(struct bcm_cfe_part *part, uint32_t quirks)
 			BCM_DISK_ERR("CFE %s computed size %#jx exceeds "
 			    "maximum supported offset\n", part->devname,
 			    (intmax_t)offset);
-			free(buf, M_BCM_CDISK);
 
 			return (ENXIO);
 		}
 
 		offset += BCM_CFE_PALIGN_MIN-1;
 
-		cerr = cfe_readblk(part->fd, offset, buf, sizeof(buf));
+		/* Attempt read */
+		KASSERT(sizeof(buf) == 2, ("invalid buffer size"));
+		cerr = cfe_readblk(part->fd, offset, buf, 2);
+
+		if (cerr == CFE_ERR_IOERR) {
+			/* Some drivers fail to truncate the two byte read; try
+			 * reading a single byte */
+			cerr = cfe_readblk(part->fd, offset, buf, 1);
+		}
+
 		if (cerr >= 1) {
-			size += BCM_CFE_PALIGN_MIN;			
-			if (cerr == 1) {
-				/* This is the final block */
+			size += BCM_CFE_PALIGN_MIN;
+
+			/* Have we hit the final block? */
+			if (cerr == 1)
 				break;
-			}
 		} else {
 			BCM_DISK_ERR("cfe_readblk(%s, %#jx, ...) failed with "
 			    "unexpected error: %d\n", part->devname,
 			    (intmax_t)offset, cerr);
+
 			return (ENXIO);
 		}
 	}
