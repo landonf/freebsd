@@ -438,7 +438,7 @@ bcm_platform_probe_cfe_disks(void *ident)
 		BCM_ERR("bcm_cfe_probe_disks() failed: %d\n", error);
 }
 
-SYSINIT(bcm_platform_probe_cfe_disks, SI_SUB_KMEM, SI_ORDER_MIDDLE,
+SYSINIT(bcm_platform_probe_cfe_disks, SI_SUB_DRIVERS, SI_ORDER_FIRST,
     bcm_platform_probe_cfe_disks, NULL);
 
 #endif /* CFE */

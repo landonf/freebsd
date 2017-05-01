@@ -31,9 +31,15 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/malloc.h>
 #include <sys/kernel.h>
+#include <sys/systm.h>
+
+#include <machine/_inttypes.h>
 
 #include <dev/cfe/cfe_api.h>
 #include <dev/cfe/cfe_error.h>
+#include <dev/cfe/cfe_ioctl.h>
+
+#include <dev/bhnd/cores/chipc/chipcreg.h>                                                                                                                                                                           
 
 #include "bcm_machdep.h"
 
@@ -145,8 +151,25 @@ __FBSDID("$FreeBSD$");
  * 
  * == CFE Driver Quirks ==
  * 
- * newflash driver (CFI):
+ * flash (legacy) driver (CFI):
+ *	IOCTL_FLASH_GETINFO
+ *		Part Offset:	invalid (always the base (physical) address of
+ *				the flash mapping)
+ *		Part Size:	invalid (always the full size of the flash)
+ *		Flash Type:	valid
+ *		Flash Flags:	invalid (always 0x0)
  * 
+ *	IOCTL_NVRAM_GETINFO
+ *		NVRAM Offset:	invalid	(always returns the offset of the
+ *				NVRAM partition)
+ *		NVRAM Size:	invalid (always returns the size of the NVRAM
+ *				partition).
+ *		NVRAM Erase:	invalid	(always true)
+ *
+ *	IOCTL_FLASH_PARTITION_INFO
+ *		Unsupported
+ * 
+ * newflash driver (CFI):
  *	IOCTL_FLASH_GETINFO
  *		Part Offset:	valid
  *		Part Size:	valid
@@ -162,34 +185,30 @@ __FBSDID("$FreeBSD$");
  *		Unsupported
  *
  * sflash driver (SPI-NOR):
- * 
  *	IOCTL_FLASH_GETINFO
  *		Part Offset:	invalid	(always 0x0)
  *		Part Size:	invalid	(size of underlying flash)
  *		Flash Type:	invalid	(returns ChipCommon flash capability
- *					 bits, not CFE FLASH_TYPE_* constant)
+ *				constants (0x100-0x700), not CFE FLASH_TYPE_*)
  *		Flash Flags:	invalid	(FLASH_FLAG_NOERASE always set)
  *
  *	IOCTL_NVRAM_GETINFO
- *		NVRAM Offset:	invalid	(always 0x0)
- *		NVRAM Size:	valid
- *		NVRAM Erase:	valid
+ *		Unsupported
  *
  *	IOCTL_FLASH_PARTITION_INFO
  *		Part Offset:	valid
  *		Part Size:	valid
- *		Flash Type:	invalid	(ChipCommon flash capability bits)
+ *		Flash Type:	invalid	(ChipCommon flash capability constant)
  *		Flash Flags:	invalid	(FLASH_FLAG_NOERASE always set)
  *
  *		**NOTE**: Only available if CFE is built with command line
  *		support for 'flash -fill'; most CFE images are not.
  * 
  * nflash driver (NAND):
- * 
  *	IOCTL_FLASH_GETINFO
  *		Part Offset:	invalid	(always 0x0)
  *		Part Size:	invalid	(size of underlying flash) 
- *		Flash Type:	invalid	(ChipCommon flash capability bits)
+ *		Flash Type:	invalid	(returns the NAND manufacturer ID)
  *		Flash Flags:	correct
  *
  *	IOCTL_NVRAM_GETINFO
@@ -201,13 +220,24 @@ __FBSDID("$FreeBSD$");
 
 MALLOC_DEFINE(M_BCM_CDISK, "cfedisk", "Broadcom CFE disk metadata");
 
-static int			 bcm_cfe_probe_disk(struct bcm_cfe_disk *disk);
+static int	bcm_cfe_probe_disk(struct bcm_cfe_disk *disk);
+static uint32_t	bcm_cfe_probe_driver_quirks(struct bcm_cfe_disk *disk);
 
-static struct bcm_cfe_part	*bcm_cfe_part_new(const char *devname);
-static void			 bcm_cfe_part_free(struct bcm_cfe_part *part);
-static int			 bcm_cfe_probe_part(struct bcm_cfe_part *part);
+static int	bcm_cfe_part_new(struct bcm_cfe_part **part,
+		    const char *devname);
 
-#define	BCM_DISK_LOG(msg, ...)	printf("%s: " msg, __FUNCTION__, ## __VA_ARGS__)
+static void	bcm_cfe_part_free(struct bcm_cfe_part *part);
+static int	bcm_cfe_probe_part(struct bcm_cfe_part *part, uint32_t quirks);
+
+#define	BCM_DISK_LOG(msg, ...)	printf(msg, ## __VA_ARGS__)
+
+#define	BCM_DISK_ERR(msg, ...)	\
+	BCM_DISK_LOG("%s: " msg, __FUNCTION__, ## __VA_ARGS__)
+
+#define	BCM_DISK_DBG(msg, ...)	do {			\
+	if (bootverbose)				\
+		BCM_DISK_ERR(msg, ## __VA_ARGS__);	\
+} while(0)
 
 /**
  * Known CFE device names.
@@ -242,8 +272,19 @@ bcm_cfe_print_disks(struct bcm_cfe_disks *disks)
 		printf("CFE disk %s%u:\n", disk->drvname, disk->unit);
 
 		SLIST_FOREACH(part, &disk->parts, cp_link) {
-			printf("%s:\t%#08jx+%#08jx\n", part->label,
-			    (intmax_t)part->offset, (intmax_t)part->size);
+			printf("    %-12s", part->label);
+
+			if (part->offset != BCM_CFE_INVALID_OFF)
+				printf("0x%08jx", (intmax_t)part->offset);
+			else
+				printf("%8s", "unknown");
+
+			if (part->size != BCM_CFE_INVALID_SIZE)
+				printf("+0x%08jx", (intmax_t)part->size);
+			else
+				printf("+%-8s", "unknown");
+
+			printf("\n");
 		}
 	}
 }
@@ -311,6 +352,8 @@ bcm_cfe_probe_disks(struct bcm_cfe_disks *result)
 		SLIST_INSERT_HEAD(result, disk, cd_link);
 	}
 
+	panic("yeeeehaw!");
+
 	return (0);
 
 failed:
@@ -356,6 +399,106 @@ bcm_cfe_disk_free(struct bcm_cfe_disk *disk)
 }
 
 /**
+ * Determine the driver used by @p disk, and return the corresponding set of
+ * quirk flags (see BCM_CFE_DRV_QUIRK_*).
+ * 
+ * If @p disk has no mapped partitions or we cannot otherwise determine the
+ * driver type, a set of conservative quirk flags will be returned.
+ * 
+ * @param disk The disk to be queried.
+ */
+static uint32_t
+bcm_cfe_probe_driver_quirks(struct bcm_cfe_disk *disk)
+{
+	struct bcm_cfe_part *part;
+
+	part = SLIST_FIRST(&disk->parts);
+	if (part == NULL)
+		panic("quirk probe on non-existent disk device");
+
+	/* Devices backed by the nflash (NAND) driver can be identified by
+	 * the unique driver class name */
+	if (strcmp(disk->drvname, "nflash") == 0) {
+		BCM_DISK_LOG("%s%u: found CFE nflash driver\n", disk->drvname,
+		    disk->unit);
+
+		return (BCM_CFE_DRV_QUIRK_FLASH_ZERO_OFF |
+			BCM_CFE_DRV_QUIRK_FLASH_TOTAL_SIZE |
+			BCM_CFE_DRV_QUIRK_NVRAM_UNAVAIL);
+	}
+
+	/* Devices backed by the sflash (SPI), newflash (CFI), and
+	 * flash (legacy CFI) drivers shared a common driver class name
+	 * ("flash") and require partition access to be differentiated */
+	if (strcmp(disk->drvname, "flash") == 0 && part != NULL) {
+		flash_info_t		 fi;
+		int			 cerr, rlen;
+
+		/* Fetch flash info */
+		cerr = cfe_ioctl(part->fd, IOCTL_FLASH_GETINFO, (u_char *)&fi,
+		    sizeof(fi),  &rlen, 0);
+
+		if (cerr != CFE_OK) {
+			BCM_DISK_ERR("cfe_ioctl(%s, IOCTL_FLASH_GETINFO) "
+			    "failed: %d\n", part->devname, cerr);
+			goto failed;
+		}
+
+		/* The 'sflash' driver returns an invalid flash_type value in
+		 * the range of 0x100-0x700 (unshifted ChipCommon flash 
+		 * capability flag).
+		 * 
+		 * The 'flash' and 'newflash' drivers return a valid
+		 * FLASH_TYPE_FLASH (3) or FLASH_TYPE_ROM (2) flash_type value.
+		 * 
+		 * The legacy 'flash' driver returns the physical address of
+		 * the flash mapping as the flash_base; this will always be
+		 * larger than the reported flash size.
+		 * 
+		 * Since the two flash_type ranges do not overlap, we can use
+		 * this to differentiate the 'sflash' and 'newflash'/'flash'
+		 * drivers.
+		 * 
+		 * Since the 'newflash' driver returns a valid partition offset
+		 * less than the total flash size, we can use this to
+		 * differentiate 'flash' from 'newflash'.
+		 */
+		if (fi.flash_type > FLASH_TYPE_FLASH) {
+			/* sflash (SPI) driver */
+			BCM_DISK_LOG("%s%u: found CFE sflash driver\n",
+			    disk->drvname, disk->unit);
+
+			return (BCM_CFE_DRV_QUIRK_FLASH_ZERO_OFF |
+				BCM_CFE_DRV_QUIRK_FLASH_TOTAL_SIZE |
+				BCM_CFE_DRV_QUIRK_NVRAM_UNAVAIL);
+		} else if (fi.flash_base >= fi.flash_size) {
+			/* legacy flash (CFI) driver */
+			BCM_DISK_LOG("%s%u: found CFE flash (legacy) driver\n",
+			    disk->drvname, disk->unit);
+
+			return (BCM_CFE_DRV_QUIRK_FLASH_PHYS_OFF |
+				BCM_CFE_DRV_QUIRK_FLASH_TOTAL_SIZE);
+		} else {
+			/* newflash (CFI) driver */
+			BCM_DISK_LOG("%s%u: found CFE newflash driver\n",
+			    disk->drvname, disk->unit);
+
+			return (BCM_CFE_DRV_QUIRK_NVRAM_PART_SIZE);
+		}
+	}
+
+	BCM_DISK_LOG("%s%u: unrecognized driver class\n", disk->drvname,
+	    disk->unit);
+
+failed:
+	/* Cannot determine the driver type; assume all ioctls return invalid
+	 * data. */
+	return (BCM_CFE_DRV_QUIRK_FLASH_INV_OFF |
+		BCM_CFE_DRV_QUIRK_FLASH_INV_SIZE |
+		BCM_CFE_DRV_QUIRK_NVRAM_UNAVAIL);
+}
+
+/**
  * Populate @p disk's partition map.
  * 
  * @param disk	The disk to be probed.
@@ -369,6 +512,7 @@ bcm_cfe_probe_disk(struct bcm_cfe_disk *disk)
 {
 	struct bcm_cfe_part	*part, *pnext;
 	struct bcm_cfe_parts	 parts;
+	uint32_t		 quirks;
 	int			 error;
 
 	SLIST_INIT(&parts);
@@ -386,7 +530,7 @@ bcm_cfe_probe_disk(struct bcm_cfe_disk *disk)
 		    disk->unit, partname);
 
 		if (n >= sizeof(dname)) {
-			BCM_DISK_LOG("invalid partition name: %s\n", partname);
+			BCM_DISK_ERR("invalid partition name: %s\n", partname);
 			error = ENOMEM;
 			goto failed;
 		}
@@ -394,7 +538,7 @@ bcm_cfe_probe_disk(struct bcm_cfe_disk *disk)
 		/* Does the partition exist? */
 		if ((dinfo = cfe_getdevinfo(dname)) < 0) {
 			if (dinfo != CFE_ERR_DEVNOTFOUND) {
-				BCM_DISK_LOG("cfe_getdevinfo(%s) failed: %d\n",                                                                                                                                        
+				BCM_DISK_ERR("cfe_getdevinfo(%s) failed: %d\n",                                                                                                                                        
 				    dname, dinfo);
 			}
 
@@ -406,35 +550,40 @@ bcm_cfe_probe_disk(struct bcm_cfe_disk *disk)
 		switch (dtype) {
 		case CFE_DEV_FLASH:
 		case CFE_DEV_NVRAM:
-		case CFE_DEV_DISK:
 			/* Valid device type */
 			break;
 		default:
-			BCM_DISK_LOG("%s has unknown device type: %d\n", dname,
+			BCM_DISK_ERR("%s has unknown device type: %d\n", dname,
 			    dtype);
 			continue;
 		}
 
 	        /* Insert a new partition entry */
-		if ((part = bcm_cfe_part_new(dname)) == NULL) {
-			error = ENOMEM;
+		if ((error = bcm_cfe_part_new(&part, dname)))
 			goto failed;
-		}
 
 		SLIST_INSERT_HEAD(&parts, part, cp_link);
 	}
 
-	/* Try to determine the size and offset of all discovered
-	 * partitions */
-	SLIST_FOREACH(part, &parts, cp_link) {
-		if ((error = bcm_cfe_probe_part(part)))
-			goto failed;
-	}
+	/* If no partitions were found, there's nothing to probe */
+	if (SLIST_EMPTY(&parts))
+		return (0);
 
-	/* Move all partition entries to the disk entry */
+	/* Move all discovered partitions to the disk entry */
 	SLIST_FOREACH_SAFE(part, &parts, cp_link, pnext) {
 		SLIST_REMOVE_HEAD(&parts, cp_link);
 		SLIST_INSERT_HEAD(&disk->parts, part, cp_link);
+	}
+
+	/* Probe for any CFE driver quirks */
+	quirks = bcm_cfe_probe_driver_quirks(disk);
+
+	/* Try to determine the size and offset of all discovered partitions */
+	SLIST_FOREACH(part, &disk->parts, cp_link) {
+		if ((error = bcm_cfe_probe_part(part, quirks))) {
+			BCM_DISK_LOG("probing %s failed: %d\n", part->devname,
+			    error);
+		}
 	}
 
 	return (0);
@@ -451,21 +600,26 @@ failed:
 /**
  * Allocate, initialize, and return a new CFE partition entry.
  * 
- * @param devname CFE device name.
+ * @param[out]	part	On success, a pointer to the newly allocated and
+ *			initialized partition entry.
+ * @param	devname	CFE device name.
  * 
- * @retval non_NULL	success
- * @retval NULL		if allocation fails.
+ * @retval 0		success
+ * @retval ENOMEM	if allocation fails
+ * @retval ENXIO	if the CFE device cannot be opened.
  */
-static struct bcm_cfe_part *
-bcm_cfe_part_new(const char *devname)
+static int
+bcm_cfe_part_new(struct bcm_cfe_part **part, const char *devname)
 {
 	struct bcm_cfe_part *p;
 
 	p = malloc(sizeof(*p), M_BCM_CDISK, M_WAITOK|M_ZERO);
 
 	p->devname = strdup(devname, M_BCM_CDISK);
-	p->offset = OFF_MAX;
-	p->size = 0x0;
+	p->offset = BCM_CFE_INVALID_OFF;
+	p->size = BCM_CFE_INVALID_SIZE;
+	p->fd = -1;
+	p->need_close = false;
 
 	/* Parse out the partition label ('<devname>.<label>') */
 	p->label = strchr(p->devname, '.');
@@ -476,7 +630,23 @@ bcm_cfe_part_new(const char *devname)
 		p->label = "";
 	}
 
-	return (p);
+	/* Try to open the device handle */
+	if ((p->fd = bcm_get_cfe_fd(bcm_get_platform(), p->devname)) >= 0) {
+		/* Handle is shared with other platform code */
+		p->need_close = false;
+	} else {
+		if ((p->fd = cfe_open(p->devname)) >= 0)
+			p->need_close = true;
+	}
+
+	if (p->fd < 0) {
+		BCM_DISK_ERR("cfe_open(%s) failed: %d\n", p->devname, p->fd);
+		bcm_cfe_part_free(p);
+		return (ENXIO);
+	}
+
+	*part = p;
+	return (0);
 }
 
 /**
@@ -485,23 +655,227 @@ bcm_cfe_part_new(const char *devname)
 static void
 bcm_cfe_part_free(struct bcm_cfe_part *part)
 {
+	if (part->fd >= 0 && part->need_close) {
+		printf("WARNING: close fooo XXX\n");
+		cfe_close(part->fd);
+	}
+
 	free(part->devname, M_BCM_CDISK);
 	free(part, M_BCM_CDISK);
 }
 
+static int
+bcm_cfe_probe_part_flashinfo(struct bcm_cfe_part *part, uint32_t quirks)
+{
+	flash_info_t	fi;
+	int		cerr, rlen;
+
+	/* Skip if both offset and size have already been determined */
+	if (part->offset != BCM_CFE_INVALID_OFF &&
+	    part->size != BCM_CFE_INVALID_SIZE)
+		return (0);
+
+	/* Skip if IOCTL_FLASH_GETINFO is unusable */
+	if (BCM_CFE_DRV_QUIRK(quirks, FLASH_INV_OFF) &&
+	    BCM_CFE_DRV_QUIRK(quirks, FLASH_INV_SIZE))
+		return (0);
+
+	/* Fetch flash info */
+	cerr = cfe_ioctl(part->fd, IOCTL_FLASH_GETINFO, (u_char *)&fi,
+	    sizeof(fi), &rlen, 0);
+	if (cerr != CFE_OK) {
+		BCM_DISK_ERR("cfe_ioctl(%s, IOCTL_FLASH_GETINFO) "
+		    "failed: %d\n", part->devname, cerr);
+
+		return (ENXIO);
+	}
+
+	/* Validate the partition offset */
+	if (!BCM_CFE_DRV_QUIRK(quirks, FLASH_INV_OFF)) {
+#if ULLONG_MAX > OFF_MAX
+		if (fi.flash_base > OFF_MAX) {
+			BCM_DISK_ERR("CFE %s flash base %#llx exceeds maximum "
+			    "supported offset\n", part->devname, fi.flash_base);
+			quirks |= BCM_CFE_DRV_QUIRK_FLASH_INV_OFF;
+		}
+#endif
+
+		if (BCM_CFE_DRV_QUIRK(quirks, FLASH_TOTAL_SIZE) &&
+		    fi.flash_base > fi.flash_size)
+		{
+			BCM_DISK_ERR("CFE %s: invalid offset %#llx "
+			    "(size=%#x)\n", part->devname, fi.flash_base,
+			    fi.flash_size);
+			quirks |= BCM_CFE_DRV_QUIRK_FLASH_INV_OFF;
+		}
+	}
+
+	/* Validate the partition size */
+	if (!BCM_CFE_DRV_QUIRK(quirks, FLASH_INV_SIZE)) {
+#if UINT_MAX > OFF_MAX
+		if (fi.flash_size > OFF_MAX) {
+			BCM_DISK_ERR("CFE %s flash size %#x exceeds maximum "
+			    "supported offset\n", part->devname, fi.flash_size);
+			quirks |= BCM_CFE_DRV_QUIRK_FLASH_INV_SIZE;
+		}
+#endif
+	}
+
+	/* Set any missing values in the partition description */
+	if (!BCM_CFE_DRV_QUIRK(quirks, FLASH_INV_OFF)) {
+		if (part->offset == BCM_CFE_INVALID_OFF)
+			part->offset = fi.flash_base;
+	}
+
+	if (!BCM_CFE_DRV_QUIRK(quirks, FLASH_INV_OFF)) {
+		if (part->size == BCM_CFE_INVALID_SIZE)
+			part->size = fi.flash_size;
+	}
+
+	return (0);
+}
+
+static int
+bcm_cfe_probe_part_nvraminfo(struct bcm_cfe_part *part, uint32_t quirks)
+{
+	nvram_info_t	nv;
+	int		cerr, rlen;
+
+	/* Skip if size has already been determined */
+	if (part->size != BCM_CFE_INVALID_SIZE)
+		return (0);
+
+	/* Skip if IOCTL_NVRAM_GETINFO does not return the partition size */
+	if (!BCM_CFE_DRV_QUIRK(quirks, NVRAM_PART_SIZE))
+		return (0);
+
+	/* Fetch and validate the NVRAM info */
+	cerr = cfe_ioctl(part->fd, IOCTL_NVRAM_GETINFO, (u_char *)&nv,
+	    sizeof(nv), &rlen, 0);
+	if (cerr != CFE_OK) {
+		BCM_DISK_ERR("cfe_ioctl(%s, IOCTL_NVRAM_GETINFO) "
+		    "failed: %d\n", part->devname, cerr);
+
+		return (ENXIO);
+	}
+
+	if (nv.nvram_size < 0) {
+		BCM_DISK_ERR("CFE %s returned invalid NVRAM size: %#x\n",
+		    part->devname, nv.nvram_size);
+		return (ENXIO);
+	}
+
+#if INT_MAX > OFF_MAX
+	if (nv.nvram_size > OFF_MAX) {
+		BCM_DISK_ERR("CFE %s flash size %#llx exceeds maximum "
+		    "supported offset\n", part->devname, fi.flash_size);
+		quirks |= BCM_CFE_DRV_QUIRK_FLASH_INV_SIZE;
+	}
+#endif
+
+	/* Set the probed partition size */
+	part->size = nv.nvram_size;
+	return (0);
+}
+
+static int
+bcm_cfe_probe_part_readsize(struct bcm_cfe_part *part, uint32_t quirks)
+{
+	off_t	size;
+
+	/* Skip if size has already been determined */
+	if (part->size != BCM_CFE_INVALID_SIZE)
+		return (0);
+
+	/*
+	 * Ideally, we could determine the total size of the partition without
+	 * requiring I/O by reading 1 byte at the end of each block, working
+	 * backwards from the media size until a 0-length read succeeded.
+	 * 
+	 * In practice, reading at an offset beyond the partition's end triggers
+	 * arithemetic bugs in the legacy 'flash' driver (and possibly others)
+	 * leading to the CFE code smashing our read buffer and/or reading from
+	 * a negative offset.
+	 * 
+	 * To avoid this, we have to read from the device sequentially, using
+	 * a two byte read that spans a known valid block, and a potentially
+	 * invalid block.
+	 */
+	printf("performing readblk('%s')\n", part->devname);
+	size = 0;
+	while (1) {
+		u_char		buf[2];
+		uint64_t	offset;
+		int		cerr;
+
+		/* The next offset must not overflow the int64_t representation,
+		 * and must be representible as an off_t */
+		offset = size;
+		if (INT64_MAX - offset < BCM_CFE_PALIGN_MIN-1 ||
+		    offset > OFF_MAX ||
+		    OFF_MAX - offset < BCM_CFE_PALIGN_MIN-1)
+		{
+			BCM_DISK_ERR("CFE %s computed size %#jx exceeds "
+			    "maximum supported offset\n", part->devname,
+			    (intmax_t)offset);
+			free(buf, M_BCM_CDISK);
+
+			return (ENXIO);
+		}
+
+		offset += BCM_CFE_PALIGN_MIN-1;
+
+		cerr = cfe_readblk(part->fd, offset, buf, sizeof(buf));
+		if (cerr >= 1) {
+			size += BCM_CFE_PALIGN_MIN;			
+			if (cerr == 1) {
+				/* This is the final block */
+				break;
+			}
+		} else {
+			BCM_DISK_ERR("cfe_readblk(%s, %#jx, ...) failed with "
+			    "unexpected error: %d\n", part->devname,
+			    (intmax_t)offset, cerr);
+			return (ENXIO);
+		}
+	}
+
+#if UINT_MAX > OFF_MAX
+	/* This is ensured by the read loop overflow check above */
+	KASSERT(offset <= OFF_MAX, ("invalid offset"));
+#endif
+
+	part->size = size;
+	return (0);
+}
 
 /**
  * Attempt to determine @p part's size and offset.
  * 
- * @param part	The partition to be probed.
+ * @param part		The partition to be probed.
+ * @param quirks	CFE driver quirks (see BCM_CFE_DRV_QUIRK_*).
  * 
  * @retval 0		success
  * @retval non-zero	if probing the partition map otherwise fails, a regular
  *			unix error code will be returned.
  */
 static int
-bcm_cfe_probe_part(struct bcm_cfe_part *part)
+bcm_cfe_probe_part(struct bcm_cfe_part *part, uint32_t quirks)
 {
-	// TODO
+	int error;
+
+	/* Try to determine offset/size via IOCTL_FLASH_GETINFO */
+	if ((error = bcm_cfe_probe_part_flashinfo(part, quirks)))
+		return (error);
+
+	/* Fall back on IOCTL_NVRAM_GETINFO */
+	if ((error = bcm_cfe_probe_part_nvraminfo(part, quirks)))
+		return (error);
+	
+	/* If all else fails, we can manually determine the size (but not the
+	 * offset) via cfe_readblk() */
+	if ((error = bcm_cfe_probe_part_readsize(part, quirks)))
+		return (error);
+
 	return (0);
 }

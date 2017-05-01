@@ -40,6 +40,9 @@
 
 #define	BCM_CFE_PALIGN_MIN	0x1000		/**< minimum partition alignment */
 
+#define	BCM_CFE_INVALID_OFF	OFF_MAX
+#define	BCM_CFE_INVALID_SIZE	((off_t)0)
+
 SLIST_HEAD(bcm_cfe_parts, bcm_cfe_part);
 SLIST_HEAD(bcm_cfe_disks, bcm_cfe_disk);
 
@@ -48,13 +51,51 @@ struct bcm_cfe_disk	*bcm_cfe_disk_new(const char *drvname, u_int unit);
 void			 bcm_cfe_disk_free(struct bcm_cfe_disk *disk);
 
 /**
+ * CFE flash device driver quirks.
+ */
+enum {
+	/** No quirks */
+	BCM_CFE_DRV_QUIRK_NONE			= 0,
+
+	/** IOCTL_FLASH_GETINFO always returns an invalid offset */
+	BCM_CFE_DRV_QUIRK_FLASH_INV_OFF		= (1<<1),
+
+	/** IOCTL_FLASH_GETINFO always returns an invalid size */
+	BCM_CFE_DRV_QUIRK_FLASH_INV_SIZE	= (1<<2),
+
+	/* IOCTL_NVRAM_GETINFO (incorrectly) returns the size of the actual
+	 * partition, and may be used to determine partition size. */
+	BCM_CFE_DRV_QUIRK_NVRAM_PART_SIZE	= (1<<3),
+
+	/** IOCTL_NVRAM_GETINFO is not supported */
+	BCM_CFE_DRV_QUIRK_NVRAM_UNAVAIL		= (1<<4),
+
+	/** IOCTL_FLASH_GETINFO always returns an offset of 0x0 */
+	BCM_CFE_DRV_QUIRK_FLASH_ZERO_OFF	= (1<<5) | BCM_CFE_DRV_QUIRK_FLASH_INV_OFF,
+
+	/** IOCTL_FLASH_GETINFO returns the physical flash base as the partition
+	 *  offset */
+	BCM_CFE_DRV_QUIRK_FLASH_PHYS_OFF	= (1<<6) | BCM_CFE_DRV_QUIRK_FLASH_INV_OFF,
+
+	/** IOCTL_FLASH_GETINFO always returns the total flash size (not
+	  * the size of the actual partition) */
+	BCM_CFE_DRV_QUIRK_FLASH_TOTAL_SIZE	= (1<<7) | BCM_CFE_DRV_QUIRK_FLASH_INV_SIZE,
+};
+
+#define	BCM_CFE_DRV_QUIRK(_quirks, _cfe_quirk)			\
+	(((_quirks) & BCM_CFE_DRV_QUIRK_ ## _cfe_quirk) ==	\
+	    BCM_CFE_DRV_QUIRK_ ## _cfe_quirk)
+
+/**
  * CFE-probed partition description.
  */
 struct bcm_cfe_part {
 	char		*devname;	/**< CFE device name (e.g. 'nflash0.boot') */
 	const char	*label;		/**< CFE partition label */
-	off_t		 offset;	/**< partition offset, or OFF_MAX if unknown */
-	off_t		 size;		/**< partition size, or 0 if unknown */
+	int		 fd;		/**< CFE handle, or -1 if unopened */
+	bool		 need_close;	/**< If the fd should be closed on free */
+	off_t		 offset;	/**< partition offset, or BCM_CFE_INVALID_OFF if unknown */
+	off_t		 size;		/**< partition size, or BCM_CFE_INVALID_SIZE if unknown */
 
 	SLIST_ENTRY(bcm_cfe_part) cp_link;
 };
