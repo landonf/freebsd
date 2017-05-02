@@ -266,6 +266,7 @@ static const char * const cfe_drv_names[] = {
  */
 static const char * const cfe_part_names[] = {
 	"boot",		/* CFE image */
+	"board_data",	/* Netgear device-specific HW config */
 	"brcmnand",	/* OS partition (ignored by CFE, NAND-only) */
 	"config",	/* MINIX filesystem used by Netgear WGT634U */
 	"devinfo",	/* Factory BCRM NVRAM on Linksys devices (EA6700) */
@@ -865,10 +866,6 @@ bcm_cfe_probe_part_readsize_slow(struct bcm_cfe_part *part, uint32_t quirks)
 {
 	off_t	size;
 
-	/* Skip if size has already been determined */
-	if (part->size != BCM_CFE_INVALID_SIZE)
-		return (0);
-
 	/*
 	 * Ideally, we could determine the total size of the partition without
 	 * requiring I/O by reading 1 byte at the end of each block, working
@@ -962,30 +959,29 @@ static int
 bcm_cfe_probe_part_readsize(struct bcm_cfe_part *part, uint32_t quirks)
 {
 	off_t	blksize, offset;
+	off_t	max, min, mid;
 	bool	found;
-
-	if (/*BCM_CFE_DRV_QUIRK(quirks, ALIGN_LAST_BLOCK) && */
-	    bcm_cfe_part_is_os_label(part->label))
-	{
-		// TODO
-		return (0);
-	}
 
 	// XXX TODO; nflash driver locks up on misaligned reads required by the
 	// os partion.
-	// if (strcmp(part->label, "os") == 0)
-	// 	return (0);
+	if (strcmp(part->disk->drvname, "nflash") == 0 &&
+	    bcm_cfe_part_is_os_label(part->label))
+		return (0);
+
+	/* Skip if size has already been determined */
+	if (part->size != BCM_CFE_INVALID_SIZE)
+		return (0);
 
 	/*
 	 * Our fast-path avoids flash I/O by reading from the partition device
-	 * starting at the maximum possible offset, and then working backwards
-	 * until we hit a valid page.
+	 * starting at the maximum possible offset, using a binary search to
+	 * working backward until we hit the last valid page.
 	 * 
 	 * This requires:
 	 *  - Reading past EOF must not trigger crashing bugs in the CFE flash
 	 *    driver.
 	 *  - The flash media size must be available; we need this to determine
-	 *    a safe offset at which to begin our searching for EOF.
+	 *    a safe maximum offset for our search.
 	 *  - The flash media size must be a multiple of our block size.
 	 *
 	 * If those requirements aren't met by the device/driver, we have to
@@ -1006,39 +1002,44 @@ bcm_cfe_probe_part_readsize(struct bcm_cfe_part *part, uint32_t quirks)
 		    part->devname);
 	}
 
-	/* Scan backwards for the first valid block */
-	found = false;
-	for (offset = rounddown(part->disk->size - 1, blksize);
-	     offset >= blksize; offset -= blksize)
-	{
+	max = part->disk->size;
+	min = 0;
+	while (max >= min) {
 		u_char	buf[1];
 		int	cerr;
+		
 
-		/* Check offset+blksize for overflow */
-		if (OFF_MAX - offset < blksize)
-			break;
-
-		KASSERT(offset+blksize < INT64_MAX, ("unsupported offset"));
-		KASSERT(part->fd >= 0, ("device not open"));
-
+		mid = rounddown((min + max) / 2, blksize);
+		
+		BCM_DISK_TRACE("search @ %#jx-%#jx\n", (intmax_t)min,
+		    (intmax_t)max);
 		BCM_DISK_TRACE("cfe_readblk(%s, %#jx, ...)\n", part->devname,
-		    (intmax_t)offset - sizeof(buf));
+		    (intmax_t)mid);
 
-		cerr = cfe_readblk(part->fd, offset, buf, sizeof(buf));
+		cerr = cfe_readblk(part->fd, mid, buf, sizeof(buf));
 
 		BCM_DISK_TRACE("cerr=%d\n", cerr);
 
 		if (cerr == sizeof(buf)) {
-			/* Found a valid block */
+			/* Found a valid block; try searching the upper
+			 * half of the offset range */
+			offset = mid;
 			found = true;
-			break;
+
+			min = mid + blksize;
 		} else if (cerr == CFE_ERR_IOERR) {
-			/* Invalid block; keep searching */
+			/* Invalid block; try searching the lower half
+			 * of the offset range */
+			if (mid < blksize)
+				break;
+
+			max = mid - blksize;
 		} else {
 			/* Unexpected error or zero-length read */
 			BCM_DISK_ERR("cfe_readblk(%s, %#jx, ...) failed with "
 			    "unexpected result: %d\n", part->devname,
-			    (intmax_t)offset, cerr);
+			    (intmax_t)mid, cerr);
+
 			return (ENXIO);
 		}
 	}
@@ -1048,7 +1049,7 @@ bcm_cfe_probe_part_readsize(struct bcm_cfe_part *part, uint32_t quirks)
 	 * a block, or may not be block-aligned.
 	 * 
 	 * We can still determine the real partition size by starting our
-	 * forward search at offset 0x0.
+	 * byte-based search at offset 0x0.
 	 * 
 	 * This is the case for CFE's hacked-in 'os' and 'trx' partition
 	 * mappings, where 'flash0.os' and 'flash0.trx' each map only a subset
@@ -1061,8 +1062,44 @@ bcm_cfe_probe_part_readsize(struct bcm_cfe_part *part, uint32_t quirks)
 		offset = 0x0;
 	}
 
-	/* Find the actual terminating offset */
-	// TODO
+	/* Use byte reads to find the actual terminating offset; this should
+	 * generally be a full page. */
+	BCM_DISK_TRACE("scan @ %#jx\n", offset);
+	for (off_t n = blksize; n > 0; n--) {
+		u_char	buf[1];
+		off_t	next_off;
+		int	cerr;
+
+		KASSERT(offset % blksize == 0, ("misaligned base offset %#jx\n",
+		    (intmax_t)offset));
+
+		KASSERT(n >= sizeof(buf), ("zero offset"));
+		next_off = offset + n - sizeof(buf);
+
+		BCM_DISK_TRACE("cfe_readblk(%s, %#jx, ...)\n", part->devname,
+		    (intmax_t)next_off);
+
+		cerr = cfe_readblk(part->fd, next_off, buf, sizeof(buf));
+
+		BCM_DISK_TRACE("cerr=%d\n", cerr);
+
+		if (cerr > 0) {
+			/* Found last valid offset */
+			offset = next_off + sizeof(buf);
+			break;
+		} else if (cerr == CFE_ERR_IOERR) {
+			/* Retry with smaller offset */
+			continue;
+		} else {
+			/* Unexpected error or zero-length read */
+			BCM_DISK_ERR("cfe_readblk(%s, %#jx, ...) failed with "
+			    "unexpected result: %d\n", part->devname,
+			    (intmax_t)offset+n-1, cerr);
+
+			return (ENXIO);
+		}
+	}
+
 	part->size = offset;
 	return (0);
 }
