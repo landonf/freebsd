@@ -80,6 +80,19 @@ enum {
 	/** IOCTL_FLASH_GETINFO always returns the total flash size (not
 	  * the size of the actual partition) */
 	BCM_CFE_DRV_QUIRK_FLASH_TOTAL_SIZE	= (1<<7) | BCM_CFE_DRV_QUIRK_FLASH_INV_SIZE,
+
+	/**
+	 * Reading at an offset past the partition's end will trigger a driver
+	 * bug.
+	 */
+	BCM_CFE_DRV_QUIRK_READBLK_EOF_CRASH	= (1<<8),
+
+	/**
+	 * Reading an offset+length range that extends past the partition's end
+	 * will return an IOERR, rather than performing a read over the
+	 * available bytes.
+	 */
+	BCM_CFE_DRV_QUIRK_READBLK_EOF_IOERR	= (1<<9),
 };
 
 #define	BCM_CFE_DRV_QUIRK(_quirks, _cfe_quirk)			\
@@ -90,12 +103,13 @@ enum {
  * CFE-probed partition description.
  */
 struct bcm_cfe_part {
-	char		*devname;	/**< CFE device name (e.g. 'nflash0.boot') */
-	const char	*label;		/**< CFE partition label */
-	int		 fd;		/**< CFE handle, or -1 if unopened */
-	bool		 need_close;	/**< If the fd should be closed on free */
-	off_t		 offset;	/**< partition offset, or BCM_CFE_INVALID_OFF if unknown */
-	off_t		 size;		/**< partition size, or BCM_CFE_INVALID_SIZE if unknown */
+	struct bcm_cfe_disk	*disk;		/**< borrowed reference to parent disk */
+	char			*devname;	/**< CFE device name (e.g. 'nflash0.boot') */
+	const char		*label;		/**< CFE partition label */
+	int			 fd;		/**< CFE handle, or -1 if unopened */
+	bool			 need_close;	/**< If the fd should be closed on free */
+	off_t			 offset;	/**< partition offset, or BCM_CFE_INVALID_OFF if unknown */
+	off_t			 size;		/**< partition size, or BCM_CFE_INVALID_SIZE if unknown */
 
 	SLIST_ENTRY(bcm_cfe_part) cp_link;
 };
@@ -104,9 +118,10 @@ struct bcm_cfe_part {
  * CFE-probed block device description.
  */
 struct bcm_cfe_disk {
-	const char		*drvname;			/**< CFE driver class name (e.g. 'nflash') */
-	u_int			 unit;				/**< CFE device unit */
-	struct bcm_cfe_parts	 parts;				/**< identified partitions */
+	const char		*drvname;	/**< CFE driver class name (e.g. 'nflash') */
+	u_int			 unit;		/**< CFE device unit */
+	off_t			 size;		/**< media size, or BCM_CFE_INVALID_SIZE if unknown */
+	struct bcm_cfe_parts	 parts;		/**< identified partitions */
 
 	SLIST_ENTRY(bcm_cfe_disk) cd_link;
 };
