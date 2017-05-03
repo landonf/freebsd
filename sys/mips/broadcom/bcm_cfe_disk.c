@@ -250,19 +250,29 @@ static int			 bcm_cfe_probe_part(struct bcm_cfe_disk *disk,
 
 static const bool bcm_disk_trace = false;
 
-#define	BCM_DISK_LOG(msg, ...)	printf(msg, ## __VA_ARGS__)
+/* Disk logging */
+#define	BCM_DISK_LOG(_disk, msg, ...)					\
+	printf("%s%u: " msg, (_disk)->drvname, (_disk)->unit, ## __VA_ARGS__)
 
-#define	BCM_DISK_ERR(msg, ...)	\
-	BCM_DISK_LOG("%s: " msg, __FUNCTION__, ## __VA_ARGS__)
+#define	BCM_DISK_ERR(_disk, msg, ...)					\
+	printf("%s(%s%u): " msg, __FUNCTION__, (_disk)->drvname,	\
+	    (_disk)->unit, ## __VA_ARGS__)
 
-#define	BCM_DISK_DBG(msg, ...)	do {			\
-	if (bootverbose)				\
-		BCM_DISK_ERR(msg, ## __VA_ARGS__);	\
+#define	BCM_DISK_TRACE(_disk, msg, ...)	do {				\
+	if (bcm_disk_trace)						\
+		BCM_DISK_ERR((_disk), msg, ## __VA_ARGS__);		\
 } while(0)
 
-#define	BCM_DISK_TRACE(msg, ...)	do {			\
-	if (bcm_disk_trace)				\
-		BCM_DISK_ERR(msg, ## __VA_ARGS__);	\
+/* Partition logging */
+#define	BCM_PART_LOG(_part, msg, ...)					\
+	printf("%s: " msg, (_part)->devname, ## __VA_ARGS__)
+
+#define	BCM_PART_ERR(_part, msg, ...)					\
+	printf("%s(%s): " msg, __FUNCTION__, (_part)->devname,  ## __VA_ARGS__)
+
+#define	BCM_PART_TRACE(_part, msg, ...)	do {				\
+	if (bcm_disk_trace)						\
+		BCM_PART_ERR((_part), msg, ## __VA_ARGS__);		\
 } while(0)
 
 /**
@@ -540,8 +550,7 @@ bcm_cfe_probe_driver_quirks(struct bcm_cfe_disk *disk, uint32_t *quirks)
 	/* Devices backed by the nflash (NAND) driver can be identified by
 	 * the unique driver class name */
 	if (strcmp(disk->drvname, "nflash") == 0) {
-		BCM_DISK_LOG("%s%u: found CFE nflash driver\n", disk->drvname,
-		    disk->unit);
+		BCM_DISK_LOG(disk, "found CFE nflash driver\n");
 
 		*quirks =
 		    BCM_CFE_QUIRK_FLASH_ZERO_OFF |
@@ -564,7 +573,7 @@ bcm_cfe_probe_driver_quirks(struct bcm_cfe_disk *disk, uint32_t *quirks)
 		    sizeof(fi),  &rlen, 0);
 
 		if (cerr != CFE_OK) {
-			BCM_DISK_ERR("cfe_ioctl(%s, IOCTL_FLASH_GETINFO) "
+			BCM_DISK_ERR(disk, "cfe_ioctl(%s, IOCTL_FLASH_GETINFO) "
 			    "failed: %d\n", part->devname, cerr);
 			goto failed;
 		}
@@ -590,8 +599,7 @@ bcm_cfe_probe_driver_quirks(struct bcm_cfe_disk *disk, uint32_t *quirks)
 		 */
 		if (fi.flash_type > FLASH_TYPE_FLASH) {
 			/* sflash (SPI) driver */
-			BCM_DISK_LOG("%s%u: found CFE sflash driver\n",
-			    disk->drvname, disk->unit);
+			BCM_DISK_LOG(disk, "found CFE sflash driver\n");
 
 			*quirks =
 			    BCM_CFE_QUIRK_FLASH_ZERO_OFF |
@@ -604,8 +612,7 @@ bcm_cfe_probe_driver_quirks(struct bcm_cfe_disk *disk, uint32_t *quirks)
 
 		} else if (fi.flash_base >= fi.flash_size) {
 			/* legacy flash (CFI) driver */
-			BCM_DISK_LOG("%s%u: found CFE flash (legacy) driver\n",
-			    disk->drvname, disk->unit);
+			BCM_DISK_LOG(disk, "found CFE flash (legacy) driver\n");
 
 			*quirks =
 			    BCM_CFE_QUIRK_FLASH_PHYS_OFF |
@@ -616,8 +623,7 @@ bcm_cfe_probe_driver_quirks(struct bcm_cfe_disk *disk, uint32_t *quirks)
 
 		} else {
 			/* newflash (CFI) driver */
-			BCM_DISK_LOG("%s%u: found CFE newflash driver\n",
-			    disk->drvname, disk->unit);
+			BCM_DISK_LOG(disk, "found CFE newflash driver\n");
 
 			*quirks =
 			    BCM_CFE_QUIRK_NVRAM_PART_SIZE |
@@ -627,11 +633,9 @@ bcm_cfe_probe_driver_quirks(struct bcm_cfe_disk *disk, uint32_t *quirks)
 		}
 	}
 
-	BCM_DISK_LOG("%s%u: unrecognized driver class\n", disk->drvname,
-	    disk->unit);
-
 failed:
 	/* Cannot determine the driver type */
+	BCM_DISK_LOG(disk, "unrecognized driver class\n");
 	return (ENXIO);
 }
 
@@ -648,8 +652,8 @@ bcm_cfe_dev_exists(const char *devname)
 	/* Does the device exist? */
 	if ((dinfo = cfe_getdevinfo(__DECONST(char *, devname))) < 0) {
 		if (dinfo != CFE_ERR_DEVNOTFOUND) {
-			BCM_DISK_ERR("cfe_getdevinfo(%s) failed: %d\n", devname,
-			    dinfo);
+			printf("%s: cfe_getdevinfo(%s) failed: %d\n",
+			    __FUNCTION__, devname, dinfo);
 		}
 
 		return (false);
@@ -664,8 +668,8 @@ bcm_cfe_dev_exists(const char *devname)
 		return (true);
 
 	default:
-		BCM_DISK_ERR("%s has unknown device type: %d\n", devname,
-		    dtype);
+		printf("%s: %s has unknown device type: %d\n", __FUNCTION__,
+		    devname, dtype);
 		return (false);
 	}
 }
@@ -697,8 +701,8 @@ bcm_cfe_part_exists(const char *drvname, u_int unit, const char *partname)
 	dlen = sizeof(dname);
 	error = bcm_cfe_fmt_devname(drvname, unit, partname, dname, &dlen);
 	if (error) {
-		BCM_DISK_ERR("bcm_cfe_fmt_devname(%s, %u, %s) failed: %d\n",
-		    drvname, unit, partname, error);
+		printf("%s: failed to format device name for %s%u.%s: %d\n",
+		    __FUNCTION__, drvname, unit, partname, error);
 		return (false);
 	}
 
@@ -737,7 +741,7 @@ bcm_cfe_fmt_devname(const char *drvname, u_int unit, const char *partname,
 	n = snprintf(buf, capacity, "%s%u.%s", drvname, unit, partname);
 
 	if (n < 0) {
-		BCM_DISK_ERR("snprintf() failed: %d\n", n);
+		printf("%s: snprintf() failed: %d\n", __FUNCTION__, n);
 		return (ENXIO);
 	}
 
@@ -861,8 +865,8 @@ bcm_cfe_probe_disk(struct bcm_cfe_disk *disk, bool *skip_next)
 		error = bcm_cfe_fmt_devname(drvname, unit, partname, dname,
 		    &dlen);
 		if (error) {
-			BCM_DISK_ERR("bcm_cfe_fmt_devname(%s) failed: %d\n",
-			    partname, error);
+			BCM_DISK_ERR(disk, "error determining CFE device "
+			    "name for %s: %d\n", partname, error);
 			goto failed;
 		}
 
@@ -898,7 +902,7 @@ bcm_cfe_probe_disk(struct bcm_cfe_disk *disk, bool *skip_next)
 		cerr = cfe_ioctl(part->fd, IOCTL_FLASH_GETINFO, (u_char *)&fi,
 		    sizeof(fi), &rlen, 0);
 		if (cerr != CFE_OK) {
-			BCM_DISK_ERR("cfe_ioctl(%s, IOCTL_FLASH_GETINFO) "
+			BCM_DISK_ERR(disk, "cfe_ioctl(%s, IOCTL_FLASH_GETINFO) "
 			    "failed: %d\n", part->devname, cerr);
 			error = ENXIO;
 			goto failed;
@@ -907,8 +911,10 @@ bcm_cfe_probe_disk(struct bcm_cfe_disk *disk, bool *skip_next)
 		/* Save the media size */
 #if UINT_MAX > OFF_MAX
 		if (fi.flash_size > OFF_MAX) {
-			BCM_DISK_ERR("CFE %s flash size %#x exceeds maximum "
-			    "supported offset\n", part->devname, fi.flash_size);
+			BCM_DISK_ERR(disk, "CFE %s flash size %#x exceeds "
+			    "maximum supported offset\n", part->devname,
+			    fi.flash_size);
+
 			quirks |= BCM_CFE_QUIRK_FLASH_INV_SIZE;
 		}
 #endif
@@ -922,8 +928,8 @@ bcm_cfe_probe_disk(struct bcm_cfe_disk *disk, bool *skip_next)
 	/* Try to determine the size and offset of all discovered partitions */
 	SLIST_FOREACH(part, &disk->parts, cp_link) {
 		if ((error = bcm_cfe_probe_part(disk, part, quirks))) {
-			BCM_DISK_LOG("probing %s failed: %d\n", part->devname,
-			    error);
+			BCM_DISK_ERR(disk, "probing %s failed: %d\n",
+			    part->devname, error);
 		}
 	}
 
@@ -982,7 +988,7 @@ bcm_cfe_part_new(struct bcm_cfe_part **part, const char *devname)
 	}
 
 	if (p->fd < 0) {
-		BCM_DISK_ERR("cfe_open(%s) failed: %d\n", p->devname, p->fd);
+		BCM_PART_ERR(p, "cfe_open() failed: %d\n", p->fd);
 		bcm_cfe_part_free(p);
 		return (ENXIO);
 	}
@@ -1025,18 +1031,20 @@ bcm_cfe_probe_part_flashinfo(struct bcm_cfe_disk *disk,
 	cerr = cfe_ioctl(part->fd, IOCTL_FLASH_GETINFO, (u_char *)&fi,
 	    sizeof(fi), &rlen, 0);
 	if (cerr != CFE_OK) {
-		BCM_DISK_ERR("cfe_ioctl(%s, IOCTL_FLASH_GETINFO) "
-		    "failed: %d\n", part->devname, cerr);
+		BCM_PART_ERR(part, "IOCTL_FLASH_GETINFO failed: %d\n", cerr);
 
 		return (ENXIO);
 	}
+
+	BCM_PART_TRACE(part, "IOCTL_FLASH_GETINFO (base=%#llx, size=%#x)\n",
+	    fi.flash_base, fi.flash_size);
 
 	/* Validate the partition offset */
 	if (!BCM_CFE_QUIRK(quirks, FLASH_INV_OFF)) {
 #if ULLONG_MAX > OFF_MAX
 		if (fi.flash_base > OFF_MAX) {
-			BCM_DISK_ERR("CFE %s flash base %#llx exceeds maximum "
-			    "supported offset\n", part->devname, fi.flash_base);
+			BCM_PART_ERR(part, "flash base %#llx exceeds maximum "
+			    "supported offset\n", fi.flash_base);
 			quirks |= BCM_CFE_QUIRK_FLASH_INV_OFF;
 		}
 #endif
@@ -1044,9 +1052,8 @@ bcm_cfe_probe_part_flashinfo(struct bcm_cfe_disk *disk,
 		if (BCM_CFE_QUIRK(quirks, FLASH_TOTAL_SIZE) &&
 		    fi.flash_base > fi.flash_size)
 		{
-			BCM_DISK_ERR("CFE %s: invalid offset %#llx "
-			    "(size=%#x)\n", part->devname, fi.flash_base,
-			    fi.flash_size);
+			BCM_PART_ERR(part, "invalid offset %#llx (size=%#x)\n",
+			    fi.flash_base, fi.flash_size);
 			quirks |= BCM_CFE_QUIRK_FLASH_INV_OFF;
 		}
 	}
@@ -1055,8 +1062,8 @@ bcm_cfe_probe_part_flashinfo(struct bcm_cfe_disk *disk,
 	if (!BCM_CFE_QUIRK(quirks, FLASH_INV_SIZE)) {
 #if UINT_MAX > OFF_MAX
 		if (fi.flash_size > OFF_MAX) {
-			BCM_DISK_ERR("CFE %s flash size %#x exceeds maximum "
-			    "supported offset\n", part->devname, fi.flash_size);
+			BCM_PART_ERR(part, "flash size %#x exceeds maximum "
+			    "supported offset\n", fi.flash_size);
 			quirks |= BCM_CFE_QUIRK_FLASH_INV_SIZE;
 		}
 #endif
@@ -1095,22 +1102,20 @@ bcm_cfe_probe_part_nvraminfo(struct bcm_cfe_disk *disk,
 	cerr = cfe_ioctl(part->fd, IOCTL_NVRAM_GETINFO, (u_char *)&nv,
 	    sizeof(nv), &rlen, 0);
 	if (cerr != CFE_OK) {
-		BCM_DISK_ERR("cfe_ioctl(%s, IOCTL_NVRAM_GETINFO) "
-		    "failed: %d\n", part->devname, cerr);
-
+		BCM_PART_ERR(part, "IOCTL_NVRAM_GETINFO failed: %d\n", cerr);
 		return (ENXIO);
 	}
 
 	if (nv.nvram_size < 0) {
-		BCM_DISK_ERR("CFE %s returned invalid NVRAM size: %#x\n",
-		    part->devname, nv.nvram_size);
+		BCM_PART_ERR(part, "IOCTL_NVRAM_GETINFO returned invalid NVRAM "
+		    "size: %#x\n", nv.nvram_size);
 		return (ENXIO);
 	}
 
 #if INT_MAX > OFF_MAX
 	if (nv.nvram_size > OFF_MAX) {
-		BCM_DISK_ERR("CFE %s flash size %#llx exceeds maximum "
-		    "supported size\n", part->devname, fi.flash_size);
+		BCM_PART_ERR(part, "nvram size %#llx exceeds maximum supported "
+		    "size\n", fi.flash_size);
 		quirks |= BCM_CFE_QUIRK_FLASH_INV_SIZE;
 	}
 #endif
@@ -1147,9 +1152,8 @@ bcm_cfe_part_readsz_slow(struct bcm_cfe_disk *disk, struct bcm_cfe_part *part,
 
 		/* Set offset to one byte before the page boundary */
 		if (INT64_MAX - offset < BCM_CFE_PALIGN_MIN-1) {
-			BCM_DISK_ERR("CFE %s computed size %#jx exceeds "
-			    "maximum read offset\n", part->devname,
-			    (intmax_t)offset);
+			BCM_PART_ERR(part, "CFE read size %#jx exceeds maximum "
+			    "supported offset\n", (intmax_t)offset);
 
 			return (ENXIO);
 		}
@@ -1175,9 +1179,8 @@ bcm_cfe_part_readsz_slow(struct bcm_cfe_disk *disk, struct bcm_cfe_part *part,
 			if (cerr == 1)
 				break;
 		} else {
-			BCM_DISK_ERR("cfe_readblk(%s, %#jx, ...) failed with "
-			    "unexpected error: %d\n", part->devname,
-			    (intmax_t)offset, cerr);
+			BCM_PART_ERR(part, "cfe_readblk(%#jx, ...) failed with "
+			    "unexpected error: %d\n", (intmax_t)offset, cerr);
 
 			return (ENXIO);
 		}
@@ -1185,9 +1188,8 @@ bcm_cfe_part_readsz_slow(struct bcm_cfe_disk *disk, struct bcm_cfe_part *part,
 
 #if INT64_MAX > OFF_MAX
 	if (offset > OFF_MAX) {
-		BCM_DISK_ERR("CFE %s computed size %#jx exceeds "
-		    "maximum supported offset\n", part->devname,
-		    (intmax_t)offset);
+		BCM_PART_ERR(part, "CFE computed size %#jx exceeds maximum "
+		    "supported offset\n",(intmax_t)offset);
 		return (ENXIO);
 	}
 #endif
@@ -1242,18 +1244,17 @@ bcm_cfe_part_readsz_fast(struct bcm_cfe_disk *disk, struct bcm_cfe_part *part,
 
 		mid = rounddown((min + max) / 2, blksize);
 		if (mid > INT64_MAX) {
-			BCM_DISK_ERR("CFE %s offset size %#jx exceeds maximum "
-			    "CFE-supported read offset\n", part->devname,
-			    (intmax_t)offset);
+			BCM_PART_ERR(part, "next offset (%#jx) exceeds maximum "
+			    "CFE-supported read offset\n", (intmax_t)offset);
 			return (ENXIO);
 		}
 
-		BCM_DISK_TRACE("test %s:%#jx @ %#jx-%#jx\n", part->devname,
-		    (intmax_t)mid, (intmax_t)min,  (intmax_t)max);
+		BCM_PART_TRACE(part, "test %#jx @ %#jx-%#jx\n", (intmax_t)mid,
+		    (intmax_t)min,  (intmax_t)max);
 
 		cerr = cfe_readblk(part->fd, mid, buf, sizeof(buf));
 
-		BCM_DISK_TRACE("cerr=%d\n", cerr);
+		BCM_PART_TRACE(part, "cerr=%d\n", cerr);
 
 		if (cerr == sizeof(buf)) {
 			/* Found a valid block; try searching the upper
@@ -1271,9 +1272,8 @@ bcm_cfe_part_readsz_fast(struct bcm_cfe_disk *disk, struct bcm_cfe_part *part,
 			max = mid - blksize;
 		} else {
 			/* Unexpected error or zero-length read */
-			BCM_DISK_ERR("cfe_readblk(%s, %#jx, ...) failed with "
-			    "unexpected result: %d\n", part->devname,
-			    (intmax_t)mid, cerr);
+			BCM_PART_ERR(part, "cfe_readblk(%#jx, ...) failed with "
+			    "unexpected result: %d\n", (intmax_t)mid, cerr);
 
 			return (ENXIO);
 		}
@@ -1284,14 +1284,13 @@ bcm_cfe_part_readsz_fast(struct bcm_cfe_disk *disk, struct bcm_cfe_part *part,
 	 * a block, or may not be block-aligned.
 	 */
 	if (!found) {
-		BCM_DISK_DBG("cfe_readblk(%s) found no valid blocks\n",
-		    part->devname);
+		BCM_PART_ERR(part, "found no valid blocks\n");
 		return (ENXIO);
 	}
 
 	/* Use byte reads to find the actual terminating offset; this should
 	 * generally be a full page. */
-	BCM_DISK_TRACE("scan @ %#jx\n", offset);
+	BCM_PART_TRACE(part, "scan @ %#jx\n", offset);
 	for (off_t n = blksize; n > 0; n--) {
 		u_char	buf[1];
 		off_t	next_off;
@@ -1303,12 +1302,12 @@ bcm_cfe_part_readsz_fast(struct bcm_cfe_disk *disk, struct bcm_cfe_part *part,
 		KASSERT(n >= sizeof(buf), ("zero offset"));
 		next_off = offset + n - sizeof(buf);
 
-		BCM_DISK_TRACE("cfe_readblk(%s, %#jx, ...)\n", part->devname,
+		BCM_PART_TRACE(part, "cfe_readblk(%#jx, ...)\n",
 		    (intmax_t)next_off);
 
 		cerr = cfe_readblk(part->fd, next_off, buf, sizeof(buf));
 
-		BCM_DISK_TRACE("cerr=%d\n", cerr);
+		BCM_PART_TRACE(part, "cerr=%d\n", cerr);
 
 		if (cerr > 0) {
 			/* Found last valid offset */
@@ -1319,9 +1318,9 @@ bcm_cfe_part_readsz_fast(struct bcm_cfe_disk *disk, struct bcm_cfe_part *part,
 			continue;
 		} else {
 			/* Unexpected error or zero-length read */
-			BCM_DISK_ERR("cfe_readblk(%s, %#jx, ...) failed with "
-			    "unexpected result: %d\n", part->devname,
-			    (intmax_t)offset+n-1, cerr);
+			BCM_PART_ERR(part, "cfe_readblk(%#jx, ...) failed with "
+			    "unexpected result: %d\n", (intmax_t)offset+n-1,
+			    cerr);
 
 			return (ENXIO);
 		}
@@ -1364,18 +1363,16 @@ bcm_cfe_probe_part_read(struct bcm_cfe_disk *disk, struct bcm_cfe_part *part,
 	error = bcm_cfe_part_readsz_fast(disk, part, quirks, &result);
 	if (error == ENXIO) {
 		/* Fall back on the slow path */
-		BCM_DISK_TRACE("Using cfe_readblk(%s) slow path\n",
-		    part->devname);
-
+		BCM_PART_TRACE(part, "using slow path\n");
 		error = bcm_cfe_part_readsz_slow(disk, part, quirks, &result);
 	}
 
 	if (error) {
-		BCM_DISK_ERR("error reading %s: %d\n", part->devname, error);
+		BCM_PART_ERR(part, "cfe_readblk() probe failed: %d\n", error);
 		return (error);
 	}
 
-	BCM_DISK_TRACE("%s result: %#jx\n", part->devname, (intmax_t)result);
+	BCM_PART_TRACE(part, "read result: %#jx\n", (intmax_t)result);
 
 	if (BCM_CFE_QUIRK(quirks, PART_EOF_OVERREAD)) {
 		/* Result is the number of bytes readable at the partition
@@ -1385,8 +1382,8 @@ bcm_cfe_probe_part_read(struct bcm_cfe_disk *disk, struct bcm_cfe_part *part,
 		    ("missing disk size"));
 
 		if (result > disk->size) {
-			BCM_DISK_ERR("CFE %s: read %#jx bytes beyond media end",
-			    part->devname, (intmax_t)(result - disk->size));
+			BCM_PART_ERR(part, "read %#jx bytes beyond media end",
+			    (intmax_t)(result - disk->size));
 			return (ENXIO);
 		}
 
