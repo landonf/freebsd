@@ -56,199 +56,42 @@ __FBSDID("$FreeBSD$");
 #include <dev/cfe/cfe_error.h>
 #include <dev/cfe/cfe_ioctl.h>
 
+#include "bcm_cfe_disk.h"
 #include "bcm_machdep.h"
+
 #include "bhnd_nvram_map.h"
 
 #include "bcm_geom_cfe.h"
 
 /*
- * Performs slicing of a ChipCommon-attached flash device based on CFE's
- * hardcoded flash partition map and conservative heuristics. 
- * 
- * In theory, we should be able to fully enumerate the flash layout using
- * cfe_enumdev() and CFE device ioctls.
- * 
- * In practice, no OEMs appear to ship a remotely modern CFE release with
- * CFE_CMD_DEV_ENUM support, requiring that we instead iterate over a set of
- * known flash device/partition names to build our partition map.
- *
- * Worse, the validity of the flash/nvram ioctls depends on the CFE flash
- * driver in use, requiring CFE driver-specific workarounds (see
- * 'CFE Driver Quirks' below).
- * 
- * As a result, we probe a set of known CFE partitions to determine the
- * space useable by the OS.
- * 
- * == Basic Flash Layout ==
- * 
- * On most Broadcom MIPS hardware, the flash layout will be some variation
- * of the following:
- * 
- *	[name]	[desc]			[offset+size]
- *	boot	CFE bootloader		0x0000000+0x4000000
- *	<optional device/vendor-specific partitions>
- *	trx	TRX image reservation	0x4000000+0x1fa0000
- *	<optional device/vendor-specific partitions>
- *	nvram	Broadcom NVRAM		0x1ff8000+0x8000
- *
- * - The 'boot' partition is always found at offset 0x0 -- the flash device
- *   is mapped to the MIPS boot exception vector address (0x1FC00000), and the
- *   CFE partition provides the bootcode that will begin executing in-place at
- *   0x1FC00000+0x0.
- * 
- * - The 'trx' partition will be sized by CFE to include all flash space
- *   reserved for OS use, even if the TRX image written to flash is smaller
- *   than the TRX partition size; this can be used to safely determine the
- *   usable flash range without stomping on any vendor data that may be stored
- *   in flash.
- *
- *   When booting the OS, CFE ignores the offsets specified in the TRX header,
- *   and instead assumes either a CFE boot block or a raw boot loader is
- *   located directly following the TRX header.
- * 
- * - Some earlier devices do not support TRX, and instead, a single 'os'
- *   partition will be defined; the raw boot loader (or a CFE boot block) must
- *   be located at offset 0x0 of this partition.
- *
- * - The 'nvram' partition is generally the last partition, and is interpreted
- *   (and written to) by both CFE and the operating system. While most devices
- *   use the standard Broadcom NVRAM format, some (such as the WGT634U) instead
- *   use the TLV format defined by the CFE specification.
- * 
- * === Dual / Failsafe Image Support ===
- * 
- * If CFE is built with FAILSAFE_UPGRADE or DUAL_IMAGE, the TRX flash range
- * will be split into primary (trx) and secondary (trx2) partitions; the index
- * of the boot partition is managed via the 'bootpartition' (FAILSAFE_UPGRADE)
- * or 'image_boot' (DUAL_IMAGE) NVRAM variables.
- * 
- * The offset of each image is available from NVRAM via the 'image_first_offset'
- * and 'image_second_offset' variables.
- * 
- * Additionally, FAILSAFE_UPGRADE defines two NVRAM variables that are used to
- * communicate boot failure/success between CFE and the OS: 'partialboot' and
- * 'maxpartialboot'.
- * 
- * - When a new image is written to the device, 'partialboot' is set to 1, and
- *   will be incremented by CFE before each boot.
- * - If the OS observes a 'partialboot' value >= 1 and boot was successful,
- *   'partialboot' should be set to 0.
- * - If CFE observes a 'partialboot' value >= 'maxpartialboot', it will switch
- *   to the previous (failsafe) image and reset 'partialboot' 
- * 
- * 
- * == CFE Device Naming ==
- * 
- * CFE will allocate at least one CFE flash device per partition; the device
- * name will be in the format of:
- *	<device class><unit number>.<partition name>
- *
- * On NAND devices, there may also be a single top-level non-partitioned
- * device entry covering the entire range.
- * 
- * Unfortunately, TRX support was hacked into CFE, and TRX is not understood by
- * CFE's image loaders; as a result, multiple device units will be allocated
- * for the _same_ flash device (e.g. flash0/flash1), providing two different
- * flash interpretations for use by CFE:
- * 
- *	- flash0 maps _only_ the TRX header as 'flash0.trx', while mapping the
- *	  TRX content as 'flash0.os'; the 'flash0.os' device may be passed
- *	  directly to CFE's (TRX-ignorant) boot image loader, but writing a
- *	  non-empty TRX image to the small 'flash0.trx' partition will fail.
- *	- flash1 maps the entire TRX space as 'flash1.trx', and 'flash1.os'
- *	  does not exist. A new TRX image can be written to the 'flash1.trx'
- *	  partition, but attempting to boot flash1.trx with CFE's (TRX-ignorant)
- *	  loader will fail.
- * 
- * == CFE Driver Quirks ==
- * 
- * newflash driver (CFI):
- * 
- *	IOCTL_FLASH_GETINFO
- *		Part Offset:	valid
- *		Part Size:	valid
- *		Flash Type:	valid
- *		Flash Flags:	invalid	(FLASH_FLAG_NOERASE always set)
- * 
- *	IOCTL_NVRAM_GETINFO
- *		NVRAM Offset:	invalid	(always 0x0)
- *		NVRAM Size:	valid
- *		NVRAM Erase:	valid
- *
- *	IOCTL_FLASH_PARTITION_INFO
- *		Unsupported
- *
- * sflash driver (SPI-NOR):
- * 
- *	IOCTL_FLASH_GETINFO
- *		Part Offset:	invalid	(always 0x0)
- *		Part Size:	invalid	(size of underlying flash)
- *		Flash Type:	invalid	(returns ChipCommon flash capability
- *					 bits, not CFE FLASH_TYPE_* constant)
- *		Flash Flags:	invalid	(FLASH_FLAG_NOERASE always set)
- *
- *	IOCTL_NVRAM_GETINFO
- *		NVRAM Offset:	invalid	(always 0x0)
- *		NVRAM Size:	valid
- *		NVRAM Erase:	valid
- *
- *	IOCTL_FLASH_PARTITION_INFO
- *		Part Offset:	valid
- *		Part Size:	valid
- *		Flash Type:	invalid	(ChipCommon flash capability bits)
- *		Flash Flags:	invalid	(FLASH_FLAG_NOERASE always set)
- *
- *		**NOTE**: Only available if CFE is built with command line
- *		support for 'flash -fill'; most CFE images are not.
- * 
- * nflash driver (NAND):
- * 
- *	IOCTL_FLASH_GETINFO
- *		Part Offset:	invalid	(always 0x0)
- *		Part Size:	invalid	(size of underlying flash) 
- *		Flash Type:	invalid	(ChipCommon flash capability bits)
- *		Flash Flags:	correct
- *
- *	IOCTL_NVRAM_GETINFO
- *		Unsupported
- *
- *	IOCTL_FLASH_PARTITION_INFO
- *		Unsupported
+ * Performs slicing of a bhnd(4) flash device based on CFE's flash partition
+ * map and conservative heuristics.
  */
 
 BHND_NVRAM_IOPS_DEFN(g_cfeio);
 
-struct g_cfe_probe_func_info;
+struct g_cfe_device;
 
 static device_t				 g_cfe_find_chipc_parent(device_t dev);
 static bool				 g_cfe_flash_type_matches(
-					     const struct cfe_flash_device *id,
+					     const struct g_cfe_device *id,
 					     chipc_flash type);
 
-static int				 g_cfe_new_probe(
-					     struct cfe_flash_probe **probe,
-					     struct g_consumer *cp,
-					     const struct cfe_flash_device *dev,
-					     u_int cfe_unit,
-					     const char *cfe_part);
-static void				 g_cfe_free_probe(
-					     struct cfe_flash_probe *probe);
-
-static struct cfe_flash_probe		*g_cfe_find_probe(
-					     struct g_cfe_flash_probe_list *,
-					     const char *pname);
-
-static int				 g_cfe_read_probe(
-					     struct cfe_flash_probe *probe,
+static int				 g_cfe_read_part(struct g_consumer *cp,
+					     struct bcm_cfe_disk *disk,
+					     struct bcm_cfe_part *part,
 					     void *outp, off_t offset,
 					     off_t length);
 
+// TODO
+#if 0
 static int				 g_cfe_try_probe(
 					     const struct g_cfe_probe_func_info *,
 					     struct cfe_flash_probe *,
 					     struct g_cfe_flash_probe_list *);
+#endif
 
-static const struct cfe_flash_device	*g_cfe_device_lookup(
+static const struct g_cfe_device	*g_cfe_device_lookup(
 					     struct g_consumer *cp);
 
 static int				 g_cfe_read_parts(
@@ -256,79 +99,65 @@ static int				 g_cfe_read_parts(
 static int				 g_cfe_get_bootimg_info(
 					     struct cfe_bootimg_info *info);
 
-static int				 g_cfe_probe_io_init(
-					     struct g_cfe_probe_io *pio,
-					     struct cfe_flash_probe *probe);
+static int				 g_cfe_nvram_io_init(
+					     struct g_cfe_nvram_io *io,
+					     struct g_consumer *cp,
+					     struct bcm_cfe_disk *disk,
+					     struct bcm_cfe_part *part);
 
 /* CFE flash probe functions */
-static g_cfe_probe_func			 g_cfe_probe_flash_info;
-static g_cfe_probe_func			 g_cfe_probe_nvram_info;
-static g_cfe_probe_func			 g_cfe_fallback_size_probe;
-static g_cfe_probe_func			 g_cfe_probe_part_boot;
-static g_cfe_probe_func			 g_cfe_probe_part_nvram;
-static g_cfe_probe_func			 g_cfe_probe_part_config;
-static g_cfe_probe_func			 g_cfe_probe_part_trx;
-static g_cfe_probe_func			 g_cfe_probe_part_os;
+static g_cfe_probe			 g_cfe_probe_part_boot;
+static g_cfe_probe			 g_cfe_probe_part_nvram;
+static g_cfe_probe			 g_cfe_probe_part_config;
+static g_cfe_probe			 g_cfe_probe_part_trx;
+static g_cfe_probe			 g_cfe_probe_part_os;
 
-#define G_CFE_PROBE_FUNC(_name, _pass)	\
+#define G_CFE_PROBE(_name, _pass)	\
 	{ __STRING(_name), _name, _pass }
 /**
  * Table of all CFE flash probe functions, ordered by application priorty.
  */
-static const struct g_cfe_probe_func_info {
-	const char		*desc;
-	g_cfe_probe_func	*fn;
-	u_int			 pass;
-} g_cfe_probe_funcs[] = {
-	G_CFE_PROBE_FUNC(g_cfe_probe_flash_info,	0),
-	G_CFE_PROBE_FUNC(g_cfe_probe_nvram_info,	0),
-
-	G_CFE_PROBE_FUNC(g_cfe_fallback_size_probe,	1),
-
+static const struct g_cfe_probe_info {
+	const char	*desc;
+	g_cfe_probe	*fn;
+	u_int		 pass;
+} g_cfe_probes[] = {
 	/* Each of the following functions depend on the partition offsets
 	 * determined from earlier passes, and are ordered accordingly */
-	G_CFE_PROBE_FUNC(g_cfe_probe_part_boot,		2),
-	G_CFE_PROBE_FUNC(g_cfe_probe_part_nvram,	2),
-	G_CFE_PROBE_FUNC(g_cfe_probe_part_config,	3),
-	G_CFE_PROBE_FUNC(g_cfe_probe_part_trx,		4),
-	G_CFE_PROBE_FUNC(g_cfe_probe_part_os,		5),
+	G_CFE_PROBE(g_cfe_probe_part_boot,	0),
+	G_CFE_PROBE(g_cfe_probe_part_nvram,	1),
+	G_CFE_PROBE(g_cfe_probe_part_config,	2),
+	G_CFE_PROBE(g_cfe_probe_part_trx,	3),
+	G_CFE_PROBE(g_cfe_probe_part_os,	4),
 };
 
 /*
  * Supported CFE/GEOM flash devices.
+ * 
+ * Provides a mapping between CFE device names, GEOM attribute names,
+ * and a list of supported ChipCommon flash types (terminated by
+ * CHIPC_FLASH_NONE).
  */
-static const struct cfe_flash_device cfe_flash_devices[] = {
+static const struct g_cfe_device {
+	const char		*cfe_name;	/**< CFE device class name */
+	const char		*geom_attr;	/**< GEOM device_t attribute name */
+	const chipc_flash	*flash_types;	/**< supported ChipCommon flash types */
+} g_cfe_devices[] = {
 	{ "nflash",	"NAND::device", (chipc_flash[]) {
-	    CHIPC_NFLASH,	CHIPC_FLASH_NONE },
-	    (G_CFE_QUIRK_FLASH_ZERO_OFF | G_CFE_QUIRK_FLASH_TOTAL_SIZE |
-	     G_CFE_QUIRK_NVRAM_UNAVAIL)
-	},
+	    CHIPC_NFLASH,
+	    CHIPC_FLASH_NONE,
+	}},
 
-	{ "flash",	"CFI::device",	(chipc_flash[]){
-	    CHIPC_PFLASH_CFI,	CHIPC_FLASH_NONE },
-	    G_CFE_QUIRK_NVRAM_PART_SIZE
-	},
+	{ "flash",	"CFI::device",	(chipc_flash[]) {
+	    CHIPC_PFLASH_CFI,
+	    CHIPC_FLASH_NONE
+	}},
 
-	{ "flash",	"SPI::device",	(chipc_flash[]){
-	    CHIPC_SFLASH_AT,	CHIPC_SFLASH_ST,	CHIPC_FLASH_NONE },
-	    (G_CFE_QUIRK_FLASH_ZERO_OFF | G_CFE_QUIRK_FLASH_TOTAL_SIZE |
-	     G_CFE_QUIRK_NVRAM_PART_SIZE)
-	}
-};
-
-/*
- * Known CFE flash partition names.
- */
-static char *cfe_flash_parts[] = {
-	"boot",		/* CFE image */
-	"brcmnand",	/* OS partition (ignored by CFE, NAND-only) */
-	"config",	/* MINIX filesystem used by Netgear WGT634U */
-	"devinfo",	/* Factory BCRM NVRAM on Linksys devices (EA6700) */
-	"nvram",	/* BCRM NVRAM */
-	"os",		/* OS data */
-	"os2",		/* OS data (dual/failsafe image) */
-	"trx",		/* TRX data */
-	"trx2",		/* TRX data (dual/failsafe image) */
+	{ "flash",	"SPI::device",	(chipc_flash[]) {
+	    CHIPC_SFLASH_AT,
+	    CHIPC_SFLASH_ST,
+	    CHIPC_FLASH_NONE
+	}}
 };
 
 /**
@@ -336,12 +165,12 @@ static char *cfe_flash_parts[] = {
  * NVRAM variable.
  */
 static const struct cfe_bootimg_var {
-	cfe_bootimg_type	 type;		/**< layout type */
+	g_cfe_bootimg_type	 type;		/**< layout type */
 	const char		*nvar;		/**< NVRAM variable name */
 	size_t			 num_images;	/**< image count */
 } cfe_bootimg_vars[] = {
-	{ CFE_IMAGE_FAILSAFE,	BHND_NVAR_BOOTPARTITION,	2 },
-	{ CFE_IMAGE_DUAL,	BHND_NVAR_IMAGE_BOOT,		2 },
+	{ G_CFE_IMAGE_FAILSAFE,	BHND_NVAR_BOOTPARTITION,	2 },
+	{ G_CFE_IMAGE_DUAL,	BHND_NVAR_IMAGE_BOOT,		2 },
 };
 
 /* Image offset variables (by partition index) */
@@ -369,6 +198,30 @@ SYSCTL_UINT(_kern_geom_bcmcfe, OID_AUTO, debug, CTLFLAG_RWTUN,
 	if (G_CFE_DEBUG_EN(flg))			\
 		G_CFE_LOG(msg, ## __VA_ARGS__);		\
 } while (0)
+
+/** CFE disk entries */
+static struct bcm_cfe_disks g_bcm_cfe_disks;
+
+/*
+ * Probe CFE for flash layout information once the kernel memory subsystem
+ * if available.
+ * 
+ * This must be done prior to driver/GEOM attachment, as calling into CFE
+ * will conflict with native flash driver access.
+ */
+static void
+g_bcm_cfe_probe_early(void *ident)
+{
+	int error;
+
+	SLIST_INIT(&g_bcm_cfe_disks);
+
+	if ((error = bcm_cfe_probe_disks(&g_bcm_cfe_disks)))
+		BCM_ERR("bcm_cfe_probe_disks() failed: %d\n", error);
+}
+
+SYSINIT(g_bcm_cfe_probe_early, SI_SUB_KMEM, SI_ORDER_ANY, g_bcm_cfe_probe_early,
+    NULL);
 
 static int
 g_cfe_access(struct g_provider *pp, int dread, int dwrite, int dexcl)
@@ -443,11 +296,9 @@ g_cfe_taste(struct g_class *mp, struct g_provider *pp, int insist)
 {
 	struct g_consumer		*cp;
 	struct g_geom			*gp;
-	const struct cfe_flash_device	*cfe_dev;
-	struct cfe_flash_probe		*probe, *pnext;
+	const struct g_cfe_device	*cfe_dev;
 	struct cfe_bootimg_info		 info;
 	int				 error;
-	struct g_cfe_flash_probe_list	 probes;
 
 	g_trace(G_T_TOPOLOGY, "cfe_taste(%s,%s)", mp->name, pp->name);
 	g_topology_assert();
@@ -455,8 +306,6 @@ g_cfe_taste(struct g_class *mp, struct g_provider *pp, int insist)
 	/* Don't recurse */
 	if (strcmp(pp->geom->class->name, CFE_CLASS_NAME) == 0)
 		return (NULL);
-
-	LIST_INIT(&probes);
 
 	/*
 	 * Add a consumer to the GEOM topology, acquiring read access to
@@ -481,25 +330,9 @@ g_cfe_taste(struct g_class *mp, struct g_provider *pp, int insist)
 	if ((cfe_dev = g_cfe_device_lookup(cp)) == NULL)
 		goto failed;
 
-	/* Allocate partition probe records for all discoverable partitions on
-	 * unit 0 */
-	for (size_t i = 0; i < nitems(cfe_flash_parts); i++) {
-		u_int unit = 0;
-
-		error = g_cfe_new_probe(&probe, cp, cfe_dev, unit,
-		    cfe_flash_parts[i]);
-		if (!error) {
-			LIST_INSERT_HEAD(&probes, probe, fp_link);
-		} else if (error != ENODEV) {
-			G_CFE_LOG("failed to create '%s%u.%s' probe state: "
-			    "%d\n", cfe_dev->cfe_name, unit, cfe_flash_parts[i],
-			    error);
-
-			goto failed;
-		}
-	}
-
 	/* Probe partition info */
+	// TODO
+#if 0
 	for (u_int pass = 0, final_pass = false; !final_pass; pass++) {
 		final_pass = true;
 
@@ -542,6 +375,7 @@ g_cfe_taste(struct g_class *mp, struct g_provider *pp, int insist)
 			}
 		}
 	}
+#endif
 
 	/* Fetch CFE boot image info */
 	if ((error = g_cfe_get_bootimg_info(&info))) {
@@ -556,6 +390,7 @@ g_cfe_taste(struct g_class *mp, struct g_provider *pp, int insist)
 	}
 
 	// TODO
+#if 0
 	LIST_FOREACH(probe, &probes, fp_link) {
 		if (probe->have_offset && probe->have_size) {
 			G_CFE_LOG("%s (base=%#jx, size=%#jx)\n", probe->dname,
@@ -570,14 +405,18 @@ g_cfe_taste(struct g_class *mp, struct g_provider *pp, int insist)
 			G_CFE_LOG("%s (base=unk, size=unk)\n", probe->dname);
 		}
 	}
+#endif
 
 	printf("MATCH\n");
 
 failed:
+	// TODO
+#if 0
 	LIST_FOREACH_SAFE(probe, &probes, fp_link, pnext) {
 		LIST_REMOVE(probe, fp_link);
 		g_cfe_free_probe(probe);
 	}
+#endif
 
 	/* No match */
 	g_access(cp, -1, 0, 0);
@@ -594,192 +433,17 @@ g_cfe_config(struct gctl_req *req, struct g_class *mp, const char *verb)
 }
 
 /**
- * Attempt to populate @p probe with IOCTL_FLASH_GETINFO.
- */
-static int
-g_cfe_probe_flash_info(struct cfe_flash_probe *probe,
-    struct g_cfe_flash_probe_list *probes)
-{
-	flash_info_t	fi;
-	int		cerr, rlen;
-
-	/* Skip? */
-	if (G_CFE_QUIRK(probe->dev, FLASH_INV_OFF) &&
-	    G_CFE_QUIRK(probe->dev, FLASH_INV_SIZE))
-		return (ENXIO);
-
-	/* Fetch and populate the flash data */
-	cerr = cfe_ioctl(probe->fd, IOCTL_FLASH_GETINFO, (u_char *)&fi,
-	    sizeof(fi), &rlen, 0);
-	if (cerr != CFE_OK) {
-		if (cerr != CFE_ERR_INV_COMMAND)
-			G_CFE_LOG("%s IOCTL_FLASH_GETINFO failed %d\n",
-			    probe->dname, cerr);
-
-		return (ENXIO);
-	}
-
-	if (!G_CFE_QUIRK(probe->dev, FLASH_INV_OFF)) {
-#if ULLONG_MAX > OFF_MAX
-		if (fi.flash_base > OFF_MAX) {
-			G_CFE_LOG("CFE %s flash base %#llx exceeds maximum "
-			    "supported offset\n", probe->dname, fi.flash_base);
-			return (ENXIO);
-		}
-#endif
-
-		probe->offset = (off_t)fi.flash_base;
-		probe->have_offset = true;
-	}
-
-	if (!G_CFE_QUIRK(probe->dev, FLASH_INV_SIZE)) {
-#if UINT_MAX > OFF_MAX
-		if (fi.flash_size > OFF_MAX) {
-			G_CFE_LOG("CFE %s flash size %#llx exceeds maximum "
-			    "supported size\n", probe->dname, fi.flash_base);
-			return (ENXIO);
-		}
-#endif
-
-		probe->size = (off_t)fi.flash_size;
-		probe->have_size = true;
-	}
-
-	return (0);
-}
-
-/**
- * Attempt to populate @p probe with IOCTL_NVRAM_GETINFO.
- */
-static int
-g_cfe_probe_nvram_info(struct cfe_flash_probe *probe,
-    struct g_cfe_flash_probe_list *probes)
-{
-	nvram_info_t	ni;
-	int		cerr, rlen;
-
-	/* Skip if IOCTL_NVRAM_GETINFO does not provide the partition size */
-	if (!G_CFE_QUIRK(probe->dev, NVRAM_PART_SIZE))
-		return (ENXIO);
-
-	/* Fetch and populate the partition's size info */
-	cerr = cfe_ioctl(probe->fd, IOCTL_NVRAM_GETINFO, (u_char *)&ni,
-	    sizeof(ni), &rlen, 0);
-	if (cerr != CFE_OK) {
-		if (cerr != CFE_ERR_INV_COMMAND)
-			G_CFE_LOG("%s IOCTL_NVRAM_GETINFO failed %d\n",
-			    probe->dname, cerr);
-
-		return (ENXIO);
-	}
-
-	if (ni.nvram_size < 0) {
-		G_CFE_LOG("CFE returned invalid nvram size (%d) for %s\n",
-		    ni.nvram_size, probe->dname);
-		return (ENXIO);
-	}
-
-#if INT_MAX > OFF_MAX
-	if (ni.nvram_size > OFF_MAX) {
-		G_CFE_LOG("CFE returned invalid nvram size (%d) for %s\n",
-		    ni.nvram_size, probe->dname);
-		return (ENXIO);
-	}
-#endif
-
-	probe->size = (off_t)ni.nvram_size;
-	probe->have_size = true;
-
-	return (0);
-}
-
-/**
- * Attempt to populate @p probe's partition size by performing sector-aligned
- * zero length reads.
- */
-static int
-g_cfe_fallback_size_probe(struct cfe_flash_probe *probe,
-    struct g_cfe_flash_probe_list *probes)
-{
-	int64_t	cfe_offset;
-	u_char	buf[1];
-	bool	log_readblk_err;
-	int	cerr;
-
-	log_readblk_err = G_CFE_DEBUG_EN(PROBE);
-	cfe_offset = (int64_t)probe->mediasize;
-
-#if OFF_MAX > INT64_MAX
-	if (probe->mediasize > INT64_MAX)
-		cfe_offset = INT64_MAX;
-#endif
-
-	while (cfe_offset > probe->blksize && probe->blksize > 0) {
-		cerr = cfe_readblk(probe->fd, cfe_offset, buf, sizeof(buf));
-
-		if (cerr == CFE_ERR_IOERR) {
-			/* Continue search at next block */
-			cfe_offset -= probe->blksize;
-
-			continue;
-
-		} else if (cerr == CFE_ERR_EOF || cerr == 0) {
-			/* Found partition EOF */
-			probe->size = (off_t)cfe_offset;
-			probe->have_size = true;
-
-			return (0);
-
-		} else if (cerr < 0) {
-			/* Read failed with an unknown error; this is expected
-			 * on some CFE releases where reading past EOF may
-			 * trigger an offset calculation bug */
-			if (log_readblk_err) {
-				G_CFE_LOG("cfe_readblk(%s, %#jx, ...) failed "
-				    "with unexpected error: %d\n", probe->dname,
-				    cfe_offset, cerr);
-
-				/* Only log the first failure */
-				log_readblk_err = false;
-			}
-
-			cfe_offset -= probe->blksize;
-
-			continue;
-
-		} else if (cerr > 0) {
-			/* Read succeeded. If we previously read an invalid
-			 * block, this is the last valid block in the
-			 * partition */
-			if (cfe_offset < probe->mediasize) {
-				probe->size = cfe_offset + probe->blksize;
-				probe->have_size = true;
-				return (0);
-			}
-
-			/* If this is our first read, our media size must be
-			 * incorrect; we calculated an invalid maximum read
-			 * offset */
-			G_CFE_LOG("%s partition extends beyond maximum "
-			    "expected CFE read offset %#" PRIx64 "\n",
-			    probe->dname, cfe_offset);
-
-			return (ENXIO);
-		}
-	}
-
-	/* Failed to locate final valid block */
-	return (ENXIO);
-}
-
-/**
  * If @p probe is a CFE bootloader partition, provide the expected zero
  * offset.
  */
 static int
-g_cfe_probe_part_boot(struct cfe_flash_probe *probe,
-    struct g_cfe_flash_probe_list *probes)
+g_cfe_probe_part_boot(struct g_consumer *cp, struct bcm_cfe_disk *disk,
+    struct bcm_cfe_part *part)
 {
+	// TODO
+	return (ENXIO);
+
+#if 0
 	uint32_t	magic[CFE_MAGIC_COUNT];
 	int		error;
 
@@ -814,15 +478,20 @@ g_cfe_probe_part_boot(struct cfe_flash_probe *probe,
 	G_CFE_LOG("%s: unrecognized CFE image at offset %#jx\n", probe->dname,
 	    (intmax_t)probe->offset);
 	return (ENXIO);
+#endif
 }
 
 /**
  * Determine offset of the NVRAM partition.
  */
 static int
-g_cfe_probe_part_nvram(struct cfe_flash_probe *probe,
-    struct g_cfe_flash_probe_list *probes)
+g_cfe_probe_part_nvram(struct g_consumer *cp, struct bcm_cfe_disk *disk,
+    struct bcm_cfe_part *part)
 {
+	// TODO
+	return (ENXIO);
+
+#if 0
 	struct g_cfe_probe_io	pio;
 	int			error, result;
 
@@ -877,6 +546,7 @@ g_cfe_probe_part_nvram(struct cfe_flash_probe *probe,
 	}
 
 	return (0);
+#endif
 }
 
 /**
@@ -884,8 +554,13 @@ g_cfe_probe_part_nvram(struct cfe_flash_probe *probe,
  * devices.
  */
 static int
-g_cfe_probe_part_config(struct cfe_flash_probe *probe,
-    struct g_cfe_flash_probe_list *probes)
+g_cfe_probe_part_config(struct g_consumer *cp, struct bcm_cfe_disk *disk,
+    struct bcm_cfe_part *part)
+{
+	// TODO
+	return (ENXIO);
+
+#if 0
 {
 	struct cfe_flash_probe	*boot;
 	u_char			*buf;
@@ -947,14 +622,15 @@ g_cfe_probe_part_config(struct cfe_flash_probe *probe,
 	}
 
 	return (0);
+#endif
 }
 
 /**
  * Determine size/offset of the TRX partition.
  */
 static int
-g_cfe_probe_part_trx(struct cfe_flash_probe *probe,
-    struct g_cfe_flash_probe_list *probes)
+g_cfe_probe_part_trx(struct g_consumer *cp, struct bcm_cfe_disk *disk,
+    struct bcm_cfe_part *part)
 {
 	// TODO
 #if 0
@@ -978,43 +654,22 @@ g_cfe_probe_part_trx(struct cfe_flash_probe *probe,
  * Determine offset of the OS partition.
  */
 static int
-g_cfe_probe_part_os(struct cfe_flash_probe *probe,
-    struct g_cfe_flash_probe_list *probes)
+g_cfe_probe_part_os(struct g_consumer *cp, struct bcm_cfe_disk *disk,
+    struct bcm_cfe_part *part)
 {
 	// TODO
 	return (ENXIO);
 }
 
 /**
- * Find the probe entry for the given CFE partition name in @p probes, if any.
+ * Read @p length bytes at @p offset from the partition mapped by @p part.
  * 
- * @param probes The list of probe entries to search for @p pname.
- * @param pname The CFE partition name to be found in @p probes.
- * 
- * @retval non-NULL	if found
- * @retval NULL		if @p pname is not found in @p probes.
- */
-static struct cfe_flash_probe *
-g_cfe_find_probe(struct g_cfe_flash_probe_list *probes, const char *pname)
-{
-	struct cfe_flash_probe *probe;
-
-	LIST_FOREACH(probe, probes, fp_link) {
-		if (strcmp(probe->pname, pname) == 0)
-			return (probe);
-	}
-
-	/* Not found */
-	return (NULL);
-}
-
-/**
- * Read @p length bytes at @p offset from the partition mapped by @p probe.
- * 
- * @param	probe	The probe entry mapping the partition be read.
+ * @param	cp	The GEOM consumer to be used for reading.
+ * @param	disk	The disk entry to be read.
+ * @param	part	The partition to be read.
  * @param[out]	outp	On success, @p length bytes will be written to
  *			this buffer.
- * @param	offset	The read offset within @p probe.
+ * @param	offset	The read offset within @p part.
  * @param	length	The number of bytes to be read.
  * 
  * @retval 0		success
@@ -1024,28 +679,31 @@ g_cfe_find_probe(struct g_cfe_flash_probe_list *probes, const char *pname)
  *			error code will be returned.
  */
 static int
-g_cfe_read_probe(struct cfe_flash_probe *probe, void *outp, off_t offset,
-    off_t length)
+g_cfe_read_part(struct g_consumer *cp, struct bcm_cfe_disk *disk,
+    struct bcm_cfe_part *part, void *outp, off_t offset, off_t length)
 {
 	uint8_t	*buf;
 	off_t	 sector, nbytes, sectorsize;
 	int	 error;
 
 	g_topology_assert();
-	sectorsize = probe->cp->provider->sectorsize;
+	sectorsize = cp->provider->sectorsize;
 
-	if (!probe->have_offset || !probe->have_size)
+	if (part->offset == BCM_CFE_INVALID_OFF)
+		return (ENXIO);
+
+	if (part->size == BCM_CFE_INVALID_SIZE)
 		return (ENXIO);
 
 	/* Check for possible overflows */
-	if (OFF_MAX - probe->offset < offset)
+	if (OFF_MAX - part->offset < offset)
 		return (ENXIO); /* probe->offset+offset would overflow */
 
 	if (OFF_MAX - offset < length)
 		return (ENXIO); /* offset+length would overflow */
 
 	/* Verify that the request falls within the partition's range */
-	if (probe->size < offset + length)
+	if (part->size < offset + length)
 		return (ENXIO);
 
 	/* Perform the block-aligned read */
@@ -1053,7 +711,7 @@ g_cfe_read_probe(struct cfe_flash_probe *probe, void *outp, off_t offset,
 	nbytes = roundup(length, sectorsize);
 
 	g_topology_unlock();
-	buf = g_read_data(probe->cp, sector, nbytes, &error);
+	buf = g_read_data(cp, sector, nbytes, &error);
 	g_topology_lock();
 
 	if (buf == NULL)
@@ -1065,6 +723,8 @@ g_cfe_read_probe(struct cfe_flash_probe *probe, void *outp, off_t offset,
 
 	return (0);
 }
+
+#if 0
 
 /**
  * Apply the given probe function to @p probe and validate the result. If
@@ -1152,113 +812,7 @@ g_cfe_try_probe(const struct g_cfe_probe_func_info *pfi,
 	return (0);
 }
 
-/**
- * Allocate, initialize, and return a new CFE flash prove instance
- * for the specified CFE device.
- * 
- * @param[out]	probe		On success, a newly allocated probe instance.
- * @param	cp		Flash GEOM consumer.
- * @param	dev		CFE device description.
- * @param	unit		CFE device unit.
- * @param	part		CFE partition name.
- * 
- * @retval 0		success
- * @retval ENOMEM	if allocation fails.
- * @retval ENODEV	if the specified device/partition does not exist.
- * @retval ENXIO	if probing for the specified device otherwise fails.
- */
-static int
-g_cfe_new_probe(struct cfe_flash_probe **probe,
-    struct g_consumer *cp, const struct cfe_flash_device *cfe_dev,
-    u_int cfe_unit, const char *cfe_part)
-{
-	struct cfe_flash_probe	*p;
-	int			 error, n;
-
-	p = malloc(sizeof(*p), M_BHND, M_WAITOK|M_ZERO);
-	p->dev = cfe_dev;
-	p->unit = cfe_unit;
-	p->fd = -1;
-	p->cp = cp;
-	p->readonly = false;
-	p->invalid = false;
-	p->have_offset = false;
-	p->have_size = false;
-
-	g_topology_assert();
-	p->mediasize = cp->provider->mediasize;
-	p->blksize = cp->provider->stripesize;
-
-	/* Some devices support flash block sizes smaller than G_CFE_MINALIGN;
-	 * on these devices, partitions are still aligned to G_CFE_MINALIGN */
-	if (p->blksize < G_CFE_MINALIGN) {
-		if ((G_CFE_MINALIGN % p->blksize) != 0) {
-			G_CFE_LOG("cannot round %#jx sector size to minimum "
-			   "partition alignment %#x\n", (intmax_t)p->blksize,
-			    G_CFE_MINALIGN);
-			g_cfe_free_probe(p);
-			return (ENXIO);
-		}
-
-		p->blksize = G_CFE_MINALIGN;
-	}
-
-	/* Format the full CFE device name */
-	n = snprintf(p->dname, sizeof(p->dname), "%s%u.%s",
-	    cfe_dev->cfe_name, cfe_unit, cfe_part);
-
-	if (n >= sizeof(p->dname)) {
-		g_cfe_free_probe(p);
-		return (ENOMEM);
-	}
-
-	/* Populate the CFE partition name */
-	if (strlen(cfe_part) >= sizeof(p->pname)) {
-		g_cfe_free_probe(p);
-		return (ENOMEM);
-	}
-
-	strlcpy(p->pname, cfe_part, sizeof(p->pname));
-
-	/* Try to open the device */
-	p->fd_noclose = false;
-	p->fd = cfe_open(p->dname);
-	if (p->fd == CFE_ERR_DEVOPEN) {
-		int fd;
-		
-		/* If already open, look for a shared handle */
-		fd = bcm_get_cfe_fd(bcm_get_platform(), p->dname);
-		if (fd >= 0) {
-			p->fd = fd;
-			p->fd_noclose = true;
-		}
-	}
-
-	if (p->fd < 0) {
-		if (p->fd == CFE_ERR_DEVNOTFOUND) {
-			error = ENODEV;
-		} else {
-			G_CFE_LOG("error opening CFE device %s: %d\n", p->dname,
-			    p->fd);
-			error = ENXIO;
-		}
- 
-		g_cfe_free_probe(p);
-		return (error);
-	}
-
-	*probe = p;
-	return (0);
-}
-
-static void
-g_cfe_free_probe(struct cfe_flash_probe *probe)
-{
-	if (probe->fd >= 0 && !probe->fd_noclose)
-		cfe_close(probe->fd);
-
-	free(probe, M_BHND);
-}
+#endif
 
 /**
  * Return the ChipCommon device to which @p dev is attached, or NULL if
@@ -1303,7 +857,7 @@ g_cfe_find_chipc_parent(device_t dev)
  * Return true if @p id declares support for flash @p type, false otherwise.
  */
 static bool
-g_cfe_flash_type_matches(const struct cfe_flash_device *id, chipc_flash type)
+g_cfe_flash_type_matches(const struct g_cfe_device *id, chipc_flash type)
 {
 	const chipc_flash *req;
 
@@ -1321,7 +875,7 @@ g_cfe_flash_type_matches(const struct cfe_flash_device *id, chipc_flash type)
  * 
  * @param cp The GEOM consumer to match against the supported device table.
  */
-static const struct cfe_flash_device *
+static const struct g_cfe_device *
 g_cfe_device_lookup(struct g_consumer *cp)
 {
 	int error;
@@ -1329,13 +883,13 @@ g_cfe_device_lookup(struct g_consumer *cp)
 	mtx_lock(&Giant);	/* for newbus */
 
 	/* Try to fetch the backing device */
-	for (size_t i = 0; i < nitems(cfe_flash_devices); i++) {
-		const struct cfe_flash_device	*id;
+	for (size_t i = 0; i < nitems(g_cfe_devices); i++) {
+		const struct g_cfe_device	*id;
 		const struct chipc_caps		*ccaps;
 		device_t			 chipc, dev;
 		size_t				 len;
 
-		id = &cfe_flash_devices[i];
+		id = &g_cfe_devices[i];
 		len = sizeof(dev);
 
 		/* Try to fetch the backing device */
@@ -1424,7 +978,7 @@ g_cfe_get_bootimg_info(struct cfe_bootimg_info *info)
 
 	if (imgvar == NULL) {
 		/* No dual/failsafe image support */
-		info->type = CFE_IMAGE_SIMPLE;
+		info->type = G_CFE_IMAGE_SIMPLE;
 		info->num_images	= 1;
 		info->bootimage		= 0;
 		info->offsets[0]	= 0;
@@ -1474,32 +1028,38 @@ g_cfe_get_bootimg_info(struct cfe_bootimg_info *info)
 }
 
 /**
- * Initialize a new GEOM-backed partition probe I/O context.
+ * Initialize a new GEOM-backed NVRAM I/O context.
  *
  * The caller is responsible for releasing all resources held by the returned
  * I/O context via bhnd_nvram_io_free().
  * 
- * @param[out]	io	On success, will be initialized as an I/O context for
- *			the given @p probe state.
- * @param	probe	The probe state to be used for reading.
+ * @param[out]	io	On success, will be initialized as an I/O context
+ *			mapping @p part from @p cp.
+ * @param	cp	The GEOM consumer to be used for reading.
+ * @param	disk	The CFE disk entry.
+ * @param	part	The CFE partition entry.
  *
  * @retval 0		success.
- * @retval EINVAL	if @p probe has not been populated with a valid offset
+ * @retval EINVAL	if @p part has not been populated with a valid offset
  *			and size.
- * @retval non-zero	if opening @p probe otherwise fails, a standard unix
+ * @retval non-zero	if opening @p part otherwise fails, a standard unix
  *			error will be returned.
  */
 static int
-g_cfe_probe_io_init(struct g_cfe_probe_io *pio, struct cfe_flash_probe *probe)
+g_cfe_nvram_io_init(struct g_cfe_nvram_io *io, struct g_consumer *cp,
+    struct bcm_cfe_disk *disk, struct bcm_cfe_part *part)
 {
-	pio->io.iops = &bhnd_nvram_g_cfeio_ops;
-	pio->probe = probe;
-	pio->last = NULL;
-	pio->last_off = 0x0;
-	pio->last_len = 0x0;
-
-	if (!probe->have_offset || !probe->have_size)
+	/* Size and offset are required */
+	if (part->size == BCM_CFE_INVALID_SIZE)
 		return (EINVAL);
+
+	if (part->offset == BCM_CFE_INVALID_OFF)
+		return (EINVAL);
+
+	io->io.iops = &bhnd_nvram_g_cfeio_ops;
+	io->cp = cp;
+	io->disk = disk;
+	io->part = part;
 
 	return (0);
 }
@@ -1507,18 +1067,14 @@ g_cfe_probe_io_init(struct g_cfe_probe_io *pio, struct cfe_flash_probe *probe)
 static void
 bhnd_nvram_g_cfeio_free(struct bhnd_nvram_io *io)
 {
-	struct g_cfe_probe_io *pio = (struct g_cfe_probe_io *)io;
-
-	/* All other resources are managed externally */
-	if (pio->last != NULL)
-		g_free(pio->last);
+	/* All resources are managed externally */
 }
 
 static size_t
 bhnd_nvram_g_cfeio_getsize(struct bhnd_nvram_io *io)
 {
-	struct g_cfe_probe_io *pio = (struct g_cfe_probe_io *)io;
-	return (pio->probe->size);
+	struct g_cfe_nvram_io *nio = (struct g_cfe_nvram_io *)io;
+	return (nio->part->size);
 }
 
 static int
@@ -1556,63 +1112,10 @@ static int
 bhnd_nvram_g_cfeio_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
     size_t nbytes)
 {
-	struct g_cfe_probe_io	*pio;
-	struct cfe_flash_probe	*probe;
-	uint8_t			*ptr;
-	off_t			 nread, sector, sectorsize;
-	int			 error;
+	struct g_cfe_nvram_io *nio = (struct g_cfe_nvram_io *)io;
 
-	pio = (struct g_cfe_probe_io *)io;
-	probe = pio->probe;
-
-	KASSERT(probe->have_offset, ("missing partition offset"));
-	KASSERT(probe->have_size, ("missing partition size"));
-
-	g_topology_assert();
-	sectorsize = probe->cp->provider->sectorsize;
-
-	/* partition_offset + request_offset must not overflow, and must fit
-	 * within our mapped partition */
-	if (OFF_MAX - probe->offset < offset || probe->size < offset) {
-		G_CFE_LOG("request for offset %#jx beyond end of device \n",
-		    (intmax_t)offset);
-		return (ENXIO);
-	}
-
-	/* request_offset + request_size must not overflow, and must fit
-	 * within our mapped partition */
-	if (SIZE_MAX - offset < nbytes || (offset + nbytes) > probe->size) {
-		G_CFE_LOG("invalid size at %#jx\n", (intmax_t)offset);
-		return (ENXIO);
-	}
-
-	sector = rounddown(probe->offset + offset, sectorsize);
-	nread = roundup(nbytes, sectorsize);
-
-	/* If required, perform a read; we try to re-use our last read sector */
-	if (pio->last == NULL || pio->last_off != sector ||
-	    pio->last_len < nread)
-	{
-		if (pio->last != NULL) {
-			g_free(pio->last);
-			pio->last = NULL;
-		}
-
-		g_topology_unlock();
-		pio->last = g_read_data(pio->probe->cp, sector, nread, &error);
-		g_topology_lock();
-
-		if (pio->last == NULL)
-			return (error);
-	}
-
-	/* Copy out the requested data */
-	KASSERT(pio->last != NULL, ("buffer went missing"));
-	ptr = pio->last;
-	ptr += ((probe->offset + offset) % sectorsize);
-	memcpy(buffer, ptr, nbytes);
-
-	return (0);
+	return (g_cfe_read_part(nio->cp, nio->disk, nio->part, buffer, offset,
+	    nbytes));
 }
 
 static struct g_class g_cfe_class = {

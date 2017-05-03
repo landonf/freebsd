@@ -40,12 +40,7 @@
 
 #include <dev/bhnd/cores/pmu/bhnd_pmuvar.h>
 
-#ifdef CFE
-#include "bcm_cfe_disk.h"
-
 #include "bcm_nvram_cfevar.h"
-#endif
-
 
 extern const struct bhnd_pmu_io	bcm_pmu_soc_io;
 
@@ -79,7 +74,6 @@ struct bcm_platform {
 
 #ifdef CFE
 	int			cfe_console;	/**< Console handle, or -1 */
-	struct bcm_cfe_disks	cfe_disks;	/**< Probed CFE disks (will be empty prior to SYS_SUB_KMEM) */
 #endif
 };
 
