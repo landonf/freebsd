@@ -457,6 +457,7 @@ bcm_cfe_disk_new(const char *drvname, u_int unit)
 	d->size = BCM_CFE_INVALID_SIZE;
 
 	SLIST_INIT(&d->parts);
+	d->num_parts = 0;
 
 	return (d);
 }
@@ -774,12 +775,15 @@ bcm_cfe_probe_disk(struct bcm_cfe_disk *disk, bool *skip_next)
 	struct bcm_cfe_part	*part, *pnext;
 	struct bcm_cfe_parts	 parts;
 	const char		*drvname;
+	size_t			 num_parts;
 	uint32_t		 quirks;
 	int			 error;
 
 	*skip_next = false;
 
 	SLIST_INIT(&parts);
+	num_parts = 0;
+
 	drvname = disk->drvname;
 
 	/* Iterate over all known partition names and register new partition
@@ -875,6 +879,16 @@ bcm_cfe_probe_disk(struct bcm_cfe_disk *disk, bool *skip_next)
 			goto failed;
 
 		SLIST_INSERT_HEAD(&parts, part, cp_link);
+
+		/* Update partition count */
+		if (num_parts == SIZE_MAX) {
+			BCM_DISK_ERR(disk, "cannot represent more than "
+			    "SIZE_MAX partitions\n");
+			error = ENOMEM;
+			goto failed;
+		} else {
+			num_parts++;
+		}
 	}
 
 	/* If no partitions were found, there's nothing to probe */
@@ -886,6 +900,9 @@ bcm_cfe_probe_disk(struct bcm_cfe_disk *disk, bool *skip_next)
 		SLIST_REMOVE_HEAD(&parts, cp_link);
 		SLIST_INSERT_HEAD(&disk->parts, part, cp_link);
 	}
+
+	/* Update the disk entry's partition count */
+	disk->num_parts = num_parts;
 
 	/* Probe for any CFE driver quirks */
 	if ((error = bcm_cfe_probe_driver_quirks(disk, &quirks)))

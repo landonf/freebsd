@@ -128,6 +128,7 @@ struct bcm_cfe_disk {
 	u_int			 unit;		/**< CFE device unit */
 	off_t			 size;		/**< media size, or BCM_CFE_INVALID_SIZE if unknown */
 	struct bcm_cfe_parts	 parts;		/**< identified partitions */
+	size_t			 num_parts;	/**< partition count */
 
 	SLIST_ENTRY(bcm_cfe_disk) cd_link;
 };
