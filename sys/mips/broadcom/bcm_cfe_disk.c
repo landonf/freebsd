@@ -266,15 +266,29 @@ static const char * const cfe_drv_names[] = {
  */
 static const char * const cfe_part_names[] = {
 	"boot",		/* CFE image */
-	"board_data",	/* Netgear device-specific HW config */
-	"brcmnand",	/* OS partition (ignored by CFE, NAND-only) */
-	"config",	/* MINIX filesystem used by Netgear WGT634U */
-	"devinfo",	/* Factory BCRM NVRAM on Linksys devices (EA6700) */
+	"brcmnand",	/* Writable OS partition (ignored by CFE) */
+	"config",	/* empty MINIX filesystem (found on Netgear WGT634U) */
 	"nvram",	/* BCRM NVRAM */
 	"os",		/* OS data */
 	"os2",		/* OS data (dual/failsafe image) */
 	"trx",		/* TRX data */
 	"trx2",		/* TRX data (dual/failsafe image) */
+
+	/* Linksys-specific partitions */
+	"devinfo",	/* Factory BCRM NVRAM */
+
+	/* Netgear/Foxcon-specific partitions */
+	"board_data",	/* Device-specific HW config */
+	"ML1",		/* Web interface localizations (ignored by CFE) */
+	"ML2",
+	"ML3",
+	"ML4",
+	"ML5",
+	"ML6",
+	"ML7",
+	"POT",		/* NTP timestamp logs + first associated STA MAC addr (ignored by CFE) */
+	"T_Meter1",	/* Traffic meter data (ignored by CFE) */
+	"T_Meter2",
 };
 
 /**
