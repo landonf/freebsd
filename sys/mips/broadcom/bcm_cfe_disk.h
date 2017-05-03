@@ -85,21 +85,21 @@ enum {
 	 * Reading at an offset past the partition's end will trigger a driver
 	 * bug.
 	 */
-	BCM_CFE_QUIRK_READBLK_EOF_CRASH	= (1<<8),
+	BCM_CFE_QUIRK_PART_EOF_CRASH	= (1<<8),
 
 	/**
 	 * Reading an offset+length range that extends past the partition's end
 	 * will return an IOERR, rather than performing a read over the
 	 * available bytes.
 	 */
-	BCM_CFE_QUIRK_READBLK_EOF_IOERR	= (1<<9),
+	BCM_CFE_QUIRK_PART_EOF_IOERR	= (1<<9),
 
 	/**
 	 * Reading past the partition end will succeed, returning bytes from
 	 * any subsequent partition until the actual end of the device is
 	 * reached.
 	 */
-	BCM_CFE_QUIRK_PART_OVERREAD	= (1<<10)
+	BCM_CFE_QUIRK_PART_EOF_OVERREAD	= (1<<10)
 };
 
 #define	BCM_CFE_QUIRK(_quirks, _cfe_quirk)			\
