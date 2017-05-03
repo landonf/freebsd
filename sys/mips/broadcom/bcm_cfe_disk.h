@@ -125,4 +125,13 @@ struct bcm_cfe_disk {
 	SLIST_ENTRY(bcm_cfe_disk) cd_link;
 };
 
+/**
+ * OS/TRX system partition types.
+ */
+typedef enum {
+	BCM_CFE_SYSPART_OS,	/**< os partition */
+	BCM_CFE_SYSPART_TRX,	/**< trx partition */
+	BCM_CFE_SYSPART_UNKNOWN	/**< other/unknown */
+} bcm_cfe_syspart_type;
+
 #endif /* _MIPS_BROADCOM_BCM_DISK_CFE_H_ */
