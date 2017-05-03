@@ -29,8 +29,8 @@
  * $FreeBSD$
  */
 
-#ifndef	_MIPS_BROADCOM_BCM_DISK_CFE_H_
-#define	_MIPS_BROADCOM_BCM_DISK_CFE_H_
+#ifndef	_MIPS_BROADCOM_BCM_CFE_DISK_H_
+#define	_MIPS_BROADCOM_BCM_CFE_DISK_H_
 
 #include <sys/param.h>
 #include <sys/queue.h>
@@ -142,4 +142,4 @@ typedef enum {
 	BCM_CFE_SYSPART_UNKNOWN	/**< other/unknown */
 } bcm_cfe_syspart_type;
 
-#endif /* _MIPS_BROADCOM_BCM_DISK_CFE_H_ */
+#endif /* _MIPS_BROADCOM_BCM_CFE_DISK_H_ */
