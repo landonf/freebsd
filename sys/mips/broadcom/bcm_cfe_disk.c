@@ -879,7 +879,7 @@ static int
 bcm_cfe_probe_part_readsize_slow(struct bcm_cfe_disk *disk,
     struct bcm_cfe_part *part, uint32_t quirks)
 {
-	off_t	size;
+	int64_t offset;
 
 	/* Skip if size has already been determined */
 	if (part->size != BCM_CFE_INVALID_SIZE)
@@ -887,25 +887,21 @@ bcm_cfe_probe_part_readsize_slow(struct bcm_cfe_disk *disk,
 
 	/*
 	 * On devices where we cannot read past EOF without potentially
-	 * triggering a crash, we have to read from the device sequentially,
-	 * using a two byte read that spans a known valid block, and a
-	 * potentially invalid block.
+	 * triggering a crash, we have to read from the device sequentially.
+	 * 
+	 * We limit the required I/O by using a two byte read that spans a
+	 * block boundary; if we read two bytes, both blocks are valid. If
+	 * we read 1 byte, only the first block is valid.
 	 */
-	size = 0;
+	offset = 0;
 	while (1) {
-		u_char		buf[2];
-		uint64_t	offset;
-		int		cerr;
+		u_char	buf[2];
+		int	cerr;
 
-		/* The next offset must not overflow the int64_t representation,
-		 * and must be representible as an off_t */
-		offset = size;
-		if (INT64_MAX - offset < BCM_CFE_PALIGN_MIN-1 ||
-		    offset > OFF_MAX ||
-		    OFF_MAX - offset < BCM_CFE_PALIGN_MIN-1)
-		{
+		/* Set offset to one byte before the page boundary */
+		if (INT64_MAX - offset < BCM_CFE_PALIGN_MIN-1) {
 			BCM_DISK_ERR("CFE %s computed size %#jx exceeds "
-			    "maximum supported offset\n", part->devname,
+			    "maximum read offset\n", part->devname,
 			    (intmax_t)offset);
 
 			return (ENXIO);
@@ -914,19 +910,19 @@ bcm_cfe_probe_part_readsize_slow(struct bcm_cfe_disk *disk,
 		offset += BCM_CFE_PALIGN_MIN-1;
 
 		/* Attempt read */
-		KASSERT(sizeof(buf) == 2, ("invalid buffer size"));
-		cerr = cfe_readblk(part->fd, offset, buf, 2);
+		cerr = cfe_readblk(part->fd, offset, buf, sizeof(buf));
 
 		if (cerr == CFE_ERR_IOERR &&
 		    BCM_CFE_DRV_QUIRK(quirks, READBLK_EOF_IOERR))
 		{
 			/* Some drivers fail to truncate the two byte read; try
 			 * reading a single byte */
+			_Static_assert(sizeof(buf) >= 1, "invalid buffer size");
 			cerr = cfe_readblk(part->fd, offset, buf, 1);
 		}
 
 		if (cerr >= 1) {
-			size += BCM_CFE_PALIGN_MIN;
+			offset += 1;
 
 			/* Have we hit the final block? */
 			if (cerr == 1)
@@ -940,12 +936,16 @@ bcm_cfe_probe_part_readsize_slow(struct bcm_cfe_disk *disk,
 		}
 	}
 
-#if UINT_MAX > OFF_MAX
-	/* This is ensured by the read loop overflow check above */
-	KASSERT(offset <= OFF_MAX, ("invalid offset"));
+#if INT64_MAX > OFF_MAX
+	if (offset > OFF_MAX) {
+		BCM_DISK_ERR("CFE %s computed size %#jx exceeds "
+		    "maximum supported offset\n", part->devname,
+		    (intmax_t)offset);
+		return (ENXIO);
+	}
 #endif
 
-	part->size = size;
+	part->size = (off_t)offset;
 	return (0);
 }
 
