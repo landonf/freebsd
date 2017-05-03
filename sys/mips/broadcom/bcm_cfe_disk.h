@@ -103,7 +103,6 @@ enum {
  * CFE-probed partition description.
  */
 struct bcm_cfe_part {
-	struct bcm_cfe_disk	*disk;		/**< borrowed reference to parent disk */
 	char			*devname;	/**< CFE device name (e.g. 'nflash0.boot') */
 	const char		*label;		/**< CFE partition label */
 	int			 fd;		/**< CFE handle, or -1 if unopened */
