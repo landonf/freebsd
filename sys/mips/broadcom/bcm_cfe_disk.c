@@ -325,28 +325,83 @@ static const struct bcm_cfe_syspart {
 	{ "os2",	"trx2" }
 };
 
+
+/* Ascending comparison of partition offset */
+static int
+compare_part_offset_asc(const void *lhs, const void *rhs)
+{
+	struct bcm_cfe_part	*lpart, *rpart;
+	off_t			 loff, roff;
+
+	lpart = (*(struct bcm_cfe_part * const *) lhs);
+	rpart = (*(struct bcm_cfe_part * const *) rhs);
+
+	loff = lpart->offset;
+	roff = rpart->offset;
+
+	/* Handle missing offset values; a missing value is always ordered
+	 * after any valid value */
+	if (loff == BCM_CFE_INVALID_OFF || roff == BCM_CFE_INVALID_OFF) {
+		if (loff != BCM_CFE_INVALID_OFF) {
+			/* LHS has an offset value, RHS does not */
+			return (-1);
+		} else if (roff != BCM_CFE_INVALID_OFF) {
+			/* RHS has an offset value, LHS does not */
+			return (1);
+		} else {
+			/* Neither has an offset value */
+			return (0);
+		}
+	}
+
+	/* Simple ascending order */
+	if (loff < roff) {
+		return (-1);
+	} else if (loff > roff) {
+		return (1);
+	} else {
+		return (0);
+	}
+}
+
 /**
  * Print all disks and partitions in @p disks to the console.
  */
 static void
 bcm_cfe_print_disks(struct bcm_cfe_disks *disks)
 {
-	struct bcm_cfe_disk *disk;
-	struct bcm_cfe_part *part;
+	struct bcm_cfe_disk	*disk;
+	struct bcm_cfe_part	*part, **parts;
+	size_t			 part_idx;
 
 	SLIST_FOREACH(disk, disks, cd_link) {
 		printf("CFE disk %s%u:\n", disk->drvname, disk->unit);
 
-		SLIST_FOREACH(part, &disk->parts, cp_link) {
-			printf("    %-12s", part->label);
+		/* Sort partitions by offset, ascending */
+		part_idx = 0;
+		parts = malloc(sizeof(*parts) * disk->num_parts, M_BCM_CDISK,
+		    M_WAITOK);
 
-			if (part->offset != BCM_CFE_INVALID_OFF)
-				printf("0x%08jx", (intmax_t)part->offset);
+		SLIST_FOREACH(part, &disk->parts, cp_link) {
+			KASSERT(part_idx < disk->num_parts,
+			    ("incorrect partition count"));
+
+			parts[part_idx++] = part;
+		}
+
+		qsort(parts, disk->num_parts, sizeof(*parts),
+		    compare_part_offset_asc);
+
+		for (size_t i = 0; i < disk->num_parts; i++) {
+			printf("    %-12s", parts[i]->label);
+
+			if (parts[i]->offset != BCM_CFE_INVALID_OFF)
+				printf("0x%08jx", (intmax_t)parts[i]->offset);
 			else
 				printf("%8s", "unknown");
 
-			if (part->size != BCM_CFE_INVALID_SIZE)
-				printf("+0x%08jx", (intmax_t)part->size);
+			if (parts[i]->size != BCM_CFE_INVALID_SIZE)
+				printf("+0x%08jx", (intmax_t)parts[i]->size);
 			else
 				printf("+%-8s", "unknown");
 
