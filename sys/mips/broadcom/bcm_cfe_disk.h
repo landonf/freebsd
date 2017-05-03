@@ -55,49 +55,56 @@ void			 bcm_cfe_disk_free(struct bcm_cfe_disk *disk);
  */
 enum {
 	/** No quirks */
-	BCM_CFE_DRV_QUIRK_NONE			= 0,
+	BCM_CFE_QUIRK_NONE		= 0,
 
 	/** IOCTL_FLASH_GETINFO always returns an invalid offset */
-	BCM_CFE_DRV_QUIRK_FLASH_INV_OFF		= (1<<1),
+	BCM_CFE_QUIRK_FLASH_INV_OFF	= (1<<1),
 
 	/** IOCTL_FLASH_GETINFO always returns an invalid size */
-	BCM_CFE_DRV_QUIRK_FLASH_INV_SIZE	= (1<<2),
+	BCM_CFE_QUIRK_FLASH_INV_SIZE	= (1<<2),
 
 	/* IOCTL_NVRAM_GETINFO (incorrectly) returns the size of the actual
 	 * partition, and may be used to determine partition size. */
-	BCM_CFE_DRV_QUIRK_NVRAM_PART_SIZE	= (1<<3),
+	BCM_CFE_QUIRK_NVRAM_PART_SIZE	= (1<<3),
 
 	/** IOCTL_NVRAM_GETINFO is not supported */
-	BCM_CFE_DRV_QUIRK_NVRAM_UNAVAIL		= (1<<4),
+	BCM_CFE_QUIRK_NVRAM_UNAVAIL	= (1<<4),
 
 	/** IOCTL_FLASH_GETINFO always returns an offset of 0x0 */
-	BCM_CFE_DRV_QUIRK_FLASH_ZERO_OFF	= (1<<5) | BCM_CFE_DRV_QUIRK_FLASH_INV_OFF,
+	BCM_CFE_QUIRK_FLASH_ZERO_OFF	= (1<<5) | BCM_CFE_QUIRK_FLASH_INV_OFF,
 
 	/** IOCTL_FLASH_GETINFO returns the physical flash base as the partition
 	 *  offset */
-	BCM_CFE_DRV_QUIRK_FLASH_PHYS_OFF	= (1<<6) | BCM_CFE_DRV_QUIRK_FLASH_INV_OFF,
+	BCM_CFE_QUIRK_FLASH_PHYS_OFF	= (1<<6) | BCM_CFE_QUIRK_FLASH_INV_OFF,
 
 	/** IOCTL_FLASH_GETINFO always returns the total flash size (not
 	  * the size of the actual partition) */
-	BCM_CFE_DRV_QUIRK_FLASH_TOTAL_SIZE	= (1<<7) | BCM_CFE_DRV_QUIRK_FLASH_INV_SIZE,
+	BCM_CFE_QUIRK_FLASH_TOTAL_SIZE	= (1<<7) | BCM_CFE_QUIRK_FLASH_INV_SIZE,
 
 	/**
 	 * Reading at an offset past the partition's end will trigger a driver
 	 * bug.
 	 */
-	BCM_CFE_DRV_QUIRK_READBLK_EOF_CRASH	= (1<<8),
+	BCM_CFE_QUIRK_READBLK_EOF_CRASH	= (1<<8),
 
 	/**
 	 * Reading an offset+length range that extends past the partition's end
 	 * will return an IOERR, rather than performing a read over the
 	 * available bytes.
 	 */
-	BCM_CFE_DRV_QUIRK_READBLK_EOF_IOERR	= (1<<9),
+	BCM_CFE_QUIRK_READBLK_EOF_IOERR	= (1<<9),
+
+	/**
+	 * Reading past the partition end will succeed, returning bytes from
+	 * any subsequent partition until the actual end of the device is
+	 * reached.
+	 */
+	BCM_CFE_QUIRK_PART_OVERREAD	= (1<<10)
 };
 
-#define	BCM_CFE_DRV_QUIRK(_quirks, _cfe_quirk)			\
-	(((_quirks) & BCM_CFE_DRV_QUIRK_ ## _cfe_quirk) ==	\
-	    BCM_CFE_DRV_QUIRK_ ## _cfe_quirk)
+#define	BCM_CFE_QUIRK(_quirks, _cfe_quirk)			\
+	(((_quirks) & BCM_CFE_QUIRK_ ## _cfe_quirk) ==	\
+	    BCM_CFE_QUIRK_ ## _cfe_quirk)
 
 /**
  * CFE-probed partition description.
