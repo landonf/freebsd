@@ -45,9 +45,6 @@
 /* CFE binary magic */
 #define	CFE_MAGIC		0x43464531	/**< 'CFE1' */
 #define	CFE_MAGIC_OFFSET	0x4E0		/**< CFE magic offset */
-#define	CFE_MAGIC_COUNT		2		/**< CFE magic count */
-#define	CFE_MAGIC_0		0		/**< 1st CFE magic constant */
-#define	CFE_MAGIC_1		1		/**< 2nd CFE magic constant */
 
 /* Self-describing compressed CFEZ binary magic */
 #define	CFE_BISZ_OFFSET		0x3E0
@@ -66,20 +63,55 @@ struct g_cfe_softc {
 };
 
 /**
- * GEOM-backed bhnd_nvram_io implementation.
+ * GEOM BCM_CFE device taste context
+ */
+struct g_cfe_taste_io {
+	struct g_consumer	*cp;		/**< GEOM consumer (borrowed reference) */
+	struct bcm_cfe_disk	*disk;		/**< disk entry (borrowed reference) */
+	off_t			 palign;	/**< minimum partition alignment */
+	u_char			*buf;		/**< last read sector(s), or NULL */
+	off_t			 buf_off;	/**< offset of last read */
+	off_t			 buf_len;	/**< length of last read */
+};
+
+/**
+ * GEOM BCM_CFE partition probe function.
  * 
- * Provides GEOM-backed I/O mapping of a probed flash partition.
+ * @param io	The I/O context to be used for reading.
+ * @param block	The block offset to be probed.
+ * 
+ * @retval non-NULL	the identified partition
+ * @retval NULL		no match
+ */
+typedef struct bcm_cfe_part *(g_cfe_part_probe)(struct g_cfe_taste_io *io,
+						    off_t block);
+
+/**
+ * GEOM BCM_CFE partition probe description.
+ */
+struct g_cfe_part_probe_info {
+	const char		*name;	/**< human-readable description */
+	g_cfe_part_probe	*func;	/**< probe function */
+};
+
+SET_DECLARE(g_cfe_part_probe_set, struct g_cfe_part_probe_info);
+
+#define	G_CFE_DEFINE_PART_PROBE(_name, _func)				\
+	static const struct g_cfe_part_probe_info _func ## _info = {	\
+		.name	= (_name),					\
+		.func	= (_func),					\
+	};								\
+	DATA_SET(g_cfe_part_probe_set, _func ## _info)
+
+/**
+ * GEOM-backed bhnd_nvram_io implementation, for use when probing an NVRAM
+ * partition.
  */
 struct g_cfe_nvram_io {
 	struct bhnd_nvram_io	 io;		/**< common I/O instance state */
-	struct g_consumer	*cp;		/**< GEOM consumer */
-	struct bcm_cfe_disk	*disk;		/**< disk entry */
+	struct g_cfe_taste_io	*taste;		/**< GEOM I/O state */
 	struct bcm_cfe_part	*part;		/**< partition entry */
 };
-
-/** GEOM CFE flash probe function */
-typedef int (g_cfe_probe)(struct g_consumer *cp, struct bcm_cfe_disk *disk,
-			      struct bcm_cfe_part *part);
 
 /**
  * CFE operating system image layout types.

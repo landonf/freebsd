@@ -365,49 +365,61 @@ compare_part_offset_asc(const void *lhs, const void *rhs)
 }
 
 /**
- * Print all disks and partitions in @p disks to the console.
+ * Print the @p disk partition map to the console.
  */
-static void
-bcm_cfe_print_disks(struct bcm_cfe_disks *disks)
+void
+bcm_cfe_print_disk(struct bcm_cfe_disk *disk)
 {
-	struct bcm_cfe_disk	*disk;
 	struct bcm_cfe_part	*part, **parts;
 	size_t			 part_idx;
 
-	SLIST_FOREACH(disk, disks, cd_link) {
-		printf("CFE disk %s%u:\n", disk->drvname, disk->unit);
+	printf("CFE disk %s%u:\n", disk->drvname, disk->unit);
 
-		/* Sort partitions by offset, ascending */
-		part_idx = 0;
-		parts = malloc(sizeof(*parts) * disk->num_parts, M_BCM_CDISK,
-		    M_WAITOK);
+	/* Sort partitions by offset, ascending */
+	part_idx = 0;
+	parts = malloc(sizeof(*parts) * disk->num_parts, M_BCM_CDISK,
+	    M_WAITOK);
 
-		SLIST_FOREACH(part, &disk->parts, cp_link) {
-			KASSERT(part_idx < disk->num_parts,
-			    ("incorrect partition count"));
+	SLIST_FOREACH(part, &disk->parts, cp_link) {
+		KASSERT(part_idx < disk->num_parts,
+		    ("incorrect partition count"));
 
-			parts[part_idx++] = part;
-		}
-
-		qsort(parts, disk->num_parts, sizeof(*parts),
-		    compare_part_offset_asc);
-
-		for (size_t i = 0; i < disk->num_parts; i++) {
-			printf("    %-12s", parts[i]->label);
-
-			if (parts[i]->offset != BCM_CFE_INVALID_OFF)
-				printf("0x%08jx", (intmax_t)parts[i]->offset);
-			else
-				printf("%8s", "unknown");
-
-			if (parts[i]->size != BCM_CFE_INVALID_SIZE)
-				printf("+0x%08jx", (intmax_t)parts[i]->size);
-			else
-				printf("+%-8s", "unknown");
-
-			printf("\n");
-		}
+		parts[part_idx++] = part;
 	}
+
+	qsort(parts, disk->num_parts, sizeof(*parts),
+	    compare_part_offset_asc);
+
+	for (size_t i = 0; i < disk->num_parts; i++) {
+		printf("    %-12s", parts[i]->label);
+
+		if (parts[i]->offset != BCM_CFE_INVALID_OFF)
+			printf("0x%08jx", (intmax_t)parts[i]->offset);
+		else
+			printf("%8s", "unknown");
+
+		if (parts[i]->size != BCM_CFE_INVALID_SIZE)
+			printf("+0x%08jx", (intmax_t)parts[i]->size);
+		else
+			printf("+%-8s", "unknown");
+
+		printf("\n");
+	}
+
+	free(parts, M_BCM_CDISK);
+}
+
+/**
+ * Print all disks and partitions in @p disks to the console.
+ */
+void
+bcm_cfe_print_disks(struct bcm_cfe_disks *disks)
+{
+	struct bcm_cfe_disk	*disk;
+
+
+	SLIST_FOREACH(disk, disks, cd_link)
+		bcm_cfe_print_disk(disk);
 }
 
 /**
@@ -467,9 +479,6 @@ bcm_cfe_probe_disks(struct bcm_cfe_disks *result)
 		}
 	}
 
-	if (bootverbose)
-		bcm_cfe_print_disks(&disks);
-
 	/* Move all records to the result list */
 	SLIST_FOREACH_SAFE(disk, &disks, cd_link, dnext) {
 		KASSERT(disk == SLIST_FIRST(&disks), ("non-head enumeration"));
@@ -477,8 +486,6 @@ bcm_cfe_probe_disks(struct bcm_cfe_disks *result)
 
 		SLIST_INSERT_HEAD(result, disk, cd_link);
 	}
-
-	panic("yeeeehaw!");
 
 	return (0);
 
@@ -524,6 +531,114 @@ void
 bcm_cfe_disk_free(struct bcm_cfe_disk *disk)
 {
 	free(disk, M_BCM_CDISK);
+}
+
+/**
+ * Return the first entry in @p disks matching @p drvname and @p unit, or NULL
+ * if not found.
+ * 
+ * @param disks		List of disks to be searched.
+ * @param drvname	CFE device class name
+ * @param unit		CFE device unit.
+ */
+struct bcm_cfe_disk *
+bcm_cfe_find_disk(struct bcm_cfe_disks *disks, const char *drvname, u_int unit)
+{
+	struct bcm_cfe_disk *disk;
+
+	SLIST_FOREACH(disk, disks, cd_link) {
+		if (strcmp(disk->drvname, drvname) != 0)
+			continue;
+
+		if (disk->unit != unit)
+			continue;
+
+		/* Match */
+		return (disk);
+	}
+
+	/* Not found */
+	return (NULL);
+}
+
+/**
+ * Return the first entry in @p parts matching @p label, or NULL
+ * if not found.
+ * 
+ * @param parts	List of partitions to be searched.
+ * @param label	CFE partition label.
+ */
+struct bcm_cfe_part *
+bcm_cfe_parts_find(struct bcm_cfe_parts *parts, const char *label)
+{
+	struct bcm_cfe_part *part;
+
+	SLIST_FOREACH(part, parts, cp_link) {
+		if (strcmp(part->label, label) == 0)
+			return (part);
+	}
+
+	/* Not found */
+	return (NULL);
+}
+
+/**
+ * Return the first entry in @p parts with the given @p offset, or NULL
+ * if not found.
+ * 
+ * @param parts		List of partitions to be searched.
+ * @param offset	CFE partition offset.
+ */
+struct bcm_cfe_part *
+bcm_cfe_parts_find_offset(struct bcm_cfe_parts *parts, off_t offset)
+{
+	struct bcm_cfe_part *part;
+
+	/* An invalid offset matches nothing */
+	if (offset == BCM_CFE_INVALID_OFF)
+		return (NULL);
+
+	SLIST_FOREACH(part, parts, cp_link) {
+		if (part->offset == offset)
+			return (part);
+	}
+
+	/* Not found */
+	return (NULL);
+}
+
+/**
+ * Find the first partition with @p label and either an unknown offset,
+ * or an offset matching @p offset.
+ * 
+ * @param parts		List of partitions to be searched.
+ * @param label		Required label, or NULL to match on any label.
+ * @param offset	Required offset, or BCM_CFE_INVALID_OFF to match on any
+ *			offset.
+ */
+struct bcm_cfe_part *
+bcm_cfe_parts_match(struct bcm_cfe_parts *parts, const char *label,
+    off_t offset)
+{
+	struct bcm_cfe_part *part;
+
+	SLIST_FOREACH(part, parts, cp_link) {
+		if (label != NULL && strcmp(part->label, label) != 0)
+			continue;
+
+		if (offset != BCM_CFE_INVALID_OFF &&
+		    part->offset != BCM_CFE_INVALID_OFF &&
+		    part->offset != offset)
+		{
+			continue;
+		}
+
+		/* Found match */
+		return (part);
+	}
+
+	/* Not found */
+	return (NULL);
 }
 
 /**
@@ -1080,6 +1195,42 @@ bcm_cfe_part_free(struct bcm_cfe_part *part)
 
 	free(part->devname, M_BCM_CDISK);
 	free(part, M_BCM_CDISK);
+}
+
+/**
+ * Return the offset+length of @p part, or BCM_CFE_INVALID_OFF if unavailable.
+ */
+off_t
+bcm_cfe_part_get_end(struct bcm_cfe_part *part)
+{
+	if (part->offset == BCM_CFE_INVALID_OFF)
+		return (BCM_CFE_INVALID_OFF);
+
+	if (part->size == BCM_CFE_INVALID_SIZE)
+		return (BCM_CFE_INVALID_OFF);
+
+	KASSERT(OFF_MAX - part->offset >= part->size, ("offset overflow"));
+
+	return (part->offset + part->size);
+}
+
+/**
+ * Return the offset of the next valid block following @p part, or
+ * BCM_CFE_INVALID_OFF if unavailable.
+ *
+ * @param part	The partion entry to query.
+ * @param align	The partition alignment to be assumed when computing the next
+ *		offset.
+ */
+off_t
+bcm_cfe_part_get_next(struct bcm_cfe_part *part, off_t align)
+{
+	off_t end;
+
+	if ((end = bcm_cfe_part_get_end(part)) == BCM_CFE_INVALID_OFF)
+		return (BCM_CFE_INVALID_OFF);
+
+	return (roundup(end, align));
 }
 
 static int

@@ -50,6 +50,23 @@ int			 bcm_cfe_probe_disks(struct bcm_cfe_disks *result);
 struct bcm_cfe_disk	*bcm_cfe_disk_new(const char *drvname, u_int unit);
 void			 bcm_cfe_disk_free(struct bcm_cfe_disk *disk);
 
+void			 bcm_cfe_print_disk(struct bcm_cfe_disk *disk);
+void			 bcm_cfe_print_disks(struct bcm_cfe_disks *disks);
+
+struct bcm_cfe_disk	*bcm_cfe_find_disk(struct bcm_cfe_disks *disks,
+			     const char *drvname, u_int unit);
+
+off_t			 bcm_cfe_part_get_end(struct bcm_cfe_part *part);
+off_t			 bcm_cfe_part_get_next(struct bcm_cfe_part *part,
+			     off_t align);
+
+struct bcm_cfe_part	*bcm_cfe_parts_find(struct bcm_cfe_parts *parts,
+			     const char *label);
+struct bcm_cfe_part	*bcm_cfe_parts_find_offset(struct bcm_cfe_parts *parts,
+			     off_t offset);
+struct bcm_cfe_part	*bcm_cfe_parts_match(struct bcm_cfe_parts *parts,
+			     const char *label, off_t offset);
+
 /**
  * CFE flash device driver quirks.
  */
