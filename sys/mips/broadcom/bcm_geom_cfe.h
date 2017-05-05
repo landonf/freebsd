@@ -110,7 +110,8 @@ SET_DECLARE(g_cfe_part_probe_set, struct g_cfe_part_probe_info);
 struct g_cfe_nvram_io {
 	struct bhnd_nvram_io	 io;		/**< common I/O instance state */
 	struct g_cfe_taste_io	*taste;		/**< GEOM I/O state */
-	struct bcm_cfe_part	*part;		/**< partition entry */
+	off_t			 offset;	/**< base I/O offset */
+	off_t			 size;		/**< number of bytes readable at base I/O offset */
 };
 
 /**

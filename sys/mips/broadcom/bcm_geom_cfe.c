@@ -97,11 +97,6 @@ static int				 g_cfe_taste_read(
 					     struct g_cfe_taste_io *io,
 					     off_t base, off_t offset,
 					     void *buf, off_t len);
-static int				 g_cfe_taste_read_part(
-					     struct g_cfe_taste_io *io,
-					     struct bcm_cfe_part *part,
-					     off_t offset, void *buf,
-					     off_t len);
 
 static int				 g_cfe_parse_parts(
 					     struct g_cfe_taste_io *io);
@@ -112,7 +107,7 @@ static int				 g_cfe_get_bootimg_info(
 static int				 g_cfe_nvram_io_init(
 					     struct g_cfe_nvram_io *io,
 					     struct g_cfe_taste_io *taste,
-					     struct bcm_cfe_part *part);
+					     off_t offset, off_t size);
 
 /*
  * Supported CFE/GEOM flash devices.
@@ -324,9 +319,7 @@ g_cfe_taste(struct g_class *mp, struct g_provider *pp, int insist)
 	}
 
 	// TODO
-	(void)g_cfe_nvram_io_init;
 	bcm_cfe_print_disk(disk);
-
 	printf("MATCH\n");
 	
 	// TODO
@@ -496,154 +489,6 @@ g_cfe_config(struct gctl_req *req, struct g_class *mp, const char *verb)
 
 }
 
-// TODO
-#if 0
-/**
- * If @p probe is a CFE bootloader partition, provide the expected zero
- * offset.
- */
-static int
-g_cfe_probe_part_boot(struct g_consumer *cp, struct bcm_cfe_disk *disk,
-    struct bcm_cfe_part *part)
-{
-	uint32_t	magic[CFE_MAGIC_COUNT];
-	int		error;
-
-	/* Must be a boot partition */
-	if (strcmp(probe->pname, "boot") != 0)
-		return (ENXIO);
-
-	/* Skip if a valid offset was already probed */
-	if (!probe->have_offset) {
-		probe->have_offset = true;
-		probe->offset = 0x0;
-	}
-
-	/* Standard CFE image? */
-	error = g_cfe_read_probe(probe, magic, CFE_MAGIC_OFFSET, sizeof(magic));
-	if (!error) {
-		if (magic[CFE_MAGIC_0] == CFE_MAGIC &&
-		    magic[CFE_MAGIC_1] == CFE_MAGIC)
-		{
-			return (0);
-		}
-	}
-
-	/* Self-decompressing CFEZ image? */
-	error = g_cfe_read_probe(probe, magic, CFE_BISZ_OFFSET, sizeof(*magic));
-	if (!error) {
-		if (magic[CFE_MAGIC_0] == CFE_BISZ_MAGIC)
-			return (0);
-	}
-
-	/* Unrecognized */
-	G_CFE_LOG("%s: unrecognized CFE image at offset %#jx\n", probe->dname,
-	    (intmax_t)probe->offset);
-	return (ENXIO);
-}
-
-/**
- * Determine offset of the NVRAM partition.
- */
-static int
-g_cfe_probe_part_nvram(struct g_consumer *cp, struct bcm_cfe_disk *disk,
-    struct bcm_cfe_part *part)
-{
-	struct g_cfe_probe_io	pio;
-	int			error, result;
-
-	/* Recognized NVRAM formats, in probe order. */
-	bhnd_nvram_data_class * const nvram_classes[] = {
-		&bhnd_nvram_bcm_class,
-		&bhnd_nvram_tlv_class
-	};
-
-	/* Must be an NVRAM partition */
-	if (strcmp(probe->pname, "nvram") != 0)
-		return (ENXIO);	
-
-	/* Skip if a valid offset was already probed */
-	if (!probe->have_offset) {
-		/* Invalid size? */
-		if (probe->size > probe->mediasize) {
-			G_CFE_LOG("cannot determine %s offset: invalid size "
-			    "%#jx\n", probe->dname, (intmax_t)probe->size);
-			return (ENXIO);
-		}
-
-		/* The NVRAM partition is always positioned at the end of the
-		 * flash image; we need the size to determine the offset */
-		if (!probe->have_size)
-			return (ENXIO);
-
-		probe->have_offset = true;
-		probe->offset = rounddown(probe->mediasize - probe->size,
-		    probe->blksize);
-	}
-
-	/* Initialize our mapping NVRAM I/O context */
-	if ((error = g_cfe_probe_io_init(&pio, probe)))
-		return (error);
-
-	/* Check for NVRAM magic */
-	for (size_t i = 0; i < nitems(nvram_classes); i++) {
-		result = bhnd_nvram_data_probe(nvram_classes[i], &pio.io);
-		if (result <= 0)
-			break;
-	}
-
-	/* Clean up our I/O context */
-	bhnd_nvram_io_free(&pio.io);
-
-	if (result > 0) {
-		G_CFE_LOG("%s: unrecognized NVRAM image at offset %#jx\n",
-		    probe->dname, (intmax_t)probe->offset);
-
-		return (ENXIO);
-	}
-
-	return (0);
-}
-
-
-/**
- * Determine size/offset of the TRX partition.
- */
-static int
-g_cfe_probe_part_trx(struct g_consumer *cp, struct bcm_cfe_disk *disk,
-    struct bcm_cfe_part *part)
-{
-	// TODO
-#if 0
-	struct cfe_flash_probe	*os;
-	const char		*trx_names[] = { "trx", "trx1", "trx2" };
-	const char		*os_names[] = { "os", "os1", "os2" };
-
-	/* Must be a trx partition */
-	for (size_t i = 0; i < nitems(trx_names); i++) {
-		// TODO
-		if (strcmp(probe->pname, "config") != 0)
-			return (ENXIO);
-	}
-#endif
-
-	// TODO
-	return (ENXIO);
-}
-
-/**
- * Determine offset of the OS partition.
- */
-static int
-g_cfe_probe_part_os(struct g_consumer *cp, struct bcm_cfe_disk *disk,
-    struct bcm_cfe_part *part)
-{
-	// TODO
-	return (ENXIO);
-}
-
-#endif
-
 /**
  * Return the ChipCommon device to which @p dev is attached, or NULL if
  * not attached via ChipCommon.
@@ -725,18 +570,12 @@ g_cfe_taste_init(struct g_cfe_taste_io *io, struct g_consumer *cp,
 	io->buf = NULL; 
 	io->buf_off = 0x0;
 	io->buf_len = 0x0;
+	io->palign = BCM_CFE_PALIGN_MIN;
 
-	/* Partitions are aligned to either the flash block size, or
-	 * BCM_CFE_PALIGN_MIN, whichever is greater */
+	/* Sanity check our alignment */
 	g_topology_assert();
 	mediasize = cp->provider->mediasize;
 	stripesize = cp->provider->stripesize;
-
-	if (stripesize >= BCM_CFE_PALIGN_MIN)
-		io->palign = stripesize;
-	else {
-		io->palign = BCM_CFE_PALIGN_MIN;
-	}
 
 	if ((stripesize % io->palign) != 0) {
 		G_CFE_LOG("misaligned flash block size %#jx\n",
@@ -828,50 +667,6 @@ g_cfe_taste_read(struct g_cfe_taste_io *io, off_t base, off_t offset, void *buf,
 	return (0);
 }
 
-
-/**
- * Read @p len bytes from @p io at an offset relative to @p part.
- * 
- * @param	io	The GEOM taste I/O context to be used for reading.
- * @param	part	The partition to be read.
- * @param	offset	The read offset within @p part.
- * @param[out]	buf	On success, @p len bytes will be written to this buffer.
- * @param	len	The number of bytes to be read.
- * 
- * @retval 0		success
- * @retval ENXIO	if @p part is not NULL, and the partition's offset or
- *			size are unknown.
- * @retval ENXIO	if the request is beyond the disk or partition's total
- *			size.
- * @retval non-zero	if the read otherwise fails, a regular unix
- *			error code will be returned.
- */
-static int
-g_cfe_taste_read_part(struct g_cfe_taste_io *io, struct bcm_cfe_part *part,
-    off_t offset, void *buf, off_t len)
-{
-	off_t mediasize;
-
-	g_topology_assert();
-	mediasize = io->cp->provider->mediasize;
-
-	/* Validate our partition's size and offset */
-	if (part->offset == BCM_CFE_INVALID_OFF)
-		return (ENXIO);
-
-	if (part->size == BCM_CFE_INVALID_SIZE)
-		return (ENXIO);
-
-	if (part->size > mediasize || mediasize - part->size < part->offset)
-		return (ENXIO);
-
-	/* Verify that the request falls within the partition range */
-	if (len > part->size || part->size - len < offset)
-		return (ENXIO); /* offset+len falls outside the partition */
-
-	return (g_cfe_taste_read(io, part->offset, offset, buf, len));
-}
-
 /**
  * Find the first partition matching @p label and @p offset.
  * 
@@ -960,7 +755,6 @@ g_cfe_probe_minix_config(struct g_cfe_taste_io *io, off_t block)
 	if (magic != CFE_MINIX_MAGIC && bswap16(magic) != CFE_MINIX_MAGIC) {
 		G_CFE_LOG("unrecognized config partition magic 0x%04" PRIx16
 		    " at offset %#jx\n", magic, (intmax_t)block);
-
 		return (NULL);
 	}
 
@@ -968,6 +762,87 @@ g_cfe_probe_minix_config(struct g_cfe_taste_io *io, off_t block)
 }
 
 G_CFE_DEFINE_PART_PROBE("MINIX_CONFIG", g_cfe_probe_minix_config);
+
+/* Probe a BCM-format NVRAM partition */
+static struct bcm_cfe_part *
+g_cfe_probe_bcm_nvram(struct g_cfe_taste_io *io, off_t block)
+{
+	struct g_cfe_nvram_io	 nvram_io;
+	struct bcm_cfe_part	*nvram;
+	int			 error, result;
+
+	/* Must be an 'nvram' partition */
+	if ((nvram = g_cfe_find_matching_part(io, "nvram", block)) == NULL)
+		return (NULL);
+
+	/* Initialize our NVRAM I/O context */
+	if ((error = g_cfe_nvram_io_init(&nvram_io, io, block, nvram->size))) {
+		G_CFE_LOG("error initializing NVRAM I/O context: %d\n", error);
+		return (NULL);
+	}
+
+	/* Probe for BCM NVRAM magic */
+	result = bhnd_nvram_data_probe(&bhnd_nvram_bcm_class, &nvram_io.io);
+
+	/* Clean up our I/O context */
+	bhnd_nvram_io_free(&nvram_io.io);
+
+	if (result > 0)
+		return (NULL);
+
+	return (nvram);
+}
+
+G_CFE_DEFINE_PART_PROBE("BCM_NVRAM", g_cfe_probe_bcm_nvram);
+
+
+/* Probe a TLV-format NVRAM partition (only found on WGT634U?) */
+static struct bcm_cfe_part *
+g_cfe_probe_tlv_nvram(struct g_cfe_taste_io *io, off_t block)
+{
+	struct g_cfe_nvram_io	 nvram_io;
+	struct bcm_cfe_part	*nvram;
+	off_t			 mediasize;
+	int			 error, result;
+
+	g_topology_assert();
+	mediasize = io->cp->provider->mediasize;
+
+	/* Must be an 'nvram' partition */
+	if ((nvram = g_cfe_find_matching_part(io, "nvram", block)) == NULL)
+		return (NULL);
+
+	/* A TLV NVRAM partition is always found at the end of the flash
+	 * device */
+	if (nvram->size == BCM_CFE_INVALID_SIZE || nvram->size > mediasize)
+		return (NULL);
+
+	if (rounddown(mediasize - nvram->size, io->palign) != block)
+		return (NULL);
+
+	/* Initialize our NVRAM I/O context */
+	if ((error = g_cfe_nvram_io_init(&nvram_io, io, block, nvram->size))) {
+		G_CFE_LOG("error initializing NVRAM I/O context: %d\n", error);
+		return (NULL);
+	}
+
+	/* Probe for BCM NVRAM magic */
+	result = bhnd_nvram_data_probe(&bhnd_nvram_tlv_class, &nvram_io.io);
+
+	/* Clean up our I/O context */
+	bhnd_nvram_io_free(&nvram_io.io);
+
+	if (result > 0) {
+		G_CFE_LOG("unrecognized NVRAM partition at offset %#jx: %d\n",
+		    (intmax_t)block, result);
+
+		return (NULL);
+	}
+
+	return (nvram);
+}
+
+G_CFE_DEFINE_PART_PROBE("TLV_NVRAM", g_cfe_probe_tlv_nvram);
 
 /**
  * Identify all partitions.
@@ -1128,28 +1003,43 @@ g_cfe_get_bootimg_info(struct cfe_bootimg_info *info)
  * @param[out]	io	On success, will be initialized as an I/O context
  *			mapping @p part from @p cp.
  * @param	taste	The GEOM taste context to be used for reading.
- * @param	part	The CFE partition entry.
+ * @param	offset	The base offset for all I/O operations.
+ * @param	size	The number of readable bytes at @p offset, or
+ *			BCM_CFE_INVALID_OFF to allow any read up to the
+ *			mediasize.
  *
  * @retval 0		success.
- * @retval EINVAL	if @p part has not been populated with a valid offset
- *			and size.
- * @retval non-zero	if opening @p part otherwise fails, a standard unix
+ * @retval EINVAL	if @p offset or @p size is invalid.
+ * @retval non-zero	if initializing @p io otherwise fails, a standard unix
  *			error will be returned.
  */
 static int
 g_cfe_nvram_io_init(struct g_cfe_nvram_io *io, struct g_cfe_taste_io *taste,
-    struct bcm_cfe_part *part)
+    off_t offset, off_t size)
 {
-	/* Size and offset are required */
-	if (part->size == BCM_CFE_INVALID_SIZE)
-		return (EINVAL);
+	off_t mediasize;
 
-	if (part->offset == BCM_CFE_INVALID_OFF)
-		return (EINVAL);
+	g_topology_assert();
+	mediasize = taste->cp->provider->mediasize;
 
 	io->io.iops = &bhnd_nvram_g_cfeio_ops;
 	io->taste = taste;
-	io->part = part;
+
+	/* Offset must fall within the total media size */
+	if (offset > mediasize)
+		return (EINVAL);
+
+	/* Provide a default size? */
+	if (size == BCM_CFE_INVALID_SIZE)
+		size = mediasize - offset;
+
+	/* offset+size must not overflow, and must fall within the total
+	 * media size */
+	if (OFF_MAX - offset < size || offset+size > mediasize)
+		return (EINVAL);
+
+	io->offset = offset;
+	io->size = size;
 
 	return (0);
 }
@@ -1164,7 +1054,7 @@ static size_t
 bhnd_nvram_g_cfeio_getsize(struct bhnd_nvram_io *io)
 {
 	struct g_cfe_nvram_io *nio = (struct g_cfe_nvram_io *)io;
-	return (nio->part->size);
+	return (nio->size);
 }
 
 static int
@@ -1204,7 +1094,11 @@ bhnd_nvram_g_cfeio_read(struct bhnd_nvram_io *io, size_t offset, void *buffer,
 {
 	struct g_cfe_nvram_io *nio = (struct g_cfe_nvram_io *)io;
 
-	return (g_cfe_taste_read_part(nio->taste, nio->part, offset, buffer,
+	/* Verify that the request falls within our mapped range */
+	if (offset > nio->size || nio->size - offset < nbytes)
+		return (ENXIO);
+
+	return (g_cfe_taste_read(nio->taste, nio->offset, offset, buffer,
 	    nbytes));
 }
 
