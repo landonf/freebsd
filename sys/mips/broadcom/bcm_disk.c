@@ -43,7 +43,7 @@ __FBSDID("$FreeBSD$");
 
 #include "bcm_machdep.h"
 
-#include "bcm_cfe_disk.h"
+#include "bcm_disk.h"
 
 /*
  * Probes and saves CFE-defined disk/flash partition information.
@@ -220,33 +220,28 @@ __FBSDID("$FreeBSD$");
 
 MALLOC_DEFINE(M_BCM_CDISK, "cfedisk", "Broadcom CFE disk metadata");
 
-struct bcm_cfe_syspart;
+struct bcm_boot_label;
 
-static int			 bcm_cfe_probe_disk(struct bcm_cfe_disk *disk,
-				     bool *skip_next);
-static int			 bcm_cfe_probe_driver_quirks(
-				     struct bcm_cfe_disk *disk,
-				     uint32_t *quirks);
+static int		 bcm_probe_disk(struct bcm_disk *disk, bool *skip_next);
+static int		 bcm_probe_driver_quirks(struct bcm_disk *disk,
+			     uint32_t *quirks);
 
-static bool			 bcm_cfe_dev_exists(const char *devname);
-static bool			 bcm_cfe_part_exists(const char *drvname,
-				     u_int unit, const char *label);
-static int			 bcm_cfe_fmt_devname(const char *drvname,
-				     u_int unit, const char *partname,
-				     char *buf, size_t *len);
+static bool		 bcm_dev_exists(const char *devname);
+static bool		 bcm_part_exists(const char *drvname, u_int unit,
+			     const char *label);
+static int		 bcm_fmt_devname(const char *drvname, u_int unit,
+			     const char *partname, char *buf, size_t *len);
 
-static struct bcm_cfe_part	*bcm_cfe_disk_get_query_part(
-				     struct bcm_cfe_disk *disk);
+static struct bcm_part	*bcm_disk_get_query_part(struct bcm_disk *disk);
 
-static bcm_cfe_syspart_type	 bcm_cfe_syspart_info(const char *label,
-				     const struct bcm_cfe_syspart **syspart);
+static bcm_part_type	 bcm_lookup_boot_label(const char *label,
+			     const struct bcm_boot_label **bpinfo);
 
-static int			 bcm_cfe_part_new(struct bcm_cfe_part **part,
-				     const char *devname);
-static void			 bcm_cfe_part_free(struct bcm_cfe_part *part);
-static int			 bcm_cfe_probe_part(struct bcm_cfe_disk *disk,
-				     struct bcm_cfe_part *part,
-				     uint32_t quirks);
+static int		 bcm_part_new(struct bcm_part **part,
+			     const char *devname);
+static void		 bcm_part_free(struct bcm_part *part);
+static int		 bcm_probe_part(struct bcm_disk *disk,
+			     struct bcm_part *part, uint32_t quirks);
 
 static const bool bcm_disk_trace = false;
 
@@ -278,7 +273,7 @@ static const bool bcm_disk_trace = false;
 /**
  * Known CFE device names.
  */
-static const char * const bcm_cfe_drv_names[] = {
+static const char * const bcm_drv_names[] = {
 	"flash",	/* CFI/SPI */
 	"nflash",	/* NAND */
 };
@@ -286,7 +281,7 @@ static const char * const bcm_cfe_drv_names[] = {
 /*
  * Known CFE flash partition names.
  */
-static const char * const bcm_cfe_part_names[] = {
+static const char * const bcm_part_names[] = {
 	"boot",		/* CFE image */
 	"brcmnand",	/* Writable OS partition (ignored by CFE) */
 	"config",	/* empty MINIX filesystem (found on Netgear WGT634U) */
@@ -315,12 +310,15 @@ static const char * const bcm_cfe_part_names[] = {
 };
 
 /**
- * OS/TRX system partition info.
+ * OS/TRX boot partition labels.
+ * 
+ * Provides a mapping between TRX partition labels and corresponding OS
+ * partition label.
  */
-static const struct bcm_cfe_syspart {
+static const struct bcm_boot_label {
 	const char *os_label;	/**< OS partition label */
 	const char *trx_label;	/**< TRX partition label */
-} bcm_cfe_sysparts[] = {
+} bcm_boot_labels[] = {
 	{ "os",		"trx" },
 	{ "os2",	"trx2" }
 };
@@ -330,22 +328,22 @@ static const struct bcm_cfe_syspart {
 static int
 compare_part_offset_asc(const void *lhs, const void *rhs)
 {
-	struct bcm_cfe_part	*lpart, *rpart;
-	off_t			 loff, roff;
+	struct bcm_part	*lpart, *rpart;
+	off_t		 loff, roff;
 
-	lpart = (*(struct bcm_cfe_part * const *) lhs);
-	rpart = (*(struct bcm_cfe_part * const *) rhs);
+	lpart = (*(struct bcm_part * const *) lhs);
+	rpart = (*(struct bcm_part * const *) rhs);
 
 	loff = lpart->offset;
 	roff = rpart->offset;
 
 	/* Handle missing offset values; a missing value is always ordered
 	 * after any valid value */
-	if (loff == BCM_CFE_INVALID_OFF || roff == BCM_CFE_INVALID_OFF) {
-		if (loff != BCM_CFE_INVALID_OFF) {
+	if (loff == BCM_DISK_INVALID_OFF || roff == BCM_DISK_INVALID_OFF) {
+		if (loff != BCM_DISK_INVALID_OFF) {
 			/* LHS has an offset value, RHS does not */
 			return (-1);
-		} else if (roff != BCM_CFE_INVALID_OFF) {
+		} else if (roff != BCM_DISK_INVALID_OFF) {
 			/* RHS has an offset value, LHS does not */
 			return (1);
 		} else {
@@ -368,10 +366,10 @@ compare_part_offset_asc(const void *lhs, const void *rhs)
  * Print the @p disk partition map to the console.
  */
 void
-bcm_cfe_print_disk(struct bcm_cfe_disk *disk)
+bcm_print_disk(struct bcm_disk *disk)
 {
-	struct bcm_cfe_part	*part, **parts;
-	size_t			 part_idx;
+	struct bcm_part	*part, **parts;
+	size_t		 part_idx;
 
 	printf("CFE disk %s%u:\n", disk->drvname, disk->unit);
 
@@ -393,12 +391,12 @@ bcm_cfe_print_disk(struct bcm_cfe_disk *disk)
 	for (size_t i = 0; i < disk->num_parts; i++) {
 		printf("    %-12s", parts[i]->label);
 
-		if (parts[i]->offset != BCM_CFE_INVALID_OFF)
+		if (parts[i]->offset != BCM_DISK_INVALID_OFF)
 			printf("0x%08jx", (intmax_t)parts[i]->offset);
 		else
 			printf("%8s", "unknown");
 
-		if (parts[i]->size != BCM_CFE_INVALID_SIZE)
+		if (parts[i]->size != BCM_DISK_INVALID_SIZE)
 			printf("+0x%08jx", (intmax_t)parts[i]->size);
 		else
 			printf("+%-8s", "unknown");
@@ -413,13 +411,12 @@ bcm_cfe_print_disk(struct bcm_cfe_disk *disk)
  * Print all disks and partitions in @p disks to the console.
  */
 void
-bcm_cfe_print_disks(struct bcm_cfe_disks *disks)
+bcm_print_disks(struct bcm_disks *disks)
 {
-	struct bcm_cfe_disk	*disk;
-
+	struct bcm_disk	*disk;
 
 	SLIST_FOREACH(disk, disks, cd_link)
-		bcm_cfe_print_disk(disk);
+		bcm_print_disk(disk);
 }
 
 /**
@@ -434,27 +431,27 @@ bcm_cfe_print_disks(struct bcm_cfe_disks *disks)
  *			will be returned.
  */
 int
-bcm_cfe_probe_disks(struct bcm_cfe_disks *result)
+bcm_probe_disks(struct bcm_disks *result)
 {
-	struct bcm_cfe_disks	 disks;
-	struct bcm_cfe_disk	*disk, *dnext;
-	int			 error;
+	struct bcm_disks disks;
+	struct bcm_disk	*disk, *dnext;
+	int		 error;
 
 	SLIST_INIT(&disks);
 
-	for (size_t i = 0; i < nitems(bcm_cfe_drv_names); i++) {
-		for (u_int unit = 0; unit < BCM_CFE_DUNIT_MAX; unit++) {
+	for (size_t i = 0; i < nitems(bcm_drv_names); i++) {
+		for (u_int unit = 0; unit < BCM_DISK_UNIT_MAX; unit++) {
 			bool skip_next;
 
 			/* Allocate new disk entry */
-			disk = bcm_cfe_disk_new(bcm_cfe_drv_names[i], unit);
+			disk = bcm_disk_new(bcm_drv_names[i], unit);
 			if (disk == NULL) {
 				error = ENOMEM;
 				goto failed;
 			}
 
 			/* Probe partition map */
-			if ((error = bcm_cfe_probe_disk(disk, &skip_next)))
+			if ((error = bcm_probe_disk(disk, &skip_next)))
 				goto failed;
 
 			/*
@@ -467,14 +464,14 @@ bcm_cfe_probe_disks(struct bcm_cfe_disks *result)
 			 * additional units will be discovered).
 			 */
 			if (SLIST_EMPTY(&disk->parts)) {
-				bcm_cfe_disk_free(disk);
+				bcm_disk_free(disk);
 			} else {
 				/* Add to results */
 				SLIST_INSERT_HEAD(&disks, disk, cd_link);
 			}
 
 			/* If requested, skip the next disk unit */
-			if (skip_next && unit < BCM_CFE_DUNIT_MAX)
+			if (skip_next && unit < BCM_DISK_UNIT_MAX)
 				unit++;
 		}
 	}
@@ -492,7 +489,7 @@ bcm_cfe_probe_disks(struct bcm_cfe_disks *result)
 failed:
 	SLIST_FOREACH_SAFE(disk, &disks, cd_link, dnext) {
 		SLIST_REMOVE_HEAD(&disks, cd_link);
-		bcm_cfe_disk_free(disk);
+		bcm_disk_free(disk);
 	}
 
 	return (error);
@@ -507,16 +504,16 @@ failed:
  * @retval non_NULL	success
  * @retval NULL		if allocation fails.
  */
-struct bcm_cfe_disk *
-bcm_cfe_disk_new(const char *drvname, u_int unit)
+struct bcm_disk *
+bcm_disk_new(const char *drvname, u_int unit)
 {
-	struct bcm_cfe_disk *d;
+	struct bcm_disk *d;
 
 	d = malloc(sizeof(*d), M_BCM_CDISK, M_WAITOK|M_ZERO);
 
 	d->drvname = drvname;
 	d->unit = unit;
-	d->size = BCM_CFE_INVALID_SIZE;
+	d->size = BCM_DISK_INVALID_SIZE;
 
 	SLIST_INIT(&d->parts);
 	d->num_parts = 0;
@@ -528,7 +525,7 @@ bcm_cfe_disk_new(const char *drvname, u_int unit)
  * Free all resources held by @p disk.
  */
 void
-bcm_cfe_disk_free(struct bcm_cfe_disk *disk)
+bcm_disk_free(struct bcm_disk *disk)
 {
 	free(disk, M_BCM_CDISK);
 }
@@ -541,10 +538,10 @@ bcm_cfe_disk_free(struct bcm_cfe_disk *disk)
  * @param drvname	CFE device class name
  * @param unit		CFE device unit.
  */
-struct bcm_cfe_disk *
-bcm_cfe_find_disk(struct bcm_cfe_disks *disks, const char *drvname, u_int unit)
+struct bcm_disk *
+bcm_find_disk(struct bcm_disks *disks, const char *drvname, u_int unit)
 {
-	struct bcm_cfe_disk *disk;
+	struct bcm_disk *disk;
 
 	SLIST_FOREACH(disk, disks, cd_link) {
 		if (strcmp(disk->drvname, drvname) != 0)
@@ -568,10 +565,10 @@ bcm_cfe_find_disk(struct bcm_cfe_disks *disks, const char *drvname, u_int unit)
  * @param parts	List of partitions to be searched.
  * @param label	CFE partition label.
  */
-struct bcm_cfe_part *
-bcm_cfe_parts_find(struct bcm_cfe_parts *parts, const char *label)
+struct bcm_part *
+bcm_parts_find(struct bcm_parts *parts, const char *label)
 {
-	struct bcm_cfe_part *part;
+	struct bcm_part *part;
 
 	SLIST_FOREACH(part, parts, cp_link) {
 		if (strcmp(part->label, label) == 0)
@@ -589,13 +586,13 @@ bcm_cfe_parts_find(struct bcm_cfe_parts *parts, const char *label)
  * @param parts		List of partitions to be searched.
  * @param offset	CFE partition offset.
  */
-struct bcm_cfe_part *
-bcm_cfe_parts_find_offset(struct bcm_cfe_parts *parts, off_t offset)
+struct bcm_part *
+bcm_parts_find_offset(struct bcm_parts *parts, off_t offset)
 {
-	struct bcm_cfe_part *part;
+	struct bcm_part *part;
 
 	/* An invalid offset matches nothing */
-	if (offset == BCM_CFE_INVALID_OFF)
+	if (offset == BCM_DISK_INVALID_OFF)
 		return (NULL);
 
 	SLIST_FOREACH(part, parts, cp_link) {
@@ -613,18 +610,18 @@ bcm_cfe_parts_find_offset(struct bcm_cfe_parts *parts, off_t offset)
  * 
  * @param parts		List of partitions to be searched.
  * @param label		Required label, or NULL to match on any label.
- * @param offset	Required offset, or BCM_CFE_INVALID_OFF to match on any
+ * @param offset	Required offset, or BCM_DISK_INVALID_OFF to match on any
  *			offset.
  */
-struct bcm_cfe_part *
-bcm_cfe_parts_match(struct bcm_cfe_parts *parts, const char *label,
+struct bcm_part *
+bcm_parts_match(struct bcm_parts *parts, const char *label,
     off_t offset)
 {
-	struct bcm_cfe_part *part;
+	struct bcm_part *part;
 
 	SLIST_FOREACH(part, parts, cp_link) {
-		if (offset != BCM_CFE_INVALID_OFF &&
-		    part->offset != BCM_CFE_INVALID_OFF &&
+		if (offset != BCM_DISK_INVALID_OFF &&
+		    part->offset != BCM_DISK_INVALID_OFF &&
 		    part->offset != offset)
 		{
 			continue;
@@ -648,10 +645,10 @@ bcm_cfe_parts_match(struct bcm_cfe_parts *parts, const char *label,
  * 
  * @param disk A fully probed disk instance.
  */
-static struct bcm_cfe_part *
-bcm_cfe_disk_get_query_part(struct bcm_cfe_disk *disk)
+static struct bcm_part *
+bcm_disk_get_query_part(struct bcm_disk *disk)
 {
-	struct bcm_cfe_part *part = SLIST_FIRST(&disk->parts);
+	struct bcm_part *part = SLIST_FIRST(&disk->parts);
 
 	if (part == NULL) {
 		panic("query on non-existent disk device: %s%u", disk->drvname,
@@ -666,36 +663,36 @@ bcm_cfe_disk_get_query_part(struct bcm_cfe_disk *disk)
  * @p label, if any.
  *
  * @param	label	The partition label to look up.
- * @param[out]	syspart	The system partition info for @p label, or NULL if
- *			@p label is not a recognized system partition label.
+ * @param[out]	binfo	The boot label entry for @p label, or NULL if @p label
+ *			is not a recognized boot partition label.
  *
- * @retval BCM_CFE_SYSPART_OS		if @p label is a recognized OS
+ * @retval BCM_PART_TYPE_OS		if @p label is a recognized OS partition
+ *					label.
+ * @retval BCM_PART_TYPE_TRX		if @p label is a recognized TRX
  *					partition label.
- * @retval BCM_CFE_SYSPART_TRX		if @p label is a recognized TRX
- *					partition label.
- * @retval BCM_CFE_SYSPART_UNKNOWN	if @p label is not a recognized system
+ * @retval BCM_PART_TYPE_UNKNOWN	if @p label is not a recognized system
  *					partition label.
  */
-static bcm_cfe_syspart_type
-bcm_cfe_syspart_info(const char *label, const struct bcm_cfe_syspart **syspart)
+static bcm_part_type
+bcm_lookup_boot_label(const char *label, const struct bcm_boot_label **binfo)
 {
-	for (size_t i = 0; i < nitems(bcm_cfe_sysparts); i++) {
-		const struct bcm_cfe_syspart *sp = &bcm_cfe_sysparts[i];
+	for (size_t i = 0; i < nitems(bcm_boot_labels); i++) {
+		const struct bcm_boot_label *sp = &bcm_boot_labels[i];
 
 		if (strcmp(label, sp->os_label) == 0) {
-			*syspart = sp;
-			return (BCM_CFE_SYSPART_OS);
+			*binfo = sp;
+			return (BCM_PART_TYPE_OS);
 		}
 
 		if (strcmp(label, sp->trx_label) == 0) {
-			*syspart = sp;
-			return (BCM_CFE_SYSPART_TRX);
+			*binfo = sp;
+			return (BCM_PART_TYPE_TRX);
 		}
 	}
 
 	/* Not found */
-	*syspart = NULL;
-	return (BCM_CFE_SYSPART_UNKNOWN);
+	*binfo = NULL;
+	return (BCM_PART_TYPE_UNKNOWN);
 }
 
 /**
@@ -712,11 +709,11 @@ bcm_cfe_syspart_info(const char *label, const struct bcm_cfe_syspart **syspart)
  * @retval ENXIO	if the driver cannot be identified.
  */
 static int
-bcm_cfe_probe_driver_quirks(struct bcm_cfe_disk *disk, uint32_t *quirks)
+bcm_probe_driver_quirks(struct bcm_disk *disk, uint32_t *quirks)
 {
-	struct bcm_cfe_part *part;
+	struct bcm_part *part;
 
-	part = bcm_cfe_disk_get_query_part(disk);
+	part = bcm_disk_get_query_part(disk);
 
 	/* Devices backed by the nflash (NAND) driver can be identified by
 	 * the unique driver class name */
@@ -816,7 +813,7 @@ failed:
  * @param devname The CFE device name.
  */
 static bool
-bcm_cfe_dev_exists(const char *devname)
+bcm_dev_exists(const char *devname)
 {
 	int dinfo, dtype;
 
@@ -862,22 +859,22 @@ bcm_cfe_dev_exists(const char *devname)
  *			representible length.
  */
 static bool
-bcm_cfe_part_exists(const char *drvname, u_int unit, const char *partname)
+bcm_part_exists(const char *drvname, u_int unit, const char *partname)
 {
-	char	dname[BCM_CFE_DNAME_MAX];
+	char	dname[BCM_DISK_NAME_MAX];
 	size_t	dlen;
 	int	error;
 
 	/* Format the full CFE device name */
 	dlen = sizeof(dname);
-	error = bcm_cfe_fmt_devname(drvname, unit, partname, dname, &dlen);
+	error = bcm_fmt_devname(drvname, unit, partname, dname, &dlen);
 	if (error) {
 		printf("%s: failed to format device name for %s%u.%s: %d\n",
 		    __FUNCTION__, drvname, unit, partname, error);
 		return (false);
 	}
 
-	return (bcm_cfe_dev_exists(dname));
+	return (bcm_dev_exists(dname));
 }
 
 /**
@@ -900,7 +897,7 @@ bcm_cfe_part_exists(const char *drvname, u_int unit, const char *partname)
  *			small to hold the requested value.
  */
 static int
-bcm_cfe_fmt_devname(const char *drvname, u_int unit, const char *partname,
+bcm_fmt_devname(const char *drvname, u_int unit, const char *partname,
     char *buf, size_t *len)
 {
 	size_t	capacity;
@@ -940,10 +937,10 @@ bcm_cfe_fmt_devname(const char *drvname, u_int unit, const char *partname,
  *			unix error code will be returned.
  */
 static int
-bcm_cfe_probe_disk(struct bcm_cfe_disk *disk, bool *skip_next)
+bcm_probe_disk(struct bcm_disk *disk, bool *skip_next)
 {
-	struct bcm_cfe_part	*part, *pnext;
-	struct bcm_cfe_parts	 parts;
+	struct bcm_part	*part, *pnext;
+	struct bcm_parts	 parts;
 	const char		*drvname;
 	size_t			 num_parts;
 	uint32_t		 quirks;
@@ -958,27 +955,27 @@ bcm_cfe_probe_disk(struct bcm_cfe_disk *disk, bool *skip_next)
 
 	/* Iterate over all known partition names and register new partition
 	 * entries */
-	for (size_t i = 0; i < nitems(bcm_cfe_part_names); i++) {
+	for (size_t i = 0; i < nitems(bcm_part_names); i++) {
 		const char			*partname;
-		const struct bcm_cfe_syspart	*sp;
-		bcm_cfe_syspart_type		 sp_type;
-		char				 dname[BCM_CFE_DNAME_MAX];
+		const struct bcm_boot_label	*binfo;
+		bcm_part_type			 part_type;
+		char				 dname[BCM_DISK_NAME_MAX];
 		size_t				 dlen;
 		u_int				 unit;
 
-		partname = bcm_cfe_part_names[i];
+		partname = bcm_part_names[i];
 		unit = disk->unit;
 
 		/* Does the device exist? */
-		if (!bcm_cfe_part_exists(drvname, unit, partname))
+		if (!bcm_part_exists(drvname, unit, partname))
 			continue;
 
 		/* Is this an OS or TRX system partition? */
-		sp_type = bcm_cfe_syspart_info(partname, &sp);
+		part_type = bcm_lookup_boot_label(partname, &binfo);
 
-		switch (sp_type) {
-		case BCM_CFE_SYSPART_OS:
-			KASSERT(sp != NULL, ("NULL syspart"));
+		switch (part_type) {
+		case BCM_PART_TYPE_OS:
+			KASSERT(binfo != NULL, ("NULL binfo"));
 
 			/*
 			 * If a corresponding TRX partition exists, this
@@ -991,7 +988,7 @@ bcm_cfe_probe_disk(struct bcm_cfe_disk *disk, bool *skip_next)
 			 * to size the partition may trigger a crash (e.g. in
 			 * the nflash driver)
 			 */
-			if (!bcm_cfe_part_exists(drvname, unit, sp->trx_label))
+			if (!bcm_part_exists(drvname, unit, binfo->trx_label))
 				break;
 
 			/* The next disk unit provides an alternative mapping */
@@ -1000,10 +997,10 @@ bcm_cfe_probe_disk(struct bcm_cfe_disk *disk, bool *skip_next)
 			/* Ignore this OS partition */
 			continue;
 
-		case BCM_CFE_SYSPART_TRX: {
+		case BCM_PART_TYPE_TRX: {
 			u_int next;
 	
-			KASSERT(sp != NULL, ("NULL syspart"));
+			KASSERT(binfo != NULL, ("NULL binfo"));
 
 			/*
 			 * If a corresponding OS partition exists, and the
@@ -1014,14 +1011,14 @@ bcm_cfe_probe_disk(struct bcm_cfe_disk *disk, bool *skip_next)
 			 * We need to instead target the next device unit's TRX
 			 * partition.
 			 */
-			if (!bcm_cfe_part_exists(drvname, unit, sp->os_label))
+			if (!bcm_part_exists(drvname, unit, binfo->os_label))
 				break;
 
 			next = unit+1;
-			if (!bcm_cfe_part_exists(drvname, next, sp->trx_label))
+			if (!bcm_part_exists(drvname, next, binfo->trx_label))
 				break;
 
-			if (bcm_cfe_part_exists(drvname, next, sp->os_label))
+			if (bcm_part_exists(drvname, next, binfo->os_label))
 				break;
 
 			/* Use the next device's TRX partition mapping */
@@ -1030,13 +1027,13 @@ bcm_cfe_probe_disk(struct bcm_cfe_disk *disk, bool *skip_next)
 			break;
 		}
 
-		case BCM_CFE_SYSPART_UNKNOWN:
+		case BCM_PART_TYPE_UNKNOWN:
 			break;
 		}
 
 		/* Format the full CFE device name */
 		dlen = sizeof(dname);
-		error = bcm_cfe_fmt_devname(drvname, unit, partname, dname,
+		error = bcm_fmt_devname(drvname, unit, partname, dname,
 		    &dlen);
 		if (error) {
 			BCM_DISK_ERR(disk, "error determining CFE device "
@@ -1045,7 +1042,7 @@ bcm_cfe_probe_disk(struct bcm_cfe_disk *disk, bool *skip_next)
 		}
 
 	        /* Insert a new partition entry */
-		if ((error = bcm_cfe_part_new(&part, dname)))
+		if ((error = bcm_part_new(&part, dname)))
 			goto failed;
 
 		SLIST_INSERT_HEAD(&parts, part, cp_link);
@@ -1075,7 +1072,7 @@ bcm_cfe_probe_disk(struct bcm_cfe_disk *disk, bool *skip_next)
 	disk->num_parts = num_parts;
 
 	/* Probe for any CFE driver quirks */
-	if ((error = bcm_cfe_probe_driver_quirks(disk, &quirks)))
+	if ((error = bcm_probe_driver_quirks(disk, &quirks)))
 		goto failed;
 
 	/* Try to fetch the media size */
@@ -1083,7 +1080,7 @@ bcm_cfe_probe_disk(struct bcm_cfe_disk *disk, bool *skip_next)
 		flash_info_t	fi;
 		int		cerr, rlen;
 
-		part = bcm_cfe_disk_get_query_part(disk);
+		part = bcm_disk_get_query_part(disk);
 
 		/* Fetch flash info */
 		cerr = cfe_ioctl(part->fd, IOCTL_FLASH_GETINFO, (u_char *)&fi,
@@ -1106,7 +1103,7 @@ bcm_cfe_probe_disk(struct bcm_cfe_disk *disk, bool *skip_next)
 		}
 #endif
 
-		KASSERT(disk->size == BCM_CFE_INVALID_SIZE,
+		KASSERT(disk->size == BCM_DISK_INVALID_SIZE,
 		    ("overwrite of valid size"));
 
 		disk->size = fi.flash_size;
@@ -1114,7 +1111,7 @@ bcm_cfe_probe_disk(struct bcm_cfe_disk *disk, bool *skip_next)
 
 	/* Try to determine the size and offset of all discovered partitions */
 	SLIST_FOREACH(part, &disk->parts, cp_link) {
-		if ((error = bcm_cfe_probe_part(disk, part, quirks))) {
+		if ((error = bcm_probe_part(disk, part, quirks))) {
 			BCM_DISK_ERR(disk, "probing %s failed: %d\n",
 			    part->devname, error);
 		}
@@ -1125,7 +1122,7 @@ bcm_cfe_probe_disk(struct bcm_cfe_disk *disk, bool *skip_next)
 failed:
 	SLIST_FOREACH_SAFE(part, &parts, cp_link, pnext) {
 		SLIST_REMOVE_HEAD(&parts, cp_link);
-		bcm_cfe_part_free(part);
+		bcm_part_free(part);
 	}
 
 	return (error);
@@ -1144,16 +1141,16 @@ failed:
  * @retval ENXIO	if the CFE device cannot be opened.
  */
 static int
-bcm_cfe_part_new(struct bcm_cfe_part **part, const char *devname)
+bcm_part_new(struct bcm_part **part, const char *devname)
 {
-	struct bcm_cfe_part *p;
+	struct bcm_part *p;
 
 	p = malloc(sizeof(*p), M_BCM_CDISK, M_WAITOK|M_ZERO);
 
 	p->devname = strdup(devname, M_BCM_CDISK);
-	p->offset = BCM_CFE_INVALID_OFF;
-	p->size = BCM_CFE_INVALID_SIZE;
-	p->fs_size = BCM_CFE_INVALID_SIZE;
+	p->offset = BCM_DISK_INVALID_OFF;
+	p->size = BCM_DISK_INVALID_SIZE;
+	p->fs_size = BCM_DISK_INVALID_SIZE;
 	p->fd = -1;
 	p->need_close = false;
 
@@ -1177,7 +1174,7 @@ bcm_cfe_part_new(struct bcm_cfe_part **part, const char *devname)
 
 	if (p->fd < 0) {
 		BCM_PART_ERR(p, "cfe_open() failed: %d\n", p->fd);
-		bcm_cfe_part_free(p);
+		bcm_part_free(p);
 		return (ENXIO);
 	}
 
@@ -1189,7 +1186,7 @@ bcm_cfe_part_new(struct bcm_cfe_part **part, const char *devname)
  * Free all resources held by @p part.
  */
 static void
-bcm_cfe_part_free(struct bcm_cfe_part *part)
+bcm_part_free(struct bcm_part *part)
 {
 	if (part->fd >= 0 && part->need_close)
 		cfe_close(part->fd);
@@ -1199,16 +1196,16 @@ bcm_cfe_part_free(struct bcm_cfe_part *part)
 }
 
 /**
- * Return the offset+length of @p part, or BCM_CFE_INVALID_OFF if unavailable.
+ * Return the offset+length of @p part, or BCM_DISK_INVALID_OFF if unavailable.
  */
 off_t
-bcm_cfe_part_get_end(struct bcm_cfe_part *part)
+bcm_part_get_end(struct bcm_part *part)
 {
-	if (part->offset == BCM_CFE_INVALID_OFF)
-		return (BCM_CFE_INVALID_OFF);
+	if (part->offset == BCM_DISK_INVALID_OFF)
+		return (BCM_DISK_INVALID_OFF);
 
-	if (part->size == BCM_CFE_INVALID_SIZE)
-		return (BCM_CFE_INVALID_OFF);
+	if (part->size == BCM_DISK_INVALID_SIZE)
+		return (BCM_DISK_INVALID_OFF);
 
 	KASSERT(OFF_MAX - part->offset >= part->size, ("offset overflow"));
 
@@ -1217,33 +1214,33 @@ bcm_cfe_part_get_end(struct bcm_cfe_part *part)
 
 /**
  * Return the offset of the next valid block following @p part, or
- * BCM_CFE_INVALID_OFF if unavailable.
+ * BCM_DISK_INVALID_OFF if unavailable.
  *
  * @param part	The partion entry to query.
  * @param align	The partition alignment to be assumed when computing the next
  *		offset.
  */
 off_t
-bcm_cfe_part_get_next(struct bcm_cfe_part *part, off_t align)
+bcm_part_get_next(struct bcm_part *part, off_t align)
 {
 	off_t end;
 
-	if ((end = bcm_cfe_part_get_end(part)) == BCM_CFE_INVALID_OFF)
-		return (BCM_CFE_INVALID_OFF);
+	if ((end = bcm_part_get_end(part)) == BCM_DISK_INVALID_OFF)
+		return (BCM_DISK_INVALID_OFF);
 
 	return (roundup(end, align));
 }
 
 static int
-bcm_cfe_probe_part_flashinfo(struct bcm_cfe_disk *disk,
-    struct bcm_cfe_part *part, uint32_t quirks)
+bcm_probe_part_flashinfo(struct bcm_disk *disk,
+    struct bcm_part *part, uint32_t quirks)
 {
 	flash_info_t	fi;
 	int		cerr, rlen;
 
 	/* Skip if both offset and size have already been determined */
-	if (part->offset != BCM_CFE_INVALID_OFF &&
-	    part->size != BCM_CFE_INVALID_SIZE)
+	if (part->offset != BCM_DISK_INVALID_OFF &&
+	    part->size != BCM_DISK_INVALID_SIZE)
 		return (0);
 
 	/* Skip if IOCTL_FLASH_GETINFO is unusable */
@@ -1295,12 +1292,12 @@ bcm_cfe_probe_part_flashinfo(struct bcm_cfe_disk *disk,
 
 	/* Set any missing values in the partition description */
 	if (!BCM_CFE_QUIRK(quirks, FLASH_INV_OFF)) {
-		if (part->offset == BCM_CFE_INVALID_OFF)
+		if (part->offset == BCM_DISK_INVALID_OFF)
 			part->offset = fi.flash_base;
 	}
 
 	if (!BCM_CFE_QUIRK(quirks, FLASH_INV_OFF)) {
-		if (part->size == BCM_CFE_INVALID_SIZE)
+		if (part->size == BCM_DISK_INVALID_SIZE)
 			part->size = fi.flash_size;
 	}
 
@@ -1308,14 +1305,14 @@ bcm_cfe_probe_part_flashinfo(struct bcm_cfe_disk *disk,
 }
 
 static int
-bcm_cfe_probe_part_nvraminfo(struct bcm_cfe_disk *disk,
-    struct bcm_cfe_part *part, uint32_t quirks)
+bcm_probe_part_nvraminfo(struct bcm_disk *disk,
+    struct bcm_part *part, uint32_t quirks)
 {
 	nvram_info_t	nv;
 	int		cerr, rlen;
 
 	/* Skip if size has already been determined */
-	if (part->size != BCM_CFE_INVALID_SIZE)
+	if (part->size != BCM_DISK_INVALID_SIZE)
 		return (0);
 
 	/* Skip if IOCTL_NVRAM_GETINFO does not return the partition size */
@@ -1356,7 +1353,7 @@ bcm_cfe_probe_part_nvraminfo(struct bcm_cfe_disk *disk,
  * This slow path must read the device sequentially, until EOF is hit.
  */
 static int
-bcm_cfe_part_readsz_slow(struct bcm_cfe_disk *disk, struct bcm_cfe_part *part,
+bcm_part_readsz_slow(struct bcm_disk *disk, struct bcm_part *part,
     uint32_t quirks, off_t *result)
 {
 	int64_t offset;
@@ -1375,14 +1372,14 @@ bcm_cfe_part_readsz_slow(struct bcm_cfe_disk *disk, struct bcm_cfe_part *part,
 		int	cerr;
 
 		/* Set offset to one byte before the page boundary */
-		if (INT64_MAX - offset < BCM_CFE_PALIGN_MIN-1) {
+		if (INT64_MAX - offset < BCM_PART_ALIGN_MIN-1) {
 			BCM_PART_ERR(part, "CFE read size %#jx exceeds maximum "
 			    "supported offset\n", (intmax_t)offset);
 
 			return (ENXIO);
 		}
 
-		offset += BCM_CFE_PALIGN_MIN-1;
+		offset += BCM_PART_ALIGN_MIN-1;
 
 		/* Attempt read */
 		cerr = cfe_readblk(part->fd, offset, buf, sizeof(buf));
@@ -1442,14 +1439,14 @@ bcm_cfe_part_readsz_slow(struct bcm_cfe_disk *disk, struct bcm_cfe_part *part,
  * sequentially starting at offset 0x0.
  */
 static int
-bcm_cfe_part_readsz_fast(struct bcm_cfe_disk *disk, struct bcm_cfe_part *part,
+bcm_part_readsz_fast(struct bcm_disk *disk, struct bcm_part *part,
     uint32_t quirks, off_t *result)
 {
 	off_t	blksize, offset;
 	off_t	max, min, mid;
 	bool	found;
 
-	blksize = BCM_CFE_PALIGN_MIN;
+	blksize = BCM_PART_ALIGN_MIN;
 
 	/* Reading past EOF must not trigger a CFE driver crash */
 	if (BCM_CFE_QUIRK(quirks, PART_EOF_CRASH))
@@ -1559,7 +1556,7 @@ bcm_cfe_part_readsz_fast(struct bcm_cfe_disk *disk, struct bcm_cfe_part *part,
  * driver has the PART_EOF_OVERREAD quirk).
  */
 static int
-bcm_cfe_probe_part_read(struct bcm_cfe_disk *disk, struct bcm_cfe_part *part,
+bcm_probe_part_read(struct bcm_disk *disk, struct bcm_part *part,
     uint32_t quirks)
 {
 	off_t	result;
@@ -1570,25 +1567,25 @@ bcm_cfe_probe_part_read(struct bcm_cfe_disk *disk, struct bcm_cfe_part *part,
 	if (BCM_CFE_QUIRK(quirks, PART_EOF_OVERREAD)) {
 		/* If we're calculating offset via EOF_OVERREAD, the total
 		 * device size must be available */
-		if (disk->size == BCM_CFE_INVALID_SIZE)
+		if (disk->size == BCM_DISK_INVALID_SIZE)
 			return (0);
 
 		/* Skip if offset has already been determined */
-		if (part->offset != BCM_CFE_INVALID_OFF)
+		if (part->offset != BCM_DISK_INVALID_OFF)
 			return (0);
 	} else {
 		/* We're determining the partition size; skip if size has
 		 * already been determined */
-		if (part->size != BCM_CFE_INVALID_SIZE)
+		if (part->size != BCM_DISK_INVALID_SIZE)
 			return (0);
 	}
 
 	/* Try reading the partition size/offset */
-	error = bcm_cfe_part_readsz_fast(disk, part, quirks, &result);
+	error = bcm_part_readsz_fast(disk, part, quirks, &result);
 	if (error == ENXIO) {
 		/* Fall back on the slow path */
 		BCM_PART_TRACE(part, "using slow path\n");
-		error = bcm_cfe_part_readsz_slow(disk, part, quirks, &result);
+		error = bcm_part_readsz_slow(disk, part, quirks, &result);
 	}
 
 	if (error) {
@@ -1602,7 +1599,7 @@ bcm_cfe_probe_part_read(struct bcm_cfe_disk *disk, struct bcm_cfe_part *part,
 		/* Result is the number of bytes readable at the partition
 		 * offset, up to the total media size */
 
-		KASSERT(disk->size != BCM_CFE_INVALID_SIZE,
+		KASSERT(disk->size != BCM_DISK_INVALID_SIZE,
 		    ("missing disk size"));
 
 		if (result > disk->size) {
@@ -1611,13 +1608,13 @@ bcm_cfe_probe_part_read(struct bcm_cfe_disk *disk, struct bcm_cfe_part *part,
 			return (ENXIO);
 		}
 
-		KASSERT(part->offset == BCM_CFE_INVALID_OFF,
+		KASSERT(part->offset == BCM_DISK_INVALID_OFF,
 		    ("offset overwrite"));
 
 		part->offset = disk->size - result;
 	} else {
 		/* Result is the partition size */
-		KASSERT(part->size == BCM_CFE_INVALID_SIZE,
+		KASSERT(part->size == BCM_DISK_INVALID_SIZE,
 		    ("size overwrite"));
 		part->size = result;
 	}
@@ -1637,22 +1634,21 @@ bcm_cfe_probe_part_read(struct bcm_cfe_disk *disk, struct bcm_cfe_part *part,
  *			unix error code will be returned.
  */
 static int
-bcm_cfe_probe_part(struct bcm_cfe_disk *disk, struct bcm_cfe_part *part,
-    uint32_t quirks)
+bcm_probe_part(struct bcm_disk *disk, struct bcm_part *part, uint32_t quirks)
 {
 	int error;
 
 	/* Try to determine offset/size via IOCTL_FLASH_GETINFO */
-	if ((error = bcm_cfe_probe_part_flashinfo(disk, part, quirks)))
+	if ((error = bcm_probe_part_flashinfo(disk, part, quirks)))
 		return (error);
 
 	/* Fall back on IOCTL_NVRAM_GETINFO */
-	if ((error = bcm_cfe_probe_part_nvraminfo(disk, part, quirks)))
+	if ((error = bcm_probe_part_nvraminfo(disk, part, quirks)))
 		return (error);
 	
 	/* If all else fails, we can manually determine the size (but not the
 	 * offset) via cfe_readblk() */
-	if ((error = bcm_cfe_probe_part_read(disk, part, quirks)))
+	if ((error = bcm_probe_part_read(disk, part, quirks)))
 		return (error);
 
 	return (0);

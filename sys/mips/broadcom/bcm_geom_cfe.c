@@ -57,7 +57,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/cfe/cfe_error.h>
 #include <dev/cfe/cfe_ioctl.h>
 
-#include "bcm_cfe_disk.h"
+#include "bcm_disk.h"
 #include "bcm_machdep.h"
 
 #include "bhnd_nvram_map.h"
@@ -82,20 +82,20 @@ static const struct g_cfe_device	*g_cfe_device_lookup(
 					     struct g_consumer *cp);
 
 static void				 g_cfe_probe_bootloader(void *ident);
-static struct bcm_cfe_disk		*g_cfe_claim_disk(
+static struct bcm_disk			*g_cfe_claim_disk(
 					     const struct g_cfe_device *id);
 static void				 g_cfe_unclaim_disk(
-					     struct bcm_cfe_disk *disk);
+					     struct bcm_disk *disk);
 
 static int				 g_cfe_taste_init(
 					     struct g_cfe_taste_io *io,
 					     struct g_consumer *cp,
-					     struct bcm_cfe_disk *disk);
+					     struct bcm_disk *disk);
 static void				 g_cfe_taste_fini(
 					     struct g_cfe_taste_io *io);
 
 static int                               g_cfe_taste_read(
-					     struct bcm_cfe_part *part,
+					     struct bcm_part *part,
 					     struct g_cfe_taste_io *io,
 					     off_t block, off_t offset,
 					     void *buf, off_t len);
@@ -185,7 +185,7 @@ SYSCTL_UINT(_kern_geom_bcmcfe, OID_AUTO, debug, CTLFLAG_RWTUN,
 } while (0)
 
 /** CFE disk entries */
-static struct bcm_cfe_disks g_cfe_disks;
+static struct bcm_disks g_cfe_disks;
 
 static int
 g_cfe_access(struct g_provider *pp, int dread, int dwrite, int dexcl)
@@ -262,7 +262,7 @@ g_cfe_taste(struct g_class *mp, struct g_provider *pp, int insist)
 	struct g_consumer		*cp;
 	struct g_geom			*gp;
 	struct g_cfe_taste_io		 io;
-	struct bcm_cfe_disk		*disk;
+	struct bcm_disk			*disk;
 	int				 error;
 	bool				 have_io = false;
 
@@ -319,11 +319,11 @@ g_cfe_taste(struct g_class *mp, struct g_provider *pp, int insist)
 	}
 
 	// TODO
-	bcm_cfe_print_disk(disk);
+	bcm_print_disk(disk);
 	printf("MATCH\n");
 	
 	// TODO
-	// bcm_cfe_disk_free(disk);
+	// bcm_disk_free(disk);
 	// g_cfe_taste_fini(&io);
 	// return (???);
 
@@ -359,13 +359,13 @@ g_cfe_probe_bootloader(void *ident)
 
 	SLIST_INIT(&g_cfe_disks);
 
-	if ((error = bcm_cfe_probe_disks(&g_cfe_disks))) {
-		BCM_ERR("bcm_cfe_probe_disks() failed: %d\n", error);
+	if ((error = bcm_probe_disks(&g_cfe_disks))) {
+		BCM_ERR("bcm_probe_disks() failed: %d\n", error);
 		return;
 	}
 
 	if (bootverbose)
-		bcm_cfe_print_disks(&g_cfe_disks);
+		bcm_print_disks(&g_cfe_disks);
 }
 
 SYSINIT(g_cfe_probe_bootloader, SI_SUB_KMEM, SI_ORDER_ANY,
@@ -428,16 +428,16 @@ g_cfe_device_lookup(struct g_consumer *cp)
  * not found.
  * 
  * The caller is responsible for either freeing the claimed entry via
- * bcm_cfe_disk_free(), or releasing the claim on the entry via
+ * bcm_disk_free(), or releasing the claim on the entry via
  * g_cfe_unclaim_disk().
  * 
  * @param id The device description for which a CFE disk entry should be
  * returned.
  */
-static struct bcm_cfe_disk *
+static struct bcm_disk *
 g_cfe_claim_disk(const struct g_cfe_device *id)
 {
-	struct bcm_cfe_disk *disk;
+	struct bcm_disk *disk;
 
 	/* Exclusive access to our shared CFE disk entries is guaranteed by
 	 * the topology lock */
@@ -451,11 +451,11 @@ g_cfe_claim_disk(const struct g_cfe_device *id)
 	 * - 1 SPI/CFI device ('flash0')
 	 * - 1 SPI/CFI device ('flash0') AND 1 NAND device ('nflash0')
 	 */
-	if ((disk = bcm_cfe_find_disk(&g_cfe_disks, id->cfe_name, 0)) == NULL)
+	if ((disk = bcm_find_disk(&g_cfe_disks, id->cfe_name, 0)) == NULL)
 		return (NULL);
 
 	/* Remove from list of unclaimed disks */
-	SLIST_REMOVE(&g_cfe_disks, disk, bcm_cfe_disk, cd_link);
+	SLIST_REMOVE(&g_cfe_disks, disk, bcm_disk, cd_link);
 
 	return (disk);
 }
@@ -467,12 +467,12 @@ g_cfe_claim_disk(const struct g_cfe_device *id)
  * @param disk A disk previously claimed via g_cfe_claim_disk().
  */
 static void
-g_cfe_unclaim_disk(struct bcm_cfe_disk *disk)
+g_cfe_unclaim_disk(struct bcm_disk *disk)
 {
 	g_topology_assert(); /* for g_cfe_disks */
 
 #ifdef INVARIANTS
-	struct bcm_cfe_disk *next;
+	struct bcm_disk *next;
 
 	SLIST_FOREACH(next, &g_cfe_disks, cd_link) {
 		KASSERT(next != disk, ("disk not owned by caller"));
@@ -561,7 +561,7 @@ g_cfe_flash_type_matches(const struct g_cfe_device *id, chipc_flash type)
  */
 static int
 g_cfe_taste_init(struct g_cfe_taste_io *io, struct g_consumer *cp,
-    struct bcm_cfe_disk *disk)
+    struct bcm_disk *disk)
 {
 	off_t	mediasize, stripesize;
 	int	error;
@@ -571,7 +571,7 @@ g_cfe_taste_init(struct g_cfe_taste_io *io, struct g_consumer *cp,
 	io->buf = NULL; 
 	io->buf_off = 0x0;
 	io->buf_len = 0x0;
-	io->palign = BCM_CFE_PALIGN_MIN;
+	io->palign = BCM_PART_ALIGN_MIN;
 
 	/* Sanity check our alignment */
 	g_topology_assert();
@@ -635,16 +635,16 @@ g_cfe_taste_fini(struct g_cfe_taste_io *io)
  *			error code will be returned.
  */
 static int
-g_cfe_taste_read(struct bcm_cfe_part *part, struct g_cfe_taste_io *io,
-    off_t block, off_t offset, void *buf, off_t len)
+g_cfe_taste_read(struct bcm_part *part, struct g_cfe_taste_io *io, off_t block,
+    off_t offset, void *buf, off_t len)
 {
 	/* The partition offset (if known) must match the provided block
 	 * offset */
-	if (part->offset != BCM_CFE_INVALID_OFF && part->offset != block)
+	if (part->offset != BCM_DISK_INVALID_OFF && part->offset != block)
 		return (ENXIO);
 
 	/* The request range must fall within the partition size (if known) */
-	if (part->size != BCM_CFE_INVALID_SIZE) {
+	if (part->size != BCM_DISK_INVALID_SIZE) {
 		if (offset > part->size)
 			return (ENXIO);
 
@@ -720,23 +720,23 @@ g_cfe_taste_read_direct(struct g_cfe_taste_io *io, off_t base, off_t offset,
  * 
  * @param io		I/O context.
  * @param label		Required label, or NULL to match on any label.
- * @param offset	Required offset, or BCM_CFE_INVALID_OFF to match on any
+ * @param offset	Required offset, or BCM_DISK_INVALID_OFF to match on any
  *			offset.
  */
-static struct bcm_cfe_part *
+static struct bcm_part *
 g_cfe_find_matching_part(struct g_cfe_taste_io *io, const char *label,
     off_t offset)
 {
-	return (bcm_cfe_parts_match(&io->disk->parts, label, offset));
+	return (bcm_parts_match(&io->disk->parts, label, offset));
 }
 
 /* Probe CFE 'boot' partition */
-static struct bcm_cfe_part *
+static struct bcm_part *
 g_cfe_probe_cfe(struct g_cfe_taste_io *io, off_t block)
 {
-	struct bcm_cfe_part	*boot;
-	uint32_t		 magic[2];
-	int			 error;
+	struct bcm_part	*boot;
+	uint32_t	 magic[2];
+	int		 error;
 
 	/* If a CFE partition exists, it will always be the 'boot' partition */
 	if ((boot = g_cfe_find_matching_part(io, "boot", block)) == NULL)
@@ -775,12 +775,12 @@ g_cfe_probe_cfe(struct g_cfe_taste_io *io, off_t block)
 G_CFE_DEFINE_PART_PROBE("CFE", g_cfe_probe_cfe);
 
 /* Probe MINIX 'config' partition (as found on WGT634U) */
-static struct bcm_cfe_part *
+static struct bcm_part *
 g_cfe_probe_minix_config(struct g_cfe_taste_io *io, off_t block)
 {
-	struct bcm_cfe_part	*config, *boot;
-	uint16_t		 magic;
-	int			 error;
+	struct bcm_part	*config, *boot;
+	uint16_t	 magic;
+	int		 error;
 
 	/* Must be a 'config' partition */
 	if ((config = g_cfe_find_matching_part(io, "config", block)) == NULL)
@@ -791,7 +791,7 @@ g_cfe_probe_minix_config(struct g_cfe_taste_io *io, off_t block)
 	if ((boot = g_cfe_find_matching_part(io, "boot", 0x0)) == NULL)
 		return (NULL);
 
-	if (bcm_cfe_part_get_next(boot, io->palign) != block)
+	if (bcm_part_get_next(boot, io->palign) != block)
 		return (NULL);
 
 	/* Look for the MINIX superblock */
@@ -815,11 +815,11 @@ G_CFE_DEFINE_PART_PROBE("MINIX_CONFIG", g_cfe_probe_minix_config);
 
 
 /* Probe an NVRAM partition */
-static struct bcm_cfe_part *
+static struct bcm_part *
 g_cfe_probe_nvram(struct g_cfe_taste_io *io, off_t block)
 {
 	struct g_cfe_nvram_io	 nvram_io;
-	struct bcm_cfe_part	*nvram;
+	struct bcm_part		*nvram;
 	off_t			 mediasize;
 	int			 error, result;
 
@@ -847,7 +847,7 @@ g_cfe_probe_nvram(struct g_cfe_taste_io *io, off_t block)
 	 * A TLV NVRAM partition is always found at the end of the flash
 	 * device
 	 */
-	if (nvram->size == BCM_CFE_INVALID_SIZE || nvram->size > mediasize) {
+	if (nvram->size == BCM_DISK_INVALID_SIZE || nvram->size > mediasize) {
 		result = ENXIO;
 		goto finished;
 	}
@@ -877,13 +877,13 @@ G_CFE_DEFINE_PART_PROBE("NVRAM", g_cfe_probe_nvram);
 
 
 /* Probe an 'os' partition as used by early devices without TRX support */
-static struct bcm_cfe_part *
+static struct bcm_part *
 g_cfe_probe_os(struct g_cfe_taste_io *io, off_t block)
 {
-	struct bcm_cfe_part	*os;
-	Elf_Ehdr		 ehdr;
-	uint8_t			 gz_hdr[3];
-	int			 error;
+	struct bcm_part	*os;
+	Elf_Ehdr	 ehdr;
+	uint8_t		 gz_hdr[3];
+	int		 error;
 
 	/* Must be an 'os' partition */
 	if ((os = g_cfe_find_matching_part(io, "os", block)) == NULL)
@@ -938,10 +938,10 @@ g_cfe_probe_os(struct g_cfe_taste_io *io, off_t block)
 G_CFE_DEFINE_PART_PROBE("OS", g_cfe_probe_os);
 
 /* Probe a TRX partition */
-static struct bcm_cfe_part *
+static struct bcm_part *
 g_cfe_probe_trx(struct g_cfe_taste_io *io, off_t block)
 {
-	struct bcm_cfe_part		*trx;
+	struct bcm_part			*trx;
 	struct g_cfe_bootimg_info	*bootimg;
 	struct g_cfe_trx_header		 trx_hdr;
 	const char			*label;
@@ -1032,7 +1032,7 @@ g_cfe_probe_trx(struct g_cfe_taste_io *io, off_t block)
 	}
 
 	/* Update our partition's fs_size */
-	if (trx->fs_size == BCM_CFE_INVALID_SIZE)
+	if (trx->fs_size == BCM_DISK_INVALID_SIZE)
 		trx->fs_size = le32toh(trx_hdr.len);
 
 	/* Validate any existing fs_size */
@@ -1067,7 +1067,7 @@ g_cfe_parse_parts(struct g_cfe_taste_io *io)
 
 	for (size_t offset = 0; offset < mediasize;) {
 		struct g_cfe_part_probe_info	**probep, *probe;
-		struct bcm_cfe_part		*part;
+		struct bcm_part			*part;
 		off_t				 size;
 
 		SET_FOREACH(probep, g_cfe_part_probe_set) {
@@ -1079,7 +1079,7 @@ g_cfe_parse_parts(struct g_cfe_taste_io *io)
 				continue;
 
 			/* We now know the actual offset */
-			if (part->offset == BCM_CFE_INVALID_OFF)
+			if (part->offset == BCM_DISK_INVALID_OFF)
 				part->offset = offset;
 
 			G_CFE_DEBUG(PROBE, "found %-11s +0x%08jx (%s)\n",
@@ -1093,14 +1093,14 @@ g_cfe_parse_parts(struct g_cfe_taste_io *io)
 		 * to the next block. */
 		size = palign;
 		if (part != NULL) {
-			if (part->size != BCM_CFE_INVALID_SIZE) {
+			if (part->size != BCM_DISK_INVALID_SIZE) {
 				size = part->size;
-			} else if (part->fs_size != BCM_CFE_INVALID_SIZE) {
+			} else if (part->fs_size != BCM_DISK_INVALID_SIZE) {
 				size = part->fs_size;
 			}
 		}
 
-		if (part != NULL && part->offset != BCM_CFE_INVALID_OFF)
+		if (part != NULL && part->offset != BCM_DISK_INVALID_OFF)
 			offset = part->offset;
 
 		/* Verify that the next offset fits within the media size */
@@ -1233,7 +1233,7 @@ g_cfe_get_bootimg_info(struct g_cfe_bootimg_info *info)
  * @param	taste	The GEOM taste context to be used for reading.
  * @param	offset	The base offset for all I/O operations.
  * @param	size	The number of readable bytes at @p offset, or
- *			BCM_CFE_INVALID_OFF to allow any read up to the
+ *			BCM_DISK_INVALID_OFF to allow any read up to the
  *			mediasize.
  *
  * @retval 0		success.
@@ -1258,7 +1258,7 @@ g_cfe_nvram_io_init(struct g_cfe_nvram_io *io, struct g_cfe_taste_io *taste,
 		return (EINVAL);
 
 	/* Provide a default size? */
-	if (size == BCM_CFE_INVALID_SIZE)
+	if (size == BCM_DISK_INVALID_SIZE)
 		size = mediasize - offset;
 
 	/* offset+size must not overflow, and must fall within the total

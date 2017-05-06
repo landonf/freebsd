@@ -38,7 +38,7 @@
 
 #include <dev/bhnd/nvram/bhnd_nvram_iovar.h>
 
-#include "bcm_cfe_disk.h"
+#include "bcm_disk.h"
 
 #define	CFE_CLASS_NAME		"BCM_CFE"
 
@@ -115,7 +115,7 @@ struct g_cfe_trx_header {
  */
 struct g_cfe_taste_io {
 	struct g_consumer		*cp;		/**< GEOM consumer (borrowed reference) */
-	struct bcm_cfe_disk		*disk;		/**< disk entry (borrowed reference) */
+	struct bcm_disk			*disk;		/**< disk entry (borrowed reference) */
 	struct g_cfe_bootimg_info	 bootimg;	/**< boot image layout */
 	off_t				 palign;	/**< minimum partition alignment */
 	u_char				*buf;		/**< last read sector(s), or NULL */
@@ -132,8 +132,8 @@ struct g_cfe_taste_io {
  * @retval non-NULL	the identified partition
  * @retval NULL		no match
  */
-typedef struct bcm_cfe_part *(g_cfe_part_probe)(struct g_cfe_taste_io *io,
-						    off_t block);
+typedef struct bcm_part *(g_cfe_part_probe)(struct g_cfe_taste_io *io,
+						off_t block);
 
 /**
  * GEOM BCM_CFE partition probe description.

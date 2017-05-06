@@ -29,43 +29,40 @@
  * $FreeBSD$
  */
 
-#ifndef	_MIPS_BROADCOM_BCM_CFE_DISK_H_
-#define	_MIPS_BROADCOM_BCM_CFE_DISK_H_
+#ifndef	_MIPS_BROADCOM_BCM_DISK_H_
+#define	_MIPS_BROADCOM_BCM_DISK_H_
 
 #include <sys/param.h>
 #include <sys/queue.h>
 
-#define	BCM_CFE_DUNIT_MAX	64		/**< maximum CFE device unit */
-#define	BCM_CFE_DNAME_MAX	64		/**< maximum CFE device name length */
+#define	BCM_DISK_UNIT_MAX	64		/**< maximum CFE device unit */
+#define	BCM_DISK_NAME_MAX	64		/**< maximum CFE device name length */
 
-#define	BCM_CFE_PALIGN_MIN	0x1000		/**< minimum partition alignment */
+#define	BCM_PART_ALIGN_MIN	0x1000		/**< minimum partition alignment */
 
-#define	BCM_CFE_INVALID_OFF	OFF_MAX
-#define	BCM_CFE_INVALID_SIZE	((off_t)0)
+#define	BCM_DISK_INVALID_OFF	OFF_MAX
+#define	BCM_DISK_INVALID_SIZE	((off_t)0)
 
-SLIST_HEAD(bcm_cfe_parts, bcm_cfe_part);
-SLIST_HEAD(bcm_cfe_disks, bcm_cfe_disk);
+SLIST_HEAD(bcm_parts, bcm_part);
+SLIST_HEAD(bcm_disks, bcm_disk);
 
-int			 bcm_cfe_probe_disks(struct bcm_cfe_disks *result);
-struct bcm_cfe_disk	*bcm_cfe_disk_new(const char *drvname, u_int unit);
-void			 bcm_cfe_disk_free(struct bcm_cfe_disk *disk);
+int		 bcm_probe_disks(struct bcm_disks *result);
+struct bcm_disk	*bcm_disk_new(const char *drvname, u_int unit);
+void		 bcm_disk_free(struct bcm_disk *disk);
 
-void			 bcm_cfe_print_disk(struct bcm_cfe_disk *disk);
-void			 bcm_cfe_print_disks(struct bcm_cfe_disks *disks);
+void		 bcm_print_disk(struct bcm_disk *disk);
+void		 bcm_print_disks(struct bcm_disks *disks);
 
-struct bcm_cfe_disk	*bcm_cfe_find_disk(struct bcm_cfe_disks *disks,
-			     const char *drvname, u_int unit);
+struct bcm_disk	*bcm_find_disk(struct bcm_disks *disks, const char *drvname,
+		     u_int unit);
 
-off_t			 bcm_cfe_part_get_end(struct bcm_cfe_part *part);
-off_t			 bcm_cfe_part_get_next(struct bcm_cfe_part *part,
-			     off_t align);
+off_t		 bcm_part_get_end(struct bcm_part *part);
+off_t		 bcm_part_get_next(struct bcm_part *part, off_t align);
 
-struct bcm_cfe_part	*bcm_cfe_parts_find(struct bcm_cfe_parts *parts,
-			     const char *label);
-struct bcm_cfe_part	*bcm_cfe_parts_find_offset(struct bcm_cfe_parts *parts,
-			     off_t offset);
-struct bcm_cfe_part	*bcm_cfe_parts_match(struct bcm_cfe_parts *parts,
-			     const char *label, off_t offset);
+struct bcm_part	*bcm_parts_find(struct bcm_parts *parts, const char *label);
+struct bcm_part	*bcm_parts_find_offset(struct bcm_parts *parts, off_t offset);
+struct bcm_part	*bcm_parts_match(struct bcm_parts *parts, const char *label,
+		     off_t offset);
 
 /**
  * CFE flash device driver quirks.
@@ -124,41 +121,41 @@ enum {
 	    BCM_CFE_QUIRK_ ## _cfe_quirk)
 
 /**
- * CFE-probed partition description.
+ * Partition description.
  */
-struct bcm_cfe_part {
+struct bcm_part {
 	char			*devname;	/**< CFE device name (e.g. 'nflash0.boot') */
 	const char		*label;		/**< CFE partition label */
 	int			 fd;		/**< CFE handle, or -1 if unopened */
 	bool			 need_close;	/**< If the fd should be closed on free */
-	off_t			 offset;	/**< partition offset, or BCM_CFE_INVALID_OFF if unknown */
-	off_t			 size;		/**< partition size, or BCM_CFE_INVALID_SIZE if unknown */
-	off_t			 fs_size;	/**< the size of the filesystem, or BCM_CFE_INVALID_SIZE if unknown.
+	off_t			 offset;	/**< partition offset, or BCM_DISK_INVALID_OFF if unknown */
+	off_t			 size;		/**< partition size, or BCM_DISK_INVALID_SIZE if unknown */
+	off_t			 fs_size;	/**< the size of the filesystem, or BCM_DISK_INVALID_SIZE if unknown.
 						     may be used to determine the minimum partition size required */
 
-	SLIST_ENTRY(bcm_cfe_part) cp_link;
+	SLIST_ENTRY(bcm_part) cp_link;
 };
 
 /**
- * CFE-probed block device description.
+ * Block device description.
  */
-struct bcm_cfe_disk {
+struct bcm_disk {
 	const char		*drvname;	/**< CFE driver class name (e.g. 'nflash') */
 	u_int			 unit;		/**< CFE device unit */
-	off_t			 size;		/**< media size, or BCM_CFE_INVALID_SIZE if unknown */
-	struct bcm_cfe_parts	 parts;		/**< identified partitions */
+	off_t			 size;		/**< media size, or BCM_DISK_INVALID_SIZE if unknown */
+	struct bcm_parts	 parts;		/**< identified partitions */
 	size_t			 num_parts;	/**< partition count */
 
-	SLIST_ENTRY(bcm_cfe_disk) cd_link;
+	SLIST_ENTRY(bcm_disk) cd_link;
 };
 
 /**
- * OS/TRX system partition types.
+ * Known partition types.
  */
 typedef enum {
-	BCM_CFE_SYSPART_OS,	/**< os partition */
-	BCM_CFE_SYSPART_TRX,	/**< trx partition */
-	BCM_CFE_SYSPART_UNKNOWN	/**< other/unknown */
-} bcm_cfe_syspart_type;
+	BCM_PART_TYPE_OS,	/**< os partition */
+	BCM_PART_TYPE_TRX,	/**< trx partition */
+	BCM_PART_TYPE_UNKNOWN	/**< other/unknown */
+} bcm_part_type;
 
-#endif /* _MIPS_BROADCOM_BCM_CFE_DISK_H_ */
+#endif /* _MIPS_BROADCOM_BCM_DISK_H_ */
