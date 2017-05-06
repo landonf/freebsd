@@ -133,6 +133,8 @@ struct bcm_cfe_part {
 	bool			 need_close;	/**< If the fd should be closed on free */
 	off_t			 offset;	/**< partition offset, or BCM_CFE_INVALID_OFF if unknown */
 	off_t			 size;		/**< partition size, or BCM_CFE_INVALID_SIZE if unknown */
+	off_t			 fs_size;	/**< the size of the filesystem, or BCM_CFE_INVALID_SIZE if unknown.
+						     may be used to determine the minimum partition size required */
 
 	SLIST_ENTRY(bcm_cfe_part) cp_link;
 };

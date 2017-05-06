@@ -1153,6 +1153,7 @@ bcm_cfe_part_new(struct bcm_cfe_part **part, const char *devname)
 	p->devname = strdup(devname, M_BCM_CDISK);
 	p->offset = BCM_CFE_INVALID_OFF;
 	p->size = BCM_CFE_INVALID_SIZE;
+	p->fs_size = BCM_CFE_INVALID_SIZE;
 	p->fd = -1;
 	p->need_close = false;
 

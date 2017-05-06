@@ -65,6 +65,14 @@
 #define	G_CFE_BOOTBLK_MAX	16	/**< maximum block number to search */
 #define	G_CFE_BOOTBLK_MAGIC	((uint64_t)0x43465631424f4f54ULL)
 
+/* TRX magic */
+#define	G_CFE_TRX_MAGIC		0x30524448	/* "HDR0" */
+#define	G_CFE_TRX_V1		1
+#define	G_CFE_TRX_V2		2
+#define	G_CFE_TRX_V1_MAX_PARTS	3
+#define	G_CFE_TRX_V2_MAX_PARTS	5
+#define	G_CFE_TRX_MAX_PARTS	G_CFE_TRX_V2_MAX_PARTS
+
 #define	G_CFE_IMG_MAX		2	/**< maximum CFE OS image count */
 
 /**
@@ -92,6 +100,15 @@ struct g_cfe_bootimg_info {
 	off_t			offsets[G_CFE_IMG_MAX];	/**< image offsets */
 	off_t			sizes[G_CFE_IMG_MAX];	/**< image sizes */
 };
+
+/** CFE TRX image header */
+struct g_cfe_trx_header {                                                                                                                 
+	uint32_t magic;
+	uint32_t len;
+	uint32_t crc32;
+	uint32_t flag_version;
+	uint32_t offsets[G_CFE_TRX_MAX_PARTS];
+} __packed;
 
 /**
  * GEOM BCM_CFE device taste context

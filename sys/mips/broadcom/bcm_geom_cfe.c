@@ -943,10 +943,11 @@ g_cfe_probe_trx(struct g_cfe_taste_io *io, off_t block)
 {
 	struct bcm_cfe_part		*trx;
 	struct g_cfe_bootimg_info	*bootimg;
+	struct g_cfe_trx_header		 trx_hdr;
 	const char			*label;
 	char				 buf[sizeof("trxXX")];
 	off_t				 imgsize;
-	int				 len;
+	int				 error, len;
 
 	bootimg = &io->bootimg;
 	label = NULL;
@@ -1000,17 +1001,50 @@ g_cfe_probe_trx(struct g_cfe_taste_io *io, off_t block)
 		break;
 	}
 
-	/* Should we probe this offset? */
 	if (label == NULL)
 		return (NULL);
 
+	/* Do we have a TRX partition entry to probe at this offset? */
 	if ((trx = g_cfe_find_matching_part(io, label, block)) == NULL)
 		return (NULL);
 
-	// TODO
-	printf("DO TRX PROBE: %s@%#jx\n", label, (intmax_t)block);
 
-	return (NULL);
+	/* Read our TRX header */
+	error = g_cfe_taste_read(trx, io, block, 0, &trx_hdr, sizeof(trx_hdr));
+	if (error) {
+		G_CFE_LOG("error reading TRX header: %d", error);
+		return (NULL);
+	}
+
+	if (trx_hdr.magic != G_CFE_TRX_MAGIC) {
+		G_CFE_DEBUG(PROBE, "invalid TRX magic 0x%" PRIx32 " at offset "
+		    "%#jx\n", trx_hdr.magic, (intmax_t)block);
+
+		if (trx_hdr.magic == 0x0) {
+			/* Uninitialized TRX partition? */
+			// TODO: add a partition flag for unused partitions?
+			// TODO: if we do this via cfe_readblk(), we can be
+			// certain that we're reading at the right offset and
+			// have found an empty TRX partition
+		}
+
+		return (NULL);
+	}
+
+	/* Update our partition's fs_size */
+	if (trx->fs_size == BCM_CFE_INVALID_SIZE)
+		trx->fs_size = trx_hdr.len;
+
+	/* Validate any existing fs_size */
+	if (trx->fs_size != trx_hdr.len) {
+		G_CFE_LOG("%s partition has incorrect fs_size %#jx, expected "
+		    "%#" PRIx32 "\n", trx->label, (intmax_t)trx->fs_size,
+		    trx_hdr.len);
+
+		return (NULL);
+	}
+
+	return (trx);
 }
 
 G_CFE_DEFINE_PART_PROBE("TRX", g_cfe_probe_trx);
@@ -1034,9 +1068,9 @@ g_cfe_parse_parts(struct g_cfe_taste_io *io)
 	for (size_t offset = 0; offset < mediasize;) {
 		struct g_cfe_part_probe_info	**probep, *probe;
 		struct bcm_cfe_part		*part;
+		off_t				 size;
 
 		SET_FOREACH(probep, g_cfe_part_probe_set) {
-
 			probe = *probep;
 
 			/* Try probing the given offset */
@@ -1048,31 +1082,42 @@ g_cfe_parse_parts(struct g_cfe_taste_io *io)
 			if (part->offset == BCM_CFE_INVALID_OFF)
 				part->offset = offset;
 
-			/* Terminate probing of this offset */
+			G_CFE_DEBUG(PROBE, "found %-11s 0x%jx (%s)\n",
+			    part->label, (intmax_t)part->offset, probe->name);
+
+			/* Partition found; terminate probing of this offset */
 			break;
 		}
 
-		/* Advance to next block? */
-		if (part == NULL || part->size == BCM_CFE_INVALID_SIZE) {
-			offset += palign;
-			continue;
+		/* Skip any blocks claimed by the partition entry, or advance
+		 * to the next block. */
+		size = palign;
+		if (part != NULL) {
+			if (part->size != BCM_CFE_INVALID_SIZE) {
+				size = part->size;
+			} else if (part->fs_size != BCM_CFE_INVALID_SIZE) {
+				size = part->fs_size;
+			}
 		}
 
-		/* Advance past known partition size */
-		KASSERT(part->offset != BCM_CFE_INVALID_OFF,
-		    ("missing offset"));
+		if (part != NULL && part->offset != BCM_CFE_INVALID_OFF)
+			offset = part->offset;
 
-		if (OFF_MAX - part->size < part->offset ||
-		    part->size + part->offset > mediasize)
-		{
-			G_CFE_LOG("%s: invalid size/offset %#jx+%#jx\n",
-			    part->label, (intmax_t)part->size,
-			    (intmax_t)part->offset);
+		/* Verify that the next offset fits within the media size */
+		if (offset > mediasize || mediasize - offset < size) {
+			G_CFE_LOG("invalid size/offset %#jx+%#jx\n",
+			    (intmax_t)size, (intmax_t)offset);
 
 			return (ENXIO);
 		}
 
-		offset = roundup(part->offset+part->size, palign);
+		/* Advance to the next offset */
+		if (size != palign) {
+			G_CFE_DEBUG(PROBE, "seeking to 0x%jx\n",
+			    (intmax_t)offset+size);
+		}
+
+		offset = roundup(offset+size, palign);
 	}
 
 	return (0);
