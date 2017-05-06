@@ -35,13 +35,12 @@
 #include <sys/param.h>
 #include <sys/queue.h>
 
-#define	BCM_DISK_UNIT_MAX	64		/**< maximum CFE device unit */
-#define	BCM_DISK_NAME_MAX	64		/**< maximum CFE device name length */
-
-#define	BCM_PART_ALIGN_MIN	0x1000		/**< minimum partition alignment */
+/* forward declarations */
+struct bcm_bootinfo;
 
 #define	BCM_DISK_INVALID_OFF	OFF_MAX
 #define	BCM_DISK_INVALID_SIZE	((off_t)0)
+#define	BCM_BOOTIMG_MAX		2		/**< maximum CFE boot image count */
 
 SLIST_HEAD(bcm_parts, bcm_part);
 SLIST_HEAD(bcm_disks, bcm_disk);
@@ -59,66 +58,34 @@ struct bcm_disk	*bcm_find_disk(struct bcm_disks *disks, const char *drvname,
 off_t		 bcm_part_get_end(struct bcm_part *part);
 off_t		 bcm_part_get_next(struct bcm_part *part, off_t align);
 
+int		 bcm_get_bootinfo(struct bcm_bootinfo *bootinfo);
+
 struct bcm_part	*bcm_parts_find(struct bcm_parts *parts, const char *label);
 struct bcm_part	*bcm_parts_find_offset(struct bcm_parts *parts, off_t offset);
 struct bcm_part	*bcm_parts_match(struct bcm_parts *parts, const char *label,
 		     off_t offset);
 
 /**
- * CFE flash device driver quirks.
+ * CFE boot image layouts
  */
-enum {
-	/** No quirks */
-	BCM_CFE_QUIRK_NONE		= 0,
+typedef enum {
+	BCM_BOOTIMG_FAILSAFE,	/**< CFE with FAILSAFE_UPGRADE enabled */
+	BCM_BOOTIMG_DUAL,	/**< CFE with DUAL_IMAGE enabled */
+	BCM_BOOTIMG_SIMPLE	/**< CFE with default config (single image) */
+} bcm_bootimg_layout;
 
-	/** IOCTL_FLASH_GETINFO always returns an invalid offset */
-	BCM_CFE_QUIRK_FLASH_INV_OFF	= (1<<1),
-
-	/** IOCTL_FLASH_GETINFO always returns an invalid size */
-	BCM_CFE_QUIRK_FLASH_INV_SIZE	= (1<<2),
-
-	/* IOCTL_NVRAM_GETINFO (incorrectly) returns the size of the actual
-	 * partition, and may be used to determine partition size. */
-	BCM_CFE_QUIRK_NVRAM_PART_SIZE	= (1<<3),
-
-	/** IOCTL_NVRAM_GETINFO is not supported */
-	BCM_CFE_QUIRK_NVRAM_UNAVAIL	= (1<<4),
-
-	/** IOCTL_FLASH_GETINFO always returns an offset of 0x0 */
-	BCM_CFE_QUIRK_FLASH_ZERO_OFF	= (1<<5) | BCM_CFE_QUIRK_FLASH_INV_OFF,
-
-	/** IOCTL_FLASH_GETINFO returns the physical flash base as the partition
-	 *  offset */
-	BCM_CFE_QUIRK_FLASH_PHYS_OFF	= (1<<6) | BCM_CFE_QUIRK_FLASH_INV_OFF,
-
-	/** IOCTL_FLASH_GETINFO always returns the total flash size (not
-	  * the size of the actual partition) */
-	BCM_CFE_QUIRK_FLASH_TOTAL_SIZE	= (1<<7) | BCM_CFE_QUIRK_FLASH_INV_SIZE,
-
-	/**
-	 * Reading at an offset past the partition's end will trigger a driver
-	 * bug.
-	 */
-	BCM_CFE_QUIRK_PART_EOF_CRASH	= (1<<8),
-
-	/**
-	 * Reading an offset+length range that extends past the partition's end
-	 * will return an IOERR, rather than performing a read over the
-	 * available bytes.
-	 */
-	BCM_CFE_QUIRK_PART_EOF_IOERR	= (1<<9),
-
-	/**
-	 * Reading past the partition end will succeed, returning bytes from
-	 * any subsequent partition until the actual end of the device is
-	 * reached.
-	 */
-	BCM_CFE_QUIRK_PART_EOF_OVERREAD	= (1<<10)
+/**
+ * CFE boot configuration.
+ */
+struct bcm_bootinfo {
+	const char		*drvname;			/**< CFE boot device driver class */
+	u_int			 devunit;			/**< CFE boot device unit */
+	bcm_bootimg_layout	 layout;			/**< CFE boot device layout */
+	uint8_t			 bootimage;			/**< active boot image */
+	size_t			 num_images;			/**< image count */
+	off_t			 offsets[BCM_BOOTIMG_MAX];	/**< image offsets (BCM_DISK_INVALID_OFF if unknown) */
+	off_t			 sizes[BCM_BOOTIMG_MAX];	/**< image sizes (BCM_DISK_INVALID_SIZE if unknown) */
 };
-
-#define	BCM_DRV_QUIRK(_quirks, _cfe_quirk)		\
-	(((_quirks) & BCM_CFE_QUIRK_ ## _cfe_quirk) ==	\
-	    BCM_CFE_QUIRK_ ## _cfe_quirk)
 
 /**
  * Partition description.

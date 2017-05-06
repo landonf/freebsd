@@ -57,10 +57,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/cfe/cfe_error.h>
 #include <dev/cfe/cfe_ioctl.h>
 
-#include "bcm_disk.h"
 #include "bcm_machdep.h"
-
-#include "bhnd_nvram_map.h"
 
 #include "bcm_geom_cfe.h"
 
@@ -108,9 +105,6 @@ static int				 g_cfe_taste_read_direct(
 static int				 g_cfe_parse_parts(
 					     struct g_cfe_taste_io *io);
 
-static int				 g_cfe_get_bootimg_info(
-					     struct g_cfe_bootimg_info *info);
-
 static int				 g_cfe_nvram_io_init(
 					     struct g_cfe_nvram_io *io,
 					     struct g_cfe_taste_io *taste,
@@ -143,25 +137,6 @@ static const struct g_cfe_device {
 	    CHIPC_SFLASH_ST,
 	    CHIPC_FLASH_NONE
 	}}
-};
-
-/**
- * Map of CFE image layout types to their associated OS boot image index
- * NVRAM variable.
- */
-static const struct cfe_bootimg_var {
-	g_cfe_bootimg_type	 type;		/**< layout type */
-	const char		*nvar;		/**< NVRAM variable name */
-	size_t			 num_images;	/**< image count */
-} cfe_bootimg_vars[] = {
-	{ G_CFE_IMAGE_FAILSAFE,	BHND_NVAR_BOOTPARTITION,	2 },
-	{ G_CFE_IMAGE_DUAL,	BHND_NVAR_IMAGE_BOOT,		2 },
-};
-
-/* Image offset variables (by partition index) */
-static const char *cfe_bootimg_offset_vars[] = {
-	BHND_NVAR_IMAGE_FIRST_OFFSET,
-	BHND_NVAR_IMAGE_SECOND_OFFSET
 };
 
 /* Debugging flags */
@@ -591,8 +566,8 @@ g_cfe_taste_init(struct g_cfe_taste_io *io, struct g_consumer *cp,
 		return (ENXIO);
 	}
 
-	/* Fetch CFE boot image configuration */
-	if ((error = g_cfe_get_bootimg_info(&io->bootimg))) {
+	/* Fetch CFE boot info */
+	if ((error = bcm_get_bootinfo(&io->bootinfo))) {
 		G_CFE_LOG("error fetching CFE boot image configuration: %d\n",
 		    error);
 		return (error);
@@ -743,26 +718,26 @@ g_cfe_probe_cfe(struct g_cfe_taste_io *io, off_t block)
 		return (NULL);
 
 	/* Standard CFE image? */
-	error = g_cfe_taste_read(boot, io, block, CFE_MAGIC_OFFSET, magic,
+	error = g_cfe_taste_read(boot, io, block, BCM_CFE_MAGIC_OFFSET, magic,
 	    sizeof(magic));
 	if (error) {
 		G_CFE_LOG("error reading CFE magic: %d", error);
 		return (NULL);
 	}
 
-	if (magic[0] == CFE_MAGIC && magic[1] == CFE_MAGIC)
+	if (magic[0] == BCM_CFE_MAGIC && magic[1] == BCM_CFE_MAGIC)
 		return (boot);
 
 
 	/* Self-decompressing CFEZ image? */
-	error = g_cfe_taste_read(boot, io, block, CFE_BISZ_OFFSET, magic,
+	error = g_cfe_taste_read(boot, io, block, BCM_CFE_BISZ_OFFSET, magic,
 	    sizeof(*magic));
 	if (error) {
 		G_CFE_LOG("error reading CFE BISZ magic: %d", error);
 		return (NULL);
 	}
 
-	if (magic[0] == CFE_BISZ_MAGIC)
+	if (magic[0] == BCM_CFE_BISZ_MAGIC)
 		return (boot);
 
 	/* Not recognized */
@@ -795,14 +770,14 @@ g_cfe_probe_minix_config(struct g_cfe_taste_io *io, off_t block)
 		return (NULL);
 
 	/* Look for the MINIX superblock */
-	error = g_cfe_taste_read(config, io, block, CFE_MINIX_OFFSET, &magic,
+	error = g_cfe_taste_read(config, io, block, BCM_MINIX_OFFSET, &magic,
 	    sizeof(magic));
 	if (error) {
 		G_CFE_LOG("error reading MINIX magic: %d", error);
 		return (NULL);
 	}
 
-	if (magic == CFE_MINIX_MAGIC || bswap16(magic) == CFE_MINIX_MAGIC)
+	if (magic == BCM_MINIX_MAGIC || bswap16(magic) == BCM_MINIX_MAGIC)
 		return (config);
 
 	G_CFE_DEBUG(PROBE, "unrecognized config partition magic 0x%04" PRIx16
@@ -906,18 +881,18 @@ g_cfe_probe_os(struct g_cfe_taste_io *io, off_t block)
 		return (NULL);
 	}
 
-	if (gz_hdr[0] == G_CFE_GZIP_MAGIC0 && gz_hdr[1] == G_CFE_GZIP_MAGIC1 &&
-	    gz_hdr[2] == G_CFE_GZIP_DEFLATE)
+	if (gz_hdr[0] == BCM_GZIP_MAGIC0 && gz_hdr[1] == BCM_GZIP_MAGIC1 &&
+	    gz_hdr[2] == BCM_GZIP_DEFLATE)
 	{
 		return (os);
 	}
 
 	/* Scan for a boot block */
-	for (size_t i = 0; i < G_CFE_BOOTBLK_MAX; i++ ) {
+	for (size_t i = 0; i < BCM_BOOTBLK_MAX; i++ ) {
 		uint64_t	magic;
 		off_t		boff;
 
-		boff = (G_CFE_BOOTBLK_BLKSIZE * i) + G_CFE_BOOTBLK_OFFSET;
+		boff = (BCM_BOOTBLK_BLKSIZE * i) + BCM_BOOTBLK_OFFSET;
 		error = g_cfe_taste_read(os, io, block, boff, &magic,
 		    sizeof(magic));
 		if (error) {
@@ -925,7 +900,7 @@ g_cfe_probe_os(struct g_cfe_taste_io *io, off_t block)
 			return (NULL);
 		}
 
-		if (magic == G_CFE_BOOTBLK_MAGIC)
+		if (magic == BCM_BOOTBLK_MAGIC)
 			return (os);
 	}
 
@@ -942,72 +917,62 @@ static struct bcm_part *
 g_cfe_probe_trx(struct g_cfe_taste_io *io, off_t block)
 {
 	struct bcm_part			*trx;
-	struct g_cfe_bootimg_info	*bootimg;
-	struct g_cfe_trx_header		 trx_hdr;
+	struct bcm_bootinfo		*bootinfo;
+	struct bcm_trx_header		 trx_hdr;
 	const char			*label;
 	char				 buf[sizeof("trxXX")];
-	off_t				 imgsize;
+	off_t				 imgoff, imgsize;
 	int				 error, len;
 
-	bootimg = &io->bootimg;
-	label = NULL;
+	/* Find a our dual/failsafe (or simple) image layout */
+	bootinfo = &io->bootinfo;
+	for (size_t i = 0; i < bootinfo->num_images; i++) {
+		imgoff = bootinfo->offsets[i];
+		imgsize = bootinfo->sizes[i];
 
-	switch (io->bootimg.type) {
-	case G_CFE_IMAGE_DUAL:
-	case G_CFE_IMAGE_FAILSAFE:
-		for (size_t i = 0; i < bootimg->num_images; i++) {
-			/* Skip to next entry? */
-			if (block != bootimg->offsets[i])
-				continue;
-
-			imgsize = bootimg->sizes[i];
-
-			/* The first partition label is always 'trx'; the
-			 * remainder start with 'trx2' */
-			if (i == 0) {
-				label = "trx";
-			} else {
-				/* Cannot format SIZE_MAX+1 */
-				if (i == SIZE_MAX)
-					break;
-
-				/* Format partition label */
-				len = snprintf(buf, sizeof(buf), "trx%zu", i+1);
-
-				if (len >= sizeof(buf)) {
-					G_CFE_LOG("trx partition buffer too "
-					    "small for trx%zu\n", i);
-					return (NULL);
-				}
-
-				if (len < 0) {
-					G_CFE_LOG("error formatting trx%zu "
-					    "partition label: %d\n", i, len);
-					return (NULL);
-				}
-
-				label = buf;
-			}
-
-			/* Terminate search */
-			break;
+		/* If the offset is known, it must match the block offset we're
+		 * currently probing */
+		if (imgoff != BCM_DISK_INVALID_OFF && imgoff != block) {
+			/* Try the next image entry */
+			continue;
 		}
 
-		break;
+		/* After the first TRX partition ('trx'), numbering starts at
+		 * 2 ('trx2') */
+		if (i == 0) {
+			label = "trx";
+		} else {
+			/* Cannot format SIZE_MAX+1 */
+			if (i == SIZE_MAX)
+				break;
 
-	case G_CFE_IMAGE_SIMPLE:
-		KASSERT(io->bootimg.num_images == 0, ("invalid image count"));
-		label = "trx";
-		break;
+			/* Format partition label */
+			len = snprintf(buf, sizeof(buf), "trx%zu", i+1);
+
+			if (len >= sizeof(buf)) {
+				G_CFE_LOG("trx partition buffer too "
+				    "small for trx%zu\n", i);
+				return (NULL);
+			}
+
+			if (len < 0) {
+				G_CFE_LOG("error formatting trx%zu "
+				    "partition label: %d\n", i, len);
+				return (NULL);
+			}
+
+			label = buf;
+		}
+
+		/* Do we have a matching TRX partition entry to probe at this
+		 * offset? */
+		if ((trx = g_cfe_find_matching_part(io, label, block)) != NULL)
+			break;	/* terminate search */
 	}
 
-	if (label == NULL)
+	/* Not a TRX partition */
+	if (trx == NULL)
 		return (NULL);
-
-	/* Do we have a TRX partition entry to probe at this offset? */
-	if ((trx = g_cfe_find_matching_part(io, label, block)) == NULL)
-		return (NULL);
-
 
 	/* Read our TRX header */
 	error = g_cfe_taste_read(trx, io, block, 0, &trx_hdr, sizeof(trx_hdr));
@@ -1016,7 +981,7 @@ g_cfe_probe_trx(struct g_cfe_taste_io *io, off_t block)
 		return (NULL);
 	}
 
-	if (le32toh(trx_hdr.magic) != G_CFE_TRX_MAGIC) {
+	if (le32toh(trx_hdr.magic) != BCM_TRX_MAGIC) {
 		G_CFE_DEBUG(PROBE, "invalid TRX magic 0x%" PRIx32 " at offset "
 		    "%#jx\n", trx_hdr.magic, (intmax_t)block);
 
@@ -1118,105 +1083,6 @@ g_cfe_parse_parts(struct g_cfe_taste_io *io)
 
 		offset = roundup(offset+size, palign);
 	}
-
-	return (0);
-}
-
-/**
- * Populate @p info with the CFE boot image layout.
- */
-static int
-g_cfe_get_bootimg_info(struct g_cfe_bootimg_info *info)
-{
-	struct bcm_platform		*bp;
-	const struct cfe_bootimg_var	*imgvar;
-	uint8_t				 bootimg;
-	uint64_t			 imgsize;
-	size_t				 len;
-	int				 error;
-
-	bp = bcm_get_platform();
-
-	/* Determine layout type and boot image index */
-	imgvar = NULL;
-	for (size_t i = 0; i < nitems(cfe_bootimg_vars); i++) {
-		/* Try to fetch the boot image index from NVRAM */
-		len = sizeof(bootimg);
-		error = bcm_get_nvram(bp, cfe_bootimg_vars[i].nvar, &bootimg,
-		    &len, BHND_NVRAM_TYPE_UINT8);
-
-		if (!error) {
-			/* Matched */
-			imgvar = &cfe_bootimg_vars[i];
-			break;
-		} else if (error != ENOENT) {
-			/* Return an error if the NVRAM read fails for any
-			 * reason other than variable not found */
-			G_CFE_LOG("error fetching '%s' boot image index "
-			    "variable: %d\n", cfe_bootimg_vars[i].nvar, error);
-			return (error);
-		}
-	}
-
-	if (imgvar == NULL) {
-		/* No dual/failsafe image support */
-		info->type = G_CFE_IMAGE_SIMPLE;
-		info->num_images	= 0;
-		info->bootimage		= 0;
-		info->offsets[0]	= 0;
-		info->sizes[0]		= 0;
-
-		return (0);
-	}
-
-	/* Dual/failsafe image */
-	info->type = imgvar->type;
-	info->num_images = imgvar->num_images;
-	info->bootimage = bootimg;
-
-	/* Probe image offsets */
-	for (size_t i = 0; i < info->num_images; i++) {
-		uint64_t offset;
-
-		KASSERT(i < nitems(info->offsets), ("bad image count: %zu", i));
-
-		if (i >= nitems(cfe_bootimg_offset_vars)) {
-			G_CFE_LOG("missing offset variable for image %zu\n", i);
-			return (ENXIO);
-		}
-
-		len = sizeof(info->offsets[i]);
-		error = bcm_get_nvram(bp, cfe_bootimg_offset_vars[i], &offset,
-		    &len, BHND_NVRAM_TYPE_UINT64);
-		if (error) {
-			G_CFE_LOG("error fetching offset[%zu]: %d\n", i, error);
-			return (error);
-		}
-
-		if (offset > OFF_MAX) {
-			G_CFE_LOG("invalid offset: 0x%" PRIx64"\n", offset);
-			return (ERANGE);
-		}
-
-		info->offsets[i] = (off_t)offset;
-	}
-
-	/* Probe image sizes */
-	len = sizeof(imgsize);
-	error = bcm_get_nvram(bp, BHND_NVAR_IMAGE_SIZE, &imgsize, &len,
-	    BHND_NVRAM_TYPE_UINT64);
-	if (error) {
-		G_CFE_LOG("error fetching image size: %d\n", error);
-		return (error);
-	}
-
-	if (imgsize > OFF_MAX) {
-		G_CFE_LOG("invalid image size: 0x%" PRIx64"\n", imgsize);
-		return (ERANGE);
-	}
-
-	for (size_t i = 0; i < info->num_images; i++)
-		info->sizes[i] = (off_t)imgsize;
 
 	return (0);
 }

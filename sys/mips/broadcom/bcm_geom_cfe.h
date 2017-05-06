@@ -38,42 +38,9 @@
 
 #include <dev/bhnd/nvram/bhnd_nvram_iovar.h>
 
-#include "bcm_disk.h"
+#include "bcm_diskvar.h"
 
 #define	CFE_CLASS_NAME		"BCM_CFE"
-
-/* CFE binary magic */
-#define	CFE_MAGIC		0x43464531	/**< 'CFE1' */
-#define	CFE_MAGIC_OFFSET	0x4E0		/**< CFE magic offset */
-
-/* Self-describing compressed CFEZ binary magic */
-#define	CFE_BISZ_OFFSET		0x3E0
-#define	CFE_BISZ_MAGIC		0x4249535A	/* 'BISZ' */
-
-/* SENTRY5 'config' partition magic (MINIX v1 filesystem, 30 char name limit) */
-#define	CFE_MINIX_OFFSET	0x410
-#define	CFE_MINIX_MAGIC		0x138F
-
-/* GZIP magic */
-#define	G_CFE_GZIP_MAGIC0	0x1f
-#define	G_CFE_GZIP_MAGIC1	0x8b
-#define	G_CFE_GZIP_DEFLATE	8
-
-/* CFE bootblock magic */
-#define	G_CFE_BOOTBLK_OFFSET	472	/**< boot block offset */
-#define	G_CFE_BOOTBLK_BLKSIZE	512	/**< boot block alignment */
-#define	G_CFE_BOOTBLK_MAX	16	/**< maximum block number to search */
-#define	G_CFE_BOOTBLK_MAGIC	((uint64_t)0x43465631424f4f54ULL)
-
-/* TRX magic */
-#define	G_CFE_TRX_MAGIC		0x30524448	/* "HDR0" */
-#define	G_CFE_TRX_V1		1
-#define	G_CFE_TRX_V2		2
-#define	G_CFE_TRX_V1_MAX_PARTS	3
-#define	G_CFE_TRX_V2_MAX_PARTS	5
-#define	G_CFE_TRX_MAX_PARTS	G_CFE_TRX_V2_MAX_PARTS
-
-#define	G_CFE_IMG_MAX		2	/**< maximum CFE OS image count */
 
 /**
  * GEOM BCM_CFE instance state
@@ -82,45 +49,16 @@ struct g_cfe_softc {
 };
 
 /**
- * CFE boot image layout types.
- */
-typedef enum {
-	G_CFE_IMAGE_FAILSAFE,	/**< CFE with FAILSAFE_UPGRADE enabled */
-	G_CFE_IMAGE_DUAL,	/**< CFE with DUAL_IMAGE enabled */
-	G_CFE_IMAGE_SIMPLE	/**< CFE with default config (single image) */
-} g_cfe_bootimg_type;
-
-/**
- * CFE boot image info.
- */
-struct g_cfe_bootimg_info {
-	g_cfe_bootimg_type	type;			/**< CFE boot image type */
-	uint8_t			bootimage;		/**< boot image index */
-	size_t			num_images;		/**< image count */
-	off_t			offsets[G_CFE_IMG_MAX];	/**< image offsets */
-	off_t			sizes[G_CFE_IMG_MAX];	/**< image sizes */
-};
-
-/** CFE TRX image header */
-struct g_cfe_trx_header {                                                                                                                 
-	uint32_t magic;
-	uint32_t len;
-	uint32_t crc32;
-	uint32_t flag_version;
-	uint32_t offsets[G_CFE_TRX_MAX_PARTS];
-} __packed;
-
-/**
  * GEOM BCM_CFE device taste context
  */
 struct g_cfe_taste_io {
-	struct g_consumer		*cp;		/**< GEOM consumer (borrowed reference) */
-	struct bcm_disk			*disk;		/**< disk entry (borrowed reference) */
-	struct g_cfe_bootimg_info	 bootimg;	/**< boot image layout */
-	off_t				 palign;	/**< minimum partition alignment */
-	u_char				*buf;		/**< last read sector(s), or NULL */
-	off_t				 buf_off;	/**< offset of last read */
-	off_t				 buf_len;	/**< length of last read */
+	struct g_consumer	*cp;		/**< GEOM consumer (borrowed reference) */
+	struct bcm_disk		*disk;		/**< disk entry (borrowed reference) */
+	struct bcm_bootinfo	 bootinfo;	/**< boot image configuration */
+	off_t			 palign;	/**< minimum partition alignment */
+	u_char			*buf;		/**< last read sector(s), or NULL */
+	off_t			 buf_off;	/**< offset of last read */
+	off_t			 buf_len;	/**< length of last read */
 };
 
 /**
