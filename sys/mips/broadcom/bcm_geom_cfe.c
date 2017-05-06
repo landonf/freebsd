@@ -1016,7 +1016,7 @@ g_cfe_probe_trx(struct g_cfe_taste_io *io, off_t block)
 		return (NULL);
 	}
 
-	if (trx_hdr.magic != G_CFE_TRX_MAGIC) {
+	if (le32toh(trx_hdr.magic) != G_CFE_TRX_MAGIC) {
 		G_CFE_DEBUG(PROBE, "invalid TRX magic 0x%" PRIx32 " at offset "
 		    "%#jx\n", trx_hdr.magic, (intmax_t)block);
 
@@ -1033,10 +1033,10 @@ g_cfe_probe_trx(struct g_cfe_taste_io *io, off_t block)
 
 	/* Update our partition's fs_size */
 	if (trx->fs_size == BCM_CFE_INVALID_SIZE)
-		trx->fs_size = trx_hdr.len;
+		trx->fs_size = le32toh(trx_hdr.len);
 
 	/* Validate any existing fs_size */
-	if (trx->fs_size != trx_hdr.len) {
+	if (trx->fs_size != le32toh(trx_hdr.len)) {
 		G_CFE_LOG("%s partition has incorrect fs_size %#jx, expected "
 		    "%#" PRIx32 "\n", trx->label, (intmax_t)trx->fs_size,
 		    trx_hdr.len);
