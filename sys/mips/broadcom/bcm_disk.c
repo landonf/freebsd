@@ -329,21 +329,17 @@ static int
 compare_part_offset_asc(const void *lhs, const void *rhs)
 {
 	struct bcm_part	*lpart, *rpart;
-	off_t		 loff, roff;
 
 	lpart = (*(struct bcm_part * const *) lhs);
 	rpart = (*(struct bcm_part * const *) rhs);
 
-	loff = lpart->offset;
-	roff = rpart->offset;
-
 	/* Handle missing offset values; a missing value is always ordered
 	 * after any valid value */
-	if (loff == BCM_DISK_INVALID_OFF || roff == BCM_DISK_INVALID_OFF) {
-		if (loff != BCM_DISK_INVALID_OFF) {
+	if (!BCM_PART_HAS_OFFSET(lpart) || !BCM_PART_HAS_OFFSET(rpart)) {
+		if (BCM_PART_HAS_OFFSET(lpart)) {
 			/* LHS has an offset value, RHS does not */
 			return (-1);
-		} else if (roff != BCM_DISK_INVALID_OFF) {
+		} else if (BCM_PART_HAS_OFFSET(rpart)) {
 			/* RHS has an offset value, LHS does not */
 			return (1);
 		} else {
@@ -353,9 +349,9 @@ compare_part_offset_asc(const void *lhs, const void *rhs)
 	}
 
 	/* Simple ascending order */
-	if (loff < roff) {
+	if (lpart->offset < rpart->offset) {
 		return (-1);
-	} else if (loff > roff) {
+	} else if (lpart->offset > rpart->offset) {
 		return (1);
 	} else {
 		return (0);
@@ -391,12 +387,12 @@ bcm_print_disk(struct bcm_disk *disk)
 	for (size_t i = 0; i < disk->num_parts; i++) {
 		printf("    %-12s", parts[i]->label);
 
-		if (parts[i]->offset != BCM_DISK_INVALID_OFF)
+		if (BCM_PART_HAS_OFFSET(parts[i]))
 			printf("0x%08jx", (intmax_t)parts[i]->offset);
 		else
 			printf("%8s", "unknown");
 
-		if (parts[i]->size != BCM_DISK_INVALID_SIZE)
+		if (BCM_PART_HAS_SIZE(parts[i]))
 			printf("+0x%08jx", (intmax_t)parts[i]->size);
 		else
 			printf("+%-8s", "unknown");
@@ -621,8 +617,7 @@ bcm_parts_match(struct bcm_parts *parts, const char *label,
 
 	SLIST_FOREACH(part, parts, cp_link) {
 		if (offset != BCM_DISK_INVALID_OFF &&
-		    part->offset != BCM_DISK_INVALID_OFF &&
-		    part->offset != offset)
+		    BCM_PART_HAS_OFFSET(part) && part->offset != offset)
 		{
 			continue;
 		}
@@ -1076,7 +1071,7 @@ bcm_probe_disk(struct bcm_disk *disk, bool *skip_next)
 		goto failed;
 
 	/* Try to fetch the media size */
-	if (BCM_CFE_QUIRK(quirks, FLASH_TOTAL_SIZE)) {
+	if (BCM_DRV_QUIRK(quirks, FLASH_TOTAL_SIZE)) {
 		flash_info_t	fi;
 		int		cerr, rlen;
 
@@ -1103,9 +1098,7 @@ bcm_probe_disk(struct bcm_disk *disk, bool *skip_next)
 		}
 #endif
 
-		KASSERT(disk->size == BCM_DISK_INVALID_SIZE,
-		    ("overwrite of valid size"));
-
+		KASSERT(!BCM_DISK_HAS_SIZE(disk), ("overwrite of valid size"));
 		disk->size = fi.flash_size;
 	}
 
@@ -1201,10 +1194,7 @@ bcm_part_free(struct bcm_part *part)
 off_t
 bcm_part_get_end(struct bcm_part *part)
 {
-	if (part->offset == BCM_DISK_INVALID_OFF)
-		return (BCM_DISK_INVALID_OFF);
-
-	if (part->size == BCM_DISK_INVALID_SIZE)
+	if (!BCM_PART_HAS_OFFSET(part) || !BCM_PART_HAS_SIZE(part))
 		return (BCM_DISK_INVALID_OFF);
 
 	KASSERT(OFF_MAX - part->offset >= part->size, ("offset overflow"));
@@ -1239,13 +1229,12 @@ bcm_probe_part_flashinfo(struct bcm_disk *disk,
 	int		cerr, rlen;
 
 	/* Skip if both offset and size have already been determined */
-	if (part->offset != BCM_DISK_INVALID_OFF &&
-	    part->size != BCM_DISK_INVALID_SIZE)
+	if (BCM_PART_HAS_OFFSET(part) && BCM_PART_HAS_SIZE(part))
 		return (0);
 
 	/* Skip if IOCTL_FLASH_GETINFO is unusable */
-	if (BCM_CFE_QUIRK(quirks, FLASH_INV_OFF) &&
-	    BCM_CFE_QUIRK(quirks, FLASH_INV_SIZE))
+	if (BCM_DRV_QUIRK(quirks, FLASH_INV_OFF) &&
+	    BCM_DRV_QUIRK(quirks, FLASH_INV_SIZE))
 		return (0);
 
 	/* Fetch flash info */
@@ -1261,7 +1250,7 @@ bcm_probe_part_flashinfo(struct bcm_disk *disk,
 	    fi.flash_base, fi.flash_size);
 
 	/* Validate the partition offset */
-	if (!BCM_CFE_QUIRK(quirks, FLASH_INV_OFF)) {
+	if (!BCM_DRV_QUIRK(quirks, FLASH_INV_OFF)) {
 #if ULLONG_MAX > OFF_MAX
 		if (fi.flash_base > OFF_MAX) {
 			BCM_PART_ERR(part, "flash base %#llx exceeds maximum "
@@ -1270,7 +1259,7 @@ bcm_probe_part_flashinfo(struct bcm_disk *disk,
 		}
 #endif
 
-		if (BCM_CFE_QUIRK(quirks, FLASH_TOTAL_SIZE) &&
+		if (BCM_DRV_QUIRK(quirks, FLASH_TOTAL_SIZE) &&
 		    fi.flash_base > fi.flash_size)
 		{
 			BCM_PART_ERR(part, "invalid offset %#llx (size=%#x)\n",
@@ -1280,7 +1269,7 @@ bcm_probe_part_flashinfo(struct bcm_disk *disk,
 	}
 
 	/* Validate the partition size */
-	if (!BCM_CFE_QUIRK(quirks, FLASH_INV_SIZE)) {
+	if (!BCM_DRV_QUIRK(quirks, FLASH_INV_SIZE)) {
 #if UINT_MAX > OFF_MAX
 		if (fi.flash_size > OFF_MAX) {
 			BCM_PART_ERR(part, "flash size %#x exceeds maximum "
@@ -1291,13 +1280,13 @@ bcm_probe_part_flashinfo(struct bcm_disk *disk,
 	}
 
 	/* Set any missing values in the partition description */
-	if (!BCM_CFE_QUIRK(quirks, FLASH_INV_OFF)) {
-		if (part->offset == BCM_DISK_INVALID_OFF)
+	if (!BCM_DRV_QUIRK(quirks, FLASH_INV_OFF)) {
+		if (!BCM_PART_HAS_OFFSET(part))
 			part->offset = fi.flash_base;
 	}
 
-	if (!BCM_CFE_QUIRK(quirks, FLASH_INV_OFF)) {
-		if (part->size == BCM_DISK_INVALID_SIZE)
+	if (!BCM_DRV_QUIRK(quirks, FLASH_INV_OFF)) {
+		if (!BCM_PART_HAS_SIZE(part))
 			part->size = fi.flash_size;
 	}
 
@@ -1312,11 +1301,11 @@ bcm_probe_part_nvraminfo(struct bcm_disk *disk,
 	int		cerr, rlen;
 
 	/* Skip if size has already been determined */
-	if (part->size != BCM_DISK_INVALID_SIZE)
+	if (BCM_PART_HAS_SIZE(part))
 		return (0);
 
 	/* Skip if IOCTL_NVRAM_GETINFO does not return the partition size */
-	if (!BCM_CFE_QUIRK(quirks, NVRAM_PART_SIZE))
+	if (!BCM_DRV_QUIRK(quirks, NVRAM_PART_SIZE))
 		return (0);
 
 	/* Fetch and validate the NVRAM info */
@@ -1385,7 +1374,7 @@ bcm_part_readsz_slow(struct bcm_disk *disk, struct bcm_part *part,
 		cerr = cfe_readblk(part->fd, offset, buf, sizeof(buf));
 
 		if (cerr == CFE_ERR_IOERR &&
-		    BCM_CFE_QUIRK(quirks, PART_EOF_IOERR))
+		    BCM_DRV_QUIRK(quirks, PART_EOF_IOERR))
 		{
 			/* Some drivers fail to truncate the two byte read; try
 			 * reading a single byte */
@@ -1449,7 +1438,7 @@ bcm_part_readsz_fast(struct bcm_disk *disk, struct bcm_part *part,
 	blksize = BCM_PART_ALIGN_MIN;
 
 	/* Reading past EOF must not trigger a CFE driver crash */
-	if (BCM_CFE_QUIRK(quirks, PART_EOF_CRASH))
+	if (BCM_DRV_QUIRK(quirks, PART_EOF_CRASH))
 		return (ENXIO);
 
 	/* The disk must be block-aligned */
@@ -1564,19 +1553,19 @@ bcm_probe_part_read(struct bcm_disk *disk, struct bcm_part *part,
 
 	/* If the driver allows reading past EOF (up to the end of the device),
 	 * we're determining the offset, not the size */
-	if (BCM_CFE_QUIRK(quirks, PART_EOF_OVERREAD)) {
+	if (BCM_DRV_QUIRK(quirks, PART_EOF_OVERREAD)) {
 		/* If we're calculating offset via EOF_OVERREAD, the total
 		 * device size must be available */
-		if (disk->size == BCM_DISK_INVALID_SIZE)
+		if (!BCM_DISK_HAS_SIZE(disk))
 			return (0);
 
 		/* Skip if offset has already been determined */
-		if (part->offset != BCM_DISK_INVALID_OFF)
+		if (BCM_PART_HAS_OFFSET(part))
 			return (0);
 	} else {
 		/* We're determining the partition size; skip if size has
 		 * already been determined */
-		if (part->size != BCM_DISK_INVALID_SIZE)
+		if (BCM_PART_HAS_SIZE(part))
 			return (0);
 	}
 
@@ -1595,12 +1584,11 @@ bcm_probe_part_read(struct bcm_disk *disk, struct bcm_part *part,
 
 	BCM_PART_TRACE(part, "read result: %#jx\n", (intmax_t)result);
 
-	if (BCM_CFE_QUIRK(quirks, PART_EOF_OVERREAD)) {
+	if (BCM_DRV_QUIRK(quirks, PART_EOF_OVERREAD)) {
 		/* Result is the number of bytes readable at the partition
 		 * offset, up to the total media size */
 
-		KASSERT(disk->size != BCM_DISK_INVALID_SIZE,
-		    ("missing disk size"));
+		KASSERT(BCM_DISK_HAS_SIZE(disk), ("missing disk size"));
 
 		if (result > disk->size) {
 			BCM_PART_ERR(part, "read %#jx bytes beyond media end",
@@ -1608,14 +1596,11 @@ bcm_probe_part_read(struct bcm_disk *disk, struct bcm_part *part,
 			return (ENXIO);
 		}
 
-		KASSERT(part->offset == BCM_DISK_INVALID_OFF,
-		    ("offset overwrite"));
-
+		KASSERT(!BCM_PART_HAS_OFFSET(part), ("offset overwrite"));
 		part->offset = disk->size - result;
 	} else {
 		/* Result is the partition size */
-		KASSERT(part->size == BCM_DISK_INVALID_SIZE,
-		    ("size overwrite"));
+		KASSERT(!BCM_PART_HAS_SIZE(part), ("size overwrite"));
 		part->size = result;
 	}
 

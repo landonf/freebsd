@@ -116,7 +116,7 @@ enum {
 	BCM_CFE_QUIRK_PART_EOF_OVERREAD	= (1<<10)
 };
 
-#define	BCM_CFE_QUIRK(_quirks, _cfe_quirk)			\
+#define	BCM_DRV_QUIRK(_quirks, _cfe_quirk)		\
 	(((_quirks) & BCM_CFE_QUIRK_ ## _cfe_quirk) ==	\
 	    BCM_CFE_QUIRK_ ## _cfe_quirk)
 
@@ -136,6 +136,18 @@ struct bcm_part {
 	SLIST_ENTRY(bcm_part) cp_link;
 };
 
+/** Evaluates to true if @p _part has a valid offset, false otherwise */
+#define	BCM_PART_HAS_OFFSET(_part)	\
+    ((_part)->offset != BCM_DISK_INVALID_OFF)
+
+/** Evaluates to true if @p _part has a valid size, false otherwise */
+#define	BCM_PART_HAS_SIZE(_part)	\
+    ((_part)->size != BCM_DISK_INVALID_SIZE)
+    
+/** Evaluates to true if @p _part has a valid filesystem size, false otherwise */
+#define	BCM_PART_HAS_FS_SIZE(_part)	\
+    ((_part)->fs_size != BCM_DISK_INVALID_SIZE)
+
 /**
  * Block device description.
  */
@@ -148,6 +160,10 @@ struct bcm_disk {
 
 	SLIST_ENTRY(bcm_disk) cd_link;
 };
+
+/** Evaluates to true if @p _disk has a valid size, false otherwise */
+#define	BCM_DISK_HAS_SIZE(_part)	\
+    ((_part)->size != BCM_DISK_INVALID_SIZE)
 
 /**
  * Known partition types.

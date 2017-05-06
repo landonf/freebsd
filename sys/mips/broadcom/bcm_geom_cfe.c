@@ -640,11 +640,11 @@ g_cfe_taste_read(struct bcm_part *part, struct g_cfe_taste_io *io, off_t block,
 {
 	/* The partition offset (if known) must match the provided block
 	 * offset */
-	if (part->offset != BCM_DISK_INVALID_OFF && part->offset != block)
+	if (BCM_PART_HAS_OFFSET(part) && part->offset != block)
 		return (ENXIO);
 
 	/* The request range must fall within the partition size (if known) */
-	if (part->size != BCM_DISK_INVALID_SIZE) {
+	if (BCM_PART_HAS_SIZE(part)) {
 		if (offset > part->size)
 			return (ENXIO);
 
@@ -847,7 +847,7 @@ g_cfe_probe_nvram(struct g_cfe_taste_io *io, off_t block)
 	 * A TLV NVRAM partition is always found at the end of the flash
 	 * device
 	 */
-	if (nvram->size == BCM_DISK_INVALID_SIZE || nvram->size > mediasize) {
+	if (!BCM_PART_HAS_SIZE(nvram) || nvram->size > mediasize) {
 		result = ENXIO;
 		goto finished;
 	}
@@ -1032,7 +1032,7 @@ g_cfe_probe_trx(struct g_cfe_taste_io *io, off_t block)
 	}
 
 	/* Update our partition's fs_size */
-	if (trx->fs_size == BCM_DISK_INVALID_SIZE)
+	if (!BCM_PART_HAS_FS_SIZE(trx))
 		trx->fs_size = le32toh(trx_hdr.len);
 
 	/* Validate any existing fs_size */
@@ -1093,14 +1093,13 @@ g_cfe_parse_parts(struct g_cfe_taste_io *io)
 		 * to the next block. */
 		size = palign;
 		if (part != NULL) {
-			if (part->size != BCM_DISK_INVALID_SIZE) {
+			if (BCM_PART_HAS_SIZE(part))
 				size = part->size;
-			} else if (part->fs_size != BCM_DISK_INVALID_SIZE) {
+			else if (BCM_PART_HAS_FS_SIZE(part))
 				size = part->fs_size;
-			}
 		}
 
-		if (part != NULL && part->offset != BCM_DISK_INVALID_OFF)
+		if (part != NULL && BCM_PART_HAS_OFFSET(part))
 			offset = part->offset;
 
 		/* Verify that the next offset fits within the media size */
