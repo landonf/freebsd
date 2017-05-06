@@ -1082,7 +1082,7 @@ g_cfe_parse_parts(struct g_cfe_taste_io *io)
 			if (part->offset == BCM_CFE_INVALID_OFF)
 				part->offset = offset;
 
-			G_CFE_DEBUG(PROBE, "found %-11s 0x%jx (%s)\n",
+			G_CFE_DEBUG(PROBE, "found %-11s +0x%08jx (%s)\n",
 			    part->label, (intmax_t)part->offset, probe->name);
 
 			/* Partition found; terminate probing of this offset */
