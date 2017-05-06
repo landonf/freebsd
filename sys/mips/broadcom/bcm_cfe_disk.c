@@ -623,15 +623,15 @@ bcm_cfe_parts_match(struct bcm_cfe_parts *parts, const char *label,
 	struct bcm_cfe_part *part;
 
 	SLIST_FOREACH(part, parts, cp_link) {
-		if (label != NULL && strcmp(part->label, label) != 0)
-			continue;
-
 		if (offset != BCM_CFE_INVALID_OFF &&
 		    part->offset != BCM_CFE_INVALID_OFF &&
 		    part->offset != offset)
 		{
 			continue;
 		}
+
+		if (label != NULL && strcmp(part->label, label) != 0)
+			continue;
 
 		/* Found match */
 		return (part);
