@@ -226,16 +226,21 @@ static int		 bcm_probe_disk(struct bcm_disk *disk, bool *skip_next);
 static int		 bcm_probe_driver_quirks(struct bcm_disk *disk,
 			     uint32_t *quirks);
 
-static bool		 bcm_dev_exists(const char *devname);
-static bool		 bcm_part_exists(const char *drvname, u_int unit,
+static bool		 bcm_cfe_dev_exists(struct bcm_disk *disk,
 			     const char *label);
+
 static int		 bcm_fmt_devname(const char *drvname, u_int unit,
 			     const char *partname, char *buf, size_t *len);
 
 static struct bcm_part	*bcm_disk_get_query_part(struct bcm_disk *disk);
 
-static bcm_part_type	 bcm_lookup_boot_label(const char *label,
-			     const struct bcm_boot_label **bpinfo);
+static bool		 bcm_lookup_boot_label(const char *label,
+			     const struct bcm_boot_label **info,
+			     bcm_part_type *part_type);
+
+static int		 bcm_probe_trx_remapping(struct bcm_disk *disk,
+			     const char *label, u_int *unit, bool *ignore,
+			     bool *skip_next);
 
 static int		 bcm_part_new(struct bcm_part **part,
 			     const char *devname);
@@ -523,6 +528,13 @@ bcm_disk_new(const char *drvname, u_int unit)
 void
 bcm_disk_free(struct bcm_disk *disk)
 {
+	struct bcm_part *p, *pnext;
+
+	SLIST_FOREACH_SAFE(p, &disk->parts, cp_link, pnext) {
+		SLIST_REMOVE_HEAD(&disk->parts, cp_link);
+		bcm_part_free(p);
+	}
+
 	free(disk, M_BCM_CDISK);
 }
 
@@ -654,40 +666,39 @@ bcm_disk_get_query_part(struct bcm_disk *disk)
 }
 
 /**
- * Look up and return the system partition information for the given
- * @p label, if any.
+ * Look up the boot partition label entry for @p label, if any.
  *
- * @param	label	The partition label to look up.
- * @param[out]	binfo	The boot label entry for @p label, or NULL if @p label
- *			is not a recognized boot partition label.
- *
- * @retval BCM_PART_TYPE_OS		if @p label is a recognized OS partition
- *					label.
- * @retval BCM_PART_TYPE_TRX		if @p label is a recognized TRX
- *					partition label.
- * @retval BCM_PART_TYPE_UNKNOWN	if @p label is not a recognized system
- *					partition label.
+ * @param	label		The partition label to look up.
+ * @param[out]	info		On success, the boot label entry for @p label.
+ * @param[out]	part_type	On success, the partition type of @p label.
+ * 
+ * @retval true		if @p label is a known boot partition name.
+ * @retval false	if @p label is unrecognized.
  */
-static bcm_part_type
-bcm_lookup_boot_label(const char *label, const struct bcm_boot_label **binfo)
+static bool
+bcm_lookup_boot_label(const char *label, const struct bcm_boot_label **info,
+    bcm_part_type *part_type)
 {
 	for (size_t i = 0; i < nitems(bcm_boot_labels); i++) {
-		const struct bcm_boot_label *sp = &bcm_boot_labels[i];
+		const struct bcm_boot_label *l = &bcm_boot_labels[i];
 
-		if (strcmp(label, sp->os_label) == 0) {
-			*binfo = sp;
-			return (BCM_PART_TYPE_OS);
+		if (strcmp(label, l->os_label) == 0) {
+			*info = l;
+			*part_type = BCM_PART_TYPE_OS;
+
+			return (true);
 		}
 
-		if (strcmp(label, sp->trx_label) == 0) {
-			*binfo = sp;
-			return (BCM_PART_TYPE_TRX);
+		if (strcmp(label, l->trx_label) == 0) {
+			*info = l;
+			*part_type = BCM_PART_TYPE_TRX;
+
+			return (true);
 		}
 	}
 
 	/* Not found */
-	*binfo = NULL;
-	return (BCM_PART_TYPE_UNKNOWN);
+	return (false);
 }
 
 /**
@@ -803,20 +814,40 @@ failed:
 }
 
 /**
- * Test for the existence of a valid CFE device with @p devname.
+ * Test for the existence of a usable CFE device for a partition named @p label
+ * on @p disk.
  * 
- * @param devname The CFE device name.
+ * @param disk	Disk to query.
+ * @param label	Partition label.
+ * 
+ * @retval true		if the device exists and is a supported device type.
+ * @retval false	if the device does not exist.
+ * @retval false	if the device exists, but the device type is not
+ *			supported.
+ * @retval false	if testing for the CFE device otherwise fails.
  */
 static bool
-bcm_dev_exists(const char *devname)
+bcm_cfe_dev_exists(struct bcm_disk *disk, const char *label)
 {
-	int dinfo, dtype;
+	char	dname[BCM_DISK_NAME_MAX];
+	size_t	dlen;
+	int	dinfo, dtype;
+	int	error;
+
+	/* Format the full CFE device name */
+	dlen = sizeof(dname);
+	error = bcm_fmt_devname(disk->drvname, disk->unit, label, dname, &dlen);
+	if (error) {
+		BCM_DISK_ERR(disk, "failed to format device name for '%s': "
+		    "%d\n", label, error);
+		return (false);
+	}
 
 	/* Does the device exist? */
-	if ((dinfo = cfe_getdevinfo(__DECONST(char *, devname))) < 0) {
+	if ((dinfo = cfe_getdevinfo(__DECONST(char *, dname))) < 0) {
 		if (dinfo != CFE_ERR_DEVNOTFOUND) {
-			printf("%s: cfe_getdevinfo(%s) failed: %d\n",
-			    __FUNCTION__, devname, dinfo);
+			BCM_DISK_ERR(disk, "cfe_getdevinfo(%s) failed: %d\n",
+			    dname, dinfo);
 		}
 
 		return (false);
@@ -831,60 +862,24 @@ bcm_dev_exists(const char *devname)
 		return (true);
 
 	default:
-		printf("%s: %s has unknown device type: %d\n", __FUNCTION__,
-		    devname, dtype);
+		BCM_DISK_ERR(disk, "%s has unknown device type: %d\n", label,
+		    dtype);
 		return (false);
 	}
-}
-
-/**
- * Test for the existence of a valid CFE device with the given @p drvname,
- * @p unit, and partition @p partname.
- * 
- * @param drvname	The CFE driver class name.
- * @param unit		The CFE device unit.
- * @param partname	The CFE partition label.
- * 
- * @retval 0		if the device exists and is a supported device type.
- * @retval ENODEV	if the device does not exist.
- * @retval ENXIO	if the device exists, but the device type is not
- *			supported.
- * @retval ENXIO	if testing for the CFE device otherwise fails.
- * @retval ENOMEM	if @p drvname or @p partname exceed the maximum
- *			representible length.
- */
-static bool
-bcm_part_exists(const char *drvname, u_int unit, const char *partname)
-{
-	char	dname[BCM_DISK_NAME_MAX];
-	size_t	dlen;
-	int	error;
-
-	/* Format the full CFE device name */
-	dlen = sizeof(dname);
-	error = bcm_fmt_devname(drvname, unit, partname, dname, &dlen);
-	if (error) {
-		printf("%s: failed to format device name for %s%u.%s: %d\n",
-		    __FUNCTION__, drvname, unit, partname, error);
-		return (false);
-	}
-
-	return (bcm_dev_exists(dname));
 }
 
 /**
  * Format a CFE partition device name, writing the result to @p buf, and
  * the total length (includng trailing NUL) to @p len.
  * 
- * @param		drvname		The CFE driver class name.
- * @param		unit		The CFE device unit.
- * @param		partname	The CFE partition label.
- * @param[out]		buf		On success, the device name will be
- *					written to this buffer. This argment
- *					may be NULL if the value is not desired.
- * @param[in,out]	len		The capacity of @p buf. On success, will
- *					be set to the actual size of the
- *					requested value.
+ * @param		drvname	The CFE driver class name.
+ * @param		unit	The CFE device unit.
+ * @param		label	The CFE partition label.
+ * @param[out]		buf	On success, the device name will be written to
+ *				this buffer. This argment may be NULL if the
+ *				value is not desired.
+ * @param[in,out]	len	The capacity of @p buf. On success, will be set
+ *				to the actual size of the requested value.
  *
  * @retval 0		success
  * @retval ENXIO	if an error occurs formatting the device name.
@@ -916,6 +911,108 @@ bcm_fmt_devname(const char *drvname, u_int unit, const char *partname,
 	} else {
 		return (0);
 	}
+}
+
+/**
+ * Identify a TRX/OS boot partition, and determine whether the partition
+ * should be ignored, or should be mapped from a remapping provided by
+ * the next device unit.
+ * 
+ * This is a work-around for CFE's hacked-in TRX support: TRX is not understood
+ * by CFE's image loaders, and instead, multiple device units will be allocated
+ * for the _same_ flash device (e.g. flash0/flash1), providing two different
+ * partition mappings over the same flash:
+ * 
+ *  - flash0 maps _only_ the TRX header as 'flash0.trx', while mapping the
+ *    TRX content as 'flash0.os'; the 'flash0.os' device may be passed directly
+ *    to CFE's (TRX-ignorant) boot image loader, but writing a non-empty TRX
+ *    image to the small 'flash0.trx' partition will fail.
+ * 
+ *  - flash1 maps the entire TRX space as 'flash1.trx', and 'flash1.os' does
+ *    not exist. A new TRX image can be written to the 'flash1.trx' partition,
+ *    but attempting to boot flash1.trx with CFE's (TRX-ignorant) loader will
+ *    fail. 
+ * 
+ * @param	disk		The disk being queried.
+ * @param	label		The partition label being queried.
+ * @param[out]	unit		If the partition should be mapped from a
+ *				different device unit, will be set to the target
+ *				unit.
+ * @param[out]	ignore		Set to true if the partition should be ignored.
+ * @param[out]	skip_next	Set to true if the next device unit should be
+ *				skipped during probing.
+ * 
+ * @retval 0		success
+ * @retval non-zero	if identifying the partition otherwise fails, a regular
+ *			unix error code will be returned.
+ */
+static int
+bcm_probe_trx_remapping(struct bcm_disk *disk, const char *label, u_int *unit,
+    bool *ignore, bool *skip_next)
+{
+	const struct bcm_boot_label	*info;
+	struct bcm_disk			*next;
+	bcm_part_type			 type;
+
+	/* Is this a recognized boot partition? */
+	if (!bcm_lookup_boot_label(label, &info, &type))
+		return (0);
+
+	/* Allocate a disk entry for the next device unit */
+	if (disk->unit == BCM_DISK_UNIT_MAX)
+		return (0);
+
+	if ((next = bcm_disk_new(disk->drvname, disk->unit+1)) == NULL)
+		return (ENOMEM);
+
+	/* Determine whether this partition should be ignored, or remapped
+	 * to the next device */
+	switch (type) {
+	case BCM_PART_TYPE_OS:
+		/*
+		 * If a corresponding TRX partition exists, this OS partition
+		 * provides a bootable remapping of a subset of the real TRX
+		 * partition.
+		 * 
+		 * Such an OS partition can be safely ignored; it only exists
+		 * to work around CFE's lack of native TRX boot support, is not
+		 * properly page aligned, and attempting to size the partition
+		 * may trigger a crash (e.g. in the nflash driver)
+		 */
+		if (bcm_cfe_dev_exists(disk, info->trx_label))
+			*ignore = true;
+
+		break;
+		
+	case BCM_PART_TYPE_TRX:
+		/* A corresponding OS partition must exist */
+		if (!bcm_cfe_dev_exists(disk, info->os_label))
+			break;
+
+		/* The next device unit must vend a corresponding real TRX
+		 * mapping */
+		if (!bcm_cfe_dev_exists(next, info->trx_label))
+			break;
+
+		/* The next device unit must not vend a corresponding OS
+		 * partition */
+		if (bcm_cfe_dev_exists(next, info->os_label))
+			break;
+
+		/* The current device provides a partial TRX mapping; the next
+		 * device unit provides the full mapping */
+		*skip_next = true;
+		*unit = next->unit;
+		break;
+
+	default:
+		BCM_DISK_ERR(disk, "unknown partition type: %d\n", type);
+		bcm_disk_free(next);
+		return (ENXIO);
+	}
+
+	bcm_disk_free(next);
+	return (0);
 }
 
 /**
@@ -951,88 +1048,39 @@ bcm_probe_disk(struct bcm_disk *disk, bool *skip_next)
 	/* Iterate over all known partition names and register new partition
 	 * entries */
 	for (size_t i = 0; i < nitems(bcm_part_names); i++) {
-		const char			*partname;
-		const struct bcm_boot_label	*binfo;
-		bcm_part_type			 part_type;
+		const char			*label;
 		char				 dname[BCM_DISK_NAME_MAX];
 		size_t				 dlen;
 		u_int				 unit;
+		bool				 ignore;
 
-		partname = bcm_part_names[i];
+		label = bcm_part_names[i];
+		ignore = false;
 		unit = disk->unit;
 
-		/* Does the device exist? */
-		if (!bcm_part_exists(drvname, unit, partname))
+		/* Does the CFE device exist? */
+		if (!bcm_cfe_dev_exists(disk, label))
 			continue;
 
-		/* Is this an OS or TRX system partition? */
-		part_type = bcm_lookup_boot_label(partname, &binfo);
+		/* Is this an OS or TRX system partition that should either
+		 * be ignored, or remapped to a different CFE device unit? */
+		error = bcm_probe_trx_remapping(disk, label, &unit, &ignore,
+		    skip_next);
 
-		switch (part_type) {
-		case BCM_PART_TYPE_OS:
-			KASSERT(binfo != NULL, ("NULL binfo"));
-
-			/*
-			 * If a corresponding TRX partition exists, this
-			 * OS partition merely provides a bootable remapping of
-			 * a subset of the real TRX partition.
-			 * 
-			 * Such an OS partition can be safely ignored; it only
-			 * exists to work around CFE's lack of native TRX boot
-			 * support, is not properly page aligned, and attempting
-			 * to size the partition may trigger a crash (e.g. in
-			 * the nflash driver)
-			 */
-			if (!bcm_part_exists(drvname, unit, binfo->trx_label))
-				break;
-
-			/* The next disk unit provides an alternative mapping */
-			*skip_next = true;
-
-			/* Ignore this OS partition */
+		if (ignore)
 			continue;
 
-		case BCM_PART_TYPE_TRX: {
-			u_int next;
-	
-			KASSERT(binfo != NULL, ("NULL binfo"));
-
-			/*
-			 * If a corresponding OS partition exists, and the
-			 * next device unit contains a corresponding TRX
-			 * partition (but no OS partition), then this TRX
-			 * partition maps only the TRX header.
-			 * 
-			 * We need to instead target the next device unit's TRX
-			 * partition.
-			 */
-			if (!bcm_part_exists(drvname, unit, binfo->os_label))
-				break;
-
-			next = unit+1;
-			if (!bcm_part_exists(drvname, next, binfo->trx_label))
-				break;
-
-			if (bcm_part_exists(drvname, next, binfo->os_label))
-				break;
-
-			/* Use the next device's TRX partition mapping */
-			*skip_next = true;
-			unit = next;
-			break;
-		}
-
-		case BCM_PART_TYPE_UNKNOWN:
-			break;
+		if (unit != disk->unit) {
+			BCM_DISK_TRACE(disk, "remapped '%s' to %s%u.%s", label,
+			    disk->drvname, unit, label);
 		}
 
 		/* Format the full CFE device name */
 		dlen = sizeof(dname);
-		error = bcm_fmt_devname(drvname, unit, partname, dname,
-		    &dlen);
+		error = bcm_fmt_devname(drvname, unit, label, dname, &dlen);
 		if (error) {
-			BCM_DISK_ERR(disk, "error determining CFE device "
-			    "name for %s: %d\n", partname, error);
+			BCM_DISK_ERR(disk, "error formatting CFE device name "
+			    "for %s: %d\n", label, error);
 			goto failed;
 		}
 
