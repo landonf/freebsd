@@ -54,7 +54,7 @@
 #define	CFE_MINIX_OFFSET	0x410
 #define	CFE_MINIX_MAGIC		0x138F
 
-#define	CFE_IMG_MAX		2		/**< maximum CFE OS image count */
+#define	G_CFE_IMG_MAX		2		/**< maximum CFE OS image count */
 
 /**
  * GEOM BCM_CFE instance state
@@ -63,15 +63,36 @@ struct g_cfe_softc {
 };
 
 /**
+ * CFE boot image layout types.
+ */
+typedef enum {
+	G_CFE_IMAGE_FAILSAFE,	/**< CFE with FAILSAFE_UPGRADE enabled */
+	G_CFE_IMAGE_DUAL,	/**< CFE with DUAL_IMAGE enabled */
+	G_CFE_IMAGE_SIMPLE	/**< CFE with default config (single image) */
+} g_cfe_bootimg_type;
+
+/**
+ * CFE boot image info.
+ */
+struct g_cfe_bootimg_info {
+	g_cfe_bootimg_type	type;			/**< CFE boot image type */
+	uint8_t			bootimage;		/**< boot image index */
+	size_t			num_images;		/**< image count */
+	off_t			offsets[G_CFE_IMG_MAX];	/**< image offsets */
+	off_t			sizes[G_CFE_IMG_MAX];	/**< image sizes */
+};
+
+/**
  * GEOM BCM_CFE device taste context
  */
 struct g_cfe_taste_io {
-	struct g_consumer	*cp;		/**< GEOM consumer (borrowed reference) */
-	struct bcm_cfe_disk	*disk;		/**< disk entry (borrowed reference) */
-	off_t			 palign;	/**< minimum partition alignment */
-	u_char			*buf;		/**< last read sector(s), or NULL */
-	off_t			 buf_off;	/**< offset of last read */
-	off_t			 buf_len;	/**< length of last read */
+	struct g_consumer		*cp;		/**< GEOM consumer (borrowed reference) */
+	struct bcm_cfe_disk		*disk;		/**< disk entry (borrowed reference) */
+	struct g_cfe_bootimg_info	 bootimg;	/**< boot image layout */
+	off_t				 palign;	/**< minimum partition alignment */
+	u_char				*buf;		/**< last read sector(s), or NULL */
+	off_t				 buf_off;	/**< offset of last read */
+	off_t				 buf_len;	/**< length of last read */
 };
 
 /**
@@ -114,24 +135,5 @@ struct g_cfe_nvram_io {
 	off_t			 size;		/**< number of bytes readable at base I/O offset */
 };
 
-/**
- * CFE operating system image layout types.
- */
-typedef enum {
-	G_CFE_IMAGE_FAILSAFE,	/**< CFE with FAILSAFE_UPGRADE enabled */
-	G_CFE_IMAGE_DUAL,	/**< CFE with DUAL_IMAGE enabled */
-	G_CFE_IMAGE_SIMPLE	/**< CFE with default config (single image) */
-} g_cfe_bootimg_type;
-
-/**
- * CFE operating system image info.
- */
-struct cfe_bootimg_info {
-	g_cfe_bootimg_type	type;			/**< CFE boot image type */
-	uint8_t			bootimage;		/**< boot image index */
-	size_t			num_images;		/**< image count */
-	uint64_t		offsets[CFE_IMG_MAX];	/**< image offsets */
-	uint64_t		sizes[CFE_IMG_MAX];	/**< image sizes */
-};
 
 #endif /* _MIPS_BROADCOM_BCM_GEOM_CFE_H_ */
