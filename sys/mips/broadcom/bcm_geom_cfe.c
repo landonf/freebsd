@@ -813,45 +813,10 @@ g_cfe_probe_minix_config(struct g_cfe_taste_io *io, off_t block)
 
 G_CFE_DEFINE_PART_PROBE("MINIX_CONFIG", g_cfe_probe_minix_config);
 
-/* Probe a BCM-format NVRAM partition */
+
+/* Probe an NVRAM partition */
 static struct bcm_cfe_part *
-g_cfe_probe_bcm_nvram(struct g_cfe_taste_io *io, off_t block)
-{
-	struct g_cfe_nvram_io	 nvram_io;
-	struct bcm_cfe_part	*nvram;
-	int			 error, result;
-
-	/* Must be an 'nvram' partition */
-	if ((nvram = g_cfe_find_matching_part(io, "nvram", block)) == NULL)
-		return (NULL);
-
-	/* Initialize our NVRAM I/O context */
-	if ((error = g_cfe_nvram_io_init(&nvram_io, io, block, nvram->size))) {
-		G_CFE_LOG("error initializing NVRAM I/O context: %d\n", error);
-		return (NULL);
-	}
-
-	/* Probe for BCM NVRAM magic */
-	result = bhnd_nvram_data_probe(&bhnd_nvram_bcm_class, &nvram_io.io);
-
-	/* Clean up our I/O context */
-	bhnd_nvram_io_free(&nvram_io.io);
-
-	if (result > 0)
-		return (NULL);
-
-	G_CFE_DEBUG(PROBE, "unrecognized BCM NVRAM partition at offset %#jx\n",
-	    (intmax_t)block);
-
-	return (nvram);
-}
-
-G_CFE_DEFINE_PART_PROBE("BCM_NVRAM", g_cfe_probe_bcm_nvram);
-
-
-/* Probe a TLV-format NVRAM partition (only found on WGT634U?) */
-static struct bcm_cfe_part *
-g_cfe_probe_tlv_nvram(struct g_cfe_taste_io *io, off_t block)
+g_cfe_probe_nvram(struct g_cfe_taste_io *io, off_t block)
 {
 	struct g_cfe_nvram_io	 nvram_io;
 	struct bcm_cfe_part	*nvram;
@@ -865,29 +830,42 @@ g_cfe_probe_tlv_nvram(struct g_cfe_taste_io *io, off_t block)
 	if ((nvram = g_cfe_find_matching_part(io, "nvram", block)) == NULL)
 		return (NULL);
 
-	/* A TLV NVRAM partition is always found at the end of the flash
-	 * device */
-	if (nvram->size == BCM_CFE_INVALID_SIZE || nvram->size > mediasize)
-		return (NULL);
-
-	if (rounddown(mediasize - nvram->size, io->palign) != block)
-		return (NULL);
-
 	/* Initialize our NVRAM I/O context */
 	if ((error = g_cfe_nvram_io_init(&nvram_io, io, block, nvram->size))) {
 		G_CFE_LOG("error initializing NVRAM I/O context: %d\n", error);
 		return (NULL);
 	}
 
-	/* Probe for BCM NVRAM magic */
-	result = bhnd_nvram_data_probe(&bhnd_nvram_tlv_class, &nvram_io.io);
+	/* Probe for BCM NVRAM */
+	result = bhnd_nvram_data_probe(&bhnd_nvram_bcm_class, &nvram_io.io);
+	if (result <= BHND_NVRAM_DATA_PROBE_SPECIFIC)
+		goto finished;
 
-	/* Clean up our I/O context */
+	/*
+	 * Probe for TLV NVRAM.
+	 * 
+	 * A TLV NVRAM partition is always found at the end of the flash
+	 * device
+	 */
+	if (nvram->size == BCM_CFE_INVALID_SIZE || nvram->size > mediasize) {
+		result = ENXIO;
+		goto finished;
+	}
+
+	/* Probe for TLV NVRAM */
+	result = bhnd_nvram_data_probe(&bhnd_nvram_tlv_class, &nvram_io.io);
+	if (result <= BHND_NVRAM_DATA_PROBE_SPECIFIC)
+		goto finished;
+
+	/* No match */
+	result = ENXIO;
+
+finished:
 	bhnd_nvram_io_free(&nvram_io.io);
 
-	if (result > 0) {
-		G_CFE_LOG("unrecognized NVRAM partition at offset %#jx: %d\n",
-		    (intmax_t)block, result);
+	if (result > BHND_NVRAM_DATA_PROBE_SPECIFIC) {
+		G_CFE_DEBUG(PROBE, "no NVRAM partition at offset %#jx\n",
+		    (intmax_t)block);
 
 		return (NULL);
 	}
@@ -895,7 +873,8 @@ g_cfe_probe_tlv_nvram(struct g_cfe_taste_io *io, off_t block)
 	return (nvram);
 }
 
-G_CFE_DEFINE_PART_PROBE("TLV_NVRAM", g_cfe_probe_tlv_nvram);
+G_CFE_DEFINE_PART_PROBE("NVRAM", g_cfe_probe_nvram);
+
 
 /* Probe an 'os' partition as used by early devices without TRX support */
 static struct bcm_cfe_part *
@@ -965,7 +944,7 @@ g_cfe_probe_trx(struct g_cfe_taste_io *io, off_t block)
 	struct bcm_cfe_part		*trx;
 	struct g_cfe_bootimg_info	*bootimg;
 	const char			*label;
-	char				 lbuf[sizeof("trxXX")];
+	char				 buf[sizeof("trxXX")];
 	off_t				 imgsize;
 	int				 len;
 
@@ -982,15 +961,19 @@ g_cfe_probe_trx(struct g_cfe_taste_io *io, off_t block)
 
 			imgsize = bootimg->sizes[i];
 
-			/* The first partition label is always 'trx' */
+			/* The first partition label is always 'trx'; the
+			 * remainder start with 'trx2' */
 			if (i == 0) {
 				label = "trx";
 			} else {
+				/* Cannot format SIZE_MAX+1 */
+				if (i == SIZE_MAX)
+					break;
 
-				/* Format a 'trxXX' partition label */
-				len = snprintf(lbuf, sizeof(lbuf), "trx%zu", i);
+				/* Format partition label */
+				len = snprintf(buf, sizeof(buf), "trx%zu", i+1);
 
-				if (len >= sizeof(lbuf)) {
+				if (len >= sizeof(buf)) {
 					G_CFE_LOG("trx partition buffer too "
 					    "small for trx%zu\n", i);
 					return (NULL);
@@ -1002,7 +985,7 @@ g_cfe_probe_trx(struct g_cfe_taste_io *io, off_t block)
 					return (NULL);
 				}
 
-				label = lbuf;
+				label = buf;
 			}
 
 			/* Terminate search */
