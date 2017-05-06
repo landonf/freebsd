@@ -54,7 +54,18 @@
 #define	CFE_MINIX_OFFSET	0x410
 #define	CFE_MINIX_MAGIC		0x138F
 
-#define	G_CFE_IMG_MAX		2		/**< maximum CFE OS image count */
+/* GZIP magic */
+#define	G_CFE_GZIP_MAGIC0	0x1f
+#define	G_CFE_GZIP_MAGIC1	0x8b
+#define	G_CFE_GZIP_DEFLATE	8
+
+/* CFE bootblock magic */
+#define	G_CFE_BOOTBLK_OFFSET	472	/**< boot block offset */
+#define	G_CFE_BOOTBLK_BLKSIZE	512	/**< boot block alignment */
+#define	G_CFE_BOOTBLK_MAX	16	/**< maximum block number to search */
+#define	G_CFE_BOOTBLK_MAGIC	((uint64_t)0x43465631424f4f54ULL)
+
+#define	G_CFE_IMG_MAX		2	/**< maximum CFE OS image count */
 
 /**
  * GEOM BCM_CFE instance state

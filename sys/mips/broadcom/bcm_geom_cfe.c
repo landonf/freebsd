@@ -766,7 +766,9 @@ g_cfe_probe_cfe(struct g_cfe_taste_io *io, off_t block)
 		return (boot);
 
 	/* Not recognized */
-	G_CFE_LOG("unrecognized CFE image at offset %#jx\n", (intmax_t)block);
+	G_CFE_DEBUG(PROBE, "unrecognized CFE image at offset %#jx\n",
+	    (intmax_t)block);
+
 	return (NULL);
 }
 
@@ -800,13 +802,13 @@ g_cfe_probe_minix_config(struct g_cfe_taste_io *io, off_t block)
 		return (NULL);
 	}
 
-	if (magic != CFE_MINIX_MAGIC && bswap16(magic) != CFE_MINIX_MAGIC) {
-		G_CFE_LOG("unrecognized config partition magic 0x%04" PRIx16
-		    " at offset %#jx\n", magic, (intmax_t)block);
-		return (NULL);
-	}
+	if (magic == CFE_MINIX_MAGIC || bswap16(magic) == CFE_MINIX_MAGIC)
+		return (config);
 
-	return (config);
+	G_CFE_DEBUG(PROBE, "unrecognized config partition magic 0x%04" PRIx16
+	    " at offset %#jx\n", magic, (intmax_t)block);
+
+	return (NULL);
 }
 
 G_CFE_DEFINE_PART_PROBE("MINIX_CONFIG", g_cfe_probe_minix_config);
@@ -837,6 +839,9 @@ g_cfe_probe_bcm_nvram(struct g_cfe_taste_io *io, off_t block)
 
 	if (result > 0)
 		return (NULL);
+
+	G_CFE_DEBUG(PROBE, "unrecognized BCM NVRAM partition at offset %#jx\n",
+	    (intmax_t)block);
 
 	return (nvram);
 }
@@ -898,6 +903,7 @@ g_cfe_probe_os(struct g_cfe_taste_io *io, off_t block)
 {
 	struct bcm_cfe_part	*os;
 	Elf_Ehdr		 ehdr;
+	uint8_t			 gz_hdr[3];
 	int			 error;
 
 	/* Must be an 'os' partition */
@@ -911,12 +917,42 @@ g_cfe_probe_os(struct g_cfe_taste_io *io, off_t block)
 		return (NULL);
 	}
 
-	if (IS_ELF(ehdr)) {
-		// XXX
+	if (IS_ELF(ehdr))
+		return (os);
+
+	/* Look for a GZIP-compressed bootloader */
+	error = g_cfe_taste_read(os, io, block, 0, &gz_hdr, sizeof(gz_hdr));
+	if (error) {
+		G_CFE_LOG("error reading GZIP magic: %d", error);
+		return (NULL);
+	}
+
+	if (gz_hdr[0] == G_CFE_GZIP_MAGIC0 && gz_hdr[1] == G_CFE_GZIP_MAGIC1 &&
+	    gz_hdr[2] == G_CFE_GZIP_DEFLATE)
+	{
 		return (os);
 	}
 
-	// TODO
+	/* Scan for a boot block */
+	for (size_t i = 0; i < G_CFE_BOOTBLK_MAX; i++ ) {
+		uint64_t	magic;
+		off_t		boff;
+
+		boff = (G_CFE_BOOTBLK_BLKSIZE * i) + G_CFE_BOOTBLK_OFFSET;
+		error = g_cfe_taste_read(os, io, block, boff, &magic,
+		    sizeof(magic));
+		if (error) {
+			G_CFE_LOG("error reading boot block %zu: %d", i, error);
+			return (NULL);
+		}
+
+		if (magic == G_CFE_BOOTBLK_MAGIC)
+			return (os);
+	}
+
+	G_CFE_DEBUG(PROBE, "unrecognized OS partition at offset %#jx\n",
+	    (intmax_t)block);
+
 	return (NULL);
 }
 
