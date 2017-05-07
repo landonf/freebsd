@@ -42,24 +42,18 @@ __FBSDID("$FreeBSD$");
 
 #include "bcm_diskvar.h"
 
+static int	bcm_bootimg_init(struct bcm_bootimg *bootimg, const char *label,
+		    const char *offset_var, const char *size_var);
+
 static int	compare_part_offset_asc(const void *lhs, const void *rhs);
 
-
-/* Known CFE bootimg layouts */
-static const struct bcm_bootimg_var {
-	bcm_bootimg_layout	 layout;	/**< CFE layout */
-	const char		*name;		/**< NVRAM variable containing
-						     active image index */
-	size_t			 num_images;	/**< image count for this layout*/
+/* Known CFE bootimg layouts and corresponding active image NVRAM variable */
+const struct bcm_bootimg_var {
+        bcm_bootimg_layout       layout;
+        const char              *varname;
 } bcm_bootimg_vars[] = {
-	{ BCM_BOOTIMG_FAILSAFE,	BHND_NVAR_BOOTPARTITION,	2 },
-	{ BCM_BOOTIMG_DUAL,	BHND_NVAR_IMAGE_BOOT,		2 },
-};
-
-/* Image offset variables (by partition index) */
-static const char *bcm_bootimg_offset_vars[] = {
-	BHND_NVAR_IMAGE_FIRST_OFFSET,
-	BHND_NVAR_IMAGE_SECOND_OFFSET
+        { BCM_BOOTIMG_FAILSAFE, BHND_NVAR_BOOTPARTITION },
+        { BCM_BOOTIMG_DUAL,     BHND_NVAR_IMAGE_BOOT }
 };
 
 /* Known CFE OS/TRX boot partition labels */
@@ -68,8 +62,6 @@ static const struct bcm_boot_label bcm_boot_labels[] = {
 	{ "os2",	"trx2" }	/* If CFE built with
 					 * FAILSAFE_UPGRADE/DUAL_IMAGE */
 };
-
-
 
 /**
  * Return the first entry in @p disks matching @p drvname and @p unit, or NULL
@@ -368,122 +360,162 @@ bcm_find_boot_label(const char *label, const struct bcm_boot_label **info,
 	return (false);
 }
 
+/* Populate the bootimg instance with the given label, and NVRAM-fetched offset
+ * and size */
+static int
+bcm_bootimg_init(struct bcm_bootimg *bootimg, const char *label,
+    const char *offset_var, const char *size_var)
+{
+	struct bcm_platform	*bp;
+	uint64_t		 offset, size;
+	size_t			 len;
+	int			 error;
+
+	/* Fetch offset */
+	len = sizeof(offset);
+	error = bcm_get_nvram(bp, offset_var, &offset, &len,
+	    BHND_NVRAM_TYPE_UINT64);
+	if (error) {
+		printf("%s: error reading NVRAM variable %s: %d\n", __func__,
+		    offset_var, error);
+		return (error);
+	}
+
+	if (offset > OFF_MAX) {
+		printf("%s: %s has invalid offset: 0x%" PRIx64"\n", __func__,
+		    offset_var, offset);
+		return (ERANGE);
+	}
+
+	/* Fetch size */
+	len = sizeof(size);
+	error = bcm_get_nvram(bp, size_var, &size, &len,
+	    BHND_NVRAM_TYPE_UINT64);
+	if (error) {
+		printf("%s: error reading NVRAM variable %s: %d\n", __func__,
+		    size_var, error);
+		return (error);
+	}
+
+	if (size > OFF_MAX) {
+		printf("%s: %s has invalid size: 0x%" PRIx64"\n", __func__,
+		    size_var, offset);
+		return (ERANGE);
+	}
+
+	bootimg->label = label;
+	bootimg->offset = (off_t)offset;
+	bootimg->size = (off_t)size;
+
+	return (0);
+}
 
 /**
  * Fetch the CFE boot configuration.
  */
 int
-bcm_get_bootinfo(struct bcm_bootinfo *info)
+bcm_get_bootinfo(struct bcm_bootinfo *bootinfo)
 {
-	struct bcm_platform		*bp;
-	const struct bcm_bootimg_var	*imgvar;
-	uint32_t			 bootflags;
-	uint64_t			 imgsize;
-	uint8_t				 bootimg;
-	size_t				 len;
-	int				 error;
+	struct bcm_platform	*bp;
+	struct bcm_bootimg	*first, *second;
+	const char		*first_label, *second_label;
+	uint32_t		 bootflags;
+	uint8_t			 bootimg;
+	size_t			 len;
+	int			 error;
 
 	bp = bcm_get_platform();
 	bootflags = bcm_get_bootflags(bp);
 
-	/* Determine the boot device */
+	/* Determine the default boot device */
 	if (bootflags & BHND_BOOTFLAG_KERNEL_NFLASH) {
 		/* kernel (and OS) on NAND */
-		info->drvname = "nflash";
-		info->devunit = 0;
+		bootinfo->drvname = BCM_DRVNAME_NAND_FLASH;
 	} else {
 		/* kernel (and OS) on NOR */
-		info->drvname = "flash";
-		info->devunit = 0;
+		bootinfo->drvname = BCM_DRVNAME_NOR_FLASH;
 	}
 
-	/* Determine boot image layout type and the active image index */
-	imgvar = NULL;
+	bootinfo->devunit = BCM_DISK_BOOT_UNIT;
+
+	/* Determine the boot image layout by requesting the layout-specific
+	 * active image NVRAM variable */
+	bootinfo->layout = BCM_BOOTIMG_SIMPLE;
 	for (size_t i = 0; i < nitems(bcm_bootimg_vars); i++) {
+		const struct bcm_bootimg_var *bootvar = &bcm_bootimg_vars[i];
+
 		/* Try to fetch the active image index from NVRAM */
 		len = sizeof(bootimg);
-		error = bcm_get_nvram(bp, bcm_bootimg_vars[i].name, &bootimg,
-		    &len, BHND_NVRAM_TYPE_UINT8);
+		error = bcm_get_nvram(bp, bootvar->varname, &bootimg, &len,
+		    BHND_NVRAM_TYPE_UINT8);
 
+		/* Found? */
 		if (!error) {
-			/* Matched */
-			imgvar = &bcm_bootimg_vars[i];
+			bootinfo->layout = bootvar->layout;
 			break;
-		} else if (error != ENOENT) {
+		}
+
+		if (error != ENOENT) {
 			/* Return an error if the NVRAM read fails for any
 			 * reason other than variable not found */
-			printf("%s: error fetching '%s' boot image index "
-			    "variable: %d\n", __func__,
-			    bcm_bootimg_vars[i].name, error);
-
+			printf("%s: error fetching '%s': %d\n", __func__,
+			    bootvar->varname, error);
 			return (error);
 		}
 	}
 
-	/* No dual/failsafe image configuration found? */
-	if (imgvar == NULL) {
-		info->layout		= BCM_BOOTIMG_SIMPLE;
-		info->num_images	= 1;
-		info->bootimage		= 0;
-		info->offsets[0]	= BCM_DISK_INVALID_OFF;
-		info->sizes[0]		= BCM_DISK_INVALID_SIZE;
+	/* Simple layout? */
+	if (!BCM_BOOTIMG_LAYOUT_DUAL(bootinfo->layout)) {
+		bootinfo->boot_img = (struct bcm_bootimg){
+			.label = NULL,
+			.offset = BCM_DISK_INVALID_OFF,
+			.size = BCM_DISK_INVALID_SIZE
+		};
+
+		bootinfo->backup_img = (struct bcm_bootimg){
+			.label = NULL,
+			.offset = BCM_DISK_INVALID_OFF,
+			.size = BCM_DISK_INVALID_SIZE
+		};
 
 		return (0);
 	}
 
-	/* Found dual/failsafe image configuration */
-	info->layout		= imgvar->layout;
-	info->num_images	= imgvar->num_images;
-	info->bootimage		= bootimg;
-
-	/* Fetch our image offsets */
-	for (size_t i = 0; i < info->num_images; i++) {
-		uint64_t offset;
-
-		KASSERT(i < nitems(info->offsets), ("bad image count: %zu", i));
-
-		if (i >= nitems(bcm_bootimg_offset_vars)) {
-			printf("%s: missing offset variable for image %zu\n",
-			    __func__, i);
-			return (ENXIO);
-		}
-
-		len = sizeof(info->offsets[i]);
-		error = bcm_get_nvram(bp, bcm_bootimg_offset_vars[i], &offset,
-		    &len, BHND_NVRAM_TYPE_UINT64);
-		if (error) {
-			printf("%s: error fetching offset[%zu]: %d\n", __func__,
-			    i, error);
-			return (error);
-		}
-
-		if (offset > OFF_MAX) {
-			printf("%s: invalid offset: 0x%" PRIx64"\n", __func__,
-			    offset);
-			return (ERANGE);
-		}
-
-		info->offsets[i] = (off_t)offset;
+	/* Determine which image is active, and which is backup */
+	switch (bootimg) {
+	case BCM_DISK_BOOTIMG_FIRST:
+		/* First image is the active partition */
+		first = &bootinfo->boot_img;
+		first_label = BCM_PART_LABEL_TRX;
+	
+		second = &bootinfo->backup_img;
+		second_label = BCM_PART_LABEL_TRX2;
+		break;
+	case BCM_DISK_BOOTIMG_SECOND:
+		/* Second image is the active partition */
+		first = &bootinfo->backup_img;
+		first_label = BCM_PART_LABEL_TRX2;
+	
+		second = &bootinfo->boot_img;
+		second_label = BCM_PART_LABEL_TRX;
+		break;
+	default:
+		printf("%s: invalid active image index: %" PRIu8 "\n", __func__,
+		    bootimg);
+		return (ENXIO);
 	}
 
-	/* Fetch our image size (all images have the same size) */
-	len = sizeof(imgsize);
-	error = bcm_get_nvram(bp, BHND_NVAR_IMAGE_SIZE, &imgsize, &len,
-	    BHND_NVRAM_TYPE_UINT64);
-	if (error) {
-		printf("%s: error fetching image size: %d\n", __func__, error);
+	/* Fetch the first image's configuration */
+	error = bcm_bootimg_init(first, first_label,
+	    BHND_NVAR_IMAGE_FIRST_OFFSET, BHND_NVAR_IMAGE_SIZE);
+	if (error)
 		return (error);
-	}
 
-	if (imgsize > OFF_MAX) {
-		printf("%s: invalid image size: 0x%" PRIx64"\n", __func__,
-		    imgsize);
-
-		return (ERANGE);
-	}
-
-	for (size_t i = 0; i < info->num_images; i++)
-		info->sizes[i] = (off_t)imgsize;
+	/* Fetch the second image's configuration */
+	error = bcm_bootimg_init(second, second_label,
+	    BHND_NVAR_IMAGE_SECOND_OFFSET, BHND_NVAR_IMAGE_SIZE);
+	if (error)
+		return (error);
 
 	return (0);
 }

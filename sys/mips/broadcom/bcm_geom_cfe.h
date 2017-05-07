@@ -54,7 +54,8 @@ struct g_cfe_softc {
 struct g_cfe_taste_io {
 	struct g_consumer	*cp;		/**< GEOM consumer (borrowed reference) */
 	struct bcm_disk		*disk;		/**< disk entry (borrowed reference) */
-	struct bcm_bootinfo	 bootinfo;	/**< boot image configuration */
+	struct bcm_bootinfo	 bootinfo;	/**< disk bootinfo, if any */
+	bool			 have_bootinfo;	/**< if bootinfo is available */
 	off_t			 palign;	/**< minimum partition alignment */
 	u_char			*buf;		/**< last read sector(s), or NULL */
 	off_t			 buf_off;	/**< offset of last read */

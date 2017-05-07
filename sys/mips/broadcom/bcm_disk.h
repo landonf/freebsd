@@ -71,20 +71,31 @@ struct bcm_part	*bcm_parts_match(struct bcm_parts *parts, const char *label,
 typedef enum {
 	BCM_BOOTIMG_FAILSAFE,	/**< CFE with FAILSAFE_UPGRADE enabled */
 	BCM_BOOTIMG_DUAL,	/**< CFE with DUAL_IMAGE enabled */
-	BCM_BOOTIMG_SIMPLE	/**< CFE with default config (single image) */
+	BCM_BOOTIMG_SIMPLE,	/**< CFE with default config (single image) */
 } bcm_bootimg_layout;
+
+/** Evaluates to true if @p _layout is a dual-image layout, false otherwise */
+#define	BCM_BOOTIMG_LAYOUT_DUAL(_layout)	\
+	((_layout == BCM_BOOTIMG_FAILSAFE || _layout == BCM_BOOTIMG_DUAL))
+
+/**
+ * CFE boot image configuration.
+ */
+struct bcm_bootimg {
+	const char	*label;		/**< CFE partition label */
+	off_t		 offset;	/**< image offset */
+	off_t		 size;		/**< image size */
+};
 
 /**
  * CFE boot configuration.
  */
 struct bcm_bootinfo {
-	const char		*drvname;			/**< CFE boot device driver class */
-	u_int			 devunit;			/**< CFE boot device unit */
-	bcm_bootimg_layout	 layout;			/**< CFE boot device layout */
-	uint8_t			 bootimage;			/**< active boot image */
-	size_t			 num_images;			/**< image count */
-	off_t			 offsets[BCM_BOOTIMG_MAX];	/**< image offsets (BCM_DISK_INVALID_OFF if unknown) */
-	off_t			 sizes[BCM_BOOTIMG_MAX];	/**< image sizes (BCM_DISK_INVALID_SIZE if unknown) */
+	const char		*drvname;	/**< CFE boot device driver class */
+	u_int			 devunit;	/**< CFE boot device unit */
+	bcm_bootimg_layout	 layout;	/**< CFE boot device layout */
+	struct bcm_bootimg	 boot_img;	/**< active image (if BCM_BOOTIMG_LAYOUT_DUAL) */
+	struct bcm_bootimg	 backup_img;	/**< inactive image (if BCM_BOOTIMG_LAYOUT_DUAL) */
 };
 
 /**

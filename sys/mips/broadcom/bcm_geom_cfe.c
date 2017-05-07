@@ -84,6 +84,10 @@ static struct bcm_disk			*g_cfe_claim_disk(
 static void				 g_cfe_unclaim_disk(
 					     struct bcm_disk *disk);
 
+static bool				 g_cfe_is_boot_disk(
+					     struct bcm_disk *disk,
+					     struct bcm_bootinfo *bootinfo);
+
 static int				 g_cfe_taste_init(
 					     struct g_cfe_taste_io *io,
 					     struct g_consumer *cp,
@@ -520,6 +524,21 @@ g_cfe_flash_type_matches(const struct g_cfe_device *id, chipc_flash type)
 }
 
 /**
+ * Return true of @p bootinfo matches @p disk, false otherwise.
+ */
+static bool
+g_cfe_is_boot_disk(struct bcm_disk *disk, struct bcm_bootinfo *bootinfo)
+{
+	if (strcmp(bootinfo->drvname, disk->drvname) != 0)
+		return (false);
+
+	if (bootinfo->devunit != disk->unit)
+		return (false);
+
+	return (true);
+}
+
+/**
  * Initialize a new GEOM-backed I/O context.
  *
  * The caller is responsible for releasing all resources held by the returned
@@ -538,7 +557,9 @@ static int
 g_cfe_taste_init(struct g_cfe_taste_io *io, struct g_consumer *cp,
     struct bcm_disk *disk)
 {
-	off_t mediasize, stripesize;
+	struct bcm_bootinfo	bootinfo;
+	off_t			mediasize, stripesize;
+	int			error;
 
 	io->cp = cp;
 	io->disk = disk;
@@ -563,6 +584,17 @@ g_cfe_taste_init(struct g_cfe_taste_io *io, struct g_consumer *cp,
 		G_CFE_LOG("misaligned media size %#jx/%#jx\n",
 		    (intmax_t)mediasize, (intmax_t)io->palign);
 		return (ENXIO);
+	}
+
+	/* Fetch our boot info, if any */
+	if ((error = bcm_get_bootinfo(&bootinfo))) {
+		G_CFE_LOG("error fetching CFE boot info: %d\n", error);
+		return (error);
+	}
+
+	if (g_cfe_is_boot_disk(disk, &bootinfo)) {
+		io->bootinfo = bootinfo;
+		io->have_bootinfo = true;
 	}
 
 	return (0);
@@ -908,77 +940,35 @@ G_CFE_DEFINE_PART_PROBE("OS", g_cfe_probe_os);
  * Find a TRX partition record for @p block, if any.
  */
 static struct bcm_part *
-g_cfe_find_trx_boot_part(struct g_cfe_taste_io *io, off_t block)
+g_cfe_find_trx_part(struct g_cfe_taste_io *io, off_t block)
 {
-	struct bcm_part		*trx;
-	struct bcm_bootinfo	 bootinfo;
-	int			 error;
+	struct bcm_bootinfo	*bootinfo;
+	const char		*label;
 
-	/* Fetch boot info */
-	if ((error = bcm_get_bootinfo(&bootinfo))) {
-		G_CFE_LOG("error fetching CFE boot info: %d\n", error);
+	bootinfo = io->have_bootinfo ? &io->bootinfo : NULL;
+
+	/* Skip dual image handling if we're not probing the boot device, or
+	 * if our device uses a non-dual layout type */
+	if (bootinfo == NULL || !BCM_BOOTIMG_LAYOUT_DUAL(bootinfo->layout)) {
+		return (g_cfe_find_matching_part(io, BCM_PART_LABEL_TRX,
+		    block));
+	}
+
+	/* Determine the TRX partition label that corresponds to the current
+	 * offset */
+	label = NULL;
+	if (bootinfo->boot_img.offset == block) {
+		/* Probing primary image */
+		label = bootinfo->boot_img.label;
+	} else if (bootinfo->backup_img.offset == block) {
+		/* Probing backup image */
+		label = bootinfo->backup_img.label;
+	}
+
+	if (label == NULL)
 		return (NULL);
-	}
 
-	/* Skip bootimg handling if we're not probing the boot device */
-	if (strcmp(bootinfo.drvname, io->disk->drvname) != 0 ||
-	    bootinfo.devunit != io->disk->unit)
-	{
-		return (g_cfe_find_matching_part(io, "trx", block));
-	}
-
-	/* Determine our bootimg layout and the corresponding TRX partition */
-	for (size_t i = 0; i < bootinfo.num_images; i++) {
-		const char	*label;
-		char		 buf[BCM_DISK_NAME_MAX];
-		off_t		 imgoff, imgsize;
-		int		 len;
-
-		imgoff = bootinfo.offsets[i];
-		imgsize = bootinfo.sizes[i];
-
-		/* If the offset is known, it must match the block offset we're
-		 * currently probing */
-		if (imgoff != BCM_DISK_INVALID_OFF && imgoff != block) {
-			/* Try the next image entry */
-			continue;
-		}
-
-		/* After the first TRX partition ('trx'), numbering starts at
-		 * 2 ('trx2') */
-		if (i == 0) {
-			label = "trx";
-		} else {
-			/* Cannot format SIZE_MAX+1 */
-			if (i == SIZE_MAX)
-				break;
-
-			/* Format partition label */
-			len = snprintf(buf, sizeof(buf), "trx%zu", i+1);
-
-			if (len >= sizeof(buf)) {
-				G_CFE_LOG("trx partition buffer too "
-				    "small for trx%zu\n", i);
-				return (NULL);
-			}
-
-			if (len < 0) {
-				G_CFE_LOG("error formatting trx%zu "
-				    "partition label: %d\n", i, len);
-				return (NULL);
-			}
-
-			label = buf;
-		}
-
-		/* Do we have a matching TRX partition entry to probe at this
-		 * offset? */
-		if ((trx = g_cfe_find_matching_part(io, label, block)) != NULL)
-			return (NULL);
-	}
-
-	/* Not found */
-	return (NULL);
+	return (g_cfe_find_matching_part(io, label, block));
 }
 
 /* Probe a TRX partition */
@@ -990,7 +980,7 @@ g_cfe_probe_trx(struct g_cfe_taste_io *io, off_t block)
 	int				 error;
 
 	/* Find corresponding TRX partition entry */
-	if ((trx = g_cfe_find_trx_boot_part(io, block)) == NULL)
+	if ((trx = g_cfe_find_trx_part(io, block)) == NULL)
 		return (NULL);
 
 	/* Read our TRX header */

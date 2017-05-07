@@ -86,6 +86,16 @@ struct bcm_boot_label {
 #define	BCM_DISK_UNIT_MAX	64		/**< maximum CFE device unit */
 #define	BCM_DISK_NAME_MAX	64		/**< maximum CFE device name length */
 #define	BCM_PART_ALIGN_MIN	0x1000		/**< minimum partition alignment */
+#define	BCM_DISK_BOOT_UNIT	0		/**< default boot device always found on unit 0 */
+
+#define	BCM_DRVNAME_NAND_FLASH	"nflash"	/**< NAND flash driver class */
+#define	BCM_DRVNAME_NOR_FLASH	"flash"		/**< NOR flash driver class */
+
+#define	BCM_PART_LABEL_TRX	"trx"		/**< active TRX boot partition label */
+#define	BCM_PART_LABEL_TRX2	"trx2"		/**< inactive TRX boot partition label */
+
+#define	BCM_DISK_BOOTIMG_FIRST	0		/**< first boot image index */
+#define	BCM_DISK_BOOTIMG_SECOND	1		/**< second boot image index */
 
 /* CFE binary magic */
 #define	BCM_CFE_MAGIC		0x43464531	/**< 'CFE1' */

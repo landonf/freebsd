@@ -237,11 +237,11 @@ static int		 bcm_probe_part(struct bcm_disk *disk,
 const bool bcm_disk_trace = false;
 
 /**
- * Known CFE device names.
+ * Known CFE driver classe names.
  */
 static const char * const bcm_drv_names[] = {
-	"flash",	/* CFI/SPI */
-	"nflash",	/* NAND */
+	BCM_DRVNAME_NOR_FLASH,	/* CFI/SPI */
+	BCM_DRVNAME_NAND_FLASH,	/* NAND */
 };
 
 /*
