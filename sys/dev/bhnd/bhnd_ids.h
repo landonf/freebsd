@@ -375,7 +375,10 @@
 #define	BHND_CHIPID_BCM5356		0x5356		/* 5356 chipcommon chipid */
 #define	BHND_CHIPID_BCM5357		0x5357		/* 5357 chipcommon chipid */
 #define	BHND_CHIPID_BCM53572		53572		/* 53572 chipcommon chipid */
-
+#define	BHND_CHIPID_IS_BCM5357(chipid) \
+	(((chipid) == BHND_CHIPID_BCM4749) || \
+	 ((chipid) == BHND_CHIPID_BCM5357) || \
+	 ((chipid) == BHND_CHIPID_BCM53572))
 
 /* Broadcom ChipCommon Package IDs */
 #define	BHND_PKGID_BCM4303		2		/* 4303 package id */
@@ -1121,7 +1124,7 @@
 #define	BHND_NVRAM_MUXENAB_HOST_WAKE1	0x00004000	/* configure alternative GPIO for SDIO host_wake */
 
 /* Boot flags */
-#define	BHND_BOOTFLAG_FLASH_KERNEL_NFLASH	0x00000001
-#define	BHND_BOOTFLAG_FLASH_BOOT_NFLASH		0x00000002
+#define	BHND_BOOTFLAG_KERNEL_NFLASH	0x00000001	/**< load kernel from NAND flash */
+#define	BHND_BOOTFLAG_CFE_NFLASH	0x00000002	/**< load CFE and NVRAM from NAND flash */
 
 #endif /* _BHND_BHND_IDS_H_ */

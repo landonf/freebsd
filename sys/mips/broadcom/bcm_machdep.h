@@ -79,6 +79,8 @@ struct bcm_platform {
 
 struct bcm_platform	*bcm_get_platform(void);
 
+uint32_t		 bcm_get_bootflags(struct bcm_platform *bp);
+
 uint64_t		 bcm_get_cpufreq(struct bcm_platform *bp);
 uint64_t		 bcm_get_sifreq(struct bcm_platform *bp);
 uint64_t		 bcm_get_alpfreq(struct bcm_platform *bp);

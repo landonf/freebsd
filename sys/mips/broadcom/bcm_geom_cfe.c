@@ -538,8 +538,7 @@ static int
 g_cfe_taste_init(struct g_cfe_taste_io *io, struct g_consumer *cp,
     struct bcm_disk *disk)
 {
-	off_t	mediasize, stripesize;
-	int	error;
+	off_t mediasize, stripesize;
 
 	io->cp = cp;
 	io->disk = disk;
@@ -564,13 +563,6 @@ g_cfe_taste_init(struct g_cfe_taste_io *io, struct g_consumer *cp,
 		G_CFE_LOG("misaligned media size %#jx/%#jx\n",
 		    (intmax_t)mediasize, (intmax_t)io->palign);
 		return (ENXIO);
-	}
-
-	/* Fetch CFE boot info */
-	if ((error = bcm_get_bootinfo(&io->bootinfo))) {
-		G_CFE_LOG("error fetching CFE boot image configuration: %d\n",
-		    error);
-		return (error);
 	}
 
 	return (0);
@@ -912,23 +904,38 @@ g_cfe_probe_os(struct g_cfe_taste_io *io, off_t block)
 
 G_CFE_DEFINE_PART_PROBE("OS", g_cfe_probe_os);
 
-/* Probe a TRX partition */
+/**
+ * Find a TRX partition record for @p block, if any.
+ */
 static struct bcm_part *
-g_cfe_probe_trx(struct g_cfe_taste_io *io, off_t block)
+g_cfe_find_trx_boot_part(struct g_cfe_taste_io *io, off_t block)
 {
-	struct bcm_part			*trx;
-	struct bcm_bootinfo		*bootinfo;
-	struct bcm_trx_header		 trx_hdr;
-	const char			*label;
-	char				 buf[sizeof("trxXX")];
-	off_t				 imgoff, imgsize;
-	int				 error, len;
+	struct bcm_part		*trx;
+	struct bcm_bootinfo	 bootinfo;
+	int			 error;
 
-	/* Find a our dual/failsafe (or simple) image layout */
-	bootinfo = &io->bootinfo;
-	for (size_t i = 0; i < bootinfo->num_images; i++) {
-		imgoff = bootinfo->offsets[i];
-		imgsize = bootinfo->sizes[i];
+	/* Fetch boot info */
+	if ((error = bcm_get_bootinfo(&bootinfo))) {
+		G_CFE_LOG("error fetching CFE boot info: %d\n", error);
+		return (NULL);
+	}
+
+	/* Skip bootimg handling if we're not probing the boot device */
+	if (strcmp(bootinfo.drvname, io->disk->drvname) != 0 ||
+	    bootinfo.devunit != io->disk->unit)
+	{
+		return (g_cfe_find_matching_part(io, "trx", block));
+	}
+
+	/* Determine our bootimg layout and the corresponding TRX partition */
+	for (size_t i = 0; i < bootinfo.num_images; i++) {
+		const char	*label;
+		char		 buf[BCM_DISK_NAME_MAX];
+		off_t		 imgoff, imgsize;
+		int		 len;
+
+		imgoff = bootinfo.offsets[i];
+		imgsize = bootinfo.sizes[i];
 
 		/* If the offset is known, it must match the block offset we're
 		 * currently probing */
@@ -967,25 +974,37 @@ g_cfe_probe_trx(struct g_cfe_taste_io *io, off_t block)
 		/* Do we have a matching TRX partition entry to probe at this
 		 * offset? */
 		if ((trx = g_cfe_find_matching_part(io, label, block)) != NULL)
-			break;	/* terminate search */
+			return (NULL);
 	}
 
-	/* Not a TRX partition */
-	if (trx == NULL)
+	/* Not found */
+	return (NULL);
+}
+
+/* Probe a TRX partition */
+static struct bcm_part *
+g_cfe_probe_trx(struct g_cfe_taste_io *io, off_t block)
+{
+	struct bcm_part			*trx;
+	struct bcm_trx_header		 hdr;
+	int				 error;
+
+	/* Find corresponding TRX partition entry */
+	if ((trx = g_cfe_find_trx_boot_part(io, block)) == NULL)
 		return (NULL);
 
 	/* Read our TRX header */
-	error = g_cfe_taste_read(trx, io, block, 0, &trx_hdr, sizeof(trx_hdr));
+	error = g_cfe_taste_read(trx, io, block, 0, &hdr, sizeof(hdr));
 	if (error) {
 		G_CFE_LOG("error reading TRX header: %d", error);
 		return (NULL);
 	}
 
-	if (le32toh(trx_hdr.magic) != BCM_TRX_MAGIC) {
+	if (le32toh(hdr.magic) != BCM_TRX_MAGIC) {
 		G_CFE_DEBUG(PROBE, "invalid TRX magic 0x%" PRIx32 " at offset "
-		    "%#jx\n", trx_hdr.magic, (intmax_t)block);
+		    "%#jx\n", hdr.magic, (intmax_t)block);
 
-		if (trx_hdr.magic == 0x0) {
+		if (hdr.magic == 0x0) {
 			/* Uninitialized TRX partition? */
 			// TODO: add a partition flag for unused partitions?
 			// TODO: if we do this via cfe_readblk(), we can be
@@ -998,13 +1017,13 @@ g_cfe_probe_trx(struct g_cfe_taste_io *io, off_t block)
 
 	/* Update our partition's fs_size */
 	if (!BCM_PART_HAS_FS_SIZE(trx))
-		trx->fs_size = le32toh(trx_hdr.len);
+		trx->fs_size = le32toh(hdr.len);
 
 	/* Validate any existing fs_size */
-	if (trx->fs_size != le32toh(trx_hdr.len)) {
+	if (trx->fs_size != le32toh(hdr.len)) {
 		G_CFE_LOG("%s partition has incorrect fs_size %#jx, expected "
 		    "%#" PRIx32 "\n", trx->label, (intmax_t)trx->fs_size,
-		    trx_hdr.len);
+		    le32toh(hdr.len));
 
 		return (NULL);
 	}

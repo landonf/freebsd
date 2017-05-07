@@ -89,9 +89,11 @@ static struct bhnd_device_quirk chipc_quirks[] = {
 	BHND_CORE_QUIRK	(HWREV_GTE(35),		CHIPC_QUIRK_SUPPORTS_CAP_EXT),
 	BHND_CORE_QUIRK	(HWREV_GTE(49),		CHIPC_QUIRK_IPX_OTPL_SIZE),
 
-	/* 4706 variant quirks */
-	BHND_CORE_QUIRK	(HWREV_EQ (38),		CHIPC_QUIRK_4706_NFLASH), /* BCM5357? */
+	/* 4706/5357 NFLASH quirk */
 	BHND_CHIP_QUIRK	(4706,	HWREV_ANY,	CHIPC_QUIRK_4706_NFLASH),
+	BHND_CHIP_QUIRK	(4749,	HWREV_ANY,	CHIPC_QUIRK_4706_NFLASH),
+	BHND_CHIP_QUIRK	(5357,	HWREV_ANY,	CHIPC_QUIRK_4706_NFLASH),
+	BHND_CHIP_QUIRK	(53572,	HWREV_ANY,	CHIPC_QUIRK_4706_NFLASH),
 
 	/* 4331 quirks*/
 	BHND_CHIP_QUIRK	(4331,	HWREV_ANY,	CHIPC_QUIRK_4331_EXTPA_MUX_SPROM),
@@ -455,7 +457,7 @@ chipc_read_caps(struct chipc_softc *sc, struct chipc_caps *caps)
 			
 	}
 
-	/* Handle 4706-specific NAND core capability flag */
+	/* Handle 4706/5357-specific NAND core capability flag */
 	if (CHIPC_QUIRK(sc, 4706_NFLASH) &&
 	    CHIPC_GET_FLAG(cap_reg, CHIPC_CAP_4706_NFLASH))
 	{

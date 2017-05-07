@@ -951,6 +951,12 @@ enum {
 #define	  CHIPC_FLSTRCF4706_1ST_MADDR_SEG_128MB	0x6		/* 128MB */
 #define	  CHIPC_FLSTRCF4706_1ST_MADDR_SEG_256MB	0x7		/* 256MB */
 
+/* 5357 chip-specific ChipStatus register bits */
+#define	CHIPC_CST5357_BOOT_MASK			0x00000030
+#define	CHIPC_CST5357_BOOT_SHIFT		4
+#define	  CHIPC_CST5357_BOOT_FROM_NAND		1	/* boot from NAND flash */
+#define	  CHIPC_CST5357_BOOT_FROM_NOR		2	/* boot from NOR flash */
+
 /*
 * Register eci_inputlo bitfield values.
 * - BT packet type information bits [7:0]

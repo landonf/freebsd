@@ -83,6 +83,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/cores/chipc/chipcreg.h>
 #include <dev/bhnd/cores/pmu/bhnd_pmureg.h>
 
+#include "bhnd_nvram_map.h"
+
 #include "bcm_machdep.h"
 #include "bcm_bmips_exts.h"
 
@@ -248,6 +250,47 @@ bcm_get_nvram(struct bcm_platform *bp, const char *name, void *buf, size_t *len,
 	return (bhnd_nvram_data_getvar_direct(bp->nvram_cls, bp->nvram_io, name,
 	    buf, len, type));
 }
+
+/* see BHND_BOOTFLAG_* */
+uint32_t
+bcm_get_bootflags(struct bcm_platform *bp)
+{
+	uint32_t	bootflags;
+	size_t		len;
+	int		error;
+
+	/* Try fetching from NVRAM */
+	len = sizeof(bootflags);
+	error = bcm_get_nvram(bp, BHND_NVAR_BOOTFLAGS, &bootflags, &len,
+	    BHND_NVRAM_TYPE_UINT32);
+	if (error) {
+		if (error != ENOENT)
+			BCM_ERR("error fetching bootflags: %d\n", error);
+
+		bootflags = 0x0;
+	}
+
+	/* On BCM5357-family devices, use chipc strappings to populate missing
+	 * boot flags */
+	if (BHND_CHIPID_IS_BCM5357(bp->cid.chip_id)) {
+		uint32_t chipst, bootdev;
+
+		chipst = BCM_CHIPC_READ_4(bp, CHIPC_CHIPST);
+		bootdev = CHIPC_GET_BITS(chipst, CHIPC_CST5357_BOOT);
+
+		/* CFE was loaded from NAND */
+		if (bootdev == CHIPC_CST5357_BOOT_FROM_NAND)
+			bootflags |= BHND_BOOTFLAG_CFE_NFLASH;
+	}
+
+	/* If CFE was loaded from NAND, it will also load the OS from the
+	 * NAND device (even if BHND_BOOTFLAG_KERNEL_NFLASH is not set) */
+	if (bootflags & BHND_BOOTFLAG_CFE_NFLASH)
+		bootflags |= BHND_BOOTFLAG_KERNEL_NFLASH;
+
+	return (bootflags);
+}
+
 
 /**
  * Probe and attach a bhnd_erom parser instance for the bhnd bus.

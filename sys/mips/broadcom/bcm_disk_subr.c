@@ -377,17 +377,30 @@ bcm_get_bootinfo(struct bcm_bootinfo *info)
 {
 	struct bcm_platform		*bp;
 	const struct bcm_bootimg_var	*imgvar;
-	uint8_t				 bootimg;
+	uint32_t			 bootflags;
 	uint64_t			 imgsize;
+	uint8_t				 bootimg;
 	size_t				 len;
 	int				 error;
 
 	bp = bcm_get_platform();
+	bootflags = bcm_get_bootflags(bp);
 
-	/* Determine layout type and boot image index */
+	/* Determine the boot device */
+	if (bootflags & BHND_BOOTFLAG_KERNEL_NFLASH) {
+		/* kernel (and OS) on NAND */
+		info->drvname = "nflash";
+		info->devunit = 0;
+	} else {
+		/* kernel (and OS) on NOR */
+		info->drvname = "flash";
+		info->devunit = 0;
+	}
+
+	/* Determine boot image layout type and the active image index */
 	imgvar = NULL;
 	for (size_t i = 0; i < nitems(bcm_bootimg_vars); i++) {
-		/* Try to fetch the boot image index from NVRAM */
+		/* Try to fetch the active image index from NVRAM */
 		len = sizeof(bootimg);
 		error = bcm_get_nvram(bp, bcm_bootimg_vars[i].name, &bootimg,
 		    &len, BHND_NVRAM_TYPE_UINT8);
@@ -406,9 +419,6 @@ bcm_get_bootinfo(struct bcm_bootinfo *info)
 			return (error);
 		}
 	}
-
-	info->drvname = NULL; /* XXX TODO */
-	info->devunit = 0;
 
 	/* No dual/failsafe image configuration found? */
 	if (imgvar == NULL) {
