@@ -1237,9 +1237,9 @@ bcm_probe_part(struct bcm_disk *disk, struct bcm_part *part, uint32_t quirks)
 	/* Fall back on IOCTL_NVRAM_GETINFO */
 	if ((error = bcm_probe_part_nvraminfo(disk, part, quirks)))
 		return (error);
-	
-	/* If all else fails, we can manually determine the size (but not the
-	 * offset) via cfe_readblk() */
+
+	/* If all else fails, we can manually determine the size (or offset,
+	 * if the device has the PART_EOF_OVERREAD quirk) via cfe_readblk() */
 	if ((error = bcm_probe_part_read(disk, part, quirks)))
 		return (error);
 
