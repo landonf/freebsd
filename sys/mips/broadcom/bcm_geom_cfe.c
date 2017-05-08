@@ -32,6 +32,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/bus.h>
+#include <sys/ctype.h>
 #include <sys/errno.h>
 #include <sys/endian.h>
 #include <sys/systm.h>
@@ -937,38 +938,62 @@ g_cfe_probe_os(struct g_cfe_taste_io *io, off_t block)
 G_CFE_DEFINE_PART_PROBE("OS", g_cfe_probe_os);
 
 /**
- * Find a TRX partition record for @p block, if any.
+ * Return the best TRX partition entry for @p offset, if any.
  */
 static struct bcm_part *
-g_cfe_find_trx_part(struct g_cfe_taste_io *io, off_t block)
+g_cfe_find_trx_part(struct g_cfe_taste_io *io, off_t offset)
 {
 	struct bcm_bootinfo	*bootinfo;
-	const char		*label;
+	struct bcm_part		*part;
 
-	bootinfo = io->have_bootinfo ? &io->bootinfo : NULL;
+	/* Find the bootimg that corresponds to the current offset, if any */
+	if (io->have_bootinfo) {
+		for (size_t i = 0; i < bootinfo->num_images; i++) {
+			struct bcm_bootimg *img = &bootinfo->images[i];
 
-	/* Skip dual image handling if we're not probing the boot device, or
-	 * if our device uses a non-dual layout type */
-	if (bootinfo == NULL || !BCM_BOOTIMG_LAYOUT_DUAL(bootinfo->layout)) {
-		return (g_cfe_find_matching_part(io, BCM_PART_LABEL_TRX,
-		    block));
+			if (img->offset == BCM_DISK_INVALID_OFF)
+				continue;
+
+			if (img->offset != offset)
+				continue;
+
+			/* Look for matching partition entry */
+			part = g_cfe_find_matching_part(io, img->label, offset);
+			if (part != NULL)
+				return (part);
+		}
 	}
 
-	/* Determine the TRX partition label that corresponds to the current
-	 * offset */
-	label = NULL;
-	if (bootinfo->boot_img.offset == block) {
-		/* Probing primary image */
-		label = bootinfo->boot_img.label;
-	} else if (bootinfo->backup_img.offset == block) {
-		/* Probing backup image */
-		label = bootinfo->backup_img.label;
+	/* No match found in bootinfo; search for the next available/matching
+	 * TRX partition entry */
+	for (size_t i = 0; i < io->disk->num_parts; i++) {
+		const char	*label;
+		char		 buf[BCM_DISK_NAME_MAX];
+
+		/* Format the partition label (trx, trx2, trx3...) */
+		if (i == 0) {
+			label = BCM_PART_LABEL_TRX;
+		} else {
+			int ret;
+
+			ret = snprintf(buf, sizeof(buf), "trx%zu", i+1);
+			if (ret >= sizeof(buf)) {
+				G_CFE_LOG("%zu exceeds maximum CFE "
+				    "device name length\n", i);
+				return (NULL);
+			}
+
+			label = buf;
+		}
+
+		/* Look for matching partition */
+		part = g_cfe_find_matching_part(io, label, offset);
+		if (part != NULL)
+			return (part);
 	}
 
-	if (label == NULL)
-		return (NULL);
-
-	return (g_cfe_find_matching_part(io, label, block));
+	/* No matching TRX partition found */
+	return (NULL);
 }
 
 /* Probe a TRX partition */

@@ -35,12 +35,8 @@
 #include <sys/param.h>
 #include <sys/queue.h>
 
-/* forward declarations */
-struct bcm_bootinfo;
-
 #define	BCM_DISK_INVALID_OFF	OFF_MAX
 #define	BCM_DISK_INVALID_SIZE	((off_t)0)
-#define	BCM_BOOTIMG_MAX		2		/**< maximum CFE boot image count */
 
 SLIST_HEAD(bcm_parts, bcm_part);
 SLIST_HEAD(bcm_disks, bcm_disk);
@@ -58,45 +54,10 @@ struct bcm_disk	*bcm_find_disk(struct bcm_disks *disks, const char *drvname,
 off_t		 bcm_part_get_end(struct bcm_part *part);
 off_t		 bcm_part_get_next(struct bcm_part *part, off_t align);
 
-int		 bcm_get_bootinfo(struct bcm_bootinfo *bootinfo);
-
 struct bcm_part	*bcm_parts_find(struct bcm_parts *parts, const char *label);
 struct bcm_part	*bcm_parts_find_offset(struct bcm_parts *parts, off_t offset);
 struct bcm_part	*bcm_parts_match(struct bcm_parts *parts, const char *label,
 		     off_t offset);
-
-/**
- * CFE boot image layouts
- */
-typedef enum {
-	BCM_BOOTIMG_FAILSAFE,	/**< CFE with FAILSAFE_UPGRADE enabled */
-	BCM_BOOTIMG_DUAL,	/**< CFE with DUAL_IMAGE enabled */
-	BCM_BOOTIMG_SIMPLE,	/**< CFE with default config (single image) */
-} bcm_bootimg_layout;
-
-/** Evaluates to true if @p _layout is a dual-image layout, false otherwise */
-#define	BCM_BOOTIMG_LAYOUT_DUAL(_layout)	\
-	((_layout == BCM_BOOTIMG_FAILSAFE || _layout == BCM_BOOTIMG_DUAL))
-
-/**
- * CFE boot image configuration.
- */
-struct bcm_bootimg {
-	const char	*label;		/**< CFE partition label */
-	off_t		 offset;	/**< image offset */
-	off_t		 size;		/**< image size */
-};
-
-/**
- * CFE boot configuration.
- */
-struct bcm_bootinfo {
-	const char		*drvname;	/**< CFE boot device driver class */
-	u_int			 devunit;	/**< CFE boot device unit */
-	bcm_bootimg_layout	 layout;	/**< CFE boot device layout */
-	struct bcm_bootimg	 boot_img;	/**< active image (if BCM_BOOTIMG_LAYOUT_DUAL) */
-	struct bcm_bootimg	 backup_img;	/**< inactive image (if BCM_BOOTIMG_LAYOUT_DUAL) */
-};
 
 /**
  * Partition description.

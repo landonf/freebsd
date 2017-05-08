@@ -128,6 +128,23 @@ group "Boot Configuration" {
 		help	"Offset to the second flash image. Unsupported on
 			 devices without CFE dual or failsafe image support."
 	}
+
+	u32	partialboots {
+		desc	"Boot Failure Count"
+		help	"The number of failed boots. If set to a value other
+			 than 0, the variable will be incremented CFE prior
+			 to booting. The OS should reset this value to 0 upon
+			 a successful boot. Unsupported on devices without CFE
+			 failsafe image support"
+	}
+
+	u32	maxpartialboots {
+		desc	"Maximum Boot Failure Count"
+		help	"The maximum number of 'partialboots' before CFE resets
+			 the count and switches 'bootpartition' to the currently
+			 inactive boot image. Unsupported on devices without
+			 CFE failsafe image support"
+	}
 }
 
 u8	aga0 {

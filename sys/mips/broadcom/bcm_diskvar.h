@@ -42,15 +42,18 @@ MALLOC_DECLARE(M_BCM_CDISK);
 extern const bool bcm_disk_trace;
 
 /* forward declarations */
-struct bcm_boot_label;
+struct bcm_bootinfo;
+struct bcm_bootlabel;
 
 bool		 bcm_disk_dev_exists(struct bcm_disk *disk, const char *label);
 int		 bcm_disk_dev_name(const char *drvname, u_int unit,
 		     const char *label, char *buf, size_t *len);
 
-bool		 bcm_find_boot_label(const char *label,
-		     const struct bcm_boot_label **info,
+bool		 bcm_find_bootlabel(const char *label,
+		     const struct bcm_bootlabel **info,
 		     bcm_part_type *part_type);
+
+int		 bcm_get_bootinfo(struct bcm_bootinfo *bootinfo);
 
 struct bcm_part	*bcm_disk_get_query_part(struct bcm_disk *disk);
 
@@ -78,9 +81,50 @@ struct bcm_trx_header {
  * Provides a mapping between TRX partition labels and corresponding OS
  * partition label.
  */
-struct bcm_boot_label {
+struct bcm_bootlabel {
 	const char *os_label;	/**< OS partition label */
 	const char *trx_label;	/**< TRX partition label */
+};
+
+
+/**
+ * CFE boot image layouts
+ */
+typedef enum {
+	BCM_BOOTIMG_FAILSAFE,	/**< CFE with FAILSAFE_UPGRADE enabled */
+	BCM_BOOTIMG_DUAL,	/**< CFE with DUAL_IMAGE enabled */
+	BCM_BOOTIMG_SIMPLE,	/**< CFE with default config (single image) */
+} bcm_bootimg_layout;
+
+/** Evaluates to true if @p _layout is a dual-image layout, false otherwise */
+#define	BCM_BOOTIMG_LAYOUT_DUAL(_layout)	\
+	((_layout == BCM_BOOTIMG_FAILSAFE || _layout == BCM_BOOTIMG_DUAL))
+
+/**
+ * CFE boot image configuration.
+ */
+struct bcm_bootimg {
+	const char	*label;		/**< CFE partition label, or NULL if unavailable */
+	off_t		 offset;	/**< image offset, or BCM_DISK_INVALID_OFF if unavailable */
+	off_t		 size;		/**< image size, or BCM_DISK_INVALID_SIZE if unavailable */
+};
+
+#define	BCM_DISK_BOOTIMG_FIRST	0		/**< first boot image index */
+#define	BCM_DISK_BOOTIMG_SECOND	1		/**< second boot image index */
+#define	BCM_DISK_BOOTIMG_MAX	2		/**< maximum CFE boot image count */
+
+/**
+ * CFE boot configuration.
+ */
+struct bcm_bootinfo {
+	const char		*drvname;			/**< CFE boot device driver class */
+	u_int			 devunit;			/**< CFE boot device unit */
+	bcm_bootimg_layout	 layout;			/**< CFE boot device layout */
+	uint8_t			 bootimg;			/**< active image index */
+	struct bcm_bootimg	 images[BCM_DISK_BOOTIMG_MAX];	/**< boot images */
+	size_t			 num_images;			/**< image count */
+	uint32_t		 num_failures;			/**< failed boot count (if BCM_BOOTIMG_FAILSAFE) */
+	uint32_t		 max_failures;			/**< maximum failed boot count (if BCM_BOOTIMG_FAILSAFE) */
 };
 
 #define	BCM_DISK_UNIT_MAX	64		/**< maximum CFE device unit */
@@ -93,9 +137,6 @@ struct bcm_boot_label {
 
 #define	BCM_PART_LABEL_TRX	"trx"		/**< active TRX boot partition label */
 #define	BCM_PART_LABEL_TRX2	"trx2"		/**< inactive TRX boot partition label */
-
-#define	BCM_DISK_BOOTIMG_FIRST	0		/**< first boot image index */
-#define	BCM_DISK_BOOTIMG_SECOND	1		/**< second boot image index */
 
 /* CFE binary magic */
 #define	BCM_CFE_MAGIC		0x43464531	/**< 'CFE1' */

@@ -542,12 +542,12 @@ static int
 bcm_probe_trx_remapping(struct bcm_disk *disk, const char *label, u_int *unit,
     bool *ignore, bool *skip_next)
 {
-	const struct bcm_boot_label	*info;
+	const struct bcm_bootlabel	*info;
 	struct bcm_disk			*next;
 	bcm_part_type			 type;
 
 	/* Is this a recognized boot partition? */
-	if (!bcm_find_boot_label(label, &info, &type))
+	if (!bcm_find_bootlabel(label, &info, &type))
 		return (0);
 
 	/* Allocate a disk entry for the next device unit */
