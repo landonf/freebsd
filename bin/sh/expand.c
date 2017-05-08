@@ -222,9 +222,9 @@ stputs_split(const char *data, const char *syntax, int flag, char *p,
  * The result is left in the stack string.
  * When arglist is NULL, perform here document expansion.
  *
- * Caution: this function uses global state and is not reentrant.
- * However, a new invocation after an interrupted invocation is safe
- * and will reset the global state for the new call.
+ * When doing something that may cause this to be re-entered, make sure
+ * the stack string is empty via grabstackstr() and do not assume expdest
+ * remains valid.
  */
 void
 expandarg(union node *arg, struct arglist *arglist, int flag)
@@ -462,6 +462,7 @@ expbackq(union node *cmd, int quoted, int flag, struct worddest *dst)
 	int quotes = flag & (EXP_GLOB | EXP_CASE);
 	size_t nnl;
 	const char *ifs;
+	int startloc;
 
 	INTOFF;
 	p = grabstackstr(dest);
@@ -469,12 +470,13 @@ expbackq(union node *cmd, int quoted, int flag, struct worddest *dst)
 	ungrabstackstr(p, dest);
 
 	p = in.buf;
+	startloc = dest - stackblock();
 	nnl = 0;
 	if (!quoted && flag & EXP_SPLIT)
 		ifs = ifsset() ? ifsval() : " \t\n";
 	else
 		ifs = "";
-	/* Don't copy trailing newlines */
+	/* Remove trailing newlines */
 	for (;;) {
 		if (--in.nleft < 0) {
 			if (in.fd < 0)
@@ -490,31 +492,24 @@ expbackq(union node *cmd, int quoted, int flag, struct worddest *dst)
 		lastc = *p++;
 		if (lastc == '\0')
 			continue;
-		if (lastc == '\n') {
-			nnl++;
-		} else {
-			if (nnl > 0) {
-				if (strchr(ifs, '\n') != NULL) {
-					NEXTWORD('\n', flag, dest, dst);
-					nnl = 0;
-				} else {
-					CHECKSTRSPACE(nnl + 2, dest);
-					while (nnl > 0) {
-						nnl--;
-						USTPUTC('\n', dest);
-					}
-				}
-			}
-			if (strchr(ifs, lastc) != NULL)
+		if (nnl > 0 && lastc != '\n') {
+			NEXTWORD('\n', flag, dest, dst);
+			nnl = 0;
+		}
+		if (strchr(ifs, lastc) != NULL) {
+			if (lastc == '\n')
+				nnl++;
+			else
 				NEXTWORD(lastc, flag, dest, dst);
-			else {
-				CHECKSTRSPACE(2, dest);
-				if (quotes && syntax[(int)lastc] == CCTL)
-					USTPUTC(CTLESC, dest);
-				USTPUTC(lastc, dest);
-			}
+		} else {
+			CHECKSTRSPACE(2, dest);
+			if (quotes && syntax[(int)lastc] == CCTL)
+				USTPUTC(CTLESC, dest);
+			USTPUTC(lastc, dest);
 		}
 	}
+	while (dest > stackblock() + startloc && STTOPC(dest) == '\n')
+		STUNPUTC(dest);
 
 	if (in.fd >= 0)
 		close(in.fd);
@@ -826,7 +821,7 @@ evalvar(const char *p, struct nodelist **restrict argbackq, int flag,
 
 
 /*
- * Test whether a specialized variable is set.
+ * Test whether a special or positional parameter is set.
  */
 
 static int
@@ -923,7 +918,7 @@ reprocess(int startloc, int flag, int subtype, int quoted,
 }
 
 /*
- * Add the value of a specialized variable to the stack string.
+ * Add the value of a special or positional parameter to the stack string.
  */
 
 static void
