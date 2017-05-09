@@ -57,24 +57,6 @@ int		 bcm_get_bootinfo(struct bcm_bootinfo *bootinfo);
 
 struct bcm_part	*bcm_disk_get_query_part(struct bcm_disk *disk);
 
-/* TRX image constants */
-#define	BCM_TRX_MAGIC		0x30524448	/* "HDR0" */
-#define	BCM_TRX_V1		1
-#define	BCM_TRX_V2		2
-#define	BCM_TRX_V1_MAX_PARTS	3
-#define	BCM_TRX_V2_MAX_PARTS	5
-#define	BCM_TRX_MAX_PARTS	BCM_TRX_V2_MAX_PARTS
-
-/** TRX image header */
-struct bcm_trx_header {                                                                                                                 
-	uint32_t magic;
-	uint32_t len;
-	uint32_t crc32;
-	uint32_t flag_version;
-	uint32_t offsets[BCM_TRX_MAX_PARTS];
-} __packed;
-
-
 /**
  * CFE OS/TRX boot partition labels.
  * 
@@ -155,11 +137,42 @@ struct bcm_bootinfo {
 #define	BCM_GZIP_MAGIC1		0x8b
 #define	BCM_GZIP_DEFLATE	8
 
+/* BZIP2 magic */
+#define	BCM_BZIP2_MAGIC		"BZ"
+#define	BCM_BZIP2_MAGIC_LEN	2
+
 /* CFE bootblock magic */
 #define	BCM_BOOTBLK_OFFSET	472	/**< boot block offset */
 #define	BCM_BOOTBLK_BLKSIZE	512	/**< boot block alignment */
 #define	BCM_BOOTBLK_MAX		16	/**< maximum number of blocks to search */
 #define	BCM_BOOTBLK_MAGIC	((uint64_t)0x43465631424f4f54ULL)
+
+/* TRX image header */
+#define	BCM_TRX_MAGIC		0x30524448	/* "HDR0" */
+#define	BCM_TRX_V1		1
+#define	BCM_TRX_V2		2
+#define	BCM_TRX_V1_MAX_PARTS	3
+#define	BCM_TRX_V2_MAX_PARTS	5
+#define	BCM_TRX_MAX_PARTS	BCM_TRX_V2_MAX_PARTS
+
+struct bcm_trx_header {                                                                                                                 
+	uint32_t magic;
+	uint32_t len;
+	uint32_t crc32;
+	uint32_t flag_version;
+	uint32_t offsets[BCM_TRX_MAX_PARTS];
+} __packed;
+
+
+/* Netgear ML (multi-language) partition */
+#define	BCM_NETGEAR_LANG_MAXSIZE	0xFFF0
+
+struct bcm_netgear_langhdr {
+	uint32_t	size;				/**< size (not including header) */
+	uint32_t	unknown;			/**< ??? */
+	uint8_t		version[8];			/**< version (XX.XX.XX.XX_XX.XX.XX.XX) */
+	uint8_t		bzip2[BCM_BZIP2_MAGIC_LEN];	/**< BZIP stream magic */
+} __packed;
 
 /* Disk logging */
 #define	BCM_DISK_LOG(_disk, msg, ...)					\

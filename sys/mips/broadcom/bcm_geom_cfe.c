@@ -746,7 +746,7 @@ g_cfe_probe_cfe(struct g_cfe_taste_io *io, off_t block)
 	error = g_cfe_taste_read(boot, io, block, BCM_CFE_MAGIC_OFFSET, magic,
 	    sizeof(magic));
 	if (error) {
-		G_CFE_LOG("error reading CFE magic: %d", error);
+		G_CFE_LOG("error reading CFE magic: %d\n", error);
 		return (NULL);
 	}
 
@@ -758,7 +758,7 @@ g_cfe_probe_cfe(struct g_cfe_taste_io *io, off_t block)
 	error = g_cfe_taste_read(boot, io, block, BCM_CFE_BISZ_OFFSET, magic,
 	    sizeof(*magic));
 	if (error) {
-		G_CFE_LOG("error reading CFE BISZ magic: %d", error);
+		G_CFE_LOG("error reading CFE BISZ magic: %d\n", error);
 		return (NULL);
 	}
 
@@ -798,7 +798,7 @@ g_cfe_probe_minix_config(struct g_cfe_taste_io *io, off_t block)
 	error = g_cfe_taste_read(config, io, block, BCM_MINIX_OFFSET, &magic,
 	    sizeof(magic));
 	if (error) {
-		G_CFE_LOG("error reading MINIX magic: %d", error);
+		G_CFE_LOG("error reading MINIX magic: %d\n", error);
 		return (NULL);
 	}
 
@@ -892,7 +892,7 @@ g_cfe_probe_os(struct g_cfe_taste_io *io, off_t block)
 	/* Look for an ELF bootloader */
 	error = g_cfe_taste_read(os, io, block, 0, &ehdr, sizeof(ehdr));
 	if (error) {
-		G_CFE_LOG("error reading ELF header: %d", error);
+		G_CFE_LOG("error reading ELF header: %d\n", error);
 		return (NULL);
 	}
 
@@ -902,7 +902,7 @@ g_cfe_probe_os(struct g_cfe_taste_io *io, off_t block)
 	/* Look for a GZIP-compressed bootloader */
 	error = g_cfe_taste_read(os, io, block, 0, &gz_hdr, sizeof(gz_hdr));
 	if (error) {
-		G_CFE_LOG("error reading GZIP magic: %d", error);
+		G_CFE_LOG("error reading GZIP magic: %d\n", error);
 		return (NULL);
 	}
 
@@ -921,7 +921,8 @@ g_cfe_probe_os(struct g_cfe_taste_io *io, off_t block)
 		error = g_cfe_taste_read(os, io, block, boff, &magic,
 		    sizeof(magic));
 		if (error) {
-			G_CFE_LOG("error reading boot block %zu: %d", i, error);
+			G_CFE_LOG("error reading boot block %zu: %d\n", i,
+			    error);
 			return (NULL);
 		}
 
@@ -978,8 +979,8 @@ g_cfe_find_trx_part(struct g_cfe_taste_io *io, off_t offset)
 
 			ret = snprintf(buf, sizeof(buf), "trx%zu", i+1);
 			if (ret >= sizeof(buf)) {
-				G_CFE_LOG("%zu exceeds maximum CFE "
-				    "device name length\n", i);
+				G_CFE_LOG("%zu exceeds maximum CFE device name "
+				    "length\n", i);
 				return (NULL);
 			}
 
@@ -1011,7 +1012,7 @@ g_cfe_probe_trx(struct g_cfe_taste_io *io, off_t block)
 	/* Read our TRX header */
 	error = g_cfe_taste_read(trx, io, block, 0, &hdr, sizeof(hdr));
 	if (error) {
-		G_CFE_LOG("error reading TRX header: %d", error);
+		G_CFE_LOG("error reading TRX header: %d\n", error);
 		return (NULL);
 	}
 
@@ -1047,6 +1048,72 @@ g_cfe_probe_trx(struct g_cfe_taste_io *io, off_t block)
 }
 
 G_CFE_DEFINE_PART_PROBE("TRX", g_cfe_probe_trx);
+
+/* Probe a Netgear 'ML' (multi-language) partition */
+static struct bcm_part *
+g_cfe_probe_netgear_ml(struct g_cfe_taste_io *io, off_t block)
+{
+	struct bcm_part			*part, *ml;
+	struct bcm_netgear_langhdr	 hdr;
+	int				 error;
+
+	ml = NULL;
+
+	/* Find the first usable ML partition entry */
+	SLIST_FOREACH(part, &io->disk->parts, cp_link) {
+		const char *p;
+
+		if (BCM_PART_HAS_OFFSET(part) && part->offset != block)
+			continue;
+
+		/* Name must start with "ML" */
+		if (strncmp(part->label, "ML", strlen("ML")) != 0)
+			continue;
+
+		/* Name must end with an integer */
+		p = part->label + strlen("ML");
+		if (*p == '\0')
+			continue;
+
+		while (*p != '\0' && isdigit(*p))
+			p++;
+
+		if (*p != '\0')
+			continue;
+		
+		ml = part;
+		break;
+	}
+
+	if (ml == NULL)
+		return (NULL);
+
+	/* Read our ML header */
+	error = g_cfe_taste_read(ml, io, block, 0x0, &hdr, sizeof(hdr));
+	if (error) {
+		G_CFE_LOG("error reading ML header: %d\n", error);
+		return (NULL);
+	}
+
+	/* The ML format does not provide a magic number; we need to look at
+	 * the BZIP2 stream directly following the header */
+	if (strncmp(hdr.bzip2, BCM_BZIP2_MAGIC, sizeof(hdr.bzip2)) != 0) {
+		G_CFE_LOG("no ML bzip2 header found\n");
+		return (NULL);
+	}
+
+	/* An ML partition is limited to <= 0xFFF0; if the flash has been
+	 * erased (setting all bits to 1), this field will be 0xFFFFFFFF */
+	if (le32toh(hdr.size) > BCM_NETGEAR_LANG_MAXSIZE) {
+		// TODO - mark as unused?
+		// TODO - perform check using CFE readblk?
+		return (NULL);
+	}
+
+	return (ml);
+}
+
+G_CFE_DEFINE_PART_PROBE("NETGEAR_ML", g_cfe_probe_netgear_ml);
 
 /**
  * Identify all partitions.
