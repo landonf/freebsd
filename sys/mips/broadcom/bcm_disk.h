@@ -60,6 +60,58 @@ struct bcm_part	*bcm_parts_match(struct bcm_parts *parts, const char *label,
 		     off_t offset);
 
 /**
+ * CFE disk flags
+ */
+enum {
+	BCM_DISK_BOOTDEV	= (1<<0),	/**< disk contains boot image */
+	BCM_DISK_BYTESWAPPED	= (1<<1),	/**< a hint that target-endian data structures
+						     are not in host byte order */
+};
+
+/**
+ * CFE partition flags
+ */
+enum {
+	BCM_PART_READONLY		= (1<<0),	/**< partition contains critical data and must be treated as read-only */
+	BCM_PART_PLATFORM		= (1<<1),	/**< partition is required for device function and must be preserved (but may be writable). */
+	BCM_PART_UNINITIALIZED		= (1<<2),	/**< vendor-defined partition is uninitialized */
+	BCM_PART_BOOTDEV		= (1<<3),	/**< partition is marked bootable */
+	BCM_PART_NVRAM			= (1<<4),	/**< partition contains NVRAM-formatted data (e.g. 'nvram', 'board_data' partitions, etc) */
+
+	BCM_PART_PLATFORM_RO		= (BCM_PART_PLATFORM|BCM_PART_READONLY),
+	BCM_PART_PLATFORM_NVRAM		= (BCM_PART_NVRAM|BCM_PART_PLATFORM),
+	BCM_PART_PLATFORM_NVRAM_RO	= (BCM_PART_NVRAM|BCM_PART_PLATFORM_RO),
+};
+
+/**
+ * Known partition types.
+ */
+typedef enum {
+	/* Common CFE partition types */
+	BCM_PART_TYPE_BOOT,		/**< CFE boot partition */
+	BCM_PART_TYPE_OS,		/**< OS partition (contains OS bootloader at offset 0x0,
+					  *  or a CFE bootblock) */
+	BCM_PART_TYPE_TRX,		/**< TRX partition */
+	BCM_PART_TYPE_NVRAM,		/**< NVRAM partition */
+	BCM_PART_TYPE_BRCMNAND,		/**< unused NAND space reserved for OS data */
+
+	/* Netgear-specific partition types */
+	BCM_PART_TYPE_LEAF_CONFIG,	/**< Netgear/LEAF configuration partition (MINIX partition, found on WGT634U) */
+	BCM_PART_TYPE_BOARD_DATA,	/**< Netgear 'board_data' partition */
+	BCM_PART_TYPE_MULTILANG,	/**< Netgear 'ML' l10n string table partition */
+	BCM_PART_TYPE_POT,		/**< Netgear 'POT' partition: NTP timestamp + first associated STA MAC addr */
+	BCM_PART_TYPE_TMETER,		/**< Netgear 'T_Meter' traffic meter data partition */
+
+	/* Linksys-specific partition types */
+	BCM_PART_TYPE_DEVINFO,		/**< Linksys 'devinfo' partition */
+
+	/* Asus-specific partition types */
+	BCM_PART_TYPE_ASUSFW,		/**< Asus 'asus' partition containing device firmware, etc */
+
+	BCM_PART_TYPE_UNKNOWN		/**< other/unknown */
+} bcm_part_type;
+
+/**
  * Partition description.
  */
 struct bcm_part {
@@ -67,6 +119,8 @@ struct bcm_part {
 	const char		*label;		/**< CFE partition label */
 	int			 fd;		/**< CFE handle, or -1 if unopened */
 	bool			 need_close;	/**< If the fd should be closed on free */
+	bcm_part_type		 type;		/**< partition type (or BCM_PART_TYPE_UNKNOWN) */
+	uint32_t		 flags;		/**< partition flags (see BCM_PART_* flag enums) */
 	off_t			 offset;	/**< partition offset, or BCM_DISK_INVALID_OFF if unknown */
 	off_t			 size;		/**< partition size, or BCM_DISK_INVALID_SIZE if unknown */
 	off_t			 fs_size;	/**< the size of the filesystem, or BCM_DISK_INVALID_SIZE if unknown.
@@ -87,12 +141,17 @@ struct bcm_part {
 #define	BCM_PART_HAS_FS_SIZE(_part)	\
     ((_part)->fs_size != BCM_DISK_INVALID_SIZE)
 
+/** Evaluates to true if @p _flg is set on @p _part */
+#define	BCM_PART_HAS_FLAG(_part, _flg)	\
+	(((_part)->flags & (_flg)) != 0)
+
 /**
  * Block device description.
  */
 struct bcm_disk {
 	const char		*drvname;	/**< CFE driver class name (e.g. 'nflash') */
 	u_int			 unit;		/**< CFE device unit */
+	uint32_t		 flags;		/**< disk flags (see BCM_DISK_* flag enums) */
 	off_t			 size;		/**< media size, or BCM_DISK_INVALID_SIZE if unknown */
 	struct bcm_parts	 parts;		/**< identified partitions */
 	size_t			 num_parts;	/**< partition count */
@@ -104,13 +163,8 @@ struct bcm_disk {
 #define	BCM_DISK_HAS_SIZE(_part)	\
     ((_part)->size != BCM_DISK_INVALID_SIZE)
 
-/**
- * Known partition types.
- */
-typedef enum {
-	BCM_PART_TYPE_OS,	/**< os partition */
-	BCM_PART_TYPE_TRX,	/**< trx partition */
-	BCM_PART_TYPE_UNKNOWN	/**< other/unknown */
-} bcm_part_type;
+/** Evaluates to true if all of @p _flags are set on @p _disk */
+#define	BCM_DISK_HAS_FLAGS(_part, _flags)	\
+	(((_disk)->flags & (_flg)) == (_flags))
 
 #endif /* _MIPS_BROADCOM_BCM_DISK_H_ */

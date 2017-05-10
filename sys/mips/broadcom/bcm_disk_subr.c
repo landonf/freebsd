@@ -562,7 +562,8 @@ bcm_print_disk(struct bcm_disk *disk)
 
 	SLIST_FOREACH(part, &disk->parts, cp_link) {
 		KASSERT(part_idx < disk->num_parts,
-		    ("incorrect partition count"));
+		    ("incorrect partition count (%zu >= %zu)", part_idx,
+		     disk->num_parts));
 
 		parts[part_idx++] = part;
 	}
