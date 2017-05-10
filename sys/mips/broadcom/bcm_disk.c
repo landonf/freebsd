@@ -305,22 +305,35 @@ static const struct bcm_part_info {
 int
 bcm_probe_disks(struct bcm_disks *result)
 {
-	struct bcm_disks disks;
-	struct bcm_disk	*disk, *dnext;
-	int		 error;
+	struct bcm_disks	 disks;
+	struct bcm_disk		*disk, *dnext;
+	struct bcm_bootinfo	 bootinfo;
+	int			 error;
 
 	SLIST_INIT(&disks);
+
+	if ((error = bcm_get_bootinfo(&bootinfo))) {
+		printf("failed to fetch bootinfo: %d\n", error);
+		return (error);
+	}
 
 	for (size_t i = 0; i < nitems(bcm_drv_names); i++) {
 		for (u_int unit = 0; unit < BCM_DISK_UNIT_MAX; unit++) {
 			bool skip_next;
 
 			/* Allocate new disk entry */
-			disk = bcm_disk_new(bcm_drv_names[i], unit);
+			disk = bcm_disk_new(bcm_drv_names[i], unit, 0x0);
 			if (disk == NULL) {
 				error = ENOMEM;
 				goto failed;
 			}
+
+			/* Set basic disk flags */
+			if (bcm_disk_has_devunit(disk, &bootinfo.romdev))
+				disk->flags |= BCM_DISK_BOOTROM;
+
+			if (bcm_disk_has_devunit(disk, &bootinfo.osdev))
+				disk->flags |= BCM_DISK_OSDEV;
 
 			/* Probe partition map */
 			if ((error = bcm_probe_disk(disk, &skip_next)))
@@ -372,12 +385,13 @@ failed:
  * 
  * @param drvname	CFE device class name.
  * @param unit		CFE device unit.
+ * @param flags		Disk flags (see BCM_PART_* flag enums)
  * 
  * @retval non_NULL	success
  * @retval NULL		if allocation fails.
  */
 struct bcm_disk *
-bcm_disk_new(const char *drvname, u_int unit)
+bcm_disk_new(const char *drvname, u_int unit, uint32_t flags)
 {
 	struct bcm_disk *d;
 
@@ -386,6 +400,7 @@ bcm_disk_new(const char *drvname, u_int unit)
 	d->drvname = drvname;
 	d->unit = unit;
 	d->size = BCM_DISK_INVALID_SIZE;
+	d->flags = flags;
 
 	SLIST_INIT(&d->parts);
 	d->num_parts = 0;
@@ -570,7 +585,8 @@ bcm_probe_trx_remapping(struct bcm_disk *disk, const char *label, u_int *unit,
 	if (disk->unit == BCM_DISK_UNIT_MAX)
 		return (0);
 
-	if ((next = bcm_disk_new(disk->drvname, disk->unit+1)) == NULL)
+	next = bcm_disk_new(disk->drvname, disk->unit+1, disk->flags);
+	if (next == NULL)
 		return (ENOMEM);
 
 	/* Determine whether this partition should be ignored, or remapped

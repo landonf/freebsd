@@ -42,7 +42,7 @@ SLIST_HEAD(bcm_parts, bcm_part);
 SLIST_HEAD(bcm_disks, bcm_disk);
 
 int		 bcm_probe_disks(struct bcm_disks *result);
-struct bcm_disk	*bcm_disk_new(const char *drvname, u_int unit);
+struct bcm_disk	*bcm_disk_new(const char *drvname, u_int unit, uint32_t flags);
 void		 bcm_disk_free(struct bcm_disk *disk);
 
 void		 bcm_print_disk(struct bcm_disk *disk);
@@ -63,8 +63,9 @@ struct bcm_part	*bcm_parts_match(struct bcm_parts *parts, const char *label,
  * CFE disk flags
  */
 enum {
-	BCM_DISK_BOOTDEV	= (1<<0),	/**< disk contains boot image */
-	BCM_DISK_BYTESWAPPED	= (1<<1),	/**< a hint that target-endian data structures
+	BCM_DISK_BOOTROM	= (1<<0),	/**< provides platform bootloader, NVRAM, etc. */
+	BCM_DISK_OSDEV		= (1<<1),	/**< disk contains OS loader/kernel */
+	BCM_DISK_BYTESWAPPED	= (1<<2),	/**< a hint that target-endian data structures
 						     are not in host byte order */
 };
 
@@ -76,7 +77,7 @@ enum {
 	BCM_PART_PLATFORM		= (1<<1),	/**< partition is required for device function and must be preserved (but may be writable). */
 	BCM_PART_UNINITIALIZED		= (1<<2),	/**< vendor-defined partition is uninitialized */
 	BCM_PART_BOOTDEV		= (1<<3),	/**< partition is marked bootable */
-	BCM_PART_NVRAM			= (1<<4),	/**< partition contains NVRAM-formatted data (e.g. 'nvram', 'board_data' partitions, etc) */
+	BCM_PART_NVRAM			= (1<<4),	/**< partition contains NVRAM-formatted data */
 
 	BCM_PART_PLATFORM_RO		= (BCM_PART_PLATFORM|BCM_PART_READONLY),
 	BCM_PART_PLATFORM_NVRAM		= (BCM_PART_NVRAM|BCM_PART_PLATFORM),

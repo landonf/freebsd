@@ -44,10 +44,14 @@ extern const bool bcm_disk_trace;
 /* forward declarations */
 struct bcm_bootinfo;
 struct bcm_bootlabel;
+struct bcm_devunit;
 
 bool		 bcm_disk_dev_exists(struct bcm_disk *disk, const char *label);
 int		 bcm_disk_dev_name(const char *drvname, u_int unit,
 		     const char *label, char *buf, size_t *len);
+
+bool		 bcm_disk_has_devunit(struct bcm_disk *disk,
+		     struct bcm_devunit *devunit);
 
 bool		 bcm_find_bootlabel(const char *label,
 		     const struct bcm_bootlabel **info,
@@ -96,15 +100,23 @@ struct bcm_bootimg {
 #define	BCM_DISK_BOOTIMG_MAX	2		/**< maximum CFE boot image count */
 
 /**
+ * CFE device class/unit descriptor.
+ */
+struct bcm_devunit {
+	const char	*drvname;	/**< CFE driver class name */
+	u_int		 unit;		/**< CFE device unit */
+};
+
+/**
  * CFE boot configuration.
  */
 struct bcm_bootinfo {
-	const char		*drvname;			/**< CFE boot device driver class */
-	u_int			 devunit;			/**< CFE boot device unit */
-	bcm_bootimg_layout	 layout;			/**< CFE boot device layout */
-	uint8_t			 bootimg;			/**< active image index */
-	struct bcm_bootimg	 images[BCM_DISK_BOOTIMG_MAX];	/**< boot images */
-	size_t			 num_images;			/**< image count */
+	struct bcm_devunit	 romdev;			/**< bootrom (+nvram) device */
+	struct bcm_devunit	 osdev;				/**< OS boot device */
+	bcm_bootimg_layout	 layout;			/**< OS boot image layout */
+	uint8_t			 bootimg;			/**< active OS image index */
+	struct bcm_bootimg	 images[BCM_DISK_BOOTIMG_MAX];	/**< OS boot images */
+	size_t			 num_images;			/**< OS boot image count */
 	uint32_t		 num_failures;			/**< failed boot count (if BCM_BOOTIMG_FAILSAFE) */
 	uint32_t		 max_failures;			/**< maximum failed boot count (if BCM_BOOTIMG_FAILSAFE) */
 };
@@ -112,7 +124,8 @@ struct bcm_bootinfo {
 #define	BCM_DISK_UNIT_MAX	64		/**< maximum CFE device unit */
 #define	BCM_DISK_NAME_MAX	64		/**< maximum CFE device name length */
 #define	BCM_PART_ALIGN_MIN	0x1000		/**< minimum partition alignment */
-#define	BCM_DISK_BOOT_UNIT	0		/**< default boot device always found on unit 0 */
+#define	BCM_DISK_BOOTROM_UNIT	0		/**< bootrom device is always found on unit 0 */
+#define	BCM_DISK_OS_UNIT	0		/**< OS boot device is always found on unit 0 */
 
 #define	BCM_DRVNAME_NAND_FLASH	"nflash"	/**< NAND flash driver class */
 #define	BCM_DRVNAME_NOR_FLASH	"flash"		/**< NOR flash driver class */

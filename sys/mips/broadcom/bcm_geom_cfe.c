@@ -85,10 +85,6 @@ static struct bcm_disk			*g_cfe_claim_disk(
 static void				 g_cfe_unclaim_disk(
 					     struct bcm_disk *disk);
 
-static bool				 g_cfe_is_boot_disk(
-					     struct bcm_disk *disk,
-					     struct bcm_bootinfo *bootinfo);
-
 static int				 g_cfe_taste_init(
 					     struct g_cfe_taste_io *io,
 					     struct g_consumer *cp,
@@ -525,21 +521,6 @@ g_cfe_flash_type_matches(const struct g_cfe_device *id, chipc_flash type)
 }
 
 /**
- * Return true of @p bootinfo matches @p disk, false otherwise.
- */
-static bool
-g_cfe_is_boot_disk(struct bcm_disk *disk, struct bcm_bootinfo *bootinfo)
-{
-	if (strcmp(bootinfo->drvname, disk->drvname) != 0)
-		return (false);
-
-	if (bootinfo->devunit != disk->unit)
-		return (false);
-
-	return (true);
-}
-
-/**
  * Initialize a new GEOM-backed I/O context.
  *
  * The caller is responsible for releasing all resources held by the returned
@@ -593,7 +574,7 @@ g_cfe_taste_init(struct g_cfe_taste_io *io, struct g_consumer *cp,
 		return (error);
 	}
 
-	if (g_cfe_is_boot_disk(disk, &bootinfo)) {
+	if (bcm_disk_has_devunit(disk, &bootinfo.osdev)) {
 		io->bootinfo = bootinfo;
 		io->have_bootinfo = true;
 	}

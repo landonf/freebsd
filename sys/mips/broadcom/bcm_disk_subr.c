@@ -316,6 +316,22 @@ bcm_disk_dev_name(const char *drvname, u_int unit, const char *label,
 }
 
 /**
+ * Return true if @p disk has a driver class and device unit matching
+ * @p devunit, false otherwise.
+ */
+bool
+bcm_disk_has_devunit(struct bcm_disk *disk, struct bcm_devunit *devunit)
+{
+	if (strcmp(devunit->drvname, disk->drvname) != 0)
+		return (false);
+
+	if (devunit->unit != disk->unit)
+		return (false);
+
+	return (true);
+}
+
+/**
  * Return a partition instance that may be used to perform CFE ioctls.
  * 
  * Will panic if @p disk has no defined partitions.
@@ -435,21 +451,25 @@ bcm_get_bootinfo(struct bcm_bootinfo *bootinfo)
 	bp = bcm_get_platform();
 	bootflags = bcm_get_bootflags(bp);
 
-	/* Determine the default boot device */
-	if (bootflags & BHND_BOOTFLAG_KERNEL_NFLASH) {
-		/* kernel (and OS) on NAND */
-		bootinfo->drvname = BCM_DRVNAME_NAND_FLASH;
-	} else {
-		/* kernel (and OS) on NOR */
-		bootinfo->drvname = BCM_DRVNAME_NOR_FLASH;
-	}
+	/* Determine the bootrom device */
+	bootinfo->romdev.unit = BCM_DISK_BOOTROM_UNIT;
+	if (bootflags & BHND_BOOTFLAG_BOOTROM_NFLASH)
+		bootinfo->romdev.drvname = BCM_DRVNAME_NAND_FLASH;
+	else
+		bootinfo->romdev.drvname = BCM_DRVNAME_NOR_FLASH;
+
+	/* Determine the OS boot device */
+	bootinfo->osdev.unit = BCM_DISK_OS_UNIT;
+	if (bootflags & BHND_BOOTFLAG_KERNEL_NFLASH)
+		bootinfo->osdev.drvname = BCM_DRVNAME_NAND_FLASH;
+	else
+		bootinfo->osdev.drvname = BCM_DRVNAME_NOR_FLASH;
 
 	/* Default to simple layout */
 	_Static_assert(nitems(bootinfo->images) >= 1,
 	    ("BCM_BOOTIMG_MAX invalid"));
 
 	bootinfo->layout = BCM_BOOTIMG_SIMPLE;
-	bootinfo->devunit = BCM_DISK_BOOT_UNIT;
 	bootinfo->num_images = 1;
 	bootinfo->bootimg = 0;
 	bootinfo->images[0].label = BCM_PART_LABEL_TRX;

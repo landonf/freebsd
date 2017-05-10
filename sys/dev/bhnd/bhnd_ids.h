@@ -1125,6 +1125,6 @@
 
 /* Boot flags */
 #define	BHND_BOOTFLAG_KERNEL_NFLASH	0x00000001	/**< load kernel from NAND flash */
-#define	BHND_BOOTFLAG_CFE_NFLASH	0x00000002	/**< load CFE and NVRAM from NAND flash */
+#define	BHND_BOOTFLAG_BOOTROM_NFLASH	0x00000002	/**< load platform bootloader and NVRAM from NAND flash */
 
 #endif /* _BHND_BHND_IDS_H_ */

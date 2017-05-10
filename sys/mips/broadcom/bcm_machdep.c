@@ -280,12 +280,12 @@ bcm_get_bootflags(struct bcm_platform *bp)
 
 		/* CFE was loaded from NAND */
 		if (bootdev == CHIPC_CST5357_BOOT_FROM_NAND)
-			bootflags |= BHND_BOOTFLAG_CFE_NFLASH;
+			bootflags |= BHND_BOOTFLAG_BOOTROM_NFLASH;
 	}
 
 	/* If CFE was loaded from NAND, it will also load the OS from the
 	 * NAND device (even if BHND_BOOTFLAG_KERNEL_NFLASH is not set) */
-	if (bootflags & BHND_BOOTFLAG_CFE_NFLASH)
+	if (bootflags & BHND_BOOTFLAG_BOOTROM_NFLASH)
 		bootflags |= BHND_BOOTFLAG_KERNEL_NFLASH;
 
 	return (bootflags);
