@@ -41,48 +41,6 @@
 SLIST_HEAD(bcm_parts, bcm_part);
 SLIST_HEAD(bcm_disks, bcm_disk);
 
-int		 bcm_probe_disks(struct bcm_disks *result);
-struct bcm_disk	*bcm_disk_new(const char *drvname, u_int unit, uint32_t flags);
-void		 bcm_disk_free(struct bcm_disk *disk);
-
-void		 bcm_print_disk(struct bcm_disk *disk);
-void		 bcm_print_disks(struct bcm_disks *disks);
-
-struct bcm_disk	*bcm_find_disk(struct bcm_disks *disks, const char *drvname,
-		     u_int unit);
-
-off_t		 bcm_part_get_end(struct bcm_part *part);
-off_t		 bcm_part_get_next(struct bcm_part *part, off_t align);
-
-struct bcm_part	*bcm_parts_find(struct bcm_parts *parts, const char *label);
-struct bcm_part	*bcm_parts_find_offset(struct bcm_parts *parts, off_t offset);
-struct bcm_part	*bcm_parts_match(struct bcm_parts *parts, const char *label,
-		     off_t offset);
-
-/**
- * CFE disk flags
- */
-enum {
-	BCM_DISK_BOOTROM	= (1<<0),	/**< provides platform bootloader, NVRAM, etc. */
-	BCM_DISK_OSDEV		= (1<<1),	/**< disk contains OS loader/kernel */
-	BCM_DISK_BYTESWAPPED	= (1<<2),	/**< a hint that target-endian data structures
-						     are not in host byte order */
-};
-
-/**
- * CFE partition flags
- */
-enum {
-	BCM_PART_READONLY		= (1<<0),	/**< partition contains critical data and must be treated as read-only */
-	BCM_PART_PLATFORM		= (1<<1),	/**< partition is required for device function and must be preserved (but may be writable). */
-	BCM_PART_UNINITIALIZED		= (1<<2),	/**< vendor-defined partition is uninitialized */
-	BCM_PART_BOOTDEV		= (1<<3),	/**< partition is marked bootable */
-	BCM_PART_NVRAM			= (1<<4),	/**< partition contains NVRAM-formatted data */
-
-	BCM_PART_PLATFORM_RO		= (BCM_PART_PLATFORM|BCM_PART_READONLY),
-	BCM_PART_PLATFORM_NVRAM		= (BCM_PART_NVRAM|BCM_PART_PLATFORM),
-	BCM_PART_PLATFORM_NVRAM_RO	= (BCM_PART_NVRAM|BCM_PART_PLATFORM_RO),
-};
 
 /**
  * Known partition types.
@@ -111,6 +69,51 @@ typedef enum {
 
 	BCM_PART_TYPE_UNKNOWN		/**< other/unknown */
 } bcm_part_type;
+
+/**
+ * CFE disk flags
+ */
+enum {
+	BCM_DISK_BOOTROM	= (1<<0),	/**< provides platform bootloader, NVRAM, etc. */
+	BCM_DISK_OSDEV		= (1<<1),	/**< disk contains OS loader/kernel */
+	BCM_DISK_BYTESWAPPED	= (1<<2),	/**< a hint that target-endian data structures
+						     are not in host byte order */
+};
+
+/**
+ * CFE partition flags
+ */
+enum {
+	BCM_PART_READONLY		= (1<<0),	/**< partition contains critical data and must be treated as read-only */
+	BCM_PART_PLATFORM		= (1<<1),	/**< partition is required for device function and must be preserved (but may be writable). */
+	BCM_PART_UNINITIALIZED		= (1<<2),	/**< vendor-defined partition is uninitialized */
+	BCM_PART_BOOTDEV		= (1<<3),	/**< partition is marked bootable */
+	BCM_PART_NVRAM			= (1<<4),	/**< partition contains NVRAM-formatted data */
+
+	BCM_PART_PLATFORM_RO		= (BCM_PART_PLATFORM|BCM_PART_READONLY),
+	BCM_PART_PLATFORM_NVRAM		= (BCM_PART_NVRAM|BCM_PART_PLATFORM),
+	BCM_PART_PLATFORM_NVRAM_RO	= (BCM_PART_NVRAM|BCM_PART_PLATFORM_RO),
+};
+
+
+int		 bcm_probe_disks(struct bcm_disks *result);
+struct bcm_disk	*bcm_disk_new(const char *drvname, u_int unit, uint32_t flags);
+void		 bcm_disk_free(struct bcm_disk *disk);
+
+void		 bcm_print_disk(struct bcm_disk *disk);
+void		 bcm_print_disks(struct bcm_disks *disks);
+
+struct bcm_disk	*bcm_find_disk(struct bcm_disks *disks, const char *drvname,
+		     u_int unit);
+
+off_t		 bcm_part_get_end(struct bcm_part *part);
+off_t		 bcm_part_get_next(struct bcm_part *part, off_t align);
+
+struct bcm_part	*bcm_parts_find(struct bcm_parts *parts, const char *label);
+struct bcm_part	*bcm_parts_find_offset(struct bcm_parts *parts, off_t offset);
+struct bcm_part	*bcm_parts_match(struct bcm_parts *parts, const char *label,
+		     off_t offset, bcm_part_type type);
+
 
 /**
  * Partition description.
@@ -142,9 +145,16 @@ struct bcm_part {
 #define	BCM_PART_HAS_FS_SIZE(_part)	\
     ((_part)->fs_size != BCM_DISK_INVALID_SIZE)
 
-/** Evaluates to true if @p _flg is set on @p _part */
-#define	BCM_PART_HAS_FLAG(_part, _flg)	\
-	(((_part)->flags & (_flg)) != 0)
+/** Return (in the following preferred order) either the filesystem size of
+ *  @p _part, the partition size, or OFF_MAX */
+#define	BCM_PART_MAX_FS_SIZE(_part)				\
+	(BCM_PART_HAS_FS_SIZE(_part) ? (_part)->fs_size :	\
+	 BCM_PART_HAS_SIZE(_part) ? (_part)->size :		\
+	 OFF_MAX)
+
+/** Evaluates to true if all of @p _flags are set on @p _part */
+#define	BCM_PART_HAS_FLAGS(_part, _flags)	\
+	(((_part)->flags & (_flags)) == (_flags))
 
 /**
  * Block device description.
@@ -165,7 +175,7 @@ struct bcm_disk {
     ((_part)->size != BCM_DISK_INVALID_SIZE)
 
 /** Evaluates to true if all of @p _flags are set on @p _disk */
-#define	BCM_DISK_HAS_FLAGS(_part, _flags)	\
-	(((_disk)->flags & (_flg)) == (_flags))
+#define	BCM_DISK_HAS_FLAGS(_disk, _flags)	\
+	(((_disk)->flags & (_flags)) == (_flags))
 
 #endif /* _MIPS_BROADCOM_BCM_DISK_H_ */

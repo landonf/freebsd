@@ -135,11 +135,13 @@ struct bcm_bootinfo {
 
 /* CFE binary magic */
 #define	BCM_CFE_MAGIC		0x43464531	/**< 'CFE1' */
+#define	BCM_CFE_CIGAM		0x31454643
 #define	BCM_CFE_MAGIC_OFFSET	0x4E0		/**< CFE magic offset */
 
 /* Self-describing compressed CFEZ binary magic */
 #define	BCM_CFE_BISZ_OFFSET	0x3E0
 #define	BCM_CFE_BISZ_MAGIC	0x4249535A	/* 'BISZ' */
+#define	BCM_CFE_BISZ_CIGAM	0x5A534942	/* 'BISZ' */
 
 /* SENTRY5 'config' partition magic (MINIX v1 filesystem, 30 char name limit) */
 #define	BCM_MINIX_OFFSET	0x410
@@ -161,7 +163,7 @@ struct bcm_bootinfo {
 #define	BCM_BOOTBLK_MAGIC	((uint64_t)0x43465631424f4f54ULL)
 
 /* TRX image header */
-#define	BCM_TRX_MAGIC		0x30524448	/* "HDR0" */
+#define	BCM_TRX_MAGIC		"HDR0"
 #define	BCM_TRX_V1		1
 #define	BCM_TRX_V2		2
 #define	BCM_TRX_V1_MAX_PARTS	3
@@ -169,19 +171,22 @@ struct bcm_bootinfo {
 #define	BCM_TRX_MAX_PARTS	BCM_TRX_V2_MAX_PARTS
 
 struct bcm_trx_header {                                                                                                                 
-	uint32_t magic;
-	uint32_t len;
-	uint32_t crc32;
-	uint32_t flag_version;
-	uint32_t offsets[BCM_TRX_MAX_PARTS];
+	u_char		magic[4];
+	uint32_t	len;
+	uint32_t	crc32;
+	uint16_t 	flags;
+	uint16_t	version;
+	uint32_t	offsets[BCM_TRX_MAX_PARTS];
 } __packed;
 
 
 /* Netgear ML (multi-language) partition */
-#define	BCM_NETGEAR_LANG_MAXSIZE	0xFFF0
+#define	BCM_NETGEAR_LANG_MAXLEN		0xFFF0
+#define	BCM_NETGEAR_LANG_HDRSIZE	\
+	offsetof(struct bcm_netgear_langhdr, bzip2)
 
 struct bcm_netgear_langhdr {
-	uint32_t	size;				/**< size (not including header) */
+	uint32_t	len;				/**< data length (not including header) */
 	uint32_t	unknown;			/**< ??? */
 	uint8_t		version[8];			/**< version (XX.XX.XX.XX_XX.XX.XX.XX) */
 	uint8_t		bzip2[BCM_BZIP2_MAGIC_LEN];	/**< BZIP stream magic */

@@ -156,19 +156,23 @@ bcm_parts_find_offset(struct bcm_parts *parts, off_t offset)
  * @param label		Required label, or NULL to match on any label.
  * @param offset	Required offset, or BCM_DISK_INVALID_OFF to match on any
  *			offset.
+ * @param type		Required type, or BCM_PART_TYPE_UNKNOWN to match on any
+ *			partition type.
  */
 struct bcm_part *
 bcm_parts_match(struct bcm_parts *parts, const char *label,
-    off_t offset)
+    off_t offset, bcm_part_type type)
 {
 	struct bcm_part *part;
 
 	SLIST_FOREACH(part, parts, cp_link) {
-		if (offset != BCM_DISK_INVALID_OFF &&
-		    BCM_PART_HAS_OFFSET(part) && part->offset != offset)
-		{
+		if (offset != BCM_DISK_INVALID_OFF) {
+		    if (BCM_PART_HAS_OFFSET(part) && part->offset != offset)
 			continue;
 		}
+
+		if (type != BCM_PART_TYPE_UNKNOWN && part->type != type)
+			continue;
 
 		if (label != NULL && strcmp(part->label, label) != 0)
 			continue;

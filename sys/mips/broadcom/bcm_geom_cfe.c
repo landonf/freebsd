@@ -147,17 +147,25 @@ enum {
 
 static u_long g_cfe_debug = 0;
 
-#define	G_CFE_DEBUG_EN(_type)	((G_CFE_DEBUG_ ## _type & g_cfe_debug) != 0)
+#define	G_CFE_DBG_EN(_type)	((G_CFE_DEBUG_ ## _type & g_cfe_debug) != 0)
 
 SYSCTL_DECL(_kern_geom);
 SYSCTL_NODE(_kern_geom, OID_AUTO, bcmcfe, CTLFLAG_RW, 0, "BCM_CFE");
 SYSCTL_UINT(_kern_geom_bcmcfe, OID_AUTO, debug, CTLFLAG_RWTUN,
     &g_cfe_debug, 0, "Debug flags");
 
-#define	G_CFE_LOG(msg, ...)	printf("%s: " msg, __FUNCTION__, ## __VA_ARGS__)
-#define	G_CFE_DEBUG(flg, msg, ...)	do {		\
-	if (G_CFE_DEBUG_EN(flg))			\
+#define	G_CFE_LOG(msg, ...) \
+	printf("%s: " msg, __FUNCTION__, ## __VA_ARGS__)
+#define	G_CFE_DBG(flg, msg, ...) do {			\
+	if (G_CFE_DBG_EN(flg))			\
 		G_CFE_LOG(msg, ## __VA_ARGS__);		\
+} while (0)
+
+#define	G_CFE_LOG_PART(part, msg, ...) \
+	printf("%s(%s): " msg, __FUNCTION__, part->devname, ## __VA_ARGS__)
+#define	G_CFE_DBG_PART(flg, part, msg, ...) do {		\
+	if (G_CFE_DBG_EN(flg))				\
+		G_CFE_LOG_PART(part, msg, ## __VA_ARGS__);	\
 } while (0)
 
 /** CFE disk entries */
@@ -703,57 +711,99 @@ g_cfe_taste_read_direct(struct g_cfe_taste_io *io, off_t base, off_t offset,
  * @param label		Required label, or NULL to match on any label.
  * @param offset	Required offset, or BCM_DISK_INVALID_OFF to match on any
  *			offset.
+ * @param type		Required type, or BCM_PART_TYPE_UNKNOWN to match on any
+ *			partition type.
  */
 static struct bcm_part *
 g_cfe_find_matching_part(struct g_cfe_taste_io *io, const char *label,
-    off_t offset)
+    off_t offset, bcm_part_type type)
 {
-	return (bcm_parts_match(&io->disk->parts, label, offset));
+	return (bcm_parts_match(&io->disk->parts, label, offset, type));
 }
 
 /* Probe CFE 'boot' partition */
 static struct bcm_part *
 g_cfe_probe_cfe(struct g_cfe_taste_io *io, off_t block)
 {
-	struct bcm_part	*boot;
+	struct bcm_part	*part;
 	uint32_t	 magic[2];
 	int		 error;
 
 	/* If a CFE partition exists, it will always be the 'boot' partition */
-	if ((boot = g_cfe_find_matching_part(io, "boot", block)) == NULL)
+	part = g_cfe_find_matching_part(io, "boot", block, BCM_PART_TYPE_BOOT);
+	if (part == NULL)
 		return (NULL);
 
 	/* Standard CFE image? */
-	error = g_cfe_taste_read(boot, io, block, BCM_CFE_MAGIC_OFFSET, magic,
+	error = g_cfe_taste_read(part, io, block, BCM_CFE_MAGIC_OFFSET, magic,
 	    sizeof(magic));
 	if (error) {
-		G_CFE_LOG("error reading CFE magic: %d\n", error);
+		G_CFE_LOG_PART(part, "error reading CFE magic: %d\n", error);
 		return (NULL);
+	}
+
+	if (magic[0] == BCM_CFE_CIGAM) {
+		if (!BCM_DISK_HAS_FLAGS(io->disk, BCM_DISK_BYTESWAPPED)) {
+			G_CFE_DBG_PART(PROBE, part, "found byte-swapped CFE "
+			    "partition, marking disk as byte-swapped\n");
+			io->disk->flags |= BCM_DISK_BYTESWAPPED;
+		}
+
+		magic[0] = bswap32(magic[0]);
+		magic[1] = bswap32(magic[1]);
 	}
 
 	if (magic[0] == BCM_CFE_MAGIC && magic[1] == BCM_CFE_MAGIC)
-		return (boot);
-
-
-	/* Self-decompressing CFEZ image? */
-	error = g_cfe_taste_read(boot, io, block, BCM_CFE_BISZ_OFFSET, magic,
-	    sizeof(*magic));
-	if (error) {
-		G_CFE_LOG("error reading CFE BISZ magic: %d\n", error);
-		return (NULL);
-	}
-
-	if (magic[0] == BCM_CFE_BISZ_MAGIC)
-		return (boot);
-
-	/* Not recognized */
-	G_CFE_DEBUG(PROBE, "unrecognized CFE image at offset %#jx\n",
-	    (intmax_t)block);
+		return (part);
 
 	return (NULL);
 }
 
 G_CFE_DEFINE_PART_PROBE("CFE", g_cfe_probe_cfe);
+
+/* Probe compressed CFEZ 'boot' partition */
+static struct bcm_part *
+g_cfe_probe_cfez(struct g_cfe_taste_io *io, off_t block)
+{
+	struct bcm_part	*part;
+	uint32_t	 magic;
+	int		 error;
+
+	/* If a CFE partition exists, it will always be the 'boot' partition */
+	part = g_cfe_find_matching_part(io, "boot", block, BCM_PART_TYPE_BOOT);
+	if (part == NULL)
+		return (NULL);
+
+	/* Self-decompressing CFEZ image? */
+	error = g_cfe_taste_read(part, io, block, BCM_CFE_BISZ_OFFSET, &magic,
+	    sizeof(magic));
+	if (error) {
+		G_CFE_LOG_PART(part, "error reading CFE BISZ magic: %d\n",
+		    error);
+		return (NULL);
+	}
+
+	switch (magic) {
+	case BCM_CFE_BISZ_CIGAM:
+		if (!BCM_DISK_HAS_FLAGS(io->disk, BCM_DISK_BYTESWAPPED)) {
+			G_CFE_DBG_PART(PROBE, part, "found byte-swapped CFEZ "
+			    "partition, marking disk as byte-swapped\n");
+			io->disk->flags |= BCM_DISK_BYTESWAPPED;
+		}
+
+		break;
+	case BCM_CFE_BISZ_MAGIC:
+		break;
+	default:
+		return (NULL);
+	}
+
+	// TODO: populate fs_size?
+
+	return (part);
+}
+
+G_CFE_DEFINE_PART_PROBE("CFEZ", g_cfe_probe_cfez);
 
 /* Probe MINIX 'config' partition (as found on WGT634U) */
 static struct bcm_part *
@@ -764,12 +814,15 @@ g_cfe_probe_minix_config(struct g_cfe_taste_io *io, off_t block)
 	int		 error;
 
 	/* Must be a 'config' partition */
-	if ((config = g_cfe_find_matching_part(io, "config", block)) == NULL)
+	config = g_cfe_find_matching_part(io, "config", block,
+	    BCM_PART_TYPE_LEAF_CONFIG);
+	if (config == NULL)
 		return (NULL);
 
 	/* If a MINIX config partition exists, it should always directly follow
 	 * the boot partition (which itself must be at offset 0x0) */
-	if ((boot = g_cfe_find_matching_part(io, "boot", 0x0)) == NULL)
+	boot = g_cfe_find_matching_part(io, "boot", 0x0, BCM_PART_TYPE_BOOT);
+	if (boot == NULL)
 		return (NULL);
 
 	if (bcm_part_get_next(boot, io->palign) != block)
@@ -779,15 +832,15 @@ g_cfe_probe_minix_config(struct g_cfe_taste_io *io, off_t block)
 	error = g_cfe_taste_read(config, io, block, BCM_MINIX_OFFSET, &magic,
 	    sizeof(magic));
 	if (error) {
-		G_CFE_LOG("error reading MINIX magic: %d\n", error);
+		G_CFE_LOG_PART(config, "error reading MINIX magic: %d\n", error);
 		return (NULL);
 	}
 
 	if (magic == BCM_MINIX_MAGIC || bswap16(magic) == BCM_MINIX_MAGIC)
 		return (config);
 
-	G_CFE_DEBUG(PROBE, "unrecognized config partition magic 0x%04" PRIx16
-	    " at offset %#jx\n", magic, (intmax_t)block);
+	G_CFE_DBG_PART(PROBE, config, "unrecognized config partition magic "
+	    "0x%04" PRIx16 " at offset %#jx\n", magic, (intmax_t)block);
 
 	return (NULL);
 }
@@ -808,12 +861,15 @@ g_cfe_probe_nvram(struct g_cfe_taste_io *io, off_t block)
 	mediasize = io->cp->provider->mediasize;
 
 	/* Must be an 'nvram' partition */
-	if ((nvram = g_cfe_find_matching_part(io, "nvram", block)) == NULL)
+	nvram = g_cfe_find_matching_part(io, "nvram", block,
+	    BCM_PART_TYPE_NVRAM);
+	if (nvram == NULL)
 		return (NULL);
 
 	/* Initialize our NVRAM I/O context */
 	if ((error = g_cfe_nvram_io_init(&nvram_io, io, block, nvram->size))) {
-		G_CFE_LOG("error initializing NVRAM I/O context: %d\n", error);
+		G_CFE_LOG_PART(nvram, "error initializing NVRAM I/O context: "
+		    "%d\n", error);
 		return (NULL);
 	}
 
@@ -845,7 +901,7 @@ finished:
 	bhnd_nvram_io_free(&nvram_io.io);
 
 	if (result > BHND_NVRAM_DATA_PROBE_SPECIFIC) {
-		G_CFE_DEBUG(PROBE, "no NVRAM partition at offset %#jx\n",
+		G_CFE_DBG(PROBE, "no NVRAM partition at offset %#jx\n",
 		    (intmax_t)block);
 
 		return (NULL);
@@ -867,13 +923,14 @@ g_cfe_probe_os(struct g_cfe_taste_io *io, off_t block)
 	int		 error;
 
 	/* Must be an 'os' partition */
-	if ((os = g_cfe_find_matching_part(io, "os", block)) == NULL)
+	os = g_cfe_find_matching_part(io, "os", block, BCM_PART_TYPE_OS);
+	if (os == NULL)
 		return (NULL);
 
 	/* Look for an ELF bootloader */
 	error = g_cfe_taste_read(os, io, block, 0, &ehdr, sizeof(ehdr));
 	if (error) {
-		G_CFE_LOG("error reading ELF header: %d\n", error);
+		G_CFE_LOG_PART(os, "error reading ELF header: %d\n", error);
 		return (NULL);
 	}
 
@@ -883,7 +940,7 @@ g_cfe_probe_os(struct g_cfe_taste_io *io, off_t block)
 	/* Look for a GZIP-compressed bootloader */
 	error = g_cfe_taste_read(os, io, block, 0, &gz_hdr, sizeof(gz_hdr));
 	if (error) {
-		G_CFE_LOG("error reading GZIP magic: %d\n", error);
+		G_CFE_LOG_PART(os, "error reading GZIP magic: %d\n", error);
 		return (NULL);
 	}
 
@@ -902,8 +959,8 @@ g_cfe_probe_os(struct g_cfe_taste_io *io, off_t block)
 		error = g_cfe_taste_read(os, io, block, boff, &magic,
 		    sizeof(magic));
 		if (error) {
-			G_CFE_LOG("error reading boot block %zu: %d\n", i,
-			    error);
+			G_CFE_LOG_PART(os, "error reading boot block %zu: "
+			    "%d\n", i,  error);
 			return (NULL);
 		}
 
@@ -911,7 +968,7 @@ g_cfe_probe_os(struct g_cfe_taste_io *io, off_t block)
 			return (os);
 	}
 
-	G_CFE_DEBUG(PROBE, "unrecognized OS partition at offset %#jx\n",
+	G_CFE_DBG_PART(PROBE, os, "unrecognized OS partition at offset %#jx\n",
 	    (intmax_t)block);
 
 	return (NULL);
@@ -940,7 +997,8 @@ g_cfe_find_trx_part(struct g_cfe_taste_io *io, off_t offset)
 				continue;
 
 			/* Look for matching partition entry */
-			part = g_cfe_find_matching_part(io, img->label, offset);
+			part = g_cfe_find_matching_part(io, img->label, offset,
+			    BCM_PART_TYPE_TRX);
 			if (part != NULL)
 				return (part);
 		}
@@ -969,7 +1027,8 @@ g_cfe_find_trx_part(struct g_cfe_taste_io *io, off_t offset)
 		}
 
 		/* Look for matching partition */
-		part = g_cfe_find_matching_part(io, label, offset);
+		part = g_cfe_find_matching_part(io, label, offset,
+		    BCM_PART_TYPE_TRX);
 		if (part != NULL)
 			return (part);
 	}
@@ -984,6 +1043,7 @@ g_cfe_probe_trx(struct g_cfe_taste_io *io, off_t block)
 {
 	struct bcm_part			*trx;
 	struct bcm_trx_header		 hdr;
+	size_t				 num_offsets;
 	int				 error;
 
 	/* Find corresponding TRX partition entry */
@@ -997,30 +1057,55 @@ g_cfe_probe_trx(struct g_cfe_taste_io *io, off_t block)
 		return (NULL);
 	}
 
-	if (le32toh(hdr.magic) != BCM_TRX_MAGIC) {
-		G_CFE_DEBUG(PROBE, "invalid TRX magic 0x%" PRIx32 " at offset "
-		    "%#jx\n", hdr.magic, (intmax_t)block);
+	if (strncmp(hdr.magic, BCM_TRX_MAGIC, sizeof(hdr.magic)) != 0)
+		return (NULL);
 
-		if (hdr.magic == 0x0) {
-			/* Uninitialized TRX partition? */
-			// TODO: add a partition flag for unused partitions?
-			// TODO: if we do this via cfe_readblk(), we can be
-			// certain that we're reading at the right offset and
-			// have found an empty TRX partition
-		}
 
+	hdr.len = le32toh(hdr.len);
+	hdr.crc32 = le32toh(hdr.crc32);
+	hdr.flags = le16toh(hdr.flags);
+	hdr.version = le16toh(hdr.version);
+
+	/* Check for supported TRX version, and return the expected
+	 * offset count */
+	switch (hdr.version) {
+	case BCM_TRX_V1:
+		num_offsets = BCM_TRX_V1_MAX_PARTS;
+		break;
+	case BCM_TRX_V2:
+		num_offsets = BCM_TRX_V2_MAX_PARTS;
+		break;
+	default:
+		G_CFE_LOG_PART(trx, "unsupported TRX version: %" PRIu16 "\n",
+		    hdr.version);
+		break;
+	}
+
+	if (hdr.len > BCM_PART_MAX_FS_SIZE(trx)) {
+		G_CFE_LOG_PART(trx, "TRX length extends beyond partition "
+		    "end %#jx\n", (intmax_t)BCM_PART_MAX_FS_SIZE(trx));
+		return (NULL);
+	}
+
+	for (size_t i = 0; i < num_offsets; i++) {
+		hdr.offsets[i] = le32toh(hdr.offsets[i]);
+		if (hdr.offsets[i] < hdr.len)
+			continue;
+
+		G_CFE_LOG_PART(trx, "TRX offset[%zu] = %#jx exceeds TRX "
+		    "length %#" PRIx32 "\n", i, (intmax_t)hdr.offsets[i],
+		    hdr.len);
 		return (NULL);
 	}
 
 	/* Update our partition's fs_size */
-	if (!BCM_PART_HAS_FS_SIZE(trx))
-		trx->fs_size = le32toh(hdr.len);
+	if (!BCM_PART_HAS_FS_SIZE(trx)) {
+		trx->fs_size = hdr.len;
 
-	/* Validate any existing fs_size */
-	if (trx->fs_size != le32toh(hdr.len)) {
-		G_CFE_LOG("%s partition has incorrect fs_size %#jx, expected "
-		    "%#" PRIx32 "\n", trx->label, (intmax_t)trx->fs_size,
-		    le32toh(hdr.len));
+	} else if (trx->fs_size != hdr.len) {
+		G_CFE_LOG_PART(trx, "partition has incorrect fs_size %#jx, "
+		    "expected %#" PRIx32 "\n", (intmax_t)trx->fs_size,
+		    hdr.len);
 
 		return (NULL);
 	}
@@ -1034,25 +1119,29 @@ G_CFE_DEFINE_PART_PROBE("TRX", g_cfe_probe_trx);
 static struct bcm_part *
 g_cfe_probe_netgear_ml(struct g_cfe_taste_io *io, off_t block)
 {
-	struct bcm_part			*part, *ml;
+	struct bcm_part			*part, *pnext;
 	struct bcm_netgear_langhdr	 hdr;
+	off_t				 fs_size;
 	int				 error;
 
-	ml = NULL;
+	part = NULL;
 
 	/* Find the first usable ML partition entry */
-	SLIST_FOREACH(part, &io->disk->parts, cp_link) {
+	SLIST_FOREACH(pnext, &io->disk->parts, cp_link) {
 		const char *p;
 
-		if (BCM_PART_HAS_OFFSET(part) && part->offset != block)
+		if (BCM_PART_HAS_OFFSET(pnext) && pnext->offset != block)
+			continue;
+
+		if (pnext->type != BCM_PART_TYPE_MULTILANG)
 			continue;
 
 		/* Name must start with "ML" */
-		if (strncmp(part->label, "ML", strlen("ML")) != 0)
+		if (strncmp(pnext->label, "ML", strlen("ML")) != 0)
 			continue;
 
 		/* Name must end with an integer */
-		p = part->label + strlen("ML");
+		p = pnext->label + strlen("ML");
 		if (*p == '\0')
 			continue;
 
@@ -1062,36 +1151,51 @@ g_cfe_probe_netgear_ml(struct g_cfe_taste_io *io, off_t block)
 		if (*p != '\0')
 			continue;
 		
-		ml = part;
+		part = pnext;
 		break;
 	}
 
-	if (ml == NULL)
+	if (part == NULL)
 		return (NULL);
 
 	/* Read our ML header */
-	error = g_cfe_taste_read(ml, io, block, 0x0, &hdr, sizeof(hdr));
+	error = g_cfe_taste_read(part, io, block, 0x0, &hdr, sizeof(hdr));
 	if (error) {
-		G_CFE_LOG("error reading ML header: %d\n", error);
+		G_CFE_LOG_PART(part, "error reading ML header: %d\n", error);
 		return (NULL);
 	}
+
+	if (BCM_DISK_HAS_FLAGS(io->disk, BCM_DISK_BYTESWAPPED))
+		hdr.len = bswap32(hdr.len);
 
 	/* The ML format does not provide a magic number; we need to look at
 	 * the BZIP2 stream directly following the header */
 	if (strncmp(hdr.bzip2, BCM_BZIP2_MAGIC, sizeof(hdr.bzip2)) != 0) {
-		G_CFE_LOG("no ML bzip2 header found\n");
+		G_CFE_DBG_PART(PROBE, part, "no ML bzip2 header found\n");
 		return (NULL);
 	}
 
 	/* An ML partition is limited to <= 0xFFF0; if the flash has been
 	 * erased (setting all bits to 1), this field will be 0xFFFFFFFF */
-	if (le32toh(hdr.size) > BCM_NETGEAR_LANG_MAXSIZE) {
-		// TODO - mark as unused?
-		// TODO - perform check using CFE readblk?
+	if (hdr.len > BCM_NETGEAR_LANG_MAXLEN) {
+		G_CFE_LOG_PART(part, "invalid ML header len: %" PRIx32 "\n",
+		    hdr.len);
 		return (NULL);
 	}
 
-	return (ml);
+	/* Provide fs_size */
+	fs_size = hdr.len + BCM_NETGEAR_LANG_HDRSIZE;
+	if (!BCM_PART_HAS_FS_SIZE(part)) {
+		part->fs_size = fs_size;
+	} else if (part->fs_size != fs_size) {
+		G_CFE_LOG_PART(part, "partition has incorrect fs_size %#jx, "
+		    "expected %#jx\n", (intmax_t)part->fs_size,
+		    (intmax_t)fs_size);
+
+		return (NULL);
+	}
+
+	return (part);
 }
 
 G_CFE_DEFINE_PART_PROBE("NETGEAR_ML", g_cfe_probe_netgear_ml);
@@ -1129,7 +1233,7 @@ g_cfe_parse_parts(struct g_cfe_taste_io *io)
 			if (part->offset == BCM_DISK_INVALID_OFF)
 				part->offset = offset;
 
-			G_CFE_DEBUG(PROBE, "found %-11s +0x%08jx (%s)\n",
+			G_CFE_DBG(PROBE, "found %-11s +0x%08jx (%s)\n",
 			    part->label, (intmax_t)part->offset, probe->name);
 
 			/* Partition found; terminate probing of this offset */
@@ -1151,7 +1255,7 @@ g_cfe_parse_parts(struct g_cfe_taste_io *io)
 
 		/* Verify that the next offset fits within the media size */
 		if (offset > mediasize || mediasize - offset < size) {
-			G_CFE_LOG("invalid size/offset %#jx+%#jx\n",
+			G_CFE_LOG_PART(part, "invalid size/offset %#jx+%#jx\n",
 			    (intmax_t)size, (intmax_t)offset);
 
 			return (ENXIO);
@@ -1159,7 +1263,7 @@ g_cfe_parse_parts(struct g_cfe_taste_io *io)
 
 		/* Advance to the next offset */
 		if (size != palign) {
-			G_CFE_DEBUG(PROBE, "seeking to 0x%jx\n",
+			G_CFE_DBG(PROBE, "seeking to 0x%jx\n",
 			    (intmax_t)offset+size);
 		}
 
