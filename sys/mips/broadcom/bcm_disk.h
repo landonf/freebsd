@@ -75,7 +75,7 @@ typedef enum {
  */
 enum {
 	BCM_DISK_BOOTROM	= (1<<0),	/**< provides platform bootloader, NVRAM, etc. */
-	BCM_DISK_OSDEV		= (1<<1),	/**< disk contains OS loader/kernel */
+	BCM_DISK_BOOTOS		= (1<<1),	/**< disk contains OS loader/kernel */
 	BCM_DISK_BYTESWAPPED	= (1<<2),	/**< a hint that target-endian data structures
 						     are not in host byte order */
 };
@@ -87,7 +87,7 @@ enum {
 	BCM_PART_READONLY		= (1<<0),	/**< partition contains critical data and must be treated as read-only */
 	BCM_PART_PLATFORM		= (1<<1),	/**< partition is required for device function and must be preserved (but may be writable). */
 	BCM_PART_UNINITIALIZED		= (1<<2),	/**< vendor-defined partition is uninitialized */
-	BCM_PART_BOOTDEV		= (1<<3),	/**< partition is marked bootable */
+	BCM_PART_BOOT			= (1<<3),	/**< partition is marked bootable */
 	BCM_PART_NVRAM			= (1<<4),	/**< partition contains NVRAM-formatted data */
 
 	BCM_PART_PLATFORM_RO		= (BCM_PART_PLATFORM|BCM_PART_READONLY),

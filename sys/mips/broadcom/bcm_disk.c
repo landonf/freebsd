@@ -312,10 +312,6 @@ bcm_probe_disks(struct bcm_disks *result)
 
 	SLIST_INIT(&disks);
 
-	if ((error = bcm_get_bootinfo(&bootinfo))) {
-		printf("failed to fetch bootinfo: %d\n", error);
-		return (error);
-	}
 
 	for (size_t i = 0; i < nitems(bcm_drv_names); i++) {
 		for (u_int unit = 0; unit < BCM_DISK_UNIT_MAX; unit++) {
@@ -333,7 +329,7 @@ bcm_probe_disks(struct bcm_disks *result)
 				disk->flags |= BCM_DISK_BOOTROM;
 
 			if (bcm_disk_has_devunit(disk, &bootinfo.osdev))
-				disk->flags |= BCM_DISK_OSDEV;
+				disk->flags |= BCM_DISK_BOOTOS;
 
 			/* Probe partition map */
 			if ((error = bcm_probe_disk(disk, &skip_next)))
