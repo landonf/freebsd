@@ -29,28 +29,14 @@
 __FBSDID("$FreeBSD$");
 
 /*
- * Probes and saves CFE-defined disk/flash partition information.
+ * Probe CFE-defined disk/flash partition maps.
  *
- * Since enumeration may require reading from the CFE flash devices, we
- * perform the probe during early boot, and save the results for later
- * consumption by our GEOM class, et al.
+ * Since enumeration may require reading from the CFE flash devices, probing
+ * should be performed prior to OS driver bring-up.
  * 
- * = Design Notes =
- * 
- * In theory, we should be able to fully enumerate the flash layout using
- * cfe_enumdev() and CFE device ioctls. In practice, however, no OEMs appear
- * to ship a CFE release with CFE_CMD_DEV_ENUM support.
- *
- * Worse, the validity of the flash/nvram ioctls depends on the CFE flash
- * driver in use, requiring CFE driver-specific workarounds (see
- * 'CFE Driver Quirks' below).
- * 
- * As a result, we must:
- * 
- * - Probe a set of known CFE partition/device names.
- * - Fall back on conservative heuristics to determine partition offset/size.
- * - Require that our data consumers handle potentially missing/invalid layout
- *   data.
+ * The validity of the flash/nvram ioctls depends on the CFE flash driver in
+ * use, requiring CFE driver-specific workarounds (see 'CFE Driver Quirks'
+ * below).
  * 
  * == Basic Flash Layout ==
  * 
@@ -224,6 +210,11 @@ struct bcm_part_info;
 
 static const struct bcm_part_info	*bcm_find_part_info(const char *label);
 
+static int				 bcm_enum_disks(
+					     struct bcm_disks *result);
+static int				 bcm_enum_known_disks(
+					     struct bcm_disks *result);
+
 static int				 bcm_part_new(struct bcm_part **part,
 					     const char *drvname, u_int unit,
 					     const char *label,
@@ -234,10 +225,8 @@ static int				 bcm_part_open(struct bcm_part *part);
 static int				 bcm_probe_disk_quirks(
 					     struct bcm_disk *disk);
 static int				 bcm_probe_disk(struct bcm_disk *disk);
-
 static int				 bcm_probe_part(struct bcm_disk *disk,
 					     struct bcm_part *part);
-
 
 const bool bcm_disk_trace = false;
 
@@ -312,6 +301,229 @@ bcm_find_part_info(const char *label)
 
 	/* Not found */
 	return (NULL);
+}
+
+/**
+ * Query CFE for all recognized disks and partitions, populating @p result
+ * with the probed disk entries.
+ * 
+ * @param result	An empty list to be populated. If an error occurs,
+ *			the provided list will not be unmodified.
+ * 
+ * @retval 0		success
+ * @retval non-zero	if probing otherwise fails, a regular unix error code
+ *			will be returned.
+ */
+int
+bcm_probe_disks(struct bcm_disks *result)
+{
+	struct bcm_disks	 disks;
+	struct bcm_disk		*disk, *dnext;
+	struct bcm_bootinfo	 bootinfo;
+	int			 error;
+
+	LIST_INIT(&disks);
+
+	/* Prefer cfe_enumdev() if available; fall back on enumerating known
+	 * device partitions */
+	if (cfe_enumdev(0, (char[1]){}, 1) != CFE_ERR_INV_COMMAND)
+		error = bcm_enum_disks(&disks);
+	else
+		error = bcm_enum_known_disks(&disks);
+
+	if (error)
+		return (error);
+
+	if ((error = bcm_get_bootinfo(&bootinfo)))
+		return (error);
+
+	/*
+	 * Perform initial filtering/cleanup of our discovered disks:
+	 * 
+	 * - Normalize OS/TRX partition mappings
+	 * - Remove unused virtual disk entries
+	 * - Set any bootinfo-derived flags/sizes/offsets.
+	 *
+	 * If a disk:
+	 *  - contains both an OS and TRX partition, AND
+	 *  - the next device unit contains a TRX partition
+	 * Then:
+	 *  - The OS partition maps the TRX partition minus the initial TRX
+	 *    header, and should be dropped.
+	 *  - The TRX partition maps only the TRX header; the real TRX
+	 *    partition is defined on the next device unit, and should be
+	 *    moved to the current device.
+	 *  - The next device unit should be discarded.
+	 */
+	LIST_FOREACH(disk, &disks, cd_link) {
+		struct bcm_disk	*virt;
+		struct bcm_part	*os[BCM_DISK_BOOTIMG_MAX];
+		struct bcm_part *trx[BCM_DISK_BOOTIMG_MAX];
+		struct bcm_part	*part;
+		size_t		 num_bootimg;
+		bool		 keep_virt;
+
+		virt = NULL;
+
+		/* Set disk-level boot flags */
+		if (bcm_disk_has_devunit(disk, &bootinfo.romdev))
+			disk->flags |= BCM_DISK_BOOTROM;
+
+		if (bcm_disk_has_devunit(disk, &bootinfo.osdev))
+			disk->flags |= BCM_DISK_BOOTOS;
+
+		/* Fetch OS and TRX partitions for all bootimgs */
+		num_bootimg = 0;
+		for (size_t i = 0; i < BCM_DISK_BOOTIMG_MAX; i++) {
+			os[i] = bcm_disk_find_bootimg_part(disk,
+			    BCM_PART_TYPE_OS, i);
+			trx[i] = bcm_disk_find_bootimg_part(disk,
+			    BCM_PART_TYPE_TRX, i);
+
+			/* Boot images are not sparse; if we hit missing
+			 * entries, no further images need be checked */
+			if (os[i] == NULL && trx[i] == NULL)
+				break;
+	
+			num_bootimg++;
+		}
+
+		/* Warn if our bootinfo does not match probed partitions */
+		if (BCM_DISK_HAS_FLAGS(disk, BCM_DISK_BOOTOS) &&
+		    num_bootimg != bootinfo.num_images)
+		{
+			BCM_DISK_LOG(disk, "found %zu boot images on flash "
+			    "(NVRAM defines %zu)\n", num_bootimg,
+			    bootinfo.num_images);
+		}
+
+		/* Nothing to do? */
+		if (num_bootimg == 0)
+			continue;
+
+		/* Drop OS partitions that are simply a TRX partition
+		 * remapping (i.e. both an OS and corresponding TRX partition
+		 * were found) */
+		for (size_t i = 0; i < num_bootimg; i++) {
+			if (os[i] == NULL || trx[i] == NULL)
+				continue;
+
+			bcm_disk_remove_part(disk, os[i]->label);
+			os[i] = NULL;
+		}
+
+		/* Look for virtual device mapping our full TRX partitions */
+		if (disk->unit < BCM_DISK_UNIT_MAX) {
+			virt = bcm_find_disk(&disks, disk->drvname,
+			    disk->unit+1);
+		} else {
+			virt = NULL;
+		}
+	
+		/* Replace any partial TRX partition definitions with
+		 * real definitions from the virtual disk device, and if
+		 * possible, drop the virtual device's disk entry */
+		if (virt != NULL) {
+			for (size_t i = 0; i < num_bootimg; i++) {
+				struct bcm_part *real;
+
+				if (trx[i] == NULL)
+					continue;
+
+				real = bcm_disk_get_part(virt, trx[i]->label);
+				if (real == NULL)
+					continue;
+
+				trx[i] = real;
+				error = bcm_disk_move_part(virt, disk,
+				    trx[i]->label,   true);
+				if (error) {
+					BCM_DISK_LOG(disk, "error remapping "
+					    "%s: %d\n", trx[i]->label, error);
+					goto failed;
+				}
+			}
+
+			/* If the virtual disk contains no partitions not
+			 * already defined by our disk, it can safely be
+			 * discarded */
+			keep_virt = false;
+			LIST_FOREACH(part, &virt->parts, cp_link) {
+				if (bcm_disk_has_part(disk, part->label))
+					continue;
+
+				keep_virt = true;
+				break;
+			}
+
+			if (keep_virt) {
+				/* Should never happen */
+				BCM_DISK_ERR(virt, "retaining non-empty "
+				    "virtual disk device\n");
+			} else {
+				LIST_REMOVE(virt, cd_link);
+				bcm_disk_free(virt);
+			}
+		}
+
+		/* Now that all OS partitions have been fixed up, apply
+		 * any partition-level boot metadata */
+		if (!BCM_DISK_HAS_FLAGS(disk, BCM_DISK_BOOTOS))
+			continue;
+
+		for (size_t i = 0; i < num_bootimg; i++) {
+			struct bcm_part *bp;
+
+			if (i >= bootinfo.num_images) {
+				/* Missing bootinfo. Logged above */
+				break;
+			}
+
+			/* Legacy non-TRX device? */
+			if (trx[i] == NULL)
+				bp = os[i];
+			else
+				bp = trx[i];
+
+			KASSERT(bp != NULL, ("missing partition for bootimg "
+			    "%zu\n", i));
+
+			/* Mark partition as bootable */
+			if (bootinfo.bootimg == i)
+				bp->flags |= BCM_PART_BOOT;
+
+			/* Populate partition offset/size from the NVRAM
+			 * boot configuration */
+			if (!BCM_PART_HAS_SIZE(bp))
+				bp->size = bootinfo.images[i].size;
+	
+			if (!BCM_PART_HAS_OFFSET(bp))
+				bp->offset = bootinfo.images[i].offset;
+		}
+	}
+
+	/* Now that we've cleaned up the disk/partition list, probe all
+	 * partitions to determine size/offset */
+	LIST_FOREACH(disk, &disks, cd_link) {
+		if ((error = bcm_probe_disk(disk)))
+			goto failed;
+	}
+
+	/* Move all discovered disks to the result list */
+	LIST_FOREACH_SAFE(disk, &disks, cd_link, dnext) {
+		LIST_REMOVE(disk, cd_link);
+		LIST_INSERT_HEAD(result, disk, cd_link);
+	}
+
+	return (0);
+
+failed:
+	LIST_FOREACH_SAFE(disk, &disks, cd_link, dnext) {
+		LIST_REMOVE(disk, cd_link);
+		bcm_disk_free(disk);
+	}
+
+	return (error);
 }
 
 
@@ -545,229 +757,6 @@ bcm_enum_known_disks(struct bcm_disks *result)
 			/* Add to result list */
 			LIST_INSERT_HEAD(&disks, disk, cd_link);
 		}
-	}
-
-	/* Move all discovered disks to the result list */
-	LIST_FOREACH_SAFE(disk, &disks, cd_link, dnext) {
-		LIST_REMOVE(disk, cd_link);
-		LIST_INSERT_HEAD(result, disk, cd_link);
-	}
-
-	return (0);
-
-failed:
-	LIST_FOREACH_SAFE(disk, &disks, cd_link, dnext) {
-		LIST_REMOVE(disk, cd_link);
-		bcm_disk_free(disk);
-	}
-
-	return (error);
-}
-
-/**
- * Query CFE for all recognized disks and partitions, populating @p result
- * with the probed disk entries.
- * 
- * @param result	An empty list to be populated. If an error occurs,
- *			the provided list will not be unmodified.
- * 
- * @retval 0		success
- * @retval non-zero	if probing otherwise fails, a regular unix error code
- *			will be returned.
- */
-int
-bcm_probe_disks(struct bcm_disks *result)
-{
-	struct bcm_disks	 disks;
-	struct bcm_disk		*disk, *dnext;
-	struct bcm_bootinfo	 bootinfo;
-	int			 error;
-
-	LIST_INIT(&disks);
-
-	/* Prefer cfe_enumdev() if available; fall back on enumerating known
-	 * device partitions */
-	if (cfe_enumdev(0, (char[1]){}, 1) != CFE_ERR_INV_COMMAND)
-		error = bcm_enum_disks(&disks);
-	else
-		error = bcm_enum_known_disks(&disks);
-
-	if (error)
-		return (error);
-
-	if ((error = bcm_get_bootinfo(&bootinfo)))
-		return (error);
-
-	/*
-	 * Perform initial filtering/cleanup of our discovered disks:
-	 * 
-	 * - Normalize OS/TRX partition mappings
-	 * - Remove unused virtual disk entries
-	 * - Set any bootinfo-derived flags/sizes/offsets.
-	 *
-	 * If a disk:
-	 *  - contains both an OS and TRX partition, AND
-	 *  - the next device unit contains a TRX partition
-	 * Then:
-	 *  - The OS partition maps the TRX partition minus the initial TRX
-	 *    header, and should be dropped.
-	 *  - The TRX partition maps only the TRX header; the real TRX
-	 *    partition is defined on the next device unit, and should be
-	 *    moved to the current device.
-	 *  - The next device unit should be discarded.
-	 */
-	LIST_FOREACH(disk, &disks, cd_link) {
-		struct bcm_disk	*virt;
-		struct bcm_part	*os[BCM_DISK_BOOTIMG_MAX];
-		struct bcm_part *trx[BCM_DISK_BOOTIMG_MAX];
-		struct bcm_part	*part;
-		size_t		 num_bootimg;
-		bool		 keep_virt;
-
-		virt = NULL;
-
-		/* Set disk-level boot flags */
-		if (bcm_disk_has_devunit(disk, &bootinfo.romdev))
-			disk->flags |= BCM_DISK_BOOTROM;
-
-		if (bcm_disk_has_devunit(disk, &bootinfo.osdev))
-			disk->flags |= BCM_DISK_BOOTOS;
-
-		/* Fetch OS and TRX partitions for all bootimgs */
-		num_bootimg = 0;
-		for (size_t i = 0; i < BCM_DISK_BOOTIMG_MAX; i++) {
-			os[i] = bcm_disk_find_bootimg_part(disk,
-			    BCM_PART_TYPE_OS, i);
-			trx[i] = bcm_disk_find_bootimg_part(disk,
-			    BCM_PART_TYPE_TRX, i);
-
-			/* Boot images are not sparse; if we hit missing
-			 * entries, no further images need be checked */
-			if (os[i] == NULL && trx[i] == NULL)
-				break;
-	
-			num_bootimg++;
-		}
-
-		/* Warn if our bootinfo does not match probed partitions */
-		if (BCM_DISK_HAS_FLAGS(disk, BCM_DISK_BOOTOS) &&
-		    num_bootimg != bootinfo.num_images)
-		{
-			BCM_DISK_LOG(disk, "found %zu boot images on flash "
-			    "(NVRAM defines %zu)\n", num_bootimg,
-			    bootinfo.num_images);
-		}
-
-		/* Nothing to do? */
-		if (num_bootimg == 0)
-			continue;
-
-		/* Drop OS partitions that are simply a TRX partition
-		 * remapping (i.e. both an OS and corresponding TRX partition
-		 * were found) */
-		for (size_t i = 0; i < num_bootimg; i++) {
-			if (os[i] == NULL || trx[i] == NULL)
-				continue;
-
-			bcm_disk_remove_part(disk, os[i]->label);
-			os[i] = NULL;
-		}
-
-		/* Look for virtual device mapping our full TRX partitions */
-		if (disk->unit < BCM_DISK_UNIT_MAX) {
-			virt = bcm_find_disk(&disks, disk->drvname,
-			    disk->unit+1);
-		} else {
-			virt = NULL;
-		}
-	
-		/* Replace any partial TRX partition definitions with
-		 * real definitions from the virtual disk device, and if
-		 * possible, drop the virtual device's disk entry */
-		if (virt != NULL) {
-			for (size_t i = 0; i < num_bootimg; i++) {
-				struct bcm_part *real;
-
-				if (trx[i] == NULL)
-					continue;
-
-				real = bcm_disk_get_part(virt, trx[i]->label);
-				if (real == NULL)
-					continue;
-
-				trx[i] = real;
-				error = bcm_disk_move_part(virt, disk,
-				    trx[i]->label,   true);
-				if (error) {
-					BCM_DISK_LOG(disk, "error remapping "
-					    "%s: %d\n", trx[i]->label, error);
-					goto failed;
-				}
-			}
-
-			/* If the virtual disk contains no partitions not
-			 * already defined by our disk, it can safely be
-			 * discarded */
-			keep_virt = false;
-			LIST_FOREACH(part, &virt->parts, cp_link) {
-				if (bcm_disk_has_part(disk, part->label))
-					continue;
-
-				keep_virt = true;
-				break;
-			}
-
-			if (keep_virt) {
-				/* Should never happen */
-				BCM_DISK_ERR(virt, "retaining non-empty "
-				    "virtual disk device\n");
-			} else {
-				LIST_REMOVE(virt, cd_link);
-				bcm_disk_free(virt);
-			}
-		}
-
-		/* Now that all OS partitions have been fixed up, apply
-		 * any partition-level boot metadata */
-		if (!BCM_DISK_HAS_FLAGS(disk, BCM_DISK_BOOTOS))
-			continue;
-
-		for (size_t i = 0; i < num_bootimg; i++) {
-			struct bcm_part *bp;
-
-			if (i >= bootinfo.num_images) {
-				/* Missing bootinfo. Logged above */
-				break;
-			}
-
-			/* Legacy non-TRX device? */
-			if (trx[i] == NULL)
-				bp = os[i];
-			else
-				bp = trx[i];
-
-			KASSERT(bp != NULL, ("missing partition for bootimg "
-			    "%zu\n", i));
-
-			/* Mark partition as bootable */
-			if (bootinfo.bootimg == i)
-				bp->flags |= BCM_PART_BOOT;
-
-			/* Populate partition offset/size from the NVRAM
-			 * boot configuration */
-			if (!BCM_PART_HAS_SIZE(bp))
-				bp->size = bootinfo.images[i].size;
-	
-			if (!BCM_PART_HAS_OFFSET(bp))
-				bp->offset = bootinfo.images[i].offset;
-		}
-	}
-
-	/* Now that we've cleaned up the disk/partition list, probe all
-	 * partitions to determine size/offset */
-	LIST_FOREACH(disk, &disks, cd_link) {
-		if ((error = bcm_probe_disk(disk)))
-			goto failed;
 	}
 
 	/* Move all discovered disks to the result list */
