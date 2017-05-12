@@ -37,41 +37,29 @@
 
 #include "bcm_disk.h"
 
-MALLOC_DECLARE(M_BCM_CDISK);
+MALLOC_DECLARE(M_BCM_DISK);
 
 extern const bool bcm_disk_trace;
 
 /* forward declarations */
 struct bcm_bootinfo;
-struct bcm_bootlabel;
 struct bcm_devunit;
 
-bool		 bcm_disk_dev_exists(struct bcm_disk *disk, const char *label);
-int		 bcm_disk_dev_name(const char *drvname, u_int unit,
+int		 bcm_disk_parse_devname(const char *devname,
+		     const char **drvname, size_t *drvlen, u_int *devunit,
+		     const char **label, size_t *labellen);
+
+int		 bcm_disk_devname(const char *drvname, u_int unit,
 		     const char *label, char *buf, size_t *len);
 
 bool		 bcm_disk_has_devunit(struct bcm_disk *disk,
 		     struct bcm_devunit *devunit);
 
-bool		 bcm_find_bootlabel(const char *label,
-		     const struct bcm_bootlabel **info,
-		     bcm_part_type *part_type);
+void		 bcm_part_free(struct bcm_part *part);
 
 int		 bcm_get_bootinfo(struct bcm_bootinfo *bootinfo);
 
 struct bcm_part	*bcm_disk_get_query_part(struct bcm_disk *disk);
-
-/**
- * CFE OS/TRX boot partition labels.
- * 
- * Provides a mapping between TRX partition labels and corresponding OS
- * partition label.
- */
-struct bcm_bootlabel {
-	const char *os_label;	/**< OS partition label */
-	const char *trx_label;	/**< TRX partition label */
-};
-
 
 /**
  * CFE boot image layouts
@@ -90,7 +78,6 @@ typedef enum {
  * CFE boot image configuration.
  */
 struct bcm_bootimg {
-	const char	*label;		/**< CFE partition label, or NULL if unavailable */
 	off_t		 offset;	/**< image offset, or BCM_DISK_INVALID_OFF if unavailable */
 	off_t		 size;		/**< image size, or BCM_DISK_INVALID_SIZE if unavailable */
 };
@@ -121,17 +108,24 @@ struct bcm_bootinfo {
 	uint32_t		 max_failures;			/**< maximum failed boot count (if BCM_BOOTIMG_FAILSAFE) */
 };
 
-#define	BCM_DISK_UNIT_MAX	64		/**< maximum CFE device unit */
-#define	BCM_DISK_NAME_MAX	64		/**< maximum CFE device name length */
-#define	BCM_PART_ALIGN_MIN	0x1000		/**< minimum partition alignment */
-#define	BCM_DISK_BOOTROM_UNIT	0		/**< bootrom device is always found on unit 0 */
-#define	BCM_DISK_OS_UNIT	0		/**< OS boot device is always found on unit 0 */
-
 #define	BCM_DRVNAME_NAND_FLASH	"nflash"	/**< NAND flash driver class */
 #define	BCM_DRVNAME_NOR_FLASH	"flash"		/**< NOR flash driver class */
 
+#define	BCM_DISK_UNIT_MAX	64		/**< maximum CFE device unit */
+#define	BCM_DISK_NAME_MAX	64		/**< maximum CFE device name length */
+#define	BCM_DISK_BOOTROM_UNIT	0		/**< bootrom device is always found on unit 0 */
+#define	BCM_DISK_OS_UNIT	0		/**< OS boot device is always found on unit 0 */
+
+#define	BCM_PART_ALIGN_MIN	0x1000		/**< minimum partition alignment */
+
+#define	BCM_PART_LABEL_OS	"os"		/**< first OS boot partition label */
+#define	BCM_PART_LABEL_OS2	"os2"		/**< second OS boot partition label */
 #define	BCM_PART_LABEL_TRX	"trx"		/**< first TRX boot partition label */
 #define	BCM_PART_LABEL_TRX2	"trx2"		/**< second TRX boot partition label */
+
+#define	BCM_DISK_CFE_DEVTYPE_SUPPORTED(_type)	\
+	((_type) == CFE_DEV_FLASH ||		\
+	 (_type) == CFE_DEV_NVRAM)
 
 /* CFE binary magic */
 #define	BCM_CFE_MAGIC		0x43464531	/**< 'CFE1' */
@@ -222,8 +216,11 @@ struct bcm_netgear_langhdr {
  * CFE flash device driver quirks.
  */
 enum {
-	/** No quirks */
-	BCM_CFE_QUIRK_NONE		= 0,
+	/** Uninitialized quirk value */
+	BCM_CFE_QUIRK_INVALID		= 0,
+
+	/** No quirks; used to differentiate from an uninitialized value */
+	BCM_CFE_QUIRK_NONE		= (1<<0),
 
 	/** IOCTL_FLASH_GETINFO always returns an invalid offset */
 	BCM_CFE_QUIRK_FLASH_INV_OFF	= (1<<1),
@@ -270,8 +267,19 @@ enum {
 	BCM_CFE_QUIRK_PART_EOF_OVERREAD	= (1<<10)
 };
 
-#define	BCM_DRV_QUIRK(_quirks, _cfe_quirk)		\
-	(((_quirks) & BCM_CFE_QUIRK_ ## _cfe_quirk) ==	\
+#ifdef INVARIANTS
+static inline uint32_t
+bcm_disk_get_quirks(struct bcm_disk *disk)
+{
+	KASSERT(disk->quirks != BCM_CFE_QUIRK_INVALID, ("quirks not probed"));
+	return (disk->quirks);
+}
+#else /* !INVARIANTS */
+#define	bcm_disk_get_quirks(_disk)	((_disk)->quirks)
+#endif /* INVARIANTS */
+
+#define	BCM_DISK_QUIRK(_disk, _cfe_quirk)				\
+	((bcm_disk_get_quirks(_disk) & BCM_CFE_QUIRK_ ## _cfe_quirk) ==	\
 	    BCM_CFE_QUIRK_ ## _cfe_quirk)
 
 #endif /* _MIPS_BROADCOM_BCM_DISKVAR_H_ */

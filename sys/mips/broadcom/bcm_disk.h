@@ -38,8 +38,8 @@
 #define	BCM_DISK_INVALID_OFF	OFF_MAX
 #define	BCM_DISK_INVALID_SIZE	((off_t)0)
 
-SLIST_HEAD(bcm_parts, bcm_part);
-SLIST_HEAD(bcm_disks, bcm_disk);
+LIST_HEAD(bcm_parts, bcm_part);
+LIST_HEAD(bcm_disks, bcm_disk);
 
 
 /**
@@ -100,6 +100,17 @@ int		 bcm_probe_disks(struct bcm_disks *result);
 struct bcm_disk	*bcm_disk_new(const char *drvname, u_int unit, uint32_t flags);
 void		 bcm_disk_free(struct bcm_disk *disk);
 
+int		 bcm_disk_add_part(struct bcm_disk *disk,
+		     struct bcm_part *part);
+struct bcm_part	*bcm_disk_get_part(struct bcm_disk *disk, const char *label);
+bool		 bcm_disk_has_part(struct bcm_disk *disk, const char *label);
+void		 bcm_disk_remove_part(struct bcm_disk *disk, const char *label);
+int		 bcm_disk_move_part(struct bcm_disk *from, struct bcm_disk *to,
+		     const char *label, bool overwrite);
+
+struct bcm_part	*bcm_disk_find_bootimg_part(struct bcm_disk *disk,
+		     bcm_part_type type, u_int bootimg);
+
 void		 bcm_print_disk(struct bcm_disk *disk);
 void		 bcm_print_disks(struct bcm_disks *disks);
 
@@ -130,7 +141,7 @@ struct bcm_part {
 	off_t			 fs_size;	/**< the size of the filesystem, or BCM_DISK_INVALID_SIZE if unknown.
 						     may be used to determine the minimum partition size required */
 
-	SLIST_ENTRY(bcm_part) cp_link;
+	LIST_ENTRY(bcm_part) cp_link;
 };
 
 /** Evaluates to true if @p _part has a valid offset, false otherwise */
@@ -162,12 +173,13 @@ struct bcm_part {
 struct bcm_disk {
 	const char		*drvname;	/**< CFE driver class name (e.g. 'nflash') */
 	u_int			 unit;		/**< CFE device unit */
+	uint32_t		 quirks;	/**< CFE driver quirks (see BCM_CFE_QUIRK_*) */
 	uint32_t		 flags;		/**< disk flags (see BCM_DISK_* flag enums) */
 	off_t			 size;		/**< media size, or BCM_DISK_INVALID_SIZE if unknown */
 	struct bcm_parts	 parts;		/**< identified partitions */
 	size_t			 num_parts;	/**< partition count */
 
-	SLIST_ENTRY(bcm_disk) cd_link;
+	LIST_ENTRY(bcm_disk) cd_link;
 };
 
 /** Evaluates to true if @p _disk has a valid size, false otherwise */

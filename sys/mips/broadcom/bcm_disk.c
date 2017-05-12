@@ -218,22 +218,26 @@ __FBSDID("$FreeBSD$");
 
 #include "bcm_diskvar.h"
 
-MALLOC_DEFINE(M_BCM_CDISK, "cfedisk", "Broadcom CFE disk metadata");
+MALLOC_DEFINE(M_BCM_DISK, "bcm_disk", "Broadcom CFE disk metadata");
 
-static int		 bcm_probe_disk(struct bcm_disk *disk, bool *skip_next);
-static int		 bcm_probe_driver_quirks(struct bcm_disk *disk,
-			     uint32_t *quirks);
+struct bcm_part_info;
 
-static int		 bcm_probe_trx_remapping(struct bcm_disk *disk,
-			     const char *label, u_int *unit, bool *ignore,
-			     bool *skip_next);
+static const struct bcm_part_info	*bcm_find_part_info(const char *label);
 
-static int		 bcm_part_new(struct bcm_part **part,
-			     const char *devname, bcm_part_type type,
-			     uint32_t flags);
-static void		 bcm_part_free(struct bcm_part *part);
-static int		 bcm_probe_part(struct bcm_disk *disk,
-			     struct bcm_part *part, uint32_t quirks);
+static int				 bcm_part_new(struct bcm_part **part,
+					     const char *drvname, u_int unit,
+					     const char *label,
+					     bcm_part_type type,
+					     uint32_t flags);
+static int				 bcm_part_open(struct bcm_part *part);
+
+static int				 bcm_probe_disk_quirks(
+					     struct bcm_disk *disk);
+static int				 bcm_probe_disk(struct bcm_disk *disk);
+
+static int				 bcm_probe_part(struct bcm_disk *disk,
+					     struct bcm_part *part);
+
 
 const bool bcm_disk_trace = false;
 
@@ -292,6 +296,275 @@ static const struct bcm_part_info {
 };
 
 /**
+ * Return the partition info for @p label, or NULL if not found.
+ */
+static const struct bcm_part_info *
+bcm_find_part_info(const char *label)
+{
+	for (size_t i = 0; i < nitems(bcm_part_info); i++) {
+		const struct bcm_part_info *id = &bcm_part_info[i];
+
+		for (size_t j = 0; id->labels[j] != NULL; j++) {
+			if (strcmp(id->labels[j], label) == 0)
+				return (id);
+		}
+	}
+
+	/* Not found */
+	return (NULL);
+}
+
+
+/* Use cfe_enumdev() to discover all CFE disk devices */
+static int
+bcm_enum_disks(struct bcm_disks *result)
+{
+	struct bcm_disks	 disks;
+	struct bcm_disk		*disk, *dnext;
+	int			 error;
+
+	LIST_INIT(&disks);
+
+	for (int i = 0; i < INT_MAX; i++) {
+		char				 devname[BCM_DISK_NAME_MAX];
+		struct bcm_part			*part;
+		const struct bcm_part_info	*part_info;
+		const char			*lptr, *dptr;
+		char				*label, *drvname;
+		bcm_part_type			 part_type;
+		size_t				 llen, drvlen;
+		uint32_t			 part_flags;
+		u_int				 unit;
+		int				 dinfo, cerr;
+
+		/* Fetch next device name */
+		cerr = cfe_enumdev(i, devname, sizeof(devname));
+		if (cerr == CFE_ERR_DEVNOTFOUND) {
+			/* End of list */
+			break;
+		} else if (cerr != CFE_OK) {
+			printf("cfe_enumdev(%d) failed: %d\n", i, cerr);
+			error = ENXIO;
+			goto failed;
+		}
+
+		/* Verify the device type */
+		if ((dinfo = cfe_getdevinfo(devname)) < 0) {
+			printf("cfe_getdevinfo(%s) failed: %d\n", devname,
+			    dinfo);
+			error = ENXIO;
+			goto failed;
+		}
+
+		if (!BCM_DISK_CFE_DEVTYPE_SUPPORTED(dinfo & CFE_DEV_MASK))
+			continue;
+
+		/* Parse the device name */
+		error = bcm_disk_parse_devname(devname, &dptr, &drvlen, &unit,
+		    &lptr, &llen);
+		if (error) {
+			printf("cfe_enumdev(%d) returned invalid device "
+			    "name: %s\n", i, devname);
+			goto failed;
+		}
+
+		/* Produce NUL terminated copies */
+		drvname = strndup(dptr, drvlen, M_BCM_DISK);
+		label = strndup(lptr, llen, M_BCM_DISK);
+
+		/* Fetch or create a corresponding disk entry */
+		if ((disk = bcm_find_disk(&disks, drvname, unit)) == NULL)
+			disk = bcm_disk_new(drvname, unit, 0x0);
+
+		free(drvname, M_BCM_DISK);
+		drvname = NULL;
+
+		/* Allocate new partition entry */
+		part_info = bcm_find_part_info(label);
+		if (part_info != NULL) {
+			part_type = part_info->type;
+			part_flags = part_info->default_flags;
+		} else {
+			part_type = BCM_PART_TYPE_UNKNOWN;
+			part_flags = 0x0;
+		}
+
+		error = bcm_part_new(&part, disk->drvname, disk->unit, label,
+		    part_type, part_flags);
+		if (error) {
+			BCM_DISK_ERR(disk, "failed to allocate %s partition "
+			    "entry: %d\n", label, error);
+
+			free(label, M_BCM_DISK);
+			goto failed;
+		} else {
+			free(label, M_BCM_DISK);
+			label = NULL;
+		}
+
+		/* Register partition with the disk entry */
+		if ((error = bcm_disk_add_part(disk, part))) {
+			BCM_DISK_ERR(disk, "error registering %s partition: "
+			    "%d\n", part->label, error);
+
+			bcm_part_free(part);
+			goto failed;
+		}
+	}
+
+	/* Move all discovered disks to the result list */
+	LIST_FOREACH_SAFE(disk, &disks, cd_link, dnext) {
+		LIST_REMOVE(disk, cd_link);
+		LIST_INSERT_HEAD(result, disk, cd_link);
+	}
+
+	return (0);
+
+failed:
+	LIST_FOREACH_SAFE(disk, &disks, cd_link, dnext) {
+		LIST_REMOVE(disk, cd_link);
+		bcm_disk_free(disk);
+	}
+
+	return (error);
+}
+
+/*
+ * Use our static list of partition names to enumerate and register
+ * all known partitions on the given disk.
+ */
+static int
+bcm_enum_known_disk_parts(struct bcm_disk *disk)
+{
+	int error;
+
+	/* Iterate over all known partition names and register new partition
+	 * entries */
+	for (size_t i = 0; i < nitems(bcm_part_info); i++) {
+		const struct bcm_part_info *info = &bcm_part_info[i];
+
+		for (size_t j = 0; info->labels[j] != NULL; j++) {
+			struct bcm_part	*part;
+			const char	*label;
+			char		 devname[BCM_DISK_NAME_MAX];
+			size_t		 dlen;
+			int		 dinfo, dtype;
+
+			label = info->labels[j];
+
+			/* Format the full CFE device name */
+			dlen = sizeof(devname);
+			error = bcm_disk_devname(disk->drvname, disk->unit,
+			    label, devname, &dlen);
+			if (error) {
+				BCM_DISK_ERR(disk, "error formatting CFE "
+				    "device name for %s: %d\n", label, error);
+				return (error);
+			}
+
+			/* Verify the device existence and type */
+			dinfo = cfe_getdevinfo(devname);
+			if (dinfo == CFE_ERR_DEVNOTFOUND) {
+				continue;
+			} else if (dinfo < 0) {
+				BCM_DISK_ERR(disk, "cfe_getdevinfo(%s) failed: "
+				    "%d\n", devname, dinfo);
+				return (ENXIO);
+			}
+
+			dtype = (dinfo & CFE_DEV_MASK);
+			if (!BCM_DISK_CFE_DEVTYPE_SUPPORTED(dtype))
+				continue;
+
+		        /* Register a new partition entry */
+			error = bcm_part_new(&part, disk->drvname, disk->unit,
+			    label, info->type, info->default_flags);
+			if (error) {
+				BCM_DISK_LOG(disk, "failed to allocate %s "
+				    "partition entry: %d\n", label, error);
+				return (error);
+			}
+
+			if ((error = bcm_disk_add_part(disk, part))) {
+				BCM_DISK_LOG(disk, "error registering %s "
+				    "partition: %d\n", part->label, error);
+
+				bcm_part_free(part);
+				return (error);
+			}
+		}
+	}
+
+	return (0);
+}
+
+/*
+ * Use a static list of driver and partition names to enumerate CFE disk
+ * devices.
+ *
+ * Intended for use on devices without cfe_enumdev()
+ */
+static int
+bcm_enum_known_disks(struct bcm_disks *result)
+{
+	struct bcm_disks	 disks;
+	struct bcm_disk		*disk, *dnext;
+	int			 error;
+
+	LIST_INIT(&disks);
+
+	for (size_t i = 0; i < nitems(bcm_drv_names); i++) {
+		for (u_int unit = 0; unit < BCM_DISK_UNIT_MAX; unit++) {
+			/* Allocate new disk entry */
+			disk = bcm_disk_new(bcm_drv_names[i], unit, 0x0);
+			if (disk == NULL) {
+				error = ENOMEM;
+				goto failed;
+			}
+
+			/* Register all known partition labels */
+			if ((error = bcm_enum_known_disk_parts(disk))) {
+				bcm_disk_free(disk);
+				goto failed;
+			}
+
+			/*
+			 * If no partitions are found, the device either
+			 * does not exist, or it vends no recognized partition
+			 * names.
+			 * 
+			 * We discard the entry and continue probing this
+			 * device class (though it's very unlikely that
+			 * additional units will be discovered).
+			 */
+			if (LIST_EMPTY(&disk->parts)) {
+				bcm_disk_free(disk);
+				continue;
+			}
+
+			/* Add to result list */
+			LIST_INSERT_HEAD(&disks, disk, cd_link);
+		}
+	}
+
+	/* Move all discovered disks to the result list */
+	LIST_FOREACH_SAFE(disk, &disks, cd_link, dnext) {
+		LIST_REMOVE(disk, cd_link);
+		LIST_INSERT_HEAD(result, disk, cd_link);
+	}
+
+	return (0);
+
+failed:
+	LIST_FOREACH_SAFE(disk, &disks, cd_link, dnext) {
+		LIST_REMOVE(disk, cd_link);
+		bcm_disk_free(disk);
+	}
+
+	return (error);
+}
+
+/**
  * Query CFE for all recognized disks and partitions, populating @p result
  * with the probed disk entries.
  * 
@@ -310,66 +583,204 @@ bcm_probe_disks(struct bcm_disks *result)
 	struct bcm_bootinfo	 bootinfo;
 	int			 error;
 
-	SLIST_INIT(&disks);
+	LIST_INIT(&disks);
 
+	/* Prefer cfe_enumdev() if available; fall back on enumerating known
+	 * device partitions */
+	if (cfe_enumdev(0, (char[1]){}, 1) != CFE_ERR_INV_COMMAND)
+		error = bcm_enum_disks(&disks);
+	else
+		error = bcm_enum_known_disks(&disks);
 
-	for (size_t i = 0; i < nitems(bcm_drv_names); i++) {
-		for (u_int unit = 0; unit < BCM_DISK_UNIT_MAX; unit++) {
-			bool skip_next;
+	if (error)
+		return (error);
 
-			/* Allocate new disk entry */
-			disk = bcm_disk_new(bcm_drv_names[i], unit, 0x0);
-			if (disk == NULL) {
-				error = ENOMEM;
-				goto failed;
+	if ((error = bcm_get_bootinfo(&bootinfo)))
+		return (error);
+
+	/*
+	 * Perform initial filtering/cleanup of our discovered disks:
+	 * 
+	 * - Normalize OS/TRX partition mappings
+	 * - Remove unused virtual disk entries
+	 * - Set any bootinfo-derived flags/sizes/offsets.
+	 *
+	 * If a disk:
+	 *  - contains both an OS and TRX partition, AND
+	 *  - the next device unit contains a TRX partition
+	 * Then:
+	 *  - The OS partition maps the TRX partition minus the initial TRX
+	 *    header, and should be dropped.
+	 *  - The TRX partition maps only the TRX header; the real TRX
+	 *    partition is defined on the next device unit, and should be
+	 *    moved to the current device.
+	 *  - The next device unit should be discarded.
+	 */
+	LIST_FOREACH(disk, &disks, cd_link) {
+		struct bcm_disk	*virt;
+		struct bcm_part	*os[BCM_DISK_BOOTIMG_MAX];
+		struct bcm_part *trx[BCM_DISK_BOOTIMG_MAX];
+		struct bcm_part	*part;
+		size_t		 num_bootimg;
+		bool		 keep_virt;
+
+		virt = NULL;
+
+		/* Set disk-level boot flags */
+		if (bcm_disk_has_devunit(disk, &bootinfo.romdev))
+			disk->flags |= BCM_DISK_BOOTROM;
+
+		if (bcm_disk_has_devunit(disk, &bootinfo.osdev))
+			disk->flags |= BCM_DISK_BOOTOS;
+
+		/* Fetch OS and TRX partitions for all bootimgs */
+		num_bootimg = 0;
+		for (size_t i = 0; i < BCM_DISK_BOOTIMG_MAX; i++) {
+			os[i] = bcm_disk_find_bootimg_part(disk,
+			    BCM_PART_TYPE_OS, i);
+			trx[i] = bcm_disk_find_bootimg_part(disk,
+			    BCM_PART_TYPE_TRX, i);
+
+			/* Boot images are not sparse; if we hit missing
+			 * entries, no further images need be checked */
+			if (os[i] == NULL && trx[i] == NULL)
+				break;
+	
+			num_bootimg++;
+		}
+
+		/* Warn if our bootinfo does not match probed partitions */
+		if (BCM_DISK_HAS_FLAGS(disk, BCM_DISK_BOOTOS) &&
+		    num_bootimg != bootinfo.num_images)
+		{
+			BCM_DISK_LOG(disk, "found %zu boot images on flash "
+			    "(NVRAM defines %zu)\n", num_bootimg,
+			    bootinfo.num_images);
+		}
+
+		/* Nothing to do? */
+		if (num_bootimg == 0)
+			continue;
+
+		/* Drop OS partitions that are simply a TRX partition
+		 * remapping (i.e. both an OS and corresponding TRX partition
+		 * were found) */
+		for (size_t i = 0; i < num_bootimg; i++) {
+			if (os[i] == NULL || trx[i] == NULL)
+				continue;
+
+			bcm_disk_remove_part(disk, os[i]->label);
+			os[i] = NULL;
+		}
+
+		/* Look for virtual device mapping our full TRX partitions */
+		if (disk->unit < BCM_DISK_UNIT_MAX) {
+			virt = bcm_find_disk(&disks, disk->drvname,
+			    disk->unit+1);
+		} else {
+			virt = NULL;
+		}
+	
+		/* Replace any partial TRX partition definitions with
+		 * real definitions from the virtual disk device, and if
+		 * possible, drop the virtual device's disk entry */
+		if (virt != NULL) {
+			for (size_t i = 0; i < num_bootimg; i++) {
+				struct bcm_part *real;
+
+				if (trx[i] == NULL)
+					continue;
+
+				real = bcm_disk_get_part(virt, trx[i]->label);
+				if (real == NULL)
+					continue;
+
+				trx[i] = real;
+				error = bcm_disk_move_part(virt, disk,
+				    trx[i]->label,   true);
+				if (error) {
+					BCM_DISK_LOG(disk, "error remapping "
+					    "%s: %d\n", trx[i]->label, error);
+					goto failed;
+				}
 			}
 
-			/* Set basic disk flags */
-			if (bcm_disk_has_devunit(disk, &bootinfo.romdev))
-				disk->flags |= BCM_DISK_BOOTROM;
+			/* If the virtual disk contains no partitions not
+			 * already defined by our disk, it can safely be
+			 * discarded */
+			keep_virt = false;
+			LIST_FOREACH(part, &virt->parts, cp_link) {
+				if (bcm_disk_has_part(disk, part->label))
+					continue;
 
-			if (bcm_disk_has_devunit(disk, &bootinfo.osdev))
-				disk->flags |= BCM_DISK_BOOTOS;
+				keep_virt = true;
+				break;
+			}
 
-			/* Probe partition map */
-			if ((error = bcm_probe_disk(disk, &skip_next)))
-				goto failed;
-
-			/*
-			 * If no partitions are found, the device either
-			 * does not exist, or it vends no recognized partition
-			 * names.
-			 * 
-			 * We discard the entry and continue probing this
-			 * device class (though it's very unlikely that
-			 * additional units will be discovered).
-			 */
-			if (SLIST_EMPTY(&disk->parts)) {
-				bcm_disk_free(disk);
+			if (keep_virt) {
+				/* Should never happen */
+				BCM_DISK_ERR(virt, "retaining non-empty "
+				    "virtual disk device\n");
 			} else {
-				/* Add to results */
-				SLIST_INSERT_HEAD(&disks, disk, cd_link);
+				LIST_REMOVE(virt, cd_link);
+				bcm_disk_free(virt);
+			}
+		}
+
+		/* Now that all OS partitions have been fixed up, apply
+		 * any partition-level boot metadata */
+		if (!BCM_DISK_HAS_FLAGS(disk, BCM_DISK_BOOTOS))
+			continue;
+
+		for (size_t i = 0; i < num_bootimg; i++) {
+			struct bcm_part *bp;
+
+			if (i >= bootinfo.num_images) {
+				/* Missing bootinfo. Logged above */
+				break;
 			}
 
-			/* If requested, skip the next disk unit */
-			if (skip_next && unit < BCM_DISK_UNIT_MAX)
-				unit++;
+			/* Legacy non-TRX device? */
+			if (trx[i] == NULL)
+				bp = os[i];
+			else
+				bp = trx[i];
+
+			KASSERT(bp != NULL, ("missing partition for bootimg "
+			    "%zu\n", i));
+
+			/* Mark partition as bootable */
+			if (bootinfo.bootimg == i)
+				bp->flags |= BCM_PART_BOOT;
+
+			/* Populate partition offset/size from the NVRAM
+			 * boot configuration */
+			if (!BCM_PART_HAS_SIZE(bp))
+				bp->size = bootinfo.images[i].size;
+	
+			if (!BCM_PART_HAS_OFFSET(bp))
+				bp->offset = bootinfo.images[i].offset;
 		}
 	}
 
-	/* Move all records to the result list */
-	SLIST_FOREACH_SAFE(disk, &disks, cd_link, dnext) {
-		KASSERT(disk == SLIST_FIRST(&disks), ("non-head enumeration"));
-		SLIST_REMOVE_HEAD(&disks, cd_link);
+	/* Now that we've cleaned up the disk/partition list, probe all
+	 * partitions to determine size/offset */
+	LIST_FOREACH(disk, &disks, cd_link) {
+		if ((error = bcm_probe_disk(disk)))
+			goto failed;
+	}
 
-		SLIST_INSERT_HEAD(result, disk, cd_link);
+	/* Move all discovered disks to the result list */
+	LIST_FOREACH_SAFE(disk, &disks, cd_link, dnext) {
+		LIST_REMOVE(disk, cd_link);
+		LIST_INSERT_HEAD(result, disk, cd_link);
 	}
 
 	return (0);
 
 failed:
-	SLIST_FOREACH_SAFE(disk, &disks, cd_link, dnext) {
-		SLIST_REMOVE_HEAD(&disks, cd_link);
+	LIST_FOREACH_SAFE(disk, &disks, cd_link, dnext) {
+		LIST_REMOVE(disk, cd_link);
 		bcm_disk_free(disk);
 	}
 
@@ -391,14 +802,15 @@ bcm_disk_new(const char *drvname, u_int unit, uint32_t flags)
 {
 	struct bcm_disk *d;
 
-	d = malloc(sizeof(*d), M_BCM_CDISK, M_WAITOK|M_ZERO);
+	d = malloc(sizeof(*d), M_BCM_DISK, M_WAITOK|M_ZERO);
 
 	d->drvname = drvname;
 	d->unit = unit;
+	d->quirks = BCM_CFE_QUIRK_INVALID;
 	d->size = BCM_DISK_INVALID_SIZE;
 	d->flags = flags;
 
-	SLIST_INIT(&d->parts);
+	LIST_INIT(&d->parts);
 	d->num_parts = 0;
 
 	return (d);
@@ -412,21 +824,18 @@ bcm_disk_free(struct bcm_disk *disk)
 {
 	struct bcm_part *p, *pnext;
 
-	SLIST_FOREACH_SAFE(p, &disk->parts, cp_link, pnext) {
-		SLIST_REMOVE_HEAD(&disk->parts, cp_link);
+	LIST_FOREACH_SAFE(p, &disk->parts, cp_link, pnext) {
+		LIST_REMOVE(p, cp_link);
 		bcm_part_free(p);
 	}
 
-	free(disk, M_BCM_CDISK);
+	free(disk, M_BCM_DISK);
 }
 
 /**
- * Determine the driver used by @p disk, and return the corresponding set of
+ * Determine the CFE driver used by @p disk, and populate the disk's driver
  * quirk flags (see BCM_CFE_QUIRK_*).
- * 
- * If @p disk has no mapped partitions or we cannot otherwise determine the
- * driver type, a set of conservative quirk flags will be returned.
- * 
+ *
  * @param	disk	The disk to be queried.
  * @param[out]	quirks	On success, will be set to the probed quirk flags.
  * 
@@ -434,9 +843,12 @@ bcm_disk_free(struct bcm_disk *disk)
  * @retval ENXIO	if the driver cannot be identified.
  */
 static int
-bcm_probe_driver_quirks(struct bcm_disk *disk, uint32_t *quirks)
+bcm_probe_disk_quirks(struct bcm_disk *disk)
 {
 	struct bcm_part *part;
+	
+	KASSERT(disk->quirks == BCM_CFE_QUIRK_INVALID,
+	    ("quirks already probed"));
 
 	part = bcm_disk_get_query_part(disk);
 
@@ -445,7 +857,7 @@ bcm_probe_driver_quirks(struct bcm_disk *disk, uint32_t *quirks)
 	if (strcmp(disk->drvname, "nflash") == 0) {
 		BCM_DISK_LOG(disk, "found CFE nflash driver\n");
 
-		*quirks =
+		disk->quirks =
 		    BCM_CFE_QUIRK_FLASH_ZERO_OFF |
 		    BCM_CFE_QUIRK_FLASH_TOTAL_SIZE |
 		    BCM_CFE_QUIRK_NVRAM_UNAVAIL |
@@ -494,7 +906,7 @@ bcm_probe_driver_quirks(struct bcm_disk *disk, uint32_t *quirks)
 			/* sflash (SPI) driver */
 			BCM_DISK_LOG(disk, "found CFE sflash driver\n");
 
-			*quirks =
+			disk->quirks =
 			    BCM_CFE_QUIRK_FLASH_ZERO_OFF |
 			    BCM_CFE_QUIRK_FLASH_TOTAL_SIZE |
 			    BCM_CFE_QUIRK_NVRAM_UNAVAIL |
@@ -507,7 +919,7 @@ bcm_probe_driver_quirks(struct bcm_disk *disk, uint32_t *quirks)
 			/* legacy flash (CFI) driver */
 			BCM_DISK_LOG(disk, "found CFE flash (legacy) driver\n");
 
-			*quirks =
+			disk->quirks =
 			    BCM_CFE_QUIRK_FLASH_PHYS_OFF |
 			    BCM_CFE_QUIRK_FLASH_TOTAL_SIZE |
 			    BCM_CFE_QUIRK_PART_EOF_CRASH;
@@ -518,7 +930,7 @@ bcm_probe_driver_quirks(struct bcm_disk *disk, uint32_t *quirks)
 			/* newflash (CFI) driver */
 			BCM_DISK_LOG(disk, "found CFE newflash driver\n");
 
-			*quirks =
+			disk->quirks =
 			    BCM_CFE_QUIRK_NVRAM_PART_SIZE |
 			    BCM_CFE_QUIRK_PART_EOF_CRASH;
 
@@ -533,267 +945,38 @@ failed:
 }
 
 /**
- * Identify a TRX/OS boot partition, and determine whether the partition
- * should be ignored, or should be mapped from a remapping provided by
- * the next device unit.
- * 
- * This is a work-around for CFE's hacked-in TRX support: TRX is not understood
- * by CFE's image loaders, and instead, multiple device units will be allocated
- * for the _same_ flash device (e.g. flash0/flash1), providing two different
- * partition mappings over the same flash:
- * 
- *  - flash0 maps _only_ the TRX header as 'flash0.trx', while mapping the
- *    TRX content as 'flash0.os'; the 'flash0.os' device may be passed directly
- *    to CFE's (TRX-ignorant) boot image loader, but writing a non-empty TRX
- *    image to the small 'flash0.trx' partition will fail.
- * 
- *  - flash1 maps the entire TRX space as 'flash1.trx', and 'flash1.os' does
- *    not exist. A new TRX image can be written to the 'flash1.trx' partition,
- *    but attempting to boot flash1.trx with CFE's (TRX-ignorant) loader will
- *    fail. 
- * 
- * @param	disk		The disk being queried.
- * @param	label		The partition label being queried.
- * @param[out]	unit		If the partition should be mapped from a
- *				different device unit, will be set to the target
- *				unit.
- * @param[out]	ignore		Set to true if the partition should be ignored.
- * @param[out]	skip_next	Set to true if the next device unit should be
- *				skipped during probing.
- * 
- * @retval 0		success
- * @retval non-zero	if identifying the partition otherwise fails, a regular
- *			unix error code will be returned.
- */
-static int
-bcm_probe_trx_remapping(struct bcm_disk *disk, const char *label, u_int *unit,
-    bool *ignore, bool *skip_next)
-{
-	const struct bcm_bootlabel	*info;
-	struct bcm_disk			*next;
-	bcm_part_type			 type;
-
-	/* Is this a recognized boot partition? */
-	if (!bcm_find_bootlabel(label, &info, &type))
-		return (0);
-
-	/* Allocate a disk entry for the next device unit */
-	if (disk->unit == BCM_DISK_UNIT_MAX)
-		return (0);
-
-	next = bcm_disk_new(disk->drvname, disk->unit+1, disk->flags);
-	if (next == NULL)
-		return (ENOMEM);
-
-	/* Determine whether this partition should be ignored, or remapped
-	 * to the next device */
-	switch (type) {
-	case BCM_PART_TYPE_OS:
-		/*
-		 * If a corresponding TRX partition exists, this OS partition
-		 * provides a bootable remapping of a subset of the real TRX
-		 * partition.
-		 * 
-		 * Such an OS partition can be safely ignored; it only exists
-		 * to work around CFE's lack of native TRX boot support, is not
-		 * properly page aligned, and attempting to size the partition
-		 * may trigger a crash (e.g. in the nflash driver)
-		 */
-		if (bcm_disk_dev_exists(disk, info->trx_label))
-			*ignore = true;
-
-		break;
-		
-	case BCM_PART_TYPE_TRX:
-		/* A corresponding OS partition must exist */
-		if (!bcm_disk_dev_exists(disk, info->os_label))
-			break;
-
-		/* The next device unit must vend a corresponding real TRX
-		 * mapping */
-		if (!bcm_disk_dev_exists(next, info->trx_label))
-			break;
-
-		/* The next device unit must not vend a corresponding OS
-		 * partition */
-		if (bcm_disk_dev_exists(next, info->os_label))
-			break;
-
-		/* The current device provides a partial TRX mapping; the next
-		 * device unit provides the full mapping */
-		*skip_next = true;
-		*unit = next->unit;
-		break;
-
-	default:
-		BCM_DISK_ERR(disk, "unknown partition type: %d\n", type);
-		bcm_disk_free(next);
-		return (ENXIO);
-	}
-
-	bcm_disk_free(next);
-	return (0);
-}
-
-/**
- * Populate @p disk's partition map by enumerating our list of recognized
- * partition labels.
+ * Probe and populate @p disk's quirks and partition table.
  * 
  * @param	disk		The disk to be probed.
- * @param[out]	skip_next	If the device unit proceeding @p disk should
- *				be skipped; this will be true in the case that
- *				the next device unit merely provides an
- *				alternative mapping over @p disk.
  * 
  * @retval 0		success
  * @retval non-zero	if probing the partition map otherwise fails, a regular
  *			unix error code will be returned.
  */
 static int
-bcm_probe_disk_known_labels(struct bcm_disk *disk, bool *skip_next)
-{
-	struct bcm_part		*part, *pnext;
-	struct bcm_parts	 parts;
-	const char		*drvname;
-	size_t			 num_parts;
-	int			 error;
-
-	SLIST_INIT(&parts);
-	num_parts = 0;
-
-	drvname = disk->drvname;
-
-	/* Iterate over all known partition names and register new partition
-	 * entries */
-	for (size_t i = 0; i < nitems(bcm_part_info); i++) {
-		const struct bcm_part_info *info = &bcm_part_info[i];
-
-		for (size_t j = 0; info->labels[j] != NULL; j++) {
-			const char	*label;
-			char		 dname[BCM_DISK_NAME_MAX];
-			size_t		 dlen;
-			u_int		 unit;
-			bool		 ignore_part;
-
-			label = info->labels[j];
-			ignore_part = false;
-			unit = disk->unit;
-
-			/* Does the CFE device exist? */
-			if (!bcm_disk_dev_exists(disk, label))
-				continue;
-
-			/* Is this an OS or TRX system partition that should
-			 * either be ignored, or remapped to a different CFE
-			 * device unit? */
-			error = bcm_probe_trx_remapping(disk, label, &unit,
-			    &ignore_part, skip_next);
-			if (error)
-				goto failed;
-
-			if (ignore_part)
-				continue;
-
-			if (unit != disk->unit) {
-				BCM_DISK_TRACE(disk, "remapped '%s' to %s%u.%s",
-				    label, disk->drvname, unit, label);
-			}
-
-			/* Format the full CFE device name */
-			dlen = sizeof(dname);
-			error = bcm_disk_dev_name(drvname, unit, label, dname,
-			    &dlen);
-			if (error) {
-				BCM_DISK_ERR(disk, "error formatting CFE "
-				    "device name for %s: %d\n", label, error);
-				goto failed;
-			}
-
-			/* Update local partition count */
-			if (num_parts < SIZE_MAX) {
-				num_parts++;
-			} else {
-				BCM_DISK_ERR(disk, "cannot represent more than "
-				    "SIZE_MAX partitions\n");
-				error = ENOMEM;
-				goto failed;
-			}
-
-		        /* Insert a new partition entry */
-			error = bcm_part_new(&part, dname, info->type,
-			    info->default_flags);
-			if (error)
-				goto failed;
-
-			SLIST_INSERT_HEAD(&parts, part, cp_link);
-		}
-	}
-
-	/* Update the disk's partition count, and then move all discovered
-	 * partitions to the disk entry */
-	if (SIZE_MAX - num_parts >= disk->num_parts) {
-		disk->num_parts += num_parts;
-	} else {
-		BCM_DISK_ERR(disk, "cannot represent more than SIZE_MAX "
-		    "partitions\n");
-		error = ENOMEM;
-		goto failed;
-	}
-
-	SLIST_FOREACH_SAFE(part, &parts, cp_link, pnext) {
-		SLIST_REMOVE_HEAD(&parts, cp_link);
-		SLIST_INSERT_HEAD(&disk->parts, part, cp_link);
-	}
-
-	return (0);
-
-failed:
-	SLIST_FOREACH_SAFE(part, &parts, cp_link, pnext) {
-		SLIST_REMOVE_HEAD(&parts, cp_link);
-		bcm_part_free(part);
-	}
-
-	return (error);
-}
-
-/**
- * Populate @p disk's partition map.
- * 
- * @param	disk		The disk to be probed.
- * @param[out]	skip_next	If the device unit proceeding @p disk should
- *				be skipped; this will be true in the case that
- *				the next device unit merely provides an
- *				alternative mapping over @p disk.
- * 
- * @retval 0		success
- * @retval non-zero	if probing the partition map otherwise fails, a regular
- *			unix error code will be returned.
- */
-static int
-bcm_probe_disk(struct bcm_disk *disk, bool *skip_next)
+bcm_probe_disk(struct bcm_disk *disk)
 {
 	struct bcm_part	*part;
-	const char	*drvname;
-	uint32_t	 quirks;
 	int		 error;
 
-	*skip_next = false;
-	drvname = disk->drvname;
+	/* Open all partitions' backing CFE device for reading */
+	LIST_FOREACH(part, &disk->parts, cp_link) {
+		if ((error = bcm_part_open(part)) == 0)
+			continue;
 
-	/* Probe for partitions matching our known set of labels */
-	if ((error = bcm_probe_disk_known_labels(disk, skip_next)))
+		BCM_PART_ERR(part, "failed to open CFE device: %d\n", error);
 		return (error);
+	}
 
-	/* If no partitions were found, there's nothing to probe */
-	if (disk->num_parts == 0)
-		return (0);
-
-	/* Probe for any CFE driver quirks */
-	if ((error = bcm_probe_driver_quirks(disk, &quirks)))
+	/* Try to probe the disk driver quirks */
+	if ((error = bcm_probe_disk_quirks(disk))) {
+		BCM_DISK_ERR(disk, "failed to determine CFE driver quirks: "
+		    "%d\n", error);
 		return (error);
+	}
 
 	/* Try to fetch the media size */
-	if (BCM_DRV_QUIRK(quirks, FLASH_TOTAL_SIZE)) {
+	if (BCM_DISK_QUIRK(disk, FLASH_TOTAL_SIZE)) {
 		flash_info_t	fi;
 		int		cerr, rlen;
 
@@ -824,8 +1007,8 @@ bcm_probe_disk(struct bcm_disk *disk, bool *skip_next)
 	}
 
 	/* Try to determine the size and offset of all discovered partitions */
-	SLIST_FOREACH(part, &disk->parts, cp_link) {
-		if ((error = bcm_probe_part(disk, part, quirks))) {
+	LIST_FOREACH(part, &disk->parts, cp_link) {
+		if ((error = bcm_probe_part(disk, part))) {
 			/* non-fatal; try next probe */
 			BCM_DISK_ERR(disk, "probing %s failed: %d\n",
 			    part->devname, error);
@@ -840,86 +1023,116 @@ bcm_probe_disk(struct bcm_disk *disk, bool *skip_next)
  * 
  * @param[out]	part	On success, a pointer to the newly allocated and
  *			initialized partition entry.
- * @param	devname	CFE device name.
- * @param	type	Partition type, or BCM_PART_TYPE_UNKNOWN.
+ * @param	drvname	CFE device driver class.
+ * @param	unit	CFE device unit.
+ * @param	label	CFE partition label.
+ * @param	type	Partition type.
  * @param	flags	Partition flags (see BCM_PART_* flag enums)
- * 
- * @retval 0		success
- * @retval ENOMEM	if allocation fails
- * @retval ENXIO	if the CFE device cannot be opened.
  */
 static int
-bcm_part_new(struct bcm_part **part, const char *devname, bcm_part_type type,
-    uint32_t flags)
+bcm_part_new(struct bcm_part **part, const char *drvname, u_int unit,
+    const char *label, bcm_part_type type, uint32_t flags)
 {
-	struct bcm_part *p;
+	struct bcm_part	*p;
+	char		*devname;
+	size_t		 nlen;
+	int		 error;
 
-	p = malloc(sizeof(*p), M_BCM_CDISK, M_WAITOK|M_ZERO);
+	/* Determine formatted CFE device name length */
+	if ((error = bcm_disk_devname(drvname, unit, label, NULL, &nlen)))
+		return (error);
 
-	p->devname = strdup(devname, M_BCM_CDISK);
+	/* Format CFE device name */
+	devname = malloc(nlen, M_BCM_DISK, M_WAITOK);
+	if ((error = bcm_disk_devname(drvname, unit, label, devname, &nlen))) {
+		free(devname, M_BCM_DISK);
+		return (error);
+	}
+
+	p = malloc(sizeof(*p), M_BCM_DISK, M_WAITOK|M_ZERO);
+	p->devname = devname;
+	p->label = strdup(label, M_BCM_DISK);
 	p->type = type;
 	p->flags = flags;
 	p->offset = BCM_DISK_INVALID_OFF;
 	p->size = BCM_DISK_INVALID_SIZE;
 	p->fs_size = BCM_DISK_INVALID_SIZE;
+
+	/* On some devices, cfe_close() may trash CFE's heap; thus,
+	 * we avoid opening the backing CFE partition until we're sure
+	 * we actually need the partition in question (and we avoid closing
+	 * the device) */
 	p->fd = -1;
 	p->need_close = false;
-
-	/* Parse out the partition label ('<devname>.<label>') */
-	p->label = strchr(p->devname, '.');
-	if (p->label != NULL) {
-		/* Advance past '.' */
-		p->label++;
-	} else {
-		p->label = "";
-	}
-
-	/* Try to open the device handle */
-	if ((p->fd = bcm_get_cfe_fd(bcm_get_platform(), p->devname)) >= 0) {
-		/* Handle is shared with other platform code */
-		p->need_close = false;
-	} else {
-		if ((p->fd = cfe_open(p->devname)) >= 0)
-			p->need_close = true;
-	}
-
-	if (p->fd < 0) {
-		BCM_PART_ERR(p, "cfe_open() failed: %d\n", p->fd);
-		bcm_part_free(p);
-		return (ENXIO);
-	}
 
 	*part = p;
 	return (0);
 }
 
 /**
+ * Open the partition's backing CFE device for reading.
+ * 
+ * @param part	The partition to be opened.
+ * 
+ * @retval 0		success
+ * @retval EBUSY	if @p part is already open.
+ * @retval ENXIO	if opening the partition map otherwise fails.
+ */
+static int
+bcm_part_open(struct bcm_part *part)
+{
+	int fd;
+
+	if (part->fd >= 0)
+		return (EBUSY);
+
+	if ((fd = bcm_get_cfe_fd(bcm_get_platform(), part->devname)) >= 0) {
+		/* Handle is shared with other platform code */
+		part->fd = fd;
+		part->need_close = false;
+
+		return (0);
+	} else if ((fd = cfe_open(part->devname)) >= 0) {
+		part->fd = fd;
+		part->need_close = true;
+
+		return (0);
+	}
+
+	BCM_PART_ERR(part, "cfe_open() failed: %d\n", fd);
+	return (ENXIO);
+}
+
+/**
  * Free all resources held by @p part.
  */
-static void
+void
 bcm_part_free(struct bcm_part *part)
 {
 	if (part->fd >= 0 && part->need_close)
 		cfe_close(part->fd);
 
-	free(part->devname, M_BCM_CDISK);
-	free(part, M_BCM_CDISK);
+	free(part->devname, M_BCM_DISK);
+	free(part, M_BCM_DISK);
 }
 
 static int
-bcm_probe_part_flashinfo(struct bcm_disk *disk,
-    struct bcm_part *part, uint32_t quirks)
+bcm_probe_part_flashinfo(struct bcm_disk *disk, struct bcm_part *part)
 {
 	flash_info_t	fi;
 	int		cerr, rlen;
+	bool		have_size, have_offset;
+
+	have_offset = false;
+	have_size = false;
 
 	/* Skip if both offset and size have already been determined */
 	if (BCM_PART_HAS_OFFSET(part) && BCM_PART_HAS_SIZE(part))
 		return (0);
 
 	/* Skip if IOCTL_FLASH_GETINFO is unusable */
-	if (BCM_DRV_QUIRK(quirks, FLASH_INV_OFF) &&
-	    BCM_DRV_QUIRK(quirks, FLASH_INV_SIZE))
+	if (BCM_DISK_QUIRK(disk, FLASH_INV_OFF) &&
+	    BCM_DISK_QUIRK(disk, FLASH_INV_SIZE))
 		return (0);
 
 	/* Fetch flash info */
@@ -935,52 +1148,51 @@ bcm_probe_part_flashinfo(struct bcm_disk *disk,
 	    fi.flash_base, fi.flash_size);
 
 	/* Validate the partition offset */
-	if (!BCM_DRV_QUIRK(quirks, FLASH_INV_OFF)) {
+	if (!BCM_DISK_QUIRK(disk, FLASH_INV_OFF)) {
+		have_offset = true;
+
 #if ULLONG_MAX > OFF_MAX
 		if (fi.flash_base > OFF_MAX) {
 			BCM_PART_ERR(part, "flash base %#llx exceeds maximum "
 			    "supported offset\n", fi.flash_base);
-			quirks |= BCM_CFE_QUIRK_FLASH_INV_OFF;
+			have_offset = false;
 		}
 #endif
 
-		if (BCM_DRV_QUIRK(quirks, FLASH_TOTAL_SIZE) &&
+		if (BCM_DISK_QUIRK(disk, FLASH_TOTAL_SIZE) &&
 		    fi.flash_base > fi.flash_size)
 		{
 			BCM_PART_ERR(part, "invalid offset %#llx (size=%#x)\n",
 			    fi.flash_base, fi.flash_size);
-			quirks |= BCM_CFE_QUIRK_FLASH_INV_OFF;
+			have_offset = false;
 		}
 	}
 
 	/* Validate the partition size */
-	if (!BCM_DRV_QUIRK(quirks, FLASH_INV_SIZE)) {
+	if (!BCM_DISK_QUIRK(disk, FLASH_INV_SIZE)) {
+		have_size = true;
+
 #if UINT_MAX > OFF_MAX
 		if (fi.flash_size > OFF_MAX) {
 			BCM_PART_ERR(part, "flash size %#x exceeds maximum "
 			    "supported offset\n", fi.flash_size);
-			quirks |= BCM_CFE_QUIRK_FLASH_INV_SIZE;
+			have_size = false;
 		}
 #endif
 	}
 
 	/* Set any missing values in the partition description */
-	if (!BCM_DRV_QUIRK(quirks, FLASH_INV_OFF)) {
-		if (!BCM_PART_HAS_OFFSET(part))
-			part->offset = fi.flash_base;
-	}
+	if (have_offset && !BCM_PART_HAS_OFFSET(part))
+		part->offset = fi.flash_base;
 
-	if (!BCM_DRV_QUIRK(quirks, FLASH_INV_OFF)) {
-		if (!BCM_PART_HAS_SIZE(part))
-			part->size = fi.flash_size;
-	}
+	if (have_size && !BCM_PART_HAS_SIZE(part))
+		part->size = fi.flash_size;
 
 	return (0);
 }
 
 static int
-bcm_probe_part_nvraminfo(struct bcm_disk *disk,
-    struct bcm_part *part, uint32_t quirks)
+bcm_probe_part_nvraminfo(struct bcm_disk *disk, struct bcm_part *part)
 {
 	nvram_info_t	nv;
 	int		cerr, rlen;
@@ -990,7 +1202,7 @@ bcm_probe_part_nvraminfo(struct bcm_disk *disk,
 		return (0);
 
 	/* Skip if IOCTL_NVRAM_GETINFO does not return the partition size */
-	if (!BCM_DRV_QUIRK(quirks, NVRAM_PART_SIZE))
+	if (!BCM_DISK_QUIRK(disk, NVRAM_PART_SIZE))
 		return (0);
 
 	/* Fetch and validate the NVRAM info */
@@ -1011,7 +1223,7 @@ bcm_probe_part_nvraminfo(struct bcm_disk *disk,
 	if (nv.nvram_size > OFF_MAX) {
 		BCM_PART_ERR(part, "nvram size %#llx exceeds maximum supported "
 		    "size\n", fi.flash_size);
-		quirks |= BCM_CFE_QUIRK_FLASH_INV_SIZE;
+		return (ENXIO);
 	}
 #endif
 
@@ -1028,7 +1240,7 @@ bcm_probe_part_nvraminfo(struct bcm_disk *disk,
  */
 static int
 bcm_part_readsz_slow(struct bcm_disk *disk, struct bcm_part *part,
-    uint32_t quirks, off_t *result)
+    off_t *result)
 {
 	int64_t offset;
 
@@ -1059,7 +1271,7 @@ bcm_part_readsz_slow(struct bcm_disk *disk, struct bcm_part *part,
 		cerr = cfe_readblk(part->fd, offset, buf, sizeof(buf));
 
 		if (cerr == CFE_ERR_IOERR &&
-		    BCM_DRV_QUIRK(quirks, PART_EOF_IOERR))
+		    BCM_DISK_QUIRK(disk, PART_EOF_IOERR))
 		{
 			/* Some drivers fail to truncate the two byte read; try
 			 * reading a single byte */
@@ -1114,7 +1326,7 @@ bcm_part_readsz_slow(struct bcm_disk *disk, struct bcm_part *part,
  */
 static int
 bcm_part_readsz_fast(struct bcm_disk *disk, struct bcm_part *part,
-    uint32_t quirks, off_t *result)
+    off_t *result)
 {
 	off_t	blksize, offset;
 	off_t	max, min, mid;
@@ -1123,7 +1335,7 @@ bcm_part_readsz_fast(struct bcm_disk *disk, struct bcm_part *part,
 	blksize = BCM_PART_ALIGN_MIN;
 
 	/* Reading past EOF must not trigger a CFE driver crash */
-	if (BCM_DRV_QUIRK(quirks, PART_EOF_CRASH))
+	if (BCM_DISK_QUIRK(disk, PART_EOF_CRASH))
 		return (ENXIO);
 
 	/* The disk must be block-aligned */
@@ -1230,15 +1442,14 @@ bcm_part_readsz_fast(struct bcm_disk *disk, struct bcm_part *part,
  * driver has the PART_EOF_OVERREAD quirk).
  */
 static int
-bcm_probe_part_read(struct bcm_disk *disk, struct bcm_part *part,
-    uint32_t quirks)
+bcm_probe_part_read(struct bcm_disk *disk, struct bcm_part *part)
 {
 	off_t	result;
 	int	error;
 
 	/* If the driver allows reading past EOF (up to the end of the device),
 	 * we're determining the offset, not the size */
-	if (BCM_DRV_QUIRK(quirks, PART_EOF_OVERREAD)) {
+	if (BCM_DISK_QUIRK(disk, PART_EOF_OVERREAD)) {
 		/* If we're calculating offset via EOF_OVERREAD, the total
 		 * device size must be available */
 		if (!BCM_DISK_HAS_SIZE(disk))
@@ -1255,11 +1466,11 @@ bcm_probe_part_read(struct bcm_disk *disk, struct bcm_part *part,
 	}
 
 	/* Try reading the partition size/offset */
-	error = bcm_part_readsz_fast(disk, part, quirks, &result);
+	error = bcm_part_readsz_fast(disk, part, &result);
 	if (error == ENXIO) {
 		/* Fall back on the slow path */
 		BCM_PART_TRACE(part, "using slow path\n");
-		error = bcm_part_readsz_slow(disk, part, quirks, &result);
+		error = bcm_part_readsz_slow(disk, part, &result);
 	}
 
 	if (error) {
@@ -1269,7 +1480,7 @@ bcm_probe_part_read(struct bcm_disk *disk, struct bcm_part *part,
 
 	BCM_PART_TRACE(part, "read result: %#jx\n", (intmax_t)result);
 
-	if (BCM_DRV_QUIRK(quirks, PART_EOF_OVERREAD)) {
+	if (BCM_DISK_QUIRK(disk, PART_EOF_OVERREAD)) {
 		/* Result is the number of bytes readable at the partition
 		 * offset, up to the total media size */
 
@@ -1297,28 +1508,27 @@ bcm_probe_part_read(struct bcm_disk *disk, struct bcm_part *part,
  * 
  * @param disk		The disk to be probed.
  * @param part		The partition to be probed.
- * @param quirks	CFE driver quirks (see BCM_CFE_QUIRK_*).
  * 
  * @retval 0		success
  * @retval non-zero	if probing the partition map otherwise fails, a regular
  *			unix error code will be returned.
  */
 static int
-bcm_probe_part(struct bcm_disk *disk, struct bcm_part *part, uint32_t quirks)
+bcm_probe_part(struct bcm_disk *disk, struct bcm_part *part)
 {
 	int error;
 
 	/* Try to determine offset/size via IOCTL_FLASH_GETINFO */
-	if ((error = bcm_probe_part_flashinfo(disk, part, quirks)))
+	if ((error = bcm_probe_part_flashinfo(disk, part)))
 		return (error);
 
 	/* Fall back on IOCTL_NVRAM_GETINFO */
-	if ((error = bcm_probe_part_nvraminfo(disk, part, quirks)))
+	if ((error = bcm_probe_part_nvraminfo(disk, part)))
 		return (error);
 
 	/* If all else fails, we can manually determine the size (or offset,
 	 * if the device has the PART_EOF_OVERREAD quirk) via cfe_readblk() */
-	if ((error = bcm_probe_part_read(disk, part, quirks)))
+	if ((error = bcm_probe_part_read(disk, part)))
 		return (error);
 
 	return (0);

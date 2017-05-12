@@ -29,6 +29,7 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
+#include <sys/ctype.h>
 
 #include <machine/_inttypes.h>
 
@@ -42,7 +43,7 @@ __FBSDID("$FreeBSD$");
 
 #include "bcm_diskvar.h"
 
-static int	bcm_bootimg_init(struct bcm_bootimg *bootimg, const char *label,
+static int	bcm_bootimg_init(struct bcm_bootimg *bootimg,
 		    const char *offset_var, const char *size_var);
 
 static int	compare_part_offset_asc(const void *lhs, const void *rhs);
@@ -67,12 +68,192 @@ static const struct bcm_bootimg_offset_var {
 	{ BHND_NVAR_IMAGE_SECOND_OFFSET,	BCM_PART_LABEL_TRX2 }
 };
 
-/* Known CFE OS/TRX boot partition labels */
-static const struct bcm_bootlabel bcm_bootlabels[] = {
-	{ "os",		"trx" },
-	{ "os2",	"trx2" }	/* If CFE built with
-					 * FAILSAFE_UPGRADE/DUAL_IMAGE */
-};
+/**
+ * Add @p part to the @p disk partition list.
+ * 
+ * @param disk	Disk to be modified.
+ * @param part	Partition to add to @p disk.
+ * 
+ * @retval 0		success
+ * @retval ENOMEM	if the maximum @p disk partition count has been
+ *			reached.
+ * @retval EEXIST	if a partition with the given label already exists.
+ */
+int
+bcm_disk_add_part(struct bcm_disk *disk, struct bcm_part *part)
+{
+	struct bcm_part *p;
+
+	/* Check for duplicate label */
+	LIST_FOREACH(p, &disk->parts, cp_link) {
+		if (strcmp(p->label, part->label) == 0)
+			return (EEXIST);
+	}
+
+	if (disk->num_parts == SIZE_MAX)
+		return (ENOMEM);
+
+	disk->num_parts++;
+	LIST_INSERT_HEAD(&disk->parts, part, cp_link);
+
+	return (0);
+}
+
+/**
+ * Move a partition with @p label in @p from to @p to.
+ * 
+ * @param from		The disk from which the partition will be moved.
+ * @param to		The disk to which the partition will be moved.
+ * @param label		The label of the partition to be moved.
+ * @param overwrite	Replace any existing partition with @p label in @p to.
+ * 
+ * @retval 0		success
+ * @retval EEXIST	if @p overwrite is false and @p to contains a partition
+ *			with @p label.
+ * @retval ENOENT	if a partition with @p label is not found in @p from.
+ * @retval ENOMEM	if the maximum partition count of @p to has been
+ *			reached.
+ */
+int
+bcm_disk_move_part(struct bcm_disk *from, struct bcm_disk *to,
+    const char *label, bool overwrite)
+{
+	struct bcm_part	*part, *exists;
+
+	/* Fetch from source */
+	if ((part = bcm_disk_get_part(from, label)) == NULL)
+		return (ENOENT);
+
+	/* Validate target disk */
+	exists = bcm_disk_get_part(to, label);
+	if (exists != NULL) {
+		if (!overwrite)
+			return (EEXIST);
+
+		/* Remove existing partition */
+		KASSERT(to->num_parts > 0, ("partition count underflow"));
+		LIST_REMOVE(exists, cp_link);
+		to->num_parts--;
+	}
+
+	if (to->num_parts == SIZE_MAX)
+		return (ENOMEM);
+
+	/* Remove from source disk */
+	KASSERT(from->num_parts > 0, ("partition count underflow"));
+	LIST_REMOVE(part, cp_link);
+	from->num_parts--;
+
+	/* Add to target disk */
+	to->num_parts++;
+	LIST_INSERT_HEAD(&to->parts, part, cp_link);
+
+	return (0);
+}
+
+/**
+ * Return the partition with @p label in @p disk, or NULL if not found.
+ * 
+ * @param disk	Disk to be searched.
+ * @param label	Requested partition's label.
+ */
+struct bcm_part *
+bcm_disk_get_part(struct bcm_disk *disk, const char *label)
+{
+	struct bcm_part *part;
+
+	LIST_FOREACH(part, &disk->parts, cp_link) {
+		if (strcmp(part->label, label) == 0)
+			return (part);
+	}
+
+	/* Not found */
+	return (NULL);
+}
+
+/**
+ * Return true if @p disk contains a partition with @p label, false otherwise.
+ * 
+ * @param disk	Disk to be searched.
+ * @param label	Partition label to search for.
+ */
+bool
+bcm_disk_has_part(struct bcm_disk *disk, const char *label)
+{
+	if (bcm_disk_get_part(disk, label) != NULL)
+		return (true);
+
+	return (false);
+}
+
+/**
+ * Find the TRX or OS partition for the given bootimg index.
+ * 
+ * @param disk		Disk to be searched.
+ * @param type		One of BCM_PART_TYPE_OS or BCM_PART_TYPE_TRX.
+ * @param bootimg	The bootimg index to be searched.
+ */
+struct bcm_part *
+bcm_disk_find_bootimg_part(struct bcm_disk *disk, bcm_part_type type,
+    u_int bootimg)
+{
+	const char	*label;
+	char		 buf[BCM_DISK_NAME_MAX];
+
+	switch (type) {
+	case BCM_PART_TYPE_OS:
+		label = BCM_PART_LABEL_OS;
+		break;
+	case BCM_PART_TYPE_TRX:
+		label = BCM_PART_LABEL_TRX;
+		break;
+	default:
+		BCM_DISK_ERR(disk, "requested unknown bootimg partition of "
+		    "type: %d\n", type);
+		return (NULL);
+	}
+
+	/* The first image has no suffix; later images have an integer
+	 * suffix starting at '2' */
+	if (bootimg > 0) {
+		int len;
+
+		if (bootimg >= BCM_DISK_BOOTIMG_MAX || bootimg == UINT_MAX)
+			return (NULL);
+
+		len = snprintf(buf, sizeof(buf), "%s%u", label, bootimg+1);
+		if (len < 0 || len >= sizeof(buf)) {
+			/* Should never occur */
+			BCM_DISK_ERR(disk, "snprintf() failed: %d", len);
+			return (NULL);
+		}
+
+		label = buf;
+	}
+
+	return (bcm_disk_get_part(disk, label));
+}
+
+/**
+ * Remove the partition with @p label from @p disk.
+ * 
+ * @param disk	Disk to be searched.
+ * @param label	Label of the partition to be removed.
+ */
+void
+bcm_disk_remove_part(struct bcm_disk *disk, const char *label)
+{
+	struct bcm_part *part;
+
+	if ((part = bcm_disk_get_part(disk, label)) == NULL)
+		return;
+
+	KASSERT(disk->num_parts > 0, ("partition count underflow"));
+	LIST_REMOVE(part, cp_link);
+	disk->num_parts--;
+
+	bcm_part_free(part);
+}
 
 /**
  * Return the first entry in @p disks matching @p drvname and @p unit, or NULL
@@ -87,7 +268,7 @@ bcm_find_disk(struct bcm_disks *disks, const char *drvname, u_int unit)
 {
 	struct bcm_disk *disk;
 
-	SLIST_FOREACH(disk, disks, cd_link) {
+	LIST_FOREACH(disk, disks, cd_link) {
 		if (strcmp(disk->drvname, drvname) != 0)
 			continue;
 
@@ -114,7 +295,7 @@ bcm_parts_find(struct bcm_parts *parts, const char *label)
 {
 	struct bcm_part *part;
 
-	SLIST_FOREACH(part, parts, cp_link) {
+	LIST_FOREACH(part, parts, cp_link) {
 		if (strcmp(part->label, label) == 0)
 			return (part);
 	}
@@ -139,7 +320,7 @@ bcm_parts_find_offset(struct bcm_parts *parts, off_t offset)
 	if (offset == BCM_DISK_INVALID_OFF)
 		return (NULL);
 
-	SLIST_FOREACH(part, parts, cp_link) {
+	LIST_FOREACH(part, parts, cp_link) {
 		if (part->offset == offset)
 			return (part);
 	}
@@ -165,7 +346,7 @@ bcm_parts_match(struct bcm_parts *parts, const char *label,
 {
 	struct bcm_part *part;
 
-	SLIST_FOREACH(part, parts, cp_link) {
+	LIST_FOREACH(part, parts, cp_link) {
 		if (offset != BCM_DISK_INVALID_OFF) {
 		    if (BCM_PART_HAS_OFFSET(part) && part->offset != offset)
 			continue;
@@ -220,58 +401,62 @@ bcm_part_get_next(struct bcm_part *part, off_t align)
 }
 
 /**
- * Test for the existence of a usable CFE device for a partition named @p label
- * on @p disk.
+ * Parse a CFE disk/partition device name.
  * 
- * @param disk	Disk to query.
- * @param label	Partition label.
+ * @param		devname		Name to parse.
+ * @param[in,out]	drvname		On success, a pointer to the driver
+ *					class name within @p devname.
+ * @param		drvlen		On success, the length of @p drvname.
+ * @param[out]		devunit		On success, the device unit.
+ * @param[out]		label		On success, a pointer to the partition
+ *					label string within @p devname.
+ * @param		labellen	On success, the length of @p label.
  * 
- * @retval true		if the device exists and is a supported device type.
- * @retval false	if the device does not exist.
- * @retval false	if the device exists, but the device type is not
- *			supported.
- * @retval false	if testing for the CFE device otherwise fails.
+ * @retval 0		success
+ * @retval EFTYPE	if @p devname is not a valid CFE device name.
  */
-bool
-bcm_disk_dev_exists(struct bcm_disk *disk, const char *label)
+int
+bcm_disk_parse_devname(const char *devname, const char **drvname,
+    size_t *drvlen, u_int *devunit, const char **label, size_t *labellen)
 {
-	char	dname[BCM_DISK_NAME_MAX];
-	size_t	dlen;
-	int	dinfo, dtype;
-	int	error;
+	const char	*p;
+	char		*end;
+	u_long		 lunit;
 
-	/* Format the full CFE device name */
-	dlen = sizeof(dname);
-	error = bcm_disk_dev_name(disk->drvname, disk->unit, label, dname, &dlen);
-	if (error) {
-		BCM_DISK_ERR(disk, "failed to format device name for '%s': "
-		    "%d\n", label, error);
-		return (false);
+	/* Parse the driver class name ('<drvclass><unit>.label') */
+	for (p = devname; *p != '\0' && !isdigit(*p); p++) {
+		if (!isalpha(*p))
+			return (EFTYPE);
+
+		continue;
 	}
 
-	/* Does the device exist? */
-	if ((dinfo = cfe_getdevinfo(__DECONST(char *, dname))) < 0) {
-		if (dinfo != CFE_ERR_DEVNOTFOUND) {
-			BCM_DISK_ERR(disk, "cfe_getdevinfo(%s) failed: %d\n",
-			    dname, dinfo);
-		}
+	*drvname = devname;
+	*drvlen = (size_t)(p - devname);
 
-		return (false);
+	/* Parse the device unit; it must be followed by either '.' delimiter,
+	 * or end of string */
+	lunit = strtoul(p, &end, 10);
+
+	if (end == p || (*end != '\0' && *end != '.'))
+		return (EFTYPE);
+
+	if (lunit > INT_MAX || lunit > BCM_DISK_UNIT_MAX)
+		return (EFTYPE);
+
+	*devunit = lunit;
+	p = end;
+
+	/* Parse the partition label ('<devname>.<label>') */
+	for (size_t i = 0; p[i] != '\0'; i++) {
+		if (!isalpha(p[i]) && !isdigit(p[i]))
+			return (EFTYPE);
 	}
 
-	/* Verify device type */
-	dtype = dinfo & CFE_DEV_MASK;
-	switch (dtype) {
-	case CFE_DEV_FLASH:
-	case CFE_DEV_NVRAM:
-		/* Valid device type */
-		return (true);
+	*label = p;
+	*labellen = strlen(*label);
 
-	default:
-		BCM_DISK_ERR(disk, "%s has unknown device type: %d\n", label,
-		    dtype);
-		return (false);
-	}
+	return (0);
 }
 
 /**
@@ -293,17 +478,19 @@ bcm_disk_dev_exists(struct bcm_disk *disk, const char *label)
  *			small to hold the requested value.
  */
 int
-bcm_disk_dev_name(const char *drvname, u_int unit, const char *label,
+bcm_disk_devname(const char *drvname, u_int unit, const char *label,
     char *buf, size_t *len)
 {
 	size_t	capacity;
 	int	n;
 
-	capacity = *len;
+	if (buf == NULL)
+		capacity = 0x0;
+	else
+		capacity = *len;
 
 	/* Format the full CFE device name */
 	n = snprintf(buf, capacity, "%s%u.%s", drvname, unit, label);
-
 	if (n < 0) {
 		printf("%s: snprintf() failed: %d\n", __FUNCTION__, n);
 		return (ENXIO);
@@ -345,7 +532,7 @@ bcm_disk_has_devunit(struct bcm_disk *disk, struct bcm_devunit *devunit)
 struct bcm_part *
 bcm_disk_get_query_part(struct bcm_disk *disk)
 {
-	struct bcm_part *part = SLIST_FIRST(&disk->parts);
+	struct bcm_part *part = LIST_FIRST(&disk->parts);
 
 	if (part == NULL) {
 		panic("query on non-existent disk device: %s%u", disk->drvname,
@@ -355,47 +542,10 @@ bcm_disk_get_query_part(struct bcm_disk *disk)
 	return (part);
 }
 
-/**
- * Find the boot label entry for @p label, if any.
- *
- * @param	label		The partition label to look up.
- * @param[out]	info		On success, the boot label entry for @p label.
- * @param[out]	part_type	On success, the partition type of @p label.
- * 
- * @retval true		if @p label is a known boot partition name.
- * @retval false	if @p label is unrecognized.
- */
-bool
-bcm_find_bootlabel(const char *label, const struct bcm_bootlabel **info,
-    bcm_part_type *part_type)
-{
-	for (size_t i = 0; i < nitems(bcm_bootlabels); i++) {
-		const struct bcm_bootlabel *l = &bcm_bootlabels[i];
-
-		if (strcmp(label, l->os_label) == 0) {
-			*info = l;
-			*part_type = BCM_PART_TYPE_OS;
-
-			return (true);
-		}
-
-		if (strcmp(label, l->trx_label) == 0) {
-			*info = l;
-			*part_type = BCM_PART_TYPE_TRX;
-
-			return (true);
-		}
-	}
-
-	/* Not found */
-	return (false);
-}
-
-/* Populate the bootimg instance with the given label, and NVRAM-fetched offset
- * and size */
+/* Populate the bootimg instance with the given NVRAM-fetched offset and size */
 static int
-bcm_bootimg_init(struct bcm_bootimg *bootimg, const char *label,
-    const char *offset_var, const char *size_var)
+bcm_bootimg_init(struct bcm_bootimg *bootimg, const char *offset_var,
+    const char *size_var)
 {
 	struct bcm_platform	*bp;
 	uint64_t		 offset, size;
@@ -434,7 +584,6 @@ bcm_bootimg_init(struct bcm_bootimg *bootimg, const char *label,
 		return (ERANGE);
 	}
 
-	bootimg->label = label;
 	bootimg->offset = (off_t)offset;
 	bootimg->size = (off_t)size;
 
@@ -476,7 +625,6 @@ bcm_get_bootinfo(struct bcm_bootinfo *bootinfo)
 	bootinfo->layout = BCM_BOOTIMG_SIMPLE;
 	bootinfo->num_images = 1;
 	bootinfo->bootimg = 0;
-	bootinfo->images[0].label = BCM_PART_LABEL_TRX;
 	bootinfo->images[0].offset = BCM_DISK_INVALID_OFF;
 	bootinfo->images[0].size = BCM_DISK_INVALID_SIZE;
 	bootinfo->num_failures = 0;
@@ -534,9 +682,9 @@ bcm_get_bootinfo(struct bcm_bootinfo *bootinfo)
 		}
 	
 		ov = &bcm_bootimg_offset_vars[i];
-		
-		error = bcm_bootimg_init(&bootinfo->images[i], ov->part_label,
-		    ov->offset_var, BHND_NVAR_IMAGE_SIZE);
+
+		error = bcm_bootimg_init(&bootinfo->images[i], ov->offset_var,
+		    BHND_NVAR_IMAGE_SIZE);
 		if (error)
 			return (error);
 	}
@@ -576,15 +724,32 @@ bcm_print_disk(struct bcm_disk *disk)
 {
 	struct bcm_part	*part, **parts;
 	size_t		 part_idx;
+	bool		 comma;
 
-	printf("CFE disk %s%u:\n", disk->drvname, disk->unit);
+	comma = false;
+
+#define	BCM_DISK_PRI_FLG(flag, fmt, ...) do {				\
+	if (BCM_DISK_HAS_FLAGS(disk, flag)) {				\
+		printf("%s" fmt, comma ? ", " : "", ## __VA_ARGS__);	\
+		comma = true;						\
+	}								\
+} while (0)
+
+	comma = false;
+	printf("CFE disk %s%u (", disk->drvname, disk->unit);
+
+	BCM_DISK_PRI_FLG(BCM_DISK_BOOTROM,	"romdev");
+	BCM_DISK_PRI_FLG(BCM_DISK_BOOTOS,	"osdev");
+	BCM_DISK_PRI_FLG(BCM_DISK_BYTESWAPPED,	"byteswapped");
+
+	printf("):\n");
+#undef	BCM_DISK_PRI_FLG
 
 	/* Sort partitions by offset, ascending */
 	part_idx = 0;
-	parts = malloc(sizeof(*parts) * disk->num_parts, M_BCM_CDISK,
-	    M_WAITOK);
+	parts = malloc(sizeof(*parts) * disk->num_parts, M_BCM_DISK, M_WAITOK);
 
-	SLIST_FOREACH(part, &disk->parts, cp_link) {
+	LIST_FOREACH(part, &disk->parts, cp_link) {
 		KASSERT(part_idx < disk->num_parts,
 		    ("incorrect partition count (%zu >= %zu)", part_idx,
 		     disk->num_parts));
@@ -596,22 +761,51 @@ bcm_print_disk(struct bcm_disk *disk)
 	    compare_part_offset_asc);
 
 	for (size_t i = 0; i < disk->num_parts; i++) {
-		printf("    %-12s", parts[i]->label);
 
-		if (BCM_PART_HAS_OFFSET(parts[i]))
-			printf("0x%08jx", (intmax_t)parts[i]->offset);
+		part = parts[i];
+
+		printf("    %-12s", part->label);
+
+		if (BCM_PART_HAS_OFFSET(part))
+			printf("0x%08jx", (intmax_t)part->offset);
 		else
-			printf("%8s", "unknown");
+			printf("%10s", "unknown");
 
-		if (BCM_PART_HAS_SIZE(parts[i]))
-			printf("+0x%08jx", (intmax_t)parts[i]->size);
+		if (BCM_PART_HAS_SIZE(part))
+			printf("+0x%08jx", (intmax_t)part->size);
 		else
-			printf("+%-8s", "unknown");
+			printf("+%-10s", "unknown");
 
-		printf("\n");
+		/* Print partition flags */
+#define	BCM_PART_PRI_FLG(flag, fmt, ...) do {				\
+	if (BCM_PART_HAS_FLAGS(part, flag)) {				\
+		printf("%s" fmt, comma ? ", " : "", ## __VA_ARGS__);	\
+		comma = true;						\
+	}								\
+} while (0)
+		comma = false;
+		printf(" (");
+
+		BCM_PART_PRI_FLG(BCM_PART_BOOT,		"boot");
+		BCM_PART_PRI_FLG(BCM_PART_NVRAM,	"nvram");
+
+		BCM_PART_PRI_FLG(BCM_PART_PLATFORM,	"required");
+		if (!BCM_PART_HAS_FLAGS(part, BCM_PART_PLATFORM))
+			BCM_PART_PRI_FLG(0x0, "optional");
+
+		BCM_PART_PRI_FLG(BCM_PART_UNINITIALIZED,"uninitialized");
+		BCM_PART_PRI_FLG(BCM_PART_READONLY,	"readonly");
+
+		if (BCM_PART_HAS_FS_SIZE(part)) {
+			BCM_PART_PRI_FLG(0x0, "used=0x%08jx",
+			    (intmax_t)part->fs_size);
+		}
+
+		printf(")\n");
+#undef	BCM_PART_PRI_FLG
 	}
 
-	free(parts, M_BCM_CDISK);
+	free(parts, M_BCM_DISK);
 }
 
 /**
@@ -622,7 +816,7 @@ bcm_print_disks(struct bcm_disks *disks)
 {
 	struct bcm_disk	*disk;
 
-	SLIST_FOREACH(disk, disks, cd_link)
+	LIST_FOREACH(disk, disks, cd_link)
 		bcm_print_disk(disk);
 }
 

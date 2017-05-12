@@ -341,7 +341,7 @@ g_cfe_probe_bootloader(void *ident)
 {
 	int error;
 
-	SLIST_INIT(&g_cfe_disks);
+	LIST_INIT(&g_cfe_disks);
 
 	if ((error = bcm_probe_disks(&g_cfe_disks))) {
 		BCM_ERR("bcm_probe_disks() failed: %d\n", error);
@@ -439,7 +439,7 @@ g_cfe_claim_disk(const struct g_cfe_device *id)
 		return (NULL);
 
 	/* Remove from list of unclaimed disks */
-	SLIST_REMOVE(&g_cfe_disks, disk, bcm_disk, cd_link);
+	LIST_REMOVE(disk, cd_link);
 
 	return (disk);
 }
@@ -458,13 +458,13 @@ g_cfe_unclaim_disk(struct bcm_disk *disk)
 #ifdef INVARIANTS
 	struct bcm_disk *next;
 
-	SLIST_FOREACH(next, &g_cfe_disks, cd_link) {
+	LIST_FOREACH(next, &g_cfe_disks, cd_link) {
 		KASSERT(next != disk, ("disk not owned by caller"));
 	}
 #endif
 
 	/* Reinsert into list of unclaimed disks */
-	SLIST_INSERT_HEAD(&g_cfe_disks, disk, cd_link);
+	LIST_INSERT_HEAD(&g_cfe_disks, disk, cd_link);
 }
 
 static void
@@ -976,67 +976,6 @@ g_cfe_probe_os(struct g_cfe_taste_io *io, off_t block)
 
 G_CFE_DEFINE_PART_PROBE("OS", g_cfe_probe_os);
 
-/**
- * Return the best TRX partition entry for @p offset, if any.
- */
-static struct bcm_part *
-g_cfe_find_trx_part(struct g_cfe_taste_io *io, off_t offset)
-{
-	struct bcm_bootinfo	*bootinfo;
-	struct bcm_part		*part;
-
-	/* Find the bootimg that corresponds to the current offset, if any */
-	if (io->have_bootinfo) {
-		for (size_t i = 0; i < bootinfo->num_images; i++) {
-			struct bcm_bootimg *img = &bootinfo->images[i];
-
-			if (img->offset == BCM_DISK_INVALID_OFF)
-				continue;
-
-			if (img->offset != offset)
-				continue;
-
-			/* Look for matching partition entry */
-			part = g_cfe_find_matching_part(io, img->label, offset,
-			    BCM_PART_TYPE_TRX);
-			if (part != NULL)
-				return (part);
-		}
-	}
-
-	/* No match found in bootinfo; search for the next available/matching
-	 * TRX partition entry */
-	for (size_t i = 0; i < io->disk->num_parts; i++) {
-		const char	*label;
-		char		 buf[BCM_DISK_NAME_MAX];
-
-		/* Format the partition label (trx, trx2, trx3...) */
-		if (i == 0) {
-			label = BCM_PART_LABEL_TRX;
-		} else {
-			int ret;
-
-			ret = snprintf(buf, sizeof(buf), "trx%zu", i+1);
-			if (ret >= sizeof(buf)) {
-				G_CFE_LOG("%zu exceeds maximum CFE device name "
-				    "length\n", i);
-				return (NULL);
-			}
-
-			label = buf;
-		}
-
-		/* Look for matching partition */
-		part = g_cfe_find_matching_part(io, label, offset,
-		    BCM_PART_TYPE_TRX);
-		if (part != NULL)
-			return (part);
-	}
-
-	/* No matching TRX partition found */
-	return (NULL);
-}
-
 /* Probe a TRX partition */
 static struct bcm_part *
 g_cfe_probe_trx(struct g_cfe_taste_io *io, off_t block)
@@ -1046,9 +985,34 @@ g_cfe_probe_trx(struct g_cfe_taste_io *io, off_t block)
 	size_t				 num_offsets;
 	int				 error;
 
-	/* Find corresponding TRX partition entry */
-	if ((trx = g_cfe_find_trx_part(io, block)) == NULL)
-		return (NULL);
+	/* Find earliest usable bootimg TRX partition entry (trx, trx2,
+	 * trx3, ...) */
+	trx = NULL;
+	for (size_t i = 0; i < BCM_DISK_BOOTIMG_MAX; i++) {
+		struct bcm_part *part;
+
+		part = bcm_disk_find_bootimg_part(io->disk, BCM_PART_TYPE_TRX,
+		    i);
+		if (part == NULL)
+			break;
+
+		if (BCM_PART_HAS_OFFSET(part) && part->offset != block)
+			continue;
+
+		/* Found */
+		trx = part;
+		break;
+	}
+
+	/* If not found, search for any usable TRX partition */
+	if (trx == NULL) {
+		trx = g_cfe_find_matching_part(io, NULL, block,
+		    BCM_PART_TYPE_TRX);
+	}
+
+	/* TRX partition required */
+	if (trx == NULL)
+		return (0);
 
 	/* Read our TRX header */
 	error = g_cfe_taste_read(trx, io, block, 0, &hdr, sizeof(hdr));
@@ -1127,7 +1091,7 @@ g_cfe_probe_netgear_ml(struct g_cfe_taste_io *io, off_t block)
 	part = NULL;
 
 	/* Find the first usable ML partition entry */
-	SLIST_FOREACH(pnext, &io->disk->parts, cp_link) {
+	LIST_FOREACH(pnext, &io->disk->parts, cp_link) {
 		const char *p;
 
 		if (BCM_PART_HAS_OFFSET(pnext) && pnext->offset != block)
