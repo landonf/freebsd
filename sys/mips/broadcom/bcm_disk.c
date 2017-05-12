@@ -36,7 +36,7 @@ __FBSDID("$FreeBSD$");
  * 
  * The validity of the flash/nvram ioctls depends on the CFE flash driver in
  * use, requiring CFE driver-specific workarounds (see 'CFE Driver Quirks'
- * below).
+ * below) and further probing of any missing data once GEOM is available.
  * 
  * == Basic Flash Layout ==
  * 
