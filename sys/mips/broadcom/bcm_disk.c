@@ -228,6 +228,12 @@ static int				 bcm_probe_disk(struct bcm_disk *disk);
 static int				 bcm_probe_part(struct bcm_disk *disk,
 					     struct bcm_part *part);
 
+
+
+static bcm_probe_fn			bcm_probe_part_flashinfo;
+static bcm_probe_fn			bcm_probe_part_nvraminfo;
+static bcm_probe_fn			bcm_probe_part_read;
+
 const bool bcm_disk_trace = false;
 
 /**
@@ -1106,18 +1112,11 @@ bcm_part_free(struct bcm_part *part)
 }
 
 static int
-bcm_probe_part_flashinfo(struct bcm_disk *disk, struct bcm_part *part)
+bcm_probe_part_flashinfo(struct bcm_disk *disk, struct bcm_part *part,
+    struct bcm_part_probe *result)
 {
 	flash_info_t	fi;
 	int		cerr, rlen;
-	bool		have_size, have_offset;
-
-	have_offset = false;
-	have_size = false;
-
-	/* Skip if both offset and size have already been determined */
-	if (BCM_PART_HAS_OFFSET(part) && BCM_PART_HAS_SIZE(part))
-		return (0);
 
 	/* Skip if IOCTL_FLASH_GETINFO is unusable */
 	if (BCM_DISK_QUIRK(disk, FLASH_INV_OFF) &&
@@ -1129,66 +1128,47 @@ bcm_probe_part_flashinfo(struct bcm_disk *disk, struct bcm_part *part)
 	    sizeof(fi), &rlen, 0);
 	if (cerr != CFE_OK) {
 		BCM_PART_ERR(part, "IOCTL_FLASH_GETINFO failed: %d\n", cerr);
-
 		return (ENXIO);
 	}
 
 	BCM_PART_TRACE(part, "IOCTL_FLASH_GETINFO (base=%#llx, size=%#x)\n",
 	    fi.flash_base, fi.flash_size);
 
-	/* Validate the partition offset */
+	/* Provide the partition offset */
 	if (!BCM_DISK_QUIRK(disk, FLASH_INV_OFF)) {
-		have_offset = true;
-
 #if ULLONG_MAX > OFF_MAX
 		if (fi.flash_base > OFF_MAX) {
 			BCM_PART_ERR(part, "flash base %#llx exceeds maximum "
 			    "supported offset\n", fi.flash_base);
-			have_offset = false;
+			return (ENXIO);
 		}
 #endif
 
-		if (BCM_DISK_QUIRK(disk, FLASH_TOTAL_SIZE) &&
-		    fi.flash_base > fi.flash_size)
-		{
-			BCM_PART_ERR(part, "invalid offset %#llx (size=%#x)\n",
-			    fi.flash_base, fi.flash_size);
-			have_offset = false;
-		}
+		result->offset = fi.flash_base;
 	}
 
-	/* Validate the partition size */
+	/* Provide the partition size */
 	if (!BCM_DISK_QUIRK(disk, FLASH_INV_SIZE)) {
-		have_size = true;
-
 #if UINT_MAX > OFF_MAX
 		if (fi.flash_size > OFF_MAX) {
 			BCM_PART_ERR(part, "flash size %#x exceeds maximum "
-			    "supported offset\n", fi.flash_size);
-			have_size = false;
+			    "supported size\n", fi.flash_size);
+			return (ENXIO);
 		}
 #endif
+
+		result->size = fi.flash_size;
 	}
-
-	/* Set any missing values in the partition description */
-	if (have_offset && !BCM_PART_HAS_OFFSET(part))
-		part->offset = fi.flash_base;
-
-	if (have_size && !BCM_PART_HAS_SIZE(part))
-		part->size = fi.flash_size;
 
 	return (0);
 }
 
 static int
-bcm_probe_part_nvraminfo(struct bcm_disk *disk, struct bcm_part *part)
+bcm_probe_part_nvraminfo(struct bcm_disk *disk, struct bcm_part *part,
+    struct bcm_part_probe *result)
 {
 	nvram_info_t	nv;
 	int		cerr, rlen;
-
-	/* Skip if size has already been determined */
-	if (BCM_PART_HAS_SIZE(part))
-		return (0);
 
 	/* Skip if IOCTL_NVRAM_GETINFO does not return the partition size */
 	if (!BCM_DISK_QUIRK(disk, NVRAM_PART_SIZE))
@@ -1217,7 +1197,7 @@ bcm_probe_part_nvraminfo(struct bcm_disk *disk, struct bcm_part *part)
 #endif
 
 	/* Set the probed partition size */
-	part->size = nv.nvram_size;
+	result->size = nv.nvram_size;
 	return (0);
 }
 
@@ -1431,9 +1411,10 @@ bcm_part_readsz_fast(struct bcm_disk *disk, struct bcm_part *part,
  * driver has the PART_EOF_OVERREAD quirk).
  */
 static int
-bcm_probe_part_read(struct bcm_disk *disk, struct bcm_part *part)
+bcm_probe_part_read(struct bcm_disk *disk, struct bcm_part *part,
+    struct bcm_part_probe *result)
 {
-	off_t	result;
+	off_t	rd_result;
 	int	error;
 
 	/* If the driver allows reading past EOF (up to the end of the device),
@@ -1443,23 +1424,14 @@ bcm_probe_part_read(struct bcm_disk *disk, struct bcm_part *part)
 		 * device size must be available */
 		if (!BCM_DISK_HAS_SIZE(disk))
 			return (0);
-
-		/* Skip if offset has already been determined */
-		if (BCM_PART_HAS_OFFSET(part))
-			return (0);
-	} else {
-		/* We're determining the partition size; skip if size has
-		 * already been determined */
-		if (BCM_PART_HAS_SIZE(part))
-			return (0);
 	}
 
 	/* Try reading the partition size/offset */
-	error = bcm_part_readsz_fast(disk, part, &result);
+	error = bcm_part_readsz_fast(disk, part, &rd_result);
 	if (error == ENXIO) {
 		/* Fall back on the slow path */
 		BCM_PART_TRACE(part, "using slow path\n");
-		error = bcm_part_readsz_slow(disk, part, &result);
+		error = bcm_part_readsz_slow(disk, part, &rd_result);
 	}
 
 	if (error) {
@@ -1467,7 +1439,7 @@ bcm_probe_part_read(struct bcm_disk *disk, struct bcm_part *part)
 		return (error);
 	}
 
-	BCM_PART_TRACE(part, "read result: %#jx\n", (intmax_t)result);
+	BCM_PART_TRACE(part, "read result: %#jx\n", (intmax_t)rd_result);
 
 	if (BCM_DISK_QUIRK(disk, PART_EOF_OVERREAD)) {
 		/* Result is the number of bytes readable at the partition
@@ -1475,19 +1447,151 @@ bcm_probe_part_read(struct bcm_disk *disk, struct bcm_part *part)
 
 		KASSERT(BCM_DISK_HAS_SIZE(disk), ("missing disk size"));
 
-		if (result > disk->size) {
+		if (rd_result > disk->size) {
 			BCM_PART_ERR(part, "read %#jx bytes beyond media end",
-			    (intmax_t)(result - disk->size));
+			    (intmax_t)(rd_result - disk->size));
 			return (ENXIO);
 		}
 
-		KASSERT(!BCM_PART_HAS_OFFSET(part), ("offset overwrite"));
-		part->offset = disk->size - result;
+		result->offset = disk->size - rd_result;
 	} else {
 		/* Result is the partition size */
-		KASSERT(!BCM_PART_HAS_SIZE(part), ("size overwrite"));
-		part->size = result;
+		result->size = rd_result;
 	}
+
+	return (0);
+}
+
+
+static int
+bcm_try_probe_part(struct bcm_disk *disk, struct bcm_part *part,
+    bcm_probe_fn *fn)
+{
+	struct bcm_part_probe	p;
+	off_t			maxsize;
+	int			error;
+
+	p = (struct bcm_part_probe) {
+		.offset		= BCM_DISK_INVALID_OFF,
+		.size		= BCM_DISK_INVALID_SIZE,
+		.fs_size	= BCM_DISK_INVALID_SIZE
+	};
+
+	if ((error = fn(disk, part, &p)))
+		return (error);
+
+	/* Did the probe return a conflicting (offset|size|fs_size) value? */
+	if (BCM_PART_HAS_SIZE(part) && p.size != BCM_DISK_INVALID_SIZE) {
+		if (part->size != p.size) {
+			BCM_PART_ERR(part, "probe returned new size %#jx "
+			    "(previous %#jx)\n", (intmax_t)p.size,
+			    (intmax_t)part->size);
+
+			return (ENXIO);
+		}
+	}
+
+	if (BCM_PART_HAS_FS_SIZE(part) && p.fs_size != BCM_DISK_INVALID_SIZE) {
+		if (part->fs_size != p.fs_size) {
+			BCM_PART_ERR(part, "probe returned new fs_size %#jx "
+			    "(previous %#jx)\n", (intmax_t)p.fs_size,
+			    (intmax_t)part->fs_size);
+
+			return (ENXIO);
+		}
+	}
+
+	if (BCM_PART_HAS_OFFSET(part) && p.offset != BCM_DISK_INVALID_OFF) {
+		if (part->offset != p.offset) {
+			BCM_PART_ERR(part, "probe returned new offset %#jx "
+			    "(previous %#jx)\n", (intmax_t)p.offset,
+			    (intmax_t)part->offset);
+
+			return (ENXIO);
+		}
+	}
+
+	/* Do the base (offset|size|fs_size) fit within the mediasize? */
+	if (BCM_DISK_HAS_SIZE(disk))
+		maxsize = disk->size;
+	else
+		maxsize = OFF_MAX;
+
+	if (p.size != BCM_DISK_INVALID_SIZE && p.size > maxsize) {
+		BCM_PART_ERR(part, "probed size %#jx exceeds media "
+		    "size %#jx\n", (intmax_t)p.size, (intmax_t)maxsize);
+
+		return (ENXIO);
+	}
+
+	if (p.fs_size != BCM_DISK_INVALID_SIZE && p.fs_size > maxsize) {
+		BCM_PART_ERR(part, "probed size %#jx exceeds media "
+		    "size %#jx\n", (intmax_t)p.fs_size, (intmax_t)maxsize);
+
+		return (ENXIO);
+	}
+
+	if (p.offset != BCM_DISK_INVALID_OFF && p.offset > maxsize) {
+		BCM_PART_ERR(part, "probed offset %#jx exceeds media "
+		    "size %#jx\n", (intmax_t)p.offset, (intmax_t)maxsize);
+
+		return (ENXIO);
+	}
+
+	/* offset+(size|fs_size) must not overflow, and must fit within the
+	 * media size */
+	if (p.offset != BCM_DISK_INVALID_OFF &&
+	    p.size != BCM_DISK_INVALID_SIZE)
+	{
+		/* Check for overflow */
+		if (OFF_MAX - p.offset < p.size) {
+			BCM_PART_ERR(part, "probed range %#jx+%#jx invalid\n",
+			    (intmax_t)p.offset, (intmax_t)p.size);
+
+			return (ENXIO);
+		}
+
+		/* Verify range */
+		if (p.offset + p.size > maxsize) {
+			BCM_PART_ERR(part, "probed range %#jx+%#jx exceeds "
+			    "media size %#jx\n", (intmax_t)p.offset,
+			    (intmax_t)p.size, (intmax_t)maxsize);
+
+			return (ENXIO);
+		}
+	}
+
+	if (p.offset != BCM_DISK_INVALID_OFF &&
+	    p.fs_size != BCM_DISK_INVALID_SIZE)
+	{
+		/* Check for overflow */
+		if (OFF_MAX - p.offset < p.fs_size) {
+			BCM_PART_ERR(part, "probed fs_range %#jx+%#jx "
+			    "invalid\n", (intmax_t)p.offset,
+			    (intmax_t)p.fs_size);
+
+			return (ENXIO);
+		}
+
+		/* Verify range */
+		if (p.offset + p.fs_size > maxsize) {
+			BCM_PART_ERR(part, "probed fs_range %#jx+%#jx exceeds "
+			    "media size %#jx\n", (intmax_t)p.offset,
+			    (intmax_t)p.fs_size, (intmax_t)maxsize);
+
+			return (ENXIO);
+		}
+	}
+
+	/* Populate results */
+	if (!BCM_PART_HAS_OFFSET(part) && p.offset != BCM_DISK_INVALID_OFF)
+		part->offset = p.offset;
+
+	if (!BCM_PART_HAS_SIZE(part) && p.size != BCM_DISK_INVALID_SIZE)
+		part->size = p.size;
+
+	if (!BCM_PART_HAS_FS_SIZE(part) && p.fs_size != BCM_DISK_INVALID_SIZE)
+		part->fs_size = p.fs_size;
 
 	return (0);
 }
@@ -1508,17 +1612,28 @@ bcm_probe_part(struct bcm_disk *disk, struct bcm_part *part)
 	int error;
 
 	/* Try to determine offset/size via IOCTL_FLASH_GETINFO */
-	if ((error = bcm_probe_part_flashinfo(disk, part)))
+	error = bcm_try_probe_part(disk, part, bcm_probe_part_flashinfo);
+	if (error) {
+		BCM_PART_ERR(part, "bcm_probe_part_flashinfo() failed: %d\n",
+		    error);
 		return (error);
+	}
 
-	/* Fall back on IOCTL_NVRAM_GETINFO */
-	if ((error = bcm_probe_part_nvraminfo(disk, part)))
+	/* ... IOCTL_NVRAM_GETINFO */
+	error = bcm_try_probe_part(disk, part, bcm_probe_part_nvraminfo);
+	if (error) {
+		BCM_PART_ERR(part, "bcm_probe_part_nvraminfo() failed: %d\n",
+		    error);
 		return (error);
-
+	}
 	/* If all else fails, we can manually determine the size (or offset,
 	 * if the device has the PART_EOF_OVERREAD quirk) via cfe_readblk() */
-	if ((error = bcm_probe_part_read(disk, part)))
+	error = bcm_try_probe_part(disk, part, bcm_probe_part_read);
+	if (error) {
+		BCM_PART_ERR(part, "bcm_probe_part_read() failed: %d\n",
+		    error);
 		return (error);
+	}
 
 	return (0);
 }

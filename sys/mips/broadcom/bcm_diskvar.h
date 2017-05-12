@@ -108,6 +108,22 @@ struct bcm_bootinfo {
 	uint32_t		 max_failures;			/**< maximum failed boot count (if BCM_BOOTIMG_FAILSAFE) */
 };
 
+/**
+ * CFE partition probe result.
+ */
+struct bcm_part_probe {
+	off_t	offset;		/**< probed offset, or BCM_DISK_INVALID_OFF */
+	off_t	size;		/**< probed size, or BCM_DISK_INVALID_SIZE */
+	off_t	fs_size;	/**< probed data/filesystem size, or BCM_DISK_INVALID_SIZE */
+};
+
+/**
+ * CFE partition probe function
+ */
+typedef int (bcm_probe_fn)(struct bcm_disk *disk, struct bcm_part *part,
+			       struct bcm_part_probe *result);
+
+
 #define	BCM_DRVNAME_NAND_FLASH	"nflash"	/**< NAND flash driver class */
 #define	BCM_DRVNAME_NOR_FLASH	"flash"		/**< NOR flash driver class */
 

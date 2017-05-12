@@ -138,7 +138,7 @@ struct bcm_part {
 	uint32_t		 flags;		/**< partition flags (see BCM_PART_* flag enums) */
 	off_t			 offset;	/**< partition offset, or BCM_DISK_INVALID_OFF if unknown */
 	off_t			 size;		/**< partition size, or BCM_DISK_INVALID_SIZE if unknown */
-	off_t			 fs_size;	/**< the size of the filesystem, or BCM_DISK_INVALID_SIZE if unknown.
+	off_t			 fs_size;	/**< the size of the filesystem/data, or BCM_DISK_INVALID_SIZE if unknown.
 						     may be used to determine the minimum partition size required */
 
 	LIST_ENTRY(bcm_part) cp_link;
