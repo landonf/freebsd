@@ -958,6 +958,7 @@ bcm_print_disk(struct bcm_disk *disk)
 			BCM_PRINT(true, "optional");
 
 		BCM_PART_PRINT_FLAG(UNINITIALIZED,	"uninitialized");
+		BCM_PART_PRINT_FLAG(IDENTIFIED,		"identified");
 		BCM_PART_PRINT_FLAG(READONLY,		"readonly");
 
 		BCM_PRINT(BCM_PART_HAS_FS_SIZE(part), "used=0x%08jx",
