@@ -32,7 +32,8 @@
 #ifndef	_MIPS_BROADCOM_BCM_DISK_H_
 #define	_MIPS_BROADCOM_BCM_DISK_H_
 
-#include <sys/param.h>
+#include <sys/types.h>
+#include <sys/md5.h>
 #include <sys/queue.h>
 
 #define	BCM_DISK_INVALID_OFF	OFF_MAX
@@ -89,6 +90,7 @@ enum {
 	BCM_PART_UNINITIALIZED		= (1<<2),	/**< vendor-defined partition is uninitialized */
 	BCM_PART_BOOT			= (1<<3),	/**< partition is marked bootable */
 	BCM_PART_NVRAM			= (1<<4),	/**< partition contains NVRAM-formatted data */
+	BCM_PART_IDENTIFIED		= (1<<5),	/**< if partition has a valid fingerprint */
 
 	BCM_PART_PLATFORM_RO		= (BCM_PART_PLATFORM|BCM_PART_READONLY),
 	BCM_PART_PLATFORM_NVRAM		= (BCM_PART_NVRAM|BCM_PART_PLATFORM),
@@ -127,6 +129,51 @@ struct bcm_part	*bcm_parts_match(struct bcm_parts *parts, const char *label,
 
 
 /**
+ * Partition fingerprint.
+ */
+struct bcm_part_ident {
+	uint8_t	fp_md5[MD5_DIGEST_LENGTH];	/**< MD5 hash of partition identification data */
+	off_t	fp_offset;			/**< offset of identification data relative to partition start. */
+	off_t	fp_size;			/**< size of identification data, or BCM_DISK_INVALID_SIZE */
+};
+
+/**
+ * Partition sizing.
+ */
+struct bcm_part_size {
+	off_t	offset;		/**< partition offset, or BCM_DISK_INVALID_OFF if unknown */
+	off_t	size;		/**< partition size, or BCM_DISK_INVALID_SIZE if unknown */
+	off_t	fs_size;	/**< enclosed data/filesystem size, or BCM_DISK_INVALID_SIZE if unknown */
+};
+
+/** Initialize an empty partition size value */
+#define	BCM_PARTSZ_INITIALIZER				\
+	(struct bcm_part_size) {			\
+		.offset = BCM_DISK_INVALID_OFF,		\
+		.size = BCM_DISK_INVALID_SIZE,		\
+		.fs_size = BCM_DISK_INVALID_SIZE,	\
+	}
+
+/** Evaluates to true if @p _psz has a valid offset, false otherwise */
+#define	BCM_PARTSZ_HAS_OFFSET(_psz)	\
+    ((_psz)->offset != BCM_DISK_INVALID_OFF)
+
+/** Evaluates to true if @p _psz has a valid size, false otherwise */
+#define	BCM_PARTSZ_HAS_SIZE(_psz)	\
+    ((_psz)->size != BCM_DISK_INVALID_SIZE)
+    
+/** Evaluates to true if @p _psz has a valid filesystem size, false otherwise */
+#define	BCM_PARTSZ_HAS_FS_SIZE(_psz)	\
+    ((_psz)->fs_size != BCM_DISK_INVALID_SIZE)
+
+/** Return (in the following preferred order) either the filesystem size of
+ *  @p _psz, the partition size, or OFF_MAX */
+#define	BCM_PARTSZ_MAX_FS_SIZE(_psz)				\
+	(BCM_PARTSZ_HAS_FS_SIZE(_psz) ? (_psz)->fs_size :	\
+	 BCM_PARTSZ_HAS_SIZE(_psz) ? (_psz)->size :		\
+	 OFF_MAX)
+
+/**
  * Partition description.
  */
 struct bcm_part {
@@ -140,6 +187,7 @@ struct bcm_part {
 	off_t			 size;		/**< partition size, or BCM_DISK_INVALID_SIZE if unknown */
 	off_t			 fs_size;	/**< the size of the filesystem/data, or BCM_DISK_INVALID_SIZE if unknown.
 						     may be used to determine the minimum partition size required */
+	struct bcm_part_ident	 ident;		/**< partition fingerprint (if BCM_PART_IDENTIFIED partition flag is set) */
 
 	LIST_ENTRY(bcm_part) cp_link;
 };

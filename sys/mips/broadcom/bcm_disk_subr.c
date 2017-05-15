@@ -366,6 +366,169 @@ bcm_parts_match(struct bcm_parts *parts, const char *label,
 	return (NULL);
 }
 
+/**
+ * Update @p part with the given sizing metadata. The given sizing metadata will
+ * first be validated as per bcm_part_validate_sizing().
+ * 
+ * @param disk	The disk containing @p part.
+ * @param part	The partition to be probed.
+ * @param fn	The probe function.
+ * 
+ * @retval 0		success
+ * @retval ENXIO	if the probe returns invalid partition sizing metadata.
+ * @retval ENXIO	if the probe returns partition sizing metadata that
+ *			conflicts with the existing @p part or @p disk metadata.
+ */
+int
+bcm_part_update_sizing(struct bcm_disk *disk, struct bcm_part *part,
+    struct bcm_part_size *psz)
+{
+	int error;
+
+	/* Validate */
+	if ((error = bcm_part_validate_sizing(disk, part, psz)))
+		return (error);
+
+	/* Populate any new values */
+	if (!BCM_PART_HAS_OFFSET(part) && BCM_PARTSZ_HAS_OFFSET(psz))
+		part->offset = psz->offset;
+
+	if (!BCM_PART_HAS_SIZE(part) && BCM_PARTSZ_HAS_SIZE(psz))
+		part->size = psz->size;
+
+	if (!BCM_PART_HAS_FS_SIZE(part) && BCM_PARTSZ_HAS_FS_SIZE(psz))
+		part->fs_size = psz->fs_size;
+
+	return (0);
+}
+
+/**
+ * Validate @p size against @p part and @p disk.
+ * 
+ * Verifies that:
+ *
+ * - Adding the size/fs_size to the offset will not overflow.
+ * - The partition range fits within the media size of @p disk (if known).
+ * - Any new sizing values in @p size match (or are compatible with) existing
+ *   @p part values.
+ * 
+ * @param disk	The disk containing @p part.
+ * @param part	The partition to be probed.
+ * @param fn	The probe function.
+ * 
+ * @retval 0		success
+ * @retval ENXIO	if the probe returns invalid partition sizing metadata.
+ * @retval ENXIO	if the probe returns partition sizing metadata that
+ *			conflicts with the existing @p part or @p disk metadata.
+ */
+int
+bcm_part_validate_sizing(struct bcm_disk *disk, struct bcm_part *part,
+    struct bcm_part_size *psz)
+{
+	off_t maxsize;
+
+	/* Do the sizing values conflict with existing partition data? */
+	if (BCM_PART_HAS_SIZE(part) && BCM_PARTSZ_HAS_SIZE(psz)) {
+		if (part->size != psz->size) {
+			BCM_PART_ERR(part, "probe returned new size %#jx "
+			    "(previous %#jx)\n", (intmax_t)psz->size,
+			    (intmax_t)part->size);
+
+			return (ENXIO);
+		}
+	}
+
+	if (BCM_PART_HAS_FS_SIZE(part) && BCM_PARTSZ_HAS_FS_SIZE(psz)) {
+		if (part->fs_size != psz->fs_size) {
+			BCM_PART_ERR(part, "probe returned new fs_size %#jx "
+			    "(previous %#jx)\n", (intmax_t)psz->fs_size,
+			    (intmax_t)part->fs_size);
+
+			return (ENXIO);
+		}
+	}
+
+	if (BCM_PART_HAS_OFFSET(part) && BCM_PARTSZ_HAS_OFFSET(psz)) {
+		if (part->offset != psz->offset) {
+			BCM_PART_ERR(part, "probe returned new offset %#jx "
+			    "(previous %#jx)\n", (intmax_t)psz->offset,
+			    (intmax_t)part->offset);
+
+			return (ENXIO);
+		}
+	}
+
+	/* Does the base (offset|size|fs_size) fit within the mediasize? */
+	if (BCM_DISK_HAS_SIZE(disk))
+		maxsize = disk->size;
+	else
+		maxsize = OFF_MAX;
+
+	if (BCM_PARTSZ_HAS_SIZE(psz) && psz->size > maxsize) {
+		BCM_PART_ERR(part, "probed size %#jx exceeds media "
+		    "size %#jx\n", (intmax_t)psz->size, (intmax_t)maxsize);
+
+		return (ENXIO);
+	}
+
+	if (BCM_PARTSZ_HAS_FS_SIZE(psz) && psz->fs_size > maxsize) {
+		BCM_PART_ERR(part, "probed size %#jx exceeds media "
+		    "size %#jx\n", (intmax_t)psz->fs_size, (intmax_t)maxsize);
+
+		return (ENXIO);
+	}
+
+	if (BCM_PARTSZ_HAS_OFFSET(psz) && psz->offset > maxsize) {
+		BCM_PART_ERR(part, "probed offset %#jx exceeds media "
+		    "size %#jx\n", (intmax_t)psz->offset, (intmax_t)maxsize);
+
+		return (ENXIO);
+	}
+
+	/* offset+(size|fs_size) must not overflow, and must fit within the
+	 * media size */
+	if (BCM_PARTSZ_HAS_SIZE(psz) && BCM_PARTSZ_HAS_OFFSET(psz)) {
+		/* Check for overflow */
+		if (OFF_MAX - psz->offset < psz->size) {
+			BCM_PART_ERR(part, "probed range %#jx+%#jx invalid\n",
+			    (intmax_t)psz->offset, (intmax_t)psz->size);
+
+			return (ENXIO);
+		}
+
+		/* Verify range */
+		if (psz->offset + psz->size > maxsize) {
+			BCM_PART_ERR(part, "probed range %#jx+%#jx exceeds "
+			    "media size %#jx\n", (intmax_t)psz->offset,
+			    (intmax_t)psz->size, (intmax_t)maxsize);
+
+			return (ENXIO);
+		}
+	}
+
+	if (BCM_PARTSZ_HAS_FS_SIZE(psz) && BCM_PARTSZ_HAS_OFFSET(psz)) {
+		/* Check for overflow */
+		if (OFF_MAX - psz->offset < psz->fs_size) {
+			BCM_PART_ERR(part, "probed fs_range %#jx+%#jx "
+			    "invalid\n", (intmax_t)psz->offset,
+			    (intmax_t)psz->fs_size);
+
+			return (ENXIO);
+		}
+
+		/* Verify range */
+		if (psz->offset + psz->fs_size > maxsize) {
+			BCM_PART_ERR(part, "probed fs_range %#jx+%#jx exceeds "
+			    "media size %#jx\n", (intmax_t)psz->offset,
+			    (intmax_t)psz->fs_size, (intmax_t)maxsize);
+
+			return (ENXIO);
+		}
+	}
+
+	return (0);
+}
+
 
 /**
  * Return the offset+length of @p part, or BCM_DISK_INVALID_OFF if unavailable.
@@ -728,22 +891,29 @@ bcm_print_disk(struct bcm_disk *disk)
 
 	comma = false;
 
-#define	BCM_DISK_PRI_FLG(flag, fmt, ...) do {				\
-	if (BCM_DISK_HAS_FLAGS(disk, flag)) {				\
-		printf("%s" fmt, comma ? ", " : "", ## __VA_ARGS__);	\
+#define	BCM_PRINT(_expr, _fmt, ...) do {				\
+	if (_expr) {							\
+		printf("%s" _fmt, comma ? ", " : "", ## __VA_ARGS__);	\
 		comma = true;						\
 	}								\
 } while (0)
 
+#define	BCM_DISK_PRINT_FLAG(_flag, _fmt, ...)				\
+	BCM_PRINT(BCM_DISK_HAS_FLAGS(disk, BCM_DISK_ ## _flag), _fmt,	\
+	    ## __VA_ARGS__)
+
+#define	BCM_PART_PRINT_FLAG(_flag, _fmt, ...)				\
+	BCM_PRINT(BCM_PART_HAS_FLAGS(part, BCM_PART_ ## _flag), _fmt,	\
+	    ## __VA_ARGS__)
+
 	comma = false;
 	printf("CFE disk %s%u (", disk->drvname, disk->unit);
 
-	BCM_DISK_PRI_FLG(BCM_DISK_BOOTROM,	"romdev");
-	BCM_DISK_PRI_FLG(BCM_DISK_BOOTOS,	"osdev");
-	BCM_DISK_PRI_FLG(BCM_DISK_BYTESWAPPED,	"byteswapped");
+	BCM_DISK_PRINT_FLAG(BOOTROM,		"romdev");
+	BCM_DISK_PRINT_FLAG(BOOTOS,		"osdev");
+	BCM_DISK_PRINT_FLAG(BYTESWAPPED,	"byteswapped");
 
 	printf("):\n");
-#undef	BCM_DISK_PRI_FLG
 
 	/* Sort partitions by offset, ascending */
 	part_idx = 0;
@@ -777,35 +947,30 @@ bcm_print_disk(struct bcm_disk *disk)
 			printf("+%-10s", "unknown");
 
 		/* Print partition flags */
-#define	BCM_PART_PRI_FLG(flag, fmt, ...) do {				\
-	if (BCM_PART_HAS_FLAGS(part, flag)) {				\
-		printf("%s" fmt, comma ? ", " : "", ## __VA_ARGS__);	\
-		comma = true;						\
-	}								\
-} while (0)
 		comma = false;
 		printf(" (");
 
-		BCM_PART_PRI_FLG(BCM_PART_BOOT,		"boot");
-		BCM_PART_PRI_FLG(BCM_PART_NVRAM,	"nvram");
+		BCM_PART_PRINT_FLAG(BOOT,		"boot");
+		BCM_PART_PRINT_FLAG(NVRAM,		"nvram");
+		BCM_PART_PRINT_FLAG(PLATFORM,		"required");
 
-		BCM_PART_PRI_FLG(BCM_PART_PLATFORM,	"required");
 		if (!BCM_PART_HAS_FLAGS(part, BCM_PART_PLATFORM))
-			BCM_PART_PRI_FLG(0x0, "optional");
+			BCM_PRINT(true, "optional");
 
-		BCM_PART_PRI_FLG(BCM_PART_UNINITIALIZED,"uninitialized");
-		BCM_PART_PRI_FLG(BCM_PART_READONLY,	"readonly");
+		BCM_PART_PRINT_FLAG(UNINITIALIZED,	"uninitialized");
+		BCM_PART_PRINT_FLAG(READONLY,		"readonly");
 
-		if (BCM_PART_HAS_FS_SIZE(part)) {
-			BCM_PART_PRI_FLG(0x0, "used=0x%08jx",
-			    (intmax_t)part->fs_size);
-		}
+		BCM_PRINT(BCM_PART_HAS_FS_SIZE(part), "used=0x%08jx",
+		    (intmax_t)part->fs_size);
 
 		printf(")\n");
-#undef	BCM_PART_PRI_FLG
 	}
 
 	free(parts, M_BCM_DISK);
+
+#undef	BCM_DISK_PRINT
+#undef	BCM_DISK_PRINT_FLAG
+#undef	BCM_PART_PRINT_FLAG
 }
 
 /**

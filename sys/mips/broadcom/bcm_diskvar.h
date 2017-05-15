@@ -34,6 +34,7 @@
 
 #include <sys/types.h>
 #include <sys/malloc.h>
+#include <sys/md5.h>
 
 #include "bcm_disk.h"
 
@@ -56,6 +57,11 @@ bool		 bcm_disk_has_devunit(struct bcm_disk *disk,
 		     struct bcm_devunit *devunit);
 
 void		 bcm_part_free(struct bcm_part *part);
+
+int		 bcm_part_update_sizing(struct bcm_disk *disk,
+		     struct bcm_part *part, struct bcm_part_size *psz);
+int		 bcm_part_validate_sizing(struct bcm_disk *disk,
+		     struct bcm_part *part, struct bcm_part_size *psz);
 
 int		 bcm_get_bootinfo(struct bcm_bootinfo *bootinfo);
 
@@ -109,19 +115,40 @@ struct bcm_bootinfo {
 };
 
 /**
- * CFE partition probe result.
+ * CFE partition sizing function.
+ * 
+ * Used to determine the size and/or offset of a CFE partition.
  */
-struct bcm_part_probe {
-	off_t	offset;		/**< probed offset, or BCM_DISK_INVALID_OFF */
-	off_t	size;		/**< probed size, or BCM_DISK_INVALID_SIZE */
-	off_t	fs_size;	/**< probed data/filesystem size, or BCM_DISK_INVALID_SIZE */
-};
+typedef int (bcm_part_size_fn)(struct bcm_disk *disk, struct bcm_part *part,
+				    struct bcm_part_size *size);
 
 /**
- * CFE partition probe function
+ * CFE partition fingerprint function.
+ * 
+ * Produces a fingerprint (and optional sizing information) that may be used to
+ * identify the partition's location on disk when a valid offset is unavailable.
  */
-typedef int (bcm_probe_fn)(struct bcm_disk *disk, struct bcm_part *part,
-			       struct bcm_part_probe *result);
+typedef int (bcm_part_ident_fn)(struct bcm_disk *disk, struct bcm_part *part,
+				    struct bcm_part_ident *ident,
+				    struct bcm_part_size *size);
+
+/**
+ * CFE partition fingerprint function registration.
+ */
+struct bcm_part_ident_info {
+	const char		*name;	/**< human-readable description */
+	bcm_part_type		 type;	/**< applicable partition type */
+	bcm_part_ident_fn	*func;	/**< fingerprint function */
+};
+
+SET_DECLARE(bcm_part_ident_set, struct bcm_part_ident_info);
+
+#define	BCM_PART_IDENT(_name, _type, _func)					\
+	static const struct bcm_part_ident_info _func ## _info = {	\
+		.name	= (_name),					\
+		.func	= (_func),					\
+	};								\
+	DATA_SET(bcm_part_ident_set, _func ## _info)
 
 
 #define	BCM_DRVNAME_NAND_FLASH	"nflash"	/**< NAND flash driver class */
@@ -148,10 +175,22 @@ typedef int (bcm_probe_fn)(struct bcm_disk *disk, struct bcm_part *part,
 #define	BCM_CFE_CIGAM		0x31454643
 #define	BCM_CFE_MAGIC_OFFSET	0x4E0		/**< CFE magic offset */
 
-/* Self-describing compressed CFEZ binary magic */
+/* Self-describing CFE binary magic */
 #define	BCM_CFE_BISZ_OFFSET	0x3E0
 #define	BCM_CFE_BISZ_MAGIC	0x4249535A	/* 'BISZ' */
 #define	BCM_CFE_BISZ_CIGAM	0x5A534942	/* 'BISZ' */
+#define	BCM_CFE_BISZ_MINSIZE	(128*1024)	/**< minimum partition size (128KB) */
+#define	BCM_CFE_BISZ_NOFFS	2
+#define	BCM_CFE_BISZ_ST_IDX	0
+#define	BCM_CFE_BISZ_END_IDX	1
+
+
+struct bcm_cfez_header {
+	uint32_t	magic;		/**< magic (BCM_CFE_BISZ_MAGIC) */
+	uint32_t	txt[BCM_CFE_BISZ_NOFFS];		/**< text section start/end offsets */
+	uint32_t	data[BCM_CFE_BISZ_NOFFS];	/**< data section start/end offsets */
+	uint32_t	bss[BCM_CFE_BISZ_NOFFS];		/**< bss section start/end offsets */
+} __packed;
 
 /* SENTRY5 'config' partition magic (MINIX v1 filesystem, 30 char name limit) */
 #define	BCM_MINIX_OFFSET	0x410
@@ -170,7 +209,8 @@ typedef int (bcm_probe_fn)(struct bcm_disk *disk, struct bcm_part *part,
 #define	BCM_BOOTBLK_OFFSET	472	/**< boot block offset */
 #define	BCM_BOOTBLK_BLKSIZE	512	/**< boot block alignment */
 #define	BCM_BOOTBLK_MAX		16	/**< maximum number of blocks to search */
-#define	BCM_BOOTBLK_MAGIC	((uint64_t)0x43465631424f4f54ULL)
+#define	BCM_BOOTBLK_MAGIC	((uint64_t)0x43465631424F4F54ULL)
+#define	BCM_BOOTBLK_CIGAM	((uint64_t)0x544F4F4231564643ULL)
 
 /* TRX image header */
 #define	BCM_TRX_MAGIC		"HDR0"

@@ -188,10 +188,12 @@ __FBSDID("$FreeBSD$");
  */
 
 #include <sys/param.h>
+#include <sys/endian.h>
 #include <sys/malloc.h>
 #include <sys/kernel.h>
 #include <sys/systm.h>
 
+#include <machine/elf.h>
 #include <machine/_inttypes.h>
 
 #include <dev/cfe/cfe_api.h>
@@ -228,11 +230,9 @@ static int				 bcm_probe_disk(struct bcm_disk *disk);
 static int				 bcm_probe_part(struct bcm_disk *disk,
 					     struct bcm_part *part);
 
-
-
-static bcm_probe_fn			bcm_probe_part_flashinfo;
-static bcm_probe_fn			bcm_probe_part_nvraminfo;
-static bcm_probe_fn			bcm_probe_part_read;
+static bcm_part_size_fn			 bcm_probe_part_flashinfo;
+static bcm_part_size_fn			 bcm_probe_part_nvraminfo;
+static bcm_part_size_fn			 bcm_probe_part_read;
 
 const bool bcm_disk_trace = false;
 
@@ -1113,7 +1113,7 @@ bcm_part_free(struct bcm_part *part)
 
 static int
 bcm_probe_part_flashinfo(struct bcm_disk *disk, struct bcm_part *part,
-    struct bcm_part_probe *result)
+    struct bcm_part_size *result)
 {
 	flash_info_t	fi;
 	int		cerr, rlen;
@@ -1165,7 +1165,7 @@ bcm_probe_part_flashinfo(struct bcm_disk *disk, struct bcm_part *part,
 
 static int
 bcm_probe_part_nvraminfo(struct bcm_disk *disk, struct bcm_part *part,
-    struct bcm_part_probe *result)
+    struct bcm_part_size *result)
 {
 	nvram_info_t	nv;
 	int		cerr, rlen;
@@ -1412,7 +1412,7 @@ bcm_part_readsz_fast(struct bcm_disk *disk, struct bcm_part *part,
  */
 static int
 bcm_probe_part_read(struct bcm_disk *disk, struct bcm_part *part,
-    struct bcm_part_probe *result)
+    struct bcm_part_size *result)
 {
 	off_t	rd_result;
 	int	error;
@@ -1462,136 +1462,110 @@ bcm_probe_part_read(struct bcm_disk *disk, struct bcm_part *part,
 	return (0);
 }
 
-
+/**
+ * Execute the given partition sizing @p fn, and if the result is valid,
+ * update @p part with the probed partition sizing.
+ * 
+ * @param disk	The disk containing @p part.
+ * @param part	The partition to be probed.
+ * @param fn	The probe function.
+ * 
+ * @retval 0		success
+ * @retval ENXIO	if the probe returns invalid partition sizing metadata.
+ * @retval ENXIO	if the probe returns partition sizing metadata that
+ *			conflicts with the existing @p part metadata.
+ */
 static int
-bcm_try_probe_part(struct bcm_disk *disk, struct bcm_part *part,
-    bcm_probe_fn *fn)
+bcm_try_size_part(struct bcm_disk *disk, struct bcm_part *part,
+    bcm_part_size_fn *fn)
 {
-	struct bcm_part_probe	p;
-	off_t			maxsize;
+	struct bcm_part_size	psz;
 	int			error;
 
-	p = (struct bcm_part_probe) {
-		.offset		= BCM_DISK_INVALID_OFF,
-		.size		= BCM_DISK_INVALID_SIZE,
-		.fs_size	= BCM_DISK_INVALID_SIZE
-	};
+	psz = BCM_PARTSZ_INITIALIZER;
 
-	if ((error = fn(disk, part, &p)))
+	/* Probe and update partition sizing */
+	if ((error = fn(disk, part, &psz)))
 		return (error);
 
-	/* Did the probe return a conflicting (offset|size|fs_size) value? */
-	if (BCM_PART_HAS_SIZE(part) && p.size != BCM_DISK_INVALID_SIZE) {
-		if (part->size != p.size) {
-			BCM_PART_ERR(part, "probe returned new size %#jx "
-			    "(previous %#jx)\n", (intmax_t)p.size,
-			    (intmax_t)part->size);
+	if ((error = bcm_part_update_sizing(disk, part, &psz)))
+		return (error);
 
-			return (ENXIO);
-		}
-	}
+	return (0);
+}
 
-	if (BCM_PART_HAS_FS_SIZE(part) && p.fs_size != BCM_DISK_INVALID_SIZE) {
-		if (part->fs_size != p.fs_size) {
-			BCM_PART_ERR(part, "probe returned new fs_size %#jx "
-			    "(previous %#jx)\n", (intmax_t)p.fs_size,
-			    (intmax_t)part->fs_size);
+/**
+ * Perform a CFE-based read of @p len bytes from @p part at @p offset.
+ * 
+ * @param part		The partition to read from.
+ * @param offset	The read offset.
+ * @param outp		Output buffer.
+ * @param len		Number of bytes to be read.
+ * 
+ * @retval 0		success
+ * @retval ENODEV	if the backing CFE device has not been opened.
+ * @retval ENXIO	if the read fails, or fewer than @p len bytes were
+ *			read.
+ */
+static int
+bcm_part_read(struct bcm_part *part, off_t offset, void *outp, size_t len)
+{
+	int cerr;
 
-			return (ENXIO);
-		}
-	}
+	if (part->fd < 0)
+		return (ENODEV);
 
-	if (BCM_PART_HAS_OFFSET(part) && p.offset != BCM_DISK_INVALID_OFF) {
-		if (part->offset != p.offset) {
-			BCM_PART_ERR(part, "probe returned new offset %#jx "
-			    "(previous %#jx)\n", (intmax_t)p.offset,
-			    (intmax_t)part->offset);
+	if (offset > INT64_MAX)
+		return (ENXIO);
 
-			return (ENXIO);
-		}
-	}
+	if (len > INT_MAX)
+		return (ENXIO);
 
-	/* Do the base (offset|size|fs_size) fit within the mediasize? */
-	if (BCM_DISK_HAS_SIZE(disk))
-		maxsize = disk->size;
-	else
-		maxsize = OFF_MAX;
-
-	if (p.size != BCM_DISK_INVALID_SIZE && p.size > maxsize) {
-		BCM_PART_ERR(part, "probed size %#jx exceeds media "
-		    "size %#jx\n", (intmax_t)p.size, (intmax_t)maxsize);
-
+	cerr = cfe_readblk(part->fd, (int64_t)offset, outp, (int)len);
+	if (cerr < 0) {
+		BCM_PART_ERR(part, "cfe_readblk() failed: %d\n", cerr);
 		return (ENXIO);
 	}
 
-	if (p.fs_size != BCM_DISK_INVALID_SIZE && p.fs_size > maxsize) {
-		BCM_PART_ERR(part, "probed size %#jx exceeds media "
-		    "size %#jx\n", (intmax_t)p.fs_size, (intmax_t)maxsize);
-
+	if (cerr != len) {
+		BCM_PART_ERR(part, "cfe_readblk() short read: %d\n", cerr);
 		return (ENXIO);
 	}
 
-	if (p.offset != BCM_DISK_INVALID_OFF && p.offset > maxsize) {
-		BCM_PART_ERR(part, "probed offset %#jx exceeds media "
-		    "size %#jx\n", (intmax_t)p.offset, (intmax_t)maxsize);
+	return (0);
+}
 
-		return (ENXIO);
-	}
+/**
+ * Initialize @p ident with the given offset, size, and bytes to be used
+ * for fingerprinting.
+ * 
+ * @param ident		Identification instance to be initialized.
+ * @param bytes		Bytes to be used when generating the partition
+ *			fingerprint.
+ * @param offset	Offset at which @p bytes were read, relative to the
+ *			partition start.
+ * @param len		The total size of @p bytes.
+ * 
+ * @retval 0		success
+ * @retval non-zero	if initializing @p ident otherwise fails, a regular
+ *			unix error code will be returned.
+ */
+static int
+bcm_part_ident_init(struct bcm_part_ident *ident, void *bytes, off_t offset,
+    off_t len)
+{
+	MD5_CTX ctx;
 
-	/* offset+(size|fs_size) must not overflow, and must fit within the
-	 * media size */
-	if (p.offset != BCM_DISK_INVALID_OFF &&
-	    p.size != BCM_DISK_INVALID_SIZE)
-	{
-		/* Check for overflow */
-		if (OFF_MAX - p.offset < p.size) {
-			BCM_PART_ERR(part, "probed range %#jx+%#jx invalid\n",
-			    (intmax_t)p.offset, (intmax_t)p.size);
+	KASSERT(len > 0 && len != BCM_DISK_INVALID_SIZE, ("invalid length"));
+	KASSERT(offset != BCM_DISK_INVALID_OFF, ("invalid offset"));
+	KASSERT(OFF_MAX - offset >= len, ("offset+len overflow"));
 
-			return (ENXIO);
-		}
+	ident->fp_offset = offset;
+	ident->fp_size = len;
 
-		/* Verify range */
-		if (p.offset + p.size > maxsize) {
-			BCM_PART_ERR(part, "probed range %#jx+%#jx exceeds "
-			    "media size %#jx\n", (intmax_t)p.offset,
-			    (intmax_t)p.size, (intmax_t)maxsize);
-
-			return (ENXIO);
-		}
-	}
-
-	if (p.offset != BCM_DISK_INVALID_OFF &&
-	    p.fs_size != BCM_DISK_INVALID_SIZE)
-	{
-		/* Check for overflow */
-		if (OFF_MAX - p.offset < p.fs_size) {
-			BCM_PART_ERR(part, "probed fs_range %#jx+%#jx "
-			    "invalid\n", (intmax_t)p.offset,
-			    (intmax_t)p.fs_size);
-
-			return (ENXIO);
-		}
-
-		/* Verify range */
-		if (p.offset + p.fs_size > maxsize) {
-			BCM_PART_ERR(part, "probed fs_range %#jx+%#jx exceeds "
-			    "media size %#jx\n", (intmax_t)p.offset,
-			    (intmax_t)p.fs_size, (intmax_t)maxsize);
-
-			return (ENXIO);
-		}
-	}
-
-	/* Populate results */
-	if (!BCM_PART_HAS_OFFSET(part) && p.offset != BCM_DISK_INVALID_OFF)
-		part->offset = p.offset;
-
-	if (!BCM_PART_HAS_SIZE(part) && p.size != BCM_DISK_INVALID_SIZE)
-		part->size = p.size;
-
-	if (!BCM_PART_HAS_FS_SIZE(part) && p.fs_size != BCM_DISK_INVALID_SIZE)
-		part->fs_size = p.fs_size;
+	MD5Init(&ctx);
+	MD5Update(&ctx, bytes, len);
+	MD5Final(ident->fp_md5, &ctx);
 
 	return (0);
 }
@@ -1609,10 +1583,11 @@ bcm_try_probe_part(struct bcm_disk *disk, struct bcm_part *part,
 static int
 bcm_probe_part(struct bcm_disk *disk, struct bcm_part *part)
 {
-	int error;
+	struct bcm_part_ident_info	*idfn, **idfnp;
+	int				 error;
 
 	/* Try to determine offset/size via IOCTL_FLASH_GETINFO */
-	error = bcm_try_probe_part(disk, part, bcm_probe_part_flashinfo);
+	error = bcm_try_size_part(disk, part, bcm_probe_part_flashinfo);
 	if (error) {
 		BCM_PART_ERR(part, "bcm_probe_part_flashinfo() failed: %d\n",
 		    error);
@@ -1620,20 +1595,274 @@ bcm_probe_part(struct bcm_disk *disk, struct bcm_part *part)
 	}
 
 	/* ... IOCTL_NVRAM_GETINFO */
-	error = bcm_try_probe_part(disk, part, bcm_probe_part_nvraminfo);
+	error = bcm_try_size_part(disk, part, bcm_probe_part_nvraminfo);
 	if (error) {
 		BCM_PART_ERR(part, "bcm_probe_part_nvraminfo() failed: %d\n",
 		    error);
 		return (error);
 	}
+
 	/* If all else fails, we can manually determine the size (or offset,
 	 * if the device has the PART_EOF_OVERREAD quirk) via cfe_readblk() */
-	error = bcm_try_probe_part(disk, part, bcm_probe_part_read);
+	error = bcm_try_size_part(disk, part, bcm_probe_part_read);
 	if (error) {
 		BCM_PART_ERR(part, "bcm_probe_part_read() failed: %d\n",
 		    error);
 		return (error);
 	}
 
+	/* Finally, perform partition fingerprinting (if required) */
+	if (BCM_PART_HAS_FLAGS(part, BCM_PART_IDENTIFIED))
+		return (0);
+
+	SET_FOREACH(idfnp, bcm_part_ident_set) {
+		struct bcm_part_size	psz;
+		struct bcm_part_ident	ident;
+
+		idfn = *idfnp;
+		psz = BCM_PARTSZ_INITIALIZER;
+
+		/* Skip non-applicable ident functions */
+		if (idfn->type != part->type)
+			continue;
+
+		/* Try the given identification function */
+		error = idfn->func(disk, part, &ident, &psz);
+
+		BCM_PART_TRACE(part, "%s: %d\n", idfn->name, error);
+		if (error)
+			continue;
+
+		/* Identification succeeded -- try applying any updated sizing
+		 * (which may fail) first */
+		if ((error = bcm_part_update_sizing(disk, part, &psz)))
+			return (error);
+
+		/* Update identification data */
+		part->ident = ident;
+		part->flags |= BCM_PART_IDENTIFIED;
+		break;
+	}
+
 	return (0);
 }
+
+/* CFE partition identification */
+static int
+bcm_part_ident_cfe(struct bcm_disk *disk, struct bcm_part *part,
+    struct bcm_part_ident *ident, struct bcm_part_size *size)
+{
+	uint32_t	magic[2];
+	off_t		offset;
+	int		error;
+
+	offset = BCM_CFE_MAGIC_OFFSET;
+	if ((error = bcm_part_read(part, offset, magic, sizeof(magic))))
+		return (error);
+
+	switch (magic[0]) {
+	case BCM_CFE_MAGIC:
+		/* Native endian */
+		if (magic[1] != BCM_CFE_MAGIC)
+			return (ENXIO);
+
+		break;
+
+	case BCM_CFE_CIGAM:
+		/* Byte-swapped */
+		// TODO: BCM_DISK_BYTESWAPPED ?
+		if (magic[1] != BCM_CFE_CIGAM)
+			return (ENXIO);
+
+		break;
+
+	default:
+		/* Unrecognized */
+		return (ENXIO);
+	}
+
+	return (bcm_part_ident_init(ident, magic, offset, sizeof(magic)));
+}
+
+BCM_PART_IDENT("CFE", BCM_PART_TYPE_BOOT, bcm_part_ident_cfe);
+
+
+/* CFE self-describing binary identification */
+static int
+bcm_part_ident_cfez(struct bcm_disk *disk, struct bcm_part *part,
+    struct bcm_part_ident *ident, struct bcm_part_size *size)
+{
+	struct bcm_cfez_header	hdr;
+	off_t			offset;
+	bool			bswap;
+	uint32_t		start, end;
+	off_t			fs_size, part_size;
+	int			error;
+
+	offset = BCM_CFE_BISZ_OFFSET;
+	if ((error = bcm_part_read(part, offset, &hdr, sizeof(hdr))))
+		return (error);
+
+	switch (hdr.magic) {
+	case BCM_CFE_BISZ_MAGIC:
+		/* Native endian */
+		bswap = false;
+		break;
+
+	case BCM_CFE_BISZ_CIGAM:
+		/* Byte-swapped */
+		// TODO: BCM_DISK_BYTESWAPPED ?
+		bswap = true;
+		break;
+
+	default:
+		/* Unrecognized */
+		return (ENXIO);
+	}
+
+	/* Populate our ident data before performing byte swapping */
+	if ((error = bcm_part_ident_init(ident, &hdr, offset, sizeof(hdr))))
+		return (error);
+
+	/* Swap all offsets */
+	if (bswap) {
+		KASSERT(
+		    nitems(hdr.txt) == BCM_CFE_BISZ_NOFFS &&
+		    nitems(hdr.data) == BCM_CFE_BISZ_NOFFS &&
+		    nitems(hdr.bss) == BCM_CFE_BISZ_NOFFS,
+		    ("invalid offset array size"));
+
+		for (size_t i = 0; i < BCM_CFE_BISZ_NOFFS; i++) {
+			hdr.txt[i] = bswap32(hdr.txt[i]);
+			hdr.data[i] = bswap32(hdr.data[i]);
+			hdr.bss[i] = bswap32(hdr.bss[i]);
+		}
+	}
+
+	/* Determine the binary size */
+	start = hdr.txt[BCM_CFE_BISZ_ST_IDX];
+	end = hdr.data[BCM_CFE_BISZ_END_IDX];
+
+#if UINT32_MAX > OFF_MAX
+	if (end <= start || start - end > OFF_MAX) {
+#else
+	if (end <= start) {
+#endif
+		BCM_PART_ERR(part, "invalid start offset %#" PRIx32 " relative "
+		    "to end offset %#" PRIx32 "\n", start, end);
+		return (ENXIO);
+	}
+
+	fs_size = (off_t)(end - start);
+
+	/*
+	 * Determine the enclosing partition size.
+	 * 
+	 * CFE rounds the binary size up to the nearest power of two to
+	 * determine the total partition size (with a minimum size of 128KB).
+	 */
+	if (fs_size <= BCM_CFE_BISZ_MINSIZE) {
+		part_size = BCM_CFE_BISZ_MINSIZE;
+	} else {
+		/* Round up to the next power of two; from the public domain
+		 * "Bit Twiddling Hacks" */
+		part_size = fs_size;
+
+		KASSERT(part_size > 0, ("zero-length size"));
+		part_size--;
+		part_size |= part_size >> 1;
+		part_size |= part_size >> 2;
+		part_size |= part_size >> 4;
+		part_size |= part_size >> 8;
+		part_size |= part_size >> 16;
+		part_size++;
+	}
+
+	BCM_PART_TRACE(part, "size=%#jx fs_size=%#jx\n", (intmax_t)part_size,
+	    (intmax_t)fs_size);
+
+	size->fs_size = fs_size;
+	size->size = part_size;
+
+	return (0);
+}
+
+BCM_PART_IDENT("CFEZ", BCM_PART_TYPE_BOOT, bcm_part_ident_cfez);
+
+
+/* OS partition identification */
+static int
+bcm_part_ident_os(struct bcm_disk *disk, struct bcm_part *part,
+    struct bcm_part_ident *ident, struct bcm_part_size *size)
+{
+	off_t	offset;
+	int	error;
+	union {
+		Elf_Ehdr	 elf;
+		uint8_t		 gzip[3];
+	} hdr;
+
+	offset = 0x0;
+	if ((error = bcm_part_read(part, offset, &hdr, sizeof(hdr))))
+		return (error);
+
+	/* Look for an ELF bootloader */
+	if (IS_ELF(hdr.elf)) {
+		BCM_PART_TRACE(part, "ELF bootloader at %#jx\n",
+		    (intmax_t)offset);
+
+		return (bcm_part_ident_init(ident, &hdr.elf, offset,
+		    sizeof(hdr.elf)));
+	}
+
+	/* Look for a GZIP-compressed bootloader */
+	if (hdr.gzip[0] == BCM_GZIP_MAGIC0 && hdr.gzip[1] == BCM_GZIP_MAGIC1 &&
+	    hdr.gzip[2] == BCM_GZIP_DEFLATE)
+	{
+		BCM_PART_TRACE(part, "GZIP-compressed loader at %#jx\n",
+		    (intmax_t)offset);
+
+		return (bcm_part_ident_init(ident, &hdr.gzip, offset,
+		    sizeof(hdr.gzip)));
+	}
+
+	/* Scan for a boot block */
+	for (size_t i = 0; i < BCM_BOOTBLK_MAX; i++ ) {
+		uint64_t	magic;
+		off_t		blkoff;
+
+		blkoff = (BCM_BOOTBLK_BLKSIZE * i) + BCM_BOOTBLK_OFFSET;
+		if (OFF_MAX - blkoff <= offset)
+			break;
+
+		blkoff += offset;
+
+		error = bcm_part_read(part, blkoff, &magic, sizeof(magic));
+		if (error);
+			return (error);
+
+		switch (magic) {
+		case BCM_BOOTBLK_CIGAM:
+			/* Found (byte swapped) */
+			// TODO: BCM_DISK_BYTESWAPPED ?
+			break;
+		case BCM_BOOTBLK_MAGIC:
+			/* Found (native endian) */
+			break;
+		default:
+			/* Check next boot block offset */
+			continue;
+		}
+
+		/* Found boot block */
+		BCM_PART_TRACE(part, "boot block at %#jx\n", (intmax_t)blkoff);
+		return (bcm_part_ident_init(ident, &magic, blkoff,
+		    sizeof(magic)));
+	}
+
+	/* No boot block found */
+	return (ENXIO);
+}
+
+BCM_PART_IDENT("OS", BCM_PART_TYPE_OS, bcm_part_ident_os);
+
