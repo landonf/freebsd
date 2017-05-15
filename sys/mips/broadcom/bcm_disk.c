@@ -232,7 +232,7 @@ static int				 bcm_probe_part(struct bcm_disk *disk,
 
 static bcm_part_size_fn			 bcm_probe_part_flashinfo;
 static bcm_part_size_fn			 bcm_probe_part_nvraminfo;
-static bcm_part_size_fn			 bcm_probe_part_read;
+static bcm_part_size_fn			 bcm_probe_part_readsz;
 
 const bool bcm_disk_trace = false;
 
@@ -1411,7 +1411,7 @@ bcm_part_readsz_fast(struct bcm_disk *disk, struct bcm_part *part,
  * driver has the PART_EOF_OVERREAD quirk).
  */
 static int
-bcm_probe_part_read(struct bcm_disk *disk, struct bcm_part *part,
+bcm_probe_part_readsz(struct bcm_disk *disk, struct bcm_part *part,
     struct bcm_part_size *result)
 {
 	off_t	rd_result;
@@ -1604,9 +1604,9 @@ bcm_probe_part(struct bcm_disk *disk, struct bcm_part *part)
 
 	/* If all else fails, we can manually determine the size (or offset,
 	 * if the device has the PART_EOF_OVERREAD quirk) via cfe_readblk() */
-	error = bcm_try_size_part(disk, part, bcm_probe_part_read);
+	error = bcm_try_size_part(disk, part, bcm_probe_part_readsz);
 	if (error) {
-		BCM_PART_ERR(part, "bcm_probe_part_read() failed: %d\n",
+		BCM_PART_ERR(part, "bcm_probe_part_readsz() failed: %d\n",
 		    error);
 		return (error);
 	}
