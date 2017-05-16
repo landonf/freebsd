@@ -1925,7 +1925,6 @@ bcm_part_ident_nvram_tlv(struct bcm_disk *disk, struct bcm_part *part,
 		return (bcm_part_ident_init(ident, bytes, offset, sizeof(bytes),
 		    false));
 	default:
-		printf("tag=%#hhx\n", bytes[0]);
 		return (ENXIO);
 	}
 }
