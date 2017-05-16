@@ -202,6 +202,14 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/cores/chipc/chipcreg.h>
 
+#include <dev/bhnd/nvram/bhnd_nvram_io.h>
+
+#include <dev/bhnd/nvram/bhnd_nvram.h>
+#include <dev/bhnd/nvram/bhnd_nvram_data_bcmvar.h>
+#include <dev/bhnd/nvram/bhnd_nvram_data_bcmreg.h>
+
+#include <dev/bhnd/nvram/bhnd_nvram_data_tlvreg.h>
+
 #include "bcm_machdep.h"
 
 #include "bcm_diskvar.h"
@@ -234,7 +242,7 @@ static bcm_part_size_fn			 bcm_probe_part_flashinfo;
 static bcm_part_size_fn			 bcm_probe_part_nvraminfo;
 static bcm_part_size_fn			 bcm_probe_part_readsz;
 
-const bool bcm_disk_trace = false;
+const bool bcm_disk_trace = true;
 
 /**
  * Known CFE driver class names.
@@ -1869,3 +1877,57 @@ bcm_part_ident_os(struct bcm_disk *disk, struct bcm_part *part,
 
 BCM_PART_IDENT("OS", BCM_PART_TYPE_OS, bcm_part_ident_os);
 
+/* BCM-NVRAM partition identification */
+static int
+bcm_part_ident_nvram(struct bcm_disk *disk, struct bcm_part *part,
+    struct bcm_part_ident *ident, struct bcm_part_size *size)
+{
+	struct bhnd_nvram_bcmhdr	hdr;
+	off_t				offset;
+	int				error;
+
+
+	offset = 0x0;
+
+	if ((error = bcm_part_read(part, offset, &hdr, sizeof(hdr))))
+		return (error);
+
+	if (le32toh(hdr.magic) != BCM_NVRAM_MAGIC)
+		return (ENXIO);
+
+	/* Provide NVRAM size */
+	size->fs_size = le32toh(hdr.size);
+
+	return (bcm_part_ident_init(ident, &hdr, offset, sizeof(hdr), false));
+}
+
+BCM_PART_IDENT("NVRAM", BCM_PART_TYPE_NVRAM, bcm_part_ident_nvram);
+
+/* WGT634U TLV-NVRAM partition identification */
+static int
+bcm_part_ident_nvram_tlv(struct bcm_disk *disk, struct bcm_part *part,
+    struct bcm_part_ident *ident, struct bcm_part_size *size)
+{
+	uint8_t	bytes[32];
+	off_t	offset;
+	int	error;
+
+
+	offset = 0x0;
+
+	if ((error = bcm_part_read(part, offset, bytes, sizeof(bytes))))
+		return (error);
+
+	// XXX TODO: Use bhnd_nvram_tlv_probe
+	switch (bytes[0]) {
+	case NVRAM_TLV_TYPE_END:
+	case NVRAM_TLV_TYPE_ENV:
+		return (bcm_part_ident_init(ident, bytes, offset, sizeof(bytes),
+		    false));
+	default:
+		printf("tag=%#hhx\n", bytes[0]);
+		return (ENXIO);
+	}
+}
+
+BCM_PART_IDENT("NVRAM_TLV", BCM_PART_TYPE_NVRAM, bcm_part_ident_nvram_tlv);
