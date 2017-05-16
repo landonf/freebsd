@@ -951,6 +951,8 @@ g_cfe_probe_os(struct g_cfe_taste_io *io, off_t block)
 	}
 
 	/* Scan for a boot block */
+	// XXX TODO: remove
+#if 0
 	for (size_t i = 0; i < BCM_BOOTBLK_MAX; i++ ) {
 		uint64_t	magic;
 		off_t		boff;
@@ -967,6 +969,7 @@ g_cfe_probe_os(struct g_cfe_taste_io *io, off_t block)
 		if (magic == BCM_BOOTBLK_MAGIC)
 			return (os);
 	}
+#endif
 
 	G_CFE_DBG_PART(PROBE, os, "unrecognized OS partition at offset %#jx\n",
 	    (intmax_t)block);

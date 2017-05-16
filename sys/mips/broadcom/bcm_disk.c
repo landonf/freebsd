@@ -1545,6 +1545,8 @@ bcm_part_read(struct bcm_part *part, off_t offset, void *outp, size_t len)
  * @param offset	Offset at which @p bytes were read, relative to the
  *			partition start.
  * @param len		The total size of @p bytes.
+ * @param byteswap	If target-endian data structures are not in host byte
+ *			order.
  * 
  * @retval 0		success
  * @retval non-zero	if initializing @p ident otherwise fails, a regular
@@ -1552,7 +1554,7 @@ bcm_part_read(struct bcm_part *part, off_t offset, void *outp, size_t len)
  */
 static int
 bcm_part_ident_init(struct bcm_part_ident *ident, void *bytes, off_t offset,
-    off_t len)
+    off_t len, bool byteswap)
 {
 	MD5_CTX ctx;
 
@@ -1611,10 +1613,7 @@ bcm_probe_part(struct bcm_disk *disk, struct bcm_part *part)
 		return (error);
 	}
 
-	/* Finally, perform partition fingerprinting (if required) */
-	if (BCM_PART_HAS_FLAGS(part, BCM_PART_IDENTIFIED))
-		return (0);
-
+	/* Finally, perform partition identification/fingerprinting */
 	SET_FOREACH(idfnp, bcm_part_ident_set) {
 		struct bcm_part_size	psz;
 		struct bcm_part_ident	ident;
@@ -1622,14 +1621,19 @@ bcm_probe_part(struct bcm_disk *disk, struct bcm_part *part)
 		idfn = *idfnp;
 		psz = BCM_PARTSZ_INITIALIZER;
 
-		/* Skip non-applicable ident functions */
+		/* Already identified? */
+		if (BCM_PART_HAS_FLAGS(part, BCM_PART_IDENTIFIED))
+			break;
+
+		/* Skip inapplicable ident functions */
 		if (idfn->type != part->type)
 			continue;
 
 		/* Try the given identification function */
 		error = idfn->func(disk, part, &ident, &psz);
 
-		BCM_PART_TRACE(part, "%s: %d\n", idfn->name, error);
+		BCM_PART_TRACE(part, "identified %s partition: %d\n",
+		    idfn->name, error);
 		if (error)
 			continue;
 
@@ -1641,7 +1645,6 @@ bcm_probe_part(struct bcm_disk *disk, struct bcm_part *part)
 		/* Update identification data */
 		part->ident = ident;
 		part->flags |= BCM_PART_IDENTIFIED;
-		break;
 	}
 
 	return (0);
@@ -1654,6 +1657,7 @@ bcm_part_ident_cfe(struct bcm_disk *disk, struct bcm_part *part,
 {
 	uint32_t	magic[2];
 	off_t		offset;
+	bool		bswap;
 	int		error;
 
 	offset = BCM_CFE_MAGIC_OFFSET;
@@ -1662,18 +1666,19 @@ bcm_part_ident_cfe(struct bcm_disk *disk, struct bcm_part *part,
 
 	switch (magic[0]) {
 	case BCM_CFE_MAGIC:
-		/* Native endian */
 		if (magic[1] != BCM_CFE_MAGIC)
 			return (ENXIO);
 
+		/* Native endian */
+		bswap = false;
 		break;
 
 	case BCM_CFE_CIGAM:
-		/* Byte-swapped */
-		// TODO: BCM_DISK_BYTESWAPPED ?
 		if (magic[1] != BCM_CFE_CIGAM)
 			return (ENXIO);
 
+		/* Byte-swapped */
+		bswap = true;
 		break;
 
 	default:
@@ -1681,7 +1686,8 @@ bcm_part_ident_cfe(struct bcm_disk *disk, struct bcm_part *part,
 		return (ENXIO);
 	}
 
-	return (bcm_part_ident_init(ident, magic, offset, sizeof(magic)));
+	error = bcm_part_ident_init(ident, magic, offset, sizeof(magic), bswap);
+	return (error);
 }
 
 BCM_PART_IDENT("CFE", BCM_PART_TYPE_BOOT, bcm_part_ident_cfe);
@@ -1711,7 +1717,6 @@ bcm_part_ident_cfez(struct bcm_disk *disk, struct bcm_part *part,
 
 	case BCM_CFE_BISZ_CIGAM:
 		/* Byte-swapped */
-		// TODO: BCM_DISK_BYTESWAPPED ?
 		bswap = true;
 		break;
 
@@ -1721,7 +1726,8 @@ bcm_part_ident_cfez(struct bcm_disk *disk, struct bcm_part *part,
 	}
 
 	/* Populate our ident data before performing byte swapping */
-	if ((error = bcm_part_ident_init(ident, &hdr, offset, sizeof(hdr))))
+	error = bcm_part_ident_init(ident, &hdr, offset, sizeof(hdr), bswap);
+	if (error)
 		return (error);
 
 	/* Swap all offsets */
@@ -1812,7 +1818,7 @@ bcm_part_ident_os(struct bcm_disk *disk, struct bcm_part *part,
 		    (intmax_t)offset);
 
 		return (bcm_part_ident_init(ident, &hdr.elf, offset,
-		    sizeof(hdr.elf)));
+		    sizeof(hdr.elf), false));
 	}
 
 	/* Look for a GZIP-compressed bootloader */
@@ -1823,31 +1829,27 @@ bcm_part_ident_os(struct bcm_disk *disk, struct bcm_part *part,
 		    (intmax_t)offset);
 
 		return (bcm_part_ident_init(ident, &hdr.gzip, offset,
-		    sizeof(hdr.gzip)));
+		    sizeof(hdr.gzip), false));
 	}
 
 	/* Scan for a boot block */
 	for (size_t i = 0; i < BCM_BOOTBLK_MAX; i++ ) {
-		uint64_t	magic;
-		off_t		blkoff;
+		struct bcm_cfe_bootblk	bootblk;
+		bool			bswap;
 
-		blkoff = (BCM_BOOTBLK_BLKSIZE * i) + BCM_BOOTBLK_OFFSET;
-		if (OFF_MAX - blkoff <= offset)
-			break;
-
-		blkoff += offset;
-
-		error = bcm_part_read(part, blkoff, &magic, sizeof(magic));
+		offset = sizeof(bootblk) * i;
+		error = bcm_part_read(part, offset, &bootblk, sizeof(bootblk));
 		if (error);
 			return (error);
 
-		switch (magic) {
+		switch (bootblk.magic) {
 		case BCM_BOOTBLK_CIGAM:
 			/* Found (byte swapped) */
-			// TODO: BCM_DISK_BYTESWAPPED ?
+			bswap = true;
 			break;
 		case BCM_BOOTBLK_MAGIC:
 			/* Found (native endian) */
+			bswap = false;
 			break;
 		default:
 			/* Check next boot block offset */
@@ -1855,9 +1857,10 @@ bcm_part_ident_os(struct bcm_disk *disk, struct bcm_part *part,
 		}
 
 		/* Found boot block */
-		BCM_PART_TRACE(part, "boot block at %#jx\n", (intmax_t)blkoff);
-		return (bcm_part_ident_init(ident, &magic, blkoff,
-		    sizeof(magic)));
+		BCM_PART_TRACE(part, "boot block at %#jx\n", (intmax_t)offset);
+
+		return (bcm_part_ident_init(ident, &bootblk, offset,
+		    sizeof(bootblk), bswap));
 	}
 
 	/* No boot block found */

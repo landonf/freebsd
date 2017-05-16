@@ -135,6 +135,7 @@ struct bcm_part_ident {
 	uint8_t	fp_md5[MD5_DIGEST_LENGTH];	/**< MD5 hash of partition identification data */
 	off_t	fp_offset;			/**< offset of identification data relative to partition start. */
 	off_t	fp_size;			/**< size of identification data, or BCM_DISK_INVALID_SIZE */
+	bool	fp_byteswap;			/**< true if target-endian data structures are not in host byte order */
 };
 
 /**

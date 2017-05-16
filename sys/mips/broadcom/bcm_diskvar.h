@@ -206,11 +206,22 @@ struct bcm_cfez_header {
 #define	BCM_BZIP2_MAGIC_LEN	2
 
 /* CFE bootblock magic */
-#define	BCM_BOOTBLK_OFFSET	472	/**< boot block offset */
-#define	BCM_BOOTBLK_BLKSIZE	512	/**< boot block alignment */
-#define	BCM_BOOTBLK_MAX		16	/**< maximum number of blocks to search */
+#define	BCM_BOOTBLK_MAX		16	/**< maximum number of boot block offsets to search */
 #define	BCM_BOOTBLK_MAGIC	((uint64_t)0x43465631424F4F54ULL)
 #define	BCM_BOOTBLK_CIGAM	((uint64_t)0x544F4F4231564643ULL)
+
+struct bcm_cfe_bootblk {
+	uint8_t		disklabel[472];	/**< OS-managed partition map */
+	uint64_t	magic;		/**< magic */
+	uint8_t		flags;		/**< flags (unused, zero-initialized) */
+	uint16_t	reserved0;	/**< reserved for future use (zero-initialized) */
+	uint8_t		version;	/**< version */
+	uint64_t	ldr_offset;	/**< boot loader offset */
+	uint32_t	ldr_checksum;	/**< boot loader checksum */
+	uint32_t	ldr_size;	/**< boot loader size */
+	uint32_t	reserved1;	/**< reserved for future use (zero-initialized) */
+	uint32_t	arch;		/**< arch-specific information (unused, zero-initialized) */
+} __packed;
 
 /* TRX image header */
 #define	BCM_TRX_MAGIC		"HDR0"
