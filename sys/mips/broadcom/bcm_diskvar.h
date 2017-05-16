@@ -143,9 +143,10 @@ struct bcm_part_ident_info {
 
 SET_DECLARE(bcm_part_ident_set, struct bcm_part_ident_info);
 
-#define	BCM_PART_IDENT(_name, _type, _func)					\
+#define	BCM_PART_IDENT(_name, _type, _func)				\
 	static const struct bcm_part_ident_info _func ## _info = {	\
 		.name	= (_name),					\
+		.type	= (_type),					\
 		.func	= (_func),					\
 	};								\
 	DATA_SET(bcm_part_ident_set, _func ## _info)
