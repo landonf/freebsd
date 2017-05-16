@@ -74,6 +74,12 @@ kv_lookup(const struct kv_name *kv, size_t kv_count, uint32_t key)
 	return bad;
 }
 
+static void
+print_bin(void *data, uint32_t length)
+{
+	write(STDOUT_FILENO, data, length);
+}
+
 /*
  * 128-bit integer augments to standard values. On i386 this
  * doesn't exist, so we use 64-bit values. The 128-bit counters
@@ -113,7 +119,7 @@ uint128_to_str(uint128_t u, char *buf, size_t buflen)
 	return end;
 }
 
-/* "fMissing" from endian.h */
+/* "Missing" from endian.h */
 static __inline uint64_t
 le48dec(const void *pp)
 {
@@ -324,6 +330,47 @@ print_intel_temp_stats(void *buf, uint32_t size __unused)
 	printf("Estimated Temperature Offset:   %ju C/K\n", (uintmax_t)temp->est_offset);
 }
 
+/*
+ * Format from Table 22, section 5.7 IO Command Latency Statistics.
+ * Read and write stats pages have identical encoding.
+ */
+static void
+print_intel_read_write_lat_log(void *buf, uint32_t size __unused)
+{
+	const char *walker = buf;
+	int i;
+
+	printf("Major:                         %d\n", le16dec(walker + 0));
+	printf("Minor:                         %d\n", le16dec(walker + 2));
+	for (i = 0; i < 32; i++)
+		printf("%4dus-%4dus:                 %ju\n", i * 32, (i + 1) * 32, (uintmax_t)le32dec(walker + 4 + i * 4));
+	for (i = 1; i < 32; i++)
+		printf("%4dms-%4dms:                 %ju\n", i, i + 1, (uintmax_t)le32dec(walker + 132 + i * 4));
+	for (i = 1; i < 32; i++)
+		printf("%4dms-%4dms:                 %ju\n", i * 32, (i + 1) * 32, (uintmax_t)le32dec(walker + 256 + i * 4));
+}
+
+static void
+print_intel_read_lat_log(void *buf, uint32_t size)
+{
+
+	printf("Intel Read Latency Log\n");
+	printf("======================\n");
+	print_intel_read_write_lat_log(buf, size);
+}
+
+static void
+print_intel_write_lat_log(void *buf, uint32_t size)
+{
+
+	printf("Intel Write Latency Log\n");
+	printf("=======================\n");
+	print_intel_read_write_lat_log(buf, size);
+}
+
+/*
+ * Table 19. 5.4 SMART Attributes. Samsung also implements this and some extra data not documented.
+ */
 static void
 print_intel_add_smart(void *buf, uint32_t size __unused)
 {
@@ -667,13 +714,13 @@ print_hgst_info_temp_history(void *buf, uint16_t subtype __unused, uint8_t res _
 	printf("  %-30s: %d C\n", "Minimum Temperature", *walker++);
 	min = le32dec(walker);
 	walker += 4;
-	printf("  %-30s: %d:%02d:00\n", "Max Temperture Time", min / 60, min % 60);
+	printf("  %-30s: %d:%02d:00\n", "Max Temperature Time", min / 60, min % 60);
 	min = le32dec(walker);
 	walker += 4;
-	printf("  %-30s: %d:%02d:00\n", "Over Temperture Duration", min / 60, min % 60);
+	printf("  %-30s: %d:%02d:00\n", "Over Temperature Duration", min / 60, min % 60);
 	min = le32dec(walker);
 	walker += 4;
-	printf("  %-30s: %d:%02d:00\n", "Min Temperture Time", min / 60, min % 60);
+	printf("  %-30s: %d:%02d:00\n", "Min Temperature Time", min / 60, min % 60);
 }
 
 static void
@@ -788,28 +835,39 @@ print_hgst_info_log(void *buf, uint32_t size __unused)
 /*
  * Table of log page printer / sizing.
  *
- * This includes Intel specific pages that are widely implemented. Not
- * sure how best to switch between different vendors.
+ * This includes Intel specific pages that are widely implemented.
+ * Make sure you keep all the pages of one vendor together so -v help
+ * lists all the vendors pages.
  */
 static struct logpage_function {
 	uint8_t		log_page;
+	const char     *vendor;
+	const char     *name;
 	print_fn_t	print_fn;
 	size_t		size;
 } logfuncs[] = {
-	{NVME_LOG_ERROR,		print_log_error,
-	 0},
-	{NVME_LOG_HEALTH_INFORMATION,	print_log_health,
-	 sizeof(struct nvme_health_information_page)},
-	{NVME_LOG_FIRMWARE_SLOT,	print_log_firmware,
-	 sizeof(struct nvme_firmware_page)},
-	{INTEL_LOG_TEMP_STATS,		print_intel_temp_stats,
-	 sizeof(struct intel_log_temp_stats)},
-	{INTEL_LOG_ADD_SMART,		print_intel_add_smart,
-	 DEFAULT_SIZE},
-	{HGST_INFO_LOG,			print_hgst_info_log,
-	 DEFAULT_SIZE},
-	{0,				NULL,
-	 0},
+	{NVME_LOG_ERROR,		NULL,	"Drive Error Log",
+	 print_log_error,		0},
+	{NVME_LOG_HEALTH_INFORMATION,	NULL,	"Health/SMART Data",
+	 print_log_health,		sizeof(struct nvme_health_information_page)},
+	{NVME_LOG_FIRMWARE_SLOT,	NULL,	"Firmware Information",
+	 print_log_firmware,		sizeof(struct nvme_firmware_page)},
+	{HGST_INFO_LOG,			"hgst",	"Detailed Health/SMART",
+	 print_hgst_info_log,		DEFAULT_SIZE},
+	{HGST_INFO_LOG,			"wds",	"Detailed Health/SMART",
+	 print_hgst_info_log,		DEFAULT_SIZE},
+	{INTEL_LOG_TEMP_STATS,		"intel", "Temperature Stats",
+	 print_intel_temp_stats,	sizeof(struct intel_log_temp_stats)},
+	{INTEL_LOG_READ_LAT_LOG,	"intel", "Read Latencies",
+	 print_intel_read_lat_log,	DEFAULT_SIZE},
+	{INTEL_LOG_WRITE_LAT_LOG,	"intel", "Write Latencies",
+	 print_intel_write_lat_log,	DEFAULT_SIZE},
+	{INTEL_LOG_ADD_SMART,		"intel", "Extra Health/SMART Data",
+	 print_intel_add_smart,		DEFAULT_SIZE},
+	{INTEL_LOG_ADD_SMART,		"samsung", "Extra Health/SMART Data",
+	 print_intel_add_smart,		DEFAULT_SIZE},
+
+	{0, NULL, NULL, NULL, 0},
 };
 
 static void
@@ -820,23 +878,47 @@ logpage_usage(void)
 	exit(1);
 }
 
+static void
+logpage_help(void)
+{
+	struct logpage_function		*f;
+	const char 			*v;
+
+	fprintf(stderr, "\n");
+	fprintf(stderr, "%-8s %-10s %s\n", "Page", "Vendor","Page Name");
+	fprintf(stderr, "-------- ---------- ----------\n");
+	for (f = logfuncs; f->log_page > 0; f++) {
+		v = f->vendor == NULL ? "-" : f->vendor;
+		fprintf(stderr, "0x%02x     %-10s %s\n", f->log_page, v, f->name);
+	}
+
+	exit(1);
+}
+
 void
 logpage(int argc, char *argv[])
 {
 	int				fd, nsid;
 	int				log_page = 0, pageflag = false;
-	int				hexflag = false, ns_specified;
+	int				binflag = false, hexflag = false, ns_specified;
 	char				ch, *p;
 	char				cname[64];
 	uint32_t			size;
 	void				*buf;
+	const char			*vendor = NULL;
 	struct logpage_function		*f;
 	struct nvme_controller_data	cdata;
 	print_fn_t			print_fn;
 
-	while ((ch = getopt(argc, argv, "p:x")) != -1) {
+	while ((ch = getopt(argc, argv, "bp:xv:")) != -1) {
 		switch (ch) {
+		case 'b':
+			binflag = true;
+			break;
 		case 'p':
+			if (strcmp(optarg, "help") == 0)
+				logpage_help();
+
 			/* TODO: Add human-readable ASCII page IDs */
 			log_page = strtol(optarg, &p, 0);
 			if (p != NULL && *p != '\0') {
@@ -849,6 +931,11 @@ logpage(int argc, char *argv[])
 			break;
 		case 'x':
 			hexflag = true;
+			break;
+		case 'v':
+			if (strcmp(optarg, "help") == 0)
+				logpage_help();
+			vendor = optarg;
 			break;
 		}
 	}
@@ -891,20 +978,25 @@ logpage(int argc, char *argv[])
 
 	print_fn = print_hex;
 	size = DEFAULT_SIZE;
-	if (!hexflag) {
+	if (binflag)
+		print_fn = print_bin;
+	if (!binflag && !hexflag) {
 		/*
-		 * See if there is a pretty print function for the
-		 *  specified log page.  If one isn't found, we
-		 *  just revert to the default (print_hex).
+		 * See if there is a pretty print function for the specified log
+		 * page.  If one isn't found, we just revert to the default
+		 * (print_hex). If there was a vendor specified bt the user, and
+		 * the page is vendor specific, don't match the print function
+		 * unless the vendors match.
 		 */
-		f = logfuncs;
-		while (f->log_page > 0) {
-			if (log_page == f->log_page) {
-				print_fn = f->print_fn;
-				size = f->size;
-				break;
-			}
-			f++;
+		for (f = logfuncs; f->log_page > 0; f++) {
+			if (f->vendor != NULL && vendor != NULL &&
+			    strcmp(f->vendor, vendor) != 0)
+				continue;
+			if (log_page != f->log_page)
+				continue;
+			print_fn = f->print_fn;
+			size = f->size;
+			break;
 		}
 	}
 

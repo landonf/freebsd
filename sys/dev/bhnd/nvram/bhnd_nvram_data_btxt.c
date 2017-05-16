@@ -69,7 +69,7 @@ struct bhnd_nvram_btxt {
 };
 
 BHND_NVRAM_DATA_CLASS_DEFN(btxt, "Broadcom Board Text",
-    sizeof(struct bhnd_nvram_btxt))
+    BHND_NVRAM_DATA_CAP_DEVPATHS, sizeof(struct bhnd_nvram_btxt))
 
 /** Minimal identification header */
 union bhnd_nvram_btxt_ident {
@@ -77,8 +77,10 @@ union bhnd_nvram_btxt_ident {
 	char		btxt[8];
 };
 
-static size_t	bhnd_nvram_btxt_io_offset(struct bhnd_nvram_btxt *btxt,
-					  void *cookiep);
+static void	*bhnd_nvram_btxt_offset_to_cookiep(struct bhnd_nvram_btxt *btxt,
+		 size_t io_offset);
+static size_t	 bhnd_nvram_btxt_cookiep_to_offset(struct bhnd_nvram_btxt *btxt,
+		     void *cookiep);
 
 static int	bhnd_nvram_btxt_entry_len(struct bhnd_nvram_io *io,
 		    size_t offset, size_t *line_len, size_t *env_len);
@@ -120,6 +122,320 @@ bhnd_nvram_btxt_probe(struct bhnd_nvram_io *io)
 	/* We assert a low priority, given that we've only scanned an
 	 * initial few bytes of the file. */
 	return (BHND_NVRAM_DATA_PROBE_MAYBE);
+}
+
+
+/**
+ * Parser states for bhnd_nvram_bcm_getvar_direct_common().
+ */
+typedef enum {
+	BTXT_PARSE_LINE_START,
+	BTXT_PARSE_KEY,
+	BTXT_PARSE_KEY_END,
+	BTXT_PARSE_NEXT_LINE,
+	BTXT_PARSE_VALUE_START,
+	BTXT_PARSE_VALUE
+} btxt_parse_state;
+
+static int
+bhnd_nvram_btxt_getvar_direct(struct bhnd_nvram_io *io, const char *name,
+    void *outp, size_t *olen, bhnd_nvram_type otype)
+{
+	char				 buf[512];
+	btxt_parse_state		 pstate;
+	size_t				 limit, offset;
+	size_t				 buflen, bufpos;
+	size_t				 namelen, namepos;
+	size_t				 vlen;
+	int				 error;
+
+	limit = bhnd_nvram_io_getsize(io);
+	offset = 0;
+
+	/* Loop our parser until we find the requested variable, or hit EOF */
+	pstate = BTXT_PARSE_LINE_START;
+	buflen = 0;
+	bufpos = 0;
+	namelen = strlen(name);
+	namepos = 0;
+	vlen = 0;
+
+	while ((offset - bufpos) < limit) {
+		BHND_NV_ASSERT(bufpos <= buflen,
+		    ("buf position invalid (%zu > %zu)", bufpos, buflen));
+		BHND_NV_ASSERT(buflen <= sizeof(buf),
+		    ("buf length invalid (%zu > %zu", buflen, sizeof(buf)));
+
+		/* Repopulate our parse buffer? */
+		if (buflen - bufpos == 0) {
+			BHND_NV_ASSERT(offset < limit, ("offset overrun"));
+
+			buflen = bhnd_nv_ummin(sizeof(buf), limit - offset);
+			bufpos = 0;
+
+			error = bhnd_nvram_io_read(io, offset, buf, buflen);
+			if (error)
+				return (error);
+
+			offset += buflen;
+		}
+
+		switch (pstate) {
+		case BTXT_PARSE_LINE_START:
+			BHND_NV_ASSERT(bufpos < buflen, ("empty buffer!"));
+
+			/* Reset name matching position */
+			namepos = 0;
+
+			/* Trim any leading whitespace */
+			while (bufpos < buflen && bhnd_nv_isspace(buf[bufpos]))
+			{
+				bufpos++;
+			}
+
+			if (bufpos == buflen) {
+				/* Continue parsing the line */
+				pstate = BTXT_PARSE_LINE_START;
+			} else if (bufpos < buflen && buf[bufpos] == '#') {
+				/* Comment; skip to next line */
+				pstate = BTXT_PARSE_NEXT_LINE;
+			} else {
+				/* Start name matching */
+				pstate = BTXT_PARSE_KEY;
+			}
+
+
+			break;
+
+		case BTXT_PARSE_KEY: {
+			size_t navail, nleft;
+
+			nleft = namelen - namepos;
+			navail = bhnd_nv_ummin(buflen - bufpos, nleft);
+
+			if (strncmp(name+namepos, buf+bufpos, navail) == 0) {
+				/* Matched */
+				namepos += navail;
+				bufpos += navail;
+
+				if (namepos == namelen) {
+					/* Matched the full variable; look for
+					 * its trailing delimiter */
+					pstate = BTXT_PARSE_KEY_END;
+				} else {
+					/* Continue matching the name */
+					pstate = BTXT_PARSE_KEY;
+				}
+			} else {
+				/* No match; advance to next entry and restart
+				 * name matching */
+				pstate = BTXT_PARSE_NEXT_LINE;
+			}
+
+			break;
+		}
+
+		case BTXT_PARSE_KEY_END:
+			BHND_NV_ASSERT(bufpos < buflen, ("empty buffer!"));
+
+			if (buf[bufpos] == '=') {
+				/* Key fully matched; advance past '=' and
+				 * parse the value */
+				bufpos++;
+				pstate = BTXT_PARSE_VALUE_START;
+			} else {
+				/* No match; advance to next line and restart
+				 * name matching */
+				pstate = BTXT_PARSE_NEXT_LINE;
+			}
+
+			break;
+
+		case BTXT_PARSE_NEXT_LINE: {
+			const char *p;
+
+			/* Scan for a '\r', '\n', or '\r\n' terminator */
+			p = memchr(buf+bufpos, '\n', buflen - bufpos);
+			if (p == NULL)
+				p = memchr(buf+bufpos, '\r', buflen - bufpos);
+
+			if (p != NULL) {
+				/* Found entry terminator; restart name
+				 * matching at next line */
+				pstate = BTXT_PARSE_LINE_START;
+				bufpos = (p - buf);
+			} else {
+				/* Consumed full buffer looking for newline; 
+				 * force repopulation of the buffer and
+				 * retry */
+				pstate = BTXT_PARSE_NEXT_LINE;
+				bufpos = buflen;
+			}
+
+			break;
+		}
+
+		case BTXT_PARSE_VALUE_START: {
+			const char *p;
+
+			/* Scan for a terminating newline */
+			p = memchr(buf+bufpos, '\n', buflen - bufpos);
+			if (p == NULL)
+				p = memchr(buf+bufpos, '\r', buflen - bufpos);
+
+			if (p != NULL) {
+				/* Found entry terminator; parse the value */
+				vlen = p - &buf[bufpos];
+				pstate = BTXT_PARSE_VALUE;
+
+			} else if (p == NULL && offset == limit) {
+				/* Hit EOF without a terminating newline;
+				 * treat the entry as implicitly terminated */
+				vlen = buflen - bufpos;
+				pstate = BTXT_PARSE_VALUE;
+
+			} else if (p == NULL && bufpos > 0) {
+				size_t	nread;
+
+				/* Move existing value data to start of
+				 * buffer */
+				memmove(buf, buf+bufpos, buflen - bufpos);
+				buflen = bufpos;
+				bufpos = 0;
+
+				/* Populate full buffer to allow retry of
+				 * value parsing */
+				nread = bhnd_nv_ummin(sizeof(buf) - buflen,
+				    limit - offset);
+
+				error = bhnd_nvram_io_read(io, offset,
+				    buf+buflen, nread);
+				if (error)
+					return (error);
+
+				offset += nread;
+				buflen += nread;
+			} else {
+				/* Value exceeds our buffer capacity */
+				BHND_NV_LOG("cannot parse value for '%s' "
+				    "(exceeds %zu byte limit)\n", name,
+				    sizeof(buf));
+
+				return (ENXIO);
+			}
+
+			break;
+		}
+
+		case BTXT_PARSE_VALUE:
+			BHND_NV_ASSERT(vlen <= buflen, ("value buf overrun"));
+
+			/* Trim any trailing whitespace */
+			while (vlen > 0 && bhnd_nv_isspace(buf[bufpos+vlen-1]))
+				vlen--;
+
+			/* Write the value to the caller's buffer */
+			return (bhnd_nvram_value_coerce(buf+bufpos, vlen,
+			    BHND_NVRAM_TYPE_STRING, outp, olen, otype));
+		}
+	}
+
+	/* Variable not found */
+	return (ENOENT);
+}
+
+static int
+bhnd_nvram_btxt_serialize(bhnd_nvram_data_class *cls, bhnd_nvram_plist *props,
+    bhnd_nvram_plist *options, void *outp, size_t *olen)
+{
+	bhnd_nvram_prop	*prop;
+	size_t		 limit, nbytes;
+	int		 error;
+
+	/* Determine output byte limit */
+	if (outp != NULL)
+		limit = *olen;
+	else
+		limit = 0;
+
+	nbytes = 0;
+
+	/* Write all properties */
+	prop = NULL;
+	while ((prop = bhnd_nvram_plist_next(props, prop)) != NULL) {
+		const char	*name;
+		char		*p;
+		size_t		 prop_limit;
+		size_t		 name_len, value_len;
+
+		if (outp == NULL || limit < nbytes) {
+			p = NULL;
+			prop_limit = 0;
+		} else {
+			p = ((char *)outp) + nbytes;
+			prop_limit = limit - nbytes;
+		}
+
+		/* Fetch and write 'name=' to output */
+		name = bhnd_nvram_prop_name(prop);
+		name_len = strlen(name) + 1;
+
+		if (prop_limit > name_len) {
+			memcpy(p, name, name_len - 1);
+			p[name_len - 1] = '=';
+
+			prop_limit -= name_len;
+			p += name_len;
+		} else {
+			prop_limit = 0;
+			p = NULL;
+		}
+
+		/* Advance byte count */
+		if (SIZE_MAX - nbytes < name_len)
+			return (EFTYPE); /* would overflow size_t */
+
+		nbytes += name_len;
+
+		/* Write NUL-terminated value to output, rewrite NUL as
+		 * '\n' record delimiter */
+		value_len = prop_limit;
+		error = bhnd_nvram_prop_encode(prop, p, &value_len,
+		    BHND_NVRAM_TYPE_STRING);
+		if (p != NULL && error == 0) {
+			/* Replace trailing '\0' with newline */
+			BHND_NV_ASSERT(value_len > 0, ("string length missing "
+			    "minimum required trailing NUL"));
+
+			*(p + (value_len - 1)) = '\n';
+		} else if (error && error != ENOMEM) {
+			/* If encoding failed for any reason other than ENOMEM
+			 * (which we'll detect and report after encoding all
+			 * properties), return immediately */
+			BHND_NV_LOG("error serializing %s to required type "
+			    "%s: %d\n", name,
+			    bhnd_nvram_type_name(BHND_NVRAM_TYPE_STRING),
+			    error);
+			return (error);
+		}
+
+		/* Advance byte count */
+		if (SIZE_MAX - nbytes < value_len)
+			return (EFTYPE); /* would overflow size_t */
+
+		nbytes += value_len;
+	}
+
+	/* Provide required length */
+	*olen = nbytes;
+	if (limit < *olen) {
+		if (outp == NULL)
+			return (0);
+
+		return (ENOMEM);
+	}
+
+	return (0);
 }
 
 /**
@@ -253,50 +569,10 @@ bhnd_nvram_btxt_count(struct bhnd_nvram_data *nv)
 	return (btxt->count);
 }
 
-static int
-bhnd_nvram_btxt_size(struct bhnd_nvram_data *nv, size_t *size)
+static bhnd_nvram_plist *
+bhnd_nvram_btxt_options(struct bhnd_nvram_data *nv)
 {
-	struct bhnd_nvram_btxt *btxt = (struct bhnd_nvram_btxt *)nv;
-
-	/* The serialized form will be identical in length
-	 * to our backing buffer representation */
-	*size = bhnd_nvram_io_getsize(btxt->data);
-	return (0);
-}
-
-static int
-bhnd_nvram_btxt_serialize(struct bhnd_nvram_data *nv, void *buf, size_t *len)
-{
-	struct bhnd_nvram_btxt	*btxt;
-	size_t			 limit;
-	int			 error;
-
-	btxt = (struct bhnd_nvram_btxt *)nv;
-
-	limit = *len;
-
-	/* Provide actual output size */
-	if ((error = bhnd_nvram_data_size(nv, len)))
-		return (error);
-
-	if (buf == NULL) {
-		return (0);
-	} else if (limit < *len) {
-		return (ENOMEM);
-	}	
-
-	/* Copy our internal representation to the output buffer */
-	if ((error = bhnd_nvram_io_read(btxt->data, 0x0, buf, *len)))
-		return (error);
-
-	/* Restore the original key=value format, rewriting all '\0'
-	 * key\0value delimiters back to '=' */
-	for (char *p = buf; (size_t)(p - (char *)buf) < *len; p++) {
-		if (*p == '\0')
-			*p = '=';
-	}
-
-	return (0);
+	return (NULL);
 }
 
 static uint32_t
@@ -322,34 +598,39 @@ bhnd_nvram_btxt_next(struct bhnd_nvram_data *nv, void **cookiep)
 	btxt = (struct bhnd_nvram_btxt *)nv;
 
 	io_size = bhnd_nvram_io_getsize(btxt->data);
-	io_offset = bhnd_nvram_btxt_io_offset(btxt, *cookiep);
+
+	if (*cookiep == NULL) {
+		/* Start search at initial file offset */
+		io_offset = 0x0;
+	} else {
+		/* Start search after the current entry */
+		io_offset = bhnd_nvram_btxt_cookiep_to_offset(btxt, *cookiep);
+
+		/* Scan past the current entry by finding the next newline */
+		error = bhnd_nvram_btxt_seek_eol(btxt->data, &io_offset);
+		if (error) {
+			BHND_NV_LOG("unexpected error in seek_eol(): %d\n",
+			    error);
+			return (NULL);
+		}
+	}
 
 	/* Already at EOF? */
 	if (io_offset == io_size)
 		return (NULL);
 
-	/* Seek to the next entry (if any) */
-	if ((error = bhnd_nvram_btxt_seek_eol(btxt->data, &io_offset))) {
-		BHND_NV_LOG("unexpected error in seek_eol(): %d\n", error);
-		return (NULL);
-	}
-
+	/* Seek to the first valid entry, or EOF */
 	if ((error = bhnd_nvram_btxt_seek_next(btxt->data, &io_offset))) {
 		BHND_NV_LOG("unexpected error in seek_next(): %d\n", error);
 		return (NULL);
 	}
 
-	/* Provide the new cookie for this offset */
-	if (io_offset > UINTPTR_MAX) {
-		BHND_NV_LOG("io_offset > UINPTR_MAX!\n");
-		return (NULL);
-	}
-
-	*cookiep = (void *)(uintptr_t)io_offset;
-
 	/* Hit EOF? */
 	if (io_offset == io_size)
 		return (NULL);
+
+	/* Provide the new cookie for this offset */
+	*cookiep = bhnd_nvram_btxt_offset_to_cookiep(btxt, io_offset);
 
 	/* Fetch the name pointer; it must be at least 1 byte long */
 	error = bhnd_nvram_io_read_ptr(btxt->data, io_offset, &nptr, 1, NULL);
@@ -363,10 +644,30 @@ bhnd_nvram_btxt_next(struct bhnd_nvram_data *nv, void **cookiep)
 }
 
 static int
+bhnd_nvram_btxt_getvar_order(struct bhnd_nvram_data *nv, void *cookiep1,
+    void *cookiep2)
+{
+	if (cookiep1 < cookiep2)
+		return (-1);
+
+	if (cookiep1 > cookiep2)
+		return (1);
+
+	return (0);
+}
+
+static int
 bhnd_nvram_btxt_getvar(struct bhnd_nvram_data *nv, void *cookiep, void *buf,
     size_t *len, bhnd_nvram_type type)
 {
 	return (bhnd_nvram_data_generic_rp_getvar(nv, cookiep, buf, len, type));
+}
+
+static int
+bhnd_nvram_btxt_copy_val(struct bhnd_nvram_data *nv, void *cookiep,
+    bhnd_nvram_val **value)
+{
+	return (bhnd_nvram_data_generic_rp_copy_val(nv, cookiep, value));
 }
 
 const void *
@@ -383,7 +684,7 @@ bhnd_nvram_btxt_getvar_ptr(struct bhnd_nvram_data *nv, void *cookiep,
 	btxt = (struct bhnd_nvram_btxt *)nv;
 	
 	io_size = bhnd_nvram_io_getsize(btxt->data);
-	io_offset = bhnd_nvram_btxt_io_offset(btxt, cookiep);
+	io_offset = bhnd_nvram_btxt_cookiep_to_offset(btxt, cookiep);
 
 	/* At EOF? */
 	if (io_offset == io_size)
@@ -429,7 +730,7 @@ bhnd_nvram_btxt_getvar_name(struct bhnd_nvram_data *nv, void *cookiep)
 	btxt = (struct bhnd_nvram_btxt *)nv;
 	
 	io_size = bhnd_nvram_io_getsize(btxt->data);
-	io_offset = bhnd_nvram_btxt_io_offset(btxt, cookiep);
+	io_offset = bhnd_nvram_btxt_cookiep_to_offset(btxt, cookiep);
 
 	/* At EOF? */
 	if (io_offset == io_size)
@@ -444,20 +745,51 @@ bhnd_nvram_btxt_getvar_name(struct bhnd_nvram_data *nv, void *cookiep)
 	return (ptr);
 }
 
-/* Convert cookie back to an I/O offset */
-static size_t
-bhnd_nvram_btxt_io_offset(struct bhnd_nvram_btxt *btxt, void *cookiep)
+/**
+ * Return a cookiep for the given I/O offset.
+ */
+static void *
+bhnd_nvram_btxt_offset_to_cookiep(struct bhnd_nvram_btxt *btxt,
+    size_t io_offset)
 {
-	size_t		io_size;
-	uintptr_t	cval;
+	const void	*ptr;
+	int		 error;
+
+	BHND_NV_ASSERT(io_offset < bhnd_nvram_io_getsize(btxt->data),
+	    ("io_offset %zu out-of-range", io_offset));
+	BHND_NV_ASSERT(io_offset < UINTPTR_MAX,
+	    ("io_offset %#zx exceeds UINTPTR_MAX", io_offset));
+
+	error = bhnd_nvram_io_read_ptr(btxt->data, 0x0, &ptr, io_offset, NULL);
+	if (error)
+		BHND_NV_PANIC("error mapping offset %zu: %d", io_offset, error);
+
+	ptr = (const uint8_t *)ptr + io_offset;
+	return (__DECONST(void *, ptr));
+}
+
+/* Convert a cookiep back to an I/O offset */
+static size_t
+bhnd_nvram_btxt_cookiep_to_offset(struct bhnd_nvram_btxt *btxt, void *cookiep)
+{
+	const void	*ptr;
+	intptr_t	 offset;
+	size_t		 io_size;
+	int		 error;
+
+	BHND_NV_ASSERT(cookiep != NULL, ("null cookiep"));
 
 	io_size = bhnd_nvram_io_getsize(btxt->data);
-	cval = (uintptr_t)cookiep;
+	error = bhnd_nvram_io_read_ptr(btxt->data, 0x0, &ptr, io_size, NULL);
+	if (error)
+		BHND_NV_PANIC("error mapping offset %zu: %d", io_size, error);
 
-	BHND_NV_ASSERT(cval < SIZE_MAX, ("cookie > SIZE_MAX)"));
-	BHND_NV_ASSERT(cval <= io_size, ("cookie > io_size)"));
+	offset = (const uint8_t *)cookiep - (const uint8_t *)ptr;
+	BHND_NV_ASSERT(offset >= 0, ("invalid cookiep"));
+	BHND_NV_ASSERT((uintptr_t)offset < SIZE_MAX, ("cookiep > SIZE_MAX)"));
+	BHND_NV_ASSERT((uintptr_t)offset <= io_size, ("cookiep > io_size)"));
 
-	return ((size_t)cval);
+	return ((size_t)offset);
 }
 
 /* Determine the entry length and env 'key=value' string length of the entry
@@ -582,5 +914,52 @@ bhnd_nvram_btxt_seek_next(struct bhnd_nvram_io *io, size_t *offset)
 	}
 
 	*offset += (p - baseptr);
+	return (0);
+}
+
+static int
+bhnd_nvram_btxt_filter_setvar(struct bhnd_nvram_data *nv, const char *name,
+    bhnd_nvram_val *value, bhnd_nvram_val **result)
+{
+	bhnd_nvram_val	*str;
+	const char	*inp;
+	bhnd_nvram_type	 itype;
+	size_t		 ilen;
+	int		 error;
+
+	/* Name (trimmed of any path prefix) must be valid */
+	if (!bhnd_nvram_validate_name(bhnd_nvram_trim_path_name(name)))
+		return (EINVAL);
+
+	/* Value must be bcm-formatted string */
+	error = bhnd_nvram_val_convert_new(&str, &bhnd_nvram_val_bcm_string_fmt,
+	    value, BHND_NVRAM_VAL_DYNAMIC);
+	if (error)
+		return (error);
+
+	/* Value string must not contain our record delimiter character ('\n'),
+	 * or our comment character ('#') */
+	inp = bhnd_nvram_val_bytes(str, &ilen, &itype);
+	BHND_NV_ASSERT(itype == BHND_NVRAM_TYPE_STRING, ("non-string value"));
+	for (size_t i = 0; i < ilen; i++) {
+		switch (inp[i]) {
+		case '\n':
+		case '#':
+			BHND_NV_LOG("invalid character (%#hhx) in value\n",
+			    inp[i]);
+			bhnd_nvram_val_release(str);
+			return (EINVAL);
+		}
+	}
+
+	/* Success. Transfer result ownership to the caller. */
+	*result = str;
+	return (0);
+}
+
+static int
+bhnd_nvram_btxt_filter_unsetvar(struct bhnd_nvram_data *nv, const char *name)
+{
+	/* We permit deletion of any variable */
 	return (0);
 }

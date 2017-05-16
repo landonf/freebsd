@@ -27,7 +27,7 @@
  * Portions Copyright 2010 Robert Milkowski
  *
  * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
- * Copyright (c) 2012, 2014 by Delphix. All rights reserved.
+ * Copyright (c) 2012, 2016 by Delphix. All rights reserved.
  * Copyright (c) 2013, Joyent, Inc. All rights reserved.
  * Copyright (c) 2014 Integros [integros.com]
  */
@@ -202,10 +202,21 @@ int zvol_maxphys = DMU_MAX_ACCESS/2;
  * Toggle unmap functionality.
  */
 boolean_t zvol_unmap_enabled = B_TRUE;
+
+/*
+ * If true, unmaps requested as synchronous are executed synchronously,
+ * otherwise all unmaps are asynchronous.
+ */
+boolean_t zvol_unmap_sync_enabled = B_FALSE;
+
 #ifndef illumos
 SYSCTL_INT(_vfs_zfs_vol, OID_AUTO, unmap_enabled, CTLFLAG_RWTUN,
     &zvol_unmap_enabled, 0,
     "Enable UNMAP functionality");
+
+SYSCTL_INT(_vfs_zfs_vol, OID_AUTO, unmap_sync_enabled, CTLFLAG_RWTUN,
+    &zvol_unmap_sync_enabled, 0,
+    "UNMAPs requested as sync are executed synchronously");
 
 static d_open_t		zvol_d_open;
 static d_close_t	zvol_d_close;
@@ -267,7 +278,16 @@ zvol_size_changed(zvol_state_t *zv, uint64_t volsize)
 		if (pp == NULL)
 			return;
 		g_topology_lock();
-		g_resize_provider(pp, zv->zv_volsize);
+
+		/*
+		 * Do not invoke resize event when initial size was zero.
+		 * ZVOL initializes the size on first open, this is not
+		 * real resizing.
+		 */
+		if (pp->mediasize == 0)
+			pp->mediasize = zv->zv_volsize;
+		else
+			g_resize_provider(pp, zv->zv_volsize);
 		g_topology_unlock();
 	}
 #endif	/* illumos */
@@ -585,14 +605,14 @@ zvol_create_minor(const char *name)
 	zfs_soft_state_t *zs;
 	zvol_state_t *zv;
 	objset_t *os;
-	dmu_object_info_t doi;
 #ifdef illumos
+	dmu_object_info_t doi;
 	minor_t minor = 0;
 	char chrbuf[30], blkbuf[30];
 #else
 	struct g_provider *pp;
 	struct g_geom *gp;
-	uint64_t volsize, mode;
+	uint64_t mode;
 #endif
 	int error;
 
@@ -658,20 +678,12 @@ zvol_create_minor(const char *name)
 
 	zv = kmem_zalloc(sizeof(*zv), KM_SLEEP);
 	zv->zv_state = 0;
-	error = zap_lookup(os, ZVOL_ZAP_OBJ, "size", 8, 1, &volsize);
-	if (error) {
-		kmem_free(zv, sizeof(*zv));
-		dmu_objset_disown(os, zvol_tag);
-		mutex_exit(&zfsdev_state_lock);
-		return (error);
-	}
 	error = dsl_prop_get_integer(name,
 	    zfs_prop_to_name(ZFS_PROP_VOLMODE), &mode, NULL);
 	if (error != 0 || mode == ZFS_VOLMODE_DEFAULT)
 		mode = volmode;
 
 	DROP_GIANT();
-	zv->zv_volsize = volsize;
 	zv->zv_volmode = mode;
 	if (zv->zv_volmode == ZFS_VOLMODE_GEOM) {
 		g_topology_lock();
@@ -681,7 +693,7 @@ zvol_create_minor(const char *name)
 		pp = g_new_providerf(gp, "%s/%s", ZVOL_DRIVER, name);
 		pp->flags |= G_PF_DIRECT_RECEIVE | G_PF_DIRECT_SEND;
 		pp->sectorsize = DEV_BSIZE;
-		pp->mediasize = zv->zv_volsize;
+		pp->mediasize = 0;
 		pp->private = zv;
 
 		zv->zv_provider = pp;
@@ -724,10 +736,12 @@ zvol_create_minor(const char *name)
 	    sizeof (rl_t), offsetof(rl_t, r_node));
 	list_create(&zv->zv_extents, sizeof (zvol_extent_t),
 	    offsetof(zvol_extent_t, ze_node));
+#ifdef illumos
 	/* get and cache the blocksize */
 	error = dmu_object_info(os, ZVOL_OBJ, &doi);
 	ASSERT(error == 0);
 	zv->zv_volblocksize = doi.doi_data_block_size;
+#endif
 
 	if (spa_writeable(dmu_objset_spa(os))) {
 		if (zil_replay_disable)
@@ -819,6 +833,7 @@ zvol_remove_minor(const char *name)
 int
 zvol_first_open(zvol_state_t *zv)
 {
+	dmu_object_info_t doi;
 	objset_t *os;
 	uint64_t volsize;
 	int error;
@@ -837,6 +852,15 @@ zvol_first_open(zvol_state_t *zv)
 		dmu_objset_disown(os, zvol_tag);
 		return (error);
 	}
+
+	/* get and cache the blocksize */
+	error = dmu_object_info(os, ZVOL_OBJ, &doi);
+	if (error) {
+		ASSERT(error == 0);
+		dmu_objset_disown(os, zvol_tag);
+		return (error);
+	}
+	zv->zv_volblocksize = doi.doi_data_block_size;
 
 	error = dmu_bonus_hold(os, ZVOL_OBJ, zvol_tag, &zv->zv_dbuf);
 	if (error) {
@@ -2264,26 +2288,21 @@ zvol_ioctl(dev_t dev, int cmd, intptr_t arg, int flag, cred_t *cr, int *rvalp)
 
 		zfs_range_unlock(rl);
 
-		if (error == 0) {
-			/*
-			 * If the write-cache is disabled or 'sync' property
-			 * is set to 'always' then treat this as a synchronous
-			 * operation (i.e. commit to zil).
-			 */
-			if (!(zv->zv_flags & ZVOL_WCE) ||
-			    (zv->zv_objset->os_sync == ZFS_SYNC_ALWAYS))
-				zil_commit(zv->zv_zilog, ZVOL_OBJ);
-
-			/*
-			 * If the caller really wants synchronous writes, and
-			 * can't wait for them, don't return until the write
-			 * is done.
-			 */
-			if (df.df_flags & DF_WAIT_SYNC) {
-				txg_wait_synced(
-				    dmu_objset_pool(zv->zv_objset), 0);
-			}
+		/*
+		 * If the write-cache is disabled, 'sync' property
+		 * is set to 'always', or if the caller is asking for
+		 * a synchronous free, commit this operation to the zil.
+		 * This will sync any previous uncommitted writes to the
+		 * zvol object.
+		 * Can be overridden by the zvol_unmap_sync_enabled tunable.
+		 */
+		if ((error == 0) && zvol_unmap_sync_enabled &&
+		    (!(zv->zv_flags & ZVOL_WCE) ||
+		    (zv->zv_objset->os_sync == ZFS_SYNC_ALWAYS) ||
+		    (df.df_flags & DF_WAIT_SYNC))) {
+			zil_commit(zv->zv_zilog, ZVOL_OBJ);
 		}
+
 		return (error);
 	}
 

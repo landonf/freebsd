@@ -22,6 +22,8 @@
         ..
         pkill
         ..
+        pwait
+        ..
         sh
             builtins
             ..
@@ -308,6 +310,8 @@
             ttyio
             ..
         ..
+        libcam
+        ..
         libcasper
             services
                 cap_dns
@@ -324,15 +328,17 @@
         ..
         libdevdctl
         ..
+        libkvm
+        ..
         libmp
         ..
         libnv
         ..
-        libpam
-        ..
         libproc
         ..
         librt
+        ..
+        libsbuf
         ..
         libthr
             dlopen
@@ -594,8 +600,8 @@
                 ..
             ..
         ..
-	bsdcat
-	..
+        bsdcat
+        ..
         calendar
         ..
         cmp
@@ -606,7 +612,11 @@
         ..
         comm
         ..
+        csplit
+        ..
         cut
+        ..
+        diff
         ..
         dirname
         ..
@@ -617,6 +627,8 @@
         gzip
         ..
         ident
+        ..
+        indent
         ..
         join
         ..
@@ -634,7 +646,11 @@
         ..
         opensm
         ..
+        pr
+        ..
         printf
+        ..
+        procstat
         ..
         sdiff
         ..
@@ -643,6 +659,8 @@
             ..
         ..
         soelim
+        ..
+        tail
         ..
         tar
         ..
@@ -657,6 +675,8 @@
         uudecode
         ..
         uuencode
+        ..
+        uniq
         ..
         xargs
         ..

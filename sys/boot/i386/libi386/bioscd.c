@@ -95,9 +95,9 @@ static int nbcinfo = 0;
 static int	bc_read(int unit, daddr_t dblk, int blks, caddr_t dest);
 static int	bc_init(void);
 static int	bc_strategy(void *devdata, int flag, daddr_t dblk,
-    size_t offset, size_t size, char *buf, size_t *rsize);
+    size_t size, char *buf, size_t *rsize);
 static int	bc_realstrategy(void *devdata, int flag, daddr_t dblk,
-    size_t offset, size_t size, char *buf, size_t *rsize);
+    size_t size, char *buf, size_t *rsize);
 static int	bc_open(struct open_file *f, ...);
 static int	bc_close(struct open_file *f);
 static int	bc_print(int verbose);
@@ -237,7 +237,7 @@ bc_close(struct open_file *f)
 }
 
 static int
-bc_strategy(void *devdata, int rw, daddr_t dblk, size_t offset, size_t size,
+bc_strategy(void *devdata, int rw, daddr_t dblk, size_t size,
     char *buf, size_t *rsize)
 {
 	struct bcache_devdata bcd;
@@ -248,11 +248,11 @@ bc_strategy(void *devdata, int rw, daddr_t dblk, size_t offset, size_t size,
 	bcd.dv_devdata = devdata;
 	bcd.dv_cache = BC(dev).bc_bcache;
 
-	return (bcache_strategy(&bcd, rw, dblk, offset, size, buf, rsize));
+	return (bcache_strategy(&bcd, rw, dblk, size, buf, rsize));
 }
 
 static int 
-bc_realstrategy(void *devdata, int rw, daddr_t dblk, size_t offset, size_t size,
+bc_realstrategy(void *devdata, int rw, daddr_t dblk, size_t size,
     char *buf, size_t *rsize)
 {
 	struct i386_devdesc *dev;
@@ -268,7 +268,7 @@ bc_realstrategy(void *devdata, int rw, daddr_t dblk, size_t offset, size_t size,
 		return (EINVAL);
 #endif
 
-	if (rw != F_READ)
+	if ((rw & F_MASK) != F_READ)
 		return(EROFS);
 	dev = (struct i386_devdesc *)devdata;
 	unit = dev->d_unit;
@@ -309,9 +309,6 @@ bc_realstrategy(void *devdata, int rw, daddr_t dblk, size_t offset, size_t size,
 	return (0);
 }
 
-/* Max number of sectors to bounce-buffer at a time. */
-#define	CD_BOUNCEBUF	8
-
 /* return negative value for an error, otherwise blocks read */
 static int
 bc_read(int unit, daddr_t dblk, int blks, caddr_t dest)
@@ -339,8 +336,9 @@ bc_read(int unit, daddr_t dblk, int blks, caddr_t dest)
 		 * physical memory so we have to arrange a suitable
 		 * bounce buffer.
 		 */
-		x = min(CD_BOUNCEBUF, (unsigned)blks);
-		bbuf = alloca(x * BIOSCD_SECSIZE);
+		x = V86_IO_BUFFER_SIZE / BIOSCD_SECSIZE;
+		x = min(x, (unsigned)blks);
+		bbuf = PTOV(V86_IO_BUFFER);
 		maxfer = x;
 	} else {
 		bbuf = NULL;

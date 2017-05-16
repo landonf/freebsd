@@ -412,13 +412,9 @@ static int
 jz4780_mmc_reset(struct jz4780_mmc_softc *sc)
 {
 	int timeout;
-	int reg;
 
 	/* Stop the clock */
-	reg = JZ_MMC_READ_4(sc, JZ_MSC_CTRL);
-	reg &= ~(JZ_CLOCK_CTRL_M);
-	reg |= JZ_CLOCK_STOP;
-	JZ_MMC_WRITE_4(sc, JZ_MSC_CTRL, reg);
+	JZ_MMC_WRITE_4(sc, JZ_MSC_CTRL, JZ_CLOCK_STOP);
 
 	timeout = 1000;
 	while (--timeout > 0) {
@@ -432,9 +428,7 @@ jz4780_mmc_reset(struct jz4780_mmc_softc *sc)
 	}
 
 	/* Reset */
-	reg = JZ_MMC_READ_4(sc, JZ_MSC_CTRL);
-	reg |= JZ_RESET;
-	JZ_MMC_WRITE_4(sc, JZ_MSC_CTRL, reg);
+	JZ_MMC_WRITE_4(sc, JZ_MSC_CTRL, JZ_RESET);
 
 	timeout = 10;
 	while (--timeout > 0) {
@@ -647,7 +641,7 @@ jz4780_mmc_request(device_t bus, device_t child, struct mmc_request *req)
 {
 	struct jz4780_mmc_softc *sc;
 	struct mmc_command *cmd;
-	uint32_t cmdat, ctrl, iwait;
+	uint32_t cmdat, iwait;
 	int blksz;
 
 	sc = device_get_softc(bus);
@@ -731,9 +725,7 @@ jz4780_mmc_request(device_t bus, device_t child, struct mmc_request *req)
 	JZ_MMC_WRITE_4(sc, JZ_MSC_CMD, cmd->opcode);
 	JZ_MMC_WRITE_4(sc, JZ_MSC_CMDAT, cmdat);
 
-	ctrl = JZ_MMC_READ_4(sc, JZ_MSC_CTRL);
-	ctrl |= JZ_START_OP | JZ_CLOCK_START;
-	JZ_MMC_WRITE_4(sc, JZ_MSC_CTRL, ctrl);
+	JZ_MMC_WRITE_4(sc, JZ_MSC_CTRL, JZ_START_OP | JZ_CLOCK_START);
 
 	callout_reset(&sc->sc_timeoutc, sc->sc_timeout * hz,
 	    jz4780_mmc_timeout, sc);
@@ -853,8 +845,7 @@ jz4780_mmc_disable_clock(struct jz4780_mmc_softc *sc)
 {
 	int timeout;
 
-	JZ_MMC_WRITE_4(sc, JZ_MSC_CTRL,
-	    JZ_MMC_READ_4(sc, JZ_MSC_CTRL) | JZ_CLOCK_STOP);
+	JZ_MMC_WRITE_4(sc, JZ_MSC_CTRL, JZ_CLOCK_STOP);
 
 	for (timeout = 1000; timeout > 0; timeout--)
 		if ((JZ_MMC_READ_4(sc, JZ_MSC_STAT) & JZ_CLK_EN) == 0)
@@ -977,7 +968,6 @@ static device_method_t jz4780_mmc_methods[] = {
 	/* Bus interface */
 	DEVMETHOD(bus_read_ivar,	jz4780_mmc_read_ivar),
 	DEVMETHOD(bus_write_ivar,	jz4780_mmc_write_ivar),
-	DEVMETHOD(bus_print_child,	bus_generic_print_child),
 
 	/* MMC bridge interface */
 	DEVMETHOD(mmcbr_update_ios,	jz4780_mmc_update_ios),
@@ -997,6 +987,6 @@ static driver_t jz4780_mmc_driver = {
 	sizeof(struct jz4780_mmc_softc),
 };
 
-DRIVER_MODULE(jzmmc, simplebus, jz4780_mmc_driver, jz4780_mmc_devclass, 0, 0);
-DRIVER_MODULE(mmc, jzmmc, mmc_driver, mmc_devclass, NULL, NULL);
-MODULE_DEPEND(jzmmc, mmc, 1, 1, 1);
+DRIVER_MODULE(jzmmc, simplebus, jz4780_mmc_driver, jz4780_mmc_devclass, NULL,
+    NULL);
+MMC_DECLARE_BRIDGE(jzmmc);

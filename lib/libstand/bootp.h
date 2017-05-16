@@ -22,6 +22,8 @@
  * $FreeBSD$
  */
 
+#ifndef _BOOTP_H_
+#define _BOOTP_H_
 
 struct bootp {
 	unsigned char	bp_op;		/* packet opcode type */
@@ -106,7 +108,6 @@ struct bootp {
 #define TAG_T2			((unsigned char)  59)
 #define TAG_CLASSID		((unsigned char)  60)
 #define TAG_CLIENTID		((unsigned char)  61)
-#define TAG_TFTP_SERVER		((unsigned char) 150)
 #endif
 
 #define TAG_END			((unsigned char) 255)
@@ -145,3 +146,11 @@ struct cmu_vend {
 
 /* v_flags values */
 #define VF_SMASK	1	/* Subnet mask field contains valid data */
+
+/* cached bootp response/dhcp ack */
+extern struct bootp *bootp_response;
+extern size_t bootp_response_size;
+
+int	dhcp_try_rfc1048(u_char *cp, u_int len);
+
+#endif /* _BOOTP_H_ */

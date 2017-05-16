@@ -59,6 +59,7 @@ options 	SYSVSHM
 options 	WITNESS
 options 	WITNESS_SKIPSPIN
 options 	COMPAT_FREEBSD10
+options 	COMPAT_FREEBSD11
 options 	HWPMC_HOOKS
 options 	KDTRACE_HOOKS		# Kernel DTrace hooks
 options 	DDB_CTF			# Kernel ELF linker loads CTF data
@@ -93,6 +94,8 @@ device		scbus
 device		scc
 device  	sdhci
 device		sec
+device  	spibus
+device  	spigen
 device		tsec
 device  	dpaa
 device		tun

@@ -32,6 +32,8 @@
 #ifndef _BHND_NVRAM_BHND_NVRAM_BCMVAR_H_
 #define _BHND_NVRAM_BHND_NVRAM_BCMVAR_H_
 
+#define	BCM_NVRAM_ENCODE_OPT_VERSION	"bcm_version"
+
 /**
  * BCM NVRAM header value data.
  */
@@ -66,5 +68,9 @@ struct bhnd_nvram_bcmhdr {
 	uint32_t cfg1;		/**< sdram_config:16, sdram_refresh:16 */
 	uint32_t sdram_ncdl;	/**< sdram_ncdl */
 } __packed;
+
+int	bhnd_nvram_bcm_getvar_direct_common(struct bhnd_nvram_io *io,
+	    const char *name, void *outp, size_t *olen, bhnd_nvram_type otype,
+	    bool have_header);
 
 #endif /* _BHND_NVRAM_BHND_NVRAM_BCMVAR_H_ */

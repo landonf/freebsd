@@ -147,7 +147,7 @@ mv_pci_ranges_decode(phandle_t node, struct mv_pci_range *io_space,
 	/*
 	 * Initialize the ranges so that we don't have to worry about
 	 * having them all defined in the FDT. In particular, it is
-	 * perfectly fine not to want I/O space on PCI busses.
+	 * perfectly fine not to want I/O space on PCI buses.
 	 */
 	bzero(io_space, sizeof(*io_space));
 	bzero(mem_space, sizeof(*mem_space));
@@ -368,7 +368,7 @@ static device_method_t mv_pcib_methods[] = {
 	DEVMETHOD(pcib_read_config,		mv_pcib_read_config),
 	DEVMETHOD(pcib_write_config,		mv_pcib_write_config),
 	DEVMETHOD(pcib_route_interrupt,		mv_pcib_route_interrupt),
-
+	DEVMETHOD(pcib_request_feature,		pcib_request_feature_allow),
 #if defined(SOC_MV_ARMADAXP)
 	DEVMETHOD(pcib_alloc_msi,		mv_pcib_alloc_msi),
 	DEVMETHOD(pcib_release_msi,		mv_pcib_release_msi),

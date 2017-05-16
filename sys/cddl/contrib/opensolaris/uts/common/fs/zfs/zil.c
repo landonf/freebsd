@@ -20,8 +20,7 @@
  */
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2011, 2015 by Delphix. All rights reserved.
- * Copyright (c) 2011, 2014 by Delphix. All rights reserved.
+ * Copyright (c) 2011, 2016 by Delphix. All rights reserved.
  * Copyright (c) 2014 Integros [integros.com]
  */
 
@@ -502,6 +501,27 @@ zilog_dirty(zilog_t *zilog, uint64_t txg)
 	}
 }
 
+/*
+ * Determine if the zil is dirty in the specified txg. Callers wanting to
+ * ensure that the dirty state does not change must hold the itxg_lock for
+ * the specified txg. Holding the lock will ensure that the zil cannot be
+ * dirtied (zil_itx_assign) or cleaned (zil_clean) while we check its current
+ * state.
+ */
+boolean_t
+zilog_is_dirty_in_txg(zilog_t *zilog, uint64_t txg)
+{
+	dsl_pool_t *dp = zilog->zl_dmu_pool;
+
+	if (txg_list_member(&dp->dp_dirty_zilogs, zilog, txg & TXG_MASK))
+		return (B_TRUE);
+	return (B_FALSE);
+}
+
+/*
+ * Determine if the zil is dirty. The zil is considered dirty if it has
+ * any pending itx records that have not been cleaned by zil_clean().
+ */
 boolean_t
 zilog_is_dirty(zilog_t *zilog)
 {
@@ -818,7 +838,7 @@ zil_flush_vdevs(zilog_t *zilog)
 	avl_tree_t *t = &zilog->zl_vdev_tree;
 	void *cookie = NULL;
 	zil_vdev_node_t *zv;
-	zio_t *zio;
+	zio_t *zio = NULL;
 
 	ASSERT(zilog->zl_writer);
 
@@ -831,12 +851,13 @@ zil_flush_vdevs(zilog_t *zilog)
 
 	spa_config_enter(spa, SCL_STATE, FTAG, RW_READER);
 
-	zio = zio_root(spa, NULL, NULL, ZIO_FLAG_CANFAIL);
-
 	while ((zv = avl_destroy_nodes(t, &cookie)) != NULL) {
 		vdev_t *vd = vdev_lookup_top(spa, zv->zv_vdev);
-		if (vd != NULL)
+		if (vd != NULL && !vd->vdev_nowritecache) {
+			if (zio == NULL)
+				zio = zio_root(spa, NULL, NULL, ZIO_FLAG_CANFAIL);
 			zio_flush(zio, vd);
+		}
 		kmem_free(zv, sizeof (*zv));
 	}
 
@@ -844,7 +865,8 @@ zil_flush_vdevs(zilog_t *zilog)
 	 * Wait for all the flushes to complete.  Not all devices actually
 	 * support the DKIOCFLUSHWRITECACHE ioctl, so it's OK if it fails.
 	 */
-	(void) zio_wait(zio);
+	if (zio)
+		(void) zio_wait(zio);
 
 	spa_config_exit(spa, SCL_STATE, FTAG);
 }
@@ -937,7 +959,7 @@ uint64_t zil_block_buckets[] = {
  * Calls are serialized.
  */
 static lwb_t *
-zil_lwb_write_start(zilog_t *zilog, lwb_t *lwb)
+zil_lwb_write_start(zilog_t *zilog, lwb_t *lwb, boolean_t last)
 {
 	lwb_t *nlwb = NULL;
 	zil_chain_t *zilc;
@@ -1038,6 +1060,8 @@ zil_lwb_write_start(zilog_t *zilog, lwb_t *lwb)
 	 */
 	bzero(lwb->lwb_buf + lwb->lwb_nused, wsz - lwb->lwb_nused);
 
+	if (last)
+		lwb->lwb_zio->io_pipeline &= ~ZIO_STAGE_ISSUE_ASYNC;
 	zio_nowait(lwb->lwb_zio); /* Kick off the write for the old log block */
 
 	/*
@@ -1062,8 +1086,6 @@ zil_lwb_commit(zilog_t *zilog, itx_t *itx, lwb_t *lwb)
 		return (NULL);
 
 	ASSERT(lwb->lwb_buf != NULL);
-	ASSERT(zilog_is_dirty(zilog) ||
-	    spa_freeze_txg(zilog->zl_spa) != UINT64_MAX);
 
 	if (lrc->lrc_txtype == TX_WRITE && itx->itx_wr_state == WR_NEED_COPY)
 		dlen = P2ROUNDUP_TYPED(
@@ -1083,7 +1105,7 @@ cont:
 	if (reclen > lwb_sp || (reclen + dlen > lwb_sp &&
 	    lwb_sp < ZIL_MAX_LOG_DATA / 8 && (dlen % ZIL_MAX_LOG_DATA == 0 ||
 	    lwb_sp < reclen + dlen % ZIL_MAX_LOG_DATA))) {
-		lwb = zil_lwb_write_start(zilog, lwb);
+		lwb = zil_lwb_write_start(zilog, lwb, B_FALSE);
 		if (lwb == NULL)
 			return (NULL);
 		zil_lwb_write_init(zilog, lwb);
@@ -1401,6 +1423,11 @@ zil_get_commit_list(zilog_t *zilog)
 	else
 		otxg = spa_last_synced_txg(zilog->zl_spa) + 1;
 
+	/*
+	 * This is inherently racy, since there is nothing to prevent
+	 * the last synced txg from changing. That's okay since we'll
+	 * only commit things in the future.
+	 */
 	for (txg = otxg; txg < (otxg + TXG_CONCURRENT_STATES); txg++) {
 		itxg_t *itxg = &zilog->zl_itxg[txg & TXG_MASK];
 
@@ -1410,6 +1437,16 @@ zil_get_commit_list(zilog_t *zilog)
 			continue;
 		}
 
+		/*
+		 * If we're adding itx records to the zl_itx_commit_list,
+		 * then the zil better be dirty in this "txg". We can assert
+		 * that here since we're holding the itxg_lock which will
+		 * prevent spa_sync from cleaning it. Once we add the itxs
+		 * to the zl_itx_commit_list we must commit it to disk even
+		 * if it's unnecessary (i.e. the txg was synced).
+		 */
+		ASSERT(zilog_is_dirty_in_txg(zilog, txg) ||
+		    spa_freeze_txg(zilog->zl_spa) != UINT64_MAX);
 		list_move_tail(commit_list, &itxg->itxg_itxs->i_sync_list);
 
 		mutex_exit(&itxg->itxg_lock);
@@ -1432,6 +1469,10 @@ zil_async_to_sync(zilog_t *zilog, uint64_t foid)
 	else
 		otxg = spa_last_synced_txg(zilog->zl_spa) + 1;
 
+	/*
+	 * This is inherently racy, since there is nothing to prevent
+	 * the last synced txg from changing.
+	 */
 	for (txg = otxg; txg < (otxg + TXG_CONCURRENT_STATES); txg++) {
 		itxg_t *itxg = &zilog->zl_itxg[txg & TXG_MASK];
 
@@ -1503,8 +1544,14 @@ zil_commit_writer(zilog_t *zilog)
 	DTRACE_PROBE1(zil__cw1, zilog_t *, zilog);
 	while (itx = list_head(&zilog->zl_itx_commit_list)) {
 		txg = itx->itx_lr.lrc_txg;
-		ASSERT(txg);
+		ASSERT3U(txg, !=, 0);
 
+		/*
+		 * This is inherently racy and may result in us writing
+		 * out a log block for a txg that was just synced. This is
+		 * ok since we'll end cleaning up that log block the next
+		 * time we call zil_sync().
+		 */
 		if (txg > spa_last_synced_txg(spa) || txg > spa_freeze_txg(spa))
 			lwb = zil_lwb_commit(zilog, itx, lwb);
 		list_remove(&zilog->zl_itx_commit_list, itx);
@@ -1515,7 +1562,7 @@ zil_commit_writer(zilog_t *zilog)
 
 	/* write the last block out */
 	if (lwb != NULL && lwb->lwb_zio != NULL)
-		lwb = zil_lwb_write_start(zilog, lwb);
+		lwb = zil_lwb_write_start(zilog, lwb, B_TRUE);
 
 	zilog->zl_cur_used = 0;
 
@@ -1821,7 +1868,10 @@ zil_close(zilog_t *zilog)
 	mutex_exit(&zilog->zl_lock);
 	if (txg)
 		txg_wait_synced(zilog->zl_dmu_pool, txg);
-	ASSERT(!zilog_is_dirty(zilog));
+
+	if (zilog_is_dirty(zilog))
+		zfs_dbgmsg("zil (%p) is dirty, txg %llu", zilog, txg);
+	VERIFY(!zilog_is_dirty(zilog));
 
 	taskq_destroy(zilog->zl_clean_taskq);
 	zilog->zl_clean_taskq = NULL;

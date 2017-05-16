@@ -197,7 +197,7 @@ grep_fgetln(struct file *f, size_t *lenp)
 	}
 
 	/* Look for a newline in the remaining part of the buffer */
-	if ((p = memchr(bufpos, '\n', bufrem)) != NULL) {
+	if ((p = memchr(bufpos, fileeol, bufrem)) != NULL) {
 		++p; /* advance over newline */
 		ret = bufpos;
 		len = p - bufpos;
@@ -219,12 +219,18 @@ grep_fgetln(struct file *f, size_t *lenp)
 		if (bufrem == 0)
 			/* EOF: return partial line */
 			break;
-		if ((p = memchr(bufpos, '\n', bufrem)) == NULL)
+		if ((p = memchr(bufpos, fileeol, bufrem)) == NULL &&
+		    filebehave != FILE_MMAP)
 			continue;
-		/* got it: finish up the line (like code above) */
-		++p;
-		diff = p - bufpos;
-		len += diff;
+		if (p == NULL) {
+			/* mmap EOF: return partial line, consume buffer */
+			diff = len;
+		} else {
+			/* got it: finish up the line (like code above) */
+			++p;
+			diff = p - bufpos;
+			len += diff;
+		}
 		if (grep_lnbufgrow(len))
 		    goto error;
 		memcpy(lnbuf + off, bufpos, diff);
@@ -316,7 +322,8 @@ grep_open(const char *path)
 		goto error2;
 
 	/* Check for binary stuff, if necessary */
-	if (binbehave != BINFILE_TEXT && memchr(bufpos, '\0', bufrem) != NULL)
+	if (binbehave != BINFILE_TEXT && fileeol != '\0' &&
+	    memchr(bufpos, '\0', bufrem) != NULL)
 	f->binary = true;
 
 	return (f);

@@ -58,6 +58,12 @@ extern "C" {
  */
 #define	DNODE_SHIFT		9	/* 512 bytes */
 #define	DN_MIN_INDBLKSHIFT	12	/* 4k */
+/*
+ * If we ever increase this value beyond 20, we need to revisit all logic that
+ * does x << level * ebps to handle overflow.  With a 1M indirect block size,
+ * 4 levels of indirect blocks would not be able to guarantee addressing an
+ * entire object, so 5 levels will be used, but 5 * (20 - 7) = 65.
+ */
 #define	DN_MAX_INDBLKSHIFT	17	/* 128k */
 #define	DNODE_BLOCK_SHIFT	14	/* 16k */
 #define	DNODE_CORE_SIZE		64	/* 64 bytes for dnode sans blkptrs */
@@ -195,8 +201,6 @@ struct dnode {
 
 	/* protected by dn_dbufs_mtx; declared here to fill 32-bit hole */
 	uint32_t dn_dbufs_count;	/* count of dn_dbufs */
-	/* There are no level-0 blocks of this blkid or higher in dn_dbufs */
-	uint64_t dn_unlisted_l0_blkid;
 
 	/* protected by os_lock: */
 	list_node_t dn_dirty_link[TXG_SIZE];	/* next on dataset's dirty */

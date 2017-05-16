@@ -142,6 +142,8 @@ struct ieee80211_node {
 #define	IEEE80211_NODE_ASSOCID	0x020000	/* xmit requires associd */
 #define	IEEE80211_NODE_AMSDU_RX	0x040000	/* AMSDU rx enabled */
 #define	IEEE80211_NODE_AMSDU_TX	0x080000	/* AMSDU tx enabled */
+#define	IEEE80211_NODE_VHT	0x100000	/* VHT enabled */
+#define	IEEE80211_NODE_LDPC	0x200000	/* LDPC enabled */
 	uint16_t		ni_associd;	/* association ID */
 	uint16_t		ni_vlan;	/* vlan tag */
 	uint16_t		ni_txpower;	/* current transmit power */
@@ -224,6 +226,17 @@ struct ieee80211_node {
 	struct ieee80211_tx_ampdu ni_tx_ampdu[WME_NUM_TID];
 	struct ieee80211_rx_ampdu ni_rx_ampdu[WME_NUM_TID];
 
+	/* VHT state */
+	uint32_t		ni_vhtcap;
+	uint16_t		ni_vht_basicmcs;
+	uint16_t		ni_vht_pad2;
+	struct ieee80211_vht_mcs_info	ni_vht_mcsinfo;
+	uint8_t			ni_vht_chan1;	/* 20/40/80/160 - VHT chan1 */
+	uint8_t			ni_vht_chan2;	/* 80+80 - VHT chan2 */
+	uint8_t			ni_vht_chanwidth;	/* IEEE80211_VHT_CHANWIDTH_ */
+	uint8_t			ni_vht_pad1;
+	uint32_t		ni_vht_spare[8];
+
 	/* fast-frames state */
 	struct mbuf *		ni_tx_superg[WME_NUM_TID];
 
@@ -236,6 +249,11 @@ struct ieee80211_node {
 
 	struct ieee80211vap	*ni_wdsvap;	/* associated WDS vap */
 	void			*ni_rctls;	/* private ratectl state */
+
+	/* quiet time IE state for the given node */
+	uint32_t		ni_quiet_ie_set;	/* Quiet time IE was seen */
+	struct			ieee80211_quiet_ie ni_quiet_ie;	/* last seen quiet IE */
+
 	uint64_t		ni_spare[3];
 };
 MALLOC_DECLARE(M_80211_NODE);

@@ -347,7 +347,7 @@ mpssas_log_command(struct mps_command *cm, u_int level, const char *fmt, ...)
 	sbuf_printf(&sb, "SMID %u ", cm->cm_desc.Default.SMID);
 	sbuf_vprintf(&sb, fmt, ap);
 	sbuf_finish(&sb);
-	mps_dprint_field(cm->cm_sc, level, "%s", sbuf_data(&sb));
+	mps_print_field(cm->cm_sc, "%s", sbuf_data(&sb));
 
 	va_end(ap);
 }
@@ -943,9 +943,9 @@ mpssas_action(struct cam_sim *sim, union ccb *ccb)
 		cpi->max_target = sassc->maxtargets - 1;
 		cpi->max_lun = 255;
 		cpi->initiator_id = sassc->maxtargets - 1;
-		strncpy(cpi->sim_vid, "FreeBSD", SIM_IDLEN);
-		strncpy(cpi->hba_vid, "Avago Tech (LSI)", HBA_IDLEN);
-		strncpy(cpi->dev_name, cam_sim_name(sim), DEV_IDLEN);
+		strlcpy(cpi->sim_vid, "FreeBSD", SIM_IDLEN);
+		strlcpy(cpi->hba_vid, "Avago Tech", HBA_IDLEN);
+		strlcpy(cpi->dev_name, cam_sim_name(sim), DEV_IDLEN);
 		cpi->unit_number = cam_sim_unit(sim);
 		cpi->bus_id = cam_sim_bus(sim);
 		cpi->base_transfer_speed = 150000;
@@ -1505,7 +1505,7 @@ mpssas_send_abort(struct mps_softc *sc, struct mps_command *tm, struct mps_comma
 		return -1;
 	}
 
-	mpssas_log_command(tm, MPS_RECOVERY|MPS_INFO,
+	mpssas_log_command(cm, MPS_RECOVERY|MPS_INFO,
 	    "Aborting command %p\n", cm);
 
 	req = (MPI2_SCSI_TASK_MANAGE_REQUEST *)tm->cm_req;
@@ -1536,7 +1536,7 @@ mpssas_send_abort(struct mps_softc *sc, struct mps_command *tm, struct mps_comma
 
 	err = mps_map_command(sc, tm);
 	if (err)
-		mpssas_log_command(tm, MPS_RECOVERY,
+		mps_dprint(sc, MPS_RECOVERY,
 		    "error %d sending abort for cm %p SMID %u\n",
 		    err, cm, req->TaskMID);
 	return err;
@@ -1574,11 +1574,12 @@ mpssas_scsiio_timeout(void *data)
 		return;
 	}
 
-	mpssas_log_command(cm, MPS_INFO, "command timeout cm %p ccb %p\n", 
-	    cm, cm->cm_ccb);
-
 	targ = cm->cm_targ;
 	targ->timeouts++;
+
+	mpssas_log_command(cm, MPS_ERROR, "command timeout %d cm %p target "
+	    "%u, handle(0x%04x)\n", cm->cm_ccb->ccb_h.timeout, cm,  targ->tid,
+	    targ->handle);
 
 	/* XXX first, check the firmware state, to see if it's still
 	 * operational.  if not, do a diag reset.

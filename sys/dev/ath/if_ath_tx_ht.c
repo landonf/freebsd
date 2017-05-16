@@ -239,7 +239,7 @@ ath_tx_rate_fill_rcflags(struct ath_softc *sc, struct ath_buf *bf)
 	 * it if any of the rate entries aren't 11n.
 	 */
 	do_ldpc = 0;
-	if ((ni->ni_vap->iv_htcaps & IEEE80211_HTCAP_LDPC) &&
+	if ((ni->ni_vap->iv_flags_ht & IEEE80211_FHT_LDPC_TX) &&
 	    (ni->ni_htcap & IEEE80211_HTCAP_LDPC))
 		do_ldpc = 1;
 
@@ -402,7 +402,7 @@ ath_tx_rate_fill_rcflags(struct ath_softc *sc, struct ath_buf *bf)
  */
 static int
 ath_compute_num_delims(struct ath_softc *sc, struct ath_buf *first_bf,
-    uint16_t pktlen)
+    uint16_t pktlen, int is_first)
 {
 #define	MS(_v, _f)	(((_v) & _f) >> _f##_S)
 	const HAL_RATE_TABLE *rt = sc->sc_currates;
@@ -458,11 +458,12 @@ ath_compute_num_delims(struct ath_softc *sc, struct ath_buf *first_bf,
 	 * For AR9380, there's a minimum number of delimeters
 	 * required when doing RTS.
 	 *
-	 * XXX TODO: this is only needed if (a) RTS/CTS is enabled, and
-	 * XXX (b) this is the first sub-frame in the aggregate.
+	 * XXX TODO: this is only needed if (a) RTS/CTS is enabled for
+	 * this exchange, and (b) (done) this is the first sub-frame
+	 * in the aggregate.
 	 */
 	if (sc->sc_use_ent && (sc->sc_ent_cfg & AH_ENT_RTSCTS_DELIM_WAR)
-	    && ndelim < AH_FIRST_DESC_NDELIMS)
+	    && ndelim < AH_FIRST_DESC_NDELIMS && is_first)
 		ndelim = AH_FIRST_DESC_NDELIMS;
 
 	/*
@@ -529,6 +530,29 @@ ath_compute_num_delims(struct ath_softc *sc, struct ath_buf *first_bf,
 }
 
 /*
+ * XXX TODO: put into net80211
+ */
+static int
+ath_rx_ampdu_to_byte(char a)
+{
+	switch (a) {
+	case IEEE80211_HTCAP_MAXRXAMPDU_16K:
+		return 16384;
+		break;
+	case IEEE80211_HTCAP_MAXRXAMPDU_32K:
+		return 32768;
+		break;
+	case IEEE80211_HTCAP_MAXRXAMPDU_64K:
+		return 65536;
+		break;
+	case IEEE80211_HTCAP_MAXRXAMPDU_8K:
+	default:
+		return 8192;
+		break;
+	}
+}
+
+/*
  * Fetch the aggregation limit.
  *
  * It's the lowest of the four rate series 4ms frame length.
@@ -540,6 +564,8 @@ static int
 ath_get_aggr_limit(struct ath_softc *sc, struct ieee80211_node *ni,
     struct ath_buf *bf)
 {
+	struct ieee80211vap *vap = ni->ni_vap;
+
 #define	MS(_v, _f)	(((_v) & _f) >> _f##_S)
 	int amin = ATH_AGGR_MAXSIZE;
 	int i;
@@ -548,25 +574,15 @@ ath_get_aggr_limit(struct ath_softc *sc, struct ieee80211_node *ni,
 	if (sc->sc_aggr_limit > 0 && sc->sc_aggr_limit < ATH_AGGR_MAXSIZE)
 		amin = sc->sc_aggr_limit;
 
+	/* Check the vap configured transmit limit */
+	amin = MIN(amin, ath_rx_ampdu_to_byte(vap->iv_ampdu_limit));
+
 	/*
 	 * Check the HTCAP field for the maximum size the node has
 	 * negotiated.  If it's smaller than what we have, cap it there.
 	 */
-	switch (MS(ni->ni_htparam, IEEE80211_HTCAP_MAXRXAMPDU)) {
-	case IEEE80211_HTCAP_MAXRXAMPDU_16K:
-		amin = MIN(amin, 16384);
-		break;
-	case IEEE80211_HTCAP_MAXRXAMPDU_32K:
-		amin = MIN(amin, 32768);
-		break;
-	case IEEE80211_HTCAP_MAXRXAMPDU_64K:
-		amin = MIN(amin, 65536);
-		break;
-	case IEEE80211_HTCAP_MAXRXAMPDU_8K:
-	default:
-		amin = MIN(amin, 8192);
-		break;
-	}
+	amin = MIN(amin, ath_rx_ampdu_to_byte(MS(ni->ni_htparam,
+	    IEEE80211_HTCAP_MAXRXAMPDU)));
 
 	for (i = 0; i < ATH_RC_NUM; i++) {
 		if (bf->bf_state.bfs_rc[i].tries == 0)
@@ -574,8 +590,14 @@ ath_get_aggr_limit(struct ath_softc *sc, struct ieee80211_node *ni,
 		amin = MIN(amin, bf->bf_state.bfs_rc[i].max4msframelen);
 	}
 
-	DPRINTF(sc, ATH_DEBUG_SW_TX_AGGR, "%s: max frame len= %d\n",
-	    __func__, amin);
+	DPRINTF(sc, ATH_DEBUG_SW_TX_AGGR,
+	    "%s: aggr_limit=%d, iv_ampdu_limit=%d, "
+	    "peer maxrxampdu=%d, max frame len=%d\n",
+	    __func__,
+	    sc->sc_aggr_limit,
+	    vap->iv_ampdu_limit,
+	    MS(ni->ni_htparam, IEEE80211_HTCAP_MAXRXAMPDU),
+	    amin);
 
 	return amin;
 #undef	MS
@@ -954,7 +976,7 @@ ath_tx_form_aggr(struct ath_softc *sc, struct ath_node *an,
 		 */
 		bf->bf_state.bfs_ndelim =
 		    ath_compute_num_delims(sc, bf_first,
-		    bf->bf_state.bfs_pktlen);
+		    bf->bf_state.bfs_pktlen, (bf_first == bf));
 
 		/*
 		 * Calculate the padding needed from this set of delimiters,

@@ -60,7 +60,7 @@ static struct {
 
 /* devsw I/F */
 static int md_init(void);
-static int md_strategy(void *, int, daddr_t, size_t, size_t, char *, size_t *);
+static int md_strategy(void *, int, daddr_t, size_t, char *, size_t *);
 static int md_open(struct open_file *, ...);
 static int md_close(struct open_file *);
 static int md_print(int);
@@ -84,7 +84,7 @@ md_init(void)
 }
 
 static int
-md_strategy(void *devdata, int rw, daddr_t blk, size_t offset, size_t size,
+md_strategy(void *devdata, int rw, daddr_t blk, size_t size,
     char *buf, size_t *rsize)
 {
 	struct devdesc *dev = (struct devdesc *)devdata;
@@ -103,10 +103,10 @@ md_strategy(void *devdata, int rw, daddr_t blk, size_t offset, size_t size,
 	if ((ofs + size) > MD_IMAGE_SIZE)
 		size = MD_IMAGE_SIZE - ofs;
 
-	if (rsize != 0)
+	if (rsize != NULL)
 		*rsize = size;
 
-	switch (rw) {
+	switch (rw & F_MASK) {
 	case F_READ:
 		bcopy(md_image.start + ofs, buf, size);
 		return (0);

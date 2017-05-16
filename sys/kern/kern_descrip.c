@@ -67,7 +67,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/resourcevar.h>
 #include <sys/sbuf.h>
 #include <sys/signalvar.h>
-#include <sys/socketvar.h>
 #include <sys/kdb.h>
 #include <sys/stat.h>
 #include <sys/sx.h>
@@ -98,8 +97,8 @@ MALLOC_DEFINE(M_FILECAPS, "filecaps", "descriptor capabilities");
 
 MALLOC_DECLARE(M_FADVISE);
 
-static uma_zone_t file_zone;
-static uma_zone_t filedesc0_zone;
+static __read_mostly uma_zone_t file_zone;
+static __read_mostly uma_zone_t filedesc0_zone;
 
 static int	closefp(struct filedesc *fdp, int fd, struct file *fp,
 		    struct thread *td, int holdleaders);
@@ -169,9 +168,9 @@ struct filedesc0 {
 /*
  * Descriptor management.
  */
-volatile int openfiles;			/* actual number of open files */
+volatile int __exclusive_cache_line openfiles; /* actual number of open files */
 struct mtx sigio_lock;		/* mtx to protect pointers to sigio */
-void (*mq_fdclose)(struct thread *td, int fd, struct file *fp);
+void __read_mostly (*mq_fdclose)(struct thread *td, int fd, struct file *fp);
 
 /*
  * If low >= size, just return low. Otherwise find the first zero bit in the
@@ -318,11 +317,11 @@ pwd_ensure_dirs(void)
 	FILEDESC_XLOCK(fdp);
 	if (fdp->fd_cdir == NULL) {
 		fdp->fd_cdir = rootvnode;
-		VREF(rootvnode);
+		vrefact(rootvnode);
 	}
 	if (fdp->fd_rdir == NULL) {
 		fdp->fd_rdir = rootvnode;
-		VREF(rootvnode);
+		vrefact(rootvnode);
 	}
 	FILEDESC_XUNLOCK(fdp);
 }
@@ -1754,21 +1753,23 @@ falloc_noinstall(struct thread *td, struct file **resultfp)
 {
 	struct file *fp;
 	int maxuserfiles = maxfiles - (maxfiles / 20);
+	int openfiles_new;
 	static struct timeval lastfail;
 	static int curfail;
 
 	KASSERT(resultfp != NULL, ("%s: resultfp == NULL", __func__));
 
-	if ((openfiles >= maxuserfiles &&
+	openfiles_new = atomic_fetchadd_int(&openfiles, 1) + 1;
+	if ((openfiles_new >= maxuserfiles &&
 	    priv_check(td, PRIV_MAXFILES) != 0) ||
-	    openfiles >= maxfiles) {
+	    openfiles_new >= maxfiles) {
+		atomic_subtract_int(&openfiles, 1);
 		if (ppsratecheck(&lastfail, &curfail, 1)) {
 			printf("kern.maxfiles limit exceeded by uid %i, (%s) "
 			    "please see tuning(7).\n", td->td_ucred->cr_ruid, td->td_proc->p_comm);
 		}
 		return (ENFILE);
 	}
-	atomic_add_int(&openfiles, 1);
 	fp = uma_zalloc(file_zone, M_WAITOK | M_ZERO);
 	refcount_init(&fp->f_count, 1);
 	fp->f_cred = crhold(td->td_ucred);
@@ -1860,13 +1861,13 @@ fdinit(struct filedesc *fdp, bool prepfiles)
 	FILEDESC_SLOCK(fdp);
 	newfdp->fd_cdir = fdp->fd_cdir;
 	if (newfdp->fd_cdir)
-		VREF(newfdp->fd_cdir);
+		vrefact(newfdp->fd_cdir);
 	newfdp->fd_rdir = fdp->fd_rdir;
 	if (newfdp->fd_rdir)
-		VREF(newfdp->fd_rdir);
+		vrefact(newfdp->fd_rdir);
 	newfdp->fd_jdir = fdp->fd_jdir;
 	if (newfdp->fd_jdir)
-		VREF(newfdp->fd_jdir);
+		vrefact(newfdp->fd_jdir);
 
 	if (!prepfiles) {
 		FILEDESC_SUNLOCK(fdp);
@@ -2556,10 +2557,8 @@ fget_unlocked(struct filedesc *fdp, int fd, cap_rights_t *needrightsp,
 		fde = &fdt->fdt_ofiles[fd];
 		haverights = *cap_rights_fde(fde);
 		fp = fde->fde_file;
-		if (!seq_consistent(fd_seq(fdt, fd), seq)) {
-			cpu_spinwait();
+		if (!seq_consistent(fd_seq(fdt, fd), seq))
 			continue;
-		}
 #else
 		fp = fdt->fdt_ofiles[fd].fde_file;
 #endif
@@ -2570,8 +2569,8 @@ fget_unlocked(struct filedesc *fdp, int fd, cap_rights_t *needrightsp,
 		if (error != 0)
 			return (error);
 #endif
-	retry:
 		count = fp->f_count;
+	retry:
 		if (count == 0) {
 			/*
 			 * Force a reload. Other thread could reallocate the
@@ -2585,7 +2584,7 @@ fget_unlocked(struct filedesc *fdp, int fd, cap_rights_t *needrightsp,
 		 * Use an acquire barrier to force re-reading of fdt so it is
 		 * refreshed for verification.
 		 */
-		if (atomic_cmpset_acq_int(&fp->f_count, count, count + 1) == 0)
+		if (atomic_fcmpset_acq_int(&fp->f_count, &count, count + 1) == 0)
 			goto retry;
 		fdt = fdp->fd_files;
 #ifdef	CAPABILITIES
@@ -2769,7 +2768,7 @@ _fgetvp(struct thread *td, int fd, int flags, cap_rights_t *needrightsp,
 		error = EINVAL;
 	} else {
 		*vpp = fp->f_vnode;
-		vref(*vpp);
+		vrefact(*vpp);
 	}
 	fdrop(fp, td);
 
@@ -2807,7 +2806,7 @@ fgetvp_rights(struct thread *td, int fd, cap_rights_t *needrightsp,
 
 	*havecaps = caps;
 	*vpp = fp->f_vnode;
-	vref(*vpp);
+	vrefact(*vpp);
 
 	return (0);
 out:
@@ -2838,61 +2837,6 @@ fgetvp_write(struct thread *td, int fd, cap_rights_t *rightsp,
 	return (_fgetvp(td, fd, FWRITE, rightsp, vpp));
 }
 #endif
-
-/*
- * Like fget() but loads the underlying socket, or returns an error if the
- * descriptor does not represent a socket.
- *
- * We bump the ref count on the returned socket.  XXX Also obtain the SX lock
- * in the future.
- *
- * Note: fgetsock() and fputsock() are deprecated, as consumers should rely
- * on their file descriptor reference to prevent the socket from being free'd
- * during use.
- */
-int
-fgetsock(struct thread *td, int fd, cap_rights_t *rightsp, struct socket **spp,
-    u_int *fflagp)
-{
-	struct file *fp;
-	int error;
-
-	*spp = NULL;
-	if (fflagp != NULL)
-		*fflagp = 0;
-	if ((error = _fget(td, fd, &fp, 0, rightsp, NULL)) != 0)
-		return (error);
-	if (fp->f_type != DTYPE_SOCKET) {
-		error = ENOTSOCK;
-	} else {
-		*spp = fp->f_data;
-		if (fflagp)
-			*fflagp = fp->f_flag;
-		SOCK_LOCK(*spp);
-		soref(*spp);
-		SOCK_UNLOCK(*spp);
-	}
-	fdrop(fp, td);
-
-	return (error);
-}
-
-/*
- * Drop the reference count on the socket and XXX release the SX lock in the
- * future.  The last reference closes the socket.
- *
- * Note: fputsock() is deprecated, see comment for fgetsock().
- */
-void
-fputsock(struct socket *so)
-{
-
-	ACCEPT_LOCK();
-	SOCK_LOCK(so);
-	CURVNET_SET(so->so_vnet);
-	sorele(so);
-	CURVNET_RESTORE();
-}
 
 /*
  * Handle the last reference to a file being closed.
@@ -3115,10 +3059,10 @@ pwd_chroot(struct thread *td, struct vnode *vp)
 		}
 	}
 	oldvp = fdp->fd_rdir;
-	VREF(vp);
+	vrefact(vp);
 	fdp->fd_rdir = vp;
 	if (fdp->fd_jdir == NULL) {
-		VREF(vp);
+		vrefact(vp);
 		fdp->fd_jdir = vp;
 	}
 	FILEDESC_XUNLOCK(fdp);
@@ -3166,17 +3110,17 @@ mountcheckdirs(struct vnode *olddp, struct vnode *newdp)
 			continue;
 		FILEDESC_XLOCK(fdp);
 		if (fdp->fd_cdir == olddp) {
-			vref(newdp);
+			vrefact(newdp);
 			fdp->fd_cdir = newdp;
 			nrele++;
 		}
 		if (fdp->fd_rdir == olddp) {
-			vref(newdp);
+			vrefact(newdp);
 			fdp->fd_rdir = newdp;
 			nrele++;
 		}
 		if (fdp->fd_jdir == olddp) {
-			vref(newdp);
+			vrefact(newdp);
 			fdp->fd_jdir = newdp;
 			nrele++;
 		}
@@ -3185,13 +3129,13 @@ mountcheckdirs(struct vnode *olddp, struct vnode *newdp)
 	}
 	sx_sunlock(&allproc_lock);
 	if (rootvnode == olddp) {
-		vref(newdp);
+		vrefact(newdp);
 		rootvnode = newdp;
 		nrele++;
 	}
 	mtx_lock(&prison0.pr_mtx);
 	if (prison0.pr_root == olddp) {
-		vref(newdp);
+		vrefact(newdp);
 		prison0.pr_root = newdp;
 		nrele++;
 	}
@@ -3200,7 +3144,7 @@ mountcheckdirs(struct vnode *olddp, struct vnode *newdp)
 	TAILQ_FOREACH(pr, &allprison, pr_list) {
 		mtx_lock(&pr->pr_mtx);
 		if (pr->pr_root == olddp) {
-			vref(newdp);
+			vrefact(newdp);
 			pr->pr_root = newdp;
 			nrele++;
 		}
@@ -3527,17 +3471,17 @@ kern_proc_filedesc_out(struct proc *p,  struct sbuf *sb, ssize_t maxlen,
 	/* ktrace vnode */
 	tracevp = p->p_tracevp;
 	if (tracevp != NULL)
-		vref(tracevp);
+		vrefact(tracevp);
 	/* text vnode */
 	textvp = p->p_textvp;
 	if (textvp != NULL)
-		vref(textvp);
+		vrefact(textvp);
 	/* Controlling tty. */
 	cttyvp = NULL;
 	if (p->p_pgrp != NULL && p->p_pgrp->pg_session != NULL) {
 		cttyvp = p->p_pgrp->pg_session->s_ttyvp;
 		if (cttyvp != NULL)
-			vref(cttyvp);
+			vrefact(cttyvp);
 	}
 	fdp = fdhold(p);
 	PROC_UNLOCK(p);
@@ -3561,17 +3505,17 @@ kern_proc_filedesc_out(struct proc *p,  struct sbuf *sb, ssize_t maxlen,
 	FILEDESC_SLOCK(fdp);
 	/* working directory */
 	if (fdp->fd_cdir != NULL) {
-		vref(fdp->fd_cdir);
+		vrefact(fdp->fd_cdir);
 		export_vnode_to_sb(fdp->fd_cdir, KF_FD_TYPE_CWD, FREAD, efbuf);
 	}
 	/* root directory */
 	if (fdp->fd_rdir != NULL) {
-		vref(fdp->fd_rdir);
+		vrefact(fdp->fd_rdir);
 		export_vnode_to_sb(fdp->fd_rdir, KF_FD_TYPE_ROOT, FREAD, efbuf);
 	}
 	/* jail directory */
 	if (fdp->fd_jdir != NULL) {
-		vref(fdp->fd_jdir);
+		vrefact(fdp->fd_jdir);
 		export_vnode_to_sb(fdp->fd_jdir, KF_FD_TYPE_JAIL, FREAD, efbuf);
 	}
 	for (i = 0; fdp->fd_refcnt > 0 && i <= fdp->fd_lastfile; i++) {
@@ -3629,11 +3573,11 @@ sysctl_kern_proc_filedesc(SYSCTL_HANDLER_ARGS)
 	return (error != 0 ? error : error2);
 }
 
+#ifdef COMPAT_FREEBSD7
 #ifdef KINFO_OFILE_SIZE
 CTASSERT(sizeof(struct kinfo_ofile) == KINFO_OFILE_SIZE);
 #endif
 
-#ifdef COMPAT_FREEBSD7
 static void
 kinfo_to_okinfo(struct kinfo_file *kif, struct kinfo_ofile *okif)
 {
@@ -3661,7 +3605,7 @@ export_vnode_for_osysctl(struct vnode *vp, int type, struct kinfo_file *kif,
 {
 	int error;
 
-	vref(vp);
+	vrefact(vp);
 	FILEDESC_SUNLOCK(fdp);
 	export_vnode_to_kinfo(vp, type, 0, kif, KERN_FILEDESC_PACK_KINFO);
 	kinfo_to_okinfo(kif, okif);
@@ -3788,7 +3732,7 @@ kern_proc_cwd_out(struct proc *p,  struct sbuf *sb, ssize_t maxlen)
 	if (fdp->fd_cdir == NULL)
 		error = EINVAL;
 	else {
-		vref(fdp->fd_cdir);
+		vrefact(fdp->fd_cdir);
 		error = export_vnode_to_sb(fdp->fd_cdir, KF_FD_TYPE_CWD,
 		    FREAD, efbuf);
 	}

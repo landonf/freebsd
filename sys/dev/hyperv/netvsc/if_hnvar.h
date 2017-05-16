@@ -59,6 +59,7 @@ struct hn_tx_ring;
 
 struct hn_rx_ring {
 	struct ifnet	*hn_ifp;
+	struct ifnet	*hn_vf;		/* SR-IOV VF */
 	struct hn_tx_ring *hn_txr;
 	void		*hn_pktbuf;
 	int		hn_pktbuf_len;
@@ -85,13 +86,16 @@ struct hn_rx_ring {
 
 	void		*hn_br;		/* TX/RX bufring */
 	struct hyperv_dma hn_br_dma;
+
+	struct vmbus_channel *hn_chan;
 } __aligned(CACHE_LINE_SIZE);
 
 #define HN_TRUST_HCSUM_IP	0x0001
 #define HN_TRUST_HCSUM_TCP	0x0002
 #define HN_TRUST_HCSUM_UDP	0x0004
 
-#define HN_RX_FLAG_ATTACHED	0x1
+#define HN_RX_FLAG_ATTACHED	0x0001
+#define HN_RX_FLAG_BR_REF	0x0002
 
 struct hn_tx_ring {
 #ifndef HN_USE_TXDESC_BUFRING
@@ -162,8 +166,8 @@ struct hn_tx_ring {
 	struct sysctl_oid *hn_tx_sysctl_tree;
 } __aligned(CACHE_LINE_SIZE);
 
-#define HN_TX_FLAG_ATTACHED	0x1
-#define HN_TX_FLAG_HASHVAL	0x2	/* support HASHVAL pktinfo */
+#define HN_TX_FLAG_ATTACHED	0x0001
+#define HN_TX_FLAG_HASHVAL	0x0002	/* support HASHVAL pktinfo */
 
 /*
  * Device-specific softc structure
@@ -191,7 +195,7 @@ struct hn_softc {
 	int		hn_chim_szmax;
 
 	int		hn_cpu;
-	struct taskqueue *hn_tx_taskq;
+	struct taskqueue **hn_tx_taskqs;
 	struct sysctl_oid *hn_tx_sysctl_tree;
 	struct sysctl_oid *hn_rx_sysctl_tree;
 	struct vmbus_xact_ctx *hn_xact;
@@ -211,6 +215,8 @@ struct hn_softc {
 
 	uint32_t		hn_caps;	/* HN_CAP_ */
 	uint32_t		hn_flags;	/* HN_FLAG_ */
+	u_int			hn_pollhz;
+
 	void			*hn_rxbuf;
 	uint32_t		hn_rxbuf_gpadl;
 	struct hyperv_dma	hn_rxbuf_dma;
@@ -229,6 +235,9 @@ struct hn_softc {
 	int			hn_rss_ind_size;
 	uint32_t		hn_rss_hash;	/* NDIS_HASH_ */
 	struct ndis_rssprm_toeplitz hn_rss;
+
+	eventhandler_tag	hn_ifaddr_evthand;
+	eventhandler_tag	hn_ifnet_evthand;
 };
 
 #define HN_FLAG_RXBUF_CONNECTED		0x0001
@@ -237,6 +246,11 @@ struct hn_softc {
 #define HN_FLAG_HAS_RSSIND		0x0008
 #define HN_FLAG_SYNTH_ATTACHED		0x0010
 #define HN_FLAG_NO_SLEEPING		0x0020
+#define HN_FLAG_RXBUF_REF		0x0040
+#define HN_FLAG_CHIM_REF		0x0080
+#define HN_FLAG_VF			0x0100
+
+#define HN_FLAG_ERRORS			(HN_FLAG_RXBUF_REF | HN_FLAG_CHIM_REF)
 
 #define HN_NO_SLEEPING(sc)			\
 do {						\

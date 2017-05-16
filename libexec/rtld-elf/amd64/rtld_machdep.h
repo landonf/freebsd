@@ -35,24 +35,14 @@
 struct Struct_Obj_Entry;
 
 /* Return the address of the .dynamic section in the dynamic linker. */
-#define rtld_dynamic(obj) \
-    ((const Elf_Dyn *)((obj)->relocbase + (Elf_Addr)&_DYNAMIC))
+Elf_Dyn *rtld_dynamic_addr(void);
+#define	rtld_dynamic(obj)	rtld_dynamic_addr()
 
-/* Fixup the jump slot at "where" to transfer control to "target". */
-static inline Elf_Addr
-reloc_jmpslot(Elf_Addr *where, Elf_Addr target,
-	      const struct Struct_Obj_Entry *obj,
-	      const struct Struct_Obj_Entry *refobj, const Elf_Rel *rel)
-{
-#ifdef dbg
-    dbg("reloc_jmpslot: *%p = %p", (void *)(where),
-	(void *)(target));
-#endif
-    (*(Elf_Addr *)(where) = (Elf_Addr)(target));
-    return target;
-}
+Elf_Addr reloc_jmpslot(Elf_Addr *where, Elf_Addr target,
+    const struct Struct_Obj_Entry *obj, const struct Struct_Obj_Entry *refobj,
+    const Elf_Rel *rel);
 
-#define make_function_pointer(def, defobj) \
+#define make_function_pointer(def, defobj)	\
 	((defobj)->relocbase + (def)->st_value)
 
 #define call_initfini_pointer(obj, target) \
