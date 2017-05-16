@@ -196,6 +196,7 @@ struct bcm_cfez_header {
 /* SENTRY5 'config' partition magic (MINIX v1 filesystem, 30 char name limit) */
 #define	BCM_MINIX_OFFSET	0x410
 #define	BCM_MINIX_MAGIC		0x138F
+#define	BCM_MINIX_CIGAM		0x8F13
 
 /* GZIP magic */
 #define	BCM_GZIP_MAGIC0		0x1f

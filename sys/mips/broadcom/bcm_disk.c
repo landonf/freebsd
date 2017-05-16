@@ -242,7 +242,7 @@ static bcm_part_size_fn			 bcm_probe_part_flashinfo;
 static bcm_part_size_fn			 bcm_probe_part_nvraminfo;
 static bcm_part_size_fn			 bcm_probe_part_readsz;
 
-const bool bcm_disk_trace = true;
+const bool bcm_disk_trace = false;
 
 /**
  * Known CFE driver class names.
@@ -1930,3 +1930,35 @@ bcm_part_ident_nvram_tlv(struct bcm_disk *disk, struct bcm_part *part,
 }
 
 BCM_PART_IDENT("NVRAM_TLV", BCM_PART_TYPE_NVRAM, bcm_part_ident_nvram_tlv);
+
+/* WGT634U LEAF configuration partition identification */
+static int
+bcm_part_ident_leaf_config(struct bcm_disk *disk, struct bcm_part *part,
+    struct bcm_part_ident *ident, struct bcm_part_size *size)
+{
+	uint16_t	magic;
+	off_t		offset;
+	bool		bswap;
+	int		error;
+
+
+	offset = BCM_MINIX_OFFSET;
+	if ((error = bcm_part_read(part, offset, &magic, sizeof(magic))))
+		return (error);
+
+	bswap = false;
+	switch (magic) {
+	case BCM_MINIX_CIGAM:
+		bswap = true;
+		/* fallthrough */
+	case BCM_MINIX_MAGIC:
+		return (bcm_part_ident_init(ident, &magic, offset,
+		    sizeof(magic), bswap));
+
+	default:
+		return (ENXIO);
+	}
+}
+
+BCM_PART_IDENT("LEAF_CONFIG", BCM_PART_TYPE_LEAF_CONFIG,
+    bcm_part_ident_leaf_config);
