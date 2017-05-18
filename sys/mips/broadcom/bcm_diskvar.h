@@ -226,7 +226,8 @@ struct bcm_cfe_bootblk {
 } __packed;
 
 /* TRX image header */
-#define	BCM_TRX_MAGIC		"HDR0"
+#define	BCM_TRX_MAGIC		0x30524448
+#define	BCM_TRX_CIGAM		0x48445230
 #define	BCM_TRX_V1		1
 #define	BCM_TRX_V2		2
 #define	BCM_TRX_V1_MAX_PARTS	3
@@ -234,14 +235,13 @@ struct bcm_cfe_bootblk {
 #define	BCM_TRX_MAX_PARTS	BCM_TRX_V2_MAX_PARTS
 
 struct bcm_trx_header {                                                                                                                 
-	u_char		magic[4];
+	uint32_t	magic;
 	uint32_t	len;
 	uint32_t	crc32;
 	uint16_t 	flags;
 	uint16_t	version;
 	uint32_t	offsets[BCM_TRX_MAX_PARTS];
 } __packed;
-
 
 /* Netgear ML (multi-language) partition */
 #define	BCM_NETGEAR_LANG_MAXLEN		0xFFF0
@@ -255,31 +255,37 @@ struct bcm_netgear_langhdr {
 	uint8_t		bzip2[BCM_BZIP2_MAGIC_LEN];	/**< BZIP stream magic */
 } __packed;
 
-/* Disk logging */
-#define	BCM_DISK_LOG(_disk, msg, ...)					\
-	printf("%s%u: " msg, (_disk)->drvname, (_disk)->unit, ## __VA_ARGS__)
+/* Netgear POT partition */
+#define	BCM_POT_MAGIC		"POTTOP"
+#define	BCM_POT_MAGIC_LEN	(sizeof(BCM_POT_MAGIC)-1)
+#define	BCM_POT_MAGIC_OFFSET	0x0
 
-#define	BCM_DISK_ERR(_disk, msg, ...)					\
-	printf("%s(%s%u): " msg, __FUNCTION__, (_disk)->drvname,	\
-	    (_disk)->unit, ## __VA_ARGS__)
+/* Netgear T_Meter partition */
+#define	BCM_TMETER_MAGIC	0x544D
+#define	BCM_TMETER_CIGAM	0x4D54
 
-#define	BCM_DISK_TRACE(_disk, msg, ...)	do {				\
-	if (bcm_disk_trace)						\
-		BCM_DISK_ERR((_disk), msg, ## __VA_ARGS__);		\
-} while(0)
+struct bcm_tmeter_record {
+	uint16_t	magic;
+	uint16_t	checksum;
+	uint8_t		data[20];
+} __packed;
 
-/* Partition logging */
-#define	BCM_PART_LOG(_part, msg, ...)					\
-	printf("%s: " msg, (_part)->devname, ## __VA_ARGS__)
+/* Netgear board_data partition */
+#define	BCM_BD_RFPM_OFFSET	0x100		/**< RF parameter block offset */
+#define	BCM_BD_RFPM_MAGIC	0x5246504D	/**< RF parameter block magic ('RFPM') */
+#define	BCM_BD_RFPM_CIGAM	0x4D504652
+#define	BCM_BD_RECORD_MAGIC	0xBD0D0BBD	/**< record magic */
+#define	BCM_BD_RECORD_CIGAM	0xBD0B0DBD
+#define	BCM_BD_RECORD_MAGIC0	0xBD
+#define	BCM_BD_RECORD_OFFSET	0x8000		/**< initial offset of board data records */
+#define	BCM_BD_RECORD_MAXLEN	\
+	UINT16_MAX - offsetof(struct bcm_bd_record, tag)
 
-#define	BCM_PART_ERR(_part, msg, ...)					\
-	printf("%s(%s): " msg, __FUNCTION__, (_part)->devname,  ## __VA_ARGS__)
-
-#define	BCM_PART_TRACE(_part, msg, ...)	do {				\
-	if (bcm_disk_trace)						\
-		BCM_PART_ERR((_part), msg, ## __VA_ARGS__);		\
-} while(0)
-
+struct bcm_bd_record {
+	uint32_t	magic;	/**< record magic */
+	uint16_t	tag;	/**< record tag */
+	uint16_t	len;	/**< record length (not including magic) */
+} __packed;
 
 /**
  * CFE flash device driver quirks.
@@ -350,5 +356,30 @@ bcm_disk_get_quirks(struct bcm_disk *disk)
 #define	BCM_DISK_QUIRK(_disk, _cfe_quirk)				\
 	((bcm_disk_get_quirks(_disk) & BCM_CFE_QUIRK_ ## _cfe_quirk) ==	\
 	    BCM_CFE_QUIRK_ ## _cfe_quirk)
+
+/* Disk logging */
+#define	BCM_DISK_LOG(_disk, msg, ...)					\
+	printf("%s%u: " msg, (_disk)->drvname, (_disk)->unit, ## __VA_ARGS__)
+
+#define	BCM_DISK_ERR(_disk, msg, ...)					\
+	printf("%s(%s%u): " msg, __FUNCTION__, (_disk)->drvname,	\
+	    (_disk)->unit, ## __VA_ARGS__)
+
+#define	BCM_DISK_TRACE(_disk, msg, ...)	do {				\
+	if (bcm_disk_trace)						\
+		BCM_DISK_ERR((_disk), msg, ## __VA_ARGS__);		\
+} while(0)
+
+/* Partition logging */
+#define	BCM_PART_LOG(_part, msg, ...)					\
+	printf("%s: " msg, (_part)->devname, ## __VA_ARGS__)
+
+#define	BCM_PART_ERR(_part, msg, ...)					\
+	printf("%s(%s): " msg, __FUNCTION__, (_part)->devname,  ## __VA_ARGS__)
+
+#define	BCM_PART_TRACE(_part, msg, ...)	do {				\
+	if (bcm_disk_trace)						\
+		BCM_PART_ERR((_part), msg, ## __VA_ARGS__);		\
+} while(0)
 
 #endif /* _MIPS_BROADCOM_BCM_DISKVAR_H_ */

@@ -232,6 +232,19 @@ static int				 bcm_part_new(struct bcm_part **part,
 					     uint32_t flags);
 static int				 bcm_part_open(struct bcm_part *part);
 
+static int				 bcm_part_read(struct bcm_part *part,
+					     off_t offset, void *outp,
+					     size_t len);
+static int				 bcm_part_read_ident(
+					     struct bcm_part *part,
+					     struct bcm_part_ident *ident,
+					     off_t offset, void *outp,
+					     size_t len);
+static int				 bcm_part_ident_init(
+					     struct bcm_part_ident *ident,
+					     off_t offset, void *bytes,
+					     off_t len);
+
 static int				 bcm_probe_disk_quirks(
 					     struct bcm_disk *disk);
 static int				 bcm_probe_disk(struct bcm_disk *disk);
@@ -271,6 +284,7 @@ static const struct bcm_part_info {
 
 	BCM_PART("boot",	BOOT,		BCM_PART_PLATFORM_RO),
 	BCM_PART("brcmnand",	BRCMNAND,	0x0),
+	BCM_PART("devinfo",	DEVINFO,	BCM_PART_PLATFORM_NVRAM_RO),
 	BCM_PART("nvram",	NVRAM,		BCM_PART_PLATFORM_NVRAM),
 	BCM_PART("os",		OS,		BCM_PART_PLATFORM,
 		 "os2"	/* dual/failsafe label */),
@@ -279,7 +293,7 @@ static const struct bcm_part_info {
 
 	/* Netgear-specific partition types */
 	BCM_PART("config",	LEAF_CONFIG,	BCM_PART_PLATFORM),
-	BCM_PART("board_data",	BOARD_DATA,	BCM_PART_PLATFORM_NVRAM_RO),
+	BCM_PART("board_data",	BOARD_DATA,	BCM_PART_PLATFORM),
 	BCM_PART("ML1",		MULTILANG,	0x0,
 		 "ML2",
 		 "ML3",
@@ -287,12 +301,11 @@ static const struct bcm_part_info {
 		 "ML5",
 		 "ML6",
 		 "ML7"),
-	BCM_PART("POT",		POT,		0x0),
+	BCM_PART("POT",		POT,		0x0,
+		 "POT1",
+		 "POT2"),
 	BCM_PART("T_Meter1",	TMETER,		0x0,
 		 "T_Meter2"),
-
-	/* Linksys-specific partition types */
-	BCM_PART("devinfo",	DEVINFO,	BCM_PART_PLATFORM_NVRAM_RO),
 
 	/* Asus-specific partition types */
 	BCM_PART("asus",	ASUSFW,		BCM_PART_PLATFORM_RO),
@@ -1544,34 +1557,74 @@ bcm_part_read(struct bcm_part *part, off_t offset, void *outp, size_t len)
 }
 
 /**
+ * Perform a CFE-based read of @p len bytes from @p part at @p offset,
+ * populating @p ident with a fingerprint of the result.
+ * 
+ * @param	part		The partition to read from.
+ * @param[out]	ident		An identification instance to be initialized.
+ * @param	offset		The read offset.
+ * @param[out]	outp		Output buffer.
+ * @param	len		Number of bytes to be read.
+ * 
+ * @retval 0		success
+ * @retval EINVAL	if @p len or @p offset are invalid.
+ * @retval ENODEV	if the backing CFE device has not been opened.
+ * @retval ENXIO	if the read fails, or fewer than @p len bytes were
+ *			read.
+ */
+static int
+bcm_part_read_ident(struct bcm_part *part, struct bcm_part_ident *ident,
+    off_t offset, void *outp, size_t len)
+{
+	int error;
+
+#if SIZE_MAX > OFF_MAX
+	if (len > OFF_MAX)
+		return (EINVAL);
+#endif
+
+	/* Read fingerprint data */
+	if ((error = bcm_part_read(part, offset, outp, (off_t)len)))
+		return (error);
+
+	/* Initialize fingerprint */
+	return (bcm_part_ident_init(ident, offset, outp, (off_t)len));
+}
+
+/**
  * Initialize @p ident with the given offset, size, and bytes to be used
  * for fingerprinting.
  * 
- * @param ident		Identification instance to be initialized.
- * @param bytes		Bytes to be used when generating the partition
- *			fingerprint.
- * @param offset	Offset at which @p bytes were read, relative to the
- *			partition start.
- * @param len		The total size of @p bytes.
- * @param byteswap	If target-endian data structures are not in host byte
- *			order.
+ * @param[out]	ident		Identification instance to be initialized.
+ * @param	offset		Offset at which @p bytes were read, relative to the
+ *				partition start.
+ * @param	bytes		Bytes to be used when generating the partition
+ *				fingerprint.
+ * @param	len		The total size of @p bytes.
  * 
  * @retval 0		success
+ * @retval EINVAL	if @p len or @p offset are invalid.
  * @retval non-zero	if initializing @p ident otherwise fails, a regular
  *			unix error code will be returned.
  */
 static int
-bcm_part_ident_init(struct bcm_part_ident *ident, void *bytes, off_t offset,
-    off_t len, bool byteswap)
+bcm_part_ident_init(struct bcm_part_ident *ident, off_t offset, void *bytes,
+    off_t len)
 {
 	MD5_CTX ctx;
 
-	KASSERT(len > 0 && len != BCM_DISK_INVALID_SIZE, ("invalid length"));
-	KASSERT(offset != BCM_DISK_INVALID_OFF, ("invalid offset"));
-	KASSERT(OFF_MAX - offset >= len, ("offset+len overflow"));
+	if (len == 0 || len == BCM_DISK_INVALID_SIZE)
+		return (EINVAL);
+
+	if (offset == BCM_DISK_INVALID_OFF)
+		return (EINVAL);
+
+	if (OFF_MAX - offset < len)
+		return (EINVAL);
 
 	ident->fp_offset = offset;
 	ident->fp_size = len;
+	ident->fp_byteswap = false;
 
 	MD5Init(&ctx);
 	MD5Update(&ctx, bytes, len);
@@ -1634,7 +1687,8 @@ bcm_probe_part(struct bcm_disk *disk, struct bcm_part *part)
 			break;
 
 		/* Skip inapplicable ident functions */
-		if (idfn->type != part->type)
+		if (idfn->type != BCM_PART_TYPE_UNKNOWN &&
+		    idfn->type != part->type)
 			continue;
 
 		/* Try the given identification function */
@@ -1658,18 +1712,16 @@ bcm_probe_part(struct bcm_disk *disk, struct bcm_part *part)
 	return (0);
 }
 
-/* CFE partition identification */
 static int
 bcm_part_ident_cfe(struct bcm_disk *disk, struct bcm_part *part,
     struct bcm_part_ident *ident, struct bcm_part_size *size)
 {
 	uint32_t	magic[2];
-	off_t		offset;
-	bool		bswap;
 	int		error;
 
-	offset = BCM_CFE_MAGIC_OFFSET;
-	if ((error = bcm_part_read(part, offset, magic, sizeof(magic))))
+	error = bcm_part_read_ident(part, ident, BCM_CFE_MAGIC_OFFSET, magic,
+	    sizeof(magic));
+	if (error)
 		return (error);
 
 	switch (magic[0]) {
@@ -1677,69 +1729,45 @@ bcm_part_ident_cfe(struct bcm_disk *disk, struct bcm_part *part,
 		if (magic[1] != BCM_CFE_MAGIC)
 			return (ENXIO);
 
-		/* Native endian */
-		bswap = false;
-		break;
+		return (0);
 
 	case BCM_CFE_CIGAM:
 		if (magic[1] != BCM_CFE_CIGAM)
 			return (ENXIO);
 
 		/* Byte-swapped */
-		bswap = true;
-		break;
+		ident->fp_byteswap = true;
+		return (0);
 
 	default:
 		/* Unrecognized */
 		return (ENXIO);
 	}
-
-	error = bcm_part_ident_init(ident, magic, offset, sizeof(magic), bswap);
-	return (error);
 }
-
 BCM_PART_IDENT("CFE", BCM_PART_TYPE_BOOT, bcm_part_ident_cfe);
 
 
-/* CFE self-describing binary identification */
 static int
 bcm_part_ident_cfez(struct bcm_disk *disk, struct bcm_part *part,
     struct bcm_part_ident *ident, struct bcm_part_size *size)
 {
 	struct bcm_cfez_header	hdr;
-	off_t			offset;
-	bool			bswap;
 	uint32_t		start, end;
 	off_t			fs_size, part_size;
 	int			error;
 
-	offset = BCM_CFE_BISZ_OFFSET;
-	if ((error = bcm_part_read(part, offset, &hdr, sizeof(hdr))))
+	/* Read CFEZ header */
+	error = bcm_part_read_ident(part, ident, BCM_CFE_BISZ_OFFSET, &hdr,
+	    sizeof(hdr));
+	if (error)
 		return (error);
 
 	switch (hdr.magic) {
 	case BCM_CFE_BISZ_MAGIC:
-		/* Native endian */
-		bswap = false;
 		break;
 
 	case BCM_CFE_BISZ_CIGAM:
 		/* Byte-swapped */
-		bswap = true;
-		break;
-
-	default:
-		/* Unrecognized */
-		return (ENXIO);
-	}
-
-	/* Populate our ident data before performing byte swapping */
-	error = bcm_part_ident_init(ident, &hdr, offset, sizeof(hdr), bswap);
-	if (error)
-		return (error);
-
-	/* Swap all offsets */
-	if (bswap) {
 		KASSERT(
 		    nitems(hdr.txt) == BCM_CFE_BISZ_NOFFS &&
 		    nitems(hdr.data) == BCM_CFE_BISZ_NOFFS &&
@@ -1751,22 +1779,25 @@ bcm_part_ident_cfez(struct bcm_disk *disk, struct bcm_part *part,
 			hdr.data[i] = bswap32(hdr.data[i]);
 			hdr.bss[i] = bswap32(hdr.bss[i]);
 		}
+
+		break;
+
+	default:
+		/* Unrecognized */
+		return (ENXIO);
 	}
 
 	/* Determine the binary size */
 	start = hdr.txt[BCM_CFE_BISZ_ST_IDX];
 	end = hdr.data[BCM_CFE_BISZ_END_IDX];
 
-#if UINT32_MAX > OFF_MAX
-	if (end <= start || start - end > OFF_MAX) {
-#else
 	if (end <= start) {
-#endif
 		BCM_PART_ERR(part, "invalid start offset %#" PRIx32 " relative "
 		    "to end offset %#" PRIx32 "\n", start, end);
 		return (ENXIO);
 	}
 
+	_Static_assert(OFF_MAX >= UINT32_MAX, ("overflow check required"));
 	fs_size = (off_t)(end - start);
 
 	/*
@@ -1800,65 +1831,108 @@ bcm_part_ident_cfez(struct bcm_disk *disk, struct bcm_part *part,
 
 	return (0);
 }
-
 BCM_PART_IDENT("CFEZ", BCM_PART_TYPE_BOOT, bcm_part_ident_cfez);
 
+static int
+bcm_part_ident_trx(struct bcm_disk *disk, struct bcm_part *part,
+    struct bcm_part_ident *ident, struct bcm_part_size *size)
+{
+	struct bcm_trx_header	hdr;
+	int			error;
 
-/* OS partition identification */
+	if ((error = bcm_part_read_ident(part, ident, 0, &hdr, sizeof(hdr))))
+		return (error);
+
+	/* Parse basic header data */
+	switch (hdr.magic) {
+	case BCM_TRX_MAGIC:
+		break;
+
+	case BCM_TRX_CIGAM:
+		ident->fp_byteswap = true;
+
+		hdr.magic = bswap32(hdr.magic);
+		hdr.len = bswap32(hdr.len);
+		hdr.crc32 = bswap32(hdr.crc32);
+		hdr.flags = bswap16(hdr.flags);
+		hdr.version = bswap16(hdr.version);
+
+		for (size_t i = 0; i < nitems(hdr.offsets); i++)
+			hdr.offsets[i] = bswap32(hdr.offsets[i]);
+
+		break;
+
+	default:
+		return (ENXIO);
+	}
+
+	/* Check for supported TRX version */
+	switch (hdr.version) {
+	case BCM_TRX_V1:
+	case BCM_TRX_V2:
+		break;
+	default:
+		BCM_PART_ERR(part, "unsupported TRX version: %#" PRIx16 "\n",
+		    hdr.version);
+		return (ENXIO);
+	}
+
+	/* Provide TRX length */
+	_Static_assert(UINT32_MAX < OFF_MAX, ("overflow check required"));
+	size->fs_size = (off_t)hdr.len;
+
+	return (0);
+}
+BCM_PART_IDENT("TRX", BCM_PART_TYPE_TRX, bcm_part_ident_trx);
+
 static int
 bcm_part_ident_os(struct bcm_disk *disk, struct bcm_part *part,
     struct bcm_part_ident *ident, struct bcm_part_size *size)
 {
-	off_t	offset;
 	int	error;
 	union {
 		Elf_Ehdr	 elf;
 		uint8_t		 gzip[3];
 	} hdr;
 
-	offset = 0x0;
-	if ((error = bcm_part_read(part, offset, &hdr, sizeof(hdr))))
+	if ((error = bcm_part_read_ident(part, ident, 0, &hdr, sizeof(hdr))))
 		return (error);
 
-	/* Look for an ELF bootloader */
+	/* Look for an ELF bootloader */	
 	if (IS_ELF(hdr.elf)) {
-		BCM_PART_TRACE(part, "ELF bootloader at %#jx\n",
-		    (intmax_t)offset);
-
-		return (bcm_part_ident_init(ident, &hdr.elf, offset,
-		    sizeof(hdr.elf), false));
+		BCM_PART_TRACE(part, "found ELF bootloader\n");
+		return (0);
 	}
 
 	/* Look for a GZIP-compressed bootloader */
 	if (hdr.gzip[0] == BCM_GZIP_MAGIC0 && hdr.gzip[1] == BCM_GZIP_MAGIC1 &&
 	    hdr.gzip[2] == BCM_GZIP_DEFLATE)
 	{
-		BCM_PART_TRACE(part, "GZIP-compressed loader at %#jx\n",
-		    (intmax_t)offset);
-
-		return (bcm_part_ident_init(ident, &hdr.gzip, offset,
-		    sizeof(hdr.gzip), false));
+		BCM_PART_TRACE(part, "found GZIP-compressed loader\n");
+		return (0);
 	}
 
 	/* Scan for a boot block */
 	for (size_t i = 0; i < BCM_BOOTBLK_MAX; i++ ) {
 		struct bcm_cfe_bootblk	bootblk;
-		bool			bswap;
+		off_t			offset;
 
 		offset = sizeof(bootblk) * i;
-		error = bcm_part_read(part, offset, &bootblk, sizeof(bootblk));
-		if (error);
+		error = bcm_part_read_ident(part, ident, offset, &bootblk,
+		    sizeof(bootblk));
+		if (error)
 			return (error);
 
 		switch (bootblk.magic) {
 		case BCM_BOOTBLK_CIGAM:
-			/* Found (byte swapped) */
-			bswap = true;
-			break;
+			ident->fp_byteswap = true;
+			/* fallthrough */
 		case BCM_BOOTBLK_MAGIC:
-			/* Found (native endian) */
-			bswap = false;
-			break;
+			BCM_PART_TRACE(part, "boot block at %#jx\n",
+			    (intmax_t)offset);
+
+			return (0);
+
 		default:
 			/* Check next boot block offset */
 			continue;
@@ -1866,99 +1940,304 @@ bcm_part_ident_os(struct bcm_disk *disk, struct bcm_part *part,
 
 		/* Found boot block */
 		BCM_PART_TRACE(part, "boot block at %#jx\n", (intmax_t)offset);
-
-		return (bcm_part_ident_init(ident, &bootblk, offset,
-		    sizeof(bootblk), bswap));
 	}
 
 	/* No boot block found */
 	return (ENXIO);
 }
-
 BCM_PART_IDENT("OS", BCM_PART_TYPE_OS, bcm_part_ident_os);
 
-/* BCM-NVRAM partition identification */
+
 static int
 bcm_part_ident_nvram(struct bcm_disk *disk, struct bcm_part *part,
     struct bcm_part_ident *ident, struct bcm_part_size *size)
 {
-	struct bhnd_nvram_bcmhdr	hdr;
-	off_t				offset;
-	int				error;
+	int error;
+	union {
+		struct bhnd_nvram_bcmhdr	bcm;
+		uint8_t				tlv[32];
+	} hdr;
 
-
-	offset = 0x0;
-
-	if ((error = bcm_part_read(part, offset, &hdr, sizeof(hdr))))
-		return (error);
-
-	if (le32toh(hdr.magic) != BCM_NVRAM_MAGIC)
+	/* Since we match on all partition types, we need to limit
+	 * identification to partitions actually marked as NVRAM-formatted */
+	if (!BCM_PART_HAS_FLAGS(part, BCM_PART_NVRAM))
 		return (ENXIO);
 
-	/* Provide NVRAM size */
-	size->fs_size = le32toh(hdr.size);
-
-	return (bcm_part_ident_init(ident, &hdr, offset, sizeof(hdr), false));
-}
-
-BCM_PART_IDENT("NVRAM", BCM_PART_TYPE_NVRAM, bcm_part_ident_nvram);
-
-/* WGT634U TLV-NVRAM partition identification */
-static int
-bcm_part_ident_nvram_tlv(struct bcm_disk *disk, struct bcm_part *part,
-    struct bcm_part_ident *ident, struct bcm_part_size *size)
-{
-	uint8_t	bytes[32];
-	off_t	offset;
-	int	error;
-
-
-	offset = 0x0;
-
-	if ((error = bcm_part_read(part, offset, bytes, sizeof(bytes))))
+	/* Fetch the NVRAM header */
+	error = bcm_part_read_ident(part, ident, 0x0, &hdr, sizeof(hdr));
+	if (error)
 		return (error);
 
-	// XXX TODO: Use bhnd_nvram_tlv_probe
-	switch (bytes[0]) {
-	case NVRAM_TLV_TYPE_END:
-	case NVRAM_TLV_TYPE_ENV:
-		return (bcm_part_ident_init(ident, bytes, offset, sizeof(bytes),
-		    false));
-	default:
+	if (le32toh(hdr.bcm.magic) != BCM_NVRAM_MAGIC) {
+		BCM_PART_TRACE(part, "invalid NVRAM magic: %#" PRIx32 "\n",
+		    hdr.bcm.magic);
+		return (ENXIO);
+	}
+
+	/* Provide NVRAM size */
+	size->fs_size = le32toh(hdr.bcm.size);
+	return (0);
+}
+BCM_PART_IDENT("NVRAM", BCM_PART_TYPE_UNKNOWN, bcm_part_ident_nvram);
+
+
+static int
+bcm_part_ident_wgt634U_nvram(struct bcm_disk *disk, struct bcm_part *part,
+    struct bcm_part_ident *ident, struct bcm_part_size *size)
+{
+	struct bhnd_nvram_io	*io;
+	int			 error, result;
+	union {
+		struct bhnd_nvram_bcmhdr	bcm;
+		uint8_t				tlv[64];
+	} hdr;
+
+	error = bcm_part_read_ident(part, ident, 0x0, &hdr, sizeof(hdr));
+	if (error)
+		return (error);
+
+	/* Ensure that we don't accidentally claim a standard NVRAM partition */
+	if (le32toh(hdr.bcm.magic) == BCM_NVRAM_MAGIC)
+		return (ENXIO);
+
+	/* Allocate a new I/O context we can use to perform TLV probing */
+	io = bhnd_nvram_ioptr_new(&hdr, sizeof(hdr), sizeof(hdr),
+	    BHND_NVRAM_IOPTR_RDONLY);
+	if (io == NULL)
+		return (ENOMEM);
+
+	/* Probe our minimal TLV data, and then free our I/O context */
+	result = bhnd_nvram_data_probe(&bhnd_nvram_tlv_class, io);
+	bhnd_nvram_io_free(io);
+
+	if (result > 0) {
+		/* Probe failed */
+		return (result);
+	} else if (result > BHND_NVRAM_DATA_PROBE_MAYBE) {
+		/* Probe succeeded with a high-scoring match */
+		return (0);
+	} else {
+		/*
+		 * Probe returned a low-quality match.
+		 * 
+		 * In the case of TLV, this will only occur if we find a
+		 * single TLV_END (0x0) byte at the start of the data.
+		 * 
+		 * The only device on which TLV is used is the WGT634U, and
+		 * its NVRAM should never be empty; it must contain at least
+		 * the ethernet MAC addresses, PHY address, etc.
+		 * 
+		 * We err on the side of caution by ignoring the low-quality
+		 * match.
+		 */
+		BCM_PART_ERR(part, "ignoring empty TLV NVRAM partition");
 		return (ENXIO);
 	}
 }
+BCM_PART_IDENT("WGT634U_NVRAM", BCM_PART_TYPE_NVRAM, bcm_part_ident_wgt634U_nvram);
 
-BCM_PART_IDENT("NVRAM_TLV", BCM_PART_TYPE_NVRAM, bcm_part_ident_nvram_tlv);
 
-/* WGT634U LEAF configuration partition identification */
 static int
 bcm_part_ident_leaf_config(struct bcm_disk *disk, struct bcm_part *part,
     struct bcm_part_ident *ident, struct bcm_part_size *size)
 {
 	uint16_t	magic;
-	off_t		offset;
-	bool		bswap;
 	int		error;
 
-
-	offset = BCM_MINIX_OFFSET;
-	if ((error = bcm_part_read(part, offset, &magic, sizeof(magic))))
+	error = bcm_part_read_ident(part, ident, BCM_MINIX_OFFSET, &magic,
+	    sizeof(magic));
+	if (error)
 		return (error);
 
-	bswap = false;
 	switch (magic) {
 	case BCM_MINIX_CIGAM:
-		bswap = true;
-		/* fallthrough */
+		ident->fp_byteswap = true;
+		return (0);
 	case BCM_MINIX_MAGIC:
-		return (bcm_part_ident_init(ident, &magic, offset,
-		    sizeof(magic), bswap));
-
+		return (0);
 	default:
 		return (ENXIO);
 	}
 }
+BCM_PART_IDENT("LEAF_CONFIG", BCM_PART_TYPE_LEAF_CONFIG, bcm_part_ident_leaf_config);
 
-BCM_PART_IDENT("LEAF_CONFIG", BCM_PART_TYPE_LEAF_CONFIG,
-    bcm_part_ident_leaf_config);
+
+static int
+bcm_part_ident_ml(struct bcm_disk *disk, struct bcm_part *part,
+    struct bcm_part_ident *ident, struct bcm_part_size *size)
+{
+	struct bcm_netgear_langhdr	 hdr;
+	int				 error;
+
+	/* Read our ML header */
+	if ((error = bcm_part_read_ident(part, ident, 0x0, &hdr, sizeof(hdr))))
+		return (error);
+
+	/* The ML format does not provide a magic number; we need to look at
+	 * the BZIP2 stream directly following the header */
+	if (strncmp(hdr.bzip2, BCM_BZIP2_MAGIC, sizeof(hdr.bzip2)) != 0)
+		return (ENXIO);
+
+	/*
+	 * An ML partition is limited to <= 0xFFF0; if the flash has been
+	 * erased (setting all bits to 1), this field will be 0xFFFFFFFF
+	 *
+	 * XXX: assumes partition is native endian.
+	 */
+	if (hdr.len > BCM_NETGEAR_LANG_MAXLEN)
+		return (ENXIO);
+
+	/* Provide the string table size */
+	size->fs_size = hdr.len + BCM_NETGEAR_LANG_HDRSIZE;
+
+	return (0);
+}
+BCM_PART_IDENT("ML", BCM_PART_TYPE_MULTILANG, bcm_part_ident_ml);
+
+
+static int
+bcm_part_ident_pot(struct bcm_disk *disk, struct bcm_part *part,
+    struct bcm_part_ident *ident, struct bcm_part_size *size)
+{
+	char	magic[BCM_POT_MAGIC_LEN];
+	int	error;
+
+	error = bcm_part_read_ident(part, ident, 0x0, &magic, sizeof(magic));
+	if (error)
+		return (error);
+
+	if (strncmp(magic, BCM_POT_MAGIC, BCM_POT_MAGIC_LEN) != 0)
+		return (ENXIO);
+
+	return (0);
+}
+BCM_PART_IDENT("POT", BCM_PART_TYPE_POT, bcm_part_ident_pot);
+
+
+static int
+bcm_part_ident_tmeter(struct bcm_disk *disk, struct bcm_part *part,
+    struct bcm_part_ident *ident, struct bcm_part_size *size)
+{
+	struct bcm_tmeter_record	tmrec;
+	int				error;
+
+	/* Read the first traffic meter record */
+	error = bcm_part_read_ident(part, ident, 0x0, &tmrec, sizeof(tmrec));
+	if (error)
+		return (error);
+
+	switch (tmrec.magic) {
+	case BCM_TMETER_CIGAM:
+		ident->fp_byteswap = true;
+		return (0);
+	case BCM_TMETER_MAGIC:
+		return (0);
+	default:
+		printf("NO MATCH: %#x\n", tmrec.magic);
+		return (ENXIO);
+	}
+}
+BCM_PART_IDENT("TMETER", BCM_PART_TYPE_TMETER, bcm_part_ident_tmeter);
+
+
+static int
+bcm_part_ident_board_data(struct bcm_disk *disk, struct bcm_part *part,
+    struct bcm_part_ident *ident, struct bcm_part_size *size)
+{
+	uint32_t		magic;
+	struct bcm_bd_record	record;
+	u_char			buf[512];
+	off_t			offset;
+	int			error;
+	bool			found;
+
+	/*
+	 * The board data layout:
+	 *	- 0x0000-0x00FF	hw param block	(serial #, macaddr, etc)
+	 *	- 0x0100-0x7FFF	rf param block	(non-standard NVRAM image
+	 *					 containing BCM NVRAM variables
+	 *					 for the WiFi chipset)
+	 *	- 0x8000-0xFFFE	record block	(ssid, wifi passphrases, etc)
+	 */
+
+	/* Try looking for the RF parameter block */
+	error = bcm_part_read_ident(part, ident, BCM_BD_RFPM_OFFSET, &magic,
+	    sizeof(magic));
+	if (error)
+		return (error);
+
+	switch (magic) {
+	case BCM_BD_RFPM_CIGAM:
+		ident->fp_byteswap = true;
+		/* fall-through */
+	case BCM_BD_RFPM_MAGIC:
+		BCM_PART_TRACE(part, "RF parameter block found at %#jx\n",
+		    (intmax_t)offset);
+		return (0);
+	}
+
+	/*
+	 * If no RF param block is found, we have to scan the record block
+	 * for the first valid entry.
+	 * 
+	 * There is no guarantee that the first record is properly aligned; we
+	 * have to scan byte-by-byte; we arbitrary limit this scan to the
+	 * maximum supported record.
+	 */
+	offset = BCM_BD_RECORD_OFFSET;
+	found = false;
+	while (!found && offset-BCM_BD_RECORD_OFFSET < BCM_BD_RECORD_MAXLEN) {
+		error = bcm_part_read_ident(part, ident, offset, buf,
+		    sizeof(buf));
+		if (error)
+			return (error);
+
+		for (size_t i = 0; i < sizeof(buf) && !found; i++) {
+			if (buf[i] != BCM_BD_RECORD_MAGIC0)
+				continue;
+
+			/* insufficient bytes for comparison; let the outer
+			 * loop perform an additional read at the current
+			 * offset */
+			if (sizeof(buf) - i < sizeof(record))
+				break;
+
+			memcpy(&record, &buf[i], sizeof(record));
+			switch (record.magic) {
+			case BCM_BD_RECORD_CIGAM:
+				ident->fp_byteswap = true;
+				record.magic = bswap32(record.magic);
+				record.tag = bswap16(record.tag);
+				record.len = bswap16(record.len);
+
+				/* fall-through */
+			case BCM_BD_RECORD_MAGIC:
+				if (record.len > BCM_BD_RECORD_MAXLEN) {
+					BCM_PART_ERR(part, "invalid record "
+					    "size: %#" PRIx16 "\n", record.len);
+					return (ENXIO);
+				}
+
+				BCM_PART_TRACE(part, "board_data record found "
+				    "at %#jx\n", (intmax_t)offset);
+				return (0);
+			}
+
+			/* Advance offset */
+			offset++;
+		}
+	}
+
+	return (ENXIO);
+}
+BCM_PART_IDENT("BOARD_DATA", BCM_PART_TYPE_BOARD_DATA, bcm_part_ident_board_data);
+
+
+static int
+bcm_part_ident_asusfw(struct bcm_disk *disk, struct bcm_part *part,
+    struct bcm_part_ident *ident, struct bcm_part_size *size)
+{
+	// XXX TODO
+	return (ENXIO);
+}
+BCM_PART_IDENT("ASUS_FW", BCM_PART_TYPE_ASUSFW, bcm_part_ident_asusfw);

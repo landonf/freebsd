@@ -1024,9 +1024,9 @@ g_cfe_probe_trx(struct g_cfe_taste_io *io, off_t block)
 		return (NULL);
 	}
 
-	if (strncmp(hdr.magic, BCM_TRX_MAGIC, sizeof(hdr.magic)) != 0)
+	// XXX remove
+	if (hdr.magic != BCM_TRX_MAGIC)
 		return (NULL);
-
 
 	hdr.len = le32toh(hdr.len);
 	hdr.crc32 = le32toh(hdr.crc32);

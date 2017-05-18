@@ -54,6 +54,7 @@ typedef enum {
 	BCM_PART_TYPE_TRX,		/**< TRX partition */
 	BCM_PART_TYPE_NVRAM,		/**< NVRAM partition */
 	BCM_PART_TYPE_BRCMNAND,		/**< unused NAND space reserved for OS data */
+	BCM_PART_TYPE_DEVINFO,		/**< subsidiary device (PCI(e)-attached WiFi cores, etc) NVRAM image */
 
 	/* Netgear-specific partition types */
 	BCM_PART_TYPE_LEAF_CONFIG,	/**< Netgear/LEAF configuration partition (MINIX partition, found on WGT634U) */
@@ -61,9 +62,6 @@ typedef enum {
 	BCM_PART_TYPE_MULTILANG,	/**< Netgear 'ML' l10n string table partition */
 	BCM_PART_TYPE_POT,		/**< Netgear 'POT' partition: NTP timestamp + first associated STA MAC addr */
 	BCM_PART_TYPE_TMETER,		/**< Netgear 'T_Meter' traffic meter data partition */
-
-	/* Linksys-specific partition types */
-	BCM_PART_TYPE_DEVINFO,		/**< Linksys 'devinfo' partition */
 
 	/* Asus-specific partition types */
 	BCM_PART_TYPE_ASUSFW,		/**< Asus 'asus' partition containing device firmware, etc */
