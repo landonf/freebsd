@@ -1692,7 +1692,8 @@ bhnd_compat_write_multi_2(device_t dev, const void *buffer, size_t count,
 
 	/* XXX discarding const to maintain API compatibility with
 	 * siba_write_multi_2() */
-	bhnd_bus_write_multi_2(sc->sc_mem_res, offset, (void *)buffer, count);
+	bhnd_bus_write_multi_2(sc->sc_mem_res, offset,
+	    __DECONST(void *, buffer), count);
 }
 
 /*
@@ -1711,7 +1712,8 @@ bhnd_compat_write_multi_4(device_t dev, const void *buffer, size_t count,
 
 	/* XXX discarding const to maintain API compatibility with
 	 * siba_write_multi_4() */
-	bhnd_bus_write_multi_4(sc->sc_mem_res, offset, (void *)buffer, count);
+	bhnd_bus_write_multi_4(sc->sc_mem_res, offset,
+	    __DECONST(void *, buffer), count);
 }
 
 /*
