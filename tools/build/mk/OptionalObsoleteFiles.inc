@@ -4512,6 +4512,7 @@ OLD_LIBS+=${DEBUG_LIB32_LIBS}
 OLD_LIBS+=lib/libcxxrt.so.1
 OLD_FILES+=usr/lib/libc++.a
 OLD_FILES+=usr/lib/libc++_p.a
+OLD_FILES+=usr/lib/libc++experimental.a
 OLD_FILES+=usr/lib/libc++.so
 OLD_LIBS+=usr/lib/libc++.so.1
 OLD_FILES+=usr/lib/libcxxrt.a
@@ -8650,6 +8651,13 @@ OLD_FILES+=usr/bin/ul
 OLD_FILES+=usr/share/man/man1/checknr.1.gz
 OLD_FILES+=usr/share/man/man1/colcrt.1.gz
 OLD_FILES+=usr/share/man/man1/ul.1.gz
+.endif
+
+.if ${MK_TFTP} == no
+OLD_FILES+=usr/bin/tftp
+OLD_FILES+=usr/libexec/tftpd
+OLD_FILES+=usr/share/man/man1/tftp.1.gz
+OLD_FILES+=usr/share/man/man8/tftpd.8.gz
 .endif
 
 .if ${MK_TIMED} == no
