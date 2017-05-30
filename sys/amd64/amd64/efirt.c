@@ -45,6 +45,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sched.h>
 #include <sys/sysctl.h>
 #include <sys/systm.h>
+#include <sys/vmmeter.h>
 #include <machine/fpu.h>
 #include <machine/efi.h>
 #include <machine/metadata.h>
@@ -53,6 +54,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/vmparam.h>
 #include <vm/vm.h>
 #include <vm/pmap.h>
+#include <vm/vm_map.h>
 #include <vm/vm_object.h>
 #include <vm/vm_page.h>
 #include <vm/vm_pager.h>
@@ -301,6 +303,17 @@ efi_enter(void)
 		PMAP_UNLOCK(curpmap);
 		return (error);
 	}
+
+	/*
+	 * IPI TLB shootdown handler invltlb_pcid_handler() reloads
+	 * %cr3 from the curpmap->pm_cr3, which would disable runtime
+	 * segments mappings.  Block the handler's action by setting
+	 * curpmap to impossible value.  See also comment in
+	 * pmap.c:pmap_activate_sw().
+	 */
+	if (pmap_pcid_enabled && !invpcid_works)
+		PCPU_SET(curpmap, NULL);
+
 	load_cr3(VM_PAGE_TO_PHYS(efi_pml4_page) | (pmap_pcid_enabled ?
 	    curpmap->pm_pcids[PCPU_GET(cpuid)].pm_pcid : 0));
 	/*
@@ -317,7 +330,9 @@ efi_leave(void)
 {
 	pmap_t curpmap;
 
-	curpmap = PCPU_GET(curpmap);
+	curpmap = &curproc->p_vmspace->vm_pmap;
+	if (pmap_pcid_enabled && !invpcid_works)
+		PCPU_SET(curpmap, curpmap);
 	load_cr3(curpmap->pm_cr3 | (pmap_pcid_enabled ?
 	    curpmap->pm_pcids[PCPU_GET(cpuid)].pm_pcid : 0));
 	if (!pmap_pcid_enabled)
@@ -341,14 +356,14 @@ efi_init(void)
 	if (efi_systbl_phys == 0) {
 		if (bootverbose)
 			printf("EFI systbl not available\n");
-		return (ENXIO);
+		return (0);
 	}
 	efi_systbl = (struct efi_systbl *)PHYS_TO_DMAP(efi_systbl_phys);
 	if (efi_systbl->st_hdr.th_sig != EFI_SYSTBL_SIG) {
 		efi_systbl = NULL;
 		if (bootverbose)
 			printf("EFI systbl signature invalid\n");
-		return (ENXIO);
+		return (0);
 	}
 	efi_cfgtbl = (efi_systbl->st_cfgtbl == 0) ? NULL :
 	    (struct efi_cfgtbl *)efi_systbl->st_cfgtbl;
@@ -365,7 +380,7 @@ efi_init(void)
 	if (efihdr == NULL) {
 		if (bootverbose)
 			printf("EFI map is not present\n");
-		return (ENXIO);
+		return (0);
 	}
 	efisz = (sizeof(struct efi_map_header) + 0xf) & ~0xf;
 	map = (struct efi_md *)((uint8_t *)efihdr + efisz);
@@ -549,7 +564,6 @@ efirt_modevents(module_t m, int event, void *arg __unused)
 	switch (event) {
 	case MOD_LOAD:
 		return (efi_init());
-		break;
 
 	case MOD_UNLOAD:
 		efi_uninit();

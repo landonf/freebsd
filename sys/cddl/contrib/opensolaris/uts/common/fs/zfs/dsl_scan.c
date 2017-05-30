@@ -807,7 +807,7 @@ dsl_scan_visitbp(blkptr_t *bp, const zbookmark_phys_t *zb,
 		return;
 
 	/*
-	 * If dsl_scan_ddt() has aready visited this block, it will have
+	 * If dsl_scan_ddt() has already visited this block, it will have
 	 * already done any translations or scrubbing, so don't call the
 	 * callback again.
 	 */
@@ -1113,7 +1113,9 @@ dsl_scan_visitds(dsl_scan_t *scn, uint64_t dsobj, dmu_tx_t *tx)
 	 * Iterate over the bps in this ds.
 	 */
 	dmu_buf_will_dirty(ds->ds_dbuf, tx);
+	rrw_enter(&ds->ds_bp_rwlock, RW_READER, FTAG);
 	dsl_scan_visit_rootbp(scn, ds, &dsl_dataset_phys(ds)->ds_bp, tx);
+	rrw_exit(&ds->ds_bp_rwlock, FTAG);
 
 	char *dsname = kmem_alloc(ZFS_MAX_DATASET_NAME_LEN, KM_SLEEP);
 	dsl_dataset_name(ds, dsname);
@@ -1472,6 +1474,7 @@ dsl_scan_active(dsl_scan_t *scn)
 	return (used != 0);
 }
 
+/* Called whenever a txg syncs. */
 void
 dsl_scan_sync(dsl_pool_t *dp, dmu_tx_t *tx)
 {
@@ -1890,6 +1893,7 @@ dsl_scan_scrub_cb(dsl_pool_t *dp,
 	return (0);
 }
 
+/* Called by the ZFS_IOC_POOL_SCAN ioctl to start a scrub or resilver */
 int
 dsl_scan(dsl_pool_t *dp, pool_scan_func_t func)
 {

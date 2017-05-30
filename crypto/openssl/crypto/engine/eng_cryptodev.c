@@ -810,14 +810,15 @@ static int cryptodev_digest_update(EVP_MD_CTX *ctx, const void *data,
 
     if (!(ctx->flags & EVP_MD_CTX_FLAG_ONESHOT)) {
         /* if application doesn't support one buffer */
-        state->mac_data =
+        char *mac_data =
             OPENSSL_realloc(state->mac_data, state->mac_len + count);
 
-        if (!state->mac_data) {
+        if (mac_data == NULL) {
             printf("cryptodev_digest_update: realloc failed\n");
             return (0);
         }
 
+        state->mac_data = mac_data;
         memcpy(state->mac_data + state->mac_len, data, count);
         state->mac_len += count;
 
@@ -939,7 +940,7 @@ static int cryptodev_digest_copy(EVP_MD_CTX *to, const EVP_MD_CTX *from)
     if (fstate->mac_len != 0) {
         if (fstate->mac_data != NULL) {
             dstate->mac_data = OPENSSL_malloc(fstate->mac_len);
-            if (dstate->ac_data == NULL) {
+            if (dstate->mac_data == NULL) {
                 printf("cryptodev_digest_init: malloc failed\n");
                 return 0;
             }

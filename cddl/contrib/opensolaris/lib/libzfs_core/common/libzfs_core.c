@@ -534,6 +534,8 @@ lzc_send_resume(const char *snapname, const char *from, int fd,
 		fnvlist_add_boolean(args, "largeblockok");
 	if (flags & LZC_SEND_FLAG_EMBED_DATA)
 		fnvlist_add_boolean(args, "embedok");
+	if (flags & LZC_SEND_FLAG_COMPRESS)
+		fnvlist_add_boolean(args, "compressok");
 	if (resumeobj != 0 || resumeoff != 0) {
 		fnvlist_add_uint64(args, "resume_object", resumeobj);
 		fnvlist_add_uint64(args, "resume_offset", resumeoff);
@@ -559,7 +561,8 @@ lzc_send_resume(const char *snapname, const char *from, int fd,
  * an equivalent snapshot.
  */
 int
-lzc_send_space(const char *snapname, const char *from, uint64_t *spacep)
+lzc_send_space(const char *snapname, const char *from,
+    enum lzc_send_flags flags, uint64_t *spacep)
 {
 	nvlist_t *args;
 	nvlist_t *result;
@@ -568,6 +571,12 @@ lzc_send_space(const char *snapname, const char *from, uint64_t *spacep)
 	args = fnvlist_alloc();
 	if (from != NULL)
 		fnvlist_add_string(args, "from", from);
+	if (flags & LZC_SEND_FLAG_LARGE_BLOCK)
+		fnvlist_add_boolean(args, "largeblockok");
+	if (flags & LZC_SEND_FLAG_EMBED_DATA)
+		fnvlist_add_boolean(args, "embedok");
+	if (flags & LZC_SEND_FLAG_COMPRESS)
+		fnvlist_add_boolean(args, "compressok");
 	err = lzc_ioctl(ZFS_IOC_SEND_SPACE, snapname, args, &result);
 	nvlist_free(args);
 	if (err == 0)
@@ -596,8 +605,9 @@ recv_read(int fd, void *buf, int ilen)
 }
 
 static int
-lzc_receive_impl(const char *snapname, nvlist_t *props, const char *origin,
-    boolean_t force, boolean_t resumable, int fd)
+recv_impl(const char *snapname, nvlist_t *props, const char *origin,
+    boolean_t force, boolean_t resumable, int fd,
+    const dmu_replay_record_t *begin_record)
 {
 	/*
 	 * The receive ioctl is still legacy, so we need to construct our own
@@ -642,9 +652,14 @@ lzc_receive_impl(const char *snapname, nvlist_t *props, const char *origin,
 		(void) strlcpy(zc.zc_string, origin, sizeof (zc.zc_string));
 
 	/* zc_begin_record is non-byteswapped BEGIN record */
-	error = recv_read(fd, &zc.zc_begin_record, sizeof (zc.zc_begin_record));
-	if (error != 0)
-		goto out;
+	if (begin_record == NULL) {
+		error = recv_read(fd, &zc.zc_begin_record,
+		    sizeof (zc.zc_begin_record));
+		if (error != 0)
+			goto out;
+	} else {
+		zc.zc_begin_record = *begin_record;
+	}
 
 	/* zc_cookie is fd to read from */
 	zc.zc_cookie = fd;
@@ -685,7 +700,7 @@ int
 lzc_receive(const char *snapname, nvlist_t *props, const char *origin,
     boolean_t force, int fd)
 {
-	return (lzc_receive_impl(snapname, props, origin, force, B_FALSE, fd));
+	return (recv_impl(snapname, props, origin, force, B_FALSE, fd, NULL));
 }
 
 /*
@@ -698,7 +713,29 @@ int
 lzc_receive_resumable(const char *snapname, nvlist_t *props, const char *origin,
     boolean_t force, int fd)
 {
-	return (lzc_receive_impl(snapname, props, origin, force, B_TRUE, fd));
+	return (recv_impl(snapname, props, origin, force, B_TRUE, fd, NULL));
+}
+
+/*
+ * Like lzc_receive, but allows the caller to read the begin record and then to
+ * pass it in.  That could be useful if the caller wants to derive, for example,
+ * the snapname or the origin parameters based on the information contained in
+ * the begin record.
+ * The begin record must be in its original form as read from the stream,
+ * in other words, it should not be byteswapped.
+ *
+ * The 'resumable' parameter allows to obtain the same behavior as with
+ * lzc_receive_resumable.
+ */
+int
+lzc_receive_with_header(const char *snapname, nvlist_t *props,
+    const char *origin, boolean_t force, boolean_t resumable, int fd,
+    const dmu_replay_record_t *begin_record)
+{
+	if (begin_record == NULL)
+		return (EINVAL);
+	return (recv_impl(snapname, props, origin, force, resumable, fd,
+	    begin_record));
 }
 
 /*
@@ -722,6 +759,8 @@ lzc_rollback(const char *fsname, char *snapnamebuf, int snapnamelen)
 		const char *snapname = fnvlist_lookup_string(result, "target");
 		(void) strlcpy(snapnamebuf, snapname, snapnamelen);
 	}
+	nvlist_free(result);
+
 	return (err);
 }
 

@@ -75,7 +75,7 @@ bus_dmamem_alloc(bus_dma_tag_t dmat, void** vaddr, int flags,
 	void *addr;
 
 	addr = malloc(dmat->maxsize + dmat->alignment, XXX, XXX);
-	if (addr == 0)
+	if (addr == NULL)
 		return (ENOMEM);
 
 	*mapp = addr;
@@ -817,8 +817,12 @@ device_delete_child(device_t dev, device_t child)
 	int error = 0;
 	device_t grandchild;
 
-	/* remove children first */
+	/* detach parent before deleting children, if any */
+	error = device_detach(child);
+	if (error)
+		goto done;
 
+	/* remove children second */
 	while ((grandchild = TAILQ_FIRST(&child->dev_children))) {
 		error = device_delete_child(child, grandchild);
 		if (error) {
@@ -826,11 +830,6 @@ device_delete_child(device_t dev, device_t child)
 			goto done;
 		}
 	}
-
-	error = device_detach(child);
-
-	if (error)
-		goto done;
 
 	devclass_delete_device(child->dev_module, child);
 

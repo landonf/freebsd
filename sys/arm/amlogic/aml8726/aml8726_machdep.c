@@ -40,7 +40,6 @@ __FBSDID("$FreeBSD$");
 #include <vm/pmap.h>
 
 #include <machine/bus.h>
-#include <machine/cpufunc.h>
 #include <machine/intr.h>
 #include <machine/machdep.h>
 #include <machine/platform.h>
@@ -57,7 +56,7 @@ vm_offset_t aml8726_aobus_kva_base;
 #endif
 
 static void
-aml8726_fixup_busfreq()
+aml8726_fixup_busfreq(void)
 {
 	phandle_t node;
 	pcell_t freq, prop;

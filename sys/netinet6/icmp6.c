@@ -41,7 +41,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -490,7 +490,7 @@ icmp6_input(struct mbuf **mp, int *offp, int proto)
 			break;
 		case ICMP6_DST_UNREACH_ADMIN:
 			icmp6_ifstat_inc(ifp, ifs6_in_adminprohib);
-			code = PRC_UNREACH_PROTOCOL; /* is this a good code? */
+			code = PRC_UNREACH_ADMIN_PROHIB;
 			break;
 		case ICMP6_DST_UNREACH_BEYONDSCOPE:
 			/* I mean "source address was incorrect." */
@@ -597,9 +597,9 @@ icmp6_input(struct mbuf **mp, int *offp, int proto)
 			    sizeof(*nicmp6));
 			noff = off;
 		}
-		nicmp6->icmp6_type = ICMP6_ECHO_REPLY;
-		nicmp6->icmp6_code = 0;
 		if (n) {
+			nicmp6->icmp6_type = ICMP6_ECHO_REPLY;
+			nicmp6->icmp6_code = 0;
 			ICMP6STAT_INC(icp6s_reflect);
 			ICMP6STAT_INC(icp6s_outhist[ICMP6_ECHO_REPLY]);
 			icmp6_reflect(n, noff);
@@ -689,6 +689,7 @@ icmp6_input(struct mbuf **mp, int *offp, int proto)
 				 */
 				m_free(n);
 				n = NULL;
+				break;
 			}
 			maxhlen = M_TRAILINGSPACE(n) -
 			    (sizeof(*nip6) + sizeof(*nicmp6) + 4);
@@ -2146,8 +2147,8 @@ icmp6_reflect(struct mbuf *m, size_t off)
 		 * that we do not own.  Select a source address based on the
 		 * source address of the erroneous packet.
 		 */
-		in6_splitscope(&ip6->ip6_dst, &dst6, &scopeid);
-		error = in6_selectsrc_addr(RT_DEFAULT_FIB, &dst6,
+		in6_splitscope(&ip6->ip6_src, &dst6, &scopeid);
+		error = in6_selectsrc_addr(M_GETFIB(m), &dst6,
 		    scopeid, NULL, &src6, &hlim);
 
 		if (error) {
@@ -2289,7 +2290,7 @@ icmp6_redirect_input(struct mbuf *m, int off)
 	uint32_t scopeid;
 
 	in6_splitscope(&reddst6, &kdst, &scopeid);
-	if (fib6_lookup_nh_basic(RT_DEFAULT_FIB, &kdst, scopeid, 0, 0,&nh6)==0){
+	if (fib6_lookup_nh_basic(ifp->if_fib, &kdst, scopeid, 0, 0,&nh6)==0){
 		if ((nh6.nh_flags & NHF_GATEWAY) == 0) {
 			nd6log((LOG_ERR,
 			    "ICMP6 redirect rejected; no route "

@@ -10,7 +10,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -54,9 +54,11 @@ __FBSDID("$FreeBSD$");
 #include <sys/malloc.h>
 #include <sys/mutex.h>
 #include <sys/rwlock.h>
+#include <sys/vmmeter.h>
 
 #include <security/mac/mac_framework.h>
 
+#include <ufs/ufs/dir.h>
 #include <ufs/ufs/extattr.h>
 #include <ufs/ufs/gjournal.h>
 #include <ufs/ufs/quota.h>
@@ -147,7 +149,7 @@ ffs_mount(struct mount *mp)
 	struct ufsmount *ump = NULL;
 	struct fs *fs;
 	pid_t fsckpid = 0;
-	int error, flags;
+	int error, error1, flags;
 	uint64_t mntorflags;
 	accmode_t accmode;
 	struct nameidata ndp;
@@ -453,6 +455,11 @@ ffs_mount(struct mount *mp)
 		 */
 		if (mp->mnt_flag & MNT_SNAPSHOT)
 			return (ffs_snapshot(mp, fspec));
+
+		/*
+		 * Must not call namei() while owning busy ref.
+		 */
+		vfs_unbusy(mp);
 	}
 
 	/*
@@ -460,7 +467,18 @@ ffs_mount(struct mount *mp)
 	 * and verify that it refers to a sensible disk device.
 	 */
 	NDINIT(&ndp, LOOKUP, FOLLOW | LOCKLEAF, UIO_SYSSPACE, fspec, td);
-	if ((error = namei(&ndp)) != 0)
+	error = namei(&ndp);
+	if ((mp->mnt_flag & MNT_UPDATE) != 0) {
+		/*
+		 * Unmount does not start if MNT_UPDATE is set.  Mount
+		 * update busies mp before setting MNT_UPDATE.  We
+		 * must be able to retain our busy ref succesfully,
+		 * without sleep.
+		 */
+		error1 = vfs_busy(mp, MBF_NOWAIT);
+		MPASS(error1 == 0);
+	}
+	if (error != 0)
 		return (error);
 	NDFREE(&ndp, NDF_ONLY_PNBUF);
 	devvp = ndp.ni_vp;
@@ -588,7 +606,8 @@ ffs_reload(struct mount *mp, struct thread *td, int flags)
 	struct fs *fs, *newfs;
 	struct ufsmount *ump;
 	ufs2_daddr_t sblockloc;
-	int i, blks, size, error;
+	int i, blks, error;
+	u_long size;
 	int32_t *lp;
 
 	ump = VFSTOUFS(mp);
@@ -658,7 +677,7 @@ ffs_reload(struct mount *mp, struct thread *td, int flags)
 		size += fs->fs_ncg * sizeof(int32_t);
 	size += fs->fs_ncg * sizeof(u_int8_t);
 	free(fs->fs_csp, M_UFSMNT);
-	space = malloc((u_long)size, M_UFSMNT, M_WAITOK);
+	space = malloc(size, M_UFSMNT, M_WAITOK);
 	fs->fs_csp = space;
 	for (i = 0; i < blks; i += fs->fs_frag) {
 		size = fs->fs_bsize;
@@ -751,7 +770,8 @@ ffs_mountfs(devvp, mp, td)
 	struct cdev *dev;
 	void *space;
 	ufs2_daddr_t sblockloc;
-	int error, i, blks, size, ronly;
+	int error, i, blks, len, ronly;
+	u_long size;
 	int32_t *lp;
 	struct ucred *cred;
 	struct g_consumer *cp;
@@ -856,11 +876,11 @@ ffs_mountfs(devvp, mp, td)
 		/*
 		 * Get journal provider name.
 		 */
-		size = 1024;
-		mp->mnt_gjprovider = malloc(size, M_UFSMNT, M_WAITOK);
-		if (g_io_getattr("GJOURNAL::provider", cp, &size,
+		len = 1024;
+		mp->mnt_gjprovider = malloc((u_long)len, M_UFSMNT, M_WAITOK);
+		if (g_io_getattr("GJOURNAL::provider", cp, &len,
 		    mp->mnt_gjprovider) == 0) {
-			mp->mnt_gjprovider = realloc(mp->mnt_gjprovider, size,
+			mp->mnt_gjprovider = realloc(mp->mnt_gjprovider, len,
 			    M_UFSMNT, M_WAITOK);
 			MNT_ILOCK(mp);
 			mp->mnt_flag |= MNT_GJOURNAL;
@@ -912,7 +932,7 @@ ffs_mountfs(devvp, mp, td)
 	if (fs->fs_contigsumsize > 0)
 		size += fs->fs_ncg * sizeof(int32_t);
 	size += fs->fs_ncg * sizeof(u_int8_t);
-	space = malloc((u_long)size, M_UFSMNT, M_WAITOK);
+	space = malloc(size, M_UFSMNT, M_WAITOK);
 	fs->fs_csp = space;
 	for (i = 0; i < blks; i += fs->fs_frag) {
 		size = fs->fs_bsize;
@@ -997,8 +1017,8 @@ ffs_mountfs(devvp, mp, td)
 #endif
 	}
 	if ((fs->fs_flags & FS_TRIM) != 0) {
-		size = sizeof(int);
-		if (g_io_getattr("GEOM::candelete", cp, &size,
+		len = sizeof(int);
+		if (g_io_getattr("GEOM::candelete", cp, &len,
 		    &ump->um_candelete) == 0) {
 			if (!ump->um_candelete)
 				printf("WARNING: %s: TRIM flag on fs but disk "
@@ -1413,10 +1433,10 @@ ffs_statfs(mp, sbp)
 	    fs->fs_cstotal.cs_nffree + dbtofsb(fs, fs->fs_pendingblocks);
 	sbp->f_bavail = freespace(fs, fs->fs_minfree) +
 	    dbtofsb(fs, fs->fs_pendingblocks);
-	sbp->f_files =  fs->fs_ncg * fs->fs_ipg - ROOTINO;
+	sbp->f_files =  fs->fs_ncg * fs->fs_ipg - UFS_ROOTINO;
 	sbp->f_ffree = fs->fs_cstotal.cs_nifree + fs->fs_pendinginodes;
 	UFS_UNLOCK(ump);
-	sbp->f_namemax = NAME_MAX;
+	sbp->f_namemax = UFS_MAXNAMLEN;
 	return (0);
 }
 
@@ -1830,7 +1850,7 @@ ffs_fhtovp(mp, fhp, flags, vpp)
 	ino = ufhp->ufid_ino;
 	ump = VFSTOUFS(mp);
 	fs = ump->um_fs;
-	if (ino < ROOTINO || ino >= fs->fs_ncg * fs->fs_ipg)
+	if (ino < UFS_ROOTINO || ino >= fs->fs_ncg * fs->fs_ipg)
 		return (ESTALE);
 	/*
 	 * Need to check if inode is initialized because UFS2 does lazy
@@ -2177,7 +2197,7 @@ ffs_geom_strategy(struct bufobj *bo, struct buf *bp)
 	struct buf *tbp;
 	int nocopy;
 
-	vp = bo->__bo_vnode;
+	vp = bo2vnode(bo);
 	if (bp->b_iocmd == BIO_WRITE) {
 		if ((bp->b_flags & B_VALIDSUSPWRT) == 0 &&
 		    bp->b_vp != NULL && bp->b_vp->v_mount != NULL &&

@@ -169,7 +169,7 @@ CTASSERT(sizeof(struct m_ext) == 28);
  * plain pointer does.
  */
 #ifdef INVARIANTS
-static struct mbuf m_assertbuf;
+static struct mbuf __used m_assertbuf;
 CTASSERT(sizeof(m_assertbuf.m_slist) == sizeof(m_assertbuf.m_next));
 CTASSERT(sizeof(m_assertbuf.m_stailq) == sizeof(m_assertbuf.m_next));
 CTASSERT(sizeof(m_assertbuf.m_slistpkt) == sizeof(m_assertbuf.m_nextpkt));
@@ -1336,7 +1336,7 @@ nospace:
 /*
  * Defragment an mbuf chain, returning at most maxfrags separate
  * mbufs+clusters.  If this is not possible NULL is returned and
- * the original mbuf chain is left in it's present (potentially
+ * the original mbuf chain is left in its present (potentially
  * modified) state.  We use two techniques: collapsing consecutive
  * mbufs and replacing consecutive mbufs by a cluster.
  *
@@ -1561,7 +1561,7 @@ m_uiotombuf(struct uio *uio, int how, int len, int align, int flags)
  * Copy an mbuf chain into a uio limited by len if set.
  */
 int
-m_mbuftouio(struct uio *uio, struct mbuf *m, int len)
+m_mbuftouio(struct uio *uio, const struct mbuf *m, int len)
 {
 	int error, length, total;
 	int progress = 0;

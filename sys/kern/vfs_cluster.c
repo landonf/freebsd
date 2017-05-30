@@ -81,9 +81,6 @@ static int read_min = 1;
 SYSCTL_INT(_vfs, OID_AUTO, read_min, CTLFLAG_RW, &read_min, 0,
     "Cluster read min block count");
 
-/* Page expended to mark partially backed buffers */
-extern vm_page_t	bogus_page;
-
 /*
  * Read data to a buf, including read-ahead if we find this to be beneficial.
  * cluster_read replaces bread.
@@ -1008,6 +1005,7 @@ cluster_wbuild(struct vnode *vp, long size, daddr_t start_lbn, int len,
 			reassignbuf(tbp);		/* put on clean list */
 			bufobj_wref(tbp->b_bufobj);
 			BUF_KERNPROC(tbp);
+			buf_track(tbp, __func__);
 			TAILQ_INSERT_TAIL(&bp->b_cluster.cluster_head,
 				tbp, b_cluster.cluster_entry);
 		}

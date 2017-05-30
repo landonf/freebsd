@@ -1335,7 +1335,7 @@ struct bxe_softc {
     struct ifmedia  ifmedia; /* network interface media structure */
     int             media;
 
-    int             state; /* device state */
+    volatile int    state; /* device state */
 #define BXE_STATE_CLOSED                 0x0000
 #define BXE_STATE_OPENING_WAITING_LOAD   0x1000
 #define BXE_STATE_OPENING_WAITING_PORT   0x2000
@@ -1794,7 +1794,7 @@ struct bxe_softc {
     unsigned int trigger_grcdump;
     unsigned int  grcdump_done;
     unsigned int grcdump_started;
-
+    int bxe_pause_param;
     void *eeprom;
 }; /* struct bxe_softc */
 
@@ -2300,10 +2300,10 @@ void bxe_dump_mem(struct bxe_softc *sc, char *tag,
                   uint8_t *mem, uint32_t len);
 void bxe_dump_mbuf_data(struct bxe_softc *sc, char *pTag,
                         struct mbuf *m, uint8_t contents);
-extern int bxe_grc_dump(struct bxe_softc *sc);
 
 #if __FreeBSD_version >= 800000
-#if (__FreeBSD_version >= 1001513 && __FreeBSD_version < 1100000) || __FreeBSD_version >= 1100048
+#if (__FreeBSD_version >= 1001513 && __FreeBSD_version < 1100000) ||\
+    __FreeBSD_version >= 1100048
 #define BXE_SET_FLOWID(m) M_HASHTYPE_SET(m, M_HASHTYPE_OPAQUE)
 #define BXE_VALID_FLOWID(m) (M_HASHTYPE_GET(m) != M_HASHTYPE_NONE)
 #else
