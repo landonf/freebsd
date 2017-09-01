@@ -65,12 +65,14 @@ typedef enum {
 	BHND_DEVCLASS_INVALID		/**< no/invalid class */
 } bhnd_devclass_t;
 
-/** bhnd(4) platform device provider types. */
+/** bhnd(4) provider device types. */
 typedef enum {
-	BHND_PROV_CHIPC,
-	BHND_PROV_PMU,
-	BHND_PROV_NVRAM
-} bhnd_prov_t;
+	BHND_PROVIDER_CHIPC,		/**< a device implementing the bhnd_chipc interface */
+	BHND_PROVIDER_PMU,		/**< a device implementing the bhnd_pmu interface */
+	BHND_PROVIDER_NVRAM,		/**< a device implementing the bhnd_nvram interface */
+
+	BHND_PROVIDER_INVALID = 1000,	/**< no/invalid provider type */
+} bhnd_provider_type;
 
 /**
  * bhnd(4) port types.

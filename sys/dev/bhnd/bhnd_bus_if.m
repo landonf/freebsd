@@ -227,28 +227,28 @@ CODE {
 
 	static int
 	bhnd_bus_null_register_provider(device_t dev, device_t prov,
-	    bhnd_prov_t prov_type)
+	    bhnd_provider_type prov_type)
 	{
 		panic("bhnd_bus_register_provider unimplemented");
 	}
 
 	static int
 	bhnd_bus_null_deregister_provider(device_t dev, device_t prov,
-	    bhnd_prov_t prov_type)
+	    bhnd_provider_type prov_type)
 	{
 		panic("bhnd_bus_deregister_provider unimplemented");
 	}
 
 	static int
 	bhnd_bus_null_retain_provider(device_t dev, device_t *prov,
-	    bhnd_prov_t prov_type)
+	    bhnd_provider_type prov_type)
 	{
 		panic("bhnd_bus_retain_provider unimplemented");
 	}
 
 	static void
 	bhnd_bus_null_release_provider(device_t dev, device_t prov,
-	    bhnd_prov_t prov_type)
+	    bhnd_provider_type prov_type)
 	{
 		panic("bhnd_bus_release_provider unimplemented");
 	}
@@ -320,7 +320,7 @@ STATICMETHOD bhnd_erom_class_t * get_erom_class {
 METHOD int register_provider {
 	device_t dev;
 	device_t prov;
-	bhnd_prov_t prov_type;
+	bhnd_provider_type prov_type;
 } DEFAULT bhnd_bus_null_register_provider;
 
 /**
@@ -342,7 +342,7 @@ METHOD int register_provider {
 METHOD int deregister_provider {
 	device_t dev;
 	device_t prov;
-	bhnd_prov_t prov_type;
+	bhnd_provider_type prov_type;
 } DEFAULT bhnd_bus_null_deregister_provider;
 
 /**
@@ -365,7 +365,7 @@ METHOD int deregister_provider {
 METHOD int retain_provider {
 	device_t dev;
 	device_t *prov;
-	bhnd_prov_t prov_type;
+	bhnd_provider_type prov_type;
 } DEFAULT bhnd_bus_null_retain_provider;
 
 /**
@@ -379,7 +379,7 @@ METHOD int retain_provider {
 METHOD void release_provider {
 	device_t dev;
 	device_t prov;
-	bhnd_prov_t prov_type;
+	bhnd_provider_type prov_type;
 } DEFAULT bhnd_bus_null_release_provider;
 
 /**

@@ -476,7 +476,7 @@ bhnd_find_hostb_device(device_t dev) {
  *			error code will be returned.
  */
 static inline int
-bhnd_register_provider(device_t dev, bhnd_prov_t prov_type)
+bhnd_register_provider(device_t dev, bhnd_provider_type prov_type)
 {
 	return (BHND_BUS_REGISTER_PROVIDER(device_get_parent(dev), dev,
 	    prov_type));
@@ -498,7 +498,7 @@ bhnd_register_provider(device_t dev, bhnd_prov_t prov_type)
  *			error code will be returned.
  */
 static inline int
-bhnd_deregister_provider(device_t dev, bhnd_prov_t prov_type)
+bhnd_deregister_provider(device_t dev, bhnd_provider_type prov_type)
 {
 	return (BHND_BUS_DEREGISTER_PROVIDER(device_get_parent(dev), dev,
 	    prov_type));
@@ -522,7 +522,7 @@ bhnd_deregister_provider(device_t dev, bhnd_prov_t prov_type)
  *			unix error code will be returned.
  */
 static inline int
-bhnd_retain_provider(device_t dev, device_t *prov, bhnd_prov_t prov_type)
+bhnd_retain_provider(device_t dev, device_t *prov, bhnd_provider_type prov_type)
 {
 	return (BHND_BUS_RETAIN_PROVIDER(device_get_parent(dev), prov,
 	    prov_type));
@@ -537,7 +537,7 @@ bhnd_retain_provider(device_t dev, device_t *prov, bhnd_prov_t prov_type)
  * @param prov_type The provider type to be released.
  */
 static inline void
-bhnd_release_provider(device_t dev, device_t prov, bhnd_prov_t prov_type)
+bhnd_release_provider(device_t dev, device_t prov, bhnd_provider_type prov_type)
 {
 	return (BHND_BUS_RELEASE_PROVIDER(device_get_parent(dev), prov,
 	    prov_type));
