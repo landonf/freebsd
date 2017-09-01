@@ -462,6 +462,87 @@ bhnd_find_hostb_device(device_t dev) {
 	return (BHND_BUS_FIND_HOSTB_DEVICE(dev));
 }
 
+
+/**
+ * Register @p dev as the bhnd bus provider for a given @p prov_type.
+ *
+ * @param dev The bhnd bus child device to be registered.
+ * @param prov_type The provider type to be registered.
+ *
+ * @retval 0		success
+ * @retval EBUSY	if @p prov_type has already been registered with the
+ *			parent bus.
+ * @retval non-zero	if registering @p prov otherwise fails, a regular unix
+ *			error code will be returned.
+ */
+static inline int
+bhnd_register_provider(device_t dev, bhnd_prov_t prov_type)
+{
+	return (BHND_BUS_REGISTER_PROVIDER(device_get_parent(dev), dev,
+	    prov_type));
+}
+
+/**
+ * Deregister @p dev as the bhnd bus provider for a given @p prov_type.
+ *
+ * @param dev A provider device previously successfully registered via
+ * bhnd_register_provider().
+ * @param prov_type The provider type for which @p dev should be deregistered.
+ *
+ * @retval 0		success
+ * @retval EBUSY	if active references to @p dev exist; @see
+ *			bhnd_retain_provider().
+ * @retval ENOENT	if @p prov is not registered as a provider for
+ *			@p prov_type.
+ * @retval non-zero	if deregistering @p prov otherwise fails, a regular unix
+ *			error code will be returned.
+ */
+static inline int
+bhnd_deregister_provider(device_t dev, bhnd_prov_t prov_type)
+{
+	return (BHND_BUS_DEREGISTER_PROVIDER(device_get_parent(dev), dev,
+	    prov_type));
+}
+
+/**
+ * Retain and return a reference to the device registered for the given
+ * @p prov_type.
+ *
+ * @param dev A bhnd bus child device.
+ * @param[out] prov On success, a caller-owned reference to the provider device.
+ * @param prov_type The provider type to be retained.
+ *
+ * On success, the caller assumes ownership of a new reference to the returned
+ * device. The caller is responsible for releasing this reference via
+ * bhnd_release_provider().
+ *
+ * @retval 0		success
+ * @retval ENOENT	if no provider is registered for @p prov_type.
+ * @retval non-zero	if retaining the provider otherwise fails, a regular
+ *			unix error code will be returned.
+ */
+static inline int
+bhnd_retain_provider(device_t dev, device_t *prov, bhnd_prov_t prov_type)
+{
+	return (BHND_BUS_RETAIN_PROVIDER(device_get_parent(dev), prov,
+	    prov_type));
+}
+
+/**
+ * Release a reference to a provider device previously returned by
+ * bhnd_retain_provider().
+ *
+ * @param dev A bhnd bus child device.
+ * @param prov The provider to be released.
+ * @param prov_type The provider type to be released.
+ */
+static inline void
+bhnd_release_provider(device_t dev, device_t prov, bhnd_prov_t prov_type)
+{
+	return (BHND_BUS_RELEASE_PROVIDER(device_get_parent(dev), prov,
+	    prov_type));
+}
+
 /**
  * Return true if the hardware components required by @p dev are known to be
  * unpopulated or otherwise unusable.

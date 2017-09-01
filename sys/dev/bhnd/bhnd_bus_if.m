@@ -1,6 +1,10 @@
 #-
 # Copyright (c) 2015-2016 Landon Fuller <landonf@FreeBSD.org>
+# Copyright (c) 2017 The FreeBSD Foundation
 # All rights reserved.
+#
+# Portions of this software were developed by Landon Fuller
+# under sponsorship from the FreeBSD Foundation.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -221,6 +225,34 @@ CODE {
 		return (NULL);
 	}
 
+	static int
+	bhnd_bus_null_register_provider(device_t dev, device_t prov,
+	    bhnd_prov_t prov_type)
+	{
+		panic("bhnd_bus_register_provider unimplemented");
+	}
+
+	static int
+	bhnd_bus_null_deregister_provider(device_t dev, device_t prov,
+	    bhnd_prov_t prov_type)
+	{
+		panic("bhnd_bus_deregister_provider unimplemented");
+	}
+
+	static int
+	bhnd_bus_null_retain_provider(device_t dev, device_t *prov,
+	    bhnd_prov_t prov_type)
+	{
+		panic("bhnd_bus_retain_provider unimplemented");
+	}
+
+	static void
+	bhnd_bus_null_release_provider(device_t dev, device_t prov,
+	    bhnd_prov_t prov_type)
+	{
+		panic("bhnd_bus_release_provider unimplemented");
+	}
+
 	static bool
 	bhnd_bus_null_is_hw_disabled(device_t dev, device_t child)
 	{
@@ -272,6 +304,83 @@ CODE {
 STATICMETHOD bhnd_erom_class_t * get_erom_class {
 	driver_t			*driver;
 } DEFAULT bhnd_bus_null_get_erom_class;
+
+/**
+ * Register @p prov as the bhnd bus provider for a given @p prov_type.
+ *
+ * @param dev The bhnd bus with which the provider should be registered.
+ * @param prov The device to register.
+ * @param prov_type The provider type for which @p prov should be registered.
+ *
+ * @retval 0		success
+ * @retval EBUSY	if @p prov_type has already been registered with @p dev.
+ * @retval non-zero	if registering @p prov otherwise fails, a regular unix
+ *			error code will be returned.
+ */
+METHOD int register_provider {
+	device_t dev;
+	device_t prov;
+	bhnd_prov_t prov_type;
+} DEFAULT bhnd_bus_null_register_provider;
+
+/**
+ * Deregister @p prov as a bhnd bus provider for a given @p prov_type.
+ *
+ * @param dev The bhnd bus from which the provider should be deregistered.
+ * @param prov A provider device previously successfully registered via
+ * BHND_BUS_REGISTER_PROVIDER().
+ * @param prov_type The provider type for which @p prov should be deregistered.
+ *
+ * @retval 0		success
+ * @retval EBUSY	if active references to @p prov exist; @see
+ *			BHND_BUS_RETAIN_PROVIDER().
+ * @retval ENOENT	if @p prov is not registered as a provider for
+ *			@p prov_type.
+ * @retval non-zero	if deregistering @p prov otherwise fails, a regular unix
+ *			error code will be returned.
+ */
+METHOD int deregister_provider {
+	device_t dev;
+	device_t prov;
+	bhnd_prov_t prov_type;
+} DEFAULT bhnd_bus_null_deregister_provider;
+
+/**
+ * Retain and return a reference to the device registered for the given
+ * @p prov_type.
+ *
+ * @param dev The bhnd bus device.
+ * @param[out] prov On success, a caller-owned reference to the provider device.
+ * @param prov_type The provider type to be retained.
+ *
+ * On success, the caller assumes ownership of a new reference to the returned
+ * device. The caller is responsible for releasing this reference via
+ * BHND_BUS_RELEASE_PROVIDER().
+ *
+ * @retval 0		success
+ * @retval ENOENT	if no provider is registered for @p prov_type.
+ * @retval non-zero	if retaining the provider otherwise fails, a regular
+ *			unix error code will be returned.
+ */
+METHOD int retain_provider {
+	device_t dev;
+	device_t *prov;
+	bhnd_prov_t prov_type;
+} DEFAULT bhnd_bus_null_retain_provider;
+
+/**
+ * Release a reference to a provider device previously retained by
+ * BHND_BUS_RETAIN_PROVIDER().
+ *
+ * @param dev The bhnd bus device.
+ * @param prov The provider to be released.
+ * @param prov_type The provider type to be released.
+ */
+METHOD void release_provider {
+	device_t dev;
+	device_t prov;
+	bhnd_prov_t prov_type;
+} DEFAULT bhnd_bus_null_release_provider;
 
 /**
  * Return the active host bridge core for the bhnd bus, if any.
