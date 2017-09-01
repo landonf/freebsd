@@ -34,7 +34,10 @@
 
 #include <sys/param.h>
 #include <sys/bus.h>
+#include <sys/lock.h>
 #include <sys/malloc.h>
+#include <sys/queue.h>
+#include <sys/sx.h>
 
 #include "bhnd.h"
 
@@ -44,6 +47,8 @@
 
 MALLOC_DECLARE(M_BHND);
 DECLARE_CLASS(bhnd_driver);
+
+struct bhnd_prov;
 
 int			 bhnd_generic_attach(device_t dev);
 int			 bhnd_generic_detach(device_t dev);
@@ -88,14 +93,16 @@ int			 bhnd_generic_get_nvram_var(device_t dev,
  * softc structures.
  */
 struct bhnd_softc {
-	device_t	dev;			/**< bus device */
+	device_t		dev;			/**< bus device */
+	struct sx		sx;			/**< bhnd state lock */
+	STAILQ_HEAD(,bhnd_prov)	providers;		/**< registered platform device providers */
 
-	bool		attach_done;		/**< true if initialization of 
-						  *  all platform devices has
-						  *  been completed */
-	device_t	chipc_dev;		/**< bhnd_chipc device */ 
-	device_t	nvram_dev;		/**< bhnd_nvram device, if any */
-	device_t	pmu_dev;		/**< bhnd_pmu device, if any */
+	bool			attach_done;		/**< true if initialization of 
+							  *  all platform devices has
+							  *  been completed */
+	device_t		chipc_dev;		/**< bhnd_chipc device */ 
+	device_t		nvram_dev;		/**< bhnd_nvram device, if any */
+	device_t		pmu_dev;		/**< bhnd_pmu device, if any */
 };
 
 #endif /* _BHND_BHNDVAR_H_ */

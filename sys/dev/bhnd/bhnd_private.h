@@ -1,0 +1,75 @@
+/*-
+ * Copyright (c) 2017 The FreeBSD Foundation
+ * All rights reserved.
+ *
+ * This software was developed by Landon Fuller under sponsorship from
+ * the FreeBSD Foundation.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *     notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+#ifndef _BHND_BHND_PRIVATE_H_
+#define _BHND_BHND_PRIVATE_H_
+
+#include <sys/param.h>
+#include <sys/lock.h>
+#include <sys/queue.h>
+#include <sys/sx.h>
+
+#include "bhnd_types.h"
+
+/*
+ * Private bhnd(4) driver definitions.
+ */
+
+/**
+ * A bhnd(4) platform device registration.
+ */
+struct bhnd_prov {
+	device_t				dev;		/**< providing device */
+	bhnd_provider_type			type;		/**< provider type */
+	STAILQ_HEAD(,bhnd_prov_consumer)	consumers;	/**< consumer registrations */
+
+	STAILQ_ENTRY(bhnd_prov) link;
+};
+
+/**
+ * A bhnd(4) platform device consumer registration.
+ */
+struct bhnd_prov_consumer {
+	device_t		 dev;	/**< consuming device. */
+	struct bhnd_prov	*prov;	/**< retained provider. */
+	u_int			 refs;	/**< per-consumer reference count */
+
+	STAILQ_ENTRY(bhnd_prov_consumer) link;
+};
+
+#define BHND_LOCK_INIT(sc) \
+    sx_init(&(sc)->sx, device_get_nameunit((sc)->dev), "bhnd_lock")
+#define BHND_LOCK_RO(sc)		sx_slock(&(sc)->sx)
+#define BHND_UNLOCK_RO(sc)		sx_sunlock(&(sc)->sx)
+#define BHND_LOCK_RW(sc)		sx_xlock(&(sc)->sx)
+#define BHND_UNLOCK_RW(sc)		sx_xunlock(&(sc)->sx)
+#define BHND_LOCK_ASSERT(sc, what)	sx_assert(&(sc)->sx, what)
+#define BHND_LOCK_DESTROY(sc)		sx_destroy(&(sc)->sx)
+
+#endif /* _BHND_BHND_PRIVATE_H_ */
