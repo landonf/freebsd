@@ -10,7 +10,6 @@ PROG=		boot1.sym
 INTERNALPROG=
 WARNS?=		6
 
-.if ${MK_ZFS} != "no"
 # Disable warnings that are currently incompatible with the zfs boot code
 CWARNFLAGS.zfs_module.c += -Wno-array-bounds
 CWARNFLAGS.zfs_module.c += -Wno-cast-align
@@ -20,7 +19,10 @@ CWARNFLAGS.zfs_module.c += -Wno-sign-compare
 CWARNFLAGS.zfs_module.c += -Wno-unused-parameter
 CWARNFLAGS.zfs_module.c += -Wno-unused-function
 CWARNFLAGS.skein.c += -Wno-cast-align
+.if ${COMPILER_TYPE} == "clang"
 CWARNFLAGS.skein.c += -Wno-missing-variable-declarations
+.else if ${COMPILER_TYPE} == "gcc"
+CWARNFLAGS.skein.c += -Wno-missing-declarations
 .endif
 
 # architecture-specific loader code
@@ -31,6 +33,10 @@ SRCS+=		skein.c skein_block.c
 # Do not unroll skein loops, reduce code size
 CFLAGS+=	-DSKEIN_LOOP=111
 .PATH:		${.CURDIR}/../../../crypto/skein
+.endif
+
+.if ${COMPILER_TYPE} == "gcc" && ${COMPILER_VERSION} > 40201
+CWARNFLAGS.self_reloc.c+=	-Wno-error=maybe-uninitialized
 .endif
 
 CFLAGS+=	-I.
@@ -60,23 +66,25 @@ FILES=	boot1.efi boot1.efifat
 FILESMODE_boot1.efi=	${BINMODE}
 
 LDSCRIPT=	${.CURDIR}/../loader/arch/${MACHINE}/ldscript.${MACHINE}
-LDFLAGS+=	-Wl,-T${LDSCRIPT} -Wl,-Bsymbolic -shared
+LDFLAGS+=	-Wl,-T${LDSCRIPT},-Bsymbolic,-znotext -shared
 
 .if ${MACHINE_CPUARCH} == "aarch64"
-CFLAGS+=	-msoft-float -mgeneral-regs-only
+CFLAGS+=	-mgeneral-regs-only
 .endif
 .if ${MACHINE_CPUARCH} == "amd64" || ${MACHINE_CPUARCH} == "i386"
 CFLAGS+=	-fPIC
 LDFLAGS+=	-Wl,-znocombreloc
 .endif
 
+LIBEFI=		${.OBJDIR}/../libefi/libefi.a
+
 #
 # Add libstand for the runtime functions used by the compiler - for example
 # __aeabi_* (arm) or __divdi3 (i386).
 # as well as required string and memory functions for all platforms.
 #
-DPADD+=		${LIBSTAND}
-LDADD+=		-lstand
+DPADD+=		${LIBEFI} ${LIBSTAND}
+LDADD+=		${LIBEFI} -lstand
 
 DPADD+=		${LDSCRIPT}
 
@@ -114,7 +122,7 @@ boot1.o: ${.CURDIR}/../../common/ufsread.c
 BOOT1_MAXSIZE?=	131072
 
 boot1.efifat: boot1.efi
-	@set -- `ls -l boot1.efi`; \
+	@set -- `ls -l ${.ALLSRC}`; \
 	x=$$(($$5-${BOOT1_MAXSIZE})); \
 	if [ $$x -ge 0 ]; then \
 	    echo "boot1 $$x bytes too large; regenerate FAT templates?" >&2 ;\
@@ -124,7 +132,7 @@ boot1.efifat: boot1.efi
 	uudecode ${.CURDIR}/fat-${MACHINE}.tmpl.bz2.uu
 	mv fat-${MACHINE}.tmpl.bz2 ${.TARGET}.bz2
 	bzip2 -f -d ${.TARGET}.bz2
-	${DD} if=boot1.efi of=${.TARGET} seek=${BOOT1_OFFSET} conv=notrunc
+	${DD} if=${.ALLSRC} of=${.TARGET} seek=${BOOT1_OFFSET} conv=notrunc
 
 CLEANFILES= boot1.efi boot1.efifat
 

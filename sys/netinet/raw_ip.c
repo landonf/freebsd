@@ -210,7 +210,7 @@ rip_init(void)
 {
 
 	in_pcbinfo_init(&V_ripcbinfo, "rip", &V_ripcb, INP_PCBHASH_RAW_SIZE,
-	    1, "ripcb", rip_inpcb_init, NULL, 0, IPI_HASHFIELDS_NONE);
+	    1, "ripcb", rip_inpcb_init, IPI_HASHFIELDS_NONE);
 	EVENTHANDLER_REGISTER(maxsockets_change, rip_zone_change, NULL,
 	    EVENTHANDLER_PRI_ANY);
 }
@@ -1077,12 +1077,7 @@ rip_pcblist(SYSCTL_HANDLER_ARGS)
 		if (inp->inp_gencnt <= gencnt) {
 			struct xinpcb xi;
 
-			bzero(&xi, sizeof(xi));
-			xi.xi_len = sizeof xi;
-			/* XXX should avoid extra copy */
-			bcopy(inp, &xi.xi_inp, sizeof *inp);
-			if (inp->inp_socket)
-				sotoxsocket(inp->inp_socket, &xi.xi_socket);
+			in_pcbtoxinpcb(inp, &xi);
 			INP_RUNLOCK(inp);
 			error = SYSCTL_OUT(req, &xi, sizeof xi);
 		} else

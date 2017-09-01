@@ -60,6 +60,7 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_extern.h>
 #include <sys/user.h>
 #include <sys/uio.h>
+#include <machine/cpuinfo.h>
 #include <machine/reg.h>
 #include <machine/md_var.h>
 #include <machine/sigframe.h>
@@ -378,7 +379,8 @@ fill_fpregs(struct thread *td, struct fpreg *fpregs)
 {
 	if (td == PCPU_GET(fpcurthread))
 		MipsSaveCurFPState(td);
-	memcpy(fpregs, &td->td_frame->f0, sizeof(struct fpreg)); 
+	memcpy(fpregs, &td->td_frame->f0, sizeof(struct fpreg));
+	fpregs->r_regs[FIR_NUM] = cpuinfo.fpu_id;
 	return 0;
 }
 
@@ -425,15 +427,12 @@ exec_setregs(struct thread *td, struct image_params *imgp, u_long stack)
 	 * 0xffffffff80007f00 and the load is instead done from
 	 * 0xffffffff7ffffff0.
 	 *
-	 * To prevent this, we subtract 64K from the stack pointer here.
-	 *
-	 * For consistency, we should just always do this unless we're
-	 * running n64 programs.  For now, since we don't support
-	 * COMPAT_FREEBSD32 on n64 kernels, we just do it unless we're
-	 * running n64 kernels.
+	 * To prevent this, we subtract 64K from the stack pointer here
+	 * for processes with 32-bit pointers.
 	 */
-#if !defined(__mips_n64)
-	td->td_frame->sp -= 65536;
+#if defined(__mips_n32) || defined(__mips_n64)
+	if (!SV_PROC_FLAG(td->td_proc, SV_LP64))
+		td->td_frame->sp -= 65536;
 #endif
 
 	td->td_frame->pc = imgp->entry_addr & ~3;

@@ -24,6 +24,14 @@ _srcconf_included_:
 .MAKE.MODE+=	curdirOk=yes
 .endif
 
+.if defined(NO_OBJ) || ${MK_AUTO_OBJ} == "yes"
+NO_OBJ=		t
+NO_MODULES_OBJ=	t
+.endif
+.if !defined(NO_OBJ)
+_obj=		obj
+.endif
+
 # Can be overridden by makeoptions or /etc/make.conf
 KERNEL_KO?=	kernel
 KERNEL?=	kernel
@@ -106,6 +114,10 @@ DEFINED_PROF=	${PROF}
 # can override the others.
 CFLAGS+=	${CONF_CFLAGS}
 
+.if defined(LINKER_FEATURES) && ${LINKER_FEATURES:Mbuild-id}
+LDFLAGS+=	-Wl,--build-id=sha1
+.endif
+
 # Optional linting. This can be overridden in /etc/make.conf.
 LINTFLAGS=	${LINTOBJKERNFLAGS}
 
@@ -184,8 +196,9 @@ MD_ROOT_SIZE_CONFIGURED!=	grep MD_ROOT_SIZE opt_md.h || true ; echo
 SYSTEM_OBJS+= embedfs_${MFS_IMAGE:T:R}.o
 .endif
 .endif
-SYSTEM_LD= @${LD} -Bdynamic -T ${LDSCRIPT} ${_LDFLAGS} --no-warn-mismatch \
-	--warn-common --export-dynamic --dynamic-linker /red/herring \
+SYSTEM_LD= @${LD} -m ${LD_EMULATION} -Bdynamic -T ${LDSCRIPT} ${_LDFLAGS} \
+	--no-warn-mismatch --warn-common --export-dynamic \
+	--dynamic-linker /red/herring \
 	-o ${.TARGET} -X ${SYSTEM_OBJS} vers.o
 SYSTEM_LD_TAIL= @${OBJCOPY} --strip-symbol gcc2_compiled. ${.TARGET} ; \
 	${SIZE} ${.TARGET} ; chmod 755 ${.TARGET}
@@ -203,6 +216,7 @@ MKMODULESENV+=	MAKEOBJDIRPREFIX=${.OBJDIR}/modules KMODDIR=${KODIR}
 MKMODULESENV+=	MACHINE_CPUARCH=${MACHINE_CPUARCH}
 MKMODULESENV+=	MACHINE=${MACHINE} MACHINE_ARCH=${MACHINE_ARCH}
 MKMODULESENV+=	MODULES_EXTRA="${MODULES_EXTRA}" WITHOUT_MODULES="${WITHOUT_MODULES}"
+MKMODULESENV+=	ARCH_FLAGS="${ARCH_FLAGS}"
 .if (${KERN_IDENT} == LINT)
 MKMODULESENV+=	ALL_MODULES=LINT
 .endif
@@ -237,6 +251,7 @@ EMBEDFS_ARCH.${MACHINE_ARCH}!= sed -n '/OUTPUT_ARCH/s/.*(\(.*\)).*/\1/p' ${LDSCR
 
 EMBEDFS_FORMAT.arm?=		elf32-littlearm
 EMBEDFS_FORMAT.armv6?=		elf32-littlearm
+EMBEDFS_FORMAT.aarch64?=	elf64-littleaarch64
 EMBEDFS_FORMAT.mips?=		elf32-tradbigmips
 EMBEDFS_FORMAT.mipsel?=		elf32-tradlittlemips
 EMBEDFS_FORMAT.mips64?=		elf64-tradbigmips

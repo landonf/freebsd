@@ -49,7 +49,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/resource.h>
 #include <machine/intr_machdep.h>
 #include <machine/vmparam.h>
-#include <sys/bus_dma.h>
 
 #include <xen/xen-os.h>
 #include <xen/hypervisor.h>
@@ -1537,6 +1536,11 @@ xbd_resume(device_t dev)
 {
 	struct xbd_softc *sc = device_get_softc(dev);
 
+	if (xen_suspend_cancelled) {
+		sc->xbd_state = XBD_STATE_CONNECTED;
+		return (0);
+	}
+
 	DPRINTK("xbd_resume: %s\n", xenbus_get_node(dev));
 
 	xbd_free(sc);
@@ -1573,11 +1577,14 @@ xbd_backend_changed(device_t dev, XenbusState backend_state)
 		break;
 
 	case XenbusStateClosing:
-		if (sc->xbd_users > 0)
-			xenbus_dev_error(dev, -EBUSY,
-			    "Device in use; refusing to close");
-		else
+		if (sc->xbd_users > 0) {
+			device_printf(dev, "detaching with pending users\n");
+			KASSERT(sc->xbd_disk != NULL,
+			    ("NULL disk with pending users\n"));
+			disk_gone(sc->xbd_disk);
+		} else {
 			xbd_closing(dev);
+		}
 		break;	
 	}
 }

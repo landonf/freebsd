@@ -37,6 +37,13 @@ arm/allwinner/clk/aw_pll.c	optional	aw_ccu fdt \
 	compile-with "${NORMAL_C} -I$S/gnu/dts/include"
 arm/allwinner/clk/aw_thsclk.c	optional	aw_ccu fdt
 arm/allwinner/clk/aw_usbclk.c	optional	aw_ccu fdt
+arm/allwinner/clkng/aw_ccung.c	optional	aw_ccu fdt
+arm/allwinner/clkng/aw_clk_nkmp.c	optional	aw_ccu fdt
+arm/allwinner/clkng/aw_clk_nm.c	optional	aw_ccu fdt
+arm/allwinner/clkng/aw_clk_prediv_mux.c	optional	aw_ccu fdt
+arm/allwinner/clkng/ccu_a64.c	optional	aw_ccu fdt
+arm/allwinner/clkng/ccu_h3.c	optional	aw_ccu fdt
+
 arm/allwinner/if_awg.c		optional	awg fdt
 arm/annapurna/alpine/alpine_ccu.c		optional	al_ccu fdt
 arm/annapurna/alpine/alpine_nb_service.c	optional	al_nb_service fdt
@@ -139,7 +146,7 @@ contrib/vchiq/interface/vchiq_arm/vchiq_util.c	optional vchiq soc_brcm_bcm2837 \
 crypto/armv8/armv8_crypto.c	optional	armv8crypto
 armv8_crypto_wrap.o		optional	armv8crypto		\
 	dependency	"$S/crypto/armv8/armv8_crypto_wrap.c"		\
-	compile-with	"${CC} -c ${CFLAGS:C/^-O2$/-O3/:N-nostdinc:N-mgeneral-regs-only} ${WERROR} ${NO_WCAST_QUAL} ${PROF} -march=armv8a+crypto ${.IMPSRC}" \
+	compile-with	"${CC} -c ${CFLAGS:C/^-O2$/-O3/:N-nostdinc:N-mgeneral-regs-only} ${WERROR} ${NO_WCAST_QUAL} ${PROF} -march=armv8-a+crypto ${.IMPSRC}" \
 	no-implicit-rule						\
 	clean		"armv8_crypto_wrap.o"
 crypto/blowfish/bf_enc.c	optional	crypto | ipsec | ipsec_support
@@ -152,6 +159,8 @@ dev/axgbe/xgbe-dev.c		optional	axgbe
 dev/axgbe/xgbe-drv.c		optional	axgbe
 dev/axgbe/xgbe-mdio.c		optional	axgbe
 dev/cpufreq/cpufreq_dt.c	optional	cpufreq fdt
+dev/iicbus/twsi/a10_twsi.c	optional	twsi fdt
+dev/iicbus/twsi/twsi.c		optional	twsi fdt
 dev/hwpmc/hwpmc_arm64.c		optional	hwpmc
 dev/hwpmc/hwpmc_arm64_md.c	optional	hwpmc
 dev/mbox/mbox_if.m		optional	soc_brcm_bcm2837
@@ -191,6 +200,7 @@ libkern/fls.c			standard
 libkern/flsl.c			standard
 libkern/flsll.c			standard
 libkern/memset.c		standard
+libkern/arm64/crc32c_armv8.S	standard
 cddl/contrib/opensolaris/common/atomic/aarch64/opensolaris_atomic.S	optional zfs | dtrace compile-with "${CDDL_C}"
 cddl/dev/dtrace/aarch64/dtrace_asm.S			optional dtrace compile-with "${DTRACE_S}"
 cddl/dev/dtrace/aarch64/dtrace_subr.c			optional dtrace compile-with "${DTRACE_C}"

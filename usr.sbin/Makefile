@@ -74,6 +74,7 @@ SUBDIR=	adduser \
 	rpc.statd \
 	rpc.umntall \
 	rtprio \
+	rwhod \
 	service \
 	services_mkdb \
 	sesutil \
@@ -125,7 +126,7 @@ SUBDIR.${MK_BSNMP}+=	bsnmpd
 SUBDIR.${MK_CTM}+=	ctm
 SUBDIR.${MK_CXGBETOOL}+=	cxgbetool
 SUBDIR.${MK_DIALOG}+=	bsdconfig
-SUBDIR.${MK_EFI}+=	efivar
+SUBDIR.${MK_EFI}+=	efivar efidp
 SUBDIR.${MK_FLOPPY}+=	fdcontrol
 SUBDIR.${MK_FLOPPY}+=	fdformat
 SUBDIR.${MK_FLOPPY}+=	fdread
@@ -191,7 +192,6 @@ SUBDIR.${MK_PPP}+=	ppp
 SUBDIR.${MK_QUOTAS}+=	edquota
 SUBDIR.${MK_QUOTAS}+=	quotaon
 SUBDIR.${MK_QUOTAS}+=	repquota
-SUBDIR.${MK_RCMDS}+=	rwhod
 SUBDIR.${MK_SENDMAIL}+=	editmap
 SUBDIR.${MK_SENDMAIL}+=	mailstats
 SUBDIR.${MK_SENDMAIL}+=	makemap
@@ -217,8 +217,6 @@ SUBDIR.${MK_WIRELESS}+=	wpa
 SUBDIR.${MK_TESTS}+=	tests
 
 .include <bsd.arch.inc.mk>
-
-SUBDIR:=	${SUBDIR:O}
 
 SUBDIR_PARALLEL=
 

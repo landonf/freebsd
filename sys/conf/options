@@ -45,7 +45,6 @@ AHD_REG_PRETTY_PRINT	opt_aic79xx.h
 ADW_ALLOW_MEMIO		opt_adw.h
 
 TWA_DEBUG		opt_twa.h
-TWA_FLASH_FIRMWARE	opt_twa.h
 
 # Debugging options.
 ALT_BREAK_TO_DEBUGGER	opt_kdb.h
@@ -426,6 +425,7 @@ IPFIREWALL_NAT64_DIRECT_OUTPUT	opt_ipfw.h
 IPFIREWALL_NPTV6	opt_ipfw.h
 IPFIREWALL_VERBOSE	opt_ipfw.h
 IPFIREWALL_VERBOSE_LIMIT	opt_ipfw.h
+IPFIREWALL_PMOD		opt_ipfw.h
 IPSEC			opt_ipsec.h
 IPSEC_DEBUG		opt_ipsec.h
 IPSEC_SUPPORT		opt_ipsec.h
@@ -454,8 +454,6 @@ TCP_RFC7413_MAX_KEYS	opt_inet.h
 TCP_SIGNATURE		opt_ipsec.h
 VLAN_ARRAY		opt_vlan.h
 XBONEHACK
-FLOWTABLE		opt_route.h
-FLOWTABLE_HASH_ALL	opt_route.h
 
 #
 # SCTP
@@ -551,10 +549,6 @@ DRM_DEBUG		opt_drm.h
 
 TI_SF_BUF_JUMBO		opt_ti.h
 TI_JUMBO_HDRSPLIT	opt_ti.h
-
-# XXX Conflict: # of devices vs network protocol (Native ATM).
-# This makes "atm.h" unusable.
-NATM
 
 # DPT driver debug flags
 DPT_MEASURE_PERFORMANCE	opt_dpt.h
@@ -690,7 +684,7 @@ INIT_PATH
 
 ROOTDEVNAME
 
-FDC_DEBUG		opt_fdc.h
+FDC_DEBUG 		opt_fdc.h
 PCFCLOCK_VERBOSE	opt_pcfclock.h
 PCFCLOCK_MAX_RETRIES	opt_pcfclock.h
 
@@ -875,6 +869,10 @@ MWL_DIAGAPI		opt_mwl.h
 MWL_AGGR_SIZE		opt_mwl.h
 MWL_TX_NODROP		opt_mwl.h
 
+# Options for the Marvell NETA driver
+MVNETA_MULTIQUEUE	opt_mvneta.h
+MVNETA_KTR		opt_mvneta.h
+
 # Options for the Intel 802.11ac wireless driver
 IWM_DEBUG		opt_iwm.h
 
@@ -996,5 +994,10 @@ UINPUT_DEBUG	opt_evdev.h
 # Hyper-V network driver
 HN_DEBUG	opt_hn.h
 
+# CAM-based MMC stack
+MMCCAM
 # Encrypted kernel crash dumps
 EKCD		opt_ekcd.h
+
+# NVME options
+NVME_USE_NVD	opt_nvme.h

@@ -179,6 +179,12 @@ struct secspacq {
 #define IPSEC_POLICY_ENTRUST	3	/* consulting SPD if present. */
 #define IPSEC_POLICY_BYPASS	4	/* only for privileged socket. */
 
+/* Policy scope */
+#define	IPSEC_POLICYSCOPE_ANY		0x00	/* unspecified */
+#define	IPSEC_POLICYSCOPE_GLOBAL	0x01	/* global scope */
+#define	IPSEC_POLICYSCOPE_IFNET		0x02	/* if_ipsec(4) scope */
+#define	IPSEC_POLICYSCOPE_PCB		0x04	/* PCB scope */
+
 /* Security protocol level */
 #define	IPSEC_LEVEL_DEFAULT	0	/* reference to system default */
 #define	IPSEC_LEVEL_USE		1	/* use SA if present. */
@@ -247,8 +253,9 @@ struct ipsecstat {
 #include <sys/counter.h>
 
 struct ipsec_ctx_data;
-#define	IPSEC_INIT_CTX(_ctx, _mp, _sav, _af, _enc) do {	\
+#define	IPSEC_INIT_CTX(_ctx, _mp, _inp, _sav, _af, _enc) do {	\
 	(_ctx)->mp = (_mp);				\
+	(_ctx)->inp = (_inp);				\
 	(_ctx)->sav = (_sav);				\
 	(_ctx)->af = (_af);				\
 	(_ctx)->enc = (_enc);				\
@@ -293,7 +300,13 @@ VNET_DECLARE(int, natt_cksum_policy);
 
 #define ipseclog(x)	do { if (V_ipsec_debug) log x; } while (0)
 /* for openbsd compatibility */
+#ifdef IPSEC_DEBUG
+#define	IPSEC_DEBUG_DECLARE(x)	x
 #define	DPRINTF(x)	do { if (V_ipsec_debug) printf x; } while (0)
+#else
+#define	IPSEC_DEBUG_DECLARE(x)
+#define	DPRINTF(x)
+#endif
 
 struct inpcb;
 struct m_tag;
@@ -307,7 +320,7 @@ int ipsec_if_input(struct mbuf *, struct secasvar *, uint32_t);
 struct ipsecrequest *ipsec_newisr(void);
 void ipsec_delisr(struct ipsecrequest *);
 struct secpolicy *ipsec4_checkpolicy(const struct mbuf *, struct inpcb *,
-    int *);
+    int *, int);
 
 u_int ipsec_get_reqlevel(struct secpolicy *, u_int);
 

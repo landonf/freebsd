@@ -616,6 +616,9 @@ typedef struct sendflags {
 
 	/* WRITE_EMBEDDED records of type DATA are permitted */
 	boolean_t embed_data;
+
+	/* compressed WRITE records are permitted */
+	boolean_t compress;
 } sendflags_t;
 
 typedef boolean_t (snapfilter_cb_t)(zfs_handle_t *, void *);
@@ -769,6 +772,7 @@ extern int zpool_in_use(libzfs_handle_t *, int, pool_state_t *, char **,
  * Label manipulation.
  */
 extern int zpool_read_label(int, nvlist_t **);
+extern int zpool_read_all_labels(int, nvlist_t **);
 extern int zpool_clear_label(int);
 
 /* is this zvol valid for use as a dump device? */

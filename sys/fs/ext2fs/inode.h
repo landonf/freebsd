@@ -91,7 +91,7 @@ struct inode {
 
 	/* Fields from struct dinode in UFS. */
 	uint16_t	i_mode;		/* IFMT, permissions; see below. */
-	int16_t		i_nlink;	/* File link count. */
+	int32_t		i_nlink;	/* File link count. */
 	uint32_t	i_uid;		/* File owner. */
 	uint32_t	i_gid;		/* File group. */
 	uint64_t	i_size;		/* File byte count. */
@@ -105,6 +105,7 @@ struct inode {
 	int32_t		i_ctimensec;	/* Last inode change time. */
 	int32_t		i_birthnsec;	/* Inode creation time. */
 	uint32_t	i_gen;		/* Generation number. */
+	uint64_t	i_facl;		/* EA block number. */
 	uint32_t	i_flags;	/* Status flags (chflags). */
 	uint32_t	i_db[EXT2_NDADDR]; /* Direct disk blocks. */
 	uint32_t	i_ib[EXT2_NIADDR]; /* Indirect disk blocks. */

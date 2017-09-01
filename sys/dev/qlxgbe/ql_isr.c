@@ -48,7 +48,7 @@ static void qla_replenish_normal_rx(qla_host_t *ha, qla_sds_t *sdsp,
 static void
 qla_rcv_error(qla_host_t *ha)
 {
-	ha->flags.stop_rcv = 1;
+	ha->stop_rcv = 1;
 	ha->qla_initiate_recovery = 1;
 }
 
@@ -68,6 +68,9 @@ qla_rx_intr(qla_host_t *ha, qla_sgl_rcv_t *sgc, uint32_t sds_idx)
 	uint32_t		i, rem_len = 0;
 	uint32_t		r_idx = 0;
 	qla_rx_ring_t		*rx_ring;
+	struct lro_ctrl		*lro;
+
+	lro = &ha->hw.sds[sds_idx].lro;
 
 	if (ha->hw.num_rds_rings > 1)
 		r_idx = sds_idx;
@@ -163,10 +166,29 @@ qla_rx_intr(qla_host_t *ha, qla_sgl_rcv_t *sgc, uint32_t sds_idx)
 #if __FreeBSD_version >= 1100000
 	M_HASHTYPE_SET(mpf, M_HASHTYPE_OPAQUE_HASH);
 #else
-	M_HASHTYPE_SET(mpf, M_HASHTYPE_NONE);
+#if (__FreeBSD_version >= 903511 && __FreeBSD_version < 1100000) 
+        M_HASHTYPE_SET(mpf, M_HASHTYPE_OPAQUE);
+#else
+        M_HASHTYPE_SET(mpf, M_HASHTYPE_NONE);
+#endif
 #endif /* #if __FreeBSD_version >= 1100000 */
 
-	(*ifp->if_input)(ifp, mpf);
+	if (ha->hw.enable_soft_lro) {
+
+#if (__FreeBSD_version >= 1100101)
+
+		tcp_lro_queue_mbuf(lro, mpf);
+
+#else
+		if (tcp_lro_rx(lro, mpf, 0))
+			(*ifp->if_input)(ifp, mpf);
+
+#endif /* #if (__FreeBSD_version >= 1100101) */
+
+
+	} else {
+		(*ifp->if_input)(ifp, mpf);
+	}
 
 	if (sdsp->rx_free > ha->std_replenish)
 		qla_replenish_normal_rx(ha, sdsp, r_idx);
@@ -204,7 +226,7 @@ qla_lro_intr(qla_host_t *ha, qla_sgl_lro_t *sgc, uint32_t sds_idx)
 
 	rx_ring = &ha->rx_ring[r_idx];
 	
-	ha->lro_pkt_count++;
+	ha->hw.rds[r_idx].lro_pkt_count++;
 
 	sdsp = &ha->hw.sds[sds_idx];
 	
@@ -215,7 +237,7 @@ qla_lro_intr(qla_host_t *ha, qla_sgl_lro_t *sgc, uint32_t sds_idx)
 	} else {
 		pkt_length += QLA_TCP_HDR_SIZE;
 	}
-	ha->lro_bytes += pkt_length;
+	ha->hw.rds[r_idx].lro_bytes += pkt_length;
 
 	for (i = 0; i < sgc->num_handles; i++) {
 		rxb = &rx_ring->rx_buf[sgc->handle[i] & 0x7FFF];
@@ -475,7 +497,7 @@ ql_rcv_isr(qla_host_t *ha, uint32_t sds_idx, uint32_t count)
 	hw = &ha->hw;
 
 	hw->sds[sds_idx].rcv_active = 1;
-	if (ha->flags.stop_rcv) {
+	if (ha->stop_rcv) {
 		hw->sds[sds_idx].rcv_active = 0;
 		return 0;
 	}
@@ -487,7 +509,7 @@ ql_rcv_isr(qla_host_t *ha, uint32_t sds_idx, uint32_t count)
 	 */
 	comp_idx = hw->sds[sds_idx].sdsr_next;
 
-	while (count-- && !ha->flags.stop_rcv) {
+	while (count-- && !ha->stop_rcv) {
 
 		sdesc = (q80_stat_desc_t *)
 				&hw->sds[sds_idx].sds_ring_base[comp_idx];
@@ -497,7 +519,6 @@ ql_rcv_isr(qla_host_t *ha, uint32_t sds_idx, uint32_t count)
 		if (!opcode)
 			break;
 
-		hw->sds[sds_idx].intr_count++;
 		switch (opcode) {
 
 		case Q8_STAT_DESC_OPCODE_RCV_PKT:
@@ -707,15 +728,35 @@ ql_rcv_isr(qla_host_t *ha, uint32_t sds_idx, uint32_t count)
 		}
 	}
 
-	if (ha->flags.stop_rcv)
+	if (ha->hw.enable_soft_lro) {
+		struct lro_ctrl		*lro;
+
+		lro = &ha->hw.sds[sds_idx].lro;
+
+#if (__FreeBSD_version >= 1100101)
+
+		tcp_lro_flush_all(lro);
+
+#else
+		struct lro_entry *queued;
+
+		while ((!SLIST_EMPTY(&lro->lro_active))) {
+			queued = SLIST_FIRST(&lro->lro_active);
+			SLIST_REMOVE_HEAD(&lro->lro_active, next);
+			tcp_lro_flush(lro, queued);
+		}
+
+#endif /* #if (__FreeBSD_version >= 1100101) */
+
+	}
+
+	if (ha->stop_rcv)
 		goto ql_rcv_isr_exit;
 
 	if (hw->sds[sds_idx].sdsr_next != comp_idx) {
 		QL_UPDATE_SDS_CONSUMER_INDEX(ha, sds_idx, comp_idx);
 		hw->sds[sds_idx].sdsr_next = comp_idx;
 	} else {
-		hw->sds[sds_idx].spurious_intr_count++;
-
 		if (ha->hw.num_rds_rings > 1)
 			r_idx = sds_idx;
 
@@ -944,10 +985,11 @@ ql_isr(void *arg)
 	if ((idx = ivec->sds_idx) >= ha->hw.num_sds_rings)
 		return;
 
-
 	fp = &ha->tx_fp[idx];
+	hw->sds[idx].intr_count++;
 
-	if (fp->fp_taskqueue != NULL)
+	if ((fp->fp_taskqueue != NULL) &&
+		(ifp->if_drv_flags & IFF_DRV_RUNNING))
 		taskqueue_enqueue(fp->fp_taskqueue, &fp->fp_task);
 
 	return;

@@ -166,6 +166,28 @@ enum iwm_ucode_type {
 	IWM_UCODE_TYPE_MAX
 };
 
+struct iwm_ucode_capabilities {
+	uint32_t max_probe_length;
+	uint32_t n_scan_channels;
+	uint32_t flags;
+	uint8_t enabled_api[howmany(IWM_NUM_UCODE_TLV_API, NBBY)];
+	uint8_t enabled_capa[howmany(IWM_NUM_UCODE_TLV_CAPA, NBBY)];
+};
+
+static inline int
+fw_has_api(const struct iwm_ucode_capabilities *capabilities,
+	   unsigned int api)
+{
+	return isset(capabilities->enabled_api, api);
+}
+
+static inline int
+fw_has_capa(const struct iwm_ucode_capabilities *capabilities,
+	    unsigned int capa)
+{
+	return isset(capabilities->enabled_capa, capa);
+}
+
 /* one for each uCode image (inst/data, init/runtime/wowlan) */
 struct iwm_fw_desc {
 	const void *data;	/* vmalloc'ed data */
@@ -210,6 +232,7 @@ struct iwm_nvm_data {
 	uint16_t nvm_version;
 	uint8_t max_tx_pwr_half_dbm;
 
+	boolean_t lar_enabled;
 	uint16_t nvm_ch_flags[];
 };
 
@@ -282,7 +305,6 @@ struct iwm_tx_ring {
 };
 
 #define IWM_RX_RING_COUNT	256
-#define IWM_RBUF_COUNT		(IWM_RX_RING_COUNT + 32)
 /* Linux driver optionally uses 8k buffer */
 #define IWM_RBUF_SIZE		4096
 
@@ -351,12 +373,32 @@ struct iwm_vap {
 
 	int			(*iv_newstate)(struct ieee80211vap *,
 				    enum ieee80211_state, int);
+
+	struct iwm_mvm_phy_ctxt	*phy_ctxt;
+
+	uint16_t		id;
+	uint16_t		color;
+
+	boolean_t		have_wme;
+	/*
+	 * QoS data from net80211, need to store this here
+	 * as net80211 has a separate callback but we need
+	 * to have the data for the MAC context
+	 */
+        struct {
+		uint16_t cw_min;
+		uint16_t cw_max;
+		uint16_t edca_txop;
+		uint8_t aifsn;
+	} queue_params[WME_NUM_AC];
+
+	/* indicates that this interface requires PS to be disabled */
+	boolean_t		ps_disabled;
 };
 #define IWM_VAP(_vap)		((struct iwm_vap *)(_vap))
 
 struct iwm_node {
 	struct ieee80211_node	in_ni;
-	struct iwm_mvm_phy_ctxt	*in_phyctxt;
 
 	/* status "bits" */
 	int			in_assoc;
@@ -440,12 +482,8 @@ struct iwm_softc {
 	int			ucode_loaded;
 	char			sc_fwver[32];
 
-	int			sc_capaflags;
-	int			sc_capa_max_probe_len;
-	int sc_capa_n_scan_channels;
-	uint32_t sc_ucode_api;
-	uint8_t sc_enabled_capa[howmany(IWM_NUM_UCODE_TLV_CAPA, NBBY)];
-	char sc_fw_mcc[3];
+	struct iwm_ucode_capabilities ucode_capa;
+	char			sc_fw_mcc[3];
 
 	int			sc_intmask;
 
@@ -491,7 +529,7 @@ struct iwm_softc {
 	/* phy contexts.  we only use the first one */
 	struct iwm_mvm_phy_ctxt	sc_phyctxt[IWM_NUM_PHY_CTX];
 
-	struct iwm_notif_statistics sc_stats;
+	struct iwm_notif_statistics_v10 sc_stats;
 	int			sc_noise;
 
 	caddr_t			sc_drvbpf;
@@ -518,6 +556,14 @@ struct iwm_softc {
 	struct iwm_fw_paging	fw_paging_db[IWM_NUM_OF_FW_PAGING_BLOCKS];
 	uint16_t		num_of_paging_blk;
 	uint16_t		num_of_pages_in_last_blk;
+
+	boolean_t		last_ebs_successful;
+
+	/* last smart fifo state that was successfully sent to firmware */
+	enum iwm_sf_state	sf_state;
+
+	/* Indicate if device power save is allowed */
+	boolean_t		sc_ps_disabled;
 };
 
 #define IWM_LOCK_INIT(_sc) \

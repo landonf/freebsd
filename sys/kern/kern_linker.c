@@ -459,7 +459,8 @@ linker_load_file(const char *filename, linker_file_t *result)
 		 * printout a message before to fail.
 		 */
 		if (error == ENOSYS)
-			printf("linker_load_file: Unsupported file type\n");
+			printf("%s: %s - unsupported file type\n",
+			    __func__, filename);
 
 		/*
 		 * Format not recognized or otherwise unloadable.
@@ -1242,8 +1243,8 @@ kern_kldstat(struct thread *td, int fileid, struct kld_file_stat *stat)
 
 	/* Version 1 fields: */
 	namelen = strlen(lf->filename) + 1;
-	if (namelen > MAXPATHLEN)
-		namelen = MAXPATHLEN;
+	if (namelen > sizeof(stat->name))
+		namelen = sizeof(stat->name);
 	bcopy(lf->filename, &stat->name[0], namelen);
 	stat->refs = lf->refs;
 	stat->id = lf->id;
@@ -1251,8 +1252,8 @@ kern_kldstat(struct thread *td, int fileid, struct kld_file_stat *stat)
 	stat->size = lf->size;
 	/* Version 2 fields: */
 	namelen = strlen(lf->pathname) + 1;
-	if (namelen > MAXPATHLEN)
-		namelen = MAXPATHLEN;
+	if (namelen > sizeof(stat->pathname))
+		namelen = sizeof(stat->pathname);
 	bcopy(lf->pathname, &stat->pathname[0], namelen);
 	sx_xunlock(&kld_sx);
 

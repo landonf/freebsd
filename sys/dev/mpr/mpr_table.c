@@ -58,6 +58,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/mpr/mpi/mpi2_cnfg.h>
 #include <dev/mpr/mpi/mpi2_init.h>
 #include <dev/mpr/mpi/mpi2_tool.h>
+#include <dev/mpr/mpi/mpi2_pci.h>
 #include <dev/mpr/mpr_ioctl.h>
 #include <dev/mpr/mprvar.h>
 #include <dev/mpr/mpr_table.h>
@@ -74,6 +75,7 @@ mpr_describe_table(struct mpr_table_lookup *table, u_int code)
 	return(table[i+1].string);
 }
 
+//SLM-Add new PCIe info to all of these tables
 struct mpr_table_lookup mpr_event_names[] = {
 	{"LogData",			0x01},
 	{"StateChange",			0x02},
@@ -95,6 +97,16 @@ struct mpr_table_lookup mpr_event_names[] = {
 	{"SasPhyCounter",		0x22},
 	{"GpioInterrupt",		0x23},
 	{"HbdPhyEvent",			0x24},
+	{"SasQuiesce",			0x25},
+	{"SasNotifyPrimitive",		0x26},
+	{"TempThreshold",		0x27},
+	{"HostMessage",			0x28},
+	{"PowerPerformanceChange",	0x29},
+	{"PCIeDeviceStatusChange",	0x30},
+	{"PCIeEnumeration",		0x31},
+	{"PCIeTopologyChangeList",	0x32},
+	{"PCIeLinkCounter",		0x33},
+	{"CableEvent",			0x34},
 	{NULL, 0},
 	{"Unknown Event", 0}
 };
@@ -186,6 +198,16 @@ struct mpr_table_lookup mpr_sasdev_reason[] = {
 	{"Unknown",			0x00}
 };
 
+struct mpr_table_lookup mpr_pcie_linkrate_names[] = {
+	{"Port disabled",		0x01},
+	{"2.5GT/sec",			0x02},
+	{"5.0GT/sec",			0x03},
+	{"8.0GT/sec",			0x04},
+	{"16.0GT/sec",			0x05},
+	{NULL, 0},
+	{"LinkRate Unknown",		0x00}
+};
+
 void
 mpr_describe_devinfo(uint32_t devinfo, char *string, int len)
 {
@@ -197,7 +219,7 @@ mpr_describe_devinfo(uint32_t devinfo, char *string, int len)
 }
 
 void
-_mpr_print_iocfacts(struct mpr_softc *sc, MPI2_IOC_FACTS_REPLY *facts)
+mpr_print_iocfacts(struct mpr_softc *sc, MPI2_IOC_FACTS_REPLY *facts)
 {
 	MPR_PRINTFIELD_START(sc, "IOCFacts");
 	MPR_PRINTFIELD(sc, facts, MsgVersion, 0x%x);
@@ -237,7 +259,7 @@ _mpr_print_iocfacts(struct mpr_softc *sc, MPI2_IOC_FACTS_REPLY *facts)
 }
 
 void
-_mpr_print_portfacts(struct mpr_softc *sc, MPI2_PORT_FACTS_REPLY *facts)
+mpr_print_portfacts(struct mpr_softc *sc, MPI2_PORT_FACTS_REPLY *facts)
 {
 
 	MPR_PRINTFIELD_START(sc, "PortFacts");
@@ -247,7 +269,7 @@ _mpr_print_portfacts(struct mpr_softc *sc, MPI2_PORT_FACTS_REPLY *facts)
 }
 
 void
-_mpr_print_event(struct mpr_softc *sc, MPI2_EVENT_NOTIFICATION_REPLY *event)
+mpr_print_evt_generic(struct mpr_softc *sc, MPI2_EVENT_NOTIFICATION_REPLY *event)
 {
 
 	MPR_PRINTFIELD_START(sc, "EventReply");
@@ -259,7 +281,7 @@ _mpr_print_event(struct mpr_softc *sc, MPI2_EVENT_NOTIFICATION_REPLY *event)
 }
 
 void
-_mpr_print_sasdev0(struct mpr_softc *sc, MPI2_CONFIG_PAGE_SAS_DEV_0 *buf)
+mpr_print_sasdev0(struct mpr_softc *sc, MPI2_CONFIG_PAGE_SAS_DEV_0 *buf)
 {
 	MPR_PRINTFIELD_START(sc, "SAS Device Page 0");
 	MPR_PRINTFIELD(sc, buf, Slot, %d);
@@ -288,10 +310,10 @@ _mpr_print_sasdev0(struct mpr_softc *sc, MPI2_CONFIG_PAGE_SAS_DEV_0 *buf)
 }
 
 void
-_mpr_print_evt_sas(struct mpr_softc *sc, MPI2_EVENT_NOTIFICATION_REPLY *event)
+mpr_print_evt_sas(struct mpr_softc *sc, MPI2_EVENT_NOTIFICATION_REPLY *event)
 {
 
-	_mpr_print_event(sc, event);
+	mpr_print_evt_generic(sc, event);
 
 	switch(event->Event) {
 	case MPI2_EVENT_SAS_DISCOVERY:
@@ -315,6 +337,7 @@ _mpr_print_evt_sas(struct mpr_softc *sc, MPI2_EVENT_NOTIFICATION_REPLY *event)
 		    "\40MaxEnclosures");
 		break;
 	}
+//SLM-add for PCIE EVENT too
 	case MPI2_EVENT_SAS_TOPOLOGY_CHANGE_LIST:
 	{
 		MPI2_EVENT_DATA_SAS_TOPOLOGY_CHANGE_LIST *data;
@@ -384,7 +407,7 @@ _mpr_print_evt_sas(struct mpr_softc *sc, MPI2_EVENT_NOTIFICATION_REPLY *event)
 }
 
 void
-_mpr_print_expander1(struct mpr_softc *sc, MPI2_CONFIG_PAGE_EXPANDER_1 *buf)
+mpr_print_expander1(struct mpr_softc *sc, MPI2_CONFIG_PAGE_EXPANDER_1 *buf)
 {
 	MPR_PRINTFIELD_START(sc, "SAS Expander Page 1 #%d", buf->Phy);
 	MPR_PRINTFIELD(sc, buf, PhysicalPort, %d);
@@ -424,7 +447,7 @@ _mpr_print_expander1(struct mpr_softc *sc, MPI2_CONFIG_PAGE_EXPANDER_1 *buf)
 }
 
 void
-_mpr_print_sasphy0(struct mpr_softc *sc, MPI2_CONFIG_PAGE_SAS_PHY_0 *buf)
+mpr_print_sasphy0(struct mpr_softc *sc, MPI2_CONFIG_PAGE_SAS_PHY_0 *buf)
 {
 	MPR_PRINTFIELD_START(sc, "SAS PHY Page 0");
 	MPR_PRINTFIELD(sc, buf, OwnerDevHandle, 0x%04x);

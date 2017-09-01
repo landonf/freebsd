@@ -34,7 +34,7 @@ WARNS?=		2
 INSTALLFLAGS=	-C -b
 PRECIOUSPROG=
 BINDIR=		/libexec
-SYMLINKS=	${BINDIR}/${PROG} ${LIBEXECDIR}/${PROG}
+SYMLINKS=	../..${BINDIR}/${PROG} ${LIBEXECDIR}/${PROG}
 MLINKS=		rtld.1 ld-elf.so.1.1 \
 		rtld.1 ld.so.1
 
@@ -46,6 +46,9 @@ CFLAGS+=	-fpic
 CFLAGS+=	-DPIC $(DEBUG)
 .if ${MACHINE_CPUARCH} == "amd64" || ${MACHINE_CPUARCH} == "i386"
 CFLAGS+=	-fvisibility=hidden
+.endif
+.if ${MACHINE_CPUARCH} == "mips"
+CFLAGS.reloc.c+=-fno-jump-tables
 .endif
 LDFLAGS+=	-shared -Wl,-Bsymbolic -Wl,-z,defs
 LIBADD=		c_pic
@@ -85,9 +88,8 @@ beforeinstall:
 
 .PATH: ${.CURDIR}/${RTLD_ARCH}
 
-.if ${MK_TESTS} != "no"
-SUBDIR+=	tests
-.endif
+HAS_TESTS=
+SUBDIR.${MK_TESTS}+= tests
 
 .include <bsd.prog.mk>
 ${PROG_FULL}:	${VERSION_MAP}

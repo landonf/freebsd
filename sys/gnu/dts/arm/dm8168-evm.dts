@@ -12,18 +12,24 @@
 	model = "DM8168 EVM";
 	compatible = "ti,dm8168-evm", "ti,dm8168";
 
-	memory {
+	memory@80000000 {
 		device_type = "memory";
 		reg = <0x80000000 0x40000000	/* 1 GB */
 		       0xc0000000 0x40000000>;	/* 1 GB */
 	};
 
 	/* FDC6331L controlled by SD_POW pin */
-	vmmcsd_fixed: fixedregulator@0 {
+	vmmcsd_fixed: fixedregulator0 {
 		compatible = "regulator-fixed";
 		regulator-name = "vmmcsd_fixed";
 		regulator-min-microvolt = <3300000>;
 		regulator-max-microvolt = <3300000>;
+	};
+
+	sata_refclk: fixedclock0 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <100000000>;
 	};
 };
 
@@ -172,4 +178,8 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&usb1_pins>;
 	mentor,multipoint = <0>;
+};
+
+&sata {
+	clocks = <&sysclk5_ck>, <&sata_refclk>;
 };

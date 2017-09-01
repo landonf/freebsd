@@ -18,6 +18,7 @@
  *
  * CDDL HEADER END
  */
+
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
  * Portions Copyright (c) 2011 Martin Matuska <mm@FreeBSD.org>
@@ -27,6 +28,7 @@
  * Copyright (c) 2014 Spectra Logic Corporation, All rights reserved.
  * Copyright (c) 2014 Integros [integros.com]
  * Copyright 2016, OmniTI Computer Consulting, Inc. All rights reserved.
+ * Copyright 2017 Nexenta Systems, Inc.
  */
 
 #include <sys/dmu_objset.h>
@@ -243,42 +245,6 @@ dsl_dataset_block_kill(dsl_dataset_t *ds, const blkptr_t *bp, dmu_tx_t *tx,
 	return (used);
 }
 
-uint64_t
-dsl_dataset_prev_snap_txg(dsl_dataset_t *ds)
-{
-	uint64_t trysnap = 0;
-
-	if (ds == NULL)
-		return (0);
-	/*
-	 * The snapshot creation could fail, but that would cause an
-	 * incorrect FALSE return, which would only result in an
-	 * overestimation of the amount of space that an operation would
-	 * consume, which is OK.
-	 *
-	 * There's also a small window where we could miss a pending
-	 * snapshot, because we could set the sync task in the quiescing
-	 * phase.  So this should only be used as a guess.
-	 */
-	if (ds->ds_trysnap_txg >
-	    spa_last_synced_txg(ds->ds_dir->dd_pool->dp_spa))
-		trysnap = ds->ds_trysnap_txg;
-	return (MAX(dsl_dataset_phys(ds)->ds_prev_snap_txg, trysnap));
-}
-
-boolean_t
-dsl_dataset_block_freeable(dsl_dataset_t *ds, const blkptr_t *bp,
-    uint64_t blk_birth)
-{
-	if (blk_birth <= dsl_dataset_prev_snap_txg(ds) ||
-	    (bp != NULL && BP_IS_HOLE(bp)))
-		return (B_FALSE);
-
-	ddt_prefetch(dsl_dataset_get_spa(ds), bp);
-
-	return (B_TRUE);
-}
-
 /*
  * We have to release the fsid syncronously or we risk that a subsequent
  * mount of the same dataset will fail to unique_insert the fsid.  This
@@ -364,17 +330,15 @@ dsl_dataset_snap_lookup(dsl_dataset_t *ds, const char *name, uint64_t *value)
 {
 	objset_t *mos = ds->ds_dir->dd_pool->dp_meta_objset;
 	uint64_t snapobj = dsl_dataset_phys(ds)->ds_snapnames_zapobj;
-	matchtype_t mt;
+	matchtype_t mt = 0;
 	int err;
 
 	if (dsl_dataset_phys(ds)->ds_flags & DS_FLAG_CI_DATASET)
-		mt = MT_FIRST;
-	else
-		mt = MT_EXACT;
+		mt = MT_NORMALIZE;
 
 	err = zap_lookup_norm(mos, snapobj, name, 8, 1,
 	    value, mt, NULL, 0, NULL);
-	if (err == ENOTSUP && mt == MT_FIRST)
+	if (err == ENOTSUP && (mt & MT_NORMALIZE))
 		err = zap_lookup(mos, snapobj, name, 8, 1, value);
 	return (err);
 }
@@ -385,18 +349,16 @@ dsl_dataset_snap_remove(dsl_dataset_t *ds, const char *name, dmu_tx_t *tx,
 {
 	objset_t *mos = ds->ds_dir->dd_pool->dp_meta_objset;
 	uint64_t snapobj = dsl_dataset_phys(ds)->ds_snapnames_zapobj;
-	matchtype_t mt;
+	matchtype_t mt = 0;
 	int err;
 
 	dsl_dir_snap_cmtime_update(ds->ds_dir);
 
 	if (dsl_dataset_phys(ds)->ds_flags & DS_FLAG_CI_DATASET)
-		mt = MT_FIRST;
-	else
-		mt = MT_EXACT;
+		mt = MT_NORMALIZE;
 
 	err = zap_remove_norm(mos, snapobj, name, mt, tx);
-	if (err == ENOTSUP && mt == MT_FIRST)
+	if (err == ENOTSUP && (mt & MT_NORMALIZE))
 		err = zap_remove(mos, snapobj, name, tx);
 
 	if (err == 0 && adj_cnt)
@@ -1778,6 +1740,11 @@ dsl_dataset_sync_done(dsl_dataset_t *ds, dmu_tx_t *tx)
 	bplist_iterate(&ds->ds_pending_deadlist,
 	    deadlist_enqueue_cb, &ds->ds_deadlist, tx);
 
+	if (os->os_synced_dnodes != NULL) {
+		multilist_destroy(os->os_synced_dnodes);
+		os->os_synced_dnodes = NULL;
+	}
+
 	ASSERT(!dmu_objset_is_dirty(os, dmu_tx_get_txg(tx)));
 
 	dmu_buf_rele(ds->ds_dbuf, ds);
@@ -1791,9 +1758,20 @@ get_clones_stat(dsl_dataset_t *ds, nvlist_t *nv)
 	zap_cursor_t zc;
 	zap_attribute_t za;
 	nvlist_t *propval = fnvlist_alloc();
-	nvlist_t *val = fnvlist_alloc();
+	nvlist_t *val;
 
 	ASSERT(dsl_pool_config_held(ds->ds_dir->dd_pool));
+
+	/*
+	 * We use nvlist_alloc() instead of fnvlist_alloc() because the
+	 * latter would allocate the list with NV_UNIQUE_NAME flag.
+	 * As a result, every time a clone name is appended to the list
+	 * it would be (linearly) searched for for a duplicate name.
+	 * We already know that all clone names must be unique and we
+	 * want avoid the quadratic complexity of double-checking that
+	 * because we can have a large number of clones.
+	 */
+	VERIFY0(nvlist_alloc(&val, 0, KM_SLEEP));
 
 	/*
 	 * There may be missing entries in ds_next_clones_obj
@@ -1865,8 +1843,16 @@ get_receive_resume_stats(dsl_dataset_t *ds, nvlist_t *nv)
 			fnvlist_add_string(token_nv, "toname", buf);
 		}
 		if (zap_contains(dp->dp_meta_objset, ds->ds_object,
+		    DS_FIELD_RESUME_LARGEBLOCK) == 0) {
+			fnvlist_add_boolean(token_nv, "largeblockok");
+		}
+		if (zap_contains(dp->dp_meta_objset, ds->ds_object,
 		    DS_FIELD_RESUME_EMBEDOK) == 0) {
 			fnvlist_add_boolean(token_nv, "embedok");
+		}
+		if (zap_contains(dp->dp_meta_objset, ds->ds_object,
+		    DS_FIELD_RESUME_COMPRESSOK) == 0) {
+			fnvlist_add_boolean(token_nv, "compressok");
 		}
 		packed = fnvlist_pack(token_nv, &packed_size);
 		fnvlist_free(token_nv);
@@ -2273,6 +2259,7 @@ dsl_dataset_handoff_check(dsl_dataset_t *ds, void *owner, dmu_tx_t *tx)
 
 typedef struct dsl_dataset_rollback_arg {
 	const char *ddra_fsname;
+	const char *ddra_tosnap;
 	void *ddra_owner;
 	nvlist_t *ddra_result;
 } dsl_dataset_rollback_arg_t;
@@ -2312,6 +2299,18 @@ dsl_dataset_rollback_check(void *arg, dmu_tx_t *tx)
 	    dsl_dataset_phys(ds)->ds_prev_snap_txg >= tx->tx_txg) {
 		dsl_dataset_rele(ds, FTAG);
 		return (SET_ERROR(EAGAIN));
+	}
+
+	/*
+	 * If the expected target snapshot is specified, then check that
+	 * the latest snapshot is it.
+	 */
+	if (ddra->ddra_tosnap != NULL) {
+		char namebuf[ZFS_MAX_DATASET_NAME_LEN];
+
+		dsl_dataset_name(ds->ds_prev, namebuf);
+		if (strcmp(namebuf, ddra->ddra_tosnap) != 0)
+			return (SET_ERROR(EXDEV));
 	}
 
 	/* must not have any bookmarks after the most recent snapshot */
@@ -2415,11 +2414,13 @@ dsl_dataset_rollback_sync(void *arg, dmu_tx_t *tx)
  * notes above zfs_suspend_fs() for further details.
  */
 int
-dsl_dataset_rollback(const char *fsname, void *owner, nvlist_t *result)
+dsl_dataset_rollback(const char *fsname, const char *tosnap, void *owner,
+    nvlist_t *result)
 {
 	dsl_dataset_rollback_arg_t ddra;
 
 	ddra.ddra_fsname = fsname;
+	ddra.ddra_tosnap = tosnap;
 	ddra.ddra_owner = owner;
 	ddra.ddra_result = result;
 

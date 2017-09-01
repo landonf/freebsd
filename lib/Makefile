@@ -40,6 +40,7 @@ SUBDIR=	${SUBDIR_BOOTSTRAP} \
 	libdevctl \
 	libdevinfo \
 	libdevstat \
+	${_libdl} \
 	libdwarf \
 	libedit \
 	libevent \
@@ -90,6 +91,7 @@ SUBDIR=	${SUBDIR_BOOTSTRAP} \
 	libxo \
 	liby \
 	libz \
+	libzstd \
 	ncurses
 
 # Inter-library dependencies.  When the makefile for a library contains LDADD
@@ -156,6 +158,9 @@ _libclang_rt=	libclang_rt
 .if ${MK_LIBCPLUSPLUS} != "no"
 _libcxxrt=	libcxxrt
 _libcplusplus=	libc++
+.if ${MACHINE_CPUARCH} != "arm" && ${MACHINE_CPUARCH} != "mips"
+_libcplusplus+=	libc++experimental
+.endif
 .endif
 
 SUBDIR.${MK_EFI}+=	libefivar
@@ -177,6 +182,10 @@ SUBDIR.${MK_BHYVE}+=	libvmmapi
 .if ${MACHINE_CPUARCH} != "sparc64"
 _libproc=	libproc
 _librtld_db=	librtld_db
+.endif
+
+.if defined(LINKER_FEATURES) && ${LINKER_FEATURES:Mfilter}
+_libdl=		libdl
 .endif
 
 SUBDIR.${MK_OPENSSL}+=	libmp

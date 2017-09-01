@@ -33,6 +33,7 @@ static const char rcsid[] =
 #include <sys/param.h>
 #include <sys/types.h>
 
+#include <assert.h>
 #include <ctype.h>
 #include <dirent.h>
 #include <err.h>
@@ -490,6 +491,7 @@ pw_pwcrypt(char *password)
 	char            salt[SALTSIZE + 1];
 	char		*cryptpw;
 	static char     buf[256];
+	size_t		pwlen;
 
 	/*
 	 * Calculate a salt value
@@ -501,7 +503,9 @@ pw_pwcrypt(char *password)
 	cryptpw = crypt(password, salt);
 	if (cryptpw == NULL)
 		errx(EX_CONFIG, "crypt(3) failure");
-	return strcpy(buf, cryptpw);
+	pwlen = strlcpy(buf, cryptpw, sizeof(buf));
+	assert(pwlen < sizeof(buf));
+	return (buf);
 }
 
 static char *
@@ -1083,10 +1087,10 @@ split_groups(StringList **groups, char *groupsstr)
 	char *p;
 	char tok[] = ", \t";
 
+	if (*groups == NULL)
+		*groups = sl_init();
 	for (p = strtok(groupsstr, tok); p != NULL; p = strtok(NULL, tok)) {
 		grp = group_from_name_or_id(p);
-		if (*groups == NULL)
-			*groups = sl_init();
 		sl_add(*groups, newstr(grp->gr_name));
 	}
 }
@@ -1177,7 +1181,7 @@ pw_user_add(int argc, char **argv, char *arg1)
 	char line[_PASSWORD_LEN+1], path[MAXPATHLEN];
 	char *gecos, *homedir, *skel, *walk, *userid, *groupid, *grname;
 	char *default_passwd, *name, *p;
-	const char *cfg;
+	const char *cfg = NULL;
 	login_cap_t *lc;
 	FILE *pfp, *fp;
 	intmax_t id = -1;
@@ -1198,7 +1202,7 @@ pw_user_add(int argc, char **argv, char *arg1)
 		if (arg1[strspn(arg1, "0123456789")] == '\0')
 			id = pw_checkid(arg1, UID_MAX);
 		else
-			name = arg1;
+			name = pw_checkname(arg1, 0);
 	}
 
 	while ((ch = getopt(argc, argv, args)) != -1) {
@@ -1210,7 +1214,7 @@ pw_user_add(int argc, char **argv, char *arg1)
 			quiet = true;
 			break;
 		case 'n':
-			name = optarg;
+			name = pw_checkname(optarg, 0);
 			break;
 		case 'u':
 			userid = optarg;
@@ -1356,6 +1360,9 @@ pw_user_add(int argc, char **argv, char *arg1)
 	if (GETPWNAM(name) != NULL)
 		errx(EX_DATAERR, "login name `%s' already exists", name);
 
+	if (!grname)
+		grname = cmdcnf->default_group;
+
 	pwd = &fakeuser;
 	pwd->pw_name = name;
 	pwd->pw_class = cmdcnf->default_class ? cmdcnf->default_class : "";
@@ -1485,7 +1492,7 @@ pw_user_mod(int argc, char **argv, char *arg1)
 	struct group *grp;
 	StringList *groups = NULL;
 	char args[] = "C:qn:u:c:d:e:p:g:G:mM:l:k:s:w:L:h:H:NPYy:";
-	const char *cfg;
+	const char *cfg = NULL;
 	char *gecos, *homedir, *grname, *name, *newname, *walk, *skel, *shell;
 	char *passwd, *class, *nispasswd;
 	login_cap_t *lc;

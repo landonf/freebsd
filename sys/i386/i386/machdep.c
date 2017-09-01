@@ -2185,6 +2185,8 @@ init386(int first)
 	else
 		init_static_kenv(NULL, 0);
 
+	identify_hypervisor();
+
 	/* Init basic tunables, hz etc */
 	init_param1();
 
@@ -2445,11 +2447,6 @@ init386(int first)
 	gdp->gd_dpl = SEL_UPL;
 	gdp->gd_p = 1;
 	gdp->gd_hioffset = x >> 16;
-
-	/* XXX does this work? */
-	/* XXX yes! */
-	ldt[LBSDICALLS_SEL] = ldt[LSYS5CALLS_SEL];
-	ldt[LSOL26CALLS_SEL] = ldt[LSYS5CALLS_SEL];
 
 	/* transfer to user mode */
 
@@ -2901,8 +2898,6 @@ fill_dbregs(struct thread *td, struct dbreg *dbregs)
 		dbregs->dr[1] = rdr1();
 		dbregs->dr[2] = rdr2();
 		dbregs->dr[3] = rdr3();
-		dbregs->dr[4] = rdr4();
-		dbregs->dr[5] = rdr5();
 		dbregs->dr[6] = rdr6();
 		dbregs->dr[7] = rdr7();
 	} else {
@@ -2911,11 +2906,11 @@ fill_dbregs(struct thread *td, struct dbreg *dbregs)
 		dbregs->dr[1] = pcb->pcb_dr1;
 		dbregs->dr[2] = pcb->pcb_dr2;
 		dbregs->dr[3] = pcb->pcb_dr3;
-		dbregs->dr[4] = 0;
-		dbregs->dr[5] = 0;
 		dbregs->dr[6] = pcb->pcb_dr6;
 		dbregs->dr[7] = pcb->pcb_dr7;
 	}
+	dbregs->dr[4] = 0;
+	dbregs->dr[5] = 0;
 	return (0);
 }
 
@@ -2930,8 +2925,6 @@ set_dbregs(struct thread *td, struct dbreg *dbregs)
 		load_dr1(dbregs->dr[1]);
 		load_dr2(dbregs->dr[2]);
 		load_dr3(dbregs->dr[3]);
-		load_dr4(dbregs->dr[4]);
-		load_dr5(dbregs->dr[5]);
 		load_dr6(dbregs->dr[6]);
 		load_dr7(dbregs->dr[7]);
 	} else {

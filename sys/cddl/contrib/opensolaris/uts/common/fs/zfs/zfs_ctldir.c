@@ -497,7 +497,7 @@ zfsctl_common_getattr(vnode_t *vp, vattr_t *vap)
 	vap->va_blksize = 0;
 	vap->va_nblocks = 0;
 	vap->va_seq = 0;
-	vap->va_fsid = vp->v_mount->mnt_stat.f_fsid.val[0];
+	vn_fsid(vp, vap);
 	vap->va_mode = S_IRUSR | S_IXUSR | S_IRGRP | S_IXGRP |
 	    S_IROTH | S_IXOTH;
 	vap->va_type = VDIR;
@@ -706,6 +706,28 @@ zfsctl_root_readdir(ap)
 	return (0);
 }
 
+static int
+zfsctl_root_vptocnp(struct vop_vptocnp_args *ap)
+{
+	static const char dotzfs_name[4] = ".zfs";
+	vnode_t *dvp;
+	int error;
+
+	if (*ap->a_buflen < sizeof (dotzfs_name))
+		return (SET_ERROR(ENOMEM));
+
+	error = vn_vget_ino_gen(ap->a_vp, zfsctl_fs_root_vnode, NULL,
+	    LK_SHARED, &dvp);
+	if (error != 0)
+		return (SET_ERROR(error));
+
+	VOP_UNLOCK(dvp, 0);
+	*ap->a_vpp = dvp;
+	*ap->a_buflen -= sizeof (dotzfs_name);
+	bcopy(dotzfs_name, ap->a_buf + *ap->a_buflen, sizeof (dotzfs_name));
+	return (0);
+}
+
 static struct vop_vector zfsctl_ops_root = {
 	.vop_default =	&default_vnodeops,
 	.vop_open =	zfsctl_common_open,
@@ -719,6 +741,7 @@ static struct vop_vector zfsctl_ops_root = {
 	.vop_reclaim =	zfsctl_common_reclaim,
 	.vop_fid =	zfsctl_common_fid,
 	.vop_print =	zfsctl_common_print,
+	.vop_vptocnp =	zfsctl_root_vptocnp,
 };
 
 static int

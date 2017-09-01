@@ -64,6 +64,11 @@ pdinfo_list_t *efiblk_get_pdinfo_list(struct devsw *dev);
 
 void *efi_get_table(EFI_GUID *tbl);
 
+int efi_getdev(void **vdev, const char *devspec, const char **path);
+char *efi_fmtdev(void *vdev);
+int efi_setcurrdev(struct env_var *ev, int flags, const void *value);
+
+
 int efi_register_handles(struct devsw *, EFI_HANDLE *, EFI_HANDLE *, int);
 EFI_HANDLE efi_find_handle(struct devsw *, int);
 int efi_handle_lookup(EFI_HANDLE, struct devsw **, int *,  uint64_t *);
@@ -79,12 +84,15 @@ CHAR16 *efi_devpath_name(EFI_DEVICE_PATH *);
 void efi_free_devpath_name(CHAR16 *);
 
 int efi_status_to_errno(EFI_STATUS);
+EFI_STATUS errno_to_efi_status(int errno);
 
 void efi_time_init(void);
 void efi_time_fini(void);
 
+EFI_STATUS efi_main(EFI_HANDLE Ximage, EFI_SYSTEM_TABLE* Xsystab);
+
 EFI_STATUS main(int argc, CHAR16 *argv[]);
-void exit(EFI_STATUS status);
+void exit(EFI_STATUS status) __dead2;
 void delay(int usecs);
 
 /* EFI environment initialization. */

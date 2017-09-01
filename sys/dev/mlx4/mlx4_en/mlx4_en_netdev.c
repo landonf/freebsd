@@ -54,7 +54,6 @@
 
 static void mlx4_en_sysctl_stat(struct mlx4_en_priv *priv);
 static void mlx4_en_sysctl_conf(struct mlx4_en_priv *priv);
-static int mlx4_en_unit;
 
 #ifdef CONFIG_NET_RX_BUSY_POLL
 /* must be called with local_bh_disable()d */
@@ -1378,8 +1377,6 @@ int mlx4_en_start_port(struct net_device *dev)
 	/* Schedule multicast task to populate multicast list */
 	queue_work(mdev->workqueue, &priv->rx_mode_task);
 
-	mlx4_set_stats_bitmap(mdev->dev, priv->stats_bitmap);
-
 	priv->port_up = true;
 
         /* Enable the queues. */
@@ -1639,7 +1636,7 @@ void mlx4_en_free_resources(struct mlx4_en_priv *priv)
 			mlx4_en_destroy_cq(priv, &priv->rx_cq[i]);
 	}
 
-	if (priv->sysctl)
+	if (priv->stat_sysctl != NULL)
 		sysctl_ctx_free(&priv->stat_ctx);
 }
 
@@ -1731,13 +1728,12 @@ void mlx4_en_destroy_netdev(struct net_device *dev)
 		mutex_unlock(&mdev->state_lock);
 	}
 
-	if (priv->allocated)
-		mlx4_free_hwq_res(mdev->dev, &priv->res, MLX4_EN_PAGE_SIZE);
-
 	mutex_lock(&mdev->state_lock);
 	mlx4_en_stop_port(dev);
 	mutex_unlock(&mdev->state_lock);
 
+	if (priv->allocated)
+		mlx4_free_hwq_res(mdev->dev, &priv->res, MLX4_EN_PAGE_SIZE);
 
 	cancel_delayed_work(&priv->stats_task);
 	cancel_delayed_work(&priv->service_task);
@@ -1754,7 +1750,7 @@ void mlx4_en_destroy_netdev(struct net_device *dev)
 	mlx4_en_free_resources(priv);
 
 	/* freeing the sysctl conf cannot be called from within mlx4_en_free_resources */
-	if (priv->sysctl)
+	if (priv->conf_sysctl != NULL)
 		sysctl_ctx_free(&priv->conf_ctx);
 
 	kfree(priv->tx_ring);
@@ -1775,7 +1771,8 @@ static int mlx4_en_change_mtu(struct net_device *dev, int new_mtu)
 	       (unsigned)dev->if_mtu, (unsigned)new_mtu);
 
 	if ((new_mtu < MLX4_EN_MIN_MTU) || (new_mtu > priv->max_mtu)) {
-		en_err(priv, "Bad MTU size:%d.\n", new_mtu);
+		en_err(priv, "Bad MTU size:%d, max %u.\n", new_mtu,
+		    priv->max_mtu);
 		return -EPERM;
 	}
 	mutex_lock(&mdev->state_lock);
@@ -2053,7 +2050,8 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 		return -ENOMEM;
 	}
 	dev->if_softc = priv;
-	if_initname(dev, "mlxen", atomic_fetchadd_int(&mlx4_en_unit, 1));
+	if_initname(dev, "mlxen", (device_get_unit(
+	    mdev->pdev->dev.bsddev) * MLX4_MAX_PORTS) + port - 1);
 	dev->if_mtu = ETHERMTU;
 	dev->if_init = mlx4_en_open;
 	dev->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
@@ -2573,9 +2571,9 @@ static void mlx4_en_sysctl_conf(struct mlx4_en_priv *priv)
 	pnameunit = device_get_nameunit(priv->mdev->pdev->dev.bsddev);
 
         sysctl_ctx_init(ctx);
-        priv->sysctl = SYSCTL_ADD_NODE(ctx, SYSCTL_STATIC_CHILDREN(_hw),
+        priv->conf_sysctl = SYSCTL_ADD_NODE(ctx, SYSCTL_STATIC_CHILDREN(_hw),
             OID_AUTO, dev->if_xname, CTLFLAG_RD, 0, "mlx4 10gig ethernet");
-        node = SYSCTL_ADD_NODE(ctx, SYSCTL_CHILDREN(priv->sysctl), OID_AUTO,
+        node = SYSCTL_ADD_NODE(ctx, SYSCTL_CHILDREN(priv->conf_sysctl), OID_AUTO,
             "conf", CTLFLAG_RD, NULL, "Configuration");
         node_list = SYSCTL_CHILDREN(node);
 
@@ -2638,7 +2636,6 @@ static void mlx4_en_sysctl_conf(struct mlx4_en_priv *priv)
 static void mlx4_en_sysctl_stat(struct mlx4_en_priv *priv)
 {
 	struct sysctl_ctx_list *ctx;
-	struct sysctl_oid *node;
 	struct sysctl_oid_list *node_list;
 	struct sysctl_oid *ring_node;
 	struct sysctl_oid_list *ring_list;
@@ -2649,9 +2646,9 @@ static void mlx4_en_sysctl_stat(struct mlx4_en_priv *priv)
 
 	ctx = &priv->stat_ctx;
 	sysctl_ctx_init(ctx);
-	node = SYSCTL_ADD_NODE(ctx, SYSCTL_CHILDREN(priv->sysctl), OID_AUTO,
+	priv->stat_sysctl = SYSCTL_ADD_NODE(ctx, SYSCTL_CHILDREN(priv->conf_sysctl), OID_AUTO,
 	    "stat", CTLFLAG_RD, NULL, "Statistics");
-	node_list = SYSCTL_CHILDREN(node);
+	node_list = SYSCTL_CHILDREN(priv->stat_sysctl);
 
 #ifdef MLX4_EN_PERF_STAT
 	SYSCTL_ADD_UINT(ctx, node_list, OID_AUTO, "tx_poll", CTLFLAG_RD,
@@ -2685,6 +2682,8 @@ static void mlx4_en_sysctl_stat(struct mlx4_en_priv *priv)
 	SYSCTL_ADD_ULONG(ctx, node_list, OID_AUTO, "tx_chksum_offload",
 	    CTLFLAG_RD, &priv->port_stats.tx_chksum_offload,
 	    "TX checksum offloads");
+	SYSCTL_ADD_ULONG(ctx, node_list, OID_AUTO, "defrag_attempts", CTLFLAG_RD,
+	    &priv->port_stats.defrag_attempts, "Oversized chains defragged");
 
 	/* Could strdup the names and add in a loop.  This is simpler. */
 	SYSCTL_ADD_ULONG(ctx, node_list, OID_AUTO, "rx_bytes", CTLFLAG_RD,
@@ -2734,28 +2733,6 @@ static void mlx4_en_sysctl_stat(struct mlx4_en_priv *priv)
 	    &priv->pkstats.rx_gt_1548_bytes_packets,
 	    "RX Greater Then 1548 bytes Packets");
 
-struct mlx4_en_pkt_stats {
-	unsigned long tx_packets;
-	unsigned long tx_bytes;
-	unsigned long tx_multicast_packets;
-	unsigned long tx_broadcast_packets;
-	unsigned long tx_errors;
-	unsigned long tx_dropped;
-	unsigned long tx_lt_64_bytes_packets;
-	unsigned long tx_127_bytes_packets;
-	unsigned long tx_255_bytes_packets;
-	unsigned long tx_511_bytes_packets;
-	unsigned long tx_1023_bytes_packets;
-	unsigned long tx_1518_bytes_packets;
-	unsigned long tx_1522_bytes_packets;
-	unsigned long tx_1548_bytes_packets;
-	unsigned long tx_gt_1548_bytes_packets;
-	unsigned long rx_prio[NUM_PRIORITIES][NUM_PRIORITY_STATS];
-	unsigned long tx_prio[NUM_PRIORITIES][NUM_PRIORITY_STATS];
-#define NUM_PKT_STATS		72
-};
-
-
 	SYSCTL_ADD_ULONG(ctx, node_list, OID_AUTO, "tx_packets", CTLFLAG_RD,
 	    &priv->pkstats.tx_packets, "TX packets");
 	SYSCTL_ADD_ULONG(ctx, node_list, OID_AUTO, "tx_bytes", CTLFLAG_RD,
@@ -2800,6 +2777,10 @@ struct mlx4_en_pkt_stats {
 		    CTLFLAG_RD, &tx_ring->packets, "TX packets");
 		SYSCTL_ADD_ULONG(ctx, ring_list, OID_AUTO, "bytes",
 		    CTLFLAG_RD, &tx_ring->bytes, "TX bytes");
+		SYSCTL_ADD_ULONG(ctx, ring_list, OID_AUTO, "tso_packets",
+		    CTLFLAG_RD, &tx_ring->tso_packets, "TSO packets");
+		SYSCTL_ADD_ULONG(ctx, ring_list, OID_AUTO, "defrag_attempts",
+		    CTLFLAG_RD, &tx_ring->defrag_attempts, "Oversized chains defragged");
 	}
 
 	for (i = 0; i < priv->rx_ring_num; i++) {

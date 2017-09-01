@@ -851,6 +851,14 @@ _nvme_qpair_submit_request(struct nvme_qpair *qpair, struct nvme_request *req)
 			    "bus_dmamap_load_bio returned 0x%x!\n", err);
 		break;
 #endif
+	case NVME_REQUEST_CCB:
+		err = bus_dmamap_load_ccb(tr->qpair->dma_tag_payload,
+		    tr->payload_dma_map, req->u.payload,
+		    nvme_payload_map, tr, 0);
+		if (err != 0)
+			nvme_printf(qpair->ctrlr,
+			    "bus_dmamap_load_ccb returned 0x%x!\n", err);
+		break;
 	default:
 		panic("unknown nvme request type 0x%x\n", req->type);
 		break;
@@ -999,6 +1007,9 @@ nvme_qpair_fail(struct nvme_qpair *qpair)
 {
 	struct nvme_tracker		*tr;
 	struct nvme_request		*req;
+
+	if (!mtx_initialized(&qpair->lock))
+		return;
 
 	mtx_lock(&qpair->lock);
 

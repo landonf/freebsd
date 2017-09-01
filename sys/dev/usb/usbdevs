@@ -60,6 +60,7 @@ vendor UNKNOWN2		0x0105	Unknown vendor
 vendor EGALAX2		0x0123	eGalax, Inc.
 vendor CHIPSBANK	0x0204	Chipsbank Microelectronics Co.
 vendor HUMAX		0x02ad	HUMAX
+vendor INTENSO		0x2109	INTENSO
 vendor LTS		0x0386	LTS
 vendor BWCT		0x03da	Bernd Walter Computer Technology
 vendor AOX		0x03e8	AOX
@@ -747,6 +748,7 @@ vendor WESTMOUNTAIN	0x2405	West Mountain Radio
 vendor TRIPPLITE	0x2478	Tripp-Lite
 vendor HIROSE		0x2631	Hirose Electric
 vendor NHJ		0x2770	NHJ
+vendor THINGM		0x27b8	ThingM
 vendor PLANEX		0x2c02	Planex Communications
 vendor VIDZMEDIA	0x3275	VidzMedia Pte Ltd
 vendor LINKINSTRUMENTS	0x3195	Link Instruments Inc.
@@ -2497,6 +2499,9 @@ product INSYSTEM ISD110		0x0200	IDE Adapter ISD110
 product INSYSTEM ISD105		0x0202	IDE Adapter ISD105
 product INSYSTEM USBCABLE	0x081a	USB cable
 product INSYSTEM STORAGE_V2	0x5701	USB Storage Adapter V2
+
+/* Intenso products */
+product INTENSO MEMORY_BOX	0x0701	External disk
 
 /* Intel products */
 product INTEL EASYPC_CAMERA	0x0110	Easy PC Camera
@@ -4492,6 +4497,9 @@ product TELIT UC864G		0x1004	UC864G 3G modem
 
 /* Ten X Technology, Inc. */
 product TENX UAUDIO0		0xf211	USB audio headset
+
+/* ThingM products */
+product THINGM BLINK1		0x01ed	USB notification light
 
 /* Texas Intel products */
 product TI UTUSB41		0x1446	UT-USB41 hub

@@ -168,7 +168,15 @@ ntb_link_event(device_t dev)
 	struct ntb_child **cpp = device_get_softc(dev);
 	struct ntb_child *nc;
 	struct rm_priotracker ctx_tracker;
+	enum ntb_speed speed;
+	enum ntb_width width;
 
+	if (NTB_LINK_IS_UP(dev, &speed, &width)) {
+		device_printf(dev, "Link is up (PCIe %d.x / x%d)\n",
+		    (int)speed, (int)width);
+	} else {
+		device_printf(dev, "Link is down\n");
+	}
 	for (nc = *cpp; nc != NULL; nc = nc->next) {
 		rm_rlock(&nc->ctx_lock, &ctx_tracker);
 		if (nc->ctx_ops != NULL && nc->ctx_ops->link_event != NULL)
@@ -256,6 +264,13 @@ ntb_set_ctx(device_t ntb, void *ctx, const struct ntb_ctx_ops *ctx_ops)
 	}
 	nc->ctx = ctx;
 	nc->ctx_ops = ctx_ops;
+
+	/*
+	 * If applicaiton driver asks for link events, generate fake one now
+	 * to let it update link state without races while we hold the lock.
+	 */
+	if (ctx_ops->link_event != NULL)
+		ctx_ops->link_event(ctx);
 	rm_wunlock(&nc->ctx_lock);
 
 	return (0);

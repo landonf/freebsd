@@ -112,6 +112,8 @@ static struct {
 	{ NFSV4OP_WRITE, 1, "WriteDS", 7, },
 	{ NFSV4OP_READ, 1, "ReadDS", 6, },
 	{ NFSV4OP_COMMIT, 1, "CommitDS", 8, },
+	{ NFSV4OP_OPEN, 3, "OpenLayoutGet", 13, },
+	{ NFSV4OP_OPEN, 8, "CreateLayGet", 12, },
 };
 
 /*
@@ -120,7 +122,7 @@ static struct {
 static int nfs_bigrequest[NFSV41_NPROCS] = {
 	0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 1, 0, 0
+	0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0
 };
 
 /*
@@ -471,6 +473,12 @@ nfscl_mtofh(struct nfsrv_descript *nd, struct nfsfh **nfhpp,
 		flag = fxdr_unsigned(int, *tl);
 	} else if (nd->nd_flag & ND_NFSV4) {
 		NFSM_DISSECT(tl, u_int32_t *, 2 * NFSX_UNSIGNED);
+		/* If the GetFH failed, clear flag. */
+		if (*++tl != 0) {
+			nd->nd_flag |= ND_NOMOREDATA;
+			flag = 0;
+			error = ENXIO;	/* Return ENXIO so *nfhpp isn't used. */
+		}
 	}
 	if (flag) {
 		error = nfsm_getfh(nd, nfhpp);
@@ -481,8 +489,12 @@ nfscl_mtofh(struct nfsrv_descript *nd, struct nfsfh **nfhpp,
 	/*
 	 * Now, get the attributes.
 	 */
-	if (nd->nd_flag & ND_NFSV4) {
+	if (flag != 0 && (nd->nd_flag & ND_NFSV4) != 0) {
 		NFSM_DISSECT(tl, u_int32_t *, 2 * NFSX_UNSIGNED);
+		if (*++tl != 0) {
+			nd->nd_flag |= ND_NOMOREDATA;
+			flag = 0;
+		}
 	} else if (nd->nd_flag & ND_NFSV3) {
 		NFSM_DISSECT(tl, u_int32_t *, NFSX_UNSIGNED);
 		if (flag) {

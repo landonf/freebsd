@@ -146,6 +146,14 @@ nvme_ctrlr_construct_io_qpairs(struct nvme_controller *ctrlr)
 	num_trackers = min(num_trackers, (num_entries-1));
 
 	/*
+	 * Our best estimate for the maximum number of I/Os that we should
+	 * noramlly have in flight at one time. This should be viewed as a hint,
+	 * not a hard limit and will need to be revisitted when the upper layers
+	 * of the storage system grows multi-queue support.
+	 */
+	ctrlr->max_hw_pend_io = num_trackers * ctrlr->num_io_queues / 4;
+
+	/*
 	 * This was calculated previously when setting up interrupts, but
 	 *  a controller could theoretically support fewer I/O queues than
 	 *  MSI-X vectors.  So calculate again here just to be safe.
@@ -193,8 +201,10 @@ nvme_ctrlr_fail(struct nvme_controller *ctrlr)
 
 	ctrlr->is_failed = TRUE;
 	nvme_qpair_fail(&ctrlr->adminq);
-	for (i = 0; i < ctrlr->num_io_queues; i++)
-		nvme_qpair_fail(&ctrlr->ioq[i]);
+	if (ctrlr->ioq != NULL) {
+		for (i = 0; i < ctrlr->num_io_queues; i++)
+			nvme_qpair_fail(&ctrlr->ioq[i]);
+	}
 	nvme_notify_fail_consumers(ctrlr);
 }
 
@@ -397,7 +407,7 @@ nvme_ctrlr_set_num_qpairs(struct nvme_controller *ctrlr)
 	while (status.done == FALSE)
 		pause("nvme", 1);
 	if (nvme_completion_is_error(&status.cpl)) {
-		nvme_printf(ctrlr, "nvme_set_num_queues failed!\n");
+		nvme_printf(ctrlr, "nvme_ctrlr_set_num_qpairs failed!\n");
 		return (ENXIO);
 	}
 
@@ -458,13 +468,11 @@ static int
 nvme_ctrlr_construct_namespaces(struct nvme_controller *ctrlr)
 {
 	struct nvme_namespace	*ns;
-	int			i, status;
+	uint32_t 		i;
 
-	for (i = 0; i < ctrlr->cdata.nn; i++) {
+	for (i = 0; i < min(ctrlr->cdata.nn, NVME_MAX_NAMESPACES); i++) {
 		ns = &ctrlr->ns[i];
-		status = nvme_ns_construct(ns, i+1, ctrlr);
-		if (status != 0)
-			return (status);
+		nvme_ns_construct(ns, i+1, ctrlr);
 	}
 
 	return (0);

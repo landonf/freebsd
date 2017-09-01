@@ -28,6 +28,7 @@
 __FBSDID("$FreeBSD$");
 
 #include <linux/compat.h>
+#include <linux/completion.h>
 #include <linux/mm.h>
 #include <linux/kthread.h>
 
@@ -42,7 +43,12 @@ static MALLOC_DEFINE(M_LINUX_CURRENT, "linuxcurrent", "LinuxKPI task structure")
 int
 linux_alloc_current(struct thread *td, int flags)
 {
+	struct proc *proc;
+	struct thread *td_other;
 	struct task_struct *ts;
+	struct task_struct *ts_other;
+	struct mm_struct *mm;
+	struct mm_struct *mm_other;
 
 	MPASS(td->td_lkpi_task == NULL);
 
@@ -50,18 +56,88 @@ linux_alloc_current(struct thread *td, int flags)
 	if (ts == NULL)
 		return (ENOMEM);
 
+	mm = malloc(sizeof(*mm), M_LINUX_CURRENT, flags | M_ZERO);
+	if (mm == NULL) {
+		free(ts, M_LINUX_CURRENT);
+		return (ENOMEM);
+	}
+
+	/* setup new task structure */
 	atomic_set(&ts->kthread_flags, 0);
 	ts->task_thread = td;
 	ts->comm = td->td_name;
 	ts->pid = td->td_tid;
+	atomic_set(&ts->usage, 1);
 	ts->state = TASK_RUNNING;
+	init_completion(&ts->parked);
+	init_completion(&ts->exited);
+
+	proc = td->td_proc;
+
+	/* check if another thread already has a mm_struct */
+	PROC_LOCK(proc);
+	FOREACH_THREAD_IN_PROC(proc, td_other) {
+		ts_other = td_other->td_lkpi_task;
+		if (ts_other == NULL)
+			continue;
+
+		mm_other = ts_other->mm;
+		if (mm_other == NULL)
+			continue;
+
+		/* try to share other mm_struct */
+		if (atomic_inc_not_zero(&mm_other->mm_users)) {
+			/* set mm_struct pointer */
+			ts->mm = mm_other;
+			break;
+		}
+	}
+
+	/* use allocated mm_struct as a fallback */
+	if (ts->mm == NULL) {
+		/* setup new mm_struct */
+		init_rwsem(&mm->mmap_sem);
+		atomic_set(&mm->mm_count, 1);
+		atomic_set(&mm->mm_users, 1);
+		/* set mm_struct pointer */
+		ts->mm = mm;
+		/* clear pointer to not free memory */
+		mm = NULL;
+	}
+
+	/* store pointer to task struct */
 	td->td_lkpi_task = ts;
+	PROC_UNLOCK(proc);
+
+	/* free mm_struct pointer, if any */
+	free(mm, M_LINUX_CURRENT);
+
 	return (0);
+}
+
+struct mm_struct *
+linux_get_task_mm(struct task_struct *task)
+{
+	struct mm_struct *mm;
+
+	mm = task->mm;
+	if (mm != NULL) {
+		atomic_inc(&mm->mm_users);
+		return (mm);
+	}
+	return (NULL);
+}
+
+void
+linux_mm_dtor(struct mm_struct *mm)
+{
+	free(mm, M_LINUX_CURRENT);
 }
 
 void
 linux_free_current(struct task_struct *ts)
 {
+	mmput(ts->mm);
 	free(ts, M_LINUX_CURRENT);
 }
 
@@ -75,7 +151,68 @@ linuxkpi_thread_dtor(void *arg __unused, struct thread *td)
 		return;
 
 	td->td_lkpi_task = NULL;
-	free(ts, M_LINUX_CURRENT);
+	put_task_struct(ts);
+}
+
+struct task_struct *
+linux_pid_task(pid_t pid)
+{
+	struct thread *td;
+	struct proc *p;
+
+	/* try to find corresponding thread */
+	td = tdfind(pid, -1);
+	if (td != NULL) {
+		struct task_struct *ts = td->td_lkpi_task;
+		PROC_UNLOCK(td->td_proc);
+		return (ts);
+	}
+
+	/* try to find corresponding procedure */
+	p = pfind(pid);
+	if (p != NULL) {
+		FOREACH_THREAD_IN_PROC(p, td) {
+			struct task_struct *ts = td->td_lkpi_task;
+			if (ts != NULL) {
+				PROC_UNLOCK(p);
+				return (ts);
+			}
+		}
+		PROC_UNLOCK(p);
+	}
+	return (NULL);
+}
+
+struct task_struct *
+linux_get_pid_task(pid_t pid)
+{
+	struct thread *td;
+	struct proc *p;
+
+	/* try to find corresponding thread */
+	td = tdfind(pid, -1);
+	if (td != NULL) {
+		struct task_struct *ts = td->td_lkpi_task;
+		if (ts != NULL)
+			get_task_struct(ts);
+		PROC_UNLOCK(td->td_proc);
+		return (ts);
+	}
+
+	/* try to find corresponding procedure */
+	p = pfind(pid);
+	if (p != NULL) {
+		FOREACH_THREAD_IN_PROC(p, td) {
+			struct task_struct *ts = td->td_lkpi_task;
+			if (ts != NULL) {
+				get_task_struct(ts);
+				PROC_UNLOCK(p);
+				return (ts);
+			}
+		}
+		PROC_UNLOCK(p);
+	}
+	return (NULL);
 }
 
 static void
@@ -89,6 +226,23 @@ SYSINIT(linux_current, SI_SUB_EVENTHANDLER, SI_ORDER_SECOND, linux_current_init,
 static void
 linux_current_uninit(void *arg __unused)
 {
+	struct proc *p;
+	struct task_struct *ts;
+	struct thread *td;
+
+	sx_slock(&allproc_lock);
+	FOREACH_PROC_IN_SYSTEM(p) {
+		PROC_LOCK(p);
+		FOREACH_THREAD_IN_PROC(p, td) {
+			if ((ts = td->td_lkpi_task) != NULL) {
+				td->td_lkpi_task = NULL;
+				put_task_struct(ts);
+			}
+		}
+		PROC_UNLOCK(p);
+	}
+	sx_sunlock(&allproc_lock);
+
 	EVENTHANDLER_DEREGISTER(thread_dtor, linuxkpi_thread_dtor_tag);
 }
 SYSUNINIT(linux_current, SI_SUB_EVENTHANDLER, SI_ORDER_SECOND, linux_current_uninit, NULL);

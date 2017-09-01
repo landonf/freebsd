@@ -43,7 +43,7 @@ contrib/libcxxrt	dim	Pre-commit review preferred.
 contrib/llvm		dim	Pre-commit review preferred.
 contrib/llvm/tools/lldb	emaste	Pre-commit review preferred.
 contrib/netbsd-tests	freebsd-testing,ngie	Pre-commit review requested.
-contrib/pjdfstest	freebsd-testing,ngie,pjd	Pre-commit review requested.
+contrib/pjdfstest	freebsd-testing,asomers,ngie,pjd	Pre-commit review requested.
 dev/usb/wlan	adrian	Pre-commit review requested, send to freebsd-wireless@freebsd.org
 *env(3)		secteam	Due to the problematic security history of this
 			code, please have patches reviewed by secteam.
@@ -100,7 +100,7 @@ usr.sbin/bsdconfig	dteske	Pre-commit phabricator review requested.
 usr.sbin/dpv	dteske	Pre-commit review requested. Keep in sync with libdpv.
 usr.sbin/pkg	pkg@	Please coordinate behavior or flag changes with pkg team.
 usr.sbin/sysrc	dteske	Pre-commit phabricator review requested. Keep in sync with bsdconfig(8) sysrc.subr.
-vmm(4)		neel,grehan	Pre-commit review requested.
+vmm(4)		grehan	Pre-commit review requested.
 autofs(5)	trasz	Pre-commit review recommended.
 iscsi(4)	trasz	Pre-commit review recommended.
 rctl(8)		trasz	Pre-commit review recommended.

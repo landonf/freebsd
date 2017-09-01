@@ -131,7 +131,7 @@ procargs(int argc, char **argv)
 void
 optschanged(void)
 {
-	setinteractive(iflag);
+	setinteractive();
 #ifndef NO_HISTORY
 	histedit();
 #endif
@@ -141,6 +141,8 @@ optschanged(void)
 /*
  * Process shell options.  The global variable argptr contains a pointer
  * to the argument list; we advance it past the options.
+ * If cmdline is true, process the shell's argv; otherwise, process arguments
+ * to the set special builtin.
  */
 
 static void
@@ -189,16 +191,11 @@ options(int cmdline)
 		while ((c = *p++) != '\0') {
 			if (c == 'c' && cmdline) {
 				char *q;
-#ifdef NOHACK	/* removing this code allows sh -ce 'foo' for compat */
-				if (*p == '\0')
-#endif
-					q = *argptr++;
+
+				q = *argptr++;
 				if (q == NULL || minusc != NULL)
 					error("Bad -c option");
 				minusc = q;
-#ifdef NOHACK
-				break;
-#endif
 			} else if (c == 'o') {
 				minus_o(*argptr, val);
 				if (*argptr)
@@ -392,7 +389,7 @@ shiftcmd(int argc, char **argv)
 
 
 /*
- * The set command builtin.
+ * The set builtin command.
  */
 
 int
@@ -558,7 +555,7 @@ out:
 /*
  * Standard option processing (a la getopt) for builtin routines.  The
  * only argument that is passed to nextopt is the option string; the
- * other arguments are unnecessary.  It return the character, or '\0' on
+ * other arguments are unnecessary.  It returns the option, or '\0' on
  * end of input.
  */
 

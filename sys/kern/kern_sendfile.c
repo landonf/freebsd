@@ -207,12 +207,12 @@ xfsize(int i, int n, off_t off, off_t len)
 /*
  * Helper function to get offset within object for i page.
  */
-static inline vm_offset_t
+static inline vm_ooffset_t
 vmoff(int i, off_t off)
 {
 
 	if (i == 0)
-		return ((vm_offset_t)off);
+		return ((vm_ooffset_t)off);
 
 	return (trunc_page(off + i * PAGE_SIZE));
 }
@@ -309,7 +309,7 @@ sendfile_swapin(vm_object_t obj, struct sf_io *sfio, off_t off, off_t len,
     int npages, int rhpages, int flags)
 {
 	vm_page_t *pa = sfio->pa;
-	int nios;
+	int grabbed, nios;
 
 	nios = 0;
 	flags = (flags & SF_NODISKIO) ? VM_ALLOC_NOWAIT : 0;
@@ -319,14 +319,14 @@ sendfile_swapin(vm_object_t obj, struct sf_io *sfio, off_t off, off_t len,
 	 * only required pages.  Readahead pages are dealt with later.
 	 */
 	VM_OBJECT_WLOCK(obj);
-	for (int i = 0; i < npages; i++) {
-		pa[i] = vm_page_grab(obj, OFF_TO_IDX(vmoff(i, off)),
-		    VM_ALLOC_WIRED | VM_ALLOC_NORMAL | flags);
-		if (pa[i] == NULL) {
-			npages = i;
-			rhpages = 0;
-			break;
-		}
+
+	grabbed = vm_page_grab_pages(obj, OFF_TO_IDX(off),
+	    VM_ALLOC_NORMAL | VM_ALLOC_WIRED | flags, pa, npages);
+	if (grabbed < npages) {
+		for (int i = grabbed; i < npages; i++)
+			pa[i] = NULL;
+		npages = grabbed;
+		rhpages = 0;
 	}
 
 	for (int i = 0; i < npages;) {
@@ -355,7 +355,7 @@ sendfile_swapin(vm_object_t obj, struct sf_io *sfio, off_t off, off_t len,
 		    &a)) {
 			pmap_zero_page(pa[i]);
 			pa[i]->valid = VM_PAGE_BITS_ALL;
-			pa[i]->dirty = 0;
+			MPASS(pa[i]->dirty == 0);
 			vm_page_xunbusy(pa[i]);
 			i++;
 			continue;
@@ -689,11 +689,10 @@ retry_space:
 				goto done;
 			}
 			if (va.va_size != obj_size) {
-				if (nbytes == 0)
-					rem += va.va_size - obj_size;
-				else if (offset + nbytes > va.va_size)
-					rem -= (offset + nbytes - va.va_size);
 				obj_size = va.va_size;
+				rem = nbytes ?
+				    omin(nbytes + offset, obj_size) : obj_size;
+				rem -= off;
 			}
 		}
 
@@ -946,6 +945,7 @@ sendfile(struct thread *td, struct sendfile_args *uap, int compat)
 	if (uap->offset < 0)
 		return (EINVAL);
 
+	sbytes = 0;
 	hdr_uio = trl_uio = NULL;
 
 	if (uap->hdtr != NULL) {

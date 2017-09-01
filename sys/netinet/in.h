@@ -289,7 +289,7 @@ __END_DECLS
  * if you trust the remote host to restrict these ports.
  *
  * The default range of ports and the high range can be changed by
- * sysctl(3).  (net.inet.ip.port{hi,low}{first,last}_auto)
+ * sysctl(3).  (net.inet.ip.portrange.{hi,low,}{first,last})
  *
  * Changing those values has bad security implications if you are
  * using a stateless firewall that is allowing packets outside of that
@@ -633,6 +633,8 @@ int	getsourcefilter(int, uint32_t, struct sockaddr *, socklen_t,
 #define	IPCTL_FASTFORWARDING	14	/* use fast IP forwarding code */
 					/* 15, unused, was: IPCTL_KEEPFAITH  */
 #define	IPCTL_GIF_TTL		16	/* default TTL for gif encap packet */
+#define	IPCTL_INTRDQMAXLEN	17	/* max length of direct netisr queue */
+#define	IPCTL_INTRDQDROPS	18	/* number of direct netisr q drops */
 
 #endif /* __BSD_VISIBLE */
 

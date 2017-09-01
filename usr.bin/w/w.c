@@ -511,12 +511,12 @@ pr_header(time_t *nowp, int nusers)
 	}
 
 	/* Print number of users logged in to system */
-	xo_emit(" {:users/%d} {N:user%s}", nusers, nusers == 1 ? "" : "s");
+	xo_emit(" {:users/%d} {Np:user,users}", nusers);
 
 	/*
 	 * Print 1, 5, and 15 minute load averages.
 	 */
-	if (getloadavg(avenrun, sizeof(avenrun) / sizeof(avenrun[0])) == -1)
+	if (getloadavg(avenrun, nitems(avenrun)) == -1)
 		xo_emit(", no load average information available\n");
 	else {
 	        static const char *format[] = {
@@ -525,7 +525,7 @@ pr_header(time_t *nowp, int nusers)
 		    " {:load-average-15/%.2f}",
 		};
 		xo_emit(", load averages:");
-		for (i = 0; i < (int)(sizeof(avenrun) / sizeof(avenrun[0])); i++) {
+		for (i = 0; i < (int)(nitems(avenrun)); i++) {
 			if (use_comma && i > 0)
 				xo_emit(",");
 			xo_emit(format[i], avenrun[i]);

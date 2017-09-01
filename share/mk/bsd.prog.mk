@@ -39,7 +39,7 @@ CFLAGS+=${CRUNCH_CFLAGS}
 .else
 .if ${MK_DEBUG_FILES} != "no" && empty(DEBUG_FLAGS:M-g) && \
     empty(DEBUG_FLAGS:M-gdwarf-*)
-CFLAGS+= -g
+CFLAGS+= ${DEBUG_FILES_CFLAGS}
 CTFFLAGS+= -g
 .endif
 .endif
@@ -299,6 +299,13 @@ lint: ${SRCS:M*.c}
 
 .if ${MK_MAN} != "no"
 .include <bsd.man.mk>
+.endif
+
+.if defined(HAS_TESTS)
+MAKE+=			MK_MAKE_CHECK_USE_SANDBOX=yes
+SUBDIR_TARGETS+=	check
+TESTS_LD_LIBRARY_PATH+=	${.OBJDIR}
+TESTS_PATH+=		${.OBJDIR}
 .endif
 
 .if defined(PROG)

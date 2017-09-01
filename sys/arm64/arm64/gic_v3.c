@@ -69,6 +69,7 @@ __FBSDID("$FreeBSD$");
 #include "gic_v3_reg.h"
 #include "gic_v3_var.h"
 
+static bus_get_domain_t gic_v3_get_domain;
 static bus_read_ivar_t gic_v3_read_ivar;
 
 static pic_disable_intr_t gic_v3_disable_intr;
@@ -97,6 +98,7 @@ static device_method_t gic_v3_methods[] = {
 	DEVMETHOD(device_detach,	gic_v3_detach),
 
 	/* Bus interface */
+	DEVMETHOD(bus_get_domain,	gic_v3_get_domain),
 	DEVMETHOD(bus_read_ivar,	gic_v3_read_ivar),
 
 	/* Interrupt controller interface */
@@ -351,6 +353,19 @@ gic_v3_detach(device_t dev)
 }
 
 static int
+gic_v3_get_domain(device_t dev, device_t child, int *domain)
+{
+	struct gic_v3_devinfo *di;
+
+	di = device_get_ivars(child);
+	if (di->gic_domain < 0)
+		return (ENOENT);
+
+	*domain = di->gic_domain;
+	return (0);
+}
+
+static int
 gic_v3_read_ivar(device_t dev, device_t child, int which, uintptr_t *result)
 {
 	struct gic_v3_softc *sc;
@@ -359,7 +374,7 @@ gic_v3_read_ivar(device_t dev, device_t child, int which, uintptr_t *result)
 
 	switch (which) {
 	case GICV3_IVAR_NIRQS:
-		*result = sc->gic_nirqs;
+		*result = (NIRQ - sc->gic_nirqs) / sc->gic_nchildren;
 		return (0);
 	case GICV3_IVAR_REDIST_VADDR:
 		*result = (uintptr_t)rman_get_virtual(
@@ -437,11 +452,11 @@ arm_gic_v3_intr(void *arg)
 #endif
 		} else if (active_irq >= GIC_FIRST_PPI &&
 		    active_irq <= GIC_LAST_SPI) {
-			if (gi->gi_pol == INTR_TRIGGER_EDGE)
+			if (gi->gi_trig == INTR_TRIGGER_EDGE)
 				gic_icc_write(EOIR1, gi->gi_irq);
 
 			if (intr_isrc_dispatch(&gi->gi_isrc, tf) != 0) {
-				if (gi->gi_pol != INTR_TRIGGER_EDGE)
+				if (gi->gi_trig != INTR_TRIGGER_EDGE)
 					gic_icc_write(EOIR1, gi->gi_irq);
 				gic_v3_disable_intr(sc->dev, &gi->gi_isrc);
 				device_printf(sc->dev,
@@ -781,7 +796,7 @@ gic_v3_post_filter(device_t dev, struct intr_irqsrc *isrc)
 {
 	struct gic_v3_irqsrc *gi = (struct gic_v3_irqsrc *)isrc;
 
-	if (gi->gi_pol == INTR_TRIGGER_EDGE)
+	if (gi->gi_trig == INTR_TRIGGER_EDGE)
 		return;
 
 	gic_icc_write(EOIR1, gi->gi_irq);

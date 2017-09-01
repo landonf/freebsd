@@ -315,6 +315,7 @@ void	devfs_free_cdp_inode(ino_t ino);
 #define		GID_GAMES	13
 #define		GID_VIDEO	44
 #define		GID_DIALER	68
+#define		GID_NOGROUP	65533
 #define		GID_NOBODY	65534
 
 typedef void (*dev_clone_fn)(void *arg, struct ucred *cred, char *name,
@@ -341,12 +342,13 @@ struct dumperinfo {
 int set_dumper(struct dumperinfo *di, const char *devname, struct thread *td,
     uint8_t encrypt, const uint8_t *key, uint32_t encryptedkeysize,
     const uint8_t *encryptedkey);
+void dump_init_header(const struct dumperinfo *di, struct kerneldumpheader *kdh,
+    char *magic, uint32_t archver, uint64_t dumplen);
+int dump_start(struct dumperinfo *di, struct kerneldumpheader *kdh,
+    off_t *dumplop);
+int dump_finish(struct dumperinfo *di, struct kerneldumpheader *kdh,
+    off_t dumplo);
 int dump_write(struct dumperinfo *, void *, vm_offset_t, off_t, size_t);
-int dump_write_pad(struct dumperinfo *, void *, vm_offset_t, off_t, size_t,
-    size_t *);
-int dump_write_header(struct dumperinfo *di, struct kerneldumpheader *kdh,
-    vm_offset_t physical, off_t offset);
-int dump_write_key(struct dumperinfo *di, vm_offset_t physical, off_t offset);
 int doadump(boolean_t);
 extern int dumping;		/* system is dumping */
 

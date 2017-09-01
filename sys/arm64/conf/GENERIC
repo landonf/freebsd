@@ -29,6 +29,7 @@ options 	PREEMPTION		# Enable kernel thread preemption
 options 	INET			# InterNETworking
 options 	INET6			# IPv6 communications protocols
 options 	IPSEC			# IP (v4/v6) security
+options		IPSEC_SUPPORT		# Allow kldload of ipsec and tcpmd5
 options 	TCP_HHOOK		# hhook(9) framework for TCP
 options 	TCP_OFFLOAD		# TCP offload
 options 	SCTP			# Stream Control Transmission Protocol
@@ -50,6 +51,7 @@ options 	PSEUDOFS		# Pseudo-filesystem framework
 options 	GEOM_PART_GPT		# GUID Partition Tables.
 options 	GEOM_RAID		# Soft RAID functionality.
 options 	GEOM_LABEL		# Provides labelization
+options 	COMPAT_FREEBSD11	# Compatible with FreeBSD11
 options 	SCSI_DELAY=5000		# Delay (in ms) before probing SCSI
 options 	KTRACE			# ktrace(1) support
 options 	STACK			# stack(9) support
@@ -88,6 +90,7 @@ options 	MALLOC_DEBUG_MAXZONES=8	# Separate malloc(9) zones
 
 # SoC support
 options 	SOC_ALLWINNER_A64
+options 	SOC_ALLWINNER_H5
 options 	SOC_CAVM_THUNDERX
 options 	SOC_HISI_HI6220
 options 	SOC_BRCM_BCM2837
@@ -174,6 +177,8 @@ device		fdt_pinctrl
 device		aw_rsb		# Allwinner Reduced Serial Bus
 device		bcm2835_bsc	# Broadcom BCM283x I2C bus
 device		iicbus
+device		iic
+device		twsi		# Allwinner I2C controller
 
 # Clock and reset controllers
 device		aw_ccu		# Allwinner clock controller

@@ -1203,7 +1203,7 @@ arp_check_update_lle(struct arphdr *ah, struct in_addr isaddr, struct ifnet *ifp
 			    "to %*D on %s\n",
 			    inet_ntoa_r(isaddr, addrbuf),
 			    ifp->if_addrlen,
-			    (u_char *)&la->ll_addr, ":",
+			    (u_char *)la->ll_addr, ":",
 			    ifp->if_addrlen, (u_char *)ar_sha(ah), ":",
 			    ifp->if_xname);
 		}
@@ -1279,7 +1279,7 @@ arp_mark_lle_reachable(struct llentry *la)
 }
 
 /*
- * Add pernament link-layer record for given interface address.
+ * Add permanent link-layer record for given interface address.
  */
 static __noinline void
 arp_add_ifa_lle(struct ifnet *ifp, const struct sockaddr *dst)

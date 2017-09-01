@@ -30,6 +30,7 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_inet.h"
 #include "opt_inet6.h"
+#include "opt_ratelimit.h"
 
 #include <sys/param.h>
 #include <sys/types.h>
@@ -156,6 +157,7 @@ alloc_toepcb(struct vi_info *vi, int txqid, int rxqid, int flags)
 	refcount_init(&toep->refcount, 1);
 	toep->td = sc->tom_softc;
 	toep->vi = vi;
+	toep->tc_idx = -1;
 	toep->tx_total = tx_credits;
 	toep->tx_credits = tx_credits;
 	toep->ofld_txq = &sc->sge.ofld_txq[txqid];
@@ -312,6 +314,10 @@ release_offload_resources(struct toepcb *toep)
 	if (toep->ce)
 		release_lip(td, toep->ce);
 
+#ifdef RATELIMIT
+	if (toep->tc_idx != -1)
+		t4_release_cl_rl_kbps(sc, toep->vi->pi->port_id, toep->tc_idx);
+#endif
 	mtx_lock(&td->toep_list_lock);
 	TAILQ_REMOVE(&td->toep_list, toep, link);
 	mtx_unlock(&td->toep_list_lock);
@@ -378,6 +384,8 @@ t4_ctloutput(struct toedev *tod, struct tcpcb *tp, int dir, int name)
 
 	switch (name) {
 	case TCP_NODELAY:
+		if (tp->t_state != TCPS_ESTABLISHED)
+			break;
 		t4_set_tcb_field(sc, toep->ctrlq, toep->tid, W_TCB_T_FLAGS,
 		    V_TF_NAGLE(1), V_TF_NAGLE(tp->t_flags & TF_NODELAY ? 0 : 1),
 		    0, 0, toep->ofld_rxq->iq.abs_id);

@@ -1100,10 +1100,10 @@ vop_stdadvise(struct vop_advise_args *ap)
 		if (vp->v_object != NULL) {
 			start = trunc_page(ap->a_start);
 			end = round_page(ap->a_end);
-			VM_OBJECT_WLOCK(vp->v_object);
+			VM_OBJECT_RLOCK(vp->v_object);
 			vm_object_page_noreuse(vp->v_object, OFF_TO_IDX(start),
 			    OFF_TO_IDX(end));
-			VM_OBJECT_WUNLOCK(vp->v_object);
+			VM_OBJECT_RUNLOCK(vp->v_object);
 		}
 
 		bo = &vp->v_bufobj;
@@ -1128,7 +1128,7 @@ int
 vop_stdunp_bind(struct vop_unp_bind_args *ap)
 {
 
-	ap->a_vp->v_socket = ap->a_socket;
+	ap->a_vp->v_unpcb = ap->a_unpcb;
 	return (0);
 }
 
@@ -1136,7 +1136,7 @@ int
 vop_stdunp_connect(struct vop_unp_connect_args *ap)
 {
 
-	*ap->a_socket = ap->a_vp->v_socket;
+	*ap->a_unpcb = ap->a_vp->v_unpcb;
 	return (0);
 }
 
@@ -1144,7 +1144,7 @@ int
 vop_stdunp_detach(struct vop_unp_detach_args *ap)
 {
 
-	ap->a_vp->v_socket = NULL;
+	ap->a_vp->v_unpcb = NULL;
 	return (0);
 }
 

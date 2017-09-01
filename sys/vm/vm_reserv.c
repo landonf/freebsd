@@ -51,6 +51,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sbuf.h>
 #include <sys/sysctl.h>
 #include <sys/systm.h>
+#include <sys/vmmeter.h>
 
 #include <vm/vm.h>
 #include <vm/vm_param.h>
@@ -1118,6 +1119,20 @@ vm_reserv_startup(vm_offset_t *vaddr, vm_paddr_t end, vm_paddr_t high_water)
 	 * Return the next available physical address.
 	 */
 	return (new_end);
+}
+
+/*
+ * Returns the superpage containing the given page.
+ */
+vm_page_t
+vm_reserv_to_superpage(vm_page_t m)
+{
+	vm_reserv_t rv;
+
+	VM_OBJECT_ASSERT_LOCKED(m->object);
+	rv = vm_reserv_from_page(m);
+	return (rv->object == m->object && rv->popcnt == VM_LEVEL_0_NPAGES ?
+	    rv->pages : NULL);
 }
 
 #endif	/* VM_NRESERVLEVEL > 0 */

@@ -12,6 +12,7 @@ NETBSD_ATF_TESTS_C+=		access_test
 NETBSD_ATF_TESTS_C+=		bind_test
 NETBSD_ATF_TESTS_C+=		chroot_test
 NETBSD_ATF_TESTS_C+=		clock_gettime_test
+NETBSD_ATF_TESTS_C+=		clock_nanosleep_test
 NETBSD_ATF_TESTS_C+=		connect_test
 NETBSD_ATF_TESTS_C+=		dup_test
 NETBSD_ATF_TESTS_C+=		fsync_test
@@ -86,7 +87,7 @@ FILESGROUPS+=		truncate_test_FILES
 truncate_test_FILES=	truncate_test.root_owned
 truncate_test_FILESDIR=	${TESTSDIR}
 truncate_test_FILESMODE= 0600
-truncate_test_FILESOWNER= root
+truncate_test_FILESOWN= root
 truncate_test_FILESGRP= wheel
 truncate_test_FILESPACKAGE=	${PACKAGE}
 

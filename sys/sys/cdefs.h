@@ -294,7 +294,7 @@
 #if (defined(__cplusplus) && __cplusplus >= 201103L) || \
     __has_extension(cxx_static_assert)
 #define	_Static_assert(x, y)	static_assert(x, y)
-#elif __GNUC_PREREQ__(4,6)
+#elif __GNUC_PREREQ__(4,6) && !defined(__cplusplus)
 /* Nothing, gcc 4.6 and higher has _Static_assert built-in */
 #elif defined(__COUNTER__)
 #define	_Static_assert(x, y)	__Static_assert(x, __COUNTER__)
@@ -750,25 +750,39 @@
 #define	__XSI_VISIBLE		0
 #define	__BSD_VISIBLE		0
 #define	__ISO_C_VISIBLE		1990
+#define	__EXT1_VISIBLE		0
 #elif defined(_C99_SOURCE)	/* Localism to specify strict C99 env. */
 #define	__POSIX_VISIBLE		0
 #define	__XSI_VISIBLE		0
 #define	__BSD_VISIBLE		0
 #define	__ISO_C_VISIBLE		1999
+#define	__EXT1_VISIBLE		0
 #elif defined(_C11_SOURCE)	/* Localism to specify strict C11 env. */
 #define	__POSIX_VISIBLE		0
 #define	__XSI_VISIBLE		0
 #define	__BSD_VISIBLE		0
 #define	__ISO_C_VISIBLE		2011
+#define	__EXT1_VISIBLE		0
 #else				/* Default environment: show everything. */
 #define	__POSIX_VISIBLE		200809
 #define	__XSI_VISIBLE		700
 #define	__BSD_VISIBLE		1
 #define	__ISO_C_VISIBLE		2011
+#define	__EXT1_VISIBLE		1
 #endif
 #endif
 
-#if defined(__mips) || defined(__powerpc64__) || defined(__riscv__)
+/* User override __EXT1_VISIBLE */
+#if defined(__STDC_WANT_LIB_EXT1__)
+#undef	__EXT1_VISIBLE
+#if __STDC_WANT_LIB_EXT1__
+#define	__EXT1_VISIBLE		1
+#else
+#define	__EXT1_VISIBLE		0
+#endif
+#endif /* __STDC_WANT_LIB_EXT1__ */
+
+#if defined(__mips) || defined(__powerpc64__) || defined(__riscv)
 #define	__NO_TLS 1
 #endif
 

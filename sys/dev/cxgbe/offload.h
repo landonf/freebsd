@@ -121,6 +121,7 @@ struct t4_virt_res {                      /* virtualized HW resources */
 	struct t4_range pbl;
 	struct t4_range qp;
 	struct t4_range cq;
+	struct t4_range srq;
 	struct t4_range ocq;
 	struct t4_range l2t;
 };
@@ -143,6 +144,7 @@ struct uld_info {
 };
 
 struct tom_tunables {
+	int cong_algorithm;
 	int sndbuf;
 	int ddp;
 	int rx_coalesce;

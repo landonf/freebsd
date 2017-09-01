@@ -1793,10 +1793,10 @@ static void unmap_bf_area(struct mlx4_dev *dev)
 		io_mapping_free(mlx4_priv(dev)->bf_mapping);
 }
 
-int mlx4_read_clock(struct mlx4_dev *dev)
+s64 mlx4_read_clock(struct mlx4_dev *dev)
 {
 	u32 clockhi, clocklo, clockhi1;
-	cycle_t cycles;
+	s64 cycles;
 	int i;
 	struct mlx4_priv *priv = mlx4_priv(dev);
 
@@ -1813,7 +1813,7 @@ int mlx4_read_clock(struct mlx4_dev *dev)
 
 	cycles = (u64) clockhi << 32 | (u64) clocklo;
 
-	return cycles;
+	return cycles & CORE_CLOCK_MASK;
 }
 EXPORT_SYMBOL_GPL(mlx4_read_clock);
 
@@ -3446,6 +3446,8 @@ slave_start:
 			goto err_free_eq;
 	}
 
+	mlx4_init_quotas(dev);
+
 	err = mlx4_setup_hca(dev);
 	if (err == -EBUSY && (dev->flags & MLX4_FLAG_MSI_X) &&
 	    !mlx4_is_mfunc(dev)) {
@@ -3459,7 +3461,6 @@ slave_start:
 	if (err)
 		goto err_steer;
 
-	mlx4_init_quotas(dev);
 	mlx4_init_hca_info(dev);
 
 	for (port = 1; port <= dev->caps.num_ports; port++) {

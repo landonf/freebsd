@@ -130,6 +130,12 @@ SYSCTL_INT(_net_inet_tcp, OID_AUTO, sendbuf_max, CTLFLAG_VNET | CTLFLAG_RW,
 	&VNET_NAME(tcp_autosndbuf_max), 0,
 	"Max size of automatic send buffer");
 
+VNET_DEFINE(int, tcp_sendbuf_auto_lowat) = 0;
+#define	V_tcp_sendbuf_auto_lowat	VNET(tcp_sendbuf_auto_lowat)
+SYSCTL_INT(_net_inet_tcp, OID_AUTO, sendbuf_auto_lowat, CTLFLAG_VNET | CTLFLAG_RW,
+	&VNET_NAME(tcp_sendbuf_auto_lowat), 0,
+	"Modify threshold for auto send buffer growth to account for SO_SNDLOWAT");
+
 /*
  * Make sure that either retransmit or persist timer is set for SYN, FIN and
  * non-ACK.
@@ -380,7 +386,7 @@ after_sack_rexmit:
 	 */
 	if (sack_rxmit == 0) {
 		if (sack_bytes_rxmt == 0)
-			len = ((int32_t)ulmin(sbavail(&so->so_snd), sendwin) -
+			len = ((int32_t)min(sbavail(&so->so_snd), sendwin) -
 			    off);
 		else {
 			int32_t cwin;
@@ -521,8 +527,12 @@ after_sack_rexmit:
 	 * XXXGL: should there be used sbused() or sbavail()?
 	 */
 	if (V_tcp_do_autosndbuf && so->so_snd.sb_flags & SB_AUTOSIZE) {
-		if ((tp->snd_wnd / 4 * 5) >= so->so_snd.sb_hiwat &&
-		    sbused(&so->so_snd) >= (so->so_snd.sb_hiwat / 8 * 7) &&
+		int autosndbuf_mod = 0;
+		if (V_tcp_sendbuf_auto_lowat)
+			autosndbuf_mod = so->so_snd.sb_lowat;
+
+		if ((tp->snd_wnd / 4 * 5) >= so->so_snd.sb_hiwat - autosndbuf_mod &&
+		    sbused(&so->so_snd) >= (so->so_snd.sb_hiwat / 8 * 7) - autosndbuf_mod &&
 		    sbused(&so->so_snd) < V_tcp_autosndbuf_max &&
 		    sendwin >= (sbused(&so->so_snd) -
 		    (tp->snd_nxt - tp->snd_una))) {
@@ -831,11 +841,13 @@ send:
 			to.to_tsval = tcp_ts_getticks() + tp->ts_offset;
 			to.to_tsecr = tp->ts_recent;
 			to.to_flags |= TOF_TS;
-			/* Set receive buffer autosizing timestamp. */
-			if (tp->rfbuf_ts == 0 &&
-			    (so->so_rcv.sb_flags & SB_AUTOSIZE))
-				tp->rfbuf_ts = tcp_ts_getticks();
 		}
+
+		/* Set receive buffer autosizing timestamp. */
+		if (tp->rfbuf_ts == 0 &&
+		    (so->so_rcv.sb_flags & SB_AUTOSIZE))
+			tp->rfbuf_ts = tcp_ts_getticks();
+
 		/* Selective ACK's. */
 		if (tp->t_flags & TF_SACK_PERMIT) {
 			if (flags & TH_SYN)
@@ -1377,9 +1389,6 @@ send:
 	 */
 #ifdef INET6
 	if (isipv6) {
-		struct route_in6 ro;
-
-		bzero(&ro, sizeof(ro));
 		/*
 		 * we separately set hoplimit for every segment, since the
 		 * user might want to change the value via setsockopt.
@@ -1411,13 +1420,13 @@ send:
 #endif
 
 		/* TODO: IPv6 IP6TOS_ECT bit on */
-		error = ip6_output(m, tp->t_inpcb->in6p_outputopts, &ro,
+		error = ip6_output(m, tp->t_inpcb->in6p_outputopts,
+		    &tp->t_inpcb->inp_route6,
 		    ((so->so_options & SO_DONTROUTE) ?  IP_ROUTETOIF : 0),
 		    NULL, NULL, tp->t_inpcb);
 
-		if (error == EMSGSIZE && ro.ro_rt != NULL)
-			mtu = ro.ro_rt->rt_mtu;
-		RO_RTFREE(&ro);
+		if (error == EMSGSIZE && tp->t_inpcb->inp_route6.ro_rt != NULL)
+			mtu = tp->t_inpcb->inp_route6.ro_rt->rt_mtu;
 	}
 #endif /* INET6 */
 #if defined(INET) && defined(INET6)

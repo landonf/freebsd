@@ -7,8 +7,8 @@
 CFLAGS+= -ffreestanding -Wformat
 CFLAGS+= ${CFLAGS_NO_SIMD} -D_STANDALONE
 .if ${MACHINE_CPUARCH} == "riscv"
-CFLAGS+=	-mno-float
-.else
+CFLAGS+=	-march=rv64imac -mabi=lp64
+.elif ${MACHINE_CPUARCH} != "aarch64"
 CFLAGS+=	-msoft-float
 .endif
 
@@ -19,7 +19,10 @@ CFLAGS.gcc+=	-mpreferred-stack-boundary=2
 CFLAGS+=	-fPIC -mno-red-zone
 .endif
 .if ${MACHINE_CPUARCH} == "aarch64"
-CFLAGS+=	-mgeneral-regs-only
+CFLAGS+=	-fPIC -mgeneral-regs-only
+.endif
+.if ${MACHINE_CPUARCH} == "arm"
+CFLAGS+=	-fPIC
 .endif
 .if ${MACHINE_CPUARCH} == "mips"
 CFLAGS+=	-G0 -fno-pic -mno-abicalls

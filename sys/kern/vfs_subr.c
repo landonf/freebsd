@@ -767,7 +767,7 @@ enum { TSP_SEC, TSP_HZ, TSP_USEC, TSP_NSEC };
 static int timestamp_precision = TSP_USEC;
 SYSCTL_INT(_vfs, OID_AUTO, timestamp_precision, CTLFLAG_RW,
     &timestamp_precision, 0, "File timestamp precision (0: seconds, "
-    "1: sec + ns accurate to 1/HZ, 2: sec + ns truncated to ms, "
+    "1: sec + ns accurate to 1/HZ, 2: sec + ns truncated to us, "
     "3+: sec + ns (max. precision))");
 
 /*
@@ -1673,13 +1673,15 @@ bufobj_invalbuf(struct bufobj *bo, int flags, int slpflag, int slptimeo)
 	 */
 	do {
 		bufobj_wwait(bo, 0, 0);
-		BO_UNLOCK(bo);
-		if (bo->bo_object != NULL) {
-			VM_OBJECT_WLOCK(bo->bo_object);
-			vm_object_pip_wait(bo->bo_object, "bovlbx");
-			VM_OBJECT_WUNLOCK(bo->bo_object);
+		if ((flags & V_VMIO) == 0) {
+			BO_UNLOCK(bo);
+			if (bo->bo_object != NULL) {
+				VM_OBJECT_WLOCK(bo->bo_object);
+				vm_object_pip_wait(bo->bo_object, "bovlbx");
+				VM_OBJECT_WUNLOCK(bo->bo_object);
+			}
+			BO_LOCK(bo);
 		}
-		BO_LOCK(bo);
 	} while (bo->bo_numoutput > 0);
 	BO_UNLOCK(bo);
 
@@ -1687,7 +1689,7 @@ bufobj_invalbuf(struct bufobj *bo, int flags, int slpflag, int slptimeo)
 	 * Destroy the copy in the VM cache, too.
 	 */
 	if (bo->bo_object != NULL &&
-	    (flags & (V_ALT | V_NORMAL | V_CLEANONLY)) == 0) {
+	    (flags & (V_ALT | V_NORMAL | V_CLEANONLY | V_VMIO)) == 0) {
 		VM_OBJECT_WLOCK(bo->bo_object);
 		vm_object_page_remove(bo->bo_object, 0, 0, (flags & V_SAVE) ?
 		    OBJPR_CLEANONLY : 0);
@@ -1696,9 +1698,13 @@ bufobj_invalbuf(struct bufobj *bo, int flags, int slpflag, int slptimeo)
 
 #ifdef INVARIANTS
 	BO_LOCK(bo);
-	if ((flags & (V_ALT | V_NORMAL | V_CLEANONLY)) == 0 &&
-	    (bo->bo_dirty.bv_cnt > 0 || bo->bo_clean.bv_cnt > 0))
+	if ((flags & (V_ALT | V_NORMAL | V_CLEANONLY | V_VMIO |
+	    V_ALLOWCLEAN)) == 0 && (bo->bo_dirty.bv_cnt > 0 ||
+	    bo->bo_clean.bv_cnt > 0))
 		panic("vinvalbuf: flush failed");
+	if ((flags & (V_ALT | V_NORMAL | V_CLEANONLY | V_VMIO)) == 0 &&
+	    bo->bo_dirty.bv_cnt > 0)
+		panic("vinvalbuf: flush dirty failed");
 	BO_UNLOCK(bo);
 #endif
 	return (0);
@@ -2855,6 +2861,8 @@ _vhold(struct vnode *vp, bool locked)
 	 * Remove a vnode from the free list, mark it as in use,
 	 * and put it on the active list.
 	 */
+	VNASSERT(vp->v_mount != NULL, vp,
+	    ("_vhold: vnode not on per mount vnode list"));
 	mp = vp->v_mount;
 	mtx_lock(&mp->mnt_listmtx);
 	if ((vp->v_mflag & VMP_TMPMNTFREELIST) != 0) {
@@ -2929,21 +2937,35 @@ _vdrop(struct vnode *vp, bool locked)
 		if ((vp->v_iflag & VI_OWEINACT) == 0) {
 			vp->v_iflag &= ~VI_ACTIVE;
 			mp = vp->v_mount;
-			mtx_lock(&mp->mnt_listmtx);
-			if (active) {
-				TAILQ_REMOVE(&mp->mnt_activevnodelist, vp,
+			if (mp != NULL) {
+				mtx_lock(&mp->mnt_listmtx);
+				if (active) {
+					TAILQ_REMOVE(&mp->mnt_activevnodelist,
+					    vp, v_actfreelist);
+					mp->mnt_activevnodelistsize--;
+				}
+				TAILQ_INSERT_TAIL(&mp->mnt_tmpfreevnodelist,
+				    vp, v_actfreelist);
+				mp->mnt_tmpfreevnodelistsize++;
+				vp->v_iflag |= VI_FREE;
+				vp->v_mflag |= VMP_TMPMNTFREELIST;
+				VI_UNLOCK(vp);
+				if (mp->mnt_tmpfreevnodelistsize >=
+				    mnt_free_list_batch)
+					vnlru_return_batch_locked(mp);
+				mtx_unlock(&mp->mnt_listmtx);
+			} else {
+				VNASSERT(active == 0, vp,
+				    ("vdropl: active vnode not on per mount "
+				    "vnode list"));
+				mtx_lock(&vnode_free_list_mtx);
+				TAILQ_INSERT_TAIL(&vnode_free_list, vp,
 				    v_actfreelist);
-				mp->mnt_activevnodelistsize--;
+				freevnodes++;
+				vp->v_iflag |= VI_FREE;
+				VI_UNLOCK(vp);
+				mtx_unlock(&vnode_free_list_mtx);
 			}
-			TAILQ_INSERT_TAIL(&mp->mnt_tmpfreevnodelist, vp,
-			    v_actfreelist);
-			mp->mnt_tmpfreevnodelistsize++;
-			vp->v_iflag |= VI_FREE;
-			vp->v_mflag |= VMP_TMPMNTFREELIST;
-			VI_UNLOCK(vp);
-			if (mp->mnt_tmpfreevnodelistsize >= mnt_free_list_batch)
-				vnlru_return_batch_locked(mp);
-			mtx_unlock(&mp->mnt_listmtx);
 		} else {
 			VI_UNLOCK(vp);
 			counter_u64_add(free_owe_inact, 1);
@@ -2992,7 +3014,10 @@ _vdrop(struct vnode *vp, bool locked)
 	/* XXX Elsewhere we detect an already freed vnode via NULL v_op. */
 	vp->v_op = NULL;
 #endif
-	bzero(&vp->v_un, sizeof(vp->v_un));
+	vp->v_mountedhere = NULL;
+	vp->v_unpcb = NULL;
+	vp->v_rdev = NULL;
+	vp->v_fifoinfo = NULL;
 	vp->v_lasta = vp->v_clen = vp->v_cstart = vp->v_lastw = 0;
 	vp->v_iflag = 0;
 	vp->v_vflag = 0;
@@ -3781,12 +3806,11 @@ vfsconf2x32(struct sysctl_req *req, struct vfsconf *vfsp)
 {
 	struct xvfsconf32 xvfsp;
 
+	bzero(&xvfsp, sizeof(xvfsp));
 	strcpy(xvfsp.vfc_name, vfsp->vfc_name);
 	xvfsp.vfc_typenum = vfsp->vfc_typenum;
 	xvfsp.vfc_refcount = vfsp->vfc_refcount;
 	xvfsp.vfc_flags = vfsp->vfc_flags;
-	xvfsp.vfc_vfsops = 0;
-	xvfsp.vfc_next = 0;
 	return (SYSCTL_OUT(req, &xvfsp, sizeof(xvfsp)));
 }
 #endif
@@ -5361,6 +5385,84 @@ mnt_vnode_markerfree_active(struct vnode **mvp, struct mount *mp)
 	*mvp = NULL;
 }
 
+/*
+ * Relock the mp mount vnode list lock with the vp vnode interlock in the
+ * conventional lock order during mnt_vnode_next_active iteration.
+ *
+ * On entry, the mount vnode list lock is held and the vnode interlock is not.
+ * The list lock is dropped and reacquired.  On success, both locks are held.
+ * On failure, the mount vnode list lock is held but the vnode interlock is
+ * not, and the procedure may have yielded.
+ */
+static bool
+mnt_vnode_next_active_relock(struct vnode *mvp, struct mount *mp,
+    struct vnode *vp)
+{
+	const struct vnode *tmp;
+	bool held, ret;
+
+	VNASSERT(mvp->v_mount == mp && mvp->v_type == VMARKER &&
+	    TAILQ_NEXT(mvp, v_actfreelist) != NULL, mvp,
+	    ("%s: bad marker", __func__));
+	VNASSERT(vp->v_mount == mp && vp->v_type != VMARKER, vp,
+	    ("%s: inappropriate vnode", __func__));
+	ASSERT_VI_UNLOCKED(vp, __func__);
+	mtx_assert(&mp->mnt_listmtx, MA_OWNED);
+
+	ret = false;
+
+	TAILQ_REMOVE(&mp->mnt_activevnodelist, mvp, v_actfreelist);
+	TAILQ_INSERT_BEFORE(vp, mvp, v_actfreelist);
+
+	/*
+	 * Use a hold to prevent vp from disappearing while the mount vnode
+	 * list lock is dropped and reacquired.  Normally a hold would be
+	 * acquired with vhold(), but that might try to acquire the vnode
+	 * interlock, which would be a LOR with the mount vnode list lock.
+	 */
+	held = vfs_refcount_acquire_if_not_zero(&vp->v_holdcnt);
+	mtx_unlock(&mp->mnt_listmtx);
+	if (!held)
+		goto abort;
+	VI_LOCK(vp);
+	if (!vfs_refcount_release_if_not_last(&vp->v_holdcnt)) {
+		vdropl(vp);
+		goto abort;
+	}
+	mtx_lock(&mp->mnt_listmtx);
+
+	/*
+	 * Determine whether the vnode is still the next one after the marker,
+	 * excepting any other markers.  If the vnode has not been doomed by
+	 * vgone() then the hold should have ensured that it remained on the
+	 * active list.  If it has been doomed but is still on the active list,
+	 * don't abort, but rather skip over it (avoid spinning on doomed
+	 * vnodes).
+	 */
+	tmp = mvp;
+	do {
+		tmp = TAILQ_NEXT(tmp, v_actfreelist);
+	} while (tmp != NULL && tmp->v_type == VMARKER);
+	if (tmp != vp) {
+		mtx_unlock(&mp->mnt_listmtx);
+		VI_UNLOCK(vp);
+		goto abort;
+	}
+
+	ret = true;
+	goto out;
+abort:
+	maybe_yield();
+	mtx_lock(&mp->mnt_listmtx);
+out:
+	if (ret)
+		ASSERT_VI_LOCKED(vp, __func__);
+	else
+		ASSERT_VI_UNLOCKED(vp, __func__);
+	mtx_assert(&mp->mnt_listmtx, MA_OWNED);
+	return (ret);
+}
+
 static struct vnode *
 mnt_vnode_next_active(struct vnode **mvp, struct mount *mp)
 {
@@ -5370,22 +5472,19 @@ mnt_vnode_next_active(struct vnode **mvp, struct mount *mp)
 	KASSERT((*mvp)->v_mount == mp, ("marker vnode mount list mismatch"));
 restart:
 	vp = TAILQ_NEXT(*mvp, v_actfreelist);
-	TAILQ_REMOVE(&mp->mnt_activevnodelist, *mvp, v_actfreelist);
 	while (vp != NULL) {
 		if (vp->v_type == VMARKER) {
 			vp = TAILQ_NEXT(vp, v_actfreelist);
 			continue;
 		}
-		if (!VI_TRYLOCK(vp)) {
-			if (mp_ncpus == 1 || should_yield()) {
-				TAILQ_INSERT_BEFORE(vp, *mvp, v_actfreelist);
-				mtx_unlock(&mp->mnt_listmtx);
-				pause("vnacti", 1);
-				mtx_lock(&mp->mnt_listmtx);
-				goto restart;
-			}
-			continue;
-		}
+		/*
+		 * Try-lock because this is the wrong lock order.  If that does
+		 * not succeed, drop the mount vnode list lock and try to
+		 * reacquire it and the vnode interlock in the right order.
+		 */
+		if (!VI_TRYLOCK(vp) &&
+		    !mnt_vnode_next_active_relock(*mvp, mp, vp))
+			goto restart;
 		KASSERT(vp->v_type != VMARKER, ("locked marker %p", vp));
 		KASSERT(vp->v_mount == mp || vp->v_mount == NULL,
 		    ("alien vnode on the active list %p %p", vp, mp));
@@ -5395,6 +5494,7 @@ restart:
 		VI_UNLOCK(vp);
 		vp = nvp;
 	}
+	TAILQ_REMOVE(&mp->mnt_activevnodelist, *mvp, v_actfreelist);
 
 	/* Check if we are done */
 	if (vp == NULL) {

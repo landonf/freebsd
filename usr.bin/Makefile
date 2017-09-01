@@ -34,6 +34,7 @@ SUBDIR=	alias \
 	csplit \
 	ctlstat \
 	cut \
+	diff \
 	dirname \
 	du \
 	elf2aout \
@@ -50,6 +51,7 @@ SUBDIR=	alias \
 	fsync \
 	gcore \
 	gencat \
+	getaddrinfo \
 	getconf \
 	getent \
 	getopt \
@@ -131,8 +133,10 @@ SUBDIR=	alias \
 	rpcinfo \
 	rs \
 	rup \
+	ruptime \
 	rusers \
 	rwall \
+	rwho \
 	script \
 	sdiff \
 	sed \
@@ -188,7 +192,8 @@ SUBDIR=	alias \
 	xo \
 	xz \
 	xzdec \
-	yes
+	yes \
+	zstd
 
 # NB: keep these sorted by MK_* knobs
 
@@ -217,7 +222,6 @@ SUBDIR.${MK_GAMES}+=	random
 SUBDIR+=	dtc
 .endif
 .endif
-SUBDIR.${MK_GROFF}+=	vgrind
 SUBDIR.${MK_HESIOD}+=	hesinfo
 SUBDIR.${MK_ICONV}+=	iconv
 SUBDIR.${MK_ICONV}+=	mkcsmapper
@@ -236,9 +240,6 @@ SUBDIR.${MK_MAIL}+=	mail
 SUBDIR.${MK_MAIL}+=	msgs
 SUBDIR.${MK_MAKE}+=	bmake
 SUBDIR.${MK_MAN_UTILS}+=	catman
-.if ${MK_MANDOCDB} == "no"	# AND
-SUBDIR.${MK_MAN_UTILS}+=	makewhatis
-.endif
 SUBDIR.${MK_MAN_UTILS}+=	man
 SUBDIR.${MK_NETCAT}+=	nc
 SUBDIR.${MK_NIS}+=	ypcat
@@ -252,14 +253,10 @@ SUBDIR.${MK_OPENSSL}+=	newkey
 SUBDIR.${MK_QUOTAS}+=	quota
 SUBDIR.${MK_RCMDS}+=	rlogin
 SUBDIR.${MK_RCMDS}+=	rsh
-SUBDIR.${MK_RCMDS}+=	ruptime
-SUBDIR.${MK_RCMDS}+=	rwho
 SUBDIR.${MK_SENDMAIL}+=	vacation
 SUBDIR.${MK_TALK}+=	talk
 SUBDIR.${MK_TELNET}+=	telnet
 SUBDIR.${MK_TESTS}+=	tests
-SUBDIR.${MK_TEXTPROC}+=	checknr
-SUBDIR.${MK_TEXTPROC}+=	colcrt
 SUBDIR.${MK_TEXTPROC}+=	ul
 SUBDIR.${MK_TFTP}+=	tftp
 SUBDIR.${MK_TOOLCHAIN}+=	addr2line
@@ -301,9 +298,13 @@ SUBDIR.${MK_UTMPX}+=	who
 SUBDIR.${MK_SVN}+=	svn
 SUBDIR.${MK_SVNLITE}+=	svn
 
-.include <bsd.arch.inc.mk>
+# These are normally only handled for build-tools.
+.if make(clean*)
+SUBDIR+=	mkcsmapper_static
+SUBDIR+=	mkesdb_static
+.endif
 
-SUBDIR:=	${SUBDIR:O:u}
+.include <bsd.arch.inc.mk>
 
 SUBDIR_PARALLEL=
 
