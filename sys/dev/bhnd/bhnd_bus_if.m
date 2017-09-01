@@ -324,18 +324,17 @@ METHOD int register_provider {
 } DEFAULT bhnd_bus_null_register_provider;
 
 /**
- * Deregister @p prov as a bhnd bus provider for a given @p prov_type.
+ * Remove provider registrations matching @p prov and @p prov_type, if any.
  *
  * @param dev The bhnd bus from which the provider should be deregistered.
- * @param prov A provider device previously successfully registered via
- * BHND_BUS_REGISTER_PROVIDER().
- * @param prov_type The provider type for which @p prov should be deregistered.
+ * @param prov The device to be deregistered.
+ * @param prov_type The provider type for which @p prov should be deregistered,
+ * or BHND_PROVIDER_INVALID to remove all provider type registrations for
+ * @p prov.
  *
  * @retval 0		success
  * @retval EBUSY	if active references to @p prov exist; @see
  *			BHND_BUS_RETAIN_PROVIDER().
- * @retval ENOENT	if @p prov is not registered as a provider for
- *			@p prov_type.
  * @retval non-zero	if deregistering @p prov otherwise fails, a regular unix
  *			error code will be returned.
  */
