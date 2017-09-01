@@ -90,7 +90,7 @@ bhnd_bhndb_find_hostb_device(device_t dev)
 
 	/* Find the corresponding bus device */
 	md = bhnd_core_get_match_desc(&core);
-	return (bhnd_match_child(dev, &md));
+	return (bhnd_bus_match_child(dev, &md));
 }
 
 static int

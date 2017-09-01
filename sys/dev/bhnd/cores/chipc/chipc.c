@@ -1087,7 +1087,7 @@ chipc_should_enable_muxed_sprom(struct chipc_softc *sc)
 	mtx_lock(&Giant);	/* for newbus */
 
 	parent = device_get_parent(sc->dev);
-	hostb = bhnd_find_hostb_device(parent);
+	hostb = bhnd_bus_find_hostb_device(parent);
 
 	if ((error = device_get_children(parent, &devs, &devcount))) {
 		mtx_unlock(&Giant);

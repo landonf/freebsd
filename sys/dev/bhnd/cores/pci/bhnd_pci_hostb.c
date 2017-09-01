@@ -561,7 +561,7 @@ bhnd_pci_wars_hwup(struct bhnd_pcihb_softc *sc, bhnd_pci_war_state state)
 		bus_size_t	reg;
 		
 		bhnd = device_get_parent(sc->dev);
-		chipc = bhnd_find_child(bhnd, BHND_DEVCLASS_CC, 0);
+		chipc = bhnd_bus_find_child(bhnd, BHND_DEVCLASS_CC, 0);
 		KASSERT(chipc != NULL, ("missing chipcommon device"));
 
 		/* Write SerDes PLL disable flag to the ChipCommon core */

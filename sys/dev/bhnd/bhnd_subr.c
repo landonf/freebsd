@@ -331,9 +331,9 @@ bhnd_get_core_info(device_t dev) {
 }
 
 /**
- * Find a @p class child device with @p unit on @p dev.
+ * Find a @p class child device with @p unit on @p bus.
  * 
- * @param parent The bhnd-compatible bus to be searched.
+ * @param bus The bhnd-compatible bus to be searched.
  * @param class The device class to match on.
  * @param unit The core unit number; specify -1 to return the first match
  * regardless of unit number.
@@ -342,7 +342,7 @@ bhnd_get_core_info(device_t dev) {
  * @retval NULL if no matching child device is found.
  */
 device_t
-bhnd_find_child(device_t dev, bhnd_devclass_t class, int unit)
+bhnd_bus_find_child(device_t bus, bhnd_devclass_t class, int unit)
 {
 	struct bhnd_core_match md = {
 		BHND_MATCH_CORE_CLASS(class),
@@ -352,27 +352,27 @@ bhnd_find_child(device_t dev, bhnd_devclass_t class, int unit)
 	if (unit == -1)
 		md.m.match.core_unit = 0;
 
-	return bhnd_match_child(dev, &md);
+	return bhnd_bus_match_child(bus, &md);
 }
 
 /**
- * Find the first child device on @p dev that matches @p desc.
+ * Find the first child device on @p bus that matches @p desc.
  * 
- * @param parent The bhnd-compatible bus to be searched.
+ * @param bus The bhnd-compatible bus to be searched.
  * @param desc A match descriptor.
  * 
  * @retval device_t if a matching child device is found.
  * @retval NULL if no matching child device is found.
  */
 device_t
-bhnd_match_child(device_t dev, const struct bhnd_core_match *desc)
+bhnd_bus_match_child(device_t bus, const struct bhnd_core_match *desc)
 {
 	device_t	*devlistp;
 	device_t	 match;
 	int		 devcnt;
 	int		 error;
 
-	error = device_get_children(dev, &devlistp, &devcnt);
+	error = device_get_children(bus, &devlistp, &devcnt);
 	if (error != 0)
 		return (NULL);
 
@@ -727,7 +727,7 @@ bhnd_device_lookup(device_t dev, const struct bhnd_device *table,
 	uint32_t			 dflags;
 
 	parent = device_get_parent(dev);
-	hostb = bhnd_find_hostb_device(parent);
+	hostb = bhnd_bus_find_hostb_device(parent);
 	attach_type = bhnd_get_attach_type(dev);
 
 	for (entry = table; !BHND_DEVICE_IS_END(entry); entry =

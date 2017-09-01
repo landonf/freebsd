@@ -308,10 +308,10 @@ bhnd_devclass_t			 bhnd_core_class(const struct bhnd_core_info *ci);
 int				 bhnd_format_chip_id(char *buffer, size_t size,
 				     uint16_t chip_id);
 
-device_t			 bhnd_match_child(device_t dev,
+device_t			 bhnd_bus_match_child(device_t dev,
 				     const struct bhnd_core_match *desc);
 
-device_t			 bhnd_find_child(device_t dev,
+device_t			 bhnd_bus_find_child(device_t dev,
 				     bhnd_devclass_t class, int unit);
 
 device_t			 bhnd_find_bridge_root(device_t dev,
@@ -462,15 +462,16 @@ bhnd_driver_get_erom_class(driver_t *driver)
  * @param dev A bhnd bus device.
  */
 static inline device_t
-bhnd_find_hostb_device(device_t dev) {
+bhnd_bus_find_hostb_device(device_t dev) {
 	return (BHND_BUS_FIND_HOSTB_DEVICE(dev));
 }
 
 
 /**
- * Register @p dev as the bhnd bus provider for a given @p prov_type.
+ * Register @p prov as the bhnd bus provider for a given @p prov_type.
  *
- * @param dev The bhnd bus child device to be registered.
+ * @param bus The bhnd bus with which the provider should be registered.
+ * @param prov The bhnd bus child device to be registered.
  * @param prov_type The provider type to be registered.
  *
  * @retval 0		success
@@ -480,39 +481,23 @@ bhnd_find_hostb_device(device_t dev) {
  *			error code will be returned.
  */
 static inline int
-bhnd_register_provider(device_t dev, bhnd_provider_type prov_type)
+bhnd_bus_register_provider(device_t bus, device_t prov,
+    bhnd_provider_type prov_type)
 {
-	return (BHND_BUS_REGISTER_PROVIDER(device_get_parent(dev), dev,
-	    prov_type));
+	return (BHND_BUS_REGISTER_PROVIDER(bus, prov, prov_type));
 }
 
 /**
- * Deregister @p dev as the bhnd bus provider for a given @p prov_type.
- *
- * @param dev A provider device previously successfully registered via
- * bhnd_register_provider().
- * @param prov_type The provider type for which @p dev should be deregistered.
- *
- * @retval 0		success
- * @retval EBUSY	if active references to @p dev exist; @see
- *			bhnd_retain_provider().
- * @retval ENOENT	if @p prov is not registered as a provider for
- *			@p prov_type.
- * @retval non-zero	if deregistering @p prov otherwise fails, a regular unix
- *			error code will be returned.
- */
-
-/**
- * Attempt to deregister @p dev as the bhnd bus provider for a given
+ * Attempt to deregister @p prov as the bhnd bus provider for a given
  * @p prov_type.
  *
- * @param dev The bhnd bus from which the provider should be deregistered.
+ * @param bus The bhnd bus from which the provider should be deregistered.
  * @param prov The device to be deregistered.
  * @param prov_type The provider type for which @p prov should be deregistered,
  * or BHND_PROVIDER_INVALID to remove all provider type registrations for
  * @p prov.
  *
- * @retval 0		if @p dev has been successfully deregistered, or no
+ * @retval 0		if @p prov has been successfully deregistered, or no
  *			matching registration was found.
  * @retval EBUSY	if active references to @p prov exist; @see
  *			BHND_BUS_RETAIN_PROVIDER().
@@ -520,10 +505,10 @@ bhnd_register_provider(device_t dev, bhnd_provider_type prov_type)
  *			error code will be returned.
  */
 static inline int
-bhnd_deregister_provider(device_t dev, bhnd_provider_type prov_type)
+bhnd_bus_deregister_provider(device_t bus, device_t prov,
+    bhnd_provider_type prov_type)
 {
-	return (BHND_BUS_DEREGISTER_PROVIDER(device_get_parent(dev), dev,
-	    prov_type));
+	return (BHND_BUS_DEREGISTER_PROVIDER(bus, prov, prov_type));
 }
 
 /**

@@ -402,7 +402,7 @@ bhnd_find_chipc(struct bhnd_softc *sc)
 	}
 
 	/* Locate chipc core with a core unit of 0 */
-	chipc = bhnd_find_child(sc->dev, BHND_DEVCLASS_CC, 0);
+	chipc = bhnd_bus_find_child(sc->dev, BHND_DEVCLASS_CC, 0);
 	if (chipc == NULL)
 		return (NULL);
 
@@ -613,7 +613,7 @@ bhnd_generic_get_probe_order(device_t dev, device_t child)
 	case BHND_DEVCLASS_EROM:
 	case BHND_DEVCLASS_OTHER:
 	case BHND_DEVCLASS_INVALID:
-		if (bhnd_find_hostb_device(dev) == child)
+		if (bhnd_bus_find_hostb_device(dev) == child)
 			return (BHND_PROBE_ROOT + BHND_PROBE_ORDER_EARLY);
 
 		return (BHND_PROBE_DEFAULT);

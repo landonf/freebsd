@@ -153,7 +153,7 @@ bhnd_pmu_attach(device_t dev, struct bhnd_resource *res)
 	}
 
 	/* Locate ChipCommon device */
-	sc->chipc_dev = bhnd_find_child(bus, BHND_DEVCLASS_CC, 0);
+	sc->chipc_dev = bhnd_bus_find_child(bus, BHND_DEVCLASS_CC, 0);
 	if (sc->chipc_dev == NULL) {
 		device_printf(sc->dev, "chipcommon device not found\n");
 		return (ENXIO);

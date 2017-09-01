@@ -131,7 +131,7 @@ bhnd_pwrctl_attach(device_t dev)
 	/* On devices that lack a slow clock source, HT must always be
 	 * enabled. */
 	hostb_class = BHND_DEVCLASS_INVALID;
-	hostb_dev = bhnd_find_hostb_device(device_get_parent(sc->chipc_dev));
+	hostb_dev = bhnd_bus_find_hostb_device(device_get_parent(sc->chipc_dev));
 	if (hostb_dev != NULL)
 		hostb_class = bhnd_get_class(hostb_dev);
 
