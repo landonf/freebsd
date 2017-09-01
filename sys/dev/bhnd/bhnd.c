@@ -104,11 +104,6 @@ static device_t			 bhnd_find_platform_dev(struct bhnd_softc *sc,
 static device_t			 bhnd_find_pmu(struct bhnd_softc *sc);
 static device_t			 bhnd_find_nvram(struct bhnd_softc *sc);
 
-static int			 compare_ascending_probe_order(const void *lhs,
-				     const void *rhs);
-static int			 compare_descending_probe_order(const void *lhs,
-				     const void *rhs);
-
 /**
  * Default bhnd(4) bus driver implementation of DEVICE_ATTACH().
  *
@@ -129,11 +124,13 @@ bhnd_generic_attach(device_t dev)
 	sc = device_get_softc(dev);
 	sc->dev = dev;
 
-	if ((error = device_get_children(dev, &devs, &ndevs)))
+	/* Fetch children in attach order */
+	error = bhnd_bus_get_children(dev, &devs, &ndevs,
+	    BHND_DEVICE_ORDER_ATTACH);
+	if (error)
 		return (error);
 
 	/* Probe and attach all children */
-	qsort(devs, ndevs, sizeof(*devs), compare_ascending_probe_order);
 	for (int i = 0; i < ndevs; i++) {
 		device_t child = devs[i];
 		device_probe_and_attach(child);
@@ -146,7 +143,7 @@ bhnd_generic_attach(device_t dev)
 	}
 
 cleanup:
-	free(devs, M_TEMP);
+	bhnd_bus_free_children(devs);
 
 	if (error)
 		bhnd_delete_children(sc);
@@ -164,11 +161,13 @@ bhnd_delete_children(struct bhnd_softc *sc)
 	int			 ndevs;
 	int			 error;
 
-	if ((error = device_get_children(sc->dev, &devs, &ndevs)))
+	/* Fetch children in detach order */
+	error = bhnd_bus_get_children(sc->dev, &devs, &ndevs,
+	    BHND_DEVICE_ORDER_DETACH);
+	if (error)
 		return (error);
 
-	/* Detach in the reverse of attach order */
-	qsort(devs, ndevs, sizeof(*devs), compare_descending_probe_order);
+	/* Perform detach */
 	for (int i = 0; i < ndevs; i++) {
 		device_t child = devs[i];
 
@@ -178,7 +177,7 @@ bhnd_delete_children(struct bhnd_softc *sc)
 	}
 
 cleanup:
-	free(devs, M_TEMP);
+	bhnd_bus_free_children(devs);
 	return (error);
 }
 
@@ -218,11 +217,13 @@ bhnd_generic_shutdown(device_t dev)
 	if (!device_is_attached(dev))
 		return (EBUSY);
 
-	if ((error = device_get_children(dev, &devs, &ndevs)))
+	/* Fetch children in detach order */
+	error = bhnd_bus_get_children(dev, &devs, &ndevs,
+	    BHND_DEVICE_ORDER_DETACH);
+	if (error)
 		return (error);
 
-	/* Shutdown in the reverse of attach order */
-	qsort(devs, ndevs, sizeof(*devs), compare_descending_probe_order);
+	/* Perform shutdown */
 	for (int i = 0; i < ndevs; i++) {
 		device_t child = devs[i];
 
@@ -232,7 +233,7 @@ bhnd_generic_shutdown(device_t dev)
 	}
 
 cleanup:
-	free(devs, M_TEMP);
+	bhnd_bus_free_children(devs);
 	return (error);
 }
 
@@ -253,10 +254,13 @@ bhnd_generic_resume(device_t dev)
 	if (!device_is_attached(dev))
 		return (EBUSY);
 
-	if ((error = device_get_children(dev, &devs, &ndevs)))
+	/* Fetch children in attach order */
+	error = bhnd_bus_get_children(dev, &devs, &ndevs,
+	    BHND_DEVICE_ORDER_ATTACH);
+	if (error)
 		return (error);
 
-	qsort(devs, ndevs, sizeof(*devs), compare_ascending_probe_order);
+	/* Perform resume */
 	for (int i = 0; i < ndevs; i++) {
 		device_t child = devs[i];
 
@@ -266,7 +270,7 @@ bhnd_generic_resume(device_t dev)
 	}
 
 cleanup:
-	free(devs, M_TEMP);
+	bhnd_bus_free_children(devs);
 	return (error);
 }
 
@@ -289,11 +293,13 @@ bhnd_generic_suspend(device_t dev)
 	if (!device_is_attached(dev))
 		return (EBUSY);
 
-	if ((error = device_get_children(dev, &devs, &ndevs)))
+	/* Fetch children in detach order */
+	error = bhnd_bus_get_children(dev, &devs, &ndevs,
+	    BHND_DEVICE_ORDER_DETACH);
+	if (error)
 		return (error);
 
-	/* Suspend in the reverse of attach order */
-	qsort(devs, ndevs, sizeof(*devs), compare_descending_probe_order);
+	/* Perform suspend */
 	for (int i = 0; i < ndevs; i++) {
 		device_t child = devs[i];
 		error = BUS_SUSPEND_CHILD(device_get_parent(child), child);
@@ -310,7 +316,7 @@ bhnd_generic_suspend(device_t dev)
 	}
 
 cleanup:
-	free(devs, M_TEMP);
+	bhnd_bus_free_children(devs);
 	return (error);
 }
 
@@ -528,39 +534,6 @@ bhnd_find_nvram(struct bhnd_softc *sc)
 		return (NULL);
 
 	return (bhnd_find_platform_dev(sc, "bhnd_nvram"));
-}
-
-/*
- * Ascending comparison of bhnd device's probe order.
- */
-static int
-compare_ascending_probe_order(const void *lhs, const void *rhs)
-{
-	device_t	ldev, rdev;
-	int		lorder, rorder;
-
-	ldev = (*(const device_t *) lhs);
-	rdev = (*(const device_t *) rhs);
-
-	lorder = BHND_BUS_GET_PROBE_ORDER(device_get_parent(ldev), ldev);
-	rorder = BHND_BUS_GET_PROBE_ORDER(device_get_parent(rdev), rdev);
-
-	if (lorder < rorder) {
-		return (-1);
-	} else if (lorder > rorder) {
-		return (1);
-	} else {
-		return (0);
-	}
-}
-
-/*
- * Descending comparison of bhnd device's probe order.
- */
-static int
-compare_descending_probe_order(const void *lhs, const void *rhs)
-{
-	return (compare_ascending_probe_order(rhs, lhs));
 }
 
 /**

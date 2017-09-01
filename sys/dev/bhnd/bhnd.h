@@ -106,7 +106,6 @@ enum {
 
 };
 
-
 /**
  * Per-core IOCTL flags common to all bhnd(4) cores.
  */
@@ -293,6 +292,18 @@ struct bhnd_device {
 #define	BHND_DEVICE_IS_END(_d)	\
 	(BHND_MATCH_IS_ANY(&(_d)->core) && (_d)->desc == NULL)
 
+/**
+ * bhnd device sort order.
+ */
+typedef enum {
+	BHND_DEVICE_ORDER_ATTACH,	/**< sort by bhnd(4) device attach order;
+					     child devices should be probed/attached
+					     in this order */
+	BHND_DEVICE_ORDER_DETACH,	/**< sort by bhnd(4) device detach order;
+					     child devices should be detached, suspended,
+					     and shutdown in this order */
+} bhnd_device_order;
+
 const char			*bhnd_vendor_name(uint16_t vendor);
 const char			*bhnd_port_type_name(bhnd_port_type port_type);
 const char			*bhnd_nvram_src_name(bhnd_nvram_src nvram_src);
@@ -308,11 +319,20 @@ bhnd_devclass_t			 bhnd_core_class(const struct bhnd_core_info *ci);
 int				 bhnd_format_chip_id(char *buffer, size_t size,
 				     uint16_t chip_id);
 
-device_t			 bhnd_bus_match_child(device_t dev,
+device_t			 bhnd_bus_match_child(device_t bus,
 				     const struct bhnd_core_match *desc);
 
-device_t			 bhnd_bus_find_child(device_t dev,
+device_t			 bhnd_bus_find_child(device_t bus,
 				     bhnd_devclass_t class, int unit);
+
+int				 bhnd_bus_get_children(device_t bus,
+				     device_t **devlistp, int *devcountp,
+				     bhnd_device_order order);
+
+void				 bhnd_bus_free_children(device_t *devlist);
+
+int				 bhnd_sort_devices(device_t *devlist,
+				     size_t devcount, bhnd_device_order order);
 
 device_t			 bhnd_find_bridge_root(device_t dev,
 				     devclass_t bus_class);

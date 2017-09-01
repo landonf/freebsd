@@ -52,6 +52,10 @@ __FBSDID("$FreeBSD$");
 #include "bhndreg.h"
 #include "bhndvar.h"
 
+static int	compare_ascending_probe_order(const void *lhs, const void *rhs);
+static int	compare_descending_probe_order(const void *lhs,
+		    const void *rhs);
+
 /* BHND core device description table. */
 static const struct bhnd_core_desc {
 	uint16_t	 vendor;
@@ -389,6 +393,115 @@ bhnd_bus_match_child(device_t bus, const struct bhnd_core_match *desc)
 done:
 	free(devlistp, M_TEMP);
 	return match;
+}
+
+/**
+ * Retrieve an ordered list of all device instances currently connected to
+ * @p bus, returning a pointer to the array in @p devlistp and the count
+ * in @p ndevs.
+ * 
+ * The memory allocated for the table must be freed via
+ * bhnd_bus_free_children().
+ * 
+ * @param	bus		The bhnd-compatible bus to be queried.
+ * @param[out]	devlist		The array of devices.
+ * @param[out]	devcount	The number of devices in @p devlistp
+ * @param	order		The order in which devices will be returned
+ *				in @p devlist.
+ * 
+ * @retval 0		success
+ * @retval non-zero	if an error occurs, a regular unix error code will
+ *			be returned.
+ */
+int
+bhnd_bus_get_children(device_t bus, device_t **devlist, int *devcount,
+    bhnd_device_order order)
+{
+	int error;
+
+	/* Fetch device array */
+	if ((error = device_get_children(bus, devlist, devcount)))
+		return (error);
+
+	/* Perform requested sorting */
+	if ((error = bhnd_sort_devices(*devlist, *devcount, order))) {
+		bhnd_bus_free_children(*devlist);
+		return (error);
+	}
+
+	return (0);
+}
+
+/**
+ * Free any memory allocated in a previous call to bhnd_bus_get_children().
+ *
+ * @param devlist The device array returned by bhnd_bus_get_children().
+ */
+void
+bhnd_bus_free_children(device_t *devlist)
+{
+	free(devlist, M_TEMP);
+}
+
+/**
+ * Perform in-place sorting of an array of bhnd device instances.
+ * 
+ * @param devlist	An array of bhnd devices.
+ * @param devcount	The number of devices in @p devs.
+ * @param order		The sort order to be used.
+ */
+int
+bhnd_sort_devices(device_t *devlist, size_t devcount, bhnd_device_order order)
+{
+	int (*compare)(const void *, const void *);
+
+	switch (order) {
+	case BHND_DEVICE_ORDER_ATTACH:
+		compare = compare_ascending_probe_order;
+		break;
+	case BHND_DEVICE_ORDER_DETACH:
+		compare = compare_descending_probe_order;
+		break;
+	default:
+		printf("unknown sort order: %d\n", order);
+		return (EINVAL);
+	}
+
+	qsort(devlist, devcount, sizeof(*devlist), compare);
+	return (0);
+}
+
+/*
+ * Ascending comparison of bhnd device's probe order.
+ */
+static int
+compare_ascending_probe_order(const void *lhs, const void *rhs)
+{
+	device_t	ldev, rdev;
+	int		lorder, rorder;
+
+	ldev = (*(const device_t *) lhs);
+	rdev = (*(const device_t *) rhs);
+
+	lorder = BHND_BUS_GET_PROBE_ORDER(device_get_parent(ldev), ldev);
+	rorder = BHND_BUS_GET_PROBE_ORDER(device_get_parent(rdev), rdev);
+
+	if (lorder < rorder) {
+		return (-1);
+	} else if (lorder > rorder) {
+		return (1);
+	} else {
+		return (0);
+	}
+}
+
+/*
+ * Descending comparison of bhnd device's probe order.
+ */
+static int
+compare_descending_probe_order(const void *lhs, const void *rhs)
+{
+	return (compare_ascending_probe_order(rhs, lhs));
 }
 
 /**
