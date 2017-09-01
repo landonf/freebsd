@@ -331,6 +331,8 @@ int				 bhnd_bus_get_children(device_t bus,
 
 void				 bhnd_bus_free_children(device_t *devlist);
 
+int				 bhnd_bus_probe_children(device_t bus);
+
 int				 bhnd_sort_devices(device_t *devlist,
 				     size_t devcount, bhnd_device_order order);
 

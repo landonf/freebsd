@@ -505,6 +505,37 @@ compare_descending_probe_order(const void *lhs, const void *rhs)
 }
 
 /**
+ * Call device_probe_and_attach() for each of the bhnd bus device's
+ * children, in bhnd attach order.
+ * 
+ * @param bus The bhnd-compatible bus for which all children should be probed
+ * and attached.
+ */
+int
+bhnd_bus_probe_children(device_t bus)
+{
+	device_t	*devs;
+	int		 ndevs;
+	int		 error;
+
+	/* Fetch children in attach order */
+	error = bhnd_bus_get_children(bus, &devs, &ndevs,
+	    BHND_DEVICE_ORDER_ATTACH);
+	if (error)
+		return (error);
+
+	/* Probe and attach all children */
+	for (int i = 0; i < ndevs; i++) {
+		device_t child = devs[i];
+		device_probe_and_attach(child);
+	}
+
+	bhnd_bus_free_children(devs);
+
+	return (0);
+}
+
+/**
  * Walk up the bhnd device hierarchy to locate the root device
  * to which the bhndb bridge is attached.
  * 

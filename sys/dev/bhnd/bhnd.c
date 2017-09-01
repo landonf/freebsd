@@ -114,8 +114,6 @@ int
 bhnd_generic_attach(device_t dev)
 {
 	struct bhnd_softc	*sc;
-	device_t		*devs;
-	int			 ndevs;
 	int			 error;
 
 	if (device_is_attached(dev))
@@ -124,17 +122,11 @@ bhnd_generic_attach(device_t dev)
 	sc = device_get_softc(dev);
 	sc->dev = dev;
 
-	/* Fetch children in attach order */
-	error = bhnd_bus_get_children(dev, &devs, &ndevs,
-	    BHND_DEVICE_ORDER_ATTACH);
-	if (error)
-		return (error);
+	// XXX TODO: drop once platform device registration is implemented
 
 	/* Probe and attach all children */
-	for (int i = 0; i < ndevs; i++) {
-		device_t child = devs[i];
-		device_probe_and_attach(child);
-	}
+	if ((error = bhnd_bus_probe_children(dev)))
+		goto cleanup;
 
 	/* Try to finalize attachment */
 	if (bus_current_pass >= BHND_FINISH_ATTACH_PASS) {
@@ -143,8 +135,6 @@ bhnd_generic_attach(device_t dev)
 	}
 
 cleanup:
-	bhnd_bus_free_children(devs);
-
 	if (error)
 		bhnd_delete_children(sc);
 
