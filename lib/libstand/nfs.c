@@ -52,7 +52,7 @@ __FBSDID("$FreeBSD$");
 #define NFS_DEBUGxx
 
 #define NFSREAD_MIN_SIZE 1024
-#define NFSREAD_MAX_SIZE 4096
+#define NFSREAD_MAX_SIZE 16384
 
 /* NFSv3 definitions */
 #define	NFS_V3MAXFHSIZE		64
@@ -382,7 +382,7 @@ nfs_readlink(struct nfs_iodesc *d, char *buf)
 	buf[repl->len] = 0;
 done:
 	free(pkt);
-	return (0);
+	return (rc);
 }
 #endif
 

@@ -37,7 +37,7 @@ We only pay attention to a subset of the information in the
 
 """
 RCSid:
-	$Id: meta2deps.py,v 1.25 2017/04/03 21:04:09 sjg Exp $
+	$Id: meta2deps.py,v 1.27 2017/05/24 00:04:04 sjg Exp $
 
 	Copyright (c) 2011-2013, Juniper Networks, Inc.
 	All rights reserved.
@@ -90,6 +90,12 @@ def resolve(path, cwd, last_dir=None, debug=0, debug_out=sys.stderr):
     for d in [last_dir, cwd]:
         if not d:
             continue
+        if path == '..':
+            dw = d.split('/')
+            p = '/'.join(dw[:-1])
+            if not p:
+                p = '/'
+            return p
         p = '/'.join([d,path])
         if debug > 2:
             print("looking for:", p, end=' ', file=debug_out)
@@ -115,8 +121,11 @@ def cleanpath(path):
         if not d or d == '.':
             continue
         if d == '..':
-            p.pop()
-            continue
+            try:
+                p.pop()
+                continue
+            except:
+                break
         p.append(d)
 
     return r + '/'.join(p)
@@ -142,7 +151,7 @@ def sort_unique(list, cmp=None, key=None, reverse=False):
     for e in list:
         if e == le:
             continue
-	le = e
+        le = e
         nl.append(e)
     return nl
 
@@ -534,7 +543,7 @@ class MetaFile:
         # to the src dir, we may need to add dependencies for each
         rdir = dir
         dir = abspath(dir, cwd, self.last_dir, self.debug, self.debug_out)
-            rdir = os.path.realpath(dir)
+        rdir = os.path.realpath(dir)
         if rdir == dir:
             rdir = None
         # now put path back together

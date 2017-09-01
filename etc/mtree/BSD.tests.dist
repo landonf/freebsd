@@ -8,11 +8,17 @@
     bin
         cat
         ..
+        chmod
+        ..
         date
         ..
         dd
         ..
+        echo
+        ..
         expr
+        ..
+        ln
         ..
         ls
         ..
@@ -32,6 +38,8 @@
             execution
             ..
             expansion
+            ..
+            invocation
             ..
             parameters
             ..
@@ -372,6 +380,10 @@
         ..
         mdconfig
         ..
+        pfctl
+            files
+            ..
+        ..
     ..
     secure
         lib
@@ -390,7 +402,11 @@
                 ..
                 plain
                 ..
+                tap
+                ..
             ..
+        ..
+        zoneinfo
         ..
     ..
     sys
@@ -486,6 +502,8 @@
             truncate
             ..
             unlink
+            ..
+            utimensat
             ..
         ..
         posixshm
@@ -606,11 +624,15 @@
         ..
         cmp
         ..
+        compress
+        ..
         cpio
         ..
         col
         ..
         comm
+        ..
+        csplit
         ..
         cut
         ..
@@ -618,11 +640,17 @@
         ..
         dirname
         ..
+        du
+        ..
         file2c
+        ..
+        getconf
         ..
         grep
         ..
         gzip
+        ..
+        hexdump
         ..
         ident
         ..
@@ -648,6 +676,8 @@
         ..
         printf
         ..
+        procstat
+        ..
         sdiff
         ..
         sed
@@ -655,6 +685,8 @@
             ..
         ..
         soelim
+        ..
+        stat
         ..
         tail
         ..

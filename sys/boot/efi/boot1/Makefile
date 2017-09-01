@@ -10,7 +10,6 @@ PROG=		boot1.sym
 INTERNALPROG=
 WARNS?=		6
 
-.if ${MK_ZFS} != "no"
 # Disable warnings that are currently incompatible with the zfs boot code
 CWARNFLAGS.zfs_module.c += -Wno-array-bounds
 CWARNFLAGS.zfs_module.c += -Wno-cast-align
@@ -24,7 +23,6 @@ CWARNFLAGS.skein.c += -Wno-cast-align
 CWARNFLAGS.skein.c += -Wno-missing-variable-declarations
 .else if ${COMPILER_TYPE} == "gcc"
 CWARNFLAGS.skein.c += -Wno-missing-declarations
-.endif
 .endif
 
 # architecture-specific loader code
@@ -68,7 +66,7 @@ FILES=	boot1.efi boot1.efifat
 FILESMODE_boot1.efi=	${BINMODE}
 
 LDSCRIPT=	${.CURDIR}/../loader/arch/${MACHINE}/ldscript.${MACHINE}
-LDFLAGS+=	-Wl,-T${LDSCRIPT} -Wl,-Bsymbolic -shared
+LDFLAGS+=	-Wl,-T${LDSCRIPT},-Bsymbolic,-znotext -shared
 
 .if ${MACHINE_CPUARCH} == "aarch64"
 CFLAGS+=	-mgeneral-regs-only
@@ -78,13 +76,15 @@ CFLAGS+=	-fPIC
 LDFLAGS+=	-Wl,-znocombreloc
 .endif
 
+LIBEFI=		${.OBJDIR}/../libefi/libefi.a
+
 #
 # Add libstand for the runtime functions used by the compiler - for example
 # __aeabi_* (arm) or __divdi3 (i386).
 # as well as required string and memory functions for all platforms.
 #
-DPADD+=		${LIBSTAND}
-LDADD+=		-lstand
+DPADD+=		${LIBEFI} ${LIBSTAND}
+LDADD+=		${LIBEFI} -lstand
 
 DPADD+=		${LDSCRIPT}
 

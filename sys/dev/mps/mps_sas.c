@@ -719,11 +719,12 @@ mps_attach_sas(struct mps_softc *sc)
 	int unit, error = 0;
 
 	MPS_FUNCTRACE(sc);
+	mps_dprint(sc, MPS_INIT, "%s entered\n", __func__);
 
 	sassc = malloc(sizeof(struct mpssas_softc), M_MPT2, M_WAITOK|M_ZERO);
 	if(!sassc) {
-		device_printf(sc->mps_dev, "Cannot allocate memory %s %d\n",
-		__func__, __LINE__);
+		mps_dprint(sc, MPS_INIT|MPS_ERROR,
+		    "Cannot allocate SAS controller memory\n");
 		return (ENOMEM);
 	}
 
@@ -733,12 +734,12 @@ mps_attach_sas(struct mps_softc *sc)
 	 * of MaxTargets here so that we don't get into trouble later.  This
 	 * should move into the reinit logic.
 	 */
-	sassc->maxtargets = sc->facts->MaxTargets;
+	sassc->maxtargets = sc->facts->MaxTargets + sc->facts->MaxVolumes;
 	sassc->targets = malloc(sizeof(struct mpssas_target) *
 	    sassc->maxtargets, M_MPT2, M_WAITOK|M_ZERO);
 	if(!sassc->targets) {
-		device_printf(sc->mps_dev, "Cannot allocate memory %s %d\n",
-		__func__, __LINE__);
+		mps_dprint(sc, MPS_INIT|MPS_ERROR,
+		    "Cannot allocate SAS target memory\n");
 		free(sassc, M_MPT2);
 		return (ENOMEM);
 	}
@@ -755,7 +756,7 @@ mps_attach_sas(struct mps_softc *sc)
 	sassc->sim = cam_sim_alloc(mpssas_action, mpssas_poll, "mps", sassc,
 	    unit, &sc->mps_mtx, sc->num_reqs, sc->num_reqs, sassc->devq);
 	if (sassc->sim == NULL) {
-		mps_dprint(sc, MPS_ERROR, "Cannot allocate SIM\n");
+		mps_dprint(sc, MPS_INIT|MPS_ERROR, "Cannot allocate SIM\n");
 		error = EINVAL;
 		goto out;
 	}
@@ -777,8 +778,8 @@ mps_attach_sas(struct mps_softc *sc)
 	 * everything is just a target on a single bus.
 	 */
 	if ((error = xpt_bus_register(sassc->sim, sc->mps_dev, 0)) != 0) {
-		mps_dprint(sc, MPS_ERROR, "Error %d registering SCSI bus\n",
-		    error);
+		mps_dprint(sc, MPS_INIT|MPS_ERROR,
+		    "Error %d registering SCSI bus\n", error);
 		mps_unlock(sc);
 		goto out;
 	}
@@ -802,7 +803,8 @@ mps_attach_sas(struct mps_softc *sc)
 	    cam_sim_path(sc->sassc->sim), CAM_TARGET_WILDCARD,
 	    CAM_LUN_WILDCARD);
 	if (status != CAM_REQ_CMP) {
-		mps_printf(sc, "Error %#x creating sim path\n", status);
+		mps_dprint(sc, MPS_ERROR|MPS_INIT,
+		    "Error %#x creating sim path\n", status);
 		sassc->path = NULL;
 	} else {
 		int event;
@@ -837,6 +839,8 @@ mps_attach_sas(struct mps_softc *sc)
 out:
 	if (error)
 		mps_detach_sas(sc);
+
+	mps_dprint(sc, MPS_INIT, "%s exit error= %d\n", __func__, error);
 	return (error);
 }
 
@@ -910,6 +914,25 @@ mpssas_discovery_end(struct mpssas_softc *sassc)
 	if (sassc->flags & MPSSAS_DISCOVERY_TIMEOUT_PENDING)
 		callout_stop(&sassc->discovery_callout);
 
+	/*
+	 * After discovery has completed, check the mapping table for any
+	 * missing devices and update their missing counts. Only do this once
+	 * whenever the driver is initialized so that missing counts aren't
+	 * updated unnecessarily. Note that just because discovery has
+	 * completed doesn't mean that events have been processed yet. The
+	 * check_devices function is a callout timer that checks if ALL devices
+	 * are missing. If so, it will wait a little longer for events to
+	 * complete and keep resetting itself until some device in the mapping
+	 * table is not missing, meaning that event processing has started.
+	 */
+	if (sc->track_mapping_events) {
+		mps_dprint(sc, MPS_XINFO | MPS_MAPPING, "Discovery has "
+		    "completed. Check for missing devices in the mapping "
+		    "table.\n");
+		callout_reset(&sc->device_check_callout,
+		    MPS_MISSING_CHECK_DELAY * hz, mps_mapping_check_devices,
+		    sc);
+	}
 }
 
 static void
@@ -942,7 +965,12 @@ mpssas_action(struct cam_sim *sim, union ccb *ccb)
 		cpi->hba_eng_cnt = 0;
 		cpi->max_target = sassc->maxtargets - 1;
 		cpi->max_lun = 255;
-		cpi->initiator_id = sassc->maxtargets - 1;
+
+		/*
+		 * initiator_id is set here to an ID outside the set of valid
+		 * target IDs (including volumes).
+		 */
+		cpi->initiator_id = sassc->maxtargets;
 		strlcpy(cpi->sim_vid, "FreeBSD", SIM_IDLEN);
 		strlcpy(cpi->hba_vid, "Avago Tech", HBA_IDLEN);
 		strlcpy(cpi->dev_name, cam_sim_name(sim), DEV_IDLEN);
@@ -1107,13 +1135,8 @@ mpssas_complete_all_commands(struct mps_softc *sc)
 			completed = 1;
 		}
 
-		if (cm->cm_sc->io_cmds_active != 0) {
+		if (cm->cm_sc->io_cmds_active != 0)
 			cm->cm_sc->io_cmds_active--;
-		} else {
-			mps_dprint(cm->cm_sc, MPS_INFO, "Warning: "
-			    "io_cmds_active is out of sync - resynching to "
-			    "0\n");
-		}
 		
 		if ((completed == 0) && (cm->cm_state != MPS_CM_STATE_FREE)) {
 			/* this should never happen, but if it does, log */
@@ -1505,7 +1528,7 @@ mpssas_send_abort(struct mps_softc *sc, struct mps_command *tm, struct mps_comma
 		return -1;
 	}
 
-	mpssas_log_command(tm, MPS_RECOVERY|MPS_INFO,
+	mpssas_log_command(cm, MPS_RECOVERY|MPS_INFO,
 	    "Aborting command %p\n", cm);
 
 	req = (MPI2_SCSI_TASK_MANAGE_REQUEST *)tm->cm_req;
@@ -1536,7 +1559,7 @@ mpssas_send_abort(struct mps_softc *sc, struct mps_command *tm, struct mps_comma
 
 	err = mps_map_command(sc, tm);
 	if (err)
-		mpssas_log_command(tm, MPS_RECOVERY,
+		mps_dprint(sc, MPS_RECOVERY,
 		    "error %d sending abort for cm %p SMID %u\n",
 		    err, cm, req->TaskMID);
 	return err;
@@ -1574,11 +1597,12 @@ mpssas_scsiio_timeout(void *data)
 		return;
 	}
 
-	mpssas_log_command(cm, MPS_INFO, "command timeout cm %p ccb %p\n", 
-	    cm, cm->cm_ccb);
-
 	targ = cm->cm_targ;
 	targ->timeouts++;
+
+	mpssas_log_command(cm, MPS_ERROR, "command timeout %d cm %p target "
+	    "%u, handle(0x%04x)\n", cm->cm_ccb->ccb_h.timeout, cm,  targ->tid,
+	    targ->handle);
 
 	/* XXX first, check the firmware state, to see if it's still
 	 * operational.  if not, do a diag reset.

@@ -49,6 +49,16 @@ struct g_class zfs_vdev_class = {
 	.attrchanged = vdev_geom_attrchanged,
 };
 
+struct consumer_vdev_elem {
+	SLIST_ENTRY(consumer_vdev_elem)	elems;
+	vdev_t				*vd;
+};
+
+SLIST_HEAD(consumer_priv_t, consumer_vdev_elem);
+_Static_assert(sizeof(((struct g_consumer*)NULL)->private)
+    == sizeof(struct consumer_priv_t*),
+    "consumer_priv_t* can't be stored in g_consumer.private");
+
 DECLARE_GEOM_CLASS(zfs_vdev_class, zfs_vdev);
 
 SYSCTL_DECL(_vfs_zfs_vdev);
@@ -85,21 +95,16 @@ vdev_geom_set_rotation_rate(vdev_t *vd, struct g_consumer *cp)
 }
 
 static void
-vdev_geom_set_physpath(struct g_consumer *cp, boolean_t do_null_update)
+vdev_geom_set_physpath(vdev_t *vd, struct g_consumer *cp,
+		       boolean_t do_null_update)
 {
 	boolean_t needs_update = B_FALSE;
-	vdev_t *vd;
 	char *physpath;
 	int error, physpath_len;
 
-	if (g_access(cp, 1, 0, 0) != 0)
-		return;
-
-	vd = cp->private;
 	physpath_len = MAXPATHLEN;
 	physpath = g_malloc(physpath_len, M_WAITOK|M_ZERO);
 	error = g_io_getattr("GEOM::physpath", cp, &physpath_len, physpath);
-	g_access(cp, -1, 0, 0);
 	if (error == 0) {
 		char *old_physpath;
 
@@ -130,37 +135,40 @@ vdev_geom_set_physpath(struct g_consumer *cp, boolean_t do_null_update)
 static void
 vdev_geom_attrchanged(struct g_consumer *cp, const char *attr)
 {
-	vdev_t *vd;
 	char *old_physpath;
+	struct consumer_priv_t *priv;
+	struct consumer_vdev_elem *elem;
 	int error;
 
-	vd = cp->private;
-	if (vd == NULL)
+	priv = (struct consumer_priv_t*)&cp->private;
+	if (SLIST_EMPTY(priv))
 		return;
 
-	if (strcmp(attr, "GEOM::rotation_rate") == 0) {
-		vdev_geom_set_rotation_rate(vd, cp);
-		return;
-	}
-
-	if (strcmp(attr, "GEOM::physpath") == 0) {
-		vdev_geom_set_physpath(cp, /*do_null_update*/B_TRUE);
-		return;
+	SLIST_FOREACH(elem, priv, elems) {
+		vdev_t *vd = elem->vd;
+		if (strcmp(attr, "GEOM::rotation_rate") == 0) {
+			vdev_geom_set_rotation_rate(vd, cp);
+			return;
+		}
+		if (strcmp(attr, "GEOM::physpath") == 0) {
+			vdev_geom_set_physpath(vd, cp, /*null_update*/B_TRUE);
+			return;
+		}
 	}
 }
 
 static void
 vdev_geom_orphan(struct g_consumer *cp)
 {
-	vdev_t *vd;
+	struct consumer_priv_t *priv;
+	struct consumer_vdev_elem *elem;
 
 	g_topology_assert();
 
-	vd = cp->private;
-	if (vd == NULL) {
+	priv = (struct consumer_priv_t*)&cp->private;
+	if (SLIST_EMPTY(priv))
 		/* Vdev close in progress.  Ignore the event. */
 		return;
-	}
 
 	/*
 	 * Orphan callbacks occur from the GEOM event thread.
@@ -176,8 +184,12 @@ vdev_geom_orphan(struct g_consumer *cp)
 	 * async removal support to invoke a close on this
 	 * vdev once it is safe to do so.
 	 */
-	vd->vdev_remove_wanted = B_TRUE;
-	spa_async_request(vd->vdev_spa, SPA_ASYNC_REMOVE);
+	SLIST_FOREACH(elem, priv, elems) {
+		vdev_t *vd = elem->vd;
+
+		vd->vdev_remove_wanted = B_TRUE;
+		spa_async_request(vd->vdev_spa, SPA_ASYNC_REMOVE);
+	}
 }
 
 static struct g_consumer *
@@ -265,21 +277,8 @@ vdev_geom_attach(struct g_provider *pp, vdev_t *vd)
 		}
 	}
 
-	/* 
-	 * BUG: cp may already belong to a vdev.  This could happen if:
-	 * 1) That vdev is a shared spare, or
-	 * 2) We are trying to reopen a missing vdev and we are scanning by
-	 *    guid.  In that case, we'll ultimately fail to open this consumer,
-	 *    but not until after setting the private field.
-	 * The solution is to:
-	 * 1) Don't set the private field until after the open succeeds, and
-	 * 2) Set it to a linked list of vdevs, not just a single vdev
-	 */
-	cp->private = vd;
-	if (vd != NULL) {
+	if (vd != NULL)
 		vd->vdev_tsd = cp;
-		vdev_geom_set_physpath(cp, /*do_null_update*/B_FALSE);
-	}
 
 	cp->flags |= G_CF_DIRECT_SEND | G_CF_DIRECT_RECEIVE;
 	return (cp);
@@ -289,15 +288,11 @@ static void
 vdev_geom_detach(struct g_consumer *cp, boolean_t open_for_read)
 {
 	struct g_geom *gp;
-	vdev_t *vd;
 
 	g_topology_assert();
 
 	ZFS_LOG(1, "Detaching from %s.",
 	    cp->provider && cp->provider->name ? cp->provider->name : "NULL");
-
-	vd = cp->private;
-	cp->private = NULL;
 
 	gp = cp->geom;
 	if (open_for_read)
@@ -324,16 +319,26 @@ static void
 vdev_geom_close_locked(vdev_t *vd)
 {
 	struct g_consumer *cp;
+	struct consumer_priv_t *priv;
+	struct consumer_vdev_elem *elem, *elem_temp;
 
 	g_topology_assert();
 
 	cp = vd->vdev_tsd;
-	vd->vdev_tsd = NULL;
 	vd->vdev_delayed_close = B_FALSE;
 	if (cp == NULL)
 		return;
 
 	ZFS_LOG(1, "Closing access to %s.", cp->provider->name);
+	KASSERT(cp->private != NULL, ("%s: cp->private is NULL", __func__));
+	priv = (struct consumer_priv_t*)&cp->private;
+	vd->vdev_tsd = NULL;
+	SLIST_FOREACH_SAFE(elem, priv, elems, elem_temp) {
+		if (elem->vd == vd) {
+			SLIST_REMOVE(priv, elem, consumer_vdev_elem, elems);
+			g_free(elem);
+		}
+	}
 
 	vdev_geom_detach(cp, B_TRUE);
 }
@@ -740,7 +745,7 @@ vdev_geom_open_by_guids(vdev_t *vd)
 
 		ZFS_LOG(1, "Attach by guid [%ju:%ju] succeeded, provider %s.",
 		    (uintmax_t)spa_guid(vd->vdev_spa),
-		    (uintmax_t)vd->vdev_guid, vd->vdev_path);
+		    (uintmax_t)vd->vdev_guid, cp->provider->name);
 	} else {
 		ZFS_LOG(1, "Search by guid [%ju:%ju] failed.",
 		    (uintmax_t)spa_guid(vd->vdev_spa),
@@ -842,12 +847,12 @@ vdev_geom_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 	VERIFY(tsd_set(zfs_geom_probe_vdev_key, NULL) == 0);
 
 	if (cp == NULL) {
-		ZFS_LOG(1, "Provider %s not found.", vd->vdev_path);
+		ZFS_LOG(1, "Vdev %s not found.", vd->vdev_path);
 		error = ENOENT;
 	} else if (cp->provider->sectorsize > VDEV_PAD_SIZE ||
 	    !ISP2(cp->provider->sectorsize)) {
 		ZFS_LOG(1, "Provider %s has unsupported sectorsize.",
-		    vd->vdev_path);
+		    cp->provider->name);
 
 		vdev_geom_close_locked(vd);
 		error = EINVAL;
@@ -865,16 +870,32 @@ vdev_geom_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 		}
 		if (error != 0) {
 			printf("ZFS WARNING: Unable to open %s for writing (error=%d).\n",
-			    vd->vdev_path, error);
+			    cp->provider->name, error);
 			vdev_geom_close_locked(vd);
 			cp = NULL;
 		}
 	}
+	if (cp != NULL) {
+		struct consumer_priv_t *priv;
+		struct consumer_vdev_elem *elem;
+
+		priv = (struct consumer_priv_t*)&cp->private;
+		if (cp->private == NULL)
+			SLIST_INIT(priv);
+		elem = g_malloc(sizeof(*elem), M_WAITOK|M_ZERO);
+		elem->vd = vd;
+		SLIST_INSERT_HEAD(priv, elem, elems);
+	}
 
 	/* Fetch initial physical path information for this device. */
-	if (cp != NULL)
+	if (cp != NULL) {
 		vdev_geom_attrchanged(cp, "GEOM::physpath");
 	
+		/* Set other GEOM characteristics */
+		vdev_geom_set_physpath(vd, cp, /*do_null_update*/B_FALSE);
+		vdev_geom_set_rotation_rate(vd, cp);
+	}
+
 	g_topology_unlock();
 	PICKUP_GIANT();
 	if (cp == NULL) {
@@ -904,11 +925,6 @@ skip_open:
 	 * we will try again.
 	 */
 	vd->vdev_nowritecache = B_FALSE;
-
-	/*
-	 * Determine the device's rotation rate.
-	 */
-	vdev_geom_set_rotation_rate(vd, cp);
 
 	return (0);
 }
@@ -972,7 +988,7 @@ vdev_geom_io_intr(struct bio *bp)
 		}
 		break;
 	}
-	g_destroy_bio(bp);
+
 	zio_delay_interrupt(zio);
 }
 
@@ -1037,10 +1053,17 @@ sendreq:
 	case ZIO_TYPE_READ:
 	case ZIO_TYPE_WRITE:
 		zio->io_target_timestamp = zio_handle_io_delay(zio);
-		bp->bio_cmd = zio->io_type == ZIO_TYPE_READ ? BIO_READ : BIO_WRITE;
-		bp->bio_data = zio->io_data;
 		bp->bio_offset = zio->io_offset;
 		bp->bio_length = zio->io_size;
+		if (zio->io_type == ZIO_TYPE_READ) {
+			bp->bio_cmd = BIO_READ;
+			bp->bio_data =
+			    abd_borrow_buf(zio->io_abd, zio->io_size);
+		} else {
+			bp->bio_cmd = BIO_WRITE;
+			bp->bio_data =
+			    abd_borrow_buf_copy(zio->io_abd, zio->io_size);
+		}
 		break;
 	case ZIO_TYPE_FREE:
 		bp->bio_cmd = BIO_DELETE;
@@ -1057,6 +1080,7 @@ sendreq:
 		break;
 	}
 	bp->bio_done = vdev_geom_io_intr;
+	zio->io_bio = bp;
 
 	g_io_request(bp, cp);
 }
@@ -1064,6 +1088,23 @@ sendreq:
 static void
 vdev_geom_io_done(zio_t *zio)
 {
+	struct bio *bp = zio->io_bio;
+
+	if (bp == NULL) {
+		ASSERT3S(zio->io_error, !=, 0);
+		IMPLY(zio->io_type == ZIO_TYPE_READ ||
+		    zio->io_type == ZIO_TYPE_WRITE,
+		    zio->io_error == ENXIO);
+		return;
+	}
+
+	if (zio->io_type == ZIO_TYPE_READ) {
+		abd_return_buf_copy(zio->io_abd, bp->bio_data, zio->io_size);
+	} else if (zio->io_type == ZIO_TYPE_WRITE) {
+		abd_return_buf(zio->io_abd, bp->bio_data, zio->io_size);
+	}
+
+	g_destroy_bio(bp);
 }
 
 static void

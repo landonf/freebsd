@@ -100,6 +100,7 @@ MAN=	aac.4 \
 	cc_newreno.4 \
 	cc_vegas.4 \
 	${_ccd.4} \
+	ccr.4 \
 	cd.4 \
 	cdce.4 \
 	cfi.4 \
@@ -134,17 +135,13 @@ MAN=	aac.4 \
 	dpt.4 \
 	ds1307.4 \
 	ds3231.4 \
-	${_dtrace_io.4} \
-	${_dtrace_ip.4} \
-	${_dtrace_proc.4} \
-	${_dtrace_sched.4} \
-	${_dtrace_tcp.4} \
-	${_dtrace_udp.4} \
+	${_dtrace_provs} \
 	dummynet.4 \
 	ed.4 \
 	edsc.4 \
 	ehci.4 \
 	em.4 \
+	ena.4 \
 	enc.4 \
 	epair.4 \
 	esp.4 \
@@ -376,7 +373,9 @@ MAN=	aac.4 \
 	ng_vlan.4 \
 	nmdm.4 \
 	nsp.4 \
-	${_ntb_hw.4} \
+	${_ntb.4} \
+	${_ntb_hw_intel.4} \
+	${_ntb_hw_plx.4} \
 	${_ntb_transport.4} \
 	${_if_ntb.4} \
 	null.4 \
@@ -426,6 +425,7 @@ MAN=	aac.4 \
 	ral.4 \
 	random.4 \
 	rc.4 \
+	rctl.4 \
 	re.4 \
 	rgephy.4 \
 	rights.4 \
@@ -528,6 +528,8 @@ MAN=	aac.4 \
 	tws.4 \
 	tx.4 \
 	txp.4 \
+	udp.4 \
+	udplite.4 \
 	ure.4 \
 	vale.4 \
 	vga.4 \
@@ -562,6 +564,7 @@ MAN=	aac.4 \
 	wlan_tkip.4 \
 	wlan_wep.4 \
 	wlan_xauth.4 \
+	wmt.4 \
 	${_wpi.4} \
 	wsp.4 \
 	xe.4 \
@@ -685,7 +688,6 @@ MLINKS+=netintro.4 net.4 \
 	netintro.4 networking.4
 MLINKS+=${_nfe.4} ${_if_nfe.4}
 MLINKS+=nge.4 if_nge.4
-MLINKS+=${_ntb_hw.4} ${_ntb.4}
 MLINKS+=${_nxge.4} ${_if_nxge.4}
 MLINKS+=ow.4 onewire.4
 MLINKS+=pccbb.4 cbb.4
@@ -696,7 +698,6 @@ MLINKS+=pms.4 pmspcv.4
 MLINKS+=ral.4 if_ral.4
 MLINKS+=re.4 if_re.4
 MLINKS+=rl.4 if_rl.4
-MLINKS+=rtwn.4 if_rtwn.4
 MLINKS+=rtwn_pci.4 if_rtwn_pci.4
 MLINKS+=rue.4 if_rue.4
 MLINKS+=scsi.4 CAM.4 \
@@ -834,7 +835,8 @@ _xnb.4=		xnb.4
 _if_ntb.4=	if_ntb.4
 _ioat.4=	ioat.4
 _ntb.4=		ntb.4
-_ntb_hw.4=	ntb_hw.4
+_ntb_hw_intel.4=	ntb_hw_intel.4
+_ntb_hw_plx.4=	ntb_hw_plx.4
 _ntb_transport.4=ntb_transport.4
 _qlxge.4=	qlxge.4
 _qlxgb.4=	qlxgb.4
@@ -870,12 +872,13 @@ _ccd.4=		ccd.4
 .endif
 
 .if ${MK_CDDL} != "no"
-_dtrace_io.4=	dtrace_io.4
-_dtrace_ip.4=	dtrace_ip.4
-_dtrace_proc.4=	dtrace_proc.4
-_dtrace_sched.4= dtrace_sched.4
-_dtrace_tcp.4=	dtrace_tcp.4
-_dtrace_udp.4=	dtrace_udp.4
+_dtrace_provs=	dtrace_io.4 \
+		dtrace_ip.4 \
+		dtrace_lockstat.4 \
+		dtrace_proc.4 \
+		dtrace_sched.4 \
+		dtrace_tcp.4 \
+		dtrace_udp.4
 .endif
 
 .if ${MK_ISCSI} != "no"
@@ -887,6 +890,7 @@ MAN+=		iser.4
 
 .if ${MK_OFED} != "no"
 MAN+=		mlx4ib.4
+MAN+=		mlx5ib.4
 .endif
 
 .if ${MK_TESTS} != "no"
@@ -924,8 +928,6 @@ MAN+=	\
 	ucycom.4 \
 	udav.4 \
 	udbp.4 \
-	udp.4 \
-	udplite.4 \
 	udl.4 \
 	uep.4 \
 	ufm.4 \
