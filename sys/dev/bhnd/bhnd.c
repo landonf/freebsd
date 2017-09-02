@@ -106,7 +106,6 @@ static device_t			 bhnd_find_chipc(struct bhnd_softc *sc);
 static struct chipc_caps	*bhnd_find_chipc_caps(struct bhnd_softc *sc);
 static device_t			 bhnd_find_platform_dev(struct bhnd_softc *sc,
 				     const char *classname);
-static device_t			 bhnd_find_pmu(struct bhnd_softc *sc);
 static device_t			 bhnd_find_nvram(struct bhnd_softc *sc);
 
 /**
@@ -394,15 +393,6 @@ bhnd_finish_attach(struct bhnd_softc *sc)
 		}
 	}
 
-	/* Look for a PMU  */
-	if (ccaps->pmu || ccaps->pwr_ctrl) {
-		if ((sc->pmu_dev = bhnd_find_pmu(sc)) == NULL) {
-			device_printf(sc->dev,
-			    "attach failed: supported PMU not found\n");
-			return (ENXIO);
-		}
-	}
-
 	/* Mark attach as completed */
 	sc->attach_done = true;
 
@@ -501,28 +491,6 @@ found:
 		return (NULL);
 
 	return (child);
-}
-
-/* Locate the PMU device, if any */
-static device_t
-bhnd_find_pmu(struct bhnd_softc *sc)
-{
-        /* Make sure we're holding Giant for newbus */
-	GIANT_REQUIRED;
-
-	/* pmu_dev is initialized during attachment */
-	if (sc->attach_done) {
-		if (sc->pmu_dev == NULL)
-			return (NULL);
-
-		if (device_get_state(sc->pmu_dev) < DS_ATTACHING)
-			return (NULL);
-
-		return (sc->pmu_dev);
-	}
-
-
-	return (bhnd_find_platform_dev(sc, "bhnd_pmu"));
 }
 
 /* Locate the NVRAM device, if any */
@@ -814,12 +782,6 @@ bhnd_generic_alloc_pmu(device_t dev, device_t child)
 		    "capabilities unavailable\n");
 		return (ENXIO);
 	}
-	
-	if ((pmu_dev = bhnd_find_pmu(sc)) == NULL) {
-		device_printf(sc->dev, 
-		    "pmu unavailable; cannot allocate request state\n");
-		return (ENXIO);
-	}
 
 	/* already allocated? */
 	if (pm != NULL) {
@@ -882,6 +844,9 @@ bhnd_generic_alloc_pmu(device_t dev, device_t child)
 	else
 		pmu_regs -= r_addr - rman_get_start(rle->res);
 
+	/* Retain PMU reference on behalf of our caller */
+	pmu_dev = bhnd_retain_provider(child, BHND_PROVIDER_PMU);
+
 	/* Allocate and initialize PMU info */
 	br = malloc(sizeof(struct bhnd_resource), M_BHND, M_NOWAIT);
 	if (br == NULL)
@@ -896,9 +861,18 @@ bhnd_generic_alloc_pmu(device_t dev, device_t child)
 		return (ENOMEM);
 	}
 	pm->pm_dev = child;
-	pm->pm_pmu = pmu_dev;
 	pm->pm_res = br;
 	pm->pm_regs = pmu_regs;
+	pm->pm_pmu = bhnd_retain_provider(child, BHND_PROVIDER_PMU);
+
+	if (pm->pm_pmu == NULL) {
+		device_printf(sc->dev, 
+		    "pmu unavailable; cannot allocate request state\n");
+		free(br, M_BHND);
+		free(pm, M_BHND);
+		return (ENXIO);
+	}
+
 
 	bhnd_set_pmu_info(child, pm);
 	return (0);
@@ -912,29 +886,24 @@ bhnd_generic_release_pmu(device_t dev, device_t child)
 {
 	struct bhnd_softc		*sc;
 	struct bhnd_core_pmu_info	*pm;
-	device_t			 pmu;
 	int				 error;
 
 	GIANT_REQUIRED;	/* for newbus */
 	
 	sc = device_get_softc(dev);
 
-	if ((pmu = bhnd_find_pmu(sc)) == NULL) {
-		device_printf(sc->dev, 
-		    "pmu unavailable; cannot release request state\n");
-		return (ENXIO);
-	}
-
 	/* dispatch release request */
 	pm = bhnd_get_pmu_info(child);
 	if (pm == NULL)
 		panic("pmu over-release for %s", device_get_nameunit(child));
 
-	if ((error = BHND_PMU_CORE_RELEASE(pmu, pm)))
+	if ((error = BHND_PMU_CORE_RELEASE(pm->pm_pmu, pm)))
 		return (error);
 
 	/* free PMU info */
 	bhnd_set_pmu_info(child, NULL);
+
+	bhnd_release_provider(pm->pm_dev, pm->pm_pmu, BHND_PROVIDER_PMU);
 	free(pm->pm_res, M_BHND);
 	free(pm, M_BHND);
 
