@@ -69,6 +69,8 @@ __FBSDID("$FreeBSD$");
 #include "bhnd.h"
 #include "bhndvar.h"
 
+#include "bhnd_private.h"
+
 MALLOC_DEFINE(M_BHND, "bhnd", "bhnd bus data structures");
 
 /* Bus pass at which all bus-required children must be available, and
@@ -97,6 +99,9 @@ static int			 bhnd_delete_children(struct bhnd_softc *sc);
 
 static int			 bhnd_finish_attach(struct bhnd_softc *sc);
 
+static struct bhnd_prov		*bhnd_find_provider(struct bhnd_softc *sc,
+				     bhnd_provider_type type);
+
 static device_t			 bhnd_find_chipc(struct bhnd_softc *sc);
 static struct chipc_caps	*bhnd_find_chipc_caps(struct bhnd_softc *sc);
 static device_t			 bhnd_find_platform_dev(struct bhnd_softc *sc,
@@ -107,8 +112,9 @@ static device_t			 bhnd_find_nvram(struct bhnd_softc *sc);
 /**
  * Default bhnd(4) bus driver implementation of DEVICE_ATTACH().
  *
- * This implementation calls device_probe_and_attach() for each of the device's
- * children, in bhnd probe order.
+ * This implementation initializes internal bhnd(4) state, and must be called
+ * by subclassing drivers in DEVICE_ATTACH(), before any other bhnd(4) bus
+ * methods.
  */
 int
 bhnd_generic_attach(device_t dev)
@@ -121,6 +127,9 @@ bhnd_generic_attach(device_t dev)
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
+
+	BHND_LOCK_INIT(sc);
+	STAILQ_INIT(&sc->providers);
 
 	// XXX TODO: drop once platform device registration is implemented
 
@@ -182,12 +191,32 @@ int
 bhnd_generic_detach(device_t dev)
 {
 	struct bhnd_softc	*sc;
+	struct bhnd_prov	*entry;
+	size_t			 nprovs;
+	int			 error;
 
 	if (!device_is_attached(dev))
 		return (EBUSY);
 
 	sc = device_get_softc(dev);
-	return (bhnd_delete_children(sc));
+
+	if ((error = bhnd_delete_children(sc)))
+		return (error);
+
+	/* 
+	 * Providers must deregister prior to detach.
+	 */
+	nprovs = 0;
+	STAILQ_FOREACH(entry, &sc->providers, link) {
+		device_printf(dev, "leaked %s(%d) provider registration\n",
+		    device_get_nameunit(entry->dev), entry->type);
+		nprovs++;
+	}
+
+	if (nprovs > 0)
+		panic("leaked %zu active provider registrations", nprovs);
+
+	return (0);
 }
 
 /**
@@ -583,6 +612,171 @@ bhnd_generic_get_probe_order(device_t dev, device_t child)
 	default:
 		return (BHND_PROBE_DEFAULT);
 	}
+}
+
+/**
+ * Default bhnd(4) bus driver implementation of BHND_BUS_REGISTER_PROVIDER()
+ */
+int
+bhnd_generic_register_provider(device_t dev, device_t prov,
+    bhnd_provider_type prov_type)
+{
+	struct bhnd_softc	*sc;
+	struct bhnd_prov	*entry;
+
+	sc = device_get_softc(dev);
+	entry = malloc(sizeof(*entry), M_BHND, M_WAITOK);
+
+	GIANT_REQUIRED;	/* for newbus */
+	BHND_LOCK_RW(sc);
+
+	/* Is a provider already registered? */
+	if (bhnd_find_provider(sc, prov_type) != NULL) {
+		BHND_UNLOCK_RW(sc);
+		free(entry, M_BHND);
+		return (EBUSY);
+	}
+
+	/* Initialize and insert our new provider record */
+	entry->dev = dev;
+	entry->type = prov_type;
+	entry->refs = 0;
+	STAILQ_INSERT_HEAD(&sc->providers, entry, link);
+
+	BHND_UNLOCK_RW(sc);
+	return (0);
+}
+
+/**
+ * Default bhnd(4) bus driver implementation of BHND_BUS_DEREGISTER_PROVIDER()
+ */
+int
+bhnd_generic_deregister_provider(device_t dev, device_t prov,
+    bhnd_provider_type prov_type)
+{
+	struct bhnd_softc	*sc;
+	struct bhnd_prov	*entry, *enext;
+
+	sc = device_get_softc(dev);
+
+	GIANT_REQUIRED;	/* for newbus */
+	BHND_LOCK_RW(sc);
+
+#define	BHND_PROV_MATCH(_e)	\
+	((_e)->dev == dev &&	\
+	 (prov_type == BHND_PROVIDER_INVALID || (_e)->type == prov_type))
+
+	/* Validate matching provider entries before making any
+	 * modifications */
+	STAILQ_FOREACH(entry, &sc->providers, link) {
+		/* Skip non-matching entries */
+		if (!BHND_PROV_MATCH(entry))
+			continue;
+
+		/* Entry is in use? */
+		if (entry->refs > 0) {
+			BHND_UNLOCK_RW(sc);
+			return (EBUSY);
+		}
+	}
+
+	/* We can now safely remove matching entries */
+	STAILQ_FOREACH_SAFE(entry, &sc->providers, link, enext) {
+		/* Skip non-matching entries */
+		if (!BHND_PROV_MATCH(entry))
+			continue;
+
+		/* Remove from list */
+		STAILQ_REMOVE(&sc->providers, entry, bhnd_prov, link);
+
+		/* Free provider entry */
+		KASSERT(entry->refs, ("provider has active references"));
+
+		free(entry, M_BHND);
+	}
+#undef	BHND_PROV_MATCH
+
+	BHND_UNLOCK_RW(sc);
+
+	return (0);
+}
+
+/**
+ * Default bhnd(4) bus driver implementation of BHND_BUS_RETAIN_PROVIDER()
+ */
+int
+bhnd_generic_retain_provider(device_t dev, device_t child, device_t *prov,
+    bhnd_provider_type prov_type)
+{
+	struct bhnd_softc	*sc;
+	struct bhnd_prov	*entry;
+
+	sc = device_get_softc(dev);
+
+	GIANT_REQUIRED;	/* for newbus */
+	BHND_LOCK_RW(sc);
+
+	/* Fetch provider record */
+	if ((entry = bhnd_find_provider(sc, prov_type)) == NULL) {
+		BHND_UNLOCK_RW(sc);
+		return (ENOENT);
+	}
+
+	/* Ensure reference count will not overflow */
+	if (entry->refs == UINT_MAX) {
+		BHND_UNLOCK_RW(sc);
+		return (ENOMEM);
+	}
+
+	/* Bump refcount and return the provider device to our caller */
+	entry->refs++;
+	*prov = entry->dev;
+	return (0);
+}
+
+/**
+ * Default bhnd(4) bus driver implementation of BHND_BUS_RELEASE_PROVIDER()
+ */
+void
+bhnd_generic_release_provider(device_t dev, device_t child, device_t prov,
+    bhnd_provider_type prov_type)
+{
+	struct bhnd_softc	*sc;
+	struct bhnd_prov	*entry;
+
+	sc = device_get_softc(dev);
+
+	GIANT_REQUIRED;	/* for newbus */
+	BHND_LOCK_RW(sc);
+
+	/* Fetch provider record */
+	if ((entry = bhnd_find_provider(sc, prov_type)) == NULL) {
+		panic("overrelease of provider by %s",
+		    device_get_nameunit(child));
+	}
+
+	/* Decrement reference count */
+	KASSERT(entry->refs > 0, ("refcount underflow"));
+	entry->refs--;
+}
+
+/**
+ * Return the provider registration for @p type, or NULL if none.
+ */
+static struct bhnd_prov *
+bhnd_find_provider(struct bhnd_softc *sc, bhnd_provider_type type)
+{
+	struct bhnd_prov *prov;
+
+	BHND_LOCK_ASSERT(sc, SA_LOCKED);
+
+	STAILQ_FOREACH(prov, &sc->providers, link) {
+		if (prov->type == type)
+			return (prov);
+	}
+
+	/* Not found */
+	return (NULL);
 }
 
 /**
@@ -1172,6 +1366,11 @@ static device_method_t bhnd_methods[] = {
 	DEVMETHOD(bhnd_bus_read_board_info,	bhnd_bus_generic_read_board_info),
 
 	DEVMETHOD(bhnd_bus_get_probe_order,	bhnd_generic_get_probe_order),
+	
+	DEVMETHOD(bhnd_bus_register_provider,	bhnd_generic_register_provider),
+	DEVMETHOD(bhnd_bus_deregister_provider,	bhnd_generic_deregister_provider),
+	DEVMETHOD(bhnd_bus_retain_provider,	bhnd_generic_retain_provider),
+	DEVMETHOD(bhnd_bus_release_provider,	bhnd_generic_release_provider),
 
 	DEVMETHOD(bhnd_bus_alloc_pmu,		bhnd_generic_alloc_pmu),
 	DEVMETHOD(bhnd_bus_release_pmu,		bhnd_generic_release_pmu),

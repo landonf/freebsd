@@ -116,6 +116,7 @@ bhnd_pwrctl_attach(device_t dev)
 	struct chipc_softc		*chipc_sc;
 	bhnd_devclass_t			 hostb_class;
 	device_t			 hostb_dev;
+	device_t			 bus;
 	int				 error;
 
 	sc = device_get_softc(dev);
@@ -127,6 +128,8 @@ bhnd_pwrctl_attach(device_t dev)
 	sc->chipc_dev = device_get_parent(dev);
 	sc->quirks = bhnd_device_quirks(sc->chipc_dev, pwrctl_devices,
 	    sizeof(pwrctl_devices[0]));
+
+	bus = device_get_parent(sc->chipc_dev);
 
 	/* On devices that lack a slow clock source, HT must always be
 	 * enabled. */
@@ -176,6 +179,13 @@ bhnd_pwrctl_attach(device_t dev)
 	}
 
 	PWRCTL_UNLOCK(sc);
+
+	/* Register as the bus PMU provider */
+	if ((error = bhnd_bus_register_provider(bus, dev, BHND_PROVIDER_PMU))) {
+		device_printf(sc->dev, "failed to register PMU with bus : %d\n",
+		    error);
+		goto cleanup;
+	}
 
 	return (0);
 

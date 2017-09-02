@@ -553,7 +553,7 @@ bhnd_bus_deregister_provider(device_t bus, device_t prov,
 static inline int
 bhnd_retain_provider(device_t dev, device_t *prov, bhnd_provider_type prov_type)
 {
-	return (BHND_BUS_RETAIN_PROVIDER(device_get_parent(dev), prov,
+	return (BHND_BUS_RETAIN_PROVIDER(device_get_parent(dev), dev, prov,
 	    prov_type));
 }
 
@@ -568,7 +568,7 @@ bhnd_retain_provider(device_t dev, device_t *prov, bhnd_provider_type prov_type)
 static inline void
 bhnd_release_provider(device_t dev, device_t prov, bhnd_provider_type prov_type)
 {
-	return (BHND_BUS_RELEASE_PROVIDER(device_get_parent(dev), prov,
+	return (BHND_BUS_RELEASE_PROVIDER(device_get_parent(dev), dev, prov,
 	    prov_type));
 }
 

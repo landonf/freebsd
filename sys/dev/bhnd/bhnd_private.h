@@ -45,26 +45,15 @@
  * A bhnd(4) platform device registration.
  */
 struct bhnd_prov {
-	device_t				dev;		/**< providing device */
-	bhnd_provider_type			type;		/**< provider type */
-	STAILQ_HEAD(,bhnd_prov_consumer)	consumers;	/**< consumer registrations */
+	device_t		dev;	/**< providing device */
+	bhnd_provider_type	type;	/**< provider type */
+	u_int			refs;	/**< reference count */
 
 	STAILQ_ENTRY(bhnd_prov) link;
 };
 
-/**
- * A bhnd(4) platform device consumer registration.
- */
-struct bhnd_prov_consumer {
-	device_t		 dev;	/**< consuming device. */
-	struct bhnd_prov	*prov;	/**< retained provider. */
-	u_int			 refs;	/**< per-consumer reference count */
-
-	STAILQ_ENTRY(bhnd_prov_consumer) link;
-};
-
 #define BHND_LOCK_INIT(sc) \
-    sx_init(&(sc)->sx, device_get_nameunit((sc)->dev), "bhnd_lock")
+    sx_init(&(sc)->sx, "bhnd_lock")
 #define BHND_LOCK_RO(sc)		sx_slock(&(sc)->sx)
 #define BHND_UNLOCK_RO(sc)		sx_sunlock(&(sc)->sx)
 #define BHND_LOCK_RW(sc)		sx_xlock(&(sc)->sx)

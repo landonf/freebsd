@@ -128,7 +128,7 @@ bhnd_pmu_attach(device_t dev, struct bhnd_resource *res)
 	/* Fetch capability flags */
 	sc->caps = bhnd_bus_read_4(sc->res, BHND_PMU_CAP);
 
-	/* Find the bus-attached core */
+	/* Find the bus and bus-attached core */
 	bhnd_class = devclass_find("bhnd");
 	core = sc->dev;
 	while ((bus = device_get_parent(core)) != NULL) {
@@ -183,6 +183,13 @@ bhnd_pmu_attach(device_t dev, struct bhnd_resource *res)
 	/* Initialize PMU */
 	if ((error = bhnd_pmu_init(sc))) {
 		device_printf(sc->dev, "PMU init failed: %d\n", error);
+		goto failed;
+	}
+
+	/* Register as the bus PMU provider */
+	if ((error = bhnd_bus_register_provider(bus, dev, BHND_PROVIDER_PMU))) {
+		device_printf(sc->dev, "failed to register PMU with bus : %d\n",
+		    error);
 		goto failed;
 	}
 

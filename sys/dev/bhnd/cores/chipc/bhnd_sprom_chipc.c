@@ -89,8 +89,12 @@ chipc_sprom_attach(device_t dev)
 	if ((error = BHND_CHIPC_ENABLE_SPROM(chipc)))
 		return (error);
 
+	/* Perform SPROM attach */
 	error = bhnd_sprom_attach(dev, caps->sprom_offset);
 	BHND_CHIPC_DISABLE_SPROM(chipc);
+	if (error)
+		return (error);
+
 	return (error);
 }
 

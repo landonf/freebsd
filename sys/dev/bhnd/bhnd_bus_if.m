@@ -240,15 +240,15 @@ CODE {
 	}
 
 	static int
-	bhnd_bus_null_retain_provider(device_t dev, device_t *prov,
-	    bhnd_provider_type prov_type)
+	bhnd_bus_null_retain_provider(device_t dev, device_t child,
+	    device_t *prov, bhnd_provider_type prov_type)
 	{
 		panic("bhnd_bus_retain_provider unimplemented");
 	}
 
 	static void
-	bhnd_bus_null_release_provider(device_t dev, device_t prov,
-	    bhnd_provider_type prov_type)
+	bhnd_bus_null_release_provider(device_t dev, device_t child,
+	    device_t prov, bhnd_provider_type prov_type)
 	{
 		panic("bhnd_bus_release_provider unimplemented");
 	}
@@ -349,6 +349,7 @@ METHOD int deregister_provider {
  * @p prov_type.
  *
  * @param dev The bhnd bus device.
+ * @param child The requesting child device.
  * @param[out] prov On success, a caller-owned reference to the provider device.
  * @param prov_type The provider type to be retained.
  *
@@ -363,6 +364,7 @@ METHOD int deregister_provider {
  */
 METHOD int retain_provider {
 	device_t dev;
+	device_t child;
 	device_t *prov;
 	bhnd_provider_type prov_type;
 } DEFAULT bhnd_bus_null_retain_provider;
@@ -372,11 +374,13 @@ METHOD int retain_provider {
  * BHND_BUS_RETAIN_PROVIDER().
  *
  * @param dev The bhnd bus device.
+ * @param child The requesting child device.
  * @param prov The provider to be released.
  * @param prov_type The provider type to be released.
  */
 METHOD void release_provider {
 	device_t dev;
+	device_t child;
 	device_t prov;
 	bhnd_provider_type prov_type;
 } DEFAULT bhnd_bus_null_release_provider;

@@ -59,6 +59,17 @@ int			 bhnd_generic_suspend(device_t dev);
 int			 bhnd_generic_get_probe_order(device_t dev,
 			     device_t child);
 
+int			 bhnd_generic_register_provider(device_t dev,
+			     device_t prov, bhnd_provider_type prov_type);
+int			 bhnd_generic_deregister_provider(device_t bus,
+			     device_t prov, bhnd_provider_type prov_type);
+int			 bhnd_generic_retain_provider(device_t dev,
+			     device_t child, device_t *prov,
+			     bhnd_provider_type prov_type);
+void			 bhnd_generic_release_provider(device_t dev,
+			     device_t child, device_t prov,
+			     bhnd_provider_type prov_type);
+
 int			 bhnd_generic_alloc_pmu(device_t dev,
 			     device_t child);
 int			 bhnd_generic_release_pmu(device_t dev,
