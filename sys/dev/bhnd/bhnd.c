@@ -520,6 +520,11 @@ bhnd_generic_release_provider(device_t dev, device_t child, device_t prov,
 		    device_get_nameunit(child));
 	}
 
+	if (entry->dev != prov) {
+		panic("release of non-registered provider by %s",
+		    device_get_nameunit(child));
+	}
+
 	/* Decrement reference count */
 	KASSERT(entry->refs > 0, ("refcount underflow"));
 	entry->refs--;
