@@ -106,13 +106,6 @@ struct bhnd_softc {
 	device_t		dev;			/**< bus device */
 	struct sx		sx;			/**< bhnd state lock */
 	STAILQ_HEAD(,bhnd_prov)	providers;		/**< registered platform device providers */
-
-	bool			attach_done;		/**< true if initialization of 
-							  *  all platform devices has
-							  *  been completed */
-	device_t		chipc_dev;		/**< bhnd_chipc device */ 
-	device_t		nvram_dev;		/**< bhnd_nvram device, if any */
-	device_t		pmu_dev;		/**< bhnd_pmu device, if any */
 };
 
 #endif /* _BHND_BHNDVAR_H_ */

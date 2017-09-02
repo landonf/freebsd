@@ -78,10 +78,11 @@ static int
 chipc_sprom_attach(device_t dev)
 {
 	struct chipc_caps	*caps;
-	device_t		 chipc;
+	device_t		 bus, chipc;
 	int			 error;
 
 	chipc = device_get_parent(dev);
+	bus = device_get_parent(chipc);
 	caps = BHND_CHIPC_GET_CAPS(chipc);
 
 	/* Request that ChipCommon enable access to SPROM hardware before
@@ -95,13 +96,46 @@ chipc_sprom_attach(device_t dev)
 	if (error)
 		return (error);
 
-	return (error);
+	/* Register ourselves as the bus NVRAM provider */
+	error = bhnd_bus_register_provider(bus, dev, BHND_PROVIDER_NVRAM);
+	if (error) {
+		device_printf(dev, "failed to register as NVRAM provider: %d\n",
+		    error);
+
+		/* Clean up our superclass' driver state */
+		bhnd_sprom_detach(dev);
+		return (error);
+	}
+
+	return (0);
+}
+
+static int
+chipc_sprom_detach(device_t dev)
+{
+	device_t		 bus, chipc;
+	int			 error;
+
+	chipc = device_get_parent(dev);
+	bus = device_get_parent(chipc);	
+
+	/* Drop our NVRAM provider registration */
+	error = bhnd_bus_deregister_provider(bus, dev, BHND_PROVIDER_NVRAM);
+	if (error) {
+		device_printf(dev, "failed to deregister NVRAM provider: %d\n",
+		    error);
+		return (error);
+	}
+
+	/* Delegate detach to the superclass */
+	return (bhnd_sprom_detach(dev));
 }
 
 static device_method_t chipc_sprom_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,			chipc_sprom_probe),
 	DEVMETHOD(device_attach,		chipc_sprom_attach),
+	DEVMETHOD(device_detach,		chipc_sprom_detach),
 	DEVMETHOD_END
 };
 

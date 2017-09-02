@@ -73,10 +73,6 @@ __FBSDID("$FreeBSD$");
 
 MALLOC_DEFINE(M_BHND, "bhnd", "bhnd bus data structures");
 
-/* Bus pass at which all bus-required children must be available, and
- * attachment may be finalized. */
-#define	BHND_FINISH_ATTACH_PASS	BUS_PASS_DEFAULT
-
 /**
  * bhnd_generic_probe_nomatch() reporting configuration.
  */
@@ -97,16 +93,8 @@ static const struct bhnd_nomatch {
 
 static int			 bhnd_delete_children(struct bhnd_softc *sc);
 
-static int			 bhnd_finish_attach(struct bhnd_softc *sc);
-
 static struct bhnd_prov		*bhnd_find_provider(struct bhnd_softc *sc,
 				     bhnd_provider_type type);
-
-static device_t			 bhnd_find_chipc(struct bhnd_softc *sc);
-static struct chipc_caps	*bhnd_find_chipc_caps(struct bhnd_softc *sc);
-static device_t			 bhnd_find_platform_dev(struct bhnd_softc *sc,
-				     const char *classname);
-static device_t			 bhnd_find_nvram(struct bhnd_softc *sc);
 
 /**
  * Default bhnd(4) bus driver implementation of DEVICE_ATTACH().
@@ -134,16 +122,6 @@ bhnd_generic_attach(device_t dev)
 
 	/* Probe and attach all children */
 	if ((error = bhnd_bus_probe_children(dev)))
-		goto cleanup;
-
-	/* Try to finalize attachment */
-	if (bus_current_pass >= BHND_FINISH_ATTACH_PASS) {
-		if ((error = bhnd_finish_attach(sc)))
-			goto cleanup;
-	}
-
-cleanup:
-	if (error)
 		bhnd_delete_children(sc);
 
 	return (error);
@@ -338,191 +316,6 @@ cleanup:
 	return (error);
 }
 
-static void
-bhnd_new_pass(device_t dev)
-{
-	struct bhnd_softc	*sc;
-	int			 error;
-
-	sc = device_get_softc(dev);
-
-	/* Attach any permissible children */ 
-	bus_generic_new_pass(dev);
-
-	/* Finalize attachment */
-	if (!sc->attach_done && bus_current_pass >= BHND_FINISH_ATTACH_PASS) {
-		if ((error = bhnd_finish_attach(sc))) {
-			panic("bhnd_finish_attach() failed: %d", error);
-		}
-	}
-}
-
-/*
- * Finish any pending bus attachment operations.
- *
- * When attached as a SoC bus (as opposed to a bridged WiFi device), our
- * platform devices may not be attached until later bus passes, necessitating
- * delayed initialization on our part.
- */
-static int
-bhnd_finish_attach(struct bhnd_softc *sc)
-{
-	struct chipc_caps	*ccaps;
-
-	GIANT_REQUIRED;	/* for newbus */
-
-	KASSERT(bus_current_pass >= BHND_FINISH_ATTACH_PASS,
-	    ("bhnd_finish_attach() called in pass %d", bus_current_pass));
-
-	KASSERT(!sc->attach_done, ("duplicate call to bhnd_finish_attach()"));
-
-	/* Locate chipc device */
-	if ((sc->chipc_dev = bhnd_find_chipc(sc)) == NULL) {
-		device_printf(sc->dev, "error: ChipCommon device not found\n");
-		return (ENXIO);
-	}
-
-	ccaps = BHND_CHIPC_GET_CAPS(sc->chipc_dev);
-
-	/* Look for NVRAM device */
-	if (ccaps->nvram_src != BHND_NVRAM_SRC_UNKNOWN) {
-		if ((sc->nvram_dev = bhnd_find_nvram(sc)) == NULL) {
-			device_printf(sc->dev,
-			    "warning: NVRAM %s device not found\n",
-			    bhnd_nvram_src_name(ccaps->nvram_src));
-		}
-	}
-
-	/* Mark attach as completed */
-	sc->attach_done = true;
-
-	return (0);
-}
-
-/* Locate the ChipCommon core. */
-static device_t
-bhnd_find_chipc(struct bhnd_softc *sc)
-{
-	device_t chipc;
-
-        /* Make sure we're holding Giant for newbus */
-	GIANT_REQUIRED;
-
-	/* chipc_dev is initialized during attachment */
-	if (sc->attach_done) {
-		if ((chipc = sc->chipc_dev) == NULL)
-			return (NULL);
-
-		goto found;
-	}
-
-	/* Locate chipc core with a core unit of 0 */
-	chipc = bhnd_bus_find_child(sc->dev, BHND_DEVCLASS_CC, 0);
-	if (chipc == NULL)
-		return (NULL);
-
-found:
-	if (device_get_state(chipc) < DS_ATTACHING) {
-		device_printf(sc->dev, "chipc found, but did not attach\n");
-		return (NULL);
-	}
-
-	return (chipc);
-}
-
-/* Locate the ChipCommon core and return the device capabilities  */
-static struct chipc_caps *
-bhnd_find_chipc_caps(struct bhnd_softc *sc)
-{
-	device_t chipc;
-
-	if ((chipc = bhnd_find_chipc(sc)) == NULL) {
-		device_printf(sc->dev, 
-		    "chipc unavailable; cannot fetch capabilities\n");
-		return (NULL);
-	}
-
-	return (BHND_CHIPC_GET_CAPS(chipc));
-}
-
-/**
- * Find an attached platform device on @p dev, searching first for cores
- * matching @p classname, and if not found, searching the children of the first
- * bhnd_chipc device on the bus.
- * 
- * @param sc Driver state.
- * @param chipc Attached ChipCommon device.
- * @param classname Device class to search for.
- * 
- * @retval device_t A matching device.
- * @retval NULL If no matching device is found.
- */
-static device_t
-bhnd_find_platform_dev(struct bhnd_softc *sc, const char *classname)
-{
-	device_t chipc, child;
-
-        /* Make sure we're holding Giant for newbus */
-	GIANT_REQUIRED;
-
-	/* Look for a directly-attached child */
-	child = device_find_child(sc->dev, classname, -1);
-	if (child != NULL)
-		goto found;
-
-	/* Look for the first matching ChipCommon child */
-	if ((chipc = bhnd_find_chipc(sc)) == NULL) {
-		device_printf(sc->dev, 
-		    "chipc unavailable; cannot locate %s\n", classname);
-		return (NULL);
-	}
-
-	child = device_find_child(chipc, classname, -1);
-	if (child != NULL)
-		goto found;
-
-	/* Look for a parent-attached device (e.g. nexus0 -> bhnd_nvram) */
-	child = device_find_child(device_get_parent(sc->dev), classname, -1);
-	if (child == NULL)
-		return (NULL);
-
-found:
-	if (device_get_state(child) < DS_ATTACHING)
-		return (NULL);
-
-	return (child);
-}
-
-/* Locate the NVRAM device, if any */
-static device_t
-bhnd_find_nvram(struct bhnd_softc *sc)
-{
-	struct chipc_caps *ccaps;
-
-        /* Make sure we're holding Giant for newbus */
-	GIANT_REQUIRED;
-
-
-	/* nvram_dev is initialized during attachment */
-	if (sc->attach_done) {
-		if (sc->nvram_dev == NULL)
-			return (NULL);
-
-		if (device_get_state(sc->nvram_dev) < DS_ATTACHING)
-			return (NULL);
-
-		return (sc->nvram_dev);
-	}
-
-	if ((ccaps = bhnd_find_chipc_caps(sc)) == NULL)
-		return (NULL);
-
-	if (ccaps->nvram_src == BHND_NVRAM_SRC_UNKNOWN)
-		return (NULL);
-
-	return (bhnd_find_platform_dev(sc, "bhnd_nvram"));
-}
-
 /**
  * Default bhnd(4) bus driver implementation of BHND_BUS_GET_PROBE_ORDER().
  *
@@ -606,7 +399,7 @@ bhnd_generic_register_provider(device_t dev, device_t prov,
 	}
 
 	/* Initialize and insert our new provider record */
-	entry->dev = dev;
+	entry->dev = prov;
 	entry->type = prov_type;
 	entry->refs = 0;
 	STAILQ_INSERT_HEAD(&sc->providers, entry, link);
@@ -681,7 +474,6 @@ bhnd_generic_retain_provider(device_t dev, device_t child,
 
 	sc = device_get_softc(dev);
 
-	GIANT_REQUIRED;	/* for newbus */
 	BHND_LOCK_RW(sc);
 
 	/* Fetch provider record */
@@ -720,7 +512,6 @@ bhnd_generic_release_provider(device_t dev, device_t child, device_t prov,
 
 	sc = device_get_softc(dev);
 
-	GIANT_REQUIRED;	/* for newbus */
 	BHND_LOCK_RW(sc);
 
 	/* Fetch provider record */
@@ -732,6 +523,8 @@ bhnd_generic_release_provider(device_t dev, device_t child, device_t prov,
 	/* Decrement reference count */
 	KASSERT(entry->refs > 0, ("refcount underflow"));
 	entry->refs--;
+
+	BHND_UNLOCK_RW(sc);
 }
 
 /**
@@ -761,7 +554,6 @@ bhnd_generic_alloc_pmu(device_t dev, device_t child)
 {
 	struct bhnd_softc		*sc;
 	struct bhnd_resource		*br;
-	struct chipc_caps		*ccaps;
 	struct bhnd_core_pmu_info	*pm;
 	struct resource_list		*rl;
 	struct resource_list_entry	*rle;
@@ -776,12 +568,6 @@ bhnd_generic_alloc_pmu(device_t dev, device_t child)
 	sc = device_get_softc(dev);
 	pm = bhnd_get_pmu_info(child);
 	pmu_regs = BHND_CLK_CTL_ST;
-
-	if ((ccaps = bhnd_find_chipc_caps(sc)) == NULL) {
-		device_printf(sc->dev, "alloc_pmu failed: chipc "
-		    "capabilities unavailable\n");
-		return (ENXIO);
-	}
 
 	/* already allocated? */
 	if (pm != NULL) {
@@ -1007,9 +793,9 @@ bhnd_generic_is_region_valid(device_t dev, device_t child,
 /**
  * Default bhnd(4) bus driver implementation of BHND_BUS_GET_NVRAM_VAR().
  * 
- * This implementation searches @p dev for a usable NVRAM child device.
+ * This implementation searches @p dev for a registered NVRAM child device.
  * 
- * If no usable child device is found on @p dev, the request is delegated to
+ * If no NVRAM device is registered with @p dev, the request is delegated to
  * the BHND_BUS_GET_NVRAM_VAR() method on the parent of @p dev.
  */
 int
@@ -1018,12 +804,17 @@ bhnd_generic_get_nvram_var(device_t dev, device_t child, const char *name,
 {
 	struct bhnd_softc	*sc;
 	device_t		 nvram, parent;
+	int			 error;
 
 	sc = device_get_softc(dev);
 
 	/* If a NVRAM device is available, consult it first */
-	if ((nvram = bhnd_find_nvram(sc)) != NULL)
-		return BHND_NVRAM_GETVAR(nvram, name, buf, size, type);
+	nvram = bhnd_retain_provider(child, BHND_PROVIDER_NVRAM);
+	if (nvram != NULL) {
+		error = BHND_NVRAM_GETVAR(nvram, name, buf, size, type);
+		bhnd_release_provider(child, nvram, BHND_PROVIDER_NVRAM);
+		return (error);
+	}
 
 	/* Otherwise, try to delegate to parent */
 	if ((parent = device_get_parent(dev)) == NULL)
@@ -1178,15 +969,6 @@ bhnd_generic_child_deleted(device_t dev, device_t child)
 		panic("%s leaked device pmu state\n",
 		    device_get_nameunit(child));
 	}
-
-	/* Clean up platform device references */
-	if (sc->chipc_dev == child) {
-		sc->chipc_dev = NULL;
-	} else if (sc->nvram_dev == child) {
-		sc->nvram_dev = NULL;
-	} else if (sc->pmu_dev == child) {
-		sc->pmu_dev = NULL;
-	}
 }
 
 /**
@@ -1308,7 +1090,6 @@ static device_method_t bhnd_methods[] = {
 	DEVMETHOD(device_resume,		bhnd_generic_resume),
 
 	/* Bus interface */
-	DEVMETHOD(bus_new_pass,			bhnd_new_pass),
 	DEVMETHOD(bus_child_deleted,		bhnd_generic_child_deleted),
 	DEVMETHOD(bus_probe_nomatch,		bhnd_generic_probe_nomatch),
 	DEVMETHOD(bus_print_child,		bhnd_generic_print_child),
