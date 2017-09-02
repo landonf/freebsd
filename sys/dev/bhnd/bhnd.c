@@ -704,8 +704,8 @@ bhnd_generic_deregister_provider(device_t dev, device_t prov,
 /**
  * Default bhnd(4) bus driver implementation of BHND_BUS_RETAIN_PROVIDER()
  */
-int
-bhnd_generic_retain_provider(device_t dev, device_t child, device_t *prov,
+device_t
+bhnd_generic_retain_provider(device_t dev, device_t child,
     bhnd_provider_type prov_type)
 {
 	struct bhnd_softc	*sc;
@@ -719,19 +719,25 @@ bhnd_generic_retain_provider(device_t dev, device_t child, device_t *prov,
 	/* Fetch provider record */
 	if ((entry = bhnd_find_provider(sc, prov_type)) == NULL) {
 		BHND_UNLOCK_RW(sc);
-		return (ENOENT);
+		return (NULL);
 	}
 
 	/* Ensure reference count will not overflow */
 	if (entry->refs == UINT_MAX) {
+		/* should be impossible (unless there's a leak) */
+		device_printf(dev, "%s(%d) refcount overflow\n",
+		    device_get_nameunit(entry->dev), entry->type);
+
 		BHND_UNLOCK_RW(sc);
-		return (ENOMEM);
+		return (NULL);
 	}
 
-	/* Bump refcount and return the provider device to our caller */
+	/* Bump refcount, preventing free of the entry after we drop our
+	 * lock */
 	entry->refs++;
-	*prov = entry->dev;
-	return (0);
+	BHND_UNLOCK_RW(sc);
+
+	return (entry->dev);
 }
 
 /**

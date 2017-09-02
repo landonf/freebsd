@@ -522,7 +522,7 @@ bhnd_bus_register_provider(device_t bus, device_t prov,
  * @retval 0		if @p prov has been successfully deregistered, or no
  *			matching registration was found.
  * @retval EBUSY	if active references to @p prov exist; @see
- *			BHND_BUS_RETAIN_PROVIDER().
+ *			bhnd_retain_provider().
  * @retval non-zero	if deregistering @p prov otherwise fails, a regular unix
  *			error code will be returned.
  */
@@ -538,22 +538,18 @@ bhnd_bus_deregister_provider(device_t bus, device_t prov,
  * @p prov_type.
  *
  * @param dev A bhnd bus child device.
- * @param[out] prov On success, a caller-owned reference to the provider device.
  * @param prov_type The provider type to be retained.
  *
- * On success, the caller assumes ownership of a new reference to the returned
- * device. The caller is responsible for releasing this reference via
- * bhnd_release_provider().
+ * On success, the caller assumes ownership the returned provider reference, and
+ * is responsible for releasing this reference via bhnd_release_provider().
  *
- * @retval 0		success
- * @retval ENOENT	if no provider is registered for @p prov_type.
- * @retval non-zero	if retaining the provider otherwise fails, a regular
- *			unix error code will be returned.
+ * @retval device_t	success
+ * @retval NULL		if no provider is registered for @p prov_type.
  */
-static inline int
-bhnd_retain_provider(device_t dev, device_t *prov, bhnd_provider_type prov_type)
+static inline device_t
+bhnd_retain_provider(device_t dev, bhnd_provider_type prov_type)
 {
-	return (BHND_BUS_RETAIN_PROVIDER(device_get_parent(dev), dev, prov,
+	return (BHND_BUS_RETAIN_PROVIDER(device_get_parent(dev), dev,
 	    prov_type));
 }
 

@@ -239,9 +239,9 @@ CODE {
 		panic("bhnd_bus_deregister_provider unimplemented");
 	}
 
-	static int
+	static device_t
 	bhnd_bus_null_retain_provider(device_t dev, device_t child,
-	    device_t *prov, bhnd_provider_type prov_type)
+	    bhnd_provider_type prov_type)
 	{
 		panic("bhnd_bus_retain_provider unimplemented");
 	}
@@ -350,22 +350,17 @@ METHOD int deregister_provider {
  *
  * @param dev The bhnd bus device.
  * @param child The requesting child device.
- * @param[out] prov On success, a caller-owned reference to the provider device.
  * @param prov_type The provider type to be retained.
  *
- * On success, the caller assumes ownership of a new reference to the returned
- * device. The caller is responsible for releasing this reference via
- * BHND_BUS_RELEASE_PROVIDER().
+ * On success, the caller assumes ownership the returned provider reference, and
+ * is responsible for releasing this reference via BHND_BUS_RELEASE_PROVIDER().
  *
- * @retval 0		success
- * @retval ENOENT	if no provider is registered for @p prov_type.
- * @retval non-zero	if retaining the provider otherwise fails, a regular
- *			unix error code will be returned.
+ * @retval device_t	success
+ * @retval NULL		if no provider is registered for @p prov_type.
  */
-METHOD int retain_provider {
+METHOD device_t retain_provider {
 	device_t dev;
 	device_t child;
-	device_t *prov;
 	bhnd_provider_type prov_type;
 } DEFAULT bhnd_bus_null_retain_provider;
 

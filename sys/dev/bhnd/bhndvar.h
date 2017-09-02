@@ -63,9 +63,8 @@ int			 bhnd_generic_register_provider(device_t dev,
 			     device_t prov, bhnd_provider_type prov_type);
 int			 bhnd_generic_deregister_provider(device_t bus,
 			     device_t prov, bhnd_provider_type prov_type);
-int			 bhnd_generic_retain_provider(device_t dev,
-			     device_t child, device_t *prov,
-			     bhnd_provider_type prov_type);
+device_t		 bhnd_generic_retain_provider(device_t dev,
+			     device_t child, bhnd_provider_type prov_type);
 void			 bhnd_generic_release_provider(device_t dev,
 			     device_t child, device_t prov,
 			     bhnd_provider_type prov_type);
