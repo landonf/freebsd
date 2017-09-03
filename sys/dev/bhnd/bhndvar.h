@@ -48,64 +48,55 @@
 MALLOC_DECLARE(M_BHND);
 DECLARE_CLASS(bhnd_driver);
 
-struct bhnd_prov;
+int				 bhnd_generic_attach(device_t dev);
+int				 bhnd_generic_detach(device_t dev);
+int				 bhnd_generic_shutdown(device_t dev);
+int				 bhnd_generic_resume(device_t dev);
+int				 bhnd_generic_suspend(device_t dev);
 
-int			 bhnd_generic_attach(device_t dev);
-int			 bhnd_generic_detach(device_t dev);
-int			 bhnd_generic_shutdown(device_t dev);
-int			 bhnd_generic_resume(device_t dev);
-int			 bhnd_generic_suspend(device_t dev);
+int				 bhnd_generic_get_probe_order(device_t dev,
+				     device_t child);
 
-int			 bhnd_generic_get_probe_order(device_t dev,
-			     device_t child);
+struct bhnd_service_registry	*bhnd_generic_get_service_registry(device_t dev,
+				     device_t child);
 
-int			 bhnd_generic_register_provider(device_t dev,
-			     device_t prov, bhnd_provider_type prov_type);
-int			 bhnd_generic_deregister_provider(device_t bus,
-			     device_t prov, bhnd_provider_type prov_type);
-device_t		 bhnd_generic_retain_provider(device_t dev,
-			     device_t child, bhnd_provider_type prov_type);
-void			 bhnd_generic_release_provider(device_t dev,
-			     device_t child, device_t prov,
-			     bhnd_provider_type prov_type);
+int				 bhnd_generic_alloc_pmu(device_t dev,
+				     device_t child);
+int				 bhnd_generic_release_pmu(device_t dev,
+				     device_t child);
+int				 bhnd_generic_request_clock(device_t dev,
+				     device_t child, bhnd_clock clock);
+int				 bhnd_generic_enable_clocks(device_t dev,
+				     device_t child, uint32_t clocks);
+int				 bhnd_generic_request_ext_rsrc(device_t dev,
+				     device_t child, u_int rsrc);
+int				 bhnd_generic_release_ext_rsrc(device_t dev,
+				     device_t child, u_int rsrc);
 
-int			 bhnd_generic_alloc_pmu(device_t dev,
-			     device_t child);
-int			 bhnd_generic_release_pmu(device_t dev,
-			     device_t child);
-int			 bhnd_generic_request_clock(device_t dev,
-			     device_t child, bhnd_clock clock);
-int			 bhnd_generic_enable_clocks(device_t dev,
-			     device_t child, uint32_t clocks);
-int			 bhnd_generic_request_ext_rsrc(device_t dev,
-			     device_t child, u_int rsrc);
-int			 bhnd_generic_release_ext_rsrc(device_t dev,
-			     device_t child, u_int rsrc);
+int				 bhnd_generic_print_child(device_t dev,
+				     device_t child);
+void				 bhnd_generic_probe_nomatch(device_t dev,
+				     device_t child);
 
-int			 bhnd_generic_print_child(device_t dev,
-			     device_t child);
-void			 bhnd_generic_probe_nomatch(device_t dev,
-			     device_t child);
+void				 bhnd_generic_child_deleted(device_t dev,
+				     device_t child);
+int				 bhnd_generic_suspend_child(device_t dev,
+				     device_t child);
+int				 bhnd_generic_resume_child(device_t dev,
+				     device_t child);
 
-void			 bhnd_generic_child_deleted(device_t dev,
-			     device_t child);
-int			 bhnd_generic_suspend_child(device_t dev,
-			     device_t child);
-int			 bhnd_generic_resume_child(device_t dev,
-			     device_t child);
-
-int			 bhnd_generic_get_nvram_var(device_t dev,
-			     device_t child, const char *name, void *buf,
-			     size_t *size, bhnd_nvram_type type);
+int				 bhnd_generic_get_nvram_var(device_t dev,
+				     device_t child, const char *name,
+				     void *buf, size_t *size,
+				     bhnd_nvram_type type);
 
 /**
  * bhnd driver instance state. Must be first member of all subclass
  * softc structures.
  */
 struct bhnd_softc {
-	device_t		dev;			/**< bus device */
-	struct sx		sx;			/**< bhnd state lock */
-	STAILQ_HEAD(,bhnd_prov)	providers;		/**< registered platform device providers */
+	device_t			dev;		/**< bus device */
+	struct bhnd_service_registry	services;	/**< bhnd service registry */
 };
 
 #endif /* _BHND_BHNDVAR_H_ */

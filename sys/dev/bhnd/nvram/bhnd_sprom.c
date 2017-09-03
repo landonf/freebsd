@@ -99,8 +99,10 @@ bhnd_sprom_attach(device_t dev, bus_size_t offset)
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
+	sc->store = NULL;
 
 	io = NULL;
+	r = NULL;
 
 	/* Allocate SPROM resource */
 	rid = 0;
@@ -138,6 +140,16 @@ bhnd_sprom_attach(device_t dev, bus_size_t offset)
 	bhnd_nvram_io_free(io);
 	bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
 
+	io = NULL;
+	r = NULL;
+
+	/* Register as the bus NVRAM provider */
+	if ((error = bhnd_register_provider(dev, BHND_SERVICE_NVRAM))) {
+		device_printf(dev, "failed to register NVRAM provider: %d\n",
+		    error);
+		goto failed;
+	}
+
 	return (0);
 
 failed:
@@ -145,7 +157,11 @@ failed:
 	if (io != NULL)
 		bhnd_nvram_io_free(io);
 
-	bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
+	if (r != NULL)
+		bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
+
+	if (sc->store != NULL)
+		bhnd_nvram_store_free(sc->store);
 
 	return (error);
 }
@@ -175,8 +191,12 @@ int
 bhnd_sprom_detach(device_t dev)
 {
 	struct bhnd_sprom_softc	*sc;
+	int			 error;
 	
 	sc = device_get_softc(dev);
+
+	if ((error = bhnd_deregister_provider(dev, BHND_SERVICE_ANY)))
+		return (error);
 
 	bhnd_nvram_store_free(sc->store);
 

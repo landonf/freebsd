@@ -181,7 +181,7 @@ bhnd_pwrctl_attach(device_t dev)
 	PWRCTL_UNLOCK(sc);
 
 	/* Register as the bus PMU provider */
-	if ((error = bhnd_bus_register_provider(bus, dev, BHND_PROVIDER_PMU))) {
+	if ((error = bhnd_register_provider(dev, BHND_SERVICE_PMU))) {
 		device_printf(sc->dev, "failed to register PMU with bus : %d\n",
 		    error);
 		goto cleanup;
@@ -202,6 +202,9 @@ bhnd_pwrctl_detach(device_t dev)
 	int				 error;
 
 	sc = device_get_softc(dev);
+
+	if ((error = bhnd_deregister_provider(dev, BHND_SERVICE_ANY)))
+		return (error);
 
 	if ((error = bhnd_pwrctl_setclk(sc, BHND_CLOCK_DYN)))
 		return (error);

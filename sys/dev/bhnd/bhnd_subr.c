@@ -32,6 +32,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/bus.h>
+#include <sys/refcount.h>
 #include <sys/systm.h>
 
 #include <machine/bus.h>
@@ -51,6 +52,7 @@ __FBSDID("$FreeBSD$");
 
 #include "bhndreg.h"
 #include "bhndvar.h"
+#include "bhnd_private.h"
 
 static int	compare_ascending_probe_order(const void *lhs, const void *rhs);
 static int	compare_descending_probe_order(const void *lhs,
@@ -1489,6 +1491,278 @@ bhnd_nvram_getvar_array(device_t dev, const char *name, void *buf, size_t size,
 }
 
 /**
+ * Initialize a service provider registry.
+ * 
+ * @param bsr		The service registry to initialize.
+ * 
+ * @retval 0            success
+ * @retval non-zero     if an error occurs initializing the service registry,
+ *                      a regular unix error code will be returned.
+
+ */
+int
+bhnd_service_registry_init(struct bhnd_service_registry *bsr)
+{
+	STAILQ_INIT(&bsr->entries);
+	sx_init(&bsr->lock, "bhnd_service_registry lock");
+
+	return (0);
+}
+
+/**
+ * Release all resources held by @p bsr.
+ * 
+ * @param bsr		A service registry instance previously successfully
+ *			initialized via bhnd_service_registry_init().
+ *
+ * @retval 0		success
+ * @retval EBUSY	if active references to service providers registered
+ *			with @p bsr exist.
+ */
+int
+bhnd_service_registry_fini(struct bhnd_service_registry *bsr)
+{
+	struct bhnd_service_entry *entry, *enext;
+
+	/* Remove everthing we can */
+	sx_xlock(&bsr->lock);
+	STAILQ_FOREACH_SAFE(entry, &bsr->entries, link, enext) {
+		if (entry->refs > 0)
+			continue;
+
+		STAILQ_REMOVE(&bsr->entries, entry, bhnd_service_entry, link);
+		free(entry, M_BHND);
+	}
+
+	if (!STAILQ_EMPTY(&bsr->entries)) {
+		sx_xunlock(&bsr->lock);
+		return (EBUSY);
+	}
+
+	sx_destroy(&bsr->lock);
+	return (0);
+}
+
+/**
+ * Register a @p provider for the given @p service.
+ *
+ * @param bsr		The service registry to be modified.
+ * @param provider	The service provider to register.
+ * @param service	The service for which @p provider will be registered.
+ * @param info		An opaque caller-defined pointer to be associated with
+ *			the provider registration, or NULL.
+ *
+ * @retval 0		success
+ * @retval EBUSY	if an entry for @p service already exists.
+ * @retval EINVAL	if @p service is BHND_SERVICE_ANY.
+ * @retval non-zero	if registering @p provider otherwise fails, a regular
+ *			unix error code will be returned.
+ */
+int
+bhnd_service_registry_add(struct bhnd_service_registry *bsr, kobj_t provider,
+    bhnd_service_t service, void *info)
+{
+	struct bhnd_service_entry *entry;
+
+	if (service == BHND_SERVICE_ANY)
+		return (EINVAL);
+
+
+	sx_xlock(&bsr->lock);
+
+	/* Is a service provider already registered? */
+	STAILQ_FOREACH(entry, &bsr->entries, link) {
+		if (entry->service == service) {
+			sx_xunlock(&bsr->lock);
+			return (EBUSY);
+		}
+	}
+
+	/* Initialize and insert our new entry */
+	entry = malloc(sizeof(*entry), M_BHND, M_WAITOK);
+
+	entry->provider = provider;
+	entry->service = service;
+	refcount_init(&entry->refs, 0);
+
+	STAILQ_INSERT_HEAD(&bsr->entries, entry, link);
+
+	sx_xunlock(&bsr->lock);
+	return (0);
+}
+
+/**
+ * Attempt to remove the @p service provider registration for @p provider.
+ *
+ * @param bsr		The service registry to be modified.
+ * @param provider	The service provider to be deregistered.
+ * @param service	The service for which @p provider will be deregistered,
+ *			or BHND_SERVICE_ANY to remove all service
+ *			registrations for @p provider.
+ *
+ * @retval 0		success
+ * @retval EBUSY	if active references to @p provider exist; @see
+ *			bhnd_service_registry_retain() and
+ *			bhnd_service_registry_release().
+ * @retval non-zero	if deregistering @p provider otherwise fails, a regular
+ *			unix error code will be returned.
+ */
+int
+bhnd_service_registry_remove(struct bhnd_service_registry *bsr, kobj_t provider,
+    bhnd_service_t service)
+{
+	struct bhnd_service_entry *entry, *enext;
+
+	/* An exclusive lock gaurantees that entry refcounts will not
+	 * be modified out from under us */
+	sx_xlock(&bsr->lock);
+
+#define	BHND_PROV_MATCH(_e)	\
+	((_e)->provider == provider &&	\
+	 (service == BHND_SERVICE_ANY || (_e)->service == service))
+
+	/* Validate matching provider entries before making any
+	 * modifications */
+	STAILQ_FOREACH(entry, &bsr->entries, link) {
+		/* Skip non-matching entries */
+		if (!BHND_PROV_MATCH(entry))
+			continue;
+
+		/* Entry is in use? */
+		if (entry->refs > 0) {
+			sx_xunlock(&bsr->lock);
+			return (EBUSY);
+		}
+	}
+
+	/* We can now safely remove matching entries */
+	STAILQ_FOREACH_SAFE(entry, &bsr->entries, link, enext) {
+		/* Skip non-matching entries */
+		if (!BHND_PROV_MATCH(entry))
+			continue;
+
+		/* Remove from list */
+		STAILQ_REMOVE(&bsr->entries, entry, bhnd_service_entry, link);
+
+		/* Free provider entry */
+		KASSERT(entry->refs, ("provider has active references"));
+
+		free(entry, M_BHND);
+	}
+#undef	BHND_PROV_MATCH
+
+	return (0);
+}
+
+/**
+ * Retain and return a reference to a registered @p service provider, if any.
+ *
+ * @param bsr		The service registry to be queried.
+ * @param service	The service for which a provider should be returned.
+ *
+ * On success, the caller assumes ownership the returned provider, and
+ * is responsible for releasing this reference via
+ * bhnd_service_registry_release().
+ *
+ * @retval kobj_t	success
+ * @retval NULL		if no provider is registered for @p service.
+ */
+kobj_t
+bhnd_service_registry_retain(struct bhnd_service_registry *bsr,
+    bhnd_service_t service)
+{
+	struct bhnd_service_entry *entry;
+
+	sx_slock(&bsr->lock);
+	STAILQ_FOREACH(entry, &bsr->entries, link) {
+		if (entry->service != service)
+			continue;
+
+		/* With a live refcount, entry is gauranteed to remain alive
+		 * after we release our lock */
+		refcount_acquire(&entry->refs);
+
+		sx_sunlock(&bsr->lock);
+		return (entry->provider);
+	}
+
+	/* Not found */
+	return (NULL);
+}
+
+/**
+ * Release a reference to a service provider previously returned by
+ * bhnd_service_registry_retain().
+ *
+ * @param bsr		The service registry from which @p provider
+ *			was returned.
+ * @param provider	The provider to be released.
+ * @param service	The service for which @p provider was previously
+ *			retained.
+ */
+void
+bhnd_service_registry_release(struct bhnd_service_registry *bsr,
+    kobj_t provider, bhnd_service_t service)
+{
+	struct bhnd_service_entry *entry;
+
+	sx_slock(&bsr->lock);
+	STAILQ_FOREACH(entry, &bsr->entries, link) {
+		if (entry->provider != provider)
+			continue;
+
+		if (entry->service != service)
+			continue;
+
+		refcount_release(&entry->refs);
+
+		sx_sunlock(&bsr->lock);
+		return;
+	}
+
+	/* Caller owns a reference, but no such provider is registered? */
+	panic("invalid service provider reference");
+}
+
+/**
+ * Return the opaque info pointer associated with @p provider and @p service,
+ * if any.
+ * 
+ * @param bsr		The service registry with which @p provider
+ *			is registered.
+ * @param provider	A caller-owned reference to a service provider.
+ * @param service	A service for which @p provider was previously
+ *			retained.
+ */
+void *bhnd_service_registry_info(struct bhnd_service_registry *bsr,
+    kobj_t provider, bhnd_service_t service)
+{
+	struct bhnd_service_entry *entry;
+
+	sx_slock(&bsr->lock);
+	STAILQ_FOREACH(entry, &bsr->entries, link) {
+		if (entry->provider != provider)
+			continue;
+
+		if (entry->service != service)
+			continue;
+
+		/*
+		 * We can't assert that the caller owns a reference, but we
+		 * can at least assert that someone does.
+		 */
+		KASSERT(entry->refs > 0, ("caller must hold at least one "
+		    "valid reference to the entry to prevent deallocation"));
+
+		sx_sunlock(&bsr->lock);
+		return (entry->info);
+	}
+
+	/* Not found; impossible if caller owns a reference to the provider */
+	panic("invalid service provider reference");
+}
+
+/**
  * Using the bhnd(4) bus-level core information and a custom core name,
  * populate @p dev's device description.
  * 
@@ -1569,6 +1843,171 @@ bhnd_set_default_bus_desc(device_t dev, const struct bhnd_chipid *chip_id)
 		device_set_desc(dev, bus_name);
 	}
 	
+}
+
+/**
+ * Helper function for implementing BHND_BUS_REGISTER_PROVIDER().
+ * 
+ * This implementation delegates the request to the BHND_BUS_REGISTER_PROVIDER()
+ * method on the parent of @p dev. If no parent exists, the implementation
+ * will return an error. 
+ */
+int
+bhnd_bus_generic_register_provider(device_t dev, device_t child,
+    device_t provider, bhnd_service_t service)
+{
+	device_t parent = device_get_parent(dev);
+
+	if (parent != NULL) {
+		return (BHND_BUS_REGISTER_PROVIDER(parent, child,
+		    provider, service));
+	}
+
+	return (ENXIO);
+}
+
+/**
+ * Helper function for implementing BHND_BUS_DEREGISTER_PROVIDER().
+ * 
+ * This implementation delegates the request to the
+ * BHND_BUS_DEREGISTER_PROVIDER() method on the parent of @p dev. If no parent
+ * exists, the implementation will panic.
+ */
+int
+bhnd_bus_generic_deregister_provider(device_t dev, device_t child,
+    device_t provider, bhnd_service_t service)
+{
+	device_t parent = device_get_parent(dev);
+
+	if (parent != NULL) {
+		return (BHND_BUS_DEREGISTER_PROVIDER(parent, child,
+		    provider, service));
+	}
+
+	panic("missing BHND_BUS_DEREGISTER_PROVIDER()");
+}
+
+/**
+ * Helper function for implementing BHND_BUS_RETAIN_PROVIDER().
+ * 
+ * This implementation delegates the request to the
+ * BHND_BUS_DEREGISTER_PROVIDER() method on the parent of @p dev. If no parent
+ * exists, the implementation will return NULL.
+ */
+device_t
+bhnd_bus_generic_retain_provider(device_t dev, device_t child,
+    bhnd_service_t service)
+{
+	device_t parent = device_get_parent(dev);
+
+	if (parent != NULL) {
+		return (BHND_BUS_RETAIN_PROVIDER(parent, child,
+		    service));
+	}
+
+	return (NULL);
+}
+
+/**
+ * Helper function for implementing BHND_BUS_RELEASE_PROVIDER().
+ * 
+ * This implementation delegates the request to the
+ * BHND_BUS_DEREGISTER_PROVIDER() method on the parent of @p dev. If no parent
+ * exists, the implementation will panic.
+ */
+void
+bhnd_bus_generic_release_provider(device_t dev, device_t child,
+    device_t provider, bhnd_service_t service)
+{
+	device_t parent = device_get_parent(dev);
+
+	if (parent != NULL) {
+		return (BHND_BUS_RELEASE_PROVIDER(parent, child,
+		    provider, service));
+	}
+
+	panic("missing BHND_BUS_RELEASE_PROVIDER()");
+}
+
+/**
+ * Helper function for implementing BHND_BUS_REGISTER_PROVIDER().
+ * 
+ * This implementation uses the bhnd_service_registry_add() function to
+ * do most of the work. It calls BHND_BUS_GET_SERVICE_REGISTRY() to find
+ * a suitable service registry to edit.
+ */
+int
+bhnd_bus_generic_sr_register_provider(device_t dev, device_t child,
+    device_t provider, bhnd_service_t service)
+{
+	struct bhnd_service_registry *bsr;
+
+	bsr = BHND_BUS_GET_SERVICE_REGISTRY(dev, child);
+
+	KASSERT(bsr != NULL, ("NULL service registry"));
+
+	return (bhnd_service_registry_add(bsr, (kobj_t)provider, service,
+	    NULL));
+}
+
+/**
+ * Helper function for implementing BHND_BUS_DEREGISTER_PROVIDER().
+ * 
+ * This implementation uses the bhnd_service_registry_remove() function to
+ * do most of the work. It calls BHND_BUS_GET_SERVICE_REGISTRY() to find
+ * a suitable service registry to edit.
+ */
+int
+bhnd_bus_generic_sr_deregister_provider(device_t dev, device_t child,
+    device_t provider, bhnd_service_t service)
+{
+	struct bhnd_service_registry *bsr;
+
+	bsr = BHND_BUS_GET_SERVICE_REGISTRY(dev, child);
+
+	KASSERT(bsr != NULL, ("NULL service registry"));
+
+	return (bhnd_service_registry_remove(bsr, (kobj_t)provider, service));
+}
+
+/**
+ * Helper function for implementing BHND_BUS_RETAIN_PROVIDER().
+ * 
+ * This implementation uses the bhnd_service_registry_retain() function to
+ * do most of the work. It calls BHND_BUS_GET_SERVICE_REGISTRY() to find
+ * a suitable service registry.
+ */
+device_t
+bhnd_bus_generic_sr_retain_provider(device_t dev, device_t child,
+    bhnd_service_t service)
+{
+	struct bhnd_service_registry *bsr;
+
+	bsr = BHND_BUS_GET_SERVICE_REGISTRY(dev, child);
+
+	KASSERT(bsr != NULL, ("NULL service registry"));
+
+	return ((device_t)bhnd_service_registry_retain(bsr, service));
+}
+
+/**
+ * Helper function for implementing BHND_BUS_RELEASE_PROVIDER().
+ * 
+ * This implementation uses the bhnd_service_registry_release() function to
+ * do most of the work. It calls BHND_BUS_GET_SERVICE_REGISTRY() to find
+ * a suitable service registry.
+ */
+void
+bhnd_bus_generic_sr_release_provider(device_t dev, device_t child,
+    device_t provider, bhnd_service_t service)
+{
+	struct bhnd_service_registry *bsr;
+
+	bsr = BHND_BUS_GET_SERVICE_REGISTRY(dev, child);
+
+	KASSERT(bsr != NULL, ("NULL service registry"));
+
+	return (bhnd_service_registry_release(bsr, (kobj_t)provider, service));
 }
 
 /**

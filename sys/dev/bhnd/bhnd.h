@@ -36,8 +36,10 @@
 #ifndef _BHND_BHND_H_
 #define _BHND_BHND_H_
 
-#include <sys/types.h>
+#include <sys/param.h>
 #include <sys/bus.h>
+#include <sys/lock.h>
+#include <sys/sx.h>
 
 #include <machine/bus.h>
 
@@ -304,6 +306,14 @@ typedef enum {
 					     and shutdown in this order */
 } bhnd_device_order;
 
+/**
+ * A registry of bhnd service providers.
+ */
+struct bhnd_service_registry {
+	STAILQ_HEAD(,bhnd_service_entry)	entries;	/**< registered services */
+	struct sx				lock;		/**< state lock */
+};
+
 const char			*bhnd_vendor_name(uint16_t vendor);
 const char			*bhnd_port_type_name(bhnd_port_type port_type);
 const char			*bhnd_nvram_src_name(bhnd_nvram_src nvram_src);
@@ -436,6 +446,55 @@ int				 bhnd_nvram_getvar_array(device_t dev,
 				     const char *name, void *buf, size_t count,
 				     bhnd_nvram_type type);
 
+int				 bhnd_service_registry_init(
+				     struct bhnd_service_registry *bsr);
+int				 bhnd_service_registry_fini(
+				     struct bhnd_service_registry *bsr);
+int				 bhnd_service_registry_add(
+				     struct bhnd_service_registry *bsr,
+				     kobj_t provider,
+				     bhnd_service_t service,
+				     void *info);
+int				 bhnd_service_registry_remove(
+				     struct bhnd_service_registry *bsr,
+				     kobj_t provider,
+				     bhnd_service_t service);
+kobj_t				 bhnd_service_registry_retain(
+				     struct bhnd_service_registry *bsr,
+				     bhnd_service_t service);
+void				 bhnd_service_registry_release(
+				     struct bhnd_service_registry *bsr,
+				     kobj_t provider,
+				     bhnd_service_t service);
+void				*bhnd_service_registry_info(
+				     struct bhnd_service_registry *bsr,
+				     kobj_t provider,
+				     bhnd_service_t service);
+
+int				 bhnd_bus_generic_register_provider(
+				     device_t dev, device_t child,
+				     device_t provider, bhnd_service_t service);
+int				 bhnd_bus_generic_deregister_provider(
+				     device_t dev, device_t child,
+				     device_t provider, bhnd_service_t service);
+device_t			 bhnd_bus_generic_retain_provider(device_t dev,
+				     device_t child, bhnd_service_t service);
+void				 bhnd_bus_generic_release_provider(device_t dev,
+				     device_t child, device_t provider,
+				     bhnd_service_t service);
+
+int				 bhnd_bus_generic_sr_register_provider(
+				     device_t dev, device_t child,
+				     device_t provider, bhnd_service_t service);
+int				 bhnd_bus_generic_sr_deregister_provider(
+				     device_t dev, device_t child,
+				     device_t provider, bhnd_service_t service);
+device_t			 bhnd_bus_generic_sr_retain_provider(device_t dev,
+				     device_t child, bhnd_service_t service);
+void				 bhnd_bus_generic_sr_release_provider(device_t dev,
+				     device_t child, device_t provider,
+				     bhnd_service_t service);
+
 bool				 bhnd_bus_generic_is_hw_disabled(device_t dev,
 				     device_t child);
 bool				 bhnd_bus_generic_is_region_valid(device_t dev,
@@ -488,69 +547,65 @@ bhnd_bus_find_hostb_device(device_t dev) {
 	return (BHND_BUS_FIND_HOSTB_DEVICE(dev));
 }
 
-
 /**
- * Register @p prov as the bhnd bus provider for a given @p prov_type.
+ * Register a shared bus provider for a given @p service.
  *
- * @param bus The bhnd bus with which the provider should be registered.
- * @param prov The bhnd bus child device to be registered.
- * @param prov_type The provider type to be registered.
+ * @param dev		The bhnd bus device to register as a service provider
+ *			with its parent bus.
+ * @param service	The service for which @p dev will be registered.
  *
  * @retval 0		success
- * @retval EBUSY	if @p prov_type has already been registered with the
- *			parent bus.
- * @retval non-zero	if registering @p prov otherwise fails, a regular unix
+ * @retval EBUSY	if an entry for @p service already exists.
+ * @retval non-zero	if registering @p dev otherwise fails, a regular
+ *			unix error code will be returned.
+ */
+static inline int
+bhnd_register_provider(device_t dev, bhnd_service_t service)
+{
+	return (BHND_BUS_REGISTER_PROVIDER(device_get_parent(dev), dev, dev,
+	    service));
+}
+
+ /**
+ * Attempt to remove a service provider registration for @p dev.
+ *
+ * @param dev		The bhnd bus device to be deregistered as a service
+ *			provider.
+ * @param service	The service for which @p dev will be deregistered, or
+ *			BHND_SERVICE_INVALID to remove all service registrations
+ *			for @p dev.
+ *
+ * @retval 0		success
+ * @retval EBUSY	if active references to @p dev exist; @see
+ *			bhnd_retain_provider() and bhnd_release_provider().
+ * @retval non-zero	if deregistering @p dev otherwise fails, a regular unix
  *			error code will be returned.
  */
 static inline int
-bhnd_bus_register_provider(device_t bus, device_t prov,
-    bhnd_provider_type prov_type)
+bhnd_deregister_provider(device_t dev, bhnd_service_t service)
 {
-	return (BHND_BUS_REGISTER_PROVIDER(bus, prov, prov_type));
+	return (BHND_BUS_DEREGISTER_PROVIDER(device_get_parent(dev), dev, dev,
+	    service));
 }
 
 /**
- * Attempt to deregister @p prov as the bhnd bus provider for a given
- * @p prov_type.
+ * Retain and return a reference to the registered @p service provider, if any.
  *
- * @param bus The bhnd bus from which the provider should be deregistered.
- * @param prov The device to be deregistered.
- * @param prov_type The provider type for which @p prov should be deregistered,
- * or BHND_PROVIDER_INVALID to remove all provider type registrations for
- * @p prov.
+ * @param dev		The requesting bhnd bus device.
+ * @param service	The service for which a provider should be returned.
  *
- * @retval 0		if @p prov has been successfully deregistered, or no
- *			matching registration was found.
- * @retval EBUSY	if active references to @p prov exist; @see
- *			bhnd_retain_provider().
- * @retval non-zero	if deregistering @p prov otherwise fails, a regular unix
- *			error code will be returned.
- */
-static inline int
-bhnd_bus_deregister_provider(device_t bus, device_t prov,
-    bhnd_provider_type prov_type)
-{
-	return (BHND_BUS_DEREGISTER_PROVIDER(bus, prov, prov_type));
-}
-
-/**
- * Retain and return a reference to the device registered for the given
- * @p prov_type.
- *
- * @param dev A bhnd bus child device.
- * @param prov_type The provider type to be retained.
- *
- * On success, the caller assumes ownership the returned provider reference, and
- * is responsible for releasing this reference via bhnd_release_provider().
+ * On success, the caller assumes ownership the returned provider, and
+ * is responsible for releasing this reference via
+ * BHND_BUS_RELEASE_PROVIDER().
  *
  * @retval device_t	success
- * @retval NULL		if no provider is registered for @p prov_type.
+ * @retval NULL		if no provider is registered for @p service. 
  */
 static inline device_t
-bhnd_retain_provider(device_t dev, bhnd_provider_type prov_type)
+bhnd_retain_provider(device_t dev, bhnd_service_t service)
 {
 	return (BHND_BUS_RETAIN_PROVIDER(device_get_parent(dev), dev,
-	    prov_type));
+	    service));
 }
 
 /**
@@ -558,14 +613,15 @@ bhnd_retain_provider(device_t dev, bhnd_provider_type prov_type)
  * bhnd_retain_provider().
  *
  * @param dev A bhnd bus child device.
- * @param prov The provider to be released.
- * @param prov_type The provider type to be released.
+ * @param provider The provider to be released.
+ * @param service The service for which @p provider was previously retained.
  */
 static inline void
-bhnd_release_provider(device_t dev, device_t prov, bhnd_provider_type prov_type)
+bhnd_release_provider(device_t dev, device_t provider,
+    bhnd_service_t service)
 {
-	return (BHND_BUS_RELEASE_PROVIDER(device_get_parent(dev), dev, prov,
-	    prov_type));
+	return (BHND_BUS_RELEASE_PROVIDER(device_get_parent(dev), dev,
+	    provider, service));
 }
 
 /**

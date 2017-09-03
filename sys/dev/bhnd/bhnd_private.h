@@ -42,23 +42,16 @@
  */
 
 /**
- * A bhnd(4) platform device registration.
+ * A bhnd(4) service registry entry.
  */
-struct bhnd_prov {
-	device_t		dev;	/**< providing device */
-	bhnd_provider_type	type;	/**< provider type */
-	u_int			refs;	/**< reference count */
+struct bhnd_service_entry {
+	kobj_t		 provider;	/**< service provider */
+	bhnd_service_t	 service;	/**< service implemented */
+	void		*info;		/**< opaque info pointer */
+	volatile u_int	 refs;		/**< reference count; updated atomically
+					     with only a shared lock held */
 
-	STAILQ_ENTRY(bhnd_prov) link;
+	STAILQ_ENTRY(bhnd_service_entry) link;
 };
-
-#define BHND_LOCK_INIT(sc) \
-    sx_init(&(sc)->sx, "bhnd_lock")
-#define BHND_LOCK_RO(sc)		sx_slock(&(sc)->sx)
-#define BHND_UNLOCK_RO(sc)		sx_sunlock(&(sc)->sx)
-#define BHND_LOCK_RW(sc)		sx_xlock(&(sc)->sx)
-#define BHND_UNLOCK_RW(sc)		sx_xunlock(&(sc)->sx)
-#define BHND_LOCK_ASSERT(sc, what)	sx_assert(&(sc)->sx, what)
-#define BHND_LOCK_DESTROY(sc)		sx_destroy(&(sc)->sx)
 
 #endif /* _BHND_BHND_PRIVATE_H_ */

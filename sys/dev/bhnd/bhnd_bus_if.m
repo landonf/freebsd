@@ -225,32 +225,10 @@ CODE {
 		return (NULL);
 	}
 
-	static int
-	bhnd_bus_null_register_provider(device_t dev, device_t prov,
-	    bhnd_provider_type prov_type)
+	static struct bhnd_service_registry *
+	bhnd_bus_null_get_service_registry(device_t dev)
 	{
-		panic("bhnd_bus_register_provider unimplemented");
-	}
-
-	static int
-	bhnd_bus_null_deregister_provider(device_t dev, device_t prov,
-	    bhnd_provider_type prov_type)
-	{
-		panic("bhnd_bus_deregister_provider unimplemented");
-	}
-
-	static device_t
-	bhnd_bus_null_retain_provider(device_t dev, device_t child,
-	    bhnd_provider_type prov_type)
-	{
-		panic("bhnd_bus_retain_provider unimplemented");
-	}
-
-	static void
-	bhnd_bus_null_release_provider(device_t dev, device_t child,
-	    device_t prov, bhnd_provider_type prov_type)
-	{
-		panic("bhnd_bus_release_provider unimplemented");
+		panic("bhnd_bus_get_service_registry unimplemented");
 	}
 
 	static bool
@@ -306,79 +284,100 @@ STATICMETHOD bhnd_erom_class_t * get_erom_class {
 } DEFAULT bhnd_bus_null_get_erom_class;
 
 /**
- * Register @p prov as the bhnd bus provider for a given @p prov_type.
+ * Register a shared bus @p provider for a given @p service.
  *
- * @param dev The bhnd bus with which the provider should be registered.
- * @param prov The device to register.
- * @param prov_type The provider type for which @p prov should be registered.
+ * @param dev		The parent of @p child.
+ * @param child		The requesting child device.
+ * @param provider	The service provider to register.
+ * @param service	The service for which @p provider will be registered.
  *
  * @retval 0		success
- * @retval EBUSY	if @p prov_type has already been registered with @p dev.
- * @retval non-zero	if registering @p prov otherwise fails, a regular unix
- *			error code will be returned.
+ * @retval EBUSY	if an entry for @p service already exists.
+ * @retval non-zero	if registering @p provider otherwise fails, a regular
+ *			unix error code will be returned.
  */
 METHOD int register_provider {
 	device_t dev;
-	device_t prov;
-	bhnd_provider_type prov_type;
-} DEFAULT bhnd_bus_null_register_provider;
+	device_t child;
+	device_t provider;
+	bhnd_service_t service;
+} DEFAULT bhnd_bus_generic_register_provider;
 
-/**
- * Remove provider registrations matching @p prov and @p prov_type, if any.
+ /**
+ * Attempt to remove the @p service provider registration for @p provider.
  *
- * @param dev The bhnd bus from which the provider should be deregistered.
- * @param prov The device to be deregistered.
- * @param prov_type The provider type for which @p prov should be deregistered,
- * or BHND_PROVIDER_INVALID to remove all provider type registrations for
- * @p prov.
+ * @param dev		The parent of @p child.
+ * @param child		The requesting child device.
+ * @param provider	The service provider to be deregistered.
+ * @param service	The service for which @p provider will be deregistered,
+ *			or BHND_SERVICE_INVALID to remove all service
+ *			registrations for @p provider.
  *
  * @retval 0		success
- * @retval EBUSY	if active references to @p prov exist; @see
- *			BHND_BUS_RETAIN_PROVIDER().
- * @retval non-zero	if deregistering @p prov otherwise fails, a regular unix
- *			error code will be returned.
+ * @retval EBUSY	if active references to @p provider exist; @see
+ *			BHND_BUS_RETAIN_PROVIDER() and
+ *			BHND_BUS_RELEASE_PROVIDER().
+ * @retval non-zero	if deregistering @p provider otherwise fails, a regular
+ *			unix error code will be returned.
  */
 METHOD int deregister_provider {
 	device_t dev;
-	device_t prov;
-	bhnd_provider_type prov_type;
-} DEFAULT bhnd_bus_null_deregister_provider;
+	device_t child;
+	device_t provider;
+	bhnd_service_t service;
+} DEFAULT bhnd_bus_generic_deregister_provider;
 
 /**
- * Retain and return a reference to the device registered for the given
- * @p prov_type.
+ * Retain and return a reference to the registered @p service provider, if any.
  *
- * @param dev The bhnd bus device.
- * @param child The requesting child device.
- * @param prov_type The provider type to be retained.
+ * @param dev		The parent of @p child.
+ * @param child		The requesting child device.
+ * @param service	The service for which a provider should be returned.
  *
- * On success, the caller assumes ownership the returned provider reference, and
- * is responsible for releasing this reference via BHND_BUS_RELEASE_PROVIDER().
+ * On success, the caller assumes ownership the returned provider, and
+ * is responsible for releasing this reference via
+ * BHND_BUS_RELEASE_PROVIDER().
  *
  * @retval device_t	success
- * @retval NULL		if no provider is registered for @p prov_type.
+ * @retval NULL		if no provider is registered for @p service. 
  */
 METHOD device_t retain_provider {
 	device_t dev;
 	device_t child;
-	bhnd_provider_type prov_type;
-} DEFAULT bhnd_bus_null_retain_provider;
+	bhnd_service_t service;
+} DEFAULT bhnd_bus_generic_retain_provider;
 
-/**
- * Release a reference to a provider device previously retained by
+ /**
+ * Release a reference to a service provider previously returned by
  * BHND_BUS_RETAIN_PROVIDER().
  *
- * @param dev The bhnd bus device.
- * @param child The requesting child device.
- * @param prov The provider to be released.
- * @param prov_type The provider type to be released.
+ * @param dev		The parent of @p child.
+ * @param child		The requesting child device.
+ * @param provider	The provider to be released.
+ * @param service	The service for which @p provider was previously
+ *			retained.
  */
 METHOD void release_provider {
 	device_t dev;
 	device_t child;
-	device_t prov;
-	bhnd_provider_type prov_type;
-} DEFAULT bhnd_bus_null_release_provider;
+	device_t provider;
+	bhnd_service_t service;
+} DEFAULT bhnd_bus_generic_release_provider;
+
+/**
+ * Return a struct bhnd_service_registry.
+ *
+ * Used by drivers which use bhnd_bus_generic_sr_register_provider() etc.
+ * to implement service provider registration. It should return a service
+ * registry that may be used to resolve provider requests from @p child.
+ *
+ * @param dev		The parent of @p child.
+ * @param child		The requesting child device.
+ */
+METHOD struct bhnd_service_registry * get_service_registry {
+	device_t dev;
+	device_t child;
+} DEFAULT bhnd_bus_null_get_service_registry;
 
 /**
  * Return the active host bridge core for the bhnd bus, if any.

@@ -187,7 +187,7 @@ bhnd_pmu_attach(device_t dev, struct bhnd_resource *res)
 	}
 
 	/* Register as the bus PMU provider */
-	if ((error = bhnd_bus_register_provider(bus, dev, BHND_PROVIDER_PMU))) {
+	if ((error = bhnd_register_provider(dev, BHND_SERVICE_PMU))) {
 		device_printf(sc->dev, "failed to register PMU with bus : %d\n",
 		    error);
 		goto failed;
@@ -224,8 +224,12 @@ int
 bhnd_pmu_detach(device_t dev)
 {
 	struct bhnd_pmu_softc	*sc;
+	int			 error;
 
 	sc = device_get_softc(dev);
+
+	if ((error = bhnd_deregister_provider(dev, BHND_SERVICE_ANY)))
+		return (error);
 
 	BPMU_LOCK_DESTROY(sc);
 	bhnd_pmu_query_fini(&sc->query);
