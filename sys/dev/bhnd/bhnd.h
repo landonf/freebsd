@@ -452,23 +452,23 @@ int				 bhnd_service_registry_fini(
 				     struct bhnd_service_registry *bsr);
 int				 bhnd_service_registry_add(
 				     struct bhnd_service_registry *bsr,
-				     kobj_t provider,
+				     device_t provider,
 				     bhnd_service_t service,
 				     void *info);
 int				 bhnd_service_registry_remove(
 				     struct bhnd_service_registry *bsr,
-				     kobj_t provider,
+				     device_t provider,
 				     bhnd_service_t service);
-kobj_t				 bhnd_service_registry_retain(
+device_t			 bhnd_service_registry_retain(
 				     struct bhnd_service_registry *bsr,
 				     bhnd_service_t service);
 void				 bhnd_service_registry_release(
 				     struct bhnd_service_registry *bsr,
-				     kobj_t provider,
+				     device_t provider,
 				     bhnd_service_t service);
 void				*bhnd_service_registry_info(
 				     struct bhnd_service_registry *bsr,
-				     kobj_t provider,
+				     device_t provider,
 				     bhnd_service_t service);
 
 int				 bhnd_bus_generic_register_provider(

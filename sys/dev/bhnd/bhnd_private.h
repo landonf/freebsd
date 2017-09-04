@@ -45,7 +45,7 @@
  * A bhnd(4) service registry entry.
  */
 struct bhnd_service_entry {
-	kobj_t		 provider;	/**< service provider */
+	device_t	 provider;	/**< service provider */
 	bhnd_service_t	 service;	/**< service implemented */
 	void		*info;		/**< opaque info pointer */
 	volatile u_int	 refs;		/**< reference count; updated atomically

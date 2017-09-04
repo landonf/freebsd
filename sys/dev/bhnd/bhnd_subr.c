@@ -1559,7 +1559,7 @@ bhnd_service_registry_fini(struct bhnd_service_registry *bsr)
  *			unix error code will be returned.
  */
 int
-bhnd_service_registry_add(struct bhnd_service_registry *bsr, kobj_t provider,
+bhnd_service_registry_add(struct bhnd_service_registry *bsr, device_t provider,
     bhnd_service_t service, void *info)
 {
 	struct bhnd_service_entry *entry;
@@ -1608,8 +1608,8 @@ bhnd_service_registry_add(struct bhnd_service_registry *bsr, kobj_t provider,
  *			unix error code will be returned.
  */
 int
-bhnd_service_registry_remove(struct bhnd_service_registry *bsr, kobj_t provider,
-    bhnd_service_t service)
+bhnd_service_registry_remove(struct bhnd_service_registry *bsr,
+    device_t provider, bhnd_service_t service)
 {
 	struct bhnd_service_entry *entry, *enext;
 
@@ -1664,10 +1664,10 @@ bhnd_service_registry_remove(struct bhnd_service_registry *bsr, kobj_t provider,
  * is responsible for releasing this reference via
  * bhnd_service_registry_release().
  *
- * @retval kobj_t	success
+ * @retval device_t	success
  * @retval NULL		if no provider is registered for @p service.
  */
-kobj_t
+device_t
 bhnd_service_registry_retain(struct bhnd_service_registry *bsr,
     bhnd_service_t service)
 {
@@ -1702,7 +1702,7 @@ bhnd_service_registry_retain(struct bhnd_service_registry *bsr,
  */
 void
 bhnd_service_registry_release(struct bhnd_service_registry *bsr,
-    kobj_t provider, bhnd_service_t service)
+    device_t provider, bhnd_service_t service)
 {
 	struct bhnd_service_entry *entry;
 
@@ -1735,7 +1735,7 @@ bhnd_service_registry_release(struct bhnd_service_registry *bsr,
  *			retained.
  */
 void *bhnd_service_registry_info(struct bhnd_service_registry *bsr,
-    kobj_t provider, bhnd_service_t service)
+    device_t provider, bhnd_service_t service)
 {
 	struct bhnd_service_entry *entry;
 
@@ -1946,8 +1946,7 @@ bhnd_bus_generic_sr_register_provider(device_t dev, device_t child,
 
 	KASSERT(bsr != NULL, ("NULL service registry"));
 
-	return (bhnd_service_registry_add(bsr, (kobj_t)provider, service,
-	    NULL));
+	return (bhnd_service_registry_add(bsr, provider, service, NULL));
 }
 
 /**
@@ -1967,7 +1966,7 @@ bhnd_bus_generic_sr_deregister_provider(device_t dev, device_t child,
 
 	KASSERT(bsr != NULL, ("NULL service registry"));
 
-	return (bhnd_service_registry_remove(bsr, (kobj_t)provider, service));
+	return (bhnd_service_registry_remove(bsr, provider, service));
 }
 
 /**
@@ -2007,7 +2006,7 @@ bhnd_bus_generic_sr_release_provider(device_t dev, device_t child,
 
 	KASSERT(bsr != NULL, ("NULL service registry"));
 
-	return (bhnd_service_registry_release(bsr, (kobj_t)provider, service));
+	return (bhnd_service_registry_release(bsr, provider, service));
 }
 
 /**
