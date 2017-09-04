@@ -1604,8 +1604,6 @@ bhnd_service_registry_add(struct bhnd_service_registry *bsr, device_t provider,
  * @retval EBUSY	if active references to @p provider exist; @see
  *			bhnd_service_registry_retain() and
  *			bhnd_service_registry_release().
- * @retval non-zero	if deregistering @p provider otherwise fails, a regular
- *			unix error code will be returned.
  */
 int
 bhnd_service_registry_remove(struct bhnd_service_registry *bsr,
@@ -1975,18 +1973,64 @@ bhnd_bus_generic_sr_deregister_provider(device_t dev, device_t child,
  * This implementation uses the bhnd_service_registry_retain() function to
  * do most of the work. It calls BHND_BUS_GET_SERVICE_REGISTRY() to find
  * a suitable service registry.
+ * 
+ * If a local provider for the service is not available, and a parent device is
+ * available, this implementation will attempt to fetch and locally register
+ * a service provider reference from the parent of @p dev.
  */
 device_t
 bhnd_bus_generic_sr_retain_provider(device_t dev, device_t child,
     bhnd_service_t service)
 {
-	struct bhnd_service_registry *bsr;
+	struct bhnd_service_registry	*bsr;
+	device_t			 parent, provider;
+	int				 error;
 
 	bsr = BHND_BUS_GET_SERVICE_REGISTRY(dev, child);
-
 	KASSERT(bsr != NULL, ("NULL service registry"));
 
-	return ((device_t)bhnd_service_registry_retain(bsr, service));
+	/*
+	 * Attempt to fetch a service provider reference from either the local
+	 * service registry, or if not found, from our parent.
+	 * 
+	 * If we fetch a provider from our parent, we register the provider
+	 * with the local service registry to prevent conflicting local
+	 * registrations from being added.
+	 */
+	while (1) {
+		/* Check the local service registry first */
+		provider = bhnd_service_registry_retain(bsr, service);
+		if (provider != NULL)
+			return (provider);
+
+		/* Otherwise, try to delegate to our parent (if any) */
+		if ((parent = device_get_parent(dev)) == NULL)
+			return (NULL);
+
+		provider = BHND_BUS_RETAIN_PROVIDER(parent, dev, service);
+		if (provider == NULL)
+			return (NULL);
+
+		/* Register the borrowed service registration with the local
+		 * registry; we denote borrowed services by storing the parent
+		 * device referene in the opaque service info pointer. */
+		error = bhnd_service_registry_add(bsr, provider, service,
+		    parent);
+		if (error) {
+			BHND_BUS_RELEASE_PROVIDER(parent, dev, provider,
+			    service);
+			if (error == EEXIST) {
+				/* A valid service provider was registered
+				 * concurrently; retry fetching from the local
+				 * registry */
+				continue;
+			}
+
+			device_printf(dev, "failed to register service "
+			    "provider: %d\n", error);
+			return (NULL);
+		}
+	}
 }
 
 /**
@@ -2000,13 +2044,32 @@ void
 bhnd_bus_generic_sr_release_provider(device_t dev, device_t child,
     device_t provider, bhnd_service_t service)
 {
-	struct bhnd_service_registry *bsr;
+	struct bhnd_service_registry	*bsr;
+	void				*info;
+	device_t			 parent;
 
 	bsr = BHND_BUS_GET_SERVICE_REGISTRY(dev, child);
-
 	KASSERT(bsr != NULL, ("NULL service registry"));
 
-	return (bhnd_service_registry_release(bsr, provider, service));
+	/* Fetch the owner info, if any, and then drop the caller's
+	 * reference */
+	info = bhnd_service_registry_info(bsr, provider, service);
+	bhnd_service_registry_release(bsr, provider, service);
+
+	/* Was the provider borrowed from our parent device? */
+	if (info == NULL)
+		return;
+
+	parent = device_get_parent(dev);
+	KASSERT(info == parent, ("invalid service info"));
+
+	/* If this is the last local reference to the provider, removal from
+	 * the registry will succeed */
+	if (bhnd_service_registry_remove(bsr, provider, service) != 0)
+		return;
+
+	/* Drop our reference to the borrowed provider */
+	BHND_BUS_RELEASE_PROVIDER(parent, dev, provider, service);
 }
 
 /**

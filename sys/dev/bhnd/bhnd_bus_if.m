@@ -317,8 +317,6 @@ METHOD int register_provider {
  * @retval EBUSY	if active references to @p provider exist; @see
  *			BHND_BUS_RETAIN_PROVIDER() and
  *			BHND_BUS_RELEASE_PROVIDER().
- * @retval non-zero	if deregistering @p provider otherwise fails, a regular
- *			unix error code will be returned.
  */
 METHOD int deregister_provider {
 	device_t dev;

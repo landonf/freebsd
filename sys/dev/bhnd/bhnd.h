@@ -578,8 +578,6 @@ bhnd_register_provider(device_t dev, bhnd_service_t service)
  * @retval 0		success
  * @retval EBUSY	if active references to @p dev exist; @see
  *			bhnd_retain_provider() and bhnd_release_provider().
- * @retval non-zero	if deregistering @p dev otherwise fails, a regular unix
- *			error code will be returned.
  */
 static inline int
 bhnd_deregister_provider(device_t dev, bhnd_service_t service)
