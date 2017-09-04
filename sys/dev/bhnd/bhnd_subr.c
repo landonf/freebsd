@@ -1553,7 +1553,7 @@ bhnd_service_registry_fini(struct bhnd_service_registry *bsr)
  *			the provider registration, or NULL.
  *
  * @retval 0		success
- * @retval EBUSY	if an entry for @p service already exists.
+ * @retval EEXIST	if an entry for @p service already exists.
  * @retval EINVAL	if @p service is BHND_SERVICE_ANY.
  * @retval non-zero	if registering @p provider otherwise fails, a regular
  *			unix error code will be returned.
@@ -1574,7 +1574,7 @@ bhnd_service_registry_add(struct bhnd_service_registry *bsr, kobj_t provider,
 	STAILQ_FOREACH(entry, &bsr->entries, link) {
 		if (entry->service == service) {
 			sx_xunlock(&bsr->lock);
-			return (EBUSY);
+			return (EEXIST);
 		}
 	}
 

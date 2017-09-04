@@ -555,7 +555,7 @@ bhnd_bus_find_hostb_device(device_t dev) {
  * @param service	The service for which @p dev will be registered.
  *
  * @retval 0		success
- * @retval EBUSY	if an entry for @p service already exists.
+ * @retval EEXIST	if an entry for @p service already exists.
  * @retval non-zero	if registering @p dev otherwise fails, a regular
  *			unix error code will be returned.
  */

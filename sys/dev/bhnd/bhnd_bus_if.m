@@ -292,7 +292,7 @@ STATICMETHOD bhnd_erom_class_t * get_erom_class {
  * @param service	The service for which @p provider will be registered.
  *
  * @retval 0		success
- * @retval EBUSY	if an entry for @p service already exists.
+ * @retval EEXIST	if an entry for @p service already exists.
  * @retval non-zero	if registering @p provider otherwise fails, a regular
  *			unix error code will be returned.
  */
