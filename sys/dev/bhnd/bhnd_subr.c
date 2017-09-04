@@ -1538,6 +1538,7 @@ bhnd_service_registry_fini(struct bhnd_service_registry *bsr)
 		sx_xunlock(&bsr->lock);
 		return (EBUSY);
 	}
+	sx_xunlock(&bsr->lock);
 
 	sx_destroy(&bsr->lock);
 	return (0);
@@ -1644,12 +1645,13 @@ bhnd_service_registry_remove(struct bhnd_service_registry *bsr,
 		STAILQ_REMOVE(&bsr->entries, entry, bhnd_service_entry, link);
 
 		/* Free provider entry */
-		KASSERT(entry->refs, ("provider has active references"));
+		KASSERT(entry->refs == 0, ("provider has active references"));
 
 		free(entry, M_BHND);
 	}
 #undef	BHND_PROV_MATCH
 
+	sx_xunlock(&bsr->lock);
 	return (0);
 }
 
@@ -1684,6 +1686,7 @@ bhnd_service_registry_retain(struct bhnd_service_registry *bsr,
 		sx_sunlock(&bsr->lock);
 		return (entry->provider);
 	}
+	sx_sunlock(&bsr->lock);
 
 	/* Not found */
 	return (NULL);
