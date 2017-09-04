@@ -206,8 +206,12 @@ bhnd_pwrctl_detach(device_t dev)
 	if ((error = bhnd_deregister_provider(dev, BHND_SERVICE_ANY)))
 		return (error);
 
+	PWRCTL_LOCK(sc);
+
 	if ((error = bhnd_pwrctl_setclk(sc, BHND_CLOCK_DYN)))
 		return (error);
+
+	PWRCTL_UNLOCK(sc);
 
 	STAILQ_FOREACH_SAFE(clkres, &sc->clkres_list, cr_link, crnext)
 		free(clkres, M_DEVBUF);
