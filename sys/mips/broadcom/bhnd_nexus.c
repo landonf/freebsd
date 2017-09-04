@@ -54,6 +54,17 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_nexusvar.h"
 
+
+/**
+ * Default bhnd_nexus implementation of BHND_BUS_GET_SERVICE_REGISTRY().
+ */
+static struct bhnd_service_registry *
+bhnd_nexus_get_service_registry(device_t dev, device_t child)
+{
+	struct bcm_platform *bp = bcm_get_platform();
+	return (&bp->services);
+}
+
 /**
  * Default bhnd_nexus implementation of BHND_BUS_ACTIVATE_RESOURCE().
  */
@@ -160,6 +171,11 @@ bhnd_nexus_assign_intr(device_t dev, device_t child, int rid)
 
 static device_method_t bhnd_nexus_methods[] = {
 	/* bhnd interface */
+	DEVMETHOD(bhnd_bus_get_service_registry,bhnd_nexus_get_service_registry),
+	DEVMETHOD(bhnd_bus_register_provider,	bhnd_bus_generic_sr_register_provider),
+	DEVMETHOD(bhnd_bus_deregister_provider,	bhnd_bus_generic_sr_deregister_provider),
+	DEVMETHOD(bhnd_bus_retain_provider,	bhnd_bus_generic_sr_retain_provider),
+	DEVMETHOD(bhnd_bus_release_provider,	bhnd_bus_generic_sr_release_provider),
 	DEVMETHOD(bhnd_bus_activate_resource,	bhnd_nexus_activate_resource),
 	DEVMETHOD(bhnd_bus_deactivate_resource, bhnd_nexus_deactivate_resource),
 	DEVMETHOD(bhnd_bus_is_hw_disabled,	bhnd_nexus_is_hw_disabled),

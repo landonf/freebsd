@@ -393,6 +393,12 @@ bcm_init_platform_data(struct bcm_platform *bp)
 		}
 	}
 
+	/* Initialize our platform service registry */
+	if ((error = bhnd_service_registry_init(&bp->services))) {
+		BCM_ERR("error initializing service registry: %d\n", error);
+		return (error);
+	}
+
 	bcm_platform_data_avail = true;
 	return (0);
 }
