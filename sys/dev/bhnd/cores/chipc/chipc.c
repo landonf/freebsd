@@ -211,6 +211,10 @@ chipc_attach(device_t dev)
 	if ((error = bus_generic_attach(dev)))
 		goto failed;
 
+	/* Register ourselves with the bus */
+	if ((error = bhnd_register_provider(dev, BHND_SERVICE_CHIPC)))
+		goto failed;
+
 	return (0);
 	
 failed:
@@ -233,6 +237,9 @@ chipc_detach(device_t dev)
 	int			 error;
 
 	sc = device_get_softc(dev);
+
+	if ((error = bhnd_deregister_provider(dev, BHND_SERVICE_ANY)))
+		return (error);
 
 	if ((error = bus_generic_detach(dev)))
 		return (error);
