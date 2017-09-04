@@ -1583,6 +1583,7 @@ bhnd_service_registry_add(struct bhnd_service_registry *bsr, device_t provider,
 
 	entry->provider = provider;
 	entry->service = service;
+	entry->info = info;
 	refcount_init(&entry->refs, 0);
 
 	STAILQ_INSERT_HEAD(&bsr->entries, entry, link);
@@ -2061,7 +2062,8 @@ bhnd_bus_generic_sr_release_provider(device_t dev, device_t child,
 		return;
 
 	parent = device_get_parent(dev);
-	KASSERT(info == parent, ("invalid service info"));
+	KASSERT(info == parent, ("invalid service info (%p != %p)", info,
+	    parent));
 
 	/* If this is the last local reference to the provider, removal from
 	 * the registry will succeed */

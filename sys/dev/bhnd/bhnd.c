@@ -110,15 +110,9 @@ bhnd_generic_attach(device_t dev)
 	sc = device_get_softc(dev);
 	sc->dev = dev;
 
-	if ((error = bhnd_service_registry_init(&sc->services))) {
-		bhnd_delete_children(sc);
-		return (error);
-	}
-
 	/* Probe and attach all children */
 	if ((error = bhnd_bus_probe_children(dev))) {
 		bhnd_delete_children(sc);
-		bhnd_service_registry_fini(&sc->services);
 		return (error);
 	}
 
@@ -174,9 +168,6 @@ bhnd_generic_detach(device_t dev)
 	sc = device_get_softc(dev);
 
 	if ((error = bhnd_delete_children(sc)))
-		return (error);
-
-	if ((error = bhnd_service_registry_fini(&sc->services)))
 		return (error);
 
 	return (0);
@@ -359,17 +350,6 @@ bhnd_generic_get_probe_order(device_t dev, device_t child)
 	default:
 		return (BHND_PROBE_DEFAULT);
 	}
-}
-
-/**
- * Default bhnd(4) bus driver implementation of BHND_BUS_GET_SERVICE_REGISTRY().
- */
-struct bhnd_service_registry *
-bhnd_generic_get_service_registry(device_t dev, device_t child)
-{
-	struct bhnd_softc *sc = device_get_softc(dev);
-
-	return (&sc->services);
 }
 
 /**
@@ -948,12 +928,6 @@ static device_method_t bhnd_methods[] = {
 	DEVMETHOD(bhnd_bus_read_board_info,	bhnd_bus_generic_read_board_info),
 
 	DEVMETHOD(bhnd_bus_get_probe_order,	bhnd_generic_get_probe_order),
-
-	DEVMETHOD(bhnd_bus_get_service_registry,bhnd_generic_get_service_registry),
-	DEVMETHOD(bhnd_bus_register_provider,	bhnd_bus_generic_sr_register_provider),
-	DEVMETHOD(bhnd_bus_deregister_provider,	bhnd_bus_generic_sr_deregister_provider),
-	DEVMETHOD(bhnd_bus_retain_provider,	bhnd_bus_generic_sr_retain_provider),
-	DEVMETHOD(bhnd_bus_release_provider,	bhnd_bus_generic_sr_release_provider),
 
 	DEVMETHOD(bhnd_bus_alloc_pmu,		bhnd_generic_alloc_pmu),
 	DEVMETHOD(bhnd_bus_release_pmu,		bhnd_generic_release_pmu),

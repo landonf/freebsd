@@ -57,9 +57,6 @@ int				 bhnd_generic_suspend(device_t dev);
 int				 bhnd_generic_get_probe_order(device_t dev,
 				     device_t child);
 
-struct bhnd_service_registry	*bhnd_generic_get_service_registry(device_t dev,
-				     device_t child);
-
 int				 bhnd_generic_alloc_pmu(device_t dev,
 				     device_t child);
 int				 bhnd_generic_release_pmu(device_t dev,
@@ -95,8 +92,7 @@ int				 bhnd_generic_get_nvram_var(device_t dev,
  * softc structures.
  */
 struct bhnd_softc {
-	device_t			dev;		/**< bus device */
-	struct bhnd_service_registry	services;	/**< bhnd service registry */
+	device_t dev;	/**< bus device */
 };
 
 #endif /* _BHND_BHNDVAR_H_ */
