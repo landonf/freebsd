@@ -45,10 +45,10 @@
  * A bhnd(4) service registry entry.
  */
 struct bhnd_service_entry {
-	device_t	 provider;	/**< service provider */
-	bhnd_service_t	 service;	/**< service implemented */
-	void		*info;		/**< opaque info pointer */
-	volatile u_int	 refs;		/**< reference count; updated atomically
+	device_t	provider;	/**< service provider */
+	bhnd_service_t	service;	/**< service implemented */
+	uint32_t	flags;		/**< entry flags (see BHND_SPF_*) */
+	volatile u_int	refs;		/**< reference count; updated atomically
 					     with only a shared lock held */
 
 	STAILQ_ENTRY(bhnd_service_entry) link;

@@ -58,6 +58,9 @@ __FBSDID("$FreeBSD$");
 #include "bhndvar.h"
 #include "bhnd_private.h"
 
+static void	bhnd_service_registry_free_entry(
+		    struct bhnd_service_entry *entry);
+
 static int	compare_ascending_probe_order(const void *lhs, const void *rhs);
 static int	compare_descending_probe_order(const void *lhs,
 		    const void *rhs);
@@ -1551,11 +1554,10 @@ bhnd_service_registry_fini(struct bhnd_service_registry *bsr)
 /**
  * Register a @p provider for the given @p service.
  *
- * @param bsr		The service registry to be modified.
- * @param provider	The service provider to register.
- * @param service	The service for which @p provider will be registered.
- * @param info		An opaque caller-defined pointer to be associated with
- *			the provider registration, or NULL.
+ * @param bsr		Service registry to be modified.
+ * @param provider	Service provider to register.
+ * @param service	Service for which @p provider will be registered.
+ * @param flags		Service provider flags (see BHND_SPF_*).
  *
  * @retval 0		success
  * @retval EEXIST	if an entry for @p service already exists.
@@ -1565,7 +1567,7 @@ bhnd_service_registry_fini(struct bhnd_service_registry *bsr)
  */
 int
 bhnd_service_registry_add(struct bhnd_service_registry *bsr, device_t provider,
-    bhnd_service_t service, void *info)
+    bhnd_service_t service, uint32_t flags)
 {
 	struct bhnd_service_entry *entry;
 
@@ -1588,13 +1590,25 @@ bhnd_service_registry_add(struct bhnd_service_registry *bsr, device_t provider,
 
 	entry->provider = provider;
 	entry->service = service;
-	entry->info = info;
+	entry->flags = flags;
 	refcount_init(&entry->refs, 0);
 
 	STAILQ_INSERT_HEAD(&bsr->entries, entry, link);
 
 	sx_xunlock(&bsr->lock);
 	return (0);
+}
+
+/**
+ * Free an unreferenced registry entry.
+ * 
+ * @param entry	The entry to be deallocated.
+ */
+static void
+bhnd_service_registry_free_entry(struct bhnd_service_entry *entry)
+{
+	KASSERT(entry->refs == 0, ("provider has active references"));
+	free(entry, M_BHND);
 }
 
 /**
@@ -1649,9 +1663,7 @@ bhnd_service_registry_remove(struct bhnd_service_registry *bsr,
 		STAILQ_REMOVE(&bsr->entries, entry, bhnd_service_entry, link);
 
 		/* Free provider entry */
-		KASSERT(entry->refs == 0, ("provider has active references"));
-
-		free(entry, M_BHND);
+		bhnd_service_registry_free_entry(entry);
 	}
 #undef	BHND_PROV_MATCH
 
@@ -1699,72 +1711,59 @@ bhnd_service_registry_retain(struct bhnd_service_registry *bsr,
 /**
  * Release a reference to a service provider previously returned by
  * bhnd_service_registry_retain().
+ * 
+ * If this is the last reference to an inherited service provider registration
+ * (@see BHND_SPF_INHERITED), the registration will also be removed, and
+ * true will be returned.
  *
  * @param bsr		The service registry from which @p provider
  *			was returned.
  * @param provider	The provider to be released.
  * @param service	The service for which @p provider was previously
  *			retained.
+ * @retval true		The inherited service provider registration was removed;
+ *			the caller should release its own reference to the
+ *			provider.
+ * @retval false	The service provider was not inherited, or active
+ *			references to the provider remain.
  */
-void
+bool
 bhnd_service_registry_release(struct bhnd_service_registry *bsr,
     device_t provider, bhnd_service_t service)
 {
 	struct bhnd_service_entry *entry;
 
-	sx_slock(&bsr->lock);
+	/* Exclusive lock, as we need to prevent any new references to the
+	 * entry from being taken if it's to be removed */
+	sx_xlock(&bsr->lock);
 	STAILQ_FOREACH(entry, &bsr->entries, link) {
+		bool removed;
+
 		if (entry->provider != provider)
 			continue;
 
 		if (entry->service != service)
 			continue;
 
-		refcount_release(&entry->refs);
+		if (refcount_release(&entry->refs) &&
+		    (entry->flags & BHND_SPF_INHERITED))
+		{
+			/* If an inherited entry is no longer actively
+			 * referenced, remove the local registration and inform
+			 * the caller. */
+			STAILQ_REMOVE(&bsr->entries, entry, bhnd_service_entry,
+			    link);
+			bhnd_service_registry_free_entry(entry);
+			removed = true;
+		} else {
+			removed = false;
+		}
 
-		sx_sunlock(&bsr->lock);
-		return;
+		sx_xunlock(&bsr->lock);
+		return (removed);
 	}
 
 	/* Caller owns a reference, but no such provider is registered? */
-	panic("invalid service provider reference");
-}
-
-/**
- * Return the opaque info pointer associated with @p provider and @p service,
- * if any.
- * 
- * @param bsr		The service registry with which @p provider
- *			is registered.
- * @param provider	A caller-owned reference to a service provider.
- * @param service	A service for which @p provider was previously
- *			retained.
- */
-void *bhnd_service_registry_info(struct bhnd_service_registry *bsr,
-    device_t provider, bhnd_service_t service)
-{
-	struct bhnd_service_entry *entry;
-
-	sx_slock(&bsr->lock);
-	STAILQ_FOREACH(entry, &bsr->entries, link) {
-		if (entry->provider != provider)
-			continue;
-
-		if (entry->service != service)
-			continue;
-
-		/*
-		 * We can't assert that the caller owns a reference, but we
-		 * can at least assert that someone does.
-		 */
-		KASSERT(entry->refs > 0, ("caller must hold at least one "
-		    "valid reference to the entry to prevent deallocation"));
-
-		sx_sunlock(&bsr->lock);
-		return (entry->info);
-	}
-
-	/* Not found; impossible if caller owns a reference to the provider */
 	panic("invalid service provider reference");
 }
 
@@ -1952,7 +1951,7 @@ bhnd_bus_generic_sr_register_provider(device_t dev, device_t child,
 
 	KASSERT(bsr != NULL, ("NULL service registry"));
 
-	return (bhnd_service_registry_add(bsr, provider, service, NULL));
+	return (bhnd_service_registry_add(bsr, provider, service, 0));
 }
 
 /**
@@ -2019,11 +2018,10 @@ bhnd_bus_generic_sr_retain_provider(device_t dev, device_t child,
 		if (provider == NULL)
 			return (NULL);
 
-		/* Register the borrowed service registration with the local
-		 * registry; we denote borrowed services by storing the parent
-		 * device referene in the opaque service info pointer. */
+		/* Register the inherited service registration with the local
+		 * registry */
 		error = bhnd_service_registry_add(bsr, provider, service,
-		    parent);
+		    BHND_SPF_INHERITED);
 		if (error) {
 			BHND_BUS_RELEASE_PROVIDER(parent, dev, provider,
 			    service);
@@ -2053,32 +2051,19 @@ bhnd_bus_generic_sr_release_provider(device_t dev, device_t child,
     device_t provider, bhnd_service_t service)
 {
 	struct bhnd_service_registry	*bsr;
-	void				*info;
-	device_t			 parent;
 
 	bsr = BHND_BUS_GET_SERVICE_REGISTRY(dev, child);
 	KASSERT(bsr != NULL, ("NULL service registry"));
 
-	/* Fetch the owner info, if any, and then drop the caller's
-	 * reference */
-	info = bhnd_service_registry_info(bsr, provider, service);
-	bhnd_service_registry_release(bsr, provider, service);
-
-	/* Was the provider borrowed from our parent device? */
-	if (info == NULL)
-		return;
-
-	parent = device_get_parent(dev);
-	KASSERT(info == parent, ("invalid service info (%p != %p)", info,
-	    parent));
-
-	/* If this is the last local reference to the provider, removal from
-	 * the registry will succeed */
-	if (bhnd_service_registry_remove(bsr, provider, service) != 0)
+	/* Release the provider reference; if the refcount hits zero on an
+	 * inherited reference, true will be returned, and we need to drop
+	 * our own bus reference to the provider */
+	if (!bhnd_service_registry_release(bsr, provider, service))
 		return;
 
 	/* Drop our reference to the borrowed provider */
-	BHND_BUS_RELEASE_PROVIDER(parent, dev, provider, service);
+	BHND_BUS_RELEASE_PROVIDER(device_get_parent(dev), dev, provider,
+	    service);
 }
 
 /**

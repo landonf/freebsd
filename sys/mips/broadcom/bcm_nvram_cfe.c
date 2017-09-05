@@ -125,7 +125,7 @@ bhnd_nvram_cfe_attach(device_t dev)
 		return (error);
 
 	error = bhnd_service_registry_add(&bp->services, dev,
-	    BHND_SERVICE_NVRAM, NULL);
+	    BHND_SERVICE_NVRAM, 0);
 	if (error) {
 		bhnd_nvram_store_free(sc->store);
 		return (error);
