@@ -314,6 +314,12 @@ struct bhnd_service_registry {
 	struct sx				lock;		/**< state lock */
 };
 
+enum {
+	BHND_SPF_INHERITED	= (1<<0),	/**< service provider reference was inherited from
+						     a parent bus, and should be deregistered when the
+						     last active reference is released */
+};
+
 const char			*bhnd_vendor_name(uint16_t vendor);
 const char			*bhnd_port_type_name(bhnd_port_type port_type);
 const char			*bhnd_nvram_src_name(bhnd_nvram_src nvram_src);
@@ -454,7 +460,7 @@ int				 bhnd_service_registry_add(
 				     struct bhnd_service_registry *bsr,
 				     device_t provider,
 				     bhnd_service_t service,
-				     void *info);
+				     uint32_t flags);
 int				 bhnd_service_registry_remove(
 				     struct bhnd_service_registry *bsr,
 				     device_t provider,
@@ -462,11 +468,7 @@ int				 bhnd_service_registry_remove(
 device_t			 bhnd_service_registry_retain(
 				     struct bhnd_service_registry *bsr,
 				     bhnd_service_t service);
-void				 bhnd_service_registry_release(
-				     struct bhnd_service_registry *bsr,
-				     device_t provider,
-				     bhnd_service_t service);
-void				*bhnd_service_registry_info(
+bool				 bhnd_service_registry_release(
 				     struct bhnd_service_registry *bsr,
 				     device_t provider,
 				     bhnd_service_t service);
