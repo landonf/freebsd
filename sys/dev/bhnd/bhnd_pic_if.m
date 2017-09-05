@@ -39,36 +39,35 @@ INTERFACE bhnd_pic;
 #
 
 /**
- * Activate an interrupt for the given bhnd(4) @p device.
+ * Activate an interrupt for the given bhnd(4) @p core.
  * 
- * @param pic		The PIC device.
- * @param dev		The bhnd(4) device for which @p rid should be activated.
- * @param rid		The SYS_RES_IRQ resource identifier to be activated.
+ * @param dev	The PIC device.
+ * @param core	The bhnd(4) core for which @p rid should be activated.
+ * @param rid	The SYS_RES_IRQ resource identifier to be activated.
  *
  * @retval 0		success
  * @retval non-zero	if an error occurs activating the interrupt,
  *			a regular unix error code will be returned.
  */
 METHOD int activate_intr {
-	device_t	pic;
+	device_t	dev;
 	device_t	core;
 	int		rid;
 };
 
 /**
- * Deactivate an interrupt for the given bhnd(4) @p device.
+ * Deactivate an interrupt for the given bhnd(4) @p core.
  * 
- * @param pic		The PIC device.
- * @param dev		The bhnd(4) device for which @p rid should be
- *			deactivated.
- * @param rid		The SYS_RES_IRQ resource identifier to be deactivated.
+ * @param dev	The PIC device.
+ * @param core	The bhnd(4) core for which @p rid should be deactivated.
+ * @param rid	The SYS_RES_IRQ resource identifier to be deactivated.
  *
  * @retval 0		success
  * @retval non-zero	if an error occurs deactivating the interrupt,
  *			a regular unix error code will be returned.
  */
 METHOD int deactivate_intr {
-	device_t	pic;
+	device_t	dev;
 	device_t	core;
 	int		rid;
 };
