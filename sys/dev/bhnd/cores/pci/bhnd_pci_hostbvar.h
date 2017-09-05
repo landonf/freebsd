@@ -218,6 +218,13 @@ enum {
 	 * The PCIe core should be configured with an MRRS of 512 bytes.
 	 */
 	BHND_PCIE_QUIRK_DEFAULT_MRRS_512	= (1<<20),
+
+	/**
+	 * The PCI (rev <= 5) core does not provide interrupt status/mask
+	 * registers, and should not be registered as the bus' interrupt
+	 * controller.
+	 */
+	BHND_PCI_QUIRK_NO_INTR_MASK		= (1<<21),
 };
 
 /**

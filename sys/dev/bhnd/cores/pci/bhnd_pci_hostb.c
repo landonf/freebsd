@@ -102,6 +102,7 @@ static const struct bhnd_device bhnd_pci_devs[] = {
 static const struct bhnd_device_quirk bhnd_pci_quirks[] = {
 	/* core revision quirks */
 	BHND_CORE_QUIRK	(HWREV_ANY,	BHND_PCI_QUIRK_SBTOPCI2_PREF_BURST),
+	BHND_CORE_QUIRK (HWREV_LTE(5),	BHND_PCI_QUIRK_NO_INTR_MASK),
 	BHND_CORE_QUIRK	(HWREV_GTE(11),	BHND_PCI_QUIRK_SBTOPCI2_READMULTI |
 					BHND_PCI_QUIRK_CLKRUN_DSBL),
 
