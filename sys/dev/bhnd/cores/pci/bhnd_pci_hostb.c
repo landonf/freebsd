@@ -659,14 +659,14 @@ bhnd_pci_wars_hwdown(struct bhnd_pcihb_softc *sc, bhnd_pci_war_state state)
 }
 
 static int
-bhnd_pci_hostb_activate_intr(device_t dev, device_t requester, int rid) 
+bhnd_pci_hostb_activate_intr(device_t dev, device_t core, int rid) 
 {
 	// TODO
 	return (ENXIO);
 }
 
 static int
-bhnd_pci_hostb_deactivate_intr(device_t dev, device_t requester, int rid) 
+bhnd_pci_hostb_deactivate_intr(device_t dev, device_t core, int rid) 
 {
 	// TODO
 	return (ENXIO);
