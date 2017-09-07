@@ -1,7 +1,11 @@
 /*-
  * Copyright (c) 2016 Michael Zhilin <mizhka@gmail.com>
  * Copyright (c) 2016 Landon Fuller <landonf@FreeBSD.org>
+ * Copyright (c) 2017 The FreeBSD Foundation
  * All rights reserved.
+ *
+ * Portions of this software were developed by Landon Fuller
+ * under sponsorship from the FreeBSD Foundation.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -38,9 +42,12 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/bus.h>
 #include <sys/rman.h>
+
+#include <machine/cpufunc.h>
 #include <machine/resource.h>
 
 #include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/bcma/bcma_dmp.h>
 
 #include "bcm_mips74kreg.h"
 
@@ -50,6 +57,11 @@ __FBSDID("$FreeBSD$");
  * These cores are only found on bcma(4) chipsets, allowing
  * us to assume the availability of bcma interrupt registers.
  */
+
+struct bcm_mips74k_softc;
+
+static int	bcm_mips74k_route_ivec(struct bcm_mips74k_softc *sc,
+		    u_int ivec, u_int irq);
 
 static const struct bhnd_device bcm_mips74k_devs[] = {
 	BHND_DEVICE(MIPS, MIPS74K, NULL, NULL, BHND_DF_SOC),
@@ -66,10 +78,18 @@ static int
 bcm_mips74k_probe(device_t dev)
 {
 	const struct bhnd_device	*id;
+	const struct bhnd_chipid	*cid;
 
 	id = bhnd_device_lookup(dev, bcm_mips74k_devs,
 	    sizeof(bcm_mips74k_devs[0]));
 	if (id == NULL)
+		return (ENXIO);
+
+	/* Check the chip type; the MIPS74K core should only be found
+	 * on bcma(4) chipsets (and we rely on bcma OOB interrupt
+	 * routing. */
+	cid = bhnd_get_chipid(dev);
+	if (!BHND_CHIPTYPE_IS_BCMA_COMPATIBLE(bhnd_get_chipid(dev)->chip_type))
 		return (ENXIO);
 
 	bhnd_set_default_core_desc(dev);
@@ -79,7 +99,9 @@ bcm_mips74k_probe(device_t dev)
 static int
 bcm_mips74k_attach(device_t dev)
 {
-	struct bcm_mips74k_softc *sc;
+	struct bcm_mips74k_softc	*sc;
+	uint32_t			 ipti;
+	int				 error;
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
@@ -91,11 +113,19 @@ bcm_mips74k_attach(device_t dev)
 	if (sc->mem_res == NULL)
 		return (ENXIO);
 
-	/* Route MIPS timer to IRQ5 */
-	bus_write_4(sc->mem_res, BCM_MIPS74K_INTR5_SEL,
-	    (1<<BCM_MIPS74K_TIMER_IVEC));
+	/* Route the CPU timer's bus interrupt vector to its assigned CPU IRQ */
+	ipti = mips_rd_intctl();
+	ipti &= MIPS_INTCTL_IPTI_MASK;
+	ipti >>= MIPS_INTCTL_IPTI_SHIFT;
+
+	if ((error = bcm_mips74k_route_ivec(sc, BCM_MIPS74K_TIMER_IVEC, ipti)))
+		goto failed;
 
 	return (0);
+
+failed:
+	bus_release_resource(dev, SYS_RES_MEMORY, sc->mem_rid, sc->mem_res);
+	return (error);
 }
 
 static int
@@ -106,6 +136,32 @@ bcm_mips74k_detach(device_t dev)
 	sc = device_get_softc(dev);
 
 	bus_release_resource(dev, SYS_RES_MEMORY, sc->mem_rid, sc->mem_res);
+
+	return (0);
+}
+
+/**
+ * Route bus interrupt vector @p ivec to MIPS CPU @p irq.
+ * 
+ * @param sc	Driver state.
+ * @param ivec	The OOB bus line to route to @p irq.
+ * @param irq	The MIPS CPU IRQ to which @p ivec will be routed; MIPS hardware
+ *		IRQs are numbered 0-5, software IRQs 6-7.
+ * 
+ * @retval 0		success
+ * @retval EINVAL	if @p ivec or @p irq are invalid.
+ */
+static int
+bcm_mips74k_route_ivec(struct bcm_mips74k_softc *sc, u_int ivec, u_int irq)
+{
+	if (irq >= BCM_MIPS74K_NUM_INTR)
+		return (EINVAL);
+
+	if (ivec >= BCMA_OOB_NUM_BUSLINES)
+		return (EINVAL);
+
+	bus_write_4(sc->mem_res, BCM_MIPS74K_INTR_SEL(irq),
+	    BCM_MIPS74K_INTR_SEL_FLAG(ivec));
 
 	return (0);
 }

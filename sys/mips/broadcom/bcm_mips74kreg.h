@@ -46,9 +46,13 @@
 #define	BCM_MIPS74K_INTR3_SEL		0x20	/**< IRQ3 OOBSEL mask */
 #define	BCM_MIPS74K_INTR4_SEL		0x24	/**< IRQ4 OOBSEL mask */
 #define	BCM_MIPS74K_INTR5_SEL		0x28	/**< IRQ5 OOBSEL mask */
+#define	BCM_MIPS74K_NUM_INTR		5	/**< routable CPU interrupt count */
 
 #define	BCM_MIPS74K_INTR_SEL(_intr)	\
 	(BCM_MIPS74K_INTR0_SEL + ((_intr) * 4))
+#define	BCM_MIPS74K_INTR_SEL_FLAG(_i)	(1<<_i)
+
+#define	BCM_MIPS74K_TIMER_IVEC		31	/**< MIPS timer's bus interrupt vector */
 
 #define	BCM_MIPS74K_NMI_MASK		0x2C	/**< nmi mask */
 
@@ -56,7 +60,5 @@
 #define	BCM_MIPS74K_GPIO_OUT		0x44	/**< gpio output enable */
 #define	BCM_MIPS74K_GPIO_EN		0x48	/**< gpio enable */
 
-
-#define	BCM_MIPS74K_TIMER_IVEC		31	/**< MIPS timer OOBSEL value */
 
 #endif /* _MIPS_BROADCOM_MIPS74KREG_H_ */
