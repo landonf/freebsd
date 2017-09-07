@@ -72,6 +72,7 @@ struct bcm_mips74k_softc {
 	device_t		 dev;
 	struct resource		*mem_res;
 	int			 mem_rid;
+	u_int			 timer_irq;	/**< CPU timer IRQ */
 };
 
 static int
@@ -89,7 +90,7 @@ bcm_mips74k_probe(device_t dev)
 	 * on bcma(4) chipsets (and we rely on bcma OOB interrupt
 	 * routing). */
 	cid = bhnd_get_chipid(dev);
-	if (!BHND_CHIPTYPE_IS_BCMA_COMPATIBLE(bhnd_get_chipid(dev)->chip_type))
+	if (!BHND_CHIPTYPE_IS_BCMA_COMPATIBLE(cid->chip_type))
 		return (ENXIO);
 
 	bhnd_set_default_core_desc(dev);
@@ -100,7 +101,6 @@ static int
 bcm_mips74k_attach(device_t dev)
 {
 	struct bcm_mips74k_softc	*sc;
-	uint32_t			 ipti;
 	int				 error;
 
 	sc = device_get_softc(dev);
@@ -113,13 +113,18 @@ bcm_mips74k_attach(device_t dev)
 	if (sc->mem_res == NULL)
 		return (ENXIO);
 
-	/* Route the CPU timer's bus interrupt vector to its assigned CPU IRQ */
-	ipti = mips_rd_intctl();
-	ipti &= MIPS_INTCTL_IPTI_MASK;
-	ipti >>= MIPS_INTCTL_IPTI_SHIFT;
+	/* Fetch the assigned CPU timer IRQ */
+	sc->timer_irq = (mips_rd_intctl() & MIPS_INTCTL_IPTI_MASK) >>
+	    MIPS_INTCTL_IPTI_SHIFT;
 
-	if ((error = bcm_mips74k_route_ivec(sc, BCM_MIPS74K_TIMER_IVEC, ipti)))
+	/* Route the CPU timer's bus interrupt vector */
+	error = bcm_mips74k_route_ivec(sc, BCM_MIPS74K_TIMER_IVEC,
+	    sc->timer_irq);
+	if (error) {
+		device_printf(dev, "error routing timer IRQ %u: %d\n",
+		    sc->timer_irq, error);
 		goto failed;
+	}
 
 	return (0);
 

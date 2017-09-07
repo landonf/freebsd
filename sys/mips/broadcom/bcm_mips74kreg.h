@@ -46,7 +46,7 @@
 #define	BCM_MIPS74K_INTR3_SEL		0x20	/**< IRQ3 OOBSEL mask */
 #define	BCM_MIPS74K_INTR4_SEL		0x24	/**< IRQ4 OOBSEL mask */
 #define	BCM_MIPS74K_INTR5_SEL		0x28	/**< IRQ5 OOBSEL mask */
-#define	BCM_MIPS74K_NUM_INTR		5	/**< routable CPU interrupt count */
+#define	BCM_MIPS74K_NUM_INTR		6	/**< routable CPU interrupt count */
 
 #define	BCM_MIPS74K_INTR_SEL(_intr)	\
 	(BCM_MIPS74K_INTR0_SEL + ((_intr) * 4))
