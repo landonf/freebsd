@@ -68,6 +68,7 @@ static DPCPU_DEFINE(uint32_t, compare_ticks);
 static DPCPU_DEFINE(uint32_t, lost_ticks);
 
 struct clock_softc {
+	int intr_irq;
 	int intr_rid;
 	struct resource *intr_res;
 	void *intr_handler;
@@ -336,13 +337,21 @@ clock_attach(device_t dev)
 		panic("can't attach more clocks");
 
 	softc = sc = device_get_softc(dev);
+#ifdef TICK_USE_INTCTL
+	sc->intr_irq = (mips_rd_intctl() & MIPS_INTCTL_IPTI_MASK) >>
+	    MIPS_INTCTL_IPTI_SHIFT;
+#else
+	sc->intr_irq = 5;
+#endif
+
 #ifdef INTRNG
-	cpu_establish_hardintr("clock", clock_intr, NULL, sc, 5, INTR_TYPE_CLK,
-	    NULL);
+	cpu_establish_hardintr("clock", clock_intr, NULL, sc, sc->intr_irq,
+	    INTR_TYPE_CLK, NULL);
 #else
 	sc->intr_rid = 0;
-	sc->intr_res = bus_alloc_resource(dev,
-	    SYS_RES_IRQ, &sc->intr_rid, 5, 5, 1, RF_ACTIVE);
+	sc->intr_res = bus_alloc_resource(dev, SYS_RES_IRQ, &sc->intr_rid,
+	    sc->intr_irq, sc->intr_irq, 1, RF_ACTIVE);
+
 	if (sc->intr_res == NULL) {
 		device_printf(dev, "failed to allocate irq\n");
 		return (ENXIO);

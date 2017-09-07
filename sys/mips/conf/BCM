@@ -19,6 +19,8 @@ options 	ALT_BREAK_TO_DEBUGGER
 options 	BREAK_TO_DEBUGGER
 options		BOOTVERBOSE=0
 
+options		TICK_USE_INTCTL
+
 makeoptions	TRAMPLOADADDR=0x80800000
 makeoptions	DEBUG="-g3"		#Build kernel with gdb(1) debug symbols
 makeoptions	MODULES_OVERRIDE=""
