@@ -87,7 +87,7 @@ bcm_mips74k_probe(device_t dev)
 
 	/* Check the chip type; the MIPS74K core should only be found
 	 * on bcma(4) chipsets (and we rely on bcma OOB interrupt
-	 * routing. */
+	 * routing). */
 	cid = bhnd_get_chipid(dev);
 	if (!BHND_CHIPTYPE_IS_BCMA_COMPATIBLE(bhnd_get_chipid(dev)->chip_type))
 		return (ENXIO);
