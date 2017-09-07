@@ -609,7 +609,8 @@ siba_get_region_addr(device_t dev, device_t child, bhnd_port_type port_type,
 int
 siba_get_intr_count(device_t dev, device_t child)
 {
-	struct siba_devinfo *dinfo;
+	struct siba_devinfo	*dinfo;
+	uint32_t		 tpsflag;
 
 	/* delegate non-bus-attached devices to our parent */
 	if (device_get_parent(child) != dev)
@@ -617,10 +618,13 @@ siba_get_intr_count(device_t dev, device_t child)
 
 	dinfo = device_get_ivars(child);
 
-	/* We can get/set interrupt sbflags on any core with a valid cfg0
-	 * block; whether the core actually makes use of it is another matter
-	 * entirely */
+	/* Core must have a valid cfg0 block */
 	if (dinfo->cfg[0] == NULL)
+		return (0);
+
+	/* Is backplane interrupt distribution enabled for this core? */
+	tpsflag = bhnd_bus_read_4(dinfo->cfg[0], SIBA_CFG0_TPSFLAG);
+	if ((tpsflag & SIBA_TPS_F0EN0) == 0)
 		return (0);
 
 	return (SIBA_CORE_NUM_INTR);
