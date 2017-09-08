@@ -44,10 +44,13 @@ __FBSDID("$FreeBSD$");
 #include <sys/rman.h>
 
 #include <machine/cpufunc.h>
+#include <machine/intr.h>
 #include <machine/resource.h>
 
 #include <dev/bhnd/bhnd.h>
 #include <dev/bhnd/bcma/bcma_dmp.h>
+
+#include "bcm_machdep.h"
 
 #include "bcm_mips74kreg.h"
 
@@ -60,20 +63,59 @@ __FBSDID("$FreeBSD$");
 
 struct bcm_mips74k_softc;
 
-static int	bcm_mips74k_route_ivec(struct bcm_mips74k_softc *sc,
-		    u_int ivec, u_int irq);
-
 static const struct bhnd_device bcm_mips74k_devs[] = {
 	BHND_DEVICE(MIPS, MIPS74K, NULL, NULL, BHND_DF_SOC),
 	BHND_DEVICE_END
 };
 
-struct bcm_mips74k_softc {
-	device_t		 dev;
-	struct resource		*mem_res;
-	int			 mem_rid;
-	u_int			 timer_irq;	/**< CPU timer IRQ */
+struct bcm_mips74k_irqsrc {
+	struct intr_irqsrc	isrc;
+	u_int			ivec;
 };
+
+struct bcm_mips74k_softc {
+	device_t	 dev;
+	struct resource	*mem_res;
+	int		 mem_rid;
+};
+
+/* Early routing of the CPU timer interrupt is required */
+static void
+bcm_mips74k_timer_init(void *unused)
+{
+	struct bcm_platform	*bp;
+	u_int			 irq;
+	uint32_t		 mask;
+
+	bp = bcm_get_platform();
+
+
+	/* Must be a MIPS74K core attached to a BCMA interconnect */
+	if (!bhnd_core_matches(&bp->cpu_id, &(struct bhnd_core_match) {
+		BHND_MATCH_CORE(BHND_MFGID_MIPS, BHND_COREID_MIPS74K)
+	})) {
+		if (bootverbose) {
+			BCM_ERR("not a MIPS74K core: %s %s\n",
+			    bhnd_vendor_name(bp->cpu_id.vendor),
+			    bhnd_core_name(&bp->cpu_id));
+		}
+
+		return;
+	}
+
+	if (!BHND_CHIPTYPE_IS_BCMA_COMPATIBLE(bp->cid.chip_type)) {
+		if (bootverbose)
+			BCM_ERR("not a BCMA device\n");
+		return;
+	}
+
+	/* Route the timer bus ivec to the CPU's timer IRQ, and disable any
+	 * other vectors assigned to the IRQ. */
+	irq = BCM_MIPS74K_GET_TIMER_IRQ();
+	mask = BCM_MIPS74K_INTR_SEL_FLAG(BCM_MIPS74K_TIMER_IVEC);
+
+	BCM_CPU_WRITE_4(bp, BCM_MIPS74K_INTR_SEL(irq), mask);
+}
 
 static int
 bcm_mips74k_probe(device_t dev)
@@ -101,6 +143,7 @@ static int
 bcm_mips74k_attach(device_t dev)
 {
 	struct bcm_mips74k_softc	*sc;
+	const char			*name;
 	int				 error;
 
 	sc = device_get_softc(dev);
@@ -113,24 +156,7 @@ bcm_mips74k_attach(device_t dev)
 	if (sc->mem_res == NULL)
 		return (ENXIO);
 
-	/* Fetch the assigned CPU timer IRQ */
-	sc->timer_irq = (mips_rd_intctl() & MIPS_INTCTL_IPTI_MASK) >>
-	    MIPS_INTCTL_IPTI_SHIFT;
-
-	/* Route the CPU timer's bus interrupt vector */
-	error = bcm_mips74k_route_ivec(sc, BCM_MIPS74K_TIMER_IVEC,
-	    sc->timer_irq);
-	if (error) {
-		device_printf(dev, "error routing timer IRQ %u: %d\n",
-		    sc->timer_irq, error);
-		goto failed;
-	}
-
 	return (0);
-
-failed:
-	bus_release_resource(dev, SYS_RES_MEMORY, sc->mem_rid, sc->mem_res);
-	return (error);
 }
 
 static int
@@ -141,32 +167,6 @@ bcm_mips74k_detach(device_t dev)
 	sc = device_get_softc(dev);
 
 	bus_release_resource(dev, SYS_RES_MEMORY, sc->mem_rid, sc->mem_res);
-
-	return (0);
-}
-
-/**
- * Route bus interrupt vector @p ivec to MIPS CPU @p irq.
- * 
- * @param sc	Driver state.
- * @param ivec	The OOB bus line to route to @p irq.
- * @param irq	The MIPS CPU IRQ to which @p ivec will be routed; MIPS hardware
- *		IRQs are numbered 0-5, software IRQs 6-7.
- * 
- * @retval 0		success
- * @retval EINVAL	if @p ivec or @p irq are invalid.
- */
-static int
-bcm_mips74k_route_ivec(struct bcm_mips74k_softc *sc, u_int ivec, u_int irq)
-{
-	if (irq >= BCM_MIPS74K_NUM_INTR)
-		return (EINVAL);
-
-	if (ivec >= BCMA_OOB_NUM_BUSLINES)
-		return (EINVAL);
-
-	bus_write_4(sc->mem_res, BCM_MIPS74K_INTR_SEL(irq),
-	    BCM_MIPS74K_INTR_SEL_FLAG(ivec));
 
 	return (0);
 }
@@ -183,6 +183,7 @@ static device_method_t bcm_mips74k_methods[] = {
 static devclass_t bcm_mips_devclass;
 
 DEFINE_CLASS_0(bcm_mips, bcm_mips74k_driver, bcm_mips74k_methods, sizeof(struct bcm_mips74k_softc));
-EARLY_DRIVER_MODULE(bcm_mips74k, bhnd, bcm_mips74k_driver, bcm_mips_devclass, 0, 0, BUS_PASS_CPU + BUS_PASS_ORDER_EARLY);
+EARLY_DRIVER_MODULE(bcm_mips74k, bhnd, bcm_mips74k_driver, bcm_mips_devclass, 0, 0, BUS_PASS_INTERRUPT + BUS_PASS_ORDER_MIDDLE);
+SYSINIT(cpu_init, SI_SUB_CPU, SI_ORDER_FIRST, bcm_mips74k_timer_init, NULL);
 MODULE_VERSION(bcm_mips74k, 1);
 MODULE_DEPEND(bcm_mips74k, bhnd, 1, 1, 1);

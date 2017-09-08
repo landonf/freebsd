@@ -60,5 +60,9 @@
 #define	BCM_MIPS74K_GPIO_OUT		0x44	/**< gpio output enable */
 #define	BCM_MIPS74K_GPIO_EN		0x48	/**< gpio enable */
 
+/** The MIPS timer interrupt IRQ assignment */
+#define	BCM_MIPS74K_GET_TIMER_IRQ()	\
+	 ((mips_rd_intctl() & MIPS_INTCTL_IPTI_MASK) >> MIPS_INTCTL_IPTI_SHIFT)
+
 
 #endif /* _MIPS_BROADCOM_MIPS74KREG_H_ */
