@@ -43,6 +43,8 @@
 #define	  BCM_BMIPS_TIMER_INTMASK	0x01	/**< timer interrupt mask */
 #define	BCM_BMIPS_TIMER_CTRL		0x28	/**< timer interval (?) */
 
+#define	BCM_BMIPS_NUM_INTR		5	/**< routable CPU interrupt count (6 - IRQ5 reserved for timer) */
+
 /*
  * Broadcom BMIPS32 (BHND_COREID_MIPS)
  */

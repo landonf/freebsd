@@ -63,6 +63,12 @@ __FBSDID("$FreeBSD$");
 
 struct bcm_mips74k_softc;
 
+// TODO
+#if 0
+static int	bcm_mips74k_route_ivec(struct bcm_mips74k_softc *sc,
+		    u_int ivec, u_int irq);
+#endif
+
 static const struct bhnd_device bcm_mips74k_devs[] = {
 	BHND_DEVICE(MIPS, MIPS74K, NULL, NULL, BHND_DF_SOC),
 	BHND_DEVICE_END
@@ -70,13 +76,15 @@ static const struct bhnd_device bcm_mips74k_devs[] = {
 
 struct bcm_mips74k_irqsrc {
 	struct intr_irqsrc	isrc;
-	u_int			ivec;
+	u_int			ivec;	/**< bus interrupt vector */
 };
 
 struct bcm_mips74k_softc {
-	device_t	 dev;
-	struct resource	*mem_res;
-	int		 mem_rid;
+	device_t			 dev;
+	struct resource			*mem_res;
+	int				 mem_rid;
+	u_int				 timer_irq;			/**< CPU timer IRQ */
+	struct bcm_mips74k_irqsrc	 isrcs[BCMA_OOB_NUM_BUSLINES];
 };
 
 /* Early routing of the CPU timer interrupt is required */
@@ -149,12 +157,33 @@ bcm_mips74k_attach(device_t dev)
 	sc = device_get_softc(dev);
 	sc->dev = dev;
 
+	/* Register our interrupt sources */
+	name = device_get_nameunit(dev);
+	for (size_t ivec = 0; ivec < nitems(sc->isrcs); ivec++) {
+		sc->isrcs[ivec].ivec = ivec;
+
+		error = intr_isrc_register(&sc->isrcs[ivec].isrc, dev, 0,
+		    "%s,%u", name, ivec);
+		if (error) {
+			for (size_t i = 0; i < ivec; i++)
+				intr_isrc_deregister(&sc->isrcs[ivec-i].isrc);
+
+			device_printf(dev, "error registering IRQ %zu: %d\n",
+			    ivec, error);
+			return (error);
+		}
+
+		device_printf(dev, "registered %u for %zu\n", sc->isrcs[ivec].isrc.isrc_irq, ivec);
+	}
+
 	/* Allocate bus resources */
 	sc->mem_rid = 0;
 	sc->mem_res = bus_alloc_resource_any(dev, SYS_RES_MEMORY, &sc->mem_rid,
 	    RF_ACTIVE);
-	if (sc->mem_res == NULL)
+	if (sc->mem_res == NULL) {
+		// TODO - deregister sources
 		return (ENXIO);
+	}
 
 	return (0);
 }
@@ -168,8 +197,43 @@ bcm_mips74k_detach(device_t dev)
 
 	bus_release_resource(dev, SYS_RES_MEMORY, sc->mem_rid, sc->mem_res);
 
+	for (size_t i = 0; i < nitems(sc->isrcs); i++)
+		intr_isrc_deregister(&sc->isrcs[i].isrc);
+
 	return (0);
 }
+
+// TODO
+#if 0
+/**
+ * Route bus interrupt vector @p ivec to MIPS CPU @p irq.
+ * 
+ * @param sc	Driver state.
+ * @param ivec	The OOB bus line to route to @p irq.
+ * @param irq	The MIPS CPU IRQ to which @p ivec will be routed; MIPS hardware
+ *		IRQs are numbered 0-5, software IRQs 6-7.
+ * 
+ * @retval 0		success
+ * @retval EINVAL	if @p ivec or @p irq are invalid.
+ */
+static int
+bcm_mips74k_route_ivec(struct bcm_mips74k_softc *sc, u_int ivec, u_int irq)
+{
+	uint32_t sel;
+
+	if (irq >= BCM_MIPS74K_NUM_INTR)
+		return (EINVAL);
+
+	if (ivec >= BCMA_OOB_NUM_BUSLINES)
+		return (EINVAL);
+
+	sel = bus_read_4(sc->mem_res, BCM_MIPS74K_INTR_SEL(irq));
+	sel |= BCM_MIPS74K_INTR_SEL_FLAG(ivec);
+	bus_write_4(sc->mem_res, BCM_MIPS74K_INTR_SEL(irq), sel);
+
+	return (0);
+}
+#endif
 
 static device_method_t bcm_mips74k_methods[] = {
 	/* Device interface */
