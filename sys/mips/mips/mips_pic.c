@@ -69,6 +69,10 @@ __FBSDID("$FreeBSD$");
 #define NSOFT_IRQS	2
 #define NREAL_IRQS	(NHARD_IRQS + NSOFT_IRQS)
 
+#ifndef FDT
+#define	INTR_MAP_DATA_MIPS	INTR_MAP_DATA_PLAT_1
+#endif
+
 static int mips_pic_intr(void *);
 
 struct intr_map_data_mips_pic {
@@ -87,7 +91,7 @@ struct mips_pic_softc {
 	struct mips_pic_irqsrc		pic_irqs[NREAL_IRQS];
 	struct rman			pic_irq_rman;
 	struct mtx			mutex;
-	uint32_t			nirqs;
+	u_int				nirqs;
 };
 
 static struct mips_pic_softc *pic_sc;
@@ -153,11 +157,32 @@ static int
 mips_pic_register_isrcs(struct mips_pic_softc *sc)
 {
 	int error;
-	uint32_t irq, i, tmpirq;
-	struct intr_irqsrc *isrc;
-	char *name;
 
-	for (irq = 0; irq < sc->nirqs; irq++) {
+	for (u_int irq = 0; irq < sc->nirqs; irq++) {
+		struct intr_irqsrc		*isrc;
+		char				*name;
+		u_int				 tmpirq;
+#ifndef FDT
+		struct intr_map_data_mips_pic	*data;
+		u_int				 newirq;
+#endif /* !FDT */
+
+		/* No equivalent to OFW_BUS_MAP_INTR for non-FDT targets; we
+		 * must instead preemptively map our IRQs, and assert a 1:1
+		 * correspondance between MIPS and INTRNG IRQ assignments */
+#ifndef FDT
+		data = (struct intr_map_data_mips_pic *)intr_alloc_map_data(
+		    INTR_MAP_DATA_MIPS, sizeof(*data), M_WAITOK | M_ZERO);
+		data->irq = irq;
+		newirq = intr_map_irq(sc->pic_dev, pic_xref(sc->pic_dev),
+		    &data->hdr);
+		if (newirq != irq) {
+			/* non-FDT MIPS code requires a 1:1 mapping between
+			 * MIPS:INTRNG IRQ# */
+			panic("invalid IRQ mapping: %u->%u", irq, newirq);
+		}
+#endif /* !FDT */
+
 		sc->pic_irqs[irq].irq = irq;
 		sc->pic_irqs[irq].res = rman_reserve_resource(&sc->pic_irq_rman,
 		    irq, irq, 1, RF_ACTIVE, sc->pic_dev);
@@ -178,7 +203,7 @@ mips_pic_register_isrcs(struct mips_pic_softc *sc)
 		error = intr_isrc_register(isrc, sc->pic_dev, 0, "%s%u",
 		    name, tmpirq);
 		if (error != 0) {
-			for (i = 0; i < irq; i++) {
+			for (uint32_t i = 0; i < irq; i++) {
 				intr_isrc_deregister(PIC_INTR_ISRC(sc, i));
 			}
 			device_printf(sc->pic_dev, "%s failed", __func__);
@@ -326,7 +351,7 @@ mips_pic_map_intr(device_t dev, struct intr_map_data *data,
 		*isrcp = PIC_INTR_ISRC(sc, daf->cells[0]);
 	} else
 #endif
-	if (data->type == INTR_MAP_DATA_PLAT_1) {
+	if (data->type == INTR_MAP_DATA_MIPS) {
 		struct intr_map_data_mips_pic *mpd;
 
 		mpd = (struct intr_map_data_mips_pic *)data;
@@ -401,51 +426,11 @@ cpu_init_interrupts(void)
 {
 }
 
-int
-cpu_create_intr_map(int irq)
-{
-	struct intr_map_data_mips_pic *mips_pic_data;
-	intptr_t iparent;
-	size_t len;
-	u_int new_irq;
-
-	len = sizeof(*mips_pic_data);
-	iparent = pic_xref(pic_sc->pic_dev);
-
-	/* Allocate mips_pic data and fill it in */
-	mips_pic_data = (struct intr_map_data_mips_pic *)intr_alloc_map_data(
-	    INTR_MAP_DATA_PLAT_1, len, M_WAITOK | M_ZERO);
-	mips_pic_data->irq = irq;
-
-	/* Get the new irq number */
-	new_irq = intr_map_irq(pic_sc->pic_dev, iparent,
-	    (struct intr_map_data *)mips_pic_data);
-
-	/* Adjust the resource accordingly */
-	rman_set_start(pic_sc->pic_irqs[irq].res, new_irq);
-	rman_set_end(pic_sc->pic_irqs[irq].res, new_irq);
-
-	/* Activate the new irq */
-	return (intr_activate_irq(pic_sc->pic_dev, pic_sc->pic_irqs[irq].res));
-}
-
-struct resource *
-cpu_get_irq_resource(int irq)
-{
-
-	KASSERT(pic_sc != NULL, ("%s: no pic", __func__));
-
-	if (irq < 0 || irq >= pic_sc->nirqs)
-		panic("%s called for unknown irq %d", __func__, irq);
-
-	return pic_sc->pic_irqs[irq].res;
-}
-
 void
 cpu_establish_hardintr(const char *name, driver_filter_t *filt,
     void (*handler)(void*), void *arg, int irq, int flags, void **cookiep)
 {
-	int res;
+	int error;
 
 	/*
 	 * We have 6 levels, but thats 0 - 5 (not including 6)
@@ -457,12 +442,14 @@ cpu_establish_hardintr(const char *name, driver_filter_t *filt,
 
 	irq += NSOFT_IRQS;
 
-	res = cpu_create_intr_map(irq);
-	if (res != 0) panic("Unable to create map for hard IRQ %d", irq);
+	error = intr_activate_irq(pic_sc->pic_dev, pic_sc->pic_irqs[irq].res);
+	if (error)
+		panic("Unable to activate hard IRQ %d handler: %d", irq, error);
 
-	res = intr_setup_irq(pic_sc->pic_dev, pic_sc->pic_irqs[irq].res, filt,
+	error = intr_setup_irq(pic_sc->pic_dev, pic_sc->pic_irqs[irq].res, filt,
 	    handler, arg, flags, cookiep);
-	if (res != 0) panic("Unable to add hard IRQ %d handler", irq);
+	if (error)
+		panic("Unable to add hard IRQ %d handler: %d", irq, error);
 }
 
 void
@@ -470,18 +457,20 @@ cpu_establish_softintr(const char *name, driver_filter_t *filt,
     void (*handler)(void*), void *arg, int irq, int flags,
     void **cookiep)
 {
-	int res;
+	int error;
 
 	if (irq < 0 || irq > NSOFT_IRQS)
 		panic("%s called for unknown soft intr %d", __func__, irq);
 
 	KASSERT(pic_sc != NULL, ("%s: no pic", __func__));
 
-	res = cpu_create_intr_map(irq);
-	if (res != 0) panic("Unable to create map for soft IRQ %d", irq);
+	error = intr_activate_irq(pic_sc->pic_dev, pic_sc->pic_irqs[irq].res);
+	if (error)
+		panic("Unable to activate hard IRQ %d handler: %d", irq, error);
 
-	res = intr_setup_irq(pic_sc->pic_dev, pic_sc->pic_irqs[irq].res, filt,
+	error = intr_setup_irq(pic_sc->pic_dev, pic_sc->pic_irqs[irq].res, filt,
 	    handler, arg, flags, cookiep);
-	if (res != 0) panic("Unable to add soft IRQ %d handler", irq);
+	if (error)
+		panic("Unable to add soft IRQ %d handler: %d", irq, error);
 }
 
