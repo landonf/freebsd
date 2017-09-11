@@ -44,8 +44,10 @@ __FBSDID("$FreeBSD$");
 #include <sys/pcpu.h>
 #include <sys/proc.h>
 #include <sys/cpuset.h>
+#include <sys/limits.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
+#include <sys/queue.h>
 #include <sys/smp.h>
 #include <sys/sched.h>
 #include <sys/pmc.h>
@@ -63,40 +65,54 @@ __FBSDID("$FreeBSD$");
 #include <dev/ofw/ofw_bus_subr.h>
 #endif
 
-#include "pic_if.h"
-
-#define NHARD_IRQS	6
-#define NSOFT_IRQS	2
-#define NREAL_IRQS	(NHARD_IRQS + NSOFT_IRQS)
-
 #ifndef FDT
-#define	INTR_MAP_DATA_MIPS	INTR_MAP_DATA_PLAT_1
+#define	MIPS_PIC_FIXED_MAP	/**< preemptively populate fixed MIPS IRQ0-7 mappings */
 #endif
 
-static int mips_pic_intr(void *);
+#include "pic_if.h"
 
-struct intr_map_data_mips_pic {
-	struct intr_map_data	hdr;
-	u_int			irq;
+struct mips_pic_softc;
+
+static int				 mips_pic_intr(void *);
+static struct intr_map_data_mips	*cpu_create_intr_map(
+					     struct mips_pic_softc *sc,
+					     int irq);
+static void				 cpu_establish_intr(
+					     struct mips_pic_softc *sc,
+					     const char *name,
+					     driver_filter_t *filt,
+					     void (*handler)(void*), void *arg,
+					     int irq, int flags,
+					     void **cookiep);
+
+struct intr_map_data_mips {
+	struct intr_map_data	 hdr;		/**< inherited map data */
+	u_int			 mips_irq;	/**< MIPS IRQ# 0-7 */
+	u_int			 intr_irq;	/**< INTRNG IRQ# */
+	u_int			 consumers;	/**< INTRNG activation refcount */
+	struct resource		*res;		/**< resource shared by all interrupt handlers registered via
+						     cpu_establish_hardintr() or cpu_establish_softintr(); NULL
+						     if no interrupt handlers are yet registered. */
+
+	LIST_ENTRY(intr_map_data_mips) link;
 };
 
 struct mips_pic_irqsrc {
-	struct intr_irqsrc	isrc;
-	struct resource		*res;
-	u_int			irq;
+	struct intr_irqsrc	 isrc;	/**< inherited irqsrc state */
+	u_int			 irq;	/**< MIPS IRQ# 0-7 */
 };
 
 struct mips_pic_softc {
-	device_t			pic_dev;
-	struct mips_pic_irqsrc		pic_irqs[NREAL_IRQS];
-	struct rman			pic_irq_rman;
-	struct mtx			mutex;
-	u_int				nirqs;
+	device_t			 pic_dev;
+	struct mips_pic_irqsrc		 pic_isrcs[NREAL_IRQS];	/**< interrupt source entries */
+	LIST_HEAD(,intr_map_data_mips)	 pic_data;		/**< MIPS IRQ mappings */
+	struct mtx			 mutex;			/**< state mutex used to synchronize access to pic_data */
+	u_int				 nirqs;			/**< IRQ count */
 };
 
 static struct mips_pic_softc *pic_sc;
 
-#define PIC_INTR_ISRC(sc, irq)		(&(sc)->pic_irqs[(irq)].isrc)
+#define PIC_INTR_ISRC(sc, irq)		(&(sc)->pic_isrcs[(irq)].isrc)
 
 #ifdef FDT
 static struct ofw_compat_data compat_data[] = {
@@ -159,53 +175,48 @@ mips_pic_register_isrcs(struct mips_pic_softc *sc)
 	int error;
 
 	for (u_int irq = 0; irq < sc->nirqs; irq++) {
-		struct intr_irqsrc		*isrc;
+		struct mips_pic_irqsrc		*isrc;
 		char				*name;
-		u_int				 tmpirq;
-#ifndef FDT
-		struct intr_map_data_mips_pic	*data;
-		u_int				 newirq;
-#endif /* !FDT */
+		u_int				 nameirq;
+#ifdef MIPS_PIC_FIXED_MAP
+		struct intr_map_data_mips	*data;
 
-		/* No equivalent to OFW_BUS_MAP_INTR for non-FDT targets; we
-		 * must instead preemptively map our IRQs, and assert a 1:1
-		 * correspondance between MIPS and INTRNG IRQ assignments */
-#ifndef FDT
-		data = (struct intr_map_data_mips_pic *)intr_alloc_map_data(
-		    INTR_MAP_DATA_MIPS, sizeof(*data), M_WAITOK | M_ZERO);
-		data->irq = irq;
-		newirq = intr_map_irq(sc->pic_dev, pic_xref(sc->pic_dev),
-		    &data->hdr);
-		if (newirq != irq) {
-			/* non-FDT MIPS code requires a 1:1 mapping between
-			 * MIPS:INTRNG IRQ# */
-			panic("invalid IRQ mapping: %u->%u", irq, newirq);
+		/*
+		 * Non-FDT/OFW MIPS targets do not provide an equivalent to
+		 * OFW_BUS_MAP_INTR(); it is instead necessary to reserve INTRNG
+		 * IRQ# 0-7 for use by MIPS device drivers that assume INTRNG
+		 * IRQs 0-7 are directly mapped to MIPS IRQs 0-7.
+		 * 
+		 * XXX: There is no support in INTRNG for reserving a fixed IRQ
+		 * range; since we're the root PIC, we can work around this by
+		 * iteratively allocating the required 0-7 MIP IRQ# range.
+		 */
+		data = cpu_create_intr_map(sc, irq);
+		if (data->mips_irq != data->intr_irq) {
+			panic("invalid IRQ mapping: %u->%u", data->mips_irq,
+			    data->intr_irq);
 		}
-#endif /* !FDT */
+#endif /* MIPS_PIC_FIXED_MAP */
 
-		sc->pic_irqs[irq].irq = irq;
-		sc->pic_irqs[irq].res = rman_reserve_resource(&sc->pic_irq_rman,
-		    irq, irq, 1, RF_ACTIVE, sc->pic_dev);
-		if (sc->pic_irqs[irq].res == NULL) {
-			device_printf(sc->pic_dev,
-			    "%s failed to alloc resource for irq %u",
-			    __func__, irq);
-			return (ENOMEM);
-		}
-		isrc = PIC_INTR_ISRC(sc, irq);
+		/* Register our isrc for this IRQ */
+		isrc = (struct mips_pic_irqsrc *)PIC_INTR_ISRC(sc, irq);
+		isrc->irq = irq;
+
+		/* sint.[0-2] or int.[0-5] */
 		if (irq < NSOFT_IRQS) {
 			name = "sint";
-			tmpirq = irq;
+			nameirq = irq;
 		} else {
 			name = "int";
-			tmpirq = irq - NSOFT_IRQS;
+			nameirq = irq - NSOFT_IRQS;
 		}
-		error = intr_isrc_register(isrc, sc->pic_dev, 0, "%s%u",
-		    name, tmpirq);
+
+		error = intr_isrc_register(&isrc->isrc, sc->pic_dev, 0, "%s%u",
+		    name, nameirq);
 		if (error != 0) {
-			for (uint32_t i = 0; i < irq; i++) {
+			for (u_int i = 0; i < irq; i++)
 				intr_isrc_deregister(PIC_INTR_ISRC(sc, i));
-			}
+	
 			device_printf(sc->pic_dev, "%s failed", __func__);
 			return (error);
 		}
@@ -219,34 +230,27 @@ mips_pic_attach(device_t dev)
 {
 	struct		mips_pic_softc *sc;
 	intptr_t	xref = pic_xref(dev);
+	int		error;
 
-	if (pic_sc)
+	if (pic_sc != NULL)
 		return (ENXIO);
 
 	sc = device_get_softc(dev);
-
 	sc->pic_dev = dev;
-	pic_sc = sc;
 
 	/* Initialize mutex */
-	mtx_init(&sc->mutex, "PIC lock", "", MTX_SPIN);
+	mtx_init(&sc->mutex, "PIC lock", "", MTX_DEF);
 
 	/* Set the number of interrupts */
-	sc->nirqs = nitems(sc->pic_irqs);
+	sc->nirqs = nitems(sc->pic_isrcs);
 
-	/* Init the IRQ rman */
-	sc->pic_irq_rman.rm_type = RMAN_ARRAY;
-	sc->pic_irq_rman.rm_descr = "MIPS PIC IRQs";
-	if (rman_init(&sc->pic_irq_rman) != 0 ||
-	    rman_manage_region(&sc->pic_irq_rman, 0, sc->nirqs - 1) != 0) {
-		device_printf(dev, "failed to setup IRQ rman\n");
-		goto cleanup;
-	}
+	LIST_INIT(&sc->pic_data);
 
 	/* Register the interrupts */
-	if (mips_pic_register_isrcs(sc) != 0) {
-		device_printf(dev, "could not register PIC ISRCs\n");
-		goto cleanup;
+	if ((error = mips_pic_register_isrcs(sc))) {
+		device_printf(dev, "could not register PIC ISRCs: %d\n", error);
+		mtx_destroy(&sc->mutex);
+		return (error);
 	}
 
 	/*
@@ -255,20 +259,48 @@ mips_pic_attach(device_t dev)
 	 */
 	if (intr_pic_register(dev, xref) == NULL) {
 		device_printf(dev, "could not register PIC\n");
+		error = ENXIO;
 		goto cleanup;
 	}
 
 	/* Claim our root controller role */
-	if (intr_pic_claim_root(dev, xref, mips_pic_intr, sc, 0) != 0) {
-		device_printf(dev, "could not set PIC as a root\n");
+	if ((error = intr_pic_claim_root(dev, xref, mips_pic_intr, sc, 0))) {
+		device_printf(dev, "could not set PIC as a root: %d\n", error);
 		intr_pic_deregister(dev, xref);
 		goto cleanup;
 	}
 
+	pic_sc = sc;
 	return (0);
 
 cleanup:
-	return(ENXIO);
+	for (u_int i = 0; i < sc->nirqs; i++)
+		intr_isrc_deregister(PIC_INTR_ISRC(sc, i));
+
+	mtx_destroy(&sc->mutex);
+
+	return (ENXIO);
+}
+
+static int
+mips_pic_detach(device_t dev)
+{
+	struct		mips_pic_softc *sc;
+	intptr_t	xref;
+	int		error;
+
+	sc = device_get_softc(dev);
+	xref = pic_xref(dev);
+
+	if ((error = intr_pic_deregister(dev, xref)))
+		return (error);
+
+	for (u_int i = 0; i < sc->nirqs; i++)
+		intr_isrc_deregister(PIC_INTR_ISRC(sc, i));
+
+	pic_sc = NULL;
+	mtx_destroy(&sc->mutex);
+	return (0);
 }
 
 int
@@ -352,14 +384,14 @@ mips_pic_map_intr(device_t dev, struct intr_map_data *data,
 	} else
 #endif
 	if (data->type == INTR_MAP_DATA_MIPS) {
-		struct intr_map_data_mips_pic *mpd;
+		struct intr_map_data_mips *mpd;
 
-		mpd = (struct intr_map_data_mips_pic *)data;
+		mpd = (struct intr_map_data_mips *)data;
 
-		if (mpd->irq < 0 || mpd->irq >= sc->nirqs)
+		if (mpd->mips_irq < 0 || mpd->mips_irq >= sc->nirqs)
 			return (EINVAL);
 
-		*isrcp = PIC_INTR_ISRC(sc, mpd->irq);
+		*isrcp = PIC_INTR_ISRC(sc, mpd->mips_irq);
 	} else {
 		res = ENOTSUP;
 	}
@@ -393,6 +425,7 @@ static device_method_t mips_pic_methods[] = {
 #endif
 	DEVMETHOD(device_probe,		mips_pic_probe),
 	DEVMETHOD(device_attach,	mips_pic_attach),
+	DEVMETHOD(device_detach,	mips_pic_detach),
 
 	/* Interrupt controller interface */
 	DEVMETHOD(pic_disable_intr,	mips_pic_disable_intr),
@@ -424,32 +457,234 @@ EARLY_DRIVER_MODULE(cpupic, nexus, mips_pic_driver, mips_pic_devclass, 0, 0,
 void
 cpu_init_interrupts(void)
 {
+
+}
+
+/**
+ * Return the interrupt map entry for MIPS @p irq, or NULL if no such
+ * entry has been created.
+ */
+static struct intr_map_data_mips *
+cpu_find_mips_irq_map(struct mips_pic_softc *sc, int irq)
+{
+	struct intr_map_data_mips *data;
+
+	mtx_lock(&sc->mutex);
+	LIST_FOREACH(data, &sc->pic_data, link) {
+		if (data->mips_irq != irq)
+			continue;
+
+		mtx_unlock(&sc->mutex);
+		return (data);
+	}
+
+	/* Not found */
+	return (NULL);
+}
+
+/**
+ * Return the MIPS interrupt map entry for @p r, or NULL if no such entry has
+ * been created.
+ */
+static struct intr_map_data_mips *
+cpu_find_intr_irq_map(struct mips_pic_softc *sc, struct resource *r)
+{
+	struct intr_map_data_mips	*data;
+	rman_res_t			 irq;
+
+	irq = rman_get_start(r);
+	if (irq != rman_get_end(r) || rman_get_size(r) != 1)
+		return (NULL);
+
+	mtx_lock(&sc->mutex);
+	LIST_FOREACH(data, &sc->pic_data, link) {
+		if (data->intr_irq != irq)
+			continue;
+
+		mtx_unlock(&sc->mutex);
+		return (data);
+	}
+
+	/* Not found */
+	return (NULL);
+}
+
+/**
+ * Register and return an interrupt map entry for MIPS @p irq. If an entry
+ * for @p irq is already registered, the existing entry will be returned.
+ */
+static struct intr_map_data_mips *
+cpu_create_intr_map(struct mips_pic_softc *sc, int irq)
+{
+	struct intr_map_data_mips	*data;
+	uintptr_t			 xref;
+
+	xref = pic_xref(sc->pic_dev);
+
+	/* Prefer existing mapping */
+	if ((data = cpu_find_mips_irq_map(sc, irq)) != NULL)
+		return (data);
+
+	/* Register a new mapping */
+	data = (struct intr_map_data_mips *)intr_alloc_map_data(
+		INTR_MAP_DATA_MIPS, sizeof(*data), M_WAITOK | M_ZERO);
+	data->mips_irq = irq;
+	data->consumers = 0;
+	data->res = NULL;
+	data->intr_irq = intr_map_irq(sc->pic_dev, xref, &data->hdr);
+
+	LIST_INSERT_HEAD(&sc->pic_data, data, link);
+
+	mtx_unlock(&sc->mutex);
+
+	return (data);
+}
+
+/**
+ * If @p r references a MIPS interrupt mapped by the MIPS32 interrupt
+ * controller, handle interrupt activation internally.
+ *
+ * Otherwise, delegate directly to intr_activate_irq().
+ */
+int
+mips_pic_activate_intr(device_t child, struct resource *r)
+{
+	struct intr_map_data_mips	*data;
+	int				 error;
+
+	/* Is this one of our MIPS interrupt mappings? */
+	if (pic_sc == NULL || (data = cpu_find_intr_irq_map(pic_sc, r)) == NULL)
+		return (intr_activate_irq(child, r));
+
+	/* Bump consumer count and request activation if required */
+	mtx_lock(&pic_sc->mutex);
+	if (data->consumers == UINT_MAX) {
+		mtx_unlock(&pic_sc->mutex);
+		return (ENOMEM);
+	}
+
+	if (data->consumers == 0) {
+		if ((error = intr_activate_irq(child, r))) {
+			mtx_unlock(&pic_sc->mutex);
+			return (error);
+		}
+	}
+
+	data->consumers++;
+	mtx_unlock(&pic_sc->mutex);
+
+	return (0);
+}
+
+/**
+ * If @p r references a MIPS interrupt mapped by the MIPS32 interrupt
+ * controller, handle interrupt deactivation internally.
+ * 
+ * Otherwise, delegate directly to intr_deactivate_irq().
+ */
+int
+mips_pic_deactivate_intr(device_t child, struct resource *r)
+{
+	struct intr_map_data_mips	*data;
+	int				 error;
+
+	/* Is this one of our MIPS interrupt mappings? */
+	if (pic_sc == NULL || (data = cpu_find_intr_irq_map(pic_sc, r)) == NULL)
+		return (intr_deactivate_irq(child, r));
+
+	/* Decrement consumer count and request deactivation if required */
+	mtx_lock(&pic_sc->mutex);
+	KASSERT(data->consumers > 0, ("refcount overrelease"));
+
+	if (data->consumers == 1) {
+		if ((error = intr_deactivate_irq(child, r))) {
+			mtx_unlock(&pic_sc->mutex);
+			return (error);
+		}
+	}
+	data->consumers--;
+	
+	mtx_unlock(&pic_sc->mutex);
+	return (0);
+}
+
+/**
+ * Provide backwards-compatible support for registering a MIPS interrupt handler
+ * directly, without allocating a bus resource. 
+ */
+static void
+cpu_establish_intr(struct mips_pic_softc *sc, const char *name,
+    driver_filter_t *filt, void (*handler)(void*), void *arg, int irq,
+    int flags, void **cookiep)
+{
+	struct intr_map_data_mips	*data;
+	struct resource			*res;
+	int				 rid;
+	int				 error;
+
+	/*
+	 * We have 6 levels, but thats 0 - 5 (not including 6)
+	 */
+	if (irq < 0 || irq >= NREAL_IRQS)
+		panic("%s called for unknown intr %d", __func__, irq);
+
+	data = cpu_create_intr_map(sc, irq);
+	rid = -1;
+
+	/* Fetch the backing resource, if any */
+	mtx_lock(&sc->mutex);
+	res = data->res;
+	mtx_unlock(&sc->mutex);
+
+	/* Allocate our IRQ resource */
+	if (res == NULL) {
+		/* Optimistically perform resource allocation */
+		rid = data->intr_irq;
+		res = bus_alloc_resource(sc->pic_dev, SYS_RES_IRQ, &rid,
+		    data->intr_irq, data->intr_irq, 1, RF_SHAREABLE|RF_ACTIVE);
+
+		if (res != NULL) {
+			/* Try to update data->res */
+			mtx_lock(&sc->mutex);
+			if (data->res == NULL) {
+				data->res = res;
+			}
+			mtx_unlock(&sc->mutex);
+
+			/* If data->res was updated concurrently, free our local
+			 * resource allocation */
+			if (data->res != res) {
+				bus_release_resource(sc->pic_dev, SYS_RES_IRQ,
+				    rid, res);
+			}
+		} else {
+			/* Maybe someone else allocated it? */
+			mtx_lock(&sc->mutex);
+			res = data->res;
+			mtx_unlock(&sc->mutex);
+		}
+	
+		if (res == NULL)
+			panic("Unable to allocate IRQ %d resource", irq);
+	}
+
+	error = bus_setup_intr(sc->pic_dev, res, flags, filt, handler, arg,
+	    cookiep);
+	if (error)
+		panic("Unable to add IRQ %d handler: %d", irq, error);
 }
 
 void
 cpu_establish_hardintr(const char *name, driver_filter_t *filt,
     void (*handler)(void*), void *arg, int irq, int flags, void **cookiep)
 {
-	int error;
+	KASSERT(pic_sc != NULL, ("%s: no pic", __func__));
 
-	/*
-	 * We have 6 levels, but thats 0 - 5 (not including 6)
-	 */
 	if (irq < 0 || irq >= NHARD_IRQS)
 		panic("%s called for unknown hard intr %d", __func__, irq);
 
-	KASSERT(pic_sc != NULL, ("%s: no pic", __func__));
-
-	irq += NSOFT_IRQS;
-
-	error = intr_activate_irq(pic_sc->pic_dev, pic_sc->pic_irqs[irq].res);
-	if (error)
-		panic("Unable to activate hard IRQ %d handler: %d", irq, error);
-
-	error = intr_setup_irq(pic_sc->pic_dev, pic_sc->pic_irqs[irq].res, filt,
-	    handler, arg, flags, cookiep);
-	if (error)
-		panic("Unable to add hard IRQ %d handler: %d", irq, error);
+	cpu_establish_intr(pic_sc, name, filt, handler, arg, irq+NSOFT_IRQS,
+	    flags, cookiep);
 }
 
 void
@@ -457,20 +692,12 @@ cpu_establish_softintr(const char *name, driver_filter_t *filt,
     void (*handler)(void*), void *arg, int irq, int flags,
     void **cookiep)
 {
-	int error;
-
-	if (irq < 0 || irq > NSOFT_IRQS)
-		panic("%s called for unknown soft intr %d", __func__, irq);
-
 	KASSERT(pic_sc != NULL, ("%s: no pic", __func__));
 
-	error = intr_activate_irq(pic_sc->pic_dev, pic_sc->pic_irqs[irq].res);
-	if (error)
-		panic("Unable to activate hard IRQ %d handler: %d", irq, error);
+	if (irq < 0 || irq >= NSOFT_IRQS)
+		panic("%s called for unknown soft intr %d", __func__, irq);
 
-	error = intr_setup_irq(pic_sc->pic_dev, pic_sc->pic_irqs[irq].res, filt,
-	    handler, arg, flags, cookiep);
-	if (error)
-		panic("Unable to add soft IRQ %d handler: %d", irq, error);
+	cpu_establish_intr(pic_sc, name, filt, handler, arg, irq, flags,
+	    cookiep);
 }
 
