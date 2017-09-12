@@ -181,11 +181,15 @@ nexus_probe(device_t dev)
 	device_set_desc(dev, "MIPS32 root nexus");
 
 	irq_rman.rm_start = 0;
+#ifdef INTRNG
+	irq_rman.rm_end = INTR_IRQ_INVALID - 1;
+#else
 	irq_rman.rm_end = NUM_MIPS_IRQS - 1;
+#endif
 	irq_rman.rm_type = RMAN_ARRAY;
 	irq_rman.rm_descr = "Hardware IRQs";
 	if (rman_init(&irq_rman) != 0 ||
-	    rman_manage_region(&irq_rman, 0, NUM_MIPS_IRQS - 1) != 0) {
+	    rman_manage_region(&irq_rman, 0, irq_rman.rm_end) != 0) {
 		panic("%s: irq_rman", __func__);
 	}
 
