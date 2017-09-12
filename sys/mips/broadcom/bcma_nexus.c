@@ -45,7 +45,9 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhnd_ids.h>
 
 #include <dev/bhnd/bcma/bcmavar.h>
+#include <dev/bhnd/bcma/bcma_dmp.h>
 
+#include "bcm_bmipsvar.h"
 #include "bcm_machdep.h"
 
 #include "bhnd_nexusvar.h"
@@ -56,6 +58,9 @@ __FBSDID("$FreeBSD$");
 
 static int	bcma_nexus_attach(device_t);
 static int	bcma_nexus_probe(device_t);
+
+_Static_assert(BCMA_OOB_NUM_LINES == BCM_MIPS_NINTR, "BMCA incompatible with "
+    "generic NINTR");
 
 static int
 bcma_nexus_probe(device_t dev)

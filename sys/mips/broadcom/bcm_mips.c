@@ -57,7 +57,7 @@ __FBSDID("$FreeBSD$");
 #define	PIC_INTR_ISRC(sc, irq)	(&(sc)->isrcs[(irq)].isrc)
 
 /**
- * Register all interrupt source definitions
+ * Register all interrupt source definitions.
  */
 static int
 bcm_mips_register_isrcs(struct bcm_mips_softc *sc)

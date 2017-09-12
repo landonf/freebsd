@@ -35,7 +35,14 @@
 #ifndef _MIPS_BROADCOM_BCM_MIPSVAR_H_
 #define _MIPS_BROADCOM_BCM_MIPSVAR_H_
 
+#include <sys/param.h>
+#include <sys/bus.h>
+
+#include <sys/intr.h>
+
 DECLARE_CLASS(bcm_mips_driver);
+
+#define	BCM_MIPS_NINTR	32	/**< maximum number of addressable backplane interrupt vectors */
 
 int	bcm_mips_attach(device_t dev);
 int	bcm_mips_detach(device_t dev);
@@ -62,11 +69,11 @@ struct bcm_mips_irqsrc {
  */
 struct bcm_mips_softc {
 	device_t		 dev;
-	struct resource		*mem;		/**< cpu core registers */
+	struct resource		*mem;			/**< cpu core registers */
 	int			 mem_rid;
-	struct resource		*irq;		/**< nested IRQ handler's MIPS interrupt */
+	struct resource		*irq;			/**< nested IRQ handler's MIPS interrupt */
 	int			 irq_rid;
-	struct bcm_mips_irqsrc	 isrcs[32];	// XXX TODO (BCMA_OOB_NUM_BUSLINES, SIBA_NUM_INTR? */
+	struct bcm_mips_irqsrc	 isrcs[BCM_MIPS_NINTR];
 };
 
 
