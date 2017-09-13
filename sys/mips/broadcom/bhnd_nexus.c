@@ -44,6 +44,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/bus.h>
+#include <sys/intr.h>
 #include <sys/kernel.h>
 #include <sys/module.h>
 #include <sys/rman.h>
@@ -55,6 +56,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhnd_ids.h>
 
 #include "bcm_machdep.h"
+#include "bcm_mipsvar.h"
 
 #include "bhnd_nexusvar.h"
 
@@ -154,8 +156,25 @@ bhnd_nexus_get_chipid(device_t dev, device_t child)
 static int
 bhnd_nexus_map_intr(device_t dev, device_t child, u_int intr, rman_res_t *irq)
 {
-	// TODO
-	return (ENXIO);
+	struct bcm_mips_intr_map_data	*imd;
+	u_int				 ivec;
+	int				 error;
+
+	/* Fetch the backplane interrupt vector */
+	if ((error = bhnd_get_intr_ivec(child, intr, &ivec))) {
+		device_printf(dev, "error fetching ivec for %s intr %u: %d\n",
+		    device_get_nameunit(child), intr, error);
+		return (error);
+	}
+
+	/* Allocate our map data */
+	imd = (struct bcm_mips_intr_map_data *)intr_alloc_map_data(
+	    INTR_MAP_DATA_BCM_MIPS, sizeof(*imd), M_WAITOK | M_ZERO);
+	imd->ivec = ivec;
+
+	/* Map the IRQ */
+	*irq = intr_map_irq(NULL, BCM_MIPS_PIC_XREF(dev), &imd->mdata);
+	return (0);
 }
 
 /**
@@ -164,8 +183,10 @@ bhnd_nexus_map_intr(device_t dev, device_t child, u_int intr, rman_res_t *irq)
 static void
 bhnd_nexus_unmap_intr(device_t dev, device_t child, rman_res_t irq)
 {
-	// TODO
-	panic("unimplemented");
+	if (irq > UINT_MAX)
+		panic("invalid irq: %ju", (uintmax_t)irq);
+
+	intr_unmap_irq(irq);
 }
 
 static device_method_t bhnd_nexus_methods[] = {

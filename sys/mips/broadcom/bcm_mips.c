@@ -236,14 +236,14 @@ bcm_mips_pic_map_intr(device_t dev, struct intr_map_data *d,
     struct intr_irqsrc **isrcp)
 {
 	struct bcm_mips_softc		*sc;
-	struct bcm_mips_map_data	*data;
+	struct bcm_mips_intr_map_data	*data;
 
 	sc = device_get_softc(dev);
 
 	if (d->type != INTR_MAP_DATA_BCM_MIPS)
 		return (ENOTSUP);
 
-	data = (struct bcm_mips_map_data *)d;
+	data = (struct bcm_mips_intr_map_data *)d;
 	if (data->ivec < 0 || data->ivec >= nitems(sc->isrcs))
 		return (EINVAL);
 

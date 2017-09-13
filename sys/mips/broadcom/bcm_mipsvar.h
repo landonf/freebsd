@@ -50,7 +50,7 @@ int	bcm_mips_detach(device_t dev);
 /**
  * Broadcom MIPS PIC interrupt map data.
  */
-struct bcm_mips_map_data {
+struct bcm_mips_intr_map_data {
 	struct intr_map_data	mdata;
 	u_int			ivec;	/**< bus interrupt vector */
 };
@@ -79,5 +79,6 @@ struct bcm_mips_softc {
 
 #define	INTR_MAP_DATA_BCM_MIPS	INTR_MAP_DATA_PLAT_2	/**< Broadcom MIPS PIC interrupt map data type */
 #define	BCM_MIPS_PIC_IRQ	2			/**< MIPS HW IRQ used by our nested interrupt handler */
+#define	BCM_MIPS_PIC_XREF(bus)	((uintptr_t)bus)	/**< map a bhnd(4) bus to a globally unique PIC xref identifier */
 
 #endif /* _MIPS_BROADCOM_BCM_MIPSVAR_H_ */
