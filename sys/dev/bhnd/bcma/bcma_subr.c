@@ -310,21 +310,6 @@ bcma_dinfo_alloc_agent(device_t bus, device_t child, struct bcma_devinfo *dinfo)
 }
 
 /**
- * Allocate the per-core agent register block for a device info structure
- * previous initialized via bcma_init_dinfo().
- * 
- * If an agent0.0 region is not defined on @p dinfo, the device info
- * agent resource is set to NULL and 0 is returned.
- * 
- * @param bus The requesting bus device.
- * @param child The bcma child device.
- * @param dinfo The device info associated with @p child
- * 
- * @retval 0 success
- * @retval non-zero resource allocation failed.
- */
-
-/**
  * Populate the list of interrupts for a device info structure
  * previously initialized via bcma_dinfo_alloc_agent().
  * 
