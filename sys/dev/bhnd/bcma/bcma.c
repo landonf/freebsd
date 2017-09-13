@@ -613,29 +613,34 @@ bcma_get_region_addr(device_t dev, device_t child, bhnd_port_type port_type,
 
 /**
  * Default bcma(4) bus driver implementation of BHND_BUS_GET_INTR_COUNT().
- * 
- * This implementation consults @p child's agent register block,
- * returning the number of interrupt output lines routed to @p child.
  */
-int
+u_int
 bcma_get_intr_count(device_t dev, device_t child)
 {
-	struct bcma_devinfo *dinfo = device_get_ivars(child);
+	struct bcma_devinfo *dinfo;
+
+	/* delegate non-bus-attached devices to our parent */
+	if (device_get_parent(child) != dev)
+		return (BHND_BUS_GET_INTR_COUNT(device_get_parent(dev), child));
+
+	dinfo = device_get_ivars(child);
 	return (dinfo->num_intrs);
 }
 
 /**
- * Default bcma(4) bus driver implementation of BHND_BUS_GET_CORE_IVEC().
- * 
- * This implementation consults @p child's agent register block,
- * returning the interrupt output line routed to @p child, at OOB selector
- * @p intr.
+ * Default bcma(4) bus driver implementation of BHND_BUS_GET_INTR_IVEC().
  */
 int
-bcma_get_core_ivec(device_t dev, device_t child, u_int intr, uint32_t *ivec)
+bcma_get_intr_ivec(device_t dev, device_t child, u_int intr, u_int *ivec)
 {
 	struct bcma_devinfo	*dinfo;
 	struct bcma_intr	*desc;
+
+	/* delegate non-bus-attached devices to our parent */
+	if (device_get_parent(child) != dev) {
+		return (BHND_BUS_GET_INTR_IVEC(device_get_parent(dev), child,
+		    intr, ivec));
+	}
 
 	dinfo = device_get_ivars(child);
 
@@ -678,8 +683,6 @@ bcma_add_children(device_t bus)
 	/* Add all cores. */
 	bcma_erom = (struct bcma_erom *)erom;
 	while ((error = bcma_erom_next_corecfg(bcma_erom, &corecfg)) == 0) {
-		int nintr;
-
 		/* Add the child device */
 		child = BUS_ADD_CHILD(bus, 0, NULL, -1);
 		if (child == NULL) {
@@ -703,6 +706,8 @@ bcma_add_children(device_t bus)
 		if ((error = bcma_dinfo_init_intrs(bus, child, dinfo)))
 			goto cleanup;
 
+		// INTR_TODO: Map interrupts
+#if 0
 		/* Assign interrupts */
 		nintr = bhnd_get_intr_count(child);
 		for (int rid = 0; rid < nintr; rid++) {
@@ -713,6 +718,7 @@ bcma_add_children(device_t bus)
 				    BCMA_DINFO_COREIDX(dinfo), error);
 			}
 		}
+#endif
 
 		/* If pins are floating or the hardware is otherwise
 		 * unpopulated, the device shouldn't be used. */
@@ -769,7 +775,7 @@ static device_method_t bcma_methods[] = {
 	DEVMETHOD(bhnd_bus_decode_port_rid,	bcma_decode_port_rid),
 	DEVMETHOD(bhnd_bus_get_region_addr,	bcma_get_region_addr),
 	DEVMETHOD(bhnd_bus_get_intr_count,	bcma_get_intr_count),
-	DEVMETHOD(bhnd_bus_get_core_ivec,	bcma_get_core_ivec),
+	DEVMETHOD(bhnd_bus_get_intr_ivec,	bcma_get_intr_ivec),
 
 	DEVMETHOD_END
 };

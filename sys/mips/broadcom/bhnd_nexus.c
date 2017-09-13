@@ -149,28 +149,23 @@ bhnd_nexus_get_chipid(device_t dev, device_t child)
 }
 
 /**
- * Default bhnd_nexus implementation of BHND_BUS_GET_INTR_COUNT().
+ * Default bhnd_nexus implementation of BHND_BUS_MAP_INTR().
  */
 static int
-bhnd_nexus_get_intr_count(device_t dev, device_t child)
+bhnd_nexus_map_intr(device_t dev, device_t child, u_int intr, rman_res_t *irq)
 {
-	// TODO: arch-specific interrupt handling.
-	return (0);
+	// TODO
+	return (ENXIO);
 }
 
 /**
- * Default bhnd_nexus implementation of BHND_BUS_ASSIGN_INTR().
+ * Default bhnd_nexus implementation of BHND_BUS_UNMAP_INTR().
  */
-static int
-bhnd_nexus_assign_intr(device_t dev, device_t child, int rid)
+static void
+bhnd_nexus_unmap_intr(device_t dev, device_t child, rman_res_t irq)
 {
-	uint32_t	ivec;
-	int		error;
-
-	if ((error = bhnd_get_core_ivec(child, rid, &ivec)))
-		return (error);
-
-	return (bus_set_resource(child, SYS_RES_IRQ, rid, ivec, 1));
+	// TODO
+	panic("unimplemented");
 }
 
 static device_method_t bhnd_nexus_methods[] = {
@@ -185,8 +180,8 @@ static device_method_t bhnd_nexus_methods[] = {
 	DEVMETHOD(bhnd_bus_is_hw_disabled,	bhnd_nexus_is_hw_disabled),
 	DEVMETHOD(bhnd_bus_get_attach_type,	bhnd_nexus_get_attach_type),
 	DEVMETHOD(bhnd_bus_get_chipid,		bhnd_nexus_get_chipid),
-	DEVMETHOD(bhnd_bus_get_intr_count,	bhnd_nexus_get_intr_count),
-	DEVMETHOD(bhnd_bus_assign_intr,		bhnd_nexus_assign_intr),
+	DEVMETHOD(bhnd_bus_map_intr,		bhnd_nexus_map_intr),
+	DEVMETHOD(bhnd_bus_unmap_intr,		bhnd_nexus_unmap_intr),
 
 	DEVMETHOD_END
 };

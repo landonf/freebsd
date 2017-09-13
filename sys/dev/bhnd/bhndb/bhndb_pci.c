@@ -732,7 +732,7 @@ bhndb_pci_pwrctl_ungate_clock(device_t dev, device_t child,
 }
 
 static int
-bhndb_pci_assign_intr(device_t dev, device_t child, int rid)
+bhndb_pci_map_intr(device_t dev, device_t child, u_int intr, rman_res_t *irq)
 {
 	struct bhndb_pci_softc	*sc;
 	rman_res_t		 start, count;
@@ -740,8 +740,8 @@ bhndb_pci_assign_intr(device_t dev, device_t child, int rid)
 
 	sc = device_get_softc(dev);
 
-	/* Is the rid valid? */
-	if (rid >= bhnd_get_intr_count(child))
+	/* Is the intr valid? */
+	if (intr >= bhnd_get_intr_count(child))
 		return (EINVAL);
  
 	/* Fetch our common PCI interrupt's start/count. */
@@ -750,8 +750,20 @@ bhndb_pci_assign_intr(device_t dev, device_t child, int rid)
 	if (error)
 		return (error);
 
-	/* Add to child's resource list */
-        return (bus_set_resource(child, SYS_RES_IRQ, rid, start, count));
+	if (count != 1) {
+		device_printf(dev, "cannot map PCI IRQ %ju with count %ju\n",
+		    (uintmax_t)start, (uintmax_t)count);
+		return (ENXIO);
+	}
+
+	*irq = start;
+	return (0);
+}
+
+static void
+bhndb_pci_unmap_intr(device_t dev, device_t child, rman_res_t irq)
+{
+	/* No state to clean up */
 }
 
 static device_method_t bhndb_pci_methods[] = {
@@ -763,7 +775,8 @@ static device_method_t bhndb_pci_methods[] = {
 	DEVMETHOD(device_detach,		bhndb_pci_detach),
 
 	/* BHND interface */
-	DEVMETHOD(bhnd_bus_assign_intr,		bhndb_pci_assign_intr),
+	DEVMETHOD(bhnd_bus_map_intr,		bhndb_pci_map_intr),
+	DEVMETHOD(bhnd_bus_unmap_intr,		bhndb_pci_unmap_intr),
 
 	DEVMETHOD(bhnd_bus_pwrctl_get_clksrc,	bhndb_pci_pwrctl_get_clksrc),
 	DEVMETHOD(bhnd_bus_pwrctl_gate_clock,	bhndb_pci_pwrctl_gate_clock),

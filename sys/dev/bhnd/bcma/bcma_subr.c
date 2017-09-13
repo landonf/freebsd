@@ -365,7 +365,7 @@ bcma_dinfo_init_intrs(device_t bus, device_t child,
 		uint32_t		 selout;
 		uint8_t			 line;
 
-		if (dinfo->num_intrs == ULONG_MAX)
+		if (dinfo->num_intrs == UINT_MAX)
 			return (ENOMEM);
 	
 		selout = bhnd_bus_read_4(dinfo->res_agent, BCMA_DMP_OOBSELOUT(

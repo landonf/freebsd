@@ -862,8 +862,7 @@ bhnd_read_board_info(device_t dev, struct bhnd_board_info *info)
 }
 
 /**
- * Return the number of interrupts to be assigned to @p child via
- * BHND_BUS_ASSIGN_INTR().
+ * Return the number of interrupt lines assigned to @p dev.
  * 
  * @param dev A bhnd bus child device.
  */
@@ -874,13 +873,11 @@ bhnd_get_intr_count(device_t dev)
 }
 
 /**
- * Return the backplane interrupt vector corresponding to @p dev's given
- * @p intr number.
+ * Get the backplane interrupt vector of the @p intr line attached to @p dev.
  * 
  * @param dev A bhnd bus child device.
- * @param intr The interrupt number being queried. This is equivalent to the
- * bus resource ID for the interrupt.
- * @param[out] ivec On success, the assigned hardware interrupt vector be
+ * @param intr The index of the interrupt line being queried.
+ * @param[out] ivec On success, the assigned hardware interrupt vector will be
  * written to this pointer.
  *
  * On bcma(4) devices, this returns the OOB bus line assigned to the
@@ -890,13 +887,13 @@ bhnd_get_intr_count(device_t dev)
  * to the interrupt.
  *
  * @retval 0		success
- * @retval ENXIO	If @p intr exceeds the number of interrupts available
- *			to @p child.
+ * @retval ENXIO	If @p intr exceeds the number of interrupt lines
+ *			assigned to @p child.
  */
 static inline int
-bhnd_get_core_ivec(device_t dev, u_int intr, uint32_t *ivec)
+bhnd_get_intr_ivec(device_t dev, u_int intr, u_int *ivec)
 {
-	return (BHND_BUS_GET_CORE_IVEC(device_get_parent(dev), dev, intr,
+	return (BHND_BUS_GET_INTR_IVEC(device_get_parent(dev), dev, intr,
 	    ivec));
 }
 

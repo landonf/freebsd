@@ -602,11 +602,8 @@ siba_get_region_addr(device_t dev, device_t child, bhnd_port_type port_type,
 
 /**
  * Default siba(4) bus driver implementation of BHND_BUS_GET_INTR_COUNT().
- * 
- * This implementation consults @p child's configuration block mapping,
- * returning SIBA_CORE_NUM_INTR if a valid CFG0 block is mapped.
  */
-int
+u_int
 siba_get_intr_count(device_t dev, device_t child)
 {
 	struct siba_devinfo	*dinfo;
@@ -626,19 +623,16 @@ siba_get_intr_count(device_t dev, device_t child)
 }
 
 /**
- * Default siba(4) bus driver implementation of BHND_BUS_GET_CORE_IVEC().
- * 
- * This implementation consults @p child's CFG0 register block,
- * returning the interrupt flag assigned to @p child.
+ * Default siba(4) bus driver implementation of BHND_BUS_GET_INTR_IVEC().
  */
 int
-siba_get_core_ivec(device_t dev, device_t child, u_int intr, uint32_t *ivec)
+siba_get_intr_ivec(device_t dev, device_t child, u_int intr, u_int *ivec)
 {
 	struct siba_devinfo	*dinfo;
 
 	/* delegate non-bus-attached devices to our parent */
 	if (device_get_parent(child) != dev)
-		return (BHND_BUS_GET_CORE_IVEC(device_get_parent(dev), child,
+		return (BHND_BUS_GET_INTR_IVEC(device_get_parent(dev), child,
 		    intr, ivec));
 
 	/* Must be a valid interrupt ID */
@@ -874,7 +868,6 @@ siba_add_children(device_t dev)
 		device_t		 child;
 		uint32_t		 idhigh, idlow;
 		rman_res_t		 r_count, r_end, r_start;
-		int			 nintr;
 
 		/* Map the core's register block */
 		rid = 0;
@@ -935,6 +928,8 @@ siba_add_children(device_t dev)
 		if ((error = siba_register_interrupts(dev, dinfo)))
 			goto cleanup;
 
+		// INTR_TODO: Map interrupts
+#if 0
 		/* Assign interrupts */
 		nintr = bhnd_get_intr_count(child);
 		for (int rid = 0; rid < nintr; rid++) {
@@ -944,6 +939,7 @@ siba_add_children(device_t dev)
 				    "%d to core %u: %d\n", rid, i, error);
 			}
 		}
+#endif
 
 		/* If pins are floating or the hardware is otherwise
 		 * unpopulated, the device shouldn't be used. */
@@ -995,7 +991,7 @@ static device_method_t siba_methods[] = {
 	DEVMETHOD(bhnd_bus_decode_port_rid,	siba_decode_port_rid),
 	DEVMETHOD(bhnd_bus_get_region_addr,	siba_get_region_addr),
 	DEVMETHOD(bhnd_bus_get_intr_count,	siba_get_intr_count),
-	DEVMETHOD(bhnd_bus_get_core_ivec,	siba_get_core_ivec),
+	DEVMETHOD(bhnd_bus_get_intr_ivec,	siba_get_intr_ivec),
 
 	DEVMETHOD_END
 };

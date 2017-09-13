@@ -75,8 +75,8 @@ struct bcma_sport;
 int			 bcma_probe(device_t dev);
 int			 bcma_attach(device_t dev);
 int			 bcma_detach(device_t dev);
-int			 bcma_get_intr_count(device_t dev, device_t child);
-int			 bcma_get_core_ivec(device_t dev, device_t child,
+u_int			 bcma_get_intr_count(device_t dev, device_t child);
+int			 bcma_get_intr_ivec(device_t dev, device_t child,
 			     u_int intr, uint32_t *ivec);
 
 int			 bcma_add_children(device_t bus);
@@ -181,7 +181,7 @@ struct bcma_devinfo {
 							  *  all bcma(4) cores have or require an agent. */
 	int				 rid_agent;	/**< Agent resource ID, or -1 */
 
-	u_long				 num_intrs;	/**< number of interrupt descriptors. */
+	u_int				 num_intrs;	/**< number of interrupt descriptors. */
 	struct bcma_intr_list		 intrs;		/**< interrupt descriptors */
 
 	struct bhnd_core_pmu_info	*pmu_info;	/**< Bus-managed PMU state, or NULL */
