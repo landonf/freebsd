@@ -69,7 +69,7 @@ struct siba_devinfo	*siba_alloc_dinfo(device_t dev);
 int			 siba_init_dinfo(device_t dev,
 			     struct siba_devinfo *dinfo,
 			     const struct siba_core_id *core_id);
-void			 siba_free_dinfo(device_t dev,
+void			 siba_free_dinfo(device_t dev, device_t child,
 			     struct siba_devinfo *dinfo);
 
 u_int			 siba_addrspace_port_count(u_int num_addrspace);
@@ -138,6 +138,7 @@ struct siba_addrspace {
 struct siba_intr {
 	u_int		flag;	/**< backplane flag # */
 	bool		mapped;	/**< if an irq has been mapped */
+	int		rid;	/**< bus resource id, or -1 if unassigned */
 	rman_res_t	irq;	/**< the mapped bus irq, if any */
 };
 

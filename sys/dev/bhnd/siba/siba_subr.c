@@ -379,10 +379,11 @@ siba_append_dinfo_region(struct siba_devinfo *dinfo, uint8_t addridx,
  * Deallocate the given device info structure and any associated resources.
  * 
  * @param dev The requesting bus device.
- * @param dinfo Device info to be deallocated.
+ * @param child The siba child device.
+ * @param dinfo Device info associated with @p child to be deallocated.
  */
 void
-siba_free_dinfo(device_t dev, struct siba_devinfo *dinfo)
+siba_free_dinfo(device_t dev, device_t child, struct siba_devinfo *dinfo)
 {
 	resource_list_free(&dinfo->resources);
 
@@ -396,6 +397,12 @@ siba_free_dinfo(device_t dev, struct siba_devinfo *dinfo)
 
 		dinfo->cfg[i] = NULL;
 		dinfo->cfg_rid[i] = -1;
+	}
+
+	/* Unmap the core's interrupt */
+	if (dinfo->intr_en && dinfo->intr.mapped) {
+		BHND_BUS_UNMAP_INTR(dev, child, dinfo->intr.irq);
+		dinfo->intr.mapped = false;
 	}
 
 	free(dinfo, M_BHND);

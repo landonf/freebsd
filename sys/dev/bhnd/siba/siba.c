@@ -770,13 +770,16 @@ siba_map_cfg_resources(device_t dev, struct siba_devinfo *dinfo)
  * configuration blocks have been mapped.
  *
  * @param dev The siba bus device.
+ * @param child The siba child device.
  * @param dinfo The device info instance on which to register all interrupt
  * descriptor entries.
  */
 static int
-siba_register_interrupts(device_t dev, struct siba_devinfo *dinfo)
+siba_register_interrupts(device_t dev, device_t child,
+    struct siba_devinfo *dinfo)
 {
-	uint32_t tpsflag;
+	uint32_t	tpsflag;
+	int		error;
 
 	/* Core must have a valid cfg0 block */
 	if (dinfo->cfg[0] == NULL)
@@ -789,10 +792,26 @@ siba_register_interrupts(device_t dev, struct siba_devinfo *dinfo)
 		return (0);
 	}
 
+	/* Have one interrupt */
 	dinfo->intr_en = true;
 	dinfo->intr.flag = SIBA_REG_GET(tpsflag, TPS_NUM0);
 	dinfo->intr.mapped = false;
 	dinfo->intr.irq = 0;
+	dinfo->intr.rid = -1;
+
+	/* Map the interrupt */
+	error = BHND_BUS_MAP_INTR(dev, child, dinfo->intr.flag,
+	    &dinfo->intr.irq);
+	if (error) {
+		device_printf(dev, "failed mapping interrupt line for core%u: "
+		    "%d\n", dinfo->core_id.core_info.core_idx, error);
+		return (error);
+	}
+	dinfo->intr.mapped = true;
+
+	/* Update the resource list */
+	resource_list_add_next(&dinfo->resources, SYS_RES_IRQ, dinfo->intr.irq,
+	    dinfo->intr.irq, 1);
 
 	return (0);
 }
@@ -830,7 +849,7 @@ siba_child_deleted(device_t dev, device_t child)
 
 	/* Free siba device info */
 	if ((dinfo = device_get_ivars(child)) != NULL)
-		siba_free_dinfo(dev, dinfo);
+		siba_free_dinfo(dev, child, dinfo);
 
 	device_set_ivars(child, NULL);
 }
@@ -924,22 +943,9 @@ siba_add_children(device_t dev)
 		if ((error = siba_map_cfg_resources(dev, dinfo)))
 			goto cleanup;
 
-		/* Assign interrupts */
-		if ((error = siba_register_interrupts(dev, dinfo)))
+		/* Register the core's interrupts */
+		if ((error = siba_register_interrupts(dev, child, dinfo)))
 			goto cleanup;
-
-		// INTR_TODO: Map interrupts
-#if 0
-		/* Assign interrupts */
-		nintr = bhnd_get_intr_count(child);
-		for (int rid = 0; rid < nintr; rid++) {
-			error = BHND_BUS_ASSIGN_INTR(dev, child, rid);
-			if (error) {
-				device_printf(dev, "failed to assign interrupt "
-				    "%d to core %u: %d\n", rid, i, error);
-			}
-		}
-#endif
 
 		/* If pins are floating or the hardware is otherwise
 		 * unpopulated, the device shouldn't be used. */
