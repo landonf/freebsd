@@ -73,7 +73,9 @@ static int	 opt_c;		/* Show connected sockets */
 static int	 opt_j;		/* Show specified jail */
 static int	 opt_L;		/* Don't show IPv4 or IPv6 loopback sockets */
 static int	 opt_l;		/* Show listening sockets */
+static int	 opt_S;		/* Show protocol stack if applicable */
 static int	 opt_s;		/* Show protocol state if applicable */
+static int	 opt_U;		/* Show remote UDP encapsulation port number */
 static int	 opt_u;		/* Show Unix domain sockets */
 static int	 opt_v;		/* Verbose mode */
 
@@ -94,6 +96,8 @@ static int	*ports;
 
 struct addr {
 	struct sockaddr_storage address;
+	unsigned int encaps_port;
+	int state;
 	struct addr *next;
 };
 
@@ -106,6 +110,7 @@ struct sock {
 	int proto;
 	int state;
 	const char *protoname;
+	char stack[TCP_FUNCTION_NAME_LEN_MAX];
 	struct addr *laddr;
 	struct addr *faddr;
 	struct sock *next;
@@ -529,6 +534,8 @@ gather_sctp(void)
 					    "address family %d not supported",
 					    xraddr->address.sa.sa_family);
 				}
+				faddr->encaps_port = xraddr->encaps_port; 
+				faddr->state = xraddr->state;
 				faddr->next = NULL;
 				if (prev_faddr == NULL)
 					sock->faddr = faddr;
@@ -698,8 +705,11 @@ gather_inet(int proto)
 		sock->laddr = laddr;
 		sock->faddr = faddr;
 		sock->vflag = xip->inp_vflag;
-		if (proto == IPPROTO_TCP)
+		if (proto == IPPROTO_TCP) {
 			sock->state = xtp->t_state;
+			memcpy(sock->stack, xtp->xt_stack,
+			    TCP_FUNCTION_NAME_LEN_MAX);
+		}
 		sock->protoname = protoname;
 		hash = (int)((uintptr_t)sock->socket % HASHSIZE);
 		sock->next = sockhash[hash];
@@ -931,7 +941,7 @@ check_ports(struct sock *s)
 }
 
 static const char *
-sctp_state(int state)
+sctp_conn_state(int state)
 {
 	switch (state) {
 	case SCTP_CLOSED:
@@ -970,11 +980,30 @@ sctp_state(int state)
 	}
 }
 
+static const char *
+sctp_path_state(int state)
+{
+	switch (state) {
+	case SCTP_UNCONFIRMED:
+		return "UNCONFIRMED";
+		break;
+	case SCTP_ACTIVE:
+		return "ACTIVE";
+		break;
+	case SCTP_INACTIVE:
+		return "INACTIVE";
+		break;
+	default:
+		return "UNKNOWN";
+		break;
+	}
+}
+
 static void
 displaysock(struct sock *s, int pos)
 {
 	void *p;
-	int hash, first;
+	int hash, first, offset;
 	struct addr *laddr, *faddr;
 	struct sock *s_tmp;
 
@@ -1040,21 +1069,61 @@ displaysock(struct sock *s, int pos)
 		default:
 			abort();
 		}
-		if (first && opt_s &&
-		    (s->proto == IPPROTO_SCTP || s->proto == IPPROTO_TCP)) {
-			while (pos < 80)
-				pos += xprintf(" ");
-			switch (s->proto) {
-			case IPPROTO_SCTP:
-				pos += xprintf("%s", sctp_state(s->state));
-				break;
-			case IPPROTO_TCP:
-				if (s->state >= 0 && s->state < TCP_NSTATES)
-					pos +=
-					    xprintf("%s", tcpstates[s->state]);
-				else
-					pos += xprintf("?");
-				break;
+		offset = 80;
+		if (opt_U) {
+			if (faddr != NULL &&
+			    s->proto == IPPROTO_SCTP &&
+			    s->state != SCTP_CLOSED &&
+			    s->state != SCTP_BOUND &&
+			    s->state != SCTP_LISTEN) {
+				while (pos < offset)
+					pos += xprintf(" ");
+				pos += xprintf("%u",
+				    ntohs(faddr->encaps_port));
+			}
+			offset += 7;
+		}
+		if (opt_s) {
+			if (faddr != NULL &&
+			    s->proto == IPPROTO_SCTP &&
+			    s->state != SCTP_CLOSED &&
+			    s->state != SCTP_BOUND &&
+			    s->state != SCTP_LISTEN) {
+				while (pos < offset)
+					pos += xprintf(" ");
+				pos += xprintf("%s",
+				    sctp_path_state(faddr->state));
+			}
+			offset += 13;
+		}
+		if (first) {
+			if (opt_s) {
+				if (s->proto == IPPROTO_SCTP ||
+				    s->proto == IPPROTO_TCP) {
+					while (pos < offset)
+						pos += xprintf(" ");
+					switch (s->proto) {
+					case IPPROTO_SCTP:
+						pos += xprintf("%s",
+						    sctp_conn_state(s->state));
+						break;
+					case IPPROTO_TCP:
+						if (s->state >= 0 &&
+						    s->state < TCP_NSTATES)
+							pos += xprintf("%s",
+							    tcpstates[s->state]);
+						else
+							pos += xprintf("?");
+						break;
+					}
+				}
+				offset += 13;
+			}
+			if (opt_S && s->proto == IPPROTO_TCP) {
+				while (pos < offset)
+					pos += xprintf(" ");
+				xprintf("%.*s", TCP_FUNCTION_NAME_LEN_MAX,
+				    s->stack);
 			}
 		}
 		if (laddr != NULL)
@@ -1081,8 +1150,14 @@ display(void)
 	printf("%-8s %-10s %-5s %-2s %-6s %-21s %-21s",
 	    "USER", "COMMAND", "PID", "FD", "PROTO",
 	    "LOCAL ADDRESS", "FOREIGN ADDRESS");
-	if (opt_s)
-		printf(" %-12s", "STATE");
+	if (opt_U)
+		printf(" %-6s", "ENCAPS");
+	if (opt_s) {
+		printf(" %-12s", "PATH STATE");
+		printf(" %-12s", "CONN STATE");
+	}
+	if (opt_S)
+		printf(" %.*s", TCP_FUNCTION_NAME_LEN_MAX, "STACK");
 	printf("\n");
 	setpassent(1);
 	for (xf = xfiles, n = 0; n < nxfiles; ++n, ++xf) {
@@ -1153,7 +1228,7 @@ static void
 usage(void)
 {
 	fprintf(stderr,
-	    "usage: sockstat [-46cLlsu] [-j jid] [-p ports] [-P protocols]\n");
+	    "usage: sockstat [-46cLlSsu] [-j jid] [-p ports] [-P protocols]\n");
 	exit(1);
 }
 
@@ -1164,7 +1239,7 @@ main(int argc, char *argv[])
 	int o, i;
 
 	opt_j = -1;
-	while ((o = getopt(argc, argv, "46cj:Llp:P:suv")) != -1)
+	while ((o = getopt(argc, argv, "46cj:Llp:P:SsUuv")) != -1)
 		switch (o) {
 		case '4':
 			opt_4 = 1;
@@ -1190,8 +1265,14 @@ main(int argc, char *argv[])
 		case 'P':
 			protos_defined = parse_protos(optarg);
 			break;
+		case 'S':
+			opt_S = 1;
+			break;
 		case 's':
 			opt_s = 1;
+			break;
+		case 'U':
+			opt_U = 1;
 			break;
 		case 'u':
 			opt_u = 1;
