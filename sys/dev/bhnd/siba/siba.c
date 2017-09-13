@@ -803,7 +803,7 @@ siba_register_interrupts(device_t dev, device_t child,
 	error = BHND_BUS_MAP_INTR(dev, child, dinfo->intr.flag,
 	    &dinfo->intr.irq);
 	if (error) {
-		device_printf(dev, "failed mapping interrupt line for core%u: "
+		device_printf(dev, "failed mapping interrupt line for core %u: "
 		    "%d\n", dinfo->core_id.core_info.core_idx, error);
 		return (error);
 	}
