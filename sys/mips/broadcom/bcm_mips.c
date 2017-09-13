@@ -286,10 +286,7 @@ static device_method_t bcm_mips_methods[] = {
 	DEVMETHOD_END
 };
 
-static devclass_t bcm_mips_devclass;
-
 DEFINE_CLASS_0(bcm_mips, bcm_mips_driver, bcm_mips_methods, sizeof(struct bcm_mips_softc));
-EARLY_DRIVER_MODULE(bcm_bmips, bhnd, bcm_mips_driver, bcm_mips_devclass, 0, 0, BUS_PASS_INTERRUPT + BUS_PASS_ORDER_MIDDLE);
 
-MODULE_VERSION(bcm_bmips, 1);
-MODULE_DEPEND(bcm_bmips, bhnd, 1, 1, 1);
+MODULE_VERSION(bcm_mips, 1);
+MODULE_DEPEND(bcm_mips, bhnd, 1, 1, 1);
