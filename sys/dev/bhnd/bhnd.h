@@ -898,6 +898,40 @@ bhnd_get_intr_ivec(device_t dev, u_int intr, u_int *ivec)
 }
 
 /**
+ * Map the given @p intr to an IRQ number; until unmapped, this IRQ may be used
+ * to allocate a resource of type SYS_RES_IRQ.
+ * 
+ * On success, the caller assumes ownership of the interrupt mapping, and
+ * is responsible for releasing the mapping via bhnd_unmap_intr().
+ * 
+ * @param dev The requesting device.
+ * @param intr The interrupt being mapped.
+ * @param[out] irq On success, the bus interrupt value mapped for @p intr.
+ *
+ * @retval 0		If an interrupt was assigned.
+ * @retval non-zero	If mapping an interrupt otherwise fails, a regular
+ *			unix error code will be returned.
+ */
+static inline int
+bhnd_map_intr(device_t dev, u_int intr, rman_res_t *irq)
+{
+	return (BHND_BUS_MAP_INTR(device_get_parent(dev), dev, intr, irq));
+}
+
+/**
+ * Unmap an bus interrupt previously mapped via bhnd_map_intr().
+ * 
+ * @param dev The requesting device.
+ * @param intr The interrupt number being unmapped. This is equivalent to the
+ * bus resource ID for the interrupt.
+ */
+static inline void
+bhnd_unmap_intr(device_t dev, rman_res_t irq)
+{
+	return (BHND_BUS_UNMAP_INTR(device_get_parent(dev), dev, irq));
+}
+
+/**
  * Allocate and enable per-core PMU request handling for @p child.
  *
  * The region containing the core's PMU register block (if any) must be
