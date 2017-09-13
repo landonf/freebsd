@@ -77,9 +77,9 @@ __FBSDID("$FreeBSD$");
 #endif  /* NEXUS_DEBUG */
 
 #ifdef INTRNG
-#define	NUM_MIPS_IRQS	NREAL_IRQS	/**< SW and HW IRQs */
+#define	NUM_MIPS_IRQS	NIRQ	/* Any INTRNG-mapped IRQ */
 #else
-#define	NUM_MIPS_IRQS	NHARD_IRQS	/**< HW IRQs only */
+#define	NUM_MIPS_IRQS	6	/* HW IRQs only */
 #endif
 
 static MALLOC_DEFINE(M_NEXUSDEV, "nexusdev", "Nexus device");
@@ -177,7 +177,6 @@ static devclass_t nexus_devclass;
 static int
 nexus_probe(device_t dev)
 {
-
 	device_set_desc(dev, "MIPS32 root nexus");
 
 	irq_rman.rm_start = 0;
@@ -208,6 +207,12 @@ nexus_probe(device_t dev)
 static int
 nexus_attach(device_t dev)
 {
+	int error;
+
+#ifndef FDT
+	if ((error = mips_pic_map_fixed_intrs()))
+		return (error);
+#endif
 
 	bus_generic_probe(dev);
 	bus_enumerate_hinted_children(dev);
@@ -290,7 +295,7 @@ nexus_alloc_resource(device_t bus, device_t child, int type, int *rid,
 	dprintf("%s: requested rid is %d\n", __func__, *rid);
 
 	isdefault = (RMAN_IS_DEFAULT_RANGE(start, end) && count == 1);
-	needactivate = ((flags & RF_ACTIVE) != 0);
+	needactivate = flags & RF_ACTIVE;
 	passthrough = (device_get_parent(child) != bus);
 	rle = NULL;
 
@@ -313,10 +318,6 @@ nexus_alloc_resource(device_t bus, device_t child, int type, int *rid,
 
 	switch (type) {
 	case SYS_RES_IRQ:
-		if (start != end || count != 1) {
-			printf("%s: cannot allocate IRQ range\n", __func__);
-			return (NULL);
-		}
 		rm = &irq_rman;
 		break;
 	case SYS_RES_MEMORY:
@@ -324,14 +325,14 @@ nexus_alloc_resource(device_t bus, device_t child, int type, int *rid,
 		break;
 	default:
 		printf("%s: unknown resource type %d\n", __func__, type);
-		return (NULL);
+		return (0);
 	}
 
 	rv = rman_reserve_resource(rm, start, end, count, flags, child);
 	if (rv == NULL) {
 		printf("%s: could not reserve resource for %s\n", __func__,
 		    device_get_nameunit(child));
-		return (NULL);
+		return (0);
 	}
 
 	rman_set_rid(rv, *rid);
@@ -340,7 +341,7 @@ nexus_alloc_resource(device_t bus, device_t child, int type, int *rid,
 		if (bus_activate_resource(child, type, *rid, rv)) {
 			printf("%s: could not activate resource\n", __func__);
 			rman_release_resource(rv);
-			return (NULL);
+			return (0);
 		}
 	}
 
@@ -407,33 +408,7 @@ static int
 nexus_release_resource(device_t bus, device_t child, int type, int rid,
 		       struct resource *r)
 {
-	struct nexus_device		*ndev;
-	struct resource_list_entry	*rle;
-	bool				 passthrough;
-	int				 error;
-
 	dprintf("%s: entry\n", __func__);
-
-	passthrough = (device_get_parent(child) != bus);
-
-	if (rman_get_flags(r) & RF_ACTIVE) {
-		error = BUS_DEACTIVATE_RESOURCE(bus, child, type, rid, r);
-		if (error)
-			return (error);
-	}
-
-	if ((error = rman_release_resource(r)))
-		return (error);
-
-	if (!passthrough) {
-		/* Clean resource list entry */
-		ndev = DEVTONX(child);
-		rle = resource_list_find(&ndev->nx_resources, type, rid);
-		if (rle != NULL)
-			rle->res = NULL;
-	}
-
-	return (0);
 
 	if (rman_get_flags(r) & RF_ACTIVE) {
 		int error = bus_deactivate_resource(child, type, rid, r);
