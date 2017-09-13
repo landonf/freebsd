@@ -76,10 +76,13 @@ __FBSDID("$FreeBSD$");
 #define dprintf(x, arg...)
 #endif  /* NEXUS_DEBUG */
 
-#ifndef INTRNG
-#define	NUM_MIPS_IRQS	NREAL_IRQS	/**< SW and HW IRQs */
+#ifdef INTRNG
+#define	NEXUS_IRQ_RM_END	0		/* allow irq_rman to manage any IRQ (incl. nested PIC IRQs) */
+#define	NEXUS_IRQ_RM_REGION_END	(~0)
 #else
-#define	NUM_MIPS_IRQS	NHARD_IRQS	/**< HW IRQs only */
+#define	NUM_MIPS_IRQS		NHARD_IRQS		/* HW IRQs only */
+#define	NEXUS_IRQ_RM_END	(NUM_MIPS_IRQS-1)	/* limit irq_rman to the HW IRQ range */
+#define	NEXUS_IRQ_RM_REGION_END	(NUM_MIPS_IRQS-1)
 #endif
 
 static MALLOC_DEFINE(M_NEXUSDEV, "nexusdev", "Nexus device");
@@ -177,15 +180,14 @@ static devclass_t nexus_devclass;
 static int
 nexus_probe(device_t dev)
 {
-
 	device_set_desc(dev, "MIPS32 root nexus");
 
 	irq_rman.rm_start = 0;
-	irq_rman.rm_end = NUM_MIPS_IRQS - 1;
+	irq_rman.rm_end = NEXUS_IRQ_RM_END;
 	irq_rman.rm_type = RMAN_ARRAY;
 	irq_rman.rm_descr = "Hardware IRQs";
 	if (rman_init(&irq_rman) != 0 ||
-	    rman_manage_region(&irq_rman, 0, NUM_MIPS_IRQS - 1) != 0) {
+	    rman_manage_region(&irq_rman, 0, NEXUS_IRQ_RM_REGION_END) != 0) {
 		panic("%s: irq_rman", __func__);
 	}
 
