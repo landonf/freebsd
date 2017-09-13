@@ -138,7 +138,6 @@ bcm_mips_attach(device_t dev)
 		    error);
 	}
 	
-	sc->irq_rid = 0;
 	sc->irq = bus_alloc_resource_any(dev, SYS_RES_IRQ, &sc->irq_rid,
 	    RF_SHAREABLE|RF_ACTIVE);
 	if (sc->irq == NULL) {
