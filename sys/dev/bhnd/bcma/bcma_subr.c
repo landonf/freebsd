@@ -377,12 +377,12 @@ bcma_init_dinfo(device_t bus, device_t child, struct bcma_devinfo *dinfo,
 	/* Now that we've defined the port resources, we can map the device's
 	 * agent registers (if any) */
 	if ((error = bcma_dinfo_init_agent(bus, child, dinfo)))
-		return (error);
+		goto failed;
 
 	/* With agent registers mapped, we can populate the device's interrupt
 	 * descriptors */
 	if ((error = bcma_dinfo_init_intrs(bus, child, dinfo)))
-		return (error);
+		goto failed;
 
 	/* Finally, map the interrupt descriptors */
 	STAILQ_FOREACH(intr, &dinfo->intrs, i_link) {
@@ -397,7 +397,7 @@ bcma_init_dinfo(device_t bus, device_t child, struct bcma_devinfo *dinfo,
 			device_printf(bus, "failed mapping interrupt line %u "
 			    "for core %u: %d\n", intr->i_sel,
 			    BCMA_DINFO_COREIDX(dinfo), error);
-			return (error);
+			goto failed;
 		}
 
 		intr->i_mapped = true;
@@ -408,6 +408,12 @@ bcma_init_dinfo(device_t bus, device_t child, struct bcma_devinfo *dinfo,
 	}
 
 	return (0);
+
+failed:
+	/* Owned by the caller on failure */
+	dinfo->corecfg = NULL;
+
+	return (error);
 }
 
 /**
