@@ -76,7 +76,7 @@ __FBSDID("$FreeBSD$");
 #define dprintf(x, arg...)
 #endif  /* NEXUS_DEBUG */
 
-#ifdef INTRNG
+#ifndef INTRNG
 #define	NUM_MIPS_IRQS	NREAL_IRQS	/**< SW and HW IRQs */
 #else
 #define	NUM_MIPS_IRQS	NHARD_IRQS	/**< HW IRQs only */
@@ -204,6 +204,12 @@ nexus_probe(device_t dev)
 static int
 nexus_attach(device_t dev)
 {
+	int error;
+
+#ifndef FDT
+	if ((error = mips_pic_map_fixed_intrs()))
+		return (error);
+#endif
 
 	bus_generic_probe(dev);
 	bus_enumerate_hinted_children(dev);

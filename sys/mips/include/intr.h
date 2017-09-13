@@ -59,9 +59,12 @@
 #define	NSOFT_IRQS		2
 #define	NREAL_IRQS		(NHARD_IRQS+NSOFT_IRQS)
 
-#define	INTR_MAP_DATA_MIPS	INTR_MAP_DATA_PLAT_1
+#ifndef FDT
+#define	MIPS_PIC_XREF		1	/**< unique xref */
+#endif
 
 /* MIPS32 PIC APIs */
+int mips_pic_map_fixed_intrs(void);
 int mips_pic_activate_intr(device_t child, struct resource *r);
 int mips_pic_deactivate_intr(device_t child, struct resource *r);
 
