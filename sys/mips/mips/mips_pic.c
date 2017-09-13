@@ -66,6 +66,10 @@ __FBSDID("$FreeBSD$");
 
 #include "pic_if.h"
 
+#define NHARD_IRQS	6
+#define NSOFT_IRQS	2
+#define NREAL_IRQS	(NHARD_IRQS + NSOFT_IRQS)
+
 struct mips_pic_softc;
 
 static int			 mips_pic_intr(void *);
@@ -79,9 +83,9 @@ static void			 cpu_establish_intr(struct mips_pic_softc *sc,
 
 #define	INTR_MAP_DATA_MIPS	INTR_MAP_DATA_PLAT_1
 
-struct intr_map_data_mips {
-	struct intr_map_data	 hdr;		/**< inherited map data */
-	u_int			 mips_irq;	/**< MIPS IRQ# 0-7 */
+struct intr_map_data_mips_pic {
+	struct intr_map_data	hdr;
+	u_int			irq;
 };
 
 /**
@@ -109,19 +113,19 @@ struct mtx mips_pic_mtx;
 MTX_SYSINIT(mips_pic_mtx, &mips_pic_mtx, "mips intr controller mutex", MTX_DEF);
 
 struct mips_pic_irqsrc {
-	struct intr_irqsrc	 isrc;	/**< inherited irqsrc state */
-	u_int			 irq;	/**< MIPS IRQ# 0-7 */
+	struct intr_irqsrc	isrc;
+	u_int			irq;
 };
 
 struct mips_pic_softc {
-	device_t		pic_dev;
-	struct mips_pic_irqsrc	pic_isrcs[NREAL_IRQS];	/**< interrupt source entries */
-	u_int			nirqs;			/**< IRQ count */
+	device_t			pic_dev;
+	struct mips_pic_irqsrc		pic_irqs[NREAL_IRQS];
+	uint32_t			nirqs;
 };
 
 static struct mips_pic_softc *pic_sc;
 
-#define PIC_INTR_ISRC(sc, irq)		(&(sc)->pic_isrcs[(irq)].isrc)
+#define PIC_INTR_ISRC(sc, irq)		(&(sc)->pic_irqs[(irq)].isrc)
 
 #ifdef FDT
 static struct ofw_compat_data compat_data[] = {
@@ -182,31 +186,27 @@ static int
 mips_pic_register_isrcs(struct mips_pic_softc *sc)
 {
 	int error;
+	uint32_t irq, i, tmpirq;
+	struct intr_irqsrc *isrc;
+	char *name;
 
-	for (u_int irq = 0; irq < sc->nirqs; irq++) {
-		struct mips_pic_irqsrc		*isrc;
-		char				*name;
-		u_int				 nameirq;
+	for (irq = 0; irq < sc->nirqs; irq++) {
+		sc->pic_irqs[irq].irq = irq;
 
-		/* Register our isrc for this IRQ */
-		isrc = (struct mips_pic_irqsrc *)PIC_INTR_ISRC(sc, irq);
-		isrc->irq = irq;
-
-		/* sint.[0-2] or int.[0-5] */
+		isrc = PIC_INTR_ISRC(sc, irq);
 		if (irq < NSOFT_IRQS) {
 			name = "sint";
-			nameirq = irq;
+			tmpirq = irq;
 		} else {
 			name = "int";
-			nameirq = irq - NSOFT_IRQS;
+			tmpirq = irq - NSOFT_IRQS;
 		}
-
-		error = intr_isrc_register(&isrc->isrc, sc->pic_dev, 0, "%s%u",
-		    name, nameirq);
+		error = intr_isrc_register(isrc, sc->pic_dev, 0, "%s%u",
+		    name, tmpirq);
 		if (error != 0) {
-			for (u_int i = 0; i < irq; i++)
+			for (i = 0; i < irq; i++) {
 				intr_isrc_deregister(PIC_INTR_ISRC(sc, i));
-	
+			}
 			device_printf(sc->pic_dev, "%s failed", __func__);
 			return (error);
 		}
@@ -220,21 +220,22 @@ mips_pic_attach(device_t dev)
 {
 	struct		mips_pic_softc *sc;
 	intptr_t	xref = pic_xref(dev);
-	int		error;
 
-	if (pic_sc != NULL)
+	if (pic_sc)
 		return (ENXIO);
 
 	sc = device_get_softc(dev);
+
 	sc->pic_dev = dev;
+	pic_sc = sc;
 
 	/* Set the number of interrupts */
-	sc->nirqs = nitems(sc->pic_isrcs);
+	sc->nirqs = nitems(sc->pic_irqs);
 
 	/* Register the interrupts */
-	if ((error = mips_pic_register_isrcs(sc))) {
-		device_printf(dev, "could not register PIC ISRCs: %d\n", error);
-		return (error);
+	if (mips_pic_register_isrcs(sc) != 0) {
+		device_printf(dev, "could not register PIC ISRCs\n");
+		goto cleanup;
 	}
 
 	/*
@@ -243,45 +244,20 @@ mips_pic_attach(device_t dev)
 	 */
 	if (intr_pic_register(dev, xref) == NULL) {
 		device_printf(dev, "could not register PIC\n");
-		error = ENXIO;
 		goto cleanup;
 	}
 
 	/* Claim our root controller role */
-	if ((error = intr_pic_claim_root(dev, xref, mips_pic_intr, sc, 0))) {
-		device_printf(dev, "could not set PIC as a root: %d\n", error);
+	if (intr_pic_claim_root(dev, xref, mips_pic_intr, sc, 0) != 0) {
+		device_printf(dev, "could not set PIC as a root\n");
 		intr_pic_deregister(dev, xref);
 		goto cleanup;
 	}
 
-	pic_sc = sc;
 	return (0);
 
 cleanup:
-	for (u_int i = 0; i < sc->nirqs; i++)
-		intr_isrc_deregister(PIC_INTR_ISRC(sc, i));
-
-	return (ENXIO);
-}
-
-static int
-mips_pic_detach(device_t dev)
-{
-	struct		mips_pic_softc *sc;
-	intptr_t	xref;
-	int		error;
-
-	sc = device_get_softc(dev);
-	xref = pic_xref(dev);
-
-	if ((error = intr_pic_deregister(dev, xref)))
-		return (error);
-
-	for (u_int i = 0; i < sc->nirqs; i++)
-		intr_isrc_deregister(PIC_INTR_ISRC(sc, i));
-
-	pic_sc = NULL;
-	return (0);
+	return(ENXIO);
 }
 
 int
@@ -365,14 +341,14 @@ mips_pic_map_intr(device_t dev, struct intr_map_data *data,
 	} else
 #endif
 	if (data->type == INTR_MAP_DATA_MIPS) {
-		struct intr_map_data_mips *mpd;
+		struct intr_map_data_mips_pic *mpd;
 
-		mpd = (struct intr_map_data_mips *)data;
+		mpd = (struct intr_map_data_mips_pic *)data;
 
-		if (mpd->mips_irq < 0 || mpd->mips_irq >= sc->nirqs)
+		if (mpd->irq < 0 || mpd->irq >= sc->nirqs)
 			return (EINVAL);
 
-		*isrcp = PIC_INTR_ISRC(sc, mpd->mips_irq);
+		*isrcp = PIC_INTR_ISRC(sc, mpd->irq);
 	} else {
 		res = ENOTSUP;
 	}
@@ -406,7 +382,6 @@ static device_method_t mips_pic_methods[] = {
 #endif
 	DEVMETHOD(device_probe,		mips_pic_probe),
 	DEVMETHOD(device_attach,	mips_pic_attach),
-	DEVMETHOD(device_detach,	mips_pic_detach),
 
 	/* Interrupt controller interface */
 	DEVMETHOD(pic_disable_intr,	mips_pic_disable_intr),
@@ -482,7 +457,7 @@ static int
 mips_pic_map_fixed_intr(u_int irq, struct mips_pic_intr **mapping)
 {
 	struct mips_pic_intr		*intr;
-	struct intr_map_data_mips	*data;
+	struct intr_map_data_mips_pic	*data;
 	device_t			 pic_dev;
 	uintptr_t			 xref;
 
@@ -504,9 +479,9 @@ mips_pic_map_fixed_intr(u_int irq, struct mips_pic_intr **mapping)
 	}
 
 	/* Map the interrupt */
-	data = (struct intr_map_data_mips *)intr_alloc_map_data(
+	data = (struct intr_map_data_mips_pic *)intr_alloc_map_data(
 		INTR_MAP_DATA_MIPS, sizeof(*data), M_WAITOK | M_ZERO);
-	data->mips_irq = intr->mips_irq;
+	data->irq = intr->mips_irq;
 
 #ifdef FDT
 	/* PIC must be attached on FDT devices */
@@ -644,7 +619,6 @@ mips_pic_deactivate_intr(device_t child, struct resource *r)
 void
 cpu_init_interrupts(void)
 {
-
 }
 
 /**
