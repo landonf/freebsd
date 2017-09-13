@@ -646,8 +646,10 @@ siba_get_core_ivec(device_t dev, device_t child, u_int intr, uint32_t *ivec)
 		return (ENXIO);
 
 	KASSERT(intr == 0, ("invalid ivec %u", intr));
-	KASSERT(dinfo->intr_en, ("core does not have an interrupt assigned"));
 
+	dinfo = device_get_ivars(child);
+
+	KASSERT(dinfo->intr_en, ("core does not have an interrupt assigned"));
 	*ivec = dinfo->intr.flag;
 	return (0);
 }

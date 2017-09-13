@@ -620,30 +620,8 @@ bcma_get_region_addr(device_t dev, device_t child, bhnd_port_type port_type,
 int
 bcma_get_intr_count(device_t dev, device_t child)
 {
-	struct bcma_devinfo	*dinfo;
-	uint32_t		 dmpcfg, oobw;
-
-	dinfo = device_get_ivars(child);
-
-	/* Agent block must be mapped */
-	if (dinfo->res_agent == NULL)
-		return (0);
-
-	/* Agent must support OOB */
-	dmpcfg = bhnd_bus_read_4(dinfo->res_agent, BCMA_DMP_CONFIG);
-	if (!BCMA_DMP_GET_FLAG(dmpcfg, BCMA_DMP_CFG_OOB))
-		return (0);
-
-	/* Return OOB width as interrupt count */
-	oobw = bhnd_bus_read_4(dinfo->res_agent,
-	    BCMA_DMP_OOB_OUTWIDTH(BCMA_OOB_BANK_INTR));
-	if (oobw > BCMA_OOB_NUM_SEL) {
-		device_printf(dev, "ignoring invalid OOBOUTWIDTH for core %u: "
-		    "%#x\n", BCMA_DINFO_COREIDX(dinfo), oobw);
-		return (0);
-	}
-	
-	return (oobw);
+	struct bcma_devinfo *dinfo = device_get_ivars(child);
+	return (dinfo->num_intrs);
 }
 
 /**
@@ -657,22 +635,19 @@ int
 bcma_get_core_ivec(device_t dev, device_t child, u_int intr, uint32_t *ivec)
 {
 	struct bcma_devinfo	*dinfo;
-	uint32_t		 oobsel;
+	struct bcma_intr	*desc;
 
 	dinfo = device_get_ivars(child);
 
-	/* Interrupt ID must be valid. */
-	if (intr >= bcma_get_intr_count(dev, child))
-		return (ENXIO);
+	STAILQ_FOREACH(desc, &dinfo->intrs, i_link) {
+		if (desc->i_sel == intr) {
+			*ivec = desc->i_line;
+			return (0);
+		}
+	}
 
-	/* Fetch OOBSEL busline value */
-	KASSERT(dinfo->res_agent != NULL, ("missing agent registers"));
-	oobsel = bhnd_bus_read_4(dinfo->res_agent, BCMA_DMP_OOBSELOUT(
-	    BCMA_OOB_BANK_INTR, intr));
-	*ivec = (oobsel >> BCMA_DMP_OOBSEL_SHIFT(intr)) &
-	    BCMA_DMP_OOBSEL_BUSLINE_MASK;
-
-	return (0);
+	/* Not found */
+	return (ENXIO);
 }
 
 /**
@@ -722,6 +697,10 @@ bcma_add_children(device_t bus)
 
 		/* Allocate device's agent registers, if any */
 		if ((error = bcma_dinfo_alloc_agent(bus, child, dinfo)))
+			goto cleanup;
+	
+		/** Populate device's interrupt descriptors */
+		if ((error = bcma_dinfo_init_intrs(bus, child, dinfo)))
 			goto cleanup;
 
 		/* Assign interrupts */

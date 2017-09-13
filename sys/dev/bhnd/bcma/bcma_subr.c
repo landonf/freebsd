@@ -99,8 +99,8 @@ bcma_alloc_corecfg(u_int core_index, int core_unit, uint16_t vendor,
 void
 bcma_free_corecfg(struct bcma_corecfg *corecfg)
 {
-	struct bcma_mport *mport, *mnext;
-	struct bcma_sport *sport, *snext;
+	struct bcma_mport	*mport, *mnext;
+	struct bcma_sport	*sport, *snext;
 
 	STAILQ_FOREACH_SAFE(mport, &corecfg->master_ports, mp_link, mnext) {
 		free(mport, M_BHND);
@@ -213,6 +213,9 @@ bcma_alloc_dinfo(device_t bus)
 	dinfo->res_agent = NULL;
 	dinfo->rid_agent = -1;
 
+	STAILQ_INIT(&dinfo->intrs);
+	dinfo->num_intrs = 0;
+
 	resource_list_init(&dinfo->resources);
 
 	return (dinfo);
@@ -306,6 +309,86 @@ bcma_dinfo_alloc_agent(device_t bus, device_t child, struct bcma_devinfo *dinfo)
 	return (0);
 }
 
+/**
+ * Allocate the per-core agent register block for a device info structure
+ * previous initialized via bcma_init_dinfo().
+ * 
+ * If an agent0.0 region is not defined on @p dinfo, the device info
+ * agent resource is set to NULL and 0 is returned.
+ * 
+ * @param bus The requesting bus device.
+ * @param child The bcma child device.
+ * @param dinfo The device info associated with @p child
+ * 
+ * @retval 0 success
+ * @retval non-zero resource allocation failed.
+ */
+
+/**
+ * Populate the list of interrupts for a device info structure
+ * previously initialized via bcma_dinfo_alloc_agent().
+ * 
+ * If an agent0.0 region is not mapped on @p dinfo, the OOB interrupt bank is
+ * assumed to be unavailable and 0 is returned.
+ * 
+ * @param bus The requesting bus device.
+ * @param dinfo The device info instance to be initialized.
+ */
+int
+bcma_dinfo_init_intrs(device_t bus, device_t child,
+    struct bcma_devinfo *dinfo)
+{
+	uint32_t dmpcfg, oobw;
+
+	/* Agent block must be mapped */
+	if (dinfo->res_agent == NULL)
+		return (0);
+
+	/* Agent must support OOB */
+	dmpcfg = bhnd_bus_read_4(dinfo->res_agent, BCMA_DMP_CONFIG);
+	if (!BCMA_DMP_GET_FLAG(dmpcfg, BCMA_DMP_CFG_OOB))
+		return (0);
+
+	/* Fetch width of the OOB interrupt bank */
+	oobw = bhnd_bus_read_4(dinfo->res_agent,
+	     BCMA_DMP_OOB_OUTWIDTH(BCMA_OOB_BANK_INTR));
+	if (oobw > BCMA_OOB_NUM_SEL) {
+		device_printf(bus, "ignoring invalid OOBOUTWIDTH for core %u: "
+		    "%#x\n", BCMA_DINFO_COREIDX(dinfo), oobw);
+		return (0);
+	}
+
+	/* Fetch OOBSEL busline values and populate list of interrupt
+	 * descriptors */
+	for (uint32_t sel = 0; sel < oobw; sel++) {
+		struct bcma_intr	*intr;
+		uint32_t		 selout;
+		uint8_t			 line;
+
+		if (dinfo->num_intrs == ULONG_MAX)
+			return (ENOMEM);
+	
+		selout = bhnd_bus_read_4(dinfo->res_agent, BCMA_DMP_OOBSELOUT(
+		    BCMA_OOB_BANK_INTR, sel));
+
+		line = (selout >> BCMA_DMP_OOBSEL_SHIFT(sel)) &
+		    BCMA_DMP_OOBSEL_BUSLINE_MASK;
+
+		intr = bcma_alloc_intr(BCMA_OOB_BANK_INTR, sel, line);
+		if (intr == NULL) {
+			device_printf(bus, "failed allocating interrupt "
+			    "descriptor %#x for core %u\n", sel,
+			    BCMA_DINFO_COREIDX(dinfo));
+			return (ENOMEM);
+		}
+
+		STAILQ_INSERT_HEAD(&dinfo->intrs, intr, i_link);
+		dinfo->num_intrs++;
+	}
+
+	return (0);
+}
+
 
 /**
  * Deallocate the given device info structure and any associated resources.
@@ -316,6 +399,8 @@ bcma_dinfo_alloc_agent(device_t bus, device_t child, struct bcma_devinfo *dinfo)
 void
 bcma_free_dinfo(device_t bus, struct bcma_devinfo *dinfo)
 {
+	struct bcma_intr *intr, *inext;
+
 	resource_list_free(&dinfo->resources);
 
 	if (dinfo->corecfg != NULL)
@@ -327,9 +412,60 @@ bcma_free_dinfo(device_t bus, struct bcma_devinfo *dinfo)
 		    dinfo->res_agent);
 	}
 
+	STAILQ_FOREACH_SAFE(intr, &dinfo->intrs, i_link, inext) {
+		bcma_free_intr(intr);
+	}
+
 	free(dinfo, M_BHND);
 }
 
+
+/**
+ * Allocate and initialize a new interrupt descriptor.
+ * 
+ * @param bank OOB bank.
+ * @param sel OOB selector.
+ * @param line OOB bus line.
+ */
+struct bcma_intr *
+bcma_alloc_intr(uint8_t bank, uint8_t sel, uint8_t line)
+{
+	struct bcma_intr *intr;
+
+	if (bank >= BCMA_OOB_NUM_BANKS)
+		return (NULL);
+
+	if (sel >= BCMA_OOB_NUM_SEL)
+		return (NULL);
+
+	if (line >= BCMA_OOB_NUM_BUSLINES)
+		return (NULL);
+
+	intr = malloc(sizeof(*intr), M_BHND, M_NOWAIT);
+	if (intr == NULL)
+		return (NULL);
+
+	intr->i_bank = bank;
+	intr->i_sel = sel;
+	intr->i_line = line;
+	intr->i_mapped = false;
+	intr->i_irq = 0;
+
+	return (intr);
+}
+
+/**
+ * Deallocate all resources associated with the given interrupt descriptor.
+ * 
+ * @param intr Interrupt descriptor to be deallocated.
+ */
+void
+bcma_free_intr(struct bcma_intr *intr)
+{
+	KASSERT(!intr->i_mapped, ("interrupt is still mapped"));
+
+	free(intr, M_BHND);
+}
 
 /**
  * Allocate and initialize new slave port descriptor.
