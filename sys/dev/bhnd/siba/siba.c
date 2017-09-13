@@ -610,24 +610,19 @@ int
 siba_get_intr_count(device_t dev, device_t child)
 {
 	struct siba_devinfo	*dinfo;
-	uint32_t		 tpsflag;
 
 	/* delegate non-bus-attached devices to our parent */
 	if (device_get_parent(child) != dev)
 		return (BHND_BUS_GET_INTR_COUNT(device_get_parent(dev), child));
 
 	dinfo = device_get_ivars(child);
-
-	/* Core must have a valid cfg0 block */
-	if (dinfo->cfg[0] == NULL)
+	if (!dinfo->intr_en) {
+		/* No interrupts */
 		return (0);
-
-	/* Is backplane interrupt distribution enabled for this core? */
-	tpsflag = bhnd_bus_read_4(dinfo->cfg[0], SIBA_CFG0_TPSFLAG);
-	if ((tpsflag & SIBA_TPS_F0EN0) == 0)
-		return (0);
-
-	return (SIBA_CORE_NUM_INTR);
+	} else {
+		/* One assigned interrupt */
+		return (1);
+	}
 }
 
 /**
@@ -640,7 +635,6 @@ int
 siba_get_core_ivec(device_t dev, device_t child, u_int intr, uint32_t *ivec)
 {
 	struct siba_devinfo	*dinfo;
-	uint32_t		 tpsflag;
 
 	/* delegate non-bus-attached devices to our parent */
 	if (device_get_parent(child) != dev)
@@ -651,11 +645,10 @@ siba_get_core_ivec(device_t dev, device_t child, u_int intr, uint32_t *ivec)
 	if (intr >= siba_get_intr_count(dev, child))
 		return (ENXIO);
 
-	/* Fetch sbflag number */
-	dinfo = device_get_ivars(child);
-	tpsflag = bhnd_bus_read_4(dinfo->cfg[0], SIBA_CFG0_TPSFLAG);
-	*ivec = SIBA_REG_GET(tpsflag, TPS_NUM0);
+	KASSERT(intr == 0, ("invalid ivec %u", intr));
+	KASSERT(dinfo->intr_en, ("core does not have an interrupt assigned"));
 
+	*ivec = dinfo->intr.flag;
 	return (0);
 }
 
@@ -772,6 +765,38 @@ siba_map_cfg_resources(device_t dev, struct siba_devinfo *dinfo)
 			return (ENXIO);
 		}
 	}
+
+	return (0);
+}
+
+/**
+ * Register all interrupt descriptors for @p dinfo. Must be called after
+ * configuration blocks have been mapped.
+ *
+ * @param dev The siba bus device.
+ * @param dinfo The device info instance on which to register all interrupt
+ * descriptor entries.
+ */
+static int
+siba_register_interrupts(device_t dev, struct siba_devinfo *dinfo)
+{
+	uint32_t tpsflag;
+
+	/* Core must have a valid cfg0 block */
+	if (dinfo->cfg[0] == NULL)
+		return (0);
+
+	/* Is backplane interrupt distribution enabled for this core? */
+	tpsflag = bhnd_bus_read_4(dinfo->cfg[0], SIBA_CFG0_TPSFLAG);
+	if ((tpsflag & SIBA_TPS_F0EN0) == 0) {
+		dinfo->intr_en = false;
+		return (0);
+	}
+
+	dinfo->intr_en = true;
+	dinfo->intr.flag = SIBA_REG_GET(tpsflag, TPS_NUM0);
+	dinfo->intr.mapped = false;
+	dinfo->intr.irq = 0;
 
 	return (0);
 }
@@ -902,6 +927,10 @@ siba_add_children(device_t dev)
 
 		/* Map the core's config blocks */
 		if ((error = siba_map_cfg_resources(dev, dinfo)))
+			goto cleanup;
+
+		/* Assign interrupts */
+		if ((error = siba_register_interrupts(dev, dinfo)))
 			goto cleanup;
 
 		/* Assign interrupts */

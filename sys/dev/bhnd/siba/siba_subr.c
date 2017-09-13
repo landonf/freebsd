@@ -128,6 +128,8 @@ siba_alloc_dinfo(device_t bus)
 
 	resource_list_init(&dinfo->resources);
 
+	dinfo->intr_en = false;
+
 	return dinfo;
 }
 

@@ -134,6 +134,13 @@ struct siba_addrspace {
 					  *  address space reserved for the bus */
 };
 
+/** siba(4) backplane interrupt flag descriptor */
+struct siba_intr {
+	u_int		flag;	/**< backplane flag # */
+	bool		mapped;	/**< if an irq has been mapped */
+	rman_res_t	irq;	/**< the mapped bus irq, if any */
+};
+
 /**
  * siba(4) per-core identification info.
  */
@@ -156,6 +163,8 @@ struct siba_devinfo {
 	struct resource_list		 resources;			/**< per-core memory regions. */
 	struct siba_core_id		 core_id;			/**< core identification info */
 	struct siba_addrspace		 addrspace[SIBA_MAX_ADDRSPACE];	/**< memory map descriptors */
+	struct siba_intr		 intr;				/**< interrupt flag descriptor, if any */
+	bool				 intr_en;			/**< if true, core has an assigned interrupt flag */
 
 	struct bhnd_resource		*cfg[SIBA_MAX_CFG];		/**< SIBA_CFG_* registers */
 	int				 cfg_rid[SIBA_MAX_CFG];		/**< SIBA_CFG_* resource IDs */
