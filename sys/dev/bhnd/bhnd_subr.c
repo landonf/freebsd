@@ -2316,3 +2316,14 @@ bhnd_bus_generic_deactivate_resource(device_t dev, device_t child,
 	return (EINVAL);
 }
 
+/**
+ * Helper function for implementing BHND_BUS_GET_INTR_DOMAIN().
+ * 
+ * This implementation simply returns the address of nearest bhnd(4) bus,
+ * which may be @p dev; this behavior may be incompatible with FDT/OFW targets.
+ */
+uintptr_t
+bhnd_bus_generic_get_intr_domain(device_t dev, device_t child, bool self)
+{
+	return ((uintptr_t)dev);
+}

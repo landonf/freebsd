@@ -224,6 +224,13 @@ CODE {
 		panic("bhnd_bus_get_probe_order unimplemented");
 	}
 
+	static uintptr_t
+	bhnd_bus_null_get_intr_domain(device_t dev, device_t child, bool self)
+	{
+		/* Unsupported */
+		return (0);
+	}
+
 	static u_int
 	bhnd_bus_null_get_intr_count(device_t dev, device_t child)
 	{
@@ -933,6 +940,32 @@ METHOD int deactivate_resource {
         struct bhnd_resource *r;
 } DEFAULT bhnd_bus_generic_deactivate_resource;
 
+/**
+ * Return the interrupt domain.
+ *
+ * This globally unique value may be used as the interrupt controller 'xref'
+ * on targets that support INTRNG.
+ *
+ * @param dev The device whose child is being examined.
+ * @param child The child device.
+ * @parem self If true, return @p child's interrupt domain, rather than the
+ * domain in which @p child resides.
+ *
+ * On Non-OFW targets, this should either return:
+ *   - The pointer address of a device that can uniquely identify @p child's
+ *     interrupt domain (e.g., the bhnd bus' device_t address), or
+ *   - 0 if unsupported by the bus.
+ *
+ * On OFW (including FDT) targets, this should return the @p child's iparent
+ * property's xref if @p self is false, the child's own node xref value if
+ * @p self is true, or 0 if no interrupt parent is found.
+ */
+METHOD uintptr_t get_intr_domain {
+	device_t dev;
+	device_t child;
+	bool self;
+} DEFAULT bhnd_bus_null_get_intr_domain;
+ 
 /**
  * Return the number of interrupt lines assigned to @p child.
  * 

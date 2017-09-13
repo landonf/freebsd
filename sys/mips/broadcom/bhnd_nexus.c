@@ -158,14 +158,19 @@ bhnd_nexus_map_intr(device_t dev, device_t child, u_int intr, rman_res_t *irq)
 {
 	struct bcm_mips_intr_map_data	*imd;
 	u_int				 ivec;
+	uintptr_t			 xref;
 	int				 error;
 
 	/* Fetch the backplane interrupt vector */
 	if ((error = bhnd_get_intr_ivec(child, intr, &ivec))) {
-		device_printf(dev, "error fetching ivec for %s intr %u: %d\n",
-		    device_get_nameunit(child), intr, error);
+		device_printf(dev, "error fetching ivec for intr %u: %d\n",
+		    intr, error);
 		return (error);
 	}
+
+	/* Determine our interrupt domain */
+	xref = BHND_BUS_GET_INTR_DOMAIN(dev, child, false);
+	KASSERT(xref != 0, ("missing interrupt domain"));
 
 	/* Allocate our map data */
 	imd = (struct bcm_mips_intr_map_data *)intr_alloc_map_data(
@@ -173,7 +178,7 @@ bhnd_nexus_map_intr(device_t dev, device_t child, u_int intr, rman_res_t *irq)
 	imd->ivec = ivec;
 
 	/* Map the IRQ */
-	*irq = intr_map_irq(NULL, BCM_MIPS_PIC_XREF(dev), &imd->mdata);
+	*irq = intr_map_irq(NULL, xref, &imd->mdata);
 	return (0);
 }
 
@@ -201,6 +206,7 @@ static device_method_t bhnd_nexus_methods[] = {
 	DEVMETHOD(bhnd_bus_is_hw_disabled,	bhnd_nexus_is_hw_disabled),
 	DEVMETHOD(bhnd_bus_get_attach_type,	bhnd_nexus_get_attach_type),
 	DEVMETHOD(bhnd_bus_get_chipid,		bhnd_nexus_get_chipid),
+	DEVMETHOD(bhnd_bus_get_intr_domain,	bhnd_bus_generic_get_intr_domain),
 	DEVMETHOD(bhnd_bus_map_intr,		bhnd_nexus_map_intr),
 	DEVMETHOD(bhnd_bus_unmap_intr,		bhnd_nexus_unmap_intr),
 

@@ -56,6 +56,20 @@ __FBSDID("$FreeBSD$");
 
 #define	PIC_INTR_ISRC(sc, irq)	(&(sc)->isrcs[(irq)].isrc)
 
+/** return our PIC's xref */
+static uintptr_t
+bcm_mips_pic_xref(struct bcm_mips_softc *sc)
+{
+	uintptr_t xref;
+
+	/* Determine our interrupt domain */
+	xref = BHND_BUS_GET_INTR_DOMAIN(device_get_parent(sc->dev), sc->dev,
+	    true);
+	KASSERT(xref != 0, ("missing interrupt domain"));
+
+	return (xref);
+}
+
 /**
  * Register all interrupt source definitions.
  */
@@ -63,14 +77,17 @@ static int
 bcm_mips_register_isrcs(struct bcm_mips_softc *sc)
 {
 	const char	*name;
+	uintptr_t	 xref;
 	int		 error;
+
+	xref = bcm_mips_pic_xref(sc);
 
 	name = device_get_nameunit(sc->dev);
 	for (size_t ivec = 0; ivec < nitems(sc->isrcs); ivec++) {
 		sc->isrcs[ivec].ivec = ivec;
 
-		error = intr_isrc_register(PIC_INTR_ISRC(sc, ivec), sc->dev, 0,
-		    "%s,%u", name, ivec);
+		error = intr_isrc_register(PIC_INTR_ISRC(sc, ivec), sc->dev,
+		    xref, "%s,%u", name, ivec);
 		if (error) {
 			for (size_t i = 0; i < ivec; i++)
 				intr_isrc_deregister(PIC_INTR_ISRC(sc, i));
@@ -89,12 +106,14 @@ bcm_mips_attach(device_t dev)
 {
 	struct bcm_mips_softc	*sc;
 	struct intr_pic		*pic;
+	uintptr_t		 xref;
 	int			 error;
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
 
 	pic = NULL;
+	xref = bcm_mips_pic_xref(sc);
 
 	/* Register our interrupt sources */
 	if ((error = bcm_mips_register_isrcs(sc)))
@@ -129,7 +148,7 @@ bcm_mips_attach(device_t dev)
 	}
 
 	/* Register PIC */
-	if ((pic = intr_pic_register(dev, 0)) == NULL) {
+	if ((pic = intr_pic_register(dev, xref)) == NULL) {
 		device_printf(dev, "error registering PIC\n");
 		error = ENXIO;
 		goto failed;

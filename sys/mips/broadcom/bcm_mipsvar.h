@@ -79,6 +79,5 @@ struct bcm_mips_softc {
 
 #define	INTR_MAP_DATA_BCM_MIPS	INTR_MAP_DATA_PLAT_2	/**< Broadcom MIPS PIC interrupt map data type */
 #define	BCM_MIPS_PIC_IRQ	2			/**< MIPS HW IRQ used by our nested interrupt handler */
-#define	BCM_MIPS_PIC_XREF(bus)	((uintptr_t)bus)	/**< map a bhnd(4) bus to a globally unique PIC xref identifier */
 
 #endif /* _MIPS_BROADCOM_BCM_MIPSVAR_H_ */
