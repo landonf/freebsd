@@ -85,14 +85,10 @@ struct bcma_sport_list	*bcma_corecfg_get_port_list(struct bcma_corecfg *cfg,
 			     bhnd_port_type type);
 
 struct bcma_devinfo	*bcma_alloc_dinfo(device_t bus);
-int			 bcma_init_dinfo(device_t bus,
+int			 bcma_init_dinfo(device_t bus, device_t child,
 			     struct bcma_devinfo *dinfo,
 			     struct bcma_corecfg *corecfg);
-int			 bcma_dinfo_alloc_agent(device_t bus, device_t child,
-			     struct bcma_devinfo *dinfo);
-int			 bcma_dinfo_init_intrs(device_t bus, device_t child,
-			     struct bcma_devinfo *dinfo);
-void			 bcma_free_dinfo(device_t bus,
+void			 bcma_free_dinfo(device_t bus, device_t child,
 			     struct bcma_devinfo *dinfo);
 
 struct bcma_corecfg	*bcma_alloc_corecfg(u_int core_index, int core_unit,
@@ -132,8 +128,9 @@ struct bcma_map {
 struct bcma_intr {
 	uint8_t		i_bank;		/**< OOB bank (see BCMA_OOB_BANK[A-D]) */
 	uint8_t		i_sel;		/**< OOB selector (0-7) */
-	uint8_t		i_line;		/**< OOB bus line assigned to this selector */
+	uint8_t		i_busline;	/**< OOB bus line assigned to this selector */
 	bool		i_mapped;	/**< if an irq has been mapped for this selector */
+	int		i_rid;		/**< bus resource id, or -1 */
 	rman_res_t	i_irq;		/**< the mapped bus irq, if any */
 
 	STAILQ_ENTRY(bcma_intr) i_link;

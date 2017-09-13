@@ -124,7 +124,7 @@ bcma_child_deleted(device_t dev, device_t child)
 
 	/* Free bcma device info */
 	if ((dinfo = device_get_ivars(child)) != NULL)
-		bcma_free_dinfo(dev, dinfo);
+		bcma_free_dinfo(dev, child, dinfo);
 
 	device_set_ivars(child, NULL);
 }
@@ -646,7 +646,7 @@ bcma_get_intr_ivec(device_t dev, device_t child, u_int intr, u_int *ivec)
 
 	STAILQ_FOREACH(desc, &dinfo->intrs, i_link) {
 		if (desc->i_sel == intr) {
-			*ivec = desc->i_line;
+			*ivec = desc->i_busline;
 			return (0);
 		}
 	}
@@ -692,33 +692,11 @@ bcma_add_children(device_t bus)
 
 		/* Initialize device ivars */
 		dinfo = device_get_ivars(child);
-		if ((error = bcma_init_dinfo(bus, dinfo, corecfg)))
+		if ((error = bcma_init_dinfo(bus, child, dinfo, corecfg)))
 			goto cleanup;
 
 		/* The dinfo instance now owns the corecfg value */
 		corecfg = NULL;
-
-		/* Allocate device's agent registers, if any */
-		if ((error = bcma_dinfo_alloc_agent(bus, child, dinfo)))
-			goto cleanup;
-	
-		/** Populate device's interrupt descriptors */
-		if ((error = bcma_dinfo_init_intrs(bus, child, dinfo)))
-			goto cleanup;
-
-		// INTR_TODO: Map interrupts
-#if 0
-		/* Assign interrupts */
-		nintr = bhnd_get_intr_count(child);
-		for (int rid = 0; rid < nintr; rid++) {
-			error = BHND_BUS_ASSIGN_INTR(bus, child, rid);
-			if (error) {
-				device_printf(bus, "failed to assign interrupt "
-				    "%d to core %u: %d\n", rid,
-				    BCMA_DINFO_COREIDX(dinfo), error);
-			}
-		}
-#endif
 
 		/* If pins are floating or the hardware is otherwise
 		 * unpopulated, the device shouldn't be used. */

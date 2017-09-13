@@ -154,7 +154,7 @@ bcma_corecfg_get_port_list(struct bcma_corecfg *cfg, bhnd_port_type type)
  * @param ports The set of ports to be enumerated
  */
 static void
-bcma_dinfo_init_resource_info(device_t bus, struct bcma_devinfo *dinfo,
+bcma_dinfo_init_port_resource_info(device_t bus, struct bcma_devinfo *dinfo,
     struct bcma_sport_list *ports)
 {
 	struct bcma_map		*map;
@@ -193,70 +193,9 @@ bcma_dinfo_init_resource_info(device_t bus, struct bcma_devinfo *dinfo,
 }
 
 
-/**
- * Allocate and return a new empty device info structure.
- * 
- * @param bus The requesting bus device.
- * 
- * @retval NULL if allocation failed.
- */
-struct bcma_devinfo *
-bcma_alloc_dinfo(device_t bus)
-{
-	struct bcma_devinfo *dinfo;
-	
-	dinfo = malloc(sizeof(struct bcma_devinfo), M_BHND, M_NOWAIT|M_ZERO);
-	if (dinfo == NULL)
-		return (NULL);
-
-	dinfo->corecfg = NULL;
-	dinfo->res_agent = NULL;
-	dinfo->rid_agent = -1;
-
-	STAILQ_INIT(&dinfo->intrs);
-	dinfo->num_intrs = 0;
-
-	resource_list_init(&dinfo->resources);
-
-	return (dinfo);
-}
 
 /**
- * Initialize a device info structure previously allocated via
- * bcma_alloc_dinfo, assuming ownership of the provided core
- * configuration.
- * 
- * @param bus The requesting bus device.
- * @param dinfo The device info instance.
- * @param corecfg Device core configuration; ownership of this value
- * will be assumed by @p dinfo.
- * 
- * @retval 0 success
- * @retval non-zero initialization failed.
- */
-int
-bcma_init_dinfo(device_t bus, struct bcma_devinfo *dinfo,
-    struct bcma_corecfg *corecfg)
-{
-	KASSERT(dinfo->corecfg == NULL, ("dinfo previously initialized"));
-
-	/* Save core configuration value */
-	dinfo->corecfg = corecfg;
-
-	/* The device ports must always be initialized first to ensure that
-	 * rid 0 maps to the first device port */
-	bcma_dinfo_init_resource_info(bus, dinfo, &corecfg->dev_ports);
-
-	bcma_dinfo_init_resource_info(bus, dinfo, &corecfg->bridge_ports);
-	bcma_dinfo_init_resource_info(bus, dinfo, &corecfg->wrapper_ports);
-
-	return (0);
-}
-
-
-/**
- * Allocate the per-core agent register block for a device info structure
- * previous initialized via bcma_init_dinfo().
+ * Allocate the per-core agent register block for a device info structure.
  * 
  * If an agent0.0 region is not defined on @p dinfo, the device info
  * agent resource is set to NULL and 0 is returned.
@@ -268,8 +207,8 @@ bcma_init_dinfo(device_t bus, struct bcma_devinfo *dinfo,
  * @retval 0 success
  * @retval non-zero resource allocation failed.
  */
-int
-bcma_dinfo_alloc_agent(device_t bus, device_t child, struct bcma_devinfo *dinfo)
+static int
+bcma_dinfo_init_agent(device_t bus, device_t child, struct bcma_devinfo *dinfo)
 {
 	bhnd_addr_t	addr;
 	bhnd_size_t	size;
@@ -277,7 +216,7 @@ bcma_dinfo_alloc_agent(device_t bus, device_t child, struct bcma_devinfo *dinfo)
 	int		error;
 
 	KASSERT(dinfo->res_agent == NULL, ("double allocation of agent"));
-	
+
 	/* Verify that the agent register block exists and is
 	 * mappable */
 	if (bhnd_get_port_rid(child, BHND_PORT_AGENT, 0, 0) == -1)
@@ -319,7 +258,7 @@ bcma_dinfo_alloc_agent(device_t bus, device_t child, struct bcma_devinfo *dinfo)
  * @param bus The requesting bus device.
  * @param dinfo The device info instance to be initialized.
  */
-int
+static int
 bcma_dinfo_init_intrs(device_t bus, device_t child,
     struct bcma_devinfo *dinfo)
 {
@@ -374,6 +313,102 @@ bcma_dinfo_init_intrs(device_t bus, device_t child,
 	return (0);
 }
 
+/**
+ * Allocate and return a new empty device info structure.
+ * 
+ * @param bus The requesting bus device.
+ * 
+ * @retval NULL if allocation failed.
+ */
+struct bcma_devinfo *
+bcma_alloc_dinfo(device_t bus)
+{
+	struct bcma_devinfo *dinfo;
+	
+	dinfo = malloc(sizeof(struct bcma_devinfo), M_BHND, M_NOWAIT|M_ZERO);
+	if (dinfo == NULL)
+		return (NULL);
+
+	dinfo->corecfg = NULL;
+	dinfo->res_agent = NULL;
+	dinfo->rid_agent = -1;
+
+	STAILQ_INIT(&dinfo->intrs);
+	dinfo->num_intrs = 0;
+
+	resource_list_init(&dinfo->resources);
+
+
+	return (dinfo);
+}
+
+/**
+ * Initialize a device info structure previously allocated via
+ * bcma_alloc_dinfo, assuming ownership of the provided core
+ * configuration.
+ * 
+ * @param bus The requesting bus device.
+ * @param child The bcma child device.
+ * @param dinfo The device info associated with @p child
+ * @param corecfg Device core configuration; ownership of this value
+ * will be assumed by @p dinfo.
+ * 
+ * @retval 0 success
+ * @retval non-zero initialization failed.
+ */
+int
+bcma_init_dinfo(device_t bus, device_t child, struct bcma_devinfo *dinfo,
+    struct bcma_corecfg *corecfg)
+{
+	struct bcma_intr	*intr;
+	int			 error;
+
+	KASSERT(dinfo->corecfg == NULL, ("dinfo previously initialized"));
+
+	/* Save core configuration value */
+	dinfo->corecfg = corecfg;
+
+	/* The device ports must always be initialized first to ensure that
+	 * rid 0 maps to the first device port */
+	bcma_dinfo_init_port_resource_info(bus, dinfo, &corecfg->dev_ports);
+	bcma_dinfo_init_port_resource_info(bus, dinfo, &corecfg->bridge_ports);
+	bcma_dinfo_init_port_resource_info(bus, dinfo, &corecfg->wrapper_ports);
+
+	/* Now that we've defined the port resources, we can map the device's
+	 * agent registers (if any) */
+	if ((error = bcma_dinfo_init_agent(bus, child, dinfo)))
+		return (error);
+
+	/* With agent registers mapped, we can populate the device's interrupt
+	 * descriptors */
+	if ((error = bcma_dinfo_init_intrs(bus, child, dinfo)))
+		return (error);
+
+	/* Finally, map the interrupt descriptors */
+	STAILQ_FOREACH(intr, &dinfo->intrs, i_link) {
+		/* Already mapped? */
+		if (intr->i_mapped)
+			continue;
+
+		/* Map the interrupt */
+		error = BHND_BUS_MAP_INTR(bus, child, intr->i_sel,
+		    &intr->i_irq);
+		if (error) {
+			device_printf(bus, "failed mapping interrupt line %u "
+			    "for core %u: %d\n", intr->i_sel,
+			    BCMA_DINFO_COREIDX(dinfo), error);
+			return (error);
+		}
+
+		intr->i_mapped = true;
+	
+		/* Add to resource list */
+		intr->i_rid = resource_list_add_next(&dinfo->resources,
+		    SYS_RES_IRQ, intr->i_irq, intr->i_irq, 1);
+	}
+
+	return (0);
+}
 
 /**
  * Deallocate the given device info structure and any associated resources.
@@ -382,7 +417,7 @@ bcma_dinfo_init_intrs(device_t bus, device_t child,
  * @param dinfo Device info to be deallocated.
  */
 void
-bcma_free_dinfo(device_t bus, struct bcma_devinfo *dinfo)
+bcma_free_dinfo(device_t bus, device_t child, struct bcma_devinfo *dinfo)
 {
 	struct bcma_intr *intr, *inext;
 
@@ -397,7 +432,16 @@ bcma_free_dinfo(device_t bus, struct bcma_devinfo *dinfo)
 		    dinfo->res_agent);
 	}
 
+	/* Clean up interrupt descriptors */
 	STAILQ_FOREACH_SAFE(intr, &dinfo->intrs, i_link, inext) {
+		STAILQ_REMOVE(&dinfo->intrs, intr, bcma_intr, i_link);
+
+		/* Release our IRQ mapping */
+		if (intr->i_mapped) {
+			BHND_BUS_UNMAP_INTR(bus, child, intr->i_irq);
+			intr->i_mapped = false;
+		}
+
 		bcma_free_intr(intr);
 	}
 
@@ -432,7 +476,7 @@ bcma_alloc_intr(uint8_t bank, uint8_t sel, uint8_t line)
 
 	intr->i_bank = bank;
 	intr->i_sel = sel;
-	intr->i_line = line;
+	intr->i_busline = line;
 	intr->i_mapped = false;
 	intr->i_irq = 0;
 
@@ -447,7 +491,7 @@ bcma_alloc_intr(uint8_t bank, uint8_t sel, uint8_t line)
 void
 bcma_free_intr(struct bcma_intr *intr)
 {
-	KASSERT(!intr->i_mapped, ("interrupt is still mapped"));
+	KASSERT(!intr->i_mapped, ("interrupt %u still mapped", intr->i_sel));
 
 	free(intr, M_BHND);
 }
