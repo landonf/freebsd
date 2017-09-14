@@ -866,7 +866,7 @@ bhnd_read_board_info(device_t dev, struct bhnd_board_info *info)
  * 
  * @param dev A bhnd bus child device.
  */
-static inline int
+static inline u_int
 bhnd_get_intr_count(device_t dev)
 {
 	return (BHND_BUS_GET_INTR_COUNT(device_get_parent(dev), dev));
