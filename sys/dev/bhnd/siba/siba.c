@@ -810,8 +810,8 @@ siba_register_interrupts(device_t dev, device_t child,
 	dinfo->intr.mapped = true;
 
 	/* Update the resource list */
-	resource_list_add_next(&dinfo->resources, SYS_RES_IRQ, dinfo->intr.irq,
-	    dinfo->intr.irq, 1);
+	dinfo->intr.rid = resource_list_add_next(&dinfo->resources, SYS_RES_IRQ,
+	    dinfo->intr.irq, dinfo->intr.irq, 1);
 
 	return (0);
 }
