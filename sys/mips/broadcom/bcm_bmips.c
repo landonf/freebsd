@@ -64,14 +64,10 @@ static const struct bhnd_device bcm_bmips_devs[] = {
 	BHND_DEVICE_END
 };
 
-struct bcm_bmips_map_data {
-	struct intr_map_data	mdata;
-	u_int			ivec;	/**< bus interrupt vector */
-};
-
-struct bcm_bmips_irqsrc {
-	struct intr_irqsrc	isrc;
-	u_int			ivec;	/**< bus interrupt vector */
+struct bcm_bmips_softc {
+	struct bcm_mips_softc	 bcm_mips;	/**< parent softc */
+	struct resource		*cfg_res;	/**< siba cfg0 register block */
+	int			 cfg_rid;	/**< cfg register resource ID */
 };
 
 static int
@@ -95,16 +91,136 @@ bcm_bmips_probe(device_t dev)
 static int
 bcm_bmips_attach(device_t dev)
 {
-	return (bcm_mips_attach(dev, BCM_BMIPS_NCPU_IRQS,
-	    BCM_BMIPS_TIMER_IRQ));
+	struct bcm_bmips_softc *sc = device_get_softc(dev);
+
+	/* Determine the resource ID for our siba CFG0 registers */
+	sc->cfg_rid = bhnd_get_port_rid(dev, BHND_PORT_AGENT, 0, 0);
+	if (sc->cfg_rid == -1) {
+		device_printf(dev, "missing required CFG0 register block\n");
+		return (ENXIO);
+	}
+
+	/* Map our core's siba-specific CFG0 register block */
+	sc->cfg_res = bus_alloc_resource_any(dev, SYS_RES_MEMORY, &sc->cfg_rid,
+	    RF_ACTIVE|RF_SHAREABLE);
+	if (sc->cfg_res == NULL) {
+		device_printf(dev, "failed to map CFG0 register block\n");
+		return (ENXIO);
+	}
+
+	return (bcm_mips_attach(dev, BCM_BMIPS_NCPU_IRQS, BCM_BMIPS_TIMER_IRQ));
 }
 
 static int
 bcm_bmips_detach(device_t dev)
 {
-	return (bcm_mips_detach(dev));
+	struct bcm_bmips_softc	*sc;
+	int			 error;
+
+	sc = device_get_softc(dev);
+
+	if ((error = bcm_mips_detach(dev)))
+		return (error);
+
+	bus_release_resource(dev, SYS_RES_MEMORY, sc->cfg_rid, sc->cfg_res);
+	return (0);
 }
 
+// XXX TODO
+#if 0
+static int
+bcm_bmips_pic_intr(void *arg)
+{
+
+	struct bcm_mips_pic_softc *sc = arg;
+	register_t cause, status;
+	int i, intr;
+
+	cause = mips_rd_cause();
+	status = mips_rd_status();
+	intr = (cause & MIPS_INT_MASK) >> 8;
+	/*
+	 * Do not handle masked interrupts. They were masked by
+	 * pre_ithread function (mips_mask_XXX_intr) and will be
+	 * unmasked once ithread is through with handler
+	 */
+	intr &= (status & MIPS_INT_MASK) >> 8;
+	while ((i = fls(intr)) != 0) {
+		i--; /* Get a 0-offset interrupt. */
+		intr &= ~(1 << i);
+
+		if (intr_isrc_dispatch(PIC_INTR_ISRC(sc, i),
+		    curthread->td_intr_frame) != 0) {
+			device_printf(sc->pic_dev,
+			    "Stray interrupt %u detected\n", i);
+			pic_irq_mask(sc, i);
+			continue;
+		}
+	}
+
+	KASSERT(i == 0, ("all interrupts handled"));
+
+	return (FILTER_HANDLED);
+}
+#endif
+
+/* PIC_DISABLE_INTR() */
+static void
+bcm_bmips_pic_disable_intr(device_t dev, struct intr_irqsrc *isrc)
+{
+	struct bcm_bmips_softc	*sc;
+	struct bcm_mips_irqsrc	*irqsrc;
+	
+	sc = device_get_softc(dev);
+	irqsrc = (struct bcm_mips_irqsrc *)isrc;
+
+	// XXX TODO
+#if 0
+	u_int irq;
+
+	irq = ((struct bcm_mips_irqsrc *)isrc)->irq;
+	pic_irq_mask(device_get_softc(dev), irq);
+#endif
+}
+
+/* PIC_ENABLE_INTR() */
+static void
+bcm_bmips_pic_enable_intr(device_t dev, struct intr_irqsrc *isrc)
+{
+	struct bcm_bmips_softc	*sc;
+	struct bcm_mips_irqsrc	*irqsrc;
+	
+	sc = device_get_softc(dev);
+	irqsrc = (struct bcm_mips_irqsrc *)isrc;
+
+	// XXX TODO
+#if 0
+	u_int irq;
+
+	irq = ((struct bcm_mips_irqsrc *)isrc)->irq;
+	pic_irq_mask(device_get_softc(dev), irq);
+#endif
+}
+
+/* PIC_PRE_ITHREAD() */
+static void
+bcm_bmips_pic_pre_ithread(device_t dev, struct intr_irqsrc *isrc)
+{
+	bcm_bmips_pic_disable_intr(dev, isrc);
+}
+
+/* PIC_POST_ITHREAD() */
+static void
+bcm_bmips_pic_post_ithread(device_t dev, struct intr_irqsrc *isrc)
+{
+	bcm_bmips_pic_enable_intr(dev, isrc);
+}
+
+/* PIC_POST_FILTER() */
+static void
+bcm_bmips_pic_post_filter(device_t dev, struct intr_irqsrc *isrc)
+{
+}
 
 static device_method_t bcm_bmips_methods[] = {
 	/* Device interface */
@@ -112,12 +228,19 @@ static device_method_t bcm_bmips_methods[] = {
 	DEVMETHOD(device_attach,	bcm_bmips_attach),
 	DEVMETHOD(device_detach,	bcm_bmips_detach),
 
+	/* Interrupt controller interface */
+	DEVMETHOD(pic_disable_intr,	bcm_bmips_pic_disable_intr),
+	DEVMETHOD(pic_enable_intr,	bcm_bmips_pic_enable_intr),
+	DEVMETHOD(pic_pre_ithread,	bcm_bmips_pic_pre_ithread),
+	DEVMETHOD(pic_post_ithread,	bcm_bmips_pic_post_ithread),
+	DEVMETHOD(pic_post_filter,	bcm_bmips_pic_post_filter),
+
 	DEVMETHOD_END
 };
 
 static devclass_t bcm_mips_devclass;
 
-DEFINE_CLASS_1(bcm_mips, bcm_bmips_driver, bcm_bmips_methods, sizeof(struct bcm_mips_softc), bcm_mips_driver);
+DEFINE_CLASS_1(bcm_mips, bcm_bmips_driver, bcm_bmips_methods, sizeof(struct bcm_bmips_softc), bcm_mips_driver);
 EARLY_DRIVER_MODULE(bcm_bmips, bhnd, bcm_bmips_driver, bcm_mips_devclass, 0, 0, BUS_PASS_INTERRUPT + BUS_PASS_ORDER_MIDDLE);
 
 MODULE_VERSION(bcm_bmips, 1);

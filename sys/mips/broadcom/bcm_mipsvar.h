@@ -44,10 +44,13 @@
 
 DECLARE_CLASS(bcm_mips_driver);
 
+struct bcm_mips_irqsrc;
+struct bcm_mips_softc;
+
 #define	BCM_MIPS_NINTR		32			/**< maximum number of addressable backplane interrupt vectors */
 #define	BCM_MIPS_IRQ_SHARED	0			/**< MIPS CPU IRQ reserved for shared interrupt handling */
-
 #define	INTR_MAP_DATA_BCM_MIPS	INTR_MAP_DATA_PLAT_2	/**< Broadcom MIPS PIC interrupt map data type */
+
 
 int	bcm_mips_attach(device_t dev, u_int num_cpu_irqs, u_int timer_irq);
 int	bcm_mips_detach(device_t dev);
@@ -68,7 +71,8 @@ struct bcm_mips_cpuirq {
 	int			 irq_rid;	/**< mips IRQ resource id, or -1 if this entry is unavailable */
 	struct resource		*irq_res;	/**< mips interrupt resource */
 	uint32_t		 ivec_mask;	/**< ivec interrupt status mask */
-	u_int			 consumers;	/**< active interrupt handlers */
+	u_int			 consumers;	/**< assigned interrupt handler count */
+	u_int			 active;	/**< active interrupt handler count */
 };
 
 /**

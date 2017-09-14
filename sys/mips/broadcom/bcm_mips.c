@@ -49,10 +49,6 @@ __FBSDID("$FreeBSD$");
 
 #include "bcm_mipsvar.h"
 
-#define	DENTRY(dev, fmt, ...)				\
-	printf("%s(%s, " fmt ")\n", __FUNCTION__,	\
-	    device_get_nameunit(dev), ##__VA_ARGS__)
-
 /*
  * Broadcom MIPS core driver.
  *
@@ -65,6 +61,17 @@ static int		bcm_mips_assign_cpu_intr(struct bcm_mips_softc *sc,
 			    struct bcm_mips_irqsrc *isrc, struct resource *res);
 static int		bcm_mips_release_cpu_intr(struct bcm_mips_softc *sc,
 			    struct bcm_mips_irqsrc *isrc, struct resource *res);
+
+static const int bcm_mips_debug = 1;
+
+#define	dprintf(fmt, ...) do {			\
+	if (bcm_mips_debug)			\
+		printf(fmt,  ##__VA_ARGS__);	\
+} while (0)
+
+#define	DENTRY(dev, fmt, ...)	\
+	dprintf("%s(%s, " fmt ")\n", __FUNCTION__,	\
+	    device_get_nameunit(dev), ##__VA_ARGS__)
 
 /**
  * Register all interrupt source definitions.
@@ -120,6 +127,7 @@ bcm_mips_init_cpuirq_unavail(struct bcm_mips_softc *sc,
 	cpuirq->irq_res = NULL;
 	cpuirq->ivec_mask = 0x0;
 	cpuirq->consumers = 0;
+	cpuirq->active = 0;
 
 	BCM_MIPS_UNLOCK(sc);
 
@@ -183,6 +191,7 @@ bcm_mips_init_cpuirq(struct bcm_mips_softc *sc, struct bcm_mips_cpuirq *cpuirq,
 	cpuirq->irq_res = res;
 	cpuirq->ivec_mask = 0x0;
 	cpuirq->consumers = 0;
+	cpuirq->active = 0;
 
 	BCM_MIPS_UNLOCK(sc);
 	return (0);
@@ -231,10 +240,18 @@ bcm_mips_fini_cpuirq(struct bcm_mips_softc *sc, struct bcm_mips_cpuirq *cpuirq)
 	return (0);
 }
 
+static int
+bcm_mips_attach_default(device_t dev)
+{
+	/* subclassing drivers must provide an implementation of
+	 * DEVICE_ATTACH() */
+	panic("device_attach() unimplemented");
+}
+
 /**
  * BHND MIPS device attach.
  * 
- * This should be called from subclass drivers' DEVICE_ATTACH().
+ * This must be called from subclass drivers' DEVICE_ATTACH().
  * 
  * @param dev BHND MIPS device.
  * @param num_cpu_irqs The number of usable MIPS HW IRQs.
@@ -372,86 +389,6 @@ bcm_mips_detach(device_t dev)
 	return (0);
 }
 
-// XXX TODO
-#if 0
-static int
-bcm_mips_pic_intr(void *arg)
-{
-
-	struct bcm_mips_pic_softc *sc = arg;
-	register_t cause, status;
-	int i, intr;
-
-	cause = mips_rd_cause();
-	status = mips_rd_status();
-	intr = (cause & MIPS_INT_MASK) >> 8;
-	/*
-	 * Do not handle masked interrupts. They were masked by
-	 * pre_ithread function (mips_mask_XXX_intr) and will be
-	 * unmasked once ithread is through with handler
-	 */
-	intr &= (status & MIPS_INT_MASK) >> 8;
-	while ((i = fls(intr)) != 0) {
-		i--; /* Get a 0-offset interrupt. */
-		intr &= ~(1 << i);
-
-		if (intr_isrc_dispatch(PIC_INTR_ISRC(sc, i),
-		    curthread->td_intr_frame) != 0) {
-			device_printf(sc->pic_dev,
-			    "Stray interrupt %u detected\n", i);
-			pic_irq_mask(sc, i);
-			continue;
-		}
-	}
-
-	KASSERT(i == 0, ("all interrupts handled"));
-
-	return (FILTER_HANDLED);
-}
-#endif
-
-/* PIC_DISABLE_INTR() */
-static void
-bcm_mips_pic_disable_intr(device_t dev, struct intr_irqsrc *isrc)
-{
-	struct bcm_mips_softc	*sc;
-	struct bcm_mips_irqsrc	*irqsrc;
-	
-	sc = device_get_softc(dev);
-	irqsrc = (struct bcm_mips_irqsrc *)isrc;
-
-	// XXX TODO
-	DENTRY(dev, "ivec=%u\n", irqsrc->ivec);
-
-#if 0
-	u_int irq;
-
-	irq = ((struct bcm_mips_irqsrc *)isrc)->irq;
-	pic_irq_mask(device_get_softc(dev), irq);
-#endif
-}
-
-/* PIC_ENABLE_INTR() */
-static void
-bcm_mips_pic_enable_intr(device_t dev, struct intr_irqsrc *isrc)
-{
-	struct bcm_mips_softc	*sc;
-	struct bcm_mips_irqsrc	*irqsrc;
-	
-	sc = device_get_softc(dev);
-	irqsrc = (struct bcm_mips_irqsrc *)isrc;
-
-	// XXX TODO
-	DENTRY(dev, "ivec=%u\n", irqsrc->ivec);
-
-#if 0
-	u_int irq;
-
-	irq = ((struct bcm_mips_irqsrc *)isrc)->irq;
-	pic_irq_mask(device_get_softc(dev), irq);
-#endif
-}
-
 /* PIC_MAP_INTR() */
 static int
 bcm_mips_pic_map_intr(device_t dev, struct intr_map_data *d,
@@ -473,22 +410,6 @@ bcm_mips_pic_map_intr(device_t dev, struct intr_map_data *d,
 		return (EINVAL);
 
 	*isrcp = &sc->isrcs[data->ivec].isrc;
-	return (0);
-}
-
-/* PIC_ACTIVATE_INTR() */
-static int
-bcm_mips_pic_activate_intr(device_t dev, struct intr_irqsrc *isrc,
-    struct resource *res, struct intr_map_data *data)
-{
-	return (0);
-}
-
-/* PIC_DEACTIVATE_INTR() */
-static int
-bcm_mips_pic_deactivate_intr(device_t dev, struct intr_irqsrc *isrc,
-    struct resource *res, struct intr_map_data *data)
-{
 	return (0);
 }
 
@@ -534,26 +455,6 @@ bcm_mips_pic_teardown_intr(device_t dev, struct intr_irqsrc *isrc,
 	BCM_MIPS_UNLOCK(sc);
 
 	return (error);
-}
-
-/* PIC_PRE_ITHREAD() */
-static void
-bcm_mips_pic_pre_ithread(device_t dev, struct intr_irqsrc *isrc)
-{
-	bcm_mips_pic_disable_intr(dev, isrc);
-}
-
-/* PIC_POST_ITHREAD() */
-static void
-bcm_mips_pic_post_ithread(device_t dev, struct intr_irqsrc *isrc)
-{
-	bcm_mips_pic_enable_intr(dev, isrc);
-}
-
-/* PIC_POST_FILTER() */
-static void
-bcm_mips_pic_post_filter(device_t dev, struct intr_irqsrc *isrc)
-{
 }
 
 /** return our PIC's xref */
@@ -685,10 +586,15 @@ bcm_mips_assign_cpu_intr(struct bcm_mips_softc *sc,
 
 
 	/* Increment the refcount */
-	if (isrc->irq->consumers == UINT_MAX)
+	if (cpuirq->consumers == UINT_MAX)
 		return (ENOMEM);	/* would overflow */
 
-	isrc->irq->consumers++;
+	cpuirq->consumers++;
+
+	/* Assign the IRQ */
+	KASSERT(isrc->irq == NULL, ("CPU IRQ already assigned"));
+	isrc->irq = cpuirq;
+
 	return (0);
 }
 
@@ -719,19 +625,13 @@ bcm_mips_release_cpu_intr(struct bcm_mips_softc *sc,
 
 static device_method_t bcm_mips_methods[] = {
 	/* Device interface */
+	DEVMETHOD(device_attach,	bcm_mips_attach_default),
 	DEVMETHOD(device_detach,	bcm_mips_detach),
 
 	/* Interrupt controller interface */
-	DEVMETHOD(pic_disable_intr,	bcm_mips_pic_disable_intr),
-	DEVMETHOD(pic_enable_intr,	bcm_mips_pic_enable_intr),
 	DEVMETHOD(pic_map_intr,		bcm_mips_pic_map_intr),
-	DEVMETHOD(pic_activate_intr,	bcm_mips_pic_activate_intr),
-	DEVMETHOD(pic_deactivate_intr,	bcm_mips_pic_deactivate_intr),
 	DEVMETHOD(pic_setup_intr,	bcm_mips_pic_setup_intr),
 	DEVMETHOD(pic_teardown_intr,	bcm_mips_pic_teardown_intr),
-	DEVMETHOD(pic_pre_ithread,	bcm_mips_pic_pre_ithread),
-	DEVMETHOD(pic_post_ithread,	bcm_mips_pic_post_ithread),
-	DEVMETHOD(pic_post_filter,	bcm_mips_pic_post_filter),
 	
 	DEVMETHOD_END
 };
