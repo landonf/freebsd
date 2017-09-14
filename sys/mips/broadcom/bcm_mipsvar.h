@@ -44,7 +44,9 @@
 
 DECLARE_CLASS(bcm_mips_driver);
 
-#define	BCM_MIPS_NINTR		32	/**< maximum number of addressable backplane interrupt vectors */
+#define	BCM_MIPS_NINTR		32			/**< maximum number of addressable backplane interrupt vectors */
+#define	BCM_MIPS_IRQ_SHARED	0			/**< MIPS CPU IRQ reserved for shared interrupt handling */
+
 #define	INTR_MAP_DATA_BCM_MIPS	INTR_MAP_DATA_PLAT_2	/**< Broadcom MIPS PIC interrupt map data type */
 
 int	bcm_mips_attach(device_t dev, u_int num_cpu_irqs, u_int timer_irq);
@@ -59,22 +61,23 @@ struct bcm_mips_intr_map_data {
 };
 
 /**
- * Broadcom MIPS PIC interrupt source definition.
- */
-struct bcm_mips_irqsrc {
-	struct intr_irqsrc	isrc;
-	u_int			ivec;	/**< bus interrupt vector */
-};
-
-/**
  * Nested MIPS CPU interrupt handler state.
  */
 struct bcm_mips_cpuirq {
 	struct bcm_mips_softc	*sc;		/**< driver instance state, or NULL if uninitialized. */
-	int			 irq_rid;	/**< mips IRQ resource id */
+	int			 irq_rid;	/**< mips IRQ resource id, or -1 if this entry is unavailable */
 	struct resource		*irq_res;	/**< mips interrupt resource */
-	uint32_t		 ivec_mask;	/**< ivec interrupt status mask. must be updated atomically. */
+	uint32_t		 ivec_mask;	/**< ivec interrupt status mask */
 	u_int			 consumers;	/**< active interrupt handlers */
+};
+
+/**
+ * Broadcom MIPS PIC interrupt source definition.
+ */
+struct bcm_mips_irqsrc {
+	struct intr_irqsrc	 isrc;
+	u_int			 ivec;	/**< bus interrupt vector */
+	struct bcm_mips_cpuirq	*irq;	/**< assigned MIPS HW IRQ, or NULL if no assignment */
 };
 
 /**
@@ -92,10 +95,16 @@ struct bcm_mips_softc {
 	struct mtx		 mtx;
 };
 
+
+#define	BCM_MIPS_INTR_ISRC(sc, irq)	(&(sc)->isrcs[(irq)].isrc)
+#define	BCM_MIPS_MAP_DATA(_d)				\
+	(((_d)->type != INTR_MAP_DATA_BCM_MIPS) ?	\
+	    ((struct bcm_mips_intr_map_data *)(_d)) :	\
+	    (panic("invalid map data %d", (_d)->type), NULL))
+
 #define	BCM_MIPS_LOCK_INIT(sc) \
 	mtx_init(&(sc)->mtx, device_get_nameunit((sc)->dev), \
 	    "bhnd mips driver lock", MTX_DEF)
-
 #define	BCM_MIPS_LOCK(sc)		mtx_lock(&(sc)->mtx)
 #define	BCM_MIPS_UNLOCK(sc)		mtx_unlock(&(sc)->mtx)
 #define	BCM_MIPS_LOCK_ASSERT(sc, what)	mtx_assert(&(sc)->mtx, what)

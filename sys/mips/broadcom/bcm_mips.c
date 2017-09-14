@@ -59,23 +59,12 @@ __FBSDID("$FreeBSD$");
  * Abstract driver for Broadcom MIPS CPU/PIC cores.
  */
 
-#define	PIC_IRQ_SHARED		0	/**< MIPS CPU IRQ reserved for shared interrupt handling */
-
-#define	PIC_INTR_ISRC(sc, irq)	(&(sc)->isrcs[(irq)].isrc)
-
-/** return our PIC's xref */
-static uintptr_t
-bcm_mips_pic_xref(struct bcm_mips_softc *sc)
-{
-	uintptr_t xref;
-
-	/* Determine our interrupt domain */
-	xref = BHND_BUS_GET_INTR_DOMAIN(device_get_parent(sc->dev), sc->dev,
-	    true);
-	KASSERT(xref != 0, ("missing interrupt domain"));
-
-	return (xref);
-}
+static uintptr_t	bcm_mips_pic_xref(struct bcm_mips_softc *sc);
+static device_t		bcm_mips_find_bhnd_parent(device_t dev);
+static int		bcm_mips_assign_cpu_intr(struct bcm_mips_softc *sc,
+			    struct bcm_mips_irqsrc *isrc, struct resource *res);
+static int		bcm_mips_release_cpu_intr(struct bcm_mips_softc *sc,
+			    struct bcm_mips_irqsrc *isrc, struct resource *res);
 
 /**
  * Register all interrupt source definitions.
@@ -92,12 +81,13 @@ bcm_mips_register_isrcs(struct bcm_mips_softc *sc)
 	name = device_get_nameunit(sc->dev);
 	for (size_t ivec = 0; ivec < nitems(sc->isrcs); ivec++) {
 		sc->isrcs[ivec].ivec = ivec;
+		sc->isrcs[ivec].irq = NULL;
 
-		error = intr_isrc_register(PIC_INTR_ISRC(sc, ivec), sc->dev,
+		error = intr_isrc_register(&sc->isrcs[ivec].isrc, sc->dev,
 		    xref, "%s,%u", name, ivec);
 		if (error) {
 			for (size_t i = 0; i < ivec; i++)
-				intr_isrc_deregister(PIC_INTR_ISRC(sc, i));
+				intr_isrc_deregister(&sc->isrcs[i].isrc);
 
 			device_printf(sc->dev, "error registering IRQ %zu: "
 			    "%d\n", ivec, error);
@@ -109,11 +99,40 @@ bcm_mips_register_isrcs(struct bcm_mips_softc *sc)
 }
 
 /**
+ * Initialize the given @p cpuirq state as unavailable.
+ * 
+ * @param sc		BHND MIPS driver instance state.
+ * @param cpuirq	The CPU IRQ state to be initialized.
+ *
+ * @retval 0		success
+ * @retval non-zero	if initializing @p cpuirq otherwise fails, a regular
+ *			unix error code will be returned.
+ */
+static int
+bcm_mips_init_cpuirq_unavail(struct bcm_mips_softc *sc,
+    struct bcm_mips_cpuirq *cpuirq)
+{
+	BCM_MIPS_LOCK(sc);
+
+	KASSERT(cpuirq->sc == NULL, ("cpuirq already initialized"));
+	cpuirq->sc = sc;
+	cpuirq->irq_rid = -1;
+	cpuirq->irq_res = NULL;
+	cpuirq->ivec_mask = 0x0;
+	cpuirq->consumers = 0;
+
+	BCM_MIPS_UNLOCK(sc);
+
+	return (0);
+}
+
+/**
  * Allocate required resources and initialize the given @p cpuirq state.
  * 
  * @param sc		BHND MIPS driver instance state.
  * @param cpuirq	The CPU IRQ state to be initialized.
- * @param rid		The resource ID to be assigned for the CPU IRQ resource.
+ * @param rid		The resource ID to be assigned for the CPU IRQ resource,
+ *			or -1 if no resource should be assigned.
  * @param irq		The MIPS HW IRQ# to be allocated.
  *
  * @retval 0		success
@@ -127,8 +146,6 @@ bcm_mips_init_cpuirq(struct bcm_mips_softc *sc, struct bcm_mips_cpuirq *cpuirq,
 	struct resource	*res;
 	int		 error;
 
-	KASSERT(cpuirq->sc == NULL, ("cpuirq already initialized"));
-
 	/* Must fall within MIPS HW IRQ range */
 	if (irq >= NHARD_IRQS)
 		return (EINVAL);
@@ -139,20 +156,23 @@ bcm_mips_init_cpuirq(struct bcm_mips_softc *sc, struct bcm_mips_cpuirq *cpuirq,
 	/* Try to assign and allocate the resource */
 	BCM_MIPS_LOCK(sc);
 
+	KASSERT(cpuirq->sc == NULL, ("cpuirq already initialized"));
+
 	error = bus_set_resource(sc->dev, SYS_RES_IRQ, rid, irq, 1);
 	if (error) {
 		BCM_MIPS_UNLOCK(sc);
-		device_printf(sc->dev, "failed to assign interrupt %u: %d\n",
-		    irq, error);
+		device_printf(sc->dev, "failed to assign interrupt %u: "
+			"%d\n",
+		irq, error);
 		return (error);
 	}
 
 	res = bus_alloc_resource_any(sc->dev, SYS_RES_IRQ, &rid,
-	    RF_SHAREABLE|RF_ACTIVE);
+	RF_SHAREABLE|RF_ACTIVE);
 	if (res == NULL) {
 		BCM_MIPS_UNLOCK(sc);
-		device_printf(sc->dev, "failed to allocate interrupt %u "
-		    "resource\n", irq);
+		device_printf(sc->dev, "failed to allocate interrupt "
+			"%u resource\n", irq);
 		bus_delete_resource(sc->dev, SYS_RES_IRQ, rid);
 		return (ENXIO);
 	}
@@ -235,6 +255,7 @@ bcm_mips_attach(device_t dev, u_int num_cpu_irqs, u_int timer_irq)
 	sc->nirqs = num_cpu_irqs;
 	sc->timer_irq = timer_irq;
 
+	/* Must not exceed the actual size of our fixed IRQ array */
 	if (sc->nirqs > nitems(sc->irqs)) {
 		device_printf(dev, "%u nirqs exceeds maximum supported %zu",
 		    sc->nirqs, nitems(sc->irqs));
@@ -266,16 +287,6 @@ bcm_mips_attach(device_t dev, u_int num_cpu_irqs, u_int timer_irq)
 	irq_rid = bhnd_get_intr_count(dev); /* last bhnd-assigned RID + 1 */
 	irq = 0;
 	for (u_int i = 0; i < sc->nirqs; i++) {
-		/* Let the CPU timer have a dedicated IRQ */
-		if (irq == sc->timer_irq) {
-			KASSERT(sc->nirqs > 0, ("nirq underflow"));
-			sc->nirqs--;
-			irq++;
-
-			if (i >= sc->nirqs)
-				break;
-		}
-
 		/* Must not overflow signed resource ID representation */
 		if (irq_rid >= INT_MAX) {
 			device_printf(dev, "exhausted IRQ resource IDs\n");
@@ -283,8 +294,15 @@ bcm_mips_attach(device_t dev, u_int num_cpu_irqs, u_int timer_irq)
 			goto failed;
 		}
 
-		/* Initialize CPU IRQ state */
-		error = bcm_mips_init_cpuirq(sc, &sc->irqs[i], irq_rid, irq);
+		if (irq == sc->timer_irq) {
+			/* Mark the CPU timer's IRQ as unavailable */
+			error = bcm_mips_init_cpuirq_unavail(sc, &sc->irqs[i]);
+		} else {
+			/* Initialize state */
+			error = bcm_mips_init_cpuirq(sc, &sc->irqs[i], irq_rid,
+			    irq);
+		}
+
 		if (error)
 			goto failed;
 
@@ -292,6 +310,13 @@ bcm_mips_attach(device_t dev, u_int num_cpu_irqs, u_int timer_irq)
 		irq_rid++;
 		irq++;
 	}
+
+	/* Sanity check; our shared IRQ must be available */
+	if (sc->nirqs <= BCM_MIPS_IRQ_SHARED)
+		panic("missing shared interrupt %d\n", BCM_MIPS_IRQ_SHARED);
+
+	if (sc->irqs[BCM_MIPS_IRQ_SHARED].irq_rid == -1)
+		panic("shared interrupt %d unavailable", BCM_MIPS_IRQ_SHARED);
 
 	/* Register PIC */
 	if ((pic = intr_pic_register(dev, xref)) == NULL) {
@@ -309,7 +334,7 @@ failed:
 
 	/* Deregister all interrupt sources */
 	for (size_t i = 0; i < nitems(sc->isrcs); i++)
-		intr_isrc_deregister(PIC_INTR_ISRC(sc, i));
+		intr_isrc_deregister(&sc->isrcs[i].isrc);
 
 	/* Free our MIPS CPU interrupt handler state */
 	for (u_int i = 0; i < sc->nirqs; i++)
@@ -335,7 +360,7 @@ bcm_mips_detach(device_t dev)
 
 	/* Deregister all interrupt sources */
 	for (size_t i = 0; i < nitems(sc->isrcs); i++)
-		intr_isrc_deregister(PIC_INTR_ISRC(sc, i));
+		intr_isrc_deregister(&sc->isrcs[i].isrc);
 
 	/* Free our MIPS CPU interrupt handler state */
 	for (u_int i = 0; i < sc->nirqs; i++)
@@ -389,7 +414,11 @@ bcm_mips_pic_intr(void *arg)
 static void
 bcm_mips_pic_disable_intr(device_t dev, struct intr_irqsrc *isrc)
 {
-	struct bcm_mips_irqsrc *irqsrc = (struct bcm_mips_irqsrc *)isrc;
+	struct bcm_mips_softc	*sc;
+	struct bcm_mips_irqsrc	*irqsrc;
+	
+	sc = device_get_softc(dev);
+	irqsrc = (struct bcm_mips_irqsrc *)isrc;
 
 	// XXX TODO
 	DENTRY(dev, "ivec=%u\n", irqsrc->ivec);
@@ -406,7 +435,11 @@ bcm_mips_pic_disable_intr(device_t dev, struct intr_irqsrc *isrc)
 static void
 bcm_mips_pic_enable_intr(device_t dev, struct intr_irqsrc *isrc)
 {
-	struct bcm_mips_irqsrc *irqsrc = (struct bcm_mips_irqsrc *)isrc;
+	struct bcm_mips_softc	*sc;
+	struct bcm_mips_irqsrc	*irqsrc;
+	
+	sc = device_get_softc(dev);
+	irqsrc = (struct bcm_mips_irqsrc *)isrc;
 
 	// XXX TODO
 	DENTRY(dev, "ivec=%u\n", irqsrc->ivec);
@@ -415,7 +448,7 @@ bcm_mips_pic_enable_intr(device_t dev, struct intr_irqsrc *isrc)
 	u_int irq;
 
 	irq = ((struct bcm_mips_irqsrc *)isrc)->irq;
-	pic_irq_unmask(device_get_softc(dev), irq);
+	pic_irq_mask(device_get_softc(dev), irq);
 #endif
 }
 
@@ -439,7 +472,7 @@ bcm_mips_pic_map_intr(device_t dev, struct intr_map_data *d,
 	if (data->ivec < 0 || data->ivec >= nitems(sc->isrcs))
 		return (EINVAL);
 
-	*isrcp = PIC_INTR_ISRC(sc, data->ivec);
+	*isrcp = &sc->isrcs[data->ivec].isrc;
 	return (0);
 }
 
@@ -448,11 +481,6 @@ static int
 bcm_mips_pic_activate_intr(device_t dev, struct intr_irqsrc *isrc,
     struct resource *res, struct intr_map_data *data)
 {
-	struct bcm_mips_irqsrc *irqsrc = (struct bcm_mips_irqsrc *)isrc;
-
-	// XXX TODO
-	DENTRY(dev, "ivec=%u, irq=%ju", irqsrc->ivec, rman_get_start(res));
-
 	return (0);
 }
 
@@ -461,11 +489,6 @@ static int
 bcm_mips_pic_deactivate_intr(device_t dev, struct intr_irqsrc *isrc,
     struct resource *res, struct intr_map_data *data)
 {
-	struct bcm_mips_irqsrc *irqsrc = (struct bcm_mips_irqsrc *)isrc;
-
-	// XXX TODO
-	DENTRY(dev, "ivec=%u, irq=%ju", irqsrc->ivec, rman_get_start(res));
-
 	return (0);
 }
 
@@ -474,12 +497,21 @@ static int
 bcm_mips_pic_setup_intr(device_t dev, struct intr_irqsrc *isrc,
     struct resource *res, struct intr_map_data *data)
 {
-	struct bcm_mips_irqsrc *irqsrc = (struct bcm_mips_irqsrc *)isrc;
+	struct bcm_mips_softc	*sc;
+	struct bcm_mips_irqsrc	*irqsrc;
+	int			 error;
 
-	// XXX TODO
+	sc = device_get_softc(dev);
+	irqsrc = (struct bcm_mips_irqsrc *)isrc;
+
 	DENTRY(dev, "ivec=%u, irq=%ju", irqsrc->ivec, rman_get_start(res));
 
-	return (ENXIO);
+	/* Assign a CPU interrupt */
+	BCM_MIPS_LOCK(sc);
+	error = bcm_mips_assign_cpu_intr(sc, irqsrc, res);
+	BCM_MIPS_UNLOCK(sc);
+
+	return (error);
 }
 
 /* PIC_TEARDOWN_INTR() */
@@ -487,19 +519,27 @@ static int
 bcm_mips_pic_teardown_intr(device_t dev, struct intr_irqsrc *isrc,
     struct resource *res, struct intr_map_data *data)
 {
-	struct bcm_mips_irqsrc *irqsrc = (struct bcm_mips_irqsrc *)isrc;
+	struct bcm_mips_softc	*sc;
+	struct bcm_mips_irqsrc	*irqsrc;
+	int			 error;
 
-	// XXX TODO
+	sc = device_get_softc(dev);
+	irqsrc = (struct bcm_mips_irqsrc *)isrc;
+
 	DENTRY(dev, "ivec=%u, irq=%ju", irqsrc->ivec, rman_get_start(res));
 
-	return (ENXIO);
+	/* Release the CPU interrupt */
+	BCM_MIPS_LOCK(sc);
+	error = bcm_mips_release_cpu_intr(sc, irqsrc, res);
+	BCM_MIPS_UNLOCK(sc);
+
+	return (error);
 }
 
 /* PIC_PRE_ITHREAD() */
 static void
 bcm_mips_pic_pre_ithread(device_t dev, struct intr_irqsrc *isrc)
 {
-	// XXX ???
 	bcm_mips_pic_disable_intr(dev, isrc);
 }
 
@@ -507,7 +547,6 @@ bcm_mips_pic_pre_ithread(device_t dev, struct intr_irqsrc *isrc)
 static void
 bcm_mips_pic_post_ithread(device_t dev, struct intr_irqsrc *isrc)
 {
-	// XXX ???
 	bcm_mips_pic_enable_intr(dev, isrc);
 }
 
@@ -515,6 +554,167 @@ bcm_mips_pic_post_ithread(device_t dev, struct intr_irqsrc *isrc)
 static void
 bcm_mips_pic_post_filter(device_t dev, struct intr_irqsrc *isrc)
 {
+}
+
+/** return our PIC's xref */
+static uintptr_t
+bcm_mips_pic_xref(struct bcm_mips_softc *sc)
+{
+	uintptr_t xref;
+
+	/* Determine our interrupt domain */
+	xref = BHND_BUS_GET_INTR_DOMAIN(device_get_parent(sc->dev), sc->dev,
+	    true);
+	KASSERT(xref != 0, ("missing interrupt domain"));
+
+	return (xref);
+}
+
+/**
+ * Walk up the device tree from @p dev until we find a bhnd-attached core,
+ * returning either the core, or NULL if @p dev is not attached under a bhnd
+ * bus.
+ */    
+static device_t
+bcm_mips_find_bhnd_parent(device_t dev)
+{
+	device_t	core, bus;
+	devclass_t	bhnd_class;
+
+	bhnd_class = devclass_find("bhnd");
+	core = dev;
+	while ((bus = device_get_parent(core)) != NULL) {
+		if (device_get_devclass(bus) == bhnd_class)
+			return (core);
+
+		core = bus;
+	}
+
+	/* Not found */
+	return (NULL);
+}
+
+/**
+ * Assign a MIPS CPU interrupt to @p isrc on behalf of @p res; if the @p isrc
+ * already has a MIPS CPU interrupt assigned, the existing assignment
+ * will be retained.
+ * 
+ * @param sc	BHND MIPS driver state.
+ * @param isrc	The interrupt source corresponding to @p res.
+ * @param res	The interrupt resource being activated.
+ */
+static int
+bcm_mips_assign_cpu_intr(struct bcm_mips_softc *sc,
+    struct bcm_mips_irqsrc *isrc, struct resource *res)
+{
+	struct bcm_mips_cpuirq	*cpuirq;
+	bhnd_devclass_t		 devclass;
+	device_t		 core;
+
+	BCM_MIPS_LOCK_ASSERT(sc, MA_OWNED);
+
+	/* Prefer existing assignment */
+	if (isrc->irq != NULL) {
+		KASSERT(isrc->irq->consumers > 0, ("assigned IRQ has no "
+		    "references"));
+
+		/* Increment our reference count */
+		if (isrc->irq->consumers == UINT_MAX)
+			return (ENOMEM);	/* would overflow */
+
+		isrc->irq->consumers++;
+		return (0);
+	}
+
+	/* Use the device class of the bhnd core to which the interrupt
+	 * vector is routed to determine whether a shared interrupt should
+	 * be preferred. */
+	devclass = BHND_DEVCLASS_OTHER;
+	core = bcm_mips_find_bhnd_parent(rman_get_device(res));
+	if (core != NULL)
+		devclass = bhnd_get_class(core);
+
+	switch (devclass) {
+	case BHND_DEVCLASS_CC:
+	case BHND_DEVCLASS_CC_B:
+	case BHND_DEVCLASS_PMU:
+	case BHND_DEVCLASS_RAM:
+	case BHND_DEVCLASS_MEMC:
+	case BHND_DEVCLASS_CPU:
+	case BHND_DEVCLASS_SOC_ROUTER:
+	case BHND_DEVCLASS_SOC_BRIDGE:
+	case BHND_DEVCLASS_EROM:
+	case BHND_DEVCLASS_NVRAM:
+		/* Always use a shared interrupt for these devices */
+		cpuirq = &sc->irqs[BCM_MIPS_IRQ_SHARED];
+		break;
+
+	case BHND_DEVCLASS_PCI:
+	case BHND_DEVCLASS_PCIE:
+	case BHND_DEVCLASS_PCCARD:	
+	case BHND_DEVCLASS_ENET:
+	case BHND_DEVCLASS_ENET_MAC:
+	case BHND_DEVCLASS_ENET_PHY:
+	case BHND_DEVCLASS_WLAN:
+	case BHND_DEVCLASS_WLAN_MAC:
+	case BHND_DEVCLASS_WLAN_PHY:
+	case BHND_DEVCLASS_USB_HOST:
+	case BHND_DEVCLASS_USB_DEV:
+	case BHND_DEVCLASS_USB_DUAL:
+	case BHND_DEVCLASS_OTHER:
+	case BHND_DEVCLASS_INVALID:
+	default:
+		/* Fall back on a shared interrupt */
+		cpuirq = &sc->irqs[BCM_MIPS_IRQ_SHARED];
+
+		/* Try to assign a dedicated MIPS HW interrupt */
+		for (u_int i = 0; i < sc->nirqs; i++) {
+			if (sc->irqs[i].irq_rid == -1)
+				continue;
+
+			if (sc->irqs[i].consumers != 0)
+				continue;
+
+			/* Found a usable dedicated IRQ */
+			cpuirq = &sc->irqs[i];
+			break;
+		}
+
+		break;
+	}
+
+
+	/* Increment the refcount */
+	if (isrc->irq->consumers == UINT_MAX)
+		return (ENOMEM);	/* would overflow */
+
+	isrc->irq->consumers++;
+	return (0);
+}
+
+/**
+ * Release the MIPS CPU interrupt assigned to @p isrc on behalf of @p res.
+ *
+ * @param sc	BHND MIPS driver state.
+ * @param isrc	The interrupt source corresponding to @p res.
+ * @param res	The interrupt resource being activated.
+ */
+static int
+bcm_mips_release_cpu_intr(struct bcm_mips_softc *sc,
+    struct bcm_mips_irqsrc *isrc, struct resource *res)
+{
+	BCM_MIPS_LOCK_ASSERT(sc, MA_OWNED);
+
+	KASSERT(isrc->irq != NULL, ("no assigned IRQ"));
+
+	/* Decrement the refcount */
+	KASSERT(isrc->irq->consumers > 0, ("refcount overrelease"));
+	isrc->irq->consumers--;
+
+	/* Clear the IRQ reference */
+	isrc->irq = NULL;
+
+	return (0);
 }
 
 static device_method_t bcm_mips_methods[] = {
