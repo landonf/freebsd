@@ -214,7 +214,7 @@ siba_write_ioctl(device_t dev, device_t child, uint16_t value, uint16_t mask)
 
 	/* Fetch CFG0 mapping */
 	dinfo = device_get_ivars(child);
-	if ((r = dinfo->cfg[0]) == NULL)
+	if ((r = dinfo->cfg_res[0]) == NULL)
 		return (ENODEV);
 
 	/* Mask and set TMSTATELOW core flag bits */
@@ -266,7 +266,7 @@ siba_reset_hw(device_t dev, device_t child, uint16_t ioctl)
 	dinfo = device_get_ivars(child);
 
 	/* Can't suspend the core without access to the CFG0 registers */
-	if ((r = dinfo->cfg[0]) == NULL)
+	if ((r = dinfo->cfg_res[0]) == NULL)
 		return (ENODEV);
 
 	/* We require exclusive control over BHND_IOCTL_CLK_EN and
@@ -338,7 +338,7 @@ siba_suspend_hw(device_t dev, device_t child)
 	pm = dinfo->pmu_info;
 
 	/* Can't suspend the core without access to the CFG0 registers */
-	if ((r = dinfo->cfg[0]) == NULL)
+	if ((r = dinfo->cfg_res[0]) == NULL)
 		return (ENODEV);
 
 	/* Already in RESET? */
@@ -433,23 +433,26 @@ siba_read_config(device_t dev, device_t child, bus_size_t offset, void *value,
 
 	/* CFG0 registers must be available */
 	dinfo = device_get_ivars(child);
-	if (dinfo->cfg[0] == NULL)
+	if (dinfo->cfg_res[0] == NULL)
 		return (ENODEV);
 
 	/* Offset must fall within CFG0 */
-	r_size = rman_get_size(dinfo->cfg[0]->res);
+	r_size = rman_get_size(dinfo->cfg_res[0]->res);
 	if (r_size < offset || r_size - offset < width)
 		return (EFAULT);
 
 	switch (width) {
 	case 1:
-		*((uint8_t *)value) = bhnd_bus_read_1(dinfo->cfg[0], offset);
+		*((uint8_t *)value) = bhnd_bus_read_1(dinfo->cfg_res[0],
+		    offset);
 		return (0);
 	case 2:
-		*((uint16_t *)value) = bhnd_bus_read_2(dinfo->cfg[0], offset);
+		*((uint16_t *)value) = bhnd_bus_read_2(dinfo->cfg_res[0],
+		    offset);
 		return (0);
 	case 4:
-		*((uint32_t *)value) = bhnd_bus_read_4(dinfo->cfg[0], offset);
+		*((uint32_t *)value) = bhnd_bus_read_4(dinfo->cfg_res[0],
+		    offset);
 		return (0);
 	default:
 		return (EINVAL);
@@ -470,7 +473,7 @@ siba_write_config(device_t dev, device_t child, bus_size_t offset,
 
 	/* CFG0 registers must be available */
 	dinfo = device_get_ivars(child);
-	if ((r = dinfo->cfg[0]) == NULL)
+	if ((r = dinfo->cfg_res[0]) == NULL)
 		return (ENODEV);
 
 	/* Offset must fall within CFG0 */
@@ -504,7 +507,7 @@ siba_get_port_count(device_t dev, device_t child, bhnd_port_type type)
 		    type));
 
 	dinfo = device_get_ivars(child);
-	return (siba_addrspace_port_count(dinfo->core_id.num_addrspace));
+	return (siba_port_count(&dinfo->core_id, type));
 }
 
 static u_int
@@ -519,11 +522,7 @@ siba_get_region_count(device_t dev, device_t child, bhnd_port_type type,
 		    type, port));
 
 	dinfo = device_get_ivars(child);
-	if (!siba_is_port_valid(dinfo->core_id.num_addrspace, type, port))
-		return (0);
-
-	return (siba_addrspace_region_count(dinfo->core_id.num_addrspace,
-	    port));
+	return (siba_port_region_count(&dinfo->core_id, type, port));
 }
 
 static int
@@ -532,6 +531,7 @@ siba_get_port_rid(device_t dev, device_t child, bhnd_port_type port_type,
 {
 	struct siba_devinfo	*dinfo;
 	struct siba_addrspace	*addrspace;
+	struct siba_cfg_block	*cfg;
 
 	/* delegate non-bus-attached devices to our parent */
 	if (device_get_parent(child) != dev)
@@ -539,11 +539,19 @@ siba_get_port_rid(device_t dev, device_t child, bhnd_port_type port_type,
 		    port_type, port_num, region_num));
 
 	dinfo = device_get_ivars(child);
-	addrspace = siba_find_addrspace(dinfo, port_type, port_num, region_num);
-	if (addrspace == NULL)
-		return (-1);
 
-	return (addrspace->sa_rid);
+	/* Look for a matching addrspace entry */
+	addrspace = siba_find_addrspace(dinfo, port_type, port_num, region_num);
+	if (addrspace != NULL)
+		return (addrspace->sa_rid);
+
+	/* Try the config blocks */
+	cfg = siba_find_cfg_block(dinfo, port_type, port_num, region_num);
+	if (cfg != NULL)
+		return (cfg->cb_rid);
+
+	/* Not found */
+	return (-1);
 }
 
 static int
@@ -563,13 +571,25 @@ siba_decode_port_rid(device_t dev, device_t child, int type, int rid,
 	if (type != SYS_RES_MEMORY)
 		return (EINVAL);
 
-	for (int i = 0; i < dinfo->core_id.num_addrspace; i++) {
+	/* Look for a matching addrspace entry */
+	for (u_int i = 0; i < dinfo->core_id.num_addrspace; i++) {
 		if (dinfo->addrspace[i].sa_rid != rid)
 			continue;
 
 		*port_type = BHND_PORT_DEVICE;
-		*port_num = siba_addrspace_port(i);
-		*region_num = siba_addrspace_region(i);
+		*port_num = siba_addrspace_device_port(i);
+		*region_num = siba_addrspace_device_region(i);
+		return (0);
+	}
+
+	/* Try the config blocks */
+	for (u_int i = 0; i < dinfo->core_id.num_cfg_blocks; i++) {
+		if (dinfo->cfg[i].cb_rid != rid)
+			continue;
+
+		*port_type = BHND_PORT_AGENT;
+		*port_num = siba_cfg_agent_port(i);
+		*region_num = siba_cfg_agent_region(i);
 		return (0);
 	}
 
@@ -583,6 +603,7 @@ siba_get_region_addr(device_t dev, device_t child, bhnd_port_type port_type,
 {
 	struct siba_devinfo	*dinfo;
 	struct siba_addrspace	*addrspace;
+	struct siba_cfg_block	*cfg;
 
 	/* delegate non-bus-attached devices to our parent */
 	if (device_get_parent(child) != dev) {
@@ -591,13 +612,25 @@ siba_get_region_addr(device_t dev, device_t child, bhnd_port_type port_type,
 	}
 
 	dinfo = device_get_ivars(child);
-	addrspace = siba_find_addrspace(dinfo, port_type, port_num, region_num);
-	if (addrspace == NULL)
-		return (ENOENT);
 
-	*addr = addrspace->sa_base;
-	*size = addrspace->sa_size - addrspace->sa_bus_reserved;
-	return (0);
+	/* Look for a matching addrspace */
+	addrspace = siba_find_addrspace(dinfo, port_type, port_num, region_num);
+	if (addrspace != NULL) {
+		*addr = addrspace->sa_base;
+		*size = addrspace->sa_size - addrspace->sa_bus_reserved;
+		return (0);
+	}
+
+	/* Look for a matching cfg block */
+	cfg = siba_find_cfg_block(dinfo, port_type, port_num, region_num);
+	if (cfg != NULL) {
+		*addr = cfg->cb_base;
+		*size = cfg->cb_size;
+		return (0);
+	}
+
+	/* Not found */
+	return (ENOENT);
 }
 
 /**
@@ -721,6 +754,7 @@ siba_map_cfg_resources(device_t dev, struct siba_devinfo *dinfo)
 	struct siba_addrspace	*addrspace;
 	rman_res_t		 r_start, r_count, r_end;
 	uint8_t			 num_cfg;
+	int			 rid;
 
 	num_cfg = dinfo->core_id.num_cfg_blocks;
 	if (num_cfg > SIBA_MAX_CFG) {
@@ -740,22 +774,28 @@ siba_map_cfg_resources(device_t dev, struct siba_devinfo *dinfo)
 	 * Map the per-core configuration blocks
 	 */
 	for (uint8_t i = 0; i < num_cfg; i++) {
-		/* Determine the config block's address range; configuration
-		 * blocks are allocated starting at SIBA_CFG0_OFFSET,
-		 * growing downwards. */
-		r_start = addrspace->sa_base + SIBA_CFG0_OFFSET;
-		r_start -= i * SIBA_CFG_SIZE;
-
+		/* Add to child's resource list */
+		r_start = addrspace->sa_base + SIBA_CFG_OFFSET(i);
 		r_count = SIBA_CFG_SIZE;
 		r_end = r_start + r_count - 1;
 
-		/* Allocate the config resource */
-		dinfo->cfg_rid[i] = SIBA_CFG_RID(dinfo, i);
-		dinfo->cfg[i] = BHND_BUS_ALLOC_RESOURCE(dev, dev,
-		    SYS_RES_MEMORY, &dinfo->cfg_rid[i], r_start, r_end,
-		    r_count, RF_ACTIVE);
+		rid = resource_list_add_next(&dinfo->resources, SYS_RES_MEMORY,
+		    r_start, r_end, r_count);
 
-		if (dinfo->cfg[i] == NULL) {
+		/* Initialize config block descriptor */
+		dinfo->cfg[i] = ((struct siba_cfg_block) {
+			.cb_base = r_start,
+			.cb_size = SIBA_CFG_SIZE,
+			.cb_rid = rid
+		});
+
+		/* Map the config resource for bus-level access */
+		dinfo->cfg_rid[i] = SIBA_CFG_RID(dinfo, i);
+		dinfo->cfg_res[i] = BHND_BUS_ALLOC_RESOURCE(dev, dev,
+		    SYS_RES_MEMORY, &dinfo->cfg_rid[i], r_start, r_end,
+		    r_count, RF_ACTIVE|RF_SHAREABLE);
+
+		if (dinfo->cfg_res[i] == NULL) {
 			device_printf(dev, "failed to allocate SIBA_CFG%hhu\n",
 			    i);
 			return (ENXIO);
@@ -782,11 +822,11 @@ siba_register_interrupts(device_t dev, device_t child,
 	int		error;
 
 	/* Core must have a valid cfg0 block */
-	if (dinfo->cfg[0] == NULL)
+	if (dinfo->cfg_res[0] == NULL)
 		return (0);
 
 	/* Is backplane interrupt distribution enabled for this core? */
-	tpsflag = bhnd_bus_read_4(dinfo->cfg[0], SIBA_CFG0_TPSFLAG);
+	tpsflag = bhnd_bus_read_4(dinfo->cfg_res[0], SIBA_CFG0_TPSFLAG);
 	if ((tpsflag & SIBA_TPS_F0EN0) == 0) {
 		dinfo->intr_en = false;
 		return (0);

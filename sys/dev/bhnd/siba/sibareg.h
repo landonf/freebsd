@@ -70,8 +70,12 @@
 
 #define	SIBA_CFG0_OFFSET	0xf00	/**< first configuration block */
 #define	SIBA_CFG1_OFFSET	0xe00	/**< second configuration block (sonics >= 2.3) */
-
 #define	SIBA_CFG_SIZE		0x100	/**< cfg register block size */
+
+/* Return the SIBA_CORE_ADDR-relative offset for the given siba configuration
+ * register block; configuration blocks are allocated starting at
+ * SIBA_CFG0_OFFSET, growing downwards. */
+#define	SIBA_CFG_OFFSET(_n)	(SIBA_CFG0_OFFSET - ((_n) * SIBA_CFG_SIZE))
 
 /* Return the SIBA_CORE_ADDR-relative offset for a SIBA_CFG* register. */
 #define	SB0_REG_ABS(off)	((off) + SIBA_CFG0_OFFSET)
