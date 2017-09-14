@@ -135,7 +135,8 @@ bcm_mips74k_probe(device_t dev)
 static int
 bcm_mips74k_attach(device_t dev)
 {
-	return (bcm_mips_attach(dev));
+	return (bcm_mips_attach(dev, BCM_MIPS74K_NUM_INTR,
+	    BCM_MIPS74K_GET_TIMER_IRQ()));
 }
 
 static int

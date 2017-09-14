@@ -56,6 +56,9 @@ __FBSDID("$FreeBSD$");
  * us to assume the availability of siba interrupt registers.
  */
 
+#define	BCM_BMIPS_NCPU_IRQS	5	/**< MIPS HW IRQs 0-4 are assignable */
+#define	BCM_BMIPS_TIMER_IRQ	5	/**< MIPS HW IRQ5 is always assigned to the timer */
+
 static const struct bhnd_device bcm_bmips_devs[] = {
 	BHND_DEVICE(BCM, MIPS33, NULL, NULL, BHND_DF_SOC),
 	BHND_DEVICE_END
@@ -92,7 +95,8 @@ bcm_bmips_probe(device_t dev)
 static int
 bcm_bmips_attach(device_t dev)
 {
-	return (bcm_mips_attach(dev));
+	return (bcm_mips_attach(dev, BCM_BMIPS_NCPU_IRQS,
+	    BCM_BMIPS_TIMER_IRQ));
 }
 
 static int
