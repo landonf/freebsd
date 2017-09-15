@@ -315,6 +315,9 @@ struct bhnd_service_registry {
 	struct sx				lock;		/**< state lock */
 };
 
+/**
+ * bhnd service provider flags.
+ */
 enum {
 	BHND_SPF_INHERITED	= (1<<0),	/**< service provider reference was inherited from
 						     a parent bus, and should be deregistered when the
