@@ -52,8 +52,14 @@ struct bcm_mips_softc;
 #define	INTR_MAP_DATA_BCM_MIPS	INTR_MAP_DATA_PLAT_2	/**< Broadcom MIPS PIC interrupt map data type */
 
 
-int	bcm_mips_attach(device_t dev, u_int num_cpu_irqs, u_int timer_irq);
+int	bcm_mips_attach(device_t dev, u_int num_cpuirqs, u_int timer_irq);
 int	bcm_mips_detach(device_t dev);
+
+int	bcm_mips_retain_cpu_intr(struct bcm_mips_softc *sc,
+	    struct bcm_mips_irqsrc *isrc, struct resource *res,
+	    driver_filter_t filter, void *arg);
+int	bcm_mips_release_cpu_intr(struct bcm_mips_softc *sc,
+	    struct bcm_mips_irqsrc *isrc, struct resource *res);
 
 /**
  * Broadcom MIPS PIC interrupt map data.
@@ -68,11 +74,12 @@ struct bcm_mips_intr_map_data {
  */
 struct bcm_mips_cpuirq {
 	struct bcm_mips_softc	*sc;		/**< driver instance state, or NULL if uninitialized. */
+	u_int			 intr;		/**< mips interrupt number */
 	int			 irq_rid;	/**< mips IRQ resource id, or -1 if this entry is unavailable */
 	struct resource		*irq_res;	/**< mips interrupt resource */
+	void			*irq_cookie;	/**< mips interrupt handler cookie, or NULL */
 	uint32_t		 ivec_mask;	/**< ivec interrupt status mask */
-	u_int			 consumers;	/**< assigned interrupt handler count */
-	u_int			 active;	/**< active interrupt handler count */
+	u_int			 refs;		/**< isrc consumer refcount */
 };
 
 /**
@@ -80,8 +87,9 @@ struct bcm_mips_cpuirq {
  */
 struct bcm_mips_irqsrc {
 	struct intr_irqsrc	 isrc;
-	u_int			 ivec;	/**< bus interrupt vector */
-	struct bcm_mips_cpuirq	*irq;	/**< assigned MIPS HW IRQ, or NULL if no assignment */
+	u_int			 ivec;		/**< bus interrupt vector */
+	u_int			 refs;		/**< active reference count */
+	struct bcm_mips_cpuirq	*cpuirq;	/**< assigned MIPS HW IRQ, or NULL if no assignment */
 };
 
 /**
@@ -90,10 +98,8 @@ struct bcm_mips_irqsrc {
  */
 struct bcm_mips_softc {
 	device_t		 dev;
-	struct resource		*mem;			/**< cpu core registers */
-	int			 mem_rid;
-	struct bcm_mips_cpuirq	 irqs[NREAL_IRQS];	/**< nested CPU IRQ handlers */
-	u_int			 nirqs;			/**< number of nested CPU IRQ handlers */
+	struct bcm_mips_cpuirq	 cpuirqs[NREAL_IRQS];	/**< nested CPU IRQ handlers */
+	u_int			 num_cpuirqs;		/**< number of nested CPU IRQ handlers */
 	u_int			 timer_irq;		/**< CPU timer IRQ */
 	struct bcm_mips_irqsrc	 isrcs[BCM_MIPS_NINTR];
 	struct mtx		 mtx;
