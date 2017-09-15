@@ -2,7 +2,11 @@
  * Copyright (c) 2015 Alexander Kabaev
  * Copyright (c) 2006 Oleksandr Tymoshenko
  * Copyright (c) 2002-2004 Juli Mallett <jmallett@FreeBSD.org>
+ * Copyright (c) 2017 The FreeBSD Foundation
  * All rights reserved.
+ *
+ * Portions of this software were developed by Landon Fuller
+ * under sponsorship from the FreeBSD Foundation.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -567,7 +571,6 @@ mips_pic_activate_intr(device_t child, struct resource *r)
 	if (intr->consumers == 0) {
 		if ((error = intr_activate_irq(child, r))) {
 			mtx_unlock(&mips_pic_mtx);
-			printf("ACTIVATE FAILED: %d\n", error);
 			return (error);
 		}
 	}
