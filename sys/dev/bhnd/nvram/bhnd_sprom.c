@@ -147,7 +147,7 @@ bhnd_sprom_attach(device_t dev, bus_size_t offset)
 	io = NULL;
 	r = NULL;
 
-	/* Register as the bus NVRAM provider */
+	/* Register ourselves with the bus */
 	if ((error = bhnd_register_provider(dev, BHND_SERVICE_NVRAM))) {
 		device_printf(dev, "failed to register NVRAM provider: %d\n",
 		    error);

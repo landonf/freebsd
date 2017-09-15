@@ -190,7 +190,7 @@ bhnd_pmu_attach(device_t dev, struct bhnd_resource *res)
 		goto failed;
 	}
 
-	/* Register as the bus PMU provider */
+	/* Register ourselves with the bus */
 	if ((error = bhnd_register_provider(dev, BHND_SERVICE_PMU))) {
 		device_printf(sc->dev, "failed to register PMU with bus : %d\n",
 		    error);
