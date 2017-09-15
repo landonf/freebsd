@@ -137,18 +137,6 @@ bhnd_usb_attach(device_t dev)
 		panic("%s: sc->mem_rman", __func__);
 	}
 
-	sc->irq_rman.rm_start = sc->sc_irqn;
-	sc->irq_rman.rm_end = sc->sc_irqn;
-	sc->irq_rman.rm_type = RMAN_ARRAY;
-	sc->irq_rman.rm_descr = "BHND USB core IRQ";
-	/* 
-	 * BHND USB share same IRQ between OHCI and EHCI
-	 */
-	if (rman_init(&sc->irq_rman) != 0 ||
-	    rman_manage_region(&sc->irq_rman, sc->irq_rman.rm_start,
-	    sc->irq_rman.rm_end) != 0)
-		panic("%s: failed to set up IRQ rman", __func__);
-
 	/* TODO: macros for registers */
 	bus_write_4(sc->sc_mem, 0x200, 0x7ff); 
 	DELAY(100); 
@@ -244,6 +232,9 @@ bhnd_usb_attach(device_t dev)
 
 	bus_generic_attach(dev);
 
+	// XXX PREVENT ATTACH WHILE INTERRUPTS NOT IMPLEMENTED
+	// panic("NEED INTERRUPT HANDLING");
+
 	return (0);
 }
 
@@ -254,17 +245,19 @@ bhnd_usb_alloc_resource(device_t bus, device_t child, int type, int *rid,
 	struct resource			*rv;
 	struct resource_list		*rl;
 	struct resource_list_entry	*rle;
-	int				 isdefault, needactivate;
+	int				 passthrough, isdefault, needactivate;
 	struct bhnd_usb_softc		*sc = device_get_softc(bus);
 
 	isdefault = RMAN_IS_DEFAULT_RANGE(start,end);
+	passthrough = (device_get_parent(child) != bus);
 	needactivate = flags & RF_ACTIVE;
-	rl = BUS_GET_RESOURCE_LIST(bus, child);
 	rle = NULL;
 
-	if (isdefault) {
+	if (!passthrough && isdefault) {
 		BHND_INFO_DEV(bus, "trying allocate def %d - %d for %s", type,
 		    *rid, device_get_nameunit(child) );
+
+		rl = BUS_GET_RESOURCE_LIST(bus, child);
 		rle = resource_list_find(rl, type, *rid);
 		if (rle == NULL)
 			return (NULL);
@@ -303,32 +296,11 @@ bhnd_usb_alloc_resource(device_t bus, device_t child, int type, int *rid,
 		return (rv);
 	}
 
-	if (type == SYS_RES_IRQ) {
-
-		rv = rman_reserve_resource(&sc->irq_rman, start, end, count,
-		    flags, child);
-		if (rv == NULL) {
-			BHND_ERROR_DEV(bus, "could not reserve resource");
-			return (0);
-		}
-
-		rman_set_rid(rv, *rid);
-
-		if (needactivate &&
-		    bus_activate_resource(child, type, *rid, rv)) {
-			BHND_ERROR_DEV(bus, "could not activate resource");
-			rman_release_resource(rv);
-			return (0);
-		}
-
-		return (rv);
-	}
-
 	/*
 	 * Pass the request to the parent.
 	 */
-	return (resource_list_alloc(rl, bus, child, type, rid,
-	    start, end, count, flags));
+	return (bus_generic_rl_alloc_resource(bus, child, type, rid, start, end,
+	    count, flags));
 }
 
 static struct resource_list *
@@ -345,17 +317,38 @@ static int
 bhnd_usb_release_resource(device_t dev, device_t child, int type,
     int rid, struct resource *r)
 {
-	struct resource_list		*rl;
+	struct bhnd_usb_softc		*sc;
 	struct resource_list_entry	*rle;
+	bool				 passthrough;
+	int				 error;
 
-	rl = bhnd_usb_get_reslist(dev, child);
-	if (rl == NULL)
-		return (EINVAL);
-	rle = resource_list_find(rl, type, rid);
-	if (rle == NULL)
-		return (EINVAL);
-	rman_release_resource(r);
-	rle->res = NULL;
+	sc = device_get_softc(dev);
+	passthrough = (device_get_parent(child) != dev);
+
+	/* Delegate to our parent device's bus if the requested resource type
+	 * isn't handled locally. */
+	if (type != SYS_RES_MEMORY) {
+		return (bus_generic_rl_release_resource(dev, child, type, rid,
+		    r));
+	}
+
+	/* Deactivate resources */
+	if (rman_get_flags(r) & RF_ACTIVE) {
+		error = BUS_DEACTIVATE_RESOURCE(dev, child, type, rid, r);
+		if (error)
+			return (error);
+	}
+
+	if ((error = rman_release_resource(r)))
+		return (error);
+
+	if (!passthrough) {
+		/* Clean resource list entry */
+		rle = resource_list_find(BUS_GET_RESOURCE_LIST(dev, child),
+		    type, rid);
+		if (rle != NULL)
+			rle->res = NULL;
+	}
 
 	return (0);
 }
