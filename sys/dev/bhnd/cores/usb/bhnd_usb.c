@@ -232,9 +232,6 @@ bhnd_usb_attach(device_t dev)
 
 	bus_generic_attach(dev);
 
-	// XXX PREVENT ATTACH WHILE INTERRUPTS NOT IMPLEMENTED
-	// panic("NEED INTERRUPT HANDLING");
-
 	return (0);
 }
 
