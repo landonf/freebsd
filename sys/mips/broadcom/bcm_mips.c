@@ -158,6 +158,7 @@ bcm_mips_init_cpuirq(struct bcm_mips_softc *sc, struct bcm_mips_cpuirq *cpuirq,
 {
 	struct resource	*res;
 	void		*cookie;
+	u_int		 irq_real;
 	int		 error;
 
 	/* Must fall within MIPS HW IRQ range */
@@ -165,19 +166,18 @@ bcm_mips_init_cpuirq(struct bcm_mips_softc *sc, struct bcm_mips_cpuirq *cpuirq,
 		return (EINVAL);
 
 	/* HW IRQs are numbered relative to SW IRQs */
-	irq += NSOFT_IRQS;
+	irq_real = irq + NSOFT_IRQS;
 
 	/* Try to assign and allocate the resource */
 	BCM_MIPS_LOCK(sc);
 
 	KASSERT(cpuirq->sc == NULL, ("cpuirq already initialized"));
 
-	error = bus_set_resource(sc->dev, SYS_RES_IRQ, rid, irq, 1);
+	error = bus_set_resource(sc->dev, SYS_RES_IRQ, rid, irq_real, 1);
 	if (error) {
 		BCM_MIPS_UNLOCK(sc);
 		device_printf(sc->dev, "failed to assign interrupt %u: "
-			"%d\n",
-		irq, error);
+		    "%d\n", irq, error);
 		return (error);
 	}
 
@@ -609,8 +609,8 @@ bcm_mips_retain_cpu_intr(struct bcm_mips_softc *sc,
 		break;
 	}
 
-	dprintf("assigning ivec %u to MIPS IRQ %u\n", isrc->ivec,
-	    cpuirq->mips_irq);
+	dprintf("routing backplane interrupt vector %u to MIPS IRQ %u\n",
+	    isrc->ivec, cpuirq->mips_irq);
 
 	KASSERT(isrc->cpuirq == NULL, ("CPU IRQ already assigned"));
 	KASSERT(isrc->refs == 0, ("isrc has active references with no "

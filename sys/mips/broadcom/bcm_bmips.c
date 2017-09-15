@@ -60,7 +60,6 @@ __FBSDID("$FreeBSD$");
 struct bcm_bmips_softc;
 
 static int	bcm_bmips_pic_intr(void *arg);
-
 static void	bcm_bmips_mask_irq(struct bcm_bmips_softc *sc, u_int mips_irq,
 		    u_int ivec);
 static void	bcm_bmips_unmask_irq(struct bcm_bmips_softc *sc, u_int mips_irq,
@@ -302,7 +301,6 @@ bcm_bmips_pic_intr(void *arg)
 
 	cpuirq = arg;
 	sc = (struct bcm_bmips_softc*)cpuirq->sc;
-	error = 0;
 
 	/* Fetch current interrupt state */
 	sbstatus = bus_read_4(sc->cfg, SIBA_CFG0_FLAGST);

@@ -69,7 +69,7 @@ struct bcm_mips_intr_map_data {
  */
 struct bcm_mips_cpuirq {
 	struct bcm_mips_softc	*sc;		/**< driver instance state, or NULL if uninitialized. */
-	u_int			 mips_irq;	/**< mips interrupt number */
+	u_int			 mips_irq;	/**< mips hardware interrupt number (relative to NSOFT_IRQ) */
 	int			 irq_rid;	/**< mips IRQ resource id, or -1 if this entry is unavailable */
 	struct resource		*irq_res;	/**< mips interrupt resource */
 	void			*irq_cookie;	/**< mips interrupt handler cookie, or NULL */
