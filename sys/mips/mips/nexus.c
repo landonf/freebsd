@@ -207,9 +207,9 @@ nexus_probe(device_t dev)
 static int
 nexus_attach(device_t dev)
 {
+#if defined(INTRNG) && !defined(FDT)
 	int error;
 
-#ifndef FDT
 	if ((error = mips_pic_map_fixed_intrs()))
 		return (error);
 #endif
