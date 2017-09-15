@@ -571,7 +571,6 @@ mips_pic_activate_intr(device_t child, struct resource *r)
 	if (intr->consumers == 0) {
 		if ((error = intr_activate_irq(child, r))) {
 			mtx_unlock(&mips_pic_mtx);
-			printf("ACTIVATE FAILED: %d\n", error);
 			return (error);
 		}
 	}
