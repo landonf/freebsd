@@ -57,17 +57,23 @@ __FBSDID("$FreeBSD$");
 
 static uintptr_t	bcm_mips_pic_xref(struct bcm_mips_softc *sc);
 static device_t		bcm_mips_find_bhnd_parent(device_t dev);
+static int		bcm_mips_retain_cpu_intr(struct bcm_mips_softc *sc,
+			    struct bcm_mips_irqsrc *isrc, struct resource *res);
+static int		bcm_mips_release_cpu_intr(struct bcm_mips_softc *sc,
+			    struct bcm_mips_irqsrc *isrc, struct resource *res);
 
 static const int bcm_mips_debug = 1;
 
-#define	dprintf(fmt, ...) do {			\
-	if (bcm_mips_debug)			\
-		printf(fmt,  ##__VA_ARGS__);	\
+#define	dprintf(fmt, ...) do {						\
+	if (bcm_mips_debug)						\
+		printf("%s: " fmt, __FUNCTION__, ##__VA_ARGS__);	\
 } while (0)
 
-#define	DENTRY(dev, fmt, ...)	\
-	dprintf("%s(%s, " fmt ")\n", __FUNCTION__,	\
-	    device_get_nameunit(dev), ##__VA_ARGS__)
+#define	DENTRY(dev, fmt, ...) do {					\
+	if (bcm_mips_debug)						\
+		printf("%s(%s, " fmt ")\n", __FUNCTION__,		\
+		    device_get_nameunit(dev), ##__VA_ARGS__);		\
+} while (0)
 
 /**
  * Register all interrupt source definitions.
@@ -120,11 +126,11 @@ bcm_mips_init_cpuirq_unavail(struct bcm_mips_softc *sc,
 
 	KASSERT(cpuirq->sc == NULL, ("cpuirq already initialized"));
 	cpuirq->sc = sc;
-	cpuirq->intr = 0;
+	cpuirq->mips_irq = 0;
 	cpuirq->irq_rid = -1;
 	cpuirq->irq_res = NULL;
 	cpuirq->irq_cookie = NULL;
-	cpuirq->ivec_mask = 0x0;
+	cpuirq->isrc_solo = NULL;
 	cpuirq->refs = 0;
 
 	BCM_MIPS_UNLOCK(sc);
@@ -140,6 +146,7 @@ bcm_mips_init_cpuirq_unavail(struct bcm_mips_softc *sc,
  * @param rid		The resource ID to be assigned for the CPU IRQ resource,
  *			or -1 if no resource should be assigned.
  * @param irq		The MIPS HW IRQ# to be allocated.
+ * @param filter	The interrupt filter to be setup.
  *
  * @retval 0		success
  * @retval non-zero	if initializing @p cpuirq otherwise fails, a regular
@@ -147,9 +154,10 @@ bcm_mips_init_cpuirq_unavail(struct bcm_mips_softc *sc,
  */
 static int
 bcm_mips_init_cpuirq(struct bcm_mips_softc *sc, struct bcm_mips_cpuirq *cpuirq,
-    int rid, u_int irq)
+    int rid, u_int irq, driver_filter_t filter)
 {
 	struct resource	*res;
+	void		*cookie;
 	int		 error;
 
 	/* Must fall within MIPS HW IRQ range */
@@ -173,8 +181,7 @@ bcm_mips_init_cpuirq(struct bcm_mips_softc *sc, struct bcm_mips_cpuirq *cpuirq,
 		return (error);
 	}
 
-	res = bus_alloc_resource_any(sc->dev, SYS_RES_IRQ, &rid,
-	RF_SHAREABLE|RF_ACTIVE);
+	res = bus_alloc_resource_any(sc->dev, SYS_RES_IRQ, &rid, RF_ACTIVE);
 	if (res == NULL) {
 		BCM_MIPS_UNLOCK(sc);
 		device_printf(sc->dev, "failed to allocate interrupt "
@@ -183,13 +190,28 @@ bcm_mips_init_cpuirq(struct bcm_mips_softc *sc, struct bcm_mips_cpuirq *cpuirq,
 		return (ENXIO);
 	}
 
+	error = bus_setup_intr(sc->dev, res,
+	    INTR_TYPE_MISC | INTR_MPSAFE | INTR_EXCL, filter, NULL, cpuirq,
+	    &cookie);
+	if (error) {
+		BCM_MIPS_UNLOCK(sc);
+
+		printf("failed to setup internal interrupt handler: %d\n",
+		    error);
+
+		bus_release_resource(sc->dev, SYS_RES_IRQ, rid, res);
+		bus_delete_resource(sc->dev, SYS_RES_IRQ, rid);
+
+		return (error);
+	}
+
 	/* Initialize CPU IRQ state */
 	cpuirq->sc = sc;
-	cpuirq->intr = irq;
+	cpuirq->mips_irq = irq;
 	cpuirq->irq_rid = rid;
 	cpuirq->irq_res = res;
-	cpuirq->irq_cookie = NULL;
-	cpuirq->ivec_mask = 0x0;
+	cpuirq->irq_cookie = cookie;
+	cpuirq->isrc_solo = NULL;
 	cpuirq->refs = 0;
 
 	BCM_MIPS_UNLOCK(sc);
@@ -226,13 +248,29 @@ bcm_mips_fini_cpuirq(struct bcm_mips_softc *sc, struct bcm_mips_cpuirq *cpuirq)
 		return (EBUSY);
 	}
 
-	error = bus_free_resource(sc->dev, SYS_RES_IRQ, cpuirq->irq_res);
-	if (error) {
-		BCM_MIPS_UNLOCK(sc);
-		return (error);
+	if (cpuirq->irq_cookie != NULL) {
+		KASSERT(cpuirq->irq_res != NULL, ("resource missing"));
+
+		error = bus_teardown_intr(sc->dev, cpuirq->irq_res,
+			cpuirq->irq_cookie);
+		if (error) {
+			BCM_MIPS_UNLOCK(sc);
+			return (error);
+		}
+
+		cpuirq->irq_cookie = NULL;
 	}
 
-	bus_delete_resource(sc->dev, SYS_RES_IRQ, cpuirq->irq_rid);
+	if (cpuirq->irq_res != NULL) {
+		bus_release_resource(sc->dev, SYS_RES_IRQ, cpuirq->irq_rid,
+		    cpuirq->irq_res);
+		cpuirq->irq_res = NULL;
+	}
+
+	if (cpuirq->irq_rid != -1) {
+		bus_delete_resource(sc->dev, SYS_RES_IRQ, cpuirq->irq_rid);
+		cpuirq->irq_rid = -1;
+	}
 
 	BCM_MIPS_UNLOCK(sc);
 
@@ -255,9 +293,12 @@ bcm_mips_attach_default(device_t dev)
  * @param dev BHND MIPS device.
  * @param num_cpuirqs The number of usable MIPS HW IRQs.
  * @param timer_irq The MIPS HW IRQ assigned to the MIPS CPU timer.
+ * @param filter The subclass's core-specific IRQ dispatch filter. Will be
+ * passed the associated bcm_mips_cpuirq instance as its argument.
  */
 int
-bcm_mips_attach(device_t dev, u_int num_cpuirqs, u_int timer_irq)
+bcm_mips_attach(device_t dev, u_int num_cpuirqs, u_int timer_irq,
+    driver_filter_t filter)
 {
 	struct bcm_mips_softc	*sc;
 	struct intr_pic		*pic;
@@ -307,7 +348,7 @@ bcm_mips_attach(device_t dev, u_int num_cpuirqs, u_int timer_irq)
 		} else {
 			/* Initialize state */
 			error = bcm_mips_init_cpuirq(sc, &sc->cpuirqs[i],
-			    irq_rid, irq);
+			    irq_rid, irq, filter);
 		}
 
 		if (error)
@@ -396,6 +437,47 @@ bcm_mips_pic_map_intr(device_t dev, struct intr_map_data *d,
 	return (0);
 }
 
+/* PIC_SETUP_INTR() */
+static int
+bcm_mips_pic_setup_intr(device_t dev, struct intr_irqsrc *irqsrc,
+    struct resource *res, struct intr_map_data *data)
+{
+	struct bcm_mips_softc	*sc;
+	struct bcm_mips_irqsrc	*isrc;
+	int			 error;
+
+	sc = device_get_softc(dev);
+	isrc = (struct bcm_mips_irqsrc *)irqsrc;
+
+	/* Assign a CPU interrupt */
+	BCM_MIPS_LOCK(sc);
+	error = bcm_mips_retain_cpu_intr(sc, isrc, res);
+	BCM_MIPS_UNLOCK(sc);
+
+	return (error);
+}
+
+/* PIC_TEARDOWN_INTR() */
+static int
+bcm_mips_pic_teardown_intr(device_t dev, struct intr_irqsrc *irqsrc,
+    struct resource *res, struct intr_map_data *data)
+{
+	struct bcm_mips_softc	*sc;
+	struct bcm_mips_irqsrc	*isrc;
+	int			 error;
+
+	sc = device_get_softc(dev);
+	isrc = (struct bcm_mips_irqsrc *)irqsrc;
+
+	/* Release the CPU interrupt */
+	BCM_MIPS_LOCK(sc);
+	error = bcm_mips_release_cpu_intr(sc, isrc, res);
+	BCM_MIPS_UNLOCK(sc);
+
+	return (error);
+}
+
+
 /** return our PIC's xref */
 static uintptr_t
 bcm_mips_pic_xref(struct bcm_mips_softc *sc)
@@ -443,22 +525,14 @@ bcm_mips_find_bhnd_parent(device_t dev)
  * @param isrc		The interrupt source corresponding to @p res.
  * @param res		The interrupt resource for which a MIPS CPU IRQ will be
  *			assigned.
- * @param filter	The interrupt filter to be used if a new MIPS CPU IRQ
- *			must be assigned to @p isrc. If a MIPS CPU IRQ has
- *			already been assigned, this argument will be ignored.
- * @param arg		An opaque argument to be passed to @p filter. If a MIPS
- *			CPU IRQ has already been assigned, this argument will
- *			be ignored.
  */
-int
+static int
 bcm_mips_retain_cpu_intr(struct bcm_mips_softc *sc,
-    struct bcm_mips_irqsrc *isrc, struct resource *res, driver_filter_t filter,
-    void *arg)
+    struct bcm_mips_irqsrc *isrc, struct resource *res)
 {
 	struct bcm_mips_cpuirq	*cpuirq;
 	bhnd_devclass_t		 devclass;
 	device_t		 core;
-	int			 error;
 
 	BCM_MIPS_LOCK_ASSERT(sc, MA_OWNED);
 
@@ -535,34 +609,18 @@ bcm_mips_retain_cpu_intr(struct bcm_mips_softc *sc,
 		break;
 	}
 
-	dprintf("assigning ivec %u to MIPS IRQ %u\n", isrc->ivec, cpuirq->intr);
+	dprintf("assigning ivec %u to MIPS IRQ %u\n", isrc->ivec,
+	    cpuirq->mips_irq);
 
 	KASSERT(isrc->cpuirq == NULL, ("CPU IRQ already assigned"));
 	KASSERT(isrc->refs == 0, ("isrc has active references with no "
 	    "assigned CPU IRQ"));
-
+	KASSERT(cpuirq->refs == 1 || cpuirq->isrc_solo == NULL,
+	    ("single isrc dispatch enabled on cpuirq with multiple refs"));
 
 	/* Verify that bumping the cpuirq refcount below will not overflow */
 	if (cpuirq->refs == UINT_MAX)
 		return (ENOMEM);
-
-	/* If this is the first isrc attached to the CPU IRQ, we need
-	 * to set up our interrupt routine */
-	if (cpuirq->refs == 0) {
-		KASSERT(cpuirq->irq_res != NULL, ("missing IRQ resource"));
-		KASSERT(cpuirq->irq_cookie == NULL, ("already setup"));
-	
-		error = bus_setup_intr(sc->dev, cpuirq->irq_res,
-		    INTR_TYPE_MISC | INTR_MPSAFE, filter, NULL, arg,
-		    &cpuirq->irq_cookie);
-		if (error) {
-			printf("failed to setup internal interrupt handler: "
-			    "%d\n", error);
-			cpuirq->irq_cookie = NULL;
-
-			return (error);
-		}
-	}
 
 	/* Increment cpuirq refcount on behalf of the isrc */
 	cpuirq->refs++;
@@ -572,6 +630,10 @@ bcm_mips_retain_cpu_intr(struct bcm_mips_softc *sc,
 
 	/* Assign the IRQ to the isrc */
 	isrc->cpuirq = cpuirq;
+
+	/* Can we enable the single isrc dispatch path? */
+	if (cpuirq->refs == 1 && cpuirq->mips_irq != BCM_MIPS_IRQ_SHARED)
+		cpuirq->isrc_solo = isrc;
 
 	return (0);
 }
@@ -583,12 +645,11 @@ bcm_mips_retain_cpu_intr(struct bcm_mips_softc *sc,
  * @param isrc	The interrupt source corresponding to @p res.
  * @param res	The interrupt resource being activated.
  */
-int
+static int
 bcm_mips_release_cpu_intr(struct bcm_mips_softc *sc,
     struct bcm_mips_irqsrc *isrc, struct resource *res)
 {
-	struct bcm_mips_cpuirq	*cpuirq;
-	int			 error;
+	struct bcm_mips_cpuirq *cpuirq;
 
 	BCM_MIPS_LOCK_ASSERT(sc, MA_OWNED);
 
@@ -606,25 +667,14 @@ bcm_mips_release_cpu_intr(struct bcm_mips_softc *sc,
 
 	KASSERT(cpuirq != NULL, ("no assigned IRQ"));
 	KASSERT(cpuirq->refs > 0, ("cpuirq over-release"));
-	cpuirq->refs--;
 
-	/* If this is the last isrc attached to the CPU IRQ, we need
-	 * to tear down our interrupt routine */
-	if (cpuirq->refs == 0) {
-		KASSERT(cpuirq->irq_res != NULL, ("missing IRQ resource"));
-		KASSERT(cpuirq->irq_cookie != NULL, ("not setup"));
-	
-		error = bus_teardown_intr(sc->dev, cpuirq->irq_res,
-		    cpuirq->irq_cookie);
-		if (error) {
-			printf("failed to teardown internal interrupt handler: "
-			    "%d\n", error);
-			return (error);
-		}
-
-		/* Clear now invalid cookie */
-		cpuirq->irq_cookie = NULL;
+	/* Disable single isrc dispatch path */
+	if (cpuirq->refs == 1 && cpuirq->isrc_solo != NULL) {
+		KASSERT(cpuirq->isrc_solo == isrc, ("invalid solo isrc"));
+		cpuirq->isrc_solo = NULL;
 	}
+
+	cpuirq->refs--;
 
 	return (0);
 }
@@ -636,7 +686,9 @@ static device_method_t bcm_mips_methods[] = {
 
 	/* Interrupt controller interface */
 	DEVMETHOD(pic_map_intr,		bcm_mips_pic_map_intr),
-	
+	DEVMETHOD(pic_setup_intr,	bcm_mips_pic_setup_intr),
+	DEVMETHOD(pic_teardown_intr,	bcm_mips_pic_teardown_intr),
+
 	DEVMETHOD_END
 };
 
