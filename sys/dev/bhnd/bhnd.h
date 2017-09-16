@@ -108,6 +108,7 @@ enum {
 
 };
 
+
 /**
  * Per-core IOCTL flags common to all bhnd(4) cores.
  */
@@ -314,6 +315,9 @@ struct bhnd_service_registry {
 	struct sx				lock;		/**< state lock */
 };
 
+/**
+ * bhnd service provider flags.
+ */
 enum {
 	BHND_SPF_INHERITED	= (1<<0),	/**< service provider reference was inherited from
 						     a parent bus, and should be deregistered when the
@@ -550,9 +554,9 @@ bhnd_bus_find_hostb_device(device_t dev) {
 }
 
 /**
- * Register a shared bus provider for a given @p service.
+ * Register a provider for a given @p service.
  *
- * @param dev		The bhnd bus device to register as a service provider
+ * @param dev		The device to register as a service provider
  *			with its parent bus.
  * @param service	The service for which @p dev will be registered.
  *
@@ -571,8 +575,7 @@ bhnd_register_provider(device_t dev, bhnd_service_t service)
  /**
  * Attempt to remove a service provider registration for @p dev.
  *
- * @param dev		The bhnd bus device to be deregistered as a service
- *			provider.
+ * @param dev		The device to be deregistered as a service provider.
  * @param service	The service for which @p dev will be deregistered, or
  *			BHND_SERVICE_INVALID to remove all service registrations
  *			for @p dev.
@@ -591,7 +594,7 @@ bhnd_deregister_provider(device_t dev, bhnd_service_t service)
 /**
  * Retain and return a reference to the registered @p service provider, if any.
  *
- * @param dev		The requesting bhnd bus device.
+ * @param dev		The requesting device.
  * @param service	The service for which a provider should be returned.
  *
  * On success, the caller assumes ownership the returned provider, and
@@ -612,7 +615,7 @@ bhnd_retain_provider(device_t dev, bhnd_service_t service)
  * Release a reference to a provider device previously returned by
  * bhnd_retain_provider().
  *
- * @param dev A bhnd bus child device.
+ * @param dev The requesting device.
  * @param provider The provider to be released.
  * @param service The service for which @p provider was previously retained.
  */

@@ -442,33 +442,32 @@ bhnd_generic_alloc_pmu(device_t dev, device_t child)
 
 	/* Retain PMU reference on behalf of our caller */
 	pmu_dev = bhnd_retain_provider(child, BHND_SERVICE_PMU);
+	if (pmu_dev == NULL) {
+		device_printf(sc->dev, 
+		    "pmu unavailable; cannot allocate request state\n");
+		return (ENXIO);
+	}
 
 	/* Allocate and initialize PMU info */
 	br = malloc(sizeof(struct bhnd_resource), M_BHND, M_NOWAIT);
-	if (br == NULL)
+	if (br == NULL) {
+		bhnd_release_provider(child, pmu_dev, BHND_SERVICE_PMU);
 		return (ENOMEM);
+	}
 
 	br->res = rle->res;
 	br->direct = ((rman_get_flags(rle->res) & RF_ACTIVE) != 0);
 
 	pm = malloc(sizeof(*pm), M_BHND, M_NOWAIT);
 	if (pm == NULL) {
+		bhnd_release_provider(child, pmu_dev, BHND_SERVICE_PMU);
 		free(br, M_BHND);
 		return (ENOMEM);
 	}
 	pm->pm_dev = child;
 	pm->pm_res = br;
 	pm->pm_regs = pmu_regs;
-	pm->pm_pmu = bhnd_retain_provider(child, BHND_SERVICE_PMU);
-
-	if (pm->pm_pmu == NULL) {
-		device_printf(sc->dev, 
-		    "pmu unavailable; cannot allocate request state\n");
-		free(br, M_BHND);
-		free(pm, M_BHND);
-		return (ENXIO);
-	}
-
+	pm->pm_pmu = pmu_dev;
 
 	bhnd_set_pmu_info(child, pm);
 	return (0);
