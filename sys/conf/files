@@ -1194,7 +1194,6 @@ dev/bge/if_bge.c			optional bge
 dev/bhnd/bhnd.c				optional bhnd
 dev/bhnd/bhnd_erom.c			optional bhnd
 dev/bhnd/bhnd_erom_if.m			optional bhnd
-dev/bhnd/bhnd_pic_if.m			optional bhnd
 dev/bhnd/bhnd_subr.c			optional bhnd
 dev/bhnd/bhnd_bus_if.m			optional bhnd
 dev/bhnd/bhndb/bhnd_bhndb.c		optional bhndb bhnd

@@ -252,15 +252,6 @@ bhnd_pci_hostb_attach(device_t dev)
 	if ((error = bhnd_pci_wars_hwup(sc, BHND_PCI_WAR_ATTACH)))
 		goto failed;
 
-	/* Register as the bus interrupt controller */
-	if (!(sc->quirks & BHND_PCI_QUIRK_NO_INTR_MASK)) {
-		if ((error = bhnd_register_provider(dev, BHND_SERVICE_PIC))) {
-			device_printf(dev, "failed to register with bus: %d\n",
-			    error);
-			goto failed;
-		}
-	}
-
 	return (0);
 	
 failed:
@@ -275,9 +266,6 @@ bhnd_pci_hostb_detach(device_t dev)
 	int			 error;
 
 	sc = device_get_softc(dev);
-
-	if ((error = bhnd_deregister_provider(dev, BHND_SERVICE_ANY)))
-		return (error);
 
 	/* Apply suspend/detach work-arounds */
 	if ((error = bhnd_pci_wars_hwdown(sc, BHND_PCI_WAR_DETACH)))

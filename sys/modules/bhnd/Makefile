@@ -20,9 +20,6 @@ SRCS+=	bhnd_sprom_chipc.c \
 	bhnd_pwrctl.c bhnd_pwrctl_subr.c
 SRCS+=	bhnd_chipc_if.c bhnd_chipc_if.h
 
-# PIC
-SRCS+=	bhnd_pic_if.c bhnd_pic_if.h
-
 # PMU
 SRCS+=	bhnd_pmu.c \
 	bhnd_pmu_core.c \
