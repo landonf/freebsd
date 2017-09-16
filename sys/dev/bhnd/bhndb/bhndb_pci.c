@@ -81,6 +81,22 @@ static bus_size_t	bhndb_pci_sprom_size(struct bhndb_pci_softc *sc);
 
 #define	BHNDB_PCI_MSI_COUNT	1
 
+#define	BHNDB_PCI_QUIRK(_device, _rev, _flags)	{			\
+	{ BHND_MATCH_CORE(BHND_MFGID_BCM, BHND_COREID_ ## _device),	\
+	  BHND_MATCH_CORE_REV(_rev) },					\
+	_flags,								\
+}
+
+/* Quirks specific to a particular PCI host bridge core */
+static struct bhndb_pci_quirk {
+	struct bhnd_core_match	match;	/**< core match descriptor */
+	uint32_t		quirks;	/**< quirk flags */
+} bhndb_pci_quirks[] = {
+	/* PCI cores (rev <= 5) do not provide interrupt status/mask
+	 * registers. */
+	BHNDB_PCI_QUIRK(PCI,	HWREV_LTE(5),	BHNDB_PCI_QUIRK_NO_INTR_MASK),
+};
+
 /** 
  * Default bhndb_pci implementation of device_probe().
  * 
@@ -137,6 +153,7 @@ static int
 bhndb_pci_attach(device_t dev)
 {
 	struct bhndb_pci_softc	*sc;
+	struct bhnd_core_info	*pci_core;
 	int			 error, reg;
 
 	sc = device_get_softc(dev);
@@ -147,6 +164,44 @@ bhndb_pci_attach(device_t dev)
 	/* Enable PCI bus mastering */
 	pci_enable_busmaster(sc->parent);
 
+	/* Enable clocks (if required by this hardware) */
+	if ((error = bhndb_enable_pci_clocks(sc)))
+		goto cleanup;
+
+	/* Determine our bridge device class */
+	sc->pci_devclass = BHND_DEVCLASS_PCI;
+	if (pci_find_cap(sc->parent, PCIY_EXPRESS, &reg) == 0)
+		sc->pci_devclass = BHND_DEVCLASS_PCIE;
+	else
+		sc->pci_devclass = BHND_DEVCLASS_PCI;
+
+	/* Perform bridge attach, fully initializing the bridge
+	 * configuration. */
+	if ((error = bhndb_attach(dev, sc->pci_devclass)))
+		goto cleanup;
+
+	/* We should now have populated bridge core info */
+	KASSERT(sc->bhndb.have_br_core, ("missing bridge core info"));
+
+	pci_core = &sc->bhndb.bridge_core;
+	KASSERT(sc->pci_devclass == bhnd_core_class(pci_core),
+	    ("device class mismatch"));
+
+	/* Populate core-specific quirk flags */
+	sc->pci_quirks = 0;
+	for (size_t i = 0; i < nitems(bhndb_pci_quirks); i++) {
+		struct bhndb_pci_quirk *q = &bhndb_pci_quirks[i];
+
+		if (bhnd_core_matches(pci_core, &q->match))
+			sc->pci_quirks |= q->quirks;
+	}
+
+	/* If supported, switch to faster regwin handling */
+	if (sc->bhndb.chipid.chip_type != BHND_CHIPTYPE_SIBA) {
+		atomic_store_rel_ptr((volatile void *) &sc->set_regwin,
+		    (uintptr_t) &bhndb_pci_fast_setregwin);
+	}
+
 	/* Set up interrupt handling */
 	if (bhndb_pci_init_msi(sc) == 0) {
 		device_printf(dev, "Using MSI interrupts on %s\n",
@@ -156,31 +211,6 @@ bhndb_pci_attach(device_t dev)
 		    device_get_nameunit(sc->parent));
 		sc->intr.intr_rid = 0;
 	}
-
-	/* Determine our bridge device class */
-	sc->pci_devclass = BHND_DEVCLASS_PCI;
-	if (pci_find_cap(sc->parent, PCIY_EXPRESS, &reg) == 0)
-		sc->pci_devclass = BHND_DEVCLASS_PCIE;
-	else
-		sc->pci_devclass = BHND_DEVCLASS_PCI;
-
-	/* Enable clocks (if required by this hardware) */
-	if ((error = bhndb_enable_pci_clocks(sc)))
-		goto cleanup;
-
-	/* Perform bridge attach, fully initializing the bridge
-	 * configuration. */
-	if ((error = bhndb_attach(dev, sc->pci_devclass)))
-		goto cleanup;
-
-	/* If supported, switch to faster regwin handling */
-	if (sc->bhndb.chipid.chip_type != BHND_CHIPTYPE_SIBA) {
-		atomic_store_rel_ptr((volatile void *) &sc->set_regwin,
-		    (uintptr_t) &bhndb_pci_fast_setregwin);
-	}
-
-	/* Enable PCI bus mastering */
-	pci_enable_busmaster(sc->parent);
 
 	/* Fix-up power on defaults for SROM-less devices. */
 	bhndb_init_sromless_pci_config(sc);
@@ -376,39 +406,36 @@ static void
 bhndb_init_sromless_pci_config(struct bhndb_pci_softc *sc)
 {
 	struct bhndb_resources		*bres;
+	const struct bhnd_core_info	*pci_core;
 	const struct bhndb_hwcfg	*cfg;
 	const struct bhndb_regwin	*win;
-	struct bhnd_core_info		 hostb_core;
 	struct resource			*core_regs;
 	bus_size_t			 srom_offset;
 	u_int				 pci_cidx, sprom_cidx;
 	uint16_t			 val;
-	int				 error;
 
 	bres = sc->bhndb.bus_res;
 	cfg = bres->cfg;
 
-	/* Find our hostb core */
-	error = BHNDB_GET_HOSTB_CORE(sc->dev, sc->bhndb.bus_dev, &hostb_core);
-	if (error) {
-		device_printf(sc->dev, "no host bridge device found\n");
-		return;
-	}
+	/* Determine the correct register offset for our PCI core */
+	KASSERT(sc->bhndb.have_br_core, ("missing bridge core info"));
+	pci_core = &sc->bhndb.bridge_core;
 
-	if (hostb_core.vendor != BHND_MFGID_BCM)
-		return;
+#define	BRIDGE_CORE_MATCHES(_device)	\
+	bhnd_core_matches(pci_core, &((struct bhnd_core_match) {	\
+	    BHND_MATCH_CORE(BHND_MFGID_BCM, _device)			\
+	}))
 
-	switch (hostb_core.device) {
-	case BHND_COREID_PCI:
+	if (BRIDGE_CORE_MATCHES(BHND_COREID_PCI)) {
 		srom_offset = BHND_PCI_SRSH_PI_OFFSET;
-		break;
-	case BHND_COREID_PCIE:
+	} else if (BRIDGE_CORE_MATCHES(BHND_COREID_PCIE)) {
 		srom_offset = BHND_PCIE_SRSH_PI_OFFSET;
-		break;
-	default:
+	} else {
 		device_printf(sc->dev, "unsupported PCI host bridge device\n");
 		return;
 	}
+
+#undef BRIDGE_CORE_MATCHES
 
 	/* Locate the static register window mapping the PCI core */
 	win = bhndb_regwin_find_core(cfg->register_windows, sc->pci_devclass,
@@ -431,7 +458,7 @@ bhndb_init_sromless_pci_config(struct bhndb_pci_softc *sc)
 
 	/* If it doesn't match host bridge's core index, update the index
 	 * value */
-	pci_cidx = hostb_core.core_idx;
+	pci_cidx = pci_core->core_idx;
 	if (sprom_cidx != pci_cidx) {
 		val &= ~BHND_PCI_SRSH_PI_MASK;
 		val |= (pci_cidx << BHND_PCI_SRSH_PI_SHIFT);
