@@ -172,11 +172,11 @@ siba_bhndb_resume(device_t dev)
 static void
 siba_bhndb_suspend_cfgblocks(device_t dev, struct siba_devinfo *dinfo) {
 	for (u_int i = 0; i < dinfo->core_id.num_cfg_blocks; i++) {
-		if (dinfo->cfg[i] == NULL)
+		if (dinfo->cfg_res[i] == NULL)
 			continue;
 
 		BHNDB_SUSPEND_RESOURCE(device_get_parent(dev), dev,
-		    SYS_RES_MEMORY, dinfo->cfg[i]->res);
+		    SYS_RES_MEMORY, dinfo->cfg_res[i]->res);
 	}
 }
 
@@ -217,11 +217,11 @@ siba_bhndb_resume_child(device_t dev, device_t child)
 
 	/* Resume all resource references to the child's config registers */
 	for (u_int i = 0; i < dinfo->core_id.num_cfg_blocks; i++) {
-		if (dinfo->cfg[i] == NULL)
+		if (dinfo->cfg_res[i] == NULL)
 			continue;
 
 		error = BHNDB_RESUME_RESOURCE(device_get_parent(dev), dev,
-		    SYS_RES_MEMORY, dinfo->cfg[i]->res);
+		    SYS_RES_MEMORY, dinfo->cfg_res[i]->res);
 		if (error) {
 			siba_bhndb_suspend_cfgblocks(dev, dinfo);
 			return (error);
@@ -255,12 +255,12 @@ siba_bhndb_wars_pcie_clear_d11_timeout(struct siba_bhndb_softc *sc)
 
 	/* Clear initiator timeout in D11's CFG0 block */
 	dinfo = device_get_ivars(d11);
-	KASSERT(dinfo->cfg[0] != NULL, ("missing core config mapping"));
+	KASSERT(dinfo->cfg_res[0] != NULL, ("missing core config mapping"));
 
-	imcfg = bhnd_bus_read_4(dinfo->cfg[0], SIBA_CFG0_IMCONFIGLOW);
+	imcfg = bhnd_bus_read_4(dinfo->cfg_res[0], SIBA_CFG0_IMCONFIGLOW);
 	imcfg &= ~SIBA_IMCL_RTO_MASK;
 
-	bhnd_bus_write_4(dinfo->cfg[0], SIBA_CFG0_IMCONFIGLOW, imcfg);
+	bhnd_bus_write_4(dinfo->cfg_res[0], SIBA_CFG0_IMCONFIGLOW, imcfg);
 
 	return (0);
 }
