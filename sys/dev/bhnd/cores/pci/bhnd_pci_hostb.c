@@ -66,8 +66,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/cores/chipc/chipc.h>
 #include <dev/bhnd/cores/chipc/chipcreg.h>
 
-#include "bhnd_pic_if.h"
-
 #include "bhnd_pcireg.h"
 #include "bhnd_pci_hostbvar.h"
 
@@ -646,30 +644,12 @@ bhnd_pci_wars_hwdown(struct bhnd_pcihb_softc *sc, bhnd_pci_war_state state)
 	return (0);
 }
 
-static int
-bhnd_pci_hostb_activate_intr(device_t dev, device_t core, int rid) 
-{
-	// TODO
-	return (ENXIO);
-}
-
-static int
-bhnd_pci_hostb_deactivate_intr(device_t dev, device_t core, int rid) 
-{
-	// TODO
-	return (ENXIO);
-}
-
 static device_method_t bhnd_pci_hostb_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_attach,		bhnd_pci_hostb_attach),
 	DEVMETHOD(device_detach,		bhnd_pci_hostb_detach),
 	DEVMETHOD(device_suspend,		bhnd_pci_hostb_suspend),
-	DEVMETHOD(device_resume,		bhnd_pci_hostb_resume),	
-
-	/* PIC interface */
-	DEVMETHOD(bhnd_pic_activate_intr,	bhnd_pci_hostb_activate_intr),
-	DEVMETHOD(bhnd_pic_deactivate_intr,	bhnd_pci_hostb_deactivate_intr),
+	DEVMETHOD(device_resume,		bhnd_pci_hostb_resume),
 
 	DEVMETHOD_END
 };
