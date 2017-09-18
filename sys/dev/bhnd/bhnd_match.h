@@ -173,34 +173,36 @@ struct bhnd_chip_match {
 	_BHND_COPY_MATCH_FIELD(_src, chip_type),\
 
 /** Set the required chip ID within a bhnd match descriptor */
-#define	BHND_CHIP_ID(_cid)	_BHND_SET_MATCH_FIELD(chip_id,	\
+#define	BHND_MATCH_CHIP_ID(_cid)	_BHND_SET_MATCH_FIELD(chip_id,	\
 					    BHND_CHIPID_ ## _cid)
 
 /** Set the required chip revision range within a bhnd match descriptor */
-#define	BHND_CHIP_REV(_rev)	_BHND_SET_MATCH_FIELD(chip_rev,	\
+#define	BHND_MATCH_CHIP_REV(_rev)	_BHND_SET_MATCH_FIELD(chip_rev,	\
 					    BHND_ ## _rev)
 
 /** Set the required package ID within a bhnd match descriptor */
-#define	BHND_CHIP_PKG(_pkg)	_BHND_SET_MATCH_FIELD(chip_pkg,	\
+#define	BHND_MATCH_CHIP_PKG(_pkg)	_BHND_SET_MATCH_FIELD(chip_pkg,	\
 					    BHND_PKGID_ ## _pkg)
 
 /** Set the required chip type within a bhnd match descriptor */
-#define	BHND_CHIP_TYPE(_type)	_BHND_SET_MATCH_FIELD(chip_type,	\
+#define	BHND_MATCH_CHIP_TYPE(_type)	_BHND_SET_MATCH_FIELD(chip_type,	\
 					    BHND_CHIPTYPE_ ## _type)
 
 /** Set the required chip and package ID within a bhnd match descriptor */
-#define	BHND_CHIP_IP(_cid, _pkg)	\
-    BHND_CHIP_ID(_cid), BHND_CHIP_PKG(_pkg)
+#define	BHND_MATCH_CHIP_IP(_cid, _pkg)	\
+    BHND_MATCH_CHIP_ID(_cid), BHND_MATCH_CHIP_PKG(_pkg)
 
 /** Set the required chip ID, package ID, and revision within a bhnd_device_match
  *  instance */
-#define	BHND_CHIP_IPR(_cid, _pkg, _rev)	\
-    BHND_CHIP_ID(_cid), BHND_CHIP_PKG(_pkg), BHND_CHIP_REV(_rev)
+#define	BHND_MATCH_CHIP_IPR(_cid, _pkg, _rev)	\
+    BHND_MATCH_CHIP_ID(_cid),			\
+    BHND_MATCH_CHIP_PKG(_pkg),			\
+    BHND_MATCH_CHIP_REV(_rev)
 
 /** Set the required chip ID and revision within a bhnd_device_match
  *  instance */
-#define	BHND_CHIP_IR(_cid, _rev)	\
-    BHND_CHIP_ID(_cid), BHND_CHIP_REV(_rev)
+#define	BHND_MATCH_CHIP_IR(_cid, _rev)	\
+    BHND_MATCH_CHIP_ID(_cid), BHND_MATCH_CHIP_REV(_rev)
 
 /**
  * A bhnd(4) board match descriptor.
