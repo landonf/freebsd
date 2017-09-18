@@ -107,6 +107,13 @@ static const struct bhnd_device_quirk bhnd_pci_quirks[] = {
 	BHND_CORE_QUIRK	(HWREV_GTE(11),	BHND_PCI_QUIRK_SBTOPCI2_READMULTI |
 					BHND_PCI_QUIRK_CLKRUN_DSBL),
 
+	/* Backplane interrupt flags must be routed via siba-specific
+	 * SIBA_CFG0_INTVEC configuration register; the BHNDB_PCI_INT_MASK
+	 * PCI configuration register is unsupported. */
+	{{ BHND_MATCH_CHIP_TYPE		(SIBA),
+	   BHND_MATCH_CORE_REV		(HWREV_LTE(5)) },
+		BHND_PCI_QUIRK_SIBA_INTVEC },
+
 	/* BCM4321CB2 boards that require 960ns latency timer override */
 	BHND_BOARD_QUIRK(BCM4321CB2,	BHND_PCI_QUIRK_960NS_LATTIM_OVR),
 	BHND_BOARD_QUIRK(BCM4321CB2_AG,	BHND_PCI_QUIRK_960NS_LATTIM_OVR),

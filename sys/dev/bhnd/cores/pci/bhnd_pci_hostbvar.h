@@ -217,7 +217,14 @@ enum {
 	/**
 	 * The PCIe core should be configured with an MRRS of 512 bytes.
 	 */
-	BHND_PCIE_QUIRK_DEFAULT_MRRS_512	= (1<<20)
+	BHND_PCIE_QUIRK_DEFAULT_MRRS_512	= (1<<20),
+
+	/**
+	 * The PCI (rev <= 5) core does not provide interrupt status/mask
+	 * registers; these siba-only devices require routing backplane
+	 * interrupt flags via the SIBA_CFG0_INTVEC register.
+	 */
+	BHND_PCI_QUIRK_SIBA_INTVEC		= (1<<21),
 };
 
 /**
