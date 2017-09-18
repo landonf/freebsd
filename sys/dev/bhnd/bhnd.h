@@ -250,10 +250,10 @@ struct bhnd_device_quirk {
 	{{ BHND_MATCH_CORE_REV(_rev) }, (_flags) }
 
 #define	BHND_CHIP_QUIRK(_chip, _rev, _flags)	\
-	{{ BHND_CHIP_IR(BCM ## _chip, _rev) }, (_flags) }
+	{{ BHND_MATCH_CHIP_IR(BCM ## _chip, _rev) }, (_flags) }
 
 #define	BHND_PKG_QUIRK(_chip, _pkg, _flags)	\
-	{{ BHND_CHIP_IP(BCM ## _chip, BCM ## _chip ## _pkg) }, (_flags) }
+	{{ BHND_MATCH_CHIP_IP(BCM ## _chip, BCM ## _chip ## _pkg) }, (_flags) }
 
 #define	BHND_BOARD_QUIRK(_board, _flags)	\
 	{{ BHND_MATCH_BOARD_TYPE(_board) },	\

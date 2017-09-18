@@ -738,6 +738,9 @@ bhnd_chip_matches(const struct bhnd_chipid *chip,
 	    !bhnd_hwrev_matches(chip->chip_rev, &desc->chip_rev))
 		return (false);
 
+	if (desc->m.match.chip_type && chip->chip_type != desc->chip_type)
+		return (false);
+
 	return (true);
 }
 
