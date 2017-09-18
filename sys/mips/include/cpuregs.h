@@ -570,6 +570,8 @@
 #define	MIPS_INTCTL_IPTI_SHIFT	29
 #define	MIPS_INTCTL_IPPCI_MASK	0x1C000000	/* bits 26..29 perf counter intr # */
 #define	MIPS_INTCTL_IPPCI_SHIFT	26
+#define	MIPS_INTCTL_VS_MASK	0x000001F0	/* bits 5..9 vector spacing */
+#define	MIPS_INTCTL_VS_SHIFT	4
 
 /*
  * Config Register Fields
