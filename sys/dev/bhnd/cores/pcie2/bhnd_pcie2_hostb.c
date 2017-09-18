@@ -68,6 +68,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/pci/pcireg.h>
 #include <dev/pci/pcivar.h>
 
+#include "bhnd_hostb_if.h"
+
 #include "bhnd_pcie2_reg.h"
 #include "bhnd_pcie2_hostbvar.h"
 
@@ -133,6 +135,12 @@ bhnd_pcie2_hostb_attach(device_t dev)
 	if ((error = bhnd_pcie2_wars_hwup(sc)))
 		goto failed;
 
+	/* Register ourselves with the bus */
+	if ((error = bhnd_register_provider(dev, BHND_SERVICE_HOSTB))) {
+		device_printf(sc->dev, "failed to register with the bus : %d\n",
+		    error);
+		goto failed;
+	}
 
 	return (0);
 	
@@ -148,6 +156,10 @@ bhnd_pcie2_hostb_detach(device_t dev)
 	int				 error;
 
 	sc = device_get_softc(dev);
+
+	/* Remove our hostb service registration */
+	if ((error = bhnd_deregister_provider(dev, BHND_SERVICE_ANY)))
+		return (error);
 
 	/* Apply suspend/detach work-arounds */
 	if ((error = bhnd_pcie2_wars_hwdown(sc)))

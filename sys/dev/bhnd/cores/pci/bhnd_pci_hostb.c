@@ -66,6 +66,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/cores/chipc/chipc.h>
 #include <dev/bhnd/cores/chipc/chipcreg.h>
 
+#include "bhnd_hostb_if.h"
+
 #include "bhnd_pcireg.h"
 #include "bhnd_pci_hostbvar.h"
 
@@ -249,6 +251,13 @@ bhnd_pci_hostb_attach(device_t dev)
 	if ((error = bhnd_pci_wars_hwup(sc, BHND_PCI_WAR_ATTACH)))
 		goto failed;
 
+	/* Register ourselves with the bus */
+	if ((error = bhnd_register_provider(dev, BHND_SERVICE_HOSTB))) {
+		device_printf(sc->dev, "failed to register with the bus : %d\n",
+		    error);
+		goto failed;
+	}
+
 	return (0);
 	
 failed:
@@ -263,6 +272,10 @@ bhnd_pci_hostb_detach(device_t dev)
 	int			 error;
 
 	sc = device_get_softc(dev);
+
+	/* Remove our hostb service registration */
+	if ((error = bhnd_deregister_provider(dev, BHND_SERVICE_ANY)))
+		return (error);
 
 	/* Apply suspend/detach work-arounds */
 	if ((error = bhnd_pci_wars_hwdown(sc, BHND_PCI_WAR_DETACH)))
