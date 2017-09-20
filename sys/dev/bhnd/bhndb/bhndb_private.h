@@ -137,6 +137,17 @@ const struct bhndb_hw_priority	*bhndb_hw_priority_find_core(
 				     const struct bhndb_hw_priority *table,
 				     struct bhnd_core_info *core);
 
+/**
+ * Attached interrupt handler state
+ */
+struct bhndb_intr_handler {
+	device_t	 ih_owner;	/**< child device */
+	device_t	 ih_hostb;	/**< retained reference to hostb service
+					     provider */
+	void		*ih_cookiep;	/**< hostb-assigned cookiep */
+
+	STAILQ_ENTRY(bhndb_intr_handler) ih_link;
+};
 
 /**
  * Dynamic register window allocation reference.

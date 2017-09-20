@@ -63,8 +63,12 @@ __FBSDID("$FreeBSD$");
 #include <dev/pci/pcireg.h>
 #include <dev/pci/pcivar.h>
 
+#include <dev/bhnd/bhndb/bhndb_pcireg.h>
+
 #include <dev/bhnd/cores/chipc/chipc.h>
 #include <dev/bhnd/cores/chipc/chipcreg.h>
+
+#include <dev/bhnd/siba/sibareg.h>
 
 #include "bhnd_hostb_if.h"
 
@@ -239,6 +243,9 @@ bhnd_pci_hostb_attach(device_t dev)
 	sc->quirks = bhnd_device_quirks(dev, bhnd_pci_devs,
 	    sizeof(bhnd_pci_devs[0]));
 
+	STAILQ_INIT(&sc->intr_srcs);
+	STAILQ_INIT(&sc->intr_handlers);
+
 	/* Find the host PCI bridge device */
 	sc->pci_dev = bhnd_find_bridge_root(dev, devclass_find("pci"));
 	if (sc->pci_dev == NULL) {
@@ -246,9 +253,13 @@ bhnd_pci_hostb_attach(device_t dev)
 		return (ENXIO);
 	}
 
+	BHND_PCIHB_LOCK_INIT(sc);
+
 	/* Common setup */
-	if ((error = bhnd_pci_generic_attach(dev)))
+	if ((error = bhnd_pci_generic_attach(dev))) {
+		BHND_PCIHB_LOCK_DESTROY(sc);
 		return (error);
+	}
 
 	/* Apply early single-shot work-arounds */
 	if ((error = bhnd_pci_wars_early_once(sc)))
@@ -269,6 +280,7 @@ bhnd_pci_hostb_attach(device_t dev)
 	
 failed:
 	bhnd_pci_generic_detach(dev);
+	BHND_PCIHB_LOCK_DESTROY(sc);
 	return (error);
 }
 
@@ -288,7 +300,13 @@ bhnd_pci_hostb_detach(device_t dev)
 	if ((error = bhnd_pci_wars_hwdown(sc, BHND_PCI_WAR_DETACH)))
 		return (error);
 
-	return (bhnd_pci_generic_detach(dev));
+	if ((error = bhnd_pci_generic_detach(dev)))
+		return (error);
+
+	// XXX: clean up intr_srcs/intr_handlers?
+
+	BHND_PCIHB_LOCK_DESTROY(sc);
+	return (0);
 }
 
 static int
@@ -324,6 +342,314 @@ bhnd_pci_hostb_resume(device_t dev)
 	}
 
 	return (0);
+}
+
+/** Enable the given interrupt */
+static int
+bhnd_pci_hostb_enable_intr(struct bhnd_pcihb_softc *sc, u_int intr)
+{
+	uint32_t	intmask;
+	int		error;
+
+	BHND_PCIHB_LOCK_ASSERT(sc, MA_OWNED);
+
+	/* Must fit within the 32-bit interrupt mask */
+	if (intr > (sizeof(intmask)*8)-1) {
+		device_printf(sc->dev, "invalid interrupt vector: %u\n", intr);
+		return (EINVAL);
+	}
+
+	/* Legacy PCI (rev <= 5) SBINTVEC implementation */
+	if (sc->quirks & BHND_PCI_QUIRK_SIBA_INTVEC) {
+		error = bhnd_read_config(sc->dev, SIBA_CFG0_INTVEC, &intmask,
+		    sizeof(intmask));
+		if (error) {
+			device_printf(sc->dev, "failed to read SBINTVEC: %d\n",
+			    error);
+			return (error);
+		}
+
+		intmask |= (1 << intr);
+
+		error = bhnd_write_config(sc->dev, SIBA_CFG0_INTVEC, &intmask,
+		    sizeof(intmask));
+		if (error) {
+			device_printf(sc->dev, "failed to write SBINTVEC: %d\n",
+			    error);
+			return (error);
+		}
+	
+		return (0);
+	}
+
+	/* Standard implementation */
+	intmask = pci_read_config(sc->pci_dev, BHNDB_PCI_INT_MASK, 4);
+	intmask |= (1 << intr);
+	pci_write_config(sc->pci_dev, BHNDB_PCI_INT_MASK, 4, intmask);
+
+	return (0);
+}
+
+/** Disable the given interrupt */
+static int
+bhnd_pci_hostb_disable_intr(struct bhnd_pcihb_softc *sc, u_int intr)
+{
+	uint32_t	intmask;
+	int		error;
+
+	BHND_PCIHB_LOCK_ASSERT(sc, MA_OWNED);
+
+	/* Must fit within the 32-bit interrupt mask */
+	if (intr > (sizeof(intmask)*8)-1) {
+		device_printf(sc->dev, "invalid interrupt vector: %u\n", intr);
+		return (EINVAL);
+	}
+
+	/* Legacy PCI (rev <= 5) SBINTVEC implementation */
+	if (sc->quirks & BHND_PCI_QUIRK_SIBA_INTVEC) {
+		error = bhnd_read_config(sc->dev, SIBA_CFG0_INTVEC, &intmask,
+		    sizeof(intmask));
+		if (error) {
+			device_printf(sc->dev, "failed to read SBINTVEC: %d\n",
+			    error);
+			return (error);
+		}
+
+		intmask &= ~(1 << intr);
+
+		error = bhnd_write_config(sc->dev, SIBA_CFG0_INTVEC, &intmask,
+		    sizeof(intmask));
+		if (error) {
+			device_printf(sc->dev, "failed to write SBINTVEC: %d\n",
+			    error);
+			return (error);
+		}
+	
+		return (0);
+	}
+
+	/* Standard implementation */
+	intmask = pci_read_config(sc->pci_dev, BHNDB_PCI_INT_MASK, 4);
+	intmask &= ~(1 << intr);
+	pci_write_config(sc->pci_dev, BHNDB_PCI_INT_MASK, 4, intmask);
+
+	return (0);
+}
+
+/**
+ * Return an existing interrupt source entry for @p intr, or NULL if
+ * not found.
+ * 
+ * @param sc	Driver instance state.
+ * @param intr	The interrupt vector to fetch.
+ * 
+ * @retval non-NULL	if found.
+ * @retval NULL		if no interrupt entry is registered for @p intr.
+ */
+static struct bhnd_pcihb_isrc *
+bhnd_pci_hostb_get_isrc(struct bhnd_pcihb_softc *sc, u_int intr)
+{
+	struct bhnd_pcihb_isrc *isrc;
+
+	BHND_PCIHB_LOCK_ASSERT(sc, MA_OWNED);
+
+	STAILQ_FOREACH(isrc, &sc->intr_srcs, link) {
+		if (isrc->intr == intr)
+			return (isrc);
+	}
+
+	/* Not found */
+	return (NULL);
+}
+
+/**
+ * Register an interrupt source entry for @p intr.
+ *
+ * If an entry has already been registered, the existing entry will be
+ * returned.
+ * 
+ * @param sc	Driver instance state.
+ * @param intr	The interrupt vector to be registered.
+ * 
+ * @retval non-NULL	if found.
+ * @retval NULL		if no interrupt entry is registered for @p intr.
+ */
+static struct bhnd_pcihb_isrc *
+bhnd_pci_hostb_register_isrc(struct bhnd_pcihb_softc *sc, u_int intr)
+{
+	struct bhnd_pcihb_isrc *isrc, *isrc_new;
+
+	BHND_PCIHB_LOCK_ASSERT(sc, MA_NOTOWNED);
+
+	BHND_PCIHB_LOCK(sc);
+	if ((isrc = bhnd_pci_hostb_get_isrc(sc, intr)) != NULL) {
+		BHND_PCIHB_UNLOCK(sc);
+		return (isrc);
+	}
+	BHND_PCIHB_UNLOCK(sc);
+
+	isrc_new = malloc(sizeof(*isrc_new), M_BHND, M_WAITOK);
+	isrc_new->intr = intr;
+	isrc_new->refs = 0;
+
+	BHND_PCIHB_LOCK(sc);
+	/* Was an entry registered concurrently? */
+	if ((isrc = bhnd_pci_hostb_get_isrc(sc, intr)) != NULL) {
+		BHND_PCIHB_UNLOCK(sc);
+		free(isrc_new, M_BHND);
+
+		return (isrc);
+	}
+
+	/* Add our entry to the list */
+	STAILQ_INSERT_HEAD(&sc->intr_srcs, isrc_new, link);
+
+	BHND_PCIHB_UNLOCK(sc);
+
+	return (isrc_new);
+}
+
+/**
+ * Enable the given interrupt source.
+ * 
+ * @param	sc	Driver instance state.
+ * @param	isrc	The interrupt source to be enabled.
+ * 
+ * @retval 0		success
+ * @retval non-zero	if an error occurs enabling the interrupt source,
+ *			a regular unix error code will be returned.
+ */
+static int
+bhnd_pci_hostb_enable_isrc(struct bhnd_pcihb_softc *sc,
+    struct bhnd_pcihb_isrc *isrc)
+{
+	int error;
+
+	BHND_PCIHB_LOCK_ASSERT(sc, MA_OWNED);
+
+	if (isrc->refs == UINTMAX)
+		return (ENOMEM); /* would overflow refcount */
+
+	/* If this is the first reference, enable the interrupt */
+	if (isrc->refs == 0) {
+		if ((error = bhnd_pci_hostb_enable_intr(isrc->intr)))
+			return (error);
+	}
+
+	/* Bump the reference count */
+	isrc->refs++;
+}
+
+/**
+ * Disable the given interrupt source.
+ * 
+ * @param	sc	Driver instance state.
+ * @param	isrc	The interrupt source to be disabled.
+ * 
+ * @retval 0		success
+ * @retval non-zero	if an error occurs disabling the interrupt source,
+ *			a regular unix error code will be returned.
+ */
+static void
+bhnd_pci_hostb_disable_isrc(struct bhnd_pcihb_softc *sc,
+    struct bhnd_pcihb_isrc *isrc)
+{
+	int error;
+
+	BHND_PCIHB_LOCK_ASSERT(sc, MA_OWNED);
+
+	KASSERT(isrc->refs > 0, ("refcount overrelease"));
+
+	/* If this is the last reference, disable the interrupt */
+	if (isrc->refs == 1) {
+		if ((error = bhnd_pci_hostb_disable_intr(isrc->intr)))
+			return (error);
+	}
+
+	/* Decrement the reference count */
+	isrc->refs--;
+
+	return (0);
+}
+
+/**
+ * Walk up the device tree from @p child until we find the actual bhnd(4) core
+ * that's attached to the bridged bus.
+ */
+static device_t
+bhnd_pci_hostb_find_bhnd_core(struct bhnd_pcihb_softc *sc, device_t child)
+{
+	device_t core, bus, bhnd_bus;
+
+	bhnd_bus = device_get_parent(sc->dev);
+	KASSERT(device_get_devclass(bhnd_bus) == devclass_find("bhnd"),
+	    ("attached to non-bhnd bus %s", device_get_nameunit(bhnd_bus)));
+
+	core = child;
+	while ((bus = device_get_parent(core)) != NULL) {
+		if (bus == bhnd_bus)
+			return (core);
+
+		core = bus;
+	}
+
+	panic("%s not a child of our bhnd(4) bus", device_get_nameunit(child));
+}
+
+/* BHND_HOSTB_SETUP_INTR() */
+static int
+bhnd_pci_hostb_setup_intr(device_t hostb, device_t parent, device_t child,
+    bus_setup_intr_t *setup_intr, struct resource *r, int flags,
+    driver_filter_t filter, driver_intr_t handler, void *arg, void **cookiep)
+{
+	struct bhnd_pcihb_softc	*sc;
+	struct bhnd_pcihb_isrc	*isrc;
+	struct bhnd_pcihb_intr	*ih;
+	device_t		 core;
+	u_int			 intr;
+	int			 error;
+
+	sc = device_get_softc(hostb);
+
+	/* Find the actual core attached to our common bhnd(4) bus */
+	core = bhnd_pci_hostb_find_bhnd_core(child);
+
+	/* Fetch or create a corresponding isrc entry */
+	if (sc->quirks & BHND_PCI_QUIRK_SIBA_INTVEC) {
+		if ((error = bhnd_get_intr_ivec(core, 0, &intr)))
+			return (error);
+	} else {
+		intr = bhnd_get_core_index(core);
+	}
+
+	isrc = bhnd_pci_hostb_register_isrc(sc, intr);
+
+	/* Allocate our interrupt handler descriptor */
+	ih = malloc(sizeof(*ih), M_BHND, M_WAITOK | M_ZERO);
+	ih->isrc = isrc;
+	ih->cookiep = NULL;
+
+	error = setup_intr(parent, child, r, flags, filter, handler, arg,
+	    &ih->cookiep);
+	if (error) {
+		free(ih, M_BHND);
+		return (error);
+	}
+
+	/* Enable our isrc */
+	if ((error = bhnd_pci_hostb_enable_isrc(sc, isrc))) {
+		free(ih, M_BHND);
+	}
+	
+}
+
+/* BHND_HOSTB_TEARDOWN_INTR() */
+static int
+bhnd_pci_hostb_teardown_intr(device_t hostb, device_t parent, device_t child,
+    bus_teardown_intr_t *teardown_intr,
+	struct resource *r, void *cookiep)
+{
+	return (teardown_intr(parent, child, r, cookiep));
 }
 
 /**
@@ -669,6 +995,10 @@ static device_method_t bhnd_pci_hostb_methods[] = {
 	DEVMETHOD(device_detach,		bhnd_pci_hostb_detach),
 	DEVMETHOD(device_suspend,		bhnd_pci_hostb_suspend),
 	DEVMETHOD(device_resume,		bhnd_pci_hostb_resume),
+
+	/* BHND host bridge interface */
+	DEVMETHOD(bhnd_hostb_setup_intr,	bhnd_pci_hostb_setup_intr),
+	DEVMETHOD(bhnd_hostb_teardown_intr,	bhnd_pci_hostb_teardown_intr),
 
 	DEVMETHOD_END
 };

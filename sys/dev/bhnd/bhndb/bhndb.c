@@ -60,6 +60,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/nvram/bhnd_nvram.h>
 
 #include "bhnd_chipc_if.h"
+#include "bhnd_hostb_if.h"
 #include "bhnd_nvram_if.h"
 
 #include "bhndbvar.h"
@@ -529,6 +530,7 @@ bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass)
 	if ((error = bhnd_service_registry_init(&sc->services)))
 		return (error);
 
+	STAILQ_INIT(&sc->bus_intrs);
 	BHNDB_LOCK_INIT(sc);
 	
 	/* Populate generic resource allocation state. */
@@ -2110,6 +2112,125 @@ bhndb_bus_barrier(device_t dev, device_t child, struct bhnd_resource *r,
 }
 
 /**
+ * Return the interrupt handler entry corresponding to @p cookiep, or NULL
+ * if no entry is found.
+ */
+static struct bhndb_intr_handler *
+bhndb_get_intr_handler(struct bhndb_softc *sc, void *cookiep)
+{
+	struct bhndb_intr_handler *ih;
+
+	BHNDB_LOCK_ASSERT(sc, MA_OWNED);
+
+	STAILQ_FOREACH(ih, &sc->bus_intrs, ih_link) {
+		if (ih == cookiep)
+			return (ih);
+	}
+
+	/* Not found */
+	return (NULL);
+}
+
+/**
+ * Default bhndb(4) implementation of BUS_SETUP_INTR().
+ */
+static int
+bhndb_setup_intr(device_t dev, device_t child, struct resource *r,
+    int flags, driver_filter_t filter, driver_intr_t handler, void *arg,
+    void **cookiep)
+{
+	struct bhndb_softc		*sc;
+	struct bhndb_intr_handler	*ih;
+	int				 error;
+
+	sc = device_get_softc(dev);
+
+	/* Allocate new ihandler entry  */
+	ih = malloc(sizeof(*ih), M_BHND, M_WAITOK);
+	ih->ih_owner = child;
+	ih->ih_hostb = NULL;
+	ih->ih_cookiep = NULL;
+
+	/* We must have a host bridge provider */
+	ih->ih_hostb = bhnd_retain_provider(child, BHND_SERVICE_HOSTB);
+	if (ih->ih_hostb == NULL) {
+		device_printf(dev, "no host bridge provider registered\n");
+		error = EINVAL;
+		goto failed;
+	}
+
+	/* Delegate interrupt setup to the host bridge driver */
+	error = BHND_HOSTB_SETUP_INTR(ih->ih_hostb, dev, child,
+	    bus_generic_setup_intr, r, flags, filter, handler, arg,
+	    &ih->ih_cookiep);
+	if (error)
+		goto failed;
+
+	/* Add to our interrupt handler list */
+	BHNDB_LOCK(sc);
+	STAILQ_INSERT_HEAD(&sc->bus_intrs, ih, ih_link);
+	BHNDB_UNLOCK(sc);
+
+	*cookiep = ih;
+	return (0);
+
+failed:
+	if (ih->ih_hostb != NULL) {
+		bhnd_release_provider(child, ih->ih_hostb, BHND_SERVICE_HOSTB);
+	}
+
+	free(ih, M_BHND);
+	return (EINVAL);
+
+}
+
+/**
+ * Default bhndb(4) implementation of BUS_TEARDOWN_INTR().
+ */
+static int
+bhndb_teardown_intr(device_t dev, device_t child, struct resource *r,
+    void *cookiep)
+{
+	struct bhndb_softc		*sc;
+	struct bhndb_intr_handler	*ih;
+	int				 error;
+
+	sc = device_get_softc(dev);
+
+	/* Find and claim the interrupt handler entry */
+	BHNDB_LOCK(sc);
+
+	ih = bhndb_get_intr_handler(sc, cookiep);
+	if (ih == NULL) {
+		panic("%s requested teardown of invalid cookiep %p",
+		    device_get_nameunit(child), cookiep);
+	}
+
+	STAILQ_REMOVE(&sc->bus_intrs, ih, bhndb_intr_handler, ih_link);
+
+	BHNDB_UNLOCK(sc);
+
+	/* Delegate interrupt teardown to the host bridge driver */
+	error = BHND_HOSTB_TEARDOWN_INTR(ih->ih_hostb, dev, child,
+	    bus_generic_teardown_intr, r, ih->ih_cookiep);
+	if (error) {
+		/* If teardown fails, we need to reinsert the handler entry
+		 * to allow later reattempt */
+		BHNDB_LOCK(sc);
+		STAILQ_INSERT_HEAD(&sc->bus_intrs, ih, ih_link);
+		BHNDB_UNLOCK(sc);
+
+		return (error);
+	}
+
+	/* Release our hostb reference and handler entry */
+	bhnd_release_provider(ih->ih_owner, ih->ih_hostb, BHND_SERVICE_HOSTB);
+	free(ih, M_BHND);
+
+	return (0);
+}
+
+/**
  * Default bhndb(4) implementation of BUS_GET_DMA_TAG().
  */
 static bus_dma_tag_t
@@ -2140,8 +2261,8 @@ static device_method_t bhndb_methods[] = {
 	DEVMETHOD(bus_activate_resource,	bhndb_activate_resource),
 	DEVMETHOD(bus_deactivate_resource,	bhndb_deactivate_resource),
 
-	DEVMETHOD(bus_setup_intr,		bus_generic_setup_intr),
-	DEVMETHOD(bus_teardown_intr,		bus_generic_teardown_intr),
+	DEVMETHOD(bus_setup_intr,		bhndb_setup_intr),
+	DEVMETHOD(bus_teardown_intr,		bhndb_teardown_intr),
 	DEVMETHOD(bus_config_intr,		bus_generic_config_intr),
 	DEVMETHOD(bus_bind_intr,		bus_generic_bind_intr),
 	DEVMETHOD(bus_describe_intr,		bus_generic_describe_intr),

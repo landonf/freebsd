@@ -43,6 +43,7 @@
 #include <sys/malloc.h>
 #include <sys/mutex.h>
 #include <sys/rman.h>
+#include <sys/queue.h>
 
 #include <dev/bhnd/bhndvar.h>
 #include "bhndb.h"
@@ -56,6 +57,7 @@
 DECLARE_CLASS(bhndb_driver);
 
 struct bhndb_resources;
+struct bhndb_ihandler;
 
 int	bhndb_attach(device_t dev, bhnd_devclass_t bridge_devclass);
 
@@ -104,6 +106,7 @@ struct bhndb_softc {
 
 	struct mtx			 sc_mtx;	/**< resource lock. */
 	struct bhndb_resources		*bus_res;	/**< bus resource state */
+	STAILQ_HEAD(,bhndb_intr_handler) bus_intrs;	/**< attached child interrupt handlers */
 };
 
 #endif /* _BHND_BHNDBVAR_H_ */

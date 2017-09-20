@@ -38,6 +38,9 @@
 
 #include <sys/param.h>
 #include <sys/bus.h>
+#include <sys/lock.h>
+#include <sys/mutex.h>
+#include <sys/queue.h>
 
 #include "bhnd_pcivar.h"
 
@@ -228,13 +231,37 @@ enum {
 };
 
 /**
+ * bhnd_pci_hostb interrupt source.
+ */
+struct bhnd_pcihb_isrc {
+	u_int	intr;	/**< core index (or interrupt vector if quirk SIBA_INTVEC) */
+	u_int	refs;	/**< active references */
+
+	STAILQ_ENTRY(bhnd_pcihb_isrc) link;
+};
+
+/**
+ * bhnd_pci_hostb interrupt handler state.
+ */
+struct bhnd_pcihb_intr {
+	struct bhnd_pcihb_isrc	*isrc;		/**< interrupt source */
+	void			*cookiep;	/**< cookiep for this interrupt handler */
+
+	STAILQ_ENTRY(bhnd_pcihb_intr) link;
+};
+
+/**
  * bhnd_pci_hostb driver instance state.
  */
 struct bhnd_pcihb_softc {
-	struct bhnd_pci_softc	common;		/**< common bhnd_pci state */
-	device_t		dev;
-	device_t		pci_dev;	/**< host PCI device */
-	uint32_t		quirks;		/**< hostb device quirks */
+	struct bhnd_pci_softc		common;		/**< common bhnd_pci state */
+	device_t			dev;
+	device_t			pci_dev;	/**< host PCI device */
+	uint32_t			quirks;		/**< hostb device quirks */
+
+	struct mtx			mtx;		/**< state mutex */
+	STAILQ_HEAD(,bhnd_pcihb_isrc)	intr_srcs;	/**< active interrupt sources */
+	STAILQ_HEAD(,bhnd_pcihb_intr)	intr_handlers;	/**< attached interrupt handlers */
 
 	/** BHND_PCIE_QUIRK_ASPM_OVR state. */
 	struct {
@@ -259,5 +286,13 @@ struct bhnd_pcihb_softc {
 	} sdr9_quirk_polarity;
 };
 
+
+#define	BHND_PCIHB_LOCK_INIT(sc) \
+	mtx_init(&(sc)->mtx, device_get_nameunit((sc)->dev), \
+	    "bhnd_pci_hostb", MTX_DEF)
+#define	BHND_PCIHB_LOCK(sc)			mtx_lock(&(sc)->mtx)
+#define	BHND_PCIHB_UNLOCK(sc)			mtx_unlock(&(sc)->mtx)
+#define	BHND_PCIHB_LOCK_ASSERT(sc, what)	mtx_assert(&(sc)->mtx, what)
+#define	BHND_PCIHB_LOCK_DESTROY(sc)		mtx_destroy(&(sc)->mtx)
 
 #endif /* _BHND_CORES_PCI_BHND_PCI_HOSTBVAR_H_ */
