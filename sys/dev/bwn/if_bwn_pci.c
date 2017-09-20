@@ -246,31 +246,42 @@ bwn_pci_get_bhndb_hwprio(device_t dev, device_t child)
 	return (sc->devcfg->bridge_hwprio);
 }
 
-static bool
-bwn_pci_is_core_disabled(device_t dev, device_t child,
+static uint32_t
+bwn_pci_get_core_flags(device_t dev, device_t child,
     struct bhnd_core_info *core)
 {
 	struct bwn_pci_softc	*sc;
+	uint32_t		 flags;
 
 	sc = device_get_softc(dev);
 
+	flags = 0;
 	switch (bhnd_core_class(core)) {
 	case BHND_DEVCLASS_WLAN:
 		if (core->unit > 0 && !(sc->quirks & BWN_QUIRK_WLAN_DUALCORE))
-			return (true);
+			return (BHNDB_CORE_UNPOPULATED);
 
-		return (false);
+		/* Enable interrupt routing */
+		return (BHNDB_CORE_ENABLE_INTR);
 
 	case BHND_DEVCLASS_ENET:
 	case BHND_DEVCLASS_ENET_MAC:
 	case BHND_DEVCLASS_ENET_PHY:
-		return ((sc->quirks & BWN_QUIRK_ENET_HW_UNPOPULATED) != 0);
-		
+		if (sc->quirks & BWN_QUIRK_ENET_HW_UNPOPULATED)
+			return (BHNDB_CORE_UNPOPULATED);
+
+		/* Enable interrupt routing */
+		return (BHNDB_CORE_ENABLE_INTR);
+
 	case BHND_DEVCLASS_USB_HOST:
-		return ((sc->quirks & BWN_QUIRK_USBH_UNPOPULATED) != 0);
+		if (sc->quirks & BWN_QUIRK_USBH_UNPOPULATED)
+			return (BHNDB_CORE_UNPOPULATED);
+
+		/* Enable interrupt routing */
+		return (BHNDB_CORE_ENABLE_INTR);
 
 	default:
-		return (false);
+		return (0);
 	}
 }
 
@@ -290,7 +301,7 @@ static device_method_t bwn_pci_methods[] = {
 	DEVMETHOD(bhndb_bus_get_generic_hwcfg,	bwn_pci_get_generic_hwcfg),
 	DEVMETHOD(bhndb_bus_get_hardware_table,	bwn_pci_get_bhndb_hwtable),
 	DEVMETHOD(bhndb_bus_get_hardware_prio,	bwn_pci_get_bhndb_hwprio),
-	DEVMETHOD(bhndb_bus_is_core_disabled,	bwn_pci_is_core_disabled),
+	DEVMETHOD(bhndb_bus_get_core_flags,	bwn_pci_get_core_flags),
 
 	DEVMETHOD_END
 };

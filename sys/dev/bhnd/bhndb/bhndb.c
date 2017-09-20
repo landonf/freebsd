@@ -1191,11 +1191,13 @@ bhndb_is_core_disabled(device_t dev, device_t child,
 {
 	struct bhndb_softc	*sc;
 	struct bhnd_core_info	*bridge_core;
+	uint32_t		 bus_flags;
 
 	sc = device_get_softc(dev);
 
 	/* Try to defer to the bhndb bus parent */
-	if (BHNDB_BUS_IS_CORE_DISABLED(sc->parent_dev, dev, core))
+	bus_flags = BHNDB_BUS_GET_CORE_FLAGS(sc->parent_dev, sc->dev, core);
+	if (bus_flags & BHNDB_CORE_UNPOPULATED)
 		return (true);
 
 	/* Otherwise, we treat bridge-capable cores as unpopulated if they're
