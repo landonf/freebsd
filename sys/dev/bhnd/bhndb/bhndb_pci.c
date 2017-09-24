@@ -415,7 +415,6 @@ bhndb_pci_detach(device_t dev)
 	return (0);
 }
 
-
 /**
  * Use the generic PCI bridge hardware configuration to enumerate the bridged
  * bhnd(4) bus' core table.
@@ -491,10 +490,6 @@ bhndb_pci_read_core_table(device_t dev, struct bhnd_chipid *chipid,
 		error = ENXIO;
 		goto failed;
 	}
-
-	char chipd_str[BHND_CHIPID_MAX_NAMELEN];
-	bhnd_format_chip_id(chipd_str, sizeof(chipd_str), cid.chip_id);
-	device_printf(dev, "found %s\n", chipd_str);
 
 	/* Allocate EROM parser */
 	if ((erom = bhnd_erom_alloc(erom_class, &cid, &pio.eio)) == NULL) {
