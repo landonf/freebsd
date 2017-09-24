@@ -73,6 +73,10 @@ __FBSDID("$FreeBSD$");
 struct bhndb_pci_eio;
 
 static int		bhndb_pci_init_msi(struct bhndb_pci_softc *sc);
+static int		bhndb_pci_read_core_table(device_t dev,
+			    struct bhnd_chipid *chipid,
+			    struct bhnd_core_info **cores, u_int *ncores,
+			    bhnd_erom_class_t **eromcls);
 static int		bhndb_pci_add_children(struct bhndb_pci_softc *sc);
 
 static bool		bhndb_is_pcie_attached(device_t dev);
@@ -115,128 +119,6 @@ struct bhndb_pci_eio {
 	bhnd_addr_t			 addr;		/**< mapped address */
 	bhnd_size_t			 size;		/**< mapped size */
 };
-
-/**
- * Use the generic PCI bridge hardware configuration to enumerate the bridged
- * bhnd(4) bus' core table.
- * 
- * @note This function may be safely called prior to device attach, (e.g.
- * from DEVICE_PROBE).
- * @note This function requires exclusive ownership over allocating and 
- * configuring host bridge resources, and should only be called prior to
- * completion of device attach and full configuration of the bridge.
- * 
- * @param	dev		The bhndb_pci bridge device.
- * @param[out]	chipid		On success, the parsed chip identification.
- * @param[out]	cores		On success, the enumerated core table. The
- *				caller is responsible for freeing this table via
- *				bhndb_pci_free_core_table().
- * @param[out]	ncores		On success, the number of cores found in
- *				@p cores.
- * @param[out]	eromcls		On success, a pointer to the erom class used to
- *				parse the device enumeration table. This
- *				argument may be NULL if the class is not
- *				desired.
- * 
- * @retval 0		success
- * @retval non-zero	if enumerating the bridged bhnd(4) bus fails, a regular
- * 			unix error code will be returned.
- */
-static int
-bhndb_pci_read_core_table(device_t dev, struct bhnd_chipid *chipid,
-    struct bhnd_core_info **cores, u_int *ncores,
-    bhnd_erom_class_t **eromcls)
-{
-	const struct bhndb_hwcfg	*cfg;
-	struct bhndb_host_resources	*hr;
-	struct bhndb_pci_eio		 pio;
-	struct bhnd_core_info		*erom_cores;
-	const struct bhnd_chipid	*hint;
-	struct bhnd_chipid		 cid;
-	bhnd_erom_class_t		*erom_class;
-	bhnd_erom_t			*erom;
-	device_t			 parent_dev;
-	u_int				 erom_ncores;
-	int				 error;
-
-	parent_dev = device_get_parent(dev);
-	erom = NULL;
-	erom_cores = NULL;
-
-	/* Fetch our chipid hint (if any) and generic hardware configuration */
-	cfg = BHNDB_BUS_GET_GENERIC_HWCFG(parent_dev, dev);
-	hint = BHNDB_BUS_GET_CHIPID(parent_dev, dev);
-
-	/* Allocate our host resources */
-	if ((error = bhndb_alloc_host_resources(parent_dev, cfg, &hr)))
-		return (error);
-
-	/* Initialize our erom I/O state */
-	if ((error = bhndb_pci_eio_init(&pio, dev, parent_dev, hr)))
-		goto failed;
-
-	/* Map the first bus core from our bridged bhnd(4) bus */
-	error = bhndb_pci_eio_map(&pio.eio, BHND_DEFAULT_CHIPC_ADDR,
-	    BHND_DEFAULT_CORE_SIZE);
-	if (error)
-		goto failed;
-
-	/* Probe for a usable EROM class, and read the chip identifier */
-	erom_class = bhnd_erom_probe_driver_classes(device_get_devclass(dev),
-	    &pio.eio, hint, &cid);
-	if (erom_class == NULL) {
-		device_printf(dev, "device enumeration unsupported; no "
-		    "compatible driver found\n");
-
-		error = ENXIO;
-		goto failed;
-	}
-
-	char chipd_str[BHND_CHIPID_MAX_NAMELEN];
-	bhnd_format_chip_id(chipd_str, sizeof(chipd_str), cid.chip_id);
-	device_printf(dev, "found %s\n", chipd_str);
-
-	/* Allocate EROM parser */
-	if ((erom = bhnd_erom_alloc(erom_class, &cid, &pio.eio)) == NULL) {
-		device_printf(dev, "failed to allocate device enumeration "
-		    "table parser\n");
-		error = ENXIO;
-		goto failed;
-	}
-
-	/* Read the full core table */
-	error = bhnd_erom_get_core_table(erom, &erom_cores, &erom_ncores);
-	if (error) {
-		device_printf(dev, "error fetching core table: %d\n", error);
-		goto failed;
-	}
-
-	/* Provide the results to our caller */
-	*cores = malloc(sizeof(erom_cores[0]) * erom_ncores, M_BHND, M_WAITOK);
-	memcpy(*cores, erom_cores, sizeof(erom_cores[0]) * erom_ncores);
-	*ncores = erom_ncores;
-
-	*chipid = cid;
-	if (eromcls != NULL)
-		*eromcls = erom_class;
-
-	/* Clean up */
-	bhnd_erom_free_core_table(erom, erom_cores);
-	bhnd_erom_free(erom);
-	bhndb_release_host_resources(hr);
-
-	return (0);
-
-failed:
-	if (erom_cores != NULL)
-		bhnd_erom_free_core_table(erom, erom_cores);
-
-	if (erom != NULL)
-		bhnd_erom_free(erom);
-
-	bhndb_release_host_resources(hr);
-	return (error);
-}
 
 /** 
  * Default bhndb_pci implementation of device_probe().
@@ -413,6 +295,124 @@ bhndb_pci_detach(device_t dev)
 	pci_disable_busmaster(sc->parent);
 
 	return (0);
+}
+
+/**
+ * Use the generic PCI bridge hardware configuration to enumerate the bridged
+ * bhnd(4) bus' core table.
+ * 
+ * @note This function may be safely called prior to device attach, (e.g.
+ * from DEVICE_PROBE).
+ * @note This function requires exclusive ownership over allocating and 
+ * configuring host bridge resources, and should only be called prior to
+ * completion of device attach and full configuration of the bridge.
+ * 
+ * @param	dev		The bhndb_pci bridge device.
+ * @param[out]	chipid		On success, the parsed chip identification.
+ * @param[out]	cores		On success, the enumerated core table. The
+ *				caller is responsible for freeing this table via
+ *				bhndb_pci_free_core_table().
+ * @param[out]	ncores		On success, the number of cores found in
+ *				@p cores.
+ * @param[out]	eromcls		On success, a pointer to the erom class used to
+ *				parse the device enumeration table. This
+ *				argument may be NULL if the class is not
+ *				desired.
+ * 
+ * @retval 0		success
+ * @retval non-zero	if enumerating the bridged bhnd(4) bus fails, a regular
+ * 			unix error code will be returned.
+ */
+static int
+bhndb_pci_read_core_table(device_t dev, struct bhnd_chipid *chipid,
+    struct bhnd_core_info **cores, u_int *ncores,
+    bhnd_erom_class_t **eromcls)
+{
+	const struct bhndb_hwcfg	*cfg;
+	struct bhndb_host_resources	*hr;
+	struct bhndb_pci_eio		 pio;
+	struct bhnd_core_info		*erom_cores;
+	const struct bhnd_chipid	*hint;
+	struct bhnd_chipid		 cid;
+	bhnd_erom_class_t		*erom_class;
+	bhnd_erom_t			*erom;
+	device_t			 parent_dev;
+	u_int				 erom_ncores;
+	int				 error;
+
+	parent_dev = device_get_parent(dev);
+	erom = NULL;
+	erom_cores = NULL;
+
+	/* Fetch our chipid hint (if any) and generic hardware configuration */
+	cfg = BHNDB_BUS_GET_GENERIC_HWCFG(parent_dev, dev);
+	hint = BHNDB_BUS_GET_CHIPID(parent_dev, dev);
+
+	/* Allocate our host resources */
+	if ((error = bhndb_alloc_host_resources(parent_dev, cfg, &hr)))
+		return (error);
+
+	/* Initialize our erom I/O state */
+	if ((error = bhndb_pci_eio_init(&pio, dev, parent_dev, hr)))
+		goto failed;
+
+	/* Map the first bus core from our bridged bhnd(4) bus */
+	error = bhndb_pci_eio_map(&pio.eio, BHND_DEFAULT_CHIPC_ADDR,
+	    BHND_DEFAULT_CORE_SIZE);
+	if (error)
+		goto failed;
+
+	/* Probe for a usable EROM class, and read the chip identifier */
+	erom_class = bhnd_erom_probe_driver_classes(device_get_devclass(dev),
+	    &pio.eio, hint, &cid);
+	if (erom_class == NULL) {
+		device_printf(dev, "device enumeration unsupported; no "
+		    "compatible driver found\n");
+
+		error = ENXIO;
+		goto failed;
+	}
+
+	/* Allocate EROM parser */
+	if ((erom = bhnd_erom_alloc(erom_class, &cid, &pio.eio)) == NULL) {
+		device_printf(dev, "failed to allocate device enumeration "
+		    "table parser\n");
+		error = ENXIO;
+		goto failed;
+	}
+
+	/* Read the full core table */
+	error = bhnd_erom_get_core_table(erom, &erom_cores, &erom_ncores);
+	if (error) {
+		device_printf(dev, "error fetching core table: %d\n", error);
+		goto failed;
+	}
+
+	/* Provide the results to our caller */
+	*cores = malloc(sizeof(erom_cores[0]) * erom_ncores, M_BHND, M_WAITOK);
+	memcpy(*cores, erom_cores, sizeof(erom_cores[0]) * erom_ncores);
+	*ncores = erom_ncores;
+
+	*chipid = cid;
+	if (eromcls != NULL)
+		*eromcls = erom_class;
+
+	/* Clean up */
+	bhnd_erom_free_core_table(erom, erom_cores);
+	bhnd_erom_free(erom);
+	bhndb_release_host_resources(hr);
+
+	return (0);
+
+failed:
+	if (erom_cores != NULL)
+		bhnd_erom_free_core_table(erom, erom_cores);
+
+	if (erom != NULL)
+		bhnd_erom_free(erom);
+
+	bhndb_release_host_resources(hr);
+	return (error);
 }
 
 static int
