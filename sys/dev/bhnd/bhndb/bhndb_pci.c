@@ -103,6 +103,22 @@ static uint32_t		bhndb_pci_eio_read(struct bhnd_erom_io *eio,
 
 #define	BHNDB_PCI_MSI_COUNT	1
 
+#define	BHNDB_PCI_QUIRK(_device, _rev, _flags)	{			\
+	{ BHND_MATCH_CORE(BHND_MFGID_BCM, BHND_COREID_ ## _device),	\
+	  BHND_MATCH_CORE_REV(_rev) },					\
+	_flags,								\
+}
+
+/* Quirks specific to a particular PCI host bridge core */
+static struct bhndb_pci_quirk {
+	struct bhnd_core_match	match;	/**< core match descriptor */
+	uint32_t		quirks;	/**< quirk flags */
+} bhndb_pci_quirks[] = {
+	/* PCI cores (rev <= 5) do not provide interrupt status/mask
+	 * registers. */
+	BHNDB_PCI_QUIRK(PCI,	HWREV_LTE(5),	BHNDB_PCI_QUIRK_NO_INTR_MASK),
+};
+
 /* bhndb_pci erom I/O implementation */
 struct bhndb_pci_eio {
 	struct bhnd_erom_io		 eio;
@@ -305,6 +321,7 @@ bhndb_pci_attach(device_t dev)
 	sc->dev = dev;
 	sc->parent = device_get_parent(dev);
 	sc->set_regwin = NULL;
+	sc->pci_quirks = 0;
 
 	cores = NULL;
 
@@ -345,11 +362,18 @@ bhndb_pci_attach(device_t dev)
 		sc->set_regwin = bhndb_pci_fast_setregwin;
 	}
 
-	/* Determine our host bridge core */
+	/* Determine our host bridge core and populate our quirk flags */
 	error = bhndb_find_hostb_core(cores, ncores, sc->pci_devclass,
 	    &hostb_core);
 	if (error)
 		goto cleanup;
+
+	for (size_t i = 0; i < nitems(bhndb_pci_quirks); i++) {
+		struct bhndb_pci_quirk *q = &bhndb_pci_quirks[i];
+
+		if (bhnd_core_matches(&hostb_core, &q->match))
+			sc->pci_quirks |= q->quirks;
+	}
 
 	/* Perform bridge attach */
 	error = bhndb_attach(dev, &cid, cores, ncores, &hostb_core, erom_class);

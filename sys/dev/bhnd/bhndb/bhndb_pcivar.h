@@ -48,6 +48,20 @@ struct bhndb_pci_softc;
 typedef int (*bhndb_pci_set_regwin_t)(device_t dev, device_t pci_dev,
 	         const struct bhndb_regwin *rw, bhnd_addr_t addr);
 
+/**
+ * PCI/PCIe bridge-level device quirks
+ */
+enum {
+	/** No quirks */
+	BHNDB_PCI_QUIRK_NONE			= 0,
+
+	/**
+	 * The PCI (rev <= 5) core does not provide interrupt status/mask
+	 * registers.
+	 */
+	BHNDB_PCI_QUIRK_NO_INTR_MASK		= (1<<1),
+};
+
 /* bhndb_pci interrupt state */
 struct bhndb_pci_intr {
 	int		msi_count;	/**< MSI count, or 0 */
@@ -58,7 +72,8 @@ struct bhndb_pci_softc {
 	struct bhndb_softc	bhndb;		/**< parent softc */
 	device_t		dev;		/**< bridge device */
 	device_t		parent;		/**< parent PCI device */
-	bhnd_devclass_t		pci_devclass;	/**< PCI core's devclass */
+	bhnd_devclass_t         pci_devclass;   /**< PCI core's devclass */
+	uint32_t		pci_quirks;	/**< PCI bridge-level quirks */
 	struct bhndb_pci_intr	intr;		/**< PCI interrupt config */
 
 	bhndb_pci_set_regwin_t	set_regwin;	/**< regwin handler */
