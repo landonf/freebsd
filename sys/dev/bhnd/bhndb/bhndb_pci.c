@@ -356,16 +356,6 @@ bhndb_pci_attach(device_t dev)
 	if (error)
 		goto cleanup;
 
-	/* Set up interrupt handling */
-	if (bhndb_pci_init_msi(sc) == 0) {
-		device_printf(dev, "Using MSI interrupts on %s\n",
-		    device_get_nameunit(sc->parent));
-	} else {
-		device_printf(dev, "Using INTx interrupts on %s\n",
-		    device_get_nameunit(sc->parent));
-		sc->intr.intr_rid = 0;
-	}
-
 	/* Fix-up power on defaults for SROM-less devices. */
 	bhndb_init_sromless_pci_config(sc);
 
@@ -578,7 +568,6 @@ bhndb_init_sromless_pci_config(struct bhndb_pci_softc *sc)
 	cfg = bres->cfg;
 
 	/* Determine the correct register offset for our PCI core */
-	KASSERT(sc->bhndb.have_br_core, ("missing bridge core info"));
 	pci_core = &sc->bhndb.bridge_core;
 
 #define	BRIDGE_CORE_MATCHES(_device)	\
@@ -866,7 +855,6 @@ bhndb_disable_pci_clocks(device_t dev)
 {
 	device_t	pci_dev;
 	uint32_t	gpio_out, gpio_en;
-	int		reg;
 
 	pci_dev = device_get_parent(dev);
 

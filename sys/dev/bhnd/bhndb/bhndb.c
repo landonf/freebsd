@@ -874,7 +874,6 @@ bhndb_is_core_disabled(device_t dev, device_t child,
     struct bhnd_core_info *core)
 {
 	struct bhndb_softc	*sc;
-	struct bhnd_core_info	*bridge_core;
 	uint32_t		 bus_flags;
 
 	sc = device_get_softc(dev);

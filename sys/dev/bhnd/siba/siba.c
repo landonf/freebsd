@@ -741,6 +741,55 @@ siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
 	return (0);
 }
 
+
+/**
+ * Register all interrupt descriptors for @p dinfo. Must be called after
+ * configuration blocks have been mapped.
+ *
+ * @param dev The siba bus device.
+ * @param child The siba child device.
+ * @param dinfo The device info instance on which to register all interrupt
+ * descriptor entries.
+ * @param r A resource mapping the enumeration table block for @p di.
+ */
+static int
+siba_register_interrupts(device_t dev, device_t child,
+    struct siba_devinfo *dinfo, struct bhnd_resource *r)
+{
+	uint32_t	tpsflag;
+	int		error;
+
+	/* Is backplane interrupt distribution enabled for this core? */
+	tpsflag = bhnd_bus_read_4(r, SB0_REG_ABS(SIBA_CFG0_TPSFLAG));
+	if ((tpsflag & SIBA_TPS_F0EN0) == 0) {
+		dinfo->intr_en = false;
+		return (0);
+	}
+
+	/* Have one interrupt */
+	dinfo->intr_en = true;
+	dinfo->intr.flag = SIBA_REG_GET(tpsflag, TPS_NUM0);
+	dinfo->intr.mapped = false;
+	dinfo->intr.irq = 0;
+	dinfo->intr.rid = -1;
+
+	/* Map the interrupt */
+	error = BHND_BUS_MAP_INTR(dev, child, 0 /* single intr is always 0 */,
+	    &dinfo->intr.irq);
+	if (error) {
+		device_printf(dev, "failed mapping interrupt line for core %u: "
+		    "%d\n", dinfo->core_id.core_info.core_idx, error);
+		return (error);
+	}
+	dinfo->intr.mapped = true;
+
+	/* Update the resource list */
+	dinfo->intr.rid = resource_list_add_next(&dinfo->resources, SYS_RES_IRQ,
+	    dinfo->intr.irq, dinfo->intr.irq, 1);
+
+	return (0);
+}
+
 /**
  * Map per-core configuration blocks for @p dinfo.
  *
@@ -801,57 +850,6 @@ siba_map_cfg_resources(device_t dev, struct siba_devinfo *dinfo)
 			return (ENXIO);
 		}
 	}
-
-	return (0);
-}
-
-/**
- * Register all interrupt descriptors for @p dinfo. Must be called after
- * configuration blocks have been mapped.
- *
- * @param dev The siba bus device.
- * @param child The siba child device.
- * @param dinfo The device info instance on which to register all interrupt
- * descriptor entries.
- */
-static int
-siba_register_interrupts(device_t dev, device_t child,
-    struct siba_devinfo *dinfo)
-{
-	uint32_t	tpsflag;
-	int		error;
-
-	/* Core must have a valid cfg0 block */
-	if (dinfo->cfg_res[0] == NULL)
-		return (0);
-
-	/* Is backplane interrupt distribution enabled for this core? */
-	tpsflag = bhnd_bus_read_4(dinfo->cfg_res[0], SIBA_CFG0_TPSFLAG);
-	if ((tpsflag & SIBA_TPS_F0EN0) == 0) {
-		dinfo->intr_en = false;
-		return (0);
-	}
-
-	/* Have one interrupt */
-	dinfo->intr_en = true;
-	dinfo->intr.flag = SIBA_REG_GET(tpsflag, TPS_NUM0);
-	dinfo->intr.mapped = false;
-	dinfo->intr.irq = 0;
-	dinfo->intr.rid = -1;
-
-	/* Map the interrupt */
-	error = BHND_BUS_MAP_INTR(dev, child, 0 /* single intr is always 0 */,
-	    &dinfo->intr.irq);
-	if (error) {
-		device_printf(dev, "failed mapping interrupt line for core %u: "
-		    "%d\n", dinfo->core_id.core_info.core_idx, error);
-		return (error);
-	}
-	dinfo->intr.mapped = true;
-
-	/* Update the resource list */
-	dinfo->intr.rid = resource_list_add_next(&dinfo->resources, SYS_RES_IRQ,
-	    dinfo->intr.irq, dinfo->intr.irq, 1);
 
 	return (0);
 }
@@ -930,6 +928,7 @@ siba_add_children(device_t dev)
 	 */
 	for (u_int i = 0; i < chipid->ncores; i++) {
 		struct siba_devinfo	*dinfo;
+		device_t		 child;
 		uint32_t		 idhigh, idlow;
 		rman_res_t		 r_count, r_end, r_start;
 
@@ -962,14 +961,16 @@ siba_add_children(device_t dev)
 		}
 
 		/* Add the child device */
-		children[i] = BUS_ADD_CHILD(dev, 0, NULL, -1);
-		if (children[i] == NULL) {
+		child = BUS_ADD_CHILD(dev, 0, NULL, -1);
+		if (child == NULL) {
 			error = ENXIO;
 			goto failed;
 		}
 
+		children[i] = child;
+
 		/* Initialize per-device bus info */
-		if ((dinfo = device_get_ivars(children[i])) == NULL) {
+		if ((dinfo = device_get_ivars(child)) == NULL) {
 			error = ENXIO;
 			goto failed;
 		}
@@ -981,14 +982,18 @@ siba_add_children(device_t dev)
 		if ((error = siba_register_addrspaces(dev, dinfo, r)))
 			goto failed;
 
+		/* Register the core's interrupts */
+		if ((error = siba_register_interrupts(dev, child, dinfo, r)))
+			goto failed;
+
 		/* Unmap the core's register block */
 		bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
 		r = NULL;
 
 		/* If pins are floating or the hardware is otherwise
 		 * unpopulated, the device shouldn't be used. */
-		if (bhnd_is_hw_disabled(children[i]))
-			device_disable(children[i]);
+		if (bhnd_is_hw_disabled(child))
+			device_disable(child);
 	}
 
 	/* Map all valid core's config register blocks and perform interrupt
@@ -996,7 +1001,6 @@ siba_add_children(device_t dev)
 	for (u_int i = 0; i < chipid->ncores; i++) {
 		struct siba_devinfo	*dinfo;
 		device_t		 child;
-		int			 nintr;
 
 		child = children[i];
 
@@ -1009,10 +1013,6 @@ siba_add_children(device_t dev)
 		/* Map the core's config blocks */
 		if ((error = siba_map_cfg_resources(dev, dinfo)))
 			goto failed;
-
-		/* Register the core's interrupts */
-		if ((error = siba_register_interrupts(dev, child, dinfo)))
-			goto cleanup;
 
 		/* Issue bus callback for fully initialized child. */
 		BHND_BUS_CHILD_ADDED(dev, child);
