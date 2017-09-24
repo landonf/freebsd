@@ -66,8 +66,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/cores/chipc/chipc.h>
 #include <dev/bhnd/cores/chipc/chipcreg.h>
 
-#include "bhnd_hostb_if.h"
-
 #include "bhnd_pcireg.h"
 #include "bhnd_pci_hostbvar.h"
 
@@ -106,13 +104,6 @@ static const struct bhnd_device_quirk bhnd_pci_quirks[] = {
 	BHND_CORE_QUIRK	(HWREV_ANY,	BHND_PCI_QUIRK_SBTOPCI2_PREF_BURST),
 	BHND_CORE_QUIRK	(HWREV_GTE(11),	BHND_PCI_QUIRK_SBTOPCI2_READMULTI |
 					BHND_PCI_QUIRK_CLKRUN_DSBL),
-
-	/* Backplane interrupt flags must be routed via siba-specific
-	 * SIBA_CFG0_INTVEC configuration register; the BHNDB_PCI_INT_MASK
-	 * PCI configuration register is unsupported. */
-	{{ BHND_MATCH_CHIP_TYPE		(SIBA),
-	   BHND_MATCH_CORE_REV		(HWREV_LTE(5)) },
-		BHND_PCI_QUIRK_SIBA_INTVEC },
 
 	/* BCM4321CB2 boards that require 960ns latency timer override */
 	BHND_BOARD_QUIRK(BCM4321CB2,	BHND_PCI_QUIRK_960NS_LATTIM_OVR),
@@ -258,13 +249,6 @@ bhnd_pci_hostb_attach(device_t dev)
 	if ((error = bhnd_pci_wars_hwup(sc, BHND_PCI_WAR_ATTACH)))
 		goto failed;
 
-	/* Register ourselves with the bus */
-	if ((error = bhnd_register_provider(dev, BHND_SERVICE_HOSTB))) {
-		device_printf(sc->dev, "failed to register with the bus : %d\n",
-		    error);
-		goto failed;
-	}
-
 	return (0);
 	
 failed:
@@ -279,10 +263,6 @@ bhnd_pci_hostb_detach(device_t dev)
 	int			 error;
 
 	sc = device_get_softc(dev);
-
-	/* Remove our hostb service registration */
-	if ((error = bhnd_deregister_provider(dev, BHND_SERVICE_ANY)))
-		return (error);
 
 	/* Apply suspend/detach work-arounds */
 	if ((error = bhnd_pci_wars_hwdown(sc, BHND_PCI_WAR_DETACH)))
@@ -668,7 +648,7 @@ static device_method_t bhnd_pci_hostb_methods[] = {
 	DEVMETHOD(device_attach,		bhnd_pci_hostb_attach),
 	DEVMETHOD(device_detach,		bhnd_pci_hostb_detach),
 	DEVMETHOD(device_suspend,		bhnd_pci_hostb_suspend),
-	DEVMETHOD(device_resume,		bhnd_pci_hostb_resume),
+	DEVMETHOD(device_resume,		bhnd_pci_hostb_resume),	
 
 	DEVMETHOD_END
 };
