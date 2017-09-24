@@ -57,10 +57,46 @@ enum {
 
 	/**
 	 * The PCI (rev <= 5) core does not provide interrupt status/mask
-	 * registers.
+	 * registers; these siba-only devices require routing backplane
+	 * interrupt flags via the SIBA_CFG0_INTVEC register.
 	 */
-	BHNDB_PCI_QUIRK_NO_INTR_MASK		= (1<<1),
+	BHNDB_PCI_QUIRK_SIBA_INTVEC		= (1<<1),
 };
+
+/** bhndb_pci quirk table entry */
+struct bhndb_pci_quirk {
+	struct bhnd_chip_match	chip_desc;	/**< chip match descriptor */
+	struct bhnd_core_match	core_desc;	/**< core match descriptor */
+	uint32_t		quirks;		/**< quirk flags */
+};
+
+#define	BHNDB_PCI_QUIRK(_device, _rev, _flags)	{			\
+	{ BHND_MATCH_ANY },						\
+	{ BHND_MATCH_CORE(BHND_MFGID_BCM, BHND_COREID_ ## _device),	\
+	  BHND_MATCH_CORE_REV(_rev) },					\
+	_flags,								\
+}
+
+#define	BHNDB_PCI_QUIRK_END	\
+	{ { BHND_MATCH_ANY },  { BHND_MATCH_ANY }, 0 }
+
+#define	BHNDB_PCI_IS_QUIRK_END(_q)	\
+	(BHND_MATCH_IS_ANY(&(_q)->core_desc) &&	\
+	 BHND_MATCH_IS_ANY(&(_q)->chip_desc) &&	\
+	 (_q)->quirks == 0)
+
+/** bhndb_pci core table entry */
+struct bhndb_pci_core {
+	struct bhnd_core_match	 match;		/**< core match descriptor */
+	struct bhndb_pci_quirk	*quirks;	/**< quirk table */
+};
+
+#define	BHNDB_PCI_CORE(_device, _quirks) {				\
+	{ BHND_MATCH_CORE(BHND_MFGID_BCM, BHND_COREID_ ## _device) },	\
+	_quirks								\
+}
+#define	BHNDB_PCI_CORE_END		{ { BHND_MATCH_ANY }, NULL }
+#define	BHNDB_PCI_IS_CORE_END(_c)	BHND_MATCH_IS_ANY(&(_c)->match)
 
 /* bhndb_pci interrupt state */
 struct bhndb_pci_intr {

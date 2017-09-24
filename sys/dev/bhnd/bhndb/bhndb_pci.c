@@ -73,8 +73,11 @@ __FBSDID("$FreeBSD$");
 struct bhndb_pci_eio;
 
 static int		bhndb_pci_init_msi(struct bhndb_pci_softc *sc);
+static int		bhndb_pci_read_core_table(device_t dev,
+			    struct bhnd_chipid *chipid,
+			    struct bhnd_core_info **cores, u_int *ncores,
+			    bhnd_erom_class_t **eromcls);
 static int		bhndb_pci_add_children(struct bhndb_pci_softc *sc);
-
 
 static bool		bhndb_is_pcie_attached(device_t dev);
 
@@ -103,23 +106,19 @@ static uint32_t		bhndb_pci_eio_read(struct bhnd_erom_io *eio,
 
 #define	BHNDB_PCI_MSI_COUNT	1
 
-#define	BHNDB_PCI_QUIRK(_device, _rev, _flags)	{			\
-	{ BHND_MATCH_CORE(BHND_MFGID_BCM, BHND_COREID_ ## _device),	\
-	  BHND_MATCH_CORE_REV(_rev) },					\
-	_flags,								\
-}
+static struct bhndb_pci_quirk	bhndb_pci_quirks[];
 
-/* Quirks specific to a particular PCI host bridge core */
-static struct bhndb_pci_quirk {
-	struct bhnd_core_match	match;	/**< core match descriptor */
-	uint32_t		quirks;	/**< quirk flags */
-} bhndb_pci_quirks[] = {
-	/* PCI cores (rev <= 5) do not provide interrupt status/mask
-	 * registers. */
-	BHNDB_PCI_QUIRK(PCI,	HWREV_LTE(5),	BHNDB_PCI_QUIRK_NO_INTR_MASK),
+static struct bhndb_pci_core bhndb_pci_cores[] = {
+	BHNDB_PCI_CORE(PCI,	bhndb_pci_quirks),
+	BHNDB_PCI_CORE(PCIE,	NULL),
+#ifdef notyet
+	BHNDB_PCI_CORE(PCIE2,	NULL),
+#endif
+
+	BHNDB_PCI_CORE_END
 };
 
-/* bhndb_pci erom I/O implementation */
+/* bhndb_pci erom I/O instance state */
 struct bhndb_pci_eio {
 	struct bhnd_erom_io		 eio;
 	device_t			 dev;		/**< bridge device */
@@ -132,6 +131,290 @@ struct bhndb_pci_eio {
 	bhnd_addr_t			 addr;		/**< mapped address */
 	bhnd_size_t			 size;		/**< mapped size */
 };
+
+static struct bhndb_pci_quirk bhndb_pci_quirks[] = {
+	/* Backplane interrupt flags must be routed via siba-specific
+	 * SIBA_CFG0_INTVEC configuration register; the BHNDB_PCI_INT_MASK
+	 * PCI configuration register is unsupported. */
+	{{ BHND_MATCH_CHIP_TYPE		(SIBA) },
+	 { BHND_MATCH_CORE_REV		(HWREV_LTE(5)) },
+		BHNDB_PCI_QUIRK_SIBA_INTVEC },
+
+	BHNDB_PCI_QUIRK_END
+};
+
+/**
+ * Return the device table entry for @p ci, or NULL if none.
+ */
+static struct bhndb_pci_core *
+bhndb_pci_find_core(struct bhnd_core_info *ci)
+{
+	for (size_t i = 0; !BHNDB_PCI_IS_CORE_END(&bhndb_pci_cores[i]); i++) {
+		struct bhndb_pci_core *entry = &bhndb_pci_cores[i];
+
+		if (bhnd_core_matches(ci, &entry->match))
+			return (entry);
+	}
+
+	return (NULL);
+}
+
+/**
+ * Return all quirk flags for the given @p cid and @p ci.
+ */
+static uint32_t
+bhndb_pci_get_core_quirks(struct bhnd_chipid *cid, struct bhnd_core_info *ci)
+{
+	struct bhndb_pci_core	*entry;
+	struct bhndb_pci_quirk	*qtable;
+	uint32_t		 quirks;
+
+	quirks = 0;
+
+	/* No core entry? */
+	if ((entry = bhndb_pci_find_core(ci)) == NULL)
+		return (quirks);
+
+	/* No quirks? */
+	if ((qtable = entry->quirks) == NULL)
+		return (quirks);
+
+	for (size_t i = 0; !BHNDB_PCI_IS_QUIRK_END(&qtable[i]); i++) {
+		struct bhndb_pci_quirk *q = &bhndb_pci_quirks[i];
+
+		if (!bhnd_chip_matches(cid, &q->chip_desc))
+			continue;
+
+		if (!bhnd_core_matches(ci, &q->core_desc))
+			continue;
+
+		quirks |= q->quirks;
+	}
+
+	return (quirks);
+}
+
+/** 
+ * Default bhndb_pci implementation of device_probe().
+ * 
+ * Verifies that the parent is a PCI/PCIe device.
+ */
+static int
+bhndb_pci_probe(device_t dev)
+{
+	struct bhnd_chipid	 cid;
+	struct bhnd_core_info	*cores, hostb_core;
+	struct bhndb_pci_core	*entry;
+	bhnd_devclass_t		 hostb_devclass;
+	u_int			 ncores;
+	device_t		 parent;
+	devclass_t		 parent_bus, pci;
+	int			 error;
+
+	cores = NULL;
+
+	/* Our parent must be a PCI/PCIe device. */
+	pci = devclass_find("pci");
+	parent = device_get_parent(dev);
+	parent_bus = device_get_devclass(device_get_parent(parent));
+
+	if (parent_bus != pci)
+		return (ENXIO);
+
+	/* Determine hostb core's expected device class */
+	if (bhndb_is_pcie_attached(dev))
+		hostb_devclass = BHND_DEVCLASS_PCIE;
+	else
+		hostb_devclass = BHND_DEVCLASS_PCI;
+
+	/* Enable clocks */
+	if ((error = bhndb_enable_pci_clocks(dev)))
+		return (error);
+
+	/* Identify the chip and enumerate the bridged cores */
+	error = bhndb_pci_read_core_table(dev, &cid, &cores, &ncores, NULL);
+	if (error)
+		goto cleanup;
+
+	/* Search our core table for the host bridge core */
+	error = bhndb_find_hostb_core(cores, ncores, hostb_devclass,
+	    &hostb_core);
+	if (error)
+		goto cleanup;
+
+	/* Look for a matching core table entry */
+	if ((entry = bhndb_pci_find_core(&hostb_core)) == NULL) {
+		error = ENXIO;
+		goto cleanup;
+	}
+
+	device_set_desc(dev, "PCI-BHND bridge");
+
+	/* fall-through */
+	error = BUS_PROBE_DEFAULT;
+
+cleanup:
+	bhndb_enable_pci_clocks(dev);
+	if (cores != NULL)
+		free(cores, M_BHND);
+
+	return (error);
+}
+
+/* Configure MSI interrupts */
+static int
+bhndb_pci_init_msi(struct bhndb_pci_softc *sc)
+{
+	int error;
+
+	/* Is MSI available? */
+	if (pci_msi_count(sc->parent) < BHNDB_PCI_MSI_COUNT)
+		return (ENXIO);
+
+	/* Allocate expected message count */
+	sc->intr.msi_count = BHNDB_PCI_MSI_COUNT;
+	if ((error = pci_alloc_msi(sc->parent, &sc->intr.msi_count))) {
+		device_printf(sc->dev, "failed to allocate MSI interrupts: "
+		    "%d\n", error);
+		return (error);
+	}
+
+	if (sc->intr.msi_count < BHNDB_PCI_MSI_COUNT)
+		return (ENXIO);
+
+	/* MSI uses resource IDs starting at 1 */
+	sc->intr.intr_rid = 1;
+
+	return (0);
+}
+
+static int
+bhndb_pci_attach(device_t dev)
+{
+	struct bhndb_pci_softc	*sc;
+	struct bhnd_chipid	 cid;
+	struct bhnd_core_info	*cores, hostb_core;
+	bhnd_erom_class_t	*erom_class;
+	u_int			 ncores;
+	int			 error;
+
+	sc = device_get_softc(dev);
+	sc->dev = dev;
+	sc->parent = device_get_parent(dev);
+	sc->set_regwin = NULL;
+	sc->pci_quirks = 0;
+
+	cores = NULL;
+
+	/* Enable PCI bus mastering */
+	pci_enable_busmaster(sc->parent);
+
+	/* Set up PCI interrupt handling */
+	if (bhndb_pci_init_msi(sc) == 0) {
+		device_printf(dev, "Using MSI interrupts on %s\n",
+		    device_get_nameunit(sc->parent));
+	} else {
+		device_printf(dev, "Using INTx interrupts on %s\n",
+		    device_get_nameunit(sc->parent));
+		sc->intr.intr_rid = 0;
+	}
+
+	/* Determine our bridge device class */
+	if (bhndb_is_pcie_attached(dev))
+		sc->pci_devclass = BHND_DEVCLASS_PCIE;
+	else
+		sc->pci_devclass = BHND_DEVCLASS_PCI;
+
+	/* Enable clocks (if required by this hardware) */
+	if ((error = bhndb_enable_pci_clocks(sc->dev)))
+		goto cleanup;
+
+	/* Identify the chip and enumerate the bridged cores */
+	error = bhndb_pci_read_core_table(dev, &cid, &cores, &ncores,
+	    &erom_class);
+	if (error)
+		goto cleanup;
+
+	/* Select the appropriate register window handler */
+	if (cid.chip_type == BHND_CHIPTYPE_SIBA) {
+		sc->set_regwin = bhndb_pci_compat_setregwin;
+	} else {
+		sc->set_regwin = bhndb_pci_fast_setregwin;
+	}
+
+	/* Determine our host bridge core and populate our quirk flags */
+	error = bhndb_find_hostb_core(cores, ncores, sc->pci_devclass,
+	    &hostb_core);
+	if (error)
+		goto cleanup;
+
+	sc->pci_quirks = bhndb_pci_get_core_quirks(&cid, &hostb_core);
+
+	/* Perform bridge attach */
+	error = bhndb_attach(dev, &cid, cores, ncores, &hostb_core, erom_class);
+	if (error)
+		goto cleanup;
+
+	/* Fix-up power on defaults for SROM-less devices. */
+	bhndb_init_sromless_pci_config(sc);
+
+	/* Add any additional child devices */
+	if ((error = bhndb_pci_add_children(sc)))
+		goto cleanup;
+
+	/* Probe and attach our children */
+	if ((error = bus_generic_attach(dev)))
+		goto cleanup;
+
+	free(cores, M_BHND);
+
+	return (0);
+
+cleanup:
+	device_delete_children(dev);
+	bhndb_disable_pci_clocks(sc->dev);
+
+	if (sc->intr.msi_count > 0)
+		pci_release_msi(dev);
+
+	if (cores != NULL)
+		free(cores, M_BHND);
+
+	pci_disable_busmaster(sc->parent);
+
+	return (error);
+}
+
+static int
+bhndb_pci_detach(device_t dev)
+{
+	struct bhndb_pci_softc	*sc;
+	int			 error;
+
+	sc = device_get_softc(dev);
+
+	/* Attempt to detach our children */
+	if ((error = bus_generic_detach(dev)))
+		return (error);
+
+	/* Perform generic bridge detach */
+	if ((error = bhndb_generic_detach(dev)))
+		return (error);
+
+	/* Disable clocks (if required by this hardware) */
+	if ((error = bhndb_disable_pci_clocks(sc->dev)))
+		return (error);
+
+	/* Release MSI interrupts */
+	if (sc->intr.msi_count > 0)
+		pci_release_msi(dev);
+
+	/* Disable PCI bus mastering */
+	pci_disable_busmaster(sc->parent);
+
+	return (0);
+}
+
 
 /**
  * Use the generic PCI bridge hardware configuration to enumerate the bridged
@@ -253,191 +536,6 @@ failed:
 
 	bhndb_release_host_resources(hr);
 	return (error);
-}
-
-/** 
- * Default bhndb_pci implementation of device_probe().
- * 
- * Verifies that the parent is a PCI/PCIe device.
- */
-static int
-bhndb_pci_probe(device_t dev)
-{
-	device_t	parent;
-	devclass_t	parent_bus;
-	devclass_t	pci;
-
-	/* Our parent must be a PCI/PCIe device. */
-	pci = devclass_find("pci");
-	parent = device_get_parent(dev);
-	parent_bus = device_get_devclass(device_get_parent(parent));
-
-	if (parent_bus != pci)
-		return (ENXIO);
-
-	device_set_desc(dev, "PCI-BHND bridge");
-
-	return (BUS_PROBE_DEFAULT);
-}
-
-/* Configure MSI interrupts */
-static int
-bhndb_pci_init_msi(struct bhndb_pci_softc *sc)
-{
-	int error;
-
-	/* Is MSI available? */
-	if (pci_msi_count(sc->parent) < BHNDB_PCI_MSI_COUNT)
-		return (ENXIO);
-
-	/* Allocate expected message count */
-	sc->intr.msi_count = BHNDB_PCI_MSI_COUNT;
-	if ((error = pci_alloc_msi(sc->parent, &sc->intr.msi_count))) {
-		device_printf(sc->dev, "failed to allocate MSI interrupts: "
-		    "%d\n", error);
-		return (error);
-	}
-
-	if (sc->intr.msi_count < BHNDB_PCI_MSI_COUNT)
-		return (ENXIO);
-
-	/* MSI uses resource IDs starting at 1 */
-	sc->intr.intr_rid = 1;
-
-	return (0);
-}
-
-static int
-bhndb_pci_attach(device_t dev)
-{
-	struct bhndb_pci_softc	*sc;
-	struct bhnd_chipid	 cid;
-	struct bhnd_core_info	*cores, hostb_core;
-	bhnd_erom_class_t	*erom_class;
-	u_int			 ncores;
-	int			 error, reg;
-
-	sc = device_get_softc(dev);
-	sc->dev = dev;
-	sc->parent = device_get_parent(dev);
-	sc->set_regwin = NULL;
-	sc->pci_quirks = 0;
-
-	cores = NULL;
-
-	/* Enable PCI bus mastering */
-	pci_enable_busmaster(sc->parent);
-
-	/* Set up PCI interrupt handling */
-	if (bhndb_pci_init_msi(sc) == 0) {
-		device_printf(dev, "Using MSI interrupts on %s\n",
-		    device_get_nameunit(sc->parent));
-	} else {
-		device_printf(dev, "Using INTx interrupts on %s\n",
-		    device_get_nameunit(sc->parent));
-		sc->intr.intr_rid = 0;
-	}
-
-	/* Determine our bridge device class */
-	sc->pci_devclass = BHND_DEVCLASS_PCI;
-	if (pci_find_cap(sc->parent, PCIY_EXPRESS, &reg) == 0)
-		sc->pci_devclass = BHND_DEVCLASS_PCIE;
-	else
-		sc->pci_devclass = BHND_DEVCLASS_PCI;
-
-	/* Enable clocks (if required by this hardware) */
-	if ((error = bhndb_enable_pci_clocks(sc->dev)))
-		goto cleanup;
-
-	/* Identify the chip and enumerate the bridged cores */
-	error = bhndb_pci_read_core_table(dev, &cid, &cores, &ncores,
-	    &erom_class);
-	if (error)
-		goto cleanup;
-
-	/* Select the appropriate register window handler */
-	if (cid.chip_type == BHND_CHIPTYPE_SIBA) {
-		sc->set_regwin = bhndb_pci_compat_setregwin;
-	} else {
-		sc->set_regwin = bhndb_pci_fast_setregwin;
-	}
-
-	/* Determine our host bridge core and populate our quirk flags */
-	error = bhndb_find_hostb_core(cores, ncores, sc->pci_devclass,
-	    &hostb_core);
-	if (error)
-		goto cleanup;
-
-	for (size_t i = 0; i < nitems(bhndb_pci_quirks); i++) {
-		struct bhndb_pci_quirk *q = &bhndb_pci_quirks[i];
-
-		if (bhnd_core_matches(&hostb_core, &q->match))
-			sc->pci_quirks |= q->quirks;
-	}
-
-	/* Perform bridge attach */
-	error = bhndb_attach(dev, &cid, cores, ncores, &hostb_core, erom_class);
-	if (error)
-		goto cleanup;
-
-	/* Fix-up power on defaults for SROM-less devices. */
-	bhndb_init_sromless_pci_config(sc);
-
-	/* Add any additional child devices */
-	if ((error = bhndb_pci_add_children(sc)))
-		goto cleanup;
-
-	/* Probe and attach our children */
-	if ((error = bus_generic_attach(dev)))
-		goto cleanup;
-
-	free(cores, M_BHND);
-
-	return (0);
-
-cleanup:
-	device_delete_children(dev);
-	bhndb_disable_pci_clocks(sc->dev);
-
-	if (sc->intr.msi_count > 0)
-		pci_release_msi(dev);
-
-	if (cores != NULL)
-		free(cores, M_BHND);
-
-	pci_disable_busmaster(sc->parent);
-
-	return (error);
-}
-
-static int
-bhndb_pci_detach(device_t dev)
-{
-	struct bhndb_pci_softc	*sc;
-	int			 error;
-
-	sc = device_get_softc(dev);
-
-	/* Attempt to detach our children */
-	if ((error = bus_generic_detach(dev)))
-		return (error);
-
-	/* Perform generic bridge detach */
-	if ((error = bhndb_generic_detach(dev)))
-		return (error);
-
-	/* Disable clocks (if required by this hardware) */
-	if ((error = bhndb_disable_pci_clocks(sc->dev)))
-		return (error);
-
-	/* Release MSI interrupts */
-	if (sc->intr.msi_count > 0)
-		pci_release_msi(dev);
-
-	/* Disable PCI bus mastering */
-	pci_disable_busmaster(sc->parent);
-
-	return (0);
 }
 
 static int
