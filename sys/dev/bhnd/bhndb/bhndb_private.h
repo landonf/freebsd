@@ -141,7 +141,6 @@ struct bhndb_region {
  */
 struct bhndb_resources {
 	device_t			 dev;		/**< bridge device */
-	device_t			 parent_dev;	// XXX TODO remove
 	const struct bhndb_hwcfg	*cfg;		/**< hardware configuration */
 
 	struct bhndb_host_resources	*res;		/**< host resources, or NULL if not allocated */

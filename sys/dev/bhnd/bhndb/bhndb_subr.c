@@ -281,7 +281,6 @@ bhndb_alloc_resources(device_t dev, device_t parent_dev,
 
 	/* Basic initialization */
 	r->dev = dev;
-	r->parent_dev = parent_dev;
 	r->cfg = cfg;
 	r->res = NULL;
 	r->min_prio = BHNDB_PRIORITY_NONE;
@@ -382,11 +381,11 @@ bhndb_alloc_resources(device_t dev, device_t parent_dev,
 	}
 
 	/* Allocate host resources */
-	error = bhndb_alloc_host_resources(r->parent_dev, r->cfg, &r->res);
+	error = bhndb_alloc_host_resources(parent_dev, r->cfg, &r->res);
 	if (error) {
 		device_printf(r->dev,
 		    "could not allocate host resources on %s: %d\n",
-		    device_get_nameunit(r->parent_dev), error);
+		    device_get_nameunit(parent_dev), error);
 		goto failed;
 	}
 
