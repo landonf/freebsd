@@ -1514,7 +1514,7 @@ int
 bhnd_service_registry_init(struct bhnd_service_registry *bsr)
 {
 	STAILQ_INIT(&bsr->entries);
-	sx_init(&bsr->lock, "bhnd_service_registry lock");
+	mtx_init(&bsr->lock, "bhnd_service_registry lock", NULL, MTX_DEF);
 
 	return (0);
 }
@@ -1535,7 +1535,7 @@ bhnd_service_registry_fini(struct bhnd_service_registry *bsr)
 	struct bhnd_service_entry *entry, *enext;
 
 	/* Remove everthing we can */
-	sx_xlock(&bsr->lock);
+	mtx_lock(&bsr->lock);
 	STAILQ_FOREACH_SAFE(entry, &bsr->entries, link, enext) {
 		if (entry->refs > 0)
 			continue;
@@ -1545,12 +1545,12 @@ bhnd_service_registry_fini(struct bhnd_service_registry *bsr)
 	}
 
 	if (!STAILQ_EMPTY(&bsr->entries)) {
-		sx_xunlock(&bsr->lock);
+		mtx_unlock(&bsr->lock);
 		return (EBUSY);
 	}
-	sx_xunlock(&bsr->lock);
+	mtx_unlock(&bsr->lock);
 
-	sx_destroy(&bsr->lock);
+	mtx_destroy(&bsr->lock);
 	return (0);
 }
 
@@ -1577,19 +1577,22 @@ bhnd_service_registry_add(struct bhnd_service_registry *bsr, device_t provider,
 	if (service == BHND_SERVICE_ANY)
 		return (EINVAL);
 
-
-	sx_xlock(&bsr->lock);
+	mtx_lock(&bsr->lock);
 
 	/* Is a service provider already registered? */
 	STAILQ_FOREACH(entry, &bsr->entries, link) {
 		if (entry->service == service) {
-			sx_xunlock(&bsr->lock);
+			mtx_unlock(&bsr->lock);
 			return (EEXIST);
 		}
 	}
 
 	/* Initialize and insert our new entry */
-	entry = malloc(sizeof(*entry), M_BHND, M_WAITOK);
+	entry = malloc(sizeof(*entry), M_BHND, M_NOWAIT);
+	if (entry == NULL) {
+		mtx_unlock(&bsr->lock);
+		return (ENOMEM);
+	}
 
 	entry->provider = provider;
 	entry->service = service;
@@ -1598,7 +1601,7 @@ bhnd_service_registry_add(struct bhnd_service_registry *bsr, device_t provider,
 
 	STAILQ_INSERT_HEAD(&bsr->entries, entry, link);
 
-	sx_xunlock(&bsr->lock);
+	mtx_unlock(&bsr->lock);
 	return (0);
 }
 
@@ -1634,9 +1637,7 @@ bhnd_service_registry_remove(struct bhnd_service_registry *bsr,
 {
 	struct bhnd_service_entry *entry, *enext;
 
-	/* An exclusive lock gaurantees that entry refcounts will not
-	 * be modified out from under us */
-	sx_xlock(&bsr->lock);
+	mtx_lock(&bsr->lock);
 
 #define	BHND_PROV_MATCH(_e)	\
 	((_e)->provider == provider &&	\
@@ -1651,7 +1652,7 @@ bhnd_service_registry_remove(struct bhnd_service_registry *bsr,
 
 		/* Entry is in use? */
 		if (entry->refs > 0) {
-			sx_xunlock(&bsr->lock);
+			mtx_unlock(&bsr->lock);
 			return (EBUSY);
 		}
 	}
@@ -1670,7 +1671,7 @@ bhnd_service_registry_remove(struct bhnd_service_registry *bsr,
 	}
 #undef	BHND_PROV_MATCH
 
-	sx_xunlock(&bsr->lock);
+	mtx_unlock(&bsr->lock);
 	return (0);
 }
 
@@ -1693,7 +1694,7 @@ bhnd_service_registry_retain(struct bhnd_service_registry *bsr,
 {
 	struct bhnd_service_entry *entry;
 
-	sx_slock(&bsr->lock);
+	mtx_lock(&bsr->lock);
 	STAILQ_FOREACH(entry, &bsr->entries, link) {
 		if (entry->service != service)
 			continue;
@@ -1702,10 +1703,10 @@ bhnd_service_registry_retain(struct bhnd_service_registry *bsr,
 		 * after we release our lock */
 		refcount_acquire(&entry->refs);
 
-		sx_sunlock(&bsr->lock);
+		mtx_unlock(&bsr->lock);
 		return (entry->provider);
 	}
-	sx_sunlock(&bsr->lock);
+	mtx_unlock(&bsr->lock);
 
 	/* Not found */
 	return (NULL);
@@ -1738,7 +1739,7 @@ bhnd_service_registry_release(struct bhnd_service_registry *bsr,
 
 	/* Exclusive lock, as we need to prevent any new references to the
 	 * entry from being taken if it's to be removed */
-	sx_xlock(&bsr->lock);
+	mtx_lock(&bsr->lock);
 	STAILQ_FOREACH(entry, &bsr->entries, link) {
 		bool removed;
 
@@ -1762,7 +1763,7 @@ bhnd_service_registry_release(struct bhnd_service_registry *bsr,
 			removed = false;
 		}
 
-		sx_xunlock(&bsr->lock);
+		mtx_unlock(&bsr->lock);
 		return (removed);
 	}
 
