@@ -138,7 +138,41 @@ bhnd_bhndb_pwrctl_ungate_clock(device_t dev, device_t child,
 	    clock));
 }
 
+static int
+bhnd_bhndb_setup_intr(device_t dev, device_t child, struct resource *irq,
+    int flags, driver_filter_t *filter, driver_intr_t *intr, void *arg,
+    void **cookiep)
+{
+	device_t	core, bus;
+	int		error;
+
+	/* Find the actual bus-attached child core */
+	core = child;
+	while ((bus = device_get_parent(core)) != NULL) {
+		if (bus == dev)
+			break;
+
+		core = bus;
+	}
+
+	KASSERT(core != NULL, ("%s is not a child of %s",
+	    device_get_nameunit(child), device_get_nameunit(dev)));
+
+	/* Ask our bridge to enable interrupt routing for the child core */
+	error = BHNDB_ROUTE_INTERRUPTS(device_get_parent(dev), core);
+	if (error)
+		return (error);
+
+	/* Delegate actual interrupt setup to the default bhnd bus
+	 * implementation */
+	return (bhnd_generic_setup_intr(dev, child, irq, flags, filter, intr,
+	    arg, cookiep));
+}
+
 static device_method_t bhnd_bhndb_methods[] = {
+	/* Bus interface */
+	DEVMETHOD(bus_setup_intr,		bhnd_bhndb_setup_intr),
+
 	/* BHND interface */
 	DEVMETHOD(bhnd_bus_get_attach_type,	bhnd_bhndb_get_attach_type),
 	DEVMETHOD(bhnd_bus_is_hw_disabled,	bhnd_bhndb_is_hw_disabled),

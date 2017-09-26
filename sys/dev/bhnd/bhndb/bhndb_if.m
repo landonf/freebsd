@@ -91,6 +91,12 @@ CODE {
 	}
 
 	static int
+	bhndb_null_route_interrupts(device_t dev, device_t child)
+	{
+		panic("bhndb_route_interrupts unimplemented");
+	}
+
+	static int
 	bhndb_null_set_window_addr(device_t dev,
 	    const struct bhndb_regwin *rw, bhnd_addr_t addr)
 	{
@@ -206,6 +212,17 @@ METHOD int resume_resource {
 	int type;
 	struct resource *r;
 } DEFAULT bhndb_null_resume_resource;
+
+/**
+ * Enable bridge-level interrupt routing for @p child.
+ *
+ * @param dev The bridge device.
+ * @param child The bhnd child device for which interrupts should be routed.
+ */
+METHOD int route_interrupts {
+	device_t dev;
+	device_t child;
+} DEFAULT bhndb_null_route_interrupts;
 
 /**
  * Set a given register window's base address.
