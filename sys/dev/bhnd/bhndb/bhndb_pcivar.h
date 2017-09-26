@@ -53,14 +53,20 @@ typedef int (*bhndb_pci_set_regwin_t)(device_t dev, device_t pci_dev,
  */
 enum {
 	/** No quirks */
-	BHNDB_PCI_QUIRK_NONE			= 0,
+	BHNDB_PCI_QUIRK_NONE		= 0,
+
+	/**
+	 * The core requires fixup of the BAR0 SROM shadow to point at the
+	 * current PCI core.
+	 */
+	BHNDB_PCI_QUIRK_SRSH_WAR	= (1<<0),
 
 	/**
 	 * The PCI (rev <= 5) core does not provide interrupt status/mask
 	 * registers; these siba-only devices require routing backplane
 	 * interrupt flags via the SIBA_CFG0_INTVEC register.
 	 */
-	BHNDB_PCI_QUIRK_SIBA_INTVEC		= (1<<1),
+	BHNDB_PCI_QUIRK_SIBA_INTVEC	= (1<<1),
 };
 
 /** bhndb_pci quirk table entry */
@@ -88,14 +94,16 @@ struct bhndb_pci_quirk {
 /** bhndb_pci core table entry */
 struct bhndb_pci_core {
 	struct bhnd_core_match	 match;		/**< core match descriptor */
+	bus_size_t		 srsh_offset;	/**< offset to SRSH_PI register, if any */
 	struct bhndb_pci_quirk	*quirks;	/**< quirk table */
 };
 
-#define	BHNDB_PCI_CORE(_device, _quirks) {				\
+#define	BHNDB_PCI_CORE(_device, _srsh, _quirks) {			\
 	{ BHND_MATCH_CORE(BHND_MFGID_BCM, BHND_COREID_ ## _device) },	\
+	_srsh,								\
 	_quirks								\
 }
-#define	BHNDB_PCI_CORE_END		{ { BHND_MATCH_ANY }, NULL }
+#define	BHNDB_PCI_CORE_END		{ { BHND_MATCH_ANY }, 0, NULL }
 #define	BHNDB_PCI_IS_CORE_END(_c)	BHND_MATCH_IS_ANY(&(_c)->match)
 
 /* bhndb_pci interrupt state */
@@ -111,8 +119,17 @@ struct bhndb_pci_softc {
 	bhnd_devclass_t         pci_devclass;   /**< PCI core's devclass */
 	uint32_t		pci_quirks;	/**< PCI bridge-level quirks */
 	struct bhndb_pci_intr	intr;		/**< PCI interrupt config */
+	struct mtx		mtx;
 
 	bhndb_pci_set_regwin_t	set_regwin;	/**< regwin handler */
 };
+
+#define	BHNDB_PCI_LOCK_INIT(sc) \
+	mtx_init(&(sc)->mtx, device_get_nameunit((sc)->dev), \
+	    "bhndb_pc state", MTX_DEF)
+#define	BHNDB_PCI_LOCK(sc)			mtx_lock(&(sc)->mtx)
+#define	BHNDB_PCI_UNLOCK(sc)			mtx_unlock(&(sc)->mtx)
+#define	BHNDB_PCI_LOCK_ASSERT(sc, what)		mtx_assert(&(sc)->mtx, what)
+#define	BHNDB_PCI_LOCK_DESTROY(sc)		mtx_destroy(&(sc)->mtx)
 
 #endif /* _BHND_BHNDB_PCIVAR_H_ */

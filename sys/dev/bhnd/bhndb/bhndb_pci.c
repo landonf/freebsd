@@ -64,6 +64,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhnd_erom.h>
 #include <dev/bhnd/bhnd_eromvar.h>
 
+#include <dev/bhnd/siba/sibareg.h>
+
 #include <dev/bhnd/cores/pci/bhnd_pcireg.h>
 
 #include "bhndb_pcireg.h"
@@ -90,6 +92,11 @@ static int		bhndb_pci_compat_setregwin(device_t dev,
 static int		bhndb_pci_fast_setregwin(device_t dev, device_t pci_dev,
 			    const struct bhndb_regwin *, bhnd_addr_t);
 
+static void		bhndb_pci_write_core(struct bhndb_pci_softc *sc,
+			    bus_size_t offset, uint32_t value, u_int width);
+static uint32_t		bhndb_pci_read_core(struct bhndb_pci_softc *sc,
+			    bus_size_t offset, u_int width);
+
 static void		bhndb_init_sromless_pci_config(
 			    struct bhndb_pci_softc *sc);
 
@@ -107,12 +114,13 @@ static uint32_t		bhndb_pci_eio_read(struct bhnd_erom_io *eio,
 #define	BHNDB_PCI_MSI_COUNT	1
 
 static struct bhndb_pci_quirk	bhndb_pci_quirks[];
+static struct bhndb_pci_quirk	bhndb_pcie_quirks[];
 
 static struct bhndb_pci_core bhndb_pci_cores[] = {
-	BHNDB_PCI_CORE(PCI,	bhndb_pci_quirks),
-	BHNDB_PCI_CORE(PCIE,	NULL),
+	BHNDB_PCI_CORE(PCI,	BHND_PCI_SRSH_PI_OFFSET,	bhndb_pci_quirks),
+	BHNDB_PCI_CORE(PCIE,	BHND_PCIE_SRSH_PI_OFFSET,	bhndb_pcie_quirks),
 #ifdef notyet
-	BHNDB_PCI_CORE(PCIE2,	NULL),
+	BHNDB_PCI_CORE(PCIE2,	0x0,				NULL),
 #endif
 
 	BHNDB_PCI_CORE_END
@@ -139,6 +147,16 @@ static struct bhndb_pci_quirk bhndb_pci_quirks[] = {
 	{{ BHND_MATCH_CHIP_TYPE		(SIBA) },
 	 { BHND_MATCH_CORE_REV		(HWREV_LTE(5)) },
 		BHNDB_PCI_QUIRK_SIBA_INTVEC },
+
+	/* All PCI core revisions require the SRSH work-around */
+	BHNDB_PCI_QUIRK(PCI, HWREV_ANY, BHNDB_PCI_QUIRK_SRSH_WAR),
+
+	BHNDB_PCI_QUIRK_END
+};
+
+static struct bhndb_pci_quirk bhndb_pcie_quirks[] = {
+	/* All PCIe-G1 core revisions require the SRSH work-around */
+	BHNDB_PCI_QUIRK(PCIE, HWREV_ANY, BHNDB_PCI_QUIRK_SRSH_WAR),
 
 	BHNDB_PCI_QUIRK_END
 };
@@ -180,7 +198,7 @@ bhndb_pci_get_core_quirks(struct bhnd_chipid *cid, struct bhnd_core_info *ci)
 		return (quirks);
 
 	for (size_t i = 0; !BHNDB_PCI_IS_QUIRK_END(&qtable[i]); i++) {
-		struct bhndb_pci_quirk *q = &bhndb_pci_quirks[i];
+		struct bhndb_pci_quirk *q = &qtable[i];
 
 		if (!bhnd_chip_matches(cid, &q->chip_desc))
 			continue;
@@ -303,6 +321,8 @@ bhndb_pci_attach(device_t dev)
 	sc->parent = device_get_parent(dev);
 	sc->set_regwin = NULL;
 	sc->pci_quirks = 0;
+	
+	BHNDB_PCI_LOCK_INIT(sc);
 
 	cores = NULL;
 
@@ -382,6 +402,8 @@ cleanup:
 
 	pci_disable_busmaster(sc->parent);
 
+	BHNDB_PCI_LOCK_DESTROY(sc);
+
 	return (error);
 }
 
@@ -411,6 +433,8 @@ bhndb_pci_detach(device_t dev)
 
 	/* Disable PCI bus mastering */
 	pci_disable_busmaster(sc->parent);
+
+	BHNDB_PCI_LOCK_DESTROY(sc);
 
 	return (0);
 }
@@ -659,6 +683,98 @@ bhndb_pci_sprom_size(struct bhndb_pci_softc *sc)
 	return (sprom_sz);
 }
 
+static int
+bhndb_pci_get_core_regs(struct bhndb_pci_softc *sc, struct resource **res,
+    bus_size_t *offset)
+{
+	const struct bhndb_regwin	*win;
+	struct resource			*r;
+
+	/* Locate the static register window mapping the PCI core */
+	win = bhndb_regwin_find_core(sc->bhndb.bus_res->cfg->register_windows,
+	    sc->pci_devclass, 0, BHND_PORT_DEVICE, 0, 0);
+	if (win == NULL) {
+		device_printf(sc->dev, "missing PCI core register window\n");
+		return (ENXIO);
+	}
+
+	/* Fetch the resource containing the register window */
+	r = bhndb_host_resource_for_regwin(sc->bhndb.bus_res->res,win);
+	if (r == NULL) {
+		device_printf(sc->dev, "missing PCI core register resource\n");
+		return (ENXIO);
+	}
+
+	*res = r;
+	*offset = win->win_offset;
+
+	return (0);
+}
+
+/**
+ * Write a 1, 2, or 4 byte data item to the PCI core's registers at @p offset.
+ * 
+ * @param sc		bhndb PCI driver state.
+ * @param offset	register write offset.
+ * @param value		value to be written.
+ * @param width		item width (1, 2, or 4 bytes).
+ */
+static void
+bhndb_pci_write_core(struct bhndb_pci_softc *sc, bus_size_t offset,
+    uint32_t value, u_int width)
+{
+	struct resource	*r;
+	bus_size_t	 r_offset;
+	int		 error;
+
+	if ((error = bhndb_pci_get_core_regs(sc, &r, &r_offset)))
+		panic("no PCI core registers: %d", error);
+
+	switch (width) {
+	case 1:
+		bus_write_1(r, r_offset + offset, value);
+		break;
+	case 2:
+		bus_write_2(r, r_offset + offset, value);
+		break;
+	case 4:
+		bus_write_4(r, r_offset + offset, value);
+		break;
+	default:
+		panic("invalid width: %u", width);
+	}
+}
+
+/**
+ * Read a 1, 2, or 4 byte data item from the PCI core's registers
+ * at @p offset.
+ * 
+ * @param sc		bhndb PCI driver state.
+ * @param offset	register read offset.
+ * @param width		item width (1, 2, or 4 bytes).
+ */
+static uint32_t
+bhndb_pci_read_core(struct bhndb_pci_softc *sc, bus_size_t offset, u_int width)
+{
+	struct resource	*r;
+	bus_size_t	 r_offset;
+	int		 error;
+
+	if ((error = bhndb_pci_get_core_regs(sc, &r, &r_offset)))
+		panic("no PCI core registers: %d", error);
+
+	switch (width) {
+	case 1:
+		return (bus_read_1(r, r_offset + offset));
+	case 2:
+		return (bus_read_2(r, r_offset + offset));
+	case 4:
+		return (bus_read_4(r, r_offset + offset));
+	default:
+		panic("invalid width: %u", width);
+	}
+}
+
 /*
  * On devices without a SROM, the PCI(e) cores will be initialized with
  * their Power-on-Reset defaults; this can leave two of the BAR0 PCI windows
@@ -672,64 +788,31 @@ bhndb_pci_sprom_size(struct bhndb_pci_softc *sc)
 static void
 bhndb_init_sromless_pci_config(struct bhndb_pci_softc *sc)
 {
-	struct bhndb_resources		*bres;
-	const struct bhnd_core_info	*pci_core;
-	const struct bhndb_hwcfg	*cfg;
-	const struct bhndb_regwin	*win;
-	struct resource			*core_regs;
-	bus_size_t			 srom_offset;
+	const struct bhndb_pci_core	*pci_core;
+	bus_size_t			 srsh_offset;
 	u_int				 pci_cidx, sprom_cidx;
 	uint16_t			 val;
 
-	bres = sc->bhndb.bus_res;
-	cfg = bres->cfg;
+	if ((sc->pci_quirks & BHNDB_PCI_QUIRK_SRSH_WAR) == 0)
+		return;
 
 	/* Determine the correct register offset for our PCI core */
-	pci_core = &sc->bhndb.bridge_core;
+	pci_core = bhndb_pci_find_core(&sc->bhndb.bridge_core);
+	KASSERT(pci_core != NULL, ("missing core table entry"));
 
-#define	BRIDGE_CORE_MATCHES(_device)	\
-	bhnd_core_matches(pci_core, &((struct bhnd_core_match) {	\
-	    BHND_MATCH_CORE(BHND_MFGID_BCM, _device)			\
-	}))
-
-	if (BRIDGE_CORE_MATCHES(BHND_COREID_PCI)) {
-		srom_offset = BHND_PCI_SRSH_PI_OFFSET;
-	} else if (BRIDGE_CORE_MATCHES(BHND_COREID_PCIE)) {
-		srom_offset = BHND_PCIE_SRSH_PI_OFFSET;
-	} else {
-		device_printf(sc->dev, "unsupported PCI host bridge device\n");
-		return;
-	}
-
-#undef BRIDGE_CORE_MATCHES
-
-	/* Locate the static register window mapping the PCI core */
-	win = bhndb_regwin_find_core(cfg->register_windows, sc->pci_devclass,
-	    0, BHND_PORT_DEVICE, 0, 0);
-	if (win == NULL) {
-		device_printf(sc->dev, "missing PCI core register window\n");
-		return;
-	}
-
-	/* Fetch the resource containing the register window */
-	core_regs = bhndb_host_resource_for_regwin(bres->res, win);
-	if (core_regs == NULL) {
-		device_printf(sc->dev, "missing PCI core register resource\n");
-		return;
-	}
+	srsh_offset = pci_core->srsh_offset;
 
 	/* Fetch the SPROM's configured core index */
-	val = bus_read_2(core_regs, win->win_offset + srom_offset);
+	val = bhndb_pci_read_core(sc, srsh_offset, sizeof(val));
 	sprom_cidx = (val & BHND_PCI_SRSH_PI_MASK) >> BHND_PCI_SRSH_PI_SHIFT;
 
 	/* If it doesn't match host bridge's core index, update the index
 	 * value */
-	pci_cidx = pci_core->core_idx;
+	pci_cidx = sc->bhndb.bridge_core.core_idx;
 	if (sprom_cidx != pci_cidx) {
 		val &= ~BHND_PCI_SRSH_PI_MASK;
 		val |= (pci_cidx << BHND_PCI_SRSH_PI_SHIFT);
-		bus_write_2(core_regs,
-		    win->win_offset + srom_offset, val);
+		bhndb_pci_write_core(sc, srsh_offset, val, sizeof(val));
 	}
 }
 
@@ -1088,6 +1171,73 @@ bhndb_pci_unmap_intr(device_t dev, device_t child, rman_res_t irq)
 	/* No state to clean up */
 }
 
+/* siba-specific implementation of BHNDB_ROUTE_INTERRUPTS() */
+static int
+bhndb_pci_route_siba_interrupts(struct bhndb_pci_softc *sc, device_t child)
+{
+	uint32_t	sbintvec;
+	u_int		ivec;
+	int		error;
+
+	KASSERT(sc->pci_quirks & BHNDB_PCI_QUIRK_SIBA_INTVEC,
+	    ("route_siba_interrupts not supported by this hardware"));
+
+	/* Fetch the sbflag# for the child */
+	if ((error = bhnd_get_intr_ivec(child, 0, &ivec)))
+		return (error);
+
+	if (ivec > (sizeof(sbintvec)*8) - 1 /* aka '31' */) {
+		/* This should never be an issue in practice */
+		device_printf(sc->dev, "cannot route interrupts to high "
+		    "sbflag# %u\n", ivec);
+		return (ENXIO);
+	}
+
+	BHNDB_PCI_LOCK(sc);
+
+	sbintvec = bhndb_pci_read_core(sc, SB0_REG_ABS(SIBA_CFG0_INTVEC), 4);
+	sbintvec |= (1 << ivec);
+	bhndb_pci_write_core(sc, SB0_REG_ABS(SIBA_CFG0_INTVEC), sbintvec, 4);
+
+	BHNDB_PCI_UNLOCK(sc);
+
+	return (0);
+}
+
+/* BHNDB_ROUTE_INTERRUPTS() */
+static int
+bhndb_pci_route_interrupts(device_t dev, device_t child)
+{
+	struct bhndb_pci_softc	*sc;
+	struct bhnd_core_info	 core;
+	uint32_t		 core_bit;
+	uint32_t		 intmask;
+
+	sc = device_get_softc(dev);
+
+	if (sc->pci_quirks & BHNDB_PCI_QUIRK_SIBA_INTVEC)
+		return (bhndb_pci_route_siba_interrupts(sc, child));
+
+	core = bhnd_get_core_info(child);
+	if (core.core_idx > BHNDB_PCI_SBIM_COREIDX_MAX) {
+		/* This should never be an issue in practice */
+		device_printf(dev, "cannot route interrupts to high core "
+		    "index %u\n", core.core_idx);
+		return (ENXIO);
+	}
+
+	BHNDB_PCI_LOCK(sc);
+
+	core_bit = (1<<core.core_idx) << BHNDB_PCI_SBIM_SHIFT;
+	intmask = pci_read_config(sc->parent, BHNDB_PCI_INT_MASK, 4);
+	intmask |= core_bit;
+	pci_write_config(sc->parent, BHNDB_PCI_INT_MASK, intmask, 4);
+
+	BHNDB_PCI_UNLOCK(sc);
+
+	return (0);
+}
+
 /**
  * Initialize a new bhndb PCI bridge EROM I/O instance. This EROM I/O
  * implementation supports mapping of the device enumeration table via the
@@ -1292,6 +1442,7 @@ static device_method_t bhndb_pci_methods[] = {
 	/* BHNDB interface */
 	DEVMETHOD(bhndb_set_window_addr,	bhndb_pci_set_window_addr),
 	DEVMETHOD(bhndb_populate_board_info,	bhndb_pci_populate_board_info),
+	DEVMETHOD(bhndb_route_interrupts,	bhndb_pci_route_interrupts),
 
 	DEVMETHOD_END
 };
