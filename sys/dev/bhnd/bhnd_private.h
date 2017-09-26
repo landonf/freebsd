@@ -31,9 +31,7 @@
 #define _BHND_BHND_PRIVATE_H_
 
 #include <sys/param.h>
-#include <sys/lock.h>
 #include <sys/queue.h>
-#include <sys/sx.h>
 
 #include "bhnd_types.h"
 
