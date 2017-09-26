@@ -263,7 +263,7 @@ struct bhnd_device_match {
 	union {
 		uint32_t match_flags;
 		struct {
-			uint16_t
+			uint32_t
 			core_vendor:1,
 			core_id:1,
 			core_rev:1,
