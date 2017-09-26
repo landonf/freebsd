@@ -43,9 +43,13 @@ device		re
 device		mdio
 device		etherswitch
 device		e6000sw
+device		neta
 
 # PCI
 device		pci
+
+# RTC
+device		mv_rtc
 
 # Interrupt controllers
 device		gic

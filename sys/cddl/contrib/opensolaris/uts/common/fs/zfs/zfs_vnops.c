@@ -905,9 +905,11 @@ zfs_write(vnode_t *vp, uio_t *uio, int ioflag, cred_t *cr, caller_context_t *ct)
 	}
 
 	/*
-	 * If immutable or not appending then return EPERM
+	 * If immutable or not appending then return EPERM.
+	 * Intentionally allow ZFS_READONLY through here.
+	 * See zfs_zaccess_common()
 	 */
-	if ((zp->z_pflags & (ZFS_IMMUTABLE | ZFS_READONLY)) ||
+	if ((zp->z_pflags & ZFS_IMMUTABLE) ||
 	    ((zp->z_pflags & ZFS_APPENDONLY) && !(ioflag & FAPPEND) &&
 	    (uio->uio_loffset < zp->z_size))) {
 		ZFS_EXIT(zfsvfs);
@@ -1295,7 +1297,6 @@ zfs_get_data(void *arg, lr_write_t *lr, char *buf, zio_t *zio)
 	uint64_t object = lr->lr_foid;
 	uint64_t offset = lr->lr_offset;
 	uint64_t size = lr->lr_length;
-	blkptr_t *bp = &lr->lr_blkptr;
 	dmu_buf_t *db;
 	zgd_t *zgd;
 	int error = 0;
@@ -1372,11 +1373,7 @@ zfs_get_data(void *arg, lr_write_t *lr, char *buf, zio_t *zio)
 			    DMU_READ_NO_PREFETCH);
 
 		if (error == 0) {
-			blkptr_t *obp = dmu_buf_get_blkptr(db);
-			if (obp) {
-				ASSERT(BP_IS_HOLE(bp));
-				*bp = *obp;
-			}
+			blkptr_t *bp = &lr->lr_blkptr;
 
 			zgd->zgd_db = db;
 			zgd->zgd_bp = bp;
@@ -2946,10 +2943,9 @@ zfs_setattr(vnode_t *vp, vattr_t *vap, int flags, cred_t *cr,
 		return (SET_ERROR(EPERM));
 	}
 
-	if ((mask & AT_SIZE) && (zp->z_pflags & ZFS_READONLY)) {
-		ZFS_EXIT(zfsvfs);
-		return (SET_ERROR(EPERM));
-	}
+	/*
+	 * Note: ZFS_READONLY is handled in zfs_zaccess_common.
+	 */
 
 	/*
 	 * Verify timestamps doesn't overflow 32 bits.
@@ -5929,7 +5925,6 @@ zfs_vptocnp(struct vop_vptocnp_args *ap)
 	vnode_t *vp = ap->a_vp;;
 	zfsvfs_t *zfsvfs = vp->v_vfsp->vfs_data;
 	znode_t *zp = VTOZ(vp);
-	uint64_t parent;
 	int ltype;
 	int error;
 
@@ -5940,13 +5935,7 @@ zfs_vptocnp(struct vop_vptocnp_args *ap)
 	 * If we are a snapshot mounted under .zfs, run the operation
 	 * on the covered vnode.
 	 */
-	if ((error = sa_lookup(zp->z_sa_hdl,
-	    SA_ZPL_PARENT(zfsvfs), &parent, sizeof (parent))) != 0) {
-		ZFS_EXIT(zfsvfs);
-		return (error);
-	}
-
-	if (zp->z_id != parent || zfsvfs->z_parent == zfsvfs) {
+	if (zp->z_id != zfsvfs->z_root || zfsvfs->z_parent == zfsvfs) {
 		char name[MAXNAMLEN + 1];
 		znode_t *dzp;
 		size_t len;
