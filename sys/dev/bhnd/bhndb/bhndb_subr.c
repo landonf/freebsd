@@ -254,6 +254,257 @@ bhndb_host_resource_for_regwin(struct bhndb_host_resources *hr,
 }
 
 /**
+ * Allocate, initialize, and return a new bridged interrupt map.
+ * 
+ * The caller is responsible for deallocating the returned interrupt map
+ * instance via bhndb_intr_map_free().
+ */
+struct bhndb_intr_map *
+bhndb_intr_map_new(void)
+{
+	struct bhndb_intr_map *map;
+
+	map = malloc(sizeof(*map), M_BHND, M_NOWAIT | M_ZERO);
+	if (map == NULL)
+		return (NULL);
+
+	map->nirqs = 32; /* start with a reasonable maximum */
+	map->irqs = bit_alloc(map->nirqs, M_BHND, M_NOWAIT);
+	if (map->irqs == NULL)
+		goto failed;
+
+	sx_init(&map->sx, "bhndb_intr_map");
+
+	STAILQ_INIT(&map->data);
+
+	return (map);
+
+failed:
+	if (map->irqs != NULL)
+		free(map->irqs, M_BHND);
+
+	free(map, M_BHND);
+
+	return (NULL);
+}
+
+/**
+ * Find and return the map data for @p owner and @p ivec, or NULL if no such
+ * mapping is available.
+ */
+static struct bhndb_intr_data *
+bhndb_intr_map_find_ivec(struct bhndb_intr_map *map,
+    struct bhnd_core_info *owner, u_int ivec)
+{
+	struct bhndb_intr_data	*data;
+	struct bhnd_core_match	 mdesc;
+
+	sx_assert(&map->sx, SA_LOCKED);
+
+	mdesc = bhnd_core_get_match_desc(owner);
+
+	STAILQ_FOREACH(data, &map->data, link) {
+		if (data->ivec != ivec)
+			continue;
+
+		if (!bhnd_core_matches(&data->owner, &mdesc))
+			continue;
+
+		return (data);
+	}
+
+	/* Not found */
+	return (NULL);
+}
+
+/**
+ * Find and return the map data for @p irq, or NULL if no such mapping is
+ * available.
+ *
+ * @param map	The interrupt map to be searched.
+ * @param irq	The IRQ to search for.
+ */
+static struct bhndb_intr_data *
+bhndb_intr_map_find_irq(struct bhndb_intr_map *map, rman_res_t irq)
+{
+	struct bhndb_intr_data	*data;
+
+	sx_assert(&map->sx, SA_LOCKED);
+
+	STAILQ_FOREACH(data, &map->data, link) {
+		if (data->irq == irq)
+			return (data);
+	}
+
+	/* Not found */
+	return (NULL);
+}
+
+static int
+bhndb_intr_data_retain(struct bhndb_intr_map *map,
+    struct bhndb_intr_data *data)
+{
+	sx_assert(&map->sx, SA_LOCKED);
+
+	if (data->refs == UINT_MAX)
+		return (ENOMEM);
+
+	data->refs++;
+	return (0);
+}
+
+/**
+ * Create a new interrupt mapping for @p owner and @p ivec, or return the
+ * IRQ assigned to an existing mapping.
+ * 
+ * @param	map		The interrupt map to be modified.
+ * @param	owner		The core responsible for this mapping.
+ * @param	ivec		The interrupt vector to be mapped.
+ * @param[out]	irq		On success, the unique IRQ assigned to the
+ *				mapping.
+ * 
+ * @retval 0		success
+ * @retval ENOMEM	if all free bus IRQs have been exhausted.
+ */
+int
+bhndb_intr_map_add(struct bhndb_intr_map *map, struct bhnd_core_info *owner,
+    u_int ivec, rman_res_t *irq)
+{
+	struct bhndb_intr_data	*data;
+	struct bhnd_core_match	 mdesc;
+	int			 bit;
+	int			 error;
+
+	mdesc = bhnd_core_get_match_desc(owner);
+
+	/* Look for an existing mapping */
+	sx_xlock(&map->sx);
+	if ((data = bhndb_intr_map_find_ivec(map, owner, ivec)) != NULL) {
+		error = bhndb_intr_data_retain(map, data);
+		if (!error)
+			*irq = data->irq;
+
+		sx_xunlock(&map->sx);
+		return (error);
+	}
+
+	/* Fetch the next free IRQ# */
+	bit_ffc(map->irqs, map->nirqs, &bit);
+	if (bit < 0) {
+		bitstr_t	*new_irqs;
+		int		 new_nirqs;
+
+		/* All IRQs in use; can we double our bitstr length? */
+		if (map->nirqs < (INT_MAX - map->nirqs)) {
+			sx_xunlock(&map->sx);
+			return (ENOMEM);
+		}
+
+		new_nirqs = map->nirqs * 2;
+
+		/* Try to allocate a new freelist bitstr */
+		new_irqs = bit_alloc(new_nirqs, M_BHND, M_NOWAIT);
+		if (new_irqs == NULL) {
+			sx_xunlock(&map->sx);
+			return (ENOMEM);
+		}
+
+		/* Copy, free, and replace the existing freelist */
+		memcpy(new_irqs, map->irqs, bitstr_size(map->nirqs));
+		free(map->irqs, M_BHND);
+		map->irqs = new_irqs;
+		map->nirqs = new_nirqs;
+
+		/* Now we should be able to get a free entry */
+		bit_ffc(map->irqs, map->nirqs, &bit);
+		KASSERT(bit >= 0, ("no free IRQ after growing free list"));
+	}
+
+	/* Allocate our new entry */
+	data = malloc(sizeof(*data), M_BHND, M_NOWAIT | M_ZERO);
+	if (data == NULL) {
+		sx_xunlock(&map->sx);
+		return (ENOMEM);
+	}
+
+	data->isrc = NULL;
+	data->owner = *owner;
+	data->ivec = ivec;
+	data->irq = (rman_res_t)bit;
+	data->refs = 1;
+
+	/* Mark the IRQ# as in-use */
+	bit_set(map->irqs, bit);
+
+	/* Add to list of mappings */
+	STAILQ_INSERT_HEAD(&map->data, data, link);
+
+	/* Provide IRQ to caller */
+	*irq = data->irq;
+
+	sx_xunlock(&map->sx);
+	return (0);
+}
+
+/**
+ * Release an interrupt mapping. If this is the last reference to the mapping,
+ * it will be removed from the interrupt map.
+ * 
+ * @param	map	The interrupt map to be modified.
+ * @param	irq	The IRQ of the mapping to be released.
+ */
+void
+bhndb_intr_map_remove(struct bhndb_intr_map *map, rman_res_t irq)
+{
+	struct bhndb_intr_data *data;
+
+	sx_xlock(&map->sx);
+	data = bhndb_intr_map_find_irq(map, irq);
+	if (data == NULL) {
+		sx_xunlock(&map->sx);
+		return;
+	}
+
+	KASSERT(data->refs > 0, ("intr_data overrelease"));
+	data->refs--;
+
+	/* Last reference */
+	if (data->refs == 0) {
+		if (data->isrc != NULL) {
+			// TODO: release/disable isrc
+		}
+
+		STAILQ_REMOVE(&map->data, data, bhndb_intr_data, link);
+		free(data, M_BHND);
+	}
+
+	sx_xunlock(&map->sx);
+}
+
+/**
+ * Free an interrupt map instance.
+ * 
+ * @param map The map instance to be freed.
+ */
+void
+bhndb_intr_map_free(struct bhndb_intr_map *map)
+{
+	struct bhndb_intr_data *d, *dnext;
+
+	STAILQ_FOREACH_SAFE(d, &map->data, link, dnext) {
+		if (d->isrc != NULL) {
+			// TODO: release/disable isrc
+		}
+
+		STAILQ_REMOVE(&map->data, d, bhndb_intr_data, link);
+		free(d, M_BHND);
+	}
+
+	sx_destroy(&map->sx);
+	free(map, M_BHND);
+}
+
+/**
  * Allocate and initialize a new resource state structure.
  * 
  * @param dev The bridge device.

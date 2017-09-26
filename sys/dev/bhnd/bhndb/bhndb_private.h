@@ -38,6 +38,8 @@
 #include <sys/param.h>
 #include <sys/bitstring.h>
 #include <sys/bus.h>
+#include <sys/lock.h>
+#include <sys/sx.h>
 #include <sys/systm.h>
 
 #include <machine/bus.h>
@@ -103,6 +105,17 @@ const struct bhndb_hw_priority	*bhndb_hw_priority_find_core(
 				     const struct bhndb_hw_priority *table,
 				     struct bhnd_core_info *core);
 
+struct bhndb_intr_map		*bhndb_intr_map_new(void);
+void				 bhndb_intr_map_free(
+				     struct bhndb_intr_map *map);
+
+int				 bhndb_intr_map_add(struct bhndb_intr_map *map,
+				     struct bhnd_core_info *owner, u_int ivec,
+				     rman_res_t *irq);
+void				 bhndb_intr_map_remove(
+				     struct bhndb_intr_map *map,
+				     rman_res_t irq);
+
 
 /**
  * Dynamic register window allocation reference.
@@ -134,6 +147,37 @@ struct bhndb_region {
 	const struct bhndb_regwin	*static_regwin;	/**< fixed mapping regwin, if any */
 
 	STAILQ_ENTRY(bhndb_region)	 link;
+};
+
+/**
+ * Host interrupt source to which bridged interrupts may be routed.
+ */
+struct bhndb_intr_isrc {
+	struct resource	*res;	/**< intr resource */
+	int		 rid;	/**< resource ID */
+	u_int		 refs;	/**< reference count */
+};
+
+/**
+ * A bus interrupt mapping record.
+ */
+struct bhndb_intr_data {
+	struct bhndb_intr_isrc		*isrc;	/**< isrc to which this interrupt will be routed, or NULL if none */
+	struct bhnd_core_info		 owner;	/**< interrupt owner */
+	u_int				 ivec;	/**< backplane interrupt vector */
+	rman_res_t			 irq;	/**< assigned bus IRQ */
+	u_int				 refs;	/**< reference count */
+	STAILQ_ENTRY(bhndb_intr_data)	 link;	
+};
+
+/**
+ * Bridged interrupt mapping table.
+ */
+struct bhndb_intr_map {
+	bitstr_t			*irqs;		/**< irq# free list */
+	int				 nirqs;		/**< irq# free list count */
+	STAILQ_HEAD(,bhndb_intr_data)	 data;		/**< irq mappings */
+	struct sx			 sx;		/**< state lock */
 };
 
 /**

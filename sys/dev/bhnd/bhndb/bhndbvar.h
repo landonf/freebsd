@@ -57,6 +57,9 @@ DECLARE_CLASS(bhndb_driver);
 
 struct bhndb_resources;
 struct bhndb_host_resources;
+struct bhndb_intr_mapping;
+struct bhndb_intr_map;
+
 
 int				 bhndb_attach(device_t dev,
 				     struct bhnd_chipid *cid,
