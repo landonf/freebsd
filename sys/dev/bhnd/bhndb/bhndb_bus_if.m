@@ -66,11 +66,11 @@ CODE {
 		panic("bhndb_get_hardware_prio unimplemented");
 	}
 
-	static uint32_t
-	bhndb_null_get_core_flags(device_t dev, device_t child,
+	static bool
+	bhndb_null_is_core_disabled(device_t dev, device_t child,
 	    struct bhnd_core_info *core)
 	{
-		panic("bhndb_get_core_flags unimplemented");
+		return (true);
 	}
 }
 
@@ -127,15 +127,19 @@ METHOD const struct bhndb_hw_priority * get_hardware_prio {
 } DEFAULT bhndb_null_get_hardware_prio;
 
 /**
- * Return the per-core bridge configuration flags for @p core
- * (@see bhndb_core_flags).
+ * Return true if the hardware required by @p core is unpopulated or
+ * otherwise unusable.
+ *
+ * In some cases, the core's pins may be left floating, or the hardware
+ * may otherwise be non-functional; this method allows the parent device
+ * to explicitly specify whether @p core should be disabled.
  *
  * @param dev The parent device.
  * @param child The attached bhndb device.
  * @param core A core discovered on @p child.
  */
-METHOD uint32_t get_core_flags {
+METHOD bool is_core_disabled {
 	device_t dev;
 	device_t child;
 	struct bhnd_core_info *core;
-} DEFAULT bhndb_null_get_core_flags;
+} DEFAULT bhndb_null_is_core_disabled;

@@ -49,26 +49,6 @@ DECLARE_CLASS(bhnd_bhndb_driver);
 int	bhndb_attach_bridge(device_t parent, device_t *bhndb, int unit);
 
 /**
- * bhndb per-core bridge configuration flags
- */
-enum bhndb_core_flags {
-	/**
-	 * The hardware required by the core is unpopulated or otherwise
-	 * unusable.
-	 *
-	 * In some cases, the core's pins may be left floating, or the hardware
-	 * may otherwise be non-functional; this flag allows the bridge parent
-	 * to explicitly specify whether a core should be ignored.
-	 */
-	BHNDB_CORE_UNPOPULATED	= (1<<0),
-
-	/**
-	 * The core's interrupts should be routed to the host via the bridge.
-	 */
-	BHNDB_CORE_ENABLE_INTR	= (1<<1),
-};
-
-/**
  * bhndb register window types.
  */
 typedef enum {
