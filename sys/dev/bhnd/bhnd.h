@@ -39,7 +39,7 @@
 #include <sys/param.h>
 #include <sys/bus.h>
 #include <sys/lock.h>
-#include <sys/sx.h>
+#include <sys/mutex.h>
 
 #include <machine/bus.h>
 
@@ -312,7 +312,7 @@ typedef enum {
  */
 struct bhnd_service_registry {
 	STAILQ_HEAD(,bhnd_service_entry)	entries;	/**< registered services */
-	struct sx				lock;		/**< state lock */
+	struct mtx				lock;		/**< state lock */
 };
 
 /**
