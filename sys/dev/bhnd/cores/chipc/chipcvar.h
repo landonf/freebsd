@@ -138,6 +138,8 @@ enum {
  */
 struct chipc_devinfo {
 	struct resource_list	resources;	/**< child resources */
+	rman_res_t		irq;		/**< child IRQ, if mapped */
+	bool			irq_mapped;	/**< true if IRQ mapped, false otherwise */
 };
 
 /**

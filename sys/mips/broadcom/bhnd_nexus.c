@@ -1,6 +1,10 @@
 /*-
  * Copyright (c) 2015-2016 Landon Fuller <landon@freebsd.org>
+ * Copyright (c) 2017 The FreeBSD Foundation
  * All rights reserved.
+ *
+ * Portions of this software were developed by Landon Fuller
+ * under sponsorship from the FreeBSD Foundation.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -40,6 +44,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/bus.h>
+#include <sys/intr.h>
 #include <sys/kernel.h>
 #include <sys/module.h>
 #include <sys/rman.h>
@@ -51,8 +56,20 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhnd_ids.h>
 
 #include "bcm_machdep.h"
+#include "bcm_mipsvar.h"
 
 #include "bhnd_nexusvar.h"
+
+
+/**
+ * Default bhnd_nexus implementation of BHND_BUS_GET_SERVICE_REGISTRY().
+ */
+static struct bhnd_service_registry *
+bhnd_nexus_get_service_registry(device_t dev, device_t child)
+{
+	struct bcm_platform *bp = bcm_get_platform();
+	return (&bp->services);
+}
 
 /**
  * Default bhnd_nexus implementation of BHND_BUS_ACTIVATE_RESOURCE().
@@ -134,39 +151,64 @@ bhnd_nexus_get_chipid(device_t dev, device_t child)
 }
 
 /**
- * Default bhnd_nexus implementation of BHND_BUS_GET_INTR_COUNT().
+ * Default bhnd_nexus implementation of BHND_BUS_MAP_INTR().
  */
 static int
-bhnd_nexus_get_intr_count(device_t dev, device_t child)
+bhnd_nexus_map_intr(device_t dev, device_t child, u_int intr, rman_res_t *irq)
 {
-	// TODO: arch-specific interrupt handling.
+	struct bcm_mips_intr_map_data	*imd;
+	u_int				 ivec;
+	uintptr_t			 xref;
+	int				 error;
+
+	/* Fetch the backplane interrupt vector */
+	if ((error = bhnd_get_intr_ivec(child, intr, &ivec))) {
+		device_printf(dev, "error fetching ivec for intr %u: %d\n",
+		    intr, error);
+		return (error);
+	}
+
+	/* Determine our interrupt domain */
+	xref = BHND_BUS_GET_INTR_DOMAIN(dev, child, false);
+	KASSERT(xref != 0, ("missing interrupt domain"));
+
+	/* Allocate our map data */
+	imd = (struct bcm_mips_intr_map_data *)intr_alloc_map_data(
+	    INTR_MAP_DATA_BCM_MIPS, sizeof(*imd), M_WAITOK | M_ZERO);
+	imd->ivec = ivec;
+
+	/* Map the IRQ */
+	*irq = intr_map_irq(NULL, xref, &imd->mdata);
 	return (0);
 }
 
 /**
- * Default bhnd_nexus implementation of BHND_BUS_ASSIGN_INTR().
+ * Default bhnd_nexus implementation of BHND_BUS_UNMAP_INTR().
  */
-static int
-bhnd_nexus_assign_intr(device_t dev, device_t child, int rid)
+static void
+bhnd_nexus_unmap_intr(device_t dev, device_t child, rman_res_t irq)
 {
-	uint32_t	ivec;
-	int		error;
+	if (irq > UINT_MAX)
+		panic("invalid irq: %ju", (uintmax_t)irq);
 
-	if ((error = bhnd_get_core_ivec(child, rid, &ivec)))
-		return (error);
-
-	return (bus_set_resource(child, SYS_RES_IRQ, rid, ivec, 1));
+	intr_unmap_irq(irq);
 }
 
 static device_method_t bhnd_nexus_methods[] = {
 	/* bhnd interface */
+	DEVMETHOD(bhnd_bus_get_service_registry,bhnd_nexus_get_service_registry),
+	DEVMETHOD(bhnd_bus_register_provider,	bhnd_bus_generic_sr_register_provider),
+	DEVMETHOD(bhnd_bus_deregister_provider,	bhnd_bus_generic_sr_deregister_provider),
+	DEVMETHOD(bhnd_bus_retain_provider,	bhnd_bus_generic_sr_retain_provider),
+	DEVMETHOD(bhnd_bus_release_provider,	bhnd_bus_generic_sr_release_provider),
 	DEVMETHOD(bhnd_bus_activate_resource,	bhnd_nexus_activate_resource),
 	DEVMETHOD(bhnd_bus_deactivate_resource, bhnd_nexus_deactivate_resource),
 	DEVMETHOD(bhnd_bus_is_hw_disabled,	bhnd_nexus_is_hw_disabled),
 	DEVMETHOD(bhnd_bus_get_attach_type,	bhnd_nexus_get_attach_type),
 	DEVMETHOD(bhnd_bus_get_chipid,		bhnd_nexus_get_chipid),
-	DEVMETHOD(bhnd_bus_get_intr_count,	bhnd_nexus_get_intr_count),
-	DEVMETHOD(bhnd_bus_assign_intr,		bhnd_nexus_assign_intr),
+	DEVMETHOD(bhnd_bus_get_intr_domain,	bhnd_bus_generic_get_intr_domain),
+	DEVMETHOD(bhnd_bus_map_intr,		bhnd_nexus_map_intr),
+	DEVMETHOD(bhnd_bus_unmap_intr,		bhnd_nexus_unmap_intr),
 
 	DEVMETHOD_END
 };
