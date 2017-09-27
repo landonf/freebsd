@@ -1,6 +1,10 @@
 /*-
  * Copyright (c) 2015-2016 Landon Fuller <landon@landonf.org>
+ * Copyright (c) 2017 The FreeBSD Foundation
  * All rights reserved.
+ *
+ * Portions of this software were developed by Landon Fuller
+ * under sponsorship from the FreeBSD Foundation.
  *
  * Portions of this software were developed by Landon Fuller
  * under sponsorship from the FreeBSD Foundation.
