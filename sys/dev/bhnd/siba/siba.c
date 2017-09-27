@@ -214,7 +214,7 @@ siba_write_ioctl(device_t dev, device_t child, uint16_t value, uint16_t mask)
 
 	/* Fetch CFG0 mapping */
 	dinfo = device_get_ivars(child);
-	if ((r = dinfo->cfg[0]) == NULL)
+	if ((r = dinfo->cfg_res[0]) == NULL)
 		return (ENODEV);
 
 	/* Mask and set TMSTATELOW core flag bits */
@@ -266,7 +266,7 @@ siba_reset_hw(device_t dev, device_t child, uint16_t ioctl)
 	dinfo = device_get_ivars(child);
 
 	/* Can't suspend the core without access to the CFG0 registers */
-	if ((r = dinfo->cfg[0]) == NULL)
+	if ((r = dinfo->cfg_res[0]) == NULL)
 		return (ENODEV);
 
 	/* We require exclusive control over BHND_IOCTL_CLK_EN and
@@ -338,7 +338,7 @@ siba_suspend_hw(device_t dev, device_t child)
 	pm = dinfo->pmu_info;
 
 	/* Can't suspend the core without access to the CFG0 registers */
-	if ((r = dinfo->cfg[0]) == NULL)
+	if ((r = dinfo->cfg_res[0]) == NULL)
 		return (ENODEV);
 
 	/* Already in RESET? */
@@ -433,23 +433,26 @@ siba_read_config(device_t dev, device_t child, bus_size_t offset, void *value,
 
 	/* CFG0 registers must be available */
 	dinfo = device_get_ivars(child);
-	if (dinfo->cfg[0] == NULL)
+	if (dinfo->cfg_res[0] == NULL)
 		return (ENODEV);
 
 	/* Offset must fall within CFG0 */
-	r_size = rman_get_size(dinfo->cfg[0]->res);
+	r_size = rman_get_size(dinfo->cfg_res[0]->res);
 	if (r_size < offset || r_size - offset < width)
 		return (EFAULT);
 
 	switch (width) {
 	case 1:
-		*((uint8_t *)value) = bhnd_bus_read_1(dinfo->cfg[0], offset);
+		*((uint8_t *)value) = bhnd_bus_read_1(dinfo->cfg_res[0],
+		    offset);
 		return (0);
 	case 2:
-		*((uint16_t *)value) = bhnd_bus_read_2(dinfo->cfg[0], offset);
+		*((uint16_t *)value) = bhnd_bus_read_2(dinfo->cfg_res[0],
+		    offset);
 		return (0);
 	case 4:
-		*((uint32_t *)value) = bhnd_bus_read_4(dinfo->cfg[0], offset);
+		*((uint32_t *)value) = bhnd_bus_read_4(dinfo->cfg_res[0],
+		    offset);
 		return (0);
 	default:
 		return (EINVAL);
@@ -470,7 +473,7 @@ siba_write_config(device_t dev, device_t child, bus_size_t offset,
 
 	/* CFG0 registers must be available */
 	dinfo = device_get_ivars(child);
-	if ((r = dinfo->cfg[0]) == NULL)
+	if ((r = dinfo->cfg_res[0]) == NULL)
 		return (ENODEV);
 
 	/* Offset must fall within CFG0 */
@@ -504,7 +507,7 @@ siba_get_port_count(device_t dev, device_t child, bhnd_port_type type)
 		    type));
 
 	dinfo = device_get_ivars(child);
-	return (siba_addrspace_port_count(dinfo->core_id.num_addrspace));
+	return (siba_port_count(&dinfo->core_id, type));
 }
 
 static u_int
@@ -519,11 +522,7 @@ siba_get_region_count(device_t dev, device_t child, bhnd_port_type type,
 		    type, port));
 
 	dinfo = device_get_ivars(child);
-	if (!siba_is_port_valid(dinfo->core_id.num_addrspace, type, port))
-		return (0);
-
-	return (siba_addrspace_region_count(dinfo->core_id.num_addrspace,
-	    port));
+	return (siba_port_region_count(&dinfo->core_id, type, port));
 }
 
 static int
@@ -532,6 +531,7 @@ siba_get_port_rid(device_t dev, device_t child, bhnd_port_type port_type,
 {
 	struct siba_devinfo	*dinfo;
 	struct siba_addrspace	*addrspace;
+	struct siba_cfg_block	*cfg;
 
 	/* delegate non-bus-attached devices to our parent */
 	if (device_get_parent(child) != dev)
@@ -539,11 +539,19 @@ siba_get_port_rid(device_t dev, device_t child, bhnd_port_type port_type,
 		    port_type, port_num, region_num));
 
 	dinfo = device_get_ivars(child);
-	addrspace = siba_find_addrspace(dinfo, port_type, port_num, region_num);
-	if (addrspace == NULL)
-		return (-1);
 
-	return (addrspace->sa_rid);
+	/* Look for a matching addrspace entry */
+	addrspace = siba_find_addrspace(dinfo, port_type, port_num, region_num);
+	if (addrspace != NULL)
+		return (addrspace->sa_rid);
+
+	/* Try the config blocks */
+	cfg = siba_find_cfg_block(dinfo, port_type, port_num, region_num);
+	if (cfg != NULL)
+		return (cfg->cb_rid);
+
+	/* Not found */
+	return (-1);
 }
 
 static int
@@ -563,13 +571,25 @@ siba_decode_port_rid(device_t dev, device_t child, int type, int rid,
 	if (type != SYS_RES_MEMORY)
 		return (EINVAL);
 
-	for (int i = 0; i < dinfo->core_id.num_addrspace; i++) {
+	/* Look for a matching addrspace entry */
+	for (u_int i = 0; i < dinfo->core_id.num_addrspace; i++) {
 		if (dinfo->addrspace[i].sa_rid != rid)
 			continue;
 
 		*port_type = BHND_PORT_DEVICE;
-		*port_num = siba_addrspace_port(i);
-		*region_num = siba_addrspace_region(i);
+		*port_num = siba_addrspace_device_port(i);
+		*region_num = siba_addrspace_device_region(i);
+		return (0);
+	}
+
+	/* Try the config blocks */
+	for (u_int i = 0; i < dinfo->core_id.num_cfg_blocks; i++) {
+		if (dinfo->cfg[i].cb_rid != rid)
+			continue;
+
+		*port_type = BHND_PORT_AGENT;
+		*port_num = siba_cfg_agent_port(i);
+		*region_num = siba_cfg_agent_region(i);
 		return (0);
 	}
 
@@ -583,6 +603,7 @@ siba_get_region_addr(device_t dev, device_t child, bhnd_port_type port_type,
 {
 	struct siba_devinfo	*dinfo;
 	struct siba_addrspace	*addrspace;
+	struct siba_cfg_block	*cfg;
 
 	/* delegate non-bus-attached devices to our parent */
 	if (device_get_parent(child) != dev) {
@@ -591,67 +612,72 @@ siba_get_region_addr(device_t dev, device_t child, bhnd_port_type port_type,
 	}
 
 	dinfo = device_get_ivars(child);
-	addrspace = siba_find_addrspace(dinfo, port_type, port_num, region_num);
-	if (addrspace == NULL)
-		return (ENOENT);
 
-	*addr = addrspace->sa_base;
-	*size = addrspace->sa_size - addrspace->sa_bus_reserved;
-	return (0);
+	/* Look for a matching addrspace */
+	addrspace = siba_find_addrspace(dinfo, port_type, port_num, region_num);
+	if (addrspace != NULL) {
+		*addr = addrspace->sa_base;
+		*size = addrspace->sa_size - addrspace->sa_bus_reserved;
+		return (0);
+	}
+
+	/* Look for a matching cfg block */
+	cfg = siba_find_cfg_block(dinfo, port_type, port_num, region_num);
+	if (cfg != NULL) {
+		*addr = cfg->cb_base;
+		*size = cfg->cb_size;
+		return (0);
+	}
+
+	/* Not found */
+	return (ENOENT);
 }
 
 /**
  * Default siba(4) bus driver implementation of BHND_BUS_GET_INTR_COUNT().
- * 
- * This implementation consults @p child's configuration block mapping,
- * returning SIBA_CORE_NUM_INTR if a valid CFG0 block is mapped.
  */
-int
+u_int
 siba_get_intr_count(device_t dev, device_t child)
 {
-	struct siba_devinfo *dinfo;
+	struct siba_devinfo	*dinfo;
 
 	/* delegate non-bus-attached devices to our parent */
 	if (device_get_parent(child) != dev)
 		return (BHND_BUS_GET_INTR_COUNT(device_get_parent(dev), child));
 
 	dinfo = device_get_ivars(child);
-
-	/* We can get/set interrupt sbflags on any core with a valid cfg0
-	 * block; whether the core actually makes use of it is another matter
-	 * entirely */
-	if (dinfo->cfg[0] == NULL)
+	if (!dinfo->intr_en) {
+		/* No interrupts */
 		return (0);
-
-	return (SIBA_CORE_NUM_INTR);
+	} else {
+		/* One assigned interrupt */
+		return (1);
+	}
 }
 
 /**
- * Default siba(4) bus driver implementation of BHND_BUS_GET_CORE_IVEC().
- * 
- * This implementation consults @p child's CFG0 register block,
- * returning the interrupt flag assigned to @p child.
+ * Default siba(4) bus driver implementation of BHND_BUS_GET_INTR_IVEC().
  */
 int
-siba_get_core_ivec(device_t dev, device_t child, u_int intr, uint32_t *ivec)
+siba_get_intr_ivec(device_t dev, device_t child, u_int intr, u_int *ivec)
 {
 	struct siba_devinfo	*dinfo;
-	uint32_t		 tpsflag;
 
 	/* delegate non-bus-attached devices to our parent */
 	if (device_get_parent(child) != dev)
-		return (BHND_BUS_GET_CORE_IVEC(device_get_parent(dev), child,
+		return (BHND_BUS_GET_INTR_IVEC(device_get_parent(dev), child,
 		    intr, ivec));
 
 	/* Must be a valid interrupt ID */
 	if (intr >= siba_get_intr_count(dev, child))
 		return (ENXIO);
 
-	/* Fetch sbflag number */
-	dinfo = device_get_ivars(child);
-	tpsflag = bhnd_bus_read_4(dinfo->cfg[0], SIBA_CFG0_TPSFLAG);
-	*ivec = SIBA_REG_GET(tpsflag, TPS_NUM0);
+	KASSERT(intr == 0, ("invalid ivec %u", intr));
 
+	dinfo = device_get_ivars(child);
+
+	KASSERT(dinfo->intr_en, ("core does not have an interrupt assigned"));
+	*ivec = dinfo->intr.flag;
 	return (0);
 }
 
@@ -715,6 +741,55 @@ siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
 	return (0);
 }
 
+
+/**
+ * Register all interrupt descriptors for @p dinfo. Must be called after
+ * configuration blocks have been mapped.
+ *
+ * @param dev The siba bus device.
+ * @param child The siba child device.
+ * @param dinfo The device info instance on which to register all interrupt
+ * descriptor entries.
+ * @param r A resource mapping the enumeration table block for @p di.
+ */
+static int
+siba_register_interrupts(device_t dev, device_t child,
+    struct siba_devinfo *dinfo, struct bhnd_resource *r)
+{
+	uint32_t	tpsflag;
+	int		error;
+
+	/* Is backplane interrupt distribution enabled for this core? */
+	tpsflag = bhnd_bus_read_4(r, SB0_REG_ABS(SIBA_CFG0_TPSFLAG));
+	if ((tpsflag & SIBA_TPS_F0EN0) == 0) {
+		dinfo->intr_en = false;
+		return (0);
+	}
+
+	/* Have one interrupt */
+	dinfo->intr_en = true;
+	dinfo->intr.flag = SIBA_REG_GET(tpsflag, TPS_NUM0);
+	dinfo->intr.mapped = false;
+	dinfo->intr.irq = 0;
+	dinfo->intr.rid = -1;
+
+	/* Map the interrupt */
+	error = BHND_BUS_MAP_INTR(dev, child, 0 /* single intr is always 0 */,
+	    &dinfo->intr.irq);
+	if (error) {
+		device_printf(dev, "failed mapping interrupt line for core %u: "
+		    "%d\n", dinfo->core_id.core_info.core_idx, error);
+		return (error);
+	}
+	dinfo->intr.mapped = true;
+
+	/* Update the resource list */
+	dinfo->intr.rid = resource_list_add_next(&dinfo->resources, SYS_RES_IRQ,
+	    dinfo->intr.irq, dinfo->intr.irq, 1);
+
+	return (0);
+}
+
 /**
  * Map per-core configuration blocks for @p dinfo.
  *
@@ -728,6 +803,7 @@ siba_map_cfg_resources(device_t dev, struct siba_devinfo *dinfo)
 	struct siba_addrspace	*addrspace;
 	rman_res_t		 r_start, r_count, r_end;
 	uint8_t			 num_cfg;
+	int			 rid;
 
 	num_cfg = dinfo->core_id.num_cfg_blocks;
 	if (num_cfg > SIBA_MAX_CFG) {
@@ -747,22 +823,28 @@ siba_map_cfg_resources(device_t dev, struct siba_devinfo *dinfo)
 	 * Map the per-core configuration blocks
 	 */
 	for (uint8_t i = 0; i < num_cfg; i++) {
-		/* Determine the config block's address range; configuration
-		 * blocks are allocated starting at SIBA_CFG0_OFFSET,
-		 * growing downwards. */
-		r_start = addrspace->sa_base + SIBA_CFG0_OFFSET;
-		r_start -= i * SIBA_CFG_SIZE;
-
+		/* Add to child's resource list */
+		r_start = addrspace->sa_base + SIBA_CFG_OFFSET(i);
 		r_count = SIBA_CFG_SIZE;
 		r_end = r_start + r_count - 1;
 
-		/* Allocate the config resource */
-		dinfo->cfg_rid[i] = SIBA_CFG_RID(dinfo, i);
-		dinfo->cfg[i] = BHND_BUS_ALLOC_RESOURCE(dev, dev,
-		    SYS_RES_MEMORY, &dinfo->cfg_rid[i], r_start, r_end,
-		    r_count, RF_ACTIVE);
+		rid = resource_list_add_next(&dinfo->resources, SYS_RES_MEMORY,
+		    r_start, r_end, r_count);
 
-		if (dinfo->cfg[i] == NULL) {
+		/* Initialize config block descriptor */
+		dinfo->cfg[i] = ((struct siba_cfg_block) {
+			.cb_base = r_start,
+			.cb_size = SIBA_CFG_SIZE,
+			.cb_rid = rid
+		});
+
+		/* Map the config resource for bus-level access */
+		dinfo->cfg_rid[i] = SIBA_CFG_RID(dinfo, i);
+		dinfo->cfg_res[i] = BHND_BUS_ALLOC_RESOURCE(dev, dev,
+		    SYS_RES_MEMORY, &dinfo->cfg_rid[i], r_start, r_end,
+		    r_count, RF_ACTIVE|RF_SHAREABLE);
+
+		if (dinfo->cfg_res[i] == NULL) {
 			device_printf(dev, "failed to allocate SIBA_CFG%hhu\n",
 			    i);
 			return (ENXIO);
@@ -805,7 +887,7 @@ siba_child_deleted(device_t dev, device_t child)
 
 	/* Free siba device info */
 	if ((dinfo = device_get_ivars(child)) != NULL)
-		siba_free_dinfo(dev, dinfo);
+		siba_free_dinfo(dev, child, dinfo);
 
 	device_set_ivars(child, NULL);
 }
@@ -820,30 +902,35 @@ int
 siba_add_children(device_t dev)
 {
 	const struct bhnd_chipid	*chipid;
-	struct bhnd_core_info		*cores;
-	struct siba_devinfo		*dinfo;
+	struct siba_core_id		*cores;
 	struct bhnd_resource		*r;
+	device_t			*children;
 	int				 rid;
 	int				 error;
 
-	dinfo = NULL;
 	cores = NULL;
 	r = NULL;
 
 	chipid = BHND_BUS_GET_CHIPID(dev, dev);
 
-	/* Allocate our temporary core table and enumerate all cores */
-	cores = malloc(sizeof(*cores) * chipid->ncores, M_BHND, M_NOWAIT);
-	if (cores == NULL)
-		return (ENOMEM);
+	/* Allocate our temporary core and device table */
+	cores = malloc(sizeof(*cores) * chipid->ncores, M_BHND, M_WAITOK);
+	children = malloc(sizeof(*children) * chipid->ncores, M_BHND,
+	    M_WAITOK | M_ZERO);
 
-	/* Add all cores. */
+	/*
+	 * Add child devices for all discovered cores.
+	 * 
+	 * On bridged devices, we'll exhaust our available register windows if
+	 * we map config blocks on unpopulated/disabled cores. To avoid this, we
+	 * defer mapping of the per-core siba(4) config blocks until all cores
+	 * have been enumerated and otherwise configured.
+	 */
 	for (u_int i = 0; i < chipid->ncores; i++) {
-		struct siba_core_id	 cid;
+		struct siba_devinfo	*dinfo;
 		device_t		 child;
 		uint32_t		 idhigh, idlow;
 		rman_res_t		 r_count, r_end, r_start;
-		int			 nintr;
 
 		/* Map the core's register block */
 		rid = 0;
@@ -854,74 +941,98 @@ siba_add_children(device_t dev)
 		    r_end, r_count, RF_ACTIVE);
 		if (r == NULL) {
 			error = ENXIO;
-			goto cleanup;
+			goto failed;
+		}
+
+		/* Read the core info */
+		idhigh = bhnd_bus_read_4(r, SB0_REG_ABS(SIBA_CFG0_IDHIGH));
+		idlow = bhnd_bus_read_4(r, SB0_REG_ABS(SIBA_CFG0_IDLOW));
+
+		cores[i] = siba_parse_core_id(idhigh, idlow, i, 0);
+
+		/* Determine and set unit number */
+		for (u_int j = 0; j < i; j++) {
+			struct bhnd_core_info *cur = &cores[i].core_info;
+			struct bhnd_core_info *prev = &cores[j].core_info;
+
+			if (prev->vendor == cur->vendor &&
+			    prev->device == cur->device)
+				cur->unit++;
 		}
 
 		/* Add the child device */
 		child = BUS_ADD_CHILD(dev, 0, NULL, -1);
 		if (child == NULL) {
 			error = ENXIO;
-			goto cleanup;
+			goto failed;
 		}
-		
-		/* Read the core info */
-		idhigh = bhnd_bus_read_4(r, SB0_REG_ABS(SIBA_CFG0_IDHIGH));
-		idlow = bhnd_bus_read_4(r, SB0_REG_ABS(SIBA_CFG0_IDLOW));
 
-		cid = siba_parse_core_id(idhigh, idlow, i, 0);
-		cores[i] = cid.core_info;
-
-		/* Determine unit number */
-		for (u_int j = 0; j < i; j++) {
-			if (cores[j].vendor == cores[i].vendor &&
-			    cores[j].device == cores[i].device)
-				cores[i].unit++;
-		}
+		children[i] = child;
 
 		/* Initialize per-device bus info */
 		if ((dinfo = device_get_ivars(child)) == NULL) {
 			error = ENXIO;
-			goto cleanup;
+			goto failed;
 		}
 
-		if ((error = siba_init_dinfo(dev, dinfo, &cid)))
-			goto cleanup;
+		if ((error = siba_init_dinfo(dev, dinfo, &cores[i])))
+			goto failed;
 
 		/* Register the core's address space(s). */
 		if ((error = siba_register_addrspaces(dev, dinfo, r)))
-			goto cleanup;
+			goto failed;
 
-		/* Release our resource covering the register blocks
-		 * we're about to map */
+		/* Register the core's interrupts */
+		if ((error = siba_register_interrupts(dev, child, dinfo, r)))
+			goto failed;
+
+		/* Unmap the core's register block */
 		bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
 		r = NULL;
-
-		/* Map the core's config blocks */
-		if ((error = siba_map_cfg_resources(dev, dinfo)))
-			goto cleanup;
-
-		/* Assign interrupts */
-		nintr = bhnd_get_intr_count(child);
-		for (int rid = 0; rid < nintr; rid++) {
-			error = BHND_BUS_ASSIGN_INTR(dev, child, rid);
-			if (error) {
-				device_printf(dev, "failed to assign interrupt "
-				    "%d to core %u: %d\n", rid, i, error);
-			}
-		}
 
 		/* If pins are floating or the hardware is otherwise
 		 * unpopulated, the device shouldn't be used. */
 		if (bhnd_is_hw_disabled(child))
 			device_disable(child);
+	}
+
+	/* Map all valid core's config register blocks and perform interrupt
+	 * assignment */
+	for (u_int i = 0; i < chipid->ncores; i++) {
+		struct siba_devinfo	*dinfo;
+		device_t		 child;
+
+		child = children[i];
+
+		/* Skip if core is disabled */
+		if (bhnd_is_hw_disabled(child))
+			continue;
+
+		dinfo = device_get_ivars(child);
+
+		/* Map the core's config blocks */
+		if ((error = siba_map_cfg_resources(dev, dinfo)))
+			goto failed;
 
 		/* Issue bus callback for fully initialized child. */
 		BHND_BUS_CHILD_ADDED(dev, child);
 	}
-	
-cleanup:
-	if (cores != NULL)
-		free(cores, M_BHND);
+
+	free(cores, M_BHND);
+	free(children, M_BHND);
+
+	return (0);
+
+failed:
+	for (u_int i = 0; i < chipid->ncores; i++) {
+		if (children[i] == NULL)
+			continue;
+
+		device_delete_child(dev, children[i]);
+	}
+
+	free(cores, M_BHND);
+	free(children, M_BHND);
 
 	if (r != NULL)
 		bhnd_release_resource(dev, SYS_RES_MEMORY, rid, r);
@@ -960,7 +1071,7 @@ static device_method_t siba_methods[] = {
 	DEVMETHOD(bhnd_bus_decode_port_rid,	siba_decode_port_rid),
 	DEVMETHOD(bhnd_bus_get_region_addr,	siba_get_region_addr),
 	DEVMETHOD(bhnd_bus_get_intr_count,	siba_get_intr_count),
-	DEVMETHOD(bhnd_bus_get_core_ivec,	siba_get_core_ivec),
+	DEVMETHOD(bhnd_bus_get_intr_ivec,	siba_get_intr_ivec),
 
 	DEVMETHOD_END
 };
