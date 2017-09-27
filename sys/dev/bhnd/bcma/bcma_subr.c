@@ -99,8 +99,8 @@ bcma_alloc_corecfg(u_int core_index, int core_unit, uint16_t vendor,
 void
 bcma_free_corecfg(struct bcma_corecfg *corecfg)
 {
-	struct bcma_mport	*mport, *mnext;
-	struct bcma_sport	*sport, *snext;
+	struct bcma_mport *mport, *mnext;
+	struct bcma_sport *sport, *snext;
 
 	STAILQ_FOREACH_SAFE(mport, &corecfg->master_ports, mp_link, mnext) {
 		free(mport, M_BHND);
@@ -337,7 +337,6 @@ bcma_alloc_dinfo(device_t bus)
 	dinfo->num_intrs = 0;
 
 	resource_list_init(&dinfo->resources);
-
 
 	return (dinfo);
 }
