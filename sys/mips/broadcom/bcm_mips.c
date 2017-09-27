@@ -62,9 +62,9 @@ static int		bcm_mips_retain_cpu_intr(struct bcm_mips_softc *sc,
 static int		bcm_mips_release_cpu_intr(struct bcm_mips_softc *sc,
 			    struct bcm_mips_irqsrc *isrc, struct resource *res);
 
-static const int bcm_mips_debug = 1;
+static const int bcm_mips_debug = 0;
 
-#define	dprintf(fmt, ...) do {						\
+#define	DPRINTF(fmt, ...) do {						\
 	if (bcm_mips_debug)						\
 		printf("%s: " fmt, __FUNCTION__, ##__VA_ARGS__);	\
 } while (0)
@@ -609,7 +609,7 @@ bcm_mips_retain_cpu_intr(struct bcm_mips_softc *sc,
 		break;
 	}
 
-	dprintf("routing backplane interrupt vector %u to MIPS IRQ %u\n",
+	DPRINTF("routing backplane interrupt vector %u to MIPS IRQ %u\n",
 	    isrc->ivec, cpuirq->mips_irq);
 
 	KASSERT(isrc->cpuirq == NULL, ("CPU IRQ already assigned"));
