@@ -269,7 +269,7 @@ bhndb_pci_probe(device_t dev)
 	error = BUS_PROBE_DEFAULT;
 
 cleanup:
-	bhndb_enable_pci_clocks(dev);
+	bhndb_disable_pci_clocks(dev);
 	if (cores != NULL)
 		free(cores, M_BHND);
 
