@@ -120,6 +120,7 @@ const struct bhndb_hw_priority	*bhndb_hw_priority_find_core(
 				     const struct bhndb_hw_priority *table,
 				     struct bhnd_core_info *core);
 
+
 /**
  * Dynamic register window allocation reference.
  */
