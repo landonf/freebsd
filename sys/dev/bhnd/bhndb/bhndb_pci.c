@@ -704,6 +704,20 @@ bhndb_pci_sprom_size(struct bhndb_pci_softc *sc)
 	return (sprom_sz);
 }
 
+/**
+ * Return the host resource providing a static mapping of the PCI core's
+ * registers.
+ * 
+ * @param	sc	bhndb PCI driver state.
+ * @param[out]	res	On success, the host resource containing our PCI
+ *			core's register window.
+ * @param[out]	offset	On success, the offset of the PCI core registers within
+ * 			@p res.
+ *
+ * @retval 0		success
+ * @retval ENXIO	if a valid static register window mapping the PCI core
+ *			registers is not available.
+ */
 static int
 bhndb_pci_get_core_regs(struct bhndb_pci_softc *sc, struct resource **res,
     bus_size_t *offset)
@@ -720,7 +734,7 @@ bhndb_pci_get_core_regs(struct bhndb_pci_softc *sc, struct resource **res,
 	}
 
 	/* Fetch the resource containing the register window */
-	r = bhndb_host_resource_for_regwin(sc->bhndb.bus_res->res,win);
+	r = bhndb_host_resource_for_regwin(sc->bhndb.bus_res->res, win);
 	if (r == NULL) {
 		device_printf(sc->dev, "missing PCI core register resource\n");
 		return (ENXIO);
