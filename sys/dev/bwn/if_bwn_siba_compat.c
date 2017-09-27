@@ -708,10 +708,7 @@ bhnd_compat_sprom_get_ledbh(device_t dev, const char *name)
 	uint8_t	value;
 	int	error;
 
-	mtx_lock(&Giant); /* XXX: temporarily required by bhnd(4) */
 	error = bhnd_nvram_getvar_uint8(dev, name, &value);
-	mtx_unlock(&Giant);
-
 	if (error && error != ENOENT)
 		panic("NVRAM variable %s unreadable: %d", name, error);
 
@@ -1898,21 +1895,15 @@ bhnd_compat_sprom_get_core_power_info(device_t dev, int core,
 	 * initialized */
 	memset(c, 0x0, sizeof(*c));
 
-	mtx_lock(&Giant); /* XXX: temporarily required by bhnd_nvram_* */
-
 	/* Populate SPROM revision-independent values */
 	if ((error = bhnd_nvram_getvar_uint8(dev, v->maxp2ga, &c->maxpwr_2g)))
-		goto finished;
+		return (error);
 
 	/* Populate SPROM revision-specific values */
 	if (ctx->sromrev >= 4 && ctx->sromrev <= 10)
-		error = bwn_get_core_power_info_r4_r10(dev, v, c);
+		return (bwn_get_core_power_info_r4_r10(dev, v, c));
 	else
-		error = bwn_get_core_power_info_r11(dev, v, c);
-
-finished:
-	mtx_unlock(&Giant);
-	return (error);
+		return (bwn_get_core_power_info_r11(dev, v, c));
 }
 
 /*
