@@ -51,6 +51,7 @@
  */
 
 struct bhndb_dw_alloc;
+struct bhndb_intr_handler;
 struct bhndb_region;
 struct bhndb_resources;
 
@@ -68,9 +69,25 @@ int				 bhndb_add_resource_region(
 				     const struct bhndb_regwin *static_regwin);
 
 int				 bhndb_find_resource_limits(
-				     struct bhndb_resources *br,
+				     struct bhndb_resources *br, int type,
 				     struct resource *r, rman_res_t *start,
 				     rman_res_t *end);
+
+struct bhndb_intr_handler	*bhndb_alloc_intr_handler(device_t owner,
+				     struct resource *r,
+				     struct bhndb_intr_isrc *isrc);
+void				 bhndb_free_intr_handler(
+				     struct bhndb_intr_handler *ih);
+
+void				 bhndb_register_intr_handler(
+				     struct bhndb_resources *br,
+				     struct bhndb_intr_handler *ih);
+void				 bhndb_deregister_intr_handler(
+				     struct bhndb_resources *br,
+				     struct bhndb_intr_handler *ih);
+struct bhndb_intr_handler	*bhndb_find_intr_handler(
+				     struct bhndb_resources *br,
+				     void *cookiep);
 
 struct bhndb_region		*bhndb_find_resource_region(
 				     struct bhndb_resources *br,
@@ -102,7 +119,6 @@ int				 bhndb_dw_set_addr(device_t dev,
 const struct bhndb_hw_priority	*bhndb_hw_priority_find_core(
 				     const struct bhndb_hw_priority *table,
 				     struct bhnd_core_info *core);
-
 
 /**
  * Dynamic register window allocation reference.
@@ -137,6 +153,19 @@ struct bhndb_region {
 };
 
 /**
+ * Attached interrupt handler state
+ */
+struct bhndb_intr_handler {
+	device_t		 ih_owner;	/**< child device */
+	struct resource		*ih_res;	/**< child resource */
+	void			*ih_cookiep;	/**< hostb-assigned cookiep, or NULL if bus_setup_intr() incomplete. */
+	struct bhndb_intr_isrc	*ih_isrc;	/**< host interrupt source routing the child's interrupt  */
+	bool			 ih_active;	/**< handler has been registered via bhndb_register_intr_handler */
+
+	STAILQ_ENTRY(bhndb_intr_handler) ih_link;
+};
+
+/**
  * BHNDB resource allocation state.
  */
 struct bhndb_resources {
@@ -147,6 +176,7 @@ struct bhndb_resources {
 	
 	struct rman			 ht_mem_rman;	/**< host memory manager */
 	struct rman			 br_mem_rman;	/**< bridged memory manager */
+	struct rman			 br_irq_rman;	/**< bridged irq manager */
 
 	STAILQ_HEAD(, bhndb_region) 	 bus_regions;	/**< bus region descriptors */
 
@@ -155,6 +185,8 @@ struct bhndb_resources {
 	bitstr_t			*dwa_freelist;	/**< dynamic window free list */
 	bhndb_priority_t		 min_prio;	/**< minimum resource priority required to
 							     allocate a dynamic window */
+
+	STAILQ_HEAD(,bhndb_intr_handler) bus_intrs;	/**< attached child interrupt handlers */
 };
 
 /**

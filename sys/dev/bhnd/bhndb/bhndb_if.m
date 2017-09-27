@@ -40,6 +40,7 @@
 INTERFACE bhndb;
 
 HEADER {
+	struct bhndb_intr_isrc;
 	struct bhndb_regwin;
 	struct bhndb_hw;
 	struct bhndb_hw_priority;
@@ -101,6 +102,13 @@ CODE {
 	    const struct bhndb_regwin *rw, bhnd_addr_t addr)
 	{
 		panic("bhndb_set_window_addr unimplemented");
+	}
+
+	static int
+	bhndb_null_map_intr_isrc(device_t dev, struct resource *irq,
+	    struct bhndb_intr_isrc **isrc)
+	{
+		panic("bhndb_map_intr_isrc unimplemented");
 	}
 }
 
@@ -241,3 +249,22 @@ METHOD int set_window_addr {
 	const struct bhndb_regwin *win;
 	bhnd_addr_t addr;
 } DEFAULT bhndb_null_set_window_addr;
+
+/**
+ * Map a bridged interrupt resource to its corresponding host interrupt source,
+ * if any.
+ *
+ * @param dev The bridge device.
+ * @param irq The bridged interrupt resource.
+ * @param[out] isrc The host interrupt source to which the bridged interrupt
+ * is routed.
+ *
+ * @retval 0 success
+ * @retval non-zero if mapping @p irq otherwise fails, a regular unix error code
+ * will be returned.
+ */
+METHOD int map_intr_isrc {
+	device_t dev;
+	struct resource *irq;
+	struct bhndb_intr_isrc **isrc;
+} DEFAULT bhndb_null_map_intr_isrc;

@@ -106,22 +106,17 @@ struct bhndb_pci_core {
 #define	BHNDB_PCI_CORE_END		{ { BHND_MATCH_ANY }, 0, NULL }
 #define	BHNDB_PCI_IS_CORE_END(_c)	BHND_MATCH_IS_ANY(&(_c)->match)
 
-/* bhndb_pci interrupt state */
-struct bhndb_pci_intr {
-	int		msi_count;	/**< MSI count, or 0 */
-	int		intr_rid;	/**< interrupt resource ID.*/
-};
-
 struct bhndb_pci_softc {
-	struct bhndb_softc	bhndb;		/**< parent softc */
-	device_t		dev;		/**< bridge device */
-	device_t		parent;		/**< parent PCI device */
-	bhnd_devclass_t         pci_devclass;   /**< PCI core's devclass */
-	uint32_t		pci_quirks;	/**< PCI bridge-level quirks */
-	struct bhndb_pci_intr	intr;		/**< PCI interrupt config */
-	struct mtx		mtx;
+	struct bhndb_softc	 bhndb;		/**< parent softc */
+	device_t		 dev;		/**< bridge device */
+	device_t		 parent;	/**< parent PCI device */
+	bhnd_devclass_t		 pci_devclass;	/**< PCI core's devclass */
+	uint32_t		 pci_quirks;	/**< PCI bridge-level quirks */
+	int			 msi_count;	/**< MSI count, or 0 */
+	struct bhndb_intr_isrc	*isrc;		/**< host interrupt source */
 
-	bhndb_pci_set_regwin_t	set_regwin;	/**< regwin handler */
+	struct mtx		 mtx;
+	bhndb_pci_set_regwin_t	 set_regwin;	/**< regwin handler */
 };
 
 #define	BHNDB_PCI_LOCK_INIT(sc) \
