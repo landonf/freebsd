@@ -1379,10 +1379,10 @@ sctp_queue_data_for_reasm(struct sctp_tcb *stcb, struct sctp_association *asoc,
 		}
 		if (sctp_place_control_in_stream(strm, asoc, control)) {
 			/* Duplicate SSN? */
-			sctp_clean_up_control(stcb, control);
 			sctp_abort_in_reasm(stcb, control, chk,
 			    abort_flag,
 			    SCTP_FROM_SCTP_INDATA + SCTP_LOC_6);
+			sctp_clean_up_control(stcb, control);
 			return;
 		}
 		if ((tsn == (asoc->cumulative_tsn + 1) && (asoc->idata_supported == 0))) {
@@ -1617,7 +1617,6 @@ sctp_queue_data_for_reasm(struct sctp_tcb *stcb, struct sctp_association *asoc,
 						    control,
 						    &stcb->sctp_socket->so_rcv, control->end_added,
 						    SCTP_READ_LOCK_NOT_HELD, SCTP_SO_NOT_LOCKED);
-						do_wakeup = 1;
 					}
 					break;
 				}
@@ -4213,8 +4212,6 @@ sctp_express_handle_sack(struct sctp_tcb *stcb, uint32_t cumack,
 again:
 	j = 0;
 	TAILQ_FOREACH(net, &asoc->nets, sctp_next) {
-		int to_ticks;
-
 		if (win_probe_recovery && (net->window_probe)) {
 			win_probe_recovered = 1;
 			/*
@@ -4229,11 +4226,6 @@ again:
 					break;
 				}
 			}
-		}
-		if (net->RTO == 0) {
-			to_ticks = MSEC_TO_TICKS(stcb->asoc.initial_rto);
-		} else {
-			to_ticks = MSEC_TO_TICKS(net->RTO);
 		}
 		if (net->flight_size) {
 			j++;
