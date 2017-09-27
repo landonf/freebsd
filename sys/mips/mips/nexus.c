@@ -177,6 +177,7 @@ static devclass_t nexus_devclass;
 static int
 nexus_probe(device_t dev)
 {
+
 	device_set_desc(dev, "MIPS32 root nexus");
 
 	irq_rman.rm_start = 0;
