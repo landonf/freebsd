@@ -66,19 +66,11 @@ enum {
 	/** When PCIe-bridged, the D11 core's initiator request
 	 *  timeout must be disabled to prevent D11 from entering a
 	 *  RESP_TIMEOUT error state. */
-	SIBA_QUIRK_PCIE_D11_SB_TIMEOUT	= (1<<0),
-
-	/**
-	 * On PCI cores (rev <= 5), interrupt masking is handled via the
-	 * per-core SBINTVEC register, rather than the PCI host bridge's
-	 * PCI_INT_MASK config register.
-	 */
-	SIBA_QUIRK_INTR_SBINTVEC	= (1<<1),
+	SIBA_QUIRK_PCIE_D11_SB_TIMEOUT	= (1<<0)
 };
 
 /* Bus-level quirks when bridged via a PCI host bridge core */
 static struct bhnd_device_quirk pci_bridge_quirks[] = {
-	BHND_CORE_QUIRK (HWREV_LTE(5),		SIBA_QUIRK_INTR_SBINTVEC),
 	BHND_DEVICE_QUIRK_END
 };
 
