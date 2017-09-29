@@ -1364,9 +1364,6 @@ bhnd_compat_powerup(device_t dev, int dynamic)
 	bhnd_clock	clock;
 	int		error;
 
-	// XXX TODO: Should we bring up the core clock in bwn_reset_core()
-	// instead?
-
 	/* On bcma(4) devices, the core must be brought out of reset before
 	 * accessing PMU clock request registers */
 	if ((error = bhnd_reset_hw(dev, 0))) {
@@ -1399,10 +1396,6 @@ static int
 bhnd_compat_powerdown(device_t dev)
 {
 	int	error;
-
-	/* Release any outstanding clock request */
-	if ((error = bhnd_request_clock(dev, BHND_CLOCK_DYN)))
-		return (error);
 
 	/* Suspend the core */
 	if ((error = bhnd_suspend_hw(dev)))
@@ -1593,6 +1586,10 @@ bhnd_compat_dev_down(device_t dev, uint32_t flags)
 	/* We don't support specifying IOCTL flags on suspend */
 	if (flags)
 		panic("%s: IOCTL flags ignored", __FUNCTION__);
+
+	/* Release any outstanding clock request */
+	if ((error = bhnd_request_clock(dev, BHND_CLOCK_DYN)))
+		panic("%s: clock request failed: %d", __FUNCTION__, error);
 
 	/* Put core into RESET state */
 	if ((error = bhnd_suspend_hw(dev)))
