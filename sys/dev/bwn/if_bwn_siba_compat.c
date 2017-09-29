@@ -499,7 +499,7 @@ bhnd_compat_get_type(device_t dev)
 	bhnd_devclass_t		hostb_devclass;
 
 	bus = device_get_parent(dev);
-	hostb = bhnd_find_hostb_device(bus);
+	hostb = bhnd_bus_find_hostb_device(bus);
 
 	if (hostb == NULL)
 		return (SIBA_TYPE_SSB);
