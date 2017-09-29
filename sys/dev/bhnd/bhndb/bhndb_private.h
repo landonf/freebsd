@@ -1,6 +1,10 @@
 /*-
  * Copyright (c) 2015-2016 Landon Fuller <landon@landonf.org>
+ * Copyright (c) 2017 The FreeBSD Foundation
  * All rights reserved.
+ *
+ * Portions of this software were developed by Landon Fuller
+ * under sponsorship from the FreeBSD Foundation.
  *
  * Portions of this software were developed by Landon Fuller
  * under sponsorship from the FreeBSD Foundation.
@@ -119,6 +123,7 @@ int				 bhndb_dw_set_addr(device_t dev,
 const struct bhndb_hw_priority	*bhndb_hw_priority_find_core(
 				     const struct bhndb_hw_priority *table,
 				     struct bhnd_core_info *core);
+
 
 /**
  * Dynamic register window allocation reference.

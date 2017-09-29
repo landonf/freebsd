@@ -82,6 +82,7 @@ static int		bhndb_pci_read_core_table(device_t dev,
 			    bhnd_erom_class_t **eromcls);
 static int		bhndb_pci_add_children(struct bhndb_pci_softc *sc);
 
+static bhnd_devclass_t	bhndb_expected_pci_devclass(device_t dev);
 static bool		bhndb_is_pcie_attached(device_t dev);
 
 static int		bhndb_enable_pci_clocks(device_t dev);
@@ -240,12 +241,6 @@ bhndb_pci_probe(device_t dev)
 	if (parent_bus != pci)
 		return (ENXIO);
 
-	/* Determine hostb core's expected device class */
-	if (bhndb_is_pcie_attached(dev))
-		hostb_devclass = BHND_DEVCLASS_PCIE;
-	else
-		hostb_devclass = BHND_DEVCLASS_PCI;
-
 	/* Enable clocks */
 	if ((error = bhndb_enable_pci_clocks(dev)))
 		return (error);
@@ -256,6 +251,7 @@ bhndb_pci_probe(device_t dev)
 		goto cleanup;
 
 	/* Search our core table for the host bridge core */
+	hostb_devclass = bhndb_expected_pci_devclass(dev);
 	error = bhndb_find_hostb_core(cores, ncores, hostb_devclass,
 	    &hostb_core);
 	if (error)
@@ -273,7 +269,7 @@ bhndb_pci_probe(device_t dev)
 	error = BUS_PROBE_DEFAULT;
 
 cleanup:
-	bhndb_enable_pci_clocks(dev);
+	bhndb_disable_pci_clocks(dev);
 	if (cores != NULL)
 		free(cores, M_BHND);
 
@@ -323,18 +319,13 @@ bhndb_pci_attach(device_t dev)
 	sc = device_get_softc(dev);
 	sc->dev = dev;
 	sc->parent = device_get_parent(dev);
-	sc->set_regwin = NULL;
+	sc->pci_devclass = bhndb_expected_pci_devclass(dev);
 	sc->pci_quirks = 0;
-	
+	sc->set_regwin = NULL;
+
 	BHNDB_PCI_LOCK_INIT(sc);
 
 	cores = NULL;
-
-	/* Determine our bridge device class */
-	if (bhndb_is_pcie_attached(dev))
-		sc->pci_devclass = BHND_DEVCLASS_PCIE;
-	else
-		sc->pci_devclass = BHND_DEVCLASS_PCI;
 
 	/* Enable PCI bus mastering */
 	pci_enable_busmaster(sc->parent);
@@ -707,6 +698,20 @@ bhndb_pci_sprom_size(struct bhndb_pci_softc *sc)
 	return (sprom_sz);
 }
 
+/**
+ * Return the host resource providing a static mapping of the PCI core's
+ * registers.
+ * 
+ * @param	sc	bhndb PCI driver state.
+ * @param[out]	res	On success, the host resource containing our PCI
+ *			core's register window.
+ * @param[out]	offset	On success, the offset of the PCI core registers within
+ * 			@p res.
+ *
+ * @retval 0		success
+ * @retval ENXIO	if a valid static register window mapping the PCI core
+ *			registers is not available.
+ */
 static int
 bhndb_pci_get_core_regs(struct bhndb_pci_softc *sc, struct resource **res,
     bus_size_t *offset)
@@ -723,7 +728,7 @@ bhndb_pci_get_core_regs(struct bhndb_pci_softc *sc, struct resource **res,
 	}
 
 	/* Fetch the resource containing the register window */
-	r = bhndb_host_resource_for_regwin(sc->bhndb.bus_res->res,win);
+	r = bhndb_host_resource_for_regwin(sc->bhndb.bus_res->res, win);
 	if (r == NULL) {
 		device_printf(sc->dev, "missing PCI core register resource\n");
 		return (ENXIO);
@@ -991,7 +996,22 @@ bhndb_pci_populate_board_info(device_t dev, device_t child,
 }
 
 /**
- * Return true if the bridge device @p bhndb is attached via PCIe,
+ * Examine the bridge device @p dev and return the expected host bridge
+ * device class.
+ *
+ * @param dev The bhndb bridge device
+ */
+static bhnd_devclass_t
+bhndb_expected_pci_devclass(device_t dev)
+{
+	if (bhndb_is_pcie_attached(dev))
+		return (BHND_DEVCLASS_PCIE);
+	else
+		return (BHND_DEVCLASS_PCI);
+}
+
+/**
+ * Return true if the bridge device @p dev is attached via PCIe,
  * false otherwise.
  *
  * @param dev The bhndb bridge device
