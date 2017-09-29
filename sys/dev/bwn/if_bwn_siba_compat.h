@@ -69,9 +69,7 @@ bwn_bhnd_get_ctx(device_t dev)
 do {									\
 	int error;							\
 									\
-	mtx_lock(&Giant); /* XXX: temporarily required by bhnd(4) */	\
 	error = bhnd_nvram_getvar_ ## _type(_dev, _name, _result);	\
-	mtx_unlock(&Giant);						\
 	if (error) {							\
 		panic("NVRAM variable %s unreadable: %d", _name,	\
 		    error);						\
