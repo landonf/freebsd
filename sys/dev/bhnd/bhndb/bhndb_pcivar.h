@@ -80,10 +80,9 @@ struct bhndb_pci_quirk {
 	uint32_t		quirks;		/**< quirk flags */
 };
 
-#define	BHNDB_PCI_QUIRK(_device, _rev, _flags)	{			\
+#define	BHNDB_PCI_QUIRK(_rev, _flags)	{			\
 	{ BHND_MATCH_ANY },						\
-	{ BHND_MATCH_CORE(BHND_MFGID_BCM, BHND_COREID_ ## _device),	\
-	  BHND_MATCH_CORE_REV(_rev) },					\
+	{ BHND_MATCH_CORE_REV(_rev) },					\
 	_flags,								\
 }
 
