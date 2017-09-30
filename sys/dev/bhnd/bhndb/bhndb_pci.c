@@ -117,14 +117,12 @@ static uint32_t		bhndb_pci_eio_read(struct bhnd_erom_io *eio,
 
 static struct bhndb_pci_quirk	bhndb_pci_quirks[];
 static struct bhndb_pci_quirk	bhndb_pcie_quirks[];
+static struct bhndb_pci_quirk	bhndb_pcie2_quirks[];
 
 static struct bhndb_pci_core bhndb_pci_cores[] = {
 	BHNDB_PCI_CORE(PCI,	BHND_PCI_SRSH_PI_OFFSET,	bhndb_pci_quirks),
 	BHNDB_PCI_CORE(PCIE,	BHND_PCIE_SRSH_PI_OFFSET,	bhndb_pcie_quirks),
-#ifdef notyet
-	BHNDB_PCI_CORE(PCIE2,	0x0,				NULL),
-#endif
-
+	BHNDB_PCI_CORE(PCIE2,	BHND_PCIE_SRSH_PI_OFFSET,	bhndb_pcie2_quirks),
 	BHNDB_PCI_CORE_END
 };
 
@@ -151,17 +149,22 @@ static struct bhndb_pci_quirk bhndb_pci_quirks[] = {
 		BHNDB_PCI_QUIRK_SIBA_INTVEC },
 
 	/* All PCI core revisions require the SRSH work-around */
-	BHNDB_PCI_QUIRK(PCI, HWREV_ANY, BHNDB_PCI_QUIRK_SRSH_WAR),
-
+	BHNDB_PCI_QUIRK(HWREV_ANY,	BHNDB_PCI_QUIRK_SRSH_WAR),
 	BHNDB_PCI_QUIRK_END
 };
 
 static struct bhndb_pci_quirk bhndb_pcie_quirks[] = {
 	/* All PCIe-G1 core revisions require the SRSH work-around */
-	BHNDB_PCI_QUIRK(PCIE, HWREV_ANY, BHNDB_PCI_QUIRK_SRSH_WAR),
-
+	BHNDB_PCI_QUIRK(HWREV_ANY,	BHNDB_PCI_QUIRK_SRSH_WAR),
 	BHNDB_PCI_QUIRK_END
 };
+
+static struct bhndb_pci_quirk bhndb_pcie2_quirks[] = {
+	/* All PCIe-G2 core revisions require the SRSH work-around */
+	BHNDB_PCI_QUIRK(HWREV_ANY,	BHNDB_PCI_QUIRK_SRSH_WAR),
+	BHNDB_PCI_QUIRK_END
+};
+
 
 /**
  * Return the device table entry for @p ci, or NULL if none.
