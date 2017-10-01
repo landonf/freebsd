@@ -29,14 +29,13 @@
  * PCI/PCIe-Gen1 DMA Constants
  */
 
-#define	BHND_PCI_DMA32_TRANSLATION	0x40000000	/* Client Mode sb2pcitranslation2 (1 GB) */
-#define	BHND_PCI_DMA32_SZ		0x40000000	/* Client Mode sb2pcitranslation2 size in bytes */
+#define	BHND_PCI_DMA32_TRANSLATION	0x40000000			/**< PCI DMA32 address translation (sbtopci2) */
+#define	BHND_PCI_DMA32_MASK		BHND_PCI_SBTOPCI2_MASK		/**< PCI DMA32 translation mask */
 
-#define	BHND_PCIE_DMA32_TRANSLATION	BHND_PCI_DMA32_TRANSLATION
-#define	BHND_PCIE_DMA32_SZ		BHND_PCI_DMA32_SZ
-
-#define	BHND_PCIE_DMA64_L32		0x00000000	/**< 64-bit client mode sb2pcitranslation2 (2 ZettaBytes, low 32 bits) */
-#define	BHND_PCIE_DMA64_H32		0x80000000	/**< 64-bit client mode sb2pcitranslation2 (2 ZettaBytes, high 32 bits) */
+#define	BHND_PCIE_DMA32_TRANSLATION	0x80000000			/**< PCIe-Gen1 DMA32 address translation */
+#define	BHND_PCIE_DMA32_MASK		BHND_PCI_DMA32_MASK		/**< PCIe-Gen1 DMA32 translation mask */
+#define	BHND_PCIE_DMA64_TRANSLATION	0x8000000000000000		/**< PCIe-Gen1 DMA64 address translation */
+#define	BHND_PCIE_DMA64_MASK		BHND_PCIE_DMA64_TRANSLATION	/**< PCIe-Gen1 DMA64 translation mask */
 
 /*
  * PCI Core Registers

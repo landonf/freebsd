@@ -2040,6 +2040,53 @@ bhndb_remap_intr(device_t dev, device_t child, u_int irq)
 }
 
 /**
+ * Default bhndb(4) implementation of BHND_BUS_GET_DMA_TRANSLATION().
+ */
+static inline int
+bhndb_get_dma_translation(device_t dev, device_t child,
+    bhnd_dma_translation_type type, uint32_t flags,
+    struct bhnd_dma_translation *dma_translation)
+{
+	struct bhndb_softc			*sc;
+	const struct bhndb_hwcfg		*hwcfg;
+	const struct bhnd_dma_translation	*dt;
+
+	sc = device_get_softc(dev);
+	hwcfg = sc->bus_res->cfg;
+
+	/* Is DMA supported? */
+	if (hwcfg->dma32_translation == NULL &&
+	    hwcfg->dma64_translation == NULL)
+	{
+		return (ENODEV);
+	}
+
+	/* We don't support any flags */
+	if (flags != 0x0)
+		return (ENOENT);
+
+	/* Fetch the requested translation descriptor */
+	switch (type) {
+	case BHND_DMA32_TRANSLATION:
+		dt = hwcfg->dma32_translation;
+		break;
+
+	case BHND_DMA64_TRANSLATION:
+		dt = hwcfg->dma64_translation;
+		break;
+	default:
+		device_printf(dev, "DMA translation type unknown: %d\n", type);
+		return (ENOENT);
+	}
+
+	if (dt == NULL)
+		return (ENOENT);
+
+	*dma_translation = *dt;
+	return (0);
+}
+
+/**
  * Default bhndb(4) implementation of BUS_GET_DMA_TAG().
  */
 static bus_dma_tag_t
@@ -2102,6 +2149,7 @@ static device_method_t bhndb_methods[] = {
 	DEVMETHOD(bhnd_bus_get_nvram_var,	bhnd_bus_generic_get_nvram_var),
 	DEVMETHOD(bhnd_bus_map_intr,		bhndb_bhnd_map_intr),
 	DEVMETHOD(bhnd_bus_unmap_intr,		bhndb_bhnd_unmap_intr),
+	DEVMETHOD(bhnd_bus_get_dma_translation,	bhndb_get_dma_translation),
 
 	DEVMETHOD(bhnd_bus_get_service_registry,bhndb_get_service_registry),
 	DEVMETHOD(bhnd_bus_register_provider,	bhnd_bus_generic_sr_register_provider),
