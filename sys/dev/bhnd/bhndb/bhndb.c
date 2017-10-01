@@ -2045,7 +2045,7 @@ bhndb_remap_intr(device_t dev, device_t child, u_int irq)
 static inline int
 bhndb_get_dma_translation(device_t dev, device_t child,
     bhnd_dma_translation_type type, uint32_t flags,
-    struct bhnd_dma_translation *dma_translation)
+    struct bhnd_dma_translation *translation)
 {
 	struct bhndb_softc			*sc;
 	const struct bhndb_hwcfg		*hwcfg;
@@ -2082,7 +2082,7 @@ bhndb_get_dma_translation(device_t dev, device_t child,
 	if (dt == NULL)
 		return (ENOENT);
 
-	*dma_translation = *dt;
+	*translation = *dt;
 	return (0);
 }
 

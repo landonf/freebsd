@@ -538,6 +538,11 @@ int				 bhnd_bus_generic_get_nvram_var(device_t dev,
 				     bhnd_nvram_type type);
 const struct bhnd_chipid	*bhnd_bus_generic_get_chipid(device_t dev,
 				     device_t child);
+int				 bhnd_bus_generic_get_dma_translation(
+				     device_t dev, device_t child,
+				     bhnd_dma_translation_type type,
+				     uint32_t flags,
+				     struct bhnd_dma_translation *translation);
 int				 bhnd_bus_generic_read_board_info(device_t dev,
 				     device_t child,
 				     struct bhnd_board_info *info);
@@ -875,7 +880,7 @@ bhnd_get_attach_type (device_t dev) {
  * @param dev A bhnd bus child device.
  * @param type The requested translation type.
  * @param flags The requested translation flags (see BHND_DMA_TF_*).
- * @param[out] dma_translation On success, will be populated with a DMA address
+ * @param[out] translation On success, will be populated with a DMA address
  * translation descriptor for @p dev.
  *
  * @retval 0 success
@@ -887,10 +892,10 @@ bhnd_get_attach_type (device_t dev) {
  */
 static inline int
 bhnd_get_dma_translation(device_t dev, bhnd_dma_translation_type type,
-    uint32_t flags, struct bhnd_dma_translation *dma_translation)
+    uint32_t flags, struct bhnd_dma_translation *translation)
 {
 	return (BHND_BUS_GET_DMA_TRANSLATION(device_get_parent(dev), dev, type,
-	    flags, dma_translation));
+	    flags, translation));
 }
 
 /**
