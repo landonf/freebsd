@@ -46,6 +46,7 @@ HEADER {
 	struct bhnd_board_info;
 	struct bhnd_core_info;
 	struct bhnd_chipid;
+	struct bhnd_dma_translation;
 	struct bhnd_devinfo;
 	struct bhnd_resource;
 }
@@ -112,7 +113,15 @@ CODE {
 	{
 		panic("bhnd_bus_get_attach_type unimplemented");
 	}
-	
+
+	static int
+	bhnd_bus_null_get_dma_translation(device_t dev, device_t child,
+	    bhnd_dma_translation_type type, uint32_t flags,
+	    struct bhnd_dma_translation *dma_translation)
+	{
+		panic("bhnd_bus_get_dma_translation unimplemented");
+	}
+
 	static bhnd_clksrc
 	bhnd_bus_null_pwrctl_get_clksrc(device_t dev, device_t child,
 	    bhnd_clock clock)
@@ -478,6 +487,33 @@ METHOD bhnd_attach_type get_attach_type {
 	device_t dev;
 	device_t child;
 } DEFAULT bhnd_bus_null_get_attach_type;
+
+
+/**
+ * Return the DMA address translation to be used when mapping a physical
+ * host address to a BHND DMA device address.
+ * 
+ * @param dev The parent of @p child.
+ * @param child The bhnd device requesting the DMA address translation.
+ * @param type The requested translation type.
+ * @param flags The requested translation flags (see BHND_DMA_TF_*).
+ * @param[out] dma_translation On success, will be populated with a DMA address
+ * translation descriptor for @p child.
+ *
+ * @retval 0 success
+ * @retval ENODEV If DMA is not supported.
+ * @retval ENOENT If no DMA translation matching @p type and @p flags is
+ * available.
+ * @retval non-zero If determining the DMA address translation for @p child
+ * otherwise fails, a regular unix error code will be returned.
+ */
+METHOD int get_dma_translation {
+	device_t dev;
+	device_t child;
+	bhnd_dma_translation_type type;
+	uint32_t flags;
+	struct bhnd_dma_translation *dma_translation;
+} DEFAULT bhnd_bus_null_get_dma_translation;
 
 /**
  * Attempt to read the BHND board identification from the parent bus.

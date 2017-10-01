@@ -220,6 +220,32 @@ struct bhnd_core_info {
 };
 
 /**
+ * bhnd(4) DMA address translation descriptor.
+ */
+struct bhnd_dma_translation {
+	uint64_t	translation;	/**< host-to-device physical address
+					     translation */
+	uint64_t	mask;		/**< address bits reserved for the
+					     translation. */
+};
+
+
+/**
+ * bhnd(4) DMA address translation flags.
+ */
+enum {
+	/**
+	 * Provides a byte-swapped mapping of physical memory; write requests
+	 * will be byte-swapped before being written to memory, and read
+	 * requests will be byte-swapped before being returned.
+	 *
+	 * This is primarily used to perform efficient byte swapping of DMA
+	 * data on embedded MIPS SoCs executing in big endian mode.
+	 */
+	BHND_DMA_TF_RAM_BYTE_SWAPPED = (1<<0),	
+};
+
+/**
 * A bhnd(4) bus resource.
 * 
 * This provides an abstract interface to per-core resources that may require
@@ -840,6 +866,31 @@ bhnd_pwrctl_ungate_clock(device_t dev, bhnd_clock clock)
 static inline bhnd_attach_type
 bhnd_get_attach_type (device_t dev) {
 	return (BHND_BUS_GET_ATTACH_TYPE(device_get_parent(dev), dev));
+}
+
+/**
+ * Return the DMA address translation to be used when mapping a physical
+ * host address to a BHND DMA device address.
+ * 
+ * @param dev A bhnd bus child device.
+ * @param type The requested translation type.
+ * @param flags The requested translation flags (see BHND_DMA_TF_*).
+ * @param[out] dma_translation On success, will be populated with a DMA address
+ * translation descriptor for @p dev.
+ *
+ * @retval 0 success
+ * @retval ENODEV If DMA is not supported for @p dev.
+ * @retval ENOENT If no DMA translation matching @p type and @p flags is
+ * available.
+ * @retval non-zero If determining the DMA address translation for @p dev
+ * otherwise fails, a regular unix error code will be returned.
+ */
+static inline int
+bhnd_get_dma_translation(device_t dev, bhnd_dma_translation_type type,
+    uint32_t flags, struct bhnd_dma_translation *dma_translation)
+{
+	return (BHND_BUS_GET_DMA_TRANSLATION(device_get_parent(dev), dev, type,
+	    flags, dma_translation));
 }
 
 /**
