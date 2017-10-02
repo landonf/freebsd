@@ -302,6 +302,7 @@ DRIVER_MODULE(bwn_pci, pci, bwn_pci_driver, bwn_pci_devclass, NULL, NULL);
 DRIVER_MODULE(bhndb, bwn_pci, bhndb_pci_driver, bhndb_devclass, NULL, NULL);
 
 MODULE_DEPEND(bwn_pci, bwn, 1, 1, 1);
+MODULE_DEPEND(bwn_pci, bhnd, 1, 1, 1);
 MODULE_DEPEND(bwn_pci, bhndb, 1, 1, 1);
 MODULE_DEPEND(bwn_pci, bhndb_pci, 1, 1, 1);
 MODULE_DEPEND(bwn_pci, bcma_bhndb, 1, 1, 1);
