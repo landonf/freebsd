@@ -41,6 +41,10 @@ __FBSDID("$FreeBSD$");
 #include "bhndb_private.h"
 #include "bhndbvar.h"
 
+static int	bhndb_dma_tag_create(device_t dev, bus_dma_tag_t parent_dmat,
+		    const struct bhnd_dma_translation *dma_translations,
+		    size_t num_dma_translations, bus_dma_tag_t *dmat);
+
 /**
  * Attach a BHND bridge device to @p parent.
  * 
@@ -402,7 +406,7 @@ bhndb_alloc_resources(device_t dev, device_t parent_dev,
 	}
 
 	/* Allocate host resources */
-	error = bhndb_alloc_host_resources(parent_dev, r->cfg, &r->res);
+	error = bhndb_alloc_host_resources(&r->res, dev, parent_dev, r->cfg);
 	if (error) {
 		device_printf(r->dev,
 		    "could not allocate host resources on %s: %d\n",
@@ -494,6 +498,118 @@ failed:
 }
 
 /**
+ * Create a new DMA tag for the default DMA-accessible address ranges defined
+ * in the given table of @p dma_translations.
+ * 
+ * The default translation descriptors in @p dma_translations must be defined
+ * as a strict superset of the address ranges mapped by descriptors with
+ * smaller address widths; e.g. the default DMA64 translation must support a
+ * strict superset of the DMA32 translation's addressable range.
+ *
+ * @param	dev			The bridge device.
+ * @param	parent_dmat		The parent DMA tag, or NULL if none.
+ * @param	dma_translations	The table of DMA translation descriptors
+ *					to be evaluated.
+ * @param	num_dma_translations	The number of DMA translation
+ *					descriptors in @p dma_translations.
+ * @param[out]	dmat			On success, the newly created DMA tag.
+ * 
+ * @retval 0		success
+ * @retval non-zero	if creating the new DMA tag otherwise fails, a regular
+ *			unix error code will be returned.
+ */
+static int
+bhndb_dma_tag_create(device_t dev, bus_dma_tag_t parent_dmat,
+    const struct bhnd_dma_translation *dma_translations,
+    size_t num_dma_translations, bus_dma_tag_t *dmat)
+{
+	bus_dma_tag_t	common_dmat;
+	bhnd_addr_t	common_mask;
+	bus_addr_t	lowaddr, highaddr;
+	bus_size_t	maxsegsz;
+	int		error;
+
+	maxsegsz = BUS_SPACE_MAXSIZE;
+	highaddr = BUS_SPACE_MAXADDR;
+	common_mask = 0;
+
+	/*
+	 * Determine the common DMA-accessible address range and the smallest
+	 * window size.
+	 */
+	for (size_t i = 0; i < num_dma_translations; i++) {
+		const struct bhnd_dma_translation	*dt;
+		bhnd_addr_t				 dt_mask, overlap;
+
+		dt = &dma_translations[i];
+
+		/* Skip non-default translations */
+		if (dt->flags != 0)
+			continue;
+
+		/* Determine full addressable mask */
+		dt_mask = (dt->addr_mask | dt->addrext_mask);
+		KASSERT(dt_mask != 0, ("DMA addr_mask invalid: %#jx",
+		    (uintmax_t)dt_mask));
+
+		/*
+		 * Is this a strict superset/subset relationship with any
+		 * previously evaluated translations?
+		 *
+		 * If we haven't previously found a valid entry, we
+		 * don't need to check for subtype/supertype overlap
+		 */
+		if (common_mask == 0)
+			overlap = dt_mask;
+		else
+			overlap = (common_mask & dt_mask);
+
+		if (overlap != dt_mask && overlap != common_mask) {
+			device_printf(dev, "invalid DMA translation table: DMA"
+			    "address mask %#jx is not a strict superset or "
+			    "subset of common mask %#jx\n", (uintmax_t)dt_mask,
+			    (uintmax_t)common_mask);
+
+			return (EINVAL);
+		}
+
+		/* Do we need to limit our maxsegsz size to the range
+		 * addressable without addrext? */
+		if (dt->addr_mask < (bhnd_addr_t)maxsegsz)
+			maxsegsz = dt->addr_mask;
+
+		common_mask |= dt_mask;
+	}
+
+	if (common_mask == 0) {
+		device_printf(dev, "invalid DMA translation table: no default "
+		    "DMA address translations found\n");
+		return (EINVAL);
+	}
+
+	/* The mask is our maximum supported address */
+	lowaddr = MIN(common_mask, BUS_SPACE_MAXADDR);
+
+	/* Create our DMA tag */
+	error = bus_dma_tag_create(parent_dmat,
+	    1, 0,			/* alignment, boundary */
+	    lowaddr, highaddr,
+	    NULL, NULL,			/* filter, filterarg */
+	    BUS_SPACE_MAXSIZE, 0,	/* maxsize, nsegments */
+	    maxsegsz, 0,		/* maxsegsize, flags */
+	    NULL, NULL,			/* lockfunc, lockarg */
+	    &common_dmat);
+	if (error) {
+		device_printf(dev, "failed to create bridge DMA tag: %d\n",
+		    error);
+		return (error);
+	}
+
+	*dmat = common_dmat;
+	return (0);
+}
+
+/**
  * Deallocate the given bridge resource structure and any associated resources.
  * 
  * @param br Resource state to be deallocated.
@@ -571,30 +687,88 @@ bhndb_free_resources(struct bhndb_resources *br)
  * On success, the caller assumes ownership of the allocated host resources,
  * which must be freed via bhndb_release_host_resources().
  *
- * @param	dev		The device to be used when allocating resources
- *				(e.g. via bus_alloc_resources()).
+ * @param[out]	resources	On success, the allocated host resources.
+ * @param	dev		The bridge device.
+ * @param	parent_dev	The parent device from which host resources
+ *				should be allocated (e.g. via
+ *				bus_alloc_resources()).
  * @param	hwcfg		The hardware configuration defining the host
  *				resources to be allocated
- * @param[out]	resources	On success, the allocated host resources.
  */
 int
-bhndb_alloc_host_resources(device_t dev, const struct bhndb_hwcfg *hwcfg,
-    struct bhndb_host_resources **resources)
+bhndb_alloc_host_resources(struct bhndb_host_resources **resources,
+    device_t dev, device_t parent_dev, const struct bhndb_hwcfg *hwcfg)
 {
-	struct bhndb_host_resources	*hr;
-	size_t				 nres;
-	int				 error;
+	struct bhndb_host_resources		*hr;
+	const struct bhnd_dma_translation	*dt;
+	bus_dma_tag_t				 parent_dmat;
+	size_t					 nres, ndt;
+	int					 error;
+
+	parent_dmat = bus_get_dma_tag(parent_dev);
 
 	hr = malloc(sizeof(*hr), M_BHND, M_WAITOK);
-	hr->owner = dev;
+	hr->owner = parent_dev;
 	hr->cfg = hwcfg;
 	hr->resource_specs = NULL;
 	hr->resources = NULL;
+	hr->generic_dma_tag = NULL;
+	hr->dma_tags = NULL;
+	hr->num_dma_tags = 0;
 
 	/* Determine our bridge resource count from the hardware config. */
 	nres = 0;
 	for (size_t i = 0; hwcfg->resource_specs[i].type != -1; i++)
 		nres++;
+
+	/* Determine the total count and validate our DMA translation table. */
+	ndt = 0;
+	for (dt = hwcfg->dma_translations; dt != NULL &&
+	    !BHND_DMA_IS_TRANSLATION_TABLE_END(dt); dt++)
+	{
+		/* Validate the defined translation */
+		if ((dt->base_addr & dt->addr_mask) != 0) {
+			device_printf(dev, "invalid DMA translation; base "
+			    "address %#jx overlaps address mask %#jx",
+			    (uintmax_t)dt->base_addr, (uintmax_t)dt->addr_mask);
+
+			error = EINVAL;
+			goto failed;
+		}
+
+		if ((dt->addrext_mask & dt->addr_mask) != 0) {
+			device_printf(dev, "invalid DMA translation; addrext "
+			    "mask %#jx overlaps address mask %#jx",
+			    (uintmax_t)dt->addrext_mask,
+			    (uintmax_t)dt->addr_mask);
+
+			error = EINVAL;
+			goto failed;
+		}
+
+		/* Increment our entry count */
+		ndt++;
+	}
+
+	/* Create our generic DMA tag */
+	if (ndt > 0) {
+		error = bhndb_dma_tag_create(dev, parent_dmat,
+		    hwcfg->dma_translations, ndt, &hr->generic_dma_tag);
+		if (error)
+			goto failed;
+	}
+
+	/* Populate our full DMA tag table */
+	hr->dma_tags = malloc(sizeof(*hr->dma_tags) * ndt, M_BHND,
+	    M_WAITOK|M_ZERO);
+	for (size_t i = 0; i < ndt; i++) {
+		error = bhndb_dma_tag_create(dev, parent_dmat,
+		    &hwcfg->dma_translations[i], 1, &hr->dma_tags[i]);
+		if (error)
+			goto failed;
+
+		hr->num_dma_tags++;
+	}
 
 	/* Allocate space for a non-const copy of our resource_spec
 	 * table; this will be updated with the RIDs assigned by
@@ -617,7 +791,7 @@ bhndb_alloc_host_resources(device_t dev, const struct bhndb_hwcfg *hwcfg,
 	    hr->resources);
 	if (error) {
 		device_printf(dev, "could not allocate bridge resources via "
-		    "%s: %d\n", device_get_nameunit(dev), error);
+		    "%s: %d\n", device_get_nameunit(parent_dev), error);
 		goto failed;
 	}
 
@@ -630,6 +804,15 @@ failed:
 
 	if (hr->resources != NULL)
 		free(hr->resources, M_BHND);
+
+	if (hr->generic_dma_tag != NULL)
+		bus_dma_tag_destroy(hr->generic_dma_tag);
+
+	for (size_t i = 0; i < hr->num_dma_tags; i++)
+		bus_dma_tag_destroy(hr->dma_tags[i]);
+
+	if (hr->dma_tags != NULL)
+		free(hr->dma_tags, M_BHND);
 
 	free(hr, M_BHND);
 
@@ -646,8 +829,15 @@ bhndb_release_host_resources(struct bhndb_host_resources *hr)
 {
 	bus_release_resources(hr->owner, hr->resource_specs, hr->resources);
 
+	if (hr->generic_dma_tag != NULL)
+		bus_dma_tag_destroy(hr->generic_dma_tag);
+
+	for (size_t i = 0; i < hr->num_dma_tags; i++)
+		bus_dma_tag_destroy(hr->dma_tags[i]);
+
 	free(hr->resources, M_BHND);
 	free(hr->resource_specs, M_BHND);
+	free(hr->dma_tags, M_BHND);
 	free(hr, M_BHND);
 }
 

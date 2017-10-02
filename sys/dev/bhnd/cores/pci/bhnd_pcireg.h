@@ -32,11 +32,12 @@
 #define	BHND_PCI_DMA32_TRANSLATION	0x40000000			/**< PCI DMA32 address translation (sbtopci2) */
 #define	BHND_PCI_DMA32_MASK		BHND_PCI_SBTOPCI2_MASK		/**< PCI DMA32 translation mask */
 
-#define	BHND_PCIE_DMA32_TRANSLATION	0x80000000			/**< PCIe-Gen1 DMA32 address translation */
-#define	BHND_PCIE_DMA32_MASK		BHND_PCI_DMA32_MASK		/**< PCIe-Gen1 DMA32 translation mask */
-#define	BHND_PCIE_DMA64_TRANSLATION	0x8000000000000000		/**< PCIe-Gen1 DMA64 address translation */
-#define	BHND_PCIE_DMA64_MASK		BHND_PCIE_DMA64_TRANSLATION	/**< PCIe-Gen1 DMA64 translation mask */
+#define	BHND_PCIE_DMA32_TRANSLATION	0x80000000			/**< PCIe-Gen1 DMA32 address translation (sb2pcitranslation2) */
+#define	BHND_PCIE_DMA32_MASK		BHND_PCIE_SBTOPCI2_MASK		/**< PCIe-Gen1 DMA32 translation mask */
 
+#define	BHND_PCIE_DMA64_TRANSLATION	_BHND_PCIE_DMA64(TRANSLATION)	/**< PCIe-Gen1 DMA64 address translation (sb2pcitranslation2) */
+#define	BHND_PCIE_DMA64_MASK		_BHND_PCIE_DMA64(MASK)		/**< PCIe-Gen1 DMA64 translation mask */
+#define	_BHND_PCIE_DMA64(_x)		((uint64_t)BHND_PCIE_DMA32_ ## _x << 32)
 /*
  * PCI Core Registers
  */

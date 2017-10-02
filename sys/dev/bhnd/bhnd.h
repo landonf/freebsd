@@ -223,17 +223,54 @@ struct bhnd_core_info {
  * bhnd(4) DMA address translation descriptor.
  */
 struct bhnd_dma_translation {
-	uint64_t	translation;	/**< host-to-device physical address
-					     translation */
-	uint64_t	mask;		/**< address bits reserved for the
-					     translation. */
+	/**
+	 * Host-to-device physical address translation.
+	 * 
+	 * This may be added to the host physical address to produce a device
+	 * DMA address.
+	 */
+	bhnd_addr_t	base_addr;
+
+	/**
+	 * Device-addressable address mask.
+	 * 
+	 * This defines the device's DMA address range, excluding any bits
+	 * reserved for mapping the address to the base_addr.
+	 */
+	bhnd_addr_t	addr_mask;
+
+	/**
+	 * Device-addressable extended address mask.
+	 *
+	 * If a per-core bhnd(4) DMA engine supports the 'addrext' DMA
+	 * descriptor field, it can be used to provide address bits excluded by
+	 * addr_mask.
+	 *
+	 * Support for DMA extended address changes – including coordination with
+	 * the core providing DMA translation – is handled transparently by
+	 * the DMA engine. For example, on PCI(e) Wi-Fi chipsets, the Wi-Fi
+	 * core DMA engine will (in effect) update the PCI core's DMA
+	 * sbtopcitranslation base address to map the full address prior to
+	 * performing a DMA transaction.
+	 */
+	bhnd_addr_t	addrext_mask;
+
+	/**
+	 * Translation flags (see bhnd_dma_translation_flags)
+	 */
+	uint32_t	flags;
 };
 
+#define	BHND_DMA_TRANSLATION_TABLE_END	{ 0, 0, 0, 0 }
+
+#define	BHND_DMA_IS_TRANSLATION_TABLE_END(_dt)			\
+	((_dt)->base_addr == 0 && (_dt)->addr_mask == 0 &&	\
+	 (_dt)->addrext_mask == 0 && (_dt)->flags == 0)
 
 /**
  * bhnd(4) DMA address translation flags.
  */
-enum {
+enum bhnd_dma_translation_flags {
 	/**
 	 * Provides a byte-swapped mapping of physical memory; write requests
 	 * will be byte-swapped before being written to memory, and read

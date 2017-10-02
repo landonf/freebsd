@@ -28,8 +28,8 @@
  * PCIe-Gen2 DMA Constants
  */
 
-#define	BHND_PCIE2_DMA64_TRANSLATION	0x8000000000000000		/**< PCIe-Gen2 DMA64 address translation */
-#define	BHND_PCIE2_DMA64_MASK		BHND_PCIE2_DMA64_TRANSLATION	/**< PCIe-Gen2 DMA64 translation mask */
+#define	BHND_PCIE2_DMA64_TRANSLATION	0x8000000000000000	/**< PCIe-Gen2 DMA64 address translation */
+#define	BHND_PCIE2_DMA64_MASK		0xc000000000000000	/**< PCIe-Gen2 DMA64 translation mask */
 
 /*
  * PCIe-Gen2 Core Registers

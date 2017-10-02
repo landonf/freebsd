@@ -113,8 +113,7 @@ struct bhndb_regwin {
 struct bhndb_hwcfg {
 	const struct resource_spec		*resource_specs;	/**< resources required by our register windows */
 	const struct bhndb_regwin		*register_windows;	/**< register window table */
-	const struct bhnd_dma_translation	*dma32_translation;	/**< DMA32 address translation, or NULL */
-	const struct bhnd_dma_translation	*dma64_translation;	/**< DMA64 address translation, or NULL */
+	const struct bhnd_dma_translation	*dma_translations;	/**< DMA address translation table, or NULL if DMA is not supported */
 };
 
 /**

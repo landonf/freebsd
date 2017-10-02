@@ -2049,40 +2049,58 @@ bhndb_get_dma_translation(device_t dev, device_t child,
 {
 	struct bhndb_softc			*sc;
 	const struct bhndb_hwcfg		*hwcfg;
-	const struct bhnd_dma_translation	*dt;
+	const struct bhnd_dma_translation	*dwin, *match;
+	bhnd_addr_t				 addr_mask, match_addr_mask;
 
 	sc = device_get_softc(dev);
 	hwcfg = sc->bus_res->cfg;
 
 	/* Is DMA supported? */
-	if (hwcfg->dma32_translation == NULL &&
-	    hwcfg->dma64_translation == NULL)
-	{
+	if (hwcfg->dma_translations == NULL)
 		return (ENODEV);
-	}
 
-	/* We don't support any flags */
-	if (flags != 0x0)
-		return (ENOENT);
-
-	/* Fetch the requested translation descriptor */
+	/* Find the best matching descriptor for the requested type */
 	switch (type) {
 	case BHND_DMA32_TRANSLATION:
-		dt = hwcfg->dma32_translation;
+		addr_mask = UINT32_MAX;
 		break;
-
 	case BHND_DMA64_TRANSLATION:
-		dt = hwcfg->dma64_translation;
+		addr_mask = UINT64_MAX;
 		break;
-	default:
-		device_printf(dev, "DMA translation type unknown: %d\n", type);
-		return (ENOENT);
 	}
 
-	if (dt == NULL)
+	match = NULL;
+	match_addr_mask = 0x0;
+	for (dwin = hwcfg->dma_translations;
+	    !BHND_DMA_IS_TRANSLATION_TABLE_END(dwin); dwin++)
+	{
+		bhnd_addr_t masked;
+
+		/* The base address must be device addressable */
+		if ((dwin->base_addr & addr_mask) != dwin->base_addr)
+			continue;
+
+		/* The flags must match */
+		if ((dwin->flags & flags) != flags)
+			continue;
+
+		/* The window must cover at least part of our addressable
+		 * range */
+		masked = (dwin->addr_mask | dwin->addrext_mask) & addr_mask;
+		if (masked == 0)
+			continue;
+	
+		/* Is this a better match? */
+		if (match == NULL || masked > match_addr_mask) {
+			match = dwin;
+			match_addr_mask = masked;
+		}
+	}
+
+	if (match == NULL || match_addr_mask == 0)
 		return (ENOENT);
 
-	*translation = *dt;
+	*translation = *match;
 	return (0);
 }
 
@@ -2092,8 +2110,8 @@ bhndb_get_dma_translation(device_t dev, device_t child,
 static bus_dma_tag_t
 bhndb_get_dma_tag(device_t dev, device_t child)
 {
-	// TODO
-	return (NULL);
+	struct bhndb_softc *sc = device_get_softc(dev);
+	return (sc->bus_res->res->generic_dma_tag);
 }
 
 static device_method_t bhndb_methods[] = {

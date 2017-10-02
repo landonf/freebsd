@@ -90,9 +90,11 @@ struct bhndb_intr_isrc		*bhndb_alloc_intr_isrc(device_t owner, int rid,
 void				 bhndb_free_intr_isrc(
 				     struct bhndb_intr_isrc *isrc);
 
-int				 bhndb_alloc_host_resources(device_t dev,
-				     const struct bhndb_hwcfg *hwcfg,
-				     struct bhndb_host_resources **resources);
+int				 bhndb_alloc_host_resources(
+				     struct bhndb_host_resources **resources,
+				     device_t dev, device_t parent_dev,
+				     const struct bhndb_hwcfg *hwcfg);
+
 void				 bhndb_release_host_resources(
 				     struct bhndb_host_resources *resources);
 struct resource			*bhndb_host_resource_for_range(
@@ -161,6 +163,11 @@ struct bhndb_host_resources {
 	const struct bhndb_hwcfg	*cfg;			/**< bridge hardware configuration */
 	struct resource_spec		*resource_specs;	/**< resource specification table */
 	struct resource			**resources;		/**< allocated resource table */
+	bus_dma_tag_t			 generic_dma_tag;	/**< generic DMA tag compatible with all default DMA translations defined
+								     in the hwcfg, or NULL if none. This tag may define stricter restrictions
+								     than would be required for a translation-specific DMA tag. */
+	bus_dma_tag_t			*dma_tags;		/**< DMA tags for all DMA translations defined in the hwcfg, or NULL if none */
+	size_t				 num_dma_tags;		/**< DMA tag count */
 };
 
 /**
