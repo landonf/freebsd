@@ -2113,13 +2113,12 @@ bhnd_bus_generic_get_chipid(device_t dev, device_t child)
  * If no parent device is available, this implementation will panic.
  */
 int
-bhnd_bus_generic_get_dma_translation(device_t dev, device_t child,
-    bhnd_dma_translation_type type, uint32_t flags,
-    struct bhnd_dma_translation *translation)
+bhnd_bus_generic_get_dma_translation(device_t dev, device_t child, u_int width,
+    uint32_t flags, struct bhnd_dma_translation *translation)
 {
 	if (device_get_parent(dev) != NULL) {
 		return (BHND_BUS_GET_DMA_TRANSLATION(device_get_parent(dev),
-		    child, type, flags, translation));
+		    child, width, flags, translation));
 	}
 
 	panic("missing BHND_BUS_GET_DMA_TRANSLATION()");

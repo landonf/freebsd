@@ -101,14 +101,6 @@ typedef enum {
 } bhnd_attach_type;
 
 /**
- * bhnd(4) DMA translation types.
- */
-typedef enum {
-	BHND_DMA32_TRANSLATION	= 1,
-	BHND_DMA64_TRANSLATION	= 2,
-} bhnd_dma_translation_type;
-
-/**
  * bhnd(4) clock types.
  */
 typedef enum {

@@ -220,6 +220,23 @@ struct bhnd_core_info {
 };
 
 /**
+ * bhnd(4) DMA address widths.
+ */
+typedef enum {
+	BHND_DMA_ADDR_30BIT	= 30,	/**< 30-bit DMA */
+	BHND_DMA_ADDR_32BIT	= 32,	/**< 32-bit DMA */
+	BHND_DMA_ADDR_64BIT	= 64,	/**< 64-bit DMA */
+} bhnd_dma_addrwidth;
+
+/**
+ * Convert an address width (in bits) to its corresponding mask.
+ */
+#define	BHND_DMA_ADDR_BITMASK(_width)	\
+	((_width >= 64) ? ~0ULL :	\
+	 (_width == 0) ? 0x0 :		\
+	 ((1ULL << (_width)) - 1))	\
+
+/**
  * bhnd(4) DMA address translation descriptor.
  */
 struct bhnd_dma_translation {
@@ -272,14 +289,23 @@ struct bhnd_dma_translation {
  */
 enum bhnd_dma_translation_flags {
 	/**
-	 * Provides a byte-swapped mapping of physical memory; write requests
-	 * will be byte-swapped before being written to memory, and read
-	 * requests will be byte-swapped before being returned.
+	 * The translation remaps the device's physical address space.
+	 * 
+	 * This is used in conjunction with BHND_DMA_TRANSLATION_BYTESWAPPED to
+	 * define a DMA translation that provides byteswapped access to
+	 * physical memory on big-endian MIPS SoCs.
+	 */
+	BHND_DMA_TRANSLATION_PHYSMAP		= (1<<0),
+
+	/**
+	 * Provides a byte-swapped mapping; write requests will be byte-swapped
+	 * before being written to memory, and read requests will be
+	 * byte-swapped before being returned.
 	 *
 	 * This is primarily used to perform efficient byte swapping of DMA
-	 * data on embedded MIPS SoCs executing in big endian mode.
+	 * data on embedded MIPS SoCs executing in big-endian mode.
 	 */
-	BHND_DMA_TF_RAM_BYTE_SWAPPED = (1<<0),	
+	BHND_DMA_TRANSLATION_BYTESWAPPED	= (1<<1),	
 };
 
 /**
@@ -576,8 +602,7 @@ int				 bhnd_bus_generic_get_nvram_var(device_t dev,
 const struct bhnd_chipid	*bhnd_bus_generic_get_chipid(device_t dev,
 				     device_t child);
 int				 bhnd_bus_generic_get_dma_translation(
-				     device_t dev, device_t child,
-				     bhnd_dma_translation_type type,
+				     device_t dev, device_t child, u_int width,
 				     uint32_t flags,
 				     struct bhnd_dma_translation *translation);
 int				 bhnd_bus_generic_read_board_info(device_t dev,
@@ -911,27 +936,29 @@ bhnd_get_attach_type (device_t dev) {
 }
 
 /**
- * Return the DMA address translation to be used when mapping a physical
- * host address to a BHND DMA device address.
- * 
+ * Return the best available DMA address translation capable of mapping a
+ * physical host address to a BHND DMA device address of @p width with
+ * @p flags.
+ *
  * @param dev A bhnd bus child device.
- * @param type The requested translation type.
- * @param flags The requested translation flags (see BHND_DMA_TF_*).
+ * @param width The address width within which the translation window must
+ * reside (see BHND_DMA_ADDR_*).
+ * @param flags Required translation flags (see BHND_DMA_TF_*).
  * @param[out] translation On success, will be populated with a DMA address
- * translation descriptor for @p dev.
+ * translation descriptor for @p child.
  *
  * @retval 0 success
- * @retval ENODEV If DMA is not supported for @p dev.
- * @retval ENOENT If no DMA translation matching @p type and @p flags is
+ * @retval ENODEV If DMA is not supported.
+ * @retval ENOENT If no DMA translation matching @p width and @p flags is
  * available.
- * @retval non-zero If determining the DMA address translation for @p dev
+ * @retval non-zero If determining the DMA address translation for @p child
  * otherwise fails, a regular unix error code will be returned.
  */
 static inline int
-bhnd_get_dma_translation(device_t dev, bhnd_dma_translation_type type,
-    uint32_t flags, struct bhnd_dma_translation *translation)
+bhnd_get_dma_translation(device_t dev, u_int width, uint32_t flags,
+    struct bhnd_dma_translation *translation)
 {
-	return (BHND_BUS_GET_DMA_TRANSLATION(device_get_parent(dev), dev, type,
+	return (BHND_BUS_GET_DMA_TRANSLATION(device_get_parent(dev), dev, width,
 	    flags, translation));
 }
 

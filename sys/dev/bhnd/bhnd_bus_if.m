@@ -482,19 +482,21 @@ METHOD bhnd_attach_type get_attach_type {
 
 
 /**
- * Return the DMA address translation to be used when mapping a physical
- * host address to a BHND DMA device address.
- * 
+ * Return the best available DMA address translation capable of mapping a
+ * physical host address to a BHND DMA device address of @p width with
+ * @p flags.
+ *
  * @param dev The parent of @p child.
  * @param child The bhnd device requesting the DMA address translation.
- * @param type The requested translation type.
- * @param flags The requested translation flags (see BHND_DMA_TF_*).
+ * @param width The address width within which the translation window must
+ * reside (see BHND_DMA_ADDR_*).
+ * @param flags Required translation flags (see BHND_DMA_TF_*).
  * @param[out] translation On success, will be populated with a DMA address
  * translation descriptor for @p child.
  *
  * @retval 0 success
  * @retval ENODEV If DMA is not supported.
- * @retval ENOENT If no DMA translation matching @p type and @p flags is
+ * @retval ENOENT If no DMA translation matching @p width and @p flags is
  * available.
  * @retval non-zero If determining the DMA address translation for @p child
  * otherwise fails, a regular unix error code will be returned.
@@ -502,7 +504,7 @@ METHOD bhnd_attach_type get_attach_type {
 METHOD int get_dma_translation {
 	device_t dev;
 	device_t child;
-	bhnd_dma_translation_type type;
+	u_int width;
 	uint32_t flags;
 	struct bhnd_dma_translation *translation;
 } DEFAULT bhnd_bus_generic_get_dma_translation;

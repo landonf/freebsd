@@ -2043,9 +2043,8 @@ bhndb_remap_intr(device_t dev, device_t child, u_int irq)
  * Default bhndb(4) implementation of BHND_BUS_GET_DMA_TRANSLATION().
  */
 static inline int
-bhndb_get_dma_translation(device_t dev, device_t child,
-    bhnd_dma_translation_type type, uint32_t flags,
-    struct bhnd_dma_translation *translation)
+bhndb_get_dma_translation(device_t dev, device_t child, u_int width,
+    uint32_t flags, struct bhnd_dma_translation *translation)
 {
 	struct bhndb_softc			*sc;
 	const struct bhndb_hwcfg		*hwcfg;
@@ -2060,17 +2059,9 @@ bhndb_get_dma_translation(device_t dev, device_t child,
 		return (ENODEV);
 
 	/* Find the best matching descriptor for the requested type */
-	switch (type) {
-	case BHND_DMA32_TRANSLATION:
-		addr_mask = UINT32_MAX;
-		break;
-	case BHND_DMA64_TRANSLATION:
-		addr_mask = UINT64_MAX;
-		break;
-	}
-
 	match = NULL;
 	match_addr_mask = 0x0;
+	addr_mask = BHND_DMA_ADDR_BITMASK(width);
 	for (dwin = hwcfg->dma_translations;
 	    !BHND_DMA_IS_TRANSLATION_TABLE_END(dwin); dwin++)
 	{
