@@ -42,8 +42,8 @@ __FBSDID("$FreeBSD$");
 #include "bhndbvar.h"
 
 static int	bhndb_dma_tag_create(device_t dev, bus_dma_tag_t parent_dmat,
-		    const struct bhnd_dma_translation *dma_translations,
-		    size_t num_dma_translations, bus_dma_tag_t *dmat);
+		    const struct bhnd_dma_translation *translation,
+		    bus_dma_tag_t *dmat);
 
 /**
  * Attach a BHND bridge device to @p parent.
@@ -498,21 +498,13 @@ failed:
 }
 
 /**
- * Create a new DMA tag for the default DMA-accessible address ranges defined
- * in the given table of @p dma_translations.
- * 
- * The default translation descriptors in @p dma_translations must be defined
- * as a strict superset of the address ranges mapped by descriptors with
- * smaller address widths; e.g. the default DMA64 translation must support a
- * strict superset of the DMA32 translation's addressable range.
+ * Create a new DMA tag for the given @p translation.
  *
- * @param	dev			The bridge device.
- * @param	parent_dmat		The parent DMA tag, or NULL if none.
- * @param	dma_translations	The table of DMA translation descriptors
- *					to be evaluated.
- * @param	num_dma_translations	The number of DMA translation
- *					descriptors in @p dma_translations.
- * @param[out]	dmat			On success, the newly created DMA tag.
+ * @param	dev		The bridge device.
+ * @param	parent_dmat	The parent DMA tag, or NULL if none.
+ * @param	translation	The DMA translation for which a DMA tag will
+ *				be created.
+ * @param[out]	dmat		On success, the newly created DMA tag.
  * 
  * @retval 0		success
  * @retval non-zero	if creating the new DMA tag otherwise fails, a regular
@@ -520,92 +512,47 @@ failed:
  */
 static int
 bhndb_dma_tag_create(device_t dev, bus_dma_tag_t parent_dmat,
-    const struct bhnd_dma_translation *dma_translations,
-    size_t num_dma_translations, bus_dma_tag_t *dmat)
+    const struct bhnd_dma_translation *translation, bus_dma_tag_t *dmat)
 {
-	bus_dma_tag_t	common_dmat;
-	bhnd_addr_t	common_mask;
+	bus_dma_tag_t	translation_tag;
+	bhnd_addr_t	dt_mask;
+	bus_addr_t	boundary;
 	bus_addr_t	lowaddr, highaddr;
-	bus_size_t	maxsegsz;
 	int		error;
 
-	maxsegsz = BUS_SPACE_MAXSIZE;
 	highaddr = BUS_SPACE_MAXADDR;
-	common_mask = 0;
+	boundary = 0;
 
-	/*
-	 * Determine the common DMA-accessible address range and the smallest
-	 * window size.
-	 */
-	for (size_t i = 0; i < num_dma_translations; i++) {
-		const struct bhnd_dma_translation	*dt;
-		bhnd_addr_t				 dt_mask, overlap;
+	/* Determine full addressable mask */
+	dt_mask = (translation->addr_mask | translation->addrext_mask);
+	KASSERT(dt_mask != 0, ("DMA addr_mask invalid: %#jx",
+		(uintmax_t)dt_mask));
 
-		dt = &dma_translations[i];
+	/* (addr_mask|addrext_mask) is our maximum supported address */
+	lowaddr = MIN(dt_mask, BUS_SPACE_MAXADDR);
 
-		/* Skip non-default translations */
-		if (dt->flags != 0)
-			continue;
-
-		/* Determine full addressable mask */
-		dt_mask = (dt->addr_mask | dt->addrext_mask);
-		KASSERT(dt_mask != 0, ("DMA addr_mask invalid: %#jx",
-		    (uintmax_t)dt_mask));
-
-		/*
-		 * Is this a strict superset/subset relationship with any
-		 * previously evaluated translations?
-		 *
-		 * If we haven't previously found a valid entry, we
-		 * don't need to check for subtype/supertype overlap
-		 */
-		if (common_mask == 0)
-			overlap = dt_mask;
-		else
-			overlap = (common_mask & dt_mask);
-
-		if (overlap != dt_mask && overlap != common_mask) {
-			device_printf(dev, "invalid DMA translation table: DMA"
-			    "address mask %#jx is not a strict superset or "
-			    "subset of common mask %#jx\n", (uintmax_t)dt_mask,
-			    (uintmax_t)common_mask);
-
-			return (EINVAL);
-		}
-
-		/* Do we need to limit our maxsegsz size to the range
-		 * addressable without addrext? */
-		if (dt->addr_mask < (bhnd_addr_t)maxsegsz)
-			maxsegsz = dt->addr_mask;
-
-		common_mask |= dt_mask;
+	/* Do we need to to avoid crossing a DMA translation window boundary? */
+	if (translation->addr_mask < BUS_SPACE_MAXADDR) {
+		/* round down to nearest power of two */
+		boundary = translation->addr_mask & (~1ULL);
 	}
-
-	if (common_mask == 0) {
-		device_printf(dev, "invalid DMA translation table: no default "
-		    "DMA address translations found\n");
-		return (EINVAL);
-	}
-
-	/* The mask is our maximum supported address */
-	lowaddr = MIN(common_mask, BUS_SPACE_MAXADDR);
 
 	/* Create our DMA tag */
 	error = bus_dma_tag_create(parent_dmat,
-	    1, 0,			/* alignment, boundary */
-	    lowaddr, highaddr,
+	    1,				/* alignment */
+	    boundary, lowaddr, highaddr,
 	    NULL, NULL,			/* filter, filterarg */
 	    BUS_SPACE_MAXSIZE, 0,	/* maxsize, nsegments */
-	    maxsegsz, 0,		/* maxsegsize, flags */
+	    BUS_SPACE_MAXSIZE, 0,	/* maxsegsize, flags */
 	    NULL, NULL,			/* lockfunc, lockarg */
-	    &common_dmat);
+	    &translation_tag);
 	if (error) {
 		device_printf(dev, "failed to create bridge DMA tag: %d\n",
 		    error);
 		return (error);
 	}
 
-	*dmat = common_dmat;
+	*dmat = translation_tag;
 	return (0);
 }
 
@@ -754,7 +701,7 @@ bhndb_alloc_host_resources(struct bhndb_host_resources **resources,
 	    M_WAITOK|M_ZERO);
 	for (size_t i = 0; i < ndt; i++) {
 		error = bhndb_dma_tag_create(dev, parent_dmat,
-		    &hwcfg->dma_translations[i], 1, &hr->dma_tags[i]);
+		    &hwcfg->dma_translations[i], &hr->dma_tags[i]);
 		if (error)
 			goto failed;
 

@@ -259,12 +259,11 @@ struct bhnd_dma_translation {
 	/**
 	 * Device-addressable extended address mask.
 	 *
-	 * If a per-core bhnd(4) DMA engine supports the 'addrext' DMA
-	 * descriptor field, it can be used to provide address bits excluded by
-	 * addr_mask.
+	 * If a per-core bhnd(4) DMA engine supports the 'addrext' control
+	 * field, it can be used to provide address bits excluded by addr_mask.
 	 *
-	 * Support for DMA extended address changes – including coordination with
-	 * the core providing DMA translation – is handled transparently by
+	 * Support for DMA extended address changes – including coordination
+	 * with the core providing DMA translation – is handled transparently by
 	 * the DMA engine. For example, on PCI(e) Wi-Fi chipsets, the Wi-Fi
 	 * core DMA engine will (in effect) update the PCI core's DMA
 	 * sbtopcitranslation base address to map the full address prior to
