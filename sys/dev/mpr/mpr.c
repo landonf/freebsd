@@ -1723,8 +1723,8 @@ mpr_setup_sysctl(struct mpr_softc *sc)
 	}
 
 	SYSCTL_ADD_PROC(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-	    OID_AUTO, "debug_level", CTLTYPE_STRING | CTLFLAG_RW, sc, 0,
-	    mpr_debug_sysctl, "A", "mpr debug level");
+	    OID_AUTO, "debug_level", CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE,
+	    sc, 0, mpr_debug_sysctl, "A", "mpr debug level");
 
 	SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
 	    OID_AUTO, "disable_msix", CTLFLAG_RD, &sc->disable_msix, 0,
@@ -1834,12 +1834,18 @@ static struct mpr_debug_string {
 	{"trace", MPR_TRACE}
 };
 
+enum mpr_debug_level_combiner {
+	COMB_NONE,
+	COMB_ADD,
+	COMB_SUB
+};
+
 static int
 mpr_debug_sysctl(SYSCTL_HANDLER_ARGS)
 {
 	struct mpr_softc *sc;
 	struct mpr_debug_string *string;
-	struct sbuf sbuf;
+	struct sbuf *sbuf;
 	char *buffer;
 	size_t sz;
 	int i, len, debug, error;
@@ -1850,20 +1856,20 @@ mpr_debug_sysctl(SYSCTL_HANDLER_ARGS)
 	if (error != 0)
 		return (error);
 
-	sbuf_new_for_sysctl(&sbuf, NULL, 128, req);
+	sbuf = sbuf_new_for_sysctl(NULL, NULL, 128, req);
 	debug = sc->mpr_debug;
 
-	sbuf_printf(&sbuf, "%#x", debug);
+	sbuf_printf(sbuf, "%#x", debug);
 
 	sz = sizeof(mpr_debug_strings) / sizeof(mpr_debug_strings[0]);
 	for (i = 0; i < sz; i++) {
 		string = &mpr_debug_strings[i];
 		if (debug & string->flag) 
-			sbuf_printf(&sbuf, ",%s", string->name);
+			sbuf_printf(sbuf, ",%s", string->name);
 	}
 
-	error = sbuf_finish(&sbuf);
-	sbuf_delete(&sbuf);
+	error = sbuf_finish(sbuf);
+	sbuf_delete(sbuf);
 
 	if (error || req->newptr == NULL)
 		return (error);
@@ -1885,11 +1891,23 @@ static void
 mpr_parse_debug(struct mpr_softc *sc, char *list)
 {
 	struct mpr_debug_string *string;
+	enum mpr_debug_level_combiner op;
 	char *token, *endtoken;
 	size_t sz;
 	int flags, i;
 
 	if (list == NULL || *list == '\0')
+		return;
+
+	if (*list == '+') {
+		op = COMB_ADD;
+		list++;
+	} else if (*list == '-') {
+		op = COMB_SUB;
+		list++;
+	} else
+		op = COMB_NONE;
+	if (*list == '\0')
 		return;
 
 	flags = 0;
@@ -1911,7 +1929,17 @@ mpr_parse_debug(struct mpr_softc *sc, char *list)
 		}
 	}
 
-	sc->mpr_debug = flags;
+	switch (op) {
+	case COMB_NONE:
+		sc->mpr_debug = flags;
+		break;
+	case COMB_ADD:
+		sc->mpr_debug |= flags;
+		break;
+	case COMB_SUB:
+		sc->mpr_debug &= (~flags);
+		break;
+	}
 	return;
 }
 
