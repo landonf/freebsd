@@ -490,7 +490,7 @@ METHOD bhnd_attach_type get_attach_type {
  * @param child The bhnd device requesting the DMA address translation.
  * @param width The address width within which the translation window must
  * reside (see BHND_DMA_ADDR_*).
- * @param flags Required translation flags (see BHND_DMA_TF_*).
+ * @param flags Required translation flags (see BHND_DMA_TRANSLATION_*).
  * @param[out] dmat On success, will be populated with a DMA tag specifying the
  * @p translation DMA address restrictions. This argment may be NULL if the DMA
  * tag is not desired.
