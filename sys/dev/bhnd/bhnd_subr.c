@@ -2114,11 +2114,12 @@ bhnd_bus_generic_get_chipid(device_t dev, device_t child)
  */
 int
 bhnd_bus_generic_get_dma_translation(device_t dev, device_t child, u_int width,
-    uint32_t flags, struct bhnd_dma_translation *translation)
+    uint32_t flags, bus_dma_tag_t *dmat,
+    struct bhnd_dma_translation *translation)
 {
 	if (device_get_parent(dev) != NULL) {
 		return (BHND_BUS_GET_DMA_TRANSLATION(device_get_parent(dev),
-		    child, width, flags, translation));
+		    child, width, flags, dmat, translation));
 	}
 
 	panic("missing BHND_BUS_GET_DMA_TRANSLATION()");

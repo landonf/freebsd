@@ -712,7 +712,6 @@ bhndb_alloc_host_resources(struct bhndb_host_resources **resources,
 	hr->cfg = hwcfg;
 	hr->resource_specs = NULL;
 	hr->resources = NULL;
-	hr->generic_dma_tag = NULL;
 	hr->dma_tags = NULL;
 	hr->num_dma_tags = 0;
 
@@ -750,15 +749,7 @@ bhndb_alloc_host_resources(struct bhndb_host_resources **resources,
 		ndt++;
 	}
 
-	/* Create our generic DMA tag */
-	if (ndt > 0) {
-		error = bhndb_dma_tag_create(dev, parent_dmat,
-		    hwcfg->dma_translations, ndt, &hr->generic_dma_tag);
-		if (error)
-			goto failed;
-	}
-
-	/* Populate our full DMA tag table */
+	/* Allocate our DMA tags */
 	hr->dma_tags = malloc(sizeof(*hr->dma_tags) * ndt, M_BHND,
 	    M_WAITOK|M_ZERO);
 	for (size_t i = 0; i < ndt; i++) {
@@ -805,9 +796,6 @@ failed:
 	if (hr->resources != NULL)
 		free(hr->resources, M_BHND);
 
-	if (hr->generic_dma_tag != NULL)
-		bus_dma_tag_destroy(hr->generic_dma_tag);
-
 	for (size_t i = 0; i < hr->num_dma_tags; i++)
 		bus_dma_tag_destroy(hr->dma_tags[i]);
 
@@ -828,9 +816,6 @@ void
 bhndb_release_host_resources(struct bhndb_host_resources *hr)
 {
 	bus_release_resources(hr->owner, hr->resource_specs, hr->resources);
-
-	if (hr->generic_dma_tag != NULL)
-		bus_dma_tag_destroy(hr->generic_dma_tag);
 
 	for (size_t i = 0; i < hr->num_dma_tags; i++)
 		bus_dma_tag_destroy(hr->dma_tags[i]);

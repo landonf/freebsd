@@ -2044,28 +2044,34 @@ bhndb_remap_intr(device_t dev, device_t child, u_int irq)
  */
 static inline int
 bhndb_get_dma_translation(device_t dev, device_t child, u_int width,
-    uint32_t flags, struct bhnd_dma_translation *translation)
+    uint32_t flags, bus_dma_tag_t *dmat,
+    struct bhnd_dma_translation *translation)
 {
 	struct bhndb_softc			*sc;
 	const struct bhndb_hwcfg		*hwcfg;
-	const struct bhnd_dma_translation	*dwin, *match;
+	const struct bhnd_dma_translation	*match;
+	bus_dma_tag_t				 match_dmat;
 	bhnd_addr_t				 addr_mask, match_addr_mask;
 
 	sc = device_get_softc(dev);
 	hwcfg = sc->bus_res->cfg;
 
 	/* Is DMA supported? */
-	if (hwcfg->dma_translations == NULL)
+	if (sc->bus_res->res->dma_tags == NULL)
 		return (ENODEV);
 
 	/* Find the best matching descriptor for the requested type */
+	addr_mask = BHND_DMA_ADDR_BITMASK(width);
+
 	match = NULL;
 	match_addr_mask = 0x0;
-	addr_mask = BHND_DMA_ADDR_BITMASK(width);
-	for (dwin = hwcfg->dma_translations;
-	    !BHND_DMA_IS_TRANSLATION_TABLE_END(dwin); dwin++)
-	{
-		bhnd_addr_t masked;
+	match_dmat = NULL;
+
+	for (size_t i = 0; i < sc->bus_res->res->num_dma_tags; i++) {
+		const struct bhnd_dma_translation	*dwin;
+		bhnd_addr_t				 masked;
+
+		dwin = &hwcfg->dma_translations[i];
 
 		/* The base address must be device addressable */
 		if ((dwin->base_addr & addr_mask) != dwin->base_addr)
@@ -2085,13 +2091,19 @@ bhndb_get_dma_translation(device_t dev, device_t child, u_int width,
 		if (match == NULL || masked > match_addr_mask) {
 			match = dwin;
 			match_addr_mask = masked;
+			match_dmat = sc->bus_res->res->dma_tags[i];
 		}
 	}
 
 	if (match == NULL || match_addr_mask == 0)
 		return (ENOENT);
 
-	*translation = *match;
+	if (dmat != NULL)
+		*dmat = match_dmat;
+
+	if (translation != NULL)
+		*translation = *match;
+
 	return (0);
 }
 
@@ -2102,7 +2114,19 @@ static bus_dma_tag_t
 bhndb_get_dma_tag(device_t dev, device_t child)
 {
 	struct bhndb_softc *sc = device_get_softc(dev);
-	return (sc->bus_res->res->generic_dma_tag);
+
+	/*
+	 * A bridge may have multiple DMA translation descriptors, each with
+	 * their own incompatible restrictions; drivers should in general call
+	 * BHND_BUS_GET_DMA_TRANSLATION() to fetch both the best available DMA
+	 * translation, and its corresponding DMA tag.
+	 *
+	 * Child drivers that do not use BHND_BUS_GET_DMA_TRANSLATION() are
+	 * responsible for creating their own restricted DMA tag; since we
+	 * cannot do this for them in BUS_GET_DMA_TAG(), we simply return the
+	 * bridge parent's DMA tag directly; 
+	 */
+	return (bus_get_dma_tag(sc->parent_dev));
 }
 
 static device_method_t bhndb_methods[] = {

@@ -199,9 +199,9 @@ bhnd_nexus_unmap_intr(device_t dev, device_t child, rman_res_t irq)
 /**
  * Default bhnd_nexus implementation of BHND_BUS_GET_DMA_TRANSLATION().
  */
-uintptr_t
-bhnd_bus_generic_get_dma_translation(device_t dev, device_t child,
-    bhnd_dma_translation_type type, uint32_t flags,
+static int
+bhnd_nexus_get_dma_translation(device_t dev, device_t child,
+    u_int width, uint32_t flags, bus_dma_tag_t *dmat,
     struct bhnd_dma_translation *translation)
 {
 	struct bcm_platform *bp = bcm_get_platform();
@@ -210,29 +210,26 @@ bhnd_bus_generic_get_dma_translation(device_t dev, device_t child,
 	if (flags != 0x0)
 		return (ENOENT);
 
-	switch (type) {
-	case BHND_DMA32_TRANSLATION:
-		/* Handled below */
-		break;
+	KASSERT(width > 0 && width <= BHND_DMA_ADDR_64BIT,
+	    ("invalid width %u", width));
 
-	case BHND_DMA64_TRANSLATION:
+	if (width > BHND_DMA_ADDR_32BIT) {
 		/* Backplane must support 64-bit addressing */
 		if (!(bp->cc_caps & CHIPC_CAP_BKPLN64))
 			return (ENOENT);
-
-		/* Handled below */
-		break;
-
-	default:
-		device_printf(dev, "DMA translation type unknown: %d\n", type);
-		return (ENOENT);
 	}
 
 	/* No DMA address translation required */
-	*translation = *(struct bhnd_dma_translation) {
-		.translation	= 0x0,
-		.mask		= 0x0
-	};
+	if (dmat != NULL)
+		*dmat = bus_get_dma_tag(dev);
+
+	if (translation != NULL) {
+		*translation = (struct bhnd_dma_translation) {
+			.base_addr	= 0x0,
+			.addr_mask	= BHND_DMA_ADDR_BITMASK(width),
+			.addrext_mask	= 0
+		};
+	}
 
 	return (0);
 }

@@ -603,7 +603,7 @@ const struct bhnd_chipid	*bhnd_bus_generic_get_chipid(device_t dev,
 				     device_t child);
 int				 bhnd_bus_generic_get_dma_translation(
 				     device_t dev, device_t child, u_int width,
-				     uint32_t flags,
+				     uint32_t flags, bus_dma_tag_t *dmat,
 				     struct bhnd_dma_translation *translation);
 int				 bhnd_bus_generic_read_board_info(device_t dev,
 				     device_t child,
@@ -936,7 +936,7 @@ bhnd_get_attach_type (device_t dev) {
 }
 
 /**
- * Return the best available DMA address translation capable of mapping a
+ * Find the best available DMA address translation capable of mapping a
  * physical host address to a BHND DMA device address of @p width with
  * @p flags.
  *
@@ -944,8 +944,13 @@ bhnd_get_attach_type (device_t dev) {
  * @param width The address width within which the translation window must
  * reside (see BHND_DMA_ADDR_*).
  * @param flags Required translation flags (see BHND_DMA_TF_*).
+ * @param[out] dmat On success, will be populated with a DMA tag specifying the
+ * @p translation DMA address restrictions. This argment may be NULL if the DMA
+ * tag is not desired.
+ * the set of valid host DMA addresses reachable via @p translation.
  * @param[out] translation On success, will be populated with a DMA address
- * translation descriptor for @p child.
+ * translation descriptor for @p child. This argment may be NULL if the
+ * descriptor is not desired.
  *
  * @retval 0 success
  * @retval ENODEV If DMA is not supported.
@@ -956,10 +961,10 @@ bhnd_get_attach_type (device_t dev) {
  */
 static inline int
 bhnd_get_dma_translation(device_t dev, u_int width, uint32_t flags,
-    struct bhnd_dma_translation *translation)
+    bus_dma_tag_t *dmat, struct bhnd_dma_translation *translation)
 {
 	return (BHND_BUS_GET_DMA_TRANSLATION(device_get_parent(dev), dev, width,
-	    flags, translation));
+	    flags, dmat, translation));
 }
 
 /**

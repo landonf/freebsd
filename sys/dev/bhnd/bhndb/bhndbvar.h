@@ -163,10 +163,8 @@ struct bhndb_host_resources {
 	const struct bhndb_hwcfg	*cfg;			/**< bridge hardware configuration */
 	struct resource_spec		*resource_specs;	/**< resource specification table */
 	struct resource			**resources;		/**< allocated resource table */
-	bus_dma_tag_t			 generic_dma_tag;	/**< generic DMA tag compatible with all default DMA translations defined
-								     in the hwcfg, or NULL if none. This tag may define stricter restrictions
-								     than would be required for a translation-specific DMA tag. */
-	bus_dma_tag_t			*dma_tags;		/**< DMA tags for all DMA translations defined in the hwcfg, or NULL if none */
+	bus_dma_tag_t			*dma_tags;		/**< DMA tags for all hwcfg DMA translations, or NULL
+								     if DMA is not supported */
 	size_t				 num_dma_tags;		/**< DMA tag count */
 };
 
