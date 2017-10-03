@@ -1617,8 +1617,8 @@ bhnd_compat_dev_isup(device_t dev)
 static void
 bhnd_compat_pcicore_intr(device_t dev)
 {
-	/* interrupt enable */
-	// TODO
+	/* This is handled by bhnd_bhndb on the first call to
+	 * bus_setup_intr() */
 }
 
 /*
