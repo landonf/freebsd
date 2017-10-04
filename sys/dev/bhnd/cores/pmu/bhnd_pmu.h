@@ -37,6 +37,7 @@
 #include <dev/bhnd/bhnd.h>
 
 #include "bhnd_pmu_if.h"
+#include "bhnd_pmu_types.h"
 
 /**
  * Per-core PMU register information.
