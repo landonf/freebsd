@@ -52,11 +52,11 @@
 
 /* Chip Control indirect registers */
 #define	BHND_PMU_CCTRL_READ(_sc, _reg)			\
-	BHND_PMU_IND_READ((_sc), CHIPCTL, (_reg))
+	BHND_PMU_IND_READ((_sc), CHIP_CONTROL, (_reg))
 #define	BHND_PMU_CCTRL_WRITE(_sc, _reg, _val, _mask)	\
-	BHND_PMU_IND_WRITE((_sc), CHIPCTL, (_reg), (_val), (_mask))
+	BHND_PMU_IND_WRITE((_sc), CHIP_CONTROL, (_reg), (_val), (_mask))
 
-/* Register Control indirect registers */
+/* Regulator Control indirect registers */
 #define	BHND_PMU_REGCTRL_READ(_sc, _reg)			\
 	BHND_PMU_IND_READ((_sc), REG_CONTROL, (_reg))
 #define	BHND_PMU_REGCTRL_WRITE(_sc, _reg, _val, _mask)	\

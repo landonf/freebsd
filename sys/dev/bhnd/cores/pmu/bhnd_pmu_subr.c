@@ -1951,10 +1951,10 @@ bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 		
 		switch (xt->fref) {
 		case XTAL_FREQ_24000MHZ:
-			pll_sel = BHND_PMU_CCTL_4319USB_24MHZ_PLL_SEL;
+			pll_sel = BHND_PMU_CCTRL4319USB_24MHZ_PLL_SEL;
 			break;
 		case XTAL_FREQ_48000MHZ:
-			pll_sel = BHND_PMU_CCTL_4319USB_48MHZ_PLL_SEL;
+			pll_sel = BHND_PMU_CCTRL4319USB_48MHZ_PLL_SEL;
 			break;
 		default:
 			panic("unsupported 4319USB XTAL frequency: %hu\n",
@@ -1962,8 +1962,8 @@ bhnd_pmu1_pllinit0(struct bhnd_pmu_softc *sc, uint32_t xtal)
 		}
 
 		BHND_PMU_CCTRL_WRITE(sc, BHND_PMU1_PLL0_CHIPCTL2,
-		    BHND_PMU_SET_BITS(pll_sel, BHND_PMU_CCTL_4319USB_XTAL_SEL),
-		    BHND_PMU_CCTL_4319USB_XTAL_SEL_MASK);
+		    BHND_PMU_SET_BITS(pll_sel, BHND_PMU_CCTRL4319USB_XTAL_SEL),
+		    BHND_PMU_CCTRL4319USB_XTAL_SEL_MASK);
 	}
 
 	/* Flush deferred pll control registers writes */
@@ -2872,10 +2872,10 @@ bhnd_pmu_rcal(struct bhnd_pmu_softc *sc)
 	case BHND_CHIPID_BCM4325:
 	case BHND_CHIPID_BCM4329:
 		/* Kick RCal */
-		BHND_PMU_WRITE_4(sc, BHND_PMU_CHIPCTL_ADDR, 1);
+		BHND_PMU_WRITE_4(sc, BHND_PMU_CHIP_CONTROL_ADDR, 1);
 
 		/* Power Down RCAL Block */
-		BHND_PMU_AND_4(sc, BHND_PMU_CHIPCTL_DATA, ~0x04);
+		BHND_PMU_AND_4(sc, BHND_PMU_CHIP_CONTROL_DATA, ~0x04);
 
 		if (sc->cid.chip_id == BHND_CHIPID_BCM4325) {
 			chipst = BHND_CHIPC_READ_CHIPST(sc->chipc_dev);
@@ -2884,7 +2884,7 @@ bhnd_pmu_rcal(struct bhnd_pmu_softc *sc)
 		}
 
 		/* Power Up RCAL block */
-		BHND_PMU_AND_4(sc, BHND_PMU_CHIPCTL_DATA, 0x04);
+		BHND_PMU_AND_4(sc, BHND_PMU_CHIP_CONTROL_DATA, 0x04);
 
 		/* Wait for completion */
 		for (int i = 0; i < (10 * 1000 * 1000); i++) {
@@ -2921,25 +2921,25 @@ bhnd_pmu_rcal(struct bhnd_pmu_softc *sc)
 		BHND_PMU_WRITE_4(sc, BHND_PMU_REG_CONTROL_DATA, val);
 
 		/* Write RCal code into pmu_chip_ctrl[33:30] */
-		BHND_PMU_WRITE_4(sc, BHND_PMU_CHIPCTL_ADDR, 0);
-		val = BHND_PMU_READ_4(sc, BHND_PMU_CHIPCTL_DATA);
+		BHND_PMU_WRITE_4(sc, BHND_PMU_CHIP_CONTROL_ADDR, 0);
+		val = BHND_PMU_READ_4(sc, BHND_PMU_CHIP_CONTROL_DATA);
 		val &= ~((uint32_t) 0x03 << 30);
 		val |= (uint32_t) (rcal_code & 0x03) << 30;
-		BHND_PMU_WRITE_4(sc, BHND_PMU_CHIPCTL_DATA, val);
+		BHND_PMU_WRITE_4(sc, BHND_PMU_CHIP_CONTROL_DATA, val);
 
-		BHND_PMU_WRITE_4(sc, BHND_PMU_CHIPCTL_ADDR, 1);
-		val = BHND_PMU_READ_4(sc, BHND_PMU_CHIPCTL_DATA);
+		BHND_PMU_WRITE_4(sc, BHND_PMU_CHIP_CONTROL_ADDR, 1);
+		val = BHND_PMU_READ_4(sc, BHND_PMU_CHIP_CONTROL_DATA);
 		val &= ~(uint32_t) 0x03;
 		val |= (uint32_t) ((rcal_code >> 2) & 0x03);
-		BHND_PMU_WRITE_4(sc, BHND_PMU_CHIPCTL_DATA, val);
+		BHND_PMU_WRITE_4(sc, BHND_PMU_CHIP_CONTROL_DATA, val);
 
 		/* Set override in pmu_chip_ctrl[29] */
-		BHND_PMU_WRITE_4(sc, BHND_PMU_CHIPCTL_ADDR, 0);
-		BHND_PMU_OR_4(sc, BHND_PMU_CHIPCTL_DATA, (0x01 << 29));
+		BHND_PMU_WRITE_4(sc, BHND_PMU_CHIP_CONTROL_ADDR, 0);
+		BHND_PMU_OR_4(sc, BHND_PMU_CHIP_CONTROL_DATA, (0x01 << 29));
 
 		/* Power off RCal block */
-		BHND_PMU_WRITE_4(sc, BHND_PMU_CHIPCTL_ADDR, 1);
-		BHND_PMU_AND_4(sc, BHND_PMU_CHIPCTL_DATA, ~0x04);
+		BHND_PMU_WRITE_4(sc, BHND_PMU_CHIP_CONTROL_ADDR, 1);
+		BHND_PMU_AND_4(sc, BHND_PMU_CHIP_CONTROL_DATA, ~0x04);
 		break;
 	default:
 		break;
