@@ -37,6 +37,7 @@
 #include <dev/bhnd/bhnd.h>
 
 #include "bhnd_pmu_if.h"
+#include "bhnd_pmu_types.h"
 
 /**
  * Return the PMU's maximum state transition latency in microseconds.
