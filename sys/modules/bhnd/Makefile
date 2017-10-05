@@ -4,6 +4,7 @@
 .PATH: ${SRCTOP}/sys/dev/bhnd/cores/chipc
 .PATH: ${SRCTOP}/sys/dev/bhnd/cores/chipc/pwrctl
 .PATH: ${SRCTOP}/sys/dev/bhnd/cores/pmu
+.PATH: ${SRCTOP}/sys/dev/bhnd/pmu
 .PATH: ${SRCTOP}/sys/dev/bhnd/nvram
 
 KMOD=	bhnd

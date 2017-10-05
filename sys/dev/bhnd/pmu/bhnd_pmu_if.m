@@ -42,9 +42,7 @@ INTERFACE bhnd_pmu;
 #
 
 HEADER {
-	#include <dev/bhnd/cores/pmu/bhnd_pmu_types.h>
-
-	struct bhnd_core_pmu_info;
+	#include <dev/bhnd/bhnd.h>
 }
 
 /**
@@ -147,34 +145,6 @@ METHOD void write_pllctrl {
 	uint32_t reg;
 	uint32_t value;
 	uint32_t mask;
-};
-
-/**
- * Enable the given @p regulator.
- *
- * @param dev PMU device.
- * @param regulator Regulator to be enabled.
- *
- * @retval 0 success
- * @retval ENODEV If @p regulator is not supported by this driver.
- */
-METHOD int enable_regulator {
-	device_t dev;
-	bhnd_pmu_regulator regulator;
-};
-
-/**
- * Disable the given @p regulator.
- *
- * @param dev PMU device.
- * @param regulator Regulator to be disabled.
- *
- * @retval 0 success
- * @retval ENODEV If @p regulator is not supported by this driver.
- */
-METHOD int disable_regulator {
-	device_t dev;
-	bhnd_pmu_regulator regulator;
 };
 
 /**

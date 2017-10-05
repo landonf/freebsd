@@ -43,7 +43,7 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/bus.h>
 
-#include <dev/bhnd/cores/pmu/bhnd_pmu.h>
+#include "bhnd_pmu_if.h"
 
 #include "bcma_dmp.h"
 

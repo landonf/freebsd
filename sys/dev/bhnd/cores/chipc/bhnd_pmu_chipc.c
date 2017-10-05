@@ -117,6 +117,8 @@ static device_method_t bhnd_pmu_chipc_methods[] = {
 	DEVMETHOD_END
 };
 
+static devclass_t bhnd_pmu_devclass;
+
 DEFINE_CLASS_1(bhnd_pmu, bhnd_pmu_chipc_driver, bhnd_pmu_chipc_methods,
     sizeof(struct bhnd_pmu_softc), bhnd_pmu_driver);
 EARLY_DRIVER_MODULE(bhnd_pmu_chipc, bhnd_chipc, bhnd_pmu_chipc_driver,
