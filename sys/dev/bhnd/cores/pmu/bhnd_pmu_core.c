@@ -129,8 +129,6 @@ static device_method_t bhnd_pmucore_methods[] = {
 	DEVMETHOD_END
 };
 
-static devclass_t bhnd_pmu_devclass;
-
 DEFINE_CLASS_1(bhnd_pmu, bhnd_pmucore_driver, bhnd_pmucore_methods,
     sizeof(struct bhnd_pmu_softc), bhnd_pmu_driver);
 EARLY_DRIVER_MODULE(bhnd_pmu, bhnd, bhnd_pmucore_driver, bhnd_pmu_devclass,

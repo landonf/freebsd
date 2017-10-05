@@ -41,8 +41,10 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/cores/chipc/chipcreg.h>
 #include <dev/bhnd/cores/chipc/chipcvar.h>
 
+#include <dev/bhnd/cores/pmu/bhnd_pmuvar.h>
+#include <dev/bhnd/cores/pmu/bhnd_pmureg.h>
+
 #include "bhnd_chipc_if.h"
-#include "bhnd_pmu_if.h"
 
 #include "bhnd_pwrctl_private.h"
 
@@ -489,7 +491,6 @@ static device_method_t bhnd_pwrctl_methods[] = {
 	DEVMETHOD_END
 };
 
-static devclass_t bhnd_pmu_devclass;
 DEFINE_CLASS_0(bhnd_pmu, bhnd_pwrctl_driver, bhnd_pwrctl_methods,
     sizeof(struct bhnd_pwrctl_softc));
 EARLY_DRIVER_MODULE(bhnd_pwrctl, bhnd_chipc, bhnd_pwrctl_driver,

@@ -52,8 +52,6 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_nvram_map.h"
 
-#include "bhnd_pmu_if.h"
-
 #include "bhnd_pmureg.h"
 #include "bhnd_pmuvar.h"
 
@@ -69,6 +67,8 @@ __FBSDID("$FreeBSD$");
  * On earlier chipsets, these register blocks are found at the same
  * offsets within the ChipCommon core.
  */
+
+devclass_t bhnd_pmu_devclass;	/**< bhnd(4) PMU device class */
 
 static int	bhnd_pmu_sysctl_bus_freq(SYSCTL_HANDLER_ARGS);
 static int	bhnd_pmu_sysctl_cpu_freq(SYSCTL_HANDLER_ARGS);

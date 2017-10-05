@@ -44,8 +44,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/bus.h>
 
 #include <dev/bhnd/cores/chipc/chipcreg.h>
-
-#include "bhnd_pmu_if.h"
+#include <dev/bhnd/cores/pmu/bhnd_pmu.h>
 
 #include "sibareg.h"
 #include "sibavar.h"

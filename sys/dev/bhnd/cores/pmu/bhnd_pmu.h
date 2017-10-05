@@ -1,10 +1,6 @@
 /*-
  * Copyright (c) 2016 Landon Fuller <landonf@FreeBSD.org>
- * Copyright (c) 2017 The FreeBSD Foundation
  * All rights reserved.
- *
- * Portions of this software were developed by Landon Fuller
- * under sponsorship from the FreeBSD Foundation.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,51 +29,15 @@
  * $FreeBSD$
  */
 
-#ifndef _BHND_PMU_BHND_PMU_H_
-#define _BHND_PMU_BHND_PMU_H_
+#ifndef _BHND_CORES_PMU_BHND_PMU_H_
+#define _BHND_CORES_PMU_BHND_PMU_H_
 
 #include <sys/types.h>
 
 #include <dev/bhnd/bhnd.h>
 
-struct bhnd_regulator;
-
-/**
- * bhnd_pmu(4) regulator identifiers.
- *
- * TODO: Allow strings instead?
- */
-typedef enum bhnd_regulator_name {
-	BHND_REGULATOR_CLDO		= 1,	/**< digital core LDO */
-	BHND_REGULATOR_LDO1		= 1,	/**< digital core LDO */
-	BHND_REGULATOR_PAREF_LDO	= 2,	/**< PA reference LDO */
-	BHND_REGULATOR_CBUCK		= 3,	/**< digital core buck regulator */
-	BHND_REGULATOR_LNLDO1		= 4,	/**< low-noise LDO#1 */
-	BHND_REGULATOR_LNLDO2		= 5,	/**< low-noise LDO#2 */
-} bhnd_regulator_name;
-
-/**
- * bhnd_pmu(4) regulator modes.
- */
-typedef enum bhnd_regulator_mode {
-	BHND_REGULATOR_MODE_DEFAULT	= 0,	/**< default output mode */
-	BHND_REGULATOR_MODE_PWM		= 1,	/**< PWM output mode */
-	BHND_REGULATOR_MODE_BURST	= 2,	/**< burst output mode */
-	BHND_REGULATOR_MODE_SEL1	= 3,	/**< selector #1 asserted */
-} bhnd_regulator_mode;
-
-/**
- * bhnd_pmu(4) regulator attributes
- */
-typedef enum bhnd_regulator_attr {
-	BHND_REGULATOR_ATTR_VOUT		= 0,	/**< output voltage in millivolts */
-	BHND_REGULATOR_ATTR_VOUT_RAW		= 1,	/**< output voltage as raw register value */
-	BHND_REGULATOR_ATTR_PWRUP_LATCH_CTRL	= 2,	/**< power-up latch control */
-} bhnd_regulator_attr;
-
-void	bhnd_regulator_release(struct bhnd_regulator *regulator);
-int	bhnd_regulator_setattr(struct bhnd_regulator *regulator,
-	    bhnd_regulator_attr attr, uint32_t value);
+#include "bhnd_pmu_if.h"
+#include "bhnd_pmu_types.h"
 
 /**
  * Per-core PMU register information.
@@ -92,12 +52,4 @@ struct bhnd_core_pmu_info {
 						  *  block in @p pm_res */
 };
 
-/**
- * bhnd_pmu(4) regulator reference.
- */
-struct bhnd_regulator {
-	uintptr_t	id;	/**< PMU-assigned opaque regulator ID */
-	device_t	pmu;	/**< PMU provider reference */
-};
-
-#endif /* _BHND_PMU_BHND_PMU_H_ */
+#endif /* _BHND_CORES_PMU_BHND_PMU_H_ */

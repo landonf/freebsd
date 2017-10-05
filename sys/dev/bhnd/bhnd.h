@@ -51,7 +51,6 @@
 #include "bhnd_match.h"
 
 #include "nvram/bhnd_nvram.h"
-#include "pmu/bhnd_pmu.h"
 
 struct bhnd_core_pmu_info;
 
@@ -156,7 +155,7 @@ BHND_ACCESSOR(vendor_name,	VENDOR_NAME,	const char *);
 BHND_ACCESSOR(device_name,	DEVICE_NAME,	const char *);
 BHND_ACCESSOR(core_index,	CORE_INDEX,	u_int);
 BHND_ACCESSOR(core_unit,	CORE_UNIT,	int);
-BHND_ACCESSOR(pmu_info,		PMU_INFO,	void *);
+BHND_ACCESSOR(pmu_info,		PMU_INFO,	struct bhnd_core_pmu_info *);
 
 #undef	BHND_ACCESSOR
 

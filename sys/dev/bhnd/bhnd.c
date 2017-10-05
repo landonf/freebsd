@@ -64,11 +64,11 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/cores/chipc/chipcvar.h>
 
+#include <dev/bhnd/cores/pmu/bhnd_pmu.h>
 #include <dev/bhnd/cores/pmu/bhnd_pmureg.h>
 
 #include "bhnd_chipc_if.h"
 #include "bhnd_nvram_if.h"
-#include "bhnd_pmu_if.h"
 
 #include "bhnd.h"
 #include "bhndvar.h"

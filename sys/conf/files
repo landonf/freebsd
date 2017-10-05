@@ -1259,6 +1259,7 @@ dev/bhnd/cores/pcie2/bhnd_pcie2_hostb.c	optional bhndb bhnd pci
 dev/bhnd/cores/pcie2/bhnd_pcie2b.c	optional bhnd_pcie2b bhnd pci
 dev/bhnd/cores/pmu/bhnd_pmu.c		optional bhnd
 dev/bhnd/cores/pmu/bhnd_pmu_core.c	optional bhnd
+dev/bhnd/cores/pmu/bhnd_pmu_if.m	optional bhnd
 dev/bhnd/cores/pmu/bhnd_pmu_subr.c	optional bhnd
 dev/bhnd/nvram/bhnd_nvram_data.c	optional bhnd
 dev/bhnd/nvram/bhnd_nvram_data_bcm.c	optional bhnd
@@ -1281,7 +1282,6 @@ dev/bhnd/nvram/bhnd_nvram_value_fmts.c	optional bhnd
 dev/bhnd/nvram/bhnd_nvram_value_prf.c	optional bhnd
 dev/bhnd/nvram/bhnd_nvram_value_subr.c	optional bhnd
 dev/bhnd/nvram/bhnd_sprom.c		optional bhnd
-dev/bhnd/pmu/bhnd_pmu_if.m		optional bhnd
 dev/bhnd/siba/siba.c			optional siba bhnd
 dev/bhnd/siba/siba_bhndb.c		optional siba bhnd bhndb
 dev/bhnd/siba/siba_erom.c		optional siba bhnd
