@@ -88,12 +88,42 @@ static void	bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc,
 		    uint8_t spuravoid);
 static void	bhnd_pmu_set_4330_plldivs(struct bhnd_pmu_softc *sc);
 
+static const struct bhnd_device_quirk bhnd_chipc_clkctl_quirks[];
+static const struct bhnd_device_quirk bhnd_pcmcia_clkctl_quirks[];
+
+/**
+ * Device table entries for core-specific CLKCTL quirk lookup.
+ */
+static const struct bhnd_device bhnd_clkctl_devices[] = {
+	BHND_DEVICE(BCM, CC,		NULL,	bhnd_chipc_clkctl_quirks),
+	BHND_DEVICE(BCM, PCMCIA,	NULL,	bhnd_pcmcia_clkctl_quirks),
+	BHND_DEVICE_END,
+};
+
+/** ChipCommon CLKCTL quirks */
+static const struct bhnd_device_quirk bhnd_chipc_clkctl_quirks[] = {
+	/* HTAVAIL/ALPAVAIL are bitswapped in chipc's CLKCTL */
+	BHND_CHIP_QUIRK(4328,	HWREV_ANY,	BPMU_QUIRK_CLKCTL_CCS0),
+	BHND_CHIP_QUIRK(5354,	HWREV_ANY,	BPMU_QUIRK_CLKCTL_CCS0),
+	BHND_DEVICE_QUIRK_END
+};
+
+/** PCMCIA CLKCTL quirks */
+static const struct bhnd_device_quirk bhnd_pcmcia_clkctl_quirks[] = {
+	/* HTAVAIL/ALPAVAIL are bitswapped in pcmcia's CLKCTL */
+	BHND_CHIP_QUIRK(4328,	HWREV_ANY,	BPMU_QUIRK_CLKCTL_CCS0),
+	BHND_CHIP_QUIRK(5354,	HWREV_ANY,	BPMU_QUIRK_CLKCTL_CCS0),
+	BHND_DEVICE_QUIRK_END
+};
+
+
+
 #define	BHND_PMU_REV(_sc)			\
 	((uint8_t)BHND_PMU_GET_BITS((_sc)->caps, BHND_PMU_CAP_REV))
 
-#define	PMU_WAIT_CLKST(_sc, _val, _mask)			\
-	bhnd_pmu_wait_clkst((_sc), (_sc)->dev, (_sc)->res,	\
-	    BHND_CLK_CTL_ST, (_val), (_mask))
+#define	PMU_WAIT_CLKST(_sc, _val, _mask)		\
+	bhnd_pmu_wait_clkst((_sc)->dev, (_sc)->res,	\
+	    BHND_CLK_CTL_ST, (_sc)->quirks, (_val), (_mask))
 
 #define	PMURES_BIT(_bit)			\
 	(1 << (BHND_PMU_ ## _bit))
@@ -182,25 +212,37 @@ bhnd_pmu_ind_write(const struct bhnd_pmu_io *io, void *io_ctx, bus_size_t addr,
 }
 
 /**
+ * Return the set of PMU clkctl quirk flags applicable to the given bhnd(4)
+ * device.
+ * 
+ * @param dev A bhnd(4) device for which PMU quirk flags should be returned.
+ */
+uint32_t
+bhnd_pmu_clkctl_quirks(device_t dev)
+{
+	return (bhnd_device_quirks(dev, bhnd_clkctl_devices,
+	    sizeof(bhnd_clkctl_devices[0])));
+}
+
+/**
  * Wait for up to BHND_PMU_MAX_TRANSITION_DLY microseconds for the per-core
  * clock status to be equal to @p value after applying @p mask.
  * 
- * @param sc PMU driver state.
  * @param dev Requesting device.
  * @param r An active resource mapping the clock status register.
  * @param clkst_reg Offset to the CLK_CTL_ST register.
+ * @param quirks PMU clkctl quirks (@see bhnd_pmu_clkctl_quirks).
  * @param value Value to wait for.
  * @param mask Mask to apply prior to value comparison.
  */
 bool
-bhnd_pmu_wait_clkst(struct bhnd_pmu_softc *sc, device_t dev,
-    struct bhnd_resource *r, bus_size_t clkst_reg, uint32_t value,
-    uint32_t mask)
+bhnd_pmu_wait_clkst(device_t dev, struct bhnd_resource *r, bus_size_t clkst_reg,
+    uint32_t quirks, uint32_t value, uint32_t mask)
 {
 	uint32_t	clkst;
 
 	/* Bitswapped HTAVAIL/ALPAVAIL work-around */
-	if (sc->quirks & BPMU_QUIRK_CLKCTL_CCS0) {
+	if (quirks & BPMU_QUIRK_CLKCTL_CCS0) {
 		uint32_t fmask, fval;
 
 		fmask = mask & ~(BHND_CCS_HTAVAIL | BHND_CCS_ALPAVAIL);

@@ -54,4 +54,39 @@ struct bhnd_service_entry {
 	STAILQ_ENTRY(bhnd_service_entry) link;
 };
 
+
+/**
+ * Per-core bhnd(4) PMU clkctl register information.
+ */
+struct bhnd_core_clkctl {
+	device_t		 cc_pmu;	/**< PMU device */
+	device_t		 cc_dev;	/**< core device */
+	uint32_t		 cc_quirks;	/**< core-specific clkctl quirks */
+	struct bhnd_resource	*cc_res;	/**< resource mapping core's PMU register block */
+	bus_size_t		 cc_res_offset;	/**< offset to PMU registers */
+	struct mtx		 cc_mtx;	/**< register state lock */
+};
+
+#define	BHND_ASSERT_CLKCTL_AVAIL(_clkctl)			\
+	KASSERT(!bhnd_is_hw_suspended((_clkctl)->cc_dev),	\
+	    ("reading clkctl on suspended core will trigger system livelock"))
+
+#define	BHND_CLKCTL_LOCK_INIT(_clkctl)		mtx_init(&(_clkctl)->cc_mtx, \
+    device_get_nameunit((_clkctl)->cc_dev), NULL, MTX_DEF)
+#define	BHND_CLKCTL_LOCK(_clkctl)		mtx_lock(&(_clkctl)->cc_mtx)
+#define	BHND_CLKCTL_UNLOCK(_clkctl)		mtx_unlock(&(_clkctl)->cc_mtx)
+#define	BHND_CLKCTL_LOCK_ASSERT(_clkctl, what)	\
+    mtx_assert(&(_clkctl)->cc_mtx, what)
+#define	BHND_CLKCTL_LOCK_DESTROY(_clkctl)	mtx_destroy(&(_clkctl->cc_mtx))
+
+#define	BHND_CLKCTL_READ_4(_clkctl)		\
+	bhnd_bus_read_4((_clkctl)->cc_res, (_clkctl)->cc_res_offset)
+
+#define	BHND_CLKCTL_WRITE_4(_clkctl, _val)	\
+	bhnd_bus_write_4((_clkctl)->cc_res, (_clkctl)->cc_res_offset, (_val))
+	
+#define	BHND_CLKCTL_SET_4(_clkctl, _val, _mask)	\
+	BHND_CLKCTL_WRITE_4((_clkctl),		\
+	    ((_val) & (_mask)) | (BHND_CLKCTL_READ_4(_clkctl) & ~(_mask)))
+
 #endif /* _BHND_BHND_PRIVATE_H_ */

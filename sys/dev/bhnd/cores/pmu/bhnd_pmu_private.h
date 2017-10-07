@@ -98,10 +98,6 @@ void		bhnd_pmu_ind_write(const struct bhnd_pmu_io *io, void *io_ctx,
 		    bus_size_t addr, bus_size_t data, uint32_t reg,
 		    uint32_t val, uint32_t mask);
 
-bool		bhnd_pmu_wait_clkst(struct bhnd_pmu_softc *sc, device_t dev,
-		    struct bhnd_resource *r, bus_size_t clkst_reg,
-		    uint32_t value, uint32_t mask);
-
 int		bhnd_pmu_init(struct bhnd_pmu_softc *sc);
 void		bhnd_pmu_pll_init(struct bhnd_pmu_softc *sc, uint32_t xtalfreq);
 int		bhnd_pmu_res_init(struct bhnd_pmu_softc *sc);

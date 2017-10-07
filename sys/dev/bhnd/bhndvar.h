@@ -38,10 +38,7 @@
 
 #include <sys/param.h>
 #include <sys/bus.h>
-#include <sys/lock.h>
 #include <sys/malloc.h>
-#include <sys/queue.h>
-#include <sys/sx.h>
 
 #include "bhnd.h"
 
@@ -102,7 +99,7 @@ int				 bhnd_generic_get_nvram_var(device_t dev,
  * softc structures.
  */
 struct bhnd_softc {
-	device_t dev;	/**< bus device */
+	device_t	dev;	/**< bus device */
 };
 
 #endif /* _BHND_BHNDVAR_H_ */

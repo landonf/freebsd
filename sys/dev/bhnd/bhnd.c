@@ -364,7 +364,7 @@ bhnd_generic_alloc_pmu(device_t dev, device_t child)
 {
 	struct bhnd_softc		*sc;
 	struct bhnd_resource		*br;
-	struct bhnd_core_pmu_info	*pm;
+	struct bhnd_core_clkctl		*clkctl;
 	struct resource_list		*rl;
 	struct resource_list_entry	*rle;
 	device_t			 pmu_dev;
@@ -376,11 +376,11 @@ bhnd_generic_alloc_pmu(device_t dev, device_t child)
 	GIANT_REQUIRED;	/* for newbus */
 	
 	sc = device_get_softc(dev);
-	pm = bhnd_get_pmu_info(child);
+	clkctl = bhnd_get_pmu_info(child);
 	pmu_regs = BHND_CLK_CTL_ST;
 
 	/* already allocated? */
-	if (pm != NULL) {
+	if (clkctl != NULL) {
 		panic("duplicate PMU allocation for %s",
 		    device_get_nameunit(child));
 	}
@@ -443,8 +443,7 @@ bhnd_generic_alloc_pmu(device_t dev, device_t child)
 	/* Retain PMU reference on behalf of our caller */
 	pmu_dev = bhnd_retain_provider(child, BHND_SERVICE_PMU);
 	if (pmu_dev == NULL) {
-		device_printf(sc->dev, 
-		    "pmu unavailable; cannot allocate request state\n");
+		device_printf(sc->dev, "PMU not found\n");
 		return (ENXIO);
 	}
 
@@ -458,18 +457,20 @@ bhnd_generic_alloc_pmu(device_t dev, device_t child)
 	br->res = rle->res;
 	br->direct = ((rman_get_flags(rle->res) & RF_ACTIVE) != 0);
 
-	pm = malloc(sizeof(*pm), M_BHND, M_NOWAIT);
-	if (pm == NULL) {
+	clkctl = malloc(sizeof(*clkctl), M_BHND, M_NOWAIT);
+	if (clkctl == NULL) {
 		bhnd_release_provider(child, pmu_dev, BHND_SERVICE_PMU);
 		free(br, M_BHND);
 		return (ENOMEM);
 	}
-	pm->pm_dev = child;
-	pm->pm_res = br;
-	pm->pm_regs = pmu_regs;
-	pm->pm_pmu = pmu_dev;
+	clkctl->cc_dev = child;
+	clkctl->cc_res = br;
+	clkctl->cc_res_offset = pmu_regs;
+	clkctl->cc_pmu = pmu_dev;
+	clkctl->cc_quirks = bhnd_pmu_clkctl_quirks(child);
+	BHND_CLKCTL_LOCK_INIT(clkctl);
 
-	bhnd_set_pmu_info(child, pm);
+	bhnd_set_pmu_info(child, clkctl);
 	return (0);
 }
 
@@ -479,28 +480,38 @@ bhnd_generic_alloc_pmu(device_t dev, device_t child)
 int
 bhnd_generic_release_pmu(device_t dev, device_t child)
 {
-	struct bhnd_softc		*sc;
-	struct bhnd_core_pmu_info	*pm;
-	int				 error;
+	struct bhnd_softc	*sc;
+	struct bhnd_core_clkctl	*clkctl;
 
 	GIANT_REQUIRED;	/* for newbus */
 	
 	sc = device_get_softc(dev);
 
-	/* dispatch release request */
-	pm = bhnd_get_pmu_info(child);
-	if (pm == NULL)
+	clkctl = bhnd_get_pmu_info(child);
+	if (clkctl == NULL)
 		panic("pmu over-release for %s", device_get_nameunit(child));
 
-	if ((error = BHND_PMU_CORE_RELEASE(pm->pm_pmu, pm)))
-		return (error);
+	/* Clear all FORCE, AREQ, and ERSRC flags, unless we're already in
+	 * RESET. Suspending a core clears clkctl automatically (and attempting
+	 * to access the PMU registers in a suspended core will trigger a
+	 * system livelock). */
+	if (!bhnd_is_hw_suspended(clkctl->cc_dev)) {
+		BHND_CLKCTL_LOCK(clkctl);
 
-	/* free PMU info */
+		/* Clear all FORCE, AREQ, and ERSRC flags */
+		BHND_CLKCTL_SET_4(clkctl, 0x0, BHND_CCS_FORCE_MASK |
+		    BHND_CCS_AREQ_MASK | BHND_CCS_ERSRC_REQ_MASK);
+
+		BHND_CLKCTL_UNLOCK(clkctl);
+	}
+
+	/* Free PMU info */
 	bhnd_set_pmu_info(child, NULL);
 
-	bhnd_release_provider(pm->pm_dev, pm->pm_pmu, BHND_SERVICE_PMU);
-	free(pm->pm_res, M_BHND);
-	free(pm, M_BHND);
+	bhnd_release_provider(clkctl->cc_dev, clkctl->cc_pmu, BHND_SERVICE_PMU);
+	free(clkctl->cc_res, M_BHND);
+	free(clkctl, M_BHND);
+	BHND_CLKCTL_LOCK_DESTROY(clkctl);
 
 	return (0);
 }
@@ -511,16 +522,53 @@ bhnd_generic_release_pmu(device_t dev, device_t child)
 int
 bhnd_generic_request_clock(device_t dev, device_t child, bhnd_clock clock)
 {
-	struct bhnd_softc		*sc;
-	struct bhnd_core_pmu_info	*pm;
+	struct bhnd_softc	*sc;
+	struct bhnd_core_clkctl	*clkctl;
+	uint32_t		 avail;
+	uint32_t		 req;
 
 	sc = device_get_softc(dev);
 
-	if ((pm = bhnd_get_pmu_info(child)) == NULL)
-		panic("no active PMU request state");
+	if ((clkctl = bhnd_get_pmu_info(child)) == NULL)
+		panic("no active PMU allocation");
 
-	/* dispatch request to PMU */
-	return (BHND_PMU_CORE_REQ_CLOCK(pm->pm_pmu, pm, clock));
+	BHND_ASSERT_CLKCTL_AVAIL(clkctl);
+
+	avail = 0x0;
+	req = 0x0;
+
+	switch (clock) {
+	case BHND_CLOCK_DYN:
+		break;
+	case BHND_CLOCK_ILP:
+		req |= BHND_CCS_FORCEILP;
+		break;
+	case BHND_CLOCK_ALP:
+		req |= BHND_CCS_FORCEALP;
+		avail |= BHND_CCS_ALPAVAIL;
+		break;
+	case BHND_CLOCK_HT:
+		req |= BHND_CCS_FORCEHT;
+		avail |= BHND_CCS_HTAVAIL;
+		break;
+	default:
+		device_printf(dev, "%s requested unknown clock: %#x\n",
+		    device_get_nameunit(clkctl->cc_dev), clock);
+		return (ENODEV);
+	}
+
+	BHND_CLKCTL_LOCK(clkctl);
+
+	/* Issue request */
+	BHND_CLKCTL_SET_4(clkctl, req, BHND_CCS_FORCE_MASK);
+
+	/* Wait for clock availability */
+	bhnd_pmu_wait_clkst(clkctl->cc_dev, clkctl->cc_res,
+	    clkctl->cc_res_offset, clkctl->cc_quirks, avail, avail);
+
+	BHND_CLKCTL_UNLOCK(clkctl);
+
+	return (0);
 }
 
 /**
@@ -529,16 +577,62 @@ bhnd_generic_request_clock(device_t dev, device_t child, bhnd_clock clock)
 int
 bhnd_generic_enable_clocks(device_t dev, device_t child, uint32_t clocks)
 {
-	struct bhnd_softc		*sc;
-	struct bhnd_core_pmu_info	*pm;
+	struct bhnd_softc	*sc;
+	struct bhnd_core_clkctl	*clkctl;
+	uint32_t		 avail;
+	uint32_t		 req;
 
 	sc = device_get_softc(dev);
 
-	if ((pm = bhnd_get_pmu_info(child)) == NULL)
-		panic("no active PMU request state");
+	if ((clkctl = bhnd_get_pmu_info(child)) == NULL)
+		panic("no active PMU allocation");
 
-	/* dispatch request to PMU */
-	return (BHND_PMU_CORE_EN_CLOCKS(pm->pm_pmu, pm, clocks));
+
+	BHND_ASSERT_CLKCTL_AVAIL(clkctl);
+
+	sc = device_get_softc(dev);
+
+	avail = 0x0;
+	req = 0x0;
+
+	/* Build clock request flags */
+	if (clocks & BHND_CLOCK_DYN)		/* nothing to enable */
+		clocks &= ~BHND_CLOCK_DYN;
+
+	if (clocks & BHND_CLOCK_ILP)		/* nothing to enable */
+		clocks &= ~BHND_CLOCK_ILP;
+
+	if (clocks & BHND_CLOCK_ALP) {
+		req |= BHND_CCS_ALPAREQ;
+		avail |= BHND_CCS_ALPAVAIL;
+		clocks &= ~BHND_CLOCK_ALP;
+	}
+
+	if (clocks & BHND_CLOCK_HT) {
+		req |= BHND_CCS_HTAREQ;
+		avail |= BHND_CCS_HTAVAIL;
+		clocks &= ~BHND_CLOCK_HT;
+	}
+
+	/* Check for unknown clock values */
+	if (clocks != 0x0) {
+		device_printf(dev, "%s requested unknown clocks: %#x\n",
+		    device_get_nameunit(clkctl->cc_dev), clocks);
+		return (ENODEV);
+	}
+
+	BHND_CLKCTL_LOCK(clkctl);
+
+	/* Issue request */
+	BHND_CLKCTL_SET_4(clkctl, req, BHND_CCS_AREQ_MASK);
+
+	/* Wait for clock availability */
+	bhnd_pmu_wait_clkst(clkctl->cc_dev, clkctl->cc_res,
+	    clkctl->cc_res_offset, clkctl->cc_quirks, avail, avail);
+
+	BHND_CLKCTL_UNLOCK(clkctl);
+
+	return (0);
 }
 
 /**
@@ -547,16 +641,38 @@ bhnd_generic_enable_clocks(device_t dev, device_t child, uint32_t clocks)
 int
 bhnd_generic_request_ext_rsrc(device_t dev, device_t child, u_int rsrc)
 {
-	struct bhnd_softc		*sc;
-	struct bhnd_core_pmu_info	*pm;
+	struct bhnd_softc	*sc;
+	struct bhnd_core_clkctl	*clkctl;
+	uint32_t		 req;
+	uint32_t		 avail;
 
 	sc = device_get_softc(dev);
 
-	if ((pm = bhnd_get_pmu_info(child)) == NULL)
-		panic("no active PMU request state");
+	if ((clkctl = bhnd_get_pmu_info(child)) == NULL)
+		panic("no active PMU allocation");
 
-	/* dispatch request to PMU */
-	return (BHND_PMU_CORE_REQ_EXT_RSRC(pm->pm_pmu, pm, rsrc));
+	BHND_ASSERT_CLKCTL_AVAIL(clkctl);
+
+	sc = device_get_softc(dev);
+
+	if (rsrc > BHND_CCS_ERSRC_MAX)
+		return (EINVAL);
+
+	req = BHND_PMU_SET_BITS((1<<rsrc), BHND_CCS_ERSRC_REQ);
+	avail = BHND_PMU_SET_BITS((1<<rsrc), BHND_CCS_ERSRC_STS);
+
+	BHND_CLKCTL_LOCK(clkctl);
+
+	/* Write request */
+	BHND_CLKCTL_SET_4(clkctl, req, req);
+
+	/* Wait for resource availability */
+	bhnd_pmu_wait_clkst(clkctl->cc_dev, clkctl->cc_res,
+	    clkctl->cc_res_offset, clkctl->cc_quirks, avail, avail);
+
+	BHND_CLKCTL_UNLOCK(clkctl);
+
+	return (0);
 }
 
 /**
@@ -565,18 +681,32 @@ bhnd_generic_request_ext_rsrc(device_t dev, device_t child, u_int rsrc)
 int
 bhnd_generic_release_ext_rsrc(device_t dev, device_t child, u_int rsrc)
 {
-	struct bhnd_softc		*sc;
-	struct bhnd_core_pmu_info	*pm;
+	struct bhnd_softc	*sc;
+	struct bhnd_core_clkctl	*clkctl;
+	uint32_t		 mask;
 
 	sc = device_get_softc(dev);
 
-	if ((pm = bhnd_get_pmu_info(child)) == NULL)
-		panic("no active PMU request state");
+	if ((clkctl = bhnd_get_pmu_info(child)) == NULL)
+		panic("no active PMU allocation");
 
-	/* dispatch request to PMU */
-	return (BHND_PMU_CORE_RELEASE_EXT_RSRC(pm->pm_pmu, pm, rsrc));
+
+	BHND_ASSERT_CLKCTL_AVAIL(clkctl);
+
+	sc = device_get_softc(dev);
+
+	if (rsrc > BHND_CCS_ERSRC_MAX)
+		return (EINVAL);
+
+	mask = BHND_PMU_SET_BITS((1<<rsrc), BHND_CCS_ERSRC_REQ);
+
+	/* Clear request */
+	BHND_CLKCTL_LOCK(clkctl);
+	BHND_CLKCTL_SET_4(clkctl, 0x0, mask);
+	BHND_CLKCTL_UNLOCK(clkctl);
+
+	return (0);
 }
-
 
 /**
  * Default bhnd(4) bus driver implementation of BHND_BUS_IS_REGION_VALID().

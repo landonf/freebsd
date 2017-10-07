@@ -38,17 +38,9 @@
 
 #include "bhnd_pmu_if.h"
 
-/**
- * Per-core PMU register information.
- */
-struct bhnd_core_pmu_info {
-	device_t		 pm_dev;	/**< core device */
-	device_t		 pm_pmu;	/**< PMU device */
-	struct bhnd_resource	*pm_res;	/**< Resource containing PMU
-						     register block for this
-						     device (if any). */
-	bus_size_t		 pm_regs;	/**< Offset to PMU register
-						  *  block in @p pm_res */
-};
+uint32_t	bhnd_pmu_clkctl_quirks(device_t dev);
+bool		bhnd_pmu_wait_clkst(device_t dev, struct bhnd_resource *r,
+		    bus_size_t clkst_reg, uint32_t quirks, uint32_t value,
+		    uint32_t mask);
 
 #endif /* _BHND_CORES_PMU_BHND_PMU_H_ */
