@@ -193,7 +193,7 @@ bcma_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
 	case BHND_IVAR_CORE_UNIT:
 		return (EINVAL);
 	case BHND_IVAR_PMU_INFO:
-		dinfo->pmu_info = (struct bhnd_core_pmu_info *) value;
+		dinfo->pmu_info = (void *)value;
 		return (0);
 	default:
 		return (ENOENT);
