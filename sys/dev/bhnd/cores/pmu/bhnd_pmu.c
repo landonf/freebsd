@@ -315,6 +315,222 @@ bhnd_pmu_sysctl_mem_freq(SYSCTL_HANDLER_ARGS)
 	return (sysctl_handle_32(oidp, NULL, freq, req));
 }
 
+static uint32_t
+bhnd_pmu_read_chipctrl(device_t dev, uint32_t reg)
+{
+	struct bhnd_pmu_softc *sc;
+	uint32_t rval;
+
+	sc = device_get_softc(dev);
+
+	BPMU_LOCK(sc);
+	rval = BHND_PMU_CCTRL_READ(sc, reg);
+	BPMU_UNLOCK(sc);
+
+	return (rval);
+}
+
+static void
+bhnd_pmu_write_chipctrl(device_t dev, uint32_t reg, uint32_t value,
+    uint32_t mask)
+{
+	struct bhnd_pmu_softc *sc = device_get_softc(dev);
+
+	BPMU_LOCK(sc);
+	BHND_PMU_CCTRL_WRITE(sc, reg, value, mask);
+	BPMU_UNLOCK(sc);
+}
+
+static uint32_t
+bhnd_pmu_read_regctrl(device_t dev, uint32_t reg)
+{
+	struct bhnd_pmu_softc *sc;
+	uint32_t rval;
+
+	sc = device_get_softc(dev);
+
+	BPMU_LOCK(sc);
+	rval = BHND_PMU_REGCTRL_READ(sc, reg);
+	BPMU_UNLOCK(sc);
+
+	return (rval);
+}
+
+static void
+bhnd_pmu_write_regctrl(device_t dev, uint32_t reg, uint32_t value,
+    uint32_t mask)
+{
+	struct bhnd_pmu_softc *sc = device_get_softc(dev);
+
+	BPMU_LOCK(sc);
+	BHND_PMU_REGCTRL_WRITE(sc, reg, value, mask);
+	BPMU_UNLOCK(sc);
+}
+
+static uint32_t
+bhnd_pmu_read_pllctrl(device_t dev, uint32_t reg)
+{
+	struct bhnd_pmu_softc *sc;
+	uint32_t rval;
+
+	sc = device_get_softc(dev);
+
+	BPMU_LOCK(sc);
+	rval = BHND_PMU_PLL_READ(sc, reg);
+	BPMU_UNLOCK(sc);
+
+	return (rval);
+}
+
+static void
+bhnd_pmu_write_pllctrl(device_t dev, uint32_t reg, uint32_t value,
+    uint32_t mask)
+{
+	struct bhnd_pmu_softc *sc = device_get_softc(dev);
+
+	BPMU_LOCK(sc);
+	BHND_PMU_PLL_WRITE(sc, reg, value, mask);
+	BPMU_UNLOCK(sc);
+}
+
+static int
+bhnd_pmu_request_spuravoid(device_t dev, bhnd_pmu_spuravoid spuravoid)
+{
+	struct bhnd_pmu_softc	*sc;
+	int			 error;
+
+	sc = device_get_softc(dev);
+
+	BPMU_LOCK(sc);
+	error = bhnd_pmu_set_spuravoid(sc, spuravoid);
+	BPMU_UNLOCK(sc);
+
+	return (error);
+}
+
+static int
+bhnd_pmu_set_voltage_raw(device_t dev, bhnd_pmu_regulator regulator,
+    uint32_t value)
+{
+	struct bhnd_pmu_softc	*sc;
+	int			 error;
+
+	sc = device_get_softc(dev);
+
+	switch (regulator) {
+	case BHND_REGULATOR_PAREF_LDO:
+		if (value > UINT8_MAX)
+			return (EINVAL);
+	
+		BPMU_LOCK(sc);
+		error = bhnd_pmu_set_ldo_voltage(sc, SET_LDO_VOLTAGE_PAREF,
+		    value);
+		BPMU_UNLOCK(sc);
+
+		return (error);
+
+	default:
+		return (ENODEV);
+	}
+}
+
+static int
+bhnd_pmu_enable_regulator(device_t dev, bhnd_pmu_regulator regulator)
+{
+	struct bhnd_pmu_softc	*sc;
+	int			 error;
+
+	sc = device_get_softc(dev);
+
+	switch (regulator) {
+	case BHND_REGULATOR_PAREF_LDO:
+		BPMU_LOCK(sc);
+		error = bhnd_pmu_paref_ldo_enable(sc, true);
+		BPMU_UNLOCK(sc);
+
+		return (error);
+
+	default:
+		return (ENODEV);
+	}
+}
+
+static int
+bhnd_pmu_disable_regulator(device_t dev, bhnd_pmu_regulator regulator)
+{
+	struct bhnd_pmu_softc	*sc;
+	int			 error;
+
+	sc = device_get_softc(dev);
+
+	switch (regulator) {
+	case BHND_REGULATOR_PAREF_LDO:
+		BPMU_LOCK(sc);
+		error = bhnd_pmu_paref_ldo_enable(sc, false);
+		BPMU_UNLOCK(sc);
+
+		return (error);
+
+	default:
+		return (ENODEV);
+	}
+}
+
+static int
+bhnd_pmu_get_clock_freq(device_t dev, bhnd_clock clock, uint32_t *freq)
+{
+	struct bhnd_pmu_softc	*sc = device_get_softc(dev);
+
+	BPMU_LOCK(sc);
+	switch (clock) {
+	case BHND_CLOCK_HT:
+		*freq = bhnd_pmu_si_clock(&sc->query);
+		break;
+
+	case BHND_CLOCK_ALP:
+		*freq = bhnd_pmu_alp_clock(&sc->query);
+		break;
+
+	case BHND_CLOCK_ILP:
+		*freq = bhnd_pmu_ilp_clock(&sc->query);
+		break;
+
+	case BHND_CLOCK_DYN:
+	default:
+		BPMU_UNLOCK(sc);
+		return (ENODEV);
+	}
+
+	BPMU_UNLOCK(sc);
+	return (0);
+}
+
+static int
+bhnd_pmu_get_clock_delay(device_t dev, bhnd_clock clock, u_int *udelay)
+{
+	struct bhnd_pmu_softc	*sc;
+	uint16_t		 pwrup_delay;
+	int			 error;
+
+	sc = device_get_softc(dev);
+
+	switch (clock) {
+	case BHND_CLOCK_HT:
+		BPMU_LOCK(sc);
+		error = bhnd_pmu_fast_pwrup_delay(sc, &pwrup_delay);
+		BPMU_UNLOCK(sc);
+
+		if (error)
+			return (error);
+
+		*udelay = pwrup_delay;
+		return (0);
+
+	default:
+		return (ENODEV);
+	}
+}
+
 static int
 bhnd_pmu_core_req_clock(device_t dev, struct bhnd_core_pmu_info *pinfo,
     bhnd_clock clock)
@@ -527,6 +743,20 @@ static device_method_t bhnd_pmu_methods[] = {
 	DEVMETHOD(device_resume,		bhnd_pmu_resume),
 
 	/* BHND PMU interface */
+	DEVMETHOD(bhnd_pmu_read_chipctrl,	bhnd_pmu_read_chipctrl),
+	DEVMETHOD(bhnd_pmu_write_chipctrl,	bhnd_pmu_write_chipctrl),
+	DEVMETHOD(bhnd_pmu_read_regctrl,	bhnd_pmu_read_regctrl),
+	DEVMETHOD(bhnd_pmu_write_regctrl,	bhnd_pmu_write_regctrl),
+	DEVMETHOD(bhnd_pmu_read_pllctrl,	bhnd_pmu_read_pllctrl),
+	DEVMETHOD(bhnd_pmu_write_pllctrl,	bhnd_pmu_write_pllctrl),
+
+	DEVMETHOD(bhnd_pmu_request_spuravoid,	bhnd_pmu_request_spuravoid),
+	DEVMETHOD(bhnd_pmu_set_voltage_raw,	bhnd_pmu_set_voltage_raw),
+	DEVMETHOD(bhnd_pmu_enable_regulator,	bhnd_pmu_enable_regulator),
+	DEVMETHOD(bhnd_pmu_disable_regulator,	bhnd_pmu_disable_regulator),
+	DEVMETHOD(bhnd_pmu_get_clock_delay,	bhnd_pmu_get_clock_delay),
+	DEVMETHOD(bhnd_pmu_get_clock_freq,	bhnd_pmu_get_clock_freq),
+
 	DEVMETHOD(bhnd_pmu_core_req_clock,	bhnd_pmu_core_req_clock),
 	DEVMETHOD(bhnd_pmu_core_en_clocks,	bhnd_pmu_core_en_clocks),
 	DEVMETHOD(bhnd_pmu_core_req_ext_rsrc,	bhnd_pmu_core_req_ext_rsrc),

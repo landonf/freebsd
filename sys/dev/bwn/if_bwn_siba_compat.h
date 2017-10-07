@@ -50,6 +50,8 @@ struct bwn_bhnd_ctx {
 
 	uint32_t			boardflags;	/**< boardflags (bwn-writable) */
 	uint8_t				pa0maxpwr;	/**< 2GHz max power (bwn-writable) */
+
+	uint32_t			chipctl_addr;	/**< last address written to SIBA_CC_CHIPCTL_ADDR */
 };
 
 /**

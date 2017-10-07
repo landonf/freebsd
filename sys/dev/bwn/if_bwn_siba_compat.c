@@ -65,6 +65,9 @@
 
 #include "if_bwn_siba_compat.h"
 
+// XXX clean up
+#include "bhnd_pmu_if.h"
+
 static int		bwn_bhnd_populate_nvram_data(device_t dev,
 			    struct bwn_bhnd_ctx *ctx);
 static inline bool	bwn_bhnd_is_siba_reg(device_t dev, uint16_t offset);
@@ -528,7 +531,20 @@ bhnd_compat_get_type(device_t dev)
 static uint32_t
 bhnd_compat_get_cc_pmufreq(device_t dev)
 {
-	panic("siba_get_cc_pmufreq() unimplemented");
+	device_t	pmu;
+	uint32_t	alpfreq;
+	int		error;
+
+	pmu = bhnd_retain_provider(dev, BHND_SERVICE_PMU);
+	if (pmu == NULL)
+		panic("missing PMU");
+
+	if ((error = BHND_PMU_GET_CLOCK_FREQ(pmu, BHND_CLOCK_ALP, &alpfreq)))
+		panic("failed to fetch clock frequency: %d", error);
+
+	bhnd_release_provider(dev, pmu, BHND_SERVICE_PMU);
+
+	return (alpfreq);
 }
 
 /*
@@ -540,7 +556,10 @@ bhnd_compat_get_cc_pmufreq(device_t dev)
 static uint32_t
 bhnd_compat_get_cc_caps(device_t dev)
 {
-	panic("siba_get_cc_caps() unimplemented");
+	// XXX TODO fix
+	// panic("siba_get_cc_caps() unimplemented");
+
+	return (0x10000000); // PMU present
 }
 
 /*
@@ -552,7 +571,19 @@ bhnd_compat_get_cc_caps(device_t dev)
 static uint16_t
 bhnd_compat_get_cc_powerdelay(device_t dev)
 {
-	panic("siba_get_cc_powerdelay() unimplemented");
+	device_t	pmu;
+	u_int		udelay;
+	int		error;
+
+	pmu = bhnd_retain_provider(dev, BHND_SERVICE_PMU);
+	if (pmu == NULL)
+		panic("missing PMU");
+
+	if ((error = BHND_PMU_GET_CLOCK_DELAY(pmu, BHND_CLOCK_HT, &udelay)))
+		panic("failed to fetch clock delay: %d", error);
+
+	bhnd_release_provider(dev, pmu, BHND_SERVICE_PMU);
+	return (error);
 }
 
 /*
@@ -1617,10 +1648,6 @@ bhnd_compat_dev_down(device_t dev, uint32_t flags)
 	if (flags)
 		panic("%s: IOCTL flags ignored", __FUNCTION__);
 
-	/* Release any outstanding clock request */
-	if ((error = bhnd_request_clock(dev, BHND_CLOCK_DYN)))
-		panic("%s: clock request failed: %d", __FUNCTION__, error);
-
 	/* Put core into RESET state */
 	if ((error = bhnd_suspend_hw(dev)))
 		panic("%s: core suspend failed: %d", __FUNCTION__, error);
@@ -1825,7 +1852,18 @@ bhnd_compat_barrier(device_t dev, int flags)
 static void
 bhnd_compat_cc_pmu_set_ldovolt(device_t dev, int id, uint32_t volt)
 {
-	panic("siba_cc_pmu_set_ldovolt() unimplemented");
+	device_t	pmu;
+	int		error;
+
+	pmu = bhnd_retain_provider(dev, BHND_SERVICE_PMU);
+	if (pmu == NULL)
+		panic("missing PMU");
+
+	error = BHND_PMU_SET_VOLTAGE_RAW(pmu, BHND_REGULATOR_PAREF_LDO, volt);
+	if (error)
+		panic("failed to set LDO voltage: %d", error);
+
+	bhnd_release_provider(dev, pmu, BHND_SERVICE_PMU);
 }
 
 /*
@@ -1837,7 +1875,27 @@ bhnd_compat_cc_pmu_set_ldovolt(device_t dev, int id, uint32_t volt)
 static void
 bhnd_compat_cc_pmu_set_ldoparef(device_t dev, uint8_t on)
 {
-	panic("siba_cc_pmu_set_ldoparef() unimplemented");
+	device_t	pmu;
+	int		error;
+
+	pmu = bhnd_retain_provider(dev, BHND_SERVICE_PMU);
+	if (pmu == NULL)
+		panic("missing PMU");
+
+	if (on) {
+		error = BHND_PMU_ENABLE_REGULATOR(pmu,
+		    BHND_REGULATOR_PAREF_LDO);
+	} else {
+		error = BHND_PMU_DISABLE_REGULATOR(pmu,
+		    BHND_REGULATOR_PAREF_LDO);
+	}
+
+	if (error) {
+		panic("failed to %s PAREF LDO: %d", on ? "enable" : "disable",
+		    error);
+	}
+
+	bhnd_release_provider(dev, pmu, BHND_SERVICE_PMU);
 }
 
 /*
@@ -1852,7 +1910,8 @@ bhnd_compat_cc_pmu_set_ldoparef(device_t dev, uint8_t on)
 static void
 bhnd_compat_gpio_set(device_t dev, uint32_t value)
 {
-	panic("siba_gpio_set() unimplemented");
+	// TODO: implement
+	// panic("siba_gpio_set() unimplemented");
 }
 
 /*
@@ -1864,7 +1923,9 @@ bhnd_compat_gpio_set(device_t dev, uint32_t value)
 static uint32_t
 bhnd_compat_gpio_get(device_t dev)
 {
-	panic("siba_gpio_get() unimplemented");
+	// TODO: implement
+	// panic("siba_gpio_get() unimplemented");
+	return (0);
 }
 
 /*
@@ -2111,7 +2172,33 @@ bhnd_compat_sprom_get_mcs5ghpo(device_t dev, uint16_t *c)
 static void
 bhnd_compat_pmu_spuravoid_pllupdate(device_t dev, int spur_avoid)
 {
-	panic("siba_pmu_spuravoid_pllupdate() unimplemented");
+	device_t		pmu;
+	bhnd_pmu_spuravoid	mode;
+	int			error;
+
+	switch (spur_avoid) {
+	case 0:
+		mode = BHND_PMU_SPURAVOID_NONE;
+		break;
+	case 1:
+		mode = BHND_PMU_SPURAVOID_M1;
+		break;
+	case 2:
+		mode = BHND_PMU_SPURAVOID_M2;
+		break;
+	default:
+		panic("invalud spuravoid mode: %d", spur_avoid);
+	}
+
+	pmu = bhnd_retain_provider(dev, BHND_SERVICE_PMU);
+	if (pmu == NULL)
+		panic("missing PMU");
+
+	error = BHND_PMU_REQUEST_SPURAVOID(pmu, mode);
+	if (error)
+		panic("failed to enable spuravoid mode %d: %d", mode, error);
+
+	bhnd_release_provider(dev, pmu, BHND_SERVICE_PMU);
 }
 
 /*
@@ -2124,7 +2211,27 @@ bhnd_compat_pmu_spuravoid_pllupdate(device_t dev, int spur_avoid)
 static void
 bhnd_compat_cc_set32(device_t dev, uint32_t reg, uint32_t val)
 {
-	panic("siba_cc_set32() unimplemented");
+//	struct bwn_bhnd_ctx *ctx = bwn_bhnd_get_ctx(dev);
+
+	// TODO
+
+	switch (reg) {
+	case SIBA_CC_CHIPCTL:
+		/* OR with ChipCommon chipctrl */
+		panic("TODO");
+		break;
+
+	case SIBA_CC_CHIPCTL_DATA:
+		/* OR with PMU chipctrl */
+		panic("TODO");
+		break;
+
+	default:
+		panic("accessing unknown register %#x", reg);
+	}
+
+	// TODO
+	// panic("siba_cc_set32() unimplemented");
 }
 
 /*
@@ -2136,7 +2243,22 @@ bhnd_compat_cc_set32(device_t dev, uint32_t reg, uint32_t val)
 static void
 bhnd_compat_cc_mask32(device_t dev, uint32_t reg, uint32_t mask)
 {
-	panic("siba_cc_mask32() unimplemented");
+//	struct bwn_bhnd_ctx *ctx = bwn_bhnd_get_ctx(dev);
+
+	// TODO
+
+	switch (reg) {
+	case SIBA_CC_CHIPCTL_DATA:
+		// TODO: Fetch and mask value
+		panic("TODO");
+		break;
+
+	default:
+		panic("accessing unknown register %#x", reg);
+	}
+
+	// TODO
+	// panic("siba_cc_mask32() unimplemented");
 }
 
 /*
@@ -2148,7 +2270,22 @@ bhnd_compat_cc_mask32(device_t dev, uint32_t reg, uint32_t mask)
 static void
 bhnd_compat_cc_write32(device_t dev, uint32_t reg, uint32_t val)
 {
-	panic("siba_cc_write32() unimplemented");
+	struct bwn_bhnd_ctx *ctx = bwn_bhnd_get_ctx(dev);
+
+	// TODO
+
+	switch (reg) {
+	case SIBA_CC_CHIPCTL_ADDR:
+		/* Setting PMU register target for a future write */
+		ctx->chipctl_addr = val;
+		break;
+
+	default:
+		panic("accessing unknown register %#x", reg);
+	}
+
+	// TODO
+	// panic("siba_cc_write32() unimplemented");
 }
 
 const struct bwn_bus_ops bwn_bhnd_bus_ops = {

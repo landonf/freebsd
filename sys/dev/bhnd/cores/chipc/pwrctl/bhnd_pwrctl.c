@@ -268,6 +268,52 @@ cleanup:
 	return (error);
 }
 
+static int
+bhnd_pwrctl_get_clock_freq(device_t dev, bhnd_clock clock, uint32_t *freq)
+{
+	struct bhnd_pwrctl_softc *sc = device_get_softc(dev);
+
+	panic("unimplemented");
+
+	PWRCTL_LOCK(sc);
+	switch (clock) {
+	case BHND_CLOCK_HT:
+		break;
+
+	case BHND_CLOCK_ALP:
+		break;
+
+	case BHND_CLOCK_ILP:
+		break;
+
+	case BHND_CLOCK_DYN:
+	default:
+		PWRCTL_UNLOCK(sc);
+		return (ENODEV);
+	}
+
+	PWRCTL_UNLOCK(sc);
+	return (0);
+}
+
+static int
+bhnd_pwrctl_get_clock_delay(device_t dev, bhnd_clock clock, u_int *udelay)
+{
+	struct bhnd_pwrctl_softc *sc = device_get_softc(dev);
+
+	switch (clock) {
+	case BHND_CLOCK_HT:
+		PWRCTL_LOCK(sc);
+		*udelay = bhnd_pwrctl_fast_pwrup_delay(sc);
+		PWRCTL_UNLOCK(sc);
+
+		return (0);
+	default:
+		return (ENODEV);
+	}
+}
+
+
 /**
  * Find the clock reservation associated with @p pinfo, if any.
  * 
@@ -482,6 +528,9 @@ static device_method_t bhnd_pwrctl_methods[] = {
 	DEVMETHOD(device_resume,		bhnd_pwrctl_resume),
 
 	/* BHND PMU interface */
+	DEVMETHOD(bhnd_pmu_get_clock_delay,	bhnd_pwrctl_get_clock_delay),
+	DEVMETHOD(bhnd_pmu_get_clock_freq,	bhnd_pwrctl_get_clock_freq),
+	
 	DEVMETHOD(bhnd_pmu_core_req_clock,	bhnd_pwrctl_core_req_clock),
 	DEVMETHOD(bhnd_pmu_core_en_clocks,	bhnd_pwrctl_core_en_clocks),
 	DEVMETHOD(bhnd_pmu_core_req_ext_rsrc,	bhnd_pwrctl_core_req_ext_rsrc),

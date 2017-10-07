@@ -36,32 +36,18 @@
 
 /**
  * bhnd_pmu(4) regulators.
- */
+ */ 
 typedef enum bhnd_pmu_regulator {
-	BHND_PMU_REG_CLDO	= 1,	/**< digital core LDO */
-	BHND_PMU_REG_LDO1	= 1,	/**< digital core LDO */
-	BHND_PMU_REG_PAREF_LDO	= 2,	/**< PA reference LDO */
-	BHND_PMU_REG_CBUCK	= 3,	/**< digital core buck regulator */
-	BHND_PMU_REG_LNLDO1	= 4,	/**< low-noise LDO#1 */
-	BHND_PMU_REG_LNLDO2	= 5,	/**< low-noise LDO#2 */
+	BHND_REGULATOR_PAREF_LDO	= 0,	/**< PA reference LDO */
 } bhnd_pmu_regulator;
 
 /**
- * bhnd_pmu(4) regulator modes.
+ * bhnd_pmu(4) spurious signal avoidance modes.
  */
-typedef enum bhnd_pmu_regulator_mode {
-	BHND_PMU_REGMODE_DEFAULT	= 0,	/**< default output mode */
-	BHND_PMU_REGMODE_MODE_PWM	= 1,	/**< PWM output mode */
-	BHND_PMU_REGMODE_MODE_BURST	= 2,	/**< burst output mode */
-} bhnd_pmu_regulator_mode;
-
-/**
- * bhnd_pmu(4) regulator attributes
- */
-typedef enum bhnd_pmu_regulator_attr {
-	BHND_PMU_REGULATOR_ATTR_VOUT			= 0,	/**< output voltage in millivolts */
-	BHND_PMU_REGULATOR_ATTR_VOUT_RAW		= 1,	/**< raw output voltage value */
-	BHND_PMU_REGULATOR_ATTR_PWRUP_LATCH_CTRL	= 2,	/**< power-up latch control */
-} bhnd_pmu_regulator_attr;
+typedef enum bhnd_pmu_spuravoid {
+	BHND_PMU_SPURAVOID_NONE	= 0,	/**< spur avoidance disabled */
+	BHND_PMU_SPURAVOID_M1	= 1,	/**< chipset-specific mode 1 */
+	BHND_PMU_SPURAVOID_M2	= 2,	/**< chipset-specific mode 2 */
+} bhnd_pmu_spuravoid;
 
 #endif /* _BHND_CORES_PMU_BHND_PMU_TYPES_H_ */
