@@ -34,7 +34,7 @@ INTERFACE bhnd_pmu;
 #
 # bhnd(4) PMU interface.
 #
-# Provides a common PMU and clock control interface.
+# Provides an interface to the PMU hardware found on modern bhnd(4) chipsets.
 #
 
 
