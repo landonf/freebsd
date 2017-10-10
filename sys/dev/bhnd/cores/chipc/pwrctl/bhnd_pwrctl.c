@@ -46,6 +46,7 @@ __FBSDID("$FreeBSD$");
 
 #include "bhnd_chipc_if.h"
 #include "bhnd_pwrctl_if.h"
+#include "bhnd_pwrctl_hostb_if.h"
 
 #include "bhnd_pwrctl_private.h"
 
