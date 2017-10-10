@@ -47,7 +47,8 @@ __FBSDID("$FreeBSD$");
 #include <machine/bus.h>
 #include <machine/resource.h>
 
-#include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/bhndreg.h>
+#include <dev/bhnd/bhndvar.h>
 #include <dev/bhnd/cores/chipc/chipc.h>
 
 #include "bhnd_nvram_map.h"
@@ -112,7 +113,6 @@ bhnd_pmu_attach(device_t dev, struct bhnd_resource *res)
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
-	sc->quirks = 0;
 	sc->res = res;
 
 	/* Fetch capability flags */
@@ -133,6 +133,17 @@ bhnd_pmu_attach(device_t dev, struct bhnd_resource *res)
 		return (ENXIO);
 	}
 
+	/* Allocate our own core clkctl state directly; we use this to wait on
+	 * PMU state transitions, avoiding a cyclic dependency between bhnd(4)'s
+	 * clkctl handling and registration of this device as a PMU */
+	sc->clkctl = bhnd_alloc_core_clkctl(core, sc->res, BHND_CLK_CTL_ST,
+	    BHND_PMU_MAX_TRANSITION_DLY);
+	if (sc->clkctl == NULL) {
+		device_printf(sc->dev, "failed to allocate clkctl for %s\n",
+		    device_get_nameunit(core));
+		return (ENOMEM);
+	}
+
 	/* Fetch chip and board info */
 	sc->cid = *bhnd_get_chipid(core);
 
@@ -143,7 +154,7 @@ bhnd_pmu_attach(device_t dev, struct bhnd_resource *res)
 	}
 
 	/* Locate ChipCommon device */
-	sc->chipc_dev = bhnd_bus_find_child(bus, BHND_DEVCLASS_CC, 0);
+	sc->chipc_dev = bhnd_retain_provider(dev, BHND_SERVICE_CHIPC);
 	if (sc->chipc_dev == NULL) {
 		device_printf(sc->dev, "chipcommon device not found\n");
 		return (ENXIO);
@@ -158,10 +169,6 @@ bhnd_pmu_attach(device_t dev, struct bhnd_resource *res)
 	sc->io_ctx = sc->query.io_ctx;
 
 	BPMU_LOCK_INIT(sc);
-
-	/* Set quirk flags, including CLKCTL quirks for the PMU core itself */
-	sc->quirks = 0;
-	sc->quirks |= bhnd_pmu_clkctl_quirks(core);
 
 	/* Initialize PMU */
 	if ((error = bhnd_pmu_init(sc))) {
@@ -197,6 +204,9 @@ bhnd_pmu_attach(device_t dev, struct bhnd_resource *res)
 failed:
 	BPMU_LOCK_DESTROY(sc);
 	bhnd_pmu_query_fini(&sc->query);
+	bhnd_free_core_clkctl(sc->clkctl);
+	bhnd_release_provider(sc->dev, sc->chipc_dev, BHND_SERVICE_CHIPC);
+
 	return (error);
 }
 
@@ -216,7 +226,9 @@ bhnd_pmu_detach(device_t dev)
 
 	BPMU_LOCK_DESTROY(sc);
 	bhnd_pmu_query_fini(&sc->query);
-
+	bhnd_free_core_clkctl(sc->clkctl);
+	bhnd_release_provider(sc->dev, sc->chipc_dev, BHND_SERVICE_CHIPC);
+	
 	return (0);
 }
 
@@ -247,6 +259,15 @@ bhnd_pmu_resume(device_t dev)
 	}
 
 	return (0);
+}
+
+/**
+ * Default bhnd_pmu driver implementation of BHND_PMU_GET_TRANSITION_LATENCY().
+ */
+static u_int
+bhnd_pmu_get_transition_latency_method(device_t dev)
+{
+	return (BHND_PMU_MAX_TRANSITION_DLY);
 }
 
 static int
@@ -317,13 +338,13 @@ bhnd_pmu_read_chipst(void *ctx)
 
 static device_method_t bhnd_pmu_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_probe,			bhnd_pmu_probe),
-	DEVMETHOD(device_detach,		bhnd_pmu_detach),
-	DEVMETHOD(device_suspend,		bhnd_pmu_suspend),
-	DEVMETHOD(device_resume,		bhnd_pmu_resume),
+	DEVMETHOD(device_probe,				bhnd_pmu_probe),
+	DEVMETHOD(device_detach,			bhnd_pmu_detach),
+	DEVMETHOD(device_suspend,			bhnd_pmu_suspend),
+	DEVMETHOD(device_resume,			bhnd_pmu_resume),
 
 	/* BHND PMU interface */
-	// TODO
+	DEVMETHOD(bhnd_pmu_get_transition_latency,	bhnd_pmu_get_transition_latency_method),
 
 	DEVMETHOD_END
 };

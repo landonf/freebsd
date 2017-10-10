@@ -60,20 +60,6 @@ uint32_t	bhnd_pmu_mem_clock(struct bhnd_pmu_query *sc);
 uint32_t	bhnd_pmu_alp_clock(struct bhnd_pmu_query *sc);
 uint32_t	bhnd_pmu_ilp_clock(struct bhnd_pmu_query *sc);
 
-/* 
- * BHND PMU device quirks / features
- */
-enum {
-	/** No quirks */
-	BPMU_QUIRK_NONE		= 0,
-
-	/** On BCM4328-derived chipsets, the CLK_CTL_ST register CCS_HTAVAIL
-	 *  and CCS_ALPAVAIL bits are swapped in the ChipCommon and PCMCIA
-	 *  cores; the BHND_CCS0_* constants should be used. */
-	BPMU_QUIRK_CLKCTL_CCS0	= 1
-};
-
-
 /**
  * PMU read-only query support.
  * 
@@ -110,7 +96,6 @@ struct bhnd_pmu_io {
  */
 struct bhnd_pmu_softc {
 	device_t			 dev;
-	uint32_t			 quirks;	/**< device quirk flags */
 	uint32_t			 caps;		/**< pmu capability flags. */
 	struct bhnd_chipid		 cid;		/**< chip identification */
 
@@ -121,6 +106,7 @@ struct bhnd_pmu_softc {
 
 	struct bhnd_resource		*res;		/**< pmu register block. */
 	int				 rid;		/**< pmu register RID */
+	struct bhnd_core_clkctl		*clkctl;	/**< pmu clkctl register */
 
 	struct mtx			 mtx;		/**< state mutex */
 

@@ -38,9 +38,18 @@
 
 #include "bhnd_pmu_if.h"
 
-uint32_t	bhnd_pmu_clkctl_quirks(device_t dev);
-bool		bhnd_pmu_wait_clkst(device_t dev, struct bhnd_resource *r,
-		    bus_size_t clkst_reg, uint32_t quirks, uint32_t value,
-		    uint32_t mask);
+/**
+ * Return the PMU's maximum state transition latency in microseconds.
+ *
+ * This upper bound may be used to busy-wait on PMU clock and resource state
+ * transitions.
+ *
+ * @param dev PMU device.
+ */
+static inline u_int
+bhnd_pmu_get_transition_latency(device_t dev)
+{
+	return (BHND_PMU_GET_TRANSITION_LATENCY(dev));
+}
 
 #endif /* _BHND_CORES_PMU_BHND_PMU_H_ */

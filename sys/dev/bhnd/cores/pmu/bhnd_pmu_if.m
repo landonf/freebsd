@@ -38,3 +38,14 @@ INTERFACE bhnd_pmu;
 #
 
 
+/**
+ * Return the PMU's maximum state transition latency in microseconds.
+ *
+ * This upper bound may be used to busy-wait on PMU clock and resource state
+ * transitions.
+ *
+ * @param dev PMU device.
+ */
+METHOD u_int get_transition_latency {
+	device_t dev;
+};

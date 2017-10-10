@@ -54,17 +54,26 @@ struct bhnd_service_entry {
 	STAILQ_ENTRY(bhnd_service_entry) link;
 };
 
+/**
+ * bhnd(4) per-core PMU clkctl quirks.
+ */
+enum {
+	/** On BCM4328-derived chipsets, the CLK_CTL_ST register CCS_HTAVAIL
+	 *  and CCS_ALPAVAIL bits are swapped in the ChipCommon and PCMCIA
+	 *  cores; the BHND_CCS0_* constants should be used. */
+	BHND_CLKCTL_QUIRK_CCS0	= 1
+};
 
 /**
- * Per-core bhnd(4) PMU clkctl register information.
+ * Per-core bhnd(4) PMU clkctl registers.
  */
 struct bhnd_core_clkctl {
-	device_t		 cc_pmu;	/**< PMU device */
-	device_t		 cc_dev;	/**< core device */
-	uint32_t		 cc_quirks;	/**< core-specific clkctl quirks */
-	struct bhnd_resource	*cc_res;	/**< resource mapping core's PMU register block */
-	bus_size_t		 cc_res_offset;	/**< offset to PMU registers */
-	struct mtx		 cc_mtx;	/**< register state lock */
+	device_t		 cc_dev;		/**< core device */
+	uint32_t		 cc_quirks;		/**< core-specific clkctl quirks */
+	struct bhnd_resource	*cc_res;		/**< resource mapping core's clkctl register */
+	bus_size_t		 cc_res_offset;		/**< offset to clkctl register */
+	u_int			 cc_max_latency;	/**< maximum PMU transition latency, in microseconds */
+	struct mtx		 cc_mtx;		/**< register read/modify/write lock */
 };
 
 #define	BHND_ASSERT_CLKCTL_AVAIL(_clkctl)			\

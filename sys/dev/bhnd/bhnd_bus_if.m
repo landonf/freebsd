@@ -734,7 +734,7 @@ METHOD int pwrctl_ungate_clock {
 } DEFAULT bhnd_bus_null_pwrctl_ungate_clock;
 
 /**
- * Allocate and enable per-core PMU request handling for @p child.
+ * Allocate per-core PMU resources and enable PMU request handling for @p child.
  *
  * The region containing the core's PMU register block (if any) must be
  * allocated via bus_alloc_resource(9) (or bhnd_alloc_resource) before
@@ -743,6 +743,10 @@ METHOD int pwrctl_ungate_clock {
  *
  * @param dev The parent of @p child.
  * @param child The requesting bhnd device.
+ *
+ * @retval 0		success
+ * @retval non-zero	if enabling per-core PMU request handling fails, a
+ *			regular unix error code will be returned.
  */
 METHOD int alloc_pmu {
 	device_t dev;
@@ -774,9 +778,11 @@ METHOD int release_pmu {
  * @param child The bhnd device requesting @p clock.
  * @param clock The requested clock source. 
  *
- * @retval 0 success
- * @retval ENODEV If an unsupported clock was requested.
- * @retval ENXIO If the PMU has not been initialized or is otherwise unvailable.
+ * @retval 0		success
+ * @retval ENODEV	If an unsupported clock was requested.
+ * @retval ETIMEDOUT	If the clock request succeeds, but the clock is not
+ *			detected as ready within the PMU's maximum transition
+ *			delay. This should not occur in normal operation.
  */
 METHOD int request_clock {
 	device_t dev;
@@ -801,9 +807,11 @@ METHOD int request_clock {
  * @param child The bhnd device requesting @p clock.
  * @param clock The requested clock source.
  *
- * @retval 0 success
- * @retval ENODEV If an unsupported clock was requested.
- * @retval ENXIO If the PMU has not been initialized or is otherwise unvailable.
+ * @retval 0		success
+ * @retval ENODEV	If an unsupported clock was requested.
+ * @retval ETIMEDOUT	If the clock request succeeds, but the clock is not
+ *			detected as ready within the PMU's maximum transition
+ *			delay. This should not occur in normal operation.
  */
 METHOD int enable_clocks {
 	device_t dev;
@@ -824,9 +832,11 @@ METHOD int enable_clocks {
  * @param child The bhnd device requesting @p rsrc.
  * @param rsrc The core-specific external resource identifier.
  *
- * @retval 0 success
- * @retval ENODEV If the PMU does not support @p rsrc.
- * @retval ENXIO If the PMU has not been initialized or is otherwise unvailable.
+ * @retval 0		success
+ * @retval ENODEV	If the PMU does not support @p rsrc.
+ * @retval ETIMEDOUT	If the clock request succeeds, but the clock is not
+ *			detected as ready within the PMU's maximum transition
+ *			delay. This should not occur in normal operation.
  */
 METHOD int request_ext_rsrc {
 	device_t dev;
@@ -844,9 +854,11 @@ METHOD int request_ext_rsrc {
  * @param child The bhnd device requesting @p rsrc.
  * @param rsrc The core-specific external resource number.
  *
- * @retval 0 success
- * @retval ENODEV If the PMU does not support @p rsrc.
- * @retval ENXIO If the PMU has not been initialized or is otherwise unvailable.
+ * @retval 0		success
+ * @retval ENODEV	If the PMU does not support @p rsrc.
+ * @retval ETIMEDOUT	If the clock request succeeds, but the clock is not
+ *			detected as ready within the PMU's maximum transition
+ *			delay. This should not occur in normal operation.
  */
 METHOD int release_ext_rsrc {
 	device_t dev;

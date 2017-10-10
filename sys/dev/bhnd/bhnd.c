@@ -62,15 +62,13 @@ __FBSDID("$FreeBSD$");
 #include <sys/rman.h>
 #include <machine/resource.h>
 
-#include <dev/bhnd/cores/chipc/chipcvar.h>
-
 #include <dev/bhnd/cores/pmu/bhnd_pmu.h>
-#include <dev/bhnd/cores/pmu/bhnd_pmureg.h>
 
 #include "bhnd_chipc_if.h"
 #include "bhnd_nvram_if.h"
 
 #include "bhnd.h"
+#include "bhndreg.h"
 #include "bhndvar.h"
 
 #include "bhnd_private.h"
@@ -363,7 +361,7 @@ int
 bhnd_generic_alloc_pmu(device_t dev, device_t child)
 {
 	struct bhnd_softc		*sc;
-	struct bhnd_resource		*br;
+	struct bhnd_resource		*r;
 	struct bhnd_core_clkctl		*clkctl;
 	struct resource_list		*rl;
 	struct resource_list_entry	*rle;
@@ -371,6 +369,7 @@ bhnd_generic_alloc_pmu(device_t dev, device_t child)
 	bhnd_addr_t			 r_addr;
 	bhnd_size_t			 r_size;
 	bus_size_t			 pmu_regs;
+	u_int				 max_latency;
 	int				 error;
 
 	GIANT_REQUIRED;	/* for newbus */
@@ -440,35 +439,33 @@ bhnd_generic_alloc_pmu(device_t dev, device_t child)
 	else
 		pmu_regs -= r_addr - rman_get_start(rle->res);
 
-	/* Retain PMU reference on behalf of our caller */
+	/* Fetch the maximum transition latency from our PMU */
 	pmu_dev = bhnd_retain_provider(child, BHND_SERVICE_PMU);
 	if (pmu_dev == NULL) {
 		device_printf(sc->dev, "PMU not found\n");
 		return (ENXIO);
 	}
 
-	/* Allocate and initialize PMU info */
-	br = malloc(sizeof(struct bhnd_resource), M_BHND, M_NOWAIT);
-	if (br == NULL) {
-		bhnd_release_provider(child, pmu_dev, BHND_SERVICE_PMU);
+	max_latency = bhnd_pmu_get_transition_latency(pmu_dev);
+
+	bhnd_release_provider(child, pmu_dev, BHND_SERVICE_PMU);
+
+	/* Allocate a new bhnd_resource wrapping the standard resource we
+	 * fetched from the resource list; we'll free this in
+	 * bhnd_generic_release_pmu() */
+	r = malloc(sizeof(struct bhnd_resource), M_BHND, M_NOWAIT);
+	if (r == NULL)
 		return (ENOMEM);
-	}
 
-	br->res = rle->res;
-	br->direct = ((rman_get_flags(rle->res) & RF_ACTIVE) != 0);
+	r->res = rle->res;
+	r->direct = ((rman_get_flags(rle->res) & RF_ACTIVE) != 0);
 
-	clkctl = malloc(sizeof(*clkctl), M_BHND, M_NOWAIT);
+	/* Allocate the clkctl instance */
+	clkctl = bhnd_alloc_core_clkctl(child, r, pmu_regs, max_latency);
 	if (clkctl == NULL) {
-		bhnd_release_provider(child, pmu_dev, BHND_SERVICE_PMU);
-		free(br, M_BHND);
+		free(r, M_BHND);
 		return (ENOMEM);
 	}
-	clkctl->cc_dev = child;
-	clkctl->cc_res = br;
-	clkctl->cc_res_offset = pmu_regs;
-	clkctl->cc_pmu = pmu_dev;
-	clkctl->cc_quirks = bhnd_pmu_clkctl_quirks(child);
-	BHND_CLKCTL_LOCK_INIT(clkctl);
 
 	bhnd_set_pmu_info(child, clkctl);
 	return (0);
@@ -482,6 +479,7 @@ bhnd_generic_release_pmu(device_t dev, device_t child)
 {
 	struct bhnd_softc	*sc;
 	struct bhnd_core_clkctl	*clkctl;
+	struct bhnd_resource	*r;
 
 	GIANT_REQUIRED;	/* for newbus */
 	
@@ -505,13 +503,19 @@ bhnd_generic_release_pmu(device_t dev, device_t child)
 		BHND_CLKCTL_UNLOCK(clkctl);
 	}
 
-	/* Free PMU info */
+	/* Clear child's PMU info reference */
 	bhnd_set_pmu_info(child, NULL);
 
-	bhnd_release_provider(clkctl->cc_dev, clkctl->cc_pmu, BHND_SERVICE_PMU);
-	free(clkctl->cc_res, M_BHND);
-	free(clkctl, M_BHND);
-	BHND_CLKCTL_LOCK_DESTROY(clkctl);
+	/* Save a reference to the bhnd resource wrapper we allocated in
+	 * bhnd_generic_alloc_pmu() before freeing its containing clkctl
+	 * instance */
+	r = clkctl->cc_res;
+
+	/* Free the clkctl instance */
+	bhnd_free_core_clkctl(clkctl);
+
+	/* Free the bhnd resource wrapper */
+	free(r, M_BHND);
 
 	return (0);
 }
@@ -526,6 +530,7 @@ bhnd_generic_request_clock(device_t dev, device_t child, bhnd_clock clock)
 	struct bhnd_core_clkctl	*clkctl;
 	uint32_t		 avail;
 	uint32_t		 req;
+	int			 error;
 
 	sc = device_get_softc(dev);
 
@@ -563,12 +568,11 @@ bhnd_generic_request_clock(device_t dev, device_t child, bhnd_clock clock)
 	BHND_CLKCTL_SET_4(clkctl, req, BHND_CCS_FORCE_MASK);
 
 	/* Wait for clock availability */
-	bhnd_pmu_wait_clkst(clkctl->cc_dev, clkctl->cc_res,
-	    clkctl->cc_res_offset, clkctl->cc_quirks, avail, avail);
+	error = bhnd_core_clkctl_wait(clkctl, avail, avail);
 
 	BHND_CLKCTL_UNLOCK(clkctl);
 
-	return (0);
+	return (error);
 }
 
 /**
@@ -581,6 +585,7 @@ bhnd_generic_enable_clocks(device_t dev, device_t child, uint32_t clocks)
 	struct bhnd_core_clkctl	*clkctl;
 	uint32_t		 avail;
 	uint32_t		 req;
+	int			 error;
 
 	sc = device_get_softc(dev);
 
@@ -627,12 +632,11 @@ bhnd_generic_enable_clocks(device_t dev, device_t child, uint32_t clocks)
 	BHND_CLKCTL_SET_4(clkctl, req, BHND_CCS_AREQ_MASK);
 
 	/* Wait for clock availability */
-	bhnd_pmu_wait_clkst(clkctl->cc_dev, clkctl->cc_res,
-	    clkctl->cc_res_offset, clkctl->cc_quirks, avail, avail);
+	error = bhnd_core_clkctl_wait(clkctl, avail, avail);
 
 	BHND_CLKCTL_UNLOCK(clkctl);
 
-	return (0);
+	return (error);
 }
 
 /**
@@ -645,6 +649,7 @@ bhnd_generic_request_ext_rsrc(device_t dev, device_t child, u_int rsrc)
 	struct bhnd_core_clkctl	*clkctl;
 	uint32_t		 req;
 	uint32_t		 avail;
+	int			 error;
 
 	sc = device_get_softc(dev);
 
@@ -658,8 +663,8 @@ bhnd_generic_request_ext_rsrc(device_t dev, device_t child, u_int rsrc)
 	if (rsrc > BHND_CCS_ERSRC_MAX)
 		return (EINVAL);
 
-	req = BHND_PMU_SET_BITS((1<<rsrc), BHND_CCS_ERSRC_REQ);
-	avail = BHND_PMU_SET_BITS((1<<rsrc), BHND_CCS_ERSRC_STS);
+	req = BHND_CCS_SET_BITS((1<<rsrc), BHND_CCS_ERSRC_REQ);
+	avail = BHND_CCS_SET_BITS((1<<rsrc), BHND_CCS_ERSRC_STS);
 
 	BHND_CLKCTL_LOCK(clkctl);
 
@@ -667,12 +672,11 @@ bhnd_generic_request_ext_rsrc(device_t dev, device_t child, u_int rsrc)
 	BHND_CLKCTL_SET_4(clkctl, req, req);
 
 	/* Wait for resource availability */
-	bhnd_pmu_wait_clkst(clkctl->cc_dev, clkctl->cc_res,
-	    clkctl->cc_res_offset, clkctl->cc_quirks, avail, avail);
+	error = bhnd_core_clkctl_wait(clkctl, avail, avail);
 
 	BHND_CLKCTL_UNLOCK(clkctl);
 
-	return (0);
+	return (error);
 }
 
 /**
@@ -698,7 +702,7 @@ bhnd_generic_release_ext_rsrc(device_t dev, device_t child, u_int rsrc)
 	if (rsrc > BHND_CCS_ERSRC_MAX)
 		return (EINVAL);
 
-	mask = BHND_PMU_SET_BITS((1<<rsrc), BHND_CCS_ERSRC_REQ);
+	mask = BHND_CCS_SET_BITS((1<<rsrc), BHND_CCS_ERSRC_REQ);
 
 	/* Clear request */
 	BHND_CLKCTL_LOCK(clkctl);
