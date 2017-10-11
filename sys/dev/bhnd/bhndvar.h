@@ -38,10 +38,7 @@
 
 #include <sys/param.h>
 #include <sys/bus.h>
-#include <sys/lock.h>
 #include <sys/malloc.h>
-#include <sys/queue.h>
-#include <sys/sx.h>
 
 #include "bhnd.h"
 
@@ -51,6 +48,17 @@
 
 MALLOC_DECLARE(M_BHND);
 DECLARE_CLASS(bhnd_driver);
+
+struct bhnd_core_clkctl;
+
+struct bhnd_core_clkctl		*bhnd_alloc_core_clkctl(device_t dev,
+				     struct bhnd_resource *r, bus_size_t offset,
+				     u_int max_latency);
+void				 bhnd_free_core_clkctl(
+				     struct bhnd_core_clkctl *clkctl);
+int				 bhnd_core_clkctl_wait(
+				     struct bhnd_core_clkctl *clkctl,
+				     uint32_t value, uint32_t mask);
 
 int				 bhnd_generic_attach(device_t dev);
 int				 bhnd_generic_detach(device_t dev);
@@ -102,7 +110,7 @@ int				 bhnd_generic_get_nvram_var(device_t dev,
  * softc structures.
  */
 struct bhnd_softc {
-	device_t dev;	/**< bus device */
+	device_t	dev;	/**< bus device */
 };
 
 #endif /* _BHND_BHNDVAR_H_ */

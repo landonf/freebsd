@@ -52,8 +52,6 @@
 
 #include "nvram/bhnd_nvram.h"
 
-struct bhnd_core_pmu_info;
-
 extern devclass_t bhnd_devclass;
 extern devclass_t bhnd_hostb_devclass;
 extern devclass_t bhnd_nvram_devclass;
@@ -155,7 +153,7 @@ BHND_ACCESSOR(vendor_name,	VENDOR_NAME,	const char *);
 BHND_ACCESSOR(device_name,	DEVICE_NAME,	const char *);
 BHND_ACCESSOR(core_index,	CORE_INDEX,	u_int);
 BHND_ACCESSOR(core_unit,	CORE_UNIT,	int);
-BHND_ACCESSOR(pmu_info,		PMU_INFO,	struct bhnd_core_pmu_info *);
+BHND_ACCESSOR(pmu_info,		PMU_INFO,	void *);
 
 #undef	BHND_ACCESSOR
 
@@ -856,67 +854,6 @@ static inline int
 bhnd_suspend_hw(device_t dev)
 {
 	return (BHND_BUS_SUSPEND_HW(device_get_parent(dev), dev));
-}
-
-/**
- * If supported by the chipset, return the clock source for the given clock.
- *
- * This function is only supported on early PWRCTL-equipped chipsets
- * that expose clock management via their host bridge interface. Currently,
- * this includes PCI (not PCIe) devices, with ChipCommon core revisions 0-9.
- *
- * @param dev A bhnd bus child device.
- * @param clock The clock for which a clock source will be returned.
- *
- * @retval	bhnd_clksrc		The clock source for @p clock.
- * @retval	BHND_CLKSRC_UNKNOWN	If @p clock is unsupported, or its
- *					clock source is not known to the bus.
- */
-static inline bhnd_clksrc
-bhnd_pwrctl_get_clksrc(device_t dev, bhnd_clock clock)
-{
-	return (BHND_BUS_PWRCTL_GET_CLKSRC(device_get_parent(dev), dev, clock));
-}
-
-/**
- * If supported by the chipset, gate @p clock
- *
- * This function is only supported on early PWRCTL-equipped chipsets
- * that expose clock management via their host bridge interface. Currently,
- * this includes PCI (not PCIe) devices, with ChipCommon core revisions 0-9.
- *
- * @param dev A bhnd bus child device.
- * @param clock The clock to be disabled.
- *
- * @retval 0 success
- * @retval ENODEV If bus-level clock source management is not supported.
- * @retval ENXIO If bus-level management of @p clock is not supported.
- */
-static inline int
-bhnd_pwrctl_gate_clock(device_t dev, bhnd_clock clock)
-{
-	return (BHND_BUS_PWRCTL_GATE_CLOCK(device_get_parent(dev), dev, clock));
-}
-
-/**
- * If supported by the chipset, ungate @p clock
- *
- * This function is only supported on early PWRCTL-equipped chipsets
- * that expose clock management via their host bridge interface. Currently,
- * this includes PCI (not PCIe) devices, with ChipCommon core revisions 0-9.
- *
- * @param dev A bhnd bus child device.
- * @param clock The clock to be enabled.
- *
- * @retval 0 success
- * @retval ENODEV If bus-level clock source management is not supported.
- * @retval ENXIO If bus-level management of @p clock is not supported.
- */
-static inline int
-bhnd_pwrctl_ungate_clock(device_t dev, bhnd_clock clock)
-{
-	return (BHND_BUS_PWRCTL_UNGATE_CLOCK(device_get_parent(dev), dev,
-	    clock));
 }
 
 /**
