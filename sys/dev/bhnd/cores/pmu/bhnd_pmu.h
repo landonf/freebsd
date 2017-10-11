@@ -39,6 +39,213 @@
 #include "bhnd_pmu_if.h"
 #include "bhnd_pmu_types.h"
 
+
+/**
+ * Return the current value of a PMU chipctrl register.
+ *
+ * @param dev A bhnd(4) PMU device.
+ * @param reg The PMU chipctrl register to be read.
+ *
+ * Drivers should only use function for functionality that is not
+ * available via another bhnd_chipc() function.
+ *
+ * @returns The chipctrl register value, or 0 if undefined by this hardware.
+ */
+static inline uint32_t
+bhnd_pmu_read_chipctrl(device_t dev, uint32_t reg)
+{
+	return (BHND_PMU_READ_CHIPCTRL(dev, reg));
+}
+
+/**
+ * Write @p value with @p mask to a PMU chipctrl register.
+ *
+ * @param dev A bhnd(4) PMU device.
+ * @param reg The PMU chipctrl register to be written.
+ * @param value The value to write.
+ * @param mask The mask of bits to be written from @p value.
+ *
+ * Drivers should only use function for functionality that is not
+ * available via another bhnd_pmu() function.
+ */
+static inline void
+bhnd_pmu_write_chipctrl(device_t dev, uint32_t reg, uint32_t value,
+    uint32_t mask)
+{
+	return (BHND_PMU_WRITE_CHIPCTRL(dev, reg, value, mask));
+}
+
+/**
+ * Return the current value of a PMU regulator control register.
+ *
+ * @param dev A bhnd(4) PMU device.
+ * @param reg The PMU regctrl register to be read.
+ *
+ * Drivers should only use function for functionality that is not
+ * available via another bhnd_chipc() function.
+ *
+ * @returns The regctrl register value, or 0 if undefined by this hardware.
+ */
+static inline uint32_t
+bhnd_pmu_read_regctrl(device_t dev, uint32_t reg)
+{
+	return (BHND_PMU_READ_REGCTRL(dev, reg));
+}
+
+/**
+ * Write @p value with @p mask to a PMU regulator control register.
+ *
+ * @param dev A bhnd(4) PMU device.
+ * @param reg The PMU regctrl register to be written.
+ * @param value The value to write.
+ * @param mask The mask of bits to be written from @p value.
+ *
+ * Drivers should only use function for functionality that is not
+ * available via another bhnd_pmu() function.
+ */
+static inline void
+bhnd_pmu_write_regctrl(device_t dev, uint32_t reg, uint32_t value,
+    uint32_t mask)
+{
+	return (BHND_PMU_WRITE_REGCTRL(dev, reg, value, mask));
+}
+
+/**
+ * Return the current value of a PMU PLL control register.
+ *
+ * @param dev A bhnd(4) PMU device.
+ * @param reg The PMU pllctrl register to be read.
+ *
+ * Drivers should only use function for functionality that is not
+ * available via another bhnd_chipc() function.
+ *
+ * @returns The pllctrl register value, or 0 if undefined by this hardware.
+ */
+static inline uint32_t
+bhnd_pmu_read_pllctrl(device_t dev, uint32_t reg)
+{
+	return (BHND_PMU_READ_PLLCTRL(dev, reg));
+}
+
+/**
+ * Write @p value with @p mask to a PMU PLL control register.
+ *
+ * @param dev A bhnd(4) PMU device.
+ * @param reg The PMU pllctrl register to be written.
+ * @param value The value to write.
+ * @param mask The mask of bits to be written from @p value.
+ *
+ * Drivers should only use function for functionality that is not
+ * available via another bhnd_pmu() function.
+ */
+static inline void
+bhnd_pmu_write_pllctrl(device_t dev, uint32_t reg, uint32_t value,
+    uint32_t mask)
+{
+	return (BHND_PMU_WRITE_PLLCTRL(dev, reg, value, mask));
+}
+
+/**
+ * Set a hardware-specific output voltage register value for @p regulator.
+ *
+ * @param dev PMU device.
+ * @param regulator Regulator to be configured.
+ * @param value The raw voltage register value.
+ *
+ * @retval 0 success
+ * @retval ENODEV If @p regulator is not supported by this driver.
+ */
+static inline int
+bhnd_pmu_set_voltage_raw(device_t dev, bhnd_pmu_regulator regulator,
+    uint32_t value)
+{
+	return (BHND_PMU_SET_VOLTAGE_RAW(dev, regulator, value));
+}
+
+/**
+ * Enable the given @p regulator.
+ *
+ * @param dev PMU device.
+ * @param regulator Regulator to be enabled.
+ *
+ * @retval 0 success
+ * @retval ENODEV If @p regulator is not supported by this driver.
+ */
+static inline int
+bhnd_pmu_enable_regulator(device_t dev, bhnd_pmu_regulator regulator)
+{
+	return (BHND_PMU_ENABLE_REGULATOR(dev, regulator));
+}
+
+/**
+ * Disable the given @p regulator.
+ *
+ * @param dev PMU device.
+ * @param regulator Regulator to be disabled.
+ *
+ * @retval 0 success
+ * @retval ENODEV If @p regulator is not supported by this driver.
+ */
+static inline int
+bhnd_pmu_disable_regulator(device_t dev, bhnd_pmu_regulator regulator)
+{
+	return (BHND_PMU_DISABLE_REGULATOR(dev, regulator));
+}
+
+/**
+ * Return the transition latency required for @p clock in microseconds, if
+ * known.
+ *
+ * The BHND_CLOCK_HT latency value is suitable for use as the D11 core's
+ * 'fastpwrup_dly' value.
+ *
+ * @param	dev	PMU device.
+ * @param	clock	The clock to be queried for transition latency.
+ * @param[out]	latency	On success, the transition latency of @p clock in
+ *			microseconds.
+ * 
+ * @retval 0 success
+ * @retval ENODEV If the transition latency for @p clock is not available.
+ */
+static inline int
+bhnd_pmu_get_clock_latency(device_t dev, bhnd_clock clock, u_int *latency)
+{
+	return (BHND_PMU_GET_CLOCK_LATENCY(dev, clock, latency));
+}
+
+/**
+ * Return the frequency for @p clock in Hz, if known.
+ *
+ * @param dev PMU device.
+ * @param clock The clock to be queried.
+ * @param[out] freq On success, the frequency of @p clock in Hz.
+ * 
+ * @retval 0 success
+ * @retval ENODEV If the frequency for @p clock is not available.
+ */
+static inline int
+bhnd_pmu_get_clock_freq(device_t dev, bhnd_clock clock, uint32_t *freq)
+{
+	return (BHND_PMU_GET_CLOCK_FREQ(dev, clock, freq));
+}
+
+/**
+ * Request that the PMU configure itself for a given hardware-specific
+ * spuravoid mode.
+ *
+ * @param dev PMU device.
+ * @param spuravoid The requested mode.
+ *
+ * @retval 0 success
+ * @retval ENODEV If @p regulator is not supported by this driver.
+ */
+static inline int
+bhnd_pmu_request_spuravoid(device_t dev, bhnd_pmu_spuravoid spuravoid)
+{
+	return (BHND_PMU_REQUEST_SPURAVOID(dev, spuravoid));
+}
+
+
 /**
  * Return the PMU's maximum state transition latency in microseconds.
  *
