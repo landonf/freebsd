@@ -60,10 +60,10 @@
 #include <dev/bhnd/siba/sibareg.h>
 
 #include <dev/bhnd/cores/chipc/chipc.h>
+#include <dev/bhnd/cores/chipc/pwrctl/bhnd_pwrctl.h>
 #include <dev/bhnd/cores/pci/bhnd_pcireg.h>
 #include <dev/bhnd/cores/pmu/bhnd_pmu.h>
 
-#include "bhnd_pwrctl_if.h"
 #include "bhnd_nvram_map.h"
 
 #include "if_bwn_siba_compat.h"
@@ -574,7 +574,7 @@ bhnd_compat_get_cc_pmufreq(device_t dev)
 		    &freq);
 
 	} else if (ctx->pwrctl_dev != NULL) {
-		error = BHND_PWRCTL_GET_CLOCK_FREQ(ctx->pwrctl_dev,
+		error = bhnd_pwrctl_get_clock_freq(ctx->pwrctl_dev,
 		    BHND_CLOCK_ALP, &freq);
 
 	} else {
@@ -641,7 +641,7 @@ bhnd_compat_get_cc_powerdelay(device_t dev)
 		    &delay);
 
 	} else if (ctx->pwrctl_dev != NULL) {
-		error = BHND_PWRCTL_GET_CLOCK_LATENCY(ctx->pwrctl_dev,
+		error = bhnd_pwrctl_get_clock_latency(ctx->pwrctl_dev,
 		    BHND_CLOCK_HT, &delay);
 
 	} else {
