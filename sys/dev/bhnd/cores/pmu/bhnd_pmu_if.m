@@ -117,17 +117,17 @@ CODE {
 	}
 
 	static int
-	bhnd_pmu_null_get_clock_freq(device_t dev, bhnd_clock clock,
-	    uint32_t *freq)
+	bhnd_pmu_null_get_clock_latency(device_t dev, bhnd_clock clock,
+	    u_int *latency)
 	{
-		panic("bhnd_pmu_get_clock_freq unimplemented");
+		panic("bhnd_pmu_get_clock_latency unimplemented");
 	}
 
 	static int
-	bhnd_pmu_null_get_clock_delay(device_t dev, bhnd_clock clock,
-	    u_int *udelay)
+	bhnd_pmu_null_get_clock_freq(device_t dev, bhnd_clock clock,
+	    u_int *freq)
 	{
-		panic("bhnd_pmu_get_clock_delay unimplemented");
+		panic("bhnd_pmu_get_clock_freq unimplemented");
 	}
 }
 
@@ -311,7 +311,7 @@ METHOD int get_clock_latency {
 METHOD int get_clock_freq {
 	device_t dev;
 	bhnd_clock clock;
-	uint32_t *freq;
+	u_int *freq;
 } DEFAULT bhnd_pmu_null_get_clock_freq;
 
 /**
