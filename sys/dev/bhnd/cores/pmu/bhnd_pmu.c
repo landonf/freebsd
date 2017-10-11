@@ -261,15 +261,6 @@ bhnd_pmu_resume(device_t dev)
 	return (0);
 }
 
-/**
- * Default bhnd_pmu driver implementation of BHND_PMU_GET_TRANSITION_LATENCY().
- */
-static u_int
-bhnd_pmu_get_transition_latency_method(device_t dev)
-{
-	return (BHND_PMU_MAX_TRANSITION_DLY);
-}
-
 static int
 bhnd_pmu_sysctl_bus_freq(SYSCTL_HANDLER_ARGS)
 {
@@ -315,6 +306,270 @@ bhnd_pmu_sysctl_mem_freq(SYSCTL_HANDLER_ARGS)
 	return (sysctl_handle_32(oidp, NULL, freq, req));
 }
 
+/**
+ * Default bhnd_pmu driver implementation of BHND_PMU_READ_CHIPCTRL().
+ */
+static uint32_t
+bhnd_pmu_read_chipctrl_method(device_t dev, uint32_t reg)
+{
+	struct bhnd_pmu_softc *sc;
+	uint32_t rval;
+
+	sc = device_get_softc(dev);
+
+	BPMU_LOCK(sc);
+	rval = BHND_PMU_CCTRL_READ(sc, reg);
+	BPMU_UNLOCK(sc);
+
+	return (rval);
+}
+
+/**
+ * Default bhnd_pmu driver implementation of BHND_PMU_WRITE_CHIPCTRL().
+ */
+static void
+bhnd_pmu_write_chipctrl_method(device_t dev, uint32_t reg, uint32_t value,
+    uint32_t mask)
+{
+	struct bhnd_pmu_softc *sc = device_get_softc(dev);
+
+	BPMU_LOCK(sc);
+	BHND_PMU_CCTRL_WRITE(sc, reg, value, mask);
+	BPMU_UNLOCK(sc);
+}
+
+/**
+ * Default bhnd_pmu driver implementation of BHND_PMU_READ_REGCTRL().
+ */
+static uint32_t
+bhnd_pmu_read_regctrl_method(device_t dev, uint32_t reg)
+{
+	struct bhnd_pmu_softc *sc;
+	uint32_t rval;
+
+	sc = device_get_softc(dev);
+
+	BPMU_LOCK(sc);
+	rval = BHND_PMU_REGCTRL_READ(sc, reg);
+	BPMU_UNLOCK(sc);
+
+	return (rval);
+}
+
+/**
+ * Default bhnd_pmu driver implementation of BHND_PMU_WRITE_REGCTRL().
+ */
+static void
+bhnd_pmu_write_regctrl_method(device_t dev, uint32_t reg, uint32_t value,
+    uint32_t mask)
+{
+	struct bhnd_pmu_softc *sc = device_get_softc(dev);
+
+	BPMU_LOCK(sc);
+	BHND_PMU_REGCTRL_WRITE(sc, reg, value, mask);
+	BPMU_UNLOCK(sc);
+}
+
+/**
+ * Default bhnd_pmu driver implementation of BHND_PMU_READ_PLLCTRL().
+ */
+static uint32_t
+bhnd_pmu_read_pllctrl_method(device_t dev, uint32_t reg)
+{
+	struct bhnd_pmu_softc *sc;
+	uint32_t rval;
+
+	sc = device_get_softc(dev);
+
+	BPMU_LOCK(sc);
+	rval = BHND_PMU_PLL_READ(sc, reg);
+	BPMU_UNLOCK(sc);
+
+	return (rval);
+}
+
+/**
+ * Default bhnd_pmu driver implementation of BHND_PMU_WRITE_PLLCTRL().
+ */
+static void
+bhnd_pmu_write_pllctrl_method(device_t dev, uint32_t reg, uint32_t value,
+    uint32_t mask)
+{
+	struct bhnd_pmu_softc *sc = device_get_softc(dev);
+
+	BPMU_LOCK(sc);
+	BHND_PMU_PLL_WRITE(sc, reg, value, mask);
+	BPMU_UNLOCK(sc);
+}
+
+/**
+ * Default bhnd_pmu driver implementation of BHND_PMU_SET_VOLTAGE_RAW().
+ */
+static int
+bhnd_pmu_set_voltage_raw_method(device_t dev, bhnd_pmu_regulator regulator,
+    uint32_t value)
+{
+	struct bhnd_pmu_softc	*sc;
+	int			 error;
+
+	sc = device_get_softc(dev);
+
+	switch (regulator) {
+	case BHND_REGULATOR_PAREF_LDO:
+		if (value > UINT8_MAX)
+			return (EINVAL);
+	
+		BPMU_LOCK(sc);
+		error = bhnd_pmu_set_ldo_voltage(sc, SET_LDO_VOLTAGE_PAREF,
+		    value);
+		BPMU_UNLOCK(sc);
+
+		return (error);
+
+	default:
+		return (ENODEV);
+	}
+}
+
+/**
+ * Default bhnd_pmu driver implementation of BHND_PMU_ENABLE_REGULATOR().
+ */
+static int
+bhnd_pmu_enable_regulator_method(device_t dev, bhnd_pmu_regulator regulator)
+{
+	struct bhnd_pmu_softc	*sc;
+	int			 error;
+
+	sc = device_get_softc(dev);
+
+	switch (regulator) {
+	case BHND_REGULATOR_PAREF_LDO:
+		BPMU_LOCK(sc);
+		error = bhnd_pmu_paref_ldo_enable(sc, true);
+		BPMU_UNLOCK(sc);
+
+		return (error);
+
+	default:
+		return (ENODEV);
+	}
+}
+
+/**
+ * Default bhnd_pmu driver implementation of BHND_PMU_DISABLE_REGULATOR().
+ */
+static int
+bhnd_pmu_disable_regulator_method(device_t dev, bhnd_pmu_regulator regulator)
+{
+	struct bhnd_pmu_softc	*sc;
+	int			 error;
+
+	sc = device_get_softc(dev);
+
+	switch (regulator) {
+	case BHND_REGULATOR_PAREF_LDO:
+		BPMU_LOCK(sc);
+		error = bhnd_pmu_paref_ldo_enable(sc, false);
+		BPMU_UNLOCK(sc);
+
+		return (error);
+
+	default:
+		return (ENODEV);
+	}
+}
+
+
+/**
+ * Default bhnd_pmu driver implementation of BHND_PMU_GET_CLOCK_LATENCY().
+ */
+static int
+bhnd_pmu_get_clock_latency_method(device_t dev, bhnd_clock clock,
+    u_int *latency)
+{
+	struct bhnd_pmu_softc	*sc;
+	u_int			 pwrup_delay;
+	int			 error;
+
+	sc = device_get_softc(dev);
+
+	switch (clock) {
+	case BHND_CLOCK_HT:
+		BPMU_LOCK(sc);
+		error = bhnd_pmu_fast_pwrup_delay(sc, &pwrup_delay);
+		BPMU_UNLOCK(sc);
+
+		if (error)
+			return (error);
+
+		*latency = pwrup_delay;
+		return (0);
+
+	default:
+		return (ENODEV);
+	}
+}
+
+/**
+ * Default bhnd_pmu driver implementation of BHND_PMU_GET_CLOCK_FREQ().
+ */
+static int
+bhnd_pmu_get_clock_freq_method(device_t dev, bhnd_clock clock, uint32_t *freq)
+{
+	struct bhnd_pmu_softc	*sc = device_get_softc(dev);
+
+	BPMU_LOCK(sc);
+	switch (clock) {
+	case BHND_CLOCK_HT:
+		*freq = bhnd_pmu_si_clock(&sc->query);
+		break;
+
+	case BHND_CLOCK_ALP:
+		*freq = bhnd_pmu_alp_clock(&sc->query);
+		break;
+
+	case BHND_CLOCK_ILP:
+		*freq = bhnd_pmu_ilp_clock(&sc->query);
+		break;
+
+	case BHND_CLOCK_DYN:
+	default:
+		BPMU_UNLOCK(sc);
+		return (ENODEV);
+	}
+
+	BPMU_UNLOCK(sc);
+	return (0);
+}
+
+/**
+ * Default bhnd_pmu driver implementation of BHND_PMU_REQUEST_SPURAVOID().
+ */
+static int
+bhnd_pmu_request_spuravoid_method(device_t dev, bhnd_pmu_spuravoid spuravoid)
+{
+	struct bhnd_pmu_softc	*sc;
+	int			 error;
+
+	sc = device_get_softc(dev);
+
+	BPMU_LOCK(sc);
+	error = bhnd_pmu_set_spuravoid(sc, spuravoid);
+	BPMU_UNLOCK(sc);
+
+	return (error);
+}
+
+/**
+ * Default bhnd_pmu driver implementation of BHND_PMU_GET_TRANSITION_LATENCY().
+ */
+static u_int
+bhnd_pmu_get_max_transition_latency_method(device_t dev)
+{
+	return (BHND_PMU_MAX_TRANSITION_DLY);
+}
+
+/* bhnd_pmu_query read_4 callback */
 static uint32_t
 bhnd_pmu_read_4(bus_size_t reg, void *ctx)
 {
@@ -322,6 +577,7 @@ bhnd_pmu_read_4(bus_size_t reg, void *ctx)
 	return (bhnd_bus_read_4(sc->res, reg));
 }
 
+/* bhnd_pmu_query write_4 callback */
 static void
 bhnd_pmu_write_4(bus_size_t reg, uint32_t val, void *ctx)
 {
@@ -329,6 +585,7 @@ bhnd_pmu_write_4(bus_size_t reg, uint32_t val, void *ctx)
 	return (bhnd_bus_write_4(sc->res, reg, val));
 }
 
+/* bhnd_pmu_query read_chipst callback */
 static uint32_t
 bhnd_pmu_read_chipst(void *ctx)
 {
@@ -344,8 +601,22 @@ static device_method_t bhnd_pmu_methods[] = {
 	DEVMETHOD(device_resume,			bhnd_pmu_resume),
 
 	/* BHND PMU interface */
-	DEVMETHOD(bhnd_pmu_get_transition_latency,	bhnd_pmu_get_transition_latency_method),
+	DEVMETHOD(bhnd_pmu_read_chipctrl,		bhnd_pmu_read_chipctrl_method),
+	DEVMETHOD(bhnd_pmu_write_chipctrl,		bhnd_pmu_write_chipctrl_method),
+	DEVMETHOD(bhnd_pmu_read_regctrl,		bhnd_pmu_read_regctrl_method),
+	DEVMETHOD(bhnd_pmu_write_regctrl,		bhnd_pmu_write_regctrl_method),
+	DEVMETHOD(bhnd_pmu_read_pllctrl,		bhnd_pmu_read_pllctrl_method),
+	DEVMETHOD(bhnd_pmu_write_pllctrl,		bhnd_pmu_write_pllctrl_method),
+	DEVMETHOD(bhnd_pmu_set_voltage_raw,		bhnd_pmu_set_voltage_raw_method),
+	DEVMETHOD(bhnd_pmu_enable_regulator,		bhnd_pmu_enable_regulator_method),
+	DEVMETHOD(bhnd_pmu_disable_regulator,		bhnd_pmu_disable_regulator_method),
 
+	DEVMETHOD(bhnd_pmu_get_clock_latency,		bhnd_pmu_get_clock_latency_method),
+	DEVMETHOD(bhnd_pmu_get_clock_freq,		bhnd_pmu_get_clock_freq_method),
+
+	DEVMETHOD(bhnd_pmu_get_max_transition_latency,	bhnd_pmu_get_max_transition_latency_method),
+	DEVMETHOD(bhnd_pmu_request_spuravoid,		bhnd_pmu_request_spuravoid_method),
+	
 	DEVMETHOD_END
 };
 

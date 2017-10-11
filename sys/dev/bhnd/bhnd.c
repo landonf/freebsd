@@ -446,7 +446,7 @@ bhnd_generic_alloc_pmu(device_t dev, device_t child)
 		return (ENXIO);
 	}
 
-	max_latency = bhnd_pmu_get_transition_latency(pmu_dev);
+	max_latency = bhnd_pmu_get_max_transition_latency(pmu_dev);
 
 	bhnd_release_provider(child, pmu_dev, BHND_SERVICE_PMU);
 

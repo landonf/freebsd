@@ -209,11 +209,17 @@ chipc_attach(device_t dev)
 	if ((error = chipc_add_children(sc)))
 		goto failed;
 
-	if ((error = bus_generic_attach(dev)))
+	/*
+	 * Register ourselves with the bus; we're fully initialized and can
+	 * response to ChipCommin API requests.
+	 * 
+	 * Since our children may need access to ChipCommon, this must be done
+	 * before attaching our children below (via bus_generic_attach).
+	 */
+	if ((error = bhnd_register_provider(dev, BHND_SERVICE_CHIPC)))
 		goto failed;
 
-	/* Register ourselves with the bus */
-	if ((error = bhnd_register_provider(dev, BHND_SERVICE_CHIPC)))
+	if ((error = bus_generic_attach(dev)))
 		goto failed;
 
 	return (0);

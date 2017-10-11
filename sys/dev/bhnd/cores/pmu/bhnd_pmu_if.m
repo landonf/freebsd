@@ -150,6 +150,37 @@ METHOD void write_pllctrl {
 };
 
 /**
+ * Request that the PMU configure itself for a given hardware-specific
+ * spuravoid mode.
+ *
+ * @param dev PMU device.
+ * @param spuravoid The requested mode.
+ *
+ * @retval 0 success
+ * @retval ENODEV If @p regulator is not supported by this driver.
+ */
+ METHOD int request_spuravoid {
+	 device_t dev;
+	 bhnd_pmu_spuravoid spuravoid;
+ }
+
+/**
+ * Set a hardware-specific output voltage register value for @p regulator.
+ *
+ * @param dev PMU device.
+ * @param regulator Regulator to be configured.
+ * @param value The raw voltage register value.
+ *
+ * @retval 0 success
+ * @retval ENODEV If @p regulator is not supported by this driver.
+ */
+ METHOD int set_voltage_raw {
+	 device_t dev;
+	 bhnd_pmu_regulator regulator;
+	 uint32_t value;
+ }
+
+/**
  * Enable the given @p regulator.
  *
  * @param dev PMU device.
@@ -178,20 +209,40 @@ METHOD int disable_regulator {
 };
 
 /**
- * Return the transition latency required for @p clock, if known.
+ * Return the frequency for @p clock in Hz, if known.
  *
  * @param dev PMU device.
- * @param clock The clock to be queried for transition latency.
- * @param[out] udelay On success, the transition latency of @p clock in
- * microseconds.
+ * @param clock The clock to be queried.
+ * @param[out] freq On success, the frequency of @p clock in Hz.
+ * 
+ * @retval 0 success
+ * @retval ENODEV If the frequency for @p clock is not available.
+ */
+METHOD int get_clock_freq {
+	device_t dev;
+	bhnd_clock clock;
+	uint32_t *freq;
+};
+
+/**
+ * Return the transition latency required for @p clock in microseconds, if
+ * known.
+ *
+ * The BHND_CLOCK_HT latency value is suitable for use as the D11 core's
+ * 'fastpwrup_dly' value.
+ *
+ * @param	dev	PMU device.
+ * @param	clock	The clock to be queried for transition latency.
+ * @param[out]	latency	On success, the transition latency of @p clock in
+ *			microseconds.
  * 
  * @retval 0 success
  * @retval ENODEV If the transition latency for @p clock is not available.
  */
-METHOD int get_clock_delay {
+METHOD int get_clock_latency {
 	device_t dev;
 	bhnd_clock clock;
-	u_int *udelay;
+	u_int *latency;
 };
 
 /**
@@ -202,6 +253,6 @@ METHOD int get_clock_delay {
  *
  * @param dev PMU device.
  */
-METHOD u_int get_transition_latency {
+METHOD u_int get_max_transition_latency {
 	device_t dev;
 };

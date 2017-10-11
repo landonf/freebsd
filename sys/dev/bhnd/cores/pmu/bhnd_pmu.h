@@ -48,9 +48,9 @@
  * @param dev PMU device.
  */
 static inline u_int
-bhnd_pmu_get_transition_latency(device_t dev)
+bhnd_pmu_get_max_transition_latency(device_t dev)
 {
-	return (BHND_PMU_GET_TRANSITION_LATENCY(dev));
+	return (BHND_PMU_GET_MAX_TRANSITION_LATENCY(dev));
 }
 
 #endif /* _BHND_CORES_PMU_BHND_PMU_H_ */
