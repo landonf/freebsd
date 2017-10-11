@@ -4,11 +4,11 @@
  * Copyright (c) 2017 The FreeBSD Foundation
  * All rights reserved.
  *
- * This software was developed by Landon Fuller under sponsorship from
- * the FreeBSD Foundation.
+ * Portions of this software were developed by Landon Fuller
+ * under sponsorship from the FreeBSD Foundation.
  * 
- * This file is derived from the siutils.c source distributed with the
- * Asus RT-N16 firmware source code release.
+ * Portions of this file were derived from the siutils.c source distributed with
+ * the Asus RT-N16 firmware source code release.
  * 
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above

@@ -1,6 +1,10 @@
 /*-
  * Copyright (c) 2016 Landon Fuller <landonf@FreeBSD.org>
+ * Copyright (c) 2017 The FreeBSD Foundation
  * All rights reserved.
+ *
+ * Portions of this software were developed by Landon Fuller
+ * under sponsorship from the FreeBSD Foundation.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -224,7 +228,7 @@ bhnd_pmu_get_clock_latency(device_t dev, bhnd_clock clock, u_int *latency)
  * @retval ENODEV If the frequency for @p clock is not available.
  */
 static inline int
-bhnd_pmu_get_clock_freq(device_t dev, bhnd_clock clock, uint32_t *freq)
+bhnd_pmu_get_clock_freq(device_t dev, bhnd_clock clock, u_int *freq)
 {
 	return (BHND_PMU_GET_CLOCK_FREQ(dev, clock, freq));
 }
