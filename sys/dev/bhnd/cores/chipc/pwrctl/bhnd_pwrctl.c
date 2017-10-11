@@ -270,6 +270,46 @@ cleanup:
 	return (error);
 }
 
+static int
+bhnd_pwrctl_get_clock_latency(device_t dev, bhnd_clock clock,
+    u_int *latency)
+{
+	struct bhnd_pwrctl_softc *sc = device_get_softc(dev);
+
+	switch (clock) {
+	case BHND_CLOCK_HT:
+		PWRCTL_LOCK(sc);
+		*latency = bhnd_pwrctl_fast_pwrup_delay(sc);
+		PWRCTL_UNLOCK(sc);
+
+		return (0);
+
+	default:
+		return (ENODEV);
+	}
+}
+
+static int
+bhnd_pwrctl_get_clock_freq(device_t dev, bhnd_clock clock, u_int *freq)
+{
+	struct bhnd_pwrctl_softc *sc = device_get_softc(dev);
+
+	switch (clock) {
+	case BHND_CLOCK_ALP:
+		BPMU_LOCK(sc);
+		*freq = bhnd_pwrctl_getclk_speed(sc);
+		BPMU_UNLOCK(sc);
+
+		return (0);
+
+	case BHND_CLOCK_HT:
+	case BHND_CLOCK_ILP:
+	case BHND_CLOCK_DYN:
+	default:
+		return (ENODEV);
+	}
+}
+
 /**
  * Find the clock reservation associated with @p owner, if any.
  * 
@@ -434,14 +474,16 @@ bhnd_pwrctl_request_clock(device_t dev, device_t child, bhnd_clock clock)
 
 static device_method_t bhnd_pwrctl_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_probe,			bhnd_pwrctl_probe),
-	DEVMETHOD(device_attach,		bhnd_pwrctl_attach),
-	DEVMETHOD(device_detach,		bhnd_pwrctl_detach),
-	DEVMETHOD(device_suspend,		bhnd_pwrctl_suspend),
-	DEVMETHOD(device_resume,		bhnd_pwrctl_resume),
+	DEVMETHOD(device_probe,				bhnd_pwrctl_probe),
+	DEVMETHOD(device_attach,			bhnd_pwrctl_attach),
+	DEVMETHOD(device_detach,			bhnd_pwrctl_detach),
+	DEVMETHOD(device_suspend,			bhnd_pwrctl_suspend),
+	DEVMETHOD(device_resume,			bhnd_pwrctl_resume),
 
 	/* BHND PWRCTL interface */
-	DEVMETHOD(bhnd_pwrctl_request_clock,	bhnd_pwrctl_request_clock),
+	DEVMETHOD(bhnd_pwrctl_request_clock,		bhnd_pwrctl_request_clock),
+	DEVMETHOD(bhnd_pwrctl_get_clock_freq,		bhnd_pwrctl_get_clock_freq),
+	DEVMETHOD(bhnd_pwrctl_get_clock_latency,	bhnd_pwrctl_get_clock_latency),
 
 	DEVMETHOD_END
 };

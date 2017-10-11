@@ -43,7 +43,7 @@ HEADER {
  * Request that @p clock (or a faster clock) be enabled on behalf of
  * @p child.
  *
- * @param dev PMU device.
+ * @param dev PWRCTL device.
  * @param child The requesting bhnd(4) device.
  * @param clock Clock requested.
  *
@@ -51,7 +51,44 @@ HEADER {
  * @retval ENODEV If an unsupported clock was requested.
  */
 METHOD int request_clock {
-	device_t			 dev;
-	device_t			 child;
-	bhnd_clock			 clock;
+	device_t	dev;
+	device_t	child;
+	bhnd_clock	clock;
+};
+
+/**
+ * Return the transition latency required for @p clock in microseconds, if
+ * known.
+ *
+ * The BHND_CLOCK_HT latency value is suitable for use as the D11 core's
+ * 'fastpwrup_dly' value.
+ *
+ * @param	dev	PWRCTL device.
+ * @param	clock	The clock to be queried for transition latency.
+ * @param[out]	latency	On success, the transition latency of @p clock in
+ *			microseconds.
+ * 
+ * @retval 0 success
+ * @retval ENODEV If the transition latency for @p clock is not available.
+ */
+METHOD int get_clock_latency {
+	device_t	 dev;
+	bhnd_clock	 clock;
+	u_int		*latency;
+};
+
+/**
+ * Return the frequency for @p clock in Hz, if known.
+ *
+ * @param	dev	PWRCTL device.
+ * @param	clock	The clock to be queried.
+ * @param[out]	freq	On success, the frequency of @p clock in Hz.
+ * 
+ * @retval 0 success
+ * @retval ENODEV If the frequency for @p clock is not available.
+ */
+METHOD int get_clock_freq {
+	device_t	 dev;
+	bhnd_clock	 clock;
+	uint32_t	*freq;
 };
