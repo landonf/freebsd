@@ -41,15 +41,18 @@
  * Compatiblity shim state.
  */
 struct bwn_bhnd_ctx {
-	uint8_t				sromrev;	/**< SROM format revision */
+	device_t	pmu_dev;	/**< PMU provider, if any */
+	device_t	pwrctl_dev;	/**< PWRCTL provider, if any */
+
+	uint8_t		sromrev;	/**< SROM format revision */
 
 	/* NVRAM variables for which bwn(4) expects the bus to manage storage
 	 * for (and in some cases, allow writes). */	
-	uint8_t				mac_80211bg[6];	/**< D11 unit 0 */
-	uint8_t				mac_80211a[6];	/**< D11 unit 1 */
+	uint8_t		mac_80211bg[6];	/**< D11 unit 0 */
+	uint8_t		mac_80211a[6];	/**< D11 unit 1 */
 
-	uint32_t			boardflags;	/**< boardflags (bwn-writable) */
-	uint8_t				pa0maxpwr;	/**< 2GHz max power (bwn-writable) */
+	uint32_t	boardflags;	/**< boardflags (bwn-writable) */
+	uint8_t		pa0maxpwr;	/**< 2GHz max power (bwn-writable) */
 };
 
 /**

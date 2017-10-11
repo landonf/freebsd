@@ -59,8 +59,11 @@
 #include <dev/bhnd/bhnd.h>
 #include <dev/bhnd/siba/sibareg.h>
 
+#include <dev/bhnd/cores/chipc/chipc.h>
 #include <dev/bhnd/cores/pci/bhnd_pcireg.h>
+#include <dev/bhnd/cores/pmu/bhnd_pmu.h>
 
+#include "bhnd_pwrctl_if.h"
 #include "bhnd_nvram_map.h"
 
 #include "if_bwn_siba_compat.h"
@@ -100,6 +103,16 @@ bwn_bhnd_bus_ops_init(device_t dev)
 	/* Allocate our context */
 	ctx = malloc(sizeof(struct bwn_bhnd_ctx), M_DEVBUF, M_WAITOK|M_ZERO);
 
+	/* Fetch our PMU or PWRCTL device reference */
+	ctx->pmu_dev = bhnd_retain_provider(dev, BHND_SERVICE_PMU);
+	ctx->pwrctl_dev = bhnd_retain_provider(dev, BHND_SERVICE_PWRCTL);
+
+	if (ctx->pmu_dev == NULL && ctx->pwrctl_dev == NULL) {
+		device_printf(dev, "missing PMU/PWRCTL device\n");
+		error = ENXIO;
+		goto failed;
+	}
+
 	/* Populate NVRAM data */
 	if ((error = bwn_bhnd_populate_nvram_data(dev, ctx)))
 		goto failed;
@@ -112,8 +125,19 @@ failed:
 	bhnd_release_resource(dev, SYS_RES_MEMORY, sc->sc_mem_rid,
 	    sc->sc_mem_res);
 
-	if (ctx != NULL)
+	if (ctx != NULL) {
+		if (ctx->pmu_dev != NULL) {
+			bhnd_release_provider(dev, ctx->pmu_dev,
+			    BHND_SERVICE_PMU);
+		}
+
+		if (ctx->pwrctl_dev != NULL) {
+			bhnd_release_provider(dev, ctx->pmu_dev,
+			    BHND_SERVICE_PWRCTL);
+		}
+
 		free(ctx, M_DEVBUF);
+	}
 
 	return (error);
 }
@@ -121,13 +145,24 @@ failed:
 static void
 bwn_bhnd_bus_ops_fini(device_t dev)
 {
+	struct bwn_bhnd_ctx	*ctx;
 	struct bwn_softc	*sc;
 
 	sc = device_get_softc(dev);
+	ctx = sc->sc_bus_ctx;
 
 	bhnd_release_pmu(dev);
 	bhnd_release_resource(dev, SYS_RES_MEMORY, sc->sc_mem_rid,
 	    sc->sc_mem_res);
+
+	if (ctx->pmu_dev != NULL)
+		bhnd_release_provider(dev, ctx->pmu_dev,BHND_SERVICE_PMU);
+
+	if (ctx->pwrctl_dev != NULL)
+		bhnd_release_provider(dev, ctx->pmu_dev, BHND_SERVICE_PWRCTL);
+
+	free(ctx, M_DEVBUF);
+	sc->sc_bus_ctx = NULL;
 }
 
 
@@ -528,7 +563,28 @@ bhnd_compat_get_type(device_t dev)
 static uint32_t
 bhnd_compat_get_cc_pmufreq(device_t dev)
 {
-	panic("siba_get_cc_pmufreq() unimplemented");
+	struct bwn_bhnd_ctx	*ctx;
+	uint32_t		 freq;
+	int			 error;
+
+	ctx = bwn_bhnd_get_ctx(dev);
+
+	if (ctx->pmu_dev != NULL) {
+		error = bhnd_pmu_get_clock_freq(ctx->pmu_dev, BHND_CLOCK_ALP,
+		    &freq);
+
+	} else if (ctx->pwrctl_dev != NULL) {
+		error = BHND_PWRCTL_GET_CLOCK_FREQ(ctx->pwrctl_dev,
+		    BHND_CLOCK_ALP, &freq);
+
+	} else {
+		panic("missing PMU/PWRCTL");
+	}
+
+	if (error)
+		panic("failed to fetch clock frequency: %d", error);
+
+	return (freq);
 }
 
 /*
@@ -540,7 +596,29 @@ bhnd_compat_get_cc_pmufreq(device_t dev)
 static uint32_t
 bhnd_compat_get_cc_caps(device_t dev)
 {
-	panic("siba_get_cc_caps() unimplemented");
+	device_t		 chipc;
+	const struct chipc_caps	*ccaps;
+	uint32_t		 result;
+
+	/* Fetch our ChipCommon device */
+	chipc = bhnd_retain_provider(dev, BHND_SERVICE_CHIPC);
+	if (chipc == NULL)
+		panic("missing ChipCommon device");
+
+	/*
+	 * The ChipCommon capability flags are only used in one LP-PHY function,
+	 * to assert that a PMU is in fact available.
+	 *
+	 * We can support this by producing a value containing just that flag. 
+	 */
+	result = 0;
+	ccaps = BHND_CHIPC_GET_CAPS(chipc);
+	if (ccaps->pmu)
+		result |= SIBA_CC_CAPS_PMU;
+
+	bhnd_release_provider(dev, chipc, BHND_SERVICE_CHIPC);
+
+	return (result);
 }
 
 /*
@@ -552,7 +630,31 @@ bhnd_compat_get_cc_caps(device_t dev)
 static uint16_t
 bhnd_compat_get_cc_powerdelay(device_t dev)
 {
-	panic("siba_get_cc_powerdelay() unimplemented");
+	struct bwn_bhnd_ctx	*ctx;
+	u_int			 delay;
+	int			 error;
+
+	ctx = bwn_bhnd_get_ctx(dev);
+
+	if (ctx->pmu_dev != NULL) {
+		error = bhnd_pmu_get_clock_latency(ctx->pmu_dev, BHND_CLOCK_HT,
+		    &delay);
+
+	} else if (ctx->pwrctl_dev != NULL) {
+		error = BHND_PWRCTL_GET_CLOCK_LATENCY(ctx->pwrctl_dev,
+		    BHND_CLOCK_HT, &delay);
+
+	} else {
+		panic("missing PMU/PWRCTL");
+	}
+
+	if (error)
+		panic("failed to fetch clock latency: %d", error);
+
+	if (delay > UINT16_MAX)
+		panic("%#x would overflow", delay);
+
+	return (delay);
 }
 
 /*
@@ -1078,10 +1180,7 @@ bhnd_compat_sprom_get_ofdm5ghpo(device_t dev)
 static void
 bhnd_compat_sprom_set_bf_lo(device_t dev, uint16_t t)
 {
-	struct bwn_bhnd_ctx	*ctx;
-
-	ctx = bwn_bhnd_get_ctx(dev);
-
+	struct bwn_bhnd_ctx *ctx = bwn_bhnd_get_ctx(dev);
 	ctx->boardflags &= ~0xFFFF;
 	ctx->boardflags |= t;
 }
@@ -1825,7 +1924,23 @@ bhnd_compat_barrier(device_t dev, int flags)
 static void
 bhnd_compat_cc_pmu_set_ldovolt(device_t dev, int id, uint32_t volt)
 {
-	panic("siba_cc_pmu_set_ldovolt() unimplemented");
+	struct bwn_bhnd_ctx	*ctx;
+	int			 error;
+
+	ctx = bwn_bhnd_get_ctx(dev);
+
+	/* Only ever used to set the PAREF LDO voltage */
+	if (id != SIBA_LDO_PAREF)
+		panic("invalid LDO id: %d", id);
+
+	/* Configuring regulator voltage requires a PMU */
+	if (ctx->pmu_dev == NULL)
+		panic("no PMU; cannot set LDO voltage");
+
+	error = bhnd_pmu_set_voltage_raw(ctx->pmu_dev, BHND_REGULATOR_PAREF_LDO,
+	    volt);
+	if (error)
+		panic("failed to set LDO voltage: %d", error);
 }
 
 /*
@@ -1837,7 +1952,27 @@ bhnd_compat_cc_pmu_set_ldovolt(device_t dev, int id, uint32_t volt)
 static void
 bhnd_compat_cc_pmu_set_ldoparef(device_t dev, uint8_t on)
 {
-	panic("siba_cc_pmu_set_ldoparef() unimplemented");
+	struct bwn_bhnd_ctx	*ctx;
+	int			 error;
+
+	ctx = bwn_bhnd_get_ctx(dev);
+
+	/* Enabling/disabling regulators requires a PMU */
+	if (ctx->pmu_dev == NULL)
+		panic("no PMU; cannot set LDO voltage");
+
+	if (on) {
+		error = bhnd_pmu_enable_regulator(ctx->pmu_dev,
+		    BHND_REGULATOR_PAREF_LDO);
+	} else {
+		error = bhnd_pmu_enable_regulator(ctx->pmu_dev,
+		    BHND_REGULATOR_PAREF_LDO);
+	}
+
+	if (error) {
+		panic("failed to %s PAREF_LDO: %d", on ? "enable" : "disable",
+		    error);
+	}
 }
 
 /*

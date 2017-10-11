@@ -13,7 +13,11 @@ SRCS+=	if_bwn_phy_g.c if_bwn_phy_lp.c
 SRCS+=	if_bwn_phy_n.c
 
 # BHND
-SRCS+=	bhnd_bus_if.h bhnd_nvram_map.h
+SRCS+=	bhnd_bus_if.h \
+	bhnd_chipc_if.h \
+	bhnd_pmu_if.h \
+	bhnd_pwrctl_if.h
+SRCS+=	bhnd_nvram_map.h
 
 # Other
 SRCS+=	device_if.h bus_if.h pci_if.h opt_bwn.h opt_wlan.h
