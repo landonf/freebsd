@@ -90,5 +90,5 @@ METHOD int get_clock_latency {
 METHOD int get_clock_freq {
 	device_t	 dev;
 	bhnd_clock	 clock;
-	uint32_t	*freq;
+	u_int		*freq;
 };
