@@ -60,7 +60,6 @@
 #include <dev/bhnd/siba/sibareg.h>
 
 #include <dev/bhnd/cores/chipc/chipc.h>
-#include <dev/bhnd/cores/chipc/pwrctl/bhnd_pwrctl.h>
 #include <dev/bhnd/cores/pci/bhnd_pcireg.h>
 #include <dev/bhnd/cores/pmu/bhnd_pmu.h>
 
@@ -103,15 +102,8 @@ bwn_bhnd_bus_ops_init(device_t dev)
 	/* Allocate our context */
 	ctx = malloc(sizeof(struct bwn_bhnd_ctx), M_DEVBUF, M_WAITOK|M_ZERO);
 
-	/* Fetch our PMU or PWRCTL device reference */
+	/* Fetch our PMU reference (if this is a PMU-equipped device) */
 	ctx->pmu_dev = bhnd_retain_provider(dev, BHND_SERVICE_PMU);
-	ctx->pwrctl_dev = bhnd_retain_provider(dev, BHND_SERVICE_PWRCTL);
-
-	if (ctx->pmu_dev == NULL && ctx->pwrctl_dev == NULL) {
-		device_printf(dev, "missing PMU/PWRCTL device\n");
-		error = ENXIO;
-		goto failed;
-	}
 
 	/* Populate NVRAM data */
 	if ((error = bwn_bhnd_populate_nvram_data(dev, ctx)))
@@ -129,11 +121,6 @@ failed:
 		if (ctx->pmu_dev != NULL) {
 			bhnd_release_provider(dev, ctx->pmu_dev,
 			    BHND_SERVICE_PMU);
-		}
-
-		if (ctx->pwrctl_dev != NULL) {
-			bhnd_release_provider(dev, ctx->pmu_dev,
-			    BHND_SERVICE_PWRCTL);
 		}
 
 		free(ctx, M_DEVBUF);
@@ -157,9 +144,6 @@ bwn_bhnd_bus_ops_fini(device_t dev)
 
 	if (ctx->pmu_dev != NULL)
 		bhnd_release_provider(dev, ctx->pmu_dev,BHND_SERVICE_PMU);
-
-	if (ctx->pwrctl_dev != NULL)
-		bhnd_release_provider(dev, ctx->pmu_dev, BHND_SERVICE_PWRCTL);
 
 	free(ctx, M_DEVBUF);
 	sc->sc_bus_ctx = NULL;
@@ -563,25 +547,10 @@ bhnd_compat_get_type(device_t dev)
 static uint32_t
 bhnd_compat_get_cc_pmufreq(device_t dev)
 {
-	struct bwn_bhnd_ctx	*ctx;
-	uint32_t		 freq;
-	int			 error;
+	u_int	freq;
+	int	error;
 
-	ctx = bwn_bhnd_get_ctx(dev);
-
-	if (ctx->pmu_dev != NULL) {
-		error = bhnd_pmu_get_clock_freq(ctx->pmu_dev, BHND_CLOCK_ALP,
-		    &freq);
-
-	} else if (ctx->pwrctl_dev != NULL) {
-		error = bhnd_pwrctl_get_clock_freq(ctx->pwrctl_dev,
-		    BHND_CLOCK_ALP, &freq);
-
-	} else {
-		panic("missing PMU/PWRCTL");
-	}
-
-	if (error)
+	if ((error = bhnd_get_clock_freq(dev, BHND_CLOCK_ALP, &freq)))
 		panic("failed to fetch clock frequency: %d", error);
 
 	return (freq);
@@ -630,25 +599,10 @@ bhnd_compat_get_cc_caps(device_t dev)
 static uint16_t
 bhnd_compat_get_cc_powerdelay(device_t dev)
 {
-	struct bwn_bhnd_ctx	*ctx;
-	u_int			 delay;
-	int			 error;
+	u_int	 delay;
+	int	 error;
 
-	ctx = bwn_bhnd_get_ctx(dev);
-
-	if (ctx->pmu_dev != NULL) {
-		error = bhnd_pmu_get_clock_latency(ctx->pmu_dev, BHND_CLOCK_HT,
-		    &delay);
-
-	} else if (ctx->pwrctl_dev != NULL) {
-		error = bhnd_pwrctl_get_clock_latency(ctx->pwrctl_dev,
-		    BHND_CLOCK_HT, &delay);
-
-	} else {
-		panic("missing PMU/PWRCTL");
-	}
-
-	if (error)
+	if ((error = bhnd_get_clock_latency(dev, BHND_CLOCK_HT, &delay)))
 		panic("failed to fetch clock latency: %d", error);
 
 	if (delay > UINT16_MAX)

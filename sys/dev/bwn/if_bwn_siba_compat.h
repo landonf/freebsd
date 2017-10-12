@@ -42,7 +42,6 @@
  */
 struct bwn_bhnd_ctx {
 	device_t	pmu_dev;	/**< PMU provider, if any */
-	device_t	pwrctl_dev;	/**< PWRCTL provider, if any */
 
 	uint8_t		sromrev;	/**< SROM format revision */
 
