@@ -2200,7 +2200,28 @@ bhnd_compat_sprom_get_mcs5ghpo(device_t dev, uint16_t *c)
 static void
 bhnd_compat_pmu_spuravoid_pllupdate(device_t dev, int spur_avoid)
 {
-	panic("siba_pmu_spuravoid_pllupdate() unimplemented");
+	struct bwn_bhnd_ctx	*ctx;
+	bhnd_pmu_spuravoid	 mode;
+	int			 error;
+
+	ctx = bwn_bhnd_get_ctx(dev);
+
+	if (ctx->pmu_dev == NULL)
+		panic("requested spuravoid on non-PMU device");
+
+	switch (spur_avoid) {
+	case 0:
+		mode = BHND_PMU_SPURAVOID_NONE;
+		break;
+	case 1:
+		mode = BHND_PMU_SPURAVOID_M1;
+		break;
+	default:
+		panic("unknown spur_avoid: %d", spur_avoid);
+	}
+
+	if ((error = bhnd_pmu_request_spuravoid(ctx->pmu_dev, mode)))
+		panic("spuravoid request failed: %d", error);
 }
 
 /*
