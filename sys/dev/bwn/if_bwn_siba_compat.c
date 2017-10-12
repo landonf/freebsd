@@ -578,7 +578,8 @@ bhnd_compat_get_cc_pmufreq(device_t dev)
 	if ((error = bhnd_get_clock_freq(dev, BHND_CLOCK_ALP, &freq)))
 		panic("failed to fetch clock frequency: %d", error);
 
-	return (freq);
+	/* bwn(4) expects frequency in MHz */
+	return (freq / 1000);
 }
 
 /*
