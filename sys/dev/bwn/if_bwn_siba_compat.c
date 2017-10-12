@@ -81,6 +81,7 @@ bwn_bhnd_bus_ops_init(device_t dev)
 {
 	struct bwn_bhnd_ctx	*ctx;
 	struct bwn_softc	*sc;
+	const struct chipc_caps	*ccaps;
 	int			 error;
 
 	sc = device_get_softc(dev);
@@ -102,8 +103,25 @@ bwn_bhnd_bus_ops_init(device_t dev)
 	/* Allocate our context */
 	ctx = malloc(sizeof(struct bwn_bhnd_ctx), M_DEVBUF, M_WAITOK|M_ZERO);
 
-	/* Fetch our PMU reference (if this is a PMU-equipped device) */
-	ctx->pmu_dev = bhnd_retain_provider(dev, BHND_SERVICE_PMU);
+	/* Locate the ChipCommon device */
+	ctx->chipc_dev = bhnd_retain_provider(dev, BHND_SERVICE_CHIPC);
+	if (ctx->chipc_dev == NULL) {
+		device_printf(dev, "ChipCommon not found\n");
+		error = ENXIO;
+		goto failed;
+	}
+
+	ccaps = BHND_CHIPC_GET_CAPS(ctx->chipc_dev);
+
+	/* Locate the PMU device */
+	if (ccaps->pmu) {
+		ctx->pmu_dev = bhnd_retain_provider(dev, BHND_SERVICE_PMU);
+		if (ctx->pmu_dev == NULL) {
+			device_printf(dev, "PMU not found\n");
+			error = ENXIO;
+			goto failed;
+		}
+	}
 
 	/* Populate NVRAM data */
 	if ((error = bwn_bhnd_populate_nvram_data(dev, ctx)))
@@ -118,6 +136,11 @@ failed:
 	    sc->sc_mem_res);
 
 	if (ctx != NULL) {
+		if (ctx->chipc_dev != NULL) {
+			bhnd_release_provider(dev, ctx->chipc_dev,
+			    BHND_SERVICE_CHIPC);
+		}
+
 		if (ctx->pmu_dev != NULL) {
 			bhnd_release_provider(dev, ctx->pmu_dev,
 			    BHND_SERVICE_PMU);
@@ -141,6 +164,8 @@ bwn_bhnd_bus_ops_fini(device_t dev)
 	bhnd_release_pmu(dev);
 	bhnd_release_resource(dev, SYS_RES_MEMORY, sc->sc_mem_rid,
 	    sc->sc_mem_res);
+
+	bhnd_release_provider(dev, ctx->chipc_dev, BHND_SERVICE_CHIPC);
 
 	if (ctx->pmu_dev != NULL)
 		bhnd_release_provider(dev, ctx->pmu_dev, BHND_SERVICE_PMU);
@@ -2234,7 +2259,30 @@ bhnd_compat_pmu_spuravoid_pllupdate(device_t dev, int spur_avoid)
 static void
 bhnd_compat_cc_set32(device_t dev, uint32_t reg, uint32_t val)
 {
-	panic("siba_cc_set32() unimplemented");
+	struct bwn_bhnd_ctx *ctx = bwn_bhnd_get_ctx(dev);
+	
+	/*
+	 * OR with the current value.
+	 *
+	 * This function is only ever used to write to either ChipCommon's
+	 * chipctrl register or chipctl_data register. Note that chipctl_data
+	 * is actually a PMU register; it is not actually mapped by ChipCommon
+	 * on Always-on-Bus (AOB) devices with a standalone PMU core.
+	 */
+	if (dev != ctx->chipc_dev)
+		panic("unsupported device: %s", device_get_nameunit(dev));
+
+	switch (reg) {
+	case SIBA_CC_CHIPCTL:
+		BHND_CHIPC_WRITE_CHIPCTRL(ctx->chipc_dev, val, val);
+		break;
+	case SIBA_CC_CHIPCTL_DATA:
+		bhnd_pmu_write_chipctrl(ctx->pmu_dev, ctx->pmu_cctl_addr, val,
+		    val);
+		break;
+	default:
+		panic("unsupported register: %#x", reg);
+	}
 }
 
 /*
@@ -2246,7 +2294,27 @@ bhnd_compat_cc_set32(device_t dev, uint32_t reg, uint32_t val)
 static void
 bhnd_compat_cc_mask32(device_t dev, uint32_t reg, uint32_t mask)
 {
-	panic("siba_cc_mask32() unimplemented");
+	struct bwn_bhnd_ctx *ctx = bwn_bhnd_get_ctx(dev);
+
+	/*
+	 * AND with the current value.
+	 *
+	 * This function is only ever used to write to ChipCommon's chipctl_data
+	 * register. Note that chipctl_data is actually a PMU register; it is
+	 * not actually mapped by ChipCommon on Always-on-Bus (AOB) devices with
+	 * a standalone PMU core.
+	 */
+	if (dev != ctx->chipc_dev)
+		panic("unsupported device: %s", device_get_nameunit(dev));
+
+	switch (reg) {
+	case SIBA_CC_CHIPCTL_DATA:
+		bhnd_pmu_write_chipctrl(ctx->pmu_dev, ctx->pmu_cctl_addr, 0,
+		    ~mask);
+		break;
+	default:
+		panic("unsupported register: %#x", reg);
+	}
 }
 
 /*
@@ -2258,7 +2326,28 @@ bhnd_compat_cc_mask32(device_t dev, uint32_t reg, uint32_t mask)
 static void
 bhnd_compat_cc_write32(device_t dev, uint32_t reg, uint32_t val)
 {
-	panic("siba_cc_write32() unimplemented");
+	struct bwn_bhnd_ctx *ctx = bwn_bhnd_get_ctx(dev);
+
+	/*
+	 * This function is only ever used to write to ChipCommon's chipctl_addr
+	 * register; setting chipctl_addr is handled atomically by
+	 * bhnd_pmu_write_chipctrl(), so we merely cache the intended address
+	 * for later use when chipctl_data is written.
+	 *
+	 * Also, note that chipctl_addr is actually a PMU register; it is
+	 * not actually mapped by ChipCommon on Always-on-Bus (AOB) devices with
+	 * a standalone PMU core.
+	 */
+	if (dev != ctx->chipc_dev)
+		panic("unsupported device: %s", device_get_nameunit(dev));
+
+	switch (reg) {
+	case SIBA_CC_CHIPCTL_ADDR:
+		ctx->pmu_cctl_addr = val;
+		break;
+	default:
+		panic("unsupported register: %#x", reg);
+	}
 }
 
 const struct bwn_bus_ops bwn_bhnd_bus_ops = {
