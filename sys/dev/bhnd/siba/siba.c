@@ -797,16 +797,9 @@ siba_suspend_hw(device_t dev, device_t child)
 	 */
 	SIBA_LOCK(sc);
 	if (dinfo->pmu_state == SIBA_PMU_PWRCTL) {
-		device_t pwrctl;
-
-		pwrctl = bhnd_retain_provider(child, BHND_SERVICE_PWRCTL);
-		KASSERT(pwrctl == dinfo->pmu.pwrctl,
-		    ("PWRCTL provider went missing"));
-		SIBA_UNLOCK(sc);
-
-		error = BHND_PWRCTL_REQUEST_CLOCK(pwrctl, child,
+		error = bhnd_pwrctl_request_clock(dinfo->pmu.pwrctl, child,
 		    BHND_CLOCK_DYN);
-		bhnd_release_provider(child, pwrctl, BHND_SERVICE_PWRCTL);
+		SIBA_UNLOCK(sc);
 
 		if (error) {
 			device_printf(child, "failed to release clock request: "
