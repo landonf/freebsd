@@ -517,7 +517,7 @@ bhnd_generic_release_pmu(device_t dev, device_t child)
 	bhnd_set_pmu_info(child, NULL);
 
 	/* Before freeing the clkctl instance, save a pointer to resources we
-	 * need to clean up manually*/
+	 * need to clean up manually */
 	r = clkctl->cc_res;
 	pmu_dev = clkctl->cc_pmu_dev;
 
