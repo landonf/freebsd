@@ -39,11 +39,12 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/malloc.h>
 #include <sys/module.h>
+#include <sys/refcount.h>
 #include <sys/systm.h>
 
 #include <machine/bus.h>
 
-#include "bhnd_pwrctl_if.h"
+#include <dev/bhnd/cores/chipc/pwrctl/bhnd_pwrctl.h>
 
 #include "sibareg.h"
 #include "sibavar.h"
@@ -167,7 +168,6 @@ siba_read_ivar(device_t dev, device_t child, int index, uintptr_t *result)
 			return (0);
 
 		case SIBA_PMU_PWRCTL:
-		case SIBA_PMU_PWRCTL_RELEASE:
 			panic("bhnd_get_pmu_info() called with "
 			    "SIBA_PMU_PWRCTL");
 			return (ENXIO);
@@ -211,7 +211,6 @@ siba_write_ivar(device_t dev, device_t child, int index, uintptr_t value)
 			return (0);
 
 		case SIBA_PMU_PWRCTL:
-		case SIBA_PMU_PWRCTL_RELEASE:
 			panic("bhnd_set_pmu_info() called with "
 			    "SIBA_PMU_PWRCTL");
 			return (ENXIO);
@@ -298,7 +297,6 @@ siba_release_pmu(device_t dev, device_t child)
 	SIBA_LOCK(sc);
 	switch(dinfo->pmu_state) {
 	case SIBA_PMU_NONE:
-	case SIBA_PMU_PWRCTL_RELEASE:
 		panic("pmu over-release for %s", device_get_nameunit(child));
 		SIBA_UNLOCK(sc);
 		return (ENXIO);
@@ -308,35 +306,102 @@ siba_release_pmu(device_t dev, device_t child)
 		return (bhnd_generic_release_pmu(dev, child));
 
 	case SIBA_PMU_PWRCTL:
-		/* Transition to PWRCTL_RELEASE state */
-		pwrctl = dinfo->pmu.pwrctl;
-		dinfo->pmu_state = SIBA_PMU_PWRCTL_RELEASE;
-
 		/* Requesting BHND_CLOCK_DYN releases any outstanding clock
 		 * reservations */
-		SIBA_UNLOCK(sc);
-		error = BHND_PWRCTL_REQUEST_CLOCK(pwrctl, child,
+		pwrctl = dinfo->pmu.pwrctl;
+		error = bhnd_pwrctl_request_clock(pwrctl, child,
 		    BHND_CLOCK_DYN);
-		SIBA_LOCK(sc);
-
-		KASSERT(dinfo->pmu_state == SIBA_PMU_PWRCTL_RELEASE, ("PMU "
-		    "state modified: %d", dinfo->pmu_state));
-
-		/* On failure, restore PWRCTL state to allow retry */
 		if (error) {
-			dinfo->pmu_state = SIBA_PMU_PWRCTL;
 			SIBA_UNLOCK(sc);
 			return (error);
 		}
 
-		/* Otherwise, clean up our provider reference */
+		/* Clean up the child's PMU state */
 		dinfo->pmu_state = SIBA_PMU_NONE;
 		dinfo->pmu.pwrctl = NULL;
 		SIBA_UNLOCK(sc);
 
+		/* Release the provider reference */
 		bhnd_release_provider(child, pwrctl, BHND_SERVICE_PWRCTL);
 		return (0);
 	}
+}
+
+/* BHND_BUS_GET_CLOCK_LATENCY() */
+static int
+siba_get_clock_latency(device_t dev, device_t child, bhnd_clock clock,
+    u_int *latency)
+{
+	struct siba_softc	*sc;
+	struct siba_devinfo	*dinfo;
+	int			 error;
+
+	if (device_get_parent(child) != dev)
+		return (EINVAL);
+
+	sc = device_get_softc(dev);
+	dinfo = device_get_ivars(child);
+
+	SIBA_LOCK(sc);
+	switch(dinfo->pmu_state) {
+	case SIBA_PMU_NONE:
+		panic("no active PMU request state");
+
+		SIBA_UNLOCK(sc);
+		return (ENXIO);
+
+	case SIBA_PMU_BHND:
+		SIBA_UNLOCK(sc);
+		return (bhnd_generic_get_clock_latency(dev, child, clock,
+		    latency));
+
+	case SIBA_PMU_PWRCTL:
+		 error = bhnd_pwrctl_get_clock_latency(dinfo->pmu.pwrctl, clock,
+		    latency);
+		 SIBA_UNLOCK(sc);
+
+		 return (error);
+	}
+
+	panic("invalid PMU state: %d", dinfo->pmu_state);
+}
+
+/* BHND_BUS_GET_CLOCK_FREQ() */
+static int
+siba_get_clock_freq(device_t dev, device_t child, bhnd_clock clock,
+    u_int *freq)
+{
+	struct siba_softc	*sc;
+	struct siba_devinfo	*dinfo;
+	int			 error;
+
+	if (device_get_parent(child) != dev)
+		return (EINVAL);
+
+	sc = device_get_softc(dev);
+	dinfo = device_get_ivars(child);
+
+	SIBA_LOCK(sc);
+	switch(dinfo->pmu_state) {
+	case SIBA_PMU_NONE:
+		panic("no active PMU request state");
+
+		SIBA_UNLOCK(sc);
+		return (ENXIO);
+
+	case SIBA_PMU_BHND:
+		SIBA_UNLOCK(sc);
+		return (bhnd_generic_get_clock_freq(dev, child, clock, freq));
+
+	case SIBA_PMU_PWRCTL:
+		error = bhnd_pwrctl_get_clock_freq(dinfo->pmu.pwrctl, clock,
+		    freq);
+		SIBA_UNLOCK(sc);
+
+		return (error);
+	}
+
+	panic("invalid PMU state: %d", dinfo->pmu_state);
 }
 
 /* BHND_BUS_REQUEST_EXT_RSRC() */
@@ -355,7 +420,6 @@ siba_request_ext_rsrc(device_t dev, device_t child, u_int rsrc)
 	SIBA_LOCK(sc);
 	switch(dinfo->pmu_state) {
 	case SIBA_PMU_NONE:
-	case SIBA_PMU_PWRCTL_RELEASE:
 		panic("no active PMU request state");
 
 		SIBA_UNLOCK(sc);
@@ -390,7 +454,6 @@ siba_release_ext_rsrc(device_t dev, device_t child, u_int rsrc)
 	SIBA_LOCK(sc);
 	switch(dinfo->pmu_state) {
 	case SIBA_PMU_NONE:
-	case SIBA_PMU_PWRCTL_RELEASE:
 		panic("no active PMU request state");
 
 		SIBA_UNLOCK(sc);
@@ -415,7 +478,6 @@ siba_request_clock(device_t dev, device_t child, bhnd_clock clock)
 {
 	struct siba_softc	*sc;
 	struct siba_devinfo	*dinfo;
-	device_t		 pwrctl;
 	int			 error;
 
 	if (device_get_parent(child) != dev)
@@ -427,7 +489,6 @@ siba_request_clock(device_t dev, device_t child, bhnd_clock clock)
 	SIBA_LOCK(sc);
 	switch(dinfo->pmu_state) {
 	case SIBA_PMU_NONE:
-	case SIBA_PMU_PWRCTL_RELEASE:
 		panic("no active PMU request state");
 
 		SIBA_UNLOCK(sc);
@@ -438,13 +499,9 @@ siba_request_clock(device_t dev, device_t child, bhnd_clock clock)
 		return (bhnd_generic_request_clock(dev, child, clock));
 
 	case SIBA_PMU_PWRCTL:
-		pwrctl = bhnd_retain_provider(child, BHND_SERVICE_PWRCTL);
-		KASSERT(pwrctl == dinfo->pmu.pwrctl,
-		    ("PWRCTL provider went missing"));
+		error = bhnd_pwrctl_request_clock(dinfo->pmu.pwrctl, child,
+		    clock);
 		SIBA_UNLOCK(sc);
-
-		error = BHND_PWRCTL_REQUEST_CLOCK(pwrctl, child, clock);
-		bhnd_release_provider(child, pwrctl, BHND_SERVICE_PWRCTL);
 
 		return (error);
 	}
@@ -468,7 +525,6 @@ siba_enable_clocks(device_t dev, device_t child, uint32_t clocks)
 	SIBA_LOCK(sc);
 	switch(dinfo->pmu_state) {
 	case SIBA_PMU_NONE:
-	case SIBA_PMU_PWRCTL_RELEASE:
 		panic("no active PMU request state");
 
 		SIBA_UNLOCK(sc);
@@ -479,6 +535,7 @@ siba_enable_clocks(device_t dev, device_t child, uint32_t clocks)
 		return (bhnd_generic_enable_clocks(dev, child, clocks));
 
 	case SIBA_PMU_PWRCTL:
+		SIBA_UNLOCK(sc);
 
 		/* All (supported) clocks are already enabled by default */
 		clocks &= ~(BHND_CLOCK_DYN |
@@ -492,12 +549,10 @@ siba_enable_clocks(device_t dev, device_t child, uint32_t clocks)
 			return (ENODEV);
 		}
 
-		SIBA_UNLOCK(sc);
 		return (0);
 	}
 
 	panic("invalid PMU state: %d", dinfo->pmu_state);
-
 }
 
 static int

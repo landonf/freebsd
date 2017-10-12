@@ -1213,6 +1213,10 @@ cleanup:
  * instance for @p dev.
  * 
  * @param dev		The bhnd(4) core device mapped by @p r.
+ * @param pmu_dev	The bhnd(4) PMU device, implmenting the bhnd_pmu_if
+ *			interface. The caller is responsible for ensuring that
+ *			this reference remains valid for the lifetime of the
+ *			returned clkctl instance.
  * @param r		A resource mapping the core's clock control register
  * 			(see BHND_CLK_CTL_ST). The caller is responsible for
  *			ensuring that this resource remains valid for the
@@ -1227,8 +1231,8 @@ cleanup:
  * 
  */
 struct bhnd_core_clkctl *
-bhnd_alloc_core_clkctl(device_t dev, struct bhnd_resource *r, bus_size_t offset,
-    u_int max_latency)
+bhnd_alloc_core_clkctl(device_t dev, device_t pmu_dev, struct bhnd_resource *r,
+    bus_size_t offset, u_int max_latency)
 {
 	struct bhnd_core_clkctl	*clkctl;
 
@@ -1237,6 +1241,7 @@ bhnd_alloc_core_clkctl(device_t dev, struct bhnd_resource *r, bus_size_t offset,
 		return (NULL);
 
 	clkctl->cc_dev = dev;
+	clkctl->cc_pmu_dev = pmu_dev;
 	clkctl->cc_res = r;
 	clkctl->cc_res_offset = offset;
 	clkctl->cc_max_latency = max_latency;

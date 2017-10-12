@@ -373,7 +373,10 @@ bhnd_generic_alloc_pmu(device_t dev, device_t child)
 	int				 error;
 
 	GIANT_REQUIRED;	/* for newbus */
-	
+
+	if (device_get_parent(child) != dev)
+		return (EINVAL);
+
 	sc = device_get_softc(dev);
 	clkctl = bhnd_get_pmu_info(child);
 	pmu_regs = BHND_CLK_CTL_ST;
@@ -439,31 +442,34 @@ bhnd_generic_alloc_pmu(device_t dev, device_t child)
 	else
 		pmu_regs -= r_addr - rman_get_start(rle->res);
 
-	/* Fetch the maximum transition latency from our PMU */
+	/* Retain a PMU reference for the clkctl instance state */
 	pmu_dev = bhnd_retain_provider(child, BHND_SERVICE_PMU);
 	if (pmu_dev == NULL) {
 		device_printf(sc->dev, "PMU not found\n");
 		return (ENXIO);
 	}
 
+	/* Fetch the maximum transition latency from our PMU */
 	max_latency = bhnd_pmu_get_max_transition_latency(pmu_dev);
-
-	bhnd_release_provider(child, pmu_dev, BHND_SERVICE_PMU);
 
 	/* Allocate a new bhnd_resource wrapping the standard resource we
 	 * fetched from the resource list; we'll free this in
 	 * bhnd_generic_release_pmu() */
 	r = malloc(sizeof(struct bhnd_resource), M_BHND, M_NOWAIT);
-	if (r == NULL)
+	if (r == NULL) {
+		bhnd_release_provider(child, pmu_dev, BHND_SERVICE_PMU);
 		return (ENOMEM);
+	}
 
 	r->res = rle->res;
 	r->direct = ((rman_get_flags(rle->res) & RF_ACTIVE) != 0);
 
 	/* Allocate the clkctl instance */
-	clkctl = bhnd_alloc_core_clkctl(child, r, pmu_regs, max_latency);
+	clkctl = bhnd_alloc_core_clkctl(child, pmu_dev, r, pmu_regs,
+	    max_latency);
 	if (clkctl == NULL) {
 		free(r, M_BHND);
+		bhnd_release_provider(child, pmu_dev, BHND_SERVICE_PMU);
 		return (ENOMEM);
 	}
 
@@ -480,10 +486,14 @@ bhnd_generic_release_pmu(device_t dev, device_t child)
 	struct bhnd_softc	*sc;
 	struct bhnd_core_clkctl	*clkctl;
 	struct bhnd_resource	*r;
+	device_t		 pmu_dev;
 
 	GIANT_REQUIRED;	/* for newbus */
 	
 	sc = device_get_softc(dev);
+
+	if (device_get_parent(child) != dev)
+		return (EINVAL);
 
 	clkctl = bhnd_get_pmu_info(child);
 	if (clkctl == NULL)
@@ -506,10 +516,10 @@ bhnd_generic_release_pmu(device_t dev, device_t child)
 	/* Clear child's PMU info reference */
 	bhnd_set_pmu_info(child, NULL);
 
-	/* Save a reference to the bhnd resource wrapper we allocated in
-	 * bhnd_generic_alloc_pmu() before freeing its containing clkctl
-	 * instance */
+	/* Before freeing the clkctl instance, save a pointer to resources we
+	 * need to clean up manually*/
 	r = clkctl->cc_res;
+	pmu_dev = clkctl->cc_pmu_dev;
 
 	/* Free the clkctl instance */
 	bhnd_free_core_clkctl(clkctl);
@@ -517,7 +527,46 @@ bhnd_generic_release_pmu(device_t dev, device_t child)
 	/* Free the bhnd resource wrapper */
 	free(r, M_BHND);
 
+	/* Release our PMU provider reference */
+	bhnd_release_provider(child, pmu_dev, BHND_SERVICE_PMU);
+
 	return (0);
+}
+
+/**
+ * Default bhnd(4) bus driver implementation of BHND_BUS_GET_CLOCK_LATENCY().
+ */
+int
+bhnd_generic_get_clock_latency(device_t dev, device_t child, bhnd_clock clock,
+    u_int *latency)
+{
+	struct bhnd_core_clkctl *clkctl;
+
+	if (device_get_parent(child) != dev)
+		return (EINVAL);
+
+	if ((clkctl = bhnd_get_pmu_info(child)) == NULL)
+		panic("no active PMU allocation");
+
+	return (bhnd_pmu_get_clock_latency(clkctl->cc_pmu_dev, clock, latency));
+}
+
+/**
+ * Default bhnd(4) bus driver implementation of BHND_BUS_GET_CLOCK_FREQ().
+ */
+int
+bhnd_generic_get_clock_freq(device_t dev, device_t child, bhnd_clock clock,
+    u_int *freq)
+{
+	struct bhnd_core_clkctl *clkctl;
+
+	if (device_get_parent(child) != dev)
+		return (EINVAL);
+
+	if ((clkctl = bhnd_get_pmu_info(child)) == NULL)
+		panic("no active PMU allocation");
+
+	return (bhnd_pmu_get_clock_freq(clkctl->cc_pmu_dev, clock, freq));
 }
 
 /**
@@ -533,6 +582,9 @@ bhnd_generic_request_clock(device_t dev, device_t child, bhnd_clock clock)
 	int			 error;
 
 	sc = device_get_softc(dev);
+
+	if (device_get_parent(child) != dev)
+		return (EINVAL);
 
 	if ((clkctl = bhnd_get_pmu_info(child)) == NULL)
 		panic("no active PMU allocation");
@@ -589,9 +641,11 @@ bhnd_generic_enable_clocks(device_t dev, device_t child, uint32_t clocks)
 
 	sc = device_get_softc(dev);
 
+	if (device_get_parent(child) != dev)
+		return (EINVAL);
+
 	if ((clkctl = bhnd_get_pmu_info(child)) == NULL)
 		panic("no active PMU allocation");
-
 
 	BHND_ASSERT_CLKCTL_AVAIL(clkctl);
 
@@ -653,6 +707,9 @@ bhnd_generic_request_ext_rsrc(device_t dev, device_t child, u_int rsrc)
 
 	sc = device_get_softc(dev);
 
+	if (device_get_parent(child) != dev)
+		return (EINVAL);
+
 	if ((clkctl = bhnd_get_pmu_info(child)) == NULL)
 		panic("no active PMU allocation");
 
@@ -690,6 +747,9 @@ bhnd_generic_release_ext_rsrc(device_t dev, device_t child, u_int rsrc)
 	uint32_t		 mask;
 
 	sc = device_get_softc(dev);
+
+	if (device_get_parent(child) != dev)
+		return (EINVAL);
 
 	if ((clkctl = bhnd_get_pmu_info(child)) == NULL)
 		panic("no active PMU allocation");

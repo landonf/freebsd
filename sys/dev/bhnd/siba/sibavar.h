@@ -190,10 +190,9 @@ struct siba_core_id {
  * siba(4) per-core PMU allocation state.
  */
 typedef enum {
-	SIBA_PMU_NONE,			/**< If the core has not yet allocated PMU state */
-	SIBA_PMU_BHND,			/**< If standard bhnd(4) PMU support should be used */
-	SIBA_PMU_PWRCTL,		/**< If legacy PWRCTL PMU support should be used */
-	SIBA_PMU_PWRCTL_RELEASE,	/**< If legacy PWRCTL clock reservations are being released */
+	SIBA_PMU_NONE,		/**< If the core has not yet allocated PMU state */
+	SIBA_PMU_BHND,		/**< If standard bhnd(4) PMU support should be used */
+	SIBA_PMU_PWRCTL,	/**< If legacy PWRCTL PMU support should be used */
 } siba_pmu_state;
 
 /**
