@@ -41,7 +41,11 @@
  * Compatiblity shim state.
  */
 struct bwn_bhnd_ctx {
-	device_t	pmu_dev;	/**< PMU provider, if any */
+	device_t	chipc_dev;	/**< ChipCommon device */
+	device_t	pmu_dev;	/**< PMU device, or NULL if no PMU */
+	uint32_t	pmu_cctl_addr;	/**< chipctrl_addr target of
+					     reads/writes to/from the
+					     chipctrl_data register */
 
 	uint8_t		sromrev;	/**< SROM format revision */
 
