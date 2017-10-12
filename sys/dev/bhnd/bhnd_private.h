@@ -69,6 +69,7 @@ enum {
  */
 struct bhnd_core_clkctl {
 	device_t		 cc_dev;		/**< core device */
+	device_t		 cc_pmu_dev;		/**< pmu device */
 	uint32_t		 cc_quirks;		/**< core-specific clkctl quirks */
 	struct bhnd_resource	*cc_res;		/**< resource mapping core's clkctl register */
 	bus_size_t		 cc_res_offset;		/**< offset to clkctl register */

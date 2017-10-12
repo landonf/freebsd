@@ -139,6 +139,20 @@ CODE {
 	}
 
 	static int
+	bhnd_bus_null_get_clock_latency(device_t dev, device_t child,
+	    bhnd_clock clock, u_int *latency)
+	{
+		panic("bhnd_pmu_get_clock_latency unimplemented");
+	}
+
+	static int
+	bhnd_bus_null_get_clock_freq(device_t dev, device_t child,
+	    bhnd_clock clock, u_int *freq)
+	{
+		panic("bhnd_pmu_get_clock_freq unimplemented");
+	}
+
+	static int
 	bhnd_bus_null_request_clock(device_t dev, device_t child,
 	    bhnd_clock clock)
 	{
@@ -681,6 +695,53 @@ METHOD int release_pmu {
 	device_t child;
 } DEFAULT bhnd_bus_null_release_pmu;
 
+/**
+ * Return the transition latency required for @p clock in microseconds, if
+ * known.
+ *
+ * The BHND_CLOCK_HT latency value is suitable for use as the D11 core's
+ * 'fastpwrup_dly' value. 
+ *
+ * @note A driver must ask the bhnd bus to allocate PMU request state
+ * via BHND_BUS_ALLOC_PMU() before querying PMU clocks.
+ *
+ * @param dev The parent of @p child.
+ * @param child The requesting bhnd device.
+ * @param clock	The clock to be queried for transition latency.
+ * @param[out] latency On success, the transition latency of @p clock in
+ * microseconds.
+ * 
+ * @retval 0		success
+ * @retval ENODEV	If the transition latency for @p clock is not available.
+ */
+METHOD int get_clock_latency {
+	device_t dev;
+	device_t child;
+	bhnd_clock clock;
+	u_int *latency;
+} DEFAULT bhnd_bus_null_get_clock_latency;
+
+/**
+ * Return the frequency for @p clock in Hz, if known.
+ *
+ * @param dev The parent of @p child.
+ * @param child The requesting bhnd device.
+ * @param clock The clock to be queried.
+ * @param[out] freq On success, the frequency of @p clock in Hz.
+ *
+ * @note A driver must ask the bhnd bus to allocate PMU request state
+ * via BHND_BUS_ALLOC_PMU() before querying PMU clocks.
+ * 
+ * @retval 0		success
+ * @retval ENODEV	If the frequency for @p clock is not available.
+ */
+METHOD int get_clock_freq {
+	device_t dev;
+	device_t child;
+	bhnd_clock clock;
+	u_int *freq;
+} DEFAULT bhnd_bus_null_get_clock_freq;
+
 /** 
  * Request that @p clock (or faster) be routed to @p child.
  * 
@@ -692,7 +753,7 @@ METHOD int release_pmu {
  *
  * @param dev The parent of @p child.
  * @param child The bhnd device requesting @p clock.
- * @param clock The requested clock source. 
+ * @param clock The requested clock source.
  *
  * @retval 0		success
  * @retval ENODEV	If an unsupported clock was requested.

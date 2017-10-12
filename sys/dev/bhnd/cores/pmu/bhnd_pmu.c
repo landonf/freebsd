@@ -136,7 +136,7 @@ bhnd_pmu_attach(device_t dev, struct bhnd_resource *res)
 	/* Allocate our own core clkctl state directly; we use this to wait on
 	 * PMU state transitions, avoiding a cyclic dependency between bhnd(4)'s
 	 * clkctl handling and registration of this device as a PMU */
-	sc->clkctl = bhnd_alloc_core_clkctl(core, sc->res, BHND_CLK_CTL_ST,
+	sc->clkctl = bhnd_alloc_core_clkctl(core, dev, sc->res, BHND_CLK_CTL_ST,
 	    BHND_PMU_MAX_TRANSITION_DLY);
 	if (sc->clkctl == NULL) {
 		device_printf(sc->dev, "failed to allocate clkctl for %s\n",

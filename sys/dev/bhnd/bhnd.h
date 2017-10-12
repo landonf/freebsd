@@ -1003,8 +1003,7 @@ bhnd_unmap_intr(device_t dev, rman_res_t irq)
  * calling bhnd_alloc_pmu(), and must not be released until after
  * calling bhnd_release_pmu().
  *
- * @param dev The parent of @p child.
- * @param child The requesting bhnd device.
+ * @param dev The requesting bhnd device.
  * 
  * @retval 0           success
  * @retval non-zero    If allocating PMU request state otherwise fails, a
@@ -1020,8 +1019,7 @@ bhnd_alloc_pmu(device_t dev)
  * Release any per-core PMU resources allocated for @p child. Any outstanding
  * PMU requests are are discarded.
  *
- * @param dev The parent of @p child.
- * @param child The requesting bhnd device.
+ * @param dev The requesting bhnd device.
  * 
  * @retval 0           success
  * @retval non-zero    If releasing PMU request state otherwise fails, a
@@ -1032,6 +1030,51 @@ static inline int
 bhnd_release_pmu(device_t dev)
 {
 	return (BHND_BUS_RELEASE_PMU(device_get_parent(dev), dev));
+}
+
+/**
+ * Return the transition latency required for @p clock in microseconds, if
+ * known.
+ *
+ * The BHND_CLOCK_HT latency value is suitable for use as the D11 core's
+ * 'fastpwrup_dly' value. 
+ *
+ * @note A driver must ask the bhnd bus to allocate PMU request state
+ * via BHND_BUS_ALLOC_PMU() before querying PMU clocks.
+ *
+ * @param dev The requesting bhnd device.
+ * @param clock	The clock to be queried for transition latency.
+ * @param[out] latency On success, the transition latency of @p clock in
+ * microseconds.
+ * 
+ * @retval 0		success
+ * @retval ENODEV	If the transition latency for @p clock is not available.
+ */
+static inline int
+bhnd_get_clock_latency(device_t dev, bhnd_clock clock, u_int *latency)
+{
+	return (BHND_BUS_GET_CLOCK_LATENCY(device_get_parent(dev), dev, clock,
+	    latency));
+}
+
+/**
+ * Return the frequency for @p clock in Hz, if known.
+ *
+ * @param dev The requesting bhnd device.
+ * @param clock The clock to be queried.
+ * @param[out] freq On success, the frequency of @p clock in Hz.
+ *
+ * @note A driver must ask the bhnd bus to allocate PMU request state
+ * via BHND_BUS_ALLOC_PMU() before querying PMU clocks.
+ * 
+ * @retval 0		success
+ * @retval ENODEV	If the frequency for @p clock is not available.
+ */
+static inline int
+bhnd_get_clock_freq(device_t dev, bhnd_clock clock, u_int *freq)
+{
+	return (BHND_BUS_GET_CLOCK_FREQ(device_get_parent(dev), dev, clock,
+	    freq));
 }
 
 /** 
