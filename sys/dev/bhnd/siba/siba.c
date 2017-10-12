@@ -325,6 +325,8 @@ siba_release_pmu(device_t dev, device_t child)
 		bhnd_release_provider(child, pwrctl, BHND_SERVICE_PWRCTL);
 		return (0);
 	}
+
+	panic("invalid PMU state: %d", dinfo->pmu_state);
 }
 
 /* BHND_BUS_GET_CLOCK_LATENCY() */
