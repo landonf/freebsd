@@ -80,50 +80,50 @@ CODE {
 /**
  * If supported by the chipset, return the clock source for the given clock.
  *
- * @param dev The parent of @p child.
- * @param child The bhnd device requesting a clock source.
- * @param clock The clock for which a clock source will be returned.
+ * @param dev	The parent of @p child.
+ * @param child	The bhnd device requesting a clock source.
+ * @param clock	The clock for which a clock source will be returned.
  *
  * @retval	bhnd_clksrc		The clock source for @p clock.
  * @retval	BHND_CLKSRC_UNKNOWN	If @p clock is unsupported, or its
  *					clock source is not known to the bus.
  */
 METHOD bhnd_clksrc get_clksrc {
-	device_t dev;
-	device_t child;
-	bhnd_clock clock;
+	device_t	dev;
+	device_t	child;
+	bhnd_clock	clock;
 } DEFAULT bhnd_pwrctl_hostb_get_clksrc;
 
 /**
  * If supported by the chipset, gate the clock source for @p clock.
  *
- * @param dev The parent of @p child.
- * @param child The bhnd device requesting clock gating.
- * @param clock The clock to be disabled.
+ * @param dev	The parent of @p child.
+ * @param child	The bhnd device requesting clock gating.
+ * @param clock	The clock to be disabled.
  *
- * @retval 0 success
- * @retval ENODEV If bus-level clock source management is not supported.
- * @retval ENXIO If bus-level management of @p clock is not supported.
+ * @retval 0		success
+ * @retval ENODEV	If bus-level clock source management is not supported.
+ * @retval ENXIO	If bus-level management of @p clock is not supported.
  */
 METHOD int gate_clock {
-	device_t dev;
-	device_t child;
-	bhnd_clock clock;
+	device_t	dev;
+	device_t	child;
+	bhnd_clock	clock;
 } DEFAULT bhnd_pwrctl_hostb_gate_clock;
 
 /**
  * If supported by the chipset, ungate the clock source for @p clock.
  *
- * @param dev The parent of @p child.
- * @param child The bhnd device requesting clock gating.
- * @param clock The clock to be enabled.
+ * @param dev	The parent of @p child.
+ * @param child	The bhnd device requesting clock gating.
+ * @param clock	The clock to be enabled.
  *
- * @retval 0 success
- * @retval ENODEV If bus-level clock source management is not supported.
- * @retval ENXIO If bus-level management of @p clock is not supported.
+ * @retval 0		success
+ * @retval ENODEV	If bus-level clock source management is not supported.
+ * @retval ENXIO	If bus-level management of @p clock is not supported.
  */
 METHOD int ungate_clock {
-	device_t dev;
-	device_t child;
-	bhnd_clock clock;
+	device_t	dev;
+	device_t	child;
+	bhnd_clock	clock;
 } DEFAULT bhnd_pwrctl_hostb_ungate_clock;
