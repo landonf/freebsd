@@ -1459,6 +1459,8 @@ static device_method_t siba_methods[] = {
 	DEVMETHOD(bhnd_bus_enable_clocks,	siba_enable_clocks),
 	DEVMETHOD(bhnd_bus_request_ext_rsrc,	siba_request_ext_rsrc),
 	DEVMETHOD(bhnd_bus_release_ext_rsrc,	siba_release_ext_rsrc),
+	DEVMETHOD(bhnd_bus_get_clock_freq,	siba_get_clock_freq),
+	DEVMETHOD(bhnd_bus_get_clock_latency,	siba_get_clock_latency),
 	DEVMETHOD(bhnd_bus_read_ioctl,		siba_read_ioctl),
 	DEVMETHOD(bhnd_bus_write_ioctl,		siba_write_ioctl),
 	DEVMETHOD(bhnd_bus_read_iost,		siba_read_iost),
