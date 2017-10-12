@@ -143,7 +143,7 @@ bwn_bhnd_bus_ops_fini(device_t dev)
 	    sc->sc_mem_res);
 
 	if (ctx->pmu_dev != NULL)
-		bhnd_release_provider(dev, ctx->pmu_dev,BHND_SERVICE_PMU);
+		bhnd_release_provider(dev, ctx->pmu_dev, BHND_SERVICE_PMU);
 
 	free(ctx, M_DEVBUF);
 	sc->sc_bus_ctx = NULL;
