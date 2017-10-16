@@ -66,8 +66,6 @@ enum {
 	 * The CHIPC_GPIOPU and CHIPC_GPIOPD registers are not available.
 	 */
 	CC_GPIO_QUIRK_NO_PULLUPDOWN	= (1<<2),
-
-
 };
 
 /** ChipCommon GPIO pin modes */
@@ -93,6 +91,7 @@ struct chipc_gpio_update {
 	struct chipc_gpio_reg	pulldown;	/**< CHIPC_GPIOPD changes */
 	struct chipc_gpio_reg	out;		/**< CHIPC_GPIOOUT changes */
 	struct chipc_gpio_reg	outen;		/**< CHIPC_GPIOOUTEN changes */
+	struct chipc_gpio_reg	timeroutmask;	/**< CHIPC_GPIOTIMEROUTMASK changes */
 	struct chipc_gpio_reg	ctrl;		/**< CHIPC_GPIOCTRL changes */
 };
 
@@ -109,11 +108,11 @@ struct chipc_gpio_update {
  */
 struct chipc_gpio_softc {
 	device_t		 dev;
-	device_t		 gpiobus;
-	struct bhnd_resource	*mem_res;
-	int			 mem_rid;
-	uint32_t		 quirks;
-	struct mtx		 mtx;
+	device_t		 gpiobus;	/**< attached gpiobus child */
+	struct bhnd_resource	*mem_res;	/**< chipcommon register block */
+	int			 mem_rid;	/**< resource ID of mem_res */
+	uint32_t		 quirks;	/**< device quirks (see CC_GPIO_QUIRK_*) */
+	struct mtx		 mtx;		/**< lock protecting RMW register access */
 };
 
 #define	CC_GPIO_LOCK_INIT(sc)		mtx_init(&(sc)->mtx,	\

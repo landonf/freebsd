@@ -39,19 +39,19 @@ __FBSDID("$FreeBSD$");
 #include <sys/limits.h>
 #include <sys/module.h>
 
+#include <machine/_inttypes.h>
 #include <machine/bus.h>
 #include <sys/rman.h>
 #include <machine/resource.h>
-
-#include <machine/_inttypes.h>
 
 #include <dev/bhnd/bhnd.h>
 #include <dev/gpio/gpiobusvar.h>
 
 #include "gpio_if.h"
 
-#include "chipcreg.h"
+#include "bhnd_nvram_map.h"
 
+#include "chipcreg.h"
 #include "chipc_gpiovar.h"
 
 /*
@@ -121,7 +121,6 @@ chipc_gpio_attach(device_t dev)
 	sc->quirks = bhnd_device_quirks(chipc, chipc_gpio_devices,
 	    sizeof(chipc_gpio_devices[0]));
 
-
 	CC_GPIO_LOCK_INIT(sc);
 
 	sc->mem_rid = 0;
@@ -131,6 +130,29 @@ chipc_gpio_attach(device_t dev)
 		device_printf(dev, "failed to allocate chipcommon registers\n");
 		error = ENXIO;
 		goto failed;
+	}
+
+	/*
+	 * If hardware 'pulsate' support is available, set the timer duty-cycle
+	 * to either the NVRAM 'leddc' value if available, or the default duty
+	 * cycle.
+	 */
+	if (!CC_GPIO_QUIRK(sc, NO_DCTIMER)) {
+		uint32_t dctimerval;
+
+		/* TODO: Should this be externally configurable? */
+		error = bhnd_nvram_getvar_uint32(chipc, BHND_NVAR_LEDDC,
+		    &dctimerval);
+		if (error == ENOENT) {
+			/* Fall back on default duty cycle */
+			dctimerval = CHIPC_GPIOTIMERVAL_DEFAULT;
+		} else if (error) {
+			device_printf(dev, "error reading %s from NVRAM: %d\n",
+			    BHND_NVAR_LEDDC, error);
+			goto failed;
+		}
+
+		CC_GPIO_WR4(sc, CHIPC_GPIOTIMERVAL, dctimerval);
 	}
 
 	if (bhnd_get_attach_type(chipc) == BHND_ATTACH_ADAPTER) {
@@ -324,6 +346,9 @@ chipc_gpio_pin_getcaps(device_t dev, uint32_t pin_num, uint32_t *caps)
 	if (!CC_GPIO_QUIRK(sc, NO_PULLUPDOWN))
 		*caps |= (GPIO_PIN_PULLUP | GPIO_PIN_PULLDOWN);
 
+	if (!CC_GPIO_QUIRK(sc, NO_DCTIMER))
+		*caps |= GPIO_PIN_PULSATE;
+
 	return (0);
 }
 
@@ -352,6 +377,12 @@ chipc_gpio_pin_getflags(device_t dev, uint32_t pin_num, uint32_t *flags)
 
 	case CC_GPIO_PIN_OUTPUT:
 		*flags = GPIO_PIN_OUTPUT;
+
+		if (!CC_GPIO_QUIRK(sc, NO_DCTIMER)) {
+			if (CC_GPIO_RDFLAG(sc, pin_num, GPIOTIMEROUTMASK))
+				*flags |= GPIO_PIN_PULSATE;
+		}
+
 		break;
 
 	case CC_GPIO_PIN_TRISTATE:
@@ -460,7 +491,7 @@ chipc_gpio_pin_access_32(device_t dev, uint32_t first_pin, uint32_t clear_pins,
 		}
 
 		/* The pin must not tristated */
-		if ((ctrl & (1 << pin)) == 0) {
+		if ((ctrl & (1 << pin)) != 0) {
 			CC_GPIO_UNLOCK(sc);
 			return (EINVAL);
 		}
@@ -558,7 +589,9 @@ chipc_gpio_commit_update(struct chipc_gpio_softc *sc,
 	chipc_gpio_commit_reg(sc, CHIPC_GPIOPD, &update->pulldown);
 	chipc_gpio_commit_reg(sc, CHIPC_GPIOPU, &update->pullup);
 
-	/* Commit output before potentially enabling an output pin */
+	/* Commit output settings before potentially enabling an output pin */
+	chipc_gpio_commit_reg(sc, CHIPC_GPIOTIMEROUTMASK,
+	    &update->timeroutmask);
 	chipc_gpio_commit_reg(sc, CHIPC_GPIOOUT, &update->out);
 
 	/* Commit input/output/tristate modes */
@@ -593,7 +626,8 @@ chipc_gpio_pin_update(struct chipc_gpio_softc *sc,
 		CC_GPIO_UPDATE(update, pin_num, pulldown, false);
 		CC_GPIO_UPDATE(update, pin_num, out, false);
 		CC_GPIO_UPDATE(update, pin_num, outen, false);
-		CC_GPIO_UPDATE(update, pin_num, ctrl, true);
+		CC_GPIO_UPDATE(update, pin_num, timeroutmask, false);
+		CC_GPIO_UPDATE(update, pin_num, ctrl, false);
 
 		if (flags & GPIO_PIN_PULLUP) {
 			CC_GPIO_UPDATE(update, pin_num, pullup, true);
@@ -607,13 +641,17 @@ chipc_gpio_pin_update(struct chipc_gpio_softc *sc,
 		CC_GPIO_UPDATE(update, pin_num, pullup, false);
 		CC_GPIO_UPDATE(update, pin_num, pulldown, false);
 		CC_GPIO_UPDATE(update, pin_num, outen, true);
-		CC_GPIO_UPDATE(update, pin_num, ctrl, true);
+		CC_GPIO_UPDATE(update, pin_num, timeroutmask, false);
+		CC_GPIO_UPDATE(update, pin_num, ctrl, false);
 
 		if (flags & GPIO_PIN_PRESET_HIGH) {
 			CC_GPIO_UPDATE(update, pin_num, out, true);
 		} else if (flags & GPIO_PIN_PRESET_LOW) {
 			CC_GPIO_UPDATE(update, pin_num, out, false);
 		}
+
+		if (flags & GPIO_PIN_PULSATE)
+			CC_GPIO_UPDATE(update, pin_num, timeroutmask, true);
 
 		return (0);
 
@@ -622,7 +660,8 @@ chipc_gpio_pin_update(struct chipc_gpio_softc *sc,
 		CC_GPIO_UPDATE(update, pin_num, pulldown, false);
 		CC_GPIO_UPDATE(update, pin_num, out, false);
 		CC_GPIO_UPDATE(update, pin_num, outen, false);
-		CC_GPIO_UPDATE(update, pin_num, ctrl, false);
+		CC_GPIO_UPDATE(update, pin_num, timeroutmask, false);
+		CC_GPIO_UPDATE(update, pin_num, ctrl, true);
 
 		if (flags & GPIO_PIN_OUTPUT)
 			CC_GPIO_UPDATE(update, pin_num, outen, true);
@@ -665,7 +704,8 @@ chipc_gpio_check_flags(struct chipc_gpio_softc *sc, uint32_t pin_num,
 
 	mode_flag = flags & (GPIO_PIN_OUTPUT | GPIO_PIN_INPUT |
 	    GPIO_PIN_TRISTATE);
-	output_flag = flags & (GPIO_PIN_PRESET_HIGH | GPIO_PIN_PRESET_LOW);
+	output_flag = flags & (GPIO_PIN_PRESET_HIGH | GPIO_PIN_PRESET_LOW
+	    | GPIO_PIN_PULSATE);
 	input_flag = flags & (GPIO_PIN_PULLUP | GPIO_PIN_PULLDOWN);
 
 	switch (mode_flag) {
@@ -678,6 +718,8 @@ chipc_gpio_check_flags(struct chipc_gpio_softc *sc, uint32_t pin_num,
 		switch (output_flag) {
 		case GPIO_PIN_PRESET_HIGH:
 		case GPIO_PIN_PRESET_LOW:
+		case (GPIO_PIN_PRESET_HIGH|GPIO_PIN_PULSATE):
+		case (GPIO_PIN_PRESET_LOW|GPIO_PIN_PULSATE):
 		case 0:
 			*mode = CC_GPIO_PIN_OUTPUT;
 			return (0);
@@ -735,7 +777,7 @@ chipc_gpio_pin_get_mode(struct chipc_gpio_softc *sc, uint32_t pin_num)
 	CC_GPIO_LOCK_ASSERT(sc, MA_OWNED);
 	CC_GPIO_ASSERT_VALID_PIN(sc, pin_num);
 
-	if (!CC_GPIO_RDFLAG(sc, pin_num, GPIOCTRL)) {
+	if (CC_GPIO_RDFLAG(sc, pin_num, GPIOCTRL)) {
 		return (CC_GPIO_PIN_TRISTATE);
 	} else if (!CC_GPIO_RDFLAG(sc, pin_num, GPIOOUTEN)) {
 		return (CC_GPIO_PIN_OUTPUT);
@@ -759,6 +801,7 @@ static device_method_t chipc_gpio_methods[] = {
 	DEVMETHOD(gpio_pin_setflags,	chipc_gpio_pin_setflags),
 	DEVMETHOD(gpio_pin_get,		chipc_gpio_pin_get),
 	DEVMETHOD(gpio_pin_set,		chipc_gpio_pin_set),
+	DEVMETHOD(gpio_pin_toggle,	chipc_gpio_pin_toggle),
 	DEVMETHOD(gpio_pin_access_32,	chipc_gpio_pin_access_32),
 	DEVMETHOD(gpio_pin_config_32,	chipc_gpio_pin_config_32),
 
