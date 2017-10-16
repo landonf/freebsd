@@ -73,6 +73,19 @@ static chipc_gpio_pin_mode	chipc_gpio_pin_get_mode(
 				    struct chipc_gpio_softc *sc,
 				    uint32_t pin_num);
 
+
+/* Debugging flags */
+static u_long chipc_gpio_debug = 0;
+TUNABLE_ULONG("hw.bhnd_chipc.gpio_debug", &chipc_gpio_debug);
+
+enum {
+	/** Allow userspace GPIO access on bridged network (e.g. wi-fi)
+	  * adapters */
+	CC_GPIO_DEBUG_ADAPTER_GPIOC = 1 << 0,
+};
+
+#define	CC_GPIO_DEBUG(_type)	(CC_GPIO_DEBUG_ ## _type & chipc_gpio_debug)
+
 static struct bhnd_device_quirk chipc_gpio_quirks[];
 
 /* Supported parent core device identifiers */
@@ -121,6 +134,13 @@ chipc_gpio_attach(device_t dev)
 	sc->quirks = bhnd_device_quirks(chipc, chipc_gpio_devices,
 	    sizeof(chipc_gpio_devices[0]));
 
+	/* If this is a bridged wi-fi adapter, we don't want to support
+	 * userspace requests via gpioc(4) */
+	if (bhnd_get_attach_type(chipc) == BHND_ATTACH_ADAPTER) {
+		if (!CC_GPIO_DEBUG(ADAPTER_GPIOC))
+			sc->quirks |= CC_GPIO_QUIRK_NO_GPIOC;
+	}
+
 	CC_GPIO_LOCK_INIT(sc);
 
 	sc->mem_rid = 0;
@@ -140,7 +160,6 @@ chipc_gpio_attach(device_t dev)
 	if (!CC_GPIO_QUIRK(sc, NO_DCTIMER)) {
 		uint32_t dctimerval;
 
-		/* TODO: Should this be externally configurable? */
 		error = bhnd_nvram_getvar_uint32(chipc, BHND_NVAR_LEDDC,
 		    &dctimerval);
 		if (error == ENOENT) {
@@ -155,16 +174,15 @@ chipc_gpio_attach(device_t dev)
 		CC_GPIO_WR4(sc, CHIPC_GPIOTIMERVAL, dctimerval);
 	}
 
-	if (bhnd_get_attach_type(chipc) == BHND_ATTACH_ADAPTER) {
-		// TODO: Set as readonly?
-	}
-
 	/* Attach gpioc/gpiobus */
-	sc->gpiobus = gpiobus_attach_bus(dev);
-	if (sc->gpiobus == NULL) {
-		device_printf(dev, "failed to attach gpiobus\n");
-		error = ENXIO;
-		goto failed;
+	if (CC_GPIO_QUIRK(sc, NO_GPIOC)) {
+		sc->gpiobus = NULL;
+	} else {
+		if ((sc->gpiobus = gpiobus_attach_bus(dev)) == NULL) {
+			device_printf(dev, "failed to attach gpiobus\n");
+			error = ENXIO;
+			goto failed;
+		}
 	}
 
 	/* Register as the bus GPIO provider */

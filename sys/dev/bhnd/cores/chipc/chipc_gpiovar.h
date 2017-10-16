@@ -66,6 +66,15 @@ enum {
 	 * The CHIPC_GPIOPU and CHIPC_GPIOPD registers are not available.
 	 */
 	CC_GPIO_QUIRK_NO_PULLUPDOWN	= (1<<2),
+
+	/**
+	 * Do not attach a child gpioc(4) device.
+	 * 
+	 * This is primarily intended for use on bridged Wi-Fi adapters, where
+	 * userspace modification of GPIO pin configuration could introduce
+	 * significant undesirable behavior.
+	 */
+	CC_GPIO_QUIRK_NO_GPIOC		= (1<<3),
 };
 
 /** ChipCommon GPIO pin modes */
