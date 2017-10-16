@@ -150,10 +150,10 @@ METHOD uint32_t read_chipctrl {
 /**
  * Write @p value with @p mask to a PMU chipctrl register.
  *
- * @param dev A bhnd(4) PMU device.
- * @param reg The PMU chipctrl register to be written.
- * @param value The value to write.
- * @param mask The mask of bits to be written from @p value.
+ * @param dev	A bhnd(4) PMU device.
+ * @param reg	The PMU chipctrl register to be written.
+ * @param value	The value to write.
+ * @param mask	The mask of bits to be written from @p value.
  *
  * Drivers should only use function for functionality that is not
  * available via another bhnd_pmu() function.
@@ -184,10 +184,10 @@ METHOD uint32_t read_regctrl {
 /**
  * Write @p value with @p mask to a PMU regulator control register.
  *
- * @param dev A bhnd(4) PMU device.
- * @param reg The PMU regctrl register to be written.
- * @param value The value to write.
- * @param mask The mask of bits to be written from @p value.
+ * @param dev	A bhnd(4) PMU device.
+ * @param reg	The PMU regctrl register to be written.
+ * @param value	The value to write.
+ * @param mask	The mask of bits to be written from @p value.
  *
  * Drivers should only use function for functionality that is not
  * available via another bhnd_pmu() function.
@@ -218,10 +218,10 @@ METHOD uint32_t read_pllctrl {
 /**
  * Write @p value with @p mask to a PMU PLL control register.
  *
- * @param dev A bhnd(4) PMU device.
- * @param reg The PMU pllctrl register to be written.
- * @param value The value to write.
- * @param mask The mask of bits to be written from @p value.
+ * @param dev	A bhnd(4) PMU device.
+ * @param reg	The PMU pllctrl register to be written.
+ * @param value	The value to write.
+ * @param mask	The mask of bits to be written from @p value.
  *
  * Drivers should only use function for functionality that is not
  * available via another bhnd_pmu() function.
@@ -236,45 +236,45 @@ METHOD void write_pllctrl {
 /**
  * Set a hardware-specific output voltage register value for @p regulator.
  *
- * @param dev PMU device.
- * @param regulator Regulator to be configured.
- * @param value The raw voltage register value.
+ * @param dev		PMU device.
+ * @param regulator	Regulator to be configured.
+ * @param value		The raw voltage register value.
  *
- * @retval 0 success
- * @retval ENODEV If @p regulator is not supported by this driver.
+ * @retval 0		success
+ * @retval ENODEV	If @p regulator is not supported by this driver.
  */
 METHOD int set_voltage_raw {
-	 device_t dev;
-	 bhnd_pmu_regulator regulator;
-	 uint32_t value;
+	 device_t		dev;
+	 bhnd_pmu_regulator	regulator;
+	 uint32_t		value;
 } DEFAULT bhnd_pmu_null_set_voltage_raw;
 
 /**
  * Enable the given @p regulator.
  *
- * @param dev PMU device.
- * @param regulator Regulator to be enabled.
+ * @param dev		PMU device.
+ * @param regulator	Regulator to be enabled.
  *
- * @retval 0 success
- * @retval ENODEV If @p regulator is not supported by this driver.
+ * @retval 0		success
+ * @retval ENODEV	If @p regulator is not supported by this driver.
  */
 METHOD int enable_regulator {
-	device_t dev;
-	bhnd_pmu_regulator regulator;
+	device_t		dev;
+	bhnd_pmu_regulator	regulator;
 } DEFAULT bhnd_pmu_null_enable_regulator;
 
 /**
  * Disable the given @p regulator.
  *
- * @param dev PMU device.
- * @param regulator Regulator to be disabled.
+ * @param dev		PMU device.
+ * @param regulator	Regulator to be disabled.
  *
- * @retval 0 success
- * @retval ENODEV If @p regulator is not supported by this driver.
+ * @retval 0		success
+ * @retval ENODEV	If @p regulator is not supported by this driver.
  */
 METHOD int disable_regulator {
-	device_t dev;
-	bhnd_pmu_regulator regulator;
+	device_t		dev;
+	bhnd_pmu_regulator	regulator;
 } DEFAULT bhnd_pmu_null_disable_regulator;
 
 /**
@@ -289,44 +289,44 @@ METHOD int disable_regulator {
  * @param[out]	latency	On success, the transition latency of @p clock in
  *			microseconds.
  * 
- * @retval 0 success
- * @retval ENODEV If the transition latency for @p clock is not available.
+ * @retval 0		success
+ * @retval ENODEV	If the transition latency for @p clock is not available.
  */
 METHOD int get_clock_latency {
-	device_t dev;
-	bhnd_clock clock;
-	u_int *latency;
+	device_t	 dev;
+	bhnd_clock	 clock;
+	u_int		*latency;
 } DEFAULT bhnd_pmu_null_get_clock_latency;
 
 /**
  * Return the frequency for @p clock in Hz, if known.
  *
- * @param dev PMU device.
- * @param clock The clock to be queried.
- * @param[out] freq On success, the frequency of @p clock in Hz.
+ * @param	dev	PMU device.
+ * @param	clock	The clock to be queried.
+ * @param[out]	freq	On success, the frequency of @p clock in Hz.
  * 
- * @retval 0 success
- * @retval ENODEV If the frequency for @p clock is not available.
+ * @retval 0		success
+ * @retval ENODEV	If the frequency for @p clock is not available.
  */
 METHOD int get_clock_freq {
-	device_t dev;
-	bhnd_clock clock;
-	u_int *freq;
+	device_t	 dev;
+	bhnd_clock	 clock;
+	u_int		*freq;
 } DEFAULT bhnd_pmu_null_get_clock_freq;
 
 /**
  * Request that the PMU configure itself for a given hardware-specific
  * spuravoid mode.
  *
- * @param dev PMU device.
- * @param spuravoid The requested mode.
+ * @param dev		PMU device.
+ * @param spuravoid	The requested mode.
  *
- * @retval 0 success
- * @retval ENODEV If @p regulator is not supported by this driver.
+ * @retval 0		success
+ * @retval ENODEV	If @p regulator is not supported by this driver.
  */
 METHOD int request_spuravoid {
-	 device_t dev;
-	 bhnd_pmu_spuravoid spuravoid;
+	 device_t		dev;
+	 bhnd_pmu_spuravoid	spuravoid;
 } DEFAULT bhnd_pmu_null_request_spuravoid;
 
 /**
@@ -336,6 +336,8 @@ METHOD int request_spuravoid {
  * transitions.
  *
  * @param dev PMU device.
+ *
+ * @returns maximum PMU transition latency, in microseconds.
  */
 METHOD u_int get_max_transition_latency {
 	device_t dev;

@@ -539,7 +539,7 @@ int				 bhnd_nvram_getvar_int32(device_t dev,
 				     const char *name, int32_t *value);
 
 int				 bhnd_nvram_getvar_array(device_t dev,
-				     const char *name, void *buf, size_t count,
+				     const char *name, void *buf, size_t size,
 				     bhnd_nvram_type type);
 
 int				 bhnd_service_registry_init(

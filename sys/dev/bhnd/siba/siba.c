@@ -325,6 +325,8 @@ siba_release_pmu(device_t dev, device_t child)
 		bhnd_release_provider(child, pwrctl, BHND_SERVICE_PWRCTL);
 		return (0);
 	}
+
+	panic("invalid PMU state: %d", dinfo->pmu_state);
 }
 
 /* BHND_BUS_GET_CLOCK_LATENCY() */
@@ -797,16 +799,9 @@ siba_suspend_hw(device_t dev, device_t child)
 	 */
 	SIBA_LOCK(sc);
 	if (dinfo->pmu_state == SIBA_PMU_PWRCTL) {
-		device_t pwrctl;
-
-		pwrctl = bhnd_retain_provider(child, BHND_SERVICE_PWRCTL);
-		KASSERT(pwrctl == dinfo->pmu.pwrctl,
-		    ("PWRCTL provider went missing"));
-		SIBA_UNLOCK(sc);
-
-		error = BHND_PWRCTL_REQUEST_CLOCK(pwrctl, child,
+		error = bhnd_pwrctl_request_clock(dinfo->pmu.pwrctl, child,
 		    BHND_CLOCK_DYN);
-		bhnd_release_provider(child, pwrctl, BHND_SERVICE_PWRCTL);
+		SIBA_UNLOCK(sc);
 
 		if (error) {
 			device_printf(child, "failed to release clock request: "
@@ -1464,6 +1459,8 @@ static device_method_t siba_methods[] = {
 	DEVMETHOD(bhnd_bus_enable_clocks,	siba_enable_clocks),
 	DEVMETHOD(bhnd_bus_request_ext_rsrc,	siba_request_ext_rsrc),
 	DEVMETHOD(bhnd_bus_release_ext_rsrc,	siba_release_ext_rsrc),
+	DEVMETHOD(bhnd_bus_get_clock_freq,	siba_get_clock_freq),
+	DEVMETHOD(bhnd_bus_get_clock_latency,	siba_get_clock_latency),
 	DEVMETHOD(bhnd_bus_read_ioctl,		siba_read_ioctl),
 	DEVMETHOD(bhnd_bus_write_ioctl,		siba_write_ioctl),
 	DEVMETHOD(bhnd_bus_read_iost,		siba_read_iost),

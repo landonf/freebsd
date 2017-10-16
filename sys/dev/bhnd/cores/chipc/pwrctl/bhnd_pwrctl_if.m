@@ -47,12 +47,12 @@ HEADER {
  * Request that @p clock (or a faster clock) be enabled on behalf of
  * @p child.
  *
- * @param dev PWRCTL device.
- * @param child The requesting bhnd(4) device.
- * @param clock Clock requested.
+ * @param dev	PWRCTL device.
+ * @param child	The requesting bhnd(4) device.
+ * @param clock	Clock requested.
  *
- * @retval 0 success
- * @retval ENODEV If an unsupported clock was requested.
+ * @retval 0		success
+ * @retval ENODEV	If an unsupported clock was requested.
  */
 METHOD int request_clock {
 	device_t	dev;
@@ -72,8 +72,8 @@ METHOD int request_clock {
  * @param[out]	latency	On success, the transition latency of @p clock in
  *			microseconds.
  * 
- * @retval 0 success
- * @retval ENODEV If the transition latency for @p clock is not available.
+ * @retval 0		success
+ * @retval ENODEV	If the transition latency for @p clock is not available.
  */
 METHOD int get_clock_latency {
 	device_t	 dev;
@@ -88,8 +88,8 @@ METHOD int get_clock_latency {
  * @param	clock	The clock to be queried.
  * @param[out]	freq	On success, the frequency of @p clock in Hz.
  * 
- * @retval 0 success
- * @retval ENODEV If the frequency for @p clock is not available.
+ * @retval 0		success
+ * @retval ENODEV	If the frequency for @p clock is not available.
  */
 METHOD int get_clock_freq {
 	device_t	 dev;
