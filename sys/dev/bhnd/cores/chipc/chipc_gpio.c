@@ -319,8 +319,7 @@ chipc_gpio_pin_getcaps(device_t dev, uint32_t pin_num, uint32_t *caps)
 	if (!CC_GPIO_VALID_PIN(pin_num))
 		return (EINVAL);
 
-	*caps = (GPIO_PIN_INPUT | GPIO_PIN_OUTPUT | GPIO_PIN_TRISTATE |
-		 GPIO_PIN_PRESET_LOW | GPIO_PIN_PRESET_HIGH);
+	*caps = (GPIO_PIN_INPUT | GPIO_PIN_OUTPUT | GPIO_PIN_TRISTATE);
 
 	if (!CC_GPIO_QUIRK(sc, NO_PULLUPDOWN))
 		*caps |= (GPIO_PIN_PULLUP | GPIO_PIN_PULLDOWN);
