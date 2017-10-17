@@ -20,7 +20,7 @@ SRCS+=	bhnd_bus_if.h \
 SRCS+=	bhnd_nvram_map.h
 
 # Other
-SRCS+=	device_if.h bus_if.h pci_if.h opt_bwn.h opt_wlan.h
+SRCS+=	device_if.h bus_if.h gpio_if.h pci_if.h opt_bwn.h opt_wlan.h
 
 # The following need the BWN_GPL_PHY kenrel option to opt-in
 # to the GPL'd 802.11n PHY support for this driver.

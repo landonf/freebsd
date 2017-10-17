@@ -29,6 +29,7 @@
 
 #include <sys/param.h>
 #include <sys/bus.h>
+#include <sys/gpio.h>
 #include <sys/kernel.h>
 #include <sys/systm.h>
 #include <sys/socket.h>
@@ -62,6 +63,8 @@
 #include <dev/bhnd/cores/chipc/chipc.h>
 #include <dev/bhnd/cores/pci/bhnd_pcireg.h>
 #include <dev/bhnd/cores/pmu/bhnd_pmu.h>
+
+#include "gpio_if.h"
 
 #include "bhnd_nvram_map.h"
 
@@ -111,9 +114,16 @@ bwn_bhnd_bus_ops_init(device_t dev)
 		goto failed;
 	}
 
-	ccaps = BHND_CHIPC_GET_CAPS(ctx->chipc_dev);
+	/* Locate the GPIO device */
+	ctx->gpio_dev = bhnd_retain_provider(dev, BHND_SERVICE_GPIO);
+	if (ctx->gpio_dev == NULL) {
+		device_printf(dev, "GPIO not found\n");
+		error = ENXIO;
+		goto failed;
+	}
 
-	/* Locate the PMU device */
+	/* Locate the PMU device (if any) */
+	ccaps = BHND_CHIPC_GET_CAPS(ctx->chipc_dev);
 	if (ccaps->pmu) {
 		ctx->pmu_dev = bhnd_retain_provider(dev, BHND_SERVICE_PMU);
 		if (ctx->pmu_dev == NULL) {
@@ -141,6 +151,11 @@ failed:
 			    BHND_SERVICE_CHIPC);
 		}
 
+		if (ctx->gpio_dev != NULL) {
+			bhnd_release_provider(dev, ctx->gpio_dev,
+			    BHND_SERVICE_GPIO);
+		}
+
 		if (ctx->pmu_dev != NULL) {
 			bhnd_release_provider(dev, ctx->pmu_dev,
 			    BHND_SERVICE_PMU);
@@ -166,6 +181,7 @@ bwn_bhnd_bus_ops_fini(device_t dev)
 	    sc->sc_mem_res);
 
 	bhnd_release_provider(dev, ctx->chipc_dev, BHND_SERVICE_CHIPC);
+	bhnd_release_provider(dev, ctx->gpio_dev, BHND_SERVICE_GPIO);
 
 	if (ctx->pmu_dev != NULL)
 		bhnd_release_provider(dev, ctx->pmu_dev, BHND_SERVICE_PMU);
@@ -1966,7 +1982,27 @@ bhnd_compat_cc_pmu_set_ldoparef(device_t dev, uint8_t on)
 static void
 bhnd_compat_gpio_set(device_t dev, uint32_t value)
 {
-	panic("siba_gpio_set() unimplemented");
+	struct bwn_bhnd_ctx	*ctx;
+	uint32_t		 flags[32];
+	int			 error;
+
+	ctx = bwn_bhnd_get_ctx(dev);
+
+	printf("TRISTATE_UPDATE: %#x\n", value);
+
+	for (size_t i = 0; i < nitems(flags); i++) {
+		if (value & (1 << i)) {
+			/* Tristate pin */
+			flags[i] = (GPIO_PIN_OUTPUT | GPIO_PIN_TRISTATE);
+		} else {
+			/* Leave unmodified */
+			flags[i] = 0;
+		}
+	}
+
+	error = GPIO_PIN_CONFIG_32(ctx->gpio_dev, 0, nitems(flags), flags);
+	if (error)
+		panic("error configuring pin flags: %d", error);
 }
 
 /*
@@ -1978,7 +2014,43 @@ bhnd_compat_gpio_set(device_t dev, uint32_t value)
 static uint32_t
 bhnd_compat_gpio_get(device_t dev)
 {
-	panic("siba_gpio_get() unimplemented");
+	struct bwn_bhnd_ctx	*ctx;
+	uint32_t		 ctrl;
+	int			 npin;
+	int			 error;
+
+	/*
+	 * We recreate the expected GPIOCTRL register value for bwn_gpio_init()
+	 * by querying pins individually for GPIO_PIN_TRISTATE.
+	 * 
+	 * Once we drop these compatibility shims, the GPIO_PIN_CONFIG_32 method
+	 * can be used to set pin configuration without bwn(4) externally
+	 * implementing RMW.
+	 */
+
+	/* Fetch the total pin count */
+	ctx = bwn_bhnd_get_ctx(dev);
+	if ((error = GPIO_PIN_MAX(ctx->gpio_dev, &npin)))
+		panic("failed to fetch max pin: %d", error);
+
+	/* Must be representable within a 32-bit GPIOCTRL register value */
+	KASSERT(npin <= 32, ("unsupported pin count: %u", npin));
+
+	ctrl = 0;
+	for (uint32_t pin = 0; pin < npin; pin++) {
+		uint32_t flags;
+
+		if ((error = GPIO_PIN_GETFLAGS(ctx->gpio_dev, pin, &flags)))
+			panic("error fetching pin%u flags: %d", pin, error);
+
+		if (flags & GPIO_PIN_TRISTATE)
+			ctrl |= (1 << pin);
+	}
+
+	printf("TRISTATE: %#x\n", ctrl);
+	// return (ctrl);
+	// XXX
+	return (0);
 }
 
 /*
