@@ -147,7 +147,7 @@ struct chipc_gpio_softc {
 #define	CC_GPIO_VALID_PIN(_pin)	\
     ((_pin) >= 0 && (_pin) < CC_GPIO_NPINS)
 #define	CC_GPIO_VALID_PINS(_first, _num)	\
-	((_num) >= CC_GPIO_NPINS && CC_GPIO_NPINS - (_num) < _first)
+	((_num) <= CC_GPIO_NPINS && CC_GPIO_NPINS - (_num) >= _first)
 
 #define CC_GPIO_ASSERT_VALID_PIN(sc, pin_num)	\
 	KASSERT(CC_GPIO_VALID_PIN(pin_num), ("invalid pin# %" PRIu32, pin_num));

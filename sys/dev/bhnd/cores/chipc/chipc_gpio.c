@@ -404,7 +404,7 @@ chipc_gpio_pin_getflags(device_t dev, uint32_t pin_num, uint32_t *flags)
 		break;
 
 	case CC_GPIO_PIN_TRISTATE:
-		*flags = GPIO_PIN_TRISTATE;
+		*flags = GPIO_PIN_TRISTATE|GPIO_PIN_OUTPUT;
 		break;
 	}
 
@@ -560,6 +560,12 @@ chipc_gpio_pin_config_32(device_t dev, uint32_t first_pin, uint32_t num_pins,
 		pin = first_pin + i;
 		flags = pin_flags[i];
 
+		/* As per the gpio_config_32 API documentation, any pins for
+		 * which neither GPIO_PIN_OUTPUT or GPIO_PIN_INPUT are set
+		 * should be ignored and left unmodified */
+		if ((flags & (GPIO_PIN_OUTPUT|GPIO_PIN_INPUT)) == 0)
+			continue;
+
 		if ((error = chipc_gpio_pin_update(sc, &upd, pin, flags)))
 			return (error);
 	}
@@ -708,17 +714,9 @@ static int
 chipc_gpio_check_flags(struct chipc_gpio_softc *sc, uint32_t pin_num,
     uint32_t flags, chipc_gpio_pin_mode *mode)
 {
-	uint32_t	caps;
-	uint32_t	mode_flag, input_flag, output_flag;
-	int		error;
+	uint32_t mode_flag, input_flag, output_flag;
 
 	CC_GPIO_ASSERT_VALID_PIN(sc, pin_num);
-
-	if ((error = chipc_gpio_pin_getcaps(sc->dev, pin_num, &caps)))
-		return (error);
-
-	if ((flags & ~caps) != 0)
-		return (EINVAL);
 
 	mode_flag = flags & (GPIO_PIN_OUTPUT | GPIO_PIN_INPUT |
 	    GPIO_PIN_TRISTATE);
@@ -739,6 +737,10 @@ chipc_gpio_check_flags(struct chipc_gpio_softc *sc, uint32_t pin_num,
 		case (GPIO_PIN_PRESET_HIGH|GPIO_PIN_PULSATE):
 		case (GPIO_PIN_PRESET_LOW|GPIO_PIN_PULSATE):
 		case 0:
+			/* Check for unhandled flags */
+			if ((flags & ~(mode_flag | output_flag)) != 0)
+				return (EINVAL);
+	
 			*mode = CC_GPIO_PIN_OUTPUT;
 			return (0);
 
@@ -757,6 +759,10 @@ chipc_gpio_check_flags(struct chipc_gpio_softc *sc, uint32_t pin_num,
 		case GPIO_PIN_PULLUP:
 		case GPIO_PIN_PULLDOWN:
 		case 0:
+			/* Check for unhandled flags */
+			if ((flags & ~(mode_flag | input_flag)) != 0)
+				return (EINVAL);
+
 			*mode = CC_GPIO_PIN_INPUT;
 			return (0);
 
@@ -770,8 +776,11 @@ chipc_gpio_check_flags(struct chipc_gpio_softc *sc, uint32_t pin_num,
 	case (GPIO_PIN_TRISTATE|GPIO_PIN_OUTPUT):
 	case GPIO_PIN_TRISTATE:
 		/* No input or output flag(s) should be set */
-
 		if (input_flag != 0 || output_flag != 0)
+			return (EINVAL);
+
+		/* Check for unhandled flags */
+		if ((flags & ~mode_flag) != 0)
 			return (EINVAL);
 
 		*mode = CC_GPIO_PIN_TRISTATE;
@@ -797,7 +806,7 @@ chipc_gpio_pin_get_mode(struct chipc_gpio_softc *sc, uint32_t pin_num)
 
 	if (CC_GPIO_RDFLAG(sc, pin_num, GPIOCTRL)) {
 		return (CC_GPIO_PIN_TRISTATE);
-	} else if (!CC_GPIO_RDFLAG(sc, pin_num, GPIOOUTEN)) {
+	} else if (CC_GPIO_RDFLAG(sc, pin_num, GPIOOUTEN)) {
 		return (CC_GPIO_PIN_OUTPUT);
 	} else {
 		return (CC_GPIO_PIN_INPUT);
