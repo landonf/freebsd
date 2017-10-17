@@ -28,7 +28,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd June 3, 2016
+.Dd October 16th, 2017
 .Dt BHNDB 4
 .Os
 .Sh NAME
@@ -47,22 +47,21 @@ place the following line in
 .Xr loader.conf 5 :
 .Bd -literal -offset indent
 bhndb_load="YES"
-bhndb_pci_load="YES"
 .Ed
 .Sh DESCRIPTION
 The
 .Nm
-driver provides support for
+driver provides
 .Xr bhnd 4
-host bridge cores found in Broadcom Home Networking Division (BHND) PCI, PCMCIA,
-and SDIO network adapters.
+host bridge support for Broadcom Home Networking Division's wireless chipsets
+and network adapters.
 .Pp
 To enable use for PCI/PCIe systems, see the bhndb_pci(4) driver.
 .Sh SEE ALSO
-.Xr intro 4 ,
-.Xr bhndb_pci 4 ,
 .Xr bhnd 4 ,
-.Xr bwn 4
+.Xr bhndb_pci 4 ,
+.Xr bwn 4 ,
+.Xr intro 4
 .Sh HISTORY
 The
 .Nm
