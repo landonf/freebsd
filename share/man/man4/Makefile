@@ -79,6 +79,7 @@ MAN=	aac.4 \
 	${_bhyve.4} \
 	bhnd.4 \
 	bhnd_chipc.4 \
+	bhnd_pmu.4 \
 	bhndb.4 \
 	bhndb_pci.4 \
 	bktr.4 \
