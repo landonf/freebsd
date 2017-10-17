@@ -33,20 +33,21 @@
 .Os
 .Sh NAME
 .Nm bhndb
-.Nd Broadcom Home Networking Division interconnect bridge driver
+.Nd Broadcom Home Networking Division PCI bridge driver
 .Sh SYNOPSIS
 To compile this driver into the kernel,
 place the following lines in your kernel configuration file:
 .Bd -ragged -offset indent
 .Cd "device bhnd"
 .Cd "device bhndb"
+.Cd "device bhndb_pci"
+.Cd "device pci"
 .Ed
 .Pp
 Alternatively, to load the driver as a module at boot time,
 place the following line in
 .Xr loader.conf 5 :
 .Bd -literal -offset indent
-bhndb_load="YES"
 bhndb_pci_load="YES"
 .Ed
 .Sh DESCRIPTION
@@ -54,13 +55,11 @@ The
 .Nm
 driver provides support for
 .Xr bhnd 4
-host bridge cores found in Broadcom Home Networking Division (BHND) PCI, PCMCIA,
-and SDIO network adapters.
-.Pp
-To enable use for PCI/PCIe systems, see the bhndb_pci(4) driver.
+PCI/PCIe host bridge cores found in Broadcom Home Networking Division (BHND)
+Wi-Fi and network adapters.
 .Sh SEE ALSO
-.Xr intro 4 ,
-.Xr bhndb_pci 4 ,
+.Xr pci 4 ,
+.Xr bhndb 4 ,
 .Xr bhnd 4 ,
 .Xr bwn 4
 .Sh HISTORY
@@ -74,7 +73,3 @@ The
 .Nm
 driver was written by
 .An Landon Fuller Aq Mt landonf@FreeBSD.org .
-.Sh CAVEATS
-The
-.Nm
-driver does not currently support PCMCIA or SDIO devices.
