@@ -270,7 +270,7 @@ struct bhnd_dma_translation {
 	bhnd_addr_t	addrext_mask;
 
 	/**
-	 * Translation flags (see bhnd_dma_translation_flags)
+	 * Translation flags (see bhnd_dma_translation_flags).
 	 */
 	uint32_t	flags;
 };
