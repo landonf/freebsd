@@ -1372,15 +1372,15 @@ bhnd_release_resource(device_t dev, int type, int rid,
  *
  * @param dev A bhnd bus child device.
  * @param type The port type being queried.
- * @param port_num The port number being queried.
- * @param region_num The region number being queried.
+ * @param port The port number being queried.
+ * @param region The region number being queried.
  */
 static inline bool
-bhnd_is_region_valid(device_t dev, bhnd_port_type type, u_int port_num,
-    u_int region_num)
+bhnd_is_region_valid(device_t dev, bhnd_port_type type, u_int port,
+    u_int region)
 {
 	return (BHND_BUS_IS_REGION_VALID(device_get_parent(dev), dev, type,
-	    port_num, region_num));
+	    port, region));
 }
 
 /**
