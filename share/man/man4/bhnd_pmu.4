@@ -1,6 +1,8 @@
-.\" Copyright (c) 2015 Landon Fuller
-.\" Copyright (c) 2010 Weongyo Jeong
+.\" Copyright (c) 2017 The FreeBSD Foundation
 .\" All rights reserved.
+.\"
+.\" This documentation was written by Landon Fuller under sponsorship from
+.\" the FreeBSD Foundation.
 .\"
 .\" Redistribution and use in source and binary forms, with or without
 .\" modification, are permitted provided that the following conditions
@@ -25,56 +27,47 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd June 3, 2016
-.Dt BCMA 4
+.Dd October 16, 2017
+.Dt BHND_PMU 4
 .Os
 .Sh NAME
-.Nm bcma
-.Nd Broadcom AMBA Backplane driver
+.Nm bhnd_pmu
+.Nd Broadcom Home Networking Division PMU Driver
 .Sh SYNOPSIS
 To compile this driver into the kernel,
 place the following lines in your kernel configuration file:
 .Bd -ragged -offset indent
 .Cd "device bhnd"
-.Cd "device bcma"
 .Ed
 .Pp
 Alternatively, to load the driver as a module at boot time,
 place the following line in
 .Xr loader.conf 5 :
 .Bd -literal -offset indent
-bcma_load="YES"
+bhnd_load="YES"
 .Ed
 .Sh DESCRIPTION
 The
 .Nm
-driver provides
-.Xr bhnd 4
-support for devices using the ARM AMBA-based backplane architecture found
-in later Broadcom Home Networking Division's network chipsets and embedded
-systems.
+driver supports the Power Management Unit (PMU) found in Broadcom Home
+Networking Division network chipsets and embedded systems. 
 .Pp
-A common interconnect connects all of the backplane's functional
-blocks.
-These functional blocks, known as cores, use the ARM AMBA AXI or
-APB interface to communicate with devices attached to the interconnect.
-.Pp
-The IP cores used in
-.Xr siba 4
-devices were adapted by Broadcom for compatibility with the new
-interconnect.
+The PMU provides a hardware interface for managing the device's clock and power
+topology.
 .Sh SEE ALSO
 .Xr bhnd 4 ,
-.Xr intro 4 ,
-.Xr siba 4
+.Xr intro 4
 .Sh HISTORY
 The
 .Nm
 device driver first appeared in
-.Fx 11.0 .
+.Fx 12.0 .
 .Sh AUTHORS
 .An -nosplit
 The
 .Nm
-driver was written by
+driver was derived from Broadcom's ISC-licensed Linux PMU drivers, and was
+ported to FreeBSD and
+.Xr bhnd 4
+by
 .An Landon Fuller Aq Mt landonf@FreeBSD.org .
