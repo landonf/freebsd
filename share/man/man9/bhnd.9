@@ -393,24 +393,24 @@
 .Fc
 .Bd -literal
 struct bhnd_device_quirk {
-        struct bhnd_device_match        desc;
-        uint32_t                        quirks;
+	struct bhnd_device_match	desc;
+	uint32_t			quirks;
 };
 .Ed
 .Bd -literal
 struct bhnd_device {
-    const struct bhnd_device_match       core;
-    const char                          *desc;
-    const struct bhnd_device_quirk      *quirks_table;
-    uint32_t                             device_flags;
+    const struct bhnd_device_match	 core;
+    const char				*desc;
+    const struct bhnd_device_quirk	*quirks_table;
+    uint32_t				 device_flags;
 };
 .Ed
 .Bd -literal
 enum {
-        BHND_DF_ANY     = 0,
-        BHND_DF_HOSTB   = (1 << 0),
-        BHND_DF_SOC     = (1 << 1),
-        BHND_DF_ADAPTER = (1 << 2)
+	BHND_DF_ANY	= 0,
+	BHND_DF_HOSTB	= (1 << 0),
+	BHND_DF_SOC	= (1 << 1),
+	BHND_DF_ADAPTER	= (1 << 2)
 };
 .Ed
 .Bd -literal
@@ -428,23 +428,23 @@ enum {
 .Fc
 .Bd -literal
 struct bhnd_dma_translation {
-        bhnd_addr_t     base_addr;
-        bhnd_addr_t     addr_mask;
-        bhnd_addr_t     addrext_mask;
-        uint32_t        flags;
+	bhnd_addr_t	base_addr;
+	bhnd_addr_t	addr_mask;
+	bhnd_addr_t	addrext_mask;
+	uint32_t	flags;
 };
 .Ed
 .Bd -literal
 typedef enum bhnd_dma_addrwidth {
-        BHND_DMA_ADDR_30BIT     = 30,
-        BHND_DMA_ADDR_32BIT     = 32,
-        BHND_DMA_ADDR_64BIT     = 64
+	BHND_DMA_ADDR_30BIT	= 30,
+	BHND_DMA_ADDR_32BIT	= 32,
+	BHND_DMA_ADDR_64BIT	= 64
 } bhnd_dma_addrwidth;
 .Ed
 .Bd -literal
 enum bhnd_dma_translation_flags {
-        BHND_DMA_TRANSLATION_PHYSMAP            = (1<<0),
-        BHND_DMA_TRANSLATION_BYTESWAPPED        = (1<<1)
+	BHND_DMA_TRANSLATION_PHYSMAP		= (1<<0),
+	BHND_DMA_TRANSLATION_BYTESWAPPED	= (1<<1)
 };
 .Ed
 .\"
@@ -513,30 +513,30 @@ enum bhnd_dma_translation_flags {
 .Fc
 .Bd -literal
 typedef enum {
-        BHND_NVRAM_TYPE_UINT8           = 0,
-        BHND_NVRAM_TYPE_UINT16          = 1,
-        BHND_NVRAM_TYPE_UINT32          = 2,
-        BHND_NVRAM_TYPE_UINT64          = 3,
-        BHND_NVRAM_TYPE_INT8            = 4,
-        BHND_NVRAM_TYPE_INT16           = 5,
-        BHND_NVRAM_TYPE_INT32           = 6,
-        BHND_NVRAM_TYPE_INT64           = 7,
-        BHND_NVRAM_TYPE_CHAR            = 8,
-        BHND_NVRAM_TYPE_STRING          = 9,
-        BHND_NVRAM_TYPE_BOOL            = 10,
-        BHND_NVRAM_TYPE_NULL            = 11,
-        BHND_NVRAM_TYPE_DATA            = 12
-        BHND_NVRAM_TYPE_UINT8_ARRAY     = 16,
-        BHND_NVRAM_TYPE_UINT16_ARRAY    = 17,
-        BHND_NVRAM_TYPE_UINT32_ARRAY    = 18,
-        BHND_NVRAM_TYPE_UINT64_ARRAY    = 19,
-        BHND_NVRAM_TYPE_INT8_ARRAY      = 20,
-        BHND_NVRAM_TYPE_INT16_ARRAY     = 21,
-        BHND_NVRAM_TYPE_INT32_ARRAY     = 22,
-        BHND_NVRAM_TYPE_INT64_ARRAY     = 23,
-        BHND_NVRAM_TYPE_CHAR_ARRAY      = 24,
-        BHND_NVRAM_TYPE_STRING_ARRAY    = 25,
-        BHND_NVRAM_TYPE_BOOL_ARRAY      = 26
+	BHND_NVRAM_TYPE_UINT8		= 0,
+	BHND_NVRAM_TYPE_UINT16		= 1,
+	BHND_NVRAM_TYPE_UINT32		= 2,
+	BHND_NVRAM_TYPE_UINT64		= 3,
+	BHND_NVRAM_TYPE_INT8		= 4,
+	BHND_NVRAM_TYPE_INT16		= 5,
+	BHND_NVRAM_TYPE_INT32		= 6,
+	BHND_NVRAM_TYPE_INT64		= 7,
+	BHND_NVRAM_TYPE_CHAR		= 8,
+	BHND_NVRAM_TYPE_STRING		= 9,
+	BHND_NVRAM_TYPE_BOOL		= 10,
+	BHND_NVRAM_TYPE_NULL		= 11,
+	BHND_NVRAM_TYPE_DATA		= 12
+	BHND_NVRAM_TYPE_UINT8_ARRAY	= 16,
+	BHND_NVRAM_TYPE_UINT16_ARRAY	= 17,
+	BHND_NVRAM_TYPE_UINT32_ARRAY	= 18,
+	BHND_NVRAM_TYPE_UINT64_ARRAY	= 19,
+	BHND_NVRAM_TYPE_INT8_ARRAY	= 20,
+	BHND_NVRAM_TYPE_INT16_ARRAY	= 21,
+	BHND_NVRAM_TYPE_INT32_ARRAY	= 22,
+	BHND_NVRAM_TYPE_INT64_ARRAY	= 23,
+	BHND_NVRAM_TYPE_CHAR_ARRAY	= 24,
+	BHND_NVRAM_TYPE_STRING_ARRAY	= 25,
+	BHND_NVRAM_TYPE_BOOL_ARRAY	= 26
 } bhnd_nvram_type;
 .Ed
 .\"
@@ -569,9 +569,9 @@ typedef enum {
 .Fc
 .Bd -literal
 typedef enum {
-        BHND_PORT_DEVICE        = 0,
-        BHND_PORT_BRIDGE        = 1,
-        BHND_PORT_AGENT         = 2
+	BHND_PORT_DEVICE	= 0,
+	BHND_PORT_BRIDGE	= 1,
+	BHND_PORT_AGENT		= 2
 } bhnd_port_type;
 .Ed
 .\"
@@ -610,10 +610,10 @@ typedef enum {
 .Fc
 .Bd -literal
 typedef enum {
-        BHND_CLOCK_DYN  = (1 << 0),
-        BHND_CLOCK_ILP  = (1 << 1),
-        BHND_CLOCK_ALP  = (1 << 2),
-        BHND_CLOCK_HT   = (1 << 3)
+	BHND_CLOCK_DYN	= (1 << 0),
+	BHND_CLOCK_ILP	= (1 << 1),
+	BHND_CLOCK_ALP	= (1 << 2),
+	BHND_CLOCK_HT	= (1 << 3)
 } bhnd_clock;
 .Ed
 .\"
@@ -636,12 +636,12 @@ typedef enum {
 .Fc
 .Bd -literal
 typedef enum {
-        BHND_SERVICE_CHIPC,
-        BHND_SERVICE_PWRCTL,
-        BHND_SERVICE_PMU,
-        BHND_SERVICE_NVRAM,
-        BHND_SERVICE_GPIO,
-        BHND_SERVICE_ANY        = 1000
+	BHND_SERVICE_CHIPC,
+	BHND_SERVICE_PWRCTL,
+	BHND_SERVICE_PMU,
+	BHND_SERVICE_NVRAM,
+	BHND_SERVICE_GPIO,
+	BHND_SERVICE_ANY	= 1000
 } bhnd_service_t;
 .Ed
 .\"
@@ -679,7 +679,7 @@ typedef enum {
 .Fa "uint16_t vendor"
 .Fc
 .Bd -literal
-#define BHND_CHIPID_MAX_NAMELEN 32
+#define	BHND_CHIPID_MAX_NAMELEN	32
 .Ed
 .\"
 .Sh DESCRIPTION
@@ -1455,10 +1455,10 @@ and
 For example:
 .Bd -literal -offset indent
 struct bhnd_board_match board_desc = {
-        BHND_MATCH_BOARD_VENDOR(BHND_MFGID_BROADCOM),
-        BHND_MATCH_BOARD_TYPE(BCM94360X52C),
-        BHND_MATCH_BOARD_REV(HWREV_ANY),
-        BHND_MATCH_SROMREV(RANGE(0, 10))
+	BHND_MATCH_BOARD_VENDOR(BHND_MFGID_BROADCOM),
+	BHND_MATCH_BOARD_TYPE(BCM94360X52C),
+	BHND_MATCH_BOARD_REV(HWREV_ANY),
+	BHND_MATCH_SROMREV(RANGE(0, 10))
 };
 .Ed
 .Pp
@@ -1504,8 +1504,8 @@ and
 For example:
 .Bd -literal -offset indent
 struct bhnd_chip_match chip_desc = {
-        BHND_MATCH_CHIP_IP(BCM4329, BCM4329_289PIN),
-        BHND_MATCH_CHIP_TYPE(SIBA)
+	BHND_MATCH_CHIP_IP(BCM4329, BCM4329_289PIN),
+	BHND_MATCH_CHIP_TYPE(SIBA)
 };
 .Ed
 .Pp
@@ -1543,8 +1543,8 @@ and
 For example:
 .Bd -literal -offset indent
 struct bhnd_core_match core_desc = {
-        BHND_MATCH_CORE(BHND_MFGID_BROADCOM, BHND_COREID_CC),
-        BHND_MATCH_CORE_REV(HWREV_RANGE(0, 10))
+	BHND_MATCH_CORE(BHND_MFGID_BROADCOM, BHND_COREID_CC),
+	BHND_MATCH_CORE_REV(HWREV_RANGE(0, 10))
 };
 .Ed
 .Pp
@@ -1561,10 +1561,10 @@ macros.
 For example:
 .Bd -literal -offset indent
 struct bhnd_device_match device_desc = {
-        BHND_MATCH_CHIP_IP(BCM4329, BCM4329_289PIN),
-        BHND_MATCH_BOARD_VENDOR(BHND_MFGID_BROADCOM),
-        BHND_MATCH_BOARD_TYPE(BCM94329AGB),
-        BHND_MATCH_CORE(BHND_MFGID_BROADCOM, BHND_COREID_CC),
+	BHND_MATCH_CHIP_IP(BCM4329, BCM4329_289PIN),
+	BHND_MATCH_BOARD_VENDOR(BHND_MFGID_BROADCOM),
+	BHND_MATCH_BOARD_TYPE(BCM94329AGB),
+	BHND_MATCH_CORE(BHND_MFGID_BROADCOM, BHND_COREID_CC),
 };
 .Ed
 .Pp
@@ -1686,9 +1686,9 @@ table.
 For example:
 .Bd -literal -offset indent
 struct bhnd_device bhnd_usb11_devices[] = {
-        BHND_DEVICE(BCM, USB, "Broadcom USB1.1 Controller",
-            bhnd_usb11_quirks),
-        BHND_DEVICE_END
+	BHND_DEVICE(BCM, USB, "Broadcom USB1.1 Controller",
+	    bhnd_usb11_quirks),
+	BHND_DEVICE_END
 };
 .Ed
 .Pp
@@ -1741,9 +1741,9 @@ on devices with a core hardware revision that matches
 For example:
 .Bd -literal -offset indent
 struct bhnd_device_quirk bhnd_usb11_quirks[] = {
-        BHND_DEVICE(BCM, USB, "Broadcom USB1.1 Controller",
-            bhnd_usb11_quirks),
-        BHND_DEVICE_END
+	BHND_DEVICE(BCM, USB, "Broadcom USB1.1 Controller",
+	    bhnd_usb11_quirks),
+	BHND_DEVICE_END
 };
 .Ed
 .Ss "DMA Address Translation Functions"
