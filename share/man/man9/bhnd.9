@@ -581,8 +581,16 @@ typedef enum {
 .Fa "device_t dev"
 .Fc
 .Ft int
+.Fo bhnd_release_pmu
+.Fa "device_t dev"
+.Fc
+.Ft int
 .Fo bhnd_enable_clocks
 .Fa "device_t dev" "uint32_t clocks"
+.Fc
+.Ft int
+.Fo bhnd_request_clock
+.Fa "device_t dev" "bhnd_clock clock"
 .Fc
 .Ft int
 .Fo bhnd_get_clock_freq
@@ -593,19 +601,11 @@ typedef enum {
 .Fa "device_t dev" "bhnd_clock clock" "u_int *latency"
 .Fc
 .Ft int
-.Fo bhnd_release_ext_rsrc
+.Fo bhnd_request_ext_rsrc
 .Fa "device_t dev" "u_int rsrc"
 .Fc
 .Ft int
-.Fo bhnd_release_pmu
-.Fa "device_t dev"
-.Fc
-.Ft int
-.Fo bhnd_request_clock
-.Fa "device_t dev" "bhnd_clock clock"
-.Fc
-.Ft int
-.Fo bhnd_request_ext_rsrc
+.Fo bhnd_release_ext_rsrc
 .Fa "device_t dev" "u_int rsrc"
 .Fc
 .Bd -literal
@@ -619,20 +619,20 @@ typedef enum {
 .\"
 .Ss "Service Provider Functions"
 .Ft int
-.Fo bhnd_deregister_provider
+.Fo bhnd_register_provider
 .Fa "device_t dev" "bhnd_service_t service"
 .Fc
 .Ft int
-.Fo bhnd_register_provider
+.Fo bhnd_deregister_provider
+.Fa "device_t dev" "bhnd_service_t service"
+.Fc
+.Ft device_t
+.Fo bhnd_retain_provider
 .Fa "device_t dev" "bhnd_service_t service"
 .Fc
 .Ft void
 .Fo bhnd_release_provider
 .Fa "device_t dev" "device_t provider" "bhnd_service_t service"
-.Fc
-.Ft device_t
-.Fo bhnd_retain_provider
-.Fa "device_t dev" "bhnd_service_t service"
 .Fc
 .Bd -literal
 typedef enum {
@@ -647,20 +647,20 @@ typedef enum {
 .\"
 .Ss "Utility Functions"
 .Ft bhnd_devclass_t
-.Fo bhnd_core_class
-.Fa "const struct bhnd_core_info *ci"
-.Fc
-.Ft const char*
-.Fo bhnd_core_name
-.Fa "const struct bhnd_core_info *ci"
-.Fc
-.Ft bhnd_devclass_t
 .Fo bhnd_find_core_class
 .Fa "uint16_t vendor" "uint16_t device"
 .Fc
 .Ft const char*
 .Fo bhnd_find_core_name
 .Fa "uint16_t vendor" "uint16_t device"
+.Fc
+.Ft bhnd_devclass_t
+.Fo bhnd_core_class
+.Fa "const struct bhnd_core_info *ci"
+.Fc
+.Ft const char*
+.Fo bhnd_core_name
+.Fa "const struct bhnd_core_info *ci"
 .Fc
 .Ft int
 .Fo bhnd_format_chip_id
