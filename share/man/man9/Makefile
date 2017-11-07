@@ -484,6 +484,7 @@ MLINKS+=bhnd.9 BHND_MATCH_BOARD_TYPE.9 \
 	bhnd.9 bhnd_device_lookup.9 \
 	bhnd.9 bhnd_device_matches.9 \
 	bhnd.9 bhnd_device_quirks.9 \
+	bhnd.9 bhnd_driver_get_erom_class \
 	bhnd.9 bhnd_enable_clocks.9 \
 	bhnd.9 bhnd_find_core_class.9 \
 	bhnd.9 bhnd_find_core_name.9 \

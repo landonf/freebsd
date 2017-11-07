@@ -646,6 +646,10 @@ typedef enum {
 .Ed
 .\"
 .Ss "Utility Functions"
+.Ft "bhnd_erom_class_t *"
+.Fo bhnd_driver_get_erom_class
+.Fa "driver_t *driver"
+.Fc
 .Ft bhnd_devclass_t
 .Fo bhnd_find_core_class
 .Fa "uint16_t vendor" "uint16_t device"
@@ -2317,6 +2321,15 @@ using
 .Fn bhnd_retain_provider .
 .\"
 .Ss "Utility Functions"
+The
+.Fn bhnd_driver_get_erom_class
+returns the
+.Xr bhnd_erom 9
+class for the device enumeration table format used by
+.Xr bhnd 4
+bus driver instance
+.Fa driver .
+.Pp
 The
 .Fn bhnd_find_core_class
 function looks up the BHND class, if known, for the BHND vendor ID
