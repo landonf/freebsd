@@ -42,12 +42,12 @@
 .Fo bhnd_activate_resource
 .Fa "device_t dev" "int type" "int rid" "struct bhnd_resource *r"
 .Fc
-.Ft "struct bhnd_resource *""
+.Ft "struct bhnd_resource *"
 .Fo bhnd_alloc_resource
 .Fa "device_t dev" "int type" "int *rid" "rman_res_t start" "rman_res_t end"
 .Fa "rman_res_t count" "u_int flags"
 .Fc
-.Ft "struct bhnd_resource *""
+.Ft "struct bhnd_resource *"
 .Fo bhnd_alloc_resource_any
 .Fa "device_t dev" "int type" "int *rid" "u_int flags"
 .Fc
@@ -277,7 +277,7 @@
 .Fo bhnd_get_attach_type
 .Fa "device_t dev"
 .Fc
-.Ft "const struct bhnd_chipid *""
+.Ft "const struct bhnd_chipid *"
 .Fo bhnd_get_chipid
 .Fa "device_t dev"
 .Fc
@@ -351,14 +351,14 @@
 .Fo bhnd_hwrev_matches
 .Fa "uint16_t hwrev" "const struct bhnd_hwrev_match *desc"
 .Fc
-.Ft const struct bhnd_core_info *
+.Ft "const struct bhnd_core_info *"
 .Fo bhnd_match_core
 .Fa "const struct bhnd_core_info *cores" "u_int num_cores"
 .Fa "const struct bhnd_core_match *desc"
 .Fc
 .\"
 .Ss "Device Table Functions"
-.Ft const struct bhnd_device *
+.Ft "const struct bhnd_device *"
 .Fo bhnd_device_lookup
 .Fa "device_t dev" "const struct bhnd_device *table" "size_t entry_size"
 .Fc
@@ -507,7 +507,7 @@ enum bhnd_dma_translation_flags {
 .Fo bhnd_nvram_getvar_str
 .Fa "device_t dev" "const char *name" "char *buf" "size_t len" "size_t *rlen"
 .Fc
-.Ft const char*
+.Ft "const char *"
 .Fo bhnd_nvram_string_array_next
 .Fa "const char *inp" "size_t ilen" "const char *prev" "size_t *olen"
 .Fc
@@ -650,7 +650,7 @@ typedef enum {
 .Fo bhnd_find_core_class
 .Fa "uint16_t vendor" "uint16_t device"
 .Fc
-.Ft const char*
+.Ft "const char *"
 .Fo bhnd_find_core_name
 .Fa "uint16_t vendor" "uint16_t device"
 .Fc
@@ -658,7 +658,7 @@ typedef enum {
 .Fo bhnd_core_class
 .Fa "const struct bhnd_core_info *ci"
 .Fc
-.Ft const char*
+.Ft "const char *"
 .Fo bhnd_core_name
 .Fa "const struct bhnd_core_info *ci"
 .Fc
@@ -674,7 +674,7 @@ typedef enum {
 .Fo bhnd_set_default_core_desc
 .Fa "device_t dev"
 .Fc
-.Ft const char*
+.Ft "const char *"
 .Fo bhnd_vendor_name
 .Fa "uint16_t vendor"
 .Fc
