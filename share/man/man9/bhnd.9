@@ -731,7 +731,7 @@ bridge to host interrupts (e.g. PCI INTx/MSI/MSI-X).
 .Pp
 The
 .Nm
-driver programming interface \(em and 
+driver programming interface \(em and
 .Xr bhndb 4
 host bridge drivers \(em support the implementation of common drivers for
 Broadcom IP cores, whether attached via a BHND host bridge, or via the native
@@ -763,7 +763,7 @@ function activates a previously allocated resource.
 The arguments are as follows:
 .Bl -tag -width indent
 .It Fa dev
-The device holding ownership of the allocated resource. 
+The device holding ownership of the allocated resource.
 .It Fa type
 The type of the resource.
 .It Fa rid
@@ -782,19 +782,19 @@ bus.
 The arguments are as follows:
 .Bl -tag -width indent
 .It Fa dev
-The device requesting resource ownership. 
+The device requesting resource ownership.
 .It Fa type
 The type of resource to allocate. This may be any type supported by the standard
 .Xr bus_alloc_resource 9
 function.
 .It Fa rid
-The bus-specific handle identifying the resource being allocated. 
+The bus-specific handle identifying the resource being allocated.
 .It Fa start
-The start address of the resource. 
+The start address of the resource.
 .It Fa end
-The end address of the resource. 
+The end address of the resource.
 .It Fa count
-The size of the resource. 
+The size of the resource.
 .It Fa flags
 The flags for the resource to be allocated. These may be any values supported by
 the standard
@@ -802,7 +802,7 @@ the standard
 function.
 .El
 .Pp
-To request that the bus supply the resource's default 
+To request that the bus supply the resource's default
 .Fa start ,
 .Fa end ,
 and
@@ -829,13 +829,13 @@ values.
 The arguments are as follows:
 .Bl -tag -width indent
 .It Fa dev
-The device requesting resource ownership. 
+The device requesting resource ownership.
 .It Fa type
 The type of resource to allocate. This may be any type supported by the standard
 .Xr bus_alloc_resource 9
 function.
 .It Fa rid
-The bus-specific handle identifying the resource being allocated. 
+The bus-specific handle identifying the resource being allocated.
 .It Fa flags
 The flags for the resource to be allocated. These may be any values supported by
 the standard
@@ -853,11 +853,11 @@ bus.
 The arguments are as follows:
 .Bl -tag -width indent
 .It Fa dev
-The device requesting ownership of the resources. 
+The device requesting ownership of the resources.
 .It Fa rs
 A standard bus resource specification. If all requested resources, are
 successfully allocated, this will be updated with the allocated resource
-identifiers. 
+identifiers.
 .It Fa res
 If all requested resources are successfully allocated, this will be populated
 with the allocated
@@ -872,11 +872,11 @@ function deactivates a resource previously activated by.
 The arguments are as follows:
 .Bl -tag -width indent
 .It Fa dev
-The device holding ownership of the activated resource. 
+The device holding ownership of the activated resource.
 .It Fa type
-The type of the resource. 
+The type of the resource.
 .It Fa rid
-The bus-specific handle identifying the resource. 
+The bus-specific handle identifying the resource.
 .It Fa r
 A pointer to the resource returned by bhnd_alloc_resource.
 .El
@@ -888,11 +888,11 @@ function frees a resource previously returned by
 The arguments are as follows:
 .Bl -tag -width indent
 .It Fa dev
-The device holding ownership of the resource. 
+The device holding ownership of the resource.
 .It Fa type
-The type of the resource. 
+The type of the resource.
 .It Fa rid
-The bus-specific handle identifying the resource. 
+The bus-specific handle identifying the resource.
 .It Fa r
 A pointer to the resource returned by bhnd_alloc_resource.
 .El
@@ -904,12 +904,12 @@ function frees resources previously returned by
 The arguments are as follows:
 .Bl -tag -width indent
 .It Fa dev
-The device that owns the resources. 
+The device that owns the resources.
 .It Fa rs
 A standard bus resource specification previously initialized by
 .Fn bhnd_alloc_resources .
 .It Fa res
-The resources to be released. 
+The resources to be released.
 .El
 .Pp
 The
@@ -928,7 +928,7 @@ accessible.
 .Ss "Bus Space Functions"
 The bhnd_bus_space functions wrap their equivalent
 .Xr bus_space 9
-counterparts, and provide support for accessing bus memory via 
+counterparts, and provide support for accessing bus memory via
 .Vt "struct bhnd_resource".
 .Pp
 .Bl -ohang -offset indent -compact
@@ -1015,7 +1015,7 @@ The
 .Fn bhnd_read_config
 function is used to read a data item of
 .Fa width
-bytes at 
+bytes at
 .Fa offset
 from the backplane-specific agent/config space of the device
 .Fa dev .
@@ -1026,7 +1026,7 @@ function is used to write a data item of
 .Fa width
 bytes with
 .Fa value
-at 
+at
 .Fa offset
 from the backplane-specific agent/config space of the device
 .Fa dev .
@@ -1207,7 +1207,7 @@ USB Host Controller
 USB Device Controller
 .It Dv BHND_DEVCLASS_USB_DUAL
 USB Host/Device Controller
-.It Dv BHND_DEVCLASS_OTHER 
+.It Dv BHND_DEVCLASS_OTHER
 Other / Unknown
 .It Dv BHND_DEVCLASS_INVALID
 Invalid Class
@@ -1307,7 +1307,7 @@ Board flags (3)
 .El
 .Pp
 On PCI devices, the
-.Fa board_vendor 
+.Fa board_vendor
 and
 .Fa board_type
 fields default to the PCI Subsystem Vendor ID and PCI Subsystem ID, unless
@@ -1631,7 +1631,7 @@ descriptor.
 .It Fa desc
 A verbose device description suitable for use with
 .Xr device_set_desc 9 ,
-or 
+or
 .Dv NULL .
 .It Fa quirks_table
 The quirks table for this device, or
@@ -1665,13 +1665,13 @@ table entry may be initialized using one of the following macros:
 .It Fn BHND_DEVICE "vendor" "device" "desc" "quirks" "flags"
 Match on devices with a vendor ID equal to
 .Dv BHND_MFGID_ ##
-.Fa vendor 
+.Fa vendor
 and a core device ID equal to
 .Dv BHND_COREID_ ##
 .Fa device .
 .Pp
 The device's verbose description is specified by the
-.Fa desc 
+.Fa desc
 argument, a pointer to the device-specific quirks table is specified by the
 .Fa quirks
 argument, and any required device flags may be provided in
@@ -1770,7 +1770,7 @@ and
 .Fa dmat
 arguments may be
 .Dv NULL
-if the translation descriptor or DMA tag are not desired. 
+if the translation descriptor or DMA tag are not desired.
 .Pp
 The following DMA translation flags are supported:
 .Bl -ohang -width ".Dv BHND_DMA_TRANSLATION_BYTESWAPPED" -offset indent
@@ -1925,7 +1925,7 @@ signed 16-bit integer
 signed 32-bit integer
 .It Dv BHND_NVRAM_TYPE_INT64
 signed 64-bit integer
-.It Dv BHND_NVRAM_TYPE_CHAR 
+.It Dv BHND_NVRAM_TYPE_CHAR
 UTF-8 character
 .It Dv BHND_NVRAM_TYPE_STRING
 UTF-8 NUL-terminated string
@@ -1992,7 +1992,7 @@ and
 .Fn bhnd_nvram_getvar_uint
 functions return the value of NVRAM variable
 .Fa name ,
-coerced to a signed or unsigned integer 
+coerced to a signed or unsigned integer
 type of
 .Fa width
 (1, 2, or 4 bytes).
@@ -2167,7 +2167,7 @@ The
 .Fn bhnd_release_pmu
 function releases the per-device PMU state previously allocated for device
 .Fa dev
-using 
+using
 .Fn bhnd_alloc_pmu .
 Any outstanding clock and external resource requests will be discarded upon
 release of the device PMU state.
@@ -2373,7 +2373,7 @@ value to the specified
 .Fa buffer
 with a capacity of
 .Fa size .
-No more than 
+No more than
 .Fa size-1
 characters will be written, with the
 .Fa size'th
@@ -2438,7 +2438,7 @@ functions return 0 on success, or one of the following values on error:
 .It Bq Er EINVAL
 The device is not a direct child of the
 .Xr bhnd 4
-bus 
+bus
 .It Bq Er EINVAL
 The requested width is not one of 1, 2, or 4 bytes.
 .It Bq Er ENODEV
@@ -2469,7 +2469,7 @@ The
 function returns 0 on success, or one of the following values on error:
 .Bl -tag -width Er
 .It Bq Er ENODEV
-DMA is not supported. 
+DMA is not supported.
 .It Bq Er ENOENT
 No DMA translation matching the requested address width and translation flags
 is available.
@@ -2482,8 +2482,8 @@ appropriate error code will be returned.
 .Pp
 The
 .Fn bhnd_get_intr_ivec
-function returns 
-0 on success, or 
+function returns
+0 on success, or
 .Er ENXIO
 if the requested interrupt line exceeds the number of interrupt lines assigned
 to the device.
@@ -2526,7 +2526,7 @@ returned.
 .Ss "Port/Region Functions"
 The
 .Fn bhnd_decode_port_rid
-function returns 
+function returns
 0 on success, or an appropriate error code if no matching port/region is found.
 .Pp
 The
@@ -2536,7 +2536,7 @@ or -1 if the port or region are invalid, or do not have an assigned resource ID.
 .Pp
 The
 .Fn bhnd_get_region_addr
-function returns 
+function returns
 0 on success, or an appropriate error code if no matching port/region is found.
 .\"
 .Ss "PMU Functions"
@@ -2563,13 +2563,13 @@ No PMU or PWRCTL provider has been registered with the bus.
 .Pp
 The
 .Fn bhnd_get_clock_freq
-function returns 0 on success, or 
+function returns 0 on success, or
 .Er ENODEV
 if the frequency for the specified clock is not available.
 .Pp
 The
 .Fn bhnd_get_clock_latency
-function returns 0 on success, or 
+function returns 0 on success, or
 .Er ENODEV
 if the transition latency for the specified clock is not available.
 .Pp
@@ -2590,7 +2590,7 @@ service registration otherwise fails.
 .Pp
 The
 .Fn bhnd_deregister_provider
-function returns 0 on success, or 
+function returns 0 on success, or
 .Er EBUSY
 if active references to the service provider exist.
 .Pp
