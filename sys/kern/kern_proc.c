@@ -389,23 +389,28 @@ pget(pid_t pid, int flags, struct proc **pp)
 	struct proc *p;
 	int error;
 
-	sx_slock(&allproc_lock);
-	if (pid <= PID_MAX) {
-		p = pfind_locked(pid);
-		if (p == NULL && (flags & PGET_NOTWEXIT) == 0)
-			p = zpfind_locked(pid);
-	} else if ((flags & PGET_NOTID) == 0) {
-		p = pfind_tid_locked(pid);
+	p = curproc;
+	if (p->p_pid == pid) {
+		PROC_LOCK(p);
 	} else {
-		p = NULL;
-	}
-	sx_sunlock(&allproc_lock);
-	if (p == NULL)
-		return (ESRCH);
-	if ((flags & PGET_CANSEE) != 0) {
-		error = p_cansee(curthread, p);
-		if (error != 0)
-			goto errout;
+		sx_slock(&allproc_lock);
+		if (pid <= PID_MAX) {
+			p = pfind_locked(pid);
+			if (p == NULL && (flags & PGET_NOTWEXIT) == 0)
+				p = zpfind_locked(pid);
+		} else if ((flags & PGET_NOTID) == 0) {
+			p = pfind_tid_locked(pid);
+		} else {
+			p = NULL;
+		}
+		sx_sunlock(&allproc_lock);
+		if (p == NULL)
+			return (ESRCH);
+		if ((flags & PGET_CANSEE) != 0) {
+			error = p_cansee(curthread, p);
+			if (error != 0)
+				goto errout;
+		}
 	}
 	if ((flags & PGET_CANDEBUG) != 0) {
 		error = p_candebug(curthread, p);
@@ -2765,18 +2770,25 @@ sysctl_kern_proc_umask(SYSCTL_HANDLER_ARGS)
 	struct proc *p;
 	int error;
 	u_short fd_cmask;
+	pid_t pid;
 
 	if (namelen != 1)
 		return (EINVAL);
 
-	error = pget((pid_t)name[0], PGET_WANTREAD, &p);
+	pid = (pid_t)name[0];
+	p = curproc;
+	if (pid == p->p_pid || pid == 0) {
+		fd_cmask = p->p_fd->fd_cmask;
+		goto out;
+	}
+
+	error = pget(pid, PGET_WANTREAD, &p);
 	if (error != 0)
 		return (error);
 
-	FILEDESC_SLOCK(p->p_fd);
 	fd_cmask = p->p_fd->fd_cmask;
-	FILEDESC_SUNLOCK(p->p_fd);
 	PRELE(p);
+out:
 	error = SYSCTL_OUT(req, &fd_cmask, sizeof(fd_cmask));
 	return (error);
 }
