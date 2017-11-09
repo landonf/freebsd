@@ -1988,8 +1988,6 @@ bhnd_compat_gpio_set(device_t dev, uint32_t value)
 
 	ctx = bwn_bhnd_get_ctx(dev);
 
-	printf("TRISTATE_UPDATE: %#x\n", value);
-
 	for (size_t i = 0; i < nitems(flags); i++) {
 		if (value & (1 << i)) {
 			/* Tristate pin */
