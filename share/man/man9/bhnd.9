@@ -28,7 +28,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd October 20, 2017
+.Dd November 9, 2017
 .Dt BHND 9
 .Os
 .Sh NAME
@@ -698,40 +698,40 @@ connected via one of two on-chip backplane (hardware bus) architectures.
 .Pp
 Hardware designed prior to 2009 used Broadcom's
 .Dq SSB
-backplane architecture, based on Sonics Silicon's interconnect IP. Each core on
-the Sonics backplane vends a 4 KiB register block, containing both
+backplane architecture, based on Sonics Silicon's interconnect IP.
+Each core on the Sonics backplane vends a 4 KiB register block, containing both
 device-specific CSRs, and SSB-specific per-core device management
 (enable/reset/etc) registers.
 .Pp
 Subsequent hardware is based on Broadcom's
 .Dq BCMA
-backplane, based on ARM's AMBA IP. The IP cores used in earlier SSB-based
-devices were adapted for compatibility with the new backplane, with
-additional
+backplane, based on ARM's AMBA IP.
+The IP cores used in earlier SSB-based devices were adapted for compatibility
+with the new backplane, with additional
 .Dq wrapper
 cores providing per-core device management functions in place of the SSB
 per-core management registers.
 .Pp
-When BHND hardware is used as a host-connected peripheral (e.g. in a PCI Wi-Fi
+When BHND hardware is used as a host-connected peripheral (e.g., in a PCI Wi-Fi
 card), the on-chip peripheral controller core is configured to operate as
 an endpoint device, bridging access to the SoC hardware:
 .Pp
 .Bl -dash -offset indent
 .It
-Host access to SoC address space is provided via a set of register windows (e.g.
-a set of configurable windows into SoC address space mapped via PCI BARs)
+Host access to SoC address space is provided via a set of register windows
+(e.g., a set of configurable windows into SoC address space mapped via PCI BARs)
 .It
 DMA is supported by the bridge core's sparse mapping of host address space into
-the backplane address space. These address regions may be used as a target for
-the on-chip DMA engine.
+the backplane address space.
+These address regions may be used as a target for the on-chip DMA engine.
 .It
 Any backplane interrupt vectors routed to the bridge core may be mapped by the
-bridge to host interrupts (e.g. PCI INTx/MSI/MSI-X).
+bridge to host interrupts (e.g., PCI INTx/MSI/MSI-X).
 .El
 .Pp
 The
 .Nm
-driver programming interface \(em and 
+driver programming interface \(em and
 .Xr bhndb 4
 host bridge drivers \(em support the implementation of common drivers for
 Broadcom IP cores, whether attached via a BHND host bridge, or via the native
@@ -763,7 +763,7 @@ function activates a previously allocated resource.
 The arguments are as follows:
 .Bl -tag -width indent
 .It Fa dev
-The device holding ownership of the allocated resource. 
+The device holding ownership of the allocated resource.
 .It Fa type
 The type of the resource.
 .It Fa rid
@@ -782,27 +782,28 @@ bus.
 The arguments are as follows:
 .Bl -tag -width indent
 .It Fa dev
-The device requesting resource ownership. 
+The device requesting resource ownership.
 .It Fa type
-The type of resource to allocate. This may be any type supported by the standard
+The type of resource to allocate.
+This may be any type supported by the standard
 .Xr bus_alloc_resource 9
 function.
 .It Fa rid
-The bus-specific handle identifying the resource being allocated. 
+The bus-specific handle identifying the resource being allocated.
 .It Fa start
-The start address of the resource. 
+The start address of the resource.
 .It Fa end
-The end address of the resource. 
+The end address of the resource.
 .It Fa count
-The size of the resource. 
+The size of the resource.
 .It Fa flags
-The flags for the resource to be allocated. These may be any values supported by
-the standard
+The flags for the resource to be allocated.
+These may be any values supported by the standard
 .Xr bus_alloc_resource 9
 function.
 .El
 .Pp
-To request that the bus supply the resource's default 
+To request that the bus supply the resource's default
 .Fa start ,
 .Fa end ,
 and
@@ -829,16 +830,17 @@ values.
 The arguments are as follows:
 .Bl -tag -width indent
 .It Fa dev
-The device requesting resource ownership. 
+The device requesting resource ownership.
 .It Fa type
-The type of resource to allocate. This may be any type supported by the standard
+The type of resource to allocate.
+This may be any type supported by the standard
 .Xr bus_alloc_resource 9
 function.
 .It Fa rid
-The bus-specific handle identifying the resource being allocated. 
+The bus-specific handle identifying the resource being allocated.
 .It Fa flags
-The flags for the resource to be allocated. These may be any values supported by
-the standard
+The flags for the resource to be allocated.
+These may be any values supported by the standard
 .Xr bus_alloc_resource 9
 function.
 .El
@@ -853,11 +855,11 @@ bus.
 The arguments are as follows:
 .Bl -tag -width indent
 .It Fa dev
-The device requesting ownership of the resources. 
+The device requesting ownership of the resources.
 .It Fa rs
 A standard bus resource specification. If all requested resources, are
 successfully allocated, this will be updated with the allocated resource
-identifiers. 
+identifiers.
 .It Fa res
 If all requested resources are successfully allocated, this will be populated
 with the allocated
@@ -872,11 +874,11 @@ function deactivates a resource previously activated by.
 The arguments are as follows:
 .Bl -tag -width indent
 .It Fa dev
-The device holding ownership of the activated resource. 
+The device holding ownership of the activated resource.
 .It Fa type
-The type of the resource. 
+The type of the resource.
 .It Fa rid
-The bus-specific handle identifying the resource. 
+The bus-specific handle identifying the resource.
 .It Fa r
 A pointer to the resource returned by bhnd_alloc_resource.
 .El
@@ -888,11 +890,11 @@ function frees a resource previously returned by
 The arguments are as follows:
 .Bl -tag -width indent
 .It Fa dev
-The device holding ownership of the resource. 
+The device holding ownership of the resource.
 .It Fa type
-The type of the resource. 
+The type of the resource.
 .It Fa rid
-The bus-specific handle identifying the resource. 
+The bus-specific handle identifying the resource.
 .It Fa r
 A pointer to the resource returned by bhnd_alloc_resource.
 .El
@@ -904,12 +906,12 @@ function frees resources previously returned by
 The arguments are as follows:
 .Bl -tag -width indent
 .It Fa dev
-The device that owns the resources. 
+The device that owns the resources.
 .It Fa rs
 A standard bus resource specification previously initialized by
 .Fn bhnd_alloc_resources .
 .It Fa res
-The resources to be released. 
+The resources to be released.
 .El
 .Pp
 The
@@ -928,7 +930,7 @@ accessible.
 .Ss "Bus Space Functions"
 The bhnd_bus_space functions wrap their equivalent
 .Xr bus_space 9
-counterparts, and provide support for accessing bus memory via 
+counterparts, and provide support for accessing bus memory via
 .Vt "struct bhnd_resource".
 .Pp
 .Bl -ohang -offset indent -compact
@@ -969,17 +971,19 @@ to
 The following I/O control flags are supported:
 .Bl -tag -width ".Dv BHND_IOCTL_CLK_FORCE" -offset indent
 .It Dv BHND_IOCTL_BIST
-Initiate a built-in self-test (BIST). Must be cleared after BIST results are
-read via the IOST (I/O Status) register.
+Initiate a built-in self-test (BIST).
+Must be cleared after BIST results are read via the IOST (I/O Status) register.
 .It Dv BHND_IOCTL_PME
 Enable posting of power management events by the core.
 .It Dv BHND_IOCTL_CLK_FORCE
 Force disable of clock gating, resulting in all clocks being distributed within
-the core. Should be set when asserting/deasserting reset to ensure the reset
-signal fully propagates to the entire core.
+the core.
+Should be set when asserting/deasserting reset to ensure the reset signal fully
+propagates to the entire core.
 .It Dv BHND_IOCTL_CLK_EN
-If cleared, the core clock will be disabled. Should be set during normal
-operation, and cleared when the core is held in reset.
+If cleared, the core clock will be disabled.
+Should be set during normal operation, and cleared when the core is held in
+reset.
 .It Dv BHND_IOCTL_CFLAGS
 The mask of IOCTL bits reserved for additional core-specific I/O control flags.
 .El
@@ -993,7 +997,8 @@ returning the current value in
 The following I/O status flags are supported:
 .Bl -tag -width ".Dv BHND_IOST_BIST_DONE" -offset indent
 .It Dv BHND_IOST_BIST_DONE
-Set upon BIST completion. Will be cleared when the
+Set upon BIST completion.
+Will be cleared when the
 .Dv BHND_IOCTL_BIST
 flag of the I/O control register is cleared using
 .Fn bhnd_write_ioctl .
@@ -1003,7 +1008,7 @@ completed and
 .Dv BHND_IOST_BIST_DONE
 is not also set.
 .It Dv BHND_IOST_CLK
-Set if the core has requred that clocked be ungated, or cleared otherwise.
+Set if the core has required that clocked be ungated, or cleared otherwise.
 The value is undefined if a core does not support clock gating.
 .It Dv BHND_IOST_DMA64
 Set if this core supports 64-bit DMA.
@@ -1015,7 +1020,7 @@ The
 .Fn bhnd_read_config
 function is used to read a data item of
 .Fa width
-bytes at 
+bytes at
 .Fa offset
 from the backplane-specific agent/config space of the device
 .Fa dev .
@@ -1026,7 +1031,7 @@ function is used to write a data item of
 .Fa width
 bytes with
 .Fa value
-at 
+at
 .Fa offset
 from the backplane-specific agent/config space of the device
 .Fa dev .
@@ -1040,7 +1045,7 @@ and
 .Fn bhnd_write_config
 is backplane-specific, and these functions should only be used for functionality
 that is not available via another
-.Xr bhnd 9
+.Nm
 function.
 .Pp
 The
@@ -1049,7 +1054,8 @@ function transitions the device
 .Fa dev
 to a low power
 .Dq RESET
-state. The hardware may be brought out of this state using
+state.
+The hardware may be brought out of this state using
 .Fn bhnd_reset_hw .
 .Pp
 The
@@ -1067,8 +1073,8 @@ function returns
 .Dv true
 if the device
 .Fa dev
-is currently held in a RESET state, or is otherwise not clocked. Otherwise, it
-returns
+is currently held in a RESET state, or is otherwise not clocked.
+Otherwise, it returns
 .Dv false .
 .Pp
 Any outstanding per-device PMU requests made using
@@ -1118,9 +1124,9 @@ unpopulated components, etc.
 .It Fa chip_type
 The interconnect architecture used by this chip.
 .It Fa enum_addr
-The backplane enumeration address. On SSB devices, this will be the base
-address of the first SSB core. On BCMA devices, this will be the address of the
-enumeration ROM (EROM) core.
+The backplane enumeration address.
+On SSB devices, this will be the base address of the first SSB core.
+On BCMA devices, this will be the address of the enumeration ROM (EROM) core.
 .It Fa ncores
 The number of cores on the chip backplane, or 0 if unknown.
 .El
@@ -1136,8 +1142,10 @@ BCMA interconnect.
 .It Dv BHND_CHIPTYPE_BCMA_ALT
 BCMA-compatible variant found in Broadcom Northstar ARM SoCs.
 .It Dv BHND_CHIPTYPE_UBUS
-UBUS interconnect. This BCMA-derived interconnect is found in Broadcom BCM33xx
-DOCSIS SoCs, and BCM63xx xDSL SoCs. UBUS is not currently supported by
+UBUS interconnect.
+This BCMA-derived interconnect is found in Broadcom BCM33xx DOCSIS SoCs, and
+BCM63xx xDSL SoCs.
+UBUS is not currently supported by
 .Xr bhnd 4 .
 .El
 .Pp
@@ -1157,7 +1165,8 @@ if the device's
 .Em vendor
 and
 .Em device
-identifiers are recognized. Otherwise, returns
+identifiers are recognized.
+Otherwise, returns
 .Dv BHND_DEVCLASS_OTHER .
 .Pp
 One of the following device classes will be returned:
@@ -1207,7 +1216,7 @@ USB Host Controller
 USB Device Controller
 .It Dv BHND_DEVCLASS_USB_DUAL
 USB Host/Device Controller
-.It Dv BHND_DEVCLASS_OTHER 
+.It Dv BHND_DEVCLASS_OTHER
 Other / Unknown
 .It Dv BHND_DEVCLASS_INVALID
 Invalid Class
@@ -1293,7 +1302,8 @@ structure contains the following fields:
 .It Fa board_vendor
 Vendor ID of the board manufacturer (PCI-SIG assigned).
 .It Fa board_type
-Device ID. This is generally a Broadcom-assigned globally unique identifier.
+Device ID.
+This is generally a Broadcom-assigned globally unique identifier.
 .It Fa board_rev
 Board revision.
 .It Fa board_srom_rev
@@ -1307,7 +1317,7 @@ Board flags (3)
 .El
 .Pp
 On PCI devices, the
-.Fa board_vendor 
+.Fa board_vendor
 and
 .Fa board_type
 fields default to the PCI Subsystem Vendor ID and PCI Subsystem ID, unless
@@ -1318,7 +1328,8 @@ Symbolic constants for common board flags are defined in
 .Pp
 .Ss "Device Matching Functions"
 The bhnd device matching functions are used to match against core, chip, and
-board-level device attributes. Match requirements are specified using the
+board-level device attributes.
+Match requirements are specified using the
 .Vt "struct bhnd_board_match" ,
 .Vt "struct bhnd_chip_match" ,
 .Vt "struct bhnd_core_match" ,
@@ -1414,7 +1425,8 @@ structures
 .Fa lhs
 and
 .Fa rhs
-are equal. Otherwise, it returns
+are equal.
+Otherwise, it returns
 .Dv false .
 .Pp
 The
@@ -1589,7 +1601,8 @@ Matches any hardware revision greater than or equal to
 Matches any hardware revision less than or equal to
 .Fa hwrev
 .It Fn BHND_HWREV_RANGE "start" "end"
-Matches any hardware revision within an inclusive range. If
+Matches any hardware revision within an inclusive range.
+If
 .Dv BHND_HWREV_INVALID
 is specified as the
 .Fa end
@@ -1616,8 +1629,8 @@ function scan the device table
 .Fa table
 for all quirk entries that match the device
 .Fa dev ,
-returning the bitwise OR of all matching quirk flags. The table entry size is
-specified by
+returning the bitwise OR of all matching quirk flags.
+The table entry size is specified by
 .Fa entry_size .
 .Pp
 The
@@ -1631,7 +1644,7 @@ descriptor.
 .It Fa desc
 A verbose device description suitable for use with
 .Xr device_set_desc 9 ,
-or 
+or
 .Dv NULL .
 .It Fa quirks_table
 The quirks table for this device, or
@@ -1647,7 +1660,8 @@ Match on any device.
 .It Dv BHND_DF_HOSTB
 Match only if the device is the
 .Xr bhndb 4
-host bridge. Implies
+host bridge.
+Implies
 .Dv BHND_DF_ADAPTER .
 .It Dv BHND_DF_SOC
 Match only if the device is attached to a native SoC backplane.
@@ -1665,13 +1679,13 @@ table entry may be initialized using one of the following macros:
 .It Fn BHND_DEVICE "vendor" "device" "desc" "quirks" "flags"
 Match on devices with a vendor ID equal to
 .Dv BHND_MFGID_ ##
-.Fa vendor 
+.Fa vendor
 and a core device ID equal to
 .Dv BHND_COREID_ ##
 .Fa device .
 .Pp
 The device's verbose description is specified by the
-.Fa desc 
+.Fa desc
 argument, a pointer to the device-specific quirks table is specified by the
 .Fa quirks
 argument, and any required device flags may be provided in
@@ -1770,7 +1784,7 @@ and
 .Fa dmat
 arguments may be
 .Dv NULL
-if the translation descriptor or DMA tag are not desired. 
+if the translation descriptor or DMA tag are not desired.
 .Pp
 The following DMA translation flags are supported:
 .Bl -ohang -width ".Dv BHND_DMA_TRANSLATION_BYTESWAPPED" -offset indent
@@ -1806,17 +1820,17 @@ The
 structure contains the following fields:
 .Bl -tag -width "addrext_mask"
 .It Fa base_addr
-Host-to-device physical address translation. This may be added to a host
-physical address to produce a device DMA address.
+Host-to-device physical address translation.
+This may be added to a host physical address to produce a device DMA address.
 .It Fa addr_mask
-Device-addressable address mask. This defines the device DMA address range,
-and excludes any bits reserved for mapping the address within the translation
-window at
+Device-addressable address mask.
+This defines the device DMA address range, and excludes any bits reserved for
+mapping the address within the translation window at
 .Fa base_addr .
 .It Fa addrext_mask
-Device-addressable extended address mask. If a the per-core BHND DMA engine
-supports the 'addrext' control field, it can be used to provide address bits
-excluded by
+Device-addressable extended address mask.
+If a the per-core BHND DMA engine supports the 'addrext' control field, it can
+be used to provide address bits excluded by
 .Fa addr_mask .
 .Pp
 Support for DMA extended address changes \(em including coordination with the
@@ -1850,8 +1864,9 @@ on the device
 writing the result to
 .Fa ivec .
 Interrupt vector assignments are backplane-specific: On BCMA devices, this
-function returns the OOB bus line assigned to the interrupt. On SIBA devices,
-it returns the target OCP slave flag number assigned to the interrupt.
+function returns the OOB bus line assigned to the interrupt.
+On SIBA devices, it returns the target OCP slave flag number assigned to the
+interrupt.
 .Pp
 The
 .Fn bhnd_map_intr
@@ -1925,7 +1940,7 @@ signed 16-bit integer
 signed 32-bit integer
 .It Dv BHND_NVRAM_TYPE_INT64
 signed 64-bit integer
-.It Dv BHND_NVRAM_TYPE_CHAR 
+.It Dv BHND_NVRAM_TYPE_CHAR
 UTF-8 character
 .It Dv BHND_NVRAM_TYPE_STRING
 UTF-8 NUL-terminated string
@@ -1992,7 +2007,7 @@ and
 .Fn bhnd_nvram_getvar_uint
 functions return the value of NVRAM variable
 .Fa name ,
-coerced to a signed or unsigned integer 
+coerced to a signed or unsigned integer
 type of
 .Fa width
 (1, 2, or 4 bytes).
@@ -2021,17 +2036,20 @@ The
 function iterates over all strings in the
 .Fa inp
 .Dv BHND_NVRAM_TYPE_STRING_ARRAY
-value. The size of
+value.
+The size of
 .Fa inp ,
 including any terminating NUL character(s), is specified using the
 .Fa ilen
-argument. The
+argument.
+The
 .Fa prev
 argument should be either a string pointer previously returned by
 .Fn bhnd_nvram_string_array_next ,
 or
 .Dv NULL
-to begin iteration. If
+to begin iteration.
+If
 .Fa prev is not
 .Dv NULL ,
 the
@@ -2054,8 +2072,9 @@ starting with 0.
 The following port types are supported:
 .Bl -tag -width ".Dv BHND_PORT_DEVICE" -offset indent
 .It Dv BHND_PORT_DEVICE
-Device memory. The device's control/status registers are always mapped by
-the first device port and region, and will be assigned a
+Device memory.
+The device's control/status registers are always mapped by the first device port
+and region, and will be assigned a
 .Dv SYS_RES_MEMORY
 resource ID of 0.
 .It Dv BHND_PORT_BRIDGE
@@ -2167,7 +2186,7 @@ The
 .Fn bhnd_release_pmu
 function releases the per-device PMU state previously allocated for device
 .Fa dev
-using 
+using
 .Fn bhnd_alloc_pmu .
 Any outstanding clock and external resource requests will be discarded upon
 release of the device PMU state.
@@ -2178,9 +2197,9 @@ function is used to request that
 .Fa clocks
 be powered up and routed to the backplane on behalf of device
 .Fa dev .
-This will power any clock sources required (e.g. XTAL, PLL, etc) and wait until
-the requested clocks are stable. If the request succeeds, any previous clock
-requests issued by
+This will power any clock sources required (e.g., XTAL, PLL, etc) and wait until
+the requested clocks are stable.
+If the request succeeds, any previous clock requests issued by
 .Fa dev
 will be discarded.
 .Pp
@@ -2194,14 +2213,15 @@ requests by any device attached to the parent
 .Xr bhnd 4
 bus.
 .It BHND_CLOCK_ILP
-Idle Low-Power (ILP) Clock. May be used if no register access is required, or
-long request latency is acceptable.
+Idle Low-Power (ILP) Clock.
+May be used if no register access is required, or long request latency is
+acceptable.
 .It BHND_CLOCK_ALP
-Active Low-Power (ALP) Clock. Supports low-latency register access and low-rate
-DMA.
+Active Low-Power (ALP) Clock.
+Supports low-latency register access and low-rate DMA.
 .It BHND_CLOCK_HT
-High Throughput (HT) Clock. Supports high bus throughput and lowest-latency
-register access.
+High Throughput (HT) Clock.
+Supports high bus throughput and lowest-latency register access.
 .El
 .Pp
 The
@@ -2262,21 +2282,25 @@ bus.
 The following service types are supported:
 .Bl -tag -width ".Dv BHND_SERVICE_INVALID" -offset indent
 .It Dv BHND_SERVICE_CHIPC
-ChipCommon service. The providing device must implement the bhnd_chipc
-interface.
+ChipCommon service.
+The providing device must implement the bhnd_chipc interface.
 .It Dv BHND_SERVICE_PWRCTL
-Legacy PWRCTL service. The providing device must implement the bhnd_pwrctl
-interface.
+Legacy PWRCTL service.
+The providing device must implement the bhnd_pwrctl interface.
 .It Dv BHND_SERVICE_PMU
-PMU service. The providing device must implement the bhnd_pmu interface.
+PMU service.
+The providing device must implement the bhnd_pmu interface.
 .It Dv BHND_SERVICE_NVRAM
-NVRAM service. The providing device must implement the bhnd_nvram interface.
+NVRAM service.
+The providing device must implement the bhnd_nvram interface.
 .It Dv BHND_SERVICE_GPIO
-GPIO service. The providing device must implement the standard
+GPIO service.
+The providing device must implement the standard
 .Xr gpio 4
 interface.
 .It Dv BHND_SERVICE_ANY
-Matches on any service type. May be used with
+Matches on any service type.
+May be used with
 .Fn bhnd_deregister_provider
 to remove all service provider registrations for a device.
 .El
@@ -2303,8 +2327,9 @@ with the parent
 .Xr bhnd 4
 bus of devce
 .Fa dev ,
-if available. On success, the caller is responsible for releasing this provider
-reference using
+if available.
+On success, the caller is responsible for releasing this provider reference
+using
 .Fn bhnd_release_provider .
 The service provider is guaranteed to remain available until the provider
 reference is released.
@@ -2373,11 +2398,12 @@ value to the specified
 .Fa buffer
 with a capacity of
 .Fa size .
-No more than 
+No more than
 .Fa size-1
 characters will be written, with the
 .Fa size'th
-character set to '\\0'. A buffer size of
+character set to '\\0'.
+A buffer size of
 .Dv BHND_CHIPID_MAX_NAMELEN
 is sufficient for any string representation produced using
 .Fn bhnd_format_chip_id .
@@ -2438,7 +2464,7 @@ functions return 0 on success, or one of the following values on error:
 .It Bq Er EINVAL
 The device is not a direct child of the
 .Xr bhnd 4
-bus 
+bus
 .It Bq Er EINVAL
 The requested width is not one of 1, 2, or 4 bytes.
 .It Bq Er ENODEV
@@ -2469,7 +2495,7 @@ The
 function returns 0 on success, or one of the following values on error:
 .Bl -tag -width Er
 .It Bq Er ENODEV
-DMA is not supported. 
+DMA is not supported.
 .It Bq Er ENOENT
 No DMA translation matching the requested address width and translation flags
 is available.
@@ -2482,8 +2508,8 @@ appropriate error code will be returned.
 .Pp
 The
 .Fn bhnd_get_intr_ivec
-function returns 
-0 on success, or 
+function returns
+0 on success, or
 .Er ENXIO
 if the requested interrupt line exceeds the number of interrupt lines assigned
 to the device.
@@ -2526,7 +2552,7 @@ returned.
 .Ss "Port/Region Functions"
 The
 .Fn bhnd_decode_port_rid
-function returns 
+function returns
 0 on success, or an appropriate error code if no matching port/region is found.
 .Pp
 The
@@ -2536,7 +2562,7 @@ or -1 if the port or region are invalid, or do not have an assigned resource ID.
 .Pp
 The
 .Fn bhnd_get_region_addr
-function returns 
+function returns
 0 on success, or an appropriate error code if no matching port/region is found.
 .\"
 .Ss "PMU Functions"
@@ -2563,13 +2589,13 @@ No PMU or PWRCTL provider has been registered with the bus.
 .Pp
 The
 .Fn bhnd_get_clock_freq
-function returns 0 on success, or 
+function returns 0 on success, or
 .Er ENODEV
 if the frequency for the specified clock is not available.
 .Pp
 The
 .Fn bhnd_get_clock_latency
-function returns 0 on success, or 
+function returns 0 on success, or
 .Er ENODEV
 if the transition latency for the specified clock is not available.
 .Pp
@@ -2590,7 +2616,7 @@ service registration otherwise fails.
 .Pp
 The
 .Fn bhnd_deregister_provider
-function returns 0 on success, or 
+function returns 0 on success, or
 .Er EBUSY
 if active references to the service provider exist.
 .Pp
