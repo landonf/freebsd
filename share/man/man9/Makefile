@@ -485,7 +485,7 @@ MLINKS+=bhnd.9 BHND_MATCH_BOARD_TYPE.9 \
 	bhnd.9 bhnd_device_lookup.9 \
 	bhnd.9 bhnd_device_matches.9 \
 	bhnd.9 bhnd_device_quirks.9 \
-	bhnd.9 bhnd_driver_get_erom_class \
+	bhnd.9 bhnd_driver_get_erom_class.9 \
 	bhnd.9 bhnd_enable_clocks.9 \
 	bhnd.9 bhnd_find_core_class.9 \
 	bhnd.9 bhnd_find_core_name.9 \
@@ -564,7 +564,7 @@ MLINKS+=bhnd_erom.9 bhnd_erom_alloc.9 \
 	bhnd_erom.9 bhnd_erom_lookup_core.9 \
 	bhnd_erom.9 bhnd_erom_lookup_core_addr.9 \
 	bhnd_erom.9 bhnd_erom_probe.9 \
-	bhnd_erom.9 bhnd_erom_probe_driver_classes
+	bhnd_erom.9 bhnd_erom_probe_driver_classes.9
 MLINKS+=bitset.9 BITSET_DEFINE.9 \
 	bitset.9 BITSET_T_INITIALIZER.9 \
 	bitset.9 BITSET_FSET.9 \
