@@ -233,10 +233,14 @@ afterdepend: beforedepend
 # mimicing what bmake's meta_name() does and adding in the full path
 # as well to ensure that the expected meta file is read.
 .if ${__obj:M*/*}
+.if ${MAKE_VERSION} < 20171028
 _meta_obj=	${.OBJDIR:C,/,_,g}_${__obj:C,/,_,g}.meta
 .else
+_meta_obj=	${__obj:C,/,_,g}.meta
+.endif	# ${MAKE_VERSION} < 20171028
+.else
 _meta_obj=	${__obj}.meta
-.endif
+.endif	# ${__obj:M*/*}
 _dep_obj=	${DEPENDFILE}.${__obj:${DEPEND_FILTER}}
 .if defined(_meta_filemon)
 _depfile=	${.OBJDIR}/${_meta_obj}
@@ -327,6 +331,10 @@ cleandepend:
 .endif
 .ORDER: cleandepend all
 .ORDER: cleandepend depend
+.if ${MK_AUTO_OBJ} == "yes"
+.ORDER: cleanobj depend
+.ORDER: cleandir depend
+.endif
 
 .if !target(checkdpadd) && (defined(DPADD) || defined(LDADD))
 _LDADD_FROM_DPADD=	${DPADD:R:T:C;^lib(.*)$;-l\1;g}

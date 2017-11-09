@@ -1585,8 +1585,8 @@ mps_setup_sysctl(struct mps_softc *sc)
 	}
 
 	SYSCTL_ADD_PROC(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-	    OID_AUTO, "debug_level", CTLTYPE_STRING | CTLFLAG_RW, sc, 0,
-	    mps_debug_sysctl, "A", "mps debug level");
+	    OID_AUTO, "debug_level", CTLTYPE_STRING | CTLFLAG_RW |CTLFLAG_MPSAFE,
+	    sc, 0, mps_debug_sysctl, "A", "mps debug level");
 
 	SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
 	    OID_AUTO, "disable_msix", CTLFLAG_RD, &sc->disable_msix, 0,
@@ -1679,7 +1679,7 @@ mps_setup_sysctl(struct mps_softc *sc)
 	    "Use the phy number for enumeration");
 }
 
-struct mps_debug_string {
+static struct mps_debug_string {
 	char	*name;
 	int	flag;
 } mps_debug_strings[] = {
@@ -1696,12 +1696,18 @@ struct mps_debug_string {
 	{"trace", MPS_TRACE}
 };
 
+enum mps_debug_level_combiner {
+	COMB_NONE,
+	COMB_ADD,
+	COMB_SUB
+};
+
 static int
 mps_debug_sysctl(SYSCTL_HANDLER_ARGS)
 {
 	struct mps_softc *sc;
 	struct mps_debug_string *string;
-	struct sbuf sbuf;
+	struct sbuf *sbuf;
 	char *buffer;
 	size_t sz;
 	int i, len, debug, error;
@@ -1712,20 +1718,20 @@ mps_debug_sysctl(SYSCTL_HANDLER_ARGS)
 	if (error != 0)
 		return (error);
 
-	sbuf_new_for_sysctl(&sbuf, NULL, 128, req);
+	sbuf = sbuf_new_for_sysctl(NULL, NULL, 128, req);
 	debug = sc->mps_debug;
 
-	sbuf_printf(&sbuf, "%#x", debug);
+	sbuf_printf(sbuf, "%#x", debug);
 
 	sz = sizeof(mps_debug_strings) / sizeof(mps_debug_strings[0]);
 	for (i = 0; i < sz; i++) {
 		string = &mps_debug_strings[i];
 		if (debug & string->flag)
-			sbuf_printf(&sbuf, ",%s", string->name);
+			sbuf_printf(sbuf, ",%s", string->name);
 	}
 
-	error = sbuf_finish(&sbuf);
-	sbuf_delete(&sbuf);
+	error = sbuf_finish(sbuf);
+	sbuf_delete(sbuf);
 
 	if (error || req->newptr == NULL)
 		return (error);
@@ -1747,11 +1753,23 @@ static void
 mps_parse_debug(struct mps_softc *sc, char *list)
 {
 	struct mps_debug_string *string;
+	enum mps_debug_level_combiner op;
 	char *token, *endtoken;
 	size_t sz;
 	int flags, i;
 
 	if (list == NULL || *list == '\0')
+		return;
+
+	if (*list == '+') {
+		op = COMB_ADD;
+		list++;
+	} else if (*list == '-') {
+		op = COMB_SUB;
+		list++;
+	} else
+		op = COMB_NONE;
+	if (*list == '\0')
 		return;
 
 	flags = 0;
@@ -1773,7 +1791,18 @@ mps_parse_debug(struct mps_softc *sc, char *list)
 		}
 	}
 
-	sc->mps_debug = flags;
+	switch (op) {
+	case COMB_NONE:
+		sc->mps_debug = flags;
+		break;
+	case COMB_ADD:
+		sc->mps_debug |= flags;
+		break;
+	case COMB_SUB:
+		sc->mps_debug &= (~flags);
+		break;
+	}
+
 	return;
 }
 
