@@ -435,7 +435,7 @@ struct bhnd_dma_translation {
 };
 .Ed
 .Bd -literal
-typedef enum bhnd_dma_addrwidth {
+typedef enum {
 	BHND_DMA_ADDR_30BIT	= 30,
 	BHND_DMA_ADDR_32BIT	= 32,
 	BHND_DMA_ADDR_64BIT	= 64
@@ -2323,12 +2323,17 @@ using
 .Ss "Utility Functions"
 The
 .Fn bhnd_driver_get_erom_class
-returns the
+function returns the
 .Xr bhnd_erom 9
 class for the device enumeration table format used by
 .Xr bhnd 4
 bus driver instance
 .Fa driver .
+If the driver does not support
+.Xr bhnd_erom 9
+device enumeration,
+.Dv NULL
+is returned.
 .Pp
 The
 .Fn bhnd_find_core_class
@@ -2606,7 +2611,7 @@ integer on failure.
 .Xr bhnd 4
 .Sh AUTHORS
 .An -nosplit
-This manual page and the
+The
 .Nm
-driver were written by
+driver programming interface and this manual page were written by
 .An Landon Fuller Aq Mt landonf@FreeBSD.org .
