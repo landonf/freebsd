@@ -28,7 +28,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd November 07, 2017
+.Dd November 9, 2017
 .Dt BHND_EROM 9
 .Os
 .Sh NAME
@@ -196,8 +196,9 @@ function is used to identify a
 .Xr bhnd 4
 bus device and determine whether the erom class
 .Fa cls
-is capable of parsing its device enumeration table. If successful, the probed
-chip identification will be written to the location pointed to by
+is capable of parsing its device enumeration table.
+If successful, the probed chip identification will be written to the location
+pointed to by
 .Fa cid .
 .Pp
 A pointer to a bus I/O instance mapping the first hardware core's device
@@ -211,7 +212,8 @@ On devices that do not provide standard
 chip identification registers via the first hardware core, a pointer to chip
 information for the device must be specified using the
 .Fa hint
-argument. Otherwise, the
+argument.
+Otherwise, the
 .Fa hint
 argument should be
 .Dv NULL .
@@ -227,7 +229,8 @@ using
 to fetch each driver's erom class and probe the hardware core mapped by
 .Fa eio .
 A pointer to the erom class with the highest probe priority will be returned
-on success. If no erom class returns a successful probe result,
+on success.
+If no erom class returns a successful probe result,
 .Dv NULL
 is returned.
 .Pp
@@ -240,7 +243,8 @@ for the chip identified by
 .Fa cid ,
 using the bus I/O instance
 .Fa eio
-to map and read the device table. On success, the returned
+to map and read the device table.
+On success, the returned
 .Vt bhnd_erom_t
 assumes ownership of
 .Fa eio .
@@ -264,7 +268,8 @@ argument, and the total number of available bytes in
 The
 .Vt bhnd_erom_static
 structure is large enough to statically allocate any supported parser class'
-instance state. Pointers to a
+instance state.
+Pointers to a
 .Vt bhnd_erom_static
 structure may be cast to
 .Vt bhnd_erom_t .
@@ -333,8 +338,8 @@ The
 .Vt bhnd_erom_io
 structure provides a set of I/O callbacks used by
 .Nm
-to map and read the device enumeration table. Clients may either use the
-existing
+to map and read the device enumeration table.
+Clients may either use the existing
 .Fn bhnd_erom_iores_new
 or
 .Fn bhnd_erom_iobus_init
@@ -425,10 +430,10 @@ function returns a standard
 result.
 .Pp
 A return value equal to or less than zero indicates success, while a value
-greater than zero indicates an error, and will be an appropriate error code. For
-values less than or equal to zero, the erom class returning the highest value
-should be used to parse the erom table. If the device is not supported by the
-parser,
+greater than zero indicates an error, and will be an appropriate error code.
+For values less than or equal to zero, the erom class returning the highest
+value should be used to parse the erom table.
+If the device is not supported by the parser,
 .Er ENXIO
 should be returned.
 .Pp
@@ -444,7 +449,7 @@ function returns a pointer to
 .Vt bhnd_erom_t
 on success, or
 .Dv NULL
-if an error occured allocating or initializing the EROM parser.
+if an error occurred allocating or initializing the EROM parser.
 .Pp
 The
 .Fn bhnd_erom_init_static
