@@ -42,12 +42,12 @@
 .Fo bhnd_activate_resource
 .Fa "device_t dev" "int type" "int rid" "struct bhnd_resource *r"
 .Fc
-.Ft "struct bhnd_resource *""
+.Ft "struct bhnd_resource *"
 .Fo bhnd_alloc_resource
 .Fa "device_t dev" "int type" "int *rid" "rman_res_t start" "rman_res_t end"
 .Fa "rman_res_t count" "u_int flags"
 .Fc
-.Ft "struct bhnd_resource *""
+.Ft "struct bhnd_resource *"
 .Fo bhnd_alloc_resource_any
 .Fa "device_t dev" "int type" "int *rid" "u_int flags"
 .Fc
@@ -277,7 +277,7 @@
 .Fo bhnd_get_attach_type
 .Fa "device_t dev"
 .Fc
-.Ft "const struct bhnd_chipid *""
+.Ft "const struct bhnd_chipid *"
 .Fo bhnd_get_chipid
 .Fa "device_t dev"
 .Fc
@@ -351,14 +351,14 @@
 .Fo bhnd_hwrev_matches
 .Fa "uint16_t hwrev" "const struct bhnd_hwrev_match *desc"
 .Fc
-.Ft const struct bhnd_core_info *
+.Ft "const struct bhnd_core_info *"
 .Fo bhnd_match_core
 .Fa "const struct bhnd_core_info *cores" "u_int num_cores"
 .Fa "const struct bhnd_core_match *desc"
 .Fc
 .\"
 .Ss "Device Table Functions"
-.Ft const struct bhnd_device *
+.Ft "const struct bhnd_device *"
 .Fo bhnd_device_lookup
 .Fa "device_t dev" "const struct bhnd_device *table" "size_t entry_size"
 .Fc
@@ -435,7 +435,7 @@ struct bhnd_dma_translation {
 };
 .Ed
 .Bd -literal
-typedef enum bhnd_dma_addrwidth {
+typedef enum {
 	BHND_DMA_ADDR_30BIT	= 30,
 	BHND_DMA_ADDR_32BIT	= 32,
 	BHND_DMA_ADDR_64BIT	= 64
@@ -507,7 +507,7 @@ enum bhnd_dma_translation_flags {
 .Fo bhnd_nvram_getvar_str
 .Fa "device_t dev" "const char *name" "char *buf" "size_t len" "size_t *rlen"
 .Fc
-.Ft const char*
+.Ft "const char *"
 .Fo bhnd_nvram_string_array_next
 .Fa "const char *inp" "size_t ilen" "const char *prev" "size_t *olen"
 .Fc
@@ -646,11 +646,15 @@ typedef enum {
 .Ed
 .\"
 .Ss "Utility Functions"
+.Ft "bhnd_erom_class_t *"
+.Fo bhnd_driver_get_erom_class
+.Fa "driver_t *driver"
+.Fc
 .Ft bhnd_devclass_t
 .Fo bhnd_find_core_class
 .Fa "uint16_t vendor" "uint16_t device"
 .Fc
-.Ft const char*
+.Ft "const char *"
 .Fo bhnd_find_core_name
 .Fa "uint16_t vendor" "uint16_t device"
 .Fc
@@ -658,7 +662,7 @@ typedef enum {
 .Fo bhnd_core_class
 .Fa "const struct bhnd_core_info *ci"
 .Fc
-.Ft const char*
+.Ft "const char *"
 .Fo bhnd_core_name
 .Fa "const struct bhnd_core_info *ci"
 .Fc
@@ -674,7 +678,7 @@ typedef enum {
 .Fo bhnd_set_default_core_desc
 .Fa "device_t dev"
 .Fc
-.Ft const char*
+.Ft "const char *"
 .Fo bhnd_vendor_name
 .Fa "uint16_t vendor"
 .Fc
@@ -2318,6 +2322,20 @@ using
 .\"
 .Ss "Utility Functions"
 The
+.Fn bhnd_driver_get_erom_class
+function returns the
+.Xr bhnd_erom 9
+class for the device enumeration table format used by
+.Xr bhnd 4
+bus driver instance
+.Fa driver .
+If the driver does not support
+.Xr bhnd_erom 9
+device enumeration,
+.Dv NULL
+is returned.
+.Pp
+The
 .Fn bhnd_find_core_class
 function looks up the BHND class, if known, for the BHND vendor ID
 .Fa vendor
@@ -2591,9 +2609,10 @@ integer on failure.
 .\"
 .Sh SEE ALSO
 .Xr bhnd 4
+.Xr bhnd_erom 9
 .Sh AUTHORS
 .An -nosplit
-This manual page and the
+The
 .Nm
-driver were written by
+driver programming interface and this manual page were written by
 .An Landon Fuller Aq Mt landonf@FreeBSD.org .
