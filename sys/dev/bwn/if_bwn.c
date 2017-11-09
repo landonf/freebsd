@@ -1359,8 +1359,6 @@ fail:
 
 /*
  * Reset - SIBA.
- *
- * XXX TODO: implement BCMA version!
  */
 void
 bwn_reset_core(struct bwn_mac *mac, int g_mode)
@@ -2287,7 +2285,6 @@ bwn_chip_init(struct bwn_mac *mac)
 	bwn_mac_phy_clock_set(mac, true);
 
 	/* SIBA powerup */
-	/* XXX TODO: BCMA powerup */
 	BWN_WRITE_2(mac, BWN_POWERUP_DELAY, siba_get_cc_powerdelay(sc->sc_dev));
 	return (error);
 }
