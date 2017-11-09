@@ -1009,12 +1009,12 @@ struct bwn_vap {
 
 struct bwn_softc {
 	device_t			sc_dev;
-#if !BWN_USE_SIBA
 	const struct bwn_bus_ops	*sc_bus_ops;
+#if !BWN_USE_SIBA
 	void				*sc_bus_ctx;
 	struct bhnd_resource		*sc_mem_res;
 	int				 sc_mem_rid;
-#endif
+#endif /* !BWN_USE_SIBA */
 	struct mtx			sc_mtx;
 	struct ieee80211com		sc_ic;
 	struct mbufq			sc_snd;
