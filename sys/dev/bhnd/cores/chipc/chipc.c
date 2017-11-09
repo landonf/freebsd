@@ -306,11 +306,7 @@ chipc_add_children(struct chipc_softc *sc)
 		}
 	}
 
-	/*
-	 * GPIO
-	 * 
-	 * The GPIO device maps the full 
-	 */
+	/* GPIO */
 	child = BUS_ADD_CHILD(sc->dev, 0, "gpio", 0);
 	if (child == NULL) {
 		device_printf(sc->dev, "failed to add gpio\n");
