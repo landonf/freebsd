@@ -13,6 +13,7 @@ MAN=	accept_filter.9 \
 	altq.9 \
 	atomic.9 \
 	bhnd.9 \
+	bhnd_erom.9 \
 	bios.9 \
 	bitset.9 \
 	boot.9 \
@@ -547,6 +548,23 @@ MLINKS+=bhnd.9 BHND_MATCH_BOARD_TYPE.9 \
 	bhnd.9 bhnd_vendor_name.9 \
 	bhnd.9 bhnd_write_config.9 \
 	bhnd.9 bhnd_write_ioctl.9
+MLINKS+=bhnd_erom.9 bhnd_erom_alloc.9 \
+	bhnd_erom.9 bhnd_erom_dump.9 \
+	bhnd_erom.9 bhnd_erom_fini_static.9 \
+	bhnd_erom.9 bhnd_erom_free.9 \
+	bhnd_erom.9 bhnd_erom_free_core_table.9 \
+	bhnd_erom.9 bhnd_erom_get_core_table.9 \
+	bhnd_erom.9 bhnd_erom_init_static.9 \
+	bhnd_erom.9 bhnd_erom_io.9 \
+	bhnd_erom.9 bhnd_erom_io_fini.9 \
+	bhnd_erom.9 bhnd_erom_io_map.9 \
+	bhnd_erom.9 bhnd_erom_io_read.9 \
+	bhnd_erom.9 bhnd_erom_iobus_init.9 \
+	bhnd_erom.9 bhnd_erom_iores_new.9 \
+	bhnd_erom.9 bhnd_erom_lookup_core.9 \
+	bhnd_erom.9 bhnd_erom_lookup_core_addr.9 \
+	bhnd_erom.9 bhnd_erom_probe.9 \
+	bhnd_erom.9 bhnd_erom_probe_driver_classes
 MLINKS+=bitset.9 BITSET_DEFINE.9 \
 	bitset.9 BITSET_T_INITIALIZER.9 \
 	bitset.9 BITSET_FSET.9 \
