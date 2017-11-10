@@ -308,28 +308,10 @@ bcm_mips74k_pic_intr(void *arg)
 	intr = bus_read_4(sc->mem, BCM_MIPS74K_INTR_STATUS);
 
 	/* Fetch mask of interrupt vectors routed to this MIPS IRQ */
-	switch (cpuirq->mips_irq) {
-	case 0:
-		oobsel = bus_read_4(sc->mem, BCM_MIPS74K_INTR0_SEL);
-		break;
-	case 1:
-		oobsel = bus_read_4(sc->mem, BCM_MIPS74K_INTR1_SEL);
-		break;
-	case 2:
-		oobsel = bus_read_4(sc->mem, BCM_MIPS74K_INTR2_SEL);
-		break;
-	case 3:
-		oobsel = bus_read_4(sc->mem, BCM_MIPS74K_INTR3_SEL);
-		break;
-	case 4: 
-		oobsel = bus_read_4(sc->mem, BCM_MIPS74K_INTR4_SEL);
-		break;
-	case 5:
-		oobsel = bus_read_4(sc->mem, BCM_MIPS74K_INTR5_SEL);
-		break;
-	default:
-		panic("invalid irq %u", cpuirq->mips_irq);
-	}
+	KASSERT(cpuirq->mips_irq < BCM_MIPS74K_NUM_INTR,
+	    ("invalid irq %u", cpuirq->mips_irq));
+
+	oobsel = bus_read_4(sc->mem, BCM_MIPS74K_INTR_SEL(cpuirq->mips_irq));
 
 	/* Ignore interrupts not routed to this MIPS IRQ */
 	intr &= oobsel;
