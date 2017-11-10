@@ -66,7 +66,11 @@ __FBSDID("$FreeBSD$");
 
 /* Supported device identifiers */
 static const struct bhnd_device bwn_devices[] = {
-	BHND_DEVICE(BCM, D11, NULL, NULL),
+	{{
+		BHND_MATCH_CORE		(BHND_MFGID_BCM, BHND_COREID_D11),
+		BHND_MATCH_CORE_REV	(HWREV_RANGE(5, 16))
+	}},
+
 	BHND_DEVICE_END
 };
 
