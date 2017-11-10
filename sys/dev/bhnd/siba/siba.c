@@ -626,6 +626,10 @@ siba_is_hw_suspended(device_t dev, device_t child)
 	if (ts_low & SIBA_TML_RESET)
 		return (true);
 
+	/* Is target reject enabled? */
+	if (ts_low & SIBA_TML_REJ_MASK)
+		return (true);
+
 	/* Is core clocked? */
 	ioctl = SIBA_REG_GET(ts_low, TML_SICF);
 	if (!(ioctl & BHND_IOCTL_CLK_EN))
