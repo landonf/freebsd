@@ -1485,15 +1485,16 @@ bhnd_compat_sprom_get_cddpo(device_t dev)
 static void
 bhnd_compat_powerup(device_t dev, int dynamic)
 {
-	bhnd_clock	clock;
-	int		error;
+	struct bwn_bhnd_ctx	*ctx;
+	bhnd_clock		 clock;
+	int			 error;
 
-	/* On bcma(4) devices, the core must be brought out of reset before
-	 * accessing PMU clock request registers */
-	if ((error = bhnd_reset_hw(dev, 0, 0))) {
-		device_printf(dev, "core reset failed: %d\n", error);
+	ctx = bwn_bhnd_get_ctx(dev);
+
+	/* On PMU equipped devices, we do not need to issue a clock request
+	 * at powerup */
+	if (ctx->pmu_dev != NULL)
 		return;
-	}
 
 	/* Issue a PMU clock request */
 	if (dynamic)
