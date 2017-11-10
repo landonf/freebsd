@@ -59,7 +59,7 @@ __FBSDID("$FreeBSD$");
 static int	bcma_nexus_attach(device_t);
 static int	bcma_nexus_probe(device_t);
 
-_Static_assert(BCMA_OOB_NUM_BUSLINES == BCM_MIPS_NINTR, "BMCA incompatible "
+_Static_assert(BCMA_OOB_NUM_BUSLINES == BCM_MIPS_NINTR, "BCMA incompatible "
     "with generic NINTR");
 
 static int
