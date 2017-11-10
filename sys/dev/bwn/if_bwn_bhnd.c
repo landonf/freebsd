@@ -83,25 +83,10 @@ bwn_bhnd_probe(device_t dev)
 	return (BUS_PROBE_DEFAULT);
 }
 
-static int
-bwn_bhnd_attach(device_t dev)
-{
-	// TODO
-	return (bwn_attach(dev));
-}
-
-static int
-bwn_bhnd_detach(device_t dev)
-{
-	// TODO
-	return (bwn_detach(dev));
-}
-
 static device_method_t bwn_bhnd_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,		bwn_bhnd_probe),
-	DEVMETHOD(device_attach,	bwn_bhnd_attach),
-	DEVMETHOD(device_detach,	bwn_bhnd_detach),
+
 	DEVMETHOD_END
 };
 
