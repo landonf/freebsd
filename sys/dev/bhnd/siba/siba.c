@@ -635,11 +635,13 @@ siba_is_hw_suspended(device_t dev, device_t child)
 }
 
 static int
-siba_reset_hw(device_t dev, device_t child, uint16_t ioctl)
+siba_reset_hw(device_t dev, device_t child, uint16_t ioctl,
+    uint16_t reset_ioctl)
 {
 	struct siba_devinfo		*dinfo;
 	struct bhnd_resource		*r;
 	uint32_t			 ts_low, imstate;
+	uint16_t			 clkflags;
 	int				 error;
 
 	if (device_get_parent(child) != dev)
@@ -651,19 +653,18 @@ siba_reset_hw(device_t dev, device_t child, uint16_t ioctl)
 	if ((r = dinfo->cfg_res[0]) == NULL)
 		return (ENODEV);
 
-	/* We require exclusive control over BHND_IOCTL_CLK_EN and
-	 * BHND_IOCTL_CLK_FORCE. */
-	if (ioctl & (BHND_IOCTL_CLK_EN | BHND_IOCTL_CLK_FORCE))
+	/* We require exclusive control over BHND_IOCTL_CLK_(EN|FORCE) */
+	clkflags = BHND_IOCTL_CLK_EN | BHND_IOCTL_CLK_FORCE;
+	if (ioctl & clkflags)
 		return (EINVAL);
 
 	/* Place core into known RESET state */
-	if ((error = BHND_BUS_SUSPEND_HW(dev, child)))
+	if ((error = bhnd_suspend_hw(child, reset_ioctl)))
 		return (error);
 
 	/* Leaving the core in reset, set the caller's IOCTL flags and
 	 * enable the core's clocks. */
-	ts_low = (ioctl | BHND_IOCTL_CLK_EN | BHND_IOCTL_CLK_FORCE) <<
-	    SIBA_TML_SICF_SHIFT;
+	ts_low = (ioctl | clkflags) << SIBA_TML_SICF_SHIFT;
 	error = siba_write_target_state(child, dinfo, SIBA_CFG0_TMSTATELOW,
 	    ts_low, SIBA_TML_SICF_MASK);
 	if (error)
@@ -704,13 +705,13 @@ siba_reset_hw(device_t dev, device_t child, uint16_t ioctl)
 }
 
 static int
-siba_suspend_hw(device_t dev, device_t child)
+siba_suspend_hw(device_t dev, device_t child, uint16_t ioctl)
 {
 	struct siba_softc		*sc;
 	struct siba_devinfo		*dinfo;
 	struct bhnd_resource		*r;
 	uint32_t			 idl, ts_low;
-	uint16_t			 ioctl;
+	uint16_t			 cflags, clkflags;
 	int				 error;
 
 	if (device_get_parent(child) != dev)
@@ -723,25 +724,34 @@ siba_suspend_hw(device_t dev, device_t child)
 	if ((r = dinfo->cfg_res[0]) == NULL)
 		return (ENODEV);
 
+	/* We require exclusive control over BHND_IOCTL_CLK_(EN|FORCE) */
+	clkflags = BHND_IOCTL_CLK_EN | BHND_IOCTL_CLK_FORCE;
+	if (ioctl & clkflags)
+		return (EINVAL);
+
 	/* Already in RESET? */
 	ts_low = bhnd_bus_read_4(r, SIBA_CFG0_TMSTATELOW);
 	if (ts_low & SIBA_TML_RESET) {
-		/* Clear IOCTL flags, ensuring the clock is disabled */
-		return (siba_write_target_state(child, dinfo,
-		    SIBA_CFG0_TMSTATELOW, 0x0, SIBA_TML_SICF_MASK));
+		/* Set the caller's IOCTL flags; this will clear
+		 * CLK_EN/CLK_FORCE */
+		ts_low = (ioctl << SIBA_TML_SICF_SHIFT);
 
-		return (0);
+		return (siba_write_target_state(child, dinfo,
+		    SIBA_CFG0_TMSTATELOW, ts_low, SIBA_TML_SICF_MASK));
 	}
 
 	/* If clocks are already disabled, we can put the core directly
-	 * into RESET */
-	ioctl = SIBA_REG_GET(ts_low, TML_SICF);
-	if (!(ioctl & BHND_IOCTL_CLK_EN)) {
-		/* Set RESET and clear IOCTL flags */
+	 * into RESET while setting the caller's IOCTL flags */
+	cflags = SIBA_REG_GET(ts_low, TML_SICF);
+	if (!(cflags & BHND_IOCTL_CLK_EN)) {
+		/* Set RESET and the caller's IOCTL flags; this will
+		 * leave CLK_EN/CLK_FORCE cleared */
+		ts_low = SIBA_TML_RESET;
+		ts_low |= (ioctl << SIBA_TML_SICF_SHIFT);
+
 		return (siba_write_target_state(child, dinfo, 
-		    SIBA_CFG0_TMSTATELOW,
-		    SIBA_TML_RESET,
-		    SIBA_TML_RESET | SIBA_TML_SICF_MASK));
+		    SIBA_CFG0_TMSTATELOW, ts_low,
+		    SIBA_TML_RESET|SIBA_TML_SICF_MASK));
 	}
 
 	/* Reject any further target backplane transactions */
@@ -760,25 +770,25 @@ siba_suspend_hw(device_t dev, device_t child)
 			return (error);
 	}
 
-	/* Put the core into RESET|REJECT, forcing clocks to ensure the RESET
-	 * signal propagates throughout the core, leaving REJECT asserted. */
+	/* Put the core into RESET|REJECT, setting the caller's IOCTL flags and
+	 * forcing clocks to ensure the RESET signal propagates throughout the
+	 * core, leaving REJECT asserted. */
 	ts_low = SIBA_TML_RESET;
-	ts_low |= (BHND_IOCTL_CLK_EN | BHND_IOCTL_CLK_FORCE) <<
-	    SIBA_TML_SICF_SHIFT;
+	ts_low |= (ioctl << SIBA_TML_SICF_SHIFT);
+	ts_low |= (clkflags << SIBA_TML_SICF_SHIFT);
 
 	error = siba_write_target_state(child, dinfo, SIBA_CFG0_TMSTATELOW,
-		ts_low, ts_low);
+		ts_low, SIBA_TML_RESET|SIBA_TML_SICF_MASK);
 	if (error)
 		return (error);
 
 	/* Give RESET ample time */
 	DELAY(10);
 
-	/* Leaving core in reset, disable all clocks, clear REJ flags and
-	 * IOCTL state */
+	/* Leaving core in reset, disable all clocks, and clear REJ flags */
 	error = siba_write_target_state(child, dinfo, SIBA_CFG0_TMSTATELOW,
 		SIBA_TML_RESET,
-		SIBA_TML_RESET | SIBA_TML_REJ | SIBA_TML_SICF_MASK);
+		SIBA_TML_RESET | SIBA_TML_REJ | clkflags);
 	if (error)
 		return (error);
 

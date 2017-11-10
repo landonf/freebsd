@@ -1490,7 +1490,7 @@ bhnd_compat_powerup(device_t dev, int dynamic)
 
 	/* On bcma(4) devices, the core must be brought out of reset before
 	 * accessing PMU clock request registers */
-	if ((error = bhnd_reset_hw(dev, 0))) {
+	if ((error = bhnd_reset_hw(dev, 0, 0))) {
 		device_printf(dev, "core reset failed: %d\n", error);
 		return;
 	}
@@ -1522,7 +1522,7 @@ bhnd_compat_powerdown(device_t dev)
 	int	error;
 
 	/* Suspend the core */
-	if ((error = bhnd_suspend_hw(dev)))
+	if ((error = bhnd_suspend_hw(dev, 0)))
 		return (error);
 
 	return (0);
@@ -1690,8 +1690,9 @@ bhnd_compat_dev_up(device_t dev, uint32_t flags)
 
 	ioctl = (flags & SIBA_TML_SICF_MASK) >> SIBA_TML_SICF_SHIFT;
 
-	/* perform core reset */
-	if ((error = bhnd_reset_hw(dev, ioctl)))
+	/* Perform core reset; note that bwn(4) incorrectly assumes that both
+	 * RESET and post-RESET ioctl flags should be identical */
+	if ((error = bhnd_reset_hw(dev, ioctl, ioctl)))
 		panic("%s: core reset failed: %d", __FUNCTION__, error);
 }
 
@@ -1705,18 +1706,17 @@ bhnd_compat_dev_up(device_t dev, uint32_t flags)
 static void
 bhnd_compat_dev_down(device_t dev, uint32_t flags)
 {
-	int error;
+	uint16_t	ioctl;
+	int		error;
 
-	/* We don't support specifying IOCTL flags on suspend */
-	if (flags)
-		panic("%s: IOCTL flags ignored", __FUNCTION__);
+	/* shift IOCTL flags back down to their original values */
+	if (flags & ~SIBA_TML_SICF_MASK)
+		panic("%s: non-IOCTL flags provided", __FUNCTION__);
 
-	/* Release any outstanding clock request */
-	if ((error = bhnd_request_clock(dev, BHND_CLOCK_DYN)))
-		panic("%s: clock request failed: %d", __FUNCTION__, error);
+	ioctl = (flags & SIBA_TML_SICF_MASK) >> SIBA_TML_SICF_SHIFT;
 
 	/* Put core into RESET state */
-	if ((error = bhnd_suspend_hw(dev)))
+	if ((error = bhnd_suspend_hw(dev, ioctl)))
 		panic("%s: core suspend failed: %d", __FUNCTION__, error);
 }
 
@@ -2045,10 +2045,7 @@ bhnd_compat_gpio_get(device_t dev)
 			ctrl |= (1 << pin);
 	}
 
-	printf("TRISTATE: %#x\n", ctrl);
-	// return (ctrl);
-	// XXX
-	return (0);
+	return (ctrl);
 }
 
 /*
