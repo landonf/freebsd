@@ -638,7 +638,7 @@ cpu_establish_intr(struct mips_pic_softc *sc, const char *name,
 
 	/* Fetch (or create) a fixed mapping */
 	if ((error = mips_pic_map_fixed_intr(irq, &intr)))
-		panic("Unable to map IRQ %d", irq);
+		panic("Unable to map IRQ %d: %d", irq, error);
 
 	/* Fetch the backing resource, if any */
 	mtx_lock(&mips_pic_mtx);
