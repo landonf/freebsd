@@ -1057,7 +1057,7 @@ bhndb_enable_pci_clocks(device_t dev)
 	pci_dev = device_get_parent(dev);
 
 	/* Only supported and required on PCI devices */
-	if (!bhndb_is_pcie_attached(dev))
+	if (bhndb_is_pcie_attached(dev))
 		return (0);
 
 	/* Read state of XTAL pin */
