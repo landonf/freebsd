@@ -1084,6 +1084,39 @@ bhndb_add_resource_region(struct bhndb_resources *br, bhnd_addr_t addr,
 	return (0);
 }
 
+/**
+ * Return true if a mapping of @p size bytes at @p addr is provided by either
+ * one contiguous bus region, or by multiple discontiguous regions.
+ *
+ * @param br The resource state to query.
+ * @param addr The requested starting address.
+ * @param size The requested size.
+ */
+bool
+bhndb_has_static_region_mapping(struct bhndb_resources *br,
+    bhnd_addr_t addr, bhnd_size_t size)
+{
+	struct bhndb_region	*region;
+	bhnd_addr_t		 r_addr;
+
+	r_addr = addr;
+	while ((region = bhndb_find_resource_region(br, r_addr, 1)) != NULL) {
+		/* Must be backed by a static register window */
+		if (region->static_regwin == NULL)
+			return (false);
+
+		/* Adjust the search offset */
+		r_addr += region->size;
+
+		/* Have we traversed a complete (if discontiguous) mapping? */
+		if (r_addr == addr + size)
+			return (true);
+
+	}
+
+	/* No complete mapping found */
+	return (false);
+}
 
 /**
  * Find the bus region that maps @p size bytes at @p addr.
@@ -1380,18 +1413,24 @@ bhndb_regwin_find_type(const struct bhndb_regwin *table,
  * @param port_type The required port type.
  * @param port The required port.
  * @param region The required region.
+ * @param offset The required readable core register block offset.
+ * @param min_size The required minimum readable size at @p offset.
  *
  * @retval bhndb_regwin The first matching window.
  * @retval NULL If no matching window was found. 
  */
 const struct bhndb_regwin *
 bhndb_regwin_find_core(const struct bhndb_regwin *table, bhnd_devclass_t class,
-    int unit, bhnd_port_type port_type, u_int port, u_int region)
+    int unit, bhnd_port_type port_type, u_int port, u_int region,
+    bus_size_t offset, bus_size_t min_size)
 {
 	const struct bhndb_regwin *rw;
-	
+
 	for (rw = table; rw->win_type != BHNDB_REGWIN_T_INVALID; rw++)
 	{
+		bus_size_t rw_offset;
+
+		/* Match on core, port, and region attributes */
 		if (rw->win_type != BHNDB_REGWIN_T_CORE)
 			continue;
 
@@ -1408,6 +1447,19 @@ bhndb_regwin_find_core(const struct bhndb_regwin *table, bhnd_devclass_t class,
 			continue;
 		
 		if (rw->d.core.region != region)
+			continue;
+
+		/* Verify that the requested range is mapped within
+		 * this register window */
+		if (rw->d.core.offset > offset)
+			continue;
+
+		rw_offset = offset - rw->d.core.offset;
+
+		if (rw->win_size < rw_offset)
+			continue;
+
+		if (rw->win_size - rw_offset < min_size)
 			continue;
 
 		return (rw);
@@ -1429,7 +1481,8 @@ bhndb_regwin_find_core(const struct bhndb_regwin *table, bhnd_devclass_t class,
  * @param port_type The required port type.
  * @param port The required port.
  * @param region The required region.
- * @param min_size The minimum window size.
+ * @param offset The required readable core register block offset.
+ * @param min_size The required minimum readable size at @p offset.
  *
  * @retval bhndb_regwin The first matching window.
  * @retval NULL If no matching window was found. 
@@ -1437,13 +1490,13 @@ bhndb_regwin_find_core(const struct bhndb_regwin *table, bhnd_devclass_t class,
 const struct bhndb_regwin *
 bhndb_regwin_find_best(const struct bhndb_regwin *table,
     bhnd_devclass_t class, int unit, bhnd_port_type port_type, u_int port,
-    u_int region, bus_size_t min_size)
+    u_int region, bus_size_t offset, bus_size_t min_size)
 {
 	const struct bhndb_regwin *rw;
 
 	/* Prefer a fixed core mapping */
 	rw = bhndb_regwin_find_core(table, class, unit, port_type,
-	    port, region);
+	    port, region, offset, min_size);
 	if (rw != NULL)
 		return (rw);
 

@@ -295,6 +295,18 @@ bhndb_init_region_cfg(struct bhndb_softc *sc, bhnd_erom_t *erom,
 			}
 
 			/*
+			 * Apply the register window's region offset, if any.
+			 */
+			if (regw->d.core.offset > size) {
+				device_printf(sc->dev, "invalid register "
+				    "window offset %#jx for region %#jx+%#jx\n",
+				    regw->d.core.offset, addr, size);
+				return (EINVAL);
+			}
+
+			addr += regw->d.core.offset;
+
+			/*
 			 * Always defer to the register window's size.
 			 * 
 			 * If the port size is smaller than the window size,
@@ -325,7 +337,6 @@ bhndb_init_region_cfg(struct bhndb_softc *sc, bhnd_erom_t *erom,
 	 * ports defined in the priority table
 	 */
 	for (u_int i = 0; i < ncores; i++) {
-		struct bhndb_region	*region;
 		struct bhnd_core_info	*core;
 		struct bhnd_core_match	 md;
 
@@ -369,8 +380,7 @@ bhndb_init_region_cfg(struct bhndb_softc *sc, bhnd_erom_t *erom,
 			}
 
 			/* Skip ports with an existing static mapping */
-			region = bhndb_find_resource_region(br, addr, size);
-			if (region != NULL && region->static_regwin != NULL)
+			if (bhndb_has_static_region_mapping(br, addr, size))
 				continue;
 
 			/* Define a dynamic region for this port */

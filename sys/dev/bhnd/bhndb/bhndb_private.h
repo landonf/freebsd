@@ -93,6 +93,10 @@ struct bhndb_intr_handler	*bhndb_find_intr_handler(
 				     struct bhndb_resources *br,
 				     void *cookiep);
 
+bool				 bhndb_has_static_region_mapping(
+				     struct bhndb_resources *br,
+				     bhnd_addr_t addr, bhnd_size_t size);
+
 struct bhndb_region		*bhndb_find_resource_region(
 				     struct bhndb_resources *br,
 				     bhnd_addr_t addr, bhnd_size_t size);
