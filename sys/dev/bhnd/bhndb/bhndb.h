@@ -90,6 +90,7 @@ struct bhndb_regwin {
 			bhnd_port_type	port_type;	/**< mapped port type */
 			u_int		port;		/**< mapped port number */
 			u_int		region;		/**< mapped region number */
+			bhnd_size_t	offset;		/**< mapped offset within the region */
 		} core;
 
 		/** SPROM register window (BHNDB_REGWIN_T_SPROM). */
