@@ -291,7 +291,10 @@ bhndb_alloc_resources(device_t dev, device_t parent_dev,
 	r->min_prio = BHNDB_PRIORITY_NONE;
 	STAILQ_INIT(&r->bus_regions);
 	STAILQ_INIT(&r->bus_intrs);
-	
+
+	mtx_init(&r->dw_steal_mtx, device_get_nameunit(dev),
+	    "bhndb dwa_steal lock", MTX_SPIN);
+
 	/* Initialize host address space resource manager. */
 	r->ht_mem_rman.rm_start = 0;
 	r->ht_mem_rman.rm_end = ~0;
@@ -492,6 +495,8 @@ failed:
 	if (r->res != NULL)
 		bhndb_release_host_resources(r->res);
 
+	mtx_destroy(&r->dw_steal_mtx);
+
 	free(r, M_BHND);
 
 	return (NULL);
@@ -626,6 +631,10 @@ bhndb_free_resources(struct bhndb_resources *br)
 
 	free(br->dw_alloc, M_BHND);
 	free(br->dwa_freelist, M_BHND);
+
+	mtx_destroy(&br->dw_steal_mtx);
+
+	free(br, M_BHND);
 }
 
 /**
@@ -1337,7 +1346,7 @@ bhndb_dw_set_addr(device_t dev, struct bhndb_resources *br,
 
 	rw = dwa->win;
 
-	KASSERT(bhndb_dw_is_free(br, dwa),
+	KASSERT(bhndb_dw_is_free(br, dwa) || mtx_owned(&br->dw_steal_mtx),
 	    ("attempting to set the target address on an in-use window"));
 
 	/* Page-align the target address */
@@ -1356,6 +1365,74 @@ bhndb_dw_set_addr(device_t dev, struct bhndb_resources *br,
 	}
 
 	return (0);
+}
+
+/**
+ * Steal an in-use allocation record from @p br, returning the record's current
+ * target in @p saved on success.
+ * 
+ * This function acquires a mutex and disables interrupts; callers should
+ * avoid holding a stolen window longer than required to issue an I/O
+ * request.
+ * 
+ * A successful call to bhndb_dw_steal() must be balanced with a call to
+ * bhndb_dw_return_stolen().
+ * 
+ * @param br The resource state from which a window should be stolen.
+ * @param saved The stolen window's saved target address.
+ * 
+ * @retval non-NULL success
+ * @retval NULL no dynamic window regions are defined.
+ */
+struct bhndb_dw_alloc *
+bhndb_dw_steal(struct bhndb_resources *br, bus_addr_t *saved)
+{
+	struct bhndb_dw_alloc *dw_stolen;
+
+	KASSERT(bhndb_dw_next_free(br) == NULL,
+	    ("attempting to steal an in-use window while free windows remain"));
+
+	/* Nothing to steal from? */
+	if (br->dwa_count == 0)
+		return (NULL);
+
+	/*
+	 * Acquire our steal spinlock; this will be released in
+	 * bhndb_dw_return_stolen().
+	 * 
+	 * Acquiring also disables interrupts, which is required when one is
+	 * stealing an in-use existing register window.
+	 */
+	mtx_lock_spin(&br->dw_steal_mtx);
+
+	dw_stolen = &br->dw_alloc[0];
+	*saved = dw_stolen->target;
+	return (dw_stolen);
+}
+
+/**
+ * Return an allocation record previously stolen using bhndb_dw_steal().
+ *
+ * @param dev The device on which to issue a BHNDB_SET_WINDOW_ADDR() request.
+ * @param br The resource state owning @p dwa.
+ * @param dwa The allocation record to be returned.
+ * @param saved The original target address provided by bhndb_dw_steal().
+ */
+void
+bhndb_dw_return_stolen(device_t dev, struct bhndb_resources *br,
+    struct bhndb_dw_alloc *dwa, bus_addr_t saved)
+{
+	int error;
+
+	mtx_assert(&br->dw_steal_mtx, MA_OWNED);
+
+	error = bhndb_dw_set_addr(dev, br, dwa, saved, 0);
+	if (error) {
+		panic("failed to restore register window target %#jx: %d\n",
+		    (uintmax_t)saved, error);
+	}
+
+	mtx_unlock_spin(&br->dw_steal_mtx);
 }
 
 /**
