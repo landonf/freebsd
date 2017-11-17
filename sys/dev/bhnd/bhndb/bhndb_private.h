@@ -125,6 +125,14 @@ int				 bhndb_dw_set_addr(device_t dev,
 				     struct bhndb_dw_alloc *dwa,
 				     bus_addr_t addr, bus_size_t size);
 
+struct bhndb_dw_alloc		*bhndb_dw_steal(struct bhndb_resources *br,
+				     bus_addr_t *saved);
+
+void				 bhndb_dw_return_stolen(device_t dev,
+				     struct bhndb_resources *br,
+				     struct bhndb_dw_alloc *dwa,
+				     bus_addr_t saved);
+
 const struct bhndb_hw_priority	*bhndb_hw_priority_find_core(
 				     const struct bhndb_hw_priority *table,
 				     struct bhnd_core_info *core);
@@ -197,6 +205,7 @@ struct bhndb_resources {
 
 	STAILQ_HEAD(, bhndb_region) 	 bus_regions;	/**< bus region descriptors */
 
+	struct mtx			 dw_steal_mtx;	/**< spinlock must be held when stealing a dynamic window allocation */
 	struct bhndb_dw_alloc		*dw_alloc;	/**< dynamic window allocation records */
 	size_t				 dwa_count;	/**< number of dynamic windows available. */
 	bitstr_t			*dwa_freelist;	/**< dynamic window free list */
