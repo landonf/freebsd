@@ -1054,6 +1054,7 @@ bhndb_find_resource_limits(struct bhndb_resources *br, int type,
  * @param size The size of this region.
  * @param priority The resource priority to be assigned to allocations
  * made within this bus region.
+ * @param alloc_flags resource allocation flags (@see bhndb_alloc_flags)
  * @param static_regwin If available, a static register window mapping this
  * bus region entry. If not available, NULL.
  * 
@@ -1062,7 +1063,7 @@ bhndb_find_resource_limits(struct bhndb_resources *br, int type,
  */
 int
 bhndb_add_resource_region(struct bhndb_resources *br, bhnd_addr_t addr,
-    bhnd_size_t size, bhndb_priority_t priority,
+    bhnd_size_t size, bhndb_priority_t priority, uint32_t alloc_flags,
     const struct bhndb_regwin *static_regwin)
 {
 	struct bhndb_region	*reg;
@@ -1076,6 +1077,7 @@ bhndb_add_resource_region(struct bhndb_resources *br, bhnd_addr_t addr,
 		.addr = addr,
 		.size = size,
 		.priority = priority,
+		.alloc_flags = alloc_flags,
 		.static_regwin = static_regwin
 	};
 
@@ -1547,6 +1549,45 @@ bhndb_hw_priority_find_core(const struct bhndb_hw_priority *table,
 	for (hp = table; hp->ports != NULL; hp++) {
 		if (bhnd_core_matches(core, &hp->match))
 			return (hp);
+	}
+
+	/* not found */
+	return (NULL);
+}
+
+
+/**
+ * Search for a port resource priority descriptor in @p table.
+ * 
+ * @param table The table to search.
+ * @param core The core to match against @p table.
+ * @param port_type The required port type.
+ * @param port The required port.
+ * @param region The required region.
+ */
+const struct bhndb_port_priority *
+bhndb_hw_priorty_find_port(const struct bhndb_hw_priority *table,
+    struct bhnd_core_info *core, bhnd_port_type port_type, u_int port,
+    u_int region)
+{
+	const struct bhndb_hw_priority		*hp;
+
+	if ((hp = bhndb_hw_priority_find_core(table, core)) == NULL)
+		return (NULL);
+
+	for (u_int i = 0; i < hp->num_ports; i++) {
+		const struct bhndb_port_priority *pp = &hp->ports[i];
+
+		if (pp->type != port_type)
+			continue;
+
+		if (pp->port != port)
+			continue;
+
+		if (pp->region != region)
+			continue;
+
+		return (pp);
 	}
 
 	/* not found */

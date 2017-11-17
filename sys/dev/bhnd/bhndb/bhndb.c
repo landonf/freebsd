@@ -270,6 +270,9 @@ bhndb_init_region_cfg(struct bhndb_softc *sc, bhnd_erom_t *erom,
 		for (regw = br->cfg->register_windows;
 		    regw->win_type != BHNDB_REGWIN_T_INVALID; regw++)
 		{
+			const struct bhndb_port_priority	*pp;
+			uint32_t				 alloc_flags;
+
 			/* Only core windows are supported */
 			if (regw->win_type != BHNDB_REGWIN_T_CORE)
 				continue;
@@ -319,14 +322,25 @@ bhndb_init_region_cfg(struct bhndb_softc *sc, bhnd_erom_t *erom,
 			 */
 			size = regw->win_size;
 
+			/* Fetch allocation flags from the corresponding port
+			 * priority entry, if any */
+			pp = bhndb_hw_priorty_find_port(table, core,
+			    regw->d.core.port_type, regw->d.core.port,
+			    regw->d.core.region);
+			if (pp != NULL) {
+				alloc_flags = pp->alloc_flags;
+			} else {
+				alloc_flags = 0;
+			}
+
 			/*
 			 * Add to the bus region list.
 			 * 
-			 * The window priority for a statically mapped
-			 * region is always HIGH.
+			 * The window priority for a statically mapped region is
+			 * always HIGH.
 			 */
 			error = bhndb_add_resource_region(br, addr, size,
-			    BHNDB_PRIORITY_HIGH, regw);
+			    BHNDB_PRIORITY_HIGH, 0, regw);
 			if (error)
 				return (error);
 		}
@@ -385,7 +399,7 @@ bhndb_init_region_cfg(struct bhndb_softc *sc, bhnd_erom_t *erom,
 
 			/* Define a dynamic region for this port */
 			error = bhndb_add_resource_region(br, addr, size,
-			    pp->priority, NULL);
+			    pp->priority, pp->alloc_flags, NULL);
 			if (error)
 				return (error);
 
@@ -1620,6 +1634,7 @@ bhndb_io_resource_slow(struct bhndb_softc *sc, bus_addr_t addr,
 {
 	struct bhndb_resources	*br;
 	struct bhndb_dw_alloc	*dwa;
+	struct bhndb_region	*region;
 
 	BHNDB_LOCK_ASSERT(sc, MA_OWNED);
 
@@ -1650,6 +1665,17 @@ bhndb_io_resource_slow(struct bhndb_softc *sc, bus_addr_t addr,
 
 		return (dwa);
 	}
+
+	/* No existing dynamic mapping found. We'll need to check for a defined
+	 * region to determine whether we can fulfill this request by
+	 * borrowing from an existing allocated register window */
+	region = bhndb_find_resource_region(br, addr, size);
+	if (region == NULL)
+		return (NULL);
+
+	// TODO
+	if (region->alloc_flags & BHNDB_ALLOC_FULFILL_ON_OVERCOMMIT)
+		printf("OVERCOMMIT FOR %#jx\n", (uintmax_t)addr);
 
 	/* not found */
 	return (NULL);
