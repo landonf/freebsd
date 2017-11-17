@@ -115,8 +115,8 @@ static int			 bhndb_try_activate_resource(
 
 static inline struct bhndb_dw_alloc *bhndb_io_resource(struct bhndb_softc *sc,
 					bus_addr_t addr, bus_size_t size,
-					bus_size_t *offset);
-
+					bus_size_t *offset, bool *stolen,
+					bus_addr_t *restore);
 
 /**
  * Default bhndb(4) implementation of DEVICE_PROBE().
@@ -440,22 +440,29 @@ bhndb_init_region_cfg(struct bhndb_softc *sc, bhnd_erom_t *erom,
 		struct bhndb_region	*region;
 		const char		*direct_msg, *type_msg;
 		bhndb_priority_t	 prio, prio_min;
+		uint32_t		 flags;
 
 		prio_min = br->min_prio;
 		device_printf(sc->dev, "min_prio: %d\n", prio_min);
 
 		STAILQ_FOREACH(region, &br->bus_regions, link) {
 			prio = region->priority;
+			flags = region->alloc_flags;
 
 			direct_msg = prio >= prio_min ? "direct" : "indirect";
 			type_msg = region->static_regwin ? "static" : "dynamic";
 	
 			device_printf(sc->dev, "region 0x%llx+0x%llx priority "
-			    "%u %s/%s\n",
+			    "%u %s/%s",
 			    (unsigned long long) region->addr, 
 			    (unsigned long long) region->size,
 			    region->priority,
 			    direct_msg, type_msg);
+
+			if (flags & BHNDB_ALLOC_FULFILL_ON_OVERCOMMIT)
+				printf(" [overcommit]\n");
+			else
+				printf("\n");
 		}
 	}
 
@@ -1629,8 +1636,8 @@ bhndb_deactivate_bhnd_resource(device_t dev, device_t child,
  * in-use region; the first matching region is returned.
  */
 static struct bhndb_dw_alloc *
-bhndb_io_resource_slow(struct bhndb_softc *sc, bus_addr_t addr,
-    bus_size_t size, bus_size_t *offset)
+bhndb_io_resource_slow(struct bhndb_softc *sc, bus_addr_t addr, bus_size_t size,
+    bus_size_t *offset, bool *stolen, bus_addr_t *restore)
 {
 	struct bhndb_resources	*br;
 	struct bhndb_dw_alloc	*dwa;
@@ -1663,21 +1670,25 @@ bhndb_io_resource_slow(struct bhndb_softc *sc, bus_addr_t addr,
 		*offset = dwa->win->win_offset;
 		*offset += addr - dwa->target;
 
+		*stolen = false;
 		return (dwa);
 	}
 
 	/* No existing dynamic mapping found. We'll need to check for a defined
 	 * region to determine whether we can fulfill this request by
-	 * borrowing from an existing allocated register window */
+	 * stealing from an existing allocated register window */
 	region = bhndb_find_resource_region(br, addr, size);
 	if (region == NULL)
 		return (NULL);
 
-	// TODO
-	if (region->alloc_flags & BHNDB_ALLOC_FULFILL_ON_OVERCOMMIT)
-		printf("OVERCOMMIT FOR %#jx\n", (uintmax_t)addr);
+	if ((region->alloc_flags & BHNDB_ALLOC_FULFILL_ON_OVERCOMMIT) == 0)
+		return (NULL);
 
-	/* not found */
+	if ((dwa = bhndb_dw_steal(br, restore)) != NULL) {
+		*stolen = true;
+		return (dwa);
+	}
+
 	return (NULL);
 }
 
@@ -1685,9 +1696,8 @@ bhndb_io_resource_slow(struct bhndb_softc *sc, bus_addr_t addr,
  * Return a borrowed reference to a bridge resource allocation record capable
  * of handling bus I/O requests of @p size at @p addr.
  * 
- * This will either return a  reference to an existing allocation
- * record mapping the requested space, or will configure and return a free
- * allocation record.
+ * This will either return a reference to an existing allocation record mapping
+ * the requested space, or will configure and return a free allocation record.
  * 
  * Will panic if a usable record cannot be found.
  * 
@@ -1696,10 +1706,16 @@ bhndb_io_resource_slow(struct bhndb_softc *sc, bus_addr_t addr,
  * @param size The size of the I/O operation to be performed at @p addr. 
  * @param[out] offset The offset within the returned resource at which
  * to perform the I/O request.
+ * @param[out] stolen Set to true if the allocation record was stolen to fulfill
+ * this request. If a stolen allocation record is returned,
+ * bhndb_io_resource_restore() must be called upon completion of the bus I/O
+ * request.
+ * @param[out] restore If the allocation record was stolen, this will be set
+ * to the target that must be restored.
  */
 static inline struct bhndb_dw_alloc *
 bhndb_io_resource(struct bhndb_softc *sc, bus_addr_t addr, bus_size_t size,
-    bus_size_t *offset)
+    bus_size_t *offset, bool *stolen, bus_addr_t *restore)
 {
 	struct bhndb_resources	*br;
 	struct bhndb_dw_alloc	*dwa;
@@ -1727,7 +1743,8 @@ bhndb_io_resource(struct bhndb_softc *sc, bus_addr_t addr, bus_size_t size,
 	 * current operation.
 	 */
 	if (dwa == NULL) {
-		dwa = bhndb_io_resource_slow(sc, addr, size, offset);
+		dwa = bhndb_io_resource_slow(sc, addr, size, offset, stolen,
+		    restore);
 		if (dwa == NULL) {
 			panic("register windows exhausted attempting to map "
 			    "0x%llx-0x%llx\n", 
@@ -1756,6 +1773,7 @@ bhndb_io_resource(struct bhndb_softc *sc, bus_addr_t addr, bus_size_t size,
 
 	/* Calculate the offset and return */
 	*offset = (addr - dwa->target) + dwa->win->win_offset;
+	*stolen = false;
 	return (dwa);
 }
 
@@ -1769,12 +1787,14 @@ bhndb_io_resource(struct bhndb_softc *sc, bus_addr_t addr, bus_size_t size,
 	struct bhndb_dw_alloc	*dwa;				\
 	struct resource		*io_res;			\
 	bus_size_t		 io_offset;			\
+	bus_addr_t		 restore;		\
+	bool			 stolen;			\
 								\
 	sc = device_get_softc(dev);				\
 								\
 	BHNDB_LOCK(sc);						\
 	dwa = bhndb_io_resource(sc, rman_get_start(r->res) +	\
-	    offset, _io_size, &io_offset);			\
+	    offset, _io_size, &io_offset, &stolen, &restore);	\
 	io_res = dwa->parent_res;				\
 								\
 	KASSERT(!r->direct,					\
@@ -1784,6 +1804,10 @@ bhndb_io_resource(struct bhndb_softc *sc, bus_addr_t addr, bus_size_t size,
 	    ("i/o resource is not active"));
 
 #define	BHNDB_IO_COMMON_TEARDOWN()				\
+	if (stolen) {						\
+		bhndb_dw_return_stolen(sc->dev, sc->bus_res,	\
+		    dwa, restore);				\
+	}							\
 	BHNDB_UNLOCK(sc);
 
 /* Defines a bhndb_bus_read_* method implementation */
