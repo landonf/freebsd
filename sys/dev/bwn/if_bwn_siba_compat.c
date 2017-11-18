@@ -797,7 +797,12 @@ bhnd_compat_sprom_get_ant_bg(device_t dev)
 static uint16_t
 bhnd_compat_sprom_get_pa0b0(device_t dev)
 {
-	BWN_BHND_NVRAM_RETURN_VAR(dev, uint16, BHND_NVAR_PA0B0);
+	int16_t value;
+
+	BWN_BHND_NVRAM_FETCH_VAR(dev, int16, BHND_NVAR_PA0B0, &value);
+
+	/* TODO: bwn(4) immediately casts this back to int16_t */
+	return ((uint16_t)value);
 }
 
 /*
@@ -809,7 +814,12 @@ bhnd_compat_sprom_get_pa0b0(device_t dev)
 static uint16_t
 bhnd_compat_sprom_get_pa0b1(device_t dev)
 {
-	BWN_BHND_NVRAM_RETURN_VAR(dev, uint16, BHND_NVAR_PA0B1);
+	int16_t value;
+
+	BWN_BHND_NVRAM_FETCH_VAR(dev, int16, BHND_NVAR_PA0B1, &value);
+
+	/* TODO: bwn(4) immediately casts this back to int16_t */
+	return ((uint16_t)value);
 }
 
 /*
@@ -821,7 +831,12 @@ bhnd_compat_sprom_get_pa0b1(device_t dev)
 static uint16_t
 bhnd_compat_sprom_get_pa0b2(device_t dev)
 {
-	BWN_BHND_NVRAM_RETURN_VAR(dev, uint16, BHND_NVAR_PA0B2);
+	int16_t value;
+
+	BWN_BHND_NVRAM_FETCH_VAR(dev, int16, BHND_NVAR_PA0B2, &value);
+
+	/* TODO: bwn(4) immediately casts this back to int16_t */
+	return ((uint16_t)value);
 }
 
 /**
