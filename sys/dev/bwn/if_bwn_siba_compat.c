@@ -259,7 +259,7 @@ bwn_bhnd_populate_nvram_data(device_t dev, struct bwn_bhnd_ctx *ctx)
 	if (mac_80211a_var != NULL) {
 		error = bhnd_nvram_getvar_array(dev, mac_80211a_var,
 		    ctx->mac_80211a, sizeof(ctx->mac_80211a),
-		    BHND_NVRAM_TYPE_UINT8);
+		    BHND_NVRAM_TYPE_UINT8_ARRAY);
 
 		if (error && error != ENOENT) {
 			device_printf(dev, "error reading %s: %d\n",
