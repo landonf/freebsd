@@ -1817,8 +1817,9 @@ bhnd_compat_dma_translation(device_t dev)
 	switch (bwn_dmatype) {
 	case BWN_DMA_32BIT:
 	case BWN_DMA_30BIT:
-		KASSERT(~dt.addr_mask == SIBA_DMA_TRANSLATION_MASK,
-		    ("unexpected DMA mask: %#jx", (uintmax_t)dt.addr_mask));
+		KASSERT((~dt.addr_mask & BHND_DMA_ADDR_BITMASK(32)) ==
+		    SIBA_DMA_TRANSLATION_MASK, ("unexpected DMA mask: %#jx",
+		    (uintmax_t)dt.addr_mask));
 
 		return (dt.base_addr);
 
