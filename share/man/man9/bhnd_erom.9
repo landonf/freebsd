@@ -197,14 +197,14 @@ function is used to identify a
 bus device and determine whether the erom class
 .Fa cls
 is capable of parsing its device enumeration table.
-If successful, the probed chip identification will be written to the location
+If successful, the probed chip identification is written to the location
 pointed to by
 .Fa cid .
 .Pp
 A pointer to a bus I/O instance mapping the first hardware core's device
 registers must be provided using the
 .Fa eio
-argument \(em the registers should be mapped using
+argument. The registers should be mapped using
 .Xr bhnd_erom_io_map 9 .
 .Pp
 On devices that do not provide standard
@@ -255,10 +255,10 @@ function releases all resources held by an erom parser successfully allocated
 using
 .Fn bhnd_erom_alloc .
 .Pp
-Clients which would like to manage the allocation of memory themselves \(em
-for example, to perform device enumeration before
+Clients which would like to manage the allocation of memory themselves (e.g. to
+perform device enumeration before
 .Xr malloc 9
-has been initialized \(em should call
+initialization) should call
 .Fn bhnd_erom_init_static
 with a pointer to the memory for the instance specified by the
 .Fa erom
