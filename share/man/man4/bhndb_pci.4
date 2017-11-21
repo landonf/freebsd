@@ -35,8 +35,8 @@
 .Nm bhndb_pci
 .Nd Broadcom Home Networking Division PCI host bridge driver
 .Sh SYNOPSIS
-To compile this driver into the kernel,
-place the following lines in your kernel configuration file:
+To compile this driver into the kernel, add the following lines to the
+kernel configuration file:
 .Bd -ragged -offset indent
 .Cd "device bhnd"
 .Cd "device bhndb"
@@ -44,8 +44,7 @@ place the following lines in your kernel configuration file:
 .Cd "device pci"
 .Ed
 .Pp
-Alternatively, to load the driver as a module at boot time,
-place the following line in
+To load the driver as a module at boot, add this line to
 .Xr loader.conf 5 :
 .Bd -literal -offset indent
 bhndb_pci_load="YES"
