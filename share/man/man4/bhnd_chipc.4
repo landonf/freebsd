@@ -34,14 +34,14 @@
 .Nm bhnd_chipc
 .Nd Broadcom Home Networking Division ChipCommon Driver
 .Sh SYNOPSIS
-To compile this driver into the kernel,
-place the following lines in your kernel configuration file:
+To compile this driver into the kernel, add this line to the
+kernel configuration file:
 .Bd -ragged -offset indent
 .Cd "device bhnd"
 .Ed
 .Pp
 To compile driver support for all additional devices found in embedded systems,
-place the following additional lines in your kernel configuration file:
+add the following additional lines to the kernel configuration file:
 .Bd -ragged -offset indent
 .Cd "device cfi"
 .Cd "device gpio"
@@ -49,8 +49,7 @@ place the following additional lines in your kernel configuration file:
 .Cd "device uart"
 .Ed
 .Pp
-Alternatively, to load the driver as a module at boot time,
-place the following line in
+To load the driver as a module at boot, add this line to
 .Xr loader.conf 5 :
 .Bd -literal -offset indent
 bhnd_load="YES"
