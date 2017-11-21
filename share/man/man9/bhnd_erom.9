@@ -201,10 +201,10 @@ If successful, the probed chip identification is written to the location
 pointed to by
 .Fa cid .
 .Pp
-A pointer to a bus I/O instance mapping the first hardware core's device
-registers must be provided using the
+A pointer to a bus I/O instance mapping the device registers of the first
+hardware core must be provided using the
 .Fa eio
-argument. The registers should be mapped using
+argument. The registers can be mapped using
 .Xr bhnd_erom_io_map 9 .
 .Pp
 On devices that do not provide standard
@@ -228,9 +228,9 @@ using
 .Xr bhnd_driver_get_erom_class 9
 to fetch each driver's erom class and probe the hardware core mapped by
 .Fa eio .
-A pointer to the erom class with the highest probe priority will be returned
-on success.
-If no erom class returns a successful probe result,
+A pointer to the erom class with the highest probe priority is returned on
+success.
+If there are no successful probe results from the erom classes,
 .Dv NULL
 is returned.
 .Pp
@@ -255,23 +255,25 @@ function releases all resources held by an erom parser successfully allocated
 using
 .Fn bhnd_erom_alloc .
 .Pp
-Clients which would like to manage the allocation of memory themselves (e.g. to
-perform device enumeration before
+Clients can manage the allocation of memory themselves with
+.Fn bhnd_erom_init_static .
+This is useful in cases like performing device enumeration before
 .Xr malloc 9
-initialization) should call
+initialization.
 .Fn bhnd_erom_init_static
-with a pointer to the memory for the instance specified by the
+is called with
 .Fa erom
-argument, and the total number of available bytes in
+set to a pointer to the memory for the instance, and the total available bytes
+in
 .Fa esize .
 .Pp
 The
 .Vt bhnd_erom_static
-structure is large enough to statically allocate any supported parser class'
+structure is large enough to statically allocate any supported parser class
 instance state.
 Pointers to a
 .Vt bhnd_erom_static
-structure may be cast to
+structure can be cast to
 .Vt bhnd_erom_t .
 .Pp
 The
@@ -322,15 +324,15 @@ mapped to the port
 .Fa port
 of type
 .Fa type .
-On success, the core information of the matching entry will be written to
+On success, the core information of the matching entry is written to
 .Fa core ,
-the base address of the port region will be written to
+the base address of the port region is written to
 .Fa addr ,
-and the total size of the port region will be written to
+and the total size of the port region is written to
 .Fa size .
-If the core information is not desired,
+If the core information is not desired, set
 .Fa core
-should be set to
+to
 .Dv NULL .
 .Ss Bus Space I/O
 .Pp
@@ -349,7 +351,7 @@ callbacks directly.
 .Pp
 The
 .Vt bhnd_erom_io
-structure contains the following required fields:
+structure contains these required fields:
 .Pp
 .Bl -tag -width "read" -offset indent
 .It Fa map
@@ -429,13 +431,13 @@ function returns a standard
 .Xr DEVICE_PROBE 9
 result.
 .Pp
-A return value equal to or less than zero indicates success, while a value
-greater than zero indicates an error, and will be an appropriate error code.
+A return value equal to or less than zero indicates success.
+Values greater than zero indicates an error, and will be an appropriate error
+code.
 For values less than or equal to zero, the erom class returning the highest
 value should be used to parse the erom table.
-If the device is not supported by the parser,
 .Er ENXIO
-should be returned.
+is returned if the device is not supported by the parser.
 .Pp
 The
 .Fn bhnd_erom_probe_driver_classes
