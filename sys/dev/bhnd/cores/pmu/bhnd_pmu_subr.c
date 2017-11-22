@@ -3082,31 +3082,6 @@ bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc,
 	case BHND_CHIPID_BCM43421:
 		switch (spuravoid) {
 		case BHND_PMU_SPURAVOID_NONE:
-
-			break;
-		case BHND_PMU_SPURAVOID_M1:
-
-			break;
-		case BHND_PMU_SPURAVOID_M2:
-
-			break;
-		default:
-			return (ENODEV);
-		}
-		if (spuravoid == 1) {
-			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL0,
-			    0x11500010, ~0);
-			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL1,
-			    0x000C0C06, ~0);
-			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL2,
-			    0x0F600a08, ~0);
-			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL3,
-			    0x00000000, ~0);
-			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL4,
-			    0x2001E920, ~0);
-			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL5,
-			    0x88888815, ~0);
-		} else {
 			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL0,
 			    0x11100010, ~0);
 			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL1,
@@ -3119,7 +3094,28 @@ bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc,
 			    0x200005c0, ~0);
 			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL5,
 			    0x88888815, ~0);
+			break;
+
+		case BHND_PMU_SPURAVOID_M1:
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL0,
+			    0x11500010, ~0);
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL1,
+			    0x000C0C06, ~0);
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL2,
+			    0x0F600a08, ~0);
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL3,
+			    0x00000000, ~0);
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL4,
+			    0x2001E920, ~0);
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL5,
+			    0x88888815, ~0);
+			break;
+
+		case BHND_PMU_SPURAVOID_M2:
+		default:
+			return (ENODEV);
 		}
+
 		pmuctrl = BHND_PMU_CTRL_PLL_PLLCTL_UPD;
 		break;
 
@@ -3127,33 +3123,8 @@ bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc,
 	case BHND_CHIPID_BCM43112:
 	case BHND_CHIPID_BCM43222:
 	case BHND_CHIPID_BCM43420:
-				switch (spuravoid) {
+		switch (spuravoid) {
 		case BHND_PMU_SPURAVOID_NONE:
-
-			break;
-		case BHND_PMU_SPURAVOID_M1:
-
-			break;
-		case BHND_PMU_SPURAVOID_M2:
-
-			break;
-		default:
-			return (ENODEV);
-		}
-		if (spuravoid == 1) {
-			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL0,
-			    0x11500008, ~0);
-			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL1,
-			    0x0c000c06, ~0);
-			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL2,
-			    0x0f600a08, ~0);
-			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL3,
-			    0x00000000, ~0);
-			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL4,
-			    0x2001e920, ~0);
-			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL5,
-			    0x88888815, ~0);
-		} else {
 			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL0,
 			    0x11100008, ~0);
 			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL1,
@@ -3166,6 +3137,26 @@ bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc,
 			    0x200005c0, ~0);
 			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL5,
 			    0x88888855, ~0);
+			break;
+
+		case BHND_PMU_SPURAVOID_M1:
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL0,
+			    0x11500008, ~0);
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL1,
+			    0x0c000c06, ~0);
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL2,
+			    0x0f600a08, ~0);
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL3,
+			    0x00000000, ~0);
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL4,
+			    0x2001e920, ~0);
+			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL5,
+			    0x88888815, ~0);
+			break;
+
+		case BHND_PMU_SPURAVOID_M2:
+		default:
+			return (ENODEV);
 		}
 
 		pmuctrl = BHND_PMU_CTRL_PLL_PLLCTL_UPD;
@@ -3188,8 +3179,8 @@ bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc,
 			    0x200005c0, ~0);
 			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL5,
 			    0x88888815, ~0);
-
 			break;
+
 		case BHND_PMU_SPURAVOID_M1:
 			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL0,
 			    0x11500060, ~0);
@@ -3203,7 +3194,6 @@ bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc,
 			    0x2001E924, ~0);
 			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL5,
 			    0x88888815, ~0);
-
 			break;
 
 		case BHND_PMU_SPURAVOID_M2:
@@ -3240,6 +3230,7 @@ bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc,
 			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL2,
 			    0x05201828, ~0);
 			break;
+
 		case BHND_PMU_SPURAVOID_M2:
 		default:
 			return (ENODEV);
@@ -3266,6 +3257,7 @@ bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc,
 			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL3,
 			    0x00EC4EC4, ~0);
 			break;
+
 		case BHND_PMU_SPURAVOID_M2:
 		default:
 			return (ENODEV);
@@ -3296,6 +3288,7 @@ bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc,
 			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL5,
 			    0x88888815, ~0);
 			break;
+
 		case BHND_PMU_SPURAVOID_M1:
 			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL0,
 			    0x01100014, ~0);
@@ -3310,6 +3303,7 @@ bhnd_pmu_spuravoid_pllupdate(struct bhnd_pmu_softc *sc,
 			BHND_PMU_PLL_WRITE(sc, BHND_PMU1_PLL0_PLLCTL5,
 			    0x88888815, ~0);
 			break;
+
 		case BHND_PMU_SPURAVOID_M2:
 		default:
 			return (ENODEV);
