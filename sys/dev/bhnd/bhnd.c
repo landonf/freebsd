@@ -1148,6 +1148,8 @@ static device_method_t bhnd_methods[] = {
 	DEVMETHOD(bhnd_bus_enable_clocks,	bhnd_generic_enable_clocks),
 	DEVMETHOD(bhnd_bus_request_ext_rsrc,	bhnd_generic_request_ext_rsrc),
 	DEVMETHOD(bhnd_bus_release_ext_rsrc,	bhnd_generic_release_ext_rsrc),
+	DEVMETHOD(bhnd_bus_get_clock_latency,	bhnd_generic_get_clock_latency),
+	DEVMETHOD(bhnd_bus_get_clock_freq,	bhnd_generic_get_clock_freq),
 
 	DEVMETHOD(bhnd_bus_is_region_valid,	bhnd_generic_is_region_valid),
 	DEVMETHOD(bhnd_bus_get_nvram_var,	bhnd_generic_get_nvram_var),
