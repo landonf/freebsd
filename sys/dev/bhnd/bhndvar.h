@@ -116,7 +116,7 @@ int				 bhnd_generic_get_nvram_var(device_t dev,
  * softc structures.
  */
 struct bhnd_softc {
-	device_t	dev;	/**< bus device */
+	device_t dev;	/**< bus device */
 };
 
 #endif /* _BHND_BHNDVAR_H_ */
