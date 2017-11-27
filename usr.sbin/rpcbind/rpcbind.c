@@ -2,6 +2,8 @@
 /*	$FreeBSD$ */
 
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2009, Sun Microsystems, Inc.
  * All rights reserved.
  *
@@ -757,12 +759,13 @@ rbllist_add(rpcprog_t prog, rpcvers_t vers, struct netconfig *nconf,
  * Catch the signal and die
  */
 static void
-terminate(int dummy __unused)
+terminate(int signum __unused)
 {
 	close(rpcbindlockfd);
 #ifdef WARMSTART
 	syslog(LOG_ERR,
-		"rpcbind terminating on signal. Restart with \"rpcbind -w\"");
+	    "rpcbind terminating on signal %d. Restart with \"rpcbind -w\"",
+	    signum);
 	write_warmstart();	/* Dump yourself */
 #endif
 	exit(2);

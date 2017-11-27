@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1992, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -10,7 +12,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -71,7 +73,6 @@ void kmem_init(vm_offset_t, vm_offset_t);
 void kmem_init_zero_region(void);
 void kmeminit(void);
 
-void swapout_procs(int);
 int kernacc(void *, int, int);
 int useracc(void *, int, int);
 int vm_fault(vm_map_t, vm_offset_t, vm_prot_t, int);
@@ -114,6 +115,5 @@ struct sf_buf *vm_imgact_map_page(vm_object_t object, vm_ooffset_t offset);
 void vm_imgact_unmap_page(struct sf_buf *sf);
 void vm_thread_dispose(struct thread *td);
 int vm_thread_new(struct thread *td, int pages);
-int vm_mlock(struct proc *, struct ucred *, const void *, size_t);
 #endif				/* _KERNEL */
 #endif				/* !_VM_EXTERN_H_ */

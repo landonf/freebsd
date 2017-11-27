@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2001-2007, by Cisco Systems, Inc. All rights reserved.
  * Copyright (c) 2008-2012, by Randall Stewart. All rights reserved.
  * Copyright (c) 2008-2012, by Michael Tuexen. All rights reserved.
@@ -54,7 +56,7 @@ sctp_find_stream_reset(struct sctp_tcb *stcb, uint32_t seq,
 
 void 
 sctp_reset_in_stream(struct sctp_tcb *stcb, uint32_t number_entries,
-    uint16_t * list);
+    uint16_t *list);
 
 
 int sctp_is_there_unsent_data(struct sctp_tcb *stcb, int so_locked);

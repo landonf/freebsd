@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
  * Copyright (c) 2001 Daniel Hartmeier
  * Copyright (c) 2002,2003 Henning Brauer
  * Copyright (c) 2012 Gleb Smirnoff <glebius@FreeBSD.org>
@@ -178,7 +180,7 @@ static int		hook_pf(void);
 static int		dehook_pf(void);
 static int		shutdown_pf(void);
 static int		pf_load(void);
-static int		pf_unload(void);
+static void		pf_unload(void);
 
 static struct cdevsw pf_cdevsw = {
 	.d_ioctl =	pfioctl,
@@ -198,9 +200,11 @@ VNET_DEFINE(int, pf_vnet_active);
 #define V_pf_vnet_active	VNET(pf_vnet_active)
 
 int pf_end_threads;
+struct proc *pf_purge_proc;
 
 struct rwlock			pf_rules_lock;
 struct sx			pf_ioctl_lock;
+struct sx			pf_end_lock;
 
 /* pfsync */
 pfsync_state_import_t 		*pfsync_state_import_ptr = NULL;
@@ -1267,7 +1271,7 @@ pfioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags, struct thread *td
 		pf_mv_pool(&V_pf_pabuf, &rule->rpool.list);
 		if (((((rule->action == PF_NAT) || (rule->action == PF_RDR) ||
 		    (rule->action == PF_BINAT)) && rule->anchor == NULL) ||
-		    (rule->rt > PF_FASTROUTE)) &&
+		    (rule->rt > PF_NOPFROUTE)) &&
 		    (TAILQ_FIRST(&rule->rpool.list) == NULL))
 			error = EINVAL;
 
@@ -1527,7 +1531,7 @@ DIOCADDRULE_error:
 			if (((((newrule->action == PF_NAT) ||
 			    (newrule->action == PF_RDR) ||
 			    (newrule->action == PF_BINAT) ||
-			    (newrule->rt > PF_FASTROUTE)) &&
+			    (newrule->rt > PF_NOPFROUTE)) &&
 			    !newrule->anchor)) &&
 			    (TAILQ_FIRST(&newrule->rpool.list) == NULL))
 				error = EINVAL;
@@ -1850,6 +1854,8 @@ DIOCGETSTATES_full:
 			counter_u64_zero(V_pf_status.fcounters[i]);
 		for (int i = 0; i < SCNT_MAX; i++)
 			counter_u64_zero(V_pf_status.scounters[i]);
+		for (int i = 0; i < LCNT_MAX; i++)
+			counter_u64_zero(V_pf_status.lcounters[i]);
 		V_pf_status.since = time_second;
 		if (*V_pf_status.ifname)
 			pfi_update_status(V_pf_status.ifname, NULL);
@@ -2426,11 +2432,12 @@ DIOCGETSTATES_full:
 
 #undef ERROUT
 DIOCCHANGEADDR_error:
-		if (newpa->kif)
-			pfi_kif_unref(newpa->kif);
-		PF_RULES_WUNLOCK();
-		if (newpa != NULL)
+		if (newpa != NULL) {
+			if (newpa->kif)
+				pfi_kif_unref(newpa->kif);
 			free(newpa, M_PFRULE);
+		}
+		PF_RULES_WUNLOCK();
 		if (kif != NULL)
 			free(kif, PFI_MTYPE);
 		break;
@@ -3563,7 +3570,9 @@ pf_check_in(void *arg, struct mbuf **m, struct ifnet *ifp, int dir,
 		*m = NULL;
 	}
 
-	return (chk);
+	if (chk != PF_PASS)
+		return (EACCES);
+	return (0);
 }
 
 static int
@@ -3578,7 +3587,9 @@ pf_check_out(void *arg, struct mbuf **m, struct ifnet *ifp, int dir,
 		*m = NULL;
 	}
 
-	return (chk);
+	if (chk != PF_PASS)
+		return (EACCES);
+	return (0);
 }
 #endif
 
@@ -3601,7 +3612,9 @@ pf_check6_in(void *arg, struct mbuf **m, struct ifnet *ifp, int dir,
 		m_freem(*m);
 		*m = NULL;
 	}
-	return chk;
+	if (chk != PF_PASS)
+		return (EACCES);
+	return (0);
 }
 
 static int
@@ -3617,7 +3630,9 @@ pf_check6_out(void *arg, struct mbuf **m, struct ifnet *ifp, int dir,
 		m_freem(*m);
 		*m = NULL;
 	}
-	return chk;
+	if (chk != PF_PASS)
+		return (EACCES);
+	return (0);
 }
 #endif /* INET6 */
 
@@ -3699,17 +3714,8 @@ dehook_pf(void)
 static void
 pf_load_vnet(void)
 {
-	VNET_ITERATOR_DECL(vnet_iter);
-
-	VNET_LIST_RLOCK();
-	VNET_FOREACH(vnet_iter) {
-		CURVNET_SET(vnet_iter);
-		V_pf_pfil_hooked = 0;
-		TAILQ_INIT(&V_pf_tags);
-		TAILQ_INIT(&V_pf_qids);
-		CURVNET_RESTORE();
-	}
-	VNET_LIST_RUNLOCK();
+	TAILQ_INIT(&V_pf_tags);
+	TAILQ_INIT(&V_pf_qids);
 
 	pfattach_vnet();
 	V_pf_vnet_active = 1;
@@ -3722,6 +3728,7 @@ pf_load(void)
 
 	rw_init(&pf_rules_lock, "pf rulesets");
 	sx_init(&pf_ioctl_lock, "pf ioctl");
+	sx_init(&pf_end_lock, "pf end thread");
 
 	pf_mtag_initialize();
 
@@ -3730,7 +3737,7 @@ pf_load(void)
 		return (ENOMEM);
 
 	pf_end_threads = 0;
-	error = kproc_create(pf_purge_thread, NULL, NULL, 0, 0, "pf purge");
+	error = kproc_create(pf_purge_thread, NULL, &pf_purge_proc, 0, 0, "pf purge");
 	if (error != 0)
 		return (error);
 
@@ -3758,11 +3765,11 @@ pf_unload_vnet(void)
 		return;
 	}
 
-	pf_unload_vnet_purge();
-
 	PF_RULES_WLOCK();
 	shutdown_pf();
 	PF_RULES_WUNLOCK();
+
+	pf_unload_vnet_purge();
 
 	pf_normalize_cleanup();
 	PF_RULES_WLOCK();
@@ -3775,16 +3782,17 @@ pf_unload_vnet(void)
 		pf_mtag_cleanup();
 }
 
-static int
+static void
 pf_unload(void)
 {
-	int error = 0;
 
+	sx_xlock(&pf_end_lock);
 	pf_end_threads = 1;
 	while (pf_end_threads < 2) {
 		wakeup_one(pf_purge_thread);
-		rw_sleep(pf_purge_thread, &pf_rules_lock, 0, "pftmo", 0);
+		sx_sleep(pf_purge_proc, &pf_end_lock, 0, "pftmo", 0);
 	}
+	sx_xunlock(&pf_end_lock);
 
 	if (pf_dev != NULL)
 		destroy_dev(pf_dev);
@@ -3793,8 +3801,7 @@ pf_unload(void)
 
 	rw_destroy(&pf_rules_lock);
 	sx_destroy(&pf_ioctl_lock);
-
-	return (error);
+	sx_destroy(&pf_end_lock);
 }
 
 static void
@@ -3812,6 +3819,7 @@ vnet_pf_uninit(const void *unused __unused)
 
 	pf_unload_vnet();
 } 
+SYSUNINIT(pf_unload, SI_SUB_PROTO_FIREWALL, SI_ORDER_SECOND, pf_unload, NULL);
 VNET_SYSUNINIT(vnet_pf_uninit, SI_SUB_PROTO_FIREWALL, SI_ORDER_THIRD,
     vnet_pf_uninit, NULL);
 
@@ -3832,7 +3840,8 @@ pf_modevent(module_t mod, int type, void *data)
 		error = EBUSY;
 		break;
 	case MOD_UNLOAD:
-		error = pf_unload();
+		/* Handled in SYSUNINIT(pf_unload) to ensure it's done after
+		 * the vnet_pf_uninit()s */
 		break;
 	default:
 		error = EINVAL;

@@ -1,6 +1,8 @@
 /*-
  * Implementation of SCSI Direct Access Peripheral driver for CAM.
  *
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 1997 Justin T. Gibbs.
  * All rights reserved.
  *
@@ -123,7 +125,8 @@ typedef enum {
 	DA_Q_NO_RC16		= 0x10,
 	DA_Q_NO_UNMAP		= 0x20,
 	DA_Q_RETRY_BUSY		= 0x40,
-	DA_Q_SMR_DM		= 0x80
+	DA_Q_SMR_DM		= 0x80,
+	DA_Q_STRICT_UNMAP	= 0x100
 } da_quirks;
 
 #define DA_Q_BIT_STRING		\
@@ -135,7 +138,8 @@ typedef enum {
 	"\005NO_RC16"		\
 	"\006NO_UNMAP"		\
 	"\007RETRY_BUSY"	\
-	"\008SMR_DM"
+	"\010SMR_DM"		\
+	"\011STRICT_UNMAP"
 
 typedef enum {
 	DA_CCB_PROBE_RC		= 0x01,
@@ -310,6 +314,8 @@ struct da_softc {
 	u_int	 		maxio;
 	uint32_t		unmap_max_ranges;
 	uint32_t		unmap_max_lba; /* Max LBAs in UNMAP req */
+	uint32_t		unmap_gran;
+	uint32_t		unmap_gran_align;
 	uint64_t		ws_max_blks;
 	da_delete_methods	delete_method_pref;
 	da_delete_methods	delete_method;
@@ -334,6 +340,10 @@ struct da_softc {
 	u_int	timeouts;
 	u_int	invalidations;
 #endif
+#define DA_ANNOUNCETMP_SZ 80
+	char			announce_temp[DA_ANNOUNCETMP_SZ];
+#define DA_ANNOUNCE_SZ 400
+	char			announcebuf[DA_ANNOUNCE_SZ];
 };
 
 #define dadeleteflag(softc, delete_method, enable)			\
@@ -468,9 +478,10 @@ static struct da_quirk_entry da_quirk_table[] =
 		/*
 		 * VMware returns BUSY status when storage has transient
 		 * connectivity problems, so better wait.
+		 * Also VMware returns odd errors on misaligned UNMAPs.
 		 */
 		{T_DIRECT, SIP_MEDIA_FIXED, "VMware*", "*", "*"},
-		/*quirks*/ DA_Q_RETRY_BUSY
+		/*quirks*/ DA_Q_RETRY_BUSY | DA_Q_STRICT_UNMAP
 	},
 	/* USB mass storage devices supported by umass(4) */
 	{
@@ -675,6 +686,13 @@ static struct da_quirk_entry da_quirk_table[] =
 	},
 	{
 		/*
+		 * Genesys GL3224
+		 */
+		{T_DIRECT, SIP_MEDIA_REMOVABLE, "Generic*", "STORAGE DEVICE*",
+		"120?"}, /*quirks*/ DA_Q_NO_SYNC_CACHE | DA_Q_4K | DA_Q_NO_RC16
+	},
+	{
+		/*
 		 * Genesys 6-in-1 Card Reader
 		 * PR: usb/94647
 		 */
@@ -814,10 +832,23 @@ static struct da_quirk_entry da_quirk_table[] =
 		{T_DIRECT, SIP_MEDIA_REMOVABLE, "JetFlash", "Transcend*",
 		 "*"}, /*quirks*/ DA_Q_NO_RC16
 	},
+	{
+		/*
+		 * I-O Data USB Flash Disk
+		 * PR: usb/211716
+		 */
+		{T_DIRECT, SIP_MEDIA_REMOVABLE, "I-O DATA", "USB Flash Disk*",
+		 "*"}, /*quirks*/ DA_Q_NO_RC16
+	},
 	/* ATA/SATA devices over SAS/USB/... */
 	{
 		/* Hitachi Advanced Format (4k) drives */
 		{ T_DIRECT, SIP_MEDIA_FIXED, "Hitachi", "H??????????E3*", "*" },
+		/*quirks*/DA_Q_4K
+	},
+	{
+		/* Micron Advanced Format (4k) drives */
+		{ T_DIRECT, SIP_MEDIA_FIXED, "ATA", "Micron 5100 MTFDDAK*", "*" },
 		/*quirks*/DA_Q_4K
 	},
 	{
@@ -1143,6 +1174,14 @@ static struct da_quirk_entry da_quirk_table[] =
 	},
 	{
 		/*
+		 * Intel S3610 Series SSDs
+		 * 4k optimised & trim only works in 4k requests + 4k aligned
+		 */
+		{ T_DIRECT, SIP_MEDIA_FIXED, "ATA", "INTEL SSDSC2BX*", "*" },
+		/*quirks*/DA_Q_4K
+	},
+	{
+		/*
 		 * Intel X25-M Series SSDs
 		 * 4k optimised & trim only works in 4k requests + 4k aligned
 		 */
@@ -1223,6 +1262,14 @@ static struct da_quirk_entry da_quirk_table[] =
 	},
 	{
 		/*
+		 * Samsung 750 Series SSDs
+		 * 4k optimised & trim only works in 4k requests + 4k aligned
+		 */
+		{ T_DIRECT, SIP_MEDIA_FIXED, "ATA", "Samsung SSD 750*", "*" },
+		/*quirks*/DA_Q_4K
+	},
+	{
+		/*
 		 * Samsung 830 Series SSDs
 		 * 4k optimised & trim only works in 4k requests + 4k aligned
 		 */
@@ -1235,6 +1282,14 @@ static struct da_quirk_entry da_quirk_table[] =
 		 * 4k optimised & trim only works in 4k requests + 4k aligned
 		 */
 		{ T_DIRECT, SIP_MEDIA_FIXED, "ATA", "Samsung SSD 840*", "*" },
+		/*quirks*/DA_Q_4K
+	},
+	{
+		/*
+		 * Samsung 845 SSDs
+		 * 4k optimised & trim only works in 4k requests + 4k aligned
+		 */
+		{ T_DIRECT, SIP_MEDIA_FIXED, "ATA", "Samsung SSD 845*", "*" },
 		/*quirks*/DA_Q_4K
 	},
 	{
@@ -1254,6 +1309,14 @@ static struct da_quirk_entry da_quirk_table[] =
 		 * 4k optimised
 		 */
 		{ T_DIRECT, SIP_MEDIA_FIXED, "ATA", "SAMSUNG MZ7*", "*" },
+		/*quirks*/DA_Q_4K
+	},
+	{
+		/*
+		 * Same as for SAMSUNG MZ7* but enable the quirks for SSD
+		 * starting with MZ7* too
+		 */
+		{ T_DIRECT, SIP_MEDIA_FIXED, "ATA", "MZ7*", "*" },
 		/*quirks*/DA_Q_4K
 	},
 	{
@@ -1285,7 +1348,7 @@ static struct da_quirk_entry da_quirk_table[] =
 		 * Drive Managed SATA hard drive.  This drive doesn't report
 		 * in firmware that it is a drive managed SMR drive.
 		 */
-		{ T_DIRECT, SIP_MEDIA_FIXED, "ATA", "ST8000AS0002*", "*" },
+		{ T_DIRECT, SIP_MEDIA_FIXED, "ATA", "ST8000AS000[23]*", "*" },
 		/*quirks*/DA_Q_SMR_DM
 	},
 	{
@@ -1484,8 +1547,7 @@ daclose(struct disk *dp)
 			error = cam_periph_runccb(ccb, daerror, /*cam_flags*/0,
 			    /*sense_flags*/SF_RETRY_UA | SF_QUIET_IR,
 			    softc->disk->d_devstat);
-			if (error == 0)
-				softc->flags &= ~DA_FLAG_DIRTY;
+			softc->flags &= ~DA_FLAG_DIRTY;
 			xpt_release_ccb(ccb);
 		}
 
@@ -1594,6 +1656,7 @@ dadump(void *arg, void *virtual, vm_offset_t physical, off_t offset, size_t leng
 		return (ENXIO);
 	}
 
+	memset(&csio, 0, sizeof(csio));
 	if (length > 0) {
 		xpt_setup_ccb(&csio.ccb_h, periph->path, CAM_PRIORITY_NORMAL);
 		csio.ccb_h.ccb_state = DA_CCB_DUMP;
@@ -1917,9 +1980,9 @@ dasysctlinit(void *context, int pending)
 
 	sysctl_ctx_init(&softc->sysctl_ctx);
 	softc->flags |= DA_FLAG_SCTX_INIT;
-	softc->sysctl_tree = SYSCTL_ADD_NODE(&softc->sysctl_ctx,
+	softc->sysctl_tree = SYSCTL_ADD_NODE_WITH_LABEL(&softc->sysctl_ctx,
 		SYSCTL_STATIC_CHILDREN(_kern_cam_da), OID_AUTO, tmpstr2,
-		CTLFLAG_RD, 0, tmpstr);
+		CTLFLAG_RD, 0, tmpstr, "device_index");
 	if (softc->sysctl_tree == NULL) {
 		printf("dasysctlinit: unable to allocate sysctl tree\n");
 		cam_periph_release(periph);
@@ -2388,6 +2451,8 @@ daregister(struct cam_periph *periph, void *arg)
 		softc->flags |= DA_FLAG_PACK_REMOVABLE;
 	softc->unmap_max_ranges = UNMAP_MAX_RANGES;
 	softc->unmap_max_lba = UNMAP_RANGE_MAX;
+	softc->unmap_gran = 0;
+	softc->unmap_gran_align = 0;
 	softc->ws_max_blks = WS16_MAX_BLKS;
 	softc->trim_max_ranges = ATA_TRIM_MAX_RANGES;
 	softc->rotating = 1;
@@ -2469,17 +2534,15 @@ daregister(struct cam_periph *periph, void *arg)
 	/*
 	 * 6, 10, 12 and 16 are the currently permissible values.
 	 */
-	if (softc->minimum_cmd_size < 6)
-		softc->minimum_cmd_size = 6;
-	else if ((softc->minimum_cmd_size > 6)
-	      && (softc->minimum_cmd_size <= 10))
-		softc->minimum_cmd_size = 10;
-	else if ((softc->minimum_cmd_size > 10)
-	      && (softc->minimum_cmd_size <= 12))
-		softc->minimum_cmd_size = 12;
-	else if (softc->minimum_cmd_size > 12)
+	if (softc->minimum_cmd_size > 12)
 		softc->minimum_cmd_size = 16;
-
+	else if (softc->minimum_cmd_size > 10)
+		softc->minimum_cmd_size = 12;
+	else if (softc->minimum_cmd_size > 6)
+		softc->minimum_cmd_size = 10;
+	else
+		softc->minimum_cmd_size = 6;
+		
 	/* Predict whether device may support READ CAPACITY(16). */
 	if (SID_ANSI_REV(&cgd->inq_data) >= SCSI_REV_SPC3 &&
 	    (softc->quirks & DA_Q_NO_RC16) == 0) {
@@ -2519,7 +2582,6 @@ daregister(struct cam_periph *periph, void *arg)
 	if ((cpi.hba_misc & PIM_UNMAPPED) != 0) {
 		softc->unmappedio = 1;
 		softc->disk->d_flags |= DISKFLAG_UNMAPPED_BIO;
-		xpt_print(periph->path, "UNMAPPED\n");
 	}
 	cam_strvis(softc->disk->d_descr, cgd->inq_data.vendor,
 	    sizeof(cgd->inq_data.vendor), sizeof(softc->disk->d_descr));
@@ -2942,6 +3004,8 @@ more:
 			void *data_ptr;
 			int rw_op;
 
+			biotrack(bp, __func__);
+
 			if (bp->bio_cmd == BIO_WRITE) {
 				softc->flags |= DA_FLAG_DIRTY;
 				rw_op = SCSI_RW_WRITE;
@@ -2969,9 +3033,24 @@ more:
 					/*dxfer_len*/ bp->bio_bcount,
 					/*sense_len*/SSD_FULL_SIZE,
 					da_default_timeout * 1000);
+#if defined(BUF_TRACKING) || defined(FULL_BUF_TRACKING)
+			start_ccb->csio.bio = bp;
+#endif
 			break;
 		}
 		case BIO_FLUSH:
+			/*
+			 * If we don't support sync cache, or the disk
+			 * isn't dirty, FLUSH is a no-op.  Use the
+			 * allocated * CCB for the next bio if one is
+			 * available.
+			 */
+			if ((softc->quirks & DA_Q_NO_SYNC_CACHE) != 0 ||
+			    (softc->flags & DA_FLAG_DIRTY) == 0) {
+				biodone(bp);
+				goto skipstate;
+			}
+
 			/*
 			 * BIO_FLUSH doesn't currently communicate
 			 * range data, so we synchronize the cache
@@ -2987,6 +3066,15 @@ more:
 					       /*lb_count*/0,
 					       SSD_FULL_SIZE,
 					       da_default_timeout*1000);
+			/*
+			 * Clear the dirty flag before sending the command.
+			 * Either this sync cache will be successful, or it
+			 * will fail after a retry.  If it fails, it is
+			 * unlikely to be successful if retried later, so
+			 * we'll save ourselves time by just marking the
+			 * device clean.
+			 */
+			softc->flags &= ~DA_FLAG_DIRTY;
 			break;
 		case BIO_ZONE: {
 			int error, queue_ccb;
@@ -3497,11 +3585,11 @@ da_delete_unmap(struct cam_periph *periph, union ccb *ccb, struct bio *bp)
 	struct da_softc *softc = (struct da_softc *)periph->softc;;
 	struct bio *bp1;
 	uint8_t *buf = softc->unmap_buf;
+	struct scsi_unmap_desc *d = (void *)&buf[UNMAP_HEAD_SIZE];
 	uint64_t lba, lastlba = (uint64_t)-1;
 	uint64_t totalcount = 0;
 	uint64_t count;
-	uint32_t lastcount = 0, c;
-	uint32_t off, ranges = 0;
+	uint32_t c, lastcount = 0, ranges = 0;
 
 	/*
 	 * Currently this doesn't take the UNMAP
@@ -3534,13 +3622,39 @@ da_delete_unmap(struct cam_periph *periph, union ccb *ccb, struct bio *bp)
 		/* Try to extend the previous range. */
 		if (lba == lastlba) {
 			c = omin(count, UNMAP_RANGE_MAX - lastcount);
+			lastlba += c;
 			lastcount += c;
-			off = ((ranges - 1) * UNMAP_RANGE_SIZE) +
-			      UNMAP_HEAD_SIZE;
-			scsi_ulto4b(lastcount, &buf[off + 8]);
+			scsi_ulto4b(lastcount, d[ranges - 1].length);
 			count -= c;
-			lba +=c;
+			lba += c;
 			totalcount += c;
+		} else if ((softc->quirks & DA_Q_STRICT_UNMAP) &&
+		    softc->unmap_gran != 0) {
+			/* Align length of the previous range. */
+			if ((c = lastcount % softc->unmap_gran) != 0) {
+				if (lastcount <= c) {
+					totalcount -= lastcount;
+					lastlba = (uint64_t)-1;
+					lastcount = 0;
+					ranges--;
+				} else {
+					totalcount -= c;
+					lastlba -= c;
+					lastcount -= c;
+					scsi_ulto4b(lastcount, d[ranges - 1].length);
+				}
+			}
+			/* Align beginning of the new range. */
+			c = (lba - softc->unmap_gran_align) % softc->unmap_gran;
+			if (c != 0) {
+				c = softc->unmap_gran - c;
+				if (count <= c) {
+					count = 0;
+				} else {
+					lba += c;
+					count -= c;
+				}
+			}
 		}
 
 		while (count > 0) {
@@ -3555,16 +3669,15 @@ da_delete_unmap(struct cam_periph *periph, union ccb *ccb, struct bio *bp)
 				    ranges, softc->unmap_max_ranges);
 				break;
 			}
-			off = (ranges * UNMAP_RANGE_SIZE) + UNMAP_HEAD_SIZE;
-			scsi_u64to8b(lba, &buf[off + 0]);
-			scsi_ulto4b(c, &buf[off + 8]);
+			scsi_u64to8b(lba, d[ranges].lba);
+			scsi_ulto4b(c, d[ranges].length);
 			lba += c;
 			totalcount += c;
 			ranges++;
 			count -= c;
+			lastlba = lba;
 			lastcount = c;
 		}
-		lastlba = lba;
 		bp1 = cam_iosched_next_trim(softc->cam_iosched);
 		if (bp1 == NULL)
 			break;
@@ -3575,6 +3688,16 @@ da_delete_unmap(struct cam_periph *periph, union ccb *ccb, struct bio *bp)
 			break;
 		}
 	} while (1);
+
+	/* Align length of the last range. */
+	if ((softc->quirks & DA_Q_STRICT_UNMAP) && softc->unmap_gran != 0 &&
+	    (c = lastcount % softc->unmap_gran) != 0) {
+		if (lastcount <= c)
+			ranges--;
+		else
+			scsi_ulto4b(lastcount - c, d[ranges - 1].length);
+	}
+
 	scsi_ulto2b(ranges * 16 + 6, &buf[0]);
 	scsi_ulto2b(ranges * 16, &buf[2]);
 
@@ -4001,6 +4124,10 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 	CAM_DEBUG(periph->path, CAM_DEBUG_TRACE, ("dadone\n"));
 
 	csio = &done_ccb->csio;
+#if defined(BUF_TRACKING) || defined(FULL_BUF_TRACKING)
+	if (csio->bio != NULL)
+		biotrack(csio->bio, __func__);
+#endif
 	state = csio->ccb_h.ccb_state & DA_CCB_TYPE_MASK;
 	switch (state) {
 	case DA_CCB_BUFFER_IO:
@@ -4099,10 +4226,18 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 			}
 		}
 
+		if (bp != NULL)
+			biotrack(bp, __func__);
 		LIST_REMOVE(&done_ccb->ccb_h, periph_links.le);
 		if (LIST_EMPTY(&softc->pending_ccbs))
 			softc->flags |= DA_FLAG_WAS_OTAG;
 
+		/*
+		 * We need to call cam_iosched before we call biodone so that we
+		 * don't measure any activity that happens in the completion
+		 * routine, which in the case of sendfile can be quite
+		 * extensive.
+		 */
 		cam_iosched_bio_complete(softc->cam_iosched, bp, done_ccb);
 		xpt_release_ccb(done_ccb);
 		if (state == DA_CCB_DELETE) {
@@ -4147,12 +4282,16 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 	{
 		struct	   scsi_read_capacity_data *rdcap;
 		struct     scsi_read_capacity_data_long *rcaplong;
-		char	   announce_buf[80];
+		char	   *announce_buf;
 		int	   lbp;
 
 		lbp = 0;
 		rdcap = NULL;
 		rcaplong = NULL;
+		/* XXX TODO: can this be a malloc? */
+		announce_buf = softc->announce_temp;
+		bzero(announce_buf, DA_ANNOUNCETMP_SZ);
+
 		if (state == DA_CCB_PROBE_RC)
 			rdcap =(struct scsi_read_capacity_data *)csio->data_ptr;
 		else
@@ -4205,7 +4344,7 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 				xpt_print(periph->path,
 				    "unsupportable block size %ju\n",
 				    (uintmax_t) block_size);
-				announce_buf[0] = '\0';
+				announce_buf = NULL;
 				cam_periph_invalidate(periph);
 			} else {
 				/*
@@ -4217,7 +4356,7 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 					  rcaplong, sizeof(*rcaplong));
 				lbp = (lalba & SRC16_LBPME_A);
 				dp = &softc->params;
-				snprintf(announce_buf, sizeof(announce_buf),
+				snprintf(announce_buf, DA_ANNOUNCETMP_SZ,
 				    "%juMB (%ju %u byte sectors)",
 				    ((uintmax_t)dp->secsize * dp->sectors) /
 				     (1024 * 1024),
@@ -4225,8 +4364,6 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 			}
 		} else {
 			int	error;
-
-			announce_buf[0] = '\0';
 
 			/*
 			 * Retry any UNIT ATTENTION type errors.  They
@@ -4293,8 +4430,14 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 				 * direct access or optical disk device,
 				 * as long as it doesn't return a "Logical
 				 * unit not supported" (0x25) error.
+				 * "Internal Target Failure" (0x44) is also
+				 * special and typically means that the
+				 * device is a SATA drive behind a SATL
+				 * translation that's fallen into a
+				 * terminally fatal state.
 				 */
-				if ((have_sense) && (asc != 0x25)
+				if ((have_sense)
+				 && (asc != 0x25) && (asc != 0x44)
 				 && (error_code == SSD_CURRENT_ERROR)) {
 					const char *sense_key_desc;
 					const char *asc_desc;
@@ -4305,11 +4448,10 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 							&sense_key_desc,
 							&asc_desc);
 					snprintf(announce_buf,
-					    sizeof(announce_buf),
-						"Attempt to query device "
-						"size failed: %s, %s",
-						sense_key_desc,
-						asc_desc);
+					    DA_ANNOUNCETMP_SZ,
+					    "Attempt to query device "
+					    "size failed: %s, %s",
+					    sense_key_desc, asc_desc);
 				} else { 
 					if (have_sense)
 						scsi_sense_print(
@@ -4323,6 +4465,8 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 					xpt_print(periph->path, "fatal error, "
 					    "failed to attach to device\n");
 
+					announce_buf = NULL;
+
 					/*
 					 * Free up resources.
 					 */
@@ -4331,20 +4475,29 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 			}
 		}
 		free(csio->data_ptr, M_SCSIDA);
-		if (announce_buf[0] != '\0' &&
+		if (announce_buf != NULL &&
 		    ((softc->flags & DA_FLAG_ANNOUNCED) == 0)) {
+			struct sbuf sb;
+
+			sbuf_new(&sb, softc->announcebuf, DA_ANNOUNCE_SZ,
+			    SBUF_FIXEDLEN);
+			xpt_announce_periph_sbuf(periph, &sb, announce_buf);
+			xpt_announce_quirks_sbuf(periph, &sb, softc->quirks,
+			    DA_Q_BIT_STRING);
+			sbuf_finish(&sb);
+			sbuf_putbuf(&sb);
+
 			/*
 			 * Create our sysctl variables, now that we know
 			 * we have successfully attached.
 			 */
 			/* increase the refcount */
 			if (cam_periph_acquire(periph) == CAM_REQ_CMP) {
+
 				taskqueue_enqueue(taskqueue_thread,
 						  &softc->sysctl_task);
-				xpt_announce_periph(periph, announce_buf);
-				xpt_announce_quirks(periph, softc->quirks,
-				    DA_Q_BIT_STRING);
 			} else {
+				/* XXX This message is useless! */
 				xpt_print(periph->path, "fatal error, "
 				    "could not acquire reference count\n");
 			}
@@ -4447,6 +4600,10 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 				block_limits->max_unmap_lba_cnt);
 			uint32_t max_unmap_blk_cnt = scsi_4btoul(
 				block_limits->max_unmap_blk_cnt);
+			uint32_t unmap_gran = scsi_4btoul(
+				block_limits->opt_unmap_grain);
+			uint32_t unmap_gran_align = scsi_4btoul(
+				block_limits->unmap_grain_align);
 			uint64_t ws_max_blks = scsi_8btou64(
 				block_limits->max_write_same_length);
 
@@ -4464,6 +4621,14 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 				softc->unmap_max_lba = max_unmap_lba_cnt;
 				softc->unmap_max_ranges = min(max_unmap_blk_cnt,
 					UNMAP_MAX_RANGES);
+				if (unmap_gran > 1) {
+					softc->unmap_gran = unmap_gran;
+					if (unmap_gran_align & 0x80000000) {
+						softc->unmap_gran_align =
+						    unmap_gran_align &
+						    0x7fffffff;
+					}
+				}
 			} else {
 				/*
 				 * Unexpected UNMAP limits which means the
@@ -5212,6 +5377,11 @@ daerror(union ccb *ccb, u_int32_t cam_flags, u_int32_t sense_flags)
 	struct cam_periph *periph;
 	int error, error_code, sense_key, asc, ascq;
 
+#if defined(BUF_TRACKING) || defined(FULL_BUF_TRACKING)
+	if (ccb->csio.bio != NULL)
+		biotrack(ccb->csio.bio, __func__);
+#endif
+
 	periph = xpt_path_periph(ccb->ccb_h.path);
 	softc = (struct da_softc *)periph->softc;
 
@@ -5373,6 +5543,10 @@ dasetgeom(struct cam_periph *periph, uint32_t block_len, uint64_t maxsector,
 	} else if (softc->quirks & DA_Q_4K) {
 		dp->stripesize = 4096;
 		dp->stripeoffset = 0;
+	} else if (softc->unmap_gran != 0) {
+		dp->stripesize = block_len * softc->unmap_gran;
+		dp->stripeoffset = (dp->stripesize - block_len *
+		    softc->unmap_gran_align) % dp->stripesize;
 	} else {
 		dp->stripesize = 0;
 		dp->stripeoffset = 0;
@@ -5684,6 +5858,7 @@ scsi_zbc_in(struct ccb_scsiio *csio, uint32_t retries,
 	scsi_cmd = (struct scsi_zbc_in *)&csio->cdb_io.cdb_bytes;
 	scsi_cmd->opcode = ZBC_IN;
 	scsi_cmd->service_action = service_action;
+	scsi_ulto4b(dxfer_len, scsi_cmd->length);
 	scsi_u64to8b(zone_start_lba, scsi_cmd->zone_start_lba);
 	scsi_cmd->zone_options = zone_options;
 
@@ -5718,7 +5893,7 @@ scsi_ata_zac_mgmt_out(struct ccb_scsiio *csio, uint32_t retries,
 
 	if (use_ncq == 0) {
 		command_out = ATA_ZAC_MANAGEMENT_OUT;
-		features_out = (zm_action & 0xf) | (zone_flags << 8),
+		features_out = (zm_action & 0xf) | (zone_flags << 8);
 		ata_flags = AP_FLAG_BYT_BLOK_BLOCKS;
 		if (dxfer_len == 0) {
 			protocol = AP_PROTO_NON_DATA;
@@ -5833,8 +6008,8 @@ scsi_ata_zac_mgmt_in(struct ccb_scsiio *csio, uint32_t retries,
 	if (use_ncq == 0) {
 		command_out = ATA_ZAC_MANAGEMENT_IN;
 		/* XXX KDM put a macro here */
-		features_out = (zm_action & 0xf) | (zone_flags << 8),
-		sectors_out = dxfer_len >> 9, /* XXX KDM macro*/
+		features_out = (zm_action & 0xf) | (zone_flags << 8);
+		sectors_out = dxfer_len >> 9; /* XXX KDM macro */
 		protocol = AP_PROTO_DMA;
 		ata_flags |= AP_FLAG_TLEN_SECT_CNT;
 		auxiliary = 0;

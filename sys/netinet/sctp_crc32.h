@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2001-2007, by Cisco Systems, Inc. All rights reserved.
  * Copyright (c) 2008-2012, by Randall Stewart. All rights reserved.
  * Copyright (c) 2008-2012, by Michael Tuexen. All rights reserved.
@@ -39,9 +41,7 @@ __FBSDID("$FreeBSD$");
 #if defined(_KERNEL)
 #if !defined(SCTP_WITH_NO_CSUM)
 uint32_t sctp_calculate_cksum(struct mbuf *, uint32_t);
-
 #endif
 void sctp_delayed_cksum(struct mbuf *, uint32_t offset);
-
 #endif				/* _KERNEL */
 #endif				/* __crc32c_h__ */

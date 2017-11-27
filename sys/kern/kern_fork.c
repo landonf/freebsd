@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1982, 1986, 1989, 1991, 1993
  *	The Regents of the University of California.  All rights reserved.
  * (c) UNIX System Laboratories, Inc.
@@ -15,7 +17,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -96,6 +98,8 @@ struct fork_args {
 	int     dummy;
 };
 #endif
+
+EVENTHANDLER_LIST_DECLARE(process_fork);
 
 /* ARGSUSED */
 int
@@ -208,20 +212,26 @@ sysctl_kern_randompid(SYSCTL_HANDLER_ARGS)
 	pid = randompid;
 	error = sysctl_handle_int(oidp, &pid, 0, req);
 	if (error == 0 && req->newptr != NULL) {
-		if (pid < 0 || pid > pid_max - 100)	/* out of range */
-			pid = pid_max - 100;
-		else if (pid < 2)			/* NOP */
-			pid = 0;
-		else if (pid < 100)			/* Make it reasonable */
-			pid = 100;
-		randompid = pid;
+		if (pid == 0)
+			randompid = 0;
+		else if (pid == 1)
+			/* generate a random PID modulus between 100 and 1123 */
+			randompid = 100 + arc4random() % 1024;
+		else if (pid < 0 || pid > pid_max - 100)
+			/* out of range */
+			randompid = pid_max - 100;
+		else if (pid < 100)	 
+			/* Make it reasonable */
+			randompid = 100;
+		else
+			randompid = pid;
 	}
 	sx_xunlock(&allproc_lock);
 	return (error);
 }
 
 SYSCTL_PROC(_kern, OID_AUTO, randompid, CTLTYPE_INT|CTLFLAG_RW,
-    0, 0, sysctl_kern_randompid, "I", "Random PID modulus");
+    0, 0, sysctl_kern_randompid, "I", "Random PID modulus. Special values: 0: disable, 1: choose random value");
 
 static int
 fork_findpid(int flags)
@@ -497,7 +507,7 @@ do_fork(struct thread *td, struct fork_req *fr, struct proc *p2, struct thread *
 	 * Increase reference counts on shared objects.
 	 */
 	p2->p_flag = P_INMEM;
-	p2->p_flag2 = p1->p_flag2 & (P2_NOTRACE | P2_NOTRACE_EXEC);
+	p2->p_flag2 = p1->p_flag2 & (P2_NOTRACE | P2_NOTRACE_EXEC | P2_TRAPCAP);
 	p2->p_swtick = ticks;
 	if (p1->p_flag & P_PROFIL)
 		startprofclock(p2);
@@ -547,7 +557,7 @@ do_fork(struct thread *td, struct fork_req *fr, struct proc *p2, struct thread *
 
 	/* Bump references to the text vnode (for procfs). */
 	if (p2->p_textvp)
-		vref(p2->p_textvp);
+		vrefact(p2->p_textvp);
 
 	/*
 	 * Set up linkage for kernel based threading.
@@ -664,20 +674,20 @@ do_fork(struct thread *td, struct fork_req *fr, struct proc *p2, struct thread *
 	vm_forkproc(td, p2, td2, vm2, fr->fr_flags);
 
 	if (fr->fr_flags == (RFFDG | RFPROC)) {
-		PCPU_INC(cnt.v_forks);
-		PCPU_ADD(cnt.v_forkpages, p2->p_vmspace->vm_dsize +
+		VM_CNT_INC(v_forks);
+		VM_CNT_ADD(v_forkpages, p2->p_vmspace->vm_dsize +
 		    p2->p_vmspace->vm_ssize);
 	} else if (fr->fr_flags == (RFFDG | RFPROC | RFPPWAIT | RFMEM)) {
-		PCPU_INC(cnt.v_vforks);
-		PCPU_ADD(cnt.v_vforkpages, p2->p_vmspace->vm_dsize +
+		VM_CNT_INC(v_vforks);
+		VM_CNT_ADD(v_vforkpages, p2->p_vmspace->vm_dsize +
 		    p2->p_vmspace->vm_ssize);
 	} else if (p1 == &proc0) {
-		PCPU_INC(cnt.v_kthreads);
-		PCPU_ADD(cnt.v_kthreadpages, p2->p_vmspace->vm_dsize +
+		VM_CNT_INC(v_kthreads);
+		VM_CNT_ADD(v_kthreadpages, p2->p_vmspace->vm_dsize +
 		    p2->p_vmspace->vm_ssize);
 	} else {
-		PCPU_INC(cnt.v_rforks);
-		PCPU_ADD(cnt.v_rforkpages, p2->p_vmspace->vm_dsize +
+		VM_CNT_INC(v_rforks);
+		VM_CNT_ADD(v_rforkpages, p2->p_vmspace->vm_dsize +
 		    p2->p_vmspace->vm_ssize);
 	}
 
@@ -693,7 +703,7 @@ do_fork(struct thread *td, struct fork_req *fr, struct proc *p2, struct thread *
 	 * Both processes are set up, now check if any loadable modules want
 	 * to adjust anything.
 	 */
-	EVENTHANDLER_INVOKE(process_fork, p1, p2, fr->fr_flags);
+	EVENTHANDLER_DIRECT_INVOKE(process_fork, p1, p2, fr->fr_flags);
 
 	/*
 	 * Set the child start time and mark the process as being complete.
@@ -720,8 +730,7 @@ do_fork(struct thread *td, struct fork_req *fr, struct proc *p2, struct thread *
 	 * but before we wait for the debugger.
 	 */
 	_PHOLD(p2);
-	if ((p1->p_flag & (P_TRACED | P_FOLLOWFORK)) == (P_TRACED |
-	    P_FOLLOWFORK)) {
+	if (p1->p_ptevents & PTRACE_FORK) {
 		/*
 		 * Arrange for debugger to receive the fork event.
 		 *
@@ -736,6 +745,7 @@ do_fork(struct thread *td, struct fork_req *fr, struct proc *p2, struct thread *
 	if (fr->fr_flags & RFPPWAIT) {
 		td->td_pflags |= TDP_RFPPWAIT;
 		td->td_rfppwait_p = p2;
+		td->td_dbgflags |= TDB_VFORK;
 	}
 	PROC_UNLOCK(p2);
 
@@ -748,7 +758,7 @@ do_fork(struct thread *td, struct fork_req *fr, struct proc *p2, struct thread *
 	/*
 	 * Tell any interested parties about the new process.
 	 */
-	knote_fork(&p1->p_klist, p2->p_pid);
+	knote_fork(p1->p_klist, p2->p_pid);
 	SDT_PROBE3(proc, , , create, p2, p1, fr->fr_flags);
 
 	if (fr->fr_flags & RFPROCDESC) {
@@ -950,7 +960,7 @@ fork1(struct thread *td, struct fork_req *fr)
 #ifdef MAC
 	mac_proc_init(newproc);
 #endif
-	knlist_init_mtx(&newproc->p_klist, &newproc->p_mtx);
+	newproc->p_klist = knlist_alloc(&newproc->p_mtx);
 	STAILQ_INIT(&newproc->p_ktr);
 
 	/* We have to lock the process tree while we look for a pid. */
@@ -1055,9 +1065,9 @@ fork_exit(void (*callout)(void *, struct trapframe *), void *arg,
 
 /*
  * Simplified back end of syscall(), used when returning from fork()
- * directly into user mode.  Giant is not held on entry, and must not
- * be held on return.  This function is passed in to fork_exit() as the
- * first parameter and is called when returning to a new userland process.
+ * directly into user mode.  This function is passed in to fork_exit()
+ * as the first parameter and is called when returning to a new
+ * userland process.
  */
 void
 fork_return(struct thread *td, struct trapframe *frame)
@@ -1068,22 +1078,20 @@ fork_return(struct thread *td, struct trapframe *frame)
 	if (td->td_dbgflags & TDB_STOPATFORK) {
 		sx_xlock(&proctree_lock);
 		PROC_LOCK(p);
-		if ((p->p_pptr->p_flag & (P_TRACED | P_FOLLOWFORK)) ==
-		    (P_TRACED | P_FOLLOWFORK)) {
+		if (p->p_pptr->p_ptevents & PTRACE_FORK) {
 			/*
 			 * If debugger still wants auto-attach for the
 			 * parent's children, do it now.
 			 */
 			dbg = p->p_pptr->p_pptr;
-			p->p_flag |= P_TRACED;
-			p->p_oppid = p->p_pptr->p_pid;
+			proc_set_traced(p, true);
 			CTR2(KTR_PTRACE,
 		    "fork_return: attaching to new child pid %d: oppid %d",
 			    p->p_pid, p->p_oppid);
 			proc_reparent(p, dbg);
 			sx_xunlock(&proctree_lock);
-			td->td_dbgflags |= TDB_CHILD | TDB_SCX;
-			ptracestop(td, SIGSTOP);
+			td->td_dbgflags |= TDB_CHILD | TDB_SCX | TDB_FSTP;
+			ptracestop(td, SIGSTOP, NULL);
 			td->td_dbgflags &= ~(TDB_CHILD | TDB_SCX);
 		} else {
 			/*
@@ -1101,10 +1109,10 @@ fork_return(struct thread *td, struct trapframe *frame)
 		 */
 		PROC_LOCK(p);
 		td->td_dbgflags |= TDB_SCX;
-		_STOPEVENT(p, S_SCX, td->td_dbg_sc_code);
-		if ((p->p_stops & S_PT_SCX) != 0 ||
+		_STOPEVENT(p, S_SCX, td->td_sa.code);
+		if ((p->p_ptevents & PTRACE_SCX) != 0 ||
 		    (td->td_dbgflags & TDB_BORN) != 0)
-			ptracestop(td, SIGTRAP);
+			ptracestop(td, SIGTRAP, NULL);
 		td->td_dbgflags &= ~(TDB_SCX | TDB_BORN);
 		PROC_UNLOCK(p);
 	}

@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright 2003-2011 Netlogic Microsystems (Netlogic). All rights
  * reserved.
  *
@@ -687,10 +689,17 @@ platform_init_ap(int cpuid)
 }
 
 int
-platform_ipi_intrnum(void)
+platform_ipi_hardintr_num(void)
 {
 
 	return (IRQ_IPI);
+}
+
+int
+platform_ipi_softintr_num(void)
+{
+
+	return (-1);
 }
 
 void
@@ -698,7 +707,7 @@ platform_ipi_send(int cpuid)
 {
 
 	nlm_pic_send_ipi(xlp_pic_base, xlp_cpuid_to_hwtid[cpuid],
-	    platform_ipi_intrnum(), 0);
+	    platform_ipi_hardintr_num(), 0);
 }
 
 void

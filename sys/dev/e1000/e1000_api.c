@@ -1,4 +1,5 @@
 /******************************************************************************
+  SPDX-License-Identifier: BSD-3-Clause
 
   Copyright (c) 2001-2015, Intel Corporation 
   All rights reserved.
@@ -304,6 +305,10 @@ s32 e1000_set_mac_type(struct e1000_hw *hw)
 	case E1000_DEV_ID_PCH_SPT_I219_LM2:
 	case E1000_DEV_ID_PCH_SPT_I219_V2:
 	case E1000_DEV_ID_PCH_LBG_I219_LM3:
+	case E1000_DEV_ID_PCH_SPT_I219_LM4:
+	case E1000_DEV_ID_PCH_SPT_I219_V4:
+	case E1000_DEV_ID_PCH_SPT_I219_LM5:
+	case E1000_DEV_ID_PCH_SPT_I219_V5:
 		mac->type = e1000_pch_spt;
 		break;
 	case E1000_DEV_ID_82575EB_COPPER:

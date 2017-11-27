@@ -69,17 +69,16 @@ TAG_ARGS=	-T ${TAGS:[*]:S/ /,/g}
 
 .if ${MK_DEBUG_FILES} != "no" && empty(DEBUG_FLAGS:M-g) && \
     empty(DEBUG_FLAGS:M-gdwarf*)
-SHARED_CFLAGS+= -g
-SHARED_CXXFLAGS+= -g
+CFLAGS+= ${DEBUG_FILES_CFLAGS}
+CXXFLAGS+= ${DEBUG_FILES_CFLAGS}
 CTFFLAGS+= -g
 .endif
 
 .include <bsd.libnames.mk>
 
 # prefer .s to a .c, add .po, remove stuff not used in the BSD libraries
-# .So used for PIC object files
-.SUFFIXES:
-.SUFFIXES: .out .o .po .So .S .asm .s .c .cc .cpp .cxx .C .f .y .l .ln
+# .pico used for PIC object files
+.SUFFIXES: .out .o .bc .ll .po .pico .S .asm .s .c .cc .cpp .cxx .C .f .y .l .ln
 
 .if !defined(PICFLAG)
 .if ${MACHINE_CPUARCH} == "sparc64"
@@ -91,36 +90,29 @@ PICFLAG=-fpic
 
 PO_FLAG=-pg
 
-.c.o:
-	${CC} ${STATIC_CFLAGS} ${CFLAGS} -c ${.IMPSRC} -o ${.TARGET}
-	${CTFCONVERT_CMD}
-
 .c.po:
 	${CC} ${PO_FLAG} ${STATIC_CFLAGS} ${PO_CFLAGS} -c ${.IMPSRC} -o ${.TARGET}
 	${CTFCONVERT_CMD}
 
-.c.So:
+.c.pico:
 	${CC} ${PICFLAG} -DPIC ${SHARED_CFLAGS} ${CFLAGS} -c ${.IMPSRC} -o ${.TARGET}
 	${CTFCONVERT_CMD}
-
-.cc.o .C.o .cpp.o .cxx.o:
-	${CXX} ${STATIC_CXXFLAGS} ${CXXFLAGS} -c ${.IMPSRC} -o ${.TARGET}
 
 .cc.po .C.po .cpp.po .cxx.po:
 	${CXX} ${PO_FLAG} ${STATIC_CXXFLAGS} ${PO_CXXFLAGS} -c ${.IMPSRC} -o ${.TARGET}
 
-.cc.So .C.So .cpp.So .cxx.So:
+.cc.pico .C.pico .cpp.pico .cxx.pico:
 	${CXX} ${PICFLAG} -DPIC ${SHARED_CXXFLAGS} ${CXXFLAGS} -c ${.IMPSRC} -o ${.TARGET}
 
 .f.po:
 	${FC} -pg ${FFLAGS} -o ${.TARGET} -c ${.IMPSRC}
 	${CTFCONVERT_CMD}
 
-.f.So:
+.f.pico:
 	${FC} ${PICFLAG} -DPIC ${FFLAGS} -o ${.TARGET} -c ${.IMPSRC}
 	${CTFCONVERT_CMD}
 
-.s.po .s.So:
+.s.po .s.pico:
 	${AS} ${AFLAGS} -o ${.TARGET} ${.IMPSRC}
 	${CTFCONVERT_CMD}
 
@@ -129,7 +121,7 @@ PO_FLAG=-pg
 	    ${ACFLAGS} -c ${.IMPSRC} -o ${.TARGET}
 	${CTFCONVERT_CMD}
 
-.asm.So:
+.asm.pico:
 	${CC:N${CCACHE_BIN}} -x assembler-with-cpp ${PICFLAG} -DPIC \
 	    ${CFLAGS} ${ACFLAGS} -c ${.IMPSRC} -o ${.TARGET}
 	${CTFCONVERT_CMD}
@@ -139,7 +131,7 @@ PO_FLAG=-pg
 	    -o ${.TARGET}
 	${CTFCONVERT_CMD}
 
-.S.So:
+.S.pico:
 	${CC:N${CCACHE_BIN}} ${PICFLAG} -DPIC ${CFLAGS} ${ACFLAGS} \
 	    -c ${.IMPSRC} -o ${.TARGET}
 	${CTFCONVERT_CMD}
@@ -176,8 +168,10 @@ LDFLAGS+=	-Wl,--version-script=${VERSION_MAP}
 .endif
 
 .if defined(LIB) && !empty(LIB) || defined(SHLIB_NAME)
-OBJS+=		${SRCS:N*.h:R:S/$/.o/}
-CLEANFILES+=	${OBJS} ${STATICOBJS}
+OBJS+=		${SRCS:N*.h:${OBJS_SRCS_FILTER:ts:}:S/$/.o/}
+BCOBJS+=	${SRCS:N*.[hsS]:N*.asm:${OBJS_SRCS_FILTER:ts:}:S/$/.bco/g}
+LLOBJS+=	${SRCS:N*.[hsS]:N*.asm:${OBJS_SRCS_FILTER:ts:}:S/$/.llo/g}
+CLEANFILES+=	${OBJS} ${BCOBJS} ${LLOBJS} ${STATICOBJS}
 .endif
 
 .if defined(LIB) && !empty(LIB)
@@ -186,7 +180,8 @@ _LIBS=		lib${LIB_PRIVATE}${LIB}.a
 lib${LIB_PRIVATE}${LIB}.a: ${OBJS} ${STATICOBJS}
 	@${ECHO} building static ${LIB} library
 	@rm -f ${.TARGET}
-	${AR} ${ARFLAGS} ${.TARGET} `NM='${NM}' NMFLAGS='${NMFLAGS}' lorder ${OBJS} ${STATICOBJS} | tsort -q` ${ARADD}
+	${AR} ${ARFLAGS} ${.TARGET} `NM='${NM}' NMFLAGS='${NMFLAGS}' \
+	    ${LORDER} ${OBJS} ${STATICOBJS} | ${TSORT} ${TSORTFLAGS}` ${ARADD}
 	${RANLIB} ${RANLIBFLAGS} ${.TARGET}
 .endif
 
@@ -201,13 +196,24 @@ CLEANFILES+=	${POBJS}
 lib${LIB_PRIVATE}${LIB}_p.a: ${POBJS}
 	@${ECHO} building profiled ${LIB} library
 	@rm -f ${.TARGET}
-	${AR} ${ARFLAGS} ${.TARGET} `NM='${NM}' NMFLAGS='${NMFLAGS}' lorder ${POBJS} | tsort -q` ${ARADD}
+	${AR} ${ARFLAGS} ${.TARGET} `NM='${NM}' NMFLAGS='${NMFLAGS}' \
+	    ${LORDER} ${POBJS} | ${TSORT} ${TSORTFLAGS}` ${ARADD}
 	${RANLIB} ${RANLIBFLAGS} ${.TARGET}
+.endif
+
+.if defined(LLVM_LINK)
+lib${LIB_PRIVATE}${LIB}.bc: ${BCOBJS}
+	${LLVM_LINK} -o ${.TARGET} ${BCOBJS}
+
+lib${LIB_PRIVATE}${LIB}.ll: ${LLOBJS}
+	${LLVM_LINK} -S -o ${.TARGET} ${LLOBJS}
+
+CLEANFILES+=	lib${LIB_PRIVATE}${LIB}.bc lib${LIB_PRIVATE}${LIB}.ll
 .endif
 
 .if defined(SHLIB_NAME) || \
     defined(INSTALL_PIC_ARCHIVE) && defined(LIB) && !empty(LIB)
-SOBJS+=		${OBJS:.o=.So}
+SOBJS+=		${OBJS:.o=.pico}
 DEPENDOBJS+=	${SOBJS}
 CLEANFILES+=	${SOBJS}
 .endif
@@ -249,7 +255,8 @@ ${SHLIB_NAME_FULL}: ${SOBJS}
 .endif
 	${_LD:N${CCACHE_BIN}} ${LDFLAGS} ${SSP_CFLAGS} ${SOLINKOPTS} \
 	    -o ${.TARGET} -Wl,-soname,${SONAME} \
-	    `NM='${NM}' NMFLAGS='${NMFLAGS}' lorder ${SOBJS} | tsort -q` ${LDADD}
+	    `NM='${NM}' NMFLAGS='${NMFLAGS}' ${LORDER} ${SOBJS} | \
+	    ${TSORT} ${TSORTFLAGS}` ${LDADD}
 .if ${MK_CTF} != "no"
 	${CTFMERGE} ${CTFFLAGS} -o ${.TARGET} ${SOBJS}
 .endif
@@ -278,18 +285,6 @@ lib${LIB_PRIVATE}${LIB}_pic.a: ${SOBJS}
 	${RANLIB} ${RANLIBFLAGS} ${.TARGET}
 .endif
 
-.if defined(WANT_LINT) && !defined(NO_LINT) && defined(LIB) && !empty(LIB)
-LINTLIB=	llib-l${LIB}.ln
-_LIBS+=		${LINTLIB}
-LINTOBJS+=	${SRCS:M*.c:.c=.ln}
-CLEANFILES+=	${LINTOBJS}
-
-${LINTLIB}: ${LINTOBJS}
-	@${ECHO} building lint library ${.TARGET}
-	@rm -f ${.TARGET}
-	${LINT} ${LINTLIBFLAGS} ${CFLAGS:M-[DIU]*} ${.ALLSRC}
-.endif
-
 .endif # !defined(INTERNALLIB)
 
 .if defined(_SKIP_BUILD)
@@ -297,13 +292,14 @@ all:
 .else
 .if defined(_LIBS) && !empty(_LIBS)
 all: ${_LIBS}
-CLEANFILES+=	${_LIBS}
 .endif
 
 .if ${MK_MAN} != "no" && !defined(LIBRARIES_ONLY)
 all: all-man
 .endif
 .endif
+
+CLEANFILES+=	${_LIBS}
 
 _EXTRADEPEND:
 .if !defined(NO_EXTRADEPEND) && defined(SHLIB_NAME)
@@ -318,6 +314,11 @@ _EXTRADEPEND:
 .if !defined(NO_FSCHG)
 SHLINSTALLFLAGS+= -fschg
 .endif
+.endif
+# Install libraries with -S to avoid risk of modifying in-use libraries when
+# installing to a running system.  It is safe to avoid this for NO_ROOT builds
+# that are only creating an image.
+.if !defined(NO_SAFE_LIBINSTALL) && !defined(NO_ROOT)
 SHLINSTALLFLAGS+= -S
 .endif
 
@@ -390,10 +391,6 @@ _libinstall:
 	${INSTALL} ${TAG_ARGS:D${TAG_ARGS},development} -o ${LIBOWN} -g ${LIBGRP} -m ${LIBMODE} \
 	    ${_INSTALLFLAGS} lib${LIB}_pic.a ${DESTDIR}${_LIBDIR}/
 .endif
-.if defined(WANT_LINT) && !defined(NO_LINT) && defined(LIB) && !empty(LIB)
-	${INSTALL} ${TAG_ARGS:D${TAG_ARGS},development} -o ${LIBOWN} -g ${LIBGRP} -m ${LIBMODE} \
-	    ${_INSTALLFLAGS} ${LINTLIB} ${DESTDIR}${LINTLIBDIR}/
-.endif
 .endif # !defined(INTERNALLIB)
 
 .if !defined(LIBRARIES_ONLY)
@@ -412,11 +409,6 @@ realinstall: maninstall
 
 .endif
 
-.if !target(lint)
-lint: ${SRCS:M*.c}
-	${LINT} ${LINTFLAGS} ${CFLAGS:M-[DIU]*} ${.ALLSRC}
-.endif
-
 .if ${MK_MAN} != "no" && !defined(LIBRARIES_ONLY)
 .include <bsd.man.mk>
 .endif
@@ -424,14 +416,20 @@ lint: ${SRCS:M*.c}
 .if defined(LIB) && !empty(LIB)
 OBJS_DEPEND_GUESS+= ${SRCS:M*.h}
 .for _S in ${SRCS:N*.[hly]}
-OBJS_DEPEND_GUESS.${_S:R}.po+=	${_S}
+OBJS_DEPEND_GUESS.${_S:${OBJS_SRCS_FILTER:ts:}}.po+=	${_S}
 .endfor
 .endif
 .if defined(SHLIB_NAME) || \
     defined(INSTALL_PIC_ARCHIVE) && defined(LIB) && !empty(LIB)
 .for _S in ${SRCS:N*.[hly]}
-OBJS_DEPEND_GUESS.${_S:R}.So+=	${_S}
+OBJS_DEPEND_GUESS.${_S:${OBJS_SRCS_FILTER:ts:}}.pico+=	${_S}
 .endfor
+.endif
+
+.if defined(HAS_TESTS)
+MAKE+=			MK_MAKE_CHECK_USE_SANDBOX=yes
+SUBDIR_TARGETS+=	check
+TESTS_LD_LIBRARY_PATH+=	${.OBJDIR}
 .endif
 
 .include <bsd.dep.mk>

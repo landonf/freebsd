@@ -1,5 +1,7 @@
 #!/bin/sh
 #
+# SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+#
 # Copyright (C) 2008 The FreeBSD Project. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -32,16 +34,25 @@
 # $2: MFS image filename
 #
 
+if [ $# -ne 2 ]; then
+	echo "usage: $(basename $0) target mfs_image"
+	exit 0
+fi
+if [ ! -w "$1" ]; then
+	echo $1 not writable
+	exit 1
+fi
+
 mfs_size=`stat -f '%z' $2 2> /dev/null`
 # If we can't determine MFS image size - bail.
 [ -z ${mfs_size} ] && echo "Can't determine MFS image size" && exit 1
 
-sec_info=`objdump -h $1 2> /dev/null | grep " oldmfs "`
+sec_info=`elfdump -c $1 2> /dev/null | grep -A 5 -E "sh_name: oldmfs$"`
 # If we can't find the mfs section within the given kernel - bail.
-[ -z "${sec_info}" ] && echo "Can't locate mfs section within kernel" && exit 1
+[ -z "${sec_info}" ] && echo "Can't locate mfs section within $1" && exit 1
 
-sec_size=`echo ${sec_info} | awk '{printf("%d", "0x" $3)}' 2> /dev/null`
-sec_start=`echo ${sec_info} | awk '{printf("%d", "0x" $6)}' 2> /dev/null`
+sec_size=`echo "${sec_info}" | awk '/sh_size/ {print $2}' 2> /dev/null`
+sec_start=`echo "${sec_info}" | awk '/sh_offset/ {print $2}' 2> /dev/null`
 
 # If the mfs section size is smaller than the mfs image - bail.
 [ ${sec_size} -lt ${mfs_size} ] && echo "MFS image too large" && exit 1

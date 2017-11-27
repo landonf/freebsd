@@ -27,7 +27,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd February 25, 2016
+.Dd October 29, 2017
 .Dt LIBCASPER 3
 .Os
 .Sh NAME
@@ -47,8 +47,8 @@
 .Sh LIBRARY
 .Lb libcasper
 .Sh SYNOPSIS
+.In sys/nv.h
 .In libcasper.h
-.In nv.h
 .Ft "cap_channel_t *"
 .Fn cap_init "void"
 .Ft "cap_channel_t *"
@@ -75,7 +75,7 @@
 .Fn cap_service_open "const cap_channel_t *chan" "const char *name"
 .Sh DESCRIPTION
 The
-.Nm libcapsicum
+.Nm libcasper
 library allows to manage application capabilities through the casper process.
 .Pp
 The application capability (represented by the

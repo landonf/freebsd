@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2008,	Jeffrey Roberson <jeff@freebsd.org>
  * All rights reserved.
  *
@@ -35,7 +37,6 @@
 #include <sys/_cpuset.h>
 
 #include <sys/bitset.h>
-#include <sys/queue.h>
 
 #define	_NCPUBITS	_BITSET_BITS
 #define	_NCPUWORDS	__bitset_words(CPU_SETSIZE)
@@ -84,6 +85,8 @@
 #define	CPU_WHICH_IRQ		4	/* Specifies an irq #. */
 #define	CPU_WHICH_JAIL		5	/* Specifies a jail id. */
 #define	CPU_WHICH_DOMAIN	6	/* Specifies a NUMA domain id. */
+#define	CPU_WHICH_INTRHANDLER	7	/* Specifies an irq # (not ithread). */
+#define	CPU_WHICH_ITHREAD	8	/* Specifies an irq's ithread. */
 
 /*
  * Reserved cpuset identifiers.
@@ -92,6 +95,8 @@
 #define	CPUSET_DEFAULT	0
 
 #ifdef _KERNEL
+#include <sys/queue.h>
+
 LIST_HEAD(setlist, cpuset);
 
 /*

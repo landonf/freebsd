@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2004-2006 Pawel Jakub Dawidek <pjd@FreeBSD.org>
  * All rights reserved.
  *
@@ -2368,8 +2370,7 @@ g_raid3_destroy_provider(struct g_raid3_softc *sc)
 	mtx_unlock(&sc->sc_queue_mtx);
 	G_RAID3_DEBUG(0, "Device %s: provider %s destroyed.", sc->sc_name,
 	    sc->sc_provider->name);
-	sc->sc_provider->flags |= G_PF_WITHER;
-	g_orphan_provider(sc->sc_provider, ENXIO);
+	g_wither_provider(sc->sc_provider, ENXIO);
 	g_topology_unlock();
 	sc->sc_provider = NULL;
 	if (sc->sc_syncdisk != NULL)

@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1994 Christos Zoulas
  * Copyright (c) 1995 Frank van der Linden
  * Copyright (c) 1995 Scott Bartram
@@ -92,6 +94,14 @@ linux_ ## s(struct thread *td, struct linux_ ## s ## _args *args)	\
 	return (ENOSYS);						\
 }									\
 struct __hack
+
+/*
+ * This is for the syscalls that are not even yet implemented in Linux.
+ *
+ * They're marked as UNIMPL in syscall.master so it will
+ * have nosys record in linux_sysent[].
+ */
+#define UNIMPLEMENTED(s)
 
 void linux_msg(const struct thread *td, const char *fmt, ...)
 	__printflike(2, 3);

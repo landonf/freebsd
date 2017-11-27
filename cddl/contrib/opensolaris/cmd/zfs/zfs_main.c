@@ -21,21 +21,21 @@
 
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2011, 2015 by Delphix. All rights reserved.
+ * Copyright (c) 2011, 2016 by Delphix. All rights reserved.
  * Copyright 2012 Milan Jurik. All rights reserved.
  * Copyright (c) 2012, Joyent, Inc. All rights reserved.
- * Copyright (c) 2011-2012 Pawel Jakub Dawidek <pawel@dawidek.net>.
- * All rights reserved.
+ * Copyright (c) 2011-2012 Pawel Jakub Dawidek. All rights reserved.
  * Copyright (c) 2012 Martin Matuska <mm@FreeBSD.org>. All rights reserved.
  * Copyright (c) 2013 Steven Hartland.  All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 2014 Integros [integros.com]
  * Copyright 2016 Igor Kozhukhov <ikozhukhov@gmail.com>.
+ * Copyright 2016 Nexenta Systems, Inc.
  */
 
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
+#include <getopt.h>
 #include <libgen.h>
 #include <libintl.h>
 #include <libuutil.h>
@@ -51,6 +51,7 @@
 #include <grp.h>
 #include <pwd.h>
 #include <signal.h>
+#include <sys/debug.h>
 #include <sys/list.h>
 #include <sys/mntent.h>
 #include <sys/mnttab.h>
@@ -111,6 +112,7 @@ static int zfs_do_diff(int argc, char **argv);
 static int zfs_do_jail(int argc, char **argv);
 static int zfs_do_unjail(int argc, char **argv);
 static int zfs_do_bookmark(int argc, char **argv);
+static int zfs_do_channel_program(int argc, char **argv);
 
 /*
  * Enable a reasonable set of defaults for libumem debugging on DEBUG builds.
@@ -160,6 +162,7 @@ typedef enum {
 	HELP_RELEASE,
 	HELP_DIFF,
 	HELP_BOOKMARK,
+	HELP_CHANNEL_PROGRAM,
 } zfs_help_t;
 
 typedef struct zfs_command {
@@ -187,6 +190,7 @@ static zfs_command_t command_table[] = {
 	{ "promote",	zfs_do_promote,		HELP_PROMOTE		},
 	{ "rename",	zfs_do_rename,		HELP_RENAME		},
 	{ "bookmark",	zfs_do_bookmark,	HELP_BOOKMARK		},
+	{ "program",    zfs_do_channel_program, HELP_CHANNEL_PROGRAM    },
 	{ NULL },
 	{ "list",	zfs_do_list,		HELP_LIST		},
 	{ NULL },
@@ -244,7 +248,7 @@ get_usage(zfs_help_t idx)
 		    "[-o \"all\" | field[,...]]\n"
 		    "\t    [-t type[,...]] [-s source[,...]]\n"
 		    "\t    <\"all\" | property[,...]> "
-		    "[filesystem|volume|snapshot] ...\n"));
+		    "[filesystem|volume|snapshot|bookmark] ...\n"));
 	case HELP_INHERIT:
 		return (gettext("\tinherit [-rS] <property> "
 		    "<filesystem|volume|snapshot> ...\n"));
@@ -279,7 +283,7 @@ get_usage(zfs_help_t idx)
 	case HELP_ROLLBACK:
 		return (gettext("\trollback [-rRf] <snapshot>\n"));
 	case HELP_SEND:
-		return (gettext("\tsend [-DnPpRvLe] [-[iI] snapshot] "
+		return (gettext("\tsend [-DnPpRvLec] [-[iI] snapshot] "
 		    "<snapshot>\n"
 		    "\tsend [-Le] [-i snapshot|bookmark] "
 		    "<filesystem|volume|snapshot>\n"
@@ -340,6 +344,10 @@ get_usage(zfs_help_t idx)
 		    "[snapshot|filesystem]\n"));
 	case HELP_BOOKMARK:
 		return (gettext("\tbookmark <snapshot> <bookmark>\n"));
+	case HELP_CHANNEL_PROGRAM:
+		return (gettext("\tprogram [-t <instruction limit>] "
+		    "[-m <memory limit (b)>] <pool> <program file> "
+		    "[lua args...]\n"));
 	}
 
 	abort();
@@ -366,6 +374,18 @@ safe_malloc(size_t size)
 		nomem();
 
 	return (data);
+}
+
+void *
+safe_realloc(void *data, size_t size)
+{
+	void *newp;
+	if ((newp = realloc(data, size)) == NULL) {
+		free(data);
+		nomem();
+	}
+
+	return (newp);
 }
 
 static char *
@@ -1511,7 +1531,7 @@ get_callback(zfs_handle_t *zhp, void *data)
 	char buf[ZFS_MAXPROPLEN];
 	char rbuf[ZFS_MAXPROPLEN];
 	zprop_source_t sourcetype;
-	char source[ZFS_MAXNAMELEN];
+	char source[ZFS_MAX_DATASET_NAME_LEN];
 	zprop_get_cbdata_t *cbp = data;
 	nvlist_t *user_props = zfs_get_user_props(zhp);
 	zprop_list_t *pl = cbp->cb_proplist;
@@ -1623,7 +1643,7 @@ zfs_do_get(int argc, char **argv)
 {
 	zprop_get_cbdata_t cb = { 0 };
 	int i, c, flags = ZFS_ITER_ARGS_CAN_BE_PATHS;
-	int types = ZFS_TYPE_DATASET;
+	int types = ZFS_TYPE_DATASET | ZFS_TYPE_BOOKMARK;
 	char *value, *fields;
 	int ret = 0;
 	int limit = 0;
@@ -1991,7 +2011,7 @@ typedef struct upgrade_cbdata {
 	uint64_t cb_version;
 	boolean_t cb_newer;
 	boolean_t cb_foundone;
-	char cb_lastfs[ZFS_MAXNAMELEN];
+	char cb_lastfs[ZFS_MAX_DATASET_NAME_LEN];
 } upgrade_cbdata_t;
 
 static int
@@ -2437,7 +2457,7 @@ userspace_cb(void *arg, const char *domain, uid_t rid, uint64_t space)
 
 	if (domain != NULL && domain[0] != '\0') {
 		/* SMB */
-		char sid[ZFS_MAXNAMELEN + 32];
+		char sid[MAXNAMELEN + 32];
 		uid_t id;
 #ifdef illumos
 		int err;
@@ -2574,7 +2594,7 @@ print_us_node(boolean_t scripted, boolean_t parsable, int *fields, int types,
     size_t *width, us_node_t *node)
 {
 	nvlist_t *nvl = node->usn_nvl;
-	char valstr[ZFS_MAXNAMELEN];
+	char valstr[MAXNAMELEN];
 	boolean_t first = B_TRUE;
 	int cfield = 0;
 	int field;
@@ -3009,7 +3029,7 @@ print_dataset(zfs_handle_t *zhp, list_cbdata_t *cb)
 
 		if (pl->pl_prop == ZFS_PROP_NAME) {
 			(void) strlcpy(property, zfs_get_name(zhp),
-			    sizeof(property));
+			    sizeof (property));
 			propstr = property;
 			right_justify = zfs_prop_align_right(pl->pl_prop);
 		} else if (pl->pl_prop != ZPROP_INVAL) {
@@ -3473,7 +3493,7 @@ zfs_do_rollback(int argc, char **argv)
 	boolean_t force = B_FALSE;
 	rollback_cbdata_t cb = { 0 };
 	zfs_handle_t *zhp, *snap;
-	char parentname[ZFS_MAXNAMELEN];
+	char parentname[ZFS_MAX_DATASET_NAME_LEN];
 	char *delim;
 
 	/* check options */
@@ -3772,8 +3792,23 @@ zfs_do_send(int argc, char **argv)
 	nvlist_t *dbgnv = NULL;
 	boolean_t extraverbose = B_FALSE;
 
+	struct option long_options[] = {
+		{"replicate",	no_argument,		NULL, 'R'},
+		{"props",	no_argument,		NULL, 'p'},
+		{"parsable",	no_argument,		NULL, 'P'},
+		{"dedup",	no_argument,		NULL, 'D'},
+		{"verbose",	no_argument,		NULL, 'v'},
+		{"dryrun",	no_argument,		NULL, 'n'},
+		{"large-block",	no_argument,		NULL, 'L'},
+		{"embed",	no_argument,		NULL, 'e'},
+		{"resume",	required_argument,	NULL, 't'},
+		{"compressed",	no_argument,		NULL, 'c'},
+		{0, 0, 0, 0}
+	};
+
 	/* check options */
-	while ((c = getopt(argc, argv, ":i:I:RDpvnPLet:")) != -1) {
+	while ((c = getopt_long(argc, argv, ":i:I:RbDpvnPLet:c", long_options,
+	    NULL)) != -1) {
 		switch (c) {
 		case 'i':
 			if (fromname)
@@ -3817,12 +3852,17 @@ zfs_do_send(int argc, char **argv)
 		case 't':
 			resume_token = optarg;
 			break;
+		case 'c':
+			flags.compress = B_TRUE;
+			break;
 		case ':':
 			(void) fprintf(stderr, gettext("missing argument for "
 			    "'%c' option\n"), optopt);
 			usage(B_FALSE);
 			break;
 		case '?':
+			/*FALLTHROUGH*/
+		default:
 			(void) fprintf(stderr, gettext("invalid option '%c'\n"),
 			    optopt);
 			usage(B_FALSE);
@@ -3873,7 +3913,7 @@ zfs_do_send(int argc, char **argv)
 	 */
 	if (strchr(argv[0], '@') == NULL ||
 	    (fromname && strchr(fromname, '#') != NULL)) {
-		char frombuf[ZFS_MAXNAMELEN];
+		char frombuf[ZFS_MAX_DATASET_NAME_LEN];
 		enum lzc_send_flags lzc_flags = 0;
 
 		if (flags.replicate || flags.doall || flags.props ||
@@ -3893,6 +3933,8 @@ zfs_do_send(int argc, char **argv)
 			lzc_flags |= LZC_SEND_FLAG_LARGE_BLOCK;
 		if (flags.embed_data)
 			lzc_flags |= LZC_SEND_FLAG_EMBED_DATA;
+		if (flags.compress)
+			lzc_flags |= LZC_SEND_FLAG_COMPRESS;
 
 		if (fromname != NULL &&
 		    (fromname[0] == '#' || fromname[0] == '@')) {
@@ -3925,7 +3967,7 @@ zfs_do_send(int argc, char **argv)
 	 * case if they specify the origin.
 	 */
 	if (fromname && (cp = strchr(fromname, '@')) != NULL) {
-		char origin[ZFS_MAXNAMELEN];
+		char origin[ZFS_MAX_DATASET_NAME_LEN];
 		zprop_source_t src;
 
 		(void) zfs_prop_get(zhp, ZFS_PROP_ORIGIN,
@@ -4059,7 +4101,7 @@ zfs_do_receive(int argc, char **argv)
 			usage(B_FALSE);
 		}
 
-		char namebuf[ZFS_MAXNAMELEN];
+		char namebuf[ZFS_MAX_DATASET_NAME_LEN];
 		(void) snprintf(namebuf, sizeof (namebuf),
 		    "%s/%%recv", argv[0]);
 
@@ -4917,7 +4959,7 @@ store_allow_perm(zfs_deleg_who_type_t type, boolean_t local, boolean_t descend,
 {
 	int i;
 	char ld[2] = { '\0', '\0' };
-	char who_buf[ZFS_MAXNAMELEN+32];
+	char who_buf[MAXNAMELEN + 32];
 	char base_type = '\0';
 	char set_type = '\0';
 	nvlist_t *base_nvl = NULL;
@@ -5285,7 +5327,7 @@ static void
 print_fs_perms(fs_perm_set_t *fspset)
 {
 	fs_perm_node_t *node = NULL;
-	char buf[ZFS_MAXNAMELEN+32];
+	char buf[MAXNAMELEN + 32];
 	const char *dsname = buf;
 
 	for (node = uu_list_first(fspset->fsps_list); node != NULL;
@@ -5294,7 +5336,7 @@ print_fs_perms(fs_perm_set_t *fspset)
 		uu_avl_t *uge_avl = node->fspn_fsperm.fsp_uge_avl;
 		int left = 0;
 
-		(void) snprintf(buf, ZFS_MAXNAMELEN+32,
+		(void) snprintf(buf, sizeof (buf),
 		    gettext("---- Permissions on %s "),
 		    node->fspn_fsperm.fsp_name);
 		(void) printf(dsname);
@@ -5491,7 +5533,7 @@ zfs_do_hold_rele_impl(int argc, char **argv, boolean_t holding)
 
 	for (i = 0; i < argc; ++i) {
 		zfs_handle_t *zhp;
-		char parent[ZFS_MAXNAMELEN];
+		char parent[ZFS_MAX_DATASET_NAME_LEN];
 		const char *delim;
 		char *path = argv[i];
 
@@ -5624,7 +5666,7 @@ holds_callback(zfs_handle_t *zhp, void *data)
 	nvlist_t *nvl = NULL;
 	nvpair_t *nvp = NULL;
 	const char *zname = zfs_get_name(zhp);
-	size_t znamelen = strnlen(zname, ZFS_MAXNAMELEN);
+	size_t znamelen = strlen(zname);
 
 	if (cbp->cb_recursive && cbp->cb_snapname != NULL) {
 		const char *snapname;
@@ -5645,7 +5687,7 @@ holds_callback(zfs_handle_t *zhp, void *data)
 
 	while ((nvp = nvlist_next_nvpair(nvl, nvp)) != NULL) {
 		const char *tag = nvpair_name(nvp);
-		size_t taglen = strnlen(tag, MAXNAMELEN);
+		size_t taglen = strlen(tag);
 		if (taglen > cbp->cb_max_taglen)
 			cbp->cb_max_taglen  = taglen;
 	}
@@ -6484,6 +6526,15 @@ unshare_unmount(int op, int argc, char **argv)
 				continue;
 			}
 
+			/*
+			 * Ignore datasets that are excluded/restricted by
+			 * parent pool name.
+			 */
+			if (zpool_skip_pool(zfs_get_pool_name(zhp))) {
+				zfs_close(zhp);
+				continue;
+			}
+
 			switch (op) {
 			case OP_SHARE:
 				verify(zfs_prop_get(zhp, ZFS_PROP_SHARENFS,
@@ -6973,7 +7024,7 @@ zfs_do_diff(int argc, char **argv)
 static int
 zfs_do_bookmark(int argc, char **argv)
 {
-	char snapname[ZFS_MAXNAMELEN];
+	char snapname[ZFS_MAX_DATASET_NAME_LEN];
 	zfs_handle_t *zhp;
 	nvlist_t *nvl;
 	int ret = 0;
@@ -7063,6 +7114,194 @@ zfs_do_bookmark(int argc, char **argv)
 		    dgettext(TEXT_DOMAIN, err_msg));
 	}
 
+	return (ret != 0);
+
+usage:
+	usage(B_FALSE);
+	return (-1);
+}
+
+static int
+zfs_do_channel_program(int argc, char **argv)
+{
+	int ret, fd;
+	char c;
+	char *progbuf, *filename, *poolname;
+	size_t progsize, progread;
+	nvlist_t *outnvl;
+	uint64_t instrlimit = ZCP_DEFAULT_INSTRLIMIT;
+	uint64_t memlimit = ZCP_DEFAULT_MEMLIMIT;
+	zpool_handle_t *zhp;
+
+	/* check options */
+	while (-1 !=
+	    (c = getopt(argc, argv, "t:(instr-limit)m:(memory-limit)"))) {
+		switch (c) {
+		case 't':
+		case 'm': {
+			uint64_t arg;
+			char *endp;
+
+			errno = 0;
+			arg = strtoull(optarg, &endp, 0);
+			if (errno != 0 || *endp != '\0') {
+				(void) fprintf(stderr, gettext(
+				    "invalid argument "
+				    "'%s': expected integer\n"), optarg);
+				goto usage;
+			}
+
+			if (c == 't') {
+				if (arg > ZCP_MAX_INSTRLIMIT || arg == 0) {
+					(void) fprintf(stderr, gettext(
+					    "Invalid instruction limit: "
+					    "%s\n"), optarg);
+					return (1);
+				} else {
+					instrlimit = arg;
+				}
+			} else {
+				ASSERT3U(c, ==, 'm');
+				if (arg > ZCP_MAX_MEMLIMIT || arg == 0) {
+					(void) fprintf(stderr, gettext(
+					    "Invalid memory limit: "
+					    "%s\n"), optarg);
+					return (1);
+				} else {
+					memlimit = arg;
+				}
+			}
+			break;
+		}
+		case '?':
+			(void) fprintf(stderr, gettext("invalid option '%c'\n"),
+			    optopt);
+			goto usage;
+		}
+	}
+
+	argc -= optind;
+	argv += optind;
+
+	if (argc < 2) {
+		(void) fprintf(stderr,
+		    gettext("invalid number of arguments\n"));
+		goto usage;
+	}
+
+	poolname = argv[0];
+	filename = argv[1];
+	if (strcmp(filename, "-") == 0) {
+		fd = 0;
+		filename = "standard input";
+	} else if ((fd = open(filename, O_RDONLY)) < 0) {
+		(void) fprintf(stderr, gettext("cannot open '%s': %s\n"),
+		    filename, strerror(errno));
+		return (1);
+	}
+
+	if ((zhp = zpool_open(g_zfs, poolname)) == NULL) {
+		(void) fprintf(stderr, gettext("cannot open pool '%s'"),
+		    poolname);
+		return (1);
+	}
+	zpool_close(zhp);
+
+	/*
+	 * Read in the channel program, expanding the program buffer as
+	 * necessary.
+	 */
+	progread = 0;
+	progsize = 1024;
+	progbuf = safe_malloc(progsize);
+	do {
+		ret = read(fd, progbuf + progread, progsize - progread);
+		progread += ret;
+		if (progread == progsize && ret > 0) {
+			progsize *= 2;
+			progbuf = safe_realloc(progbuf, progsize);
+		}
+	} while (ret > 0);
+
+	if (fd != 0)
+		(void) close(fd);
+	if (ret < 0) {
+		free(progbuf);
+		(void) fprintf(stderr,
+		    gettext("cannot read '%s': %s\n"),
+		    filename, strerror(errno));
+		return (1);
+	}
+	progbuf[progread] = '\0';
+
+	/*
+	 * Any remaining arguments are passed as arguments to the lua script as
+	 * a string array:
+	 * {
+	 *	"argv" -> [ "arg 1", ... "arg n" ],
+	 * }
+	 */
+	nvlist_t *argnvl = fnvlist_alloc();
+	fnvlist_add_string_array(argnvl, ZCP_ARG_CLIARGV, argv + 2, argc - 2);
+
+	ret = lzc_channel_program(poolname, progbuf, instrlimit, memlimit,
+	    argnvl, &outnvl);
+
+	if (ret != 0) {
+		/*
+		 * On error, report the error message handed back by lua if one
+		 * exists.  Otherwise, generate an appropriate error message,
+		 * falling back on strerror() for an unexpected return code.
+		 */
+		char *errstring = NULL;
+		if (nvlist_exists(outnvl, ZCP_RET_ERROR)) {
+			(void) nvlist_lookup_string(outnvl,
+			    ZCP_RET_ERROR, &errstring);
+			if (errstring == NULL)
+				errstring = strerror(ret);
+		} else {
+			switch (ret) {
+			case EINVAL:
+				errstring =
+				    "Invalid instruction or memory limit.";
+				break;
+			case ENOMEM:
+				errstring = "Return value too large.";
+				break;
+			case ENOSPC:
+				errstring = "Memory limit exhausted.";
+				break;
+#ifdef illumos
+			case ETIME:
+#else
+			case ETIMEDOUT:
+#endif
+				errstring = "Timed out.";
+				break;
+			case EPERM:
+				errstring = "Permission denied. Channel "
+				    "programs must be run as root.";
+				break;
+			default:
+				errstring = strerror(ret);
+			}
+		}
+		(void) fprintf(stderr,
+		    gettext("Channel program execution failed:\n%s\n"),
+		    errstring);
+	} else {
+		(void) printf("Channel program fully executed ");
+		if (nvlist_empty(outnvl)) {
+			(void) printf("with no return value.\n");
+		} else {
+			(void) printf("with return value:\n");
+			dump_nvlist(outnvl, 4);
+		}
+	}
+
+	free(progbuf);
+	fnvlist_free(outnvl);
+	fnvlist_free(argnvl);
 	return (ret != 0);
 
 usage:

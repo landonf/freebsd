@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2008 Isilon Systems, Inc.
  * Copyright (c) 2008 Ilya Maykov <ivmaykov@gmail.com>
  * Copyright (c) 1998 Berkeley Software Design, Inc.
@@ -137,7 +139,7 @@ __FBSDID("$FreeBSD$");
 #define	WITNESS_COUNT 		1536
 #endif
 #define	WITNESS_HASH_SIZE	251	/* Prime, gives load factor < 2 */
-#define	WITNESS_PENDLIST	(1024 + MAXCPU)
+#define	WITNESS_PENDLIST	(2048 + MAXCPU)
 
 /* Allocate 256 KB of stack data space */
 #define	WITNESS_LO_DATA_COUNT	2048
@@ -599,7 +601,7 @@ static struct witness_order_list_entry order_lists[] = {
 	 * CDEV
 	 */
 	{ "vm map (system)", &lock_class_mtx_sleep },
-	{ "vm page queue", &lock_class_mtx_sleep },
+	{ "vm pagequeue", &lock_class_mtx_sleep },
 	{ "vnode interlock", &lock_class_mtx_sleep },
 	{ "cdev", &lock_class_mtx_sleep },
 	{ NULL, NULL },
@@ -609,7 +611,7 @@ static struct witness_order_list_entry order_lists[] = {
 	{ "vm map (user)", &lock_class_sx },
 	{ "vm object", &lock_class_rw },
 	{ "vm page", &lock_class_mtx_sleep },
-	{ "vm page queue", &lock_class_mtx_sleep },
+	{ "vm pagequeue", &lock_class_mtx_sleep },
 	{ "pmap pv global", &lock_class_rw },
 	{ "pmap", &lock_class_mtx_sleep },
 	{ "pmap pv list", &lock_class_rw },
@@ -621,6 +623,14 @@ static struct witness_order_list_entry order_lists[] = {
 	{ "kqueue", &lock_class_mtx_sleep },
 	{ "struct mount mtx", &lock_class_mtx_sleep },
 	{ "vnode interlock", &lock_class_mtx_sleep },
+	{ NULL, NULL },
+	/*
+	 * VFS namecache
+	 */
+	{ "ncvn", &lock_class_mtx_sleep },
+	{ "ncbuc", &lock_class_rw },
+	{ "vnode interlock", &lock_class_mtx_sleep },
+	{ "ncneg", &lock_class_mtx_sleep },
 	{ NULL, NULL },
 	/*
 	 * ZFS locking
@@ -637,7 +647,6 @@ static struct witness_order_list_entry order_lists[] = {
 #endif
 	{ "rm.mutex_mtx", &lock_class_mtx_spin },
 	{ "sio", &lock_class_mtx_spin },
-	{ "scrlock", &lock_class_mtx_spin },
 #ifdef __i386__
 	{ "cy", &lock_class_mtx_spin },
 #endif
@@ -653,6 +662,7 @@ static struct witness_order_list_entry order_lists[] = {
 	{ "pmc-per-proc", &lock_class_mtx_spin },
 #endif
 	{ "process slock", &lock_class_mtx_spin },
+	{ "syscons video lock", &lock_class_mtx_spin },
 	{ "sleepq chain", &lock_class_mtx_spin },
 	{ "rm_spinlock", &lock_class_mtx_spin },
 	{ "turnstile chain", &lock_class_mtx_spin },
@@ -661,7 +671,6 @@ static struct witness_order_list_entry order_lists[] = {
 	{ "td_contested", &lock_class_mtx_spin },
 	{ "callout", &lock_class_mtx_spin },
 	{ "entropy harvest mutex", &lock_class_mtx_spin },
-	{ "syscons video lock", &lock_class_mtx_spin },
 #ifdef SMP
 	{ "smp rendezvous", &lock_class_mtx_spin },
 #endif
@@ -1725,15 +1734,14 @@ witness_warn(int flags, struct lock_object *lock, const char *fmt, ...)
 				continue;
 			if (n == 0) {
 				va_start(ap, fmt);
-				witness_voutput(fmt, ap);
+				vprintf(fmt, ap);
 				va_end(ap);
-				witness_output(
-				    " with the following %slocks held:\n",
+				printf(" with the following %slocks held:\n",
 				    (flags & WARN_SLEEPOK) != 0 ?
 				    "non-sleepable " : "");
 			}
 			n++;
-			witness_list_lock(lock1, witness_output);
+			witness_list_lock(lock1, printf);
 		}
 
 	/*
@@ -1758,11 +1766,11 @@ witness_warn(int flags, struct lock_object *lock, const char *fmt, ...)
 			return (0);
 
 		va_start(ap, fmt);
-		witness_voutput(fmt, ap);
+		vprintf(fmt, ap);
 		va_end(ap);
-		witness_output(" with the following %slocks held:\n",
+		printf(" with the following %slocks held:\n",
 		    (flags & WARN_SLEEPOK) != 0 ?  "non-sleepable " : "");
-		n += witness_list_locks(&lock_list, witness_output);
+		n += witness_list_locks(&lock_list, printf);
 	} else
 		sched_unpin();
 	if (flags & WARN_PANIC && n)
@@ -1843,12 +1851,14 @@ enroll(const char *description, struct lock_class *lock_class)
 	return (w);
 found:
 	w->w_refcount++;
+	if (w->w_refcount == 1)
+		w->w_class = lock_class;
 	mtx_unlock_spin(&w_mtx);
 	if (lock_class != w->w_class)
 		kassert_panic(
-			"lock (%s) %s does not match earlier (%s) lock",
-			description, lock_class->lc_name,
-			w->w_class->lc_name);
+		    "lock (%s) %s does not match earlier (%s) lock",
+		    description, lock_class->lc_name,
+		    w->w_class->lc_name);
 	return (w);
 }
 
@@ -2531,31 +2541,18 @@ DB_SHOW_COMMAND(witness, db_witness_display)
 }
 #endif
 
-static int
-sysctl_debug_witness_badstacks(SYSCTL_HANDLER_ARGS)
+static void
+sbuf_print_witness_badstacks(struct sbuf *sb, size_t *oldidx)
 {
 	struct witness_lock_order_data *data1, *data2, *tmp_data1, *tmp_data2;
 	struct witness *tmp_w1, *tmp_w2, *w1, *w2;
-	struct sbuf *sb;
 	u_int w_rmatrix1, w_rmatrix2;
-	int error, generation, i, j;
+	int generation, i, j;
 
 	tmp_data1 = NULL;
 	tmp_data2 = NULL;
 	tmp_w1 = NULL;
 	tmp_w2 = NULL;
-	if (witness_watch < 1) {
-		error = SYSCTL_OUT(req, w_notrunning, sizeof(w_notrunning));
-		return (error);
-	}
-	if (witness_cold) {
-		error = SYSCTL_OUT(req, w_stillcold, sizeof(w_stillcold));
-		return (error);
-	}
-	error = 0;
-	sb = sbuf_new(NULL, NULL, badstack_sbuf_size, SBUF_AUTOEXTEND);
-	if (sb == NULL)
-		return (ENOMEM);
 
 	/* Allocate and init temporary storage space. */
 	tmp_w1 = malloc(sizeof(struct witness), M_TEMP, M_WAITOK | M_ZERO);
@@ -2579,7 +2576,7 @@ restart:
 			mtx_unlock_spin(&w_mtx);
 
 			/* The graph has changed, try again. */
-			req->oldidx = 0;
+			*oldidx = 0;
 			sbuf_clear(sb);
 			goto restart;
 		}
@@ -2605,7 +2602,7 @@ restart:
 				mtx_unlock_spin(&w_mtx);
 
 				/* The graph has changed, try again. */
-				req->oldidx = 0;
+				*oldidx = 0;
 				sbuf_clear(sb);
 				goto restart;
 			}
@@ -2664,7 +2661,7 @@ restart:
 		 * The graph changed while we were printing stack data,
 		 * try again.
 		 */
-		req->oldidx = 0;
+		*oldidx = 0;
 		sbuf_clear(sb);
 		goto restart;
 	}
@@ -2675,6 +2672,28 @@ restart:
 	free(tmp_data2, M_TEMP);
 	free(tmp_w1, M_TEMP);
 	free(tmp_w2, M_TEMP);
+}
+
+static int
+sysctl_debug_witness_badstacks(SYSCTL_HANDLER_ARGS)
+{
+	struct sbuf *sb;
+	int error;
+
+	if (witness_watch < 1) {
+		error = SYSCTL_OUT(req, w_notrunning, sizeof(w_notrunning));
+		return (error);
+	}
+	if (witness_cold) {
+		error = SYSCTL_OUT(req, w_stillcold, sizeof(w_stillcold));
+		return (error);
+	}
+	error = 0;
+	sb = sbuf_new(NULL, NULL, badstack_sbuf_size, SBUF_AUTOEXTEND);
+	if (sb == NULL)
+		return (ENOMEM);
+
+	sbuf_print_witness_badstacks(sb, &req->oldidx);
 
 	sbuf_finish(sb);
 	error = SYSCTL_OUT(req, sbuf_data(sb), sbuf_len(sb) + 1);
@@ -2682,6 +2701,27 @@ restart:
 
 	return (error);
 }
+
+#ifdef DDB
+static int
+sbuf_db_printf_drain(void *arg __unused, const char *data, int len)
+{
+
+	return (db_printf("%.*s", len, data));
+}
+
+DB_SHOW_COMMAND(badstacks, db_witness_badstacks)
+{
+	struct sbuf sb;
+	char buffer[128];
+	size_t dummy;
+
+	sbuf_new(&sb, buffer, sizeof(buffer), SBUF_FIXEDLEN);
+	sbuf_set_drain(&sb, sbuf_db_printf_drain, NULL);
+	sbuf_print_witness_badstacks(&sb, &dummy);
+	sbuf_finish(&sb);
+}
+#endif
 
 static int
 sysctl_debug_witness_channel(SYSCTL_HANDLER_ARGS)

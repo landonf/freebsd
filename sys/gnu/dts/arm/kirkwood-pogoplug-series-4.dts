@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * kirkwood-pogoplug-series-4.dts - Device tree file for PogoPlug Series 4
  * inspired by the board files made by Kevin Mihelich for ArchLinux,
@@ -33,7 +34,7 @@
 		pinctrl-0 = <&pmx_button_eject>;
 		pinctrl-names = "default";
 
-		button@1 {
+		eject {
 			debounce_interval = <50>;
 			wakeup-source;
 			linux,code = <KEY_EJECTCD>;
@@ -131,6 +132,7 @@
 	chip-delay = <40>;
 	status = "okay";
 	partitions {
+		compatible = "fixed-partitions";
 		#address-cells = <1>;
 		#size-cells = <1>;
 

@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2001-2007, by Cisco Systems, Inc. All rights reserved.
  * Copyright (c) 2008-2012, by Randall Stewart. All rights reserved.
  * Copyright (c) 2008-2012, by Michael Tuexen. All rights reserved.
@@ -90,7 +92,7 @@ sctp_calculate_cksum(struct mbuf *m, uint32_t offset)
 
 	at = m;
 	/* find the correct mbuf and offset into mbuf */
-	while ((at != NULL) && (offset > (uint32_t) SCTP_BUF_LEN(at))) {
+	while ((at != NULL) && (offset > (uint32_t)SCTP_BUF_LEN(at))) {
 		offset -= SCTP_BUF_LEN(at);	/* update remaining offset
 						 * left */
 		at = SCTP_BUF_NEXT(at);
@@ -103,7 +105,7 @@ sctp_calculate_cksum(struct mbuf *m, uint32_t offset)
 		}
 		if (offset) {
 			/* we only offset once into the first mbuf */
-			if (offset < (uint32_t) SCTP_BUF_LEN(at))
+			if (offset < (uint32_t)SCTP_BUF_LEN(at))
 				offset = 0;
 			else
 				offset -= SCTP_BUF_LEN(at);
@@ -113,7 +115,6 @@ sctp_calculate_cksum(struct mbuf *m, uint32_t offset)
 	base = sctp_finalize_crc32c(base);
 	return (base);
 }
-
 #endif				/* !defined(SCTP_WITH_NO_CSUM) */
 
 
@@ -132,9 +133,9 @@ sctp_delayed_cksum(struct mbuf *m, uint32_t offset)
 	SCTP_STAT_INCR(sctps_sendswcrc);
 	offset += offsetof(struct sctphdr, checksum);
 
-	if (offset + sizeof(uint32_t) > (uint32_t) (m->m_len)) {
+	if (offset + sizeof(uint32_t) > (uint32_t)(m->m_len)) {
 		SCTP_PRINTF("sctp_delayed_cksum(): m->len: %d,  off: %d.\n",
-		    (uint32_t) m->m_len, offset);
+		    (uint32_t)m->m_len, offset);
 		/*
 		 * XXX this shouldn't happen, but if it does, the correct
 		 * behavior may be to insert the checksum in the appropriate
@@ -142,6 +143,6 @@ sctp_delayed_cksum(struct mbuf *m, uint32_t offset)
 		 */
 		return;
 	}
-	*(uint32_t *) (m->m_data + offset) = checksum;
+	*(uint32_t *)(m->m_data + offset) = checksum;
 #endif
 }

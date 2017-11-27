@@ -1,6 +1,8 @@
 /*	$NetBSD: clnt_dg.c,v 1.4 2000/07/14 08:40:41 fvdl Exp $	*/
 
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2009, Sun Microsystems, Inc.
  * All rights reserved.
  *
@@ -313,11 +315,9 @@ recheck_socket:
 	cl->cl_netid = NULL;
 	return (cl);
 err2:
-	if (cl) {
-		mem_free(cl, sizeof (CLIENT));
-		if (cu)
-			mem_free(cu, sizeof (*cu));
-	}
+	mem_free(cl, sizeof (CLIENT));
+	mem_free(cu, sizeof (*cu));
+
 	return (NULL);
 }
 

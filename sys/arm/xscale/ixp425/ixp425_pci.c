@@ -1,6 +1,8 @@
 /*	$NetBSD: ixp425_pci.c,v 1.5 2006/04/10 03:36:03 simonb Exp $ */
 
-/*
+/*-
+ * SPDX-License-Identifier: BSD-4-Clause
+ *
  * Copyright (c) 2003
  *	Ichiro FUKUHARA <ichiro@ichiro.org>.
  * All rights reserved.
@@ -466,6 +468,7 @@ static device_method_t ixppcib_methods[] = {
 	DEVMETHOD(pcib_read_config,		ixppcib_read_config),
 	DEVMETHOD(pcib_write_config,		ixppcib_write_config),
 	DEVMETHOD(pcib_route_interrupt,		ixppcib_route_interrupt),
+	DEVMETHOD(pcib_request_feature,		pcib_request_feature_allow),
 
 	DEVMETHOD_END
 };

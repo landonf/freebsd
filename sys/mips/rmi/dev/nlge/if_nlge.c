@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2003-2009 RMI Corporation
  * All rights reserved.
  *
@@ -140,8 +142,8 @@ static int	nlge_ioctl(struct ifnet *, u_long, caddr_t);
 static int	nlge_tx(struct ifnet *ifp, struct mbuf *m);
 static void 	nlge_rx(struct nlge_softc *sc, vm_paddr_t paddr, int len);
 
-static int	nlge_mii_write(struct device *, int, int, int);
-static int	nlge_mii_read(struct device *, int, int);
+static int	nlge_mii_write(device_t, int, int, int);
+static int	nlge_mii_read(device_t, int, int);
 static void	nlge_mac_mii_statchg(device_t);
 static int	nlge_mediachange(struct ifnet *ifp);
 static void	nlge_mediastatus(struct ifnet *ifp, struct ifmediareq *ifmr);
@@ -831,7 +833,7 @@ nlge_rx(struct nlge_softc *sc, vm_paddr_t paddr, int len)
 }
 
 static int
-nlge_mii_write(struct device *dev, int phyaddr, int regidx, int regval)
+nlge_mii_write(device_t dev, int phyaddr, int regidx, int regval)
 {
 	struct nlge_softc *sc;
 
@@ -843,7 +845,7 @@ nlge_mii_write(struct device *dev, int phyaddr, int regidx, int regval)
 }
 
 static int
-nlge_mii_read(struct device *dev, int phyaddr, int regidx)
+nlge_mii_read(device_t dev, int phyaddr, int regidx)
 {
 	struct nlge_softc *sc;
 	int val;

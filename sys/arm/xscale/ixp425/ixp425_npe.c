@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2006-2008 Sam Leffler, Errno Consulting
  * All rights reserved.
  *
@@ -92,8 +94,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/firmware.h>
 
 #include <machine/bus.h>
-#include <machine/cpu.h>
-#include <machine/cpufunc.h>
 #include <machine/resource.h>
 #include <machine/intr.h>
 #include <arm/xscale/ixp425/ixp425reg.h>

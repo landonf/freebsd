@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2006 Benno Rice.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -322,8 +324,6 @@ pxa_smi_add_device(device_t dev, const char *name, int unit)
 
 	ivars = (struct smi_ivars *)malloc(
 	    sizeof(struct smi_ivars), M_PXASMI, M_WAITOK);
-	if (ivars == NULL)
-		return;
 
 	child = device_add_child(dev, name, unit);
 	if (child == NULL) {

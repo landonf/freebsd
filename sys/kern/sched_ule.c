@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2002-2007, Jeffrey Roberson <jeff@freebsd.org>
  * All rights reserved.
  *
@@ -656,7 +658,7 @@ int __noinline cpu_search_both(const struct cpu_group *cg,
  * according to the match argument.  This routine actually compares the
  * load on all paths through the tree and finds the least loaded cpu on
  * the least loaded path, which may differ from the least loaded cpu in
- * the system.  This balances work among caches and busses.
+ * the system.  This balances work among caches and buses.
  *
  * This inline is instantiated in three forms below using constants for the
  * match argument.  It is reduced to the minimum set for each case.  It is
@@ -1224,6 +1226,8 @@ sched_pickcpu(struct thread *td, int flags)
 
 	self = PCPU_GET(cpuid);
 	ts = td_get_sched(td);
+	KASSERT(!CPU_ABSENT(ts->ts_cpu), ("sched_pickcpu: Start scheduler on "
+	    "absent CPU %d for thread %s.", ts->ts_cpu, td->td_name));
 	if (smp_started == 0)
 		return (self);
 	/*
@@ -1294,6 +1298,7 @@ sched_pickcpu(struct thread *td, int flags)
 	if (cpu == -1)
 		cpu = sched_lowest(cpu_top, mask, -1, INT_MAX, ts->ts_cpu);
 	KASSERT(cpu != -1, ("sched_pickcpu: Failed to find a cpu."));
+	KASSERT(!CPU_ABSENT(cpu), ("sched_pickcpu: Picked absent CPU %d.", cpu));
 	/*
 	 * Compare the lowest loaded cpu to current cpu.
 	 */
@@ -1400,6 +1405,7 @@ sched_setup(void *dummy)
 
 	/* Add thread0's load since it's running. */
 	TDQ_LOCK(tdq);
+	td_get_sched(&thread0)->ts_cpu = curcpu; /* Something valid to start */
 	thread0.td_lock = TDQ_LOCKPTR(TDQ_SELF());
 	tdq_load_add(tdq, &thread0);
 	tdq->tdq_lowpri = thread0.td_priority;
@@ -1662,7 +1668,11 @@ sched_pctcpu_update(struct td_sched *ts, int run)
 {
 	int t = ticks;
 
-	if (t - ts->ts_ltick >= SCHED_TICK_TARG) {
+	/*
+	 * The signed difference may be negative if the thread hasn't run for
+	 * over half of the ticks rollover period.
+	 */
+	if ((u_int)(t - ts->ts_ltick) >= SCHED_TICK_TARG) {
 		ts->ts_ticks = 0;
 		ts->ts_ftick = t - SCHED_TICK_TARG;
 	} else if (t - ts->ts_ftick >= SCHED_TICK_MAX) {
@@ -1833,6 +1843,9 @@ sched_switch_migrate(struct tdq *tdq, struct thread *td, int flags)
 {
 	struct tdq *tdn;
 
+	KASSERT(!CPU_ABSENT(td_get_sched(td)->ts_cpu), ("sched_switch_migrate: "
+	    "thread %s queued on absent CPU %d.", td->td_name,
+	    td_get_sched(td)->ts_cpu));
 	tdn = TDQ_CPU(td_get_sched(td)->ts_cpu);
 #ifdef SMP
 	tdq_load_rem(tdq, td);
@@ -1898,8 +1911,8 @@ sched_switch(struct thread *td, struct thread *newtd, int flags)
 	ts->ts_rltick = ticks;
 	td->td_lastcpu = td->td_oncpu;
 	td->td_oncpu = NOCPU;
-	preempted = !((td->td_flags & TDF_SLICEEND) ||
-	    (flags & SWT_RELINQUISH));
+	preempted = (td->td_flags & TDF_SLICEEND) == 0 &&
+	    (flags & SW_PREEMPT) != 0;
 	td->td_flags &= ~(TDF_NEEDRESCHED | TDF_SLICEEND);
 	td->td_owepreempt = 0;
 	if (!TD_IS_IDLETHREAD(td))
@@ -1934,6 +1947,17 @@ sched_switch(struct thread *td, struct thread *newtd, int flags)
 		mtx = thread_lock_block(td);
 		tdq_load_rem(tdq, td);
 	}
+
+#if (KTR_COMPILE & KTR_SCHED) != 0
+	if (TD_IS_IDLETHREAD(td))
+		KTR_STATE1(KTR_SCHED, "thread", sched_tdname(td), "idle",
+		    "prio:%d", td->td_priority);
+	else
+		KTR_STATE3(KTR_SCHED, "thread", sched_tdname(td), KTDSTATE(td),
+		    "prio:%d", td->td_priority, "wmesg:\"%s\"", td->td_wmesg,
+		    "lockname:\"%s\"", td->td_lockname);
+#endif
+
 	/*
 	 * We enter here with the thread blocked and assigned to the
 	 * appropriate cpu run-queue or sleep-queue and with the current
@@ -1984,6 +2008,10 @@ sched_switch(struct thread *td, struct thread *newtd, int flags)
 		thread_unblock_switch(td, mtx);
 		SDT_PROBE0(sched, , , remain__cpu);
 	}
+
+	KTR_STATE1(KTR_SCHED, "thread", sched_tdname(td), "running",
+	    "prio:%d", td->td_priority);
+
 	/*
 	 * Assert that all went well and return.
 	 */
@@ -2425,6 +2453,7 @@ sched_add(struct thread *td, int flags)
 	 * Pick the destination cpu and if it isn't ours transfer to the
 	 * target cpu.
 	 */
+	td_get_sched(td)->ts_cpu = curcpu; /* Pick something valid to start */
 	cpu = sched_pickcpu(td, flags);
 	tdq = sched_setcpu(td, cpu, flags);
 	tdq_add(tdq, td, flags);
@@ -2752,6 +2781,10 @@ sched_fork_exit(struct thread *td)
 	TDQ_LOCK_ASSERT(tdq, MA_OWNED | MA_NOTRECURSED);
 	lock_profile_obtain_lock_success(
 	    &TDQ_LOCKPTR(tdq)->lock_object, 0, 0, __FILE__, __LINE__);
+
+	KTR_STATE1(KTR_SCHED, "thread", sched_tdname(td), "running",
+	    "prio:%d", td->td_priority);
+	SDT_PROBE0(sched, , , on__cpu);
 }
 
 /*
@@ -2916,7 +2949,7 @@ SYSCTL_INT(_kern_sched, OID_AUTO, steal_idle, CTLFLAG_RW, &steal_idle, 0,
 SYSCTL_INT(_kern_sched, OID_AUTO, steal_thresh, CTLFLAG_RW, &steal_thresh, 0,
     "Minimum load on remote CPU before we'll steal");
 SYSCTL_PROC(_kern_sched, OID_AUTO, topology_spec, CTLTYPE_STRING |
-    CTLFLAG_RD, NULL, 0, sysctl_kern_sched_topology_spec, "A",
+    CTLFLAG_MPSAFE | CTLFLAG_RD, NULL, 0, sysctl_kern_sched_topology_spec, "A",
     "XML dump of detected CPU topology");
 #endif
 

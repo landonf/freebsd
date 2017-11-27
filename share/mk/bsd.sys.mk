@@ -78,6 +78,9 @@ CWARNFLAGS.clang+=	-Wno-tautological-compare -Wno-unused-value\
 .if ${COMPILER_TYPE} == "clang" && ${COMPILER_VERSION} >= 30600
 CWARNFLAGS.clang+=	-Wno-unused-local-typedef
 .endif
+.if ${COMPILER_TYPE} == "clang" && ${COMPILER_VERSION} >= 40000
+CWARNFLAGS.clang+=	-Wno-address-of-packed-member
+.endif
 .endif # WARNS <= 3
 .if ${WARNS} <= 2
 CWARNFLAGS.clang+=	-Wno-switch -Wno-switch-enum -Wno-knr-promoted-parameter
@@ -111,7 +114,47 @@ CWARNFLAGS+=	-Wno-format
 
 # GCC 5.2.0
 .if ${COMPILER_TYPE} == "gcc" && ${COMPILER_VERSION} >= 50200
-CWARNFLAGS+=	-Wno-error=unused-function -Wno-error=enum-compare -Wno-error=logical-not-parentheses -Wno-error=bool-compare -Wno-error=uninitialized -Wno-error=array-bounds -Wno-error=clobbered -Wno-error=cast-align -Wno-error=extra -Wno-error=attributes -Wno-error=inline -Wno-error=unused-but-set-variable -Wno-error=unused-value -Wno-error=strict-aliasing -Wno-error=address
+CWARNFLAGS+=	-Wno-error=address			\
+		-Wno-error=array-bounds			\
+		-Wno-error=attributes			\
+		-Wno-error=bool-compare			\
+		-Wno-error=cast-align			\
+		-Wno-error=clobbered			\
+		-Wno-error=enum-compare			\
+		-Wno-error=extra			\
+		-Wno-error=inline			\
+		-Wno-error=logical-not-parentheses	\
+		-Wno-error=strict-aliasing		\
+		-Wno-error=uninitialized		\
+		-Wno-error=unused-but-set-variable	\
+		-Wno-error=unused-function		\
+		-Wno-error=unused-value
+.endif
+
+# GCC 6.1.0
+.if ${COMPILER_TYPE} == "gcc" && ${COMPILER_VERSION} >= 60100
+CWARNFLAGS+=	-Wno-error=misleading-indentation	\
+		-Wno-error=nonnull-compare		\
+		-Wno-error=shift-negative-value		\
+		-Wno-error=tautological-compare		\
+		-Wno-error=unused-const-variable
+.endif
+
+# GCC 7.1.0
+.if ${COMPILER_TYPE} == "gcc" && ${COMPILER_VERSION} >= 70100
+CWARNFLAGS+=	-Wno-error=deprecated			\
+		-Wno-error=pointer-compare		\
+		-Wno-error=format-truncation		\
+		-Wno-error=implicit-fallthrough		\
+		-Wno-error=expansion-to-defined		\
+		-Wno-error=int-in-bool-context		\
+		-Wno-error=bool-operation		\
+		-Wno-error=format-overflow		\
+		-Wno-error=stringop-overflow		\
+		-Wno-error=memset-elt-size		\
+		-Wno-error=int-in-bool-context		\
+		-Wno-error=unused-const-variable	\
+		-Wno-error=nonnull
 .endif
 
 # How to handle FreeBSD custom printf format specifiers.
@@ -164,10 +207,14 @@ SSP_CFLAGS?=	-fstack-protector
 CFLAGS+=	${SSP_CFLAGS}
 .endif # SSP && !ARM && !MIPS
 
+# Additional flags passed in CFLAGS and CXXFLAGS when MK_DEBUG_FILES is
+# enabled.
+DEBUG_FILES_CFLAGS?= -g
+
 # Allow user-specified additional warning flags, plus compiler and file
 # specific flag overrides, unless we've overriden this...
 .if ${MK_WARNS} != "no"
-CFLAGS+=	${CWARNFLAGS} ${CWARNFLAGS.${COMPILER_TYPE}}
+CFLAGS+=	${CWARNFLAGS:M*} ${CWARNFLAGS.${COMPILER_TYPE}}
 CFLAGS+=	${CWARNFLAGS.${.IMPSRC:T}}
 .endif
 
@@ -181,7 +228,7 @@ CXXFLAGS+=	${CXXFLAGS.${.IMPSRC:T}}
 
 .if defined(SRCTOP)
 # Prevent rebuilding during install to support read-only objdirs.
-.if !make(all) && make(install) && empty(.MAKE.MODE:Mmeta)
+.if ${.TARGETS:M*install*} == ${.TARGETS} && empty(.MAKE.MODE:Mmeta)
 CFLAGS+=	ERROR-tried-to-rebuild-during-make-install
 .endif
 .endif

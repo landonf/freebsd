@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 1994-1998 Mark Brinicombe.
  * Copyright (c) 1994 Brini.
  * All rights reserved.
@@ -57,8 +59,6 @@ __FBSDID("$FreeBSD$");
 
 #include <arm/lpc/lpcreg.h>
 #include <arm/lpc/lpcvar.h>
-
-#include <dev/fdt/fdt_common.h>
 
 vm_offset_t
 platform_lastaddr(void)

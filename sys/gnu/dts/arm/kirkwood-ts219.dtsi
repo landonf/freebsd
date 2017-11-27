@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 / {
 	model = "QNAP TS219 family";
 	compatible = "qnap,ts219", "marvell,kirkwood";
@@ -10,16 +11,6 @@
 	chosen {
 		bootargs = "console=ttyS0,115200n8";
 		stdout-path = &uart0;
-	};
-
-	mbus {
-		pcie-controller {
-			status = "okay";
-
-			pcie@1,0 {
-				status = "okay";
-			};
-		};
 	};
 
 	ocp@f1000000 {
@@ -94,7 +85,7 @@
 &mdio {
 	status = "okay";
 
-	ethphy0: ethernet-phy {
+	ethphy0: ethernet-phy@X {
                 /* overwrite reg property in board file */
 	};
 };
@@ -104,4 +95,12 @@
 	ethernet0-port@0 {
 		phy-handle = <&ethphy0>;
 	};
+};
+
+&pciec {
+        status = "okay";
+};
+
+&pcie0 {
+	status = "okay";
 };

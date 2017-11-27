@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1991, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -13,7 +15,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -77,14 +79,14 @@ extern int vm_pageout_page_count;
 extern bool vm_pageout_wanted;
 extern bool vm_pages_needed;
 
-/*
- * Swap out requests
- */
-#define VM_SWAP_NORMAL 1
-#define VM_SWAP_IDLE 2
-
 #define	VM_OOM_MEM	1
 #define	VM_OOM_SWAPZ	2
+
+/*
+ * vm_lowmem flags.
+ */
+#define	VM_LOW_KMEM	0x01
+#define	VM_LOW_PAGES	0x02
 
 /*
  *	Exported routines.
@@ -103,5 +105,8 @@ extern void vm_waitpfault(void);
 #ifdef _KERNEL
 int vm_pageout_flush(vm_page_t *, int, int, int, int *, boolean_t *);
 void vm_pageout_oom(int shortage);
+
+void vm_swapout_run(void);
+void vm_swapout_run_idle(void);
 #endif
 #endif	/* _VM_VM_PAGEOUT_H_ */

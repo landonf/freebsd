@@ -24,6 +24,8 @@
  * Copyright (c) 2011, 2015 by Delphix. All rights reserved.
  * Copyright (c) 2013, Joyent, Inc. All rights reserved.
  * Copyright 2016 Nexenta Systems, Inc.
+ * Copyright 2016 Igor Kozhukhov <ikozhukhov@gmail.com>
+ * Copyright (c) 2017 Datto Inc.
  */
 
 #include <sys/types.h>
@@ -199,6 +201,9 @@ zpool_state_to_name(vdev_state_t state, vdev_aux_t aux)
 		return (gettext("DEGRADED"));
 	case VDEV_STATE_HEALTHY:
 		return (gettext("ONLINE"));
+
+	default:
+		break;
 	}
 
 	return (gettext("UNKNOWN"));
@@ -403,7 +408,7 @@ bootfs_name_valid(const char *pool, char *bootfs)
 boolean_t
 zpool_is_bootable(zpool_handle_t *zhp)
 {
-	char bootfs[ZPOOL_MAXNAMELEN];
+	char bootfs[ZFS_MAX_DATASET_NAME_LEN];
 
 	return (zpool_get_prop(zhp, ZPOOL_PROP_BOOTFS, bootfs,
 	    sizeof (bootfs), NULL, B_FALSE) == 0 && strncmp(bootfs, "-",
@@ -634,6 +639,11 @@ zpool_valid_proplist(libzfs_handle_t *hdl, const char *poolname,
 				(void) zfs_error(hdl, EZFS_BADPROP, errbuf);
 				goto error;
 			}
+			break;
+
+		default:
+			zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+			    "property '%s'(%d) not defined"), propname, prop);
 			break;
 		}
 	}
@@ -938,11 +948,16 @@ zpool_name_valid(libzfs_handle_t *hdl, boolean_t isopen, const char *pool)
 				    "trailing slash in name"));
 				break;
 
-			case NAME_ERR_MULTIPLE_AT:
+			case NAME_ERR_MULTIPLE_DELIMITERS:
 				zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
-				    "multiple '@' delimiters in name"));
+				    "multiple '@' and/or '#' delimiters in "
+				    "name"));
 				break;
 
+			default:
+				zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+				    "(%d) not defined"), why);
+				break;
 			}
 		}
 		return (B_FALSE);
@@ -1786,7 +1801,12 @@ zpool_import_props(libzfs_handle_t *hdl, nvlist_t *config, const char *newname,
 		case EEXIST:
 			(void) zpool_standard_error(hdl, error, desc);
 			break;
-
+		case ENAMETOOLONG:
+			zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+			    "new name of at least one dataset is longer than "
+			    "the maximum allowable length"));
+			(void) zfs_error(hdl, EZFS_NAMETOOLONG, desc);
+			break;
 		default:
 			(void) zpool_standard_error(hdl, error, desc);
 			zpool_explain_recover(hdl,
@@ -1822,22 +1842,39 @@ zpool_import_props(libzfs_handle_t *hdl, nvlist_t *config, const char *newname,
  * Scan the pool.
  */
 int
-zpool_scan(zpool_handle_t *zhp, pool_scan_func_t func)
+zpool_scan(zpool_handle_t *zhp, pool_scan_func_t func, pool_scrub_cmd_t cmd)
 {
 	zfs_cmd_t zc = { 0 };
 	char msg[1024];
+	int err;
 	libzfs_handle_t *hdl = zhp->zpool_hdl;
 
 	(void) strlcpy(zc.zc_name, zhp->zpool_name, sizeof (zc.zc_name));
 	zc.zc_cookie = func;
+	zc.zc_flags = cmd;
 
-	if (zfs_ioctl(hdl, ZFS_IOC_POOL_SCAN, &zc) == 0 ||
-	    (errno == ENOENT && func != POOL_SCAN_NONE))
+	if (zfs_ioctl(hdl, ZFS_IOC_POOL_SCAN, &zc) == 0)
+		return (0);
+
+	err = errno;
+
+	/* ECANCELED on a scrub means we resumed a paused scrub */
+	if (err == ECANCELED && func == POOL_SCAN_SCRUB &&
+	    cmd == POOL_SCRUB_NORMAL)
+		return (0);
+
+	if (err == ENOENT && func != POOL_SCAN_NONE && cmd == POOL_SCRUB_NORMAL)
 		return (0);
 
 	if (func == POOL_SCAN_SCRUB) {
-		(void) snprintf(msg, sizeof (msg),
-		    dgettext(TEXT_DOMAIN, "cannot scrub %s"), zc.zc_name);
+		if (cmd == POOL_SCRUB_PAUSE) {
+			(void) snprintf(msg, sizeof (msg), dgettext(TEXT_DOMAIN,
+			    "cannot pause scrubbing %s"), zc.zc_name);
+		} else {
+			assert(cmd == POOL_SCRUB_NORMAL);
+			(void) snprintf(msg, sizeof (msg), dgettext(TEXT_DOMAIN,
+			    "cannot scrub %s"), zc.zc_name);
+		}
 	} else if (func == POOL_SCAN_NONE) {
 		(void) snprintf(msg, sizeof (msg),
 		    dgettext(TEXT_DOMAIN, "cannot cancel scrubbing %s"),
@@ -1846,7 +1883,7 @@ zpool_scan(zpool_handle_t *zhp, pool_scan_func_t func)
 		assert(!"unexpected result");
 	}
 
-	if (errno == EBUSY) {
+	if (err == EBUSY) {
 		nvlist_t *nvroot;
 		pool_scan_stat_t *ps = NULL;
 		uint_t psc;
@@ -1855,14 +1892,18 @@ zpool_scan(zpool_handle_t *zhp, pool_scan_func_t func)
 		    ZPOOL_CONFIG_VDEV_TREE, &nvroot) == 0);
 		(void) nvlist_lookup_uint64_array(nvroot,
 		    ZPOOL_CONFIG_SCAN_STATS, (uint64_t **)&ps, &psc);
-		if (ps && ps->pss_func == POOL_SCAN_SCRUB)
-			return (zfs_error(hdl, EZFS_SCRUBBING, msg));
-		else
+		if (ps && ps->pss_func == POOL_SCAN_SCRUB) {
+			if (cmd == POOL_SCRUB_PAUSE)
+				return (zfs_error(hdl, EZFS_SCRUB_PAUSED, msg));
+			else
+				return (zfs_error(hdl, EZFS_SCRUBBING, msg));
+		} else {
 			return (zfs_error(hdl, EZFS_RESILVERING, msg));
-	} else if (errno == ENOENT) {
+		}
+	} else if (err == ENOENT) {
 		return (zfs_error(hdl, EZFS_NO_SCRUB, msg));
 	} else {
-		return (zpool_standard_error(hdl, errno, msg));
+		return (zpool_standard_error(hdl, err, msg));
 	}
 }
 
@@ -2254,6 +2295,7 @@ vdev_get_physpaths(nvlist_t *nv, char *physpath, size_t phypath_size,
 				return (ret);
 		}
 	} else if (strcmp(type, VDEV_TYPE_MIRROR) == 0 ||
+	    strcmp(type, VDEV_TYPE_RAIDZ) == 0 ||
 	    strcmp(type, VDEV_TYPE_REPLACING) == 0 ||
 	    (is_spare = (strcmp(type, VDEV_TYPE_SPARE) == 0))) {
 		nvlist_t **child;
@@ -3785,7 +3827,7 @@ zpool_obj_to_path(zpool_handle_t *zhp, uint64_t dsobj, uint64_t obj,
 	zfs_cmd_t zc = { 0 };
 	boolean_t mounted = B_FALSE;
 	char *mntpnt = NULL;
-	char dsname[MAXNAMELEN];
+	char dsname[ZFS_MAX_DATASET_NAME_LEN];
 
 	if (dsobj == 0) {
 		/* special case for the MOS */
@@ -4046,7 +4088,7 @@ zvol_check_dump_config(char *arg)
 	uint_t toplevels;
 	libzfs_handle_t *hdl;
 	char errbuf[1024];
-	char poolname[ZPOOL_MAXNAMELEN];
+	char poolname[ZFS_MAX_DATASET_NAME_LEN];
 	int pathlen = strlen(ZVOL_FULL_DEV_DIR);
 	int ret = 1;
 
@@ -4069,7 +4111,7 @@ zvol_check_dump_config(char *arg)
 		    "malformed dataset name"));
 		(void) zfs_error(hdl, EZFS_INVALIDNAME, errbuf);
 		return (1);
-	} else if (p - volname >= ZFS_MAXNAMELEN) {
+	} else if (p - volname >= ZFS_MAX_DATASET_NAME_LEN) {
 		zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
 		    "dataset name is too long"));
 		(void) zfs_error(hdl, EZFS_NAMETOOLONG, errbuf);
@@ -4107,4 +4149,26 @@ out:
 		zpool_close(zhp);
 	libzfs_fini(hdl);
 	return (ret);
+}
+
+int
+zpool_nextboot(libzfs_handle_t *hdl, uint64_t pool_guid, uint64_t dev_guid,
+    const char *command)
+{
+	zfs_cmd_t zc = { 0 };
+	nvlist_t *args;
+	char *packed;
+	size_t size;
+	int error;
+
+	args = fnvlist_alloc();
+	fnvlist_add_uint64(args, ZPOOL_CONFIG_POOL_GUID, pool_guid);
+	fnvlist_add_uint64(args, ZPOOL_CONFIG_GUID, dev_guid);
+	fnvlist_add_string(args, "command", command);
+	error = zcmd_write_src_nvlist(hdl, &zc, args);
+	if (error == 0)
+		error = ioctl(hdl->libzfs_fd, ZFS_IOC_NEXTBOOT, &zc);
+	zcmd_free_nvlists(&zc);
+	nvlist_free(args);
+	return (error);
 }

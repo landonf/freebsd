@@ -1,4 +1,5 @@
 /*******************************************************************************
+SPDX-License-Identifier: BSD-3-Clause
 
 Copyright (c) 2001-2004, Intel Corporation
 All rights reserved.
@@ -539,7 +540,8 @@ ixgb_ioctl(struct ifnet * ifp, IOCTL_CMD_TYPE command, caddr_t data)
 			adapter->hw.max_frame_size =
 				ifp->if_mtu + ETHER_HDR_LEN + ETHER_CRC_LEN;
 
-			ixgb_init_locked(adapter);
+			if (ifp->if_drv_flags & IFF_DRV_RUNNING)
+				ixgb_init_locked(adapter);
 			IXGB_UNLOCK(adapter);
 		}
 		break;
@@ -1776,7 +1778,7 @@ static int
 ixgb_get_buf(int i, struct adapter * adapter,
 	     struct mbuf * nmp)
 {
-	register struct mbuf *mp = nmp;
+	struct mbuf    *mp = nmp;
 	struct ixgb_buffer *rx_buffer;
 	struct ifnet   *ifp;
 	bus_addr_t      paddr;

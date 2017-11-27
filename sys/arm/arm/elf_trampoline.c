@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2005 Olivier Houchard.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -39,7 +41,11 @@ __FBSDID("$FreeBSD$");
 #include <machine/pte-v4.h>
 #include <machine/cpufunc.h>
 #include <machine/armreg.h>
+#include <machine/cpu.h>
 
+#if __ARM_ARCH >= 6
+#error "elf_trampline is not supported on ARMv6/v7 platforms"
+#endif
 extern char kernel_start[];
 extern char kernel_end[];
 
@@ -47,11 +53,9 @@ extern void *_end;
 
 void _start(void);
 void __start(void);
-void __startC(void);
+void __startC(unsigned r0, unsigned r1, unsigned r2, unsigned r3);
 
 extern unsigned int cpu_ident(void);
-extern void armv6_idcache_wbinv_all(void);
-extern void armv7_idcache_wbinv_all(void);
 extern void do_call(void *, void *, void *, int);
 
 #define GZ_HEAD	0xa
@@ -65,36 +69,23 @@ extern void fa526_idcache_wbinv_all(void);
 #elif defined(CPU_ARM9E)
 #define cpu_idcache_wbinv_all	armv5_ec_idcache_wbinv_all
 extern void armv5_ec_idcache_wbinv_all(void);
-#elif defined(CPU_ARM1176)
-#define cpu_idcache_wbinv_all	armv6_idcache_wbinv_all
 #elif defined(CPU_XSCALE_PXA2X0) || defined(CPU_XSCALE_IXP425)
 #define cpu_idcache_wbinv_all	xscale_cache_purgeID
 extern void xscale_cache_purgeID(void);
 #elif defined(CPU_XSCALE_81342)
 #define cpu_idcache_wbinv_all	xscalec3_cache_purgeID
 extern void xscalec3_cache_purgeID(void);
-#elif defined(CPU_MV_PJ4B)
-#if !defined(SOC_MV_ARMADAXP)
-#define cpu_idcache_wbinv_all	armv6_idcache_wbinv_all
-extern void armv6_idcache_wbinv_all(void);
-#else
-#define cpu_idcache_wbinv_all()	armadaxp_idcache_wbinv_all
 #endif
-#endif /* CPU_MV_PJ4B */
 #ifdef CPU_XSCALE_81342
 #define cpu_l2cache_wbinv_all	xscalec3_l2cache_purge
 extern void xscalec3_l2cache_purge(void);
 #elif defined(SOC_MV_KIRKWOOD) || defined(SOC_MV_DISCOVERY)
 #define cpu_l2cache_wbinv_all	sheeva_l2cache_wbinv_all
 extern void sheeva_l2cache_wbinv_all(void);
-#elif defined(CPU_CORTEXA) || defined(CPU_KRAIT)
-#define cpu_idcache_wbinv_all	armv7_idcache_wbinv_all
-#define cpu_l2cache_wbinv_all()
 #else
 #define cpu_l2cache_wbinv_all()
 #endif
 
-static void armadaxp_idcache_wbinv_all(void);
 
 int     arm_picache_size;
 int     arm_picache_line_size;
@@ -124,6 +115,10 @@ static int      arm_dcache_l2_nsets;
 static int      arm_dcache_l2_assoc;
 static int      arm_dcache_l2_linesize;
 
+/*
+ * Boot parameters
+ */
+static struct arm_boot_params s_boot_params;
 
 extern int arm9_dcache_sets_inc;
 extern int arm9_dcache_sets_max;
@@ -172,12 +167,17 @@ bzero(void *addr, int count)
 static void arm9_setup(void);
 
 void
-_startC(void)
+_startC(unsigned r0, unsigned r1, unsigned r2, unsigned r3)
 {
 	int tmp1;
 	unsigned int sp = ((unsigned int)&_end & ~3) + 4;
 	unsigned int pc, kernphysaddr;
 
+	s_boot_params.abp_r0 = r0;
+	s_boot_params.abp_r1 = r1;
+	s_boot_params.abp_r2 = r2;
+	s_boot_params.abp_r3 = r3;
+        
 	/*
 	 * Figure out the physical address the kernel was loaded at.  This
 	 * assumes the entry point (this code right here) is in the first page,
@@ -211,8 +211,15 @@ _startC(void)
 		/* Temporary set the sp and jump to the new location. */
 		__asm __volatile(
 		    "mov sp, %1\n"
+		    "mov r0, %2\n"
+		    "mov r1, %3\n"
+		    "mov r2, %4\n"
+		    "mov r3, %5\n"
 		    "mov pc, %0\n"
-		    : : "r" (target_addr), "r" (tmp_sp));
+		    : : "r" (target_addr), "r" (tmp_sp),
+		    "r" (s_boot_params.abp_r0), "r" (s_boot_params.abp_r1),
+		    "r" (s_boot_params.abp_r2), "r" (s_boot_params.abp_r3)
+		    : "r0", "r1", "r2", "r3");
 
 	}
 #endif
@@ -372,18 +379,6 @@ arm9_setup(void)
 	arm9_dcache_index_max = 0U - arm9_dcache_index_inc;
 }
 
-static void
-armadaxp_idcache_wbinv_all(void)
-{
-	uint32_t feat;
-
-	__asm __volatile("mrc p15, 0, %0, c0, c1, 0" : "=r" (feat));
-	if (feat & ARM_PFR0_THUMBEE_MASK)
-		armv7_idcache_wbinv_all();
-	else
-		armv6_idcache_wbinv_all();
-
-}
 #ifdef KZIP
 static  unsigned char *orig_input, *i_input, *i_output;
 
@@ -487,6 +482,7 @@ load_kernel(unsigned int kstart, unsigned int curaddr,unsigned int func_end,
 	vm_offset_t lastaddr = 0;
 	Elf_Addr ssym = 0;
 	Elf_Dyn *dp;
+	struct arm_boot_params local_boot_params;
 
 	eh = (Elf32_Ehdr *)kstart;
 	ssym = 0;
@@ -555,6 +551,12 @@ load_kernel(unsigned int kstart, unsigned int curaddr,unsigned int func_end,
 	if (!d)
 		return ((void *)lastaddr);
 
+	/*
+	 * Now the stack is fixed, copy boot params
+	 * before it's overrided
+	 */
+	memcpy(&local_boot_params, &s_boot_params, sizeof(local_boot_params));
+
 	j = eh->e_phnum;
 	for (i = 0; i < j; i++) {
 		volatile char c;
@@ -604,7 +606,10 @@ load_kernel(unsigned int kstart, unsigned int curaddr,unsigned int func_end,
 	    "mcr p15, 0, %0, c1, c0, 0\n" /* CP15_SCTLR(%0)*/
 	    : "=r" (ssym));
 	/* Jump to the entry point. */
-	((void(*)(void))(entry_point - KERNVIRTADDR + curaddr))();
+	((void(*)(unsigned, unsigned, unsigned, unsigned))
+	(entry_point - KERNVIRTADDR + curaddr))
+	(local_boot_params.abp_r0, local_boot_params.abp_r1,
+	local_boot_params.abp_r2, local_boot_params.abp_r3);
 	__asm __volatile(".globl func_end\n"
 	    "func_end:");
 

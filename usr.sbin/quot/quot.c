@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-4-Clause
+ *
  * Copyright (C) 1991, 1994 Wolfgang Solfrank.
  * Copyright (C) 1991, 1994 TooLs GmbH.
  * All rights reserved.
@@ -170,7 +172,7 @@ static int virtualblocks(struct fs *super, union dinode *dp)
 
 	sz = DIP(super, dp, di_size);
 #ifdef	COMPAT
-	if (lblkno(super,sz) >= NDADDR) {
+	if (lblkno(super,sz) >= UFS_NDADDR) {
 		nblk = blkroundup(super,sz);
 		if (sz == nblk)
 			nblk += super->fs_bsize;
@@ -180,10 +182,10 @@ static int virtualblocks(struct fs *super, union dinode *dp)
 
 #else	/* COMPAT */
 
-	if (lblkno(super,sz) >= NDADDR) {
+	if (lblkno(super,sz) >= UFS_NDADDR) {
 		nblk = blkroundup(super,sz);
 		sz = lblkno(super,nblk);
-		sz = (sz - NDADDR + NINDIR(super) - 1) / NINDIR(super);
+		sz = (sz - UFS_NDADDR + NINDIR(super) - 1) / NINDIR(super);
 		while (sz > 0) {
 			nblk += sz * super->fs_bsize;
 			/* sz - 1 rounded up */

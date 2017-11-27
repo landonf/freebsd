@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2001-2007, by Cisco Systems, Inc. All rights reserved.
  * Copyright (c) 2008-2012, by Randall Stewart. All rights reserved.
  * Copyright (c) 2008-2012, by Michael Tuexen. All rights reserved.
@@ -147,7 +149,6 @@ struct sctp_extrcvinfo {
 	uint16_t sinfo_keynumber_valid;
 	uint8_t __reserve_pad[SCTP_ALIGN_RESV_PAD_SHORT];
 };
-
 #define sinfo_pr_value sinfo_timetolive
 #define sreinfo_next_flags serinfo_next_flags
 #define sreinfo_next_stream serinfo_next_stream
@@ -259,7 +260,8 @@ struct sctp_snd_all_completes {
 /* The lower four bits is an enumeration of PR-SCTP policies */
 #define SCTP_PR_SCTP_NONE 0x0000/* Reliable transfer */
 #define SCTP_PR_SCTP_TTL  0x0001/* Time based PR-SCTP */
-#define SCTP_PR_SCTP_BUF  0x0002/* Buffer based PR-SCTP */
+#define SCTP_PR_SCTP_PRIO 0x0002/* Buffer based PR-SCTP */
+#define SCTP_PR_SCTP_BUF  SCTP_PR_SCTP_PRIO	/* For backwards compatibility */
 #define SCTP_PR_SCTP_RTX  0x0003/* Number of retransmissions based PR-SCTP */
 #define SCTP_PR_SCTP_MAX  SCTP_PR_SCTP_RTX
 #define SCTP_PR_SCTP_ALL  0x000f/* Used for aggregated stats */
@@ -572,7 +574,6 @@ struct sctp_paddrparams {
 	uint16_t spp_pathmaxrxt;
 	uint8_t spp_dscp;
 };
-
 #define spp_ipv4_tos spp_dscp
 
 #define SPP_HB_ENABLE		0x00000001
@@ -1240,7 +1241,9 @@ struct xsctp_raddr {
 	uint32_t rtt;
 	uint32_t heartbeat_interval;
 	uint32_t ssthresh;
-	uint32_t extra_padding[30];	/* future */
+	uint16_t encaps_port;
+	uint16_t state;
+	uint32_t extra_padding[29];	/* future */
 };
 
 #define SCTP_MAX_LOGGING_SIZE 30000
@@ -1283,7 +1286,6 @@ sctp_sorecvmsg(struct socket *so,
     int *msg_flags,
     struct sctp_sndrcvinfo *sinfo,
     int filling_sinfo);
-
 #endif
 
 /*

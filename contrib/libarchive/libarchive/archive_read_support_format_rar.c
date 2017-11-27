@@ -647,13 +647,12 @@ archive_read_support_format_rar(struct archive *_a)
   archive_check_magic(_a, ARCHIVE_READ_MAGIC, ARCHIVE_STATE_NEW,
                       "archive_read_support_format_rar");
 
-  rar = (struct rar *)malloc(sizeof(*rar));
+  rar = (struct rar *)calloc(sizeof(*rar), 1);
   if (rar == NULL)
   {
     archive_set_error(&a->archive, ENOMEM, "Can't allocate rar data");
     return (ARCHIVE_FATAL);
   }
-  memset(rar, 0, sizeof(*rar));
 
 	/*
 	 * Until enough data has been read, we cannot tell about
@@ -907,7 +906,7 @@ archive_read_format_rar_read_header(struct archive_read *a,
                             sizeof(rar->reserved2));
       }
 
-      /* Main header is password encrytped, so we cannot read any
+      /* Main header is password encrypted, so we cannot read any
          file names or any other info about files from the header. */
       if (rar->main_flags & MHD_PASSWORD)
       {
@@ -1497,7 +1496,11 @@ read_header(struct archive_read *a, struct archive_entry *entry,
         return (ARCHIVE_FATAL);
       }
       filename[filename_size++] = '\0';
-      filename[filename_size++] = '\0';
+      /*
+       * Do not increment filename_size here as the computations below
+       * add the space for the terminating NUL explicitly.
+       */
+      filename[filename_size] = '\0';
 
       /* Decoded unicode form is UTF-16BE, so we have to update a string
        * conversion object for it. */
@@ -1751,7 +1754,7 @@ read_exttime(const char *p, struct rar *rar, const char *endp)
         return (-1);
       for (j = 0; j < count; j++)
       {
-        rem = ((*p) << 16) | (rem >> 8);
+        rem = (((unsigned)(unsigned char)*p) << 16) | (rem >> 8);
         p++;
       }
       tm = localtime(&t);

@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2007 Yahoo!, Inc.
  * All rights reserved.
  * Written by: John Baldwin <jhb@FreeBSD.org>
@@ -529,10 +531,13 @@ cap_express(int fd, struct pci_conf *p, uint8_t ptr)
 	if (cap & PCIEM_SLOT_CAP_APB)
 		printf(" Attn Button");
 	if (cap & PCIEM_SLOT_CAP_PCP)
-		printf(" PC(%s)", ctl & PCIEM_SLOT_CTL_PCC ? "on" : "off");
+		printf(" PC(%s)", ctl & PCIEM_SLOT_CTL_PCC ? "off" : "on");
 	if (cap & PCIEM_SLOT_CAP_MRLSP)
 		printf(" MRL(%s)", sta & PCIEM_SLOT_STA_MRLSS ? "open" :
 		    "closed");
+	if (cap & PCIEM_SLOT_CAP_EIP)
+		printf(" EI(%s)", sta & PCIEM_SLOT_STA_EIS ? "engaged" :
+		    "disengaged");
 }
 
 static void

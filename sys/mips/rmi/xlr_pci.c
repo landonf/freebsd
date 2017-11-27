@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2003-2009 RMI Corporation
  * All rights reserved.
  *
@@ -60,6 +62,7 @@ __FBSDID("$FreeBSD$");
 #include <mips/rmi/pcibus.h>
 
 #include "pcib_if.h"
+#include <dev/pci/pcib_private.h>
 
 #define pci_cfg_offset(bus,slot,devfn,where) (((bus)<<16) + ((slot) << 11)+((devfn)<<8)+(where))
 #define PCIE_LINK_STATE    0x4000
@@ -638,6 +641,7 @@ static device_method_t xlr_pcib_methods[] = {
 	DEVMETHOD(pcib_read_config, xlr_pcib_read_config),
 	DEVMETHOD(pcib_write_config, xlr_pcib_write_config),
 	DEVMETHOD(pcib_route_interrupt, mips_pci_route_interrupt),
+	DEVMETHOD(pcib_request_feature,	pcib_request_feature_allow),
 
 	DEVMETHOD(pcib_alloc_msi, xlr_alloc_msi),
 	DEVMETHOD(pcib_release_msi, xlr_release_msi),

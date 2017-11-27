@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-4-Clause
+ *
  * Copyright (c) 1995 Terrence R. Lambert
  * All rights reserved.
  *
@@ -99,7 +101,7 @@ void mi_startup(void);				/* Should be elsewhere */
 static struct session session0;
 static struct pgrp pgrp0;
 struct	proc proc0;
-struct thread0_storage thread0_st __aligned(16);
+struct thread0_storage thread0_st __aligned(32);
 struct	vmspace vmspace0;
 struct	proc *initproc;
 
@@ -135,6 +137,11 @@ SYSINIT(placeholder, SI_SUB_DUMMY, SI_ORDER_ANY, NULL, NULL);
 SET_DECLARE(sysinit_set, struct sysinit);
 struct sysinit **sysinit, **sysinit_end;
 struct sysinit **newsysinit, **newsysinit_end;
+
+EVENTHANDLER_LIST_DECLARE(process_init);
+EVENTHANDLER_LIST_DECLARE(thread_init);
+EVENTHANDLER_LIST_DECLARE(process_ctor);
+EVENTHANDLER_LIST_DECLARE(thread_ctor);
 
 /*
  * Merge a new sysinit set into the current set, reallocating it if
@@ -204,9 +211,9 @@ void
 mi_startup(void)
 {
 
-	register struct sysinit **sipp;		/* system initialization*/
-	register struct sysinit **xipp;		/* interior loop of sort*/
-	register struct sysinit *save;		/* bubble*/
+	struct sysinit **sipp;	/* system initialization*/
+	struct sysinit **xipp;	/* interior loop of sort*/
+	struct sysinit *save;	/* bubble*/
 
 #if defined(VERBOSE_SYSINIT)
 	int last;
@@ -316,15 +323,6 @@ restart:
 	/* NOTREACHED*/
 }
 
-
-/*
- ***************************************************************************
- ****
- **** The following SYSINIT's belong elsewhere, but have not yet
- **** been moved.
- ****
- ***************************************************************************
- */
 static void
 print_caddr_t(void *data)
 {
@@ -369,8 +367,7 @@ SYSINIT(diagwarn2, SI_SUB_LAST, SI_ORDER_THIRD + 2,
 #endif
 
 static int
-null_fetch_syscall_args(struct thread *td __unused,
-    struct syscall_args *sa __unused)
+null_fetch_syscall_args(struct thread *td __unused)
 {
 
 	panic("null_fetch_syscall_args");
@@ -418,17 +415,10 @@ struct sysentvec null_sysvec = {
 };
 
 /*
- ***************************************************************************
- ****
- **** The two following SYSINIT's are proc0 specific glue code.  I am not
- **** convinced that they can not be safely combined, but their order of
- **** operation has been maintained as the same as the original init_main.c
- **** for right now.
- ****
- **** These probably belong in init_proc.c or kern_proc.c, since they
- **** deal with proc0 (the fork template process).
- ****
- ***************************************************************************
+ * The two following SYSINIT's are proc0 specific glue code.  I am not
+ * convinced that they can not be safely combined, but their order of
+ * operation has been maintained as the same as the original init_main.c
+ * for right now.
  */
 /* ARGSUSED*/
 static void
@@ -437,6 +427,10 @@ proc0_init(void *dummy __unused)
 	struct proc *p;
 	struct thread *td;
 	struct ucred *newcred;
+	struct uidinfo tmpuinfo;
+	struct loginclass tmplc = {
+		.lc_name = "",
+	};
 	vm_paddr_t pageablemem;
 	int i;
 
@@ -482,7 +476,7 @@ proc0_init(void *dummy __unused)
 	p->p_flag = P_SYSTEM | P_INMEM | P_KPROC;
 	p->p_flag2 = 0;
 	p->p_state = PRS_NORMAL;
-	knlist_init_mtx(&p->p_klist, &p->p_mtx);
+	p->p_klist = knlist_alloc(&p->p_mtx);
 	STAILQ_INIT(&p->p_ktr);
 	p->p_nice = NZERO;
 	/* pid_max cannot be greater than PID_MAX */
@@ -495,7 +489,7 @@ proc0_init(void *dummy __unused)
 	td->td_lend_user_pri = PRI_MAX;
 	td->td_priority = PVM;
 	td->td_base_pri = PVM;
-	td->td_oncpu = 0;
+	td->td_oncpu = curcpu;
 	td->td_flags = TDF_INMEM;
 	td->td_pflags = TDP_KTHREAD;
 	td->td_cpuset = cpuset_thread0();
@@ -519,10 +513,17 @@ proc0_init(void *dummy __unused)
 	/* Create credentials. */
 	newcred = crget();
 	newcred->cr_ngroups = 1;	/* group 0 */
+	/* A hack to prevent uifind from tripping over NULL pointers. */
+	curthread->td_ucred = newcred;
+	tmpuinfo.ui_uid = 1;
+	newcred->cr_uidinfo = newcred->cr_ruidinfo = &tmpuinfo;
 	newcred->cr_uidinfo = uifind(0);
 	newcred->cr_ruidinfo = uifind(0);
-	newcred->cr_prison = &prison0;
+	newcred->cr_loginclass = &tmplc;
 	newcred->cr_loginclass = loginclass_find("default");
+	/* End hack. creds get properly set later with thread_cow_get_proc */
+	curthread->td_ucred = NULL;
+	newcred->cr_prison = &prison0;
 	proc_set_cred_init(p, newcred);
 #ifdef AUDIT
 	audit_cred_kproc0(newcred);
@@ -586,10 +587,10 @@ proc0_init(void *dummy __unused)
 	 * Call the init and ctor for the new thread and proc.  We wait
 	 * to do this until all other structures are fairly sane.
 	 */
-	EVENTHANDLER_INVOKE(process_init, p);
-	EVENTHANDLER_INVOKE(thread_init, td);
-	EVENTHANDLER_INVOKE(process_ctor, p);
-	EVENTHANDLER_INVOKE(thread_ctor, td);
+	EVENTHANDLER_DIRECT_INVOKE(process_init, p);
+	EVENTHANDLER_DIRECT_INVOKE(thread_init, td);
+	EVENTHANDLER_DIRECT_INVOKE(process_ctor, p);
+	EVENTHANDLER_DIRECT_INVOKE(thread_ctor, td);
 
 	/*
 	 * Charge root for one process.
@@ -658,16 +659,6 @@ SYSINIT(random, SI_SUB_RANDOM, SI_ORDER_FIRST, random_init, NULL);
  ****
  **** The following SYSINIT's and glue code should be moved to the
  **** respective files on a per subsystem basis.
- ****
- ***************************************************************************
- */
-
-
-/*
- ***************************************************************************
- ****
- **** The following code probably belongs in another file, like
- **** kern/init_init.c.
  ****
  ***************************************************************************
  */
@@ -806,7 +797,7 @@ start_init(void *dummy)
 		 * Otherwise, return via fork_trampoline() all the way
 		 * to user mode as init!
 		 */
-		if ((error = sys_execve(td, &args)) == 0) {
+		if ((error = sys_execve(td, &args)) == EJUSTRETURN) {
 			mtx_unlock(&Giant);
 			return;
 		}
@@ -819,7 +810,7 @@ start_init(void *dummy)
 }
 
 /*
- * Like kproc_create(), but runs in it's own address space.
+ * Like kproc_create(), but runs in its own address space.
  * We do this early to reserve pid 1.
  *
  * Note special case - do not make it runnable yet.  Other work

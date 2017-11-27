@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /include/ "skeleton.dtsi"
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/gpio/gpio.h>
@@ -27,7 +28,7 @@
 	       i2c0 = &i2c0;
 	};
 
-	mbus {
+	mbus@f1000000 {
 		compatible = "marvell,kirkwood-mbus", "simple-bus";
 		#address-cells = <2>;
 		#size-cells = <1>;
@@ -381,7 +382,7 @@
 
 		audio0: audio-controller@a0000 {
 			compatible = "marvell,kirkwood-audio";
-			#sound-dai-cells = <0>;
+			#sound-dai-cells = <1>;
 			reg = <0xa0000 0x2210>;
 			interrupts = <24>;
 			clocks = <&gate_clk 9>;

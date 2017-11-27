@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2011 The FreeBSD Foundation
  * Copyright (c) 2013 Ruslan Bukin <br@bsdpad.com>
  * All rights reserved.
@@ -57,12 +59,11 @@ __FBSDID("$FreeBSD$");
 #include <machine/intr.h>
 #include <machine/md_var.h>
 
-#ifdef MULTIDELAY
+#if defined(__arm__)
 #include <machine/machdep.h> /* For arm_set_delay */
 #endif
 
 #ifdef FDT
-#include <dev/fdt/fdt_common.h>
 #include <dev/ofw/openfirm.h>
 #include <dev/ofw/ofw_bus.h>
 #include <dev/ofw/ofw_bus_subr.h>
@@ -105,6 +106,10 @@ static struct resource_spec timer_spec[] = {
 	{ -1, 0 }
 };
 
+static uint32_t arm_tmr_fill_vdso_timehands(struct vdso_timehands *vdso_th,
+    struct timecounter *tc);
+static void arm_tmr_do_delay(int usec, void *);
+
 static timecounter_get_t arm_tmr_get_timecount;
 
 static struct timecounter arm_tmr_timecount = {
@@ -114,6 +119,7 @@ static struct timecounter arm_tmr_timecount = {
 	.tc_counter_mask   = ~0u,
 	.tc_frequency      = 0,
 	.tc_quality        = 1000,
+	.tc_fill_vdso_timehands = arm_tmr_fill_vdso_timehands,
 };
 
 #ifdef __arm__
@@ -128,17 +134,13 @@ static struct timecounter arm_tmr_timecount = {
 #define	set_el1(x, val)	WRITE_SPECIALREG(x ##_el1, val)
 #endif
 
-static uint32_t arm_tmr_fill_vdso_timehands(struct vdso_timehands *vdso_th,
-    struct timecounter *tc);
-static void arm_tmr_do_delay(int usec, void *);
-
 static int
 get_freq(void)
 {
 	return (get_el0(cntfrq));
 }
 
-static long
+static uint64_t
 get_cntxct(bool physical)
 {
 	uint64_t val;
@@ -249,17 +251,23 @@ arm_tmr_start(struct eventtimer *et, sbintime_t first,
 
 }
 
+static void
+arm_tmr_disable(bool physical)
+{
+	int ctrl;
+
+	ctrl = get_ctrl(physical);
+	ctrl &= ~GT_CTRL_ENABLE;
+	set_ctrl(ctrl, physical);
+}
+
 static int
 arm_tmr_stop(struct eventtimer *et)
 {
 	struct arm_tmr_softc *sc;
-	int ctrl;
 
 	sc = (struct arm_tmr_softc *)et->et_priv;
-
-	ctrl = get_ctrl(sc->physical);
-	ctrl &= GT_CTRL_ENABLE;
-	set_ctrl(ctrl, sc->physical);
+	arm_tmr_disable(sc->physical);
 
 	return (0);
 }
@@ -412,7 +420,12 @@ arm_tmr_attach(device_t dev)
 		}
 	}
 
-	arm_cpu_fill_vdso_timehands = arm_tmr_fill_vdso_timehands;
+	/* Disable the virtual timer until we are ready */
+	if (sc->res[2] != NULL)
+		arm_tmr_disable(false);
+	/* And the physical */
+	if (sc->physical)
+		arm_tmr_disable(true);
 
 	arm_tmr_timecount.tc_frequency = sc->clkfreq;
 	tc_init(&arm_tmr_timecount);
@@ -429,7 +442,7 @@ arm_tmr_attach(device_t dev)
 	sc->et.et_priv = sc;
 	et_register(&sc->et);
 
-#ifdef MULTIDELAY
+#if defined(__arm__)
 	arm_set_delay(arm_tmr_do_delay, sc);
 #endif
 
@@ -507,7 +520,7 @@ arm_tmr_do_delay(int usec, void *arg)
 	}
 }
 
-#ifndef MULTIDELAY
+#if defined(__aarch64__)
 void
 DELAY(int usec)
 {
@@ -535,7 +548,8 @@ arm_tmr_fill_vdso_timehands(struct vdso_timehands *vdso_th,
     struct timecounter *tc)
 {
 
+	vdso_th->th_algo = VDSO_TH_ALGO_ARM_GENTIM;
 	vdso_th->th_physical = arm_tmr_sc->physical;
 	bzero(vdso_th->th_res, sizeof(vdso_th->th_res));
-	return (tc == &arm_tmr_timecount);
+	return (1);
 }

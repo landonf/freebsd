@@ -1,4 +1,6 @@
 /*
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2009 Robert N. M. Watson
  * All rights reserved.
  *
@@ -25,7 +27,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -273,6 +275,24 @@ dumpfs(const char *name)
 	fsflags &= ~(FS_UNCLEAN | FS_DOSOFTDEP | FS_NEEDSFSCK | FS_INDEXDIRS |
 		     FS_ACLS | FS_MULTILABEL | FS_GJOURNAL | FS_FLAGS_UPDATED |
 		     FS_NFS4ACLS | FS_SUJ | FS_TRIM);
+	if (fsflags != 0)
+		printf("unknown flags (%#x)", fsflags);
+	putchar('\n');
+	printf("check hashes\t");
+	fsflags = afs.fs_metackhash;
+	if (fsflags == 0)
+		printf("none");
+	if (fsflags & CK_SUPERBLOCK)
+		printf("superblock ");
+	if (fsflags & CK_CYLGRP)
+		printf("cylinder-groups ");
+	if (fsflags & CK_INODE)
+		printf("inodes ");
+	if (fsflags & CK_INDIR)
+		printf("indirect-blocks ");
+	if (fsflags & CK_DIR)
+		printf("directories ");
+	fsflags &= ~(CK_SUPERBLOCK | CK_CYLGRP | CK_INODE | CK_INDIR | CK_DIR);
 	if (fsflags != 0)
 		printf("unknown flags (%#x)", fsflags);
 	putchar('\n');

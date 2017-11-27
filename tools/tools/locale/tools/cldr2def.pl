@@ -201,12 +201,12 @@ sub callback_ampm {
 	my $s = shift;
 	my $nl = $callback{data}{l} . "_" . $callback{data}{c};
 	my $enc = $callback{data}{e};
-	my  $converter = Text::Iconv->new("utf-8", "$enc");
 
 	if ($nl eq 'ru_RU') {
 		if ($enc eq 'UTF-8') {
 			$s = 'дп;пп';
 		} else {
+			my  $converter = Text::Iconv->new("utf-8", "$enc");
 			$s = $converter->convert("дп;пп");
 		}
 	}
@@ -217,9 +217,13 @@ sub callback_cformat {
 	my $s = shift;
 	my $nl = $callback{data}{l} . "_" . $callback{data}{c};
 
+	if ($nl eq 'ko_KR') {
+		$s =~ s/(> )(%p)/$1%A $2/;
+	}
 	$s =~ s/\.,/\./;
 	$s =~ s/ %Z//;
 	$s =~ s/ %z//;
+	$s =~ s/^"%e\./%A %e/;
 	$s =~ s/^"(%B %e, )/"%A, $1/;
 	$s =~ s/^"(%e %B )/"%A $1/;
 	return $s;
@@ -239,8 +243,14 @@ sub callback_dtformat {
 
 	if ($nl eq 'ja_JP') {
 		$s =~ s/(> )(%H)/$1%A $2/;
+	} elsif ($nl eq 'ko_KR' || $nl eq 'zh_CN' || $nl eq 'zh_TW') {
+		if ($nl ne 'ko_KR') {
+			$s =~ s/%m/%_m/;
+		}
+		$s =~ s/(> )(%p)/$1%A $2/;
 	}
 	$s =~ s/\.,/\./;
+	$s =~ s/^"%e\./%A %e/;
 	$s =~ s/^"(%B %e, )/"%A, $1/;
 	$s =~ s/^"(%e %B )/"%A $1/;
 	return $s;
@@ -848,7 +858,7 @@ sub make_makefile {
 	my $MAPLOC;
 	if ($TYPE eq "colldef") {
 		$SRCOUT = "localedef -D -U -i \${.IMPSRC} \\\n" .
-			"\t-f \${MAPLOC}/map.\${.TARGET:T:R:E} " .
+			"\t-f \${MAPLOC}/map.\${.TARGET:T:R:E:C/@.*//} " .
 			"\${.OBJDIR}/\${.IMPSRC:T:R}";
 		$MAPLOC = "MAPLOC=\t\t\${.CURDIR}/../../tools/tools/" .
 				"locale/etc/final-maps\n";
@@ -859,7 +869,7 @@ sub make_makefile {
 			"FILESDIR_\$t.LC_COLLATE=\t\${LOCALEDIR}/\$t\n" .
 			"\$t.LC_COLLATE: \${.CURDIR}/\$f.src\n" .
 			"\tlocaledef -D -U -i \${.ALLSRC} \\\n" .
-			"\t\t-f \${MAPLOC}/map.\${.TARGET:T:R:E} \\\n" .
+			"\t\t-f \${MAPLOC}/map.\${.TARGET:T:R:E:C/@.*//} \\\n" .
 			"\t\t\${.OBJDIR}/\${.TARGET:T:R}\n" .
 			".endfor\n\n";
 		$SRCOUT4 = "## LOCALES_MAPPED\n";

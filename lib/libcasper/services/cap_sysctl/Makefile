@@ -1,18 +1,27 @@
 # $FreeBSD$
 
+SHLIBDIR?=	/lib/casper
+
+.include <src.opts.mk>
+
 PACKAGE=libcasper
-LIB=	cap_sysctl
 
 SHLIB_MAJOR=	0
-SHLIBDIR?=	/lib/casper
 INCSDIR?=	${INCLUDEDIR}/casper
 
+.if ${MK_CASPER} != "no"
+SHLIB=	cap_sysctl
+
 SRCS=	cap_sysctl.c
+.endif
 
 INCS=	cap_sysctl.h
 
 LIBADD=	nv
 
 CFLAGS+=-I${.CURDIR}
+
+HAS_TESTS=
+SUBDIR.${MK_TESTS}+= tests
 
 .include <bsd.lib.mk>

@@ -92,6 +92,7 @@ mlx5e_ethtool_handler(SYSCTL_HANDLER_ARGS)
 {
 	struct mlx5e_priv *priv = arg1;
 	uint64_t value;
+	int mode_modify;
 	int was_opened;
 	int error;
 
@@ -114,6 +115,7 @@ mlx5e_ethtool_handler(SYSCTL_HANDLER_ARGS)
 		goto done;
 	}
 	was_opened = test_bit(MLX5E_STATE_OPENED, &priv->state);
+	mode_modify = MLX5_CAP_GEN(priv->mdev, cq_period_mode_modify);
 
 	switch (MLX5_PARAM_OFFSET(arg[arg2])) {
 	case MLX5_PARAM_OFFSET(rx_coalesce_usecs):
@@ -266,7 +268,7 @@ mlx5e_ethtool_handler(SYSCTL_HANDLER_ARGS)
 
 	case MLX5_PARAM_OFFSET(rx_coalesce_mode):
 		/* network interface must be down */
-		if (was_opened)
+		if (was_opened != 0 && mode_modify == 0)
 			mlx5e_close_locked(priv->ifp);
 
 		/* import RX coalesce mode */
@@ -276,13 +278,17 @@ mlx5e_ethtool_handler(SYSCTL_HANDLER_ARGS)
 		    priv->params_ethtool.rx_coalesce_mode;
 
 		/* restart network interface, if any */
-		if (was_opened)
-			mlx5e_open_locked(priv->ifp);
+		if (was_opened != 0) {
+			if (mode_modify == 0)
+				mlx5e_open_locked(priv->ifp);
+			else
+				error = mlx5e_refresh_channel_params(priv);
+		}
 		break;
 
 	case MLX5_PARAM_OFFSET(tx_coalesce_mode):
 		/* network interface must be down */
-		if (was_opened)
+		if (was_opened != 0 && mode_modify == 0)
 			mlx5e_close_locked(priv->ifp);
 
 		/* import TX coalesce mode */
@@ -292,8 +298,12 @@ mlx5e_ethtool_handler(SYSCTL_HANDLER_ARGS)
 		    priv->params_ethtool.tx_coalesce_mode;
 
 		/* restart network interface, if any */
-		if (was_opened)
-			mlx5e_open_locked(priv->ifp);
+		if (was_opened != 0) {
+			if (mode_modify == 0)
+				mlx5e_open_locked(priv->ifp);
+			else
+				error = mlx5e_refresh_channel_params(priv);
+		}
 		break;
 
 	case MLX5_PARAM_OFFSET(hw_lro):
@@ -342,6 +352,18 @@ mlx5e_ethtool_handler(SYSCTL_HANDLER_ARGS)
 			mlx5e_open_locked(priv->ifp);
 		break;
 
+	case MLX5_PARAM_OFFSET(tx_bufring_disable):
+		/* rangecheck input value */
+		priv->params_ethtool.tx_bufring_disable =
+		    priv->params_ethtool.tx_bufring_disable ? 1 : 0;
+
+		/* reconfigure the sendqueues, if any */
+		if (was_opened) {
+			mlx5e_close_locked(priv->ifp);
+			mlx5e_open_locked(priv->ifp);
+		}
+		break;
+
 	case MLX5_PARAM_OFFSET(tx_completion_fact):
 		/* network interface must be down */
 		if (was_opened)
@@ -353,6 +375,74 @@ mlx5e_ethtool_handler(SYSCTL_HANDLER_ARGS)
 		/* restart network interface, if any */
 		if (was_opened)
 			mlx5e_open_locked(priv->ifp);
+		break;
+
+	case MLX5_PARAM_OFFSET(modify_tx_dma):
+		/* check if network interface is opened */
+		if (was_opened) {
+			priv->params_ethtool.modify_tx_dma =
+			    priv->params_ethtool.modify_tx_dma ? 1 : 0;
+			/* modify tx according to value */
+			mlx5e_modify_tx_dma(priv, value != 0);
+		} else {
+			/* if closed force enable tx */
+			priv->params_ethtool.modify_tx_dma = 0;
+		}
+		break;
+
+	case MLX5_PARAM_OFFSET(modify_rx_dma):
+		/* check if network interface is opened */
+		if (was_opened) {
+			priv->params_ethtool.modify_rx_dma =
+			    priv->params_ethtool.modify_rx_dma ? 1 : 0;
+			/* modify rx according to value */
+			mlx5e_modify_rx_dma(priv, value != 0);
+		} else {
+			/* if closed force enable rx */
+			priv->params_ethtool.modify_rx_dma = 0;
+		}
+		break;
+
+	case MLX5_PARAM_OFFSET(diag_pci_enable):
+		priv->params_ethtool.diag_pci_enable =
+		    priv->params_ethtool.diag_pci_enable ? 1 : 0;
+
+		error = -mlx5_core_set_diagnostics_full(priv->mdev,
+		    priv->params_ethtool.diag_pci_enable,
+		    priv->params_ethtool.diag_general_enable);
+		break;
+
+	case MLX5_PARAM_OFFSET(diag_general_enable):
+		priv->params_ethtool.diag_general_enable =
+		    priv->params_ethtool.diag_general_enable ? 1 : 0;
+
+		error = -mlx5_core_set_diagnostics_full(priv->mdev,
+		    priv->params_ethtool.diag_pci_enable,
+		    priv->params_ethtool.diag_general_enable);
+		break;
+
+	case MLX5_PARAM_OFFSET(mc_local_lb):
+		priv->params_ethtool.mc_local_lb =
+		    priv->params_ethtool.mc_local_lb ? 1 : 0;
+
+		if (MLX5_CAP_GEN(priv->mdev, disable_local_lb)) {
+			error = mlx5_nic_vport_modify_local_lb(priv->mdev,
+			    MLX5_LOCAL_MC_LB, priv->params_ethtool.mc_local_lb);
+		} else {
+			error = EOPNOTSUPP;
+		}
+		break;
+
+	case MLX5_PARAM_OFFSET(uc_local_lb):
+		priv->params_ethtool.uc_local_lb =
+		    priv->params_ethtool.uc_local_lb ? 1 : 0;
+
+		if (MLX5_CAP_GEN(priv->mdev, disable_local_lb)) {
+			error = mlx5_nic_vport_modify_local_lb(priv->mdev,
+			    MLX5_LOCAL_UC_LB, priv->params_ethtool.uc_local_lb);
+		} else {
+			error = EOPNOTSUPP;
+		}
 		break;
 
 	default:
@@ -602,6 +692,45 @@ mlx5e_ethtool_debug_stats(SYSCTL_HANDLER_ARGS)
 	return (error);
 }
 
+static void
+mlx5e_create_diagnostics(struct mlx5e_priv *priv)
+{
+	struct mlx5_core_diagnostics_entry entry;
+	struct sysctl_ctx_list *ctx;
+	struct sysctl_oid *node;
+	int x;
+
+	/* sysctl context we are using */
+	ctx = &priv->sysctl_ctx;
+
+	/* create root node */
+	node = SYSCTL_ADD_NODE(ctx,
+	    SYSCTL_CHILDREN(priv->sysctl_ifnet), OID_AUTO,
+	    "diagnostics", CTLFLAG_RD, NULL, "Diagnostics");
+	if (node == NULL)
+		return;
+
+	/* create PCI diagnostics */
+	for (x = 0; x != MLX5_CORE_PCI_DIAGNOSTICS_NUM; x++) {
+		entry = mlx5_core_pci_diagnostics_table[x];
+		if (mlx5_core_supports_diagnostics(priv->mdev, entry.counter_id) == 0)
+			continue;
+		SYSCTL_ADD_UQUAD(ctx, SYSCTL_CHILDREN(node), OID_AUTO,
+		    entry.desc, CTLFLAG_RD, priv->params_pci.array + x,
+		    "PCI diagnostics counter");
+	}
+
+	/* create general diagnostics */
+	for (x = 0; x != MLX5_CORE_GENERAL_DIAGNOSTICS_NUM; x++) {
+		entry = mlx5_core_general_diagnostics_table[x];
+		if (mlx5_core_supports_diagnostics(priv->mdev, entry.counter_id) == 0)
+			continue;
+		SYSCTL_ADD_UQUAD(ctx, SYSCTL_CHILDREN(node), OID_AUTO,
+		    entry.desc, CTLFLAG_RD, priv->params_general.array + x,
+		    "General diagnostics counter");
+	}
+}
+
 void
 mlx5e_create_ethtool(struct mlx5e_priv *priv)
 {
@@ -627,6 +756,20 @@ mlx5e_create_ethtool(struct mlx5e_priv *priv)
 	priv->params_ethtool.cqe_zipping = priv->params.cqe_zipping_en;
 	mlx5e_ethtool_sync_tx_completion_fact(priv);
 
+	/* get default values for local loopback, if any */
+	if (MLX5_CAP_GEN(priv->mdev, disable_local_lb)) {
+		int err;
+		u8 val;
+
+		err = mlx5_nic_vport_query_local_lb(priv->mdev, MLX5_LOCAL_MC_LB, &val);
+		if (err == 0)
+			priv->params_ethtool.mc_local_lb = val;
+
+		err = mlx5_nic_vport_query_local_lb(priv->mdev, MLX5_LOCAL_UC_LB, &val);
+		if (err == 0)
+			priv->params_ethtool.uc_local_lb = val;
+	}
+
 	/* create root node */
 	node = SYSCTL_ADD_NODE(&priv->sysctl_ctx,
 	    SYSCTL_CHILDREN(priv->sysctl_ifnet), OID_AUTO,
@@ -635,7 +778,8 @@ mlx5e_create_ethtool(struct mlx5e_priv *priv)
 		return;
 	for (x = 0; x != MLX5E_PARAMS_NUM; x++) {
 		/* check for read-only parameter */
-		if (strstr(mlx5e_params_desc[2 * x], "_max") != NULL) {
+		if (strstr(mlx5e_params_desc[2 * x], "_max") != NULL ||
+		    strstr(mlx5e_params_desc[2 * x], "_mtu") != NULL) {
 			SYSCTL_ADD_PROC(&priv->sysctl_ctx, SYSCTL_CHILDREN(node), OID_AUTO,
 			    mlx5e_params_desc[2 * x], CTLTYPE_U64 | CTLFLAG_RD |
 			    CTLFLAG_MPSAFE, priv, x, &mlx5e_ethtool_handler, "QU",
@@ -683,4 +827,7 @@ mlx5e_create_ethtool(struct mlx5e_priv *priv)
 	SYSCTL_ADD_PROC(&priv->sysctl_ctx, SYSCTL_CHILDREN(node), OID_AUTO, "eeprom_info",
 	    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, priv, 0,
 	    mlx5e_read_eeprom, "I", "EEPROM information");
+
+	/* Diagnostics support */
+	mlx5e_create_diagnostics(priv);
 }

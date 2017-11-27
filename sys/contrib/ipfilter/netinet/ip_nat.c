@@ -133,8 +133,6 @@ static const char rcsid[] = "@(#)$FreeBSD$";
 #define	NBUMPSIDEDF(y,x)do { softn->ipf_nat_stats.ns_side[y].x++; \
 			     DT1(x, fr_info_t *, fin); } while (0)
 
-frentry_t	ipfnatblock;
-
 static ipftuneable_t ipf_nat_tuneables[] = {
 	/* nat */
 	{ { (void *)offsetof(ipf_nat_softc_t, ipf_nat_lock) },
@@ -275,9 +273,6 @@ static	void	ipf_nat_tabmove __P((ipf_nat_softc_t *, nat_t *));
 int
 ipf_nat_main_load()
 {
-	bzero((char *)&ipfnatblock, sizeof(ipfnatblock));
-	ipfnatblock.fr_flags = FR_BLOCK|FR_QUICK;
-	ipfnatblock.fr_ref = 1;
 
 	return 0;
 }
@@ -1682,10 +1677,6 @@ ipf_nat_siocdelnat(softc, softn, n, getlock)
 	ipnat_t *n;
 	int getlock;
 {
-#ifdef IPF_NAT6
-	int i;
-#endif
-
 	if (getlock) {
 		WRITE_ENTER(&softc->ipf_nat);
 	}
@@ -4109,13 +4100,8 @@ ipf_nat_inlookup(fin, flags, p, src, mapdst)
 		dport = htons(fin->fin_data[1]);
 		break;
 	case IPPROTO_ICMP :
-		if (flags & IPN_ICMPERR) {
-			sport = fin->fin_data[1];
-			dport = 0;
-		} else {
-			dport = fin->fin_data[1];
-			sport = 0;
-		}
+		sport = 0;
+		dport = fin->fin_data[1];
 		break;
 	default :
 		sport = 0;
@@ -4435,8 +4421,6 @@ ipf_nat_outlookup(fin, flags, p, src, dst)
 
 	ifp = fin->fin_ifp;
 	sflags = flags & IPN_TCPUDPICMP;
-	sport = 0;
-	dport = 0;
 
 	switch (p)
 	{
@@ -4446,12 +4430,12 @@ ipf_nat_outlookup(fin, flags, p, src, dst)
 		dport = htons(fin->fin_data[1]);
 		break;
 	case IPPROTO_ICMP :
-		if (flags & IPN_ICMPERR)
-			sport = fin->fin_data[1];
-		else
-			dport = fin->fin_data[1];
+		sport = 0;
+		dport = fin->fin_data[1];
 		break;
 	default :
+		sport = 0;
+		dport = 0;
 		break;
 	}
 
@@ -4709,8 +4693,8 @@ ipf_nat_lookupredir(np)
 				}
 			}
 
-			np->nl_realip = nat->nat_ndstip;
-			np->nl_realport = nat->nat_ndport;
+			np->nl_realip = nat->nat_odstip;
+			np->nl_realport = nat->nat_odport;
 		}
  	}
 
@@ -6109,8 +6093,8 @@ ipf_nat_icmpquerytype(icmptype)
 	{
 	case ICMP_ECHOREPLY:
 	case ICMP_ECHO:
-	/* route aedvertisement/solliciation is currently unsupported: */
-	/* it would require rewriting the ICMP data section            */
+	/* route advertisement/solicitation is currently unsupported: */
+	/* it would require rewriting the ICMP data section          */
 	case ICMP_TSTAMP:
 	case ICMP_TSTAMPREPLY:
 	case ICMP_IREQ:

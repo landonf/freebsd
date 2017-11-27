@@ -8,7 +8,6 @@
 
 /dts-v1/;
 
-#include <dt-bindings/input/input.h>
 #include "imx6ul.dtsi"
 
 / {
@@ -21,6 +20,14 @@
 
 	memory {
 		reg = <0x80000000 0x20000000>;
+	};
+
+	backlight_display: backlight-display {
+		compatible = "pwm-backlight";
+		pwms = <&pwm1 0 5000000>;
+		brightness-levels = <0 4 8 16 32 64 128 255>;
+		default-brightness-level = <6>;
+		status = "okay";
 	};
 
 	regulators {
@@ -37,11 +44,70 @@
 			enable-active-high;
 		};
 	};
+
+	sound {
+		compatible = "simple-audio-card";
+		simple-audio-card,name = "mx6ul-wm8960";
+		simple-audio-card,format = "i2s";
+		simple-audio-card,bitclock-master = <&dailink_master>;
+		simple-audio-card,frame-master = <&dailink_master>;
+		simple-audio-card,widgets =
+			"Microphone", "Mic Jack",
+			"Line", "Line In",
+			"Line", "Line Out",
+			"Speaker", "Speaker",
+			"Headphone", "Headphone Jack";
+		simple-audio-card,routing =
+			"Headphone Jack", "HP_L",
+			"Headphone Jack", "HP_R",
+			"Speaker", "SPK_LP",
+			"Speaker", "SPK_LN",
+			"Speaker", "SPK_RP",
+			"Speaker", "SPK_RN",
+			"LINPUT1", "Mic Jack",
+			"LINPUT3", "Mic Jack",
+			"RINPUT1", "Mic Jack",
+			"RINPUT2", "Mic Jack";
+
+		simple-audio-card,cpu {
+			sound-dai = <&sai2>;
+		};
+
+		dailink_master: simple-audio-card,codec {
+			sound-dai = <&codec>;
+			clocks = <&clks IMX6UL_CLK_SAI2>;
+		};
+	};
+
+	panel {
+		compatible = "innolux,at043tn24";
+		backlight = <&backlight_display>;
+
+		port {
+			panel_in: endpoint {
+				remote-endpoint = <&display_out>;
+			};
+		};
+	};
 };
 
-&cpu0 {
-	arm-supply = <&reg_arm>;
-	soc-supply = <&reg_soc>;
+&clks {
+	assigned-clocks = <&clks IMX6UL_CLK_PLL4_AUDIO_DIV>;
+	assigned-clock-rates = <786432000>;
+};
+
+&i2c2 {
+	clock_frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c2>;
+	status = "okay";
+
+	codec: wm8960@1a {
+		#sound-dai-cells = <0>;
+		compatible = "wlf,wm8960";
+		reg = <0x1a>;
+		wlf,shared-lrclk;
+	};
 };
 
 &fec1 {
@@ -65,12 +131,38 @@
 
 		ethphy0: ethernet-phy@2 {
 			reg = <2>;
+			micrel,led-mode = <1>;
+			clocks = <&clks IMX6UL_CLK_ENET_REF>;
+			clock-names = "rmii-ref";
 		};
 
 		ethphy1: ethernet-phy@1 {
 			reg = <1>;
+			micrel,led-mode = <1>;
+			clocks = <&clks IMX6UL_CLK_ENET2_REF>;
+			clock-names = "rmii-ref";
 		};
 	};
+};
+
+
+&lcdif {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_lcdif_dat
+		     &pinctrl_lcdif_ctrl>;
+	status = "okay";
+
+	port {
+		display_out: endpoint {
+			remote-endpoint = <&panel_in>;
+		};
+	};
+};
+
+&pwm1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm1>;
+	status = "okay";
 };
 
 &qspi {
@@ -85,6 +177,17 @@
 		spi-max-frequency = <29000000>;
 		reg = <0>;
 	};
+};
+
+&sai2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_sai2>;
+	assigned-clocks = <&clks IMX6UL_CLK_SAI2_SEL>,
+			  <&clks IMX6UL_CLK_SAI2>;
+	assigned-clock-parents = <&clks IMX6UL_CLK_PLL4_AUDIO_DIV>;
+	assigned-clock-rates = <0>, <12288000>;
+	fsl,sai-mclk-direction-output;
+	status = "okay";
 };
 
 &snvs_poweroff {
@@ -109,12 +212,12 @@
 &uart2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart2>;
-	fsl,uart-has-rtscts;
+	uart-has-rtscts;
 	status = "okay";
 };
 
 &usbotg1 {
-	dr_mode = "peripheral";
+	dr_mode = "otg";
 	status = "okay";
 };
 
@@ -124,6 +227,14 @@
 	status = "okay";
 };
 
+&usbphy1 {
+	fsl,tx-d-cal = <106>;
+};
+
+&usbphy2 {
+	fsl,tx-d-cal = <106>;
+};
+
 &usdhc1 {
 	pinctrl-names = "default", "state_100mhz", "state_200mhz";
 	pinctrl-0 = <&pinctrl_usdhc1>;
@@ -131,7 +242,7 @@
 	pinctrl-2 = <&pinctrl_usdhc1_200mhz>;
 	cd-gpios = <&gpio1 19 GPIO_ACTIVE_LOW>;
 	keep-power-in-suspend;
-	enable-sdio-wakeup;
+	wakeup-source;
 	vmmc-supply = <&reg_sd1_vmmc>;
 	status = "okay";
 };
@@ -141,8 +252,14 @@
 	pinctrl-0 = <&pinctrl_usdhc2>;
 	no-1-8-v;
 	keep-power-in-suspend;
-	enable-sdio-wakeup;
+	wakeup-source;
 	status = "okay";
+};
+
+&wdog1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_wdog>;
+	fsl,ext-reset-output;
 };
 
 &iomuxc {
@@ -190,7 +307,6 @@
 			MX6UL_PAD_ENET2_TX_DATA0__ENET2_TDATA00	0x1b0b0
 			MX6UL_PAD_ENET2_TX_DATA1__ENET2_TDATA01	0x1b0b0
 			MX6UL_PAD_ENET2_TX_CLK__ENET2_REF_CLK2	0x4001b031
-			MX6UL_PAD_SNVS_TAMPER0__GPIO5_IO00	0x17059
 		>;
 	};
 
@@ -270,6 +386,17 @@
 			MX6UL_PAD_NAND_CE1_B__QSPI_A_DATA02	0x70a1
 			MX6UL_PAD_NAND_CLE__QSPI_A_DATA03	0x70a1
 			MX6UL_PAD_NAND_DQS__QSPI_A_SS0_B	0x70a1
+		>;
+	};
+
+	pinctrl_sai2: sai2grp {
+		fsl,pins = <
+			MX6UL_PAD_JTAG_TDI__SAI2_TX_BCLK	0x17088
+			MX6UL_PAD_JTAG_TDO__SAI2_TX_SYNC	0x17088
+			MX6UL_PAD_JTAG_TRST_B__SAI2_TX_DATA	0x11088
+			MX6UL_PAD_JTAG_TCK__SAI2_RX_DATA	0x11088
+			MX6UL_PAD_JTAG_TMS__SAI2_MCLK		0x17088
+			MX6UL_PAD_SNVS_TAMPER4__GPIO5_IO04	0x17059
 		>;
 	};
 
@@ -360,6 +487,12 @@
 			MX6UL_PAD_NAND_DATA01__USDHC2_DATA1 0x17059
 			MX6UL_PAD_NAND_DATA02__USDHC2_DATA2 0x17059
 			MX6UL_PAD_NAND_DATA03__USDHC2_DATA3 0x17059
+		>;
+	};
+
+	pinctrl_wdog: wdoggrp {
+		fsl,pins = <
+			MX6UL_PAD_LCD_RESET__WDOG1_WDOG_ANY    0x30b0
 		>;
 	};
 };

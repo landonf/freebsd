@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2003 John Baldwin <jhb@FreeBSD.org>
  * All rights reserved.
  *
@@ -130,6 +132,7 @@ struct intsrc {
 	u_long *is_straycount;
 	u_int is_index;
 	u_int is_handlers;
+	u_int is_cpu;
 };
 
 struct trapframe;
@@ -139,6 +142,9 @@ extern cpuset_t intr_cpus;
 #endif
 extern struct mtx icu_lock;
 extern int elcr_found;
+#ifdef SMP
+extern int msix_disable_migration;
+#endif
 
 #ifndef DEV_ATPIC
 void	atpic_reset(void);

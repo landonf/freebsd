@@ -1,4 +1,5 @@
 /******************************************************************************
+  SPDX-License-Identifier: BSD-3-Clause
 
   Copyright (c) 2001-2015, Intel Corporation 
   All rights reserved.
@@ -239,7 +240,7 @@
 
 /* PHY Power Management Control */
 #define HV_PM_CTRL		PHY_REG(770, 17)
-#define HV_PM_CTRL_PLL_STOP_IN_K1_GIGA	0x100
+#define HV_PM_CTRL_K1_CLK_REQ		0x200
 #define HV_PM_CTRL_K1_ENABLE		0x4000
 
 #define I217_PLL_CLOCK_GATE_REG	PHY_REG(772, 28)

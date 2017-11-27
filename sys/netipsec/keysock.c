@@ -2,6 +2,8 @@
 /*	$KAME: keysock.c,v 1.25 2001/08/13 20:07:41 itojun Exp $	*/
 
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
  * All rights reserved.
  *
@@ -115,7 +117,7 @@ key_output(struct mbuf *m, struct socket *so, ...)
 
 	M_ASSERTPKTHDR(m);
 
-	KEYDEBUG(KEYDEBUG_KEY_DUMP, kdebug_mbuf(m));
+	KEYDBG(KEY_DUMP, kdebug_mbuf(m));
 
 	msg = mtod(m, struct sadb_msg *);
 	PFKEYSTAT_INC(out_msgtype[msg->sadb_msg_type]);
@@ -181,9 +183,9 @@ key_sendup(struct socket *so, struct sadb_msg *msg, u_int len, int target)
 	if (so == NULL || msg == NULL)
 		panic("%s: NULL pointer was passed.\n", __func__);
 
-	KEYDEBUG(KEYDEBUG_KEY_DUMP,
-		printf("%s: \n", __func__);
-		kdebug_sadb(msg));
+	KEYDBG(KEY_DUMP,
+	    printf("%s: \n", __func__);
+	    kdebug_sadb(msg));
 
 	/*
 	 * we increment statistics here, just in case we have ENOBUFS
@@ -301,7 +303,7 @@ key_sendup_mbuf(struct socket *so, struct mbuf *m, int target)
 		 * (based on pf_key@inner.net message on 14 Oct 1998)
 		 */
 		if (((struct keycb *)rp)->kp_promisc) {
-			if ((n = m_copy(m, 0, (int)M_COPYALL)) != NULL) {
+			if ((n = m_copym(m, 0, M_COPYALL, M_NOWAIT)) != NULL) {
 				(void)key_sendup0(rp, n, 1);
 				n = NULL;
 			}
@@ -331,7 +333,7 @@ key_sendup_mbuf(struct socket *so, struct mbuf *m, int target)
 		if (!sendup)
 			continue;
 
-		if ((n = m_copy(m, 0, (int)M_COPYALL)) == NULL) {
+		if ((n = m_copym(m, 0, M_COPYALL, M_NOWAIT)) == NULL) {
 			m_freem(m);
 			PFKEYSTAT_INC(in_nomem);
 			mtx_unlock(&rawcb_mtx);

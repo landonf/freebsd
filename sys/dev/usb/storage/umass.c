@@ -2,6 +2,8 @@
 __FBSDID("$FreeBSD$");
 
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 1999 MAEKAWA Masahide <bishop@rr.iij4u.or.jp>,
  *		      Nick Hibma <n_hibma@FreeBSD.org>
  * All rights reserved.
@@ -1141,7 +1143,7 @@ umass_cancel_ccb(struct umass_softc *sc)
 {
 	union ccb *ccb;
 
-	mtx_assert(&sc->sc_mtx, MA_OWNED);
+	USB_MTX_ASSERT(&sc->sc_mtx, MA_OWNED);
 
 	ccb = sc->sc_transfer.ccb;
 	sc->sc_transfer.ccb = NULL;

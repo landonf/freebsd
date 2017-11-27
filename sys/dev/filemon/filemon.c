@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2011, David E. O'Brien.
  * Copyright (c) 2009-2011, Juniper Networks, Inc.
  * Copyright (c) 2015-2016, EMC Corp.
@@ -137,6 +139,8 @@ filemon_proc_get(struct proc *p)
 {
 	struct filemon *filemon;
 
+	if (p->p_filemon == NULL)
+		return (NULL);
 	PROC_LOCK(p);
 	filemon = filemon_acquire(p->p_filemon);
 	PROC_UNLOCK(p);

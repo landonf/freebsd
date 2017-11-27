@@ -1,4 +1,4 @@
-# $Id: gendirdeps.mk,v 1.32 2016/04/05 15:58:37 sjg Exp $
+# $Id: gendirdeps.mk,v 1.34 2017/10/26 00:46:26 sjg Exp $
 
 # Copyright (c) 2010-2013, Juniper Networks, Inc.
 # All rights reserved.
@@ -146,6 +146,9 @@ M2D_OBJROOTS += ${OBJTOP} ${_OBJROOT} ${_objroot}
 .if defined(SB_OBJROOT)
 M2D_OBJROOTS += ${SB_OBJROOT}
 .endif
+.if defined(STAGE_ROOT)
+M2D_OBJROOTS += ${STAGE_ROOT}
+.endif
 .if ${.MAKE.DEPENDFILE_PREFERENCE:U${.MAKE.DEPENDFILE}:M*.${MACHINE}} == ""
 # meta2deps.py only groks objroot
 # so we need to give it what it expects
@@ -191,7 +194,7 @@ dpadd_dir_list += ${f:H:tA}
 .endfor
 .if !empty(ddep_list)
 ddeps != cat ${ddep_list:O:u} | ${META2DEPS_FILTER} ${_skip_gendirdeps} \
-        sed 's,//*$$,,;s,\.${HOST_TARGET}$$,.host,;s,\.${MACHINE}$$,,'
+        sed 's,//*$$,,;s,\.${HOST_TARGET:Uhost}$$,.host,;s,\.${HOST_TARGET32:Uhost32}$$,.host32,;s,\.${MACHINE}$$,,'
 
 .if ${DEBUG_GENDIRDEPS:Uno:@x@${RELDIR:M$x}@} != ""
 .info ${RELDIR}: raw_dir_list='${dir_list}'

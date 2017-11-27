@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * $FreeBSD$
  *
  * Copyright (c) 2002-2004 David Boggs. <boggs@boggs.palo-alto.ca.us>
@@ -91,7 +93,11 @@
 # define  P2P 0		/* not in FreeBSD */
 # define NSPPP 1	/* No count devices in FreeBSD 5 */
 # include "opt_bpf.h"	/* DEV_BPF */
-# define NBPFILTER DEV_BPF
+# ifdef DEV_BPF
+#  define NBPFILTER 1
+# else
+#  define NBPFILTER 0
+# endif
 # define  GEN_HDLC 0	/* not in FreeBSD */
 #
 # include <sys/systm.h>

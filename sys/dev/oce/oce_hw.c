@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (C) 2013 Emulex
  * All rights reserved.
  *
@@ -392,6 +394,11 @@ oce_create_nw_interface(POCE_SOFTC sc)
 
 	if (IS_SH(sc) || IS_XE201(sc))
 		capab_flags |= MBX_RX_IFACE_FLAGS_MULTICAST;
+
+        if (sc->enable_hwlro) {
+                capab_flags |= MBX_RX_IFACE_FLAGS_LRO;
+                capab_en_flags |= MBX_RX_IFACE_FLAGS_LRO;
+        }
 
 	/* enable capabilities controlled via driver startup parameters */
 	if (is_rss_enabled(sc))

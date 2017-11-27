@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2009, 2013 The FreeBSD Foundation
  * All rights reserved.
  *
@@ -377,11 +379,11 @@ void vt_upgrade(struct vt_device *vd);
 #define	PIXEL_WIDTH(w)	((w) / 8)
 #define	PIXEL_HEIGHT(h)	((h) / 16)
 
-#ifndef VT_FB_DEFAULT_WIDTH
-#define	VT_FB_DEFAULT_WIDTH	2048
+#ifndef VT_FB_MAX_WIDTH
+#define	VT_FB_MAX_WIDTH	4096
 #endif
-#ifndef VT_FB_DEFAULT_HEIGHT
-#define	VT_FB_DEFAULT_HEIGHT	1200
+#ifndef VT_FB_MAX_HEIGHT
+#define	VT_FB_MAX_HEIGHT	2400
 #endif
 
 /* name argument is not used yet. */

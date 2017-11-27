@@ -2,6 +2,8 @@
 /*	$NetBSD: shm.h,v 1.15 1994/06/29 06:45:17 cgd Exp $	*/
 
 /*-
+ * SPDX-License-Identifier: BSD-4-Clause
+ *
  * Copyright (c) 1994 Adam Glass
  * All rights reserved.
  *
@@ -92,12 +94,14 @@ struct shmid_ds_old {
 };
 #endif
 
+typedef unsigned int shmatt_t;
+
 struct shmid_ds {
 	struct ipc_perm shm_perm;	/* operation permission structure */
 	size_t          shm_segsz;	/* size of segment in bytes */
 	pid_t           shm_lpid;   /* process ID of last shared memory op */
 	pid_t           shm_cpid;	/* process ID of creator */
-	int		shm_nattch;	/* number of current attaches */
+	shmatt_t        shm_nattch;	/* number of current attaches */
 	time_t          shm_atime;	/* time of last shmat() */
 	time_t          shm_dtime;	/* time of last shmdt() */
 	time_t          shm_ctime;	/* time of last change by shmctl() */
@@ -157,7 +161,7 @@ typedef __size_t        size_t;
 #endif
 
 __BEGIN_DECLS
-#ifdef __BSD_VISIBLE
+#if __BSD_VISIBLE
 int shmsys(int, ...);
 #endif
 void *shmat(int, const void *, int);

@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1990, 1993, 1994
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -10,7 +12,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -194,6 +196,8 @@ main(int argc, char *argv[])
 
 	if ((cols = getenv("COLUMNS")) != NULL && *cols != '\0')
 		termwidth = atoi(cols);
+	else if (!isatty(STDOUT_FILENO))
+		termwidth = UNLIMITED;
 	else if ((ioctl(STDOUT_FILENO, TIOCGWINSZ, (char *)&ws) == -1 &&
 	     ioctl(STDERR_FILENO, TIOCGWINSZ, (char *)&ws) == -1 &&
 	     ioctl(STDIN_FILENO,  TIOCGWINSZ, (char *)&ws) == -1) ||
@@ -399,7 +403,7 @@ main(int argc, char *argv[])
 		case 'w':
 			if (wflag)
 				termwidth = UNLIMITED;
-			else if (termwidth < 131)
+			else if (termwidth < 131 && termwidth != UNLIMITED)
 				termwidth = 131;
 			wflag++;
 			break;
@@ -521,7 +525,11 @@ main(int argc, char *argv[])
 	 */
 	nentries = -1;
 	kp = kvm_getprocs(kd, what, flag, &nentries);
-	if ((kp == NULL && nentries > 0) || (kp != NULL && nentries < 0))
+	/*
+	 * Ignore ESRCH to preserve behaviour of "ps -p nonexistent-pid"
+	 * not reporting an error.
+	 */
+	if ((kp == NULL && errno != ESRCH) || (kp != NULL && nentries < 0))
 		xo_errx(1, "%s", kvm_geterr(kd));
 	nkept = 0;
 	if (nentries > 0) {
@@ -612,6 +620,7 @@ main(int argc, char *argv[])
 
 	if (nkept == 0) {
 		printheader();
+		xo_finish();
 		exit(1);
 	}
 

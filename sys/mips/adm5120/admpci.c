@@ -1,6 +1,8 @@
 /* $NetBSD: admpci.c,v 1.1 2007/03/20 08:52:02 dyoung Exp $ */
 
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2007 David Young.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or
@@ -486,6 +488,7 @@ static device_method_t admpci_methods[] = {
 	DEVMETHOD(pcib_read_config,	admpci_read_config),
 	DEVMETHOD(pcib_write_config,	admpci_write_config),
 	DEVMETHOD(pcib_route_interrupt,	admpci_route_interrupt),
+	DEVMETHOD(pcib_request_feature,	pcib_request_feature_allow),
 
 	DEVMETHOD_END
 };

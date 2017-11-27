@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2008 Isilon Inc http://www.isilon.com/
  * Authors: Doug Rabson <dfr@rabson.org>
  * Developed with Red Inc: Alfred Perlstein <alfred@freebsd.org>
@@ -39,7 +41,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -83,7 +85,9 @@ __FBSDID("$FreeBSD$");
 #ifdef LOCKF_DEBUG
 #include <sys/sysctl.h>
 
+#include <ufs/ufs/extattr.h>
 #include <ufs/ufs/quota.h>
+#include <ufs/ufs/ufsmount.h>
 #include <ufs/ufs/inode.h>
 
 static int	lockf_debug = 0; /* control debug output */
@@ -687,7 +691,7 @@ retry_setlock:
 		break;
 	}
 
-#ifdef INVARIANTS
+#ifdef DIAGNOSTIC
 	/*
 	 * Check for some can't happen stuff. In this case, the active
 	 * lock list becoming disordered or containing mutually
@@ -915,7 +919,7 @@ lf_add_edge(struct lockf_entry *x, struct lockf_entry *y)
 	struct lockf_edge *e;
 	int error;
 
-#ifdef INVARIANTS
+#ifdef DIAGNOSTIC
 	LIST_FOREACH(e, &x->lf_outedges, le_outlink)
 		KASSERT(e->le_to != y, ("adding lock edge twice"));
 #endif
@@ -1378,7 +1382,7 @@ lf_setlock(struct lockf *state, struct lockf_entry *lock, struct vnode *vp,
     void **cookiep)
 {
 	static char lockstr[] = "lockf";
-	int priority, error;
+	int error, priority, stops_deferred;
 
 #ifdef LOCKF_DEBUG
 	if (lockf_debug & 1)
@@ -1466,7 +1470,9 @@ lf_setlock(struct lockf *state, struct lockf_entry *lock, struct vnode *vp,
 		}
 
 		lock->lf_refs++;
+		stops_deferred = sigdeferstop(SIGDEFERSTOP_ERESTART);
 		error = sx_sleep(lock, &state->ls_lock, priority, lockstr, 0);
+		sigallowstop(stops_deferred);
 		if (lf_free_lock(lock)) {
 			error = EDOOFUS;
 			goto out;
@@ -2498,7 +2504,7 @@ lf_print(char *tag, struct lockf_entry *lock)
 	if (lock->lf_inode != (struct inode *)0)
 		printf(" in ino %ju on dev <%s>,",
 		    (uintmax_t)lock->lf_inode->i_number,
-		    devtoname(lock->lf_inode->i_dev));
+		    devtoname(ITODEV(lock->lf_inode)));
 	printf(" %s, start %jd, end ",
 	    lock->lf_type == F_RDLCK ? "shared" :
 	    lock->lf_type == F_WRLCK ? "exclusive" :
@@ -2526,7 +2532,7 @@ lf_printlist(char *tag, struct lockf_entry *lock)
 
 	printf("%s: Lock list for ino %ju on dev <%s>:\n",
 	    tag, (uintmax_t)lock->lf_inode->i_number,
-	    devtoname(lock->lf_inode->i_dev));
+	    devtoname(ITODEV(lock->lf_inode)));
 	LIST_FOREACH(lf, &lock->lf_vnode->v_lockf->ls_active, lf_link) {
 		printf("\tlock %p for ",(void *)lf);
 		lf_print_owner(lock->lf_owner);

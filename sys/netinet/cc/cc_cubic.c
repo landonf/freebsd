@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2008-2010 Lawrence Stewart <lstewart@freebsd.org>
  * Copyright (c) 2010 The FreeBSD Foundation
  * All rights reserved.
@@ -261,9 +263,10 @@ cubic_cong_signal(struct cc_var *ccv, uint32_t type)
 		 * chance the first one is a false alarm and may not indicate
 		 * congestion.
 		 */
-		if (CCV(ccv, t_rxtshift) >= 2)
+		if (CCV(ccv, t_rxtshift) >= 2) {
 			cubic_data->num_cong_events++;
 			cubic_data->t_last_cong = ticks;
+		}
 		break;
 	}
 }
@@ -403,8 +406,8 @@ cubic_ssthresh_update(struct cc_var *ccv)
 	if (cubic_data->num_cong_events == 0)
 		CCV(ccv, snd_ssthresh) = CCV(ccv, snd_cwnd) >> 1;
 	else
-		CCV(ccv, snd_ssthresh) = (CCV(ccv, snd_cwnd) * CUBIC_BETA)
-		    >> CUBIC_SHIFT;
+		CCV(ccv, snd_ssthresh) = ((u_long)CCV(ccv, snd_cwnd) *
+		    CUBIC_BETA) >> CUBIC_SHIFT;
 }
 
 

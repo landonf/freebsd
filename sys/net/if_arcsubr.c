@@ -2,6 +2,8 @@
 /*	$FreeBSD$ */
 
 /*-
+ * SPDX-License-Identifier: BSD-4-Clause
+ *
  * Copyright (c) 1994, 1995 Ignatios Souvatzis
  * Copyright (c) 1982, 1989, 1993
  *	The Regents of the University of California.  All rights reserved.
@@ -225,7 +227,7 @@ arc_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
 
 	if ((ifp->if_flags & IFF_SIMPLEX) && (loop_copy != -1)) {
 		if ((m->m_flags & M_BCAST) || (loop_copy > 0)) {
-			struct mbuf *n = m_copy(m, 0, (int)M_COPYALL);
+			struct mbuf *n = m_copym(m, 0, M_COPYALL, M_NOWAIT);
 
 			(void) if_simloop(ifp, n, dst->sa_family, ARC_HDRLEN);
 		} else if (ah->arc_dhost == ah->arc_shost) {

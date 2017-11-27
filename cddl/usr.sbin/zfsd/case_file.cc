@@ -102,7 +102,8 @@ CaseFile::Find(Guid poolGUID, Guid vdevGUID)
 	for (CaseFileList::iterator curCase = s_activeCases.begin();
 	     curCase != s_activeCases.end(); curCase++) {
 
-		if ((*curCase)->PoolGUID() != poolGUID
+		if (((*curCase)->PoolGUID() != poolGUID
+		  && Guid::InvalidGuid() != poolGUID)
 		 || (*curCase)->VdevGUID() != vdevGUID)
 			continue;
 
@@ -268,7 +269,8 @@ CaseFile::ReEvaluate(const string &devPath, const string &physPath, Vdev *vdev)
 	}
 
 	if (vdev != NULL
-	 && vdev->PoolGUID() == m_poolGUID
+	 && ( vdev->PoolGUID() == m_poolGUID
+	   || vdev->PoolGUID() == Guid::InvalidGuid())
 	 && vdev->GUID() == m_vdevGUID) {
 
 		zpool_vdev_online(pool, vdev->GUIDString().c_str(),
@@ -656,8 +658,11 @@ CaseFile::DeSerializeFile(const char *fileName)
 		uint64_t vdevGUID;
 		nvlist_t *vdevConf;
 
-		sscanf(fileName, "pool_%" PRIu64 "_vdev_%" PRIu64 ".case",
-		       &poolGUID, &vdevGUID);
+		if (sscanf(fileName, "pool_%" PRIu64 "_vdev_%" PRIu64 ".case",
+		       &poolGUID, &vdevGUID) != 2) {
+			throw ZfsdException("CaseFile::DeSerialize: "
+			    "Unintelligible CaseFile filename %s.\n", fileName);
+		}
 		existingCaseFile = Find(Guid(poolGUID), Guid(vdevGUID));
 		if (existingCaseFile != NULL) {
 			/*

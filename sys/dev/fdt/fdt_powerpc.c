@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2009-2010 The FreeBSD Foundation
  * All rights reserved.
  *
@@ -112,7 +114,7 @@ fdt_fixup_fman(phandle_t root)
 	 * That frequency is equal to /soc node bus-frequency.
 	 */
 	for (node = OF_child(node); node != 0; node = OF_peer(node)) {
-		if (fdt_is_compatible(node, "fsl,fman") == 0)
+		if (ofw_bus_node_is_compatible(node, "fsl,fman") == 0)
 			continue;
 
 		if (OF_setprop(node, "clock-frequency", (void *)&freq,

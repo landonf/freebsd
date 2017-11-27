@@ -119,12 +119,12 @@ snps_get_clocks(device_t dev, clk_t *baudclk, clk_t *apb_pclk)
 	/* Baud clock is either named "baudclk", or there is a single
 	 * unnamed clock.
 	 */
-	if (clk_get_by_ofw_name(dev, "baudclk", baudclk) != 0 &&
-	    clk_get_by_ofw_index(dev, 0, baudclk) != 0)
+	if (clk_get_by_ofw_name(dev, 0, "baudclk", baudclk) != 0 &&
+	    clk_get_by_ofw_index(dev, 0, 0, baudclk) != 0)
 		return (ENOENT);
 
 	/* APB peripheral clock is optional */
-	(void)clk_get_by_ofw_name(dev, "apb_pclk", apb_pclk);
+	(void)clk_get_by_ofw_name(dev, 0, "apb_pclk", apb_pclk);
 
 	return (0);
 }
@@ -136,7 +136,7 @@ snps_probe(device_t dev)
 	struct snps_softc *sc;
 	struct uart_class *uart_class;
 	phandle_t node;
-	uint32_t shift, clock;
+	uint32_t shift, iowidth, clock;
 	uint64_t freq;
 	int error;
 #ifdef EXT_RESOURCES
@@ -159,11 +159,13 @@ snps_probe(device_t dev)
 	node = ofw_bus_get_node(dev);
 	if (OF_getencprop(node, "reg-shift", &shift, sizeof(shift)) <= 0)
 		shift = 0;
+	if (OF_getencprop(node, "reg-io-width", &iowidth, sizeof(iowidth)) <= 0)
+		iowidth = 1;
 	if (OF_getencprop(node, "clock-frequency", &clock, sizeof(clock)) <= 0)
 		clock = 0;
 
 #ifdef EXT_RESOURCES
-	if (hwreset_get_by_ofw_idx(dev, 0, &reset) == 0) {
+	if (hwreset_get_by_ofw_idx(dev, 0, 0, &reset) == 0) {
 		error = hwreset_deassert(reset);
 		if (error != 0) {
 			device_printf(dev, "cannot de-assert reset\n");
@@ -200,7 +202,7 @@ snps_probe(device_t dev)
 	if (bootverbose && clock == 0)
 		device_printf(dev, "could not determine frequency\n");
 
-	error = uart_bus_probe(dev, (int)shift, (int)clock, 0, 0);
+	error = uart_bus_probe(dev, (int)shift, (int)iowidth, (int)clock, 0, 0);
 	if (error != 0)
 		return (error);
 

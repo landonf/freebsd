@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2001 - 2003 by Thomas Moestl <tmm@FreeBSD.org>.
  * Copyright (c) 2005 Marius Strobl <marius@FreeBSD.org>
  * All rights reserved.
@@ -44,6 +46,9 @@ __FBSDID("$FreeBSD$");
 #include <dev/ofw/openfirm.h>
 
 #include "ofw_bus_if.h"
+
+#define	OFW_COMPAT_LEN	255
+#define	OFW_STATUS_LEN	16
 
 int
 ofw_bus_gen_setup_devinfo(struct ofw_bus_devinfo *obd, phandle_t node)
@@ -177,8 +182,27 @@ ofw_bus_status_okay(device_t dev)
 	return (0);
 }
 
+int
+ofw_bus_node_status_okay(phandle_t node)
+{
+	char status[OFW_STATUS_LEN];
+	int len;
+
+	len = OF_getproplen(node, "status");
+	if (len <= 0)
+		return (1);
+
+	OF_getprop(node, "status", status, OFW_STATUS_LEN);
+	if ((len == 5 && (bcmp(status, "okay", len) == 0)) ||
+	    (len == 3 && (bcmp(status, "ok", len))))
+		return (1);
+
+	return (0);
+}
+
 static int
-ofw_bus_node_is_compatible(const char *compat, int len, const char *onecompat)
+ofw_bus_node_is_compatible_int(const char *compat, int len,
+    const char *onecompat)
 {
 	int onelen, l, ret;
 
@@ -203,6 +227,25 @@ ofw_bus_node_is_compatible(const char *compat, int len, const char *onecompat)
 }
 
 int
+ofw_bus_node_is_compatible(phandle_t node, const char *compatstr)
+{
+	char compat[OFW_COMPAT_LEN];
+	int len, rv;
+
+	if ((len = OF_getproplen(node, "compatible")) <= 0)
+		return (0);
+
+	bzero(compat, OFW_COMPAT_LEN);
+
+	if (OF_getprop(node, "compatible", compat, OFW_COMPAT_LEN) < 0)
+		return (0);
+
+	rv = ofw_bus_node_is_compatible_int(compat, len, compatstr);
+
+	return (rv);
+}
+
+int
 ofw_bus_is_compatible(device_t dev, const char *onecompat)
 {
 	phandle_t node;
@@ -219,7 +262,7 @@ ofw_bus_is_compatible(device_t dev, const char *onecompat)
 	if ((len = OF_getproplen(node, "compatible")) <= 0)
 		return (0);
 
-	return (ofw_bus_node_is_compatible(compat, len, onecompat));
+	return (ofw_bus_node_is_compatible_int(compat, len, onecompat));
 }
 
 int
@@ -516,7 +559,6 @@ ofw_bus_find_iparent(phandle_t node)
 	return (iparent);
 }
 
-#ifndef INTRNG
 int
 ofw_bus_intr_to_rl(device_t dev, phandle_t node,
     struct resource_list *rl, int *rlen)
@@ -582,7 +624,6 @@ ofw_bus_intr_to_rl(device_t dev, phandle_t node,
 	free(intr, M_OFWPROP);
 	return (err);
 }
-#endif
 
 int
 ofw_bus_intr_by_rid(device_t dev, phandle_t node, int wanted_rid,
@@ -681,22 +722,14 @@ phandle_t
 ofw_bus_find_compatible(phandle_t node, const char *onecompat)
 {
 	phandle_t child, ret;
-	void *compat;
-	int len;
 
 	/*
 	 * Traverse all children of 'start' node, and find first with
 	 * matching 'compatible' property.
 	 */
 	for (child = OF_child(node); child != 0; child = OF_peer(child)) {
-		len = OF_getprop_alloc(child, "compatible", 1, &compat);
-		if (len >= 0) {
-			ret = ofw_bus_node_is_compatible(compat, len,
-			    onecompat);
-			free(compat, M_OFWPROP);
-			if (ret != 0)
-				return (child);
-		}
+		if (ofw_bus_node_is_compatible(child, onecompat) != 0)
+			return (child);
 
 		ret = ofw_bus_find_compatible(child, onecompat);
 		if (ret != 0)
@@ -924,7 +957,7 @@ ofw_bus_string_list_to_array(phandle_t node, const char *list_name,
 		i += len;
 		tptr += len;
 	}
-	array[cnt] = 0;
+	array[cnt] = NULL;
 	*out_array = array;
 
 	return (cnt);
