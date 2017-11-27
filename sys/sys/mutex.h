@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1997 Berkeley Software Design, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -145,8 +147,14 @@ void	_thread_lock(struct thread *);
 	_thread_lock((tdp))
 #endif
 
+#if LOCK_DEBUG > 0
 #define	thread_lock_flags(tdp, opt)					\
 	thread_lock_flags_((tdp), (opt), __FILE__, __LINE__)
+#else
+#define	thread_lock_flags(tdp, opt)					\
+	_thread_lock(tdp)
+#endif
+
 #define	thread_unlock(tdp)						\
        mtx_unlock_spin((tdp)->td_lock)
 
