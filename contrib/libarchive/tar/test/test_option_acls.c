@@ -360,8 +360,10 @@ compare_acls(const char *path_a, const char *path_b)
 	if (richacl_a != NULL) {
 		richacl_b = richacl_get_file(path_b);
 		if (richacl_b == NULL &&
-		    (errno == ENODATA || errno == ENOTSUP || errno == ENOSYS))
+		    (errno == ENODATA || errno == ENOTSUP || errno == ENOSYS)) {
+			richacl_free(richacl_a);
 			return (0);
+		}
 		failure("richacl_get_file() error: %s (%s)", path_b,
 		    strerror(errno));
 		if (assert(richacl_b != NULL) == 0) {
@@ -481,7 +483,7 @@ DEFINE_TEST(test_option_acls)
 	r = compare_acls("f", "acls_acls/f");
 	assertEqualInt(r, 1);
 
-	/* Extractl acls without acls */
+	/* Extract acls without acls */
 	assertMakeDir("acls_noacls", 0755);
 	clear_inheritance_flags("acls_noacls", acltype);
 	r = systemf("%s -x -C acls_noacls -p --no-acls -f acls.tar >acls_noacls.out 2>acls_noacls.err", testprog);

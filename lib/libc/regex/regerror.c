@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1992, 1993, 1994 Henry Spencer.
  * Copyright (c) 1992, 1993, 1994
  *	The Regents of the University of California.  All rights reserved.
@@ -54,7 +56,7 @@ extern "C" {
 #endif
 
 /* === regerror.c === */
-static char *regatoi(const regex_t *preg, char *localbuf);
+static const char *regatoi(const regex_t *preg, char *localbuf);
 
 #ifdef __cplusplus
 }
@@ -83,8 +85,8 @@ static char *regatoi(const regex_t *preg, char *localbuf);
  */
 static struct rerr {
 	int code;
-	char *name;
-	char *explain;
+	const char *name;
+	const char *explain;
 } rerrs[] = {
 	{REG_NOMATCH,	"REG_NOMATCH",	"regexec() failed to match"},
 	{REG_BADPAT,	"REG_BADPAT",	"invalid regular expression"},
@@ -120,7 +122,7 @@ regerror(int errcode,
 	struct rerr *r;
 	size_t len;
 	int target = errcode &~ REG_ITOA;
-	char *s;
+	const char *s;
 	char convbuf[50];
 
 	if (errcode == REG_ATOI)
@@ -158,7 +160,7 @@ regerror(int errcode,
  - regatoi - internal routine to implement REG_ATOI
  == static char *regatoi(const regex_t *preg, char *localbuf);
  */
-static char *
+static const char *
 regatoi(const regex_t *preg, char *localbuf)
 {
 	struct rerr *r;

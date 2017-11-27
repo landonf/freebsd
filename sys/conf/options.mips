@@ -39,7 +39,6 @@ CPU_PROAPTIV	opt_global.h
 CPU_MIPS32	opt_global.h
 CPU_MIPS64	opt_global.h
 CPU_SENTRY5	opt_global.h
-CPU_HAVEFPU	opt_global.h
 CPU_SB1 	opt_global.h
 CPU_CNMIPS	opt_global.h
 CPU_RMI		opt_global.h
@@ -152,6 +151,7 @@ RT3050F				opt_rt305x.h
 RT305X				opt_rt305x.h
 RT305X_UBOOT			opt_rt305x.h
 RT305X_USE_UART			opt_rt305x.h
+RT_MDIO				opt_rt305x.h
 
 #
 # Options that affect the pmap.

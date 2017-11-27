@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-NetBSD
+ *
  * Copyright (c) 1998 The NetBSD Foundation, Inc.
  * All rights reserved.
  *
@@ -124,6 +126,10 @@ ehci_pci_match(device_t self)
 
 	case 0x0f348086:
 		return ("Intel BayTrail USB 2.0 controller");
+	case 0x1c268086:
+		return ("Intel Cougar Point USB 2.0 controller");
+	case 0x1c2d8086:
+		return ("Intel Cougar Point USB 2.0 controller");
 	case 0x1d268086:
 		return ("Intel Patsburg USB 2.0 controller");
 	case 0x1d2d8086:

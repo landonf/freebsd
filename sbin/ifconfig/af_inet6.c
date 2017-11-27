@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1983, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -349,12 +351,14 @@ in6_getaddr(const char *s, int which)
 		bzero(&hints, sizeof(struct addrinfo));
 		hints.ai_family = AF_INET6;
 		error = getaddrinfo(s, NULL, &hints, &res);
+		if (error != 0) {
+			if (inet_pton(AF_INET6, s, &sin->sin6_addr) != 1)
+				errx(1, "%s: bad value", s);
+		} else {
+			bcopy(res->ai_addr, sin, res->ai_addrlen);
+			freeaddrinfo(res);
+		}
 	}
-	if (error != 0) {
-		if (inet_pton(AF_INET6, s, &sin->sin6_addr) != 1)
-			errx(1, "%s: bad value", s);
-	} else
-		bcopy(res->ai_addr, sin, res->ai_addrlen);
 }
 
 static int

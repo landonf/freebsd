@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2005, Bosko Milekic <bmilekic@FreeBSD.org>.
  * Copyright (c) 2010 Isilon Systems, Inc. (http://www.isilon.com/)
  * All rights reserved.
@@ -49,6 +51,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/malloc.h>
 #include <sys/sysctl.h>
 #include <sys/vmem.h>
+#include <sys/vmmeter.h>
 
 #include <vm/vm.h>
 #include <vm/uma.h>
@@ -283,7 +286,7 @@ v2sizev(vm_offset_t va)
 void *
 memguard_alloc(unsigned long req_size, int flags)
 {
-	vm_offset_t addr;
+	vm_offset_t addr, origaddr;
 	u_long size_p, size_v;
 	int do_guard, rv;
 
@@ -327,7 +330,7 @@ memguard_alloc(unsigned long req_size, int flags)
 	for (;;) {
 		if (vmem_xalloc(memguard_arena, size_v, 0, 0, 0,
 		    memguard_cursor, VMEM_ADDR_MAX,
-		    M_BESTFIT | M_NOWAIT, &addr) == 0)
+		    M_BESTFIT | M_NOWAIT, &origaddr) == 0)
 			break;
 		/*
 		 * The map has no space.  This may be due to
@@ -342,11 +345,12 @@ memguard_alloc(unsigned long req_size, int flags)
 		memguard_wrap++;
 		memguard_cursor = memguard_base;
 	}
+	addr = origaddr;
 	if (do_guard)
 		addr += PAGE_SIZE;
 	rv = kmem_back(kmem_object, addr, size_p, flags);
 	if (rv != KERN_SUCCESS) {
-		vmem_xfree(memguard_arena, addr, size_v);
+		vmem_xfree(memguard_arena, origaddr, size_v);
 		memguard_fail_pgs++;
 		addr = (vm_offset_t)NULL;
 		goto out;

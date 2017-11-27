@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2011 The FreeBSD Foundation
  * All rights reserved.
  *
@@ -144,6 +146,14 @@ static struct resource_spec arm_gic_spec[] = {
 #endif
 	{ -1, 0 }
 };
+
+
+#if defined(__arm__) && defined(INVARIANTS)
+static int gic_debug_spurious = 1;
+#else
+static int gic_debug_spurious = 0;
+#endif
+TUNABLE_INT("hw.gic.debug_spurious", &gic_debug_spurious);
 
 static u_int arm_gic_map[MAXCPU];
 
@@ -671,11 +681,10 @@ arm_gic_intr(void *arg)
 	 */
 
 	if (irq >= sc->nirqs) {
-#ifdef GIC_DEBUG_SPURIOUS
-		device_printf(sc->gic_dev,
-		    "Spurious interrupt detected: last irq: %d on CPU%d\n",
-		    sc->last_irq[PCPU_GET(cpuid)], PCPU_GET(cpuid));
-#endif
+		if (gic_debug_spurious)
+			device_printf(sc->gic_dev,
+			    "Spurious interrupt detected: last irq: %d on CPU%d\n",
+			    sc->last_irq[PCPU_GET(cpuid)], PCPU_GET(cpuid));
 		return (FILTER_HANDLED);
 	}
 
@@ -700,9 +709,8 @@ dispatch_irq:
 #endif
 	}
 
-#ifdef GIC_DEBUG_SPURIOUS
-	sc->last_irq[PCPU_GET(cpuid)] = irq;
-#endif
+	if (gic_debug_spurious)
+		sc->last_irq[PCPU_GET(cpuid)] = irq;
 	if ((gi->gi_flags & GI_FLAG_EARLY_EOI) == GI_FLAG_EARLY_EOI)
 		gic_c_write_4(sc, GICC_EOIR, irq_active_reg);
 
@@ -987,7 +995,7 @@ arm_gic_setup_intr(device_t dev, struct intr_irqsrc *isrc,
 		gi->gi_trig = trig;
 
 		/* Edge triggered interrupts need an early EOI sent */
-		if (gi->gi_pol == INTR_TRIGGER_EDGE)
+		if (gi->gi_trig == INTR_TRIGGER_EDGE)
 			gi->gi_flags |= GI_FLAG_EARLY_EOI;
 	}
 
@@ -1429,7 +1437,7 @@ arm_gicv2m_alloc_msi(device_t dev, device_t child, int count, int maxcount,
 	mtx_lock(&sc->sc_mutex);
 
 	found = false;
-	for (irq = sc->sc_spi_start; irq < sc->sc_spi_end && !found; irq++) {
+	for (irq = sc->sc_spi_start; irq < sc->sc_spi_end; irq++) {
 		/* Start on an aligned interrupt */
 		if ((irq & (maxcount - 1)) != 0)
 			continue;
@@ -1438,23 +1446,25 @@ arm_gicv2m_alloc_msi(device_t dev, device_t child, int count, int maxcount,
 		found = true;
 
 		/* Check this range is valid */
-		for (end_irq = irq; end_irq != irq + count - 1; end_irq++) {
+		for (end_irq = irq; end_irq != irq + count; end_irq++) {
 			/* No free interrupts */
 			if (end_irq == sc->sc_spi_end) {
 				found = false;
 				break;
 			}
 
-			KASSERT((psc->gic_irqs[irq].gi_flags & GI_FLAG_MSI)!= 0,
+			KASSERT((psc->gic_irqs[end_irq].gi_flags & GI_FLAG_MSI)!= 0,
 			    ("%s: Non-MSI interrupt found", __func__));
 
 			/* This is already used */
-			if ((psc->gic_irqs[irq].gi_flags & GI_FLAG_MSI_USED) ==
+			if ((psc->gic_irqs[end_irq].gi_flags & GI_FLAG_MSI_USED) ==
 			    GI_FLAG_MSI_USED) {
 				found = false;
 				break;
 			}
 		}
+		if (found)
+			break;
 	}
 
 	/* Not enough interrupts were found */

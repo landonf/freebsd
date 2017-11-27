@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1980, 1986, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -472,8 +474,8 @@ cacheino(union dinode *dp, ino_t inumber)
 			inp->i_blks[UFS_NDADDR + i] = DIP(dp, di_ib[i]);
 	if (inplast == listmax) {
 		listmax += 100;
-		inpsort = (struct inoinfo **)realloc((char *)inpsort,
-		    (unsigned)listmax * sizeof(struct inoinfo *));
+		inpsort = (struct inoinfo **)reallocarray((char *)inpsort,
+		    listmax, sizeof(struct inoinfo *));
 		if (inpsort == NULL)
 			errx(EEXIT, "cannot increase directory list");
 	}

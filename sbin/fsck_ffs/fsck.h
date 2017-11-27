@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-3-Clause and BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2002 Networks Associates Technology, Inc.
  * All rights reserved.
  *
@@ -282,7 +284,8 @@ struct inoinfo {
 	u_int	i_numblks;		/* size of block array in bytes */
 	ufs2_daddr_t i_blks[1];		/* actually longer */
 } **inphead, **inpsort;
-extern long numdirs, dirhash, listmax, inplast;
+extern long dirhash, inplast;
+extern unsigned long numdirs, listmax;
 extern long countdirs;		/* number of directories we actually found */
 
 #define MIBSIZE	3		/* size of fsck sysctl MIBs */

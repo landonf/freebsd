@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2013 The FreeBSD Foundation
  * All rights reserved.
  *
@@ -198,7 +200,7 @@ dmar_gas_check_free(struct dmar_domain *domain)
 			    l->free_down));
 		} else {
 			v = MAX(entry->free_after, l->free_down);
-			v = MAX(entry->free_down, r->free_down);
+			v = MAX(v, r->free_down);
 			MPASS(entry->free_down == v);
 		}
 	}

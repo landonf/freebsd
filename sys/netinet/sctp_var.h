@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2001-2008, by Cisco Systems, Inc. All rights reserved.
  * Copyright (c) 2008-2012, by Randall Stewart. All rights reserved.
  * Copyright (c) 2008-2012, by Michael Tuexen. All rights reserved.
@@ -341,7 +343,7 @@ void sctp_drain(void);
 void sctp_init(void);
 void 
 sctp_notify(struct sctp_inpcb *, struct sctp_tcb *, struct sctp_nets *,
-    uint8_t, uint8_t, uint16_t, uint16_t);
+    uint8_t, uint8_t, uint16_t, uint32_t);
 int sctp_flush(struct socket *, int);
 int sctp_shutdown(struct socket *);
 int 

@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c)2006,2007,2008,2009 YAMAMOTO Takashi,
  * Copyright (c) 2013 EMC Corp.
  * All rights reserved.
@@ -181,7 +183,7 @@ static struct callout	vmem_periodic_ch;
 static int		vmem_periodic_interval;
 static struct task	vmem_periodic_wk;
 
-static struct mtx_padalign vmem_list_lock;
+static struct mtx_padalign __exclusive_cache_line vmem_list_lock;
 static LIST_HEAD(, vmem) vmem_list = LIST_HEAD_INITIALIZER(vmem_list);
 
 /* ---- misc */
@@ -580,7 +582,7 @@ qc_drain(vmem_t *vm)
 
 #ifndef UMA_MD_SMALL_ALLOC
 
-static struct mtx_padalign vmem_bt_lock;
+static struct mtx_padalign __exclusive_cache_line vmem_bt_lock;
 
 /*
  * vmem_bt_alloc:  Allocate a new page of boundary tags.

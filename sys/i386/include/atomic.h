@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 1998 Doug Rabson
  * All rights reserved.
  *
@@ -45,7 +47,7 @@
  * avoid a dependency on sys/pcpu.h in machine/atomic.h consumers.
  * An assertion in i386/vm_machdep.c ensures that the value is correct.
  */
-#define	__OFFSETOF_MONITORBUF	0x180
+#define	__OFFSETOF_MONITORBUF	0x80
 
 static __inline void
 __mbk(void)
@@ -129,6 +131,7 @@ int		atomic_cmpset_64(volatile uint64_t *, uint64_t, uint64_t);
 uint64_t	atomic_load_acq_64(volatile uint64_t *);
 void		atomic_store_rel_64(volatile uint64_t *, uint64_t);
 uint64_t	atomic_swap_64(volatile uint64_t *, uint64_t);
+uint64_t	atomic_fetchadd_64(volatile uint64_t *, uint64_t);
 
 #else /* !KLD_MODULE && __GNUCLIKE_ASM */
 
@@ -182,7 +185,7 @@ struct __hack
  *
  * Returns 0 on failure, non-zero on success.
  */
-#define	ATOMIC_CMPSET(TYPE)				\
+#define	ATOMIC_CMPSET(TYPE, CONS)			\
 static __inline int					\
 atomic_cmpset_##TYPE(volatile u_##TYPE *dst, u_##TYPE expect, u_##TYPE src) \
 {							\
@@ -196,7 +199,7 @@ atomic_cmpset_##TYPE(volatile u_##TYPE *dst, u_##TYPE expect, u_##TYPE src) \
 	: "=q" (res),			/* 0 */		\
 	  "+m" (*dst),			/* 1 */		\
 	  "+a" (expect)			/* 2 */		\
-	: "r" (src)			/* 3 */		\
+	: CONS (src)			/* 3 */		\
 	: "memory", "cc");				\
 	return (res);					\
 }							\
@@ -214,14 +217,14 @@ atomic_fcmpset_##TYPE(volatile u_##TYPE *dst, u_##TYPE *expect, u_##TYPE src) \
 	: "=q" (res),			/* 0 */		\
 	  "+m" (*dst),			/* 1 */		\
 	  "+a" (*expect)		/* 2 */		\
-	: "r" (src)			/* 3 */		\
+	: CONS (src)			/* 3 */		\
 	: "memory", "cc");				\
 	return (res);					\
 }
 
-ATOMIC_CMPSET(char);
-ATOMIC_CMPSET(short);
-ATOMIC_CMPSET(int);
+ATOMIC_CMPSET(char, "q");
+ATOMIC_CMPSET(short, "r");
+ATOMIC_CMPSET(int, "r");
 
 /*
  * Atomically add the value of v to the integer pointed to by p and return
@@ -563,6 +566,17 @@ atomic_swap_64(volatile uint64_t *p, uint64_t v)
 		return (atomic_swap_64_i386(p, v));
 	else
 		return (atomic_swap_64_i586(p, v));
+}
+
+static __inline uint64_t
+atomic_fetchadd_64(volatile uint64_t *p, uint64_t v)
+{
+
+	for (;;) {
+		uint64_t t = *p;
+		if (atomic_cmpset_64(p, t, t + v))
+			return (t);
+	}
 }
 
 #endif /* _KERNEL */

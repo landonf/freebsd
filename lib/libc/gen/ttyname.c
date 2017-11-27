@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1988, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -60,6 +62,10 @@ int
 ttyname_r(int fd, char *buf, size_t len)
 {
 	size_t used;
+
+	/* Don't write off the end of a zero-length buffer. */
+	if (len < 1)
+		return (ERANGE);
 
 	*buf = '\0';
 

@@ -329,6 +329,9 @@ int canLrzip(void);
 /* Return true if this platform can run the "lz4" program. */
 int canLz4(void);
 
+/* Return true if this platform can run the "zstd" program. */
+int canZstd(void);
+
 /* Return true if this platform can run the "lzip" program. */
 int canLzip(void);
 
@@ -348,7 +351,7 @@ int canNodump(void);
 int setTestAcl(const char *path);
 
 /* Get extended attribute */
-const void *getXattr(const char *, const char *, size_t *);
+void *getXattr(const char *, const char *, size_t *);
 
 /* Set extended attribute */
 int setXattr(const char *, const char *, const void *, size_t);

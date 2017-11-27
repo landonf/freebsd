@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 1999 Kazutaka YOKOTA <yokota@zodiac.mech.utsunomiya-u.ac.jp>
  * All rights reserved.
  *
@@ -62,7 +64,7 @@ static sc_term_default_attr_t	scteken_default_attr;
 static sc_term_clear_t		scteken_clear;
 static sc_term_input_t		scteken_input;
 static sc_term_fkeystr_t	scteken_fkeystr;
-static sc_term_set_cursor_t	scteken_set_cursor;
+static sc_term_sync_t		scteken_sync;
 static void			scteken_nop(void);
 
 typedef struct {
@@ -71,6 +73,8 @@ typedef struct {
 } teken_stat;
 
 static teken_stat	reserved_teken_stat;
+
+static void scteken_sync_internal(scr_stat *, teken_stat *);
 
 static sc_term_sw_t sc_term_scteken = {
 	{ NULL, NULL },
@@ -89,7 +93,7 @@ static sc_term_sw_t sc_term_scteken = {
 	(sc_term_notify_t *)scteken_nop,
 	scteken_input,
 	scteken_fkeystr,
-	scteken_set_cursor,
+	scteken_sync,
 };
 
 SCTERM_MODULE(scteken, sc_term_scteken);
@@ -116,7 +120,7 @@ static int
 scteken_init(scr_stat *scp, void **softc, int code)
 {
 	teken_stat *ts;
-	teken_pos_t tp;
+	teken_attr_t ta;
 
 	if (*softc == NULL) {
 		if (reserved_teken_stat.ts_busy)
@@ -131,17 +135,16 @@ scteken_init(scr_stat *scp, void **softc, int code)
 		ts->ts_busy = 1;
 		/* FALLTHROUGH */
 	case SC_TE_WARM_INIT:
+		ta = *teken_get_defattr(&ts->ts_teken);
 		teken_init(&ts->ts_teken, &scteken_funcs, scp);
+		teken_set_defattr(&ts->ts_teken, &ta);
 #ifndef TEKEN_UTF8
 		teken_set_8bit(&ts->ts_teken);
 #endif /* !TEKEN_UTF8 */
 #ifdef TEKEN_CONS25
 		teken_set_cons25(&ts->ts_teken);
 #endif /* TEKEN_CONS25 */
-
-		tp.tp_row = scp->ysize;
-		tp.tp_col = scp->xsize;
-		teken_set_winsize(&ts->ts_teken, &tp);
+		scteken_sync_internal(scp, ts);
 		break;
 	}
 
@@ -162,23 +165,12 @@ scteken_term(scr_stat *scp, void **softc)
 }
 
 static void
-scteken_puts(scr_stat *scp, u_char *buf, int len, int kernel)
+scteken_puts(scr_stat *scp, u_char *buf, int len)
 {
 	teken_stat *ts = scp->ts;
-	teken_attr_t backup, kattr;
 
 	scp->sc->write_in_progress++;
-	if (kernel) {
-		/* Use special colors for kernel messages. */
-		backup = *teken_get_curattr(&ts->ts_teken);
-		scteken_sc_to_te_attr(sc_kattr(), &kattr);
-		teken_set_curattr(&ts->ts_teken, &kattr);
-		teken_input(&ts->ts_teken, buf, len);
-		teken_set_curattr(&ts->ts_teken, &backup);
-	} else {
-		/* Print user messages with regular colors. */
-		teken_input(&ts->ts_teken, buf, len);
-	}
+	teken_input(&ts->ts_teken, buf, len);
 	scp->sc->write_in_progress--;
 }
 
@@ -230,7 +222,7 @@ scteken_clear(scr_stat *scp)
 	teken_stat *ts = scp->ts;
 
 	sc_move_cursor(scp, 0, 0);
-	scteken_set_cursor(scp, 0, 0);
+	scteken_sync_internal(scp, ts);
 	sc_vtb_clear(&scp->vtb, scp->sc->scr_map[0x20],
 		     scteken_te_to_sc_attr(teken_get_curattr(&ts->ts_teken))
 		     << 8);
@@ -295,14 +287,22 @@ scteken_fkeystr(scr_stat *scp, int c)
 }
 
 static void
-scteken_set_cursor(scr_stat *scp, int col, int row)
+scteken_sync_internal(scr_stat *scp, teken_stat *ts)
 {
-	teken_stat *ts = scp->ts;
 	teken_pos_t tp;
 
-	tp.tp_col = col;
-	tp.tp_row = row;
+	tp.tp_col = scp->xsize;
+	tp.tp_row = scp->ysize;
+	teken_set_winsize_noreset(&ts->ts_teken, &tp);
+	tp.tp_col = scp->xpos;
+	tp.tp_row = scp->ypos;
 	teken_set_cursor(&ts->ts_teken, &tp);
+}
+
+static void
+scteken_sync(scr_stat *scp)
+{
+	scteken_sync_internal(scp, scp->ts);
 }
 
 static void
@@ -675,17 +675,73 @@ scteken_copy(void *arg, const teken_rect_t *r, const teken_pos_t *p)
 static void
 scteken_param(void *arg, int cmd, unsigned int value)
 {
+	static int cattrs[] = {
+		0,					/* block */
+		CONS_BLINK_CURSOR,			/* blinking block */
+		CONS_CHAR_CURSOR,			/* underline */
+		CONS_CHAR_CURSOR | CONS_BLINK_CURSOR,	/* blinking underline */
+		CONS_RESET_CURSOR,			/* reset to default */
+		CONS_HIDDEN_CURSOR,			/* hide cursor */
+	};
+	static int tcattrs[] = {
+		CONS_RESET_CURSOR | CONS_LOCAL_CURSOR,	/* normal */
+		CONS_HIDDEN_CURSOR | CONS_LOCAL_CURSOR,	/* invisible */
+	};
 	scr_stat *scp = arg;
+	int flags, n, v0, v1, v2;
 
 	switch (cmd) {
-	case TP_SHOWCURSOR:
-		if (value) {
-			sc_change_cursor_shape(scp,
-			    CONS_RESET_CURSOR|CONS_LOCAL_CURSOR, -1, -1);
-		} else {
-			sc_change_cursor_shape(scp,
-			    CONS_HIDDEN_CURSOR|CONS_LOCAL_CURSOR, -1, -1);
+	case TP_SETBORDER:
+		scp->border = value & 0xff;
+		if (scp == scp->sc->cur_scp)
+			sc_set_border(scp, scp->border);
+		break;
+	case TP_SETGLOBALCURSOR:
+		n = value & 0xff;
+		v0 = (value >> 8) & 0xff;
+		v1 = (value >> 16) & 0xff;
+		v2 = (value >> 24) & 0xff;
+		switch (n) {
+		case 1:	/* flags only */
+			if (v0 < sizeof(cattrs) / sizeof(cattrs[0]))
+				v0 = cattrs[v0];
+			else /* backward compatibility */
+				v0 = cattrs[v0 & 0x3];
+			sc_change_cursor_shape(scp, v0, -1, -1);
+			break;
+		case 2:
+			v2 = 0;
+			v0 &= 0x1f;	/* backward compatibility */
+			v1 &= 0x1f;
+			/* FALL THROUGH */
+		case 3:	/* base and height */
+			if (v2 == 0)	/* count from top */
+				sc_change_cursor_shape(scp, -1,
+				    scp->font_size - v1 - 1,
+				    v1 - v0 + 1);
+			else if (v2 == 1) /* count from bottom */
+				sc_change_cursor_shape(scp, -1,
+				    v0, v1 - v0 + 1);
+			break;
 		}
+		break;
+	case TP_SETLOCALCURSOR:
+		if (value < sizeof(tcattrs) / sizeof(tcattrs[0]))
+			sc_change_cursor_shape(scp, tcattrs[value], -1, -1);
+		else if (value == 2) {
+			sc_change_cursor_shape(scp,
+			    CONS_RESET_CURSOR | CONS_LOCAL_CURSOR, -1, -1);
+			flags = scp->base_curs_attr.flags ^ CONS_BLINK_CURSOR;
+			sc_change_cursor_shape(scp,
+			    flags | CONS_LOCAL_CURSOR, -1, -1);
+		}
+		break;
+	case TP_SHOWCURSOR:
+		if (value != 0)
+			flags = scp->base_curs_attr.flags & ~CONS_HIDDEN_CURSOR;
+		else
+			flags = scp->base_curs_attr.flags | CONS_HIDDEN_CURSOR;
+		sc_change_cursor_shape(scp, flags | CONS_LOCAL_CURSOR, -1, -1);
 		break;
 	case TP_SWITCHVT:
 		sc_switch_scr(scp->sc, value);

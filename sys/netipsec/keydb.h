@@ -2,6 +2,8 @@
 /*	$KAME: keydb.h,v 1.14 2000/08/02 17:58:26 sakane Exp $	*/
 
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
  * All rights reserved.
  *
@@ -226,28 +228,6 @@ struct secacq {
 	time_t created;		/* for lifetime */
 	int count;		/* for lifetime */
 };
-
-/* Sensitivity Level Specification */
-/* nothing */
-
-#define SADB_KILL_INTERVAL	600	/* six seconds */
-
-/* secpolicy */
-extern struct secpolicy *keydb_newsecpolicy(void);
-extern void keydb_delsecpolicy(struct secpolicy *);
-/* secashead */
-extern struct secashead *keydb_newsecashead(void);
-extern void keydb_delsecashead(struct secashead *);
-/* secasvar */
-extern struct secasvar *keydb_newsecasvar(void);
-extern void keydb_refsecasvar(struct secasvar *);
-extern void keydb_freesecasvar(struct secasvar *);
-/* secreplay */
-extern struct secreplay *keydb_newsecreplay(size_t);
-extern void keydb_delsecreplay(struct secreplay *);
-/* secreg */
-extern struct secreg *keydb_newsecreg(void);
-extern void keydb_delsecreg(struct secreg *);
 
 #endif /* _KERNEL */
 

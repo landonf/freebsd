@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (C) 1996
  *	David L. Nugent.  All rights reserved.
  *
@@ -33,6 +35,7 @@ static const char rcsid[] =
 #include <sys/param.h>
 #include <sys/types.h>
 
+#include <assert.h>
 #include <ctype.h>
 #include <dirent.h>
 #include <err.h>
@@ -490,6 +493,7 @@ pw_pwcrypt(char *password)
 	char            salt[SALTSIZE + 1];
 	char		*cryptpw;
 	static char     buf[256];
+	size_t		pwlen;
 
 	/*
 	 * Calculate a salt value
@@ -501,7 +505,9 @@ pw_pwcrypt(char *password)
 	cryptpw = crypt(password, salt);
 	if (cryptpw == NULL)
 		errx(EX_CONFIG, "crypt(3) failure");
-	return strcpy(buf, cryptpw);
+	pwlen = strlcpy(buf, cryptpw, sizeof(buf));
+	assert(pwlen < sizeof(buf));
+	return (buf);
 }
 
 static char *
@@ -1083,10 +1089,10 @@ split_groups(StringList **groups, char *groupsstr)
 	char *p;
 	char tok[] = ", \t";
 
+	if (*groups == NULL)
+		*groups = sl_init();
 	for (p = strtok(groupsstr, tok); p != NULL; p = strtok(NULL, tok)) {
 		grp = group_from_name_or_id(p);
-		if (*groups == NULL)
-			*groups = sl_init();
 		sl_add(*groups, newstr(grp->gr_name));
 	}
 }
@@ -1198,7 +1204,7 @@ pw_user_add(int argc, char **argv, char *arg1)
 		if (arg1[strspn(arg1, "0123456789")] == '\0')
 			id = pw_checkid(arg1, UID_MAX);
 		else
-			name = arg1;
+			name = pw_checkname(arg1, 0);
 	}
 
 	while ((ch = getopt(argc, argv, args)) != -1) {
@@ -1210,7 +1216,7 @@ pw_user_add(int argc, char **argv, char *arg1)
 			quiet = true;
 			break;
 		case 'n':
-			name = optarg;
+			name = pw_checkname(optarg, 0);
 			break;
 		case 'u':
 			userid = optarg;

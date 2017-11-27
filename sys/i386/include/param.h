@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  *
@@ -82,7 +84,7 @@
  * CACHE_LINE_SIZE is the compile-time maximum cache line size for an
  * architecture.  It should be used with appropriate caution.
  */
-#define	CACHE_LINE_SHIFT	7
+#define	CACHE_LINE_SHIFT	6
 #define	CACHE_LINE_SIZE		(1 << CACHE_LINE_SHIFT)
 
 #define PAGE_SHIFT	12		/* LOG2(PAGE_SIZE) */

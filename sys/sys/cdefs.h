@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1991, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -205,17 +207,6 @@
  * for a given compiler, let the compile fail if it is told to use
  * a feature that we cannot live without.
  */
-#ifdef lint
-#define	__dead2
-#define	__pure2
-#define	__unused
-#define	__packed
-#define	__aligned(x)
-#define	__alloc_align(x)
-#define	__alloc_size(x)
-#define	__section(x)
-#define	__weak_symbol
-#else
 #define	__weak_symbol	__attribute__((__weak__))
 #if !__GNUC_PREREQ__(2, 5) && !defined(__INTEL_COMPILER)
 #define	__dead2
@@ -247,7 +238,6 @@
 #else
 #define	__alloc_align(x)
 #endif
-#endif /* lint */
 
 #if !__GNUC_PREREQ__(2, 95)
 #define	__alignof(x)	__offsetof(struct { char __a; x __b; }, __b)
@@ -257,7 +247,7 @@
  * Keywords added in C11.
  */
 
-#if !defined(__STDC_VERSION__) || __STDC_VERSION__ < 201112L || defined(lint)
+#if !defined(__STDC_VERSION__) || __STDC_VERSION__ < 201112L
 
 #if !__has_extension(c_alignas)
 #if (defined(__cplusplus) && __cplusplus >= 201103L) || \
@@ -294,7 +284,7 @@
 #if (defined(__cplusplus) && __cplusplus >= 201103L) || \
     __has_extension(cxx_static_assert)
 #define	_Static_assert(x, y)	static_assert(x, y)
-#elif __GNUC_PREREQ__(4,6)
+#elif __GNUC_PREREQ__(4,6) && !defined(__cplusplus)
 /* Nothing, gcc 4.6 and higher has _Static_assert built-in */
 #elif defined(__COUNTER__)
 #define	_Static_assert(x, y)	__Static_assert(x, __COUNTER__)
@@ -423,7 +413,7 @@
  * software that is unaware of C99 keywords.
  */
 #if !(__GNUC__ == 2 && __GNUC_MINOR__ == 95)
-#if !defined(__STDC_VERSION__) || __STDC_VERSION__ < 199901 || defined(lint)
+#if !defined(__STDC_VERSION__) || __STDC_VERSION__ < 199901
 #define	__restrict
 #else
 #define	__restrict	restrict
@@ -750,25 +740,39 @@
 #define	__XSI_VISIBLE		0
 #define	__BSD_VISIBLE		0
 #define	__ISO_C_VISIBLE		1990
+#define	__EXT1_VISIBLE		0
 #elif defined(_C99_SOURCE)	/* Localism to specify strict C99 env. */
 #define	__POSIX_VISIBLE		0
 #define	__XSI_VISIBLE		0
 #define	__BSD_VISIBLE		0
 #define	__ISO_C_VISIBLE		1999
+#define	__EXT1_VISIBLE		0
 #elif defined(_C11_SOURCE)	/* Localism to specify strict C11 env. */
 #define	__POSIX_VISIBLE		0
 #define	__XSI_VISIBLE		0
 #define	__BSD_VISIBLE		0
 #define	__ISO_C_VISIBLE		2011
+#define	__EXT1_VISIBLE		0
 #else				/* Default environment: show everything. */
 #define	__POSIX_VISIBLE		200809
 #define	__XSI_VISIBLE		700
 #define	__BSD_VISIBLE		1
 #define	__ISO_C_VISIBLE		2011
+#define	__EXT1_VISIBLE		1
 #endif
 #endif
 
-#if defined(__mips) || defined(__powerpc64__) || defined(__riscv__)
+/* User override __EXT1_VISIBLE */
+#if defined(__STDC_WANT_LIB_EXT1__)
+#undef	__EXT1_VISIBLE
+#if __STDC_WANT_LIB_EXT1__
+#define	__EXT1_VISIBLE		1
+#else
+#define	__EXT1_VISIBLE		0
+#endif
+#endif /* __STDC_WANT_LIB_EXT1__ */
+
+#if defined(__mips) || defined(__powerpc64__) || defined(__riscv)
 #define	__NO_TLS 1
 #endif
 
@@ -803,7 +807,7 @@
  */
 
 #if __has_attribute(__argument_with_type_tag__) && \
-    __has_attribute(__type_tag_for_datatype__) && !defined(lint)
+    __has_attribute(__type_tag_for_datatype__)
 #define	__arg_type_tag(arg_kind, arg_idx, type_tag_idx) \
 	    __attribute__((__argument_with_type_tag__(arg_kind, arg_idx, type_tag_idx)))
 #define	__datatype_type_tag(kind, type) \

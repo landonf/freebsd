@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 1999 Luoqi Chen <luoqi@freebsd.org>
  * Copyright (c) Peter Wemm <peter@netplex.com.au>
  * All rights reserved.
@@ -45,11 +47,11 @@
 #ifdef	__mips_n64
 #define	PCPU_MD_MIPS64_FIELDS						\
 	PCPU_MD_COMMON_FIELDS						\
-	char		__pad[53]
+	char		__pad[245]
 #else
 #define	PCPU_MD_MIPS32_FIELDS						\
 	PCPU_MD_COMMON_FIELDS						\
-	char		__pad[189]
+	char		__pad[125]
 #endif
 
 #ifdef	__mips_n64

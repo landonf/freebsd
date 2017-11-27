@@ -1,7 +1,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd March 15, 2017
+.Dd November 26, 2017
 .Dt IPFW 8
 .Os
 .Sh NAME
@@ -50,7 +50,9 @@ in-kernel NAT.
 .Nm
 .Oo Cm set Ar N Oc Cm table Ar name Cm create Ar create-options
 .Nm
-.Oo Cm set Ar N Oc Cm table Ar name Cm destroy
+.Oo Cm set Ar N Oc Cm table
+.Brq Ar name | all
+.Cm destroy
 .Nm
 .Oo Cm set Ar N Oc Cm table Ar name Cm modify Ar modify-options
 .Nm
@@ -535,7 +537,7 @@ for filtering packets, among the following:
 .It Layer-2 header fields
 When available
 .It IPv4 and IPv6 Protocol
-TCP, UDP, ICMP, etc.
+SCTP, TCP, UDP, ICMP, etc.
 .It Source and dest. addresses and ports
 .It Direction
 See Section
@@ -1118,6 +1120,20 @@ It is also possible to use the
 keyword with setdscp.
 If the tablearg value is not within the 0..64 range, lower 6 bits of supplied
 value are used.
+.It Cm tcp-setmss Ar mss
+Set the Maximum Segment Size (MSS) in the TCP segment to value
+.Ar mss .
+The kernel module
+.Cm ipfw_pmod
+should be loaded or kernel should have
+.Cm options IPFIREWALL_PMOD
+to be able use this action.
+This command does not change a packet if original MSS value is lower than
+specified value.
+Both TCP over IPv4 and over IPv6 are supported.
+Regardless of matched a packet or not by the
+.Cm tcp-setmss
+rule, the search continues with the next rule.
 .It Cm reass
 Queue and reassemble IP fragments.
 If the packet is not fragmented, counters are updated and
@@ -1157,6 +1173,14 @@ ipfw add reass all from any to any in
 .Ed
 .Pp
 is all you need at the beginning of your ruleset.
+.It Cm abort
+Discard packets that match this rule, and if the packet is an SCTP packet,
+try to send an SCTP packet containing an ABORT chunk.
+The search terminates.
+.It Cm abort6
+Discard packets that match this rule, and if the packet is an SCTP packet,
+try to send an SCTP packet containing an ABORT chunk.
+The search terminates.
 .El
 .Ss RULE BODY
 The body of a rule contains zero or more patterns (such as
@@ -1380,7 +1404,7 @@ error-prone.
 No support for sets of IPv6 addresses is provided because IPv6 addresses
 are typically random past the initial prefix.
 .It Ar ports : Bro Ar port | port Ns \&- Ns Ar port Ns Brc Ns Op , Ns Ar ports
-For protocols which support port numbers (such as TCP and UDP), optional
+For protocols which support port numbers (such as SCTP, TCP and UDP), optional
 .Cm ports
 may be specified as one or more ports or port ranges, separated
 by commas but no spaces, and an optional
@@ -2483,7 +2507,7 @@ The following parameters can be configured for a pipe:
 .It Cm bw Ar bandwidth | device
 Bandwidth, measured in
 .Sm off
-.Op Cm K | M
+.Op Cm K | M | G
 .Brq Cm bit/s | Byte/s .
 .Sm on
 .Pp
@@ -2880,6 +2904,11 @@ the packets are dropped.
 .Nm
 support in-kernel NAT using the kernel version of
 .Xr libalias 3 .
+The kernel module
+.Cm ipfw_nat
+should be loaded or kernel should have
+.Cm options IPFIREWALL_NAT
+to be able use NAT.
 .Pp
 The nat configuration command is the following:
 .Bd -ragged -offset indent

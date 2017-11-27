@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1989, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -69,7 +71,7 @@ getpagesize(void)
 	mib[1] = HW_PAGESIZE;
 	size = sizeof value;
 	if (sysctl(mib, nitems(mib), &value, &size, NULL, 0) == -1)
-		return (-1);
+		return (PAGE_SIZE);
 
 	return (value);
 }

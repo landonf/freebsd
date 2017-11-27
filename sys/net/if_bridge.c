@@ -1,6 +1,8 @@
 /*	$NetBSD: if_bridge.c,v 1.31 2005/06/01 19:45:34 jdc Exp $	*/
 
-/*
+/*-
+ * SPDX-License-Identifier: BSD-4-Clause
+ *
  * Copyright 2001 Wasabi Systems, Inc.
  * All rights reserved.
  *
@@ -584,6 +586,7 @@ static moduledata_t bridge_mod = {
 };
 
 DECLARE_MODULE(if_bridge, bridge_mod, SI_SUB_PSEUDO, SI_ORDER_ANY);
+MODULE_VERSION(if_bridge, 1);
 MODULE_DEPEND(if_bridge, bridgestp, 1, 1, 1);
 
 /*
@@ -940,8 +943,12 @@ bridge_set_ifcap(struct bridge_softc *sc, struct bridge_iflist *bif, int set)
 		error = (*ifp->if_ioctl)(ifp, SIOCSIFCAP, (caddr_t)&ifr);
 		if (error)
 			if_printf(sc->sc_ifp,
-			    "error setting interface capabilities on %s\n",
-			    ifp->if_xname);
+			    "error setting capabilities on %s: %d\n",
+			    ifp->if_xname, error);
+		if ((ifp->if_capenable & ~set) != 0)
+			if_printf(sc->sc_ifp,
+			    "can't disable some capabilities on %s: 0x%x\n",
+			    ifp->if_xname, ifp->if_capenable & ~set);
 	}
 }
 

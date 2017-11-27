@@ -365,7 +365,7 @@
 	ld	%r30, (TLBSAVE_BOOKE_R30)(br);				\
 	ld	%r31, (TLBSAVE_BOOKE_R31)(br);				
 #define TLB_NEST(outr,inr)						\
-	rlwinm	outr, inr, 7, 23, 24;	/* 8 x TLBSAVE_LEN */
+	rlwinm	outr, inr, 7, 22, 24;	/* 8 x TLBSAVE_LEN */
 #else
 #define TLB_SAVE_REGS(br)						\
 	stmw	%r20, TLBSAVE_BOOKE_R20(br)
@@ -567,7 +567,7 @@ INTERRUPT(int_external_input)
 	addi	%r3, %r1, CALLSIZE
 	bl	CNAME(powerpc_interrupt)
 	TOC_RESTORE
-	b	clear_we
+	b	trapexit
 
 
 INTERRUPT(int_alignment)
@@ -607,7 +607,7 @@ INTERRUPT(int_decrementer)
 	addi	%r3, %r1, CALLSIZE
 	bl	CNAME(powerpc_interrupt)
 	TOC_RESTORE
-	b	clear_we
+	b	trapexit
 
 
 /*****************************************************************************
@@ -970,23 +970,18 @@ int_debug_int:
 	GET_CPUINFO(%r3)
 	LOAD	%r3, (PC_BOOKE_CRITSAVE+CPUSAVE_SRR0)(%r3)
 	bl	0f
-#ifdef __powerpc64__
-	.llong	interrupt_vector_base-.
-	.llong	interrupt_vector_top-.
-#else
-	.long	interrupt_vector_base-.
-	.long	interrupt_vector_top-.
-#endif
+	ADDR(interrupt_vector_base-.)
+	ADDR(interrupt_vector_top-.)
 0:	mflr	%r5
 	LOAD	%r4,0(%r5)	/* interrupt_vector_base in r4 */
 	add	%r4,%r4,%r5
 	CMPL	cr0, %r3, %r4
-	blt	1f
-	LOAD	%r4,4(%r5)	/* interrupt_vector_top in r4 */
+	blt	trap_common
+	LOAD	%r4,WORD_SIZE(%r5)	/* interrupt_vector_top in r4 */
 	add	%r4,%r4,%r5
 	addi	%r4,%r4,4
 	CMPL	cr0, %r3, %r4
-	bge	1f
+	bge	trap_common
 	/* Disable single-stepping for the interrupt handlers. */
 	LOAD	%r3, FRAME_SRR1+CALLSIZE(%r1);
 	rlwinm	%r3, %r3, 0, 23, 21
@@ -999,16 +994,6 @@ int_debug_int:
 	mtspr	SPR_SRR1, %r4
 	mtlr	%r14
 	blr
-1:
-	GET_TOCBASE(%r2)
-	addi	%r3, %r1, CALLSIZE
-	bl	CNAME(trap)
-	TOC_RESTORE
-	/*
-	 * Handle ASTs, needed for proper support of single-stepping.
-	 * We actually need to return to the process with an rfi.
-	 */
-	b	trapexit
 
 /*****************************************************************************
  * Common trap code
@@ -1105,12 +1090,6 @@ dbleave:
 	FRAME_LEAVE(SPR_SRR0, SPR_SRR1)
 	rfi
 #endif /* KDB */
-
-clear_we:
-	LOAD	%r3, (FRAME_SRR1+CALLSIZE)(%r1)
-	rlwinm	%r3, %r3, 0, 14, 12
-	STORE	%r3, (FRAME_SRR1+CALLSIZE)(%r1)
-	b	trapexit
 
 #ifdef SMP
 ENTRY(tlb_lock)

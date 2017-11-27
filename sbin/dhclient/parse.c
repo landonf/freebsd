@@ -2,7 +2,9 @@
 
 /* Common parser code for dhcpd and dhclient. */
 
-/*
+/*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1995, 1996, 1997, 1998 The Internet Software Consortium.
  * All rights reserved.
  *
@@ -131,8 +133,10 @@ parse_string(FILE *cfile)
 		error("no memory for string %s.", val);
 	memcpy(s, val, valsize);
 
-	if (!parse_semi(cfile))
+	if (!parse_semi(cfile)) {
+		free(s);
 		return (NULL);
+	}
 	return (s);
 }
 
@@ -246,9 +250,10 @@ parse_numeric_aggregate(FILE *cfile, unsigned char *buf, int *max,
 	char *val, *t;
 	size_t valsize;
 	pair c = NULL;
+	unsigned char *lbufp = NULL;
 
 	if (!bufp && *max) {
-		bufp = malloc(*max * size / 8);
+		lbufp = bufp = malloc(*max * size / 8);
 		if (!bufp)
 			error("can't allocate space for numeric aggregate");
 	} else
@@ -265,6 +270,7 @@ parse_numeric_aggregate(FILE *cfile, unsigned char *buf, int *max,
 				parse_warn("too few numbers.");
 				if (token != SEMI)
 					skip_to_semi(cfile);
+				free(lbufp);
 				return (NULL);
 			}
 			token = next_token(&val, cfile);
@@ -281,6 +287,7 @@ parse_numeric_aggregate(FILE *cfile, unsigned char *buf, int *max,
 		    (base != 16 || token != NUMBER_OR_NAME)) {
 			parse_warn("expecting numeric value.");
 			skip_to_semi(cfile);
+			free(lbufp);
 			return (NULL);
 		}
 		/*
@@ -302,6 +309,7 @@ parse_numeric_aggregate(FILE *cfile, unsigned char *buf, int *max,
 
 	/* If we had to cons up a list, convert it now. */
 	if (c) {
+		free(lbufp);
 		bufp = malloc(count * size / 8);
 		if (!bufp)
 			error("can't allocate space for numeric aggregate.");

@@ -1,6 +1,8 @@
 /*	$NetBSD: iso9660_rrip.c,v 1.14 2014/05/30 13:14:47 martin Exp $	*/
 
-/*
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause-NetBSD
+ *
  * Copyright (c) 2005 Daniel Watt, Walter Deignan, Ryan Gabrys, Alan
  * Perez-Rathke and Ram Vedam.  All rights reserved.
  *
@@ -45,6 +47,7 @@ __FBSDID("$FreeBSD$");
 #include "makefs.h"
 #include "cd9660.h"
 #include "iso9660_rrip.h"
+#include <util.h>
 
 static void cd9660_rrip_initialize_inode(cd9660node *);
 static int cd9660_susp_handle_continuation(iso9660_disk *, cd9660node *);
@@ -458,11 +461,7 @@ cd9660node_susp_create_node(int susp_type, int entry_type, const char *type_id,
 {
 	struct ISO_SUSP_ATTRIBUTES* temp;
 
-	if ((temp = malloc(sizeof(struct ISO_SUSP_ATTRIBUTES))) == NULL) {
-		CD9660_MEM_ALLOC_ERROR("cd9660node_susp_create_node");
-		exit(1);
-	}
-
+	temp = emalloc(sizeof(*temp));
 	temp->susp_type = susp_type;
 	temp->entry_type = entry_type;
 	temp->last_in_suf = 0;

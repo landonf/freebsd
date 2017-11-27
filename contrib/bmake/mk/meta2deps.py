@@ -37,7 +37,7 @@ We only pay attention to a subset of the information in the
 
 """
 RCSid:
-	$Id: meta2deps.py,v 1.24 2017/02/08 22:17:10 sjg Exp $
+	$Id: meta2deps.py,v 1.27 2017/05/24 00:04:04 sjg Exp $
 
 	Copyright (c) 2011-2013, Juniper Networks, Inc.
 	All rights reserved.
@@ -90,6 +90,12 @@ def resolve(path, cwd, last_dir=None, debug=0, debug_out=sys.stderr):
     for d in [last_dir, cwd]:
         if not d:
             continue
+        if path == '..':
+            dw = d.split('/')
+            p = '/'.join(dw[:-1])
+            if not p:
+                p = '/'
+            return p
         p = '/'.join([d,path])
         if debug > 2:
             print("looking for:", p, end=' ', file=debug_out)
@@ -115,8 +121,11 @@ def cleanpath(path):
         if not d or d == '.':
             continue
         if d == '..':
-            p.pop()
-            continue
+            try:
+                p.pop()
+                continue
+            except:
+                break
         p.append(d)
 
     return r + '/'.join(p)
@@ -142,7 +151,7 @@ def sort_unique(list, cmp=None, key=None, reverse=False):
     for e in list:
         if e == le:
             continue
-	le = e
+        le = e
         nl.append(e)
     return nl
 
@@ -491,6 +500,21 @@ class MetaFile:
         if not file:
             f.close()
 
+    def is_src(self, base, dir, rdir):
+        """is base in srctop"""
+        for dir in [dir,rdir]:
+            if not dir:
+                continue
+            path = '/'.join([dir,base])
+            srctop = self.find_top(path, self.srctops)
+            if srctop:
+                if self.dpdeps:
+                    self.add(self.file_deps, path.replace(srctop,''), 'file')
+                self.add(self.src_deps, dir.replace(srctop,''), 'src')
+                self.seenit(dir)
+                return True
+        return False
+
     def parse_path(self, path, cwd, op=None, w=[]):
         """look at a path for the op specified"""
 
@@ -519,10 +543,9 @@ class MetaFile:
         # to the src dir, we may need to add dependencies for each
         rdir = dir
         dir = abspath(dir, cwd, self.last_dir, self.debug, self.debug_out)
-        if rdir == dir or rdir.find('./') > 0:
+        rdir = os.path.realpath(dir)
+        if rdir == dir:
             rdir = None
-        if os.path.islink(dir):
-            rdir = os.path.realpath(dir)
         # now put path back together
         path = '/'.join([dir,base])
         if self.debug > 1:
@@ -543,17 +566,9 @@ class MetaFile:
             # finally, we get down to it
             if dir == self.cwd or dir == self.curdir:
                 return
-            srctop = self.find_top(path, self.srctops)
-            if srctop:
-                if self.dpdeps:
-                    self.add(self.file_deps, path.replace(srctop,''), 'file')
-                self.add(self.src_deps, dir.replace(srctop,''), 'src')
+            if self.is_src(base, dir, rdir):
                 self.seenit(w[2])
-                self.seenit(dir)
-                if rdir and not rdir.startswith(srctop):
-                    dir = rdir      # for below
-                    rdir = None
-                else:
+                if not rdir:
                     return
 
             objroot = None

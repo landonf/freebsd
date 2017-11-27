@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2001 Atsushi Onoe
  * Copyright (c) 2002-2008 Sam Leffler, Errno Consulting
  * Copyright (c) 2012 IEEE
@@ -1304,6 +1306,20 @@ ieee80211_wme_updateparams(struct ieee80211vap *vap)
 		ieee80211_wme_updateparams_locked(vap);
 		IEEE80211_UNLOCK(ic);
 	}
+}
+
+void
+ieee80211_wme_vap_getparams(struct ieee80211vap *vap, struct chanAccParams *wp)
+{
+
+	memcpy(wp, &vap->iv_ic->ic_wme.wme_chanParams, sizeof(*wp));
+}
+
+void
+ieee80211_wme_ic_getparams(struct ieee80211com *ic, struct chanAccParams *wp)
+{
+
+	memcpy(wp, &ic->ic_wme.wme_chanParams, sizeof(*wp));
 }
 
 static void

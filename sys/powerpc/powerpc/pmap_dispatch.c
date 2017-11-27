@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2005 Peter Grehan
  * All rights reserved.
  *
@@ -495,7 +497,7 @@ pmap_kenter(vm_offset_t va, vm_paddr_t pa)
 }
 
 void
-pmap_kenter_attr(vm_offset_t va, vm_offset_t pa, vm_memattr_t ma)
+pmap_kenter_attr(vm_offset_t va, vm_paddr_t pa, vm_memattr_t ma)
 {
 
 	CTR4(KTR_PMAP, "%s(%#x, %#x, %#x)", __func__, va, pa, ma);

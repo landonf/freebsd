@@ -57,6 +57,8 @@ struct workqueue_struct *system_long_wq;
 struct workqueue_struct *system_unbound_wq;
 struct workqueue_struct *system_power_efficient_wq;
 
+static int linux_default_wq_cpus = 4;
+
 static void linux_delayed_work_timer_fn(void *);
 
 /*
@@ -212,7 +214,7 @@ linux_work_fn(void *context, int pending)
 		[WORK_ST_TIMER] = WORK_ST_EXEC,		/* delayed work w/o timeout */
 		[WORK_ST_TASK] = WORK_ST_EXEC,		/* call callback */
 		[WORK_ST_EXEC] = WORK_ST_IDLE,		/* complete callback */
-		[WORK_ST_CANCEL] = WORK_ST_IDLE,	/* complete cancel */
+		[WORK_ST_CANCEL] = WORK_ST_EXEC,	/* failed to cancel */
 	};
 	struct work_struct *work;
 	struct workqueue_struct *wq;
@@ -234,6 +236,7 @@ linux_work_fn(void *context, int pending)
 		switch (linux_update_state(&work->state, states)) {
 		case WORK_ST_TIMER:
 		case WORK_ST_TASK:
+		case WORK_ST_CANCEL:
 			WQ_EXEC_UNLOCK(wq);
 
 			/* call work function */
@@ -257,6 +260,23 @@ done:
 	WQ_EXEC_UNLOCK(wq);
 }
 
+void
+linux_delayed_work_fn(void *context, int pending)
+{
+	struct delayed_work *dwork = context;
+
+	/*
+	 * Make sure the timer belonging to the delayed work gets
+	 * drained before invoking the work function. Else the timer
+	 * mutex may still be in use which can lead to use-after-free
+	 * situations, because the work function might free the work
+	 * structure before returning.
+	 */
+	callout_drain(&dwork->timer.callout);
+
+	linux_work_fn(&dwork->work, pending);
+}
+
 static void
 linux_delayed_work_timer_fn(void *arg)
 {
@@ -264,13 +284,14 @@ linux_delayed_work_timer_fn(void *arg)
 		[WORK_ST_IDLE] = WORK_ST_IDLE,		/* NOP */
 		[WORK_ST_TIMER] = WORK_ST_TASK,		/* start queueing task */
 		[WORK_ST_TASK] = WORK_ST_TASK,		/* NOP */
-		[WORK_ST_EXEC] = WORK_ST_TASK,		/* queue task another time */
-		[WORK_ST_CANCEL] = WORK_ST_IDLE,	/* complete cancel */
+		[WORK_ST_EXEC] = WORK_ST_EXEC,		/* NOP */
+		[WORK_ST_CANCEL] = WORK_ST_TASK,	/* failed to cancel */
 	};
 	struct delayed_work *dwork = arg;
 
 	switch (linux_update_state(&dwork->work.state, states)) {
 	case WORK_ST_TIMER:
+	case WORK_ST_CANCEL:
 		linux_delayed_work_enqueue(dwork);
 		break;
 	default:
@@ -288,10 +309,10 @@ linux_cancel_work_sync(struct work_struct *work)
 {
 	static const uint8_t states[WORK_ST_MAX] __aligned(8) = {
 		[WORK_ST_IDLE] = WORK_ST_IDLE,		/* NOP */
-		[WORK_ST_TIMER] = WORK_ST_IDLE,		/* idle */
-		[WORK_ST_TASK] = WORK_ST_IDLE,		/* idle */
-		[WORK_ST_EXEC] = WORK_ST_IDLE,		/* idle */
-		[WORK_ST_CANCEL] = WORK_ST_IDLE,	/* idle */
+		[WORK_ST_TIMER] = WORK_ST_TIMER,	/* can't happen */
+		[WORK_ST_TASK] = WORK_ST_IDLE,		/* cancel and drain */
+		[WORK_ST_EXEC] = WORK_ST_IDLE,		/* too late, drain */
+		[WORK_ST_CANCEL] = WORK_ST_IDLE,	/* cancel and drain */
 	};
 	struct taskqueue *tq;
 
@@ -300,6 +321,12 @@ linux_cancel_work_sync(struct work_struct *work)
 
 	switch (linux_update_state(&work->state, states)) {
 	case WORK_ST_IDLE:
+	case WORK_ST_TIMER:
+		return (0);
+	case WORK_ST_EXEC:
+		tq = work->work_queue->taskqueue;
+		if (taskqueue_cancel(tq, &work->work_task, NULL) != 0)
+			taskqueue_drain(tq, &work->work_task);
 		return (0);
 	default:
 		tq = work->work_queue->taskqueue;
@@ -341,23 +368,29 @@ linux_cancel_delayed_work(struct delayed_work *dwork)
 {
 	static const uint8_t states[WORK_ST_MAX] __aligned(8) = {
 		[WORK_ST_IDLE] = WORK_ST_IDLE,		/* NOP */
-		[WORK_ST_TIMER] = WORK_ST_CANCEL,	/* cancel */
-		[WORK_ST_TASK] = WORK_ST_CANCEL,	/* cancel */
-		[WORK_ST_EXEC] = WORK_ST_CANCEL,	/* cancel */
-		[WORK_ST_CANCEL] = WORK_ST_CANCEL,	/* cancel */
+		[WORK_ST_TIMER] = WORK_ST_CANCEL,	/* try to cancel */
+		[WORK_ST_TASK] = WORK_ST_CANCEL,	/* try to cancel */
+		[WORK_ST_EXEC] = WORK_ST_EXEC,		/* NOP */
+		[WORK_ST_CANCEL] = WORK_ST_CANCEL,	/* NOP */
 	};
 	struct taskqueue *tq;
 
 	switch (linux_update_state(&dwork->work.state, states)) {
 	case WORK_ST_TIMER:
-		if (linux_cancel_timer(dwork, 0))
+	case WORK_ST_CANCEL:
+		if (linux_cancel_timer(dwork, 0)) {
+			atomic_cmpxchg(&dwork->work.state,
+			    WORK_ST_CANCEL, WORK_ST_IDLE);
 			return (1);
+		}
 		/* FALLTHROUGH */
 	case WORK_ST_TASK:
-	case WORK_ST_EXEC:
 		tq = dwork->work.work_queue->taskqueue;
-		if (taskqueue_cancel(tq, &dwork->work.work_task, NULL) == 0)
+		if (taskqueue_cancel(tq, &dwork->work.work_task, NULL) == 0) {
+			atomic_cmpxchg(&dwork->work.state,
+			    WORK_ST_CANCEL, WORK_ST_IDLE);
 			return (1);
+		}
 		/* FALLTHROUGH */
 	default:
 		return (0);
@@ -374,10 +407,10 @@ linux_cancel_delayed_work_sync(struct delayed_work *dwork)
 {
 	static const uint8_t states[WORK_ST_MAX] __aligned(8) = {
 		[WORK_ST_IDLE] = WORK_ST_IDLE,		/* NOP */
-		[WORK_ST_TIMER] = WORK_ST_IDLE,		/* idle */
-		[WORK_ST_TASK] = WORK_ST_IDLE,		/* idle */
-		[WORK_ST_EXEC] = WORK_ST_IDLE,		/* idle */
-		[WORK_ST_CANCEL] = WORK_ST_IDLE,	/* idle */
+		[WORK_ST_TIMER] = WORK_ST_IDLE,		/* cancel and drain */
+		[WORK_ST_TASK] = WORK_ST_IDLE,		/* cancel and drain */
+		[WORK_ST_EXEC] = WORK_ST_IDLE,		/* too late, drain */
+		[WORK_ST_CANCEL] = WORK_ST_IDLE,	/* cancel and drain */
 	};
 	struct taskqueue *tq;
 
@@ -387,7 +420,13 @@ linux_cancel_delayed_work_sync(struct delayed_work *dwork)
 	switch (linux_update_state(&dwork->work.state, states)) {
 	case WORK_ST_IDLE:
 		return (0);
+	case WORK_ST_EXEC:
+		tq = dwork->work.work_queue->taskqueue;
+		if (taskqueue_cancel(tq, &dwork->work.work_task, NULL) != 0)
+			taskqueue_drain(tq, &dwork->work.work_task);
+		return (0);
 	case WORK_ST_TIMER:
+	case WORK_ST_CANCEL:
 		if (linux_cancel_timer(dwork, 1)) {
 			/*
 			 * Make sure taskqueue is also drained before
@@ -466,6 +505,7 @@ linux_work_pending(struct work_struct *work)
 	switch (atomic_read(&work->state)) {
 	case WORK_ST_TIMER:
 	case WORK_ST_TASK:
+	case WORK_ST_CANCEL:
 		return (1);
 	default:
 		return (0);
@@ -484,7 +524,6 @@ linux_work_busy(struct work_struct *work)
 	case WORK_ST_IDLE:
 		return (0);
 	case WORK_ST_EXEC:
-	case WORK_ST_CANCEL:
 		tq = work->work_queue->taskqueue;
 		return (taskqueue_poll_is_busy(tq, &work->work_task));
 	default:
@@ -496,6 +535,12 @@ struct workqueue_struct *
 linux_create_workqueue_common(const char *name, int cpus)
 {
 	struct workqueue_struct *wq;
+
+	/*
+	 * If zero CPUs are specified use the default number of CPUs:
+	 */
+	if (cpus == 0)
+		cpus = linux_default_wq_cpus;
 
 	wq = kmalloc(sizeof(*wq), M_WAITOK | M_ZERO);
 	wq->taskqueue = taskqueue_create(name, M_WAITOK,
@@ -522,7 +567,8 @@ void
 linux_init_delayed_work(struct delayed_work *dwork, work_func_t func)
 {
 	memset(dwork, 0, sizeof(*dwork));
-	INIT_WORK(&dwork->work, func);
+	dwork->work.func = func;
+	TASK_INIT(&dwork->work.work_task, 0, linux_delayed_work_fn, dwork);
 	mtx_init(&dwork->timer.mtx, spin_lock_name("lkpi-dwork"), NULL,
 	    MTX_DEF | MTX_NOWITNESS);
 	callout_init_mtx(&dwork->timer.callout, &dwork->timer.mtx, 0);
@@ -537,6 +583,9 @@ linux_work_init(void *arg)
 	if (max_wq_cpus < 4)
 		max_wq_cpus = 4;
 
+	/* set default number of CPUs */
+	linux_default_wq_cpus = max_wq_cpus;
+
 	linux_system_short_wq = alloc_workqueue("linuxkpi_short_wq", 0, max_wq_cpus);
 	linux_system_long_wq = alloc_workqueue("linuxkpi_long_wq", 0, max_wq_cpus);
 
@@ -546,7 +595,7 @@ linux_work_init(void *arg)
 	system_power_efficient_wq = linux_system_short_wq;
 	system_unbound_wq = linux_system_short_wq;
 }
-SYSINIT(linux_work_init, SI_SUB_INIT_IF, SI_ORDER_THIRD, linux_work_init, NULL);
+SYSINIT(linux_work_init, SI_SUB_TASKQ, SI_ORDER_THIRD, linux_work_init, NULL);
 
 static void
 linux_work_uninit(void *arg)
@@ -560,4 +609,4 @@ linux_work_uninit(void *arg)
 	system_power_efficient_wq = NULL;
 	system_unbound_wq = NULL;
 }
-SYSUNINIT(linux_work_uninit, SI_SUB_INIT_IF, SI_ORDER_THIRD, linux_work_uninit, NULL);
+SYSUNINIT(linux_work_uninit, SI_SUB_TASKQ, SI_ORDER_THIRD, linux_work_uninit, NULL);

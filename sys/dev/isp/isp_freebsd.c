@@ -1,4 +1,7 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
+ * Copyright (c) 2009-2017 Alexander Motin <mav@FreeBSD.org>
  * Copyright (c) 1997-2009 by Matthew Jacob
  * All rights reserved.
  *
@@ -169,6 +172,8 @@ isp_attach_chan(ispsoftc_t *isp, struct cam_devq *devq, int chan)
 		fc->path = path;
 		fc->isp = isp;
 		fc->ready = 1;
+		fcp->isp_use_gft_id = 1;
+		fcp->isp_use_gff_id = 1;
 
 		callout_init_mtx(&fc->gdt, &isp->isp_lock, 0);
 		TASK_INIT(&fc->gtask, 1, isp_gdt_task, fc);
@@ -235,6 +240,12 @@ isp_attach_chan(ispsoftc_t *isp, struct cam_devq *devq, int chan)
 		SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
 		    "topo", CTLFLAG_RD, &fcp->isp_topo, 0,
 		    "Connection topology");
+		SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
+		    "use_gft_id", CTLFLAG_RWTUN, &fcp->isp_use_gft_id, 0,
+		    "Use GFT_ID during fabric scan");
+		SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
+		    "use_gff_id", CTLFLAG_RWTUN, &fcp->isp_use_gff_id, 0,
+		    "Use GFF_ID during fabric scan");
 	}
 	return (0);
 }
@@ -962,6 +973,7 @@ create_lun_state(ispsoftc_t *isp, int bus, struct cam_path *path, tstate_t **rsl
 	tptr->ts_lun = lun;
 	SLIST_INIT(&tptr->atios);
 	SLIST_INIT(&tptr->inots);
+	STAILQ_INIT(&tptr->restart_queue);
 	ISP_GET_PC_ADDR(isp, bus, lun_hash[LUN_HASH_FUNC(lun)], lhp);
 	SLIST_INSERT_HEAD(lhp, tptr, next);
 	*rslt = tptr;
@@ -1608,7 +1620,7 @@ isp_target_putback_atio(union ccb *ccb)
 	}
 	at->at_status = CT_OK;
 	at->at_rxid = cso->tag_id;
-	at->at_iid = cso->ccb_h.target_id;
+	at->at_iid = cso->init_id;
 	if (isp_target_put_entry(isp, at)) {
 		callout_reset(&PISP_PCMD(ccb)->wdog, 10,
 		    isp_refire_putback_atio, ccb);
@@ -1693,7 +1705,7 @@ isp_handle_platform_atio2(ispsoftc_t *isp, at2_entry_t *aep)
 	atp->state = ATPD_STATE_ATIO;
 	SLIST_REMOVE_HEAD(&tptr->atios, sim_links.sle);
 	ISP_PATH_PRT(isp, ISP_LOGTDEBUG2, atiop->ccb_h.path, "Take FREE ATIO\n");
-	atiop->ccb_h.target_id = fcp->isp_loopid;
+	atiop->ccb_h.target_id = ISP_MAX_TARGETS(isp);
 	atiop->ccb_h.target_lun = lun;
 
 	/*
@@ -1872,7 +1884,7 @@ isp_handle_platform_atio7(ispsoftc_t *isp, at7_entry_t *aep)
 	SLIST_REMOVE_HEAD(&tptr->atios, sim_links.sle);
 	ISP_PATH_PRT(isp, ISP_LOGTDEBUG2, atiop->ccb_h.path, "Take FREE ATIO\n");
 	atiop->init_id = FC_PORTDB_TGT(isp, chan, lp);
-	atiop->ccb_h.target_id = FCPARAM(isp, chan)->isp_loopid;
+	atiop->ccb_h.target_id = ISP_MAX_TARGETS(isp);
 	atiop->ccb_h.target_lun = lun;
 	atiop->sense_len = 0;
 	cdbxlen = aep->at_cmnd.fcp_cmnd_alen_datadir >> FCP_CMND_ADDTL_CDBLEN_SHIFT;
@@ -2357,6 +2369,8 @@ isp_handle_platform_target_tmf(ispsoftc_t *isp, isp_notify_t *notify)
 		goto bad;
 	}
 
+	inot->ccb_h.target_id = ISP_MAX_TARGETS(isp);
+	inot->ccb_h.target_lun = lun;
 	if (isp_find_pdb_by_portid(isp, notify->nt_channel, notify->nt_sid, &lp) == 0 &&
 	    isp_find_pdb_by_handle(isp, notify->nt_channel, notify->nt_nphdl, &lp) == 0) {
 		inot->initiator_id = CAM_TARGET_WILDCARD;
@@ -2567,8 +2581,7 @@ isp_watchdog(void *arg)
 		} 
 		isp_destroy_handle(isp, handle);
 		isp_prt(isp, ISP_LOGERR, "%s: timeout for handle 0x%x", __func__, handle);
-		xs->ccb_h.status &= ~CAM_STATUS_MASK;
-		xs->ccb_h.status |= CAM_CMD_TIMEOUT;
+		XS_SETERR(xs, CAM_CMD_TIMEOUT);
 		isp_done(xs);
 	} else {
 		if (ohandle != ISP_HANDLE_FREE) {
@@ -2739,9 +2752,6 @@ isp_loop_dead(ispsoftc_t *isp, int chan)
 		if (lp->state == FC_PORTDB_STATE_NIL)
 			continue;
 
-		/*
-		 * XXX: CLEAN UP AND COMPLETE ANY PENDING COMMANDS FIRST!
-		 */
 		for (i = 0; i < isp->isp_maxcmds; i++) {
 			struct ccb_scsiio *xs;
 
@@ -2757,6 +2767,25 @@ isp_loop_dead(ispsoftc_t *isp, int chan)
 			isp_prt(isp, ISP_LOGWARN, "command handle 0x%x for %d.%d.%jx orphaned by loop down timeout",
 			    isp->isp_xflist[i].handle, chan, XS_TGT(xs),
 			    (uintmax_t)XS_LUN(xs));
+
+			/*
+			 * Just like in isp_watchdog, abort the outstanding
+			 * command or immediately free its resources if it is
+			 * not active
+			 */
+			if (isp_control(isp, ISPCTL_ABORT_CMD, xs) == 0) {
+				continue;
+			}
+
+			if (XS_XFRLEN(xs)) {
+				ISP_DMAFREE(isp, xs, isp->isp_xflist[i].handle);
+			}
+			isp_destroy_handle(isp, isp->isp_xflist[i].handle);
+			isp_prt(isp, ISP_LOGWARN, "command handle 0x%x for %d.%d.%jx could not be aborted and was destroyed",
+			    isp->isp_xflist[i].handle, chan, XS_TGT(xs),
+			    (uintmax_t)XS_LUN(xs));
+			XS_SETERR(xs, HBA_BUSRESET);
+			isp_done(xs);
 		}
 
 		isp_prt(isp, ISP_LOGCONFIG, prom3, chan, dbidx, lp->portid, "Loop Down Timeout");
@@ -3562,7 +3591,7 @@ isp_async(ispsoftc_t *isp, ispasync_t cmd, ...)
 	static const char prom[] = "Chan %d [%d] WWPN 0x%16jx PortID 0x%06x handle 0x%x %s %s";
 	char buf[64];
 	char *msg = NULL;
-	target_id_t tgt;
+	target_id_t tgt = 0;
 	fcportdb_t *lp;
 	struct isp_fc *fc;
 	struct cam_path *tmppath;
@@ -3639,30 +3668,50 @@ isp_async(ispsoftc_t *isp, ispasync_t cmd, ...)
 		}
 		break;
 	}
+	case ISPASYNC_LOOP_RESET:
+	{
+		uint16_t lipp;
+		fcparam *fcp;
+		va_start(ap, cmd);
+		bus = va_arg(ap, int);
+		va_end(ap);
+
+		lipp = ISP_READ(isp, OUTMAILBOX1);
+		fcp = FCPARAM(isp, bus);
+		
+		isp_prt(isp, ISP_LOGINFO, "Chan %d LOOP Reset, LIP primitive %x", bus, lipp);
+		/* 
+		 * Per FCP-4, a Reset LIP should result in a CRN reset. Other
+		 * LIPs and loop up/down events should never reset the CRN. For
+		 * an as of yet unknown reason, 24xx series cards (and
+		 * potentially others) can interrupt with a LIP Reset status
+		 * when no LIP reset came down the wire. Additionally, the LIP
+		 * primitive accompanying this status would not be a valid LIP
+		 * Reset primitive, but some variation of an invalid AL_PA
+		 * LIP. As a result, we have to verify the AL_PD in the LIP
+		 * addresses our port before blindly resetting.
+		*/
+		if (FCP_IS_DEST_ALPD(fcp, (lipp & 0x00FF)))
+			isp_fcp_reset_crn(isp, bus, /*tgt*/0, /*tgt_set*/ 0);
+		isp_loop_changed(isp, bus);
+		break;
+	}
 	case ISPASYNC_LIP:
 		if (msg == NULL)
 			msg = "LIP Received";
 		/* FALLTHROUGH */
-	case ISPASYNC_LOOP_RESET:
-		if (msg == NULL)
-			msg = "LOOP Reset";
-		/* FALLTHROUGH */
 	case ISPASYNC_LOOP_DOWN:
 		if (msg == NULL)
 			msg = "LOOP Down";
+		/* FALLTHROUGH */
+	case ISPASYNC_LOOP_UP:
+		if (msg == NULL)
+			msg = "LOOP Up";
 		va_start(ap, cmd);
 		bus = va_arg(ap, int);
 		va_end(ap);
-		isp_fcp_reset_crn(isp, bus, /*tgt*/0, /*tgt_set*/ 0);
 		isp_loop_changed(isp, bus);
 		isp_prt(isp, ISP_LOGINFO, "Chan %d %s", bus, msg);
-		break;
-	case ISPASYNC_LOOP_UP:
-		va_start(ap, cmd);
-		bus = va_arg(ap, int);
-		va_end(ap);
-		isp_loop_changed(isp, bus);
-		isp_prt(isp, ISP_LOGINFO, "Chan %d Loop UP", bus);
 		break;
 	case ISPASYNC_DEV_ARRIVED:
 		va_start(ap, cmd);
@@ -3692,6 +3741,7 @@ isp_async(ispsoftc_t *isp, ispasync_t cmd, ...)
 		}
 		break;
 	case ISPASYNC_DEV_CHANGED:
+	case ISPASYNC_DEV_STAYED:		
 		va_start(ap, cmd);
 		bus = va_arg(ap, int);
 		lp = va_arg(ap, fcportdb_t *);
@@ -3699,18 +3749,23 @@ isp_async(ispsoftc_t *isp, ispasync_t cmd, ...)
 		fc = ISP_FC_PC(isp, bus);
 		tgt = FC_PORTDB_TGT(isp, bus, lp);
 		isp_gen_role_str(buf, sizeof (buf), lp->new_prli_word3);
-		isp_prt(isp, ISP_LOGCONFIG, prom, bus, tgt, lp->port_wwn, lp->new_portid, lp->handle, buf, "changed");
-changed:
+		if (cmd == ISPASYNC_DEV_CHANGED)
+			isp_prt(isp, ISP_LOGCONFIG, prom, bus, tgt, lp->port_wwn, lp->new_portid, lp->handle, buf, "changed");
+		else
+			isp_prt(isp, ISP_LOGCONFIG, prom, bus, tgt, lp->port_wwn, lp->portid, lp->handle, buf, "stayed");			
+
 		if (lp->is_target !=
 		    ((FCPARAM(isp, bus)->role & ISP_ROLE_INITIATOR) &&
 		     (lp->new_prli_word3 & PRLI_WD3_TARGET_FUNCTION))) {
 			lp->is_target = !lp->is_target;
 			if (lp->is_target) {
-				isp_fcp_reset_crn(isp, bus, tgt, /*tgt_set*/ 1);
+				if (cmd == ISPASYNC_DEV_CHANGED)
+					isp_fcp_reset_crn(isp, bus, tgt, /*tgt_set*/ 1);
 				isp_make_here(isp, lp, bus, tgt);
 			} else {
 				isp_make_gone(isp, lp, bus, tgt);
-				isp_fcp_reset_crn(isp, bus, tgt, /*tgt_set*/ 1);
+				if (cmd == ISPASYNC_DEV_CHANGED)
+					isp_fcp_reset_crn(isp, bus, tgt, /*tgt_set*/ 1);
 			}
 		}
 		if (lp->is_initiator !=
@@ -3726,16 +3781,6 @@ changed:
 			xpt_async(AC_CONTRACT, fc->path, &ac);
 		}
 		break;
-	case ISPASYNC_DEV_STAYED:
-		va_start(ap, cmd);
-		bus = va_arg(ap, int);
-		lp = va_arg(ap, fcportdb_t *);
-		va_end(ap);
-		fc = ISP_FC_PC(isp, bus);
-		tgt = FC_PORTDB_TGT(isp, bus, lp);
-		isp_gen_role_str(buf, sizeof (buf), lp->prli_word3);
-		isp_prt(isp, ISP_LOGCONFIG, prom, bus, tgt, lp->port_wwn, lp->portid, lp->handle, buf, "stayed");
-		goto changed;
 	case ISPASYNC_DEV_GONE:
 		va_start(ap, cmd);
 		bus = va_arg(ap, int);
@@ -3779,13 +3824,47 @@ changed:
 			nlstate = reason = 0;
 		}
 		va_end(ap);
-		fc = ISP_FC_PC(isp, bus);
 
 		if (evt == ISPASYNC_CHANGE_PDB) {
+			int tgt_set = 0;
 			msg = "Port Database Changed";
 			isp_prt(isp, ISP_LOGINFO,
 			    "Chan %d %s (nphdl 0x%x state 0x%x reason 0x%x)",
 			    bus, msg, nphdl, nlstate, reason);
+			/*
+			 * Port database syncs are not sufficient for
+			 * determining that logins or logouts are done on the
+			 * loop, but this information is directly available from
+			 * the reason code from the incoming mbox. We must reset
+			 * the fcp crn on these events according to FCP-4
+			 */
+			switch (reason) {
+			case PDB24XX_AE_IMPL_LOGO_1:
+			case PDB24XX_AE_IMPL_LOGO_2:
+			case PDB24XX_AE_IMPL_LOGO_3:
+			case PDB24XX_AE_PLOGI_RCVD:
+			case PDB24XX_AE_PRLI_RCVD:
+			case PDB24XX_AE_PRLO_RCVD:
+			case PDB24XX_AE_LOGO_RCVD:
+			case PDB24XX_AE_PLOGI_DONE:
+			case PDB24XX_AE_PRLI_DONE:
+				/*
+				 * If the event is not global, twiddle tgt and
+				 * tgt_set to nominate only the target
+				 * associated with the nphdl.
+				 */
+				if (nphdl != PDB24XX_AE_GLOBAL) {
+					/* Break if we don't yet have the pdb */
+					if (!isp_find_pdb_by_handle(isp, bus, nphdl, &lp))
+						break;
+					tgt = FC_PORTDB_TGT(isp, bus, lp);
+					tgt_set = 1;
+				}
+				isp_fcp_reset_crn(isp, bus, tgt, tgt_set);
+				break;
+			default:
+				break; /* NOP */
+			}
 		} else if (evt == ISPASYNC_CHANGE_SNS) {
 			msg = "Name Server Database Changed";
 			isp_prt(isp, ISP_LOGINFO, "Chan %d %s (PortID 0x%06x)",

@@ -1,6 +1,8 @@
 /*	$NetBSD: undefined.c,v 1.22 2003/11/29 22:21:29 bjh21 Exp $	*/
 
 /*-
+ * SPDX-License-Identifier: BSD-4-Clause
+ *
  * Copyright (c) 2001 Ben Harris.
  * Copyright (c) 1995 Mark Brinicombe.
  * Copyright (c) 1995 Brini.
@@ -62,6 +64,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/mutex.h>
 #include <sys/signalvar.h>
 #include <sys/ptrace.h>
+#include <sys/vmmeter.h>
 #ifdef KDB
 #include <sys/kdb.h>
 #endif
@@ -200,7 +203,7 @@ undefinedinstruction(struct trapframe *frame)
 	if (__predict_true(frame->tf_spsr & PSR_F) == 0)
 		enable_interrupts(PSR_F);
 
-	PCPU_INC(cnt.v_trap);
+	VM_CNT_INC(v_trap);
 
 	fault_pc = frame->tf_pc;
 

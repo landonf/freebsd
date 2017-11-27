@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2001 Takanori Watanabe <takawata@jp.freebsd.org>
  * Copyright (c) 2001-2012 Mitsuru IWASAKI <iwasaki@jp.freebsd.org>
  * Copyright (c) 2003 Peter Wemm
@@ -223,7 +225,10 @@ acpi_sleep_machdep(struct acpi_softc *sc, int state)
 		WAKECODE_FIXUP(resume_beep, uint8_t, (acpi_resume_beep != 0));
 		WAKECODE_FIXUP(reset_video, uint8_t, (acpi_reset_video != 0));
 
-#ifndef __amd64__
+#ifdef __amd64__
+		WAKECODE_FIXUP(wakeup_efer, uint64_t, rdmsr(MSR_EFER) &
+		    ~(EFER_LMA));
+#else
 		WAKECODE_FIXUP(wakeup_cr4, register_t, pcb->pcb_cr4);
 #endif
 		WAKECODE_FIXUP(wakeup_pcb, struct pcb *, pcb);

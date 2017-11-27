@@ -28,17 +28,13 @@ __FBSDID("$FreeBSD$");
 #include <dirent.h>
 #include <err.h>
 #include <errno.h>
-#include <fcntl.h>
 #include <fnmatch.h>
-#include <paths.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <limits.h>
 
 #include "diff.h"
-#include "xmalloc.h"
 
 static int selectfile(const struct dirent *);
 static void diffit(struct dirent *, char *, size_t, char *, size_t, int);
@@ -138,16 +134,20 @@ diffdir(char *p1, char *p2, int flags)
 			if (Nflag)
 				diffit(dent1, path1, dirlen1, path2, dirlen2,
 				    flags);
-			else
+			else {
 				print_only(path1, dirlen1, dent1->d_name);
+				status = 1;
+			}
 			dp1++;
 		} else {
 			/* file only in second dir, only diff if -N or -P */
 			if (Nflag || Pflag)
 				diffit(dent2, path1, dirlen1, path2, dirlen2,
 				    flags);
-			else
+			else {
 				print_only(path2, dirlen2, dent2->d_name);
+				status = 1;
+			}
 			dp2++;
 		}
 	}

@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1989, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -278,6 +280,11 @@ nfsrvd_cbinit(int terminating)
 		while (nfs_numnfscbd > 0)
 			msleep(&nfs_numnfscbd, NFSDLOCKMUTEXPTR, PZERO, 
 			    "nfscbdt", 0);
+		if (nfscbd_pool != NULL) {
+			NFSD_UNLOCK();
+			svcpool_close(nfscbd_pool);
+			NFSD_LOCK();
+		}
 	}
 
 	if (nfscbd_pool == NULL) {

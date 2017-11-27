@@ -1102,6 +1102,7 @@ assertion_file_contains_lines_any_order(const char *file, int line,
 			failure_start(pathname, line, "Can't allocate memory");
 			failure_finish(NULL);
 			free(expected);
+			free(buff);
 			return (0);
 		}
 		for (i = 0; lines[i] != NULL; ++i) {
@@ -1124,6 +1125,7 @@ assertion_file_contains_lines_any_order(const char *file, int line,
 			failure_start(pathname, line, "Can't allocate memory");
 			failure_finish(NULL);
 			free(expected);
+			free(buff);
 			return (0);
 		}
 		for (j = 0, p = buff; p < buff + buff_size;
@@ -2317,6 +2319,21 @@ canLz4(void)
 }
 
 /*
+ * Can this platform run the zstd program?
+ */
+int
+canZstd(void)
+{
+	static int tested = 0, value = 0;
+	if (!tested) {
+		tested = 1;
+		if (systemf("zstd -V %s", redirectArgs) == 0)
+			value = 1;
+	}
+	return (value);
+}
+
+/*
  * Can this platform run the lzip program?
  */
 int
@@ -2451,8 +2468,8 @@ canNodump(void)
 	return (0);
 }
 
-/* Get extended attribute from a path */
-const void *
+/* Get extended attribute value from a path */
+void *
 getXattr(const char *path, const char *name, size_t *sizep)
 { 
 	void *value = NULL;

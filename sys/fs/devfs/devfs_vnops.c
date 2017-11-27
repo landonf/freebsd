@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2000-2004
  *	Poul-Henning Kamp.  All rights reserved.
  * Copyright (c) 1989, 1992-1993, 1995
@@ -1178,6 +1180,24 @@ devfs_pathconf(struct vop_pathconf_args *ap)
 {
 
 	switch (ap->a_name) {
+	case _PC_MAX_CANON:
+		if (ap->a_vp->v_vflag & VV_ISTTY) {
+			*ap->a_retval = MAX_CANON;
+			return (0);
+		}
+		return (EINVAL);
+	case _PC_MAX_INPUT:
+		if (ap->a_vp->v_vflag & VV_ISTTY) {
+			*ap->a_retval = MAX_INPUT;
+			return (0);
+		}
+		return (EINVAL);
+	case _PC_VDISABLE:
+		if (ap->a_vp->v_vflag & VV_ISTTY) {
+			*ap->a_retval = _POSIX_VDISABLE;
+			return (0);
+		}
+		return (EINVAL);
 	case _PC_MAC_PRESENT:
 #ifdef MAC
 		/*
@@ -1315,6 +1335,7 @@ devfs_readdir(struct vop_readdir_args *ap)
 		else
 			de = dd;
 		dp = dd->de_dirent;
+		MPASS(dp->d_reclen == GENERIC_DIRSIZ(dp));
 		if (dp->d_reclen > uio->uio_resid)
 			break;
 		dp->d_fileno = de->de_inode;

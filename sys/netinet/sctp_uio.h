@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2001-2007, by Cisco Systems, Inc. All rights reserved.
  * Copyright (c) 2008-2012, by Randall Stewart. All rights reserved.
  * Copyright (c) 2008-2012, by Michael Tuexen. All rights reserved.
@@ -1239,7 +1241,9 @@ struct xsctp_raddr {
 	uint32_t rtt;
 	uint32_t heartbeat_interval;
 	uint32_t ssthresh;
-	uint32_t extra_padding[30];	/* future */
+	uint16_t encaps_port;
+	uint16_t state;
+	uint32_t extra_padding[29];	/* future */
 };
 
 #define SCTP_MAX_LOGGING_SIZE 30000

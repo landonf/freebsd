@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2004-2006 Pawel Jakub Dawidek <pjd@FreeBSD.org>
  * All rights reserved.
  *
@@ -72,7 +74,7 @@
 					 G_MIRROR_DEVICE_FLAG_NOFAILSYNC)
 
 #ifdef _KERNEL
-extern u_int g_mirror_debug;
+extern int g_mirror_debug;
 
 #define	G_MIRROR_DEBUG(lvl, ...)	do {				\
 	if (g_mirror_debug >= (lvl)) {					\
@@ -157,8 +159,8 @@ struct g_mirror_event {
 };
 
 #define	G_MIRROR_DEVICE_FLAG_DESTROY	0x0100000000000000ULL
-#define	G_MIRROR_DEVICE_FLAG_WAIT	0x0200000000000000ULL
-#define	G_MIRROR_DEVICE_FLAG_DESTROYING	0x0400000000000000ULL
+#define	G_MIRROR_DEVICE_FLAG_DRAIN	0x0200000000000000ULL
+#define	G_MIRROR_DEVICE_FLAG_CLOSEWAIT	0x0400000000000000ULL
 #define	G_MIRROR_DEVICE_FLAG_TASTING	0x0800000000000000ULL
 #define	G_MIRROR_DEVICE_FLAG_WIPE	0x1000000000000000ULL
 
@@ -169,9 +171,11 @@ struct g_mirror_event {
 #define	G_MIRROR_TYPE_AUTOMATIC	1
 
 /* Bump syncid on first write. */
-#define	G_MIRROR_BUMP_SYNCID	0x1
+#define	G_MIRROR_BUMP_SYNCID		0x1
 /* Bump genid immediately. */
-#define	G_MIRROR_BUMP_GENID	0x2
+#define	G_MIRROR_BUMP_GENID		0x2
+/* Bump syncid immediately. */
+#define	G_MIRROR_BUMP_SYNCID_NOW	0x4
 struct g_mirror_softc {
 	u_int		sc_type;	/* Device type (manual/automatic). */
 	u_int		sc_state;	/* Device state. */

@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1994-1995 Søren Schmidt
  * All rights reserved.
  *
@@ -79,7 +81,6 @@ DUMMY(sendfile);
 DUMMY(setfsuid);
 DUMMY(setfsgid);
 DUMMY(pivot_root);
-DUMMY(mincore);
 DUMMY(ptrace);
 DUMMY(lookup_dcookie);
 DUMMY(remap_file_pages);

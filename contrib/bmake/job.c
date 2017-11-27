@@ -1,4 +1,4 @@
-/*	$NetBSD: job.c,v 1.188 2016/08/26 23:28:39 dholland Exp $	*/
+/*	$NetBSD: job.c,v 1.191 2017/07/20 19:29:54 sjg Exp $	*/
 
 /*
  * Copyright (c) 1988, 1989, 1990 The Regents of the University of California.
@@ -70,14 +70,14 @@
  */
 
 #ifndef MAKE_NATIVE
-static char rcsid[] = "$NetBSD: job.c,v 1.188 2016/08/26 23:28:39 dholland Exp $";
+static char rcsid[] = "$NetBSD: job.c,v 1.191 2017/07/20 19:29:54 sjg Exp $";
 #else
 #include <sys/cdefs.h>
 #ifndef lint
 #if 0
 static char sccsid[] = "@(#)job.c	8.2 (Berkeley) 3/19/94";
 #else
-__RCSID("$NetBSD: job.c,v 1.188 2016/08/26 23:28:39 dholland Exp $");
+__RCSID("$NetBSD: job.c,v 1.191 2017/07/20 19:29:54 sjg Exp $");
 #endif
 #endif /* not lint */
 #endif
@@ -364,11 +364,6 @@ static Job childExitJob;	/* child exit pseudo-job */
 	    (void)fprintf(fp, TARG_FMT, targPrefix, gn->name)
 
 static sigset_t caught_signals;	/* Set of signals we handle */
-#if defined(SYSV)
-#define KILLPG(pid, sig)	kill(-(pid), (sig))
-#else
-#define KILLPG(pid, sig)	killpg((pid), (sig))
-#endif
 
 static void JobChildSig(int);
 static void JobContinueSig(int);
@@ -389,7 +384,10 @@ static void JobSigLock(sigset_t *);
 static void JobSigUnlock(sigset_t *);
 static void JobSigReset(void);
 
-const char *malloc_options="A";
+#if !defined(MALLOC_OPTIONS)
+# define MALLOC_OPTIONS "A"
+#endif
+const char *malloc_options= MALLOC_OPTIONS;
 
 static void
 job_table_dump(const char *where)
@@ -440,7 +438,7 @@ static void JobSigUnlock(sigset_t *omaskp)
 static void
 JobCreatePipe(Job *job, int minfd)
 {
-    int i, fd;
+    int i, fd, flags;
 
     if (pipe(job->jobPipe) == -1)
 	Punt("Cannot create pipe: %s", strerror(errno));
@@ -455,8 +453,10 @@ JobCreatePipe(Job *job, int minfd)
     }
     
     /* Set close-on-exec flag for both */
-    (void)fcntl(job->jobPipe[0], F_SETFD, FD_CLOEXEC);
-    (void)fcntl(job->jobPipe[1], F_SETFD, FD_CLOEXEC);
+    if (fcntl(job->jobPipe[0], F_SETFD, FD_CLOEXEC) == -1)
+	Punt("Cannot set close-on-exec: %s", strerror(errno));
+    if (fcntl(job->jobPipe[1], F_SETFD, FD_CLOEXEC) == -1)
+	Punt("Cannot set close-on-exec: %s", strerror(errno));
 
     /*
      * We mark the input side of the pipe non-blocking; we poll(2) the
@@ -464,8 +464,12 @@ JobCreatePipe(Job *job, int minfd)
      * race for the token when a new one becomes available, so the read 
      * from the pipe should not block.
      */
-    fcntl(job->jobPipe[0], F_SETFL, 
-	fcntl(job->jobPipe[0], F_GETFL, 0) | O_NONBLOCK);
+    flags = fcntl(job->jobPipe[0], F_GETFL, 0);
+    if (flags == -1)
+	Punt("Cannot get flags: %s", strerror(errno));
+    flags |= O_NONBLOCK;
+    if (fcntl(job->jobPipe[0], F_SETFL, flags) == -1)
+	Punt("Cannot set flags: %s", strerror(errno));
 }
 
 /*-
@@ -767,6 +771,7 @@ JobPrintCommand(void *cmdp, void *jobp)
 		 * but this one needs to be - use compat mode just for it.
 		 */
 		CompatRunCommand(cmdp, job->node);
+		free(cmdStart);
 		return 0;
 	    }
 	    break;
@@ -1395,16 +1400,28 @@ JobExec(Job *job, char **argv)
 	    execError("dup2", "job->cmdFILE");
 	    _exit(1);
 	}
-	(void)fcntl(0, F_SETFD, 0);
-	(void)lseek(0, (off_t)0, SEEK_SET);
+	if (fcntl(0, F_SETFD, 0) == -1) {
+	    execError("fcntl clear close-on-exec", "stdin");
+	    _exit(1);
+	}
+	if (lseek(0, (off_t)0, SEEK_SET) == -1) {
+	    execError("lseek to 0", "stdin");
+	    _exit(1);
+	}
 
 	if (Always_pass_job_queue ||
 	    (job->node->type & (OP_MAKE | OP_SUBMAKE))) {
 		/*
 		 * Pass job token pipe to submakes.
 		 */
-		fcntl(tokenWaitJob.inPipe, F_SETFD, 0);
-		fcntl(tokenWaitJob.outPipe, F_SETFD, 0);		
+		if (fcntl(tokenWaitJob.inPipe, F_SETFD, 0) == -1) {
+		    execError("clear close-on-exec", "tokenWaitJob.inPipe");
+		    _exit(1);
+		}
+		if (fcntl(tokenWaitJob.outPipe, F_SETFD, 0) == -1) {
+		    execError("clear close-on-exec", "tokenWaitJob.outPipe");
+		    _exit(1);
+		}
 	}
 	
 	/*
@@ -1421,7 +1438,10 @@ JobExec(Job *job, char **argv)
 	 * it before routing the shell's error output to the same place as
 	 * its standard output.
 	 */
-	(void)fcntl(1, F_SETFD, 0);
+	if (fcntl(1, F_SETFD, 0) == -1) {
+	    execError("clear close-on-exec", "stdout");
+	    _exit(1);
+	}
 	if (dup2(1, 2) == -1) {
 	    execError("dup2", "1, 2");
 	    _exit(1);

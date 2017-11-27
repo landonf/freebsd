@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1983, 1989, 1991, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -1497,10 +1499,7 @@ rtmsg(int cmd, int flags, int fib)
 
 #define NEXTADDR(w, u)							\
 	if (rtm_addrs & (w)) {						\
-		l = (((struct sockaddr *)&(u))->sa_len == 0) ?		\
-		    sizeof(long) :					\
-		    1 + ((((struct sockaddr *)&(u))->sa_len - 1)	\
-			| (sizeof(long) - 1));				\
+		l = SA_SIZE(&(u));					\
 		memmove(cp, (char *)&(u), l);				\
 		cp += l;						\
 		if (verbose)						\
@@ -1564,7 +1563,8 @@ rtmsg(int cmd, int flags, int fib)
 		do {
 			l = read(s, (char *)&m_rtmsg, sizeof(m_rtmsg));
 		} while (l > 0 && stop_read == 0 &&
-		    (rtm.rtm_seq != rtm_seq || rtm.rtm_pid != pid));
+		    (rtm.rtm_type != RTM_GET || rtm.rtm_seq != rtm_seq ||
+			rtm.rtm_pid != pid));
 		if (stop_read != 0) {
 			warnx("read from routing socket timed out");
 			return (-1);
@@ -1706,10 +1706,13 @@ print_rtmsg(struct rt_msghdr *rtm, size_t msglen)
 		break;
 
 	default:
-		printf("pid: %ld, seq %d, errno %d, flags:",
-			(long)rtm->rtm_pid, rtm->rtm_seq, rtm->rtm_errno);
-		printb(rtm->rtm_flags, routeflags);
-		pmsg_common(rtm, msglen);
+		if (rtm->rtm_type <= RTM_RESOLVE) {
+			printf("pid: %ld, seq %d, errno %d, flags:",
+			    (long)rtm->rtm_pid, rtm->rtm_seq, rtm->rtm_errno);
+			printb(rtm->rtm_flags, routeflags);
+			pmsg_common(rtm, msglen);
+		} else
+			printf("type: %u, len: %zu\n", rtm->rtm_type, msglen);
 	}
 
 	return;

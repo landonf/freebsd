@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1983, 1988, 1993, 1994
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -702,7 +704,7 @@ main(int argc, char *argv[])
 		    sizeof(fd_mask));
 
 		STAILQ_FOREACH(sl, &shead, next) {
-			if (sl->sl_socket != -1)
+			if (sl->sl_socket != -1 && sl->sl_recv != NULL)
 				FD_SET(sl->sl_socket, fdsr);
 		}
 		i = select(fdsrmax + 1, fdsr, NULL, NULL,
@@ -1034,7 +1036,7 @@ static void
 logmsg(int pri, const char *msg, const char *from, int flags)
 {
 	struct filed *f;
-	int i, fac, msglen, prilev;
+	int i, j, fac, msglen, prilev;
 	const char *timestamp;
  	char prog[NAME_MAX+1];
 	char buf[MAXLINE+1];
@@ -1076,6 +1078,19 @@ logmsg(int pri, const char *msg, const char *from, int flags)
 		return;
 
 	prilev = LOG_PRI(pri);
+
+	/* skip hostname, see RFC 3164 */
+	for (i = 0, j = 0; i < NAME_MAX; i++) {
+		if (isspace(msg[i])) {
+			j = i + 1;
+		}
+		if (msg[i] == ':')
+			break;
+	}
+	if (j <= msglen) {
+		msg += j;
+		msglen -= j;
+	}
 
 	/* extract program name */
 	for (i = 0; i < NAME_MAX; i++) {
@@ -2877,6 +2892,7 @@ socksetup(struct peer *pe)
 	struct addrinfo hints, *res, *res0;
 	int error;
 	char *cp;
+	int (*sl_recv)(struct socklist *);
 	/*
 	 * We have to handle this case for backwards compatibility:
 	 * If there are two (or more) colons but no '[' and ']',
@@ -3002,9 +3018,14 @@ socksetup(struct peer *pe)
 			continue;
 		}
 		dprintf("new socket fd is %d\n", s);
-		listen(s, 5);
-		dprintf("shutdown\n");
-		if (SecureMode || res->ai_family == AF_LOCAL) {
+		if (res->ai_socktype != SOCK_DGRAM) {
+			listen(s, 5);
+		}
+		sl_recv = socklist_recv_sock;
+#if defined(INET) || defined(INET6)
+		if (SecureMode && (res->ai_family == AF_INET ||
+		    res->ai_family == AF_INET6)) {
+			dprintf("shutdown\n");
 			/* Forbid communication in secure mode. */
 			if (shutdown(s, SHUT_RD) < 0 &&
 			    errno != ENOTCONN) {
@@ -3012,14 +3033,16 @@ socksetup(struct peer *pe)
 				if (!Debug)
 					die(0);
 			}
-			dprintf("listening on socket\n");
+			sl_recv = NULL;
 		} else
-			dprintf("sending on socket\n");
+#endif
+			dprintf("listening on socket\n");
+		dprintf("sending on socket\n");
 		addsock(res->ai_addr, res->ai_addrlen,
 		    &(struct socklist){
 			.sl_socket = s,
 			.sl_peer = pe,
-			.sl_recv = socklist_recv_sock
+			.sl_recv = sl_recv
 		});
 	}
 	freeaddrinfo(res0);

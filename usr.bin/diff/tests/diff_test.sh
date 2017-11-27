@@ -2,6 +2,12 @@
 
 atf_test_case simple
 atf_test_case unified
+atf_test_case header
+atf_test_case header_ns
+atf_test_case ifdef
+atf_test_case group_format
+atf_test_case side_by_side
+atf_test_case brief_format
 
 simple_body()
 {
@@ -46,8 +52,102 @@ unified_body()
 		diff -u9999 -L input_c1.in -L input_c2.in "$(atf_get_srcdir)/input_c1.in" "$(atf_get_srcdir)/input_c2.in"
 }
 
+header_body()
+{
+	export TZ=UTC
+	: > empty
+	echo hello > hello
+	touch -d 2015-04-03T01:02:03 empty
+	touch -d 2016-12-22T11:22:33 hello
+	atf_check -o "file:$(atf_get_srcdir)/header.out" -s eq:1 \
+		diff -u empty hello
+}
+
+header_ns_body()
+{
+	export TZ=UTC
+	: > empty
+	echo hello > hello
+	touch -d 2015-04-03T01:02:03.123456789 empty
+	touch -d 2016-12-22T11:22:33.987654321 hello
+	atf_check -o "file:$(atf_get_srcdir)/header_ns.out" -s eq:1 \
+		diff -u empty hello
+}
+
+ifdef_body()
+{
+	atf_check -o file:$(atf_get_srcdir)/ifdef.out -s eq:1 \
+		diff -D PLOP "$(atf_get_srcdir)/input_c1.in" \
+		"$(atf_get_srcdir)/input_c2.in"
+}
+
+group_format_body()
+{
+	atf_check -o file:$(atf_get_srcdir)/group-format.out -s eq:1 \
+		diff --changed-group-format='<<<<<<< (local)
+%<=======
+%>>>>>>>> (stock)
+' "$(atf_get_srcdir)/input_c1.in" "$(atf_get_srcdir)/input_c2.in"
+}
+
+side_by_side_body()
+{
+	atf_expect_fail "--side-by-side not currently implemented (bug # 219933)"
+
+	atf_check -o save:A printf "A\nB\nC\n"
+	atf_check -o save:B printf "D\nB\nE\n"
+
+	exp_output="A[[:space:]]+|[[:space:]]+D\nB[[:space:]]+B\nC[[:space:]]+|[[:space:]]+E"
+	exp_output_suppressed="A[[:space:]]+|[[:space:]]+D\nC[[:space:]]+|[[:space:]]+E"
+
+	atf_check -o match:"$exp_output" -s exit:1 \
+	    diff --side-by-side A B
+	atf_check -o match:"$exp_output" -s exit:1 \
+	    diff -y A B
+	atf_check -o match:"$exp_output_suppressed" -s exit:1 \
+	    diff -y --suppress-common-lines A B
+	atf_check -o match:"$exp_output_suppressed" -s exit:1 \
+	    diff -W 65 -y --suppress-common-lines A B
+}
+
+brief_format_body()
+{
+	atf_check mkdir A B
+
+	atf_check -x "echo 1 > A/test-file"
+	atf_check -x "echo 2 > B/test-file"
+
+	atf_check cp -Rf A C
+	atf_check cp -Rf A D
+
+	atf_check -x "echo 3 > D/another-test-file"
+
+	atf_check \
+	    -s exit:1 \
+	    -o inline:"Files A/test-file and B/test-file differ\n" \
+	    diff -rq A B
+
+	atf_check diff -rq A C
+
+	atf_check \
+	    -s exit:1 \
+	    -o inline:"Only in D: another-test-file\n" \
+	    diff -rq A D
+
+	atf_check \
+	    -s exit:1 \
+	    -o inline:"Files A/another-test-file and D/another-test-file differ\n" \
+	    diff -Nrq A D
+}
+
 atf_init_test_cases()
 {
 	atf_add_test_case simple
 	atf_add_test_case unified
+	atf_add_test_case header
+	atf_add_test_case header_ns
+	atf_add_test_case ifdef
+	atf_add_test_case group_format
+	atf_add_test_case side_by_side
+	atf_add_test_case brief_format
 }

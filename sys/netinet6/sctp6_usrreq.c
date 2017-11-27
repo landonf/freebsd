@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2001-2007, by Cisco Systems, Inc. All rights reserved.
  * Copyright (c) 2008-2012, by Randall Stewart. All rights reserved.
  * Copyright (c) 2008-2012, by Michael Tuexen. All rights reserved.
@@ -183,7 +185,7 @@ sctp6_notify(struct sctp_inpcb *inp,
     struct sctp_nets *net,
     uint8_t icmp6_type,
     uint8_t icmp6_code,
-    uint16_t next_mtu)
+    uint32_t next_mtu)
 {
 #if defined(__APPLE__) || defined(SCTP_SO_LOCK_TESTING)
 	struct socket *so;
@@ -229,6 +231,10 @@ sctp6_notify(struct sctp_inpcb *inp,
 		}
 		break;
 	case ICMP6_PACKET_TOO_BIG:
+		if ((net->dest_state & SCTP_ADDR_NO_PMTUD) == 0) {
+			SCTP_TCB_UNLOCK(stcb);
+			break;
+		}
 		if (SCTP_OS_TIMER_PENDING(&net->pmtu_timer.timer)) {
 			timer_stopped = 1;
 			sctp_timer_stop(SCTP_TIMER_TYPE_PATHMTURAISE, inp, stcb, net,
@@ -237,11 +243,11 @@ sctp6_notify(struct sctp_inpcb *inp,
 			timer_stopped = 0;
 		}
 		/* Update the path MTU. */
+		if (net->port) {
+			next_mtu -= sizeof(struct udphdr);
+		}
 		if (net->mtu > next_mtu) {
 			net->mtu = next_mtu;
-			if (net->port) {
-				net->mtu -= sizeof(struct udphdr);
-			}
 		}
 		/* Update the association MTU */
 		if (stcb->asoc.smallest_mtu > next_mtu) {
@@ -305,7 +311,7 @@ sctp6_ctlinput(int cmd, struct sockaddr *pktdst, void *d)
 			return;
 		}
 		/* Copy out the port numbers and the verification tag. */
-		bzero(&sh, sizeof(sh));
+		memset(&sh, 0, sizeof(sh));
 		m_copydata(ip6cp->ip6c_m,
 		    ip6cp->ip6c_off,
 		    sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint32_t),
@@ -383,7 +389,7 @@ sctp6_ctlinput(int cmd, struct sockaddr *pktdst, void *d)
 			sctp6_notify(inp, stcb, net,
 			    ip6cp->ip6c_icmp6->icmp6_type,
 			    ip6cp->ip6c_icmp6->icmp6_code,
-			    (uint16_t)ntohl(ip6cp->ip6c_icmp6->icmp6_mtu));
+			    ntohl(ip6cp->ip6c_icmp6->icmp6_mtu));
 		} else {
 			if ((stcb == NULL) && (inp != NULL)) {
 				/* reduce inp's ref-count */
@@ -879,7 +885,7 @@ sctp6_connect(struct socket *so, struct sockaddr *addr, struct thread *p)
 	if (inp->sctp_flags & SCTP_PCB_FLAGS_CONNECTED) {
 		stcb = LIST_FIRST(&inp->sctp_asoc_list);
 		if (stcb) {
-			SCTP_TCB_UNLOCK(stcb);
+			SCTP_TCB_LOCK(stcb);
 		}
 		SCTP_INP_RUNLOCK(inp);
 	} else {

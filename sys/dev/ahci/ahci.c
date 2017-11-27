@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2009-2012 Alexander Motin <mav@FreeBSD.org>
  * All rights reserved.
  *
@@ -249,7 +251,8 @@ ahci_attach(device_t dev)
 	    (ctlr->caps & AHCI_CAP_64BIT) ? BUS_SPACE_MAXADDR :
 	    BUS_SPACE_MAXADDR_32BIT, BUS_SPACE_MAXADDR, NULL, NULL,
 	    BUS_SPACE_MAXSIZE, BUS_SPACE_UNRESTRICTED, BUS_SPACE_MAXSIZE,
-	    0, NULL, NULL, &ctlr->dma_tag)) {
+	    ctlr->dma_coherent ? BUS_DMA_COHERENT : 0, NULL, NULL, 
+	    &ctlr->dma_tag)) {
 		ahci_free_mem(dev);
 		rman_fini(&ctlr->sc_iomem);
 		return (ENXIO);
@@ -2692,7 +2695,9 @@ ahciaction(struct cam_sim *sim, union ccb *ccb)
 		if (ch->caps & AHCI_CAP_SPM)
 			cpi->hba_inquiry |= PI_SATAPM;
 		cpi->target_sprt = 0;
-		cpi->hba_misc = PIM_SEQSCAN | PIM_UNMAPPED | PIM_ATA_EXT;
+		cpi->hba_misc = PIM_SEQSCAN | PIM_UNMAPPED;
+		if ((ch->quirks & AHCI_Q_NOAUX) == 0)
+			cpi->hba_misc |= PIM_ATA_EXT;
 		cpi->hba_eng_cnt = 0;
 		if (ch->caps & AHCI_CAP_SPM)
 			cpi->max_target = 15;
@@ -2744,5 +2749,8 @@ ahcipoll(struct cam_sim *sim)
 		ahci_reset_to(ch);
 	}
 }
+
+devclass_t ahci_devclass;
+
 MODULE_VERSION(ahci, 1);
 MODULE_DEPEND(ahci, cam, 1, 1, 1);

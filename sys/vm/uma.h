@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2002, 2003, 2004, 2005 Jeffrey Roberson <jeff@FreeBSD.org>
  * Copyright (c) 2004, 2005 Bosko Milekic <bmilekic@FreeBSD.org>
  * All rights reserved.
@@ -296,6 +298,7 @@ uma_zone_t uma_zcache_create(char *name, int size, uma_ctor ctor, uma_dtor dtor,
 #define UMA_ALIGN_SHORT	(sizeof(short) - 1)	/* "" short */
 #define UMA_ALIGN_CHAR	(sizeof(char) - 1)	/* "" char */
 #define UMA_ALIGN_CACHE	(0 - 1)			/* Cache line size align */
+#define	UMA_ALIGNOF(type) (_Alignof(type) - 1)	/* Alignment fit for 'type' */
 
 /*
  * Destroys an empty uma zone.  If the zone is not empty uma complains loudly.
@@ -363,6 +366,11 @@ uma_zfree(uma_zone_t zone, void *item)
 {
 	uma_zfree_arg(zone, item, NULL);
 }
+
+/*
+ * Wait until the specified zone can allocate an item.
+ */
+void uma_zwait(uma_zone_t zone);
 
 /*
  * XXX The rest of the prototypes in this header are h0h0 magic for the VM.

@@ -1,4 +1,4 @@
-# $Id: dirdeps.mk,v 1.86 2017/03/01 20:26:51 sjg Exp $
+# $Id: dirdeps.mk,v 1.90 2017/10/25 23:44:20 sjg Exp $
 
 # Copyright (c) 2010-2013, Juniper Networks, Inc.
 # All rights reserved.
@@ -57,7 +57,7 @@
 #	distinguish them from others.
 #	
 #	Before each Makefile.depend file is read, we set 
-#	DEP_RELDIR to be the the RELDIR (path relative to SRCTOP) for
+#	DEP_RELDIR to be the RELDIR (path relative to SRCTOP) for
 #	its directory, and DEP_MACHINE etc according to the .<target_spec>
 #	represented by the suffix of the corresponding target.
 #	
@@ -136,6 +136,14 @@
 #		A list of MACHINEs the current directory should not be
 #		built for.
 #
+
+.if !target(bootstrap) && (make(bootstrap) || \
+	make(bootstrap-this) || \
+	make(bootstrap-recurse) || \
+	make(bootstrap-empty))
+# disable most of below
+.MAKE.LEVEL = 1
+.endif
 
 # touch this at your peril
 _DIRDEP_USE_LEVEL?= 0
@@ -528,9 +536,13 @@ _machines := ${DEP_MACHINE}
 # this is the machine list we actually use below
 _machines := ${_only_machines}
 
-.if defined(HOSTPROG) || ${DEP_MACHINE} == "host"
+.if defined(HOSTPROG) || ${DEP_MACHINE:Nhost*} == ""
 # we need to build this guy's dependencies for host as well.
+.if ${DEP_MACHINE:Nhost*} == ""
+_machines += ${DEP_MACHINE}
+.else
 _machines += host
+.endif
 .endif
 
 _machines := ${_machines:O:u}
@@ -628,6 +640,11 @@ _build_all_dirs := ${_build_all_dirs:O:u}
 x!= { echo; echo '\# ${DEP_RELDIR}.${DEP_TARGET_SPEC}'; \
 	echo 'dirdeps: ${_build_all_dirs:${M_oneperline}}'; echo; } >&3; echo
 x!= { ${_build_all_dirs:@x@${target($x):?:echo '$x: _DIRDEP_USE';}@} echo; } >&3; echo
+.if !empty(DEP_EXPORT_VARS)
+# Discouraged, but there are always exceptions.
+# Handle it here rather than explain how.
+x!= { echo; ${DEP_EXPORT_VARS:@v@echo '$v=${$v}';@} echo '.export ${DEP_EXPORT_VARS}'; echo; } >&3; echo
+.endif
 .else
 # this makes it all happen
 dirdeps: ${_build_all_dirs}
@@ -636,6 +653,11 @@ ${_build_all_dirs}:	_DIRDEP_USE
 
 .if ${_debug_reldir}
 .info ${DEP_RELDIR}.${DEP_TARGET_SPEC}: needs: ${_build_dirs}
+.endif
+
+.if !empty(DEP_EXPORT_VARS)
+.export ${DEP_EXPORT_VARS}
+DEP_EXPORT_VARS=
 .endif
 
 # this builds the dependency graph
@@ -757,7 +779,7 @@ bootstrap-this:	.NOTMAIN
 	@echo Bootstrapping ${RELDIR}/${_want:T} from ${_src:T}; \
 	echo You need to build ${RELDIR} to correctly populate it.
 .if ${_src:T} != ${.MAKE.DEPENDFILE_PREFIX:T}
-	(cd ${.CURDIR} && sed ${.MAKE.DEPENDFILE_BOOTSTRAP_SED} ${_src} > ${_want})
+	(cd ${.CURDIR} && sed ${.MAKE.DEPENDFILE_BOOTSTRAP_SED} ${_src} > ${_want:T})
 .else
 	cp ${.CURDIR}/${_src:T} ${_want}
 .endif

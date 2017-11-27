@@ -1,6 +1,8 @@
 /*	$OpenBSD: db_machdep.h,v 1.2 1998/09/15 10:50:12 pefo Exp $ */
 
-/*
+/*-
+ * SPDX-License-Identifier: BSD-4-Clause
+ *
  * Copyright (c) 1998 Per Fogelstrom, Opsycon AB
  *
  * Redistribution and use in source and binary forms, with or without
@@ -86,9 +88,6 @@ db_addr_t	next_instr_address(db_addr_t, boolean_t);
 #define	inst_return(i)		((i) == 0x03e00008)
 #define	inst_load(i)		(db_inst_type(i) == IT_LOAD)
 #define	inst_store(i)		(db_inst_type(i) == IT_STORE)
-
-#define	DB_SMALL_VALUE_MAX	0x7fffffff
-#define	DB_SMALL_VALUE_MIN	(-0x400001)
 
 int db_inst_type(int);
 db_addr_t branch_taken(int inst, db_addr_t pc);

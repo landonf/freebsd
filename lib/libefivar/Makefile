@@ -26,7 +26,7 @@
 
 .include <src.opts.mk>
 
-EFIBOOT=${SRCTOP}/sys/boot/efi
+EFIBOOT=${SRCTOP}/stand/efi
 EDK2INC=${SRCTOP}/sys/contrib/edk2/Include
 
 .PATH:	${EFIBOOT}/libefi
@@ -64,4 +64,4 @@ WARNS?=		9
 
 .include <bsd.lib.mk>
 
-CFLAGS+= -Wno-cast-align -Wno-unused-parameter
+CFLAGS+= -fno-strict-aliasing -Wno-cast-align -Wno-unused-parameter

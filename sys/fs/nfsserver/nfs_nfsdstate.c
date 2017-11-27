@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2009 Rick Macklem, University of Guelph
  * All rights reserved.
  *
@@ -74,6 +76,11 @@ static int	nfsrv_writedelegifpos = 0;
 SYSCTL_INT(_vfs_nfsd, OID_AUTO, writedelegifpos, CTLFLAG_RW,
     &nfsrv_writedelegifpos, 0,
     "Issue a write delegation for read opens if possible");
+
+static int	nfsrv_allowreadforwriteopen = 1;
+SYSCTL_INT(_vfs_nfsd, OID_AUTO, allowreadforwriteopen, CTLFLAG_RW,
+    &nfsrv_allowreadforwriteopen, 0,
+    "Allow Reads to be done with Write Access StateIDs");
 
 /*
  * Hash lists for nfs V4.
@@ -1872,7 +1879,8 @@ tryagain:
 		       mystp->ls_flags & NFSLCK_ACCESSBITS)) ||
 		    ((new_stp->ls_flags & (NFSLCK_CHECK|NFSLCK_READACCESS)) ==
 		      (NFSLCK_CHECK | NFSLCK_READACCESS) &&
-		     !(mystp->ls_flags & NFSLCK_READACCESS)) ||
+		     !(mystp->ls_flags & NFSLCK_READACCESS) &&
+		     nfsrv_allowreadforwriteopen == 0) ||
 		    ((new_stp->ls_flags & (NFSLCK_CHECK|NFSLCK_WRITEACCESS)) ==
 		      (NFSLCK_CHECK | NFSLCK_WRITEACCESS) &&
 		     !(mystp->ls_flags & NFSLCK_WRITEACCESS))) {
@@ -3885,11 +3893,11 @@ nfsrv_getclientipaddr(struct nfsrv_descript *nd, struct nfsclient *clp)
 	u_char protocol[5], addr[24];
 	int error = 0, cantparse = 0;
 	union {
-		u_long ival;
+		in_addr_t ival;
 		u_char cval[4];
 	} ip;
 	union {
-		u_short sval;
+		in_port_t sval;
 		u_char cval[2];
 	} port;
 
@@ -3983,8 +3991,10 @@ nfsrv_getclientipaddr(struct nfsrv_descript *nd, struct nfsclient *clp)
 	}
 	if (cantparse) {
 		sad = NFSSOCKADDR(nd->nd_nam, struct sockaddr_in *);
-		rad->sin_addr.s_addr = sad->sin_addr.s_addr;
-		rad->sin_port = 0x0;
+		if (sad->sin_family == AF_INET) {
+			rad->sin_addr.s_addr = sad->sin_addr.s_addr;
+			rad->sin_port = 0x0;
+		}
 		clp->lc_program = 0;
 	}
 nfsmout:

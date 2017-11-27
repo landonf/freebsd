@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 1993, David Greenman
  * All rights reserved.
  *
@@ -143,6 +145,8 @@ SYSCTL_INT(_kern, OID_AUTO, disallow_high_osrel, CTLFLAG_RW,
 static int map_at_zero = 0;
 SYSCTL_INT(_security_bsd, OID_AUTO, map_at_zero, CTLFLAG_RWTUN, &map_at_zero, 0,
     "Permit processes to map an object at virtual address 0.");
+
+EVENTHANDLER_LIST_DECLARE(process_exec);
 
 static int
 sysctl_kern_ps_strings(SYSCTL_HANDLER_ARGS)
@@ -316,7 +320,7 @@ post_execve(struct thread *td, int error, struct vmspace *oldvmspace)
 		 * If success, we upgrade to SINGLE_EXIT state to
 		 * force other threads to suicide.
 		 */
-		if (error == 0)
+		if (error == EJUSTRETURN)
 			thread_single(p, SINGLE_EXIT);
 		else
 			thread_single_end(p, SINGLE_BOUNDARY);
@@ -353,10 +357,7 @@ kern_execve(struct thread *td, struct image_args *args, struct mac *mac_p)
  * userspace pointers from the passed thread.
  */
 static int
-do_execve(td, args, mac_p)
-	struct thread *td;
-	struct image_args *args;
-	struct mac *mac_p;
+do_execve(struct thread *td, struct image_args *args, struct mac *mac_p)
 {
 	struct proc *p = td->td_proc;
 	struct nameidata nd;
@@ -852,28 +853,23 @@ interpret:
 	p->p_args = newargs;
 	newargs = NULL;
 
+	PROC_UNLOCK(p);
+
 #ifdef	HWPMC_HOOKS
 	/*
 	 * Check if system-wide sampling is in effect or if the
 	 * current process is using PMCs.  If so, do exec() time
 	 * processing.  This processing needs to happen AFTER the
 	 * P_INEXEC flag is cleared.
-	 *
-	 * The proc lock needs to be released before taking the PMC
-	 * SX.
 	 */
 	if (PMC_SYSTEM_SAMPLING_ACTIVE() || PMC_PROC_IS_USING_PMCS(p)) {
-		PROC_UNLOCK(p);
 		VOP_UNLOCK(imgp->vp, 0);
 		pe.pm_credentialschanged = credential_changing;
 		pe.pm_entryaddr = imgp->entry_addr;
 
 		PMC_CALL_HOOK_X(td, PMC_FN_PROCESS_EXEC, (void *) &pe);
 		vn_lock(imgp->vp, LK_SHARED | LK_RETRY);
-	} else
-		PROC_UNLOCK(p);
-#else  /* !HWPMC_HOOKS */
-	PROC_UNLOCK(p);
+	}
 #endif
 
 	/* Set values passed into the program in registers. */
@@ -908,10 +904,12 @@ exec_fail_dealloc:
 	free(imgp->freepath, M_TEMP);
 
 	if (error == 0) {
-		PROC_LOCK(p);
-		if (p->p_ptevents & PTRACE_EXEC)
-			td->td_dbgflags |= TDB_EXEC;
-		PROC_UNLOCK(p);
+		if (p->p_ptevents & PTRACE_EXEC) {
+			PROC_LOCK(p);
+			if (p->p_ptevents & PTRACE_EXEC)
+				td->td_dbgflags |= TDB_EXEC;
+			PROC_UNLOCK(p);
+		}
 
 		/*
 		 * Stop the process here if its stop event mask has
@@ -966,7 +964,13 @@ exec_fail:
 		ktrprocctor(p);
 #endif
 
-	return (error);
+	/*
+	 * We don't want cpu_set_syscall_retval() to overwrite any of
+	 * the register values put in place by exec_setregs().
+	 * Implementations of cpu_set_syscall_retval() will leave
+	 * registers unmodified when returning EJUSTRETURN.
+	 */
+	return (error == 0 ? EJUSTRETURN : error);
 }
 
 int
@@ -1042,8 +1046,7 @@ exec_map_first_page(imgp)
 }
 
 void
-exec_unmap_first_page(imgp)
-	struct image_params *imgp;
+exec_unmap_first_page(struct image_params *imgp)
 {
 	vm_page_t m;
 
@@ -1058,14 +1061,12 @@ exec_unmap_first_page(imgp)
 }
 
 /*
- * Destroy old address space, and allocate a new stack
- *	The new stack is only SGROWSIZ large because it is grown
- *	automatically in trap.c.
+ * Destroy old address space, and allocate a new stack.
+ *	The new stack is only sgrowsiz large because it is grown
+ *	automatically on a page fault.
  */
 int
-exec_new_vmspace(imgp, sv)
-	struct image_params *imgp;
-	struct sysentvec *sv;
+exec_new_vmspace(struct image_params *imgp, struct sysentvec *sv)
 {
 	int error;
 	struct proc *p = imgp->proc;
@@ -1080,7 +1081,7 @@ exec_new_vmspace(imgp, sv)
 	imgp->sysent = sv;
 
 	/* May be called with Giant held */
-	EVENTHANDLER_INVOKE(process_exec, p, imgp);
+	EVENTHANDLER_DIRECT_INVOKE(process_exec, p, imgp);
 
 	/*
 	 * Blow away entire process VM, if address space not shared,
@@ -1097,6 +1098,10 @@ exec_new_vmspace(imgp, sv)
 		shmexit(vmspace);
 		pmap_remove_pages(vmspace_pmap(vmspace));
 		vm_map_remove(map, vm_map_min(map), vm_map_max(map));
+		/* An exec terminates mlockall(MCL_FUTURE). */
+		vm_map_lock(map);
+		vm_map_modflags(map, 0, MAP_WIREFUTURE);
+		vm_map_unlock(map);
 	} else {
 		error = vmspace_exec(p, sv_minuser, sv->sv_maxuser);
 		if (error)
@@ -1114,9 +1119,9 @@ exec_new_vmspace(imgp, sv)
 		    VM_PROT_READ | VM_PROT_EXECUTE,
 		    VM_PROT_READ | VM_PROT_EXECUTE,
 		    MAP_INHERIT_SHARE | MAP_ACC_NO_CHARGE);
-		if (error) {
+		if (error != KERN_SUCCESS) {
 			vm_object_deallocate(obj);
-			return (error);
+			return (vm_mmap_to_errno(error));
 		}
 	}
 
@@ -1140,10 +1145,9 @@ exec_new_vmspace(imgp, sv)
 	stack_addr = sv->sv_usrstack - ssiz;
 	error = vm_map_stack(map, stack_addr, (vm_size_t)ssiz,
 	    obj != NULL && imgp->stack_prot != 0 ? imgp->stack_prot :
-		sv->sv_stackprot,
-	    VM_PROT_ALL, MAP_STACK_GROWS_DOWN);
-	if (error)
-		return (error);
+	    sv->sv_stackprot, VM_PROT_ALL, MAP_STACK_GROWS_DOWN);
+	if (error != KERN_SUCCESS)
+		return (vm_mmap_to_errno(error));
 
 	/*
 	 * vm_ssize and vm_maxsaddr are somewhat antiquated concepts, but they
@@ -1460,8 +1464,7 @@ exec_free_args(struct image_args *args)
  * as the initial stack pointer.
  */
 register_t *
-exec_copyout_strings(imgp)
-	struct image_params *imgp;
+exec_copyout_strings(struct image_params *imgp)
 {
 	int argc, envc;
 	char **vectp;
@@ -1617,8 +1620,7 @@ exec_copyout_strings(imgp)
  *	Return 0 for success or error code on failure.
  */
 int
-exec_check_permissions(imgp)
-	struct image_params *imgp;
+exec_check_permissions(struct image_params *imgp)
 {
 	struct vnode *vp = imgp->vp;
 	struct vattr *attr = imgp->attr;
@@ -1688,8 +1690,7 @@ exec_check_permissions(imgp)
  * Exec handler registration
  */
 int
-exec_register(execsw_arg)
-	const struct execsw *execsw_arg;
+exec_register(const struct execsw *execsw_arg)
 {
 	const struct execsw **es, **xs, **newexecsw;
 	int count = 2;	/* New slot and trailing NULL */
@@ -1711,8 +1712,7 @@ exec_register(execsw_arg)
 }
 
 int
-exec_unregister(execsw_arg)
-	const struct execsw *execsw_arg;
+exec_unregister(const struct execsw *execsw_arg)
 {
 	const struct execsw **es, **xs, **newexecsw;
 	int count = 1;

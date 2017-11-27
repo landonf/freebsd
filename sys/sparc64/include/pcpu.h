@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 1999 Luoqi Chen <luoqi@freebsd.org>
  * All rights reserved.
  *
@@ -62,7 +64,7 @@ struct pmap;
 	u_int	pc_tlb_ctx;						\
 	u_int	pc_tlb_ctx_max;						\
 	u_int	pc_tlb_ctx_min;						\
-	char	__pad[397]
+	char	__pad[653]
 
 #ifdef _KERNEL
 

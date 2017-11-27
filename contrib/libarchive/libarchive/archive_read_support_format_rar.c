@@ -1496,7 +1496,11 @@ read_header(struct archive_read *a, struct archive_entry *entry,
         return (ARCHIVE_FATAL);
       }
       filename[filename_size++] = '\0';
-      filename[filename_size++] = '\0';
+      /*
+       * Do not increment filename_size here as the computations below
+       * add the space for the terminating NUL explicitly.
+       */
+      filename[filename_size] = '\0';
 
       /* Decoded unicode form is UTF-16BE, so we have to update a string
        * conversion object for it. */
@@ -1750,7 +1754,7 @@ read_exttime(const char *p, struct rar *rar, const char *endp)
         return (-1);
       for (j = 0; j < count; j++)
       {
-        rem = ((*p) << 16) | (rem >> 8);
+        rem = (((unsigned)(unsigned char)*p) << 16) | (rem >> 8);
         p++;
       }
       tm = localtime(&t);

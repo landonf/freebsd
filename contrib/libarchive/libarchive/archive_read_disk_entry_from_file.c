@@ -127,7 +127,7 @@ archive_read_disk_entry_setup_acls(struct archive_read_disk *a,
 /*
  * Enter working directory and return working pathname of archive_entry.
  * If a pointer to an integer is provided and its value is below zero
- * open a file descriptor on this pahtname.
+ * open a file descriptor on this pathname.
  */
 const char *
 archive_read_disk_entry_setup_path(struct archive_read_disk *a,
@@ -613,9 +613,21 @@ setup_xattrs(struct archive_read_disk *a,
 	}
 
 	for (p = list; (p - list) < list_size; p += strlen(p) + 1) {
-		if (strncmp(p, "system.", 7) == 0 ||
-				strncmp(p, "xfsroot.", 8) == 0)
+#if ARCHIVE_XATTR_LINUX
+		/* Linux: skip POSIX.1e ACL extended attributes */
+		if (strncmp(p, "system.", 7) == 0 &&
+		   (strcmp(p + 7, "posix_acl_access") == 0 ||
+		    strcmp(p + 7, "posix_acl_default") == 0))
 			continue;
+		if (strncmp(p, "trusted.SGI_", 12) == 0 &&
+		   (strcmp(p + 12, "ACL_DEFAULT") == 0 ||
+		    strcmp(p + 12, "ACL_FILE") == 0))
+			continue;
+
+		/* Linux: xfsroot namespace is obsolete and unsupported */
+		if (strncmp(p, "xfsroot.", 8) == 0)
+			continue;
+#endif
 		setup_xattr(a, entry, p, *fd, path);
 	}
 
@@ -916,11 +928,10 @@ setup_sparse(struct archive_read_disk *a,
 		return (ARCHIVE_OK);
 
 	/* Does filesystem support the reporting of hole ? */
-	if (*fd < 0) {
+	if (*fd < 0)
 		path = archive_read_disk_entry_setup_path(a, entry, fd);
-		if (path == NULL)
-			return (ARCHIVE_FAILED);
-	}
+	else
+		path = NULL;
 
 	if (*fd >= 0) {
 #ifdef _PC_MIN_HOLE_SIZE
@@ -931,6 +942,8 @@ setup_sparse(struct archive_read_disk *a,
 		if (initial_off != 0)
 			lseek(*fd, 0, SEEK_SET);
 	} else {
+		if (path == NULL)
+			return (ARCHIVE_FAILED);
 #ifdef _PC_MIN_HOLE_SIZE
 		if (pathconf(path, _PC_MIN_HOLE_SIZE) <= 0)
 			return (ARCHIVE_OK);

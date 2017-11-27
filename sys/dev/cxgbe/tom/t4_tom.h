@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2012, 2015 Chelsio Communications, Inc.
  * All rights reserved.
  * Written by: Navdeep Parhar <np@FreeBSD.org>
@@ -112,6 +114,7 @@ struct pageset {
 	int len;
 	struct ppod_reservation prsv;
 	struct vmspace *vm;
+	vm_offset_t start;
 	u_int vm_timestamp;
 };
 
@@ -149,6 +152,7 @@ struct toepcb {
 	struct l2t_entry *l2te;	/* L2 table entry used by this connection */
 	struct clip_entry *ce;	/* CLIP table entry used by this tid */
 	int tid;		/* Connection identifier */
+	int tc_idx;		/* traffic class that this tid is bound to */
 
 	/* tx credit handling */
 	u_int tx_total;		/* total tx WR credits (in 16B units) */

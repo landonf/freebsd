@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
  * Copyright 2001 Niels Provos <provos@citi.umich.edu>
  * Copyright 2011 Alexander Bluhm <bluhm@openbsd.org>
  * All rights reserved.
@@ -761,6 +763,10 @@ pf_refragment6(struct ifnet *ifp, struct mbuf **m0, struct m_tag *mtag)
 		proto = hdr->ip6_nxt;
 		hdr->ip6_nxt = IPPROTO_FRAGMENT;
 	}
+
+	/* The MTU must be a multiple of 8 bytes, or we risk doing the
+	 * fragmentation wrong. */
+	maxlen = maxlen & ~7;
 
 	/*
 	 * Maxlen may be less than 8 if there was only a single
