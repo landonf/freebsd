@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1989, 1992, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -49,6 +51,7 @@ static char sccsid[] = "@(#)kvm.c	8.2 (Berkeley) 2/13/94";
 #include <sys/linker.h>
 #include <sys/pcpu.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
 
 #include <net/vnet.h>
 
@@ -66,9 +69,14 @@ static char sccsid[] = "@(#)kvm.c	8.2 (Berkeley) 2/13/94";
 
 SET_DECLARE(kvm_arch, struct kvm_arch);
 
+static char _kd_is_null[] = "";
+
 char *
 kvm_geterr(kvm_t *kd)
 {
+
+	if (kd == NULL)
+		return (_kd_is_null);
 	return (kd->errbuf);
 }
 
@@ -272,6 +280,10 @@ kvm_close(kvm_t *kd)
 {
 	int error = 0;
 
+	if (kd == NULL) {
+		errno = EINVAL;
+		return (-1);
+	}
 	if (kd->vmst != NULL)
 		kd->arch->ka_freevtop(kd);
 	if (kd->pmfd >= 0)
@@ -290,9 +302,13 @@ kvm_close(kvm_t *kd)
 		free((void *)kd->argv);
 	if (kd->pt_map != NULL)
 		free(kd->pt_map);
+	if (kd->page_map != NULL)
+		free(kd->page_map);
+	if (kd->sparse_map != MAP_FAILED)
+		munmap(kd->sparse_map, kd->pt_sparse_size);
 	free((void *)kd);
 
-	return (0);
+	return (error);
 }
 
 int
@@ -467,7 +483,7 @@ kvm_write(kvm_t *kd, u_long kva, const void *buf, size_t len)
 		len -= cw;
 	}
 
-	return (cp - (char *)buf);
+	return (cp - (const char *)buf);
 }
 
 int
@@ -477,4 +493,14 @@ kvm_native(kvm_t *kd)
 	if (ISALIVE(kd))
 		return (1);
 	return (kd->arch->ka_native(kd));
+}
+
+int
+kvm_walk_pages(kvm_t *kd, kvm_walk_pages_cb_t *cb, void *closure)
+{
+
+	if (kd->arch->ka_walk_pages == NULL)
+		return (0);
+
+	return (kd->arch->ka_walk_pages(kd, cb, closure));
 }

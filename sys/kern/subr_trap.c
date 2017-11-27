@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-4-Clause
+ *
  * Copyright (C) 1994, David Greenman
  * Copyright (c) 1990, 1993
  *	The Regents of the University of California.  All rights reserved.
@@ -234,7 +236,7 @@ ast(struct trapframe *framep)
 	td->td_flags &= ~(TDF_ASTPENDING | TDF_NEEDSIGCHK | TDF_NEEDSUSPCHK |
 	    TDF_NEEDRESCHED | TDF_ALRMPEND | TDF_PROFPEND | TDF_MACPEND);
 	thread_unlock(td);
-	PCPU_INC(cnt.v_trap);
+	VM_CNT_INC(v_trap);
 
 	if (td->td_cowgen != p->p_cowgen)
 		thread_cow_update(td);

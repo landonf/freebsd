@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1988, 1991, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -728,7 +730,7 @@ route_output(struct mbuf *m, struct socket *so, ...)
 		if (info.rti_info[RTAX_NETMASK] == NULL &&
 		    rtm->rtm_type == RTM_GET) {
 			/*
-			 * Provide logest prefix match for
+			 * Provide longest prefix match for
 			 * address lookup (no mask).
 			 * 'route -n get addr'
 			 */

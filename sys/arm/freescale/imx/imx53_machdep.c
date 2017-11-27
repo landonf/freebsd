@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2013 Ian Lepore <ian@freebsd.org>
  * All rights reserved.
  *
@@ -53,10 +55,6 @@ static int
 imx53_attach(platform_t plat)
 {
 
-	/* XXX - Get rid of this stuff soon. */
-	boothowto |= RB_VERBOSE|RB_MULTIPLE;
-	bootverbose = 1;
-
 	return (0);
 }
 
@@ -99,5 +97,4 @@ static platform_method_t imx53_methods[] = {
 	PLATFORMMETHOD_END,
 };
 
-FDT_PLATFORM_DEF(imx53, "i.MX53", 0, "fsl,imx53", 0);
-
+FDT_PLATFORM_DEF(imx53, "i.MX53", 0, "fsl,imx53", 100);

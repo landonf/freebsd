@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2003, 2008 Silicon Graphics International Corp.
  * Copyright (c) 2012 The FreeBSD Foundation
  * Copyright (c) 2014-2017 Alexander Motin <mav@FreeBSD.org>
@@ -525,6 +527,11 @@ nospc:
 	io->scsiio.kern_sg_entries = sgs;
 	io->io_hdr.flags |= CTL_FLAG_ALLOCATED;
 	PRIV(io)->len += lbas;
+	if ((ARGS(io)->flags & CTL_LLF_READ) &&
+	    ARGS(io)->len <= PRIV(io)->len) {
+		ctl_set_success(&io->scsiio);
+		ctl_serseq_done(io);
+	}
 #ifdef CTL_TIME_IO
 	getbinuptime(&io->io_hdr.dma_start_bt);
 #endif
@@ -1091,7 +1098,7 @@ ctl_backend_ramdisk_create(struct ctl_be_ramdisk_softc *softc,
 	cbe_lun->lun_config_status = ctl_backend_ramdisk_lun_config_status;
 	cbe_lun->be = &ctl_be_ramdisk_driver;
 	if ((params->flags & CTL_LUN_FLAG_SERIAL_NUM) == 0) {
-		snprintf(tmpstr, sizeof(tmpstr), "MYSERIAL%4d",
+		snprintf(tmpstr, sizeof(tmpstr), "MYSERIAL%04d",
 			 softc->num_luns);
 		strncpy((char *)cbe_lun->serial_num, tmpstr,
 			MIN(sizeof(cbe_lun->serial_num), sizeof(tmpstr)));
@@ -1105,7 +1112,7 @@ ctl_backend_ramdisk_create(struct ctl_be_ramdisk_softc *softc,
 			    sizeof(params->serial_num)));
 	}
 	if ((params->flags & CTL_LUN_FLAG_DEVID) == 0) {
-		snprintf(tmpstr, sizeof(tmpstr), "MYDEVID%4d", softc->num_luns);
+		snprintf(tmpstr, sizeof(tmpstr), "MYDEVID%04d", softc->num_luns);
 		strncpy((char *)cbe_lun->device_id, tmpstr,
 			MIN(sizeof(cbe_lun->device_id), sizeof(tmpstr)));
 
@@ -1287,13 +1294,8 @@ bailout_error:
 static void
 ctl_backend_ramdisk_lun_shutdown(void *be_lun)
 {
-	struct ctl_be_ramdisk_lun *lun;
-	struct ctl_be_ramdisk_softc *softc;
-	int do_free;
-
-	lun = (struct ctl_be_ramdisk_lun *)be_lun;
-	softc = lun->softc;
-	do_free = 0;
+	struct ctl_be_ramdisk_lun *lun = be_lun;
+	struct ctl_be_ramdisk_softc *softc = lun->softc;
 
 	mtx_lock(&softc->lock);
 	lun->flags |= CTL_BE_RAMDISK_LUN_UNCONFIGURED;
@@ -1303,12 +1305,9 @@ ctl_backend_ramdisk_lun_shutdown(void *be_lun)
 		STAILQ_REMOVE(&softc->lun_list, lun, ctl_be_ramdisk_lun,
 			      links);
 		softc->num_luns--;
-		do_free = 1;
+		free(be_lun, M_RAMDISK);
 	}
 	mtx_unlock(&softc->lock);
-
-	if (do_free != 0)
-		free(be_lun, M_RAMDISK);
 }
 
 static void

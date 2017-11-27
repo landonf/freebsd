@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD AND BSD-2-Clause
+ *
  * Copyright (c) 2011 NetApp, Inc.
  * All rights reserved.
  *
@@ -311,10 +313,12 @@ cb_diskioctl(void *arg, int unit, u_long cmd, void *data)
 		*(u_int *)data = 512;
 		break;
 	case DIOCGMEDIASIZE:
-		if (fstat(disk_fd[unit], &sb) == 0)
-			*(off_t *)data = sb.st_size;
-		else
+		if (fstat(disk_fd[unit], &sb) != 0)
 			return (ENOTTY);
+		if (S_ISCHR(sb.st_mode) &&
+		    ioctl(disk_fd[unit], DIOCGMEDIASIZE, &sb.st_size) != 0)
+				return (ENOTTY);
+		*(off_t *)data = sb.st_size;
 		break;
 	default:
 		return (ENOTTY);

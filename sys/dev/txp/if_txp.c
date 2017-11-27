@@ -1,6 +1,8 @@
 /*	$OpenBSD: if_txp.c,v 1.48 2001/06/27 06:34:50 kjc Exp $	*/
 
 /*-
+ * SPDX-License-Identifier: BSD-4-Clause
+ *
  * Copyright (c) 2001
  *	Jason L. Wright <jason@thought.net>, Theo de Raadt, and
  *	Aaron Campbell <aaron@monkey.org>.  All rights reserved.
@@ -400,8 +402,7 @@ txp_attach(device_t dev)
 		    "Unknown Typhoon sleep image version: %u:0x%08x\n",
 		    rsp->rsp_numdesc, p2);
 	}
-	if (rsp != NULL)
-		free(rsp, M_DEVBUF);
+	free(rsp, M_DEVBUF);
 
 	sc->sc_xcvr = TXP_XCVR_AUTO;
 	txp_command(sc, TXP_CMD_XCVR_SELECT, TXP_XCVR_AUTO, 0, 0,

@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1983, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -59,17 +61,6 @@ qsort_b(void *, size_t, size_t, void*);
 
 static int alphasort_thunk(void *thunk, const void *p1, const void *p2);
 
-/*
- * The DIRSIZ macro is the minimum record length which will hold the directory
- * entry.  This requires the amount of space in struct dirent without the
- * d_name field, plus enough space for the name and a terminating nul byte
- * (dp->d_namlen + 1), rounded up to a 4 byte boundary.
- */
-#undef DIRSIZ
-#define DIRSIZ(dp)							\
-	((sizeof(struct dirent) - sizeof(dp)->d_name) +			\
-	    (((dp)->d_namlen + 1 + 3) &~ 3))
-
 int
 #ifdef I_AM_SCANDIR_B
 scandir_b(const char *dirname, struct dirent ***namelist,
@@ -82,26 +73,25 @@ scandir(const char *dirname, struct dirent ***namelist,
 #endif
 {
 	struct dirent *d, *p, **names = NULL;
-	size_t numitems;
-	long arraysz;
+	size_t arraysz, numitems;
 	DIR *dirp;
 
 	if ((dirp = opendir(dirname)) == NULL)
 		return(-1);
 
+	numitems = 0;
 	arraysz = 32;	/* initial estimate of the array size */
 	names = (struct dirent **)malloc(arraysz * sizeof(struct dirent *));
 	if (names == NULL)
 		goto fail;
 
-	numitems = 0;
 	while ((d = readdir(dirp)) != NULL) {
 		if (select != NULL && !SELECT(d))
 			continue;	/* just selected names */
 		/*
 		 * Make a minimum size copy of the data
 		 */
-		p = (struct dirent *)malloc(DIRSIZ(d));
+		p = (struct dirent *)malloc(_GENERIC_DIRSIZ(d));
 		if (p == NULL)
 			goto fail;
 		p->d_fileno = d->d_fileno;

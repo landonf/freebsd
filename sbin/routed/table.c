@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1983, 1988, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -1233,6 +1235,15 @@ read_rt(void)
 		if (m.r.rtm.rtm_type <= RTM_CHANGE)
 			strp += sprintf(strp," from pid %d",m.r.rtm.rtm_pid);
 
+		/*
+		 * Only messages that use the struct rt_msghdr format are
+		 * allowed beyond this point.
+		 */
+		if (m.r.rtm.rtm_type > RTM_RESOLVE) {
+			trace_act("ignore %s", str);
+			continue;
+		}
+		
 		rt_xaddrs(&info, m.r.addrs, &m.r.addrs[RTAX_MAX],
 			  m.r.rtm.rtm_addrs);
 

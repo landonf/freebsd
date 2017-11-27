@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
  * All rights reserved.
  *
@@ -469,6 +471,7 @@ void nd6_dad_stop(struct ifaddr *);
 void nd6_rs_input(struct mbuf *, int, int);
 void nd6_ra_input(struct mbuf *, int, int);
 void defrouter_reset(void);
+void defrouter_select_fib(int fibnum);
 void defrouter_select(void);
 void defrouter_ref(struct nd_defrouter *);
 void defrouter_rele(struct nd_defrouter *);

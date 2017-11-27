@@ -60,14 +60,17 @@ __FBSDID("$FreeBSD$");
 #include <dev/ofw/ofw_bus_subr.h>
 
 static struct ofw_compat_data compat_data[] = {
-	{"generic-ahci", 	1},
-	{"snps,dwc-ahci",	1},
-	{NULL,			0}
+	{"generic-ahci", 		1},
+	{"snps,dwc-ahci",		1},
+	{"marvell,armada-3700-ahci",	1},
+	{NULL,				0}
 };
 
 static int
 ahci_fdt_probe(device_t dev)
 {
+	struct ahci_controller *ctlr = device_get_softc(dev);
+	phandle_t node;
 
 	if (!ofw_bus_status_okay(dev))
 		return (ENXIO);
@@ -76,6 +79,8 @@ ahci_fdt_probe(device_t dev)
 		return (ENXIO);
 
 	device_set_desc_copy(dev, "AHCI SATA controller");
+	node = ofw_bus_get_node(dev);
+	ctlr->dma_coherent = OF_hasprop(node, "dma-coherent");
 	return (BUS_PROBE_DEFAULT);
 }
 #endif

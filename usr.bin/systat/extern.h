@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1991, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -56,7 +58,7 @@ extern int	protos;
 extern int	verbose;
 extern unsigned int	delay;
 
-struct inpcb;
+struct in_conninfo;
 
 extern struct device_selection *dev_select;
 extern long			generation;
@@ -67,8 +69,8 @@ extern long			select_generation;
 
 extern struct nlist		namelist[];
 
-int	 checkhost(struct inpcb *);
-int	 checkport(struct inpcb *);
+int	 checkhost(struct in_conninfo *);
+int	 checkport(struct in_conninfo *);
 void	 closeicmp(WINDOW *);
 void	 closeicmp6(WINDOW *);
 void	 closeifstat(WINDOW *);

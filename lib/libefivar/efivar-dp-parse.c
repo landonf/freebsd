@@ -38,6 +38,8 @@ __FBSDID("$FreeBSD$");
 #include <string.h>
 #include <wchar.h>
 
+#include "efichar.h"
+
 #include "efi-osdep.h"
 #include "efivar-dp.h"
 
@@ -3006,7 +3008,6 @@ DevPathFromTextVenMedia (
            );
 }
 
-#ifndef __FreeBSD__
 /**
   Converts a text device path node to File device path structure.
 
@@ -3023,6 +3024,7 @@ DevPathFromTextFilePath (
 {
   FILEPATH_DEVICE_PATH  *File;
 
+#ifndef __FreeBSD__
   File = (FILEPATH_DEVICE_PATH *) CreateDeviceNode (
                                     MEDIA_DEVICE_PATH,
                                     MEDIA_FILEPATH_DP,
@@ -3030,10 +3032,20 @@ DevPathFromTextFilePath (
                                     );
 
   StrCpyS (File->PathName, StrLen (TextDeviceNode) + 1, TextDeviceNode);
+#else
+  size_t len = (sizeof (FILEPATH_DEVICE_PATH) + StrLen (TextDeviceNode) * 2);
+  efi_char * v;
+  File = (FILEPATH_DEVICE_PATH *) CreateDeviceNode (
+                                    MEDIA_DEVICE_PATH,
+                                    MEDIA_FILEPATH_DP,
+				    (UINT16)len
+                                    );
+  v = File->PathName;
+  utf8_to_ucs2(TextDeviceNode, &v, &len);
+#endif
 
   return (EFI_DEVICE_PATH_PROTOCOL *) File;
 }
-#endif
 
 /**
   Converts a text device path node to Media protocol device path structure.
@@ -3544,6 +3556,7 @@ GLOBAL_REMOVE_IF_UNREFERENCED DEVICE_PATH_FROM_TEXT_TABLE mUefiDevicePathLibDevP
   {"Media",                   DevPathFromTextMedia                   },
   {"Fv",                      DevPathFromTextFv                      },
   {"FvFile",                  DevPathFromTextFvFile                  },
+  {"File",                    DevPathFromTextFilePath                },
   {"Offset",                  DevPathFromTextRelativeOffsetRange     },
   {"RamDisk",                 DevPathFromTextRamDisk                 },
   {"VirtualDisk",             DevPathFromTextVirtualDisk             },
@@ -3598,7 +3611,6 @@ UefiDevicePathLibConvertTextToDeviceNode (
     }
   }
 
-#ifndef __FreeBSD__
   if (FromText == NULL) {
     //
     // A file path
@@ -3606,9 +3618,6 @@ UefiDevicePathLibConvertTextToDeviceNode (
     FromText = DevPathFromTextFilePath;
     DeviceNode = FromText (DeviceNodeStr);
   } else {
-#else
-  {
-#endif
     DeviceNode = FromText (ParamStr);
     FreePool (ParamStr);
   }

@@ -36,6 +36,7 @@
 #include <pwd.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sysexits.h>
@@ -238,10 +239,13 @@ static struct _s_x rule_eactions[] = {
 	{ "nat64lsn",		TOK_NAT64LSN },
 	{ "nat64stl",		TOK_NAT64STL },
 	{ "nptv6",		TOK_NPTV6 },
+	{ "tcp-setmss",		TOK_TCPSETMSS },
 	{ NULL, 0 }	/* terminator */
 };
 
 static struct _s_x rule_actions[] = {
+	{ "abort6",		TOK_ABORT6 },
+	{ "abort",		TOK_ABORT },
 	{ "accept",		TOK_ACCEPT },
 	{ "pass",		TOK_ACCEPT },
 	{ "allow",		TOK_ACCEPT },
@@ -272,6 +276,7 @@ static struct _s_x rule_actions[] = {
 	{ "call",		TOK_CALL },
 	{ "return",		TOK_RETURN },
 	{ "eaction",		TOK_EACTION },
+	{ "tcp-setmss",		TOK_TCPSETMSS },
 	{ NULL, 0 }	/* terminator */
 };
 
@@ -1504,6 +1509,8 @@ show_static_rule(struct cmdline_opts *co, struct format_opts *fo,
 		case O_REJECT:
 			if (cmd->arg1 == ICMP_REJECT_RST)
 				bprintf(bp, "reset");
+			else if (cmd->arg1 == ICMP_REJECT_ABORT)
+				bprintf(bp, "abort");
 			else if (cmd->arg1 == ICMP_UNREACH_HOST)
 				bprintf(bp, "reject");
 			else
@@ -1513,6 +1520,8 @@ show_static_rule(struct cmdline_opts *co, struct format_opts *fo,
 		case O_UNREACH6:
 			if (cmd->arg1 == ICMP6_UNREACH_RST)
 				bprintf(bp, "reset6");
+			else if (cmd->arg1 == ICMP6_UNREACH_ABORT)
+				bprintf(bp, "abort6");
 			else
 				print_unreach6_code(bp, cmd->arg1);
 			break;
@@ -1639,6 +1648,22 @@ show_static_rule(struct cmdline_opts *co, struct format_opts *fo,
 				    cmd->arg1,
 				    IPFW_TLV_EACTION_NAME(has_eaction->arg1));
 			bprintf(bp, " %s", ename);
+			break;
+		}
+
+		case O_EXTERNAL_DATA: {
+			if (has_eaction == NULL)
+				break;
+			/*
+			 * Currently we support data formatting only for
+			 * external data with datalen u16. For unknown data
+			 * print its size in bytes.
+			 */
+			if (cmd->len == F_INSN_SIZE(ipfw_insn))
+				bprintf(bp, " %u", cmd->arg1);
+			else
+				bprintf(bp, " %ubytes",
+				    cmd->len * sizeof(uint32_t));
 			break;
 		}
 
@@ -3168,15 +3193,14 @@ fill_flags_cmd(ipfw_insn *cmd, enum ipfw_opcodes opcode,
 void
 ipfw_delete(char *av[])
 {
+	ipfw_range_tlv rt;
+	char *sep;
 	int i, j;
 	int exitval = EX_OK;
 	int do_set = 0;
-	char *sep;
-	ipfw_range_tlv rt;
 
 	av++;
 	NEED1("missing rule specification");
-	memset(&rt, 0, sizeof(rt));
 	if ( *av && _substrcmp(*av, "set") == 0) {
 		/* Do not allow using the following syntax:
 		 *	ipfw set N delete set M
@@ -3203,6 +3227,7 @@ ipfw_delete(char *av[])
  		} else if (co.do_pipe) {
 			exitval = ipfw_delete_pipe(co.do_pipe, i);
 		} else {
+			memset(&rt, 0, sizeof(rt));
 			if (do_set != 0) {
 				rt.set = i & 31;
 				rt.flags = IPFW_RCFLAG_SET;
@@ -3735,6 +3760,16 @@ compile_rule(char *av[], uint32_t *rbuf, int *rbufsize, struct tidx *tstate)
 		errx(EX_DATAERR, "Invalid state name %s", *av);
 		break;
 
+	case TOK_ABORT:
+		action->opcode = O_REJECT;
+		action->arg1 = ICMP_REJECT_ABORT;
+		break;
+
+	case TOK_ABORT6:
+		action->opcode = O_UNREACH6;
+		action->arg1 = ICMP6_UNREACH_ABORT;
+		break;
+
 	case TOK_ACCEPT:
 		action->opcode = O_ACCEPT;
 		break;
@@ -3990,6 +4025,26 @@ chkarg:
 	case TOK_RETURN:
 		fill_cmd(action, O_CALLRETURN, F_NOT, 0);
 		break;
+
+	case TOK_TCPSETMSS: {
+		u_long mss;
+		uint16_t idx;
+
+		idx = pack_object(tstate, "tcp-setmss", IPFW_TLV_EACTION);
+		if (idx == 0)
+			errx(EX_DATAERR, "pack_object failed");
+		fill_cmd(action, O_EXTERNAL_ACTION, 0, idx);
+		NEED1("Missing MSS value");
+		action = next_cmd(action, &ablen);
+		action->len = 1;
+		CHECK_ACTLEN;
+		mss = strtoul(*av, NULL, 10);
+		if (mss == 0 || mss > UINT16_MAX)
+			errx(EX_USAGE, "invalid MSS value %s", *av);
+		fill_cmd(action, O_EXTERNAL_DATA, 0, (uint16_t)mss);
+		av++;
+		break;
+	}
 
 	default:
 		av--;
@@ -5118,18 +5173,17 @@ void
 ipfw_zero(int ac, char *av[], int optname)
 {
 	ipfw_range_tlv rt;
-	uint32_t arg;
-	int failed = EX_OK;
 	char const *errstr;
 	char const *name = optname ? "RESETLOG" : "ZERO";
+	uint32_t arg;
+	int failed = EX_OK;
 
 	optname = optname ? IP_FW_XRESETLOG : IP_FW_XZERO;
-	memset(&rt, 0, sizeof(rt));
-
 	av++; ac--;
 
 	if (ac == 0) {
 		/* clear all entries */
+		memset(&rt, 0, sizeof(rt));
 		rt.flags = IPFW_RCFLAG_ALL;
 		if (do_range_cmd(optname, &rt) < 0)
 			err(EX_UNAVAILABLE, "setsockopt(IP_FW_X%s)", name);
@@ -5147,6 +5201,7 @@ ipfw_zero(int ac, char *av[], int optname)
 			if (errstr)
 				errx(EX_DATAERR,
 				    "invalid rule number %s\n", *av);
+			memset(&rt, 0, sizeof(rt));
 			rt.start_rule = arg;
 			rt.end_rule = arg;
 			rt.flags |= IPFW_RCFLAG_RANGE;

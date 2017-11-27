@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2001-2008, by Cisco Systems, Inc. All rights reserved.
  * Copyright (c) 2008-2012, by Randall Stewart. All rights reserved.
  * Copyright (c) 2008-2012, by Michael Tuexen. All rights reserved.
@@ -85,7 +87,7 @@ sctp_init(void)
 #if defined(SCTP_PACKET_LOGGING)
 	SCTP_BASE_VAR(packet_log_writers) = 0;
 	SCTP_BASE_VAR(packet_log_end) = 0;
-	bzero(&SCTP_BASE_VAR(packet_log_buffer), SCTP_PACKET_LOG_SIZE);
+	memset(&SCTP_BASE_VAR(packet_log_buffer), 0, SCTP_PACKET_LOG_SIZE);
 #endif
 }
 
@@ -152,7 +154,7 @@ sctp_notify(struct sctp_inpcb *inp,
     uint8_t icmp_type,
     uint8_t icmp_code,
     uint16_t ip_len,
-    uint16_t next_mtu)
+    uint32_t next_mtu)
 {
 #if defined(__APPLE__) || defined(SCTP_SO_LOCK_TESTING)
 	struct socket *so;
@@ -202,6 +204,10 @@ sctp_notify(struct sctp_inpcb *inp,
 #endif
 		/* no need to unlock here, since the TCB is gone */
 	} else if (icmp_code == ICMP_UNREACH_NEEDFRAG) {
+		if ((net->dest_state & SCTP_ADDR_NO_PMTUD) == 0) {
+			SCTP_TCB_UNLOCK(stcb);
+			return;
+		}
 		/* Find the next (smaller) MTU */
 		if (next_mtu == 0) {
 			/*
@@ -220,10 +226,15 @@ sctp_notify(struct sctp_inpcb *inp,
 			timer_stopped = 0;
 		}
 		/* Update the path MTU. */
+		if (net->port) {
+			next_mtu -= sizeof(struct udphdr);
+		}
 		if (net->mtu > next_mtu) {
 			net->mtu = next_mtu;
 			if (net->port) {
-				net->mtu -= sizeof(struct udphdr);
+				sctp_hc_set_mtu(&net->ro._l_addr, inp->fibnum, next_mtu + sizeof(struct udphdr));
+			} else {
+				sctp_hc_set_mtu(&net->ro._l_addr, inp->fibnum, next_mtu);
 			}
 		}
 		/* Update the association MTU */
@@ -328,7 +339,7 @@ sctp_ctlinput(int cmd, struct sockaddr *sa, void *vip)
 			    icmp->icmp_type,
 			    icmp->icmp_code,
 			    ntohs(inner_ip->ip_len),
-			    ntohs(icmp->icmp_nextmtu));
+			    (uint32_t)ntohs(icmp->icmp_nextmtu));
 		} else {
 			if ((stcb == NULL) && (inp != NULL)) {
 				/* reduce ref-count */
@@ -1954,6 +1965,7 @@ flags_out:
 				SCTP_LTRACE_ERR_RET(inp, NULL, NULL, SCTP_FROM_SCTP_USRREQ, error);
 			} else {
 				id->assoc_value = stcb->asoc.vrf_id;
+				SCTP_TCB_UNLOCK(stcb);
 				*optsize = sizeof(struct sctp_assoc_value);
 			}
 			break;
@@ -2406,7 +2418,7 @@ flags_out:
 #endif
 #ifdef INET6
 					case AF_INET6:
-						paddrp->spp_pathmtu -= SCTP_MIN_V4_OVERHEAD;
+						paddrp->spp_pathmtu -= SCTP_MIN_OVERHEAD;
 						break;
 #endif
 					default:
@@ -2441,7 +2453,7 @@ flags_out:
 					 * value
 					 */
 					paddrp->spp_pathmaxrxt = stcb->asoc.def_net_failure;
-					paddrp->spp_pathmtu = 0;
+					paddrp->spp_pathmtu = stcb->asoc.default_mtu;
 					if (stcb->asoc.default_dscp & 0x01) {
 						paddrp->spp_dscp = stcb->asoc.default_dscp & 0xfc;
 						paddrp->spp_flags |= SPP_DSCP;
@@ -2488,8 +2500,7 @@ flags_out:
 						paddrp->spp_flags |= SPP_IPV6_FLOWLABEL;
 					}
 #endif
-					/* can't return this */
-					paddrp->spp_pathmtu = 0;
+					paddrp->spp_pathmtu = inp->sctp_ep.default_mtu;
 
 					if (sctp_is_feature_off(inp, SCTP_PCB_FLAGS_DONOT_HEARTBEAT)) {
 						paddrp->spp_flags |= SPP_HB_ENABLE;
@@ -3058,7 +3069,6 @@ flags_out:
 			if (event_type > 0) {
 				if (stcb) {
 					event->se_on = sctp_stcb_is_feature_on(inp, stcb, event_type);
-					SCTP_TCB_UNLOCK(stcb);
 				} else {
 					if ((inp->sctp_flags & SCTP_PCB_FLAGS_TCPTYPE) ||
 					    (inp->sctp_flags & SCTP_PCB_FLAGS_IN_TCPPOOL) ||
@@ -3071,6 +3081,9 @@ flags_out:
 						error = EINVAL;
 					}
 				}
+			}
+			if (stcb != NULL) {
+				SCTP_TCB_UNLOCK(stcb);
 			}
 			if (error == 0) {
 				*optsize = sizeof(struct sctp_event);
@@ -3642,11 +3655,15 @@ flags_out:
 				sprstat->sprstat_abandoned_unsent = stcb->asoc.strmout[sid].abandoned_unsent[0];
 				sprstat->sprstat_abandoned_sent = stcb->asoc.strmout[sid].abandoned_sent[0];
 #endif
-				SCTP_TCB_UNLOCK(stcb);
-				*optsize = sizeof(struct sctp_prstatus);
 			} else {
 				SCTP_LTRACE_ERR_RET(inp, NULL, NULL, SCTP_FROM_SCTP_USRREQ, EINVAL);
 				error = EINVAL;
+			}
+			if (stcb != NULL) {
+				SCTP_TCB_UNLOCK(stcb);
+			}
+			if (error == 0) {
+				*optsize = sizeof(struct sctp_prstatus);
 			}
 			break;
 		}
@@ -3670,11 +3687,15 @@ flags_out:
 					sprstat->sprstat_abandoned_unsent = stcb->asoc.abandoned_unsent[policy];
 					sprstat->sprstat_abandoned_sent = stcb->asoc.abandoned_sent[policy];
 				}
-				SCTP_TCB_UNLOCK(stcb);
-				*optsize = sizeof(struct sctp_prstatus);
 			} else {
 				SCTP_LTRACE_ERR_RET(inp, NULL, NULL, SCTP_FROM_SCTP_USRREQ, EINVAL);
 				error = EINVAL;
+			}
+			if (stcb != NULL) {
+				SCTP_TCB_UNLOCK(stcb);
+			}
+			if (error == 0) {
+				*optsize = sizeof(struct sctp_prstatus);
 			}
 			break;
 		}
@@ -5463,6 +5484,7 @@ sctp_setopt(struct socket *so, int optname, void *optval, size_t optsize,
 								sctp_pathmtu_adjustment(stcb, net->mtu);
 							}
 						}
+						stcb->asoc.default_mtu = paddrp->spp_pathmtu;
 						sctp_stcb_feature_on(inp, stcb, SCTP_PCB_FLAGS_DO_NOT_PMTUD);
 					}
 					if (paddrp->spp_flags & SPP_PMTUD_ENABLE) {
@@ -5472,6 +5494,7 @@ sctp_setopt(struct socket *so, int optname, void *optval, size_t optsize,
 							}
 							net->dest_state &= ~SCTP_ADDR_NO_PMTUD;
 						}
+						stcb->asoc.default_mtu = 0;
 						sctp_stcb_feature_off(inp, stcb, SCTP_PCB_FLAGS_DO_NOT_PMTUD);
 					}
 					if (paddrp->spp_flags & SPP_DSCP) {
@@ -5528,8 +5551,12 @@ sctp_setopt(struct socket *so, int optname, void *optval, size_t optsize,
 						sctp_feature_on(inp, SCTP_PCB_FLAGS_DONOT_HEARTBEAT);
 					}
 					if (paddrp->spp_flags & SPP_PMTUD_ENABLE) {
+						inp->sctp_ep.default_mtu = 0;
 						sctp_feature_off(inp, SCTP_PCB_FLAGS_DO_NOT_PMTUD);
 					} else if (paddrp->spp_flags & SPP_PMTUD_DISABLE) {
+						if (paddrp->spp_pathmtu >= SCTP_SMALLEST_PMTU) {
+							inp->sctp_ep.default_mtu = paddrp->spp_pathmtu;
+						}
 						sctp_feature_on(inp, SCTP_PCB_FLAGS_DO_NOT_PMTUD);
 					}
 					if (paddrp->spp_flags & SPP_DSCP) {
@@ -7034,7 +7061,7 @@ sctp_listen(struct socket *so, int backlog, struct thread *p)
 				if (tinp && (tinp != inp) &&
 				    ((tinp->sctp_flags & SCTP_PCB_FLAGS_SOCKET_ALLGONE) == 0) &&
 				    ((tinp->sctp_flags & SCTP_PCB_FLAGS_SOCKET_GONE) == 0) &&
-				    (tinp->sctp_socket->so_qlimit)) {
+				    (SCTP_IS_LISTENING(tinp))) {
 					/*
 					 * we have a listener already and
 					 * its not this inp.
@@ -7078,7 +7105,7 @@ sctp_listen(struct socket *so, int backlog, struct thread *p)
 			if (tinp && (tinp != inp) &&
 			    ((tinp->sctp_flags & SCTP_PCB_FLAGS_SOCKET_ALLGONE) == 0) &&
 			    ((tinp->sctp_flags & SCTP_PCB_FLAGS_SOCKET_GONE) == 0) &&
-			    (tinp->sctp_socket->so_qlimit)) {
+			    (SCTP_IS_LISTENING(tinp))) {
 				/*
 				 * we have a listener already and its not
 				 * this inp.
@@ -7132,18 +7159,18 @@ sctp_listen(struct socket *so, int backlog, struct thread *p)
 			return (error);
 		}
 	}
-	SOCK_LOCK(so);
-	/* It appears for 7.0 and on, we must always call this. */
-	solisten_proto(so, backlog);
-	if (inp->sctp_flags & SCTP_PCB_FLAGS_UDPTYPE) {
-		/* remove the ACCEPTCONN flag for one-to-many sockets */
-		so->so_options &= ~SO_ACCEPTCONN;
+	SCTP_INP_WLOCK(inp);
+	if ((inp->sctp_flags & SCTP_PCB_FLAGS_UDPTYPE) == 0) {
+		SOCK_LOCK(so);
+		solisten_proto(so, backlog);
+		SOCK_UNLOCK(so);
 	}
-	if (backlog == 0) {
-		/* turning off listen */
-		so->so_options &= ~SO_ACCEPTCONN;
+	if (backlog > 0) {
+		inp->sctp_flags |= SCTP_PCB_FLAGS_ACCEPTING;
+	} else {
+		inp->sctp_flags &= ~SCTP_PCB_FLAGS_ACCEPTING;
 	}
-	SOCK_UNLOCK(so);
+	SCTP_INP_WUNLOCK(inp);
 	return (error);
 }
 

@@ -2,6 +2,8 @@
 /*	$KAME: key.c,v 1.191 2001/06/27 10:46:49 sakane Exp $	*/
 
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
  * All rights reserved.
  *
@@ -863,7 +865,8 @@ key_allocsa_tcpmd5(struct secasindex *saidx)
 		    kdebug_secash(sah, "  "));
 		if (sah->saidx.proto != IPPROTO_TCP)
 			continue;
-		if (!key_sockaddrcmp(&saidx->dst.sa, &sah->saidx.dst.sa, 0))
+		if (!key_sockaddrcmp(&saidx->dst.sa, &sah->saidx.dst.sa, 0) &&
+		    !key_sockaddrcmp(&saidx->src.sa, &sah->saidx.src.sa, 0))
 			break;
 	}
 	if (sah != NULL) {
@@ -1041,9 +1044,9 @@ key_allocsa_tunnel(union sockaddr_union *src, union sockaddr_union *dst,
 			continue;
 		if (proto != sah->saidx.proto)
 			continue;
-		if (key_sockaddrcmp(&src->sa, &sav->sah->saidx.src.sa, 0) != 0)
+		if (key_sockaddrcmp(&src->sa, &sah->saidx.src.sa, 0) != 0)
 			continue;
-		if (key_sockaddrcmp(&dst->sa, &sav->sah->saidx.dst.sa, 0) != 0)
+		if (key_sockaddrcmp(&dst->sa, &sah->saidx.dst.sa, 0) != 0)
 			continue;
 		/* XXXAE: is key_preferred_oldsa reasonably?*/
 		if (V_key_preferred_oldsa)
@@ -1402,7 +1405,8 @@ key_msg2sp(struct sadb_x_policy *xpl0, size_t len, int *error)
 
 		while (tlen > 0) {
 			/* length check */
-			if (xisr->sadb_x_ipsecrequest_len < sizeof(*xisr)) {
+			if (xisr->sadb_x_ipsecrequest_len < sizeof(*xisr) ||
+			    xisr->sadb_x_ipsecrequest_len > tlen) {
 				ipseclog((LOG_DEBUG, "%s: invalid ipsecrequest "
 					"length.\n", __func__));
 				key_freesp(&newsp);
@@ -1516,10 +1520,12 @@ key_msg2sp(struct sadb_x_policy *xpl0, size_t len, int *error)
 			if (xisr->sadb_x_ipsecrequest_len > sizeof(*xisr)) {
 				struct sockaddr *paddr;
 
+				len = tlen - sizeof(*xisr);
 				paddr = (struct sockaddr *)(xisr + 1);
 				/* validity check */
-				if (paddr->sa_len
-				    > sizeof(isr->saidx.src)) {
+				if (len < sizeof(struct sockaddr) ||
+				    len < 2 * paddr->sa_len ||
+				    paddr->sa_len > sizeof(isr->saidx.src)) {
 					ipseclog((LOG_DEBUG, "%s: invalid "
 						"request address length.\n",
 						__func__));
@@ -1527,13 +1533,26 @@ key_msg2sp(struct sadb_x_policy *xpl0, size_t len, int *error)
 					*error = EINVAL;
 					return NULL;
 				}
+				/*
+				 * Request length should be enough to keep
+				 * source and destination addresses.
+				 */
+				if (xisr->sadb_x_ipsecrequest_len <
+				    sizeof(*xisr) + 2 * paddr->sa_len) {
+					ipseclog((LOG_DEBUG, "%s: invalid "
+					    "ipsecrequest length.\n",
+					    __func__));
+					key_freesp(&newsp);
+					*error = EINVAL;
+					return (NULL);
+				}
 				bcopy(paddr, &isr->saidx.src, paddr->sa_len);
 				paddr = (struct sockaddr *)((caddr_t)paddr +
 				    paddr->sa_len);
 
 				/* validity check */
-				if (paddr->sa_len
-				    > sizeof(isr->saidx.dst)) {
+				if (paddr->sa_len !=
+				    isr->saidx.src.sa.sa_len) {
 					ipseclog((LOG_DEBUG, "%s: invalid "
 						"request address length.\n",
 						__func__));
@@ -4962,7 +4981,8 @@ key_getsav_tcpmd5(struct secasindex *saidx, uint32_t *spi)
 	LIST_FOREACH(sah, SAHADDRHASH_HASH(saidx), addrhash) {
 		if (sah->saidx.proto != IPPROTO_TCP)
 			continue;
-		if (!key_sockaddrcmp(&saidx->dst.sa, &sah->saidx.dst.sa, 0))
+		if (!key_sockaddrcmp(&saidx->dst.sa, &sah->saidx.dst.sa, 0) &&
+		    !key_sockaddrcmp(&saidx->src.sa, &sah->saidx.src.sa, 0))
 			break;
 	}
 	if (sah != NULL) {
@@ -5082,7 +5102,7 @@ key_updateaddresses(struct socket *so, struct mbuf *m,
 	newsav->natt = NULL;
 	newsav->sah = sah;
 	newsav->state = SADB_SASTATE_MATURE;
-	error = key_setnatt(sav, mhp);
+	error = key_setnatt(newsav, mhp);
 	if (error != 0)
 		goto fail;
 
@@ -6245,7 +6265,7 @@ key_getsizes_ah(const struct auth_hash *ah, int alg, u_int16_t* min,
     u_int16_t* max)
 {
 
-	*min = *max = ah->keysize;
+	*min = *max = ah->hashsize;
 	if (ah->keysize == 0) {
 		/*
 		 * Transform takes arbitrary key size but algorithm

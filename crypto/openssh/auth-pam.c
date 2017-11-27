@@ -799,7 +799,8 @@ sshpam_query(void *ctx, char **name, char **info,
 				free(msg);
 				return (0);
 			}
-			BLACKLIST_NOTIFY(BLACKLIST_AUTH_FAIL);
+			BLACKLIST_NOTIFY(BLACKLIST_BAD_USER,
+			    sshpam_authctxt->user);
 			error("PAM: %s for %s%.100s from %.100s", msg,
 			    sshpam_authctxt->valid ? "" : "illegal user ",
 			    sshpam_authctxt->user,
@@ -832,6 +833,8 @@ fake_password(const char *wire_password)
 		fatal("%s: password length too long: %zu", __func__, l);
 
 	ret = malloc(l + 1);
+	if (ret == NULL)
+		return NULL;
 	for (i = 0; i < l; i++)
 		ret[i] = junk[i % (sizeof(junk) - 1)];
 	ret[i] = '\0';

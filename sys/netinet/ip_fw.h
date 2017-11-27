@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2002-2009 Luigi Rizzo, Universita` di Pisa
  *
  * Redistribution and use in source and binary forms, with or without
@@ -281,6 +283,7 @@ enum ipfw_opcodes {		/* arguments (4 byte each)	*/
 
 	O_EXTERNAL_ACTION,	/* arg1=id of external action handler */
 	O_EXTERNAL_INSTANCE,	/* arg1=id of eaction handler instance */
+	O_EXTERNAL_DATA,	/* variable length data */
 
 	O_LAST_OPCODE		/* not an opcode!		*/
 };
@@ -727,6 +730,8 @@ struct _ipfw_dyn_rule {
 
 #define	ICMP_REJECT_RST		0x100	/* fake ICMP code (send a TCP RST) */
 #define	ICMP6_UNREACH_RST	0x100	/* fake ICMPv6 code (send a TCP RST) */
+#define	ICMP_REJECT_ABORT	0x101	/* fake ICMP code (send an SCTP ABORT) */
+#define	ICMP6_UNREACH_ABORT	0x101	/* fake ICMPv6 code (send an SCTP ABORT) */
 
 /*
  * These are used for lookup tables.

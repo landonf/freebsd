@@ -143,7 +143,8 @@ __FBSDID("$FreeBSD$");
 
 ENTRY(handle_el1h_sync)
 	save_registers 1
-	mov	x0, sp
+	ldr	x0, [x18, #PC_CURTHREAD]
+	mov	x1, sp
 	bl	do_el1h_sync
 	restore_registers 1
 	eret
@@ -163,7 +164,9 @@ END(handle_el1h_error)
 
 ENTRY(handle_el0_sync)
 	save_registers 0
-	mov	x0, sp
+	ldr	x0, [x18, #PC_CURTHREAD]
+	mov	x1, sp
+	str	x1, [x0, #TD_FRAME]
 	bl	do_el0_sync
 	do_ast
 	restore_registers 0
@@ -216,8 +219,8 @@ exception_vectors:
 	vempty			/* FIQ 64-bit EL0 */
 	vector el0_error	/* Error 64-bit EL0 */
 
-	vempty			/* Synchronous 32-bit EL0 */
-	vempty			/* IRQ 32-bit EL0 */
+	vector el0_sync		/* Synchronous 32-bit EL0 */
+	vector el0_irq		/* IRQ 32-bit EL0 */
 	vempty			/* FIQ 32-bit EL0 */
-	vempty			/* Error 32-bit EL0 */
+	vector el0_error	/* Error 32-bit EL0 */
 

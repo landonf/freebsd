@@ -127,6 +127,8 @@ static pci_vendor_info_t bnxt_vendor_info_array[] =
 	"Broadcom BCM57417 NetXtreme-E Ethernet Partition"),
     PVID(BROADCOM_VENDOR_ID, BCM57417_SFP,
 	"Broadcom BCM57417 NetXtreme-E 10Gb/25Gb Ethernet"),
+    PVID(BROADCOM_VENDOR_ID, BCM57454,
+	"Broadcom BCM57454 NetXtreme-E 10Gb/25Gb/40Gb/50Gb/100Gb Ethernet"),
     PVID(BROADCOM_VENDOR_ID, BCM58700,
 	"Broadcom BCM58700 Nitro 1Gb/2.5Gb/10Gb Ethernet"),
     PVID(BROADCOM_VENDOR_ID, NETXTREME_C_VF1,
@@ -174,10 +176,12 @@ static int bnxt_media_change(if_ctx_t ctx);
 static int bnxt_promisc_set(if_ctx_t ctx, int flags);
 static uint64_t	bnxt_get_counter(if_ctx_t, ift_counter);
 static void bnxt_update_admin_status(if_ctx_t ctx);
+static void bnxt_if_timer(if_ctx_t ctx, uint16_t qid);
 
 /* Interrupt enable / disable */
 static void bnxt_intr_enable(if_ctx_t ctx);
-static int bnxt_queue_intr_enable(if_ctx_t ctx, uint16_t qid);
+static int bnxt_rx_queue_intr_enable(if_ctx_t ctx, uint16_t qid);
+static int bnxt_tx_queue_intr_enable(if_ctx_t ctx, uint16_t qid);
 static void bnxt_disable_intr(if_ctx_t ctx);
 static int bnxt_msix_intr_assign(if_ctx_t ctx, int msix);
 
@@ -187,6 +191,10 @@ static void bnxt_vlan_unregister(if_ctx_t ctx, uint16_t vtag);
 
 /* ioctl */
 static int bnxt_priv_ioctl(if_ctx_t ctx, u_long command, caddr_t data);
+
+static int bnxt_shutdown(if_ctx_t ctx);
+static int bnxt_suspend(if_ctx_t ctx);
+static int bnxt_resume(if_ctx_t ctx);
 
 /* Internal support functions */
 static int bnxt_probe_phy(struct bnxt_softc *softc);
@@ -205,6 +213,8 @@ static void bnxt_handle_async_event(struct bnxt_softc *softc,
     struct cmpl_base *cmpl);
 static uint8_t get_phy_type(struct bnxt_softc *softc);
 static uint64_t bnxt_get_baudrate(struct bnxt_link_info *link);
+static void bnxt_get_wol_settings(struct bnxt_softc *softc);
+static int bnxt_wol_config(if_ctx_t ctx);
 
 /*
  * Device Interface Declaration
@@ -233,6 +243,8 @@ MODULE_DEPEND(bnxt, pci, 1, 1, 1);
 MODULE_DEPEND(bnxt, ether, 1, 1, 1);
 MODULE_DEPEND(bnxt, iflib, 1, 1, 1);
 
+IFLIB_PNP_INFO(pci, bnxt, bnxt_vendor_info_array);
+
 static device_method_t bnxt_iflib_methods[] = {
 	DEVMETHOD(ifdi_tx_queues_alloc, bnxt_tx_queues_alloc),
 	DEVMETHOD(ifdi_rx_queues_alloc, bnxt_rx_queues_alloc),
@@ -251,10 +263,11 @@ static device_method_t bnxt_iflib_methods[] = {
 	DEVMETHOD(ifdi_promisc_set, bnxt_promisc_set),
 	DEVMETHOD(ifdi_get_counter, bnxt_get_counter),
 	DEVMETHOD(ifdi_update_admin_status, bnxt_update_admin_status),
+	DEVMETHOD(ifdi_timer, bnxt_if_timer),
 
 	DEVMETHOD(ifdi_intr_enable, bnxt_intr_enable),
-	DEVMETHOD(ifdi_tx_queue_intr_enable, bnxt_queue_intr_enable),
-	DEVMETHOD(ifdi_rx_queue_intr_enable, bnxt_queue_intr_enable),
+	DEVMETHOD(ifdi_tx_queue_intr_enable, bnxt_tx_queue_intr_enable),
+	DEVMETHOD(ifdi_rx_queue_intr_enable, bnxt_rx_queue_intr_enable),
 	DEVMETHOD(ifdi_intr_disable, bnxt_disable_intr),
 	DEVMETHOD(ifdi_msix_intr_assign, bnxt_msix_intr_assign),
 
@@ -262,6 +275,10 @@ static device_method_t bnxt_iflib_methods[] = {
 	DEVMETHOD(ifdi_vlan_unregister, bnxt_vlan_unregister),
 
 	DEVMETHOD(ifdi_priv_ioctl, bnxt_priv_ioctl),
+
+	DEVMETHOD(ifdi_suspend, bnxt_suspend),
+	DEVMETHOD(ifdi_shutdown, bnxt_shutdown),
+	DEVMETHOD(ifdi_resume, bnxt_resume),
 
 	DEVMETHOD_END
 };
@@ -274,7 +291,8 @@ static driver_t bnxt_iflib_driver = {
  * iflib shared context
  */
 
-char bnxt_driver_version[] = "FreeBSD base";
+#define BNXT_DRIVER_VERSION	"1.0.0.2"
+char bnxt_driver_version[] = BNXT_DRIVER_VERSION;
 extern struct if_txrx bnxt_txrx;
 static struct if_shared_ctx bnxt_sctx_init = {
 	.isc_magic = IFLIB_MAGIC,
@@ -410,6 +428,8 @@ bnxt_queues_free(if_ctx_t ctx)
 
 	// Free RX queues
 	iflib_dma_free(&softc->rx_stats);
+	iflib_dma_free(&softc->hw_tx_port_stats);
+	iflib_dma_free(&softc->hw_rx_port_stats);
 	free(softc->grp_info, M_DEVBUF);
 	free(softc->ag_rings, M_DEVBUF);
 	free(softc->rx_rings, M_DEVBUF);
@@ -466,6 +486,33 @@ bnxt_rx_queues_alloc(if_ctx_t ctx, caddr_t *vaddrs,
 	bus_dmamap_sync(softc->rx_stats.idi_tag, softc->rx_stats.idi_map,
 	    BUS_DMASYNC_PREREAD);
 
+/* 
+ * Additional 512 bytes for future expansion.
+ * To prevent corruption when loaded with newer firmwares with added counters.
+ * This can be deleted when there will be no further additions of counters.
+ */
+#define BNXT_PORT_STAT_PADDING  512
+
+	rc = iflib_dma_alloc(ctx, sizeof(struct rx_port_stats) + BNXT_PORT_STAT_PADDING,
+	    &softc->hw_rx_port_stats, 0);
+	if (rc)
+		goto hw_port_rx_stats_alloc_fail;
+
+	bus_dmamap_sync(softc->hw_rx_port_stats.idi_tag, 
+            softc->hw_rx_port_stats.idi_map, BUS_DMASYNC_PREREAD);
+
+	rc = iflib_dma_alloc(ctx, sizeof(struct tx_port_stats) + BNXT_PORT_STAT_PADDING,
+	    &softc->hw_tx_port_stats, 0);
+
+	if (rc)
+		goto hw_port_tx_stats_alloc_fail;
+
+	bus_dmamap_sync(softc->hw_tx_port_stats.idi_tag, 
+            softc->hw_tx_port_stats.idi_map, BUS_DMASYNC_PREREAD);
+
+	softc->rx_port_stats = (void *) softc->hw_rx_port_stats.idi_vaddr;
+	softc->tx_port_stats = (void *) softc->hw_tx_port_stats.idi_vaddr;
+
 	for (i = 0; i < nrxqsets; i++) {
 		/* Allocation the completion ring */
 		softc->rx_cp_rings[i].stats_ctx_id = HWRM_NA_SIGNATURE;
@@ -492,6 +539,17 @@ bnxt_rx_queues_alloc(if_ctx_t ctx, caddr_t *vaddrs,
 		softc->rx_rings[i].vaddr = vaddrs[i * nrxqs + 1];
 		softc->rx_rings[i].paddr = paddrs[i * nrxqs + 1];
 
+		/* Allocate the TPA start buffer */
+		softc->rx_rings[i].tpa_start = malloc(sizeof(struct bnxt_full_tpa_start) *
+	    		(RX_TPA_START_CMPL_AGG_ID_MASK >> RX_TPA_START_CMPL_AGG_ID_SFT),
+	    		M_DEVBUF, M_NOWAIT | M_ZERO);
+		if (softc->rx_rings[i].tpa_start == NULL) {
+			rc = -ENOMEM;
+			device_printf(softc->dev,
+					"Unable to allocate space for TPA\n");
+			goto tpa_alloc_fail;
+		}
+
 		/* Allocate the AG ring */
 		softc->ag_rings[i].phys_id = (uint16_t)HWRM_NA_SIGNATURE;
 		softc->ag_rings[i].softc = softc;
@@ -512,6 +570,13 @@ bnxt_rx_queues_alloc(if_ctx_t ctx, caddr_t *vaddrs,
 
 		bnxt_create_rx_sysctls(softc, i);
 	}
+
+	/*
+	 * When SR-IOV is enabled, avoid each VF sending PORT_QSTATS
+         * HWRM every sec with which firmware timeouts can happen
+         */
+	if (BNXT_PF(softc))
+        	bnxt_create_port_stats_sysctls(softc);
 
 	/* And finally, the VNIC */
 	softc->vnic_info.id = (uint16_t)HWRM_NA_SIGNATURE;
@@ -557,7 +622,14 @@ rss_grp_alloc_fail:
 	iflib_dma_free(&softc->vnic_info.rss_hash_key_tbl);
 rss_hash_alloc_fail:
 	iflib_dma_free(&softc->vnic_info.mc_list);
+tpa_alloc_fail:
 mc_list_alloc_fail:
+	for (i = i - 1; i >= 0; i--)
+		free(softc->rx_rings[i].tpa_start, M_DEVBUF);
+	iflib_dma_free(&softc->hw_tx_port_stats);
+hw_port_tx_stats_alloc_fail:
+	iflib_dma_free(&softc->hw_rx_port_stats);
+hw_port_rx_stats_alloc_fail:
 	iflib_dma_free(&softc->rx_stats);
 hw_stats_alloc_fail:
 	free(softc->grp_info, M_DEVBUF);
@@ -587,7 +659,7 @@ bnxt_attach_pre(if_ctx_t ctx)
 	scctx = softc->scctx;
 
 	/* TODO: Better way of detecting NPAR/VF is needed */
-	switch (softc->sctx->isc_vendor_info->pvi_device_id) {
+	switch (pci_get_device(softc->dev)) {
 	case BCM57402_NPAR:
 	case BCM57404_NPAR:
 	case BCM57406_NPAR:
@@ -621,16 +693,6 @@ bnxt_attach_pre(if_ctx_t ctx)
 	if (rc)
 		goto dma_fail;
 
-	/* Allocate the TPA start buffer */
-	softc->tpa_start = malloc(sizeof(struct bnxt_full_tpa_start) *
-	    (RX_TPA_START_CMPL_AGG_ID_MASK >> RX_TPA_START_CMPL_AGG_ID_SFT),
-	    M_DEVBUF, M_NOWAIT | M_ZERO);
-	if (softc->tpa_start == NULL) {
-		rc = ENOMEM;
-		device_printf(softc->dev,
-		    "Unable to allocate space for TPA\n");
-		goto tpa_failed;
-	}
 
 	/* Get firmware version and compare with driver */
 	softc->ver_info = malloc(sizeof(struct bnxt_ver_info),
@@ -673,10 +735,24 @@ bnxt_attach_pre(if_ctx_t ctx)
 		goto drv_rgtr_fail;
 	}
 
+        rc = bnxt_hwrm_func_rgtr_async_events(softc, NULL, 0);
+	if (rc) {
+		device_printf(softc->dev, "attach: hwrm rgtr async evts failed\n");
+		goto drv_rgtr_fail;
+	}
+
 	/* Get the HW capabilities */
 	rc = bnxt_hwrm_func_qcaps(softc);
 	if (rc)
 		goto failed;
+
+	/* Get the current configuration of this function */
+	rc = bnxt_hwrm_func_qcfg(softc);
+	if (rc) {
+		device_printf(softc->dev, "attach: hwrm func qcfg failed\n");
+		goto failed;
+	}
+
 	iflib_set_mac(ctx, softc->func.mac_addr);
 
 	scctx->isc_txrx = &bnxt_txrx;
@@ -693,12 +769,17 @@ bnxt_attach_pre(if_ctx_t ctx)
 	    /* These likely get lost... */
 	    IFCAP_VLAN_HWCSUM | IFCAP_JUMBO_MTU;
 
+	if (bnxt_wol_supported(softc))
+		scctx->isc_capenable |= IFCAP_WOL_MAGIC;
+
 	/* Get the queue config */
 	rc = bnxt_hwrm_queue_qportcfg(softc);
 	if (rc) {
 		device_printf(softc->dev, "attach: hwrm qportcfg failed\n");
 		goto failed;
 	}
+
+	bnxt_get_wol_settings(softc);
 
 	/* Now perform a function reset */
 	rc = bnxt_hwrm_func_reset(softc);
@@ -731,17 +812,32 @@ bnxt_attach_pre(if_ctx_t ctx)
 	    scctx->isc_nrxd[1];
 	scctx->isc_rxqsizes[2] = sizeof(struct rx_prod_pkt_bd) *
 	    scctx->isc_nrxd[2];
-	scctx->isc_max_rxqsets = min(pci_msix_count(softc->dev)-1,
-	    softc->func.max_cp_rings - 1);
-	scctx->isc_max_rxqsets = min(scctx->isc_max_rxqsets,
-	    softc->func.max_rx_rings);
-	scctx->isc_max_txqsets = min(softc->func.max_rx_rings,
-	    softc->func.max_cp_rings - scctx->isc_max_rxqsets - 1);
+
+	scctx->isc_nrxqsets_max = min(pci_msix_count(softc->dev)-1,
+	    softc->fn_qcfg.alloc_completion_rings - 1);
+	scctx->isc_nrxqsets_max = min(scctx->isc_nrxqsets_max,
+	    softc->fn_qcfg.alloc_rx_rings);
+	scctx->isc_nrxqsets_max = min(scctx->isc_nrxqsets_max,
+	    softc->fn_qcfg.alloc_vnics);
+	scctx->isc_ntxqsets_max = min(softc->fn_qcfg.alloc_tx_rings,
+	    softc->fn_qcfg.alloc_completion_rings - scctx->isc_nrxqsets_max - 1);
+
 	scctx->isc_rss_table_size = HW_HASH_INDEX_SIZE;
 	scctx->isc_rss_table_mask = scctx->isc_rss_table_size - 1;
 
 	/* iflib will map and release this bar */
 	scctx->isc_msix_bar = pci_msix_table_bar(softc->dev);
+
+        /* 
+         * Default settings for HW LRO (TPA):
+         *  Disable HW LRO by default
+         *  Can be enabled after taking care of 'packet forwarding'
+         */
+	softc->hw_lro.enable = 0;
+	softc->hw_lro.is_mode_gro = 0;
+	softc->hw_lro.max_agg_segs = 5; /* 2^5 = 32 segs */
+	softc->hw_lro.max_aggs = HWRM_VNIC_TPA_CFG_INPUT_MAX_AGGS_MAX;
+	softc->hw_lro.min_agg_len = 512;
 
 	/* Allocate the default completion ring */
 	softc->def_cp_ring.stats_ctx_id = HWRM_NA_SIGNATURE;
@@ -778,6 +874,14 @@ bnxt_attach_pre(if_ctx_t ctx)
 	if (rc)
 		goto failed;
 
+	rc = bnxt_create_hw_lro_sysctls(softc);
+	if (rc)
+		goto failed;
+
+	rc = bnxt_create_pause_fc_sysctls(softc);
+	if (rc)
+		goto failed;
+
 	/* Initialize the vlan list */
 	SLIST_INIT(&softc->vnic_info.vlan_tags);
 	softc->vnic_info.vlan_tag_list.idi_vaddr = NULL;
@@ -794,8 +898,6 @@ nvm_alloc_fail:
 ver_fail:
 	free(softc->ver_info, M_DEVBUF);
 ver_alloc_fail:
-	free(softc->tpa_start, M_DEVBUF);
-tpa_failed:
 	bnxt_free_hwrm_dma_mem(softc);
 dma_fail:
 	BNXT_HWRM_LOCK_DESTROY(softc);
@@ -838,6 +940,7 @@ bnxt_detach(if_ctx_t ctx)
 	struct bnxt_vlan_tag *tmp;
 	int i;
 
+	bnxt_wol_config(ctx);
 	bnxt_do_disable_intr(&softc->def_cp_ring);
 	bnxt_free_sysctl_ctx(softc);
 	bnxt_hwrm_func_reset(softc);
@@ -856,7 +959,8 @@ bnxt_detach(if_ctx_t ctx)
 	SLIST_FOREACH_SAFE(tag, &softc->vnic_info.vlan_tags, next, tmp)
 		free(tag, M_DEVBUF);
 	iflib_dma_free(&softc->def_cp_ring_mem);
-	free(softc->tpa_start, M_DEVBUF);
+	for (i = 0; i < softc->nrxqsets; i++)
+		free(softc->rx_rings[i].tpa_start, M_DEVBUF);
 	free(softc->ver_info, M_DEVBUF);
 	free(softc->nvm_info, M_DEVBUF);
 
@@ -889,7 +993,7 @@ bnxt_init(if_ctx_t ctx)
 	softc->def_cp_ring.v_bit = 1;
 	bnxt_mark_cpr_invalid(&softc->def_cp_ring);
 	rc = bnxt_hwrm_ring_alloc(softc,
-	    HWRM_RING_ALLOC_INPUT_RING_TYPE_CMPL,
+	    HWRM_RING_ALLOC_INPUT_RING_TYPE_L2_CMPL,
 	    &softc->def_cp_ring.ring,
 	    (uint16_t)HWRM_NA_SIGNATURE,
 	    HWRM_NA_SIGNATURE, true);
@@ -897,7 +1001,7 @@ bnxt_init(if_ctx_t ctx)
 		goto fail;
 
 	/* And now set the default CP ring as the async CP ring */
-	rc = bnxt_hwrm_func_cfg(softc);
+	rc = bnxt_cfg_async_cr(softc);
 	if (rc)
 		goto fail;
 
@@ -915,7 +1019,7 @@ bnxt_init(if_ctx_t ctx)
 		softc->rx_cp_rings[i].last_idx = UINT32_MAX;
 		bnxt_mark_cpr_invalid(&softc->rx_cp_rings[i]);
 		rc = bnxt_hwrm_ring_alloc(softc,
-		    HWRM_RING_ALLOC_INPUT_RING_TYPE_CMPL,
+		    HWRM_RING_ALLOC_INPUT_RING_TYPE_L2_CMPL,
 		    &softc->rx_cp_rings[i].ring, (uint16_t)HWRM_NA_SIGNATURE,
 		    HWRM_NA_SIGNATURE, true);
 		if (rc)
@@ -988,14 +1092,9 @@ bnxt_init(if_ctx_t ctx)
 	if (rc)
 		goto fail;
 
-#ifdef notyet
-	/* Enable LRO/TPA/GRO */
-	rc = bnxt_hwrm_vnic_tpa_cfg(softc, &softc->vnic_info,
-	    (if_getcapenable(iflib_get_ifp(ctx)) & IFCAP_LRO) ?
-	    HWRM_VNIC_TPA_CFG_INPUT_FLAGS_TPA : 0);
+	rc = bnxt_hwrm_vnic_tpa_cfg(softc);
 	if (rc)
 		goto fail;
-#endif
 
 	for (i = 0; i < softc->ntxqsets; i++) {
 		/* Allocate the statistics context */
@@ -1010,7 +1109,7 @@ bnxt_init(if_ctx_t ctx)
 		softc->tx_cp_rings[i].v_bit = 1;
 		bnxt_mark_cpr_invalid(&softc->tx_cp_rings[i]);
 		rc = bnxt_hwrm_ring_alloc(softc,
-		    HWRM_RING_ALLOC_INPUT_RING_TYPE_CMPL,
+		    HWRM_RING_ALLOC_INPUT_RING_TYPE_L2_CMPL,
 		    &softc->tx_cp_rings[i].ring, (uint16_t)HWRM_NA_SIGNATURE,
 		    HWRM_NA_SIGNATURE, false);
 		if (rc)
@@ -1030,6 +1129,7 @@ bnxt_init(if_ctx_t ctx)
 
 	bnxt_do_enable_intr(&softc->def_cp_ring);
 	bnxt_media_status(softc->ctx, &ifmr);
+	bnxt_hwrm_cfa_l2_set_rx_mask(softc, &softc->vnic_info);
 	return;
 
 fail:
@@ -1098,7 +1198,10 @@ bnxt_media_status(if_ctx_t ctx, struct ifmediareq * ifmr)
 {
 	struct bnxt_softc *softc = iflib_get_softc(ctx);
 	struct bnxt_link_info *link_info = &softc->link_info;
-	uint8_t phy_type = get_phy_type(softc);
+	struct ifmedia_entry *next;
+	uint64_t target_baudrate = bnxt_get_baudrate(link_info);
+	int active_media = IFM_UNKNOWN;
+
 
 	bnxt_update_link(softc, true);
 
@@ -1110,159 +1213,27 @@ bnxt_media_status(if_ctx_t ctx, struct ifmediareq * ifmr)
 	else
 		ifmr->ifm_status &= ~IFM_ACTIVE;
 
-	if (link_info->duplex == HWRM_PORT_PHY_QCFG_OUTPUT_DUPLEX_FULL)
+	if (link_info->duplex == HWRM_PORT_PHY_QCFG_OUTPUT_DUPLEX_CFG_FULL)
 		ifmr->ifm_active |= IFM_FDX;
 	else
 		ifmr->ifm_active |= IFM_HDX;
 
-	switch (link_info->link_speed) {
-	case HWRM_PORT_PHY_QCFG_OUTPUT_LINK_SPEED_100MB:
-		ifmr->ifm_active |= IFM_100_T;
-		break;
-	case HWRM_PORT_PHY_QCFG_OUTPUT_LINK_SPEED_1GB:
-		switch (phy_type) {
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASEKX:
-			ifmr->ifm_active |= IFM_1000_KX;
-			break;
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASET:
-			ifmr->ifm_active |= IFM_1000_T;
-			break;
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_SGMIIEXTPHY:
-			ifmr->ifm_active |= IFM_1000_SGMII;
-			break;
-		default:
-			ifmr->ifm_active |= IFM_UNKNOWN;
+        /*
+         * Go through the list of supported media which got prepared 
+         * as part of bnxt_add_media_types() using api ifmedia_add(). 
+         */
+	LIST_FOREACH(next, &(iflib_get_media(ctx)->ifm_list), ifm_list) {
+		if (ifmedia_baudrate(next->ifm_media) == target_baudrate) {
+			active_media = next->ifm_media;
 			break;
 		}
-	break;
-	case HWRM_PORT_PHY_QCFG_OUTPUT_LINK_SPEED_2_5GB:
-		switch (phy_type) {
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASEKX:
-			ifmr->ifm_active |= IFM_2500_KX;
-			break;
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASET:
-			ifmr->ifm_active |= IFM_2500_T;
-			break;
-		default:
-			ifmr->ifm_active |= IFM_UNKNOWN;
-			break;
-		}
-		break;
-	case HWRM_PORT_PHY_QCFG_OUTPUT_LINK_SPEED_10GB:
-		switch (phy_type) {
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASECR:
-			ifmr->ifm_active |= IFM_10G_CR1;
-			break;
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASEKR4:
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASEKR2:
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASEKR:
-			ifmr->ifm_active |= IFM_10G_KR;
-			break;
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASELR:
-			ifmr->ifm_active |= IFM_10G_LR;
-			break;
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASESR:
-			ifmr->ifm_active |= IFM_10G_SR;
-			break;
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASEKX:
-			ifmr->ifm_active |= IFM_10G_KX4;
-			break;
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASET:
-			ifmr->ifm_active |= IFM_10G_T;
-			break;
-		default:
-			ifmr->ifm_active |= IFM_UNKNOWN;
-			break;
-		}
-		break;
-	case HWRM_PORT_PHY_QCFG_OUTPUT_LINK_SPEED_20GB:
-		ifmr->ifm_active |= IFM_20G_KR2;
-		break;
-	case HWRM_PORT_PHY_QCFG_OUTPUT_LINK_SPEED_25GB:
-		switch (phy_type) {
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASECR:
-			ifmr->ifm_active |= IFM_25G_CR;
-			break;
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASEKR4:
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASEKR2:
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASEKR:
-			ifmr->ifm_active |= IFM_25G_KR;
-			break;
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASESR:
-			ifmr->ifm_active |= IFM_25G_SR;
-			break;
-		default:
-			ifmr->ifm_active |= IFM_UNKNOWN;
-			break;
-		}
-		break;
-	case HWRM_PORT_PHY_QCFG_OUTPUT_LINK_SPEED_40GB:
-		switch (phy_type) {
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASECR:
-			ifmr->ifm_active |= IFM_40G_CR4;
-			break;
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASEKR4:
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASEKR2:
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASEKR:
-			ifmr->ifm_active |= IFM_40G_KR4;
-			break;
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASELR:
-			ifmr->ifm_active |= IFM_40G_LR4;
-			break;
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASESR:
-			ifmr->ifm_active |= IFM_40G_SR4;
-			break;
-		default:
-			ifmr->ifm_active |= IFM_UNKNOWN;
-			break;
-		}
-		break;
-	case HWRM_PORT_PHY_QCFG_OUTPUT_LINK_SPEED_50GB:
-		switch (phy_type) {
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASECR:
-			ifmr->ifm_active |= IFM_50G_CR2;
-			break;
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASEKR4:
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASEKR2:
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASEKR:
-			ifmr->ifm_active |= IFM_50G_KR2;
-			break;
-		default:
-			ifmr->ifm_active |= IFM_UNKNOWN;
-			break;
-		}
-		break;
-	case HWRM_PORT_PHY_QCFG_OUTPUT_LINK_SPEED_100GB:
-		switch (phy_type) {
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASECR:
-			ifmr->ifm_active |= IFM_100G_CR4;
-			break;
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASEKR4:
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASEKR2:
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASEKR:
-			ifmr->ifm_active |= IFM_100G_KR4;
-			break;
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASELR:
-			ifmr->ifm_active |= IFM_100G_LR4;
-			break;
-		case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASESR:
-			ifmr->ifm_active |= IFM_100G_SR4;
-			break;
-		default:
-			ifmr->ifm_active |= IFM_UNKNOWN;
-			break;
-		}
-	default:
-		return;
 	}
+	ifmr->ifm_active |= active_media;
 
-	if (link_info->pause == (HWRM_PORT_PHY_QCFG_OUTPUT_PAUSE_TX |
-	    HWRM_PORT_PHY_QCFG_OUTPUT_PAUSE_RX))
-		ifmr->ifm_active |= (IFM_ETH_RXPAUSE | IFM_ETH_TXPAUSE);
-	else if (link_info->pause == HWRM_PORT_PHY_QCFG_OUTPUT_PAUSE_TX)
-		ifmr->ifm_active |= IFM_ETH_TXPAUSE;
-	else if (link_info->pause == HWRM_PORT_PHY_QCFG_OUTPUT_PAUSE_RX)
+	if (link_info->flow_ctrl.rx) 
 		ifmr->ifm_active |= IFM_ETH_RXPAUSE;
+	if (link_info->flow_ctrl.tx) 
+		ifmr->ifm_active |= IFM_ETH_TXPAUSE;
 
 	bnxt_report_link(softc);
 	return;
@@ -1350,7 +1321,7 @@ bnxt_media_change(if_ctx_t ctx)
 		softc->link_info.autoneg |= BNXT_AUTONEG_SPEED;
 		break;
 	}
-	rc = bnxt_hwrm_set_link_setting(softc, true, true);
+	rc = bnxt_hwrm_set_link_setting(softc, true, true, true);
 	bnxt_media_status(softc->ctx, &ifmr);
 	return rc;
 }
@@ -1398,7 +1369,32 @@ bnxt_get_counter(if_ctx_t ctx, ift_counter cnt)
 static void
 bnxt_update_admin_status(if_ctx_t ctx)
 {
-	/* TODO: do we need to do anything here? */
+	struct bnxt_softc *softc = iflib_get_softc(ctx);
+
+	/*
+	 * When SR-IOV is enabled, avoid each VF sending this HWRM 
+         * request every sec with which firmware timeouts can happen
+         */
+	if (BNXT_PF(softc)) {
+		bnxt_hwrm_port_qstats(softc);
+	}	
+
+	return;
+}
+
+static void
+bnxt_if_timer(if_ctx_t ctx, uint16_t qid)
+{
+
+	struct bnxt_softc *softc = iflib_get_softc(ctx);
+	uint64_t ticks_now = ticks; 
+
+        /* Schedule bnxt_update_admin_status() once per sec */
+        if (ticks_now - softc->admin_ticks >= hz) {
+		softc->admin_ticks = ticks_now;
+		iflib_admin_intr_deferred(ctx);
+	}
+
 	return;
 }
 
@@ -1437,7 +1433,16 @@ bnxt_intr_enable(if_ctx_t ctx)
 
 /* Enable interrupt for a single queue */
 static int
-bnxt_queue_intr_enable(if_ctx_t ctx, uint16_t qid)
+bnxt_tx_queue_intr_enable(if_ctx_t ctx, uint16_t qid)
+{
+	struct bnxt_softc *softc = iflib_get_softc(ctx);
+
+	bnxt_do_enable_intr(&softc->tx_cp_rings[qid]);
+	return 0;
+}
+
+static int
+bnxt_rx_queue_intr_enable(if_ctx_t ctx, uint16_t qid)
 {
 	struct bnxt_softc *softc = iflib_get_softc(ctx);
 
@@ -1470,6 +1475,7 @@ bnxt_msix_intr_assign(if_ctx_t ctx, int msix)
 	struct bnxt_softc *softc = iflib_get_softc(ctx);
 	int rc;
 	int i;
+	char irq_name[16];
 
 	rc = iflib_irq_alloc_generic(ctx, &softc->def_cp_ring.irq,
 	    softc->def_cp_ring.ring.id + 1, IFLIB_INTR_ADMIN,
@@ -1481,9 +1487,10 @@ bnxt_msix_intr_assign(if_ctx_t ctx, int msix)
 	}
 
 	for (i=0; i<softc->scctx->isc_nrxqsets; i++) {
+		snprintf(irq_name, sizeof(irq_name), "rxq%d", i);
 		rc = iflib_irq_alloc_generic(ctx, &softc->rx_cp_rings[i].irq,
-		    softc->rx_cp_rings[i].ring.id + 1, IFLIB_INTR_RXTX,
-		    bnxt_handle_rx_cp, &softc->rx_cp_rings[i], i, "rx_cp");
+		    softc->rx_cp_rings[i].ring.id + 1, IFLIB_INTR_RX,
+		    bnxt_handle_rx_cp, &softc->rx_cp_rings[i], i, irq_name);
 		if (rc) {
 			device_printf(iflib_get_dev(ctx),
 			    "Failed to register RX completion ring handler\n");
@@ -1493,8 +1500,7 @@ bnxt_msix_intr_assign(if_ctx_t ctx, int msix)
 	}
 
 	for (i=0; i<softc->scctx->isc_ntxqsets; i++)
-		iflib_softirq_alloc_generic(ctx, i + 1, IFLIB_INTR_TX, NULL, i,
-		    "tx_cp");
+		iflib_softirq_alloc_generic(ctx, NULL, IFLIB_INTR_TX, NULL, i, "tx_cp");
 
 	return rc;
 
@@ -1537,6 +1543,58 @@ bnxt_vlan_unregister(if_ctx_t ctx, uint16_t vtag)
 			break;
 		}
 	}
+}
+
+static int
+bnxt_wol_config(if_ctx_t ctx)
+{
+	struct bnxt_softc *softc = iflib_get_softc(ctx);
+	if_t ifp = iflib_get_ifp(ctx);
+
+	if (!softc)
+		return -EBUSY;
+
+	if (!bnxt_wol_supported(softc))
+		return -ENOTSUP;
+
+	if (if_getcapabilities(ifp) & IFCAP_WOL_MAGIC) {
+		if (!softc->wol) {
+			if (bnxt_hwrm_alloc_wol_fltr(softc))
+				return -EBUSY;
+			softc->wol = 1;
+		}
+	} else {
+		if (softc->wol) {
+			if (bnxt_hwrm_free_wol_fltr(softc))
+				return -EBUSY;
+			softc->wol = 0;
+		}
+	}
+
+	return 0;
+}
+
+static int
+bnxt_shutdown(if_ctx_t ctx)
+{
+	bnxt_wol_config(ctx);
+	return 0;
+}
+
+static int
+bnxt_suspend(if_ctx_t ctx)
+{
+	bnxt_wol_config(ctx);
+	return 0;
+}
+
+static int
+bnxt_resume(if_ctx_t ctx)
+{
+	struct bnxt_softc *softc = iflib_get_softc(ctx);
+
+	bnxt_get_wol_settings(softc);
+	return 0;
 }
 
 static int
@@ -1888,18 +1946,6 @@ bnxt_probe_phy(struct bnxt_softc *softc)
 	if (link_info->auto_mode != HWRM_PORT_PHY_QCFG_OUTPUT_AUTO_MODE_NONE)
 		link_info->autoneg |= BNXT_AUTONEG_SPEED;
 
-	if (link_info->auto_pause & (HWRM_PORT_PHY_QCFG_OUTPUT_PAUSE_TX |
-	    HWRM_PORT_PHY_QCFG_OUTPUT_PAUSE_RX)) {
-		if (link_info->auto_pause == (
-		    HWRM_PORT_PHY_QCFG_OUTPUT_PAUSE_TX |
-		    HWRM_PORT_PHY_QCFG_OUTPUT_PAUSE_RX))
-			link_info->autoneg |= BNXT_AUTONEG_FLOW_CTRL;
-		link_info->req_flow_ctrl = link_info->auto_pause;
-	} else if (link_info->force_pause & (
-	    HWRM_PORT_PHY_QCFG_OUTPUT_PAUSE_TX |
-	    HWRM_PORT_PHY_QCFG_OUTPUT_PAUSE_RX)) {
-		link_info->req_flow_ctrl = link_info->force_pause;
-	}
 	link_info->req_duplex = link_info->duplex_setting;
 	if (link_info->autoneg & BNXT_AUTONEG_SPEED)
 		link_info->req_link_speed = link_info->auto_link_speed;
@@ -1924,106 +1970,89 @@ bnxt_add_media_types(struct bnxt_softc *softc)
 		return;
 
 	switch (phy_type) {
+	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_100G_BASECR4:
+	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_40G_BASECR4:
+	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_25G_BASECR_CA_L:
+	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_25G_BASECR_CA_S:
+	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_25G_BASECR_CA_N:
 	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASECR:
-		if (supported & HWRM_PORT_PHY_QCFG_OUTPUT_SUPPORT_SPEEDS_100GB)
-			ifmedia_add(softc->media, IFM_ETHER | IFM_100G_CR4, 0,
-			    NULL);
-		if (supported & HWRM_PORT_PHY_QCFG_OUTPUT_SUPPORT_SPEEDS_50GB)
-			ifmedia_add(softc->media, IFM_ETHER | IFM_50G_CR2, 0,
-			    NULL);
-		if (supported & HWRM_PORT_PHY_QCFG_OUTPUT_SUPPORT_SPEEDS_40GB)
-			ifmedia_add(softc->media, IFM_ETHER | IFM_40G_CR4, 0,
-			    NULL);
-		if (supported & HWRM_PORT_PHY_QCFG_OUTPUT_SUPPORT_SPEEDS_25GB)
-			ifmedia_add(softc->media, IFM_ETHER | IFM_25G_CR, 0,
-			    NULL);
-		if (supported & HWRM_PORT_PHY_QCFG_OUTPUT_SUPPORT_SPEEDS_10GB)
-			ifmedia_add(softc->media, IFM_ETHER | IFM_10G_CR1, 0,
-			    NULL);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_100GB, IFM_100G_CR4);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_50GB, IFM_50G_CR2);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_40GB, IFM_40G_CR4);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_25GB, IFM_25G_CR);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_10GB, IFM_10G_CR1);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_1GB, IFM_1000_T);
 		break;
-	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_UNKNOWN:
-		/* Auto only */
+
+	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_100G_BASELR4:
+	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_40G_BASELR4:
+	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASELR:
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_100GB, IFM_100G_LR4);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_40GB, IFM_40G_LR4);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_25GB, IFM_25G_LR);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_10GB, IFM_10G_LR);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_1GB, IFM_1000_LX);
 		break;
+
+	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_100G_BASESR10:
+	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_100G_BASESR4:
+	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_40G_BASESR4:
+	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASESR:
+	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_40G_BASEER4:
+	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_100G_BASEER4:
+	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_25G_BASESR:
+	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_1G_BASESX:
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_100GB, IFM_100G_SR4);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_40GB, IFM_40G_SR4);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_25GB, IFM_25G_SR);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_10GB, IFM_10G_SR);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_1GB, IFM_1000_SX);
+		break;
+
 	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASEKR4:
 	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASEKR2:
 	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASEKR:
-		if (supported & HWRM_PORT_PHY_QCFG_OUTPUT_SUPPORT_SPEEDS_100GB)
-			ifmedia_add(softc->media, IFM_ETHER | IFM_100G_KR4, 0,
-			    NULL);
-		if (supported & HWRM_PORT_PHY_QCFG_OUTPUT_SUPPORT_SPEEDS_50GB)
-			ifmedia_add(softc->media, IFM_ETHER | IFM_50G_KR2, 0,
-			    NULL);
-		if (supported & HWRM_PORT_PHY_QCFG_OUTPUT_SUPPORT_SPEEDS_40GB)
-			ifmedia_add(softc->media, IFM_ETHER | IFM_40G_KR4, 0,
-			    NULL);
-		if (supported & HWRM_PORT_PHY_QCFG_OUTPUT_SUPPORT_SPEEDS_25GB)
-			ifmedia_add(softc->media, IFM_ETHER | IFM_25G_KR, 0,
-			    NULL);
-		if (supported & HWRM_PORT_PHY_QCFG_OUTPUT_SUPPORT_SPEEDS_20GB)
-			ifmedia_add(softc->media, IFM_ETHER | IFM_20G_KR2, 0,
-			    NULL);
-		if (supported & HWRM_PORT_PHY_QCFG_OUTPUT_SUPPORT_SPEEDS_10GB)
-			ifmedia_add(softc->media, IFM_ETHER | IFM_10G_KR, 0,
-			    NULL);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_100GB, IFM_100G_KR4);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_50GB, IFM_50G_KR2);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_40GB, IFM_40G_KR4);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_25GB, IFM_25G_KR);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_20GB, IFM_20G_KR2);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_10GB, IFM_10G_KR);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_1GB, IFM_1000_KX);
 		break;
-	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASELR:
-		if (supported & HWRM_PORT_PHY_QCFG_OUTPUT_SUPPORT_SPEEDS_100GB)
-			ifmedia_add(softc->media, IFM_ETHER | IFM_100G_LR4, 0,
-			    NULL);
-		if (supported & HWRM_PORT_PHY_QCFG_OUTPUT_SUPPORT_SPEEDS_40GB)
-			ifmedia_add(softc->media, IFM_ETHER | IFM_40G_LR4, 0,
-			    NULL);
-		if (supported & HWRM_PORT_PHY_QCFG_OUTPUT_SUPPORT_SPEEDS_10GB)
-			ifmedia_add(softc->media, IFM_ETHER | IFM_10G_LR, 0,
-			    NULL);
+
+	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_40G_ACTIVE_CABLE:
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_25GB, IFM_25G_ACC);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_10GB, IFM_10G_AOC);
 		break;
-	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASESR:
-		if (supported & HWRM_PORT_PHY_QCFG_OUTPUT_SUPPORT_SPEEDS_100GB)
-			ifmedia_add(softc->media, IFM_ETHER | IFM_100G_SR4, 0,
-			    NULL);
-		if (supported & HWRM_PORT_PHY_QCFG_OUTPUT_SUPPORT_SPEEDS_40GB)
-			ifmedia_add(softc->media, IFM_ETHER | IFM_40G_SR4, 0,
-			    NULL);
-		if (supported & HWRM_PORT_PHY_QCFG_OUTPUT_SUPPORT_SPEEDS_25GB)
-			ifmedia_add(softc->media, IFM_ETHER | IFM_25G_SR, 0,
-			    NULL);
-		if (supported & HWRM_PORT_PHY_QCFG_OUTPUT_SUPPORT_SPEEDS_10GB)
-			ifmedia_add(softc->media, IFM_ETHER | IFM_10G_SR, 0,
-			    NULL);
+
+	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_1G_BASECX:
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_1GBHD, IFM_1000_CX);
 		break;
-	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASEKX:
-		if (supported & HWRM_PORT_PHY_QCFG_OUTPUT_SUPPORT_SPEEDS_10GB)
-			ifmedia_add(softc->media, IFM_ETHER | IFM_10G_KX4, 0,
-			    NULL);
-		if (supported & HWRM_PORT_PHY_QCFG_OUTPUT_SUPPORT_SPEEDS_2_5GB)
-			ifmedia_add(softc->media, IFM_ETHER | IFM_2500_KX, 0,
-			    NULL);
-		if (supported & HWRM_PORT_PHY_QCFG_OUTPUT_SUPPORT_SPEEDS_1GB)
-			ifmedia_add(softc->media, IFM_ETHER | IFM_1000_KX, 0,
-			    NULL);
-		break;
+
+	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_1G_BASET:
 	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASET:
 	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASETE:
-		if (supported & HWRM_PORT_PHY_QCFG_OUTPUT_SUPPORT_SPEEDS_10MB)
-			ifmedia_add(softc->media, IFM_ETHER | IFM_10_T, 0,
-			    NULL);
-		if (supported & HWRM_PORT_PHY_QCFG_OUTPUT_SUPPORT_SPEEDS_100MB)
-			ifmedia_add(softc->media, IFM_ETHER | IFM_100_T, 0,
-			    NULL);
-		if (supported & HWRM_PORT_PHY_QCFG_OUTPUT_SUPPORT_SPEEDS_1GB)
-			ifmedia_add(softc->media, IFM_ETHER | IFM_1000_T, 0,
-			    NULL);
-		if (supported & HWRM_PORT_PHY_QCFG_OUTPUT_SUPPORT_SPEEDS_2_5GB)
-			ifmedia_add(softc->media, IFM_ETHER | IFM_2500_T, 0,
-			    NULL);
-		if (supported & HWRM_PORT_PHY_QCFG_OUTPUT_SUPPORT_SPEEDS_10GB)
-			ifmedia_add(softc->media, IFM_ETHER | IFM_10G_T, 0,
-			    NULL);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_10GB, IFM_10G_T);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_2_5GB, IFM_2500_T);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_1GB, IFM_1000_T);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_100MB, IFM_100_T);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_10MB, IFM_10_T);
 		break;
+	
+	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASEKX:
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_10GB, IFM_10G_KR);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_2_5GB, IFM_2500_KX);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_1GB, IFM_1000_KX);
+		break;
+
 	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_SGMIIEXTPHY:
-		if (supported & HWRM_PORT_PHY_QCFG_OUTPUT_SUPPORT_SPEEDS_1GB)
-			ifmedia_add(softc->media, IFM_ETHER | IFM_1000_SGMII, 0,
-			    NULL);
+		BNXT_IFMEDIA_ADD(supported, SPEEDS_1GB, IFM_1000_SGMII);
+		break;
+
+	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_UNKNOWN:
+        default:
+		/* Only Autoneg is supported for TYPE_UNKNOWN */
 		break;
 	}
 
@@ -2121,47 +2150,46 @@ exit:
 void
 bnxt_report_link(struct bnxt_softc *softc)
 {
+	struct bnxt_link_info *link_info = &softc->link_info;
 	const char *duplex = NULL, *flow_ctrl = NULL;
 
-	if (softc->link_info.link_up == softc->link_info.last_link_up) {
-		if (!softc->link_info.link_up)
+	if (link_info->link_up == link_info->last_link_up) {
+		if (!link_info->link_up)
 			return;
-		if (softc->link_info.pause == softc->link_info.last_pause &&
-		    softc->link_info.duplex == softc->link_info.last_duplex)
+		if ((link_info->duplex == link_info->last_duplex) &&
+                    (!(BNXT_IS_FLOW_CTRL_CHANGED(link_info))))
 			return;
 	}
 
-	if (softc->link_info.link_up) {
-		if (softc->link_info.duplex ==
-		    HWRM_PORT_PHY_QCFG_OUTPUT_DUPLEX_FULL)
+	if (link_info->link_up) {
+		if (link_info->duplex ==
+		    HWRM_PORT_PHY_QCFG_OUTPUT_DUPLEX_CFG_FULL)
 			duplex = "full duplex";
 		else
 			duplex = "half duplex";
-		if (softc->link_info.pause == (
-		    HWRM_PORT_PHY_QCFG_OUTPUT_PAUSE_TX |
-		    HWRM_PORT_PHY_QCFG_OUTPUT_PAUSE_RX))
+		if (link_info->flow_ctrl.tx & link_info->flow_ctrl.rx)
 			flow_ctrl = "FC - receive & transmit";
-		else if (softc->link_info.pause ==
-		    HWRM_PORT_PHY_QCFG_OUTPUT_PAUSE_TX)
+		else if (link_info->flow_ctrl.tx)
 			flow_ctrl = "FC - transmit";
-		else if (softc->link_info.pause ==
-		    HWRM_PORT_PHY_QCFG_OUTPUT_PAUSE_RX)
+		else if (link_info->flow_ctrl.rx)
 			flow_ctrl = "FC - receive";
 		else
-			flow_ctrl = "none";
+			flow_ctrl = "FC - none";
 		iflib_link_state_change(softc->ctx, LINK_STATE_UP,
 		    IF_Gbps(100));
-		device_printf(softc->dev, "Link is UP %s, %s\n", duplex,
-		    flow_ctrl);
+		device_printf(softc->dev, "Link is UP %s, %s - %d Mbps \n", duplex,
+		    flow_ctrl, (link_info->link_speed * 100));
 	} else {
 		iflib_link_state_change(softc->ctx, LINK_STATE_DOWN,
 		    bnxt_get_baudrate(&softc->link_info));
 		device_printf(softc->dev, "Link is Down\n");
 	}
 
-	softc->link_info.last_link_up = softc->link_info.link_up;
-	softc->link_info.last_pause = softc->link_info.pause;
-	softc->link_info.last_duplex = softc->link_info.duplex;
+	link_info->last_link_up = link_info->link_up;
+	link_info->last_duplex = link_info->duplex;
+	link_info->last_flow_ctrl.tx = link_info->flow_ctrl.tx;
+	link_info->last_flow_ctrl.rx = link_info->flow_ctrl.rx;
+	link_info->last_flow_ctrl.autoneg = link_info->flow_ctrl.autoneg;
 }
 
 static int
@@ -2411,4 +2439,17 @@ bnxt_get_baudrate(struct bnxt_link_info *link)
 		return IF_Mbps(10);
 	}
 	return IF_Gbps(100);
+}
+
+static void
+bnxt_get_wol_settings(struct bnxt_softc *softc)
+{
+	uint16_t wol_handle = 0;
+
+	if (!bnxt_wol_supported(softc))
+		return;
+
+	do {
+		wol_handle = bnxt_hwrm_get_wol_fltrs(softc, wol_handle);
+	} while (wol_handle && wol_handle != BNXT_NO_MORE_WOL_FILTERS);
 }

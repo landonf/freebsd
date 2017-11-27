@@ -61,7 +61,6 @@ SUBDIR=	adduser \
 	pciconf \
 	periodic \
 	powerd \
-	procctl \
 	prometheus_sysctl_exporter \
 	pstat \
 	pw \
@@ -74,6 +73,7 @@ SUBDIR=	adduser \
 	rpc.statd \
 	rpc.umntall \
 	rtprio \
+	rwhod \
 	service \
 	services_mkdb \
 	sesutil \
@@ -114,10 +114,8 @@ SUBDIR.${MK_AUDIT}+=	auditreduce
 SUBDIR.${MK_AUDIT}+=	praudit
 SUBDIR.${MK_AUTHPF}+=	authpf
 SUBDIR.${MK_AUTOFS}+=	autofs
-.if ${MK_BLACKLIST} != "no"
 SUBDIR.${MK_BLACKLIST}+=	blacklistctl
 SUBDIR.${MK_BLACKLIST}+=	blacklistd
-.endif
 SUBDIR.${MK_BLUETOOTH}+=	bluetooth
 SUBDIR.${MK_BOOTPARAMD}+=	bootparamd
 SUBDIR.${MK_BSDINSTALL}+=	bsdinstall
@@ -191,7 +189,6 @@ SUBDIR.${MK_PPP}+=	ppp
 SUBDIR.${MK_QUOTAS}+=	edquota
 SUBDIR.${MK_QUOTAS}+=	quotaon
 SUBDIR.${MK_QUOTAS}+=	repquota
-SUBDIR.${MK_RCMDS}+=	rwhod
 SUBDIR.${MK_SENDMAIL}+=	editmap
 SUBDIR.${MK_SENDMAIL}+=	mailstats
 SUBDIR.${MK_SENDMAIL}+=	makemap
@@ -217,8 +214,6 @@ SUBDIR.${MK_WIRELESS}+=	wpa
 SUBDIR.${MK_TESTS}+=	tests
 
 .include <bsd.arch.inc.mk>
-
-SUBDIR:=	${SUBDIR:O}
 
 SUBDIR_PARALLEL=
 

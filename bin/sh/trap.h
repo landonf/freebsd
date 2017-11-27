@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1991, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -43,6 +45,6 @@ void ignoresig(int);
 int issigchldtrapped(void);
 void onsig(int);
 void dotrap(void);
-void setinteractive(int);
+void setinteractive(void);
 void exitshell(int) __dead2;
 void exitshell_savedstatus(void) __dead2;

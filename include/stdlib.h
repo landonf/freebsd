@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1990, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -236,17 +238,13 @@ extern void (*malloc_message)(void *, const char *);
 /*
  * The alloca() function can't be implemented in C, and on some
  * platforms it can't be implemented at all as a callable function.
- * The GNU C compiler provides a built-in alloca() which we can use;
- * in all other cases, provide a prototype, mainly to pacify various
- * incarnations of lint.  On platforms where alloca() is not in libc,
- * programs which use it will fail to link when compiled with non-GNU
- * compilers.
+ * The GNU C compiler provides a built-in alloca() which we can use.
+ * On platforms where alloca() is not in libc, programs which use it
+ * will fail to link when compiled with non-GNU compilers.
  */
 #if __GNUC__ >= 2 || defined(__INTEL_COMPILER)
 #undef  alloca	/* some GNU bits try to get cute and define this on their own */
 #define alloca(sz) __builtin_alloca(sz)
-#elif defined(lint)
-void	*alloca(size_t);
 #endif
 
 void	 abort2(const char *, int, void **) __dead2;
@@ -323,6 +321,26 @@ __uint64_t
 
 extern char *suboptarg;			/* getsubopt(3) external variable */
 #endif /* __BSD_VISIBLE */
+
+#if __EXT1_VISIBLE
+
+#ifndef _ERRNO_T_DEFINED
+#define _ERRNO_T_DEFINED
+typedef int errno_t;
+#endif
+
+/* K.3.6 */
+typedef void (*constraint_handler_t)(const char * __restrict,
+    void * __restrict, errno_t);
+/* K.3.6.1.1 */
+constraint_handler_t set_constraint_handler_s(constraint_handler_t handler);
+/* K.3.6.1.2 */
+_Noreturn void abort_handler_s(const char * __restrict, void * __restrict,
+    errno_t);
+/* K3.6.1.3 */
+void ignore_handler_s(const char * __restrict, void * __restrict, errno_t);
+#endif /* __EXT1_VISIBLE */
+
 __END_DECLS
 __NULLABILITY_PRAGMA_POP
 

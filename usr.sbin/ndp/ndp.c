@@ -1,7 +1,9 @@
 /*	$FreeBSD$	*/
 /*	$KAME: ndp.c,v 1.104 2003/06/27 07:48:39 itojun Exp $	*/
 
-/*
+/*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (C) 1995, 1996, 1997, 1998, and 1999 WIDE Project.
  * All rights reserved.
  *
@@ -888,7 +890,8 @@ doit:
 	}
 	do {
 		l = read(s, (char *)&m_rtmsg, sizeof(m_rtmsg));
-	} while (l > 0 && (rtm->rtm_seq != seq || rtm->rtm_pid != pid));
+	} while (l > 0 && (rtm->rtm_type != cmd || rtm->rtm_seq != seq ||
+	    rtm->rtm_pid != pid));
 	if (l < 0)
 		(void) fprintf(stderr, "ndp: read from routing socket: %s\n",
 		    strerror(errno));

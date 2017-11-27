@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1989, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -1436,7 +1438,9 @@ nfsvno_open(struct nfsrv_descript *nd, struct nameidata *ndp,
 						vput(ndp->ni_vp);
 						ndp->ni_vp = NULL;
 						nd->nd_repstat = NFSERR_NOTSUPP;
-					}
+					} else
+						NFSSETBIT_ATTRBIT(attrbitp,
+						    NFSATTRBIT_TIMEACCESS);
 				} else {
 					nfsrv_fixattr(nd, ndp->ni_vp, nvap,
 					    aclp, p, attrbitp, exp);
@@ -2018,17 +2022,25 @@ again:
 	}
 
 	/*
-	 * For now ZFS requires VOP_LOOKUP as a workaround.  Until ino_t is changed
-	 * to 64 bit type a ZFS filesystem with over 1 billion files in it
-	 * will suffer from 64bit -> 32bit truncation.
+	 * Check to see if entries in this directory can be safely acquired
+	 * via VFS_VGET() or if a switch to VOP_LOOKUP() is required.
+	 * ZFS snapshot directories need VOP_LOOKUP(), so that any
+	 * automount of the snapshot directory that is required will
+	 * be done.
+	 * This needs to be done here for NFSv4, since NFSv4 never does
+	 * a VFS_VGET() for "." or "..".
 	 */
-	if (is_zfs == 1)
-		usevget = 0;
-
-	cn.cn_nameiop = LOOKUP;
-	cn.cn_lkflags = LK_SHARED | LK_RETRY;
-	cn.cn_cred = nd->nd_cred;
-	cn.cn_thread = p;
+	if (is_zfs == 1) {
+		r = VFS_VGET(mp, at.na_fileid, LK_SHARED, &nvp);
+		if (r == EOPNOTSUPP) {
+			usevget = 0;
+			cn.cn_nameiop = LOOKUP;
+			cn.cn_lkflags = LK_SHARED | LK_RETRY;
+			cn.cn_cred = nd->nd_cred;
+			cn.cn_thread = p;
+		} else if (r == 0)
+			vput(nvp);
+	}
 
 	/*
 	 * Save this position, in case there is an error before one entry
@@ -2097,7 +2109,16 @@ again:
 					else
 						r = EOPNOTSUPP;
 					if (r == EOPNOTSUPP) {
-						usevget = 0;
+						if (usevget) {
+							usevget = 0;
+							cn.cn_nameiop = LOOKUP;
+							cn.cn_lkflags =
+							    LK_SHARED |
+							    LK_RETRY;
+							cn.cn_cred =
+							    nd->nd_cred;
+							cn.cn_thread = p;
+						}
 						cn.cn_nameptr = dp->d_name;
 						cn.cn_namelen = nlen;
 						cn.cn_flags = ISLASTCN |

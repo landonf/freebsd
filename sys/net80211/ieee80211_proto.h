@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2001 Atsushi Onoe
  * Copyright (c) 2002-2009 Sam Leffler, Errno Consulting
  * All rights reserved.
@@ -292,6 +294,10 @@ struct ieee80211_wme_state {
 void	ieee80211_wme_initparams(struct ieee80211vap *);
 void	ieee80211_wme_updateparams(struct ieee80211vap *);
 void	ieee80211_wme_updateparams_locked(struct ieee80211vap *);
+void	ieee80211_wme_vap_getparams(struct ieee80211vap *vap,
+	    struct chanAccParams *);
+void	ieee80211_wme_ic_getparams(struct ieee80211com *ic,
+	    struct chanAccParams *);
 
 /*
  * Return the WME TID from a QoS frame.  If no TID

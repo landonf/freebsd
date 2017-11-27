@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1991, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -367,7 +369,7 @@ struct limits {
 	const char *name;
 	const char *units;
 	int	cmd;
-	int	factor;	/* multiply by to get rlim_{cur,max} values */
+	short	factor;	/* multiply by to get rlim_{cur,max} values */
 	char	option;
 };
 

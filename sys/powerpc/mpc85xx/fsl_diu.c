@@ -35,13 +35,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/module.h>
 #include <sys/malloc.h>
 #include <sys/rman.h>
-#include <sys/timeet.h>
-#include <sys/timetc.h>
-#include <sys/watchdog.h>
 #include <sys/fbio.h>
 #include <sys/consio.h>
-#include <sys/eventhandler.h>
-#include <sys/gpio.h>
 
 #include <vm/vm.h>
 #include <vm/pmap.h>
@@ -58,8 +53,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/vt/colors/vt_termcolors.h>
 
 #include <powerpc/mpc85xx/mpc85xx.h>
-
-#include "gpio_if.h"
 
 #include <machine/bus.h>
 #include <machine/cpu.h>
@@ -225,11 +218,9 @@ diu_set_pxclk(device_t dev, unsigned int freq)
 	unsigned long bus_freq;
 	uint32_t pxclk_set;
 	uint32_t clkdvd;
-	int res;
 
 	node = ofw_bus_get_node(device_get_parent(dev));
-	if ((res = OF_getencprop(node, "bus-frequency",
-	    (pcell_t *)&bus_freq, sizeof(bus_freq)) <= 0)) {
+	if ((bus_freq = mpc85xx_get_platform_clock()) <= 0) {
 		device_printf(dev, "Unable to get bus frequency\n");
 		return (ENXIO);
 	}

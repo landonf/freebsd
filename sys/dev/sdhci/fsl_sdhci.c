@@ -33,6 +33,8 @@ __FBSDID("$FreeBSD$");
  * This supports both eSDHC (earlier SoCs) and uSDHC (more recent SoCs).
  */
 
+#include "opt_mmccam.h"
+
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/types.h>
@@ -56,6 +58,10 @@ __FBSDID("$FreeBSD$");
 #include <machine/intr.h>
 
 #include <arm/freescale/imx/imx_ccmvar.h>
+#endif
+
+#ifdef __powerpc__
+#include <powerpc/mpc85xx/mpc85xx.h>
 #endif
 
 #include <dev/gpio/gpiobusvar.h>
@@ -767,7 +773,6 @@ fsl_sdhci_get_card_present(device_t dev, struct sdhci_slot *slot)
 static uint32_t
 fsl_sdhci_get_platform_clock(device_t dev)
 {
-	device_t parent;
 	phandle_t node;
 	uint32_t clock;
 
@@ -777,23 +782,14 @@ fsl_sdhci_get_platform_clock(device_t dev)
 	if((OF_getprop(node, "clock-frequency", (void *)&clock,
 	    sizeof(clock)) <= 0) || (clock == 0)) {
 
-		/*
-		 * Trying to get clock from parent device (soc) if correct
-		 * clock cannot be acquired from sdhci node.
-		 */
-		parent = device_get_parent(dev);
-		node = ofw_bus_get_node(parent);
+		clock = mpc85xx_get_system_clock();
 
-		/* Get soc properties */
-		if ((OF_getprop(node, "bus-frequency", (void *)&clock,
-		    sizeof(clock)) <= 0) || (clock == 0)) {
+		if (clock == 0) {
 			device_printf(dev,"Cannot acquire correct sdhci "
 			    "frequency from DTS.\n");
 
 			return (0);
 		}
-		/* eSDHC clock is 1/2 platform clock. */
-		clock /= 2;
 	}
 
 	if (bootverbose)
@@ -807,9 +803,26 @@ fsl_sdhci_get_platform_clock(device_t dev)
 static int
 fsl_sdhci_detach(device_t dev)
 {
+	struct fsl_sdhci_softc *sc = device_get_softc(dev);
 
-	/* sdhci_fdt_gpio_teardown(sc->gpio); */
-	return (EBUSY);
+	if (sc->gpio != NULL)
+		sdhci_fdt_gpio_teardown(sc->gpio);
+
+	callout_drain(&sc->r1bfix_callout);
+
+	if (sc->intr_cookie != NULL)
+		bus_teardown_intr(dev, sc->irq_res, sc->intr_cookie);
+	if (sc->irq_res != NULL)
+		bus_release_resource(dev, SYS_RES_IRQ,
+		    rman_get_rid(sc->irq_res), sc->irq_res);
+
+	if (sc->mem_res != NULL) {
+		sdhci_cleanup_slot(&sc->slot);
+		bus_release_resource(dev, SYS_RES_MEMORY,
+		    rman_get_rid(sc->mem_res), sc->mem_res);
+	}
+
+	return (0);
 }
 
 static int
@@ -922,13 +935,7 @@ fsl_sdhci_attach(device_t dev)
 	return (0);
 
 fail:
-	if (sc->intr_cookie)
-		bus_teardown_intr(dev, sc->irq_res, sc->intr_cookie);
-	if (sc->irq_res)
-		bus_release_resource(dev, SYS_RES_IRQ, 0, sc->irq_res);
-	if (sc->mem_res)
-		bus_release_resource(dev, SYS_RES_MEMORY, 0, sc->mem_res);
-
+	fsl_sdhci_detach(dev);
 	return (err);
 }
 
@@ -936,7 +943,7 @@ static int
 fsl_sdhci_probe(device_t dev)
 {
 
-        if (!ofw_bus_status_okay(dev))
+	if (!ofw_bus_status_okay(dev))
 		return (ENXIO);
 
 	switch (ofw_bus_search_compatible(dev, compat_data)->ocd_data) {
@@ -994,4 +1001,7 @@ static driver_t fsl_sdhci_driver = {
 DRIVER_MODULE(sdhci_fsl, simplebus, fsl_sdhci_driver, fsl_sdhci_devclass,
     NULL, NULL);
 MODULE_DEPEND(sdhci_fsl, sdhci, 1, 1, 1);
+
+#ifndef MMCCAM
 MMC_DECLARE_BRIDGE(sdhci_fsl);
+#endif

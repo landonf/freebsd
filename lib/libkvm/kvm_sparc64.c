@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1989, 1992, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -221,7 +223,7 @@ invalid:
 }
 
 static int
-_sparc64_native(kvm_t *kd)
+_sparc64_native(kvm_t *kd __unused)
 {
 
 #ifdef __sparc64__
@@ -231,7 +233,7 @@ _sparc64_native(kvm_t *kd)
 #endif
 }
 
-struct kvm_arch kvm_sparc64 = {
+static struct kvm_arch kvm_sparc64 = {
 	.ka_probe = _sparc64_probe,
 	.ka_initvtop = _sparc64_initvtop,
 	.ka_freevtop = _sparc64_freevtop,

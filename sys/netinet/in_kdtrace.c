@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2013 Mark Johnston <markj@FreeBSD.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -131,6 +133,14 @@ SDT_PROBE_DEFINE6_XLATE(tcp, , , state__change,
     "struct tcpcb *", "tcpsinfo_t *",
     "void *", "void *",
     "int", "tcplsinfo_t *");
+
+SDT_PROBE_DEFINE6_XLATE(tcp, , , receive__autoresize,
+    "void *", "void *",
+    "struct tcpcb *", "csinfo_t *",
+    "struct mbuf *", "ipinfo_t *",
+    "struct tcpcb *", "tcpsinfo_t *" ,
+    "struct tcphdr *", "tcpinfoh_t *",
+    "int", "int");
 
 SDT_PROBE_DEFINE5_XLATE(udp, , , receive,
     "void *", "pktinfo_t *",

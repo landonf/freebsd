@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2001 The NetBSD Foundation, Inc.
  * All rights reserved.
  *
@@ -171,6 +173,7 @@
 #define	  IBMPOWER7PLUS		  0x004a
 #define	  IBMPOWER8E		  0x004b
 #define	  IBMPOWER8		  0x004d
+#define	  IBMPOWER9		  0x004e
 #define	  MPC860		  0x0050
 #define	  IBMCELLBE		  0x0070
 #define	  MPC8240		  0x0081
@@ -191,8 +194,29 @@
 #define	  FSL_E500mc		  0x8023
 #define	  FSL_E5500		  0x8024
 #define	  FSL_E6500		  0x8040
+#define	  FSL_E300C1		  0x8083
+#define	  FSL_E300C2		  0x8084
+#define	  FSL_E300C3		  0x8085
+#define	  FSL_E300C4		  0x8086
 
+#define	SPR_EPCR		0x133
+#define	  EPCR_EXTGS		  0x80000000
+#define	  EPCR_DTLBGS		  0x40000000
+#define	  EPCR_ITLBGS		  0x20000000
+#define	  EPCR_DSIGS		  0x10000000
+#define	  EPCR_ISIGS		  0x08000000
+#define	  EPCR_DUVGS		  0x04000000
+#define	  EPCR_ICM		  0x02000000
+#define	  EPCR_GICMGS		  0x01000000
+#define	  EPCR_DGTMI		  0x00800000
+#define	  EPCR_DMIUH		  0x00400000
+#define	  EPCR_PMGS		  0x00200000
 #define	SPR_SPEFSCR		0x200	/* ..8 Signal Processing Engine FSCR. */
+
+#define	SPR_LPCR		0x13e	/* Logical Partitioning Control */
+#define	  LPCR_LPES		0x008	/* Bit 60 */
+#define	SPR_LPID		0x13f	/* Logical Partitioning Control */
+
 #define	SPR_IBAT0U		0x210	/* .68 Instruction BAT Reg 0 Upper */
 #define	SPR_IBAT0U		0x210	/* .6. Instruction BAT Reg 0 Upper */
 #define	SPR_IBAT0L		0x211	/* .6. Instruction BAT Reg 0 Lower */
@@ -259,6 +283,7 @@
 #define	SPR_DBAT6L		0x23d	/* .6. Data BAT Reg 6 Lower */
 #define	SPR_DBAT7U		0x23e	/* .6. Data BAT Reg 7 Upper */
 #define	SPR_DBAT7L		0x23f	/* .6. Data BAT Reg 7 Lower */
+#define	SPR_SPRG8		0x25c	/* ..8 SPR General 8 */
 #define	SPR_MI_CTR		0x310	/* ..8 IMMU control */
 #define	  Mx_CTR_GPM		0x80000000 /* Group Protection Mode */
 #define	  Mx_CTR_PPM		0x40000000 /* Page Protection Mode */
@@ -718,8 +743,14 @@
 #define	  SVR_P4040E		  0x8208
 #define	  SVR_P4080		  0x8201
 #define	  SVR_P4080E		  0x8209
+#define	  SVR_P5010		  0x8221
+#define	  SVR_P5010E		  0x8229
 #define	  SVR_P5020		  0x8220
 #define	  SVR_P5020E		  0x8228
+#define	  SVR_P5021		  0x8205
+#define	  SVR_P5021E		  0x820d
+#define	  SVR_P5040		  0x8204
+#define	  SVR_P5040E		  0x820c
 #define	SVR_VER(svr)		(((svr) >> 16) & 0xffff)
 
 #define	SPR_PID0		0x030	/* ..8 Process ID Register 0 */

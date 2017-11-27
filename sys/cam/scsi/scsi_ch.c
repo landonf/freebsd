@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD AND BSD-4-Clause
+ *
  * Copyright (c) 1997 Justin T. Gibbs.
  * Copyright (c) 1997, 1998, 1999 Kenneth D. Merry.
  * All rights reserved.
@@ -1569,6 +1571,7 @@ chgetparams(struct cam_periph *periph)
 
 	if (mode_buffer == NULL) {
 		printf("chgetparams: couldn't malloc mode sense data\n");
+		xpt_release_ccb(ccb);
 		return(ENOSPC);
 	}
 

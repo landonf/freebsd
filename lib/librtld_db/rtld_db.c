@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2010 The FreeBSD Foundation
  * All rights reserved.
  *
@@ -275,10 +277,8 @@ rtld_syms(rd_agent_t *rdap, const char *rtldpath, u_long base)
 	if (elf_version(EV_CURRENT) == EV_NONE)
 		goto err;
 	e = elf_begin(fd, ELF_C_READ, NULL);
-	if (e == NULL) {
-		close(fd);
+	if (e == NULL)
 		goto err;
-	}
 
 	scn = NULL;
 	while ((scn = elf_nextscn(e, scn)) != NULL) {

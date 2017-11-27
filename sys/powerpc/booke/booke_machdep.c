@@ -200,7 +200,8 @@ extern void *int_performance_counter;
 	    ("Handler " #handler " too far from interrupt vector base")); \
 	mtspr(ivor, (uintptr_t)(&handler) & 0xffffUL);
 
-uintptr_t powerpc_init(vm_offset_t fdt, vm_offset_t, vm_offset_t, void *mdp);
+uintptr_t powerpc_init(vm_offset_t fdt, vm_offset_t, vm_offset_t, void *mdp,
+    vm_offset_t mdp_cookie);
 void booke_cpu_init(void);
 
 void
@@ -216,7 +217,7 @@ void
 ivor_setup(void)
 {
 
-	mtspr(SPR_IVPR, ((uintptr_t)&interrupt_vector_base) & 0xffff0000);
+	mtspr(SPR_IVPR, ((uintptr_t)&interrupt_vector_base) & ~0xffffUL);
 
 	SET_TRAP(SPR_IVOR0, int_critical_input);
 	SET_TRAP(SPR_IVOR1, int_machine_check);
@@ -250,6 +251,11 @@ ivor_setup(void)
 		SET_TRAP(SPR_IVOR32, int_vec);
 		break;
 	}
+
+#ifdef __powerpc64__
+	/* Set 64-bit interrupt mode. */
+	mtspr(SPR_EPCR, mfspr(SPR_EPCR) | EPCR_ICM);
+#endif
 }
 
 static int
@@ -341,7 +347,11 @@ booke_init(u_long arg1, u_long arg2)
 		break;
 	}
 
-	ret = powerpc_init(dtbp, 0, 0, mdp);
+	/*
+	 * Last element is a magic cookie that indicates that the metadata
+	 * pointer is meaningful.
+	 */
+	ret = powerpc_init(dtbp, 0, 0, mdp, (mdp == NULL) ? 0 : 0xfb5d104d);
 
 	/* Enable caches */
 	booke_enable_l1_cache();
@@ -353,7 +363,7 @@ booke_init(u_long arg1, u_long arg2)
 }
 
 #define RES_GRANULE 32
-extern uint32_t tlb0_miss_locks[];
+extern uintptr_t tlb0_miss_locks[];
 
 /* Initialise a struct pcpu. */
 void
@@ -363,8 +373,8 @@ cpu_pcpu_init(struct pcpu *pcpu, int cpuid, size_t sz)
 	pcpu->pc_tid_next = TID_MIN;
 
 #ifdef SMP
-	uint32_t *ptr;
-	int words_per_gran = RES_GRANULE / sizeof(uint32_t);
+	uintptr_t *ptr;
+	int words_per_gran = RES_GRANULE / sizeof(uintptr_t);
 
 	ptr = &tlb0_miss_locks[cpuid * words_per_gran];
 	pcpu->pc_booke_tlb_lock = ptr;

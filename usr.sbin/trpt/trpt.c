@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1983, 1988, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -66,6 +68,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/tcp_seq.h>
 #define	TCPTIMERS
 #include <netinet/tcp_timer.h>
+#define	_WANT_TCPCB
 #include <netinet/tcp_var.h>
 #include <netinet/tcpip.h>
 #define	TANAMES

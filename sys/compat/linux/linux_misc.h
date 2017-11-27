@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2006 Roman Divacky
  * All rights reserved.
  *
@@ -144,6 +146,10 @@ extern int stclohz;
 #define	LINUX_RLIMIT_RTTIME	RLIM_NLIMITS + 6
 
 #define	LINUX_RLIM_INFINITY	(~0UL)
+
+/* Linux getrandom flags */
+#define	LINUX_GRND_NONBLOCK	0x0001
+#define	LINUX_GRND_RANDOM	0x0002
 
 int linux_common_wait(struct thread *td, int pid, int *status,
 			int options, struct rusage *ru);

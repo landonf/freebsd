@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-4-Clause
+ *
  * Copyright (c) 1992 Terrence R. Lambert.
  * Copyright (c) 1982, 1987, 1990 The Regents of the University of California.
  * All rights reserved.
@@ -52,7 +54,6 @@ __FBSDID("$FreeBSD$");
 #include "opt_mp_watchdog.h"
 #include "opt_perfmon.h"
 #include "opt_platform.h"
-#include "opt_xbox.h"
 
 #include <sys/param.h>
 #include <sys/proc.h>
@@ -146,13 +147,6 @@ __FBSDID("$FreeBSD$");
 
 #ifdef DEV_ISA
 #include <x86/isa/icu.h>
-#endif
-
-#ifdef XBOX
-#include <machine/xbox.h>
-
-int arch_i386_is_xbox = 0;
-uint32_t arch_i386_xbox_memsize = 0;
 #endif
 
 /* Sanity check for __curthread() */
@@ -430,9 +424,6 @@ osendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	 * Copy the sigframe out to the user's stack.
 	 */
 	if (copyout(&sf, fp, sizeof(*fp)) != 0) {
-#ifdef DEBUG
-		printf("process %ld has trashed its stack\n", (long)p->p_pid);
-#endif
 		PROC_LOCK(p);
 		sigexit(td, SIGILL);
 	}
@@ -559,9 +550,6 @@ freebsd4_sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	 * Copy the sigframe out to the user's stack.
 	 */
 	if (copyout(&sf, sfp, sizeof(*sfp)) != 0) {
-#ifdef DEBUG
-		printf("process %ld has trashed its stack\n", (long)p->p_pid);
-#endif
 		PROC_LOCK(p);
 		sigexit(td, SIGILL);
 	}
@@ -725,9 +713,6 @@ sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	    (xfpusave != NULL && copyout(xfpusave,
 	    (void *)sf.sf_uc.uc_mcontext.mc_xfpustate, xfpusave_len)
 	    != 0)) {
-#ifdef DEBUG
-		printf("process %ld has trashed its stack\n", (long)p->p_pid);
-#endif
 		PROC_LOCK(p);
 		sigexit(td, SIGILL);
 	}
@@ -1132,6 +1117,16 @@ exec_setregs(struct thread *td, struct image_params *imgp, u_long stack)
 	else
 		mtx_unlock_spin(&dt_lock);
   
+	/*
+	 * Reset the fs and gs bases.  The values from the old address
+	 * space do not make sense for the new program.  In particular,
+	 * gsbase might be the TLS base for the old program but the new
+	 * program has no TLS now.
+	 */
+	set_fsbase(td, 0);
+	set_gsbase(td, 0);
+
+	/* Make sure edx is 0x0 on entry. Linux binaries depend on it. */
 	bzero((char *)regs, sizeof(struct trapframe));
 	regs->tf_eip = imgp->entry_addr;
 	regs->tf_esp = stack;
@@ -1174,13 +1169,6 @@ exec_setregs(struct thread *td, struct image_params *imgp, u_long stack)
 	 * clean FP state if it uses the FPU again.
 	 */
 	fpstate_drop(td);
-
-	/*
-	 * XXX - Linux emulator
-	 * Make sure sure edx is 0x0 on entry. Linux binaries depend
-	 * on it.
-	 */
-	td->td_retval[1] = 0;
 }
 
 void
@@ -1780,18 +1768,6 @@ getmemsize(int first)
 	caddr_t kmdp;
 
 	has_smap = 0;
-#ifdef XBOX
-	if (arch_i386_is_xbox) {
-		/*
-		 * We queried the memory size before, so chop off 4MB for
-		 * the framebuffer and inform the OS of this.
-		 */
-		physmap[0] = 0;
-		physmap[1] = (arch_i386_xbox_memsize * 1024 * 1024) - XBOX_FB_SIZE;
-		physmap_idx = 0;
-		goto physmap_done;
-	}
-#endif
 	bzero(&vmf, sizeof(vmf));
 	bzero(physmap, sizeof(physmap));
 	basemem = 0;
@@ -2185,6 +2161,8 @@ init386(int first)
 	else
 		init_static_kenv(NULL, 0);
 
+	identify_hypervisor();
+
 	/* Init basic tunables, hz etc */
 	init_param1();
 
@@ -2297,28 +2275,6 @@ init386(int first)
 	r_idt.rd_limit = sizeof(idt0) - 1;
 	r_idt.rd_base = (int) idt;
 	lidt(&r_idt);
-
-#ifdef XBOX
-	/*
-	 * The following code queries the PCI ID of 0:0:0. For the XBOX,
-	 * This should be 0x10de / 0x02a5.
-	 *
-	 * This is exactly what Linux does.
-	 */
-	outl(0xcf8, 0x80000000);
-	if (inl(0xcfc) == 0x02a510de) {
-		arch_i386_is_xbox = 1;
-		pic16l_setled(XBOX_LED_GREEN);
-
-		/*
-		 * We are an XBOX, but we may have either 64MB or 128MB of
-		 * memory. The PCI host bridge should be programmed for this,
-		 * so we just query it. 
-		 */
-		outl(0xcf8, 0x80000084);
-		arch_i386_xbox_memsize = (inl(0xcfc) == 0x7FFFFFF) ? 128 : 64;
-	}
-#endif /* XBOX */
 
 	/*
 	 * Initialize the clock before the console so that console
@@ -2445,11 +2401,6 @@ init386(int first)
 	gdp->gd_dpl = SEL_UPL;
 	gdp->gd_p = 1;
 	gdp->gd_hioffset = x >> 16;
-
-	/* XXX does this work? */
-	/* XXX yes! */
-	ldt[LBSDICALLS_SEL] = ldt[LSYS5CALLS_SEL];
-	ldt[LSOL26CALLS_SEL] = ldt[LSYS5CALLS_SEL];
 
 	/* transfer to user mode */
 
@@ -2845,7 +2796,6 @@ static int
 set_fpcontext(struct thread *td, mcontext_t *mcp, char *xfpustate,
     size_t xfpustate_len)
 {
-	union savefpu *fpstate;
 	int error;
 
 	if (mcp->mc_fpformat == _MC_FPFMT_NODEV)
@@ -2859,10 +2809,8 @@ set_fpcontext(struct thread *td, mcontext_t *mcp, char *xfpustate,
 		error = 0;
 	} else if (mcp->mc_ownedfp == _MC_FPOWNED_FPU ||
 	    mcp->mc_ownedfp == _MC_FPOWNED_PCB) {
-		fpstate = (union savefpu *)&mcp->mc_fpstate;
-		if (cpu_fxsr)
-			fpstate->sv_xmm.sv_env.en_mxcsr &= cpu_mxcsr_mask;
-		error = npxsetregs(td, fpstate, xfpustate, xfpustate_len);
+		error = npxsetregs(td, (union savefpu *)&mcp->mc_fpstate,
+		    xfpustate, xfpustate_len);
 	} else
 		return (EINVAL);
 	return (error);
@@ -2901,8 +2849,6 @@ fill_dbregs(struct thread *td, struct dbreg *dbregs)
 		dbregs->dr[1] = rdr1();
 		dbregs->dr[2] = rdr2();
 		dbregs->dr[3] = rdr3();
-		dbregs->dr[4] = rdr4();
-		dbregs->dr[5] = rdr5();
 		dbregs->dr[6] = rdr6();
 		dbregs->dr[7] = rdr7();
 	} else {
@@ -2911,11 +2857,11 @@ fill_dbregs(struct thread *td, struct dbreg *dbregs)
 		dbregs->dr[1] = pcb->pcb_dr1;
 		dbregs->dr[2] = pcb->pcb_dr2;
 		dbregs->dr[3] = pcb->pcb_dr3;
-		dbregs->dr[4] = 0;
-		dbregs->dr[5] = 0;
 		dbregs->dr[6] = pcb->pcb_dr6;
 		dbregs->dr[7] = pcb->pcb_dr7;
 	}
+	dbregs->dr[4] = 0;
+	dbregs->dr[5] = 0;
 	return (0);
 }
 
@@ -2930,8 +2876,6 @@ set_dbregs(struct thread *td, struct dbreg *dbregs)
 		load_dr1(dbregs->dr[1]);
 		load_dr2(dbregs->dr[2]);
 		load_dr3(dbregs->dr[3]);
-		load_dr4(dbregs->dr[4]);
-		load_dr5(dbregs->dr[5]);
 		load_dr6(dbregs->dr[6]);
 		load_dr7(dbregs->dr[7]);
 	} else {

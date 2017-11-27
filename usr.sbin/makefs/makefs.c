@@ -1,6 +1,8 @@
 /*	$NetBSD: makefs.c,v 1.26 2006/10/22 21:11:56 christos Exp $	*/
 
-/*
+/*-
+ * SPDX-License-Identifier: BSD-4-Clause
+ *
  * Copyright (c) 2001-2003 Wasabi Systems, Inc.
  * All rights reserved.
  *
@@ -50,6 +52,7 @@ __FBSDID("$FreeBSD$");
 #include <time.h>
 #include <unistd.h>
 #include <stdbool.h>
+#include <util.h>
 
 #include "makefs.h"
 #include "mtree.h"
@@ -84,7 +87,6 @@ struct stat stampst;
 static	fstype_t *get_fstype(const char *);
 static int get_tstamp(const char *, struct stat *);
 static	void	usage(fstype_t *, fsinfo_t *);
-int		main(int, char *[]);
 
 int
 main(int argc, char *argv[])
@@ -95,8 +97,8 @@ main(int argc, char *argv[])
 	fsinfo_t	 fsoptions;
 	fsnode		*root;
 	int	 	 ch, i, len;
-	char		*subtree;
-	char		*specfile;
+	const char	*subtree;
+	const char	*specfile;
 
 	setprogname(argv[0]);
 
@@ -124,7 +126,7 @@ main(int argc, char *argv[])
 		err(1, "Unable to get system time");
 
 
-	while ((ch = getopt(argc, argv, "B:b:Dd:f:F:M:m:N:o:pR:s:S:t:T:xZ")) != -1) {
+	while ((ch = getopt(argc, argv, "B:b:Dd:f:F:M:m:N:O:o:pR:s:S:t:T:xZ")) != -1) {
 		switch (ch) {
 
 		case 'B':
@@ -202,7 +204,12 @@ main(int argc, char *argv[])
 			fsoptions.maxsize =
 			    strsuftoll("maximum size", optarg, 1LL, LLONG_MAX);
 			break;
-			
+
+		case 'O':
+			fsoptions.offset =
+			    strsuftoll("offset", optarg, 0LL, LLONG_MAX);
+			break;
+
 		case 'o':
 		{
 			char *p;
@@ -353,10 +360,7 @@ set_option(const option_t *options, const char *option, char *buf, size_t len)
 
 	assert(option != NULL);
 
-	if ((var = strdup(option)) == NULL) {
-		err(EXIT_FAILURE, "Allocating memory for copy of option string");
-	}
-
+	var = estrdup(option);
 	for (val = var; *val; val++)
 		if (*val == '=') {
 			*val++ = '\0';
@@ -397,8 +401,7 @@ set_option_var(const option_t *options, const char *var, const char *val,
 			    options[i].maximum);
 			break;
 		case OPT_STRPTR:
-			if ((s = strdup(val)) == NULL)
-				err(1, NULL);
+			s = estrdup(val);
 			*(char **)options[i].value = s;
 			break;
 		case OPT_STRBUF:
@@ -441,14 +444,11 @@ option_t *
 copy_opts(const option_t *o)
 {
 	size_t i;
-	void *rv;
 
 	for (i = 0; o[i].name; i++)
 		continue;
 	i++;
-	if ((rv = calloc(i, sizeof(*o))) == NULL)
-		err(1, "calloc");
-	return memcpy(rv, o, i * sizeof(*o));
+	return memcpy(ecalloc(i, sizeof(*o)), o, i * sizeof(*o));
 }
 
 static int
@@ -486,8 +486,8 @@ usage(fstype_t *fstype, fsinfo_t *fsoptions)
 	fprintf(stderr,
 "Usage: %s [-xZ] [-B endian] [-b free-blocks] [-d debug-mask]\n"
 "\t[-F mtree-specfile] [-f free-files] [-M minimum-size] [-m maximum-size]\n"
-"\t[-N userdb-dir] [-o fs-options] [-R roundup-size] [-S sector-size]\n"
-"\t[-s image-size] [-T <timestamp/file>] [-t fs-type]\n"
+"\t[-N userdb-dir] [-O offset] [-o fs-options] [-R roundup-size]\n"
+"\t[-S sector-size] [-s image-size] [-T <timestamp/file>] [-t fs-type]\n"
 "\timage-file directory | manifest [extra-directory ...]\n",
 	    prog);
 

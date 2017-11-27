@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2004 David Schultz <das@FreeBSD.ORG>
  * All rights reserved.
  *
@@ -39,7 +41,7 @@
  */
 const fenv_t __fe_dfl_env = 0;
 
-#ifdef	SOFTFLOAT
+#ifdef	__mips_soft_float
 #define __set_env(env, flags, mask, rnd) env = ((flags)                 \
                                                 | (mask)<<_FPUSW_SHIFT  \
                                                 | (rnd) << 24)

@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1982, 1986, 1988, 1990, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -63,7 +65,6 @@ __FBSDID("$FreeBSD$");
 #include <net/netisr.h>
 #include <net/pfil.h>
 #include <net/route.h>
-#include <net/flowtable.h>
 #ifdef RADIX_MPATH
 #include <net/radix_mpath.h>
 #endif
@@ -242,13 +243,7 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 	if (ro == NULL) {
 		ro = &iproute;
 		bzero(ro, sizeof (*ro));
-	} else
-		ro->ro_flags |= RT_LLE_CACHE;
-
-#ifdef FLOWTABLE
-	if (ro->ro_rt == NULL)
-		(void )flowtable_lookup(AF_INET, m, ro);
-#endif
+	}
 
 	if (opt) {
 		int len = 0;

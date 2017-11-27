@@ -1,6 +1,8 @@
 /*	$NetBSD: armreg.h,v 1.37 2007/01/06 00:50:54 christos Exp $	*/
 
 /*-
+ * SPDX-License-Identifier: BSD-4-Clause
+ *
  * Copyright (c) 1998, 2001 Ben Harris
  * Copyright (c) 1994-1996 Mark Brinicombe.
  * Copyright (c) 1994 Brini.
@@ -476,5 +478,8 @@
 #define	ARM_REG_NUM_SP		13
 
 #define THUMB_INSN_SIZE		2		/* Some are 4 bytes.  */
+
+/* ARM Hypervisor Related Defines */
+#define	ARM_CP15_HDCR_HPMN	0x0000001f
 
 #endif /* !MACHINE_ARMREG_H */

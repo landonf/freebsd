@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1992, 1993, 1994 Henry Spencer.
  * Copyright (c) 1992, 1993, 1994
  *	The Regents of the University of California.  All rights reserved.
@@ -58,7 +60,7 @@ void
 regfree(regex_t *preg)
 {
 	struct re_guts *g;
-	int i;
+	unsigned int i;
 
 	if (preg->re_magic != MAGIC1)	/* oops */
 		return;			/* nice to complain, but hard */

@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2009 Hudson River Trading LLC
  * Written by: John H. Baldwin <jhb@FreeBSD.org>
  * All rights reserved.
@@ -38,6 +40,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/mutex.h>
 #include <sys/rwlock.h>
 #include <sys/sglist.h>
+#include <sys/vmmeter.h>
+
 #include <vm/vm.h>
 #include <vm/vm_param.h>
 #include <vm/vm_object.h>

@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2011 Sandvine Incorporated. All rights reserved.
  * Copyright (c) 2002-2011 Andre Albsmeier <andre@albsmeier.net>
  * All rights reserved.
@@ -550,8 +552,7 @@ fw_validate_ibm(struct cam_device *dev, int retry_count, int timeout, int fd,
 		fprintf(stdout, "Firmware file is valid for this drive.\n");
 	retval = 0;
 bailout:
-	if (ccb != NULL)
-		cam_freeccb(ccb);
+	cam_freeccb(ccb);
 
 	return (retval);
 }
@@ -753,8 +754,8 @@ fw_check_device_ready(struct cam_device *dev, camcontrol_devtype devtype,
 		goto bailout;
 	}
 bailout:
-	if (ccb != NULL)
-		cam_freeccb(ccb);
+	free(ptr);
+	cam_freeccb(ccb);
 
 	return (retval);
 }
@@ -913,8 +914,7 @@ fw_download_img(struct cam_device *cam_dev, struct fw_vendor *vp,
 bailout:
 	if (quiet == 0)
 		progress_complete(&progress, size - img_size);
-	if (ccb != NULL)
-		cam_freeccb(ccb);
+	cam_freeccb(ccb);
 	return (retval);
 }
 
@@ -923,6 +923,7 @@ fwdownload(struct cam_device *device, int argc, char **argv,
     char *combinedopt, int printerrors, int task_attr, int retry_count,
     int timeout)
 {
+	union ccb *ccb = NULL;
 	struct fw_vendor *vp;
 	char *fw_img_path = NULL;
 	struct ata_params *ident_buf = NULL;
@@ -965,8 +966,6 @@ fwdownload(struct cam_device *device, int argc, char **argv,
 
 	if ((devtype == CC_DT_ATA)
 	 || (devtype == CC_DT_ATA_BEHIND_SCSI)) {
-		union ccb *ccb;
-
 		ccb = cam_getccb(device);
 		if (ccb == NULL) {
 			warnx("couldn't allocate CCB");
@@ -976,7 +975,6 @@ fwdownload(struct cam_device *device, int argc, char **argv,
 
 		if (ata_do_identify(device, retry_count, timeout, ccb,
 		    		    &ident_buf) != 0) {
-			cam_freeccb(ccb);
 			retval = 1;
 			goto bailout;
 		}
@@ -1048,6 +1046,7 @@ fwdownload(struct cam_device *device, int argc, char **argv,
 		fprintf(stdout, "Firmware download successful\n");
 
 bailout:
+	cam_freeccb(ccb);
 	free(buf);
 	return (retval);
 }

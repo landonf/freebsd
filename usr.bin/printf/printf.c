@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright 2014 Garrett D'Amore <garrett@damore.org>
  * Copyright 2010 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 1989, 1993
@@ -70,20 +72,15 @@ static const char rcsid[] =
 #endif
 
 #define	PF(f, func) do {						\
-	char *b = NULL;							\
 	if (havewidth)							\
 		if (haveprec)						\
-			(void)asprintf(&b, f, fieldwidth, precision, func); \
+			(void)printf(f, fieldwidth, precision, func);	\
 		else							\
-			(void)asprintf(&b, f, fieldwidth, func);	\
+			(void)printf(f, fieldwidth, func);		\
 	else if (haveprec)						\
-		(void)asprintf(&b, f, precision, func);			\
+		(void)printf(f, precision, func);			\
 	else								\
-		(void)asprintf(&b, f, func);				\
-	if (b) {							\
-		(void)fputs(b, stdout);					\
-		free(b);						\
-	}								\
+		(void)printf(f, func);					\
 } while (0)
 
 static int	 asciicode(void);
@@ -394,7 +391,8 @@ printf_doformat(char *fmt, int *rval)
 		char p;
 
 		p = getchr();
-		PF(start, p);
+		if (p != '\0')
+			PF(start, p);
 		break;
 	}
 	case 's': {

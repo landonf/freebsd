@@ -8,13 +8,23 @@
     bin
         cat
         ..
+        chflags
+        ..
+        chmod
+        ..
         date
         ..
         dd
         ..
+        echo
+        ..
         expr
         ..
+        ln
+        ..
         ls
+        ..
+        mkdir
         ..
         mv
         ..
@@ -24,6 +34,8 @@
         ..
         pwait
         ..
+        rmdir
+        ..
         sh
             builtins
             ..
@@ -32,6 +44,8 @@
             execution
             ..
             expansion
+            ..
+            invocation
             ..
             parameters
             ..
@@ -328,6 +342,8 @@
         ..
         libdevdctl
         ..
+        libkvm
+        ..
         libmp
         ..
         libnv
@@ -335,6 +351,8 @@
         libproc
         ..
         librt
+        ..
+        libsbuf
         ..
         libthr
             dlopen
@@ -368,6 +386,10 @@
         ..
         mdconfig
         ..
+        pfctl
+            files
+            ..
+        ..
     ..
     secure
         lib
@@ -386,7 +408,11 @@
                 ..
                 plain
                 ..
+                tap
+                ..
             ..
+        ..
+        zoneinfo
         ..
     ..
     sys
@@ -450,6 +476,10 @@
         ..
         netinet
         ..
+        netpfil
+            pf
+            ..
+        ..
         opencrypto
         ..
         pjdfstest
@@ -482,6 +512,8 @@
             truncate
             ..
             unlink
+            ..
+            utimensat
             ..
         ..
         posixshm
@@ -602,11 +634,15 @@
         ..
         cmp
         ..
+        compress
+        ..
         cpio
         ..
         col
         ..
         comm
+        ..
+        csplit
         ..
         cut
         ..
@@ -614,11 +650,19 @@
         ..
         dirname
         ..
+        du
+        ..
         file2c
+        ..
+        getconf
         ..
         grep
         ..
         gzip
+        ..
+        head
+        ..
+        hexdump
         ..
         ident
         ..
@@ -640,7 +684,11 @@
         ..
         opensm
         ..
+        pr
+        ..
         printf
+        ..
+        procstat
         ..
         sdiff
         ..
@@ -649,6 +697,8 @@
             ..
         ..
         soelim
+        ..
+        stat
         ..
         tail
         ..

@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2000-2001 Boris Popov
  * All rights reserved.
  *
@@ -280,7 +282,7 @@ smbfs_getattr(ap)
 	smbfs_attr_cachelookup(vp, va);
 	if (np->n_flag & NOPEN)
 		np->n_size = oldsize;
-		smbfs_free_scred(scred);
+	smbfs_free_scred(scred);
 	return 0;
 }
 
@@ -907,7 +909,7 @@ smbfs_pathconf (ap)
 		*retval = 800;	/* XXX: a correct one ? */
 		break;
 	    default:
-		error = EINVAL;
+		error = vop_stdpathconf(ap);
 	}
 	return error;
 }

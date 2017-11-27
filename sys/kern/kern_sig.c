@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1982, 1986, 1989, 1991, 1993
  *	The Regents of the University of California.  All rights reserved.
  * (c) UNIX System Laboratories, Inc.
@@ -149,6 +151,10 @@ SYSCTL_INT(_kern_sigqueue, OID_AUTO, overflow, CTLFLAG_RD,
 static int	signal_alloc_fail = 0;
 SYSCTL_INT(_kern_sigqueue, OID_AUTO, alloc_fail, CTLFLAG_RD,
     &signal_alloc_fail, 0, "signals failed to be allocated");
+
+static int	kern_lognosys = 0;
+SYSCTL_INT(_kern, OID_AUTO, lognosys, CTLFLAG_RWTUN, &kern_lognosys, 0,
+    "Log invalid syscalls");
 
 SYSINIT(signal, SI_SUB_P1003_1B, SI_ORDER_FIRST+3, sigqueue_start, NULL);
 
@@ -929,7 +935,7 @@ osigreturn(struct thread *td, struct osigreturn_args *uap)
 void
 siginit(struct proc *p)
 {
-	register int i;
+	int i;
 	struct sigacts *ps;
 
 	PROC_LOCK(p);
@@ -976,7 +982,6 @@ execsigs(struct proc *p)
 	 * and are now ignored by default).
 	 */
 	PROC_LOCK_ASSERT(p, MA_OWNED);
-	td = FIRST_THREAD_IN_PROC(p);
 	ps = p->p_sigacts;
 	mtx_lock(&ps->ps_mtx);
 	while (SIGNOTEMPTY(ps->ps_sigcatch)) {
@@ -1007,6 +1012,8 @@ execsigs(struct proc *p)
 	 * Reset stack state to the user stack.
 	 * Clear set of signals caught on the signal stack.
 	 */
+	td = curthread;
+	MPASS(td->td_proc == p);
 	td->td_sigstk.ss_flags = SS_DISABLE;
 	td->td_sigstk.ss_size = 0;
 	td->td_sigstk.ss_sp = 0;
@@ -1225,6 +1232,19 @@ sys_sigwaitinfo(struct thread *td, struct sigwaitinfo_args *uap)
 	return (error);
 }
 
+static void
+proc_td_siginfo_capture(struct thread *td, siginfo_t *si)
+{
+	struct thread *thr;
+
+	FOREACH_THREAD_IN_PROC(td->td_proc, thr) {
+		if (thr == td)
+			thr->td_si = *si;
+		else
+			thr->td_si.si_signo = 0;
+	}
+}
+
 int
 kern_sigtimedwait(struct thread *td, sigset_t waitset, ksiginfo_t *ksi,
 	struct timespec *timeout)
@@ -1333,8 +1353,10 @@ kern_sigtimedwait(struct thread *td, sigset_t waitset, ksiginfo_t *ksi,
 			ktrpsig(sig, action, &td->td_sigmask, ksi->ksi_code);
 		}
 #endif
-		if (sig == SIGKILL)
+		if (sig == SIGKILL) {
+			proc_td_siginfo_capture(td, &ksi->ksi_info);
 			sigexit(td, sig);
+		}
 	}
 	PROC_UNLOCK(p);
 	return (error);
@@ -1745,10 +1767,8 @@ sys_kill(struct thread *td, struct kill_args *uap)
 
 	if (uap->pid > 0) {
 		/* kill single process */
-		if ((p = pfind(uap->pid)) == NULL) {
-			if ((p = zpfind(uap->pid)) == NULL)
-				return (ESRCH);
-		}
+		if ((p = pfind_any(uap->pid)) == NULL)
+			return (ESRCH);
 		AUDIT_ARG_PROCESS(p);
 		error = p_cansignal(td, p, uap->signum);
 		if (error == 0 && uap->signum)
@@ -1828,33 +1848,41 @@ struct sigqueue_args {
 int
 sys_sigqueue(struct thread *td, struct sigqueue_args *uap)
 {
+	union sigval sv;
+
+	sv.sival_ptr = uap->value;
+
+	return (kern_sigqueue(td, uap->pid, uap->signum, &sv));
+}
+
+int
+kern_sigqueue(struct thread *td, pid_t pid, int signum, union sigval *value)
+{
 	ksiginfo_t ksi;
 	struct proc *p;
 	int error;
 
-	if ((u_int)uap->signum > _SIG_MAXSIG)
+	if ((u_int)signum > _SIG_MAXSIG)
 		return (EINVAL);
 
 	/*
 	 * Specification says sigqueue can only send signal to
 	 * single process.
 	 */
-	if (uap->pid <= 0)
+	if (pid <= 0)
 		return (EINVAL);
 
-	if ((p = pfind(uap->pid)) == NULL) {
-		if ((p = zpfind(uap->pid)) == NULL)
-			return (ESRCH);
-	}
-	error = p_cansignal(td, p, uap->signum);
-	if (error == 0 && uap->signum != 0) {
+	if ((p = pfind_any(pid)) == NULL)
+		return (ESRCH);
+	error = p_cansignal(td, p, signum);
+	if (error == 0 && signum != 0) {
 		ksiginfo_init(&ksi);
 		ksi.ksi_flags = KSI_SIGQ;
-		ksi.ksi_signo = uap->signum;
+		ksi.ksi_signo = signum;
 		ksi.ksi_code = SI_QUEUE;
 		ksi.ksi_pid = td->td_proc->p_pid;
 		ksi.ksi_uid = td->td_ucred->cr_ruid;
-		ksi.ksi_value.sival_ptr = uap->value;
+		ksi.ksi_value = *value;
 		error = pksignal(p, ksi.ksi_signo, &ksi);
 	}
 	PROC_UNLOCK(p);
@@ -2366,7 +2394,7 @@ static void
 tdsigwakeup(struct thread *td, int sig, sig_t action, int intrval)
 {
 	struct proc *p = td->td_proc;
-	register int prop;
+	int prop;
 	int wakeup_swapper;
 
 	wakeup_swapper = 0;
@@ -2451,6 +2479,7 @@ sig_suspend_threads(struct thread *td, struct proc *p, int sending)
 
 	PROC_LOCK_ASSERT(p, MA_OWNED);
 	PROC_SLOCK_ASSERT(p, MA_OWNED);
+	MPASS(sending || td == curthread);
 
 	wakeup_swapper = 0;
 	FOREACH_THREAD_IN_PROC(p, td2) {
@@ -2467,10 +2496,9 @@ sig_suspend_threads(struct thread *td, struct proc *p, int sending)
 				 */
 				KASSERT(!TD_IS_SUSPENDED(td2),
 				    ("thread with deferred stops suspended"));
-				if (TD_SBDRY_INTR(td2) && sending) {
+				if (TD_SBDRY_INTR(td2))
 					wakeup_swapper |= sleepq_abort(td2,
 					    TD_SBDRY_ERRNO(td2));
-				}
 			} else if (!TD_IS_SUSPENDED(td2)) {
 				thread_suspend_one(td2);
 			}
@@ -2620,7 +2648,9 @@ reschedule_signals(struct proc *p, sigset_t block, int flags)
 		signotify(td);
 		if (!(flags & SIGPROCMASK_PS_LOCKED))
 			mtx_lock(&ps->ps_mtx);
-		if (p->p_flag & P_TRACED || SIGISMEMBER(ps->ps_sigcatch, sig))
+		if (p->p_flag & P_TRACED ||
+		    (SIGISMEMBER(ps->ps_sigcatch, sig) &&
+		    !SIGISMEMBER(td->td_sigmask, sig)))
 			tdsigwakeup(td, sig, SIG_CATCH,
 			    (SIGISMEMBER(ps->ps_sigintr, sig) ? EINTR :
 			     ERESTART));
@@ -2754,14 +2784,15 @@ issignal(struct thread *td)
 	struct sigacts *ps;
 	struct sigqueue *queue;
 	sigset_t sigpending;
-	int sig, prop;
+	ksiginfo_t ksi;
+	int prop, sig, traced;
 
 	p = td->td_proc;
 	ps = p->p_sigacts;
 	mtx_assert(&ps->ps_mtx, MA_OWNED);
 	PROC_LOCK_ASSERT(p, MA_OWNED);
 	for (;;) {
-		int traced = (p->p_flag & P_TRACED) || (p->p_stops & S_SIG);
+		traced = (p->p_flag & P_TRACED) || (p->p_stops & S_SIG);
 
 		sigpending = td->td_sigqueue.sq_signals;
 		SIGSETOR(sigpending, p->p_sigqueue.sq_signals);
@@ -2810,26 +2841,44 @@ issignal(struct thread *td)
 			 * be thrown away.
 			 */
 			queue = &td->td_sigqueue;
-			td->td_dbgksi.ksi_signo = 0;
-			if (sigqueue_get(queue, sig, &td->td_dbgksi) == 0) {
+			ksiginfo_init(&ksi);
+			if (sigqueue_get(queue, sig, &ksi) == 0) {
 				queue = &p->p_sigqueue;
-				sigqueue_get(queue, sig, &td->td_dbgksi);
+				sigqueue_get(queue, sig, &ksi);
 			}
+			td->td_si = ksi.ksi_info;
 
 			mtx_unlock(&ps->ps_mtx);
-			sig = ptracestop(td, sig, &td->td_dbgksi);
+			sig = ptracestop(td, sig, &ksi);
 			mtx_lock(&ps->ps_mtx);
 
 			/* 
-			 * Keep looking if the debugger discarded the signal
-			 * or replaced it with a masked signal.
-			 *
-			 * If the traced bit got turned off, go back up
-			 * to the top to rescan signals.  This ensures
-			 * that p_sig* and p_sigact are consistent.
+			 * Keep looking if the debugger discarded or
+			 * replaced the signal.
 			 */
-			if (sig == 0 || (p->p_flag & P_TRACED) == 0)
+			if (sig == 0)
 				continue;
+
+			/*
+			 * If the signal became masked, re-queue it.
+			 */
+			if (SIGISMEMBER(td->td_sigmask, sig)) {
+				ksi.ksi_flags |= KSI_HEAD;
+				sigqueue_add(&p->p_sigqueue, sig, &ksi);
+				continue;
+			}
+
+			/*
+			 * If the traced bit got turned off, requeue
+			 * the signal and go back up to the top to
+			 * rescan signals.  This ensures that p_sig*
+			 * and p_sigact are consistent.
+			 */
+			if ((p->p_flag & P_TRACED) == 0) {
+				ksi.ksi_flags |= KSI_HEAD;
+				sigqueue_add(queue, sig, &ksi);
+				continue;
+			}
 		}
 
 		prop = sigprop(sig);
@@ -2948,11 +2997,10 @@ thread_stopped(struct proc *p)
  * from the current set of pending signals.
  */
 int
-postsig(sig)
-	register int sig;
+postsig(int sig)
 {
-	struct thread *td = curthread;
-	struct proc *p = td->td_proc;
+	struct thread *td;
+	struct proc *p;
 	struct sigacts *ps;
 	sig_t action;
 	ksiginfo_t ksi;
@@ -2960,6 +3008,8 @@ postsig(sig)
 
 	KASSERT(sig != 0, ("postsig"));
 
+	td = curthread;
+	p = td->td_proc;
 	PROC_LOCK_ASSERT(p, MA_OWNED);
 	ps = p->p_sigacts;
 	mtx_assert(&ps->ps_mtx, MA_OWNED);
@@ -2976,7 +3026,7 @@ postsig(sig)
 		ktrpsig(sig, action, td->td_pflags & TDP_OLDMASK ?
 		    &td->td_oldsigmask : &td->td_sigmask, ksi.ksi_code);
 #endif
-	if (p->p_stops & S_SIG) {
+	if ((p->p_stops & S_SIG) != 0) {
 		mtx_unlock(&ps->ps_mtx);
 		stopevent(p, S_SIG, sig);
 		mtx_lock(&ps->ps_mtx);
@@ -2988,14 +3038,17 @@ postsig(sig)
 		 * the process.  (Other cases were ignored above.)
 		 */
 		mtx_unlock(&ps->ps_mtx);
+		proc_td_siginfo_capture(td, &ksi.ksi_info);
 		sigexit(td, sig);
 		/* NOTREACHED */
 	} else {
 		/*
 		 * If we get here, the signal must be caught.
 		 */
-		KASSERT(action != SIG_IGN && !SIGISMEMBER(td->td_sigmask, sig),
-		    ("postsig action"));
+		KASSERT(action != SIG_IGN, ("postsig action %p", action));
+		KASSERT(!SIGISMEMBER(td->td_sigmask, sig),
+		    ("postsig action: blocked sig %d", sig));
+
 		/*
 		 * Set the new mask value and also defer further
 		 * occurrences of this signal.
@@ -3537,11 +3590,21 @@ struct nosys_args {
 int
 nosys(struct thread *td, struct nosys_args *args)
 {
-	struct proc *p = td->td_proc;
+	struct proc *p;
+
+	p = td->td_proc;
 
 	PROC_LOCK(p);
 	tdsignal(td, SIGSYS);
 	PROC_UNLOCK(p);
+	if (kern_lognosys == 1 || kern_lognosys == 3) {
+		uprintf("pid %d comm %s: nosys %d\n", p->p_pid, p->p_comm,
+		    td->td_sa.code);
+	}
+	if (kern_lognosys == 2 || kern_lognosys == 3) {
+		printf("pid %d comm %s: nosys %d\n", p->p_pid, p->p_comm,
+		    td->td_sa.code);
+	}
 	return (ENOSYS);
 }
 

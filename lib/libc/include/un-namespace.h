@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2001 Daniel Eischen <deischen@FreeBSD.org>.
  * All rights reserved.
  *
@@ -37,6 +39,7 @@
 #undef		bind
 #undef		__cap_get_fd
 #undef		__cap_set_fd
+#undef		clock_nanosleep
 #undef		close
 #undef		connect
 #undef		dup

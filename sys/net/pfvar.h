@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
  * Copyright (c) 2001 Daniel Hartmeier
  * All rights reserved.
  *
@@ -153,6 +155,8 @@ extern struct rwlock pf_rules_lock;
 #define	PF_RULES_ASSERT()	rw_assert(&pf_rules_lock, RA_LOCKED)
 #define	PF_RULES_RASSERT()	rw_assert(&pf_rules_lock, RA_RLOCKED)
 #define	PF_RULES_WASSERT()	rw_assert(&pf_rules_lock, RA_WLOCKED)
+
+extern struct sx pf_end_lock;
 
 #define	PF_MODVER	1
 #define	PFLOG_MODVER	1

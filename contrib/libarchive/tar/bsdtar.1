@@ -25,7 +25,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd February 25, 2017
+.Dd October 1, 2017
 .Dt TAR 1
 .Os
 .Sh NAME
@@ -169,7 +169,7 @@ restricted pax format and bzip2 compression.
 (c, r, u, x modes only)
 Archive or extract POSIX.1e or NFSv4 ACLs. This is the reverse of
 .Fl Fl no-acls
-and the default behavior in c, r, and u modes (except Mac OS X) or if
+and the default behavior in c, r, and u modes (except on Mac OS X) or if
 .Nm
 is run in x mode as root. On Mac OS X this option translates extended ACLs
 to NFSv4 ACLs. To store extended ACLs the
@@ -302,19 +302,18 @@ containing the string
 Compress the resulting archive with
 .Xr xz 1 .
 In extract or list modes, this option is ignored.
-Note that, unlike other
+Note that this
 .Nm tar
-implementations, this implementation recognizes XZ compression
-automatically when reading archives.
+implementation recognizes XZ compression automatically when reading archives.
 .It Fl j , Fl Fl bzip , Fl Fl bzip2 , Fl Fl bunzip2
 (c mode only)
 Compress the resulting archive with
 .Xr bzip2 1 .
 In extract or list modes, this option is ignored.
-Note that, unlike other
+Note that this
 .Nm tar
-implementations, this implementation recognizes bzip2 compression
-automatically when reading archives.
+implementation recognizes bzip2 compression automatically when reading
+archives.
 .It Fl k , Fl Fl keep-old-files
 (x mode only)
 Do not overwrite existing files.
@@ -337,25 +336,41 @@ Issue a warning message unless all links to each file are archived.
 Compress the resulting archive with
 .Xr lrzip 1 .
 In extract or list modes, this option is ignored.
+Note that this
+.Nm tar
+implementation recognizes lrzip compression automatically when reading
+archives.
 .It Fl Fl lz4
 (c mode only)
 Compress the archive with lz4-compatible compression before writing it.
-In input mode, this option is ignored; lz4 compression is recognized
-automatically on input.
+In extract or list modes, this option is ignored.
+Note that this
+.Nm tar
+implementation recognizes lz4 compression automatically when reading archives.
+.It Fl Fl zstd
+(c mode only)
+Compress the archive with zstd-compatible compression before writing it.
+In extract or list modes, this option is ignored.
+Note that this
+.Nm tar
+implementation recognizes zstd compression automatically when reading archives.
 .It Fl Fl lzma
 (c mode only) Compress the resulting archive with the original LZMA algorithm.
+In extract or list modes, this option is ignored.
 Use of this option is discouraged and new archives should be created with
 .Fl Fl xz
 instead.
-Note that, unlike other
+Note that this
 .Nm tar
-implementations, this implementation recognizes LZMA compression
-automatically when reading archives.
+implementation recognizes LZMA compression automatically when reading archives.
 .It Fl Fl lzop
 (c mode only)
 Compress the resulting archive with
 .Xr lzop 1 .
 In extract or list modes, this option is ignored.
+Note that this
+.Nm tar
+implementation recognizes LZO compression automatically when reading archives.
 .It Fl m , Fl Fl modification-time
 (x mode only)
 Do not extract modification time.
@@ -396,7 +411,7 @@ except it compares mtime entries instead of ctime entries.
 Honor the nodump file flag by skipping this file.
 .It Fl Fl nopreserveHFSCompression
 (x mode only)
-Mac OS X specific(v10.6 or later). Do not compress extracted regular files
+Mac OS X specific (v10.6 or later). Do not compress extracted regular files
 which were compressed with HFS+ compression before archived.
 By default, compress the regular files again with HFS+ compression.
 .It Fl Fl null
@@ -416,7 +431,7 @@ Do not archive or extract POSIX.1e or NFSv4 ACLs. This is the reverse of
 .Fl Fl acls
 and the default behavior if
 .Nm
-is run as non-root in x mode (on Mac OS X also in c, r and u modes).
+is run as non-root in x mode (on Mac OS X as any user in c, r, u and x modes).
 .It Fl Fl no-fflags
 (c, r, u, x modes only)
 Do not archive or extract file flags. This is the reverse of
@@ -577,6 +592,8 @@ A decimal integer from 4 to 7 specifying the lz4 compression block size
 .It Cm lz4:block-dependence
 Use the previous block of the block being compressed for
 a compression dictionary to improve compression ratio.
+.It Cm zstd:compression-level
+A decimal integer from 1 to 22 specifying the zstd compression level.
 .It Cm lzop:compression-level
 A decimal integer from 1 to 9 specifying the lzop compression level.
 .It Cm xz:compression-level
@@ -640,7 +657,7 @@ This option suppresses these behaviors.
 (x mode only)
 Preserve file permissions.
 Attempt to restore the full permissions, including owner, file modes, ACLs,
-extended atributes and extended file flags, if available, for each item
+extended attributes and extended file flags, if available, for each item
 extracted from the archive. This is te reverse of
 .Fl Fl no-same-permissions
 and the default if
@@ -826,28 +843,28 @@ is run in x mode as root.
 Compress the resulting archive with
 .Xr bzip2 1 .
 In extract or list modes, this option is ignored.
-Note that, unlike other
+Note that this
 .Nm tar
-implementations, this implementation recognizes bzip2 compression
-automatically when reading archives.
+implementation recognizes bzip2 compression automatically when reading
+archives.
 .It Fl Z , Fl Fl compress , Fl Fl uncompress
 (c mode only)
 Compress the resulting archive with
 .Xr compress 1 .
 In extract or list modes, this option is ignored.
-Note that, unlike other
+Note that this
 .Nm tar
-implementations, this implementation recognizes compress compression
-automatically when reading archives.
+implementation recognizes compress compression automatically when reading
+archives.
 .It Fl z , Fl Fl gunzip , Fl Fl gzip
 (c mode only)
 Compress the resulting archive with
 .Xr gzip 1 .
 In extract or list modes, this option is ignored.
-Note that, unlike other
+Note that this
 .Nm tar
-implementations, this implementation recognizes gzip compression
-automatically when reading archives.
+implementation recognizes gzip compression automatically when reading
+archives.
 .El
 .Sh ENVIRONMENT
 The following environment variables affect the execution of

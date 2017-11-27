@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2005 Olivier Houchard
  * Copyright (c) 1989, 1992, 1993
  *	The Regents of the University of California.  All rights reserved.
@@ -249,7 +251,11 @@ _kvm_mdopen(kvm_t *kd)
 #endif
 
 int
+#ifdef __arm__
 _arm_native(kvm_t *kd)
+#else
+_arm_native(kvm_t *kd __unused)
+#endif
 {
 
 #ifdef __arm__
@@ -263,7 +269,7 @@ _arm_native(kvm_t *kd)
 #endif
 }
 
-struct kvm_arch kvm_arm = {
+static struct kvm_arch kvm_arm = {
 	.ka_probe = _arm_probe,
 	.ka_initvtop = _arm_initvtop,
 	.ka_freevtop = _arm_freevtop,
