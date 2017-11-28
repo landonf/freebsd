@@ -73,12 +73,14 @@ __FBSDID("$FreeBSD$");
 #include <net80211/ieee80211_phy.h>
 #include <net80211/ieee80211_ratectl.h>
 
+#include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/bhnd_ids.h>
+
 #include <dev/bwn/if_bwn_siba.h>
 
 #include <dev/bwn/if_bwnreg.h>
 #include <dev/bwn/if_bwnvar.h>
 
-#include <dev/bwn/if_bwn_chipid.h>
 #include <dev/bwn/if_bwn_debug.h>
 #include <dev/bwn/if_bwn_misc.h>
 #include <dev/bwn/if_bwn_phy_common.h>

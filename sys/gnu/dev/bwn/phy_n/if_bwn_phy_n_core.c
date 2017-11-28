@@ -78,7 +78,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/bwn/if_bwn_util.h>
 #include <dev/bwn/if_bwn_debug.h>
 #include <dev/bwn/if_bwn_phy_common.h>
-#include <dev/bwn/if_bwn_chipid.h>
 #include <dev/bwn/if_bwn_cordic.h>
 
 #include <gnu/dev/bwn/phy_n/if_bwn_phy_n_regs.h>
@@ -3481,7 +3480,7 @@ static void bwn_nphy_workarounds_rev1_2(struct bwn_mac *mac)
 	uint8_t delays2[7] = { 0x8, 0x6, 0x2, 0x4, 0x4, 0x6, 0x1 };
 
 	if (siba_sprom_get_bf2_lo(sc->sc_dev) & BWN_BFL2_SKWRKFEM_BRD ||
-	    siba_get_pci_subdevice(sc->sc_dev)== BCMA_BOARD_TYPE_BCM943224M93) {
+	    siba_get_pci_subdevice(sc->sc_dev) == BHND_BOARD_BCM943224M93) {
 		delays1[0] = 0x1;
 		delays1[5] = 0x14;
 	}
@@ -6226,7 +6225,7 @@ static int bwn_phy_initn(struct bwn_mac *mac)
 
 	if (siba_sprom_get_bf2_lo(sc->sc_dev) & BWN_BFL2_SKWRKFEM_BRD ||
 	    (siba_get_pci_subvendor(sc->sc_dev) == PCI_VENDOR_APPLE &&
-	     siba_get_pci_subdevice(sc->sc_dev) == BCMA_BOARD_TYPE_BCM943224M93))
+	     siba_get_pci_subdevice(sc->sc_dev) == BHND_BOARD_BCM943224M93))
 		BWN_PHY_WRITE(mac, BWN_NPHY_TXREALFD, 0xA0);
 	else
 		BWN_PHY_WRITE(mac, BWN_NPHY_TXREALFD, 0xB8);

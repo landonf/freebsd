@@ -77,7 +77,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/bwn/if_bwnreg.h>
 #include <dev/bwn/if_bwnvar.h>
 
-#include <dev/bwn/if_bwn_chipid.h>
 #include <dev/bwn/if_bwn_debug.h>
 #include <dev/bwn/if_bwn_misc.h>
 #include <dev/bwn/if_bwn_util.h>
