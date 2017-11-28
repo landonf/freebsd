@@ -782,11 +782,6 @@ bwn_sprom_bugfixes(device_t dev)
 		siba_sprom_set_bf_lo(dev,
 		    siba_sprom_get_bf_lo(dev) | BWN_BFL_PACTRL);
 
-	// XXX TODO: 0x4301 is a PCI ID, not a chip ID.
-	if (siba_get_pci_subvendor(dev) == SIBA_BOARDVENDOR_DELL &&
-	    sc->sc_cid.chip_id == 0x4301 && siba_get_pci_revid(dev) == 0x74)
-		siba_sprom_set_bf_lo(dev,
-		    siba_sprom_get_bf_lo(dev) | BWN_BFL_BTCOEXIST);
 	if (siba_get_type(dev) == SIBA_TYPE_PCI) {
 		if (BWN_ISDEV(BROADCOM, 0x4318, ASUSTEK, 0x100f) ||
 		    BWN_ISDEV(BROADCOM, 0x4320, DELL, 0x0003) ||
