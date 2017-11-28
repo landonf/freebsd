@@ -253,6 +253,7 @@ siba_bhndb_wars_pcie_clear_d11_timeout(struct siba_bhndb_softc *sc)
 	imcfg &= ~(SIBA_IMCL_RTO_MASK|SIBA_IMCL_STO_MASK);
 
 	bhnd_bus_write_4(dinfo->cfg_res[0], SIBA_CFG0_IMCONFIGLOW, imcfg);
+
 	return (0);
 }
 
