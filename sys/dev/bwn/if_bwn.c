@@ -71,9 +71,10 @@ __FBSDID("$FreeBSD$");
 #include <net80211/ieee80211_phy.h>
 #include <net80211/ieee80211_ratectl.h>
 
-#include <dev/bwn/if_bwn_siba.h>
 #include <dev/bhnd/bhnd.h>
 #include <dev/bhnd/bhnd_ids.h>
+
+#include <dev/bwn/if_bwn_siba.h>
 
 #include <dev/bwn/if_bwnreg.h>
 #include <dev/bwn/if_bwnvar.h>
@@ -85,6 +86,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/bwn/if_bwn_phy_g.h>
 #include <dev/bwn/if_bwn_phy_lp.h>
 #include <dev/bwn/if_bwn_phy_n.h>
+
+#include "bhnd_nvram_map.h"
 
 static SYSCTL_NODE(_hw, OID_AUTO, bwn, CTLFLAG_RD, 0,
     "Broadcom driver parameters");
@@ -513,6 +516,11 @@ bwn_attach(device_t dev)
 	sc->sc_debug = bwn_debug;
 #endif
 
+	if ((error = bhnd_read_board_info(dev, &sc->sc_board_info))) {
+		device_printf(sc->sc_dev, "couldn't read board info\n");
+		return (error);
+	}
+
 	sc->sc_bus_ops = bwn_get_bus_ops(dev);
 	if ((error = BWN_BUS_OPS_ATTACH(dev))) {
 		device_printf(sc->sc_dev,
@@ -587,7 +595,7 @@ bwn_attach(device_t dev)
 
 	return (0);
 fail:
-	if (mac->mac_res_irq != NULL) {
+	if (mac != NULL && mac->mac_res_irq != NULL) {
 		bus_release_resource(dev, SYS_RES_IRQ, mac->mac_rid_irq,
 		    mac->mac_res_irq);
 	}
@@ -598,20 +606,14 @@ fail:
 }
 
 static int
-bwn_is_valid_ether_addr(uint8_t *addr)
-{
-	char zero_addr[6] = { 0, 0, 0, 0, 0, 0 };
-
-	if ((addr[0] & 1) || (!bcmp(addr, zero_addr, ETHER_ADDR_LEN)))
-		return (FALSE);
-
-	return (TRUE);
-}
-
-static int
 bwn_attach_post(struct bwn_softc *sc)
 {
-	struct ieee80211com *ic = &sc->sc_ic;
+	struct ieee80211com	*ic;
+	const char		*mac_varname;
+	u_int			 core_unit;
+	int			 error;
+
+	ic = &sc->sc_ic;
 
 	ic->ic_softc = sc;
 	ic->ic_name = device_get_nameunit(sc->sc_dev);
@@ -634,10 +636,35 @@ bwn_attach_post(struct bwn_softc *sc)
 
 	ic->ic_flags_ext |= IEEE80211_FEXT_SWBMISS;	/* s/w bmiss */
 
-	IEEE80211_ADDR_COPY(ic->ic_macaddr,
-	    bwn_is_valid_ether_addr(siba_sprom_get_mac_80211a(sc->sc_dev)) ?
-	    siba_sprom_get_mac_80211a(sc->sc_dev) :
-	    siba_sprom_get_mac_80211bg(sc->sc_dev));
+	/* Determine the NVRAM variable containing our MAC address */
+	core_unit = bhnd_get_core_unit(sc->sc_dev);
+	mac_varname = NULL;
+	if (sc->sc_board_info.board_srom_rev <= 2) {
+		if (core_unit == 0) {
+			mac_varname = BHND_NVAR_IL0MACADDR;
+		} else if (core_unit == 1) {
+			mac_varname = BHND_NVAR_ET1MACADDR;
+		}
+	} else {
+		if (core_unit == 0) {
+			mac_varname = BHND_NVAR_MACADDR;
+		}
+	}
+
+	if (mac_varname == NULL) {
+		device_printf(sc->sc_dev, "missing MAC address variable for "
+		    "D11 core %u", core_unit);
+		return (ENXIO);
+	}
+
+	/* Read the MAC address from NVRAM */
+	error = bhnd_nvram_getvar_array(sc->sc_dev, mac_varname, ic->ic_macaddr,
+	    sizeof(ic->ic_macaddr), BHND_NVRAM_TYPE_UINT8_ARRAY);
+	if (error) {
+		device_printf(sc->sc_dev, "error reading %s: %d\n", mac_varname,
+		    error);
+		return (error);
+	}
 
 	/* call MI attach routine. */
 	ieee80211_ifattach(ic);

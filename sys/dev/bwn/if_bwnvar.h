@@ -34,6 +34,8 @@
 #ifndef _IF_BWNVAR_H
 #define	_IF_BWNVAR_H
 
+#include <dev/bhnd/bhnd.h>
+
 #include "if_bwn_siba.h"
 
 struct bwn_softc;
@@ -1011,6 +1013,7 @@ struct bwn_softc {
 	device_t			sc_dev;
 	const struct bwn_bus_ops	*sc_bus_ops;
 #if !BWN_USE_SIBA
+	struct bhnd_board_info		 sc_board_info;
 	void				*sc_bus_ctx;
 	struct bhnd_resource		*sc_mem_res;
 	int				 sc_mem_rid;

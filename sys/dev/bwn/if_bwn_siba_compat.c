@@ -213,7 +213,6 @@ bwn_bhnd_is_siba_reg(device_t dev, uint16_t offset)
 static int
 bwn_bhnd_populate_nvram_data(device_t dev, struct bwn_bhnd_ctx *ctx)
 {
-	const char	*mac_80211bg_var, *mac_80211a_var;
 	int	error;
 
 	/* Fetch SROM revision */
@@ -232,41 +231,6 @@ bwn_bhnd_populate_nvram_data(device_t dev, struct bwn_bhnd_ctx *ctx)
 		    BHND_NVAR_BOARDFLAGS, error);
 		return (error);
 	}
-
-	/* Fetch macaddrs if available; bwn(4) expects any missing macaddr
-	 * values to be initialized with 0xFF octets */
-	memset(ctx->mac_80211bg, 0xFF, sizeof(ctx->mac_80211bg));
-	memset(ctx->mac_80211a, 0xFF, sizeof(ctx->mac_80211a));
-
-	if (ctx->sromrev <= 2) {
-		mac_80211bg_var = BHND_NVAR_IL0MACADDR;
-		mac_80211a_var = BHND_NVAR_ET1MACADDR;
-	} else {
-		mac_80211bg_var = BHND_NVAR_MACADDR;
-		mac_80211a_var = NULL;
-	}
-
-	/* Fetch required D11 core 0 macaddr */
-	error = bhnd_nvram_getvar_array(dev, mac_80211bg_var, ctx->mac_80211bg,
-	    sizeof(ctx->mac_80211bg), BHND_NVRAM_TYPE_UINT8_ARRAY);
-	if (error) {
-		device_printf(dev, "error reading %s: %d\n", mac_80211bg_var,
-		    error);
-		return (error);
-	}
-
-	/* Fetch optional D11 core 1 macaddr */
-	if (mac_80211a_var != NULL) {
-		error = bhnd_nvram_getvar_array(dev, mac_80211a_var,
-		    ctx->mac_80211a, sizeof(ctx->mac_80211a),
-		    BHND_NVRAM_TYPE_UINT8_ARRAY);
-
-		if (error && error != ENOENT) {
-			device_printf(dev, "error reading %s: %d\n",
-			    mac_80211a_var, error);
-			return (error);
-		}
-	};
 
 	/* Fetch pa0maxpwr; bwn(4) expects to be able to modify it */
 	if ((ctx->sromrev >= 1 && ctx->sromrev <= 3) ||
@@ -655,32 +619,6 @@ static uint8_t
 bhnd_compat_sprom_get_rev(device_t dev)
 {
 	return (bwn_bhnd_get_ctx(dev)->sromrev);
-}
-
-/*
- * siba_sprom_get_mac_80211bg()
- *
- * Referenced by:
- *   bwn_attach_post()
- */
-static uint8_t *
-bhnd_compat_sprom_get_mac_80211bg(device_t dev)
-{
-	/* 'MAC_80211BG' is il0macaddr or macaddr*/
-	return (bwn_bhnd_get_ctx(dev)->mac_80211bg);
-}
-
-/*
- * siba_sprom_get_mac_80211a()
- *
- * Referenced by:
- *   bwn_attach_post()
- */
-static uint8_t *
-bhnd_compat_sprom_get_mac_80211a(device_t dev)
-{
-	/* 'MAC_80211A' is et1macaddr */
-	return (bwn_bhnd_get_ctx(dev)->mac_80211a);
 }
 
 /*
@@ -2402,8 +2340,6 @@ const struct bwn_bus_ops bwn_bhnd_bus_ops = {
 	.get_cc_powerdelay		= bhnd_compat_get_cc_powerdelay,
 	.get_pcicore_revid		= bhnd_compat_get_pcicore_revid,
 	.sprom_get_rev			= bhnd_compat_sprom_get_rev,
-	.sprom_get_mac_80211bg		= bhnd_compat_sprom_get_mac_80211bg,
-	.sprom_get_mac_80211a		= bhnd_compat_sprom_get_mac_80211a,
 	.sprom_get_brev			= bhnd_compat_sprom_get_brev,
 	.sprom_get_ccode		= bhnd_compat_sprom_get_ccode,
 	.sprom_get_ant_a		= bhnd_compat_sprom_get_ant_a,
