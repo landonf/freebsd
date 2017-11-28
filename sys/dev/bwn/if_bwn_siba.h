@@ -61,8 +61,6 @@ struct bwn_bus_ops {
 	uint32_t	(*get_cc_caps)(device_t);
 	uint16_t	(*get_cc_powerdelay)(device_t);
 	uint8_t		(*get_pcicore_revid)(device_t);
-	uint8_t		(*sprom_get_rev)(device_t);
-	uint8_t		(*sprom_get_brev)(device_t);
 	uint8_t		(*sprom_get_ccode)(device_t);
 	uint8_t		(*sprom_get_ant_a)(device_t);
 	uint8_t		(*sprom_get_ant_bg)(device_t);
@@ -257,10 +255,6 @@ struct siba_sprom_core_pwr_info {
 	BWN_BUS_OPS(_dev)->get_cc_powerdelay(_dev)
 #define	siba_get_pcicore_revid(_dev)	\
 	BWN_BUS_OPS(_dev)->get_pcicore_revid(_dev)
-#define	siba_sprom_get_rev(_dev)	\
-	BWN_BUS_OPS(_dev)->sprom_get_rev(_dev)
-#define	siba_sprom_get_brev(_dev)	\
-	BWN_BUS_OPS(_dev)->sprom_get_brev(_dev)
 #define	siba_sprom_get_ccode(_dev)	\
 	BWN_BUS_OPS(_dev)->sprom_get_ccode(_dev)
 #define	siba_sprom_get_ant_a(_dev)	\

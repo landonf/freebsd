@@ -607,34 +607,6 @@ bhnd_compat_get_pcicore_revid(device_t dev)
 }
 
 /*
- * siba_sprom_get_rev()
- *
- * Referenced by:
- *   bwn_nphy_op_prepare_structs()
- *   bwn_nphy_tx_power_ctl_setup()
- *   bwn_nphy_tx_power_fix()
- *   bwn_nphy_workarounds_rev7plus()
- */
-static uint8_t
-bhnd_compat_sprom_get_rev(device_t dev)
-{
-	return (bwn_bhnd_get_ctx(dev)->sromrev);
-}
-
-/*
- * siba_sprom_get_brev()
- *
- * Referenced by:
- *   bwn_radio_init2055_post()
- */
-static uint8_t
-bhnd_compat_sprom_get_brev(device_t dev)
-{
-	/* TODO: bwn(4) needs to switch to uint16_t */
-	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_BOARDREV);
-}
-
-/*
  * siba_sprom_get_ccode()
  *
  * Referenced by:
@@ -2339,8 +2311,6 @@ const struct bwn_bus_ops bwn_bhnd_bus_ops = {
 	.get_cc_caps			= bhnd_compat_get_cc_caps,
 	.get_cc_powerdelay		= bhnd_compat_get_cc_powerdelay,
 	.get_pcicore_revid		= bhnd_compat_get_pcicore_revid,
-	.sprom_get_rev			= bhnd_compat_sprom_get_rev,
-	.sprom_get_brev			= bhnd_compat_sprom_get_brev,
 	.sprom_get_ccode		= bhnd_compat_sprom_get_ccode,
 	.sprom_get_ant_a		= bhnd_compat_sprom_get_ant_a,
 	.sprom_get_ant_bg		= bhnd_compat_sprom_get_ant_bg,

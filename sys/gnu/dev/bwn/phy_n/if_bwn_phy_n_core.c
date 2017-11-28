@@ -1555,7 +1555,7 @@ static void bwn_radio_init2055_post(struct bwn_mac *mac)
 		workaround =
 		    (siba_get_pci_subvendor(sc->sc_dev) != SIBA_BOARDVENDOR_BCM)
 		    && (siba_get_pci_subdevice(sc->sc_dev) == SIBA_BOARD_BCM4321)
-		      && (siba_sprom_get_brev(sc->sc_dev) >= 0x41);
+		      && (sc->sc_board_info.board_rev >= 0x41);
 	else
 		workaround =
 			!(siba_sprom_get_bf2_lo(sc->sc_dev) & BWN_BFL2_RXBB_INT_REG_DIS);
@@ -3073,7 +3073,7 @@ static void bwn_nphy_workarounds_rev7plus(struct bwn_mac *mac)
 		bwn_nphy_rf_ctl_override_rev7(mac, 4, 1, 3, false, 0);
 
 	if (phy->rf_rev == 3 || phy->rf_rev == 4 || phy->rf_rev == 6) {
-		if (siba_sprom_get_rev(sc->sc_dev) &&
+		if (sc->sc_board_info.board_srom_rev &&
 		    siba_sprom_get_bf2_hi(sc->sc_dev) & BWN_BFH2_IPALVLSHIFT_3P3) {
 			BWN_RF_WRITE(mac, 0x5, 0x05);
 			BWN_RF_WRITE(mac, 0x6, 0x30);
@@ -3872,7 +3872,7 @@ static void bwn_nphy_tx_power_fix(struct bwn_mac *mac)
 	} else if (mac->mac_phy.rev >= 3) {
 		txpi[0] = 40;
 		txpi[1] = 40;
-	} else if (siba_sprom_get_rev(sc->sc_dev) < 4) {
+	} else if (sc->sc_board_info.board_srom_rev < 4) {
 		txpi[0] = 72;
 		txpi[1] = 72;
 	} else {
@@ -4213,7 +4213,7 @@ static void bwn_nphy_tx_power_ctl_setup(struct bwn_mac *mac)
 	 * XXX TODO: see if those bandsbelow map to 5g-lo, 5g-mid, 5g-hi in
 	 * any way.
 	 */
-	if (siba_sprom_get_rev(sc->sc_dev) < 4) {
+	if (sc->sc_board_info.board_srom_rev < 4) {
 		idle[0] = nphy->pwr_ctl_info[0].idle_tssi_2g;
 		idle[1] = nphy->pwr_ctl_info[1].idle_tssi_2g;
 		target[0] = target[1] = 52;
@@ -6619,7 +6619,7 @@ bwn_nphy_op_prepare_structs(struct bwn_mac *mac)
 	     (siba_get_revid(sc->sc_dev) == 11 || siba_get_revid(sc->sc_dev) == 12))) {
 		nphy->txpwrctrl = true;
 		nphy->pwg_gain_5ghz = true;
-	} else if (siba_sprom_get_rev(sc->sc_dev) >= 4) {
+	} else if (sc->sc_board_info.board_srom_rev >= 4) {
 		if (mac->mac_phy.rev >= 2 &&
 		    (siba_sprom_get_bf2_lo(sc->sc_dev) & BWN_BFL2_TXPWRCTRL_EN)) {
 			nphy->txpwrctrl = true;
