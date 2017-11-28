@@ -541,16 +541,6 @@ bwn_attach(device_t dev)
 		sc->sc_flags |= BWN_FLAG_ATTACHED;
 	}
 
-	if (!TAILQ_EMPTY(&sc->sc_maclist)) {
-		if (siba_get_pci_device(dev) != 0x4313 &&
-		    siba_get_pci_device(dev) != 0x431a &&
-		    siba_get_pci_device(dev) != 0x4321) {
-			device_printf(sc->sc_dev,
-			    "skip 802.11 cores\n");
-			return (ENODEV);
-		}
-	}
-
 	mac = malloc(sizeof(*mac), M_DEVBUF, M_WAITOK | M_ZERO);
 	mac->mac_sc = sc;
 	mac->mac_status = BWN_MAC_STATUS_UNINIT;
