@@ -1014,6 +1014,7 @@ struct bwn_softc {
 	const struct bwn_bus_ops	*sc_bus_ops;
 #if !BWN_USE_SIBA
 	struct bhnd_board_info		 sc_board_info;
+	struct bhnd_chipid		 sc_cid;
 	void				*sc_bus_ctx;
 	struct bhnd_resource		*sc_mem_res;
 	int				 sc_mem_rid;

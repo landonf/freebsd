@@ -69,6 +69,9 @@ __FBSDID("$FreeBSD$");
 #include <net80211/ieee80211_phy.h>
 #include <net80211/ieee80211_ratectl.h>
 
+#include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/bhnd_ids.h>
+
 #include <dev/bwn/if_bwnreg.h>
 #include <dev/bwn/if_bwnvar.h>
 #include <dev/bwn/if_bwn_misc.h>
@@ -1232,10 +1235,10 @@ static void bwn_radio_2056_setup(struct bwn_mac *mac,
 	}
 
 	is_pkg_fab_smic =
-		((siba_get_chipid(sc->sc_dev) == BCMA_CHIP_ID_BCM43224 ||
-		  siba_get_chipid(sc->sc_dev) == BCMA_CHIP_ID_BCM43225 ||
-		  siba_get_chipid(sc->sc_dev) == BCMA_CHIP_ID_BCM43421) &&
-		 siba_get_chippkg(sc->sc_dev) == BCMA_PKG_ID_BCM43224_FAB_SMIC);
+		((sc->sc_cid.chip_id == BHND_CHIPID_BCM43224 ||
+		  sc->sc_cid.chip_id == BHND_CHIPID_BCM43225 ||
+		  sc->sc_cid.chip_id == BHND_CHIPID_BCM43421) &&
+		 sc->sc_cid.chip_pkg == BHND_PKGID_BCM43224_FAB_SMIC);
 
 	bwn_chantab_radio_2056_upload(mac, e);
 	b2056_upload_syn_pll_cp2(mac, band == BWN_BAND_5G);
@@ -1244,8 +1247,8 @@ static void bwn_radio_2056_setup(struct bwn_mac *mac,
 	    bwn_current_band(mac) == BWN_BAND_2G) {
 		BWN_RF_WRITE(mac, B2056_SYN_PLL_LOOPFILTER1, 0x1F);
 		BWN_RF_WRITE(mac, B2056_SYN_PLL_LOOPFILTER2, 0x1F);
-		if (siba_get_chipid(sc->sc_dev) == BCMA_CHIP_ID_BCM4716 ||
-		    siba_get_chipid(sc->sc_dev) == BCMA_CHIP_ID_BCM47162) {
+		if (sc->sc_cid.chip_id == BHND_CHIPID_BCM4716 ||
+		    sc->sc_cid.chip_id == BHND_CHIPID_BCM47162) {
 			BWN_RF_WRITE(mac, B2056_SYN_PLL_LOOPFILTER4, 0x14);
 			BWN_RF_WRITE(mac, B2056_SYN_PLL_CP2, 0);
 		} else {
@@ -1275,8 +1278,8 @@ static void bwn_radio_2056_setup(struct bwn_mac *mac,
 				BWN_RF_WRITE(mac,
 					offset | B2056_TX_PADG_IDAC, 0xcc);
 
-				if (siba_get_chipid(sc->sc_dev) == BCMA_CHIP_ID_BCM4716 ||
-				    siba_get_chipid(sc->sc_dev) == BCMA_CHIP_ID_BCM47162) {
+				if (sc->sc_cid.chip_id == BHND_CHIPID_BCM4716 ||
+				    sc->sc_cid.chip_id == BHND_CHIPID_BCM47162) {
 					bias = 0x40;
 					cbias = 0x45;
 					pag_boost = 0x5;
@@ -6459,7 +6462,7 @@ static void bwn_nphy_channel_setup(struct bwn_mac *mac,
 			} else { /* 40MHz */
 				if (nphy->aband_spurwar_en &&
 				    (ch == 38 || ch == 102 || ch == 118))
-					spuravoid = siba_get_chipid(sc->sc_dev) == 0x4716;
+					spuravoid = (sc->sc_cid.chip_id == BHND_CHIPID_BCM4716);
 			}
 		}
 

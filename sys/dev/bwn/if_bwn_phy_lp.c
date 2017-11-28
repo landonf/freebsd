@@ -72,6 +72,9 @@ __FBSDID("$FreeBSD$");
 #include <net80211/ieee80211_phy.h>
 #include <net80211/ieee80211_ratectl.h>
 
+#include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/bhnd_ids.h>
+
 #include <dev/bwn/if_bwn_siba.h>
 
 #include <dev/bwn/if_bwnreg.h>
@@ -686,7 +689,7 @@ bwn_phy_lp_calib(struct bwn_mac *mac)
 		bwn_phy_lp_digflt_restore(mac);
 
 	/* do RX IQ Calculation; assumes that noise is true. */
-	if (siba_get_chipid(sc->sc_dev) == 0x5354) {
+	if (sc->sc_cid.chip_id == BHND_CHIPID_BCM5354) {
 		for (i = 0; i < N(bwn_rxcompco_5354); i++) {
 			if (bwn_rxcompco_5354[i].rc_chan == plp->plp_chan)
 				rc = &bwn_rxcompco_5354[i];
@@ -1318,8 +1321,8 @@ bwn_phy_lp_bbinit_r2(struct bwn_mac *mac)
 	BWN_PHY_SETMASK(mac, BWN_PHY_CLIPCTRTHRESH, 0xfc1f, 0xa0);
 	BWN_PHY_SETMASK(mac, BWN_PHY_GAINDIRECTMISMATCH, 0xe0ff, 0x300);
 	BWN_PHY_SETMASK(mac, BWN_PHY_HIGAINDB, 0x00ff, 0x2a00);
-	if ((siba_get_chipid(sc->sc_dev) == 0x4325) &&
-	    (siba_get_chiprev(sc->sc_dev) == 0)) {
+	if (sc->sc_cid.chip_id == BHND_CHIPID_BCM4325 &&
+	    sc->sc_cid.chip_pkg == 0) {
 		BWN_PHY_SETMASK(mac, BWN_PHY_LOWGAINDB, 0x00ff, 0x2100);
 		BWN_PHY_SETMASK(mac, BWN_PHY_VERYLOWGAINDB, 0xff00, 0xa);
 	} else {
@@ -1328,8 +1331,8 @@ bwn_phy_lp_bbinit_r2(struct bwn_mac *mac)
 	}
 	for (i = 0; i < N(v3); i++)
 		BWN_PHY_SETMASK(mac, v3[i].offset, v3[i].mask, v3[i].set);
-	if ((siba_get_chipid(sc->sc_dev) == 0x4325) &&
-	    (siba_get_chiprev(sc->sc_dev) == 0)) {
+	if (sc->sc_cid.chip_id == BHND_CHIPID_BCM4325 &&
+	    sc->sc_cid.chip_pkg == 0) {
 		bwn_tab_write(mac, BWN_TAB_2(0x08, 0x14), 0);
 		bwn_tab_write(mac, BWN_TAB_2(0x08, 0x12), 0x40);
 	}
@@ -1354,8 +1357,8 @@ bwn_phy_lp_bbinit_r2(struct bwn_mac *mac)
 	    0x2000 | ((uint16_t)plp->plp_rssigs << 10) |
 	    ((uint16_t)plp->plp_rssivc << 4) | plp->plp_rssivf);
 
-	if ((siba_get_chipid(sc->sc_dev) == 0x4325) &&
-	    (siba_get_chiprev(sc->sc_dev) == 0)) {
+	if (sc->sc_cid.chip_id == BHND_CHIPID_BCM4325 &&
+	    sc->sc_cid.chip_pkg == 0) {
 		BWN_PHY_SET(mac, BWN_PHY_AFE_ADC_CTL_0, 0x1c);
 		BWN_PHY_SETMASK(mac, BWN_PHY_AFE_CTL, 0x00ff, 0x8800);
 		BWN_PHY_SETMASK(mac, BWN_PHY_AFE_ADC_CTL_1, 0xfc3c, 0x0400);
@@ -1502,8 +1505,8 @@ bwn_phy_lp_bbinit_r01(struct bwn_mac *mac)
 		BWN_PHY_COPY(mac, BWN_PHY_TR_LOOKUP_8, BWN_PHY_TR_LOOKUP_4);
 	}
 	if ((siba_sprom_get_bf_hi(sc->sc_dev) & BWN_BFH_FEM_BT) &&
-	    (siba_get_chipid(sc->sc_dev) == 0x5354) &&
-	    (siba_get_chippkg(sc->sc_dev) == SIBA_CHIPPACK_BCM4712S)) {
+	    (sc->sc_cid.chip_id == BHND_CHIPID_BCM5354) &&
+	    (sc->sc_cid.chip_pkg == BHND_PKGID_BCM4712SMALL)) {
 		BWN_PHY_SET(mac, BWN_PHY_CRSGAIN_CTL, 0x0006);
 		BWN_PHY_WRITE(mac, BWN_PHY_GPIO_SELECT, 0x0005);
 		BWN_PHY_WRITE(mac, BWN_PHY_GPIO_OUTEN, 0xffff);
@@ -1876,7 +1879,7 @@ bwn_phy_lp_b2062_reset_pllbias(struct bwn_mac *mac)
 
 	BWN_RF_WRITE(mac, BWN_B2062_S_RFPLLCTL2, 0xff);
 	DELAY(20);
-	if (siba_get_chipid(sc->sc_dev) == 0x5354) {
+	if (sc->sc_cid.chip_id == BHND_CHIPID_BCM5354) {
 		BWN_RF_WRITE(mac, BWN_B2062_N_COM1, 4);
 		BWN_RF_WRITE(mac, BWN_B2062_S_RFPLLCTL2, 4);
 	} else {
@@ -2735,8 +2738,8 @@ bwn_phy_lp_tblinit_r2(struct bwn_mac *mac)
 	bwn_tab_write_multi(mac, BWN_TAB_4(9, 0), N(papdeps), papdeps);
 	bwn_tab_write_multi(mac, BWN_TAB_4(10, 0), N(papdmult), papdmult);
 
-	if ((siba_get_chipid(sc->sc_dev) == 0x4325) &&
-	    (siba_get_chiprev(sc->sc_dev) == 0)) {
+	if (sc->sc_cid.chip_id == BHND_CHIPID_BCM4325 &&
+	    sc->sc_cid.chip_pkg == 0) {
 		bwn_tab_write_multi(mac, BWN_TAB_4(13, 0), N(gainidx_a0),
 		    gainidx_a0);
 		bwn_tab_write_multi(mac, BWN_TAB_2(14, 0), N(auxgainidx_a0),

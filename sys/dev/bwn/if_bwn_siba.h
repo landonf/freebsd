@@ -50,9 +50,6 @@ struct bwn_bus_ops {
 	uint16_t	(*get_pci_subvendor)(device_t);
 	uint16_t	(*get_pci_subdevice)(device_t);
 	uint8_t		(*get_pci_revid)(device_t);
-	uint16_t	(*get_chipid)(device_t);
-	uint16_t	(*get_chiprev)(device_t);
-	uint8_t		(*get_chippkg)(device_t);
 	enum siba_type	(*get_type)(device_t);
 	uint32_t	(*get_cc_pmufreq)(device_t);
 	uint32_t	(*get_cc_caps)(device_t);
@@ -231,12 +228,6 @@ struct siba_sprom_core_pwr_info {
 	BWN_BUS_OPS(_dev)->get_pci_subdevice(_dev)
 #define	siba_get_pci_revid(_dev)	\
 	BWN_BUS_OPS(_dev)->get_pci_revid(_dev)
-#define	siba_get_chipid(_dev)	\
-	BWN_BUS_OPS(_dev)->get_chipid(_dev)
-#define	siba_get_chiprev(_dev)	\
-	BWN_BUS_OPS(_dev)->get_chiprev(_dev)
-#define	siba_get_chippkg(_dev)	\
-	BWN_BUS_OPS(_dev)->get_chippkg(_dev)
 #define	siba_get_type(_dev)	\
 	BWN_BUS_OPS(_dev)->get_type(_dev)
 #define	siba_get_cc_pmufreq(_dev)	\

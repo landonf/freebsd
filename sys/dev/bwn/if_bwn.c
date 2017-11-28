@@ -507,14 +507,17 @@ bwn_probe(device_t dev)
 int
 bwn_attach(device_t dev)
 {
-	struct bwn_mac *mac;
-	struct bwn_softc *sc = device_get_softc(dev);
+	struct bwn_mac		*mac;
+	struct bwn_softc	*sc = device_get_softc(dev);
+	char			 chip_name[BHND_CHIPID_MAX_NAMELEN];
 	int error;
 
 	sc->sc_dev = dev;
 #ifdef BWN_DEBUG
 	sc->sc_debug = bwn_debug;
 #endif
+
+	sc->sc_cid = *bhnd_get_chipid(dev);
 
 	if ((error = bhnd_read_board_info(dev, &sc->sc_board_info))) {
 		device_printf(sc->sc_dev, "couldn't read board info\n");
@@ -549,12 +552,12 @@ bwn_attach(device_t dev)
 		goto fail;
 	bwn_led_attach(mac);
 
-	device_printf(sc->sc_dev, "WLAN (chipid %#x rev %u) "
+	bhnd_format_chip_id(chip_name, sizeof(chip_name), sc->sc_cid.chip_id);
+	device_printf(sc->sc_dev, "WLAN (%s rev %u) "
 	    "PHY (analog %d type %d rev %d) RADIO (manuf %#x ver %#x rev %d)\n",
-	    siba_get_chipid(sc->sc_dev), bhnd_get_hwrev(sc->sc_dev),
-	    mac->mac_phy.analog, mac->mac_phy.type, mac->mac_phy.rev,
-	    mac->mac_phy.rf_manuf, mac->mac_phy.rf_ver,
-	    mac->mac_phy.rf_rev);
+	    chip_name, bhnd_get_hwrev(sc->sc_dev), mac->mac_phy.analog,
+	    mac->mac_phy.type, mac->mac_phy.rev, mac->mac_phy.rf_manuf,
+	    mac->mac_phy.rf_ver, mac->mac_phy.rf_rev);
 	if (mac->mac_flags & BWN_MAC_FLAG_DMA)
 		device_printf(sc->sc_dev, "DMA (%d bits)\n",
 		    mac->mac_method.dma.dmatype);
@@ -763,6 +766,8 @@ bwn_attach_pre(struct bwn_softc *sc)
 static void
 bwn_sprom_bugfixes(device_t dev)
 {
+	struct bwn_softc *sc = device_get_softc(dev);
+
 #define	BWN_ISDEV(_vendor, _device, _subvendor, _subdevice)		\
 	((siba_get_pci_vendor(dev) == PCI_VENDOR_##_vendor) &&		\
 	 (siba_get_pci_device(dev) == _device) &&			\
@@ -774,8 +779,10 @@ bwn_sprom_bugfixes(device_t dev)
 	    siba_get_pci_revid(dev) > 0x40)
 		siba_sprom_set_bf_lo(dev,
 		    siba_sprom_get_bf_lo(dev) | BWN_BFL_PACTRL);
+
+	// XXX TODO: 0x4301 is a PCI ID, not a chip ID.
 	if (siba_get_pci_subvendor(dev) == SIBA_BOARDVENDOR_DELL &&
-	    siba_get_chipid(dev) == 0x4301 && siba_get_pci_revid(dev) == 0x74)
+	    sc->sc_cid.chip_id == 0x4301 && siba_get_pci_revid(dev) == 0x74)
 		siba_sprom_set_bf_lo(dev,
 		    siba_sprom_get_bf_lo(dev) | BWN_BFL_BTCOEXIST);
 	if (siba_get_type(dev) == SIBA_TYPE_PCI) {
@@ -1160,7 +1167,7 @@ bwn_attach_core(struct bwn_mac *mac)
 	    have_a,
 	    have_bg,
 	    siba_get_pci_device(sc->sc_dev),
-	    siba_get_chipid(sc->sc_dev));
+	    sc->sc_cid.chip_id);
 #endif
 
 	/*
@@ -1383,10 +1390,11 @@ bwn_phy_getinfo(struct bwn_mac *mac, int gmode)
 		goto unsupphy;
 
 	/* RADIO */
-	if (siba_get_chipid(sc->sc_dev) == 0x4317) {
-		if (siba_get_chiprev(sc->sc_dev) == 0)
+	// XXX TODO: No such chip (0x4317)
+	if (sc->sc_cid.chip_id == 0x4317) {
+		if (sc->sc_cid.chip_rev == 0)
 			tmp = 0x3205017f;
-		else if (siba_get_chiprev(sc->sc_dev) == 1)
+		else if (sc->sc_cid.chip_rev == 1)
 			tmp = 0x4205017f;
 		else
 			tmp = 0x5205017f;
@@ -3448,7 +3456,8 @@ bwn_gpio_init(struct bwn_mac *mac)
 	BWN_WRITE_2(mac, BWN_GPIO_MASK,
 	    BWN_READ_2(mac, BWN_GPIO_MASK) | 0x000f);
 
-	if (siba_get_chipid(sc->sc_dev) == 0x4301) {
+	// XXX TODO: 0x4301 is a PCI ID, not a chip ID.
+	if (sc->sc_cid.chip_id == 0x4301) {
 		mask |= 0x0060;
 		set |= 0x0060;
 	}
@@ -3571,8 +3580,8 @@ bwn_set_opmode(struct bwn_mac *mac)
 
 	cfp_pretbtt = 2;
 	if ((ctl & BWN_MACCTL_STA) && !(ctl & BWN_MACCTL_HOSTAP)) {
-		if (siba_get_chipid(sc->sc_dev) == 0x4306 &&
-		    siba_get_chiprev(sc->sc_dev) == 3)
+		if (sc->sc_cid.chip_id == BHND_CHIPID_BCM4306 &&
+		    sc->sc_cid.chip_rev == 3)
 			cfp_pretbtt = 100;
 		else
 			cfp_pretbtt = 50;

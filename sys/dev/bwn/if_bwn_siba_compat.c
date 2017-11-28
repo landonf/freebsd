@@ -349,58 +349,6 @@ bhnd_compat_get_pci_revid(device_t dev)
 }
 
 /*
- * siba_get_chipid()
- *
- * Referenced by:
- *   bwn_attach()
- *   bwn_gpio_init()
- *   bwn_mac_switch_freq()
- *   bwn_phy_g_attach()
- *   bwn_phy_g_init_sub()
- *   bwn_phy_g_prepare_hw()
- *   bwn_phy_getinfo()
- *   bwn_phy_lp_calib()
- *   bwn_set_opmode()
- *   bwn_sprom_bugfixes()
- * ... and 9 others
- * 
- */
-static uint16_t
-bhnd_compat_get_chipid(device_t dev)
-{
-	return (bhnd_get_chipid(dev)->chip_id);
-}
-
-/*
- * siba_get_chiprev()
- *
- * Referenced by:
- *   bwn_phy_getinfo()
- *   bwn_phy_lp_bbinit_r2()
- *   bwn_phy_lp_tblinit_r2()
- *   bwn_set_opmode()
- */
-static uint16_t
-bhnd_compat_get_chiprev(device_t dev)
-{
-	return (bhnd_get_chipid(dev)->chip_rev);
-}
-
-/*
- * siba_get_chippkg()
- *
- * Referenced by:
- *   bwn_phy_g_init_sub()
- *   bwn_phy_lp_bbinit_r01()
- *   bwn_radio_2056_setup()
- */
-static uint8_t
-bhnd_compat_get_chippkg(device_t dev)
-{
-	return (bhnd_get_chipid(dev)->chip_pkg);
-}
-
-/*
  * siba_get_type()
  *
  * Referenced by:
@@ -2246,9 +2194,6 @@ const struct bwn_bus_ops bwn_bhnd_bus_ops = {
 	.get_pci_subvendor		= bhnd_compat_get_pci_subvendor,
 	.get_pci_subdevice		= bhnd_compat_get_pci_subdevice,
 	.get_pci_revid			= bhnd_compat_get_pci_revid,
-	.get_chipid			= bhnd_compat_get_chipid,
-	.get_chiprev			= bhnd_compat_get_chiprev,
-	.get_chippkg			= bhnd_compat_get_chippkg,
 	.get_type			= bhnd_compat_get_type,
 	.get_cc_pmufreq			= bhnd_compat_get_cc_pmufreq,
 	.get_cc_caps			= bhnd_compat_get_cc_caps,

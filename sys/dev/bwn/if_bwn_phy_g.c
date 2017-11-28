@@ -163,7 +163,8 @@ bwn_phy_g_attach(struct bwn_mac *mac)
 	pab1 = (int16_t)siba_sprom_get_pa0b1(sc->sc_dev);
 	pab2 = (int16_t)siba_sprom_get_pa0b2(sc->sc_dev);
 
-	if ((siba_get_chipid(sc->sc_dev) == 0x4301) && (phy->rf_ver != 0x2050))
+	// XXX TODO: 0x4301 is a PCI ID, not a chip ID.
+	if ((sc->sc_cid.chip_id == 0x4301) && (phy->rf_ver != 0x2050))
 		device_printf(sc->sc_dev, "not supported anymore\n");
 
 	pg->pg_flags = 0;
@@ -350,7 +351,8 @@ bwn_phy_g_prepare_hw(struct bwn_mac *mac)
 				    siba_get_pci_subdevice(sc->sc_dev) ==
 				    SIBA_BOARD_BU4306)
 					pg->pg_rfatt.att = 5;
-				else if (siba_get_chipid(sc->sc_dev) == 0x4320)
+				else if (sc->sc_cid.chip_id ==
+				    BHND_CHIPID_BCM4320)
 					pg->pg_rfatt.att = 4;
 				else
 					pg->pg_rfatt.att = 3;
@@ -924,8 +926,8 @@ bwn_phy_g_init_sub(struct bwn_mac *mac)
 	if (phy->rf_rev == 8)
 		BWN_PHY_WRITE(mac, BWN_PHY_EXTG(0x05), 0x3230);
 	bwn_phy_hwpctl_init(mac);
-	if ((siba_get_chipid(sc->sc_dev) == 0x4306
-	     && siba_get_chippkg(sc->sc_dev) == 2) || 0) {
+	if ((sc->sc_cid.chip_id == BHND_CHIPID_BCM4306
+	     && sc->sc_cid.chip_pkg == 2) || 0) {
 		BWN_PHY_MASK(mac, BWN_PHY_CRS0, 0xbfff);
 		BWN_PHY_MASK(mac, BWN_PHY_OFDM(0xc3), 0x7fff);
 	}

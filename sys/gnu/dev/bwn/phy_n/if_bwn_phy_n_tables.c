@@ -68,6 +68,9 @@ __FBSDID("$FreeBSD$");
 #include <net80211/ieee80211_phy.h>
 #include <net80211/ieee80211_ratectl.h>
 
+#include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/bhnd_ids.h>
+
 #include <dev/bwn/if_bwnreg.h>
 #include <dev/bwn/if_bwnvar.h>
 #include <dev/bwn/if_bwn_debug.h>
@@ -3418,7 +3421,7 @@ void bwn_ntab_read_bulk(struct bwn_mac *mac, uint32_t offset,
 
 	for (i = 0; i < nr_elements; i++) {
 		/* Auto increment broken + caching issue on BCM43224? */
-		if (siba_get_chipid(sc->sc_dev) == 43224 &&
+		if (sc->sc_cid.chip_id == BHND_CHIPID_BCM43224 &&
 		    bhnd_get_hwrev(sc->sc_dev) == 1) {
 			BWN_PHY_READ(mac, BWN_NPHY_TABLE_DATALO);
 			BWN_PHY_WRITE(mac, BWN_NPHY_TABLE_ADDR, offset + i);
@@ -3504,7 +3507,7 @@ void bwn_ntab_write_bulk(struct bwn_mac *mac, uint32_t offset,
 	for (i = 0; i < nr_elements; i++) {
 		/* Auto increment broken + caching issue on BCM43224? */
 		if ((offset >> 10) == 9 &&
-		    siba_get_chipid(sc->sc_dev) == 43224 &&
+		    sc->sc_cid.chip_id == BHND_CHIPID_BCM43224 &&
 		    bhnd_get_hwrev(sc->sc_dev) == 1) {
 			BWN_PHY_READ(mac, BWN_NPHY_TABLE_DATALO);
 			BWN_PHY_WRITE(mac, BWN_NPHY_TABLE_ADDR, offset + i);
@@ -3738,7 +3741,7 @@ static const uint32_t *bwn_nphy_get_ipa_gain_table(struct bwn_mac *mac)
 				return bwn_ntab_tx_gain_ipa_2057_rev5_2g;
 			break;
 		case 6:
-			if (siba_get_chipid(sc->sc_dev) == 47162) /* BCM47612 */
+			if (sc->sc_cid.chip_id == BHND_CHIPID_BCM47162)
 				return bwn_ntab_tx_gain_ipa_rev5_2g;
 			return bwn_ntab_tx_gain_ipa_rev6_2g;
 		case 5:

@@ -87,9 +87,9 @@ void
 bwn_mac_switch_freq(struct bwn_mac *mac, int spurmode)
 {
 	struct bwn_softc *sc = mac->mac_sc;
-	uint16_t chip_id = siba_get_chipid(sc->sc_dev);
+	uint16_t chip_id = sc->sc_cid.chip_id;
 
-	if (chip_id == BCMA_CHIP_ID_BCM4331) {
+	if (chip_id == BHND_CHIPID_BCM4331) {
 		switch (spurmode) {
 		case 2: /* 168 Mhz: 2^26/168 = 0x61862 */
 			BWN_WRITE_2(mac, BWN_TSF_CLK_FRAC_LOW, 0x1862);
@@ -104,13 +104,13 @@ bwn_mac_switch_freq(struct bwn_mac *mac, int spurmode)
 			BWN_WRITE_2(mac, BWN_TSF_CLK_FRAC_HIGH, 0x6);
 			break;
 		}
-	} else if (chip_id == BCMA_CHIP_ID_BCM43131 ||
-	    chip_id == BCMA_CHIP_ID_BCM43217 ||
-	    chip_id == BCMA_CHIP_ID_BCM43222 ||
-	    chip_id == BCMA_CHIP_ID_BCM43224 ||
-	    chip_id == BCMA_CHIP_ID_BCM43225 ||
-	    chip_id == BCMA_CHIP_ID_BCM43227 ||
-	    chip_id == BCMA_CHIP_ID_BCM43228) {
+	} else if (chip_id == BHND_CHIPID_BCM43131 ||
+	    chip_id == BHND_CHIPID_BCM43217 ||
+	    chip_id == BHND_CHIPID_BCM43222 ||
+	    chip_id == BHND_CHIPID_BCM43224 ||
+	    chip_id == BHND_CHIPID_BCM43225 ||
+	    chip_id == BHND_CHIPID_BCM43227 ||
+	    chip_id == BHND_CHIPID_BCM43228) {
 		switch (spurmode) {
 		case 2: /* 126 Mhz */
 			BWN_WRITE_2(mac, BWN_TSF_CLK_FRAC_LOW, 0x2082);
