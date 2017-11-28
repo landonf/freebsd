@@ -30,14 +30,11 @@
 #ifndef _IF_BWN_SIBA_H_
 #define _IF_BWN_SIBA_H_
 
-/** If true, expose legacy siba_pci headers directly. Otherwise,
-  * we expose our siba/bhnd compatibility shims. */
-#ifndef	BWN_USE_SIBA
-#define	BWN_USE_SIBA	0
-#endif
-
 struct bwn_softc;
 struct siba_sprom_core_pwr_info;
+
+/* Always false now that siba_bwn has been removed */
+#define	BWN_USE_SIBA	0
 
 /*
  * Legacy siba(4) bus API compatibility shims.
@@ -159,20 +156,6 @@ struct bwn_bus_ops {
 	void		(*cc_write32)(device_t, uint32_t, uint32_t);
 };
 
-#if BWN_USE_SIBA
-
-#include <dev/siba/siba_ids.h>
-#include <dev/siba/sibareg.h>
-#include <dev/siba/sibavar.h>
-
-#define	BWN_BUS_OPS_ATTACH(_dev)	(0)
-#define	BWN_BUS_OPS_DETACH(_dev)
-
-#else /* !BWN_USE_SIBA */
-
-struct bwn_bus_ops;
-
-extern const struct bwn_bus_ops bwn_siba_bus_ops;
 extern const struct bwn_bus_ops bwn_bhnd_bus_ops;
 
 /*
@@ -483,7 +466,5 @@ struct siba_sprom_core_pwr_info {
 	BWN_BUS_OPS(_dev)->cc_mask32(_dev, _arg1, _arg2)
 #define	siba_cc_write32(_dev, _arg1, _arg2)	\
 	BWN_BUS_OPS(_dev)->cc_write32(_dev, _arg1, _arg2)
-
-#endif /* BWN_USE_SIBA */
 
 #endif /* _IF_BWN_SIBA_H_ */

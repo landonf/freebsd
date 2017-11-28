@@ -500,17 +500,7 @@ static const struct siba_devid bwn_devs[] = {
 static const struct bwn_bus_ops *
 bwn_get_bus_ops(device_t dev)
 {
-#if BWN_USE_SIBA
-	return (NULL);
-#else
-	devclass_t	bus_cls;
-
-	bus_cls = device_get_devclass(device_get_parent(dev));
-	if (bus_cls == devclass_find("bhnd"))
-		return (&bwn_bhnd_bus_ops);
-	else
-		return (&bwn_siba_bus_ops);
-#endif
+	return (&bwn_bhnd_bus_ops);
 }
 
 static int
@@ -7486,7 +7476,7 @@ driver_t bwn_driver = {
 };
 static devclass_t bwn_devclass;
 DRIVER_MODULE(bwn, siba_bwn, bwn_driver, bwn_devclass, 0, 0);
-MODULE_DEPEND(bwn, siba_bwn, 1, 1, 1);
+MODULE_DEPEND(bwn, bhnd, 1, 1, 1);
 MODULE_DEPEND(bwn, gpiobus, 1, 1, 1);
 MODULE_DEPEND(bwn, wlan, 1, 1, 1);		/* 802.11 media layer */
 MODULE_DEPEND(bwn, firmware, 1, 1, 1);		/* firmware support */

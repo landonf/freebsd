@@ -349,7 +349,6 @@ SUBDIR=	\
 	sge \
 	${_sgx} \
 	${_sgx_linux} \
-	siba_bwn \
 	siftr \
 	siis \
 	sis \

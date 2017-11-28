@@ -55,10 +55,6 @@ __FBSDID("$FreeBSD$");
 static int attach_untested = 0; 
 TUNABLE_INT("hw.bwn_pci.attach_untested", &attach_untested);
 
-/* If non-zero, probe at a higher priority than the stable if_bwn driver. */
-static int prefer_new_driver = 0; 
-TUNABLE_INT("hw.bwn_pci.preferred", &prefer_new_driver);
-
 /* SIBA Devices */
 static const struct bwn_pci_device siba_devices[] = {
 	BWN_BCM_DEV(BCM4301,		"BCM4301 802.11b",
@@ -170,15 +166,7 @@ bwn_pci_probe(device_t dev)
 		return (ENXIO);
 
 	device_set_desc(dev, ident->desc);
-
-	/* Until this driver is complete, require explicit opt-in before
-	 * superceding if_bwn/siba_bwn. */
-	if (prefer_new_driver)
-		return (BUS_PROBE_DEFAULT+1);
-	else
-		return (BUS_PROBE_LOW_PRIORITY);
-
-	// return (BUS_PROBE_DEFAULT);
+	return (BUS_PROBE_DEFAULT);
 }
 
 static int
