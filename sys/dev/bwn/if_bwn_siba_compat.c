@@ -249,37 +249,6 @@ bwn_bhnd_populate_nvram_data(device_t dev, struct bwn_bhnd_ctx *ctx)
 }
 
 /*
- * siba_get_vendor()
- *
- * Referenced by:
- *   bwn_probe()
- */
-static uint16_t
-bhnd_compat_get_vendor(device_t dev)
-{
-	uint16_t vendor = bhnd_get_vendor(dev);
-
-	switch (vendor) {
-	case BHND_MFGID_BCM:
-		return (SIBA_VID_BROADCOM);
-	default:
-		return (0x0000);
-	}
-}
-
-/*
- * siba_get_device()
- *
- * Referenced by:
- *   bwn_probe()
- */
-static uint16_t
-bhnd_compat_get_device(device_t dev)
-{
-	return (bhnd_get_device(dev));
-}
-
-/*
  * siba_get_revid()
  *
  * Referenced by:
@@ -2295,8 +2264,6 @@ bhnd_compat_cc_write32(device_t dev, uint32_t reg, uint32_t val)
 const struct bwn_bus_ops bwn_bhnd_bus_ops = {
 	.init				= bwn_bhnd_bus_ops_init,
 	.fini				= bwn_bhnd_bus_ops_fini,
-	.get_vendor			= bhnd_compat_get_vendor,
-	.get_device			= bhnd_compat_get_device,
 	.get_revid			= bhnd_compat_get_revid,
 	.get_pci_vendor			= bhnd_compat_get_pci_vendor,
 	.get_pci_device			= bhnd_compat_get_pci_device,
