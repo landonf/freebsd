@@ -3562,8 +3562,8 @@ bwn_phy_lock(struct bwn_mac *mac)
 	struct bwn_softc *sc = mac->mac_sc;
 	struct ieee80211com *ic = &sc->sc_ic;
 
-	KASSERT(siba_get_revid(sc->sc_dev) >= 3,
-	    ("%s: unsupported rev %d", __func__, siba_get_revid(sc->sc_dev)));
+	KASSERT(bhnd_get_hwrev(sc->sc_dev) >= 3,
+	    ("%s: unsupported rev %d", __func__, bhnd_get_hwrev(sc->sc_dev)));
 
 	if (ic->ic_opmode != IEEE80211_M_HOSTAP)
 		bwn_psctl(mac, BWN_PS_AWAKE);
@@ -3575,8 +3575,8 @@ bwn_phy_unlock(struct bwn_mac *mac)
 	struct bwn_softc *sc = mac->mac_sc;
 	struct ieee80211com *ic = &sc->sc_ic;
 
-	KASSERT(siba_get_revid(sc->sc_dev) >= 3,
-	    ("%s: unsupported rev %d", __func__, siba_get_revid(sc->sc_dev)));
+	KASSERT(bhnd_get_hwrev(sc->sc_dev) >= 3,
+	    ("%s: unsupported rev %d", __func__, bhnd_get_hwrev(sc->sc_dev)));
 
 	if (ic->ic_opmode != IEEE80211_M_HOSTAP)
 		bwn_psctl(mac, 0);

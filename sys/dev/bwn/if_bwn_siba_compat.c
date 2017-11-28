@@ -248,29 +248,6 @@ bwn_bhnd_populate_nvram_data(device_t dev, struct bwn_bhnd_ctx *ctx)
 	return (0);
 }
 
-/*
- * siba_get_revid()
- *
- * Referenced by:
- *   bwn_attach()
- *   bwn_attach_core()
- *   bwn_chip_init()
- *   bwn_chiptest()
- *   bwn_core_init()
- *   bwn_core_start()
- *   bwn_pio_idx2base()
- *   bwn_pio_set_txqueue()
- *   bwn_pio_tx_start()
- *   bwn_probe()
- * ... and 19 others
- * 
- */
-static uint8_t
-bhnd_compat_get_revid(device_t dev)
-{
-	return (bhnd_get_hwrev(dev));
-}
-
 /**
  * Return the PCI bridge root device.
  * 
@@ -2264,7 +2241,6 @@ bhnd_compat_cc_write32(device_t dev, uint32_t reg, uint32_t val)
 const struct bwn_bus_ops bwn_bhnd_bus_ops = {
 	.init				= bwn_bhnd_bus_ops_init,
 	.fini				= bwn_bhnd_bus_ops_fini,
-	.get_revid			= bhnd_compat_get_revid,
 	.get_pci_vendor			= bhnd_compat_get_pci_vendor,
 	.get_pci_device			= bhnd_compat_get_pci_device,
 	.get_pci_subvendor		= bhnd_compat_get_pci_subvendor,

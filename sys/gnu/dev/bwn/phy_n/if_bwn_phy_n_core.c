@@ -590,7 +590,7 @@ static uint16_t bwn_nphy_classifier(struct bwn_mac *mac, uint16_t mask, uint16_t
 	struct bwn_softc *sc = mac->mac_sc;
 	uint16_t tmp;
 
-	if (siba_get_revid(sc->sc_dev) == 16)
+	if (bhnd_get_hwrev(sc->sc_dev) == 16)
 		bwn_mac_suspend(mac);
 
 	tmp = BWN_PHY_READ(mac, BWN_NPHY_CLASSCTL);
@@ -600,7 +600,7 @@ static uint16_t bwn_nphy_classifier(struct bwn_mac *mac, uint16_t mask, uint16_t
 	tmp |= (val & mask);
 	BWN_PHY_SETMASK(mac, BWN_NPHY_CLASSCTL, 0xFFF8, tmp);
 
-	if (siba_get_revid(sc->sc_dev) == 16)
+	if (bhnd_get_hwrev(sc->sc_dev) == 16)
 		bwn_mac_enable(mac);
 
 	return tmp;
@@ -1551,7 +1551,7 @@ static void bwn_radio_init2055_post(struct bwn_mac *mac)
 	struct bwn_phy_n *nphy = mac->mac_phy.phy_n;
 	bool workaround = false;
 
-	if (siba_get_revid(sc->sc_dev) < 4)
+	if (bhnd_get_hwrev(sc->sc_dev) < 4)
 		workaround =
 		    (siba_get_pci_subvendor(sc->sc_dev) != SIBA_BOARDVENDOR_BCM)
 		    && (siba_get_pci_subdevice(sc->sc_dev) == SIBA_BOARD_BCM4321)
@@ -4189,7 +4189,7 @@ static void bwn_nphy_tx_power_ctl_setup(struct bwn_mac *mac)
 		}
 	}
 
-	if (siba_get_revid(sc->sc_dev) == 11 || siba_get_revid(sc->sc_dev) == 12) {
+	if (bhnd_get_hwrev(sc->sc_dev) == 11 || bhnd_get_hwrev(sc->sc_dev) == 12) {
 		BWN_WRITE_SETMASK4(mac, BWN_MACCTL, ~0, 0x200000);
 		BWN_READ_4(mac, BWN_MACCTL);
 		DELAY(1);
@@ -4206,7 +4206,7 @@ static void bwn_nphy_tx_power_ctl_setup(struct bwn_mac *mac)
 		BWN_PHY_SET(mac, BWN_NPHY_TXPCTL_CMD,
 			    BWN_NPHY_TXPCTL_CMD_PCTLEN);
 
-	if (siba_get_revid(sc->sc_dev) == 11 || siba_get_revid(sc->sc_dev) == 12)
+	if (bhnd_get_hwrev(sc->sc_dev) == 11 || bhnd_get_hwrev(sc->sc_dev) == 12)
 		BWN_WRITE_SETMASK4(mac, BWN_MACCTL, ~0x200000, 0);
 
 	/*
@@ -4294,7 +4294,7 @@ static void bwn_nphy_tx_power_ctl_setup(struct bwn_mac *mac)
 		}
 	}
 
-	if (siba_get_revid(sc->sc_dev) == 11 || siba_get_revid(sc->sc_dev) == 12) {
+	if (bhnd_get_hwrev(sc->sc_dev) == 11 || bhnd_get_hwrev(sc->sc_dev) == 12) {
 		BWN_WRITE_SETMASK4(mac, BWN_MACCTL, ~0, 0x200000);
 		BWN_READ_4(mac, BWN_MACCTL);
 		DELAY(1);
@@ -4315,7 +4315,7 @@ static void bwn_nphy_tx_power_ctl_setup(struct bwn_mac *mac)
 				~BWN_NPHY_TXPCTL_INIT_PIDXI1, 0x40);
 	}
 
-	if (siba_get_revid(sc->sc_dev) == 11 || siba_get_revid(sc->sc_dev) == 12)
+	if (bhnd_get_hwrev(sc->sc_dev) == 11 || bhnd_get_hwrev(sc->sc_dev) == 12)
 		BWN_WRITE_SETMASK4(mac, BWN_MACCTL, ~0x200000, 0);
 
 	BWN_PHY_WRITE(mac, BWN_NPHY_TXPCTL_N,
@@ -6061,13 +6061,13 @@ bwn_nphy_op_recalc_txpower(struct bwn_mac *mac, bool ignore_tssi)
 	tx_pwr_state = nphy->txpwrctrl;
 	bwn_mac_suspend(mac);
 	bwn_nphy_tx_power_ctl_setup(mac);
-	if (siba_get_revid(sc->sc_dev) == 11 || siba_get_revid(sc->sc_dev) == 12) {
+	if (bhnd_get_hwrev(sc->sc_dev) == 11 || bhnd_get_hwrev(sc->sc_dev) == 12) {
 		BWN_WRITE_SETMASK4(mac, BWN_MACCTL, ~0, BWN_MACCTL_PHY_LOCK);
 		BWN_READ_4(mac, BWN_MACCTL);
 		DELAY(1);
 	}
 	bwn_nphy_tx_power_ctrl(mac, nphy->txpwrctrl);
-	if (siba_get_revid(sc->sc_dev) == 11 || siba_get_revid(sc->sc_dev) == 12)
+	if (bhnd_get_hwrev(sc->sc_dev) == 11 || bhnd_get_hwrev(sc->sc_dev) == 12)
 		BWN_WRITE_SETMASK4(mac, BWN_MACCTL, ~BWN_MACCTL_PHY_LOCK, 0);
 	bwn_mac_enable(mac);
 
@@ -6616,7 +6616,7 @@ bwn_nphy_op_prepare_structs(struct bwn_mac *mac)
 	nphy->pwg_gain_5ghz = false;
 	if (mac->mac_phy.rev >= 3 ||
 	    (siba_get_pci_subvendor(sc->sc_dev) == PCI_VENDOR_APPLE &&
-	     (siba_get_revid(sc->sc_dev) == 11 || siba_get_revid(sc->sc_dev) == 12))) {
+	     (bhnd_get_hwrev(sc->sc_dev) == 11 || bhnd_get_hwrev(sc->sc_dev) == 12))) {
 		nphy->txpwrctrl = true;
 		nphy->pwg_gain_5ghz = true;
 	} else if (sc->sc_board_info.board_srom_rev >= 4) {

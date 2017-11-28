@@ -551,7 +551,7 @@ bwn_attach(device_t dev)
 
 	device_printf(sc->sc_dev, "WLAN (chipid %#x rev %u) "
 	    "PHY (analog %d type %d rev %d) RADIO (manuf %#x ver %#x rev %d)\n",
-	    siba_get_chipid(sc->sc_dev), siba_get_revid(sc->sc_dev),
+	    siba_get_chipid(sc->sc_dev), bhnd_get_hwrev(sc->sc_dev),
 	    mac->mac_phy.analog, mac->mac_phy.type, mac->mac_phy.rev,
 	    mac->mac_phy.rf_manuf, mac->mac_phy.rf_ver,
 	    mac->mac_phy.rf_rev);
@@ -965,7 +965,7 @@ bwn_pio_tx_start(struct bwn_mac *mac, struct ieee80211_node *ni, struct mbuf *m)
 	tq->tq_used += roundup(m->m_pkthdr.len + BWN_HDRSIZE(mac), 4);
 	tq->tq_free--;
 
-	if (siba_get_revid(sc->sc_dev) >= 8) {
+	if (bhnd_get_hwrev(sc->sc_dev) >= 8) {
 		/*
 		 * XXX please removes m_defrag(9)
 		 */
@@ -1140,8 +1140,8 @@ bwn_attach_core(struct bwn_mac *mac)
 	int error, have_bg = 0, have_a = 0;
 	uint32_t high;
 
-	KASSERT(siba_get_revid(sc->sc_dev) >= 5,
-	    ("unsupported revision %d", siba_get_revid(sc->sc_dev)));
+	KASSERT(bhnd_get_hwrev(sc->sc_dev) >= 5,
+	    ("unsupported revision %d", bhnd_get_hwrev(sc->sc_dev)));
 
 	siba_powerup(sc->sc_dev, 0);
 	high = siba_read_4(sc->sc_dev, SIBA_TGSHIGH);
@@ -1452,8 +1452,8 @@ bwn_chiptest(struct bwn_mac *mac)
 
 	bwn_shm_write_4(mac, BWN_SHARED, 0, backup);
 
-	if ((siba_get_revid(sc->sc_dev) >= 3) &&
-	    (siba_get_revid(sc->sc_dev) <= 10)) {
+	if ((bhnd_get_hwrev(sc->sc_dev) >= 3) &&
+	    (bhnd_get_hwrev(sc->sc_dev) <= 10)) {
 		BWN_WRITE_2(mac, BWN_TSF_CFP_START, 0xaaaa);
 		BWN_WRITE_4(mac, BWN_TSF_CFP_START, 0xccccbbbb);
 		if (BWN_READ_2(mac, BWN_TSF_CFP_START_LOW) != 0xbbbb)
@@ -2030,7 +2030,7 @@ bwn_core_init(struct bwn_mac *mac)
 	if (error)
 		goto fail0;
 	bwn_shm_write_2(mac, BWN_SHARED, BWN_SHARED_COREREV,
-	    siba_get_revid(sc->sc_dev));
+	    bhnd_get_hwrev(sc->sc_dev));
 	hf = bwn_hf_read(mac);
 	if (mac->mac_phy.type == BWN_PHYTYPE_G) {
 		hf |= BWN_HF_GPHY_SYM_WORKAROUND;
@@ -2054,7 +2054,7 @@ bwn_core_init(struct bwn_mac *mac)
 	bwn_hf_write(mac, hf);
 
 	/* Tell the firmware about the MAC capabilities */
-	if (siba_get_revid(sc->sc_dev) >= 13) {
+	if (bhnd_get_hwrev(sc->sc_dev) >= 13) {
 		uint32_t cap;
 		cap = BWN_READ_4(mac, BWN_MAC_HW_CAP);
 		DPRINTF(sc, BWN_DEBUG_RESET,
@@ -2116,7 +2116,7 @@ bwn_core_start(struct bwn_mac *mac)
 	KASSERT(mac->mac_status == BWN_MAC_STATUS_INITED,
 	    ("%s:%d: fail", __func__, __LINE__));
 
-	if (siba_get_revid(sc->sc_dev) < 5)
+	if (bhnd_get_hwrev(sc->sc_dev) < 5)
 		return;
 
 	while (1) {
@@ -2214,7 +2214,7 @@ bwn_chip_init(struct bwn_mac *mac)
 	if (phy->type == BWN_PHYTYPE_B)
 		BWN_WRITE_2(mac, 0x005e, BWN_READ_2(mac, 0x005e) | 0x0004);
 	BWN_WRITE_4(mac, 0x0100, 0x01000000);
-	if (siba_get_revid(sc->sc_dev) < 5)
+	if (bhnd_get_hwrev(sc->sc_dev) < 5)
 		BWN_WRITE_4(mac, 0x010c, 0x01000000);
 
 	BWN_WRITE_4(mac, BWN_MACCTL,
@@ -2224,7 +2224,7 @@ bwn_chip_init(struct bwn_mac *mac)
 	bwn_shm_write_2(mac, BWN_SHARED, 0x0074, 0x0000);
 
 	bwn_set_opmode(mac);
-	if (siba_get_revid(sc->sc_dev) < 3) {
+	if (bhnd_get_hwrev(sc->sc_dev) < 3) {
 		BWN_WRITE_2(mac, 0x060e, 0x0000);
 		BWN_WRITE_2(mac, 0x0610, 0x8000);
 		BWN_WRITE_2(mac, 0x0604, 0x0000);
@@ -2413,7 +2413,7 @@ bwn_pio_set_txqueue(struct bwn_mac *mac, struct bwn_pio_txqueue *tq,
 	tq->tq_index = index;
 
 	tq->tq_free = BWN_PIO_MAX_TXPACKETS;
-	if (siba_get_revid(sc->sc_dev) >= 8)
+	if (bhnd_get_hwrev(sc->sc_dev) >= 8)
 		tq->tq_size = 1920;
 	else {
 		tq->tq_size = bwn_pio_read_2(mac, tq, BWN_PIO_TXQBUFSIZE);
@@ -2452,7 +2452,7 @@ bwn_pio_idx2base(struct bwn_mac *mac, int index)
 		BWN_PIO11_BASE5,
 	};
 
-	if (siba_get_revid(sc->sc_dev) >= 11) {
+	if (bhnd_get_hwrev(sc->sc_dev) >= 11) {
 		if (index >= N(bases_rev11))
 			device_printf(sc->sc_dev, "%s: warning\n", __func__);
 		return (bases_rev11[index]);
@@ -2469,7 +2469,7 @@ bwn_pio_setupqueue_rx(struct bwn_mac *mac, struct bwn_pio_rxqueue *prq,
 	struct bwn_softc *sc = mac->mac_sc;
 
 	prq->prq_mac = mac;
-	prq->prq_rev = siba_get_revid(sc->sc_dev);
+	prq->prq_rev = bhnd_get_hwrev(sc->sc_dev);
 	prq->prq_base = bwn_pio_idx2base(mac, index) + BWN_PIO_RXQOFFSET(mac);
 	bwn_dma_rxdirectfifo(mac, index, 1);
 }
@@ -3404,12 +3404,12 @@ bwn_crypt_init(struct bwn_mac *mac)
 {
 	struct bwn_softc *sc = mac->mac_sc;
 
-	mac->mac_max_nr_keys = (siba_get_revid(sc->sc_dev) >= 5) ? 58 : 20;
+	mac->mac_max_nr_keys = (bhnd_get_hwrev(sc->sc_dev) >= 5) ? 58 : 20;
 	KASSERT(mac->mac_max_nr_keys <= N(mac->mac_key),
 	    ("%s:%d: fail", __func__, __LINE__));
 	mac->mac_ktp = bwn_shm_read_2(mac, BWN_SHARED, BWN_SHARED_KEY_TABLEP);
 	mac->mac_ktp *= 2;
-	if (siba_get_revid(sc->sc_dev) >= 5)
+	if (bhnd_get_hwrev(sc->sc_dev) >= 5)
 		BWN_WRITE_2(mac, BWN_RCMTA_COUNT, mac->mac_max_nr_keys - 8);
 	bwn_clear_keys(mac);
 }
@@ -3458,7 +3458,7 @@ bwn_gpio_init(struct bwn_mac *mac)
 		mask |= 0x0200;
 		set |= 0x0200;
 	}
-	if (siba_get_revid(sc->sc_dev) >= 2)
+	if (bhnd_get_hwrev(sc->sc_dev) >= 2)
 		mask |= 0x0010;
 
 	value = siba_gpio_get(sc->sc_dev);
@@ -3564,7 +3564,7 @@ bwn_set_opmode(struct bwn_mac *mac)
 		ctl &= ~BWN_MACCTL_STA;
 	ctl |= sc->sc_filters;
 
-	if (siba_get_revid(sc->sc_dev) <= 4)
+	if (bhnd_get_hwrev(sc->sc_dev) <= 4)
 		ctl |= BWN_MACCTL_PROMISC;
 
 	BWN_WRITE_4(mac, BWN_MACCTL, ctl);
@@ -3633,7 +3633,7 @@ bwn_dummy_transmission(struct bwn_mac *mac, int ofdm, int paon)
 
 	BWN_WRITE_2(mac, 0x0568, 0x0000);
 	BWN_WRITE_2(mac, 0x07c0,
-	    (siba_get_revid(sc->sc_dev) < 11) ? 0x0000 : 0x0100);
+	    (bhnd_get_hwrev(sc->sc_dev) < 11) ? 0x0000 : 0x0100);
 
 	value = (ofdm ? 0x41 : 0x40);
 	BWN_WRITE_2(mac, 0x050c, value);
@@ -3792,7 +3792,7 @@ bwn_psctl(struct bwn_mac *mac, uint32_t flags)
 	    (BWN_READ_4(mac, BWN_MACCTL) | BWN_MACCTL_AWAKE) &
 	    ~BWN_MACCTL_HWPS);
 	BWN_READ_4(mac, BWN_MACCTL);
-	if (siba_get_revid(sc->sc_dev) >= 5) {
+	if (bhnd_get_hwrev(sc->sc_dev) >= 5) {
 		for (i = 0; i < 100; i++) {
 			ucstat = bwn_shm_read_2(mac, BWN_SHARED,
 			    BWN_SHARED_UCODESTAT);
@@ -3810,7 +3810,7 @@ bwn_fw_gets(struct bwn_mac *mac, enum bwn_fwtype type)
 {
 	struct bwn_softc *sc = mac->mac_sc;
 	struct bwn_fw *fw = &mac->mac_fw;
-	const uint8_t rev = siba_get_revid(sc->sc_dev);
+	const uint8_t rev = bhnd_get_hwrev(sc->sc_dev);
 	const char *filename;
 	uint32_t high;
 	int error;
@@ -4519,7 +4519,7 @@ bwn_key_macwrite(struct bwn_mac *mac, uint8_t index, const uint8_t *addr)
 		addrtmp[1] |= ((uint32_t) (addr[5]) << 8);
 	}
 
-	if (siba_get_revid(sc->sc_dev) >= 5) {
+	if (bhnd_get_hwrev(sc->sc_dev) >= 5) {
 		bwn_shm_write_4(mac, BWN_RCMTA, (index * 2) + 0, addrtmp[0]);
 		bwn_shm_write_2(mac, BWN_RCMTA, (index * 2) + 1, addrtmp[1]);
 	} else {
@@ -6891,7 +6891,7 @@ bwn_tsf_read(struct bwn_mac *mac, uint64_t *tsf)
 {
 	uint32_t low, high;
 
-	KASSERT(siba_get_revid(mac->mac_sc->sc_dev) >= 3,
+	KASSERT(bhnd_get_hwrev(mac->mac_sc->sc_dev) >= 3,
 	    ("%s:%d: fail", __func__, __LINE__));
 
 	low = BWN_READ_4(mac, BWN_REV3PLUS_TSF_LOW);
@@ -6912,7 +6912,7 @@ bwn_dma_attach(struct bwn_mac *mac)
 	if (siba_get_type(sc->sc_dev) == SIBA_TYPE_PCMCIA || bwn_usedma == 0)
 		return (0);
 
-	KASSERT(siba_get_revid(sc->sc_dev) >= 5, ("%s: fail", __func__));
+	KASSERT(bhnd_get_hwrev(sc->sc_dev) >= 5, ("%s: fail", __func__));
 
 	mac->mac_flags |= BWN_MAC_FLAG_DMA;
 

@@ -45,7 +45,6 @@ struct bwn_bus_ops {
 	void		(*fini)(device_t);
 
 	/* compatibility shims */
-	uint8_t		(*get_revid)(device_t);
 	uint16_t	(*get_pci_vendor)(device_t);
 	uint16_t	(*get_pci_device)(device_t);
 	uint16_t	(*get_pci_subvendor)(device_t);
@@ -221,8 +220,7 @@ struct siba_sprom_core_pwr_info {
 #define	BWN_BUS_OPS_DETACH(_dev)	\
 	BWN_BUS_OPS(_dev)->fini(_dev)
 
-#define	siba_get_revid(_dev)	\
-	BWN_BUS_OPS(_dev)->get_revid(_dev)
+
 #define	siba_get_pci_vendor(_dev)	\
 	BWN_BUS_OPS(_dev)->get_pci_vendor(_dev)
 #define	siba_get_pci_device(_dev)	\

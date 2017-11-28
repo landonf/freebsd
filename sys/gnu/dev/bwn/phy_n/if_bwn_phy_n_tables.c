@@ -3419,7 +3419,7 @@ void bwn_ntab_read_bulk(struct bwn_mac *mac, uint32_t offset,
 	for (i = 0; i < nr_elements; i++) {
 		/* Auto increment broken + caching issue on BCM43224? */
 		if (siba_get_chipid(sc->sc_dev) == 43224 &&
-		    siba_get_revid(sc->sc_dev) == 1) {
+		    bhnd_get_hwrev(sc->sc_dev) == 1) {
 			BWN_PHY_READ(mac, BWN_NPHY_TABLE_DATALO);
 			BWN_PHY_WRITE(mac, BWN_NPHY_TABLE_ADDR, offset + i);
 		}
@@ -3505,7 +3505,7 @@ void bwn_ntab_write_bulk(struct bwn_mac *mac, uint32_t offset,
 		/* Auto increment broken + caching issue on BCM43224? */
 		if ((offset >> 10) == 9 &&
 		    siba_get_chipid(sc->sc_dev) == 43224 &&
-		    siba_get_revid(sc->sc_dev) == 1) {
+		    bhnd_get_hwrev(sc->sc_dev) == 1) {
 			BWN_PHY_READ(mac, BWN_NPHY_TABLE_DATALO);
 			BWN_PHY_WRITE(mac, BWN_NPHY_TABLE_ADDR, offset + i);
 		}

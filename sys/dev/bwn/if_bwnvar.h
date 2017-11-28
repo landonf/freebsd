@@ -90,9 +90,9 @@ int	bwn_detach(device_t dev);
 #define	BWN_WRITE_SETMASK4(mac, offset, mask, set)			\
 	BWN_WRITE_4(mac, offset, (BWN_READ_4(mac, offset) & mask) | set)
 #define	BWN_PIO_TXQOFFSET(mac)						\
-	((siba_get_revid(mac->mac_sc->sc_dev) >= 11) ? 0x18 : 0)
+	((bhnd_get_hwrev(mac->mac_sc->sc_dev) >= 11) ? 0x18 : 0)
 #define	BWN_PIO_RXQOFFSET(mac)						\
-	((siba_get_revid(mac->mac_sc->sc_dev) >= 11) ? 0x38 : 8)
+	((bhnd_get_hwrev(mac->mac_sc->sc_dev) >= 11) ? 0x38 : 8)
 #define	BWN_SEC_NEWAPI(mac)		(mac->mac_fw.rev >= 351)
 #define	BWN_SEC_KEY2FW(mac, idx)					\
 	(BWN_SEC_NEWAPI(mac) ? idx : ((idx >= 4) ? idx - 4 : idx))
