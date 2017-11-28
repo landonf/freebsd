@@ -144,8 +144,6 @@ struct bwn_bus_ops {
 
 extern const struct bwn_bus_ops bwn_bhnd_bus_ops;
 
-#define	SIBA_VID_BROADCOM		0x4243
-
 /*
  * Declared in:
  *    /usr/home/landonf/Documents/Code/FreeBSD/svn/head/sys/dev/siba/sibareg.h
