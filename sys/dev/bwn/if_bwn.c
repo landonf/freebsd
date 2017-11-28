@@ -65,9 +65,6 @@ __FBSDID("$FreeBSD$");
 #include <net/if_media.h>
 #include <net/if_types.h>
 
-#include <dev/pci/pcivar.h>
-#include <dev/pci/pcireg.h>
-
 #include <net80211/ieee80211_var.h>
 #include <net80211/ieee80211_radiotap.h>
 #include <net80211/ieee80211_regdomain.h>
@@ -111,8 +108,6 @@ SYSCTL_INT(_hw_bwn, OID_AUTO, bluetooth, CTLFLAG_RW, &bwn_bluetooth, 0,
 static int	bwn_hwpctl = 0;
 SYSCTL_INT(_hw_bwn, OID_AUTO, hwpctl, CTLFLAG_RW, &bwn_hwpctl, 0,
     "uses H/W power control");
-static int	bwn_msi_disable = 0;		/* MSI disabled  */
-TUNABLE_INT("hw.bwn.msi_disable", &bwn_msi_disable);
 static int	bwn_usedma = 1;
 SYSCTL_INT(_hw_bwn, OID_AUTO, usedma, CTLFLAG_RD, &bwn_usedma, 0,
     "uses DMA");
@@ -359,16 +354,6 @@ static void	bwn_rf_turnon(struct bwn_mac *);
 static void	bwn_rf_turnoff(struct bwn_mac *);
 static void	bwn_sysctl_node(struct bwn_softc *);
 
-static struct resource_spec bwn_res_spec_legacy[] = {
-	{ SYS_RES_IRQ,		0,		RF_ACTIVE | RF_SHAREABLE },
-	{ -1,			0,		0 }
-};
-
-static struct resource_spec bwn_res_spec_msi[] = {
-	{ SYS_RES_IRQ,		1,		RF_ACTIVE },
-	{ -1,			0,		0 }
-};
-
 static const struct bwn_channelinfo bwn_chantable_bg = {
 	.channels = {
 		{ 2412,  1, 30 }, { 2417,  2, 30 }, { 2422,  3, 30 },
@@ -521,7 +506,7 @@ bwn_attach(device_t dev)
 {
 	struct bwn_mac *mac;
 	struct bwn_softc *sc = device_get_softc(dev);
-	int error, i, msic, reg;
+	int error;
 
 	sc->sc_dev = dev;
 #ifdef BWN_DEBUG
@@ -553,7 +538,7 @@ bwn_attach(device_t dev)
 
 	error = bwn_attach_core(mac);
 	if (error)
-		goto fail0;
+		goto fail;
 	bwn_led_attach(mac);
 
 	device_printf(sc->sc_dev, "WLAN (chipid %#x rev %u) "
@@ -573,49 +558,23 @@ bwn_attach(device_t dev)
 	    "Note: compiled with BWN_GPL_PHY; includes GPLv2 code\n");
 #endif
 
-	/*
-	 * setup PCI resources and interrupt.
-	 */
-	if (pci_find_cap(dev, PCIY_EXPRESS, &reg) == 0) {
-		msic = pci_msi_count(dev);
-		if (bootverbose)
-			device_printf(sc->sc_dev, "MSI count : %d\n", msic);
-	} else
-		msic = 0;
+	mac->mac_rid_irq = 0;
+	mac->mac_res_irq = bus_alloc_resource_any(dev, SYS_RES_IRQ,
+	    &mac->mac_rid_irq, RF_ACTIVE | RF_SHAREABLE);
 
-	mac->mac_intr_spec = bwn_res_spec_legacy;
-	if (msic == BWN_MSI_MESSAGES && bwn_msi_disable == 0) {
-		if (pci_alloc_msi(dev, &msic) == 0) {
-			device_printf(sc->sc_dev,
-			    "Using %d MSI messages\n", msic);
-			mac->mac_intr_spec = bwn_res_spec_msi;
-			mac->mac_msi = 1;
-		}
+	if (mac->mac_res_irq == NULL) {
+		device_printf(sc->sc_dev, "couldn't allocate IRQ resource\n");
+		error = ENXIO;
+		goto fail;
 	}
 
-	error = bus_alloc_resources(dev, mac->mac_intr_spec,
-	    mac->mac_res_irq);
-	if (error) {
-		device_printf(sc->sc_dev,
-		    "couldn't allocate IRQ resources (%d)\n", error);
-		goto fail1;
-	}
-
-	if (mac->mac_msi == 0)
-		error = bus_setup_intr(dev, mac->mac_res_irq[0],
-		    INTR_TYPE_NET | INTR_MPSAFE, bwn_intr, NULL, mac,
-		    &mac->mac_intrhand[0]);
-	else {
-		for (i = 0; i < BWN_MSI_MESSAGES; i++) {
-			error = bus_setup_intr(dev, mac->mac_res_irq[i],
-			    INTR_TYPE_NET | INTR_MPSAFE, bwn_intr, NULL, mac,
-			    &mac->mac_intrhand[i]);
-			if (error != 0) {
-				device_printf(sc->sc_dev,
-				    "couldn't setup interrupt (%d)\n", error);
-				break;
-			}
-		}
+	error = bus_setup_intr(dev, mac->mac_res_irq,
+	    INTR_TYPE_NET | INTR_MPSAFE, bwn_intr, NULL, mac,
+	    &mac->mac_intrhand);
+	if (error != 0) {
+		device_printf(sc->sc_dev, "couldn't setup interrupt (%d)\n",
+		    error);
+		goto fail;
 	}
 
 	TAILQ_INSERT_TAIL(&sc->sc_maclist, mac, mac_list);
@@ -627,10 +586,12 @@ bwn_attach(device_t dev)
 		bwn_attach_post(sc);
 
 	return (0);
-fail1:
-	if (msic == BWN_MSI_MESSAGES && bwn_msi_disable == 0)
-		pci_release_msi(dev);
-fail0:
+fail:
+	if (mac->mac_res_irq != NULL) {
+		bus_release_resource(dev, SYS_RES_IRQ, mac->mac_rid_irq,
+		    mac->mac_res_irq);
+	}
+
 	BWN_BUS_OPS_DETACH(dev);
 	free(mac, M_DEVBUF);
 	return (error);
@@ -723,7 +684,6 @@ bwn_detach(device_t dev)
 	struct bwn_softc *sc = device_get_softc(dev);
 	struct bwn_mac *mac = sc->sc_curmac;
 	struct ieee80211com *ic = &sc->sc_ic;
-	int i;
 
 	sc->sc_flags |= BWN_FLAG_INVALID;
 
@@ -744,16 +704,12 @@ bwn_detach(device_t dev)
 	taskqueue_drain(sc->sc_tq, &mac->mac_intrtask);
 	taskqueue_free(sc->sc_tq);
 
-	for (i = 0; i < BWN_MSI_MESSAGES; i++) {
-		if (mac->mac_intrhand[i] != NULL) {
-			bus_teardown_intr(dev, mac->mac_res_irq[i],
-			    mac->mac_intrhand[i]);
-			mac->mac_intrhand[i] = NULL;
-		}
+	if (mac->mac_intrhand != NULL) {
+		bus_teardown_intr(dev, mac->mac_res_irq, mac->mac_intrhand);
+		mac->mac_intrhand = NULL;
 	}
-	bus_release_resources(dev, mac->mac_intr_spec, mac->mac_res_irq);
-	if (mac->mac_msi != 0)
-		pci_release_msi(dev);
+	bus_release_resource(dev, SYS_RES_IRQ, mac->mac_rid_irq,
+	    mac->mac_res_irq);
 	mbufq_drain(&sc->sc_snd);
 	bwn_release_firmware(mac);
 	BWN_LOCK_DESTROY(sc);

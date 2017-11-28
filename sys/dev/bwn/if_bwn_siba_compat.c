@@ -285,59 +285,6 @@ bwn_bhnd_populate_nvram_data(device_t dev, struct bwn_bhnd_ctx *ctx)
 }
 
 /*
- * Disable PCI-specific MSI interrupt allocation handling
- */
-
-/*
- * pci_find_cap()
- *
- * Referenced by:
- *   bwn_attach()
- */
-static int
-bhnd_compat_pci_find_cap(device_t dev, int capability, int *capreg)
-{
-	return (ENODEV);
-}
-
-/*
- * pci_alloc_msi()
- *
- * Referenced by:
- *   bwn_attach()
- */
-static int
-bhnd_compat_pci_alloc_msi(device_t dev, int *count)
-{
-	return (ENODEV);
-}
-
-/*
- * pci_release_msi()
- *
- * Referenced by:
- *   bwn_attach()
- *   bwn_detach()
- */
-static int
-bhnd_compat_pci_release_msi(device_t dev)
-{
-	return (ENODEV);
-}
-
-/*
- * pci_msi_count()
- *
- * Referenced by:
- *   bwn_attach()
- */
-static int
-bhnd_compat_pci_msi_count(device_t dev)
-{
-	return (0);
-}
-
-/*
  * siba_get_vendor()
  *
  * Referenced by:
@@ -2438,10 +2385,6 @@ bhnd_compat_cc_write32(device_t dev, uint32_t reg, uint32_t val)
 const struct bwn_bus_ops bwn_bhnd_bus_ops = {
 	.init				= bwn_bhnd_bus_ops_init,
 	.fini				= bwn_bhnd_bus_ops_fini,
-	.pci_find_cap			= bhnd_compat_pci_find_cap,
-	.pci_alloc_msi			= bhnd_compat_pci_alloc_msi,
-	.pci_release_msi		= bhnd_compat_pci_release_msi,
-	.pci_msi_count			= bhnd_compat_pci_msi_count,
 	.get_vendor			= bhnd_compat_get_vendor,
 	.get_device			= bhnd_compat_get_device,
 	.get_revid			= bhnd_compat_get_revid,

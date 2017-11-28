@@ -948,11 +948,9 @@ struct bwn_mac {
 #define	BWN_MAC_FLAG_WME		(1 << 4)
 #define	BWN_MAC_FLAG_HWCRYPTO		(1 << 5)
 
-	struct resource_spec		*mac_intr_spec;
-#define	BWN_MSI_MESSAGES		1
-	struct resource			*mac_res_irq[BWN_MSI_MESSAGES];
-	void				*mac_intrhand[BWN_MSI_MESSAGES];
-	int				mac_msi;
+	struct resource			*mac_res_irq;
+	int				 mac_rid_irq;
+	void				*mac_intrhand;
 
 	struct bwn_noise		mac_noise;
 	struct bwn_phy			mac_phy;
