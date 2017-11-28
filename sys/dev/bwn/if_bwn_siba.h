@@ -158,22 +158,6 @@ struct bwn_bus_ops {
 
 extern const struct bwn_bus_ops bwn_bhnd_bus_ops;
 
-/*
- * Declared in:
- *    /usr/home/landonf/Documents/Code/FreeBSD/svn/head/sys/dev/siba/siba_ids.h
- */
-
-struct siba_devid {
-    uint16_t sd_vendor;
-    uint16_t sd_device;
-    uint8_t sd_rev;
-    char *sd_desc;
-};
-
-#define	SIBA_DEV(_vendor, _cid, _rev, _msg)	\
-	{ SIBA_VID_##_vendor, SIBA_DEVID_##_cid, _rev, _msg }
-
-#define	SIBA_DEVID_80211		0x812
 #define	SIBA_VID_BROADCOM		0x4243
 
 /*

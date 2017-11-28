@@ -75,6 +75,8 @@ __FBSDID("$FreeBSD$");
 #include <net80211/ieee80211_ratectl.h>
 
 #include <dev/bwn/if_bwn_siba.h>
+#include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/bhnd_ids.h>
 
 #include <dev/bwn/if_bwnreg.h>
 #include <dev/bwn/if_bwnvar.h>
@@ -484,17 +486,15 @@ static const uint16_t bwn_wme_shm_offsets[] = {
 	[3] = BWN_WME_VIDEO,
 };
 
-static const struct siba_devid bwn_devs[] = {
-	SIBA_DEV(BROADCOM, 80211, 5, "Revision 5"),
-	SIBA_DEV(BROADCOM, 80211, 6, "Revision 6"),
-	SIBA_DEV(BROADCOM, 80211, 7, "Revision 7"),
-	SIBA_DEV(BROADCOM, 80211, 9, "Revision 9"),
-	SIBA_DEV(BROADCOM, 80211, 10, "Revision 10"),
-	SIBA_DEV(BROADCOM, 80211, 11, "Revision 11"),
-	SIBA_DEV(BROADCOM, 80211, 12, "Revision 12"),
-	SIBA_DEV(BROADCOM, 80211, 13, "Revision 13"),
-	SIBA_DEV(BROADCOM, 80211, 15, "Revision 15"),
-	SIBA_DEV(BROADCOM, 80211, 16, "Revision 16")
+/* Supported D11 core revisions */
+#define	BWN_DEV(_start, _end)	{{				\
+	BHND_MATCH_CORE(BHND_MFGID_BCM, BHND_COREID_D11),	\
+	BHND_MATCH_CORE_REV(HWREV_RANGE((_start), (_end)))	\
+}}
+	
+static const struct bhnd_device bwn_devices[] = {
+	BWN_DEV(5, 16),
+	BHND_DEVICE_END
 };
 
 static const struct bwn_bus_ops *
@@ -506,20 +506,14 @@ bwn_get_bus_ops(device_t dev)
 static int
 bwn_probe(device_t dev)
 {
-	struct bwn_softc	*sc;
-	int			 i;
+	const struct bhnd_device *id;
 
-	sc = device_get_softc(dev);
-	sc->sc_bus_ops = bwn_get_bus_ops(dev);
+	id = bhnd_device_lookup(dev, bwn_devices, sizeof(bwn_devices[0]));
+	if (id == NULL)
+		return (ENXIO);
 
-	for (i = 0; i < nitems(bwn_devs); i++) {
-		if (siba_get_vendor(dev) == bwn_devs[i].sd_vendor &&
-		    siba_get_device(dev) == bwn_devs[i].sd_device &&
-		    siba_get_revid(dev) == bwn_devs[i].sd_rev)
-			return (BUS_PROBE_DEFAULT);
-	}
-
-	return (ENXIO);
+	bhnd_set_default_core_desc(dev);
+	return (BUS_PROBE_DEFAULT);
 }
 
 int
@@ -7475,7 +7469,7 @@ driver_t bwn_driver = {
 	sizeof(struct bwn_softc)
 };
 static devclass_t bwn_devclass;
-DRIVER_MODULE(bwn, siba_bwn, bwn_driver, bwn_devclass, 0, 0);
+DRIVER_MODULE(bwn, bhnd, bwn_driver, bwn_devclass, 0, 0);
 MODULE_DEPEND(bwn, bhnd, 1, 1, 1);
 MODULE_DEPEND(bwn, gpiobus, 1, 1, 1);
 MODULE_DEPEND(bwn, wlan, 1, 1, 1);		/* 802.11 media layer */
