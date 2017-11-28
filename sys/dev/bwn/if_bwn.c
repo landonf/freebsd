@@ -774,9 +774,11 @@ bwn_sprom_bugfixes(device_t dev)
 	 (siba_get_pci_subvendor(dev) == PCI_VENDOR_##_subvendor) &&	\
 	 (siba_get_pci_subdevice(dev) == _subdevice))
 
-	if (siba_get_pci_subvendor(dev) == PCI_VENDOR_APPLE &&
-	    siba_get_pci_subdevice(dev) == 0x4e &&
-	    siba_get_pci_revid(dev) > 0x40)
+	 /* A subset of Apple Airport Extreme (BCM4306 rev 2) devices
+	  * were programmed with a missing PACTRL boardflag */
+	 if (sc->sc_board_info.board_vendor == PCI_VENDOR_APPLE &&
+	     sc->sc_board_info.board_type == 0x4e &&
+	     sc->sc_board_info.board_rev > 0x40)
 		siba_sprom_set_bf_lo(dev,
 		    siba_sprom_get_bf_lo(dev) | BWN_BFL_PACTRL);
 
