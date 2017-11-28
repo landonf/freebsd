@@ -169,9 +169,6 @@ extern const struct bwn_bus_ops bwn_bhnd_bus_ops;
 #define	SIBA_BOARD_BU4306		0x0416
 #define	SIBA_BOARD_BCM4321		0x046d
 
-#define	SIBA_CHIPPACK_BCM4712S		1
-
-
 /*
  * Declared in:
  *    /usr/home/landonf/Documents/Code/FreeBSD/svn/head/sys/dev/siba/sibavar.h
