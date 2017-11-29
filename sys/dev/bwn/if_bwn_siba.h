@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2016 Landon J. Fuller <landonf@FreeBSD.org>.
  * Copyright (c) 2007 Bruce M. Simpson.
  * All rights reserved.
