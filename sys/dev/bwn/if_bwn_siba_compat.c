@@ -2033,6 +2033,8 @@ bhnd_compat_cc_write32(device_t dev, uint32_t reg, uint32_t val)
 const struct bwn_bus_ops bwn_bhnd_bus_ops = {
 	.init				= bwn_bhnd_bus_ops_init,
 	.fini				= bwn_bhnd_bus_ops_fini,
+	.get_pci_vendor			= bhnd_compat_get_pci_vendor,
+	.get_pci_device			= bhnd_compat_get_pci_device,
 	.get_type			= bhnd_compat_get_type,
 	.get_cc_pmufreq			= bhnd_compat_get_cc_pmufreq,
 	.get_cc_caps			= bhnd_compat_get_cc_caps,
