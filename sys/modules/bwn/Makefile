@@ -28,6 +28,7 @@ SRCS+=	device_if.h bus_if.h gpio_if.h pci_if.h opt_bwn.h opt_wlan.h
 SRCS.BWN_GPL_PHY+=  if_bwn_radio_2055.c
 SRCS.BWN_GPL_PHY+=  if_bwn_radio_2056.c
 SRCS.BWN_GPL_PHY+=  if_bwn_radio_2057.c
+SRCS.BWN_GPL_PHY+=  if_bwn_phy_n_sprom.c
 SRCS.BWN_GPL_PHY+=  if_bwn_phy_n_tables.c
 SRCS.BWN_GPL_PHY+=  if_bwn_phy_n_ppr.c
 SRCS.BWN_GPL_PHY+=  if_bwn_phy_n_core.c

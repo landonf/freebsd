@@ -1673,117 +1673,6 @@ bhnd_compat_fix_imcfglobug(device_t dev)
 	/* This is handled by siba_bhndb during attach/resume */
 }
 
-
-/* Core power NVRAM variables, indexed by D11 core unit number */
-static const struct bwn_power_vars {
-	const char *itt2ga;
-	const char *itt5ga;
-	const char *maxp2ga;
-	const char *pa2ga;
-	const char *pa5ga;
-} bwn_power_vars[BWN_BHND_NUM_CORE_PWR] = {
-#define	BHND_POWER_NVAR(_idx)					\
-	{ BHND_NVAR_ITT2GA ## _idx, BHND_NVAR_ITT5GA ## _idx,	\
-	  BHND_NVAR_MAXP2GA ## _idx, BHND_NVAR_PA2GA ## _idx,	\
-	  BHND_NVAR_PA5GA ## _idx }
-	BHND_POWER_NVAR(0),
-	BHND_POWER_NVAR(1),
-	BHND_POWER_NVAR(2),
-	BHND_POWER_NVAR(3)
-#undef BHND_POWER_NVAR
-};
-
-static int
-bwn_get_core_power_info_r11(device_t dev, const struct bwn_power_vars *v,
-    struct siba_sprom_core_pwr_info *c)
-{
-	int16_t	pa5ga[12];
-	int	error;
-
-	/* BHND_NVAR_PA2GA[core] */
-	error = bhnd_nvram_getvar_array(dev, v->pa2ga, c->pa_2g,
-	    sizeof(c->pa_2g), BHND_NVRAM_TYPE_INT16);
-	if (error)
-		return (error);
-
-	/* 
-	 * BHND_NVAR_PA5GA
-	 * 
-	 * The NVRAM variable is defined as a single pa5ga[12] array; we have
-	 * to split this into pa_5gl[4], pa_5g[4], and pa_5gh[4] for use
-	 * by bwn(4);
-	 */
-	_Static_assert(nitems(pa5ga) == nitems(c->pa_5g) + nitems(c->pa_5gh) +
-	    nitems(c->pa_5gl), "cannot split pa5ga into pa_5gl/pa_5g/pa_5gh");
-
-	error = bhnd_nvram_getvar_array(dev, v->pa5ga, pa5ga, sizeof(pa5ga),
-	    BHND_NVRAM_TYPE_INT16);
-	if (error)
-		return (error);
-
-	memcpy(c->pa_5gl, &pa5ga[0], sizeof(c->pa_5gl));
-	memcpy(c->pa_5g, &pa5ga[4], sizeof(c->pa_5g));
-	memcpy(c->pa_5gh, &pa5ga[8], sizeof(c->pa_5gh));
-	return (0);
-}
-
-static int
-bwn_get_core_power_info_r4_r10(device_t dev,
-    const struct bwn_power_vars *v, struct siba_sprom_core_pwr_info *c)
-{
-	int error;
-
-	/* BHND_NVAR_ITT2GA[core] */
-	if ((error = bhnd_nvram_getvar_uint8(dev, v->itt2ga, &c->itssi_2g)))
-		return (error);
-
-	/* BHND_NVAR_ITT5GA[core] */
-	if ((error = bhnd_nvram_getvar_uint8(dev, v->itt5ga, &c->itssi_5g)))
-		return (error);
-
-	return (0);
-}
-
-/*
- * siba_sprom_get_core_power_info()
- *
- * Referenced by:
- *   bwn_nphy_tx_power_ctl_setup()
- *   bwn_ppr_load_max_from_sprom()
- */
-static int
-bhnd_compat_sprom_get_core_power_info(device_t dev, int core,
-    struct siba_sprom_core_pwr_info *c)
-{
-	struct bwn_bhnd_ctx		*ctx;
-	const struct bwn_power_vars	*v;
-	int				 error;
-
-	if (core < 0 || core >= nitems(bwn_power_vars))
-		return (EINVAL);
-
-	ctx = bwn_bhnd_get_ctx(dev);
-	if (ctx->sromrev < 4)
-		return (ENXIO);
-
-	v = &bwn_power_vars[core];
-
-	/* Any power variables not found in NVRAM (or returning a
-	 * shorter array for a particular NVRAM revision) should be zero
-	 * initialized */
-	memset(c, 0x0, sizeof(*c));
-
-	/* Populate SPROM revision-independent values */
-	if ((error = bhnd_nvram_getvar_uint8(dev, v->maxp2ga, &c->maxpwr_2g)))
-		return (error);
-
-	/* Populate SPROM revision-specific values */
-	if (ctx->sromrev >= 4 && ctx->sromrev <= 10)
-		return (bwn_get_core_power_info_r4_r10(dev, v, c));
-	else
-		return (bwn_get_core_power_info_r11(dev, v, c));
-}
-
 /*
  * siba_sprom_get_mcs2gpo()
  *
@@ -2111,7 +2000,6 @@ const struct bwn_bus_ops bwn_bhnd_bus_ops = {
 	.gpio_set			= bhnd_compat_gpio_set,
 	.gpio_get			= bhnd_compat_gpio_get,
 	.fix_imcfglobug			= bhnd_compat_fix_imcfglobug,
-	.sprom_get_core_power_info	= bhnd_compat_sprom_get_core_power_info,
 	.sprom_get_mcs2gpo		= bhnd_compat_sprom_get_mcs2gpo,
 	.sprom_get_mcs5glpo		= bhnd_compat_sprom_get_mcs5glpo,
 	.sprom_get_mcs5gpo		= bhnd_compat_sprom_get_mcs5gpo,

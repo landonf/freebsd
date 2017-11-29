@@ -82,6 +82,7 @@ __FBSDID("$FreeBSD$");
 
 #include <gnu/dev/bwn/phy_n/if_bwn_phy_n_regs.h>
 #include <gnu/dev/bwn/phy_n/if_bwn_phy_n_ppr.h>
+#include <gnu/dev/bwn/phy_n/if_bwn_phy_n_sprom.h>
 #include <gnu/dev/bwn/phy_n/if_bwn_phy_n_tables.h>
 #include <gnu/dev/bwn/phy_n/if_bwn_radio_2055.h>
 #include <gnu/dev/bwn/phy_n/if_bwn_radio_2056.h>
@@ -4165,7 +4166,7 @@ static void bwn_nphy_tx_power_ctl_setup(struct bwn_mac *mac)
 	struct bwn_softc *sc = mac->mac_sc;
 	struct bwn_phy *phy = &mac->mac_phy;
 	struct bwn_phy_n *nphy = mac->mac_phy.phy_n;
-	struct siba_sprom_core_pwr_info core_pwr_info[4];
+	struct bwn_phy_n_core_pwr_info core_pwr_info[4];
 	int n;
 
 	int16_t a1[2], b0[2], b1[2];
@@ -4182,7 +4183,7 @@ static void bwn_nphy_tx_power_ctl_setup(struct bwn_mac *mac)
 
 	for (n = 0; n < 4; n++) {
 		bzero(&core_pwr_info[n], sizeof(core_pwr_info[n]));
-		if (siba_sprom_get_core_power_info(sc->sc_dev, n,
+		if (bwn_nphy_get_core_power_info(mac, n,
 		    &core_pwr_info[n]) != 0) {
 			BWN_ERRPRINTF(mac->mac_sc,
 			    "%s: failed to get core_pwr_info for core %d\n",

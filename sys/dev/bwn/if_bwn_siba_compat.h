@@ -34,8 +34,6 @@
 
 #include "if_bwnvar.h"
 
-#define	BWN_BHND_NUM_CORE_PWR	4
-
 /**
  * Compatiblity shim state.
  */

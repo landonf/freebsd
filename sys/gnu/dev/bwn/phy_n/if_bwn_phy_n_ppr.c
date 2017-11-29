@@ -74,6 +74,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/bwn/if_bwn_phy_common.h>
 
 #include <gnu/dev/bwn/phy_n/if_bwn_phy_n_regs.h>
+#include <gnu/dev/bwn/phy_n/if_bwn_phy_n_sprom.h>
 #include <gnu/dev/bwn/phy_n/if_bwn_phy_n_ppr.h>
 
 #define ppr_for_each_entry(ppr, i, entry)				\
@@ -136,7 +137,7 @@ bool bwn_ppr_load_max_from_sprom(struct bwn_mac *mac, struct bwn_ppr *ppr,
 				 bwn_phy_band_t band)
 {
 	struct bwn_softc *sc = mac->mac_sc;
-	struct siba_sprom_core_pwr_info core_pwr_info[4];
+	struct bwn_phy_n_core_pwr_info core_pwr_info[4];
 	struct bwn_ppr_rates *rates = &ppr->rates;
 	struct bwn_phy *phy = &mac->mac_phy;
 	uint8_t maxpwr, off;
@@ -147,7 +148,7 @@ bool bwn_ppr_load_max_from_sprom(struct bwn_mac *mac, struct bwn_ppr *ppr,
 
 	for (i = 0; i < 4; i++) {
 		bzero(&core_pwr_info[i], sizeof(core_pwr_info[i]));
-		if (siba_sprom_get_core_power_info(sc->sc_dev, i,
+		if (bwn_nphy_get_core_power_info(mac, i,
 		    &core_pwr_info[i]) != 0) {
 			BWN_ERRPRINTF(mac->mac_sc,
 			    "%s: failed to get core_pwr_info for core %d\n",

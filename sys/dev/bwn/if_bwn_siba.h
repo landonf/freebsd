@@ -31,7 +31,6 @@
 #define _IF_BWN_SIBA_H_
 
 struct bwn_softc;
-struct siba_sprom_core_pwr_info;
 
 /* Always false now that siba_bwn has been removed */
 #define	BWN_USE_SIBA	0
@@ -123,7 +122,6 @@ struct bwn_bus_ops {
 	void		(*gpio_set)(device_t, uint32_t);
 	uint32_t	(*gpio_get)(device_t);
 	void		(*fix_imcfglobug)(device_t);
-	int		(*sprom_get_core_power_info)(device_t, int, struct siba_sprom_core_pwr_info *);
 	int		(*sprom_get_mcs2gpo)(device_t, uint16_t *);
 	int		(*sprom_get_mcs5glpo)(device_t, uint16_t *);
 	int		(*sprom_get_mcs5gpo)(device_t, uint16_t *);
@@ -176,19 +174,6 @@ enum siba_type {
 enum {
 	SIBA_CCODE_JAPAN,
 	SIBA_CCODE_UNKNOWN
-};
-
-struct siba_sprom_core_pwr_info {
-    uint8_t itssi_2g;
-    uint8_t itssi_5g;
-    uint8_t maxpwr_2g;
-    uint8_t maxpwr_5gl;
-    uint8_t maxpwr_5g;
-    uint8_t maxpwr_5gh;
-    int16_t pa_2g[3];
-    int16_t pa_5gl[4];
-    int16_t pa_5g[4];
-    int16_t pa_5gh[4];
 };
 
 #define	SIBA_LDO_PAREF	0
@@ -361,8 +346,6 @@ struct siba_sprom_core_pwr_info {
 	BWN_BUS_OPS(_dev)->gpio_get(_dev)
 #define	siba_fix_imcfglobug(_dev)	\
 	BWN_BUS_OPS(_dev)->fix_imcfglobug(_dev)
-#define	siba_sprom_get_core_power_info(_dev, _arg1, _arg2)	\
-	BWN_BUS_OPS(_dev)->sprom_get_core_power_info(_dev, _arg1, _arg2)
 #define	siba_sprom_get_mcs2gpo(_dev, _arg1)	\
 	BWN_BUS_OPS(_dev)->sprom_get_mcs2gpo(_dev, _arg1)
 #define	siba_sprom_get_mcs5glpo(_dev, _arg1)	\
