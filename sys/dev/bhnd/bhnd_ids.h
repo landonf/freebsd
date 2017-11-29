@@ -582,10 +582,10 @@
 #define	BHND_BFL_LNLDO2_2P5		0x04000000	/* Select 2.5V as LNLDO2 output voltage */
 #define	BHND_BFL_FASTPWR		0x08000000
 #define	BHND_BFL_UCPWRCTL_MININDX	0x08000000	/* Enforce min power index to avoid FEM damage */
-#define	BHND_BFL_EXTLNA_5GHz		0x10000000	/* Board has an external LNA in 5GHz band */
-#define	BHND_BFL_TRSW_1by2		0x20000000	/* Board has 2 TRSW's in 1by2 designs */
+#define	BHND_BFL_EXTLNA_5GHZ		0x10000000	/* Board has an external LNA in 5GHz band */
+#define	BHND_BFL_TRSW_1BY2		0x20000000	/* Board has 2 TRSW's in 1by2 designs */
 #define	BHND_BFL_GAINBOOSTA01	        0x20000000	/* 5g Gainboost for core0 and core1 */
-#define	BHND_BFL_LO_TRSW_R_5GHz		0x40000000	/* In 5G do not throw TRSW to T for clipLO gain */
+#define	BHND_BFL_LO_TRSW_R_5GHZ		0x40000000	/* In 5G do not throw TRSW to T for clipLO gain */
 #define	BHND_BFL_ELNA_GAINDEF		0x80000000	/* Backoff InitGain based on elna_2g/5g field
 							 * when this flag is set
 							 */
@@ -645,7 +645,7 @@
 #define	BHND_BFL_SROM11_BTCOEX		0x00000001	/* Board supports BTCOEX */
 #define	BHND_BFL_SROM11_WLAN_BT_SH_XTL	0x00000002	/* bluetooth and wlan share same crystal */
 #define	BHND_BFL_SROM11_EXTLNA		0x00001000	/* Board has an external LNA in 2.4GHz band */
-#define	BHND_BFL_SROM11_EXTLNA_5GHz	0x10000000	/* Board has an external LNA in 5GHz band */
+#define	BHND_BFL_SROM11_EXTLNA_5GHZ	0x10000000	/* Board has an external LNA in 5GHz band */
 #define	BHND_BFL_SROM11_GAINBOOSTA01	0x20000000	/* 5g Gainboost for core0 and core1 */
 #define	BHND_BFL2_SROM11_APLL_WAR	0x00000002	/* Flag to implement alternative A-band PLL settings */
 #define	BHND_BFL2_SROM11_ANAPACTRL_2G	0x00100000	/* 2G ext PAs are ctrl-ed by analog PA ctrl lines */
