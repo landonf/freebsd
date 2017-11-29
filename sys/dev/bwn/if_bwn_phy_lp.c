@@ -1452,9 +1452,9 @@ bwn_phy_lp_bbinit_r01(struct bwn_mac *mac)
 		BWN_PHY_SETMASK(mac, v1[i].offset, v1[i].mask, v1[i].set);
 	BWN_PHY_SETMASK(mac, BWN_PHY_INPUT_PWRDB,
 	    0xff00, plp->plp_rxpwroffset);
-	if ((siba_sprom_get_bf_lo(sc->sc_dev) & BWN_BFL_FEM) &&
+	if ((sc->sc_board_info.board_flags & BHND_BFL_FEM) &&
 	    ((IEEE80211_IS_CHAN_5GHZ(ic->ic_curchan)) ||
-	   (siba_sprom_get_bf_hi(sc->sc_dev) & BWN_BFH_LDO_PAREF))) {
+	   (sc->sc_board_info.board_flags & BHND_BFL_PAREF))) {
 		siba_cc_pmu_set_ldovolt(sc->sc_dev, SIBA_LDO_PAREF, 0x28);
 		siba_cc_pmu_set_ldoparef(sc->sc_dev, 1);
 		if (mac->mac_phy.rev == 0)
@@ -1468,7 +1468,7 @@ bwn_phy_lp_bbinit_r01(struct bwn_mac *mac)
 	}
 	tmp = plp->plp_rssivf | plp->plp_rssivc << 4 | 0xa000;
 	BWN_PHY_WRITE(mac, BWN_PHY_AFE_RSSI_CTL_0, tmp);
-	if (siba_sprom_get_bf_hi(sc->sc_dev) & BWN_BFH_RSSIINV)
+	if (sc->sc_board_info.board_flags & BHND_BFL_RSSIINV)
 		BWN_PHY_SETMASK(mac, BWN_PHY_AFE_RSSI_CTL_1, 0xf000, 0x0aaa);
 	else
 		BWN_PHY_SETMASK(mac, BWN_PHY_AFE_RSSI_CTL_1, 0xf000, 0x02aa);
@@ -1476,19 +1476,19 @@ bwn_phy_lp_bbinit_r01(struct bwn_mac *mac)
 	BWN_PHY_SETMASK(mac, BWN_PHY_RX_RADIO_CTL,
 	    0xfff9, (plp->plp_bxarch << 1));
 	if (mac->mac_phy.rev == 1 &&
-	    (siba_sprom_get_bf_hi(sc->sc_dev) & BWN_BFH_FEM_BT)) {
+	    (sc->sc_board_info.board_flags & BHND_BFL_FEM_BT)) {
 		for (i = 0; i < N(v2); i++)
 			BWN_PHY_SETMASK(mac, v2[i].offset, v2[i].mask,
 			    v2[i].set);
 	} else if (IEEE80211_IS_CHAN_5GHZ(ic->ic_curchan) ||
 	    (sc->sc_board_info.board_type == 0x048a) ||
 	    ((mac->mac_phy.rev == 0) &&
-	     (siba_sprom_get_bf_lo(sc->sc_dev) & BWN_BFL_FEM))) {
+	     (sc->sc_board_info.board_flags & BHND_BFL_FEM))) {
 		for (i = 0; i < N(v3); i++)
 			BWN_PHY_SETMASK(mac, v3[i].offset, v3[i].mask,
 			    v3[i].set);
 	} else if (mac->mac_phy.rev == 1 ||
-		  (siba_sprom_get_bf_lo(sc->sc_dev) & BWN_BFL_FEM)) {
+		  (sc->sc_board_info.board_flags & BHND_BFL_FEM)) {
 		for (i = 0; i < N(v4); i++)
 			BWN_PHY_SETMASK(mac, v4[i].offset, v4[i].mask,
 			    v4[i].set);
@@ -1498,13 +1498,13 @@ bwn_phy_lp_bbinit_r01(struct bwn_mac *mac)
 			    v5[i].set);
 	}
 	if (mac->mac_phy.rev == 1 &&
-	    (siba_sprom_get_bf_hi(sc->sc_dev) & BWN_BFH_LDO_PAREF)) {
+	    (sc->sc_board_info.board_flags & BHND_BFL_PAREF)) {
 		BWN_PHY_COPY(mac, BWN_PHY_TR_LOOKUP_5, BWN_PHY_TR_LOOKUP_1);
 		BWN_PHY_COPY(mac, BWN_PHY_TR_LOOKUP_6, BWN_PHY_TR_LOOKUP_2);
 		BWN_PHY_COPY(mac, BWN_PHY_TR_LOOKUP_7, BWN_PHY_TR_LOOKUP_3);
 		BWN_PHY_COPY(mac, BWN_PHY_TR_LOOKUP_8, BWN_PHY_TR_LOOKUP_4);
 	}
-	if ((siba_sprom_get_bf_hi(sc->sc_dev) & BWN_BFH_FEM_BT) &&
+	if ((sc->sc_board_info.board_flags & BHND_BFL_FEM_BT) &&
 	    (sc->sc_cid.chip_id == BHND_CHIPID_BCM5354) &&
 	    (sc->sc_cid.chip_pkg == BHND_PKGID_BCM4712SMALL)) {
 		BWN_PHY_SET(mac, BWN_PHY_CRSGAIN_CTL, 0x0006);
@@ -3356,7 +3356,7 @@ bwn_phy_lp_tblinit_txgain(struct bwn_mac *mac)
 	};
 
 	if (mac->mac_phy.rev != 0 && mac->mac_phy.rev != 1) {
-		if (siba_sprom_get_bf_hi(sc->sc_dev) & BWN_BFH_NOPA)
+		if (sc->sc_board_info.board_flags & BHND_BFL_NOPA)
 			bwn_phy_lp_gaintbl_write_multi(mac, 0, 128, txgain_r2);
 		else if (IEEE80211_IS_CHAN_2GHZ(ic->ic_curchan))
 			bwn_phy_lp_gaintbl_write_multi(mac, 0, 128,
@@ -3368,8 +3368,8 @@ bwn_phy_lp_tblinit_txgain(struct bwn_mac *mac)
 	}
 
 	if (mac->mac_phy.rev == 0) {
-		if ((siba_sprom_get_bf_hi(sc->sc_dev) & BWN_BFH_NOPA) ||
-		    (siba_sprom_get_bf_lo(sc->sc_dev) & BWN_BFL_HGPA))
+		if ((sc->sc_board_info.board_flags & BHND_BFL_NOPA) ||
+		    (sc->sc_board_info.board_flags & BHND_BFL_HGPA))
 			bwn_phy_lp_gaintbl_write_multi(mac, 0, 128, txgain_r0);
 		else if (IEEE80211_IS_CHAN_2GHZ(ic->ic_curchan))
 			bwn_phy_lp_gaintbl_write_multi(mac, 0, 128,
@@ -3380,8 +3380,8 @@ bwn_phy_lp_tblinit_txgain(struct bwn_mac *mac)
 		return;
 	}
 
-	if ((siba_sprom_get_bf_hi(sc->sc_dev) & BWN_BFH_NOPA) ||
-	    (siba_sprom_get_bf_lo(sc->sc_dev) & BWN_BFL_HGPA))
+	if ((sc->sc_board_info.board_flags & BHND_BFL_NOPA) ||
+	    (sc->sc_board_info.board_flags & BHND_BFL_HGPA))
 		bwn_phy_lp_gaintbl_write_multi(mac, 0, 128, txgain_r1);
 	else if (IEEE80211_IS_CHAN_2GHZ(ic->ic_curchan))
 		bwn_phy_lp_gaintbl_write_multi(mac, 0, 128, txgain_2ghz_r1);

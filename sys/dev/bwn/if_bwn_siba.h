@@ -84,11 +84,6 @@ struct bwn_bus_ops {
 	uint32_t	(*sprom_get_ofdm5glpo)(device_t);
 	uint32_t	(*sprom_get_ofdm5gpo)(device_t);
 	uint32_t	(*sprom_get_ofdm5ghpo)(device_t);
-	uint16_t	(*sprom_get_bf_lo)(device_t);
-	void		(*sprom_set_bf_lo)(device_t, uint16_t);
-	uint16_t	(*sprom_get_bf_hi)(device_t);
-	uint16_t	(*sprom_get_bf2_lo)(device_t);
-	uint16_t	(*sprom_get_bf2_hi)(device_t);
 	uint8_t		(*sprom_get_fem_2ghz_tssipos)(device_t);
 	uint8_t		(*sprom_get_fem_2ghz_extpa_gain)(device_t);
 	uint8_t		(*sprom_get_fem_2ghz_pdet_range)(device_t);
@@ -288,16 +283,6 @@ struct siba_sprom_core_pwr_info {
 	BWN_BUS_OPS(_dev)->sprom_get_ofdm5gpo(_dev)
 #define	siba_sprom_get_ofdm5ghpo(_dev)	\
 	BWN_BUS_OPS(_dev)->sprom_get_ofdm5ghpo(_dev)
-#define	siba_sprom_get_bf_lo(_dev)	\
-	BWN_BUS_OPS(_dev)->sprom_get_bf_lo(_dev)
-#define	siba_sprom_set_bf_lo(_dev, t)	\
-	BWN_BUS_OPS(_dev)->sprom_set_bf_lo(_dev, t)
-#define	siba_sprom_get_bf_hi(_dev)	\
-	BWN_BUS_OPS(_dev)->sprom_get_bf_hi(_dev)
-#define	siba_sprom_get_bf2_lo(_dev)	\
-	BWN_BUS_OPS(_dev)->sprom_get_bf2_lo(_dev)
-#define	siba_sprom_get_bf2_hi(_dev)	\
-	BWN_BUS_OPS(_dev)->sprom_get_bf2_hi(_dev)
 #define	siba_sprom_get_fem_2ghz_tssipos(_dev)	\
 	BWN_BUS_OPS(_dev)->sprom_get_fem_2ghz_tssipos(_dev)
 #define	siba_sprom_get_fem_2ghz_extpa_gain(_dev)	\

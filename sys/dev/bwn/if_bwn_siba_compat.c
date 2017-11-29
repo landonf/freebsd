@@ -223,15 +223,6 @@ bwn_bhnd_populate_nvram_data(device_t dev, struct bwn_bhnd_ctx *ctx)
 		return (error);
 	}
 
-	/* Fetch board flags */
-	error = bhnd_nvram_getvar_uint32(dev, BHND_NVAR_BOARDFLAGS,
-	    &ctx->boardflags);
-	if (error) {
-		device_printf(dev, "error reading %s: %d\n",
-		    BHND_NVAR_BOARDFLAGS, error);
-		return (error);
-	}
-
 	/* Fetch pa0maxpwr; bwn(4) expects to be able to modify it */
 	if ((ctx->sromrev >= 1 && ctx->sromrev <= 3) ||
 	    (ctx->sromrev >= 8 && ctx->sromrev <= 10))
@@ -874,96 +865,6 @@ static uint32_t
 bhnd_compat_sprom_get_ofdm5ghpo(device_t dev)
 {
 	BWN_BHND_NVRAM_RETURN_VAR(dev, uint32, BHND_NVAR_OFDM5GHPO);
-}
-
-/*
- * siba_sprom_set_bf_lo()
- *
- * Referenced by:
- *   bwn_sprom_bugfixes()
- */
-static void
-bhnd_compat_sprom_set_bf_lo(device_t dev, uint16_t t)
-{
-	struct bwn_bhnd_ctx *ctx = bwn_bhnd_get_ctx(dev);
-	ctx->boardflags &= ~0xFFFF;
-	ctx->boardflags |= t;
-}
-
-/*
- * siba_sprom_get_bf_lo()
- *
- * Referenced by:
- *   bwn_bt_enable()
- *   bwn_core_init()
- *   bwn_gpio_init()
- *   bwn_loopback_calcgain()
- *   bwn_phy_g_init_sub()
- *   bwn_phy_g_recalc_txpwr()
- *   bwn_phy_g_set_txpwr()
- *   bwn_phy_g_task_60s()
- *   bwn_rx_rssi_calc()
- *   bwn_sprom_bugfixes()
- * ... and 11 others
- * 
- */
-static uint16_t
-bhnd_compat_sprom_get_bf_lo(device_t dev)
-{
-	struct bwn_bhnd_ctx *ctx = bwn_bhnd_get_ctx(dev);
-	return (ctx->boardflags & UINT16_MAX);
-}
-
-/*
- * siba_sprom_get_bf_hi()
- *
- * Referenced by:
- *   bwn_nphy_gain_ctl_workarounds_rev3()
- *   bwn_phy_lp_bbinit_r01()
- *   bwn_phy_lp_tblinit_txgain()
- */
-static uint16_t
-bhnd_compat_sprom_get_bf_hi(device_t dev)
-{
-	struct bwn_bhnd_ctx *ctx = bwn_bhnd_get_ctx(dev);
-	return (ctx->boardflags >> 16);
-}
-
-/*
- * siba_sprom_get_bf2_lo()
- *
- * Referenced by:
- *   bwn_nphy_op_prepare_structs()
- *   bwn_nphy_workarounds_rev1_2()
- *   bwn_nphy_workarounds_rev3plus()
- *   bwn_phy_initn()
- *   bwn_radio_2056_setup()
- *   bwn_radio_init2055_post()
- */
-static uint16_t
-bhnd_compat_sprom_get_bf2_lo(device_t dev)
-{
-	uint32_t bf2;
-
-	BWN_BHND_NVRAM_FETCH_VAR(dev, uint32, BHND_NVAR_BOARDFLAGS2, &bf2);
-	return (bf2 & UINT16_MAX);
-}
-
-/*
- * siba_sprom_get_bf2_hi()
- *
- * Referenced by:
- *   bwn_nphy_workarounds_rev7plus()
- *   bwn_phy_initn()
- *   bwn_radio_2056_setup()
- */
-static uint16_t
-bhnd_compat_sprom_get_bf2_hi(device_t dev)
-{
-	uint32_t bf2;
-
-	BWN_BHND_NVRAM_FETCH_VAR(dev, uint32, BHND_NVAR_BOARDFLAGS2, &bf2);
-	return (bf2 >> 16);
 }
 
 /*
@@ -2169,11 +2070,6 @@ const struct bwn_bus_ops bwn_bhnd_bus_ops = {
 	.sprom_get_ofdm5glpo		= bhnd_compat_sprom_get_ofdm5glpo,
 	.sprom_get_ofdm5gpo		= bhnd_compat_sprom_get_ofdm5gpo,
 	.sprom_get_ofdm5ghpo		= bhnd_compat_sprom_get_ofdm5ghpo,
-	.sprom_get_bf_lo		= bhnd_compat_sprom_get_bf_lo,
-	.sprom_set_bf_lo		= bhnd_compat_sprom_set_bf_lo,
-	.sprom_get_bf_hi		= bhnd_compat_sprom_get_bf_hi,
-	.sprom_get_bf2_lo		= bhnd_compat_sprom_get_bf2_lo,
-	.sprom_get_bf2_hi		= bhnd_compat_sprom_get_bf2_hi,
 	.sprom_get_fem_2ghz_tssipos	= bhnd_compat_sprom_get_fem_2ghz_tssipos,
 	.sprom_get_fem_2ghz_extpa_gain	= bhnd_compat_sprom_get_fem_2ghz_extpa_gain,
 	.sprom_get_fem_2ghz_pdet_range	= bhnd_compat_sprom_get_fem_2ghz_pdet_range,

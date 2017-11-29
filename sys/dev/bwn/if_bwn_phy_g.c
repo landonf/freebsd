@@ -659,7 +659,7 @@ bwn_phy_g_recalc_txpwr(struct bwn_mac *mac, int ignore_tssi)
 	KASSERT(tssi < BWN_TSSI_MAX, ("%s:%d: fail", __func__, __LINE__));
 
 	max = siba_sprom_get_maxpwr_bg(sc->sc_dev);
-	if (siba_sprom_get_bf_lo(sc->sc_dev) & BWN_BFL_PACTRL)
+	if (sc->sc_board_info.board_flags & BHND_BFL_PACTRL)
 		max -= 3;
 	if (max >= 120) {
 		device_printf(sc->sc_dev, "invalid max TX-power value\n");
@@ -708,8 +708,8 @@ bwn_phy_g_set_txpwr(struct bwn_mac *mac)
 				txctl = BWN_TXCTL_PA2DB | BWN_TXCTL_TXMIX;
 				rfatt += 2;
 				bbatt += 2;
-			} else if (siba_sprom_get_bf_lo(sc->sc_dev) &
-			    BWN_BFL_PACTRL) {
+			} else if (sc->sc_board_info.board_flags &
+			    BHND_BFL_PACTRL) {
 				bbatt += 4 * (rfatt - 2);
 				rfatt = 2;
 			}
@@ -807,7 +807,7 @@ bwn_phy_g_task_60s(struct bwn_mac *mac)
 	struct bwn_softc *sc = mac->mac_sc;
 	uint8_t old = phy->chan;
 
-	if (!(siba_sprom_get_bf_lo(sc->sc_dev) & BWN_BFL_RSSI))
+	if (!(sc->sc_board_info.board_flags & BHND_BFL_ADCDIV))
 		return;
 
 	bwn_mac_suspend(mac);
@@ -894,7 +894,7 @@ bwn_phy_g_init_sub(struct bwn_mac *mac)
 		BWN_PHY_SETMASK(mac, BWN_PHY_CCK(0x36), 0x0fff,
 		    (pg->pg_loctl.tx_bias << 12));
 	}
-	if (siba_sprom_get_bf_lo(sc->sc_dev) & BWN_BFL_PACTRL)
+	if (sc->sc_board_info.board_flags & BHND_BFL_PACTRL)
 		BWN_PHY_WRITE(mac, BWN_PHY_CCK(0x2e), 0x8075);
 	else
 		BWN_PHY_WRITE(mac, BWN_PHY_CCK(0x2e), 0x807f);
@@ -907,7 +907,7 @@ bwn_phy_g_init_sub(struct bwn_mac *mac)
 		BWN_PHY_WRITE(mac, BWN_PHY_LO_MASK, 0x8078);
 	}
 
-	if (!(siba_sprom_get_bf_lo(sc->sc_dev) & BWN_BFL_RSSI)) {
+	if (!(sc->sc_board_info.board_flags & BHND_BFL_ADCDIV)) {
 		for (i = 0; i < 64; i++) {
 			BWN_PHY_WRITE(mac, BWN_PHY_NRSSI_CTRL, i);
 			BWN_PHY_WRITE(mac, BWN_PHY_NRSSI_DATA,
@@ -1113,7 +1113,7 @@ bwn_loopback_calcgain(struct bwn_mac *mac)
 	BWN_PHY_SET(mac, BWN_PHY_RFOVER, 0x0100);
 	BWN_PHY_MASK(mac, BWN_PHY_RFOVERVAL, 0xcfff);
 
-	if (siba_sprom_get_bf_lo(sc->sc_dev) & BWN_BFL_EXTLNA) {
+	if (sc->sc_board_info.board_flags & BHND_BFL_EXTLNA) {
 		if (phy->rev >= 7) {
 			BWN_PHY_SET(mac, BWN_PHY_RFOVER, 0x0800);
 			BWN_PHY_SET(mac, BWN_PHY_RFOVERVAL, 0x8000);
@@ -1443,7 +1443,7 @@ bwn_phy_init_b6(struct bwn_mac *mac)
 		BWN_RF_WRITE(mac, 0x5a, 0x88);
 		BWN_RF_WRITE(mac, 0x5b, 0x6b);
 		BWN_RF_WRITE(mac, 0x5c, 0x0f);
-		if (siba_sprom_get_bf_lo(sc->sc_dev) & BWN_BFL_ALTIQ) {
+		if (sc->sc_board_info.board_flags & BHND_BFL_ALTIQ) {
 			BWN_RF_WRITE(mac, 0x5d, 0xfa);
 			BWN_RF_WRITE(mac, 0x5e, 0xd8);
 		} else {
@@ -1541,7 +1541,7 @@ bwn_phy_init_a(struct bwn_mac *mac)
 	bwn_wa_init(mac);
 
 	if (phy->type == BWN_PHYTYPE_G &&
-	    (siba_sprom_get_bf_lo(sc->sc_dev) & BWN_BFL_PACTRL))
+	    (sc->sc_board_info.board_flags & BHND_BFL_PACTRL))
 		BWN_PHY_SETMASK(mac, BWN_PHY_OFDM(0x6e), 0xe000, 0x3cf);
 }
 
@@ -1822,8 +1822,8 @@ bwn_wa_init(struct bwn_mac *mac)
 		} else {
 			bwn_ofdmtab_write_2(mac, BWN_OFDMTAB_GAINX, 1, 0x0002);
 			bwn_ofdmtab_write_2(mac, BWN_OFDMTAB_GAINX, 2, 0x0001);
-			if ((siba_sprom_get_bf_lo(sc->sc_dev) &
-			     BWN_BFL_EXTLNA) &&
+			if ((sc->sc_board_info.board_flags &
+			     BHND_BFL_EXTLNA) &&
 			    (phy->rev >= 7)) {
 				BWN_PHY_MASK(mac, BWN_PHY_EXTG(0x11), 0xf7ff);
 				bwn_ofdmtab_write_2(mac, BWN_OFDMTAB_GAINX,
@@ -1841,7 +1841,7 @@ bwn_wa_init(struct bwn_mac *mac)
 			}
 		}
 	}
-	if (siba_sprom_get_bf_lo(sc->sc_dev) & BWN_BFL_FEM) {
+	if (sc->sc_board_info.board_flags & BHND_BFL_FEM) {
 		BWN_PHY_WRITE(mac, BWN_PHY_GTABCTL, 0x3120);
 		BWN_PHY_WRITE(mac, BWN_PHY_GTABDATA, 0xc480);
 	}
@@ -1929,7 +1929,7 @@ bwn_lo_calcfeed(struct bwn_mac *mac,
 		trsw_rx &= (BWN_PHY_RFOVERVAL_TRSWRX | BWN_PHY_RFOVERVAL_BW);
 
 		rfover = BWN_PHY_RFOVERVAL_UNK | pga | lna | trsw_rx;
-		if ((siba_sprom_get_bf_lo(sc->sc_dev) & BWN_BFL_EXTLNA) &&
+		if ((sc->sc_board_info.board_flags & BHND_BFL_EXTLNA) &&
 		    phy->rev > 6)
 			rfover |= BWN_PHY_RFOVERVAL_EXTLNA;
 
@@ -2218,8 +2218,8 @@ bwn_lo_save(struct bwn_mac *mac, struct bwn_lo_g_value *sav)
 		BWN_PHY_MASK(mac, BWN_PHY_ANALOGOVERVAL, 0xfffc);
 		if (phy->type == BWN_PHYTYPE_G) {
 			if ((phy->rev >= 7) &&
-			    (siba_sprom_get_bf_lo(sc->sc_dev) &
-			     BWN_BFL_EXTLNA)) {
+			    (sc->sc_board_info.board_flags &
+			     BHND_BFL_EXTLNA)) {
 				BWN_PHY_WRITE(mac, BWN_PHY_RFOVER, 0x933);
 			} else {
 				BWN_PHY_WRITE(mac, BWN_PHY_RFOVER, 0x133);
@@ -2677,7 +2677,7 @@ bwn_nrssi_threshold(struct bwn_mac *mac)
 
 	KASSERT(phy->type == BWN_PHYTYPE_G, ("%s: fail", __func__));
 
-	if (phy->gmode && (siba_sprom_get_bf_lo(sc->sc_dev) & BWN_BFL_RSSI)) {
+	if (phy->gmode && (sc->sc_board_info.board_flags & BHND_BFL_ADCDIV)) {
 		if (!pg->pg_aci_wlan_automatic && pg->pg_aci_enable) {
 			a = 0x13;
 			b = 0x12;
@@ -3383,7 +3383,7 @@ bwn_rf_2050_rfoverval(struct bwn_mac *mac, uint16_t reg, uint32_t lpd)
 		}
 
 		if ((phy->rev < 7) ||
-		    !(siba_sprom_get_bf_lo(sc->sc_dev) & BWN_BFL_EXTLNA)) {
+		    !(sc->sc_board_info.board_flags & BHND_BFL_EXTLNA)) {
 			if (reg == BWN_PHY_RFOVER) {
 				return (0x1b3);
 			} else if (reg == BWN_PHY_RFOVERVAL) {
@@ -3427,7 +3427,7 @@ bwn_rf_2050_rfoverval(struct bwn_mac *mac, uint16_t reg, uint32_t lpd)
 	}
 
 	if ((phy->rev < 7) ||
-	    !(siba_sprom_get_bf_lo(sc->sc_dev) & BWN_BFL_EXTLNA)) {
+	    !(sc->sc_board_info.board_flags & BHND_BFL_EXTLNA)) {
 		if (reg == BWN_PHY_RFOVER) {
 			return (0x1b3);
 		} else if (reg == BWN_PHY_RFOVERVAL) {

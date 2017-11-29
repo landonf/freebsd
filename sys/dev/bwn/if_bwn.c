@@ -779,8 +779,7 @@ bwn_sprom_bugfixes(device_t dev)
 	 if (sc->sc_board_info.board_vendor == PCI_VENDOR_APPLE &&
 	     sc->sc_board_info.board_type == 0x4e &&
 	     sc->sc_board_info.board_rev > 0x40)
-		siba_sprom_set_bf_lo(dev,
-		    siba_sprom_get_bf_lo(dev) | BWN_BFL_PACTRL);
+		 sc->sc_board_info.board_flags |= BHND_BFL_PACTRL;
 
 	if (siba_get_type(dev) == SIBA_TYPE_PCI) {
 		if (BWN_ISDEV(BROADCOM, 0x4318, ASUSTEK, 0x100f) ||
@@ -790,8 +789,7 @@ bwn_sprom_bugfixes(device_t dev)
 		    BWN_ISDEV(BROADCOM, 0x4320, LINKSYS, 0x0014) ||
 		    BWN_ISDEV(BROADCOM, 0x4320, LINKSYS, 0x0015) ||
 		    BWN_ISDEV(BROADCOM, 0x4320, MOTOROLA, 0x7010))
-			siba_sprom_set_bf_lo(dev,
-			    siba_sprom_get_bf_lo(dev) & ~BWN_BFL_BTCOEXIST);
+			sc->sc_board_info.board_flags &= ~BHND_BFL_BTCOEX;
 	}
 #undef	BWN_ISDEV
 }
@@ -2039,7 +2037,7 @@ bwn_core_init(struct bwn_mac *mac)
 	hf = bwn_hf_read(mac);
 	if (mac->mac_phy.type == BWN_PHYTYPE_G) {
 		hf |= BWN_HF_GPHY_SYM_WORKAROUND;
-		if (siba_sprom_get_bf_lo(sc->sc_dev) & BWN_BFL_PACTRL)
+		if (sc->sc_board_info.board_flags & BHND_BFL_PACTRL)
 			hf |= BWN_HF_PAGAINBOOST_OFDM_ON;
 		if (mac->mac_phy.rev == 1)
 			hf |= BWN_HF_GPHY_DC_CANCELFILTER;
@@ -2050,7 +2048,7 @@ bwn_core_init(struct bwn_mac *mac)
 		if (mac->mac_phy.rf_rev == 6)
 			hf |= BWN_HF_4318_TSSI;
 	}
-	if (siba_sprom_get_bf_lo(sc->sc_dev) & BWN_BFL_CRYSTAL_NOSLOW)
+	if (sc->sc_board_info.board_flags & BHND_BFL_NOPLLDOWN)
 		hf |= BWN_HF_SLOWCLOCK_REQ_OFF;
 	if ((siba_get_type(sc->sc_dev) == SIBA_TYPE_PCI) &&
 	    (siba_get_pcicore_revid(sc->sc_dev) <= 10))
@@ -2093,7 +2091,7 @@ bwn_core_init(struct bwn_mac *mac)
 
 	DPRINTF(mac->mac_sc, BWN_DEBUG_RESET, "%s: powerup\n", __func__);
 	siba_powerup(sc->sc_dev,
-	    !(siba_sprom_get_bf_lo(sc->sc_dev) & BWN_BFL_CRYSTAL_NOSLOW));
+	    !(sc->sc_board_info.board_flags & BHND_BFL_NOPLLDOWN));
 	bwn_set_macaddr(mac);
 	bwn_crypt_init(mac);
 
@@ -3363,13 +3361,13 @@ bwn_bt_enable(struct bwn_mac *mac)
 
 	if (bwn_bluetooth == 0)
 		return;
-	if ((siba_sprom_get_bf_lo(sc->sc_dev) & BWN_BFL_BTCOEXIST) == 0)
+	if ((sc->sc_board_info.board_flags & BHND_BFL_BTCOEX) == 0)
 		return;
 	if (mac->mac_phy.type != BWN_PHYTYPE_B && !mac->mac_phy.gmode)
 		return;
 
 	hf = bwn_hf_read(mac);
-	if (siba_sprom_get_bf_lo(sc->sc_dev) & BWN_BFL_BTCMOD)
+	if (sc->sc_board_info.board_flags & BHND_BFL_BTC2WIRE_ALTGPIO)
 		hf |= BWN_HF_BT_COEXISTALT;
 	else
 		hf |= BWN_HF_BT_COEXIST;
@@ -3458,7 +3456,7 @@ bwn_gpio_init(struct bwn_mac *mac)
 		mask |= 0x0060;
 		set |= 0x0060;
 	}
-	if (siba_sprom_get_bf_lo(sc->sc_dev) & BWN_BFL_PACTRL) {
+	if (sc->sc_board_info.board_flags & BHND_BFL_PACTRL) {
 		BWN_WRITE_2(mac, BWN_GPIO_MASK,
 		    BWN_READ_2(mac, BWN_GPIO_MASK) | 0x0200);
 		mask |= 0x0200;
@@ -5697,8 +5695,8 @@ bwn_rx_rssi_calc(struct bwn_mac *mac, uint8_t in_rssi,
 			else
 				tmp -= 3;
 		} else {
-			if (siba_sprom_get_bf_lo(mac->mac_sc->sc_dev)
-			    & BWN_BFL_RSSI) {
+			if (mac->mac_sc->sc_board_info.board_flags
+			    & BHND_BFL_ADCDIV) {
 				if (in_rssi > 63)
 					in_rssi = 63;
 				tmp = gphy->pg_nrssi_lt[in_rssi];

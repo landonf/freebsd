@@ -52,7 +52,6 @@ struct bwn_bhnd_ctx {
 
 	/* NVRAM variables for which bwn(4) expects the bus to manage storage
 	 * for (and allow writes). */	
-	uint32_t	boardflags;	/**< boardflags (bwn-writable) */
 	uint8_t		pa0maxpwr;	/**< 2GHz max power (bwn-writable) */
 };
 
