@@ -34,15 +34,6 @@
 #ifndef _IF_BWNREG_H
 #define	_IF_BWNREG_H
 
-#define	PCI_VENDOR_COMPAQ		0x0e11
-#define	PCI_VENDOR_DELL			0x1028
-#define	PCI_VENDOR_HP			0x103c
-#define	PCI_VENDOR_ASUSTEK		0x1043
-#define	PCI_VENDOR_MOTOROLA		0x1057
-#define	PCI_VENDOR_APPLE		0x106b
-#define	PCI_VENDOR_BROADCOM		0x14e4
-#define	PCI_VENDOR_LINKSYS		0x1737
-
 /* SPROM flags */
 #define	BWN_BFL_BTCOEXIST		0x0001  /* implements Bluetooth coexistance */
 #define	BWN_BFL_PACTRL			0x0002  /* GPIO 9 controlling the PA */
@@ -737,7 +728,7 @@
 #define	BWN_LED_ACT_ASSOC		10
 #define	BWN_LED_ACT_NULL		11
 
-#define	BWN_VENDOR_LED_ACT_COMPAQ	\
+#define	BWN_VENDOR_LED_ACT_HP_COMPAQ	\
 	BWN_LED_ACT_RF_ENABLED,		\
 	BWN_LED_ACT_2GHZ,		\
 	BWN_LED_ACT_5GHZ,		\

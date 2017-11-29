@@ -67,6 +67,7 @@
 
 
 /* PCI vendor IDs */
+#define	PCI_VENDOR_ASUSTEK	0x1043
 #define	PCI_VENDOR_EPIGRAM	0xfeda
 #define	PCI_VENDOR_BROADCOM	0x14e4
 #define	PCI_VENDOR_3COM		0x10b7
@@ -76,6 +77,8 @@
 #define	PCI_VENDOR_DELL		0x1028
 #define	PCI_VENDOR_HP		0x103c
 #define	PCI_VENDOR_HP_COMPAQ	0x0e11
+#define	PCI_VENDOR_LINKSYS	0x1737
+#define	PCI_VENDOR_MOTOROLA	0x1057
 #define	PCI_VENDOR_APPLE	0x106b
 #define	PCI_VENDOR_SI_IMAGE	0x1095		/* Silicon Image, used by Arasan SDIO Host */
 #define	PCI_VENDOR_BUFFALO	0x1154		/* Buffalo vendor id */

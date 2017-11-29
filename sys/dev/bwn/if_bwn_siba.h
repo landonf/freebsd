@@ -47,9 +47,6 @@ struct bwn_bus_ops {
 	/* compatibility shims */
 	uint16_t	(*get_pci_vendor)(device_t);
 	uint16_t	(*get_pci_device)(device_t);
-	uint16_t	(*get_pci_subvendor)(device_t);
-	uint16_t	(*get_pci_subdevice)(device_t);
-	uint8_t		(*get_pci_revid)(device_t);
 	enum siba_type	(*get_type)(device_t);
 	uint32_t	(*get_cc_pmufreq)(device_t);
 	uint32_t	(*get_cc_caps)(device_t);
@@ -217,12 +214,6 @@ struct siba_sprom_core_pwr_info {
 	BWN_BUS_OPS(_dev)->get_pci_vendor(_dev)
 #define	siba_get_pci_device(_dev)	\
 	BWN_BUS_OPS(_dev)->get_pci_device(_dev)
-#define	siba_get_pci_subvendor(_dev)	\
-	BWN_BUS_OPS(_dev)->get_pci_subvendor(_dev)
-#define	siba_get_pci_subdevice(_dev)	\
-	BWN_BUS_OPS(_dev)->get_pci_subdevice(_dev)
-#define	siba_get_pci_revid(_dev)	\
-	BWN_BUS_OPS(_dev)->get_pci_revid(_dev)
 #define	siba_get_type(_dev)	\
 	BWN_BUS_OPS(_dev)->get_type(_dev)
 #define	siba_get_cc_pmufreq(_dev)	\

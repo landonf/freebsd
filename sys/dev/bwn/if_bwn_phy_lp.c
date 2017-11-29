@@ -1304,7 +1304,7 @@ bwn_phy_lp_bbinit_r2(struct bwn_mac *mac)
 	BWN_PHY_MASK(mac, BWN_PHY_CRSGAIN_CTL, ~0x4000);
 	BWN_PHY_MASK(mac, BWN_PHY_CRSGAIN_CTL, ~0x2000);
 	BWN_PHY_SET(mac, BWN_PHY_OFDM(0x10a), 0x1);
-	if (siba_get_pci_revid(sc->sc_dev) >= 0x18) {
+	if (sc->sc_board_info.board_rev >= 0x18) {
 		bwn_tab_write(mac, BWN_TAB_4(17, 65), 0xec);
 		BWN_PHY_SETMASK(mac, BWN_PHY_OFDM(0x10a), 0xff01, 0x14);
 	} else {
@@ -1481,7 +1481,7 @@ bwn_phy_lp_bbinit_r01(struct bwn_mac *mac)
 			BWN_PHY_SETMASK(mac, v2[i].offset, v2[i].mask,
 			    v2[i].set);
 	} else if (IEEE80211_IS_CHAN_5GHZ(ic->ic_curchan) ||
-	    (siba_get_pci_subdevice(sc->sc_dev) == 0x048a) ||
+	    (sc->sc_board_info.board_type == 0x048a) ||
 	    ((mac->mac_phy.rev == 0) &&
 	     (siba_sprom_get_bf_lo(sc->sc_dev) & BWN_BFL_FEM))) {
 		for (i = 0; i < N(v3); i++)

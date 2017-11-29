@@ -292,63 +292,6 @@ bhnd_compat_get_pci_device(device_t dev)
 }
 
 /*
- * siba_get_pci_subvendor()
- *
- * Referenced by:
- *   bwn_led_attach()
- *   bwn_nphy_op_prepare_structs()
- *   bwn_phy_g_prepare_hw()
- *   bwn_phy_hwpctl_init()
- *   bwn_phy_init_b5()
- *   bwn_phy_initn()
- *   bwn_phy_txpower_check()
- *   bwn_radio_init2055_post()
- *   bwn_sprom_bugfixes()
- *   bwn_wa_init()
- */
-static uint16_t
-bhnd_compat_get_pci_subvendor(device_t dev)
-{
-	return (pci_get_subvendor(bwn_bhnd_get_pci_dev(dev)));
-}
-
-/*
- * siba_get_pci_subdevice()
- *
- * Referenced by:
- *   bwn_nphy_workarounds_rev1_2()
- *   bwn_phy_g_prepare_hw()
- *   bwn_phy_hwpctl_init()
- *   bwn_phy_init_b5()
- *   bwn_phy_initn()
- *   bwn_phy_lp_bbinit_r01()
- *   bwn_phy_txpower_check()
- *   bwn_radio_init2055_post()
- *   bwn_sprom_bugfixes()
- *   bwn_wa_init()
- */
-static uint16_t
-bhnd_compat_get_pci_subdevice(device_t dev)
-{
-	return (pci_get_subdevice(bwn_bhnd_get_pci_dev(dev)));
-}
-
-/*
- * siba_get_pci_revid()
- *
- * Referenced by:
- *   bwn_phy_g_prepare_hw()
- *   bwn_phy_lp_bbinit_r2()
- *   bwn_sprom_bugfixes()
- *   bwn_wa_init()
- */
-static uint8_t
-bhnd_compat_get_pci_revid(device_t dev)
-{
-	return (pci_get_revid(bwn_bhnd_get_pci_dev(dev)));
-}
-
-/*
  * siba_get_type()
  *
  * Referenced by:
@@ -2189,11 +2132,6 @@ bhnd_compat_cc_write32(device_t dev, uint32_t reg, uint32_t val)
 const struct bwn_bus_ops bwn_bhnd_bus_ops = {
 	.init				= bwn_bhnd_bus_ops_init,
 	.fini				= bwn_bhnd_bus_ops_fini,
-	.get_pci_vendor			= bhnd_compat_get_pci_vendor,
-	.get_pci_device			= bhnd_compat_get_pci_device,
-	.get_pci_subvendor		= bhnd_compat_get_pci_subvendor,
-	.get_pci_subdevice		= bhnd_compat_get_pci_subdevice,
-	.get_pci_revid			= bhnd_compat_get_pci_revid,
 	.get_type			= bhnd_compat_get_type,
 	.get_cc_pmufreq			= bhnd_compat_get_cc_pmufreq,
 	.get_cc_caps			= bhnd_compat_get_cc_caps,

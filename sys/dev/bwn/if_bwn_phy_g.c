@@ -290,12 +290,12 @@ bwn_phy_g_prepare_hw(struct bwn_mac *mac)
 	/* prepare Radio Attenuation */
 	pg->pg_rfatt.padmix = 0;
 
-	if (siba_get_pci_subvendor(sc->sc_dev) == SIBA_BOARDVENDOR_BCM &&
-	    siba_get_pci_subdevice(sc->sc_dev) == SIBA_BOARD_BCM4309G) {
-		if (siba_get_pci_revid(sc->sc_dev) < 0x43) {
+	if (sc->sc_board_info.board_vendor == PCI_VENDOR_BROADCOM &&
+	    sc->sc_board_info.board_type == BHND_BOARD_BCM94309G) {
+		if (sc->sc_board_info.board_rev < 0x43) {
 			pg->pg_rfatt.att = 2;
 			goto done;
-		} else if (siba_get_pci_revid(sc->sc_dev) < 0x51) {
+		} else if (sc->sc_board_info.board_rev < 0x51) {
 			pg->pg_rfatt.att = 3;
 			goto done;
 		}
@@ -314,25 +314,25 @@ bwn_phy_g_prepare_hw(struct bwn_mac *mac)
 			goto done;
 		case 1:
 			if (phy->type == BWN_PHYTYPE_G) {
-				if (siba_get_pci_subvendor(sc->sc_dev) ==
-				    SIBA_BOARDVENDOR_BCM &&
-				    siba_get_pci_subdevice(sc->sc_dev) ==
-				    SIBA_BOARD_BCM4309G &&
-				    siba_get_pci_revid(sc->sc_dev) >= 30)
+				if (sc->sc_board_info.board_vendor ==
+				    PCI_VENDOR_BROADCOM &&
+				    sc->sc_board_info.board_type ==
+				    BHND_BOARD_BCM94309G &&
+				    sc->sc_board_info.board_rev >= 30)
 					pg->pg_rfatt.att = 3;
-				else if (siba_get_pci_subvendor(sc->sc_dev) ==
-				    SIBA_BOARDVENDOR_BCM &&
-				    siba_get_pci_subdevice(sc->sc_dev) ==
-				    SIBA_BOARD_BU4306)
+				else if (sc->sc_board_info.board_vendor ==
+				    PCI_VENDOR_BROADCOM &&
+				    sc->sc_board_info.board_type ==
+				    BHND_BOARD_BU4306)
 					pg->pg_rfatt.att = 3;
 				else
 					pg->pg_rfatt.att = 1;
 			} else {
-				if (siba_get_pci_subvendor(sc->sc_dev) ==
-				    SIBA_BOARDVENDOR_BCM &&
-				    siba_get_pci_subdevice(sc->sc_dev) ==
-				    SIBA_BOARD_BCM4309G &&
-				    siba_get_pci_revid(sc->sc_dev) >= 30)
+				if (sc->sc_board_info.board_vendor ==
+				    PCI_VENDOR_BROADCOM &&
+				    sc->sc_board_info.board_type ==
+				    BHND_BOARD_BCM94309G &&
+				    sc->sc_board_info.board_rev >= 30)
 					pg->pg_rfatt.att = 7;
 				else
 					pg->pg_rfatt.att = 6;
@@ -340,16 +340,16 @@ bwn_phy_g_prepare_hw(struct bwn_mac *mac)
 			goto done;
 		case 2:
 			if (phy->type == BWN_PHYTYPE_G) {
-				if (siba_get_pci_subvendor(sc->sc_dev) ==
-				    SIBA_BOARDVENDOR_BCM &&
-				    siba_get_pci_subdevice(sc->sc_dev) ==
-				    SIBA_BOARD_BCM4309G &&
-				    siba_get_pci_revid(sc->sc_dev) >= 30)
+				if (sc->sc_board_info.board_vendor ==
+				    PCI_VENDOR_BROADCOM &&
+				    sc->sc_board_info.board_type ==
+				    BHND_BOARD_BCM94309G &&
+				    sc->sc_board_info.board_rev >= 30)
 					pg->pg_rfatt.att = 3;
-				else if (siba_get_pci_subvendor(sc->sc_dev) ==
-				    SIBA_BOARDVENDOR_BCM &&
-				    siba_get_pci_subdevice(sc->sc_dev) ==
-				    SIBA_BOARD_BU4306)
+				else if (sc->sc_board_info.board_vendor ==
+				    PCI_VENDOR_BROADCOM &&
+				    sc->sc_board_info.board_type ==
+				    BHND_BOARD_BU4306)
 					pg->pg_rfatt.att = 5;
 				else if (sc->sc_cid.chip_id ==
 				    BHND_CHIPID_BCM4320)
@@ -944,8 +944,8 @@ bwn_phy_init_b5(struct bwn_mac *mac)
 
 	if (phy->analog == 1)
 		BWN_RF_SET(mac, 0x007a, 0x0050);
-	if ((siba_get_pci_subvendor(sc->sc_dev) != SIBA_BOARDVENDOR_BCM) &&
-	    (siba_get_pci_subdevice(sc->sc_dev) != SIBA_BOARD_BU4306)) {
+	if ((sc->sc_board_info.board_vendor != PCI_VENDOR_BROADCOM) &&
+	    (sc->sc_board_info.board_type != BHND_BOARD_BU4306)) {
 		value = 0x2120;
 		for (offset = 0x00a8; offset < 0x00c7; offset++) {
 			BWN_PHY_WRITE(mac, offset, value);
@@ -1811,9 +1811,9 @@ bwn_wa_init(struct bwn_mac *mac)
 		KASSERT(0 == 1, ("%s:%d: fail", __func__, __LINE__));
 	}
 
-	if (siba_get_pci_subvendor(sc->sc_dev) != SIBA_BOARDVENDOR_BCM ||
-	    siba_get_pci_subdevice(sc->sc_dev) != SIBA_BOARD_BU4306 ||
-	    siba_get_pci_revid(sc->sc_dev) != 0x17) {
+	if (sc->sc_board_info.board_vendor != PCI_VENDOR_BROADCOM ||
+	    sc->sc_board_info.board_type != BHND_BOARD_BU4306 ||
+	    sc->sc_board_info.board_rev != 0x17) {
 		if (phy->rev < 2) {
 			bwn_ofdmtab_write_2(mac, BWN_OFDMTAB_GAINX_R1, 1,
 			    0x0002);
@@ -3120,8 +3120,8 @@ bwn_phy_hwpctl_init(struct bwn_mac *mac)
 	KASSERT(phy->type == BWN_PHYTYPE_G,
 	    ("%s:%d: fail", __func__, __LINE__));
 
-	if ((siba_get_pci_subvendor(sc->sc_dev) == SIBA_BOARDVENDOR_BCM) &&
-	    (siba_get_pci_subdevice(sc->sc_dev) == SIBA_BOARD_BU4306))
+	if ((sc->sc_board_info.board_vendor == PCI_VENDOR_BROADCOM) &&
+	    (sc->sc_board_info.board_type == BHND_BOARD_BU4306))
 		return;
 
 	BWN_PHY_WRITE(mac, 0x0028, 0x8018);

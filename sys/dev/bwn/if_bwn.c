@@ -439,7 +439,7 @@ static const struct {
 	uint16_t	vid;
 	uint8_t		led_act[BWN_LED_MAX];
 } bwn_vendor_led_act[] = {
-	VENDOR_LED_ACT(COMPAQ),
+	VENDOR_LED_ACT(HP_COMPAQ),
 	VENDOR_LED_ACT(ASUSTEK)
 };
 
@@ -771,8 +771,8 @@ bwn_sprom_bugfixes(device_t dev)
 #define	BWN_ISDEV(_vendor, _device, _subvendor, _subdevice)		\
 	((siba_get_pci_vendor(dev) == PCI_VENDOR_##_vendor) &&		\
 	 (siba_get_pci_device(dev) == _device) &&			\
-	 (siba_get_pci_subvendor(dev) == PCI_VENDOR_##_subvendor) &&	\
-	 (siba_get_pci_subdevice(dev) == _subdevice))
+	 (sc->sc_board_info.board_vendor == PCI_VENDOR_##_subvendor) &&	\
+	 (sc->sc_board_info.board_type == _subdevice))
 
 	 /* A subset of Apple Airport Extreme (BCM4306 rev 2) devices
 	  * were programmed with a missing PACTRL boardflag */
@@ -5999,8 +5999,8 @@ bwn_phy_txpower_check(struct bwn_mac *mac, uint32_t flags)
 		return;
 	phy->nexttime = now + 2 * 1000;
 
-	if (siba_get_pci_subvendor(sc->sc_dev) == SIBA_BOARDVENDOR_BCM &&
-	    siba_get_pci_subdevice(sc->sc_dev) == SIBA_BOARD_BU4306)
+	if (sc->sc_board_info.board_vendor == PCI_VENDOR_BROADCOM &&
+	    sc->sc_board_info.board_type == BHND_BOARD_BU4306)
 		return;
 
 	if (phy->recalc_txpwr != NULL) {
@@ -7125,7 +7125,7 @@ bwn_led_attach(struct bwn_mac *mac)
 	sc->sc_led_blink = 1;
 
 	for (i = 0; i < N(bwn_vendor_led_act); ++i) {
-		if (siba_get_pci_subvendor(sc->sc_dev) ==
+		if (sc->sc_board_info.board_vendor ==
 		    bwn_vendor_led_act[i].vid) {
 			led_act = bwn_vendor_led_act[i].led_act;
 			break;
