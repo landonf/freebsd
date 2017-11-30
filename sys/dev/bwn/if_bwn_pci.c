@@ -60,9 +60,6 @@ TUNABLE_INT("hw.bwn_pci.preferred", &prefer_new_driver);
 
 /* SIBA Devices */
 static const struct bwn_pci_device siba_devices[] = {
-	BWN_BCM_DEV(BCM4301,		"BCM4301 802.11b",
-	    BWN_QUIRK_ENET_HW_UNPOPULATED),
-
 	BWN_BCM_DEV(BCM4306_D11G,	"BCM4306 802.11g",		0),
 	BWN_BCM_DEV(BCM4306_D11A,	"BCM4306 802.11a",
 	    BWN_QUIRK_WLAN_DUALCORE),
