@@ -201,7 +201,12 @@ bwn_pci_attach(device_t dev)
 static int
 bwn_pci_detach(device_t dev)
 {
-	return (bus_generic_detach(dev));
+	int error;
+
+	if ((error = bus_generic_detach(dev)))
+		return (error);
+
+	return (device_delete_children(dev));
 }
 
 static void
