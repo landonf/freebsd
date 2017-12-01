@@ -109,7 +109,6 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm.h>
 #include <vm/pmap.h>
 #include <vm/vm_param.h>
-#include <vm/vm_domain.h>
 #include <vm/vm_kern.h>
 #include <vm/vm_object.h>
 #include <vm/vm_page.h>
@@ -1602,16 +1601,6 @@ vm_page_alloc(vm_object_t object, vm_pindex_t pindex, int req)
 	    vm_radix_lookup_le(&object->rtree, pindex) : NULL));
 }
 
-vm_page_t
-vm_page_alloc_domain(vm_object_t object, vm_pindex_t pindex, int domain,
-    int req)
-{
-
-	return (vm_page_alloc_domain_after(object, pindex, domain, req,
-	    object != NULL ? vm_radix_lookup_le(&object->rtree, pindex) :
-	    NULL));
-}
-
 /*
  * Allocate a page in the specified object with the given page index.  To
  * optimize insertion of the page into the object, the caller must also specifiy
@@ -1619,33 +1608,8 @@ vm_page_alloc_domain(vm_object_t object, vm_pindex_t pindex, int domain,
  * page index, or NULL if no such page exists.
  */
 vm_page_t
-vm_page_alloc_after(vm_object_t object, vm_pindex_t pindex,
-    int req, vm_page_t mpred)
-{
-	struct vm_domain_iterator vi;
-	vm_page_t m;
-	int domain, wait;
-
-	m = NULL;
-	vm_policy_iterator_init(&vi);
-	wait = req & (VM_ALLOC_WAITFAIL | VM_ALLOC_WAITOK);
-	req &= ~wait;
-	while (vm_domain_iterator_run(&vi, &domain) == 0) {
-		if (vm_domain_iterator_isdone(&vi))
-			req |= wait;
-		m = vm_page_alloc_domain_after(object, pindex, domain, req,
-		    mpred);
-		if (m != NULL)
-			break;
-	}
-	vm_policy_iterator_finish(&vi);
-
-	return (m);
-}
-
-vm_page_t
-vm_page_alloc_domain_after(vm_object_t object, vm_pindex_t pindex, int domain,
-    int req, vm_page_t mpred)
+vm_page_alloc_after(vm_object_t object, vm_pindex_t pindex, int req,
+    vm_page_t mpred)
 {
 	vm_page_t m;
 	int flags, req_class;
@@ -1677,7 +1641,6 @@ vm_page_alloc_domain_after(vm_object_t object, vm_pindex_t pindex, int domain,
 	 * for the request class.
 	 */
 again:
-	m = NULL;
 	mtx_lock(&vm_page_queue_free_mtx);
 	if (vm_cnt.v_free_count > vm_cnt.v_free_reserved ||
 	    (req_class == VM_ALLOC_SYSTEM &&
@@ -1690,26 +1653,23 @@ again:
 #if VM_NRESERVLEVEL > 0
 		if (object == NULL || (object->flags & (OBJ_COLORED |
 		    OBJ_FICTITIOUS)) != OBJ_COLORED || (m =
-		    vm_reserv_alloc_page(object, pindex, domain,
-		    mpred)) == NULL)
+		    vm_reserv_alloc_page(object, pindex, mpred)) == NULL)
 #endif
 		{
 			/*
 			 * If not, allocate it from the free page queues.
 			 */
-			m = vm_phys_alloc_pages(domain, object != NULL ?
+			m = vm_phys_alloc_pages(object != NULL ?
 			    VM_FREEPOOL_DEFAULT : VM_FREEPOOL_DIRECT, 0);
 #if VM_NRESERVLEVEL > 0
-			if (m == NULL && vm_reserv_reclaim_inactive(domain)) {
-				m = vm_phys_alloc_pages(domain,
-				    object != NULL ?
+			if (m == NULL && vm_reserv_reclaim_inactive()) {
+				m = vm_phys_alloc_pages(object != NULL ?
 				    VM_FREEPOOL_DEFAULT : VM_FREEPOOL_DIRECT,
 				    0);
 			}
 #endif
 		}
-	}
-	if (m == NULL) {
+	} else {
 		/*
 		 * Not allocatable, give up.
 		 */
@@ -1835,32 +1795,6 @@ vm_page_alloc_contig(vm_object_t object, vm_pindex_t pindex, int req,
     u_long npages, vm_paddr_t low, vm_paddr_t high, u_long alignment,
     vm_paddr_t boundary, vm_memattr_t memattr)
 {
-	struct vm_domain_iterator vi;
-	vm_page_t m;
-	int domain, wait;
-
-	m = NULL;
-	vm_policy_iterator_init(&vi);
-	wait = req & (VM_ALLOC_WAITFAIL | VM_ALLOC_WAITOK);
-	req &= ~wait;
-	while (vm_domain_iterator_run(&vi, &domain) == 0) {
-		if (vm_domain_iterator_isdone(&vi))
-			req |= wait;
-		m = vm_page_alloc_contig_domain(object, pindex, domain, req,
-		    npages, low, high, alignment, boundary, memattr);
-		if (m != NULL)
-			break;
-	}
-	vm_policy_iterator_finish(&vi);
-
-	return (m);
-}
-
-vm_page_t
-vm_page_alloc_contig_domain(vm_object_t object, vm_pindex_t pindex, int domain,
-    int req, u_long npages, vm_paddr_t low, vm_paddr_t high, u_long alignment,
-    vm_paddr_t boundary, vm_memattr_t memattr)
-{
 	vm_page_t m, m_ret, mpred;
 	u_int busy_lock, flags, oflags;
 	int req_class;
@@ -1900,7 +1834,6 @@ vm_page_alloc_contig_domain(vm_object_t object, vm_pindex_t pindex, int domain,
 	 * below the lower bound for the allocation class?
 	 */
 again:
-	m_ret = NULL;
 	mtx_lock(&vm_page_queue_free_mtx);
 	if (vm_cnt.v_free_count >= npages + vm_cnt.v_free_reserved ||
 	    (req_class == VM_ALLOC_SYSTEM &&
@@ -1913,27 +1846,31 @@ again:
 #if VM_NRESERVLEVEL > 0
 retry:
 		if (object == NULL || (object->flags & OBJ_COLORED) == 0 ||
-		    (m_ret = vm_reserv_alloc_contig(object, pindex, domain,
-		    npages, low, high, alignment, boundary, mpred)) == NULL)
+		    (m_ret = vm_reserv_alloc_contig(object, pindex, npages,
+		    low, high, alignment, boundary, mpred)) == NULL)
 #endif
 			/*
 			 * If not, allocate them from the free page queues.
 			 */
-			m_ret = vm_phys_alloc_contig(domain, npages, low, high,
+			m_ret = vm_phys_alloc_contig(npages, low, high,
 			    alignment, boundary);
-#if VM_NRESERVLEVEL > 0
-		if (m_ret == NULL && vm_reserv_reclaim_contig(
-		    domain, npages, low, high, alignment, boundary))
-			goto retry;
-#endif
-	}
-	if (m_ret == NULL) {
+	} else {
 		if (vm_page_alloc_fail(object, req))
 			goto again;
 		return (NULL);
 	}
-	vm_phys_freecnt_adj(m_ret, -npages);
+	if (m_ret != NULL)
+		vm_phys_freecnt_adj(m_ret, -npages);
+	else {
+#if VM_NRESERVLEVEL > 0
+		if (vm_reserv_reclaim_contig(npages, low, high, alignment,
+		    boundary))
+			goto retry;
+#endif
+	}
 	mtx_unlock(&vm_page_queue_free_mtx);
+	if (m_ret == NULL)
+		return (NULL);
 	for (m = m_ret; m < &m_ret[npages]; m++)
 		vm_page_alloc_check(m);
 
@@ -2045,29 +1982,6 @@ vm_page_alloc_check(vm_page_t m)
 vm_page_t
 vm_page_alloc_freelist(int flind, int req)
 {
-	struct vm_domain_iterator vi;
-	vm_page_t m;
-	int domain, wait;
-
-	m = NULL;
-	vm_policy_iterator_init(&vi);
-	wait = req & (VM_ALLOC_WAITFAIL | VM_ALLOC_WAITOK);
-	req &= ~wait;
-	while (vm_domain_iterator_run(&vi, &domain) == 0) {
-		if (vm_domain_iterator_isdone(&vi))
-			req |= wait;
-		m = vm_page_alloc_freelist_domain(domain, flind, req);
-		if (m != NULL)
-			break;
-	}
-	vm_policy_iterator_finish(&vi);
-
-	return (m);
-}
-
-vm_page_t
-vm_page_alloc_freelist_domain(int domain, int flind, int req)
-{
 	vm_page_t m;
 	u_int flags, free_count;
 	int req_class;
@@ -2089,12 +2003,15 @@ again:
 	    (req_class == VM_ALLOC_SYSTEM &&
 	    vm_cnt.v_free_count > vm_cnt.v_interrupt_free_min) ||
 	    (req_class == VM_ALLOC_INTERRUPT &&
-	    vm_cnt.v_free_count > 0))
-		m = vm_phys_alloc_freelist_pages(domain, flind,
-		    VM_FREEPOOL_DIRECT, 0);
-	if (m == NULL) {
+	    vm_cnt.v_free_count > 0)) {
+		m = vm_phys_alloc_freelist_pages(flind, VM_FREEPOOL_DIRECT, 0);
+	} else {
 		if (vm_page_alloc_fail(NULL, req))
 			goto again;
+		return (NULL);
+	}
+	if (m == NULL) {
+		mtx_unlock(&vm_page_queue_free_mtx);
 		return (NULL);
 	}
 	free_count = vm_phys_freecnt_adj(m, -1);
