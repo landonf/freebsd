@@ -49,8 +49,6 @@ struct bwn_bus_ops {
 	uint16_t	(*get_pci_vendor)(device_t);
 	uint16_t	(*get_pci_device)(device_t);
 	enum siba_type	(*get_type)(device_t);
-	uint32_t	(*get_cc_pmufreq)(device_t);
-	uint32_t	(*get_cc_caps)(device_t);
 	uint16_t	(*get_cc_powerdelay)(device_t);
 	uint8_t		(*get_pcicore_revid)(device_t);
 	uint8_t		(*sprom_get_ccode)(device_t);
@@ -141,7 +139,6 @@ extern const struct bwn_bus_ops bwn_bhnd_bus_ops;
  *    /usr/home/landonf/Documents/Code/FreeBSD/svn/head/sys/dev/siba/sibareg.h
  */
 
-#define	SIBA_CC_CAPS_PMU		0x10000000
 #define	SIBA_CC_CHIPCTL			0x0028
 #define	SIBA_CC_CHIPCTL_ADDR		0x0650
 #define	SIBA_CC_CHIPCTL_DATA		0x0654
@@ -198,10 +195,6 @@ enum {
 	BWN_BUS_OPS(_dev)->get_pci_device(_dev)
 #define	siba_get_type(_dev)	\
 	BWN_BUS_OPS(_dev)->get_type(_dev)
-#define	siba_get_cc_pmufreq(_dev)	\
-	BWN_BUS_OPS(_dev)->get_cc_pmufreq(_dev)
-#define	siba_get_cc_caps(_dev)	\
-	BWN_BUS_OPS(_dev)->get_cc_caps(_dev)
 #define	siba_get_cc_powerdelay(_dev)	\
 	BWN_BUS_OPS(_dev)->get_cc_powerdelay(_dev)
 #define	siba_get_pcicore_revid(_dev)	\

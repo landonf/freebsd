@@ -102,10 +102,10 @@ static void	bwn_phy_lp_digflt_restore(struct bwn_mac *);
 static void	bwn_phy_lp_tblinit(struct bwn_mac *);
 static void	bwn_phy_lp_bbinit_r2(struct bwn_mac *);
 static void	bwn_phy_lp_bbinit_r01(struct bwn_mac *);
-static void	bwn_phy_lp_b2062_init(struct bwn_mac *);
-static void	bwn_phy_lp_b2063_init(struct bwn_mac *);
-static void	bwn_phy_lp_rxcal_r2(struct bwn_mac *);
-static void	bwn_phy_lp_rccal_r12(struct bwn_mac *);
+static int	bwn_phy_lp_b2062_init(struct bwn_mac *);
+static int	bwn_phy_lp_b2063_init(struct bwn_mac *);
+static int	bwn_phy_lp_rxcal_r2(struct bwn_mac *);
+static int	bwn_phy_lp_rccal_r12(struct bwn_mac *);
 static void	bwn_phy_lp_set_rccap(struct bwn_mac *);
 static uint32_t	bwn_phy_lp_roundup(uint32_t, uint32_t, uint8_t);
 static void	bwn_phy_lp_b2062_reset_pllbias(struct bwn_mac *);
@@ -421,10 +421,12 @@ bwn_phy_lp_init(struct bwn_mac *mac)
 	BWN_PHY_MASK(mac, BWN_PHY_4WIRECTL, 0xfffd);
 	DELAY(1);
 
-	if (mac->mac_phy.rf_ver == 0x2062)
-		bwn_phy_lp_b2062_init(mac);
-	else {
-		bwn_phy_lp_b2063_init(mac);
+	if (mac->mac_phy.rf_ver == 0x2062) {
+		if ((error = bwn_phy_lp_b2062_init(mac)))
+			return (error);
+	} else {
+		if ((error = bwn_phy_lp_b2063_init(mac)))
+			return (error);
 
 		/* synchronize stx table. */
 		for (i = 0; i < N(tables); i++) {
@@ -442,11 +444,14 @@ bwn_phy_lp_init(struct bwn_mac *mac)
 	}
 
 	/* calibrate RC */
-	if (mac->mac_phy.rev >= 2)
-		bwn_phy_lp_rxcal_r2(mac);
-	else if (!plp->plp_rccap) {
-		if (IEEE80211_IS_CHAN_2GHZ(ic->ic_curchan))
-			bwn_phy_lp_rccal_r12(mac);
+	if (mac->mac_phy.rev >= 2) {
+		if ((error = bwn_phy_lp_rxcal_r2(mac)))
+			return (error);
+	} else if (!plp->plp_rccap) {
+		if (IEEE80211_IS_CHAN_2GHZ(ic->ic_curchan)) {
+			if ((error = bwn_phy_lp_rccal_r12(mac)))
+				return (error);
+		}
 	} else
 		bwn_phy_lp_set_rccap(mac);
 
@@ -769,10 +774,11 @@ bwn_phy_lp_b2063_switch_channel(struct bwn_mac *mac, uint8_t chan)
 {
 	static const struct bwn_b206x_chan *bc = NULL;
 	struct bwn_softc *sc = mac->mac_sc;
-	uint32_t count, freqref, freqvco, freqxtal, val[3], timeout, timeoutref,
+	uint32_t count, freqref, freqvco, val[3], timeout, timeoutref,
 	    tmp[6];
 	uint16_t old, scale, tmp16;
-	int i, div;
+	u_int freqxtal;
+	int error, i, div;
 
 	for (i = 0; i < N(bwn_b2063_chantable); i++) {
 		if (bwn_b2063_chantable[i].bc_chan == chan) {
@@ -782,6 +788,13 @@ bwn_phy_lp_b2063_switch_channel(struct bwn_mac *mac, uint8_t chan)
 	}
 	if (bc == NULL)
 		return (EINVAL);
+
+	error = bhnd_get_clock_freq(sc->sc_dev, BHND_CLOCK_ALP, &freqxtal);
+	if (error) {
+		device_printf(sc->sc_dev, "failed to fetch clock frequency: %d",
+		    error);
+		return (error);
+	}
 
 	BWN_RF_WRITE(mac, BWN_B2063_LOGEN_VCOBUF1, bc->bc_data[0]);
 	BWN_RF_WRITE(mac, BWN_B2063_LOGEN_MIXER2, bc->bc_data[1]);
@@ -799,7 +812,6 @@ bwn_phy_lp_b2063_switch_channel(struct bwn_mac *mac, uint8_t chan)
 	old = BWN_RF_READ(mac, BWN_B2063_COM15);
 	BWN_RF_SET(mac, BWN_B2063_COM15, 0x1e);
 
-	freqxtal = siba_get_cc_pmufreq(sc->sc_dev) * 1000;
 	freqvco = bc->bc_freq << ((bc->bc_freq > 4000) ? 1 : 2);
 	freqref = freqxtal * 3;
 	div = (freqxtal <= 26000000 ? 1 : 2);
@@ -900,9 +912,9 @@ bwn_phy_lp_b2062_switch_channel(struct bwn_mac *mac, uint8_t chan)
 	struct bwn_softc *sc = mac->mac_sc;
 	struct bwn_phy_lp *plp = &mac->mac_phy.phy_lp;
 	const struct bwn_b206x_chan *bc = NULL;
-	uint32_t freqxtal = siba_get_cc_pmufreq(sc->sc_dev) * 1000;
 	uint32_t tmp[9];
-	int i;
+	u_int freqxtal;
+	int error, i;
 
 	for (i = 0; i < N(bwn_b2062_chantable); i++) {
 		if (bwn_b2062_chantable[i].bc_chan == chan) {
@@ -913,6 +925,13 @@ bwn_phy_lp_b2062_switch_channel(struct bwn_mac *mac, uint8_t chan)
 
 	if (bc == NULL)
 		return (EINVAL);
+
+	error = bhnd_get_clock_freq(sc->sc_dev, BHND_CLOCK_ALP, &freqxtal);
+	if (error) {
+		device_printf(sc->sc_dev, "failed to fetch clock frequency: %d",
+		    error);
+		return (error);
+	}
 
 	BWN_RF_SET(mac, BWN_B2062_S_RFPLLCTL14, 0x04);
 	BWN_RF_WRITE(mac, BWN_B2062_N_LGENATUNE0, bc->bc_data[0]);
@@ -1546,7 +1565,7 @@ struct bwn_b2062_freq {
 	uint8_t			value[6];
 };
 
-static void
+static int
 bwn_phy_lp_b2062_init(struct bwn_mac *mac)
 {
 #define	CALC_CTL7(freq, div)						\
@@ -1577,8 +1596,17 @@ bwn_phy_lp_b2062_init(struct bwn_mac *mac)
 		{ BWN_B2062_N_CALIB_TS, 0 }
 	};
 	const struct bwn_b2062_freq *f = NULL;
-	uint32_t xtalfreq, ref;
+	uint32_t ref;
+	u_int xtalfreq;
 	unsigned int i;
+	int error;
+
+	error = bhnd_get_clock_freq(sc->sc_dev, BHND_CLOCK_ALP, &xtalfreq);
+	if (error) {
+		device_printf(sc->sc_dev, "failed to fetch clock frequency: %d",
+		    error);
+		return (error);
+	}
 
 	bwn_phy_lp_b2062_tblinit(mac);
 
@@ -1591,11 +1619,6 @@ bwn_phy_lp_b2062_init(struct bwn_mac *mac)
 		BWN_RF_SET(mac, BWN_B2062_N_TSSI_CTL0, 0x1);
 	else
 		BWN_RF_MASK(mac, BWN_B2062_N_TSSI_CTL0, ~0x1);
-
-	KASSERT(siba_get_cc_caps(sc->sc_dev) & SIBA_CC_CAPS_PMU,
-	    ("%s:%d: fail", __func__, __LINE__));
-	xtalfreq = siba_get_cc_pmufreq(sc->sc_dev) * 1000;
-	KASSERT(xtalfreq != 0, ("%s:%d: fail", __func__, __LINE__));
 
 	if (xtalfreq <= 30000000) {
 		plp->plp_div = 1;
@@ -1628,12 +1651,14 @@ bwn_phy_lp_b2062_init(struct bwn_mac *mac)
 	    ((uint16_t)(f->value[3]) << 4) | f->value[2]);
 	BWN_RF_WRITE(mac, BWN_B2062_S_RFPLLCTL10, f->value[4]);
 	BWN_RF_WRITE(mac, BWN_B2062_S_RFPLLCTL11, f->value[5]);
+
+	return (0);
 #undef CALC_CTL7
 #undef CALC_CTL18
 #undef CALC_CTL19
 }
 
-static void
+static int
 bwn_phy_lp_b2063_init(struct bwn_mac *mac)
 {
 
@@ -1653,9 +1678,11 @@ bwn_phy_lp_b2063_init(struct bwn_mac *mac)
 		BWN_RF_WRITE(mac, BWN_B2063_PA_SP3, 0x20);
 		BWN_RF_WRITE(mac, BWN_B2063_PA_SP2, 0x20);
 	}
+
+	return (0);
 }
 
-static void
+static int
 bwn_phy_lp_rxcal_r2(struct bwn_mac *mac)
 {
 	struct bwn_softc *sc = mac->mac_sc;
@@ -1676,9 +1703,16 @@ bwn_phy_lp_rxcal_r2(struct bwn_mac *mac)
 		{ BWN_B2063_RC_CALIB_CTL2, 0x55 },
 		{ BWN_B2063_RC_CALIB_CTL3, 0x76 }
 	};
-	uint32_t freqxtal = siba_get_cc_pmufreq(sc->sc_dev) * 1000;
-	int i;
+	u_int freqxtal;
+	int error, i;
 	uint8_t tmp;
+
+	error = bhnd_get_clock_freq(sc->sc_dev, BHND_CLOCK_ALP, &freqxtal);
+	if (error) {
+		device_printf(sc->sc_dev, "failed to fetch clock frequency: %d",
+		    error);
+		return (error);
+	}
 
 	tmp = BWN_RF_READ(mac, BWN_B2063_RX_BB_SP8) & 0xff;
 
@@ -1716,9 +1750,11 @@ bwn_phy_lp_rxcal_r2(struct bwn_mac *mac)
 	if (!(BWN_RF_READ(mac, BWN_B2063_RC_CALIB_CTL6) & 0x2))
 		BWN_RF_WRITE(mac, BWN_B2063_TX_BB_SP3, tmp);
 	BWN_RF_WRITE(mac, BWN_B2063_RC_CALIB_CTL1, 0x7e);
+
+	return (0);
 }
 
-static void
+static int
 bwn_phy_lp_rccal_r12(struct bwn_mac *mac)
 {
 	struct bwn_phy_lp *plp = &mac->mac_phy.phy_lp;
@@ -1834,6 +1870,8 @@ done:
 	bwn_phy_lp_set_txpctlmode(mac, txpctlmode);
 	if (plp->plp_rccap)
 		bwn_phy_lp_set_rccap(mac);
+
+	return (0);
 }
 
 static void

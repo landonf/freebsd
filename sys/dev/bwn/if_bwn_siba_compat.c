@@ -322,62 +322,6 @@ bhnd_compat_get_type(device_t dev)
 }
 
 /*
- * siba_get_cc_pmufreq()
- *
- * Referenced by:
- *   bwn_phy_lp_b2062_init()
- *   bwn_phy_lp_b2062_switch_channel()
- *   bwn_phy_lp_b2063_switch_channel()
- *   bwn_phy_lp_rxcal_r2()
- */
-static uint32_t
-bhnd_compat_get_cc_pmufreq(device_t dev)
-{
-	u_int	freq;
-	int	error;
-
-	if ((error = bhnd_get_clock_freq(dev, BHND_CLOCK_ALP, &freq)))
-		panic("failed to fetch clock frequency: %d", error);
-
-	/* TODO: bwn(4) immediately multiplies the result by 1000 (MHz -> Hz) */
-	return (freq / 1000);
-}
-
-/*
- * siba_get_cc_caps()
- *
- * Referenced by:
- *   bwn_phy_lp_b2062_init()
- */
-static uint32_t
-bhnd_compat_get_cc_caps(device_t dev)
-{
-	device_t		 chipc;
-	const struct chipc_caps	*ccaps;
-	uint32_t		 result;
-
-	/* Fetch our ChipCommon device */
-	chipc = bhnd_retain_provider(dev, BHND_SERVICE_CHIPC);
-	if (chipc == NULL)
-		panic("missing ChipCommon device");
-
-	/*
-	 * The ChipCommon capability flags are only used in one LP-PHY function,
-	 * to assert that a PMU is in fact available.
-	 *
-	 * We can support this by producing a value containing just that flag. 
-	 */
-	result = 0;
-	ccaps = BHND_CHIPC_GET_CAPS(chipc);
-	if (ccaps->pmu)
-		result |= SIBA_CC_CAPS_PMU;
-
-	bhnd_release_provider(dev, chipc, BHND_SERVICE_CHIPC);
-
-	return (result);
-}
-
-/*
  * siba_get_cc_powerdelay()
  *
  * Referenced by:
@@ -1931,8 +1875,6 @@ const struct bwn_bus_ops bwn_bhnd_bus_ops = {
 	.get_pci_vendor			= bhnd_compat_get_pci_vendor,
 	.get_pci_device			= bhnd_compat_get_pci_device,
 	.get_type			= bhnd_compat_get_type,
-	.get_cc_pmufreq			= bhnd_compat_get_cc_pmufreq,
-	.get_cc_caps			= bhnd_compat_get_cc_caps,
 	.get_cc_powerdelay		= bhnd_compat_get_cc_powerdelay,
 	.get_pcicore_revid		= bhnd_compat_get_pcicore_revid,
 	.sprom_get_ccode		= bhnd_compat_sprom_get_ccode,
