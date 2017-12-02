@@ -59,11 +59,19 @@ static int	bhndb_dma_tag_create(device_t dev, bus_dma_tag_t parent_dmat,
 int
 bhndb_attach_bridge(device_t parent, device_t *bhndb, int unit)
 {
+	int error;
+
 	*bhndb = device_add_child(parent, "bhndb", unit);
 	if (*bhndb == NULL)
 		return (ENXIO);
 
-	return (bus_generic_attach(parent));
+	if (!(error = device_probe_and_attach(*bhndb)))
+		return (0);
+
+	if ((device_delete_child(parent, *bhndb)))
+		device_printf(parent, "failed to detach bhndb child\n");
+
+	return (error);
 }
 
 /*
