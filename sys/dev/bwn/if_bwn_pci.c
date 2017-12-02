@@ -293,8 +293,10 @@ static device_method_t bwn_pci_methods[] = {
 
 static devclass_t bwn_pci_devclass;
 
-DEFINE_CLASS_0(bwn_pci, bwn_pci_driver, bwn_pci_methods, sizeof(struct bwn_pci_softc));
-DRIVER_MODULE(bwn_pci, pci, bwn_pci_driver, bwn_pci_devclass, NULL, NULL);
+DEFINE_CLASS_0(bwn_pci, bwn_pci_driver, bwn_pci_methods,
+    sizeof(struct bwn_pci_softc));
+DRIVER_MODULE_ORDERED(bwn_pci, pci, bwn_pci_driver, bwn_pci_devclass, NULL,
+    NULL, SI_ORDER_ANY);
 DRIVER_MODULE(bhndb, bwn_pci, bhndb_pci_driver, bhndb_devclass, NULL, NULL);
 
 MODULE_DEPEND(bwn_pci, bwn, 1, 1, 1);
