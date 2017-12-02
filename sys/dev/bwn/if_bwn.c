@@ -2178,6 +2178,7 @@ bwn_chip_init(struct bwn_mac *mac)
 	struct bwn_softc *sc = mac->mac_sc;
 	struct bwn_phy *phy = &mac->mac_phy;
 	uint32_t macctl;
+	u_int delay;
 	int error;
 
 	macctl = BWN_MACCTL_IHR_ON | BWN_MACCTL_SHM_ON | BWN_MACCTL_STA;
@@ -2245,9 +2246,22 @@ bwn_chip_init(struct bwn_mac *mac)
 
 	bwn_mac_phy_clock_set(mac, true);
 
-	/* SIBA powerup */
-	BWN_WRITE_2(mac, BWN_POWERUP_DELAY, siba_get_cc_powerdelay(sc->sc_dev));
-	return (error);
+	/* Provide the HT clock transition latency to the MAC core */
+	error = bhnd_get_clock_latency(sc->sc_dev, BHND_CLOCK_HT, &delay);
+	if (error) {
+		device_printf(sc->sc_dev, "failed to fetch HT clock latency: "
+		    "%d\n", error);
+		return (error);
+	}
+
+	if (delay > UINT16_MAX) {
+		device_printf(sc->sc_dev, "invalid HT clock latency: %u\n",
+		    delay);
+		return (ENXIO);
+	}
+
+	BWN_WRITE_2(mac, BWN_POWERUP_DELAY, delay);
+	return (0);
 }
 
 /* read hostflags */

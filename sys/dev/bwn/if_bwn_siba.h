@@ -194,8 +194,6 @@ enum {
 	BWN_BUS_OPS(_dev)->get_pci_device(_dev)
 #define	siba_get_type(_dev)	\
 	BWN_BUS_OPS(_dev)->get_type(_dev)
-#define	siba_get_cc_powerdelay(_dev)	\
-	BWN_BUS_OPS(_dev)->get_cc_powerdelay(_dev)
 #define	siba_get_pcicore_revid(_dev)	\
 	BWN_BUS_OPS(_dev)->get_pcicore_revid(_dev)
 #define	siba_sprom_get_ccode(_dev)	\

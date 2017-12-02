@@ -322,27 +322,6 @@ bhnd_compat_get_type(device_t dev)
 }
 
 /*
- * siba_get_cc_powerdelay()
- *
- * Referenced by:
- *   bwn_chip_init()
- */
-static uint16_t
-bhnd_compat_get_cc_powerdelay(device_t dev)
-{
-	u_int	 delay;
-	int	 error;
-
-	if ((error = bhnd_get_clock_latency(dev, BHND_CLOCK_HT, &delay)))
-		panic("failed to fetch clock latency: %d", error);
-
-	if (delay > UINT16_MAX)
-		panic("%#x would overflow", delay);
-
-	return (delay);
-}
-
-/*
  * siba_get_pcicore_revid()
  *
  * Referenced by:
@@ -1863,7 +1842,6 @@ const struct bwn_bus_ops bwn_bhnd_bus_ops = {
 	.get_pci_vendor			= bhnd_compat_get_pci_vendor,
 	.get_pci_device			= bhnd_compat_get_pci_device,
 	.get_type			= bhnd_compat_get_type,
-	.get_cc_powerdelay		= bhnd_compat_get_cc_powerdelay,
 	.get_pcicore_revid		= bhnd_compat_get_pcicore_revid,
 	.sprom_get_ccode		= bhnd_compat_sprom_get_ccode,
 	.sprom_get_ant_a		= bhnd_compat_sprom_get_ant_a,
