@@ -41,11 +41,6 @@
 struct bwn_softc;
 struct bwn_mac;
 
-extern driver_t bwn_driver;
-
-int	bwn_attach(device_t dev);
-int	bwn_detach(device_t dev);
-
 #define	N(a)			(sizeof(a) / sizeof(a[0]))
 #define	BWN_ALIGN			0x1000
 #define	BWN_BUS_SPACE_MAXADDR_30BIT	0x3fffffff

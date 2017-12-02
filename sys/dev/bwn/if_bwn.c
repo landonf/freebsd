@@ -504,7 +504,7 @@ bwn_probe(device_t dev)
 	return (BUS_PROBE_DEFAULT);
 }
 
-int
+static int
 bwn_attach(device_t dev)
 {
 	struct bwn_mac		*mac;
@@ -708,7 +708,7 @@ bwn_phy_detach(struct bwn_mac *mac)
 		mac->mac_phy.detach(mac);
 }
 
-int
+static int
 bwn_detach(device_t dev)
 {
 	struct bwn_softc *sc = device_get_softc(dev);
@@ -7440,7 +7440,7 @@ static device_method_t bwn_methods[] = {
 	DEVMETHOD(device_resume,	bwn_resume),
 	DEVMETHOD_END
 };
-driver_t bwn_driver = {
+static driver_t bwn_driver = {
 	"bwn",
 	bwn_methods,
 	sizeof(struct bwn_softc)
