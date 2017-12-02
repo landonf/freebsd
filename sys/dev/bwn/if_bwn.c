@@ -2021,7 +2021,6 @@ bwn_core_init(struct bwn_mac *mac)
 
 	siba_pcicore_intr(sc->sc_dev);
 
-	siba_fix_imcfglobug(sc->sc_dev);
 	bwn_bt_disable(mac);
 	if (mac->mac_phy.prepare_hw) {
 		error = mac->mac_phy.prepare_hw(mac);

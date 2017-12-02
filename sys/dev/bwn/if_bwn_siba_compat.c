@@ -1612,18 +1612,6 @@ bhnd_compat_gpio_get(device_t dev)
 }
 
 /*
- * siba_fix_imcfglobug()
- *
- * Referenced by:
- *   bwn_core_init()
- */
-static void
-bhnd_compat_fix_imcfglobug(device_t dev)
-{
-	/* This is handled by siba_bhndb during attach/resume */
-}
-
-/*
  * siba_sprom_get_mcs2gpo()
  *
  * Referenced by:
@@ -1947,7 +1935,6 @@ const struct bwn_bus_ops bwn_bhnd_bus_ops = {
 	.cc_pmu_set_ldoparef		= bhnd_compat_cc_pmu_set_ldoparef,
 	.gpio_set			= bhnd_compat_gpio_set,
 	.gpio_get			= bhnd_compat_gpio_get,
-	.fix_imcfglobug			= bhnd_compat_fix_imcfglobug,
 	.sprom_get_mcs2gpo		= bhnd_compat_sprom_get_mcs2gpo,
 	.sprom_get_mcs5glpo		= bhnd_compat_sprom_get_mcs5glpo,
 	.sprom_get_mcs5gpo		= bhnd_compat_sprom_get_mcs5gpo,
