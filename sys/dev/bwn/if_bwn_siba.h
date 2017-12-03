@@ -49,7 +49,6 @@ struct bwn_bus_ops {
 	uint16_t	(*get_pci_vendor)(device_t);
 	uint16_t	(*get_pci_device)(device_t);
 	enum siba_type	(*get_type)(device_t);
-	uint16_t	(*get_cc_powerdelay)(device_t);
 	uint8_t		(*get_pcicore_revid)(device_t);
 	uint8_t		(*sprom_get_ccode)(device_t);
 	uint8_t		(*sprom_get_ant_a)(device_t);
