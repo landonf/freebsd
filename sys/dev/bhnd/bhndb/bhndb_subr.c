@@ -537,10 +537,8 @@ bhndb_dma_tag_create(device_t dev, bus_dma_tag_t parent_dmat,
 	lowaddr = MIN(dt_mask, BUS_SPACE_MAXADDR);
 
 	/* Do we need to to avoid crossing a DMA translation window boundary? */
-	if (translation->addr_mask < BUS_SPACE_MAXADDR) {
-		/* round down to nearest power of two */
-		boundary = translation->addr_mask & (~1ULL);
-	}
+	if (translation->addr_mask < BUS_SPACE_MAXADDR)
+		boundary = rounddown2(translation->addr_mask, PAGE_SIZE);
 
 	/* Create our DMA tag */
 	error = bus_dma_tag_create(parent_dmat,

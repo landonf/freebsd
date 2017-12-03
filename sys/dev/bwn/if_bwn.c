@@ -2522,7 +2522,7 @@ bwn_dma_rxdirectfifo(struct bwn_mac *mac, int idx, uint8_t enable)
 
 	type = bwn_dma_mask2type(bwn_dma_mask(mac));
 	base = bwn_dma_base(type, idx);
-	if (type == BWN_DMA_64BIT) {
+	if (type == BHND_DMA_ADDR_64BIT) {
 		ctl = BWN_READ_4(mac, base + BWN_DMA64_RXCTL);
 		ctl &= ~BWN_DMA64_RXDIRECTFIFO;
 		if (enable)
@@ -2545,28 +2545,28 @@ bwn_dma_mask(struct bwn_mac *mac)
 
 	tmp = BWN_READ_4(mac, SIBA_TGSHIGH);
 	if (tmp & SIBA_TGSHIGH_DMA64)
-		return (BWN_DMA_BIT_MASK(64));
+		return (BHND_DMA_ADDR_BITMASK(64));
 	base = bwn_dma_base(0, 0);
 	BWN_WRITE_4(mac, base + BWN_DMA32_TXCTL, BWN_DMA32_TXADDREXT_MASK);
 	tmp = BWN_READ_4(mac, base + BWN_DMA32_TXCTL);
 	if (tmp & BWN_DMA32_TXADDREXT_MASK)
-		return (BWN_DMA_BIT_MASK(32));
+		return (BHND_DMA_ADDR_BITMASK(32));
 
-	return (BWN_DMA_BIT_MASK(30));
+	return (BHND_DMA_ADDR_BITMASK(30));
 }
 
 static int
 bwn_dma_mask2type(uint64_t dmamask)
 {
 
-	if (dmamask == BWN_DMA_BIT_MASK(30))
-		return (BWN_DMA_30BIT);
-	if (dmamask == BWN_DMA_BIT_MASK(32))
-		return (BWN_DMA_32BIT);
-	if (dmamask == BWN_DMA_BIT_MASK(64))
-		return (BWN_DMA_64BIT);
+	if (dmamask == BHND_DMA_ADDR_BITMASK(30))
+		return (BHND_DMA_ADDR_30BIT);
+	if (dmamask == BHND_DMA_ADDR_BITMASK(32))
+		return (BHND_DMA_ADDR_32BIT);
+	if (dmamask == BHND_DMA_ADDR_BITMASK(64))
+		return (BHND_DMA_ADDR_64BIT);
 	KASSERT(0 == 1, ("%s:%d: fail", __func__, __LINE__));
-	return (BWN_DMA_30BIT);
+	return (BHND_DMA_ADDR_30BIT);
 }
 
 static void
@@ -2604,7 +2604,7 @@ bwn_dma_base(int type, int controller_idx)
 		BWN_DMA32_BASE5,
 	};
 
-	if (type == BWN_DMA_64BIT) {
+	if (type == BHND_DMA_ADDR_64BIT) {
 		KASSERT(controller_idx >= 0 && controller_idx < N(map64),
 		    ("%s:%d: fail", __func__, __LINE__));
 		return (map64[controller_idx]);
@@ -2656,7 +2656,7 @@ bwn_dma_ringsetup(struct bwn_mac *mac, int controller_index,
 	dr->dr_mac = mac;
 	dr->dr_base = bwn_dma_base(type, controller_index);
 	dr->dr_index = controller_index;
-	if (type == BWN_DMA_64BIT) {
+	if (type == BHND_DMA_ADDR_64BIT) {
 		dr->getdesc = bwn_dma_64_getdesc;
 		dr->setdesc = bwn_dma_64_setdesc;
 		dr->start_transfer = bwn_dma_64_start_transfer;
@@ -2856,18 +2856,22 @@ bwn_dma_32_setdesc(struct bwn_dma_ring *dr,
     struct bwn_dmadesc_generic *desc, bus_addr_t dmaaddr, uint16_t bufsize,
     int start, int end, int irq)
 {
-	struct bwn_dmadesc32 *descbase = dr->dr_ring_descbase;
-	struct bwn_softc *sc = dr->dr_mac->mac_sc;
-	uint32_t addr, addrext, ctl;
-	int slot;
+	struct bwn_dmadesc32		*descbase;
+	struct bwn_dma			*dma;
+	struct bhnd_dma_translation	*dt;
+	uint32_t			 addr, addrext, ctl;
+	int				 slot;
+	
+	descbase = dr->dr_ring_descbase;
+	dma = &dr->dr_mac->mac_method.dma;
+	dt = &dma->translation;
 
 	slot = (int)(&(desc->dma.dma32) - descbase);
 	KASSERT(slot >= 0 && slot < dr->dr_numslots,
 	    ("%s:%d: fail", __func__, __LINE__));
 
-	addr = (uint32_t) (dmaaddr & ~SIBA_DMA_TRANSLATION_MASK);
-	addrext = (uint32_t) (dmaaddr & SIBA_DMA_TRANSLATION_MASK) >> 30;
-	addr |= siba_dma_translation(sc->sc_dev);
+	addr = (dmaaddr & dt->addr_mask) | dt->base_addr;
+	addrext = ((dmaaddr & dt->addrext_mask) >> dma->addrext_shift);
 	ctl = bufsize & BWN_DMA32_DCTL_BYTECNT;
 	if (slot == dr->dr_numslots - 1)
 		ctl |= BWN_DMA32_DCTL_DTABLEEND;
@@ -2945,22 +2949,30 @@ bwn_dma_64_setdesc(struct bwn_dma_ring *dr,
     struct bwn_dmadesc_generic *desc, bus_addr_t dmaaddr, uint16_t bufsize,
     int start, int end, int irq)
 {
-	struct bwn_dmadesc64 *descbase = dr->dr_ring_descbase;
-	struct bwn_softc *sc = dr->dr_mac->mac_sc;
-	int slot;
-	uint32_t ctl0 = 0, ctl1 = 0;
-	uint32_t addrlo, addrhi;
-	uint32_t addrext;
+	struct bwn_dmadesc64		*descbase;
+	struct bwn_dma			*dma;
+	struct bhnd_dma_translation	*dt;
+	bhnd_addr_t			 addr;
+	uint32_t			 addrhi, addrlo;
+	uint32_t			 addrext;
+	uint32_t			 ctl0, ctl1;
+	int				 slot;
+	
+	
+	descbase = dr->dr_ring_descbase;
+	dma = &dr->dr_mac->mac_method.dma;
+	dt = &dma->translation;
 
 	slot = (int)(&(desc->dma.dma64) - descbase);
 	KASSERT(slot >= 0 && slot < dr->dr_numslots,
 	    ("%s:%d: fail", __func__, __LINE__));
 
-	addrlo = (uint32_t) (dmaaddr & 0xffffffff);
-	addrhi = (((uint64_t) dmaaddr >> 32) & ~SIBA_DMA_TRANSLATION_MASK);
-	addrext = (((uint64_t) dmaaddr >> 32) & SIBA_DMA_TRANSLATION_MASK) >>
-	    30;
-	addrhi |= (siba_dma_translation(sc->sc_dev) << 1);
+	addr = (dmaaddr & dt->addr_mask) | dt->base_addr;
+	addrhi = (addr >> 32);
+	addrlo = (addr & UINT32_MAX);
+	addrext = ((dmaaddr & dt->addrext_mask) >> dma->addrext_shift);
+
+	ctl0 = 0;
 	if (slot == dr->dr_numslots - 1)
 		ctl0 |= BWN_DMA64_DCTL0_DTABLEEND;
 	if (start)
@@ -2969,6 +2981,8 @@ bwn_dma_64_setdesc(struct bwn_dma_ring *dr,
 		ctl0 |= BWN_DMA64_DCTL0_FRAMEEND;
 	if (irq)
 		ctl0 |= BWN_DMA64_DCTL0_IRQ;
+
+	ctl1 = 0;
 	ctl1 |= bufsize & BWN_DMA64_DCTL1_BYTECNT;
 	ctl1 |= (addrext << BWN_DMA64_DCTL1_ADDREXT_SHIFT)
 	    & BWN_DMA64_DCTL1_ADDREXT_MASK;
@@ -3070,36 +3084,38 @@ bwn_dma_allocringmemory(struct bwn_dma_ring *dr)
 static void
 bwn_dma_setup(struct bwn_dma_ring *dr)
 {
-	struct bwn_softc *sc = dr->dr_mac->mac_sc;
-	uint64_t ring64;
-	uint32_t addrext, ring32, value;
-	uint32_t trans = siba_dma_translation(sc->sc_dev);
+	struct bwn_mac			*mac;
+	struct bwn_dma			*dma;
+	struct bhnd_dma_translation	*dt;
+	bhnd_addr_t			 addr, paddr;
+	uint32_t			 addrhi, addrlo, addrext, value;
+
+	mac = dr->dr_mac;
+	dma = &mac->mac_method.dma;
+	dt = &dma->translation;
+
+	paddr = dr->dr_ring_dmabase;
+	addr = (paddr & dt->addr_mask) | dt->base_addr;
+	addrhi = (addr >> 32);
+	addrlo = (addr & UINT32_MAX);
+	addrext = ((paddr & dt->addrext_mask) >> dma->addrext_shift);
 
 	if (dr->dr_tx) {
 		dr->dr_curslot = -1;
 
-		if (dr->dr_type == BWN_DMA_64BIT) {
-			ring64 = (uint64_t)(dr->dr_ring_dmabase);
-			addrext = ((ring64 >> 32) & SIBA_DMA_TRANSLATION_MASK)
-			    >> 30;
+		if (dr->dr_type == BHND_DMA_ADDR_64BIT) {
 			value = BWN_DMA64_TXENABLE;
 			value |= (addrext << BWN_DMA64_TXADDREXT_SHIFT)
 			    & BWN_DMA64_TXADDREXT_MASK;
 			BWN_DMA_WRITE(dr, BWN_DMA64_TXCTL, value);
-			BWN_DMA_WRITE(dr, BWN_DMA64_TXRINGLO,
-			    (ring64 & 0xffffffff));
-			BWN_DMA_WRITE(dr, BWN_DMA64_TXRINGHI,
-			    ((ring64 >> 32) &
-			    ~SIBA_DMA_TRANSLATION_MASK) | (trans << 1));
+			BWN_DMA_WRITE(dr, BWN_DMA64_TXRINGLO, addrlo);
+			BWN_DMA_WRITE(dr, BWN_DMA64_TXRINGHI, addrhi);
 		} else {
-			ring32 = (uint32_t)(dr->dr_ring_dmabase);
-			addrext = (ring32 & SIBA_DMA_TRANSLATION_MASK) >> 30;
 			value = BWN_DMA32_TXENABLE;
 			value |= (addrext << BWN_DMA32_TXADDREXT_SHIFT)
 			    & BWN_DMA32_TXADDREXT_MASK;
 			BWN_DMA_WRITE(dr, BWN_DMA32_TXCTL, value);
-			BWN_DMA_WRITE(dr, BWN_DMA32_TXRING,
-			    (ring32 & ~SIBA_DMA_TRANSLATION_MASK) | trans);
+			BWN_DMA_WRITE(dr, BWN_DMA32_TXRING, addrlo);
 		}
 		return;
 	}
@@ -3109,30 +3125,23 @@ bwn_dma_setup(struct bwn_dma_ring *dr)
 	 */
 	dr->dr_usedslot = dr->dr_numslots;
 
-	if (dr->dr_type == BWN_DMA_64BIT) {
-		ring64 = (uint64_t)(dr->dr_ring_dmabase);
-		addrext = ((ring64 >> 32) & SIBA_DMA_TRANSLATION_MASK) >> 30;
+	if (dr->dr_type == BHND_DMA_ADDR_64BIT) {
 		value = (dr->dr_frameoffset << BWN_DMA64_RXFROFF_SHIFT);
 		value |= BWN_DMA64_RXENABLE;
 		value |= (addrext << BWN_DMA64_RXADDREXT_SHIFT)
 		    & BWN_DMA64_RXADDREXT_MASK;
 		BWN_DMA_WRITE(dr, BWN_DMA64_RXCTL, value);
-		BWN_DMA_WRITE(dr, BWN_DMA64_RXRINGLO, (ring64 & 0xffffffff));
-		BWN_DMA_WRITE(dr, BWN_DMA64_RXRINGHI,
-		    ((ring64 >> 32) & ~SIBA_DMA_TRANSLATION_MASK)
-		    | (trans << 1));
+		BWN_DMA_WRITE(dr, BWN_DMA64_RXRINGLO, addrlo);
+		BWN_DMA_WRITE(dr, BWN_DMA64_RXRINGHI, addrhi);
 		BWN_DMA_WRITE(dr, BWN_DMA64_RXINDEX, dr->dr_numslots *
 		    sizeof(struct bwn_dmadesc64));
 	} else {
-		ring32 = (uint32_t)(dr->dr_ring_dmabase);
-		addrext = (ring32 & SIBA_DMA_TRANSLATION_MASK) >> 30;
 		value = (dr->dr_frameoffset << BWN_DMA32_RXFROFF_SHIFT);
 		value |= BWN_DMA32_RXENABLE;
 		value |= (addrext << BWN_DMA32_RXADDREXT_SHIFT)
 		    & BWN_DMA32_RXADDREXT_MASK;
 		BWN_DMA_WRITE(dr, BWN_DMA32_RXCTL, value);
-		BWN_DMA_WRITE(dr, BWN_DMA32_RXRING,
-		    (ring32 & ~SIBA_DMA_TRANSLATION_MASK) | trans);
+		BWN_DMA_WRITE(dr, BWN_DMA32_RXRING, addrlo);
 		BWN_DMA_WRITE(dr, BWN_DMA32_RXINDEX, dr->dr_numslots *
 		    sizeof(struct bwn_dmadesc32));
 	}
@@ -3153,14 +3162,14 @@ bwn_dma_cleanup(struct bwn_dma_ring *dr)
 
 	if (dr->dr_tx) {
 		bwn_dma_tx_reset(dr->dr_mac, dr->dr_base, dr->dr_type);
-		if (dr->dr_type == BWN_DMA_64BIT) {
+		if (dr->dr_type == BHND_DMA_ADDR_64BIT) {
 			BWN_DMA_WRITE(dr, BWN_DMA64_TXRINGLO, 0);
 			BWN_DMA_WRITE(dr, BWN_DMA64_TXRINGHI, 0);
 		} else
 			BWN_DMA_WRITE(dr, BWN_DMA32_TXRING, 0);
 	} else {
 		bwn_dma_rx_reset(dr->dr_mac, dr->dr_base, dr->dr_type);
-		if (dr->dr_type == BWN_DMA_64BIT) {
+		if (dr->dr_type == BHND_DMA_ADDR_64BIT) {
 			BWN_DMA_WRITE(dr, BWN_DMA64_RXRINGLO, 0);
 			BWN_DMA_WRITE(dr, BWN_DMA64_RXRINGHI, 0);
 		} else
@@ -3212,10 +3221,10 @@ bwn_dma_tx_reset(struct bwn_mac *mac, uint16_t base,
 	uint16_t offset;
 
 	for (i = 0; i < 10; i++) {
-		offset = (type == BWN_DMA_64BIT) ? BWN_DMA64_TXSTATUS :
+		offset = (type == BHND_DMA_ADDR_64BIT) ? BWN_DMA64_TXSTATUS :
 		    BWN_DMA32_TXSTATUS;
 		value = BWN_READ_4(mac, base + offset);
-		if (type == BWN_DMA_64BIT) {
+		if (type == BHND_DMA_ADDR_64BIT) {
 			value &= BWN_DMA64_TXSTAT;
 			if (value == BWN_DMA64_TXSTAT_DISABLED ||
 			    value == BWN_DMA64_TXSTAT_IDLEWAIT ||
@@ -3230,13 +3239,14 @@ bwn_dma_tx_reset(struct bwn_mac *mac, uint16_t base,
 		}
 		DELAY(1000);
 	}
-	offset = (type == BWN_DMA_64BIT) ? BWN_DMA64_TXCTL : BWN_DMA32_TXCTL;
+	offset = (type == BHND_DMA_ADDR_64BIT) ? BWN_DMA64_TXCTL :
+	    BWN_DMA32_TXCTL;
 	BWN_WRITE_4(mac, base + offset, 0);
 	for (i = 0; i < 10; i++) {
-		offset = (type == BWN_DMA_64BIT) ? BWN_DMA64_TXSTATUS :
-						   BWN_DMA32_TXSTATUS;
+		offset = (type == BHND_DMA_ADDR_64BIT) ? BWN_DMA64_TXSTATUS :
+		    BWN_DMA32_TXSTATUS;
 		value = BWN_READ_4(mac, base + offset);
-		if (type == BWN_DMA_64BIT) {
+		if (type == BHND_DMA_ADDR_64BIT) {
 			value &= BWN_DMA64_TXSTAT;
 			if (value == BWN_DMA64_TXSTAT_DISABLED) {
 				i = -1;
@@ -3269,13 +3279,14 @@ bwn_dma_rx_reset(struct bwn_mac *mac, uint16_t base,
 	int i;
 	uint16_t offset;
 
-	offset = (type == BWN_DMA_64BIT) ? BWN_DMA64_RXCTL : BWN_DMA32_RXCTL;
+	offset = (type == BHND_DMA_ADDR_64BIT) ? BWN_DMA64_RXCTL :
+	    BWN_DMA32_RXCTL;
 	BWN_WRITE_4(mac, base + offset, 0);
 	for (i = 0; i < 10; i++) {
-		offset = (type == BWN_DMA_64BIT) ? BWN_DMA64_RXSTATUS :
+		offset = (type == BHND_DMA_ADDR_64BIT) ? BWN_DMA64_RXSTATUS :
 		    BWN_DMA32_RXSTATUS;
 		value = BWN_READ_4(mac, base + offset);
-		if (type == BWN_DMA_64BIT) {
+		if (type == BHND_DMA_ADDR_64BIT) {
 			value &= BWN_DMA64_RXSTAT;
 			if (value == BWN_DMA64_RXSTAT_DISABLED) {
 				i = -1;
@@ -3605,14 +3616,14 @@ bwn_dma_gettype(struct bwn_mac *mac)
 
 	tmp = BWN_READ_4(mac, SIBA_TGSHIGH);
 	if (tmp & SIBA_TGSHIGH_DMA64)
-		return (BWN_DMA_64BIT);
+		return (BHND_DMA_ADDR_64BIT);
 	base = bwn_dma_base(0, 0);
 	BWN_WRITE_4(mac, base + BWN_DMA32_TXCTL, BWN_DMA32_TXADDREXT_MASK);
 	tmp = BWN_READ_4(mac, base + BWN_DMA32_TXCTL);
 	if (tmp & BWN_DMA32_TXADDREXT_MASK)
-		return (BWN_DMA_32BIT);
+		return (BHND_DMA_ADDR_32BIT);
 
-	return (BWN_DMA_30BIT);
+	return (BHND_DMA_ADDR_30BIT);
 }
 
 static void
@@ -6921,30 +6932,97 @@ bwn_tsf_read(struct bwn_mac *mac, uint64_t *tsf)
 static int
 bwn_dma_attach(struct bwn_mac *mac)
 {
-	struct bwn_dma *dma = &mac->mac_method.dma;
-	struct bwn_softc *sc = mac->mac_sc;
-	bus_addr_t lowaddr = 0;
-	int error;
+	struct bwn_dma			*dma;
+	struct bwn_softc		*sc;
+	struct bhnd_dma_translation	*dt, dma_translation;
+	bhnd_addr_t			 addrext_req;
+	bus_dma_tag_t			 dmat;
+	bus_addr_t			 lowaddr;
+	u_int				 addrext_shift;
+	int				 dmatype;
+	int				 error;
+
+	dma = &mac->mac_method.dma;
+	sc = mac->mac_sc;
+	dt = NULL;
 
 	if (siba_get_type(sc->sc_dev) == SIBA_TYPE_PCMCIA || bwn_usedma == 0)
 		return (0);
 
 	KASSERT(bhnd_get_hwrev(sc->sc_dev) >= 5, ("%s: fail", __func__));
 
+	/* Determine supported DMA address width */
+	dmatype = bwn_dma_gettype(mac);
+
+	/* Fetch our device->host DMA translation and tag */
+	error = bhnd_get_dma_translation(sc->sc_dev, dmatype, 0, &dmat,
+	    &dma_translation);
+	if (error) {
+		device_printf(sc->sc_dev, "error fetching DMA translation: "
+		    "%d\n", error);
+		return (error);
+	}
+
+	/* Determine any DMA engine constraints to be applied to the
+	 * translation's addrext mask */
+	switch (dmatype) {
+	case BHND_DMA_ADDR_30BIT:
+		/* 32-bit engine has no addrext support */
+		addrext_req = 0x0;
+		addrext_shift = 0;
+		break;
+
+	case BHND_DMA_ADDR_32BIT:
+		/* 32-bit engine with addrext support */
+		addrext_req = BWN_DMA32_ADDREXT_MASK;
+		addrext_shift = BWN_DMA32_ADDREXT_SHIFT;
+		break;
+
+	case BHND_DMA_ADDR_64BIT:
+		/* 64-bit engine with addrext support */
+		addrext_req = BWN_DMA64_ADDREXT_MASK;
+		addrext_shift = BWN_DMA64_ADDREXT_SHIFT;
+		break;
+
+	default:
+		device_printf(sc->sc_dev, "unsupported DMA address width: %d\n",
+		    dmatype);
+		return (ENXIO);
+	}
+
+	/* Verify that our DMA engine's addrext constraints are compatible with
+	 * our DMA translation */
+	if (addrext_req != 0x0 &&
+	    (dma_translation.addrext_mask & addrext_req) != addrext_req)
+	{
+		device_printf(sc->sc_dev, "bus addrext mask %#jx incompatible "
+		    "with device addrext mask %#jx, disabling extended address "
+		    "support\n", (uintmax_t)dma_translation.addrext_mask,
+		    (uintmax_t)addrext_req);
+
+		addrext_req = 0x0;
+		addrext_shift = 0;
+	}
+
+	/* Apply our addrext translation constraint */
+	dma_translation.addrext_mask = addrext_req;
+
+	/* Initialize our DMA engine configuration */
 	mac->mac_flags |= BWN_MAC_FLAG_DMA;
 
-	dma->dmatype = bwn_dma_gettype(mac);
-	if (dma->dmatype == BWN_DMA_30BIT)
-		lowaddr = BWN_BUS_SPACE_MAXADDR_30BIT;
-	else if (dma->dmatype == BWN_DMA_32BIT)
-		lowaddr = BUS_SPACE_MAXADDR_32BIT;
-	else
-		lowaddr = BUS_SPACE_MAXADDR;
+	dma->dmatype = dmatype;
+	dma->addrext_shift = addrext_shift;
+	dma->translation = dma_translation;
+
+	dt = &dma->translation;
+
+	/* Dermine our translation's maximum supported address */
+	lowaddr = MIN((dt->addr_mask | dt->addrext_mask), BUS_SPACE_MAXADDR);
 
 	/*
 	 * Create top level DMA tag
 	 */
-	error = bus_dma_tag_create(bus_get_dma_tag(sc->sc_dev),	/* parent */
+	error = bus_dma_tag_create(dmat,		/* parent */
 			       BWN_ALIGN, 0,		/* alignment, bounds */
 			       lowaddr,			/* lowaddr */
 			       BUS_SPACE_MAXADDR,	/* highaddr */

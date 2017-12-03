@@ -1287,81 +1287,6 @@ bhnd_compat_pcicore_intr(device_t dev)
 }
 
 /*
- * siba_dma_translation()
- *
- * Referenced by:
- *   bwn_dma_32_setdesc()
- *   bwn_dma_64_setdesc()
- *   bwn_dma_setup()
- */
-static uint32_t
-bhnd_compat_dma_translation(device_t dev)
-{
-	struct bhnd_dma_translation	 dt;
-	struct bwn_softc		*sc;
-	struct bwn_mac			*mac;
-	int				 bwn_dmatype, error;
-
-	sc = device_get_softc(dev);
-	mac = sc->sc_curmac;
-	KASSERT(mac != NULL, ("no MAC"));
-
-	/* Fetch our DMA translation */
-	bwn_dmatype = mac->mac_method.dma.dmatype;
-	if ((error = bhnd_get_dma_translation(dev, bwn_dmatype, 0, NULL, &dt)))
-		panic("error requesting DMA translation: %d\n", error);
-
-	/*
-	 * TODO: bwn(4) needs to switch to bhnd_get_dma_translation().
-	 *
-	 * Currently, bwn(4) incorrectly assumes that:
-	 *  - The 32-bit translation mask is always SIBA_DMA_TRANSLATION_MASK.
-	 *  - The 32-bit mask can simply be applied to the top 32-bits of a
-	 *    64-bit DMA address.
-	 *  - The 64-bit address translation is always derived by shifting the
-	 *    32-bit siba_dma_translation() left by 1 bit.
-	 *
-	 * In practice, these assumptions won't result in any bugs on known
-	 * PCI/PCIe Wi-Fi hardware:
-	 *  - The 32-bit mask _is_ always SIBA_DMA_TRANSLATION_MASK on
-	 *    the subset of devices supported by bwn(4).
-	 *  - The 64-bit mask used by bwn(4) is a superset of the real
-	 *    mask, and thus:
-	 *	- Our DMA tag will still have valid constraints.
-	 *	- Our address translation will not be corrupted by
-	 *	  applying the mask.
-	 *  - The mask falls within the top 16 address bits, and our
-	 *    supported 64-bit architectures are all still limited
-	 *    to 48-bit addresses anyway; we don't need to worry about
-	 *    addressing >= 48-bit host memory.
-	 *
-	 * However, we will need to resolve these issues in bwn(4) if DMA is to
-	 * work on new hardware (e.g. WiSoCs).
-	 */
-	switch (bwn_dmatype) {
-	case BWN_DMA_32BIT:
-	case BWN_DMA_30BIT:
-		KASSERT((~dt.addr_mask & BHND_DMA_ADDR_BITMASK(32)) ==
-		    SIBA_DMA_TRANSLATION_MASK, ("unexpected DMA mask: %#jx",
-		    (uintmax_t)dt.addr_mask));
-
-		return (dt.base_addr);
-
-	case BWN_DMA_64BIT:
-		/* bwn(4) will shift this left by 32+1 bits before applying it
-		 * to the top 32-bits of the DMA address */
-		KASSERT((~dt.addr_mask & BHND_DMA_ADDR_BITMASK(33)) == 0,
-		    ("DMA64 translation %#jx masks low 33-bits",
-		     (uintmax_t)dt.addr_mask));
-
-		return (dt.base_addr >> 33);
-
-	default:
-		panic("unknown dma type %d", bwn_dmatype);
-	}
-}
-
-/*
  * siba_read_multi_2()
  *
  * Referenced by:
@@ -1903,7 +1828,6 @@ const struct bwn_bus_ops bwn_bhnd_bus_ops = {
 	.dev_down			= bhnd_compat_dev_down,
 	.dev_isup			= bhnd_compat_dev_isup,
 	.pcicore_intr			= bhnd_compat_pcicore_intr,
-	.dma_translation		= bhnd_compat_dma_translation,
 	.read_multi_2			= bhnd_compat_read_multi_2,
 	.read_multi_4			= bhnd_compat_read_multi_4,
 	.write_multi_2			= bhnd_compat_write_multi_2,

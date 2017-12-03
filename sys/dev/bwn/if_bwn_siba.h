@@ -111,7 +111,6 @@ struct bwn_bus_ops {
 	void		(*dev_down)(device_t, uint32_t);
 	int		(*dev_isup)(device_t);
 	void		(*pcicore_intr)(device_t);
-	uint32_t	(*dma_translation)(device_t);
 	void		(*read_multi_2)(device_t, void *, size_t, uint16_t);
 	void		(*read_multi_4)(device_t, void *, size_t, uint16_t);
 	void		(*write_multi_2)(device_t, const void *, size_t, uint16_t);
@@ -141,8 +140,6 @@ extern const struct bwn_bus_ops bwn_bhnd_bus_ops;
 #define	SIBA_CC_CHIPCTL			0x0028
 #define	SIBA_CC_CHIPCTL_ADDR		0x0650
 #define	SIBA_CC_CHIPCTL_DATA		0x0654
-
-#define	SIBA_DMA_TRANSLATION_MASK	0xc0000000
 
 #define	SIBA_TGSLOW			0x0f98
 #define	SIBA_TGSLOW_FGC			0x00020000
@@ -316,8 +313,6 @@ enum {
 	BWN_BUS_OPS(_dev)->dev_isup(_dev)
 #define	siba_pcicore_intr(_dev)	\
 	BWN_BUS_OPS(_dev)->pcicore_intr(_dev)
-#define	siba_dma_translation(_dev)	\
-	BWN_BUS_OPS(_dev)->dma_translation(_dev)
 #define	siba_read_multi_2(_dev, _arg1, _arg2, _arg3)	\
 	BWN_BUS_OPS(_dev)->read_multi_2(_dev, _arg1, _arg2, _arg3)
 #define	siba_read_multi_4(_dev, _arg1, _arg2, _arg3)	\

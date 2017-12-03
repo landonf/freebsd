@@ -43,7 +43,6 @@ struct bwn_mac;
 
 #define	N(a)			(sizeof(a) / sizeof(a[0]))
 #define	BWN_ALIGN			0x1000
-#define	BWN_BUS_SPACE_MAXADDR_30BIT	0x3fffffff
 #define	BWN_RETRY_SHORT			7
 #define	BWN_RETRY_LONG			4
 #define	BWN_STAID_MAX			64
@@ -141,7 +140,6 @@ struct bwn_mac;
 #define BWN_LO_CALIB_EXPIRE		(1000 * (30 - 2))
 #define BWN_LO_PWRVEC_EXPIRE		(1000 * (30 - 2))
 #define BWN_LO_TXCTL_EXPIRE		(1000 * (180 - 4))
-#define	BWN_DMA_BIT_MASK(n)		(((n) == 64) ? ~0ULL : ((1ULL<<(n))-1))
 #define BWN_LPD(L, P, D)		(((L) << 2) | ((P) << 1) | ((D) << 0))
 #define BWN_BITREV4(tmp)		(BWN_BITREV8(tmp) >> 4)
 #define	BWN_BITREV8(byte)		(bwn_bitrev_table[byte])
@@ -603,10 +601,6 @@ struct bwn_noise {
 	int8_t				noi_samples[8][4];
 };
 
-#define	BWN_DMA_30BIT			30
-#define	BWN_DMA_32BIT			32
-#define	BWN_DMA_64BIT			64
-
 struct bwn_dmadesc_meta {
 	bus_dmamap_t			mt_dmap;
 	bus_addr_t			mt_paddr;
@@ -702,6 +696,8 @@ struct bwn_dma {
 	bus_dma_tag_t			parent_dtag;
 	bus_dma_tag_t			rxbuf_dtag;
 	bus_dma_tag_t			txbuf_dtag;
+	struct bhnd_dma_translation	translation;
+	u_int				addrext_shift;
 
 	struct bwn_dma_ring		*wme[5];
 	struct bwn_dma_ring		*mcast;
