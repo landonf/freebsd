@@ -42,6 +42,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
+#include <sys/gpio.h>
 #include <sys/malloc.h>
 #include <sys/module.h>
 #include <sys/endian.h>
@@ -88,6 +89,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/bwn/if_bwn_phy_n.h>
 
 #include "bhnd_nvram_map.h"
+
+#include "gpio_if.h"
 
 static SYSCTL_NODE(_hw, OID_AUTO, bwn, CTLFLAG_RD, 0,
     "Broadcom driver parameters");
@@ -2198,16 +2201,14 @@ bwn_chip_init(struct bwn_mac *mac)
 		return (error);
 
 	error = bwn_fw_loadinitvals(mac);
-	if (error) {
-		siba_gpio_set(sc->sc_dev, 0);
+	if (error)
 		return (error);
-	}
+
 	phy->switch_analog(mac, 1);
 	error = bwn_phy_init(mac);
-	if (error) {
-		siba_gpio_set(sc->sc_dev, 0);
+	if (error)
 		return (error);
-	}
+
 	if (phy->set_im)
 		phy->set_im(mac, BWN_IMMODE_NONE);
 	if (phy->set_antenna)
@@ -3444,10 +3445,7 @@ bwn_crypt_init(struct bwn_mac *mac)
 static void
 bwn_chip_exit(struct bwn_mac *mac)
 {
-	struct bwn_softc *sc = mac->mac_sc;
-
 	bwn_phy_exit(mac);
-	siba_gpio_set(sc->sc_dev, 0);
 }
 
 static int
@@ -3464,37 +3462,81 @@ bwn_fw_fillinfo(struct bwn_mac *mac)
 	return (error);
 }
 
+/**
+ * Request that the GPIO controller tristate all pins set in @p mask, granting
+ * the MAC core control over the pins.
+ * 
+ * @param mac	bwn MAC state.
+ * @param pins	If the bit position for a pin number is set to one, tristate the
+ *		pin.
+ */
+int
+bwn_gpio_control(struct bwn_mac *mac, uint32_t pins)
+{
+	struct bwn_softc	*sc;
+	device_t		 gpio;
+	uint32_t		 flags[32];
+	int			 error;
+
+	sc = mac->mac_sc;
+
+	gpio = bhnd_retain_provider(sc->sc_dev, BHND_SERVICE_GPIO);
+	if (gpio == NULL) {
+		device_printf(sc->sc_dev, "GPIO device not found\n");
+		return (ENXIO);
+	}
+
+	/* Determine desired pin flags */
+	for (size_t pin = 0; pin < nitems(flags); pin++) {
+		uint32_t pinbit = (1 << pin);
+
+		if (pins & pinbit) {
+			/* Tristate output */
+			flags[pin] = GPIO_PIN_OUTPUT|GPIO_PIN_TRISTATE;
+		} else {
+			/* Leave unmodified */
+			flags[pin] = 0;
+		}
+	}
+
+	/* Configure all pins */
+	error = GPIO_PIN_CONFIG_32(gpio, 0, nitems(flags), flags);
+	if (error) {
+		device_printf(sc->sc_dev, "error configuring %s pin flags: "
+		    "%d\n", device_get_nameunit(gpio), error);
+		goto cleanup;
+	}
+
+cleanup:
+	bhnd_release_provider(sc->sc_dev, gpio, BHND_SERVICE_GPIO);
+	return (error);
+}
+
+
 static int
 bwn_gpio_init(struct bwn_mac *mac)
 {
-	struct bwn_softc *sc = mac->mac_sc;
-	uint32_t mask = 0x1f, set = 0xf, value;
+	struct bwn_softc	*sc;
+	uint32_t		 pins;
+
+	sc = mac->mac_sc;
+
+	pins = 0xF;
 
 	BWN_WRITE_4(mac, BWN_MACCTL,
 	    BWN_READ_4(mac, BWN_MACCTL) & ~BWN_MACCTL_GPOUT_MASK);
 	BWN_WRITE_2(mac, BWN_GPIO_MASK,
-	    BWN_READ_2(mac, BWN_GPIO_MASK) | 0x000f);
+	    BWN_READ_2(mac, BWN_GPIO_MASK) | pins);
 
-	// XXX TODO: 0x4301 is a PCI ID, not a chip ID.
-	if (sc->sc_cid.chip_id == 0x4301) {
-		mask |= 0x0060;
-		set |= 0x0060;
-	}
 	if (sc->sc_board_info.board_flags & BHND_BFL_PACTRL) {
+		/* MAC core is responsible for toggling PAREF via gpio9 */
 		BWN_WRITE_2(mac, BWN_GPIO_MASK,
-		    BWN_READ_2(mac, BWN_GPIO_MASK) | 0x0200);
-		mask |= 0x0200;
-		set |= 0x0200;
+		    BWN_READ_2(mac, BWN_GPIO_MASK) | BHND_GPIO_BOARD_PACTRL);
+
+		pins |= BHND_GPIO_BOARD_PACTRL;
 	}
-	if (bhnd_get_hwrev(sc->sc_dev) >= 2)
-		mask |= 0x0010;
 
-	value = siba_gpio_get(sc->sc_dev);
-	if (value == -1)
-		return (0);
-	siba_gpio_set(sc->sc_dev, (value & mask) | set);
-
-	return (0);
+	return (bwn_gpio_control(mac, pins));
 }
 
 static int

@@ -35,7 +35,6 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/bus.h>
-#include <sys/gpio.h>
 #include <sys/kernel.h>
 #include <sys/systm.h>
 #include <sys/socket.h>
@@ -69,8 +68,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/cores/chipc/chipc.h>
 #include <dev/bhnd/cores/pci/bhnd_pcireg.h>
 #include <dev/bhnd/cores/pmu/bhnd_pmu.h>
-
-#include "gpio_if.h"
 
 #include "bhnd_nvram_map.h"
 
@@ -120,14 +117,6 @@ bwn_bhnd_bus_ops_init(device_t dev)
 		goto failed;
 	}
 
-	/* Locate the GPIO device */
-	ctx->gpio_dev = bhnd_retain_provider(dev, BHND_SERVICE_GPIO);
-	if (ctx->gpio_dev == NULL) {
-		device_printf(dev, "GPIO not found\n");
-		error = ENXIO;
-		goto failed;
-	}
-
 	/* Locate the PMU device (if any) */
 	ccaps = BHND_CHIPC_GET_CAPS(ctx->chipc_dev);
 	if (ccaps->pmu) {
@@ -157,11 +146,6 @@ failed:
 			    BHND_SERVICE_CHIPC);
 		}
 
-		if (ctx->gpio_dev != NULL) {
-			bhnd_release_provider(dev, ctx->gpio_dev,
-			    BHND_SERVICE_GPIO);
-		}
-
 		if (ctx->pmu_dev != NULL) {
 			bhnd_release_provider(dev, ctx->pmu_dev,
 			    BHND_SERVICE_PMU);
@@ -187,7 +171,6 @@ bwn_bhnd_bus_ops_fini(device_t dev)
 	    sc->sc_mem_res);
 
 	bhnd_release_provider(dev, ctx->chipc_dev, BHND_SERVICE_CHIPC);
-	bhnd_release_provider(dev, ctx->gpio_dev, BHND_SERVICE_GPIO);
 
 	if (ctx->pmu_dev != NULL)
 		bhnd_release_provider(dev, ctx->pmu_dev, BHND_SERVICE_PMU);
@@ -1076,7 +1059,6 @@ bhnd_compat_powerdown(device_t dev)
  *   bwn_chip_init()
  *   bwn_chiptest()
  *   bwn_dummy_transmission()
- *   bwn_gpio_init()
  *   bwn_phy_getinfo()
  *   bwn_pio_read_2()
  *   bwn_shm_read_2()
@@ -1103,7 +1085,6 @@ bhnd_compat_read_2(device_t dev, uint16_t offset)
  *   bwn_chip_init()
  *   bwn_chiptest()
  *   bwn_crypt_init()
- *   bwn_gpio_init()
  *   bwn_phy_getinfo()
  *   bwn_pio_tx_start()
  *   bwn_set_opmode()
@@ -1438,84 +1419,6 @@ bhnd_compat_cc_pmu_set_ldoparef(device_t dev, uint8_t on)
 }
 
 /*
- * siba_gpio_set()
- *
- * Referenced by:
- *   bwn_chip_exit()
- *   bwn_chip_init()
- *   bwn_gpio_init()
- *   bwn_nphy_superswitch_init()
- */
-static void
-bhnd_compat_gpio_set(device_t dev, uint32_t value)
-{
-	struct bwn_bhnd_ctx	*ctx;
-	uint32_t		 flags[32];
-	int			 error;
-
-	ctx = bwn_bhnd_get_ctx(dev);
-
-	for (size_t i = 0; i < nitems(flags); i++) {
-		if (value & (1 << i)) {
-			/* Tristate pin */
-			flags[i] = (GPIO_PIN_OUTPUT | GPIO_PIN_TRISTATE);
-		} else {
-			/* Leave unmodified */
-			flags[i] = 0;
-		}
-	}
-
-	error = GPIO_PIN_CONFIG_32(ctx->gpio_dev, 0, nitems(flags), flags);
-	if (error)
-		panic("error configuring pin flags: %d", error);
-}
-
-/*
- * siba_gpio_get()
- *
- * Referenced by:
- *   bwn_gpio_init()
- */
-static uint32_t
-bhnd_compat_gpio_get(device_t dev)
-{
-	struct bwn_bhnd_ctx	*ctx;
-	uint32_t		 ctrl;
-	int			 npin;
-	int			 error;
-
-	/*
-	 * We recreate the expected GPIOCTRL register value for bwn_gpio_init()
-	 * by querying pins individually for GPIO_PIN_TRISTATE.
-	 * 
-	 * Once we drop these compatibility shims, the GPIO_PIN_CONFIG_32 method
-	 * can be used to set pin configuration without bwn(4) externally
-	 * implementing RMW.
-	 */
-
-	/* Fetch the total pin count */
-	ctx = bwn_bhnd_get_ctx(dev);
-	if ((error = GPIO_PIN_MAX(ctx->gpio_dev, &npin)))
-		panic("failed to fetch max pin: %d", error);
-
-	/* Must be representable within a 32-bit GPIOCTRL register value */
-	KASSERT(npin <= 32, ("unsupported pin count: %u", npin));
-
-	ctrl = 0;
-	for (uint32_t pin = 0; pin < npin; pin++) {
-		uint32_t flags;
-
-		if ((error = GPIO_PIN_GETFLAGS(ctx->gpio_dev, pin, &flags)))
-			panic("error fetching pin%u flags: %d", pin, error);
-
-		if (flags & GPIO_PIN_TRISTATE)
-			ctrl |= (1 << pin);
-	}
-
-	return (ctrl);
-}
-
-/*
  * siba_sprom_get_mcs2gpo()
  *
  * Referenced by:
@@ -1835,8 +1738,6 @@ const struct bwn_bus_ops bwn_bhnd_bus_ops = {
 	.barrier			= bhnd_compat_barrier,
 	.cc_pmu_set_ldovolt		= bhnd_compat_cc_pmu_set_ldovolt,
 	.cc_pmu_set_ldoparef		= bhnd_compat_cc_pmu_set_ldoparef,
-	.gpio_set			= bhnd_compat_gpio_set,
-	.gpio_get			= bhnd_compat_gpio_get,
 	.sprom_get_mcs2gpo		= bhnd_compat_sprom_get_mcs2gpo,
 	.sprom_get_mcs5glpo		= bhnd_compat_sprom_get_mcs5glpo,
 	.sprom_get_mcs5gpo		= bhnd_compat_sprom_get_mcs5gpo,

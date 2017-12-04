@@ -6118,16 +6118,16 @@ static void bwn_nphy_bphy_init(struct bwn_mac *mac)
 }
 
 /* http://bcm-v4.sipsolutions.net/802.11/PHY/N/SuperSwitchInit */
-static void bwn_nphy_superswitch_init(struct bwn_mac *mac, bool init)
+static int bwn_nphy_superswitch_init(struct bwn_mac *mac, bool init)
 {
-	struct bwn_softc *sc = mac->mac_sc;
+	int error;
 
 	if (mac->mac_phy.rev >= 7)
-		return;
+		return (0);
 
 	if (mac->mac_phy.rev >= 3) {
 		if (!init)
-			return;
+			return (0);
 		if (0 /* FIXME */) {
 			bwn_ntab_write(mac, BWN_NTAB16(9, 2), 0x211);
 			bwn_ntab_write(mac, BWN_NTAB16(9, 3), 0x222);
@@ -6138,7 +6138,8 @@ static void bwn_nphy_superswitch_init(struct bwn_mac *mac, bool init)
 		BWN_PHY_WRITE(mac, BWN_NPHY_GPIO_LOOEN, 0);
 		BWN_PHY_WRITE(mac, BWN_NPHY_GPIO_HIOEN, 0);
 
-		siba_gpio_set(sc->sc_dev, 0xfc00);
+		if ((error = bwn_gpio_control(mac, 0xfc00)))
+			return (error);
 
 		BWN_WRITE_SETMASK4(mac, BWN_MACCTL, ~BWN_MACCTL_GPOUT_MASK, 0);
 		BWN_WRITE_SETMASK2(mac, BWN_GPIO_MASK, ~0, 0xFC00);
@@ -6152,6 +6153,8 @@ static void bwn_nphy_superswitch_init(struct bwn_mac *mac, bool init)
 			BWN_PHY_WRITE(mac, BWN_NPHY_RFCTL_LUT_TRSW_UP2, 0x301);
 		}
 	}
+
+	return (0);
 }
 
 /* http://bcm-v4.sipsolutions.net/802.11/PHY/Init/N */
@@ -6162,6 +6165,7 @@ static int bwn_phy_initn(struct bwn_mac *mac)
 	struct bwn_phy_n *nphy = phy->phy_n;
 	uint8_t tx_pwr_state;
 	struct bwn_nphy_txgains target;
+	int error;
 	uint16_t tmp;
 	bwn_band_t tmp2;
 	bool do_rssi_cal;
@@ -6319,8 +6323,11 @@ static int bwn_phy_initn(struct bwn_mac *mac)
 		if (do_cal) {
 			target = bwn_nphy_get_tx_gains(mac);
 
-			if (nphy->antsel_type == 2)
-				bwn_nphy_superswitch_init(mac, true);
+			if (nphy->antsel_type == 2) {
+				error = bwn_nphy_superswitch_init(mac, true);
+				if (error)
+					return (error);
+			}
 			if (nphy->perical != 2) {
 				bwn_nphy_rssi_cal(mac);
 				if (phy->rev >= 3) {
