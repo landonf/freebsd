@@ -352,7 +352,7 @@ static void	bwn_watchdog(void *);
 static void	bwn_dma_stop(struct bwn_mac *);
 static void	bwn_pio_stop(struct bwn_mac *);
 static void	bwn_dma_ringstop(struct bwn_dma_ring **);
-static void	bwn_led_attach(struct bwn_mac *);
+static int	bwn_led_attach(struct bwn_mac *);
 static void	bwn_led_newstate(struct bwn_mac *, enum ieee80211_state);
 static void	bwn_led_event(struct bwn_mac *, int);
 static void	bwn_led_blink_start(struct bwn_mac *, int, int);
@@ -453,6 +453,13 @@ static const uint8_t bwn_default_led_act[BWN_LED_MAX] =
 	{ BWN_VENDOR_LED_ACT_DEFAULT };
 
 #undef VENDOR_LED_ACT
+
+static const char *bwn_led_vars[] = {
+	BHND_NVAR_LEDBH0,
+	BHND_NVAR_LEDBH1,
+	BHND_NVAR_LEDBH2,
+	BHND_NVAR_LEDBH3
+};
 
 static const struct {
 	int		on_dur;
@@ -614,7 +621,9 @@ bwn_attach(device_t dev)
 	error = bwn_attach_core(mac);
 	if (error)
 		goto fail;
-	bwn_led_attach(mac);
+	error = bwn_led_attach(mac);
+	if (error)
+		goto fail;
 
 	bhnd_format_chip_id(chip_name, sizeof(chip_name), sc->sc_cid.chip_id);
 	device_printf(sc->sc_dev, "WLAN (%s rev %u) "
@@ -7397,12 +7406,12 @@ bwn_pio_stop(struct bwn_mac *mac)
 	bwn_destroy_queue_tx(&pio->wme[WME_AC_BK]);
 }
 
-static void
+static int
 bwn_led_attach(struct bwn_mac *mac)
 {
 	struct bwn_softc *sc = mac->mac_sc;
 	const uint8_t *led_act = NULL;
-	uint16_t val[BWN_LED_MAX];
+	int error;
 	int i;
 
 	sc->sc_led_idle = (2350 * hz) / 1000;
@@ -7418,20 +7427,31 @@ bwn_led_attach(struct bwn_mac *mac)
 	if (led_act == NULL)
 		led_act = bwn_default_led_act;
 
-	val[0] = siba_sprom_get_gpio0(sc->sc_dev);
-	val[1] = siba_sprom_get_gpio1(sc->sc_dev);
-	val[2] = siba_sprom_get_gpio2(sc->sc_dev);
-	val[3] = siba_sprom_get_gpio3(sc->sc_dev);
+	_Static_assert(nitems(bwn_led_vars) == BWN_LED_MAX,
+	    "invalid NVRAM variable name array");
 
 	for (i = 0; i < BWN_LED_MAX; ++i) {
-		struct bwn_led *led = &sc->sc_leds[i];
+		struct bwn_led	*led;
+		uint8_t		 val;
 
-		if (val[i] == 0xff) {
+		led = &sc->sc_leds[i];
+
+		KASSERT(i < nitems(bwn_led_vars), ("LED out-of-range"));
+		error = bhnd_nvram_getvar_uint8(sc->sc_dev, bwn_led_vars[i],
+		    &val);
+		if (error) {
+			if (error != ENOENT) {
+				device_printf(sc->sc_dev, "NVRAM variable %s "
+				    "unreadable: %d", bwn_led_vars[i], error);
+				return (error);
+			}
+
+			/* Not found; use default */
 			led->led_act = led_act[i];
 		} else {
-			if (val[i] & BWN_LED_ACT_LOW)
+			if (val & BWN_LED_ACT_LOW)
 				led->led_flags |= BWN_LED_F_ACTLOW;
-			led->led_act = val[i] & BWN_LED_ACT_MASK;
+			led->led_act = val & BWN_LED_ACT_MASK;
 		}
 		led->led_mask = (1 << i);
 
@@ -7456,6 +7476,8 @@ bwn_led_attach(struct bwn_mac *mac)
 		    led->led_act, led->led_flags & BWN_LED_F_ACTLOW);
 	}
 	callout_init_mtx(&sc->sc_led_blink_ch, &sc->sc_mtx, 0);
+
+	return (0);
 }
 
 static __inline uint16_t

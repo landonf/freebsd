@@ -81,6 +81,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/bwn/if_bwn_misc.h>
 #include <dev/bwn/if_bwn_phy_g.h>
 
+#include "bhnd_nvram_map.h"
+
 static void	bwn_phy_g_init_sub(struct bwn_mac *);
 static uint8_t	bwn_has_hwpctl(struct bwn_mac *);
 static void	bwn_phy_init_b5(struct bwn_mac *);
@@ -157,11 +159,35 @@ bwn_phy_g_attach(struct bwn_mac *mac)
 	int16_t pab0, pab1, pab2;
 	static int8_t bwn_phy_g_tssi2dbm_table[] = BWN_PHY_G_TSSI2DBM_TABLE;
 	int8_t bg;
+	int error;
 
-	bg = (int8_t)siba_sprom_get_tssi_bg(sc->sc_dev);
-	pab0 = (int16_t)siba_sprom_get_pa0b0(sc->sc_dev);
-	pab1 = (int16_t)siba_sprom_get_pa0b1(sc->sc_dev);
-	pab2 = (int16_t)siba_sprom_get_pa0b2(sc->sc_dev);
+	error = bhnd_nvram_getvar_int8(sc->sc_dev, BHND_NVAR_PA0ITSSIT, &bg);
+	if (error) {
+		device_printf(sc->sc_dev, "error reading %s from NVRAM: %d\n",
+		    BHND_NVAR_PA0ITSSIT, error);
+		return (error);
+	}
+
+	error = bhnd_nvram_getvar_int16(sc->sc_dev, BHND_NVAR_PA0B0, &pab0);
+	if (error) {
+		device_printf(sc->sc_dev, "error reading %s from NVRAM: %d\n",
+		    BHND_NVAR_PA0B0, error);
+		return (error);
+	}
+
+	error = bhnd_nvram_getvar_int16(sc->sc_dev, BHND_NVAR_PA0B1, &pab1);
+	if (error) {
+		device_printf(sc->sc_dev, "error reading %s from NVRAM: %d\n",
+		    BHND_NVAR_PA0B1, error);
+		return (error);
+	}
+
+	error = bhnd_nvram_getvar_int16(sc->sc_dev, BHND_NVAR_PA0B2, &pab2);
+	if (error) {
+		device_printf(sc->sc_dev, "error reading %s from NVRAM: %d\n",
+		    BHND_NVAR_PA0B2, error);
+		return (error);
+	}
 
 	// XXX TODO: 0x4301 is a PCI ID, not a chip ID.
 	if ((sc->sc_cid.chip_id == 0x4301) && (phy->rf_ver != 0x2050))

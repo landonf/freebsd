@@ -304,133 +304,6 @@ bhnd_compat_sprom_get_ant_bg(device_t dev)
 }
 
 /*
- * siba_sprom_get_pa0b0()
- *
- * Referenced by:
- *   bwn_phy_g_attach()
- */
-static uint16_t
-bhnd_compat_sprom_get_pa0b0(device_t dev)
-{
-	int16_t value;
-
-	BWN_BHND_NVRAM_FETCH_VAR(dev, int16, BHND_NVAR_PA0B0, &value);
-
-	/* TODO: bwn(4) immediately casts this back to int16_t */
-	return ((uint16_t)value);
-}
-
-/*
- * siba_sprom_get_pa0b1()
- *
- * Referenced by:
- *   bwn_phy_g_attach()
- */
-static uint16_t
-bhnd_compat_sprom_get_pa0b1(device_t dev)
-{
-	int16_t value;
-
-	BWN_BHND_NVRAM_FETCH_VAR(dev, int16, BHND_NVAR_PA0B1, &value);
-
-	/* TODO: bwn(4) immediately casts this back to int16_t */
-	return ((uint16_t)value);
-}
-
-/*
- * siba_sprom_get_pa0b2()
- *
- * Referenced by:
- *   bwn_phy_g_attach()
- */
-static uint16_t
-bhnd_compat_sprom_get_pa0b2(device_t dev)
-{
-	int16_t value;
-
-	BWN_BHND_NVRAM_FETCH_VAR(dev, int16, BHND_NVAR_PA0B2, &value);
-
-	/* TODO: bwn(4) immediately casts this back to int16_t */
-	return ((uint16_t)value);
-}
-
-/**
- * Fetch an led behavior (ledbhX) NVRAM variable value, for use by
- * siba_sprom_get_gpioX().
- * 
- * ('gpioX' are actually the ledbhX NVRAM variables).
- */
-static uint8_t
-bhnd_compat_sprom_get_ledbh(device_t dev, const char *name)
-{
-	uint8_t	value;
-	int	error;
-
-	error = bhnd_nvram_getvar_uint8(dev, name, &value);
-	if (error && error != ENOENT)
-		panic("NVRAM variable %s unreadable: %d", name, error);
-
-	/* For some variables (including ledbhX), a value with all bits set is
-	 * treated as uninitialized in the SPROM format; our SPROM parser
-	 * detects this case and returns ENOENT, but bwn(4) actually expects
-	 * to read the raw value 0xFF value. */
-	if (error == ENOENT)
-		value = 0xFF;
-
-	return (value);
-}
-
-/*
- * siba_sprom_get_gpio0()
- *
- * 'gpioX' are actually the led behavior (ledbh) NVRAM variables.
- *
- * Referenced by:
- *   bwn_led_attach()
- */
-static uint8_t
-bhnd_compat_sprom_get_gpio0(device_t dev)
-{
-	return (bhnd_compat_sprom_get_ledbh(dev, BHND_NVAR_LEDBH0));
-}
-
-/*
- * siba_sprom_get_gpio1()
- *
- * Referenced by:
- *   bwn_led_attach()
- */
-static uint8_t
-bhnd_compat_sprom_get_gpio1(device_t dev)
-{
-	return (bhnd_compat_sprom_get_ledbh(dev, BHND_NVAR_LEDBH1));
-}
-
-/*
- * siba_sprom_get_gpio2()
- *
- * Referenced by:
- *   bwn_led_attach()
- */
-static uint8_t
-bhnd_compat_sprom_get_gpio2(device_t dev)
-{
-	return (bhnd_compat_sprom_get_ledbh(dev, BHND_NVAR_LEDBH2));
-}
-
-/*
- * siba_sprom_get_gpio3()
- *
- * Referenced by:
- *   bwn_led_attach()
- */
-static uint8_t
-bhnd_compat_sprom_get_gpio3(device_t dev)
-{
-	return (bhnd_compat_sprom_get_ledbh(dev, BHND_NVAR_LEDBH3));
-}
-
-/*
  * siba_sprom_get_maxpwr_bg()
  *
  * Referenced by:
@@ -479,18 +352,6 @@ bhnd_compat_sprom_get_rxpo5g(device_t dev)
 {
 	/* Should be signed, but bwn(4) expects an unsigned value */
 	BWN_BHND_NVRAM_RETURN_VAR(dev, int8, BHND_NVAR_RXPO5G);
-}
-
-/*
- * siba_sprom_get_tssi_bg()
- *
- * Referenced by:
- *   bwn_phy_g_attach()
- */
-static uint8_t
-bhnd_compat_sprom_get_tssi_bg(device_t dev)
-{
-	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_PA0ITSSIT);
 }
 
 /*
@@ -1037,18 +898,10 @@ const struct bwn_bus_ops bwn_bhnd_bus_ops = {
 	.sprom_get_ccode		= bhnd_compat_sprom_get_ccode,
 	.sprom_get_ant_a		= bhnd_compat_sprom_get_ant_a,
 	.sprom_get_ant_bg		= bhnd_compat_sprom_get_ant_bg,
-	.sprom_get_pa0b0		= bhnd_compat_sprom_get_pa0b0,
-	.sprom_get_pa0b1		= bhnd_compat_sprom_get_pa0b1,
-	.sprom_get_pa0b2		= bhnd_compat_sprom_get_pa0b2,
-	.sprom_get_gpio0		= bhnd_compat_sprom_get_gpio0,
-	.sprom_get_gpio1		= bhnd_compat_sprom_get_gpio1,
-	.sprom_get_gpio2		= bhnd_compat_sprom_get_gpio2,
-	.sprom_get_gpio3		= bhnd_compat_sprom_get_gpio3,
 	.sprom_get_maxpwr_bg		= bhnd_compat_sprom_get_maxpwr_bg,
 	.sprom_set_maxpwr_bg		= bhnd_compat_sprom_set_maxpwr_bg,
 	.sprom_get_rxpo2g		= bhnd_compat_sprom_get_rxpo2g,
 	.sprom_get_rxpo5g		= bhnd_compat_sprom_get_rxpo5g,
-	.sprom_get_tssi_bg		= bhnd_compat_sprom_get_tssi_bg,
 	.sprom_get_tri2g		= bhnd_compat_sprom_get_tri2g,
 	.sprom_get_tri5gl		= bhnd_compat_sprom_get_tri5gl,
 	.sprom_get_tri5g		= bhnd_compat_sprom_get_tri5g,

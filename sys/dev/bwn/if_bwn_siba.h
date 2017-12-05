@@ -49,21 +49,14 @@ struct bwn_bus_ops {
 	uint16_t	(*get_pci_vendor)(device_t);
 	uint16_t	(*get_pci_device)(device_t);
 	enum siba_type	(*get_type)(device_t);
+	uint8_t		(*get_pcicore_revid)(device_t);
 	uint8_t		(*sprom_get_ccode)(device_t);
 	uint8_t		(*sprom_get_ant_a)(device_t);
 	uint8_t		(*sprom_get_ant_bg)(device_t);
-	uint16_t	(*sprom_get_pa0b0)(device_t);
-	uint16_t	(*sprom_get_pa0b1)(device_t);
-	uint16_t	(*sprom_get_pa0b2)(device_t);
-	uint8_t		(*sprom_get_gpio0)(device_t);
-	uint8_t		(*sprom_get_gpio1)(device_t);
-	uint8_t		(*sprom_get_gpio2)(device_t);
-	uint8_t		(*sprom_get_gpio3)(device_t);
 	uint16_t	(*sprom_get_maxpwr_bg)(device_t);
 	void		(*sprom_set_maxpwr_bg)(device_t, uint16_t);
 	uint8_t		(*sprom_get_rxpo2g)(device_t);
 	uint8_t		(*sprom_get_rxpo5g)(device_t);
-	uint8_t		(*sprom_get_tssi_bg)(device_t);
 	uint8_t		(*sprom_get_tri2g)(device_t);
 	uint8_t		(*sprom_get_tri5gl)(device_t);
 	uint8_t		(*sprom_get_tri5g)(device_t);
@@ -99,7 +92,6 @@ struct bwn_bus_ops {
 	uint8_t		(*sprom_get_txpid_5gh_1)(device_t);
 	uint16_t	(*sprom_get_stbcpo)(device_t);
 	uint16_t	(*sprom_get_cddpo)(device_t);
-	void		(*pcicore_intr)(device_t);
 	int		(*sprom_get_mcs2gpo)(device_t, uint16_t *);
 	int		(*sprom_get_mcs5glpo)(device_t, uint16_t *);
 	int		(*sprom_get_mcs5gpo)(device_t, uint16_t *);
@@ -161,20 +153,6 @@ enum {
 	BWN_BUS_OPS(_dev)->sprom_get_ant_a(_dev)
 #define	siba_sprom_get_ant_bg(_dev)	\
 	BWN_BUS_OPS(_dev)->sprom_get_ant_bg(_dev)
-#define	siba_sprom_get_pa0b0(_dev)	\
-	BWN_BUS_OPS(_dev)->sprom_get_pa0b0(_dev)
-#define	siba_sprom_get_pa0b1(_dev)	\
-	BWN_BUS_OPS(_dev)->sprom_get_pa0b1(_dev)
-#define	siba_sprom_get_pa0b2(_dev)	\
-	BWN_BUS_OPS(_dev)->sprom_get_pa0b2(_dev)
-#define	siba_sprom_get_gpio0(_dev)	\
-	BWN_BUS_OPS(_dev)->sprom_get_gpio0(_dev)
-#define	siba_sprom_get_gpio1(_dev)	\
-	BWN_BUS_OPS(_dev)->sprom_get_gpio1(_dev)
-#define	siba_sprom_get_gpio2(_dev)	\
-	BWN_BUS_OPS(_dev)->sprom_get_gpio2(_dev)
-#define	siba_sprom_get_gpio3(_dev)	\
-	BWN_BUS_OPS(_dev)->sprom_get_gpio3(_dev)
 #define	siba_sprom_get_maxpwr_bg(_dev)	\
 	BWN_BUS_OPS(_dev)->sprom_get_maxpwr_bg(_dev)
 #define	siba_sprom_set_maxpwr_bg(_dev, t)	\
@@ -183,8 +161,6 @@ enum {
 	BWN_BUS_OPS(_dev)->sprom_get_rxpo2g(_dev)
 #define	siba_sprom_get_rxpo5g(_dev)	\
 	BWN_BUS_OPS(_dev)->sprom_get_rxpo5g(_dev)
-#define	siba_sprom_get_tssi_bg(_dev)	\
-	BWN_BUS_OPS(_dev)->sprom_get_tssi_bg(_dev)
 #define	siba_sprom_get_tri2g(_dev)	\
 	BWN_BUS_OPS(_dev)->sprom_get_tri2g(_dev)
 #define	siba_sprom_get_tri5gl(_dev)	\
@@ -263,5 +239,6 @@ enum {
 	BWN_BUS_OPS(_dev)->sprom_get_mcs5gpo(_dev, _arg1)
 #define	siba_sprom_get_mcs5ghpo(_dev, _arg1)	\
 	BWN_BUS_OPS(_dev)->sprom_get_mcs5ghpo(_dev, _arg1)
+
 
 #endif /* _IF_BWN_SIBA_H_ */
