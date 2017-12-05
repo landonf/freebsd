@@ -959,40 +959,6 @@ bhnd_compat_sprom_get_cddpo(device_t dev)
 }
 
 /*
- * siba_powerup()
- *
- * Referenced by:
- *   bwn_attach_core()
- *   bwn_core_init()
- */
-static void
-bhnd_compat_powerup(device_t dev, int dynamic)
-{
-	struct bwn_bhnd_ctx	*ctx;
-	bhnd_clock		 clock;
-	int			 error;
-
-	ctx = bwn_bhnd_get_ctx(dev);
-
-	/* On PMU equipped devices, we do not need to issue a clock request
-	 * at powerup */
-	if (ctx->pmu_dev != NULL)
-		return;
-
-	/* Issue a PMU clock request */
-	if (dynamic)
-		clock = BHND_CLOCK_DYN;
-	else
-		clock = BHND_CLOCK_HT;
-
-	if ((error = bhnd_request_clock(dev, clock))) {
-		device_printf(dev, "%d clock request failed: %d\n",
-		    clock, error);
-	}
-
-}
-
-/*
  * siba_pcicore_intr()
  *
  * Referenced by:
@@ -1267,7 +1233,6 @@ const struct bwn_bus_ops bwn_bhnd_bus_ops = {
 	.sprom_get_txpid_5gh_1		= bhnd_compat_sprom_get_txpid_5gh_1,
 	.sprom_get_stbcpo		= bhnd_compat_sprom_get_stbcpo,
 	.sprom_get_cddpo		= bhnd_compat_sprom_get_cddpo,
-	.powerup			= bhnd_compat_powerup,
 	.pcicore_intr			= bhnd_compat_pcicore_intr,
 	.cc_pmu_set_ldovolt		= bhnd_compat_cc_pmu_set_ldovolt,
 	.cc_pmu_set_ldoparef		= bhnd_compat_cc_pmu_set_ldoparef,

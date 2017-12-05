@@ -160,6 +160,7 @@ static struct ieee80211vap *bwn_vap_create(struct ieee80211com *,
 		    const uint8_t [IEEE80211_ADDR_LEN]);
 static void	bwn_vap_delete(struct ieee80211vap *);
 static void	bwn_stop(struct bwn_softc *);
+static int	bwn_core_forceclk(struct bwn_mac *, bool);
 static int	bwn_core_init(struct bwn_mac *);
 static void	bwn_core_start(struct bwn_mac *);
 static void	bwn_core_exit(struct bwn_mac *);
@@ -1230,7 +1231,8 @@ bwn_attach_core(struct bwn_mac *mac)
 	KASSERT(bhnd_get_hwrev(sc->sc_dev) >= 5,
 	    ("unsupported revision %d", bhnd_get_hwrev(sc->sc_dev)));
 
-	siba_powerup(sc->sc_dev, 0);
+	if ((error = bwn_core_forceclk(mac, true)))
+		return (error);
 
 	if ((error = bhnd_read_iost(sc->sc_dev, &iost))) {
 		device_printf(sc->sc_dev, "error reading I/O status flags: "
@@ -2117,6 +2119,34 @@ bwn_wme_clear(struct bwn_softc *sc)
 }
 
 static int
+bwn_core_forceclk(struct bwn_mac *mac, bool force)
+{
+	struct bwn_softc	*sc;
+	bhnd_clock		 clock;
+	int			 error;
+
+	sc = mac->mac_sc;
+
+	/* On PMU equipped devices, we do not need to force the HT clock */
+	if (sc->sc_pmu != NULL)
+		return (0);
+
+	/* Issue a PMU clock request */
+	if (force)
+		clock = BHND_CLOCK_HT;
+	else
+		clock = BHND_CLOCK_DYN;
+
+	if ((error = bhnd_request_clock(sc->sc_dev, clock))) {
+		device_printf(sc->sc_dev, "%d clock request failed: %d\n",
+		    clock, error);
+		return (error);
+	}
+
+	return (0);
+}
+
+static int
 bwn_core_init(struct bwn_mac *mac)
 {
 	struct bwn_softc *sc = mac->mac_sc;
@@ -2128,7 +2158,9 @@ bwn_core_init(struct bwn_mac *mac)
 
 	DPRINTF(mac->mac_sc, BWN_DEBUG_RESET, "%s: called\n", __func__);
 
-	siba_powerup(sc->sc_dev, 0);
+	if ((error = bwn_core_forceclk(mac, true)))
+		return (error);
+
 	if (bhnd_is_hw_suspended(sc->sc_dev)) {
 		if ((error = bwn_reset_core(mac, mac->mac_phy.gmode)))
 			goto fail0;
@@ -2224,8 +2256,11 @@ bwn_core_init(struct bwn_mac *mac)
 	bwn_bt_enable(mac);
 
 	DPRINTF(mac->mac_sc, BWN_DEBUG_RESET, "%s: powerup\n", __func__);
-	siba_powerup(sc->sc_dev,
-	    !(sc->sc_board_info.board_flags & BHND_BFL_NOPLLDOWN));
+	if (sc->sc_board_info.board_flags & BHND_BFL_NOPLLDOWN)
+		bwn_core_forceclk(mac, true);
+	else
+		bwn_core_forceclk(mac, false);
+
 	bwn_set_macaddr(mac);
 	bwn_crypt_init(mac);
 
