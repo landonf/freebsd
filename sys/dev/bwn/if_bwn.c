@@ -534,7 +534,7 @@ bwn_attach(device_t dev)
 {
 	struct bwn_mac		*mac;
 	struct bwn_softc	*sc;
-	device_t		 hostb;
+	device_t		 parent, hostb;
 	char			 chip_name[BHND_CHIPID_MAX_NAMELEN];
 	int			 error;
 
@@ -547,11 +547,12 @@ bwn_attach(device_t dev)
 	mac = NULL;
 
 	/* Determine the driver quirks applicable to this device, including any
-	 * quirks specific to the host bridge core (if any) */
+	 * quirks specific to the bus host bridge core (if any) */
 	sc->sc_quirks = bhnd_device_quirks(dev, bwn_devices,
 	    sizeof(bwn_devices[0]));
 
-	if ((hostb = bhnd_bus_find_hostb_device(dev)) != NULL) {
+	parent = device_get_parent(dev);
+	if ((hostb = bhnd_bus_find_hostb_device(parent)) != NULL) {
 		sc->sc_quirks |= bhnd_device_quirks(hostb, bridge_devices,
 		    sizeof(bridge_devices[0]));
 	}
