@@ -101,9 +101,7 @@ struct bwn_bus_ops {
 	uint16_t	(*sprom_get_stbcpo)(device_t);
 	uint16_t	(*sprom_get_cddpo)(device_t);
 	void		(*powerup)(device_t, int);
-	int		(*powerdown)(device_t);
 	void		(*dev_down)(device_t, uint32_t);
-	int		(*dev_isup)(device_t);
 	void		(*pcicore_intr)(device_t);
 	void		(*cc_pmu_set_ldovolt)(device_t, int, uint32_t);
 	void		(*cc_pmu_set_ldoparef)(device_t, uint8_t);
@@ -269,12 +267,8 @@ enum {
 	BWN_BUS_OPS(_dev)->sprom_get_cddpo(_dev)
 #define	siba_powerup(_dev, _arg1)	\
 	BWN_BUS_OPS(_dev)->powerup(_dev, _arg1)
-#define	siba_powerdown(_dev)	\
-	BWN_BUS_OPS(_dev)->powerdown(_dev)
 #define	siba_dev_down(_dev, _arg1)	\
 	BWN_BUS_OPS(_dev)->dev_down(_dev, _arg1)
-#define	siba_dev_isup(_dev)	\
-	BWN_BUS_OPS(_dev)->dev_isup(_dev)
 #define	siba_pcicore_intr(_dev)	\
 	BWN_BUS_OPS(_dev)->pcicore_intr(_dev)
 #define	siba_cc_pmu_set_ldovolt(_dev, _arg1, _arg2)	\

@@ -993,26 +993,6 @@ bhnd_compat_powerup(device_t dev, int dynamic)
 }
 
 /*
- * siba_powerdown()
- *
- * Referenced by:
- *   bwn_attach_core()
- *   bwn_core_exit()
- *   bwn_core_init()
- */
-static int
-bhnd_compat_powerdown(device_t dev)
-{
-	int	error;
-
-	/* Suspend the core */
-	if ((error = bhnd_suspend_hw(dev, 0)))
-		return (error);
-
-	return (0);
-}
-
-/*
  * siba_dev_down()
  *
  * Referenced by:
@@ -1034,18 +1014,6 @@ bhnd_compat_dev_down(device_t dev, uint32_t flags)
 	/* Put core into RESET state */
 	if ((error = bhnd_suspend_hw(dev, ioctl)))
 		panic("%s: core suspend failed: %d", __FUNCTION__, error);
-}
-
-/*
- * siba_dev_isup()
- *
- * Referenced by:
- *   bwn_core_init()
- */
-static int
-bhnd_compat_dev_isup(device_t dev)
-{
-	return (!bhnd_is_hw_suspended(dev));
 }
 
 /*
@@ -1324,9 +1292,7 @@ const struct bwn_bus_ops bwn_bhnd_bus_ops = {
 	.sprom_get_stbcpo		= bhnd_compat_sprom_get_stbcpo,
 	.sprom_get_cddpo		= bhnd_compat_sprom_get_cddpo,
 	.powerup			= bhnd_compat_powerup,
-	.powerdown			= bhnd_compat_powerdown,
 	.dev_down			= bhnd_compat_dev_down,
-	.dev_isup			= bhnd_compat_dev_isup,
 	.pcicore_intr			= bhnd_compat_pcicore_intr,
 	.cc_pmu_set_ldovolt		= bhnd_compat_cc_pmu_set_ldovolt,
 	.cc_pmu_set_ldoparef		= bhnd_compat_cc_pmu_set_ldoparef,

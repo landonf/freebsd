@@ -1426,7 +1426,7 @@ bwn_attach_core(struct bwn_mac *mac)
 
 	siba_dev_down(sc->sc_dev, 0);
 fail:
-	siba_powerdown(sc->sc_dev);
+	bhnd_suspend_hw(sc->sc_dev, 0);
 	bwn_release_firmware(mac);
 	return (error);
 }
@@ -2130,7 +2130,7 @@ bwn_core_init(struct bwn_mac *mac)
 	DPRINTF(mac->mac_sc, BWN_DEBUG_RESET, "%s: called\n", __func__);
 
 	siba_powerup(sc->sc_dev, 0);
-	if (!siba_dev_isup(sc->sc_dev)) {
+	if (bhnd_is_hw_suspended(sc->sc_dev)) {
 		if ((error = bwn_reset_core(mac, mac->mac_phy.gmode)))
 			goto fail0;
 	}
@@ -2238,7 +2238,7 @@ bwn_core_init(struct bwn_mac *mac)
 	return (error);
 
 fail0:
-	siba_powerdown(sc->sc_dev);
+	bhnd_suspend_hw(sc->sc_dev, 0);
 	KASSERT(mac->mac_status == BWN_MAC_STATUS_UNINIT,
 	    ("%s:%d: fail", __func__, __LINE__));
 	DPRINTF(mac->mac_sc, BWN_DEBUG_RESET, "%s: fail\n", __func__);
@@ -2296,7 +2296,7 @@ bwn_core_exit(struct bwn_mac *mac)
 	bwn_chip_exit(mac);
 	mac->mac_phy.switch_analog(mac, 0);
 	siba_dev_down(sc->sc_dev, 0);
-	siba_powerdown(sc->sc_dev);
+	bhnd_suspend_hw(sc->sc_dev, 0);
 }
 
 static void
