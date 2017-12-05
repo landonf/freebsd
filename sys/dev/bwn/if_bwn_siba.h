@@ -49,7 +49,6 @@ struct bwn_bus_ops {
 	uint16_t	(*get_pci_vendor)(device_t);
 	uint16_t	(*get_pci_device)(device_t);
 	enum siba_type	(*get_type)(device_t);
-	uint8_t		(*get_pcicore_revid)(device_t);
 	uint8_t		(*sprom_get_ccode)(device_t);
 	uint8_t		(*sprom_get_ant_a)(device_t);
 	uint8_t		(*sprom_get_ant_bg)(device_t);
@@ -156,8 +155,6 @@ enum {
 	BWN_BUS_OPS(_dev)->get_pci_device(_dev)
 #define	siba_get_type(_dev)	\
 	BWN_BUS_OPS(_dev)->get_type(_dev)
-#define	siba_get_pcicore_revid(_dev)	\
-	BWN_BUS_OPS(_dev)->get_pcicore_revid(_dev)
 #define	siba_sprom_get_ccode(_dev)	\
 	BWN_BUS_OPS(_dev)->sprom_get_ccode(_dev)
 #define	siba_sprom_get_ant_a(_dev)	\

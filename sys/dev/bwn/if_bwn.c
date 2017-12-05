@@ -491,6 +491,18 @@ static const struct bhnd_device bwn_devices[] = {
 	BHND_DEVICE_END
 };
 
+/* D11 quirks when bridged via a PCI host bridge core */
+static const struct bhnd_device_quirk pci_bridge_quirks[] = {
+	BHND_CORE_QUIRK	(HWREV_LTE(10),	BWN_QUIRK_UCODE_SLOWCLOCK_WAR),
+	BHND_DEVICE_QUIRK_END
+};
+
+/* Host bridge cores for which D11 quirk flags should be applied */
+static const struct bhnd_device bridge_devices[] = {
+	BHND_DEVICE(BCM, PCI,	NULL, pci_bridge_quirks),
+	BHND_DEVICE_END
+};
+
 static const struct bwn_bus_ops *
 bwn_get_bus_ops(device_t dev)
 {
@@ -515,6 +527,7 @@ bwn_attach(device_t dev)
 {
 	struct bwn_mac		*mac;
 	struct bwn_softc	*sc;
+	device_t		 hostb;
 	char			 chip_name[BHND_CHIPID_MAX_NAMELEN];
 	int			 error;
 
@@ -526,14 +539,24 @@ bwn_attach(device_t dev)
 
 	mac = NULL;
 
-	sc->sc_cid = *bhnd_get_chipid(dev);
+	/* Determine the driver quirks applicable to this device, including any
+	 * quirks specific to the host bridge core (if any) */
+	sc->sc_quirks = bhnd_device_quirks(dev, bwn_devices,
+	    sizeof(bwn_devices[0]));
 
+	if ((hostb = bhnd_bus_find_hostb_device(dev)) != NULL) {
+		sc->sc_quirks |= bhnd_device_quirks(hostb, bridge_devices,
+		    sizeof(bridge_devices[0]));
+	}
+
+	/* Fetch our chip identification and board info */
+	sc->sc_cid = *bhnd_get_chipid(dev);
 	if ((error = bhnd_read_board_info(dev, &sc->sc_board_info))) {
 		device_printf(sc->sc_dev, "couldn't read board info\n");
 		return (error);
 	}
 
-	/* Allocate register block and PMU state */
+	/* Allocate our D11 register block and PMU state */
 	sc->sc_mem_rid = 0;
 	sc->sc_mem_res = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY,
 	    &sc->sc_mem_rid, RF_ACTIVE);
@@ -2215,8 +2238,7 @@ bwn_core_init(struct bwn_mac *mac)
 	}
 	if (sc->sc_board_info.board_flags & BHND_BFL_NOPLLDOWN)
 		hf |= BWN_HF_SLOWCLOCK_REQ_OFF;
-	if ((siba_get_type(sc->sc_dev) == SIBA_TYPE_PCI) &&
-	    (siba_get_pcicore_revid(sc->sc_dev) <= 10))
+	if (sc->sc_quirks & BWN_QUIRK_UCODE_SLOWCLOCK_WAR)
 		hf |= BWN_HF_PCI_SLOWCLOCK_WORKAROUND;
 	hf &= ~BWN_HF_SKIP_CFP_UPDATE;
 	bwn_hf_write(mac, hf);

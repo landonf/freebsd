@@ -265,48 +265,6 @@ bhnd_compat_get_type(device_t dev)
 }
 
 /*
- * siba_get_pcicore_revid()
- *
- * Referenced by:
- *   bwn_core_init()
- */
-static uint8_t
-bhnd_compat_get_pcicore_revid(device_t dev)
-{
-	device_t	hostb;
-	uint8_t		nomatch_revid;
-
-	/* 
-	 * This is used by bwn(4) in only bwn_core_init(), where a revid <= 10
-	 * results in the BWN_HF_PCI_SLOWCLOCK_WORKAROUND workaround being
-	 * enabled.
-	 * 
-	 * The quirk should only be applied on siba(4) devices using a PCI
-	 * core; we handle around this by returning a bogus value >= 10 here.
-	 * 
-	 * TODO: bwn(4) should match this quirk on:
-	 *	- BHND_CHIPTYPE_SIBA
-	 *	- BHND_COREID_PCI
-	 *	- HWREV_LTE(10)
-	 */
-	nomatch_revid = 0xFF;
-
-	hostb = bhnd_bus_find_hostb_device(device_get_parent(dev));
-	if (hostb == NULL) {
-		/* Not a bridged device */
-		return (nomatch_revid);
-	}
-
-	if (bhnd_get_device(hostb) != BHND_COREID_PCI) {
-		/* Not a PCI core */
-		return (nomatch_revid);
-	}
-
-	/* This is a PCI core; we can return the real core revision */
-	return (bhnd_get_hwrev(hostb));
-}
-
-/*
  * siba_sprom_get_ccode()
  *
  * Referenced by:
@@ -1076,7 +1034,6 @@ const struct bwn_bus_ops bwn_bhnd_bus_ops = {
 	.get_pci_vendor			= bhnd_compat_get_pci_vendor,
 	.get_pci_device			= bhnd_compat_get_pci_device,
 	.get_type			= bhnd_compat_get_type,
-	.get_pcicore_revid		= bhnd_compat_get_pcicore_revid,
 	.sprom_get_ccode		= bhnd_compat_sprom_get_ccode,
 	.sprom_get_ant_a		= bhnd_compat_sprom_get_ant_a,
 	.sprom_get_ant_bg		= bhnd_compat_sprom_get_ant_bg,

@@ -1003,12 +1003,21 @@ struct bwn_vap {
 #define	BWN_VAP(vap)			((struct bwn_vap *)(vap))
 #define	BWN_VAP_CONST(vap)		((const struct mwl_vap *)(vap))
 
+enum bwn_quirk {
+	/**
+	 * The ucode PCI slowclock workaround is required on this device.
+	 * @see BWN_HF_PCI_SLOWCLOCK_WORKAROUND.
+	 */
+	BWN_QUIRK_UCODE_SLOWCLOCK_WAR	= (1<<0),
+};
+
 struct bwn_softc {
 	device_t			sc_dev;
 	const struct bwn_bus_ops	*sc_bus_ops;
 #if !BWN_USE_SIBA
 	struct bhnd_board_info		 sc_board_info;
-	struct bhnd_chipid		 sc_cid;	
+	struct bhnd_chipid		 sc_cid;
+	uint32_t			 sc_quirks;	/**< @see bwn_quirk */
 	struct bhnd_resource		*sc_mem_res;
 	int				 sc_mem_rid;
 
