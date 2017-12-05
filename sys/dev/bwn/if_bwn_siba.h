@@ -263,8 +263,6 @@ enum {
 	BWN_BUS_OPS(_dev)->sprom_get_stbcpo(_dev)
 #define	siba_sprom_get_cddpo(_dev)	\
 	BWN_BUS_OPS(_dev)->sprom_get_cddpo(_dev)
-#define	siba_pcicore_intr(_dev)	\
-	BWN_BUS_OPS(_dev)->pcicore_intr(_dev)
 #define	siba_cc_pmu_set_ldovolt(_dev, _arg1, _arg2)	\
 	BWN_BUS_OPS(_dev)->cc_pmu_set_ldovolt(_dev, _arg1, _arg2)
 #define	siba_cc_pmu_set_ldoparef(_dev, _arg1)	\

@@ -959,19 +959,6 @@ bhnd_compat_sprom_get_cddpo(device_t dev)
 }
 
 /*
- * siba_pcicore_intr()
- *
- * Referenced by:
- *   bwn_core_init()
- */
-static void
-bhnd_compat_pcicore_intr(device_t dev)
-{
-	/* This is handled by bhnd_bhndb on the first call to
-	 * bus_setup_intr() */
-}
-
-/*
  * siba_cc_pmu_set_ldovolt()
  *
  * Referenced by:
@@ -1233,7 +1220,6 @@ const struct bwn_bus_ops bwn_bhnd_bus_ops = {
 	.sprom_get_txpid_5gh_1		= bhnd_compat_sprom_get_txpid_5gh_1,
 	.sprom_get_stbcpo		= bhnd_compat_sprom_get_stbcpo,
 	.sprom_get_cddpo		= bhnd_compat_sprom_get_cddpo,
-	.pcicore_intr			= bhnd_compat_pcicore_intr,
 	.cc_pmu_set_ldovolt		= bhnd_compat_cc_pmu_set_ldovolt,
 	.cc_pmu_set_ldoparef		= bhnd_compat_cc_pmu_set_ldoparef,
 	.sprom_get_mcs2gpo		= bhnd_compat_sprom_get_mcs2gpo,
