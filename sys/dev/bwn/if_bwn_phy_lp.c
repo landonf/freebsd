@@ -75,6 +75,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhnd.h>
 #include <dev/bhnd/bhnd_ids.h>
 
+#include <dev/bhnd/cores/pmu/bhnd_pmu.h>
+
 #include <dev/bwn/if_bwn_siba.h>
 
 #include <dev/bwn/if_bwnreg.h>
@@ -411,6 +413,13 @@ bwn_phy_lp_init(struct bwn_mac *mac)
 	struct ieee80211com *ic = &sc->sc_ic;
 	int i, error;
 	uint16_t tmp;
+
+	/* All LP-PHY devices have a PMU */
+	if (sc->sc_pmu == NULL) {
+		device_printf(sc->sc_dev, "no PMU; cannot configure PAREF "
+		    "LDO\n");
+		return (ENXIO);
+	}
 
 	bwn_phy_lp_readsprom(mac);	/* XXX bad place */
 	bwn_phy_lp_bbinit(mac);
@@ -1449,7 +1458,7 @@ bwn_phy_lp_bbinit_r01(struct bwn_mac *mac)
 		{ BWN_PHY_TR_LOOKUP_4, 0xffc0, 0x0006 },
 		{ BWN_PHY_TR_LOOKUP_4, 0xc0ff, 0x0700 }
 	};
-	int i;
+	int error, i;
 	uint16_t tmp, tmp2;
 
 	BWN_PHY_MASK(mac, BWN_PHY_AFE_DAC_CTL, 0xf7ff);
@@ -1474,14 +1483,29 @@ bwn_phy_lp_bbinit_r01(struct bwn_mac *mac)
 	if ((sc->sc_board_info.board_flags & BHND_BFL_FEM) &&
 	    ((IEEE80211_IS_CHAN_5GHZ(ic->ic_curchan)) ||
 	   (sc->sc_board_info.board_flags & BHND_BFL_PAREF))) {
-		siba_cc_pmu_set_ldovolt(sc->sc_dev, SIBA_LDO_PAREF, 0x28);
-		siba_cc_pmu_set_ldoparef(sc->sc_dev, 1);
+		error = bhnd_pmu_set_voltage_raw(sc->sc_pmu,
+		    BHND_REGULATOR_PAREF_LDO, 0x28);
+		if (error)
+			device_printf(sc->sc_dev, "failed to set PAREF LDO "
+			    "voltage: %d\n", error);
+
+		error = bhnd_pmu_enable_regulator(sc->sc_pmu,
+		    BHND_REGULATOR_PAREF_LDO);
+		if (error)
+			device_printf(sc->sc_dev, "failed to enable PAREF LDO "
+			    "regulator: %d\n", error);
+
 		if (mac->mac_phy.rev == 0)
 			BWN_PHY_SETMASK(mac, BWN_PHY_LP_RF_SIGNAL_LUT,
 			    0xffcf, 0x0010);
 		bwn_tab_write(mac, BWN_TAB_2(11, 7), 60);
 	} else {
-		siba_cc_pmu_set_ldoparef(sc->sc_dev, 0);
+		error = bhnd_pmu_disable_regulator(sc->sc_pmu,
+		    BHND_REGULATOR_PAREF_LDO);
+		if (error)
+			device_printf(sc->sc_dev, "failed to disable PAREF LDO "
+			    "regulator: %d\n", error);
+
 		BWN_PHY_SETMASK(mac, BWN_PHY_LP_RF_SIGNAL_LUT, 0xffcf, 0x0020);
 		bwn_tab_write(mac, BWN_TAB_2(11, 7), 100);
 	}

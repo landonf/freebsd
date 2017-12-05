@@ -959,66 +959,6 @@ bhnd_compat_sprom_get_cddpo(device_t dev)
 }
 
 /*
- * siba_cc_pmu_set_ldovolt()
- *
- * Referenced by:
- *   bwn_phy_lp_bbinit_r01()
- */
-static void
-bhnd_compat_cc_pmu_set_ldovolt(device_t dev, int id, uint32_t volt)
-{
-	struct bwn_bhnd_ctx	*ctx;
-	int			 error;
-
-	ctx = bwn_bhnd_get_ctx(dev);
-
-	/* Only ever used to set the PAREF LDO voltage */
-	if (id != SIBA_LDO_PAREF)
-		panic("invalid LDO id: %d", id);
-
-	/* Configuring regulator voltage requires a PMU */
-	if (ctx->pmu_dev == NULL)
-		panic("no PMU; cannot set LDO voltage");
-
-	error = bhnd_pmu_set_voltage_raw(ctx->pmu_dev, BHND_REGULATOR_PAREF_LDO,
-	    volt);
-	if (error)
-		panic("failed to set LDO voltage: %d", error);
-}
-
-/*
- * siba_cc_pmu_set_ldoparef()
- *
- * Referenced by:
- *   bwn_phy_lp_bbinit_r01()
- */
-static void
-bhnd_compat_cc_pmu_set_ldoparef(device_t dev, uint8_t on)
-{
-	struct bwn_bhnd_ctx	*ctx;
-	int			 error;
-
-	ctx = bwn_bhnd_get_ctx(dev);
-
-	/* Enabling/disabling regulators requires a PMU */
-	if (ctx->pmu_dev == NULL)
-		panic("no PMU; cannot set LDO voltage");
-
-	if (on) {
-		error = bhnd_pmu_enable_regulator(ctx->pmu_dev,
-		    BHND_REGULATOR_PAREF_LDO);
-	} else {
-		error = bhnd_pmu_enable_regulator(ctx->pmu_dev,
-		    BHND_REGULATOR_PAREF_LDO);
-	}
-
-	if (error) {
-		panic("failed to %s PAREF_LDO: %d", on ? "enable" : "disable",
-		    error);
-	}
-}
-
-/*
  * siba_sprom_get_mcs2gpo()
  *
  * Referenced by:
@@ -1220,8 +1160,6 @@ const struct bwn_bus_ops bwn_bhnd_bus_ops = {
 	.sprom_get_txpid_5gh_1		= bhnd_compat_sprom_get_txpid_5gh_1,
 	.sprom_get_stbcpo		= bhnd_compat_sprom_get_stbcpo,
 	.sprom_get_cddpo		= bhnd_compat_sprom_get_cddpo,
-	.cc_pmu_set_ldovolt		= bhnd_compat_cc_pmu_set_ldovolt,
-	.cc_pmu_set_ldoparef		= bhnd_compat_cc_pmu_set_ldoparef,
 	.sprom_get_mcs2gpo		= bhnd_compat_sprom_get_mcs2gpo,
 	.sprom_get_mcs5glpo		= bhnd_compat_sprom_get_mcs5glpo,
 	.sprom_get_mcs5gpo		= bhnd_compat_sprom_get_mcs5gpo,

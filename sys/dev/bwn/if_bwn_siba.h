@@ -101,8 +101,6 @@ struct bwn_bus_ops {
 	uint16_t	(*sprom_get_stbcpo)(device_t);
 	uint16_t	(*sprom_get_cddpo)(device_t);
 	void		(*pcicore_intr)(device_t);
-	void		(*cc_pmu_set_ldovolt)(device_t, int, uint32_t);
-	void		(*cc_pmu_set_ldoparef)(device_t, uint8_t);
 	int		(*sprom_get_mcs2gpo)(device_t, uint16_t *);
 	int		(*sprom_get_mcs5glpo)(device_t, uint16_t *);
 	int		(*sprom_get_mcs5gpo)(device_t, uint16_t *);
@@ -140,8 +138,6 @@ enum {
 	SIBA_CCODE_JAPAN,
 	SIBA_CCODE_UNKNOWN
 };
-
-#define	SIBA_LDO_PAREF	0
 
 #define	BWN_BUS_OPS_SC(_sc)	\
 	((_sc)->sc_bus_ops)
@@ -263,10 +259,6 @@ enum {
 	BWN_BUS_OPS(_dev)->sprom_get_stbcpo(_dev)
 #define	siba_sprom_get_cddpo(_dev)	\
 	BWN_BUS_OPS(_dev)->sprom_get_cddpo(_dev)
-#define	siba_cc_pmu_set_ldovolt(_dev, _arg1, _arg2)	\
-	BWN_BUS_OPS(_dev)->cc_pmu_set_ldovolt(_dev, _arg1, _arg2)
-#define	siba_cc_pmu_set_ldoparef(_dev, _arg1)	\
-	BWN_BUS_OPS(_dev)->cc_pmu_set_ldoparef(_dev, _arg1)
 #define	siba_sprom_get_mcs2gpo(_dev, _arg1)	\
 	BWN_BUS_OPS(_dev)->sprom_get_mcs2gpo(_dev, _arg1)
 #define	siba_sprom_get_mcs5glpo(_dev, _arg1)	\
