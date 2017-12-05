@@ -1424,7 +1424,6 @@ bwn_attach_core(struct bwn_mac *mac)
 
 	mac->mac_phy.switch_analog(mac, 0);
 
-	siba_dev_down(sc->sc_dev, 0);
 fail:
 	bhnd_suspend_hw(sc->sc_dev, 0);
 	bwn_release_firmware(mac);
@@ -2295,7 +2294,6 @@ bwn_core_exit(struct bwn_mac *mac)
 	bwn_pio_stop(mac);
 	bwn_chip_exit(mac);
 	mac->mac_phy.switch_analog(mac, 0);
-	siba_dev_down(sc->sc_dev, 0);
 	bhnd_suspend_hw(sc->sc_dev, 0);
 }
 

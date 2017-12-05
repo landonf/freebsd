@@ -993,30 +993,6 @@ bhnd_compat_powerup(device_t dev, int dynamic)
 }
 
 /*
- * siba_dev_down()
- *
- * Referenced by:
- *   bwn_attach_core()
- *   bwn_core_exit()
- */
-static void
-bhnd_compat_dev_down(device_t dev, uint32_t flags)
-{
-	uint16_t	ioctl;
-	int		error;
-
-	/* shift IOCTL flags back down to their original values */
-	if (flags & ~SIBA_TML_SICF_MASK)
-		panic("%s: non-IOCTL flags provided", __FUNCTION__);
-
-	ioctl = (flags & SIBA_TML_SICF_MASK) >> SIBA_TML_SICF_SHIFT;
-
-	/* Put core into RESET state */
-	if ((error = bhnd_suspend_hw(dev, ioctl)))
-		panic("%s: core suspend failed: %d", __FUNCTION__, error);
-}
-
-/*
  * siba_pcicore_intr()
  *
  * Referenced by:
@@ -1292,7 +1268,6 @@ const struct bwn_bus_ops bwn_bhnd_bus_ops = {
 	.sprom_get_stbcpo		= bhnd_compat_sprom_get_stbcpo,
 	.sprom_get_cddpo		= bhnd_compat_sprom_get_cddpo,
 	.powerup			= bhnd_compat_powerup,
-	.dev_down			= bhnd_compat_dev_down,
 	.pcicore_intr			= bhnd_compat_pcicore_intr,
 	.cc_pmu_set_ldovolt		= bhnd_compat_cc_pmu_set_ldovolt,
 	.cc_pmu_set_ldoparef		= bhnd_compat_cc_pmu_set_ldoparef,
