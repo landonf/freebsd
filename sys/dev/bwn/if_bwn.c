@@ -497,9 +497,16 @@ static const struct bhnd_device_quirk pci_bridge_quirks[] = {
 	BHND_DEVICE_QUIRK_END
 };
 
+/* D11 quirks when bridged via a PCMCIA host bridge core */
+static const struct bhnd_device_quirk pcmcia_bridge_quirks[] = {
+	BHND_CORE_QUIRK	(HWREV_ANY,	BWN_QUIRK_NODMA),
+	BHND_DEVICE_QUIRK_END
+};
+
 /* Host bridge cores for which D11 quirk flags should be applied */
 static const struct bhnd_device bridge_devices[] = {
-	BHND_DEVICE(BCM, PCI,	NULL, pci_bridge_quirks),
+	BHND_DEVICE(BCM, PCI,		NULL, pci_bridge_quirks),
+	BHND_DEVICE(BCM, PCMCIA,	NULL, pcmcia_bridge_quirks),
 	BHND_DEVICE_END
 };
 
@@ -548,6 +555,10 @@ bwn_attach(device_t dev)
 		sc->sc_quirks |= bhnd_device_quirks(hostb, bridge_devices,
 		    sizeof(bridge_devices[0]));
 	}
+
+	/* DMA explicitly disabled? */
+	if (!bwn_usedma)
+		sc->sc_quirks |= BWN_QUIRK_NODMA;
 
 	/* Fetch our chip identification and board info */
 	sc->sc_cid = *bhnd_get_chipid(dev);
@@ -2268,7 +2279,7 @@ bwn_core_init(struct bwn_mac *mac)
 	    (mac->mac_phy.type == BWN_PHYTYPE_B) ? 0x1f : 0xf);
 	bwn_shm_write_2(mac, BWN_SCRATCH, BWN_SCRATCH_CONT_MAX, 0x3ff);
 
-	if (siba_get_type(sc->sc_dev) == SIBA_TYPE_PCMCIA || bwn_usedma == 0)
+	if (sc->sc_quirks & BWN_QUIRK_NODMA)
 		bwn_pio_init(mac);
 	else
 		bwn_dma_init(mac);
@@ -7133,7 +7144,7 @@ bwn_dma_attach(struct bwn_mac *mac)
 	sc = mac->mac_sc;
 	dt = NULL;
 
-	if (siba_get_type(sc->sc_dev) == SIBA_TYPE_PCMCIA || bwn_usedma == 0)
+	if (sc->sc_quirks & BWN_QUIRK_NODMA)
 		return (0);
 
 	KASSERT(bhnd_get_hwrev(sc->sc_dev) >= 5, ("%s: fail", __func__));

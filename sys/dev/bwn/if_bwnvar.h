@@ -1009,6 +1009,11 @@ enum bwn_quirk {
 	 * @see BWN_HF_PCI_SLOWCLOCK_WORKAROUND.
 	 */
 	BWN_QUIRK_UCODE_SLOWCLOCK_WAR	= (1<<0),
+
+	/**
+	 * DMA is unsupported on this device; PIO should be used instead.
+	 */
+	BWN_QUIRK_NODMA			= (1<<1),
 };
 
 struct bwn_softc {
