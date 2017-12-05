@@ -99,23 +99,6 @@ struct bwn_bus_ops {
 
 extern const struct bwn_bus_ops bwn_bhnd_bus_ops;
 
-/*
- * Declared in:
- *    /usr/home/landonf/Documents/Code/FreeBSD/svn/head/sys/dev/siba/sibareg.h
- */
-
-#define	SIBA_BOARDVENDOR_DELL		0x1028
-#define	SIBA_BOARDVENDOR_BCM		0x14e4
-
-#define	SIBA_BOARD_BCM4309G		0x0421
-#define	SIBA_BOARD_BU4306		0x0416
-#define	SIBA_BOARD_BCM4321		0x046d
-
-/*
- * Declared in:
- *    /usr/home/landonf/Documents/Code/FreeBSD/svn/head/sys/dev/siba/sibavar.h
- */
-
 enum siba_type {
 	SIBA_TYPE_SSB			/* unused */,
 	SIBA_TYPE_PCI,
