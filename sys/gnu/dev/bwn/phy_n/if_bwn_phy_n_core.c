@@ -72,6 +72,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhnd.h>
 #include <dev/bhnd/bhnd_ids.h>
 
+#include <dev/bhnd/cores/chipc/chipc.h>
+
 #include <dev/bwn/if_bwnreg.h>
 #include <dev/bwn/if_bwnvar.h>
 #include <dev/bwn/if_bwn_misc.h>
@@ -6175,8 +6177,9 @@ static int bwn_phy_initn(struct bwn_mac *mac)
 
 	if ((mac->mac_phy.rev >= 3) &&
 	   (sc->sc_board_info.board_flags & BHND_BFL_EXTLNA) &&
-	   (bwn_current_band(mac) == BWN_BAND_2G)) {
-		siba_cc_set32(sc->sc_dev, SIBA_CC_CHIPCTL, 0x40);
+	   (bwn_current_band(mac) == BWN_BAND_2G))
+	{
+		BHND_CHIPC_WRITE_CHIPCTRL(sc->sc_chipc, 0x40, 0x40);
 	}
 	nphy->use_int_tx_iq_lo_cal = bwn_nphy_ipa(mac) ||
 		phy->rev >= 7 ||

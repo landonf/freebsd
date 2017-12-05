@@ -32,10 +32,10 @@
 #define	__PHY_COMMON_H__
 
 extern	void bwn_mac_switch_freq(struct bwn_mac *mac, int spurmode);
-extern	void bwn_phy_force_clock(struct bwn_mac *mac, int force);
+extern	int bwn_phy_force_clock(struct bwn_mac *mac, int force);
 extern	int bwn_radio_wait_value(struct bwn_mac *mac, uint16_t offset,
 	    uint16_t mask, uint16_t value, int delay, int timeout);
-extern	void bwn_mac_phy_clock_set(struct bwn_mac *mac, int enabled);
-extern	void bwn_wireless_core_phy_pll_reset(struct bwn_mac *mac);
+extern	int bwn_mac_phy_clock_set(struct bwn_mac *mac, int enabled);
+extern	int bwn_wireless_core_phy_pll_reset(struct bwn_mac *mac);
 
 #endif	/* __PHY_COMMON_H__ */

@@ -102,19 +102,9 @@ struct bwn_bus_ops {
 	uint16_t	(*sprom_get_cddpo)(device_t);
 	void		(*powerup)(device_t, int);
 	int		(*powerdown)(device_t);
-	uint16_t	(*read_2)(device_t, uint16_t);
-	void		(*write_2)(device_t, uint16_t, uint16_t);
-	uint32_t	(*read_4)(device_t, uint16_t);
-	void		(*write_4)(device_t, uint16_t, uint32_t);
-	void		(*dev_up)(device_t, uint32_t);
 	void		(*dev_down)(device_t, uint32_t);
 	int		(*dev_isup)(device_t);
 	void		(*pcicore_intr)(device_t);
-	void		(*read_multi_2)(device_t, void *, size_t, uint16_t);
-	void		(*read_multi_4)(device_t, void *, size_t, uint16_t);
-	void		(*write_multi_2)(device_t, const void *, size_t, uint16_t);
-	void		(*write_multi_4)(device_t, const void *, size_t, uint16_t);
-	void		(*barrier)(device_t, int);
 	void		(*cc_pmu_set_ldovolt)(device_t, int, uint32_t);
 	void		(*cc_pmu_set_ldoparef)(device_t, uint8_t);
 	int		(*sprom_get_mcs2gpo)(device_t, uint16_t *);
@@ -122,9 +112,6 @@ struct bwn_bus_ops {
 	int		(*sprom_get_mcs5gpo)(device_t, uint16_t *);
 	int		(*sprom_get_mcs5ghpo)(device_t, uint16_t *);
 	void		(*pmu_spuravoid_pllupdate)(device_t, int);
-	void		(*cc_set32)(device_t, uint32_t, uint32_t);
-	void		(*cc_mask32)(device_t, uint32_t, uint32_t);
-	void		(*cc_write32)(device_t, uint32_t, uint32_t);
 };
 
 extern const struct bwn_bus_ops bwn_bhnd_bus_ops;
@@ -133,16 +120,6 @@ extern const struct bwn_bus_ops bwn_bhnd_bus_ops;
  * Declared in:
  *    /usr/home/landonf/Documents/Code/FreeBSD/svn/head/sys/dev/siba/sibareg.h
  */
-
-#define	SIBA_CC_CHIPCTL			0x0028
-#define	SIBA_CC_CHIPCTL_ADDR		0x0650
-#define	SIBA_CC_CHIPCTL_DATA		0x0654
-
-#define	SIBA_TGSLOW			0x0f98
-#define	SIBA_TGSLOW_FGC			0x00020000
-
-#define	SIBA_TGSHIGH			0x0f9c
-#define	SIBA_TGSHIGH_DMA64		0x10000000
 
 #define	SIBA_BOARDVENDOR_DELL		0x1028
 #define	SIBA_BOARDVENDOR_BCM		0x14e4
@@ -294,32 +271,12 @@ enum {
 	BWN_BUS_OPS(_dev)->powerup(_dev, _arg1)
 #define	siba_powerdown(_dev)	\
 	BWN_BUS_OPS(_dev)->powerdown(_dev)
-#define	siba_read_2(_dev, _arg1)	\
-	BWN_BUS_OPS(_dev)->read_2(_dev, _arg1)
-#define	siba_write_2(_dev, _arg1, _arg2)	\
-	BWN_BUS_OPS(_dev)->write_2(_dev, _arg1, _arg2)
-#define	siba_read_4(_dev, _arg1)	\
-	BWN_BUS_OPS(_dev)->read_4(_dev, _arg1)
-#define	siba_write_4(_dev, _arg1, _arg2)	\
-	BWN_BUS_OPS(_dev)->write_4(_dev, _arg1, _arg2)
-#define	siba_dev_up(_dev, _arg1)	\
-	BWN_BUS_OPS(_dev)->dev_up(_dev, _arg1)
 #define	siba_dev_down(_dev, _arg1)	\
 	BWN_BUS_OPS(_dev)->dev_down(_dev, _arg1)
 #define	siba_dev_isup(_dev)	\
 	BWN_BUS_OPS(_dev)->dev_isup(_dev)
 #define	siba_pcicore_intr(_dev)	\
 	BWN_BUS_OPS(_dev)->pcicore_intr(_dev)
-#define	siba_read_multi_2(_dev, _arg1, _arg2, _arg3)	\
-	BWN_BUS_OPS(_dev)->read_multi_2(_dev, _arg1, _arg2, _arg3)
-#define	siba_read_multi_4(_dev, _arg1, _arg2, _arg3)	\
-	BWN_BUS_OPS(_dev)->read_multi_4(_dev, _arg1, _arg2, _arg3)
-#define	siba_write_multi_2(_dev, _arg1, _arg2, _arg3)	\
-	BWN_BUS_OPS(_dev)->write_multi_2(_dev, _arg1, _arg2, _arg3)
-#define	siba_write_multi_4(_dev, _arg1, _arg2, _arg3)	\
-	BWN_BUS_OPS(_dev)->write_multi_4(_dev, _arg1, _arg2, _arg3)
-#define	siba_barrier(_dev, _arg1)	\
-	BWN_BUS_OPS(_dev)->barrier(_dev, _arg1)
 #define	siba_cc_pmu_set_ldovolt(_dev, _arg1, _arg2)	\
 	BWN_BUS_OPS(_dev)->cc_pmu_set_ldovolt(_dev, _arg1, _arg2)
 #define	siba_cc_pmu_set_ldoparef(_dev, _arg1)	\
@@ -334,11 +291,5 @@ enum {
 	BWN_BUS_OPS(_dev)->sprom_get_mcs5ghpo(_dev, _arg1)
 #define	siba_pmu_spuravoid_pllupdate(_dev, _arg1)	\
 	BWN_BUS_OPS(_dev)->pmu_spuravoid_pllupdate(_dev, _arg1)
-#define	siba_cc_set32(_dev, _arg1, _arg2)	\
-	BWN_BUS_OPS(_dev)->cc_set32(_dev, _arg1, _arg2)
-#define	siba_cc_mask32(_dev, _arg1, _arg2)	\
-	BWN_BUS_OPS(_dev)->cc_mask32(_dev, _arg1, _arg2)
-#define	siba_cc_write32(_dev, _arg1, _arg2)	\
-	BWN_BUS_OPS(_dev)->cc_write32(_dev, _arg1, _arg2)
 
 #endif /* _IF_BWN_SIBA_H_ */

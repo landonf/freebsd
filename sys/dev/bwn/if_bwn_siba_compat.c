@@ -75,7 +75,6 @@ __FBSDID("$FreeBSD$");
 
 static int		bwn_bhnd_populate_nvram_data(device_t dev,
 			    struct bwn_bhnd_ctx *ctx);
-static inline bool	bwn_bhnd_is_siba_reg(device_t dev, uint16_t offset);
 
 #define	BWN_ASSERT_VALID_REG(_dev, _offset)				\
 	KASSERT(!bwn_bhnd_is_siba_reg(_dev, _offset),			\
@@ -92,19 +91,6 @@ bwn_bhnd_bus_ops_init(device_t dev)
 
 	sc = device_get_softc(dev);
 	ctx = NULL;
-
-	sc->sc_mem_rid = 0;
-	sc->sc_mem_res = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY,
-	    &sc->sc_mem_rid, RF_ACTIVE);
-	if (sc->sc_mem_res == NULL) {
-		return (ENXIO);
-	}
-
-	/* Allocate PMU state */
-	if ((error = bhnd_alloc_pmu(dev))) {
-		device_printf(dev, "PMU allocation failed: %d\n", error);
-		goto failed;
-	}
 
 	/* Allocate our context */
 	ctx = malloc(sizeof(struct bwn_bhnd_ctx), M_DEVBUF, M_WAITOK|M_ZERO);
@@ -137,9 +123,6 @@ bwn_bhnd_bus_ops_init(device_t dev)
 	return (0);
 
 failed:
-	bhnd_release_resource(dev, SYS_RES_MEMORY, sc->sc_mem_rid,
-	    sc->sc_mem_res);
-
 	if (ctx != NULL) {
 		if (ctx->chipc_dev != NULL) {
 			bhnd_release_provider(dev, ctx->chipc_dev,
@@ -166,10 +149,6 @@ bwn_bhnd_bus_ops_fini(device_t dev)
 	sc = device_get_softc(dev);
 	ctx = sc->sc_bus_ctx;
 
-	bhnd_release_pmu(dev);
-	bhnd_release_resource(dev, SYS_RES_MEMORY, sc->sc_mem_rid,
-	    sc->sc_mem_res);
-
 	bhnd_release_provider(dev, ctx->chipc_dev, BHND_SERVICE_CHIPC);
 
 	if (ctx->pmu_dev != NULL)
@@ -177,25 +156,6 @@ bwn_bhnd_bus_ops_fini(device_t dev)
 
 	free(ctx, M_DEVBUF);
 	sc->sc_bus_ctx = NULL;
-}
-
-
-/**
- * Return true if @p offset is within a siba-specific configuration register
- * block.
- */
-static inline bool
-bwn_bhnd_is_siba_reg(device_t dev, uint16_t offset)
-{
-	if (offset >= SIBA_CFG0_OFFSET &&
-	    offset <= SIBA_CFG0_OFFSET + SIBA_CFG_SIZE)
-		return (true);
-
-	if (offset >= SIBA_CFG1_OFFSET &&
-	    offset <= SIBA_CFG1_OFFSET + SIBA_CFG_SIZE)
-		return (true);
-	
-	return (false);
 }
 
 /* Populate SPROM values from NVRAM */
@@ -1053,172 +1013,6 @@ bhnd_compat_powerdown(device_t dev)
 }
 
 /*
- * siba_read_2()
- *
- * Referenced by:
- *   bwn_chip_init()
- *   bwn_chiptest()
- *   bwn_dummy_transmission()
- *   bwn_phy_getinfo()
- *   bwn_pio_read_2()
- *   bwn_shm_read_2()
- *   bwn_shm_read_4()
- *   bwn_wme_init()
- *   bwn_wme_loadparams()
- * ... and 23 others
- * 
- */
-static uint16_t
-bhnd_compat_read_2(device_t dev, uint16_t offset)
-{
-	struct bwn_softc *sc = device_get_softc(dev);
-
-	BWN_ASSERT_VALID_REG(dev, offset);
-
-	return (bhnd_bus_read_2(sc->sc_mem_res, offset));
-}
-
-/*
- * siba_write_2()
- *
- * Referenced by:
- *   bwn_chip_init()
- *   bwn_chiptest()
- *   bwn_crypt_init()
- *   bwn_phy_getinfo()
- *   bwn_pio_tx_start()
- *   bwn_set_opmode()
- *   bwn_shm_write_2()
- *   bwn_shm_write_4()
- *   bwn_wme_init()
- * ... and 43 others
- * 
- */
-static void
-bhnd_compat_write_2(device_t dev, uint16_t offset, uint16_t value)
-{
-	struct bwn_softc *sc = device_get_softc(dev);
-
-	BWN_ASSERT_VALID_REG(dev, offset);
-
-	return (bhnd_bus_write_2(sc->sc_mem_res, offset, value));
-}
-
-/*
- * siba_read_4()
- *
- * Referenced by:
- *   bwn_attach_core()
- *   bwn_chip_init()
- *   bwn_chiptest()
- *   bwn_core_exit()
- *   bwn_core_init()
- *   bwn_core_start()
- *   bwn_pio_init()
- *   bwn_pio_tx_start()
- *   bwn_reset_core()
- *   bwn_shm_read_4()
- * ... and 42 others
- * 
- */
-static uint32_t
-bhnd_compat_read_4(device_t dev, uint16_t offset)
-{
-	struct bwn_softc	*sc = device_get_softc(dev);
-	uint16_t		 ioreg;
-	int			 error;
-
-	/* bwn(4) fetches IOCTL/IOST values directly from siba-specific target
-	 * state registers; we map these directly to bhnd_read_(ioctl|iost) */
-	switch (offset) {
-	case SB0_REG_ABS(SIBA_CFG0_TMSTATELOW):
-		if ((error = bhnd_read_ioctl(dev, &ioreg)))
-			panic("error reading IOCTL: %d\n", error);
-
-		return (((uint32_t)ioreg) << SIBA_TML_SICF_SHIFT);
-
-	case SB0_REG_ABS(SIBA_CFG0_TMSTATEHIGH):
-		if ((error = bhnd_read_iost(dev, &ioreg)))
-			panic("error reading IOST: %d\n", error);
-
-		return (((uint32_t)ioreg) << SIBA_TMH_SISF_SHIFT);
-	}
-
-	/* Otherwise, perform a standard bus read */
-	BWN_ASSERT_VALID_REG(dev, offset);
-	return (bhnd_bus_read_4(sc->sc_mem_res, offset));
-}
-
-/*
- * siba_write_4()
- *
- * Referenced by:
- *   bwn_chip_init()
- *   bwn_chiptest()
- *   bwn_core_exit()
- *   bwn_core_start()
- *   bwn_dma_mask()
- *   bwn_dma_rxdirectfifo()
- *   bwn_pio_init()
- *   bwn_reset_core()
- *   bwn_shm_ctlword()
- *   bwn_shm_write_4()
- * ... and 37 others
- * 
- */
-static void
-bhnd_compat_write_4(device_t dev, uint16_t offset, uint32_t value)
-{
-	struct bwn_softc	*sc = device_get_softc(dev);
-	uint16_t		 ioctl;
-	int			 error;
-
-	/* bwn(4) writes IOCTL values directly to siba-specific target state
-	 * registers; we map these directly to bhnd_write_ioctl() */
-	if (offset == SB0_REG_ABS(SIBA_CFG0_TMSTATELOW)) {
-		/* shift IOCTL flags back down to their original values */
-		if (value & ~SIBA_TML_SICF_MASK)
-			panic("%s: non-IOCTL flags provided", __FUNCTION__);
-
-		ioctl = (value & SIBA_TML_SICF_MASK) >> SIBA_TML_SICF_SHIFT;
-
-		if ((error = bhnd_write_ioctl(dev, ioctl, UINT16_MAX)))
-			panic("error writing IOCTL: %d\n", error);
-	} else {
-		/* Otherwise, perform a standard bus write */
-		BWN_ASSERT_VALID_REG(dev, offset);
-
-		bhnd_bus_write_4(sc->sc_mem_res, offset, value);
-	}
-
-	return;
-}
-
-/*
- * siba_dev_up()
- *
- * Referenced by:
- *   bwn_reset_core()
- */
-static void
-bhnd_compat_dev_up(device_t dev, uint32_t flags)
-{
-	uint16_t	ioctl;
-	int		error;
-
-	/* shift IOCTL flags back down to their original values */
-	if (flags & ~SIBA_TML_SICF_MASK)
-		panic("%s: non-IOCTL flags provided", __FUNCTION__);
-
-	ioctl = (flags & SIBA_TML_SICF_MASK) >> SIBA_TML_SICF_SHIFT;
-
-	/* Perform core reset; note that bwn(4) incorrectly assumes that both
-	 * RESET and post-RESET ioctl flags should be identical */
-	if ((error = bhnd_reset_hw(dev, ioctl, ioctl)))
-		panic("%s: core reset failed: %d", __FUNCTION__, error);
-}
-
-/*
  * siba_dev_down()
  *
  * Referenced by:
@@ -1265,97 +1059,6 @@ bhnd_compat_pcicore_intr(device_t dev)
 {
 	/* This is handled by bhnd_bhndb on the first call to
 	 * bus_setup_intr() */
-}
-
-/*
- * siba_read_multi_2()
- *
- * Referenced by:
- *   bwn_pio_rxeof()
- */
-static void
-bhnd_compat_read_multi_2(device_t dev, void *buffer, size_t count,
-    uint16_t offset)
-{
-	struct bwn_softc *sc = device_get_softc(dev);
-
-	BWN_ASSERT_VALID_REG(dev, offset);
-	return (bhnd_bus_read_multi_2(sc->sc_mem_res, offset, buffer, count));
-}
-
-/*
- * siba_read_multi_4()
- *
- * Referenced by:
- *   bwn_pio_rxeof()
- */
-static void
-bhnd_compat_read_multi_4(device_t dev, void *buffer, size_t count,
-    uint16_t offset)
-{
-	struct bwn_softc *sc = device_get_softc(dev);
-
-	BWN_ASSERT_VALID_REG(dev, offset);
-	return (bhnd_bus_read_multi_4(sc->sc_mem_res, offset, buffer, count));
-}
-
-/*
- * siba_write_multi_2()
- *
- * Referenced by:
- *   bwn_pio_write_multi_2()
- */
-static void
-bhnd_compat_write_multi_2(device_t dev, const void *buffer, size_t count,
-    uint16_t offset)
-{
-	struct bwn_softc *sc = device_get_softc(dev);
-
-	BWN_ASSERT_VALID_REG(dev, offset);
-
-	/* XXX discarding const to maintain API compatibility with
-	 * siba_write_multi_2() */
-	bhnd_bus_write_multi_2(sc->sc_mem_res, offset,
-	    __DECONST(void *, buffer), count);
-}
-
-/*
- * siba_write_multi_4()
- *
- * Referenced by:
- *   bwn_pio_write_multi_4()
- */
-static void
-bhnd_compat_write_multi_4(device_t dev, const void *buffer, size_t count,
-    uint16_t offset)
-{
-	struct bwn_softc *sc = device_get_softc(dev);
-
-	BWN_ASSERT_VALID_REG(dev, offset);
-
-	/* XXX discarding const to maintain API compatibility with
-	 * siba_write_multi_4() */
-	bhnd_bus_write_multi_4(sc->sc_mem_res, offset,
-	    __DECONST(void *, buffer), count);
-}
-
-/*
- * siba_barrier()
- *
- * Referenced by:
- *   bwn_intr()
- *   bwn_intrtask()
- *   bwn_ram_write()
- */
-static void
-bhnd_compat_barrier(device_t dev, int flags)
-{
-	struct bwn_softc *sc = device_get_softc(dev);
-
-	/* XXX is siba_barrier()'s use of an offset and length of 0
-	 * correct? */
-	BWN_ASSERT_VALID_REG(dev, 0);
-	bhnd_bus_barrier(sc->sc_mem_res, 0, 0, flags);
 }
 
 /*
@@ -1563,107 +1266,6 @@ bhnd_compat_pmu_spuravoid_pllupdate(device_t dev, int spur_avoid)
 		panic("spuravoid request failed: %d", error);
 }
 
-/*
- * siba_cc_set32()
- *
- * Referenced by:
- *   bwn_phy_initn()
- *   bwn_wireless_core_phy_pll_reset()
- */
-static void
-bhnd_compat_cc_set32(device_t dev, uint32_t reg, uint32_t val)
-{
-	struct bwn_bhnd_ctx *ctx = bwn_bhnd_get_ctx(dev);
-	
-	/*
-	 * OR with the current value.
-	 *
-	 * This function is only ever used to write to either ChipCommon's
-	 * chipctrl register or chipctl_data register. Note that chipctl_data
-	 * is actually a PMU register; it is not actually mapped by ChipCommon
-	 * on Always-on-Bus (AOB) devices with a standalone PMU core.
-	 */
-	if (dev != ctx->chipc_dev)
-		panic("unsupported device: %s", device_get_nameunit(dev));
-
-	switch (reg) {
-	case SIBA_CC_CHIPCTL:
-		BHND_CHIPC_WRITE_CHIPCTRL(ctx->chipc_dev, val, val);
-		break;
-	case SIBA_CC_CHIPCTL_DATA:
-		bhnd_pmu_write_chipctrl(ctx->pmu_dev, ctx->pmu_cctl_addr, val,
-		    val);
-		break;
-	default:
-		panic("unsupported register: %#x", reg);
-	}
-}
-
-/*
- * siba_cc_mask32()
- *
- * Referenced by:
- *   bwn_wireless_core_phy_pll_reset()
- */
-static void
-bhnd_compat_cc_mask32(device_t dev, uint32_t reg, uint32_t mask)
-{
-	struct bwn_bhnd_ctx *ctx = bwn_bhnd_get_ctx(dev);
-
-	/*
-	 * AND with the current value.
-	 *
-	 * This function is only ever used to write to ChipCommon's chipctl_data
-	 * register. Note that chipctl_data is actually a PMU register; it is
-	 * not actually mapped by ChipCommon on Always-on-Bus (AOB) devices with
-	 * a standalone PMU core.
-	 */
-	if (dev != ctx->chipc_dev)
-		panic("unsupported device: %s", device_get_nameunit(dev));
-
-	switch (reg) {
-	case SIBA_CC_CHIPCTL_DATA:
-		bhnd_pmu_write_chipctrl(ctx->pmu_dev, ctx->pmu_cctl_addr, 0,
-		    ~mask);
-		break;
-	default:
-		panic("unsupported register: %#x", reg);
-	}
-}
-
-/*
- * siba_cc_write32()
- *
- * Referenced by:
- *   bwn_wireless_core_phy_pll_reset()
- */
-static void
-bhnd_compat_cc_write32(device_t dev, uint32_t reg, uint32_t val)
-{
-	struct bwn_bhnd_ctx *ctx = bwn_bhnd_get_ctx(dev);
-
-	/*
-	 * This function is only ever used to write to ChipCommon's chipctl_addr
-	 * register; setting chipctl_addr is handled atomically by
-	 * bhnd_pmu_write_chipctrl(), so we merely cache the intended address
-	 * for later use when chipctl_data is written.
-	 *
-	 * Also, note that chipctl_addr is actually a PMU register; it is
-	 * not actually mapped by ChipCommon on Always-on-Bus (AOB) devices with
-	 * a standalone PMU core.
-	 */
-	if (dev != ctx->chipc_dev)
-		panic("unsupported device: %s", device_get_nameunit(dev));
-
-	switch (reg) {
-	case SIBA_CC_CHIPCTL_ADDR:
-		ctx->pmu_cctl_addr = val;
-		break;
-	default:
-		panic("unsupported register: %#x", reg);
-	}
-}
-
 const struct bwn_bus_ops bwn_bhnd_bus_ops = {
 	.init				= bwn_bhnd_bus_ops_init,
 	.fini				= bwn_bhnd_bus_ops_fini,
@@ -1723,19 +1325,9 @@ const struct bwn_bus_ops bwn_bhnd_bus_ops = {
 	.sprom_get_cddpo		= bhnd_compat_sprom_get_cddpo,
 	.powerup			= bhnd_compat_powerup,
 	.powerdown			= bhnd_compat_powerdown,
-	.read_2				= bhnd_compat_read_2,
-	.write_2			= bhnd_compat_write_2,
-	.read_4				= bhnd_compat_read_4,
-	.write_4			= bhnd_compat_write_4,
-	.dev_up				= bhnd_compat_dev_up,
 	.dev_down			= bhnd_compat_dev_down,
 	.dev_isup			= bhnd_compat_dev_isup,
 	.pcicore_intr			= bhnd_compat_pcicore_intr,
-	.read_multi_2			= bhnd_compat_read_multi_2,
-	.read_multi_4			= bhnd_compat_read_multi_4,
-	.write_multi_2			= bhnd_compat_write_multi_2,
-	.write_multi_4			= bhnd_compat_write_multi_4,
-	.barrier			= bhnd_compat_barrier,
 	.cc_pmu_set_ldovolt		= bhnd_compat_cc_pmu_set_ldovolt,
 	.cc_pmu_set_ldoparef		= bhnd_compat_cc_pmu_set_ldoparef,
 	.sprom_get_mcs2gpo		= bhnd_compat_sprom_get_mcs2gpo,
@@ -1743,7 +1335,4 @@ const struct bwn_bus_ops bwn_bhnd_bus_ops = {
 	.sprom_get_mcs5gpo		= bhnd_compat_sprom_get_mcs5gpo,
 	.sprom_get_mcs5ghpo		= bhnd_compat_sprom_get_mcs5ghpo,
 	.pmu_spuravoid_pllupdate	= bhnd_compat_pmu_spuravoid_pllupdate,
-	.cc_set32			= bhnd_compat_cc_set32,
-	.cc_mask32			= bhnd_compat_cc_mask32,
-	.cc_write32			= bhnd_compat_cc_write32,
 };

@@ -76,6 +76,9 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhnd.h>
 #include <dev/bhnd/bhnd_ids.h>
 
+#include <dev/bhnd/cores/chipc/chipc.h>
+#include <dev/bhnd/cores/pmu/bhnd_pmu.h>
+
 #include <dev/bwn/if_bwn_siba.h>
 
 #include <dev/bwn/if_bwnreg.h>
@@ -142,20 +145,30 @@ bwn_mac_switch_freq(struct bwn_mac *mac, int spurmode)
 }
 
 /* http://bcm-v4.sipsolutions.net/802.11/PHY/N/BmacPhyClkFgc */
-void
+int
 bwn_phy_force_clock(struct bwn_mac *mac, int force)
 {
-	struct bwn_softc *sc = mac->mac_sc;
-	uint32_t tmp;
+	struct bwn_softc	*sc;
+	uint32_t		 val, mask;
+	int			 error;
+
+	sc = mac->mac_sc;
 
 	/* XXX Only for N, HT and AC PHYs */
+	mask = BHND_IOCTL_CLK_FORCE;
+	if (force) {
+		val = BHND_IOCTL_CLK_FORCE;
+	} else {
+		val = 0;
+	}
 
-	tmp = siba_read_4(sc->sc_dev, SIBA_TGSLOW);
-	if (force)
-		tmp |= SIBA_TGSLOW_FGC;
-	else
-		tmp &= ~SIBA_TGSLOW_FGC;
-	siba_write_4(sc->sc_dev, SIBA_TGSLOW, tmp);
+	if ((error = bhnd_write_ioctl(sc->sc_dev, val, mask))) {
+		device_printf(sc->sc_dev, "failed to set CLK_FORCE ioctl flag: "
+		    "%d\n", error);
+		return (error);
+	}
+
+	return (0);
 }
 
 int
@@ -174,28 +187,51 @@ bwn_radio_wait_value(struct bwn_mac *mac, uint16_t offset, uint16_t mask,
 	return (0);
 }
 
-void
+int
 bwn_mac_phy_clock_set(struct bwn_mac *mac, int enabled)
 {
-	struct bwn_softc *sc = mac->mac_sc;
-	uint32_t val;
+	struct bwn_softc	*sc;
+	uint32_t		 val, mask;
+	int			 error;
 
-	val = siba_read_4(sc->sc_dev, SIBA_TGSLOW);
-	if (enabled)
-		    val |= BWN_TGSLOW_MACPHYCLKEN;
-	else
-		    val &= ~BWN_TGSLOW_MACPHYCLKEN;
-	siba_write_4(sc->sc_dev, SIBA_TGSLOW, val);
+	sc = mac->mac_sc;
+
+	mask = BWN_IOCTL_MACPHYCLKEN;
+	if (enabled) {
+		val = BWN_IOCTL_MACPHYCLKEN;
+	} else {
+		val = 0;
+	}
+
+	if ((error = bhnd_write_ioctl(sc->sc_dev, val, mask))) {
+		device_printf(sc->sc_dev, "failed to set MACPHYCLKEN ioctl "
+		    "flag: %d\n", error);
+		return (error);
+	}
+
+	return (0);
 }
 
 /* http://bcm-v4.sipsolutions.net/802.11/PHY/BmacCorePllReset */
-void
+int
 bwn_wireless_core_phy_pll_reset(struct bwn_mac *mac)
 {
-	struct bwn_softc *sc = mac->mac_sc;
+	struct bwn_softc	*sc;
+	uint32_t		 pll_flag;
 
-	siba_cc_write32(sc->sc_dev, SIBA_CC_CHIPCTL_ADDR, 0);
-	siba_cc_mask32(sc->sc_dev, SIBA_CC_CHIPCTL_DATA, ~0x4);
-	siba_cc_set32(sc->sc_dev, SIBA_CC_CHIPCTL_DATA, 0x4);
-	siba_cc_mask32(sc->sc_dev, SIBA_CC_CHIPCTL_DATA, ~0x4);
+	sc = mac->mac_sc;
+
+	if (sc->sc_pmu == NULL) {
+		device_printf(sc->sc_dev, "PMU device not found\n");
+		return (ENXIO);
+	}
+
+	pll_flag = 0x4;
+	bhnd_pmu_write_chipctrl(sc->sc_pmu, 0x0, 0x0, pll_flag);
+	bhnd_pmu_write_chipctrl(sc->sc_pmu, 0x0, pll_flag, pll_flag);	
+	bhnd_pmu_write_chipctrl(sc->sc_pmu, 0x0, 0x0, pll_flag);
+
+	bhnd_release_provider(sc->sc_dev, sc->sc_pmu, BHND_SERVICE_PMU);
+
+	return (0);
 }
