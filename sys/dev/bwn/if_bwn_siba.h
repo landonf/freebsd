@@ -105,7 +105,6 @@ struct bwn_bus_ops {
 	int		(*sprom_get_mcs5glpo)(device_t, uint16_t *);
 	int		(*sprom_get_mcs5gpo)(device_t, uint16_t *);
 	int		(*sprom_get_mcs5ghpo)(device_t, uint16_t *);
-	void		(*pmu_spuravoid_pllupdate)(device_t, int);
 };
 
 extern const struct bwn_bus_ops bwn_bhnd_bus_ops;
@@ -267,7 +266,5 @@ enum {
 	BWN_BUS_OPS(_dev)->sprom_get_mcs5gpo(_dev, _arg1)
 #define	siba_sprom_get_mcs5ghpo(_dev, _arg1)	\
 	BWN_BUS_OPS(_dev)->sprom_get_mcs5ghpo(_dev, _arg1)
-#define	siba_pmu_spuravoid_pllupdate(_dev, _arg1)	\
-	BWN_BUS_OPS(_dev)->pmu_spuravoid_pllupdate(_dev, _arg1)
 
 #endif /* _IF_BWN_SIBA_H_ */

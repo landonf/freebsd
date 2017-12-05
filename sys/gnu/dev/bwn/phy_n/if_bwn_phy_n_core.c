@@ -72,6 +72,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhnd.h>
 #include <dev/bhnd/bhnd_ids.h>
 
+#include <dev/bhnd/cores/pmu/bhnd_pmu.h>
+
 #include <dev/bhnd/cores/chipc/chipc.h>
 
 #include <dev/bwn/if_bwnreg.h>
@@ -6175,6 +6177,12 @@ static int bwn_phy_initn(struct bwn_mac *mac)
 	uint16_t clip[2];
 	bool do_cal = false;
 
+	if (sc->sc_pmu == NULL) {
+		device_printf(sc->sc_dev, "no PMU; cannot configure spurious "
+		    "signal avoidance\n");
+		return (ENXIO);
+	}
+
 	if ((mac->mac_phy.rev >= 3) &&
 	   (sc->sc_board_info.board_flags & BHND_BFL_EXTLNA) &&
 	   (bwn_current_band(mac) == BWN_BAND_2G))
@@ -6380,12 +6388,18 @@ static void bwn_chantab_phy_upload(struct bwn_mac *mac,
 }
 
 /* http://bcm-v4.sipsolutions.net/802.11/PmuSpurAvoid */
-static void bwn_nphy_pmu_spur_avoid(struct bwn_mac *mac, bool avoid)
+static void bwn_nphy_pmu_spur_avoid(struct bwn_mac *mac,
+				    bhnd_pmu_spuravoid mode)
 {
 	struct bwn_softc *sc = mac->mac_sc;
+	int error;
 
-	DPRINTF(sc, BWN_DEBUG_RESET, "%s: spuravoid %d\n", __func__, avoid);
-	siba_pmu_spuravoid_pllupdate(sc->sc_dev, avoid);
+	DPRINTF(sc, BWN_DEBUG_RESET, "%s: spuravoid %d\n", __func__, mode);
+
+	if ((error = bhnd_pmu_request_spuravoid(sc->sc_pmu, mode))) {
+		device_printf(sc->sc_dev, "spuravoid request failed: %d",
+		    error);
+	}
 }
 
 /* http://bcm-v4.sipsolutions.net/802.11/PHY/N/ChanspecSetup */
@@ -6445,10 +6459,10 @@ static void bwn_nphy_channel_setup(struct bwn_mac *mac,
 
 	if (mac->mac_phy.rev >= 3 &&
 	    mac->mac_phy.phy_n->spur_avoid != BWN_SPUR_AVOID_DISABLE) {
-		uint8_t spuravoid = 0;
+		bhnd_pmu_spuravoid spuravoid = BHND_PMU_SPURAVOID_NONE;
 
 		if (mac->mac_phy.phy_n->spur_avoid == BWN_SPUR_AVOID_FORCE) {
-			spuravoid = 1;
+			spuravoid = BHND_PMU_SPURAVOID_M1;
 		} else if (phy->rev >= 19) {
 			/* TODO */
 		} else if (phy->rev >= 18) {
@@ -6460,19 +6474,20 @@ static void bwn_nphy_channel_setup(struct bwn_mac *mac,
 		} else if (phy->rev >= 7) {
 			if (!bwn_is_40mhz(mac)) { /* 20MHz */
 				if (ch == 13 || ch == 14 || ch == 153)
-					spuravoid = 1;
+					spuravoid = BHND_PMU_SPURAVOID_M1;
 			} else { /* 40 MHz */
 				if (ch == 54)
-					spuravoid = 1;
+					spuravoid = BHND_PMU_SPURAVOID_M1;
 			}
 		} else {
 			if (!bwn_is_40mhz(mac)) { /* 20MHz */
 				if ((ch >= 5 && ch <= 8) || ch == 13 || ch == 14)
-					spuravoid = 1;
+					spuravoid = BHND_PMU_SPURAVOID_M1;
 			} else { /* 40MHz */
 				if (nphy->aband_spurwar_en &&
-				    (ch == 38 || ch == 102 || ch == 118))
-					spuravoid = (sc->sc_cid.chip_id == BHND_CHIPID_BCM4716);
+				    (ch == 38 || ch == 102 || ch == 118) &&
+				    sc->sc_cid.chip_id == BHND_CHIPID_BCM4716)
+					spuravoid = BHND_PMU_SPURAVOID_M1;
 			}
 		}
 
@@ -6483,7 +6498,7 @@ static void bwn_nphy_channel_setup(struct bwn_mac *mac,
 		if (mac->mac_phy.rev == 3 || mac->mac_phy.rev == 4)
 			bwn_wireless_core_phy_pll_reset(mac);
 
-		if (spuravoid)
+		if (spuravoid != BHND_PMU_SPURAVOID_NONE)
 			BWN_PHY_SET(mac, BWN_NPHY_BBCFG, BWN_NPHY_BBCFG_RSTRX);
 		else
 			BWN_PHY_MASK(mac, BWN_NPHY_BBCFG,

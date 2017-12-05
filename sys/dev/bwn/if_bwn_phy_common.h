@@ -31,7 +31,8 @@
 #ifndef	__PHY_COMMON_H__
 #define	__PHY_COMMON_H__
 
-extern	void bwn_mac_switch_freq(struct bwn_mac *mac, int spurmode);
+extern	void bwn_mac_switch_freq(struct bwn_mac *mac,
+	    bhnd_pmu_spuravoid spurmode);
 extern	int bwn_phy_force_clock(struct bwn_mac *mac, int force);
 extern	int bwn_radio_wait_value(struct bwn_mac *mac, uint16_t offset,
 	    uint16_t mask, uint16_t value, int delay, int timeout);

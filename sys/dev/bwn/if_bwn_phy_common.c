@@ -89,22 +89,22 @@ __FBSDID("$FreeBSD$");
 #include <dev/bwn/if_bwn_phy_common.h>
 
 void
-bwn_mac_switch_freq(struct bwn_mac *mac, int spurmode)
+bwn_mac_switch_freq(struct bwn_mac *mac, bhnd_pmu_spuravoid spurmode)
 {
 	struct bwn_softc *sc = mac->mac_sc;
 	uint16_t chip_id = sc->sc_cid.chip_id;
 
 	if (chip_id == BHND_CHIPID_BCM4331) {
 		switch (spurmode) {
-		case 2: /* 168 Mhz: 2^26/168 = 0x61862 */
+		case BHND_PMU_SPURAVOID_M2: /* 168 Mhz: 2^26/168 = 0x61862 */
 			BWN_WRITE_2(mac, BWN_TSF_CLK_FRAC_LOW, 0x1862);
 			BWN_WRITE_2(mac, BWN_TSF_CLK_FRAC_HIGH, 0x6);
 			break;
-		case 1: /* 164 Mhz: 2^26/164 = 0x63e70 */
+		case BHND_PMU_SPURAVOID_M1: /* 164 Mhz: 2^26/164 = 0x63e70 */
 			BWN_WRITE_2(mac, BWN_TSF_CLK_FRAC_LOW, 0x3e70);
 			BWN_WRITE_2(mac, BWN_TSF_CLK_FRAC_HIGH, 0x6);
 			break;
-		default: /* 160 Mhz: 2^26/160 = 0x66666 */
+		case BHND_PMU_SPURAVOID_NONE: /* 160 Mhz: 2^26/160 = 0x66666 */
 			BWN_WRITE_2(mac, BWN_TSF_CLK_FRAC_LOW, 0x6666);
 			BWN_WRITE_2(mac, BWN_TSF_CLK_FRAC_HIGH, 0x6);
 			break;
@@ -117,26 +117,30 @@ bwn_mac_switch_freq(struct bwn_mac *mac, int spurmode)
 	    chip_id == BHND_CHIPID_BCM43227 ||
 	    chip_id == BHND_CHIPID_BCM43228) {
 		switch (spurmode) {
-		case 2: /* 126 Mhz */
+		case BHND_PMU_SPURAVOID_M2: /* 126 Mhz */
 			BWN_WRITE_2(mac, BWN_TSF_CLK_FRAC_LOW, 0x2082);
 			BWN_WRITE_2(mac, BWN_TSF_CLK_FRAC_HIGH, 0x8);
 			break;
-		case 1: /* 123 Mhz */
+		case BHND_PMU_SPURAVOID_M1: /* 123 Mhz */
 			BWN_WRITE_2(mac, BWN_TSF_CLK_FRAC_LOW, 0x5341);
 			BWN_WRITE_2(mac, BWN_TSF_CLK_FRAC_HIGH, 0x8);
 			break;
-		default: /* 120 Mhz */
+		case BHND_PMU_SPURAVOID_NONE: /* 120 Mhz */
 			BWN_WRITE_2(mac, BWN_TSF_CLK_FRAC_LOW, 0x8889);
 			BWN_WRITE_2(mac, BWN_TSF_CLK_FRAC_HIGH, 0x8);
 			break;
 		}
 	} else if (mac->mac_phy.type == BWN_PHYTYPE_LCN) {
 		switch (spurmode) {
-		case 1: /* 82 Mhz */
+		case BHND_PMU_SPURAVOID_M2:
+			device_printf(sc->sc_dev, "invalid spuravoid mode: "
+			    "%d\n", spurmode);
+			break;
+		case BHND_PMU_SPURAVOID_M1: /* 82 Mhz */
 			BWN_WRITE_2(mac, BWN_TSF_CLK_FRAC_LOW, 0x7CE0);
 			BWN_WRITE_2(mac, BWN_TSF_CLK_FRAC_HIGH, 0xC);
 			break;
-		default: /* 80 Mhz */
+		case BHND_PMU_SPURAVOID_NONE: /* 80 Mhz */
 			BWN_WRITE_2(mac, BWN_TSF_CLK_FRAC_LOW, 0xCCCD);
 			BWN_WRITE_2(mac, BWN_TSF_CLK_FRAC_HIGH, 0xC);
 			break;
