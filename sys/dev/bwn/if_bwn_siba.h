@@ -50,7 +50,6 @@ struct bwn_bus_ops {
 	uint16_t	(*get_pci_device)(device_t);
 	enum siba_type	(*get_type)(device_t);
 	uint8_t		(*get_pcicore_revid)(device_t);
-	uint8_t		(*sprom_get_ccode)(device_t);
 	uint8_t		(*sprom_get_ant_a)(device_t);
 	uint8_t		(*sprom_get_ant_bg)(device_t);
 	uint16_t	(*sprom_get_maxpwr_bg)(device_t);
@@ -123,12 +122,6 @@ enum siba_type {
 	SIBA_TYPE_PCMCIA
 };
 
-/* TODO: need a real country code table */
-enum {
-	SIBA_CCODE_JAPAN,
-	SIBA_CCODE_UNKNOWN
-};
-
 #define	BWN_BUS_OPS_SC(_sc)	\
 	((_sc)->sc_bus_ops)
 
@@ -147,8 +140,6 @@ enum {
 	BWN_BUS_OPS(_dev)->get_pci_device(_dev)
 #define	siba_get_type(_dev)	\
 	BWN_BUS_OPS(_dev)->get_type(_dev)
-#define	siba_sprom_get_ccode(_dev)	\
-	BWN_BUS_OPS(_dev)->sprom_get_ccode(_dev)
 #define	siba_sprom_get_ant_a(_dev)	\
 	BWN_BUS_OPS(_dev)->sprom_get_ant_a(_dev)
 #define	siba_sprom_get_ant_bg(_dev)	\

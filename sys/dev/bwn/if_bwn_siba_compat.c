@@ -265,21 +265,6 @@ bhnd_compat_get_type(device_t dev)
 }
 
 /*
- * siba_sprom_get_ccode()
- *
- * Referenced by:
- *   bwn_phy_g_switch_chan()
- */
-static uint8_t
-bhnd_compat_sprom_get_ccode(device_t dev)
-{
-	/* This has been replaced with 'ccode' in later SPROM
-	 * revisions, but this API is only called on devices with
-	 * spromrev 1. */
-	BWN_BHND_NVRAM_RETURN_VAR(dev, uint8, BHND_NVAR_CC);
-}
-
-/*
  * siba_sprom_get_ant_a()
  *
  * Referenced by:
@@ -895,7 +880,6 @@ const struct bwn_bus_ops bwn_bhnd_bus_ops = {
 	.get_pci_vendor			= bhnd_compat_get_pci_vendor,
 	.get_pci_device			= bhnd_compat_get_pci_device,
 	.get_type			= bhnd_compat_get_type,
-	.sprom_get_ccode		= bhnd_compat_sprom_get_ccode,
 	.sprom_get_ant_a		= bhnd_compat_sprom_get_ant_a,
 	.sprom_get_ant_bg		= bhnd_compat_sprom_get_ant_bg,
 	.sprom_get_maxpwr_bg		= bhnd_compat_sprom_get_maxpwr_bg,

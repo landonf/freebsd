@@ -663,6 +663,23 @@
 #define	BWN_TAB_NOISESCALE_SIZE		27
 
 /*
+ * SPROM rev 1 locale codes. Later SPROM revisions use a two-character
+ * country code.
+ */
+enum {
+	BWN_SPROM1_CC_WORLDWIDE	= 0,
+	BWN_SPROM1_CC_THAILAND	= 1,
+	BWN_SPROM1_CC_ISRAEL	= 2,
+	BWN_SPROM1_CC_JORDAN	= 3,
+	BWN_SPROM1_CC_CHINA	= 4,
+	BWN_SPROM1_CC_JP	= 5,
+	BWN_SPROM1_CC_USA	= 6,
+	BWN_SPROM1_CC_EUROPE	= 7,
+	BWN_SPROM1_CC_US_LOW	= 8,
+	BWN_SPROM1_CC_JP_HIGH	= 9,
+};
+
+/*
  * SPROM GPIO
  */
 #define	BWN_LED_ACT_LOW			0x80

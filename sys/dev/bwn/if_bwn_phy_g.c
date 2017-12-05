@@ -3284,7 +3284,8 @@ bwn_hwpctl_init_gphy(struct bwn_mac *mac)
 static void
 bwn_phy_g_switch_chan(struct bwn_mac *mac, int channel, uint8_t spu)
 {
-	struct bwn_softc *sc = mac->mac_sc;
+	struct bwn_softc	*sc = mac->mac_sc;
+	int			 error;
 
 	if (spu != 0)
 		bwn_spu_workaround(mac, channel);
@@ -3292,7 +3293,17 @@ bwn_phy_g_switch_chan(struct bwn_mac *mac, int channel, uint8_t spu)
 	BWN_WRITE_2(mac, BWN_CHANNEL, bwn_phy_g_chan2freq(channel));
 
 	if (channel == 14) {
-		if (siba_sprom_get_ccode(sc->sc_dev) == SIBA_CCODE_JAPAN)
+		uint8_t cc;
+
+		error = bhnd_nvram_getvar_uint8(sc->sc_dev, BHND_NVAR_CC, &cc);
+		if (error) {
+			device_printf(sc->sc_dev, "error reading country code "
+			    "from NVRAM, assuming channel 14 unavailable: %d\n",
+			    error);
+			cc = BWN_SPROM1_CC_WORLDWIDE;
+		}
+
+		if (cc == BWN_SPROM1_CC_JP)
 			bwn_hf_write(mac,
 			    bwn_hf_read(mac) & ~BWN_HF_JAPAN_CHAN14_OFF);
 		else
