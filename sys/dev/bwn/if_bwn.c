@@ -7436,7 +7436,7 @@ bwn_led_attach(struct bwn_mac *mac)
 
 		led = &sc->sc_leds[i];
 
-		KASSERT(i < nitems(bwn_led_vars), ("LED out-of-range"));
+		KASSERT(i < nitems(bwn_led_vars), ("unknown LED index"));
 		error = bhnd_nvram_getvar_uint8(sc->sc_dev, bwn_led_vars[i],
 		    &val);
 		if (error) {
