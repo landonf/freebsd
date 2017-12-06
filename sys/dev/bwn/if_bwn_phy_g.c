@@ -167,7 +167,7 @@ do {									\
 	error = bhnd_nvram_getvar_ ##_type((_dev), (_name), (_result));	\
 	if (error) {							\
 		device_printf((_dev), "NVRAM variable %s unreadable: "	\
-		    "%d", (_name), error);				\
+		    "%d\n", (_name), error);				\
 		return (error);						\
 	}								\
 } while(0)

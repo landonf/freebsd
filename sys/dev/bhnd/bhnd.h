@@ -1257,6 +1257,7 @@ static inline int
 bhnd_nvram_getvar(device_t dev, const char *name, void *buf, size_t *len,
      bhnd_nvram_type type)
 {
+	device_printf(dev, "GETVAR(%s)\n", name);
 	return (BHND_BUS_GET_NVRAM_VAR(device_get_parent(dev), dev, name, buf,
 	    len, type));
 }

@@ -3914,7 +3914,7 @@ do {									\
 	    (_result));							\
 	if (error) {							\
 		device_printf(sc->sc_dev, "NVRAM variable %s "		\
-		     "unreadable: %d", (_name), error);			\
+		     "unreadable: %d\n", (_name), error);		\
 		return (error);						\
 	}								\
 } while(0)
@@ -6217,12 +6217,6 @@ static int bwn_phy_initn(struct bwn_mac *mac)
 	uint16_t clip[2];
 	bool do_cal = false;
 
-	if (sc->sc_pmu == NULL) {
-		BWN_ERRPRINTF(mac->mac_sc, "no PMU; cannot configure spurious "
-		    "signal avoidance\n");
-		return (ENXIO);
-	}
-
 	if (mac->mac_phy.rev >= 3) {
 		error = bhnd_nvram_getvar_uint8(sc->sc_dev, BHND_NVAR_TSSIPOS2G,
 		    &nphy->tsspos_2g);
@@ -6449,6 +6443,12 @@ static void bwn_nphy_pmu_spur_avoid(struct bwn_mac *mac,
 	int error;
 
 	DPRINTF(sc, BWN_DEBUG_RESET, "%s: spuravoid %d\n", __func__, mode);
+
+	if (sc->sc_pmu == NULL) {
+		BWN_ERRPRINTF(mac->mac_sc, "no PMU; cannot configure spurious "
+		    "signal avoidance\n");
+		return;
+	}
 
 	if ((error = bhnd_pmu_request_spuravoid(sc->sc_pmu, mode))) {
 		device_printf(sc->sc_dev, "spuravoid request failed: %d",

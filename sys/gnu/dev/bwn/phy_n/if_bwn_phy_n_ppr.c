@@ -167,14 +167,14 @@ bool bwn_ppr_load_max_from_sprom(struct bwn_mac *mac, struct bwn_ppr *ppr,
 
 	error = bhnd_nvram_getvar_uint16(sc->sc_dev, BHND_NVAR_CDDPO, &cddpo);
 	if (error) {
-		device_printf(sc->sc_dev, "NVRAM variable %s unreadable: %d",
+		BWN_ERRPRINTF(mac->mac_sc, "NVRAM variable %s unreadable: %d\n",
 		     BHND_NVAR_CDDPO, error);
 		return (false);
 	}
 
 	error = bhnd_nvram_getvar_uint16(sc->sc_dev, BHND_NVAR_STBCPO, &stbcpo);
 	if (error) {
-		device_printf(sc->sc_dev, "NVRAM variable %s unreadable: %d",
+		BWN_ERRPRINTF(mac->mac_sc, "NVRAM variable %s unreadable: %d\n",
 		     BHND_NVAR_STBCPO, error);
 		return (false);
 	}
@@ -223,7 +223,7 @@ bool bwn_ppr_load_max_from_sprom(struct bwn_mac *mac, struct bwn_ppr *ppr,
 	error = bhnd_nvram_getvar_uint32(sc->sc_dev, var_ofdmgpo,
 	    &sprom_ofdm_po);
 	if (error) {
-		device_printf(sc->sc_dev, "NVRAM variable %s unreadable: %d",
+		device_printf(sc->sc_dev, "NVRAM variable %s unreadable: %d\n",
 		     var_ofdmgpo, error);
 		return (false);
 	}
@@ -234,9 +234,9 @@ bool bwn_ppr_load_max_from_sprom(struct bwn_mac *mac, struct bwn_ppr *ppr,
 
 		/* mcs[25]g[lh]?po[0-9] */
 		ret = snprintf(var, sizeof(var), "%s%zu", var_mcsgpo_prefix, i);
-		if (ret <= sizeof(var)) {
-			device_printf(sc->sc_dev, "buffer too small for %s%zu",
-			    var_mcsgpo_prefix, i);
+		if (ret >= sizeof(var)) {
+			device_printf(sc->sc_dev, "buffer too small for "
+			    "%s%zu\n", var_mcsgpo_prefix, i);
 			return (false);
 		}
 
@@ -244,7 +244,7 @@ bool bwn_ppr_load_max_from_sprom(struct bwn_mac *mac, struct bwn_ppr *ppr,
 		    &sprom_mcs_po[i]);
 		if (error) {
 			device_printf(sc->sc_dev, "NVRAM variable %s "
-			    "unreadable: %d", var, error);
+			    "unreadable: %d\n", var, error);
 			return (false);
 		}
 	}
@@ -256,7 +256,7 @@ bool bwn_ppr_load_max_from_sprom(struct bwn_mac *mac, struct bwn_ppr *ppr,
 		    &ck2gpo);
 		if (error) {
 			device_printf(sc->sc_dev, "NVRAM variable %s "
-			    "unreadable: %d", BHND_NVAR_CCK2GPO, error);
+			    "unreadable: %d\n", BHND_NVAR_CCK2GPO, error);
 			return (false);
 		}
 

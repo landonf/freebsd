@@ -621,7 +621,7 @@ do {									\
 	error = bhnd_nvram_getvar_ ##_type((_dev), (_name), (_result));	\
 	if (error) {							\
 		device_printf((_dev), "NVRAM variable %s unreadable: "	\
-		    "%d", (_name), error);				\
+		    "%d\n", (_name), error);				\
 		return (error);						\
 	}								\
 } while(0)
@@ -631,7 +631,7 @@ do {									\
 		    &plp->plp_txisoband_m);
 		BWN_PHY_LP_READVAR(sc->sc_dev, uint8, BHND_NVAR_BXA2G,
 		    &plp->plp_bxarch);
-		BWN_PHY_LP_READVAR(sc->sc_dev, uint8, BHND_NVAR_RXPO2G,
+		BWN_PHY_LP_READVAR(sc->sc_dev, int8, BHND_NVAR_RXPO2G,
 		    &plp->plp_rxpwroffset);
 		BWN_PHY_LP_READVAR(sc->sc_dev, uint8, BHND_NVAR_RSSISMF2G,
 		    &plp->plp_rssivf);
@@ -651,7 +651,7 @@ do {									\
 	    &plp->plp_txisoband_h);
 	BWN_PHY_LP_READVAR(sc->sc_dev, uint8, BHND_NVAR_BXA5G,
 	    &plp->plp_bxarch);
-	BWN_PHY_LP_READVAR(sc->sc_dev, uint8, BHND_NVAR_RXPO5G,
+	BWN_PHY_LP_READVAR(sc->sc_dev, int8, BHND_NVAR_RXPO5G,
 	    &plp->plp_rxpwroffset);
 	BWN_PHY_LP_READVAR(sc->sc_dev, uint8, BHND_NVAR_RSSISMF5G,
 	    &plp->plp_rssivf);
