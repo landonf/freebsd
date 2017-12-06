@@ -594,6 +594,23 @@ bwn_attach(device_t dev)
 	if ((error = bwn_retain_bus_providers(sc)))
 		goto fail;
 
+	/* Fetch mask of available antennas */
+	error = bhnd_nvram_getvar_uint8(sc->sc_dev, BHND_NVAR_AA2G,
+	    &sc->sc_ant2g);
+	if (error) {
+		device_printf(sc->sc_dev, "error determining 2GHz antenna "
+		    "availability from NVRAM: %d\n", error);
+		goto fail;
+	}
+
+	error = bhnd_nvram_getvar_uint8(sc->sc_dev, BHND_NVAR_AA5G,
+	    &sc->sc_ant5g);
+	if (error) {
+		device_printf(sc->sc_dev, "error determining 5GHz antenna "
+		    "availability from NVRAM: %d\n", error);
+		goto fail;
+	}
+
 	/* XXX: remove */
 	sc->sc_bus_ops = bwn_get_bus_ops(dev);
 	if ((error = BWN_BUS_OPS_ATTACH(dev))) {
@@ -6714,9 +6731,9 @@ bwn_antenna_sanitize(struct bwn_mac *mac, uint8_t n)
 	if (n == 0)
 		return (0);
 	if (mac->mac_phy.gmode)
-		mask = siba_sprom_get_ant_bg(sc->sc_dev);
+		mask = sc->sc_ant2g;
 	else
-		mask = siba_sprom_get_ant_a(sc->sc_dev);
+		mask = sc->sc_ant5g;
 	if (!(mask & (1 << (n - 1))))
 		return (0);
 	return (n);

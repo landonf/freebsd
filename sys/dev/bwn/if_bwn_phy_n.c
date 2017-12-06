@@ -121,8 +121,7 @@ bwn_phy_n_prepare_hw(struct bwn_mac *mac)
 {
 
 #ifdef	BWN_GPL_PHY
-	bwn_nphy_op_prepare_structs(mac);
-	return (0);
+	return (bwn_nphy_op_prepare_structs(mac));
 #else
 	return (ENXIO);
 #endif

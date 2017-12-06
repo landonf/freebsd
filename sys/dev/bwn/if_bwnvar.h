@@ -347,6 +347,7 @@ struct bwn_phy_g {
 	uint16_t			pg_radioctx_overval;
 	uint16_t			pg_minlowsig[2];
 	uint16_t			pg_minlowsigpos[2];
+	uint16_t			pg_pa0maxpwr;
 	int8_t				*pg_tssi2dbm;
 	int				pg_idletssi;
 	int				pg_curtssi;
@@ -1074,6 +1075,9 @@ struct bwn_softc {
 	struct bwn_led			sc_leds[BWN_LED_MAX];
 	int				sc_led_idle;
 	int				sc_led_blink;
+
+	uint8_t				sc_ant2g;	/**< available 2GHz antennas */
+	uint8_t				sc_ant5g;	/**< available 5GHz antennas */
 
 	struct bwn_tx_radiotap_header	sc_tx_th;
 	struct bwn_rx_radiotap_header	sc_rx_th;

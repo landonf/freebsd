@@ -161,33 +161,25 @@ bwn_phy_g_attach(struct bwn_mac *mac)
 	int8_t bg;
 	int error;
 
-	error = bhnd_nvram_getvar_int8(sc->sc_dev, BHND_NVAR_PA0ITSSIT, &bg);
-	if (error) {
-		device_printf(sc->sc_dev, "error reading %s from NVRAM: %d\n",
-		    BHND_NVAR_PA0ITSSIT, error);
-		return (error);
-	}
+	/* Fetch SPROM configuration */
+#define	BWN_PHY_G_READVAR(_dev, _type, _name, _result)		\
+do {									\
+	error = bhnd_nvram_getvar_ ##_type((_dev), (_name), (_result));	\
+	if (error) {							\
+		device_printf((_dev), "NVRAM variable %s unreadable: "	\
+		    "%d", (_name), error);				\
+		return (error);						\
+	}								\
+} while(0)
 
-	error = bhnd_nvram_getvar_int16(sc->sc_dev, BHND_NVAR_PA0B0, &pab0);
-	if (error) {
-		device_printf(sc->sc_dev, "error reading %s from NVRAM: %d\n",
-		    BHND_NVAR_PA0B0, error);
-		return (error);
-	}
+	BWN_PHY_G_READVAR(sc->sc_dev, int8, BHND_NVAR_PA0ITSSIT, &bg);
+	BWN_PHY_G_READVAR(sc->sc_dev, int16, BHND_NVAR_PA0B0, &pab0);
+	BWN_PHY_G_READVAR(sc->sc_dev, int16, BHND_NVAR_PA0B1, &pab1);
+	BWN_PHY_G_READVAR(sc->sc_dev, int16, BHND_NVAR_PA0B2, &pab2);
+	BWN_PHY_G_READVAR(sc->sc_dev, int16, BHND_NVAR_PA0MAXPWR,
+	    &pg->pg_pa0maxpwr);
 
-	error = bhnd_nvram_getvar_int16(sc->sc_dev, BHND_NVAR_PA0B1, &pab1);
-	if (error) {
-		device_printf(sc->sc_dev, "error reading %s from NVRAM: %d\n",
-		    BHND_NVAR_PA0B1, error);
-		return (error);
-	}
-
-	error = bhnd_nvram_getvar_int16(sc->sc_dev, BHND_NVAR_PA0B2, &pab2);
-	if (error) {
-		device_printf(sc->sc_dev, "error reading %s from NVRAM: %d\n",
-		    BHND_NVAR_PA0B2, error);
-		return (error);
-	}
+#undef	BWN_PHY_G_READVAR
 
 	// XXX TODO: 0x4301 is a PCI ID, not a chip ID.
 	if ((sc->sc_cid.chip_id == 0x4301) && (phy->rf_ver != 0x2050))
@@ -684,13 +676,13 @@ bwn_phy_g_recalc_txpwr(struct bwn_mac *mac, int ignore_tssi)
 	pg->pg_avgtssi = tssi;
 	KASSERT(tssi < BWN_TSSI_MAX, ("%s:%d: fail", __func__, __LINE__));
 
-	max = siba_sprom_get_maxpwr_bg(sc->sc_dev);
+	max = pg->pg_pa0maxpwr;
 	if (sc->sc_board_info.board_flags & BHND_BFL_PACTRL)
 		max -= 3;
 	if (max >= 120) {
 		device_printf(sc->sc_dev, "invalid max TX-power value\n");
 		max = 80;
-		siba_sprom_set_maxpwr_bg(sc->sc_dev, max);
+		pg->pg_pa0maxpwr = max;
 	}
 
 	power = MIN(MAX((phy->txpower < 0) ? 0 : (phy->txpower << 2), 0), max) -

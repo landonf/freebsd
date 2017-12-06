@@ -73,7 +73,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhnd_ids.h>
 
 #include <dev/bhnd/cores/pmu/bhnd_pmu.h>
-
 #include <dev/bhnd/cores/chipc/chipc.h>
 
 #include <dev/bwn/if_bwnreg.h>
@@ -92,6 +91,8 @@ __FBSDID("$FreeBSD$");
 #include <gnu/dev/bwn/phy_n/if_bwn_radio_2056.h>
 #include <gnu/dev/bwn/phy_n/if_bwn_radio_2057.h>
 #include <gnu/dev/bwn/phy_n/if_bwn_phy_n_core.h>
+
+#include "bhnd_nvram_map.h"
 
 struct bwn_nphy_txgains {
 	uint16_t tx_lpf[2];
@@ -2818,7 +2819,7 @@ static void bwn_nphy_gain_ctl_workarounds(struct bwn_mac *mac)
 		bwn_nphy_gain_ctl_workarounds_rev1_2(mac);
 }
 
-static void bwn_nphy_workarounds_rev7plus(struct bwn_mac *mac)
+static int bwn_nphy_workarounds_rev7plus(struct bwn_mac *mac)
 {
 	struct bwn_softc *sc = mac->mac_sc;
 	struct bwn_phy *phy = &mac->mac_phy;
@@ -3261,9 +3262,11 @@ static void bwn_nphy_workarounds_rev7plus(struct bwn_mac *mac)
 	bwn_ntab_write_bulk(mac, BWN_NTAB16(8, 0x1C), 4,
 			    aux_adc_gain_rev7);
 	*/
+
+	return (0);
 }
 
-static void bwn_nphy_workarounds_rev3plus(struct bwn_mac *mac)
+static int bwn_nphy_workarounds_rev3plus(struct bwn_mac *mac)
 {
 	struct bwn_softc *sc = mac->mac_sc;
 	struct bwn_phy_n *nphy = mac->mac_phy.phy_n;
@@ -3294,9 +3297,11 @@ static void bwn_nphy_workarounds_rev3plus(struct bwn_mac *mac)
 	};
 	uint16_t *vmid, *gain;
 
+	const char *pdet_range_var;
 	uint8_t pdet_range;
 	uint16_t tmp16;
 	uint32_t tmp32;
+	int error;
 
 	BWN_PHY_WRITE(mac, BWN_NPHY_FORCEFRONT0, 0x1f8);
 	BWN_PHY_WRITE(mac, BWN_NPHY_FORCEFRONT1, 0x1f8);
@@ -3354,9 +3359,18 @@ static void bwn_nphy_workarounds_rev3plus(struct bwn_mac *mac)
 	bwn_ntab_write(mac, BWN_NTAB16(8, 16), 2);
 
 	if (bwn_current_band(mac) == BWN_BAND_2G)
-		pdet_range = siba_sprom_get_fem_2ghz_pdet_range(sc->sc_dev);
+		pdet_range_var = BHND_NVAR_PDETRANGE2G;
 	else
-		pdet_range = siba_sprom_get_fem_5ghz_pdet_range(sc->sc_dev);
+		pdet_range_var = BHND_NVAR_PDETRANGE5G;
+
+	error = bhnd_nvram_getvar_uint8(sc->sc_dev, pdet_range_var,
+	    &pdet_range);
+	if (error) {
+		BWN_ERRPRINTF(mac->mac_sc, "Error reading PDet range %s from "
+		    "NVRAM: %d\n", pdet_range_var, error);
+		return (error);
+	}
+
 	/* uint16_t min() */
 	vmid = vmids[min(pdet_range, 4)];
 	gain = gains[min(pdet_range, 4)];
@@ -3470,9 +3484,11 @@ static void bwn_nphy_workarounds_rev3plus(struct bwn_mac *mac)
 
 	if (mac->mac_phy.rev >= 6 && sc->sc_board_info.board_flags2 & BHND_BFL2_SINGLEANT_CCK)
 		; /* TODO: 0x0080000000000000 HF */
+
+	return (0);
 }
 
-static void bwn_nphy_workarounds_rev1_2(struct bwn_mac *mac)
+static int bwn_nphy_workarounds_rev1_2(struct bwn_mac *mac)
 {
 	struct bwn_softc *sc = mac->mac_sc;
 	struct bwn_phy *phy = &mac->mac_phy;
@@ -3557,13 +3573,16 @@ static void bwn_nphy_workarounds_rev1_2(struct bwn_mac *mac)
 	if (mac->mac_phy.rev == 2)
 		BWN_PHY_SET(mac, BWN_NPHY_FINERX2_CGC,
 				BWN_NPHY_FINERX2_CGC_DECGC);
+
+	return (0);
 }
 
 /* http://bcm-v4.sipsolutions.net/802.11/PHY/N/Workarounds */
-static void bwn_nphy_workarounds(struct bwn_mac *mac)
+static int bwn_nphy_workarounds(struct bwn_mac *mac)
 {
 	struct bwn_phy *phy = &mac->mac_phy;
 	struct bwn_phy_n *nphy = phy->phy_n;
+	int error;
 
 	if (bwn_current_band(mac) == BWN_BAND_5G)
 		bwn_nphy_classifier(mac, 1, 0);
@@ -3578,14 +3597,19 @@ static void bwn_nphy_workarounds(struct bwn_mac *mac)
 
 	/* TODO: rev19+ */
 	if (mac->mac_phy.rev >= 7)
-		bwn_nphy_workarounds_rev7plus(mac);
+		error = bwn_nphy_workarounds_rev7plus(mac);
 	else if (mac->mac_phy.rev >= 3)
-		bwn_nphy_workarounds_rev3plus(mac);
+		error = bwn_nphy_workarounds_rev3plus(mac);
 	else
-		bwn_nphy_workarounds_rev1_2(mac);
+		error = bwn_nphy_workarounds_rev1_2(mac);
+
+	if (error)
+		return (error);
 
 	if (nphy->hang_avoid)
 		bwn_nphy_stay_in_carrier_search(mac, 0);
+
+	return (0);
 }
 
 /**************************************************
@@ -3859,7 +3883,7 @@ static void bwn_nphy_tx_power_ctrl(struct bwn_mac *mac, bool enable)
 }
 
 /* http://bcm-v4.sipsolutions.net/802.11/PHY/N/TxPwrFix */
-static void bwn_nphy_tx_power_fix(struct bwn_mac *mac)
+static int bwn_nphy_tx_power_fix(struct bwn_mac *mac)
 {
 	struct bwn_softc *sc = mac->mac_sc;
 	struct bwn_phy_n *nphy = mac->mac_phy.phy_n;
@@ -3883,22 +3907,36 @@ static void bwn_nphy_tx_power_fix(struct bwn_mac *mac)
 		txpi[0] = 72;
 		txpi[1] = 72;
 	} else {
+#define	BWN_NPHY_GET_TXPI(_name, _result)				\
+do {									\
+	int error;							\
+	error = bhnd_nvram_getvar_uint8(sc->sc_dev, (_name),		\
+	    (_result));							\
+	if (error) {							\
+		device_printf(sc->sc_dev, "NVRAM variable %s "		\
+		     "unreadable: %d", (_name), error);			\
+		return (error);						\
+	}								\
+} while(0)
+
 		if (bwn_current_band(mac) == BWN_BAND_2G) {
-			txpi[0] = siba_sprom_get_txpid_2g_0(sc->sc_dev);
-			txpi[1] = siba_sprom_get_txpid_2g_1(sc->sc_dev);
+			BWN_NPHY_GET_TXPI(BHND_NVAR_TXPID2GA0, &txpi[0]);
+			BWN_NPHY_GET_TXPI(BHND_NVAR_TXPID2GA1, &txpi[1]);
 		} else if (freq >= 4900 && freq < 5100) {
-			txpi[0] = siba_sprom_get_txpid_5gl_0(sc->sc_dev);
-			txpi[1] = siba_sprom_get_txpid_5gl_1(sc->sc_dev);
+			BWN_NPHY_GET_TXPI(BHND_NVAR_TXPID5GLA0, &txpi[0]);
+			BWN_NPHY_GET_TXPI(BHND_NVAR_TXPID5GLA1, &txpi[1]);
 		} else if (freq >= 5100 && freq < 5500) {
-			txpi[0] = siba_sprom_get_txpid_5g_0(sc->sc_dev);
-			txpi[1] = siba_sprom_get_txpid_5g_1(sc->sc_dev);
+			BWN_NPHY_GET_TXPI(BHND_NVAR_TXPID5GA0, &txpi[0]);
+			BWN_NPHY_GET_TXPI(BHND_NVAR_TXPID5GA1, &txpi[1]);
 		} else if (freq >= 5500) {
-			txpi[0] = siba_sprom_get_txpid_5gh_0(sc->sc_dev);
-			txpi[1] = siba_sprom_get_txpid_5gh_1(sc->sc_dev);
+			BWN_NPHY_GET_TXPI(BHND_NVAR_TXPID5GHA0, &txpi[0]);
+			BWN_NPHY_GET_TXPI(BHND_NVAR_TXPID5GHA1, &txpi[1]);
 		} else {
 			txpi[0] = 91;
 			txpi[1] = 91;
 		}
+
+#undef	BWN_NPHY_GET_TXPI
 	}
 	if (mac->mac_phy.rev < 7 &&
 	    (txpi[0] < 40 || txpi[0] > 100 || txpi[1] < 40 || txpi[1] > 100))
@@ -3967,6 +4005,8 @@ static void bwn_nphy_tx_power_fix(struct bwn_mac *mac)
 
 	if (nphy->hang_avoid)
 		bwn_nphy_stay_in_carrier_search(mac, 0);
+
+	return (0);
 }
 
 static void bwn_nphy_ipa_internal_tssi_setup(struct bwn_mac *mac)
@@ -4277,7 +4317,7 @@ static void bwn_nphy_tx_power_ctl_setup(struct bwn_mac *mac)
 	}
 
 	if (mac->mac_phy.rev >= 3) {
-		if (siba_sprom_get_fem_2ghz_tssipos(sc->sc_dev))
+		if (nphy->tsspos_2g)
 			BWN_PHY_SET(mac, BWN_NPHY_TXPCTL_ITSSI, 0x4000);
 		if (mac->mac_phy.rev >= 7) {
 			for (c = 0; c < 2; c++) {
@@ -6178,9 +6218,21 @@ static int bwn_phy_initn(struct bwn_mac *mac)
 	bool do_cal = false;
 
 	if (sc->sc_pmu == NULL) {
-		device_printf(sc->sc_dev, "no PMU; cannot configure spurious "
+		BWN_ERRPRINTF(mac->mac_sc, "no PMU; cannot configure spurious "
 		    "signal avoidance\n");
 		return (ENXIO);
+	}
+
+	if (mac->mac_phy.rev >= 3) {
+		error = bhnd_nvram_getvar_uint8(sc->sc_dev, BHND_NVAR_TSSIPOS2G,
+		    &nphy->tsspos_2g);
+		if (error) {
+			BWN_ERRPRINTF(mac->mac_sc, "Error reading %s from "
+			    "NVRAM: %d\n", BHND_NVAR_TSSIPOS2G, error);
+			return (error);
+		}
+	} else {
+		nphy->tsspos_2g = 0;
 	}
 
 	if ((mac->mac_phy.rev >= 3) &&
@@ -6272,7 +6324,8 @@ static int bwn_phy_initn(struct bwn_mac *mac)
 		bwn_nphy_ext_pa_set_tx_dig_filters(mac);
 	}
 
-	bwn_nphy_workarounds(mac);
+	if ((error = bwn_nphy_workarounds(mac)))
+		return (error);
 
 	/* Reset CCA, in init code it differs a little from standard way */
 	bwn_phy_force_clock(mac, 1);
@@ -6297,7 +6350,8 @@ static int bwn_phy_initn(struct bwn_mac *mac)
 
 	tx_pwr_state = nphy->txpwrctrl;
 	bwn_nphy_tx_power_ctrl(mac, false);
-	bwn_nphy_tx_power_fix(mac);
+	if ((error = bwn_nphy_tx_power_fix(mac)))
+		return (error);
 	bwn_nphy_tx_power_ctl_idle_tssi(mac);
 	bwn_nphy_tx_power_ctl_setup(mac);
 	bwn_nphy_tx_gain_table_upload(mac);
@@ -6403,7 +6457,7 @@ static void bwn_nphy_pmu_spur_avoid(struct bwn_mac *mac,
 }
 
 /* http://bcm-v4.sipsolutions.net/802.11/PHY/N/ChanspecSetup */
-static void bwn_nphy_channel_setup(struct bwn_mac *mac,
+static int bwn_nphy_channel_setup(struct bwn_mac *mac,
 				const struct bwn_phy_n_sfo_cfg *e,
 				struct ieee80211_channel *new_channel)
 {
@@ -6411,6 +6465,7 @@ static void bwn_nphy_channel_setup(struct bwn_mac *mac,
 	struct bwn_phy *phy = &mac->mac_phy;
 	struct bwn_phy_n *nphy = mac->mac_phy.phy_n;
 	int ch = new_channel->ic_ieee;
+	int error;
 	uint16_t tmp16;
 
 	if (bwn_channel_band(mac, new_channel) == BWN_BAND_5G) {
@@ -6449,8 +6504,10 @@ static void bwn_nphy_channel_setup(struct bwn_mac *mac,
 			BWN_PHY_MASK(mac, BWN_PHY_B_TEST, ~0x840);
 	}
 
-	if (!nphy->txpwrctrl)
-		bwn_nphy_tx_power_fix(mac);
+	if (!nphy->txpwrctrl) {
+		if ((error = bwn_nphy_tx_power_fix(mac)))
+			return (error);
+	}
 
 	if (mac->mac_phy.rev < 3)
 		bwn_nphy_adjust_lna_gain_table(mac);
@@ -6513,6 +6570,8 @@ static void bwn_nphy_channel_setup(struct bwn_mac *mac,
 
 	if (phy->rev >= 3)
 		bwn_nphy_spur_workaround(mac);
+
+	return (0);
 }
 
 /* http://bcm-v4.sipsolutions.net/802.11/PHY/N/SetChanspec */
@@ -6527,6 +6586,7 @@ static int bwn_nphy_set_channel(struct bwn_mac *mac,
 	const struct bwn_nphy_chantabent_rev7 *tabent_r7 = NULL;
 	const struct bwn_nphy_chantabent_rev7_2g *tabent_r7_2g = NULL;
 
+	int error;
 	uint8_t tmp;
 
 	if (phy->rev >= 19) {
@@ -6573,6 +6633,7 @@ static int bwn_nphy_set_channel(struct bwn_mac *mac,
 
 	if (phy->rev >= 19) {
 		/* TODO */
+		error = ENODEV;
 	} else if (phy->rev >= 7) {
 		const struct bwn_phy_n_sfo_cfg *phy_regs = tabent_r7 ?
 			&(tabent_r7->phy_regs) : &(tabent_r7_2g->phy_regs);
@@ -6584,20 +6645,22 @@ static int bwn_nphy_set_channel(struct bwn_mac *mac,
 		}
 
 		bwn_radio_2057_setup(mac, tabent_r7, tabent_r7_2g);
-		bwn_nphy_channel_setup(mac, phy_regs, channel);
+		error = bwn_nphy_channel_setup(mac, phy_regs, channel);
 	} else if (phy->rev >= 3) {
 		tmp = (bwn_channel_band(mac, channel) == BWN_BAND_5G) ? 4 : 0;
 		BWN_RF_SETMASK(mac, 0x08, 0xFFFB, tmp);
 		bwn_radio_2056_setup(mac, tabent_r3);
-		bwn_nphy_channel_setup(mac, &(tabent_r3->phy_regs), channel);
+		error = bwn_nphy_channel_setup(mac, &(tabent_r3->phy_regs),
+		    channel);
 	} else {
 		tmp = (bwn_channel_band(mac, channel) == BWN_BAND_5G) ? 0x0020 : 0x0050;
 		BWN_RF_SETMASK(mac, B2055_MASTER1, 0xFF8F, tmp);
 		bwn_radio_2055_setup(mac, tabent_r2);
-		bwn_nphy_channel_setup(mac, &(tabent_r2->phy_regs), channel);
+		error = bwn_nphy_channel_setup(mac, &(tabent_r2->phy_regs),
+		    channel);
 	}
 
-	return 0;
+	return (error);
 }
 
 /**************************************************
@@ -6618,12 +6681,13 @@ bwn_nphy_op_allocate(struct bwn_mac *mac)
 	return 0;
 }
 
-void
+int
 bwn_nphy_op_prepare_structs(struct bwn_mac *mac)
 {
 	struct bwn_softc *sc = mac->mac_sc;
 	struct bwn_phy *phy = &mac->mac_phy;
 	struct bwn_phy_n *nphy = phy->phy_n;
+	int error;
 
 	memset(nphy, 0, sizeof(*nphy));
 
@@ -6662,9 +6726,29 @@ bwn_nphy_op_prepare_structs(struct bwn_mac *mac)
 	}
 
 	if (mac->mac_phy.rev >= 3) {
-		nphy->ipa2g_on = siba_sprom_get_fem_2ghz_extpa_gain(sc->sc_dev) == 2;
-		nphy->ipa5g_on = siba_sprom_get_fem_5ghz_extpa_gain(sc->sc_dev) == 2;
+		uint8_t extpa_gain2g, extpa_gain5g;
+
+		error = bhnd_nvram_getvar_uint8(sc->sc_dev,
+		    BHND_NVAR_EXTPAGAIN2G, &extpa_gain2g);
+		if (error) {
+			BWN_ERRPRINTF(mac->mac_sc, "Error reading 2GHz EPA "
+			    "gain configuration from NVRAM: %d\n", error);
+			return (error);
+		}
+
+		error = bhnd_nvram_getvar_uint8(sc->sc_dev,
+		    BHND_NVAR_EXTPAGAIN5G, &extpa_gain5g);
+		if (error) {
+			BWN_ERRPRINTF(mac->mac_sc, "Error reading 5GHz EPA "
+			    "gain configuration from NVRAM: %d\n", error);
+			return (error);
+		}
+
+		nphy->ipa2g_on = (extpa_gain2g == 2);
+		nphy->ipa5g_on = (extpa_gain5g == 2);
 	}
+
+	return (0);
 }
 
 void

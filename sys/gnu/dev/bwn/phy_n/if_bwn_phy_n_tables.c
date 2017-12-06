@@ -80,6 +80,8 @@ __FBSDID("$FreeBSD$");
 #include <gnu/dev/bwn/phy_n/if_bwn_phy_n_tables.h>
 #include <gnu/dev/bwn/phy_n/if_bwn_phy_n_core.h>
 
+#include "bhnd_nvram_map.h"
+
 static const uint8_t bwn_ntab_adjustpower0[] = {
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -3560,12 +3562,30 @@ static void bwn_nphy_tables_init_shared_lut(struct bwn_mac *mac)
 	ntab_upload(mac, BWN_NTAB_C1_LOFEEDTH_R3, bwn_ntab_loftlt1_r3);
 }
 
+static int bwn_nphy_tables_get_antswlut(struct bwn_mac *mac, uint8_t *antswlut)
+{
+	struct ieee80211com	*ic = &mac->mac_sc->sc_ic;
+	struct bwn_softc	*sc = mac->mac_sc;
+	const char		*antswlut_var;
+	int			 error;
+
+	if (IEEE80211_IS_CHAN_5GHZ(ic->ic_curchan))
+		antswlut_var = BHND_NVAR_ANTSWCTL5G;
+	else
+		antswlut_var = BHND_NVAR_ANTSWCTL2G;
+
+	error = bhnd_nvram_getvar_uint8(sc->sc_dev, antswlut_var, antswlut);
+	if (error)
+		BWN_ERRPRINTF(mac->mac_sc, "NVRAM variable %s unreadable: %d",
+		    antswlut_var, error);
+
+	return (error);
+}
+
 static void bwn_nphy_tables_init_rev7_volatile(struct bwn_mac *mac)
 {
-	struct ieee80211com *ic = &mac->mac_sc->sc_ic;
-	struct bwn_softc *sc = mac->mac_sc;
-	uint8_t antswlut;
-	int core, offset, i;
+	int	core, error, offset, i;
+	uint8_t	antswlut;
 
 	const int antswlut0_offsets[] = { 0, 4, 8, }; /* Offsets for values */
 	const uint8_t antswlut0_values[][3] = {
@@ -3573,10 +3593,8 @@ static void bwn_nphy_tables_init_rev7_volatile(struct bwn_mac *mac)
 		{ 0x2, 0x18, 0x2 }, /* Core 1 */
 	};
 
-	if (IEEE80211_IS_CHAN_5GHZ(ic->ic_curchan))
-		antswlut = siba_sprom_get_fem_5ghz_antswlut(sc->sc_dev);
-	else
-		antswlut = siba_sprom_get_fem_2ghz_antswlut(sc->sc_dev);
+	if ((error = bwn_nphy_tables_get_antswlut(mac, &antswlut)))
+		return;
 
 	switch (antswlut) {
 	case 0:
@@ -3634,14 +3652,11 @@ static void bwn_nphy_tables_init_rev7(struct bwn_mac *mac)
 
 static void bwn_nphy_tables_init_rev3(struct bwn_mac *mac)
 {
-	struct ieee80211com *ic = &mac->mac_sc->sc_ic;
-	struct bwn_softc *sc = mac->mac_sc;
-	uint8_t antswlut;
+	int	error;
+	uint8_t	antswlut;
 
-	if (IEEE80211_IS_CHAN_5GHZ(ic->ic_curchan))
-		antswlut = siba_sprom_get_fem_5ghz_antswlut(sc->sc_dev);
-	else
-		antswlut = siba_sprom_get_fem_2ghz_antswlut(sc->sc_dev);
+	if ((error = bwn_nphy_tables_get_antswlut(mac, &antswlut)))
+		return;
 
 	/* Static tables */
 	if (mac->mac_phy.phy_do_full_init) {
@@ -3775,7 +3790,8 @@ const uint32_t *bwn_nphy_get_tx_gain_table(struct bwn_mac *mac)
 	struct ieee80211com *ic = &mac->mac_sc->sc_ic;
 	struct bwn_softc *sc = mac->mac_sc;
 	struct bwn_phy *phy = &mac->mac_phy;
-	int is_5ghz;
+	int error, is_5ghz;
+	uint8_t extpa_gain;
 
 	/* XXX ideally we'd have is2, is5, etc */
 	is_5ghz = !! IEEE80211_IS_CHAN_5GHZ(ic->ic_curchan);
@@ -3793,7 +3809,16 @@ const uint32_t *bwn_nphy_get_tx_gain_table(struct bwn_mac *mac)
 		case 5:
 			return bwn_ntab_tx_gain_epa_rev5_5g;
 		case 4:
-			return siba_sprom_get_fem_5ghz_extpa_gain(sc->sc_dev) == 3 ?
+			error = bhnd_nvram_getvar_uint8(sc->sc_dev,
+			    BHND_NVAR_EXTPAGAIN5G, &extpa_gain);
+			if (error) {
+				BWN_ERRPRINTF(mac->mac_sc, "Error reading EPA "
+				    "gain configuration (%s) from NVRAM: %d\n",
+				    BHND_NVAR_EXTPAGAIN5G, error);
+				return (NULL);
+			}
+
+			return (extpa_gain == 3) ?
 				bwn_ntab_tx_gain_epa_rev4_5g :
 				bwn_ntab_tx_gain_epa_rev4_hi_pwr_5g;
 		case 3:
@@ -3807,7 +3832,16 @@ const uint32_t *bwn_nphy_get_tx_gain_table(struct bwn_mac *mac)
 		switch (phy->rev) {
 		case 6:
 		case 5:
-			if (siba_sprom_get_fem_5ghz_extpa_gain(sc->sc_dev) == 3)
+			error = bhnd_nvram_getvar_uint8(sc->sc_dev,
+			    BHND_NVAR_EXTPAGAIN2G, &extpa_gain);
+			if (error) {
+				BWN_ERRPRINTF(mac->mac_sc, "Error reading EPA "
+				    "gain configuration (%s) from NVRAM: %d\n",
+				    BHND_NVAR_EXTPAGAIN2G, error);
+				return (NULL);
+			}
+
+			if (extpa_gain == 3)
 				return bwn_ntab_tx_gain_epa_rev3_hi_pwr_2g;
 			/* fall through */
 		case 4:
@@ -3882,7 +3916,13 @@ struct bwn_nphy_gain_ctl_workaround_entry *bwn_nphy_get_gain_ctl_workaround_ent(
 
 	/* Some workarounds to the workarounds... */
 	if (!ghz5) {
-		uint8_t tr_iso = siba_sprom_get_fem_2ghz_tr_iso(sc->sc_dev);
+		uint8_t	tr_iso;
+		int	error;
+
+		error = bhnd_nvram_getvar_uint8(sc->sc_dev, BHND_NVAR_TRISO2G,
+		    &tr_iso);
+		BWN_ERRPRINTF(mac->mac_sc, "Error reading %s from NVRAM: %d\n",
+		    BHND_NVAR_TRISO2G, error);
 
 		if (tr_iso > 7)
 			tr_iso = 3;

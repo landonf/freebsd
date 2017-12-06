@@ -43,19 +43,6 @@
  * Compatiblity shim state.
  */
 struct bwn_bhnd_ctx {
-	device_t	chipc_dev;	/**< ChipCommon device */
-	device_t	gpio_dev;	/**< GPIO device */
-
-	device_t	pmu_dev;	/**< PMU device, or NULL if no PMU */
-	uint32_t	pmu_cctl_addr;	/**< chipctrl_addr target of
-					     reads/writes to/from the
-					     chipctrl_data register */
-
-	uint8_t		sromrev;	/**< SROM format revision */
-
-	/* NVRAM variables for which bwn(4) expects the bus to manage storage
-	 * for (and allow writes). */	
-	uint8_t		pa0maxpwr;	/**< 2GHz max power (bwn-writable) */
 };
 
 /**
@@ -67,29 +54,5 @@ bwn_bhnd_get_ctx(device_t dev)
 	struct bwn_softc *sc = device_get_softc(dev);
 	return (sc->sc_bus_ctx);
 }
-
-/**
- * Fetch an NVRAM variable via bhnd_nvram_getvar_*().
- */
-#define	BWN_BHND_NVRAM_FETCH_VAR(_dev, _type, _name, _result)		\
-do {									\
-	int error;							\
-									\
-	error = bhnd_nvram_getvar_ ## _type(_dev, _name, _result);	\
-	if (error) {							\
-		panic("NVRAM variable %s unreadable: %d", _name,	\
-		    error);						\
-	}								\
-} while(0)
-
-/**
- * Fetch and return an NVRAM variable via bhnd_nvram_getvar_*().
- */
-#define	BWN_BHND_NVRAM_RETURN_VAR(_dev, _type, _name)			\
-do {									\
-	_type ## _t	value;						\
-	BWN_BHND_NVRAM_FETCH_VAR(_dev, _type, _name, &value);		\
-	return (value);							\
-} while(0)
 
 #endif /* _IF_BWN_SIBA_COMPAT_H_ */

@@ -88,7 +88,9 @@ __FBSDID("$FreeBSD$");
 #include <dev/bwn/if_bwn_phy_common.h>
 #include <dev/bwn/if_bwn_phy_lp.h>
 
-static void	bwn_phy_lp_readsprom(struct bwn_mac *);
+#include "bhnd_nvram_map.h"
+
+static int	bwn_phy_lp_readsprom(struct bwn_mac *);
 static void	bwn_phy_lp_bbinit(struct bwn_mac *);
 static void	bwn_phy_lp_txpctl_init(struct bwn_mac *);
 static void	bwn_phy_lp_calib(struct bwn_mac *);
@@ -421,7 +423,9 @@ bwn_phy_lp_init(struct bwn_mac *mac)
 		return (ENXIO);
 	}
 
-	bwn_phy_lp_readsprom(mac);	/* XXX bad place */
+	if ((error = bwn_phy_lp_readsprom(mac)))
+		return (error);
+
 	bwn_phy_lp_bbinit(mac);
 
 	/* initialize RF */
@@ -603,31 +607,62 @@ bwn_phy_lp_task_60s(struct bwn_mac *mac)
 	bwn_phy_lp_calib(mac);
 }
 
-static void
+static int
 bwn_phy_lp_readsprom(struct bwn_mac *mac)
 {
 	struct bwn_phy_lp *plp = &mac->mac_phy.phy_lp;
 	struct bwn_softc *sc = mac->mac_sc;
 	struct ieee80211com *ic = &sc->sc_ic;
 
+#define	BWN_PHY_LP_READVAR(_dev, _type, _name, _result)		\
+do {									\
+	int error;							\
+									\
+	error = bhnd_nvram_getvar_ ##_type((_dev), (_name), (_result));	\
+	if (error) {							\
+		device_printf((_dev), "NVRAM variable %s unreadable: "	\
+		    "%d", (_name), error);				\
+		return (error);						\
+	}								\
+} while(0)
+
 	if (IEEE80211_IS_CHAN_2GHZ(ic->ic_curchan)) {
-		plp->plp_txisoband_m = siba_sprom_get_tri2g(sc->sc_dev);
-		plp->plp_bxarch = siba_sprom_get_bxa2g(sc->sc_dev);
-		plp->plp_rxpwroffset = siba_sprom_get_rxpo2g(sc->sc_dev);
-		plp->plp_rssivf = siba_sprom_get_rssismf2g(sc->sc_dev);
-		plp->plp_rssivc = siba_sprom_get_rssismc2g(sc->sc_dev);
-		plp->plp_rssigs = siba_sprom_get_rssisav2g(sc->sc_dev);
-		return;
+		BWN_PHY_LP_READVAR(sc->sc_dev, uint8, BHND_NVAR_TRI2G,
+		    &plp->plp_txisoband_m);
+		BWN_PHY_LP_READVAR(sc->sc_dev, uint8, BHND_NVAR_BXA2G,
+		    &plp->plp_bxarch);
+		BWN_PHY_LP_READVAR(sc->sc_dev, uint8, BHND_NVAR_RXPO2G,
+		    &plp->plp_rxpwroffset);
+		BWN_PHY_LP_READVAR(sc->sc_dev, uint8, BHND_NVAR_RSSISMF2G,
+		    &plp->plp_rssivf);
+		BWN_PHY_LP_READVAR(sc->sc_dev, uint8, BHND_NVAR_RSSISMC2G,
+		    &plp->plp_rssivc);
+		BWN_PHY_LP_READVAR(sc->sc_dev, uint8, BHND_NVAR_RSSISAV2G,
+		    &plp->plp_rssigs);
+
+		return (0);
 	}
 
-	plp->plp_txisoband_l = siba_sprom_get_tri5gl(sc->sc_dev);
-	plp->plp_txisoband_m = siba_sprom_get_tri5g(sc->sc_dev);
-	plp->plp_txisoband_h = siba_sprom_get_tri5gh(sc->sc_dev);
-	plp->plp_bxarch = siba_sprom_get_bxa5g(sc->sc_dev);
-	plp->plp_rxpwroffset = siba_sprom_get_rxpo5g(sc->sc_dev);
-	plp->plp_rssivf = siba_sprom_get_rssismf5g(sc->sc_dev);
-	plp->plp_rssivc = siba_sprom_get_rssismc5g(sc->sc_dev);
-	plp->plp_rssigs = siba_sprom_get_rssisav5g(sc->sc_dev);
+	BWN_PHY_LP_READVAR(sc->sc_dev, uint8, BHND_NVAR_TRI5GL,
+	    &plp->plp_txisoband_l);
+	BWN_PHY_LP_READVAR(sc->sc_dev, uint8, BHND_NVAR_TRI5G,
+	    &plp->plp_txisoband_m);
+	BWN_PHY_LP_READVAR(sc->sc_dev, uint8, BHND_NVAR_TRI5GH,
+	    &plp->plp_txisoband_h);
+	BWN_PHY_LP_READVAR(sc->sc_dev, uint8, BHND_NVAR_BXA5G,
+	    &plp->plp_bxarch);
+	BWN_PHY_LP_READVAR(sc->sc_dev, uint8, BHND_NVAR_RXPO5G,
+	    &plp->plp_rxpwroffset);
+	BWN_PHY_LP_READVAR(sc->sc_dev, uint8, BHND_NVAR_RSSISMF5G,
+	    &plp->plp_rssivf);
+	BWN_PHY_LP_READVAR(sc->sc_dev, uint8, BHND_NVAR_RSSISMC5G,
+	    &plp->plp_rssivc);
+	BWN_PHY_LP_READVAR(sc->sc_dev, uint8, BHND_NVAR_RSSISAV5G,
+	    &plp->plp_rssigs);
+
+#undef	BWN_PHY_LP_READVAR
+
+	return (0);
 }
 
 static void
