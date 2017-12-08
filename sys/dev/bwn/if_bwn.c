@@ -1313,7 +1313,7 @@ bwn_attach_core(struct bwn_mac *mac)
 	    iost,
 	    have_a,
 	    have_bg,
-	    siba_get_pci_device(sc->sc_dev),
+	    sc->sc_board_info.board_devid,
 	    sc->sc_cid.chip_id);
 #endif
 
