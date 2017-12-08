@@ -4,7 +4,6 @@
 
 KMOD=	if_bwn
 SRCS=	if_bwn.c if_bwnreg.h if_bwnvar.h
-SRCS+=	if_bwn_siba_compat.c
 SRCS+=	if_bwn_util.c
 
 # PHY

@@ -78,8 +78,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/cores/chipc/chipc.h>
 #include <dev/bhnd/cores/pmu/bhnd_pmu.h>
 
-#include <dev/bwn/if_bwn_siba.h>
-
 #include <dev/bwn/if_bwnreg.h>
 #include <dev/bwn/if_bwnvar.h>
 
@@ -517,12 +515,6 @@ static const struct bhnd_device bridge_devices[] = {
 	BHND_DEVICE_END
 };
 
-static const struct bwn_bus_ops *
-bwn_get_bus_ops(device_t dev)
-{
-	return (&bwn_bhnd_bus_ops);
-}
-
 static int
 bwn_probe(device_t dev)
 {
@@ -611,14 +603,6 @@ bwn_attach(device_t dev)
 		goto fail;
 	}
 
-	/* XXX: remove */
-	sc->sc_bus_ops = bwn_get_bus_ops(dev);
-	if ((error = BWN_BUS_OPS_ATTACH(dev))) {
-		device_printf(sc->sc_dev,
-		    "bus-specific initialization failed (%d)\n", error);
-		goto fail;
-	}
-
 	if ((sc->sc_flags & BWN_FLAG_ATTACHED) == 0) {
 		bwn_attach_pre(sc);
 		bwn_sprom_bugfixes(dev);
@@ -692,7 +676,6 @@ fail:
 		    mac->mac_res_irq);
 	}
 
-	BWN_BUS_OPS_DETACH(dev);
 	free(mac, M_DEVBUF);
 	bhnd_release_pmu(dev);
 	bwn_release_bus_providers(sc);
@@ -888,7 +871,6 @@ bwn_detach(device_t dev)
 	mbufq_drain(&sc->sc_snd);
 	bwn_release_firmware(mac);
 	BWN_LOCK_DESTROY(sc);
-	BWN_BUS_OPS_DETACH(dev);
 
 	bwn_release_bus_providers(sc);
 
@@ -916,9 +898,8 @@ bwn_sprom_bugfixes(device_t dev)
 {
 	struct bwn_softc *sc = device_get_softc(dev);
 
-#define	BWN_ISDEV(_vendor, _device, _subvendor, _subdevice)		\
-	((siba_get_pci_vendor(dev) == PCI_VENDOR_##_vendor) &&		\
-	 (siba_get_pci_device(dev) == _device) &&			\
+#define	BWN_ISDEV(_device, _subvendor, _subdevice)		\
+	((sc->sc_board_info.board_devid == PCI_DEVID_##_device) &&	\
 	 (sc->sc_board_info.board_vendor == PCI_VENDOR_##_subvendor) &&	\
 	 (sc->sc_board_info.board_type == _subdevice))
 
@@ -929,16 +910,14 @@ bwn_sprom_bugfixes(device_t dev)
 	     sc->sc_board_info.board_rev > 0x40)
 		 sc->sc_board_info.board_flags |= BHND_BFL_PACTRL;
 
-	if (siba_get_type(dev) == SIBA_TYPE_PCI) {
-		if (BWN_ISDEV(BROADCOM, 0x4318, ASUSTEK, 0x100f) ||
-		    BWN_ISDEV(BROADCOM, 0x4320, DELL, 0x0003) ||
-		    BWN_ISDEV(BROADCOM, 0x4320, HP, 0x12f8) ||
-		    BWN_ISDEV(BROADCOM, 0x4320, LINKSYS, 0x0013) ||
-		    BWN_ISDEV(BROADCOM, 0x4320, LINKSYS, 0x0014) ||
-		    BWN_ISDEV(BROADCOM, 0x4320, LINKSYS, 0x0015) ||
-		    BWN_ISDEV(BROADCOM, 0x4320, MOTOROLA, 0x7010))
-			sc->sc_board_info.board_flags &= ~BHND_BFL_BTCOEX;
-	}
+	if (BWN_ISDEV(BCM4318_D11G, ASUSTEK, 0x100f) ||
+	    BWN_ISDEV(BCM4306_D11G, DELL, 0x0003) ||
+	    BWN_ISDEV(BCM4306_D11G, HP, 0x12f8) ||
+	    BWN_ISDEV(BCM4306_D11G, LINKSYS, 0x0013) ||
+	    BWN_ISDEV(BCM4306_D11G, LINKSYS, 0x0014) ||
+	    BWN_ISDEV(BCM4306_D11G, LINKSYS, 0x0015) ||
+	    BWN_ISDEV(BCM4306_D11G, MOTOROLA, 0x7010))
+		sc->sc_board_info.board_flags &= ~BHND_BFL_BTCOEX;
 #undef	BWN_ISDEV
 }
 
@@ -1358,12 +1337,12 @@ bwn_attach_core(struct bwn_mac *mac)
 	 * This is the whitelist of devices which we "believe"
 	 * the SPROM PHY config from.  The rest are "guessed".
 	 */
-	if (siba_get_pci_device(sc->sc_dev) != 0x4312 &&
-	    siba_get_pci_device(sc->sc_dev) != 0x4315 &&
-	    siba_get_pci_device(sc->sc_dev) != 0x4319 &&
-	    siba_get_pci_device(sc->sc_dev) != 0x4324 &&
-	    siba_get_pci_device(sc->sc_dev) != 0x4328 &&
-	    siba_get_pci_device(sc->sc_dev) != 0x432b) {
+	if (sc->sc_board_info.board_devid != PCI_DEVID_BCM4311_D11DUAL &&
+	    sc->sc_board_info.board_devid != PCI_DEVID_BCM4328_D11G &&
+	    sc->sc_board_info.board_devid != PCI_DEVID_BCM4318_D11DUAL &&
+	    sc->sc_board_info.board_devid != PCI_DEVID_BCM4306_D11DUAL &&
+	    sc->sc_board_info.board_devid != PCI_DEVID_BCM4321_D11N &&
+	    sc->sc_board_info.board_devid != PCI_DEVID_BCM4322_D11N) {
 		have_a = have_bg = 0;
 		if (mac->mac_phy.type == BWN_PHYTYPE_A)
 			have_a = 1;

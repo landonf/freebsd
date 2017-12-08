@@ -77,8 +77,6 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/bhnd/cores/pmu/bhnd_pmu.h>
 
-#include <dev/bwn/if_bwn_siba.h>
-
 #include <dev/bwn/if_bwnreg.h>
 #include <dev/bwn/if_bwnvar.h>
 

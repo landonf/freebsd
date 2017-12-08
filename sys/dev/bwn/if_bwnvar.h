@@ -36,8 +36,6 @@
 
 #include <dev/bhnd/bhnd.h>
 
-#include "if_bwn_siba.h"
-
 struct bwn_softc;
 struct bwn_mac;
 
@@ -1019,21 +1017,16 @@ enum bwn_quirk {
 
 struct bwn_softc {
 	device_t			sc_dev;
-	const struct bwn_bus_ops	*sc_bus_ops;
-#if !BWN_USE_SIBA
-	struct bhnd_board_info		 sc_board_info;
-	struct bhnd_chipid		 sc_cid;
-	uint32_t			 sc_quirks;	/**< @see bwn_quirk */
+	struct bhnd_board_info		sc_board_info;
+	struct bhnd_chipid		sc_cid;
+	uint32_t			sc_quirks;	/**< @see bwn_quirk */
 	struct bhnd_resource		*sc_mem_res;
-	int				 sc_mem_rid;
+	int				sc_mem_rid;
 
-	void				*sc_bus_ctx;
+	device_t			sc_chipc;	/**< ChipCommon device */
+	device_t			sc_gpio;	/**< GPIO device */
+	device_t			sc_pmu;		/**< PMU device, or NULL if unsupported */
 
-	device_t			 sc_chipc;	/**< ChipCommon device */
-	device_t			 sc_gpio;	/**< GPIO device */
-	device_t			 sc_pmu;	/**< PMU device, or NULL if unsupported */
-	
-#endif /* !BWN_USE_SIBA */
 	struct mtx			sc_mtx;
 	struct ieee80211com		sc_ic;
 	struct mbufq			sc_snd;

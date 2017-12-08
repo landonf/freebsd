@@ -6715,11 +6715,9 @@ bwn_nphy_op_prepare_structs(struct bwn_mac *mac)
 		if (mac->mac_phy.rev >= 2 &&
 		    (sc->sc_board_info.board_flags2 & BHND_BFL2_TXPWRCTRL_EN)) {
 			nphy->txpwrctrl = true;
-			if (siba_get_type(sc->sc_dev) == SIBA_TYPE_PCI) {
-				if ((siba_get_pci_device(sc->sc_dev) == 0x4328) ||
-				    (siba_get_pci_device(sc->sc_dev) == 0x432a))
-					nphy->pwg_gain_5ghz = true;
-			}
+			if ((sc->sc_board_info.board_devid == PCI_DEVID_BCM4321_D11N) ||
+			    (sc->sc_board_info.board_devid == PCI_DEVID_BCM4321_D11N5G))
+				nphy->pwg_gain_5ghz = true;
 		} else if (sc->sc_board_info.board_flags2 & BHND_BFL2_5G_PWRGAIN) {
 			nphy->pwg_gain_5ghz = true;
 		}
