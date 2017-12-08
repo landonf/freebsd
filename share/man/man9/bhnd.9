@@ -1309,8 +1309,13 @@ structure contains the following fields:
 .It Fa board_vendor
 Vendor ID of the board manufacturer (PCI-SIG assigned).
 .It Fa board_type
-Device ID.
-This is generally a Broadcom-assigned globally unique identifier.
+Board ID.
+This is generally a Broadcom-assigned globally unique identifier denoting the
+reference design from which the board was derived.
+.It Fa board_devid
+Identifies the wireless interface type. On PCI devices, this will default to the
+PCI device ID.
+On WiSoCs, the a PCI device ID will be supplied by NVRAM.
 .It Fa board_rev
 Board revision.
 .It Fa board_srom_rev
