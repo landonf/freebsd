@@ -569,7 +569,7 @@ bwn_attach(device_t dev)
 
 	/* Allocate our D11 register block and PMU state */
 	sc->sc_mem_rid = 0;
-	sc->sc_mem_res = bhnd_alloc_resource_any(dev, SYS_RES_MEMORY,
+	sc->sc_mem_res = bus_alloc_resource_any(dev, SYS_RES_MEMORY,
 	    &sc->sc_mem_rid, RF_ACTIVE);
 	if (sc->sc_mem_res == NULL) {
 		device_printf(sc->sc_dev, "couldn't allocate registers\n");
@@ -577,7 +577,7 @@ bwn_attach(device_t dev)
 	}
 	
 	if ((error = bhnd_alloc_pmu(sc->sc_dev))) {
-		bhnd_release_resource(sc->sc_dev, SYS_RES_MEMORY,
+		bus_release_resource(sc->sc_dev, SYS_RES_MEMORY,
 		    sc->sc_mem_rid, sc->sc_mem_res);
 		return (error);
 	}
@@ -864,7 +864,7 @@ bwn_detach(device_t dev)
 		bus_teardown_intr(dev, mac->mac_res_irq, mac->mac_intrhand);
 		mac->mac_intrhand = NULL;
 	}
-	bhnd_release_resource(dev, SYS_RES_MEMORY, sc->sc_mem_rid,
+	bus_release_resource(dev, SYS_RES_MEMORY, sc->sc_mem_rid,
 	    sc->sc_mem_res);
 	bus_release_resource(dev, SYS_RES_IRQ, mac->mac_rid_irq,
 	    mac->mac_res_irq);
@@ -5693,11 +5693,11 @@ bwn_pio_rxeof(struct bwn_pio_rxqueue *prq)
 	return (1);
 ready:
 	if (prq->prq_rev >= 8) {
-		bhnd_bus_read_multi_4(sc->sc_mem_res,
+		bus_read_multi_4(sc->sc_mem_res,
 		    prq->prq_base + BWN_PIO8_RXDATA, (void *)&rxhdr,
 		    sizeof(rxhdr));
 	} else {
-		bhnd_bus_read_multi_2(sc->sc_mem_res,
+		bus_read_multi_2(sc->sc_mem_res,
 		    prq->prq_base + BWN_PIO_RXDATA, (void *)&rxhdr,
 		    sizeof(rxhdr));
 	}
@@ -5738,7 +5738,7 @@ ready:
 	}
 	mp = mtod(m, unsigned char *);
 	if (prq->prq_rev >= 8) {
-		bhnd_bus_read_multi_4(sc->sc_mem_res,
+		bus_read_multi_4(sc->sc_mem_res,
 		    prq->prq_base + BWN_PIO8_RXDATA, (void *)mp, (totlen & ~3));
 		if (totlen & 3) {
 			v32 = bwn_pio_rx_read_4(prq, BWN_PIO8_RXDATA);
@@ -5755,7 +5755,7 @@ ready:
 			}
 		}
 	} else {
-		bhnd_bus_read_multi_2(sc->sc_mem_res,
+		bus_read_multi_2(sc->sc_mem_res,
 		    prq->prq_base + BWN_PIO_RXDATA, (void *)mp, (totlen & ~1));
 		if (totlen & 1) {
 			v16 = bwn_pio_rx_read_2(prq, BWN_PIO_RXDATA);
@@ -6771,7 +6771,7 @@ bwn_pio_write_multi_4(struct bwn_mac *mac, struct bwn_pio_txqueue *tq,
 	    BWN_PIO8_TXCTL_16_23 | BWN_PIO8_TXCTL_24_31;
 	bwn_pio_write_4(mac, tq, BWN_PIO8_TXCTL, ctl);
 
-	bhnd_bus_write_multi_4(sc->sc_mem_res, tq->tq_base + BWN_PIO8_TXDATA,
+	bus_write_multi_4(sc->sc_mem_res, tq->tq_base + BWN_PIO8_TXDATA,
 	    __DECONST(void *, data), (len & ~3));
 	if (len & 3) {
 		ctl &= ~(BWN_PIO8_TXCTL_8_15 | BWN_PIO8_TXCTL_16_23 |
@@ -6814,7 +6814,7 @@ bwn_pio_write_multi_2(struct bwn_mac *mac, struct bwn_pio_txqueue *tq,
 	ctl |= BWN_PIO_TXCTL_WRITELO | BWN_PIO_TXCTL_WRITEHI;
 	BWN_PIO_WRITE_2(mac, tq, BWN_PIO_TXCTL, ctl);
 
-	bhnd_bus_write_multi_2(sc->sc_mem_res, tq->tq_base + BWN_PIO_TXDATA,
+	bus_write_multi_2(sc->sc_mem_res, tq->tq_base + BWN_PIO_TXDATA,
 	    __DECONST(void *, data), (len & ~1));
 	if (len & 1) {
 		ctl &= ~BWN_PIO_TXCTL_WRITEHI;

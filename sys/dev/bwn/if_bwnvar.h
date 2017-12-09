@@ -68,11 +68,11 @@ struct bwn_mac;
 #define	BWN_DMA_COOKIE(dr, slot)					\
 	((uint16_t)(((uint16_t)dr->dr_index + 1) << 12) | (uint16_t)slot)
 #define	BWN_READ_2(mac, o)						\
-	(bhnd_bus_read_2((mac)->mac_sc->sc_mem_res, (o)))
+	(bus_read_2((mac)->mac_sc->sc_mem_res, (o)))
 #define	BWN_READ_4(mac, o)						\
-	(bhnd_bus_read_4((mac)->mac_sc->sc_mem_res, (o)))
+	(bus_read_4((mac)->mac_sc->sc_mem_res, (o)))
 #define	BWN_WRITE_2(mac, o, v)						\
-	(bhnd_bus_write_2((mac)->mac_sc->sc_mem_res, (o), (v)))
+	(bus_write_2((mac)->mac_sc->sc_mem_res, (o), (v)))
 #define	BWN_WRITE_2_F(mac, o, v) do { \
 	(BWN_WRITE_2(mac, o, v)); \
 	BWN_READ_2(mac, o); \
@@ -80,7 +80,7 @@ struct bwn_mac;
 #define	BWN_WRITE_SETMASK2(mac, offset, mask, set)			\
 	BWN_WRITE_2(mac, offset, (BWN_READ_2(mac, offset) & mask) | set)
 #define	BWN_WRITE_4(mac, o, v)						\
-	(bhnd_bus_write_4((mac)->mac_sc->sc_mem_res, (o), (v)))
+	(bus_write_4((mac)->mac_sc->sc_mem_res, (o), (v)))
 #define	BWN_WRITE_SETMASK4(mac, offset, mask, set)			\
 	BWN_WRITE_4(mac, offset, (BWN_READ_4(mac, offset) & mask) | set)
 #define	BWN_PIO_TXQOFFSET(mac)						\
@@ -155,7 +155,7 @@ struct bwn_mac;
 	 rate == BWN_CCK_RATE_5MB || rate == BWN_CCK_RATE_11MB)
 #define	BWN_ISOFDMRATE(rate)		(!BWN_ISCCKRATE(rate))
 #define	BWN_BARRIER(mac, offset, length, flags)			\
-	bhnd_bus_barrier((mac)->mac_sc->sc_mem_res, (offset), (length), (flags))
+	bus_barrier((mac)->mac_sc->sc_mem_res, (offset), (length), (flags))
 #define	BWN_DMA_READ(dr, offset)				\
 	(BWN_READ_4(dr->dr_mac, dr->dr_base + offset))
 #define	BWN_DMA_WRITE(dr, offset, value)			\
@@ -1020,7 +1020,7 @@ struct bwn_softc {
 	struct bhnd_board_info		sc_board_info;
 	struct bhnd_chipid		sc_cid;
 	uint32_t			sc_quirks;	/**< @see bwn_quirk */
-	struct bhnd_resource		*sc_mem_res;
+	struct resource			*sc_mem_res;
 	int				sc_mem_rid;
 
 	device_t			sc_chipc;	/**< ChipCommon device */
