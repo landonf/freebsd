@@ -2338,15 +2338,6 @@ bhnd_bus_generic_read_board_info(device_t dev, device_t child,
 	OPT_BHND_GV(info->board_flags2,	BOARDFLAGS2,	0);	/* srom >= 4 */
 	OPT_BHND_GV(info->board_flags3,	BOARDFLAGS3,	0);	/* srom >= 11 */
 
-
-	/* On SoCs, the board vendor should default to PCI_VENDOR_BROADCOM
-	 * if not otherwise specified */
-	if (info->board_vendor == 0 &&
-	    bhnd_get_attach_type(child) == BHND_ATTACH_NATIVE)
-	{
-		info->board_vendor = PCI_VENDOR_BROADCOM;
-	}
-
 	return (0);
 }
 
