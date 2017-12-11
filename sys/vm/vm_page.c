@@ -2040,22 +2040,16 @@ vm_page_alloc_check(vm_page_t m)
 vm_page_t
 vm_page_alloc_freelist(int freelist, int req)
 {
-	struct vm_domain_iterator vi;
+	struct vm_domainset_iter di;
 	vm_page_t m;
-	int domain, wait;
+	int domain;
 
-	m = NULL;
-	vm_policy_iterator_init(&vi);
-	wait = req & (VM_ALLOC_WAITFAIL | VM_ALLOC_WAITOK);
-	req &= ~wait;
-	while (vm_domain_iterator_run(&vi, &domain) == 0) {
-		if (vm_domain_iterator_isdone(&vi))
-			req |= wait;
+	vm_domainset_iter_page_init(&di, NULL, &domain, &req);
+	do {
 		m = vm_page_alloc_freelist_domain(domain, freelist, req);
 		if (m != NULL)
 			break;
-	}
-	vm_policy_iterator_finish(&vi);
+	} while (vm_domainset_iter_page(&di, &domain, &req) == 0);
 
 	return (m);
 }
@@ -2644,19 +2638,17 @@ bool
 vm_page_reclaim_contig(int req, u_long npages, vm_paddr_t low, vm_paddr_t high,
     u_long alignment, vm_paddr_t boundary)
 {
-	struct vm_domain_iterator vi;
+	struct vm_domainset_iter di;
 	int domain;
 	bool ret;
 
-	ret = false;
-	vm_policy_iterator_init(&vi);
-	while (vm_domain_iterator_run(&vi, &domain) == 0) {
+	vm_domainset_iter_page_init(&di, NULL, &domain, &req);
+	do {
 		ret = vm_page_reclaim_contig_domain(req, npages, domain, low,
 		    high, alignment, boundary);
 		if (ret)
 			break;
-	}
-	vm_policy_iterator_finish(&vi);
+	} while (vm_domainset_iter_page(&di, &domain, &req) == 0);
 
 	return (ret);
 }
