@@ -165,9 +165,16 @@ vm_mem_init(dummy)
 	vmem_init(kernel_arena, "kernel arena", 0, 0, PAGE_SIZE, 0, 0);
 	vmem_set_import(kernel_arena, kva_import, NULL, NULL, KVA_QUANTUM);
 
+	// XXX hacked into booting
+	static vmem_t vmdom_mem[MAXMEMDOM];
 	for (domain = 0; domain < vm_ndomains; domain++) {
-		vm_dom[domain].vmd_kernel_arena = vmem_create(
+		vm_dom[domain].vmd_kernel_arena = &vmdom_mem[domain];
+		vm_dom[domain].vmd_kernel_arena = vmem_init(&vmdom_mem[domain],
 		    "kernel arena domain", 0, 0, PAGE_SIZE, 0, M_WAITOK);
+
+		if (vm_dom[domain].vmd_kernel_arena == NULL)
+			panic("failed to initialize arena");
+
 		vmem_set_import(vm_dom[domain].vmd_kernel_arena,
 		    (vmem_import_t *)vmem_alloc, NULL, kernel_arena,
 		    KVA_QUANTUM);
