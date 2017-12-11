@@ -40,7 +40,9 @@
 #ifndef _SYS_PROC_H_
 #define	_SYS_PROC_H_
 
+#ifdef _KERNEL
 #include <sys/systm.h>
+#endif
 #include <sys/callout.h>		/* For struct callout. */
 #include <sys/event.h>			/* For struct klist. */
 #include <sys/condvar.h>
