@@ -869,6 +869,8 @@ bwn_detach(device_t dev)
 		bus_teardown_intr(dev, mac->mac_res_irq, mac->mac_intrhand);
 		mac->mac_intrhand = NULL;
 	}
+
+	bhnd_release_pmu(dev);
 	bus_release_resource(dev, SYS_RES_MEMORY, sc->sc_mem_rid,
 	    sc->sc_mem_res);
 	bus_release_resource(dev, SYS_RES_IRQ, mac->mac_rid_irq,
