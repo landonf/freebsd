@@ -62,6 +62,7 @@ SUBDIR=	${SUBDIR_BOOTSTRAP} \
 	libmt \
 	lib80211 \
 	libnetbsd \
+	libnuma \
 	libnv \
 	libopenbsd \
 	libopie \
