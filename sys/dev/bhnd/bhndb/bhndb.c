@@ -1791,10 +1791,10 @@ bhndb_io_resource(struct bhndb_softc *sc, bus_addr_t addr, bus_size_t size,
 	struct bhndb_dw_alloc	*dwa;				\
 	struct resource		*io_res;			\
 	bus_size_t		 io_offset;			\
-	bus_addr_t		 restore;		\
+	bus_addr_t		 restore;			\
 	bool			 stolen;			\
 								\
-	sc = device_get_softc(dev);				\
+	sc = r->bs->bs_cookie;					\
 								\
 	BHNDB_LOCK(sc);						\
 	dwa = bhndb_io_resource(sc, rman_get_start(r->res) +	\
@@ -1817,8 +1817,8 @@ bhndb_io_resource(struct bhndb_softc *sc, bus_addr_t addr, bus_size_t size,
 /* Defines a bhndb_bus_read_* method implementation */
 #define	BHNDB_IO_READ(_type, _name)				\
 static _type							\
-bhndb_bus_read_ ## _name (device_t dev, device_t child,		\
-    struct bhnd_resource *r, bus_size_t offset)			\
+bhndb_bus_read_ ## _name (struct bhnd_resource *r,		\
+    bus_size_t offset)			\
 {								\
 	_type v;						\
 	BHNDB_IO_COMMON_SETUP(sizeof(_type));			\
@@ -1831,8 +1831,8 @@ bhndb_bus_read_ ## _name (device_t dev, device_t child,		\
 /* Defines a bhndb_bus_write_* method implementation */
 #define	BHNDB_IO_WRITE(_type, _name)				\
 static void							\
-bhndb_bus_write_ ## _name (device_t dev, device_t child,	\
-    struct bhnd_resource *r, bus_size_t offset, _type value)	\
+bhndb_bus_write_ ## _name (struct bhnd_resource *r,		\
+    bus_size_t offset, _type value)				\
 {								\
 	BHNDB_IO_COMMON_SETUP(sizeof(_type));			\
 	bus_write_ ## _name (io_res, io_offset, value);		\
@@ -1842,9 +1842,8 @@ bhndb_bus_write_ ## _name (device_t dev, device_t child,	\
 /* Defines a bhndb_bus_(read|write|set)_(multi|region)_* method */
 #define	BHNDB_IO_MISC(_type, _ptr, _op, _size)			\
 static void							\
-bhndb_bus_ ## _op ## _ ## _size (device_t dev,			\
-    device_t child, struct bhnd_resource *r, bus_size_t offset,	\
-    _type _ptr datap, bus_size_t count)				\
+bhndb_bus_ ## _op ## _ ## _size (struct bhnd_resource *r,	\
+    bus_size_t offset,	_type _ptr datap, bus_size_t count)	\
 {								\
 	BHNDB_IO_COMMON_SETUP(sizeof(_type) * count);		\
 	bus_ ## _op ## _ ## _size (io_res, io_offset,		\
@@ -2253,57 +2252,6 @@ static device_method_t bhndb_methods[] = {
 	DEVMETHOD(bhnd_bus_deregister_provider,	bhnd_bus_generic_sr_deregister_provider),
 	DEVMETHOD(bhnd_bus_retain_provider,	bhnd_bus_generic_sr_retain_provider),
 	DEVMETHOD(bhnd_bus_release_provider,	bhnd_bus_generic_sr_release_provider),
-	
-	DEVMETHOD(bhnd_bus_read_1,		bhndb_bus_read_1),
-	DEVMETHOD(bhnd_bus_read_2,		bhndb_bus_read_2),
-	DEVMETHOD(bhnd_bus_read_4,		bhndb_bus_read_4),
-	DEVMETHOD(bhnd_bus_write_1,		bhndb_bus_write_1),
-	DEVMETHOD(bhnd_bus_write_2,		bhndb_bus_write_2),
-	DEVMETHOD(bhnd_bus_write_4,		bhndb_bus_write_4),
-
-	DEVMETHOD(bhnd_bus_read_stream_1,	bhndb_bus_read_stream_1),
-	DEVMETHOD(bhnd_bus_read_stream_2,	bhndb_bus_read_stream_2),
-	DEVMETHOD(bhnd_bus_read_stream_4,	bhndb_bus_read_stream_4),
-	DEVMETHOD(bhnd_bus_write_stream_1,	bhndb_bus_write_stream_1),
-	DEVMETHOD(bhnd_bus_write_stream_2,	bhndb_bus_write_stream_2),
-	DEVMETHOD(bhnd_bus_write_stream_4,	bhndb_bus_write_stream_4),
-
-	DEVMETHOD(bhnd_bus_read_multi_1,	bhndb_bus_read_multi_1),
-	DEVMETHOD(bhnd_bus_read_multi_2,	bhndb_bus_read_multi_2),
-	DEVMETHOD(bhnd_bus_read_multi_4,	bhndb_bus_read_multi_4),
-	DEVMETHOD(bhnd_bus_write_multi_1,	bhndb_bus_write_multi_1),
-	DEVMETHOD(bhnd_bus_write_multi_2,	bhndb_bus_write_multi_2),
-	DEVMETHOD(bhnd_bus_write_multi_4,	bhndb_bus_write_multi_4),
-	
-	DEVMETHOD(bhnd_bus_read_multi_stream_1,	bhndb_bus_read_multi_stream_1),
-	DEVMETHOD(bhnd_bus_read_multi_stream_2,	bhndb_bus_read_multi_stream_2),
-	DEVMETHOD(bhnd_bus_read_multi_stream_4,	bhndb_bus_read_multi_stream_4),
-	DEVMETHOD(bhnd_bus_write_multi_stream_1,bhndb_bus_write_multi_stream_1),
-	DEVMETHOD(bhnd_bus_write_multi_stream_2,bhndb_bus_write_multi_stream_2),
-	DEVMETHOD(bhnd_bus_write_multi_stream_4,bhndb_bus_write_multi_stream_4),
-
-	DEVMETHOD(bhnd_bus_set_multi_1,		bhndb_bus_set_multi_1),
-	DEVMETHOD(bhnd_bus_set_multi_2,		bhndb_bus_set_multi_2),
-	DEVMETHOD(bhnd_bus_set_multi_4,		bhndb_bus_set_multi_4),
-	DEVMETHOD(bhnd_bus_set_region_1,	bhndb_bus_set_region_1),
-	DEVMETHOD(bhnd_bus_set_region_2,	bhndb_bus_set_region_2),
-	DEVMETHOD(bhnd_bus_set_region_4,	bhndb_bus_set_region_4),
-
-	DEVMETHOD(bhnd_bus_read_region_1,	bhndb_bus_read_region_1),
-	DEVMETHOD(bhnd_bus_read_region_2,	bhndb_bus_read_region_2),
-	DEVMETHOD(bhnd_bus_read_region_4,	bhndb_bus_read_region_4),
-	DEVMETHOD(bhnd_bus_write_region_1,	bhndb_bus_write_region_1),
-	DEVMETHOD(bhnd_bus_write_region_2,	bhndb_bus_write_region_2),
-	DEVMETHOD(bhnd_bus_write_region_4,	bhndb_bus_write_region_4),
-
-	DEVMETHOD(bhnd_bus_read_region_stream_1,bhndb_bus_read_region_stream_1),
-	DEVMETHOD(bhnd_bus_read_region_stream_2,bhndb_bus_read_region_stream_2),
-	DEVMETHOD(bhnd_bus_read_region_stream_4,bhndb_bus_read_region_stream_4),
-	DEVMETHOD(bhnd_bus_write_region_stream_1,bhndb_bus_write_region_stream_1),
-	DEVMETHOD(bhnd_bus_write_region_stream_2,bhndb_bus_write_region_stream_2),
-	DEVMETHOD(bhnd_bus_write_region_stream_4,bhndb_bus_write_region_stream_4),
-
-	DEVMETHOD(bhnd_bus_barrier,		bhndb_bus_barrier),
 
 	DEVMETHOD_END
 };

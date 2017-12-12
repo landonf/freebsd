@@ -89,7 +89,6 @@ struct bhnd_bus_space {
 	uint8_t		(*bs_r_1) (struct bhnd_resource *, bus_size_t);
 	uint16_t	(*bs_r_2) (struct bhnd_resource *, bus_size_t);
 	uint32_t	(*bs_r_4) (struct bhnd_resource *, bus_size_t);
-	uint64_t	(*bs_r_8) (struct bhnd_resource *, bus_size_t);
 
 	/* read multiple */
 	void		(*bs_rm_1) (struct bhnd_resource *, bus_size_t,
@@ -98,8 +97,6 @@ struct bhnd_bus_space {
 			    uint16_t *, bus_size_t);
 	void		(*bs_rm_4) (struct bhnd_resource *, bus_size_t,
 			    uint32_t *, bus_size_t);
-	void		(*bs_rm_8) (struct bhnd_resource *, bus_size_t,
-			    uint64_t *, bus_size_t);
 
 	/* read region */
 	void		(*bs_rr_1) (struct bhnd_resource *, bus_size_t,
@@ -108,8 +105,6 @@ struct bhnd_bus_space {
 			    uint16_t *, bus_size_t);
 	void		(*bs_rr_4) (struct bhnd_resource *, bus_size_t,
 			    uint32_t *, bus_size_t);
-	void		(*bs_rr_8) (struct bhnd_resource *, bus_size_t,
-			    uint64_t *, bus_size_t);
 
 	/* write (single) */
 	void		(*bs_w_1) (struct bhnd_resource *, bus_size_t, uint8_t);
@@ -117,8 +112,6 @@ struct bhnd_bus_space {
 			    uint16_t);
 	void		(*bs_w_4) (struct bhnd_resource *, bus_size_t,
 			    uint32_t);
-	void		(*bs_w_8) (struct bhnd_resource *, bus_size_t,
-			    uint64_t);
 
 	/* write multiple */
 	void		(*bs_wm_1) (struct bhnd_resource *, bus_size_t,
@@ -127,8 +120,6 @@ struct bhnd_bus_space {
 			    const uint16_t *, bus_size_t);
 	void		(*bs_wm_4) (struct bhnd_resource *, bus_size_t,
 			    const uint32_t *, bus_size_t);
-	void		(*bs_wm_8) (struct bhnd_resource *, bus_size_t,
-			    const uint64_t *, bus_size_t);
 
 	/* write region */
 	void		(*bs_wr_1) (struct bhnd_resource *, bus_size_t,
@@ -137,8 +128,6 @@ struct bhnd_bus_space {
 			    const uint16_t *, bus_size_t);
 	void		(*bs_wr_4) (struct bhnd_resource *, bus_size_t,
 			    const uint32_t *, bus_size_t);
-	void		(*bs_wr_8) (struct bhnd_resource *, bus_size_t,
-			    const uint64_t *, bus_size_t);
 
 	/* set multiple */
 	void		(*bs_sm_1) (struct bhnd_resource *, bus_size_t, uint8_t,
@@ -147,8 +136,6 @@ struct bhnd_bus_space {
 			    uint16_t, bus_size_t);
 	void		(*bs_sm_4) (struct bhnd_resource *, bus_size_t,
 			    uint32_t, bus_size_t);
-	void		(*bs_sm_8) (struct bhnd_resource *, bus_size_t,
-			    uint64_t, bus_size_t);
 
 	/* set region */
 	void		(*bs_sr_1) (struct bhnd_resource *, bus_size_t, uint8_t, bus_size_t);
@@ -156,8 +143,6 @@ struct bhnd_bus_space {
 			    uint16_t, bus_size_t);
 	void		(*bs_sr_4) (struct bhnd_resource *, bus_size_t,
 			    uint32_t, bus_size_t);
-	void		(*bs_sr_8) (struct bhnd_resource *, bus_size_t,
-			    uint64_t, bus_size_t);
 
 	/* read stream (single) */
 	uint8_t		(*bs_r_1_s) (struct bhnd_resource *, bus_size_t);
@@ -172,8 +157,6 @@ struct bhnd_bus_space {
 			    uint16_t *, bus_size_t);
 	void		(*bs_rm_4_s) (struct bhnd_resource *, bus_size_t,
 			    uint32_t *, bus_size_t);
-	void		(*bs_rm_8_s) (struct bhnd_resource *, bus_size_t,
-			    uint64_t *, bus_size_t);
 
 	/* read region stream */
 	void		(*bs_rr_1_s) (struct bhnd_resource *, bus_size_t,
@@ -182,8 +165,6 @@ struct bhnd_bus_space {
 			    uint16_t *, bus_size_t);
 	void		(*bs_rr_4_s) (struct bhnd_resource *, bus_size_t,
 			    uint32_t *, bus_size_t);
-	void		(*bs_rr_8_s) (struct bhnd_resource *, bus_size_t,
-			    uint64_t *, bus_size_t);
 					
 	/* write stream (single) */
 	void		(*bs_w_1_s) (struct bhnd_resource *, bus_size_t,
@@ -192,8 +173,6 @@ struct bhnd_bus_space {
 			    uint16_t);
 	void		(*bs_w_4_s) (struct bhnd_resource *, bus_size_t,
 			    uint32_t);
-	void		(*bs_w_8_s) (struct bhnd_resource *, bus_size_t,
-			    uint64_t);
 
 	/* write multiple stream */
 	void		(*bs_wm_1_s) (struct bhnd_resource *, bus_size_t,
@@ -202,8 +181,6 @@ struct bhnd_bus_space {
 			    const uint16_t *, bus_size_t);
 	void		(*bs_wm_4_s) (struct bhnd_resource *, bus_size_t,
 			    const uint32_t *, bus_size_t);
-	void		(*bs_wm_8_s) (struct bhnd_resource *, bus_size_t,
-			    const uint64_t *, bus_size_t);
 
 	/* write region stream */
 	void		(*bs_wr_1_s) (struct bhnd_resource *, bus_size_t,
@@ -212,8 +189,6 @@ struct bhnd_bus_space {
 			    const uint16_t *, bus_size_t);
 	void		(*bs_wr_4_s) (struct bhnd_resource *, bus_size_t,
 			    const uint32_t *, bus_size_t);
-	void		(*bs_wr_8_s) (struct bhnd_resource *, bus_size_t,
-			    const uint64_t *, bus_size_t);
 };
 
 
@@ -224,7 +199,7 @@ struct bhnd_bus_space {
 #define	__bhnd_bs_opname(op,size)					\
 	__bhnd_bs_c(__bhnd_bs_c(__bhnd_bs_c(bs_,op),_),size)
 
-#define	__bhnd_bs_rs(sz, br, o)					\
+#define	__bhnd_bs_rs(sz, br, o)						\
 	(*(br)->bs->__bhnd_bs_opname(r,sz))(br, o)
 #define	__bhnd_bs_ws(sz, br, o, v)					\
 	(*(br)->bs->__bhnd_bs_opname(w,sz))(br, o, v)
@@ -245,7 +220,7 @@ struct bhnd_bus_space {
 /*
  * Bus barrier operations.
  */
-#define	bhnd_bus_barrier(r, o, l, f)				\
+#define	bhnd_bus_barrier(r, o, l, f)					\
 	(*(r)->bs->bs_barrier)((r), (o), (l), (f))
 
 /*
@@ -254,12 +229,10 @@ struct bhnd_bus_space {
 #define	bhnd_bus_read_1(r, o)	__bhnd_bs_rs(1,(r),(o))
 #define	bhnd_bus_read_2(r, o)	__bhnd_bs_rs(2,(r),(o))
 #define	bhnd_bus_read_4(r, o)	__bhnd_bs_rs(4,(r),(o))
-#define	bhnd_bus_read_8(r, o)	__bhnd_bs_rs(8,(r),(o))
 
 #define	bhnd_bus_read_stream_1(r, o)	__bhnd_bs_rs_s(1,(r),(o))
 #define	bhnd_bus_read_stream_2(r, o)	__bhnd_bs_rs_s(2,(r),(o))
 #define	bhnd_bus_read_stream_4(r, o)	__bhnd_bs_rs_s(4,(r),(o))
-#define	bhnd_bus_read_stream_8(r, o)	__bhnd_bs_rs_s(8,8,(r),(o))
 
 /*
  * Bus read multiple operations.
@@ -270,8 +243,6 @@ struct bhnd_bus_space {
 	__bhnd_bs_nonsingle(rm,2,(r),(o),(a),(c))
 #define	bhnd_bus_read_multi_4(r, o, a, c)				\
 	__bhnd_bs_nonsingle(rm,4,(r),(o),(a),(c))
-#define	bhnd_bus_read_multi_8(r, o, a, c)				\
-	__bhnd_bs_nonsingle(rm,8,(r),(o),(a),(c))
 
 #define	bhnd_bus_read_multi_stream_1(r, o, a, c)			\
 	__bhnd_bs_nonsingle_s(rm,1,(r),(o),(a),(c))
@@ -279,8 +250,6 @@ struct bhnd_bus_space {
 	__bhnd_bs_nonsingle_s(rm,2,(r),(o),(a),(c))
 #define	bhnd_bus_read_multi_stream_4(r, o, a, c)			\
 	__bhnd_bs_nonsingle_s(rm,4,(r),(o),(a),(c))
-#define	bhnd_bus_read_multi_stream_8(r, o, a, c)			\
-	__bhnd_bs_nonsingle_s(rm,8,(r),(o),(a),(c))
 
 
 /*
@@ -292,8 +261,6 @@ struct bhnd_bus_space {
 	__bhnd_bs_nonsingle(rr,2,(r),(o),(a),(c))
 #define	bhnd_bus_read_region_4(r, o, a, c)				\
 	__bhnd_bs_nonsingle(rr,4,(r),(o),(a),(c))
-#define	bhnd_bus_read_region_8(r, o, a, c)				\
-	__bhnd_bs_nonsingle(rr,8,(r),(o),(a),(c))
 
 #define	bhnd_bus_read_region_stream_1(r, o, a, c)			\
 	__bhnd_bs_nonsingle_s(rr,1,(r),(o),(a),(c))
@@ -301,8 +268,6 @@ struct bhnd_bus_space {
 	__bhnd_bs_nonsingle_s(rr,2,(r),(o),(a),(c))
 #define	bhnd_bus_read_region_stream_4(r, o, a, c)			\
 	__bhnd_bs_nonsingle_s(rr,4,(r),(o),(a),(c))
-#define	bhnd_bus_read_region_stream_8(r, o, a, c)			\
-	__bhnd_bs_nonsingle_s(rr,8,(r),(o),(a),(c))
 
 
 /*
@@ -311,7 +276,6 @@ struct bhnd_bus_space {
 #define	bhnd_bus_write_1(r, o, v)	__bhnd_bs_ws(1,(r),(o),(v))
 #define	bhnd_bus_write_2(r, o, v)	__bhnd_bs_ws(2,(r),(o),(v))
 #define	bhnd_bus_write_4(r, o, v)	__bhnd_bs_ws(4,(r),(o),(v))
-#define	bhnd_bus_write_8(r, o, v)	__bhnd_bs_ws(8,(r),(o),(v))
 
 #define	bhnd_bus_write_stream_1(r, o, v)				\
 	__bhnd_bs_ws_s(1,(r),(o),(v))
@@ -319,8 +283,6 @@ struct bhnd_bus_space {
 	__bhnd_bs_ws_s(2,(r),(o),(v))
 #define	bhnd_bus_write_stream_4(r, o, v)				\
 	__bhnd_bs_ws_s(4,(r),(o),(v))
-#define	bhnd_bus_write_stream_8(r, o, v)				\
-	__bhnd_bs_ws_s(8,(r),(o),(v))
 
 
 /*
@@ -332,8 +294,6 @@ struct bhnd_bus_space {
 	__bhnd_bs_nonsingle(wm,2,(r),(o),(a),(c))
 #define	bhnd_bus_write_multi_4(r, o, a, c)				\
 	__bhnd_bs_nonsingle(wm,4,(r),(o),(a),(c))
-#define	bhnd_bus_write_multi_8(r, o, a, c)				\
-	__bhnd_bs_nonsingle(wm,8,(r),(o),(a),(c))
 
 #define	bhnd_bus_write_multi_stream_1(r, o, a, c)			\
 	__bhnd_bs_nonsingle_s(wm,1,(r),(o),(a),(c))
@@ -341,8 +301,6 @@ struct bhnd_bus_space {
 	__bhnd_bs_nonsingle_s(wm,2,(r),(o),(a),(c))
 #define	bhnd_bus_write_multi_stream_4(r, o, a, c)			\
 	__bhnd_bs_nonsingle_s(wm,4,(r),(o),(a),(c))
-#define	bhnd_bus_write_multi_stream_8(r, o, a, c)			\
-	__bhnd_bs_nonsingle_s(wm,8,(r),(o),(a),(c))
 
 
 /*
@@ -354,8 +312,6 @@ struct bhnd_bus_space {
 	__bhnd_bs_nonsingle(wr,2,(r),(o),(a),(c))
 #define	bhnd_bus_write_region_4(r, o, a, c)				\
 	__bhnd_bs_nonsingle(wr,4,(r),(o),(a),(c))
-#define	bhnd_bus_write_region_8(r, o, a, c)				\
-	__bhnd_bs_nonsingle(wr,8,(r),(o),(a),(c))
 
 #define	bhnd_bus_write_region_stream_1(r, o, a, c)			\
 	__bhnd_bs_nonsingle_s(wr,1,(r),(o),(a),(c))
@@ -363,8 +319,6 @@ struct bhnd_bus_space {
 	__bhnd_bs_nonsingle_s(wr,2,(r),(o),(a),(c))
 #define	bhnd_bus_write_region_stream_4(r, o, a, c)			\
 	__bhnd_bs_nonsingle_s(wr,4,(r),(o),(a),(c))
-#define	bhnd_bus_write_region_stream_8(r, o, a, c)			\
-	__bhnd_bs_nonsingle_s(wr,8,(r),(o),(a),(c))
 
 
 /*
@@ -376,8 +330,6 @@ struct bhnd_bus_space {
 	__bhnd_bs_set(sm,2,(r),(o),(v),(c))
 #define	bhnd_bus_set_multi_4(r, o, v, c)				\
 	__bhnd_bs_set(sm,4,(r),(o),(v),(c))
-#define	bhnd_bus_set_multi_8(r, o, v, c)				\
-	__bhnd_bs_set(sm,8,(r),(o),(v),(c))
 
 
 /*
@@ -389,235 +341,7 @@ struct bhnd_bus_space {
 	__bhnd_bs_set(sr,2,(r),(o),(v),(c))
 #define	bhnd_bus_set_region_4(r, o, v, c)				\
 	__bhnd_bs_set(sr,4,(r),(o),(v),(c))
-#define	bhnd_bus_set_region_8(r, o, v, c)				\
-	__bhnd_bs_set(sr,8,(r),(o),(v),(c))
 
-/*
- * Macros to provide prototypes for all the functions used in the
- * bus_space structure
- */
-
-#define	bhnd_bs_barrier_proto(f)					\
-void	__bhnd_bs_c(f,_bs_barrier) (struct bhnd_resource *r,		\
-	    bus_size_t offset, bus_size_t len, int flags);
-
-#define	bhnd_bs_r_1_proto(f)						\
-u_int8_t	__bhnd_bs_c(f,_bs_r_1) (struct bhnd_resource *r,	\
-		    bus_size_t offset);
-
-#define	bhnd_bs_r_2_proto(f)						\
-u_int16_t	__bhnd_bs_c(f,_bs_r_2) (struct bhnd_resource *r,	\
-		    bus_size_t offset);
-
-#define	bhnd_bs_r_4_proto(f)						\
-u_int32_t	__bhnd_bs_c(f,_bs_r_4) (struct bhnd_resource *r,	\
-		    bus_size_t offset);
-
-#define	bhnd_bs_r_8_proto(f)						\
-u_int64_t	__bhnd_bs_c(f,_bs_r_8) (struct bhnd_resource *r,	\
-		    bus_size_t offset);
-
-#define	bhnd_bs_r_1_s_proto(f)						\
-u_int8_t	__bhnd_bs_c(f,_bs_r_1_s) (struct bhnd_resource *r,	\
-		    bus_size_t offset);
-
-#define	bhnd_bs_r_2_s_proto(f)						\
-u_int16_t	__bhnd_bs_c(f,_bs_r_2_s) (struct bhnd_resource *r,	\
-		    bus_size_t offset);
-
-#define	bhnd_bs_r_4_s_proto(f)						\
-u_int32_t	__bhnd_bs_c(f,_bs_r_4_s) (struct bhnd_resource *r,	\
-		    bus_size_t offset);
-
-#define	bhnd_bs_w_1_proto(f)						\
-void	__bhnd_bs_c(f,_bs_w_1) (struct bhnd_resource *r,		\
-	    bus_size_t offset, u_int8_t value);
-
-#define	bhnd_bs_w_2_proto(f)						\
-void	__bhnd_bs_c(f,_bs_w_2) (struct bhnd_resource *r,		\
-	    bus_size_t offset, u_int16_t value);
-
-#define	bhnd_bs_w_4_proto(f)						\
-void	__bhnd_bs_c(f,_bs_w_4) (struct bhnd_resource *r,		\
-	    bus_size_t offset, u_int32_t value);
-
-#define	bhnd_bs_w_8_proto(f)						\
-void	__bhnd_bs_c(f,_bs_w_8) (struct bhnd_resource *r,		\
-	    bus_size_t offset, u_int64_t value);
-
-#define	bhnd_bs_w_1_s_proto(f)						\
-void	__bhnd_bs_c(f,_bs_w_1_s) (struct bhnd_resource *r,		\
-	    bus_size_t offset, u_int8_t value);
-
-#define	bhnd_bs_w_2_s_proto(f)						\
-void	__bhnd_bs_c(f,_bs_w_2_s) (struct bhnd_resource *r,		\
-	    bus_size_t offset, u_int16_t value);
-
-#define	bhnd_bs_w_4_s_proto(f)						\
-void	__bhnd_bs_c(f,_bs_w_4_s) (struct bhnd_resource *r,		\
-	    bus_size_t offset, u_int32_t value);
-
-#define	bhnd_bs_rm_1_proto(f)						\
-void	__bhnd_bs_c(f,_bs_rm_1) (struct bhnd_resource *r,		\
-	    bus_size_t offset, u_int8_t *addr, bus_size_t count);
-
-#define	bhnd_bs_rm_2_proto(f)						\
-void	__bhnd_bs_c(f,_bs_rm_2) (struct bhnd_resource *r,		\
-	    bus_size_t offset, u_int16_t *addr, bus_size_t count);
-
-#define	bhnd_bs_rm_4_proto(f)						\
-void	__bhnd_bs_c(f,_bs_rm_4) (struct bhnd_resource *r,		\
-	    bus_size_t offset, u_int32_t *addr, bus_size_t count);		
-
-#define	bhnd_bs_rm_8_proto(f)						\
-void	__bhnd_bs_c(f,_bs_rm_8) (struct bhnd_resource *r,		\
-	    bus_size_t offset, u_int64_t *addr, bus_size_t count);
-
-#define	bhnd_bs_wm_1_proto(f)						\
-void	__bhnd_bs_c(f,_bs_wm_1) (struct bhnd_resource *r,		\
-	    bus_size_t offset, const u_int8_t *addr, bus_size_t count);
-
-#define	bhnd_bs_wm_2_proto(f)						\
-void	__bhnd_bs_c(f,_bs_wm_2) (struct bhnd_resource *r,		\
-	    bus_size_t offset, const u_int16_t *addr, bus_size_t count);
-
-#define	bhnd_bs_wm_4_proto(f)						\
-void	__bhnd_bs_c(f,_bs_wm_4) (struct bhnd_resource *r,		\
-	    bus_size_t offset, const u_int32_t *addr, bus_size_t count);
-
-#define	bhnd_bs_wm_8_proto(f)						\
-void	__bhnd_bs_c(f,_bs_wm_8) (struct bhnd_resource *r,		\
-	    bus_size_t offset, const u_int64_t *addr, bus_size_t count);
-
-#define	bhnd_bs_rr_1_proto(f)						\
-void	__bhnd_bs_c(f, _bs_rr_1) (struct bhnd_resource *r,		\
-	    bus_size_t offset, u_int8_t *addr, bus_size_t count);
-
-#define	bhnd_bs_rr_2_proto(f)						\
-void	__bhnd_bs_c(f, _bs_rr_2) (struct bhnd_resource *r,		\
-	    bus_size_t offset, u_int16_t *addr, bus_size_t count);
-
-#define	bhnd_bs_rr_4_proto(f)						\
-void	__bhnd_bs_c(f, _bs_rr_4) (struct bhnd_resource *r,		\
-	    bus_size_t offset, u_int32_t *addr, bus_size_t count);
-
-#define	bhnd_bs_rr_8_proto(f)						\
-void	__bhnd_bs_c(f, _bs_rr_8) (struct bhnd_resource *r,		\
-	    bus_size_t offset, u_int64_t *addr, bus_size_t count);
-
-#define	bhnd_bs_wr_1_proto(f)						\
-void	__bhnd_bs_c(f, _bs_wr_1) (struct bhnd_resource *r,		\
-	    bus_size_t offset, const u_int8_t *addr, bus_size_t count);
-
-#define	bhnd_bs_wr_2_proto(f)						\
-void	__bhnd_bs_c(f, _bs_wr_2) (struct bhnd_resource *r,		\
-	    bus_size_t offset, const u_int16_t *addr, bus_size_t count);
-
-#define	bhnd_bs_wr_4_proto(f)						\
-void	__bhnd_bs_c(f, _bs_wr_4) (struct bhnd_resource *r,		\
-	    bus_size_t offset, const u_int32_t *addr, bus_size_t count);
-
-#define	bhnd_bs_wr_8_proto(f)						\
-void	__bhnd_bs_c(f, _bs_wr_8) (struct bhnd_resource *r,		\
-	    bus_size_t offset, const u_int64_t *addr, bus_size_t count);
-
-#define	bhnd_bs_sm_1_proto(f)						\
-void	__bhnd_bs_c(f,_bs_sm_1) (struct bhnd_resource *r,		\
-	    bus_size_t offset, u_int8_t value, bus_size_t count);
-
-#define	bhnd_bs_sm_2_proto(f)						\
-void	__bhnd_bs_c(f,_bs_sm_2) (struct bhnd_resource *r,		\
-	    bus_size_t offset, u_int16_t value, bus_size_t count);
-
-#define	bhnd_bs_sm_4_proto(f)						\
-void	__bhnd_bs_c(f,_bs_sm_4) (struct bhnd_resource *r,		\
-	    bus_size_t offset, u_int32_t value, bus_size_t count);
-
-#define	bhnd_bs_sm_8_proto(f)						\
-void	__bhnd_bs_c(f,_bs_sm_8) (struct bhnd_resource *r,		\
-	    bus_size_t offset, u_int64_t value, bus_size_t count);
-
-#define	bhnd_bs_sr_1_proto(f)						\
-void	__bhnd_bs_c(f,_bs_sr_1) (struct bhnd_resource *r,		\
-	    bus_size_t offset, u_int8_t value, bus_size_t count);
-
-#define	bhnd_bs_sr_2_proto(f)						\
-void	__bhnd_bs_c(f,_bs_sr_2) (struct bhnd_resource *r,		\
-	    bus_size_t offset, u_int16_t value, bus_size_t count);
-
-#define	bhnd_bs_sr_4_proto(f)						\
-void	__bhnd_bs_c(f,_bs_sr_4) (struct bhnd_resource *r,		\
-	    bus_size_t offset, u_int32_t value, bus_size_t count);
-
-#define	bhnd_bs_sr_8_proto(f)						\
-void	__bhnd_bs_c(f,_bs_sr_8) (struct bhnd_resource *r,		\
-	    bus_size_t offset, u_int64_t value, bus_size_t count);
-
-#define	bhnd_bs_c_1_proto(f)						\
-void	__bhnd_bs_c(f,_bs_c_1) (void *t, bus_space_handle_t bsh1,	\
-	    bus_size_t offset1, bus_space_handle_t bsh2,		\
-	    bus_size_t offset2, bus_size_t count);
-
-#define	bhnd_bs_c_2_proto(f)						\
-void	__bhnd_bs_c(f,_bs_c_2) (void *t, bus_space_handle_t bsh1,	\
-	    bus_size_t offset1, bus_space_handle_t bsh2,		\
-	    bus_size_t offset2, bus_size_t count);
-
-#define	bhnd_bs_c_4_proto(f)						\
-void	__bhnd_bs_c(f,_bs_c_4) (void *t, bus_space_handle_t bsh1,	\
-	    bus_size_t offset1, bus_space_handle_t bsh2,		\
-	    bus_size_t offset2, bus_size_t count);
-
-#define	bhnd_bs_c_8_proto(f)						\
-void	__bhnd_bs_c(f,_bs_c_8) (void *t, bus_space_handle_t bsh1,	\
-	    bus_size_t offset1, bus_space_handle_t bsh2,		\
-	    bus_size_t offset2, bus_size_t count);
-
-#define	BHND_DECLARE_BUS_SPACE_PROTOTYPES(f)	\
-	bhnd_bs_barrier_proto(f);		\
-	bhnd_bs_r_1_proto(f);			\
-	bhnd_bs_r_2_proto(f);			\
-	bhnd_bs_r_4_proto(f);			\
-	bhnd_bs_r_8_proto(f);			\
-	bhnd_bs_r_1_s_proto(f);			\
-	bhnd_bs_r_2_s_proto(f);			\
-	bhnd_bs_r_4_s_proto(f);			\
-	bhnd_bs_w_1_proto(f);			\
-	bhnd_bs_w_2_proto(f);			\
-	bhnd_bs_w_4_proto(f);			\
-	bhnd_bs_w_8_proto(f);			\
-	bhnd_bs_w_1_s_proto(f);			\
-	bhnd_bs_w_2_s_proto(f);			\
-	bhnd_bs_w_4_s_proto(f);			\
-	bhnd_bs_rm_1_proto(f);			\
-	bhnd_bs_rm_2_proto(f);			\
-	bhnd_bs_rm_4_proto(f);			\
-	bhnd_bs_rm_8_proto(f);			\
-	bhnd_bs_wm_1_proto(f);			\
-	bhnd_bs_wm_2_proto(f);			\
-	bhnd_bs_wm_4_proto(f);			\
-	bhnd_bs_wm_8_proto(f);			\
-	bhnd_bs_rr_1_proto(f);			\
-	bhnd_bs_rr_2_proto(f);			\
-	bhnd_bs_rr_4_proto(f);			\
-	bhnd_bs_rr_8_proto(f);			\
-	bhnd_bs_wr_1_proto(f);			\
-	bhnd_bs_wr_2_proto(f);			\
-	bhnd_bs_wr_4_proto(f);			\
-	bhnd_bs_wr_8_proto(f);			\
-	bhnd_bs_sm_1_proto(f);			\
-	bhnd_bs_sm_2_proto(f);			\
-	bhnd_bs_sm_4_proto(f);			\
-	bhnd_bs_sm_8_proto(f);			\
-	bhnd_bs_sr_1_proto(f);			\
-	bhnd_bs_sr_2_proto(f);			\
-	bhnd_bs_sr_4_proto(f);			\
-	bhnd_bs_sr_8_proto(f);			\
-	bhnd_bs_c_1_proto(f);			\
-	bhnd_bs_c_2_proto(f);			\
-	bhnd_bs_c_4_proto(f);			\
-	bhnd_bs_c_8_proto(f);
-
-BHND_DECLARE_BUS_SPACE_PROTOTYPES(direct);
+extern struct bhnd_bus_space bhnd_bus_space_direct;
 
 #endif /* _BHND_BHND_BUS_SPACE_H_ */
