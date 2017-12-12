@@ -1027,11 +1027,8 @@ bhnd_generic_setup_intr(device_t dev, device_t child, struct resource *irq,
 }
 
 /*
- * XXX TODO: update comment
- *
- * Delegate all indirect I/O to the parent device. When inherited by
- * non-bridged bus implementations, resources will never be marked as
- * indirect, and these methods will never be called.
+ * Direct bhnd_bus_space implementation; passes all requests directly to
+ * the platform bus_(read|write|...)_* functions.
  */
 #define	BHND_IO_READ(_type, _name, _method)				\
 static _type								\
