@@ -340,7 +340,7 @@ bhndb_init_region_cfg(struct bhndb_softc *sc, bhnd_erom_t *erom,
 			 * always HIGH.
 			 */
 			error = bhndb_add_resource_region(br, addr, size,
-			    BHNDB_PRIORITY_HIGH, 0, regw);
+			    BHNDB_PRIORITY_HIGH, alloc_flags, regw);
 			if (error)
 				return (error);
 		}
