@@ -2,7 +2,12 @@
  * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
  *
  * Copyright (c) 2009-2010 Weongyo Jeong <weongyo@freebsd.org>
+ * Copyright (c) 2016 Landon Fuller <landonf@FreeBSD.org>
+ * Copyright (c) 2017 The FreeBSD Foundation
  * All rights reserved.
+ * 
+ * Portions of this software were developed by Landon Fuller
+ * under sponsorship from the FreeBSD Foundation.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -865,6 +870,8 @@ bwn_detach(device_t dev)
 		bus_teardown_intr(dev, mac->mac_res_irq, mac->mac_intrhand);
 		mac->mac_intrhand = NULL;
 	}
+
+	bhnd_release_pmu(dev);
 	bus_release_resource(dev, SYS_RES_MEMORY, sc->sc_mem_rid,
 	    sc->sc_mem_res);
 	bus_release_resource(dev, SYS_RES_IRQ, mac->mac_rid_irq,

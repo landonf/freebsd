@@ -179,10 +179,6 @@ do {									\
 
 #undef	BWN_PHY_G_READVAR
 
-	// XXX TODO: 0x4301 is a PCI ID, not a chip ID.
-	if ((sc->sc_cid.chip_id == 0x4301) && (phy->rf_ver != 0x2050))
-		device_printf(sc->sc_dev, "not supported anymore\n");
-
 	pg->pg_flags = 0;
 	if (pab0 == 0 || pab1 == 0 || pab2 == 0 || pab0 == -1 || pab1 == -1 ||
 	    pab2 == -1) {
