@@ -1,8 +1,6 @@
-# $FreeBSD$
-
 #-
-# Copyright (c) 2015 Warner Losh. All Rights Reserved.
-# Copyright (c) 2010-2011 iXsystems, Inc., All rights reserved.
+# Copyright (c) 2015 Michal Meloun
+# All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -16,7 +14,7 @@
 # THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
 # ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-# ARE DISCLAIMED.  IN NO EVENT SHALL iXsystems, Inc. OR CONTRIBUTORS BE LIABLE
+# ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
 # FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
 # DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
 # OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
@@ -25,15 +23,33 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 #
+# $FreeBSD$
+#
 
-NANO_ARCH=amd64
-NANO_NAME=qemu-amd64
+#include <machine/bus.h>
 
-. common	# Pull in common definitions
+INTERFACE syscon;
 
-qemu_env
+/**
+ * Accessor functions for syscon register space
+ */
+METHOD uint32_t read_4 {
+	device_t	dev;
+	device_t	consumer;
+	bus_size_t	offset;
+};
 
-# Run with:
-# qemu-system-x86_64 -hdd $file -serial telnet::4444,server -nographic
-# To get some breathing room on the image:
-# qemu-img resize $file +2G
+METHOD void write_4 {
+	device_t	dev;
+	device_t	consumer;
+	bus_size_t	offset;
+	uint32_t	val;
+};
+
+METHOD void modify_4 {
+	device_t	dev;
+	device_t	consumer;
+	bus_size_t	offset;
+	uint32_t	clear_bits;
+	uint32_t	set_bits;
+};
