@@ -74,8 +74,7 @@ __FBSDID("$FreeBSD$");
 }}
 
 static const struct bhnd_device bwn_devices[] = {
-	BWN_DEV(HWREV_RANGE(5, 6)),
-	
+	BWN_DEV(HWREV_RANGE(5, 16)),
 	BWN_DEV(HWREV_EQ(23)),
 
 	BHND_DEVICE_END
