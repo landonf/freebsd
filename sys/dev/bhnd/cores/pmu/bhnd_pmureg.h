@@ -217,7 +217,7 @@
 
 /* Wildcard base, vco_calvar, vco_swc, vco_var_selref, vso_ical & vco_sel_avdd */
 #define	BHND_PMU0_PLL0_PLLCTL2		2
-#define	BHND_PMU0_PLL0_PC2_WILD_INT_MASK	0xf
+#define	BHND_PMU0_PLL0_PC2_WILD_INT_MASK	0xf0
 #define	BHND_PMU0_PLL0_PC2_WILD_INT_SHIFT	4
 
 /* pllcontrol registers */
