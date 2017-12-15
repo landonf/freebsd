@@ -190,6 +190,7 @@ bhnd_nvram_sprom_ident(struct bhnd_nvram_io *io,
 		bool			 have_magic;
 
 		layout = &bhnd_sprom_layouts[i];
+		crc_valid = true;
 
 		have_magic = true;
 		if ((layout->flags & SPROM_LAYOUT_MAGIC_NONE))
