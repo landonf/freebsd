@@ -491,13 +491,13 @@ static const uint16_t bwn_wme_shm_offsets[] = {
 };
 
 /* Supported D11 core revisions */
-#define	BWN_DEV(_start, _end)	{{				\
+#define	BWN_DEV(_hwrev)	{{					\
 	BHND_MATCH_CORE(BHND_MFGID_BCM, BHND_COREID_D11),	\
-	BHND_MATCH_CORE_REV(HWREV_RANGE((_start), (_end)))	\
+	BHND_MATCH_CORE_REV(_hwrev),				\
 }}
-	
 static const struct bhnd_device bwn_devices[] = {
-	BWN_DEV(5, 16),
+	BWN_DEV(HWREV_RANGE(5, 16)),
+	BWN_DEV(HWREV_EQ(23)),
 	BHND_DEVICE_END
 };
 
@@ -1563,7 +1563,7 @@ bwn_phy_getinfo(struct bwn_mac *mac, int gmode)
 	    (phy->type == BWN_PHYTYPE_B && phy->rev != 2 &&
 		phy->rev != 4 && phy->rev != 6 && phy->rev != 7) ||
 	    (phy->type == BWN_PHYTYPE_G && phy->rev > 9) ||
-	    (phy->type == BWN_PHYTYPE_N && phy->rev > 4) ||
+	    (phy->type == BWN_PHYTYPE_N && phy->rev > 6) ||
 	    (phy->type == BWN_PHYTYPE_LP && phy->rev > 2))
 		goto unsupphy;
 
@@ -3283,6 +3283,7 @@ bwn_dma_setup(struct bwn_dma_ring *dr)
 
 		if (dr->dr_type == BHND_DMA_ADDR_64BIT) {
 			value = BWN_DMA64_TXENABLE;
+			value |= BWN_DMA64_TXPARITY_DISABLE;
 			value |= (addrext << BWN_DMA64_TXADDREXT_SHIFT)
 			    & BWN_DMA64_TXADDREXT_MASK;
 			BWN_DMA_WRITE(dr, BWN_DMA64_TXCTL, value);
@@ -3290,6 +3291,7 @@ bwn_dma_setup(struct bwn_dma_ring *dr)
 			BWN_DMA_WRITE(dr, BWN_DMA64_TXRINGHI, addrhi);
 		} else {
 			value = BWN_DMA32_TXENABLE;
+			value |= BWN_DMA32_TXPARITY_DISABLE;
 			value |= (addrext << BWN_DMA32_TXADDREXT_SHIFT)
 			    & BWN_DMA32_TXADDREXT_MASK;
 			BWN_DMA_WRITE(dr, BWN_DMA32_TXCTL, value);
@@ -3306,6 +3308,7 @@ bwn_dma_setup(struct bwn_dma_ring *dr)
 	if (dr->dr_type == BHND_DMA_ADDR_64BIT) {
 		value = (dr->dr_frameoffset << BWN_DMA64_RXFROFF_SHIFT);
 		value |= BWN_DMA64_RXENABLE;
+		value |= BWN_DMA64_RXPARITY_DISABLE;
 		value |= (addrext << BWN_DMA64_RXADDREXT_SHIFT)
 		    & BWN_DMA64_RXADDREXT_MASK;
 		BWN_DMA_WRITE(dr, BWN_DMA64_RXCTL, value);
@@ -3316,6 +3319,7 @@ bwn_dma_setup(struct bwn_dma_ring *dr)
 	} else {
 		value = (dr->dr_frameoffset << BWN_DMA32_RXFROFF_SHIFT);
 		value |= BWN_DMA32_RXENABLE;
+		value |= BWN_DMA32_RXPARITY_DISABLE;
 		value |= (addrext << BWN_DMA32_RXADDREXT_SHIFT)
 		    & BWN_DMA32_RXADDREXT_MASK;
 		BWN_DMA_WRITE(dr, BWN_DMA32_RXCTL, value);
