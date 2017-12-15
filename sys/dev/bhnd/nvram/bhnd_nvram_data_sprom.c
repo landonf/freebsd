@@ -832,6 +832,7 @@ bhnd_nvram_sprom_next(struct bhnd_nvram_data *nv, void **cookiep)
 		/* Update cookiep and fetch variable definition */
 		*cookiep = entry;
 		var = SPROM_COOKIE_TO_NVRAM_VAR(*cookiep);
+		BHND_NV_ASSERT(var != NULL, ("invalid cookiep %p", cookiep));
 
 		/* We might need to parse the variable's value to determine
 		 * whether it should be treated as unset */
@@ -1440,6 +1441,7 @@ bhnd_nvram_sprom_filter_unsetvar(struct bhnd_nvram_data *nv, const char *name)
 		return (ENOENT);
 
 	var = bhnd_nvram_get_vardefn(entry->vid);
+	BHND_NV_ASSERT(var != NULL, ("missing variable definition"));
 
 	/* Variable must be capable of representing a NULL/deleted value.
 	 * 
