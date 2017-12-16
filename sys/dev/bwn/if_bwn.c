@@ -1568,20 +1568,11 @@ bwn_phy_getinfo(struct bwn_mac *mac, int gmode)
 		goto unsupphy;
 
 	/* RADIO */
-	// XXX TODO: No such chip (0x4317)
-	if (sc->sc_cid.chip_id == 0x4317) {
-		if (sc->sc_cid.chip_rev == 0)
-			tmp = 0x3205017f;
-		else if (sc->sc_cid.chip_rev == 1)
-			tmp = 0x4205017f;
-		else
-			tmp = 0x5205017f;
-	} else {
-		BWN_WRITE_2(mac, BWN_RFCTL, BWN_RFCTL_ID);
-		tmp = BWN_READ_2(mac, BWN_RFDATALO);
-		BWN_WRITE_2(mac, BWN_RFCTL, BWN_RFCTL_ID);
-		tmp |= (uint32_t)BWN_READ_2(mac, BWN_RFDATAHI) << 16;
-	}
+	BWN_WRITE_2(mac, BWN_RFCTL, BWN_RFCTL_ID);
+	tmp = BWN_READ_2(mac, BWN_RFDATALO);
+	BWN_WRITE_2(mac, BWN_RFCTL, BWN_RFCTL_ID);
+	tmp |= (uint32_t)BWN_READ_2(mac, BWN_RFDATAHI) << 16;
+
 	phy->rf_rev = (tmp & 0xf0000000) >> 28;
 	phy->rf_ver = (tmp & 0x0ffff000) >> 12;
 	phy->rf_manuf = (tmp & 0x00000fff);
