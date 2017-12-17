@@ -71,7 +71,6 @@ SUBDIR=	\
 	bridgestp \
 	bwi \
 	bwn \
-	bwn_pci \
 	${_bytgpio} \
 	cam \
 	${_cardbus} \
