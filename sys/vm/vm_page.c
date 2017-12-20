@@ -2046,8 +2046,6 @@ vm_page_alloc_freelist(int freelist, int req)
 
 	vm_domainset_iter_page_init(&di, kernel_object, &domain, &req);
 	do {
-		if (vm_domain_iterator_isdone(&vi))
-			req |= wait;
 		m = vm_page_alloc_freelist_domain(domain, freelist, req);
 		if (m != NULL)
 			break;
