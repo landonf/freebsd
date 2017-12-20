@@ -62,6 +62,7 @@ __FBSDID("$FreeBSD$");
 
 #include <vm/uma.h>
 #include <vm/vm.h>
+#include <vm/vm_object.h>
 #include <vm/vm_page.h>
 #include <vm/vm_param.h>
 #include <vm/vm_phys.h>
@@ -277,8 +278,8 @@ cpuset_lookup(cpusetid_t setid, struct thread *td)
  * will have no valid cpu based on restrictions from the parent.
  */
 static int
-_cpuset_create(struct cpuset *set, struct cpuset *parent, const cpuset_t *mask,
-    struct domainset *domain, cpusetid_t id)
+_cpuset_create(struct cpuset *set, struct cpuset *parent,
+    const cpuset_t *mask, struct domainset *domain, cpusetid_t id)
 {
 
 	if (domain == NULL)
@@ -390,13 +391,13 @@ domainset_freelist_free(struct domainlist *list)
 
 	while ((set = LIST_FIRST(list)) != NULL) {
 		LIST_REMOVE(set, ds_link);
-		uma_zfree(cpuset_zone, set);
+		uma_zfree(domainset_zone, set);
 	}
 }
 
 /* Copy a domainset preserving mask and policy. */
 static void
-domainset_copy(struct domainset *from, struct domainset *to)
+domainset_copy(const struct domainset *from, struct domainset *to)
 {
 
 	DOMAINSET_COPY(&from->ds_mask, &to->ds_mask);
@@ -405,7 +406,7 @@ domainset_copy(struct domainset *from, struct domainset *to)
 
 /* Return 1 if mask and policy are equal, otherwise 0. */
 static int
-domainset_equal(struct domainset *one, struct domainset *two)
+domainset_equal(const struct domainset *one, const struct domainset *two)
 {
 
 	return (DOMAINSET_CMP(&one->ds_mask, &two->ds_mask) == 0 &&
@@ -434,7 +435,7 @@ _domainset_create(struct domainset *domain, struct domainlist *freelist)
 	if (ndomain == NULL) {
 		LIST_INSERT_HEAD(&cpuset_domains, domain, ds_link);
 		domain->ds_cnt = DOMAINSET_COUNT(&domain->ds_mask);
-		domain->ds_max = DOMAINSET_FLS(&domain->ds_mask);
+		domain->ds_max = DOMAINSET_FLS(&domain->ds_mask) + 1;
 	}
 	mtx_unlock_spin(&cpuset_lock);
 	if (ndomain == NULL)
@@ -456,14 +457,43 @@ domainset_create(const struct domainset *domain)
 	struct domainset *ndomain;
 
 	ndomain = uma_zalloc(domainset_zone, M_WAITOK | M_ZERO);
-	ndomain->ds_policy = domain->ds_policy;
-	DOMAINSET_COPY(&domain->ds_policy, &ndomain->ds_policy);
+	domainset_copy(domain, ndomain);
 	return _domainset_create(ndomain, NULL);
 }
 
+/*
+ * Update thread domainset pointers.
+ */
+static void
+domainset_notify(void)
+{
+	struct thread *td;
+	struct proc *p;
+
+	sx_slock(&allproc_lock);
+	FOREACH_PROC_IN_SYSTEM(p) {
+		PROC_LOCK(p);
+		if (p->p_state == PRS_NEW) {
+			PROC_UNLOCK(p);
+			continue;
+		}
+		FOREACH_THREAD_IN_PROC(p, td) {
+			thread_lock(td);
+			td->td_domain.dr_policy = td->td_cpuset->cs_domain;
+			thread_unlock(td);
+		}
+		PROC_UNLOCK(p);
+	}
+	sx_sunlock(&allproc_lock);
+	kernel_object->domain.dr_policy = cpuset_default->cs_domain;
+}
+
+/*
+ * Create a new set that is a subset of a parent.
+ */
 static struct domainset *
-domainset_shadow(struct domainset *pdomain,
-    struct domainset *domain, struct domainlist *freelist)
+domainset_shadow(const struct domainset *pdomain,
+    const struct domainset *domain, struct domainlist *freelist)
 {
 	struct domainset *ndomain;
 
@@ -692,11 +722,12 @@ cpuset_modify_domain(struct cpuset *set, struct domainset *domain)
 			goto out;
 	} while (ndomains < needed);
 	dset = set->cs_domain;
-	set->cs_domain = domain;
 	cpuset_update_domain(set, domain, dset, &domains);
 out:
 	mtx_unlock_spin(&cpuset_lock);
 	domainset_freelist_free(&domains);
+	if (error == 0)
+		domainset_notify();
 
 	return (error);
 }
@@ -793,7 +824,7 @@ cpuset_which(cpuwhich_t which, id_t id, struct proc **pp, struct thread **tdp,
 
 static int
 cpuset_testshadow(struct cpuset *set, const cpuset_t *mask,
-    struct domainset *domain)
+    const struct domainset *domain)
 {
 	struct cpuset *parent;
 	struct domainset *dset;
@@ -824,13 +855,14 @@ cpuset_testshadow(struct cpuset *set, const cpuset_t *mask,
  * the new set is a child of 'set'.
  */
 static int
-cpuset_shadow(struct cpuset *set, struct cpuset **nsetp, const cpuset_t *mask,
-   struct domainset *domain, struct setlist *cpusets,
-   struct domainlist *domains)
+cpuset_shadow(struct cpuset *set, struct cpuset **nsetp,
+   const cpuset_t *mask, const struct domainset *domain,
+   struct setlist *cpusets, struct domainlist *domains)
 {
 	struct cpuset *parent;
 	struct cpuset *nset;
 	struct domainset *dset;
+	struct domainset *d;
 	int error;
 
 	error = cpuset_testshadow(set, mask, domain);
@@ -842,11 +874,11 @@ cpuset_shadow(struct cpuset *set, struct cpuset **nsetp, const cpuset_t *mask,
 	if (mask == NULL)
 		mask = &set->cs_mask;
 	if (domain != NULL)
-		domain = domainset_shadow(dset, domain, domains);
+		d = domainset_shadow(dset, domain, domains);
 	else
-		domain = set->cs_domain;
+		d = set->cs_domain;
 	nset = LIST_FIRST(cpusets);
-	error = _cpuset_create(nset, parent, mask, domain, CPUSET_INVALID);
+	error = _cpuset_create(nset, parent, mask, d, CPUSET_INVALID);
 	if (error == 0) {
 		LIST_REMOVE(nset, cs_link);
 		*nsetp = nset;
@@ -1284,6 +1316,7 @@ domainset_zero(void)
 		DOMAINSET_SET(i, &dset->ds_mask);
 	dset->ds_policy = DOMAINSET_POLICY_ROUNDROBIN;
 	curthread->td_domain.dr_policy = _domainset_create(dset, NULL);
+	kernel_object->domain.dr_policy = curthread->td_domain.dr_policy;
 }
 
 /*
@@ -1985,6 +2018,9 @@ kern_cpuset_setdomain(struct thread *td, cpulevel_t level, cpuwhich_t which,
 	}
 	DOMAINSET_COPY(mask, &domain.ds_mask);
 	domain.ds_policy = policy;
+	if (policy <= DOMAINSET_POLICY_INVALID ||
+	    policy > DOMAINSET_POLICY_MAX)
+		return (EINVAL);
 
 	switch (level) {
 	case CPU_LEVEL_ROOT:
@@ -2094,11 +2130,25 @@ DB_SHOW_COMMAND(cpusets, db_show_cpusets)
 		db_printf("  cpu mask=");
 		ddb_display_cpuset(&set->cs_mask);
 		db_printf("\n");
-		db_printf("  domain mask=");
+		db_printf("  domain policy %d mask=",
+		    set->cs_domain->ds_policy);
 		ddb_display_domainset(&set->cs_domain->ds_mask);
 		db_printf("\n");
 		if (db_pager_quit)
 			break;
+	}
+}
+
+DB_SHOW_COMMAND(domainsets, db_show_domainsets)
+{
+	struct domainset *set;
+
+	LIST_FOREACH(set, &cpuset_domains, ds_link) {
+		db_printf("set=%p policy %d cnt %d max %d\n",
+		    set, set->ds_policy, set->ds_cnt, set->ds_max);
+		db_printf("  mask =");
+		ddb_display_domainset(&set->ds_mask);
+		db_printf("\n");
 	}
 }
 #endif /* DDB */

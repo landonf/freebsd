@@ -95,6 +95,10 @@ vm_domainset_iter_next(struct vm_domainset_iter *di, int *domain)
 
 	switch (di->di_domain->ds_policy) {
 	case DOMAINSET_POLICY_FIRSTTOUCH:
+		/*
+		 * To prevent impossible allocations we convert an invalid
+		 * first-touch to round-robin.
+		 */
 		/* FALLTHROUGH */
 	case DOMAINSET_POLICY_ROUNDROBIN:
 		vm_domainset_iter_rr(di, domain);
@@ -103,7 +107,6 @@ vm_domainset_iter_next(struct vm_domainset_iter *di, int *domain)
 		panic("vm_domainset_iter_first: Unknown policy %d",
 		    di->di_domain->ds_policy);
 	}
-	di->di_n++;
 	KASSERT(*domain < vm_ndomains,
 	    ("vm_domainset_iter_next: Invalid domain %d", *domain));
 }
@@ -112,18 +115,20 @@ static void
 vm_domainset_iter_first(struct vm_domainset_iter *di, int *domain)
 {
 
-	di->di_n = 0;
 	switch (di->di_domain->ds_policy) {
 	case DOMAINSET_POLICY_FIRSTTOUCH:
 		*domain = PCPU_GET(domain);
+		if (DOMAINSET_ISSET(*domain, &di->di_domain->ds_mask)) {
+			di->di_n = 1;
+			break;
+		}
 		/*
 		 * To prevent impossible allocations we convert an invalid
 		 * first-touch to round-robin.
 		 */
-		if (DOMAINSET_ISSET(*domain, &di->di_domain->ds_mask))
-			break;
 		/* FALLTHROUGH */
 	case DOMAINSET_POLICY_ROUNDROBIN:
+		di->di_n = di->di_domain->ds_cnt;
 		vm_domainset_iter_rr(di, domain);
 		break;
 	default:
@@ -158,7 +163,7 @@ vm_domainset_iter_page(struct vm_domainset_iter *di, int *domain, int *req)
 		return (ENOMEM);
 
 	/* If there are more domains to visit we run the iterator. */
-	if (++di->di_n != di->di_domain->ds_cnt) {
+	if (--di->di_n != 0) {
 		vm_domainset_iter_next(di, domain);
 		return (0);
 	}
@@ -194,7 +199,7 @@ vm_domainset_iter_malloc(struct vm_domainset_iter *di, int *domain, int *flags)
 {
 
 	/* If there are more domains to visit we run the iterator. */
-	if (++di->di_n != di->di_domain->ds_cnt) {
+	if (--di->di_n != 0) {
 		vm_domainset_iter_next(di, domain);
 		return (0);
 	}

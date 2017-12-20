@@ -90,6 +90,11 @@ void domainset_zero(void);
 
 #else
 __BEGIN_DECLS
+int	cpuset_getdomain(cpulevel_t, cpuwhich_t, id_t, size_t, domainset_t *,
+	    int *);
+int	cpuset_setdomain(cpulevel_t, cpuwhich_t, id_t, size_t,
+	    const domainset_t *, int);
+
 __END_DECLS
 #endif
 #endif /* !_SYS_DOMAINSETSET_H_ */
