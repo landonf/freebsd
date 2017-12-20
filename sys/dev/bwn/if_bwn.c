@@ -684,6 +684,12 @@ fail:
 	free(mac, M_DEVBUF);
 	bhnd_release_pmu(dev);
 	bwn_release_bus_providers(sc);
+	
+	if (sc->sc_mem_res != NULL) {
+		bus_release_resource(sc->sc_dev, SYS_RES_MEMORY,
+		    sc->sc_mem_rid, sc->sc_mem_res);
+	}
+
 	return (error);
 }
 
