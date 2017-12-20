@@ -40,9 +40,6 @@
 #ifndef _SYS_PROC_H_
 #define	_SYS_PROC_H_
 
-#ifdef _KERNEL
-#include <sys/systm.h>
-#endif
 #include <sys/callout.h>		/* For struct callout. */
 #include <sys/event.h>			/* For struct klist. */
 #include <sys/condvar.h>
@@ -66,12 +63,12 @@
 #else
 #include <sys/pcpu.h>
 #endif
-#include <sys/types.h>
 #include <sys/ucontext.h>
 #include <sys/ucred.h>
-#include <sys/_domainset.h>
-#include <machine/cpu.h>
+#include <sys/_vm_domain.h>
+#include <sys/domainset.h>
 #include <machine/proc.h>		/* Machine-dependent proc substruct. */
+
 
 /*
  * One structure allocated per session.

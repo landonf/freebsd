@@ -2044,8 +2044,10 @@ vm_page_alloc_freelist(int freelist, int req)
 	vm_page_t m;
 	int domain;
 
-	vm_domainset_iter_page_init(&di, NULL, &domain, &req);
+	vm_domainset_iter_page_init(&di, kernel_object, &domain, &req);
 	do {
+		if (vm_domain_iterator_isdone(&vi))
+			req |= wait;
 		m = vm_page_alloc_freelist_domain(domain, freelist, req);
 		if (m != NULL)
 			break;
@@ -2642,7 +2644,7 @@ vm_page_reclaim_contig(int req, u_long npages, vm_paddr_t low, vm_paddr_t high,
 	int domain;
 	bool ret;
 
-	vm_domainset_iter_page_init(&di, NULL, &domain, &req);
+	vm_domainset_iter_page_init(&di, kernel_object, &domain, &req);
 	do {
 		ret = vm_page_reclaim_contig_domain(req, npages, domain, low,
 		    high, alignment, boundary);
