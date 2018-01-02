@@ -36,6 +36,11 @@
 
 #ifdef _KERNEL
 
+#include <sys/proc.h>
+#include <sys/condvar.h>
+
+#include <vm/uma.h>
+
 typedef struct vmem vmem_t;
 
 typedef uintptr_t	vmem_addr_t;
@@ -138,6 +143,92 @@ void vmem_startup(void);
 #define VMEM_ALLOC	0x01
 #define VMEM_FREE	0x02
 #define VMEM_MAXFREE	0x10
+
+// XXX hacked into booting
+/* vmem arena */
+typedef struct vmem_btag bt_t;
+
+#define	QC_NAME_MAX	16
+
+struct qcache {
+	uma_zone_t	qc_cache;
+	vmem_t 		*qc_vmem;
+	vmem_size_t	qc_size;
+	char		qc_name[QC_NAME_MAX];
+};
+typedef struct qcache qcache_t;
+#define	QC_POOL_TO_QCACHE(pool)	((qcache_t *)(pool->pr_qcache))
+
+
+/* boundary tag */
+struct vmem_btag {
+	TAILQ_ENTRY(vmem_btag) bt_seglist;
+	union {
+		LIST_ENTRY(vmem_btag) u_freelist; /* BT_TYPE_FREE */
+		LIST_ENTRY(vmem_btag) u_hashlist; /* BT_TYPE_BUSY */
+	} bt_u;
+#define	bt_hashlist	bt_u.u_hashlist
+#define	bt_freelist	bt_u.u_freelist
+	vmem_addr_t	bt_start;
+	vmem_size_t	bt_size;
+	int		bt_type;
+};
+
+TAILQ_HEAD(vmem_seglist, vmem_btag);
+LIST_HEAD(vmem_freelist, vmem_btag);
+LIST_HEAD(vmem_hashlist, vmem_btag);
+
+#define	VMEM_NAME_MAX	16
+#define	VMEM_OPTORDER		5
+#define	VMEM_OPTVALUE		(1 << VMEM_OPTORDER)
+#define	VMEM_MAXORDER						\
+    (VMEM_OPTVALUE - 1 + sizeof(vmem_size_t) * NBBY - VMEM_OPTORDER)
+
+#define	VMEM_HASHSIZE_MIN	16
+#define	VMEM_HASHSIZE_MAX	131072
+
+#define	VMEM_QCACHE_IDX_MAX	16
+
+#define	VMEM_FITMASK	(M_BESTFIT | M_FIRSTFIT)
+
+#define	VMEM_FLAGS						\
+    (M_NOWAIT | M_WAITOK | M_USE_RESERVE | M_NOVM | M_BESTFIT | M_FIRSTFIT)
+struct vmem {
+	struct mtx_padalign	vm_lock;
+	struct cv		vm_cv;
+	char			vm_name[VMEM_NAME_MAX+1];
+	LIST_ENTRY(vmem)	vm_alllist;
+	struct vmem_hashlist	vm_hash0[VMEM_HASHSIZE_MIN];
+	struct vmem_freelist	vm_freelist[VMEM_MAXORDER];
+	struct vmem_seglist	vm_seglist;
+	struct vmem_hashlist	*vm_hashlist;
+	vmem_size_t		vm_hashsize;
+
+	/* Constant after init */
+	vmem_size_t		vm_qcache_max;
+	vmem_size_t		vm_quantum_mask;
+	vmem_size_t		vm_import_quantum;
+	int			vm_quantum_shift;
+
+	/* Written on alloc/free */
+	LIST_HEAD(, vmem_btag)	vm_freetags;
+	int			vm_nfreetags;
+	int			vm_nbusytag;
+	vmem_size_t		vm_inuse;
+	vmem_size_t		vm_size;
+	vmem_size_t		vm_limit;
+
+	/* Used on import. */
+	vmem_import_t		*vm_importfn;
+	vmem_release_t		*vm_releasefn;
+	void			*vm_arg;
+
+	/* Space exhaustion callback. */
+	vmem_reclaim_t		*vm_reclaimfn;
+
+	/* quantum cache */
+	qcache_t		vm_qcache[VMEM_QCACHE_IDX_MAX];
+};
 
 #endif /* _KERNEL */
 
