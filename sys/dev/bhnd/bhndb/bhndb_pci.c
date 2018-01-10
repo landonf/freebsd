@@ -122,9 +122,11 @@ static struct bhndb_pci_quirk	bhndb_pcie_quirks[];
 static struct bhndb_pci_quirk	bhndb_pcie2_quirks[];
 
 static struct bhndb_pci_core bhndb_pci_cores[] = {
-	BHNDB_PCI_CORE(PCI,	BHND_PCI_SRSH_PI_OFFSET,	bhndb_pci_quirks),
-	BHNDB_PCI_CORE(PCIE,	BHND_PCIE_SRSH_PI_OFFSET,	bhndb_pcie_quirks),
-	BHNDB_PCI_CORE(PCIE2,	BHND_PCIE_SRSH_PI_OFFSET,	bhndb_pcie2_quirks),
+	BHNDB_PCI_CORE(PCI,	bhndb_pci_quirks,	BHND_PCI_SPROM_SHADOW,
+	    BHND_PCI_SRSH_PI_OFFSET),
+	BHNDB_PCI_CORE(PCIE,	bhndb_pcie_quirks,	BHND_PCIE_SPROM_SHADOW,
+	    BHND_PCIE_SRSH_PI_OFFSET),
+	BHNDB_PCI_CORE(PCIE2,	bhndb_pcie2_quirks),
 	BHNDB_PCI_CORE_END
 };
 
@@ -847,7 +849,7 @@ bhndb_init_sromless_pci_config(struct bhndb_pci_softc *sc)
 	pci_core = bhndb_pci_find_core(&sc->bhndb.bridge_core);
 	KASSERT(pci_core != NULL, ("missing core table entry"));
 
-	srsh_offset = pci_core->srsh_offset;
+	srsh_offset = pci_core->srsh + pci_core->srsh_pi;
 
 	/* Fetch the SPROM's configured core index */
 	val = bhndb_pci_read_core(sc, srsh_offset, sizeof(val));
