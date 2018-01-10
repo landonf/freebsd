@@ -242,6 +242,8 @@ uninorth_enable_config(struct uninorth_softc *sc, u_int bus, u_int slot,
 {
 	uint32_t	cfgval;
 
+	mtx_assert(&sc->sc_cfg_mtx, MA_OWNED);
+
 	if (sc->sc_skipslot == slot)
 		return (0);
 
