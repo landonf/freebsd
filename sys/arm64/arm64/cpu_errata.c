@@ -1,11 +1,12 @@
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ * SPDX-License-Identifier: BSD-2-Clause
  *
- * Copyright (c) 2001 Brian Somers <brian@Awfulhak.org>
- *   based on work by Slawa Olhovchenkov
- *                    John Prince <johnp@knight-trosoft.com>
- *                    Eric Hernes
+ * Copyright (c) 2018 Andrew Turner
  * All rights reserved.
+ *
+ * This software was developed by SRI International and the University of
+ * Cambridge Computer Laboratory under DARPA/AFRL contract FA8750-10-C-0237
+ * ("CTSRD"), as part of the DARPA CRASH research programme.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,42 +28,41 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
-/*
- * A very small subset of cards.
- */
-enum digi_model {
-	PCXE,
-	PCXEVE,
-	PCXI,
-	PCXEM,
-	PCCX,
-	PCIEPCX,
-	PCIXR
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
+
+#include <sys/param.h>
+#include <sys/kernel.h>
+#include <sys/pcpu.h>
+
+#include <machine/cpu.h>
+
+typedef void (cpu_quirk_install)(void);
+struct cpu_quirks {
+	cpu_quirk_install *quirk_install;
+	u_int		midr_mask;
+	u_int		midr_value;
 };
 
-enum {
-	DIGIDB_INIT = (1<<0),
-	DIGIDB_OPEN = (1<<1),
-	DIGIDB_CLOSE = (1<<2),
-	DIGIDB_SET = (1<<3),
-	DIGIDB_INT = (1<<4),
-	DIGIDB_READ = (1<<5),
-	DIGIDB_WRITE = (1<<6),
-	DIGIDB_RX = (1<<7),
-	DIGIDB_TX = (1<<8),
-	DIGIDB_IRQ = (1<<9),
-	DIGIDB_MODEM = (1<<10),
-	DIGIDB_RI = (1<<11),
+static cpu_quirk_install install_psci_bp_hardening;
+
+static struct cpu_quirks cpu_quirks[] = {
 };
 
-#define	DIGIIO_REINIT		_IO('e', 'A')
-#define	DIGIIO_DEBUG		_IOW('e', 'B', int)
-#define	DIGIIO_RING		_IOWINT('e', 'C')
-#define	DIGIIO_MODEL		_IOR('e', 'D', enum digi_model)
-#define	DIGIIO_IDENT		_IOW('e', 'E', char *)
-#define	DIGIIO_SETALTPIN	_IOW('e', 'F', int)
-#define	DIGIIO_GETALTPIN	_IOR('e', 'G', int)
+void
+install_cpu_errata(void)
+{
+	u_int midr;
+	size_t i;
+
+	midr = get_midr();
+
+	for (i = 0; i < nitems(cpu_quirks); i++) {
+		if ((midr & cpu_quirks[i].midr_mask) ==
+		    cpu_quirks[i].midr_value) {
+			cpu_quirks[i].quirk_install();
+		}
+	}
+}
