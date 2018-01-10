@@ -41,9 +41,25 @@ __FBSDID("$FreeBSD$");
 #include "bhndb_private.h"
 #include "bhndbvar.h"
 
-static int	bhndb_dma_tag_create(device_t dev, bus_dma_tag_t parent_dmat,
-		    const struct bhnd_dma_translation *translation,
-		    bus_dma_tag_t *dmat);
+static int				 bhndb_dma_tag_create(device_t dev,
+					     bus_dma_tag_t parent_dmat,
+					     const struct bhnd_dma_translation *translation,
+					     bus_dma_tag_t *dmat);
+
+static const struct resource_spec	*bhndb_host_resource_spec_for_regwin(
+					     const struct resource_spec *rspecs,
+					     const struct bhndb_regwin *win,
+					     u_int *idx);
+
+static bool				 bhndb_regwin_overlaps(device_t dev,
+					     const struct bhndb_regwin *lhs,
+					     const struct bhndb_regwin *rhs);
+
+static bool				 bhndb_validate_hwcfg(device_t dev,
+					     const struct bhndb_hwcfg *cfg);
+
+static bool				 bhndb_validate_regwin(device_t dev,
+					     const struct bhndb_regwin *win);
 
 /**
  * Attach a BHND bridge device to @p parent.
@@ -225,6 +241,41 @@ bhndb_host_resource_for_range(struct bhndb_host_resources *hr, int type,
 }
 
 /**
+ * Find the host resource specification in @p table that matches the given
+ * register window definition.
+ * 
+ * @param table The resource_spec table to search.
+ * @param win A register window definition.
+ * @param[out] idx On success, will be set to the index of the
+ * matching resource_spec. This argment may be NULL if the index is not desired.
+ * 
+ * @retval resource_spec the host resource_spec corresponding to @p win.
+ * @retval NULL if no matching resource_spec is found.
+ */
+static const struct resource_spec *
+bhndb_host_resource_spec_for_regwin(const struct resource_spec *table,
+    const struct bhndb_regwin *win, u_int *idx)
+{
+	for (u_int i = 0; table[i].type != -1; i++) {			
+		if (win->res.type != table[i].type)
+			continue;
+
+		if (win->res.rid != table[i].rid)
+			continue;
+
+		/* Found */
+		if (idx != NULL)
+			*idx = i;
+
+		return (&table[i]);
+	}
+
+	printf("missing regwin resource spec (type=%d, rid=%d)\n",
+	    win->res.type, win->res.rid);
+	return (NULL);
+}
+
+/**
  * Find a host resource of that matches the given register window definition.
  * 
  * @param hr The resource state to search.
@@ -237,24 +288,174 @@ struct resource *
 bhndb_host_resource_for_regwin(struct bhndb_host_resources *hr,
     const struct bhndb_regwin *win)
 {
-	const struct resource_spec *rspecs;
+	const struct resource_spec	*rspec;
+	u_int				 idx;
 
-	rspecs = hr->resource_specs;
-	for (u_int i = 0; rspecs[i].type != -1; i++) {			
-		if (win->res.type != rspecs[i].type)
-			continue;
+	rspec = bhndb_host_resource_spec_for_regwin(hr->resource_specs, win,
+	    &idx);
+	if (rspec == NULL)
+		return (NULL);
 
-		if (win->res.rid != rspecs[i].rid)
-			continue;
+	return (hr->resources[idx]);
+}
 
-		/* Found declared resource */
-		return (hr->resources[i]);
+/**
+ * Validate the well-formedness of the given register window definition.
+ * 
+ * @param dev The bridge device
+ * @param win The register window definition to be validated.
+ * 
+ * @retval true if @p win is well-formed.
+ * @retval false if @p win is il-formed.
+ */
+static bool
+bhndb_validate_regwin(device_t dev, const struct bhndb_regwin *win)
+{
+	bus_size_t offset, win_offset, win_size;
+
+#define BHNDB_REGWIN_VALID_RANGE(_off, _size)	\
+	((_size) < BUS_SPACE_MAXSIZE || BUS_SPACE_MAXSIZE - (_size) >= (_off))
+
+	win_offset = win->win_offset;
+	win_size = win->win_size;
+
+	if (!BHNDB_REGWIN_VALID_RANGE(win_offset, win_size)) {
+		device_printf(dev, "invalid window range: %#jx+%#jx\n",
+		    (uintmax_t)win_offset, (uintmax_t)win_size);
+
+		return (false);
 	}
 
-	device_printf(hr->owner, "missing regwin resource spec "
-	    "(type=%d, rid=%d)\n", win->res.type, win->res.rid);
+	switch (win->win_type) {
+	case BHNDB_REGWIN_T_CORE:
+		offset = win->d.core.offset;
 
-	return (NULL);
+		if (!BHNDB_REGWIN_VALID_RANGE(offset, win_size)) {
+			device_printf(dev, "invalid core window range: "
+			    "%#jx+%#jx\n", (uintmax_t)win_offset,
+			    (uintmax_t)win_size);
+
+			return (false);
+		}
+
+		return (true);
+
+	case BHNDB_REGWIN_T_DYN:
+		offset = win->d.dyn.cfg_offset;
+
+		if (!BHNDB_REGWIN_VALID_RANGE(offset, sizeof(uint32_t))) {
+			device_printf(dev, "invalid dynamic window config "
+			    "offset: %#jx\n", (uintmax_t)offset);
+			return (false);
+		}
+
+		return (true);
+
+	case BHNDB_REGWIN_T_SPROM:
+		/* Nothing to check */
+		return (true);
+
+	case BHNDB_REGWIN_T_INVALID:
+		printf("invalid register window type: %d\n", win->win_type);
+		return (false);
+	}
+
+	printf("unsupported register window type: %d\n", win->win_type);
+
+	return (false);
+
+#undef BHNDB_REGWIN_VALID_RANGE
+}
+
+/**
+ * Validate the well-formedness of the given bridge hardware configuration.
+ * 
+ * @param dev The bridge device
+ * @param cfg The hardware configuration to be validated.
+ * 
+ * @retval true if @p cfg is well-formed.
+ * @retval false if @p cfg is ill-formed.
+ */
+static bool
+bhndb_validate_hwcfg(device_t dev, const struct bhndb_hwcfg *cfg)
+{
+	const struct bhndb_regwin		*win_table, *win, *owin;
+	const struct bhnd_dma_translation	*dt_table, *dt;
+	const struct resource_spec		*rspecs, *rspec;
+
+	rspecs = cfg->resource_specs;
+	dt_table = cfg->dma_translations;
+	win_table = cfg->register_windows;
+
+	/* Validate all DMA translation entries (if any) */
+	for (dt = dt_table; dt != NULL &&
+	    !BHND_DMA_IS_TRANSLATION_TABLE_END(dt); dt++)
+	{
+		if ((dt->base_addr & dt->addr_mask) != 0) {
+			device_printf(dev, "DMA translation %td invalid: base "
+			    "address %#jx overlaps address mask %#jx",
+			    dt - dt_table, (uintmax_t)dt->base_addr,
+			    (uintmax_t)dt->addr_mask);
+
+			return (false);
+		}
+
+		if ((dt->addrext_mask & dt->addr_mask) != 0) {
+			device_printf(dev, "DMA translation %td invalid: "
+			    "addrext mask %#jx overlaps address mask %#jx",
+			    dt - dt_table,
+			    (uintmax_t)dt->addrext_mask,
+			    (uintmax_t)dt->addr_mask);
+
+			return (false);
+		}
+	}
+
+	/* Validate all register window definitions */
+	for (win = win_table; win->win_type != BHNDB_REGWIN_T_INVALID; win++) {
+		/* The window definition must be well-formed */
+		if (!bhndb_validate_regwin(dev, win))
+			return (false);
+
+		/* The resource_spec reference must exist */
+		rspec = bhndb_host_resource_spec_for_regwin(rspecs, win, NULL);
+		if (rspec == NULL) {
+			device_printf(dev, "no host resource found for %u "
+			    "register window %td with offset %#jx and "
+			    "size %#jx\n",
+			    win->win_type,
+			    win - win_table,
+			    (uintmax_t)win->win_offset,
+			    (uintmax_t)win->win_size);
+
+			return (false);
+		}
+
+		/* Must not conflict with other window entries */
+		for (owin = win_table;
+		    owin->win_type != BHNDB_REGWIN_T_INVALID;  owin++)
+		{
+			/* Same window? */
+			if (owin == win)
+				continue;
+
+			/* Check for overlap */
+			if (bhndb_regwin_overlaps(dev, win, owin)) {
+				device_printf(dev, "register windows %td and "
+				    "%td claim overlapping address ranges\n",
+				    win - win_table, owin - win_table);
+
+				panic("FAILBOAT");
+				return (false);
+			}
+		}
+	}
+
+	/* We don't attempt any specific validation of resource spec entries;
+	 * the only way to validate them is to actually attempt to allocate
+	 * them from the bus */
+
+	return (true);
 }
 
 /**
@@ -279,6 +480,12 @@ bhndb_alloc_resources(device_t dev, device_t parent_dev,
 	free_ht_mem = false;
 	free_br_mem = false;
 	free_br_irq = false;
+
+	/* Validate the hardware configuration */
+	if (!bhndb_validate_hwcfg(dev, cfg)) {
+		device_printf(dev, "invalid hardware configuration\n");
+		return (NULL);
+	}
 
 	r = malloc(sizeof(*r), M_BHND, M_NOWAIT|M_ZERO);
 	if (r == NULL)
@@ -417,8 +624,7 @@ bhndb_alloc_resources(device_t dev, device_t parent_dev,
 		goto failed;
 	}
 
-	/* Populate (and validate) parent resource references for all
-	 * dynamic windows */
+	/* Populate parent resource references for all dynamic windows */
 	for (size_t i = 0; i < r->dwa_count; i++) {
 		struct bhndb_dw_alloc		*dwa;
 		const struct bhndb_regwin	*win;
@@ -426,7 +632,6 @@ bhndb_alloc_resources(device_t dev, device_t parent_dev,
 		dwa = &r->dw_alloc[i];
 		win = dwa->win;
 
-		/* Find and validate corresponding resource. */
 		dwa->parent_res = bhndb_host_resource_for_regwin(r->res, win);
 		if (dwa->parent_res == NULL) {
 			device_printf(r->dev, "no host resource found for %u "
@@ -437,19 +642,6 @@ bhndb_alloc_resources(device_t dev, device_t parent_dev,
 			    (uintmax_t)win->win_size);
 
 			error = ENXIO;
-			goto failed;
-		}
-
-		if (rman_get_size(dwa->parent_res) < win->win_offset +
-		    win->win_size)
-		{
-			device_printf(r->dev, "resource %d too small for "
-			    "register window with offset %llx and size %llx\n",
-			    rman_get_rid(dwa->parent_res),
-			    (unsigned long long) win->win_offset,
-			    (unsigned long long) win->win_size);
-
-			error = EINVAL;
 			goto failed;
 		}
 	}
@@ -655,9 +847,16 @@ bhndb_alloc_host_resources(struct bhndb_host_resources **resources,
 {
 	struct bhndb_host_resources		*hr;
 	const struct bhnd_dma_translation	*dt;
+	const struct bhndb_regwin		*win;
 	bus_dma_tag_t				 parent_dmat;
 	size_t					 nres, ndt;
 	int					 error;
+
+	/* Validate the hardware configuration */
+	if (!bhndb_validate_hwcfg(dev, hwcfg)) {
+		device_printf(dev, "invalid hardware configuration\n");
+		return (EINVAL);
+	}
 
 	parent_dmat = bus_get_dma_tag(parent_dev);
 
@@ -674,32 +873,11 @@ bhndb_alloc_host_resources(struct bhndb_host_resources **resources,
 	for (size_t i = 0; hwcfg->resource_specs[i].type != -1; i++)
 		nres++;
 
-	/* Determine the total count and validate our DMA translation table. */
+	/* Determine the DMA translation entry count. */
 	ndt = 0;
 	for (dt = hwcfg->dma_translations; dt != NULL &&
 	    !BHND_DMA_IS_TRANSLATION_TABLE_END(dt); dt++)
 	{
-		/* Validate the defined translation */
-		if ((dt->base_addr & dt->addr_mask) != 0) {
-			device_printf(dev, "invalid DMA translation; base "
-			    "address %#jx overlaps address mask %#jx",
-			    (uintmax_t)dt->base_addr, (uintmax_t)dt->addr_mask);
-
-			error = EINVAL;
-			goto failed;
-		}
-
-		if ((dt->addrext_mask & dt->addr_mask) != 0) {
-			device_printf(dev, "invalid DMA translation; addrext "
-			    "mask %#jx overlaps address mask %#jx",
-			    (uintmax_t)dt->addrext_mask,
-			    (uintmax_t)dt->addr_mask);
-
-			error = EINVAL;
-			goto failed;
-		}
-
-		/* Increment our entry count */
 		ndt++;
 	}
 
@@ -738,6 +916,28 @@ bhndb_alloc_host_resources(struct bhndb_host_resources **resources,
 		device_printf(dev, "could not allocate bridge resources via "
 		    "%s: %d\n", device_get_nameunit(parent_dev), error);
 		goto failed;
+	}
+
+	/* Finally, verify that our register windows fit within the allocated
+	 * host resources */
+	for (win = hwcfg->register_windows;
+	     win->win_type != BHNDB_REGWIN_T_INVALID; win++)
+        {
+		struct resource *r = bhndb_host_resource_for_regwin(hr, win);
+
+		KASSERT(r != NULL, ("missing host resource"));
+		if (rman_get_size(r) < win->win_offset + win->win_size) {
+			device_printf(hr->owner, "resource %d too small for "
+			    "register window with offset %#jx and size %#jx\n",
+			    rman_get_rid(r), (uintmax_t)win->win_offset,
+			    (uintmax_t)win->win_size);
+
+			bus_release_resources(hr->owner, hr->resource_specs,
+			    hr->resources);
+
+			error = EINVAL;
+			goto failed;
+		}
 	}
 
 	*resources = hr;
@@ -1606,6 +1806,121 @@ bhndb_regwin_match_core(const struct bhndb_regwin *regw,
 
 	/* Matches */
 	return (true);
+}
+
+/**
+ * Return true if @p lhs and @p rhs claim ownership of overlapping host
+ * or bridged resources, false otherwise.
+ * 
+ * @param dev The bridge device
+ * @param lhs The first register window to compare.
+ * @param rhs The second register window to compare.
+ */
+static bool
+bhndb_regwin_overlaps(device_t dev, const struct bhndb_regwin *lhs,
+    const struct bhndb_regwin *rhs)
+{
+	bus_size_t lhs_start, rhs_start;
+	bus_size_t lhs_end, rhs_end;
+
+	KASSERT(
+	    bhndb_validate_regwin(dev, lhs) && bhndb_validate_regwin(dev, rhs),
+	    ("invalid register windows"));
+
+	lhs_start = lhs->win_offset;
+	lhs_end = lhs->win_offset + lhs->win_size;
+
+	rhs_start = rhs->win_offset;
+	rhs_end = rhs->win_offset + rhs->win_size;
+
+	if (lhs_start < rhs_end && lhs_end > rhs_start) {
+		device_printf(dev, "overlapping host resource mappings at "
+		    "%#jx-%#jx and %#jx-%#jx\n", (uintmax_t)lhs_start,
+		    (uintmax_t)lhs_end, (uintmax_t)rhs_start,
+		    (uintmax_t)rhs_end);
+
+		return (true);
+	}
+
+	/* All other checks only apply to matching window types */
+	if (lhs->win_type != rhs->win_type)
+		return (false);
+
+	switch (lhs->win_type) {
+	case BHNDB_REGWIN_T_CORE: {
+		bus_size_t l_core_start, r_core_start;
+		bus_size_t l_core_end, r_core_end;
+
+		if (lhs->d.core.class != rhs->d.core.class)
+			break;
+
+		if (lhs->d.core.unit != rhs->d.core.unit)
+			break;
+
+		if (lhs->d.core.port_type != rhs->d.core.port_type)
+			break;
+
+		if (lhs->d.core.port != rhs->d.core.port)
+			break;
+
+		if (lhs->d.core.region != rhs->d.core.region)
+			break;
+
+		/* Do the mapped core ranges overlap? */
+		l_core_start = lhs->d.core.offset;
+		l_core_end = lhs->d.core.offset + lhs->win_size;
+
+		r_core_start = rhs->d.core.offset;
+		r_core_end = rhs->d.core.offset + rhs->win_size;
+
+		if (l_core_start < r_core_end && l_core_end > r_core_start) {
+			device_printf(dev, "overlapping core mappings at "
+			    "%#jx-%#jx and %#jx-%#jx\n",
+			    (uintmax_t)l_core_start, (uintmax_t)l_core_end,
+			    (uintmax_t)r_core_start, (uintmax_t)r_core_end);
+
+			return (true);
+		}
+
+		return (false);
+	}
+
+	case BHNDB_REGWIN_T_DYN: {
+		bus_size_t l_cfg_start, r_cfg_start;
+		bus_size_t l_cfg_end, r_cfg_end;
+
+		/* Do the cfg registers overlap? */
+		l_cfg_start = lhs->d.dyn.cfg_offset;
+		l_cfg_end = lhs->d.dyn.cfg_offset + sizeof(uint32_t);
+
+		r_cfg_start = rhs->d.dyn.cfg_offset;
+		r_cfg_end = rhs->d.dyn.cfg_offset + sizeof(uint32_t);
+
+		if (l_cfg_start < r_cfg_end && l_cfg_end > r_cfg_start) {
+			device_printf(dev, "overlapping dynamic window "
+			    "configuration registers at %#jx-%#jx and "
+			    "%#jx-%#jx\n", (uintmax_t)l_cfg_start,
+			    (uintmax_t)l_cfg_end, (uintmax_t)r_cfg_start,
+			    (uintmax_t)r_cfg_end);
+
+			return (true);
+		}
+
+		return (false);
+	}
+
+	case BHNDB_REGWIN_T_SPROM:
+		/* Defining more than one SPROM window is not currently
+		 * supported; SPROM entries are always overlapping */
+		return (true);
+
+	case BHNDB_REGWIN_T_INVALID:
+		printf("invalid register window type: %d\n", lhs->win_type);
+		return (false);
+	}
+
+	printf("unsupported register window type: %d\n", lhs->win_type);
+	return (false);
 }
 
 /**
