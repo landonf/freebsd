@@ -738,6 +738,9 @@ bhndb_pci_get_core_regs(struct bhndb_pci_softc *sc, bus_size_t offset,
 		return (ENXIO);
 	}
 
+	KASSERT(offset >= win->d.core.offset, ("offset %#jx outside of "
+	    "register window", (uintmax_t)offset));
+
 	/* Fetch the resource containing the register window */
 	r = bhndb_host_resource_for_regwin(sc->bhndb.bus_res->res, win);
 	if (r == NULL) {
@@ -745,11 +748,14 @@ bhndb_pci_get_core_regs(struct bhndb_pci_softc *sc, bus_size_t offset,
 		return (ENXIO);
 	}
 
-	KASSERT(offset >= win->d.core.offset, ("offset %#jx outside of "
-	    "register window", (uintmax_t)offset));
-
 	*res = r;
 	*res_offset = win->win_offset + (offset - win->d.core.offset);
+
+	KASSERT(*res_offset + size < rman_get_size(*res), ("offset %#jx+%#jx "
+	    "(%#jx+%#jx) is not mapped by the backing resource (%#jx+%#jx)",
+	    (uintmax_t)offset, (uintmax_t)size,
+	    (uintmax_t)rman_get_start(*res) + *res_offset, (uintmax_t)size,
+	    (uintmax_t)rman_get_start(*res), (uintmax_t)rman_get_size(*res)));
 
 	return (0);
 }
