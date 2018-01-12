@@ -79,11 +79,8 @@ struct bhndb_pci_eio;
 static int		bhndb_pci_alloc_msi(struct bhndb_pci_softc *sc,
 			    int *msi_count);
 static int		bhndb_pci_read_core_table(device_t dev,
-			    bhnd_devclass_t hostb_devclass,
 			    struct bhnd_chipid *chipid,
 			    struct bhnd_core_info **cores, u_int *ncores,
-			    struct bhnd_core_info *hostb,
-			    bhnd_addr_t *hostb_addr,
 			    bhnd_erom_class_t **eromcls);
 static int		bhndb_pci_add_children(struct bhndb_pci_softc *sc);
 
@@ -255,10 +252,15 @@ bhndb_pci_probe(device_t dev)
 	if ((error = bhndb_enable_pci_clocks(dev)))
 		return (error);
 
-	/* Identify the chip and host bridge core */
+	/* Identify the chip and enumerate the bridged cores */
+	error = bhndb_pci_read_core_table(dev, &cid, &cores, &ncores, NULL);
+	if (error)
+		goto cleanup;
+
+	/* Search our core table for the host bridge core */
 	hostb_devclass = bhndb_expected_pci_devclass(dev);
-	error = bhndb_pci_read_core_table(dev, hostb_devclass, &cid, &cores,
-	     &ncores, &hostb_core, NULL, NULL);
+	error = bhndb_find_hostb_core(cores, ncores, hostb_devclass,
+	    &hostb_core);
 	if (error)
 		goto cleanup;
 
@@ -365,15 +367,11 @@ bhndb_pci_attach(device_t dev)
 	if ((error = bhndb_enable_pci_clocks(sc->dev)))
 		goto cleanup;
 
-	/* Read the chipid, fetch the full core table, and identify the host
-	 * bridge core */
-	error = bhndb_pci_read_core_table(dev, sc->pci_devclass, &cid, &cores,
-	    &ncores, &hostb_core, &sc->hostb_addr, &erom_class);
+	/* Identify the chip and enumerate the bridged cores */
+	error = bhndb_pci_read_core_table(dev, &cid, &cores, &ncores,
+	    &erom_class);
 	if (error)
 		goto cleanup;
-	
-	/* Populate our quirk flags */
-	sc->pci_quirks = bhndb_pci_get_core_quirks(&cid, &hostb_core);
 
 	/* Select the appropriate register window handler */
 	if (cid.chip_type == BHND_CHIPTYPE_SIBA) {
@@ -382,15 +380,21 @@ bhndb_pci_attach(device_t dev)
 		sc->set_regwin = bhndb_pci_fast_setregwin;
 	}
 
-	/* Fix-up power on defaults for SROM-less devices. This may fix
-	 * incorrect core mappings in our PCI BARs, and must be performed
-	 * prior to bridge attach. */
-	bhndb_init_sromless_pci_config(sc);
+	/* Determine our host bridge core and populate our quirk flags */
+	error = bhndb_find_hostb_core(cores, ncores, sc->pci_devclass,
+	    &hostb_core);
+	if (error)
+		goto cleanup;
+
+	sc->pci_quirks = bhndb_pci_get_core_quirks(&cid, &hostb_core);
 
 	/* Perform bridge attach */
 	error = bhndb_attach(dev, &cid, cores, ncores, &hostb_core, erom_class);
 	if (error)
 		goto cleanup;
+
+	/* Fix-up power on defaults for SROM-less devices. */
+	bhndb_init_sromless_pci_config(sc);
 
 	/* Add any additional child devices */
 	if ((error = bhndb_pci_add_children(sc)))
@@ -470,20 +474,12 @@ bhndb_pci_detach(device_t dev)
  * completion of device attach and full configuration of the bridge.
  * 
  * @param	dev		The bhndb_pci bridge device.
- * @param	hostb_devclass	The device class to be matched when identifying
- *				the host bridge core.
  * @param[out]	chipid		On success, the parsed chip identification.
  * @param[out]	cores		On success, the enumerated core table. The
  *				caller is responsible for freeing this table via
  *				bhndb_pci_free_core_table().
  * @param[out]	ncores		On success, the number of cores found in
  *				@p cores.
- * @param[out]	hostb_core	On success, the host bridge core info, This
- *				argument may be NULL if the core info is not
- *				desired.
- * @param[out]	hostb_addr	On success, the device address of the host
- *				bridge core registers. This argument may be NULL
- *				if the address is not desired.
  * @param[out]	eromcls		On success, a pointer to the erom class used to
  *				parse the device enumeration table. This
  *				argument may be NULL if the class is not
@@ -494,23 +490,18 @@ bhndb_pci_detach(device_t dev)
  * 			unix error code will be returned.
  */
 static int
-bhndb_pci_read_core_table(device_t dev, bhnd_devclass_t hostb_devclass,
-    struct bhnd_chipid *chipid, struct bhnd_core_info **cores, u_int *ncores,
-    struct bhnd_core_info *hostb_core, bhnd_addr_t *hostb_addr,
+bhndb_pci_read_core_table(device_t dev, struct bhnd_chipid *chipid,
+    struct bhnd_core_info **cores, u_int *ncores,
     bhnd_erom_class_t **eromcls)
 {
 	const struct bhndb_hwcfg	*cfg;
 	struct bhndb_host_resources	*hr;
 	struct bhndb_pci_eio		 pio;
-	struct bhnd_core_info		 ci;
-	struct bhnd_core_match		 ci_match;
-	struct bhnd_chipid		 cid;
 	struct bhnd_core_info		*erom_cores;
 	const struct bhnd_chipid	*hint;
+	struct bhnd_chipid		 cid;
 	bhnd_erom_class_t		*erom_class;
 	bhnd_erom_t			*erom;
-	bhnd_addr_t			 core_addr;
-	bhnd_size_t			 core_size;
 	device_t			 parent_dev;
 	u_int				 erom_ncores;
 	int				 error;
@@ -563,37 +554,12 @@ bhndb_pci_read_core_table(device_t dev, bhnd_devclass_t hostb_devclass,
 		goto failed;
 	}
 
-	/* Identify the host bridge core */
-	error = bhndb_find_hostb_core(erom_cores, erom_ncores, hostb_devclass,
-	    &ci);
-	if (error) {
-		device_printf(dev, "failed to identify host bridge core: %d\n",
-		    error);
-		goto failed;
-	}
-
-	ci_match = bhnd_core_get_match_desc(&ci);
-	error = bhnd_erom_lookup_core_addr(erom, &ci_match, BHND_PORT_DEVICE,
-	    0, 0, NULL, &core_addr, &core_size);
-	if (error) {
-		device_printf(dev, "failed to fetch host bridge address: %d\n",
-		    error);
-		goto failed;
-	}
-
 	/* Provide the results to our caller */
-	*chipid = cid;
-
 	*cores = malloc(sizeof(erom_cores[0]) * erom_ncores, M_BHND, M_WAITOK);
 	memcpy(*cores, erom_cores, sizeof(erom_cores[0]) * erom_ncores);
 	*ncores = erom_ncores;
 
-	if (hostb_core != NULL)
-		*hostb_core = ci;
-
-	if (hostb_addr != NULL)
-		*hostb_addr = core_addr;
-
+	*chipid = cid;
 	if (eromcls != NULL)
 		*eromcls = erom_class;
 
@@ -741,10 +707,6 @@ bhndb_pci_sprom_size(struct bhndb_pci_softc *sc)
 	return (sprom_sz);
 }
 
-static int
-bhndb_pci_set_window_addr(device_t dev, const struct bhndb_regwin *rw,
-    bhnd_addr_t addr);
-
 /**
  * Return the host resource providing a static mapping of the PCI core's
  * registers.
@@ -767,18 +729,14 @@ bhndb_pci_get_core_regs(struct bhndb_pci_softc *sc, bus_size_t offset,
 {
 	const struct bhndb_regwin	*win;
 	struct resource			*r;
-	bhnd_size_t			 core_offset;
 
-	/* Locate a static register window mapping the requested offset */
+	/* Locate the static register window mapping the requested offset */
 	win = bhndb_regwin_find_core(sc->bhndb.bus_res->cfg->register_windows,
 	    sc->pci_devclass, 0, BHND_PORT_DEVICE, 0, 0, offset, size);
 	if (win == NULL) {
 		device_printf(sc->dev, "missing PCI core register window\n");
 		return (ENXIO);
 	}
-
-	KASSERT(offset >= win->d.core.offset, ("offset %#jx outside of "
-	    "register window", (uintmax_t)offset));
 
 	/* Fetch the resource containing the register window */
 	r = bhndb_host_resource_for_regwin(sc->bhndb.bus_res->res, win);
@@ -787,14 +745,11 @@ bhndb_pci_get_core_regs(struct bhndb_pci_softc *sc, bus_size_t offset,
 		return (ENXIO);
 	}
 
-	*res = r;
-	*res_offset = win->win_offset + (offset - core_offset);
+	KASSERT(offset >= win->d.core.offset, ("offset %#jx outside of "
+	    "register window", (uintmax_t)offset));
 
-	KASSERT(*res_offset + size < rman_get_size(*res), ("offset %#jx+%#jx "
-	    "(%#jx+%#jx) is not mapped by the backing resource (%#jx+%#jx)",
-	    (uintmax_t)offset, (uintmax_t)size,
-	    (uintmax_t)rman_get_start(*res) + *res_offset, (uintmax_t)size,
-	    (uintmax_t)rman_get_start(*res), (uintmax_t)rman_get_size(*res)));
+	*res = r;
+	*res_offset = win->win_offset + (offset - win->d.core.offset);
 
 	return (0);
 }
@@ -870,15 +825,12 @@ bhndb_pci_read_core(struct bhndb_pci_softc *sc, bus_size_t offset, u_int width)
 }
 
 /*
- * On devices without a SPROM, the PCI(e) cores will be initialized with
+ * On devices without a SROM, the PCI(e) cores will be initialized with
  * their Power-on-Reset defaults; this can leave two of the BAR0 PCI windows
  * mapped to the wrong core.
  * 
- * This function updates the PCI core's SPROM shadow to point the BAR0 window(s)
- * at the correct PCI core.
- * 
- * Since we cannot rely on the static register windows mapping the correct PCI
- * core, this must be done using a dynamic register window.
+ * This function updates the SROM shadow to point the BAR0 windows at the
+ * current PCI core.
  * 
  * Applies to all PCI/PCIe revisions.
  */
@@ -892,8 +844,6 @@ bhndb_init_sromless_pci_config(struct bhndb_pci_softc *sc)
 
 	if ((sc->pci_quirks & BHNDB_PCI_QUIRK_SRSH_WAR) == 0)
 		return;
-
-	return;
 
 	/* Determine the correct register offset for our PCI core */
 	pci_core = bhndb_pci_find_core(&sc->bhndb.bridge_core);

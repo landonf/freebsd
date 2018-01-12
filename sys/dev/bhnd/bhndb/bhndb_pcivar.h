@@ -122,7 +122,6 @@ struct bhndb_pci_softc {
 	struct bhndb_softc	 bhndb;		/**< parent softc */
 	device_t		 dev;		/**< bridge device */
 	device_t		 parent;	/**< parent PCI device */
-	bhnd_addr_t		 hostb_addr;	/**< PCI core's base address */
 	bhnd_devclass_t		 pci_devclass;	/**< PCI core's devclass */
 	uint32_t		 pci_quirks;	/**< PCI bridge-level quirks */
 	int			 msi_count;	/**< MSI count, or 0 */
