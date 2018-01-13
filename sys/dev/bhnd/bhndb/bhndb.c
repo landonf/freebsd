@@ -1636,15 +1636,13 @@ bhndb_deactivate_bhnd_resource(device_t dev, device_t child,
 
 /**
  * Find the best available bridge resource allocation record capable of handling
- * bus I/O requests of @p size at @p addr.
+ * bus I/O requests of @p size at @p addr, if any.
  * 
  * In order of preference, this function will either:
  * 
  * - Configure and return a free allocation record
  * - Return an existing allocation record mapping the requested space, or
  * - Steal, configure, and return an in-use allocation record.
- * 
- * Will panic if a usable record cannot be found.
  * 
  * @param sc Bridge driver state.
  * @param addr The I/O target address.
@@ -1710,16 +1708,14 @@ bhndb_io_resource_get_window(struct bhndb_softc *sc, bus_addr_t addr,
 	if ((region->alloc_flags & BHNDB_ALLOC_FULFILL_ON_OVERCOMMIT) == 0)
 		return (NULL);
 
-	/* Steal a window. This acquires our backing spinlock, disabling
-	 * interrupts; the spinlock will be released by
+	/* Attempt to steal a window. This acquires our backing spinlock,
+	 * disabling interrupts; the spinlock will be released by
 	 * bhndb_dw_return_stolen() */
-	if ((dwa = bhndb_dw_steal(br, restore)) != NULL) {
-		*stolen = true;
-		return (dwa);
-	}
-
-	panic("register windows exhausted attempting to map 0x%llx-0x%llx\n", 
-	    (unsigned long long) addr, (unsigned long long) addr+size-1);
+	if ((dwa = bhndb_dw_steal(br, restore)) == NULL)
+		return (NULL);
+	
+	*stolen = true;
+	return (dwa);
 }
 
 /**
@@ -1755,6 +1751,10 @@ bhndb_io_resource(struct bhndb_softc *sc, bus_addr_t addr, bus_size_t size,
 
 	dwa = bhndb_io_resource_get_window(sc, addr, size, &borrowed, stolen,
 	    restore);
+	if (dwa == NULL) {
+		panic("register windows exhausted attempting to map "
+		    "%#jx-%#jx\n", (uintmax_t)addr, (uintmax_t)addr+size-1);
+	}
 
 	/* Adjust the window if the I/O request won't fit in the current
 	 * target range. */
