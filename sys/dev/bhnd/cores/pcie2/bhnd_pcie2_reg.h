@@ -157,7 +157,7 @@
 #define	BHND_PCIE2_PCIE_FUNC1_CFG	0x500	/**< PCIe function 1 config space */
 #define	BHND_PCIE2_PCIE_FUNC2_CFG	0x600	/**< PCIe function 2 config space */
 #define	BHND_PCIE2_PCIE_FUNC3_CFG	0x700	/**< PCIe function 3 config space */
-#define	BHND_PCIE2_SPROM		0x800	/**< SPROM shadow */
+#define	BHND_PCIE2_SPROM_SHADOW		0x800	/**< SPROM shadow */
 
 #define	BHND_PCIE2_FUNC0_IMAP0_0	0xC00
 #define	BHND_PCIE2_FUNC0_IMAP0_1	0xC04
@@ -237,5 +237,12 @@
 #define	BHND_PCIE2_DMA_STATUS0		0x10	/**< current descriptor, xmt state */
 #define	BHND_PCIE2_DMA_STATUS1		0x10	/**< active descriptor, xmt error */
 
+/* SPROM offsets */
+#define	BHND_PCIE2_SRSH_PI_OFFSET	0	/**< PCI base address bits in SPROM shadow area */
+#define	BHND_PCIE2_SRSH_PI_MASK		0xf000	/**< bits 15:12 of the PCI core address */
+#define	BHND_PCIE2_SRSH_PI_SHIFT	12
+
+#define	BHND_PCIE2_SRSH_PI_ADDR_MASK	0x0000F000
+#define	BHND_PCIE2_SRSH_PI_ADDR_SHIFT	12
 
 #endif /* _BHND_CORES_PCIE2_BHND_PCIE2_REG_H_ */

@@ -53,6 +53,17 @@ typedef int (*bhndb_pci_set_regwin_t)(device_t dev, device_t pci_dev,
 	         const struct bhndb_regwin *rw, bhnd_addr_t addr);
 
 /**
+ * Supported PCI register definitions. 
+ *
+ * @see BHNDB_PCI_CMN_REG.
+ */
+typedef enum {
+	BHNDB_PCI_REGFMT	= 0,	/* PCI register definitions */
+	BHNDB_PCIE_REGFMT	= 1,	/* PCIe-Gen1 register definitions */
+	BHNDB_PCIE2_REGFMT	= 2,	/* PCIe-Gen2 register definitions */
+} bhndb_pci_regfmt_t;
+
+/**
  * PCI/PCIe bridge-level device quirks
  */
 enum {
@@ -60,17 +71,11 @@ enum {
 	BHNDB_PCI_QUIRK_NONE		= 0,
 
 	/**
-	 * The core requires fixup of the BAR0 SROM shadow to point at the
-	 * current PCI core.
-	 */
-	BHNDB_PCI_QUIRK_SRSH_WAR	= (1<<0),
-
-	/**
 	 * The PCI (rev <= 5) core does not provide interrupt status/mask
 	 * registers; these siba-only devices require routing backplane
 	 * interrupt flags via the SIBA_CFG0_INTVEC register.
 	 */
-	BHNDB_PCI_QUIRK_SIBA_INTVEC	= (1<<1),
+	BHNDB_PCI_QUIRK_SIBA_INTVEC	= (1<<0),
 };
 
 /** bhndb_pci quirk table entry */
@@ -97,16 +102,16 @@ struct bhndb_pci_quirk {
 /** bhndb_pci core table entry */
 struct bhndb_pci_core {
 	struct bhnd_core_match	 match;		/**< core match descriptor */
-	bus_size_t		 srsh_offset;	/**< offset to SRSH_PI register, if any */
+	bhndb_pci_regfmt_t	 regfmt;	/**< register format */
 	struct bhndb_pci_quirk	*quirks;	/**< quirk table */
 };
 
-#define	BHNDB_PCI_CORE(_device, _srsh, _quirks) {			\
+#define	BHNDB_PCI_CORE(_device, _quirks) {				\
 	{ BHND_MATCH_CORE(BHND_MFGID_BCM, BHND_COREID_ ## _device) },	\
-	_srsh,								\
-	_quirks								\
+	.regfmt =	BHNDB_ ## _device ## _REGFMT,			\
+	.quirks =	(_quirks),					\
 }
-#define	BHNDB_PCI_CORE_END		{ { BHND_MATCH_ANY }, 0, NULL }
+#define	BHNDB_PCI_CORE_END		{ { BHND_MATCH_ANY } }
 #define	BHNDB_PCI_IS_CORE_END(_c)	BHND_MATCH_IS_ANY(&(_c)->match)
 
 struct bhndb_pci_softc {
@@ -129,5 +134,25 @@ struct bhndb_pci_softc {
 #define	BHNDB_PCI_UNLOCK(sc)			mtx_unlock(&(sc)->mtx)
 #define	BHNDB_PCI_LOCK_ASSERT(sc, what)		mtx_assert(&(sc)->mtx, what)
 #define	BHNDB_PCI_LOCK_DESTROY(sc)		mtx_destroy(&(sc)->mtx)
+
+
+/**
+ * Evaluates to the value of a common PCI/PCIe-G1/PCIe-G2 core register
+ * definition. 
+ * 
+ * This will trigger a compile-time error if the register is not defined
+ * for all supported PCI/PCIe cores.
+ * 
+ * This should be optimized down to a constant value if the register constant
+ * is the same across the register definitions.
+ * 
+ * @param _entry The PCI core table entry.
+ * @param _name The base name of the register.
+ */
+#define	BHNDB_PCI_CMN_REG(_entry, _name)	(			\
+	(_entry)->regfmt == BHNDB_PCI_REGFMT ? BHND_PCI_ ## _name :	\
+	(_entry)->regfmt == BHNDB_PCIE_REGFMT ? BHND_PCIE_ ## _name :	\
+	BHND_PCIE2_ ## _name						\
+)
 
 #endif /* _BHND_BHNDB_PCIVAR_H_ */
