@@ -135,7 +135,7 @@
 #define	BHNDB_PCI_V0_BAR0_SPROM_OFFSET	0x1000	/* bar0 + 4K accesses sprom shadow (in pci core) */
 #define BHNDB_PCI_V0_BAR0_SPROM_SIZE	0x0800
 #define	BHNDB_PCI_V0_BAR0_PCIREG_OFFSET	0x1800	/* bar0 + 6K accesses pci core registers (not including SSB CFG registers) */
-#define	BHNDB_PCI_V0_BAR0_PCIREG_SIZE	0x0600
+#define	BHNDB_PCI_V0_BAR0_PCIREG_SIZE	0x0E00	// XXX should be 0x0600, but we need to make bhndb aware of sparse access
 #define	BHNDB_PCI_V0_BAR0_PCISB_OFFSET	0x1E00	/* bar0 + 7.5K accesses pci core's SSB CFG register blocks */
 #define	BHNDB_PCI_V0_BAR0_PCISB_SIZE	0x0200
 #define	BHNDB_PCI_V0_BAR0_PCISB_COREOFF	0xE00	/* mapped offset relative to the core base address */
