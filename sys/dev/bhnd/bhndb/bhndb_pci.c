@@ -67,7 +67,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/siba/sibareg.h>
 
 #include <dev/bhnd/cores/pci/bhnd_pcireg.h>
-#include <dev/bhnd/cores/pcie2/bhnd_pcie2_reg.h>
 
 #include "bhnd_pwrctl_hostb_if.h"
 
@@ -77,9 +76,6 @@ __FBSDID("$FreeBSD$");
 
 struct bhndb_pci_eio;
 struct bhndb_pci_probe;
-
-static uint32_t		bhndb_pci_get_core_quirks(struct bhnd_chipid *cid,
-			    struct bhnd_core_info *ci);
 
 static int		bhndb_pci_alloc_msi(struct bhndb_pci_softc *sc,
 			    int *msi_count);
@@ -134,15 +130,17 @@ static int		bhndb_pci_srsh_pi_war(struct bhndb_pci_probe *probe);
 #define	BHNDB_PCI_MSI_COUNT	1
 
 static struct bhndb_pci_quirk	bhndb_pci_quirks[];
+static struct bhndb_pci_quirk	bhndb_pcie_quirks[];
+static struct bhndb_pci_quirk	bhndb_pcie2_quirks[];
 
 static struct bhndb_pci_core bhndb_pci_cores[] = {
 	BHNDB_PCI_CORE(PCI,	bhndb_pci_quirks),
-	BHNDB_PCI_CORE(PCIE,	NULL),
-	BHNDB_PCI_CORE(PCIE2,	NULL),
+	BHNDB_PCI_CORE(PCIE,	bhndb_pcie_quirks),
+	BHNDB_PCI_CORE(PCIE2,	bhndb_pcie2_quirks),
 	BHNDB_PCI_CORE_END
 };
 
-/* bhndb_pci(4) erom I/O instance state */
+/* bhndb_pci erom I/O instance state */
 struct bhndb_pci_eio {
 	struct bhnd_erom_io		 eio;
 	bhnd_addr_t			 addr;		/**< mapped address */
@@ -151,7 +149,7 @@ struct bhndb_pci_eio {
 };
 
 /**
- * bhndb_pci(4) probe state provides access to host bridge resources and a
+ * bhndb_pci probe state provides access to host bridge resources and a
  * device enumeration table parser that may be used to identify and access the
  * bridged hardware during probe or early device attach.
  */
@@ -166,6 +164,7 @@ struct bhndb_pci_probe {
 	struct bhnd_core_info		*cores;		/**< erom-owned core table */
 	u_int				 ncores;	/**< number of cores */
 	struct bhnd_core_info		 hostb_core;	/**< the identified host bridge's core info */
+	uint32_t			 hostb_quirks;	/**< hostb quirk flags */
 
 	bool				 m_valid;	/**< true if a valid mapping exists, false otherwise */
 	const struct bhndb_regwin	*m_win;		/**< mapped register window, or NULL if no mapping */
@@ -186,8 +185,23 @@ static struct bhndb_pci_quirk bhndb_pci_quirks[] = {
 	 { BHND_MATCH_CORE_REV		(HWREV_LTE(5)) },
 		BHNDB_PCI_QUIRK_SIBA_INTVEC },
 
+	/* All PCI core revisions require the SRSH work-around */
+	BHNDB_PCI_QUIRK(HWREV_ANY,	BHNDB_PCI_QUIRK_SRSH_WAR),
 	BHNDB_PCI_QUIRK_END
 };
+
+static struct bhndb_pci_quirk bhndb_pcie_quirks[] = {
+	/* All PCIe-G1 core revisions require the SRSH work-around */
+	BHNDB_PCI_QUIRK(HWREV_ANY,	BHNDB_PCI_QUIRK_SRSH_WAR),
+	BHNDB_PCI_QUIRK_END
+};
+
+static struct bhndb_pci_quirk bhndb_pcie2_quirks[] = {
+	/* All PCIe-G2 core revisions require the SRSH work-around */
+	BHNDB_PCI_QUIRK(HWREV_ANY,	BHNDB_PCI_QUIRK_SRSH_WAR),
+	BHNDB_PCI_QUIRK_END
+};
+
 
 /**
  * Return the device table entry for @p ci, or NULL if none.
@@ -385,6 +399,7 @@ bhndb_pci_attach(device_t dev)
 	cid = probe->cid;
 	erom_class = probe->erom_class;
 	hostb_core = probe->hostb_core;
+	sc->pci_quirks = probe->hostb_quirks;
 	sc->pci_devclass = bhnd_core_class(&hostb_core);
 
 	error = bhndb_pci_probe_copy_core_table(probe, &cores, &ncores);
@@ -836,6 +851,9 @@ bhndb_pci_probe_alloc(struct bhndb_pci_probe **probe, device_t dev)
 
 		goto failed;
 	}
+
+	/* Fetch host bridge quirk flags */
+	p->hostb_quirks = bhndb_pci_get_core_quirks(&p->cid, &p->hostb_core);
 
 	/*
 	 * Finally, fix up our PCI base address in the SPROM shadow, if
@@ -1650,20 +1668,16 @@ bhndb_pci_eio_read(struct bhnd_erom_io *eio, bhnd_size_t offset, u_int width)
 static int
 bhndb_pci_srsh_pi_war(struct bhndb_pci_probe *probe)
 {
-	const struct bhndb_pci_core	*pci_core;
-	struct bhnd_core_match		 md;
-	bhnd_addr_t			 pci_addr;
-	bhnd_size_t			 pci_size;
-	bus_size_t			 srsh_offset;
-	bhnd_addr_t			 srsh_pi_mask, srsh_pi_addr_mask;
-	u_int				 srsh_pi_shift, srsh_pi_addr_shift;
-	uint16_t			 srsh_val, pci_val;
-	uint16_t			 val;
-	int				 error;
+	struct bhnd_core_match	md;
+	bhnd_addr_t		pci_addr;
+	bhnd_size_t		pci_size;
+	bus_size_t		srsh_offset;
+	uint16_t		srsh_val, pci_val;
+	uint16_t		val;
+	int			error;
 
-	/* Fetch our core table entry */
-	pci_core = bhndb_pci_find_core(&probe->hostb_core);
-	KASSERT(pci_core != NULL, ("missing core table entry"));
+	if ((probe->hostb_quirks & BHNDB_PCI_QUIRK_SRSH_WAR) == 0)
+		return (0);
 
 	/* Use an equality match descriptor to look up our PCI core's base
 	 * address in the EROM */
@@ -1676,27 +1690,18 @@ bhndb_pci_srsh_pi_war(struct bhndb_pci_probe *probe)
 		return (error);
 	}
 
-	/* Fetch SPROM shadow constants for the identified PCI core */
-	srsh_offset = BHNDB_PCI_CMN_REG(pci_core, SPROM_SHADOW);
-	srsh_offset += BHNDB_PCI_CMN_REG(pci_core, SRSH_PI_OFFSET);
-
-	srsh_pi_mask = BHNDB_PCI_CMN_REG(pci_core, SRSH_PI_MASK);
-	srsh_pi_shift = BHNDB_PCI_CMN_REG(pci_core, SRSH_PI_SHIFT);
-
-	srsh_pi_addr_mask = BHNDB_PCI_CMN_REG(pci_core, SRSH_PI_ADDR_MASK);
-	srsh_pi_addr_shift = BHNDB_PCI_CMN_REG(pci_core, SRSH_PI_ADDR_SHIFT);
-
 	/* Fetch the SPROM SRSH_PI value */
+	srsh_offset = BHND_PCI_SPROM_SHADOW + BHND_PCI_SRSH_PI_OFFSET;
 	val = bhndb_pci_probe_read(probe, pci_addr, srsh_offset, sizeof(val));
-	srsh_val = (val & srsh_pi_mask) >> srsh_pi_shift;
+	srsh_val = (val & BHND_PCI_SRSH_PI_MASK) >> BHND_PCI_SRSH_PI_SHIFT;
 
 	/* If it doesn't match PCI core's base address, update the SPROM
 	 * shadow */
-	pci_val = (pci_addr & srsh_pi_addr_mask) >> srsh_pi_addr_shift;
+	pci_val = (pci_addr & BHND_PCI_SRSH_PI_ADDR_MASK) >>
+	    BHND_PCI_SRSH_PI_ADDR_SHIFT;
 	if (srsh_val != pci_val) {
-		uint16_t orig_val = val;
-		val &= ~srsh_pi_mask;
-		val |= (pci_val << srsh_pi_shift);
+		val &= ~BHND_PCI_SRSH_PI_MASK;
+		val |= (pci_val << BHND_PCI_SRSH_PI_SHIFT);
 		bhndb_pci_probe_write(probe, pci_addr, srsh_offset, val,
 		    sizeof(val));
 	}
