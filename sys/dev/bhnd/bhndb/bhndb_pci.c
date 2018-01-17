@@ -810,8 +810,8 @@ bhndb_pci_srsh_pi_war(struct bhndb_pci_softc *sc,
 	error = bhnd_erom_lookup_core_addr(probe->erom, &md, BHND_PORT_DEVICE,
 	    0, 0, NULL, &pci_addr, &pci_size);
 	if (error) {
-		device_printf(probe->dev, "no base address found for the PCI "
-		    "host bridge core: %d\n", error);
+		device_printf(sc->dev, "no base address found for the PCI host "
+		    "bridge core: %d\n", error);
 		return (error);
 	}
 
