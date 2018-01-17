@@ -294,3 +294,4 @@ MODULE_DEPEND(bwn_pci, bhndb, 1, 1, 1);
 MODULE_DEPEND(bwn_pci, bhndb_pci, 1, 1, 1);
 MODULE_DEPEND(bwn_pci, bcma_bhndb, 1, 1, 1);
 MODULE_DEPEND(bwn_pci, siba_bhndb, 1, 1, 1);
+MODULE_VERSION(bwn_pci, 1);
