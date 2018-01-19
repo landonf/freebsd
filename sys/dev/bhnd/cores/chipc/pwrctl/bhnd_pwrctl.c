@@ -344,6 +344,10 @@ bhnd_pwrctl_updateclk(struct bhnd_pwrctl_softc *sc, bhnd_pwrctl_wars wars)
 
 	PWRCTL_LOCK_ASSERT(sc, MA_OWNED);
 
+	/* Nothing to update on fixed clock devices */
+	if (PWRCTL_QUIRK(sc, FIXED_CLK))
+		return (0);
+
 	/* Default clock target */
 	clock = BHND_CLOCK_DYN;
 
