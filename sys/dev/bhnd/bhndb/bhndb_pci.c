@@ -640,12 +640,10 @@ bhndb_pci_sprom_size(struct bhndb_pci_softc *sc)
 		return (0);
 	}
 
-	if (sprom_sz > sprom_win->win_size) {
-		device_printf(sc->dev,
-		    "PCI sprom size (0x%x) overruns defined register window\n",
-		    sctl);
-		return (0);
-	}
+	/* If the device has a larger SPROM than can be addressed via our SPROM
+	 * register window, the SPROM image data will still be located within
+	 * the window's addressable range */
+	sprom_sz = MIN(sprom_sz, sprom_win->win_size);
 
 	return (sprom_sz);
 }
