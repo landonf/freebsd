@@ -620,11 +620,11 @@
 #define	SROM11_SIGNATURE		0x0634
 
 typedef struct {
-	uint8 tssipos;		/* TSSI positive slope, 1: positive, 0: negative */
-	uint8 extpagain;	/* Ext PA gain-type: full-gain: 0, pa-lite: 1, no_pa: 2 */
-	uint8 pdetrange;	/* support 32 combinations of different Pdet dynamic ranges */
-	uint8 triso;		/* TR switch isolation */
-	uint8 antswctrllut;	/* antswctrl lookup table configuration: 32 possible choices */
+	uint8_t tssipos;		/* TSSI positive slope, 1: positive, 0: negative */
+	uint8_t extpagain;	/* Ext PA gain-type: full-gain: 0, pa-lite: 1, no_pa: 2 */
+	uint8_t pdetrange;	/* support 32 combinations of different Pdet dynamic ranges */
+	uint8_t triso;		/* TR switch isolation */
+	uint8_t antswctrllut;	/* antswctrl lookup table configuration: 32 possible choices */
 } srom_fem_t;
 
 #endif	/* _bcmsrom_fmt_h_ */

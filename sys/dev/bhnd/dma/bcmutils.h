@@ -86,7 +86,7 @@ struct bcmstrbuf {
 /* forward declare structyre type */
 struct spktq;
 #endif
-#include <osl.h>
+#include "osl.h"
 
 #define GPIO_PIN_NOTDEFINED 	0x20	/* Pin not defined */
 
@@ -102,7 +102,7 @@ struct spktq;
 #endif
 
 #define SPINWAIT(exp, us) { \
-	uint countdown = (us) + (SPINWAIT_POLL_PERIOD - 1); \
+	u_int countdown = (us) + (SPINWAIT_POLL_PERIOD - 1); \
 	while ((exp) && (countdown >= SPINWAIT_POLL_PERIOD)) {\
 		OSL_DELAY(SPINWAIT_POLL_PERIOD); \
 		countdown -= SPINWAIT_POLL_PERIOD; \
@@ -110,7 +110,7 @@ struct spktq;
 }
 
 /* osl multi-precedence packet queue */
-#define PKTQ_LEN_MAX            0xFFFF  /* Max uint16 65535 packets */
+#define PKTQ_LEN_MAX            0xFFFF  /* Max uint16_t 65535 packets */
 #ifndef PKTQ_LEN_DEFAULT
 #define PKTQ_LEN_DEFAULT        128	/* Max 128 packets */
 #endif
@@ -121,63 +121,63 @@ struct spktq;
 typedef struct pktq_prec {
 	void *head;     /* first packet to dequeue */
 	void *tail;     /* last packet to dequeue */
-	uint16 len;     /* number of queued packets */
-	uint16 max;     /* maximum number of queued packets */
+	uint16_t len;     /* number of queued packets */
+	uint16_t max;     /* maximum number of queued packets */
 } pktq_prec_t;
 
 #ifdef PKTQ_LOG
 typedef struct {
-	uint32 requested;    /* packets requested to be stored */
-	uint32 stored;	     /* packets stored */
-	uint32 saved;	     /* packets saved,
+	uint32_t requested;    /* packets requested to be stored */
+	uint32_t stored;	     /* packets stored */
+	uint32_t saved;	     /* packets saved,
 	                            because a lowest priority queue has given away one packet
 	                      */
-	uint32 selfsaved;    /* packets saved,
+	uint32_t selfsaved;    /* packets saved,
 	                            because an older packet from the same queue has been dropped
 	                      */
-	uint32 full_dropped; /* packets dropped,
+	uint32_t full_dropped; /* packets dropped,
 	                            because pktq is full with higher precedence packets
 	                      */
-	uint32 dropped;      /* packets dropped because pktq per that precedence is full */
-	uint32 sacrificed;   /* packets dropped,
+	uint32_t dropped;      /* packets dropped because pktq per that precedence is full */
+	uint32_t sacrificed;   /* packets dropped,
 	                            in order to save one from a queue of a highest priority
 	                      */
-	uint32 busy;         /* packets droped because of hardware/transmission error */
-	uint32 retry;        /* packets re-sent because they were not received */
-	uint32 ps_retry;     /* packets retried again prior to moving power save mode */
-	uint32 suppress;     /* packets which were suppressed and not transmitted */
-	uint32 retry_drop;   /* packets finally dropped after retry limit */
-	uint32 max_avail;    /* the high-water mark of the queue capacity for packets -
+	uint32_t busy;         /* packets droped because of hardware/transmission error */
+	uint32_t retry;        /* packets re-sent because they were not received */
+	uint32_t ps_retry;     /* packets retried again prior to moving power save mode */
+	uint32_t suppress;     /* packets which were suppressed and not transmitted */
+	uint32_t retry_drop;   /* packets finally dropped after retry limit */
+	uint32_t max_avail;    /* the high-water mark of the queue capacity for packets -
 	                            goes to zero as queue fills
 	                      */
-	uint32 max_used;     /* the high-water mark of the queue utilisation for packets -
+	uint32_t max_used;     /* the high-water mark of the queue utilisation for packets -
 						        increases with use ('inverse' of max_avail)
 				          */
-	uint32 queue_capacity; /* the maximum capacity of the queue */
-	uint32 rtsfail;        /* count of rts attempts that failed to receive cts */
-	uint32 acked;          /* count of packets sent (acked) successfully */
-	uint32 txrate_succ;    /* running total of phy rate of packets sent successfully */
-	uint32 txrate_main;    /* running totoal of primary phy rate of all packets */
-	uint32 throughput;     /* actual data transferred successfully */
-	uint32 airtime;        /* cumulative total medium access delay in useconds */
-	uint32  _logtime;      /* timestamp of last counter clear  */
+	uint32_t queue_capacity; /* the maximum capacity of the queue */
+	uint32_t rtsfail;        /* count of rts attempts that failed to receive cts */
+	uint32_t acked;          /* count of packets sent (acked) successfully */
+	uint32_t txrate_succ;    /* running total of phy rate of packets sent successfully */
+	uint32_t txrate_main;    /* running totoal of primary phy rate of all packets */
+	uint32_t throughput;     /* actual data transferred successfully */
+	uint32_t airtime;        /* cumulative total medium access delay in useconds */
+	uint32_t  _logtime;      /* timestamp of last counter clear  */
 } pktq_counters_t;
 
 typedef struct {
-	uint32                  _prec_log;
+	uint32_t                  _prec_log;
 	pktq_counters_t*        _prec_cnt[PKTQ_MAX_PREC];     /* Counters per queue  */
 #ifdef BCMDBG
-	uint32 pps_time;        /* time spent in ps pretend state */
+	uint32_t pps_time;        /* time spent in ps pretend state */
 #endif
 } pktq_log_t;
 #endif /* PKTQ_LOG */
 
 
 #define PKTQ_COMMON	\
-	uint16 num_prec;        /* number of precedences in use */			\
-	uint16 hi_prec;         /* rapid dequeue hint (>= highest non-empty prec) */	\
-	uint16 max;             /* total max packets */					\
-	uint16 len;             /* total number of packets */
+	uint16_t num_prec;        /* number of precedences in use */			\
+	uint16_t hi_prec;         /* rapid dequeue hint (>= highest non-empty prec) */	\
+	uint16_t max;             /* total max packets */					\
+	uint16_t len;             /* total number of packets */
 
 /* multi-priority pkt queue */
 struct pktq {
@@ -238,33 +238,33 @@ typedef struct {
 
 typedef struct {
 	void *p;
-	uint32 cycles;
-	uint32 dur;
+	uint32_t cycles;
+	uint32_t dur;
 } pktpool_dbg_t;
 
 typedef struct {
-	uint8 txdh;	/* tx to host */
-	uint8 txd11;	/* tx to d11 */
-	uint8 enq;	/* waiting in q */
-	uint8 rxdh;	/* rx from host */
-	uint8 rxd11;	/* rx from d11 */
-	uint8 rxfill;	/* dma_rxfill */
-	uint8 idle;	/* avail in pool */
+	uint8_t txdh;	/* tx to host */
+	uint8_t txd11;	/* tx to d11 */
+	uint8_t enq;	/* waiting in q */
+	uint8_t rxdh;	/* rx from host */
+	uint8_t rxd11;	/* rx from d11 */
+	uint8_t rxfill;	/* dma_rxfill */
+	uint8_t idle;	/* avail in pool */
 } pktpool_stats_t;
 #endif /* BCMDBG_POOL */
 
 typedef struct pktpool {
 	bool inited;
-	uint16 r;
-	uint16 w;
-	uint16 len;
-	uint16 maxlen;
-	uint16 plen;
+	uint16_t r;
+	uint16_t w;
+	uint16_t len;
+	uint16_t maxlen;
+	uint16_t plen;
 	bool istx;
 	bool empty;
-	uint8 cbtoggle;
-	uint8 cbcnt;
-	uint8 ecbcnt;
+	uint8_t cbtoggle;
+	uint8_t cbcnt;
+	uint8_t ecbcnt;
 	bool emptycb_disable;
 	pktpool_cbinfo_t *availcb_excl;
 	pktpool_cbinfo_t cbs[PKTPOOL_CB_MAX];
@@ -272,9 +272,9 @@ typedef struct pktpool {
 	void *q[PKTPOOL_LEN_MAX + 1];
 
 #ifdef BCMDBG_POOL
-	uint8 dbg_cbcnt;
+	uint8_t dbg_cbcnt;
 	pktpool_cbinfo_t dbg_cbs[PKTPOOL_CB_MAX];
-	uint16 dbg_qlen;
+	uint16_t dbg_qlen;
 	pktpool_dbg_t dbg_q[PKTPOOL_LEN_MAX + 1];
 #endif
 } pktpool_t;
@@ -291,13 +291,13 @@ extern int pktpool_fill(osl_t *osh, pktpool_t *pktp, bool minimal);
 extern void* pktpool_get(pktpool_t *pktp);
 extern void pktpool_free(pktpool_t *pktp, void *p);
 extern int pktpool_add(pktpool_t *pktp, void *p);
-extern uint16 pktpool_avail(pktpool_t *pktp);
+extern uint16_t pktpool_avail(pktpool_t *pktp);
 extern int pktpool_avail_notify_normal(osl_t *osh, pktpool_t *pktp);
 extern int pktpool_avail_notify_exclusive(osl_t *osh, pktpool_t *pktp, pktpool_cb_t cb);
 extern int pktpool_avail_register(pktpool_t *pktp, pktpool_cb_t cb, void *arg);
 extern int pktpool_empty_register(pktpool_t *pktp, pktpool_cb_t cb, void *arg);
-extern int pktpool_setmaxlen(pktpool_t *pktp, uint16 maxlen);
-extern int pktpool_setmaxlen_strict(osl_t *osh, pktpool_t *pktp, uint16 maxlen);
+extern int pktpool_setmaxlen(pktpool_t *pktp, uint16_t maxlen);
+extern int pktpool_setmaxlen_strict(osl_t *osh, pktpool_t *pktp, uint16_t maxlen);
 extern void pktpool_emptycb_disable(pktpool_t *pktp, bool disable);
 extern bool pktpool_emptycb_disabled(pktpool_t *pktp);
 
@@ -346,9 +346,9 @@ extern bool pktq_pdel(struct pktq *pq, void *p, int prec);
 
 /* operations on a set of precedences in packet queue */
 
-extern int pktq_mlen(struct pktq *pq, uint prec_bmp);
-extern void *pktq_mdeq(struct pktq *pq, uint prec_bmp, int *prec_out);
-extern void *pktq_mpeek(struct pktq *pq, uint prec_bmp, int *prec_out);
+extern int pktq_mlen(struct pktq *pq, u_int prec_bmp);
+extern void *pktq_mdeq(struct pktq *pq, u_int prec_bmp, int *prec_out);
+extern void *pktq_mpeek(struct pktq *pq, u_int prec_bmp, int *prec_out);
 
 /* operations on packet queue as a whole */
 
@@ -377,14 +377,14 @@ extern void pktq_flush(osl_t *osh, struct pktq *pq, bool dir, ifpkt_cb_t fn, int
 
 /* externs */
 /* packet */
-extern uint pktcopy(osl_t *osh, void *p, uint offset, int len, uchar *buf);
-extern uint pktfrombuf(osl_t *osh, void *p, uint offset, int len, uchar *buf);
-extern uint pkttotlen(osl_t *osh, void *p);
+extern u_int pktcopy(osl_t *osh, void *p, u_int offset, int len, u_char *buf);
+extern u_int pktfrombuf(osl_t *osh, void *p, u_int offset, int len, u_char *buf);
+extern u_int pkttotlen(osl_t *osh, void *p);
 extern void *pktlast(osl_t *osh, void *p);
-extern uint pktsegcnt(osl_t *osh, void *p);
-extern uint pktsegcnt_war(osl_t *osh, void *p);
-extern uint8 *pktdataoffset(osl_t *osh, void *p,  uint offset);
-extern void *pktoffset(osl_t *osh, void *p,  uint offset);
+extern u_int pktsegcnt(osl_t *osh, void *p);
+extern u_int pktsegcnt_war(osl_t *osh, void *p);
+extern uint8_t *pktdataoffset(osl_t *osh, void *p,  u_int offset);
+extern void *pktoffset(osl_t *osh, void *p,  u_int offset);
 
 /* Get priority from a packet and pass it back in scb (or equiv) */
 #define	PKTPRIO_VDSCP	0x100		/* DSCP prio found after VLAN tag */
@@ -392,15 +392,15 @@ extern void *pktoffset(osl_t *osh, void *p,  uint offset);
 #define	PKTPRIO_UPD	0x400		/* DSCP used to update VLAN prio */
 #define	PKTPRIO_DSCP	0x800		/* DSCP prio found */
 
-extern uint pktsetprio(void *pkt, bool update_vtag);
+extern u_int pktsetprio(void *pkt, bool update_vtag);
 
 /* string */
 extern int BCMROMFN(bcm_atoi)(const char *s);
-extern ulong BCMROMFN(bcm_strtoul)(const char *cp, char **endp, uint base);
+extern u_long BCMROMFN(bcm_strtoul)(const char *cp, char **endp, u_int base);
 extern char *BCMROMFN(bcmstrstr)(const char *haystack, const char *needle);
 extern char *BCMROMFN(bcmstrcat)(char *dest, const char *src);
-extern char *BCMROMFN(bcmstrncat)(char *dest, const char *src, uint size);
-extern ulong wchar2ascii(char *abuf, ushort *wbuf, ushort wbuflen, ulong abuflen);
+extern char *BCMROMFN(bcmstrncat)(char *dest, const char *src, u_int size);
+extern u_long wchar2ascii(char *abuf, u_short *wbuf, u_short wbuflen, u_long abuflen);
 char* bcmstrtok(char **string, const char *delimiters, char *tokdelim);
 int bcmstricmp(const char *s1, const char *s2);
 int bcmstrnicmp(const char* s1, const char* s2, int cnt);
@@ -416,7 +416,7 @@ extern char *bcm_ip_ntoa(struct ipv4_addr *ia, char *buf);
 extern char *bcm_ipv6_ntoa(void *ipv6, char *buf);
 
 /* delay */
-extern void bcm_mdelay(uint ms);
+extern void bcm_mdelay(u_int ms);
 /* variable access */
 #if defined(DONGLEBUILD) && !defined(WLTEST)
 #ifdef BCMDBG
@@ -441,16 +441,16 @@ extern char *getvar(char *vars, const char *name);
 extern int getintvar(char *vars, const char *name);
 extern int getintvararray(char *vars, const char *name, int index);
 extern int getintvararraysize(char *vars, const char *name);
-extern uint getgpiopin(char *vars, char *pin_name, uint def_pin);
+extern u_int getgpiopin(char *vars, char *pin_name, u_int def_pin);
 #ifdef BCMDBG
 extern void prpkt(const char *msg, osl_t *osh, void *p0);
 #endif /* BCMDBG */
 #ifdef BCMPERFSTATS
 extern void bcm_perf_enable(void);
 extern void bcmstats(char *fmt);
-extern void bcmlog(char *fmt, uint a1, uint a2);
+extern void bcmlog(char *fmt, u_int a1, u_int a2);
 extern void bcmdumplog(char *buf, int size);
-extern int bcmdumplogent(char *buf, uint idx);
+extern int bcmdumplogent(char *buf, u_int idx);
 #else
 #define bcm_perf_enable()
 #define bcmstats(fmt)
@@ -462,11 +462,11 @@ extern int bcmdumplogent(char *buf, uint idx);
 #define TSF_TICKS_PER_MS	1024
 #if defined(BCMTSTAMPEDLOGS)
 /* Store a TSF timestamp and a log line in the log buffer */
-extern void bcmtslog(uint32 tstamp, char *fmt, uint a1, uint a2);
+extern void bcmtslog(uint32_t tstamp, char *fmt, u_int a1, u_int a2);
 /* Print out the log buffer with timestamps */
 extern void bcmprinttslogs(void);
 /* Print out a microsecond timestamp as "sec.ms.us " */
-extern void bcmprinttstamp(uint32 us);
+extern void bcmprinttstamp(uint32_t us);
 /* Dump to buffer a microsecond timestamp as "sec.ms.us " */
 extern void bcmdumptslog(char *buf, int size);
 #else
@@ -476,7 +476,7 @@ extern void bcmdumptslog(char *buf, int size);
 #define bcmdumptslog(buf, size)
 #endif /* BCMTSTAMPEDLOGS */
 
-extern char *bcm_nvram_vars(uint *length);
+extern char *bcm_nvram_vars(u_int *length);
 extern int bcm_nvram_cache(void *sih);
 
 /* Support for sharing code across in-driver iovar implementations.
@@ -489,10 +489,10 @@ extern int bcm_nvram_cache(void *sih);
 /* iovar structure */
 typedef struct bcm_iovar {
 	const char *name;	/* name for lookup and display */
-	uint16 varid;		/* id for switch */
-	uint16 flags;		/* driver-specific flag bits */
-	uint16 type;		/* base type of argument */
-	uint16 minlen;		/* min length for buffer vars */
+	uint16_t varid;		/* id for switch */
+	uint16_t flags;		/* driver-specific flag bits */
+	uint16_t type;		/* base type of argument */
+	uint16_t minlen;		/* min length for buffer vars */
 } bcm_iovar_t;
 
 /* varid definitions are per-driver, may use these get/set bits */
@@ -513,7 +513,7 @@ extern const bcm_iovar_t *bcm_iovar_lookup(const bcm_iovar_t *table, const char 
 extern int bcm_iovar_lencheck(const bcm_iovar_t *table, void *arg, int len, bool set);
 #if defined(WLTINYDUMP) || defined(BCMDBG) || defined(WLMSG_INFORM) || \
 	defined(WLMSG_ASSOC) || defined(WLMSG_PRPKT) || defined(WLMSG_WSEC)
-extern int bcm_format_ssid(char* buf, const uchar ssid[], uint ssid_len);
+extern int bcm_format_ssid(char* buf, const u_char ssid[], u_int ssid_len);
 #endif /* WLTINYDUMP || BCMDBG || WLMSG_INFORM || WLMSG_ASSOC || WLMSG_PRPKT */
 #endif	/* BCMDRIVER */
 
@@ -533,12 +533,12 @@ extern int bcm_format_ssid(char* buf, const uchar ssid[], uint ssid_len);
 #define BCM_IOV_TYPE_INIT { \
 	"void", \
 	"bool", \
-	"int8", \
-	"uint8", \
-	"int16", \
-	"uint16", \
-	"int32", \
-	"uint32", \
+	"int8_t", \
+	"uint8_t", \
+	"int16_t", \
+	"uint16_t", \
+	"int32_t", \
+	"uint32_t", \
 	"buffer", \
 	"" }
 
@@ -697,8 +697,8 @@ extern int bcm_format_ssid(char* buf, const uchar ssid[], uint ssid_len);
 
 #define CEIL(x, y)		(((x) + ((y) - 1)) / (y))
 #define	ROUNDUP(x, y)		((((x) + ((y) - 1)) / (y)) * (y))
-#define	ISALIGNED(a, x)		(((uintptr)(a) & ((x) - 1)) == 0)
-#define ALIGN_ADDR(addr, boundary) (void *)(((uintptr)(addr) + (boundary) - 1) \
+#define	ISALIGNED(a, x)		(((uintptr_t)(a) & ((x) - 1)) == 0)
+#define ALIGN_ADDR(addr, boundary) (void *)(((uintptr_t)(addr) + (boundary) - 1) \
 	                                         & ~((boundary) - 1))
 #define ALIGN_SIZE(size, boundary) (((size) + (boundary) - 1) \
 	                                         & ~((boundary) - 1))
@@ -718,7 +718,7 @@ extern int bcm_format_ssid(char* buf, const uchar ssid[], uint ssid_len);
 /* New versions of GCC are also complaining if the usual macro is used */
 #define OFFSETOF(type, member)  __builtin_offsetof(type, member)
 #else
-#define	OFFSETOF(type, member)	((uint)(uintptr)&((type *)0)->member)
+#define	OFFSETOF(type, member)	((u_int)(uintptr)&((type *)0)->member)
 #endif /* __ARMCC_VERSION */
 #endif /* OFFSETOF */
 
@@ -750,10 +750,10 @@ extern void *_bcmutils_dummy_fn;
 #ifndef NBBY		/* the BSD family defines NBBY */
 #define	NBBY	8	/* 8 bits per byte */
 #endif /* #ifndef NBBY */
-#define	setbit(a, i)	(((uint8 *)a)[(i) / NBBY] |= 1 << ((i) % NBBY))
-#define	clrbit(a, i)	(((uint8 *)a)[(i) / NBBY] &= ~(1 << ((i) % NBBY)))
-#define	isset(a, i)	(((const uint8 *)a)[(i) / NBBY] & (1 << ((i) % NBBY)))
-#define	isclr(a, i)	((((const uint8 *)a)[(i) / NBBY] & (1 << ((i) % NBBY))) == 0)
+#define	setbit(a, i)	(((uint8_t *)a)[(i) / NBBY] |= 1 << ((i) % NBBY))
+#define	clrbit(a, i)	(((uint8_t *)a)[(i) / NBBY] &= ~(1 << ((i) % NBBY)))
+#define	isset(a, i)	(((const uint8_t *)a)[(i) / NBBY] & (1 << ((i) % NBBY)))
+#define	isclr(a, i)	((((const uint8_t *)a)[(i) / NBBY] & (1 << ((i) % NBBY))) == 0)
 #endif /* setbit */
 
 #define	isbitset(a, i)	(((a) & (1 << (i))) != 0)
@@ -811,22 +811,22 @@ extern void *_bcmutils_dummy_fn;
 
 /* bcm_format_flags() bit description structure */
 typedef struct bcm_bit_desc {
-	uint32	bit;
+	uint32_t	bit;
 	const char* name;
 } bcm_bit_desc_t;
 
 /* bcm_format_field */
 typedef struct bcm_bit_desc_ex {
-	uint32 mask;
+	uint32_t mask;
 	const bcm_bit_desc_t *bitfield;
 } bcm_bit_desc_ex_t;
 
 
 /* tag_ID/length/value_buffer tuple */
 typedef struct bcm_tlv {
-	uint8	id;
-	uint8	len;
-	uint8	data[1];
+	uint8_t	id;
+	uint8_t	len;
+	uint8_t	data[1];
 } bcm_tlv_t;
 
 /* Check that bcm_tlv_t fits into the given buflen */
@@ -837,20 +837,20 @@ typedef struct bcm_tlv {
 
 /* crypto utility function */
 /* 128-bit xor: *dst = *src1 xor *src2. dst1, src1 and src2 may have any alignment */
-static INLINE void
-xor_128bit_block(const uint8 *src1, const uint8 *src2, uint8 *dst)
+static inline void
+xor_128bit_block(const uint8_t *src1, const uint8_t *src2, uint8_t *dst)
 {
 	if (
 #ifdef __i386__
 	    1 ||
 #endif
-	    (((uintptr)src1 | (uintptr)src2 | (uintptr)dst) & 3) == 0) {
+	    (((uintptr_t)src1 | (uintptr_t)src2 | (uintptr_t)dst) & 3) == 0) {
 		/* ARM CM3 rel time: 1229 (727 if alignment check could be omitted) */
 		/* x86 supports unaligned.  This version runs 6x-9x faster on x86. */
-		((uint32 *)dst)[0] = ((const uint32 *)src1)[0] ^ ((const uint32 *)src2)[0];
-		((uint32 *)dst)[1] = ((const uint32 *)src1)[1] ^ ((const uint32 *)src2)[1];
-		((uint32 *)dst)[2] = ((const uint32 *)src1)[2] ^ ((const uint32 *)src2)[2];
-		((uint32 *)dst)[3] = ((const uint32 *)src1)[3] ^ ((const uint32 *)src2)[3];
+		((uint32_t *)dst)[0] = ((const uint32_t *)src1)[0] ^ ((const uint32_t *)src2)[0];
+		((uint32_t *)dst)[1] = ((const uint32_t *)src1)[1] ^ ((const uint32_t *)src2)[1];
+		((uint32_t *)dst)[2] = ((const uint32_t *)src1)[2] ^ ((const uint32_t *)src2)[2];
+		((uint32_t *)dst)[3] = ((const uint32_t *)src1)[3] ^ ((const uint32_t *)src2)[3];
 	} else {
 		/* ARM CM3 rel time: 4668 (4191 if alignment check could be omitted) */
 		int k;
@@ -861,17 +861,17 @@ xor_128bit_block(const uint8 *src1, const uint8 *src2, uint8 *dst)
 
 /* externs */
 /* crc */
-extern uint8 BCMROMFN(hndcrc8)(uint8 *p, uint nbytes, uint8 crc);
-extern uint16 BCMROMFN(hndcrc16)(uint8 *p, uint nbytes, uint16 crc);
-extern uint32 BCMROMFN(hndcrc32)(uint8 *p, uint nbytes, uint32 crc);
+extern uint8_t BCMROMFN(hndcrc8)(uint8_t *p, u_int nbytes, uint8_t crc);
+extern uint16_t BCMROMFN(hndcrc16)(uint8_t *p, u_int nbytes, uint16_t crc);
+extern uint32_t BCMROMFN(hndcrc32)(uint8_t *p, u_int nbytes, uint32_t crc);
 
 /* format/print */
 #if defined(BCMDBG) || defined(DHD_DEBUG) || defined(BCMDBG_ERR) || \
 	defined(WLMSG_PRHDRS) || defined(WLMSG_PRPKT) || defined(WLMSG_ASSOC)
 /* print out the value a field has: fields may have 1-32 bits and may hold any value */
-extern int bcm_format_field(const bcm_bit_desc_ex_t *bd, uint32 field, char* buf, int len);
+extern int bcm_format_field(const bcm_bit_desc_ex_t *bd, uint32_t field, char* buf, int len);
 /* print out which bits in flags are set */
-extern int bcm_format_flags(const bcm_bit_desc_t *bd, uint32 flags, char* buf, int len);
+extern int bcm_format_flags(const bcm_bit_desc_t *bd, uint32_t flags, char* buf, int len);
 #endif
 
 #if defined(BCMDBG) || defined(DHD_DEBUG) || defined(BCMDBG_ERR) || \
@@ -881,25 +881,25 @@ extern int bcm_format_hex(char *str, const void *bytes, int len);
 #endif
 
 #ifdef BCMDBG
-extern void deadbeef(void *p, uint len);
+extern void deadbeef(void *p, u_int len);
 #endif
-extern const char *bcm_crypto_algo_name(uint algo);
-extern char *bcm_chipname(uint chipid, char *buf, uint len);
-extern char *bcm_brev_str(uint32 brev, char *buf);
+extern const char *bcm_crypto_algo_name(u_int algo);
+extern char *bcm_chipname(u_int chipid, char *buf, u_int len);
+extern char *bcm_brev_str(uint32_t brev, char *buf);
 extern void printbig(char *buf);
-extern void prhex(const char *msg, uchar *buf, uint len);
+extern void prhex(const char *msg, u_char *buf, u_int len);
 
 /* IE parsing */
 extern bcm_tlv_t *BCMROMFN(bcm_next_tlv)(bcm_tlv_t *elt, int *buflen);
-extern bcm_tlv_t *BCMROMFN(bcm_parse_tlvs)(void *buf, int buflen, uint key);
-extern bcm_tlv_t *BCMROMFN(bcm_parse_ordered_tlvs)(void *buf, int buflen, uint key);
+extern bcm_tlv_t *BCMROMFN(bcm_parse_tlvs)(void *buf, int buflen, u_int key);
+extern bcm_tlv_t *BCMROMFN(bcm_parse_ordered_tlvs)(void *buf, int buflen, u_int key);
 
 /* bcmerror */
 extern const char *bcmerrorstr(int bcmerror);
-extern bcm_tlv_t *BCMROMFN(bcm_parse_tlvs)(void *buf, int buflen, uint key);
+extern bcm_tlv_t *BCMROMFN(bcm_parse_tlvs)(void *buf, int buflen, u_int key);
 
 /* multi-bool data type: set of bools, mbool is true if any is set */
-typedef uint32 mbool;
+typedef uint32_t mbool;
 #define mboolset(mb, bit)		((mb) |= (bit))		/* set one bool */
 #define mboolclr(mb, bit)		((mb) &= ~(bit))	/* clear one bool */
 #define mboolisset(mb, bit)		(((mb) & (bit)) != 0)	/* TRUE if one bool is set */
@@ -908,37 +908,37 @@ typedef uint32 mbool;
 /* generic datastruct to help dump routines */
 struct fielddesc {
 	const char *nameandfmt;
-	uint32 	offset;
-	uint32 	len;
+	uint32_t 	offset;
+	uint32_t 	len;
 };
 
-extern void bcm_binit(struct bcmstrbuf *b, char *buf, uint size);
-extern void bcm_bprhex(struct bcmstrbuf *b, const char *msg, bool newline, uint8 *buf, int len);
+extern void bcm_binit(struct bcmstrbuf *b, char *buf, u_int size);
+extern void bcm_bprhex(struct bcmstrbuf *b, const char *msg, bool newline, uint8_t *buf, int len);
 
-extern void bcm_inc_bytes(uchar *num, int num_bytes, uint8 amount);
-extern int bcm_cmp_bytes(const uchar *arg1, const uchar *arg2, uint8 nbytes);
-extern void bcm_print_bytes(const char *name, const uchar *cdata, int len);
+extern void bcm_inc_bytes(u_char *num, int num_bytes, uint8_t amount);
+extern int bcm_cmp_bytes(const u_char *arg1, const u_char *arg2, uint8_t nbytes);
+extern void bcm_print_bytes(const char *name, const u_char *cdata, int len);
 
-typedef  uint32 (*bcmutl_rdreg_rtn)(void *arg0, uint arg1, uint32 offset);
-extern uint bcmdumpfields(bcmutl_rdreg_rtn func_ptr, void *arg0, uint arg1, struct fielddesc *str,
-                          char *buf, uint32 bufsize);
-extern uint BCMROMFN(bcm_bitcount)(uint8 *bitmap, uint bytelength);
+typedef  uint32_t (*bcmutl_rdreg_rtn)(void *arg0, u_int arg1, uint32_t offset);
+extern u_int bcmdumpfields(bcmutl_rdreg_rtn func_ptr, void *arg0, u_int arg1, struct fielddesc *str,
+                          char *buf, uint32_t bufsize);
+extern u_int BCMROMFN(bcm_bitcount)(uint8_t *bitmap, u_int bytelength);
 
 extern int bcm_bprintf(struct bcmstrbuf *b, const char *fmt, ...);
 
 /* power conversion */
-extern uint16 BCMROMFN(bcm_qdbm_to_mw)(uint8 qdbm);
-extern uint8 BCMROMFN(bcm_mw_to_qdbm)(uint16 mw);
-extern uint bcm_mkiovar(char *name, char *data, uint datalen, char *buf, uint len);
+extern uint16_t BCMROMFN(bcm_qdbm_to_mw)(uint8_t qdbm);
+extern uint8_t BCMROMFN(bcm_mw_to_qdbm)(uint16_t mw);
+extern u_int bcm_mkiovar(char *name, char *data, u_int datalen, char *buf, u_int len);
 
 unsigned int process_nvram_vars(char *varbuf, unsigned int len);
 
 /* calculate a * b + c */
-extern void bcm_uint64_multiple_add(uint32* r_high, uint32* r_low, uint32 a, uint32 b, uint32 c);
+extern void bcm_uint64_t_multiple_add(uint32_t* r_high, uint32_t* r_low, uint32_t a, uint32_t b, uint32_t c);
 /* calculate a / b */
-extern void bcm_uint64_divide(uint32* r, uint32 a_high, uint32 a_low, uint32 b);
+extern void bcm_uint64_t_divide(uint32_t* r, uint32_t a_high, uint32_t a_low, uint32_t b);
 /* calculate a >> b */
-void bcm_uint64_right_shift(uint32* r, uint32 a_high, uint32 a_low, uint32 b);
+void bcm_uint64_t_right_shift(uint32_t* r, uint32_t a_high, uint32_t a_low, uint32_t b);
 #ifdef __cplusplus
 	}
 #endif

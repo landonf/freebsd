@@ -121,8 +121,8 @@ extern bool attach_part_reclaimed;
 
 #if defined(BCMROMBUILD)
 typedef struct {
-	uint16 esiz;
-	uint16 cnt;
+	uint16_t esiz;
+	uint16_t cnt;
 	void *addr;
 } bcmromdat_patch_t;
 #endif
@@ -202,8 +202,8 @@ typedef struct {
 
 #ifdef BCMDMA64OSL
 typedef struct {
-	uint32 loaddr;
-	uint32 hiaddr;
+	uint32_t loaddr;
+	uint32_t hiaddr;
 } dma64addr_t;
 
 typedef dma64addr_t dmaaddr_t;
@@ -232,7 +232,7 @@ typedef unsigned long dmaaddr_t;
 /* One physical DMA segment */
 typedef struct  {
 	dmaaddr_t addr;
-	uint32	  length;
+	uint32_t	  length;
 } hnddma_seg_t;
 
 #if defined(MACOSX)
@@ -254,8 +254,8 @@ typedef struct  {
 
 typedef struct {
 	void *oshdmah; /* Opaque handle for OSL to store its information */
-	uint origsize; /* Size of the virtual packet */
-	uint nsegs;
+	u_int origsize; /* Size of the virtual packet */
+	u_int nsegs;
 	hnddma_seg_t segs[MAX_DMA_SEGS];
 } hnddma_seg_map_t;
 

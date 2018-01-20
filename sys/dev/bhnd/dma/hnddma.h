@@ -61,7 +61,7 @@ typedef bool (*di_txsuspendedidle_t)(hnddma_t *dmah);
 typedef void (*di_txflush_t)(hnddma_t *dmah);
 typedef void (*di_txflush_clear_t)(hnddma_t *dmah);
 typedef int (*di_txfast_t)(hnddma_t *dmah, void *p, bool commit);
-typedef int (*di_txunframed_t)(hnddma_t *dmah, void *p, uint len, bool commit);
+typedef int (*di_txunframed_t)(hnddma_t *dmah, void *p, u_int len, bool commit);
 typedef void* (*di_getpos_t)(hnddma_t *di, bool direction);
 typedef void (*di_fifoloopbackenable_t)(hnddma_t *dmah);
 typedef bool  (*di_txstopped_t)(hnddma_t *dmah);
@@ -72,32 +72,32 @@ typedef void* (*di_rx_t)(hnddma_t *dmah);
 typedef bool (*di_rxfill_t)(hnddma_t *dmah);
 typedef void (*di_txreclaim_t)(hnddma_t *dmah, txd_range_t range);
 typedef void (*di_rxreclaim_t)(hnddma_t *dmah);
-typedef	uintptr	(*di_getvar_t)(hnddma_t *dmah, const char *name);
+typedef	uintptr_t	(*di_getvar_t)(hnddma_t *dmah, const char *name);
 typedef void* (*di_getnexttxp_t)(hnddma_t *dmah, txd_range_t range);
 typedef void* (*di_getnextrxp_t)(hnddma_t *dmah, bool forceall);
 typedef void* (*di_peeknexttxp_t)(hnddma_t *dmah);
 typedef void* (*di_peekntxp_t)(hnddma_t *dmah, int *len, void *txps[], txd_range_t range);
 typedef void* (*di_peeknextrxp_t)(hnddma_t *dmah);
-typedef void (*di_rxparam_get_t)(hnddma_t *dmah, uint16 *rxoffset, uint16 *rxbufsize);
+typedef void (*di_rxparam_get_t)(hnddma_t *dmah, uint16_t *rxoffset, uint16_t *rxbufsize);
 typedef void (*di_txblock_t)(hnddma_t *dmah);
 typedef void (*di_txunblock_t)(hnddma_t *dmah);
-typedef uint (*di_txactive_t)(hnddma_t *dmah);
+typedef u_int (*di_txactive_t)(hnddma_t *dmah);
 typedef void (*di_txrotate_t)(hnddma_t *dmah);
 typedef void (*di_counterreset_t)(hnddma_t *dmah);
-typedef uint (*di_ctrlflags_t)(hnddma_t *dmah, uint mask, uint flags);
+typedef u_int (*di_ctrlflags_t)(hnddma_t *dmah, u_int mask, u_int flags);
 typedef char* (*di_dump_t)(hnddma_t *dmah, struct bcmstrbuf *b, bool dumpring);
 typedef char* (*di_dumptx_t)(hnddma_t *dmah, struct bcmstrbuf *b, bool dumpring);
 typedef char* (*di_dumprx_t)(hnddma_t *dmah, struct bcmstrbuf *b, bool dumpring);
-typedef uint (*di_rxactive_t)(hnddma_t *dmah);
-typedef uint (*di_txpending_t)(hnddma_t *dmah);
-typedef uint (*di_txcommitted_t)(hnddma_t *dmah);
+typedef u_int (*di_rxactive_t)(hnddma_t *dmah);
+typedef u_int (*di_txpending_t)(hnddma_t *dmah);
+typedef u_int (*di_txcommitted_t)(hnddma_t *dmah);
 typedef int (*di_pktpool_set_t)(hnddma_t *dmah, pktpool_t *pool);
 typedef bool (*di_rxtxerror_t)(hnddma_t *dmah, bool istx);
-typedef void (*di_burstlen_set_t)(hnddma_t *dmah, uint8 rxburstlen, uint8 txburstlen);
-typedef uint (*di_avoidancecnt_t)(hnddma_t *dmah);
-typedef void (*di_param_set_t)(hnddma_t *dmah, uint16 paramid, uint16 paramval);
-typedef bool (*dma_glom_enable_t) (hnddma_t *dmah, uint32 val);
-typedef uint (*dma_active_rxbuf_t) (hnddma_t *dmah);
+typedef void (*di_burstlen_set_t)(hnddma_t *dmah, uint8_t rxburstlen, uint8_t txburstlen);
+typedef u_int (*di_avoidancecnt_t)(hnddma_t *dmah);
+typedef void (*di_param_set_t)(hnddma_t *dmah, uint16_t paramid, uint16_t paramval);
+typedef bool (*dma_glom_enable_t) (hnddma_t *dmah, uint32_t val);
+typedef u_int (*dma_active_rxbuf_t) (hnddma_t *dmah);
 /* dma opsvec */
 typedef struct di_fcn_s {
 	di_detach_t		detach;
@@ -153,7 +153,7 @@ typedef struct di_fcn_s {
 	di_param_set_t		param_set;
 	dma_glom_enable_t	glom_enab;
 	dma_active_rxbuf_t	dma_activerxbuf;
-	uint			endnum;
+	u_int			endnum;
 } di_fcn_t;
 
 /*
@@ -162,21 +162,21 @@ typedef struct di_fcn_s {
 /* export structure */
 struct hnddma_pub {
 	const di_fcn_t	*di_fn;		/* DMA function pointers */
-	uint		txavail;	/* # free tx descriptors */
-	uint		dmactrlflags;	/* dma control flags */
+	u_int		txavail;	/* # free tx descriptors */
+	u_int		dmactrlflags;	/* dma control flags */
 
 	/* rx error counters */
-	uint		rxgiants;	/* rx giant frames */
-	uint		rxnobuf;	/* rx out of dma descriptors */
+	u_int		rxgiants;	/* rx giant frames */
+	u_int		rxnobuf;	/* rx out of dma descriptors */
 	/* tx error counters */
-	uint		txnobuf;	/* tx out of dma descriptors */
-	uint		txnodesc;	/* tx out of dma descriptors running count */
+	u_int		txnobuf;	/* tx out of dma descriptors */
+	u_int		txnodesc;	/* tx out of dma descriptors running count */
 };
 
 extern hnddma_t * dma_attach(osl_t *osh, const char *name, si_t *sih,
 	volatile void *dmaregstx, volatile void *dmaregsrx,
-	uint ntxd, uint nrxd, uint rxbufsize, int rxextheadroom, uint nrxpost,
-	uint rxoffset, uint *msg_level);
+	u_int ntxd, u_int nrxd, u_int rxbufsize, int rxextheadroom, u_int nrxpost,
+	u_int rxoffset, u_int *msg_level);
 #ifdef BCMDMA32
 
 #define dma_detach(di)			((di)->di_fn->detach(di))
@@ -297,7 +297,7 @@ extern const di_fcn_t dma64proc;
  * SB attach provides ability to probe backplane and dma core capabilities
  * This info is needed by DMA_ALLOC_CONSISTENT in dma attach
  */
-extern uint dma_addrwidth(si_t *sih, void *dmaregs);
+extern u_int dma_addrwidth(si_t *sih, void *dmaregs);
 
 /* pio helpers */
 extern void dma_txpioloopback(osl_t *osh, dma32regs_t *);
