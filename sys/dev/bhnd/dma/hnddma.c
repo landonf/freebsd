@@ -32,16 +32,11 @@
 #include <dev/bhnd/bhnd_ids.h>
 
 #define	BCMDBG
-
-#include "bcmdefs.h"
-
-#include "osl.h"
-// #include "hndsoc.h"
-#define BCMDRIVER
-#include "bcmutils.h"
+#define	BCMDMA64OSL
+#define	BCMDMA32
+#define	BCMDMA64
 
 #include "siutils.h"
-
 #include "sbhnddma.h"
 #include "hnddma.h"
 
@@ -325,7 +320,7 @@ static bool dma64_rxenabled(dma_info_t *di);
 static bool _dma64_addrext(osl_t *osh, dma64regs_t *dma64regs);
 
 
-STATIC inline uint32_t parity32(uint32_t data);
+static inline uint32_t parity32(uint32_t data);
 
 #if defined(BCMDBG)
 static void dma64_dumpring(dma_info_t *di, struct sbuf *s, dma64dd_t *ring, u_int start,
@@ -657,13 +652,13 @@ dma_attach(osl_t *osh, const char *name, si_t *sih,
 			di->ddoffsethigh = SI_PCIE_DMA_H32;
 		} else {
 			/* pci(DMA32/DMA64) or pcie with DMA32 */
-			if ((CHIPID(sih->chip) == BHND_CHIPID_BCM4322) ||
-			    (CHIPID(sih->chip) == BHND_CHIPID_BCM4342) ||
-			    (CHIPID(sih->chip) == BHND_CHIPID_BCM43221) ||
-			    (CHIPID(sih->chip) == BHND_CHIPID_BCM43231) ||
-			    (CHIPID(sih->chip) == BHND_CHIPID_BCM43111) ||
-			    (CHIPID(sih->chip) == BHND_CHIPID_BCM43112) ||
-			    (CHIPID(sih->chip) == BHND_CHIPID_BCM43222))
+			if ((sih->chip == BHND_CHIPID_BCM4322) ||
+			    (sih->chip == BHND_CHIPID_BCM4342) ||
+			    (sih->chip == BHND_CHIPID_BCM43221) ||
+			    (sih->chip == BHND_CHIPID_BCM43231) ||
+			    (sih->chip == BHND_CHIPID_BCM43111) ||
+			    (sih->chip == BHND_CHIPID_BCM43112) ||
+			    (sih->chip == BHND_CHIPID_BCM43222))
 				di->ddoffsetlow = SI_PCI_DMA2;
 			else
 				di->ddoffsetlow = SI_PCI_DMA;
@@ -813,7 +808,7 @@ dma32_dd_upd(dma_info_t *di, dma32dd_t *ddring, dmaaddr_t pa, u_int outidx, uint
 }
 
 /** Check for odd number of 1's */
-STATIC inline uint32_t parity32(uint32_t data)
+static inline uint32_t parity32(uint32_t data)
 {
 	data ^= data >> 16;
 	data ^= data >> 8;
@@ -1213,7 +1208,7 @@ _dma_rx_param_get(dma_info_t *di, uint16_t *rxoffset, uint16_t *rxbufsize)
  *   After it reaches the max size of buffer, the data continues in next DMA descriptor
  *   buffer WITHOUT DMA header
  */
-static void * BCMFASTPATH
+static void *
 _dma_rx(dma_info_t *di)
 {
 	void *p, *head, *tail;
@@ -1322,7 +1317,7 @@ next_frame:
  *  this will stall the rx dma and user might want to call rxfill again asap
  *  This unlikely happens on memory-rich NIC, but often on memory-constrained dongle
  */
-static bool BCMFASTPATH
+static bool
 _dma_rxfill(dma_info_t *di)
 {
 	void *p;
@@ -1599,7 +1594,7 @@ _dma_rxreclaim(dma_info_t *di)
 		pktpool_emptycb_disable(di->pktpool, FALSE);
 }
 
-static void * BCMFASTPATH
+static void *
 _dma_getnextrxp(dma_info_t *di, bool forceall)
 {
 	if (di->nrxd == 0)
@@ -1830,7 +1825,7 @@ dma32_dumptx(dma_info_t *di, struct sbuf *s, bool dumpring)
 	if (di->ntxd == 0)
 		return;
 
-	sbuf_printf(s, "DMA32: txd32 %p txdpa 0x%lx txp %p txin %d txout %d "
+	sbuf_printf(s, "DMA32: txd32 %p txdpa 0x%x txp %p txin %d txout %d "
 	            "txavail %d txnodesc %d\n", di->txd32, PHYSADDRLO(di->txdpa), di->txp, di->txin,
 	            di->txout, di->hnddma.txavail, di->hnddma.txnodesc);
 
@@ -1850,7 +1845,7 @@ dma32_dumprx(dma_info_t *di, struct sbuf *s, bool dumpring)
 	if (di->nrxd == 0)
 		return;
 
-	sbuf_printf(s, "DMA32: rxd32 %p rxdpa 0x%lx rxp %p rxin %d rxout %d\n",
+	sbuf_printf(s, "DMA32: rxd32 %p rxdpa 0x%x rxp %p rxin %d rxout %d\n",
 	            di->rxd32, PHYSADDRLO(di->rxdpa), di->rxp, di->rxin, di->rxout);
 
 	sbuf_printf(s, "rcvcontrol 0x%x rcvaddr 0x%x rcvptr 0x%x rcvstatus 0x%x\n",
@@ -1889,9 +1884,9 @@ dma64_dumptx(dma_info_t *di, struct sbuf *s, bool dumpring)
 	if (di->ntxd == 0)
 		return;
 
-	sbuf_printf(s, "DMA64: txd64 %p txdpa 0x%lx txdpahi %#jx txp %p txin %d txout %d "
+	sbuf_printf(s, "DMA64: txd64 %p txdpa 0x%x txdpahi 0x%x txp %p txin %d txout %d "
 	            "txavail %d txnodesc %d\n", di->txd64, PHYSADDRLO(di->txdpa),
-	            (uintmax_t)PHYSADDRHI(di->txdpaorig), di->txp, di->txin, di->txout, di->hnddma.txavail,
+	            PHYSADDRHI(di->txdpaorig), di->txp, di->txin, di->txout, di->hnddma.txavail,
 	            di->hnddma.txnodesc);
 
 	sbuf_printf(s, "xmtcontrol 0x%x xmtaddrlow 0x%x xmtaddrhigh 0x%x "
@@ -1916,8 +1911,8 @@ dma64_dumprx(dma_info_t *di, struct sbuf *s, bool dumpring)
 	if (di->nrxd == 0)
 		return;
 
-	sbuf_printf(s, "DMA64: rxd64 %p rxdpa %#jx rxdpahi %#jx rxp %p rxin %d rxout %d\n",
-	            di->rxd64, (uintmax_t)PHYSADDRLO(di->rxdpa), (uintmax_t)PHYSADDRHI(di->rxdpaorig), di->rxp,
+	sbuf_printf(s, "DMA64: rxd64 %p rxdpa 0x%x rxdpahi 0x%x rxp %p rxin %d rxout %d\n",
+	            di->rxd64, PHYSADDRLO(di->rxdpa), PHYSADDRHI(di->rxdpaorig), di->rxp,
 	            di->rxin, di->rxout);
 
 	sbuf_printf(s, "rcvcontrol 0x%x rcvaddrlow 0x%x rcvaddrhigh 0x%x rcvptr "
@@ -2669,7 +2664,7 @@ dma64_txflush_clear(dma_info_t *di)
 	AND_REG(di->osh, &di->d64txregs->control, ~D64_XC_FL);
 }
 
-static void BCMFASTPATH
+static void
 dma64_txreclaim(dma_info_t *di, txd_range_t range)
 {
 	void *p;
@@ -2957,7 +2952,7 @@ outoftxd:
  * WARNING: call must check the return value for error.
  *   the error(toss frames) could be fatal and cause many subsequent hard to debug problems
  */
-static int BCMFASTPATH
+static int
 dma64_txfast(dma_info_t *di, void *p0, bool commit)
 {
 	void *p, *next;
@@ -3140,7 +3135,7 @@ outoftxd:
  * If range is HNDDMA_RANGE_ALL, reclaim all txd(s) posted to the ring and
  * return associated packet regardless of the value of hardware pointers.
  */
-static void * BCMFASTPATH
+static void *
 dma64_getnexttxp(dma_info_t *di, txd_range_t range)
 {
 	uint16_t start, end, i;
@@ -3243,7 +3238,7 @@ bogus:
 	return (NULL);
 }
 
-static void * BCMFASTPATH
+static void *
 dma64_getnextrxp(dma_info_t *di, bool forceall)
 {
 	uint16_t i, curr;
@@ -3387,7 +3382,7 @@ dma64_txrotate(dma_info_t *di)
 }
 
 u_int
-BCMATTACHFN(dma_addrwidth)(si_t *sih, void *dmaregs)
+dma_addrwidth(si_t *sih, void *dmaregs)
 {
 	dma32regs_t *dma32regs;
 	osl_t *osh;
@@ -3400,31 +3395,31 @@ BCMATTACHFN(dma_addrwidth)(si_t *sih, void *dmaregs)
 		/* backplane are 64-bit capable */
 		if (si_backplane64(sih))
 			/* If bus is System Backplane or PCIE then we can access 64-bits */
-			if ((BUSTYPE(sih->bustype) == SI_BUS) ||
-			    ((BUSTYPE(sih->bustype) == PCI_BUS) &&
+			if ((sih->bustype == SI_BUS) ||
+			    ((sih->bustype == PCI_BUS) &&
 			     ((sih->buscoretype == BHND_COREID_PCIE) ||
 			      (sih->buscoretype == BHND_COREID_PCIE2))))
-				return (DMADDRWIDTH_64);
+				return (BHND_DMA_ADDR_64BIT);
 
 		/* DMA64 is always 32-bit capable, AE is always TRUE */
 		ASSERT(_dma64_addrext(osh, (dma64regs_t *)dmaregs));
 
-		return (DMADDRWIDTH_32);
+		return (BHND_DMA_ADDR_32BIT);
 	}
 
 	/* Start checking for 32-bit / 30-bit addressing */
 	dma32regs = (dma32regs_t *)dmaregs;
 
 	/* For System Backplane, PCIE bus or addrext feature, 32-bits ok */
-	if ((BUSTYPE(sih->bustype) == SI_BUS) ||
-	    ((BUSTYPE(sih->bustype) == PCI_BUS) &&
+	if ((sih->bustype == SI_BUS) ||
+	    ((sih->bustype == PCI_BUS) &&
 	     ((sih->buscoretype == BHND_COREID_PCIE) ||
 	      (sih->buscoretype == BHND_COREID_PCIE2))) ||
 	    (_dma32_addrext(osh, dma32regs)))
-		return (DMADDRWIDTH_32);
+		return (BHND_DMA_ADDR_32BIT);
 
 	/* Fallthru */
-	return (DMADDRWIDTH_30);
+	return (BHND_DMA_ADDR_30BIT);
 }
 
 static int
