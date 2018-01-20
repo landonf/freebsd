@@ -7154,7 +7154,7 @@ bwn_dma_attach(struct bwn_mac *mac)
 	bhnd_addr_t			 addrext_req;
 	bus_dma_tag_t			 dmat;
 	bus_addr_t			 lowaddr;
-	u_int				 addrext_shift;
+	u_int				 addrext_shift, addr_width;
 	int				 error;
 
 	dma = &mac->mac_method.dma;
@@ -7166,40 +7166,46 @@ bwn_dma_attach(struct bwn_mac *mac)
 
 	KASSERT(bhnd_get_hwrev(sc->sc_dev) >= 5, ("%s: fail", __func__));
 
-	/* Fetch our device->host DMA translation and tag */
-	error = bhnd_get_dma_translation(sc->sc_dev, mac->mac_dmatype, 0, &dmat,
-	    &dma_translation);
-	if (error) {
-		device_printf(sc->sc_dev, "error fetching DMA translation: "
-		    "%d\n", error);
-		return (error);
-	}
-
-	/* Determine any DMA engine constraints to be applied to the
-	 * translation's addrext mask */
+	/* Use the DMA engine's maximum host address width to determine the
+	 * addrext constraints, and supported device address width. */
 	switch (mac->mac_dmatype) {
 	case BHND_DMA_ADDR_30BIT:
-		/* 32-bit engine has no addrext support */
+		/* 32-bit engine without addrext support */
 		addrext_req = 0x0;
 		addrext_shift = 0;
+
+		/* We can address the full 32-bit device address space */
+		addr_width = BHND_DMA_ADDR_32BIT;
 		break;
 
 	case BHND_DMA_ADDR_32BIT:
 		/* 32-bit engine with addrext support */
 		addrext_req = BWN_DMA32_ADDREXT_MASK;
 		addrext_shift = BWN_DMA32_ADDREXT_SHIFT;
+		addr_width = BHND_DMA_ADDR_32BIT;
 		break;
 
 	case BHND_DMA_ADDR_64BIT:
 		/* 64-bit engine with addrext support */
 		addrext_req = BWN_DMA64_ADDREXT_MASK;
 		addrext_shift = BWN_DMA64_ADDREXT_SHIFT;
+		addr_width = BHND_DMA_ADDR_64BIT;
 		break;
 
 	default:
 		device_printf(sc->sc_dev, "unsupported DMA address width: %d\n",
 		    mac->mac_dmatype);
 		return (ENXIO);
+	}
+
+
+	/* Fetch our device->host DMA translation and tag */
+	error = bhnd_get_dma_translation(sc->sc_dev, addr_width, 0, &dmat,
+	    &dma_translation);
+	if (error) {
+		device_printf(sc->sc_dev, "error fetching DMA translation: "
+		    "%d\n", error);
+		return (error);
 	}
 
 	/* Verify that our DMA engine's addrext constraints are compatible with
