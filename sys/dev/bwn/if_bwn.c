@@ -1294,23 +1294,6 @@ bwn_attach_core(struct bwn_mac *mac)
 		return (error);
 	}
 
-	if (iost & BHND_IOST_DMA64) {
-		mac->mac_dmatype = BHND_DMA_ADDR_64BIT;
-	} else {
-		uint32_t tmp;
-		uint16_t base;
-
-		base = bwn_dma_base(0, 0);
-		BWN_WRITE_4(mac, base + BWN_DMA32_TXCTL,
-		    BWN_DMA32_TXADDREXT_MASK);
-		tmp = BWN_READ_4(mac, base + BWN_DMA32_TXCTL);
-		if (tmp & BWN_DMA32_TXADDREXT_MASK) {
-			mac->mac_dmatype = BHND_DMA_ADDR_32BIT;
-		} else {
-			mac->mac_dmatype = BHND_DMA_ADDR_30BIT;
-		}
-	}
-
 	have_a = (iost & BWN_IOST_HAVE_5GHZ) ? 1 : 0;
 	have_bg = (iost & BWN_IOST_HAVE_2GHZ) ? 1 : 0;
 	if (iost & BWN_IOST_DUALPHY) {
@@ -1338,6 +1321,26 @@ bwn_attach_core(struct bwn_mac *mac)
 	error = bwn_reset_core(mac, have_bg);
 	if (error)
 		goto fail;
+
+	/*
+	 * Determine the DMA engine type
+	 */
+	if (iost & BHND_IOST_DMA64) {
+		mac->mac_dmatype = BHND_DMA_ADDR_64BIT;
+	} else {
+		uint32_t tmp;
+		uint16_t base;
+
+		base = bwn_dma_base(0, 0);
+		BWN_WRITE_4(mac, base + BWN_DMA32_TXCTL,
+		    BWN_DMA32_TXADDREXT_MASK);
+		tmp = BWN_READ_4(mac, base + BWN_DMA32_TXCTL);
+		if (tmp & BWN_DMA32_TXADDREXT_MASK) {
+			mac->mac_dmatype = BHND_DMA_ADDR_32BIT;
+		} else {
+			mac->mac_dmatype = BHND_DMA_ADDR_30BIT;
+		}
+	}
 
 	/*
 	 * Get the PHY version.
