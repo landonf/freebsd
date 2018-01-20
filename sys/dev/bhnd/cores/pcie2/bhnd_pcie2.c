@@ -130,6 +130,9 @@ bhnd_pcie2_generic_detach(device_t dev)
 	if ((error = bus_generic_detach(dev)))
 		return (error);
 
+	if ((error = device_delete_children(dev)))
+		return (error);
+
 	bhnd_release_resource(dev, SYS_RES_MEMORY, sc->mem_rid, sc->mem_res);
 	
 	BHND_PCIE2_LOCK_DESTROY(sc);

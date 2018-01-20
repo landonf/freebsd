@@ -168,6 +168,9 @@ chipc_spi_detach(device_t dev)
 	if ((error = bus_generic_detach(dev)))
 		return (error);
 
+	if ((error = device_delete_children(dev)))
+		return (error);
+
 	bus_release_resource(dev, SYS_RES_MEMORY, sc->sc_rid, sc->sc_res);
 	bus_release_resource(dev, SYS_RES_MEMORY, sc->sc_flash_rid,
 	    sc->sc_flash_res);
