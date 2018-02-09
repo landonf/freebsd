@@ -332,7 +332,8 @@ siba_erom_lookup_core_addr(bhnd_erom_t *erom, const struct bhnd_core_match *desc
 	struct siba_erom	*sc;
 	struct bhnd_core_info	 core;
 	struct siba_core_id	 sid;
-	uint32_t		 am, am_addr, am_size;
+	struct siba_admatch	 admatch;
+	uint32_t		 am;
 	u_int			 am_offset;
 	u_int			 addrspace, cfg;
 	
@@ -419,7 +420,7 @@ siba_erom_lookup_core_addr(bhnd_erom_t *erom, const struct bhnd_core_match *desc
 	/* Read and parse the address match register */
 	am = siba_eio_read_4(&sc->io, core.core_idx, am_offset);
 
-	if ((error = siba_parse_admatch(am, &am_addr, &am_size))) {
+	if ((error = siba_parse_admatch(am, &admatch))) {
 		printf("failed to decode address match register value 0x%x\n",
 		    am);
 		return (error);
@@ -428,8 +429,8 @@ siba_erom_lookup_core_addr(bhnd_erom_t *erom, const struct bhnd_core_match *desc
 	if (info != NULL)
 		*info = core;
 
-	*addr = am_addr;
-	*size = am_size;
+	*addr = admatch.am_base;
+	*size = admatch.am_size;
 
 	return (0);
 }
@@ -508,8 +509,9 @@ siba_erom_dump(bhnd_erom_t *erom)
 		printf("\tnraddr\t0x%04x\n", nraddr);
 
 		for (size_t addrspace = 0; addrspace < nraddr; addrspace++) {
-			uint32_t	am, am_addr, am_size;
-			u_int		am_offset;
+			struct siba_admatch	admatch;
+			uint32_t		am;
+			u_int			am_offset;
 
 			/* Determine the register offset */
 			am_offset = siba_admatch_offset(addrspace);
@@ -521,16 +523,15 @@ siba_erom_dump(bhnd_erom_t *erom)
 			
 			/* Read and parse the address match register */
 			am = siba_eio_read_4(&sc->io, i, am_offset);
-			error = siba_parse_admatch(am, &am_addr, &am_size);
-			if (error) {
+			if ((error = siba_parse_admatch(am, &admatch))) {
 				printf("failed to decode address match "
 				    "register value 0x%x\n", am);
 				continue;
 			}
 
 			printf("\taddrspace %zu\n", addrspace);
-			printf("\t\taddr: 0x%08x\n", am_addr);
-			printf("\t\tsize: 0x%08x\n", am_size);
+			printf("\t\taddr: 0x%08x\n", admatch.am_base);
+			printf("\t\tsize: 0x%08x\n", admatch.am_size);
 		}
 	}
 

@@ -1179,8 +1179,6 @@ siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
     struct bhnd_resource *r)
 {
 	struct siba_core_id	*cid;
-	uint32_t		 addr;
-	uint32_t		 size;
 	int			 error;
 
 	cid = &di->core_id;
@@ -1188,9 +1186,10 @@ siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
 
 	/* Register the device address space entries */
 	for (uint8_t i = 0; i < di->core_id.num_addrspace; i++) {
-		uint32_t	adm;
-		u_int		adm_offset;
-		uint32_t	bus_reserved;
+		struct siba_admatch	admatch;
+		uint32_t		adm;
+		u_int			adm_offset;
+		uint32_t		bus_reserved;
 
 		/* Determine the register offset */
 		adm_offset = siba_admatch_offset(i);
@@ -1203,7 +1202,7 @@ siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
 		adm = bhnd_bus_read_4(r, adm_offset);
 
 		/* Parse the value */
-		if ((error = siba_parse_admatch(adm, &addr, &size))) {
+		if ((error = siba_parse_admatch(adm, &admatch))) {
 			device_printf(dev, "failed to decode address "
 			    " match register value 0x%x\n", adm);
 			return (error);
@@ -1217,8 +1216,8 @@ siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
 			bus_reserved = cid->num_cfg_blocks * SIBA_CFG_SIZE;
 
 		/* Append the region info */
-		error = siba_append_dinfo_region(di, i, addr, size,
-		    bus_reserved);
+		error = siba_append_dinfo_region(di, i, admatch.am_base,
+		    admatch.am_size, bus_reserved);
 		if (error)
 			return (error);
 	}

@@ -585,37 +585,38 @@ siba_admatch_offset(uint8_t addrspace)
  * 
  * @param addrspace The address space index.
  * @param am The address match register value to be parsed.
- * @param[out] addr The parsed address.
- * @param[out] size The parsed size.
+ * @param[out] admatch The parsed address match descriptor
  * 
  * @retval 0 success
  * @retval non-zero a parse error occurred.
  */
 int
-siba_parse_admatch(uint32_t am, uint32_t *addr, uint32_t *size)
+siba_parse_admatch(uint32_t am, struct siba_admatch *admatch)
 {
-	u_int		am_type;
-	
-	/* Negative encoding is not supported. This is not used on any
-	 * currently known devices*/
-	if (am & SIBA_AM_ADNEG)
-		return (EINVAL);
+	u_int am_type;
 	
 	/* Extract the base address and size */
 	am_type = SIBA_REG_GET(am, AM_TYPE);
 	switch (am_type) {
 	case 0:
-		*addr = am & SIBA_AM_BASE0_MASK;
-		*size = 1 << (SIBA_REG_GET(am, AM_ADINT0) + 1);
+		/* Type 0 entries are always enabled, and do not support
+		 * negative matching */
+		admatch->am_base = am & SIBA_AM_BASE0_MASK;
+		admatch->am_size = 1 << (SIBA_REG_GET(am, AM_ADINT0) + 1);
+		admatch->am_enabled = true;
+		admatch->am_negative = false;
 		break;
 	case 1:
-		*addr = am & SIBA_AM_BASE1_MASK;
-		*size = 1 << (SIBA_REG_GET(am, AM_ADINT1) + 1);
+		admatch->am_base = am & SIBA_AM_BASE1_MASK;
+		admatch->am_size = 1 << (SIBA_REG_GET(am, AM_ADINT1) + 1);
+		admatch->am_enabled = ((am & SIBA_AM_ADEN) != 0);
+		admatch->am_negative = ((am & SIBA_AM_ADNEG) != 0);
 		break;
 	case 2:
-		*addr = am & SIBA_AM_BASE2_MASK;
-		*size = 1 << (SIBA_REG_GET(am, AM_ADINT2) + 1);
-		break;
+		admatch->am_base = am & SIBA_AM_BASE2_MASK;
+		admatch->am_size = 1 << (SIBA_REG_GET(am, AM_ADINT2) + 1);
+		admatch->am_enabled = ((am & SIBA_AM_ADEN) != 0);
+		admatch->am_negative = ((am & SIBA_AM_ADNEG) != 0);
 	default:
 		return (EINVAL);
 	}

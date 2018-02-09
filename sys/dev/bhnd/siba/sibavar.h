@@ -52,6 +52,7 @@
  */
 
 struct siba_addrspace;
+struct siba_admatch;
 struct siba_cfg_block;
 struct siba_devinfo;
 struct siba_core_id;
@@ -114,8 +115,8 @@ int			 siba_append_dinfo_region(struct siba_devinfo *dinfo,
 			     uint32_t bus_reserved);
 
 u_int			 siba_admatch_offset(uint8_t addrspace);
-int			 siba_parse_admatch(uint32_t am, uint32_t *addr,
-			     uint32_t *size);
+int			 siba_parse_admatch(uint32_t am,
+			    struct siba_admatch *admatch);
 
 void			 siba_write_target_state(device_t dev,
 			     struct siba_devinfo *dinfo, bus_size_t reg,
@@ -147,6 +148,14 @@ int			 siba_wait_target_state(device_t dev,
 /* bhnd(4) (port,region) representation of siba address space mappings */
 #define	SIBA_MAX_PORT		2	/**< maximum number of advertised
 					  *  bhnd(4) ports */
+
+/** siba(4) address match descriptor */
+struct siba_admatch {
+	uint32_t	am_base;	/**< base address. */
+	uint32_t	am_size;	/**< size. */
+	bool		am_negative;	/**< if true, negative matching is performed. */
+	bool		am_enabled;	/**< if true, matching on this entry is enabled. */
+};
 
 /** siba(4) address space descriptor */
 struct siba_addrspace {
