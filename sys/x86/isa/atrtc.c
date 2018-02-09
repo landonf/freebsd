@@ -76,19 +76,40 @@ static	u_char	rtc_statusb = RTCSB_24HR;
  * RTC support routines
  */
 
-int
-rtcin(int reg)
+static inline u_char
+rtcin_locked(int reg)
 {
-	u_char val;
 
-	RTC_LOCK;
 	if (rtc_reg != reg) {
 		inb(0x84);
 		outb(IO_RTC, reg);
 		rtc_reg = reg;
 		inb(0x84);
 	}
-	val = inb(IO_RTC + 1);
+	return (inb(IO_RTC + 1));
+}
+
+static inline void
+rtcout_locked(int reg, u_char val)
+{
+
+	if (rtc_reg != reg) {
+		inb(0x84);
+		outb(IO_RTC, reg);
+		rtc_reg = reg;
+		inb(0x84);
+	}
+	outb(IO_RTC + 1, val);
+	inb(0x84);
+}
+
+int
+rtcin(int reg)
+{
+	u_char val;
+
+	RTC_LOCK;
+	val = rtcin_locked(reg);
 	RTC_UNLOCK;
 	return (val);
 }
@@ -98,14 +119,7 @@ writertc(int reg, u_char val)
 {
 
 	RTC_LOCK;
-	if (rtc_reg != reg) {
-		inb(0x84);
-		outb(IO_RTC, reg);
-		rtc_reg = reg;
-		inb(0x84);
-	}
-	outb(IO_RTC + 1, val);
-	inb(0x84);
+	rtcout_locked(reg, val);
 	RTC_UNLOCK;
 }
 
@@ -153,36 +167,6 @@ atrtc_restore(void)
 	writertc(RTC_STATUSA, rtc_statusa);
 	writertc(RTC_STATUSB, rtc_statusb);
 	rtcin(RTC_INTR);
-}
-
-static void
-atrtc_set(struct timespec *ts)
-{
-	struct bcd_clocktime ct;
-
-	clock_ts_to_bcd(ts, &ct, false);
-
-	mtx_lock(&atrtc_time_lock);
-
-	/* Disable RTC updates and interrupts. */
-	writertc(RTC_STATUSB, RTCSB_HALT | RTCSB_24HR);
-
-	writertc(RTC_SEC,   ct.sec); 		/* Write back Seconds */
-	writertc(RTC_MIN,   ct.min); 		/* Write back Minutes */
-	writertc(RTC_HRS,   ct.hour);		/* Write back Hours   */
-	writertc(RTC_WDAY,  ct.dow + 1);	/* Write back Weekday */
-	writertc(RTC_DAY,   ct.day);		/* Write back Day */
-	writertc(RTC_MONTH, ct.mon);		/* Write back Month   */
-	writertc(RTC_YEAR,  ct.year & 0xff);	/* Write back Year    */
-#ifdef USE_RTC_CENTURY
-	writertc(RTC_CENTURY, ct.year >> 8);	/* ... and Century    */
-#endif
-
-	/* Re-enable RTC updates and interrupts. */
-	writertc(RTC_STATUSB, rtc_statusb);
-	rtcin(RTC_INTR);
-
-	mtx_unlock(&atrtc_time_lock);
 }
 
 /**********************************************************************
@@ -331,15 +315,44 @@ atrtc_resume(device_t dev)
 static int
 atrtc_settime(device_t dev __unused, struct timespec *ts)
 {
+	struct bcd_clocktime bct;
 
-	atrtc_set(ts);
+	clock_ts_to_bcd(ts, &bct, false);
+
+	mtx_lock(&atrtc_time_lock);
+	RTC_LOCK;
+
+	/* Disable RTC updates and interrupts.  */
+	rtcout_locked(RTC_STATUSB, RTCSB_HALT | RTCSB_24HR);
+
+	/* Write all the time registers. */
+	rtcout_locked(RTC_SEC,   bct.sec);
+	rtcout_locked(RTC_MIN,   bct.min);
+	rtcout_locked(RTC_HRS,   bct.hour);
+	rtcout_locked(RTC_WDAY,  bct.dow + 1);
+	rtcout_locked(RTC_DAY,   bct.day);
+	rtcout_locked(RTC_MONTH, bct.mon);
+	rtcout_locked(RTC_YEAR,  bct.year & 0xff);
+#ifdef USE_RTC_CENTURY
+	rtcout_locked(RTC_CENTURY, bct.year >> 8);
+#endif
+
+	/*
+	 * Re-enable RTC updates and interrupts.
+	 */
+	rtcout_locked(RTC_STATUSB, rtc_statusb);
+	rtcin_locked(RTC_INTR);
+
+	RTC_UNLOCK;
+	mtx_unlock(&atrtc_time_lock);
+
 	return (0);
 }
 
 static int
 atrtc_gettime(device_t dev, struct timespec *ts)
 {
-	struct bcd_clocktime ct;
+	struct bcd_clocktime bct;
 
 	/* Look if we have a RTC present and the time is valid */
 	if (!(rtcin(RTC_STATUSD) & RTCSD_PWR)) {
@@ -357,22 +370,22 @@ atrtc_gettime(device_t dev, struct timespec *ts)
 	mtx_lock(&atrtc_time_lock);
 	while (rtcin(RTC_STATUSA) & RTCSA_TUP)
 		continue;
-	critical_enter();
-	ct.sec  = rtcin(RTC_SEC);
-	ct.min  = rtcin(RTC_MIN);
-	ct.hour = rtcin(RTC_HRS);
-	ct.day  = rtcin(RTC_DAY);
-	ct.mon  = rtcin(RTC_MONTH);
-	ct.year = rtcin(RTC_YEAR);
+	RTC_LOCK;
+	bct.sec  = rtcin_locked(RTC_SEC);
+	bct.min  = rtcin_locked(RTC_MIN);
+	bct.hour = rtcin_locked(RTC_HRS);
+	bct.day  = rtcin_locked(RTC_DAY);
+	bct.mon  = rtcin_locked(RTC_MONTH);
+	bct.year = rtcin_locked(RTC_YEAR);
 #ifdef USE_RTC_CENTURY
-	ct.year |= rtcin(RTC_CENTURY) << 8;
+	bct.year |= rtcin_locked(RTC_CENTURY) << 8;
 #endif
-	critical_exit();
+	RTC_UNLOCK;
 	mtx_unlock(&atrtc_time_lock);
 	/* dow is unused in timespec conversion and we have no nsec info. */
-	ct.dow  = 0;
-	ct.nsec = 0;
-	return (clock_bcd_to_ts(&ct, ts, false));
+	bct.dow  = 0;
+	bct.nsec = 0;
+	return (clock_bcd_to_ts(&bct, ts, false));
 }
 
 static device_method_t atrtc_methods[] = {
@@ -402,6 +415,7 @@ static devclass_t atrtc_devclass;
 
 DRIVER_MODULE(atrtc, isa, atrtc_driver, atrtc_devclass, 0, 0);
 DRIVER_MODULE(atrtc, acpi, atrtc_driver, atrtc_devclass, 0, 0);
+ISA_PNP_INFO(atrtc_ids);
 
 #include "opt_ddb.h"
 #ifdef DDB
