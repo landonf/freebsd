@@ -404,6 +404,10 @@ struct bhnd_device {
 #define	BHND_DEVICE_IS_END(_d)	\
 	(BHND_MATCH_IS_ANY(&(_d)->core) && (_d)->desc == NULL)
 
+#define	BHND_PNP_DEVICE_INFO(table)					\
+	MODULE_PNP_INFO(BHND_DEVICE_MATCH_PNP_INFO, bhnd, table, table,	\
+	sizeof(table[0]), sizeof(table) / sizeof(table[0]))
+
 /**
  * bhnd device sort order.
  */

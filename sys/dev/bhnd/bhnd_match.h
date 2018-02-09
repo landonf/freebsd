@@ -235,8 +235,7 @@ struct bhnd_board_match {
 	_BHND_COPY_MATCH_FIELD(_src, board_vendor),	\
 	_BHND_COPY_MATCH_FIELD(_src, board_type),	\
 	_BHND_COPY_MATCH_FIELD(_src, board_devid),	\
-	_BHND_COPY_MATCH_FIELD(_src, board_rev),	\
-	_BHND_COPY_MATCH_FIELD(_src, board_srom_rev)
+	_BHND_COPY_MATCH_FIELD(_src, board_rev)
 
 /** Set the required board vendor within a bhnd match descriptor */
 #define	BHND_MATCH_BOARD_VENDOR(_v)	_BHND_SET_MATCH_FIELD(board_vendor, _v)
@@ -250,9 +249,7 @@ struct bhnd_board_match {
 					    (_devid))
 
 /** Set the required SROM revision range within a bhnd match descriptor */
-#define	BHND_MATCH_SROMREV(_rev)	_BHND_SET_MATCH_FIELD(board_srom_rev, \
-					    BHND_HWREV_ ## _rev)
-
+#define	BHND_MATCH_SROMREV(_rev)	
 /** Set the required board revision range within a bhnd match descriptor */
 #define	BHND_MATCH_BOARD_REV(_rev)	_BHND_SET_MATCH_FIELD(board_rev, \
 					    BHND_ ## _rev)
@@ -271,9 +268,9 @@ struct bhnd_board_match {
 struct bhnd_device_match {
 	/** Select fields to be matched */
 	union {
-		uint32_t match_flags;
+		uint16_t match_flags;
 		struct {
-			uint32_t
+			uint16_t
 			core_vendor:1,
 			core_id:1,
 			core_rev:1,
@@ -287,18 +284,16 @@ struct bhnd_device_match {
 			board_vendor:1,
 			board_type:1,
 			board_devid:1,
-			board_rev:1,
-			board_srom_rev:1,
-			flags_unused:15;
+			board_rev:1;
 		} match;
 	} m;
 	
 	uint16_t		core_vendor;	/**< required JEP106 device vendor */
 	uint16_t		core_id;	/**< required core ID */
 	struct bhnd_hwrev_match	core_rev;	/**< matching core revisions. */
-	bhnd_devclass_t		core_class;	/**< required bhnd class */
-	u_int			core_idx;	/**< required core index */
-	int			core_unit;	/**< required core unit */
+	uint32_t		core_class;	/**< required bhnd class */
+	uint32_t		core_idx;	/**< required core index */
+	uint32_t		core_unit;	/**< required core unit */
 
 	uint16_t		chip_id;	/**< required chip id */
 	struct bhnd_hwrev_match	chip_rev;	/**< matching chip revisions */
@@ -311,6 +306,10 @@ struct bhnd_device_match {
 	struct bhnd_hwrev_match	board_rev;	/**< matching board revisions */
 	struct bhnd_hwrev_match	board_srom_rev;	/**< matching board srom revisions */
 };
+
+#define	BHND_DEVICE_MATCH_PNP_INFO					\
+    "M16:mask;U16:vendor;U16:device;G16:rev;L16:rev;U32:class;"		\
+    "U32:idx;U32:unit;U16:chip_id;U8:chip_rev;U8:chip_pkg;U8:chip_type;"
 
 /** Define a wildcard match requirement (matches on any device). */
 #define	BHND_MATCH_ANY		.m.match_flags = 0

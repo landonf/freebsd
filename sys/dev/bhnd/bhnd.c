@@ -914,14 +914,22 @@ static int
 bhnd_child_pnpinfo_str(device_t dev, device_t child, char *buf,
     size_t buflen)
 {
+	const struct bhnd_chipid *cid;
+
 	if (device_get_parent(child) != dev) {
 		return (BUS_CHILD_PNPINFO_STR(device_get_parent(dev), child,
 		    buf, buflen));
 	}
 
-	snprintf(buf, buflen, "vendor=0x%hx device=0x%hx rev=0x%hhx",
+	cid = bhnd_get_chipid(child);
+
+	snprintf(buf, buflen, "vendor=%#hx device=%#hx rev=%#hhx class=%#x "
+	    "idx=%u unit=%d chip_id=%#hx chip_rev=%#hhx chip_pkg=%#hhx "
+	    "chip_type=%#hhx",
 	    bhnd_get_vendor(child), bhnd_get_device(child),
-	    bhnd_get_hwrev(child));
+	    bhnd_get_hwrev(child), bhnd_get_class(child),
+	    bhnd_get_core_index(child), bhnd_get_core_unit(child), cid->chip_id,
+	    cid->chip_rev, cid->chip_pkg, cid->chip_type);
 
 	return (0);
 }

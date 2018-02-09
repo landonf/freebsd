@@ -249,3 +249,4 @@ DRIVER_MODULE(bhnd_pcie2_hostb, bhnd, bhnd_pcie2_hostb_driver, bhnd_hostb_devcla
 MODULE_VERSION(bhnd_pcie2_hostb, 1);
 MODULE_DEPEND(bhnd_pcie2_hostb, bhnd, 1, 1, 1);
 MODULE_DEPEND(bhnd_pcie2_hostb, bhnd_pcie2, 1, 1, 1);
+BHND_PNP_DEVICE_INFO(bhnd_pcie2_devs);

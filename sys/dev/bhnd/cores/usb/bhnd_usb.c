@@ -500,3 +500,4 @@ DEFINE_CLASS_0(bhnd_usb, bhnd_usb_driver, bhnd_usb_methods,
 DRIVER_MODULE(bhnd_usb, bhnd, bhnd_usb_driver, bhnd_usb_devclass, 0, 0);
 
 MODULE_VERSION(bhnd_usb, 1);
+BHND_PNP_DEVICE_INFO(bhnd_usb_devs);

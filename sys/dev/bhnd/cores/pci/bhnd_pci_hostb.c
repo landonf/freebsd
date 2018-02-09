@@ -662,3 +662,4 @@ DRIVER_MODULE(bhnd_pci_hostb, bhnd, bhnd_pci_hostb_driver, bhnd_hostb_devclass, 
 MODULE_VERSION(bhnd_pci_hostb, 1);
 MODULE_DEPEND(bhnd_pci_hostb, bhnd, 1, 1, 1);
 MODULE_DEPEND(bhnd_pci_hostb, bhnd_pci, 1, 1, 1);
+BHND_PNP_DEVICE_INFO(bhnd_pci_devs);
