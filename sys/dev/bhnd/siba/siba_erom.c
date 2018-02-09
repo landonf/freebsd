@@ -53,18 +53,17 @@ struct siba_erom;
 struct siba_erom_io;
 
 
-static int			siba_eio_init(struct siba_erom_io *io,
-				    struct bhnd_erom_io *eio, u_int ncores);
+static int	siba_eio_init(struct siba_erom_io *io,
+		    struct bhnd_erom_io *eio, u_int ncores);
 
-static uint32_t			siba_eio_read_4(struct siba_erom_io *io,
-				    u_int core_idx, bus_size_t offset);
+static uint32_t	siba_eio_read_4(struct siba_erom_io *io, u_int core_idx,
+		    bus_size_t offset);
 
-static struct siba_core_id	siba_eio_read_core_id(struct siba_erom_io *io,
-				    u_int core_idx, int unit);
+static int	siba_eio_read_core_id(struct siba_erom_io *io, u_int core_idx,
+		    int unit, struct siba_core_id *sid);
 
-static int			siba_eio_read_chipid(struct siba_erom_io *io,
-				    bus_addr_t enum_addr,
-				    struct bhnd_chipid *cid);
+static int	siba_eio_read_chipid(struct siba_erom_io *io,
+		    bus_addr_t enum_addr, struct bhnd_chipid *cid);
 
 /**
  * SIBA EROM generic I/O context
@@ -118,7 +117,8 @@ siba_erom_probe(bhnd_erom_class_t *cls, struct bhnd_erom_io *eio,
 		 * BCM4710, it's a SDRAM core (0x803).
 		 */
 
-		sid = siba_eio_read_core_id(&io, 0, 0);
+		if ((error = siba_eio_read_core_id(&io, 0, 0, &sid)))
+			return (error);
 
 		if (sid.core_info.vendor != BHND_MFGID_BCM)
 			return (ENXIO);
@@ -227,16 +227,24 @@ siba_eio_read_4(struct siba_erom_io *io, u_int core_idx, bus_size_t offset)
  * @param core_idx The core index.
  * @param unit The caller-specified unit number to be included in the return
  * value.
+ * @param[out] sid On success, the parsed siba core id.
+ * 
+ * @retval 0		success
+ * @retval non-zero     if reading or parsing the identification registers
+ *			otherwise fails, a regular unix error code will be
+ *			returned.
  */
-static struct siba_core_id
-siba_eio_read_core_id(struct siba_erom_io *io, u_int core_idx, int unit)
+static int
+siba_eio_read_core_id(struct siba_erom_io *io, u_int core_idx, int unit,
+    struct siba_core_id *sid)
 {
 	uint32_t idhigh, idlow;
 
 	idhigh = siba_eio_read_4(io, core_idx, SB0_REG_ABS(SIBA_CFG0_IDHIGH));
 	idlow = siba_eio_read_4(io, core_idx, SB0_REG_ABS(SIBA_CFG0_IDLOW));
 
-	return (siba_parse_core_id(idhigh, idlow, core_idx, unit));
+	*sid = siba_parse_core_id(idhigh, idlow, core_idx, unit);
+	return (0);
 }
 
 /**
@@ -252,9 +260,12 @@ siba_eio_read_chipid(struct siba_erom_io *io, bus_addr_t enum_addr,
 {
 	struct siba_core_id	ccid;
 	uint32_t		idreg;
+	int			error;
 
 	/* Identify the chipcommon core */
-	ccid = siba_eio_read_core_id(io, 0, 0);
+	if ((error = siba_eio_read_core_id(io, 0, 0, &ccid)))
+		return (error);
+
 	if (ccid.core_info.vendor != BHND_MFGID_BCM ||
 	    ccid.core_info.device != BHND_COREID_CC)
 	{
@@ -281,6 +292,7 @@ siba_erom_lookup_core(bhnd_erom_t *erom, const struct bhnd_core_match *desc,
 {
 	struct siba_erom	*sc;
 	struct bhnd_core_match	 imatch;
+	int			 error;
 
 	sc = (struct siba_erom *)erom;
 
@@ -294,7 +306,9 @@ siba_erom_lookup_core(bhnd_erom_t *erom, const struct bhnd_core_match *desc,
 		struct bhnd_core_info	ci;
 
 		/* Read the core info */
-		sid = siba_eio_read_core_id(&sc->io, i, 0);
+		if ((error = siba_eio_read_core_id(&sc->io, i, 0, &sid)))
+			return (error);
+
 		ci = sid.core_info;
 
 		/* Check for initial match */
@@ -303,7 +317,9 @@ siba_erom_lookup_core(bhnd_erom_t *erom, const struct bhnd_core_match *desc,
 
 		/* Re-scan preceding cores to determine the unit number. */
 		for (u_int j = 0; j < i; j++) {
-			sid = siba_eio_read_core_id(&sc->io, j, 0);
+			error = siba_eio_read_core_id(&sc->io, j, 0, &sid);
+			if (error)
+				return (error);
 
 			/* Bump the unit number? */
 			if (sid.core_info.vendor == ci.vendor &&
@@ -346,7 +362,9 @@ siba_erom_lookup_core_addr(bhnd_erom_t *erom, const struct bhnd_core_match *desc
 		return (error);
 
 	/* Fetch full siba core ident */
-	sid = siba_eio_read_core_id(&sc->io, core.core_idx, core.unit);
+	error = siba_eio_read_core_id(&sc->io, core.core_idx, core.unit, &sid);
+	if (error)
+		return (error);
 
 	/* Is port valid? */
 	if (!siba_is_port_valid(&sid, type, port))
@@ -442,6 +460,7 @@ siba_erom_get_core_table(bhnd_erom_t *erom, struct bhnd_core_info **cores,
 {
 	struct siba_erom	*sc;
 	struct bhnd_core_info	*out;
+	int			 error;
 
 	sc = (struct siba_erom *)erom;
 
@@ -458,7 +477,9 @@ siba_erom_get_core_table(bhnd_erom_t *erom, struct bhnd_core_info **cores,
 		struct siba_core_id sid;
 
 		/* Read the core info */
-		sid = siba_eio_read_core_id(&sc->io, i, 0);
+		if ((error = siba_eio_read_core_id(&sc->io, i, 0, &sid)))
+			return (error);
+
 		out[i] = sid.core_info;
 
 		/* Determine unit number */
