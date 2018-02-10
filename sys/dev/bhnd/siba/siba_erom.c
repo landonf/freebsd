@@ -49,6 +49,8 @@ __FBSDID("$FreeBSD$");
 #include "sibareg.h"
 #include "sibavar.h"
 
+#include "siba_eromvar.h"
+
 struct siba_erom;
 struct siba_erom_io;
 
@@ -238,12 +240,138 @@ static int
 siba_eio_read_core_id(struct siba_erom_io *io, u_int core_idx, int unit,
     struct siba_core_id *sid)
 {
-	uint32_t idhigh, idlow;
+	struct siba_admatch	admatch[SIBA_MAX_ADDRSPACE];
+	uint32_t		idhigh, idlow;
+	uint32_t		tpsflag;
+	uint16_t		ocp_vendor;
+	uint8_t			sonics_rev;
+	uint8_t			num_admatch;
+	uint8_t			num_admatch_en;
+	uint8_t			num_cfg;
+	bool			intr_en;
+	u_int			intr_flag;
+	int			error;
 
 	idhigh = siba_eio_read_4(io, core_idx, SB0_REG_ABS(SIBA_CFG0_IDHIGH));
 	idlow = siba_eio_read_4(io, core_idx, SB0_REG_ABS(SIBA_CFG0_IDLOW));
+	tpsflag = siba_eio_read_4(io, core_idx, SB0_REG_ABS(SIBA_CFG0_TPSFLAG));
 
-	*sid = siba_parse_core_id(idhigh, idlow, core_idx, unit);
+	ocp_vendor = SIBA_REG_GET(idhigh, IDH_VENDOR);
+	sonics_rev = SIBA_REG_GET(idlow, IDL_SBREV);
+	num_admatch = SIBA_REG_GET(idlow, IDL_NRADDR) + 1 /* + enum block */;
+	if (num_admatch > nitems(admatch)) {
+		printf("invalid core%u admatch count %hhu\n", core_idx,
+		    num_admatch);
+		return (EINVAL);
+	}
+
+	/* Determine backplane interrupt distribution configuration */
+	intr_en = ((tpsflag & SIBA_TPS_F0EN0) != 0);
+	intr_flag = SIBA_REG_GET(tpsflag, TPS_NUM0);
+
+	/* Determine the number of sonics config register blocks */
+	num_cfg = SIBA_CFG_NUM_2_2;
+	if (sonics_rev >= SIBA_IDL_SBREV_2_3)
+		num_cfg = SIBA_CFG_NUM_2_3;
+
+	/* Parse all admatch descriptors */
+	num_admatch_en = 0;
+	for (uint8_t i = 0; i < num_admatch; i++) {
+		uint32_t	am_value;
+		u_int		am_offset;
+
+		KASSERT(i < nitems(admatch), ("invalid admatch index"));
+
+		/* Determine the register offset */
+		am_offset = siba_admatch_offset(i);
+		if (am_offset == 0) {
+			printf("addrspace %u is unsupported", i);
+			return (ENODEV);
+		}
+
+		/* Read and parse the address match register */
+		am_value = siba_eio_read_4(io, core_idx, am_offset);
+		error = siba_parse_admatch(am_value, &admatch[num_admatch_en]);
+		if (error) {
+			printf("failed to decode address match register value "
+			    "0x%x\n", am_value);
+			return (error);
+		}
+
+		/* Skip disabled entries */
+		if (!admatch[num_admatch_en].am_enabled)
+			continue;
+
+		/* Reject unsupported negative matches. These are not used on
+		 * any known devices */
+		if (admatch[num_admatch_en].am_negative) {
+			printf("unsupported negative address match value "
+			    "0x%x\n", am_value);
+			return (error);
+		}
+
+		num_admatch_en++;
+	}
+
+	/* Populate the result */
+	*sid = (struct siba_core_id) {
+		.core_info	= {
+			.vendor	= siba_get_bhnd_mfgid(ocp_vendor),
+			.device	= SIBA_REG_GET(idhigh, IDH_DEVICE),
+			.hwrev	= SIBA_IDH_CORE_REV(idhigh),
+			.core_idx = core_idx,
+			.unit	= unit
+		},
+		.sonics_vendor	= ocp_vendor,
+		.sonics_rev	= sonics_rev,
+		.intr_en	= intr_en,
+		.intr_flag	= intr_flag,
+		.num_admatch	= num_admatch_en,
+		.num_cfg_blocks	= num_cfg
+	};
+	memcpy(sid->admatch, admatch, num_admatch_en * sizeof(admatch[0]));
+
+	return (0);
+}
+
+/**
+ * Read and parse the SSB identification registers for the given @p core_index,
+ * returning the siba(4) core identification in @p sid.
+ * 
+ * @param sc A siba EROM instance.
+ * @param core_idx The index of the core to be identified.
+ * @param[out] result On success, the parsed siba core id.
+ * 
+ * @retval 0		success
+ * @retval non-zero     if reading or parsing the identification registers
+ *			otherwise fails, a regular unix error code will be
+ *			returned.
+ */
+int
+siba_erom_get_core_id(struct siba_erom *sc, u_int core_idx,
+    struct siba_core_id *result)
+{
+	struct siba_core_id	sid;
+	int			error;
+
+	/* Fetch the core info, assuming a unit number of 0 */
+	if ((error = siba_eio_read_core_id(&sc->io, core_idx, 0, &sid)))
+		return (error);
+
+	/* Scan preceding cores to determine the real unit number. */
+	for (u_int i = 0; i < core_idx; i++) {
+		struct siba_core_id prev;
+
+		if ((error = siba_eio_read_core_id(&sc->io, i, 0, &prev)))
+			return (error);
+
+		/* Bump the unit number? */
+		if (sid.core_info.vendor == prev.core_info.vendor &&
+		    sid.core_info.device == prev.core_info.device)
+			sid.core_info.unit++;
+	}
+
+	*result = sid;
 	return (0);
 }
 
