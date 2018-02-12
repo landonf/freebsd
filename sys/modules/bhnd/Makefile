@@ -4,6 +4,7 @@
 .PATH: ${SRCTOP}/sys/dev/bhnd/cores/chipc
 .PATH: ${SRCTOP}/sys/dev/bhnd/cores/chipc/pwrctl
 .PATH: ${SRCTOP}/sys/dev/bhnd/cores/pmu
+.PATH: ${SRCTOP}/sys/dev/bhnd/dma
 .PATH: ${SRCTOP}/sys/dev/bhnd/nvram
 
 KMOD=	bhnd
@@ -30,6 +31,11 @@ SRCS+=	bhnd_pwrctl.c \
 SRCS+=	bhnd_pwrctl_hostb_if.c bhnd_pwrctl_hostb_if.h
 
 SRCS+=	bhnd_chipc_if.c bhnd_chipc_if.h
+
+# DMA
+SRCS+=	bhnd_dma.c \
+	bhnd_dma32.c \
+	bhnd_dma64.c \
 
 # PMU
 SRCS+=	bhnd_pmu.c \

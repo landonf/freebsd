@@ -1,8 +1,12 @@
-/*
- * Generic Broadcom Home Networking Division (HND) DMA engine SW interface
- * This supports the following chips: BCM42xx, 44xx, 47xx .
+/*-
+ * SPDX-License-Identifier: ISC
  *
- * Copyright (C) 2015, Broadcom Corporation. All Rights Reserved.
+ * Copyright (c) 2018 Landon Fuller <landonf@FreeBSD.org>
+ * Copyright (c) 2015 Broadcom Corporation. All Rights Reserved.
+ * All rights reserved.
+ *
+ * This file was derived from the hnddma.c source and hnddma.h header
+ * distributed with the Asus RT-N18 firmware source code release.
  * 
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -16,16 +20,75 @@
  * OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
  * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
+ * $Id: hnddma.c 497985 2014-08-21 10:43:51Z $
  * $Id: hnddma.h 427480 2013-10-03 19:09:47Z $
+ *
+ * $FreeBSD$
  */
 
-#ifndef	_hnddma_h_
-#define	_hnddma_h_
+#ifndef _BHND_DMA_BHND_DMAVAR_H_
+#define _BHND_DMA_BHND_DMAVAR_H_
 
-#ifndef _hnddma_pub_
-#define _hnddma_pub_
+#include <sys/types.h>
+#include <sys/sbuf.h>
+
+/* TODO: required for dma32regs_t/dma32dd_t and dma64regs_t/dma64dd_t */
+#include "bhnd_dma32reg.h"
+#include "bhnd_dma64reg.h"
+
+/* XXX default configuration */
+#define	BCMDBG
+#define	BCMDMA64OSL
+#define	BCMDMA32
+#define	BCMDMA64
+
+/* TODO: Required until we pull in bhnd(9) replacements */
+#include "siutils.h"
+
+/* debug/trace */
+#ifdef BCMDBG
+#define	DMA_ERROR(args) if (!(*di->msg_level & 1)); else printf args
+#define	DMA_TRACE(args) if (!(*di->msg_level & 2)); else printf args
+#elif defined(BCMDBG_ERR)
+#define	DMA_ERROR(args) if (!(*di->msg_level & 1)); else printf args
+#define DMA_TRACE(args)
+#else
+#define	DMA_ERROR(args)
+#define	DMA_TRACE(args)
+#endif /* BCMDBG */
+
+#define	DMA_NONE(args)
+
+
+/*
+ * If BCMDMA32 is defined, hnddma will support both 32-bit and 64-bit DMA engines.
+ * Otherwise it will support only 64-bit.
+ *
+ * DMA32_ENAB indicates whether hnddma is compiled with support for 32-bit DMA engines.
+ * DMA64_ENAB indicates whether hnddma is compiled with support for 64-bit DMA engines.
+ *
+ * DMA64_MODE indicates whether the current DMA engine is running as 64-bit.
+ */
+#ifdef BCMDMA32
+#define	DMA32_ENAB(di)		1
+#define	DMA64_ENAB(di)		1
+#define	DMA64_MODE(di)		((di)->dma64)
+#else /* !BCMDMA32 */
+#define	DMA32_ENAB(di)		0
+#define	DMA64_ENAB(di)		1
+#define	DMA64_MODE(di)		1
+#endif /* !BCMDMA32 */
+
+/* DMA Scatter-gather list is supported. Note this is limited to TX direction only */
+#ifdef BCMDMASGLISTOSL
+#define DMASGLIST_ENAB TRUE
+#else
+#define DMASGLIST_ENAB FALSE
+#endif /* BCMDMASGLISTOSL */
+
 typedef const struct hnddma_pub hnddma_t;
-#endif /* _hnddma_pub_ */
+
+extern u_int dma_msg_level;
 
 /* range param for dma_getnexttxp() and dma_txreclaim */
 typedef enum txd_range {
@@ -98,6 +161,7 @@ typedef u_int (*di_avoidancecnt_t)(hnddma_t *dmah);
 typedef void (*di_param_set_t)(hnddma_t *dmah, uint16_t paramid, uint16_t paramval);
 typedef bool (*dma_glom_enable_t) (hnddma_t *dmah, uint32_t val);
 typedef u_int (*dma_active_rxbuf_t) (hnddma_t *dmah);
+
 /* dma opsvec */
 typedef struct di_fcn_s {
 	di_detach_t		detach;
@@ -156,6 +220,7 @@ typedef struct di_fcn_s {
 	u_int			endnum;
 } di_fcn_t;
 
+
 /*
  * Exported data structure (read-only)
  */
@@ -173,10 +238,123 @@ struct hnddma_pub {
 	u_int		txnodesc;	/* tx out of dma descriptors running count */
 };
 
+#define	MAXNAMEL	8		/* 8 char names */
+
+/** dma engine software state */
+typedef struct dma_info {
+	struct hnddma_pub hnddma;	/* exported structure, don't use hnddma_t,
+					 * which could be const
+					 */
+	u_int		*msg_level;	/* message level pointer */
+	char		name[MAXNAMEL];	/* callers name for diag msgs */
+
+	void		*osh;		/* os handle */
+	si_t		*sih;		/* sb handle */
+
+	bool		dma64;		/* this dma engine is operating in 64-bit mode */
+	bool		addrext;	/* this dma engine supports DmaExtendedAddrChanges */
+
+	union {
+		struct {
+			dma32regs_t	*txregs_32;	/* 32-bit dma tx engine registers */
+			dma32regs_t	*rxregs_32;	/* 32-bit dma rx engine registers */
+			dma32dd_t	*txd_32;	/* pointer to dma32 tx descriptor ring */
+			dma32dd_t	*rxd_32;	/* pointer to dma32 rx descriptor ring */
+		} d32_u;
+		struct {
+			dma64regs_t	*txregs_64;	/* 64-bit dma tx engine registers */
+			dma64regs_t	*rxregs_64;	/* 64-bit dma rx engine registers */
+			dma64dd_t	*txd_64;	/* pointer to dma64 tx descriptor ring */
+			dma64dd_t	*rxd_64;	/* pointer to dma64 rx descriptor ring */
+		} d64_u;
+	} dregs;
+
+	uint16_t		dmadesc_align;	/* alignment requirement for dma descriptors */
+
+	uint16_t		ntxd;		/* # tx descriptors tunable */
+	uint16_t		txin;		/* index of next descriptor to reclaim */
+	uint16_t		txout;		/* index of next descriptor to post */
+	void		**txp;		/* pointer to parallel array of pointers to packets */
+	osldma_t 	*tx_dmah;	/* DMA TX descriptor ring handle */
+	hnddma_seg_map_t	*txp_dmah;	/* DMA MAP meta-data handle */
+	dmaaddr_t	txdpa;		/* Aligned physical address of descriptor ring */
+	dmaaddr_t	txdpaorig;	/* Original physical address of descriptor ring */
+	uint16_t		txdalign;	/* #bytes added to alloc'd mem to align txd */
+	uint32_t		txdalloc;	/* #bytes allocated for the ring */
+	uint32_t		xmtptrbase;	/* When using unaligned descriptors, the ptr register
+					 * is not just an index, it needs all 13 bits to be
+					 * an offset from the addr register.
+					 */
+
+	uint16_t		nrxd;		/* # rx descriptors tunable */
+	uint16_t		rxin;		/* index of next descriptor to reclaim */
+	uint16_t		rxout;		/* index of next descriptor to post */
+	void		**rxp;		/* pointer to parallel array of pointers to packets */
+	osldma_t 	*rx_dmah;	/* DMA RX descriptor ring handle */
+	hnddma_seg_map_t	*rxp_dmah;	/* DMA MAP meta-data handle */
+	dmaaddr_t	rxdpa;		/* Aligned physical address of descriptor ring */
+	dmaaddr_t	rxdpaorig;	/* Original physical address of descriptor ring */
+	uint16_t		rxdalign;	/* #bytes added to alloc'd mem to align rxd */
+	uint32_t		rxdalloc;	/* #bytes allocated for the ring */
+	uint32_t		rcvptrbase;	/* Base for ptr reg when using unaligned descriptors */
+
+	/* tunables */
+	uint16_t		rxbufsize;	/* rx buffer size in bytes,
+					 * not including the extra headroom
+					 */
+	u_int		rxextrahdrroom;	/* extra rx headroom, reverseved to assist upper stack
+					 *  e.g. some rx pkt buffers will be bridged to tx side
+					 *  without byte copying. The extra headroom needs to be
+					 *  large enough to fit txheader needs.
+					 *  Some dongle driver may not need it.
+					 */
+	u_int		nrxpost;	/* # rx buffers to keep posted */
+	u_int		rxoffset;	/* rxcontrol offset */
+	u_int		ddoffsetlow;	/* add to get dma address of descriptor ring, low 32 bits */
+	u_int		ddoffsethigh;	/*   high 32 bits */
+	u_int		dataoffsetlow;	/* add to get dma address of data buffer, low 32 bits */
+	u_int		dataoffsethigh;	/*   high 32 bits */
+	bool		aligndesc_4k;	/* descriptor base need to be aligned or not */
+	uint8_t		rxburstlen;	/* burstlen field for rx (for cores supporting burstlen) */
+	uint8_t		txburstlen;	/* burstlen field for tx (for cores supporting burstlen) */
+	uint8_t		txmultioutstdrd; 	/* tx multiple outstanding reads */
+	uint8_t 		txprefetchctl;	/* prefetch control for tx */
+	uint8_t 		txprefetchthresh;	/* prefetch threshold for tx */
+	uint8_t 		rxprefetchctl;	/* prefetch control for rx */
+	uint8_t 		rxprefetchthresh;	/* prefetch threshold for rx */
+	pktpool_t	*pktpool;	/* pktpool */
+	u_int		dma_avoidance_cnt;
+
+	uint32_t 		d64_xs0_cd_mask; /* tx current descriptor pointer mask */
+	uint32_t 		d64_xs1_ad_mask; /* tx active descriptor mask */
+	uint32_t 		d64_rs0_cd_mask; /* rx current descriptor pointer mask */
+	uint16_t		rs0cd;		/* cached value of rcvstatus0 currdescr */
+	uint16_t		xs0cd;		/* cached value of xmtstatus0 currdescr */
+	uint16_t		xs0cd_snapshot;	/* snapshot of xmtstatus0 currdescr */
+#ifdef BCM_SECURE_DMA
+	struct sec_cma_info sec_cma_info_rx;
+	struct sec_cma_info sec_cma_info_tx;
+#endif
+} dma_info_t;
+
+/* XXX */
+#define d32txregs	dregs.d32_u.txregs_32
+#define d32rxregs	dregs.d32_u.rxregs_32
+#define txd32		dregs.d32_u.txd_32
+#define rxd32		dregs.d32_u.rxd_32
+
+#define d64txregs	dregs.d64_u.txregs_64
+#define d64rxregs	dregs.d64_u.rxregs_64
+#define txd64		dregs.d64_u.txd_64
+#define rxd64		dregs.d64_u.rxd_64
+
+
+/* TODO: Replace with our own attach */
 extern hnddma_t * dma_attach(osl_t *osh, const char *name, si_t *sih,
 	volatile void *dmaregstx, volatile void *dmaregsrx,
 	u_int ntxd, u_int nrxd, u_int rxbufsize, int rxextheadroom, u_int nrxpost,
 	u_int rxoffset, u_int *msg_level);
+
 #ifdef BCMDMA32
 
 #define dma_detach(di)			((di)->di_fn->detach(di))
@@ -302,4 +480,70 @@ extern u_int dma_addrwidth(si_t *sih, void *dmaregs);
 /* pio helpers */
 extern void dma_txpioloopback(osl_t *osh, dma32regs_t *);
 
-#endif	/* _hnddma_h_ */
+
+/* descriptor bumping macros */
+#define	XXD(x, n)	((x) & ((n) - 1))	/* faster than %, but n must be power of 2 */
+#define	TXD(x)		XXD((x), di->ntxd)
+#define	RXD(x)		XXD((x), di->nrxd)
+#define	NEXTTXD(i)	TXD((i) + 1)
+#define	PREVTXD(i)	TXD((i) - 1)
+#define	NEXTRXD(i)	RXD((i) + 1)
+#define	PREVRXD(i)	RXD((i) - 1)
+
+#define	NTXDACTIVE(h, t)	TXD((t) - (h))
+#define	NRXDACTIVE(h, t)	RXD((t) - (h))
+
+/* macros to convert between byte offsets and indexes */
+#define	B2I(bytes, type)	((uint16_t)((bytes) / sizeof(type)))
+#define	I2B(index, type)	((index) * sizeof(type))
+
+/* XXX TODO: to be replaced with bhnd_dma_translation */
+#define	PCI32ADDR_HIGH		0xc0000000	/* address[31:30] */
+#define	PCI32ADDR_HIGH_SHIFT	30		/* address[31:30] */
+
+#define	PCI64ADDR_HIGH		0x80000000	/* address[63] */
+#define	PCI64ADDR_HIGH_SHIFT	31		/* address[63] */
+
+/* Common function implementations */
+void _dma_detach(dma_info_t *di);
+void *_dma_peeknexttxp(dma_info_t *di);
+int _dma_peekntxp(dma_info_t *di, int *len, void *txps[], txd_range_t range);
+
+void _dma_txblock(dma_info_t *di);
+void _dma_txunblock(dma_info_t *di);
+u_int _dma_txactive(dma_info_t *di);
+
+void _dma_rxinit(dma_info_t *di);
+void _dma_rxenable(dma_info_t *di);
+void *_dma_rx(dma_info_t *di);
+bool _dma_rxfill(dma_info_t *di);
+void _dma_rxreclaim(dma_info_t *di);
+void *_dma_getnextrxp(dma_info_t *di, bool forceall);
+void *_dma_peeknextrxp(dma_info_t *di);
+void _dma_rx_param_get(dma_info_t *di, uint16_t *rxoffset, uint16_t *rxbufsize);
+
+void _dma_fifoloopbackenable(dma_info_t *di);
+uintptr_t _dma_getvar(dma_info_t *di, const char *name);
+void _dma_counterreset(dma_info_t *di);
+u_int _dma_ctrlflags(dma_info_t *di, u_int mask, u_int flags);
+
+u_int _dma_rxactive(dma_info_t *di);
+u_int _dma_txpending(dma_info_t *di);
+u_int _dma_txcommitted(dma_info_t *di);
+int _dma_pktpool_set(dma_info_t *di, pktpool_t *pool);
+bool _dma_rxtx_error(dma_info_t *di, bool istx);
+void _dma_burstlen_set(dma_info_t *di, uint8_t rxburstlen, uint8_t txburstlen);
+u_int _dma_avoidancecnt(dma_info_t *di);
+void _dma_param_set(dma_info_t *di, uint16_t paramid, uint16_t paramval);
+
+void _dma_ddtable_init(dma_info_t *di, u_int direction, dmaaddr_t pa);
+
+void *dma_ringalloc(osl_t *osh, uint32_t boundary, u_int size, uint16_t *alignbits, u_int* alloced,
+	dmaaddr_t *descpa, osldma_t **dmah);
+
+
+/* XXX only used by DMA64 ? */
+bool _dma_glom_enable(dma_info_t *di, uint32_t val);
+u_int _dma_activerxbuf(dma_info_t *di);
+
+#endif /* _BHND_DMA_BHND_DMAVAR_H_ */
