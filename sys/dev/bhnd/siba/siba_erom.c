@@ -309,7 +309,7 @@ siba_eio_read_core_id(struct siba_erom_io *io, u_int core_idx, int unit,
 		if (admatch[num_admatch_en].am_negative) {
 			printf("unsupported negative address match value "
 			    "0x%x\n", am_value);
-			return (error);
+			return (ENXIO);
 		}
 
 		num_admatch_en++;
