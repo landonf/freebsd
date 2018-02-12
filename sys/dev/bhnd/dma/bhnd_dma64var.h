@@ -1,7 +1,7 @@
 /*-
  * SPDX-License-Identifier: ISC
  *
- * Copyright (c) 2017 Landon Fuller <landon@FreeBSD.org>
+ * Copyright (c) 2018 Landon Fuller <landonf@FreeBSD.org>
  * Copyright (c) 2015 Broadcom Corporation. All Rights Reserved.
  * All rights reserved.
  *
