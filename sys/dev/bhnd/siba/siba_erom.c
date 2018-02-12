@@ -262,7 +262,7 @@ siba_eio_read_core_id(struct siba_erom_io *io, u_int core_idx, int unit,
 	sonics_rev = SIBA_REG_GET(idlow, IDL_SBREV);
 	num_admatch = SIBA_REG_GET(idlow, IDL_NRADDR) + 1 /* + enum block */;
 	if (num_admatch > nitems(admatch)) {
-		printf("invalid core%u admatch count %hhu\n", core_idx,
+		printf("core%u: invalid admatch count %hhu\n", core_idx,
 		    num_admatch);
 		return (EINVAL);
 	}
@@ -287,7 +287,8 @@ siba_eio_read_core_id(struct siba_erom_io *io, u_int core_idx, int unit,
 		/* Determine the register offset */
 		am_offset = siba_admatch_offset(i);
 		if (am_offset == 0) {
-			printf("addrspace %u is unsupported", i);
+			printf("core%u: addrspace %hhu is unsupported",
+			    core_idx, i);
 			return (ENODEV);
 		}
 
@@ -295,8 +296,8 @@ siba_eio_read_core_id(struct siba_erom_io *io, u_int core_idx, int unit,
 		am_value = siba_eio_read_4(io, core_idx, am_offset);
 		error = siba_parse_admatch(am_value, &admatch[num_admatch_en]);
 		if (error) {
-			printf("failed to decode address match register value "
-			    "0x%x\n", am_value);
+			printf("core%u: failed to decode admatch[%hhu] "
+			    "register value 0x%x\n", core_idx, i, am_value);
 			return (error);
 		}
 
@@ -307,8 +308,8 @@ siba_eio_read_core_id(struct siba_erom_io *io, u_int core_idx, int unit,
 		/* Reject unsupported negative matches. These are not used on
 		 * any known devices */
 		if (admatch[num_admatch_en].am_negative) {
-			printf("unsupported negative address match value "
-			    "0x%x\n", am_value);
+			printf("core%u: unsupported negative admatch[%hhu] "
+			    "value 0x%x\n", core_idx, i, am_value);
 			return (ENXIO);
 		}
 
