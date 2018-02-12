@@ -55,17 +55,19 @@ struct siba_erom;
 struct siba_erom_io;
 
 
-static int	siba_eio_init(struct siba_erom_io *io,
-		    struct bhnd_erom_io *eio, u_int ncores);
+static int			siba_eio_init(struct siba_erom_io *io,
+				    struct bhnd_erom_io *eio, u_int ncores);
 
-static uint32_t	siba_eio_read_4(struct siba_erom_io *io, u_int core_idx,
-		    bus_size_t offset);
+static uint32_t			siba_eio_read_4(struct siba_erom_io *io,
+				    u_int core_idx, bus_size_t offset);
 
-static int	siba_eio_read_core_id(struct siba_erom_io *io, u_int core_idx,
-		    int unit, struct siba_core_id *sid);
+static int			siba_eio_read_core_id(struct siba_erom_io *io,
+				    u_int core_idx, int unit,
+				    struct siba_core_id *sid);
 
-static int	siba_eio_read_chipid(struct siba_erom_io *io,
-		    bus_addr_t enum_addr, struct bhnd_chipid *cid);
+static int			siba_eio_read_chipid(struct siba_erom_io *io,
+				    bus_addr_t enum_addr,
+				    struct bhnd_chipid *cid);
 
 /**
  * SIBA EROM generic I/O context
