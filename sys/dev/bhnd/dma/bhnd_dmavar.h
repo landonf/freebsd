@@ -29,8 +29,36 @@
 #ifndef _BHND_DMA_BHND_DMAVAR_H_
 #define _BHND_DMA_BHND_DMAVAR_H_
 
+// XXX
+#define	BHND_LOGLEVEL	BHND_TRACE_LEVEL
+
 #include <sys/types.h>
 #include <sys/sbuf.h>
+
+#include <dev/bhnd/bhnd_debug.h>
+
+/* XXX TODO: Use device_printf() variants? */
+#define	_BHND_DMA_PRINTF(_level, _di, _fmt, ...) do {			\
+	if (*(_di)->msg_level >= _level) {				\
+		printf("%s" _fmt "\n", (_di)->name, ## __VA_ARGS__);	\
+	}								\
+} while (0)
+
+#define	BHND_DMA_TRACE_ENTRY(_di)	\
+	BHND_DMA_TRACE(_di, "[enter]")
+
+#define	BHND_DMA_TRACE(_di, _fmt, ...)	\
+	_BHND_DMA_PRINTF(BHND_TRACE_LEVEL, (_di), "/%s(): " _fmt,	\
+	    __FUNCTION__, ## __VA_ARGS__)
+	
+#define	BHND_DMA_DEBUG(_di, _fmt, ...)	\
+	_BHND_DMA_PRINTF(BHND_DEBUG_LEVEL, (_di), ": " _fmt, ## __VA_ARGS__)
+
+#define	BHND_DMA_ERROR(_di, _fmt, ...)	\
+	_BHND_DMA_PRINTF(BHND_ERROR_LEVEL, (_di), ": " _fmt, ## __VA_ARGS__)
+
+#define	BHND_DMA_WARN(_di, _fmt, ...)	\
+	_BHND_DMA_PRINTF(BHND_WARN_LEVEL, (_di), ": " _fmt, ## __VA_ARGS__)
 
 /* TODO: required for dma32regs_t/dma32dd_t and dma64regs_t/dma64dd_t */
 #include "bhnd_dma32reg.h"
@@ -44,21 +72,6 @@
 
 /* TODO: Required until we pull in bhnd(9) replacements */
 #include "siutils.h"
-
-/* debug/trace */
-#ifdef BCMDBG
-#define	DMA_ERROR(args) if (!(*di->msg_level & 1)); else printf args
-#define	DMA_TRACE(args) if (!(*di->msg_level & 2)); else printf args
-#elif defined(BCMDBG_ERR)
-#define	DMA_ERROR(args) if (!(*di->msg_level & 1)); else printf args
-#define DMA_TRACE(args)
-#else
-#define	DMA_ERROR(args)
-#define	DMA_TRACE(args)
-#endif /* BCMDBG */
-
-#define	DMA_NONE(args)
-
 
 /*
  * If BCMDMA32 is defined, hnddma will support both 32-bit and 64-bit DMA engines.
@@ -87,8 +100,6 @@
 #endif /* BCMDMASGLISTOSL */
 
 typedef const struct hnddma_pub hnddma_t;
-
-extern u_int dma_msg_level;
 
 /* range param for dma_getnexttxp() and dma_txreclaim */
 typedef enum txd_range {

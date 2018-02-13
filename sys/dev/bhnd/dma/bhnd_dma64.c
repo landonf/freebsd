@@ -294,7 +294,7 @@ dma64_txinit(dma_info_t *di)
 {
 	uint32_t control;
 
-	DMA_TRACE(("%s: dma_txinit\n", di->name));
+	BHND_DMA_TRACE_ENTRY(di);
 
 	if (di->ntxd == 0)
 		return;
@@ -347,7 +347,7 @@ dma64_txenabled(dma_info_t *di)
 static void
 dma64_txsuspend(dma_info_t *di)
 {
-	DMA_TRACE(("%s: dma_txsuspend\n", di->name));
+	BHND_DMA_TRACE_ENTRY(di);
 
 	if (di->ntxd == 0)
 		return;
@@ -358,7 +358,7 @@ dma64_txsuspend(dma_info_t *di)
 static void
 dma64_txresume(dma_info_t *di)
 {
-	DMA_TRACE(("%s: dma_txresume\n", di->name));
+	BHND_DMA_TRACE_ENTRY(di);
 
 	if (di->ntxd == 0)
 		return;
@@ -376,7 +376,7 @@ dma64_txsuspended(dma_info_t *di)
 static void
 dma64_txflush(dma_info_t *di)
 {
-	DMA_TRACE(("%s: dma_txflush\n", di->name));
+	BHND_DMA_TRACE_ENTRY(di);
 
 	if (di->ntxd == 0)
 		return;
@@ -389,7 +389,7 @@ dma64_txflush_clear(dma_info_t *di)
 {
 	uint32_t status;
 
-	DMA_TRACE(("%s: dma_txflush_clear\n", di->name));
+	BHND_DMA_TRACE_ENTRY(di);
 
 	if (di->ntxd == 0)
 		return;
@@ -407,9 +407,9 @@ dma64_txreclaim(dma_info_t *di, txd_range_t range)
 {
 	void *p;
 
-	DMA_TRACE(("%s: dma_txreclaim %s\n", di->name,
+	BHND_DMA_TRACE(di, "dma_txreclaim %s",
 	           (range == HNDDMA_RANGE_ALL) ? "all" :
-	           ((range == HNDDMA_RANGE_TRANSMITTED) ? "transmitted" : "transfered")));
+	           ((range == HNDDMA_RANGE_TRANSMITTED) ? "transmitted" : "transfered"));
 
 	if (di->txin == di->txout)
 		return;
@@ -454,8 +454,7 @@ dma64_alloc(dma_info_t *di, u_int direction)
 			(di->d64_xs0_cd_mask == 0x1fff) ? D64RINGBOUNDARY : D64RINGBOUNDARY_LARGE,
 			size, &align_bits, &alloced,
 			&di->txdpaorig, &di->tx_dmah)) == NULL) {
-			DMA_ERROR(("%s: dma64_alloc: DMA_ALLOC_CONSISTENT(ntxd) failed\n",
-			           di->name));
+			BHND_DMA_ERROR(di, "DMA_ALLOC_CONSISTENT(ntxd) failed");
 			return FALSE;
 		}
 		align = (1 << align_bits);
@@ -480,8 +479,7 @@ dma64_alloc(dma_info_t *di, u_int direction)
 			(di->d64_rs0_cd_mask == 0x1fff) ? D64RINGBOUNDARY : D64RINGBOUNDARY_LARGE,
 			size, &align_bits, &alloced,
 			&di->rxdpaorig, &di->rx_dmah)) == NULL) {
-			DMA_ERROR(("%s: dma64_alloc: DMA_ALLOC_CONSISTENT(nrxd) failed\n",
-			           di->name));
+			BHND_DMA_ERROR(di, "DMA_ALLOC_CONSISTENT(nrxd) failed");
 			return FALSE;
 		}
 		align = (1 << align_bits);
@@ -529,8 +527,8 @@ dma64_txreset(dma_info_t *di)
 
 	/* We should be disabled at this point */
 	if (status != D64_XS0_XS_DISABLED) {
-		DMA_ERROR(("%s: status != D64_XS0_XS_DISABLED 0x%x\n", __FUNCTION__, status));
-		ASSERT(status == D64_XS0_XS_DISABLED);
+		BHND_DMA_ERROR(di, "status %#x != D64_XS0_XS_DISABLED at "
+		    "txreset", status);
 		OSL_DELAY(300);
 	}
 
@@ -540,7 +538,7 @@ dma64_txreset(dma_info_t *di)
 bool
 dma64_rxidle(dma_info_t *di)
 {
-	DMA_TRACE(("%s: dma_rxidle\n", di->name));
+	BHND_DMA_TRACE_ENTRY(di);
 
 	if (di->nrxd == 0)
 		return TRUE;
@@ -615,7 +613,7 @@ dma64_getpos(dma_info_t *di, bool direction)
 
 	/* If DMA is IDLE, return NULL */
 	if (idle) {
-		DMA_TRACE(("%s: DMA idle, return NULL\n", __FUNCTION__));
+		BHND_DMA_TRACE(di, "DMA idle, return NULL");
 		va = NULL;
 	}
 
@@ -678,7 +676,7 @@ dma64_txunframed(dma_info_t *di, void *buf, u_int len, bool commit)
 	return (0);
 
 outoftxd:
-	DMA_ERROR(("%s: %s: out of txds !!!\n", di->name, __FUNCTION__));
+	BHND_DMA_ERROR(di, "out of TX descriptors");
 	di->hnddma.txavail = 0;
 	di->hnddma.txnobuf++;
 	return (-1);
@@ -701,7 +699,7 @@ dma64_txfast(dma_info_t *di, void *p0, bool commit)
 	dmaaddr_t pa;
 	bool war;
 
-	DMA_TRACE(("%s: dma_txfast\n", di->name));
+	BHND_DMA_TRACE_ENTRY(di);
 
 	txout = di->txout;
 	war = (di->hnddma.dmactrlflags & DMA_CTRL_DMA_AVOIDANCE_WAR) ? TRUE : FALSE;
@@ -796,10 +794,10 @@ dma64_txfast(dma_info_t *di, void *p0, bool commit)
 						txout = NEXTTXD(txout);
 						/* return nonzero if out of tx descriptors */
 						if (txout == di->txin) {
-							DMA_ERROR(("%s: dma_txfast: Out-of-DMA"
+							BHND_DMA_ERROR(di, "dma_txfast: Out-of-DMA"
 								" descriptors (txin %d txout %d"
-								" nsegs %d)\n", __FUNCTION__,
-								di->txin, di->txout, nsegs));
+								" nsegs %d)",
+								di->txin, di->txout, nsegs);
 							goto outoftxd;
 						}
 						if (txout == (di->ntxd - 1))
@@ -821,9 +819,9 @@ dma64_txfast(dma_info_t *di, void *p0, bool commit)
 			txout = NEXTTXD(txout);
 			/* return nonzero if out of tx descriptors */
 			if (txout == di->txin) {
-				DMA_ERROR(("%s: dma_txfast: Out-of-DMA descriptors"
-					   " (txin %d txout %d nsegs %d)\n", __FUNCTION__,
-					   di->txin, di->txout, nsegs));
+				BHND_DMA_ERROR(di, "dma_txfast: Out-of-DMA descriptors"
+					   " (txin %d txout %d nsegs %d)",
+					   di->txin, di->txout, nsegs);
 				goto outoftxd;
 			}
 		}
@@ -856,7 +854,7 @@ dma64_txfast(dma_info_t *di, void *p0, bool commit)
 	return (0);
 
 outoftxd:
-	DMA_ERROR(("%s: dma_txfast: out of txds !!!\n", di->name));
+	BHND_DMA_ERROR(di, "out of TX descriptors");
 	PKTFREE(di->osh, p0, TRUE);
 	di->hnddma.txavail = 0;
 	di->hnddma.txnobuf++;
@@ -880,9 +878,9 @@ dma64_getnexttxp(dma_info_t *di, txd_range_t range)
 	uint16_t active_desc;
 	void *txp;
 
-	DMA_TRACE(("%s: dma_getnexttxp %s\n", di->name,
+	BHND_DMA_TRACE(di, "dma_getnexttxp %s",
 	           (range == HNDDMA_RANGE_ALL) ? "all" :
-	           ((range == HNDDMA_RANGE_TRANSMITTED) ? "transmitted" : "transfered")));
+	           ((range == HNDDMA_RANGE_TRANSMITTED) ? "transmitted" : "transfered"));
 
 	if (di->ntxd == 0)
 		return (NULL);
@@ -971,8 +969,8 @@ dma64_getnexttxp(dma_info_t *di, txd_range_t range)
 	return (txp);
 
 bogus:
-	DMA_NONE(("dma_getnexttxp: bogus curr: start %d end %d txout %d force %d\n",
-	          start, end, di->txout, forceall));
+	BHND_DMA_TRACE(di, "bogus curr: start %d end %d txout %d", start, end,
+	    di->txout);
 	return (NULL);
 }
 
@@ -1066,8 +1064,9 @@ dma64_txrotate(dma_info_t *di)
 	ASSERT(rot < di->ntxd);
 
 	/* full-ring case is a lot harder - don't worry about this */
+	/* XXX: what are we not worrying about? */
 	if (rot >= (di->ntxd - nactive)) {
-		DMA_ERROR(("%s: dma_txrotate: ring full - punt\n", di->name));
+		BHND_DMA_ERROR(di, "dma_txrotate: ring full - punt");
 		return;
 	}
 

@@ -186,7 +186,7 @@ dma32_dumpring(dma_info_t *di, struct sbuf *s, dma32dd_t *ring, u_int start, u_i
 
 	for (i = start; i != end; i = XXD((i + 1), max_num)) {
 		/* in the format of high->low 8 bytes */
-		sbuf_printf(s, "ring index %d: 0x%x %x\n",
+		sbuf_printf(s, "ring index %d: %#x %x\n",
 			i, R_SM(&ring[i].addr), R_SM(&ring[i].ctrl));
 	}
 }
@@ -197,11 +197,11 @@ dma32_dumptx(dma_info_t *di, struct sbuf *s, bool dumpring)
 	if (di->ntxd == 0)
 		return;
 
-	sbuf_printf(s, "DMA32: txd32 %p txdpa 0x%x txp %p txin %d txout %d "
+	sbuf_printf(s, "DMA32: txd32 %p txdpa %#x txp %p txin %d txout %d "
 	            "txavail %d txnodesc %d\n", di->txd32, PHYSADDRLO(di->txdpa), di->txp, di->txin,
 	            di->txout, di->hnddma.txavail, di->hnddma.txnodesc);
 
-	sbuf_printf(s, "xmtcontrol 0x%x xmtaddr 0x%x xmtptr 0x%x xmtstatus 0x%x\n",
+	sbuf_printf(s, "xmtcontrol %#x xmtaddr %#x xmtptr %#x xmtstatus %#x\n",
 		R_REG(di->osh, &di->d32txregs->control),
 		R_REG(di->osh, &di->d32txregs->addr),
 		R_REG(di->osh, &di->d32txregs->ptr),
@@ -217,10 +217,10 @@ dma32_dumprx(dma_info_t *di, struct sbuf *s, bool dumpring)
 	if (di->nrxd == 0)
 		return;
 
-	sbuf_printf(s, "DMA32: rxd32 %p rxdpa 0x%x rxp %p rxin %d rxout %d\n",
+	sbuf_printf(s, "DMA32: rxd32 %p rxdpa %#x rxp %p rxin %d rxout %d\n",
 	            di->rxd32, PHYSADDRLO(di->rxdpa), di->rxp, di->rxin, di->rxout);
 
-	sbuf_printf(s, "rcvcontrol 0x%x rcvaddr 0x%x rcvptr 0x%x rcvstatus 0x%x\n",
+	sbuf_printf(s, "rcvcontrol %#x rcvaddr %#x rcvptr %#x rcvstatus %#x\n",
 		R_REG(di->osh, &di->d32rxregs->control),
 		R_REG(di->osh, &di->d32rxregs->addr),
 		R_REG(di->osh, &di->d32rxregs->ptr),
@@ -246,7 +246,7 @@ dma32_txinit(dma_info_t *di)
 {
 	uint32_t control = XC_XE;
 
-	DMA_TRACE(("%s: dma_txinit\n", di->name));
+	BHND_DMA_TRACE_ENTRY(di);
 
 	if (di->ntxd == 0)
 		return;
@@ -285,7 +285,7 @@ dma32_txenabled(dma_info_t *di)
 static void
 dma32_txsuspend(dma_info_t *di)
 {
-	DMA_TRACE(("%s: dma_txsuspend\n", di->name));
+	BHND_DMA_TRACE_ENTRY(di);
 
 	if (di->ntxd == 0)
 		return;
@@ -296,7 +296,7 @@ dma32_txsuspend(dma_info_t *di)
 static void
 dma32_txresume(dma_info_t *di)
 {
-	DMA_TRACE(("%s: dma_txresume\n", di->name));
+	BHND_DMA_TRACE_ENTRY(di);
 
 	if (di->ntxd == 0)
 		return;
@@ -313,7 +313,7 @@ dma32_txsuspended(dma_info_t *di)
 static void
 dma32_txflush(dma_info_t *di)
 {
-	DMA_TRACE(("%s: dma_txflush\n", di->name));
+	BHND_DMA_TRACE_ENTRY(di);
 
 	if (di->ntxd == 0)
 		return;
@@ -326,7 +326,7 @@ dma32_txflush_clear(dma_info_t *di)
 {
 	uint32_t status;
 
-	DMA_TRACE(("%s: dma_txflush_clear\n", di->name));
+	BHND_DMA_TRACE_ENTRY(di);
 
 	if (di->ntxd == 0)
 		return;
@@ -344,9 +344,9 @@ dma32_txreclaim(dma_info_t *di, txd_range_t range)
 {
 	void *p;
 
-	DMA_TRACE(("%s: dma_txreclaim %s\n", di->name,
+	BHND_DMA_TRACE(di, "dma_txreclaim %s",
 	           (range == HNDDMA_RANGE_ALL) ? "all" :
-	           ((range == HNDDMA_RANGE_TRANSMITTED) ? "transmitted" : "transfered")));
+	           ((range == HNDDMA_RANGE_TRANSMITTED) ? "transmitted" : "transfered"));
 
 	if (di->txin == di->txout)
 		return;
@@ -388,8 +388,7 @@ dma32_alloc(dma_info_t *di, u_int direction)
 	if (direction == DMA_TX) {
 		if ((va = dma_ringalloc(di->osh, D32RINGALIGN, size, &align_bits, &alloced,
 			&di->txdpaorig, &di->tx_dmah)) == NULL) {
-			DMA_ERROR(("%s: dma_alloc: DMA_ALLOC_CONSISTENT(ntxd) failed\n",
-			           di->name));
+			BHND_DMA_ERROR(di, "DMA_ALLOC_CONSISTENT(ntxd) failed");
 			return FALSE;
 		}
 
@@ -407,8 +406,7 @@ dma32_alloc(dma_info_t *di, u_int direction)
 	} else {
 		if ((va = dma_ringalloc(di->osh, D32RINGALIGN, size, &align_bits, &alloced,
 			&di->rxdpaorig, &di->rx_dmah)) == NULL) {
-			DMA_ERROR(("%s: dma_alloc: DMA_ALLOC_CONSISTENT(nrxd) failed\n",
-			           di->name));
+			BHND_DMA_ERROR(di, "DMA_ALLOC_CONSISTENT(nrxd) failed");
 			return FALSE;
 		}
 
@@ -450,7 +448,8 @@ dma32_txreset(dma_info_t *di)
 
 	/* We should be disabled at this point */
 	if (status != XS_XS_DISABLED) {
-		DMA_ERROR(("%s: status != D64_XS0_XS_DISABLED 0x%x\n", __FUNCTION__, status));
+		BHND_DMA_ERROR(di, "status %#x != XS_XS_DISABLED at "
+		    "txreset", status);
 		ASSERT(status == XS_XS_DISABLED);
 		OSL_DELAY(300);
 	}
@@ -461,7 +460,7 @@ dma32_txreset(dma_info_t *di)
 bool
 dma32_rxidle(dma_info_t *di)
 {
-	DMA_TRACE(("%s: dma_rxidle\n", di->name));
+	BHND_DMA_TRACE_ENTRY(di);
 
 	if (di->nrxd == 0)
 		return TRUE;
@@ -529,7 +528,7 @@ dma32_txfast(dma_info_t *di, void *p0, bool commit)
 	uint32_t flags = 0;
 	dmaaddr_t pa;
 
-	DMA_TRACE(("%s: dma_txfast\n", di->name));
+	BHND_DMA_TRACE_ENTRY(di);
 
 	txout = di->txout;
 
@@ -629,7 +628,7 @@ dma32_txfast(dma_info_t *di, void *p0, bool commit)
 	return (0);
 
 outoftxd:
-	DMA_ERROR(("%s: dma_txfast: out of txds\n", di->name));
+	BHND_DMA_ERROR(di, "out of TX descriptors");
 	PKTFREE(di->osh, p0, TRUE);
 	di->hnddma.txavail = 0;
 	di->hnddma.txnobuf++;
@@ -654,9 +653,9 @@ dma32_getnexttxp(dma_info_t *di, txd_range_t range)
 	uint16_t active_desc;
 	void *txp;
 
-	DMA_TRACE(("%s: dma_getnexttxp %s\n", di->name,
+	BHND_DMA_TRACE(di, "dma_getnexttxp %s",
 	           (range == HNDDMA_RANGE_ALL) ? "all" :
-	           ((range == HNDDMA_RANGE_TRANSMITTED) ? "transmitted" : "transfered")));
+	           ((range == HNDDMA_RANGE_TRANSMITTED) ? "transmitted" : "transfered"));
 
 	if (di->ntxd == 0)
 		return (NULL);
@@ -728,8 +727,8 @@ dma32_getnexttxp(dma_info_t *di, txd_range_t range)
 	return (txp);
 
 bogus:
-	DMA_NONE(("dma_getnexttxp: bogus curr: start %d end %d txout %d force %d\n",
-	          start, end, di->txout, forceall));
+	BHND_DMA_TRACE(di, "bogus curr: start %d end %d txout %d",
+	          start, end, di->txout);
 	return (NULL);
 }
 
@@ -804,7 +803,7 @@ dma32_txrotate(dma_info_t *di)
 
 	/* full-ring case is a lot harder - don't worry about this */
 	if (rot >= (di->ntxd - nactive)) {
-		DMA_ERROR(("%s: dma_txrotate: ring full - punt\n", di->name));
+		BHND_DMA_ERROR(di, "dma_txrotate: ring full - punt");
 		return;
 	}
 

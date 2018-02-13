@@ -48,21 +48,15 @@ __FBSDID("$FreeBSD$");
  * This supports the following chips: BCM42xx, 44xx, 47xx .
  */
 
-/* default dma message level (if input msg_level pointer is null in dma_attach()) */
-u_int dma_msg_level =
-#ifdef BCMDBG_ERR
-	1;
-#else
-	0;
-#endif /* BCMDBG_ERR */
-
-
 /* Common prototypes */
 static bool _dma_isaddrext(dma_info_t *di);
 static bool _dma_descriptor_align(dma_info_t *di);
 static bool _dma_alloc(dma_info_t *di, u_int direction);
 
 static uint8_t dma_align_sizetobits(u_int size);
+
+/* Default to the global BHND_LOGGING log level */
+static u_int default_msg_level = BHND_LOGGING;
 
 static bool
 _dma_alloc(dma_info_t *di, u_int direction)
@@ -79,8 +73,7 @@ _dma_alloc(dma_info_t *di, u_int direction)
 void
 _dma_detach(dma_info_t *di)
 {
-
-	DMA_TRACE(("%s: dma_detach\n", di->name));
+	BHND_DMA_TRACE_ENTRY(di);
 
 	/* shouldn't be here if descriptors are unreclaimed */
 	ASSERT(di->txin == di->txout);
@@ -135,15 +128,16 @@ dma_attach(osl_t *osh, const char *name, si_t *sih,
 
 	/* allocate private info structure */
 	if ((di = MALLOC(osh, sizeof (dma_info_t))) == NULL) {
-#ifdef BCMDBG
-		DMA_ERROR(("%s: out of memory, malloced %d bytes\n", __FUNCTION__, MALLOCED(osh)));
-#endif
 		return (NULL);
 	}
 
 	bzero(di, sizeof(dma_info_t));
 
-	di->msg_level = msg_level ? msg_level : &dma_msg_level;
+	di->msg_level = msg_level ? msg_level : &default_msg_level;
+
+	/* make a private copy of our callers name */
+	strncpy(di->name, name, MAXNAMEL);
+	di->name[MAXNAMEL-1] = '\0';
 
 	/* old chips w/o sb is no longer supported */
 	ASSERT(sih != NULL);
@@ -174,7 +168,7 @@ dma_attach(osl_t *osh, const char *name, si_t *sih,
 		di->d32rxregs = (dma32regs_t *)dmaregsrx;
 		di->hnddma.di_fn = (const di_fcn_t *)&dma32proc;
 	} else {
-		DMA_ERROR(("%s: driver doesn't support 32-bit DMA\n", __FUNCTION__));
+		BHND_DMA_ERROR(di, "driver doesn't support 32-bit DMA");
 		ASSERT(0);
 		goto fail;
 	}
@@ -186,15 +180,11 @@ dma_attach(osl_t *osh, const char *name, si_t *sih,
 	 */
 	di->hnddma.di_fn->ctrlflags(&di->hnddma, DMA_CTRL_ROC | DMA_CTRL_PEN, 0);
 
-	DMA_TRACE(("%s: %s: %s osh %p flags 0x%x ntxd %d nrxd %d rxbufsize %d "
-	           "rxextheadroom %d nrxpost %d rxoffset %d dmaregstx %p dmaregsrx %p\n",
-	           name, __FUNCTION__, (DMA64_MODE(di) ? "DMA64" : "DMA32"),
+	BHND_DMA_TRACE(di, "%s: osh %p flags %#x ntxd %d nrxd %d rxbufsize %d "
+	           "rxextheadroom %d nrxpost %d rxoffset %d dmaregstx %p dmaregsrx %p",
+	           (DMA64_MODE(di) ? "DMA64" : "DMA32"),
 	           osh, di->hnddma.dmactrlflags, ntxd, nrxd,
-	           rxbufsize, rxextheadroom, nrxpost, rxoffset, dmaregstx, dmaregsrx));
-
-	/* make a private copy of our callers name */
-	strncpy(di->name, name, MAXNAMEL);
-	di->name[MAXNAMEL-1] = '\0';
+	           rxbufsize, rxextheadroom, nrxpost, rxoffset, dmaregstx, dmaregsrx);
 
 	di->osh = osh;
 	di->sih = sih;
@@ -230,7 +220,7 @@ dma_attach(osl_t *osh, const char *name, si_t *sih,
 			else
 				mask = 0x1fff;
 
-			DMA_TRACE(("%s: dma_rx_mask: %08x\n", di->name, mask));
+			BHND_DMA_TRACE(di, "dma_rx_mask: %#08x", mask);
 			di->d64_rs0_cd_mask = mask;
 
 			if (mask == 0x1fff)
@@ -269,7 +259,7 @@ dma_attach(osl_t *osh, const char *name, si_t *sih,
 			else
 				mask = 0x1fff;
 
-			DMA_TRACE(("%s: dma_tx_mask: %08x\n", di->name, mask));
+			BHND_DMA_TRACE(di, "dma_tx_mask: %#08x", mask);
 			di->d64_xs0_cd_mask = mask;
 			di->d64_xs1_ad_mask = mask;
 
@@ -369,15 +359,14 @@ dma_attach(osl_t *osh, const char *name, si_t *sih,
 #endif
 	}
 
-	DMA_NONE(("DMA descriptor align_needed %d, align %d\n",
-		di->aligndesc_4k, di->dmadesc_align));
+	BHND_DMA_TRACE(di, "DMA descriptor align_needed %d, align %d",
+	    di->aligndesc_4k, di->dmadesc_align);
 
 	/* allocate tx packet pointer vector */
 	if (ntxd) {
 		size = ntxd * sizeof(void *);
 		if ((di->txp = MALLOC(osh, size)) == NULL) {
-			DMA_ERROR(("%s: %s: out of tx memory, malloced %d bytes\n",
-			           di->name, __FUNCTION__, MALLOCED(osh)));
+			BHND_DMA_ERROR(di, "out of tx memory");
 			goto fail;
 		}
 		bzero(di->txp, size);
@@ -387,8 +376,7 @@ dma_attach(osl_t *osh, const char *name, si_t *sih,
 	if (nrxd) {
 		size = nrxd * sizeof(void *);
 		if ((di->rxp = MALLOC(osh, size)) == NULL) {
-			DMA_ERROR(("%s: %s: out of rx memory, malloced %d bytes\n",
-			           di->name, __FUNCTION__, MALLOCED(osh)));
+			BHND_DMA_ERROR(di, "out of rx memory");
 			goto fail;
 		}
 		bzero(di->rxp, size);
@@ -408,20 +396,20 @@ dma_attach(osl_t *osh, const char *name, si_t *sih,
 
 	if ((di->ddoffsetlow != 0) && !di->addrext) {
 		if (PHYSADDRLO(di->txdpa) > SI_PCI_DMA_SZ) {
-			DMA_ERROR(("%s: %s: txdpa 0x%x: addrext not supported\n",
-			           di->name, __FUNCTION__, (uint32_t)PHYSADDRLO(di->txdpa)));
+			BHND_DMA_ERROR(di, "txdpa %#x: addrext not supported",
+			           (uint32_t)PHYSADDRLO(di->txdpa));
 			goto fail;
 		}
 		if (PHYSADDRLO(di->rxdpa) > SI_PCI_DMA_SZ) {
-			DMA_ERROR(("%s: %s: rxdpa 0x%x: addrext not supported\n",
-			           di->name, __FUNCTION__, (uint32_t)PHYSADDRLO(di->rxdpa)));
+			BHND_DMA_ERROR(di, "rxdpa %#x: addrext not supported",
+			           (uint32_t)PHYSADDRLO(di->rxdpa));
 			goto fail;
 		}
 	}
 
-	DMA_TRACE(("ddoffsetlow 0x%x ddoffsethigh 0x%x dataoffsetlow 0x%x dataoffsethigh "
-	           "0x%x addrext %d\n", di->ddoffsetlow, di->ddoffsethigh, di->dataoffsetlow,
-	           di->dataoffsethigh, di->addrext));
+	BHND_DMA_TRACE(di, "ddoffsetlow %#x ddoffsethigh %#x dataoffsetlow %#x dataoffsethigh "
+	           "%#x addrext %d", di->ddoffsetlow, di->ddoffsethigh, di->dataoffsetlow,
+	           di->dataoffsethigh, di->addrext);
 
 	/* allocate DMA mapping vectors */
 	if (DMASGLIST_ENAB) {
@@ -481,15 +469,13 @@ _dma_isaddrext(dma_info_t *di)
 		/* not all tx or rx channel are available */
 		if (di->d64txregs != NULL) {
 			if (!_dma64_addrext(di->osh, di->d64txregs)) {
-				DMA_ERROR(("%s: _dma_isaddrext: DMA64 tx doesn't have AE set\n",
-					di->name));
+				BHND_DMA_ERROR(di, "DMA64 tx doesn't have AE set");
 				ASSERT(0);
 			}
 			return TRUE;
 		} else if (di->d64rxregs != NULL) {
 			if (!_dma64_addrext(di->osh, di->d64rxregs)) {
-				DMA_ERROR(("%s: _dma_isaddrext: DMA64 rx doesn't have AE set\n",
-					di->name));
+				BHND_DMA_ERROR(di, "DMA64 rx doesn't have AE set");
 				ASSERT(0);
 			}
 			return TRUE;
@@ -590,7 +576,7 @@ _dma_ddtable_init(dma_info_t *di, u_int direction, dmaaddr_t pa)
 void
 _dma_fifoloopbackenable(dma_info_t *di)
 {
-	DMA_TRACE(("%s: dma_fifoloopbackenable\n", di->name));
+	BHND_DMA_TRACE_ENTRY(di);
 
 	if (DMA64_ENAB(di) && DMA64_MODE(di))
 		OR_REG(di->osh, &di->d64txregs->control, D64_XC_LE);
@@ -603,7 +589,7 @@ _dma_fifoloopbackenable(dma_info_t *di)
 void
 _dma_rxinit(dma_info_t *di)
 {
-	DMA_TRACE(("%s: dma_rxinit\n", di->name));
+	BHND_DMA_TRACE_ENTRY(di);
 
 	if (di->nrxd == 0)
 		return;
@@ -645,7 +631,7 @@ _dma_rxenable(dma_info_t *di)
 {
 	u_int dmactrlflags = di->hnddma.dmactrlflags;
 
-	DMA_TRACE(("%s: dma_rxenable\n", di->name));
+	BHND_DMA_TRACE_ENTRY(di);
 
 	if (DMA64_ENAB(di) && DMA64_MODE(di)) {
 		uint32_t control = (R_REG(di->osh, &di->d64rxregs->control) & D64_RC_AE) | D64_RC_RE;
@@ -765,7 +751,7 @@ next_frame:
 
 	}
 #endif /* defined(__mips__) */
-	DMA_TRACE(("%s: dma_rx len %d\n", di->name, len));
+	BHND_DMA_TRACE(di, "dma_rx len %d", len);
 
 	/* set actual length */
 	pkt_len = MIN((di->rxoffset + len), di->rxbufsize);
@@ -775,7 +761,7 @@ next_frame:
 	if (resid <= 0) {
 		/* Single frame, all good */
 	} else if (di->hnddma.dmactrlflags & DMA_CTRL_RXSINGLE) {
-		DMA_TRACE(("%s: dma_rx: corrupted length (%d)\n", di->name, len));
+		BHND_DMA_TRACE(di, "dma_rx: corrupted length (%d)", len);
 		PKTFREE(di->osh, head, FALSE);
 		di->hnddma.rxgiants++;
 		goto next_frame;
@@ -804,13 +790,13 @@ next_frame:
 				di->rcvptrbase) & D64_RS0_CD_MASK, dma64dd_t) :
 				B2I(R_REG(di->osh, &di->d32rxregs->status) & RS_CD_MASK,
 				dma32dd_t);
-			DMA_ERROR(("_dma_rx, rxin %d rxout %d, hw_curr %d\n",
-				di->rxin, di->rxout, cur));
+			BHND_DMA_ERROR(di, "_dma_rx, rxin %d rxout %d, hw_curr %d",
+				di->rxin, di->rxout, cur);
 		}
 #endif /* BCMDBG */
 
 		if ((di->hnddma.dmactrlflags & DMA_CTRL_RXMULTI) == 0) {
-			DMA_ERROR(("%s: dma_rx: bad frame length (%d)\n", di->name, len));
+			BHND_DMA_ERROR(di, "dma_rx: bad frame length (%d)", len);
 			PKTFREE(di->osh, head, FALSE);
 			di->hnddma.rxgiants++;
 			goto next_frame;
@@ -856,7 +842,7 @@ _dma_rxfill(dma_info_t *di)
 	if (di->rxbufsize > BCMEXTRAHDROOM)
 		extra_offset = di->rxextrahdrroom;
 
-	DMA_TRACE(("%s: dma_rxfill: post %d\n", di->name, n));
+	BHND_DMA_TRACE(di, "dma_rxfill: post %d", n);
 
 	for (i = 0; i < n; i++) {
 		/* the di->rxbufsize doesn't include the extra headroom, we need to add it to the
@@ -875,18 +861,16 @@ _dma_rxfill(dma_info_t *di)
 				FALSE);
 		}
 		if (p == NULL) {
-			DMA_TRACE(("%s: dma_rxfill: out of rxbufs\n", di->name));
+			BHND_DMA_TRACE(di, "dma_rxfill: out of rxbufs");
 			if (i == 0) {
 				if (DMA64_ENAB(di) && DMA64_MODE(di)) {
 					if (dma64_rxidle(di)) {
-						DMA_TRACE(("%s: rxfill64: ring is empty !\n",
-							di->name));
+						BHND_DMA_TRACE(di, "rxfill64: ring is empty");
 						ring_empty = TRUE;
 					}
 				} else if (DMA32_ENAB(di)) {
 					if (dma32_rxidle(di)) {
-						DMA_TRACE(("%s: rxfill32: ring is empty !\n",
-							di->name));
+						BHND_DMA_TRACE(di, "rxfill32: ring is empty");
 						ring_empty = TRUE;
 					}
 				} else
@@ -1002,7 +986,7 @@ _dma_peekntxp(dma_info_t *di, int *len, void *txps[], txd_range_t range)
 	void *txp = NULL;
 	int k, len_max;
 
-	DMA_TRACE(("%s: dma_peekntxp\n", di->name));
+	BHND_DMA_TRACE_ENTRY(di);
 
 	ASSERT(len);
 	ASSERT(txps);
@@ -1090,7 +1074,7 @@ _dma_rxreclaim(dma_info_t *di)
 	void *p;
 	bool origcb = TRUE;
 
-	DMA_TRACE(("%s: dma_rxreclaim\n", di->name));
+	BHND_DMA_TRACE_ENTRY(di);
 
 	if (POOL_ENAB(di->pktpool) &&
 	    ((origcb = pktpool_emptycb_disabled(di->pktpool)) == FALSE))
@@ -1204,10 +1188,8 @@ _dma_ctrlflags(dma_info_t *di, u_int mask, u_int flags)
 {
 	u_int dmactrlflags;
 
-	if (!di) {
-		DMA_ERROR(("_dma_ctrlflags: NULL dma handle\n"));
-		return (0);
-	}
+	/* XXX: Do we really need this? */
+	KASSERT(di != NULL, ("NULL DMA handle"));
 
 	dmactrlflags = di->hnddma.dmactrlflags;
 	ASSERT((flags & ~mask) == 0);
