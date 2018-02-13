@@ -61,12 +61,11 @@ static u_int default_msg_level = BHND_LOGGING;
 static bool
 _dma_alloc(dma_info_t *di, u_int direction)
 {
-	if (DMA64_ENAB(di) && DMA64_MODE(di)) {
+	if (di->dma64) {
 		return dma64_alloc(di, direction);
-	} else if (DMA32_ENAB(di)) {
+	} else {
 		return dma32_alloc(di, direction);
-	} else
-		ASSERT(0);
+	}
 }
 
 /** !! may be called with core in reset */
@@ -80,22 +79,21 @@ _dma_detach(dma_info_t *di)
 	ASSERT(di->rxin == di->rxout);
 
 	/* free dma descriptor rings */
-	if (DMA64_ENAB(di) && DMA64_MODE(di)) {
+	if (di->dma64) {
 		if (di->txd64)
 			DMA_FREE_CONSISTENT(di->osh, ((int8_t *)(uintptr_t)di->txd64 - di->txdalign),
 			                    di->txdalloc, (di->txdpaorig), di->tx_dmah);
 		if (di->rxd64)
 			DMA_FREE_CONSISTENT(di->osh, ((int8_t *)(uintptr_t)di->rxd64 - di->rxdalign),
 			                    di->rxdalloc, (di->rxdpaorig), di->rx_dmah);
-	} else if (DMA32_ENAB(di)) {
+	} else {
 		if (di->txd32)
 			DMA_FREE_CONSISTENT(di->osh, ((int8_t *)(uintptr_t)di->txd32 - di->txdalign),
 			                    di->txdalloc, (di->txdpaorig), di->tx_dmah);
 		if (di->rxd32)
 			DMA_FREE_CONSISTENT(di->osh, ((int8_t *)(uintptr_t)di->rxd32 - di->rxdalign),
 			                    di->rxdalloc, (di->rxdpaorig), di->rx_dmah);
-	} else
-		ASSERT(0);
+	}
 
 	/* free packet pointer vectors */
 	if (di->txp)
@@ -142,10 +140,7 @@ dma_attach(osl_t *osh, const char *name, si_t *sih,
 	/* old chips w/o sb is no longer supported */
 	ASSERT(sih != NULL);
 
-	if (DMA64_ENAB(di))
-		di->dma64 = ((si_core_sflags(sih, 0, 0) & BHND_IOST_DMA64) == BHND_IOST_DMA64);
-	else
-		di->dma64 = 0;
+	di->dma64 = ((si_core_sflags(sih, 0, 0) & BHND_IOST_DMA64) == BHND_IOST_DMA64);
 
 	/* check arguments */
 	ASSERT(powerof2(ntxd));
@@ -157,20 +152,27 @@ dma_attach(osl_t *osh, const char *name, si_t *sih,
 		ASSERT(dmaregstx == NULL);
 
 	/* init dma reg pointer */
-	if (DMA64_ENAB(di) && DMA64_MODE(di)) {
+	if (di->dma64) {
+		if (!BHND_DMA64_SUPPORT(di)) {
+			BHND_DMA_ERROR(di, "BHND_DMA64 support disabled");
+			goto fail;
+		}
+
 		di->d64txregs = (dma64regs_t *)dmaregstx;
 		di->d64rxregs = (dma64regs_t *)dmaregsrx;
 		di->hnddma.di_fn = (const di_fcn_t *)&dma64proc;
-	} else if (DMA32_ENAB(di)) {
+	} else {
+		if (!BHND_DMA32_SUPPORT(di)) {
+			BHND_DMA_ERROR(di, "BHND_DMA32 support disabled");
+			goto fail;
+		}
+
 		ASSERT(ntxd <= D32MAXDD);
 		ASSERT(nrxd <= D32MAXDD);
+
 		di->d32txregs = (dma32regs_t *)dmaregstx;
 		di->d32rxregs = (dma32regs_t *)dmaregsrx;
 		di->hnddma.di_fn = (const di_fcn_t *)&dma32proc;
-	} else {
-		BHND_DMA_ERROR(di, "driver doesn't support 32-bit DMA");
-		ASSERT(0);
-		goto fail;
 	}
 
 	/* Default flags (which can be changed by the driver calling dma_ctrlflags
@@ -182,7 +184,7 @@ dma_attach(osl_t *osh, const char *name, si_t *sih,
 
 	BHND_DMA_TRACE(di, "%s: osh %p flags %#x ntxd %d nrxd %d rxbufsize %d "
 	           "rxextheadroom %d nrxpost %d rxoffset %d dmaregstx %p dmaregsrx %p",
-	           (DMA64_MODE(di) ? "DMA64" : "DMA32"),
+	           (di->dma64 ? "DMA64" : "DMA32"),
 	           osh, di->hnddma.dmactrlflags, ntxd, nrxd,
 	           rxbufsize, rxextheadroom, nrxpost, rxoffset, dmaregstx, dmaregsrx);
 
@@ -208,7 +210,7 @@ dma_attach(osl_t *osh, const char *name, si_t *sih,
 	 * register after the reset or during the init.
 	 */
 	if (dmaregsrx) {
-		if (DMA64_ENAB(di) && DMA64_MODE(di)) {
+		if (di->dma64) {
 			/* detect the dma descriptor address mask,
 			 * should be 0x1fff before 4360B0, 0xffff start from 4360B0
 			 */
@@ -236,7 +238,7 @@ dma_attach(osl_t *osh, const char *name, si_t *sih,
 			di->rxprefetchthresh = (R_REG(di->osh,
 				&di->d64rxregs->control) & D64_RC_PT_MASK) >>
 				D64_RC_PT_SHIFT;
-		} else if (DMA32_ENAB(di)) {
+		} else {
 			di->rxburstlen = (R_REG(di->osh,
 				&di->d32rxregs->control) & RC_BL_MASK) >> RC_BL_SHIFT;
 			di->rxprefetchctl = (R_REG(di->osh,
@@ -246,7 +248,7 @@ dma_attach(osl_t *osh, const char *name, si_t *sih,
 		}
 	}
 	if (dmaregstx) {
-		if (DMA64_ENAB(di) && DMA64_MODE(di)) {
+		if (di->dma64) {
 
 			/* detect the dma descriptor address mask,
 			 * should be 0x1fff before 4360B0, 0xffff start from 4360B0
@@ -276,7 +278,7 @@ dma_attach(osl_t *osh, const char *name, si_t *sih,
 				&di->d64txregs->control) & D64_XC_PC_MASK) >> D64_XC_PC_SHIFT;
 			di->txprefetchthresh = (R_REG(di->osh,
 				&di->d64txregs->control) & D64_XC_PT_MASK) >> D64_XC_PT_SHIFT;
-		} else if (DMA32_ENAB(di)) {
+		} else {
 			di->txburstlen = (R_REG(di->osh,
 				&di->d32txregs->control) & XC_BL_MASK) >> XC_BL_SHIFT;
 			di->txmultioutstdrd = (R_REG(di->osh,
@@ -300,7 +302,7 @@ dma_attach(osl_t *osh, const char *name, si_t *sih,
 	if (sih->bustype == PCI_BUS) {
 		if ((sih->buscoretype == BHND_COREID_PCIE ||
 		     sih->buscoretype == BHND_COREID_PCIE2) &&
-		    DMA64_MODE(di)) {
+		    di->dma64) {
 			/* pcie with DMA64 */
 			di->ddoffsetlow = 0;
 			di->ddoffsethigh = SI_PCIE_DMA_H32;
@@ -338,7 +340,7 @@ dma_attach(osl_t *osh, const char *name, si_t *sih,
 	/* does the descriptors need to be aligned and if yes, on 4K/8K or not */
 	di->aligndesc_4k = _dma_descriptor_align(di);
 	if (di->aligndesc_4k) {
-		if (DMA64_MODE(di)) {
+		if (di->dma64) {
 			di->dmadesc_align = D64RINGALIGN_BITS;
 			if ((ntxd < D64MAXDD / 2) && (nrxd < D64MAXDD / 2)) {
 				/* for smaller dd table, HW relax the alignment requirement */
@@ -439,7 +441,7 @@ fail:
 static bool
 _dma_descriptor_align(dma_info_t *di)
 {
-	if (DMA64_ENAB(di) && DMA64_MODE(di)) {
+	if (di->dma64) {
 		uint32_t addrl;
 
 		/* Check to see if the descriptors need to be aligned on 4K/8K or not */
@@ -463,7 +465,7 @@ _dma_descriptor_align(dma_info_t *di)
 static bool
 _dma_isaddrext(dma_info_t *di)
 {
-	if (DMA64_ENAB(di) && DMA64_MODE(di)) {
+	if (di->dma64) {
 		/* DMA64 supports full 32- or 64-bit operation. AE is always valid */
 
 		/* not all tx or rx channel are available */
@@ -481,13 +483,12 @@ _dma_isaddrext(dma_info_t *di)
 			return TRUE;
 		}
 		return FALSE;
-	} else if (DMA32_ENAB(di)) {
+	} else {
 		if (di->d32txregs)
 			return (_dma32_addrext(di->osh, di->d32txregs));
 		else if (di->d32rxregs)
 			return (_dma32_addrext(di->osh, di->d32rxregs));
-	} else
-		ASSERT(0);
+	}
 
 	return FALSE;
 }
@@ -496,7 +497,7 @@ _dma_isaddrext(dma_info_t *di)
 void
 _dma_ddtable_init(dma_info_t *di, u_int direction, dmaaddr_t pa)
 {
-	if (DMA64_ENAB(di) && DMA64_MODE(di)) {
+	if (di->dma64) {
 		if (!di->aligndesc_4k) {
 			if (direction == DMA_TX)
 				di->xmtptrbase = PHYSADDRLO(pa);
@@ -541,7 +542,7 @@ _dma_ddtable_init(dma_info_t *di, u_int direction, dmaaddr_t pa)
 			}
 		}
 
-	} else if (DMA32_ENAB(di)) {
+	} else {
 		ASSERT(PHYSADDRHI(pa) == 0);
 		if ((di->ddoffsetlow == 0) || !(PHYSADDRLO(pa) & PCI32ADDR_HIGH)) {
 			if (direction == DMA_TX)
@@ -569,8 +570,7 @@ _dma_ddtable_init(dma_info_t *di, u_int direction, dmaaddr_t pa)
 				SET_REG(di->osh, &di->d32rxregs->control, RC_AE, ae <<RC_AE_SHIFT);
 			}
 		}
-	} else
-		ASSERT(0);
+	}
 }
 
 void
@@ -578,12 +578,10 @@ _dma_fifoloopbackenable(dma_info_t *di)
 {
 	BHND_DMA_TRACE_ENTRY(di);
 
-	if (DMA64_ENAB(di) && DMA64_MODE(di))
+	if (di->dma64)
 		OR_REG(di->osh, &di->d64txregs->control, D64_XC_LE);
-	else if (DMA32_ENAB(di))
-		OR_REG(di->osh, &di->d32txregs->control, XC_LE);
 	else
-		ASSERT(0);
+		OR_REG(di->osh, &di->d32txregs->control, XC_LE);
 }
 
 void
@@ -605,7 +603,7 @@ _dma_rxinit(dma_info_t *di)
 	di->rxin = di->rxout = di->rs0cd = 0;
 
 	/* clear rx descriptor ring */
-	if (DMA64_ENAB(di) && DMA64_MODE(di)) {
+	if (di->dma64) {
 		BZERO_SM((void *)(uintptr_t)di->rxd64, (di->nrxd * sizeof(dma64dd_t)));
 
 		/* DMA engine with out alignment requirement requires table to be inited
@@ -618,12 +616,11 @@ _dma_rxinit(dma_info_t *di)
 
 		if (di->aligndesc_4k)
 			_dma_ddtable_init(di, DMA_RX, di->rxdpa);
-	} else if (DMA32_ENAB(di)) {
+	} else {
 		BZERO_SM((void *)(uintptr_t)di->rxd32, (di->nrxd * sizeof(dma32dd_t)));
 		_dma_rxenable(di);
 		_dma_ddtable_init(di, DMA_RX, di->rxdpa);
-	} else
-		ASSERT(0);
+	}
 }
 
 void
@@ -633,7 +630,7 @@ _dma_rxenable(dma_info_t *di)
 
 	BHND_DMA_TRACE_ENTRY(di);
 
-	if (DMA64_ENAB(di) && DMA64_MODE(di)) {
+	if (di->dma64) {
 		uint32_t control = (R_REG(di->osh, &di->d64rxregs->control) & D64_RC_AE) | D64_RC_RE;
 
 		if ((dmactrlflags & DMA_CTRL_PEN) == 0)
@@ -657,7 +654,7 @@ _dma_rxenable(dma_info_t *di)
 
 		W_REG(di->osh, &di->d64rxregs->control,
 		      ((di->rxoffset << D64_RC_RO_SHIFT) | control));
-	} else if (DMA32_ENAB(di)) {
+	} else {
 		uint32_t control = (R_REG(di->osh, &di->d32rxregs->control) & RC_AE) | RC_RE;
 
 		if ((dmactrlflags & DMA_CTRL_PEN) == 0)
@@ -681,8 +678,7 @@ _dma_rxenable(dma_info_t *di)
 
 		W_REG(di->osh, &di->d32rxregs->control,
 		      ((di->rxoffset << RC_RO_SHIFT) | control));
-	} else
-		ASSERT(0);
+	}
 }
 
 void
@@ -785,7 +781,7 @@ next_frame:
 		if (resid > 0) {
 			uint16_t cur;
 			ASSERT(p == NULL);
-			cur = (DMA64_ENAB(di) && DMA64_MODE(di)) ?
+			cur = (di->dma64) ?
 				B2I(((R_REG(di->osh, &di->d64rxregs->status0) & D64_RS0_CD_MASK) -
 				di->rcvptrbase) & D64_RS0_CD_MASK, dma64dd_t) :
 				B2I(R_REG(di->osh, &di->d32rxregs->status) & RS_CD_MASK,
@@ -863,18 +859,17 @@ _dma_rxfill(dma_info_t *di)
 		if (p == NULL) {
 			BHND_DMA_TRACE(di, "dma_rxfill: out of rxbufs");
 			if (i == 0) {
-				if (DMA64_ENAB(di) && DMA64_MODE(di)) {
+				if (di->dma64) {
 					if (dma64_rxidle(di)) {
 						BHND_DMA_TRACE(di, "rxfill64: ring is empty");
 						ring_empty = TRUE;
 					}
-				} else if (DMA32_ENAB(di)) {
+				} else {
 					if (dma32_rxidle(di)) {
 						BHND_DMA_TRACE(di, "rxfill32: ring is empty");
 						ring_empty = TRUE;
 					}
-				} else
-					ASSERT(0);
+				}
 			}
 			di->hnddma.rxnobuf++;
 			break;
@@ -923,31 +918,29 @@ _dma_rxfill(dma_info_t *di)
 
 		/* reset flags for each descriptor */
 		flags = 0;
-		if (DMA64_ENAB(di) && DMA64_MODE(di)) {
+		if (di->dma64) {
 			if (rxout == (di->nrxd - 1))
 				flags = D64_CTRL1_EOT;
 
 			dma64_dd_upd(di, di->rxd64, pa, rxout, &flags, di->rxbufsize);
-		} else if (DMA32_ENAB(di)) {
+		} else {
 			if (rxout == (di->nrxd - 1))
 				flags = CTRL_EOT;
 
 			ASSERT(PHYSADDRHI(pa) == 0);
 			dma32_dd_upd(di, di->rxd32, pa, rxout, &flags, di->rxbufsize);
-		} else
-			ASSERT(0);
+		}
 		rxout = NEXTRXD(rxout);
 	}
 
 	di->rxout = rxout;
 
 	/* update the chip lastdscr pointer */
-	if (DMA64_ENAB(di) && DMA64_MODE(di)) {
+	if (di->dma64) {
 		W_REG(di->osh, &di->d64rxregs->ptr, di->rcvptrbase + I2B(rxout, dma64dd_t));
-	} else if (DMA32_ENAB(di)) {
+	} else {
 		W_REG(di->osh, &di->d32rxregs->ptr, I2B(rxout, dma32dd_t));
-	} else
-		ASSERT(0);
+	}
 
 	return ring_empty;
 }
@@ -961,15 +954,14 @@ _dma_peeknexttxp(dma_info_t *di)
 	if (di->ntxd == 0)
 		return (NULL);
 
-	if (DMA64_ENAB(di) && DMA64_MODE(di)) {
+	if (di->dma64) {
 		end = (uint16_t)B2I(((R_REG(di->osh, &di->d64txregs->status0) & D64_XS0_CD_MASK) -
 		           di->xmtptrbase) & D64_XS0_CD_MASK, dma64dd_t);
 		di->xs0cd = end;
-	} else if (DMA32_ENAB(di)) {
+	} else {
 		end = (uint16_t)B2I(R_REG(di->osh, &di->d32txregs->status) & XS_CD_MASK, dma32dd_t);
 		di->xs0cd = end;
-	} else
-		ASSERT(0);
+	}
 
 	for (i = di->txin; i != end; i = NEXTTXD(i))
 		if (di->txp[i])
@@ -1004,7 +996,7 @@ _dma_peekntxp(dma_info_t *di, int *len, void *txps[], txd_range_t range)
 	if (range == HNDDMA_RANGE_ALL)
 		end = di->txout;
 	else {
-		if (DMA64_ENAB(di)) {
+		if (di->dma64) {
 			end = B2I(((R_REG(di->osh, &di->d64txregs->status0) & D64_XS0_CD_MASK) -
 				di->xmtptrbase) & D64_XS0_CD_MASK, dma64dd_t);
 
@@ -1051,15 +1043,14 @@ _dma_peeknextrxp(dma_info_t *di)
 	if (di->nrxd == 0)
 		return (NULL);
 
-	if (DMA64_ENAB(di) && DMA64_MODE(di)) {
+	if (di->dma64) {
 		end = (uint16_t)B2I(((R_REG(di->osh, &di->d64rxregs->status0) & D64_RS0_CD_MASK) -
 			di->rcvptrbase) & D64_RS0_CD_MASK, dma64dd_t);
 		di->rs0cd = end;
-	} else if (DMA32_ENAB(di)) {
+	} else {
 		end = (uint16_t)B2I(R_REG(di->osh, &di->d32rxregs->status) & RS_CD_MASK, dma32dd_t);
 		di->rs0cd = end;
-	} else
-		ASSERT(0);
+	}
 
 	for (i = di->rxin; i != end; i = NEXTRXD(i))
 		if (di->rxp[i])
@@ -1093,12 +1084,11 @@ _dma_getnextrxp(dma_info_t *di, bool forceall)
 	if (di->nrxd == 0)
 		return (NULL);
 
-	if (DMA64_ENAB(di) && DMA64_MODE(di)) {
+	if (di->dma64) {
 		return dma64_getnextrxp(di, forceall);
-	} else if (DMA32_ENAB(di)) {
+	} else {
 		return dma32_getnextrxp(di, forceall);
-	} else
-		ASSERT(0);
+	}
 }
 
 void
@@ -1124,15 +1114,14 @@ _dma_txpending(dma_info_t *di)
 {
 	uint16_t curr;
 
-	if (DMA64_ENAB(di) && DMA64_MODE(di)) {
+	if (di->dma64) {
 		curr = B2I(((R_REG(di->osh, &di->d64txregs->status0) & D64_XS0_CD_MASK) -
 		           di->xmtptrbase) & D64_XS0_CD_MASK, dma64dd_t);
 		di->xs0cd = curr;
-	} else if (DMA32_ENAB(di)) {
+	} else {
 		curr = B2I(R_REG(di->osh, &di->d32txregs->status) & XS_CD_MASK, dma32dd_t);
 		di->xs0cd = curr;
-	} else
-		ASSERT(0);
+	}
 
 	return NTXDACTIVE(curr, di->txout);
 }
@@ -1146,12 +1135,11 @@ _dma_txcommitted(dma_info_t *di)
 	if (txin == di->txout)
 		return 0;
 
-	if (DMA64_ENAB(di) && DMA64_MODE(di)) {
+	if (di->dma64) {
 		ptr = B2I(R_REG(di->osh, &di->d64txregs->ptr), dma64dd_t);
-	} else if (DMA32_ENAB(di)) {
+	} else {
 		ptr = B2I(R_REG(di->osh, &di->d32txregs->ptr), dma32dd_t);
-	} else
-		ASSERT(0);
+	}
 
 	return NTXDACTIVE(di->txin, ptr);
 }
@@ -1201,7 +1189,7 @@ _dma_ctrlflags(dma_info_t *di, u_int mask, u_int flags)
 	if (dmactrlflags & DMA_CTRL_PEN) {
 		uint32_t control;
 
-		if (DMA64_ENAB(di) && DMA64_MODE(di)) {
+		if (di->dma64) {
 			control = R_REG(di->osh, &di->d64txregs->control);
 			W_REG(di->osh, &di->d64txregs->control, control | D64_XC_PD);
 			if (R_REG(di->osh, &di->d64txregs->control) & D64_XC_PD) {
@@ -1213,7 +1201,7 @@ _dma_ctrlflags(dma_info_t *di, u_int mask, u_int flags)
 				/* Not supported, don't allow it to be enabled */
 				dmactrlflags &= ~DMA_CTRL_PEN;
 			}
-		} else if (DMA32_ENAB(di)) {
+		} else {
 			control = R_REG(di->osh, &di->d32txregs->control);
 			W_REG(di->osh, &di->d32txregs->control, control | XC_PD);
 			if (R_REG(di->osh, &di->d32txregs->control) & XC_PD) {
@@ -1222,8 +1210,7 @@ _dma_ctrlflags(dma_info_t *di, u_int mask, u_int flags)
 				/* Not supported, don't allow it to be enabled */
 				dmactrlflags &= ~DMA_CTRL_PEN;
 			}
-		} else
-			ASSERT(0);
+		}
 	}
 
 	di->hnddma.dmactrlflags = dmactrlflags;
@@ -1352,7 +1339,7 @@ _dma_rxtx_error(dma_info_t *di, bool istx)
 	uint32_t status1 = 0;
 	uint16_t curr;
 
-	if (DMA64_ENAB(di) && DMA64_MODE(di)) {
+	if (di->dma64) {
 
 		if (istx) {
 
@@ -1389,14 +1376,9 @@ _dma_rxtx_error(dma_info_t *di, bool istx)
 				return FALSE;
 		}
 
-	} else if (DMA32_ENAB(di)) {
-		return FALSE;
-
 	} else {
-		ASSERT(0);
 		return FALSE;
 	}
-
 }
 
 void

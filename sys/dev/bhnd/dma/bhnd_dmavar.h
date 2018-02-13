@@ -37,6 +37,26 @@
 
 #include <dev/bhnd/bhnd_debug.h>
 
+#if !defined(BHND_DMA32) && !defined(BHND_DMA64)
+#define	BHND_DMA32	1
+#define	BHND_DMA64	1
+#endif
+
+/* XXX */
+#ifdef BHND_DMA64
+#define	BHND_DMA64_SUPPORT(di)	(true)
+#else /* BHND_DMA64 */
+#define	BHND_DMA64_SUPPORT(di)	(false)
+#endif /* !BHND_DMA64 */
+
+#ifdef BHND_DMA32
+#define	BHND_DMA32_SUPPORT(di)	(true)
+#else /* BHND_DMA32 */
+#define	BHND_DMA32_SUPPORT(di)	(false)
+#endif /* !BHND_DMA32 */
+
+#define	BHND_DMA64_MODE(di)	((di)->dma64)
+
 /* XXX TODO: Use device_printf() variants? */
 #define	_BHND_DMA_PRINTF(_level, _di, _fmt, ...) do {			\
 	if (*(_di)->msg_level >= _level) {				\
@@ -67,30 +87,9 @@
 /* XXX default configuration */
 #define	BCMDBG
 #define	BCMDMA64OSL
-#define	BCMDMA32
-#define	BCMDMA64
 
 /* TODO: Required until we pull in bhnd(9) replacements */
 #include "siutils.h"
-
-/*
- * If BCMDMA32 is defined, hnddma will support both 32-bit and 64-bit DMA engines.
- * Otherwise it will support only 64-bit.
- *
- * DMA32_ENAB indicates whether hnddma is compiled with support for 32-bit DMA engines.
- * DMA64_ENAB indicates whether hnddma is compiled with support for 64-bit DMA engines.
- *
- * DMA64_MODE indicates whether the current DMA engine is running as 64-bit.
- */
-#ifdef BCMDMA32
-#define	DMA32_ENAB(di)		1
-#define	DMA64_ENAB(di)		1
-#define	DMA64_MODE(di)		((di)->dma64)
-#else /* !BCMDMA32 */
-#define	DMA32_ENAB(di)		0
-#define	DMA64_ENAB(di)		1
-#define	DMA64_MODE(di)		1
-#endif /* !BCMDMA32 */
 
 /* DMA Scatter-gather list is supported. Note this is limited to TX direction only */
 #ifdef BCMDMASGLISTOSL
@@ -262,7 +261,9 @@ typedef struct dma_info {
 	void		*osh;		/* os handle */
 	si_t		*sih;		/* sb handle */
 
+#ifndef BHND_DMA64_FIXED_MODE
 	bool		dma64;		/* this dma engine is operating in 64-bit mode */
+#endif /* !BHND_DMA64_FIXED_MODE */
 	bool		addrext;	/* this dma engine supports DmaExtendedAddrChanges */
 
 	union {
@@ -366,8 +367,7 @@ extern hnddma_t * dma_attach(osl_t *osh, const char *name, si_t *sih,
 	u_int ntxd, u_int nrxd, u_int rxbufsize, int rxextheadroom, u_int nrxpost,
 	u_int rxoffset, u_int *msg_level);
 
-#ifdef BCMDMA32
-
+/* XXX: this is a silly approach to handling indirection */
 #define dma_detach(di)			((di)->di_fn->detach(di))
 #define dma_txreset(di)			((di)->di_fn->txreset(di))
 #define dma_rxreset(di)			((di)->di_fn->rxreset(di))
@@ -420,66 +420,9 @@ extern hnddma_t * dma_attach(osl_t *osh, const char *name, si_t *sih,
 #define dma_param_set(di, paramid, paramval)	((di)->di_fn->param_set(di, paramid, paramval))
 #define dma_activerxbuf(di)		((di)->di_fn->dma_activerxbuf(di))
 
-#else /* BCMDMA32 */
+#ifdef BHND_DMA64
 extern const di_fcn_t dma64proc;
-
-#define dma_detach(di)			(dma64proc.detach(di))
-#define dma_txreset(di)			(dma64proc.txreset(di))
-#define dma_rxreset(di)			(dma64proc.rxreset(di))
-#define dma_rxidle(di)			(dma64proc.rxidle(di))
-#define dma_txinit(di)                  (dma64proc.txinit(di))
-#define dma_txenabled(di)               (dma64proc.txenabled(di))
-#define dma_rxinit(di)                  (dma64proc.rxinit(di))
-#define dma_txsuspend(di)               (dma64proc.txsuspend(di))
-#define dma_txresume(di)                (dma64proc.txresume(di))
-#define dma_txsuspended(di)             (dma64proc.txsuspended(di))
-#define dma_txsuspendedidle(di)         (dma64proc.txsuspendedidle(di))
-#define dma_txflush(di)                 (dma64proc.txflush(di))
-#define dma_txflush_clear(di)           (dma64proc.txflush_clear(di))
-#define dma_txfast(di, p, commit)	(dma64proc.txfast(di, p, commit))
-#define dma_txunframed(di, p, l, commit)(dma64proc.txunframed(di, p, l, commit))
-#define dma_getpos(di, dir)		(dma64proc.getpos(di, dir))
-#define dma_fifoloopbackenable(di)      (dma64proc.fifoloopbackenable(di))
-#define dma_txstopped(di)               (dma64proc.txstopped(di))
-#define dma_rxstopped(di)               (dma64proc.rxstopped(di))
-#define dma_rxenable(di)                (dma64proc.rxenable(di))
-#define dma_rxenabled(di)               (dma64proc.rxenabled(di))
-#define dma_rx(di)                      (dma64proc.rx(di))
-#define dma_rxfill(di)                  (dma64proc.rxfill(di))
-#define dma_txreclaim(di, range)	(dma64proc.txreclaim(di, range))
-#define dma_rxreclaim(di)               (dma64proc.rxreclaim(di))
-#define dma_getvar(di, name)		(dma64proc.d_getvar(di, name))
-#define dma_getnexttxp(di, range)	(dma64proc.getnexttxp(di, range))
-#define dma_getnextrxp(di, forceall)    (dma64proc.getnextrxp(di, forceall))
-#define dma_peeknexttxp(di)             (dma64proc.peeknexttxp(di))
-#define dma_peekntxp(di, l, t, r)       (dma64proc.peekntxp(di, l, t, r))
-#define dma_peeknextrxp(di)             (dma64proc.peeknextrxp(di))
-#define dma_rxparam_get(di, off, bufs)	(dma64proc.rxparam_get(di, off, bufs))
-
-#define dma_txblock(di)                 (dma64proc.txblock(di))
-#define dma_txunblock(di)               (dma64proc.txunblock(di))
-#define dma_txactive(di)                (dma64proc.txactive(di))
-#define dma_rxactive(di)                (dma64proc.rxactive(di))
-#define dma_txrotate(di)                (dma64proc.txrotate(di))
-#define dma_counterreset(di)            (dma64proc.counterreset(di))
-#define dma_ctrlflags(di, mask, flags)  (dma64proc.ctrlflags((di), (mask), (flags)))
-#define dma_txpending(di)		(dma64proc.txpending(di))
-#define dma_txcommitted(di)		(dma64proc.txcommitted(di))
-#define dma_pktpool_set(di, pool)	(dma64proc.pktpool_set((di), (pool)))
-#if defined(BCMDBG)
-#define dma_dump(di, buf, dumpring)	(dma64proc.dump(di, buf, dumpring))
-#define dma_dumptx(di, buf, dumpring)	(dma64proc.dumptx(di, buf, dumpring))
-#define dma_dumprx(di, buf, dumpring)	(dma64proc.dumprx(di, buf, dumpring))
-#endif
-#define dma_rxtxerror(di, istx)	(dma64proc.rxtxerror(di, istx))
-#define dma_burstlen_set(di, rxlen, txlen)	(dma64proc.burstlen_set(di, rxlen, txlen))
-#define dma_avoidance_cnt(di)		(dma64proc.avoidancecnt(di))
-#define dma_param_set(di, paramid, paramval)	(dma64proc.param_set(di, paramid, paramval))
-
-#define dma_glom_enable(di, val)	(dma64proc.glom_enab(di, val))
-#define dma_activerxbuf(di)	(dma64proc.dma_activerxbuf(di))
-
-#endif /* BCMDMA32 */
+#endif /* BHND_DMA64 */
 
 /* return addresswidth allowed
  * This needs to be done after SB attach but before dma attach.
