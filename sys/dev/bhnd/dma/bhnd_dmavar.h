@@ -29,33 +29,48 @@
 #ifndef _BHND_DMA_BHND_DMAVAR_H_
 #define _BHND_DMA_BHND_DMAVAR_H_
 
-// XXX
-#define	BHND_LOGLEVEL	BHND_TRACE_LEVEL
-
 #include <sys/types.h>
+#include <sys/queue.h>
 #include <sys/sbuf.h>
 
 #include <dev/bhnd/bhnd_debug.h>
 
-#if !defined(BHND_DMA32) && !defined(BHND_DMA64)
-#define	BHND_DMA32	1
-#define	BHND_DMA64	1
-#endif
+#include "bhnd_dma.h"
 
-/* XXX */
-#ifdef BHND_DMA64
-#define	BHND_DMA64_SUPPORT(di)	(true)
-#else /* BHND_DMA64 */
-#define	BHND_DMA64_SUPPORT(di)	(false)
-#endif /* !BHND_DMA64 */
+LIST_HEAD(bhnd_dma_chan_list,		bhnd_dma_chan);
+typedef struct bhnd_dma_chan_list	bhnd_dma_chan_list;
 
-#ifdef BHND_DMA32
-#define	BHND_DMA32_SUPPORT(di)	(true)
-#else /* BHND_DMA32 */
-#define	BHND_DMA32_SUPPORT(di)	(false)
-#endif /* !BHND_DMA32 */
+/**
+ * BHND DMA engine type.
+ */
+typedef enum {
+	BHMD_DMA32	= 0,	/**< 32-bit DMA engine */
+	BHND_DMA64	= 1,	/**< 64-bit DMA engine */
+} bhnd_dma_type;
 
-#define	BHND_DMA64_MODE(di)	((di)->dma64)
+/**
+ * BHND DMA engine.
+ */
+struct bhnd_dma {
+	device_t	owner;		/**< parent device */
+	uint32_t	quirks;		/**< DMA engine quirks (see bhnd_dma_quirk) */
+	bhnd_dma_type	engine_type;
+	u_int		addr_width;	/**< supported address width */
+
+	bhnd_dma_chan	*tx_chan;	/**< DMA transmit channels */
+	size_t		 num_tx_chan;	/**< transmit channel count */
+
+	bhnd_dma_chan	*rx_chan;	/**< DMA receive channels */
+	size_t		 num_rx_chan;	/**< receive channel count */
+};
+
+/**
+ * BHND DMA channel.
+ */
+struct bhnd_dma_chan {
+	u_int	ndesc;		/**< descriptor count */
+	u_int	max_ndesc;	/**< maximum descriptor count */
+};
 
 /* XXX TODO: Use device_printf() variants? */
 #define	_BHND_DMA_PRINTF(_level, _di, _fmt, ...) do {			\
@@ -79,6 +94,29 @@
 
 #define	BHND_DMA_WARN(_di, _fmt, ...)	\
 	_BHND_DMA_PRINTF(BHND_WARN_LEVEL, (_di), ": " _fmt, ## __VA_ARGS__)
+
+
+/**********************************
+ * XXX LEGACY DECLARATIONS FOLLOW *
+ **********************************/
+
+/* XXX */
+#define	BHND_BUILD_DMA32	1	/* build DMA32 support */
+#define	BHND_BUILD_DMA64	1	/* build DMA64 support */
+
+#ifdef BHND_BUILD_DMA32
+#define	BHND_DMA32_SUPPORT(di)	(true)
+#else /* BHND_BUILD_DMA32 */
+#define	BHND_DMA32_SUPPORT(di)	(false)
+#endif /* !BHND_BUILD_DMA32 */
+
+#ifdef BHND_BUILD_DMA64
+#define	BHND_DMA64_SUPPORT(di)	(true)
+#else /* BHND_BUILD_DMA64 */
+#define	BHND_DMA64_SUPPORT(di)	(false)
+#endif /* !BHND_BUILD_DMA64 */
+
+#define	BHND_DMA64_MODE(di)	((di)->dma64)
 
 /* TODO: required for dma32regs_t/dma32dd_t and dma64regs_t/dma64dd_t */
 #include "bhnd_dma32reg.h"
@@ -255,15 +293,16 @@ typedef struct dma_info {
 	struct hnddma_pub hnddma;	/* exported structure, don't use hnddma_t,
 					 * which could be const
 					 */
+	bhnd_dma	*dma;		/**< DMA engine reference */
+	bhnd_dma_chan	*dma_chan;	/**< DMA channel reference */
+
 	u_int		*msg_level;	/* message level pointer */
 	char		name[MAXNAMEL];	/* callers name for diag msgs */
 
 	void		*osh;		/* os handle */
 	si_t		*sih;		/* sb handle */
 
-#ifndef BHND_DMA64_FIXED_MODE
 	bool		dma64;		/* this dma engine is operating in 64-bit mode */
-#endif /* !BHND_DMA64_FIXED_MODE */
 	bool		addrext;	/* this dma engine supports DmaExtendedAddrChanges */
 
 	union {

@@ -83,6 +83,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/cores/chipc/chipc.h>
 #include <dev/bhnd/cores/pmu/bhnd_pmu.h>
 
+#include <dev/bhnd/dma/bhnd_dma.h>
+
 #include <dev/bwn/if_bwnreg.h>
 #include <dev/bwn/if_bwnvar.h>
 
@@ -1321,6 +1323,17 @@ bwn_attach_core(struct bwn_mac *mac)
 	error = bwn_reset_core(mac, have_bg);
 	if (error)
 		goto fail;
+
+	/* XXX TODO */
+	bhnd_dma *dma;
+
+	error = bhnd_dma_new(&dma, sc->sc_dev, sc->sc_mem_res, BWN_DMA_BASE,
+	    BWN_DMA_NUM_TXCHAN, BWN_DMA_NUM_RXCHAN, 0);
+	if (error) {
+		device_printf(sc->sc_dev, "failed to allocate DMA engine: %d\n",
+		    error);
+		goto fail;
+	}
 
 	/*
 	 * Determine the DMA engine type

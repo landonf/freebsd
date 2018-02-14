@@ -129,6 +129,10 @@ dma_attach(osl_t *osh, const char *name, si_t *sih,
 		return (NULL);
 	}
 
+	/* XXX TODO */
+	di->dma = NULL;
+	di->dma_chan = NULL;
+
 	bzero(di, sizeof(dma_info_t));
 
 	di->msg_level = msg_level ? msg_level : &default_msg_level;

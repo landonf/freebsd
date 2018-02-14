@@ -122,6 +122,11 @@
 #define	BWN_REV3PLUS_TSF_HIGH		0x184	/* core rev >= 3 only */
 #define	BWN_TSF_CFP_START		0x18c
 
+/* DMA register block */
+#define	BWN_DMA_BASE			0x200
+#define	BWN_DMA_NUM_RXCHAN		1
+#define	BWN_DMA_NUM_TXCHAN		5
+
 /* 32-bit DMA */
 #define	BWN_DMA32_BASE0			0x200
 #define	BWN_DMA32_BASE1			0x220
