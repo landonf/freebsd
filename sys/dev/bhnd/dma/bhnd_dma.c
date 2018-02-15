@@ -31,6 +31,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/types.h>
 #include <sys/endian.h>
 #include <sys/malloc.h>
+#include <sys/kernel.h>
 
 #include <dev/bhnd/bhnd.h>
 #include <dev/bhnd/bhnd_ids.h> /* XXX REMOVE: used for hard-coded DMA translation constants */
@@ -42,6 +43,12 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_dma64var.h"
 
 #include "siutils.h"
+
+MALLOC_DEFINE(M_BHND_DMA, "bhnd_dma", "bhnd DMA engine state");
+
+/**********************************
+ * XXX LEGACY DEFINITIONS FOLLOW *
+ **********************************/
 
 /*
  * Generic Broadcom Home Networking Division (HND) DMA engine SW interface
@@ -115,7 +122,7 @@ _dma_detach(dma_info_t *di)
 }
 
 hnddma_t *
-dma_attach(osl_t *osh, const char *name, si_t *sih,
+dma_attach(bhnd_dma *dma, bhnd_dma_chan *chan, const char *name,
 	volatile void *dmaregstx, volatile void *dmaregsrx,
 	u_int ntxd, u_int nrxd, u_int rxbufsize, int rxextheadroom, u_int nrxpost, u_int rxoffset,
 	u_int *msg_level)
@@ -125,15 +132,14 @@ dma_attach(osl_t *osh, const char *name, si_t *sih,
 	uint32_t mask;
 
 	/* allocate private info structure */
-	if ((di = MALLOC(osh, sizeof (dma_info_t))) == NULL) {
-		return (NULL);
-	}
+	di = malloc(sizeof(dma_info_t), M_BHND_DMA, M_ZERO | M_WAITOK);
 
 	/* XXX TODO */
-	di->dma = NULL;
-	di->dma_chan = NULL;
+	di->osh = NULL;
+	di->sih = NULL;
 
-	bzero(di, sizeof(dma_info_t));
+	di->dma = dma;
+	di->dma_chan = chan;
 
 	di->msg_level = msg_level ? msg_level : &default_msg_level;
 
@@ -141,10 +147,7 @@ dma_attach(osl_t *osh, const char *name, si_t *sih,
 	strncpy(di->name, name, MAXNAMEL);
 	di->name[MAXNAMEL-1] = '\0';
 
-	/* old chips w/o sb is no longer supported */
-	ASSERT(sih != NULL);
-
-	di->dma64 = ((si_core_sflags(sih, 0, 0) & BHND_IOST_DMA64) == BHND_IOST_DMA64);
+	di->dma64 = (dma->type == BHND_DMA64);
 
 	/* check arguments */
 	ASSERT(powerof2(ntxd));
@@ -185,15 +188,6 @@ dma_attach(osl_t *osh, const char *name, si_t *sih,
 	 * supports it.
 	 */
 	di->hnddma.di_fn->ctrlflags(&di->hnddma, DMA_CTRL_ROC | DMA_CTRL_PEN, 0);
-
-	BHND_DMA_TRACE(di, "%s: osh %p flags %#x ntxd %d nrxd %d rxbufsize %d "
-	           "rxextheadroom %d nrxpost %d rxoffset %d dmaregstx %p dmaregsrx %p",
-	           (di->dma64 ? "DMA64" : "DMA32"),
-	           osh, di->hnddma.dmactrlflags, ntxd, nrxd,
-	           rxbufsize, rxextheadroom, nrxpost, rxoffset, dmaregstx, dmaregsrx);
-
-	di->osh = osh;
-	di->sih = sih;
 
 	/* save tunables */
 	di->ntxd = (uint16_t)ntxd;
@@ -294,6 +288,8 @@ dma_attach(osl_t *osh, const char *name, si_t *sih,
 		}
 	}
 
+	/* XXX TODO fetch DMA translation */
+#if 0
 	/*
 	 * figure out the DMA physical address offset for dd and data
 	 *     PCI/PCIE: they map silicon backplace address to zero based memory, need offset
@@ -328,18 +324,18 @@ dma_attach(osl_t *osh, const char *name, si_t *sih,
 		di->dataoffsetlow =  di->ddoffsetlow;
 		di->dataoffsethigh =  di->ddoffsethigh;
 	}
+#endif
 
 #if defined(__mips__) && defined(IL_BIGENDIAN)
 	di->dataoffsetlow = di->dataoffsetlow + SI_SDRAM_SWAPPED;
 #endif /* defined(__mips__) && defined(IL_BIGENDIAN) */
-	/* WAR64450 : DMACtl.Addr ext fields are not supported in SDIOD core. */
-	if ((si_coreid(sih) == BHND_COREID_SDIOD) && ((si_corerev(sih) > 0) && (si_corerev(sih) <= 2)))
-		di->addrext = 0;
-	else if ((si_coreid(sih) == BHND_COREID_I2S) &&
-	         ((si_corerev(sih) == 0) || (si_corerev(sih) == 1)))
-		di->addrext = 0;
-	else
+
+	/* Does the DMA engine support DmaExtendedAddrChanges? */
+	if (di->dma->quirks & BHND_DMA_QUIRK_BROKEN_ADDREXT) {
+		di->addrext = false;
+	} else {
 		di->addrext = _dma_isaddrext(di);
+	}
 
 	/* does the descriptors need to be aligned and if yes, on 4K/8K or not */
 	di->aligndesc_4k = _dma_descriptor_align(di);
@@ -1287,6 +1283,8 @@ dma_ringalloc(osl_t *osh, uint32_t boundary, u_int size, uint16_t *alignbits, u_
 	return va;
 }
 
+// XXX TODO
+#if 0
 u_int
 dma_addrwidth(si_t *sih, void *dmaregs)
 {
@@ -1327,6 +1325,7 @@ dma_addrwidth(si_t *sih, void *dmaregs)
 	/* Fallthru */
 	return (BHND_DMA_ADDR_30BIT);
 }
+#endif
 
 int
 _dma_pktpool_set(dma_info_t *di, pktpool_t *pool)
@@ -1340,6 +1339,8 @@ _dma_pktpool_set(dma_info_t *di, pktpool_t *pool)
 bool
 _dma_rxtx_error(dma_info_t *di, bool istx)
 {
+	// XXX TODO: seems to be entirely unused
+#if 0
 	uint32_t status1 = 0;
 	uint16_t curr;
 
@@ -1383,6 +1384,9 @@ _dma_rxtx_error(dma_info_t *di, bool istx)
 	} else {
 		return FALSE;
 	}
+#else
+	panic("unimplemented");
+#endif
 }
 
 void

@@ -55,14 +55,6 @@ typedef struct si_pub si_t;
 typedef const struct si_pub si_t;
 #endif
 
-extern uint32_t si_core_sflags(si_t *sih, uint32_t mask, uint32_t val);
-extern u_int si_corerev(si_t *sih);
-extern u_int si_coreid(si_t *sih);
-
-extern void *si_osh(si_t *sih);
-bool si_backplane64(si_t *sih);
-
-
 /* Bus types */
 #define	SI_BUS			0	/* SOC Interconnect */
 #define	PCI_BUS			1	/* PCI target */

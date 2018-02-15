@@ -50,6 +50,10 @@ enum bhnd_dma_quirk {
 	/**
 	 * DMA engine support for DmaExtendedAddrChanges is broken and should
 	 * not be used.
+	 * 
+	 * Cores known to be affected:
+	 *	- SDIOD (rev <= 2)
+	 *	- I2S (rev <= 1)
 	 */
 	BHND_DMA_QUIRK_BROKEN_ADDREXT	= (1<<0),
 };

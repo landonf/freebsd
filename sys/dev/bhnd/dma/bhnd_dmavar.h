@@ -30,12 +30,15 @@
 #define _BHND_DMA_BHND_DMAVAR_H_
 
 #include <sys/types.h>
+#include <sys/malloc.h>
 #include <sys/queue.h>
 #include <sys/sbuf.h>
 
 #include <dev/bhnd/bhnd_debug.h>
 
 #include "bhnd_dma.h"
+
+MALLOC_DECLARE(M_BHND_DMA);
 
 LIST_HEAD(bhnd_dma_chan_list,		bhnd_dma_chan);
 typedef struct bhnd_dma_chan_list	bhnd_dma_chan_list;
@@ -52,24 +55,27 @@ typedef enum {
  * BHND DMA engine.
  */
 struct bhnd_dma {
-	device_t	owner;		/**< parent device */
-	uint32_t	quirks;		/**< DMA engine quirks (see bhnd_dma_quirk) */
-	bhnd_dma_type	engine_type;
-	u_int		addr_width;	/**< supported address width */
+	device_t			owner;		/**< parent device */
+	bhnd_dma_type			type;		/**< DMA engine type (32bit or 64bit) */
+	uint32_t			quirks;		/**< DMA engine quirks (see bhnd_dma_quirk) */
 
-	bhnd_dma_chan	*tx_chan;	/**< DMA transmit channels */
-	size_t		 num_tx_chan;	/**< transmit channel count */
+	u_int				addr_width;	/**< supported address width */
+	bus_dma_tag_t			dmat;		/**< dma tag */
+	struct bhnd_dma_translation	translation;	/**< dma translation */
 
-	bhnd_dma_chan	*rx_chan;	/**< DMA receive channels */
-	size_t		 num_rx_chan;	/**< receive channel count */
+	bhnd_dma_chan			*tx_chan;	/**< DMA transmit channels */
+	size_t				 num_tx_chan;	/**< transmit channel count */
+
+	bhnd_dma_chan			*rx_chan;	/**< DMA receive channels */
+	size_t				 num_rx_chan;	/**< receive channel count */
 };
 
 /**
  * BHND DMA channel.
  */
 struct bhnd_dma_chan {
-	u_int	ndesc;		/**< descriptor count */
-	u_int	max_ndesc;	/**< maximum descriptor count */
+	u_int	ndesc;			/**< descriptor count */
+	u_int	max_ndesc;		/**< maximum descriptor count */
 };
 
 /* XXX TODO: Use device_printf() variants? */
@@ -401,8 +407,8 @@ typedef struct dma_info {
 
 
 /* TODO: Replace with our own attach */
-extern hnddma_t * dma_attach(osl_t *osh, const char *name, si_t *sih,
-	volatile void *dmaregstx, volatile void *dmaregsrx,
+extern hnddma_t * dma_attach(bhnd_dma *dma, bhnd_dma_chan *chan,
+	const char *name, volatile void *dmaregstx, volatile void *dmaregsrx,
 	u_int ntxd, u_int nrxd, u_int rxbufsize, int rxextheadroom, u_int nrxpost,
 	u_int rxoffset, u_int *msg_level);
 
@@ -462,13 +468,6 @@ extern hnddma_t * dma_attach(osl_t *osh, const char *name, si_t *sih,
 #ifdef BHND_DMA64
 extern const di_fcn_t dma64proc;
 #endif /* BHND_DMA64 */
-
-/* return addresswidth allowed
- * This needs to be done after SB attach but before dma attach.
- * SB attach provides ability to probe backplane and dma core capabilities
- * This info is needed by DMA_ALLOC_CONSISTENT in dma attach
- */
-extern u_int dma_addrwidth(si_t *sih, void *dmaregs);
 
 /* pio helpers */
 extern void dma_txpioloopback(osl_t *osh, dma32regs_t *);
