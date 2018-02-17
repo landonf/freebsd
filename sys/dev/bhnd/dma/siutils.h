@@ -170,7 +170,7 @@ typedef struct osl_dmainfo osldma_t;
 #define	PKTSETNEXT(_osh, _pkt, _next)	do {} while (0)
 #define	PKTNEXT(_osh, _pkt)		(NULL)
 #define	PKTGET(_osh, _len, _send)	(NULL)
-#define	PKTPULL(_osh, _pkt, _bytes)	(NULL)
+#define	PKTPULL(_osh, _pkt, _bytes)
 
 #define R_REG(osh, r) (\
 	sizeof(*(r)) == sizeof(uint8_t) ? osl_readb((osh), (volatile uint8_t*)(r)) : \
