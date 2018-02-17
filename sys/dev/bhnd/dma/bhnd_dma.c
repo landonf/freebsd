@@ -32,11 +32,217 @@ __FBSDID("$FreeBSD$");
 #include <sys/endian.h>
 #include <sys/malloc.h>
 #include <sys/kernel.h>
+#include <sys/rman.h>
+#include <sys/systm.h>
 
 #include <dev/bhnd/bhnd.h>
+#include <dev/bhnd/bhnd_debug.h>
 #include <dev/bhnd/bhnd_ids.h> /* XXX REMOVE: used for hard-coded DMA translation constants */
 
 #include "bhnd_dmavar.h"
+#include "bhnd_dmareg.h"
+#include "bhnd_dma32reg.h"
+#include "bhnd_dma64reg.h"
+
+MALLOC_DEFINE(M_BHND_DMA, "bhnd_dma", "bhnd DMA engine state");
+
+/**
+ * Allocate, initialize, and return a new DMA controller instance, mapping
+ * the DMA register block from @p regs at @p offset.
+ * 
+ * On success, the caller is responsible for releasing the DMA controller
+ * instance via bhnd_dma_free().
+ * 
+ * @param[out]	dma	On success, a pointer to the newly allocated DMA
+ *			controller instance.
+ * @param	owner	The bhnd(4) device containing the DMA registers mapped
+ *			by @p regs.
+ * @param	regs	The active/mapped SYS_RES_MEMORY resource to be used
+ *			when accessing the DMA controller registers. This
+ *			resource must remain active and mapped for the lifetime
+ *			of the returned DMA controller instance.
+ * @param	offset	The offset of the DMA register block within @p regs.
+ * @param	num_txc	The number of TX channels mapped at @p offset.
+ * @param	num_rxc	The number of RX channels mapped at @p offset.
+ * @param	quirks	DMA controller quirks (see bhnd_dma_quirk).
+ * 
+ * @retval 0		success
+ * @retval ENODEV	if the agent/config space for @p child is unavailable.
+ * @retval EINVAL	if @p num_txc and @p num_rxc are both 0.
+ * @retval ENXIO	if @p offset exceeds the size of @p regs.
+ * @retval ENXIO	if @p num_txc or @p num_rxc mapped at @p offset would
+ *			exceed the total size of @p regs.
+ * @retval non-zero	if initializing the DMA controller instance otherwise
+ *			fails, a regular unix error code will be returned.
+ */
+int
+bhnd_dma_new(bhnd_dma **dma, device_t owner, struct resource *regs,
+    bus_size_t offset, size_t num_txc, size_t num_rxc, uint32_t quirks)
+{
+	bhnd_dma		*d;
+	bhnd_dma_regfmt		 regfmt;
+	bus_space_tag_t	 	 bst;
+	bus_space_handle_t	 bsh;
+	bus_size_t		 regs_size, cpair_size;
+	bus_size_t		 probe_offset;
+	rman_res_t		 max_cpair, r_avail_size, r_total_size;
+	size_t			 num_cpair;
+	uint16_t		 iost;
+	int			 error;
+
+	KASSERT(rman_get_flags(regs) & RF_ACTIVE, ("resource must be active"));
+	KASSERT(!(rman_get_flags(regs) & RF_UNMAPPED),
+	    ("resource must be mapped"));
+
+	/* Determine the channel pair count; there must be at least one RX or
+	 * TX channel */
+	if ((num_cpair = MAX(num_txc, num_rxc)) == 0)
+		return (EINVAL);
+
+	/* Determine the core's DMA register layout and fetch format-specific
+	 * constants */
+	if ((error = bhnd_read_iost(owner, &iost))) {
+		BHND_ERROR_DEV(owner, "failed to read I/O status flags: %d",
+		    error);
+		return (error);
+	}
+
+	if (iost & BHND_IOST_DMA64) {
+		regfmt = BHND_DMA_REGFMT64;
+	} else {
+		regfmt = BHND_DMA_REGFMT32;
+	}
+
+	cpair_size = BHND_DMA_REG(regfmt, CHAN_PAIR_SIZE);
+
+	/*
+	 * Determine the maximum number of DMA channel pairs that can be mapped
+	 * at the given resource offset, and validate our DMA channel pair
+	 * count.
+	 * 
+	 * We'll be coercing this size to a bus_size_t, so limit to
+	 * BUS_SPACE_MAXSIZE
+	 */
+	r_total_size = MIN(BUS_SPACE_MAXSIZE, rman_get_size(regs));
+	if (offset > r_total_size) {
+		BHND_ERROR_DEV(owner, "invalid register offset %#jx for "
+		    "resource of length %#jx", (uintmax_t)offset,
+		    (uintmax_t)r_total_size);
+		return (EINVAL);
+	}
+
+	r_avail_size = r_total_size - offset;
+
+	/* Validate the DMA channel pair count */
+	max_cpair = MIN(SIZE_MAX, r_avail_size / cpair_size);
+	if (num_cpair > max_cpair) {
+		BHND_ERROR_DEV(owner, "invalid channel count %zu for resource "
+		    "of length %#jx", num_cpair,  (uintmax_t)r_total_size);
+		return (EINVAL);
+	}
+
+	/* Determine the total size of the DMA register block. This cannot
+	 * overflow if num_cpair < max_cpair */
+	regs_size = num_cpair * BHND_DMA_REG(regfmt, CHAN_PAIR_SIZE);
+	KASSERT(regs_size > 0, ("0 length register block with %zu channel "
+	    "pairs and %#jx channel pair size", num_cpair,
+	    (uintmax_t)cpair_size));
+
+	/* Request a subregion mapping our DMA register block */
+	bst = rman_get_bustag(regs);
+	error = bus_space_subregion(bst, rman_get_bushandle(regs), offset,
+	    regs_size, &bsh);
+	if (error) {
+		BHND_ERROR_DEV(owner, "error requesting DMA register "
+		    "subregion: %d", error);
+		return (error);
+	}
+
+	/* Find a valid channel to be used while probing the DMA controller */
+	KASSERT(num_txc > 0 || num_rxc > 0, ("no channels"));
+	if (num_txc > 0) {
+		probe_offset = BHND_DMA_CHAN_OFFSET(regfmt, BHND_DMA_TX, 0);
+	} else if (num_rxc > 0) {
+		probe_offset = BHND_DMA_CHAN_OFFSET(regfmt, BHND_DMA_RX, 0);
+	}
+
+	/* Do we have addrext support? */
+	if (!(quirks & BHND_DMA_QUIRK_BROKEN_ADDREXT)) {
+		bus_size_t	ctrl_reg;
+		uint32_t	ae, ae_mask;
+
+		ae_mask = BHND_DMA_REG(regfmt, CTRL_AE_MASK);
+		ctrl_reg = probe_offset + BHND_DMA_REG(regfmt, CTRL);
+		bus_space_write_4(bst, bsh, ctrl_reg, ae_mask);
+		ae = bus_space_read_4(bst, bsh, ctrl_reg);
+
+		if (ae != ae_mask)
+			quirks |= BHND_DMA_QUIRK_BROKEN_ADDREXT;
+	}
+
+	/* Allocate and populate our DMA controller instance */
+	d = malloc(sizeof(*d), M_BHND_DMA, M_ZERO | M_WAITOK);
+	d->owner = owner;
+	d->regfmt = regfmt;
+	d->quirks = quirks;
+
+	d->regs_bst = bst;
+	d->regs_bsh = bsh;
+	d->regs_size = regs_size;
+
+	d->num_tx_chan = num_txc;
+	d->num_rx_chan = num_rxc;
+
+	if (d->quirks & BHND_DMA_QUIRK_BROKEN_ADDREXT) {
+		d->addrwidth = BHND_DMA_REG(d->regfmt, ADDRWIDTH_BASE);
+	} else {
+		d->addrwidth = BHND_DMA_REG(d->regfmt, ADDRWIDTH_EXT);
+	}
+
+	if (d->num_tx_chan > 0) {
+		d->tx_chan = malloc(sizeof(*d->tx_chan) * d->num_tx_chan,
+		    M_BHND_DMA, M_ZERO | M_WAITOK);
+	} else {
+		d->tx_chan = NULL;
+	}
+
+	if (d->num_rx_chan > 0) {
+		d->rx_chan = malloc(sizeof(*d->rx_chan) * d->num_rx_chan,
+		    M_BHND_DMA, M_ZERO | M_WAITOK);
+	} else {
+		d->rx_chan = NULL;
+	}
+
+	*dma = d;
+	return (0);
+}
+
+/**
+ * Free a DMA controller instance and all associated resources.
+ * 
+ * @param dma The controller to be deallocated.
+ */
+void
+bhnd_dma_free(struct bhnd_dma *dma)
+{
+	for (size_t i = 0; i < dma->num_tx_chan; i++) {
+		// TODO: detect in-use channel?
+		// TODO: free channel data
+	}
+	free(dma->tx_chan, M_BHND_DMA);
+
+	for (size_t i = 0; i < dma->num_rx_chan; i++) {
+		// TODO: detect in-use channel?
+		// TODO: free channel data
+	}
+	free(dma->rx_chan, M_BHND_DMA);
+
+	free(dma, M_BHND_DMA);
+}
+
+/*************************************
+ * XXX LEGACY OSL DEFINITIONS FOLLOW *
+ *************************************/
 
 /* XXX TODO: Hide behind our DMA callbacks */
 #include "bhnd_dma32var.h"
@@ -44,10 +250,60 @@ __FBSDID("$FreeBSD$");
 
 #include "siutils.h"
 
-MALLOC_DEFINE(M_BHND_DMA, "bhnd_dma", "bhnd DMA engine state");
+uint8_t
+osl_readb(osl_t *osh, volatile uint8_t *r)
+{
+	panic("unimplemented");
+}
+
+uint16_t
+osl_readw(osl_t *osh, volatile uint16_t *r)
+{
+	panic("unimplemented");
+}
+
+uint32_t
+osl_readl(osl_t *osh, volatile uint32_t *r)
+{
+	panic("unimplemented");
+}
+void
+osl_writeb(osl_t *osh, volatile uint8_t *r, uint8_t v)
+{
+	panic("unimplemented");
+}
+void
+osl_writew(osl_t *osh, volatile uint16_t *r, uint16_t v)
+{
+	panic("unimplemented");
+}
+void
+osl_writel(osl_t *osh, volatile uint32_t *r, uint32_t v)
+{
+	panic("unimplemented");
+}
+
+u_int
+osl_dma_consistent_align(void)
+{
+	panic("unimplemented");
+}
+
+void *
+osl_dma_alloc_consistent(osl_t *osh, u_int size, uint16_t align, u_int *tot,
+    dmaaddr_t *pap)
+{
+	panic("unimplemented");
+}
+
+void
+osl_dma_free_consistent(osl_t *osh, void *va, u_int size, dmaaddr_t pa)
+{
+	panic("unimplemented");
+}
 
 /**********************************
- * XXX LEGACY DEFINITIONS FOLLOW *
+ * XXX LEGACY DMA DEFINITIONS FOLLOW *
  **********************************/
 
 /*
@@ -147,7 +403,7 @@ dma_attach(bhnd_dma *dma, bhnd_dma_chan *chan, const char *name,
 	strncpy(di->name, name, MAXNAMEL);
 	di->name[MAXNAMEL-1] = '\0';
 
-	di->dma64 = (dma->type == BHND_DMA64);
+	di->dma64 = (dma->regfmt == BHND_DMA_REGFMT64);
 
 	/* check arguments */
 	ASSERT(powerof2(ntxd));

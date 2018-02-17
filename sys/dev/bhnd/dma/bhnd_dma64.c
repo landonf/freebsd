@@ -49,8 +49,6 @@ __FBSDID("$FreeBSD$");
 
 
 /* Prototypes for 64-bit routines */
-extern const di_fcn_t dma64proc;
-
 static bool dma64_txreset(dma_info_t *di);
 static bool dma64_rxreset(dma_info_t *di);
 static bool dma64_txsuspendedidle(dma_info_t *di);

@@ -38,6 +38,8 @@
 
 #include <machine/bus.h>
 
+#include <dev/bhnd/bhnd.h>
+
 /* forward declarations */
 typedef struct bhnd_dma			bhnd_dma;
 typedef struct bhnd_dma_chan		bhnd_dma_chan;
@@ -66,10 +68,9 @@ typedef enum bhnd_dma_direction {
 	BHND_DMA_RX	= 1,	/**< receive */
 } bhnd_dma_direction;
 
-
 int		 bhnd_dma_new(bhnd_dma **dma, device_t owner,
-		     struct resource *regs, bus_size_t offset,
-		     u_int num_txc, u_int num_rxc, uint32_t quirks);
+		     struct resource *regs, bus_size_t offset, size_t num_txc,
+		     size_t num_rxc, uint32_t quirks);
 
 void		 bhnd_dma_free(struct bhnd_dma *dma);
 

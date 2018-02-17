@@ -1330,10 +1330,12 @@ bwn_attach_core(struct bwn_mac *mac)
 	error = bhnd_dma_new(&dma, sc->sc_dev, sc->sc_mem_res, BWN_DMA_BASE,
 	    BWN_DMA_NUM_TXCHAN, BWN_DMA_NUM_RXCHAN, 0);
 	if (error) {
-		device_printf(sc->sc_dev, "failed to allocate DMA engine: %d\n",
+		device_printf(sc->sc_dev, "failed to allocate DMA state: %d\n",
 		    error);
 		goto fail;
 	}
+
+	bhnd_dma_free(dma);
 
 	/*
 	 * Determine the DMA engine type

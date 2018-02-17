@@ -44,24 +44,25 @@ LIST_HEAD(bhnd_dma_chan_list,		bhnd_dma_chan);
 typedef struct bhnd_dma_chan_list	bhnd_dma_chan_list;
 
 /**
- * BHND DMA engine type.
+ * BHND DMA register layout.
  */
 typedef enum {
-	BHMD_DMA32	= 0,	/**< 32-bit DMA engine */
-	BHND_DMA64	= 1,	/**< 64-bit DMA engine */
-} bhnd_dma_type;
+	BHND_DMA_REGFMT32	= 0,	/**< 32-bit register layout */
+	BHND_DMA_REGFMT64	= 1,	/**< 64-bit register layout */
+} bhnd_dma_regfmt;
 
 /**
  * BHND DMA engine.
  */
 struct bhnd_dma {
 	device_t			owner;		/**< parent device */
-	bhnd_dma_type			type;		/**< DMA engine type (32bit or 64bit) */
+	bhnd_dma_regfmt			regfmt;		/**< DMA engine register layout */
 	uint32_t			quirks;		/**< DMA engine quirks (see bhnd_dma_quirk) */
-
-	u_int				addr_width;	/**< supported address width */
-	bus_dma_tag_t			dmat;		/**< dma tag */
-	struct bhnd_dma_translation	translation;	/**< dma translation */
+	u_int				addrwidth;	/**< supported address width */
+	
+	bus_space_tag_t			regs_bst;	/**< DMA register block bus tag */
+	bus_space_handle_t		regs_bsh;	/**< DMA register block bus handle */
+	bus_size_t			regs_size;	/**< DMA register block size */
 
 	bhnd_dma_chan			*tx_chan;	/**< DMA transmit channels */
 	size_t				 num_tx_chan;	/**< transmit channel count */
@@ -79,7 +80,7 @@ struct bhnd_dma_chan {
 };
 
 /* XXX TODO: Use device_printf() variants? */
-#define	_BHND_DMA_PRINTF(_level, _di, _fmt, ...) do {			\
+#define	_BHND_DMA_CHAN_PRINTF(_level, _di, _fmt, ...) do {		\
 	if (*(_di)->msg_level >= _level) {				\
 		printf("%s" _fmt "\n", (_di)->name, ## __VA_ARGS__);	\
 	}								\
@@ -89,17 +90,18 @@ struct bhnd_dma_chan {
 	BHND_DMA_TRACE(_di, "[enter]")
 
 #define	BHND_DMA_TRACE(_di, _fmt, ...)	\
-	_BHND_DMA_PRINTF(BHND_TRACE_LEVEL, (_di), "/%s(): " _fmt,	\
+	_BHND_DMA_CHAN_PRINTF(BHND_TRACE_LEVEL, (_di), "/%s(): " _fmt,	\
 	    __FUNCTION__, ## __VA_ARGS__)
 	
 #define	BHND_DMA_DEBUG(_di, _fmt, ...)	\
-	_BHND_DMA_PRINTF(BHND_DEBUG_LEVEL, (_di), ": " _fmt, ## __VA_ARGS__)
+	_BHND_DMA_CHAN_PRINTF(BHND_DEBUG_LEVEL, (_di), ": " _fmt,	\
+	    ## __VA_ARGS__)
 
 #define	BHND_DMA_ERROR(_di, _fmt, ...)	\
-	_BHND_DMA_PRINTF(BHND_ERROR_LEVEL, (_di), ": " _fmt, ## __VA_ARGS__)
+	_BHND_DMA_CHAN_PRINTF(BHND_ERROR_LEVEL, (_di), ": " _fmt, ## __VA_ARGS__)
 
 #define	BHND_DMA_WARN(_di, _fmt, ...)	\
-	_BHND_DMA_PRINTF(BHND_WARN_LEVEL, (_di), ": " _fmt, ## __VA_ARGS__)
+	_BHND_DMA_CHAN_PRINTF(BHND_WARN_LEVEL, (_di), ": " _fmt, ## __VA_ARGS__)
 
 
 /**********************************
