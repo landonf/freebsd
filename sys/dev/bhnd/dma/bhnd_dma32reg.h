@@ -33,22 +33,22 @@
 #define	BHND_D32_ADDREXT_SHIFT	30
 #endif
 
-#define	BHND_D32_ADDRWIDTH_BASE	BHND_DMA_ADDR_30BIT		/**< address width of 32-bit DMA channel without addrext support */
-#define	BHND_D32_ADDRWIDTH_EXT	BHND_DMA_ADDR_32BIT		/**< address width of 32-bit DMA channel with addrext support */
+#define	BHND_D32_ADDRWIDTH_BASE	BHND_DMA_ADDR_30BIT	/**< address width of 32-bit DMA channel without addrext support */
+#define	BHND_D32_ADDRWIDTH_EXT	BHND_DMA_ADDR_32BIT	/**< address width of 32-bit DMA channel with addrext support */
 
-#define	BHND_D32_CHAN_SIZE	16				/**< size of single 32-bit DMA channel register block */
-#define	BHND_D32_CHAN_PAIR_SIZE	(BHND_D32_CHAN_SIZE * 2)	/**< size of a 32-bit DMA channel pair's register block */
+#define	BHND_D32_CHAN_SIZE	16			/**< size of single 32-bit DMA channel register block */
+#define	BHND_D32_CHAN_PAIR_SIZE	(BHND_D32_CHAN_SIZE*2)	/**< size of a 32-bit DMA channel pair's register block */
 
-#define	BHND_D32_TX_OFFSET	0				/**< TX offset within 32-bit channel pair */
-#define	BHND_D32_RX_OFFSET	BHND_D32_CHAN_SIZE		/**< RX offset within 32-bit channel pair */
+#define	BHND_D32_TX_OFFSET	0			/**< TX offset within 32-bit channel pair */
+#define	BHND_D32_RX_OFFSET	BHND_D32_CHAN_SIZE	/**< RX offset within 32-bit channel pair */
 
-#define	BHND_DIAG32_SIZE	16				/**< size of a single DMA diagnostic register block */
+#define	BHND_DIAG32_SIZE	16			/**< size of a single DMA diagnostic register block */
 
 /**
  * Register offset to the @p _num 32-bit channel pair.
  */
 #define	BHND_D32_CHAN_PAIR_OFFSET(_num)	\
-	(BHND_D32_CHAN_SIZE * (_num))
+	(BHND_D32_CHAN_PAIR_SIZE * (_num))
 
 /**
  * Register offset to the 32-bit channel with @p _dir and @p _num.

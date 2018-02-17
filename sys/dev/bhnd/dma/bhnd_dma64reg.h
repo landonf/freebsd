@@ -33,20 +33,20 @@
 #define	BHND_D64_ADDREXT_SHIFT	62
 #endif
 
-#define	BHND_D64_ADDRWIDTH_BASE	62				/**< address width of 64-bit DMA channel without addrext support */
-#define	BHND_D64_ADDRWIDTH_EXT	BHND_DMA_ADDR_64BIT		/**< address width of 64-bit DMA channel with addrext support */
+#define	BHND_D64_ADDRWIDTH_BASE	62			/**< address width of 64-bit DMA channel without addrext support */
+#define	BHND_D64_ADDRWIDTH_EXT	BHND_DMA_ADDR_64BIT	/**< address width of 64-bit DMA channel with addrext support */
 
-#define	BHND_D64_CHAN_SIZE	24				/**< size of single 64-bit DMA channel register block */
-#define	BHND_D64_CHAN_PAIR_SIZE	(BHND_D64_CHAN_SIZE * 2)	/**< size of a 64-bit DMA channel pair's register block */
+#define	BHND_D64_CHAN_SIZE	32			/**< size of single 64-bit DMA channel register block */
+#define	BHND_D64_CHAN_PAIR_SIZE	(BHND_D64_CHAN_SIZE*2)	/**< size of a 64-bit DMA channel pair register block */
 
-#define	BHND_D64_TX_OFFSET	0				/**< TX offset within 64-bit channel pair */
-#define	BHND_D64_RX_OFFSET	BHND_D64_CHAN_SIZE		/**< RX offset within 64-bit channel pair */
+#define	BHND_D64_TX_OFFSET	0			/**< TX offset within 64-bit channel pair */
+#define	BHND_D64_RX_OFFSET	BHND_D64_CHAN_SIZE	/**< RX offset within 64-bit channel pair */
 
 /**
  * Register offset to the @p _num 64-bit channel pair.
  */
 #define	BHND_D64_CHAN_PAIR_OFFSET(_num)	\
-	(BHND_D64_CHAN_SIZE * (_num))
+	(BHND_D64_CHAN_PAIR_SIZE * (_num))
 
 /**
  * Register offset to the 64-bit channel with @p _dir and @p _num.
