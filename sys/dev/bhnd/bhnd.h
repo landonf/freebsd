@@ -527,11 +527,6 @@ int				 bhnd_chipid_fixed_ncores(
 				     const struct bhnd_chipid *cid,
 				     uint16_t chipc_hwrev, uint8_t *ncores);
 
-int				 bhnd_read_chipid(device_t dev,
-				     struct resource_spec *rs,
-				     bus_size_t chipc_offset,
-				     struct bhnd_chipid *result);
-
 void				 bhnd_set_custom_core_desc(device_t dev,
 				     const char *name);
 void				 bhnd_set_default_core_desc(device_t dev);
