@@ -107,6 +107,8 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_param.h>
 #include <vm/vm_map.h>
 #include <vm/vm_pager.h>
+#include <vm/vm_phys.h>
+#include <vm/vm_pagequeue.h>
 #include <vm/uma.h>
 
 #include <machine/_inttypes.h>
@@ -501,12 +503,12 @@ tlb_miss_lock(void)
 		if (pc != pcpup) {
 
 			CTR3(KTR_PMAP, "%s: tlb miss LOCK of CPU=%d, "
-			    "tlb_lock=%p", __func__, pc->pc_cpuid, pc->pc_booke_tlb_lock);
+			    "tlb_lock=%p", __func__, pc->pc_cpuid, pc->pc_booke.tlb_lock);
 
 			KASSERT((pc->pc_cpuid != PCPU_GET(cpuid)),
 			    ("tlb_miss_lock: tried to lock self"));
 
-			tlb_lock(pc->pc_booke_tlb_lock);
+			tlb_lock(pc->pc_booke.tlb_lock);
 
 			CTR1(KTR_PMAP, "%s: locked", __func__);
 		}
@@ -528,7 +530,7 @@ tlb_miss_unlock(void)
 			CTR2(KTR_PMAP, "%s: tlb miss UNLOCK of CPU=%d",
 			    __func__, pc->pc_cpuid);
 
-			tlb_unlock(pc->pc_booke_tlb_lock);
+			tlb_unlock(pc->pc_booke.tlb_lock);
 
 			CTR1(KTR_PMAP, "%s: unlocked", __func__);
 		}
@@ -681,7 +683,7 @@ pdir_free(mmu_t mmu, pmap_t pmap, unsigned int pp2d_idx)
 		pa = pte_vatopa(mmu, kernel_pmap, va);
 		m = PHYS_TO_VM_PAGE(pa);
 		vm_page_free_zero(m);
-		atomic_subtract_int(&vm_cnt.v_wire_count, 1);
+		vm_wire_sub(1);
 		pmap_kremove(va);
 	}
 
@@ -786,10 +788,10 @@ ptbl_alloc(mmu_t mmu, pmap_t pmap, pte_t ** pdir, unsigned int pdir_idx,
 				ptbl_free_pmap_ptbl(pmap, ptbl);
 				for (j = 0; j < i; j++)
 					vm_page_free(mtbl[j]);
-				atomic_subtract_int(&vm_cnt.v_wire_count, i);
+				vm_wire_sub(i);
 				return (NULL);
 			}
-			VM_WAIT;
+			vm_wait(NULL);
 			rw_wlock(&pvh_global_lock);
 			PMAP_LOCK(pmap);
 		}
@@ -828,7 +830,7 @@ ptbl_free(mmu_t mmu, pmap_t pmap, pte_t ** pdir, unsigned int pdir_idx)
 		pa = pte_vatopa(mmu, kernel_pmap, va);
 		m = PHYS_TO_VM_PAGE(pa);
 		vm_page_free_zero(m);
-		atomic_subtract_int(&vm_cnt.v_wire_count, 1);
+		vm_wire_sub(1);
 		pmap_kremove(va);
 	}
 
@@ -1030,10 +1032,10 @@ ptbl_alloc(mmu_t mmu, pmap_t pmap, unsigned int pdir_idx, boolean_t nosleep)
 				ptbl_free_pmap_ptbl(pmap, ptbl);
 				for (j = 0; j < i; j++)
 					vm_page_free(mtbl[j]);
-				atomic_subtract_int(&vm_cnt.v_wire_count, i);
+				vm_wire_sub(i);
 				return (NULL);
 			}
-			VM_WAIT;
+			vm_wait(NULL);
 			rw_wlock(&pvh_global_lock);
 			PMAP_LOCK(pmap);
 		}
@@ -1091,7 +1093,7 @@ ptbl_free(mmu_t mmu, pmap_t pmap, unsigned int pdir_idx)
 		pa = pte_vatopa(mmu, kernel_pmap, va);
 		m = PHYS_TO_VM_PAGE(pa);
 		vm_page_free_zero(m);
-		atomic_subtract_int(&vm_cnt.v_wire_count, 1);
+		vm_wire_sub(1);
 		mmu_booke_kremove(mmu, va);
 	}
 
@@ -1346,7 +1348,7 @@ pdir_alloc(mmu_t mmu, pmap_t pmap, unsigned int pp2d_idx, bool nosleep)
 		req = VM_ALLOC_NOOBJ | VM_ALLOC_WIRED;
 		while ((m = vm_page_alloc(NULL, pidx, req)) == NULL) {
 			PMAP_UNLOCK(pmap);
-			VM_WAIT;
+			vm_wait(NULL);
 			PMAP_LOCK(pmap);
 		}
 		mtbl[i] = m;
@@ -3738,10 +3740,10 @@ tid_alloc(pmap_t pmap)
 
 	thiscpu = PCPU_GET(cpuid);
 
-	tid = PCPU_GET(tid_next);
+	tid = PCPU_GET(booke.tid_next);
 	if (tid > TID_MAX)
 		tid = TID_MIN;
-	PCPU_SET(tid_next, tid + 1);
+	PCPU_SET(booke.tid_next, tid + 1);
 
 	/* If we are stealing TID then clear the relevant pmap's field */
 	if (tidbusy[thiscpu][tid] != NULL) {
@@ -3759,7 +3761,7 @@ tid_alloc(pmap_t pmap)
 	__asm __volatile("msync; isync");
 
 	CTR3(KTR_PMAP, "%s: e (%02d next = %02d)", __func__, tid,
-	    PCPU_GET(tid_next));
+	    PCPU_GET(booke.tid_next));
 
 	return (tid);
 }
