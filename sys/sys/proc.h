@@ -67,7 +67,7 @@
 #include <sys/ucontext.h>
 #include <sys/ucred.h>
 #include <sys/types.h>
-#include <sys/domainset.h>
+#include <sys/_domainset.h>
 
 #include <machine/proc.h>		/* Machine-dependent proc substruct. */
 #ifdef _KERNEL
@@ -381,7 +381,10 @@ do {									\
 } while (0)
 
 #define	TD_LOCKS_INC(td)	((td)->td_locks++)
-#define	TD_LOCKS_DEC(td)	((td)->td_locks--)
+#define	TD_LOCKS_DEC(td) do {						\
+	KASSERT((td)->td_locks > 0, ("thread %p owns no locks", (td)));	\
+	(td)->td_locks--;						\
+} while (0)
 #else
 #define	THREAD_LOCKPTR_ASSERT(td, lock)
 
