@@ -67,6 +67,7 @@
 #define	BHND_D32_PTR			0x08			/* last descriptor posted to chip */
 #define	BHND_D32_STATUS			0x0C			/* channel status */
 #define	BHND_D32_STATUS0		BHND_D32_STATUS		/* for compatibility with D64 */
+#define	BHND_D32_STATUS1		BHND_D32_STATUS		/* for compatibility with D64 */
 
 /* BHND_D32_CTRL (common) */
 #define	BHND_D32_CTRL_EN		0x00000001		/* transmit/receive enable */
@@ -139,6 +140,8 @@
 /* BHND_D32_STATUS (common, D64 compatibility) */
 #define	BHND_D32_STATUS0_CD_MASK	BHND_D32_STATUS_CD_MASK
 #define	BHND_D32_STATUS0_CD_SHIFT	BHND_D32_STATUS_CD_SHIFT
+#define	BHND_D32_STATUS1_AD_MASK	BHND_D32_STATUS_AD_MASK
+#define	BHND_D32_STATUS1_AD_SHIFT	BHND_D32_STATUS_AD_SHIFT
 
 /* Transmit BHND_D32_STATUS fields */
 #define	BHND_D32_XS_CD_MASK	BHND_D32_STATUS_CD_MASK

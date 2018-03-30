@@ -326,6 +326,47 @@ bhnd_dma_chan_init(bhnd_dma *dma, bhnd_dma_chan *chan,
 		return (error);
 	}
 
+	/* Determine the descriptor address mask, and the maximum descriptor
+	 * count */
+	switch (chan->dma->regfmt) {
+	case BHND_DMA_REGFMT64: {
+		uint32_t desc_mask;
+
+		/* Should be 0x1fff before 4360B0, 0xffff start from 4360B0 */
+		BHND_DMA_WRITE_4(chan, BHND_D64_ADDRLOW, UINT32_MAX);
+		desc_mask = BHND_DMA_READ_4(chan, BHND_D64_ADDRLOW);
+
+		if (desc_mask & 0xfff) {
+			desc_mask = BHND_DMA_READ_4(chan, BHND_D64_PTR);
+			desc_mask |= 0xf;
+		} else {
+			_Static_assert(BHND_D64_STATUS0_CD_MIN_MASK ==
+			    BHND_D64_STATUS1_AD_MIN_MASK, "current/active masks "
+			    "must be identical");
+
+			desc_mask = BHND_D64_STATUS0_CD_MIN_MASK;
+		}
+
+		chan->st0_cd_mask = desc_mask;
+		chan->st1_ad_mask = desc_mask;
+		chan->max_ndesc = (desc_mask + 1) / BHND_D64_DESC_SIZE;
+
+		break;
+	}
+
+	case BHND_DMA_REGFMT32:
+		chan->st0_cd_mask = BHND_D32_STATUS_CD_MASK;
+		chan->st1_ad_mask = BHND_D32_STATUS_AD_MASK;
+		chan->max_ndesc = ((BHND_D32_STATUS_CD_MASK >>
+		    BHND_D32_STATUS_CD_SHIFT) + 1) / BHND_D32_DESC_SIZE;
+
+		break;
+	}
+
+	BHND_DMA_CHAN_TRACE(chan, "st0_cd_mask: %#08x, st1_ad_mask: %#08x, "
+	    " max_ndesc: %u", chan->st0_cd_mask, chan->st1_ad_mask,
+	    chan->max_ndesc);
+
 	return (0);
 }
 
@@ -455,6 +496,19 @@ bhnd_dma_chan_disable(bhnd_dma_chan *chan)
 	sx_xunlock(&chan->dma->chan_lock);
 }
 
+/**
+ * Set the number of DMA descriptors to be used by @p chan.
+ * 
+ * @param chan	The DMA channel to modify.
+ * @param ndesc	The number of DMA descriptors to be allocated for @p chan.
+ * 
+ * @retval 0		success
+ * @retval EBUSY	if @p chan has already been enabled (see
+ *			bhnd_dma_chan_enable).
+ * @retval EINVAL	if @p ndesc is not a power of two.
+ * @retval EINVAL	if @p ndesc exceeds the maximum number of descriptors
+ *			supported by @p chan (see bhnd_dma_chan_get_max_ndesc).
+ */
 int
 bhnd_dma_chan_set_ndesc(bhnd_dma_chan *chan, u_int ndesc)
 {
@@ -465,18 +519,22 @@ bhnd_dma_chan_set_ndesc(bhnd_dma_chan *chan, u_int ndesc)
 		return (EBUSY);
 	}
 
-	if (!powerof2(ndesc)) {
+	if (!powerof2(ndesc) || ndesc > chan->max_ndesc) {
 		sx_xunlock(&chan->dma->chan_lock);
 		return (EINVAL);
 	}
 
-	/* TODO: check max_ndesc? */
 	chan->ndesc = ndesc;
 	sx_xunlock(&chan->dma->chan_lock);
 
 	return (0);
 }
 
+/**
+ * Return the number of DMA descriptors used by @p chan.
+ * 
+ * @param chan	The DMA channel to query.
+ */
 u_int
 bhnd_dma_chan_get_ndesc(bhnd_dma_chan *chan)
 {
@@ -489,6 +547,22 @@ bhnd_dma_chan_get_ndesc(bhnd_dma_chan *chan)
 	return (ndesc);
 }
 
+/**
+ * Return the maximum number of DMA descriptors supported by @p chan.
+ * 
+ * @param chan	The DMA channel to query.
+ */
+u_int
+bhnd_dma_chan_get_max_ndesc(bhnd_dma_chan *chan)
+{
+	u_int ndesc;
+
+	sx_slock(&chan->dma->chan_lock);
+	ndesc = chan->max_ndesc;
+	sx_sunlock(&chan->dma->chan_lock);
+
+	return (ndesc);
+}
 
 /*************************************
  * XXX LEGACY OSL DEFINITIONS FOLLOW *
@@ -706,42 +780,6 @@ dma_attach(bhnd_dma_chan *chan, const char *name, volatile void *dmaregstx,
 
 	di->nrxpost = (uint16_t)nrxpost;
 	di->rxoffset = (uint8_t)rxoffset;
-
-	/*
-	 * Determine the descriptor address mask.
-	 */
-	if (di->dma64) {
-		uint32_t desc_mask;
-
-		/* Should be 0x1fff before 4360B0, 0xffff start from 4360B0 */
-		BHND_DMA_WRITE_4(chan, BHND_D64_ADDRLOW, UINT32_MAX);
-		desc_mask = BHND_DMA_READ_4(chan, BHND_D64_ADDRLOW);
-
-		if (desc_mask & 0xfff) {
-			desc_mask = BHND_DMA_READ_4(chan, BHND_D64_PTR);
-			desc_mask |= 0xf;
-		} else {
-			_Static_assert(BHND_D64_STATUS0_CD_MIN_MASK ==
-			    BHND_D64_STATUS1_AD_MIN_MASK, "current/active masks "
-			    "must be identical");
-
-			desc_mask = BHND_D64_STATUS0_CD_MIN_MASK;
-		}
-
-		BHND_DMA_TRACE(di, "dma_mask: %#08x", desc_mask);
-
-		// XXX TODO: we need to do this earlier
-		if (desc_mask == BHND_D64_STATUS0_CD_MIN_MASK)
-			ASSERT(ntxd <= D64MAXDD);
-		else
-			ASSERT(ntxd <= D64MAXDD_LARGE);
-
-		di->status0_cd_mask = desc_mask;
-		di->status1_ad_mask = desc_mask;
-	} else {
-		di->status0_cd_mask = BHND_D32_STATUS_CD_MASK;
-		di->status1_ad_mask = BHND_D32_STATUS_AD_MASK;
-	}
 
 	/*
 	 * Get the default values (POR) of the burstlen. This can be overridden
@@ -1241,8 +1279,8 @@ next_frame:
 			/* Fetch the current descriptor address */
 			status = BHND_DMA_READ_4(chan,
 			    BHND_DMA_REG(chan, STATUS0));			
-			cdesc = (status & di->status0_cd_mask) - di->ptrbase;
-			cdesc &= (di->status0_cd_mask);
+			cdesc = (status & chan->st0_cd_mask) - di->ptrbase;
+			cdesc &= (chan->st0_cd_mask);
 
 			/* Map to a descriptor index */
 			cur = cdesc / BHND_DMA_REG(chan, DESC_SIZE);
@@ -1406,23 +1444,74 @@ _dma_rxfill(dma_info_t *di)
 	return ring_empty;
 }
 
+/**
+ * Fetch the index of the active DMA descriptor.
+ * 
+ * @param chan DMA channel to query.
+ */
+static inline uint16_t
+bhnd_dma_desc_active(bhnd_dma_chan *chan, dma_info_t *di)
+{
+	uint32_t status, addr;
+
+	status = BHND_DMA_READ_4(chan, BHND_DMA_REG(chan, STATUS1));
+	addr = (status & chan->st1_ad_mask) >>
+		    BHND_DMA_REG(chan, STATUS1_AD_SHIFT);
+	addr = (addr - di->ptrbase) & chan->st1_ad_mask;
+
+	return (addr / BHND_DMA_REG(chan, DESC_SIZE));
+}
+
+/**
+ * Fetch the index of the current DMA descriptor.
+ * 
+ * @param chan DMA channel to query.
+ */
+static inline uint16_t
+bhnd_dma_desc_current(bhnd_dma_chan *chan, dma_info_t *di)
+{
+	uint32_t status, addr;
+
+	status = BHND_DMA_READ_4(chan, BHND_DMA_REG(chan, STATUS0));
+	addr = (status & chan->st0_cd_mask) >>
+	    BHND_DMA_REG(chan, STATUS0_CD_SHIFT);
+	addr = (addr - di->ptrbase) & chan->st0_cd_mask;
+
+	return (addr / BHND_DMA_REG(chan, DESC_SIZE));
+}
+
+/**
+ * Fetch the index of the last DMA descriptor posted to the chip
+ * 
+ * @param chan DMA channel to query.
+ */
+static inline uint16_t
+bhnd_dma_desc_last(bhnd_dma_chan *chan, dma_info_t *di)
+{
+	uint32_t ptr, addr;
+
+	ptr = BHND_DMA_READ_4(chan, BHND_DMA_REG(chan, PTR));
+	addr = (ptr & chan->st0_cd_mask) >>
+	    BHND_DMA_REG(chan, STATUS0_CD_SHIFT);
+	addr = (addr - di->ptrbase) & chan->st0_cd_mask;
+
+	return (addr / BHND_DMA_REG(chan, DESC_SIZE));
+}
+
 /** like getnexttxp but no reclaim */
 void *
 _dma_peeknexttxp(dma_info_t *di)
 {
-	uint16_t end, i;
+	bhnd_dma_chan	*chan;
+	uint16_t	 end, i;
+
+	chan = di->chan;
 
 	if (di->ntxd == 0)
 		return (NULL);
 
-	if (di->dma64) {
-		end = (uint16_t)B2I(((R_REG(di->osh, &di->d64txregs->status0) & D64_XS0_CD_MASK) -
-		           di->ptrbase) & D64_XS0_CD_MASK, dma64dd_t);
-		di->xs0cd = end;
-	} else {
-		end = (uint16_t)B2I(R_REG(di->osh, &di->d32txregs->status) & XS_CD_MASK, dma32dd_t);
-		di->xs0cd = end;
-	}
+	end = bhnd_dma_desc_current(chan, di);
+	di->xs0cd = end;
 
 	for (i = di->txin; i != end; i = NEXTTXD(i))
 		if (di->txp[i])
@@ -1434,12 +1523,15 @@ _dma_peeknexttxp(dma_info_t *di)
 int
 _dma_peekntxp(dma_info_t *di, int *len, void *txps[], txd_range_t range)
 {
-	uint16_t start, end, i;
-	u_int act;
-	void *txp = NULL;
-	int k, len_max;
+	bhnd_dma_chan	*chan;
+	void		*txp = NULL;
+	uint16_t	 start, end, i;
+	u_int		 act;
+	int		 k, len_max;
 
 	BHND_DMA_TRACE_ENTRY(di);
+
+	chan = di->chan;
 
 	ASSERT(len);
 	ASSERT(txps);
@@ -1457,20 +1549,8 @@ _dma_peekntxp(dma_info_t *di, int *len, void *txps[], txd_range_t range)
 	if (range == HNDDMA_RANGE_ALL)
 		end = di->txout;
 	else {
-		if (di->dma64) {
-			end = B2I(((R_REG(di->osh, &di->d64txregs->status0) & D64_XS0_CD_MASK) -
-				di->ptrbase) & D64_XS0_CD_MASK, dma64dd_t);
-
-			act = (u_int)(R_REG(di->osh, &di->d64txregs->status1) & D64_XS1_AD_MASK);
-			act = (act - di->ptrbase) & D64_XS0_CD_MASK;
-			act = (u_int)B2I(act, dma64dd_t);
-		} else {
-			end = B2I(R_REG(di->osh, &di->d32txregs->status) & XS_CD_MASK, dma32dd_t);
-
-			act = (u_int)((R_REG(di->osh, &di->d32txregs->status) & XS_AD_MASK) >>
-				XS_AD_SHIFT);
-			act = (u_int)B2I(act, dma32dd_t);
-		}
+		end = bhnd_dma_desc_current(chan, di);
+		act = bhnd_dma_desc_active(chan, di);
 
 		di->xs0cd = end;
 		if (end != act)
@@ -1499,19 +1579,16 @@ _dma_peekntxp(dma_info_t *di, int *len, void *txps[], txd_range_t range)
 void *
 _dma_peeknextrxp(dma_info_t *di)
 {
-	uint16_t end, i;
+	bhnd_dma_chan	*chan;
+	uint16_t	 end, i;
+
+	chan = di->chan;
 
 	if (di->nrxd == 0)
 		return (NULL);
 
-	if (di->dma64) {
-		end = (uint16_t)B2I(((R_REG(di->osh, &di->d64rxregs->status0) & D64_RS0_CD_MASK) -
-			di->ptrbase) & D64_RS0_CD_MASK, dma64dd_t);
-		di->rs0cd = end;
-	} else {
-		end = (uint16_t)B2I(R_REG(di->osh, &di->d32rxregs->status) & RS_CD_MASK, dma32dd_t);
-		di->rs0cd = end;
-	}
+	end = bhnd_dma_desc_current(chan, di);
+	di->rs0cd = end;
 
 	for (i = di->rxin; i != end; i = NEXTRXD(i))
 		if (di->rxp[i])
@@ -1573,16 +1650,13 @@ _dma_txactive(dma_info_t *di)
 u_int
 _dma_txpending(dma_info_t *di)
 {
-	uint16_t curr;
+	bhnd_dma_chan	*chan;
+	uint16_t	 curr;
 
-	if (di->dma64) {
-		curr = B2I(((R_REG(di->osh, &di->d64txregs->status0) & D64_XS0_CD_MASK) -
-		           di->ptrbase) & D64_XS0_CD_MASK, dma64dd_t);
-		di->xs0cd = curr;
-	} else {
-		curr = B2I(R_REG(di->osh, &di->d32txregs->status) & XS_CD_MASK, dma32dd_t);
-		di->xs0cd = curr;
-	}
+	chan = di->chan;
+
+	curr = bhnd_dma_desc_current(chan, di);
+	di->xs0cd = curr;
 
 	return NTXDACTIVE(curr, di->txout);
 }
@@ -1590,16 +1664,18 @@ _dma_txpending(dma_info_t *di)
 u_int
 _dma_txcommitted(dma_info_t *di)
 {
-	uint16_t ptr;
-	u_int txin = di->txin;
+	bhnd_dma_chan	*chan;
+	uint16_t	 ptr;
 
-	if (txin == di->txout)
+	chan = di->chan;
+
+	if (di->txin == di->txout)
 		return 0;
 
 	if (di->dma64) {
-		ptr = B2I(R_REG(di->osh, &di->d64txregs->ptr), dma64dd_t);
+		ptr = BHND_DMA_READ_4(chan, BHND_D64_PTR) / BHND_D64_DESC_SIZE;
 	} else {
-		ptr = B2I(R_REG(di->osh, &di->d32txregs->ptr), dma32dd_t);
+		ptr = BHND_DMA_READ_4(chan, BHND_D32_PTR) / BHND_D32_DESC_SIZE;
 	}
 
 	return NTXDACTIVE(di->txin, ptr);
@@ -1614,12 +1690,15 @@ _dma_rxactive(dma_info_t *di)
 u_int
 _dma_activerxbuf(dma_info_t *di)
 {
-	uint16_t curr, ptr;
-	curr = B2I(((R_REG(di->osh, &di->d64rxregs->status0) & D64_RS0_CD_MASK) -
-		di->ptrbase) & D64_RS0_CD_MASK, dma64dd_t);
-	ptr =  B2I(((R_REG(di->osh, &di->d64rxregs->ptr) & D64_RS0_CD_MASK) -
-		di->ptrbase) & D64_RS0_CD_MASK, dma64dd_t);
-	return NRXDACTIVE(curr, ptr);
+	bhnd_dma_chan	*chan;
+	uint16_t	 curr, last;
+
+	chan = di->chan;
+
+	curr = bhnd_dma_desc_current(chan, di);
+	last = bhnd_dma_desc_last(chan, di);
+
+	return NRXDACTIVE(curr, last);
 }
 
 

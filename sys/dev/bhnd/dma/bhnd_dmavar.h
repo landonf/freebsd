@@ -85,6 +85,9 @@ struct bhnd_dma_chan {
 	size_t			 num;		/**< channel number */
 	bool			 enabled;	/**< true if channel has been enabled */
 	u_int			 ndesc;		/**< descriptor count */
+
+	uint32_t 		 st0_cd_mask;	/* status0 current descriptor pointer mask */
+	uint32_t 		 st1_ad_mask;	/* status1 active descriptor pointer mask */
 	u_int			 max_ndesc;	/**< maximum descriptor count */
 
 	hnddma_t		*di;		/**< XXX legacy hnddma instance */
@@ -94,10 +97,14 @@ struct bhnd_dma_chan {
 
 /* XXX TODO: Use device_printf() variants? Fix level handling! */
 #define	_BHND_DMA_CHAN_PRINTF(_level, _ch, _fmt, ...) do {		\
-	printf("%s.%s%zu: " fmt, device_get_nameunit((_ch)->dma->owner),\
+	printf("%s.%s%zu: " _fmt "\n",					\
+	    device_get_nameunit((_ch)->dma->owner),			\
 	    bhnd_dma_direction_name((_ch)->direction), (_ch)->num,	\
 	    ## __VA_ARGS__);						\
 } while (0)
+
+#define	BHND_DMA_CHAN_TRACE(_ch, _fmt, ...)	\
+	_BHND_DMA_CHAN_PRINTF(BHND_TRACE_LEVEL, (_ch), _fmt, ## __VA_ARGS__)
 
 #define	BHND_DMA_CHAN_ERROR(_ch, _fmt, ...)	\
 	_BHND_DMA_CHAN_PRINTF(BHND_ERROR_LEVEL, (_ch), _fmt, ## __VA_ARGS__)
@@ -422,8 +429,6 @@ typedef struct dma_info {
 	pktpool_t	*pktpool;	/* pktpool */
 	u_int		dma_avoidance_cnt;
 
-	uint32_t 		status0_cd_mask; /* status0 current descriptor pointer mask */
-	uint32_t 		status1_ad_mask; /* status1 active descriptor mask */
 	uint16_t		rs0cd;		/* cached value of rcvstatus0 currdescr */
 	uint16_t		xs0cd;		/* cached value of xmtstatus0 currdescr */
 	uint16_t		xs0cd_snapshot;	/* snapshot of xmtstatus0 currdescr */

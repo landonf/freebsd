@@ -83,7 +83,7 @@ void		 bhnd_dma_chan_disable(bhnd_dma_chan *chan);
 int		 bhnd_dma_chan_set_ndesc(bhnd_dma_chan *chan,
 		     u_int ndesc);
 u_int		 bhnd_dma_chan_get_ndesc(bhnd_dma_chan *chan);
-
+u_int		 bhnd_dma_chan_get_max_ndesc(bhnd_dma_chan *chan);
 
 
 #endif /* _BHND_DMA_BHND_DMA_H_ */
