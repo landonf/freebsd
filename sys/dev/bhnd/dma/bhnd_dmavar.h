@@ -97,7 +97,7 @@ struct bhnd_dma_chan {
 
 /* XXX TODO: Use device_printf() variants? Fix level handling! */
 #define	_BHND_DMA_CHAN_PRINTF(_level, _ch, _fmt, ...) do {		\
-	printf("%s.%s%zu: " _fmt "\n",					\
+	printf("%s.dma_%s%zu: " _fmt "\n",				\
 	    device_get_nameunit((_ch)->dma->owner),			\
 	    bhnd_dma_direction_name((_ch)->direction), (_ch)->num,	\
 	    ## __VA_ARGS__);						\

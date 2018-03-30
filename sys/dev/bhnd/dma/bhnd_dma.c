@@ -341,8 +341,8 @@ bhnd_dma_chan_init(bhnd_dma *dma, bhnd_dma_chan *chan,
 			desc_mask |= 0xf;
 		} else {
 			_Static_assert(BHND_D64_STATUS0_CD_MIN_MASK ==
-			    BHND_D64_STATUS1_AD_MIN_MASK, "current/active masks "
-			    "must be identical");
+			    BHND_D64_STATUS1_AD_MIN_MASK, "CD/AD masks must be "
+			    "identical");
 
 			desc_mask = BHND_D64_STATUS0_CD_MIN_MASK;
 		}
@@ -361,6 +361,14 @@ bhnd_dma_chan_init(bhnd_dma *dma, bhnd_dma_chan *chan,
 		    BHND_D32_STATUS_CD_SHIFT) + 1) / BHND_D32_DESC_SIZE;
 
 		break;
+	}
+
+	if (!powerof2(chan->max_ndesc)) {
+		/* Round down to nearest power of two; should never happen on
+		 * supported hardware */
+		BHND_DMA_CHAN_ERROR(chan, "max_ndesc %u is not a power of 2",
+		    chan->max_ndesc);
+		chan->max_ndesc = (1 << (fls(chan->max_ndesc) - 1));
 	}
 
 	BHND_DMA_CHAN_TRACE(chan, "st0_cd_mask: %#08x, st1_ad_mask: %#08x, "
