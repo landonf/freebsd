@@ -40,6 +40,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/bhnd/bhnd.h>
 
 #include "bhnd_dmavar.h"
+#include "bhnd_dmareg.h"
 
 #include "bhnd_dma64var.h"
 #include "bhnd_dma64reg.h"
@@ -319,7 +320,7 @@ dma64_txinit(dma_info_t *di)
 	 * before enabling the engine
 	 */
 	if (!di->aligndesc_4k)
-		_dma_ddtable_init(di, DMA_TX, di->txdpa);
+		_dma_ddtable_init(di, di->txdpa);
 
 	if ((di->hnddma.dmactrlflags & DMA_CTRL_PEN) == 0)
 		control |= D64_XC_PD;
@@ -329,7 +330,7 @@ dma64_txinit(dma_info_t *di)
 	 * before enabling the engine
 	 */
 	if (di->aligndesc_4k)
-		_dma_ddtable_init(di, DMA_TX, di->txdpa);
+		_dma_ddtable_init(di, di->txdpa);
 }
 
 static bool
@@ -449,7 +450,7 @@ dma64_alloc(dma_info_t *di, u_int direction)
 
 	if (direction == DMA_TX) {
 		if ((va = dma_ringalloc(di->osh,
-			(di->d64_xs0_cd_mask == 0x1fff) ? D64RINGBOUNDARY : D64RINGBOUNDARY_LARGE,
+			(di->status0_cd_mask == BHND_D64_STATUS0_CD_MIN_MASK) ? D64RINGBOUNDARY : D64RINGBOUNDARY_LARGE,
 			size, &align_bits, &alloced,
 			&di->txdpaorig, &di->tx_dmah)) == NULL) {
 			BHND_DMA_ERROR(di, "DMA_ALLOC_CONSISTENT(ntxd) failed");
@@ -474,7 +475,7 @@ dma64_alloc(dma_info_t *di, u_int direction)
 		ASSERT(ISALIGNED(PHYSADDRLO(di->txdpa), align));
 	} else {
 		if ((va = dma_ringalloc(di->osh,
-			(di->d64_rs0_cd_mask == 0x1fff) ? D64RINGBOUNDARY : D64RINGBOUNDARY_LARGE,
+			(di->status0_cd_mask == BHND_D64_STATUS0_CD_MIN_MASK) ? D64RINGBOUNDARY : D64RINGBOUNDARY_LARGE,
 			size, &align_bits, &alloced,
 			&di->rxdpaorig, &di->rx_dmah)) == NULL) {
 			BHND_DMA_ERROR(di, "DMA_ALLOC_CONSISTENT(nrxd) failed");
@@ -599,12 +600,12 @@ dma64_getpos(dma_info_t *di, bool direction)
 
 	if (direction == DMA_TX) {
 		cur_idx = B2I(((R_REG(di->osh, &di->d64txregs->status0) & D64_XS0_CD_MASK) -
-		               di->xmtptrbase) & D64_XS0_CD_MASK, dma64dd_t);
+		               di->ptrbase) & D64_XS0_CD_MASK, dma64dd_t);
 		idle = !NTXDACTIVE(di->txin, di->txout);
 		va = di->txp[cur_idx];
 	} else {
 		cur_idx = B2I(((R_REG(di->osh, &di->d64rxregs->status0) & D64_RS0_CD_MASK) -
-		               di->rcvptrbase) & D64_RS0_CD_MASK, dma64dd_t);
+		               di->ptrbase) & D64_RS0_CD_MASK, dma64dd_t);
 		idle = !NRXDACTIVE(di->rxin, di->rxout);
 		va = di->rxp[cur_idx];
 	}
@@ -665,7 +666,7 @@ dma64_txunframed(dma_info_t *di, void *buf, u_int len, bool commit)
 
 	/* kick the chip */
 	if (commit) {
-		W_REG(di->osh, &di->d64txregs->ptr, di->xmtptrbase + I2B(txout, dma64dd_t));
+		W_REG(di->osh, &di->d64txregs->ptr, di->ptrbase + I2B(txout, dma64dd_t));
 	}
 
 	/* tx flow control */
@@ -844,7 +845,7 @@ dma64_txfast(dma_info_t *di, void *p0, bool commit)
 
 	/* kick the chip */
 	if (commit)
-		W_REG(di->osh, &di->d64txregs->ptr, di->xmtptrbase + I2B(txout, dma64dd_t));
+		W_REG(di->osh, &di->d64txregs->ptr, di->ptrbase + I2B(txout, dma64dd_t));
 
 	/* tx flow control */
 	di->hnddma.txavail = di->ntxd - NTXDACTIVE(di->txin, di->txout) - 1;
@@ -893,14 +894,14 @@ dma64_getnexttxp(dma_info_t *di, txd_range_t range)
 
 		if (di->txin == di->xs0cd) {
 			end = (uint16_t)(B2I(((R_REG(di->osh, &dregs->status0) & D64_XS0_CD_MASK) -
-			      di->xmtptrbase) & D64_XS0_CD_MASK, dma64dd_t));
+			      di->ptrbase) & D64_XS0_CD_MASK, dma64dd_t));
 			di->xs0cd = end;
 		} else
 			end = di->xs0cd;
 
 		if (range == HNDDMA_RANGE_TRANSFERED) {
 			active_desc = (uint16_t)(R_REG(di->osh, &dregs->status1) & D64_XS1_AD_MASK);
-			active_desc = (active_desc - di->xmtptrbase) & D64_XS0_CD_MASK;
+			active_desc = (active_desc - di->ptrbase) & D64_XS0_CD_MASK;
 			active_desc = B2I(active_desc, dma64dd_t);
 			if (end != active_desc)
 				end = PREVTXD(active_desc);
@@ -975,12 +976,16 @@ bogus:
 void *
 dma64_getnextrxp(dma_info_t *di, bool forceall)
 {
-	uint16_t i, curr;
-	void *rxp;
+	bhnd_dma_chan	*chan;
+	void		*rxp;
+	uint32_t	 status;
+	uint16_t	 i, curr;
 #if ((!defined(__mips__) && !defined(BCM47XX_CA9)) || defined(__NetBSD__)) || \
 	defined(BCM_SECURE_DMA)
-	dmaaddr_t pa;
+	dmaaddr_t	 pa;
 #endif
+
+	chan = di->chan;
 
 	/* if forcing, dma engine must be disabled */
 	ASSERT(!forceall || !dma64_rxenabled(di));
@@ -992,8 +997,9 @@ dma64_getnextrxp(dma_info_t *di, bool forceall)
 		return (NULL);
 
 	if (di->rxin == di->rs0cd) {
-		curr = (uint16_t)B2I(((R_REG(di->osh, &di->d64rxregs->status0) & D64_RS0_CD_MASK) -
-			di->rcvptrbase) & D64_RS0_CD_MASK, dma64dd_t);
+		status = BHND_DMA_READ_4(chan, BHND_D64_STATUS0);
+		curr = ((status & di->status0_cd_mask) - di->ptrbase) /
+		    BHND_D64_DESC_SIZE;
 		di->rs0cd = curr;
 	} else
 		curr = di->rs0cd;
@@ -1035,18 +1041,20 @@ dma64_getnextrxp(dma_info_t *di, bool forceall)
 static void
 dma64_txrotate(dma_info_t *di)
 {
-	uint16_t ad;
-	u_int nactive;
-	u_int rot;
-	uint16_t old, new;
-	uint32_t w;
-	uint16_t first, last;
+	bhnd_dma_chan	*chan;
+	uint32_t	 w;
+	uint16_t	 ad, old, new;
+	uint16_t	 first, last;
+	u_int		 nactive, rot;
+
 
 	ASSERT(dma64_txsuspendedidle(di));
 
+	chan = di->chan;
 	nactive = _dma_txactive(di);
-	ad = B2I((((R_REG(di->osh, &di->d64txregs->status1) & D64_XS1_AD_MASK)
-		- di->xmtptrbase) & D64_XS1_AD_MASK), dma64dd_t);
+
+	ad = (((BHND_DMA_READ_4(chan, BHND_D64_STATUS1) & di->status1_ad_mask) -
+		di->ptrbase) & di->status1_ad_mask) / BHND_D64_DESC_SIZE;
 	rot = TXD(ad - di->txin);
 
 	ASSERT(rot < di->ntxd);
@@ -1103,5 +1111,5 @@ dma64_txrotate(dma_info_t *di)
 	di->hnddma.txavail = di->ntxd - NTXDACTIVE(di->txin, di->txout) - 1;
 
 	/* kick the chip */
-	W_REG(di->osh, &di->d64txregs->ptr, di->xmtptrbase + I2B(di->txout, dma64dd_t));
+	W_REG(di->osh, &di->d64txregs->ptr, di->ptrbase + I2B(di->txout, dma64dd_t));
 }

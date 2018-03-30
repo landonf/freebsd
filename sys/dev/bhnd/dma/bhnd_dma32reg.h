@@ -42,7 +42,9 @@
 #define	BHND_D32_TX_OFFSET	0			/**< TX offset within 32-bit channel pair */
 #define	BHND_D32_RX_OFFSET	BHND_D32_CHAN_SIZE	/**< RX offset within 32-bit channel pair */
 
-#define	BHND_DIAG32_SIZE	16			/**< size of a single DMA diagnostic register block */
+#define	BHND_D32_DESC_SIZE	sizeof(dma32dd_t)	/**< 32-bit DMA descriptor size */
+
+#define	BHND_D32_DIAG_SIZE	16			/**< 32-bit DMA diagnostic register block size */
 
 /**
  * Register offset to the @p _num 32-bit channel pair.
@@ -64,6 +66,7 @@
 #define	BHND_D32_ADDR			0x04			/* descriptor ring base address, bits 0:31 (4K aligned) */
 #define	BHND_D32_PTR			0x08			/* last descriptor posted to chip */
 #define	BHND_D32_STATUS			0x0C			/* channel status */
+#define	BHND_D32_STATUS0		BHND_D32_STATUS		/* for compatibility with D64 */
 
 /* BHND_D32_CTRL (common) */
 #define	BHND_D32_CTRL_EN		0x00000001		/* transmit/receive enable */
@@ -117,6 +120,7 @@
 
 /* BHND_D32_STATUS (common) */
 #define	BHND_D32_STATUS_CD_MASK		0x00000fff	/* current descriptor pointer */
+#define	BHND_D32_STATUS_CD_SHIFT	0
 #define	BHND_D32_STATUS_ST_MASK		0x0000f000	/* transmit/receive state */
 #define	BHND_D32_STATUS_ST_SHIFT	12
 #define	BHND_D32_STATUS_ST_DISABLED	0x0		/* disabled */
@@ -132,8 +136,13 @@
 #define	BHND_D32_STATUS_AD_MASK		0xfff00000	/* active descriptor */
 #define	BHND_D32_STATUS_AD_SHIFT	20
 
+/* BHND_D32_STATUS (common, D64 compatibility) */
+#define	BHND_D32_STATUS0_CD_MASK	BHND_D32_STATUS_CD_MASK
+#define	BHND_D32_STATUS0_CD_SHIFT	BHND_D32_STATUS_CD_SHIFT
+
 /* Transmit BHND_D32_STATUS fields */
 #define	BHND_D32_XS_CD_MASK	BHND_D32_STATUS_CD_MASK
+#define	BHND_D32_XS_CD_SHIFT	BHND_D32_STATUS_CD_SHIFT
 #define	BHND_D32_XS_XS_MASK	BHND_D32_STATUS_ST_MASK		/* transmit state */
 #define	BHND_D32_XS_XS_SHIFT	BHND_D32_STATUS_ST_SHIFT
 #define	BHND_D32_XS_XS_DISABLED	BHND_D32_STATUS_ST_DISABLED
@@ -153,6 +162,7 @@
 
 /* Receive BHND_D32_STATUS fields */
 #define	BHND_D32_RS_CD_MASK	BHND_D32_STATUS_CD_MASK
+#define	BHND_D32_RS_CD_SHIFT	BHND_D32_STATUS_CD_SHIFT
 #define	BHND_D32_RS_RS_MASK	BHND_D32_STATUS_ST_MASK		/* receive state */
 #define	BHND_D32_RS_RS_SHIFT	BHND_D32_STATUS_ST_SHIFT
 #define	BHND_D32_RS_RS_DISABLED	BHND_D32_STATUS_ST_DISABLED

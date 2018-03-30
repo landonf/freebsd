@@ -256,7 +256,7 @@ dma32_txinit(dma_info_t *di)
 	if ((di->hnddma.dmactrlflags & DMA_CTRL_PEN) == 0)
 		control |= XC_PD;
 	W_REG(di->osh, &di->d32txregs->control, control);
-	_dma_ddtable_init(di, DMA_TX, di->txdpa);
+	_dma_ddtable_init(di, di->txdpa);
 }
 
 static bool

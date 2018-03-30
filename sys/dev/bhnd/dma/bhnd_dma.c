@@ -633,7 +633,7 @@ dma_attach(bhnd_dma_chan *chan, const char *name, volatile void *dmaregstx,
     int rxextheadroom, u_int nrxpost, u_int rxoffset, u_int *msg_level)
 {
 	dma_info_t	*di;
-	uint32_t	 ctrl, mask;
+	uint32_t	 ctrl;
 	u_int		 size;
 
 	/* allocate private info structure */
@@ -709,37 +709,38 @@ dma_attach(bhnd_dma_chan *chan, const char *name, volatile void *dmaregstx,
 
 	/*
 	 * Determine the descriptor address mask.
-	 * 
-	 * Should be 0x1fff before 4360B0, 0xffff start from 4360B0
 	 */
 	if (di->dma64) {
-		BHND_DMA_WRITE_4(chan, BHND_D64_ADDRLOW, UINT32_MAX);
-		mask = BHND_DMA_READ_4(chan, BHND_D64_ADDRLOW);
+		uint32_t desc_mask;
 
-		if (mask & 0xfff) {
-			mask = BHND_DMA_READ_4(chan, BHND_D64_PTR);
-			mask |= 0xf;
+		/* Should be 0x1fff before 4360B0, 0xffff start from 4360B0 */
+		BHND_DMA_WRITE_4(chan, BHND_D64_ADDRLOW, UINT32_MAX);
+		desc_mask = BHND_DMA_READ_4(chan, BHND_D64_ADDRLOW);
+
+		if (desc_mask & 0xfff) {
+			desc_mask = BHND_DMA_READ_4(chan, BHND_D64_PTR);
+			desc_mask |= 0xf;
 		} else {
-			mask = 0x1fff;
+			_Static_assert(BHND_D64_STATUS0_CD_MIN_MASK ==
+			    BHND_D64_STATUS1_AD_MIN_MASK, "current/active masks "
+			    "must be identical");
+
+			desc_mask = BHND_D64_STATUS0_CD_MIN_MASK;
 		}
 
-		BHND_DMA_TRACE(di, "dma_mask: %#08x", mask);
+		BHND_DMA_TRACE(di, "dma_mask: %#08x", desc_mask);
 
 		// XXX TODO: we need to do this earlier
-		if (mask == 0x1fff)
+		if (desc_mask == BHND_D64_STATUS0_CD_MIN_MASK)
 			ASSERT(ntxd <= D64MAXDD);
 		else
 			ASSERT(ntxd <= D64MAXDD_LARGE);
 
-		switch (chan->direction) {
-		case BHND_DMA_RX:
-			di->d64_rs0_cd_mask = mask;
-			break;
-		case BHND_DMA_TX:
-			di->d64_xs0_cd_mask = mask;
-			di->d64_xs1_ad_mask = mask;
-			break;
-		}
+		di->status0_cd_mask = desc_mask;
+		di->status1_ad_mask = desc_mask;
+	} else {
+		di->status0_cd_mask = BHND_D32_STATUS_CD_MASK;
+		di->status1_ad_mask = BHND_D32_STATUS_AD_MASK;
 	}
 
 	/*
@@ -977,31 +978,26 @@ _dma_isaddrext(dma_info_t *di)
 
 /** initialize descriptor table base address */
 void
-_dma_ddtable_init(dma_info_t *di, u_int direction, dmaaddr_t pa)
+_dma_ddtable_init(dma_info_t *di, dmaaddr_t pa)
 {
+	struct bhnd_dma_chan *chan = di->chan;
+
 	if (di->dma64) {
 		if (!di->aligndesc_4k) {
-			if (direction == DMA_TX)
-				di->xmtptrbase = PHYSADDRLO(pa);
-			else
-				di->rcvptrbase = PHYSADDRLO(pa);
+			di->ptrbase = PHYSADDRLO(pa);
+		} else {
+			di->ptrbase = 0;
 		}
 
 		if ((di->ddoffsetlow == 0) || !(PHYSADDRLO(pa) & PCI32ADDR_HIGH)) {
-			if (direction == DMA_TX) {
-				W_REG(di->osh, &di->d64txregs->addrlow, (PHYSADDRLO(pa) +
-				                                         di->ddoffsetlow));
-				W_REG(di->osh, &di->d64txregs->addrhigh, (PHYSADDRHI(pa) +
-				                                          di->ddoffsethigh));
-			} else {
-				W_REG(di->osh, &di->d64rxregs->addrlow, (PHYSADDRLO(pa) +
-				                                         di->ddoffsetlow));
-				W_REG(di->osh, &di->d64rxregs->addrhigh, (PHYSADDRHI(pa) +
-				                                          di->ddoffsethigh));
-			}
+			BHND_DMA_WRITE_4(chan, BHND_D64_ADDRLOW,
+			    (PHYSADDRLO(pa) + di->ddoffsetlow));
+			BHND_DMA_WRITE_4(chan, BHND_D64_ADDRHIGH,
+			    (PHYSADDRHI(pa) + di->ddoffsethigh));
 		} else {
 			/* DMA64 32bits address extension */
-			uint32_t ae;
+			uint32_t ae, ctrl;
+
 			ASSERT(di->addrext);
 			ASSERT(PHYSADDRHI(pa) == 0);
 
@@ -1009,48 +1005,39 @@ _dma_ddtable_init(dma_info_t *di, u_int direction, dmaaddr_t pa)
 			ae = (PHYSADDRLO(pa) & PCI32ADDR_HIGH) >> PCI32ADDR_HIGH_SHIFT;
 			PHYSADDRLO(pa) &= ~PCI32ADDR_HIGH;
 
-			if (direction == DMA_TX) {
-				W_REG(di->osh, &di->d64txregs->addrlow, (PHYSADDRLO(pa) +
-				                                         di->ddoffsetlow));
-				W_REG(di->osh, &di->d64txregs->addrhigh, di->ddoffsethigh);
-				SET_REG(di->osh, &di->d64txregs->control, D64_XC_AE,
-					(ae << D64_XC_AE_SHIFT));
-			} else {
-				W_REG(di->osh, &di->d64rxregs->addrlow, (PHYSADDRLO(pa) +
-				                                         di->ddoffsetlow));
-				W_REG(di->osh, &di->d64rxregs->addrhigh, di->ddoffsethigh);
-				SET_REG(di->osh, &di->d64rxregs->control, D64_RC_AE,
-					(ae << D64_RC_AE_SHIFT));
-			}
+			BHND_DMA_WRITE_4(chan, BHND_D64_ADDRLOW,
+			    (PHYSADDRLO(pa) + di->ddoffsetlow));
+			BHND_DMA_WRITE_4(chan, BHND_D64_ADDRHIGH,
+			    (PHYSADDRHI(pa) + di->ddoffsethigh));
+
+			ctrl = BHND_DMA_READ_4(chan, BHND_D64_CTRL);
+			ctrl &= ~BHND_D64_CTRL_AE_MASK;
+			ctrl |= ae << BHND_D64_CTRL_AE_SHIFT;
+
+			BHND_DMA_WRITE_4(chan, BHND_D64_CTRL, ctrl);
 		}
 
 	} else {
 		ASSERT(PHYSADDRHI(pa) == 0);
+
+		di->ptrbase = 0;
 		if ((di->ddoffsetlow == 0) || !(PHYSADDRLO(pa) & PCI32ADDR_HIGH)) {
-			if (direction == DMA_TX)
-				W_REG(di->osh, &di->d32txregs->addr, (PHYSADDRLO(pa) +
-				                                      di->ddoffsetlow));
-			else
-				W_REG(di->osh, &di->d32rxregs->addr, (PHYSADDRLO(pa) +
-				                                      di->ddoffsetlow));
+			BHND_DMA_WRITE_4(chan, BHND_D32_ADDR, (PHYSADDRLO(pa) +
+			    di->ddoffsetlow));
 		} else {
 			/* dma32 address extension */
-			uint32_t ae;
+			uint32_t ctrl, ae;
 			ASSERT(di->addrext);
 
 			/* shift the high bit(s) from pa to ae */
 			ae = (PHYSADDRLO(pa) & PCI32ADDR_HIGH) >> PCI32ADDR_HIGH_SHIFT;
 			PHYSADDRLO(pa) &= ~PCI32ADDR_HIGH;
 
-			if (direction == DMA_TX) {
-				W_REG(di->osh, &di->d32txregs->addr, (PHYSADDRLO(pa) +
-				                                      di->ddoffsetlow));
-				SET_REG(di->osh, &di->d32txregs->control, XC_AE, ae <<XC_AE_SHIFT);
-			} else {
-				W_REG(di->osh, &di->d32rxregs->addr, (PHYSADDRLO(pa) +
-				                                      di->ddoffsetlow));
-				SET_REG(di->osh, &di->d32rxregs->control, RC_AE, ae <<RC_AE_SHIFT);
-			}
+			ctrl = BHND_DMA_READ_4(chan, BHND_D32_CTRL);
+			ctrl &= ~BHND_D32_CTRL_AE_MASK;
+			ctrl |= ae << BHND_D32_CTRL_AE_SHIFT;
+
+			BHND_DMA_WRITE_4(chan, BHND_D32_CTRL, ctrl);
 		}
 	}
 }
@@ -1096,16 +1083,16 @@ _dma_rxinit(dma_info_t *di)
 		 * before enabling the engine
 		 */
 		if (!di->aligndesc_4k)
-			_dma_ddtable_init(di, DMA_RX, di->rxdpa);
+			_dma_ddtable_init(di, di->rxdpa);
 
 		_dma_rxenable(di);
 
 		if (di->aligndesc_4k)
-			_dma_ddtable_init(di, DMA_RX, di->rxdpa);
+			_dma_ddtable_init(di, di->rxdpa);
 	} else {
 		BZERO_SM((void *)(uintptr_t)di->rxd32, (di->nrxd * sizeof(dma32dd_t)));
 		_dma_rxenable(di);
-		_dma_ddtable_init(di, DMA_RX, di->rxdpa);
+		_dma_ddtable_init(di, di->rxdpa);
 	}
 }
 
@@ -1169,13 +1156,12 @@ _dma_rx_param_get(dma_info_t *di, uint16_t *rxoffset, uint16_t *rxbufsize)
 void *
 _dma_rx(dma_info_t *di)
 {
-	void *p, *head, *tail;
-	u_int len;
-	u_int pkt_len;
-	int resid = 0;
-#if defined(BCM4335) || defined(BCM4345) || defined(BCM4350) || defined(BCM43602)
-	dma64regs_t *dregs = di->d64rxregs;
-#endif
+	bhnd_dma_chan	*chan;
+	void		*p, *head, *tail;
+	u_int		 len, pkt_len;
+	int		 resid = 0;
+
+	chan = di->chan;
 
 next_frame:
 	head = _dma_getnextrxp(di, FALSE);
@@ -1184,7 +1170,9 @@ next_frame:
 
 #if (!defined(__mips__) && !defined(BCM47XX_CA9) && !defined(__NetBSD__))
 #if defined(BCM4335) || defined(BCM4345) || defined(BCM4350) || defined(BCM43602)
-	if ((R_REG(osh, &dregs->control) & D64_RC_GE)) {
+	uint32_t ctrl;
+	ctrl = BHND_DMA_READ_4(chan, BHND_DMA_REG(chan, CTRL));
+	if ((ctrl & BHND_DMA_REG(chan, RC_GE)) != 0) {
 		/* In case of glommed pkt get length from hwheader */
 		len = ltoh16(*((uint16_t *)(PKTDATA(di->osh, head)) + di->rxoffset/2 + 2)) + 4;
 
@@ -1246,13 +1234,19 @@ next_frame:
 
 #ifdef BCMDBG
 		if (resid > 0) {
-			uint16_t cur;
+			uint32_t	status, cdesc;
+			uint16_t	cur;
 			ASSERT(p == NULL);
-			cur = (di->dma64) ?
-				B2I(((R_REG(di->osh, &di->d64rxregs->status0) & D64_RS0_CD_MASK) -
-				di->rcvptrbase) & D64_RS0_CD_MASK, dma64dd_t) :
-				B2I(R_REG(di->osh, &di->d32rxregs->status) & RS_CD_MASK,
-				dma32dd_t);
+
+			/* Fetch the current descriptor address */
+			status = BHND_DMA_READ_4(chan,
+			    BHND_DMA_REG(chan, STATUS0));			
+			cdesc = (status & di->status0_cd_mask) - di->ptrbase;
+			cdesc &= (di->status0_cd_mask);
+
+			/* Map to a descriptor index */
+			cur = cdesc / BHND_DMA_REG(chan, DESC_SIZE);
+
 			BHND_DMA_ERROR(di, "_dma_rx, rxin %d rxout %d, hw_curr %d",
 				di->rxin, di->rxout, cur);
 		}
@@ -1404,7 +1398,7 @@ _dma_rxfill(dma_info_t *di)
 
 	/* update the chip lastdscr pointer */
 	if (di->dma64) {
-		W_REG(di->osh, &di->d64rxregs->ptr, di->rcvptrbase + I2B(rxout, dma64dd_t));
+		W_REG(di->osh, &di->d64rxregs->ptr, di->ptrbase + I2B(rxout, dma64dd_t));
 	} else {
 		W_REG(di->osh, &di->d32rxregs->ptr, I2B(rxout, dma32dd_t));
 	}
@@ -1423,7 +1417,7 @@ _dma_peeknexttxp(dma_info_t *di)
 
 	if (di->dma64) {
 		end = (uint16_t)B2I(((R_REG(di->osh, &di->d64txregs->status0) & D64_XS0_CD_MASK) -
-		           di->xmtptrbase) & D64_XS0_CD_MASK, dma64dd_t);
+		           di->ptrbase) & D64_XS0_CD_MASK, dma64dd_t);
 		di->xs0cd = end;
 	} else {
 		end = (uint16_t)B2I(R_REG(di->osh, &di->d32txregs->status) & XS_CD_MASK, dma32dd_t);
@@ -1465,10 +1459,10 @@ _dma_peekntxp(dma_info_t *di, int *len, void *txps[], txd_range_t range)
 	else {
 		if (di->dma64) {
 			end = B2I(((R_REG(di->osh, &di->d64txregs->status0) & D64_XS0_CD_MASK) -
-				di->xmtptrbase) & D64_XS0_CD_MASK, dma64dd_t);
+				di->ptrbase) & D64_XS0_CD_MASK, dma64dd_t);
 
 			act = (u_int)(R_REG(di->osh, &di->d64txregs->status1) & D64_XS1_AD_MASK);
-			act = (act - di->xmtptrbase) & D64_XS0_CD_MASK;
+			act = (act - di->ptrbase) & D64_XS0_CD_MASK;
 			act = (u_int)B2I(act, dma64dd_t);
 		} else {
 			end = B2I(R_REG(di->osh, &di->d32txregs->status) & XS_CD_MASK, dma32dd_t);
@@ -1512,7 +1506,7 @@ _dma_peeknextrxp(dma_info_t *di)
 
 	if (di->dma64) {
 		end = (uint16_t)B2I(((R_REG(di->osh, &di->d64rxregs->status0) & D64_RS0_CD_MASK) -
-			di->rcvptrbase) & D64_RS0_CD_MASK, dma64dd_t);
+			di->ptrbase) & D64_RS0_CD_MASK, dma64dd_t);
 		di->rs0cd = end;
 	} else {
 		end = (uint16_t)B2I(R_REG(di->osh, &di->d32rxregs->status) & RS_CD_MASK, dma32dd_t);
@@ -1583,7 +1577,7 @@ _dma_txpending(dma_info_t *di)
 
 	if (di->dma64) {
 		curr = B2I(((R_REG(di->osh, &di->d64txregs->status0) & D64_XS0_CD_MASK) -
-		           di->xmtptrbase) & D64_XS0_CD_MASK, dma64dd_t);
+		           di->ptrbase) & D64_XS0_CD_MASK, dma64dd_t);
 		di->xs0cd = curr;
 	} else {
 		curr = B2I(R_REG(di->osh, &di->d32txregs->status) & XS_CD_MASK, dma32dd_t);
@@ -1622,9 +1616,9 @@ _dma_activerxbuf(dma_info_t *di)
 {
 	uint16_t curr, ptr;
 	curr = B2I(((R_REG(di->osh, &di->d64rxregs->status0) & D64_RS0_CD_MASK) -
-		di->rcvptrbase) & D64_RS0_CD_MASK, dma64dd_t);
+		di->ptrbase) & D64_RS0_CD_MASK, dma64dd_t);
 	ptr =  B2I(((R_REG(di->osh, &di->d64rxregs->ptr) & D64_RS0_CD_MASK) -
-		di->rcvptrbase) & D64_RS0_CD_MASK, dma64dd_t);
+		di->ptrbase) & D64_RS0_CD_MASK, dma64dd_t);
 	return NRXDACTIVE(curr, ptr);
 }
 
@@ -1822,7 +1816,7 @@ _dma_rxtx_error(dma_info_t *di, bool istx)
 			else if ((si_coreid(di->sih) == BHND_COREID_GMAC && si_corerev(di->sih) >= 4) ||
 				(si_coreid(di->sih) == BHND_COREID_D11)) {	//cathy add BHND_COREID_D11
 				curr = (uint16_t)(B2I(((R_REG(di->osh, &di->d64txregs->status0) &
-					D64_XS0_CD_MASK) - di->xmtptrbase) &
+					D64_XS0_CD_MASK) - di->ptrbase) &
 					D64_XS0_CD_MASK, dma64dd_t));
 
 				if (NTXDACTIVE(di->txin, di->txout) != 0 &&

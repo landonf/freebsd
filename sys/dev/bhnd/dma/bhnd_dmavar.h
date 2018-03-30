@@ -116,7 +116,7 @@ struct bhnd_dma_chan {
 	BHND_DMA_TRACE(_di, "[enter]")
 
 #define	BHND_DMA_TRACE(_di, _fmt, ...)	\
-	_BHND_DMA_PRINTF(BHND_TRACE_LEVEL, (_di), " %s()" _fmt,	\
+	_BHND_DMA_PRINTF(BHND_TRACE_LEVEL, (_di), " %s(): " _fmt,	\
 	    __FUNCTION__, ## __VA_ARGS__)
 	
 #define	BHND_DMA_DEBUG(_di, _fmt, ...)	\
@@ -364,6 +364,12 @@ typedef struct dma_info {
 	} dregs;
 
 	uint16_t		dmadesc_align;	/* alignment requirement for dma descriptors */
+	
+	uint32_t		ptrbase;	/* base for ptr reg when using unaligned descriptors.
+						 *
+						 * When using unaligned descriptors, the ptr register
+						 * is not just an index, it needs all 13 bits to be
+						 * an offset from the addr register. */
 
 	uint16_t		ntxd;		/* # tx descriptors tunable */
 	uint16_t		txin;		/* index of next descriptor to reclaim */
@@ -375,10 +381,7 @@ typedef struct dma_info {
 	dmaaddr_t	txdpaorig;	/* Original physical address of descriptor ring */
 	uint16_t		txdalign;	/* #bytes added to alloc'd mem to align txd */
 	uint32_t		txdalloc;	/* #bytes allocated for the ring */
-	uint32_t		xmtptrbase;	/* When using unaligned descriptors, the ptr register
-					 * is not just an index, it needs all 13 bits to be
-					 * an offset from the addr register.
-					 */
+
 
 	uint16_t		nrxd;		/* # rx descriptors tunable */
 	uint16_t		rxin;		/* index of next descriptor to reclaim */
@@ -390,7 +393,7 @@ typedef struct dma_info {
 	dmaaddr_t	rxdpaorig;	/* Original physical address of descriptor ring */
 	uint16_t		rxdalign;	/* #bytes added to alloc'd mem to align rxd */
 	uint32_t		rxdalloc;	/* #bytes allocated for the ring */
-	uint32_t		rcvptrbase;	/* Base for ptr reg when using unaligned descriptors */
+
 
 	/* tunables */
 	uint16_t		rxbufsize;	/* rx buffer size in bytes,
@@ -419,9 +422,8 @@ typedef struct dma_info {
 	pktpool_t	*pktpool;	/* pktpool */
 	u_int		dma_avoidance_cnt;
 
-	uint32_t 		d64_xs0_cd_mask; /* tx current descriptor pointer mask */
-	uint32_t 		d64_xs1_ad_mask; /* tx active descriptor mask */
-	uint32_t 		d64_rs0_cd_mask; /* rx current descriptor pointer mask */
+	uint32_t 		status0_cd_mask; /* status0 current descriptor pointer mask */
+	uint32_t 		status1_ad_mask; /* status1 active descriptor mask */
 	uint16_t		rs0cd;		/* cached value of rcvstatus0 currdescr */
 	uint16_t		xs0cd;		/* cached value of xmtstatus0 currdescr */
 	uint16_t		xs0cd_snapshot;	/* snapshot of xmtstatus0 currdescr */
@@ -565,7 +567,7 @@ void _dma_burstlen_set(dma_info_t *di, uint8_t rxburstlen, uint8_t txburstlen);
 u_int _dma_avoidancecnt(dma_info_t *di);
 void _dma_param_set(dma_info_t *di, uint16_t paramid, uint16_t paramval);
 
-void _dma_ddtable_init(dma_info_t *di, u_int direction, dmaaddr_t pa);
+void _dma_ddtable_init(dma_info_t *di, dmaaddr_t pa);
 
 void *dma_ringalloc(osl_t *osh, uint32_t boundary, u_int size, uint16_t *alignbits, u_int* alloced,
 	dmaaddr_t *descpa, osldma_t **dmah);

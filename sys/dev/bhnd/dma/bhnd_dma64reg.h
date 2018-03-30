@@ -42,6 +42,8 @@
 #define	BHND_D64_TX_OFFSET	0			/**< TX offset within 64-bit channel pair */
 #define	BHND_D64_RX_OFFSET	BHND_D64_CHAN_SIZE	/**< RX offset within 64-bit channel pair */
 
+#define	BHND_D64_DESC_SIZE	sizeof(dma64dd_t)	/**< 64-bit DMA descriptor size */
+
 /**
  * Register offset to the @p _num 64-bit channel pair.
  */
@@ -113,11 +115,13 @@
 #define	BHND_D64_RC_PT_SHIFT		BHND_D64_CTRL_PT_SHIFT
 
 
-/* BHND_D32_PTR (common) */
+/* BHND_D64_PTR (common) */
 #define	BHND_D64_PTR_LD_MASK		0x00001fff	/* last valid descriptor */
 
 
 /* BHND_D64_STATUS0 (common) */
+#define	BHND_D64_STATUS0_CD_MIN_MASK	0x00001fff	/* current descriptor pointer (should be probed at runtime) */
+#define	BHND_D64_STATUS0_CD_SHIFT	0
 #define	BHND_D64_STATUS0_ST_MASK	0xf0000000	/* transmit/receive state */
 #define	BHND_D64_STATUS0_ST_SHIFT	28
 #define	BHND_D64_STATUS0_ST_DISABLED	0x0		/* disabled */
@@ -127,9 +131,8 @@
 #define	BHND_D64_STATUS0_ST_SUSP	0x4		/* suspend pending */
 
 /* BHND_D64_STATUS0 (transmit) */
-#if 0 /* TODO */
-#define	BHND_D64_XS0_CD_MASK		(di->d64_xs0_cd_mask)		/* current descriptor pointer */
-#endif
+#define	BHND_D64_XS0_CD_MIN_MASK	BHND_D64_STATUS0_CD_MIN_MASK	/* current descriptor pointer */
+#define	BHND_D64_XS0_CD_SHIFT		BHND_D64_STATUS0_CD_SHIFT
 #define	BHND_D64_XS0_XS_MASK		BHND_D64_STATUS0_ST_MASK	/* transmit state */
 #define	BHND_D64_XS0_XS_SHIFT		BHND_D64_STATUS0_ST_SHIFT
 #define	BHND_D64_XS0_XS_DISABLED	BHND_D64_STATUS0_ST_DISABLED
@@ -140,9 +143,8 @@
 
 
 /* BHND_D64_STATUS0 (receive) */
-#if 0 /* TODO */
-#define	BHND_D64_RS0_CD_MASK		(di->d64_rs0_cd_mask)		/* current descriptor pointer */
-#endif
+#define	BHND_D64_RS0_CD_MIN_MASK	BHND_D64_STATUS0_CD_MIN_MASK	/* current descriptor pointer */
+#define	BHND_D64_RS0_CD_SHIFT		BHND_D64_STATUS0_CD_SHIFT
 #define	BHND_D64_RS0_RS_MASK		BHND_D64_STATUS0_ST_MASK	/* receive state */
 #define	BHND_D64_RS0_RS_SHIFT		BHND_D64_STATUS0_ST_SHIFT
 #define	BHND_D64_RS0_RS_DISABLED	BHND_D64_STATUS0_ST_DISABLED
@@ -153,14 +155,8 @@
 
 
 /* BHND_D64_STATUS1 (common) */
-#define	BHND_D64_STATUS0_ST_MASK	0xf0000000	/* transmit/receive state */
-#define	BHND_D64_STATUS0_ST_SHIFT	28
-#define	BHND_D64_STATUS0_ST_DISABLED	0x0		/* disabled */
-#define	BHND_D64_STATUS0_ST_ACTIVE	0x1		/* active */
-#define	BHND_D64_STATUS0_ST_IDLE	0x2		/* idle wait */
-#define	BHND_D64_STATUS0_ST_STOPPED	0x3		/* stopped */
-#define	BHND_D64_STATUS0_ST_SUSP	0x4		/* suspend pending */
-
+#define	BHND_D64_STATUS1_AD_MIN_MASK	0x00001fff	/* active descriptor pointer (should be probed at runtime) */
+#define	BHND_D64_STATUS1_AD_SHIFT	0
 #define	BHND_D64_STATUS1_ERR_MASK	0xf0000000	/* transmit/receive errors */
 #define	BHND_D64_STATUS1_ERR_SHIFT	28
 #define	BHND_D64_STATUS1_ERR_NOERR	0x0		/* no error */
@@ -171,9 +167,8 @@
 #define	BHND_D64_STATUS1_ERR_COREE	0x5		/* core error */
 
 /* BHND_D64_STATUS1 (transmit) */
-#if 0 /* TODO */
-#define	BHND_D64_XS1_AD_MASK		(di->d64_xs1_ad_mask)		/* active descriptor */
-#endif
+#define	BHND_D64_XS1_AD_MIN_MASK	BHND_D64_STATUS1_AD_MIN_MASK
+#define	BHND_D64_XS1_AD_SHIFT		BHND_D64_STATUS1_AD_SHIFT
 #define	BHND_D64_XS1_XE_MASK		BHND_D64_STATUS1_ERR_MASK 	/* transmit errors */
 #define	BHND_D64_XS1_XE_SHIFT		BHND_D64_STATUS1_ERR_SHIFT
 #define	BHND_D64_XS1_XE_NOERR		BHND_D64_STATUS1_ERR_NOERR
@@ -184,7 +179,8 @@
 #define	BHND_D64_XS1_XE_COREE		BHND_D64_STATUS1_ERR_COREE
 
 /* BHND_D64_STATUS1 (receive) */
-#define	BHND_D64_RS1_AD_MASK		0x0001ffff			/* active descriptor */
+#define	BHND_D64_RS1_AD_MASK		BHND_D64_STATUS1_AD_MIN_MASK	/* active descriptor */
+#define	BHND_D64_RS1_AD_SHIFT		BHND_D64_STATUS1_AD_SHIFT
 #define	BHND_D64_RS1_RE_MASK		BHND_D64_STATUS1_ERR_MASK	/* receive errors */
 #define	BHND_D64_RS1_RE_SHIFT		BHND_D64_STATUS1_ERR_SHIFT
 #define	BHND_D64_RS1_RE_NOERR		BHND_D64_STATUS1_ERR_NOERR	/* no error */
@@ -318,7 +314,7 @@ typedef volatile struct {
 #define	D64_XP_LD_MASK		0x00001fff	/* last valid descriptor */
 
 /* transmit channel status */
-#define	D64_XS0_CD_MASK		(di->d64_xs0_cd_mask)	/* current descriptor pointer */
+#define	D64_XS0_CD_MASK		(di->status0_cd_mask)	/* current descriptor pointer */
 #define	D64_XS0_XS_MASK		0xf0000000	 	/* transmit state */
 #define	D64_XS0_XS_SHIFT		28
 #define	D64_XS0_XS_DISABLED	0x00000000	/* disabled */
@@ -327,7 +323,7 @@ typedef volatile struct {
 #define	D64_XS0_XS_STOPPED	0x30000000	/* stopped */
 #define	D64_XS0_XS_SUSP		0x40000000	/* suspend pending */
 
-#define	D64_XS1_AD_MASK		(di->d64_xs1_ad_mask)	/* active descriptor */
+#define	D64_XS1_AD_MASK		(di->status1_ad_mask)	/* active descriptor */
 #define	D64_XS1_XE_MASK		0xf0000000	 	/* transmit errors */
 #define	D64_XS1_XE_SHIFT	28
 #define	D64_XS1_XE_NOERR	0x00000000	/* no error */
@@ -368,7 +364,7 @@ typedef volatile struct {
 #define	D64_RP_LD_MASK		0x00001fff	/* last valid descriptor */
 
 /* receive channel status */
-#define	D64_RS0_CD_MASK		(di->d64_rs0_cd_mask)	/* current descriptor pointer */
+#define	D64_RS0_CD_MASK		(di->status0_cd_mask)	/* current descriptor pointer */
 #define	D64_RS0_RS_MASK		0xf0000000	 	/* receive state */
 #define	D64_RS0_RS_SHIFT		28
 #define	D64_RS0_RS_DISABLED	0x00000000	/* disabled */
