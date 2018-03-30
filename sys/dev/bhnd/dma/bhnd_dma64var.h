@@ -34,7 +34,6 @@
 extern const di_fcn_t dma64proc;
 
 bool dma64_alloc(dma_info_t *di, u_int direction);
-bool _dma64_addrext(osl_t *osh, dma64regs_t *dma64regs);
 bool dma64_rxidle(dma_info_t *di);
 
 void dma64_dd_upd(dma_info_t *di, dma64dd_t *ddring, dmaaddr_t pa, u_int outidx, uint32_t *flags,

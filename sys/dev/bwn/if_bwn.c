@@ -1326,6 +1326,7 @@ bwn_attach_core(struct bwn_mac *mac)
 
 	/* XXX TODO */
 	bhnd_dma *dma;
+	bhnd_dma_chan *chan;
 
 	error = bhnd_dma_new(&dma, sc->sc_dev, sc->sc_mem_res, BWN_DMA_BASE,
 	    BWN_DMA_NUM_TXCHAN, BWN_DMA_NUM_RXCHAN, 0);
@@ -1335,6 +1336,15 @@ bwn_attach_core(struct bwn_mac *mac)
 		goto fail;
 	}
 
+	chan = bhnd_dma_get_chan(dma, BHND_DMA_RX, 0);
+	KASSERT(chan != NULL, ("missing RX channel"));
+	if ((error = bhnd_dma_chan_set_ndesc(chan, 128)))
+		panic("failed to set ndesc: %d", error);
+
+	if ((error = bhnd_dma_chan_enable(chan)))
+		panic("failed to enable channel: %d", error);
+
+	bhnd_dma_chan_disable(chan);
 	bhnd_dma_free(dma);
 
 	/*

@@ -30,10 +30,14 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/types.h>
 #include <sys/endian.h>
+#include <sys/lock.h>
 #include <sys/malloc.h>
 #include <sys/kernel.h>
 #include <sys/rman.h>
 #include <sys/systm.h>
+#include <sys/sx.h>
+
+#include <machine/stdarg.h>
 
 #include <dev/bhnd/bhnd.h>
 #include <dev/bhnd/bhnd_debug.h>
@@ -43,6 +47,10 @@ __FBSDID("$FreeBSD$");
 #include "bhnd_dmareg.h"
 #include "bhnd_dma32reg.h"
 #include "bhnd_dma64reg.h"
+
+static int		 bhnd_dma_chan_init(bhnd_dma *dma, bhnd_dma_chan *chan,
+			     bhnd_dma_direction direction, size_t chan_num);
+static void		 bhnd_dma_chan_fini(struct bhnd_dma_chan *chan);
 
 MALLOC_DEFINE(M_BHND_DMA, "bhnd_dma", "bhnd DMA engine state");
 
@@ -113,7 +121,7 @@ bhnd_dma_new(bhnd_dma **dma, device_t owner, struct resource *regs,
 		regfmt = BHND_DMA_REGFMT32;
 	}
 
-	cpair_size = BHND_DMA_REG(regfmt, CHAN_PAIR_SIZE);
+	cpair_size = BHND_DMA_REGF(regfmt, CHAN_PAIR_SIZE);
 
 	/*
 	 * Determine the maximum number of DMA channel pairs that can be mapped
@@ -143,7 +151,7 @@ bhnd_dma_new(bhnd_dma **dma, device_t owner, struct resource *regs,
 
 	/* Determine the total size of the DMA register block. This cannot
 	 * overflow if num_cpair < max_cpair */
-	regs_size = num_cpair * BHND_DMA_REG(regfmt, CHAN_PAIR_SIZE);
+	regs_size = num_cpair * BHND_DMA_REGF(regfmt, CHAN_PAIR_SIZE);
 	KASSERT(regs_size > 0, ("0 length register block with %zu channel "
 	    "pairs and %#jx channel pair size", num_cpair,
 	    (uintmax_t)cpair_size));
@@ -171,8 +179,8 @@ bhnd_dma_new(bhnd_dma **dma, device_t owner, struct resource *regs,
 		bus_size_t	ctrl_reg;
 		uint32_t	ae, ae_mask;
 
-		ae_mask = BHND_DMA_REG(regfmt, CTRL_AE_MASK);
-		ctrl_reg = probe_offset + BHND_DMA_REG(regfmt, CTRL);
+		ae_mask = BHND_DMA_REGF(regfmt, CTRL_AE_MASK);
+		ctrl_reg = probe_offset + BHND_DMA_REGF(regfmt, CTRL);
 		bus_space_write_4(bst, bsh, ctrl_reg, ae_mask);
 		ae = bus_space_read_4(bst, bsh, ctrl_reg);
 
@@ -190,14 +198,20 @@ bhnd_dma_new(bhnd_dma **dma, device_t owner, struct resource *regs,
 	d->regs_bsh = bsh;
 	d->regs_size = regs_size;
 
+	// XXX hacked in for legacy code
+	d->regs_virt = (uintptr_t)rman_get_virtual(regs);
+	d->regs_virt += offset;
+
 	d->num_tx_chan = num_txc;
 	d->num_rx_chan = num_rxc;
 
 	if (d->quirks & BHND_DMA_QUIRK_BROKEN_ADDREXT) {
-		d->addrwidth = BHND_DMA_REG(d->regfmt, ADDRWIDTH_BASE);
+		d->addrwidth = BHND_DMA_REGF(regfmt, ADDRWIDTH_BASE);
 	} else {
-		d->addrwidth = BHND_DMA_REG(d->regfmt, ADDRWIDTH_EXT);
+		d->addrwidth = BHND_DMA_REGF(regfmt, ADDRWIDTH_EXT);
 	}
+
+	sx_init(&d->chan_lock, "bhnd_dma_chan");
 
 	if (d->num_tx_chan > 0) {
 		d->tx_chan = malloc(sizeof(*d->tx_chan) * d->num_tx_chan,
@@ -213,8 +227,42 @@ bhnd_dma_new(bhnd_dma **dma, device_t owner, struct resource *regs,
 		d->rx_chan = NULL;
 	}
 
+	for (size_t i = 0; i < d->num_tx_chan; i++) {
+		error = bhnd_dma_chan_init(d, &d->tx_chan[i], BHND_DMA_TX, i);
+		if (error)
+			goto failed;
+	}
+
+	for (size_t i = 0; i < d->num_rx_chan; i++) {
+		error = bhnd_dma_chan_init(d, &d->rx_chan[i], BHND_DMA_RX, i);
+		if (error)
+			goto failed;
+	}
+
 	*dma = d;
 	return (0);
+
+failed:
+	bhnd_dma_free(d);
+	return (error);
+}
+
+/**
+ * Return the name for a given DMA direction.
+ * 
+ * @param direction	The DMA direction to look up.
+ */
+const char *
+bhnd_dma_direction_name(bhnd_dma_direction direction)
+{
+	switch (direction) {
+	case BHND_DMA_TX:
+		return ("tx");
+	case BHND_DMA_RX:
+		return ("rx");
+	}
+
+	return ("unknown");
 }
 
 /**
@@ -225,20 +273,222 @@ bhnd_dma_new(bhnd_dma **dma, device_t owner, struct resource *regs,
 void
 bhnd_dma_free(struct bhnd_dma *dma)
 {
-	for (size_t i = 0; i < dma->num_tx_chan; i++) {
-		// TODO: detect in-use channel?
-		// TODO: free channel data
-	}
+	sx_xlock(&dma->chan_lock);
+
+	for (size_t i = 0; i < dma->num_tx_chan; i++)
+		bhnd_dma_chan_fini(&dma->tx_chan[i]);
+
 	free(dma->tx_chan, M_BHND_DMA);
 
-	for (size_t i = 0; i < dma->num_rx_chan; i++) {
-		// TODO: detect in-use channel?
-		// TODO: free channel data
-	}
+	for (size_t i = 0; i < dma->num_rx_chan; i++)
+		bhnd_dma_chan_fini(&dma->rx_chan[i]);
+
 	free(dma->rx_chan, M_BHND_DMA);
+
+	sx_xunlock(&dma->chan_lock);
+	sx_destroy(&dma->chan_lock);
 
 	free(dma, M_BHND_DMA);
 }
+
+/**
+ * Initialize a new DMA channel instance.
+ * 
+ * @param dma		The DMA engine to which @p chan is assigned.
+ * @param chan		Channel instance to be initialized.
+ * @param direction	Channel direction.
+ * @param chan_num	Channel number.
+ */
+static int
+bhnd_dma_chan_init(bhnd_dma *dma, bhnd_dma_chan *chan,
+    bhnd_dma_direction direction, size_t chan_num)
+{
+	bus_size_t	offset, size;
+	int		error;
+
+	chan->dma = dma;
+	chan->direction = direction;
+	chan->num = chan_num;
+	chan->enabled = false;
+	chan->ndesc = 0;
+	chan->max_ndesc = 0;
+
+	/* Request a subregion mapping our per-channel register block */
+	size = BHND_DMA_REGF(dma->regfmt, CHAN_SIZE);
+	offset = BHND_DMA_CHAN_OFFSET(dma->regfmt, chan->direction, chan->num);
+
+	error = bus_space_subregion(dma->regs_bst, dma->regs_bsh, offset, size,
+	    &chan->bsh);
+	if (error) {
+		BHND_DMA_ERROR_NEW(dma, "error requesting DMA register"
+		    "subregion for DMA channel %s%zy: %d",
+		    bhnd_dma_direction_name(chan->direction), chan->num, error);
+		return (error);
+	}
+
+	return (0);
+}
+
+/**
+ * Free all resources associated with @p chan. The channel must be disabled.
+ * 
+ * @param chan	The DMA channel instance to be freed.
+ */
+static void
+bhnd_dma_chan_fini(struct bhnd_dma_chan *chan)
+{
+	sx_assert(&chan->dma->chan_lock, SA_XLOCKED);
+
+	if (chan->enabled) {
+		panic("free of active DMA channel %s%zu",
+		    bhnd_dma_direction_name(chan->direction), chan->num);
+	}
+}
+
+/**
+ * Return the DMA engine's channel instance for the given channel @p direction
+ * and @p chan_num.
+ * 
+ * @param dma		The DMA engine from which to request a channel instance.
+ * @param direction	The requested channel direction.
+ * @param chan_num	The requested channel number.
+ * 
+ * @retval non-NULL	success
+ * @retval NULL		if no such channel exists.
+ */
+bhnd_dma_chan *
+bhnd_dma_get_chan(bhnd_dma *dma, bhnd_dma_direction direction, size_t chan_num)
+{
+	bhnd_dma_chan	*channels;
+	size_t		 num_channels;
+
+	switch (direction) {
+	case BHND_DMA_TX:
+		channels = dma->tx_chan;
+		num_channels = dma->num_tx_chan;
+		break;
+	case BHND_DMA_RX:
+		channels = dma->rx_chan;
+		num_channels = dma->num_rx_chan;
+		break;
+	default:
+		BHND_DMA_ERROR_NEW(dma, "unknown channel direction: %d",
+		    direction);
+		return (NULL);
+	}
+
+	if (chan_num >= num_channels) {
+		BHND_DMA_ERROR_NEW(dma, "invalid channel number: %s%zu",
+		    bhnd_dma_direction_name(direction), chan_num);
+		return (NULL);
+	}
+
+	KASSERT(channels != NULL, ("missing channel state"));
+	return (&channels[chan_num]);
+}
+
+int
+bhnd_dma_chan_enable(bhnd_dma_chan *chan)
+{
+	void			*regs;
+	bhnd_dma_direction	 dir;
+	bus_size_t		 chan_offset;
+
+	static u_int msg_level = BHND_TRACE_LEVEL; // XXX override
+
+	sx_xlock(&chan->dma->chan_lock);
+
+	if (chan->enabled) {
+		sx_xunlock(&chan->dma->chan_lock);
+		return (EBUSY);
+	}
+
+	KASSERT(chan->di == NULL, ("active DMA state"));
+
+	if (chan->ndesc == 0) {
+		sx_xunlock(&chan->dma->chan_lock);
+		return (ENXIO);
+	}
+
+	dir = chan->direction;
+	chan_offset = BHND_DMA_CHAN_OFFSET(chan->dma->regfmt, dir, chan->num);
+	regs = (void *)(chan->dma->regs_virt + chan_offset);
+
+	chan->di = dma_attach(chan, "<TODO>",
+	    ((dir == BHND_DMA_TX) ? regs : NULL),
+	    ((dir == BHND_DMA_RX) ? regs : NULL),
+	    ((dir == BHND_DMA_TX) ? chan->ndesc : 0),
+	    ((dir == BHND_DMA_RX) ? chan->ndesc : 0),
+	    ((dir == BHND_DMA_RX) ? /* TODO: rxbufsize */ 0 : 0),
+	    ((dir == BHND_DMA_RX) ? /* TODO: rxextheadroom */ 0 : 0),
+	    ((dir == BHND_DMA_RX) ? /* TODO: nrxpost */ 0 : 0),
+	    ((dir == BHND_DMA_RX) ? /* TODO: rxoffset */ 0 : 0),
+	    &msg_level /* TODO: msg_level */
+	);
+
+	if (chan->di == NULL) {
+		sx_xunlock(&chan->dma->chan_lock);
+		return (ENXIO);
+	}
+
+	chan->enabled = true;
+	sx_xunlock(&chan->dma->chan_lock);
+	return (0);
+}
+
+void
+bhnd_dma_chan_disable(bhnd_dma_chan *chan)
+{
+	sx_xlock(&chan->dma->chan_lock);
+
+	if (!chan->enabled) {
+		sx_xunlock(&chan->dma->chan_lock);
+		return;
+	}
+
+	KASSERT(chan->di != NULL, ("no active DMA state"));
+
+	dma_detach(chan->di);
+	chan->enabled = false;
+	chan->di = NULL;
+
+	sx_xunlock(&chan->dma->chan_lock);
+}
+
+int
+bhnd_dma_chan_set_ndesc(bhnd_dma_chan *chan, u_int ndesc)
+{
+	sx_xlock(&chan->dma->chan_lock);
+
+	if (chan->enabled) {
+		sx_xunlock(&chan->dma->chan_lock);
+		return (EBUSY);
+	}
+
+	if (!powerof2(ndesc)) {
+		sx_xunlock(&chan->dma->chan_lock);
+		return (EINVAL);
+	}
+
+	/* TODO: check max_ndesc? */
+	chan->ndesc = ndesc;
+	sx_xunlock(&chan->dma->chan_lock);
+
+	return (0);
+}
+
+u_int
+bhnd_dma_chan_get_ndesc(bhnd_dma_chan *chan)
+{
+	u_int ndesc;
+
+	sx_slock(&chan->dma->chan_lock);
+	ndesc = chan->ndesc;
+	sx_sunlock(&chan->dma->chan_lock);
+
+	return (ndesc);
+}
+
 
 /*************************************
  * XXX LEGACY OSL DEFINITIONS FOLLOW *
@@ -253,53 +503,53 @@ bhnd_dma_free(struct bhnd_dma *dma)
 uint8_t
 osl_readb(osl_t *osh, volatile uint8_t *r)
 {
-	panic("unimplemented");
+	BHND_DMA_UNIMPL();
 }
 
 uint16_t
 osl_readw(osl_t *osh, volatile uint16_t *r)
 {
-	panic("unimplemented");
+	BHND_DMA_UNIMPL();
 }
 
 uint32_t
 osl_readl(osl_t *osh, volatile uint32_t *r)
 {
-	panic("unimplemented");
+	BHND_DMA_UNIMPL();
 }
 void
 osl_writeb(osl_t *osh, volatile uint8_t *r, uint8_t v)
 {
-	panic("unimplemented");
+	BHND_DMA_UNIMPL();
 }
 void
 osl_writew(osl_t *osh, volatile uint16_t *r, uint16_t v)
 {
-	panic("unimplemented");
+	BHND_DMA_UNIMPL();
 }
 void
 osl_writel(osl_t *osh, volatile uint32_t *r, uint32_t v)
 {
-	panic("unimplemented");
+	BHND_DMA_UNIMPL();
 }
 
 u_int
 osl_dma_consistent_align(void)
 {
-	panic("unimplemented");
+	BHND_DMA_UNIMPL();
 }
 
 void *
 osl_dma_alloc_consistent(osl_t *osh, u_int size, uint16_t align, u_int *tot,
     dmaaddr_t *pap)
 {
-	panic("unimplemented");
+	BHND_DMA_UNIMPL();
 }
 
 void
 osl_dma_free_consistent(osl_t *osh, void *va, u_int size, dmaaddr_t pa)
 {
-	panic("unimplemented");
+	BHND_DMA_UNIMPL();
 }
 
 /**********************************
@@ -378,14 +628,13 @@ _dma_detach(dma_info_t *di)
 }
 
 hnddma_t *
-dma_attach(bhnd_dma *dma, bhnd_dma_chan *chan, const char *name,
-	volatile void *dmaregstx, volatile void *dmaregsrx,
-	u_int ntxd, u_int nrxd, u_int rxbufsize, int rxextheadroom, u_int nrxpost, u_int rxoffset,
-	u_int *msg_level)
+dma_attach(bhnd_dma_chan *chan, const char *name, volatile void *dmaregstx,
+    volatile void *dmaregsrx, u_int ntxd, u_int nrxd, u_int rxbufsize,
+    int rxextheadroom, u_int nrxpost, u_int rxoffset, u_int *msg_level)
 {
-	dma_info_t *di;
-	u_int size;
-	uint32_t mask;
+	dma_info_t	*di;
+	uint32_t	 ctrl, mask;
+	u_int		 size;
 
 	/* allocate private info structure */
 	di = malloc(sizeof(dma_info_t), M_BHND_DMA, M_ZERO | M_WAITOK);
@@ -394,8 +643,7 @@ dma_attach(bhnd_dma *dma, bhnd_dma_chan *chan, const char *name,
 	di->osh = NULL;
 	di->sih = NULL;
 
-	di->dma = dma;
-	di->dma_chan = chan;
+	di->chan = chan;
 
 	di->msg_level = msg_level ? msg_level : &default_msg_level;
 
@@ -403,7 +651,7 @@ dma_attach(bhnd_dma *dma, bhnd_dma_chan *chan, const char *name,
 	strncpy(di->name, name, MAXNAMEL);
 	di->name[MAXNAMEL-1] = '\0';
 
-	di->dma64 = (dma->regfmt == BHND_DMA_REGFMT64);
+	di->dma64 = (chan->dma->regfmt == BHND_DMA_REGFMT64);
 
 	/* check arguments */
 	ASSERT(powerof2(ntxd));
@@ -459,89 +707,62 @@ dma_attach(bhnd_dma *dma, bhnd_dma_chan *chan, const char *name,
 	di->nrxpost = (uint16_t)nrxpost;
 	di->rxoffset = (uint8_t)rxoffset;
 
-	/* Get the default values (POR) of the burstlen. This can be overridden by the modules
-	 * if this has to be different. Otherwise this value will be used to program the control
-	 * register after the reset or during the init.
+	/*
+	 * Determine the descriptor address mask.
+	 * 
+	 * Should be 0x1fff before 4360B0, 0xffff start from 4360B0
 	 */
-	if (dmaregsrx) {
-		if (di->dma64) {
-			/* detect the dma descriptor address mask,
-			 * should be 0x1fff before 4360B0, 0xffff start from 4360B0
-			 */
-			W_REG(di->osh, &di->d64rxregs->addrlow, 0xffffffff);
-			mask = R_REG(di->osh, &di->d64rxregs->addrlow);
+	if (di->dma64) {
+		BHND_DMA_WRITE_4(chan, BHND_D64_ADDRLOW, UINT32_MAX);
+		mask = BHND_DMA_READ_4(chan, BHND_D64_ADDRLOW);
 
-			if (mask & 0xfff)
-				mask = R_REG(di->osh, &di->d64rxregs->ptr) | 0xf;
-			else
-				mask = 0x1fff;
-
-			BHND_DMA_TRACE(di, "dma_rx_mask: %#08x", mask);
-			di->d64_rs0_cd_mask = mask;
-
-			if (mask == 0x1fff)
-				ASSERT(nrxd <= D64MAXDD);
-			else
-				ASSERT(nrxd <= D64MAXDD_LARGE);
-
-			di->rxburstlen = (R_REG(di->osh,
-				&di->d64rxregs->control) & D64_RC_BL_MASK) >> D64_RC_BL_SHIFT;
-			di->rxprefetchctl = (R_REG(di->osh,
-				&di->d64rxregs->control) & D64_RC_PC_MASK) >>
-				D64_RC_PC_SHIFT;
-			di->rxprefetchthresh = (R_REG(di->osh,
-				&di->d64rxregs->control) & D64_RC_PT_MASK) >>
-				D64_RC_PT_SHIFT;
+		if (mask & 0xfff) {
+			mask = BHND_DMA_READ_4(chan, BHND_D64_PTR);
+			mask |= 0xf;
 		} else {
-			di->rxburstlen = (R_REG(di->osh,
-				&di->d32rxregs->control) & RC_BL_MASK) >> RC_BL_SHIFT;
-			di->rxprefetchctl = (R_REG(di->osh,
-				&di->d32rxregs->control) & RC_PC_MASK) >> RC_PC_SHIFT;
-			di->rxprefetchthresh = (R_REG(di->osh,
-				&di->d32rxregs->control) & RC_PT_MASK) >> RC_PT_SHIFT;
+			mask = 0x1fff;
 		}
-	}
-	if (dmaregstx) {
-		if (di->dma64) {
 
-			/* detect the dma descriptor address mask,
-			 * should be 0x1fff before 4360B0, 0xffff start from 4360B0
-			 */
-			W_REG(di->osh, &di->d64txregs->addrlow, 0xffffffff);
-			mask = R_REG(di->osh, &di->d64txregs->addrlow);
+		BHND_DMA_TRACE(di, "dma_mask: %#08x", mask);
 
-			if (mask & 0xfff)
-				mask = R_REG(di->osh, &di->d64txregs->ptr) | 0xf;
-			else
-				mask = 0x1fff;
+		// XXX TODO: we need to do this earlier
+		if (mask == 0x1fff)
+			ASSERT(ntxd <= D64MAXDD);
+		else
+			ASSERT(ntxd <= D64MAXDD_LARGE);
 
-			BHND_DMA_TRACE(di, "dma_tx_mask: %#08x", mask);
+		switch (chan->direction) {
+		case BHND_DMA_RX:
+			di->d64_rs0_cd_mask = mask;
+			break;
+		case BHND_DMA_TX:
 			di->d64_xs0_cd_mask = mask;
 			di->d64_xs1_ad_mask = mask;
-
-			if (mask == 0x1fff)
-				ASSERT(ntxd <= D64MAXDD);
-			else
-				ASSERT(ntxd <= D64MAXDD_LARGE);
-
-			di->txburstlen = (R_REG(di->osh,
-				&di->d64txregs->control) & D64_XC_BL_MASK) >> D64_XC_BL_SHIFT;
-			di->txmultioutstdrd = (R_REG(di->osh,
-				&di->d64txregs->control) & D64_XC_MR_MASK) >> D64_XC_MR_SHIFT;
-			di->txprefetchctl = (R_REG(di->osh,
-				&di->d64txregs->control) & D64_XC_PC_MASK) >> D64_XC_PC_SHIFT;
-			di->txprefetchthresh = (R_REG(di->osh,
-				&di->d64txregs->control) & D64_XC_PT_MASK) >> D64_XC_PT_SHIFT;
-		} else {
-			di->txburstlen = (R_REG(di->osh,
-				&di->d32txregs->control) & XC_BL_MASK) >> XC_BL_SHIFT;
-			di->txmultioutstdrd = (R_REG(di->osh,
-				&di->d32txregs->control) & XC_MR_MASK) >> XC_MR_SHIFT;
-			di->txprefetchctl = (R_REG(di->osh,
-				&di->d32txregs->control) & XC_PC_MASK) >> XC_PC_SHIFT;
-			di->txprefetchthresh = (R_REG(di->osh,
-				&di->d32txregs->control) & XC_PT_MASK) >> XC_PT_SHIFT;
+			break;
 		}
+	}
+
+	/*
+	 * Get the default values (POR) of the burstlen. This can be overridden
+	 * by the modules if this has to be different. Otherwise this value will
+	 * be used to program the control register after the reset or during
+	 * the init.
+	 */
+	ctrl = BHND_DMA_READ_4(chan, BHND_DMA_REG(chan, CTRL));
+
+	switch (chan->direction) {
+	case BHND_DMA_RX:
+		di->rxburstlen = BHND_DMA_GET_BITS(chan, ctrl, RC_BL);
+		di->rxprefetchctl = BHND_DMA_GET_BITS(chan, ctrl, RC_PC);
+		di->rxprefetchthresh = BHND_DMA_GET_BITS(chan, ctrl, RC_PT);
+		break;
+
+	case BHND_DMA_TX:
+		di->txburstlen = BHND_DMA_GET_BITS(chan, ctrl, XC_BL);
+		di->txmultioutstdrd = BHND_DMA_GET_BITS(chan, ctrl, XC_MR);
+		di->txprefetchctl = BHND_DMA_GET_BITS(chan, ctrl, XC_PC);
+		di->txprefetchthresh = BHND_DMA_GET_BITS(chan, ctrl, XC_PT);
+		break;
 	}
 
 	/* XXX TODO fetch DMA translation */
@@ -587,7 +808,7 @@ dma_attach(bhnd_dma *dma, bhnd_dma_chan *chan, const char *name,
 #endif /* defined(__mips__) && defined(IL_BIGENDIAN) */
 
 	/* Does the DMA engine support DmaExtendedAddrChanges? */
-	if (di->dma->quirks & BHND_DMA_QUIRK_BROKEN_ADDREXT) {
+	if (di->chan->dma->quirks & BHND_DMA_QUIRK_BROKEN_ADDREXT) {
 		di->addrext = false;
 	} else {
 		di->addrext = _dma_isaddrext(di);
@@ -697,56 +918,61 @@ fail:
 static bool
 _dma_descriptor_align(dma_info_t *di)
 {
+	bhnd_dma_chan *chan = di->chan;
+
 	if (di->dma64) {
 		uint32_t addrl;
 
 		/* Check to see if the descriptors need to be aligned on 4K/8K or not */
-		if (di->d64txregs != NULL) {
-			W_REG(di->osh, &di->d64txregs->addrlow, 0xff0);
-			addrl = R_REG(di->osh, &di->d64txregs->addrlow);
-			if (addrl != 0)
-				return FALSE;
-		} else if (di->d64rxregs != NULL) {
-			W_REG(di->osh, &di->d64rxregs->addrlow, 0xff0);
-			addrl = R_REG(di->osh, &di->d64rxregs->addrlow);
-			if (addrl != 0)
-				return FALSE;
-		}
+		BHND_DMA_WRITE_4(chan, BHND_D64_ADDRLOW, 0xFF0);
+		addrl = BHND_DMA_READ_4(chan, BHND_D64_ADDRLOW);
+		if (addrl != 0)
+			return (false);
+		else
+			return (true);
+	} else {
+		return (true);
 	}
-	return TRUE;
 }
 
 
-/** return TRUE if this dma engine supports DmaExtendedAddrChanges, otherwise FALSE */
+/**
+ * Return true if this dma engine supports DmaExtendedAddrChanges,
+ * otherwise false.
+ */
 static bool
 _dma_isaddrext(dma_info_t *di)
 {
-	if (di->dma64) {
-		/* DMA64 supports full 32- or 64-bit operation. AE is always valid */
+	bhnd_dma_chan	*chan;
+	uint32_t	 ctrl, addrext;
 
-		/* not all tx or rx channel are available */
-		if (di->d64txregs != NULL) {
-			if (!_dma64_addrext(di->osh, di->d64txregs)) {
-				BHND_DMA_ERROR(di, "DMA64 tx doesn't have AE set");
-				ASSERT(0);
-			}
-			return TRUE;
-		} else if (di->d64rxregs != NULL) {
-			if (!_dma64_addrext(di->osh, di->d64rxregs)) {
-				BHND_DMA_ERROR(di, "DMA64 rx doesn't have AE set");
-				ASSERT(0);
-			}
-			return TRUE;
-		}
-		return FALSE;
-	} else {
-		if (di->d32txregs)
-			return (_dma32_addrext(di->osh, di->d32txregs));
-		else if (di->d32rxregs)
-			return (_dma32_addrext(di->osh, di->d32rxregs));
+	chan = di->chan;
+
+	/* Set all addrext bits and then read back the value */
+	ctrl = BHND_DMA_READ_4(chan, BHND_DMA_REG(chan, CTRL));
+	ctrl |= BHND_DMA_REG(chan, CTRL_AE_MASK);
+	BHND_DMA_WRITE_4(chan, BHND_DMA_REG(chan, CTRL), ctrl);
+
+	BHND_DMA_BARRIER(chan, BHND_DMA_REG(chan, CTRL), 4,
+	    BUS_SPACE_BARRIER_WRITE);
+
+	ctrl = BHND_DMA_READ_4(chan, BHND_DMA_REG(chan, CTRL));
+	addrext = ctrl & BHND_DMA_REG(chan, CTRL_AE_MASK);
+
+	/* Clear the addrext bits */
+	ctrl &= ~BHND_DMA_REG(chan, CTRL_AE_MASK);
+	BHND_DMA_WRITE_4(chan, BHND_DMA_REG(chan, CTRL), ctrl);
+
+	/* Were our addrext bits preserved across the write and read-back? */
+	if (addrext != BHND_DMA_REG(chan, CTRL_AE_MASK)) {
+		/* DMA64 should always support addrext */
+		if (di->dma64)
+			BHND_DMA_ERROR(di, "DMA64 doesn't have AE set");
+
+		return (false);
 	}
 
-	return FALSE;
+	return (true);
 }
 
 /** initialize descriptor table base address */
@@ -832,12 +1058,16 @@ _dma_ddtable_init(dma_info_t *di, u_int direction, dmaaddr_t pa)
 void
 _dma_fifoloopbackenable(dma_info_t *di)
 {
+	bhnd_dma_chan	*chan;
+	uint32_t	 ctrl;
+
 	BHND_DMA_TRACE_ENTRY(di);
 
-	if (di->dma64)
-		OR_REG(di->osh, &di->d64txregs->control, D64_XC_LE);
-	else
-		OR_REG(di->osh, &di->d32txregs->control, XC_LE);
+	chan = di->chan;
+	ctrl = BHND_DMA_READ_4(chan, BHND_DMA_REG(chan, CTRL));
+	ctrl |= BHND_DMA_REG(chan, XC_LE);
+
+	BHND_DMA_WRITE_4(chan, BHND_DMA_REG(chan, CTRL), ctrl);
 }
 
 void
@@ -882,59 +1112,40 @@ _dma_rxinit(dma_info_t *di)
 void
 _dma_rxenable(dma_info_t *di)
 {
-	u_int dmactrlflags = di->hnddma.dmactrlflags;
+	bhnd_dma_chan	*chan;
+	uint32_t	 ctrl;
+	u_int		 dmactrlflags;
 
 	BHND_DMA_TRACE_ENTRY(di);
 
-	if (di->dma64) {
-		uint32_t control = (R_REG(di->osh, &di->d64rxregs->control) & D64_RC_AE) | D64_RC_RE;
+	chan = di->chan;
+	dmactrlflags = di->hnddma.dmactrlflags;
 
-		if ((dmactrlflags & DMA_CTRL_PEN) == 0)
-			control |= D64_RC_PD;
+	ctrl = BHND_DMA_READ_4(chan, BHND_DMA_REG(chan, CTRL));
 
-		if (dmactrlflags & DMA_CTRL_ROC)
-			control |= D64_RC_OC;
+	/* Clear all receive bits, preserving the address extension bits */
+	ctrl &= BHND_DMA_REG(chan, RC_AE_MASK);
 
-		/* These bits 20:18 (burstLen) of control register can be written but will take
-		 * effect only if these bits are valid. So this will not affect previous versions
-		 * of the DMA. They will continue to have those bits set to 0.
-		 */
-		control &= ~D64_RC_BL_MASK;
-		control |= (di->rxburstlen << D64_RC_BL_SHIFT);
+	/* Enable receive */
+	ctrl |= BHND_DMA_REG(chan, RC_RE);
 
-		control &= ~D64_RC_PC_MASK;
-		control |= (di->rxprefetchctl << D64_RC_PC_SHIFT);
+	/* Disable parity checks? */ 
+	if ((dmactrlflags & DMA_CTRL_PEN) == 0)
+		ctrl |= BHND_DMA_REG(chan, RC_PD);
 
-		control &= ~D64_RC_PT_MASK;
-		control |= (di->rxprefetchthresh << D64_RC_PT_SHIFT);
+	/* Continue on overflow? */
+	if (dmactrlflags & DMA_CTRL_ROC)
+		ctrl |= BHND_DMA_REG(chan, RC_OC);
 
-		W_REG(di->osh, &di->d64rxregs->control,
-		      ((di->rxoffset << D64_RC_RO_SHIFT) | control));
-	} else {
-		uint32_t control = (R_REG(di->osh, &di->d32rxregs->control) & RC_AE) | RC_RE;
+	ctrl |= (di->rxprefetchctl << BHND_DMA_REG(chan, RC_PC_SHIFT));
+	ctrl |= (di->rxprefetchthresh << BHND_DMA_REG(chan, RC_PT_SHIFT));
+	ctrl |= (di->rxoffset << BHND_DMA_REG(chan, RC_RO_SHIFT));
 
-		if ((dmactrlflags & DMA_CTRL_PEN) == 0)
-			control |= RC_PD;
+	/* On earlier hardware that does not support specifying the burstlen,
+	 * the bits may be written, but reads will continue to return 0 */
+	ctrl |= (di->rxburstlen << BHND_DMA_REG(chan, RC_BL_SHIFT));
 
-		if (dmactrlflags & DMA_CTRL_ROC)
-			control |= RC_OC;
-
-		/* These bits 20:18 (burstLen) of control register can be written but will take
-		 * effect only if these bits are valid. So this will not affect previous versions
-		 * of the DMA. They will continue to have those bits set to 0.
-		 */
-		control &= ~RC_BL_MASK;
-		control |= (di->rxburstlen << RC_BL_SHIFT);
-
-		control &= ~RC_PC_MASK;
-		control |= (di->rxprefetchctl << RC_PC_SHIFT);
-
-		control &= ~RC_PT_MASK;
-		control |= (di->rxprefetchthresh << RC_PT_SHIFT);
-
-		W_REG(di->osh, &di->d32rxregs->control,
-		      ((di->rxoffset << RC_RO_SHIFT) | control));
-	}
+	BHND_DMA_WRITE_4(chan, BHND_DMA_REG(chan, CTRL), ctrl);
 }
 
 void
@@ -1641,7 +1852,7 @@ _dma_rxtx_error(dma_info_t *di, bool istx)
 		return FALSE;
 	}
 #else
-	panic("unimplemented");
+	BHND_DMA_UNIMPL();
 #endif
 }
 

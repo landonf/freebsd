@@ -1029,16 +1029,6 @@ dma64_getnextrxp(dma_info_t *di, bool forceall)
 	return (rxp);
 }
 
-bool
-_dma64_addrext(osl_t *osh, dma64regs_t *dma64regs)
-{
-	uint32_t w;
-	OR_REG(osh, &dma64regs->control, D64_XC_AE);
-	w = R_REG(osh, &dma64regs->control);
-	AND_REG(osh, &dma64regs->control, ~D64_XC_AE);
-	return ((w & D64_XC_AE) == D64_XC_AE);
-}
-
 /**
  * Rotate all active tx dma ring entries "forward" by (ActiveDescriptor - txin).
  */

@@ -36,9 +36,6 @@
  * Evaluates to the register offset of the DMA channel @p _num with direction
  * @p _dir.
  * 
- * This will trigger a compile-time error if the register is not defined
- * for all supported DMA register layouts.
- * 
  * @param _regf The DMA register format (@see bhnd_dma_regfmt).
  * @param _dir The DMA channel direction (@see bnnd_dma_direction).
  * @param _num The DMA channel number.
@@ -58,13 +55,71 @@
  * This should be optimized down to a constant value if the register constant
  * is the same across the register definitions.
  * 
- * @param _regf The DMA register format (@see bhnd_dma_regfmt).
+ * @param _regf	The DMA register format (@see bhnd_dma_regfmt), or a
+ *		bhnd_dma_chan instance.
  * @param _name The DMA register name's common suffix.
  */
-#define	BHND_DMA_REG(_regf, _name)	(				\
+#define	BHND_DMA_REGF(_regf, _name)	(				\
 	(_regf) == BHND_DMA_REGFMT32 ? (BHND_D32_ ## _name) :		\
 	(BHND_D64_ ## _name)						\
 )
+
+/**
+ * Evaluates to the value of a common DMA register definition. 
+ * 
+ * This will trigger a compile-time error if the register is not defined
+ * for all supported DMA register layouts.
+ * 
+ * This should be optimized down to a constant value if the register constant
+ * is the same across the register definitions.
+ * 
+ * @param _chan	A DMA channel instance
+ * @param _name The DMA register name's common suffix.
+ */
+#define	BHND_DMA_REG(_chan, _name)	(				\
+	(_chan)->dma->regfmt == BHND_DMA_REGFMT32 ?			\
+	    (BHND_D32_ ## _name) : (BHND_D64_ ## _name)			\
+)
+
+#define BHND_DMA_GET_FLAG(_chan, _value, _flag)				\
+	(((_value) & BHND_DMA_REG((_chan), _flag) != 0)
+
+#define	BHND_DMA_GET_BITS(_chan, _value, _name)				\
+	((_value & ((_chan)->dma->regfmt == BHND_DMA_REGFMT32 ?		\
+	    (BHND_D32_ ## _name ## _MASK) :				\
+	    (BHND_D64_ ## _name ## _MASK))) >>				\
+	    ((_chan)->dma->regfmt == BHND_DMA_REGFMT32 ?		\
+		(BHND_D32_ ## _name ## _SHIFT) :			\
+		(BHND_D64_ ## _name ## _SHIFT)))
+
+/*
+ * Per-channel register access macros.
+ */ 
+#define	_BHND_DMA_WRITE_N(_size, _chan, _reg, _val)		\
+	bus_space_write_ ## _size ((_chan)->dma->regs_bst,	\
+	    (_chan)->bsh, (_reg), (_val))
+        
+#define	_BHND_DMA_READ_N(_size, _chan, _reg)			\
+	bus_space_read_ ## _size ((_chan)->dma->regs_bst, (_chan)->bsh, (_reg))
+
+#define	BHND_DMA_WRITE_4(_chan, _reg, _val)			\
+	_BHND_DMA_WRITE_N(4, (_chan), (_reg), (_val))
+#define	BHND_DMA_READ_4(_chan, _reg)				\
+	_BHND_DMA_READ_N(4, (_chan), (_reg))
+
+#define	BHND_DMA_WRITE_2(_chan, _reg, _val)			\
+	_BHND_DMA_WRITE_N(2, (_chan), (_reg), (_val))
+#define	BHND_DMA_READ_2(_chan, _reg)				\
+	_BHND_DMA_READ_N(2, (_chan), (_reg))
+
+#define	BHND_DMA_WRITE_1(_chan, _reg, _val)			\
+	_BHND_DMA_WRITE_N(1, (_chan), (_reg), (_val))
+#define	BHND_DMA_READ_1(_chan, _reg)				\
+	_BHND_DMA_READ_N(1, (_chan), (_reg))
+
+#define	BHND_DMA_BARRIER(_chan, _offset, _size, _flags)		\
+	bus_space_barrier((_chan)->dma->regs_bst, (_chan)->bsh,	\
+	    (_offset), (_size), (_flags))
 
 /* Multiple outstanding reads */
 #define	BHND_DMA_MR_1		0

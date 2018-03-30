@@ -69,36 +69,20 @@ typedef enum bhnd_dma_direction {
 } bhnd_dma_direction;
 
 int		 bhnd_dma_new(bhnd_dma **dma, device_t owner,
-		     struct resource *regs, bus_size_t offset, size_t num_txc,
-		     size_t num_rxc, uint32_t quirks);
+		     struct resource *regs, bus_size_t offset,
+		     size_t num_txc, size_t num_rxc, uint32_t quirks);
 
 void		 bhnd_dma_free(struct bhnd_dma *dma);
 
+bhnd_dma_chan	*bhnd_dma_get_chan(bhnd_dma *dma, bhnd_dma_direction direction,
+		     size_t chan_num);
 
+int		 bhnd_dma_chan_enable(bhnd_dma_chan *chan);
+void		 bhnd_dma_chan_disable(bhnd_dma_chan *chan);
 
-int			 bhnd_dma_chan_attr_new(bhnd_dma_chan_attr **attr,
-			     bhnd_dma *dma, size_t chan_idx,
-			     bhnd_dma_direction direction);
-void			 bhnd_dma_chan_attr_free(bhnd_dma_chan_attr *attr);
-
-int			 bhnd_dma_chan_attr_set_name(bhnd_dma_chan_attr *attr,
-			     const char *fmt, ...) __printflike(2, 3);
-const char		*bhnd_dma_chan_attr_get_name(bhnd_dma_chan_attr *attr);
-
-size_t			 bhnd_dma_chan_attr_get_max_ndesc(
-			     bhnd_dma_chan_attr *attr);
-
-int			 bhnd_dma_chan_attr_set_ndesc(bhnd_dma_chan_attr *attr,
-			     size_t ndesc);
-size_t			 bhnd_dma_chan_attr_get_ndesc(bhnd_dma_chan_attr *attr);
-
-int			 bhnd_dma_chan_attr_set_quirks(bhnd_dma_chan_attr *attr,
-			     uint32_t quirks);
-int			 bhnd_dma_chan_attr_get_quirks(
-			     bhnd_dma_chan_attr *attr);
-
-int			 bhnd_dma_chan_new(bhnd_dma_chan **chan, size_t channel, bhnd_dma_direction direction, const char *name, ...) __printflike(4, 5);
-
+int		 bhnd_dma_chan_set_ndesc(bhnd_dma_chan *chan,
+		     u_int ndesc);
+u_int		 bhnd_dma_chan_get_ndesc(bhnd_dma_chan *chan);
 
 
 

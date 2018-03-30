@@ -34,7 +34,6 @@
 extern const di_fcn_t dma32proc;
 
 bool dma32_alloc(dma_info_t *di, u_int direction);
-bool _dma32_addrext(osl_t *osh, dma32regs_t *dma32regs);
 bool dma32_rxidle(dma_info_t *di);
 
 void dma32_dd_upd(dma_info_t *di, dma32dd_t *ddring, dmaaddr_t pa, u_int outidx, uint32_t *flags,

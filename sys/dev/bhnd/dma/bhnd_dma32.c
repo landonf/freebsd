@@ -164,19 +164,6 @@ dma32_dd_upd(dma_info_t *di, dma32dd_t *ddring, dmaaddr_t pa, u_int outidx, uint
 	}
 }
 
-bool
-_dma32_addrext(osl_t *osh, dma32regs_t *dma32regs)
-{
-	uint32_t w;
-
-	OR_REG(osh, &dma32regs->control, XC_AE);
-	w = R_REG(osh, &dma32regs->control);
-	AND_REG(osh, &dma32regs->control, ~XC_AE);
-	return ((w & XC_AE) == XC_AE);
-}
-
-
-
 #if defined(BCMDBG)
 static void
 dma32_dumpring(dma_info_t *di, struct sbuf *s, dma32dd_t *ring, u_int start, u_int end,

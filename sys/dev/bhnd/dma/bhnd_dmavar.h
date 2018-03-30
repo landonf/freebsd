@@ -40,49 +40,75 @@
 
 MALLOC_DECLARE(M_BHND_DMA);
 
-LIST_HEAD(bhnd_dma_chan_list,		bhnd_dma_chan);
-typedef struct bhnd_dma_chan_list	bhnd_dma_chan_list;
+typedef const struct hnddma_pub hnddma_t; // XXX legacy definition
 
 /**
  * BHND DMA register layout.
  */
-typedef enum {
+typedef enum bhnd_dma_regfmt {
 	BHND_DMA_REGFMT32	= 0,	/**< 32-bit register layout */
 	BHND_DMA_REGFMT64	= 1,	/**< 64-bit register layout */
 } bhnd_dma_regfmt;
+
+const char	*bhnd_dma_direction_name(bhnd_dma_direction direction);
 
 /**
  * BHND DMA engine.
  */
 struct bhnd_dma {
-	device_t			owner;		/**< parent device */
-	bhnd_dma_regfmt			regfmt;		/**< DMA engine register layout */
-	uint32_t			quirks;		/**< DMA engine quirks (see bhnd_dma_quirk) */
-	u_int				addrwidth;	/**< supported address width */
+	device_t			 owner;		/**< parent device */
+	bhnd_dma_regfmt			 regfmt;	/**< DMA engine register layout */
+	uint32_t			 quirks;	/**< DMA engine quirks (see bhnd_dma_quirk) */
+	u_int				 addrwidth;	/**< supported address width */
 	
-	bus_space_tag_t			regs_bst;	/**< DMA register block bus tag */
-	bus_space_handle_t		regs_bsh;	/**< DMA register block bus handle */
-	bus_size_t			regs_size;	/**< DMA register block size */
+	bus_space_tag_t			 regs_bst;	/**< DMA register block bus tag */
+	bus_space_handle_t		 regs_bsh;	/**< DMA register block bus handle */
+	bus_size_t			 regs_size;	/**< DMA register block size */
+	uintptr_t			 regs_virt;	/**< XXX register virtual base address */
 
 	bhnd_dma_chan			*tx_chan;	/**< DMA transmit channels */
 	size_t				 num_tx_chan;	/**< transmit channel count */
 
 	bhnd_dma_chan			*rx_chan;	/**< DMA receive channels */
 	size_t				 num_rx_chan;	/**< receive channel count */
+
+	struct sx			 chan_lock;	/**< channel state lock */
 };
 
 /**
  * BHND DMA channel.
  */
 struct bhnd_dma_chan {
-	u_int	ndesc;			/**< descriptor count */
-	u_int	max_ndesc;		/**< maximum descriptor count */
+	bhnd_dma		*dma;		/**< dma engine reference */
+	bus_space_handle_t	 bsh;		/**< per-channel register block bus handle */
+	bhnd_dma_direction	 direction;	/**< channel direction */
+	size_t			 num;		/**< channel number */
+	bool			 enabled;	/**< true if channel has been enabled */
+	u_int			 ndesc;		/**< descriptor count */
+	u_int			 max_ndesc;	/**< maximum descriptor count */
+
+	hnddma_t		*di;		/**< XXX legacy hnddma instance */
 };
 
+#define	BHND_DMA_CHAN_
+
+/* XXX TODO: Use device_printf() variants? Fix level handling! */
+#define	_BHND_DMA_CHAN_PRINTF(_level, _ch, _fmt, ...) do {		\
+	printf("%s.%s%zu: " fmt, device_get_nameunit((_ch)->dma->owner),\
+	    bhnd_dma_direction_name((_ch)->direction), (_ch)->num,	\
+	    ## __VA_ARGS__);						\
+} while (0)
+
+#define	BHND_DMA_CHAN_ERROR(_ch, _fmt, ...)	\
+	_BHND_DMA_CHAN_PRINTF(BHND_ERROR_LEVEL, (_ch), _fmt, ## __VA_ARGS__)
+
 /* XXX TODO: Use device_printf() variants? */
-#define	_BHND_DMA_CHAN_PRINTF(_level, _di, _fmt, ...) do {		\
+#define	_BHND_DMA_PRINTF(_level, _di, _fmt, ...) do {			\
 	if (*(_di)->msg_level >= _level) {				\
-		printf("%s" _fmt "\n", (_di)->name, ## __VA_ARGS__);	\
+		device_printf((_di)->chan->dma->owner,			\
+		    "%s%zu" _fmt "\n",					\
+		    bhnd_dma_direction_name((_di)->chan->direction),	\
+		    (_di)->chan->num, ## __VA_ARGS__);			\
 	}								\
 } while (0)
 
@@ -90,19 +116,29 @@ struct bhnd_dma_chan {
 	BHND_DMA_TRACE(_di, "[enter]")
 
 #define	BHND_DMA_TRACE(_di, _fmt, ...)	\
-	_BHND_DMA_CHAN_PRINTF(BHND_TRACE_LEVEL, (_di), "/%s(): " _fmt,	\
+	_BHND_DMA_PRINTF(BHND_TRACE_LEVEL, (_di), " %s()" _fmt,	\
 	    __FUNCTION__, ## __VA_ARGS__)
 	
 #define	BHND_DMA_DEBUG(_di, _fmt, ...)	\
-	_BHND_DMA_CHAN_PRINTF(BHND_DEBUG_LEVEL, (_di), ": " _fmt,	\
+	_BHND_DMA_PRINTF(BHND_DEBUG_LEVEL, (_di), ": " _fmt,		\
 	    ## __VA_ARGS__)
 
 #define	BHND_DMA_ERROR(_di, _fmt, ...)	\
-	_BHND_DMA_CHAN_PRINTF(BHND_ERROR_LEVEL, (_di), ": " _fmt, ## __VA_ARGS__)
+	_BHND_DMA_PRINTF(BHND_ERROR_LEVEL, (_di), ": " _fmt, ## __VA_ARGS__)
 
 #define	BHND_DMA_WARN(_di, _fmt, ...)	\
-	_BHND_DMA_CHAN_PRINTF(BHND_WARN_LEVEL, (_di), ": " _fmt, ## __VA_ARGS__)
+	_BHND_DMA_PRINTF(BHND_WARN_LEVEL, (_di), ": " _fmt, ## __VA_ARGS__)
 
+/* XXX TODO: normalize these macros */
+#define	_BHND_DMA_PRINTF_NEW(_level, _dma, _fmt, ...) do {		\
+	device_printf((_dma)->owner, _fmt "\n", ## __VA_ARGS__);	\
+} while (0)
+
+#define	BHND_DMA_ERROR_NEW(_dma, _fmt, ...)	\
+	_BHND_DMA_PRINTF_NEW(BHND_ERROR_LEVEL, (_dma), _fmt, ## __VA_ARGS__)
+
+#define	BHND_DMA_WARN_NEW(_dma, _fmt, ...)	\
+	_BHND_DMA_PRINTF_NEW(BHND_WARN_LEVEL, (_dma), _fmt, ## __VA_ARGS__)
 
 /**********************************
  * XXX LEGACY DECLARATIONS FOLLOW *
@@ -111,6 +147,8 @@ struct bhnd_dma_chan {
 /* XXX */
 #define	BHND_BUILD_DMA32	1	/* build DMA32 support */
 #define	BHND_BUILD_DMA64	1	/* build DMA64 support */
+
+#define	BHND_DMA_UNIMPL()	panic("%s unimplemented", __FUNCTION__);
 
 #ifdef BHND_BUILD_DMA32
 #define	BHND_DMA32_SUPPORT(di)	(true)
@@ -143,8 +181,6 @@ struct bhnd_dma_chan {
 #else
 #define DMASGLIST_ENAB FALSE
 #endif /* BCMDMASGLISTOSL */
-
-typedef const struct hnddma_pub hnddma_t;
 
 /* range param for dma_getnexttxp() and dma_txreclaim */
 typedef enum txd_range {
@@ -301,8 +337,7 @@ typedef struct dma_info {
 	struct hnddma_pub hnddma;	/* exported structure, don't use hnddma_t,
 					 * which could be const
 					 */
-	bhnd_dma	*dma;		/**< DMA engine reference */
-	bhnd_dma_chan	*dma_chan;	/**< DMA channel reference */
+	bhnd_dma_chan	*chan;		/**< DMA channel reference */
 
 	u_int		*msg_level;	/* message level pointer */
 	char		name[MAXNAMEL];	/* callers name for diag msgs */
@@ -409,7 +444,7 @@ typedef struct dma_info {
 
 
 /* TODO: Replace with our own attach */
-extern hnddma_t * dma_attach(bhnd_dma *dma, bhnd_dma_chan *chan,
+extern hnddma_t * dma_attach(bhnd_dma_chan *chan,
 	const char *name, volatile void *dmaregstx, volatile void *dmaregsrx,
 	u_int ntxd, u_int nrxd, u_int rxbufsize, int rxextheadroom, u_int nrxpost,
 	u_int rxoffset, u_int *msg_level);
