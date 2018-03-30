@@ -177,18 +177,14 @@ bhnd_dma_new(bhnd_dma **dma, device_t owner, struct resource *regs,
 	/* Do we have addrext support? */
 	if (!(quirks & BHND_DMA_QUIRK_BROKEN_ADDREXT)) {
 		bus_size_t	ctrl_reg;
-		uint32_t	ctrl, ae_mask;
+		uint32_t	ae, ae_mask;
 
 		ae_mask = BHND_DMA_REGF(regfmt, CTRL_AE_MASK);
 		ctrl_reg = probe_offset + BHND_DMA_REGF(regfmt, CTRL);
+		bus_space_write_4(bst, bsh, ctrl_reg, ae_mask);
+		ae = bus_space_read_4(bst, bsh, ctrl_reg);
 
-		ctrl = bus_space_read_4(bst, bsh, ctrl_reg);
-		bus_space_write_4(bst, bsh, ctrl_reg, ctrl | ae_mask);
-
-		ctrl = bus_space_read_4(bst, bsh, ctrl_reg);
-		bus_space_write_4(bst, bsh, ctrl_reg, (ctrl & ~ae_mask));
-
-		if ((ctrl & ae_mask) != ae_mask)
+		if (ae != ae_mask)
 			quirks |= BHND_DMA_QUIRK_BROKEN_ADDREXT;
 	}
 
@@ -648,6 +644,7 @@ osl_dma_free_consistent(osl_t *osh, void *va, u_int size, dmaaddr_t pa)
  */
 
 /* Common prototypes */
+static bool _dma_isaddrext(dma_info_t *di);
 static bool _dma_descriptor_align(dma_info_t *di);
 static bool _dma_alloc(dma_info_t *di, u_int direction);
 
@@ -858,8 +855,11 @@ dma_attach(bhnd_dma_chan *chan, const char *name, volatile void *dmaregstx,
 #endif /* defined(__mips__) && defined(IL_BIGENDIAN) */
 
 	/* Does the DMA engine support DmaExtendedAddrChanges? */
-	if (di->chan->dma->quirks & BHND_DMA_QUIRK_BROKEN_ADDREXT)
+	if (di->chan->dma->quirks & BHND_DMA_QUIRK_BROKEN_ADDREXT) {
 		di->addrext = false;
+	} else {
+		di->addrext = _dma_isaddrext(di);
+	}
 
 	/* does the descriptors need to be aligned and if yes, on 4K/8K or not */
 	di->aligndesc_4k = _dma_descriptor_align(di);
@@ -980,6 +980,46 @@ _dma_descriptor_align(dma_info_t *di)
 	} else {
 		return (true);
 	}
+}
+
+
+/**
+ * Return true if this dma engine supports DmaExtendedAddrChanges,
+ * otherwise false.
+ */
+static bool
+_dma_isaddrext(dma_info_t *di)
+{
+	bhnd_dma_chan	*chan;
+	uint32_t	 ctrl, addrext;
+
+	chan = di->chan;
+
+	/* Set all addrext bits and then read back the value */
+	ctrl = BHND_DMA_READ_4(chan, BHND_DMA_REG(chan, CTRL));
+	ctrl |= BHND_DMA_REG(chan, CTRL_AE_MASK);
+	BHND_DMA_WRITE_4(chan, BHND_DMA_REG(chan, CTRL), ctrl);
+
+	BHND_DMA_BARRIER(chan, BHND_DMA_REG(chan, CTRL), 4,
+	    BUS_SPACE_BARRIER_WRITE);
+
+	ctrl = BHND_DMA_READ_4(chan, BHND_DMA_REG(chan, CTRL));
+	addrext = ctrl & BHND_DMA_REG(chan, CTRL_AE_MASK);
+
+	/* Clear the addrext bits */
+	ctrl &= ~BHND_DMA_REG(chan, CTRL_AE_MASK);
+	BHND_DMA_WRITE_4(chan, BHND_DMA_REG(chan, CTRL), ctrl);
+
+	/* Were our addrext bits preserved across the write and read-back? */
+	if (addrext != BHND_DMA_REG(chan, CTRL_AE_MASK)) {
+		/* DMA64 should always support addrext */
+		if (di->dma64)
+			BHND_DMA_ERROR(di, "DMA64 doesn't have AE set");
+
+		return (false);
+	}
+
+	return (true);
 }
 
 /** initialize descriptor table base address */
