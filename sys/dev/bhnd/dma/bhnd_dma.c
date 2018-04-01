@@ -292,7 +292,7 @@ bhnd_dma_chan_init(bhnd_dma *dma, bhnd_dma_chan *chan,
 	    &chan->bsh);
 	if (error) {
 		BHND_DMA_ERROR_NEW(dma, "error requesting DMA register"
-		    "subregion for DMA channel %s%zy: %d",
+		    "subregion for DMA channel %s%zu: %d",
 		    bhnd_dma_direction_name(chan->direction), chan->num, error);
 		return (error);
 	}
@@ -1188,11 +1188,11 @@ next_frame:
 	ctrl = BHND_DMA_READ_4(chan, BHND_DMA_REG(chan, CTRL));
 	if ((ctrl & BHND_DMA_REG(chan, RC_GE)) != 0) {
 		/* In case of glommed pkt get length from hwheader */
-		len = ltoh16(*((uint16_t *)(PKTDATA(di->osh, head)) + di->rxoffset/2 + 2)) + 4;
+		len = le16toh(*((uint16_t *)(PKTDATA(di->osh, head)) + di->rxoffset/2 + 2)) + 4;
 
 		*(uint16_t *)(PKTDATA(di->osh, head)) = len;
 	} else {
-		len = ltoh16(*(uint16_t *)(PKTDATA(di->osh, head)));
+		len = le16toh(*(uint16_t *)(PKTDATA(di->osh, head)));
 	}
 #else
 	len = le16toh(*(uint16_t *)(PKTDATA(di->osh, head)));
@@ -1201,15 +1201,16 @@ next_frame:
 	{
 	int read_count = 0;
 	for (read_count = 200; read_count; read_count--) {
-		len = ltoh16(*(uint16_t *)PKTDATA(di->osh, head));
+		len = le16toh(*(uint16_t *)PKTDATA(di->osh, head));
 		if (len != 0)
 			break;
-		DMA_MAP(di->osh, PKTDATA(di->osh, head), sizeof(uint16_t), DMA_RX, NULL, NULL);
+		// XXX TODO: (void) required for gcc build with our temporary no-op DMA_MAP() implementation.
+		(void)DMA_MAP(di->osh, PKTDATA(di->osh, head), sizeof(uint16_t), DMA_RX, NULL, NULL);
 		OSL_DELAY(1);
 	}
 
 	if (!len) {
-		DMA_ERROR(("%s: dma_rx: frame length (%d)\n", di->name, len));
+		BHND_DMA_ERROR(di, "%s: dma_rx: frame length (%d)\n", di->name, len);
 		PKTFREE(di->osh, head, FALSE);
 		goto next_frame;
 	}
