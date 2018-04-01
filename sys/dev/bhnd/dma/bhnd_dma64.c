@@ -204,7 +204,10 @@ void
 dma64_dd_upd(dma_info_t *di, dma64dd_t *ddring, dmaaddr_t pa, u_int outidx, uint32_t *flags,
 	uint32_t bufcount)
 {
-	uint32_t ctrl2 = bufcount & D64_CTRL2_BC_MASK;
+	bhnd_dma_chan	*chan;
+	uint32_t	 ctrl2 = bufcount & D64_CTRL2_BC_MASK;
+
+	chan = di->chan;
 
 	/* PCI bus with big(>1G) physical address, use address extension */
 #if defined(__mips__) && defined(IL_BIGENDIAN)
@@ -221,7 +224,7 @@ dma64_dd_upd(dma_info_t *di, dma64dd_t *ddring, dmaaddr_t pa, u_int outidx, uint
 	} else {
 		/* address extension for 32-bit PCI */
 		uint32_t ae;
-		ASSERT(di->addrext);
+		ASSERT(chan->addrext);
 
 		ae = (PHYSADDRLO(pa) & PCI32ADDR_HIGH) >> PCI32ADDR_HIGH_SHIFT;
 		PHYSADDRLO(pa) &= ~PCI32ADDR_HIGH;

@@ -59,7 +59,6 @@ struct bhnd_dma {
 	device_t			 owner;		/**< parent device */
 	bhnd_dma_regfmt			 regfmt;	/**< DMA engine register layout */
 	uint32_t			 quirks;	/**< DMA engine quirks (see bhnd_dma_quirk) */
-	u_int				 addrwidth;	/**< supported address width */
 	
 	bus_space_tag_t			 regs_bst;	/**< DMA register block bus tag */
 	bus_space_handle_t		 regs_bsh;	/**< DMA register block bus handle */
@@ -83,12 +82,13 @@ struct bhnd_dma_chan {
 	bus_space_handle_t	 bsh;		/**< per-channel register block bus handle */
 	bhnd_dma_direction	 direction;	/**< channel direction */
 	size_t			 num;		/**< channel number */
-	bool			 enabled;	/**< true if channel has been enabled */
-	u_int			 ndesc;		/**< descriptor count */
-
-	uint32_t 		 st0_cd_mask;	/* status0 current descriptor pointer mask */
-	uint32_t 		 st1_ad_mask;	/* status1 active descriptor pointer mask */
+	bool			 addrext;	/**< true if DmaExtendedAddrChanges supported */
+	uint32_t 		 st0_cd_mask;	/**< status0 current descriptor pointer mask */
+	uint32_t 		 st1_ad_mask;	/**< status1 active descriptor pointer mask */
 	u_int			 max_ndesc;	/**< maximum descriptor count */
+
+	u_int			 ndesc;		/**< descriptor count */
+	bool			 enabled;	/**< true if channel has been enabled */
 
 	hnddma_t		*di;		/**< XXX legacy hnddma instance */
 };
@@ -353,7 +353,6 @@ typedef struct dma_info {
 	si_t		*sih;		/* sb handle */
 
 	bool		dma64;		/* this dma engine is operating in 64-bit mode */
-	bool		addrext;	/* this dma engine supports DmaExtendedAddrChanges */
 
 	union {
 		struct {

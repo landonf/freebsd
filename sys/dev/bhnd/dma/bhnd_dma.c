@@ -92,7 +92,6 @@ bhnd_dma_new(bhnd_dma **dma, device_t owner, struct resource *regs,
 	bus_space_tag_t	 	 bst;
 	bus_space_handle_t	 bsh;
 	bus_size_t		 regs_size, cpair_size;
-	bus_size_t		 probe_offset;
 	rman_res_t		 max_cpair, r_avail_size, r_total_size;
 	size_t			 num_cpair;
 	uint16_t		 iost;
@@ -166,28 +165,6 @@ bhnd_dma_new(bhnd_dma **dma, device_t owner, struct resource *regs,
 		return (error);
 	}
 
-	/* Find a valid channel to be used while probing the DMA controller */
-	KASSERT(num_txc > 0 || num_rxc > 0, ("no channels"));
-	if (num_txc > 0) {
-		probe_offset = BHND_DMA_CHAN_OFFSET(regfmt, BHND_DMA_TX, 0);
-	} else if (num_rxc > 0) {
-		probe_offset = BHND_DMA_CHAN_OFFSET(regfmt, BHND_DMA_RX, 0);
-	}
-
-	/* Do we have addrext support? */
-	if (!(quirks & BHND_DMA_QUIRK_BROKEN_ADDREXT)) {
-		bus_size_t	ctrl_reg;
-		uint32_t	ae, ae_mask;
-
-		ae_mask = BHND_DMA_REGF(regfmt, CTRL_AE_MASK);
-		ctrl_reg = probe_offset + BHND_DMA_REGF(regfmt, CTRL);
-		bus_space_write_4(bst, bsh, ctrl_reg, ae_mask);
-		ae = bus_space_read_4(bst, bsh, ctrl_reg);
-
-		if (ae != ae_mask)
-			quirks |= BHND_DMA_QUIRK_BROKEN_ADDREXT;
-	}
-
 	/* Allocate and populate our DMA controller instance */
 	d = malloc(sizeof(*d), M_BHND_DMA, M_ZERO | M_WAITOK);
 	d->owner = owner;
@@ -204,12 +181,6 @@ bhnd_dma_new(bhnd_dma **dma, device_t owner, struct resource *regs,
 
 	d->num_tx_chan = num_txc;
 	d->num_rx_chan = num_rxc;
-
-	if (d->quirks & BHND_DMA_QUIRK_BROKEN_ADDREXT) {
-		d->addrwidth = BHND_DMA_REGF(regfmt, ADDRWIDTH_BASE);
-	} else {
-		d->addrwidth = BHND_DMA_REGF(regfmt, ADDRWIDTH_EXT);
-	}
 
 	sx_init(&d->chan_lock, "bhnd_dma_chan");
 
@@ -326,8 +297,15 @@ bhnd_dma_chan_init(bhnd_dma *dma, bhnd_dma_chan *chan,
 		return (error);
 	}
 
-	/* Determine the descriptor address mask, and the maximum descriptor
-	 * count */
+	/*
+	 * Sufficient channel state is now configured to allow us to probe
+	 * channel capabilities.
+	 */
+
+	/* 
+	 * Determine the descriptor address mask, and the maximum descriptor
+	 * count
+	 */
 	switch (chan->dma->regfmt) {
 	case BHND_DMA_REGFMT64: {
 		uint32_t desc_mask;
@@ -371,9 +349,47 @@ bhnd_dma_chan_init(bhnd_dma *dma, bhnd_dma_chan *chan,
 		chan->max_ndesc = (1 << (fls(chan->max_ndesc) - 1));
 	}
 
-	BHND_DMA_CHAN_TRACE(chan, "st0_cd_mask: %#08x, st1_ad_mask: %#08x, "
-	    " max_ndesc: %u", chan->st0_cd_mask, chan->st1_ad_mask,
+	BHND_DMA_CHAN_TRACE(chan, "st0_cd_mask=%#08x, st1_ad_mask=%#08x, "
+	    " max_ndesc=%u", chan->st0_cd_mask, chan->st1_ad_mask,
 	    chan->max_ndesc);
+	
+	/*
+	 * Does the DMA engine support DmaExtendedAddrChanges?
+	 */
+	chan->addrext = false;
+	if ((chan->dma->quirks & BHND_DMA_QUIRK_BROKEN_ADDREXT) == 0) {
+		bus_size_t	ctrl_reg;
+		uint32_t	ctrl, ae, ae_mask;
+
+		ctrl_reg = BHND_DMA_REG(chan, CTRL);
+		ae_mask = BHND_DMA_REG(chan, CTRL_AE_MASK);
+
+		/* Set all addrext bits and then read back the value */
+		ctrl = BHND_DMA_READ_4(chan, ctrl_reg);
+		ctrl |= ae_mask;
+		BHND_DMA_WRITE_4(chan, ctrl_reg, ctrl);
+
+		BHND_DMA_BARRIER(chan, ctrl_reg, 4, BUS_SPACE_BARRIER_WRITE);
+		ctrl = BHND_DMA_READ_4(chan, ctrl_reg);
+		ae = ctrl & ae_mask;
+
+		/* Clear the addrext bits */
+		ctrl &= ~ae_mask;
+		BHND_DMA_WRITE_4(chan, ctrl_reg, ctrl);
+
+		/* Were our addrext bits preserved across the write and
+		 * read-back? */
+		if (ae == ae_mask)
+			chan->addrext = true;
+	}
+
+	BHND_DMA_CHAN_TRACE(chan, "addrext=%s", chan->addrext ? "yes" : "no");
+
+	/* DMA64 should always support addrext */
+	if (!chan->addrext && chan->dma->regfmt == BHND_DMA_REGFMT64) {
+		BHND_DMA_CHAN_ERROR(chan, "missing DMA64 AE support");
+		return (ENXIO);
+	}
 
 	return (0);
 }
@@ -644,7 +660,6 @@ osl_dma_free_consistent(osl_t *osh, void *va, u_int size, dmaaddr_t pa)
  */
 
 /* Common prototypes */
-static bool _dma_isaddrext(dma_info_t *di);
 static bool _dma_descriptor_align(dma_info_t *di);
 static bool _dma_alloc(dma_info_t *di, u_int direction);
 
@@ -854,13 +869,6 @@ dma_attach(bhnd_dma_chan *chan, const char *name, volatile void *dmaregstx,
 	di->dataoffsetlow = di->dataoffsetlow + SI_SDRAM_SWAPPED;
 #endif /* defined(__mips__) && defined(IL_BIGENDIAN) */
 
-	/* Does the DMA engine support DmaExtendedAddrChanges? */
-	if (di->chan->dma->quirks & BHND_DMA_QUIRK_BROKEN_ADDREXT) {
-		di->addrext = false;
-	} else {
-		di->addrext = _dma_isaddrext(di);
-	}
-
 	/* does the descriptors need to be aligned and if yes, on 4K/8K or not */
 	di->aligndesc_4k = _dma_descriptor_align(di);
 	if (di->aligndesc_4k) {
@@ -920,7 +928,7 @@ dma_attach(bhnd_dma_chan *chan, const char *name, volatile void *dmaregstx,
 			goto fail;
 	}
 
-	if ((di->ddoffsetlow != 0) && !di->addrext) {
+	if ((di->ddoffsetlow != 0) && !chan->addrext) {
 		if (PHYSADDRLO(di->txdpa) > SI_PCI_DMA_SZ) {
 			BHND_DMA_ERROR(di, "txdpa %#x: addrext not supported",
 			           (uint32_t)PHYSADDRLO(di->txdpa));
@@ -935,7 +943,7 @@ dma_attach(bhnd_dma_chan *chan, const char *name, volatile void *dmaregstx,
 
 	BHND_DMA_TRACE(di, "ddoffsetlow %#x ddoffsethigh %#x dataoffsetlow %#x dataoffsethigh "
 	           "%#x addrext %d", di->ddoffsetlow, di->ddoffsethigh, di->dataoffsetlow,
-	           di->dataoffsethigh, di->addrext);
+	           di->dataoffsethigh, chan->addrext);
 
 	/* allocate DMA mapping vectors */
 	if (DMASGLIST_ENAB) {
@@ -982,46 +990,6 @@ _dma_descriptor_align(dma_info_t *di)
 	}
 }
 
-
-/**
- * Return true if this dma engine supports DmaExtendedAddrChanges,
- * otherwise false.
- */
-static bool
-_dma_isaddrext(dma_info_t *di)
-{
-	bhnd_dma_chan	*chan;
-	uint32_t	 ctrl, addrext;
-
-	chan = di->chan;
-
-	/* Set all addrext bits and then read back the value */
-	ctrl = BHND_DMA_READ_4(chan, BHND_DMA_REG(chan, CTRL));
-	ctrl |= BHND_DMA_REG(chan, CTRL_AE_MASK);
-	BHND_DMA_WRITE_4(chan, BHND_DMA_REG(chan, CTRL), ctrl);
-
-	BHND_DMA_BARRIER(chan, BHND_DMA_REG(chan, CTRL), 4,
-	    BUS_SPACE_BARRIER_WRITE);
-
-	ctrl = BHND_DMA_READ_4(chan, BHND_DMA_REG(chan, CTRL));
-	addrext = ctrl & BHND_DMA_REG(chan, CTRL_AE_MASK);
-
-	/* Clear the addrext bits */
-	ctrl &= ~BHND_DMA_REG(chan, CTRL_AE_MASK);
-	BHND_DMA_WRITE_4(chan, BHND_DMA_REG(chan, CTRL), ctrl);
-
-	/* Were our addrext bits preserved across the write and read-back? */
-	if (addrext != BHND_DMA_REG(chan, CTRL_AE_MASK)) {
-		/* DMA64 should always support addrext */
-		if (di->dma64)
-			BHND_DMA_ERROR(di, "DMA64 doesn't have AE set");
-
-		return (false);
-	}
-
-	return (true);
-}
-
 /** initialize descriptor table base address */
 void
 _dma_ddtable_init(dma_info_t *di, dmaaddr_t pa)
@@ -1044,7 +1012,7 @@ _dma_ddtable_init(dma_info_t *di, dmaaddr_t pa)
 			/* DMA64 32bits address extension */
 			uint32_t ae, ctrl;
 
-			ASSERT(di->addrext);
+			ASSERT(chan->addrext);
 			ASSERT(PHYSADDRHI(pa) == 0);
 
 			/* shift the high bit(s) from pa to ae */
@@ -1073,7 +1041,7 @@ _dma_ddtable_init(dma_info_t *di, dmaaddr_t pa)
 		} else {
 			/* dma32 address extension */
 			uint32_t ctrl, ae;
-			ASSERT(di->addrext);
+			ASSERT(chan->addrext);
 
 			/* shift the high bit(s) from pa to ae */
 			ae = (PHYSADDRLO(pa) & PCI32ADDR_HIGH) >> PCI32ADDR_HIGH_SHIFT;
