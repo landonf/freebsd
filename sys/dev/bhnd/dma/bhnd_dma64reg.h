@@ -28,13 +28,12 @@
 #ifndef _BHND_DMA_BHND_DMA64REG_H_
 #define _BHND_DMA_BHND_DMA64REG_H_
 
-#if 0
-#define	BHND_D64_ADDREXT_MASK	0xC000000000000000ULL		/**< mask of extended address bits */
+#define	BHND_D64_ADDREXT_MASK	0xC000000000000000ULL	/**< mask of extended address bits */
 #define	BHND_D64_ADDREXT_SHIFT	62
-#endif
 
-#define	BHND_D64_ADDRWIDTH_BASE	62			/**< address width of 64-bit DMA channel without addrext support */
-#define	BHND_D64_ADDRWIDTH_EXT	BHND_DMA_ADDR_64BIT	/**< address width of 64-bit DMA channel with addrext support */
+#define	BHND_D64_ADDRWIDTH_BASE	BHND_DMA_ADDR_30BIT	/**< usable host address width of 64-bit DMA channel without addrext support */
+#define	BHND_D64_ADDRWIDTH_EXT	BHND_D64_ADDRWIDTH	/**< usable host address width of 64-bit DMA channel with addrext support */
+#define	BHND_D64_ADDRWIDTH	BHND_DMA_ADDR_32BIT	/**< device address width of 64-bit DMA channel */
 
 #define	BHND_D64_CHAN_SIZE	32			/**< size of single 64-bit DMA channel register block */
 #define	BHND_D64_CHAN_PAIR_SIZE	(BHND_D64_CHAN_SIZE*2)	/**< size of a 64-bit DMA channel pair register block */
