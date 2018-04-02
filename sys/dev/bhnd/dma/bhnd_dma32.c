@@ -145,9 +145,7 @@ void
 dma32_dd_upd(dma_info_t *di, dma32dd_t *ddring, dmaaddr_t pa, u_int outidx, uint32_t *flags,
 	uint32_t bufcount)
 {
-	bhnd_dma_chan *chan;
-
-	chan = di->chan;
+	bhnd_dma_chan *chan = di->chan;
 
 	/* dma32 uses 32-bit control to fit both flags and bufcounter */
 	*flags = *flags | (bufcount & CTRL_BC_MASK);
@@ -158,7 +156,7 @@ dma32_dd_upd(dma_info_t *di, dma32dd_t *ddring, dmaaddr_t pa, u_int outidx, uint
 	} else {
 		/* address extension */
 		uint32_t ae;
-		ASSERT(chan->addrext);
+		ASSERT(chan->dma->addrext);
 		ae = (PHYSADDRLO(pa) & PCI32ADDR_HIGH) >> PCI32ADDR_HIGH_SHIFT;
 		PHYSADDRLO(pa) &= ~PCI32ADDR_HIGH;
 

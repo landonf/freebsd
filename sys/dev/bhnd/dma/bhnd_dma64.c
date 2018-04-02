@@ -173,9 +173,10 @@ bhnd_dma64_desc_active(bhnd_dma_chan *chan, dma_info_t *di)
 {
 	uint32_t status, addr;
 
+
 	status = BHND_DMA_READ_4(chan, BHND_D64_STATUS1);
-	addr = (status & chan->st1_ad_mask) >> BHND_D64_STATUS1_AD_SHIFT;
-	addr = (addr - di->ptrbase) & chan->st1_ad_mask;
+	addr = (status & chan->dma->st1_ad_mask) >> BHND_D64_STATUS1_AD_SHIFT;
+	addr = (addr - di->ptrbase) & chan->dma->st1_ad_mask;
 
 	return (addr / BHND_D64_DESC_SIZE);
 }
@@ -191,8 +192,8 @@ bhnd_dma64_desc_current(bhnd_dma_chan *chan, dma_info_t *di)
 	uint32_t status, addr;
 
 	status = BHND_DMA_READ_4(chan, BHND_D64_STATUS0);
-	addr = (status & chan->st0_cd_mask) >> BHND_D64_STATUS0_CD_SHIFT;
-	addr = (addr - di->ptrbase) & chan->st0_cd_mask;
+	addr = (status & chan->dma->st0_cd_mask) >> BHND_D64_STATUS0_CD_SHIFT;
+	addr = (addr - di->ptrbase) & chan->dma->st0_cd_mask;
 
 	return (addr / BHND_D64_DESC_SIZE);
 }
@@ -224,7 +225,7 @@ dma64_dd_upd(dma_info_t *di, dma64dd_t *ddring, dmaaddr_t pa, u_int outidx, uint
 	} else {
 		/* address extension for 32-bit PCI */
 		uint32_t ae;
-		ASSERT(chan->addrext);
+		ASSERT(chan->dma->addrext);
 
 		ae = (PHYSADDRLO(pa) & PCI32ADDR_HIGH) >> PCI32ADDR_HIGH_SHIFT;
 		PHYSADDRLO(pa) &= ~PCI32ADDR_HIGH;
@@ -476,6 +477,7 @@ bool
 dma64_alloc(dma_info_t *di, u_int direction)
 {
 	bhnd_dma_chan	*chan;
+	bhnd_dma	*dma;
 	void		*va;
 	uint32_t	 size;
 	uint32_t	 align;
@@ -484,6 +486,7 @@ dma64_alloc(dma_info_t *di, u_int direction)
 	u_int		 alloced = 0;
 
 	chan = di->chan;
+	dma = chan->dma;
 	ddlen = sizeof(dma64dd_t);
 
 	size = (direction == DMA_TX) ? (di->ntxd * ddlen) : (di->nrxd * ddlen);
@@ -492,7 +495,7 @@ dma64_alloc(dma_info_t *di, u_int direction)
 
 	if (direction == DMA_TX) {
 		if ((va = dma_ringalloc(di->osh,
-			(chan->st0_cd_mask == BHND_D64_STATUS0_CD_MIN_MASK) ? D64RINGBOUNDARY : D64RINGBOUNDARY_LARGE,
+			(dma->st0_cd_mask == BHND_D64_STATUS0_CD_MIN_MASK) ? D64RINGBOUNDARY : D64RINGBOUNDARY_LARGE,
 			size, &align_bits, &alloced,
 			&di->txdpaorig, &di->tx_dmah)) == NULL) {
 			BHND_DMA_ERROR(di, "DMA_ALLOC_CONSISTENT(ntxd) failed");
@@ -517,7 +520,7 @@ dma64_alloc(dma_info_t *di, u_int direction)
 		ASSERT(ISALIGNED(PHYSADDRLO(di->txdpa), align));
 	} else {
 		if ((va = dma_ringalloc(di->osh,
-			(chan->st0_cd_mask == BHND_D64_STATUS0_CD_MIN_MASK) ? D64RINGBOUNDARY : D64RINGBOUNDARY_LARGE,
+			(dma->st0_cd_mask == BHND_D64_STATUS0_CD_MIN_MASK) ? D64RINGBOUNDARY : D64RINGBOUNDARY_LARGE,
 			size, &align_bits, &alloced,
 			&di->rxdpaorig, &di->rx_dmah)) == NULL) {
 			BHND_DMA_ERROR(di, "DMA_ALLOC_CONSISTENT(nrxd) failed");
@@ -589,8 +592,8 @@ dma64_rxidle(dma_info_t *di)
 	if (di->nrxd == 0)
 		return (true);
 
-	st = BHND_DMA_READ_4(chan, BHND_D64_STATUS0) & chan->st0_cd_mask;
-	ptr = BHND_DMA_READ_4(chan, BHND_D64_PTR) & chan->st0_cd_mask;
+	st = BHND_DMA_READ_4(chan, BHND_D64_STATUS0) & chan->dma->st0_cd_mask;
+	ptr = BHND_DMA_READ_4(chan, BHND_D64_PTR) & chan->dma->st0_cd_mask;
 
 	return (st == ptr);
 }
@@ -651,8 +654,8 @@ dma64_getpos(dma_info_t *di, bool direction)
 	chan = di->chan;
 
 	cur_idx = (((BHND_DMA_READ_4(chan, BHND_D64_STATUS0) &
-		       chan->st0_cd_mask) - di->ptrbase) & chan->st0_cd_mask) /
-		       BHND_D64_DESC_SIZE;
+	    chan->dma->st0_cd_mask) - di->ptrbase) & chan->dma->st0_cd_mask) /
+	    BHND_D64_DESC_SIZE;
 
 	// XXX TODO: unify
 	if (direction == DMA_TX) {

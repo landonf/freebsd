@@ -92,9 +92,13 @@ bhnd_dma_new(bhnd_dma **dma, device_t owner, struct resource *regs,
 	bus_space_tag_t	 	 bst;
 	bus_space_handle_t	 bsh;
 	bus_size_t		 regs_size, cpair_size;
+	bus_size_t		 probe_offset;
 	rman_res_t		 max_cpair, r_avail_size, r_total_size;
 	size_t			 num_cpair;
+	uint32_t		 st0_cd_mask, st1_ad_mask;
 	uint16_t		 iost;
+	u_int			 max_ndesc;
+	bool			 addrext;
 	int			 error;
 
 	KASSERT(rman_get_flags(regs) & RF_ACTIVE, ("resource must be active"));
@@ -165,6 +169,90 @@ bhnd_dma_new(bhnd_dma **dma, device_t owner, struct resource *regs,
 		return (error);
 	}
 
+	/* Find a valid channel to be used while probing DMA controller
+	 * capabilities */
+	KASSERT(num_txc > 0 || num_rxc > 0, ("no channels"));
+	if (num_txc > 0) {
+		probe_offset = BHND_DMA_CHAN_OFFSET(regfmt, BHND_DMA_TX, 0);
+	} else if (num_rxc > 0) {
+		probe_offset = BHND_DMA_CHAN_OFFSET(regfmt, BHND_DMA_RX, 0);
+	}
+
+	/* Do we have addrext support? */
+	addrext = false;
+	if (!(quirks & BHND_DMA_QUIRK_BROKEN_ADDREXT)) {
+		bus_size_t      ctrl_reg;
+		uint32_t        ae, ae_mask;
+
+		ae_mask = BHND_DMA_REGF(regfmt, CTRL_AE_MASK);
+		ctrl_reg = probe_offset + BHND_DMA_REGF(regfmt, CTRL);
+		bus_space_write_4(bst, bsh, ctrl_reg, ae_mask);
+		ae = bus_space_read_4(bst, bsh, ctrl_reg);
+
+		if (ae == ae_mask)
+			addrext = true;
+	}
+
+	/* DMA64 should always support addrext */
+	if (!addrext && regfmt == BHND_DMA_REGFMT64) {
+		BHND_ERROR_DEV(owner, "missing DMA64 AE support");
+		return (ENXIO);
+	}
+
+	/* 
+	 * Determine the descriptor address mask and the maximum descriptor
+	 * count
+	 */
+	switch (regfmt) {
+	case BHND_DMA_REGFMT64: {
+		bus_size_t	addrlow_reg, ptr_reg;
+		uint32_t	desc_mask;
+
+		addrlow_reg = probe_offset + BHND_D64_ADDRLOW;
+		ptr_reg = probe_offset + BHND_D64_PTR;
+
+		/* Should be 0x1fff before 4360B0, 0xffff start from 4360B0 */
+		bus_space_write_4(bst, bsh, addrlow_reg, UINT32_MAX);
+		desc_mask = bus_space_read_4(bst, bsh, addrlow_reg);
+
+		if (desc_mask & 0xfff) {
+			desc_mask = bus_space_read_4(bst, bsh, ptr_reg);
+			desc_mask |= 0xf;
+		} else {
+			_Static_assert(BHND_D64_STATUS0_CD_MIN_MASK ==
+			    BHND_D64_STATUS1_AD_MIN_MASK, "CD/AD masks must be "
+			    "identical");
+
+			desc_mask = BHND_D64_STATUS0_CD_MIN_MASK;
+		}
+
+		st0_cd_mask = desc_mask;
+		st1_ad_mask = desc_mask;
+		max_ndesc = (desc_mask + 1) / BHND_D64_DESC_SIZE;
+
+		break;
+	}
+
+	case BHND_DMA_REGFMT32:
+		st0_cd_mask = BHND_D32_STATUS_CD_MASK;
+		st1_ad_mask = BHND_D32_STATUS_AD_MASK;
+		max_ndesc = ((BHND_D32_STATUS_CD_MASK >>
+		    BHND_D32_STATUS_CD_SHIFT) + 1) / BHND_D32_DESC_SIZE;
+
+		break;
+	}
+
+	if (!powerof2(max_ndesc)) {
+		/* Round down to nearest power of two; should never happen on
+		 * supported hardware */
+		BHND_ERROR_DEV(owner, "DMA max_ndesc %u is not a power of 2",
+		    max_ndesc);
+		max_ndesc = (1 << (fls(max_ndesc) - 1));
+	}
+
+	BHND_TRACE_DEV(owner, "DMA: st0_cd_mask=%#08x, st1_ad_mask=%#08x, "
+	    " max_ndesc=%u", st0_cd_mask, st1_ad_mask, max_ndesc);
+
 	/* Allocate and populate our DMA controller instance */
 	d = malloc(sizeof(*d), M_BHND_DMA, M_ZERO | M_WAITOK);
 	d->owner = owner;
@@ -178,6 +266,11 @@ bhnd_dma_new(bhnd_dma **dma, device_t owner, struct resource *regs,
 	// XXX hacked in for legacy code
 	d->regs_virt = (uintptr_t)rman_get_virtual(regs);
 	d->regs_virt += offset;
+
+	d->addrext = addrext;
+	d->st0_cd_mask = st0_cd_mask;
+	d->st1_ad_mask = st1_ad_mask;
+	d->max_ndesc = max_ndesc;
 
 	d->num_tx_chan = num_txc;
 	d->num_rx_chan = num_rxc;
@@ -282,7 +375,6 @@ bhnd_dma_chan_init(bhnd_dma *dma, bhnd_dma_chan *chan,
 	chan->num = chan_num;
 	chan->enabled = false;
 	chan->ndesc = 0;
-	chan->max_ndesc = 0;
 
 	/* Request a subregion mapping our per-channel register block */
 	size = BHND_DMA_REGF(dma->regfmt, CHAN_SIZE);
@@ -295,100 +387,6 @@ bhnd_dma_chan_init(bhnd_dma *dma, bhnd_dma_chan *chan,
 		    "subregion for DMA channel %s%zu: %d",
 		    bhnd_dma_direction_name(chan->direction), chan->num, error);
 		return (error);
-	}
-
-	/*
-	 * Sufficient channel state is now configured to allow us to probe
-	 * channel capabilities.
-	 */
-
-	/* 
-	 * Determine the descriptor address mask, and the maximum descriptor
-	 * count
-	 */
-	switch (chan->dma->regfmt) {
-	case BHND_DMA_REGFMT64: {
-		uint32_t desc_mask;
-
-		/* Should be 0x1fff before 4360B0, 0xffff start from 4360B0 */
-		BHND_DMA_WRITE_4(chan, BHND_D64_ADDRLOW, UINT32_MAX);
-		desc_mask = BHND_DMA_READ_4(chan, BHND_D64_ADDRLOW);
-
-		if (desc_mask & 0xfff) {
-			desc_mask = BHND_DMA_READ_4(chan, BHND_D64_PTR);
-			desc_mask |= 0xf;
-		} else {
-			_Static_assert(BHND_D64_STATUS0_CD_MIN_MASK ==
-			    BHND_D64_STATUS1_AD_MIN_MASK, "CD/AD masks must be "
-			    "identical");
-
-			desc_mask = BHND_D64_STATUS0_CD_MIN_MASK;
-		}
-
-		chan->st0_cd_mask = desc_mask;
-		chan->st1_ad_mask = desc_mask;
-		chan->max_ndesc = (desc_mask + 1) / BHND_D64_DESC_SIZE;
-
-		break;
-	}
-
-	case BHND_DMA_REGFMT32:
-		chan->st0_cd_mask = BHND_D32_STATUS_CD_MASK;
-		chan->st1_ad_mask = BHND_D32_STATUS_AD_MASK;
-		chan->max_ndesc = ((BHND_D32_STATUS_CD_MASK >>
-		    BHND_D32_STATUS_CD_SHIFT) + 1) / BHND_D32_DESC_SIZE;
-
-		break;
-	}
-
-	if (!powerof2(chan->max_ndesc)) {
-		/* Round down to nearest power of two; should never happen on
-		 * supported hardware */
-		BHND_DMA_CHAN_ERROR(chan, "max_ndesc %u is not a power of 2",
-		    chan->max_ndesc);
-		chan->max_ndesc = (1 << (fls(chan->max_ndesc) - 1));
-	}
-
-	BHND_DMA_CHAN_TRACE(chan, "st0_cd_mask=%#08x, st1_ad_mask=%#08x, "
-	    " max_ndesc=%u", chan->st0_cd_mask, chan->st1_ad_mask,
-	    chan->max_ndesc);
-	
-	/*
-	 * Does the DMA engine support DmaExtendedAddrChanges?
-	 */
-	chan->addrext = false;
-	if ((chan->dma->quirks & BHND_DMA_QUIRK_BROKEN_ADDREXT) == 0) {
-		bus_size_t	ctrl_reg;
-		uint32_t	ctrl, ae, ae_mask;
-
-		ctrl_reg = BHND_DMA_REG(chan, CTRL);
-		ae_mask = BHND_DMA_REG(chan, CTRL_AE_MASK);
-
-		/* Set all addrext bits and then read back the value */
-		ctrl = BHND_DMA_READ_4(chan, ctrl_reg);
-		ctrl |= ae_mask;
-		BHND_DMA_WRITE_4(chan, ctrl_reg, ctrl);
-
-		BHND_DMA_BARRIER(chan, ctrl_reg, 4, BUS_SPACE_BARRIER_WRITE);
-		ctrl = BHND_DMA_READ_4(chan, ctrl_reg);
-		ae = ctrl & ae_mask;
-
-		/* Clear the addrext bits */
-		ctrl &= ~ae_mask;
-		BHND_DMA_WRITE_4(chan, ctrl_reg, ctrl);
-
-		/* Were our addrext bits preserved across the write and
-		 * read-back? */
-		if (ae == ae_mask)
-			chan->addrext = true;
-	}
-
-	BHND_DMA_CHAN_TRACE(chan, "addrext=%s", chan->addrext ? "yes" : "no");
-
-	/* DMA64 should always support addrext */
-	if (!chan->addrext && chan->dma->regfmt == BHND_DMA_REGFMT64) {
-		BHND_DMA_CHAN_ERROR(chan, "missing DMA64 AE support");
-		return (ENXIO);
 	}
 
 	return (0);
@@ -543,7 +541,7 @@ bhnd_dma_chan_set_ndesc(bhnd_dma_chan *chan, u_int ndesc)
 		return (EBUSY);
 	}
 
-	if (!powerof2(ndesc) || ndesc > chan->max_ndesc) {
+	if (!powerof2(ndesc) || ndesc > chan->dma->max_ndesc) {
 		sx_xunlock(&chan->dma->chan_lock);
 		return (EINVAL);
 	}
@@ -582,7 +580,7 @@ bhnd_dma_chan_get_max_ndesc(bhnd_dma_chan *chan)
 	u_int ndesc;
 
 	sx_slock(&chan->dma->chan_lock);
-	ndesc = chan->max_ndesc;
+	ndesc = chan->dma->max_ndesc;
 	sx_sunlock(&chan->dma->chan_lock);
 
 	return (ndesc);
@@ -928,7 +926,7 @@ dma_attach(bhnd_dma_chan *chan, const char *name, volatile void *dmaregstx,
 			goto fail;
 	}
 
-	if ((di->ddoffsetlow != 0) && !chan->addrext) {
+	if ((di->ddoffsetlow != 0) && !chan->dma->addrext) {
 		if (PHYSADDRLO(di->txdpa) > SI_PCI_DMA_SZ) {
 			BHND_DMA_ERROR(di, "txdpa %#x: addrext not supported",
 			           (uint32_t)PHYSADDRLO(di->txdpa));
@@ -943,7 +941,7 @@ dma_attach(bhnd_dma_chan *chan, const char *name, volatile void *dmaregstx,
 
 	BHND_DMA_TRACE(di, "ddoffsetlow %#x ddoffsethigh %#x dataoffsetlow %#x dataoffsethigh "
 	           "%#x addrext %d", di->ddoffsetlow, di->ddoffsethigh, di->dataoffsetlow,
-	           di->dataoffsethigh, chan->addrext);
+	           di->dataoffsethigh, chan->dma->addrext);
 
 	/* allocate DMA mapping vectors */
 	if (DMASGLIST_ENAB) {
@@ -1012,7 +1010,7 @@ _dma_ddtable_init(dma_info_t *di, dmaaddr_t pa)
 			/* DMA64 32bits address extension */
 			uint32_t ae, ctrl;
 
-			ASSERT(chan->addrext);
+			ASSERT(chan->dma->addrext);
 			ASSERT(PHYSADDRHI(pa) == 0);
 
 			/* shift the high bit(s) from pa to ae */
@@ -1041,7 +1039,7 @@ _dma_ddtable_init(dma_info_t *di, dmaaddr_t pa)
 		} else {
 			/* dma32 address extension */
 			uint32_t ctrl, ae;
-			ASSERT(chan->addrext);
+			ASSERT(chan->dma->addrext);
 
 			/* shift the high bit(s) from pa to ae */
 			ae = (PHYSADDRLO(pa) & PCI32ADDR_HIGH) >> PCI32ADDR_HIGH_SHIFT;
@@ -1256,8 +1254,8 @@ next_frame:
 			/* Fetch the current descriptor address */
 			status = BHND_DMA_READ_4(chan,
 			    BHND_DMA_REG(chan, STATUS0));			
-			cdesc = (status & chan->st0_cd_mask) - di->ptrbase;
-			cdesc &= (chan->st0_cd_mask);
+			cdesc = (status & chan->dma->st0_cd_mask) - di->ptrbase;
+			cdesc &= (chan->dma->st0_cd_mask);
 
 			/* Map to a descriptor index */
 			cur = cdesc / BHND_DMA_REG(chan, DESC_SIZE);
@@ -1432,9 +1430,9 @@ bhnd_dma_desc_active(bhnd_dma_chan *chan, dma_info_t *di)
 	uint32_t status, addr;
 
 	status = BHND_DMA_READ_4(chan, BHND_DMA_REG(chan, STATUS1));
-	addr = (status & chan->st1_ad_mask) >>
+	addr = (status & chan->dma->st1_ad_mask) >>
 		    BHND_DMA_REG(chan, STATUS1_AD_SHIFT);
-	addr = (addr - di->ptrbase) & chan->st1_ad_mask;
+	addr = (addr - di->ptrbase) & chan->dma->st1_ad_mask;
 
 	return (addr / BHND_DMA_REG(chan, DESC_SIZE));
 }
@@ -1450,9 +1448,9 @@ bhnd_dma_desc_current(bhnd_dma_chan *chan, dma_info_t *di)
 	uint32_t status, addr;
 
 	status = BHND_DMA_READ_4(chan, BHND_DMA_REG(chan, STATUS0));
-	addr = (status & chan->st0_cd_mask) >>
+	addr = (status & chan->dma->st0_cd_mask) >>
 	    BHND_DMA_REG(chan, STATUS0_CD_SHIFT);
-	addr = (addr - di->ptrbase) & chan->st0_cd_mask;
+	addr = (addr - di->ptrbase) & chan->dma->st0_cd_mask;
 
 	return (addr / BHND_DMA_REG(chan, DESC_SIZE));
 }
@@ -1468,9 +1466,9 @@ bhnd_dma_desc_last(bhnd_dma_chan *chan, dma_info_t *di)
 	uint32_t ptr, addr;
 
 	ptr = BHND_DMA_READ_4(chan, BHND_DMA_REG(chan, PTR));
-	addr = (ptr & chan->st0_cd_mask) >>
+	addr = (ptr & chan->dma->st0_cd_mask) >>
 	    BHND_DMA_REG(chan, STATUS0_CD_SHIFT);
-	addr = (addr - di->ptrbase) & chan->st0_cd_mask;
+	addr = (addr - di->ptrbase) & chan->dma->st0_cd_mask;
 
 	return (addr / BHND_DMA_REG(chan, DESC_SIZE));
 }

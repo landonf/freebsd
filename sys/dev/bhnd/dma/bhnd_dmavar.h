@@ -65,6 +65,11 @@ struct bhnd_dma {
 	bus_size_t			 regs_size;	/**< DMA register block size */
 	uintptr_t			 regs_virt;	/**< XXX register virtual base address */
 
+	bool				 addrext;	/**< true if DmaExtendedAddrChanges supported */
+	uint32_t 			 st0_cd_mask;	/**< status0 current descriptor pointer mask */
+	uint32_t 			 st1_ad_mask;	/**< status1 active descriptor pointer mask */
+	u_int				 max_ndesc;	/**< maximum descriptor count */
+
 	bhnd_dma_chan			*tx_chan;	/**< DMA transmit channels */
 	size_t				 num_tx_chan;	/**< transmit channel count */
 
@@ -82,18 +87,12 @@ struct bhnd_dma_chan {
 	bus_space_handle_t	 bsh;		/**< per-channel register block bus handle */
 	bhnd_dma_direction	 direction;	/**< channel direction */
 	size_t			 num;		/**< channel number */
-	bool			 addrext;	/**< true if DmaExtendedAddrChanges supported */
-	uint32_t 		 st0_cd_mask;	/**< status0 current descriptor pointer mask */
-	uint32_t 		 st1_ad_mask;	/**< status1 active descriptor pointer mask */
-	u_int			 max_ndesc;	/**< maximum descriptor count */
 
 	u_int			 ndesc;		/**< descriptor count */
 	bool			 enabled;	/**< true if channel has been enabled */
 
 	hnddma_t		*di;		/**< XXX legacy hnddma instance */
 };
-
-#define	BHND_DMA_CHAN_
 
 /* XXX TODO: Use device_printf() variants? Fix level handling! */
 #define	_BHND_DMA_CHAN_PRINTF(_level, _ch, _fmt, ...) do {		\
@@ -140,6 +139,9 @@ struct bhnd_dma_chan {
 #define	_BHND_DMA_PRINTF_NEW(_level, _dma, _fmt, ...) do {		\
 	device_printf((_dma)->owner, _fmt "\n", ## __VA_ARGS__);	\
 } while (0)
+
+#define	BHND_DMA_TRACE_NEW(_dma, _fmt, ...)	\
+	_BHND_DMA_PRINTF_NEW(BHND_TRACE_LEVEL, (_dma), _fmt, ## __VA_ARGS__)
 
 #define	BHND_DMA_ERROR_NEW(_dma, _fmt, ...)	\
 	_BHND_DMA_PRINTF_NEW(BHND_ERROR_LEVEL, (_dma), _fmt, ## __VA_ARGS__)
