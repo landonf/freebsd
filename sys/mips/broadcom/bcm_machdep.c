@@ -103,9 +103,13 @@ __FBSDID("$FreeBSD$");
 
 static int	bcm_init_platform_data(struct bcm_platform *bp);
 
+static int	bcm_find_byteswapped_physaddr(struct bcm_platform *bp,
+		    uintptr_t *addr, size_t *size);
+
 static int	bcm_find_core(struct bcm_platform *bp,
 		    const struct bhnd_core_match *descs, size_t num_descs,
-		    struct bhnd_core_info *info, uintptr_t *addr);
+		    bhnd_port_type port_type, u_int port, u_int region,
+		    struct bhnd_core_info *info, uintptr_t *addr, size_t *size);
 
 static int	bcm_erom_probe_and_attach(bhnd_erom_class_t **erom_cls,
 		    kobj_ops_t erom_ops, bhnd_erom_t *erom, size_t esize,
@@ -129,6 +133,13 @@ static const struct bhnd_core_match bcm_chipc_cores[] = {
 static const struct bhnd_core_match bcm_cpu0_cores[] = {
 	{
 		BHND_MATCH_CORE_CLASS(BHND_DEVCLASS_CPU),
+		BHND_MATCH_CORE_UNIT(0)
+	}
+};
+
+static const struct bhnd_core_match bcm_memc_cores[] = {
+	{
+		BHND_MATCH_CORE_CLASS(BHND_DEVCLASS_MEMC),
 		BHND_MATCH_CORE_UNIT(0)
 	}
 };
@@ -168,20 +179,97 @@ bcm_get_bus_size(void)
 	return (BHND_DEFAULT_ENUM_SIZE);
 }
 
+
+/*
+ * Use the device enumeration table to locate the memory controller core,
+ * determine the physical address range mapped to RAM, and return the address
+ * range of its corresponding byte-swapped memory mapping.
+ * 
+ * Write requests within this range will be byte-swapped before being written
+ * to memory, and read requests will be byte-swapped before being returned.
+ *
+ * @param	bp		Platform state containing a valid EROM parser.
+ * @param[out]	addr		On success, will be populated with the physical
+ *				address of the byte-swapped RAM mapping.
+ * @param[out]	size		On success, will be populated with the size
+ *				of the memory mapping at @p addr.
+ * 
+ * @retval 0		success
+ * @retval non-zero	if determining the byte-swapped mapping range otherwise
+ *			fails, a regular unix error code will be returned.
+ */
+static int
+bcm_find_byteswapped_physaddr(struct bcm_platform *bp, uintptr_t *addr,
+    size_t *size)
+{
+
+	uintptr_t	ram_addr, bswap_addr;
+	size_t		ram_size, bswap_size;
+	int		error;
+
+	error = bcm_find_core(bp, bcm_memc_cores, nitems(bcm_memc_cores),
+	    BHND_PORT_DEVICE, 1, 0, NULL, &ram_addr, &ram_size);
+	if (error) {
+		BCM_ERR("failed to fetch memory controller's device1.0 port "
+		    "address: %d\n", error);
+		return (error);
+	}
+
+	if (ram_addr != 0x0) {
+		BCM_ERR("unexpected base address assigned to memory "
+		    "controller's %s1.0 port: %#jx\n",
+		    bhnd_port_type_name(BHND_PORT_DEVICE), (uintmax_t)ram_addr);
+
+		return (ENXIO);
+	}
+
+	/* Fetch the byte-swapped mapping */
+	error = bcm_find_core(bp, bcm_memc_cores, nitems(bcm_memc_cores),
+	    BHND_PORT_DEVICE, 1, 1, NULL, &bswap_addr, &bswap_size);
+	if (error) {
+		BCM_ERR("failed to fetch memory controller's %s1.1 port "
+		    "address: %d", bhnd_port_type_name(BHND_PORT_DEVICE),
+		    error);
+
+		return (error);
+	}
+
+	if (bswap_size != ram_size) {
+		BCM_ERR("byte-swapped RAM mapping %#jx+%#jx does not cover "
+		    "full address range %#jx+%#jx\n", (uintmax_t)bswap_addr,
+		    (uintmax_t)bswap_size, (uintmax_t)ram_addr,
+		    (uintmax_t)ram_size);
+
+		return (ENXIO);
+	}
+
+	*addr = bswap_addr;
+	*size = bswap_size;
+
+	return (0);
+}
+
 /**
- * Search the device enumeration table for a core matching @p descs,
+ * Search the device enumeration table for a core matching @p descs with
+ * the given @p port_type, @p port, and @p region.
  * 
  * @param	bp		Platform state containing a valid EROM parser.
  * @param	descs		The core match descriptor table.
  * @param	num_descs	The number of match descriptors in @p descs.
+ * @param	type		The port type to search for.
+ * @param	port		The port to search for.
+ * @param	region		The port region to search for.
  * @param[out]	info		If non-NULL, will be populated with the core
  *				info.
- * @param[out]	addr		If non-NULL, will be populated with the core's
- *				physical register address.
+ * @param[out]	addr		If non-NULL, will be populated with the
+ *				region's physical address.
+ * @param[out]	size		If non-NULL, will be populated with the
+ *				region's size.
  */
 static int
 bcm_find_core(struct bcm_platform *bp, const struct bhnd_core_match *descs,
-    size_t num_descs, struct bhnd_core_info *info, uintptr_t *addr)
+    size_t num_descs, bhnd_port_type port_type, u_int port, u_int region,
+    struct bhnd_core_info *info, uintptr_t *addr, size_t *size)
 {
 	bhnd_addr_t		b_addr;
 	bhnd_size_t		b_size;
@@ -190,7 +278,7 @@ bcm_find_core(struct bcm_platform *bp, const struct bhnd_core_match *descs,
 	/* Fetch core info */
 	for (size_t i = 0; i < num_descs; i++) {
 		error = bhnd_erom_lookup_core_addr(&bp->erom.obj, &descs[i],
-		    BHND_PORT_DEVICE, 0, 0, info, &b_addr, &b_size);
+		    port_type, port, region, info, &b_addr, &b_size);
 
 		/* Terminate search on first match */
 		if (error == 0)
@@ -203,15 +291,23 @@ bcm_find_core(struct bcm_platform *bp, const struct bhnd_core_match *descs,
 		/* Continue search ... */
 	}
 
-	/* Provide the core's base address */
+	/* Provide the core's base address + size */
 	if (addr != NULL && b_addr > UINTPTR_MAX) {
 		BCM_ERR("core address %#jx overflows native address width\n",
 		    (uintmax_t)b_addr);
 		return (ERANGE);
 	}
 
+	if (size != NULL && b_size > SIZE_MAX) {
+		BCM_ERR("invalid region size %#jx\n", (uintmax_t)b_size);
+		return (ERANGE);
+	}
+
 	if (addr != NULL)
 		*addr = b_addr;
+
+	if (size != NULL)
+		*size = b_size;
 
 	return (0);
 }
@@ -345,6 +441,7 @@ bcm_init_platform_data(struct bcm_platform *bp)
 	bus_addr_t		bus_addr, bus_size;
 	bus_space_tag_t		erom_bst;
 	bus_space_handle_t	erom_bsh;
+
 	bool			aob, pmu;
 	int			error;
 
@@ -391,7 +488,7 @@ bcm_init_platform_data(struct bcm_platform *bp)
 
 	/* Fetch chipcommon core info */
 	error = bcm_find_core(bp, bcm_chipc_cores, nitems(bcm_chipc_cores),
-	    &bp->cc_id, &bp->cc_addr);
+	    BHND_PORT_DEVICE, 0, 0, &bp->cc_id, &bp->cc_addr, NULL);
 	if (error) {
 		BCM_ERR("error locating chipc core: %d\n", error);
 		return (error);
@@ -411,7 +508,7 @@ bcm_init_platform_data(struct bcm_platform *bp)
 	if (pmu && aob) {
 		/* PMU block mapped to a PMU core on the Always-on-Bus (aob) */
 		error = bcm_find_core(bp, bcm_pmu_cores, nitems(bcm_pmu_cores),
-		    &bp->pmu_id,  &bp->pmu_addr);
+		    BHND_PORT_DEVICE, 0, 0, &bp->pmu_id,  &bp->pmu_addr, NULL);
 		if (error) {
 			BCM_ERR("error locating pmu core: %d\n", error);
 			return (error);
@@ -438,10 +535,29 @@ bcm_init_platform_data(struct bcm_platform *bp)
 
 	/* Find CPU core info */
 	error = bcm_find_core(bp, bcm_cpu0_cores, nitems(bcm_cpu0_cores),
-	    &bp->cpu_id,  &bp->cpu_addr);
+	    BHND_PORT_DEVICE, 0, 0, &bp->cpu_id,  &bp->cpu_addr, NULL);
 	if (error) {
 		BCM_ERR("error locating CPU core: %d\n", error);
 		return (error);
+	}
+
+	/*
+	 * Determine the physical address range of the byte-swapped RAM
+	 * memory mapping, if any.
+	 */
+	error = bcm_find_byteswapped_physaddr(bp, &bp->bswap_addr,
+	    &bp->bswap_size);
+	if (error) {
+		/* 
+		 * It's not a fatal error if we're unable to determine this
+		 * address mapping; it will merely prevent drivers from
+		 * requesting a PHYSMAP|BYTESWAPPED DMA translation on MIPS
+		 * cores operating in big-endian mode.
+		 */
+		BCM_ERR("error determining the memory controller's "
+		    "byte-swapped memory mapping: %d\n", error);
+		bp->bswap_addr = 0x0;
+		bp->bswap_size = 0x0;
 	}
 
 	/* Initialize our platform service registry */

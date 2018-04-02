@@ -2102,7 +2102,7 @@ bhnd_bus_generic_get_chipid(device_t dev, device_t child)
  * If a parent device is available, this implementation delegates the
  * request to the BHND_BUS_GET_DMA_TRANSLATION() method on the parent of @p dev.
  *
- * If no parent device is available, this implementation will panic.
+ * If no parent device is available, this implementation will return ENODEV.
  */
 int
 bhnd_bus_generic_get_dma_translation(device_t dev, device_t child, u_int width,
@@ -2112,9 +2112,9 @@ bhnd_bus_generic_get_dma_translation(device_t dev, device_t child, u_int width,
 	if (device_get_parent(dev) != NULL) {
 		return (BHND_BUS_GET_DMA_TRANSLATION(device_get_parent(dev),
 		    child, width, flags, dmat, translation));
+	} else {
+		return (ENODEV);
 	}
-
-	panic("missing BHND_BUS_GET_DMA_TRANSLATION()");
 }
 
 /* nvram board_info population macros for bhnd_bus_generic_read_board_info() */

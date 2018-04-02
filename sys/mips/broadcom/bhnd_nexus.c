@@ -51,6 +51,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/malloc.h>
 
 #include <machine/bus.h>
+#include <machine/_inttypes.h>
 
 #include <dev/bhnd/bhndvar.h>
 #include <dev/bhnd/bhnd_ids.h>
@@ -227,18 +228,63 @@ bhnd_nexus_get_dma_translation(device_t dev, device_t child,
 {
 	struct bcm_platform *bp = bcm_get_platform();
 
-	/* We don't (currently) support any flags */
-	if (flags != 0x0)
-		return (ENOENT);
-
-	KASSERT(width > 0 && width <= BHND_DMA_ADDR_64BIT,
-	    ("invalid width %u", width));
+	KASSERT(width <= BHND_DMA_ADDR_64BIT, ("invalid width %u", width));
 
 	/* Is the requested width supported? */
 	if (width > BHND_DMA_ADDR_32BIT) {
 		/* Backplane must support 64-bit addressing */
 		if (!(bp->cid.chip_caps & BHND_CAP_BP64))
 			width = BHND_DMA_ADDR_32BIT;
+	}
+
+	/* Handle supported flags */
+	switch (flags) {
+	case BHND_DMA_TRANSLATION_PHYSMAP:
+		/* Fall back on our default no-op address translation */ 
+		break;
+
+	case (BHND_DMA_TRANSLATION_PHYSMAP|BHND_DMA_TRANSLATION_BYTESWAPPED): {
+		bhnd_addr_t	addr_mask;
+		uintptr_t	addr_max;
+		int		addr_bit;
+
+		/* XXX TODO: we need to drop support for fetching the
+		 * DMA tag */
+		if (dmat != NULL) {
+			panic("fetching DMA tag not supported for "
+			    "(BHND_DMA_TRANSLATION_PHYSMAP|"
+			    "BHND_DMA_TRANSLATION_BYTESWAPPED)");
+		}
+
+		/* Do we have a byteswapped mapping? */
+		if (bp->bswap_size == 0x0)
+			return (ENOENT);
+
+		KASSERT(bp->bswap_size < bp->bswap_addr, ("invalid bswap size: "
+		    "%#" PRIxPTR "+%#zx", bp->bswap_addr, bp->bswap_size));
+
+		addr_max = bp->bswap_addr + bp->bswap_size;
+
+		KASSERT(addr_max != 0, ("invalid addr_max: %#" PRIxPTR,
+		    addr_max));
+
+		/* ffs() returns bit+1, which is what we actually want to
+		 * produce our addr_mask */
+		addr_bit = ffsll((long long)(intptr_t)addr_max);
+		addr_mask = BHND_DMA_ADDR_BITMASK(addr_bit);
+
+		*translation = ((struct bhnd_dma_translation) {
+			.base_addr = bp->bswap_addr,
+			.addr_mask = addr_mask,
+			.addrext_mask = 0x0,
+			.flags = flags,
+		});
+
+		return (0);
+	}
+	default:
+		/* Unsupported */
+		return (ENOENT);
 	}
 
 	/* No DMA address translation required */
@@ -249,7 +295,8 @@ bhnd_nexus_get_dma_translation(device_t dev, device_t child,
 		*translation = (struct bhnd_dma_translation) {
 			.base_addr	= 0x0,
 			.addr_mask	= BHND_DMA_ADDR_BITMASK(width),
-			.addrext_mask	= 0
+			.addrext_mask	= 0x0,
+			.flags		= 0x0,
 		};
 	}
 

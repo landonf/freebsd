@@ -75,6 +75,9 @@ struct bcm_platform {
 		bhnd_erom_t		 obj;
 	} erom;
 
+	uintptr_t			 bswap_addr;	/**< physical address of byteswapped RAM mapping, or 0x0 if not found */
+	size_t				 bswap_size;	/**< size of byteswapped RAM mapping, or 0x0 if not found */
+
 	struct bhnd_nvram_io		*nvram_io;	/**< NVRAM I/O context, or NULL if unavailable */
 	bhnd_nvram_data_class		*nvram_cls;	/**< NVRAM data class, or NULL if unavailable */
 

@@ -319,7 +319,7 @@ struct bhnd_dma_translation {
  */
 enum bhnd_dma_translation_flags {
 	/**
-	 * The translation remaps the device's physical address space.
+	 * The translation remaps the host's physical address space.
 	 * 
 	 * This is used in conjunction with BHND_DMA_TRANSLATION_BYTESWAPPED to
 	 * define a DMA translation that provides byteswapped access to

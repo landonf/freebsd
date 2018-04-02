@@ -2128,6 +2128,18 @@ bhndb_get_dma_translation(device_t dev, device_t child, u_int width,
 	if (sc->bus_res->res->dma_tags == NULL)
 		return (ENODEV);
 
+	/*
+	 * If this is a request for a translation that remaps the host's
+	 * physical address space, pass the request through to our parent.
+	 */
+	if (flags & BHND_DMA_TRANSLATION_PHYSMAP) {
+		if (device_get_parent(dev) == NULL)
+			return (ENOENT);
+
+		return (BHND_BUS_GET_DMA_TRANSLATION(device_get_parent(dev),
+		    child, width, flags, dmat, translation));
+	}
+
 	/* Is the requested width supported? */
 	if (width > BHND_DMA_ADDR_32BIT) {
 		/* Backplane must support 64-bit addressing */
