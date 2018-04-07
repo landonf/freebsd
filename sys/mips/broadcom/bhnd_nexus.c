@@ -226,7 +226,12 @@ bhnd_nexus_get_dma_translation(device_t dev, device_t child,
     u_int width, uint32_t flags, bus_dma_tag_t *dmat,
     struct bhnd_dma_translation *translation)
 {
-	struct bcm_platform *bp = bcm_get_platform();
+	struct bcm_platform	*bp;
+	bhnd_addr_t		 addr_mask;
+	uintptr_t		 addr_max;
+	int			 addr_bit;
+
+	bp = bcm_get_platform();
 
 	KASSERT(width <= BHND_DMA_ADDR_64BIT, ("invalid width %u", width));
 
@@ -240,14 +245,23 @@ bhnd_nexus_get_dma_translation(device_t dev, device_t child,
 	/* Handle supported flags */
 	switch (flags) {
 	case BHND_DMA_TRANSLATION_PHYSMAP:
-		/* Fall back on our default no-op address translation */ 
-		break;
+	case 0x0:
+		/* No DMA address translation required */
+		if (dmat != NULL)
+			*dmat = bus_get_dma_tag(dev);
 
-	case (BHND_DMA_TRANSLATION_PHYSMAP|BHND_DMA_TRANSLATION_BYTESWAPPED): {
-		bhnd_addr_t	addr_mask;
-		uintptr_t	addr_max;
-		int		addr_bit;
+		if (translation != NULL) {
+			*translation = (struct bhnd_dma_translation) {
+				.base_addr	= 0x0,
+				.addr_mask	= BHND_DMA_ADDR_BITMASK(width),
+				.addrext_mask	= 0x0,
+				.flags		= 0x0,
+			};
+		}
 
+		return (0);
+
+	case (BHND_DMA_TRANSLATION_PHYSMAP|BHND_DMA_TRANSLATION_BYTESWAPPED):
 		/* XXX TODO: we need to drop support for fetching the
 		 * DMA tag */
 		if (dmat != NULL) {
@@ -281,26 +295,11 @@ bhnd_nexus_get_dma_translation(device_t dev, device_t child,
 		});
 
 		return (0);
-	}
+
 	default:
 		/* Unsupported */
 		return (ENOENT);
 	}
-
-	/* No DMA address translation required */
-	if (dmat != NULL)
-		*dmat = bus_get_dma_tag(dev);
-
-	if (translation != NULL) {
-		*translation = (struct bhnd_dma_translation) {
-			.base_addr	= 0x0,
-			.addr_mask	= BHND_DMA_ADDR_BITMASK(width),
-			.addrext_mask	= 0x0,
-			.flags		= 0x0,
-		};
-	}
-
-	return (0);
 }
 
 static device_method_t bhnd_nexus_methods[] = {
