@@ -31,8 +31,6 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include "opt_compat.h"
-
 #include <sys/param.h>
 #include <sys/exec.h>
 #include <sys/fcntl.h>
@@ -107,6 +105,8 @@ fill_regs32(struct thread *td, struct reg32 *regs)
 	regs->r_eflags = tp->tf_rflags;
 	regs->r_esp = tp->tf_rsp;
 	regs->r_ss = tp->tf_ss;
+	regs->r_err = 0;
+	regs->r_trapno = 0;
 	return (0);
 }
 

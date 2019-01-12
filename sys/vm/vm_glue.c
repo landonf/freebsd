@@ -68,6 +68,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/domainset.h>
 #include <sys/limits.h>
 #include <sys/lock.h>
 #include <sys/malloc.h>
@@ -92,6 +93,7 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm.h>
 #include <vm/vm_param.h>
 #include <vm/pmap.h>
+#include <vm/vm_domainset.h>
 #include <vm/vm_map.h>
 #include <vm/vm_page.h>
 #include <vm/vm_pageout.h>
@@ -122,7 +124,7 @@ kernacc(void *addr, int len, int rw)
 	KASSERT((rw & ~VM_PROT_ALL) == 0,
 	    ("illegal ``rw'' argument to kernacc (%x)\n", rw));
 
-	if ((vm_offset_t)addr + len > kernel_map->max_offset ||
+	if ((vm_offset_t)addr + len > vm_map_max(kernel_map) ||
 	    (vm_offset_t)addr + len < (vm_offset_t)addr)
 		return (FALSE);
 
@@ -191,16 +193,21 @@ vslock(void *addr, size_t len)
 	 * Also, the sysctl code, which is the only present user
 	 * of vslock(), does a hard loop on EAGAIN.
 	 */
-	if (npages + vm_cnt.v_wire_count > vm_page_max_wired)
+	if (npages + vm_wire_count() > vm_page_max_wired)
 		return (EAGAIN);
 #endif
 	error = vm_map_wire(&curproc->p_vmspace->vm_map, start, end,
 	    VM_MAP_WIRE_SYSTEM | VM_MAP_WIRE_NOHOLES);
+	if (error == KERN_SUCCESS) {
+		curthread->td_vslock_sz += len;
+		return (0);
+	}
+
 	/*
 	 * Return EFAULT on error to match copy{in,out}() behaviour
 	 * rather than returning ENOMEM like mlock() would.
 	 */
-	return (error == KERN_SUCCESS ? 0 : EFAULT);
+	return (EFAULT);
 }
 
 void
@@ -208,6 +215,8 @@ vsunlock(void *addr, size_t len)
 {
 
 	/* Rely on the parameter sanity checks performed by vslock(). */
+	MPASS(curthread->td_vslock_sz >= len);
+	curthread->td_vslock_sz -= len;
 	(void)vm_map_unwire(&curproc->p_vmspace->vm_map,
 	    trunc_page((vm_offset_t)addr), round_page((vm_offset_t)addr + len),
 	    VM_MAP_WIRE_SYSTEM | VM_MAP_WIRE_NOHOLES);
@@ -290,7 +299,7 @@ vm_sync_icache(vm_map_t map, vm_offset_t va, vm_offset_t sz)
 
 struct kstack_cache_entry *kstack_cache;
 static int kstack_cache_size = 128;
-static int kstacks;
+static int kstacks, kstack_domain_iter;
 static struct mtx kstack_cache_mtx;
 MTX_SYSINIT(kstack_cache, &kstack_cache_mtx, "kstkch", MTX_DEF);
 
@@ -319,7 +328,7 @@ vm_thread_new(struct thread *td, int pages)
 	else if (pages > KSTACK_MAX_PAGES)
 		pages = KSTACK_MAX_PAGES;
 
-	if (pages == kstack_pages) {
+	if (pages == kstack_pages && kstack_cache != NULL) {
 		mtx_lock(&kstack_cache_mtx);
 		if (kstack_cache != NULL) {
 			ks_ce = kstack_cache;
@@ -359,6 +368,17 @@ vm_thread_new(struct thread *td, int pages)
 		printf("vm_thread_new: kstack allocation failed\n");
 		vm_object_deallocate(ksobj);
 		return (0);
+	}
+
+	/*
+	 * Ensure that kstack objects can draw pages from any memory
+	 * domain.  Otherwise a local memory shortage can block a process
+	 * swap-in.
+	 */
+	if (vm_ndomains > 1) {
+		ksobj->domain.dr_policy = DOMAINSET_RR();
+		ksobj->domain.dr_iter =
+		    atomic_fetchadd_int(&kstack_domain_iter, 1);
 	}
 
 	atomic_add_int(&kstacks, 1);
@@ -527,6 +547,7 @@ vm_forkproc(struct thread *td, struct proc *p2, struct thread *td2,
     struct vmspace *vm2, int flags)
 {
 	struct proc *p1 = td->td_proc;
+	struct domainset *dset;
 	int error;
 
 	if ((flags & RFPROC) == 0) {
@@ -550,9 +571,9 @@ vm_forkproc(struct thread *td, struct proc *p2, struct thread *td2,
 		p2->p_vmspace = p1->p_vmspace;
 		atomic_add_int(&p1->p_vmspace->vm_refcnt, 1);
 	}
-
-	while (vm_page_count_severe()) {
-		vm_wait_severe();
+	dset = td2->td_domain.dr_policy;
+	while (vm_page_count_severe_set(&dset->ds_mask)) {
+		vm_wait_doms(&dset->ds_mask);
 	}
 
 	if ((flags & RFMEM) == 0) {

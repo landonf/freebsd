@@ -193,7 +193,7 @@ affixdir(char *name, struct dir_ent *dirent)
 	/*
 	 * If the host is set then also add the hostname to the filename.
 	 */
-	if (auditd_hostlen != -1)
+	if (auditd_hostlen > 0)
 		asprintf(&fn, "%s/%s.%s", dirent->dirname, name, auditd_host);
 	else
 		asprintf(&fn, "%s/%s", dirent->dirname, name);
@@ -261,7 +261,8 @@ auditd_set_host(void)
 	struct auditinfo_addr aia;
 	int error, ret = ADE_NOERR;
 
-	if (getachost(auditd_host, sizeof(auditd_host)) != 0) {
+	if ((getachost(auditd_host, sizeof(auditd_host)) != 0) ||
+	    ((auditd_hostlen = strlen(auditd_host)) == 0)) {
 		ret = ADE_PARSE;
 
 		/*
@@ -278,7 +279,6 @@ auditd_set_host(void)
 			ret = ADE_AUDITON;
 		return (ret);
 	}
-	auditd_hostlen = strlen(auditd_host);
 	error = getaddrinfo(auditd_host, NULL, NULL, &res);
 	if (error)
 		return (ADE_GETADDR);

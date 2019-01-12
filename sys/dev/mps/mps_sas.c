@@ -227,16 +227,24 @@ mpssas_startup_decrement(struct mpssas_softc *sassc)
 	}
 }
 
-/* The firmware requires us to stop sending commands when we're doing task
- * management, so refcount the TMs and keep the simq frozen when any are in
- * use.
+/*
+ * The firmware requires us to stop sending commands when we're doing task
+ * management.
+ * XXX The logic for serializing the device has been made lazy and moved to
+ * mpssas_prepare_for_tm().
  */
 struct mps_command *
 mpssas_alloc_tm(struct mps_softc *sc)
 {
+	MPI2_SCSI_TASK_MANAGE_REQUEST *req;
 	struct mps_command *tm;
 
 	tm = mps_alloc_high_priority_command(sc);
+	if (tm == NULL)
+		return (NULL);
+
+	req = (MPI2_SCSI_TASK_MANAGE_REQUEST *)tm->cm_req;
+	req->Function = MPI2_FUNCTION_SCSI_TASK_MGMT;
 	return tm;
 }
 
@@ -424,7 +432,7 @@ mpssas_prepare_volume_remove(struct mpssas_softc *sassc, uint16_t handle)
 {
 	MPI2_SCSI_TASK_MANAGE_REQUEST *req;
 	struct mps_softc *sc;
-	struct mps_command *cm;
+	struct mps_command *tm;
 	struct mpssas_target *targ = NULL;
 
 	MPS_FUNCTRACE(sassc->sc);
@@ -453,8 +461,8 @@ mpssas_prepare_volume_remove(struct mpssas_softc *sassc, uint16_t handle)
 
 	targ->flags |= MPSSAS_TARGET_INREMOVAL;
 
-	cm = mpssas_alloc_tm(sc);
-	if (cm == NULL) {
+	tm = mpssas_alloc_tm(sc);
+	if (tm == NULL) {
 		mps_dprint(sc, MPS_ERROR,
 		    "%s: command alloc failure\n", __func__);
 		return;
@@ -462,26 +470,23 @@ mpssas_prepare_volume_remove(struct mpssas_softc *sassc, uint16_t handle)
 
 	mpssas_rescan_target(sc, targ);
 
-	req = (MPI2_SCSI_TASK_MANAGE_REQUEST *)cm->cm_req;
+	req = (MPI2_SCSI_TASK_MANAGE_REQUEST *)tm->cm_req;
 	req->DevHandle = targ->handle;
-	req->Function = MPI2_FUNCTION_SCSI_TASK_MGMT;
 	req->TaskType = MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET;
 
 	/* SAS Hard Link Reset / SATA Link Reset */
 	req->MsgFlags = MPI2_SCSITASKMGMT_MSGFLAGS_LINK_RESET;
 
-	cm->cm_targ = targ;
-	cm->cm_data = NULL;
-	cm->cm_desc.HighPriority.RequestFlags =
-	    MPI2_REQ_DESCRIPT_FLAGS_HIGH_PRIORITY;
-	cm->cm_complete = mpssas_remove_volume;
-	cm->cm_complete_data = (void *)(uintptr_t)handle;
+	tm->cm_targ = targ;
+	tm->cm_data = NULL;
+	tm->cm_complete = mpssas_remove_volume;
+	tm->cm_complete_data = (void *)(uintptr_t)handle;
 
 	mps_dprint(sc, MPS_INFO, "%s: Sending reset for target ID %d\n",
 	    __func__, targ->tid);
-	mpssas_prepare_for_tm(sc, cm, targ, CAM_LUN_WILDCARD);
+	mpssas_prepare_for_tm(sc, tm, targ, CAM_LUN_WILDCARD);
 
-	mps_map_command(sc, cm);
+	mps_map_command(sc, tm);
 }
 
 /*
@@ -528,7 +533,6 @@ mpssas_prepare_remove(struct mpssas_softc *sassc, uint16_t handle)
 	req = (MPI2_SCSI_TASK_MANAGE_REQUEST *)cm->cm_req;
 	memset(req, 0, sizeof(*req));
 	req->DevHandle = htole16(targ->handle);
-	req->Function = MPI2_FUNCTION_SCSI_TASK_MGMT;
 	req->TaskType = MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET;
 
 	/* SAS Hard Link Reset / SATA Link Reset */
@@ -536,7 +540,6 @@ mpssas_prepare_remove(struct mpssas_softc *sassc, uint16_t handle)
 
 	cm->cm_targ = targ;
 	cm->cm_data = NULL;
-	cm->cm_desc.HighPriority.RequestFlags = MPI2_REQ_DESCRIPT_FLAGS_HIGH_PRIORITY;
 	cm->cm_complete = mpssas_remove_device;
 	cm->cm_complete_data = (void *)(uintptr_t)handle;
 
@@ -1101,22 +1104,30 @@ mpssas_complete_all_commands(struct mps_softc *sc)
 	/* complete all commands with a NULL reply */
 	for (i = 1; i < sc->num_reqs; i++) {
 		cm = &sc->commands[i];
+		if (cm->cm_state == MPS_CM_STATE_FREE)
+			continue;
+
+		cm->cm_state = MPS_CM_STATE_BUSY;
 		cm->cm_reply = NULL;
 		completed = 0;
+
+		if (cm->cm_flags & MPS_CM_FLAGS_SATA_ID_TIMEOUT) {
+			MPASS(cm->cm_data);
+			free(cm->cm_data, M_MPT2);
+			cm->cm_data = NULL;
+		}
 
 		if (cm->cm_flags & MPS_CM_FLAGS_POLLED)
 			cm->cm_flags |= MPS_CM_FLAGS_COMPLETE;
 
 		if (cm->cm_complete != NULL) {
 			mpssas_log_command(cm, MPS_RECOVERY,
-			    "completing cm %p state %x ccb %p for diag reset\n", 
+			    "completing cm %p state %x ccb %p for diag reset\n",
 			    cm, cm->cm_state, cm->cm_ccb);
 
 			cm->cm_complete(sc, cm);
 			completed = 1;
-		}
-
-		if (cm->cm_flags & MPS_CM_FLAGS_WAKEUP) {
+		} else if (cm->cm_flags & MPS_CM_FLAGS_WAKEUP) {
 			mpssas_log_command(cm, MPS_RECOVERY,
 			    "waking up cm %p state %x ccb %p for diag reset\n", 
 			    cm, cm->cm_state, cm->cm_ccb);
@@ -1124,9 +1135,6 @@ mpssas_complete_all_commands(struct mps_softc *sc)
 			completed = 1;
 		}
 
-		if (cm->cm_sc->io_cmds_active != 0)
-			cm->cm_sc->io_cmds_active--;
-		
 		if ((completed == 0) && (cm->cm_state != MPS_CM_STATE_FREE)) {
 			/* this should never happen, but if it does, log */
 			mpssas_log_command(cm, MPS_RECOVERY,
@@ -1135,6 +1143,8 @@ mpssas_complete_all_commands(struct mps_softc *sc)
 			    cm->cm_ccb);
 		}
 	}
+
+	sc->io_cmds_active = 0;
 }
 
 void
@@ -1191,6 +1201,11 @@ mpssas_tm_timeout(void *data)
 
 	mpssas_log_command(tm, MPS_INFO|MPS_RECOVERY,
 	    "task mgmt %p timed out\n", tm);
+
+	KASSERT(tm->cm_state == MPS_CM_STATE_INQUEUE,
+	    ("command not inqueue\n"));
+
+	tm->cm_state = MPS_CM_STATE_BUSY;
 	mps_reinit(sc);
 }
 
@@ -1387,7 +1402,6 @@ mpssas_send_reset(struct mps_softc *sc, struct mps_command *tm, uint8_t type)
 
 	req = (MPI2_SCSI_TASK_MANAGE_REQUEST *)tm->cm_req;
 	req->DevHandle = htole16(target->handle);
-	req->Function = MPI2_FUNCTION_SCSI_TASK_MGMT;
 	req->TaskType = type;
 
 	if (type == MPI2_SCSITASKMGMT_TASKTYPE_LOGICAL_UNIT_RESET) {
@@ -1416,7 +1430,6 @@ mpssas_send_reset(struct mps_softc *sc, struct mps_command *tm, uint8_t type)
 	}
 
 	tm->cm_data = NULL;
-	tm->cm_desc.HighPriority.RequestFlags = MPI2_REQ_DESCRIPT_FLAGS_HIGH_PRIORITY;
 	tm->cm_complete_data = (void *)tm;
 
 	callout_reset(&tm->cm_callout, MPS_RESET_TIMEOUT * hz,
@@ -1536,7 +1549,6 @@ mpssas_send_abort(struct mps_softc *sc, struct mps_command *tm, struct mps_comma
 
 	req = (MPI2_SCSI_TASK_MANAGE_REQUEST *)tm->cm_req;
 	req->DevHandle = htole16(targ->handle);
-	req->Function = MPI2_FUNCTION_SCSI_TASK_MGMT;
 	req->TaskType = MPI2_SCSITASKMGMT_TASKTYPE_ABORT_TASK;
 
 	/* XXX Need to handle invalid LUNs */
@@ -1545,7 +1557,6 @@ mpssas_send_abort(struct mps_softc *sc, struct mps_command *tm, struct mps_comma
 	req->TaskMID = htole16(cm->cm_desc.Default.SMID);
 
 	tm->cm_data = NULL;
-	tm->cm_desc.HighPriority.RequestFlags = MPI2_REQ_DESCRIPT_FLAGS_HIGH_PRIORITY;
 	tm->cm_complete = mpssas_abort_complete;
 	tm->cm_complete_data = (void *)tm;
 	tm->cm_targ = cm->cm_targ;
@@ -1591,7 +1602,7 @@ mpssas_scsiio_timeout(void *data)
 	 * and been re-used, though this is unlikely.
 	 */
 	mps_intr_locked(sc);
-	if (cm->cm_state == MPS_CM_STATE_FREE) {
+	if (cm->cm_state != MPS_CM_STATE_INQUEUE) {
 		mpssas_log_command(cm, MPS_XINFO,
 		    "SCSI command %p almost timed out\n", cm);
 		return;
@@ -2031,12 +2042,13 @@ mpssas_scsiio_complete(struct mps_softc *sc, struct mps_command *cm)
 
 	if (cm->cm_state == MPS_CM_STATE_TIMEDOUT) {
 		TAILQ_REMOVE(&cm->cm_targ->timedout_commands, cm, cm_recovery);
+		cm->cm_state = MPS_CM_STATE_BUSY;
 		if (cm->cm_reply != NULL)
 			mpssas_log_command(cm, MPS_RECOVERY,
 			    "completed timedout cm %p ccb %p during recovery "
 			    "ioc %x scsi %x state %x xfer %u\n",
-			    cm, cm->cm_ccb,
-			    le16toh(rep->IOCStatus), rep->SCSIStatus, rep->SCSIState,
+			    cm, cm->cm_ccb, le16toh(rep->IOCStatus),
+			    rep->SCSIStatus, rep->SCSIState,
 			    le32toh(rep->TransferCount));
 		else
 			mpssas_log_command(cm, MPS_RECOVERY,
@@ -2047,8 +2059,8 @@ mpssas_scsiio_complete(struct mps_softc *sc, struct mps_command *cm)
 			mpssas_log_command(cm, MPS_RECOVERY,
 			    "completed cm %p ccb %p during recovery "
 			    "ioc %x scsi %x state %x xfer %u\n",
-			    cm, cm->cm_ccb,
-			    le16toh(rep->IOCStatus), rep->SCSIStatus, rep->SCSIState,
+			    cm, cm->cm_ccb, le16toh(rep->IOCStatus),
+			    rep->SCSIStatus, rep->SCSIState,
 			    le32toh(rep->TransferCount));
 		else
 			mpssas_log_command(cm, MPS_RECOVERY,
@@ -3047,7 +3059,7 @@ mpssas_action_resetdev(struct mpssas_softc *sassc, union ccb *ccb)
 	    ("Target %d out of bounds in XPT_RESET_DEV\n",
 	     ccb->ccb_h.target_id));
 	sc = sassc->sc;
-	tm = mps_alloc_command(sc);
+	tm = mpssas_alloc_tm(sc);
 	if (tm == NULL) {
 		mps_dprint(sc, MPS_ERROR,
 		    "command alloc failure in mpssas_action_resetdev\n");
@@ -3059,19 +3071,17 @@ mpssas_action_resetdev(struct mpssas_softc *sassc, union ccb *ccb)
 	targ = &sassc->targets[ccb->ccb_h.target_id];
 	req = (MPI2_SCSI_TASK_MANAGE_REQUEST *)tm->cm_req;
 	req->DevHandle = htole16(targ->handle);
-	req->Function = MPI2_FUNCTION_SCSI_TASK_MGMT;
 	req->TaskType = MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET;
 
 	/* SAS Hard Link Reset / SATA Link Reset */
 	req->MsgFlags = MPI2_SCSITASKMGMT_MSGFLAGS_LINK_RESET;
 
 	tm->cm_data = NULL;
-	tm->cm_desc.HighPriority.RequestFlags = MPI2_REQ_DESCRIPT_FLAGS_HIGH_PRIORITY;
 	tm->cm_complete = mpssas_resetdev_complete;
 	tm->cm_complete_data = ccb;
 	tm->cm_targ = targ;
-	targ->flags |= MPSSAS_TARGET_INRESET;
 
+	mpssas_prepare_for_tm(sc, tm, targ, CAM_LUN_WILDCARD);
 	mps_map_command(sc, tm);
 }
 
@@ -3224,8 +3234,19 @@ mpssas_async(void *callback_arg, uint32_t code, struct cam_path *path,
 
 		if ((mpssas_get_ccbstatus((union ccb *)&cdai) == CAM_REQ_CMP)
 		 && (rcap_buf.prot & SRC16_PROT_EN)) {
-			lun->eedp_formatted = TRUE;
-			lun->eedp_block_size = scsi_4btoul(rcap_buf.length);
+			switch (rcap_buf.prot & SRC16_P_TYPE) {
+			case SRC16_PTYPE_1:
+			case SRC16_PTYPE_3:
+				lun->eedp_formatted = TRUE;
+				lun->eedp_block_size =
+				    scsi_4btoul(rcap_buf.length);
+				break;
+			case SRC16_PTYPE_2:
+			default:
+				lun->eedp_formatted = FALSE;
+				lun->eedp_block_size = 0;
+				break;
+			}
 		} else {
 			lun->eedp_formatted = FALSE;
 			lun->eedp_block_size = 0;
@@ -3451,6 +3472,13 @@ mpssas_read_cap_done(struct cam_periph *periph, union ccb *done_ccb)
 #endif /* (__FreeBSD_version < 901503) || \
           ((__FreeBSD_version >= 1000000) && (__FreeBSD_version < 1000006)) */
 
+/*
+ * Set the INRESET flag for this target so that no I/O will be sent to
+ * the target until the reset has completed.  If an I/O request does
+ * happen, the devq will be frozen.  The CCB holds the path which is
+ * used to release the devq.  The devq is released and the CCB is freed
+ * when the TM completes.
+ */
 void
 mpssas_prepare_for_tm(struct mps_softc *sc, struct mps_command *tm,
     struct mpssas_target *target, lun_id_t lun_id)
@@ -3458,13 +3486,6 @@ mpssas_prepare_for_tm(struct mps_softc *sc, struct mps_command *tm,
 	union ccb *ccb;
 	path_id_t path_id;
 
-	/*
-	 * Set the INRESET flag for this target so that no I/O will be sent to
-	 * the target until the reset has completed.  If an I/O request does
-	 * happen, the devq will be frozen.  The CCB holds the path which is
-	 * used to release the devq.  The devq is released and the CCB is freed
-	 * when the TM completes.
-	 */
 	ccb = xpt_alloc_ccb_nowait();
 	if (ccb) {
 		path_id = cam_sim_path(sc->sassc->sim);

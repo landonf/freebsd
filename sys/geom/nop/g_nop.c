@@ -187,7 +187,7 @@ g_nop_access(struct g_provider *pp, int dr, int dw, int de)
 static int
 g_nop_create(struct gctl_req *req, struct g_class *mp, struct g_provider *pp,
     int ioerror, u_int rfailprob, u_int wfailprob, off_t offset, off_t size,
-    u_int secsize, u_int stripesize, u_int stripeoffset, const char *physpath)
+    u_int secsize, off_t stripesize, off_t stripeoffset, const char *physpath)
 {
 	struct g_nop_softc *sc;
 	struct g_geom *gp;
@@ -464,7 +464,7 @@ g_nop_ctl_create(struct gctl_req *req, struct g_class *mp)
 		    *rfailprob == -1 ? 0 : (u_int)*rfailprob,
 		    *wfailprob == -1 ? 0 : (u_int)*wfailprob,
 		    (off_t)*offset, (off_t)*size, (u_int)*secsize,
-		    (u_int)*stripesize, (u_int)*stripeoffset,
+		    (off_t)*stripesize, (off_t)*stripeoffset,
 		    physpath) != 0) {
 			return;
 		}
@@ -717,3 +717,4 @@ g_nop_dumpconf(struct sbuf *sb, const char *indent, struct g_geom *gp,
 }
 
 DECLARE_GEOM_CLASS(g_nop_class, g_nop);
+MODULE_VERSION(geom_nop, 0);

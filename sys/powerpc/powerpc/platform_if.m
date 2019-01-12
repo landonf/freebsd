@@ -84,13 +84,9 @@ CODE {
 	{
 		return;
 	}
-	static void platform_null_idle(platform_t plat, int cpu)
+	static void platform_null_smp_probe_threads(void)
 	{
 		return;
-	}
-	static int platform_null_idle_wakeup(platform_t plat, int cpu)
-	{
-		return (0);
 	}
 };
 
@@ -205,6 +201,13 @@ METHOD void smp_ap_init {
 } DEFAULT platform_null_smp_ap_init;
 
 /**
+ * @brief Probe mp_ncores and smp_threads_per_core for early MI code
+ */
+METHOD void smp_probe_threads {
+	platform_t	_plat;
+} DEFAULT platform_null_smp_probe_threads;
+
+/**
  * @brief Return SMP topology
  */
 METHOD cpu_group_t smp_topo {
@@ -217,22 +220,6 @@ METHOD cpu_group_t smp_topo {
 METHOD void reset {
 	platform_t	_plat;
 };
-
-/**
- * @brief Idle a CPU
- */
-METHOD void idle {
-	platform_t	_plat;
-	int		_cpu;
-} DEFAULT platform_null_idle;
-
-/**
- * @brief Wake up an idle CPU
- */
-METHOD int idle_wakeup {
-	platform_t	_plat;
-	int		_cpu;
-} DEFAULT platform_null_idle_wakeup;
 
 /**
  * @brief Suspend the CPU

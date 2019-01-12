@@ -95,6 +95,7 @@ static void	syscall(struct trapframe *frame);
        void	handle_kernel_slb_spill(int, register_t, register_t);
 static int	handle_user_slb_spill(pmap_t pm, vm_offset_t addr);
 extern int	n_slbs;
+static void	normalize_inputs(void);
 #endif
 
 extern vm_offset_t __startkernel;
@@ -147,6 +148,7 @@ static struct powerpc_exception powerpc_exceptions[] = {
 	{ EXC_VECAST_G4,	"altivec assist" },
 	{ EXC_THRM,	"thermal management" },
 	{ EXC_RUNMODETRC,	"run mode/trace" },
+	{ EXC_SOFT_PATCH, "soft patch exception" },
 	{ EXC_LAST,	NULL }
 };
 
@@ -189,7 +191,7 @@ frame_is_trap_inst(struct trapframe *frame)
 #ifdef AIM
 	return (frame->exc == EXC_PGM && frame->srr1 & EXC_PGM_TRAP);
 #else
-	return (frame->exc == EXC_DEBUG || frame->cpu.booke.esr & ESR_PTR);
+	return ((frame->cpu.booke.esr & ESR_PTR) != 0);
 #endif
 }
 
@@ -204,8 +206,16 @@ trap(struct trapframe *frame)
 	int		sig, type, user;
 	u_int		ucode;
 	ksiginfo_t	ksi;
+	register_t 	fscr;
 
 	VM_CNT_INC(v_trap);
+
+#ifdef KDB
+	if (kdb_active) {
+		kdb_reenter();
+		return;
+	}
+#endif
 
 	td = curthread;
 	p = td->td_proc;
@@ -294,6 +304,14 @@ trap(struct trapframe *frame)
 			break;
 
 		case EXC_FAC:
+			fscr = mfspr(SPR_FSCR);
+			if ((fscr & FSCR_IC_MASK) == FSCR_IC_HTM) {
+				CTR0(KTR_TRAP, "Hardware Transactional Memory subsystem disabled");
+			}
+			sig = SIGILL;
+			ucode =	ILL_ILLOPC;
+			break;
+		case EXC_HEA:
 			sig = SIGILL;
 			ucode =	ILL_ILLOPC;
 			break;
@@ -366,6 +384,17 @@ trap(struct trapframe *frame)
 			ucode = BUS_OBJERR;
 			break;
 
+#if defined(__powerpc64__) && defined(AIM)
+		case EXC_SOFT_PATCH:
+			/*
+			 * Point to the instruction that generated the exception to execute it again,
+			 * and normalize the register values.
+			 */
+			frame->srr0 -= 4;
+			normalize_inputs();
+			break;
+#endif
+
 		default:
 			trap_fatal(frame);
 		}
@@ -422,7 +451,7 @@ trap(struct trapframe *frame)
 		ksiginfo_init_trap(&ksi);
 		ksi.ksi_signo = sig;
 		ksi.ksi_code = (int) ucode; /* XXX, not POSIX */
-		/* ksi.ksi_addr = ? */
+		ksi.ksi_addr = (void *)frame->srr0;
 		ksi.ksi_trapno = type;
 		trapsignal(td, &ksi);
 	}
@@ -433,23 +462,62 @@ trap(struct trapframe *frame)
 static void
 trap_fatal(struct trapframe *frame)
 {
+#ifdef KDB
+	bool handled;
+#endif
 
 	printtrap(frame->exc, frame, 1, (frame->srr1 & PSL_PR));
 #ifdef KDB
-	if ((debugger_on_panic || kdb_active) &&
-	    kdb_trap(frame->exc, 0, frame))
-		return;
+	if (debugger_on_trap) {
+		kdb_why = KDB_WHY_TRAP;
+		handled = kdb_trap(frame->exc, 0, frame);
+		kdb_why = KDB_WHY_UNSET;
+		if (handled)
+			return;
+	}
 #endif
 	panic("%s trap", trapname(frame->exc));
 }
 
 static void
+cpu_printtrap(u_int vector, struct trapframe *frame, int isfatal, int user)
+{
+#ifdef AIM
+	uint16_t ver;
+
+	switch (vector) {
+	case EXC_DSE:
+	case EXC_DSI:
+	case EXC_DTMISS:
+		printf("   dsisr           = 0x%lx\n",
+		    (u_long)frame->cpu.aim.dsisr);
+		break;
+	case EXC_MCHK:
+		ver = mfpvr() >> 16;
+		if (MPC745X_P(ver))
+			printf("    msssr0         = 0x%b\n",
+			    (int)mfspr(SPR_MSSSR0), MSSSR_BITMASK);
+		break;
+	}
+#elif defined(BOOKE)
+	vm_paddr_t pa;
+
+	switch (vector) {
+	case EXC_MCHK:
+		pa = mfspr(SPR_MCARU);
+		pa = (pa << 32) | (u_register_t)mfspr(SPR_MCAR);
+		printf("   mcsr            = 0x%b\n",
+		    (int)mfspr(SPR_MCSR), MCSR_BITMASK);
+		printf("   mcar            = 0x%jx\n", (uintmax_t)pa);
+	}
+	printf("   esr             = 0x%b\n",
+	    (int)frame->cpu.booke.esr, ESR_BITMASK);
+#endif
+}
+
+static void
 printtrap(u_int vector, struct trapframe *frame, int isfatal, int user)
 {
-	uint16_t ver;
-#ifdef BOOKE
-	vm_paddr_t pa;
-#endif
 
 	printf("\n");
 	printf("%s %s trap:\n", isfatal ? "fatal" : "handled",
@@ -461,10 +529,6 @@ printtrap(u_int vector, struct trapframe *frame, int isfatal, int user)
 	case EXC_DSI:
 	case EXC_DTMISS:
 		printf("   virtual address = 0x%" PRIxPTR "\n", frame->dar);
-#ifdef AIM
-		printf("   dsisr           = 0x%lx\n",
-		    (u_long)frame->cpu.aim.dsisr);
-#endif
 		break;
 	case EXC_ISE:
 	case EXC_ISI:
@@ -472,27 +536,13 @@ printtrap(u_int vector, struct trapframe *frame, int isfatal, int user)
 		printf("   virtual address = 0x%" PRIxPTR "\n", frame->srr0);
 		break;
 	case EXC_MCHK:
-		ver = mfpvr() >> 16;
-#if defined(AIM)
-		if (MPC745X_P(ver))
-			printf("    msssr0         = 0x%b\n",
-			    (int)mfspr(SPR_MSSSR0), MSSSR_BITMASK);
-#elif defined(BOOKE)
-		pa = mfspr(SPR_MCARU);
-		pa = (pa << 32) | (u_register_t)mfspr(SPR_MCAR);
-		printf("   mcsr            = 0x%b\n",
-		    (int)mfspr(SPR_MCSR), MCSR_BITMASK);
-		printf("   mcar            = 0x%jx\n", (uintmax_t)pa);
-#endif
 		break;
 	}
-#ifdef BOOKE
-	printf("   esr             = 0x%b\n",
-	    (int)frame->cpu.booke.esr, ESR_BITMASK);
-#endif
+	cpu_printtrap(vector, frame, isfatal, user);
 	printf("   srr0            = 0x%" PRIxPTR " (0x%" PRIxPTR ")\n",
 	    frame->srr0, frame->srr0 - (register_t)(__startkernel - KERNBASE));
 	printf("   srr1            = 0x%lx\n", (u_long)frame->srr1);
+	printf("   current msr     = 0x%" PRIxPTR "\n", mfmsr());
 	printf("   lr              = 0x%" PRIxPTR " (0x%" PRIxPTR ")\n",
 	    frame->lr, frame->lr - (register_t)(__startkernel - KERNBASE));
 	printf("   curthread       = %p\n", curthread);
@@ -572,8 +622,6 @@ cpu_fetch_syscall_args(struct thread *td)
 		}
 	}
 
- 	if (p->p_sysent->sv_mask)
-		sa->code &= p->p_sysent->sv_mask;
 	if (sa->code >= p->p_sysent->sv_size)
 		sa->callp = &p->p_sysent->sv_table[0];
 	else
@@ -652,7 +700,7 @@ handle_kernel_slb_spill(int type, register_t dar, register_t srr0)
 	int i;
 
 	addr = (type == EXC_ISE) ? srr0 : dar;
-	slbcache = PCPU_GET(slb);
+	slbcache = PCPU_GET(aim.slb);
 	esid = (uintptr_t)addr >> ADDR_SR_SHFT;
 	slbe = (esid << SLBE_ESID_SHIFT) | SLBE_VALID;
 	
@@ -872,6 +920,49 @@ fix_unaligned(struct thread *td, struct trapframe *frame)
 	return (-1);
 }
 
+#if defined(__powerpc64__) && defined(AIM)
+#define MSKNSHL(x, m, n) "(((" #x ") & " #m ") << " #n ")"
+#define MSKNSHR(x, m, n) "(((" #x ") & " #m ") >> " #n ")"
+
+/* xvcpsgndp instruction, built in opcode format.
+ * This can be changed to use mnemonic after a toolchain update.
+ */
+#define XVCPSGNDP(xt, xa, xb) \
+	__asm __volatile(".long (" \
+		MSKNSHL(60, 0x3f, 26) " | " \
+		MSKNSHL(xt, 0x1f, 21) " | " \
+		MSKNSHL(xa, 0x1f, 16) " | " \
+		MSKNSHL(xb, 0x1f, 11) " | " \
+		MSKNSHL(240, 0xff, 3) " | " \
+		MSKNSHR(xa,  0x20, 3) " | " \
+		MSKNSHR(xa,  0x20, 4) " | " \
+		MSKNSHR(xa,  0x20, 5) ")")
+
+/* Macros to normalize 1 or 10 VSX registers */
+#define NORM(x)	XVCPSGNDP(x, x, x)
+#define NORM10(x) \
+	NORM(x ## 0); NORM(x ## 1); NORM(x ## 2); NORM(x ## 3); NORM(x ## 4); \
+	NORM(x ## 5); NORM(x ## 6); NORM(x ## 7); NORM(x ## 8); NORM(x ## 9)
+
+static void
+normalize_inputs(void)
+{
+	unsigned long msr;
+
+	/* enable VSX */
+	msr = mfmsr();
+	mtmsr(msr | PSL_VSX);
+
+	NORM(0);   NORM(1);   NORM(2);   NORM(3);   NORM(4);
+	NORM(5);   NORM(6);   NORM(7);   NORM(8);   NORM(9);
+	NORM10(1); NORM10(2); NORM10(3); NORM10(4); NORM10(5);
+	NORM(60);  NORM(61);  NORM(62);  NORM(63);
+
+	/* restore MSR */
+	mtmsr(msr);
+}
+#endif
+
 #ifdef KDB
 int
 db_trap_glue(struct trapframe *frame)
@@ -881,6 +972,7 @@ db_trap_glue(struct trapframe *frame)
 	    && (frame->exc == EXC_TRC || frame->exc == EXC_RUNMODETRC
 	    	|| frame_is_trap_inst(frame)
 		|| frame->exc == EXC_BPT
+		|| frame->exc == EXC_DEBUG
 		|| frame->exc == EXC_DSI)) {
 		int type = frame->exc;
 

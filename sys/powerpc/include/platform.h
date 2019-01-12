@@ -58,11 +58,10 @@ int	platform_smp_get_bsp(struct cpuref *);
 int	platform_smp_start_cpu(struct pcpu *);
 void	platform_smp_timebase_sync(u_long tb, int ap);
 void	platform_smp_ap_init(void);
+void	platform_smp_probe_threads(void);
   
 const char *installed_platform(void);
 void platform_probe_and_attach(void);
-
-void	platform_cpu_idle(int);
 
 void platform_sleep(void);
   

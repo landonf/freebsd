@@ -27,11 +27,12 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * Avago Technologies (LSI) MPT-Fusion Host Adapter FreeBSD userland interface
+ * Broadcom Inc. (LSI) MPT-Fusion Host Adapter FreeBSD userland interface
  */
 /*-
  * Copyright (c) 2011-2015 LSI Corp.
  * Copyright (c) 2013-2016 Avago Technologies
+ * Copyright 2000-2020 Broadcom Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -55,15 +56,13 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * Avago Technologies (LSI) MPT-Fusion Host Adapter FreeBSD
+ * Broadcom Inc. (LSI) MPT-Fusion Host Adapter FreeBSD
  *
  * $FreeBSD$
  */
 
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
-
-#include "opt_compat.h"
 
 /* TODO Move headers to mprvar */
 #include <sys/types.h>
@@ -837,8 +836,6 @@ mpr_user_pass_thru(struct mpr_softc *sc, mpr_pass_thru_t *data)
 		task->TaskMID = cm->cm_desc.Default.SMID;
 
 		cm->cm_data = NULL;
-		cm->cm_desc.HighPriority.RequestFlags =
-		    MPI2_REQ_DESCRIPT_FLAGS_HIGH_PRIORITY;
 		cm->cm_complete = NULL;
 		cm->cm_complete_data = NULL;
 
@@ -1110,8 +1107,8 @@ mpr_user_pass_thru(struct mpr_softc *sc, mpr_pass_thru_t *data)
 				    SenseCount)), sizeof(struct
 				    scsi_sense_data));
 				mpr_unlock(sc);
-				copyout(cm->cm_sense, cm->cm_req + 64,
-				    sense_len);
+				copyout(cm->cm_sense, (PTRIN(data->PtrReply +
+				    sizeof(MPI2_SCSI_IO_REPLY))), sense_len);
 				mpr_lock(sc);
 			}
 		}
@@ -1144,7 +1141,9 @@ mpr_user_pass_thru(struct mpr_softc *sc, mpr_pass_thru_t *data)
 			sz = MIN(le32toh(nvme_error_reply->ErrorResponseCount),
 			    NVME_ERROR_RESPONSE_SIZE);
 			mpr_unlock(sc);
-			copyout(cm->cm_sense, cm->nvme_error_response, sz);
+			copyout(cm->cm_sense,
+			    (PTRIN(data->PtrReply +
+			    sizeof(MPI2_SCSI_IO_REPLY))), sz);
 			mpr_lock(sc);
 		}
 	}
@@ -1189,7 +1188,10 @@ mpr_user_get_adapter_data(struct mpr_softc *sc, mpr_adapter_data_t *data)
 	/*
 	 * General device info.
 	 */
-	data->AdapterType = MPRIOCTL_ADAPTER_TYPE_SAS3;
+	if (sc->mpr_flags & MPR_FLAGS_GEN35_IOC)
+		data->AdapterType = MPRIOCTL_ADAPTER_TYPE_SAS35;
+	else
+		data->AdapterType = MPRIOCTL_ADAPTER_TYPE_SAS3;
 	data->PCIDeviceHwId = pci_get_device(sc->mpr_dev);
 	data->PCIDeviceHwRev = pci_read_config(sc->mpr_dev, PCIR_REVID, 1);
 	data->SubSystemId = pci_get_subdevice(sc->mpr_dev);

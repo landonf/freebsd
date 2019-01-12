@@ -78,6 +78,7 @@ static void chrp_smp_ap_init(platform_t);
 static int chrp_cpuref_init(void);
 #ifdef SMP
 static int chrp_smp_start_cpu(platform_t, struct pcpu *cpu);
+static void chrp_smp_probe_threads(platform_t plat);
 static struct cpu_group *chrp_smp_topo(platform_t plat);
 #endif
 static void chrp_reset(platform_t);
@@ -103,6 +104,7 @@ static platform_method_t chrp_methods[] = {
 	PLATFORMMETHOD(platform_smp_get_bsp,	chrp_smp_get_bsp),
 #ifdef SMP
 	PLATFORMMETHOD(platform_smp_start_cpu,	chrp_smp_start_cpu),
+	PLATFORMMETHOD(platform_smp_probe_threads,	chrp_smp_probe_threads),
 	PLATFORMMETHOD(platform_smp_topo,	chrp_smp_topo),
 #endif
 
@@ -146,7 +148,6 @@ chrp_attach(platform_t plat)
 
 		/* Set up important VPA fields */
 		for (i = 0; i < MAXCPU; i++) {
-			bzero(splpar_vpa[i], sizeof(splpar_vpa));
 			/* First two: VPA size */
 			splpar_vpa[i][4] =
 			    (uint8_t)((sizeof(splpar_vpa[i]) >> 8) & 0xff);
@@ -285,12 +286,24 @@ chrp_real_maxaddr(platform_t plat)
 static u_long
 chrp_timebase_freq(platform_t plat, struct cpuref *cpuref)
 {
-	phandle_t phandle;
+	phandle_t cpus, cpunode;
 	int32_t ticks = -1;
+	int res;
+	char buf[8];
 
-	phandle = cpuref->cr_hwref;
+	cpus = OF_finddevice("/cpus");
+	if (cpus == -1)
+		panic("CPU tree not found on Open Firmware\n");
 
-	OF_getencprop(phandle, "timebase-frequency", &ticks, sizeof(ticks));
+	for (cpunode = OF_child(cpus); cpunode != 0; cpunode = OF_peer(cpunode)) {
+		res = OF_getprop(cpunode, "device_type", buf, sizeof(buf));
+		if (res > 0 && strcmp(buf, "cpu") == 0)
+			break;
+	}
+	if (cpunode <= 0)
+		panic("CPU node not found on Open Firmware\n");
+
+	OF_getencprop(cpunode, "timebase-frequency", &ticks, sizeof(ticks));
 
 	if (ticks <= 0)
 		panic("Unable to determine timebase frequency!");
@@ -338,14 +351,26 @@ chrp_smp_get_bsp(platform_t plat, struct cpuref *cpuref)
 	return (0);
 }
 
+static void
+get_cpu_reg(phandle_t cpu, cell_t *reg)
+{
+	int res;
+
+	res = OF_getproplen(cpu, "reg");
+	if (res != sizeof(cell_t))
+		panic("Unexpected length for CPU property reg on Open Firmware\n");
+	OF_getencprop(cpu, "reg", reg, res);
+}
+
 static int
 chrp_cpuref_init(void)
 {
-	phandle_t cpu, dev;
+	phandle_t cpu, dev, chosen, pbsp;
+	ihandle_t ibsp;
 	char buf[32];
-	int a, res;
-	cell_t interrupt_servers[32];
-	uint64_t bsp;
+	int a, bsp, res, res2, tmp_cpuref_cnt;
+	static struct cpuref tmp_cpuref[MAXCPU];
+	cell_t interrupt_servers[32], addr_cells, size_cells, reg, bsp_reg;
 
 	if (platform_cpuref_valid)
 		return (0);
@@ -359,25 +384,77 @@ chrp_cpuref_init(void)
 		dev = OF_peer(dev);
 	}
 
-	bsp = 0;
+	/* Make sure that cpus reg property have 1 address cell and 0 size cells */
+	res = OF_getproplen(dev, "#address-cells");
+	res2 = OF_getproplen(dev, "#size-cells");
+	if (res != res2 || res != sizeof(cell_t))
+		panic("CPU properties #address-cells and #size-cells not found on Open Firmware\n");
+	OF_getencprop(dev, "#address-cells", &addr_cells, sizeof(addr_cells));
+	OF_getencprop(dev, "#size-cells", &size_cells, sizeof(size_cells));
+	if (addr_cells != 1 || size_cells != 0)
+		panic("Unexpected values for CPU properties #address-cells and #size-cells on Open Firmware\n");
+
+	/* Look for boot CPU in /chosen/cpu and /chosen/fdtbootcpu */
+
+	chosen = OF_finddevice("/chosen");
+	if (chosen == -1)
+		panic("Device /chosen not found on Open Firmware\n");
+
+	bsp_reg = -1;
+
+	/* /chosen/cpu */
+	if (OF_getproplen(chosen, "cpu") == sizeof(ihandle_t)) {
+		OF_getprop(chosen, "cpu", &ibsp, sizeof(ibsp));
+		pbsp = OF_instance_to_package(ibsp);
+		if (pbsp != -1)
+			get_cpu_reg(pbsp, &bsp_reg);
+	}
+
+	/* /chosen/fdtbootcpu */
+	if (bsp_reg == -1) {
+		if (OF_getproplen(chosen, "fdtbootcpu") == sizeof(cell_t))
+			OF_getprop(chosen, "fdtbootcpu", &bsp_reg, sizeof(bsp_reg));
+	}
+
+	if (bsp_reg == -1)
+		panic("Boot CPU not found on Open Firmware\n");
+
+	bsp = -1;
+	tmp_cpuref_cnt = 0;
 	for (cpu = OF_child(dev); cpu != 0; cpu = OF_peer(cpu)) {
 		res = OF_getprop(cpu, "device_type", buf, sizeof(buf));
 		if (res > 0 && strcmp(buf, "cpu") == 0) {
 			res = OF_getproplen(cpu, "ibm,ppc-interrupt-server#s");
 			if (res > 0) {
-
-
 				OF_getencprop(cpu, "ibm,ppc-interrupt-server#s",
 				    interrupt_servers, res);
 
-				for (a = 0; a < res/sizeof(cell_t); a++) {
-					platform_cpuref[platform_cpuref_cnt].cr_hwref = interrupt_servers[a];
-					platform_cpuref[platform_cpuref_cnt].cr_cpuid = platform_cpuref_cnt;
+				get_cpu_reg(cpu, &reg);
+				if (reg == bsp_reg)
+					bsp = tmp_cpuref_cnt;
 
-					platform_cpuref_cnt++;
+				for (a = 0; a < res/sizeof(cell_t); a++) {
+					tmp_cpuref[tmp_cpuref_cnt].cr_hwref = interrupt_servers[a];
+					tmp_cpuref[tmp_cpuref_cnt].cr_cpuid = tmp_cpuref_cnt;
+					tmp_cpuref_cnt++;
 				}
 			}
 		}
+	}
+
+	if (bsp == -1)
+		panic("Boot CPU not found\n");
+
+	/* Map IDs, so BSP has CPUID 0 regardless of hwref */
+	for (a = bsp; a < tmp_cpuref_cnt; a++) {
+		platform_cpuref[platform_cpuref_cnt].cr_hwref = tmp_cpuref[a].cr_hwref;
+		platform_cpuref[platform_cpuref_cnt].cr_cpuid = platform_cpuref_cnt;
+		platform_cpuref_cnt++;
+	}
+	for (a = 0; a < bsp; a++) {
+		platform_cpuref[platform_cpuref_cnt].cr_hwref = tmp_cpuref[a].cr_hwref;
+		platform_cpuref[platform_cpuref_cnt].cr_cpuid = platform_cpuref_cnt;
+		platform_cpuref_cnt++;
 	}
 
 	platform_cpuref_valid = 1;
@@ -424,13 +501,13 @@ chrp_smp_start_cpu(platform_t plat, struct pcpu *pc)
 	return ((pc->pc_awake) ? 0 : EBUSY);
 }
 
-static struct cpu_group *
-chrp_smp_topo(platform_t plat)
+static void
+chrp_smp_probe_threads(platform_t plat)
 {
 	struct pcpu *pc, *last_pc;
-	int i, ncores, ncpus;
+	int i, ncores;
 
-	ncores = ncpus = 0;
+	ncores = 0;
 	last_pc = NULL;
 	for (i = 0; i <= mp_maxid; i++) {
 		pc = pcpu_find(i);
@@ -439,20 +516,29 @@ chrp_smp_topo(platform_t plat)
 		if (last_pc == NULL || pc->pc_hwref != last_pc->pc_hwref)
 			ncores++;
 		last_pc = pc;
-		ncpus++;
 	}
 
-	if (ncpus % ncores != 0) {
+	mp_ncores = ncores;
+	if (mp_ncpus % ncores == 0)
+		smp_threads_per_core = mp_ncpus / ncores;
+}
+
+static struct cpu_group *
+chrp_smp_topo(platform_t plat)
+{
+
+	if (mp_ncpus % mp_ncores != 0) {
 		printf("WARNING: Irregular SMP topology. Performance may be "
-		     "suboptimal (%d CPUS, %d cores)\n", ncpus, ncores);
+		     "suboptimal (%d CPUS, %d cores)\n", mp_ncpus, mp_ncores);
 		return (smp_topo_none());
 	}
 
 	/* Don't do anything fancier for non-threaded SMP */
-	if (ncpus == ncores)
+	if (mp_ncpus == mp_ncores)
 		return (smp_topo_none());
 
-	return (smp_topo_1level(CG_SHARE_L1, ncpus / ncores, CG_FLAG_SMT));
+	return (smp_topo_1level(CG_SHARE_L1, smp_threads_per_core,
+	    CG_FLAG_SMT));
 }
 #endif
 

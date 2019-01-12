@@ -25,7 +25,11 @@
 #define	_SCSI_SCSI_ALL_H 1
 
 #include <sys/cdefs.h>
+#ifdef _KERNEL
 #include <machine/stdarg.h>
+#else
+#include <stdarg.h>
+#endif
 
 #ifdef _KERNEL
 /*
@@ -4171,6 +4175,12 @@ int scsi_ata_read_log(struct ccb_scsiio *csio, uint32_t retries,
 		      uint32_t page_number, uint16_t block_count,
 		      uint8_t protocol, uint8_t *data_ptr, uint32_t dxfer_len,
 		      uint8_t sense_len, uint32_t timeout);
+
+int scsi_ata_setfeatures(struct ccb_scsiio *csio, uint32_t retries,
+			 void (*cbfcnp)(struct cam_periph *, union ccb *),
+			 uint8_t tag_action, uint8_t feature,
+			 uint64_t lba, uint32_t count,
+			 uint8_t sense_len, uint32_t timeout);
 
 int scsi_ata_pass(struct ccb_scsiio *csio, uint32_t retries,
 		  void (*cbfcnp)(struct cam_periph *, union ccb *),

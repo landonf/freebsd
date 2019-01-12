@@ -649,21 +649,12 @@ imgact_binmisc_exec(struct image_params *imgp)
 		s++;
 	}
 
-	/* Check to make sure we won't overrun the stringspace. */
-	if (offset > imgp->args->stringspace) {
+	/* Make room for the interpreter */
+	error = exec_args_adjust_args(imgp->args, 0, offset);
+	if (error != 0) {
 		sx_sunlock(&interp_list_sx);
-		error = E2BIG;
 		goto done;
 	}
-
-	/* Make room for the interpreter */
-	bcopy(imgp->args->begin_argv, imgp->args->begin_argv + offset,
-	    imgp->args->endp - imgp->args->begin_argv);
-
-	/* Adjust everything by the offset. */
-	imgp->args->begin_envv += offset;
-	imgp->args->endp += offset;
-	imgp->args->stringspace -= offset;
 
 	/* Add the new argument(s) in the count. */
 	imgp->args->argc += ibe->ibe_interp_argcnt;
@@ -747,11 +738,16 @@ imgact_binmisc_fini(void *arg)
 	sx_destroy(&interp_list_sx);
 }
 
-SYSINIT(imgact_binmisc, SI_SUB_EXEC, SI_ORDER_MIDDLE, imgact_binmisc_init, 0);
-SYSUNINIT(imgact_binmisc, SI_SUB_EXEC, SI_ORDER_MIDDLE, imgact_binmisc_fini, 0);
+SYSINIT(imgact_binmisc, SI_SUB_EXEC, SI_ORDER_MIDDLE, imgact_binmisc_init,
+    NULL);
+SYSUNINIT(imgact_binmisc, SI_SUB_EXEC, SI_ORDER_MIDDLE, imgact_binmisc_fini,
+    NULL);
 
 /*
  * Tell kern_execve.c about it, with a little help from the linker.
  */
-static struct execsw imgact_binmisc_execsw = { imgact_binmisc_exec, KMOD_NAME };
+static struct execsw imgact_binmisc_execsw = {
+	.ex_imgact = imgact_binmisc_exec,
+	.ex_name = KMOD_NAME
+};
 EXEC_SET(imgact_binmisc, imgact_binmisc_execsw);

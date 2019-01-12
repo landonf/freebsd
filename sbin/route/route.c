@@ -523,6 +523,7 @@ retry:
 			printf("done\n");
 		}
 	}
+	free(buf);
 	return (error);
 }
 
@@ -1049,10 +1050,13 @@ newroute(int argc, char **argv)
 			}
 			printf("\n");
 		}
+	}
 
-		fibnum = 0;
-		TAILQ_FOREACH(fl, &fibl_head, fl_next) {
-			if (fl->fl_error != 0) {
+	fibnum = 0;
+	TAILQ_FOREACH(fl, &fibl_head, fl_next) {
+		if (fl->fl_error != 0) {
+			error = 1;
+			if (!qflag) {
 				printf("%s %s %s", cmd, (nrflags & F_ISHOST)
 				    ? "host" : "net", dest);
 				if (*gateway)
@@ -1086,7 +1090,6 @@ newroute(int argc, char **argv)
 					break;
 				}
 				printf(": %s\n", errmsg);
-				error = 1;
 			}
 		}
 	}
@@ -1439,6 +1442,7 @@ retry2:
 		rtm = (struct rt_msghdr *)(void *)next;
 		print_rtmsg(rtm, rtm->rtm_msglen);
 	}
+	free(buf);
 }
 
 static void
@@ -1519,8 +1523,10 @@ rtmsg(int cmd, int flags, int fib)
 			so[RTAX_IFP].ss_len = sizeof(struct sockaddr_dl);
 			rtm_addrs |= RTA_IFP;
 		}
-	} else
+	} else {
 		cmd = RTM_DELETE;
+		flags |= RTF_PINNED;
+	}
 #define rtm m_rtmsg.m_rtm
 	rtm.rtm_type = cmd;
 	rtm.rtm_flags = flags;

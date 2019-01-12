@@ -71,11 +71,12 @@ struct xform_history {
 struct xform_data {
 	struct secpolicy	*sp;		/* security policy */
 	struct secasvar		*sav;		/* related SA */
-	uint64_t		cryptoid;	/* used crypto session id */
+	crypto_session_t	cryptoid;	/* used crypto session */
 	u_int			idx;		/* IPsec request index */
 	int			protoff;	/* current protocol offset */
 	int			skip;		/* data offset */
 	uint8_t			nxt;		/* next protocol, e.g. IPV4 */
+	struct vnet		*vnet;
 };
 
 #define	XF_IP4		1	/* unused */
@@ -85,14 +86,16 @@ struct xform_data {
 #define	XF_IPCOMP	6	/* IPCOMP */
 
 struct xformsw {
-	u_short	xf_type;		/* xform ID */
-	char	*xf_name;		/* human-readable name */
+	u_short			xf_type;	/* xform ID */
+	const char		*xf_name;	/* human-readable name */
 	int	(*xf_init)(struct secasvar*, struct xformsw*);	/* setup */
 	int	(*xf_zeroize)(struct secasvar*);		/* cleanup */
 	int	(*xf_input)(struct mbuf*, struct secasvar*,	/* input */
 			int, int);
 	int	(*xf_output)(struct mbuf*,			/* output */
 	    struct secpolicy *, struct secasvar *, u_int, int, int);
+
+	volatile u_int		xf_cntr;
 	LIST_ENTRY(xformsw)	chain;
 };
 
@@ -102,6 +105,7 @@ const struct comp_algo * comp_algorithm_lookup(int);
 
 void xform_attach(void *);
 void xform_detach(void *);
+int xform_init(struct secasvar *, u_short);
 
 struct cryptoini;
 /* XF_AH */

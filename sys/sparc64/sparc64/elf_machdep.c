@@ -59,7 +59,6 @@ __FBSDID("$FreeBSD$");
 static struct sysentvec elf64_freebsd_sysvec = {
 	.sv_size	= SYS_MAXSYSCALL,
 	.sv_table	= sysent,
-	.sv_mask	= 0,
 	.sv_errsize	= 0,
 	.sv_errtbl	= NULL,
 	.sv_transtrap	= NULL,
@@ -311,6 +310,13 @@ static const long reloc_target_bitmask[] = {
 #undef _BM
 };
 #define	RELOC_VALUE_BITMASK(t)	(reloc_target_bitmask[t])
+
+bool
+elf_is_ifunc_reloc(Elf_Size r_info __unused)
+{
+
+	return (false);
+}
 
 int
 elf_reloc_local(linker_file_t lf, Elf_Addr relocbase, const void *data,

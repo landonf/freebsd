@@ -45,6 +45,12 @@ __FBSDID("$FreeBSD$");
 
 #include "nvmecontrol.h"
 
+#define PERFTEST_USAGE							       \
+	"perftest <-n num_threads> <-o read|write>\n"	       \
+	"         <-s size_in_bytes> <-t time_in_seconds>\n"	       \
+	"         <-i intr|wait> [-f refthread] [-p]\n"	       \
+	"         <namespace id>\n"
+
 static void
 print_perftest(struct nvme_io_test *io_test, bool perthread)
 {
@@ -69,19 +75,11 @@ print_perftest(struct nvme_io_test *io_test, bool perthread)
 }
 
 static void
-perftest_usage(void)
-{
-	fprintf(stderr, "usage:\n");
-	fprintf(stderr, PERFTEST_USAGE);
-	exit(1);
-}
-
-void
-perftest(int argc, char *argv[])
+perftest(const struct nvme_function *nf, int argc, char *argv[])
 {
 	struct nvme_io_test		io_test;
 	int				fd;
-	char				ch;
+	int				opt;
 	char				*p;
 	u_long				ioctl_cmd = NVME_IO_TEST;
 	bool				nflag, oflag, sflag, tflag;
@@ -91,8 +89,8 @@ perftest(int argc, char *argv[])
 
 	memset(&io_test, 0, sizeof(io_test));
 
-	while ((ch = getopt(argc, argv, "f:i:n:o:ps:t:")) != -1) {
-		switch (ch) {
+	while ((opt = getopt(argc, argv, "f:i:n:o:ps:t:")) != -1) {
+		switch (opt) {
 		case 'f':
 			if (!strcmp(optarg, "refthread"))
 				io_test.flags |= NVME_TEST_FLAG_REFTHREAD;
@@ -112,13 +110,13 @@ perftest(int argc, char *argv[])
 				fprintf(stderr,
 				    "\"%s\" not valid number of threads.\n",
 				    optarg);
-				perftest_usage();
+				usage(nf);
 			} else if (io_test.num_threads == 0 ||
 				   io_test.num_threads > 128) {
 				fprintf(stderr,
 				    "\"%s\" not valid number of threads.\n",
 				    optarg);
-				perftest_usage();
+				usage(nf);
 			}
 			break;
 		case 'o':
@@ -131,7 +129,7 @@ perftest(int argc, char *argv[])
 			else {
 				fprintf(stderr, "\"%s\" not valid opcode.\n",
 				    optarg);
-				perftest_usage();
+				usage(nf);
 			}
 			break;
 		case 'p':
@@ -149,7 +147,7 @@ perftest(int argc, char *argv[])
 			} else {
 				fprintf(stderr, "\"%s\" not valid size.\n",
 				    optarg);
-				perftest_usage();
+				usage(nf);
 			}
 			break;
 		case 't':
@@ -159,14 +157,15 @@ perftest(int argc, char *argv[])
 				fprintf(stderr,
 				    "\"%s\" not valid time duration.\n",
 				    optarg);
-				perftest_usage();
+				usage(nf);
 			}
 			break;
 		}
 	}
 
 	if (!nflag || !oflag || !sflag || !tflag || optind >= argc)
-		perftest_usage();
+		usage(nf);
+
 
 	open_dev(argv[optind], &fd, 1, 1);
 	if (ioctl(fd, ioctl_cmd, &io_test) < 0)
@@ -176,3 +175,5 @@ perftest(int argc, char *argv[])
 	print_perftest(&io_test, perthread);
 	exit(0);
 }
+
+NVME_COMMAND(top, perftest, perftest, PERFTEST_USAGE);

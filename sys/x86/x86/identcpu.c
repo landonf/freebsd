@@ -989,7 +989,9 @@ printcpuinfo(void)
 				       "\020"
 				       "\033IBPB"
 				       "\034STIBP"
+				       "\035L1DFL"
 				       "\036ARCH_CAP"
+				       "\040SSBD"
 				       );
 			}
 
@@ -1012,6 +1014,9 @@ printcpuinfo(void)
 				       "\020"
 				       "\001RDCL_NO"
 				       "\002IBRS_ALL"
+				       "\003RSBA"
+				       "\004SKIP_L1DFL_VME"
+				       "\005SSB_NO"
 				       );
 			}
 
@@ -1304,6 +1309,18 @@ identify_hypervisor(void)
 	if (cpu_feature2 & CPUID2_HV) {
 		vm_guest = VM_GUEST_VM;
 		do_cpuid(0x40000000, regs);
+
+		/*
+		 * KVM from Linux kernels prior to commit
+		 * 57c22e5f35aa4b9b2fe11f73f3e62bbf9ef36190 set %eax
+		 * to 0 rather than a valid hv_high value.  Check for
+		 * the KVM signature bytes and fixup %eax to the
+		 * highest supported leaf in that case.
+		 */
+		if (regs[0] == 0 && regs[1] == 0x4b4d564b &&
+		    regs[2] == 0x564b4d56 && regs[3] == 0x0000004d)
+			regs[0] = 0x40000001;
+			
 		if (regs[0] >= 0x40000000) {
 			hv_high = regs[0];
 			((u_int *)&hv_vendor)[0] = regs[1];
@@ -1395,7 +1412,8 @@ fix_cpuid(void)
 	 * See BIOS and Kernel Developer’s Guide (BKDG) for AMD Family 15h
 	 * Models 60h-6Fh Processors, Publication # 50742.
 	 */
-	if (cpu_vendor_id == CPU_VENDOR_AMD && CPUID_TO_FAMILY(cpu_id) == 0x15) {
+	if (vm_guest == VM_GUEST_NO && cpu_vendor_id == CPU_VENDOR_AMD &&
+	    CPUID_TO_FAMILY(cpu_id) == 0x15) {
 		msr = rdmsr(MSR_EXTFEATURES);
 		if ((msr & ((uint64_t)1 << 54)) == 0) {
 			msr |= (uint64_t)1 << 54;
@@ -1452,6 +1470,19 @@ identify_cpu2(void)
 	}
 }
 
+void
+identify_cpu_fixup_bsp(void)
+{
+	u_int regs[4];
+
+	cpu_vendor_id = find_cpu_vendor_id();
+
+	if (fix_cpuid()) {
+		do_cpuid(0, regs);
+		cpu_high = regs[0];
+	}
+}
+
 /*
  * Final stage of CPU identification.
  */
@@ -1463,12 +1494,7 @@ finishidentcpu(void)
 	u_char ccr3;
 #endif
 
-	cpu_vendor_id = find_cpu_vendor_id();
-
-	if (fix_cpuid()) {
-		do_cpuid(0, regs);
-		cpu_high = regs[0];
-	}
+	identify_cpu_fixup_bsp();
 
 	if (cpu_high >= 5 && (cpu_feature2 & CPUID2_MON) != 0) {
 		do_cpuid(5, regs);

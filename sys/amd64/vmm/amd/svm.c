@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2013, Anish Gupta (akgupt3@gmail.com)
  * All rights reserved.
  *
@@ -42,6 +44,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/cpufunc.h>
 #include <machine/psl.h>
 #include <machine/md_var.h>
+#include <machine/reg.h>
 #include <machine/specialreg.h>
 #include <machine/smp.h>
 #include <machine/vmm.h>
@@ -507,8 +510,8 @@ vmcb_init(struct svm_softc *sc, int vcpu, uint64_t iopm_base_pa,
 	    PAT_VALUE(7, PAT_UNCACHEABLE);
 
 	/* Set up DR6/7 to power-on state */
-	state->dr6 = 0xffff0ff0;
-	state->dr7 = 0x400;
+	state->dr6 = DBREG_DR6_RESERVED1;
+	state->dr7 = DBREG_DR7_RESERVED1;
 }
 
 /*
@@ -969,6 +972,7 @@ svm_save_intinfo(struct svm_softc *svm_sc, int vcpu)
 	vm_exit_intinfo(svm_sc->vm, vcpu, intinfo);
 }
 
+#ifdef INVARIANTS
 static __inline int
 vintr_intercept_enabled(struct svm_softc *sc, int vcpu)
 {
@@ -976,6 +980,7 @@ vintr_intercept_enabled(struct svm_softc *sc, int vcpu)
 	return (svm_get_intercept(sc, vcpu, VMCB_CTRL1_INTCPT,
 	    VMCB_INTCPT_VINTR));
 }
+#endif
 
 static __inline void
 enable_intr_window_exiting(struct svm_softc *sc, int vcpu)
@@ -1935,6 +1940,7 @@ svm_vmrun(void *arg, int vcpu, register_t rip, pmap_t pmap,
 	struct vm *vm;
 	uint64_t vmcb_pa;
 	int handled;
+	uint16_t ldt_sel;
 
 	svm_sc = arg;
 	vm = svm_sc->vm;
@@ -2013,6 +2019,21 @@ svm_vmrun(void *arg, int vcpu, register_t rip, pmap_t pmap,
 			break;
 		}
 
+		if (vcpu_debugged(vm, vcpu)) {
+			enable_gintr();
+			vm_exit_debug(vm, vcpu, state->rip);
+			break;
+		}
+
+		/*
+		 * #VMEXIT resumes the host with the guest LDTR, so
+		 * save the current LDT selector so it can be restored
+		 * after an exit.  The userspace hypervisor probably
+		 * doesn't use a LDT, but save and restore it to be
+		 * safe.
+		 */
+		ldt_sel = sldt();
+
 		svm_inj_interrupts(svm_sc, vcpu, vlapic);
 
 		/* Activate the nested pmap on 'curcpu' */
@@ -2042,6 +2063,9 @@ svm_vmrun(void *arg, int vcpu, register_t rip, pmap_t pmap,
 		 * to be restored explicitly.
 		 */
 		restore_host_tss();
+
+		/* Restore host LDTR. */
+		lldt(ldt_sel);
 
 		/* #VMEXIT disables interrupts so re-enable them here. */ 
 		enable_gintr();

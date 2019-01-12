@@ -43,8 +43,10 @@ Revision History
 #include "efibind.h"
 #include "efidef.h"
 #include "efidevp.h"
+#include "efipciio.h"
 #include "efiprot.h"
 #include "eficon.h"
+#include "eficonsctl.h"
 #include "efiser.h"
 #include "efi_nii.h"
 #include "efipxebc.h"
@@ -53,13 +55,16 @@ Revision History
 #include "efifs.h"
 #include "efierr.h"
 #include "efigop.h"
+#include "efiip.h"
+#include "efiudp.h"
+#include "efitcp.h"
+#include "efipoint.h"
+#include "efiuga.h"
 
 /*
  * FreeBSD UUID
  */
 #define FREEBSD_BOOT_VAR_GUID \
 	{ 0xCFEE69AD, 0xA0DE, 0x47A9, {0x93, 0xA8, 0xF6, 0x31, 0x06, 0xF8, 0xAE, 0x99} }
-#define UEFI_BOOT_VAR_GUID \
-	{ 0x8be4df61, 0x93ca, 0x11d2, {0xaa, 0x0d, 0x00, 0xe0, 0x98, 0x03, 0x2b, 0x8c} }
 
 #endif

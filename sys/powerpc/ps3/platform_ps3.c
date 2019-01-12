@@ -70,6 +70,7 @@ static int ps3_smp_first_cpu(platform_t, struct cpuref *cpuref);
 static int ps3_smp_next_cpu(platform_t, struct cpuref *cpuref);
 static int ps3_smp_get_bsp(platform_t, struct cpuref *cpuref);
 static int ps3_smp_start_cpu(platform_t, struct pcpu *cpu);
+static void ps3_smp_probe_threads(platform_t);
 static struct cpu_group *ps3_smp_topo(platform_t);
 #endif
 static void ps3_reset(platform_t);
@@ -87,6 +88,7 @@ static platform_method_t ps3_methods[] = {
 	PLATFORMMETHOD(platform_smp_next_cpu,	ps3_smp_next_cpu),
 	PLATFORMMETHOD(platform_smp_get_bsp,	ps3_smp_get_bsp),
 	PLATFORMMETHOD(platform_smp_start_cpu,	ps3_smp_start_cpu),
+	PLATFORMMETHOD(platform_smp_probe_threads,	ps3_smp_probe_threads),
 	PLATFORMMETHOD(platform_smp_topo,	ps3_smp_topo),
 #endif
 
@@ -128,9 +130,6 @@ ps3_attach(platform_t plat)
 	pmap_mmu_install("mmu_ps3", BUS_PROBE_SPECIFIC);
 	cpu_idle_hook = ps3_cpu_idle;
 
-	/* Set a breakpoint to make NULL an invalid address */
-	lv1_set_dabr(0x7 /* read and write, MMU on */, 2 /* kernel accesses */);
-
 	/* Record our PIR at boot for later */
 	ps3_boot_pir = mfspr(SPR_PIR);
 
@@ -141,37 +140,38 @@ void
 ps3_mem_regions(platform_t plat, struct mem_region *phys, int *physsz,
     struct mem_region *avail_regions, int *availsz)
 {
-	uint64_t lpar_id, junk, ppe_id;
+	uint64_t lpar_id, junk;
+	int i;
 
-	/* Get real mode memory region */
-	avail_regions[0].mr_start = 0;
-	lv1_get_logical_partition_id(&lpar_id);
-	lv1_get_logical_ppe_id(&ppe_id);
-	lv1_get_repository_node_value(lpar_id,
-	    lv1_repository_string("bi") >> 32, lv1_repository_string("pu"),
-	    ppe_id, lv1_repository_string("rm_size"),
-	    &avail_regions[0].mr_size, &junk);
+	/* Prefer device tree information if available */
+	if (OF_finddevice("/") != -1) {
+		ofw_mem_regions(phys, physsz, avail_regions, availsz);
+	} else {
+		/* Real mode memory region is first segment */
+		phys[0].mr_start = 0;
+		phys[0].mr_size = ps3_real_maxaddr(plat);
+		*physsz = *availsz = 1;
+		avail_regions[0] = phys[0];
+	}
 
 	/* Now get extended memory region */
+	lv1_get_logical_partition_id(&lpar_id);
 	lv1_get_repository_node_value(lpar_id,
 	    lv1_repository_string("bi") >> 32,
 	    lv1_repository_string("rgntotal"), 0, 0,
-	    &avail_regions[1].mr_size, &junk);
+	    &phys[*physsz].mr_size, &junk);
+	for (i = 0; i < *physsz; i++)
+		phys[*physsz].mr_size -= phys[i].mr_size;
 
 	/* Convert to maximum amount we can allocate in 16 MB pages */
-	avail_regions[1].mr_size -= avail_regions[0].mr_size;
-	avail_regions[1].mr_size -= avail_regions[1].mr_size % (16*1024*1024);
+	phys[*physsz].mr_size -= phys[*physsz].mr_size % (16*1024*1024);
 
 	/* Allocate extended memory region */
-	lv1_allocate_memory(avail_regions[1].mr_size, 24 /* 16 MB pages */,
-	    0, 0x04 /* any address */, &avail_regions[1].mr_start, &junk);
-
-	*availsz = 2;
-
-	if (phys != NULL) {
-		memcpy(phys, avail_regions, sizeof(*phys)*2);
-		*physsz = 2;
-	}
+	lv1_allocate_memory(phys[*physsz].mr_size, 24 /* 16 MB pages */,
+	    0, 0x04 /* any address */, &phys[*physsz].mr_start, &junk);
+	avail_regions[*availsz] = phys[*physsz];
+	(*physsz)++;
+	(*availsz)++;
 }
 
 static u_long
@@ -226,7 +226,8 @@ static int
 ps3_smp_start_cpu(platform_t plat, struct pcpu *pc)
 {
 	/* kernel is spinning on 0x40 == -1 right now */
-	volatile uint32_t *secondary_spin_sem = (uint32_t *)PHYS_TO_DMAP(0x40);
+	volatile uint32_t *secondary_spin_sem =
+	    (uint32_t *)PHYS_TO_DMAP((uintptr_t)0x40);
 	int remote_pir = pc->pc_hwref;
 	int timeout;
 
@@ -242,6 +243,13 @@ ps3_smp_start_cpu(platform_t plat, struct pcpu *pc)
 	}
 
 	return ((pc->pc_awake) ? 0 : EBUSY);
+}
+
+static void
+ps3_smp_probe_threads(platform_t plat)
+{
+	mp_ncores = 1;
+	smp_threads_per_core = 2;
 }
 
 static struct cpu_group *
@@ -260,12 +268,22 @@ ps3_reset(platform_t plat)
 static vm_offset_t
 ps3_real_maxaddr(platform_t plat)
 {
-	struct mem_region *phys, *avail;
-	int nphys, navail;
+	uint64_t lpar_id, junk, ppe_id;
+	static uint64_t rm_maxaddr = 0;
 
-	mem_regions(&phys, &nphys, &avail, &navail);
+	if (rm_maxaddr == 0) {
+		/* Get real mode memory region */
+		lv1_get_logical_partition_id(&lpar_id);
+		lv1_get_logical_ppe_id(&ppe_id);
 
-	return (phys[0].mr_start + phys[0].mr_size);
+		lv1_get_repository_node_value(lpar_id,
+		    lv1_repository_string("bi") >> 32,
+		    lv1_repository_string("pu"),
+		    ppe_id, lv1_repository_string("rm_size"),
+		    &rm_maxaddr, &junk);
+	}
+	
+	return (rm_maxaddr);
 }
 
 static void

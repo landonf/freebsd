@@ -214,12 +214,6 @@ static driver_t oce_driver = {
 static devclass_t oce_devclass;
 
 
-DRIVER_MODULE(oce, pci, oce_driver, oce_devclass, 0, 0);
-MODULE_DEPEND(oce, pci, 1, 1, 1);
-MODULE_DEPEND(oce, ether, 1, 1, 1);
-MODULE_VERSION(oce, 1);
-
-
 /* global vars */
 const char component_revision[32] = {"///" COMPONENT_REVISION "///"};
 
@@ -241,6 +235,15 @@ static uint32_t supportedDevices[] =  {
 	(PCI_VENDOR_EMULEX << 16) | PCI_PRODUCT_XE201_VF,
 	(PCI_VENDOR_EMULEX << 16) | PCI_PRODUCT_SH
 };
+
+
+DRIVER_MODULE(oce, pci, oce_driver, oce_devclass, 0, 0);
+MODULE_PNP_INFO("W32:vendor/device", pci, oce, supportedDevices,
+    nitems(supportedDevices));
+MODULE_DEPEND(oce, pci, 1, 1, 1);
+MODULE_DEPEND(oce, ether, 1, 1, 1);
+MODULE_VERSION(oce, 1);
+
 
 POCE_SOFTC softc_head = NULL;
 POCE_SOFTC softc_tail = NULL;
@@ -472,6 +475,8 @@ oce_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 {
 	struct ifreq *ifr = (struct ifreq *)data;
 	POCE_SOFTC sc = ifp->if_softc;
+	struct ifi2creq i2c;
+	uint8_t	offset = 0;
 	int rc = 0;
 	uint32_t u;
 
@@ -581,6 +586,38 @@ oce_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 		}
 #endif
 
+		break;
+
+	case SIOCGI2C:
+		rc = copyin(ifr_data_get_ptr(ifr), &i2c, sizeof(i2c));
+		if (rc)
+			break;
+
+		if (i2c.dev_addr != PAGE_NUM_A0 &&
+		    i2c.dev_addr != PAGE_NUM_A2) {
+			rc = EINVAL;
+			break;
+		}
+
+		if (i2c.len > sizeof(i2c.data)) {
+			rc = EINVAL;
+			break;
+		}
+
+		rc = oce_mbox_read_transrecv_data(sc, i2c.dev_addr);
+		if(rc) {
+			rc = -rc;
+			break;
+		}
+
+		if (i2c.dev_addr == PAGE_NUM_A0)
+			offset = i2c.offset;
+		else
+			offset = TRANSCEIVER_A0_SIZE + i2c.offset;
+
+		memcpy(&i2c.data[0], &sfp_vpd_dump_buffer[offset], i2c.len);
+
+		rc = copyout(&i2c, ifr_data_get_ptr(ifr), sizeof(i2c));
 		break;
 
 	case SIOCGPRIVATE_0:
@@ -2276,7 +2313,7 @@ oce_handle_passthrough(struct ifnet *ifp, caddr_t data)
 	struct ifreq *ifr = (struct ifreq *)data;
 	int rc = ENXIO;
 	char cookie[32] = {0};
-	void *priv_data = (void *)ifr->ifr_data;
+	void *priv_data = ifr_data_get_ptr(ifr);
 	void *ioctl_ptr;
 	uint32_t req_size;
 	struct mbx_hdr req;

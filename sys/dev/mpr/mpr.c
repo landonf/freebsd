@@ -2,6 +2,7 @@
  * Copyright (c) 2009 Yahoo! Inc.
  * Copyright (c) 2011-2015 LSI Corp.
  * Copyright (c) 2013-2016 Avago Technologies
+ * Copyright 2000-2020 Broadcom Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -25,7 +26,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * Avago Technologies (LSI) MPT-Fusion Host Adapter FreeBSD
+ * Broadcom Inc. (LSI) MPT-Fusion Host Adapter FreeBSD
  *
  */
 
@@ -56,6 +57,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/endian.h>
 #include <sys/eventhandler.h>
 #include <sys/sbuf.h>
+#include <sys/priv.h>
 
 #include <machine/bus.h>
 #include <machine/resource.h>
@@ -107,6 +109,7 @@ static void mpr_enqueue_request(struct mpr_softc *sc, struct mpr_command *cm);
 static int mpr_get_iocfacts(struct mpr_softc *sc, MPI2_IOC_FACTS_REPLY *facts);
 static int mpr_wait_db_ack(struct mpr_softc *sc, int timeout, int sleep_flag);
 static int mpr_debug_sysctl(SYSCTL_HANDLER_ARGS);
+static int mpr_dump_reqs(SYSCTL_HANDLER_ARGS);
 static void mpr_parse_debug(struct mpr_softc *sc, char *list);
 
 SYSCTL_NODE(_hw, OID_AUTO, mpr, CTLFLAG_RD, 0, "MPR Driver Parameters");
@@ -382,7 +385,7 @@ mpr_transition_operational(struct mpr_softc *sc)
 static void
 mpr_resize_queues(struct mpr_softc *sc)
 {
-	u_int reqcr, prireqcr, maxio, sges_per_frame;
+	u_int reqcr, prireqcr, maxio, sges_per_frame, chain_seg_size;
 
 	/*
 	 * Size the queues. Since the reply queues always need one free
@@ -413,15 +416,11 @@ mpr_resize_queues(struct mpr_softc *sc)
 	 * the size of an IEEE Simple SGE.
 	 */
 	if (sc->facts->MsgVersion >= MPI2_VERSION_02_05) {
-		sc->chain_seg_size =
-		    htole16(sc->facts->IOCMaxChainSegmentSize);
-		if (sc->chain_seg_size == 0) {
-			sc->chain_frame_size = MPR_DEFAULT_CHAIN_SEG_SIZE *
-			    MPR_MAX_CHAIN_ELEMENT_SIZE;
-		} else {
-			sc->chain_frame_size = sc->chain_seg_size *
-			    MPR_MAX_CHAIN_ELEMENT_SIZE;
-		}
+		chain_seg_size = htole16(sc->facts->IOCMaxChainSegmentSize);
+		if (chain_seg_size == 0)
+			chain_seg_size = MPR_DEFAULT_CHAIN_SEG_SIZE;
+		sc->chain_frame_size = chain_seg_size *
+		    MPR_MAX_CHAIN_ELEMENT_SIZE;
 	} else {
 		sc->chain_frame_size = sc->reqframesz;
 	}
@@ -626,8 +625,9 @@ mpr_iocfacts_allocate(struct mpr_softc *sc, uint8_t attaching)
 			sc->eedp_enabled = TRUE;
 		if (sc->facts->IOCCapabilities & MPI2_IOCFACTS_CAPABILITY_TLR)
 			sc->control_TLR = TRUE;
-		if (sc->facts->IOCCapabilities &
-		    MPI26_IOCFACTS_CAPABILITY_ATOMIC_REQ)
+		if ((sc->facts->IOCCapabilities &
+		    MPI26_IOCFACTS_CAPABILITY_ATOMIC_REQ) &&
+		    (sc->mpr_flags & MPR_FLAGS_SEA_IOC))
 			sc->atomic_desc_capable = TRUE;
 
 		mpr_resize_queues(sc);
@@ -766,11 +766,11 @@ mpr_iocfacts_free(struct mpr_softc *sc)
 	if (sc->queues_dmat != NULL)
 		bus_dma_tag_destroy(sc->queues_dmat);
 
-	if (sc->chain_busaddr != 0)
+	if (sc->chain_frames != NULL) {
 		bus_dmamap_unload(sc->chain_dmat, sc->chain_map);
-	if (sc->chain_frames != NULL)
 		bus_dmamem_free(sc->chain_dmat, sc->chain_frames,
 		    sc->chain_map);
+	}
 	if (sc->chain_dmat != NULL)
 		bus_dma_tag_destroy(sc->chain_dmat);
 
@@ -1135,6 +1135,9 @@ mpr_enqueue_request(struct mpr_softc *sc, struct mpr_command *cm)
 	if (++sc->io_cmds_active > sc->io_cmds_highwater)
 		sc->io_cmds_highwater++;
 
+	KASSERT(cm->cm_state == MPR_CM_STATE_BUSY, ("command not busy\n"));
+	cm->cm_state = MPR_CM_STATE_INQUEUE;
+
 	if (sc->atomic_desc_capable) {
 		rd.u.low = cm->cm_desc.Words.Low;
 		mpr_regwrite(sc, MPI26_ATOMIC_REQUEST_DESCRIPTOR_POST_OFFSET,
@@ -1356,10 +1359,10 @@ mpr_alloc_hw_queues(struct mpr_softc *sc)
 	sc->free_busaddr = queues_busaddr;
 	sc->post_queue = (MPI2_REPLY_DESCRIPTORS_UNION *)(queues + fqsize);
 	sc->post_busaddr = queues_busaddr + fqsize;
-	mpr_dprint(sc, MPR_INIT, "free queue busaddr= %#016lx size= %d\n",
-	    sc->free_busaddr, fqsize);
-	mpr_dprint(sc, MPR_INIT, "reply queue busaddr= %#016lx size= %d\n",
-	    sc->post_busaddr, pqsize);
+	mpr_dprint(sc, MPR_INIT, "free queue busaddr= %#016jx size= %d\n",
+	    (uintmax_t)sc->free_busaddr, fqsize);
+	mpr_dprint(sc, MPR_INIT, "reply queue busaddr= %#016jx size= %d\n",
+	    (uintmax_t)sc->post_busaddr, pqsize);
 
 	return (0);
 }
@@ -1402,17 +1405,42 @@ mpr_alloc_replies(struct mpr_softc *sc)
         bzero(sc->reply_frames, rsize);
         bus_dmamap_load(sc->reply_dmat, sc->reply_map, sc->reply_frames, rsize,
 	    mpr_memaddr_cb, &sc->reply_busaddr, 0);
-	mpr_dprint(sc, MPR_INIT, "reply frames busaddr= %#016lx size= %d\n",
-	    sc->reply_busaddr, rsize);
+	mpr_dprint(sc, MPR_INIT, "reply frames busaddr= %#016jx size= %d\n",
+	    (uintmax_t)sc->reply_busaddr, rsize);
 
 	return (0);
+}
+
+static void
+mpr_load_chains_cb(void *arg, bus_dma_segment_t *segs, int nsegs, int error)
+{
+	struct mpr_softc *sc = arg;
+	struct mpr_chain *chain;
+	bus_size_t bo;
+	int i, o, s;
+
+	if (error != 0)
+		return;
+
+	for (i = 0, o = 0, s = 0; s < nsegs; s++) {
+		for (bo = 0; bo + sc->chain_frame_size <= segs[s].ds_len;
+		    bo += sc->chain_frame_size) {
+			chain = &sc->chains[i++];
+			chain->chain =(MPI2_SGE_IO_UNION *)(sc->chain_frames+o);
+			chain->chain_busaddr = segs[s].ds_addr + bo;
+			o += sc->chain_frame_size;
+			mpr_free_chain(sc, chain);
+		}
+		if (bo != segs[s].ds_len)
+			o += segs[s].ds_len - bo;
+	}
+	sc->chain_free_lowwater = i;
 }
 
 static int
 mpr_alloc_requests(struct mpr_softc *sc)
 {
 	struct mpr_command *cm;
-	struct mpr_chain *chain;
 	int i, rsize, nsegs;
 
 	rsize = sc->reqframesz * sc->num_reqs;
@@ -1438,34 +1466,42 @@ mpr_alloc_requests(struct mpr_softc *sc)
         bzero(sc->req_frames, rsize);
         bus_dmamap_load(sc->req_dmat, sc->req_map, sc->req_frames, rsize,
 	    mpr_memaddr_cb, &sc->req_busaddr, 0);
-	mpr_dprint(sc, MPR_INIT, "request frames busaddr= %#016lx size= %d\n",
-	    sc->req_busaddr, rsize);
+	mpr_dprint(sc, MPR_INIT, "request frames busaddr= %#016jx size= %d\n",
+	    (uintmax_t)sc->req_busaddr, rsize);
 
+	sc->chains = malloc(sizeof(struct mpr_chain) * sc->num_chains, M_MPR,
+	    M_NOWAIT | M_ZERO);
+	if (!sc->chains) {
+		mpr_dprint(sc, MPR_ERROR, "Cannot allocate chain memory\n");
+		return (ENOMEM);
+	}
 	rsize = sc->chain_frame_size * sc->num_chains;
-        if (bus_dma_tag_create( sc->mpr_parent_dmat,    /* parent */
+	if (bus_dma_tag_create( sc->mpr_parent_dmat,	/* parent */
 				16, 0,			/* algnmnt, boundary */
 				BUS_SPACE_MAXADDR,	/* lowaddr */
 				BUS_SPACE_MAXADDR,	/* highaddr */
 				NULL, NULL,		/* filter, filterarg */
-                                rsize,			/* maxsize */
-                                1,			/* nsegments */
-                                rsize,			/* maxsegsize */
-                                0,			/* flags */
-                                NULL, NULL,		/* lockfunc, lockarg */
-                                &sc->chain_dmat)) {
+				rsize,			/* maxsize */
+				howmany(rsize, PAGE_SIZE), /* nsegments */
+				rsize,			/* maxsegsize */
+				0,			/* flags */
+				NULL, NULL,		/* lockfunc, lockarg */
+				&sc->chain_dmat)) {
 		mpr_dprint(sc, MPR_ERROR, "Cannot allocate chain DMA tag\n");
 		return (ENOMEM);
-        }
-        if (bus_dmamem_alloc(sc->chain_dmat, (void **)&sc->chain_frames,
-	    BUS_DMA_NOWAIT, &sc->chain_map)) {
+	}
+	if (bus_dmamem_alloc(sc->chain_dmat, (void **)&sc->chain_frames,
+	    BUS_DMA_NOWAIT | BUS_DMA_ZERO, &sc->chain_map)) {
 		mpr_dprint(sc, MPR_ERROR, "Cannot allocate chain memory\n");
 		return (ENOMEM);
-        }
-        bzero(sc->chain_frames, rsize);
-        bus_dmamap_load(sc->chain_dmat, sc->chain_map, sc->chain_frames, rsize,
-	    mpr_memaddr_cb, &sc->chain_busaddr, 0);
-	mpr_dprint(sc, MPR_INIT, "chain frames busaddr= %#016lx size= %d\n",
-	    sc->chain_busaddr, rsize);
+	}
+	if (bus_dmamap_load(sc->chain_dmat, sc->chain_map, sc->chain_frames,
+	    rsize, mpr_load_chains_cb, sc, BUS_DMA_NOWAIT)) {
+		mpr_dprint(sc, MPR_ERROR, "Cannot load chain memory\n");
+		bus_dmamem_free(sc->chain_dmat, sc->chain_frames,
+		    sc->chain_map);
+		return (ENOMEM);
+	}
 
 	rsize = MPR_SENSE_LEN * sc->num_reqs;
 	if (bus_dma_tag_create( sc->mpr_parent_dmat,    /* parent */
@@ -1490,24 +1526,8 @@ mpr_alloc_requests(struct mpr_softc *sc)
         bzero(sc->sense_frames, rsize);
         bus_dmamap_load(sc->sense_dmat, sc->sense_map, sc->sense_frames, rsize,
 	    mpr_memaddr_cb, &sc->sense_busaddr, 0);
-	mpr_dprint(sc, MPR_INIT, "sense frames busaddr= %#016lx size= %d\n",
-	    sc->sense_busaddr, rsize);
-
-	sc->chains = malloc(sizeof(struct mpr_chain) * sc->num_chains, M_MPR,
-	    M_WAITOK | M_ZERO);
-	if (!sc->chains) {
-		mpr_dprint(sc, MPR_ERROR, "Cannot allocate chain memory\n");
-		return (ENOMEM);
-	}
-	for (i = 0; i < sc->num_chains; i++) {
-		chain = &sc->chains[i];
-		chain->chain = (MPI2_SGE_IO_UNION *)(sc->chain_frames +
-		    i * sc->chain_frame_size);
-		chain->chain_busaddr = sc->chain_busaddr +
-		    i * sc->chain_frame_size;
-		mpr_free_chain(sc, chain);
-		sc->chain_free_lowwater++;
-	}
+	mpr_dprint(sc, MPR_INIT, "sense frames busaddr= %#016jx size= %d\n",
+	    (uintmax_t)sc->sense_busaddr, rsize);
 
 	/*
 	 * Allocate NVMe PRP Pages for NVMe SGL support only if the FW supports
@@ -1554,6 +1574,7 @@ mpr_alloc_requests(struct mpr_softc *sc)
 		cm->cm_sense_busaddr = sc->sense_busaddr + i * MPR_SENSE_LEN;
 		cm->cm_desc.Default.SMID = i;
 		cm->cm_sc = sc;
+		cm->cm_state = MPR_CM_STATE_BUSY;
 		TAILQ_INIT(&cm->cm_chain_list);
 		TAILQ_INIT(&cm->cm_prp_page_list);
 		callout_init_mtx(&cm->cm_callout, &sc->mpr_mtx, 0);
@@ -1893,6 +1914,10 @@ mpr_setup_sysctl(struct mpr_softc *sc)
 	    &sc->spinup_wait_time, DEFAULT_SPINUP_WAIT, "seconds to wait for "
 	    "spinup after SATA ID error");
 
+	SYSCTL_ADD_PROC(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
+	    OID_AUTO, "dump_reqs", CTLTYPE_OPAQUE | CTLFLAG_RD | CTLFLAG_SKIP, sc, 0,
+	    mpr_dump_reqs, "I", "Dump Active Requests");
+
 	SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
 	    OID_AUTO, "use_phy_num", CTLFLAG_RD, &sc->use_phynum, 0,
 	    "Use the phy number for enumeration");
@@ -2034,6 +2059,70 @@ mpr_parse_debug(struct mpr_softc *sc, char *list)
 		break;
 	}
 	return;
+}
+
+struct mpr_dumpreq_hdr {
+	uint32_t	smid;
+	uint32_t	state;
+	uint32_t	numframes;
+	uint32_t	deschi;
+	uint32_t	desclo;
+};
+
+static int
+mpr_dump_reqs(SYSCTL_HANDLER_ARGS)
+{
+	struct mpr_softc *sc;
+	struct mpr_chain *chain, *chain1;
+	struct mpr_command *cm;
+	struct mpr_dumpreq_hdr hdr;
+	struct sbuf *sb;
+	uint32_t smid, state;
+	int i, numreqs, error = 0;
+
+	sc = (struct mpr_softc *)arg1;
+
+	if ((error = priv_check(curthread, PRIV_DRIVER)) != 0) {
+		printf("priv check error %d\n", error);
+		return (error);
+	}
+
+	state = MPR_CM_STATE_INQUEUE;
+	smid = 1;
+	numreqs = sc->num_reqs;
+
+	if (req->newptr != NULL)
+		return (EINVAL);
+
+	if (smid == 0 || smid > sc->num_reqs)
+		return (EINVAL);
+	if (numreqs <= 0 || (numreqs + smid > sc->num_reqs))
+		numreqs = sc->num_reqs;
+	sb = sbuf_new_for_sysctl(NULL, NULL, 4096, req);
+
+	/* Best effort, no locking */
+	for (i = smid; i < numreqs; i++) {
+		cm = &sc->commands[i];
+		if (cm->cm_state != state)
+			continue;
+		hdr.smid = i;
+		hdr.state = cm->cm_state;
+		hdr.numframes = 1;
+		hdr.deschi = cm->cm_desc.Words.High;
+		hdr.desclo = cm->cm_desc.Words.Low;
+		TAILQ_FOREACH_SAFE(chain, &cm->cm_chain_list, chain_link,
+		   chain1)
+			hdr.numframes++;
+		sbuf_bcat(sb, &hdr, sizeof(hdr));
+		sbuf_bcat(sb, cm->cm_req, 128);
+		TAILQ_FOREACH_SAFE(chain, &cm->cm_chain_list, chain_link,
+		    chain1)
+			sbuf_bcat(sb, chain->chain, 128);
+	}
+
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
 }
 
 int
@@ -2406,12 +2495,13 @@ void
 mpr_intr_locked(void *data)
 {
 	MPI2_REPLY_DESCRIPTORS_UNION *desc;
+	MPI2_DIAG_RELEASE_REPLY *rel_rep;
+	mpr_fw_diagnostic_buffer_t *pBuffer;
 	struct mpr_softc *sc;
+	uint64_t tdesc;
 	struct mpr_command *cm = NULL;
 	uint8_t flags;
 	u_int pq;
-	MPI2_DIAG_RELEASE_REPLY *rel_rep;
-	mpr_fw_diagnostic_buffer_t *pBuffer;
 
 	sc = (struct mpr_softc *)data;
 
@@ -2423,6 +2513,17 @@ mpr_intr_locked(void *data)
 	for ( ;; ) {
 		cm = NULL;
 		desc = &sc->post_queue[sc->replypostindex];
+
+		/*
+		 * Copy and clear out the descriptor so that any reentry will
+		 * immediately know that this descriptor has already been
+		 * looked at.  There is unfortunate casting magic because the
+		 * MPI API doesn't have a cardinal 64bit type.
+		 */
+		tdesc = 0xffffffffffffffff;
+		tdesc = atomic_swap_64((uint64_t *)desc, tdesc);
+		desc = (MPI2_REPLY_DESCRIPTORS_UNION *)&tdesc;
+
 		flags = desc->Default.ReplyFlags &
 		    MPI2_RPY_DESCRIPT_FLAGS_TYPE_MASK;
 		if ((flags == MPI2_RPY_DESCRIPT_FLAGS_UNUSED) ||
@@ -2444,6 +2545,9 @@ mpr_intr_locked(void *data)
 		case MPI25_RPY_DESCRIPT_FLAGS_FAST_PATH_SCSI_IO_SUCCESS:
 		case MPI26_RPY_DESCRIPT_FLAGS_PCIE_ENCAPSULATED_SUCCESS:
 			cm = &sc->commands[le16toh(desc->SCSIIOSuccess.SMID)];
+			KASSERT(cm->cm_state == MPR_CM_STATE_INQUEUE,
+			    ("command not inqueue\n"));
+			cm->cm_state = MPR_CM_STATE_BUSY;
 			cm->cm_reply = NULL;
 			break;
 		case MPI2_RPY_DESCRIPT_FLAGS_ADDRESS_REPLY:
@@ -2513,6 +2617,10 @@ mpr_intr_locked(void *data)
 			} else {
 				cm = &sc->commands[
 				    le16toh(desc->AddressReply.SMID)];
+				KASSERT(cm->cm_state == MPR_CM_STATE_INQUEUE,
+				    ("command SMID %d not inqueue\n",
+				    desc->AddressReply.SMID));
+				cm->cm_state = MPR_CM_STATE_BUSY;
 				cm->cm_reply = reply;
 				cm->cm_reply_data =
 				    le32toh(desc->AddressReply.
@@ -2537,14 +2645,10 @@ mpr_intr_locked(void *data)
 				mpr_display_reply_info(sc,cm->cm_reply);
 			mpr_complete_command(sc, cm);
 		}
-
-		desc->Words.Low = 0xffffffff;
-		desc->Words.High = 0xffffffff;
 	}
 
 	if (pq != sc->replypostindex) {
-		mpr_dprint(sc, MPR_TRACE,
-		    "%s sc %p writing postindex %d\n",
+		mpr_dprint(sc, MPR_TRACE, "%s sc %p writing postindex %d\n",
 		    __func__, sc, sc->replypostindex);
 		mpr_regwrite(sc, MPI2_REPLY_POST_HOST_INDEX_OFFSET,
 		    sc->replypostindex);
@@ -3713,12 +3817,15 @@ mpr_wait_command(struct mpr_softc *sc, struct mpr_command **cmp, int timeout,
 	}
 
 	if (error == EWOULDBLOCK) {
-		mpr_dprint(sc, MPR_FAULT, "Calling Reinit from %s, timeout=%d,"
-		    " elapsed=%jd\n", __func__, timeout,
-		    (intmax_t)cur_time.tv_sec);
-		rc = mpr_reinit(sc);
-		mpr_dprint(sc, MPR_FAULT, "Reinit %s\n", (rc == 0) ? "success" :
-		    "failed");
+		if (cm->cm_timeout_handler == NULL) {
+			mpr_dprint(sc, MPR_FAULT, "Calling Reinit from %s, timeout=%d,"
+			    " elapsed=%jd\n", __func__, timeout,
+			    (intmax_t)cur_time.tv_sec);
+			rc = mpr_reinit(sc);
+			mpr_dprint(sc, MPR_FAULT, "Reinit %s\n", (rc == 0) ? "success" :
+			    "failed");
+		} else
+			cm->cm_timeout_handler(sc, cm);
 		if (sc->mpr_flags & MPR_FLAGS_REALLOCATED) {
 			/*
 			 * Tell the caller that we freed the command in a

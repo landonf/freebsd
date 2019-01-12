@@ -80,6 +80,22 @@ static void eap_tls_params_flags(struct tls_connection_params *params,
 		params->flags |= TLS_CONN_DISABLE_TLSv1_2;
 	if (os_strstr(txt, "tls_disable_tlsv1_2=0"))
 		params->flags &= ~TLS_CONN_DISABLE_TLSv1_2;
+	if (os_strstr(txt, "tls_disable_tlsv1_3=1"))
+		params->flags |= TLS_CONN_DISABLE_TLSv1_3;
+	if (os_strstr(txt, "tls_disable_tlsv1_3=0"))
+		params->flags &= ~TLS_CONN_DISABLE_TLSv1_3;
+	if (os_strstr(txt, "tls_ext_cert_check=1"))
+		params->flags |= TLS_CONN_EXT_CERT_CHECK;
+	if (os_strstr(txt, "tls_ext_cert_check=0"))
+		params->flags &= ~TLS_CONN_EXT_CERT_CHECK;
+	if (os_strstr(txt, "tls_suiteb=1"))
+		params->flags |= TLS_CONN_SUITEB;
+	if (os_strstr(txt, "tls_suiteb=0"))
+		params->flags &= ~TLS_CONN_SUITEB;
+	if (os_strstr(txt, "tls_suiteb_no_ecdh=1"))
+		params->flags |= TLS_CONN_SUITEB_NO_ECDH;
+	if (os_strstr(txt, "tls_suiteb_no_ecdh=0"))
+		params->flags &= ~TLS_CONN_SUITEB_NO_ECDH;
 }
 
 
@@ -147,6 +163,23 @@ static int eap_tls_params_from_conf(struct eap_sm *sm,
 		 */
 		params->flags |= TLS_CONN_DISABLE_SESSION_TICKET;
 	}
+	if (data->eap_type == EAP_TYPE_FAST ||
+	    data->eap_type == EAP_TYPE_TTLS ||
+	    data->eap_type == EAP_TYPE_PEAP) {
+		/* The current EAP peer implementation is not yet ready for the
+		 * TLS v1.3 changes, so disable this by default for now. */
+		params->flags |= TLS_CONN_DISABLE_TLSv1_3;
+	}
+	if (data->eap_type == EAP_TYPE_TLS) {
+		/* While the current EAP-TLS implementation is more or less
+		 * complete for TLS v1.3, there has been no interoperability
+		 * testing with other implementations, so disable for by default
+		 * for now until there has been chance to confirm that no
+		 * significant interoperability issues show up with TLS version
+		 * update.
+		 */
+		params->flags |= TLS_CONN_DISABLE_TLSv1_3;
+	}
 	if (phase2) {
 		wpa_printf(MSG_DEBUG, "TLS: using phase2 config options");
 		eap_tls_params_from_conf2(params, config);
@@ -177,6 +210,8 @@ static int eap_tls_params_from_conf(struct eap_sm *sm,
 
 	params->openssl_ciphers = config->openssl_ciphers;
 
+	sm->ext_cert_check = !!(params->flags & TLS_CONN_EXT_CERT_CHECK);
+
 	return 0;
 }
 
@@ -190,8 +225,10 @@ static int eap_tls_init_connection(struct eap_sm *sm,
 
 	if (config->ocsp)
 		params->flags |= TLS_CONN_REQUEST_OCSP;
-	if (config->ocsp == 2)
+	if (config->ocsp >= 2)
 		params->flags |= TLS_CONN_REQUIRE_OCSP;
+	if (config->ocsp == 3)
+		params->flags |= TLS_CONN_REQUIRE_OCSP_ALL;
 	data->conn = tls_connection_init(data->ssl_ctx);
 	if (data->conn == NULL) {
 		wpa_printf(MSG_INFO, "SSL: Failed to initialize new TLS "
@@ -320,8 +357,8 @@ u8 * eap_peer_tls_derive_key(struct eap_sm *sm, struct eap_ssl_data *data,
 	if (out == NULL)
 		return NULL;
 
-	if (tls_connection_prf(data->ssl_ctx, data->conn, label, 0, 0,
-			       out, len)) {
+	if (tls_connection_export_key(data->ssl_ctx, data->conn, label, out,
+				      len)) {
 		os_free(out);
 		return NULL;
 	}
@@ -350,10 +387,15 @@ u8 * eap_peer_tls_derive_session_id(struct eap_sm *sm,
 	struct tls_random keys;
 	u8 *out;
 
-	if (tls_connection_get_random(sm->ssl_ctx, data->conn, &keys))
-		return NULL;
+	if (eap_type == EAP_TYPE_TLS && data->tls_v13) {
+		*len = 64;
+		return eap_peer_tls_derive_key(sm, data,
+					       "EXPORTER_EAP_TLS_Session-Id",
+					       64);
+	}
 
-	if (keys.client_random == NULL || keys.server_random == NULL)
+	if (tls_connection_get_random(sm->ssl_ctx, data->conn, &keys) ||
+	    keys.client_random == NULL || keys.server_random == NULL)
 		return NULL;
 
 	*len = 1 + keys.client_random_len + keys.server_random_len;
@@ -655,6 +697,8 @@ int eap_peer_tls_process_helper(struct eap_sm *sm, struct eap_ssl_data *data,
 		 * the AS.
 		 */
 		int res = eap_tls_process_input(sm, data, in_data, out_data);
+		char buf[20];
+
 		if (res) {
 			/*
 			 * Input processing failed (res = -1) or more data is
@@ -667,6 +711,12 @@ int eap_peer_tls_process_helper(struct eap_sm *sm, struct eap_ssl_data *data,
 		 * The incoming message has been reassembled and processed. The
 		 * response was allocated into data->tls_out buffer.
 		 */
+
+		if (tls_get_version(data->ssl_ctx, data->conn,
+				    buf, sizeof(buf)) == 0) {
+			wpa_printf(MSG_DEBUG, "SSL: Using TLS version %s", buf);
+			data->tls_v13 = os_strcmp(buf, "TLSv1.3") == 0;
+		}
 	}
 
 	if (data->tls_out == NULL) {
@@ -1035,6 +1085,9 @@ int eap_peer_select_phase2_methods(struct eap_peer_config *config,
 		if (vendor == EAP_VENDOR_IETF && method == EAP_TYPE_NONE) {
 			wpa_printf(MSG_ERROR, "TLS: Unsupported Phase2 EAP "
 				   "method '%s'", start);
+			os_free(methods);
+			os_free(buf);
+			return -1;
 		} else {
 			num_methods++;
 			_methods = os_realloc_array(methods, num_methods,

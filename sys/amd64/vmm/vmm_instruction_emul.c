@@ -76,6 +76,7 @@ enum {
 	VIE_OP_TYPE_GROUP1,
 	VIE_OP_TYPE_STOS,
 	VIE_OP_TYPE_BITTEST,
+	VIE_OP_TYPE_TWOB_GRP15,
 	VIE_OP_TYPE_LAST
 };
 
@@ -87,6 +88,10 @@ enum {
 #define	VIE_OP_F_NO_GLA_VERIFICATION (1 << 4)
 
 static const struct vie_op two_byte_opcodes[256] = {
+	[0xAE] = {
+		  .op_byte = 0xAE,
+		  .op_type = VIE_OP_TYPE_TWOB_GRP15,
+	},
 	[0xB6] = {
 		.op_byte = 0xB6,
 		.op_type = VIE_OP_TYPE_MOVZX,
@@ -1443,6 +1448,37 @@ emulate_bittest(void *vm, int vcpuid, uint64_t gpa, struct vie *vie,
 	return (0);
 }
 
+static int
+emulate_twob_group15(void *vm, int vcpuid, uint64_t gpa, struct vie *vie,
+    mem_region_read_t memread, mem_region_write_t memwrite, void *memarg)
+{
+	int error;
+	uint64_t buf;
+
+	switch (vie->reg & 7) {
+	case 0x7:	/* CLFLUSH, CLFLUSHOPT, and SFENCE */
+		if (vie->mod == 0x3) {
+			/*
+			 * SFENCE.  Ignore it, VM exit provides enough
+			 * barriers on its own.
+			 */
+			error = 0;
+		} else {
+			/*
+			 * CLFLUSH, CLFLUSHOPT.  Only check for access
+			 * rights.
+			 */
+			error = memread(vm, vcpuid, gpa, &buf, 1, memarg);
+		}
+		break;
+	default:
+		error = EINVAL;
+		break;
+	}
+
+	return (error);
+}
+
 int
 vmm_emulate_instruction(void *vm, int vcpuid, uint64_t gpa, struct vie *vie,
     struct vm_guest_paging *paging, mem_region_read_t memread,
@@ -1501,6 +1537,10 @@ vmm_emulate_instruction(void *vm, int vcpuid, uint64_t gpa, struct vie *vie,
 		break;
 	case VIE_OP_TYPE_BITTEST:
 		error = emulate_bittest(vm, vcpuid, gpa, vie,
+		    memread, memwrite, memarg);
+		break;
+	case VIE_OP_TYPE_TWOB_GRP15:
+		error = emulate_twob_group15(vm, vcpuid, gpa, vie,
 		    memread, memwrite, memarg);
 		break;
 	default:
@@ -1718,9 +1758,9 @@ ptp_hold(struct vm *vm, int vcpu, vm_paddr_t ptpphys, size_t len, void **cookie)
 	return (ptr);
 }
 
-int
-vm_gla2gpa(struct vm *vm, int vcpuid, struct vm_guest_paging *paging,
-    uint64_t gla, int prot, uint64_t *gpa, int *guest_fault)
+static int
+_vm_gla2gpa(struct vm *vm, int vcpuid, struct vm_guest_paging *paging,
+    uint64_t gla, int prot, uint64_t *gpa, int *guest_fault, bool check_only)
 {
 	int nlevels, pfcode, ptpshift, ptpindex, retval, usermode, writable;
 	u_int retries;
@@ -1746,7 +1786,8 @@ restart:
 		 * XXX assuming a non-stack reference otherwise a stack fault
 		 * should be generated.
 		 */
-		vm_inject_gp(vm, vcpuid);
+		if (!check_only)
+			vm_inject_gp(vm, vcpuid);
 		goto fault;
 	}
 
@@ -1776,9 +1817,11 @@ restart:
 			if ((pte32 & PG_V) == 0 ||
 			    (usermode && (pte32 & PG_U) == 0) ||
 			    (writable && (pte32 & PG_RW) == 0)) {
-				pfcode = pf_error_code(usermode, prot, 0,
-				    pte32);
-				vm_inject_pf(vm, vcpuid, pfcode, gla);
+				if (!check_only) {
+					pfcode = pf_error_code(usermode, prot, 0,
+					    pte32);
+					vm_inject_pf(vm, vcpuid, pfcode, gla);
+				}
 				goto fault;
 			}
 
@@ -1789,7 +1832,7 @@ restart:
 			 * is only set at the last level providing the guest
 			 * physical address.
 			 */
-			if ((pte32 & PG_A) == 0) {
+			if (!check_only && (pte32 & PG_A) == 0) {
 				if (atomic_cmpset_32(&ptpbase32[ptpindex],
 				    pte32, pte32 | PG_A) == 0) {
 					goto restart;
@@ -1804,7 +1847,7 @@ restart:
 		}
 
 		/* Set the dirty bit in the page table entry if necessary */
-		if (writable && (pte32 & PG_M) == 0) {
+		if (!check_only && writable && (pte32 & PG_M) == 0) {
 			if (atomic_cmpset_32(&ptpbase32[ptpindex],
 			    pte32, pte32 | PG_M) == 0) {
 				goto restart;
@@ -1831,8 +1874,10 @@ restart:
 		pte = ptpbase[ptpindex];
 
 		if ((pte & PG_V) == 0) {
-			pfcode = pf_error_code(usermode, prot, 0, pte);
-			vm_inject_pf(vm, vcpuid, pfcode, gla);
+			if (!check_only) {
+				pfcode = pf_error_code(usermode, prot, 0, pte);
+				vm_inject_pf(vm, vcpuid, pfcode, gla);
+			}
 			goto fault;
 		}
 
@@ -1858,13 +1903,15 @@ restart:
 		if ((pte & PG_V) == 0 ||
 		    (usermode && (pte & PG_U) == 0) ||
 		    (writable && (pte & PG_RW) == 0)) {
-			pfcode = pf_error_code(usermode, prot, 0, pte);
-			vm_inject_pf(vm, vcpuid, pfcode, gla);
+			if (!check_only) {
+				pfcode = pf_error_code(usermode, prot, 0, pte);
+				vm_inject_pf(vm, vcpuid, pfcode, gla);
+			}
 			goto fault;
 		}
 
 		/* Set the accessed bit in the page table entry */
-		if ((pte & PG_A) == 0) {
+		if (!check_only && (pte & PG_A) == 0) {
 			if (atomic_cmpset_64(&ptpbase[ptpindex],
 			    pte, pte | PG_A) == 0) {
 				goto restart;
@@ -1873,8 +1920,11 @@ restart:
 
 		if (nlevels > 0 && (pte & PG_PS) != 0) {
 			if (pgsize > 1 * GB) {
-				pfcode = pf_error_code(usermode, prot, 1, pte);
-				vm_inject_pf(vm, vcpuid, pfcode, gla);
+				if (!check_only) {
+					pfcode = pf_error_code(usermode, prot, 1,
+					    pte);
+					vm_inject_pf(vm, vcpuid, pfcode, gla);
+				}
 				goto fault;
 			}
 			break;
@@ -1884,7 +1934,7 @@ restart:
 	}
 
 	/* Set the dirty bit in the page table entry if necessary */
-	if (writable && (pte & PG_M) == 0) {
+	if (!check_only && writable && (pte & PG_M) == 0) {
 		if (atomic_cmpset_64(&ptpbase[ptpindex], pte, pte | PG_M) == 0)
 			goto restart;
 	}
@@ -1903,6 +1953,24 @@ error:
 fault:
 	*guest_fault = 1;
 	goto done;
+}
+
+int
+vm_gla2gpa(struct vm *vm, int vcpuid, struct vm_guest_paging *paging,
+    uint64_t gla, int prot, uint64_t *gpa, int *guest_fault)
+{
+
+	return (_vm_gla2gpa(vm, vcpuid, paging, gla, prot, gpa, guest_fault,
+	    false));
+}
+
+int
+vm_gla2gpa_nofault(struct vm *vm, int vcpuid, struct vm_guest_paging *paging,
+    uint64_t gla, int prot, uint64_t *gpa, int *guest_fault)
+{
+
+	return (_vm_gla2gpa(vm, vcpuid, paging, gla, prot, gpa, guest_fault,
+	    true));
 }
 
 int

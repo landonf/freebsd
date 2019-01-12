@@ -53,8 +53,8 @@
 
 #define DRV_NAME	"mlx4_core"
 #define PFX		DRV_NAME ": "
-#define DRV_VERSION	"3.4.1"
-#define DRV_RELDATE	"October 2017"
+#define DRV_VERSION	"3.5.0"
+#define DRV_RELDATE	"November 2018"
 
 #define MLX4_FS_UDP_UC_EN		(1 << 1)
 #define MLX4_FS_TCP_UC_EN		(1 << 2)
@@ -65,8 +65,6 @@
 #define INIT_HCA_TPT_MW_ENABLE          (1 << 7)
 
 #define MLX4_QUERY_IF_STAT_RESET	BIT(31)
-
-#define	ETH_P_8021AD	0x88A8
 
 enum {
 	MLX4_HCR_BASE		= 0x80680,

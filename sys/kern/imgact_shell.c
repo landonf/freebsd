@@ -196,19 +196,12 @@ exec_shell_imgact(struct image_params *imgp)
 	length = (imgp->args->argc == 0) ? 0 :
 	    strlen(imgp->args->begin_argv) + 1;		/* bytes to delete */
 
-	if (offset > imgp->args->stringspace + length) {
+	error = exec_args_adjust_args(imgp->args, length, offset);
+	if (error != 0) {
 		if (sname != NULL)
 			sbuf_delete(sname);
-		return (E2BIG);
+		return (error);
 	}
-
-	bcopy(imgp->args->begin_argv + length, imgp->args->begin_argv + offset,
-	    imgp->args->endp - (imgp->args->begin_argv + length));
-
-	offset -= length;		/* calculate actual adjustment */
-	imgp->args->begin_envv += offset;
-	imgp->args->endp += offset;
-	imgp->args->stringspace -= offset;
 
 	/*
 	 * If there was no arg[0] when we started, then the interpreter_name
@@ -255,5 +248,8 @@ exec_shell_imgact(struct image_params *imgp)
 /*
  * Tell kern_execve.c about it, with a little help from the linker.
  */
-static struct execsw shell_execsw = { exec_shell_imgact, "#!" };
+static struct execsw shell_execsw = {
+	.ex_imgact = exec_shell_imgact,
+	.ex_name = "#!"
+};
 EXEC_SET(shell, shell_execsw);

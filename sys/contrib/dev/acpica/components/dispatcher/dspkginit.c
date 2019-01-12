@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2019, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -308,6 +308,32 @@ AcpiDsBuildInternalPackageObj (
     {
         if (Arg->Common.AmlOpcode == AML_INT_RETURN_VALUE_OP)
         {
+            if (!Arg->Common.Node)
+            {
+                /*
+                 * This is the case where an expression has returned a value.
+                 * The use of expressions (TermArgs) within individual
+                 * package elements is not supported by the AML interpreter,
+                 * even though the ASL grammar supports it. Example:
+                 *
+                 *      Name (INT1, 0x1234)
+                 *
+                 *      Name (PKG3, Package () {
+                 *          Add (INT1, 0xAAAA0000)
+                 *      })
+                 *
+                 *  1) No known AML interpreter supports this type of construct
+                 *  2) This fixes a fault if the construct is encountered
+                 */
+                ACPI_EXCEPTION ((AE_INFO, AE_SUPPORT,
+                    "Expressions within package elements are not supported"));
+
+                /* Cleanup the return object, it is not needed */
+
+                AcpiUtRemoveReference (WalkState->Results->Results.ObjDesc[0]);
+                return_ACPI_STATUS (AE_SUPPORT);
+            }
+
             if (Arg->Common.Node->Type == ACPI_TYPE_METHOD)
             {
                 /*
@@ -546,34 +572,33 @@ AcpiDsResolvePackageElement (
 
     ScopeInfo.Scope.Node = Element->Reference.Node; /* Prefix node */
 
-    Status = AcpiNsLookup (&ScopeInfo,
-        (char *) Element->Reference.Aml,            /* Pointer to AML path */
+    Status = AcpiNsLookup (&ScopeInfo, (char *) Element->Reference.Aml,
         ACPI_TYPE_ANY, ACPI_IMODE_EXECUTE,
         ACPI_NS_SEARCH_PARENT | ACPI_NS_DONT_OPEN_SCOPE,
         NULL, &ResolvedNode);
     if (ACPI_FAILURE (Status))
     {
-#if defined ACPI_IGNORE_PACKAGE_RESOLUTION_ERRORS && !defined ACPI_APPLICATION
-        /*
-         * For the kernel-resident ACPICA, optionally be silent about the
-         * NOT_FOUND case. Although this is potentially a serious problem,
-         * it can generate a lot of noise/errors on platforms whose
-         * firmware carries around a bunch of unused Package objects.
-         * To disable these errors, define ACPI_IGNORE_PACKAGE_RESOLUTION_ERRORS
-         * in the OS-specific header.
-         *
-         * All errors are always reported for ACPICA applications such as
-         * AcpiExec.
-         */
-        if (Status == AE_NOT_FOUND)
+        if ((Status == AE_NOT_FOUND) && AcpiGbl_IgnorePackageResolutionErrors)
         {
-            /* Reference name not found, set the element to NULL */
+            /*
+             * Optionally be silent about the NOT_FOUND case for the referenced
+             * name. Although this is potentially a serious problem,
+             * it can generate a lot of noise/errors on platforms whose
+             * firmware carries around a bunch of unused Package objects.
+             * To disable these errors, set this global to TRUE:
+             *     AcpiGbl_IgnorePackageResolutionErrors
+             *
+             * If the AML actually tries to use such a package, the unresolved
+             * element(s) will be replaced with NULL elements.
+             */
+
+            /* Referenced name not found, set the element to NULL */
 
             AcpiUtRemoveReference (*ElementPtr);
             *ElementPtr = NULL;
             return_VOID;
         }
-#endif
+
         Status2 = AcpiNsExternalizeName (ACPI_UINT32_MAX,
             (char *) Element->Reference.Aml, NULL, &ExternalPath);
 

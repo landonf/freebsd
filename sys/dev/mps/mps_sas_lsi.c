@@ -48,10 +48,12 @@ __FBSDID("$FreeBSD$");
 #include <sys/uio.h>
 #include <sys/sysctl.h>
 #include <sys/endian.h>
+#include <sys/proc.h>
 #include <sys/queue.h>
 #include <sys/kthread.h>
 #include <sys/taskqueue.h>
 #include <sys/sbuf.h>
+#include <sys/reboot.h>
 
 #include <machine/bus.h>
 #include <machine/resource.h>
@@ -121,12 +123,12 @@ static int mpssas_add_device(struct mps_softc *sc, u16 handle, u8 linkrate);
 static int mpssas_get_sata_identify(struct mps_softc *sc, u16 handle,
     Mpi2SataPassthroughReply_t *mpi_reply, char *id_buffer, int sz,
     u32 devinfo);
-static void mpssas_ata_id_timeout(void *data);
+static void mpssas_ata_id_timeout(struct mps_softc *, struct mps_command *);
 int mpssas_get_sas_address_for_sata_disk(struct mps_softc *sc,
     u64 *sas_address, u16 handle, u32 device_info, u8 *is_SATA_SSD);
 static int mpssas_volume_add(struct mps_softc *sc,
     u16 handle);
-static void mpssas_SSU_to_SATA_devices(struct mps_softc *sc);
+static void mpssas_SSU_to_SATA_devices(struct mps_softc *sc, int howto);
 static void mpssas_stop_unit_done(struct cam_periph *periph,
     union ccb *done_ccb);
 
@@ -816,6 +818,7 @@ out:
 	for (i = 1; i < sc->num_reqs; i++) {
 		cm = &sc->commands[i];
 		if (cm->cm_flags & MPS_CM_FLAGS_SATA_ID_TIMEOUT) {
+			free(cm->cm_data, M_MPT2);
 			mps_free_command(sc, cm);
 		}
 	}
@@ -956,23 +959,19 @@ mpssas_get_sata_identify(struct mps_softc *sc, u16 handle,
 	cm->cm_length = htole32(sz);
 
 	/*
-	 * Start a timeout counter specifically for the SATA ID command. This
-	 * is used to fix a problem where the FW does not send a reply sometimes
+	 * Use a custom handler to avoid reinit'ing the controller on timeout.
+	 * This fixes a problem where the FW does not send a reply sometimes
 	 * when a bad disk is in the topology. So, this is used to timeout the
 	 * command so that processing can continue normally.
 	 */
-	mps_dprint(sc, MPS_XINFO, "%s start timeout counter for SATA ID "
-	    "command\n", __func__);
-	callout_reset(&cm->cm_callout, MPS_ATA_ID_TIMEOUT * hz,
-	    mpssas_ata_id_timeout, cm);
-	error = mps_wait_command(sc, &cm, 60, CAN_SLEEP);
-	mps_dprint(sc, MPS_XINFO, "%s stop timeout counter for SATA ID "
-	    "command\n", __func__);
-	/* XXX KDM need to fix the case where this command is destroyed */
-	callout_stop(&cm->cm_callout);
+	cm->cm_timeout_handler = mpssas_ata_id_timeout;
 
-	if (cm != NULL)
-		reply = (Mpi2SataPassthroughReply_t *)cm->cm_reply;
+	error = mps_wait_command(sc, &cm, MPS_ATA_ID_TIMEOUT, CAN_SLEEP);
+
+	/* mpssas_ata_id_timeout does not reset controller */
+	KASSERT(cm != NULL, ("%s: surprise command freed", __func__));
+
+	reply = (Mpi2SataPassthroughReply_t *)cm->cm_reply;
 	if (error || (reply == NULL)) {
 		/* FIXME */
  		/*
@@ -998,63 +997,29 @@ mpssas_get_sata_identify(struct mps_softc *sc, u16 handle,
 out:
 	/*
 	 * If the SATA_ID_TIMEOUT flag has been set for this command, don't free
-	 * it.  The command will be freed after sending a target reset TM. If
-	 * the command did timeout, use EWOULDBLOCK.
+	 * it.  The command and buffer will be freed after sending an Abort
+	 * Task TM.
 	 */
-	if ((cm != NULL)
-	 && (cm->cm_flags & MPS_CM_FLAGS_SATA_ID_TIMEOUT) == 0)
+	if ((cm->cm_flags & MPS_CM_FLAGS_SATA_ID_TIMEOUT) == 0) {
 		mps_free_command(sc, cm);
-	else if (error == 0)
-		error = EWOULDBLOCK;
-	free(buffer, M_MPT2);
+		free(buffer, M_MPT2);
+	}
 	return (error);
 }
 
 static void
-mpssas_ata_id_timeout(void *data)
+mpssas_ata_id_timeout(struct mps_softc *sc, struct mps_command *cm)
 {
-	struct mps_softc *sc;
-	struct mps_command *cm;
 
-	cm = (struct mps_command *)data;
-	sc = cm->cm_sc;
-	mtx_assert(&sc->mps_mtx, MA_OWNED);
-
-	mps_dprint(sc, MPS_INFO, "%s checking ATA ID command %p sc %p\n",
+	mps_dprint(sc, MPS_INFO, "%s ATA ID command timeout cm %p sc %p\n",
 	    __func__, cm, sc);
-	if ((callout_pending(&cm->cm_callout)) ||
-	    (!callout_active(&cm->cm_callout))) {
-		mps_dprint(sc, MPS_INFO, "%s ATA ID command almost timed out\n",
-		    __func__);
-		return;
-	}
-	callout_deactivate(&cm->cm_callout);
 
 	/*
-	 * Run the interrupt handler to make sure it's not pending.  This
-	 * isn't perfect because the command could have already completed
-	 * and been re-used, though this is unlikely.
-	 */
-	mps_intr_locked(sc);
-	if (cm->cm_state == MPS_CM_STATE_FREE) {
-		mps_dprint(sc, MPS_INFO, "%s ATA ID command almost timed out\n",
-		    __func__);
-		return;
-	}
-
-	mps_dprint(sc, MPS_INFO, "ATA ID command timeout cm %p\n", cm);
-
-	/*
-	 * Send wakeup() to the sleeping thread that issued this ATA ID command.
-	 * wakeup() will cause msleep to return a 0 (not EWOULDBLOCK), and this
-	 * will keep reinit() from being called. This way, an Abort Task TM can
-	 * be issued so that the timed out command can be cleared.  The Abort
-	 * Task cannot be sent from here because the driver has not completed
-	 * setting up targets.  Instead, the command is flagged so that special
-	 * handling will be used to send the abort.
+	 * The Abort Task cannot be sent from here because the driver has not
+	 * completed setting up targets.  Instead, the command is flagged so
+	 * that special handling will be used to send the abort.
 	 */
 	cm->cm_flags |= MPS_CM_FLAGS_SATA_ID_TIMEOUT;
-	wakeup(cm);
 }
 
 static int
@@ -1113,6 +1078,7 @@ out:
 /**
  * mpssas_SSU_to_SATA_devices 
  * @sc: per adapter object
+ * @howto: mast of RB_* bits for how we're rebooting
  *
  * Looks through the target list and issues a StartStopUnit SCSI command to each
  * SATA direct-access device.  This helps to ensure that data corruption is
@@ -1122,7 +1088,7 @@ out:
  * Return nothing.
  */
 static void
-mpssas_SSU_to_SATA_devices(struct mps_softc *sc)
+mpssas_SSU_to_SATA_devices(struct mps_softc *sc, int howto)
 {
 	struct mpssas_softc *sassc = sc->sassc;
 	union ccb *ccb;
@@ -1130,7 +1096,7 @@ mpssas_SSU_to_SATA_devices(struct mps_softc *sc)
 	target_id_t targetid;
 	struct mpssas_target *target;
 	char path_str[64];
-	struct timeval cur_time, start_time;
+	int timeout;
 
 	/*
 	 * For each target, issue a StartStopUnit command to stop the device.
@@ -1193,17 +1159,25 @@ mpssas_SSU_to_SATA_devices(struct mps_softc *sc)
 	}
 
 	/*
-	 * Wait until all of the SSU commands have completed or time has
-	 * expired (60 seconds).  Pause for 100ms each time through.  If any
-	 * command times out, the target will be reset in the SCSI command
-	 * timeout routine.
+	 * Timeout after 60 seconds by default or 10 seconds if howto has
+	 * RB_NOSYNC set which indicates we're likely handling a panic.
 	 */
-	getmicrotime(&start_time);
-	while (sc->SSU_refcount) {
+	timeout = 600;
+	if (howto & RB_NOSYNC)
+		timeout = 100;
+
+	/*
+	 * Wait until all of the SSU commands have completed or timeout has
+	 * expired.  Pause for 100ms each time through.  If any command
+	 * times out, the target will be reset in the SCSI command timeout
+	 * routine.
+	 */
+	while (sc->SSU_refcount > 0) {
 		pause("mpswait", hz/10);
-		
-		getmicrotime(&cur_time);
-		if ((cur_time.tv_sec - start_time.tv_sec) > 60) {
+		if (SCHEDULER_STOPPED())
+			xpt_sim_poll(sassc->sim);
+
+		if (--timeout == 0) {
 			mps_dprint(sc, MPS_FAULT, "Time has expired waiting "
 			    "for SSU commands to complete.\n");
 			break;
@@ -1238,6 +1212,7 @@ mpssas_stop_unit_done(struct cam_periph *periph, union ccb *done_ccb)
 /**
  * mpssas_ir_shutdown - IR shutdown notification
  * @sc: per adapter object
+ * @howto: mast of RB_* bits for how we're rebooting
  *
  * Sending RAID Action to alert the Integrated RAID subsystem of the IOC that
  * the host system is shutting down.
@@ -1245,7 +1220,7 @@ mpssas_stop_unit_done(struct cam_periph *periph, union ccb *done_ccb)
  * Return nothing.
  */
 void
-mpssas_ir_shutdown(struct mps_softc *sc)
+mpssas_ir_shutdown(struct mps_softc *sc, int howto)
 {
 	u16 volume_mapping_flags;
 	u16 ioc_pg8_flags = le16toh(sc->ioc_pg8.Flags);
@@ -1350,5 +1325,5 @@ out:
 			}
 		}
 	}
-	mpssas_SSU_to_SATA_devices(sc);
+	mpssas_SSU_to_SATA_devices(sc, howto);
 }

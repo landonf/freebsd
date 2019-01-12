@@ -28,17 +28,21 @@
  * $FreeBSD$
  */
 
-#ifndef _SYS_DOMAINSETSET_H_
-#define	_SYS_DOMAINSETSET_H_
+#ifndef _SYS_DOMAINSET_H_
+#define	_SYS_DOMAINSET_H_
 
 #include <sys/_domainset.h>
-
 #include <sys/bitset.h>
+#include <sys/queue.h>
 
 #define	_NDOMAINSETBITS			_BITSET_BITS
 #define	_NDOMAINSETWORDS		__bitset_words(DOMAINSET_SETSIZE)
 
-#define	DOMAINSETSETBUFSIZ	((2 + sizeof(long) * 2) * _NDOMAINSETWORDS)
+#define	DOMAINSETBUFSIZ							\
+	    (((2 + sizeof(long) * 2) * _NDOMAINSETWORDS) +		\
+	    sizeof("::") + sizeof(__XSTRING(DOMAINSET_POLICY_MAX)) +	\
+	    sizeof(__XSTRING(MAXMEMDOM)))
+
 
 #define	DOMAINSET_CLR(n, p)		BIT_CLR(DOMAINSET_SETSIZE, n, p)
 #define	DOMAINSET_COPY(f, t)		BIT_COPY(DOMAINSET_SETSIZE, f, t)
@@ -73,22 +77,43 @@
 #define	DOMAINSET_POLICY_ROUNDROBIN	1
 #define	DOMAINSET_POLICY_FIRSTTOUCH	2
 #define	DOMAINSET_POLICY_PREFER		3
-#define	DOMAINSET_POLICY_MAX		DOMAINSET_POLICY_PREFER
+#define	DOMAINSET_POLICY_INTERLEAVE	4
+#define	DOMAINSET_POLICY_MAX		DOMAINSET_POLICY_INTERLEAVE
 
 #ifdef _KERNEL
-#include <sys/queue.h>
-LIST_HEAD(domainlist, domainset);
+#if MAXMEMDOM < 256
+typedef	uint8_t		domainid_t;
+#else
+typedef uint16_t	domainid_t;
+#endif
 
 struct domainset {
 	LIST_ENTRY(domainset)	ds_link;
 	domainset_t	ds_mask;	/* allowed domains. */
 	uint16_t	ds_policy;	/* Policy type. */
-	int16_t		ds_prefer;	/* Preferred domain or -1. */
-	uint16_t	ds_cnt;		/* popcnt from above. */
-	uint16_t	ds_max;		/* Maximum domain in set. */
+	domainid_t	ds_prefer;	/* Preferred domain or -1. */
+	domainid_t	ds_cnt;		/* popcnt from above. */
+	domainid_t	ds_order[MAXMEMDOM];  /* nth domain table. */
 };
 
+extern struct domainset domainset_fixed[MAXMEMDOM], domainset_prefer[MAXMEMDOM];
+#define	DOMAINSET_FIXED(domain)	(&domainset_fixed[(domain)])
+#define	DOMAINSET_PREF(domain)	(&domainset_prefer[(domain)])
+extern struct domainset domainset_roundrobin;
+#define	DOMAINSET_RR()		(&domainset_roundrobin)
+
+void domainset_init(void);
 void domainset_zero(void);
+
+/*
+ * Add a domainset to the system based on a key initializing policy, prefer,
+ * and mask.  Do not create and directly use domainset structures.  The
+ * returned value will not match the key pointer.
+ */
+struct domainset *domainset_create(const struct domainset *);
+#ifdef _SYS_SYSCTL_H_
+int sysctl_handle_domainset(SYSCTL_HANDLER_ARGS);
+#endif
 
 #else
 __BEGIN_DECLS
@@ -99,4 +124,4 @@ int	cpuset_setdomain(cpulevel_t, cpuwhich_t, id_t, size_t,
 
 __END_DECLS
 #endif
-#endif /* !_SYS_DOMAINSETSET_H_ */
+#endif /* !_SYS_DOMAINSET_H_ */

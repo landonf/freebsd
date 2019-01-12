@@ -28,7 +28,7 @@
 .\"     From: @(#)ifconfig.8	8.3 (Berkeley) 1/5/94
 .\" $FreeBSD$
 .\"
-.Dd April 29, 2017
+.Dd June 27, 2018
 .Dt IFCONFIG 8
 .Os
 .Sh NAME
@@ -724,10 +724,6 @@ controls whether this flag is set by default or not.
 .It Cm -accept_rtadv
 Clear a flag
 .Cm accept_rtadv .
-.It Cm autoconf
-Set a flag to accept router advertisements on an interface.
-.It Fl autoconf
-Disable autoconfiguration.
 .It Cm no_radr
 Set a flag to control whether routers from which the system accepts
 Router Advertisement messages will be added to the Default Router List
@@ -800,6 +796,10 @@ Note that the address family keyword
 .Dq Li inet6
 is needed for them:
 .Bl -tag -width indent
+.It Cm autoconf
+Set the IPv6 autoconfigured address bit.
+.It Fl autoconf
+Clear the IPv6 autoconfigured address bit.
 .It Cm deprecated
 Set the IPv6 deprecated address bit.
 .It Fl deprecated
@@ -2469,7 +2469,7 @@ src/dst address for IPv4 or IPv6.
 .It Cm l4
 src/dst port for TCP/UDP/SCTP.
 .El
-.It Cm use_flowid
+.It Cm -use_flowid
 Enable local hash computation for RSS hash on the interface.
 The
 .Li loadbalance
@@ -2478,7 +2478,7 @@ and
 modes will use the RSS hash from the network card if available
 to avoid computing one, this may give poor traffic distribution
 if the hash is invalid or uses less of the protocol header information.
-.Cm use_flowid
+.Cm -use_flowid
 disables use of RSS hash from the network card.
 The default value can be set via the
 .Va net.link.lagg.default_use_flowid
@@ -2491,8 +2491,8 @@ and
 .Li 1
 means
 .Dq enabled .
-.It Cm -use_flowid
-Disable local hash computation for RSS hash on the interface.
+.It Cm use_flowid
+Use the RSS hash from the network card if available.
 .It Cm flowid_shift Ar number
 Set a shift parameter for RSS local hash computation.
 Hash is calculated by using flowid bits in a packet header mbuf

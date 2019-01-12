@@ -1,6 +1,6 @@
 /******************************************************************************
 
-  Copyright (c) 2013-2015, Intel Corporation 
+  Copyright (c) 2013-2018, Intel Corporation
   All rights reserved.
   
   Redistribution and use in source and binary forms, with or without 
@@ -59,6 +59,8 @@ i40e_status
 i40e_free_virt_mem(struct i40e_hw *hw, struct i40e_virt_mem *mem)
 {
 	free(mem->va, M_DEVBUF);
+	mem->va = NULL;
+
 	return(0);
 }
 
@@ -130,7 +132,7 @@ i40e_free_dma_mem(struct i40e_hw *hw, struct i40e_dma_mem *mem)
 	bus_dmamap_unload(mem->tag, mem->map);
 	bus_dmamem_free(mem->tag, mem->va, mem->map);
 	bus_dma_tag_destroy(mem->tag);
-	return (0);
+	return (I40E_SUCCESS);
 }
 
 void
@@ -159,27 +161,25 @@ i40e_destroy_spinlock(struct i40e_spinlock *lock)
 		mtx_destroy(&lock->mutex);
 }
 
+static inline int
+ixl_ms_scale(int x)
+{
+	if (hz == 1000)
+		return (x);
+	else if (hz > 1000)
+		return (x*(hz/1000));
+	else
+		return (max(1, x/(1000/hz)));
+}
+
 void
 i40e_msec_pause(int msecs)
 {
-	int ticks_to_pause = (msecs * hz) / 1000;
-	int start_ticks = ticks;
-
-	if (cold || SCHEDULER_STOPPED()) {
+	if (cold || SCHEDULER_STOPPED())
 		i40e_msec_delay(msecs);
-		return;
-	}
-
-	while (1) {
-		kern_yield(PRI_USER);
-		int yielded_ticks = ticks - start_ticks;
-		if (yielded_ticks > ticks_to_pause)
-			break;
-		else if (yielded_ticks < 0
-		    && (yielded_ticks + INT_MAX + 1 > ticks_to_pause)) {
-			break;
-		}
-	}
+	else
+		// ERJ: (msecs * hz) could overflow
+		pause("ixl", ixl_ms_scale(msecs));
 }
 
 /*
@@ -207,47 +207,47 @@ const char *
 ixl_vc_opcode_str(uint16_t op)
 {
 	switch (op) {
-	case I40E_VIRTCHNL_OP_VERSION:
+	case VIRTCHNL_OP_VERSION:
 		return ("VERSION");
-	case I40E_VIRTCHNL_OP_RESET_VF:
+	case VIRTCHNL_OP_RESET_VF:
 		return ("RESET_VF");
-	case I40E_VIRTCHNL_OP_GET_VF_RESOURCES:
+	case VIRTCHNL_OP_GET_VF_RESOURCES:
 		return ("GET_VF_RESOURCES");
-	case I40E_VIRTCHNL_OP_CONFIG_TX_QUEUE:
+	case VIRTCHNL_OP_CONFIG_TX_QUEUE:
 		return ("CONFIG_TX_QUEUE");
-	case I40E_VIRTCHNL_OP_CONFIG_RX_QUEUE:
+	case VIRTCHNL_OP_CONFIG_RX_QUEUE:
 		return ("CONFIG_RX_QUEUE");
-	case I40E_VIRTCHNL_OP_CONFIG_VSI_QUEUES:
+	case VIRTCHNL_OP_CONFIG_VSI_QUEUES:
 		return ("CONFIG_VSI_QUEUES");
-	case I40E_VIRTCHNL_OP_CONFIG_IRQ_MAP:
+	case VIRTCHNL_OP_CONFIG_IRQ_MAP:
 		return ("CONFIG_IRQ_MAP");
-	case I40E_VIRTCHNL_OP_ENABLE_QUEUES:
+	case VIRTCHNL_OP_ENABLE_QUEUES:
 		return ("ENABLE_QUEUES");
-	case I40E_VIRTCHNL_OP_DISABLE_QUEUES:
+	case VIRTCHNL_OP_DISABLE_QUEUES:
 		return ("DISABLE_QUEUES");
-	case I40E_VIRTCHNL_OP_ADD_ETHER_ADDRESS:
-		return ("ADD_ETHER_ADDRESS");
-	case I40E_VIRTCHNL_OP_DEL_ETHER_ADDRESS:
-		return ("DEL_ETHER_ADDRESS");
-	case I40E_VIRTCHNL_OP_ADD_VLAN:
+	case VIRTCHNL_OP_ADD_ETH_ADDR:
+		return ("ADD_ETH_ADDR");
+	case VIRTCHNL_OP_DEL_ETH_ADDR:
+		return ("DEL_ETH_ADDR");
+	case VIRTCHNL_OP_ADD_VLAN:
 		return ("ADD_VLAN");
-	case I40E_VIRTCHNL_OP_DEL_VLAN:
+	case VIRTCHNL_OP_DEL_VLAN:
 		return ("DEL_VLAN");
-	case I40E_VIRTCHNL_OP_CONFIG_PROMISCUOUS_MODE:
+	case VIRTCHNL_OP_CONFIG_PROMISCUOUS_MODE:
 		return ("CONFIG_PROMISCUOUS_MODE");
-	case I40E_VIRTCHNL_OP_GET_STATS:
+	case VIRTCHNL_OP_GET_STATS:
 		return ("GET_STATS");
-	case I40E_VIRTCHNL_OP_FCOE:
-		return ("FCOE");
-	case I40E_VIRTCHNL_OP_EVENT:
+	case VIRTCHNL_OP_RSVD:
+		return ("RSVD");
+	case VIRTCHNL_OP_EVENT:
 		return ("EVENT");
-	case I40E_VIRTCHNL_OP_CONFIG_RSS_KEY:
+	case VIRTCHNL_OP_CONFIG_RSS_KEY:
 		return ("CONFIG_RSS_KEY");
-	case I40E_VIRTCHNL_OP_CONFIG_RSS_LUT:
+	case VIRTCHNL_OP_CONFIG_RSS_LUT:
 		return ("CONFIG_RSS_LUT");
-	case I40E_VIRTCHNL_OP_GET_RSS_HENA_CAPS:
+	case VIRTCHNL_OP_GET_RSS_HENA_CAPS:
 		return ("GET_RSS_HENA_CAPS");
-	case I40E_VIRTCHNL_OP_SET_RSS_HENA:
+	case VIRTCHNL_OP_SET_RSS_HENA:
 		return ("SET_RSS_HENA");
 	default:
 		return ("UNKNOWN");
@@ -270,7 +270,5 @@ i40e_write_pci_cfg(struct i40e_hw *hw, u32 reg, u16 value)
 {
         pci_write_config(((struct i40e_osdep *)hw->back)->dev,
             reg, value, 2);
-
-        return;
 }
 

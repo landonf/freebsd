@@ -156,10 +156,14 @@ mem_regions(struct mem_region **phys, int *physsz, struct mem_region **avail,
 		}
 	}
 
-	*phys = pregions;
-	*avail = aregions;
-	*physsz = npregions;
-	*availsz = naregions;
+	if (phys != NULL)
+		*phys = pregions;
+	if (avail != NULL)
+		*avail = aregions;
+	if (physsz != NULL)
+		*physsz = npregions;
+	if (availsz != NULL)
+		*availsz = naregions;
 }
 
 int
@@ -238,6 +242,12 @@ platform_smp_ap_init()
 	PLATFORM_SMP_AP_INIT(plat_obj);
 }
 
+void
+platform_smp_probe_threads(void)
+{
+	PLATFORM_SMP_PROBE_THREADS(plat_obj);
+}
+
 #ifdef SMP
 struct cpu_group *
 cpu_topo(void)
@@ -253,19 +263,6 @@ void
 cpu_reset()
 {
         PLATFORM_RESET(plat_obj);
-}
-
-int
-cpu_idle_wakeup(int cpu)
-{
-	return (PLATFORM_IDLE_WAKEUP(plat_obj, cpu));
-}
-
-void
-platform_cpu_idle(int cpu)
-{
-
-	PLATFORM_IDLE(plat_obj, cpu);
 }
 
 void platform_smp_timebase_sync(u_long tb, int ap)

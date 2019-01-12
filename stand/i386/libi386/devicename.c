@@ -32,7 +32,7 @@ __FBSDID("$FreeBSD$");
 #include "bootstrap.h"
 #include "disk.h"
 #include "libi386.h"
-#include "../zfs/libzfs.h"
+#include "libzfs.h"
 
 static int	i386_parsedev(struct i386_devdesc **dev, const char *devspec, const char **path);
 
@@ -103,23 +103,42 @@ i386_parsedev(struct i386_devdesc **dev, const char *devspec, const char **path)
     }
     if (dv == NULL)
 	return(ENOENT);
-    idev = malloc(sizeof(struct i386_devdesc));
-    err = 0;
+
     np = (devspec + strlen(dv->dv_name));
+    idev = NULL;
+    err = 0;
         
     switch(dv->dv_type) {
-    case DEVT_NONE:			/* XXX what to do here?  Do we care? */
+    case DEVT_NONE:
 	break;
 
     case DEVT_DISK:
+	idev = malloc(sizeof(struct i386_devdesc));
+	if (idev == NULL)
+	    return (ENOMEM);
+
 	err = disk_parsedev((struct disk_devdesc *)idev, np, path);
 	if (err != 0)
 	    goto fail;
 	break;
 
-    case DEVT_CD:
-    case DEVT_NET:
+    case DEVT_ZFS:
+	idev = malloc(sizeof (struct zfs_devdesc));
+	if (idev == NULL)
+	    return (ENOMEM);
+
+	err = zfs_parsedev((struct zfs_devdesc *)idev, np, path);
+	if (err != 0)
+	    goto fail;
+	break;
+
+    default:
+	idev = malloc(sizeof (struct devdesc));
+	if (idev == NULL)
+	    return (ENOMEM);
+
 	unit = 0;
+	cp = (char *)np;
 
 	if (*np && (*np != ':')) {
 	    unit = strtol(np, &cp, 0);	/* get unit number if present */
@@ -127,34 +146,24 @@ i386_parsedev(struct i386_devdesc **dev, const char *devspec, const char **path)
 		err = EUNIT;
 		goto fail;
 	    }
-	} else {
-		cp = (char *)np;
 	}
+
 	if (*cp && (*cp != ':')) {
 	    err = EINVAL;
 	    goto fail;
 	}
 
-	idev->d_unit = unit;
+	idev->dd.d_unit = unit;
 	if (path != NULL)
 	    *path = (*cp == 0) ? cp : cp + 1;
 	break;
-    case DEVT_ZFS:
-	err = zfs_parsedev((struct zfs_devdesc *)idev, np, path);
-	if (err != 0)
-	    goto fail;
-	break;
-    default:
-	err = EINVAL;
-	goto fail;
     }
-    idev->d_dev = dv;
-    idev->d_type = dv->dv_type;
-    if (dev == NULL) {
-	free(idev);
-    } else {
+    idev->dd.d_dev = dv;
+    if (dev != NULL)
 	*dev = idev;
-    }
+    else
+	free(idev);
+
     return(0);
 
  fail:
@@ -169,14 +178,14 @@ i386_fmtdev(void *vdev)
     struct i386_devdesc	*dev = (struct i386_devdesc *)vdev;
     static char		buf[128];	/* XXX device length constant? */
 
-    switch(dev->d_type) {
+    switch(dev->dd.d_dev->dv_type) {
     case DEVT_NONE:
 	strcpy(buf, "(no device)");
 	break;
 
     case DEVT_CD:
     case DEVT_NET:
-	sprintf(buf, "%s%d:", dev->d_dev->dv_name, dev->d_unit);
+	sprintf(buf, "%s%d:", dev->dd.d_dev->dv_name, dev->dd.d_unit);
 	break;
 
     case DEVT_DISK:

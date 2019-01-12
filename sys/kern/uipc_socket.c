@@ -107,7 +107,6 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_inet.h"
 #include "opt_inet6.h"
-#include "opt_compat.h"
 #include "opt_sctp.h"
 
 #include <sys/param.h>
@@ -918,12 +917,13 @@ solisten_dequeue(struct socket *head, struct socket **ret, int flags)
 	if (head->so_error) {
 		error = head->so_error;
 		head->so_error = 0;
+	} else if ((head->so_state & SS_NBIO) && TAILQ_EMPTY(&head->sol_comp))
+		error = EWOULDBLOCK;
+	else
+		error = 0;
+	if (error) {
 		SOLISTEN_UNLOCK(head);
 		return (error);
-        }
-	if ((head->so_state & SS_NBIO) && TAILQ_EMPTY(&head->sol_comp)) {
-		SOLISTEN_UNLOCK(head);
-		return (EWOULDBLOCK);
 	}
 	so = TAILQ_FIRST(&head->sol_comp);
 	SOCK_LOCK(so);
@@ -1025,6 +1025,9 @@ sofree(struct socket *so)
 	if (SOLISTENING(so))
 		so->so_error = ECONNABORTED;
 	SOCK_UNLOCK(so);
+
+	if (so->so_dtor != NULL)
+		so->so_dtor(so);
 
 	VNET_SO_ASSERT(so);
 	if (pr->pr_flags & PR_RIGHTS && pr->pr_domain->dom_dispose != NULL)
@@ -1519,7 +1522,8 @@ restart:
 		}
 		if (space < resid + clen &&
 		    (atomic || space < so->so_snd.sb_lowat || space < clen)) {
-			if ((so->so_state & SS_NBIO) || (flags & MSG_NBIO)) {
+			if ((so->so_state & SS_NBIO) ||
+			    (flags & (MSG_NBIO | MSG_DONTWAIT)) != 0) {
 				SOCKBUF_UNLOCK(&so->so_snd);
 				error = EWOULDBLOCK;
 				goto release;
@@ -2161,7 +2165,6 @@ release:
 
 /*
  * Optimized version of soreceive() for stream (TCP) sockets.
- * XXXAO: (MSG_WAITALL | MSG_PEEK) isn't properly handled.
  */
 int
 soreceive_stream(struct socket *so, struct sockaddr **psa, struct uio *uio,
@@ -2176,12 +2179,12 @@ soreceive_stream(struct socket *so, struct sockaddr **psa, struct uio *uio,
 		return (EINVAL);
 	if (psa != NULL)
 		*psa = NULL;
-	if (controlp != NULL)
-		return (EINVAL);
 	if (flagsp != NULL)
 		flags = *flagsp &~ MSG_EOR;
 	else
 		flags = 0;
+	if (controlp != NULL)
+		*controlp = NULL;
 	if (flags & MSG_OOB)
 		return (soreceive_rcvoob(so, uio, flags));
 	if (mp0 != NULL)
@@ -2585,9 +2588,18 @@ soshutdown(struct socket *so, int how)
 		 * both backward-compatibility and POSIX requirements by forcing
 		 * ENOTCONN but still asking protocol to perform pru_shutdown().
 		 */
-		if (so->so_type != SOCK_DGRAM)
+		if (so->so_type != SOCK_DGRAM && !SOLISTENING(so))
 			return (ENOTCONN);
 		soerror_enotconn = 1;
+	}
+
+	if (SOLISTENING(so)) {
+		if (how != SHUT_WR) {
+			SOLISTEN_LOCK(so);
+			so->so_error = ECONNABORTED;
+			solisten_wakeup(so);	/* unlocks so */
+		}
+		goto done;
 	}
 
 	CURVNET_SET(so->so_vnet);
@@ -2604,6 +2616,7 @@ soshutdown(struct socket *so, int how)
 	wakeup(&so->so_timeo);
 	CURVNET_RESTORE();
 
+done:
 	return (soerror_enotconn ? ENOTCONN : 0);
 }
 
@@ -2742,12 +2755,10 @@ sosetopt(struct socket *so, struct sockopt *sopt)
 	CURVNET_SET(so->so_vnet);
 	error = 0;
 	if (sopt->sopt_level != SOL_SOCKET) {
-		if (so->so_proto->pr_ctloutput != NULL) {
+		if (so->so_proto->pr_ctloutput != NULL)
 			error = (*so->so_proto->pr_ctloutput)(so, sopt);
-			CURVNET_RESTORE();
-			return (error);
-		}
-		error = ENOPROTOOPT;
+		else
+			error = ENOPROTOOPT;
 	} else {
 		switch (sopt->sopt_name) {
 		case SO_ACCEPTFILTER:
@@ -2777,6 +2788,7 @@ sosetopt(struct socket *so, struct sockopt *sopt)
 		case SO_BROADCAST:
 		case SO_REUSEADDR:
 		case SO_REUSEPORT:
+		case SO_REUSEPORT_LB:
 		case SO_OOBINLINE:
 		case SO_TIMESTAMP:
 		case SO_BINTIME:
@@ -2995,6 +3007,7 @@ sogetopt(struct socket *so, struct sockopt *sopt)
 		case SO_KEEPALIVE:
 		case SO_REUSEADDR:
 		case SO_REUSEPORT:
+		case SO_REUSEPORT_LB:
 		case SO_BROADCAST:
 		case SO_OOBINLINE:
 		case SO_ACCEPTCONN:
@@ -3005,6 +3018,10 @@ sogetopt(struct socket *so, struct sockopt *sopt)
 integer:
 			error = sooptcopyout(sopt, &optval, sizeof optval);
 			break;
+
+		case SO_DOMAIN:
+			optval = so->so_proto->pr_domain->dom_family;
+			goto integer;
 
 		case SO_TYPE:
 			optval = so->so_type;
@@ -3273,6 +3290,8 @@ sopoll_generic(struct socket *so, int events, struct ucred *active_cred,
 			revents = 0;
 		else if (!TAILQ_EMPTY(&so->sol_comp))
 			revents = events & (POLLIN | POLLRDNORM);
+		else if ((events & POLLINIGNEOF) == 0 && so->so_error)
+			revents = (events & (POLLIN | POLLRDNORM)) | POLLHUP;
 		else {
 			selrecord(td, &so->so_rdsel);
 			revents = 0;
@@ -3549,6 +3568,11 @@ filt_soread(struct knote *kn, long hint)
 	if (SOLISTENING(so)) {
 		SOCK_LOCK_ASSERT(so);
 		kn->kn_data = so->sol_qlen;
+		if (so->so_error) {
+			kn->kn_flags |= EV_EOF;
+			kn->kn_fflags = so->so_error;
+			return (1);
+		}
 		return (!TAILQ_EMPTY(&so->sol_comp));
 	}
 
@@ -3812,6 +3836,17 @@ sodupsockaddr(const struct sockaddr *sa, int mflags)
 }
 
 /*
+ * Register per-socket destructor.
+ */
+void
+sodtor_set(struct socket *so, so_dtor_t *func)
+{
+
+	SOCK_LOCK_ASSERT(so);
+	so->so_dtor = func;
+}
+
+/*
  * Register per-socket buffer upcalls.
  */
 void
@@ -3971,13 +4006,14 @@ void
 sotoxsocket(struct socket *so, struct xsocket *xso)
 {
 
+	bzero(xso, sizeof(*xso));
 	xso->xso_len = sizeof *xso;
-	xso->xso_so = so;
+	xso->xso_so = (uintptr_t)so;
 	xso->so_type = so->so_type;
 	xso->so_options = so->so_options;
 	xso->so_linger = so->so_linger;
 	xso->so_state = so->so_state;
-	xso->so_pcb = so->so_pcb;
+	xso->so_pcb = (uintptr_t)so->so_pcb;
 	xso->xso_protocol = so->so_proto->pr_protocol;
 	xso->xso_family = so->so_proto->pr_domain->dom_family;
 	xso->so_timeo = so->so_timeo;
@@ -3989,8 +4025,6 @@ sotoxsocket(struct socket *so, struct xsocket *xso)
 		xso->so_incqlen = so->sol_incqlen;
 		xso->so_qlimit = so->sol_qlimit;
 		xso->so_oobmark = 0;
-		bzero(&xso->so_snd, sizeof(xso->so_snd));
-		bzero(&xso->so_rcv, sizeof(xso->so_rcv));
 	} else {
 		xso->so_state |= so->so_qstate;
 		xso->so_qlen = xso->so_incqlen = xso->so_qlimit = 0;

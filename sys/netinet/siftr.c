@@ -152,8 +152,6 @@ __FBSDID("$FreeBSD$");
 #endif
 
 /* useful macros */
-#define CAST_PTR_INT(X) (*((int*)(X)))
-
 #define UPPER_SHORT(X)	(((X) & 0xFFFF0000) >> 16)
 #define LOWER_SHORT(X)	((X) & 0x0000FFFF)
 
@@ -268,7 +266,7 @@ struct siftr_stats
 	uint32_t nskip_out_dejavu;
 };
 
-static DPCPU_DEFINE(struct siftr_stats, ss);
+DPCPU_DEFINE_STATIC(struct siftr_stats, ss);
 
 static volatile unsigned int siftr_exit_pkt_manager_thread = 0;
 static unsigned int siftr_enabled = 0;
@@ -710,7 +708,7 @@ siftr_findinpcb(int ipver, struct ip *ip, struct mbuf *m, uint16_t sport,
 	struct inpcb *inp;
 
 	/* We need the tcbinfo lock. */
-	INP_INFO_UNLOCK_ASSERT(&V_tcbinfo);
+	INP_INFO_WUNLOCK_ASSERT(&V_tcbinfo);
 
 	if (dir == PFIL_IN)
 		inp = (ipver == INP_IPV4 ?
@@ -1201,10 +1199,10 @@ siftr_manage_ops(uint8_t action)
 	struct timeval tval;
 	struct flow_hash_node *counter, *tmp_counter;
 	struct sbuf *s;
-	int i, key_index, ret, error;
+	int i, key_index, error;
 	uint32_t bytes_to_write, total_skipped_pkts;
 	uint16_t lport, fport;
-	uint8_t *key, ipver;
+	uint8_t *key, ipver __unused;
 
 #ifdef SIFTR_IPV6
 	uint32_t laddr[4];
@@ -1235,7 +1233,7 @@ siftr_manage_ops(uint8_t action)
 
 		siftr_exit_pkt_manager_thread = 0;
 
-		ret = kthread_add(&siftr_pkt_manager_thread, NULL, NULL,
+		kthread_add(&siftr_pkt_manager_thread, NULL, NULL,
 		    &siftr_pkt_manager_thr, RFNOWAIT, 0,
 		    "siftr_pkt_manager_thr");
 
@@ -1442,22 +1440,22 @@ siftr_manage_ops(uint8_t action)
 static int
 siftr_sysctl_enabled_handler(SYSCTL_HANDLER_ARGS)
 {
-	if (req->newptr == NULL)
-		goto skip;
+	int error;
+	uint32_t new;
 
-	/* If the value passed in isn't 0 or 1, return an error. */
-	if (CAST_PTR_INT(req->newptr) != 0 && CAST_PTR_INT(req->newptr) != 1)
-		return (1);
-
-	/* If we are changing state (0 to 1 or 1 to 0). */
-	if (CAST_PTR_INT(req->newptr) != siftr_enabled )
-		if (siftr_manage_ops(CAST_PTR_INT(req->newptr))) {
-			siftr_manage_ops(SIFTR_DISABLE);
-			return (1);
+	new = siftr_enabled;
+	error = sysctl_handle_int(oidp, &new, 0, req);
+	if (error != 0 && req->newptr != NULL) {
+		if (new > 1)
+			return (EINVAL);
+		else if (new != siftr_enabled) {
+			error = siftr_manage_ops(new);
+			if (error != 0)
+				siftr_manage_ops(SIFTR_DISABLE);
 		}
+	}
 
-skip:
-	return (sysctl_handle_int(oidp, arg1, arg2, req));
+	return (error);
 }
 
 

@@ -106,9 +106,6 @@ SYSCALL32_MODULE(syscallname,                           \
 #define SYSCALL32_INIT_HELPER_COMPAT(syscallname)		\
     SYSCALL32_INIT_HELPER_COMPAT_F(syscallname, 0)
 
-int    syscall32_register(int *offset, struct sysent *new_sysent,
-	    struct sysent *old_sysent, int flags);
-int    syscall32_deregister(int *offset, struct sysent *old_sysent);
 int    syscall32_module_handler(struct module *mod, int what, void *arg);
 int    syscall32_helper_register(struct syscall_helper_data *sd, int flags);
 int    syscall32_helper_unregister(struct syscall_helper_data *sd);
@@ -121,7 +118,7 @@ int	freebsd32_copyiniov(struct iovec32 *iovp, u_int iovcnt,
 void	freebsd32_rusage_out(const struct rusage *s, struct rusage32 *s32);
 
 struct image_args;
-int freebsd32_exec_copyin_args(struct image_args *args, char *fname,
+int freebsd32_exec_copyin_args(struct image_args *args, const char *fname,
 	    enum uio_seg segflg, u_int32_t *argv, u_int32_t *envv);
 
 #endif /* !_COMPAT_FREEBSD32_FREEBSD32_UTIL_H_ */

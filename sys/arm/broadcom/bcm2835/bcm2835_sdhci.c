@@ -77,6 +77,7 @@ static int bcm2835_sdhci_pio_mode = 0;
 
 static struct ofw_compat_data compat_data[] = {
 	{"broadcom,bcm2835-sdhci",	1},
+	{"brcm,bcm2835-sdhci",		1},
 	{"brcm,bcm2835-mmc",		1},
 	{NULL,				0}
 };
@@ -682,7 +683,7 @@ static driver_t bcm_sdhci_driver = {
 
 DRIVER_MODULE(sdhci_bcm, simplebus, bcm_sdhci_driver, bcm_sdhci_devclass,
     NULL, NULL);
-MODULE_DEPEND(sdhci_bcm, sdhci, 1, 1, 1);
+SDHCI_DEPEND(sdhci_bcm);
 #ifndef MMCCAM
 MMC_DECLARE_BRIDGE(sdhci_bcm);
 #endif

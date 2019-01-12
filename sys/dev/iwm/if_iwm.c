@@ -5684,6 +5684,7 @@ iwm_intr(void *arg)
 #define	PCI_PRODUCT_INTEL_WL_3160_2	0x08b4
 #define	PCI_PRODUCT_INTEL_WL_3165_1	0x3165
 #define	PCI_PRODUCT_INTEL_WL_3165_2	0x3166
+#define	PCI_PRODUCT_INTEL_WL_3168_1	0x24fb
 #define	PCI_PRODUCT_INTEL_WL_7260_1	0x08b1
 #define	PCI_PRODUCT_INTEL_WL_7260_2	0x08b2
 #define	PCI_PRODUCT_INTEL_WL_7265_1	0x095a
@@ -5700,6 +5701,7 @@ static const struct iwm_devices {
 	{ PCI_PRODUCT_INTEL_WL_3160_2, &iwm3160_cfg },
 	{ PCI_PRODUCT_INTEL_WL_3165_1, &iwm3165_cfg },
 	{ PCI_PRODUCT_INTEL_WL_3165_2, &iwm3165_cfg },
+	{ PCI_PRODUCT_INTEL_WL_3168_1, &iwm3168_cfg },
 	{ PCI_PRODUCT_INTEL_WL_7260_1, &iwm7260_cfg },
 	{ PCI_PRODUCT_INTEL_WL_7260_2, &iwm7260_cfg },
 	{ PCI_PRODUCT_INTEL_WL_7265_1, &iwm7265_cfg },
@@ -6458,6 +6460,8 @@ static driver_t iwm_pci_driver = {
 static devclass_t iwm_devclass;
 
 DRIVER_MODULE(iwm, pci, iwm_pci_driver, iwm_devclass, NULL, NULL);
+MODULE_PNP_INFO("U16:device;P:#;T:vendor=0x8086", pci, iwm_pci_driver,
+    iwm_devices, nitems(iwm_devices));
 MODULE_DEPEND(iwm, firmware, 1, 1, 1);
 MODULE_DEPEND(iwm, pci, 1, 1, 1);
 MODULE_DEPEND(iwm, wlan, 1, 1, 1);

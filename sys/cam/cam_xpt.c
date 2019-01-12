@@ -44,7 +44,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/time.h>
 #include <sys/conf.h>
 #include <sys/fcntl.h>
-#include <sys/interrupt.h>
 #include <sys/proc.h>
 #include <sys/sbuf.h>
 #include <sys/smp.h>
@@ -130,7 +129,7 @@ struct xpt_softc {
 	TAILQ_HEAD(,cam_eb)	xpt_busses;
 	u_int			bus_generation;
 
-	struct intr_config_hook	*xpt_config_hook;
+	struct intr_config_hook	xpt_config_hook;
 
 	int			boot_delay;
 	struct callout 		boot_callout;
@@ -983,17 +982,8 @@ xpt_init(void *dummy)
 	/*
 	 * Register a callback for when interrupts are enabled.
 	 */
-	xsoftc.xpt_config_hook =
-	    (struct intr_config_hook *)malloc(sizeof(struct intr_config_hook),
-					      M_CAMXPT, M_NOWAIT | M_ZERO);
-	if (xsoftc.xpt_config_hook == NULL) {
-		printf("xpt_init: Cannot malloc config hook "
-		       "- failing attach\n");
-		return (ENOMEM);
-	}
-	xsoftc.xpt_config_hook->ich_func = xpt_config;
-	if (config_intrhook_establish(xsoftc.xpt_config_hook) != 0) {
-		free (xsoftc.xpt_config_hook, M_CAMXPT);
+	xsoftc.xpt_config_hook.ich_func = xpt_config;
+	if (config_intrhook_establish(&xsoftc.xpt_config_hook) != 0) {
 		printf("xpt_init: config_intrhook_establish failed "
 		       "- failing attach\n");
 	}
@@ -3199,6 +3189,25 @@ call_sim:
 		start_ccb->ccb_h.status));
 }
 
+/*
+ * Call the sim poll routine to allow the sim to complete
+ * any inflight requests, then call camisr_runqueue to
+ * complete any CCB that the polling completed.
+ */
+void
+xpt_sim_poll(struct cam_sim *sim)
+{
+	struct mtx *mtx;
+
+	mtx = sim->mtx;
+	if (mtx)
+		mtx_lock(mtx);
+	(*(sim->sim_poll))(sim);
+	if (mtx)
+		mtx_unlock(mtx);
+	camisr_runqueue();
+}
+
 uint32_t
 xpt_poll_setup(union ccb *start_ccb)
 {
@@ -3206,12 +3215,10 @@ xpt_poll_setup(union ccb *start_ccb)
 	struct	  cam_sim *sim;
 	struct	  cam_devq *devq;
 	struct	  cam_ed *dev;
-	struct mtx *mtx;
 
 	timeout = start_ccb->ccb_h.timeout * 10;
 	sim = start_ccb->ccb_h.path->bus->sim;
 	devq = sim->devq;
-	mtx = sim->mtx;
 	dev = start_ccb->ccb_h.path->device;
 
 	/*
@@ -3224,12 +3231,7 @@ xpt_poll_setup(union ccb *start_ccb)
 	    (--timeout > 0)) {
 		mtx_unlock(&devq->send_mtx);
 		DELAY(100);
-		if (mtx)
-			mtx_lock(mtx);
-		(*(sim->sim_poll))(sim);
-		if (mtx)
-			mtx_unlock(mtx);
-		camisr_runqueue();
+		xpt_sim_poll(sim);
 		mtx_lock(&devq->send_mtx);
 	}
 	dev->ccbq.dev_openings++;
@@ -3241,19 +3243,9 @@ xpt_poll_setup(union ccb *start_ccb)
 void
 xpt_pollwait(union ccb *start_ccb, uint32_t timeout)
 {
-	struct cam_sim	*sim;
-	struct mtx	*mtx;
-
-	sim = start_ccb->ccb_h.path->bus->sim;
-	mtx = sim->mtx;
 
 	while (--timeout > 0) {
-		if (mtx)
-			mtx_lock(mtx);
-		(*(sim->sim_poll))(sim);
-		if (mtx)
-			mtx_unlock(mtx);
-		camisr_runqueue();
+		xpt_sim_poll(start_ccb->ccb_h.path->bus->sim);
 		if ((start_ccb->ccb_h.status & CAM_STATUS_MASK)
 		    != CAM_REQ_INPROG)
 			break;
@@ -5011,6 +5003,8 @@ xpt_release_device(struct cam_ed *device)
 	free(device->physpath, M_CAMXPT);
 	free(device->rcap_buf, M_CAMXPT);
 	free(device->serial_num, M_CAMXPT);
+	free(device->nvme_data, M_CAMXPT);
+	free(device->nvme_cdata, M_CAMXPT);
 	taskqueue_enqueue(xsoftc.xpt_taskq, &device->device_destroy_task);
 }
 
@@ -5242,9 +5236,7 @@ xpt_finishconfig_task(void *context, int pending)
 		xpt_for_all_devices(xptpassannouncefunc, NULL);
 
 	/* Release our hook so that the boot can continue. */
-	config_intrhook_disestablish(xsoftc.xpt_config_hook);
-	free(xsoftc.xpt_config_hook, M_CAMXPT);
-	xsoftc.xpt_config_hook = NULL;
+	config_intrhook_disestablish(&xsoftc.xpt_config_hook);
 
 	free(context, M_CAMXPT);
 }

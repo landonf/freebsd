@@ -209,7 +209,7 @@ static void	bwn_pio_rx_write_2(struct bwn_pio_rxqueue *, uint16_t,
 static void	bwn_pio_rx_write_4(struct bwn_pio_rxqueue *, uint16_t,
 		    uint32_t);
 static int	bwn_pio_tx_start(struct bwn_mac *, struct ieee80211_node *,
-		    struct mbuf *);
+		    struct mbuf **);
 static struct bwn_pio_txqueue *bwn_pio_select(struct bwn_mac *, uint8_t);
 static uint32_t	bwn_pio_write_multi_4(struct bwn_mac *,
 		    struct bwn_pio_txqueue *, uint32_t, const void *, int);
@@ -273,7 +273,7 @@ static void	bwn_ratectl_tx_complete(const struct ieee80211_node *,
 static void	bwn_dma_handle_txeof(struct bwn_mac *,
 		    const struct bwn_txstatus *);
 static int	bwn_dma_tx_start(struct bwn_mac *, struct ieee80211_node *,
-		    struct mbuf *);
+		    struct mbuf **);
 static int	bwn_dma_getslot(struct bwn_dma_ring *);
 static struct bwn_dma_ring *bwn_dma_select(struct bwn_mac *,
 		    uint8_t);
@@ -1069,7 +1069,7 @@ bwn_tx_start(struct bwn_softc *sc, struct ieee80211_node *ni, struct mbuf *m)
 	}
 
 	error = (mac->mac_flags & BWN_MAC_FLAG_DMA) ?
-	    bwn_dma_tx_start(mac, ni, m) : bwn_pio_tx_start(mac, ni, m);
+	    bwn_dma_tx_start(mac, ni, &m) : bwn_pio_tx_start(mac, ni, &m);
 	if (error) {
 		m_freem(m);
 		return (error);
@@ -1078,13 +1078,14 @@ bwn_tx_start(struct bwn_softc *sc, struct ieee80211_node *ni, struct mbuf *m)
 }
 
 static int
-bwn_pio_tx_start(struct bwn_mac *mac, struct ieee80211_node *ni, struct mbuf *m)
+bwn_pio_tx_start(struct bwn_mac *mac, struct ieee80211_node *ni,
+    struct mbuf **mp)
 {
 	struct bwn_pio_txpkt *tp;
-	struct bwn_pio_txqueue *tq = bwn_pio_select(mac, M_WME_GETAC(m));
+	struct bwn_pio_txqueue *tq;
 	struct bwn_softc *sc = mac->mac_sc;
 	struct bwn_txhdr txhdr;
-	struct mbuf *m_new;
+	struct mbuf *m, *m_new;
 	uint32_t ctl32;
 	int error;
 	uint16_t ctl16;
@@ -1093,6 +1094,8 @@ bwn_pio_tx_start(struct bwn_mac *mac, struct ieee80211_node *ni, struct mbuf *m)
 
 	/* XXX TODO send packets after DTIM */
 
+	m = *mp;
+	tq = bwn_pio_select(mac, M_WME_GETAC(m));
 	KASSERT(!TAILQ_EMPTY(&tq->tq_pktlist), ("%s: fail", __func__));
 	tp = TAILQ_FIRST(&tq->tq_pktlist);
 	tp->tp_ni = ni;
@@ -1112,13 +1115,14 @@ bwn_pio_tx_start(struct bwn_mac *mac, struct ieee80211_node *ni, struct mbuf *m)
 		/*
 		 * XXX please removes m_defrag(9)
 		 */
-		m_new = m_defrag(m, M_NOWAIT);
+		m_new = m_defrag(*mp, M_NOWAIT);
 		if (m_new == NULL) {
 			device_printf(sc->sc_dev,
 			    "%s: can't defrag TX buffer\n",
 			    __func__);
 			return (ENOBUFS);
 		}
+		*mp = m_new;
 		if (m_new->m_next != NULL)
 			device_printf(sc->sc_dev,
 			    "TODO: fragmented packets for PIO\n");
@@ -1169,15 +1173,17 @@ bwn_pio_select(struct bwn_mac *mac, uint8_t prio)
 }
 
 static int
-bwn_dma_tx_start(struct bwn_mac *mac, struct ieee80211_node *ni, struct mbuf *m)
+bwn_dma_tx_start(struct bwn_mac *mac, struct ieee80211_node *ni,
+    struct mbuf **mp)
 {
 #define	BWN_GET_TXHDRCACHE(slot)					\
 	&(txhdr_cache[(slot / BWN_TX_SLOTS_PER_FRAME) * BWN_HDRSIZE(mac)])
 	struct bwn_dma *dma = &mac->mac_method.dma;
-	struct bwn_dma_ring *dr = bwn_dma_select(mac, M_WME_GETAC(m));
+	struct bwn_dma_ring *dr = bwn_dma_select(mac, M_WME_GETAC(*mp));
 	struct bwn_dmadesc_generic *desc;
 	struct bwn_dmadesc_meta *mt;
 	struct bwn_softc *sc = mac->mac_sc;
+	struct mbuf *m;
 	uint8_t *txhdr_cache = (uint8_t *)dr->dr_txhdr_cache;
 	int error, slot, backup[2] = { dr->dr_curslot, dr->dr_usedslot };
 
@@ -1186,6 +1192,7 @@ bwn_dma_tx_start(struct bwn_mac *mac, struct ieee80211_node *ni, struct mbuf *m)
 
 	/* XXX send after DTIM */
 
+	m = *mp;
 	slot = bwn_dma_getslot(dr);
 	dr->getdesc(dr, slot, &desc, &mt);
 	KASSERT(mt->mt_txtype == BWN_DMADESC_METATYPE_HEADER,
@@ -1234,9 +1241,8 @@ bwn_dma_tx_start(struct bwn_mac *mac, struct ieee80211_node *ni, struct mbuf *m)
 			    __func__);
 			error = ENOBUFS;
 			goto fail;
-		} else {
-			m = m_new;
 		}
+		*mp = m = m_new;
 
 		mt->mt_m = m;
 		error = bus_dmamap_load_mbuf(dma->txbuf_dtag, mt->mt_dmap,
@@ -5984,7 +5990,6 @@ bwn_rxeof(struct bwn_mac *mac, struct mbuf *m, const void *_rxhdr)
 	int padding, rate, rssi = 0, noise = 0, type;
 	uint16_t phytype, phystat0, phystat3, chanstat;
 	unsigned char *mp = mtod(m, unsigned char *);
-	static int rx_mac_dec_rpt = 0;
 
 	BWN_ASSERT_LOCKED(sc);
 
@@ -6033,11 +6038,12 @@ bwn_rxeof(struct bwn_mac *mac, struct mbuf *m, const void *_rxhdr)
 	}
 	wh = mtod(m, struct ieee80211_frame_min *);
 
-	if (macstat & BWN_RX_MAC_DEC && rx_mac_dec_rpt++ < 50)
-		device_printf(sc->sc_dev,
+	if (macstat & BWN_RX_MAC_DEC) {
+		DPRINTF(sc, BWN_DEBUG_HWCRYPTO,
 		    "RX decryption attempted (old %d keyidx %#x)\n",
 		    BWN_ISOLDFMT(mac),
 		    (macstat & BWN_RX_MAC_KEYIDX) >> BWN_RX_MAC_KEYIDX_SHIFT);
+	}
 
 	if (phystat0 & BWN_RX_PHYST0_OFDM)
 		rate = bwn_plcp_get_ofdmrate(mac, plcp,
@@ -6402,15 +6408,14 @@ bwn_set_txhdr(struct bwn_mac *mac, struct ieee80211_node *ni,
 	struct bwn_softc *sc = mac->mac_sc;
 	struct ieee80211_frame *wh;
 	struct ieee80211_frame *protwh;
-	struct ieee80211_frame_cts *cts;
-	struct ieee80211_frame_rts *rts;
 	const struct ieee80211_txparam *tp = ni->ni_txparms;
 	struct ieee80211vap *vap = ni->ni_vap;
 	struct ieee80211com *ic = &sc->sc_ic;
 	struct mbuf *mprot;
+	uint8_t *prot_ptr;
 	unsigned int len;
 	uint32_t macctl = 0;
-	int protdur, rts_rate, rts_rate_fb, ismcast, isshort, rix, type;
+	int rts_rate, rts_rate_fb, ismcast, isshort, rix, type;
 	uint16_t phyctl = 0;
 	uint8_t rate, rate_fb;
 	int fill_phy_ctl1 = 0;
@@ -6529,7 +6534,8 @@ bwn_set_txhdr(struct bwn_mac *mac, struct ieee80211_node *ni,
 	    m->m_pkthdr.len + IEEE80211_CRC_LEN > vap->iv_rtsthreshold)
 		macctl |= BWN_TX_MAC_LONGFRAME;
 
-	if (ic->ic_flags & IEEE80211_F_USEPROT) {
+	if ((ic->ic_flags & IEEE80211_F_USEPROT) &&
+	    ic->ic_protmode != IEEE80211_PROT_NONE) {
 		/* Note: don't fall back to CCK rates for 5G */
 		if (phy->gmode)
 			rts_rate = BWN_CCK_RATE_1MB;
@@ -6538,60 +6544,34 @@ bwn_set_txhdr(struct bwn_mac *mac, struct ieee80211_node *ni,
 		rts_rate_fb = bwn_get_fbrate(rts_rate);
 
 		/* XXX 'rate' here is hardware rate now, not the net80211 rate */
-		protdur = ieee80211_compute_duration(ic->ic_rt,
-		    m->m_pkthdr.len, rate, isshort) +
-		    + ieee80211_ack_duration(ic->ic_rt, rate, isshort);
+		mprot = ieee80211_alloc_prot(ni, m, rate, ic->ic_protmode);
+		if (mprot == NULL) {
+			if_inc_counter(vap->iv_ifp, IFCOUNTER_OERRORS, 1);
+			device_printf(sc->sc_dev,
+			    "could not allocate mbuf for protection mode %d\n",
+			    ic->ic_protmode);
+			return (ENOBUFS);
+		}
+
+		switch (mac->mac_fw.fw_hdr_format) {
+		case BWN_FW_HDR_351:
+			prot_ptr = txhdr->body.r351.rts_frame;
+			break;
+		case BWN_FW_HDR_410:
+			prot_ptr = txhdr->body.r410.rts_frame;
+			break;
+		case BWN_FW_HDR_598:
+			prot_ptr = txhdr->body.r598.rts_frame;
+			break;
+		}
+
+		bcopy(mtod(mprot, uint8_t *), prot_ptr, mprot->m_pkthdr.len);
+		m_freem(mprot);
 
 		if (ic->ic_protmode == IEEE80211_PROT_CTSONLY) {
-
-			switch (mac->mac_fw.fw_hdr_format) {
-			case BWN_FW_HDR_351:
-				cts = (struct ieee80211_frame_cts *)
-				    txhdr->body.r351.rts_frame;
-				break;
-			case BWN_FW_HDR_410:
-				cts = (struct ieee80211_frame_cts *)
-				    txhdr->body.r410.rts_frame;
-				break;
-			case BWN_FW_HDR_598:
-				cts = (struct ieee80211_frame_cts *)
-				    txhdr->body.r598.rts_frame;
-				break;
-			}
-
-			mprot = ieee80211_alloc_cts(ic, ni->ni_vap->iv_myaddr,
-			    protdur);
-			KASSERT(mprot != NULL, ("failed to alloc mbuf\n"));
-			bcopy(mtod(mprot, uint8_t *), (uint8_t *)cts,
-			    mprot->m_pkthdr.len);
-			m_freem(mprot);
 			macctl |= BWN_TX_MAC_SEND_CTSTOSELF;
 			len = sizeof(struct ieee80211_frame_cts);
 		} else {
-			switch (mac->mac_fw.fw_hdr_format) {
-			case BWN_FW_HDR_351:
-				rts = (struct ieee80211_frame_rts *)
-				    txhdr->body.r351.rts_frame;
-				break;
-			case BWN_FW_HDR_410:
-				rts = (struct ieee80211_frame_rts *)
-				    txhdr->body.r410.rts_frame;
-				break;
-			case BWN_FW_HDR_598:
-				rts = (struct ieee80211_frame_rts *)
-				    txhdr->body.r598.rts_frame;
-				break;
-			}
-
-			/* XXX rate/rate_fb is the hardware rate */
-			protdur += ieee80211_ack_duration(ic->ic_rt, rate,
-			    isshort);
-			mprot = ieee80211_alloc_rts(ic, wh->i_addr1,
-			    wh->i_addr2, protdur);
-			KASSERT(mprot != NULL, ("failed to alloc mbuf\n"));
-			bcopy(mtod(mprot, uint8_t *), (uint8_t *)rts,
-			    mprot->m_pkthdr.len);
-			m_freem(mprot);
 			macctl |= BWN_TX_MAC_SEND_RTSCTS;
 			len = sizeof(struct ieee80211_frame_rts);
 		}

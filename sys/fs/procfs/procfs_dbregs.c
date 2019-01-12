@@ -45,8 +45,6 @@
  * $FreeBSD$
  */
 
-#include "opt_compat.h"
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/lock.h>
@@ -114,8 +112,10 @@ procfs_doprocdbregs(PFS_FILL_ARGS)
 			return (EINVAL);
 		}
 		wrap32 = 1;
-	}
+		memset(&r32, 0, sizeof(r32));
+	} else
 #endif
+		memset(&r, 0, sizeof(r));
 	error = PROC(read, dbregs, td2, &r);
 	if (error == 0) {
 		PROC_UNLOCK(p);

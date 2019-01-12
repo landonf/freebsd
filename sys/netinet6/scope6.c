@@ -76,7 +76,7 @@ static struct mtx scope6_lock;
 #define	SCOPE6_UNLOCK()		mtx_unlock(&scope6_lock)
 #define	SCOPE6_LOCK_ASSERT()	mtx_assert(&scope6_lock, MA_OWNED)
 
-static VNET_DEFINE(struct scope6_id, sid_default);
+VNET_DEFINE_STATIC(struct scope6_id, sid_default);
 #define	V_sid_default			VNET(sid_default)
 
 #define SID(ifp) \
@@ -209,19 +209,20 @@ scope6_set(struct ifnet *ifp, struct scope6_id *idlist)
 static int
 scope6_get(struct ifnet *ifp, struct scope6_id *idlist)
 {
+	struct epoch_tracker et;
 	struct scope6_id *sid;
 
 	/* We only need to lock the interface's afdata for SID() to work. */
-	IF_AFDATA_RLOCK(ifp);
+	NET_EPOCH_ENTER(et);
 	sid = SID(ifp);
 	if (sid == NULL) {	/* paranoid? */
-		IF_AFDATA_RUNLOCK(ifp);
+		NET_EPOCH_EXIT(et);
 		return (EINVAL);
 	}
 
 	*idlist = *sid;
 
-	IF_AFDATA_RUNLOCK(ifp);
+	NET_EPOCH_EXIT(et);
 	return (0);
 }
 
@@ -418,10 +419,12 @@ in6_setscope(struct in6_addr *in6, struct ifnet *ifp, u_int32_t *ret_id)
 			zoneid = ifp->if_index;
 			in6->s6_addr16[1] = htons(zoneid & 0xffff); /* XXX */
 		} else if (scope != IPV6_ADDR_SCOPE_GLOBAL) {
-			IF_AFDATA_RLOCK(ifp);
+			struct epoch_tracker et;
+
+			NET_EPOCH_ENTER(et);
 			sid = SID(ifp);
 			zoneid = sid->s6id_list[scope];
-			IF_AFDATA_RUNLOCK(ifp);
+			NET_EPOCH_EXIT(et);
 		}
 	}
 
@@ -453,7 +456,7 @@ in6_clearscope(struct in6_addr *in6)
  * Return the scope identifier or zero.
  */
 uint16_t
-in6_getscope(struct in6_addr *in6)
+in6_getscope(const struct in6_addr *in6)
 {
 
 	if (IN6_IS_SCOPE_LINKLOCAL(in6) || IN6_IS_ADDR_MC_INTFACELOCAL(in6))

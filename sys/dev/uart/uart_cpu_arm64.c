@@ -83,16 +83,23 @@ uart_cpu_eqres(struct uart_bas *b1, struct uart_bas *b2)
 static struct acpi_uart_compat_data *
 uart_cpu_acpi_scan(uint8_t interface_type)
 {
-	struct acpi_uart_compat_data **cd;
+	struct acpi_uart_compat_data **cd, *curcd;
+	int i;
 
 	SET_FOREACH(cd, uart_acpi_class_and_device_set) {
-		if ((*cd)->port_subtype == interface_type)
-			return (*cd);
+		curcd = *cd;
+		for (i = 0; curcd[i].cd_hid != NULL; i++) {
+			if (curcd[i].cd_port_subtype == interface_type)
+				return (&curcd[i]);
+		}
 	}
 
 	SET_FOREACH(cd, uart_acpi_class_set) {
-		if ((*cd)->port_subtype == interface_type)
-			return (*cd);
+		curcd = *cd;
+		for (i = 0; curcd[i].cd_hid != NULL; i++) {
+			if (curcd[i].cd_port_subtype == interface_type)
+				return (&curcd[i]);
+		}
 	}
 
 	return (NULL);
@@ -140,7 +147,7 @@ uart_cpu_acpi_probe(struct uart_class **classp, bus_space_tag_t *bst,
 	if (err != 0)
 		goto out;
 
-	*classp = cd->clas;
+	*classp = cd->cd_class;
 	*rclk = 0;
 	*shiftp = 2;
 	*iowidthp = spcr->SerialPort.BitWidth / 8;

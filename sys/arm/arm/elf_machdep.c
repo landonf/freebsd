@@ -59,7 +59,6 @@ u_long elf_hwcap2;
 struct sysentvec elf32_freebsd_sysvec = {
 	.sv_size	= SYS_MAXSYSCALL,
 	.sv_table	= sysent,
-	.sv_mask	= 0,
 	.sv_errsize	= 0,
 	.sv_errtbl	= NULL,
 	.sv_transtrap	= NULL,
@@ -147,6 +146,13 @@ elf32_dump_thread(struct thread *td, void *dst, size_t *off)
 		*off = elf32_populate_note(NT_ARM_VFP, NULL, NULL, sizeof(vfp),
 		    NULL);
 #endif
+}
+
+bool
+elf_is_ifunc_reloc(Elf_Size r_info __unused)
+{
+
+	return (false);
 }
 
 /*

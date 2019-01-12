@@ -114,6 +114,7 @@ static const STRUCT_USB_HOST_ID rsu_devs[] = {
 				   RSU_HT_NOT_SUPPORTED) }
 	RSU_DEV(ASUS,			RTL8192SU),
 	RSU_DEV(AZUREWAVE,		RTL8192SU_4),
+	RSU_DEV(SITECOMEU,		WLA1000),
 	RSU_DEV_HT(ACCTON,		RTL8192SU),
 	RSU_DEV_HT(ASUS,		USBN10),
 	RSU_DEV_HT(AZUREWAVE,		RTL8192SU_1),
@@ -885,7 +886,7 @@ rsu_set_multi(struct rsu_softc *sc)
 		TAILQ_FOREACH(vap, &ic->ic_vaps, iv_next) {
 			ifp = vap->iv_ifp;
 			if_maddr_rlock(ifp);
-			TAILQ_FOREACH(ifma, &ifp->if_multiaddrs, ifma_link) {
+			CK_STAILQ_FOREACH(ifma, &ifp->if_multiaddrs, ifma_link) {
 				caddr_t dl;
 				uint8_t pos;
 

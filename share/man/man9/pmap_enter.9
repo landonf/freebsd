@@ -26,7 +26,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd January 27, 2015
+.Dd December 16, 2018
 .Dt PMAP_ENTER 9
 .Os
 .Sh NAME
@@ -120,6 +120,14 @@ for destroyed mappings if the implementation can ensure
 that no other writeable managed mappings for the previously
 mapped pages exist.
 .Pp
+If the request modifies an existing mapping to use a different physical
+page, an implementation of
+.Nm
+must invalidate the previous mapping before installing the new one.
+This ensures that all threads sharing the pmap keep a consistent
+view of the mapping, which is necessary for the correct handling
+of CoW (copy on write) faults.
+.Pp
 If the page
 .Fa m
 is managed, the page must be busied by the caller
@@ -133,13 +141,13 @@ The
 function must handle the multiprocessor TLB consistency for the
 given address.
 .Sh NOTES
-On amd64, arm and i386 architectures the existing implementation
+On arm and i386 architectures the existing implementation
 of the
 .Nm
 function is incomplete, only value 0 for
 .Fa psind
 is supported.
-Other supported architectures have
+Other supported architectures, except amd64, have
 .Dv pagesizes[]
 array of size 1.
 .Sh RETURN VALUES

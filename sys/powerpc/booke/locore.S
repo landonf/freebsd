@@ -26,7 +26,7 @@
  * $FreeBSD$
  */
 
-#include "assym.s"
+#include "assym.inc"
 
 #include "opt_hwpmc_hooks.h"
 
@@ -113,7 +113,7 @@ __start:
  *  - Create temp entry in the second AS (make sure it's not TLB[1])
  *  - Switch to temp mapping
  *  - Map 64MB of RAM in TLB1[1]
- *  - Use AS=1, set EPN to KERNBASE and RPN to kernel load address
+ *  - Use AS=0, set EPN to VM_MIN_KERNEL_ADDRESS and RPN to kernel load address
  *  - Switch to TLB1[1] mapping
  *  - Invalidate temp mapping
  *
@@ -238,7 +238,7 @@ __start:
 	mtspr	SPR_MAS1, %r3		/* note TS was not filled, so it's TS=0 */
 	isync
 
-	LOAD_ADDR(%r3, KERNBASE)
+	LOAD_ADDR(%r3, VM_MIN_KERNEL_ADDRESS)
 	ori	%r3, %r3, (_TLB_ENTRY_SHARED | MAS2_M)@l /* WIMGE = 0b00100 */
 	mtspr	SPR_MAS2, %r3
 	isync
@@ -471,7 +471,7 @@ bp_kernload:
 	mtspr	SPR_MAS1, %r3		/* note TS was not filled, so it's TS=0 */
 	isync
 
-	LOAD_ADDR(%r3, KERNBASE)
+	LOAD_ADDR(%r3, VM_MIN_KERNEL_ADDRESS)
 	ori	%r3, %r3, (_TLB_ENTRY_SHARED | MAS2_M)@l /* WIMGE = 0b00100 */
 	mtspr	SPR_MAS2, %r3
 	isync
@@ -526,8 +526,8 @@ bp_kernload:
 7:
 
 /*
- * At this point we're running at virtual addresses KERNBASE and beyond so
- * it's allowed to directly access all locations the kernel was linked
+ * At this point we're running at virtual addresses VM_MIN_KERNEL_ADDRESS and
+ * beyond so it's allowed to directly access all locations the kernel was linked
  * against.
  */
 
@@ -549,14 +549,9 @@ bp_kernload:
 	add	%r2,%r1,%r2
 	mtspr	SPR_SPRG8, %r2
 
-	/* Get load offset */
-	ld	%r31,-0x8000(%r2) /* First TOC entry is TOC base */
-	subf    %r31,%r31,%r2	/* Subtract from real TOC base to get base */
-
 	/* Set up the stack pointer */
 	ld	%r1,TOC_REF(tmpstack)(%r2)
 	addi	%r1,%r1,TMPSTACKSZ-96
-	add	%r1,%r1,%r31
 #else
 /*
  * Setup a temporary stack
@@ -904,68 +899,6 @@ ENTRY(bpred_enable)
 	isync
 	mtspr	SPR_BUCSR, %r3
 	isync
-	blr
-
-ENTRY(dataloss_erratum_access)
-	/* Lock two cache lines into I-Cache */
-	sync
-	mfspr	%r11, SPR_L1CSR1
-	rlwinm	%r11, %r11, 0, ~L1CSR1_ICUL
-	sync
-	isync
-	mtspr	SPR_L1CSR1, %r11
-	isync
-
-	lis	%r8, 2f@h
-	ori	%r8, %r8, 2f@l
-	icbtls	0, 0, %r8
-	addi	%r9, %r8, 64
-
-	sync
-	mfspr	%r11, SPR_L1CSR1
-3:	andi.	%r11, %r11, L1CSR1_ICUL
-	bne	3b
-
-	icbtls	0, 0, %r9
-
-	sync
-	mfspr	%r11, SPR_L1CSR1
-3:	andi.	%r11, %r11, L1CSR1_ICUL
-	bne	3b
-
-	b	2f
-	.align	6
-	/* Inside a locked cacheline, wait a while, write, then wait a while */
-2:	sync
-
-	mfspr	%r5, TBR_TBL
-4:	addis	%r11, %r5, 0x100000@h	/* wait around one million timebase ticks */
-	mfspr	%r5, TBR_TBL
-	subf.	%r5, %r5, %r11
-	bgt	4b
-
-	stw	%r4, 0(%r3)
-
-	mfspr	%r5, TBR_TBL
-4:	addis	%r11, %r5, 0x100000@h	/* wait around one million timebase ticks */
-	mfspr	%r5, TBR_TBL
-	subf.	%r5, %r5, %r11
-	bgt	4b
-
-	sync
-
-	/*
-	 * Fill out the rest of this cache line and the next with nops,
-	 * to ensure that nothing outside the locked area will be
-	 * fetched due to a branch.
-	 */
-	.rept 19
-	nop
-	.endr
-
-	icblc	0, 0, %r8
-	icblc	0, 0, %r9
-
 	blr
 
 /*

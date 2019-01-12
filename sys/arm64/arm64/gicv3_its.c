@@ -489,7 +489,7 @@ gicv3_its_table_init(device_t dev, struct gicv3_its_softc *sc)
 				break;
 			case PAGE_SIZE_16K:	/* 16KB */
 				reg |=
-				    GITS_BASER_PSZ_4K << GITS_BASER_PSZ_SHIFT;
+				    GITS_BASER_PSZ_16K << GITS_BASER_PSZ_SHIFT;
 				break;
 			case PAGE_SIZE_64K:	/* 64KB */
 				reg |=
@@ -502,7 +502,7 @@ gicv3_its_table_init(device_t dev, struct gicv3_its_softc *sc)
 			/* Read back to check */
 			tmp = gic_its_read_8(sc, GITS_BASER(i));
 
-			/* Do the snareability masks line up? */
+			/* Do the shareability masks line up? */
 			if ((tmp & GITS_BASER_SHARE_MASK) !=
 			    (reg & GITS_BASER_SHARE_MASK)) {
 				share = (tmp & GITS_BASER_SHARE_MASK) >>
@@ -567,7 +567,7 @@ gicv3_its_pendtables_init(struct gicv3_its_softc *sc)
 		    0, LPI_PENDTAB_MAX_ADDR, LPI_PENDTAB_ALIGN, 0);
 
 		/* Flush so the ITS can see the memory */
-		cpu_dcache_wb_range((vm_offset_t)sc->sc_pend_base,
+		cpu_dcache_wb_range((vm_offset_t)sc->sc_pend_base[i],
 		    LPI_PENDTAB_SIZE);
 	}
 }
@@ -580,18 +580,11 @@ its_init_cpu(device_t dev, struct gicv3_its_softc *sc)
 	uint64_t xbaser, tmp;
 	uint32_t ctlr;
 	u_int cpuid;
-	int domain;
-
-	if (!CPU_ISSET(PCPU_GET(cpuid), &sc->sc_cpus))
-		return (0);
-
-	if (bus_get_domain(dev, &domain) == 0) {
-		if (PCPU_GET(domain) != domain)
-			return (0);
-	}
 
 	gicv3 = device_get_parent(dev);
 	cpuid = PCPU_GET(cpuid);
+	if (!CPU_ISSET(cpuid, &sc->sc_cpus))
+		return (0);
 
 	/* Check if the ITS is enabled on this CPU */
 	if ((gic_r_read_4(gicv3, GICR_TYPER) & GICR_TYPER_PLPIS) == 0) {
@@ -694,6 +687,10 @@ gicv3_its_attach(device_t dev)
 
 	sc = device_get_softc(dev);
 
+	sc->sc_irq_length = gicv3_get_nirqs(dev);
+	sc->sc_irq_base = GIC_FIRST_LPI;
+	sc->sc_irq_base += device_get_unit(dev) * sc->sc_irq_length;
+
 	rid = 0;
 	sc->sc_its_res = bus_alloc_resource_any(dev, SYS_RES_MEMORY, &rid,
 	    RF_ACTIVE);
@@ -725,12 +722,14 @@ gicv3_its_attach(device_t dev)
 	/* Protects access to the ITS command circular buffer. */
 	mtx_init(&sc->sc_its_cmd_lock, "ITS cmd lock", NULL, MTX_SPIN);
 
+	CPU_ZERO(&sc->sc_cpus);
 	if (bus_get_domain(dev, &domain) == 0) {
-		CPU_ZERO(&sc->sc_cpus);
 		if (domain < MAXMEMDOM)
 			CPU_COPY(&cpuset_domain[domain], &sc->sc_cpus);
 	} else {
-		CPU_COPY(&all_cpus, &sc->sc_cpus);
+		/* XXX : cannot handle more than one ITS per cpu */
+		if (device_get_unit(dev) == 0)
+			CPU_COPY(&all_cpus, &sc->sc_cpus);
 	}
 
 	/* Allocate the command circular buffer */
@@ -1666,11 +1665,6 @@ gicv3_its_fdt_attach(device_t dev)
 	int err;
 
 	sc = device_get_softc(dev);
-
-	sc->sc_irq_length = gicv3_get_nirqs(dev);
-	sc->sc_irq_base = GIC_FIRST_LPI;
-	sc->sc_irq_base += device_get_unit(dev) * sc->sc_irq_length;
-
 	err = gicv3_its_attach(dev);
 	if (err != 0)
 		return (err);
@@ -1730,18 +1724,18 @@ gicv3_its_acpi_attach(device_t dev)
 	struct gicv3_its_softc *sc;
 	int err;
 
+	sc = device_get_softc(dev);
 	err = gicv3_its_attach(dev);
 	if (err != 0)
 		return (err);
 
-	sc = device_get_softc(dev);
-
-	sc->sc_pic = intr_pic_register(dev, 1);
+	sc->sc_pic = intr_pic_register(dev,
+	    device_get_unit(dev) + ACPI_MSI_XREF);
 	intr_pic_add_handler(device_get_parent(dev), sc->sc_pic,
-	    gicv3_its_intr, sc, GIC_FIRST_LPI, LPI_NIRQS);
+	    gicv3_its_intr, sc, sc->sc_irq_base, sc->sc_irq_length);
 
 	/* Register this device to handle MSI interrupts */
-	intr_msi_register(dev, 1);
+	intr_msi_register(dev, device_get_unit(dev) + ACPI_MSI_XREF);
 
 	return (0);
 }

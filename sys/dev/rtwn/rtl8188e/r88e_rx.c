@@ -56,6 +56,25 @@ __FBSDID("$FreeBSD$");
 #include <dev/rtwn/rtl8188e/r88e_rx_desc.h>
 
 
+int
+r88e_classify_intr(struct rtwn_softc *sc, void *buf, int len)
+{
+	struct r92c_rx_stat *stat = buf;
+	int report_sel = MS(le32toh(stat->rxdw3), R88E_RXDW3_RPT);
+
+	switch (report_sel) {
+	case R88E_RXDW3_RPT_RX:
+		return (RTWN_RX_DATA);
+	case R88E_RXDW3_RPT_TX1:	/* per-packet Tx report */
+	case R88E_RXDW3_RPT_TX2:	/* periodical Tx report */
+		return (RTWN_RX_TX_REPORT);
+	case R88E_RXDW3_RPT_HIS:
+		return (RTWN_RX_OTHER);
+	default:			/* shut up the compiler */
+		return (RTWN_RX_DATA);
+	}
+}
+
 void
 r88e_ratectl_tx_complete(struct rtwn_softc *sc, uint8_t *buf, int len)
 {
@@ -108,7 +127,8 @@ r88e_ratectl_tx_complete(struct rtwn_softc *sc, uint8_t *buf, int len)
 		txs.long_retries = ntries;
 		if (rpt->final_rate > RTWN_RIDX_OFDM54) {	/* MCS */
 			txs.final_rate =
-			    (rpt->final_rate - 12) | IEEE80211_RATE_MCS;
+			    rpt->final_rate - RTWN_RIDX_HT_MCS_SHIFT;
+			txs.final_rate |= IEEE80211_RATE_MCS;
 		} else
 			txs.final_rate = ridx2rate[rpt->final_rate];
 		if (rpt->rptb1 & R88E_RPTB1_PKT_OK)

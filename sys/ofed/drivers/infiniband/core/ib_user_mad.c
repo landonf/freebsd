@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause OR GPL-2.0
+ *
  * Copyright (c) 2004 Topspin Communications.  All rights reserved.
  * Copyright (c) 2005 Voltaire, Inc. All rights reserved.
  * Copyright (c) 2005 Sun Microsystems, Inc. All rights reserved.
@@ -32,6 +34,9 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
 
 #define pr_fmt(fmt) "user_mad: " fmt
 
@@ -126,7 +131,7 @@ struct ib_umad_packet {
 
 static struct class *umad_class;
 
-static const dev_t base_dev = MKDEV(IB_UMAD_MAJOR, IB_UMAD_MINOR_BASE);
+#define	base_dev MKDEV(IB_UMAD_MAJOR, IB_UMAD_MINOR_BASE)
 
 static DEFINE_SPINLOCK(port_lock);
 static DECLARE_BITMAP(dev_map, IB_UMAD_MAX_PORTS);
@@ -235,10 +240,13 @@ static void recv_handler(struct ib_mad_agent *agent,
 	packet->mad.hdr.grh_present = !!(mad_recv_wc->wc->wc_flags & IB_WC_GRH);
 	if (packet->mad.hdr.grh_present) {
 		struct ib_ah_attr ah_attr;
+		int ret;
 
-		ib_init_ah_from_wc(agent->device, agent->port_num,
-				   mad_recv_wc->wc, mad_recv_wc->recv_buf.grh,
-				   &ah_attr);
+		ret = ib_init_ah_from_wc(agent->device, agent->port_num,
+					 mad_recv_wc->wc, mad_recv_wc->recv_buf.grh,
+					 &ah_attr);
+		if (ret)
+			goto err2;
 
 		packet->mad.hdr.gid_index = ah_attr.grh.sgid_index;
 		packet->mad.hdr.hop_limit = ah_attr.grh.hop_limit;

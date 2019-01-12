@@ -50,6 +50,9 @@ __FBSDID("$FreeBSD$");
 
 #include "nvmecontrol.h"
 
+#define FIRMWARE_USAGE							       \
+	"firmware [-s slot] [-f path_to_firmware] [-a] <controller id>\n"
+
 static int
 slot_has_valid_firmware(int fd, int slot)
 {
@@ -126,8 +129,8 @@ update_firmware(int fd, uint8_t *payload, int32_t payload_size)
 
 		memset(&pt, 0, sizeof(pt));
 		pt.cmd.opc = NVME_OPC_FIRMWARE_IMAGE_DOWNLOAD;
-		pt.cmd.cdw10 = (size / sizeof(uint32_t)) - 1;
-		pt.cmd.cdw11 = (off / sizeof(uint32_t));
+		pt.cmd.cdw10 = htole32((size / sizeof(uint32_t)) - 1);
+		pt.cmd.cdw11 = htole32(off / sizeof(uint32_t));
 		pt.buf = chunk;
 		pt.len = size;
 		pt.is_read = 0;
@@ -147,17 +150,21 @@ static int
 activate_firmware(int fd, int slot, int activate_action)
 {
 	struct nvme_pt_command	pt;
+	uint16_t sct, sc;
 
 	memset(&pt, 0, sizeof(pt));
 	pt.cmd.opc = NVME_OPC_FIRMWARE_ACTIVATE;
-	pt.cmd.cdw10 = (activate_action << 3) | slot;
+	pt.cmd.cdw10 = htole32((activate_action << 3) | slot);
 	pt.is_read = 0;
 
 	if (ioctl(fd, NVME_PASSTHROUGH_CMD, &pt) < 0)
 		err(1, "firmware activate request failed");
 
-	if (pt.cpl.status.sct == NVME_SCT_COMMAND_SPECIFIC &&
-	    pt.cpl.status.sc == NVME_SC_FIRMWARE_REQUIRES_RESET)
+	sct = NVME_STATUS_GET_SCT(pt.cpl.status);
+	sc = NVME_STATUS_GET_SC(pt.cpl.status);
+
+	if (sct == NVME_SCT_COMMAND_SPECIFIC &&
+	    sc == NVME_SC_FIRMWARE_REQUIRES_RESET)
 		return 1;
 
 	if (nvme_completion_is_error(&pt.cpl))
@@ -167,29 +174,24 @@ activate_firmware(int fd, int slot, int activate_action)
 }
 
 static void
-firmware_usage(void)
-{
-	fprintf(stderr, "usage:\n");
-	fprintf(stderr, FIRMWARE_USAGE);
-	exit(1);
-}
-
-void
-firmware(int argc, char *argv[])
+firmware(const struct nvme_function *nf, int argc, char *argv[])
 {
 	int				fd = -1, slot = 0;
 	int				a_flag, s_flag, f_flag;
 	int				activate_action, reboot_required;
-	char				ch, *p, *image = NULL;
+	int				opt;
+	char				*p, *image = NULL;
 	char				*controller = NULL, prompt[64];
 	void				*buf = NULL;
 	int32_t				size = 0;
+	uint16_t			oacs_fw;
+	uint8_t				fw_slot1_ro, fw_num_slots;
 	struct nvme_controller_data	cdata;
 
 	a_flag = s_flag = f_flag = false;
 
-	while ((ch = getopt(argc, argv, "af:s:")) != -1) {
-		switch (ch) {
+	while ((opt = getopt(argc, argv, "af:s:")) != -1) {
+		switch (opt) {
 		case 'a':
 			a_flag = true;
 			break;
@@ -199,18 +201,18 @@ firmware(int argc, char *argv[])
 				fprintf(stderr,
 				    "\"%s\" not valid slot.\n",
 				    optarg);
-				firmware_usage();
+				usage(nf);
 			} else if (slot == 0) {
 				fprintf(stderr,
 				    "0 is not a valid slot number. "
 				    "Slot numbers start at 1.\n");
-				firmware_usage();
+				usage(nf);
 			} else if (slot > 7) {
 				fprintf(stderr,
 				    "Slot number %s specified which is "
 				    "greater than max allowed slot number of "
 				    "7.\n", optarg);
-				firmware_usage();
+				usage(nf);
 			}
 			s_flag = true;
 			break;
@@ -223,37 +225,46 @@ firmware(int argc, char *argv[])
 
 	/* Check that a controller (and not a namespace) was specified. */
 	if (optind >= argc || strstr(argv[optind], NVME_NS_PREFIX) != NULL)
-		firmware_usage();
+		usage(nf);
 
 	if (!f_flag && !a_flag) {
 		fprintf(stderr,
 		    "Neither a replace ([-f path_to_firmware]) nor "
 		    "activate ([-a]) firmware image action\n"
 		    "was specified.\n");
-		firmware_usage();
+		usage(nf);
 	}
 
 	if (!f_flag && a_flag && slot == 0) {
 		fprintf(stderr,
 		    "Slot number to activate not specified.\n");
-		firmware_usage();
+		usage(nf);
 	}
 
 	controller = argv[optind];
 	open_dev(controller, &fd, 1, 1);
 	read_controller_data(fd, &cdata);
 
-	if (cdata.oacs.firmware == 0)
+	oacs_fw = (cdata.oacs >> NVME_CTRLR_DATA_OACS_FIRMWARE_SHIFT) &
+		NVME_CTRLR_DATA_OACS_FIRMWARE_MASK;
+
+	if (oacs_fw == 0)
 		errx(1,
 		    "controller does not support firmware activate/download");
 
-	if (f_flag && slot == 1 && cdata.frmw.slot1_ro)
+	fw_slot1_ro = (cdata.frmw >> NVME_CTRLR_DATA_FRMW_SLOT1_RO_SHIFT) &
+		NVME_CTRLR_DATA_FRMW_SLOT1_RO_MASK;
+
+	if (f_flag && slot == 1 && fw_slot1_ro)
 		errx(1, "slot %d is marked as read only", slot);
 
-	if (slot > cdata.frmw.num_slots)
+	fw_num_slots = (cdata.frmw >> NVME_CTRLR_DATA_FRMW_NUM_SLOTS_SHIFT) &
+		NVME_CTRLR_DATA_FRMW_NUM_SLOTS_MASK;
+
+	if (slot > fw_num_slots)
 		errx(1,
 		    "slot %d specified but controller only supports %d slots",
-		    slot, cdata.frmw.num_slots);
+		    slot, fw_num_slots);
 
 	if (a_flag && !f_flag && !slot_has_valid_firmware(fd, slot))
 		errx(1,
@@ -322,3 +333,5 @@ firmware(int argc, char *argv[])
 	close(fd);
 	exit(0);
 }
+
+NVME_COMMAND(top, firmware, firmware, FIRMWARE_USAGE);

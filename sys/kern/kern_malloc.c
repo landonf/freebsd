@@ -61,12 +61,14 @@ __FBSDID("$FreeBSD$");
 #include <sys/vmmeter.h>
 #include <sys/proc.h>
 #include <sys/sbuf.h>
+#include <sys/smp.h>
 #include <sys/sysctl.h>
 #include <sys/time.h>
 #include <sys/vmem.h>
 
 #include <vm/vm.h>
 #include <vm/pmap.h>
+#include <vm/vm_domainset.h>
 #include <vm/vm_pageout.h>
 #include <vm/vm_param.h>
 #include <vm/vm_kern.h>
@@ -93,7 +95,8 @@ __FBSDID("$FreeBSD$");
 #ifdef KDTRACE_HOOKS
 #include <sys/dtrace_bsd.h>
 
-dtrace_malloc_probe_func_t	dtrace_malloc_probe;
+bool	__read_frequently			dtrace_malloc_enabled;
+dtrace_malloc_probe_func_t __read_mostly	dtrace_malloc_probe;
 #endif
 
 #if defined(INVARIANTS) || defined(MALLOC_MAKE_FAILURES) ||		\
@@ -172,6 +175,7 @@ struct {
  * declare malloc types.
  */
 static uma_zone_t mt_zone;
+static uma_zone_t mt_stats_zone;
 
 u_long vm_kmem_size;
 SYSCTL_ULONG(_vm, OID_AUTO, kmem_size, CTLFLAG_RDTUN, &vm_kmem_size, 0,
@@ -296,22 +300,49 @@ SYSCTL_UINT(_debug_malloc, OID_AUTO, zone_offset, CTLFLAG_RDTUN,
     &zone_offset, 0, "Separate malloc types by examining the "
     "Nth character in the malloc type short description.");
 
-static u_int
-mtp_get_subzone(const char *desc)
+static void
+mtp_set_subzone(struct malloc_type *mtp)
 {
+	struct malloc_type_internal *mtip;
+	const char *desc;
 	size_t len;
 	u_int val;
 
+	mtip = mtp->ks_handle;
+	desc = mtp->ks_shortdesc;
 	if (desc == NULL || (len = strlen(desc)) == 0)
-		return (0);
-	val = desc[zone_offset % len];
-	return (val % numzones);
+		val = 0;
+	else
+		val = desc[zone_offset % len];
+	mtip->mti_zone = (val % numzones);
+}
+
+static inline u_int
+mtp_get_subzone(struct malloc_type *mtp)
+{
+	struct malloc_type_internal *mtip;
+
+	mtip = mtp->ks_handle;
+
+	KASSERT(mtip->mti_zone < numzones,
+	    ("mti_zone %u out of range %d",
+	    mtip->mti_zone, numzones));
+	return (mtip->mti_zone);
 }
 #elif MALLOC_DEBUG_MAXZONES == 0
 #error "MALLOC_DEBUG_MAXZONES must be positive."
 #else
+static void
+mtp_set_subzone(struct malloc_type *mtp)
+{
+	struct malloc_type_internal *mtip;
+
+	mtip = mtp->ks_handle;
+	mtip->mti_zone = 0;
+}
+
 static inline u_int
-mtp_get_subzone(const char *desc)
+mtp_get_subzone(struct malloc_type *mtp)
 {
 
 	return (0);
@@ -340,7 +371,7 @@ malloc_type_zone_allocated(struct malloc_type *mtp, unsigned long size,
 
 	critical_enter();
 	mtip = mtp->ks_handle;
-	mtsp = &mtip->mti_stats[curcpu];
+	mtsp = zpcpu_get(mtip->mti_stats);
 	if (size > 0) {
 		mtsp->mts_memalloced += size;
 		mtsp->mts_numallocs++;
@@ -349,7 +380,7 @@ malloc_type_zone_allocated(struct malloc_type *mtp, unsigned long size,
 		mtsp->mts_size |= 1 << zindx;
 
 #ifdef KDTRACE_HOOKS
-	if (dtrace_malloc_probe != NULL) {
+	if (__predict_false(dtrace_malloc_enabled)) {
 		uint32_t probe_id = mtip->mti_probes[DTMALLOC_PROBE_MALLOC];
 		if (probe_id != 0)
 			(dtrace_malloc_probe)(probe_id,
@@ -383,12 +414,12 @@ malloc_type_freed(struct malloc_type *mtp, unsigned long size)
 
 	critical_enter();
 	mtip = mtp->ks_handle;
-	mtsp = &mtip->mti_stats[curcpu];
+	mtsp = zpcpu_get(mtip->mti_stats);
 	mtsp->mts_memfreed += size;
 	mtsp->mts_numfrees++;
 
 #ifdef KDTRACE_HOOKS
-	if (dtrace_malloc_probe != NULL) {
+	if (__predict_false(dtrace_malloc_enabled)) {
 		uint32_t probe_id = mtip->mti_probes[DTMALLOC_PROBE_FREE];
 		if (probe_id != 0)
 			(dtrace_malloc_probe)(probe_id,
@@ -415,21 +446,21 @@ contigmalloc(unsigned long size, struct malloc_type *type, int flags,
 {
 	void *ret;
 
-	ret = (void *)kmem_alloc_contig(kernel_arena, size, flags, low, high,
-	    alignment, boundary, VM_MEMATTR_DEFAULT);
+	ret = (void *)kmem_alloc_contig(size, flags, low, high, alignment,
+	    boundary, VM_MEMATTR_DEFAULT);
 	if (ret != NULL)
 		malloc_type_allocated(type, round_page(size));
 	return (ret);
 }
 
 void *
-contigmalloc_domain(unsigned long size, struct malloc_type *type,
-    int domain, int flags, vm_paddr_t low, vm_paddr_t high,
+contigmalloc_domainset(unsigned long size, struct malloc_type *type,
+    struct domainset *ds, int flags, vm_paddr_t low, vm_paddr_t high,
     unsigned long alignment, vm_paddr_t boundary)
 {
 	void *ret;
 
-	ret = (void *)kmem_alloc_contig_domain(domain, size, flags, low, high,
+	ret = (void *)kmem_alloc_contig_domainset(ds, size, flags, low, high,
 	    alignment, boundary, VM_MEMATTR_DEFAULT);
 	if (ret != NULL)
 		malloc_type_allocated(type, round_page(size));
@@ -447,7 +478,7 @@ void
 contigfree(void *addr, unsigned long size, struct malloc_type *type)
 {
 
-	kmem_free(kernel_arena, (vm_offset_t)addr, size);
+	kmem_free((vm_offset_t)addr, size);
 	malloc_type_freed(type, round_page(size));
 }
 
@@ -486,9 +517,12 @@ malloc_dbg(caddr_t *vap, size_t *sizep, struct malloc_type *mtp,
 		}
 	}
 #endif
-	if (flags & M_WAITOK)
+	if (flags & M_WAITOK) {
 		KASSERT(curthread->td_intr_nesting_level == 0,
 		   ("malloc(M_WAITOK) in interrupt context"));
+		KASSERT(curthread->td_epochnest == 0,
+			("malloc(M_WAITOK) in epoch context"));		
+	}
 	KASSERT(curthread->td_critnest == 0 || SCHEDULER_STOPPED(),
 	    ("malloc: called with spinlock or critical section held"));
 
@@ -518,10 +552,9 @@ malloc_dbg(caddr_t *vap, size_t *sizep, struct malloc_type *mtp,
  *	the allocation fails.
  */
 void *
-malloc(size_t size, struct malloc_type *mtp, int flags)
+(malloc)(size_t size, struct malloc_type *mtp, int flags)
 {
 	int indx;
-	struct malloc_type_internal *mtip;
 	caddr_t va;
 	uma_zone_t zone;
 #if defined(DEBUG_REDZONE)
@@ -529,19 +562,16 @@ malloc(size_t size, struct malloc_type *mtp, int flags)
 #endif
 
 #ifdef MALLOC_DEBUG
+	va = NULL;
 	if (malloc_dbg(&va, &size, mtp, flags) != 0)
 		return (va);
 #endif
 
-	if (size <= kmem_zmax) {
-		mtip = mtp->ks_handle;
+	if (size <= kmem_zmax && (flags & M_EXEC) == 0) {
 		if (size & KMEM_ZMASK)
 			size = (size & ~KMEM_ZMASK) + KMEM_ZBASE;
 		indx = kmemsize[size >> KMEM_ZSHIFT];
-		KASSERT(mtip->mti_zone < numzones,
-		    ("mti_zone %u out of range %d",
-		    mtip->mti_zone, numzones));
-		zone = kmemzones[indx].kz_zone[mtip->mti_zone];
+		zone = kmemzones[indx].kz_zone[mtp_get_subzone(mtp)];
 #ifdef MALLOC_PROFILE
 		krequests[size >> KMEM_ZSHIFT]++;
 #endif
@@ -566,12 +596,10 @@ malloc(size_t size, struct malloc_type *mtp, int flags)
 	return ((void *) va);
 }
 
-void *
-malloc_domain(size_t size, struct malloc_type *mtp, int domain,
-    int flags)
+static void *
+malloc_domain(size_t size, struct malloc_type *mtp, int domain, int flags)
 {
 	int indx;
-	struct malloc_type_internal *mtip;
 	caddr_t va;
 	uma_zone_t zone;
 #if defined(DEBUG_REDZONE)
@@ -579,18 +607,15 @@ malloc_domain(size_t size, struct malloc_type *mtp, int domain,
 #endif
 
 #ifdef MALLOC_DEBUG
+	va = NULL;
 	if (malloc_dbg(&va, &size, mtp, flags) != 0)
 		return (va);
 #endif
-	if (size <= kmem_zmax) {
-		mtip = mtp->ks_handle;
+	if (size <= kmem_zmax && (flags & M_EXEC) == 0) {
 		if (size & KMEM_ZMASK)
 			size = (size & ~KMEM_ZMASK) + KMEM_ZBASE;
 		indx = kmemsize[size >> KMEM_ZSHIFT];
-		KASSERT(mtip->mti_zone < numzones,
-		    ("mti_zone %u out of range %d",
-		    mtip->mti_zone, numzones));
-		zone = kmemzones[indx].kz_zone[mtip->mti_zone];
+		zone = kmemzones[indx].kz_zone[mtp_get_subzone(mtp)];
 #ifdef MALLOC_PROFILE
 		krequests[size >> KMEM_ZSHIFT]++;
 #endif
@@ -613,6 +638,24 @@ malloc_domain(size_t size, struct malloc_type *mtp, int domain,
 		va = redzone_setup(va, osize);
 #endif
 	return ((void *) va);
+}
+
+void *
+malloc_domainset(size_t size, struct malloc_type *mtp, struct domainset *ds,
+    int flags)
+{
+	struct vm_domainset_iter di;
+	void *ret;
+	int domain;
+
+	vm_domainset_iter_policy_init(&di, ds, &domain, &flags);
+	do {
+		ret = malloc_domain(size, mtp, domain, flags);
+		if (ret != NULL)
+			break;
+	} while (vm_domainset_iter_policy(&di, &domain) == 0);
+
+	return (ret);
 }
 
 void *
@@ -930,6 +973,9 @@ mallocinit(void *dummy)
 	if (kmem_zmax < PAGE_SIZE || kmem_zmax > KMEM_ZMAX)
 		kmem_zmax = KMEM_ZMAX;
 
+	mt_stats_zone = uma_zcreate("mt_stats_zone",
+	    sizeof(struct malloc_type_stats), NULL, NULL, NULL, NULL,
+	    UMA_ALIGN_PTR, UMA_ZONE_PCPU);
 	mt_zone = uma_zcreate("mt_zone", sizeof(struct malloc_type_internal),
 #ifdef INVARIANTS
 	    mtrash_ctor, mtrash_dtor, mtrash_init, mtrash_fini,
@@ -972,8 +1018,9 @@ malloc_init(void *data)
 		panic("malloc_init: bad malloc type magic");
 
 	mtip = uma_zalloc(mt_zone, M_WAITOK | M_ZERO);
+	mtip->mti_stats = uma_zalloc_pcpu(mt_stats_zone, M_WAITOK | M_ZERO);
 	mtp->ks_handle = mtip;
-	mtip->mti_zone = mtp_get_subzone(mtp->ks_shortdesc);
+	mtp_set_subzone(mtp);
 
 	mtx_lock(&malloc_mtx);
 	mtp->ks_next = kmemstatistics;
@@ -1019,8 +1066,8 @@ malloc_uninit(void *data)
 	 * Look for memory leaks.
 	 */
 	temp_allocs = temp_bytes = 0;
-	for (i = 0; i < MAXCPU; i++) {
-		mtsp = &mtip->mti_stats[i];
+	for (i = 0; i <= mp_maxid; i++) {
+		mtsp = zpcpu_get_cpu(mtip->mti_stats, i);
 		temp_allocs += mtsp->mts_numallocs;
 		temp_allocs -= mtsp->mts_numfrees;
 		temp_bytes += mtsp->mts_memalloced;
@@ -1033,6 +1080,7 @@ malloc_uninit(void *data)
 	}
 
 	slab = vtoslab((vm_offset_t) mtip & (~UMA_SLAB_MASK));
+	uma_zfree_pcpu(mt_stats_zone, mtip->mti_stats);
 	uma_zfree_arg(mt_zone, mtip, slab);
 }
 
@@ -1054,6 +1102,7 @@ sysctl_kern_malloc_stats(SYSCTL_HANDLER_ARGS)
 {
 	struct malloc_type_stream_header mtsh;
 	struct malloc_type_internal *mtip;
+	struct malloc_type_stats *mtsp, zeromts;
 	struct malloc_type_header mth;
 	struct malloc_type *mtp;
 	int error, i;
@@ -1065,6 +1114,8 @@ sysctl_kern_malloc_stats(SYSCTL_HANDLER_ARGS)
 	sbuf_new_for_sysctl(&sbuf, NULL, 128, req);
 	sbuf_clear_flags(&sbuf, SBUF_INCLUDENUL);
 	mtx_lock(&malloc_mtx);
+
+	bzero(&zeromts, sizeof(zeromts));
 
 	/*
 	 * Insert stream header.
@@ -1091,10 +1142,17 @@ sysctl_kern_malloc_stats(SYSCTL_HANDLER_ARGS)
 		/*
 		 * Insert type statistics for each CPU.
 		 */
-		for (i = 0; i < MAXCPU; i++) {
-			(void)sbuf_bcat(&sbuf, &mtip->mti_stats[i],
-			    sizeof(mtip->mti_stats[i]));
+		for (i = 0; i <= mp_maxid; i++) {
+			mtsp = zpcpu_get_cpu(mtip->mti_stats, i);
+			(void)sbuf_bcat(&sbuf, mtsp, sizeof(*mtsp));
 		}
+		/*
+		 * Fill in the missing CPUs.
+		 */
+		for (; i < MAXCPU; i++) {
+			(void)sbuf_bcat(&sbuf, &zeromts, sizeof(zeromts));
+		}
+
 	}
 	mtx_unlock(&malloc_mtx);
 	error = sbuf_finish(&sbuf);
@@ -1147,6 +1205,7 @@ restart:
 DB_SHOW_COMMAND(malloc, db_show_malloc)
 {
 	struct malloc_type_internal *mtip;
+	struct malloc_type_stats *mtsp;
 	struct malloc_type *mtp;
 	uint64_t allocs, frees;
 	uint64_t alloced, freed;
@@ -1160,11 +1219,12 @@ DB_SHOW_COMMAND(malloc, db_show_malloc)
 		frees = 0;
 		alloced = 0;
 		freed = 0;
-		for (i = 0; i < MAXCPU; i++) {
-			allocs += mtip->mti_stats[i].mts_numallocs;
-			frees += mtip->mti_stats[i].mts_numfrees;
-			alloced += mtip->mti_stats[i].mts_memalloced;
-			freed += mtip->mti_stats[i].mts_memfreed;
+		for (i = 0; i <= mp_maxid; i++) {
+			mtsp = zpcpu_get_cpu(mtip->mti_stats, i);
+			allocs += mtsp->mts_numallocs;
+			frees += mtsp->mts_numfrees;
+			alloced += mtsp->mts_memalloced;
+			freed += mtsp->mts_memfreed;
 		}
 		db_printf("%18s %12ju %12juK %12ju\n",
 		    mtp->ks_shortdesc, allocs - frees,

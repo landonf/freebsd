@@ -317,6 +317,8 @@ xe_attach(device_t dev)
 		return (err);
 	}
 
+	gone_by_fcp101_dev(dev);
+
 	/* Done */
 	return (0);
 }
@@ -1394,7 +1396,7 @@ xe_set_multicast(struct xe_softc *scp)
 	/* Iterate over multicast address list */
 	count = 0;
 	if_maddr_rlock(ifp);
-	TAILQ_FOREACH(maddr, &ifp->if_multiaddrs, ifma_link) {
+	CK_STAILQ_FOREACH(maddr, &ifp->if_multiaddrs, ifma_link) {
 		if (maddr->ifma_addr->sa_family != AF_LINK)
 			continue;
 

@@ -67,11 +67,15 @@ __FBSDID("$FreeBSD$");
 static int	exec_aout_imgact(struct image_params *imgp);
 static int	aout_fixup(register_t **stack_base, struct image_params *imgp);
 
+#define	AOUT32_USRSTACK		0xbfc00000
+
 #if defined(__i386__)
+
+#define	AOUT32_PS_STRINGS	(AOUT32_USRSTACK - sizeof(struct ps_strings))
+
 struct sysentvec aout_sysvec = {
 	.sv_size	= SYS_MAXSYSCALL,
 	.sv_table	= sysent,
-	.sv_mask	= 0,
 	.sv_errsize	= 0,
 	.sv_errtbl	= NULL,
 	.sv_transtrap	= NULL,
@@ -85,9 +89,9 @@ struct sysentvec aout_sysvec = {
 	.sv_minsigstksz	= MINSIGSTKSZ,
 	.sv_pagesize	= PAGE_SIZE,
 	.sv_minuser	= VM_MIN_ADDRESS,
-	.sv_maxuser	= VM_MAXUSER_ADDRESS,
-	.sv_usrstack	= USRSTACK,
-	.sv_psstrings	= PS_STRINGS,
+	.sv_maxuser	= AOUT32_USRSTACK,
+	.sv_usrstack	= AOUT32_USRSTACK,
+	.sv_psstrings	= AOUT32_PS_STRINGS,
 	.sv_stackprot	= VM_PROT_ALL,
 	.sv_copyout_strings	= exec_copyout_strings,
 	.sv_setregs	= exec_setregs,
@@ -104,10 +108,9 @@ struct sysentvec aout_sysvec = {
 
 #elif defined(__amd64__)
 
-#define	AOUT32_USRSTACK	0xbfc00000
 #define	AOUT32_PS_STRINGS \
     (AOUT32_USRSTACK - sizeof(struct freebsd32_ps_strings))
-#define	AOUT32_MINUSER	FREEBSD32_MINUSER
+#define	AOUT32_MINUSER		FREEBSD32_MINUSER
 
 extern const char *freebsd32_syscallnames[];
 extern u_long ia32_maxssiz;
@@ -115,7 +118,6 @@ extern u_long ia32_maxssiz;
 struct sysentvec aout_sysvec = {
 	.sv_size	= FREEBSD32_SYS_MAXSYSCALL,
 	.sv_table	= freebsd32_sysent,
-	.sv_mask	= 0,
 	.sv_errsize	= 0,
 	.sv_errtbl	= NULL,
 	.sv_transtrap	= NULL,
@@ -337,5 +339,8 @@ exec_aout_imgact(struct image_params *imgp)
 /*
  * Tell kern_execve.c about it, with a little help from the linker.
  */
-static struct execsw aout_execsw = { exec_aout_imgact, "a.out" };
+static struct execsw aout_execsw = {
+	.ex_imgact = exec_aout_imgact,
+	.ex_name = "a.out"
+};
 EXEC_SET(aout, aout_execsw);

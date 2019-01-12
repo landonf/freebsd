@@ -31,7 +31,6 @@ FBSD_1.0 {
 	ntohs;
 	vfork;
 	brk;
-	exect;
 	i386_clr_watch;
 	i386_get_fsbase;
 	i386_get_gsbase;
@@ -49,9 +48,7 @@ FBSD_1.0 {
 
 FBSDprivate_1.0 {
 	/* PSEUDO syscalls */
-	__sys_getlogin;
 	_getlogin;
-	__sys_exit;
 
 	_set_tp;
 	___longjmp;
@@ -60,8 +57,6 @@ FBSDprivate_1.0 {
 	__signalcontext;
 	signalcontext;
 	__siglongjmp;
-	__sys_vfork;
 	_vfork;
-	_end;
 	_brk;
 };

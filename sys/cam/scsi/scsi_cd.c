@@ -63,8 +63,10 @@ __FBSDID("$FreeBSD$");
 #include <sys/cdrio.h>
 #include <sys/dvdio.h>
 #include <sys/devicestat.h>
+#include <sys/proc.h>
 #include <sys/sbuf.h>
 #include <sys/sysctl.h>
+#include <sys/sysent.h>
 #include <sys/taskqueue.h>
 #include <geom/geom_disk.h>
 
@@ -209,6 +211,17 @@ static struct cd_quirk_entry cd_quirk_table[] =
 		/*quirks*/ CD_Q_RETRY_BUSY
 	}
 };
+
+#ifdef COMPAT_FREEBSD32
+struct ioc_read_toc_entry32 {
+	u_char	address_format;
+	u_char	starting_track;
+	u_short	data_len;
+	uint32_t data;	/* (struct cd_toc_entry *) */
+};
+#define	CDIOREADTOCENTRYS_32	\
+    _IOC_NEWTYPE(CDIOREADTOCENTRYS, struct ioc_read_toc_entry32)
+#endif
 
 static	disk_open_t	cdopen;
 static	disk_close_t	cdclose;
@@ -1057,6 +1070,7 @@ cddone(struct cam_periph *periph, union ccb *done_ccb)
 
 		cdp = &softc->params;
 		announce_buf = softc->announce_temp;
+		bzero(announce_buf, CD_ANNOUNCETMP_SZ);
 
 		rdcap = (struct scsi_read_capacity_data *)csio->data_ptr;
 		
@@ -1118,7 +1132,8 @@ cddone(struct cam_periph *periph, union ccb *done_ccb)
 				 * supported" (0x25) error.
 				 */
 				if ((have_sense) && (asc != 0x25)
-				 && (error_code == SSD_CURRENT_ERROR)) {
+				 && (error_code == SSD_CURRENT_ERROR
+				  || error_code == SSD_DESC_CURRENT_ERROR)) {
 					const char *sense_key_desc;
 					const char *asc_desc;
 
@@ -1127,7 +1142,7 @@ cddone(struct cam_periph *periph, union ccb *done_ccb)
 							&sense_key_desc,
 							&asc_desc);
 					snprintf(announce_buf,
-					    sizeof(announce_buf),
+					    CD_ANNOUNCETMP_SZ,
 						"Attempt to query device "
 						"size failed: %s, %s",
 						sense_key_desc,
@@ -1138,7 +1153,7 @@ cddone(struct cam_periph *periph, union ccb *done_ccb)
  				      && (csio->scsi_status ==
  					  SCSI_STATUS_BUSY)) {
  					snprintf(announce_buf,
- 					    sizeof(announce_buf),
+					    CD_ANNOUNCETMP_SZ,
  					    "Attempt to query device "
  					    "size failed: SCSI Status: %s",
 					    scsi_status_string(csio));
@@ -1268,6 +1283,29 @@ cdgetpagesize(int page_num)
 	}
 
 	return (-1);
+}
+
+static struct cd_toc_entry *
+te_data_get_ptr(void *irtep, u_long cmd)
+{
+	union {
+		struct ioc_read_toc_entry irte;
+#ifdef COMPAT_FREEBSD32
+		struct ioc_read_toc_entry32 irte32;
+#endif
+	} *irteup;
+
+	irteup = irtep;
+	switch (IOCPARM_LEN(cmd)) {
+	case sizeof(irteup->irte):
+		return (irteup->irte.data);
+#ifdef COMPAT_FREEBSD32
+	case sizeof(irteup->irte32):
+		return ((struct cd_toc_entry *)(uintptr_t)irteup->irte32.data);
+#endif
+	default:
+		panic("Unhandled ioctl command %ld", cmd);
+	}
 }
 
 static int
@@ -1585,6 +1623,9 @@ cdioctl(struct disk *dp, u_long cmd, void *addr, int flag, struct thread *td)
 		}
 		break;
 	case CDIOREADTOCENTRYS:
+#ifdef COMPAT_FREEBSD32
+	case CDIOREADTOCENTRYS_32:
+#endif
 		{
 			struct cd_tocdata *data;
 			struct cd_toc_single *lead;
@@ -1710,7 +1751,8 @@ cdioctl(struct disk *dp, u_long cmd, void *addr, int flag, struct thread *td)
 			}
 
 			cam_periph_unlock(periph);
-			error = copyout(data->entries, te->data, len);
+			error = copyout(data->entries, te_data_get_ptr(te, cmd),
+			    len);
 			free(data, M_SCSICD);
 			free(lead, M_SCSICD);
 		}
@@ -2176,7 +2218,7 @@ cdprevent(struct cam_periph *periph, int action)
 
 	scsi_prevent(&ccb->csio, 
 		     /*retries*/ cd_retry_count,
-		     cddone,
+		     /*cbfcnp*/NULL,
 		     MSG_SIMPLE_Q_TAG,
 		     action,
 		     SSD_FULL_SIZE,
@@ -2362,7 +2404,7 @@ cdsize(struct cam_periph *periph, u_int32_t *size)
 
 	scsi_read_capacity(&ccb->csio, 
 			   /*retries*/ cd_retry_count,
-			   cddone,
+			   /*cbfcnp*/NULL,
 			   MSG_SIMPLE_Q_TAG,
 			   rcap_buf,
 			   SSD_FULL_SIZE,
@@ -2633,7 +2675,7 @@ cdreadtoc(struct cam_periph *periph, u_int32_t mode, u_int32_t start,
 
 	cam_fill_csio(csio, 
 		      /* retries */ cd_retry_count, 
-		      /* cbfcnp */ cddone, 
+		      /* cbfcnp */ NULL,
 		      /* flags */ CAM_DIR_IN,
 		      /* tag_action */ MSG_SIMPLE_Q_TAG,
 		      /* data_ptr */ data,
@@ -2680,7 +2722,7 @@ cdreadsubchannel(struct cam_periph *periph, u_int32_t mode,
 
 	cam_fill_csio(csio, 
 		      /* retries */ cd_retry_count, 
-		      /* cbfcnp */ cddone, 
+		      /* cbfcnp */ NULL,
 		      /* flags */ CAM_DIR_IN,
 		      /* tag_action */ MSG_SIMPLE_Q_TAG,
 		      /* data_ptr */ (u_int8_t *)data,
@@ -2741,7 +2783,7 @@ cdgetmode(struct cam_periph *periph, struct cd_mode_params *data,
 
 	scsi_mode_sense_len(csio,
 			    /* retries */ cd_retry_count,
-			    /* cbfcnp */ cddone,
+			    /* cbfcnp */ NULL,
 			    /* tag_action */ MSG_SIMPLE_Q_TAG,
 			    /* dbd */ 0,
 			    /* page_code */ SMS_PAGE_CTRL_CURRENT,
@@ -2884,7 +2926,7 @@ cdsetmode(struct cam_periph *periph, struct cd_mode_params *data)
 
 	scsi_mode_select_len(csio,
 			     /* retries */ cd_retry_count,
-			     /* cbfcnp */ cddone,
+			     /* cbfcnp */ NULL,
 			     /* tag_action */ MSG_SIMPLE_Q_TAG,
 			     /* scsi_page_fmt */ 1,
 			     /* save_pages */ 0,
@@ -2946,7 +2988,7 @@ cdplay(struct cam_periph *periph, u_int32_t blk, u_int32_t len)
 	}
 	cam_fill_csio(csio,
 		      /*retries*/ cd_retry_count,
-		      cddone,
+		      /*cbfcnp*/NULL,
 		      /*flags*/CAM_DIR_NONE,
 		      MSG_SIMPLE_Q_TAG,
 		      /*dataptr*/NULL,
@@ -2980,7 +3022,7 @@ cdplaymsf(struct cam_periph *periph, u_int32_t startm, u_int32_t starts,
 
 	cam_fill_csio(csio, 
 		      /* retries */ cd_retry_count, 
-		      /* cbfcnp */ cddone, 
+		      /* cbfcnp */ NULL,
 		      /* flags */ CAM_DIR_NONE,
 		      /* tag_action */ MSG_SIMPLE_Q_TAG,
 		      /* data_ptr */ NULL,
@@ -3026,7 +3068,7 @@ cdplaytracks(struct cam_periph *periph, u_int32_t strack, u_int32_t sindex,
 
 	cam_fill_csio(csio, 
 		      /* retries */ cd_retry_count, 
-		      /* cbfcnp */ cddone, 
+		      /* cbfcnp */ NULL,
 		      /* flags */ CAM_DIR_NONE,
 		      /* tag_action */ MSG_SIMPLE_Q_TAG,
 		      /* data_ptr */ NULL,
@@ -3068,7 +3110,7 @@ cdpause(struct cam_periph *periph, u_int32_t go)
 
 	cam_fill_csio(csio, 
 		      /* retries */ cd_retry_count, 
-		      /* cbfcnp */ cddone, 
+		      /* cbfcnp */ NULL,
 		      /* flags */ CAM_DIR_NONE,
 		      /* tag_action */ MSG_SIMPLE_Q_TAG,
 		      /* data_ptr */ NULL,
@@ -3103,7 +3145,7 @@ cdstartunit(struct cam_periph *periph, int load)
 
 	scsi_start_stop(&ccb->csio,
 			/* retries */ cd_retry_count,
-			/* cbfcnp */ cddone,
+			/* cbfcnp */ NULL,
 			/* tag_action */ MSG_SIMPLE_Q_TAG,
 			/* start */ TRUE,
 			/* load_eject */ load,
@@ -3131,7 +3173,7 @@ cdstopunit(struct cam_periph *periph, u_int32_t eject)
 
 	scsi_start_stop(&ccb->csio,
 			/* retries */ cd_retry_count,
-			/* cbfcnp */ cddone,
+			/* cbfcnp */ NULL,
 			/* tag_action */ MSG_SIMPLE_Q_TAG,
 			/* start */ FALSE,
 			/* load_eject */ eject,
@@ -3167,7 +3209,7 @@ cdsetspeed(struct cam_periph *periph, u_int32_t rdspeed, u_int32_t wrspeed)
 
 	cam_fill_csio(csio,
 		      /* retries */ cd_retry_count,
-		      /* cbfcnp */ cddone,
+		      /* cbfcnp */ NULL,
 		      /* flags */ CAM_DIR_NONE,
 		      /* tag_action */ MSG_SIMPLE_Q_TAG,
 		      /* data_ptr */ NULL,
@@ -3242,7 +3284,7 @@ cdreportkey(struct cam_periph *periph, struct dvd_authinfo *authinfo)
 
 	scsi_report_key(&ccb->csio,
 			/* retries */ cd_retry_count,
-			/* cbfcnp */ cddone,
+			/* cbfcnp */ NULL,
 			/* tag_action */ MSG_SIMPLE_Q_TAG,
 			/* lba */ lba,
 			/* agid */ authinfo->agid,
@@ -3420,7 +3462,7 @@ cdsendkey(struct cam_periph *periph, struct dvd_authinfo *authinfo)
 
 	scsi_send_key(&ccb->csio,
 		      /* retries */ cd_retry_count,
-		      /* cbfcnp */ cddone,
+		      /* cbfcnp */ NULL,
 		      /* tag_action */ MSG_SIMPLE_Q_TAG,
 		      /* agid */ authinfo->agid,
 		      /* key_format */ authinfo->format,
@@ -3524,7 +3566,7 @@ cdreaddvdstructure(struct cam_periph *periph, struct dvd_struct *dvdstruct)
 
 	scsi_read_dvd_structure(&ccb->csio,
 				/* retries */ cd_retry_count,
-				/* cbfcnp */ cddone,
+				/* cbfcnp */ NULL,
 				/* tag_action */ MSG_SIMPLE_Q_TAG,
 				/* lba */ address,
 				/* layer_number */ dvdstruct->layer_num,
