@@ -66,9 +66,10 @@ enum {
 };
 
 enum {
+	FEC_NONE      = 0,
 	FEC_RS        = 1 << 0,
 	FEC_BASER_RS  = 1 << 1,
-	FEC_RESERVED  = 1 << 2,
+	FEC_AUTO      = 1 << 5,		/* M_FW_PORT_CAP32_FEC + 1 */
 };
 
 enum t4_bar2_qtype { T4_BAR2_QTYPE_EGRESS, T4_BAR2_QTYPE_INGRESS };
@@ -238,6 +239,7 @@ struct tp_params {
 
 	uint32_t vlan_pri_map;
 	uint32_t ingress_config;
+	uint64_t hash_filter_mask;
 	__be16 err_vec_mask;
 
 	int8_t fcoe_shift;
@@ -354,11 +356,6 @@ struct adapter_params {
 	unsigned short a_wnd[NCCTRL_WIN];
 	unsigned short b_wnd[NCCTRL_WIN];
 
-	u_int ftid_min;
-	u_int ftid_max;
-	u_int etid_min;
-	u_int netids;
-
 	unsigned int cim_la_size;
 
 	uint8_t nports;		/* # of ethernet ports */
@@ -370,6 +367,9 @@ struct adapter_params {
 				   resources for TOE operation. */
 	unsigned int bypass:1;	/* this is a bypass card */
 	unsigned int ethoffload:1;
+	unsigned int hash_filter:1;
+	unsigned int filter2_wr_support:1;
+	unsigned int port_caps32:1;
 
 	unsigned int ofldq_wr_cred;
 	unsigned int eo_wr_cred;
@@ -411,20 +411,21 @@ struct trace_params {
 };
 
 struct link_config {
-	/* OS-specific code owns all the requested_* fields */
-	unsigned char  requested_aneg;   /* link aneg user has requested */
-	unsigned char  requested_fc;     /* flow control user has requested */
-	unsigned char  requested_fec;    /* FEC user has requested */
-	unsigned int   requested_speed;  /* speed user has requested */
+	/* OS-specific code owns all the requested_* fields. */
+	int8_t requested_aneg;		/* link autonegotiation */
+	int8_t requested_fc;		/* flow control */
+	int8_t requested_fec;		/* FEC */
+	u_int requested_speed;		/* speed (Mbps) */
 
-	unsigned short supported;        /* link capabilities */
-	unsigned short advertising;      /* advertised capabilities */
-	unsigned short lp_advertising;   /* peer advertised capabilities */
-	unsigned int   speed;            /* actual link speed */
-	unsigned char  fc;               /* actual link flow control */
-	unsigned char  fec;              /* actual FEC */
-	unsigned char  link_ok;          /* link up? */
-	unsigned char  link_down_rc;     /* link down reason */
+	uint32_t supported;		/* link capabilities */
+	uint32_t advertising;		/* advertised capabilities */
+	uint32_t lp_advertising;	/* peer advertised capabilities */
+	uint32_t fec_hint;		/* use this fec */
+	u_int speed;			/* actual link speed (Mbps) */
+	int8_t fc;			/* actual link flow control */
+	int8_t fec;			/* actual FEC */
+	bool link_ok;			/* link up? */
+	uint8_t link_down_rc;		/* link down reason */
 };
 
 #include "adapter.h"
@@ -439,13 +440,22 @@ struct link_config {
 static inline int is_ftid(const struct adapter *sc, u_int tid)
 {
 
-	return (tid >= sc->params.ftid_min && tid <= sc->params.ftid_max);
+	return (sc->tids.nftids > 0 && tid >= sc->tids.ftid_base &&
+	    tid <= sc->tids.ftid_end);
+}
+
+static inline int is_hpftid(const struct adapter *sc, u_int tid)
+{
+
+	return (sc->tids.nhpftids > 0 && tid >= sc->tids.hpftid_base &&
+	    tid <= sc->tids.hpftid_end);
 }
 
 static inline int is_etid(const struct adapter *sc, u_int tid)
 {
 
-	return (tid >= sc->params.etid_min);
+	return (sc->tids.netids > 0 && tid >= sc->tids.etid_base &&
+	    tid <= sc->tids.etid_end);
 }
 
 static inline int is_offload(const struct adapter *adap)
@@ -456,6 +466,11 @@ static inline int is_offload(const struct adapter *adap)
 static inline int is_ethoffload(const struct adapter *adap)
 {
 	return adap->params.ethoffload;
+}
+
+static inline int is_hashfilter(const struct adapter *adap)
+{
+	return adap->params.hash_filter;
 }
 
 static inline int chip_id(struct adapter *adap)
@@ -517,6 +532,12 @@ static inline u_int us_to_tcp_ticks(const struct adapter *adap, u_long us)
 {
 
 	return (us * adap->params.vpd.cclk / 1000 >> adap->params.tp.tre);
+}
+
+static inline u_int tcp_ticks_to_us(const struct adapter *adap, u_int ticks)
+{
+	return ((uint64_t)ticks << adap->params.tp.tre) /
+	    core_ticks_per_usec(adap);
 }
 
 void t4_set_reg_field(struct adapter *adap, unsigned int addr, u32 mask, u32 val);
@@ -584,6 +605,7 @@ int t4_flash_erase_sectors(struct adapter *adapter, int start, int end);
 int t4_flash_cfg_addr(struct adapter *adapter);
 int t4_load_cfg(struct adapter *adapter, const u8 *cfg_data, unsigned int size);
 int t4_get_fw_version(struct adapter *adapter, u32 *vers);
+int t4_get_fw_hdr(struct adapter *adapter, struct fw_hdr *hdr);
 int t4_get_bs_version(struct adapter *adapter, u32 *vers);
 int t4_get_tp_version(struct adapter *adapter, u32 *vers);
 int t4_get_exprom_version(struct adapter *adapter, u32 *vers);
@@ -715,11 +737,9 @@ int t4_fw_hello(struct adapter *adap, unsigned int mbox, unsigned int evt_mbox,
 int t4_fw_bye(struct adapter *adap, unsigned int mbox);
 int t4_fw_reset(struct adapter *adap, unsigned int mbox, int reset);
 int t4_fw_halt(struct adapter *adap, unsigned int mbox, int force);
-int t4_fw_restart(struct adapter *adap, unsigned int mbox, int reset);
+int t4_fw_restart(struct adapter *adap, unsigned int mbox);
 int t4_fw_upgrade(struct adapter *adap, unsigned int mbox,
 		  const u8 *fw_data, unsigned int size, int force);
-int t4_fw_forceinstall(struct adapter *adap, const u8 *fw_data,
-    unsigned int size);
 int t4_fw_initialize(struct adapter *adap, unsigned int mbox);
 int t4_query_params(struct adapter *adap, unsigned int mbox, unsigned int pf,
 		    unsigned int vf, unsigned int nparams, const u32 *params,
@@ -803,7 +823,7 @@ int t4_sched_config(struct adapter *adapter, int type, int minmaxen,
 int t4_sched_params(struct adapter *adapter, int type, int level, int mode,
 		    int rateunit, int ratemode, int channel, int cl,
 		    int minrate, int maxrate, int weight, int pktsize,
-		    int sleep_ok);
+		    int burstsize, int sleep_ok);
 int t4_sched_params_ch_rl(struct adapter *adapter, int channel, int ratemode,
 			  unsigned int maxrate, int sleep_ok);
 int t4_sched_params_cl_wrr(struct adapter *adapter, int channel, int cl,
@@ -856,5 +876,16 @@ int t4vf_prep_adapter(struct adapter *adapter);
 int t4_bar2_sge_qregs(struct adapter *adapter, unsigned int qid,
 		enum t4_bar2_qtype qtype, int user, u64 *pbar2_qoffset,
 		unsigned int *pbar2_qid);
+unsigned int fwcap_to_speed(uint32_t caps);
+uint32_t speed_to_fwcap(unsigned int speed);
+uint32_t fwcap_top_speed(uint32_t caps);
+
+static inline int
+port_top_speed(const struct port_info *pi)
+{
+
+	/* Mbps -> Gbps */
+	return (fwcap_to_speed(pi->link_cfg.supported) / 1000);
+}
 
 #endif /* __CHELSIO_COMMON_H */

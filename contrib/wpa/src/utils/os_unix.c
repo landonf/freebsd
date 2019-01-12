@@ -80,6 +80,9 @@ int os_get_reltime(struct os_reltime *t)
 	struct timespec ts;
 	int res;
 
+	if (TEST_FAIL())
+		return -1;
+
 	while (1) {
 		res = clock_gettime(clock_id, &ts);
 		if (res == 0) {
@@ -399,6 +402,7 @@ void os_program_deinit(void)
 	if (total)
 		wpa_printf(MSG_INFO, "MEMLEAK: total %lu bytes",
 			   (unsigned long) total);
+	wpa_trace_deinit();
 #endif /* WPA_TRACE */
 }
 
@@ -461,11 +465,7 @@ char * os_readfile(const char *name, size_t *len)
 
 int os_file_exists(const char *fname)
 {
-	FILE *f = fopen(fname, "rb");
-	if (f == NULL)
-		return 0;
-	fclose(f);
-	return 1;
+	return access(fname, F_OK) == 0;
 }
 
 
@@ -535,6 +535,16 @@ int os_memcmp_const(const void *a, const void *b, size_t len)
 }
 
 
+void * os_memdup(const void *src, size_t len)
+{
+	void *r = os_malloc(len);
+
+	if (r)
+		os_memcpy(r, src, len);
+	return r;
+}
+
+
 #ifdef WPA_TRACE
 
 #if defined(WPA_TRACE_BFD) && defined(CONFIG_TESTING_OPTIONS)
@@ -566,6 +576,8 @@ static int testing_fail_alloc(void)
 	if (i < res && os_strcmp(func[i], "os_realloc_array") == 0)
 		i++;
 	if (i < res && os_strcmp(func[i], "os_strdup") == 0)
+		i++;
+	if (i < res && os_strcmp(func[i], "os_memdup") == 0)
 		i++;
 
 	pos = wpa_trace_fail_func;

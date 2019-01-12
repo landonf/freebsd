@@ -67,6 +67,9 @@ struct mv_pcib_ctrl_range {
 	uint64_t size;
 };
 
+typedef int (*get_rl_t)(device_t dev, phandle_t node, pcell_t acells,
+    pcell_t scells, struct resource_list *rl);
+
 struct mv_pcib_ctrl_softc {
 	pcell_t				addr_cells;
 	pcell_t				size_cells;
@@ -94,6 +97,7 @@ static device_method_t mv_pcib_ctrl_methods[] = {
 	DEVMETHOD(bus_alloc_resource,		mv_pcib_ctrl_alloc_resource),
 	DEVMETHOD(bus_release_resource,		bus_generic_release_resource),
 	DEVMETHOD(bus_activate_resource,	bus_generic_activate_resource),
+	DEVMETHOD(bus_deactivate_resource,	bus_generic_deactivate_resource),
 	DEVMETHOD(bus_setup_intr,		bus_generic_setup_intr),
 
 	/* ofw_bus interface */
@@ -105,6 +109,13 @@ static device_method_t mv_pcib_ctrl_methods[] = {
 	DEVMETHOD(ofw_bus_get_type,		ofw_bus_gen_get_type),
 
 	DEVMETHOD_END
+};
+
+static struct ofw_compat_data mv_pcib_ctrl_compat[] = {
+	{"mrvl,pcie-ctrl",		(uintptr_t)&ofw_bus_reg_to_rl},
+	{"marvell,armada-370-pcie",
+	    (uintptr_t)&ofw_bus_assigned_addresses_to_rl},
+	{NULL,				(uintptr_t)NULL},
 };
 
 static driver_t mv_pcib_ctrl_driver = {
@@ -124,8 +135,10 @@ static int
 mv_pcib_ctrl_probe(device_t dev)
 {
 
-	if (!ofw_bus_is_compatible(dev, "mrvl,pcie-ctrl") &&
-	    !ofw_bus_is_compatible(dev, "marvell,armada-370-pcie"))
+	if (!ofw_bus_status_okay(dev))
+		return (ENXIO);
+
+	if (!ofw_bus_search_compatible(dev, mv_pcib_ctrl_compat)->ocd_data)
 		return (ENXIO);
 
 	device_set_desc(dev, "Marvell Integrated PCIe Bus Controller");
@@ -151,6 +164,7 @@ mv_pcib_ofw_bus_attach(device_t dev)
 	struct mv_pcib_ctrl_softc *sc;
 	device_t child;
 	phandle_t parent, node;
+	get_rl_t get_rl;
 
 	parent = ofw_bus_get_node(dev);
 	sc = device_get_softc(dev);
@@ -189,8 +203,11 @@ mv_pcib_ofw_bus_attach(device_t dev)
 			}
 
 			resource_list_init(&di->di_rl);
-			ofw_bus_reg_to_rl(child, node, sc->addr_cells,
-			    sc->size_cells, &di->di_rl);
+			get_rl = (get_rl_t) ofw_bus_search_compatible(dev,
+			    mv_pcib_ctrl_compat)->ocd_data;
+			if (get_rl != NULL)
+				get_rl(child, node, sc->addr_cells,
+				    sc->size_cells, &di->di_rl);
 
 			device_set_ivars(child, di);
 		}

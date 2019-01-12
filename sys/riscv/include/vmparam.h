@@ -67,10 +67,7 @@
 #define	VM_PHYSSEG_SPARSE
 
 /*
- * The number of PHYSSEG entries must be one greater than the number
- * of phys_avail entries because the phys_avail entry that spans the
- * largest physical address that is accessible by ISA DMA is split
- * into two PHYSSEG entries.
+ * The number of PHYSSEG entries.
  */
 #define	VM_PHYSSEG_MAX		64
 
@@ -85,14 +82,11 @@
 #define	VM_FREEPOOL_DIRECT	1
 
 /*
- * Create two free page lists: VM_FREELIST_DEFAULT is for physical
- * pages that are above the largest physical address that is
- * accessible by ISA DMA and VM_FREELIST_ISADMA is for physical pages
- * that are below that address.
+ * Create one free page list: VM_FREELIST_DEFAULT is for all physical
+ * pages.
  */
-#define	VM_NFREELIST		2
+#define	VM_NFREELIST		1
 #define	VM_FREELIST_DEFAULT	0
-#define	VM_FREELIST_ISADMA	1
 
 /*
  * An allocation size of 16MB is supported in order to optimize the
@@ -121,22 +115,23 @@
 /**
  * Address space layout.
  *
- * RISC-V implements up to a 48 bit virtual address space. The address space is
- * split into 2 regions at each end of the 64 bit address space, with an
- * out of range "hole" in the middle.
+ * RISC-V implements multiple paging modes with different virtual address space
+ * sizes: SV32, SV39 and SV48.  SV39 permits a virtual address space size of
+ * 512GB and uses a three-level page table.  Since this is large enough for most
+ * purposes, we currently use SV39 for both userland and the kernel, avoiding
+ * the extra translation step required by SV48.
  *
- * We limit the size of the two spaces to 39 bits each.
+ * The address space is split into two regions at each end of the 64-bit address
+ * space:
  *
- * Upper region:	0xffffffffffffffff
- *			0xffffff8000000000
+ * 0x0000000000000000 - 0x0000003fffffffff    256GB user map
+ * 0x0000004000000000 - 0xffffffbfffffffff    unmappable
+ * 0xffffffc000000000 - 0xffffffc7ffffffff    32GB kernel map
+ * 0xffffffc800000000 - 0xffffffcfffffffff    32GB unused
+ * 0xffffffd000000000 - 0xffffffefffffffff    128GB direct map
+ * 0xfffffff000000000 - 0xffffffffffffffff    64GB unused
  *
- * Hole:		0xffffff7fffffffff
- *			0x0000008000000000
- *
- * Lower region:	0x0000007fffffffff
- *			0x0000000000000000
- *
- * We use the upper region for the kernel, and the lower region for userland.
+ * The kernel is loaded at the beginning of the kernel map.
  *
  * We define some interesting address constants:
  *
@@ -152,11 +147,9 @@
 #define	VM_MIN_ADDRESS		(0x0000000000000000UL)
 #define	VM_MAX_ADDRESS		(0xffffffffffffffffUL)
 
-/* 32 GiB of kernel addresses */
 #define	VM_MIN_KERNEL_ADDRESS	(0xffffffc000000000UL)
 #define	VM_MAX_KERNEL_ADDRESS	(0xffffffc800000000UL)
 
-/* 128 GiB maximum for the direct map region */
 #define	DMAP_MIN_ADDRESS	(0xffffffd000000000UL)
 #define	DMAP_MAX_ADDRESS	(0xfffffff000000000UL)
 
@@ -229,10 +222,7 @@
 #define	VM_INITIAL_PAGEIN	16
 #endif
 
-/*
- * RISCVTODO
- * #define	UMA_MD_SMALL_ALLOC
- */
+#define	UMA_MD_SMALL_ALLOC
 
 #ifndef LOCORE
 extern vm_paddr_t dmap_phys_base;

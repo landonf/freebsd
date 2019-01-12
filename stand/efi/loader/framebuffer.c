@@ -577,12 +577,14 @@ gop_autoresize(EFI_GRAPHICS_OUTPUT *gop)
 		}
 	}
 
-	status = gop->SetMode(gop, best_mode);
-	if (EFI_ERROR(status)) {
-		snprintf(command_errbuf, sizeof(command_errbuf),
-		    "gop_autoresize: Unable to set mode to %u (error=%lu)",
-		    mode, EFI_ERROR_CODE(status));
-		return (CMD_ERROR);
+	if (maxdim != 0) {
+		status = gop->SetMode(gop, best_mode);
+		if (EFI_ERROR(status)) {
+			snprintf(command_errbuf, sizeof(command_errbuf),
+			    "gop_autoresize: Unable to set mode to %u (error=%lu)",
+			    mode, EFI_ERROR_CODE(status));
+			return (CMD_ERROR);
+		}
 	}
 	return (CMD_OK);
 }
@@ -646,7 +648,14 @@ command_autoresize(int argc, char *argv[])
 	snprintf(command_errbuf, sizeof(command_errbuf),
 	    "%s: Neither Graphics Output Protocol nor Universal Graphics Adapter present",
 	    argv[0]);
-	return (CMD_ERROR);
+
+	/*
+	 * Default to text_autoresize if we have neither GOP or UGA.  This won't
+	 * give us the most ideal resolution, but it will at least leave us
+	 * functional rather than failing the boot for an objectively bad
+	 * reason.
+	 */
+	return (text_autoresize());
 }
 
 COMMAND_SET(gop, "gop", "graphics output protocol", command_gop);

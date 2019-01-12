@@ -138,7 +138,7 @@ void	_thread_lock(struct thread *td, int opts, const char *file, int line);
 void	_thread_lock(struct thread *);
 #endif
 
-#if defined(LOCK_PROFILING) || defined(KLD_MODULE)
+#if defined(LOCK_PROFILING) || (defined(KLD_MODULE) && !defined(KLD_TIED))
 #define	thread_lock(tdp)						\
 	thread_lock_flags_((tdp), 0, __FILE__, __LINE__)
 #elif LOCK_DEBUG > 0
@@ -496,7 +496,7 @@ do {									\
 	int _giantcnt = 0;						\
 	WITNESS_SAVE_DECL(Giant);					\
 									\
-	if (mtx_owned(&Giant)) {					\
+	if (__predict_false(mtx_owned(&Giant))) {			\
 		WITNESS_SAVE(&Giant.lock_object, Giant);		\
 		for (_giantcnt = 0; mtx_owned(&Giant) &&		\
 		    !SCHEDULER_STOPPED(); _giantcnt++)			\
@@ -509,7 +509,7 @@ do {									\
 
 #define PARTIAL_PICKUP_GIANT()						\
 	mtx_assert(&Giant, MA_NOTOWNED);				\
-	if (_giantcnt > 0) {						\
+	if (__predict_false(_giantcnt > 0)) {				\
 		while (_giantcnt--)					\
 			mtx_lock(&Giant);				\
 		WITNESS_RESTORE(&Giant.lock_object, Giant);		\

@@ -39,7 +39,6 @@ __FBSDID("$FreeBSD$");
  * HID spec: http://www.usb.org/developers/devclass_docs/HID1_11.pdf
  */
 
-#include "opt_compat.h"
 #include "opt_kbd.h"
 #include "opt_ukbd.h"
 #include "opt_evdev.h"
@@ -366,8 +365,10 @@ static device_detach_t ukbd_detach;
 static device_resume_t ukbd_resume;
 
 #ifdef EVDEV_SUPPORT
+static evdev_event_t ukbd_ev_event;
+
 static const struct evdev_methods ukbd_evdev_methods = {
-	.ev_event = evdev_ev_kbd_event,
+	.ev_event = ukbd_ev_event,
 };
 #endif
 
@@ -1360,7 +1361,7 @@ ukbd_attach(device_t dev)
 	if (sc->sc_flags & UKBD_FLAG_SCROLLLOCK)
 		evdev_support_led(evdev, LED_SCROLLL);
 
-	if (evdev_register(evdev))
+	if (evdev_register_mtx(evdev, &Giant))
 		evdev_free(evdev);
 	else
 		sc->sc_evdev = evdev;
@@ -1472,6 +1473,22 @@ ukbd_resume(device_t dev)
 
 	return (0);
 }
+
+#ifdef EVDEV_SUPPORT
+static void
+ukbd_ev_event(struct evdev_dev *evdev, uint16_t type, uint16_t code,
+    int32_t value)
+{
+	keyboard_t *kbd = evdev_get_softc(evdev);
+
+	if (evdev_rcpt_mask & EVDEV_RCPT_HW_KBD &&
+	    (type == EV_LED || type == EV_REP)) {
+		mtx_lock(&Giant);
+		kbd_ev_event(kbd, type, code, value);
+		mtx_unlock(&Giant);
+	}
+}
+#endif
 
 /* early keyboard probe, not supported */
 static int

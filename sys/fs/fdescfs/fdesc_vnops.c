@@ -286,7 +286,6 @@ fdesc_lookup(struct vop_lookup_args *ap)
 	struct thread *td = cnp->cn_thread;
 	struct file *fp;
 	struct fdesc_get_ino_args arg;
-	cap_rights_t rights;
 	int nlen = cnp->cn_namelen;
 	u_int fd, fd1;
 	int error;
@@ -331,7 +330,7 @@ fdesc_lookup(struct vop_lookup_args *ap)
 	/*
 	 * No rights to check since 'fp' isn't actually used.
 	 */
-	if ((error = fget(td, fd, cap_rights_init(&rights), &fp)) != 0)
+	if ((error = fget(td, fd, &cap_no_rights, &fp)) != 0)
 		goto bad;
 
 	/* Check if we're looking up ourselves. */
@@ -562,8 +561,8 @@ fdesc_readdir(struct vop_readdir_args *ap)
 			dp->d_namlen = i + 1;
 			dp->d_reclen = UIO_MX;
 			bcopy("..", dp->d_name, dp->d_namlen);
-			dp->d_name[i + 1] = '\0';
 			dp->d_type = DT_DIR;
+			dirent_terminate(dp);
 			break;
 		default:
 			if (fdp->fd_ofiles[fcnt].fde_file == NULL)
@@ -573,8 +572,11 @@ fdesc_readdir(struct vop_readdir_args *ap)
 			dp->d_type = (fmp->flags & FMNT_LINRDLNKF) == 0 ?
 			    DT_CHR : DT_LNK;
 			dp->d_fileno = i + FD_DESC;
+			dirent_terminate(dp);
 			break;
 		}
+		/* NOTE: d_off is the offset of the *next* entry. */
+		dp->d_off = UIO_MX * (i + 1);
 		if (dp->d_namlen != 0) {
 			/*
 			 * And ship to userland
@@ -613,7 +615,6 @@ static int
 fdesc_readlink(struct vop_readlink_args *va)
 {
 	struct vnode *vp, *vn;
-	cap_rights_t rights;
 	struct thread *td;
 	struct uio *uio;
 	struct file *fp;
@@ -631,7 +632,7 @@ fdesc_readlink(struct vop_readlink_args *va)
 	VOP_UNLOCK(vn, 0);
 
 	td = curthread;
-	error = fget_cap(td, fd_fd, cap_rights_init(&rights), &fp, NULL);
+	error = fget_cap(td, fd_fd, &cap_no_rights, &fp, NULL);
 	if (error != 0)
 		goto out;
 

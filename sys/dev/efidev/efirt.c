@@ -1,7 +1,7 @@
 /*-
  * Copyright (c) 2004 Marcel Moolenaar
  * Copyright (c) 2001 Doug Rabson
- * Copyright (c) 2016 The FreeBSD Foundation
+ * Copyright (c) 2016, 2018 The FreeBSD Foundation
  * All rights reserved.
  *
  * Portions of this software were developed by Konstantin Belousov
@@ -34,6 +34,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/efi.h>
+#include <sys/eventhandler.h>
 #include <sys/kernel.h>
 #include <sys/linker.h>
 #include <sys/lock.h>
@@ -41,6 +42,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/mutex.h>
 #include <sys/clock.h>
 #include <sys/proc.h>
+#include <sys/reboot.h>
 #include <sys/rwlock.h>
 #include <sys/sched.h>
 #include <sys/sysctl.h>
@@ -57,6 +59,7 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_map.h>
 
 static struct efi_systbl *efi_systbl;
+static eventhandler_tag efi_shutdown_tag;
 /*
  * The following pointers point to tables in the EFI runtime service data pages.
  * Care should be taken to make sure that we've properly entered the EFI runtime
@@ -106,6 +109,10 @@ efi_status_to_errno(efi_status status)
 }
 
 static struct mtx efi_lock;
+static SYSCTL_NODE(_hw, OID_AUTO, efi, CTLFLAG_RWTUN, NULL, "EFI");
+static bool efi_poweroff = true;
+SYSCTL_BOOL(_hw_efi, OID_AUTO, poweroff, CTLFLAG_RWTUN, &efi_poweroff, 0,
+    "If true, use EFI runtime services to power off in preference to ACPI");
 
 static bool
 efi_is_in_map(struct efi_md *map, int ndesc, int descsz, vm_offset_t addr)
@@ -126,14 +133,33 @@ efi_is_in_map(struct efi_md *map, int ndesc, int descsz, vm_offset_t addr)
 	return (false);
 }
 
+static void
+efi_shutdown_final(void *dummy __unused, int howto)
+{
+
+	/*
+	 * On some systems, ACPI S5 is missing or does not function properly.
+	 * When present, shutdown via EFI Runtime Services instead, unless
+	 * disabled.
+	 */
+	if ((howto & RB_POWEROFF) != 0 && efi_poweroff)
+		(void)efi_reset_system(EFI_RESET_SHUTDOWN);
+}
+
 static int
 efi_init(void)
 {
 	struct efi_map_header *efihdr;
 	struct efi_md *map;
+	struct efi_rt *rtdm;
 	caddr_t kmdp;
 	size_t efisz;
+	int ndesc, rt_disabled;
 
+	rt_disabled = 0;
+	TUNABLE_INT_FETCH("efi.rt.disabled", &rt_disabled);
+	if (rt_disabled == 1)
+		return (0);
 	mtx_init(&efi_lock, "efi", NULL, MTX_DEF);
 
 	if (efi_systbl_phys == 0) {
@@ -141,13 +167,9 @@ efi_init(void)
 			printf("EFI systbl not available\n");
 		return (0);
 	}
-	if (!PMAP_HAS_DMAP) {
-		if (bootverbose)
-			printf("EFI systbl requires direct map\n");
-		return (0);
-	}
-	efi_systbl = (struct efi_systbl *)PHYS_TO_DMAP(efi_systbl_phys);
-	if (efi_systbl->st_hdr.th_sig != EFI_SYSTBL_SIG) {
+
+	efi_systbl = (struct efi_systbl *)efi_phys_to_kva(efi_systbl_phys);
+	if (efi_systbl == NULL || efi_systbl->st_hdr.th_sig != EFI_SYSTBL_SIG) {
 		efi_systbl = NULL;
 		if (bootverbose)
 			printf("EFI systbl signature invalid\n");
@@ -175,8 +197,8 @@ efi_init(void)
 	if (efihdr->descriptor_size == 0)
 		return (ENOMEM);
 
-	if (!efi_create_1t1_map(map, efihdr->memory_size /
-	    efihdr->descriptor_size, efihdr->descriptor_size)) {
+	ndesc = efihdr->memory_size / efihdr->descriptor_size;
+	if (!efi_create_1t1_map(map, ndesc, efihdr->descriptor_size)) {
 		if (bootverbose)
 			printf("EFI cannot create runtime map\n");
 		return (ENOMEM);
@@ -191,6 +213,7 @@ efi_init(void)
 		return (ENXIO);
 	}
 
+#if defined(__aarch64__) || defined(__amd64__)
 	/*
 	 * Some UEFI implementations have multiple implementations of the
 	 * RS->GetTime function. They switch from one we can only use early
@@ -198,14 +221,10 @@ efi_init(void)
 	 * call RS->SetVirtualAddressMap. As this is not always the case, e.g.
 	 * with an old loader.efi, check if the RS->GetTime function is within
 	 * the EFI map, and fail to attach if not.
-	 *
-	 * We need to enter into the EFI environment as efi_runtime may point
-	 * to an EFI address.
 	 */
-	efi_enter();
-	if (!efi_is_in_map(map, efihdr->memory_size / efihdr->descriptor_size,
-	    efihdr->descriptor_size, (vm_offset_t)efi_runtime->rt_gettime)) {
-		efi_leave();
+	rtdm = (struct efi_rt *)efi_phys_to_kva((uintptr_t)efi_runtime);
+	if (rtdm == NULL || !efi_is_in_map(map, ndesc, efihdr->descriptor_size,
+	    (vm_offset_t)rtdm->rt_gettime)) {
 		if (bootverbose)
 			printf(
 			 "EFI runtime services table has an invalid pointer\n");
@@ -213,7 +232,13 @@ efi_init(void)
 		efi_destroy_1t1_map();
 		return (ENXIO);
 	}
-	efi_leave();
+#endif
+
+	/*
+	 * We use SHUTDOWN_PRI_LAST - 1 to trigger after IPMI, but before ACPI.
+	 */
+	efi_shutdown_tag = EVENTHANDLER_REGISTER(shutdown_final,
+	    efi_shutdown_final, NULL, SHUTDOWN_PRI_LAST - 1);
 
 	return (0);
 }
@@ -222,6 +247,11 @@ static void
 efi_uninit(void)
 {
 
+	/* Most likely disabled by tunable */
+	if (efi_runtime == NULL)
+		return;
+	if (efi_shutdown_tag != NULL)
+		EVENTHANDLER_DEREGISTER(shutdown_final, efi_shutdown_tag);
 	efi_destroy_1t1_map();
 
 	efi_systbl = NULL;
@@ -283,7 +313,7 @@ efi_get_table(struct uuid *uuid, void **ptr)
 	ct = efi_cfgtbl;
 	while (count--) {
 		if (!bcmp(&ct->ct_uuid, uuid, sizeof(*uuid))) {
-			*ptr = (void *)PHYS_TO_DMAP(ct->ct_data);
+			*ptr = (void *)efi_phys_to_kva(ct->ct_data);
 			return (0);
 		}
 		ct++;
@@ -291,20 +321,87 @@ efi_get_table(struct uuid *uuid, void **ptr)
 	return (ENOENT);
 }
 
+static int efi_rt_handle_faults = EFI_RT_HANDLE_FAULTS_DEFAULT;
+SYSCTL_INT(_machdep, OID_AUTO, efi_rt_handle_faults, CTLFLAG_RWTUN,
+    &efi_rt_handle_faults, 0,
+    "Call EFI RT methods with fault handler wrapper around");
+
 static int
-efi_get_time_locked(struct efi_tm *tm, struct efi_tmcap *tmcap)
+efi_rt_arch_call_nofault(struct efirt_callinfo *ec)
 {
-	efi_status status;
+
+	switch (ec->ec_argcnt) {
+	case 0:
+		ec->ec_efi_status = ((register_t (*)(void))ec->ec_fptr)();
+		break;
+	case 1:
+		ec->ec_efi_status = ((register_t (*)(register_t))ec->ec_fptr)
+		    (ec->ec_arg1);
+		break;
+	case 2:
+		ec->ec_efi_status = ((register_t (*)(register_t, register_t))
+		    ec->ec_fptr)(ec->ec_arg1, ec->ec_arg2);
+		break;
+	case 3:
+		ec->ec_efi_status = ((register_t (*)(register_t, register_t,
+		    register_t))ec->ec_fptr)(ec->ec_arg1, ec->ec_arg2,
+		    ec->ec_arg3);
+		break;
+	case 4:
+		ec->ec_efi_status = ((register_t (*)(register_t, register_t,
+		    register_t, register_t))ec->ec_fptr)(ec->ec_arg1,
+		    ec->ec_arg2, ec->ec_arg3, ec->ec_arg4);
+		break;
+	case 5:
+		ec->ec_efi_status = ((register_t (*)(register_t, register_t,
+		    register_t, register_t, register_t))ec->ec_fptr)(
+		    ec->ec_arg1, ec->ec_arg2, ec->ec_arg3, ec->ec_arg4,
+		    ec->ec_arg5);
+		break;
+	default:
+		panic("efi_rt_arch_call: %d args", (int)ec->ec_argcnt);
+	}
+
+	return (0);
+}
+
+static int
+efi_call(struct efirt_callinfo *ecp)
+{
 	int error;
 
-	EFI_TIME_OWNED()
 	error = efi_enter();
 	if (error != 0)
 		return (error);
-	status = efi_runtime->rt_gettime(tm, tmcap);
+	error = efi_rt_handle_faults ? efi_rt_arch_call(ecp) :
+	    efi_rt_arch_call_nofault(ecp);
 	efi_leave();
-	error = efi_status_to_errno(status);
+	if (error == 0)
+		error = efi_status_to_errno(ecp->ec_efi_status);
+	else if (bootverbose)
+		printf("EFI %s call faulted, error %d\n", ecp->ec_name, error);
 	return (error);
+}
+
+#define	EFI_RT_METHOD_PA(method)				\
+    ((uintptr_t)((struct efi_rt *)efi_phys_to_kva((uintptr_t)	\
+    efi_runtime))->method)
+
+static int
+efi_get_time_locked(struct efi_tm *tm, struct efi_tmcap *tmcap)
+{
+	struct efirt_callinfo ec;
+
+	EFI_TIME_OWNED();
+	if (efi_runtime == NULL)
+		return (ENXIO);
+	bzero(&ec, sizeof(ec));
+	ec.ec_name = "rt_gettime";
+	ec.ec_argcnt = 2;
+	ec.ec_arg1 = (uintptr_t)tm;
+	ec.ec_arg2 = (uintptr_t)tmcap;
+	ec.ec_fptr = EFI_RT_METHOD_PA(rt_gettime);
+	return (efi_call(&ec));
 }
 
 int
@@ -315,7 +412,7 @@ efi_get_time(struct efi_tm *tm)
 
 	if (efi_runtime == NULL)
 		return (ENXIO);
-	EFI_TIME_LOCK()
+	EFI_TIME_LOCK();
 	/*
 	 * UEFI spec states that the Capabilities argument to GetTime is
 	 * optional, but some UEFI implementations choke when passed a NULL
@@ -323,7 +420,7 @@ efi_get_time(struct efi_tm *tm)
 	 * to workaround such implementations.
 	 */
 	error = efi_get_time_locked(tm, &dummy);
-	EFI_TIME_UNLOCK()
+	EFI_TIME_UNLOCK();
 	return (error);
 }
 
@@ -335,39 +432,52 @@ efi_get_time_capabilities(struct efi_tmcap *tmcap)
 
 	if (efi_runtime == NULL)
 		return (ENXIO);
-	EFI_TIME_LOCK()
+	EFI_TIME_LOCK();
 	error = efi_get_time_locked(&dummy, tmcap);
-	EFI_TIME_UNLOCK()
+	EFI_TIME_UNLOCK();
 	return (error);
 }
 
 int
-efi_reset_system(void)
+efi_reset_system(enum efi_reset type)
 {
-	int error;
+	struct efirt_callinfo ec;
 
-	error = efi_enter();
-	if (error != 0)
-		return (error);
-	efi_runtime->rt_reset(EFI_RESET_WARM, 0, 0, NULL);
-	efi_leave();
-	return (EIO);
+	switch (type) {
+	case EFI_RESET_COLD:
+	case EFI_RESET_WARM:
+	case EFI_RESET_SHUTDOWN:
+		break;
+	default:
+		return (EINVAL);
+	}
+	if (efi_runtime == NULL)
+		return (ENXIO);
+	bzero(&ec, sizeof(ec));
+	ec.ec_name = "rt_reset";
+	ec.ec_argcnt = 4;
+	ec.ec_arg1 = (uintptr_t)type;
+	ec.ec_arg2 = (uintptr_t)0;
+	ec.ec_arg3 = (uintptr_t)0;
+	ec.ec_arg4 = (uintptr_t)NULL;
+	ec.ec_fptr = EFI_RT_METHOD_PA(rt_reset);
+	return (efi_call(&ec));
 }
 
 static int
 efi_set_time_locked(struct efi_tm *tm)
 {
-	efi_status status;
-	int error;
+	struct efirt_callinfo ec;
 
 	EFI_TIME_OWNED();
-	error = efi_enter();
-	if (error != 0)
-		return (error);
-	status = efi_runtime->rt_settime(tm);
-	efi_leave();
-	error = efi_status_to_errno(status);
-	return (error);
+	if (efi_runtime == NULL)
+		return (ENXIO);
+	bzero(&ec, sizeof(ec));
+	ec.ec_name = "rt_settime";
+	ec.ec_argcnt = 1;
+	ec.ec_arg1 = (uintptr_t)tm;
+	ec.ec_fptr = EFI_RT_METHOD_PA(rt_settime);
+	return (efi_call(&ec));
 }
 
 int
@@ -377,9 +487,9 @@ efi_set_time(struct efi_tm *tm)
 
 	if (efi_runtime == NULL)
 		return (ENXIO);
-	EFI_TIME_LOCK()
+	EFI_TIME_LOCK();
 	error = efi_set_time_locked(tm);
-	EFI_TIME_UNLOCK()
+	EFI_TIME_UNLOCK();
 	return (error);
 }
 
@@ -387,47 +497,57 @@ int
 efi_var_get(efi_char *name, struct uuid *vendor, uint32_t *attrib,
     size_t *datasize, void *data)
 {
-	efi_status status;
-	int error;
+	struct efirt_callinfo ec;
 
-	error = efi_enter();
-	if (error != 0)
-		return (error);
-	status = efi_runtime->rt_getvar(name, vendor, attrib, datasize, data);
-	efi_leave();
-	error = efi_status_to_errno(status);
-	return (error);
+	if (efi_runtime == NULL)
+		return (ENXIO);
+	bzero(&ec, sizeof(ec));
+	ec.ec_argcnt = 5;
+	ec.ec_name = "rt_getvar";
+	ec.ec_arg1 = (uintptr_t)name;
+	ec.ec_arg2 = (uintptr_t)vendor;
+	ec.ec_arg3 = (uintptr_t)attrib;
+	ec.ec_arg4 = (uintptr_t)datasize;
+	ec.ec_arg5 = (uintptr_t)data;
+	ec.ec_fptr = EFI_RT_METHOD_PA(rt_getvar);
+	return (efi_call(&ec));
 }
 
 int
 efi_var_nextname(size_t *namesize, efi_char *name, struct uuid *vendor)
 {
-	efi_status status;
-	int error;
+	struct efirt_callinfo ec;
 
-	error = efi_enter();
-	if (error != 0)
-		return (error);
-	status = efi_runtime->rt_scanvar(namesize, name, vendor);
-	efi_leave();
-	error = efi_status_to_errno(status);
-	return (error);
+	if (efi_runtime == NULL)
+		return (ENXIO);
+	bzero(&ec, sizeof(ec));
+	ec.ec_argcnt = 3;
+	ec.ec_name = "rt_scanvar";
+	ec.ec_arg1 = (uintptr_t)namesize;
+	ec.ec_arg2 = (uintptr_t)name;
+	ec.ec_arg3 = (uintptr_t)vendor;
+	ec.ec_fptr = EFI_RT_METHOD_PA(rt_scanvar);
+	return (efi_call(&ec));
 }
 
 int
 efi_var_set(efi_char *name, struct uuid *vendor, uint32_t attrib,
     size_t datasize, void *data)
 {
-	efi_status status;
-	int error;
+	struct efirt_callinfo ec;
 
-	error = efi_enter();
-	if (error != 0)
-		return (error);
-	status = efi_runtime->rt_setvar(name, vendor, attrib, datasize, data);
-	efi_leave();
-	error = efi_status_to_errno(status);
-	return (error);
+	if (efi_runtime == NULL)
+		return (ENXIO);
+	bzero(&ec, sizeof(ec));
+	ec.ec_argcnt = 5;
+	ec.ec_name = "rt_setvar";
+	ec.ec_arg1 = (uintptr_t)name;
+	ec.ec_arg2 = (uintptr_t)vendor;
+	ec.ec_arg3 = (uintptr_t)attrib;
+	ec.ec_arg4 = (uintptr_t)datasize;
+	ec.ec_arg5 = (uintptr_t)data;
+	ec.ec_fptr = EFI_RT_METHOD_PA(rt_setvar);
+	return (efi_call(&ec));
 }
 
 static int

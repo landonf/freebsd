@@ -1016,6 +1016,7 @@ void oce_free_lro(POCE_SOFTC sc);
  * Mailbox functions
  ************************************************************/
 int oce_fw_clean(POCE_SOFTC sc);
+int oce_wait_ready(POCE_SOFTC sc);
 int oce_reset_fun(POCE_SOFTC sc);
 int oce_mbox_init(POCE_SOFTC sc);
 int oce_mbox_dispatch(POCE_SOFTC sc, uint32_t tmo_sec);
@@ -1187,6 +1188,7 @@ static inline int MPU_EP_SEMAPHORE(POCE_SOFTC sc)
 #define PAGE_NUM_A2 0xa2
 #define IS_QNQ_OR_UMC(sc) ((sc->pvid && (sc->function_mode & FNM_UMC_MODE ))\
 		     || (sc->qnqid && (sc->function_mode & FNM_FLEX10_MODE)))
+extern uint8_t sfp_vpd_dump_buffer[TRANSCEIVER_DATA_SIZE];
 
 struct oce_rdma_info;
 extern struct oce_rdma_if *oce_rdma_if;

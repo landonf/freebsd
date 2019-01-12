@@ -6,6 +6,8 @@ SHLIBDIR?= /lib
 
 .include <src.opts.mk>
 
+# BIND_NOW in libc results in segfault at startup (PR 233333)
+MK_BIND_NOW=	no
 # Force building of libc_pic.a
 MK_TOOLCHAIN=	yes
 
@@ -25,8 +27,10 @@ LIBC_ARCH=${MACHINE_CPUARCH}
 # excluded as a space-saving measure.  To produce a library that does
 # not contain these strings, add -DSTRIP_FBSDID (see <sys/cdefs.h>) to CFLAGS
 # below.  Note: there are no IDs for syscall stubs whose sources are generated.
-# To include legacy CSRG sccsid strings, add -DLIBC_SCCS and -DSYSLIBC_SCCS
-# to CFLAGS below.  -DSYSLIBC_SCCS affects just the system call stubs.
+# To include legacy CSRG SCCS ID strings, remove -DNO__SCCSID from CFLAGS.
+# To include RCS ID strings from other BSD projects, remove -DNO__RCSID from CFLAGS.
+CFLAGS+=-DNO__SCCSID -DNO__RCSID
+
 LIB=c
 SHLIB_MAJOR= 7
 .if ${MK_SSP} != "no"
@@ -43,6 +47,7 @@ CFLAGS+=-DNLS
 .endif
 CLEANFILES+=tags
 INSTALL_PIC_ARCHIVE=
+BUILD_NOSSP_PIC_ARCHIVE=
 PRECIOUSLIB=
 
 .ifndef NO_THREAD_STACK_UNWIND
@@ -178,6 +183,12 @@ SUBDIR.${MK_TESTS}+= tests
 
 .include <bsd.lib.mk>
 
+.if (${LIBC_ARCH} == amd64 || ${LIBC_ARCH} == i386) && \
+    ${.TARGETS:Mall} == all && \
+    defined(LINKER_FEATURES) && ${LINKER_FEATURES:Mifunc} == ""
+.error ${LIBC_ARCH} libc requires linker ifunc support
+.endif
+
 .if !defined(_SKIP_BUILD)
 # We need libutil.h, get it directly to avoid
 # recording a build dependency
@@ -198,10 +209,6 @@ GENDIRDEPS_FILTER+= N${RELDIR:H}/msun
 
 # Disable warnings in contributed sources.
 CWARNFLAGS:=	${.IMPSRC:Ngdtoa_*.c:C/^.+$/${CWARNFLAGS}/:C/^$/-w/}
-# XXX For now, we don't allow libc to be compiled with
-# -fstack-protector-all because it breaks rtld.  We may want to make a librtld
-# in the future to circumvent this.
-SSP_CFLAGS:=	${SSP_CFLAGS:S/^-fstack-protector-all$/-fstack-protector/}
 # Disable stack protection for SSP symbols.
 SSP_CFLAGS:=	${.IMPSRC:N*/stack_protector.c:C/^.+$/${SSP_CFLAGS}/}
 # Generate stack unwinding tables for cancellation points

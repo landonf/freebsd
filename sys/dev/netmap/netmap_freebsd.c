@@ -138,13 +138,13 @@ nm_os_put_module(void)
 static void
 netmap_ifnet_arrival_handler(void *arg __unused, struct ifnet *ifp)
 {
-        netmap_undo_zombie(ifp);
+	netmap_undo_zombie(ifp);
 }
 
 static void
 netmap_ifnet_departure_handler(void *arg __unused, struct ifnet *ifp)
 {
-        netmap_make_zombie(ifp);
+	netmap_make_zombie(ifp);
 }
 
 static eventhandler_tag nm_ifnet_ah_tag;
@@ -153,24 +153,34 @@ static eventhandler_tag nm_ifnet_dh_tag;
 int
 nm_os_ifnet_init(void)
 {
-        nm_ifnet_ah_tag =
-                EVENTHANDLER_REGISTER(ifnet_arrival_event,
-                        netmap_ifnet_arrival_handler,
-                        NULL, EVENTHANDLER_PRI_ANY);
-        nm_ifnet_dh_tag =
-                EVENTHANDLER_REGISTER(ifnet_departure_event,
-                        netmap_ifnet_departure_handler,
-                        NULL, EVENTHANDLER_PRI_ANY);
-        return 0;
+	nm_ifnet_ah_tag =
+		EVENTHANDLER_REGISTER(ifnet_arrival_event,
+				netmap_ifnet_arrival_handler,
+				NULL, EVENTHANDLER_PRI_ANY);
+	nm_ifnet_dh_tag =
+		EVENTHANDLER_REGISTER(ifnet_departure_event,
+				netmap_ifnet_departure_handler,
+				NULL, EVENTHANDLER_PRI_ANY);
+	return 0;
 }
 
 void
 nm_os_ifnet_fini(void)
 {
-        EVENTHANDLER_DEREGISTER(ifnet_arrival_event,
-                nm_ifnet_ah_tag);
-        EVENTHANDLER_DEREGISTER(ifnet_departure_event,
-                nm_ifnet_dh_tag);
+	EVENTHANDLER_DEREGISTER(ifnet_arrival_event,
+			nm_ifnet_ah_tag);
+	EVENTHANDLER_DEREGISTER(ifnet_departure_event,
+			nm_ifnet_dh_tag);
+}
+
+unsigned
+nm_os_ifnet_mtu(struct ifnet *ifp)
+{
+#if __FreeBSD_version < 1100030
+	return ifp->if_data.ifi_mtu;
+#else /* __FreeBSD_version >= 1100030 */
+	return ifp->if_mtu;
+#endif
 }
 
 rawsum_t
@@ -260,11 +270,17 @@ nm_os_send_up(struct ifnet *ifp, struct mbuf *m, struct mbuf *prev)
 }
 
 int
-nm_os_mbuf_has_offld(struct mbuf *m)
+nm_os_mbuf_has_csum_offld(struct mbuf *m)
 {
 	return m->m_pkthdr.csum_flags & (CSUM_TCP | CSUM_UDP | CSUM_SCTP |
 					 CSUM_TCP_IPV6 | CSUM_UDP_IPV6 |
-					 CSUM_SCTP_IPV6 | CSUM_TSO);
+					 CSUM_SCTP_IPV6);
+}
+
+int
+nm_os_mbuf_has_seg_offld(struct mbuf *m)
+{
+	return m->m_pkthdr.csum_flags & CSUM_TSO;
 }
 
 static void
@@ -294,24 +310,30 @@ nm_os_catch_rx(struct netmap_generic_adapter *gna, int intercept)
 {
 	struct netmap_adapter *na = &gna->up.up;
 	struct ifnet *ifp = na->ifp;
+	int ret = 0;
 
+	nm_os_ifnet_lock();
 	if (intercept) {
 		if (gna->save_if_input) {
 			D("cannot intercept again");
-			return EINVAL; /* already set */
+			ret = EINVAL; /* already set */
+			goto out;
 		}
 		gna->save_if_input = ifp->if_input;
 		ifp->if_input = freebsd_generic_rx_handler;
 	} else {
 		if (!gna->save_if_input){
 			D("cannot restore");
-			return EINVAL;  /* not saved */
+			ret = EINVAL;  /* not saved */
+			goto out;
 		}
 		ifp->if_input = gna->save_if_input;
 		gna->save_if_input = NULL;
 	}
+out:
+	nm_os_ifnet_unlock();
 
-	return 0;
+	return ret;
 }
 
 
@@ -327,12 +349,14 @@ nm_os_catch_tx(struct netmap_generic_adapter *gna, int intercept)
 	struct netmap_adapter *na = &gna->up.up;
 	struct ifnet *ifp = netmap_generic_getifp(gna);
 
+	nm_os_ifnet_lock();
 	if (intercept) {
 		na->if_transmit = ifp->if_transmit;
 		ifp->if_transmit = netmap_transmit;
 	} else {
 		ifp->if_transmit = na->if_transmit;
 	}
+	nm_os_ifnet_unlock();
 
 	return 0;
 }
@@ -601,9 +625,119 @@ nm_os_vi_detach(struct ifnet *ifp)
 	if_free(ifp);
 }
 
-/* ======================== PTNETMAP SUPPORT ========================== */
+#ifdef WITH_EXTMEM
+#include <vm/vm_map.h>
+#include <vm/vm_kern.h>
+struct nm_os_extmem {
+	vm_object_t obj;
+	vm_offset_t kva;
+	vm_offset_t size;
+	uintptr_t scan;
+};
 
-#ifdef WITH_PTNETMAP_GUEST
+void
+nm_os_extmem_delete(struct nm_os_extmem *e)
+{
+	D("freeing %zx bytes", (size_t)e->size);
+	vm_map_remove(kernel_map, e->kva, e->kva + e->size);
+	nm_os_free(e);
+}
+
+char *
+nm_os_extmem_nextpage(struct nm_os_extmem *e)
+{
+	char *rv = NULL;
+	if (e->scan < e->kva + e->size) {
+		rv = (char *)e->scan;
+		e->scan += PAGE_SIZE;
+	}
+	return rv;
+}
+
+int
+nm_os_extmem_isequal(struct nm_os_extmem *e1, struct nm_os_extmem *e2)
+{
+	return (e1->obj == e2->obj);
+}
+
+int
+nm_os_extmem_nr_pages(struct nm_os_extmem *e)
+{
+	return e->size >> PAGE_SHIFT;
+}
+
+struct nm_os_extmem *
+nm_os_extmem_create(unsigned long p, struct nmreq_pools_info *pi, int *perror)
+{
+	vm_map_t map;
+	vm_map_entry_t entry;
+	vm_object_t obj;
+	vm_prot_t prot;
+	vm_pindex_t index;
+	boolean_t wired;
+	struct nm_os_extmem *e = NULL;
+	int rv, error = 0;
+
+	e = nm_os_malloc(sizeof(*e));
+	if (e == NULL) {
+		error = ENOMEM;
+		goto out;
+	}
+
+	map = &curthread->td_proc->p_vmspace->vm_map;
+	rv = vm_map_lookup(&map, p, VM_PROT_RW, &entry,
+			&obj, &index, &prot, &wired);
+	if (rv != KERN_SUCCESS) {
+		D("address %lx not found", p);
+		goto out_free;
+	}
+	/* check that we are given the whole vm_object ? */
+	vm_map_lookup_done(map, entry);
+
+	// XXX can we really use obj after releasing the map lock?
+	e->obj = obj;
+	vm_object_reference(obj);
+	/* wire the memory and add the vm_object to the kernel map,
+	 * to make sure that it is not fred even if the processes that
+	 * are mmap()ing it all exit
+	 */
+	e->kva = vm_map_min(kernel_map);
+	e->size = obj->size << PAGE_SHIFT;
+	rv = vm_map_find(kernel_map, obj, 0, &e->kva, e->size, 0,
+			VMFS_OPTIMAL_SPACE, VM_PROT_READ | VM_PROT_WRITE,
+			VM_PROT_READ | VM_PROT_WRITE, 0);
+	if (rv != KERN_SUCCESS) {
+		D("vm_map_find(%zx) failed", (size_t)e->size);
+		goto out_rel;
+	}
+	rv = vm_map_wire(kernel_map, e->kva, e->kva + e->size,
+			VM_MAP_WIRE_SYSTEM | VM_MAP_WIRE_NOHOLES);
+	if (rv != KERN_SUCCESS) {
+		D("vm_map_wire failed");
+		goto out_rem;
+	}
+
+	e->scan = e->kva;
+
+	return e;
+
+out_rem:
+	vm_map_remove(kernel_map, e->kva, e->kva + e->size);
+	e->obj = NULL;
+out_rel:
+	vm_object_deallocate(e->obj);
+out_free:
+	nm_os_free(e);
+out:
+	if (perror)
+		*perror = error;
+	return NULL;
+}
+#endif /* WITH_EXTMEM */
+
+/* ================== PTNETMAP GUEST SUPPORT ==================== */
+
+#ifdef WITH_PTNETMAP
 #include <sys/bus.h>
 #include <sys/rman.h>
 #include <machine/bus.h>        /* bus_dmamap_* */
@@ -798,7 +932,7 @@ ptn_memdev_shutdown(device_t dev)
 	return bus_generic_shutdown(dev);
 }
 
-#endif /* WITH_PTNETMAP_GUEST */
+#endif /* WITH_PTNETMAP */
 
 /*
  * In order to track whether pages are still mapped, we hook into
@@ -814,7 +948,7 @@ struct netmap_vm_handle_t {
 
 static int
 netmap_dev_pager_ctor(void *handle, vm_ooffset_t size, vm_prot_t prot,
-    vm_ooffset_t foff, struct ucred *cred, u_short *color)
+		vm_ooffset_t foff, struct ucred *cred, u_short *color)
 {
 	struct netmap_vm_handle_t *vmh = handle;
 
@@ -1011,8 +1145,8 @@ nm_os_ncpus(void)
 }
 
 struct nm_kctx_ctx {
-	struct thread *user_td;		/* thread user-space (kthread creator) to send ioctl */
-	struct ptnetmap_cfgentry_bhyve	cfg;
+	/* Userspace thread (kthread creator). */
+	struct thread *user_td;
 
 	/* worker function and parameter */
 	nm_kctx_worker_fn_t worker_fn;
@@ -1027,56 +1161,17 @@ struct nm_kctx_ctx {
 struct nm_kctx {
 	struct thread *worker;
 	struct mtx worker_lock;
-	uint64_t scheduled; 		/* pending wake_up request */
 	struct nm_kctx_ctx worker_ctx;
 	int run;			/* used to stop kthread */
 	int attach_user;		/* kthread attached to user_process */
 	int affinity;
 };
 
-void inline
-nm_os_kctx_worker_wakeup(struct nm_kctx *nmk)
-{
-	/*
-	 * There may be a race between FE and BE,
-	 * which call both this function, and worker kthread,
-	 * that reads nmk->scheduled.
-	 *
-	 * For us it is not important the counter value,
-	 * but simply that it has changed since the last
-	 * time the kthread saw it.
-	 */
-	mtx_lock(&nmk->worker_lock);
-	nmk->scheduled++;
-	if (nmk->worker_ctx.cfg.wchan) {
-		wakeup((void *)(uintptr_t)nmk->worker_ctx.cfg.wchan);
-	}
-	mtx_unlock(&nmk->worker_lock);
-}
-
-void inline
-nm_os_kctx_send_irq(struct nm_kctx *nmk)
-{
-	struct nm_kctx_ctx *ctx = &nmk->worker_ctx;
-	int err;
-
-	if (ctx->user_td && ctx->cfg.ioctl_fd > 0) {
-		err = kern_ioctl(ctx->user_td, ctx->cfg.ioctl_fd, ctx->cfg.ioctl_cmd,
-				 (caddr_t)&ctx->cfg.ioctl_data);
-		if (err) {
-			D("kern_ioctl error: %d ioctl parameters: fd %d com %lu data %p",
-				err, ctx->cfg.ioctl_fd, (unsigned long)ctx->cfg.ioctl_cmd,
-				&ctx->cfg.ioctl_data);
-		}
-	}
-}
-
 static void
 nm_kctx_worker(void *data)
 {
 	struct nm_kctx *nmk = data;
 	struct nm_kctx_ctx *ctx = &nmk->worker_ctx;
-	uint64_t old_scheduled = nmk->scheduled;
 
 	if (nmk->affinity >= 0) {
 		thread_lock(curthread);
@@ -1097,30 +1192,8 @@ nm_kctx_worker(void *data)
 			kthread_suspend_check();
 		}
 
-		/*
-		 * if wchan is not defined, we don't have notification
-		 * mechanism and we continually execute worker_fn()
-		 */
-		if (!ctx->cfg.wchan) {
-			ctx->worker_fn(ctx->worker_private, 1); /* worker body */
-		} else {
-			/* checks if there is a pending notification */
-			mtx_lock(&nmk->worker_lock);
-			if (likely(nmk->scheduled != old_scheduled)) {
-				old_scheduled = nmk->scheduled;
-				mtx_unlock(&nmk->worker_lock);
-
-				ctx->worker_fn(ctx->worker_private, 1); /* worker body */
-
-				continue;
-			} else if (nmk->run) {
-				/* wait on event with one second timeout */
-				msleep((void *)(uintptr_t)ctx->cfg.wchan, &nmk->worker_lock,
-					0, "nmk_ev", hz);
-				nmk->scheduled++;
-			}
-			mtx_unlock(&nmk->worker_lock);
-		}
+		/* Continuously execute worker process. */
+		ctx->worker_fn(ctx->worker_private); /* worker body */
 	}
 
 	kthread_exit();
@@ -1133,15 +1206,9 @@ nm_os_kctx_worker_setaff(struct nm_kctx *nmk, int affinity)
 }
 
 struct nm_kctx *
-nm_os_kctx_create(struct nm_kctx_cfg *cfg, unsigned int cfgtype,
-		     void *opaque)
+nm_os_kctx_create(struct nm_kctx_cfg *cfg, void *opaque)
 {
 	struct nm_kctx *nmk = NULL;
-
-	if (cfgtype != PTNETMAP_CFGTYPE_BHYVE) {
-		D("Unsupported cfgtype %u", cfgtype);
-		return NULL;
-	}
 
 	nmk = malloc(sizeof(*nmk),  M_DEVBUF, M_NOWAIT | M_ZERO);
 	if (!nmk)
@@ -1156,11 +1223,6 @@ nm_os_kctx_create(struct nm_kctx_cfg *cfg, unsigned int cfgtype,
 	/* attach kthread to user process (ptnetmap) */
 	nmk->attach_user = cfg->attach_user;
 
-	/* store kick/interrupt configuration */
-	if (opaque) {
-		nmk->worker_ctx.cfg = *((struct ptnetmap_cfgentry_bhyve *)opaque);
-	}
-
 	return nmk;
 }
 
@@ -1170,9 +1232,13 @@ nm_os_kctx_worker_start(struct nm_kctx *nmk)
 	struct proc *p = NULL;
 	int error = 0;
 
-	if (nmk->worker) {
+	/* Temporarily disable this function as it is currently broken
+	 * and causes kernel crashes. The failure can be triggered by
+	 * the "vale_polling_enable_disable" test in ctrl-api-test.c. */
+	return EOPNOTSUPP;
+
+	if (nmk->worker)
 		return EBUSY;
-	}
 
 	/* check if we want to attach kthread to user process */
 	if (nmk->attach_user) {
@@ -1201,15 +1267,14 @@ err:
 void
 nm_os_kctx_worker_stop(struct nm_kctx *nmk)
 {
-	if (!nmk->worker) {
+	if (!nmk->worker)
 		return;
-	}
+
 	/* tell to kthread to exit from main loop */
 	nmk->run = 0;
 
 	/* wake up kthread if it sleeps */
 	kthread_resume(nmk->worker);
-	nm_os_kctx_worker_wakeup(nmk);
 
 	nmk->worker = NULL;
 }
@@ -1219,11 +1284,9 @@ nm_os_kctx_destroy(struct nm_kctx *nmk)
 {
 	if (!nmk)
 		return;
-	if (nmk->worker) {
-		nm_os_kctx_worker_stop(nmk);
-	}
 
-	memset(&nmk->worker_ctx.cfg, 0, sizeof(nmk->worker_ctx.cfg));
+	if (nmk->worker)
+		nm_os_kctx_worker_stop(nmk);
 
 	free(nmk, M_DEVBUF);
 }
@@ -1376,7 +1439,7 @@ netmap_kqfilter(struct cdev *dev, struct knote *kn)
 	kn->kn_fop = (ev == EVFILT_WRITE) ?
 		&netmap_wfiltops : &netmap_rfiltops;
 	kn->kn_hook = priv;
-	knlist_add(&si->si.si_note, kn, 1);
+	knlist_add(&si->si.si_note, kn, 0);
 	// XXX unlock(priv)
 	ND("register %p %s td %p priv %p kn %p np_nifp %p kn_fp/fpop %s",
 		na, na->ifp->if_xname, curthread, priv, kn,
@@ -1397,7 +1460,7 @@ freebsd_netmap_poll(struct cdev *cdevi __unused, int events, struct thread *td)
 
 static int
 freebsd_netmap_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t data,
-        int ffla __unused, struct thread *td)
+		int ffla __unused, struct thread *td)
 {
 	int error;
 	struct netmap_priv_d *priv;
@@ -1411,11 +1474,36 @@ freebsd_netmap_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t data,
 			error = ENXIO;
 		goto out;
 	}
-	error = netmap_ioctl(priv, cmd, data, td);
+	error = netmap_ioctl(priv, cmd, data, td, /*nr_body_is_user=*/1);
 out:
 	CURVNET_RESTORE();
 
 	return error;
+}
+
+void
+nm_os_onattach(struct ifnet *ifp)
+{
+	ifp->if_capabilities |= IFCAP_NETMAP;
+}
+
+void
+nm_os_onenter(struct ifnet *ifp)
+{
+	struct netmap_adapter *na = NA(ifp);
+
+	na->if_transmit = ifp->if_transmit;
+	ifp->if_transmit = netmap_transmit;
+	ifp->if_capenable |= IFCAP_NETMAP;
+}
+
+void
+nm_os_onexit(struct ifnet *ifp)
+{
+	struct netmap_adapter *na = NA(ifp);
+
+	ifp->if_transmit = na->if_transmit;
+	ifp->if_capenable &= ~IFCAP_NETMAP;
 }
 
 extern struct cdevsw netmap_cdevsw; /* XXX used in netmap.c, should go elsewhere */

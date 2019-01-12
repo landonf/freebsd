@@ -90,6 +90,7 @@
 #include <fs/ext2fs/ext2_dir.h>
 #include <fs/ext2fs/ext2_mount.h>
 #include <fs/ext2fs/ext2_extattr.h>
+#include <fs/ext2fs/ext2_extents.h>
 
 static int ext2_makeinode(int mode, struct vnode *, struct vnode **, struct componentname *);
 static void ext2_itimes_locked(struct vnode *);
@@ -419,7 +420,7 @@ ext2_setattr(struct vop_setattr_args *ap)
 		 * Privileged non-jail processes may not modify system flags
 		 * if securelevel > 0 and any existing system flags are set.
 		 */
-		if (!priv_check_cred(cred, PRIV_VFS_SYSFLAGS, 0)) {
+		if (!priv_check_cred(cred, PRIV_VFS_SYSFLAGS)) {
 			if (ip->i_flags & (SF_IMMUTABLE | SF_APPEND)) {
 				error = securelevel_gt(cred, 0);
 				if (error)
@@ -530,12 +531,12 @@ ext2_chmod(struct vnode *vp, int mode, struct ucred *cred, struct thread *td)
 	 * process is not a member of.
 	 */
 	if (vp->v_type != VDIR && (mode & S_ISTXT)) {
-		error = priv_check_cred(cred, PRIV_VFS_STICKYFILE, 0);
+		error = priv_check_cred(cred, PRIV_VFS_STICKYFILE);
 		if (error)
 			return (EFTYPE);
 	}
 	if (!groupmember(ip->i_gid, cred) && (mode & ISGID)) {
-		error = priv_check_cred(cred, PRIV_VFS_SETGID, 0);
+		error = priv_check_cred(cred, PRIV_VFS_SETGID);
 		if (error)
 			return (error);
 	}
@@ -575,7 +576,7 @@ ext2_chown(struct vnode *vp, uid_t uid, gid_t gid, struct ucred *cred,
 	 */
 	if (uid != ip->i_uid || (gid != ip->i_gid &&
 	    !groupmember(gid, cred))) {
-		error = priv_check_cred(cred, PRIV_VFS_CHOWN, 0);
+		error = priv_check_cred(cred, PRIV_VFS_CHOWN);
 		if (error)
 			return (error);
 	}
@@ -585,7 +586,7 @@ ext2_chown(struct vnode *vp, uid_t uid, gid_t gid, struct ucred *cred,
 	ip->i_uid = uid;
 	ip->i_flag |= IN_CHANGE;
 	if ((ip->i_mode & (ISUID | ISGID)) && (ouid != uid || ogid != gid)) {
-		if (priv_check_cred(cred, PRIV_VFS_RETAINSUGID, 0) != 0)
+		if (priv_check_cred(cred, PRIV_VFS_RETAINSUGID) != 0)
 			ip->i_mode &= ~(ISUID | ISGID);
 	}
 	return (0);
@@ -674,19 +675,6 @@ out:
 	return (error);
 }
 
-static unsigned short
-ext2_max_nlink(struct inode *ip)
-{
-	struct m_ext2fs *fs;
-
-	fs = ip->i_e2fs;
-
-	if (EXT2_HAS_RO_COMPAT_FEATURE(fs, EXT2F_ROCOMPAT_DIR_NLINK))
-		return (EXT4_LINK_MAX);
-	else
-		return (EXT2_LINK_MAX);
-}
-
 /*
  * link vnode call
  */
@@ -704,7 +692,7 @@ ext2_link(struct vop_link_args *ap)
 		panic("ext2_link: no name");
 #endif
 	ip = VTOI(vp);
-	if ((nlink_t)ip->i_nlink >= ext2_max_nlink(ip)) {
+	if ((nlink_t)ip->i_nlink >= EXT4_LINK_MAX) {
 		error = EMLINK;
 		goto out;
 	}
@@ -731,10 +719,12 @@ ext2_inc_nlink(struct inode *ip)
 
 	ip->i_nlink++;
 
-	if (ext2_htree_has_idx(ip) && ip->i_nlink > 1) {
-		if (ip->i_nlink >= ext2_max_nlink(ip) || ip->i_nlink == 2)
+	if (S_ISDIR(ip->i_mode) &&
+	    EXT2_HAS_RO_COMPAT_FEATURE(ip->i_e2fs, EXT2F_ROCOMPAT_DIR_NLINK) &&
+	    ip->i_nlink > 1) {
+		if (ip->i_nlink >= EXT4_LINK_MAX || ip->i_nlink == 2)
 			ip->i_nlink = 1;
-	} else if (ip->i_nlink > ext2_max_nlink(ip)) {
+	} else if (ip->i_nlink > EXT4_LINK_MAX) {
 		ip->i_nlink--;
 		return (EMLINK);
 	}
@@ -832,7 +822,8 @@ abortit:
 		goto abortit;
 	dp = VTOI(fdvp);
 	ip = VTOI(fvp);
-	if (ip->i_nlink >= ext2_max_nlink(ip) && !ext2_htree_has_idx(ip)) {
+	if (ip->i_nlink >= EXT4_LINK_MAX &&
+	    !EXT2_HAS_RO_COMPAT_FEATURE(ip->i_e2fs, EXT2F_ROCOMPAT_DIR_NLINK)) {
 		VOP_UNLOCK(fvp, 0);
 		error = EMLINK;
 		goto abortit;
@@ -1090,9 +1081,14 @@ abortit:
 					    "rename: mangled dir");
 				} else {
 					dirbuf->dotdot_ino = newparent;
-					ext2_dir_blk_csum_set_mem(ip,
-					    (char *)dirbuf,
-					    ip->i_e2fs->e2fs_bsize);
+					/*
+					 * dirblock 0 could be htree root,
+					 * try both csum update functions.
+					 */
+					ext2_dirent_csum_set(ip,
+					    (struct ext2fs_direct_2 *)dirbuf);
+					ext2_dx_csum_set(ip,
+					    (struct ext2fs_direct_2 *)dirbuf);
 					(void)vn_rdwr(UIO_WRITE, fvp,
 					    (caddr_t)dirbuf,
 					    ip->i_e2fs->e2fs_bsize,
@@ -1283,14 +1279,6 @@ out:
 
 #endif /* UFS_ACL */
 
-static void
-ext2_init_dirent_tail(struct ext2fs_direct_tail *tp)
-{
-	memset(tp, 0, sizeof(struct ext2fs_direct_tail));
-	tp->e2dt_rec_len = sizeof(struct ext2fs_direct_tail);
-	tp->e2dt_reserved_ft = EXT2_FT_DIR_CSUM;
-}
-
 /*
  * Mkdir system call
  */
@@ -1312,8 +1300,8 @@ ext2_mkdir(struct vop_mkdir_args *ap)
 		panic("ext2_mkdir: no name");
 #endif
 	dp = VTOI(dvp);
-	if ((nlink_t)dp->i_nlink >= ext2_max_nlink(dp) &&
-	    !ext2_htree_has_idx(dp)) {
+	if ((nlink_t)dp->i_nlink >= EXT4_LINK_MAX &&
+	    !EXT2_HAS_RO_COMPAT_FEATURE(dp->i_e2fs, EXT2F_ROCOMPAT_DIR_NLINK)) {
 		error = EMLINK;
 		goto out;
 	}
@@ -1399,7 +1387,7 @@ ext2_mkdir(struct vop_mkdir_args *ap)
 		ext2_init_dirent_tail(EXT2_DIRENT_TAIL(buf, DIRBLKSIZ));
 	}
 	memcpy(buf, &dirtemplate, sizeof(dirtemplate));
-	ext2_dir_blk_csum_set_mem(ip, buf, DIRBLKSIZ);
+	ext2_dirent_csum_set(ip, (struct ext2fs_direct_2 *)buf);
 	error = vn_rdwr(UIO_WRITE, tvp, (caddr_t)buf,
 	    DIRBLKSIZ, (off_t)0, UIO_SYSSPACE,
 	    IO_NODELOCKED | IO_SYNC | IO_NOMACCHECK, cnp->cn_cred, NOCRED,
@@ -1533,8 +1521,8 @@ ext2_symlink(struct vop_symlink_args *ap)
 		ip->i_size = len;
 		ip->i_flag |= IN_CHANGE | IN_UPDATE;
 	} else
-		error = vn_rdwr(UIO_WRITE, vp, ap->a_target, len, (off_t)0,
-		    UIO_SYSSPACE, IO_NODELOCKED | IO_NOMACCHECK,
+		error = vn_rdwr(UIO_WRITE, vp, __DECONST(void *, ap->a_target),
+		    len, (off_t)0, UIO_SYSSPACE, IO_NODELOCKED | IO_NOMACCHECK,
 		    ap->a_cnp->cn_cred, NOCRED, NULL, NULL);
 	if (error)
 		vput(vp);
@@ -1663,10 +1651,11 @@ ext2_pathconf(struct vop_pathconf_args *ap)
 
 	switch (ap->a_name) {
 	case _PC_LINK_MAX:
-		if (ext2_htree_has_idx(VTOI(ap->a_vp)))
+		if (EXT2_HAS_RO_COMPAT_FEATURE(VTOI(ap->a_vp)->i_e2fs,
+		    EXT2F_ROCOMPAT_DIR_NLINK))
 			*ap->a_retval = INT_MAX;
 		else
-			*ap->a_retval = ext2_max_nlink(VTOI(ap->a_vp));
+			*ap->a_retval = EXT4_LINK_MAX;
 		break;
 	case _PC_NAME_MAX:
 		*ap->a_retval = NAME_MAX;
@@ -1931,6 +1920,11 @@ ext2_vinit(struct mount *mntp, struct vop_vector *fifoops, struct vnode **vpp)
 	vp = *vpp;
 	ip = VTOI(vp);
 	vp->v_type = IFTOVT(ip->i_mode);
+	/*
+	 * Only unallocated inodes should be of type VNON.
+	 */
+	if (ip->i_mode != 0 && vp->v_type == VNON)
+		return (EINVAL);
 	if (vp->v_type == VFIFO)
 		vp->v_op = fifoops;
 
@@ -1994,7 +1988,7 @@ ext2_makeinode(int mode, struct vnode *dvp, struct vnode **vpp,
 	tvp->v_type = IFTOVT(mode);	/* Rest init'd in getnewvnode(). */
 	ip->i_nlink = 1;
 	if ((ip->i_mode & ISGID) && !groupmember(ip->i_gid, cnp->cn_cred)) {
-		if (priv_check_cred(cnp->cn_cred, PRIV_VFS_RETAINSUGID, 0))
+		if (priv_check_cred(cnp->cn_cred, PRIV_VFS_RETAINSUGID))
 			ip->i_mode &= ~ISGID;
 	}
 
@@ -2322,7 +2316,7 @@ ext2_write(struct vop_write_args *ap)
 	 */
 	if ((ip->i_mode & (ISUID | ISGID)) && resid > uio->uio_resid &&
 	    ap->a_cred) {
-		if (priv_check_cred(ap->a_cred, PRIV_VFS_RETAINSUGID, 0))
+		if (priv_check_cred(ap->a_cred, PRIV_VFS_RETAINSUGID))
 			ip->i_mode &= ~(ISUID | ISGID);
 	}
 	if (error) {

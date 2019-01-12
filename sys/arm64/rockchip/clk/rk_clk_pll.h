@@ -33,6 +33,16 @@
 
 #include <dev/extres/clk/clk.h>
 
+struct rk_clk_pll_rate {
+	uint32_t	freq;
+	uint32_t	refdiv;
+	uint32_t	fbdiv;
+	uint32_t	postdiv1;
+	uint32_t	postdiv2;
+	uint32_t	dsmpd;
+	uint32_t	frac;
+};
+
 struct rk_clk_pll_def {
 	struct clknode_init_def	clkdef;
 	uint32_t		base_offset;
@@ -40,13 +50,20 @@ struct rk_clk_pll_def {
 	uint32_t		gate_offset;
 	uint32_t		gate_shift;
 
+	uint32_t		mode_reg;
+	uint32_t		mode_val;
+
 	uint32_t		flags;
+
+	struct rk_clk_pll_rate	*rates;
+	struct rk_clk_pll_rate	*frac_rates;
 };
 
 #define	RK_CLK_PLL_HAVE_GATE	0x1
 
 #define	RK_CLK_PLL_MASK	0xFFFF0000
 
-int rk_clk_pll_register(struct clkdom *clkdom, struct rk_clk_pll_def *clkdef);
+int rk3328_clk_pll_register(struct clkdom *clkdom, struct rk_clk_pll_def *clkdef);
+int rk3399_clk_pll_register(struct clkdom *clkdom, struct rk_clk_pll_def *clkdef);
 
 #endif /* _RK_CLK_PLL_H_ */

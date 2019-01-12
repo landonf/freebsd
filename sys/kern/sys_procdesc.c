@@ -209,13 +209,11 @@ out:
 int
 sys_pdgetpid(struct thread *td, struct pdgetpid_args *uap)
 {
-	cap_rights_t rights;
 	pid_t pid;
 	int error;
 
 	AUDIT_ARG_FD(uap->fd);
-	error = kern_pdgetpid(td, uap->fd,
-	    cap_rights_init(&rights, CAP_PDGETPID), &pid);
+	error = kern_pdgetpid(td, uap->fd, &cap_pdgetpid_rights, &pid);
 	if (error == 0)
 		error = copyout(&pid, uap->pidp, sizeof(pid));
 	return (error);
@@ -314,8 +312,8 @@ procdesc_exit(struct proc *p)
 	pd = p->p_procdesc;
 
 	PROCDESC_LOCK(pd);
-	KASSERT((pd->pd_flags & PDF_CLOSED) == 0 || p->p_pptr == initproc,
-	    ("procdesc_exit: closed && parent not init"));
+	KASSERT((pd->pd_flags & PDF_CLOSED) == 0 || p->p_pptr == p->p_reaper,
+	    ("procdesc_exit: closed && parent not reaper"));
 
 	pd->pd_flags |= PDF_EXITED;
 	pd->pd_xstat = KW_EXITCODE(p->p_xexit, p->p_xsig);
@@ -363,7 +361,8 @@ procdesc_reap(struct proc *p)
 /*
  * procdesc_close() - last close on a process descriptor.  If the process is
  * still running, terminate with SIGKILL (unless PDF_DAEMON is set) and let
- * init(8) clean up the mess; if not, we have to clean up the zombie ourselves.
+ * its reaper clean up the mess; if not, we have to clean up the zombie
+ * ourselves.
  */
 static int
 procdesc_close(struct file *fp, struct thread *td)
@@ -412,12 +411,12 @@ procdesc_close(struct file *fp, struct thread *td)
 			procdesc_free(pd);
 
 			/*
-			 * Next, reparent it to init(8) so that there's someone
-			 * to pick up the pieces; finally, terminate with
-			 * prejudice.
+			 * Next, reparent it to its reaper (usually init(8)) so
+			 * that there's someone to pick up the pieces; finally,
+			 * terminate with prejudice.
 			 */
 			p->p_sigparent = SIGCHLD;
-			proc_reparent(p, initproc);
+			proc_reparent(p, p->p_reaper, true);
 			if ((pd->pd_flags & PDF_DAEMON) == 0)
 				kern_psignal(p, SIGKILL);
 			PROC_UNLOCK(p);

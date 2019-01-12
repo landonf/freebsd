@@ -98,6 +98,7 @@ struct pci_device_id {
 #define PCI_DEVFN(slot, func)   ((((slot) & 0x1f) << 3) | ((func) & 0x07))
 #define PCI_SLOT(devfn)		(((devfn) >> 3) & 0x1f)
 #define PCI_FUNC(devfn)		((devfn) & 0x07)
+#define	PCI_BUS_NUM(devfn)	(((devfn) >> 8) & 0xff)
 
 #define PCI_VDEVICE(_vendor, _device)					\
 	    .vendor = PCI_VENDOR_ID_##_vendor, .device = (_device),	\
@@ -600,9 +601,11 @@ pci_enable_msix_range(struct pci_dev *dev, struct msix_entry *entries,
 	return (nvec);
 }
 
-static inline int pci_channel_offline(struct pci_dev *pdev)
+static inline int
+pci_channel_offline(struct pci_dev *pdev)
 {
-	return false;
+
+	return (pci_get_vendor(pdev->dev.bsddev) == 0xffff);
 }
 
 static inline int pci_enable_sriov(struct pci_dev *dev, int nr_virtfn)

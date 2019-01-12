@@ -861,6 +861,8 @@ fe_attach (device_t dev)
 	if (sc->stability & UNSTABLE_TYPE)
 		device_printf(dev, "warning: hardware type was not validated\n");
 
+	gone_by_fcp101_dev(dev);
+
 	return 0;
 }
 
@@ -2076,7 +2078,7 @@ fe_mcaf ( struct fe_softc *sc )
 
 	filter = fe_filter_nothing;
 	if_maddr_rlock(sc->ifp);
-	TAILQ_FOREACH(ifma, &sc->ifp->if_multiaddrs, ifma_link) {
+	CK_STAILQ_FOREACH(ifma, &sc->ifp->if_multiaddrs, ifma_link) {
 		if (ifma->ifma_addr->sa_family != AF_LINK)
 			continue;
 		index = ether_crc32_le(LLADDR((struct sockaddr_dl *)

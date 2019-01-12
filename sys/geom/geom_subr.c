@@ -1050,16 +1050,16 @@ g_handleattr(struct bio *bp, const char *attribute, const void *val, int len)
 		bzero(bp->bio_data, bp->bio_length);
 		if (strlcpy(bp->bio_data, val, bp->bio_length) >=
 		    bp->bio_length) {
-			printf("%s: %s bio_length %jd len %zu -> EFAULT\n",
-			    __func__, bp->bio_to->name,
+			printf("%s: %s %s bio_length %jd strlen %zu -> EFAULT\n",
+			    __func__, bp->bio_to->name, attribute,
 			    (intmax_t)bp->bio_length, strlen(val));
 			error = EFAULT;
 		}
 	} else if (bp->bio_length == len) {
 		bcopy(val, bp->bio_data, len);
 	} else {
-		printf("%s: %s bio_length %jd len %d -> EFAULT\n", __func__,
-		    bp->bio_to->name, (intmax_t)bp->bio_length, len);
+		printf("%s: %s %s bio_length %jd len %d -> EFAULT\n", __func__,
+		    bp->bio_to->name, attribute, (intmax_t)bp->bio_length, len);
 		error = EFAULT;
 	}
 	if (error == 0)
@@ -1409,8 +1409,8 @@ db_show_geom_provider(int indent, struct g_provider *pp)
 		gprintln("  geom:         %s (%p)", pp->geom->name, pp->geom);
 		gprintln("  mediasize:    %jd", (intmax_t)pp->mediasize);
 		gprintln("  sectorsize:   %u", pp->sectorsize);
-		gprintln("  stripesize:   %u", pp->stripesize);
-		gprintln("  stripeoffset: %u", pp->stripeoffset);
+		gprintln("  stripesize:   %ju", (uintmax_t)pp->stripesize);
+		gprintln("  stripeoffset: %ju", (uintmax_t)pp->stripeoffset);
 		gprintln("  access:       r%dw%de%d", pp->acr, pp->acw,
 		    pp->ace);
 		gprintln("  flags:        %s (0x%04x)",

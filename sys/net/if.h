@@ -162,6 +162,9 @@ struct if_data {
 #define	IFF_STATICARP	0x80000		/* (n) static ARP */
 #define	IFF_DYING	0x200000	/* (n) interface is winding down */
 #define	IFF_RENAMING	0x400000	/* (n) interface is being renamed */
+#define	IFF_NOGROUP	0x800000	/* (n) interface is not part of any groups */
+
+
 /*
  * Old names for driver flags so that user space tools can continue to use
  * the old (portable) names.
@@ -268,6 +271,7 @@ struct if_msghdr {
 	int	ifm_addrs;	/* like rtm_addrs */
 	int	ifm_flags;	/* value of if_flags */
 	u_short	ifm_index;	/* index for associated ifp */
+	u_short	_ifm_spare1;
 	struct	if_data ifm_data;/* statistics and other data about if */
 };
 
@@ -293,6 +297,7 @@ struct if_msghdrl {
 	u_short _ifm_spare1;	/* spare space to grow if_index, see if_var.h */
 	u_short	ifm_len;	/* length of if_msghdrl incl. if_data */
 	u_short	ifm_data_off;	/* offset of if_data from beginning */
+	int	_ifm_spare2;
 	struct	if_data ifm_data;/* statistics and other data about if */
 };
 
@@ -308,6 +313,7 @@ struct ifa_msghdr {
 	int	ifam_addrs;	/* like rtm_addrs */
 	int	ifam_flags;	/* value of ifa_flags */
 	u_short	ifam_index;	/* index for associated ifp */
+	u_short	_ifam_spare1;
 	int	ifam_metric;	/* value of ifa_ifp->if_metric */
 };
 
@@ -349,6 +355,7 @@ struct ifma_msghdr {
 	int	ifmam_addrs;	/* like rtm_addrs */
 	int	ifmam_flags;	/* value of ifa_flags */
 	u_short	ifmam_index;	/* index for associated ifp */
+	u_short	_ifmam_spare1;
 };
 
 /*
@@ -412,7 +419,9 @@ struct	ifreq {
 #define	ifr_mtu		ifr_ifru.ifru_mtu	/* mtu */
 #define ifr_phys	ifr_ifru.ifru_phys	/* physical wire */
 #define ifr_media	ifr_ifru.ifru_media	/* physical media */
+#ifndef _KERNEL
 #define	ifr_data	ifr_ifru.ifru_data	/* for use by interface */
+#endif
 #define	ifr_reqcap	ifr_ifru.ifru_cap[0]	/* requested capabilities */
 #define	ifr_curcap	ifr_ifru.ifru_cap[1]	/* current capabilities */
 #define	ifr_index	ifr_ifru.ifru_index	/* interface index */
@@ -515,8 +524,10 @@ struct ifgroupreq {
 		char	ifgru_group[IFNAMSIZ];
 		struct	ifg_req *ifgru_groups;
 	} ifgr_ifgru;
+#ifndef _KERNEL
 #define ifgr_group	ifgr_ifgru.ifgru_group
 #define ifgr_groups	ifgr_ifgru.ifgru_groups
+#endif
 };
 
 /*

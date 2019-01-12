@@ -563,11 +563,7 @@ INTERRUPT(int_instr_storage)
 INTERRUPT(int_external_input)
 	STANDARD_PROLOG(SPR_SPRG1, PC_TEMPSAVE, SPR_SRR0, SPR_SRR1)
 	FRAME_SETUP(SPR_SPRG1, PC_TEMPSAVE, EXC_EXI)
-	GET_TOCBASE(%r2)
-	addi	%r3, %r1, CALLSIZE
-	bl	CNAME(powerpc_interrupt)
-	TOC_RESTORE
-	b	trapexit
+	b	trap_common
 
 
 INTERRUPT(int_alignment)
@@ -603,11 +599,7 @@ INTERRUPT(int_syscall)
 INTERRUPT(int_decrementer)
 	STANDARD_PROLOG(SPR_SPRG1, PC_TEMPSAVE, SPR_SRR0, SPR_SRR1)
 	FRAME_SETUP(SPR_SPRG1, PC_TEMPSAVE, EXC_DECR)
-	GET_TOCBASE(%r2)
-	addi	%r3, %r1, CALLSIZE
-	bl	CNAME(powerpc_interrupt)
-	TOC_RESTORE
-	b	trapexit
+	b	trap_common
 
 
 /*****************************************************************************
@@ -646,6 +638,28 @@ INTERRUPT(int_vecast)
 	b	trap_common
 
 
+#ifdef __SPE__
+/*****************************************************************************
+ * Floating point Assist interrupt
+ ****************************************************************************/
+INTERRUPT(int_spe_fpdata)
+	STANDARD_PROLOG(SPR_SPRG1, PC_TEMPSAVE, SPR_SRR0, SPR_SRR1)
+	FRAME_SETUP(SPR_SPRG1, PC_TEMPSAVE, EXC_SPFPD)
+	addi	%r3, %r1, CALLSIZE
+	bl	spe_handle_fpdata
+	FRAME_LEAVE(SPR_SRR0, SPR_SRR1)
+	rfi
+
+INTERRUPT(int_spe_fpround)
+	STANDARD_PROLOG(SPR_SPRG1, PC_TEMPSAVE, SPR_SRR0, SPR_SRR1)
+	FRAME_SETUP(SPR_SPRG1, PC_TEMPSAVE, EXC_SPFPR)
+	addi	%r3, %r1, CALLSIZE
+	bl	spe_handle_fpround
+	FRAME_LEAVE(SPR_SRR0, SPR_SRR1)
+	rfi
+#endif
+
+
 #ifdef HWPMC_HOOKS
 /*****************************************************************************
  * PMC Interrupt
@@ -653,11 +667,7 @@ INTERRUPT(int_vecast)
 INTERRUPT(int_performance_counter)
 	STANDARD_PROLOG(SPR_SPRG3, PC_TEMPSAVE, SPR_SRR0, SPR_SRR1)
 	FRAME_SETUP(SPR_SPRG3, PC_TEMPSAVE, EXC_PERF)
-	GET_TOCBASE(%r2)
-	addi	%r3, %r1, CALLSIZE
-	bl	CNAME(powerpc_interrupt)
-	TOC_RESTORE
-	b	trapexit
+	b	trap_common
 #endif
 
 
@@ -1002,7 +1012,7 @@ trap_common:
 	/* Call C trap dispatcher */
 	GET_TOCBASE(%r2)
 	addi	%r3, %r1, CALLSIZE
-	bl	CNAME(trap)
+	bl	CNAME(powerpc_interrupt)
 	TOC_RESTORE
 
 	.globl	CNAME(trapexit)		/* exported for db_backtrace use */

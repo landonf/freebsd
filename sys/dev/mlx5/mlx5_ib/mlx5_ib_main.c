@@ -50,9 +50,11 @@
 #include <dev/mlx5/fs.h>
 #include "mlx5_ib.h"
 
-#define DRIVER_NAME "mlx5_ib"
-#define DRIVER_VERSION "3.4.1-BETA"
-#define DRIVER_RELDATE	"October 2017"
+#define DRIVER_NAME "mlx5ib"
+#ifndef DRIVER_VERSION
+#define DRIVER_VERSION "3.5.0"
+#endif
+#define DRIVER_RELDATE	"November 2018"
 
 MODULE_DESCRIPTION("Mellanox Connect-IB HCA IB driver");
 MODULE_LICENSE("Dual BSD/GPL");
@@ -65,8 +67,8 @@ static int deprecated_prof_sel = 2;
 module_param_named(prof_sel, deprecated_prof_sel, int, 0444);
 MODULE_PARM_DESC(prof_sel, "profile selector. Deprecated here. Moved to module mlx5_core");
 
-static char mlx5_version[] =
-	DRIVER_NAME ": Mellanox Connect-IB Infiniband driver v"
+static const char mlx5_version[] =
+	DRIVER_NAME ": Mellanox Connect-IB Infiniband driver "
 	DRIVER_VERSION " (" DRIVER_RELDATE ")\n";
 
 enum {
@@ -217,6 +219,8 @@ static int translate_eth_proto_oper(u32 eth_proto_oper, u8 *active_speed,
 		*active_speed = IB_SPEED_EDR;
 		break;
 	default:
+		*active_width = IB_WIDTH_4X;
+		*active_speed = IB_SPEED_QDR;
 		return -EINVAL;
 	}
 
@@ -285,14 +289,16 @@ static void ib_gid_to_mlx5_roce_addr(const union ib_gid *gid,
 					       source_l3_address);
 	void *mlx5_addr_mac	= MLX5_ADDR_OF(roce_addr_layout, mlx5_addr,
 					       source_mac_47_32);
+	u16 vlan_id;
 
 	if (!gid)
 		return;
 	ether_addr_copy(mlx5_addr_mac, IF_LLADDR(attr->ndev));
 
-	if (is_vlan_dev(attr->ndev)) {
+	vlan_id = rdma_vlan_dev_vlan_id(attr->ndev);
+	if (vlan_id != 0xffff) {
 		MLX5_SET_RA(mlx5_addr, vlan_valid, 1);
-		MLX5_SET_RA(mlx5_addr, vlan_id, vlan_dev_vlan_id(attr->ndev));
+		MLX5_SET_RA(mlx5_addr, vlan_id, vlan_id);
 	}
 
 	switch (attr->gid_type) {
@@ -376,6 +382,27 @@ __be16 mlx5_get_roce_udp_sport(struct mlx5_ib_dev *dev, u8 port_num,
 		return 0;
 
 	return cpu_to_be16(MLX5_CAP_ROCE(dev->mdev, r_roce_min_src_udp_port));
+}
+
+int mlx5_get_roce_gid_type(struct mlx5_ib_dev *dev, u8 port_num,
+			   int index, enum ib_gid_type *gid_type)
+{
+	struct ib_gid_attr attr;
+	union ib_gid gid;
+	int ret;
+
+	ret = ib_get_cached_gid(&dev->ib_dev, port_num, index, &gid, &attr);
+	if (ret)
+		return ret;
+
+	if (!attr.ndev)
+		return -ENODEV;
+
+	dev_put(attr.ndev);
+
+	*gid_type = attr.gid_type;
+
+	return 0;
 }
 
 static int mlx5_use_mad_ifc(struct mlx5_ib_dev *dev)
@@ -580,7 +607,7 @@ static int mlx5_ib_query_device(struct ib_device *ibdev,
 		return err;
 
 	props->fw_ver = ((u64)fw_rev_maj(dev->mdev) << 32) |
-		(fw_rev_min(dev->mdev) << 16) |
+		((u32)fw_rev_min(dev->mdev) << 16) |
 		fw_rev_sub(dev->mdev);
 	props->device_cap_flags    = IB_DEVICE_CHANGE_PHY_PORT |
 		IB_DEVICE_PORT_ACTIVE_EVENT		|
@@ -2310,7 +2337,7 @@ static void mlx5_ib_event(struct mlx5_core_dev *dev, void *context,
 	struct mlx5_ib_dev *ibdev = (struct mlx5_ib_dev *)context;
 	struct ib_event ibev;
 	bool fatal = false;
-	u8 port = 0;
+	u8 port = (u8)param;
 
 	switch (event) {
 	case MLX5_DEV_EVENT_SYS_ERROR:
@@ -2322,8 +2349,6 @@ static void mlx5_ib_event(struct mlx5_core_dev *dev, void *context,
 	case MLX5_DEV_EVENT_PORT_UP:
 	case MLX5_DEV_EVENT_PORT_DOWN:
 	case MLX5_DEV_EVENT_PORT_INITIALIZED:
-		port = (u8)param;
-
 		/* In RoCE, port up/down events are handled in
 		 * mlx5_netdev_event().
 		 */
@@ -2337,35 +2362,32 @@ static void mlx5_ib_event(struct mlx5_core_dev *dev, void *context,
 
 	case MLX5_DEV_EVENT_LID_CHANGE:
 		ibev.event = IB_EVENT_LID_CHANGE;
-		port = (u8)param;
 		break;
 
 	case MLX5_DEV_EVENT_PKEY_CHANGE:
 		ibev.event = IB_EVENT_PKEY_CHANGE;
-		port = (u8)param;
 
 		schedule_work(&ibdev->devr.ports[port - 1].pkey_change_work);
 		break;
 
 	case MLX5_DEV_EVENT_GUID_CHANGE:
 		ibev.event = IB_EVENT_GID_CHANGE;
-		port = (u8)param;
 		break;
 
 	case MLX5_DEV_EVENT_CLIENT_REREG:
 		ibev.event = IB_EVENT_CLIENT_REREGISTER;
-		port = (u8)param;
 		break;
 
 	default:
-		break;
+		/* unsupported event */
+		return;
 	}
 
 	ibev.device	      = &ibdev->ib_dev;
 	ibev.element.port_num = port;
 
-	if (port < 1 || port > ibdev->num_ports) {
-		mlx5_ib_warn(ibdev, "warning: event on port %d\n", port);
+	if (!rdma_is_port_valid(&ibdev->ib_dev, port)) {
+		mlx5_ib_warn(ibdev, "warning: event(%d) on port %d\n", event, port);
 		return;
 	}
 
@@ -2771,7 +2793,7 @@ static int mlx5_enable_roce(struct mlx5_ib_dev *dev)
 	VNET_FOREACH(vnet_iter) {
 		IFNET_RLOCK();
 		CURVNET_SET_QUIET(vnet_iter);
-		TAILQ_FOREACH(idev, &V_ifnet, if_link) {
+		CK_STAILQ_FOREACH(idev, &V_ifnet, if_link) {
 			/* check if network interface belongs to mlx5en */
 			if (!mlx5_netdev_match(idev, dev->mdev, "mce"))
 				continue;
@@ -2934,7 +2956,6 @@ static void *mlx5_ib_add(struct mlx5_core_dev *mdev)
 	struct mlx5_ib_dev *dev;
 	enum rdma_link_layer ll;
 	int port_type_cap;
-	const char *name;
 	int err;
 	int i;
 
@@ -2943,8 +2964,6 @@ static void *mlx5_ib_add(struct mlx5_core_dev *mdev)
 
 	if ((ll == IB_LINK_LAYER_ETHERNET) && !MLX5_CAP_GEN(mdev, roce))
 		return NULL;
-
-	printk_once(KERN_INFO "%s", mlx5_version);
 
 	dev = (struct mlx5_ib_dev *)ib_alloc_device(sizeof(*dev));
 	if (!dev)
@@ -2967,9 +2986,7 @@ static void *mlx5_ib_add(struct mlx5_core_dev *mdev)
 
 	MLX5_INIT_DOORBELL_LOCK(&dev->uar_lock);
 
-	name = "mlx5_%d";
-
-	strlcpy(dev->ib_dev.name, name, IB_DEVICE_NAME_MAX);
+	snprintf(dev->ib_dev.name, IB_DEVICE_NAME_MAX, "mlx5_%d", device_get_unit(mdev->pdev->dev.bsddev));
 	dev->ib_dev.owner		= THIS_MODULE;
 	dev->ib_dev.node_type		= RDMA_NODE_IB_CA;
 	dev->ib_dev.local_dma_lkey	= 0 /* not supported for now */;
@@ -3241,6 +3258,14 @@ static void __exit mlx5_ib_cleanup(void)
 	mlx5_unregister_interface(&mlx5_ib_interface);
 	mlx5_ib_odp_cleanup();
 }
+
+static void
+mlx5_ib_show_version(void __unused *arg)
+{
+
+	printf("%s", mlx5_version);
+}
+SYSINIT(mlx5_ib_show_version, SI_SUB_DRIVERS, SI_ORDER_ANY, mlx5_ib_show_version, NULL);
 
 module_init_order(mlx5_ib_init, SI_ORDER_THIRD);
 module_exit_order(mlx5_ib_cleanup, SI_ORDER_THIRD);

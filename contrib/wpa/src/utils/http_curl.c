@@ -26,6 +26,9 @@
 #include "common.h"
 #include "xml-utils.h"
 #include "http-utils.h"
+#ifdef EAP_TLS_OPENSSL
+#include "crypto/tls_openssl.h"
+#endif /* EAP_TLS_OPENSSL */
 
 
 struct http_ctx {
@@ -421,6 +424,28 @@ ASN1_SEQUENCE(LogotypeExtn) = {
 
 IMPLEMENT_ASN1_FUNCTIONS(LogotypeExtn);
 
+#ifdef OPENSSL_IS_BORINGSSL
+#define sk_LogotypeInfo_num(st) \
+sk_num(CHECKED_CAST(_STACK *, STACK_OF(LogotypeInfo) *, (st)))
+#define sk_LogotypeInfo_value(st, i) (LogotypeInfo *) \
+sk_value(CHECKED_CAST(_STACK *, const STACK_OF(LogotypeInfo) *, (st)), (i))
+#define sk_LogotypeImage_num(st) \
+sk_num(CHECKED_CAST(_STACK *, STACK_OF(LogotypeImage) *, (st)))
+#define sk_LogotypeImage_value(st, i) (LogotypeImage *) \
+sk_value(CHECKED_CAST(_STACK *, const STACK_OF(LogotypeImage) *, (st)), (i))
+#define sk_LogotypeAudio_num(st) \
+sk_num(CHECKED_CAST(_STACK *, STACK_OF(LogotypeAudio) *, (st)))
+#define sk_LogotypeAudio_value(st, i) (LogotypeAudio *) \
+sk_value(CHECK_CAST(_STACK *, const STACK_OF(LogotypeAudio) *, (st)), (i))
+#define sk_HashAlgAndValue_num(st) \
+sk_num(CHECKED_CAST(_STACK *, STACK_OF(HashAlgAndValue) *, (st)))
+#define sk_HashAlgAndValue_value(st, i) (HashAlgAndValue *) \
+sk_value(CHECKED_CAST(_STACK *, const STACK_OF(HashAlgAndValue) *, (st)), (i))
+#define sk_ASN1_IA5STRING_num(st) \
+sk_num(CHECKED_CAST(_STACK *, STACK_OF(ASN1_IA5STRING) *, (st)))
+#define sk_ASN1_IA5STRING_value(st, i) (ASN1_IA5STRING *) \
+sk_value(CHECKED_CAST(_STACK *, const STACK_OF(ASN1_IA5STRING) *, (st)), (i))
+#else /* OPENSSL_IS_BORINGSSL */
 #define sk_LogotypeInfo_num(st) SKM_sk_num(LogotypeInfo, (st))
 #define sk_LogotypeInfo_value(st, i) SKM_sk_value(LogotypeInfo, (st), (i))
 #define sk_LogotypeImage_num(st) SKM_sk_num(LogotypeImage, (st))
@@ -431,6 +456,7 @@ IMPLEMENT_ASN1_FUNCTIONS(LogotypeExtn);
 #define sk_HashAlgAndValue_value(st, i) SKM_sk_value(HashAlgAndValue, (st), (i))
 #define sk_ASN1_IA5STRING_num(st) SKM_sk_num(ASN1_IA5STRING, (st))
 #define sk_ASN1_IA5STRING_value(st, i) SKM_sk_value(ASN1_IA5STRING, (st), (i))
+#endif /* OPENSSL_IS_BORINGSSL */
 
 
 static void add_logo(struct http_ctx *ctx, struct http_cert *hcert,
@@ -460,12 +486,11 @@ static void add_logo(struct http_ctx *ctx, struct http_cert *hcert,
 		return;
 
 	n->hash_len = ASN1_STRING_length(hash->hashValue);
-	n->hash = os_malloc(n->hash_len);
+	n->hash = os_memdup(ASN1_STRING_data(hash->hashValue), n->hash_len);
 	if (n->hash == NULL) {
 		os_free(n->alg_oid);
 		return;
 	}
-	os_memcpy(n->hash, ASN1_STRING_data(hash->hashValue), n->hash_len);
 
 	len = ASN1_STRING_length(uri);
 	n->uri = os_malloc(len + 1);
@@ -618,13 +643,25 @@ static void i2r_LogotypeImageInfo(LogotypeImageInfo *info, BIO *out, int indent)
 	} else {
 		BIO_printf(out, "%*stype: default (1)\n", indent, "");
 	}
+	val = ASN1_INTEGER_get(info->fileSize);
+	BIO_printf(out, "%*sfileSize: %ld\n", indent, "", val);
 	val = ASN1_INTEGER_get(info->xSize);
 	BIO_printf(out, "%*sxSize: %ld\n", indent, "", val);
 	val = ASN1_INTEGER_get(info->ySize);
 	BIO_printf(out, "%*sySize: %ld\n", indent, "", val);
 	if (info->resolution) {
-		BIO_printf(out, "%*sresolution\n", indent, "");
-		/* TODO */
+		BIO_printf(out, "%*sresolution [%d]\n", indent, "",
+			   info->resolution->type);
+		switch (info->resolution->type) {
+		case 0:
+			val = ASN1_INTEGER_get(info->resolution->d.numBits);
+			BIO_printf(out, "%*snumBits: %ld\n", indent, "", val);
+			break;
+		case 1:
+			val = ASN1_INTEGER_get(info->resolution->d.tableSize);
+			BIO_printf(out, "%*stableSize: %ld\n", indent, "", val);
+			break;
+		}
 	}
 	if (info->language) {
 		BIO_printf(out, "%*slanguage: ", indent, "");
@@ -949,7 +986,7 @@ static int curl_cb_ssl_verify(int preverify_ok, X509_STORE_CTX *x509_ctx)
 
 	ssl = X509_STORE_CTX_get_ex_data(x509_ctx,
 					 SSL_get_ex_data_X509_STORE_CTX_idx());
-	ssl_ctx = ssl->ctx;
+	ssl_ctx = SSL_get_SSL_CTX(ssl);
 	ctx = SSL_CTX_get_app_data(ssl_ctx);
 
 	wpa_printf(MSG_DEBUG, "curl_cb_ssl_verify, preverify_ok: %d",
@@ -980,6 +1017,26 @@ static int curl_cb_ssl_verify(int preverify_ok, X509_STORE_CTX *x509_ctx)
 
 	if (depth == 0 && preverify_ok && validate_server_cert(ctx, cert) < 0)
 		return 0;
+
+#ifdef OPENSSL_IS_BORINGSSL
+	if (depth == 0 && ctx->ocsp != NO_OCSP && preverify_ok) {
+		enum ocsp_result res;
+
+		res = check_ocsp_resp(ssl_ctx, ssl, cert, ctx->peer_issuer,
+				      ctx->peer_issuer_issuer);
+		if (res == OCSP_REVOKED) {
+			preverify_ok = 0;
+			wpa_printf(MSG_INFO, "OCSP: certificate revoked");
+			if (err == X509_V_OK)
+				X509_STORE_CTX_set_error(
+					x509_ctx, X509_V_ERR_CERT_REVOKED);
+		} else if (res != OCSP_GOOD && (ctx->ocsp == MANDATORY_OCSP)) {
+			preverify_ok = 0;
+			wpa_printf(MSG_INFO,
+				   "OCSP: bad certificate status response");
+		}
+	}
+#endif /* OPENSSL_IS_BORINGSSL */
 
 	if (!preverify_ok)
 		ctx->last_err = "TLS validation failed";
@@ -1037,7 +1094,7 @@ static int ocsp_resp_cb(SSL *s, void *arg)
 {
 	struct http_ctx *ctx = arg;
 	const unsigned char *p;
-	int len, status, reason;
+	int len, status, reason, res;
 	OCSP_RESPONSE *rsp;
 	OCSP_BASICRESP *basic;
 	OCSP_CERTID *id;
@@ -1142,20 +1199,40 @@ static int ocsp_resp_cb(SSL *s, void *arg)
 		return 0;
 	}
 
-	id = OCSP_cert_to_id(NULL, ctx->peer_cert, ctx->peer_issuer);
+	id = OCSP_cert_to_id(EVP_sha256(), ctx->peer_cert, ctx->peer_issuer);
 	if (!id) {
-		wpa_printf(MSG_DEBUG, "OpenSSL: Could not create OCSP certificate identifier");
+		wpa_printf(MSG_DEBUG,
+			   "OpenSSL: Could not create OCSP certificate identifier (SHA256)");
 		OCSP_BASICRESP_free(basic);
 		OCSP_RESPONSE_free(rsp);
 		ctx->last_err = "Could not create OCSP certificate identifier";
 		return 0;
 	}
 
-	if (!OCSP_resp_find_status(basic, id, &status, &reason, &produced_at,
-				   &this_update, &next_update)) {
+	res = OCSP_resp_find_status(basic, id, &status, &reason, &produced_at,
+				    &this_update, &next_update);
+	if (!res) {
+		id = OCSP_cert_to_id(NULL, ctx->peer_cert, ctx->peer_issuer);
+		if (!id) {
+			wpa_printf(MSG_DEBUG,
+				   "OpenSSL: Could not create OCSP certificate identifier (SHA1)");
+			OCSP_BASICRESP_free(basic);
+			OCSP_RESPONSE_free(rsp);
+			ctx->last_err =
+				"Could not create OCSP certificate identifier";
+			return 0;
+		}
+
+		res = OCSP_resp_find_status(basic, id, &status, &reason,
+					    &produced_at, &this_update,
+					    &next_update);
+	}
+
+	if (!res) {
 		wpa_printf(MSG_INFO, "OpenSSL: Could not find current server certificate from OCSP response%s",
 			   (ctx->ocsp == MANDATORY_OCSP) ? "" :
 			   " (OCSP not required)");
+		OCSP_CERTID_free(id);
 		OCSP_BASICRESP_free(basic);
 		OCSP_RESPONSE_free(rsp);
 		if (ctx->ocsp == MANDATORY_OCSP)
@@ -1163,6 +1240,7 @@ static int ocsp_resp_cb(SSL *s, void *arg)
 			ctx->last_err = "Could not find current server certificate from OCSP response";
 		return (ctx->ocsp == MANDATORY_OCSP) ? 0 : 1;
 	}
+	OCSP_CERTID_free(id);
 
 	if (!OCSP_check_validity(this_update, next_update, 5 * 60, -1)) {
 		tls_show_errors(__func__, "OpenSSL: OCSP status times invalid");
@@ -1273,6 +1351,16 @@ static CURL * setup_curl_post(struct http_ctx *ctx, const char *address,
 #ifdef EAP_TLS_OPENSSL
 		curl_easy_setopt(curl, CURLOPT_SSL_CTX_FUNCTION, curl_cb_ssl);
 		curl_easy_setopt(curl, CURLOPT_SSL_CTX_DATA, ctx);
+#ifdef OPENSSL_IS_BORINGSSL
+		/* For now, using the CURLOPT_SSL_VERIFYSTATUS option only
+		 * with BoringSSL since the OpenSSL specific callback hack to
+		 * enable OCSP is not available with BoringSSL. The OCSP
+		 * implementation within libcurl is not sufficient for the
+		 * Hotspot 2.0 OSU needs, so cannot use this with OpenSSL.
+		 */
+		if (ctx->ocsp != NO_OCSP)
+			curl_easy_setopt(curl, CURLOPT_SSL_VERIFYSTATUS, 1L);
+#endif /* OPENSSL_IS_BORINGSSL */
 #endif /* EAP_TLS_OPENSSL */
 	} else {
 		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);

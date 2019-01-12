@@ -197,10 +197,13 @@ int
 rk_cru_attach(device_t dev)
 {
 	struct rk_cru_softc *sc;
+	phandle_t node;
 	int	i;
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
+
+	node = ofw_bus_get_node(dev);
 
 	if (bus_alloc_resources(dev, rk_cru_spec, &sc->res) != 0) {
 		device_printf(dev, "cannot allocate resources for device\n");
@@ -217,8 +220,11 @@ rk_cru_attach(device_t dev)
 		switch (sc->clks[i].type) {
 		case RK_CLK_UNDEFINED:
 			break;
-		case RK_CLK_PLL:
-			rk_clk_pll_register(sc->clkdom, sc->clks[i].clk.pll);
+		case RK3328_CLK_PLL:
+			rk3328_clk_pll_register(sc->clkdom, sc->clks[i].clk.pll);
+			break;
+		case RK3399_CLK_PLL:
+			rk3399_clk_pll_register(sc->clkdom, sc->clks[i].clk.pll);
 			break;
 		case RK_CLK_COMPOSITE:
 			rk_clk_composite_register(sc->clkdom,
@@ -226,6 +232,9 @@ rk_cru_attach(device_t dev)
 			break;
 		case RK_CLK_MUX:
 			rk_clk_mux_register(sc->clkdom, sc->clks[i].clk.mux);
+			break;
+		case RK_CLK_ARMCLK:
+			rk_clk_armclk_register(sc->clkdom, sc->clks[i].clk.armclk);
 			break;
 		default:
 			device_printf(dev, "Unknown clock type\n");
@@ -241,6 +250,8 @@ rk_cru_attach(device_t dev)
 
 	if (bootverbose)
 		clkdom_dump(sc->clkdom);
+
+	clk_set_assigned(dev, node);
 
 	/* If we have resets, register our self as a reset provider */
 	if (sc->resets)

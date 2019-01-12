@@ -62,14 +62,14 @@ extern void ixgbe_if_enable_intr(if_ctx_t ctx);
 static int ixgbe_determine_rsstype(u16 pkt_info);
 
 struct if_txrx ixgbe_txrx  = {
-	ixgbe_isc_txd_encap,
-	ixgbe_isc_txd_flush,
-	ixgbe_isc_txd_credits_update,
-	ixgbe_isc_rxd_available,
-	ixgbe_isc_rxd_pkt_get,
-	ixgbe_isc_rxd_refill,
-	ixgbe_isc_rxd_flush,
-	NULL
+	.ift_txd_encap = ixgbe_isc_txd_encap,
+	.ift_txd_flush = ixgbe_isc_txd_flush,
+	.ift_txd_credits_update = ixgbe_isc_txd_credits_update,
+	.ift_rxd_available = ixgbe_isc_rxd_available,
+	.ift_rxd_pkt_get = ixgbe_isc_rxd_pkt_get,
+	.ift_rxd_refill = ixgbe_isc_rxd_refill,
+	.ift_rxd_flush = ixgbe_isc_rxd_flush,
+	.ift_legacy_intr = NULL
 };
 
 extern if_shared_ctx_t ixgbe_sctx;
@@ -217,6 +217,7 @@ ixgbe_isc_txd_encap(void *arg, if_pkt_info_t pi)
 	}
 
 	olinfo_status |= IXGBE_ADVTXD_CC;
+	pidx_last = 0;
 	for (j = 0; j < nsegs; j++) {
 		bus_size_t seglen;
 
@@ -284,13 +285,20 @@ ixgbe_isc_txd_credits_update(void *arg, uint16_t txqid, bool clear)
 	status = txr->tx_base[cur].wb.status;
 	updated = !!(status & IXGBE_TXD_STAT_DD);
 
-	if (clear == false || updated == 0)
-		return (updated);
+	if (!updated)
+		return (0);
+
+	/* If clear is false just let caller know that there
+	 * are descriptors to reclaim */
+	if (!clear)
+		return (1);
 
 	prev = txr->tx_cidx_processed;
 	ntxd = scctx->isc_ntxd[0];
 	do {
 		delta = (int32_t)cur - (int32_t)prev;
+		if (prev == 0 && cur == 0)
+			delta += 1;
 		if (delta < 0)
 			delta += ntxd;
 
@@ -361,17 +369,8 @@ ixgbe_isc_rxd_available(void *arg, uint16_t qsidx, qidx_t pidx, qidx_t budget)
 	u32                      staterr;
 	int                      cnt, i, nrxd;
 
-	if (budget == 1) {
-		rxd = &rxr->rx_base[pidx];
-		staterr = le32toh(rxd->wb.upper.status_error);
-
-		return (staterr & IXGBE_RXD_STAT_DD);
-	}
-
 	nrxd = sc->shared->isc_nrxd[0];
-	// em has cnt < nrxd. off by 1 here or there?
-//	for (cnt = 0, i = pidx; cnt < nrxd && cnt <= budget;) {
-	for (cnt = 0, i = pidx; cnt < nrxd-1 && cnt <= budget;) {
+	for (cnt = 0, i = pidx; cnt < nrxd && cnt <= budget;) {
 		rxd = &rxr->rx_base[i];
 		staterr = le32toh(rxd->wb.upper.status_error);
 
@@ -382,7 +381,6 @@ ixgbe_isc_rxd_available(void *arg, uint16_t qsidx, qidx_t pidx, qidx_t budget)
 		if (staterr & IXGBE_RXD_STAT_EOP)
 			cnt++;
 	}
-
 	return (cnt);
 } /* ixgbe_isc_rxd_available */
 
@@ -429,7 +427,8 @@ ixgbe_isc_rxd_pkt_get(void *arg, if_rxd_info_t ri)
 
 		rxd->wb.upper.status_error = 0;
 		eop = ((staterr & IXGBE_RXD_STAT_EOP) != 0);
-		if (staterr & IXGBE_RXD_STAT_VP) {
+
+		if ( (rxr->vtag_strip) && (staterr & IXGBE_RXD_STAT_VP) ) {
 			vtag = le16toh(rxd->wb.upper.vlan);
 		} else {
 			vtag = 0;

@@ -17,8 +17,7 @@
 # While historically machine dependent, all architectures have the following
 # declarations in common:
 #
-NOASM=	break.o \
-	exit.o \
+NOASM=	exit.o \
 	getlogin.o \
 	sstk.o \
 	yield.o
@@ -45,7 +44,11 @@ SRCS+= getdirentries.c
 NOASM+= getdirentries.o
 PSEUDO+= _getdirentries.o
 
+SRCS+= brk.c
 SRCS+= pipe.c
+SRCS+= vadvise.c
+
+SRCS+=	compat-stub.c
 
 INTERPOSED = \
 	accept \
@@ -181,7 +184,9 @@ MAN+=	abort2.2 \
 	extattr_get_file.2 \
 	fcntl.2 \
 	ffclock.2 \
+	fhlink.2 \
 	fhopen.2 \
+	fhreadlink.2 \
 	flock.2 \
 	fork.2 \
 	fsync.2 \
@@ -255,7 +260,6 @@ MAN+=	abort2.2 \
 	nanosleep.2 \
 	nfssvc.2 \
 	ntp_adjtime.2 \
-	numa_getaffinity.2 \
 	open.2 \
 	pathconf.2 \
 	pdfork.2 \
@@ -393,7 +397,8 @@ MLINKS+=ffclock.2 ffclock_getcounter.2 \
 MLINKS+=fhopen.2 fhstat.2 fhopen.2 fhstatfs.2
 MLINKS+=fsync.2 fdatasync.2
 MLINKS+=getdirentries.2 getdents.2
-MLINKS+=getfh.2 lgetfh.2
+MLINKS+=getfh.2 lgetfh.2 \
+	getfh.2 getfhat.2
 MLINKS+=getgid.2 getegid.2
 MLINKS+=getitimer.2 setitimer.2
 MLINKS+=getlogin.2 getlogin_r.3
@@ -427,7 +432,6 @@ MLINKS+=mount.2 nmount.2 \
 MLINKS+=mq_receive.2 mq_timedreceive.2
 MLINKS+=mq_send.2 mq_timedsend.2
 MLINKS+=ntp_adjtime.2 ntp_gettime.2
-MLINKS+=numa_getaffinity.2 numa_setaffinity.2
 MLINKS+=open.2 openat.2
 MLINKS+=pathconf.2 fpathconf.2
 MLINKS+=pathconf.2 lpathconf.2

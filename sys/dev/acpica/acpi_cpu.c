@@ -252,7 +252,7 @@ acpi_cpu_probe(device_t dev)
     if (type != ACPI_TYPE_PROCESSOR && type != ACPI_TYPE_DEVICE)
 	return (ENXIO);
     if (type == ACPI_TYPE_DEVICE &&
-	ACPI_ID_PROBE(device_get_parent(dev), dev, cpudev_ids) == NULL)
+	ACPI_ID_PROBE(device_get_parent(dev), dev, cpudev_ids, NULL) >= 0)
 	return (ENXIO);
 
     handle = acpi_get_handle(dev);
@@ -307,6 +307,11 @@ acpi_cpu_probe(device_t dev)
     cpu_softc[cpu_id] = (void *)1;
     acpi_set_private(dev, (void*)(intptr_t)cpu_id);
     device_set_desc(dev, "ACPI CPU");
+
+    if (!bootverbose && device_get_unit(dev) != 0) {
+	    device_quiet(dev);
+	    device_quiet_children(dev);
+    }
 
     return (0);
 }

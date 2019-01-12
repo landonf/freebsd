@@ -172,10 +172,16 @@ static void hostapd_ext_capab_byte(struct hostapd_data *hapd, u8 *pos, int idx)
 	case 0: /* Bits 0-7 */
 		if (hapd->iconf->obss_interval)
 			*pos |= 0x01; /* Bit 0 - Coexistence management */
+		if (hapd->iface->drv_flags & WPA_DRIVER_FLAGS_AP_CSA)
+			*pos |= 0x04; /* Bit 2 - Extended Channel Switching */
 		break;
 	case 1: /* Bits 8-15 */
 		if (hapd->conf->proxy_arp)
 			*pos |= 0x10; /* Bit 12 - Proxy ARP */
+		if (hapd->conf->coloc_intf_reporting) {
+			/* Bit 13 - Collocated Interference Reporting */
+			*pos |= 0x20;
+		}
 		break;
 	case 2: /* Bits 16-23 */
 		if (hapd->conf->wnm_sleep_mode)
@@ -184,9 +190,9 @@ static void hostapd_ext_capab_byte(struct hostapd_data *hapd, u8 *pos, int idx)
 			*pos |= 0x08; /* Bit 19 - BSS Transition */
 		break;
 	case 3: /* Bits 24-31 */
-#ifdef CONFIG_WNM
+#ifdef CONFIG_WNM_AP
 		*pos |= 0x02; /* Bit 25 - SSID List */
-#endif /* CONFIG_WNM */
+#endif /* CONFIG_WNM_AP */
 		if (hapd->conf->time_advertisement == 2)
 			*pos |= 0x08; /* Bit 27 - UTC TSF Offset */
 		if (hapd->conf->interworking)
@@ -207,10 +213,29 @@ static void hostapd_ext_capab_byte(struct hostapd_data *hapd, u8 *pos, int idx)
 		if (hapd->conf->hs20)
 			*pos |= 0x40; /* Bit 46 - WNM-Notification */
 #endif /* CONFIG_HS20 */
+#ifdef CONFIG_MBO
+		if (hapd->conf->mbo_enabled)
+			*pos |= 0x40; /* Bit 46 - WNM-Notification */
+#endif /* CONFIG_MBO */
 		break;
 	case 6: /* Bits 48-55 */
 		if (hapd->conf->ssid.utf8_ssid)
 			*pos |= 0x01; /* Bit 48 - UTF-8 SSID */
+		break;
+	case 7: /* Bits 56-63 */
+		break;
+	case 8: /* Bits 64-71 */
+		if (hapd->conf->ftm_responder)
+			*pos |= 0x40; /* Bit 70 - FTM responder */
+		if (hapd->conf->ftm_initiator)
+			*pos |= 0x80; /* Bit 71 - FTM initiator */
+		break;
+	case 9: /* Bits 72-79 */
+#ifdef CONFIG_FILS
+		if ((hapd->conf->wpa & WPA_PROTO_RSN) &&
+		    wpa_key_mgmt_fils(hapd->conf->wpa_key_mgmt))
+			*pos |= 0x01;
+#endif /* CONFIG_FILS */
 		break;
 	}
 }
@@ -231,14 +256,26 @@ u8 * hostapd_eid_ext_capab(struct hostapd_data *hapd, u8 *eid)
 		len = 1;
 	if (len < 7 && hapd->conf->ssid.utf8_ssid)
 		len = 7;
-#ifdef CONFIG_WNM
+	if (len < 9 &&
+	    (hapd->conf->ftm_initiator || hapd->conf->ftm_responder))
+		len = 9;
+#ifdef CONFIG_WNM_AP
 	if (len < 4)
 		len = 4;
-#endif /* CONFIG_WNM */
+#endif /* CONFIG_WNM_AP */
 #ifdef CONFIG_HS20
 	if (hapd->conf->hs20 && len < 6)
 		len = 6;
 #endif /* CONFIG_HS20 */
+#ifdef CONFIG_MBO
+	if (hapd->conf->mbo_enabled && len < 6)
+		len = 6;
+#endif /* CONFIG_MBO */
+#ifdef CONFIG_FILS
+	if ((!(hapd->conf->wpa & WPA_PROTO_RSN) ||
+	     !wpa_key_mgmt_fils(hapd->conf->wpa_key_mgmt)) && len < 10)
+		len = 10;
+#endif /* CONFIG_FILS */
 	if (len < hapd->iface->extended_capa_len)
 		len = hapd->iface->extended_capa_len;
 	if (len == 0)
@@ -413,7 +450,7 @@ u8 * hostapd_eid_time_zone(struct hostapd_data *hapd, u8 *eid)
 {
 	size_t len;
 
-	if (hapd->conf->time_advertisement != 2)
+	if (hapd->conf->time_advertisement != 2 || !hapd->conf->time_zone)
 		return eid;
 
 	len = os_strlen(hapd->conf->time_zone);
@@ -484,7 +521,7 @@ u8 * hostapd_eid_bss_max_idle_period(struct hostapd_data *hapd, u8 *eid)
 {
 	u8 *pos = eid;
 
-#ifdef CONFIG_WNM
+#ifdef CONFIG_WNM_AP
 	if (hapd->conf->ap_max_inactivity > 0) {
 		unsigned int val;
 		*pos++ = WLAN_EID_BSS_MAX_IDLE_PERIOD;
@@ -502,7 +539,216 @@ u8 * hostapd_eid_bss_max_idle_period(struct hostapd_data *hapd, u8 *eid)
 		pos += 2;
 		*pos++ = 0x00; /* TODO: Protected Keep-Alive Required */
 	}
-#endif /* CONFIG_WNM */
+#endif /* CONFIG_WNM_AP */
+
+	return pos;
+}
+
+
+#ifdef CONFIG_MBO
+
+u8 * hostapd_eid_mbo(struct hostapd_data *hapd, u8 *eid, size_t len)
+{
+	u8 mbo[9], *mbo_pos = mbo;
+	u8 *pos = eid;
+
+	if (!hapd->conf->mbo_enabled &&
+	    !OCE_STA_CFON_ENABLED(hapd) && !OCE_AP_ENABLED(hapd))
+		return eid;
+
+	if (hapd->conf->mbo_enabled) {
+		*mbo_pos++ = MBO_ATTR_ID_AP_CAPA_IND;
+		*mbo_pos++ = 1;
+		/* Not Cellular aware */
+		*mbo_pos++ = 0;
+	}
+
+	if (hapd->conf->mbo_enabled && hapd->mbo_assoc_disallow) {
+		*mbo_pos++ = MBO_ATTR_ID_ASSOC_DISALLOW;
+		*mbo_pos++ = 1;
+		*mbo_pos++ = hapd->mbo_assoc_disallow;
+	}
+
+	if (OCE_STA_CFON_ENABLED(hapd) || OCE_AP_ENABLED(hapd)) {
+		u8 ctrl;
+
+		ctrl = OCE_RELEASE;
+		if (OCE_STA_CFON_ENABLED(hapd) && !OCE_AP_ENABLED(hapd))
+			ctrl |= OCE_IS_STA_CFON;
+
+		*mbo_pos++ = OCE_ATTR_ID_CAPA_IND;
+		*mbo_pos++ = 1;
+		*mbo_pos++ = ctrl;
+	}
+
+	pos += mbo_add_ie(pos, len, mbo, mbo_pos - mbo);
+
+	return pos;
+}
+
+
+u8 hostapd_mbo_ie_len(struct hostapd_data *hapd)
+{
+	u8 len;
+
+	if (!hapd->conf->mbo_enabled &&
+	    !OCE_STA_CFON_ENABLED(hapd) && !OCE_AP_ENABLED(hapd))
+		return 0;
+
+	/*
+	 * MBO IE header (6) + Capability Indication attribute (3) +
+	 * Association Disallowed attribute (3) = 12
+	 */
+	len = 6;
+	if (hapd->conf->mbo_enabled)
+		len += 3 + (hapd->mbo_assoc_disallow ? 3 : 0);
+
+	/* OCE capability indication attribute (3) */
+	if (OCE_STA_CFON_ENABLED(hapd) || OCE_AP_ENABLED(hapd))
+		len += 3;
+
+	return len;
+}
+
+#endif /* CONFIG_MBO */
+
+
+#ifdef CONFIG_OWE
+static int hostapd_eid_owe_trans_enabled(struct hostapd_data *hapd)
+{
+	return hapd->conf->owe_transition_ssid_len > 0 &&
+		!is_zero_ether_addr(hapd->conf->owe_transition_bssid);
+}
+#endif /* CONFIG_OWE */
+
+
+size_t hostapd_eid_owe_trans_len(struct hostapd_data *hapd)
+{
+#ifdef CONFIG_OWE
+	if (!hostapd_eid_owe_trans_enabled(hapd))
+		return 0;
+	return 6 + ETH_ALEN + 1 + hapd->conf->owe_transition_ssid_len;
+#else /* CONFIG_OWE */
+	return 0;
+#endif /* CONFIG_OWE */
+}
+
+
+u8 * hostapd_eid_owe_trans(struct hostapd_data *hapd, u8 *eid,
+				  size_t len)
+{
+#ifdef CONFIG_OWE
+	u8 *pos = eid;
+	size_t elen;
+
+	if (hapd->conf->owe_transition_ifname[0] &&
+	    !hostapd_eid_owe_trans_enabled(hapd))
+		hostapd_owe_trans_get_info(hapd);
+
+	if (!hostapd_eid_owe_trans_enabled(hapd))
+		return pos;
+
+	elen = hostapd_eid_owe_trans_len(hapd);
+	if (len < elen) {
+		wpa_printf(MSG_DEBUG,
+			   "OWE: Not enough room in the buffer for OWE IE");
+		return pos;
+	}
+
+	*pos++ = WLAN_EID_VENDOR_SPECIFIC;
+	*pos++ = elen - 2;
+	WPA_PUT_BE24(pos, OUI_WFA);
+	pos += 3;
+	*pos++ = OWE_OUI_TYPE;
+	os_memcpy(pos, hapd->conf->owe_transition_bssid, ETH_ALEN);
+	pos += ETH_ALEN;
+	*pos++ = hapd->conf->owe_transition_ssid_len;
+	os_memcpy(pos, hapd->conf->owe_transition_ssid,
+		  hapd->conf->owe_transition_ssid_len);
+	pos += hapd->conf->owe_transition_ssid_len;
+
+	return pos;
+#else /* CONFIG_OWE */
+	return eid;
+#endif /* CONFIG_OWE */
+}
+
+
+void ap_copy_sta_supp_op_classes(struct sta_info *sta,
+				 const u8 *supp_op_classes,
+				 size_t supp_op_classes_len)
+{
+	if (!supp_op_classes)
+		return;
+	os_free(sta->supp_op_classes);
+	sta->supp_op_classes = os_malloc(1 + supp_op_classes_len);
+	if (!sta->supp_op_classes)
+		return;
+
+	sta->supp_op_classes[0] = supp_op_classes_len;
+	os_memcpy(sta->supp_op_classes + 1, supp_op_classes,
+		  supp_op_classes_len);
+}
+
+
+u8 * hostapd_eid_fils_indic(struct hostapd_data *hapd, u8 *eid, int hessid)
+{
+	u8 *pos = eid;
+#ifdef CONFIG_FILS
+	u8 *len;
+	u16 fils_info = 0;
+	size_t realms;
+	struct fils_realm *realm;
+
+	if (!(hapd->conf->wpa & WPA_PROTO_RSN) ||
+	    !wpa_key_mgmt_fils(hapd->conf->wpa_key_mgmt))
+		return pos;
+
+	realms = dl_list_len(&hapd->conf->fils_realms);
+	if (realms > 7)
+		realms = 7; /* 3 bit count field limits this to max 7 */
+
+	*pos++ = WLAN_EID_FILS_INDICATION;
+	len = pos++;
+	/* TODO: B0..B2: Number of Public Key Identifiers */
+	if (hapd->conf->erp_domain) {
+		/* B3..B5: Number of Realm Identifiers */
+		fils_info |= realms << 3;
+	}
+	/* TODO: B6: FILS IP Address Configuration */
+	if (hapd->conf->fils_cache_id_set)
+		fils_info |= BIT(7);
+	if (hessid && !is_zero_ether_addr(hapd->conf->hessid))
+		fils_info |= BIT(8); /* HESSID Included */
+	/* FILS Shared Key Authentication without PFS Supported */
+	fils_info |= BIT(9);
+	if (hapd->conf->fils_dh_group) {
+		/* FILS Shared Key Authentication with PFS Supported */
+		fils_info |= BIT(10);
+	}
+	/* TODO: B11: FILS Public Key Authentication Supported */
+	/* B12..B15: Reserved */
+	WPA_PUT_LE16(pos, fils_info);
+	pos += 2;
+	if (hapd->conf->fils_cache_id_set) {
+		os_memcpy(pos, hapd->conf->fils_cache_id, FILS_CACHE_ID_LEN);
+		pos += FILS_CACHE_ID_LEN;
+	}
+	if (hessid && !is_zero_ether_addr(hapd->conf->hessid)) {
+		os_memcpy(pos, hapd->conf->hessid, ETH_ALEN);
+		pos += ETH_ALEN;
+	}
+
+	dl_list_for_each(realm, &hapd->conf->fils_realms, struct fils_realm,
+			 list) {
+		if (realms == 0)
+			break;
+		realms--;
+		os_memcpy(pos, realm->hash, 2);
+		pos += 2;
+	}
+	*len = pos - len - 1;
+#endif /* CONFIG_FILS */
 
 	return pos;
 }

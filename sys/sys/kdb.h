@@ -62,7 +62,7 @@ struct kdb_dbbe {
 	DATA_SET(kdb_dbbe_set, name##_dbbe)
 
 extern u_char kdb_active;		/* Non-zero while in debugger. */
-extern int debugger_on_panic;		/* enter the debugger on panic. */
+extern int debugger_on_trap;		/* enter the debugger on trap. */
 extern struct kdb_dbbe *kdb_dbbe;	/* Default debugger backend or NULL. */
 extern struct trapframe *kdb_frame;	/* Frame to kdb_trap(). */
 extern struct pcb *kdb_thrctx;		/* Current context. */
@@ -101,6 +101,7 @@ extern const char * volatile kdb_why;
 #define	KDB_WHY_UNSET		NULL		/* No reason set. */
 #define	KDB_WHY_PANIC		"panic"		/* panic() was called. */
 #define	KDB_WHY_KASSERT		"kassert"	/* kassert failed. */
+#define	KDB_WHY_TRAP		"trap"		/* Fatal trap. */
 #define	KDB_WHY_SYSCTL		"sysctl"	/* Sysctl entered debugger. */
 #define	KDB_WHY_BOOTFLAGS	"bootflags"	/* Boot flags were set. */
 #define	KDB_WHY_WITNESS		"witness"	/* Witness entered debugger. */

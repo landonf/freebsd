@@ -53,6 +53,9 @@ typedef	void	(*systrace_probe_func_t)(struct syscall_args *,
 		    enum systrace_probe_t, int);
 typedef	void	(*systrace_args_func_t)(int, void *, uint64_t *, int *);
 
+#ifdef _KERNEL
+extern bool			systrace_enabled;
+#endif
 extern systrace_probe_func_t	systrace_probe_func;
 
 struct sysent {			/* system call table */
@@ -92,7 +95,6 @@ struct vnode;
 struct sysentvec {
 	int		sv_size;	/* number of entries */
 	struct sysent	*sv_table;	/* pointer to sysent */
-	u_int		sv_mask;	/* optional mask to index */
 	int		sv_errsize;	/* size of errno translation table */
 	const int 	*sv_errtbl;	/* errno translation table */
 	int		(*sv_transtrap)(int, int);
@@ -286,8 +288,26 @@ struct nosys_args;
 int	lkmnosys(struct thread *, struct nosys_args *);
 int	lkmressys(struct thread *, struct nosys_args *);
 
-int	syscall_thread_enter(struct thread *td, struct sysent *se);
-void	syscall_thread_exit(struct thread *td, struct sysent *se);
+int	_syscall_thread_enter(struct thread *td, struct sysent *se);
+void	_syscall_thread_exit(struct thread *td, struct sysent *se);
+
+static inline int
+syscall_thread_enter(struct thread *td, struct sysent *se)
+{
+
+	if (__predict_true((se->sy_thrcnt & SY_THR_STATIC) != 0))
+		return (0);
+	return (_syscall_thread_enter(td, se));
+}
+
+static inline void
+syscall_thread_exit(struct thread *td, struct sysent *se)
+{
+
+	if (__predict_true((se->sy_thrcnt & SY_THR_STATIC) != 0))
+		return;
+	_syscall_thread_exit(td, se);
+}
 
 int shared_page_alloc(int size, int align);
 int shared_page_fill(int size, int align, const void *data);

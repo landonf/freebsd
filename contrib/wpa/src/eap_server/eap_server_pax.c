@@ -327,13 +327,12 @@ static void eap_pax_process_std_2(struct eap_sm *sm,
 	}
 	data->cid_len = cid_len;
 	os_free(data->cid);
-	data->cid = os_malloc(data->cid_len);
+	data->cid = os_memdup(pos + 2, data->cid_len);
 	if (data->cid == NULL) {
 		wpa_printf(MSG_INFO, "EAP-PAX: Failed to allocate memory for "
 			   "CID");
 		return;
 	}
-	os_memcpy(data->cid, pos + 2, data->cid_len);
 	pos += 2 + data->cid_len;
 	left -= 2 + data->cid_len;
 	wpa_hexdump_ascii(MSG_MSGDUMP, "EAP-PAX: CID",
@@ -565,7 +564,6 @@ static u8 * eap_pax_get_session_id(struct eap_sm *sm, void *priv, size_t *len)
 int eap_server_pax_register(void)
 {
 	struct eap_method *eap;
-	int ret;
 
 	eap = eap_server_method_alloc(EAP_SERVER_METHOD_INTERFACE_VERSION,
 				      EAP_VENDOR_IETF, EAP_TYPE_PAX, "PAX");
@@ -583,8 +581,5 @@ int eap_server_pax_register(void)
 	eap->get_emsk = eap_pax_get_emsk;
 	eap->getSessionId = eap_pax_get_session_id;
 
-	ret = eap_server_method_register(eap);
-	if (ret)
-		eap_server_method_free(eap);
-	return ret;
+	return eap_server_method_register(eap);
 }

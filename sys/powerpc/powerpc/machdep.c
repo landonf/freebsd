@@ -57,7 +57,6 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include "opt_compat.h"
 #include "opt_ddb.h"
 #include "opt_kstack_pages.h"
 #include "opt_platform.h"
@@ -137,6 +136,10 @@ int cacheline_size = 128;
 int cacheline_size = 32;
 #endif
 int hw_direct_map = 1;
+
+#ifdef BOOKE
+extern vm_paddr_t kernload;
+#endif
 
 extern void *ap_pcpu;
 
@@ -276,6 +279,8 @@ powerpc_init(vm_offset_t fdt, vm_offset_t toc, vm_offset_t ofentry, void *mdp,
 	bzero(__bss_start, _end - __bss_start);
 #endif
 
+	cpu_feature_setup();
+
 #ifdef AIM
 	aim_early_init(fdt, toc, ofentry, mdp, mdp_cookie);
 #endif
@@ -294,6 +299,8 @@ powerpc_init(vm_offset_t fdt, vm_offset_t toc, vm_offset_t ofentry, void *mdp,
 #ifdef AIM
 		if ((uintptr_t)&powerpc_init > DMAP_BASE_ADDRESS)
 			md_offset = DMAP_BASE_ADDRESS;
+#else /* BOOKE */
+		md_offset = VM_MIN_KERNEL_ADDRESS - kernload;
 #endif
 
 		preload_metadata = mdp;
@@ -308,6 +315,11 @@ powerpc_init(vm_offset_t fdt, vm_offset_t toc, vm_offset_t ofentry, void *mdp,
 			if (envp != NULL)
 				envp += md_offset;
 			init_static_kenv(envp, 0);
+			if (fdt == 0) {
+				fdt = MD_FETCH(kmdp, MODINFOMD_DTBP, uintptr_t);
+				if (fdt != 0)
+					fdt += md_offset;
+			}
 			kernelendphys = MD_FETCH(kmdp, MODINFOMD_KERNEND,
 			    vm_offset_t);
 			if (kernelendphys != 0)
@@ -382,12 +394,12 @@ powerpc_init(vm_offset_t fdt, vm_offset_t toc, vm_offset_t ofentry, void *mdp,
 	if (platform_smp_get_bsp(&bsp) != 0)
 		bsp.cr_cpuid = 0;
 	pc = &__pcpu[bsp.cr_cpuid];
+	__asm __volatile("mtsprg 0, %0" :: "r"(pc));
 	pcpu_init(pc, bsp.cr_cpuid, sizeof(struct pcpu));
 	pc->pc_curthread = &thread0;
 	thread0.td_oncpu = bsp.cr_cpuid;
 	pc->pc_cpuid = bsp.cr_cpuid;
 	pc->pc_hwref = bsp.cr_hwref;
-	__asm __volatile("mtsprg 0, %0" :: "r"(pc));
 
 	/*
 	 * Init KDB
@@ -529,6 +541,10 @@ DB_SHOW_COMMAND(spr, db_show_spr)
 	saved_sprno = sprno = (intptr_t) addr;
 	sprno = ((sprno & 0x3e0) >> 5) | ((sprno & 0x1f) << 5);
 	p = (uint32_t *)(void *)&get_spr;
+#if defined(_CALL_ELF) && _CALL_ELF == 2
+	/* Account for ELFv2 function prologue. */
+	p += 2;
+#endif
 	*p = (*p & ~0x001ff800) | (sprno << 11);
 	__syncicache(get_spr, cacheline_size);
 	spr = get_spr(sprno);

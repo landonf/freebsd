@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2019, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -236,7 +236,7 @@ AcpiTbInstallTableWithOverride (
  * DESCRIPTION: This function is called to verify and install an ACPI table.
  *              When this function is called by "Load" or "LoadTable" opcodes,
  *              or by AcpiLoadTable() API, the "Reload" parameter is set.
- *              After sucessfully returning from this function, table is
+ *              After successfully returning from this function, table is
  *              "INSTALLED" but not "VALIDATED".
  *
  ******************************************************************************/

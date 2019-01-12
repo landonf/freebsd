@@ -163,7 +163,7 @@ linker_init(void *arg)
 	TAILQ_INIT(&linker_files);
 }
 
-SYSINIT(linker, SI_SUB_KLD, SI_ORDER_FIRST, linker_init, 0);
+SYSINIT(linker, SI_SUB_KLD, SI_ORDER_FIRST, linker_init, NULL);
 
 static void
 linker_stop_class_add(void *arg)
@@ -411,7 +411,7 @@ linker_init_kernel_modules(void)
 }
 
 SYSINIT(linker_kernel, SI_SUB_KLD, SI_ORDER_ANY, linker_init_kernel_modules,
-    0);
+    NULL);
 
 static int
 linker_load_file(const char *filename, linker_file_t *result)
@@ -1021,15 +1021,33 @@ linker_ddb_search_symbol_name(caddr_t value, char *buf, u_int buflen,
  * obey locking protocols, and offer a significantly less complex interface.
  */
 int
-linker_search_symbol_name(caddr_t value, char *buf, u_int buflen,
-    long *offset)
+linker_search_symbol_name_flags(caddr_t value, char *buf, u_int buflen,
+    long *offset, int flags)
 {
 	int error;
 
-	sx_slock(&kld_sx);
+	KASSERT((flags & (M_NOWAIT | M_WAITOK)) != 0 &&
+	    (flags & (M_NOWAIT | M_WAITOK)) != (M_NOWAIT | M_WAITOK),
+	    ("%s: bad flags: 0x%x", __func__, flags));
+
+	if (flags & M_NOWAIT) {
+		if (!sx_try_slock(&kld_sx))
+			return (EWOULDBLOCK);
+	} else
+		sx_slock(&kld_sx);
+
 	error = linker_debug_search_symbol_name(value, buf, buflen, offset);
 	sx_sunlock(&kld_sx);
 	return (error);
+}
+
+int
+linker_search_symbol_name(caddr_t value, char *buf, u_int buflen,
+    long *offset)
+{
+
+	return (linker_search_symbol_name_flags(value, buf, buflen, offset,
+	    M_WAITOK));
 }
 
 /*
@@ -1684,7 +1702,7 @@ fail:
 	/* woohoo! we made it! */
 }
 
-SYSINIT(preload, SI_SUB_KLD, SI_ORDER_MIDDLE, linker_preload, 0);
+SYSINIT(preload, SI_SUB_KLD, SI_ORDER_MIDDLE, linker_preload, NULL);
 
 /*
  * Handle preload files that failed to load any modules.
@@ -1719,7 +1737,7 @@ linker_preload_finish(void *arg)
  * becomes runnable in SI_SUB_KTHREAD_INIT, so go slightly before that.
  */
 SYSINIT(preload_finish, SI_SUB_KTHREAD_INIT - 100, SI_ORDER_MIDDLE,
-    linker_preload_finish, 0);
+    linker_preload_finish, NULL);
 
 /*
  * Search for a not-loaded module by name.
@@ -2123,7 +2141,7 @@ linker_load_dependencies(linker_file_t lf)
 	const struct mod_depend *verinfo;
 	modlist_t mod;
 	const char *modname, *nmodname;
-	int ver, error = 0, count;
+	int ver, error = 0;
 
 	/*
 	 * All files are dependent on /kernel.
@@ -2136,7 +2154,7 @@ linker_load_dependencies(linker_file_t lf)
 			return (error);
 	}
 	if (linker_file_lookup_set(lf, MDT_SETNAME, &start, &stop,
-	    &count) != 0)
+	    NULL) != 0)
 		return (0);
 	for (mdp = start; mdp < stop; mdp++) {
 		mp = *mdp;

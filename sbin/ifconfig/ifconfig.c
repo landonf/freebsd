@@ -99,6 +99,7 @@ int	printifname = 0;
 
 int	supmedia = 0;
 int	printkeys = 0;		/* Print keying material for interfaces. */
+int	exit_code = 0;
 
 /* Formatter Strings */
 char	*f_inet, *f_inet6, *f_ether, *f_addr;
@@ -108,7 +109,7 @@ static	int ifconfig(int argc, char *const *argv, int iscreate,
 static	void status(const struct afswtch *afp, const struct sockaddr_dl *sdl,
 		struct ifaddrs *ifa);
 static	void tunnel_status(int s);
-static	void usage(void) _Noreturn;
+static _Noreturn void usage(void);
 
 static struct afswtch *af_getbyname(const char *name);
 static struct afswtch *af_getbyfamily(int af);
@@ -485,7 +486,7 @@ main(int argc, char *argv[])
 					errx(1, "%s: cloning name too long",
 					    ifname);
 				ifconfig(argc, argv, 1, NULL);
-				exit(0);
+				exit(exit_code);
 			}
 #ifdef JAIL
 			/*
@@ -499,10 +500,22 @@ main(int argc, char *argv[])
 					errx(1, "%s: interface name too long",
 					    ifname);
 				ifconfig(argc, argv, 0, NULL);
-				exit(0);
+				exit(exit_code);
 			}
 #endif
 			errx(1, "interface %s does not exist", ifname);
+		} else {
+			/*
+			 * Do not allow use `create` command as hostname if
+			 * address family is not specified.
+			 */
+			if (argc > 0 && (strcmp(argv[0], "create") == 0 ||
+			    strcmp(argv[0], "plumb") == 0)) {
+				if (argc == 1)
+					errx(1, "interface %s already exists",
+					    ifname);
+				argc--, argv++;
+			}
 		}
 	}
 
@@ -597,7 +610,7 @@ main(int argc, char *argv[])
 	freeifaddrs(ifap);
 
 	freeformat();
-	exit(0);
+	exit(exit_code);
 }
 
 static struct afswtch *afs = NULL;
@@ -1486,8 +1499,8 @@ static struct cmd basic_cmds[] = {
 	DEF_CMD("-wol_magic",	-IFCAP_WOL_MAGIC,	setifcap),
 	DEF_CMD("txrtlmt",	IFCAP_TXRTLMT,	setifcap),
 	DEF_CMD("-txrtlmt",	-IFCAP_TXRTLMT,	setifcap),
-	DEF_CMD("hwrxtsmp",	IFCAP_HWRXTSTMP,	setifcap),
-	DEF_CMD("-hwrxtsmp",	-IFCAP_HWRXTSTMP,	setifcap),
+	DEF_CMD("hwrxtstmp",	IFCAP_HWRXTSTMP,	setifcap),
+	DEF_CMD("-hwrxtstmp",	-IFCAP_HWRXTSTMP,	setifcap),
 	DEF_CMD("normal",	-IFF_LINK0,	setifflags),
 	DEF_CMD("compress",	IFF_LINK0,	setifflags),
 	DEF_CMD("noicmp",	IFF_LINK1,	setifflags),

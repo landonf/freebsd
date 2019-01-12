@@ -1048,7 +1048,21 @@ kldload_param(const char *name)
 	else if (strcmp(name, "sysvmsg") == 0 || strcmp(name, "sysvsem") == 0 ||
 	    strcmp(name, "sysvshm") == 0)
 		kl = kldload(name);
-	else {
+	else if (strncmp(name, "allow.mount.", 12) == 0) {
+		/* Load the matching filesystem */
+		const char *modname;
+
+		if (strcmp("fusefs", name + 12) == 0 ||
+		    strcmp("nofusefs", name + 12) == 0) {
+			modname = "fuse";
+		} else {
+			modname = name + 12;
+		}
+		kl = kldload(modname);
+		if (kl < 0 && errno == ENOENT &&
+		    strncmp(modname, "no", 2) == 0)
+			kl = kldload(modname + 2);
+	} else {
 		errno = ENOENT;
 		return (-1);
 	}

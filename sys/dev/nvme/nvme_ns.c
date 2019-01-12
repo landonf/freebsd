@@ -494,10 +494,10 @@ int
 nvme_ns_construct(struct nvme_namespace *ns, uint32_t id,
     struct nvme_controller *ctrlr)
 {
+	struct make_dev_args                    md_args;
 	struct nvme_completion_poll_status	status;
+	int                                     res;
 	int					unit;
-	uint16_t				oncs;
-	uint8_t					dsm;
 	uint8_t					flbas_fmt;
 	uint8_t					vwc_present;
 
@@ -505,9 +505,23 @@ nvme_ns_construct(struct nvme_namespace *ns, uint32_t id,
 	ns->id = id;
 	ns->stripesize = 0;
 
-	if (pci_get_devid(ctrlr->dev) == 0x09538086 && ctrlr->cdata.vs[3] != 0)
-		ns->stripesize =
-		    (1 << ctrlr->cdata.vs[3]) * ctrlr->min_page_size;
+	/*
+	 * Older Intel devices advertise in vendor specific space an alignment
+	 * that improves performance.  If present use for the stripe size.  NVMe
+	 * 1.3 standardized this as NOIOB, and newer Intel drives use that.
+	 */
+	switch (pci_get_devid(ctrlr->dev)) {
+	case 0x09538086:		/* Intel DC PC3500 */
+	case 0x0a538086:		/* Intel DC PC3520 */
+	case 0x0a548086:		/* Intel DC PC4500 */
+	case 0x0a558086:		/* Dell Intel P4600 */
+		if (ctrlr->cdata.vs[3] != 0)
+			ns->stripesize =
+			    (1 << ctrlr->cdata.vs[3]) * ctrlr->min_page_size;
+		break;
+	default:
+		break;
+	}
 
 	/*
 	 * Namespaces are reconstructed after a controller reset, so check
@@ -520,11 +534,11 @@ nvme_ns_construct(struct nvme_namespace *ns, uint32_t id,
 	if (!mtx_initialized(&ns->lock))
 		mtx_init(&ns->lock, "nvme ns lock", NULL, MTX_DEF);
 
-	status.done = FALSE;
+	status.done = 0;
 	nvme_ctrlr_cmd_identify_namespace(ctrlr, id, &ns->data,
 	    nvme_completion_poll_cb, &status);
-	while (status.done == FALSE)
-		DELAY(5);
+	while (!atomic_load_acq_int(&status.done))
+		pause("nvme", 1);
 	if (nvme_completion_is_error(&status.cpl)) {
 		nvme_printf(ctrlr, "nvme_identify_namespace failed\n");
 		return (ENXIO);
@@ -554,9 +568,7 @@ nvme_ns_construct(struct nvme_namespace *ns, uint32_t id,
 		return (ENXIO);
 	}
 
-	oncs = ctrlr->cdata.oncs;
-	dsm = (oncs >> NVME_CTRLR_DATA_ONCS_DSM_SHIFT) & NVME_CTRLR_DATA_ONCS_DSM_MASK;
-	if (dsm)
+	if (nvme_ctrlr_has_dataset_mgmt(&ctrlr->cdata))
 		ns->flags |= NVME_NS_DEALLOCATE_SUPPORTED;
 
 	vwc_present = (ctrlr->cdata.vwc >> NVME_CTRLR_DATA_VWC_PRESENT_SHIFT) &
@@ -577,15 +589,19 @@ nvme_ns_construct(struct nvme_namespace *ns, uint32_t id,
 	 */
 	unit = device_get_unit(ctrlr->dev) * NVME_MAX_NAMESPACES + ns->id - 1;
 
-	ns->cdev = make_dev_credf(0, &nvme_ns_cdevsw, unit,
-	    NULL, UID_ROOT, GID_WHEEL, 0600, "nvme%dns%d",
+	make_dev_args_init(&md_args);
+	md_args.mda_devsw = &nvme_ns_cdevsw;
+	md_args.mda_unit = unit;
+	md_args.mda_mode = 0600;
+	md_args.mda_si_drv1 = ns;
+	res = make_dev_s(&md_args, &ns->cdev, "nvme%dns%d",
 	    device_get_unit(ctrlr->dev), ns->id);
+	if (res != 0)
+		return (ENXIO);
+
 #ifdef NVME_UNMAPPED_BIO_SUPPORT
 	ns->cdev->si_flags |= SI_UNMAPPED;
 #endif
-
-	if (ns->cdev != NULL)
-		ns->cdev->si_drv1 = ns;
 
 	return (0);
 }

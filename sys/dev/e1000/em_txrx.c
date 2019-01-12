@@ -68,25 +68,25 @@ static int em_determine_rsstype(u32 pkt_info);
 extern int em_intr(void *arg);
 
 struct if_txrx em_txrx = {
-	em_isc_txd_encap,
-	em_isc_txd_flush,
-	em_isc_txd_credits_update,
-	em_isc_rxd_available,
-	em_isc_rxd_pkt_get,
-	em_isc_rxd_refill,
-	em_isc_rxd_flush,
-	em_intr
+	.ift_txd_encap = em_isc_txd_encap,
+	.ift_txd_flush = em_isc_txd_flush,
+	.ift_txd_credits_update = em_isc_txd_credits_update,
+	.ift_rxd_available = em_isc_rxd_available,
+	.ift_rxd_pkt_get = em_isc_rxd_pkt_get,
+	.ift_rxd_refill = em_isc_rxd_refill,
+	.ift_rxd_flush = em_isc_rxd_flush,
+	.ift_legacy_intr = em_intr
 };
 
 struct if_txrx lem_txrx = {
-	em_isc_txd_encap,
-	em_isc_txd_flush,
-	em_isc_txd_credits_update,
-	lem_isc_rxd_available,
-	lem_isc_rxd_pkt_get,
-	lem_isc_rxd_refill,
-	em_isc_rxd_flush,
-	em_intr
+	.ift_txd_encap = em_isc_txd_encap,
+	.ift_txd_flush = em_isc_txd_flush,
+	.ift_txd_credits_update = em_isc_txd_credits_update,
+	.ift_rxd_available = lem_isc_rxd_available,
+	.ift_rxd_pkt_get = lem_isc_rxd_pkt_get,
+	.ift_rxd_refill = lem_isc_rxd_refill,
+	.ift_rxd_flush = em_isc_rxd_flush,
+	.ift_legacy_intr = em_intr
 };
 
 extern if_shared_ctx_t em_sctx;
@@ -401,7 +401,7 @@ em_isc_txd_encap(void *arg, if_pkt_info_t pi)
 	 * needs End Of Packet (EOP)
 	 * and Report Status (RS)
 	 */
-	if (txd_flags) {
+	if (txd_flags && nsegs) {
 		txr->tx_rsq[txr->tx_rs_pidx] = pidx_last;
 		DPRINTF(iflib_get_dev(sc->ctx), "setting to RS on %d rs_pidx %d first: %d\n", pidx_last, txr->tx_rs_pidx, first);
 		txr->tx_rs_pidx = (txr->tx_rs_pidx+1) & (ntxd-1);
@@ -446,14 +446,25 @@ em_isc_txd_credits_update(void *arg, uint16_t txqid, bool clear)
 	status = txr->tx_base[cur].upper.fields.status;
 	updated = !!(status & E1000_TXD_STAT_DD);
 
-	if (clear == false || updated == 0)
-		return (updated);
+	if (!updated)
+		return (0);
+
+	/* If clear is false just let caller know that there
+	 * are descriptors to reclaim */
+	if (!clear)
+		return (1);
 
 	prev = txr->tx_cidx_processed;
 	ntxd = scctx->isc_ntxd[0];
 	do {
 		delta = (int32_t)cur - (int32_t)prev;
+		/*
+		 * XXX This appears to be a hack for first-packet.
+		 * A correct fix would prevent prev == cur in the first place.
+		 */
 		MPASS(prev == 0 || delta != 0);
+		if (prev == 0 && cur == 0)
+			delta += 1;
 		if (delta < 0)
 			delta += ntxd;
 		DPRINTF(iflib_get_dev(adapter->ctx),
@@ -553,22 +564,14 @@ lem_isc_rxd_available(void *arg, uint16_t rxqid, qidx_t idx, qidx_t budget)
 	u32 staterr = 0;
 	int cnt, i;
 
-	if (budget == 1) {
-		rxd = (struct e1000_rx_desc *)&rxr->rx_base[idx];
-		staterr = rxd->status;
-		return (staterr & E1000_RXD_STAT_DD);
-	}
-
 	for (cnt = 0, i = idx; cnt < scctx->isc_nrxd[0] && cnt <= budget;) {
 		rxd = (struct e1000_rx_desc *)&rxr->rx_base[i];
 		staterr = rxd->status;
 
 		if ((staterr & E1000_RXD_STAT_DD) == 0)
 			break;
-
 		if (++i == scctx->isc_nrxd[0])
 			i = 0;
-
 		if (staterr & E1000_RXD_STAT_EOP)
 			cnt++;
 	}
@@ -586,26 +589,16 @@ em_isc_rxd_available(void *arg, uint16_t rxqid, qidx_t idx, qidx_t budget)
 	u32 staterr = 0;
 	int cnt, i;
 
-	if (budget == 1) {
-		rxd = &rxr->rx_base[idx];
-		staterr = le32toh(rxd->wb.upper.status_error);
-		return (staterr & E1000_RXD_STAT_DD);
-	}
-
 	for (cnt = 0, i = idx; cnt < scctx->isc_nrxd[0] && cnt <= budget;) {
 		rxd = &rxr->rx_base[i];
 		staterr = le32toh(rxd->wb.upper.status_error);
 
 		if ((staterr & E1000_RXD_STAT_DD) == 0)
 			break;
-		
-		if (++i == scctx->isc_nrxd[0]) {
+		if (++i == scctx->isc_nrxd[0])
 			i = 0;
-		}
-
 		if (staterr & E1000_RXD_STAT_EOP)
 			cnt++;
-
 	}
 	return (cnt);
 }

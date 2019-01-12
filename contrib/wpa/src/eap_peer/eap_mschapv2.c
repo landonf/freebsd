@@ -109,23 +109,21 @@ static void * eap_mschapv2_init(struct eap_sm *sm)
 		return NULL;
 
 	if (sm->peer_challenge) {
-		data->peer_challenge = os_malloc(MSCHAPV2_CHAL_LEN);
+		data->peer_challenge = os_memdup(sm->peer_challenge,
+						 MSCHAPV2_CHAL_LEN);
 		if (data->peer_challenge == NULL) {
 			eap_mschapv2_deinit(sm, data);
 			return NULL;
 		}
-		os_memcpy(data->peer_challenge, sm->peer_challenge,
-			  MSCHAPV2_CHAL_LEN);
 	}
 
 	if (sm->auth_challenge) {
-		data->auth_challenge = os_malloc(MSCHAPV2_CHAL_LEN);
+		data->auth_challenge = os_memdup(sm->auth_challenge,
+						 MSCHAPV2_CHAL_LEN);
 		if (data->auth_challenge == NULL) {
 			eap_mschapv2_deinit(sm, data);
 			return NULL;
 		}
-		os_memcpy(data->auth_challenge, sm->auth_challenge,
-			  MSCHAPV2_CHAL_LEN);
 	}
 
 	data->phase2 = sm->init_phase2;
@@ -567,11 +565,11 @@ static struct wpabuf * eap_mschapv2_change_password(
 	if (pwhash) {
 		u8 new_password_hash[16];
 		if (nt_password_hash(new_password, new_password_len,
-				     new_password_hash))
+				     new_password_hash) ||
+		    nt_password_hash_encrypted_with_block(password,
+							  new_password_hash,
+							  cp->encr_hash))
 			goto fail;
-		nt_password_hash_encrypted_with_block(password,
-						      new_password_hash,
-						      cp->encr_hash);
 	} else {
 		if (old_nt_password_hash_encrypted_with_new_nt_password_hash(
 			    new_password, new_password_len,
@@ -880,7 +878,6 @@ static u8 * eap_mschapv2_getKey(struct eap_sm *sm, void *priv, size_t *len)
 int eap_peer_mschapv2_register(void)
 {
 	struct eap_method *eap;
-	int ret;
 
 	eap = eap_peer_method_alloc(EAP_PEER_METHOD_INTERFACE_VERSION,
 				    EAP_VENDOR_IETF, EAP_TYPE_MSCHAPV2,
@@ -894,8 +891,5 @@ int eap_peer_mschapv2_register(void)
 	eap->isKeyAvailable = eap_mschapv2_isKeyAvailable;
 	eap->getKey = eap_mschapv2_getKey;
 
-	ret = eap_peer_method_register(eap);
-	if (ret)
-		eap_peer_method_free(eap);
-	return ret;
+	return eap_peer_method_register(eap);
 }

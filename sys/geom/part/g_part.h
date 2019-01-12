@@ -78,6 +78,7 @@ enum g_part_alias {
 	G_PART_ALIAS_MS_BASIC_DATA,	/* A Microsoft Data part. entry. */
 	G_PART_ALIAS_MS_FAT16,		/* A Microsoft FAT16 partition entry. */
 	G_PART_ALIAS_MS_FAT32,		/* A Microsoft FAT32 partition entry. */
+	G_PART_ALIAS_MS_FAT32LBA,	/* A Microsoft FAT32 LBA partition entry */
 	G_PART_ALIAS_MS_LDM_DATA,	/* A Microsoft LDM Data part. entry. */
 	G_PART_ALIAS_MS_LDM_METADATA,	/* A Microsoft LDM Metadata entry. */
 	G_PART_ALIAS_MS_NTFS,		/* A Microsoft NTFS partition entry */
@@ -201,6 +202,7 @@ enum g_part_ctl {
 #define	G_PART_PARM_BOOTCODE	0x1000
 #define	G_PART_PARM_ATTRIB	0x2000
 #define	G_PART_PARM_FORCE	0x4000
+#define G_PART_PARM_SKIP_DSN	0x8000
 
 struct g_part_parms {
 	unsigned int	gpp_parms;
@@ -219,6 +221,7 @@ struct g_part_parms {
 	unsigned int	gpp_codesize;
 	const char	*gpp_attrib;
 	unsigned int	gpp_force;
+	unsigned int	gpp_skip_dsn;
 };
 
 void g_part_geometry_heads(off_t, u_int, off_t *, u_int *);

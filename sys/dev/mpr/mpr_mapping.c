@@ -1,6 +1,7 @@
 /*-
  * Copyright (c) 2011-2015 LSI Corp.
  * Copyright (c) 2013-2016 Avago Technologies
+ * Copyright 2000-2020 Broadcom Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -24,7 +25,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * Avago Technologies (LSI) MPT-Fusion Host Adapter FreeBSD
+ * Broadcom Inc. (LSI) MPT-Fusion Host Adapter FreeBSD
  */
 
 #include <sys/cdefs.h>
@@ -2385,6 +2386,8 @@ fail:
 		 * sc->mapping_table volumes tooi
 		 */
 	}
+	for (enc_idx = 0; enc_idx < sc->num_enc_table_entries; enc_idx++)
+		_mapping_clear_enc_entry(sc->enclosure_table + enc_idx);
 	sc->num_enc_table_entries = 0;
 	return (false);
 }

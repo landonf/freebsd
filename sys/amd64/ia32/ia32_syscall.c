@@ -45,7 +45,6 @@ __FBSDID("$FreeBSD$");
  */
 
 #include "opt_clock.h"
-#include "opt_compat.h"
 #include "opt_cpu.h"
 #include "opt_isa.h"
 
@@ -146,6 +145,7 @@ ia32_fetch_syscall_args(struct thread *td)
 		frame->tf_rip = eip;
 		frame->tf_cs = cs;
 		frame->tf_rsp += 2 * sizeof(u_int32_t);
+		frame->tf_err = 7;		/* size of lcall $7,$0 */
 	}
 #endif
 
@@ -177,8 +177,6 @@ ia32_fetch_syscall_args(struct thread *td)
 		sa->code = tmp;
 		params += sizeof(quad_t);
 	}
- 	if (p->p_sysent->sv_mask)
- 		sa->code &= p->p_sysent->sv_mask;
  	if (sa->code >= p->p_sysent->sv_size)
  		sa->callp = &p->p_sysent->sv_table[0];
   	else
@@ -231,6 +229,7 @@ ia32_syscall(struct trapframe *frame)
 	}
 
 	syscallret(td, error);
+	amd64_syscall_ret_flush_l1d(error);
 }
 
 static void

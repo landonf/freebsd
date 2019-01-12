@@ -1,6 +1,6 @@
 /*
  * SSL/TLS interface functions for GnuTLS
- * Copyright (c) 2004-2011, Jouni Malinen <j@w1.fi>
+ * Copyright (c) 2004-2017, Jouni Malinen <j@w1.fi>
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -37,6 +37,8 @@ struct tls_global {
 			 union tls_event_data *data);
 	void *cb_ctx;
 	int cert_in_cb;
+
+	char *ocsp_stapling_response;
 };
 
 struct tls_connection {
@@ -133,6 +135,7 @@ void tls_deinit(void *ssl_ctx)
 		if (global->params_set)
 			gnutls_certificate_free_credentials(global->xcred);
 		os_free(global->session_data);
+		os_free(global->ocsp_stapling_response);
 		os_free(global);
 	}
 
@@ -292,6 +295,14 @@ int tls_connection_established(void *ssl_ctx, struct tls_connection *conn)
 }
 
 
+char * tls_connection_peer_serial_num(void *tls_ctx,
+				      struct tls_connection *conn)
+{
+	/* TODO */
+	return NULL;
+}
+
+
 int tls_connection_shutdown(void *ssl_ctx, struct tls_connection *conn)
 {
 	struct tls_global *global = ssl_ctx;
@@ -343,9 +354,24 @@ int tls_connection_set_params(void *tls_ctx, struct tls_connection *conn,
 			      const struct tls_connection_params *params)
 {
 	int ret;
+	const char *err;
+	char prio_buf[100];
+	const char *prio = NULL;
 
 	if (conn == NULL || params == NULL)
 		return -1;
+
+	if (params->flags & TLS_CONN_REQUIRE_OCSP_ALL) {
+		wpa_printf(MSG_INFO,
+			   "GnuTLS: ocsp=3 not supported");
+		return -1;
+	}
+
+	if (params->flags & TLS_CONN_EXT_CERT_CHECK) {
+		wpa_printf(MSG_INFO,
+			   "GnuTLS: tls_ext_cert_check=1 not supported");
+		return -1;
+	}
 
 	if (params->subject_match) {
 		wpa_printf(MSG_INFO, "GnuTLS: subject_match not supported");
@@ -382,12 +408,60 @@ int tls_connection_set_params(void *tls_ctx, struct tls_connection *conn,
 
 	conn->flags = params->flags;
 
-	if (params->openssl_ciphers) {
-		wpa_printf(MSG_INFO, "GnuTLS: openssl_ciphers not supported");
-		return -1;
+	if (params->flags & (TLS_CONN_DISABLE_TLSv1_0 |
+			     TLS_CONN_DISABLE_TLSv1_1 |
+			     TLS_CONN_DISABLE_TLSv1_2)) {
+		os_snprintf(prio_buf, sizeof(prio_buf),
+			    "NORMAL:-VERS-SSL3.0%s%s%s",
+			    params->flags & TLS_CONN_DISABLE_TLSv1_0 ?
+			    ":-VERS-TLS1.0" : "",
+			    params->flags & TLS_CONN_DISABLE_TLSv1_1 ?
+			    ":-VERS-TLS1.1" : "",
+			    params->flags & TLS_CONN_DISABLE_TLSv1_2 ?
+			    ":-VERS-TLS1.2" : "");
+		prio = prio_buf;
 	}
 
-	/* TODO: gnutls_certificate_set_verify_flags(xcred, flags); 
+	if (params->openssl_ciphers) {
+		if (os_strcmp(params->openssl_ciphers, "SUITEB128") == 0) {
+			prio = "SUITEB128";
+		} else if (os_strcmp(params->openssl_ciphers,
+				     "SUITEB192") == 0) {
+			prio = "SUITEB192";
+		} else if ((params->flags & TLS_CONN_SUITEB) &&
+			   os_strcmp(params->openssl_ciphers,
+				     "ECDHE-RSA-AES256-GCM-SHA384") == 0) {
+			prio = "NONE:+VERS-TLS1.2:+AEAD:+ECDHE-RSA:+AES-256-GCM:+SIGN-RSA-SHA384:+CURVE-SECP384R1:+COMP-NULL";
+		} else if (os_strcmp(params->openssl_ciphers,
+				     "ECDHE-RSA-AES256-GCM-SHA384") == 0) {
+			prio = "NONE:+VERS-TLS1.2:+AEAD:+ECDHE-RSA:+AES-256-GCM:+SIGN-RSA-SHA384:+CURVE-SECP384R1:+COMP-NULL";
+		} else if (os_strcmp(params->openssl_ciphers,
+				     "DHE-RSA-AES256-GCM-SHA384") == 0) {
+			prio = "NONE:+VERS-TLS1.2:+AEAD:+DHE-RSA:+AES-256-GCM:+SIGN-RSA-SHA384:+CURVE-SECP384R1:+COMP-NULL:%PROFILE_HIGH";
+		} else if (os_strcmp(params->openssl_ciphers,
+				     "ECDHE-ECDSA-AES256-GCM-SHA384") == 0) {
+			prio = "NONE:+VERS-TLS1.2:+AEAD:+ECDHE-ECDSA:+AES-256-GCM:+SIGN-RSA-SHA384:+CURVE-SECP384R1:+COMP-NULL";
+		} else {
+			wpa_printf(MSG_INFO,
+				   "GnuTLS: openssl_ciphers not supported");
+			return -1;
+		}
+	} else if (params->flags & TLS_CONN_SUITEB) {
+		prio = "NONE:+VERS-TLS1.2:+AEAD:+ECDHE-ECDSA:+ECDHE-RSA:+DHE-RSA:+AES-256-GCM:+SIGN-RSA-SHA384:+CURVE-SECP384R1:+COMP-NULL:%PROFILE_HIGH";
+	}
+
+	if (prio) {
+		wpa_printf(MSG_DEBUG, "GnuTLS: Set priority string: %s", prio);
+		ret = gnutls_priority_set_direct(conn->session, prio, &err);
+		if (ret < 0) {
+			wpa_printf(MSG_ERROR,
+				   "GnuTLS: Priority string failure at '%s'",
+				   err);
+			return -1;
+		}
+	}
+
+	/* TODO: gnutls_certificate_set_verify_flags(xcred, flags);
 	 * to force peer validation(?) */
 
 	if (params->ca_cert) {
@@ -410,6 +484,13 @@ int tls_connection_set_params(void *tls_ctx, struct tls_connection *conn,
 					   gnutls_strerror(ret));
 				return -1;
 			}
+			wpa_printf(MSG_DEBUG,
+				   "GnuTLS: Successfully read CA cert '%s' in PEM format",
+				   params->ca_cert);
+		} else {
+			wpa_printf(MSG_DEBUG,
+				   "GnuTLS: Successfully read CA cert '%s' in DER format",
+				   params->ca_cert);
 		}
 	} else if (params->ca_cert_blob) {
 		gnutls_datum_t ca;
@@ -457,6 +538,9 @@ int tls_connection_set_params(void *tls_ctx, struct tls_connection *conn,
 	}
 
 	if (params->client_cert && params->private_key) {
+		wpa_printf(MSG_DEBUG,
+			   "GnuTLS: Try to parse client cert '%s' and key '%s' in DER format",
+			   params->client_cert, params->private_key);
 #if GNUTLS_VERSION_NUMBER >= 0x03010b
 		ret = gnutls_certificate_set_x509_key_file2(
 			conn->xcred, params->client_cert, params->private_key,
@@ -468,8 +552,9 @@ int tls_connection_set_params(void *tls_ctx, struct tls_connection *conn,
 			GNUTLS_X509_FMT_DER);
 #endif
 		if (ret < 0) {
-			wpa_printf(MSG_DEBUG, "Failed to read client cert/key "
-				   "in DER format: %s", gnutls_strerror(ret));
+			wpa_printf(MSG_DEBUG,
+				   "GnuTLS: Failed to read client cert/key in DER format (%s) - try in PEM format",
+				   gnutls_strerror(ret));
 #if GNUTLS_VERSION_NUMBER >= 0x03010b
 			ret = gnutls_certificate_set_x509_key_file2(
 				conn->xcred, params->client_cert,
@@ -486,11 +571,19 @@ int tls_connection_set_params(void *tls_ctx, struct tls_connection *conn,
 					   gnutls_strerror(ret));
 				return ret;
 			}
+			wpa_printf(MSG_DEBUG,
+				   "GnuTLS: Successfully read client cert/key in PEM format");
+		} else {
+			wpa_printf(MSG_DEBUG,
+				   "GnuTLS: Successfully read client cert/key in DER format");
 		}
 	} else if (params->private_key) {
 		int pkcs12_ok = 0;
 #ifdef PKCS12_FUNCS
 		/* Try to load in PKCS#12 format */
+		wpa_printf(MSG_DEBUG,
+			   "GnuTLS: Try to parse client cert/key '%s'in PKCS#12 DER format",
+			   params->private_key);
 		ret = gnutls_certificate_set_x509_simple_pkcs12_file(
 			conn->xcred, params->private_key, GNUTLS_X509_FMT_DER,
 			params->private_key_passwd);
@@ -596,6 +689,44 @@ int tls_connection_set_params(void *tls_ctx, struct tls_connection *conn,
 }
 
 
+#if GNUTLS_VERSION_NUMBER >= 0x030103
+static int server_ocsp_status_req(gnutls_session_t session, void *ptr,
+				  gnutls_datum_t *resp)
+{
+	struct tls_global *global = ptr;
+	char *cached;
+	size_t len;
+
+	if (!global->ocsp_stapling_response) {
+		wpa_printf(MSG_DEBUG, "GnuTLS: OCSP status callback - no response configured");
+		return GNUTLS_E_NO_CERTIFICATE_STATUS;
+	}
+
+	cached = os_readfile(global->ocsp_stapling_response, &len);
+	if (!cached) {
+		wpa_printf(MSG_DEBUG,
+			   "GnuTLS: OCSP status callback - could not read response file (%s)",
+			   global->ocsp_stapling_response);
+		return GNUTLS_E_NO_CERTIFICATE_STATUS;
+	}
+
+	wpa_printf(MSG_DEBUG,
+		   "GnuTLS: OCSP status callback - send cached response");
+	resp->data = gnutls_malloc(len);
+	if (!resp->data) {
+		os_free(resp);
+		return GNUTLS_E_MEMORY_ERROR;
+	}
+
+	os_memcpy(resp->data, cached, len);
+	resp->size = len;
+	os_free(cached);
+
+	return GNUTLS_E_SUCCESS;
+}
+#endif /* 3.1.3 */
+
+
 int tls_global_set_params(void *tls_ctx,
 			  const struct tls_connection_params *params)
 {
@@ -690,6 +821,17 @@ int tls_global_set_params(void *tls_ctx,
 		}
 	}
 
+#if GNUTLS_VERSION_NUMBER >= 0x030103
+	os_free(global->ocsp_stapling_response);
+	if (params->ocsp_stapling_response)
+		global->ocsp_stapling_response =
+			os_strdup(params->ocsp_stapling_response);
+	else
+		global->ocsp_stapling_response = NULL;
+	gnutls_certificate_set_ocsp_status_request_function(
+		global->xcred, server_ocsp_status_req, global);
+#endif /* 3.1.3 */
+
 	global->params_set = 1;
 
 	return 0;
@@ -746,15 +888,22 @@ int tls_connection_get_random(void *ssl_ctx, struct tls_connection *conn,
 }
 
 
-int tls_connection_prf(void *tls_ctx, struct tls_connection *conn,
-		       const char *label, int server_random_first,
-		       int skip_keyblock, u8 *out, size_t out_len)
+int tls_connection_export_key(void *tls_ctx, struct tls_connection *conn,
+			      const char *label, u8 *out, size_t out_len)
 {
-	if (conn == NULL || conn->session == NULL || skip_keyblock)
+	if (conn == NULL || conn->session == NULL)
 		return -1;
 
 	return gnutls_prf(conn->session, os_strlen(label), label,
-			  server_random_first, 0, NULL, out_len, (char *) out);
+			  0 /* client_random first */, 0, NULL, out_len,
+			  (char *) out);
+}
+
+
+int tls_connection_get_eap_fast_key(void *tls_ctx, struct tls_connection *conn,
+				    u8 *out, size_t out_len)
+{
+	return -1;
 }
 
 
@@ -1262,6 +1411,7 @@ struct wpabuf * tls_connection_handshake(void *tls_ctx,
 	ret = gnutls_handshake(conn->session);
 	if (ret < 0) {
 		gnutls_alert_description_t alert;
+		union tls_event_data ev;
 
 		switch (ret) {
 		case GNUTLS_E_AGAIN:
@@ -1272,14 +1422,29 @@ struct wpabuf * tls_connection_handshake(void *tls_ctx,
 				conn->push_buf = wpabuf_alloc(0);
 			}
 			break;
+		case GNUTLS_E_DH_PRIME_UNACCEPTABLE:
+			wpa_printf(MSG_DEBUG, "GnuTLS: Unacceptable DH prime");
+			if (conn->global->event_cb) {
+				os_memset(&ev, 0, sizeof(ev));
+				ev.alert.is_local = 1;
+				ev.alert.type = "fatal";
+				ev.alert.description = "insufficient security";
+				conn->global->event_cb(conn->global->cb_ctx,
+						       TLS_ALERT, &ev);
+			}
+			/*
+			 * Could send a TLS Alert to the server, but for now,
+			 * simply terminate handshake.
+			 */
+			conn->failed++;
+			conn->write_alerts++;
+			break;
 		case GNUTLS_E_FATAL_ALERT_RECEIVED:
 			alert = gnutls_alert_get(conn->session);
 			wpa_printf(MSG_DEBUG, "%s - received fatal '%s' alert",
 				   __func__, gnutls_alert_get_name(alert));
 			conn->read_alerts++;
 			if (conn->global->event_cb != NULL) {
-				union tls_event_data ev;
-
 				os_memset(&ev, 0, sizeof(ev));
 				ev.alert.is_local = 0;
 				ev.alert.type = gnutls_alert_get_name(alert);
@@ -1430,16 +1595,53 @@ int tls_connection_set_cipher_list(void *tls_ctx, struct tls_connection *conn,
 int tls_get_version(void *ssl_ctx, struct tls_connection *conn,
 		    char *buf, size_t buflen)
 {
-	/* TODO */
-	return -1;
+	gnutls_protocol_t ver;
+
+	ver = gnutls_protocol_get_version(conn->session);
+	if (ver == GNUTLS_TLS1_0)
+		os_strlcpy(buf, "TLSv1", buflen);
+	else if (ver == GNUTLS_TLS1_1)
+		os_strlcpy(buf, "TLSv1.1", buflen);
+	else if (ver == GNUTLS_TLS1_2)
+		os_strlcpy(buf, "TLSv1.2", buflen);
+	else
+		return -1;
+	return 0;
 }
 
 
 int tls_get_cipher(void *ssl_ctx, struct tls_connection *conn,
 		   char *buf, size_t buflen)
 {
-	/* TODO */
-	buf[0] = '\0';
+	gnutls_cipher_algorithm_t cipher;
+	gnutls_kx_algorithm_t kx;
+	gnutls_mac_algorithm_t mac;
+	const char *kx_str, *cipher_str, *mac_str;
+	int res;
+
+	cipher = gnutls_cipher_get(conn->session);
+	cipher_str = gnutls_cipher_get_name(cipher);
+	if (!cipher_str)
+		cipher_str = "";
+
+	kx = gnutls_kx_get(conn->session);
+	kx_str = gnutls_kx_get_name(kx);
+	if (!kx_str)
+		kx_str = "";
+
+	mac = gnutls_mac_get(conn->session);
+	mac_str = gnutls_mac_get_name(mac);
+	if (!mac_str)
+		mac_str = "";
+
+	if (kx == GNUTLS_KX_RSA)
+		res = os_snprintf(buf, buflen, "%s-%s", cipher_str, mac_str);
+	else
+		res = os_snprintf(buf, buflen, "%s-%s-%s",
+				  kx_str, cipher_str, mac_str);
+	if (os_snprintf_error(buflen, res))
+		return -1;
+
 	return 0;
 }
 

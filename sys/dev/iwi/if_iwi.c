@@ -2059,7 +2059,7 @@ iwi_ioctl(struct ieee80211com *ic, u_long cmd, void *data)
 	switch (cmd) {
 	case SIOCGIWISTATS:
 		/* XXX validate permissions/memory/etc? */
-		error = copyout(&sc->sc_linkqual, ifr->ifr_data,
+		error = copyout(&sc->sc_linkqual, ifr_data_get_ptr(ifr),
 		    sizeof(struct iwi_notif_link_quality));
 		break;
 	case SIOCZIWISTATS:
@@ -2833,12 +2833,12 @@ iwi_auth_and_assoc(struct iwi_softc *sc, struct ieee80211vap *vap)
 
 	IWI_LOCK_ASSERT(sc);
 
-	ni = ieee80211_ref_node(vap->iv_bss);
-
 	if (sc->flags & IWI_FLAG_ASSOCIATED) {
 		DPRINTF(("Already associated\n"));
 		return (-1);
 	}
+
+	ni = ieee80211_ref_node(vap->iv_bss);
 
 	IWI_STATE_BEGIN(sc, IWI_FW_ASSOCIATING);
 	error = 0;

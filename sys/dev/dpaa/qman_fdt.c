@@ -68,7 +68,8 @@ static driver_t qman_driver = {
 };
 
 static devclass_t qman_devclass;
-DRIVER_MODULE(qman, simplebus, qman_driver, qman_devclass, 0, 0);
+EARLY_DRIVER_MODULE(qman, simplebus, qman_driver, qman_devclass, 0, 0,
+    BUS_PASS_SUPPORTDEV);
 
 static int
 qman_fdt_probe(device_t dev)
@@ -185,7 +186,7 @@ qman_portals_fdt_attach(device_t dev)
 	get_addr_props(ofw_bus_get_node(device_get_parent(dev)), &paddr, &size);
 	get_addr_props(node, &addr, &size);
 
-	nrange = OF_getencprop_alloc(node, "ranges",
+	nrange = OF_getencprop_alloc_multi(node, "ranges",
 	    sizeof(*range), (void **)&range);
 	if (nrange < addr + paddr + size)
 		return (ENXIO);

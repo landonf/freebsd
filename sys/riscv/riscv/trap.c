@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2015-2017 Ruslan Bukin <br@bsdpad.com>
+ * Copyright (c) 2015-2018 Ruslan Bukin <br@bsdpad.com>
  * All rights reserved.
  *
  * Portions of this software were developed by SRI International and the
@@ -57,6 +57,9 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_param.h>
 #include <vm/vm_extern.h>
 
+#ifdef FPE
+#include <machine/fpe.h>
+#endif
 #include <machine/frame.h>
 #include <machine/pcb.h>
 #include <machine/pcpu.h>
@@ -108,8 +111,6 @@ cpu_fetch_syscall_args(struct thread *td)
 		nap--;
 	}
 
-	if (p->p_sysent->sv_mask)
-		sa->code &= p->p_sysent->sv_mask;
 	if (sa->code >= p->p_sysent->sv_size)
 		sa->callp = &p->p_sysent->sv_table[0];
 	else
@@ -164,18 +165,16 @@ svc_handler(struct trapframe *frame)
 }
 
 static void
-data_abort(struct trapframe *frame, int lower)
+data_abort(struct trapframe *frame, int usermode)
 {
 	struct vm_map *map;
-	uint64_t sbadaddr;
+	uint64_t stval;
 	struct thread *td;
 	struct pcb *pcb;
 	vm_prot_t ftype;
 	vm_offset_t va;
 	struct proc *p;
-	int ucode;
-	int error;
-	int sig;
+	int error, sig, ucode;
 
 #ifdef KDB
 	if (kdb_active) {
@@ -185,39 +184,38 @@ data_abort(struct trapframe *frame, int lower)
 #endif
 
 	td = curthread;
-	pcb = td->td_pcb;
-
-	/*
-	 * Special case for fuswintr and suswintr. These can't sleep so
-	 * handle them early on in the trap handler.
-	 */
-	if (__predict_false(pcb->pcb_onfault == (vm_offset_t)&fsu_intr_fault)) {
-		frame->tf_sepc = pcb->pcb_onfault;
-		return;
-	}
-
-	sbadaddr = frame->tf_sbadaddr;
-
 	p = td->td_proc;
+	pcb = td->td_pcb;
+	stval = frame->tf_stval;
 
-	if (lower)
+	if (td->td_critnest != 0 || td->td_intr_nesting_level != 0 ||
+	    WITNESS_CHECK(WARN_SLEEPOK | WARN_GIANTOK, NULL,
+	    "Kernel page fault") != 0)
+		goto fatal;
+
+	if (usermode)
 		map = &td->td_proc->p_vmspace->vm_map;
+	else if (stval >= VM_MAX_USER_ADDRESS)
+		map = kernel_map;
 	else {
-		/* The top bit tells us which range to use */
-		if ((sbadaddr >> 63) == 1)
-			map = kernel_map;
-		else
-			map = &td->td_proc->p_vmspace->vm_map;
+		if (pcb->pcb_onfault == 0)
+			goto fatal;
+		map = &td->td_proc->p_vmspace->vm_map;
 	}
 
-	va = trunc_page(sbadaddr);
+	va = trunc_page(stval);
 
 	if ((frame->tf_scause == EXCP_FAULT_STORE) ||
 	    (frame->tf_scause == EXCP_STORE_PAGE_FAULT)) {
-		ftype = (VM_PROT_READ | VM_PROT_WRITE);
+		ftype = VM_PROT_WRITE;
+	} else if (frame->tf_scause == EXCP_INST_PAGE_FAULT) {
+		ftype = VM_PROT_EXECUTE;
 	} else {
-		ftype = (VM_PROT_READ);
+		ftype = VM_PROT_READ;
 	}
+
+	if (pmap_fault_fixup(map->pmap, va, ftype))
+		goto done;
 
 	if (map != kernel_map) {
 		/*
@@ -243,28 +241,31 @@ data_abort(struct trapframe *frame, int lower)
 	}
 
 	if (error != KERN_SUCCESS) {
-		if (lower) {
+		if (usermode) {
 			sig = SIGSEGV;
 			if (error == KERN_PROTECTION_FAILURE)
 				ucode = SEGV_ACCERR;
 			else
 				ucode = SEGV_MAPERR;
-			call_trapsignal(td, sig, ucode, (void *)sbadaddr);
+			call_trapsignal(td, sig, ucode, (void *)stval);
 		} else {
-			if (td->td_intr_nesting_level == 0 &&
-			    pcb->pcb_onfault != 0) {
+			if (pcb->pcb_onfault != 0) {
 				frame->tf_a[0] = error;
 				frame->tf_sepc = pcb->pcb_onfault;
 				return;
 			}
-			dump_regs(frame);
-			panic("vm_fault failed: %lx, va 0x%016lx",
-				frame->tf_sepc, sbadaddr);
+			goto fatal;
 		}
 	}
 
-	if (lower)
+done:
+	if (usermode)
 		userret(td, frame);
+	return;
+
+fatal:
+	dump_regs(frame);
+	panic("Fatal page fault at %#lx: %#016lx", frame->tf_sepc, stval);
 }
 
 void
@@ -321,8 +322,8 @@ do_trap_supervisor(struct trapframe *frame)
 		break;
 	default:
 		dump_regs(frame);
-		panic("Unknown kernel exception %x badaddr %lx\n",
-			exception, frame->tf_sbadaddr);
+		panic("Unknown kernel exception %x trap value %lx\n",
+		    exception, frame->tf_stval);
 	}
 }
 
@@ -373,7 +374,9 @@ do_trap_user(struct trapframe *frame)
 			 * May be a FPE trap. Enable FPE usage
 			 * for this thread and try again.
 			 */
-			frame->tf_sstatus |= SSTATUS_FS_INITIAL;
+			fpe_state_clear();
+			frame->tf_sstatus &= ~SSTATUS_FS_MASK;
+			frame->tf_sstatus |= SSTATUS_FS_CLEAN;
 			pcb->pcb_fpflags |= PCB_FP_STARTED;
 			break;
 		}
@@ -387,7 +390,7 @@ do_trap_user(struct trapframe *frame)
 		break;
 	default:
 		dump_regs(frame);
-		panic("Unknown userland exception %x, badaddr %lx\n",
-			exception, frame->tf_sbadaddr);
+		panic("Unknown userland exception %x, trap value %lx\n",
+		    exception, frame->tf_stval);
 	}
 }

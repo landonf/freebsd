@@ -73,11 +73,8 @@ struct vmtotal {
 /*
  * System wide statistics counters.
  * Locking:
- *      a - locked by atomic operations
  *      c - constant after initialization
- *      f - locked by vm_page_queue_free_mtx
  *      p - uses counter(9)
- *      q - changes are synchronized by the corresponding vm_pagequeue lock
  */
 struct vmmeter {
 	/*
@@ -148,6 +145,7 @@ struct vmmeter {
 #include <sys/domainset.h>
 
 extern struct vmmeter vm_cnt;
+extern domainset_t all_domains;
 extern domainset_t vm_min_domains;
 extern domainset_t vm_severe_domains;
 
@@ -180,7 +178,7 @@ vm_wire_count(void)
 /*
  * Return TRUE if we are under our severe low-free-pages threshold
  *
- * This routine is typically used at the user<->system interface to determine
+ * These routines are typically used at the user<->system interface to determine
  * whether we need to block in order to avoid a low memory deadlock.
  */
 static inline int
@@ -190,10 +188,24 @@ vm_page_count_severe(void)
 	return (!DOMAINSET_EMPTY(&vm_severe_domains));
 }
 
+static inline int
+vm_page_count_severe_domain(int domain)
+{
+
+	return (DOMAINSET_ISSET(domain, &vm_severe_domains));
+}
+
+static inline int
+vm_page_count_severe_set(const domainset_t *mask)
+{
+
+	return (DOMAINSET_SUBSET(&vm_severe_domains, mask));
+}
+
 /*
  * Return TRUE if we are under our minimum low-free-pages threshold.
  *
- * This routine is typically used within the system to determine whether
+ * These routines are typically used within the system to determine whether
  * we can execute potentially very expensive code in terms of memory.  It
  * is also used by the pageout daemon to calculate when to sleep, when
  * to wake waiters up, and when (after making a pass) to become more
@@ -204,6 +216,20 @@ vm_page_count_min(void)
 {
 
 	return (!DOMAINSET_EMPTY(&vm_min_domains));
+}
+
+static inline int
+vm_page_count_min_domain(int domain)
+{
+
+	return (DOMAINSET_ISSET(domain, &vm_min_domains));
+}
+
+static inline int
+vm_page_count_min_set(const domainset_t *mask)
+{
+
+	return (DOMAINSET_SUBSET(&vm_min_domains, mask));
 }
 
 #endif	/* _KERNEL */
