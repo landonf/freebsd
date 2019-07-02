@@ -886,6 +886,8 @@ solisten_wakeup(struct socket *sol)
 	}
 	SOLISTEN_UNLOCK(sol);
 	wakeup_one(&sol->sol_comp);
+	if ((sol->so_state & SS_ASYNC) && sol->so_sigio != NULL)
+		pgsigio(&sol->so_sigio, SIGIO, 0);
 }
 
 /*
@@ -1042,7 +1044,7 @@ sofree(struct socket *so)
 	 *
 	 * We used to do a lot of socket buffer and socket locking here, as
 	 * well as invoke sorflush() and perform wakeups.  The direct call to
-	 * dom_dispose() and sbrelease_internal() are an inlining of what was
+	 * dom_dispose() and sbdestroy() are an inlining of what was
 	 * necessary from sorflush().
 	 *
 	 * Notice that the socket buffer and kqueue state are torn down
@@ -1172,7 +1174,6 @@ soabort(struct socket *so)
 	KASSERT(so->so_count == 0, ("soabort: so_count"));
 	KASSERT((so->so_state & SS_PROTOREF) == 0, ("soabort: SS_PROTOREF"));
 	KASSERT(so->so_state & SS_NOFDREF, ("soabort: !SS_NOFDREF"));
-	KASSERT(so->so_qstate == SQ_NONE, ("soabort: !SQ_NONE"));
 	VNET_SO_ASSERT(so);
 
 	if (so->so_proto->pr_usrreqs->pru_abort != NULL)
@@ -1981,7 +1982,11 @@ dontblock:
 			SBLASTRECORDCHK(&so->so_rcv);
 			SBLASTMBUFCHK(&so->so_rcv);
 			SOCKBUF_UNLOCK(&so->so_rcv);
-			error = uiomove(mtod(m, char *) + moff, (int)len, uio);
+			if ((m->m_flags & M_NOMAP) != 0)
+				error = m_unmappedtouio(m, moff, uio, (int)len);
+			else
+				error = uiomove(mtod(m, char *) + moff,
+				    (int)len, uio);
 			SOCKBUF_LOCK(&so->so_rcv);
 			if (error) {
 				/*

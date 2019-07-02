@@ -5,6 +5,7 @@ TESTSRC=	${SRCTOP}/contrib/netbsd-tests/kernel
 
 TESTSDIR=	${TESTSBASE}/sys/kern
 
+#ATF_TESTS_C+=	kcov
 ATF_TESTS_C+=	kern_copyin
 ATF_TESTS_C+=	kern_descrip_test
 ATF_TESTS_C+=	ptrace_test
@@ -32,6 +33,7 @@ LIBADD.sys_getrandom+=			c
 LIBADD.sys_getrandom+=			pthread
 LIBADD.ptrace_test+=			pthread
 LIBADD.unix_seqpacket_test+=		pthread
+LIBADD.kcov+=				pthread
 
 NETBSD_ATF_TESTS_C+=	lockf_test
 NETBSD_ATF_TESTS_C+=	mqueue_test
@@ -44,7 +46,6 @@ LIBADD.mqueue_test+=	rt
     ${MACHINE_ARCH} == "i386" || \
     ${MACHINE_ARCH} == "aarch64"
 ATF_TESTS_C+=	libkern_crc32
-CFLAGS.libkern_crc32+=	-DUSERSPACE_TESTING
 .if ${MACHINE_ARCH} == "amd64" || ${MACHINE_ARCH} == "i386"
 LDADD.libkern_crc32+=	${SRCTOP}/sys/libkern/x86/crc32_sse42.c
 .else

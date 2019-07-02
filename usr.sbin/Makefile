@@ -92,6 +92,7 @@ SUBDIR=	adduser \
 	tcpdrop \
 	tcpdump \
 	traceroute \
+	trim \
 	trpt \
 	tzsetup \
 	ugidfw \
@@ -165,8 +166,6 @@ SUBDIR.${MK_NS_CACHING}+=	nscd
 SUBDIR.${MK_LPR}+=	lpr
 SUBDIR.${MK_MAN_UTILS}+=	manctl
 SUBDIR.${MK_MLX5TOOL}+=	mlx5tool
-SUBDIR.${MK_NAND}+=	nandsim
-SUBDIR.${MK_NAND}+=	nandtool
 SUBDIR.${MK_NETGRAPH}+=	flowctl
 SUBDIR.${MK_NETGRAPH}+=	ngctl
 SUBDIR.${MK_NETGRAPH}+=	nghook

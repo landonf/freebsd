@@ -70,7 +70,7 @@ extern struct nfsmount *ncl_iodmount[NFS_MAXASYNCDAEMON];
 extern int newnfs_directio_enable;
 extern int nfs_keep_dirty_on_error;
 
-int ncl_pbuf_freecnt = -1;	/* start out unlimited */
+uma_zone_t ncl_pbuf_zone;
 
 static struct buf *nfs_getcacheblk(struct vnode *vp, daddr_t bn, int size,
     struct thread *td);
@@ -182,7 +182,7 @@ ncl_getpages(struct vop_getpages_args *ap)
 	 * We use only the kva address for the buffer, but this is extremely
 	 * convenient and fast.
 	 */
-	bp = getpbuf(&ncl_pbuf_freecnt);
+	bp = uma_zalloc(ncl_pbuf_zone, M_WAITOK);
 
 	kva = (vm_offset_t) bp->b_data;
 	pmap_qenter(kva, pages, npages);
@@ -203,7 +203,7 @@ ncl_getpages(struct vop_getpages_args *ap)
 	error = ncl_readrpc(vp, &uio, cred);
 	pmap_qremove(kva, npages);
 
-	relpbuf(bp, &ncl_pbuf_freecnt);
+	uma_zfree(ncl_pbuf_zone, bp);
 
 	if (error && (uio.uio_resid == count)) {
 		printf("ncl_getpages: error %d\n", error);
@@ -793,7 +793,7 @@ do_sync:
 		while (uiop->uio_resid > 0) {
 			size = MIN(uiop->uio_resid, wsize);
 			size = MIN(uiop->uio_iov->iov_len, size);
-			bp = getpbuf(&ncl_pbuf_freecnt);
+			bp = uma_zalloc(ncl_pbuf_zone, M_WAITOK);
 			t_uio = malloc(sizeof(struct uio), M_NFSDIRECTIO, M_WAITOK);
 			t_iov = malloc(sizeof(struct iovec), M_NFSDIRECTIO, M_WAITOK);
 			t_iov->iov_base = malloc(size, M_NFSDIRECTIO, M_WAITOK);
@@ -836,7 +836,7 @@ err_free:
 				free(t_iov, M_NFSDIRECTIO);
 				free(t_uio, M_NFSDIRECTIO);
 				bp->b_vp = NULL;
-				relpbuf(bp, &ncl_pbuf_freecnt);
+				uma_zfree(ncl_pbuf_zone, bp);
 				if (error == EINTR)
 					return (error);
 				goto do_sync;
@@ -1571,7 +1571,7 @@ ncl_doio_directwrite(struct buf *bp)
 		mtx_unlock(&np->n_mtx);
 	}
 	bp->b_vp = NULL;
-	relpbuf(bp, &ncl_pbuf_freecnt);
+	uma_zfree(ncl_pbuf_zone, bp);
 }
 
 /*
@@ -1639,7 +1639,7 @@ ncl_doio(struct vnode *vp, struct buf *bp, struct ucred *cr, struct thread *td,
 		    }
 		}
 		/* ASSERT_VOP_LOCKED(vp, "ncl_doio"); */
-		if (p && (vp->v_vflag & VV_TEXT)) {
+		if (p && vp->v_writecount <= -1) {
 			mtx_lock(&np->n_mtx);
 			if (NFS_TIMESPEC_COMPARE(&np->n_mtime, &np->n_vattr.na_mtime)) {
 				mtx_unlock(&np->n_mtx);
@@ -1832,7 +1832,7 @@ ncl_doio(struct vnode *vp, struct buf *bp, struct ucred *cr, struct thread *td,
  */
 
 int
-ncl_meta_setsize(struct vnode *vp, struct ucred *cred, struct thread *td, u_quad_t nsize)
+ncl_meta_setsize(struct vnode *vp, struct thread *td, u_quad_t nsize)
 {
 	struct nfsnode *np = VTONFS(vp);
 	u_quad_t tsize;
@@ -1854,7 +1854,7 @@ ncl_meta_setsize(struct vnode *vp, struct ucred *cred, struct thread *td, u_quad
 		 * truncation point.  We may have a B_DELWRI and/or B_CACHE
 		 * buffer that now needs to be truncated.
 		 */
-		error = vtruncbuf(vp, cred, nsize, biosize);
+		error = vtruncbuf(vp, nsize, biosize);
 		lbn = nsize / biosize;
 		bufsize = nsize - (lbn * biosize);
 		bp = nfs_getcacheblk(vp, lbn, bufsize, td);

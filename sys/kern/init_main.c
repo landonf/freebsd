@@ -53,6 +53,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/kernel.h>
 #include <sys/epoch.h>
+#include <sys/eventhandler.h>
 #include <sys/exec.h>
 #include <sys/file.h>
 #include <sys/filedesc.h>
@@ -107,6 +108,14 @@ struct thread0_storage thread0_st __aligned(32);
 struct	vmspace vmspace0;
 struct	proc *initproc;
 
+int
+linux_alloc_current_noop(struct thread *td __unused, int flags __unused)
+{
+	return (0);
+}
+int (*lkpi_alloc_current)(struct thread *, int) = linux_alloc_current_noop;
+
+
 #ifndef BOOTHOWTO
 #define	BOOTHOWTO	0
 #endif
@@ -151,11 +160,6 @@ SYSINIT(placeholder, SI_SUB_DUMMY, SI_ORDER_ANY, NULL, NULL);
 SET_DECLARE(sysinit_set, struct sysinit);
 struct sysinit **sysinit, **sysinit_end;
 struct sysinit **newsysinit, **newsysinit_end;
-
-EVENTHANDLER_LIST_DECLARE(process_init);
-EVENTHANDLER_LIST_DECLARE(thread_init);
-EVENTHANDLER_LIST_DECLARE(process_ctor);
-EVENTHANDLER_LIST_DECLARE(thread_ctor);
 
 /*
  * Merge a new sysinit set into the current set, reallocating it if
@@ -412,7 +416,6 @@ struct sysentvec null_sysvec = {
 	.sv_coredump	= NULL,
 	.sv_imgact_try	= NULL,
 	.sv_minsigstksz	= 0,
-	.sv_pagesize	= PAGE_SIZE,
 	.sv_minuser	= VM_MIN_ADDRESS,
 	.sv_maxuser	= VM_MAXUSER_ADDRESS,
 	.sv_usrstack	= USRSTACK,
@@ -454,7 +457,7 @@ proc0_init(void *dummy __unused)
 	GIANT_REQUIRED;
 	p = &proc0;
 	td = &thread0;
-	
+
 	/*
 	 * Initialize magic number and osrel.
 	 */

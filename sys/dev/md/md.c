@@ -110,6 +110,7 @@
 
 #define MD_SHUTDOWN	0x10000		/* Tell worker thread to terminate. */
 #define	MD_EXITING	0x20000		/* Worker thread is exiting. */
+#define MD_PROVIDERGONE	0x40000		/* Safe to free the softc */
 
 #ifndef MD_NSECT
 #define MD_NSECT (10000 * 2)
@@ -199,6 +200,7 @@ static g_start_t g_md_start;
 static g_access_t g_md_access;
 static void g_md_dumpconf(struct sbuf *sb, const char *indent,
     struct g_geom *gp, struct g_consumer *cp __unused, struct g_provider *pp);
+static g_provgone_t g_md_providergone;
 
 static struct cdev *status_dev = NULL;
 static struct sx md_sx;
@@ -220,6 +222,7 @@ struct g_class g_md_class = {
 	.start = g_md_start,
 	.access = g_md_access,
 	.dumpconf = g_md_dumpconf,
+	.providergone = g_md_providergone,
 };
 
 DECLARE_GEOM_CLASS(g_md_class, g_md);
@@ -231,7 +234,7 @@ static LIST_HEAD(, md_s) md_softc_list = LIST_HEAD_INITIALIZER(md_softc_list);
 #define NMASK	(NINDIR-1)
 static int nshift;
 
-static int md_vnode_pbuf_freecnt;
+static uma_zone_t md_pbuf_zone;
 
 struct indir {
 	uintptr_t	*array;
@@ -481,8 +484,8 @@ g_md_start(struct bio *bp)
 	}
 	mtx_lock(&sc->queue_mtx);
 	bioq_disksort(&sc->bio_queue, bp);
-	mtx_unlock(&sc->queue_mtx);
 	wakeup(sc);
+	mtx_unlock(&sc->queue_mtx);
 }
 
 #define	MD_MALLOC_MOVE_ZERO	1
@@ -962,7 +965,7 @@ mdstart_vnode(struct md_s *sc, struct bio *bp)
 		auio.uio_iovcnt = piov - auio.uio_iov;
 		piov = auio.uio_iov;
 	} else if ((bp->bio_flags & BIO_UNMAPPED) != 0) {
-		pb = getpbuf(&md_vnode_pbuf_freecnt);
+		pb = uma_zalloc(md_pbuf_zone, M_WAITOK);
 		bp->bio_resid = len;
 unmapped_step:
 		npages = atop(min(MAXPHYS, round_page(len + (ma_offs &
@@ -1013,7 +1016,7 @@ unmapped_step:
 			if (len > 0)
 				goto unmapped_step;
 		}
-		relpbuf(pb, &md_vnode_pbuf_freecnt);
+		uma_zfree(md_pbuf_zone, pb);
 	}
 
 	free(piov, M_MD);
@@ -1496,17 +1499,30 @@ bad:
 	return (error);
 }
 
+static void
+g_md_providergone(struct g_provider *pp)
+{
+	struct md_s *sc = pp->geom->softc;
+
+	mtx_lock(&sc->queue_mtx);
+	sc->flags |= MD_PROVIDERGONE;
+	wakeup(&sc->flags);
+	mtx_unlock(&sc->queue_mtx);
+}
+
 static int
 mddestroy(struct md_s *sc, struct thread *td)
 {
 
 	if (sc->gp) {
-		sc->gp->softc = NULL;
 		g_topology_lock();
 		g_wither_geom(sc->gp, ENXIO);
 		g_topology_unlock();
-		sc->gp = NULL;
-		sc->pp = NULL;
+
+		mtx_lock(&sc->queue_mtx);
+		while (!(sc->flags & MD_PROVIDERGONE))
+			msleep(&sc->flags, &sc->queue_mtx, PRIBIO, "mddestroy", 0);
+		mtx_unlock(&sc->queue_mtx);
 	}
 	if (sc->devstat) {
 		devstat_remove_entry(sc->devstat);
@@ -2118,7 +2134,7 @@ g_md_init(struct g_class *mp __unused)
 			sx_xunlock(&md_sx);
 		}
 	}
-	md_vnode_pbuf_freecnt = nswbuf / 10;
+	md_pbuf_zone = pbuf_zsecond_create("mdpbuf", nswbuf / 10);
 	status_dev = make_dev(&mdctl_cdevsw, INT_MAX, UID_ROOT, GID_WHEEL,
 	    0600, MDCTL_NAME);
 	g_topology_lock();
@@ -2214,5 +2230,6 @@ g_md_fini(struct g_class *mp __unused)
 	sx_destroy(&md_sx);
 	if (status_dev != NULL)
 		destroy_dev(status_dev);
+	uma_zdestroy(md_pbuf_zone);
 	delete_unrhdr(md_uh);
 }

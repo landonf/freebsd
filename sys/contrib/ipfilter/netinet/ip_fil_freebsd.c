@@ -16,15 +16,17 @@ static const char rcsid[] = "@(#)$Id$";
 # define	KERNEL	1
 # define	_KERNEL	1
 #endif
-#if defined(__FreeBSD_version) && (__FreeBSD_version >= 400000) && \
+#if defined(__FreeBSD_version) && \
     !defined(KLD_MODULE) && !defined(IPFILTER_LKM)
 # include "opt_inet6.h"
 #endif
-#if defined(__FreeBSD_version) && (__FreeBSD_version >= 440000) && \
+#if defined(__FreeBSD_version) && \
     !defined(KLD_MODULE) && !defined(IPFILTER_LKM)
 # include "opt_random_ip_id.h"
 #endif
 #include <sys/param.h>
+#include <sys/eventhandler.h>
+#include <sys/conf.h>
 #include <sys/errno.h>
 #include <sys/types.h>
 #include <sys/file.h>
@@ -33,7 +35,7 @@ static const char rcsid[] = "@(#)$Id$";
 #include <sys/time.h>
 #include <sys/systm.h>
 # include <sys/dirent.h>
-#if defined(__FreeBSD_version) && (__FreeBSD_version >= 800000)
+#if defined(__FreeBSD_version)
 #include <sys/jail.h>
 #endif
 # include <sys/malloc.h>
@@ -126,32 +128,33 @@ static void ipf_ifevent(arg, ifp)
 
 
 
-static int
-ipf_check_wrapper(void *arg, struct mbuf **mp, struct ifnet *ifp, int dir)
+static pfil_return_t
+ipf_check_wrapper(struct mbuf **mp, struct ifnet *ifp, int flags,
+    void *ruleset __unused, struct inpcb *inp)
 {
 	struct ip *ip = mtod(*mp, struct ip *);
-	int rv;
+	pfil_return_t rv;
 
 	CURVNET_SET(ifp->if_vnet);
-	rv = ipf_check(&V_ipfmain, ip, ip->ip_hl << 2, ifp, (dir == PFIL_OUT),
-		       mp);
+	rv = ipf_check(&V_ipfmain, ip, ip->ip_hl << 2, ifp,
+	    !!(flags & PFIL_OUT), mp);
 	CURVNET_RESTORE();
-	return rv;
+	return (rv == 0 ? PFIL_PASS : PFIL_DROPPED);
 }
 
-# ifdef USE_INET6
-#  include <netinet/ip6.h>
-
-static int
-ipf_check_wrapper6(void *arg, struct mbuf **mp, struct ifnet *ifp, int dir)
+#ifdef USE_INET6
+static pfil_return_t
+ipf_check_wrapper6(struct mbuf **mp, struct ifnet *ifp, int flags,
+    void *ruleset __unused, struct inpcb *inp)
 {
-	int error;
+	pfil_return_t rv;
 
 	CURVNET_SET(ifp->if_vnet);
-	error = ipf_check(&V_ipfmain, mtod(*mp, struct ip *),
-			  sizeof(struct ip6_hdr), ifp, (dir == PFIL_OUT), mp);
+	rv = ipf_check(&V_ipfmain, mtod(*mp, struct ip *),
+	    sizeof(struct ip6_hdr), ifp, !!(flags & PFIL_OUT), mp);
 	CURVNET_RESTORE();
-	return (error);
+
+	return (rv == 0 ? PFIL_PASS : PFIL_DROPPED);
 }
 # endif
 #if	defined(IPFILTER_LKM)
@@ -479,7 +482,7 @@ ipf_send_ip(fin, m)
 	default :
 		return EINVAL;
 	}
-#ifdef IPSEC
+#ifdef IPSEC_SUPPORT
 	m->m_pkthdr.rcvif = NULL;
 #endif
 
@@ -1167,7 +1170,7 @@ ipf_checkv6sum(fin)
 size_t
 mbufchainlen(m0)
 	struct mbuf *m0;
-	{
+{
 	size_t len;
 
 	if ((m0->m_flags & M_PKTHDR) != 0) {
@@ -1318,53 +1321,63 @@ ipf_inject(fin, m)
 	return error;
 }
 
-int ipf_pfil_unhook(void) {
-	struct pfil_head *ph_inet;
-#ifdef USE_INET6
-	struct pfil_head *ph_inet6;
-#endif
+VNET_DEFINE_STATIC(pfil_hook_t, ipf_inet_hook);
+VNET_DEFINE_STATIC(pfil_hook_t, ipf_inet6_hook);
+#define	V_ipf_inet_hook		VNET(ipf_inet_hook)
+#define	V_ipf_inet6_hook	VNET(ipf_inet6_hook)
 
-	ph_inet = pfil_head_get(PFIL_TYPE_AF, AF_INET);
-	if (ph_inet != NULL)
-		pfil_remove_hook((void *)ipf_check_wrapper, NULL,
-		    PFIL_IN|PFIL_OUT|PFIL_WAITOK, ph_inet);
-# ifdef USE_INET6
-	ph_inet6 = pfil_head_get(PFIL_TYPE_AF, AF_INET6);
-	if (ph_inet6 != NULL)
-		pfil_remove_hook((void *)ipf_check_wrapper6, NULL,
-		    PFIL_IN|PFIL_OUT|PFIL_WAITOK, ph_inet6);
-# endif
+int ipf_pfil_unhook(void) {
+
+	pfil_remove_hook(V_ipf_inet_hook);
+
+#ifdef USE_INET6
+	pfil_remove_hook(V_ipf_inet6_hook);
+#endif
 
 	return (0);
 }
 
 int ipf_pfil_hook(void) {
-	struct pfil_head *ph_inet;
+	struct pfil_hook_args pha;
+	struct pfil_link_args pla;
+	int error, error6;
+
+	pha.pa_version = PFIL_VERSION;
+	pha.pa_flags = PFIL_IN | PFIL_OUT;
+	pha.pa_modname = "ipfilter";
+	pha.pa_rulname = "default-ip4";
+	pha.pa_func = ipf_check_wrapper;
+	pha.pa_ruleset = NULL;
+	pha.pa_type = PFIL_TYPE_IP4;
+	V_ipf_inet_hook = pfil_add_hook(&pha);
+
 #ifdef USE_INET6
-	struct pfil_head *ph_inet6;
+	pha.pa_rulname = "default-ip6";
+	pha.pa_func = ipf_check_wrapper6;
+	pha.pa_type = PFIL_TYPE_IP6;
+	V_ipf_inet6_hook = pfil_add_hook(&pha);
 #endif
 
-	ph_inet = pfil_head_get(PFIL_TYPE_AF, AF_INET);
-#    ifdef USE_INET6
-	ph_inet6 = pfil_head_get(PFIL_TYPE_AF, AF_INET6);
-#    endif
-	if (ph_inet == NULL
-#    ifdef USE_INET6
-	    && ph_inet6 == NULL
-#    endif
-	   ) {
-		return ENODEV;
-	}
+	pla.pa_version = PFIL_VERSION;
+	pla.pa_flags = PFIL_IN | PFIL_OUT |
+	    PFIL_HEADPTR | PFIL_HOOKPTR;
+	pla.pa_head = V_inet_pfil_head;
+	pla.pa_hook = V_ipf_inet_hook;
+	error = pfil_link(&pla);
 
-	if (ph_inet != NULL)
-		pfil_add_hook((void *)ipf_check_wrapper, NULL,
-		    PFIL_IN|PFIL_OUT|PFIL_WAITOK, ph_inet);
-#  ifdef USE_INET6
-	if (ph_inet6 != NULL)
-		pfil_add_hook((void *)ipf_check_wrapper6, NULL,
-				      PFIL_IN|PFIL_OUT|PFIL_WAITOK, ph_inet6);
-#  endif
-	return (0);
+	error6 = 0;
+#ifdef USE_INET6
+	pla.pa_head = V_inet6_pfil_head;
+	pla.pa_hook = V_ipf_inet6_hook;
+	error6 = pfil_link(&pla);
+#endif
+
+	if (error || error6)
+		error = ENODEV;
+	else
+		error = 0;
+
+	return (error);
 }
 
 void
@@ -1433,3 +1446,56 @@ ipf_pcksum(fin, hlen, sum)
 	sum2 = ~sum & 0xffff;
 	return sum2;
 }
+
+#ifdef  USE_INET6
+#ifdef	_KERNEL
+u_int
+ipf_pcksum6(fin, ip6, off, len)
+	fr_info_t *fin;
+	ip6_t *ip6;
+	u_int32_t off;
+	u_int32_t len;
+{
+	struct mbuf *m;
+	int sum;
+
+	m = fin->fin_m;
+	if (m->m_len < sizeof(struct ip6_hdr)) {
+		return 0xffff;
+	}
+
+	sum = in6_cksum(m, ip6->ip6_nxt, off, len);
+	return(sum);
+}
+#else
+u_int
+ipf_pcksum6(fin, ip6, off, len)
+	fr_info_t *fin;
+	ip6_t *ip6;
+	u_int32_t off;
+	u_int32_t len;
+{
+	u_short *sp;
+	u_int sum;
+
+	sp = (u_short *)&ip6->ip6_src;
+	sum = *sp++;   /* ip6_src */
+	sum += *sp++;
+	sum += *sp++;
+	sum += *sp++;
+	sum += *sp++;
+	sum += *sp++;
+	sum += *sp++;
+	sum += *sp++;
+	sum += *sp++;   /* ip6_dst */
+	sum += *sp++;
+	sum += *sp++;
+	sum += *sp++;
+	sum += *sp++;
+	sum += *sp++;
+	sum += *sp++;
+	sum += *sp++;
+	return(ipf_pcksum(fin, off, sum));
+}
+#endif
+#endif

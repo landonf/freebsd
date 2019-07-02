@@ -36,12 +36,12 @@
 #define	INSN_SIZE		4
 
 #define	READ_SPECIALREG(reg)						\
-({	uint64_t val;							\
-	__asm __volatile("mrs	%0, " __STRING(reg) : "=&r" (val));	\
-	val;								\
+({	uint64_t _val;							\
+	__asm __volatile("mrs	%0, " __STRING(reg) : "=&r" (_val));	\
+	_val;								\
 })
-#define	WRITE_SPECIALREG(reg, val)					\
-	__asm __volatile("msr	" __STRING(reg) ", %0" : : "r"((uint64_t)val))
+#define	WRITE_SPECIALREG(reg, _val)					\
+	__asm __volatile("msr	" __STRING(reg) ", %0" : : "r"((uint64_t)_val))
 
 /* CNTHCTL_EL2 - Counter-timer Hypervisor Control register */
 #define	CNTHCTL_EVNTI_MASK	(0xf << 4) /* Bit to trigger event stream */
@@ -575,7 +575,11 @@
 #define	PSR_M_EL1h	0x00000005
 #define	PSR_M_EL2t	0x00000008
 #define	PSR_M_EL2h	0x00000009
+#define	PSR_M_64	0x00000000
+#define	PSR_M_32	0x00000010
 #define	PSR_M_MASK	0x0000000f
+
+#define	PSR_T		0x00000020
 
 #define	PSR_AARCH32	0x00000010
 #define	PSR_F		0x00000040

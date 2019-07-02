@@ -194,9 +194,10 @@ SYSCTL_UINT(_vm, OID_AUTO, background_launder_max, CTLFLAG_RWTUN,
 
 int vm_pageout_page_count = 32;
 
-int vm_page_max_wired;		/* XXX max # of wired pages system-wide */
-SYSCTL_INT(_vm, OID_AUTO, max_wired,
-	CTLFLAG_RW, &vm_page_max_wired, 0, "System-wide limit to wired page count");
+u_long vm_page_max_user_wired;
+SYSCTL_ULONG(_vm, OID_AUTO, max_user_wired, CTLFLAG_RW,
+    &vm_page_max_user_wired, 0,
+    "system-wide limit to user-wired page count");
 
 static u_int isqrt(u_int num);
 static int vm_pageout_launder(struct vm_domain *vmd, int launder,
@@ -695,10 +696,9 @@ vm_pageout_launder(struct vm_domain *vmd, int launder, bool in_shortfall)
 	vm_page_t m, marker;
 	int act_delta, error, numpagedout, queue, starting_target;
 	int vnodes_skipped;
-	bool obj_locked, pageout_ok;
+	bool pageout_ok;
 
 	mtx = NULL;
-	obj_locked = false;
 	object = NULL;
 	starting_target = launder;
 	vnodes_skipped = 0;
@@ -754,28 +754,22 @@ recheck:
 		 */
 		if (m->hold_count != 0)
 			continue;
-		if (m->wire_count != 0) {
+		if (vm_page_wired(m)) {
 			vm_page_dequeue_deferred(m);
 			continue;
 		}
 
 		if (object != m->object) {
-			if (obj_locked) {
+			if (object != NULL)
 				VM_OBJECT_WUNLOCK(object);
-				obj_locked = false;
-			}
 			object = m->object;
-		}
-		if (!obj_locked) {
 			if (!VM_OBJECT_TRYWLOCK(object)) {
 				mtx_unlock(mtx);
 				/* Depends on type-stability. */
 				VM_OBJECT_WLOCK(object);
-				obj_locked = true;
 				mtx_lock(mtx);
 				goto recheck;
-			} else
-				obj_locked = true;
+			}
 		}
 
 		if (vm_page_busied(m))
@@ -897,16 +891,16 @@ free_page:
 				vnodes_skipped++;
 			}
 			mtx = NULL;
-			obj_locked = false;
+			object = NULL;
 		}
 	}
 	if (mtx != NULL) {
 		mtx_unlock(mtx);
 		mtx = NULL;
 	}
-	if (obj_locked) {
+	if (object != NULL) {
 		VM_OBJECT_WUNLOCK(object);
-		obj_locked = false;
+		object = NULL;
 	}
 	vm_pagequeue_lock(pq);
 	vm_pageout_end_scan(&ss);
@@ -935,9 +929,7 @@ isqrt(u_int num)
 {
 	u_int bit, root, tmp;
 
-	bit = 1u << ((NBBY * sizeof(u_int)) - 2);
-	while (bit > num)
-		bit >>= 2;
+	bit = num != 0 ? (1u << ((fls(num) - 1) & ~1)) : 0;
 	root = 0;
 	while (bit != 0) {
 		tmp = root + bit;
@@ -1211,7 +1203,7 @@ act_scan:
 		/*
 		 * Wired pages are dequeued lazily.
 		 */
-		if (m->wire_count != 0) {
+		if (vm_page_wired(m)) {
 			vm_page_dequeue_deferred(m);
 			continue;
 		}
@@ -1368,7 +1360,6 @@ vm_pageout_scan_inactive(struct vm_domain *vmd, int shortage,
 	vm_object_t object;
 	int act_delta, addl_page_shortage, deficit, page_shortage;
 	int starting_page_shortage;
-	bool obj_locked;
 
 	/*
 	 * The addl_page_shortage is an estimate of the number of temporarily
@@ -1388,7 +1379,6 @@ vm_pageout_scan_inactive(struct vm_domain *vmd, int shortage,
 	starting_page_shortage = page_shortage = shortage + deficit;
 
 	mtx = NULL;
-	obj_locked = false;
 	object = NULL;
 	vm_batchqueue_init(&rq);
 
@@ -1440,28 +1430,22 @@ recheck:
 			addl_page_shortage++;
 			goto reinsert;
 		}
-		if (m->wire_count != 0) {
+		if (vm_page_wired(m)) {
 			vm_page_dequeue_deferred(m);
 			continue;
 		}
 
 		if (object != m->object) {
-			if (obj_locked) {
+			if (object != NULL)
 				VM_OBJECT_WUNLOCK(object);
-				obj_locked = false;
-			}
 			object = m->object;
-		}
-		if (!obj_locked) {
 			if (!VM_OBJECT_TRYWLOCK(object)) {
 				mtx_unlock(mtx);
 				/* Depends on type-stability. */
 				VM_OBJECT_WLOCK(object);
-				obj_locked = true;
 				mtx_lock(mtx);
 				goto recheck;
-			} else
-				obj_locked = true;
+			}
 		}
 
 		if (vm_page_busied(m)) {
@@ -1563,14 +1547,10 @@ free_page:
 reinsert:
 		vm_pageout_reinsert_inactive(&ss, &rq, m);
 	}
-	if (mtx != NULL) {
+	if (mtx != NULL)
 		mtx_unlock(mtx);
-		mtx = NULL;
-	}
-	if (obj_locked) {
+	if (object != NULL)
 		VM_OBJECT_WUNLOCK(object);
-		obj_locked = false;
-	}
 	vm_pageout_reinsert_inactive(&ss, &rq, NULL);
 	vm_pageout_reinsert_inactive(&ss, &ss.bq, NULL);
 	vm_pagequeue_lock(pq);
@@ -2062,8 +2042,8 @@ vm_pageout_init(void)
 	if (vm_pageout_update_period == 0)
 		vm_pageout_update_period = 600;
 
-	if (vm_page_max_wired == 0)
-		vm_page_max_wired = freecount / 3;
+	if (vm_page_max_user_wired == 0)
+		vm_page_max_user_wired = freecount / 3;
 }
 
 /*

@@ -77,6 +77,7 @@
 #define	CR4_XSAVE 0x00040000	/* XSETBV/XGETBV */
 #define	CR4_SMEP 0x00100000	/* Supervisor-Mode Execution Prevention */
 #define	CR4_SMAP 0x00200000	/* Supervisor-Mode Access Prevention */
+#define	CR4_PKE	0x00400000	/* Protection Keys Enable */
 
 /*
  * Bits in AMD64 special registers.  EFER is 64 bits wide.
@@ -374,6 +375,17 @@
 #define	AMDFEID_CLZERO		0x00000001
 #define	AMDFEID_IRPERF		0x00000002
 #define	AMDFEID_XSAVEERPTR	0x00000004
+#define	AMDFEID_IBPB		0x00001000
+#define	AMDFEID_IBRS		0x00004000
+#define	AMDFEID_STIBP		0x00008000
+/* The below are only defined if the corresponding base feature above exists. */
+#define	AMDFEID_IBRS_ALWAYSON	0x00010000
+#define	AMDFEID_STIBP_ALWAYSON	0x00020000
+#define	AMDFEID_PREFER_IBRS	0x00040000
+#define	AMDFEID_SSBD		0x01000000
+/* SSBD via MSRC001_011F instead of MSR 0x48: */
+#define	AMDFEID_VIRT_SSBD	0x02000000
+#define	AMDFEID_SSB_NO		0x04000000
 
 /*
  * AMD extended function 8000_0008h ecx info
@@ -421,21 +433,41 @@
 /*
  * CPUID instruction 7 Structured Extended Features, leaf 0 ecx info
  */
-#define	CPUID_STDEXT2_PREFETCHWT1 0x00000001
-#define	CPUID_STDEXT2_UMIP	0x00000004
-#define	CPUID_STDEXT2_PKU	0x00000008
-#define	CPUID_STDEXT2_OSPKE	0x00000010
-#define	CPUID_STDEXT2_RDPID	0x00400000
-#define	CPUID_STDEXT2_SGXLC	0x40000000
+#define	CPUID_STDEXT2_PREFETCHWT1 	0x00000001
+#define	CPUID_STDEXT2_AVX512VBMI	0x00000002
+#define	CPUID_STDEXT2_UMIP		0x00000004
+#define	CPUID_STDEXT2_PKU		0x00000008
+#define	CPUID_STDEXT2_OSPKE		0x00000010
+#define	CPUID_STDEXT2_WAITPKG		0x00000020
+#define	CPUID_STDEXT2_AVX512VBMI2	0x00000040
+#define	CPUID_STDEXT2_GFNI		0x00000100
+#define	CPUID_STDEXT2_VAES		0x00000200
+#define	CPUID_STDEXT2_VPCLMULQDQ	0x00000400
+#define	CPUID_STDEXT2_AVX512VNNI	0x00000800
+#define	CPUID_STDEXT2_AVX512BITALG	0x00001000
+#define	CPUID_STDEXT2_AVX512VPOPCNTDQ	0x00004000
+#define	CPUID_STDEXT2_RDPID		0x00400000
+#define	CPUID_STDEXT2_CLDEMOTE		0x02000000
+#define	CPUID_STDEXT2_MOVDIRI		0x08000000
+#define	CPUID_STDEXT2_MOVDIRI64B	0x10000000
+#define	CPUID_STDEXT2_ENQCMD		0x20000000
+#define	CPUID_STDEXT2_SGXLC		0x40000000
 
 /*
  * CPUID instruction 7 Structured Extended Features, leaf 0 edx info
  */
-#define	CPUID_STDEXT3_IBPB	0x04000000
-#define	CPUID_STDEXT3_STIBP	0x08000000
-#define	CPUID_STDEXT3_L1D_FLUSH	0x10000000
-#define	CPUID_STDEXT3_ARCH_CAP	0x20000000
-#define	CPUID_STDEXT3_SSBD	0x80000000
+#define	CPUID_STDEXT3_AVX5124VNNIW	0x00000004
+#define	CPUID_STDEXT3_AVX5124FMAPS	0x00000008
+#define	CPUID_STDEXT3_AVX512VP2INTERSECT	0x00000100
+#define	CPUID_STDEXT3_MD_CLEAR		0x00000400
+#define	CPUID_STDEXT3_TSXFA		0x00002000
+#define	CPUID_STDEXT3_PCONFIG		0x00040000
+#define	CPUID_STDEXT3_IBPB		0x04000000
+#define	CPUID_STDEXT3_STIBP		0x08000000
+#define	CPUID_STDEXT3_L1D_FLUSH		0x10000000
+#define	CPUID_STDEXT3_ARCH_CAP		0x20000000
+#define	CPUID_STDEXT3_CORE_CAP		0x40000000
+#define	CPUID_STDEXT3_SSBD		0x80000000
 
 /* MSR IA32_ARCH_CAP(ABILITIES) bits */
 #define	IA32_ARCH_CAP_RDCL_NO	0x00000001
@@ -443,6 +475,7 @@
 #define	IA32_ARCH_CAP_RSBA	0x00000004
 #define	IA32_ARCH_CAP_SKIP_L1DFL_VMENTRY	0x00000008
 #define	IA32_ARCH_CAP_SSB_NO	0x00000010
+#define	IA32_ARCH_CAP_MDS_NO	0x00000020
 
 /*
  * CPUID manufacturers identifiers
@@ -488,6 +521,7 @@
 #define	MSR_MTRRcap		0x0fe
 #define	MSR_IA32_ARCH_CAP	0x10a
 #define	MSR_IA32_FLUSH_CMD	0x10b
+#define	MSR_TSX_FORCE_ABORT	0x10f
 #define	MSR_BBL_CR_ADDR		0x116
 #define	MSR_BBL_CR_DECC		0x118
 #define	MSR_BBL_CR_CTL		0x119
@@ -719,6 +753,10 @@
 /*
  * IA32_SPEC_CTRL and IA32_PRED_CMD MSRs are described in the Intel'
  * document 336996-001 Speculative Execution Side Channel Mitigations.
+ *
+ * AMD uses the same MSRs and bit definitions, as described in 111006-B
+ * "Indirect Branch Control Extension" and 124441 "Speculative Store Bypass
+ * Disable."
  */
 /* MSR IA32_SPEC_CTRL */
 #define	IA32_SPEC_CTRL_IBRS	0x00000001
@@ -918,6 +956,16 @@
 #define	MC_MISC_AMD_PTR_MASK	0x00000000ff000000	/* Pointer to additional registers */
 #define	MC_MISC_AMD_PTR_SHIFT	24
 
+/* AMD Scalable MCA */
+#define MSR_SMCA_MC0_CTL          0xc0002000
+#define MSR_SMCA_MC0_STATUS       0xc0002001
+#define MSR_SMCA_MC0_ADDR         0xc0002002
+#define MSR_SMCA_MC0_MISC0        0xc0002003
+#define MSR_SMCA_MC_CTL(x)       (MSR_SMCA_MC0_CTL + 0x10 * (x))
+#define MSR_SMCA_MC_STATUS(x)    (MSR_SMCA_MC0_STATUS + 0x10 * (x))
+#define MSR_SMCA_MC_ADDR(x)      (MSR_SMCA_MC0_ADDR + 0x10 * (x))
+#define MSR_SMCA_MC_MISC(x)      (MSR_SMCA_MC0_MISC0 + 0x10 * (x))
+
 /*
  * The following four 3-byte registers control the non-cacheable regions.
  * These registers must be written as three separate bytes.
@@ -1020,6 +1068,7 @@
 #define	MSR_FSBASE	0xc0000100	/* base address of the %fs "segment" */
 #define	MSR_GSBASE	0xc0000101	/* base address of the %gs "segment" */
 #define	MSR_KGSBASE	0xc0000102	/* base address of the kernel %gs */
+#define	MSR_TSC_AUX	0xc0000103
 #define	MSR_PERFEVSEL0	0xc0010000
 #define	MSR_PERFEVSEL1	0xc0010001
 #define	MSR_PERFEVSEL2	0xc0010002
@@ -1049,6 +1098,7 @@
 #define	MSR_VM_HSAVE_PA 0xc0010117	/* SVM: host save area address */
 #define	MSR_AMD_CPUID07	0xc0011002	/* CPUID 07 %ebx override */
 #define	MSR_EXTFEATURES	0xc0011005	/* Extended CPUID Features override */
+#define	MSR_LS_CFG	0xc0011020
 #define	MSR_IC_CFG	0xc0011021	/* Instruction Cache Configuration */
 
 /* MSR_VM_CR related */

@@ -40,8 +40,10 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/bus.h>
 #include <sys/kernel.h>
+#include <sys/lock.h>
 #include <sys/module.h>
 #include <sys/malloc.h>
+#include <sys/mutex.h>
 #include <sys/rman.h>
 
 #include <dev/mmc/bridge.h>
@@ -1094,6 +1096,10 @@ dwmmc_read_ivar(device_t bus, device_t child, int which, uintptr_t *result)
 		break;
 	case MMCBR_IVAR_MAX_DATA:
 		*(int *)result = sc->desc_count;
+		break;
+	case MMCBR_IVAR_TIMING:
+		*(int *)result = sc->host.ios.timing;
+		break;
 	}
 	return (0);
 }
@@ -1131,6 +1137,14 @@ dwmmc_write_ivar(device_t bus, device_t child, int which, uintptr_t value)
 		break;
 	case MMCBR_IVAR_VDD:
 		sc->host.ios.vdd = value;
+		break;
+	case MMCBR_IVAR_TIMING:
+		sc->host.ios.timing = value;
+		break;
+
+	/* Not handled */
+	case MMCBR_IVAR_VCCQ:
+		return (0);
 		break;
 	/* These are read-only */
 	case MMCBR_IVAR_CAPS:

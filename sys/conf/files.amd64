@@ -175,6 +175,11 @@ aesni_ghash.o			optional aesni				\
 	compile-with	"${CC} -c ${CFLAGS:C/^-O2$/-O3/:N-nostdinc} ${WERROR} ${NO_WCAST_QUAL} ${PROF} -mmmx -msse -msse4 -maes -mpclmul ${.IMPSRC}" \
 	no-implicit-rule						\
 	clean		"aesni_ghash.o"
+aesni_ccm.o			optional aesni				\
+	dependency	"$S/crypto/aesni/aesni_ccm.c"			\
+	compile-with	"${CC} -c ${CFLAGS:C/^-O2$/-O3/:N-nostdinc} ${WERROR} ${NO_WCAST_QUAL} ${PROF} -mmmx -msse -msse4 -maes -mpclmul ${.IMPSRC}" \
+	no-implicit-rule						\
+	clean		"aesni_ccm.o"
 aesni_wrap.o			optional aesni				\
 	dependency	"$S/crypto/aesni/aesni_wrap.c"			\
 	compile-with	"${CC} -c ${CFLAGS:C/^-O2$/-O3/:N-nostdinc} ${WERROR} ${NO_WCAST_QUAL} ${PROF} -mmmx -msse -msse4 -maes ${.IMPSRC}" \
@@ -363,8 +368,8 @@ dev/nvme/nvme_sysctl.c		optional	nvme
 dev/nvme/nvme_test.c		optional	nvme
 dev/nvme/nvme_util.c		optional	nvme
 dev/nvram/nvram.c		optional	nvram isa
-dev/random/ivy.c		optional	rdrand_rng
-dev/random/nehemiah.c		optional	padlock_rng
+dev/random/ivy.c		optional	rdrand_rng !random_loadable
+dev/random/nehemiah.c		optional	padlock_rng !random_loadable
 dev/qlxge/qls_dbg.c		optional	qlxge pci
 dev/qlxge/qls_dump.c		optional	qlxge pci
 dev/qlxge/qls_hw.c		optional	qlxge pci
@@ -384,6 +389,9 @@ dev/qlxgbe/ql_isr.c		optional	qlxgbe pci
 dev/qlxgbe/ql_misc.c		optional	qlxgbe pci
 dev/qlxgbe/ql_os.c		optional	qlxgbe pci
 dev/qlxgbe/ql_reset.c		optional	qlxgbe pci
+dev/qlxgbe/ql_fw.c		optional	qlxgbe pci
+dev/qlxgbe/ql_boot.c		optional	qlxgbe pci
+dev/qlxgbe/ql_minidump.c	optional	qlxgbe pci
 dev/qlnx/qlnxe/ecore_cxt.c	optional	qlnxe pci \
 	compile-with "${LINUXKPI_C}"
 dev/qlnx/qlnxe/ecore_dbg_fw_funcs.c optional	qlnxe pci \
@@ -485,11 +493,10 @@ dev/smartpqi/smartpqi_response.c	optional 	smartpqi
 dev/smartpqi/smartpqi_sis.c     optional 	smartpqi
 dev/smartpqi/smartpqi_tag.c     optional 	smartpqi
 dev/speaker/spkr.c		optional	speaker
+dev/superio/superio.c		optional	superio isa
 dev/syscons/apm/apm_saver.c	optional	apm_saver apm
-dev/syscons/scterm-teken.c	optional	sc
 dev/syscons/scvesactl.c		optional	sc vga vesa
 dev/syscons/scvgarndr.c		optional	sc vga
-dev/syscons/scvtb.c		optional	sc
 dev/tpm/tpm.c			optional	tpm
 dev/tpm/tpm20.c		optional	tpm
 dev/tpm/tpm_crb.c		optional	tpm acpi

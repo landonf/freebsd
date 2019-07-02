@@ -1,7 +1,7 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
  *
- * Copyright (c) 2005-2011 Pawel Jakub Dawidek <pawel@dawidek.net>
+ * Copyright (c) 2005-2019 Pawel Jakub Dawidek <pawel@dawidek.net>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -150,6 +150,9 @@ zero_intake_passcache(void *dummy)
 EVENTHANDLER_DEFINE(mountroot, zero_intake_passcache, NULL, 0);
 
 static eventhandler_tag g_eli_pre_sync = NULL;
+
+static int g_eli_read_metadata_offset(struct g_class *mp, struct g_provider *pp,
+    off_t offset, struct g_eli_metadata *md);
 
 static int g_eli_destroy_geom(struct gctl_req *req, struct g_class *mp,
     struct g_geom *gp);
@@ -325,6 +328,79 @@ g_eli_orphan(struct g_consumer *cp)
 	if (sc == NULL)
 		return;
 	g_eli_destroy(sc, TRUE);
+}
+
+static void
+g_eli_resize(struct g_consumer *cp)
+{
+	struct g_eli_softc *sc;
+	struct g_provider *epp, *pp;
+	off_t oldsize;
+
+	g_topology_assert();
+	sc = cp->geom->softc;
+	if (sc == NULL)
+		return;
+
+	if ((sc->sc_flags & G_ELI_FLAG_AUTORESIZE) == 0) {
+		G_ELI_DEBUG(0, "Autoresize is turned off, old size: %jd.",
+		    (intmax_t)sc->sc_provsize);
+		return;
+	}
+
+	pp = cp->provider;
+
+	if ((sc->sc_flags & G_ELI_FLAG_ONETIME) == 0) {
+		struct g_eli_metadata md;
+		u_char *sector;
+		int error;
+
+		sector = NULL;
+
+		error = g_eli_read_metadata_offset(cp->geom->class, pp,
+		    sc->sc_provsize - pp->sectorsize, &md);
+		if (error != 0) {
+			G_ELI_DEBUG(0, "Cannot read metadata from %s (error=%d).",
+			    pp->name, error);
+			goto iofail;
+		}
+
+		md.md_provsize = pp->mediasize;
+
+		sector = malloc(pp->sectorsize, M_ELI, M_WAITOK | M_ZERO);
+		eli_metadata_encode(&md, sector);
+		error = g_write_data(cp, pp->mediasize - pp->sectorsize, sector,
+		    pp->sectorsize);
+		if (error != 0) {
+			G_ELI_DEBUG(0, "Cannot store metadata on %s (error=%d).",
+			    pp->name, error);
+			goto iofail;
+		}
+		explicit_bzero(sector, pp->sectorsize);
+		error = g_write_data(cp, sc->sc_provsize - pp->sectorsize,
+		    sector, pp->sectorsize);
+		if (error != 0) {
+			G_ELI_DEBUG(0, "Cannot clear old metadata from %s (error=%d).",
+			    pp->name, error);
+			goto iofail;
+		}
+iofail:
+		explicit_bzero(&md, sizeof(md));
+		if (sector != NULL) {
+			explicit_bzero(sector, pp->sectorsize);
+			free(sector, M_ELI);
+		}
+	}
+
+	oldsize = sc->sc_mediasize;
+	sc->sc_mediasize = eli_mediasize(sc, pp->mediasize, pp->sectorsize);
+	g_eli_key_resize(sc);
+	sc->sc_provsize = pp->mediasize;
+
+	epp = LIST_FIRST(&sc->sc_geom->provider);
+	g_resize_provider(epp, sc->sc_mediasize);
+	G_ELI_DEBUG(0, "Device %s size changed from %jd to %jd.", epp->name,
+	    (intmax_t)oldsize, (intmax_t)sc->sc_mediasize);
 }
 
 /*
@@ -620,9 +696,9 @@ again:
 	}
 }
 
-int
-g_eli_read_metadata(struct g_class *mp, struct g_provider *pp,
-    struct g_eli_metadata *md)
+static int
+g_eli_read_metadata_offset(struct g_class *mp, struct g_provider *pp,
+    off_t offset, struct g_eli_metadata *md)
 {
 	struct g_geom *gp;
 	struct g_consumer *cp;
@@ -649,8 +725,7 @@ g_eli_read_metadata(struct g_class *mp, struct g_provider *pp,
 	if (error != 0)
 		goto end;
 	g_topology_unlock();
-	buf = g_read_data(cp, pp->mediasize - pp->sectorsize, pp->sectorsize,
-	    &error);
+	buf = g_read_data(cp, offset, pp->sectorsize, &error);
 	g_topology_lock();
 	if (buf == NULL)
 		goto end;
@@ -669,6 +744,15 @@ end:
 	g_destroy_consumer(cp);
 	g_destroy_geom(gp);
 	return (error);
+}
+
+int
+g_eli_read_metadata(struct g_class *mp, struct g_provider *pp,
+    struct g_eli_metadata *md)
+{
+
+	return (g_eli_read_metadata_offset(mp, pp,
+	    pp->mediasize - pp->sectorsize, md));
 }
 
 /*
@@ -756,6 +840,7 @@ g_eli_create(struct gctl_req *req, struct g_class *mp, struct g_provider *bpp,
 	 */
 	gp->spoiled = g_eli_orphan;
 	gp->orphan = g_eli_orphan;
+	gp->resize = g_eli_resize;
 	gp->dumpconf = g_eli_dumpconf;
 	/*
 	 * If detach-on-last-close feature is not enabled and we don't operate
@@ -875,8 +960,25 @@ g_eli_create(struct gctl_req *req, struct g_class *mp, struct g_provider *bpp,
 	G_ELI_DEBUG(0, "Device %s created.", pp->name);
 	G_ELI_DEBUG(0, "Encryption: %s %u", g_eli_algo2str(sc->sc_ealgo),
 	    sc->sc_ekeylen);
-	if (sc->sc_flags & G_ELI_FLAG_AUTH)
+	switch (sc->sc_ealgo) {
+	case CRYPTO_3DES_CBC:
+		gone_in(13,
+		    "support for GEOM_ELI volumes encrypted with 3des");
+		break;
+	case CRYPTO_BLF_CBC:
+		gone_in(13,
+		    "support for GEOM_ELI volumes encrypted with blowfish");
+		break;
+	}
+	if (sc->sc_flags & G_ELI_FLAG_AUTH) {
 		G_ELI_DEBUG(0, " Integrity: %s", g_eli_algo2str(sc->sc_aalgo));
+		switch (sc->sc_aalgo) {
+		case CRYPTO_MD5_HMAC:
+			gone_in(13,
+		    "support for GEOM_ELI volumes authenticated with hmac/md5");
+			break;
+		}
+	}
 	G_ELI_DEBUG(0, "    Crypto: %s",
 	    sc->sc_crypto == G_ELI_CRYPTO_SW ? "software" : "hardware");
 	return (gp);
@@ -1226,17 +1328,17 @@ g_eli_dumpconf(struct sbuf *sb, const char *indent, struct g_geom *gp,
 	    (uintmax_t)sc->sc_ekeys_allocated);
 	sbuf_printf(sb, "%s<Flags>", indent);
 	if (sc->sc_flags == 0)
-		sbuf_printf(sb, "NONE");
+		sbuf_cat(sb, "NONE");
 	else {
 		int first = 1;
 
 #define ADD_FLAG(flag, name)	do {					\
 	if (sc->sc_flags & (flag)) {					\
 		if (!first)						\
-			sbuf_printf(sb, ", ");				\
+			sbuf_cat(sb, ", ");				\
 		else							\
 			first = 0;					\
-		sbuf_printf(sb, name);					\
+		sbuf_cat(sb, name);					\
 	}								\
 } while (0)
 		ADD_FLAG(G_ELI_FLAG_SUSPEND, "SUSPEND");
@@ -1253,9 +1355,10 @@ g_eli_dumpconf(struct sbuf *sb, const char *indent, struct g_geom *gp,
 		ADD_FLAG(G_ELI_FLAG_NODELETE, "NODELETE");
 		ADD_FLAG(G_ELI_FLAG_GELIBOOT, "GELIBOOT");
 		ADD_FLAG(G_ELI_FLAG_GELIDISPLAYPASS, "GELIDISPLAYPASS");
+		ADD_FLAG(G_ELI_FLAG_AUTORESIZE, "AUTORESIZE");
 #undef  ADD_FLAG
 	}
-	sbuf_printf(sb, "</Flags>\n");
+	sbuf_cat(sb, "</Flags>\n");
 
 	if (!(sc->sc_flags & G_ELI_FLAG_ONETIME)) {
 		sbuf_printf(sb, "%s<UsedKey>%u</UsedKey>\n", indent,
@@ -1265,16 +1368,16 @@ g_eli_dumpconf(struct sbuf *sb, const char *indent, struct g_geom *gp,
 	sbuf_printf(sb, "%s<Crypto>", indent);
 	switch (sc->sc_crypto) {
 	case G_ELI_CRYPTO_HW:
-		sbuf_printf(sb, "hardware");
+		sbuf_cat(sb, "hardware");
 		break;
 	case G_ELI_CRYPTO_SW:
-		sbuf_printf(sb, "software");
+		sbuf_cat(sb, "software");
 		break;
 	default:
-		sbuf_printf(sb, "UNKNOWN");
+		sbuf_cat(sb, "UNKNOWN");
 		break;
 	}
-	sbuf_printf(sb, "</Crypto>\n");
+	sbuf_cat(sb, "</Crypto>\n");
 	if (sc->sc_flags & G_ELI_FLAG_AUTH) {
 		sbuf_printf(sb,
 		    "%s<AuthenticationAlgorithm>%s</AuthenticationAlgorithm>\n",

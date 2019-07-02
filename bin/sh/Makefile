@@ -3,9 +3,12 @@
 
 .include <src.opts.mk>
 
-CONFS=	dot.profile profile
-CONFSDIR_dot.profile=	/root
-CONFSNAME_dot.profile=	.profile
+CONFGROUPS=	ETC ROOT
+ETC=	profile
+ROOT=	dot.shrc dot.profile
+ROOTDIR=	/root
+ROOTNAME_dot.shrc=	.shrc
+ROOTNAME_dot.profile=	.profile
 PACKAGE=runtime
 PROG=	sh
 INSTALLFLAGS= -S
@@ -45,6 +48,7 @@ builtins.h: .NOMETA
 builtins.c builtins.h: mkbuiltins builtins.def
 	sh ${.CURDIR}/mkbuiltins ${.CURDIR}
 
+DEPENDOBJS+= mknodes mksyntax
 mknodes mksyntax: ${BUILD_TOOLS_META}
 
 .ORDER: nodes.c nodes.h

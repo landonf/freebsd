@@ -961,6 +961,8 @@ set_bell_values(char *opt)
 	int bell, duration, pitch;
 
 	bell = 0;
+	duration = 0;
+	pitch = 0;
 	if (!strncmp(opt, "quiet.", 6)) {
 		bell = CONS_QUIET_BELL;
 		opt += 6;
@@ -991,8 +993,8 @@ badopt:
 	}
 
 	ioctl(0, CONS_BELLTYPE, &bell);
-	if (!(bell & CONS_VISUAL_BELL))
-		fprintf(stderr, "[=%d;%dB", pitch, duration);
+	if (duration > 0 && pitch > 0)
+		fprintf(stderr, "\e[=%d;%dB", pitch, duration);
 }
 
 static void
@@ -1218,9 +1220,12 @@ main(int argc, char **argv)
 	int		opt;
 
 	/* Collect any -P arguments, regardless of where they appear. */
-	while ((opt = getopt(argc, argv, optstring)) != -1)
+	while ((opt = getopt(argc, argv, optstring)) != -1) {
 		if (opt == 'P')
 			add_keymap_path(optarg);
+		if (opt == '?')
+			usage();
+	}
 
 	optind = optreset = 1;
 	while ((opt = getopt(argc, argv, optstring)) != -1)

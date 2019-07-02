@@ -73,6 +73,7 @@ struct	netmap_adapter;
 struct	netdump_methods;
 
 #ifdef _KERNEL
+#include <sys/_eventhandler.h>
 #include <sys/mbuf.h>		/* ifqueue only? */
 #include <sys/buf_ring.h>
 #include <net/vnet.h>
@@ -95,8 +96,9 @@ CK_STAILQ_HEAD(ifmultihead, ifmultiaddr);
 CK_STAILQ_HEAD(ifgrouphead, ifg_group);
 
 #ifdef _KERNEL
-VNET_DECLARE(struct pfil_head, link_pfil_hook);	/* packet filter hooks */
-#define	V_link_pfil_hook	VNET(link_pfil_hook)
+VNET_DECLARE(struct pfil_head *, link_pfil_head);
+#define	V_link_pfil_head	VNET(link_pfil_head)
+#define	PFIL_ETHER_NAME		"ethernet"
 
 #define	HHOOK_IPSEC_INET	0
 #define	HHOOK_IPSEC_INET6	1
@@ -243,7 +245,7 @@ struct ifnet {
 	CK_STAILQ_HEAD(, ifg_list) if_groups; /* linked list of groups per if (CK_) */
 					/* protected by if_addr_lock */
 	u_char	if_alloctype;		/* if_type at time of allocation */
-
+	uint8_t	if_numa_domain;		/* NUMA domain of device */
 	/* Driver and protocol specific information that remains stable. */
 	void	*if_softc;		/* pointer to driver state */
 	void	*if_llsoftc;		/* link layer softc */
@@ -393,6 +395,7 @@ struct ifnet {
 /* for compatibility with other BSDs */
 #define	if_name(ifp)	((ifp)->if_xname)
 
+#define	IF_NODOM	255
 /*
  * Locks for address lists on the network interface.
  */
@@ -419,7 +422,6 @@ void	if_maddr_rlock(if_t ifp);	/* if_multiaddrs */
 void	if_maddr_runlock(if_t ifp);	/* if_multiaddrs */
 
 #ifdef _KERNEL
-#ifdef _SYS_EVENTHANDLER_H_
 /* interface link layer address change event */
 typedef void (*iflladdr_event_handler_t)(void *, struct ifnet *);
 EVENTHANDLER_DECLARE(iflladdr_event, iflladdr_event_handler_t);
@@ -447,7 +449,6 @@ EVENTHANDLER_DECLARE(ifnet_link_event, ifnet_link_event_handler_t);
 
 typedef void (*ifnet_event_fn)(void *, struct ifnet *ifp, int event);
 EVENTHANDLER_DECLARE(ifnet_event, ifnet_event_fn);
-#endif /* _SYS_EVENTHANDLER_H_ */
 
 /*
  * interface groups
@@ -621,6 +622,8 @@ int	if_delgroup(struct ifnet *, const char *);
 int	if_addmulti(struct ifnet *, struct sockaddr *, struct ifmultiaddr **);
 int	if_allmulti(struct ifnet *, int);
 struct	ifnet* if_alloc(u_char);
+struct	ifnet* if_alloc_dev(u_char, device_t dev);
+struct	ifnet* if_alloc_domain(u_char, int numa_domain);
 void	if_attach(struct ifnet *);
 void	if_dead(struct ifnet *);
 int	if_delmulti(struct ifnet *, struct sockaddr *);

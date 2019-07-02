@@ -20,26 +20,18 @@
 #include <sys/types.h>
 #include <sys/param.h>
 #include <sys/time.h>
-#if defined(_KERNEL) && defined(__FreeBSD_version) && \
-    (__FreeBSD_version >= 220000)
-# if (__FreeBSD_version >= 400000)
+#if defined(_KERNEL) && defined(__FreeBSD_version)
 #  if !defined(IPFILTER_LKM)
 #   include "opt_inet6.h"
 #  endif
-#  if (__FreeBSD_version == 400019)
-#   define CSUM_DELAY_DATA
-#  endif
-# endif
 # include <sys/filio.h>
 #else
 # include <sys/ioctl.h>
 #endif
-#if (defined(__SVR4) || defined(__svr4__)) && defined(sun)
+#if defined(__SVR4) || defined(sun) /* SOLARIS */
 # include <sys/filio.h>
 #endif
-#if !defined(_AIX51)
 # include <sys/fcntl.h>
-#endif
 #if defined(_KERNEL)
 # include <sys/systm.h>
 # include <sys/file.h>
@@ -50,29 +42,18 @@
 # include <stddef.h>
 # include <sys/file.h>
 # define _KERNEL
-# ifdef __OpenBSD__
-struct file;
-# endif
 # include <sys/uio.h>
 # undef _KERNEL
 #endif
-#if !defined(__SVR4) && !defined(__svr4__) && !defined(__hpux) && \
-    !defined(linux)
+#if !defined(__SVR4)
 # include <sys/mbuf.h>
 #else
-# if !defined(linux)
 #  include <sys/byteorder.h>
-# endif
 # if (SOLARIS2 < 5) && defined(sun)
 #  include <sys/dditypes.h>
 # endif
 #endif
-#ifdef __hpux
-# define _NET_ROUTE_INCLUDED
-#endif
-#if !defined(linux)
 # include <sys/protosw.h>
-#endif
 #include <sys/socket.h>
 #include <net/if.h>
 #ifdef sun
@@ -81,25 +62,13 @@ struct file;
 #include <netinet/in.h>
 #include <netinet/in_systm.h>
 #include <netinet/ip.h>
-#if defined(__sgi) && defined(IFF_DRVRLOCK) /* IRIX 6 */
-# include <sys/hashing.h>
-# include <netinet/in_var.h>
-#endif
 #include <netinet/tcp.h>
-#if (!defined(__sgi) && !defined(AIX)) || defined(_KERNEL)
 # include <netinet/udp.h>
 # include <netinet/ip_icmp.h>
-#endif
-#ifdef __hpux
-# undef _NET_ROUTE_INCLUDED
-#endif
-#ifdef __osf__
-# undef _RADIX_H_
-#endif
 #include "netinet/ip_compat.h"
 #ifdef	USE_INET6
 # include <netinet/icmp6.h>
-# if !SOLARIS && defined(_KERNEL) && !defined(__osf__) && !defined(__hpux)
+# if !SOLARIS && defined(_KERNEL)
 #  include <netinet6/in6_var.h>
 # endif
 #endif
@@ -122,7 +91,7 @@ struct file;
 #if defined(IPFILTER_BPF) && defined(_KERNEL)
 # include <net/bpf.h>
 #endif
-#if defined(__FreeBSD_version) && (__FreeBSD_version >= 300000)
+#if defined(__FreeBSD_version)
 # include <sys/malloc.h>
 #endif
 #include "netinet/ipl.h"
@@ -130,10 +99,6 @@ struct file;
 #if defined(__NetBSD__) && (__NetBSD_Version__ >= 104230000)
 # include <sys/callout.h>
 extern struct callout ipf_slowtimer_ch;
-#endif
-#if defined(__OpenBSD__)
-# include <sys/timeout.h>
-extern struct timeout ipf_slowtimer_ch;
 #endif
 /* END OF INCLUDES */
 
@@ -214,10 +179,7 @@ static	int		ipf_updateipid __P((fr_info_t *));
 static	int		ipf_settimeout __P((struct ipf_main_softc_s *,
 					    struct ipftuneable *,
 					    ipftuneval_t *));
-#if !defined(_KERNEL) || (!defined(__NetBSD__) && !defined(__OpenBSD__) && \
-     !defined(__FreeBSD__)) || \
-    FREEBSD_LT_REV(501000) || NETBSD_LT_REV(105000000) || \
-    OPENBSD_LT_REV(200006)
+#if !defined(_KERNEL) || SOLARIS
 static	int		ppsratecheck(struct timeval *, int *, int);
 #endif
 
@@ -1766,6 +1728,10 @@ ipf_pr_ipv4hdr(fin)
 
 		fi->fi_flx |= FI_FRAG;
 		off &= IP_OFFMASK;
+		if (off == 1 && p == IPPROTO_TCP) {
+			fin->fin_flx |= FI_SHORT;	/* RFC 3128 */
+			DT1(ipf_fi_tcp_frag_off_1, fr_info_t *, fin);
+		}
 		if (off != 0) {
 			fin->fin_flx |= FI_FRAGBODY;
 			off <<= 3;
@@ -2815,13 +2781,14 @@ ipf_firewall(fin, passp)
 /*                    -2 == requires authentication                         */
 /*              Kernel:                                                     */
 /*                   > 0 == filter error # for packet                       */
-/* Parameters: ip(I)   - pointer to start of IPv4/6 packet                  */
+/* Parameters: ctx(I)  - pointer to the instance context                    */
+/*             ip(I)   - pointer to start of IPv4/6 packet                  */
 /*             hlen(I) - length of header                                   */
 /*             ifp(I)  - pointer to interface this packet is on             */
 /*             out(I)  - 0 == packet going in, 1 == packet going out        */
 /*             mp(IO)  - pointer to caller's buffer pointer that holds this */
 /*                       IP packet.                                         */
-/* Solaris & HP-UX ONLY :                                                   */
+/* Solaris:                                                                 */
 /*             qpi(I)  - pointer to STREAMS queue information for this      */
 /*                       interface & direction.                             */
 /*                                                                          */
@@ -2847,7 +2814,7 @@ ipf_check(ctx, ip, hlen, ifp, out
 	mb_t **mp;
 	ip_t *ip;
 	int hlen;
-	void *ifp;
+	struct ifnet *ifp;
 	int out;
 	void *ctx;
 {
@@ -2919,8 +2886,7 @@ ipf_check(ctx, ip, hlen, ifp, out
 	 */
 	m->m_flags &= ~M_CANFASTFWD;
 #  endif /* M_CANFASTFWD */
-#  if defined(CSUM_DELAY_DATA) && (!defined(__FreeBSD_version) || \
-				   (__FreeBSD_version < 501108))
+#  if defined(CSUM_DELAY_DATA) && !defined(__FreeBSD_version)
 	/*
 	 * disable delayed checksums.
 	 */
@@ -3266,12 +3232,6 @@ finished:
 		}
 	} else {
 		LBUMP(ipf_stats[out].fr_pass);
-#if defined(_KERNEL) && defined(__sgi)
-		if ((fin->fin_hbuf != NULL) &&
-		    (mtod(fin->fin_m, struct ip *) != fin->fin_ip)) {
-			COPYBACK(fin->fin_m, 0, fin->fin_plen, fin->fin_hbuf);
-		}
-#endif
 	}
 
 	SPL_X(s);
@@ -3466,35 +3426,21 @@ fr_cksum(fin, ip, l4proto, l4hdr)
 		sum += *sp++;
 		sum += *sp++;	/* ip_dst */
 		sum += *sp++;
+		slen = fin->fin_plen - off;
+		sum += htons(slen);
 #ifdef	USE_INET6
 	} else if (IP_V(ip) == 6) {
+		mb_t *m;
+
+		m = fin->fin_m;
 		ip6 = (ip6_t *)ip;
-		hlen = sizeof(*ip6);
-		off = ((char *)fin->fin_dp - (char *)fin->fin_ip);
-		sp = (u_short *)&ip6->ip6_src;
-		sum += *sp++;	/* ip6_src */
-		sum += *sp++;
-		sum += *sp++;
-		sum += *sp++;
-		sum += *sp++;
-		sum += *sp++;
-		sum += *sp++;
-		sum += *sp++;
-		/* This needs to be routing header aware. */
-		sum += *sp++;	/* ip6_dst */
-		sum += *sp++;
-		sum += *sp++;
-		sum += *sp++;
-		sum += *sp++;
-		sum += *sp++;
-		sum += *sp++;
-		sum += *sp++;
+		off = ((caddr_t)ip6 - m->m_data) + sizeof(struct ip6_hdr);
+		int len = ntohs(ip6->ip6_plen) - (off - sizeof(*ip6));
+		return(ipf_pcksum6(fin, ip6, off, len));
 	} else {
 		return 0xffff;
 	}
 #endif
-	slen = fin->fin_plen - off;
-	sum += htons(slen);
 
 	switch (l4proto)
 	{
@@ -3956,7 +3902,7 @@ ipf_fixskip(listp, rp, addremove)
 	for (fp = *listp; (fp != NULL) && (fp != rp); fp = fp->fr_next)
 		rules++;
 
-	if (!fp)
+	if (fp == NULL)
 		return;
 
 	for (rn = 0, fp = *listp; fp && (fp != rp); fp = fp->fr_next, rn++)
@@ -5025,16 +4971,16 @@ frrequest(softc, unit, req, data, set, makecopy)
 			error = ipf_outobj(softc, data, fp, IPFOBJ_FRENTRY);
 
 			if (error == 0) {
-				if ((f->fr_dsize != 0) && (uptr != NULL))
+				if ((f->fr_dsize != 0) && (uptr != NULL)) {
 					error = COPYOUT(f->fr_data, uptr,
 							f->fr_dsize);
-					if (error != 0) {
+					if (error == 0) {
+						f->fr_hits = 0;
+						f->fr_bytes = 0;
+					} else {
 						IPFERROR(28);
 						error = EFAULT;
 					}
-				if (error == 0) {
-					f->fr_hits = 0;
-					f->fr_bytes = 0;
 				}
 			}
 		}
@@ -5049,7 +4995,7 @@ frrequest(softc, unit, req, data, set, makecopy)
 		return error;
 	}
 
-  	if (!f) {
+	if (f == NULL) {
 		/*
 		 * At the end of this, ftail must point to the place where the
 		 * new rule is to be saved/inserted/added.
@@ -5095,7 +5041,7 @@ frrequest(softc, unit, req, data, set, makecopy)
 	 * Request to remove a rule.
 	 */
 	if (addrem == 1) {
-		if (!f) {
+		if (f == NULL) {
 			IPFERROR(29);
 			error = ESRCH;
 		} else {
@@ -5482,10 +5428,7 @@ ipf_resolvefunc(softc, data)
 }
 
 
-#if !defined(_KERNEL) || (!defined(__NetBSD__) && !defined(__OpenBSD__) && \
-     !defined(__FreeBSD__)) || \
-    FREEBSD_LT_REV(501000) || NETBSD_LT_REV(105000000) || \
-    OPENBSD_LT_REV(200006)
+#if !defined(_KERNEL) || SOLARIS
 /*
  * From: NetBSD
  * ppsratecheck(): packets (or events) per second limitation.
@@ -6165,9 +6108,7 @@ ipf_getifname(ifp, buffer)
 	char *buffer;
 {
 	static char namebuf[LIFNAMSIZ];
-# if defined(MENTAT) || defined(__FreeBSD__) || defined(__osf__) || \
-     defined(__sgi) || defined(linux) || defined(_AIX51) || \
-     (defined(sun) && !defined(__SVR4) && !defined(__svr4__))
+# if defined(MENTAT) || defined(__FreeBSD__)
 	int unit, space;
 	char temp[20];
 	char *s;
@@ -6177,9 +6118,7 @@ ipf_getifname(ifp, buffer)
 		buffer = namebuf;
 	(void) strncpy(buffer, ifp->if_name, LIFNAMSIZ);
 	buffer[LIFNAMSIZ - 1] = '\0';
-# if defined(MENTAT) || defined(__FreeBSD__) || defined(__osf__) || \
-     defined(__sgi) || defined(_AIX51) || \
-     (defined(sun) && !defined(__SVR4) && !defined(__svr4__))
+# if defined(MENTAT) || defined(__FreeBSD__)
 	for (s = buffer; *s; s++)
 		;
 	unit = ifp->if_unit;
@@ -6319,7 +6258,7 @@ ipf_ioctlswitch(softc, unit, data, cmd, mode, uid, ctx)
  * Flags:
  * 1 = minimum size, not absolute size
  */
-static	int	ipf_objbytes[IPFOBJ_COUNT][3] = {
+static const int	ipf_objbytes[IPFOBJ_COUNT][3] = {
 	{ 1,	sizeof(struct frentry),		5010000 },	/* 0 */
 	{ 1,	sizeof(struct friostat),	5010000 },
 	{ 0,	sizeof(struct fr_info),		5010000 },
@@ -6696,6 +6635,12 @@ ipf_checkl4sum(fin)
 	if ((fin->fin_flx & (FI_FRAG|FI_SHORT|FI_BAD)) != 0)
 		return 1;
 
+	DT2(l4sumo, int, fin->fin_out, int, (int)fin->fin_p);
+	if (fin->fin_out == 1) {
+		fin->fin_cksum = FI_CK_SUMOK;
+		return 0;
+	}
+
 	csump = NULL;
 	hdrsum = 0;
 	dosum = 0;
@@ -6747,7 +6692,11 @@ ipf_checkl4sum(fin)
 	}
 #endif
 	DT2(l4sums, u_short, hdrsum, u_short, sum);
+#ifdef USE_INET6
+	if (hdrsum == sum || (sum == 0 && fin->fin_p == IPPROTO_ICMPV6)) {
+#else
 	if (hdrsum == sum) {
+#endif
 		fin->fin_cksum = FI_CK_SUMOK;
 		return 0;
 	}
@@ -7526,10 +7475,6 @@ ipf_resolvedest(softc, base, fdp, v)
 		}
 	}
 	fdp->fd_ptr = ifp;
-
-	if ((ifp != NULL) && (ifp != (void *)-1)) {
-		fdp->fd_local = ipf_deliverlocal(softc, v, ifp, &fdp->fd_ip6);
-	}
 
 	return errval;
 }
@@ -10110,9 +10055,6 @@ ipf_slowtimer(softc)
 	ipf_rule_expire(softc);
 	ipf_sync_expire(softc);
 	softc->ipf_ticks++;
-#   if defined(__OpenBSD__)
-	timeout_add(&ipf_slowtimer_ch, hz/2);
-#   endif
 }
 
 

@@ -191,15 +191,10 @@ int
 in_canforward(struct in_addr in)
 {
 	u_long i = ntohl(in.s_addr);
-	u_long net;
 
-	if (IN_EXPERIMENTAL(i) || IN_MULTICAST(i) || IN_LINKLOCAL(i))
+	if (IN_EXPERIMENTAL(i) || IN_MULTICAST(i) || IN_LINKLOCAL(i) ||
+	    IN_ZERONET(i) || IN_LOOPBACK(i))
 		return (0);
-	if (IN_CLASSA(i)) {
-		net = i & IN_CLASSA_NET;
-		if (net == 0 || net == (IN_LOOPBACKNET << IN_CLASSA_NSHIFT))
-			return (0);
-	}
 	return (1);
 }
 
@@ -1382,15 +1377,13 @@ in_lltable_lookup(struct lltable *llt, u_int flags, const struct sockaddr *l3add
 	IF_AFDATA_LOCK_ASSERT(llt->llt_ifp);
 	KASSERT(l3addr->sa_family == AF_INET,
 	    ("sin_family %d", l3addr->sa_family));
-	lle = in_lltable_find_dst(llt, sin->sin_addr);
+	KASSERT((flags & (LLE_UNLOCKED | LLE_EXCLUSIVE)) !=
+	    (LLE_UNLOCKED | LLE_EXCLUSIVE),
+	    ("wrong lle request flags: %#x", flags));
 
+	lle = in_lltable_find_dst(llt, sin->sin_addr);
 	if (lle == NULL)
 		return (NULL);
-
-	KASSERT((flags & (LLE_UNLOCKED|LLE_EXCLUSIVE)) !=
-	    (LLE_UNLOCKED|LLE_EXCLUSIVE),("wrong lle request flags: 0x%X",
-	    flags));
-
 	if (flags & LLE_UNLOCKED)
 		return (lle);
 
@@ -1399,6 +1392,17 @@ in_lltable_lookup(struct lltable *llt, u_int flags, const struct sockaddr *l3add
 	else
 		LLE_RLOCK(lle);
 
+	/*
+	 * If the afdata lock is not held, the LLE may have been unlinked while
+	 * we were blocked on the LLE lock.  Check for this case.
+	 */
+	if (__predict_false((lle->la_flags & LLE_LINKED) == 0)) {
+		if (flags & LLE_EXCLUSIVE)
+			LLE_WUNLOCK(lle);
+		else
+			LLE_RUNLOCK(lle);
+		return (NULL);
+	}
 	return (lle);
 }
 

@@ -42,8 +42,9 @@ __FBSDID("$FreeBSD$");
 #include <sys/efi.h>
 #include <sys/exec.h>
 #include <sys/imgact.h>
-#include <sys/kdb.h> 
+#include <sys/kdb.h>
 #include <sys/kernel.h>
+#include <sys/ktr.h>
 #include <sys/limits.h>
 #include <sys/linker.h>
 #include <sys/msgbuf.h>
@@ -193,6 +194,16 @@ fill_regs(struct thread *td, struct reg *regs)
 
 	memcpy(regs->x, frame->tf_x, sizeof(regs->x));
 
+#ifdef COMPAT_FREEBSD32
+	/*
+	 * We may be called here for a 32bits process, if we're using a
+	 * 64bits debugger. If so, put PC and SPSR where it expects it.
+	 */
+	if (SV_PROC_FLAG(td->td_proc, SV_ILP32)) {
+		regs->x[15] = frame->tf_elr;
+		regs->x[16] = frame->tf_spsr;
+	}
+#endif
 	return (0);
 }
 
@@ -210,6 +221,17 @@ set_regs(struct thread *td, struct reg *regs)
 
 	memcpy(frame->tf_x, regs->x, sizeof(frame->tf_x));
 
+#ifdef COMPAT_FREEBSD32
+	if (SV_PROC_FLAG(td->td_proc, SV_ILP32)) {
+		/*
+		 * We may be called for a 32bits process if we're using
+		 * a 64bits debugger. If so, get PC and SPSR from where
+		 * it put it.
+		 */
+		frame->tf_elr = regs->x[15];
+		frame->tf_spsr = regs->x[16] & PSR_FLAGS;
+	}
+#endif
 	return (0);
 }
 
@@ -276,17 +298,38 @@ set_dbregs(struct thread *td, struct dbreg *regs)
 int
 fill_regs32(struct thread *td, struct reg32 *regs)
 {
+	int i;
+	struct trapframe *tf;
 
-	printf("ARM64TODO: fill_regs32");
-	return (EDOOFUS);
+	tf = td->td_frame;
+	for (i = 0; i < 13; i++)
+		regs->r[i] = tf->tf_x[i];
+	/* For arm32, SP is r13 and LR is r14 */
+	regs->r_sp = tf->tf_x[13];
+	regs->r_lr = tf->tf_x[14];
+	regs->r_pc = tf->tf_elr;
+	regs->r_cpsr = tf->tf_spsr;
+
+	return (0);
 }
 
 int
 set_regs32(struct thread *td, struct reg32 *regs)
 {
+	int i;
+	struct trapframe *tf;
 
-	printf("ARM64TODO: set_regs32");
-	return (EDOOFUS);
+	tf = td->td_frame;
+	for (i = 0; i < 13; i++)
+		tf->tf_x[i] = regs->r[i];
+	/* For arm 32, SP is r13 an LR is r14 */
+	tf->tf_x[13] = regs->r_sp;
+	tf->tf_x[14] = regs->r_lr;
+	tf->tf_elr = regs->r_pc;
+	tf->tf_spsr = regs->r_cpsr;
+
+
+	return (0);
 }
 
 int

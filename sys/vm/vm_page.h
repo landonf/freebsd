@@ -351,8 +351,10 @@ extern struct mtx_padalign pa_lock[];
  * queue, and cleared when the dequeue request is processed.  A page may
  * have PGA_DEQUEUE set and PGA_ENQUEUED cleared, for instance if a dequeue
  * is requested after the page is scheduled to be enqueued but before it is
- * actually inserted into the page queue.  The page lock must be held to set
- * this flag, and the queue lock for the page must be held to clear it.
+ * actually inserted into the page queue.  For allocated pages, the page lock
+ * must be held to set this flag, but it may be set by vm_page_free_prep()
+ * without the page lock held.  The page queue lock must be held to clear the
+ * PGA_DEQUEUE flag.
  *
  * PGA_REQUEUE is set when the page is scheduled to be enqueued or requeued
  * in its page queue.  The page lock must be held to set this flag, and the
@@ -559,7 +561,7 @@ bool vm_page_reclaim_contig(int req, u_long npages, vm_paddr_t low,
 bool vm_page_reclaim_contig_domain(int domain, int req, u_long npages,
     vm_paddr_t low, vm_paddr_t high, u_long alignment, vm_paddr_t boundary);
 void vm_page_reference(vm_page_t m);
-void vm_page_remove (vm_page_t);
+bool vm_page_remove(vm_page_t);
 int vm_page_rename (vm_page_t, vm_object_t, vm_pindex_t);
 vm_page_t vm_page_replace(vm_page_t mnew, vm_object_t object,
     vm_pindex_t pindex);
@@ -818,6 +820,13 @@ vm_page_held(vm_page_t m)
 {
 
 	return (m->hold_count > 0 || m->wire_count > 0);
+}
+
+static inline bool
+vm_page_wired(vm_page_t m)
+{
+
+	return (m->wire_count > 0);
 }
 
 #endif				/* _KERNEL */

@@ -973,6 +973,8 @@ void __pthread_cxa_finalize(struct dl_phdr_info *phdr_info);
 void _thr_tsd_unload(struct dl_phdr_info *phdr_info) __hidden;
 void _thr_sigact_unload(struct dl_phdr_info *phdr_info) __hidden;
 void _thr_stack_fix_protection(struct pthread *thrd);
+void __pthread_distribute_static_tls(size_t offset, void *src, size_t len,
+    size_t total_len);
 
 int *__error_threaded(void) __hidden;
 void __thr_interpose_libc(void) __hidden;
@@ -1002,6 +1004,14 @@ void *__thr_pshared_offpage(void *key, int doalloc) __hidden;
 void __thr_pshared_destroy(void *key) __hidden;
 void __thr_pshared_atfork_pre(void) __hidden;
 void __thr_pshared_atfork_post(void) __hidden;
+
+void *__thr_calloc(size_t num, size_t size);
+void __thr_free(void *cp);
+void *__thr_malloc(size_t nbytes);
+void *__thr_realloc(void *cp, size_t nbytes);
+void __thr_malloc_init(void);
+void __thr_malloc_prefork(struct pthread *curthread);
+void __thr_malloc_postfork(struct pthread *curthread);
 
 __END_DECLS
 __NULLABILITY_PRAGMA_POP

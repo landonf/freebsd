@@ -1951,26 +1951,14 @@ in6_if_up(struct ifnet *ifp)
 int
 in6if_do_dad(struct ifnet *ifp)
 {
+
 	if ((ifp->if_flags & IFF_LOOPBACK) != 0)
 		return (0);
-
-	if ((ND_IFINFO(ifp)->flags & ND6_IFF_IFDISABLED) ||
-	    (ND_IFINFO(ifp)->flags & ND6_IFF_NO_DAD))
+	if ((ifp->if_flags & IFF_MULTICAST) == 0)
 		return (0);
-
-	/*
-	 * Our DAD routine requires the interface up and running.
-	 * However, some interfaces can be up before the RUNNING
-	 * status.  Additionally, users may try to assign addresses
-	 * before the interface becomes up (or running).
-	 * This function returns EAGAIN in that case.
-	 * The caller should mark "tentative" on the address instead of
-	 * performing DAD immediately.
-	 */
-	if (!((ifp->if_flags & IFF_UP) &&
-	    (ifp->if_drv_flags & IFF_DRV_RUNNING)))
-		return (EAGAIN);
-
+	if ((ND_IFINFO(ifp)->flags &
+	    (ND6_IFF_IFDISABLED | ND6_IFF_NO_DAD)) != 0)
+		return (0);
 	return (1);
 }
 
@@ -2325,16 +2313,13 @@ in6_lltable_lookup(struct lltable *llt, u_int flags,
 	IF_AFDATA_LOCK_ASSERT(llt->llt_ifp);
 	KASSERT(l3addr->sa_family == AF_INET6,
 	    ("sin_family %d", l3addr->sa_family));
+	KASSERT((flags & (LLE_UNLOCKED | LLE_EXCLUSIVE)) !=
+	    (LLE_UNLOCKED | LLE_EXCLUSIVE),
+	    ("wrong lle request flags: %#x", flags));
 
 	lle = in6_lltable_find_dst(llt, &sin6->sin6_addr);
-
 	if (lle == NULL)
 		return (NULL);
-
-	KASSERT((flags & (LLE_UNLOCKED|LLE_EXCLUSIVE)) !=
-	    (LLE_UNLOCKED|LLE_EXCLUSIVE),("wrong lle request flags: 0x%X",
-	    flags));
-
 	if (flags & LLE_UNLOCKED)
 		return (lle);
 
@@ -2342,6 +2327,18 @@ in6_lltable_lookup(struct lltable *llt, u_int flags,
 		LLE_WLOCK(lle);
 	else
 		LLE_RLOCK(lle);
+
+	/*
+	 * If the afdata lock is not held, the LLE may have been unlinked while
+	 * we were blocked on the LLE lock.  Check for this case.
+	 */
+	if (__predict_false((lle->la_flags & LLE_LINKED) == 0)) {
+		if (flags & LLE_EXCLUSIVE)
+			LLE_WUNLOCK(lle);
+		else
+			LLE_RUNLOCK(lle);
+		return (NULL);
+	}
 	return (lle);
 }
 

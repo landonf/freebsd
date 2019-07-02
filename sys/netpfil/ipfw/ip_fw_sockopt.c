@@ -60,7 +60,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/syslog.h>
 #include <sys/fnv_hash.h>
 #include <net/if.h>
-#include <net/pfil.h>
 #include <net/route.h>
 #include <net/vnet.h>
 #include <vm/vm.h>
@@ -1177,7 +1176,9 @@ move_objects(struct ip_fw_chain *ch, ipfw_range_tlv *rt)
 		}
 	}
 	return (c);
-}/*
+}
+
+/*
  * Changes set of given rule rannge @rt
  * with each other.
  *
@@ -1908,6 +1909,7 @@ check_ipfw_rule_body(ipfw_insn *cmd, int cmd_len, struct rule_check_info *ci)
 		case O_IPTTL:
 		case O_IPLEN:
 		case O_TCPDATALEN:
+		case O_TCPMSS:
 		case O_TCPWIN:
 		case O_TAGGED:
 			if (cmdlen < 1 || cmdlen > 31)

@@ -328,6 +328,14 @@ found:
 		NET_EPOCH_EXIT(et);
 		return -1;
 
+	case IFT_INFINIBAND:
+		if (addrlen != 20) {
+			NET_EPOCH_EXIT(et);
+			return -1;
+		}
+		bcopy(addr + 12, &in6->s6_addr[8], 8);
+		break;
+
 	default:
 		NET_EPOCH_EXIT(et);
 		return -1;
@@ -692,6 +700,7 @@ in6_ifattach(struct ifnet *ifp, struct ifnet *altifp)
 		 * it is rather harmful to have one.
 		 */
 		ND_IFINFO(ifp)->flags &= ~ND6_IFF_AUTO_LINKLOCAL;
+		ND_IFINFO(ifp)->flags |= ND6_IFF_NO_DAD;
 		break;
 	default:
 		break;
@@ -765,9 +774,11 @@ _in6_ifdetach(struct ifnet *ifp, int purgeulp)
 		in6_purgeaddr(ifa);
 	}
 	if (purgeulp) {
+		IN6_MULTI_LOCK();
 		in6_pcbpurgeif0(&V_udbinfo, ifp);
 		in6_pcbpurgeif0(&V_ulitecbinfo, ifp);
 		in6_pcbpurgeif0(&V_ripcbinfo, ifp);
+		IN6_MULTI_UNLOCK();
 	}
 	/* leave from all multicast groups joined */
 	in6_purgemaddrs(ifp);
@@ -854,36 +865,22 @@ in6_tmpaddrtimer(void *arg)
 static void
 in6_purgemaddrs(struct ifnet *ifp)
 {
-	struct in6_multi_head	 purgeinms;
-	struct in6_multi	*inm;
-	struct ifmultiaddr	*ifma, *next;
+	struct in6_multi_head inmh;
 
-	SLIST_INIT(&purgeinms);
+	SLIST_INIT(&inmh);
 	IN6_MULTI_LOCK();
 	IN6_MULTI_LIST_LOCK();
-	IF_ADDR_WLOCK(ifp);
-	/*
-	 * Extract list of in6_multi associated with the detaching ifp
-	 * which the PF_INET6 layer is about to release.
-	 */
- restart:
-	CK_STAILQ_FOREACH_SAFE(ifma, &ifp->if_multiaddrs, ifma_link, next) {
-		if (ifma->ifma_addr->sa_family != AF_INET6 ||
-		    ifma->ifma_protospec == NULL)
-			continue;
-		inm = (struct in6_multi *)ifma->ifma_protospec;
-		in6m_disconnect(inm);
-		in6m_rele_locked(&purgeinms, inm);
-		if (__predict_false(ifma6_restart)) {
-			ifma6_restart = false;
-			goto restart;
-		}
-	}
-	IF_ADDR_WUNLOCK(ifp);
-	mld_ifdetach(ifp);
+	mld_ifdetach(ifp, &inmh);
 	IN6_MULTI_LIST_UNLOCK();
 	IN6_MULTI_UNLOCK();
-	in6m_release_list_deferred(&purgeinms);
+	in6m_release_list_deferred(&inmh);
+
+	/*
+	 * Make sure all multicast deletions invoking if_ioctl() are
+	 * completed before returning. Else we risk accessing a freed
+	 * ifnet structure pointer.
+	 */
+	in6m_release_wait();
 }
 
 void
